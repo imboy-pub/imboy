@@ -1,0 +1,41 @@
+put:
+  tags:
+  - channel
+  operationId: admSetMicroCommunityMessageEssence
+  summary: 平台设置精华 / Platform set essence
+  description: channels:update，真实adm actor审计；workspace写守卫先于channel行锁；消息必须属于该频道。 / channels:update, real admin audit;
+    workspace guard before channel lock; scoped message. 所有新入口在phase1_delivery或channel关闭时拒绝；不可通过缓存绕过。业务错误仍HTTP 200，以code判断。
+    / New endpoints fail closed under phase1_delivery or disabled channel; business failures use HTTP 200 with nonzero
+    code.
+  parameters:
+  - name: channel_id
+    in: path
+    required: true
+    schema:
+      $ref: ../../../../../openapi-adm.yaml#/components/schemas/MicroCommunityEntityId
+  - name: message_id
+    in: path
+    required: true
+    schema:
+      $ref: ../../../../../openapi-adm.yaml#/components/schemas/MicroCommunityEntityId
+  responses:
+    '200':
+      description: '业务信封：code=0成功，非零失败。 / Business envelope: code 0 succeeds; nonzero fails.'
+      content:
+        application/json:
+          schema:
+            oneOf:
+            - $ref: ../../../../../openapi-adm.yaml#/components/schemas/MicroCommunityEssenceResultEnvelope
+            - $ref: ../../../../../openapi-adm.yaml#/components/schemas/MicroCommunityErrorEnvelope
+  x-business-error-codes:
+  - 400
+  - 403
+  - 404
+  - 405
+  - 500
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: ../../../../../openapi-adm.yaml#/components/schemas/MicroCommunityEssenceInput

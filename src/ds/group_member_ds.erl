@@ -127,6 +127,10 @@ join_group(Conn, JoinMode, Uid, Gid, OptData) ->
     % DB 触发器 trg_group_member_ws_subset（00000077，DEFERRABLE）是第二道兜底。
     % scope=personal / 群不存在 → 跳过校验，既有行为零变化。
     ok = ensure_workspace_membership(Conn, Gid, Uid),
+    case micro_community_access_ds:eligible_tx(Conn, Gid, Uid) of
+        true -> ok;
+        false -> throw({abort_tx, discussion_access_denied})
+    end,
 
     JoinMode2 = elib_str:trunc(JoinMode, 100),
     case group_member_repo:upsert_active(Conn, Gid, Uid, Role, JoinMode2) of
@@ -265,6 +269,7 @@ ensure_workspace_membership(Conn, Gid, Uid) ->
 -spec leave(pid(), integer(), integer(), integer()) ->
     {ok, integer(), map()} | {ok, absent} | {error, any()}.
 leave(Conn, Uid, Gid, CurrentUid) ->
+    ok = micro_community_access_repo:lock_group_tx(Conn, Gid),
     GMTb = group_member_repo:tablename(),
     GM = group_member_repo:find(Gid, Uid, <<"*">>),
 

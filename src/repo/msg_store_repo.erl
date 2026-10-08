@@ -414,6 +414,7 @@ stage_c2g(
             ok = workspace_guard:abort_on_error(
                 workspace_guard:ensure_writable_tx(Conn, {group, ToId})
             ),
+            ok = micro_community_access_repo:lock_group_tx(Conn, ToId),
             Seq = allocate_c2g_seq(Conn, ConvKey),
             MemberUids =
                 case OriginalMsgId of
@@ -781,7 +782,8 @@ authorize_group_session_history(Uid, Gid, SessionId) ->
             "AND gmg.generation_no = sm.generation_no ",
             "JOIN public.\"group\" grp ON grp.id = sm.group_id AND grp.status = 1 ",
             "WHERE sa.group_id = $1 AND sa.session_id = $2 AND sm.user_id = $3 ",
-            "AND sa.start_seq >= sm.generation_start_seq ", "AND sa.end_seq >= sa.start_seq">>,
+            "AND sa.start_seq >= sm.generation_start_seq ", "AND sa.end_seq >= sa.start_seq ",
+            "AND NOT EXISTS(SELECT 1 FROM public.channel mc WHERE mc.discussion_group_id=grp.id)">>,
     case elib_pg:query(Sql, [Gid, SessionId, Uid]) of
         {ok, [
             #{
@@ -954,12 +956,17 @@ bind_group_attachment_anchors(Conn, MsgId, FromId, Gid, Seq) ->
 -spec authorized_c2g_recipients(pid(), integer(), integer(), 1 | 3) -> [integer()].
 authorized_c2g_recipients(Conn, Gid, FromId, RequiredRole) ->
     ProbeLimit = ?MAX_C2G_RECIPIENTS + 1,
+    CallerAccess = micro_community_access_repo:predicate_sql(<<"grp.id">>, <<"caller.user_id">>),
+    RecipientAccess = micro_community_access_repo:predicate_sql(
+        <<"grp.id">>, <<"recipient.user_id">>
+    ),
     Sql =
         <<"SELECT recipient.user_id FROM public.\"group\" grp ",
             "JOIN public.group_member caller ON caller.group_id = grp.id ",
             "AND caller.user_id = $2 AND caller.status = 1 AND caller.role >= $3 ",
             "JOIN public.group_member recipient ON recipient.group_id = grp.id ",
-            "AND recipient.status = 1 ", "WHERE grp.id = $1 AND grp.status = 1 LIMIT $4">>,
+            "AND recipient.status = 1 ", "WHERE grp.id = $1 AND grp.status = 1 AND ",
+            CallerAccess/binary, " AND ", RecipientAccess/binary, " LIMIT $4">>,
     case elib_pg:query(Conn, Sql, [Gid, FromId, RequiredRole, ProbeLimit]) of
         {ok, []} ->
             throw({rollback, forbidden});
@@ -1001,6 +1008,10 @@ authorized_c2g_action_recipients(Conn, Gid, FromId, RequiredRole, OriginalMsgId)
 
 -spec action_recipient_sql() -> binary().
 action_recipient_sql() ->
+    CallerAccess = micro_community_access_repo:predicate_sql(<<"grp.id">>, <<"caller.user_id">>),
+    RecipientAccess = micro_community_access_repo:predicate_sql(
+        <<"grp.id">>, <<"recipient.user_id">>
+    ),
     <<"SELECT recipient.user_id FROM public.\"group\" grp",
         " JOIN public.group_member caller ON caller.group_id = grp.id",
         " AND caller.user_id = $2 AND caller.status = 1 AND caller.role >= $3",
@@ -1016,7 +1027,8 @@ action_recipient_sql() ->
         " ON recipient_gen.group_id = recipient.group_id",
         " AND recipient_gen.user_id = recipient.user_id AND recipient_gen.end_seq IS NULL",
         " AND target.conv_seq >= recipient_gen.start_seq",
-        " WHERE grp.id = $1 AND grp.status = 1 LIMIT $5">>.
+        " WHERE grp.id = $1 AND grp.status = 1 AND ", CallerAccess/binary, " AND ",
+        RecipientAccess/binary, " LIMIT $5">>.
 
 %% @private
 %% @doc 仅在设备标识非空时写该列；空值一律保持 NULL。

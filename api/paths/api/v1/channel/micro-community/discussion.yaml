@@ -1,0 +1,97 @@
+get:
+  tags:
+  - channel
+  operationId: getMicroCommunityDiscussion
+  summary: 读取讨论群 / Read discussion binding
+  description: 要求有效订阅及付费权益，或双端管理例外；未绑定返回null。 / Require subscription and paid entitlement, or dual-manager exemption;
+    unbound returns null. 所有新入口在phase1_delivery或channel关闭时拒绝；不可通过缓存绕过。业务错误仍HTTP 200，以code判断。 / New endpoints fail
+    closed under phase1_delivery or disabled channel; business failures use HTTP 200 with nonzero code.
+  parameters:
+  - name: channel_id
+    in: path
+    required: true
+    schema:
+      $ref: ../../../../../openapi-api.yaml#/components/schemas/MicroCommunityEntityId
+  responses:
+    '200':
+      description: '业务信封：code=0成功，非零失败。 / Business envelope: code 0 succeeds; nonzero fails.'
+      content:
+        application/json:
+          schema:
+            oneOf:
+            - $ref: ../../../../../openapi-api.yaml#/components/schemas/MicroCommunityBindingEnvelope
+            - $ref: ../../../../../openapi-api.yaml#/components/schemas/MicroCommunityErrorEnvelope
+  x-business-error-codes:
+  - 400
+  - 403
+  - 404
+  - 405
+  - 500
+  - 503
+put:
+  tags:
+  - channel
+  operationId: setMicroCommunityDiscussion
+  summary: 绑定或换群 / Bind or replace discussion group
+  description: 操作者必须双端管理；相同owner、personal、active私有仅邀请且非E2EE；初绑/换群检查仅owner成员且无内容。 / Dual management, same owner,
+    personal active private invitation-only non-E2EE; initial/replacement groups must be owner-only and unused.
+    所有新入口在phase1_delivery或channel关闭时拒绝；不可通过缓存绕过。业务错误仍HTTP 200，以code判断。 / New endpoints fail closed under phase1_delivery
+    or disabled channel; business failures use HTTP 200 with nonzero code.
+  parameters:
+  - name: channel_id
+    in: path
+    required: true
+    schema:
+      $ref: ../../../../../openapi-api.yaml#/components/schemas/MicroCommunityEntityId
+  responses:
+    '200':
+      description: '业务信封：code=0成功，非零失败。 / Business envelope: code 0 succeeds; nonzero fails.'
+      content:
+        application/json:
+          schema:
+            oneOf:
+            - $ref: ../../../../../openapi-api.yaml#/components/schemas/MicroCommunityBindingEnvelope
+            - $ref: ../../../../../openapi-api.yaml#/components/schemas/MicroCommunityErrorEnvelope
+  x-business-error-codes:
+  - 400
+  - 403
+  - 404
+  - 405
+  - 409
+  - 500
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: ../../../../../openapi-api.yaml#/components/schemas/MicroCommunityBinding
+delete:
+  tags:
+  - channel
+  operationId: deleteMicroCommunityDiscussion
+  summary: 受限解绑 / Restricted unbind
+  description: 仅空群可解绑；有普通成员或内容返回业务409，不改变关系。 / Only pristine groups may unbind; populated groups return business
+    409 without changing the binding. 所有新入口在phase1_delivery或channel关闭时拒绝；不可通过缓存绕过。业务错误仍HTTP 200，以code判断。 / New endpoints
+    fail closed under phase1_delivery or disabled channel; business failures use HTTP 200 with nonzero code.
+  parameters:
+  - name: channel_id
+    in: path
+    required: true
+    schema:
+      $ref: ../../../../../openapi-api.yaml#/components/schemas/MicroCommunityEntityId
+  responses:
+    '200':
+      description: '业务信封：code=0成功，非零失败。 / Business envelope: code 0 succeeds; nonzero fails.'
+      content:
+        application/json:
+          schema:
+            oneOf:
+            - $ref: ../../../../../openapi-api.yaml#/components/schemas/MicroCommunityBindingEnvelope
+            - $ref: ../../../../../openapi-api.yaml#/components/schemas/MicroCommunityErrorEnvelope
+  x-business-error-codes:
+  - 400
+  - 403
+  - 404
+  - 405
+  - 409
+  - 500

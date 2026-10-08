@@ -632,8 +632,8 @@ do_refund_finalize(ChannelId, Uid, OrderNo, Reason) ->
         ok ->
             %% Step 5: 同步 payment_transaction 为已退款（best-effort）
             _ = finalize_payment_tx_refund(OrderNo),
-            %% Step 6: 取消订阅（失败不回退退款，仅告警日志）
-            _ = channel_ds:unsubscribe(ChannelId, Uid),
+            %% Subscription deletion and discussion revocation committed with the order.
+            channel_ds:flush_subscription_cache(ChannelId),
             ok;
         {error, not_found_or_not_refunding} ->
             {error, <<"订单状态异常，退款无法完成"/utf8>>};

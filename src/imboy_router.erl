@@ -367,6 +367,20 @@ get_routes() ->
                 % 频道功能 API
                 {"/api/v1/channel/create", channel_handler, #{action => create}},
                 {"/api/v1/channel/qrcode", channel_handler, #{action => qrcode}},
+                {"/api/v1/channel/:channel_id/discussion", micro_community_handler, #{
+                    action => discussion
+                }},
+                {"/api/v1/channel/:channel_id/discussion/candidates", micro_community_handler, #{
+                    action => candidates
+                }},
+                {"/api/v1/channel/:channel_id/discussion/join", micro_community_join_handler, #{}},
+                {"/api/v1/channel/:channel_id/posts", micro_community_content_handler, #{
+                    action => search
+                }},
+                {"/api/v1/channel/:channel_id/posts/:message_id/essence",
+                    micro_community_content_handler, #{action => essence}},
+                {"/api/v1/channel/:channel_id/posts/:message_id/tags",
+                    micro_community_content_handler, #{action => tags}},
                 {"/api/v1/channel/:channel_id", channel_handler, #{action => show}},
                 {"/api/v1/channel/by_custom_id/:custom_id", channel_handler, #{
                     action => by_custom_id
@@ -1275,6 +1289,14 @@ get_routes() ->
             {"/api/adm/bot/enable", adm_bot_handler, #{action => enable}},
             %% 固定段路由置于 :channel_id 通配之前，避免 order 被当作 channel_id
             {"/api/adm/channel/order/refund", adm_channel_handler, #{action => refund_order}},
+            {"/api/adm/channel/:channel_id/discussion", adm_micro_community_handler, #{
+                action => discussion
+            }},
+            {"/api/adm/channel/:channel_id/discussion/candidates", adm_micro_community_handler, #{
+                action => candidates
+            }},
+            {"/api/adm/channel/:channel_id/message/:message_id/essence",
+                adm_micro_community_handler, #{action => essence}},
             {"/api/adm/channel/detail/:channel_id", adm_channel_handler, #{action => detail}},
             {"/api/adm/channel/:channel_id/messages", adm_channel_handler, #{action => messages}},
             {"/api/adm/channel/:channel_id/subscribers", adm_channel_handler, #{

@@ -258,8 +258,10 @@ remove_subscriber(Uid, ChannelId, TargetUid) ->
     case channel_logic_common:get_user_role(ChannelId, Uid) of
         Role when Role >= 2, TargetRole < Role ->
             Result = elib_pg:with_tx(fun(Conn) ->
+                _ = channel_ds:lock_discussion_tx(Conn, ChannelId),
                 case channel_subscription_ds:delete(Conn, ChannelId, TargetUid) of
                     {ok, Affected} when Affected > 0 ->
+                        ok = channel_ds:revoke_discussion_tx(Conn, ChannelId, TargetUid),
                         case channel_ds:increment_subscribers(Conn, ChannelId, -1) of
                             {ok, _} ->
                                 changed;
@@ -267,6 +269,7 @@ remove_subscriber(Uid, ChannelId, TargetUid) ->
                                 throw({abort_tx, Reason})
                         end;
                     {ok, 0} ->
+                        ok = channel_ds:revoke_discussion_tx(Conn, ChannelId, TargetUid),
                         noop;
                     {error, Reason} ->
                         throw({abort_tx, Reason})

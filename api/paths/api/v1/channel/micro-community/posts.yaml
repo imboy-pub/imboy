@@ -1,0 +1,60 @@
+get:
+  tags:
+  - channel
+  operationId: searchMicroCommunityPosts
+  summary: 搜索内容区 / Search channel posts
+  description: 沿既有频道内容ACL；page/size分页，不改变旧messages游标。 / Existing channel content ACL; page/size pagination, no change
+    to old messages cursor. 所有新入口在phase1_delivery或channel关闭时拒绝；不可通过缓存绕过。业务错误仍HTTP 200，以code判断。 / New endpoints fail
+    closed under phase1_delivery or disabled channel; business failures use HTTP 200 with nonzero code.
+  parameters:
+  - name: channel_id
+    in: path
+    required: true
+    schema:
+      $ref: ../../../../../openapi-api.yaml#/components/schemas/MicroCommunityEntityId
+  - name: page
+    in: query
+    schema:
+      type: integer
+      minimum: 1
+      default: 1
+  - name: size
+    in: query
+    schema:
+      type: integer
+      minimum: 1
+      maximum: 50
+      default: 10
+  - name: q
+    in: query
+    schema:
+      type: string
+      maxLength: 200
+      default: ''
+  - name: tag
+    in: query
+    schema:
+      type: string
+    description: 精确标签；trim后1–20 Unicode字符。 / Exact tag, 1–20 Unicode code points after trim.
+  - name: essence
+    in: query
+    schema:
+      type: boolean
+    description: 省略不筛选；true/false精确筛选。 / Omit for all, true/false for exact filter.
+  responses:
+    '200':
+      description: '业务信封：code=0成功，非零失败。 / Business envelope: code 0 succeeds; nonzero fails.'
+      content:
+        application/json:
+          schema:
+            oneOf:
+            - $ref: ../../../../../openapi-api.yaml#/components/schemas/MicroCommunityPostPageEnvelope
+            - $ref: ../../../../../openapi-api.yaml#/components/schemas/MicroCommunityErrorEnvelope
+  x-business-error-codes:
+  - 400
+  - 401
+  - 403
+  - 404
+  - 405
+  - 503
+  - 980

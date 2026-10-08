@@ -406,14 +406,23 @@ notify_channel_status_changed(ChannelId) ->
 -spec publish_message(integer(), binary(), binary(), binary(), map()) ->
     {ok, map()} | {error, binary()}.
 publish_message(Uid, ChannelIdBin, Content, MsgType, Payload) ->
-    do_publish_message(Uid, ChannelIdBin, Content, MsgType, Payload, legacy).
+    publish_with_tags(Uid, ChannelIdBin, Content, MsgType, Payload, legacy).
 
 -spec publish_message(integer(), binary(), binary(), binary(), map(), binary()) ->
     {ok, map()} | {error, binary()}.
 publish_message(Uid, ChannelIdBin, Content, MsgType, Payload, RequestId) ->
-    do_publish_message(
+    publish_with_tags(
         Uid, ChannelIdBin, Content, MsgType, Payload, {request_id, RequestId}
     ).
+
+%% Validate the already decoded map before any role, moderation, persistence or notify.
+publish_with_tags(Uid, ChannelId, Content, MsgType, Payload, StoreMode) ->
+    case channel_message_tags:normalize_payload(Payload) of
+        {ok, Normalized} ->
+            do_publish_message(Uid, ChannelId, Content, MsgType, Normalized, StoreMode);
+        {error, _} ->
+            {error, <<"消息标签或载荷格式无效"/utf8>>}
+    end.
 
 do_publish_message(Uid, ChannelIdBin, Content, MsgType, Payload, StoreMode) ->
     ChannelId = channel_logic_common:resolve_channel_id(ChannelIdBin),

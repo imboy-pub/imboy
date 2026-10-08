@@ -334,12 +334,14 @@ update_tx(Conn, ChannelId, Data) ->
 %% @return {ok, Count} | {error, Reason}
 -spec delete(integer()) -> {ok, non_neg_integer()} | {error, any()}.
 delete(ChannelId) ->
-    Tb = tablename(),
-    elib_pg:update(Tb, #{status => -1}, <<"id = $1">>, [ChannelId]).
+    elib_pg:with_tx(fun(Conn) -> delete_tx(Conn, ChannelId) end).
 
 %% @doc 事务内软删频道（归档写守卫同事务）
 -spec delete_tx(any(), integer()) -> {ok, non_neg_integer()} | {error, any()}.
 delete_tx(Conn, ChannelId) ->
+    ok = workspace_guard:abort_on_error(
+        micro_community_binding_repo:guard_channel_tx(Conn, ChannelId)
+    ),
     Tb = tablename(),
     {Sql, Params} = elib_pg_sql:update(Tb, #{status => -1}, <<"id = $1">>, [ChannelId]),
     elib_pg:execute_count(Conn, Sql, Params).

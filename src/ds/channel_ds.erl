@@ -9,7 +9,7 @@
 -export([is_subscribed/2]).
 -export([subscriber_uids/1]).
 -export([subscribe/2]).
--export([unsubscribe/2]).
+-export([unsubscribe/2, lock_discussion_tx/2, revoke_discussion_tx/3, flush_subscription_cache/1]).
 -export([publish_message/5]).
 -export([publish_message/6]).
 -export([list_by_ids_since/2]).
@@ -233,14 +233,17 @@ unsubscribe(ChannelId, Uid) ->
         ok = workspace_guard:abort_on_error(
             workspace_guard:ensure_writable_tx(Conn, {channel, ChannelId})
         ),
+        _ = micro_community_access_repo:lock_channel_tx(Conn, ChannelId),
         case channel_subscription_repo:delete(Conn, ChannelId, Uid) of
             {ok, Affected} when Affected > 0 ->
+                ok = micro_community_access_ds:revoke_channel_tx(Conn, ChannelId, Uid),
                 % 只有实际发生状态变更才更新计数
                 case channel_repo:increment_subscribers(Conn, ChannelId, -1) of
                     {ok, _} -> changed;
                     {error, Reason} -> throw({abort_tx, Reason})
                 end;
             {ok, 0} ->
+                ok = micro_community_access_ds:revoke_channel_tx(Conn, ChannelId, Uid),
                 % 幂等取消：原本已取消或不存在
                 noop;
             {error, Reason} ->
@@ -562,3 +565,19 @@ get_daily_stats(ChannelId, Days) -> channel_repo:get_daily_stats(ChannelId, Days
 page(Column, Where, Order, Page, Size) ->
     Tb = channel_repo:tablename(),
     elib_pg:page_with_total(Tb, Column, Where, Order, Page, Size).
+
+lock_discussion_tx(Conn, Cid) -> micro_community_access_repo:lock_channel_tx(Conn, Cid).
+revoke_discussion_tx(Conn, Cid, Uid) -> micro_community_access_ds:revoke_channel_tx(Conn, Cid, Uid).
+
+flush_subscription_cache(Cid) ->
+    %% Entitlement reads recheck SQL. Cache failure must not turn a committed
+    %% refund into a client-visible retry of the financial operation.
+    try
+        imboy_cache:flush(?CHANNEL_SUBS_KEY(Cid)),
+        imboy_cache:flush(?CHANNEL_CACHE_KEY(Cid)),
+        ok
+    catch
+        Class:Reason ->
+            ?ERROR_LOG([refund_subscription_cache_flush_failed, Cid, Class, Reason]),
+            ok
+    end.

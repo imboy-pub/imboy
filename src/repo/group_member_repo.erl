@@ -96,11 +96,13 @@ upsert_active(Conn, Gid, Uid, Role, JoinMode) ->
 -spec find(integer(), integer(), binary()) -> map().
 find(Gid, Uid, Column) ->
     Tb = tablename(),
+    Entitlement = micro_community_access_repo:predicate_sql(<<"gm.group_id">>, <<"gm.user_id">>),
     % use index uk_Gid_Uid
     % 使用安全的参数化查询，避免SQL注入
     Sql =
         <<"SELECT ", Column/binary, " FROM ", Tb/binary,
-            " WHERE group_id = $1 AND user_id = $2 AND status = 1">>,
+            " gm WHERE gm.group_id = $1 AND gm.user_id = $2 AND gm.status = 1 AND ",
+            Entitlement/binary>>,
     % ?DEBUG_LOG([Sql]),
     case elib_pg:one(Sql, [Gid, Uid]) of
         {ok, Row} -> Row;
@@ -123,7 +125,9 @@ list_by_gid(Gid, Column) ->
 -spec list_by_gid(integer(), binary(), integer()) -> {ok, list(map())} | {error, any()}.
 list_by_gid(Gid, Column, Limit) ->
     Tb = tablename(),
-    Where = <<" WHERE group_id = $1 AND status = 1 LIMIT $2">>,
+    Entitlement = micro_community_access_repo:predicate_sql(<<"gm.group_id">>, <<"gm.user_id">>),
+    Where =
+        <<" gm WHERE gm.group_id = $1 AND gm.status = 1 AND ", Entitlement/binary, " LIMIT $2">>,
     Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary, Where/binary>>,
     elib_pg:query(Sql, [Gid, Limit]).
 
@@ -140,7 +144,9 @@ list_by_gid(Gid, Column, Limit) ->
     {ok, list(map())} | {error, any()}.
 list_by_gid_tx(Conn, Gid, Column, Limit) ->
     Tb = tablename(),
-    Where = <<" WHERE group_id = $1 AND status = 1 LIMIT $2">>,
+    Entitlement = micro_community_access_repo:predicate_sql(<<"gm.group_id">>, <<"gm.user_id">>),
+    Where =
+        <<" gm WHERE gm.group_id = $1 AND gm.status = 1 AND ", Entitlement/binary, " LIMIT $2">>,
     Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary, Where/binary>>,
     elib_pg:query(Conn, Sql, [Gid, Limit]).
 
@@ -157,6 +163,7 @@ authorized_public_keys_sql() ->
     <<"WITH authorized_group AS MATERIALIZED ( ", "SELECT grp.id FROM public.\"group\" grp ",
         "JOIN public.group_member caller ON caller.group_id = grp.id ",
         "AND caller.user_id = $2 AND caller.status = 1 ", "WHERE grp.id = $1 AND grp.status = 1 ",
+        "AND NOT EXISTS(SELECT 1 FROM public.channel mc WHERE mc.discussion_group_id=grp.id) ",
         "), recipient_snapshot AS MATERIALIZED ( ",
         "SELECT recipient.user_id FROM authorized_group ", "CROSS JOIN LATERAL ( ",
         "SELECT gm.user_id FROM public.group_member gm ",
@@ -186,11 +193,13 @@ authorized_public_keys_sql() ->
 -spec page_by_gid(integer(), integer(), integer(), binary()) -> {ok, map()} | {error, any()}.
 page_by_gid(Gid, Page, Size, Column) ->
     Tb = tablename(),
+    Entitlement = micro_community_access_repo:predicate_sql(<<"gm.group_id">>, <<"gm.user_id">>),
     % 计算偏移量
     Offset = (Page - 1) * Size,
     % 查询总数
     CountSql =
-        <<"SELECT COUNT(*) as count FROM ", Tb/binary, " WHERE group_id = $1 AND status = 1">>,
+        <<"SELECT COUNT(*) as count FROM ", Tb/binary,
+            " AS gm WHERE gm.group_id = $1 AND gm.status = 1 AND ", Entitlement/binary>>,
     Total =
         case elib_pg:one(CountSql, [Gid]) of
             {ok, #{<<"count">> := C}} -> C;
@@ -202,7 +211,7 @@ page_by_gid(Gid, Page, Size, Column) ->
     DataSql =
         <<"SELECT ", Column/binary, " FROM ", Tb/binary, " AS gm",
             " LEFT JOIN \"user\" AS u ON u.id = gm.user_id",
-            " WHERE gm.group_id = $1 AND gm.status = 1",
+            " WHERE gm.group_id = $1 AND gm.status = 1 AND ", Entitlement/binary,
             " ORDER BY gm.role DESC, gm.created_at ASC LIMIT $2 OFFSET $3">>,
     case elib_pg:query(DataSql, [Gid, Size, Offset]) of
         {ok, Items} ->
@@ -228,7 +237,10 @@ page_by_gid(Gid, Page, Size, Column) ->
 -spec count_by_uid(integer()) -> non_neg_integer().
 count_by_uid(Uid) ->
     Tb = tablename(),
-    Sql = <<"SELECT COUNT(*) as count FROM ", Tb/binary, " WHERE user_id = $1 AND status = 1">>,
+    Entitlement = micro_community_access_repo:predicate_sql(<<"gm.group_id">>, <<"gm.user_id">>),
+    Sql =
+        <<"SELECT COUNT(*) as count FROM ", Tb/binary,
+            " gm WHERE gm.user_id = $1 AND gm.status = 1 AND ", Entitlement/binary>>,
     case elib_pg:one(Sql, [Uid]) of
         {ok, #{<<"count">> := Count}} -> Count;
         _ -> 0
@@ -251,10 +263,11 @@ list_by_uid(Uid, Column) ->
 list_by_uid(Uid, Column, Limit) ->
     Tb = tablename(),
     % use index i_Uid_Status
-    {Sql, Params} = elib_pg_sql:build_select(Tb, Column, #{user_id => Uid, status => 1}, #{
-        limit => Limit
-    }),
-    elib_pg:query(Sql, Params).
+    Entitlement = micro_community_access_repo:predicate_sql(<<"gm.group_id">>, <<"gm.user_id">>),
+    Sql =
+        <<"SELECT ", Column/binary, " FROM ", Tb/binary,
+            " gm WHERE gm.user_id=$1 AND gm.status=1 AND ", Entitlement/binary, " LIMIT $2">>,
+    elib_pg:query(Sql, [Uid, Limit]).
 
 %% @doc 查询两个用户共同加入的群组ID列表
 %% @param Uid1 用户1的ID

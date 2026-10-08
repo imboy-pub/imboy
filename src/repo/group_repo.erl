@@ -188,14 +188,13 @@ page(Page, Size, Where, OrderBy) ->
 %% @doc 更新群组信息
 -spec update(map()) -> {ok, non_neg_integer()} | {error, any()}.
 update(Data) ->
-    Tb = tablename(),
     Id = maps:get(<<"id">>, Data),
-    UpdateData = maps:without([<<"id">>], Data),
-    elib_pg:update(Tb, UpdateData, <<"id = $1">>, [Id]).
+    elib_pg:with_tx(fun(Conn) -> update_by_id_tx(Conn, Id, Data) end).
 
 %% @doc 事务内按 ID 更新群组（归档写守卫同事务，DS 层 write_tx 调用）
 -spec update_by_id_tx(any(), integer(), map()) -> {ok, non_neg_integer()} | {error, any()}.
 update_by_id_tx(Conn, Gid, Data) ->
+    ok = guard_discussion_shape_tx(Conn, Gid, Data),
     Tb = tablename(),
     UpdateData = maps:without([<<"id">>], Data),
     {Sql, Params} = elib_pg_sql:update(Tb, UpdateData, <<"id = $1">>, [Gid]),
@@ -210,6 +209,8 @@ update_by_id_tx(Conn, Gid, Data) ->
 %% The expected owner is checked atomically with the write, after row-lock waits.
 -spec update_owner_tx(any(), integer(), integer(), integer()) -> ok | {error, any()}.
 update_owner_tx(Conn, Gid, NewOwnerUid, ExpectedOwnerUid) ->
+    ok = micro_community_access_repo:lock_group_tx(Conn, Gid),
+    ok = workspace_guard:abort_on_error(micro_community_binding_repo:guard_group_tx(Conn, Gid)),
     Tb = tablename(),
     Now = elib_dt:now(),
     Sql =
@@ -373,3 +374,28 @@ mark_group_read(Uid, GroupId, MsgIds) ->
             " SET read_seq = GREATEST(workspace_group_read_cursor.read_seq, EXCLUDED.read_seq),",
             " updated_at = NOW() RETURNING read_seq">>,
     elib_pg:query(Sql, [Uid, GroupId, MsgIds]).
+
+guard_discussion_shape_tx(Conn, Gid, Data) ->
+    Restricted = [
+        owner_uid,
+        creator_uid,
+        type,
+        join_limit,
+        scope,
+        workspace_id,
+        e2ee_mode,
+        <<"owner_uid">>,
+        <<"creator_uid">>,
+        <<"type">>,
+        <<"join_limit">>,
+        <<"scope">>,
+        <<"workspace_id">>,
+        <<"e2ee_mode">>
+    ],
+    case lists:any(fun(Key) -> maps:is_key(Key, Data) end, Restricted) of
+        false ->
+            ok;
+        true ->
+            ok = micro_community_access_repo:lock_group_tx(Conn, Gid),
+            workspace_guard:abort_on_error(micro_community_binding_repo:guard_group_tx(Conn, Gid))
+    end.

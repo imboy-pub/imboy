@@ -96,6 +96,7 @@ mark_read(Uid, Gid, MsgIds) ->
 -spec authorize_group_history(integer(), integer()) ->
     {ok, map()} | {error, denied}.
 authorize_group_history(Uid, Gid) ->
+    Entitlement = micro_community_access_repo:predicate_sql(<<"grp.id">>, <<"$2">>),
     Sql =
         <<"SELECT gmg.generation_no, gmg.start_seq, ",
             "COALESCE(mss.seq, gmg.start_seq - 1) AS end_seq ",
@@ -105,7 +106,8 @@ authorize_group_history(Uid, Gid) ->
             "JOIN public.\"group\" grp ON grp.id = gmg.group_id AND grp.status = 1 ",
             "LEFT JOIN public.msg_store_seq mss ON mss.conv_key = 'c2g:' || gmg.group_id::text ",
             " AND mss.seq >= gmg.start_seq ",
-            "WHERE gmg.group_id = $1 AND gmg.user_id = $2 AND gmg.end_seq IS NULL">>,
+            "WHERE gmg.group_id = $1 AND gmg.user_id = $2 AND gmg.end_seq IS NULL AND ",
+            Entitlement/binary>>,
     case elib_pg:query(Sql, [Gid, Uid]) of
         {ok, [
             #{
@@ -167,6 +169,12 @@ member_uids(Gid) ->
 %% 表现为"一切正常"，是最难被发现的一种。
 -spec member_uids_strict(integer()) -> {ok, [integer()]} | {error, term()}.
 member_uids_strict(Gid) ->
+    case member_uids_cached(Gid) of
+        {ok, Uids} -> micro_community_access_repo:filter_uids(Gid, Uids);
+        {error, _} = Error -> Error
+    end.
+
+member_uids_cached(Gid) ->
     CacheKey = ?GROUP_CACHE_KEY(Gid),
     case imboy_cache:get(CacheKey) of
         {ok, Li} ->
@@ -608,11 +616,16 @@ do_dissolve(Uid, Gid, G, Authz) ->
             %% OwnerUid 判定（同进程无窗口）；org manager 路径在此处判定，
             %% 判定依据是本事务快照。
             ok = ensure_dissolve_authz_tx(Authz, Conn, Gid, Uid),
+
             %% T7 归档写守卫（P0 收口）：解散 = workspace 域群的最大写操作，
             %% archived 时整事务拒绝（{group, Gid} 行锁与解散同事务）；
             %% personal 群由 resolver 直通，零行为变化。
             ok = workspace_guard:abort_on_error(
                 workspace_guard:ensure_writable_tx(Conn, {group, Gid})
+            ),
+            ok = micro_community_access_repo:lock_group_tx(Conn, Gid),
+            ok = workspace_guard:abort_on_error(
+                micro_community_binding_ds:guard_group_tx(Conn, Gid)
             ),
             %% 解散会删除全部成员；先在同一 conv_seq 锁下关闭所有 open 世代，
             %% 防止 generation 残留继续授权历史或破坏 append-only 审计语义。

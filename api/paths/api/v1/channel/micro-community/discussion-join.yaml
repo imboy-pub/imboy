@@ -1,0 +1,29 @@
+post:
+  tags:
+  - channel
+  operationId: joinMicroCommunityDiscussion
+  summary: 显式加入讨论群 / Explicit discussion join
+  description: 浏览频道、订阅、支付不隐式入群；当前用户身份来自认证State，忽略外部Uid。 / Viewing, subscribing and paying do not implicitly join;
+    actor comes from authenticated State. 所有新入口在phase1_delivery或channel关闭时拒绝；不可通过缓存绕过。业务错误仍HTTP 200，以code判断。 / New
+    endpoints fail closed under phase1_delivery or disabled channel; business failures use HTTP 200 with nonzero
+    code.
+  parameters:
+  - name: channel_id
+    in: path
+    required: true
+    schema:
+      $ref: ../../../../../openapi-api.yaml#/components/schemas/MicroCommunityEntityId
+  responses:
+    '200':
+      description: '业务信封：code=0成功，非零失败。 / Business envelope: code 0 succeeds; nonzero fails.'
+      content:
+        application/json:
+          schema:
+            oneOf:
+            - $ref: ../../../../../openapi-api.yaml#/components/schemas/MicroCommunityBindingEnvelope
+            - $ref: ../../../../../openapi-api.yaml#/components/schemas/MicroCommunityErrorEnvelope
+  x-business-error-codes:
+  - 400
+  - 403
+  - 405
+  - 503

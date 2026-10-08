@@ -9,7 +9,7 @@
 
 -export([send_to_user/3]).
 -export([send_to_user_with_data/4]).
--export([send_to_users/3]).
+-export([send_to_users/3, send_to_group_users/4]).
 -export([send_fcm/3]).
 -export([send_fcm/4]).
 -export([send_apns/3]).
@@ -68,6 +68,30 @@ send_to_users(Uids, Title, Body) ->
             ok;
         {error, Reason} ->
             ?ERROR_LOG(["push_notification_ds: list_by_uids failed", Uids, Reason]),
+            ok
+    end.
+
+%% Discussion identity stays in the server-side retry closure, never in provider
+%% payload data. Each fired retry rechecks membership and wall-clock entitlement.
+send_to_group_users(Gid, Uids, Title, Body) ->
+    case push_token_repo:list_by_uids(Uids) of
+        {ok, Rows} when is_list(Rows) ->
+            lists:foreach(
+                fun(Row) ->
+                    Uid = maps:get(<<"user_id">>, Row, 0),
+                    Guard = fun() ->
+                        try
+                            micro_community_access_repo:delivery_allowed(Gid, Uid)
+                        catch
+                            _:_ -> false
+                        end
+                    end,
+                    do_send_push(Row, Title, Body, #{}, Guard)
+                end,
+                Rows
+            ),
+            ok;
+        _ ->
             ok
     end.
 
@@ -229,44 +253,52 @@ do_send_push(Row, Title, Body) ->
     do_send_push(Row, Title, Body, #{}).
 
 do_send_push(Row, Title, Body, Data) when is_map(Data) ->
+    do_send_push(Row, Title, Body, Data, fun() -> true end).
+
+do_send_push(Row, Title, Body, Data, Guard) ->
     {Platform, Token} = extract_push_info(Row),
     elib_async:async_retry(
         fun() ->
-            case Platform of
-                <<"fcm">> ->
-                    case send_fcm(Token, Title, Body, Data) of
-                        ok -> ok;
-                        % 不重试配置缺失
-                        {error, not_configured} -> ok;
-                        % token 不存在，不重试
-                        {error, {fcm_error, 404}} -> ok;
-                        % token 已注销，不重试
-                        {error, {fcm_error, 410}} -> ok;
-                        % G4：service account 配置类错误，不重试
-                        {error, {config_error, _}} -> ok;
-                        % G4：token endpoint 明确拒绝，不重试（下轮缓存过期再试）
-                        {error, {fcm_token_error, _}} -> ok;
-                        {error, Reason} -> error({push_failed, Reason})
-                    end;
-                <<"apns">> ->
-                    case send_apns(Token, Title, Body, Data) of
-                        ok -> ok;
-                        {error, not_configured} -> ok;
-                        % token 无效，不重试
-                        {error, {apns_error, 410}} -> ok;
-                        {error, Reason} -> error({push_failed, Reason})
-                    end;
-                <<"jpush">> ->
-                    send_jpush(Token, Title, Body, Data);
-                _ ->
-                    ?DEBUG_LOG(["Unknown push platform", Platform]),
-                    ok
+            case Guard() of
+                true -> send_platform_push(Platform, Token, Title, Body, Data);
+                false -> ok
             end
-        % 最多重试 2 次，间隔 3 秒
         end,
         2,
         3000
     ).
+
+send_platform_push(Platform, Token, Title, Body, Data) ->
+    case Platform of
+        <<"fcm">> ->
+            case send_fcm(Token, Title, Body, Data) of
+                ok -> ok;
+                % 不重试配置缺失
+                {error, not_configured} -> ok;
+                % token 不存在，不重试
+                {error, {fcm_error, 404}} -> ok;
+                % token 已注销，不重试
+                {error, {fcm_error, 410}} -> ok;
+                % G4：service account 配置类错误，不重试
+                {error, {config_error, _}} -> ok;
+                % G4：token endpoint 明确拒绝，不重试（下轮缓存过期再试）
+                {error, {fcm_token_error, _}} -> ok;
+                {error, Reason} -> error({push_failed, Reason})
+            end;
+        <<"apns">> ->
+            case send_apns(Token, Title, Body, Data) of
+                ok -> ok;
+                {error, not_configured} -> ok;
+                % token 无效，不重试
+                {error, {apns_error, 410}} -> ok;
+                {error, Reason} -> error({push_failed, Reason})
+            end;
+        <<"jpush">> ->
+            send_jpush(Token, Title, Body, Data);
+        _ ->
+            ?DEBUG_LOG(["Unknown push platform", Platform]),
+            ok
+    end.
 
 %% @doc JPush 分派（EPGZ-07）：错误分类见 push_provider_jpush:send/4
 send_jpush(Token, Title, Body, Data) ->

@@ -17,7 +17,13 @@
 -export([find_by_order_no/1]).
 -export([pay/2, pay/3]).
 -export([refund/3]).
--export([mark_refunding/1, finalize_refund/3, release_refunding/1]).
+-export([
+    mark_refunding/1,
+    finalize_refund/3,
+    release_refunding/1,
+    find_for_transition_tx/2,
+    transition_tx/4
+]).
 -export([cancel/1]).
 -export([list_by_user/2]).
 -export([has_purchased/2]).
@@ -316,3 +322,19 @@ cas_status(OrderNo, From, To) ->
         {ok, _} -> {ok, 0};
         {error, Reason} -> {error, Reason}
     end.
+
+find_for_transition_tx(Conn, OrderNo) ->
+    elib_pg:query(
+        Conn, <<"SELECT channel_id,user_id FROM public.channel_order WHERE order_no=$1">>, [OrderNo]
+    ).
+
+transition_tx(Conn, OrderNo, FromStatus, {ToStatus, Reason}) ->
+    elib_pg:execute_count(
+        Conn,
+        <<
+            "UPDATE public.channel_order SET status=$1, refund_reason=$2, "
+            "refund_at=CASE WHEN $1=2 THEN NOW() ELSE refund_at END, updated_at=NOW() "
+            "WHERE order_no=$3 AND status=$4"
+        >>,
+        [ToStatus, Reason, OrderNo, FromStatus]
+    ).

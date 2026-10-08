@@ -1,0 +1,97 @@
+get:
+  tags:
+  - channel
+  operationId: admGetMicroCommunityDiscussion
+  summary: 平台读取讨论群 / Platform read binding
+  description: 真实adm_user_id；channels:update与groups:update双权限，事务内重验。 / Actual adm_user_id; fresh transactional channels:update
+    and groups:update checks. 所有新入口在phase1_delivery或channel关闭时拒绝；不可通过缓存绕过。业务错误仍HTTP 200，以code判断。 / New endpoints
+    fail closed under phase1_delivery or disabled channel; business failures use HTTP 200 with nonzero code.
+  parameters:
+  - name: channel_id
+    in: path
+    required: true
+    schema:
+      $ref: ../../../../../openapi-adm.yaml#/components/schemas/MicroCommunityEntityId
+  responses:
+    '200':
+      description: '业务信封：code=0成功，非零失败。 / Business envelope: code 0 succeeds; nonzero fails.'
+      content:
+        application/json:
+          schema:
+            oneOf:
+            - $ref: ../../../../../openapi-adm.yaml#/components/schemas/MicroCommunityBindingEnvelope
+            - $ref: ../../../../../openapi-adm.yaml#/components/schemas/MicroCommunityErrorEnvelope
+  x-business-error-codes:
+  - 400
+  - 403
+  - 404
+  - 405
+  - 500
+  - 503
+put:
+  tags:
+  - channel
+  operationId: admSetMicroCommunityDiscussion
+  summary: 平台绑定或换群 / Platform bind or replace
+  description: 平台双权限，不冒充creator；结构/空群限制与Human入口一致；真实管理员审计同事务。 / Dual platform permissions without creator impersonation;
+    same structural/pristine restrictions; real admin audit in transaction. 所有新入口在phase1_delivery或channel关闭时拒绝；不可通过缓存绕过。业务错误仍HTTP
+    200，以code判断。 / New endpoints fail closed under phase1_delivery or disabled channel; business failures use HTTP
+    200 with nonzero code.
+  parameters:
+  - name: channel_id
+    in: path
+    required: true
+    schema:
+      $ref: ../../../../../openapi-adm.yaml#/components/schemas/MicroCommunityEntityId
+  responses:
+    '200':
+      description: '业务信封：code=0成功，非零失败。 / Business envelope: code 0 succeeds; nonzero fails.'
+      content:
+        application/json:
+          schema:
+            oneOf:
+            - $ref: ../../../../../openapi-adm.yaml#/components/schemas/MicroCommunityBindingEnvelope
+            - $ref: ../../../../../openapi-adm.yaml#/components/schemas/MicroCommunityErrorEnvelope
+  x-business-error-codes:
+  - 400
+  - 403
+  - 404
+  - 405
+  - 409
+  - 500
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: ../../../../../openapi-adm.yaml#/components/schemas/MicroCommunityBinding
+delete:
+  tags:
+  - channel
+  operationId: admDeleteMicroCommunityDiscussion
+  summary: 平台受限解绑 / Platform restricted unbind
+  description: 双平台权限；非空群拒绝业务409。 / Dual platform permissions; populated group denied with business 409. 所有新入口在phase1_delivery或channel关闭时拒绝；不可通过缓存绕过。业务错误仍HTTP
+    200，以code判断。 / New endpoints fail closed under phase1_delivery or disabled channel; business failures use HTTP
+    200 with nonzero code.
+  parameters:
+  - name: channel_id
+    in: path
+    required: true
+    schema:
+      $ref: ../../../../../openapi-adm.yaml#/components/schemas/MicroCommunityEntityId
+  responses:
+    '200':
+      description: '业务信封：code=0成功，非零失败。 / Business envelope: code 0 succeeds; nonzero fails.'
+      content:
+        application/json:
+          schema:
+            oneOf:
+            - $ref: ../../../../../openapi-adm.yaml#/components/schemas/MicroCommunityBindingEnvelope
+            - $ref: ../../../../../openapi-adm.yaml#/components/schemas/MicroCommunityErrorEnvelope
+  x-business-error-codes:
+  - 400
+  - 403
+  - 404
+  - 405
+  - 409
+  - 500
