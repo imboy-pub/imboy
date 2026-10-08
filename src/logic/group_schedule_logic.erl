@@ -123,46 +123,56 @@ do_create_schedule(
     % 插入日程
     case normalize_write_result(group_schedule_ds:insert_schedule(ScheduleData)) of
         {ok, _ScheduleDbId, #{<<"id">> := ScheduleDbId}} ->
-            % 插入创建者作为参与人
-            CreatorParticipantData = #{
-                schedule_id => ScheduleId,
-                user_id => CreatorId,
-                % 创建者默认参加
-                status => 1,
-                created_at => Now,
-                updated_at => Now
-            },
-            _ = group_schedule_ds:insert_participant(CreatorParticipantData),
-
-            % 插入其他参与人
-            insert_participants(ScheduleId, ParticipantIds, Now),
-
-            % 安排提醒
-            schedule_reminders(ScheduleId, StartAt, RemindBefore, ParticipantIds ++ [CreatorId]),
-
-            % 返回结果
-            Result = #{schedule_id => ScheduleId, id => ScheduleDbId},
-            Payload = #{
-                <<"id">> => integer_to_binary(ScheduleDbId),
-                <<"group_id">> => integer_to_binary(GroupId),
-                <<"title">> => Title,
-                <<"content">> => Title,
-                <<"start_time">> => StartAt
-            },
-            case
-                group_collab_message_logic:publish(
-                    GroupId,
-                    CreatorId,
-                    <<"groupSchedule">>,
-                    ScheduleId,
-                    Payload
-                )
-            of
-                {ok, Message} -> {ok, Result#{chat_message => Message}};
-                {error, _} -> {ok, Result#{message_status => <<"failed">>}}
-            end;
+            finish_created_schedule(ScheduleData, ScheduleDbId, ParticipantIds);
         {error, Reason} ->
             {error, Reason}
+    end.
+
+finish_created_schedule(Data, ScheduleDbId, ParticipantIds) ->
+    ScheduleId = maps:get(schedule_id, Data),
+    CreatorId = maps:get(creator_id, Data),
+    Now = maps:get(created_at, Data),
+    CreatorParticipant = #{
+        schedule_id => ScheduleId,
+        user_id => CreatorId,
+        status => 1,
+        created_at => Now,
+        updated_at => Now
+    },
+    _ = group_schedule_ds:insert_participant(CreatorParticipant),
+    insert_participants(ScheduleId, ParticipantIds, Now),
+    schedule_reminders(
+        ScheduleId,
+        maps:get(start_at, Data),
+        maps:get(remind_before, Data),
+        ParticipantIds ++ [CreatorId]
+    ),
+    publish_created_schedule(Data, ScheduleDbId).
+
+publish_created_schedule(Data, ScheduleDbId) ->
+    GroupId = maps:get(group_id, Data),
+    CreatorId = maps:get(creator_id, Data),
+    ScheduleId = maps:get(schedule_id, Data),
+    Title = maps:get(title, Data),
+    Result = #{schedule_id => ScheduleId, id => ScheduleDbId},
+    Payload = #{
+        <<"id">> => integer_to_binary(ScheduleDbId),
+        <<"group_id">> => integer_to_binary(GroupId),
+        <<"title">> => Title,
+        <<"content">> => Title,
+        <<"start_time">> => maps:get(start_at, Data)
+    },
+    case
+        group_collab_message_logic:publish(
+            GroupId,
+            CreatorId,
+            <<"groupSchedule">>,
+            ScheduleId,
+            Payload
+        )
+    of
+        {ok, Message} -> {ok, Result#{chat_message => Message}};
+        {error, _} -> {ok, Result#{message_status => <<"failed">>}}
     end.
 
 %% @doc 更新群组日程
