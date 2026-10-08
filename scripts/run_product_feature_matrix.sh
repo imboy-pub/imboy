@@ -4,7 +4,20 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WORKSPACE="$(cd "$ROOT/.." && pwd)"
 PRESET="${1:-}"
-EVIDENCE_DIR="${FEATURE_EVIDENCE_DIR:-$ROOT/docs/compliance/feature-composition-evidence}"
+umask 077
+EVIDENCE_DIR="${FEATURE_EVIDENCE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/imboy/feature-composition/$(date -u +%Y%m%dT%H%M%SZ)-$$}"
+# Reject repository-local reports before acquiring resources or changing sources.
+python3 - "$ROOT/scripts" "$EVIDENCE_DIR" <<'PY_CHECK_OUTPUT'
+import sys
+from pathlib import Path
+sys.path.insert(0, sys.argv[1])
+from verify_product_feature_artifacts import ArtifactError, validate_output_path
+try:
+    validate_output_path(Path(sys.argv[2]) / "matrix.json")
+except ArtifactError as error:
+    print(f"product feature matrix: {error}", file=sys.stderr)
+    raise SystemExit(2)
+PY_CHECK_OUTPUT
 FLUTTER_PLUGIN_METADATA="$WORKSPACE/imboyapp/.flutter-plugins-dependencies"
 FLUTTER_PLUGIN_METADATA_EXISTED=0
 FLUTTER_PLUGIN_REGISTRANT="$WORKSPACE/imboyapp/android/app/src/main/java/io/flutter/plugins/GeneratedPluginRegistrant.java"

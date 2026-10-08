@@ -143,31 +143,54 @@ class ProductFeatureArtifactTest(unittest.TestCase):
                 self._probe_dist(False), self._probe_payloads(True), contract
             )
 
-    def test_evidence_does_not_hash_itself(self):
+    def test_all_untracked_source_material_affects_worktree_hash(self):
         with tempfile.TemporaryDirectory() as directory:
             repo = Path(directory)
-            (repo / "source.txt").write_text("source")
-            evidence = repo / MODULE.EVIDENCE_PREFIX / "base-only.json"
+            relative = "docs/compliance/feature-composition-evidence/base-only.json"
+            evidence = repo / relative
             evidence.parent.mkdir(parents=True)
             evidence.write_text("first")
-            original_root = MODULE.ROOT
-            MODULE.ROOT = repo
-            try:
-                with mock.patch.object(
-                    MODULE.subprocess,
-                    "check_output",
-                    side_effect=[
-                        b"diff",
-                        "docs/compliance/feature-composition-evidence/base-only.json\nsource.txt\n",
-                        b"diff",
-                        "docs/compliance/feature-composition-evidence/base-only.json\nsource.txt\n",
-                    ],
-                ):
-                    first = MODULE.worktree_hash(repo)
-                    evidence.write_text("second")
-                    self.assertEqual(MODULE.worktree_hash(repo), first)
-            finally:
-                MODULE.ROOT = original_root
+            with mock.patch.object(MODULE, "ROOT", repo), mock.patch.object(
+                MODULE.subprocess,
+                "check_output",
+                side_effect=[b"diff", relative + "\n", b"diff", relative + "\n"],
+            ):
+                first = MODULE.worktree_hash(repo)
+                evidence.write_text("second")
+                self.assertNotEqual(MODULE.worktree_hash(repo), first)
+
+    def test_report_output_rejects_all_repositories_and_symlink_alias(self):
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = Path(directory)
+            backend = workspace / "imboy"
+            app = workspace / "imboyapp"
+            admin = workspace / "imboyadmin"
+            for repo in (backend, app, admin):
+                repo.mkdir()
+            alias = workspace / "alias"
+            alias.symlink_to(app, target_is_directory=True)
+            with mock.patch.object(MODULE, "ROOT", backend), mock.patch.object(
+                MODULE, "WORKSPACE", workspace
+            ):
+                for repo in (backend, app, admin, alias):
+                    with self.subTest(repo=repo), self.assertRaisesRegex(
+                        MODULE.ArtifactError, "outside Git"
+                    ):
+                        MODULE.validate_output_path(repo / "report.json")
+                external = workspace / "external" / "report.json"
+                self.assertEqual(MODULE.validate_output_path(external), external.resolve())
+
+    def test_cli_rejects_repository_output_before_artifact_verification(self):
+        with mock.patch.object(MODULE, "verify") as verify:
+            result = MODULE.main([
+                "--manifest", "missing.json",
+                "--backend-beam", "missing.beam",
+                "--flutter-apk", "missing.apk",
+                "--admin-dist", "missing-dist",
+                "--output", str(MODULE.ROOT / "report.json"),
+            ])
+            self.assertEqual(result, 1)
+            verify.assert_not_called()
 
 
 if __name__ == "__main__":

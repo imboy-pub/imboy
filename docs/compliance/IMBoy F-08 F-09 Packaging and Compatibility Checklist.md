@@ -35,7 +35,7 @@
   - `runtime_gate_disabled_means_off_test_` — 运行时门语义（关→关，与编译态正交；Base 编译恒在）；
   - `retention_duties_survive_feature_disable_test_` — `credential_retention_worker` 恒挂 imboy_sup（mock pooler 副作用后取真实 child spec），且 retention 不是 feature key（无门可禁）。
 - [x] **Acceptance 达成**："disabling code does not silently delete data"（schema 超集契约+§7.1 行为定义）；"privacy/retention duties are not disabled with the UI"（worker 恒跑契约测试）。
-- [x] 端到端产物级验证不重复造轮：full→reduced→full 三仓矩阵由既有 `run_product_feature_matrix.sh` + `verify_product_feature_artifacts.py` 承担（F-07/F-03/L-01 证据已归档 feature-composition-evidence/），文档 §7.5 给出分层矩阵映射。
+- [x] 端到端产物级验证不重复造轮：full→reduced→full 三仓矩阵由既有 `run_product_feature_matrix.sh` + `verify_product_feature_artifacts.py` 承担（F-07/F-03/L-01 历史证据由执行方仓外保管，不代表当前候选通过），文档 §7.5 给出分层矩阵映射。
 
 ## Verification
 

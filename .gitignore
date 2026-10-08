@@ -221,3 +221,6 @@ docs/design/**/evidence/
 /docs/guides/e2ee/v2/22-claude-code-execution-state.md
 /docs/guides/e2ee/v2/30-e2ee-decision-brief.md
 /docs/architecture/2026-09-28-customer-service-seat-console-embed-mall-admin-implementation-plan-v2.md.sha256
+
+# Product-feature execution reports are archived outside Git.
+/docs/compliance/feature-composition-evidence/

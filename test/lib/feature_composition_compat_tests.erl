@@ -7,7 +7,7 @@
 %% 四条契约（均为静态/语义级，不依赖真 PG 端到端矩阵——full→reduced→full
 %% 的三仓产物级验证由 scripts/run_product_feature_matrix.sh +
 %% verify_product_feature_artifacts.py 承担，证据归档
-%% docs/compliance/feature-composition-evidence/）：
+%% 仓外执行目录，参见 docs/product/packaging-contract.md）：
 %%   1. schema 超集：priv/migrations 单一目录，无 per-profile fork——
 %%      所有 profile 共享同一迁移序列，禁用 feature 只关代码路径，
 %%      库表与既有数据原样保留；

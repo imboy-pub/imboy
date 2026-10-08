@@ -64,7 +64,7 @@ Feature 全集的**唯一权威源**是代码：`imboy_feature:feature_names()`�
 | Admin | `src/generated/productFeatures.ts`、`generatedFeatureComposition.tsx` | 路由/菜单/chunk 编译集 |
 | Android | `product-features.properties` + debug/profile/release `AndroidManifest.xml` overlay | 权限/组件按需注入 |
 
-**一条命令流水线**（等价 `scripts/run_product_feature_matrix.sh <preset>`）：
+**一条命令流水线**（先将 `FEATURE_EVIDENCE_DIR` 设置为三仓之外的绝对路径；等价 `scripts/run_product_feature_matrix.sh <preset>`）：
 
 ```bash
 python3 imboy/scripts/generate_product_features.py --manifest <manifest.json>
@@ -76,7 +76,7 @@ python3 imboy/scripts/verify_product_feature_artifacts.py \
   --backend-beam "$(find imboy/_rel -path '*/ebin/imboy_feature.beam' | tail -1)" \
   --flutter-apk imboyapp/build/app/outputs/flutter-apk/app-release.apk \
   --admin-dist imboyadmin/dist \
-  --output docs/compliance/feature-composition-evidence/<preset>.json
+  --output "$FEATURE_EVIDENCE_DIR/<preset>.json"
 ```
 
 ## 5. 输出证据（artifact 断言）
@@ -87,7 +87,7 @@ python3 imboy/scripts/verify_product_feature_artifacts.py \
 2. **Flutter APK**：release `libapp.so` AOT payload 中不得残留被裁剪路由的 GoRoute name 字符串（marker 选自生成路由文件，避开核心页面硬编码路径）；
 3. **Admin dist**：feature 专属动态 chunk 文件必须物理缺席。
 
-证据 JSON 归档 `docs/compliance/feature-composition-evidence/<preset>.json`（含三仓 SHA 与产物哈希；矩阵铁律=先提交后跑，verify 记录 head/dirty/worktree hash）。
+证据 JSON 必须写入三仓之外的执行目录，不纳入 Git。矩阵脚本默认写入 `${XDG_STATE_HOME:-$HOME/.local/state}/imboy/feature-composition/<run-id>/`，可用 `FEATURE_EVIDENCE_DIR` 指定仓外目录。报告含三仓 SHA 与产物哈希；矩阵铁律=先提交后跑，verify 记录 head/dirty/worktree hash，并拒绝仓内输出。历史报告由执行方在仓外保管，不能据此宣称当前候选通过。
 
 ## 6. 升级边界（Upgrade Limits）
 

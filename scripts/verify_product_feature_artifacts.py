@@ -10,7 +10,6 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKSPACE = ROOT.parent
-EVIDENCE_PREFIX = "docs/compliance/feature-composition-evidence/"
 GENERATOR_PATH = ROOT / "scripts/generate_product_features.py"
 SPEC = importlib.util.spec_from_file_location("product_features", GENERATOR_PATH)
 GENERATOR = importlib.util.module_from_spec(SPEC)
@@ -59,13 +58,19 @@ def worktree_hash(repo):
     digest.update(subprocess.check_output(["git", "-C", str(repo), "diff", "--binary", "HEAD"]))
     untracked = git_value(repo, "ls-files", "--others", "--exclude-standard").splitlines()
     for relative in sorted(untracked):
-        if repo == ROOT and relative.startswith(EVIDENCE_PREFIX):
-            continue
         path = repo / relative
         digest.update(relative.encode())
         if path.is_file():
             digest.update(path.read_bytes())
     return digest.hexdigest()
+
+
+def validate_output_path(output):
+    resolved = output.resolve()
+    for repo in (ROOT, WORKSPACE / "imboyapp", WORKSPACE / "imboyadmin"):
+        if resolved.is_relative_to(repo.resolve()):
+            raise ArtifactError("execution reports must be written outside Git repositories")
+    return resolved
 
 
 def artifact_payloads(backend_beam, flutter_apk, admin_dist):
@@ -197,14 +202,16 @@ def main(argv=None):
     parser.add_argument("--output", required=True, type=Path)
     args = parser.parse_args(argv)
     try:
+        output = validate_output_path(args.output)
         evidence = verify(
             args.manifest.resolve(),
             args.backend_beam.resolve(),
             args.flutter_apk.resolve(),
             args.admin_dist.resolve(),
         )
-        args.output.parent.mkdir(parents=True, exist_ok=True)
-        args.output.write_text(json.dumps(evidence, indent=2, sort_keys=True) + "\n")
+        output.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        output.write_text(json.dumps(evidence, indent=2, sort_keys=True) + "\n")
+        output.chmod(0o600)
     except (ArtifactError, GENERATOR.ManifestError, OSError, zipfile.BadZipFile) as error:
         print(f"product feature artifacts: {error}")
         return 1

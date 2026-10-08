@@ -70,7 +70,7 @@
 - [x] F-07 构建矩阵 overseas_baseline 列：三仓纯净 worktree
       （imboy `a9ac6153` / imboyapp `c45f1eb9` / imboyadmin `cf78cc7`）跑
       run_product_feature_matrix.sh overseas_baseline，evidence 见
-      feature-composition-evidence/overseas_baseline.json
+      仓外执行目录的 overseas_baseline.json（历史报告，不作为当前候选通过依据）
 - 已知边界（记录，不阻塞）：bot_webhook 在 Admin 尚无 route/menu 挂点（Bot
   webhook 是后端外呼边界，imboy `9e5979ef` 已守 push/push_message）；location/
   channel_discover 在 Admin 本无路由/菜单（仅设置页开关）；Flutter 侧
@@ -113,4 +113,4 @@ workspace/project/channel 继续工作。**Stop 条款**：核心域若不能安
 
 - 本地验收后端：9801（已热更 main）或重编后重启；热更新表 TSID/config/
   路由的坑见记忆「d04-e2e-macos-green-backend-hotpatch-2026-09-05」。
-- F-07 矩阵证据在 `docs/compliance/feature-composition-evidence/`。
+- F-07 矩阵证据在 仓外执行目录（参见产品包装合同）。
