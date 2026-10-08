@@ -442,7 +442,7 @@ do_publish_message(Uid, ChannelIdBin, Content, MsgType, Payload, StoreMode) ->
                             {error, <<"内容包含违规词汇，发布失败"/utf8>>};
                         Verdict ->
                             case
-                                store_channel_message(
+                                channel_message_store:publish(
                                     StoreMode, ChannelId, Uid, Content, MsgType, Payload
                                 )
                             of
@@ -475,16 +475,6 @@ maybe_enqueue_review({queued, Hits}, MessageId, ChannelId, Uid, Content) ->
     ok;
 maybe_enqueue_review(_Other, _MessageId, _ChannelId, _Uid, _Content) ->
     ok.
-
-store_channel_message(legacy, ChannelId, Uid, Content, MsgType, Payload) ->
-    case channel_ds:publish_message(ChannelId, Uid, Content, MsgType, Payload) of
-        {ok, MessageId} -> {ok, MessageId, inserted};
-        Error -> Error
-    end;
-store_channel_message(
-    {request_id, RequestId}, ChannelId, Uid, Content, MsgType, Payload
-) ->
-    channel_ds:publish_message(ChannelId, Uid, Content, MsgType, Payload, RequestId).
 
 maybe_notify_new_message(ChannelId, Message, inserted) ->
     channel_logic_notify:broadcast_channel_message(ChannelId, Message),
