@@ -124,7 +124,16 @@ adm_owner_activation_test_() ->
 setup_db() ->
     _ = (catch elib_tsid:init(#{dc_id => 1, node_id => 1, dc_bits => 3})),
     ok = elib_tsid:register([
-        admin_op_log, organization, workspace, user, owner_activation_invite
+        admin_op_log,
+        organization,
+        workspace,
+        user,
+        owner_activation_invite,
+        group_info,
+        group_member,
+        channel,
+        channel_admin,
+        channel_subscription
     ]),
     ensure_depcache(),
     State =
@@ -192,7 +201,12 @@ pgsql_pool_conf(#{host := Host, port := Port, username := User, password := Pass
     }.
 
 close_db(State) ->
-    try pooler:rm_pool(pgsql) catch _:_ -> ok end, %% A1c: rm_pool/1 is the correct API (stop_pool/1 does not exist, the original try/catch had been silently swallowing undef)
+    %% A1c: rm_pool/1 is the correct API (stop_pool/1 does not exist, the original try/catch had been silently swallowing undef)
+    try
+        pooler:rm_pool(pgsql)
+    catch
+        _:_ -> ok
+    end,
     %% A1c（CP-TD-A02）：按 imboy pg_conf 重建 app pgsql 池（还原共享 VM 状态，
     %% 见 setup_db 接管注释），后续套件的 elib_pg 访问不受本套件影响。
     case application:get_env(imboy, pg_conf) of
@@ -966,7 +980,6 @@ q(Conn, Sql, Params) ->
 tuple_to_named_map(Cols, Row) when is_list(Cols) ->
     Names = [element(2, C) || C <- Cols],
     maps:from_list(lists:zip(Names, tuple_to_list(Row))).
-
 
 %% A1c：create_pending_owner_gated 链路依赖命名 depcache 实例 imboy_cache
 %% （ETS 'm:imboy_cache'）。本套件不启动 imboy app，单跑时须自足补建；全量跑
