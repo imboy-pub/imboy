@@ -558,7 +558,8 @@ enterprise_direct(S) ->
         ]),
         ?assertEqual(Payload, json_map(maps:get(<<"payload">>, hd(Before)))),
         ?assertEqual(null, maps:get(<<"e2ee">>, hd(Before))),
-        {ok, new, 1} = stage_ordered(S, msg(A, 91)),
+        ?assertEqual(1, maps:get(<<"conv_seq">>, hd(Before))),
+        {ok, new, 2} = stage_ordered(S, msg(A, 91)),
         ?assertEqual(
             Before,
             query(<<"SELECT id,payload,e2ee,conv_seq FROM public.msg_c2c WHERE msg_id=$1">>, [M])

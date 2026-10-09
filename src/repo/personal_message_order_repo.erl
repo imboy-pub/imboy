@@ -1,6 +1,8 @@
 -module(personal_message_order_repo).
 -moduledoc "个人消息持久接受顺序 / durable acceptance order for personal messages".
--export([stage_c2c/2, stage_c2c_ordered/2, execute_formal/5, accepted_sequence/3]).
+-export([
+    stage_c2c/2, stage_c2c_ordered/2, execute_formal/5, execute_formal_tx/6, accepted_sequence/3
+]).
 
 %% 分配序号与 staging INSERT 同事务；回滚/重复请求不消耗序号。
 %% Sequence allocation and staging INSERT share a transaction; retries consume none.
@@ -72,6 +74,12 @@ execute_formal(From, To, MsgId, Sql, Params) ->
         {rollback, Reason} -> {error, Reason};
         Result -> Result
     end.
+
+%% Caller owns this transaction, including enterprise origin and audit writes.
+%% Throws rollback on failure; never starts or commits a nested transaction.
+execute_formal_tx(Conn, From, To, MsgId, Sql, Params) ->
+    Key = msg_archive_repo:conv_key(<<"c2c">>, From, To),
+    formal_tx(Conn, Key, #{from_id => From, to_id => To, msg_id => MsgId}, Sql, Params).
 
 formal_tx(Conn, Key, Data, Sql, Params) ->
     Previous = lock_order(Conn, Key, maps:get(msg_id, Data)),

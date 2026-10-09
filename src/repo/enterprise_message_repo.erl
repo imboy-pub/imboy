@@ -60,10 +60,19 @@ insert_direct_tx(Conn, MsgId, FromId, ToId, MsgType, Payload) ->
     Sql =
         <<
             "INSERT INTO msg_c2c (id, from_id, to_id, msg_id, msg_type, e2ee, payload,"
-            " server_ts, created_at)"
-            " VALUES ($1,$2,$3,$4,$5,NULL,$6::jsonb,NOW(),NOW())"
+            " server_ts, created_at, conv_seq)"
+            " VALUES ($1,$2,$3,$4,$5,NULL,$6::jsonb,NOW(),NOW(),$7)"
         >>,
-    case elib_pg:query(Conn, Sql, [RowId, FromId, ToId, MsgId, MsgType, jsone:encode(Payload)]) of
+    case
+        personal_message_order_repo:execute_formal_tx(
+            Conn,
+            FromId,
+            ToId,
+            MsgId,
+            Sql,
+            [RowId, FromId, ToId, MsgId, MsgType, jsone:encode(Payload)]
+        )
+    of
         {ok, _} -> {ok, RowId};
         {error, Reason} -> {error, Reason}
     end.
