@@ -412,7 +412,7 @@ list_photos(AlbumId, CurrentUid, Page, Size) ->
                     case group_album_repo:list_photos(AlbumId, Page, Size, PhotoCols) of
                         {ok, #{list := List, total := Total}} ->
                             PhotoList = #{
-                                <<"items">> => List,
+                                <<"items">> => [authorized_photo_urls(Photo) || Photo <- List],
                                 <<"total">> => Total,
                                 <<"page">> => Page,
                                 <<"size">> => Size
@@ -444,11 +444,23 @@ get_photo_detail(PhotoId, CurrentUid) ->
                     IsLiked = group_album_repo:is_liked(PhotoIdBin, CurrentUid),
                     Photo2 = Photo#{<<"is_liked">> => IsLiked},
 
-                    {ok, Photo2}
+                    {ok, authorized_photo_urls(Photo2)}
             end;
         _ ->
             {error, <<"图片不存在"/utf8>>}
     end.
+
+%% 调用方必须先完成群成员校验；只签发响应，不将临时票据写回数据库。
+authorized_photo_urls(#{<<"photo_url">> := Url} = Photo) ->
+    case elib_oss:object_key_from_url(Url) of
+        undefined ->
+            Photo;
+        Key ->
+            SignedUrl = elib_oss:presign_get_for_key(Key, 600),
+            Photo#{<<"photo_url">> => SignedUrl, <<"thumbnail_url">> => SignedUrl}
+    end;
+authorized_photo_urls(Photo) ->
+    Photo.
 
 %% @doc 更新相册封面
 %% @param AlbumId 相册ID
