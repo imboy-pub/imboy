@@ -193,3 +193,14 @@ read_cursor_generation_cascade_test_() ->
             []
         )
     end).
+
+attachment_retention_disposition_test() ->
+    {ok, Entries} = data_disposition:parse_file(?MANIFEST),
+    lists:foreach(
+        fun(Name) ->
+            [Entry] = [E || E <- Entries, maps:get(table, E) =:= Name],
+            ?assertEqual(retain, maps:get(action, Entry)),
+            ?assertEqual(<<"indefinite">>, maps:get(retention, Entry))
+        end,
+        [<<"attachment_object_deletion">>, <<"workspace_attachment_retention">>]
+    ).

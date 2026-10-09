@@ -557,3 +557,30 @@ v2_to_v4_rebind_is_not_adjacent_test() ->
         {stop, blocked_catalog_transition_unrecognized},
         elib_tsid_bootstrap:decide(C)
     ).
+
+v4_to_v5_requires_ack_and_successful_scan_test() ->
+    Old = known_digest(4),
+    New = known_digest(5),
+    Scan = fun(_) -> {ok, #{floor_safe_before => 6000}} end,
+    C = ctx(#{
+        catalog_digest => New,
+        scan_fun => Scan,
+        env_fun => env(#{?ENV_ACK => ack(Old, New)})
+    }),
+    M = (v2_manifest(5000))#{catalog_digest => Old},
+    ok = elib_tsid_bootstrap:write_manifest(maps:get(manifest_path, C), M),
+    ?assertEqual(
+        {stop, catalog_changed},
+        elib_tsid_bootstrap:decide(C#{env_fun => env(#{})})
+    ),
+    ?assertMatch(
+        {ok, #{action := rebind_floor, floor_safe_before := 6000}},
+        elib_tsid_bootstrap:decide(C)
+    ),
+    ?assertMatch(
+        {stop, {rebind_scan, schema_unavailable}},
+        elib_tsid_bootstrap:decide(C#{scan_fun => fun(_) -> {error, schema_unavailable} end})
+    ),
+    {ok, Preserved} = elib_tsid_bootstrap:read_manifest(maps:get(manifest_path, C)),
+    ?assertEqual(Old, maps:get(catalog_digest, Preserved)),
+    ?assertEqual(5000, maps:get(floor_safe_before, Preserved)).
