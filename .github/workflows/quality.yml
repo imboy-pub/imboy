@@ -199,8 +199,8 @@ jobs:
         with:
           fetch-depth: 0  # gitleaks 需要历史
 
-      # 历史 9 条泄露已逐条定性并经 .gitleaksignore 精确豁免（指纹级），
-      # 详见 docs/operations/security-leak-assessment-2026-06.md；新增泄露即红。
+      # 精确豁免由 .gitleaksignore 管理；扫描与审查记录保存在仓库外。
+      # 安全操作见 docs/guides/security/security-hardening.md；新增泄露即红。
       # 用 gitleaks CLI 而不是 gitleaks/gitleaks-action：该 action 对**组织仓**
       # 强制要求 GITLEAKS_LICENSE（报 "missing gitleaks license" 直接失败），
       # 而 CLI 本身免费无此限制。本仓 lefthook pre-commit 早就在用 CLI，口径一致。
@@ -228,7 +228,7 @@ jobs:
           count=$(jq '. | length' /tmp/leaks.json 2>/dev/null || echo 0)
           echo "leaks=$count"
           if [ "$count" -gt 0 ]; then
-            echo "::error::Gitleaks found $count leaks, baseline is 0 (see docs/operations/security-leak-assessment-2026-06.md)"
+            echo "::error::Gitleaks found $count leaks, baseline is 0 (see docs/guides/security/security-hardening.md)"
             exit 1
           fi
 

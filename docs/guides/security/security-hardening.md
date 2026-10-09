@@ -365,8 +365,8 @@ trivy image imboy:latest --severity HIGH,CRITICAL
 # 2. 渗透测试（建议由第三方执行）
 # 重点测试：SQL 注入、认证绕过、WebSocket 消息伪造、IDOR
 
-# 3. 备份恢复演练（参照 RESTORE-DRILL 记录格式）
-# 文档：docs/guides/operations/deployment/restore-drill-2026-06.md
+# 3. 备份恢复演练（运行记录保存在仓库外）
+# 文档：docs/guides/operations/deployment/backup-restore.md
 # 步骤：恢复到测试环境 → 验证数据完整性 → 记录 RTO
 
 # 4. 等保自查（参照 docs/compliance/mlps2-checklist.md）

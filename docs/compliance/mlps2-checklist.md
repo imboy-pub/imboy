@@ -120,7 +120,7 @@
 |--------|------|------|------|
 | 3.5.1 传输数据完整性 | HTTPS 保证传输完整性 | ✅ 已实现 | TLS 提供完整性校验；消息投递有 ACK 确认机制（`msg_c2c_logic.erl`） |
 | 3.5.2 存储数据完整性 | 数据库约束 + 事务 | ✅ 已实现 | PostgreSQL 约束、外键、事务（`elib_pg:with_tx/2`）；钱包操作强制单事务（`wallet_repo.erl reject_and_refund`） |
-| 3.5.3 备份数据完整性校验 | 备份验证 | ⚠️ 部分实现 | `imboy/scripts/backup_pg.sh` 实现备份；恢复演练记录见 `docs/guides/operations/deployment/restore-drill-2026-06.md`；未实现自动完整性校验哈希 |
+| 3.5.3 备份数据完整性校验 | 备份验证 | ⚠️ 部分实现 | `imboy/scripts/backup_pg.sh` 实现备份；恢复操作见 `docs/guides/operations/deployment/backup-restore.md`，实际演练记录保存在仓库外；未实现自动完整性校验哈希 |
 
 ### 3.6 数据保密性
 
@@ -219,7 +219,7 @@
 | 访问控制矩阵 | `docs/business/edition-boundary.md` |
 | 审计日志样本 | Loki / Grafana 截图（测评前 30 天） |
 | 密钥管理配置 | `config/sys.config.example`（脱敏版） |
-| 备份恢复记录 | `docs/guides/operations/deployment/restore-drill-2026-06.md` |
+| 备份恢复记录 | 仓外保存每环境的备份哈希、恢复校验与实测 RTO；操作见 `docs/guides/operations/deployment/backup-restore.md` |
 | 漏洞扫描报告 | 测评前由第三方出具 |
 | 安全培训记录 | 客户提供 |
 | 安全策略文件 | 客户提供 |

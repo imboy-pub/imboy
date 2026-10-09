@@ -19,7 +19,6 @@ test/
 ├── api/                           # App 侧 HTTP / WebSocket Handler 测试
 ├── auto_test/                     # 自动化测试用例
 ├── common/                        # 测试辅助模块
-├── doc/                           # 历史压测图文资料与现场记录
 ├── domain/                        # 领域聚合（DDD）测试
 ├── ds/                            # DS 层测试
 ├── integration/                   # 端到端 / 集成场景测试（EUnit 风格）
@@ -31,7 +30,6 @@ test/
 ├── store/                         # 存储层测试
 ├── stress/                        # 压力 / 并发测试
 ├── *_SUITE.erl                    # Common Test suites
-├── test_quality_improvement_tasklist.md  # 历史测试质量专项记录
 └── README.md                      # 本文档
 ```
 
@@ -47,14 +45,9 @@ test/
 - `user_auth_flow_SUITE.erl`
 - `websocket_connection_flow_SUITE.erl`
 
-## 历史资料
+## 运行记录
 
-仓库保留了少量历史资料，便于容量评估、问题回溯和测试方法复用：
-
-- `test/docs/test1.md`：100 万级 WebSocket 在线连接压测记录，含服务端 / 客户端监控截图
-- `test/test_quality_improvement_tasklist.md`：早期测试质量专项记录，适合作为治理背景材料，不作为当前实时统计口径
-
-说明：历史资料属于归档保留内容，不直接作为 2026 年对外交付 SLA、容量承诺或当前门禁覆盖率口径。
+测试日志、截图、压测结果和专项审查记录保存在仓库外，并绑定实际提交、环境、执行命令和退出码。仓库保留可重复运行的测试代码、合成测试输入及维护说明。
 
 ## 推荐入口
 
@@ -140,4 +133,3 @@ make eunit EUNIT_MODS='msg_send_performance_tests db_query_performance_tests web
 
 账号1:15001@imboy.pub   密码 admin888
 账号2:15002@imboy.pub   密码 admin888
-
