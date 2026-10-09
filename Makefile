@@ -240,34 +240,13 @@ imboy-prune-excluded-beams:
 
 .PHONY: imboy-prune-excluded-beams
 
-# WH-01：禁用 erlang.mk 的 beam-cache 槽位交换（beam-cache-restore-app/test 以
-# mv 在 app/test 双槽间搬 ebin，保留陈旧 mtime，跨 preset/跨套件反复以旧 beam
-# 污染编译与 release——BUILD-00R 矩阵与 WH-01 测试均实证）。覆写为空操作：
-# ebin 单一真源，代价是 app/test 切换时全量重编译（确定性优先）。
-#
-# 2026-09-28 后记（WH-01R 试验后回滚）：曾尝试把 restore 改为"清标记+清 ebin
-# 强制确定性重编"，单跑 eunit 正确；但与常驻 `make run` dev server 共存时会
-# 互踩（app↔test 模式互斥，单 ebin 目录无法同时服务两侧，反复互相清空重编，
-# 实证 beam 消失又重现）。已回滚为空操作。遗留两个已知问题待 V1.3 决策：
-# ① 空操作覆写下 eunit 直接跑 app 模式 beam，ifdef(TEST) 导出的函数（如
-#   billing_logic:validate_plan/4 等）全部 undef，产生假失败（一轮 47F 实证）；
-# ② 根本解法需架构决策：恢复双槽（带 mtime 修正）或 test 构建独立 ebin 目录。
-# WH-01S 修复（2026-09-28 当日）：问题①已由下方 restore-test 的
-# 「touch .test + 清 ebin」落点修复（guard 时机在编译前；只动 test 侧，
-# 避免与常驻 make run dev server 互踩——当日
-# 47 例假失败经 -DTEST=1 批量单模块验证全转绿，见工作区
-# .Codex/runs/crossplan-v12-20260927T000125Z-b7fd6733/notes/test-diagnosis-20260928/）。
-# WH-01T 补全（2026-09-28 傍晚，plain `make eunit` 17:26 全量失败实证）：
-# ① restore-app 空操作把 erlang.mk 原生语义里「app 侧清标记」一并丢了——
-#   make run/make compile 后标记残留，下一次 test-build 因标记存在而跳过
-#   beam-cache-restore-test，ebin 陈旧口径直接带病参赛。恢复为仅删标记
-#   （不搬槽位，不触碰 ebin，仍不干扰常驻 dev server）。
-# ② restore-test 只 touch 标记+清 beam，未删 ebin/$(PROJECT).app：app 目标
-#   因 .app 比 src 新而跳过 -DTEST=1 重编 → ebin 空壳 → mass undef /
-#   meck {undefined_module,…} / "test module not found"（同 eunit-local
-#   A1c 注释的「补删 ebin/imboy.app」，此处让 plain eunit / ct 同享该修复）。
-#   删 .app 必须先于清 beam：中途被打断时只要 .app 已删，下次 eunit 即因
-#   .app 缺失全量重建自愈；反之「无 beam 但 .app 在」是不会自愈的死态。
+# 禁用 beam-cache 的 app/test 槽位交换，避免旧 mtime 导致错误复用 beam。
+# app 构建只移除测试标记；test 构建先删除 .app，再删除 beam，强制重编。
+# 先删除 .app 可保证构建中断后，下次构建仍会重建缺失的 beam。
+# app/test 构建共享 ebin，必须在不同 checkout 中运行以避免相互干扰。
+# Disable app/test cache-slot swaps to avoid stale beam reuse.
+# Test builds remove .app before beams so interrupted builds rebuild safely.
+# App/test builds share ebin; use separate checkouts for concurrent builds.
 beam-cache-restore-app:
 	$(verbose) rm -f $(ERLANG_MK_TMP)/$(PROJECT).test
 beam-cache-restore-test:
