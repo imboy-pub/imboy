@@ -406,14 +406,23 @@ notify_channel_status_changed(ChannelId) ->
 -spec publish_message(integer(), binary(), binary(), binary(), map()) ->
     {ok, map()} | {error, binary()}.
 publish_message(Uid, ChannelIdBin, Content, MsgType, Payload) ->
-    do_publish_message(Uid, ChannelIdBin, Content, MsgType, Payload, legacy).
+    publish_with_tags(Uid, ChannelIdBin, Content, MsgType, Payload, legacy).
 
 -spec publish_message(integer(), binary(), binary(), binary(), map(), binary()) ->
     {ok, map()} | {error, binary()}.
 publish_message(Uid, ChannelIdBin, Content, MsgType, Payload, RequestId) ->
-    do_publish_message(
+    publish_with_tags(
         Uid, ChannelIdBin, Content, MsgType, Payload, {request_id, RequestId}
     ).
+
+%% Validate the already decoded map before any role, moderation, persistence or notify.
+publish_with_tags(Uid, ChannelId, Content, MsgType, Payload, StoreMode) ->
+    case channel_message_tags:normalize_payload(Payload) of
+        {ok, Normalized} ->
+            do_publish_message(Uid, ChannelId, Content, MsgType, Normalized, StoreMode);
+        {error, _} ->
+            {error, <<"消息标签或载荷格式无效"/utf8>>}
+    end.
 
 do_publish_message(Uid, ChannelIdBin, Content, MsgType, Payload, StoreMode) ->
     ChannelId = channel_logic_common:resolve_channel_id(ChannelIdBin),
@@ -433,7 +442,7 @@ do_publish_message(Uid, ChannelIdBin, Content, MsgType, Payload, StoreMode) ->
                             {error, <<"内容包含违规词汇，发布失败"/utf8>>};
                         Verdict ->
                             case
-                                store_channel_message(
+                                channel_message_store:publish(
                                     StoreMode, ChannelId, Uid, Content, MsgType, Payload
                                 )
                             of
@@ -466,16 +475,6 @@ maybe_enqueue_review({queued, Hits}, MessageId, ChannelId, Uid, Content) ->
     ok;
 maybe_enqueue_review(_Other, _MessageId, _ChannelId, _Uid, _Content) ->
     ok.
-
-store_channel_message(legacy, ChannelId, Uid, Content, MsgType, Payload) ->
-    case channel_ds:publish_message(ChannelId, Uid, Content, MsgType, Payload) of
-        {ok, MessageId} -> {ok, MessageId, inserted};
-        Error -> Error
-    end;
-store_channel_message(
-    {request_id, RequestId}, ChannelId, Uid, Content, MsgType, Payload
-) ->
-    channel_ds:publish_message(ChannelId, Uid, Content, MsgType, Payload, RequestId).
 
 maybe_notify_new_message(ChannelId, Message, inserted) ->
     channel_logic_notify:broadcast_channel_message(ChannelId, Message),

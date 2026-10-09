@@ -36,8 +36,8 @@ pay(OrderNo, PaymentData, GraceMinutes) ->
 
 %% @doc 退款：将已支付(1)订单更新为已退款(2)，并记录退款原因/时间
 -spec refund(binary(), integer(), binary()) -> ok | {error, term()}.
-refund(OrderNo, OperatorUid, Reason) ->
-    channel_order_repo:refund(OrderNo, OperatorUid, Reason).
+refund(OrderNo, _OperatorUid, Reason) ->
+    refund_transition(OrderNo, 1, 2, Reason).
 
 %% @doc 取消：将待支付(0)订单更新为已取消(3)
 -spec cancel(binary()) -> ok | {error, term()}.
@@ -74,14 +74,66 @@ set_gateway_params(OrderNo, PayNo, Extra) ->
 %% @doc B-09 CAS 退款占位：paid(1) → refunding(5)
 -spec mark_refunding(binary()) -> {ok, 0 | 1} | {error, term()}.
 mark_refunding(OrderNo) ->
-    channel_order_repo:mark_refunding(OrderNo).
+    refund_transition(OrderNo, 1, 5, <<>>).
 
 %% @doc B-09 CAS 退款收尾：refunding(5) → refunded(2)
 -spec finalize_refund(binary(), integer(), binary()) -> ok | {error, term()}.
-finalize_refund(OrderNo, Uid, Reason) ->
-    channel_order_repo:finalize_refund(OrderNo, Uid, Reason).
+finalize_refund(OrderNo, _Uid, Reason) ->
+    refund_transition(OrderNo, 5, 2, Reason).
 
 %% @doc B-09 CAS 释放退款占位：refunding(5) → paid(1)
 -spec release_refunding(binary()) -> {ok, 0 | 1} | {error, term()}.
 release_refunding(OrderNo) ->
     channel_order_repo:release_refunding(OrderNo).
+
+%% Channel -> group sequence -> order CAS. Revocation and successful refund's
+%% subscription deletion commit with the order; a failed step aborts all writes.
+refund_transition(OrderNo, From, To, Reason) ->
+    Result = elib_pg:with_tx(fun(Conn) ->
+        case channel_order_repo:find_for_transition_tx(Conn, OrderNo) of
+            {ok, [#{<<"channel_id">> := Cid, <<"user_id">> := Uid}]} ->
+                _ = micro_community_access_repo:lock_channel_tx(Conn, Cid),
+                case channel_order_repo:transition_tx(Conn, OrderNo, From, {To, Reason}) of
+                    {ok, 0} ->
+                        {ok, 0};
+                    {ok, 1} ->
+                        case To of
+                            2 ->
+                                ok = unsubscribe_refunded_tx(Conn, Cid, Uid),
+                                ok = micro_community_access_ds:revoke_channel_tx(Conn, Cid, Uid);
+                            %% Status 5 temporarily rejects new entitlement checks. A
+                            %% failed gateway refund can return to paid without losing
+                            %% membership or its existing history generation.
+                            5 ->
+                                ok
+                        end,
+                        {ok, 1};
+                    {error, Err} ->
+                        throw({abort_tx, Err})
+                end;
+            {ok, []} ->
+                {ok, 0};
+            {error, Err} ->
+                throw({abort_tx, Err})
+        end
+    end),
+    case {To, Result} of
+        {5, _} -> Result;
+        {2, {ok, 1}} -> ok;
+        {2, {ok, 0}} when From =:= 5 -> {error, not_found_or_not_refunding};
+        {2, {ok, 0}} -> {error, not_found_or_not_paid};
+        _ -> Result
+    end.
+
+unsubscribe_refunded_tx(Conn, Cid, Uid) ->
+    case channel_subscription_repo:delete(Conn, Cid, Uid) of
+        {ok, 0} ->
+            ok;
+        {ok, N} when N > 0 ->
+            case channel_repo:increment_subscribers(Conn, Cid, -1) of
+                {ok, _} -> ok;
+                {error, Err} -> throw({abort_tx, Err})
+            end;
+        {error, Err} ->
+            throw({abort_tx, Err})
+    end.

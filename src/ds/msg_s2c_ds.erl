@@ -287,7 +287,13 @@ read_msg(Where, Vals, Column, Limit) ->
     % ?DEBUG_LOG([Res]),
     case Res of
         {ok, Rows} ->
-            [process_s2c_row(Row) || Row <- Rows];
+            Uid = hd(Vals),
+            Messages = [process_s2c_row(Row) || Row <- Rows],
+            [
+                Msg
+             || Msg <- Messages,
+                micro_community_access_ds:delivery_allowed(Uid, Msg#{<<"type">> => <<"S2C">>})
+            ];
         _ ->
             []
     end.

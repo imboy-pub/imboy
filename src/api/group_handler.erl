@@ -70,7 +70,7 @@ handle_action(false, Req, _State) ->
 %% @return 返回包含群组详情的响应
 %% @end
 %% T5（双体验 v2.5.2）：workspace 群要求请求者为 active 工作区成员（403 边界）；
-%% personal 群零行为变化（§1.4.2 授权规则 2：已有资源 ID 不能绕过 Workspace 403）。
+%% 未绑定讨论区的 personal 群保留旧规则；绑定群另验当前权益与 active 成员。
 -spec detail(cowboy_req:req(), map()) -> cowboy_req:req().
 detail(Req0, State) ->
     Uid = maps:get(current_uid, State, 0),
@@ -83,29 +83,34 @@ detail(Req0, State) ->
         {error, {503, Msg}} ->
             elib_response:error(Req0, Msg, 503);
         ok ->
-            detail_allowed(Req0, Gid)
+            detail_allowed(Req0, Gid, Uid)
     end.
 
--spec detail_allowed(cowboy_req:req(), binary()) -> cowboy_req:req().
-detail_allowed(Req0, Gid) ->
-    % 【优化】使用统一的 ID 验证函数
+-spec detail_allowed(cowboy_req:req(), binary(), integer()) -> cowboy_req:req().
+detail_allowed(Req0, Gid, Uid) ->
     case imboy_error:validate_id(Req0, Gid) of
         {error, Req} ->
             Req;
         {ok, Gid2} ->
-            % P1-7b: 显式安全列（排除 chat_aes_key）
-            % e2ee_mode 必须随详情下发：客户端（group_api.dart P0-B B4）依赖它
-            % 同步本地加密旗标，覆盖「开关广播后才入群」的成员；此前列清单
-            % 遗漏该字段属 P1-7b 收紧时引入的契约回退（2026-09-03 真机夹具
-            % flow 定案：set_e2ee_mode 落库+S2C 广播均正常，唯 detail 回读恒 0）。
-            GroupCols =
-                <<"id,type,join_limit,content_limit,owner_uid,creator_uid,member_max,member_count,introduction,avatar,title,status,scope,workspace_id,e2ee_mode,updated_at,created_at">>,
-            case group_logic:find_by_id(Gid2, GroupCols) of
-                {error, _Reason} ->
-                    elib_response:error(Req0, "群组不存在");
-                G ->
-                    elib_response:success(Req0, group_logic:group_transfer(G), "success.")
+            case micro_community_access_logic:guard_group_detail(Uid, Gid2) of
+                ok -> detail_read(Req0, Gid2);
+                {error, {Code, Msg}} -> elib_response:error(Req0, Msg, Code)
             end
+    end.
+
+detail_read(Req0, Gid2) ->
+    % P1-7b: 显式安全列（排除 chat_aes_key）
+    % e2ee_mode 必须随详情下发：客户端（group_api.dart P0-B B4）依赖它
+    % 同步本地加密旗标，覆盖「开关广播后才入群」的成员；此前列清单
+    % 遗漏该字段属 P1-7b 收紧时引入的契约回退（2026-09-03 真机夹具
+    % flow 定案：set_e2ee_mode 落库+S2C 广播均正常，唯 detail 回读恒 0）。
+    GroupCols =
+        <<"id,type,join_limit,content_limit,owner_uid,creator_uid,member_max,member_count,introduction,avatar,title,status,scope,workspace_id,e2ee_mode,updated_at,created_at">>,
+    case group_logic:find_by_id(Gid2, GroupCols) of
+        {error, _Reason} ->
+            elib_response:error(Req0, "群组不存在");
+        G ->
+            elib_response:success(Req0, group_logic:group_transfer(G), "success.")
     end.
 
 %% @doc 面对面建群

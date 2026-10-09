@@ -1,0 +1,43 @@
+put:
+  tags:
+  - channel
+  operationId: setMicroCommunityPostEssence
+  summary: 设置精华 / Set essence
+  description: 频道管理role>=2；作者身份本身无精华管理权限；消息必须属于路径频道。 / Channel manager role>=2; authorship alone grants no essence
+    privilege; message must belong to path channel. 所有新入口在phase1_delivery或channel关闭时拒绝；不可通过缓存绕过。业务错误仍HTTP 200，以code判断。
+    / New endpoints fail closed under phase1_delivery or disabled channel; business failures use HTTP 200 with nonzero
+    code.
+  parameters:
+  - name: channel_id
+    in: path
+    required: true
+    schema:
+      $ref: ../../../../../openapi-api.yaml#/components/schemas/MicroCommunityEntityId
+  - name: message_id
+    in: path
+    required: true
+    schema:
+      $ref: ../../../../../openapi-api.yaml#/components/schemas/MicroCommunityEntityId
+  responses:
+    '200':
+      description: '业务信封：code=0成功，非零失败。 / Business envelope: code 0 succeeds; nonzero fails.'
+      content:
+        application/json:
+          schema:
+            oneOf:
+            - $ref: ../../../../../openapi-api.yaml#/components/schemas/MicroCommunityEssenceResultEnvelope
+            - $ref: ../../../../../openapi-api.yaml#/components/schemas/MicroCommunityErrorEnvelope
+  x-business-error-codes:
+  - 400
+  - 401
+  - 403
+  - 404
+  - 405
+  - 503
+  - 980
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: ../../../../../openapi-api.yaml#/components/schemas/MicroCommunityEssenceInput

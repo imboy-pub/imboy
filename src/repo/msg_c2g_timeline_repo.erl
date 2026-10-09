@@ -89,6 +89,7 @@ count_pending_by_uid(Uid, Since) ->
 %% 离线取回仍必须拿到该行（客户端按各自时间游标 next_last_msg_at 增量拉取，
 %% 行保留不会造成重复下发）。行清理交给 retention（30 天）与容量治理。
 authorized_pending_sql(Tb, Column, SinceSql, LimitParam) ->
+    Entitlement = micro_community_access_repo:predicate_sql(<<"grp.id">>, <<"tl.to_uid">>),
     LimitSql =
         case LimitParam of
             undefined -> <<>>;
@@ -100,8 +101,8 @@ authorized_pending_sql(Tb, Column, SinceSql, LimitParam) ->
         "AND gm.user_id = tl.to_uid AND gm.status = 1 ",
         "JOIN public.group_member_generation gmg ON gmg.group_id = tl.to_gid ",
         "AND gmg.user_id = tl.to_uid AND gmg.end_seq IS NULL ", "WHERE tl.to_uid = $1 ",
-        "AND tl.conv_seq IS NOT NULL AND tl.conv_seq >= gmg.start_seq", SinceSql/binary,
-        LimitSql/binary>>.
+        "AND tl.conv_seq IS NOT NULL AND tl.conv_seq >= gmg.start_seq AND ", Entitlement/binary,
+        SinceSql/binary, LimitSql/binary>>.
 
 %% Q04/F05（I1/I4）：未读计数由 per-user per-group 的已读游标
 %% （workspace_group_read_cursor.read_seq，按成员代际隔离）驱动——
@@ -109,6 +110,7 @@ authorized_pending_sql(Tb, Column, SinceSql, LimitParam) ->
 %% 未过期、非撤回确认。与 client_ack（送达）完全解耦：送达 ACK 永不减未读。
 -spec count_unread_by_uid(integer(), integer()) -> non_neg_integer().
 count_unread_by_uid(Uid, Gid) ->
+    Entitlement = micro_community_access_repo:predicate_sql(<<"grp.id">>, <<"tl.to_uid">>),
     Tb = tablename(),
     Sql =
         <<"SELECT count(DISTINCT tl.msg_id)::integer AS count FROM ", Tb/binary, " tl ",
@@ -124,7 +126,8 @@ count_unread_by_uid(Uid, Gid) ->
             "AND tl.conv_seq IS NOT NULL AND tl.conv_seq >= gmg.start_seq ",
             "AND tl.conv_seq > COALESCE(r.read_seq, 0) AND m.from_id <> $1 ",
             "AND (m.expire_at IS NULL OR m.expire_at > NOW()) ",
-            "AND m.payload->>'action' IS DISTINCT FROM 'message_revoke_ack'">>,
+            "AND m.payload->>'action' IS DISTINCT FROM 'message_revoke_ack' AND ",
+            Entitlement/binary>>,
     case elib_pg:query(Sql, [Uid, Gid]) of
         {ok, [#{<<"count">> := Count}]} when is_integer(Count) -> Count;
         _ -> 0

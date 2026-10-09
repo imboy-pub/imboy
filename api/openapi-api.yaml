@@ -799,6 +799,18 @@ paths:
     $ref: './paths/api/v1/project/task-update.yaml'
   /api/v1/tasks/{task_id}/status:
     $ref: './paths/api/v1/project/task-status.yaml'
+  /api/v1/channel/{channel_id}/discussion:
+    $ref: './paths/api/v1/channel/micro-community/discussion.yaml'
+  /api/v1/channel/{channel_id}/discussion/candidates:
+    $ref: './paths/api/v1/channel/micro-community/discussion-candidates.yaml'
+  /api/v1/channel/{channel_id}/discussion/join:
+    $ref: './paths/api/v1/channel/micro-community/discussion-join.yaml'
+  /api/v1/channel/{channel_id}/posts:
+    $ref: './paths/api/v1/channel/micro-community/posts.yaml'
+  /api/v1/channel/{channel_id}/posts/{message_id}/essence:
+    $ref: './paths/api/v1/channel/micro-community/posts-essence.yaml'
+  /api/v1/channel/{channel_id}/posts/{message_id}/tags:
+    $ref: './paths/api/v1/channel/micro-community/posts-tags.yaml'
 components:
   securitySchemes:
     bearerAuth:
@@ -810,6 +822,223 @@ components:
         而非直接重连（此前反转逻辑已于 1.0.0-rc.1 修复）。
 
   schemas:
+    MicroCommunityEntityId:
+      type: integer
+      format: int64
+      minimum: 1
+      maximum: 9223372036854775807
+      description: JSON bigint；客户端解析为 EntityId，禁止经 JavaScript Number 丢失精度。 / JSON
+        bigint; preserve exact client EntityId.
+    MicroCommunityBinding:
+      type: object
+      required:
+      - discussion_group_id
+      properties:
+        discussion_group_id:
+          type:
+          - integer
+          - 'null'
+          format: int64
+          minimum: 1
+          maximum: 9223372036854775807
+    MicroCommunityTagsInput:
+      type: array
+      maxItems: 5
+      description: 按原始项数最多5；UTF-8字符串trim后1–20 Unicode code points，去重保序；空数组清空。 / At
+        most 5 raw items; trim, validate 1–20 Unicode code points, stable deduplicate;
+        [] clears.
+      items:
+        type: string
+        x-normalized-minLength: 1
+        x-normalized-maxLength: 20
+    MicroCommunityEssenceInput:
+      type: object
+      required:
+      - is_essence
+      properties:
+        is_essence:
+          type: boolean
+          description: 独立于is_pinned。 / Independent of is_pinned.
+    MicroCommunityTagsPatch:
+      type: object
+      required:
+      - tags
+      properties:
+        tags:
+          $ref: '#/components/schemas/MicroCommunityTagsInput'
+    MicroCommunityCandidatePage:
+      type: object
+      required:
+      - list
+      - total
+      - page
+      - size
+      properties:
+        list:
+          type: array
+          items:
+            type: object
+            required:
+            - id
+            - title
+            properties:
+              id:
+                $ref: '#/components/schemas/MicroCommunityEntityId'
+              title:
+                type: string
+        total:
+          type: integer
+          minimum: 0
+        page:
+          type: integer
+          minimum: 1
+        size:
+          type: integer
+          minimum: 1
+          maximum: 50
+    MicroCommunityPost:
+      type: object
+      properties:
+        id:
+          $ref: '#/components/schemas/MicroCommunityEntityId'
+        channel_id:
+          $ref: '#/components/schemas/MicroCommunityEntityId'
+        author_id:
+          $ref: '#/components/schemas/MicroCommunityEntityId'
+        content:
+          type: string
+        msg_type:
+          type: string
+        payload:
+          type: object
+          additionalProperties: true
+          properties:
+            tags:
+              type: array
+              maxItems: 5
+              items:
+                type: string
+                minLength: 1
+                maxLength: 20
+        is_essence:
+          type: boolean
+        is_pinned:
+          type: boolean
+    MicroCommunityPostPage:
+      type: object
+      required:
+      - list
+      - total
+      - page
+      - size
+      properties:
+        list:
+          type: array
+          items:
+            $ref: '#/components/schemas/MicroCommunityPost'
+        total:
+          type: integer
+          minimum: 0
+        page:
+          type: integer
+          minimum: 1
+        size:
+          type: integer
+          minimum: 1
+          maximum: 50
+    MicroCommunityEssenceResult:
+      type: object
+      required:
+      - id
+      - is_essence
+      - is_pinned
+      properties:
+        id:
+          $ref: '#/components/schemas/MicroCommunityEntityId'
+        is_essence:
+          type: boolean
+        is_pinned:
+          type: boolean
+    MicroCommunityTagsResult:
+      type: object
+      required:
+      - id
+      - payload
+      properties:
+        id:
+          $ref: '#/components/schemas/MicroCommunityEntityId'
+        payload:
+          type: object
+          additionalProperties: true
+          properties:
+            tags:
+              type: array
+              maxItems: 5
+              items:
+                type: string
+                minLength: 1
+                maxLength: 20
+    MicroCommunityErrorEnvelope:
+      allOf:
+      - $ref: '#/components/schemas/Envelope'
+      - type: object
+        properties:
+          code:
+            type: integer
+            minimum: 1
+          payload:
+            type: object
+            maxProperties: 0
+    MicroCommunityBindingEnvelope:
+      allOf:
+      - $ref: '#/components/schemas/Envelope'
+      - type: object
+        properties:
+          code:
+            type: integer
+            const: 0
+          payload:
+            $ref: '#/components/schemas/MicroCommunityBinding'
+    MicroCommunityCandidatePageEnvelope:
+      allOf:
+      - $ref: '#/components/schemas/Envelope'
+      - type: object
+        properties:
+          code:
+            type: integer
+            const: 0
+          payload:
+            $ref: '#/components/schemas/MicroCommunityCandidatePage'
+    MicroCommunityPostPageEnvelope:
+      allOf:
+      - $ref: '#/components/schemas/Envelope'
+      - type: object
+        properties:
+          code:
+            type: integer
+            const: 0
+          payload:
+            $ref: '#/components/schemas/MicroCommunityPostPage'
+    MicroCommunityEssenceResultEnvelope:
+      allOf:
+      - $ref: '#/components/schemas/Envelope'
+      - type: object
+        properties:
+          code:
+            type: integer
+            const: 0
+          payload:
+            $ref: '#/components/schemas/MicroCommunityEssenceResult'
+    MicroCommunityTagsResultEnvelope:
+      allOf:
+      - $ref: '#/components/schemas/Envelope'
+      - type: object
+        properties:
+          code:
+            type: integer
+            const: 0
+          payload:
+            $ref: '#/components/schemas/MicroCommunityTagsResult'
     # ----------------------------------------------------------------------
     # T3.2 split phase 1 (2026-05-16)：通用 schema 抽离为独立文件，
     # 便于 review、按域演进、避免单文件膨胀至万行。

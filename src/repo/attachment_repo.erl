@@ -462,13 +462,15 @@ authorize_group_access(ObjectKey, Uid) ->
 
 -spec group_access_sql(binary()) -> binary().
 group_access_sql(Tb) ->
+    Entitlement = micro_community_access_repo:predicate_sql(<<"grp.id">>, <<"$2">>),
     ScopeSql = resource_scope_access_sql(),
     <<"SELECT EXISTS (SELECT 1 FROM ", Tb/binary, " a ", "JOIN public.group_member_generation gmg ",
         " ON a.scope_ref = gmg.group_id::text AND gmg.user_id = $2 ", " AND gmg.end_seq IS NULL ",
         "JOIN public.group_member gm ON gm.group_id = gmg.group_id ",
         " AND gm.user_id = gmg.user_id AND gm.status = 1 ",
         "JOIN public.\"group\" grp ON grp.id = gmg.group_id AND grp.status = 1 ",
-        "WHERE a.path = $1 AND a.scope = 'group' AND a.status >= 0 ", ScopeSql/binary,
+        "WHERE a.path = $1 AND a.scope = 'group' AND a.status >= 0 AND ", Entitlement/binary,
+        <<" ">>/binary, ScopeSql/binary,
         "AND ((a.group_file_id IS NULL AND a.anchor_conv_seq IS NOT NULL ",
         "      AND gmg.start_seq <= a.anchor_conv_seq) ",
         " OR (a.group_file_id IS NOT NULL AND EXISTS (",
@@ -506,11 +508,12 @@ authorize_group_scope(_, _) ->
 
 -spec group_scope_access_sql() -> binary().
 group_scope_access_sql() ->
+    Entitlement = micro_community_access_repo:predicate_sql(<<"grp.id">>, <<"$2">>),
     ScopeSql = resource_scope_access_sql(),
     <<"SELECT EXISTS (SELECT 1 FROM public.\"group\" grp ",
         "JOIN public.group_member gm ON gm.group_id = grp.id ",
         "AND gm.user_id = $2 AND gm.status = 1 ", "WHERE grp.id = $1 AND grp.status = 1 ",
-        ScopeSql/binary, ") AS allowed">>.
+        ScopeSql/binary, " AND ", Entitlement/binary, ") AS allowed">>.
 
 scope_access_sql(group) ->
     group_scope_access_sql();

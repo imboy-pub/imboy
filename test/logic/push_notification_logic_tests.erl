@@ -172,8 +172,8 @@ maybe_push_for_c2g_test() ->
         meck:expect(group_repo, find_by_id, fun(100, <<"title">>) ->
             #{<<"title">> => <<"测试群"/utf8>>}
         end),
-        meck:expect(push_notification_ds, send_to_users, fun(
-            [2], <<"新消息"/utf8>>, <<"发来一条消息"/utf8>>
+        meck:expect(push_notification_ds, send_to_group_users, fun(
+            100, [2], <<"新消息"/utf8>>, <<"发来一条消息"/utf8>>
         ) ->
             ok
         end),
@@ -270,14 +270,14 @@ maybe_push_for_c2g_never_pushes_sender_test() ->
             self()
         end),
         meck:expect(imboy_syn, count_user, fun(_) -> 0 end),
-        meck:expect(push_notification_ds, send_to_users, fun([2], _T, _B) -> ok end),
+        meck:expect(push_notification_ds, send_to_group_users, fun(100, [2], _T, _B) -> ok end),
         ?assertEqual(
             ok,
             push_notification_logic:maybe_push_for_c2g(1, 100, <<"text">>, [1, 2])
         ),
         %% 只有非发送者一个 uid 收到批量推送（发送者 1 被剔除）
-        ?assert(meck:called(push_notification_ds, send_to_users, [[2], '_', '_'])),
-        ?assertEqual(1, meck:num_calls(push_notification_ds, send_to_users, '_'))
+        ?assert(meck:called(push_notification_ds, send_to_group_users, [100, [2], '_', '_'])),
+        ?assertEqual(1, meck:num_calls(push_notification_ds, send_to_group_users, '_'))
     end).
 
 %% c2g 负例：全体成员（除发送者）都在线 → 零推送
@@ -292,7 +292,7 @@ maybe_push_for_c2g_all_members_online_test() ->
             ok,
             push_notification_logic:maybe_push_for_c2g(1, 100, <<"text">>, [1, 2, 3])
         ),
-        ?assertEqual(0, meck:num_calls(push_notification_ds, send_to_users, '_'))
+        ?assertEqual(0, meck:num_calls(push_notification_ds, send_to_group_users, '_'))
     end).
 
 %% c2g 负例：只有发送者一个成员 → 过滤后为空，不发批量推送（不炸）
@@ -307,7 +307,7 @@ maybe_push_for_c2g_sender_only_member_test() ->
             ok,
             push_notification_logic:maybe_push_for_c2g(1, 100, <<"text">>, [1])
         ),
-        ?assertEqual(0, meck:num_calls(push_notification_ds, send_to_users, '_'))
+        ?assertEqual(0, meck:num_calls(push_notification_ds, send_to_group_users, '_'))
     end).
 
 %% c2g 负例：成员列表为空 → 零推送
@@ -321,7 +321,7 @@ maybe_push_for_c2g_empty_members_test() ->
             ok,
             push_notification_logic:maybe_push_for_c2g(1, 100, <<"text">>, [])
         ),
-        ?assertEqual(0, meck:num_calls(push_notification_ds, send_to_users, '_'))
+        ?assertEqual(0, meck:num_calls(push_notification_ds, send_to_group_users, '_'))
     end).
 
 %% c2c 负例：接收方离线但没有任何 token → 走真实 DS 空集分支，不炸
@@ -436,11 +436,11 @@ enterprise_c2g_sender_never_notified_test() ->
             self()
         end),
         meck:expect(imboy_syn, count_user, fun(_) -> 0 end),
-        meck:expect(push_notification_ds, send_to_users, fun([44], _T, _B) -> ok end),
+        meck:expect(push_notification_ds, send_to_group_users, fun(777, [44], _T, _B) -> ok end),
         ?assertEqual(ok, push_notification_logic:maybe_push_for_enterprise_c2g(55, 777, [55, 44])),
         %% 发送者 55 被剔除，离线成员 44 恰被推一次
-        ?assert(meck:called(push_notification_ds, send_to_users, [[44], '_', '_'])),
-        ?assertEqual(1, meck:num_calls(push_notification_ds, send_to_users, 3))
+        ?assert(meck:called(push_notification_ds, send_to_group_users, [777, [44], '_', '_'])),
+        ?assertEqual(1, meck:num_calls(push_notification_ds, send_to_group_users, 4))
     end).
 
 %% group 负例：全体（除发送者）在线 → 零推送。
@@ -570,8 +570,8 @@ e2ee_c2g_push_body_never_leaks_test() ->
         meck:expect(group_repo, find_by_id, fun(100, <<"title">>) ->
             #{<<"title">> => <<"Secret Group">>}
         end),
-        meck:expect(push_notification_ds, send_to_users, fun(
-            [2], <<"新消息"/utf8>>, Body
+        meck:expect(push_notification_ds, send_to_group_users, fun(
+            100, [2], <<"新消息"/utf8>>, Body
         ) ->
             ?assertEqual(<<"发来一条消息"/utf8>>, Body),
             ?assertNot(binary:match(Body, ?FAKE_CIPHERTEXT) =/= nomatch),
@@ -662,14 +662,14 @@ dnd_filters_c2g_members_test() ->
             (3) -> 0
         end),
         stub_dnd([2]),
-        meck:expect(push_notification_ds, send_to_users, fun([3], _T, _B) -> ok end),
+        meck:expect(push_notification_ds, send_to_group_users, fun(100, [3], _T, _B) -> ok end),
         ?assertEqual(
             ok, push_notification_logic:maybe_push_for_c2g(1, 100, <<"text">>, [1, 2, 3])
         ),
         %% 只有离线成员 2/3 各查一次 DND（发送者 1 在线短路）
         ?assertEqual(2, meck:num_calls(user_dnd_rule_ds, is_dnd_at, '_')),
-        ?assert(meck:called(push_notification_ds, send_to_users, [[3], '_', '_'])),
-        ?assertEqual(1, meck:num_calls(push_notification_ds, send_to_users, '_'))
+        ?assert(meck:called(push_notification_ds, send_to_group_users, [100, [3], '_', '_'])),
+        ?assertEqual(1, meck:num_calls(push_notification_ds, send_to_group_users, '_'))
     end).
 
 %% c2g 负例：除发送者外全部 DND 命中 → 零推送（空集不调 DS）
@@ -684,7 +684,7 @@ dnd_all_members_muted_c2g_zero_push_test() ->
         ?assertEqual(
             ok, push_notification_logic:maybe_push_for_c2g(1, 100, <<"text">>, [1, 2, 3])
         ),
-        ?assertEqual(0, meck:num_calls(push_notification_ds, send_to_users, '_'))
+        ?assertEqual(0, meck:num_calls(push_notification_ds, send_to_group_users, '_'))
     end).
 
 dnd_filters_notify_offline_users_test() ->

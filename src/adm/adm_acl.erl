@@ -19,6 +19,7 @@
     ensure_permission/3,
     ensure_any_permission/3,
     permissions/1,
+    role_permissions/1,
     flush_cache/1,
     normalize_role_ids/1
 ]).

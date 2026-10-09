@@ -215,7 +215,7 @@ messages(<<"GET">>, Req0) ->
             {Page, Size} = elib_param:page(Req0),
             Column = <<
                 "id, channel_id, author_id, author_name, content, msg_type, "
-                "is_pinned, view_count, created_at, updated_at"
+                "is_pinned, is_essence, view_count, created_at, updated_at"
             >>,
             %% 只返回未删除消息（status=1），否则删除后行仍留在列表
             Where = #{channel_id => ChannelId, status => 1},

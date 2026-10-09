@@ -1,0 +1,42 @@
+get:
+  tags:
+  - channel
+  operationId: listMicroCommunityDiscussionCandidates
+  summary: 候选空群 / Eligible empty groups
+  description: 频道管理及群管理权限；同owner、未被其他频道绑定的私有空群。 / Channel/group management; same-owner unbound private unused groups.
+    所有新入口在phase1_delivery或channel关闭时拒绝；不可通过缓存绕过。业务错误仍HTTP 200，以code判断。 / New endpoints fail closed under phase1_delivery
+    or disabled channel; business failures use HTTP 200 with nonzero code.
+  parameters:
+  - name: channel_id
+    in: path
+    required: true
+    schema:
+      $ref: ../../../../../openapi-api.yaml#/components/schemas/MicroCommunityEntityId
+  - name: page
+    in: query
+    schema:
+      type: integer
+      minimum: 1
+      default: 1
+  - name: size
+    in: query
+    schema:
+      type: integer
+      minimum: 1
+      maximum: 50
+      default: 10
+  responses:
+    '200':
+      description: '业务信封：code=0成功，非零失败。 / Business envelope: code 0 succeeds; nonzero fails.'
+      content:
+        application/json:
+          schema:
+            oneOf:
+            - $ref: ../../../../../openapi-api.yaml#/components/schemas/MicroCommunityCandidatePageEnvelope
+            - $ref: ../../../../../openapi-api.yaml#/components/schemas/MicroCommunityErrorEnvelope
+  x-business-error-codes:
+  - 400
+  - 403
+  - 404
+  - 405
+  - 500

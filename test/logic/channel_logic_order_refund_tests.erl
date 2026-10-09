@@ -43,7 +43,7 @@ setup() ->
     meck:expect(payment_transaction_ds, mark_refunding, fun(_) -> {ok, 1} end),
     meck:expect(payment_transaction_ds, release_refunding, fun(_) -> {ok, 1} end),
     meck:expect(payment_transaction_ds, mark_refunded, fun(_) -> {ok, 1} end),
-    meck:expect(channel_ds, unsubscribe, fun(_, _) -> ok end),
+    meck:expect(channel_ds, flush_subscription_cache, fun(?CID) -> ok end),
     ok.
 
 cleanup(_) ->

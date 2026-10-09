@@ -139,7 +139,7 @@ maybe_push_for_c2c(_FromUid, ToUid, _MsgType, _Payload) ->
 %% @doc C2G 消息离线推送入口
 %% 向群组中的离线成员发送推送
 -spec maybe_push_for_c2g(integer(), integer(), binary(), [integer()]) -> ok.
-maybe_push_for_c2g(FromUid, _GroupId, _MsgType, MemberUids) ->
+maybe_push_for_c2g(FromUid, GroupId, _MsgType, MemberUids) ->
     elib_async:async(fun() ->
         %% 排除发送者自己
         OtherUids = [Uid || Uid <- MemberUids, Uid =/= FromUid],
@@ -150,7 +150,9 @@ maybe_push_for_c2g(FromUid, _GroupId, _MsgType, MemberUids) ->
             [] ->
                 ok;
             _ ->
-                push_notification_ds:send_to_users(AudibleUids, ?PUSH_TITLE, ?PUSH_BODY)
+                push_notification_ds:send_to_group_users(
+                    GroupId, AudibleUids, ?PUSH_TITLE, ?PUSH_BODY
+                )
         end
     end),
     ok.
