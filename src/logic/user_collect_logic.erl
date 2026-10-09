@@ -247,29 +247,12 @@ get_info(_Count, _MimeType, _Key, _Info) ->
     {#{}, ok}.
 
 -spec add_kind(integer(), integer(), binary(), binary(), binary(), binary(), binary(), list()) ->
-    ok.
-% add_kind(_, _, _, _KindId, ok, _Source, _Remark, _Attach)
-%     ok;
+    ok | {error, term()} | {rollback, term()}.
 add_kind(0, Uid, KindBin, KindId, Info, Source, Remark, Attach) ->
     NowTs = elib_dt:now(),
     Kind = binary_to_integer(KindBin),
     elib_pg:with_tx(fun(Conn) ->
         attachment_ds:save(Conn, NowTs, Uid, Attach),
-        AttachMd5 =
-            %% 双读兼容：优先新键 file_hash256，回退旧键 md5（过渡期客户端）
-            case
-                [
-                    maps:get(<<"file_hash256">>, Item, maps:get(<<"md5">>, Item, <<>>))
-                 || Item <- Attach
-                ]
-            of
-                [] ->
-                    <<>>;
-                Md5List ->
-                    % 使用elib_cnv工具函数替代手工处理
-                    elib_cnv:implode(<<",">>, Md5List)
-            end,
-        % 构建数据映射
         Data = #{
             <<"id">> => elib_tsid:generate(user_collect),
             <<"user_id">> => Uid,
@@ -278,29 +261,41 @@ add_kind(0, Uid, KindBin, KindId, Info, Source, Remark, Attach) ->
             <<"source">> => Source,
             <<"remark">> => Remark,
             <<"info">> => elib_hasher:encoded_val(Info),
-            <<"attach_file_hash256">> => AttachMd5,
+            <<"attach_file_hash256">> => attachment_hashes(Attach),
             <<"created_at">> => NowTs,
             <<"updated_at">> => NowTs,
             <<"status">> => 1
         },
 
-        % 构建带ON CONFLICT的INSERT SQL
-        {Sql, Params} = elib_pg_sql:insert(<<"public.user_collect">>, Data, <<>>),
-        OnConflictUpdate = <<
-            "ON CONFLICT (user_id, status, kind_id) DO UPDATE SET "
-            "updated_at = EXCLUDED.updated_at, "
-            "status = 1"
-        >>,
-        FullSql = [Sql, <<" ">>, OnConflictUpdate],
-        case elib_pg:execute(Conn, FullSql, Params) of
-            {ok, _} -> ok;
-            {ok, _, _} -> ok;
-            {error, Reason} -> erlang:error({collect_insert_failed, Reason})
-        end
+        insert_collect_tx(Conn, Data)
     end);
 add_kind(_Count, _Kind, _Uid, _KindId, _Info, _Source, _Remark, _) ->
     % 已收藏
     ok.
+
+attachment_hashes(Attach) ->
+    Hashes = [
+        maps:get(<<"file_hash256">>, Item, maps:get(<<"md5">>, Item, <<>>))
+     || Item <- Attach
+    ],
+    case Hashes of
+        [] -> <<>>;
+        _ -> elib_cnv:implode(<<",">>, Hashes)
+    end.
+
+insert_collect_tx(Conn, Data) ->
+    {Sql, Params} = elib_pg_sql:insert(<<"public.user_collect">>, Data, <<>>),
+    OnConflictUpdate = <<
+        "ON CONFLICT (user_id, status, kind_id) DO UPDATE SET "
+        "updated_at = EXCLUDED.updated_at, "
+        "status = 1"
+    >>,
+    FullSql = [Sql, <<" ">>, OnConflictUpdate],
+    case elib_pg:execute(Conn, FullSql, Params) of
+        {ok, _} -> ok;
+        {ok, _, _} -> ok;
+        {error, Reason} -> erlang:error({collect_insert_failed, Reason})
+    end.
 
 %% ===================================================================
 %% EUnit tests.
