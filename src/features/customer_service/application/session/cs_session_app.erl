@@ -813,17 +813,24 @@ seat_session_page_fetch(OrgId, Status, AfterId, Limit, Params) ->
             %% `cs_message_preview` 内降级为 null 占位 + warning——单条解不开
             %% 的正文不拖垮整页（密文未解出，零内容泄漏）；其余真实异常
             %% （DB 错、编程错误）仍整页 {error,_} 上抛。
-            case seat_session_views(Rows, Status, Params) of
-                {error, _} = Err2 ->
-                    Err2;
-                {ok, Views} ->
-                    Next = next_cursor(Rows, Limit),
-                    {ok, #{
-                        sessions => Views,
-                        total => Total,
-                        total_by_status => ByStatus,
-                        next_after_id => Next
-                    }}
+            %% CSB-02R：整页 preview 收敛为**一次** enterprise 批量读
+            %% （`cs_message_preview:preview_batch/2`，N+1 结构性排除）。
+            case cs_message_preview:preview_batch(Rows, Params) of
+                {error, _} = ErrBatch ->
+                    ErrBatch;
+                {ok, Previews} ->
+                    case seat_session_views(Rows, Status, Params, Previews) of
+                        {error, _} = Err2 ->
+                            Err2;
+                        {ok, Views} ->
+                            Next = next_cursor(Rows, Limit),
+                            {ok, #{
+                                sessions => Views,
+                                total => Total,
+                                total_by_status => ByStatus,
+                                next_after_id => Next
+                            }}
+                    end
             end
     end.
 
@@ -857,17 +864,17 @@ seat_session_query(Store, OrgId, Status, AfterId, Limit, Params) ->
             end
     end.
 
-seat_session_views(Rows, Status, Params) ->
-    seat_session_views(Rows, Status, Params, []).
+seat_session_views(Rows, Status, Params, Previews) ->
+    seat_session_views(Rows, Status, Params, Previews, []).
 
-seat_session_views([], _Status, _Params, Acc) ->
+seat_session_views([], _Status, _Params, _Previews, Acc) ->
     {ok, lists:reverse(Acc)};
-seat_session_views([Row | Rest], Status, Params, Acc) ->
-    case seat_session_view(Row, Status, Params) of
+seat_session_views([Row | Rest], Status, Params, Previews, Acc) ->
+    case seat_session_view(Row, Status, Params, Previews) of
         {error, _} = Err ->
             Err;
         {ok, View} ->
-            seat_session_views(Rest, Status, Params, [View | Acc])
+            seat_session_views(Rest, Status, Params, Previews, [View | Acc])
     end.
 
 %% workspace 收窄：显式正整数生效；缺省/0 = org-wide（坐席作用域以 Org +
@@ -889,13 +896,8 @@ next_cursor(Rows, Limit) ->
 %% created_by_user_id 不直接出站——created_by_user_id 只参与来源推导）。
 %% CS-BE-02 增补：密文中转三列（last_message_body_cipher / _key_version /
 %% _aad_hash）也不在白名单——密文绝不出站，只喂 cs_message_preview。
-seat_session_view(Row, Status, Params) ->
-    case last_message_view(Row, Params) of
-        {error, _} = Err ->
-            Err;
-        {ok, LastMessage} ->
-            {ok, seat_view_with(Row, Status, Params, LastMessage)}
-    end.
+seat_session_view(Row, Status, Params, Previews) ->
+    {ok, seat_view_with(Row, Status, Params, last_message_view(Row, Params, Previews))}.
 
 seat_view_with(Row, Status, Params, LastMessage) ->
     Base = maps:with(
@@ -956,13 +958,12 @@ masked_name(Row) ->
 %% client_msg_id）不进本投影；撤回（hidden）行与附件-only（空正文）消息的
 %% preview 为 null 占位；keyring 未装配与解密失败（F-R5）时整体降级为
 %% null（不吐密文、不整页失败）。
-last_message_view(Row, Params) ->
-    case cs_message_preview:preview(Row, Params) of
-        {error, _} = Err ->
-            Err;
-        {ok, Preview} ->
-            {ok, last_message_with(Row, Preview)}
-    end.
+%% CSB-02R：preview 取自整页**一次**批量读的 Previews 映射（键 =
+%% last_message_id），不再逐行调 facade。
+last_message_view(Row, _Params, Previews) ->
+    last_message_with(
+        Row, maps:get(maps:get(last_message_id, Row, undefined), Previews, undefined)
+    ).
 
 last_message_with(Row, Preview) ->
     case maps:get(last_message_id, Row, undefined) of

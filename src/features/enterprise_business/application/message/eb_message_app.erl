@@ -50,6 +50,7 @@
     ack_delivery/2,
     list_messages/2,
     fetch_message/2,
+    fetch_message_bodies/2,
     canonical_view/1,
     notification_keys/0
 ]).
@@ -671,6 +672,186 @@ open_row(OrgId, WorkspaceId, KeyRef, Row) ->
 
 decrypted_view(Row, Plain) ->
     maps:without([body_cipher, aad_hash], Row#{body => Plain}).
+
+%% ===================================================================
+%% CSB-02R：批量摘要读面（坐席会话列表 last_message.preview 的 N+1 消除）
+%%
+%% 合同（enterprise owner 冻结，cx-20261009T102230Z annex 解锁项 2 落地）：
+%%   * 入参 `items` 是 {WorkspaceId, ConversationId, MessageId} 元组集
+%%     （同一页的 last-message 锚点）；出参 `#{MessageId => Body | undefined}`；
+%%   * keyring 不可用 → 整批各条 undefined（D5 密文投影降级，不报错）；
+%%   * 单条解密失败（body_open_failed 族）→ 该条 undefined + 结构化 warning
+%%     （零密文/明文材料），**不拖垮整批**（F-R5——与 list_messages 的整页
+%%     fail-closed 刻意不同：本面是摘要展示面，单条解不开不得让队列变
+%%     「服务不可用」）；
+%%   * hidden（撤回）→ undefined，零透出；
+%%   * 附件-only（空正文）→ undefined；
+%%   * 行不存在 / 已 bounded purge → undefined；
+%%   * 请求元组与行的 (workspace, conversation) 归属不符 → undefined
+%%     （跨 scope 项按「无行返回」，不越 scope）；
+%%   * 正文全文出站，截断（64 码点）由调用侧 `cs_message_preview:truncate/1`
+%%     负责——显示截断规则属 customer_service 域，不在本面重复。
+%% 与 list_messages 的差异：本面**按请求元组**（可能跨 workspace）批量取，
+%% 租户边界只钉 organization_id（硬边界），workspace/conversation 归属在
+%% Erlang 层逐项复核。
+-spec fetch_message_bodies(integer(), map()) -> {ok, map()} | {error, term()}.
+fetch_message_bodies(OrgId, #{items := Items} = Params) when
+    is_integer(OrgId), OrgId > 0, is_map(Params)
+->
+    case validate_preview_items(Items) of
+        {error, _} = Err ->
+            Err;
+        {ok, []} ->
+            %% 空请求集：空映射（合同声明，不落到 store 层报错）。
+            {ok, #{}};
+        {ok, TupleItems} ->
+            case dedupe_preview_items(TupleItems) of
+                {error, _} = Err2 ->
+                    Err2;
+                {ok, Deduped} ->
+                    Ids = lists:usort([Id || {_, _, Id} <- Deduped]),
+                    case
+                        with_store(Params, fun(Store) ->
+                            Store:fetch_message_rows_by_ids(OrgId, Ids)
+                        end)
+                    of
+                        {error, _} = Err ->
+                            Err;
+                        {ok, Rows} ->
+                            {ok, preview_bodies_by_id(OrgId, Deduped, Rows, Params)}
+                    end
+            end
+    end;
+%% 显式 org 形状错误（与 facade is_integer 守卫同口径出参）。
+fetch_message_bodies(OrgId, #{items := _} = Params) when is_map(Params) ->
+    {error, {invalid_argument, {organization_id, OrgId}}};
+fetch_message_bodies(_OrgId, _Params) ->
+    {error, {invalid_argument, fetch_message_bodies}}.
+
+%% 同 Id 的冲突 scope 元组拒绝（first-wins 之外更严格：同 id 不同归属 =
+%% 调用方 bug，fail-closed）；重复同元组折叠。
+dedupe_preview_items(Items) ->
+    dedupe_preview_items(Items, #{}, []).
+
+dedupe_preview_items([], _Seen, Acc) ->
+    {ok, lists:reverse(Acc)};
+dedupe_preview_items([{Ws, Conv, Id} | Rest], Seen, Acc) ->
+    case maps:get(Id, Seen, undefined) of
+        undefined ->
+            dedupe_preview_items(Rest, Seen#{Id => {Ws, Conv}}, [{Ws, Conv, Id} | Acc]);
+        {Ws, Conv} ->
+            dedupe_preview_items(Rest, Seen, Acc);
+        _ConflictingScope ->
+            {error, {invalid_argument, {items, {conflicting_scope, Id}}}}
+    end;
+dedupe_preview_items(_Malformed, _Seen, _Acc) ->
+    {error, {invalid_argument, items}}.
+
+validate_preview_items(Items) when is_list(Items) ->
+    case length(Items) =< ?MAX_PAGE_LIMIT of
+        false ->
+            {error, {invalid_argument, {items_too_many, length(Items)}}};
+        true ->
+            Faulty = [T || T <- Items, not valid_preview_tuple(T)],
+            case Faulty of
+                [] -> {ok, Items};
+                _ -> {error, {invalid_argument, {items, Faulty}}}
+            end
+    end;
+validate_preview_items(_Other) ->
+    {error, {invalid_argument, items}}.
+
+valid_preview_tuple({Ws, Conv, Id}) ->
+    is_pos_int(Ws) andalso is_pos_int(Conv) andalso is_pos_int(Id);
+valid_preview_tuple(_Other) ->
+    false.
+
+preview_bodies_by_id(OrgId, TupleItems, Rows, Params) ->
+    RowsById = maps:from_list([{maps:get(id, R), R} || R <- Rows]),
+    case eb_env_keyring:resolve_key_ref(maps:get(key_ref, Params, undefined)) of
+        KeyRef when is_map(KeyRef) ->
+            maps:from_list([
+                {Id, preview_body_of(OrgId, Ws, Conv, Id, RowsById, KeyRef)}
+             || {Ws, Conv, Id} <- TupleItems
+            ]);
+        _Unavailable ->
+            %% D5 密文投影降级：keyring 不可用 = 全部占位，不报错、不解一半。
+            maps:from_list([{Id, undefined} || {_, _, Id} <- TupleItems])
+    end.
+
+preview_body_of(OrgId, Ws, Conv, Id, RowsById, KeyRef) ->
+    case maps:get(Id, RowsById, undefined) of
+        undefined ->
+            undefined;
+        Row ->
+            ScopeOk =
+                maps:get(organization_id, Row, undefined) =:= OrgId andalso
+                    maps:get(workspace_id, Row, undefined) =:= Ws andalso
+                    maps:get(conversation_id, Row, undefined) =:= Conv,
+            case ScopeOk of
+                false ->
+                    undefined;
+                true ->
+                    preview_body_in_scope(OrgId, Ws, Conv, Row, KeyRef)
+            end
+    end.
+
+preview_body_in_scope(OrgId, Ws, Conv, Row, KeyRef) ->
+    case maps:get(visibility, Row, undefined) of
+        visible ->
+            preview_body_visible(OrgId, Ws, Conv, Row, KeyRef);
+        _HiddenOrUnknown ->
+            undefined
+    end.
+
+preview_body_visible(OrgId, Ws, Conv, Row, KeyRef) ->
+    case maps:get(body_cipher, Row, undefined) of
+        undefined ->
+            undefined;
+        Cipher ->
+            try
+                eb_managed_crypto:open_message_body(
+                    OrgId,
+                    Ws,
+                    Conv,
+                    maps:get(id, Row, undefined),
+                    Cipher,
+                    maps:get(key_version, Row, undefined),
+                    maps:get(aad_hash, Row, undefined),
+                    KeyRef
+                )
+            of
+                {ok, Plain} when is_binary(Plain), byte_size(Plain) > 0 ->
+                    Plain;
+                {ok, _Empty} ->
+                    undefined;
+                {error, Reason} ->
+                    preview_open_failed(maps:get(id, Row, undefined), Reason)
+            catch
+                error:{body_open_failed, BadId, Reason} ->
+                    preview_open_failed(BadId, Reason);
+                exit:_InfrastructureUnavailable ->
+                    %% 批量解密中段的基础设施退出：无观测即静默丢正文，记一条
+                    %% 结构化 report 帮运维定位（零密文/明文材料）。
+                    logger:warning(
+                        #{
+                            what => eb_message_body_batch_infra_exit,
+                            message_id => maps:get(id, Row, undefined)
+                        },
+                        #{domain => [imboy, enterprise_business]}
+                    ),
+                    undefined
+            end
+    end.
+
+%% 解密失败 → 该条占位 + 一条 warning（F-R5）。reason 族是结构化原子/整数，
+%% 不含任何密文或明文材料。
+preview_open_failed(Id, Reason) ->
+    logger:warning(
+        #{what => eb_message_body_open_failed, message_id => Id, reason => Reason},
+        #{domain => [imboy, enterprise_business]}
+    ),
+    undefined.
 
 %% 游标缺省 0（`id > 0` 等价首页）；显式负数/非整数一律 fail-closed（不静默当首页）。
 page_cursor(Params) ->

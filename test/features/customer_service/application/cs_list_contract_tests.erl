@@ -22,8 +22,6 @@
 
 -include_lib("eunit/include/eunit.hrl").
 
--export([init/1, log/2]).
-
 -define(FAKE, cs_fake_store).
 -define(ORG, 820000000000001).
 -define(WS, 820000000000002).
@@ -576,9 +574,9 @@ http_error_atoms_are_explicit_422() ->
 %% CS-BE-02：队列摘要与等待时长（坐席三视图共用 seat_session_page）
 %% ===================================================================
 
-%% 坐席页行种子（fake store 直置；preview 的解密经 enterprise facade——
-%% 此处 meck 该 facade（仓库既有的跨 Feature 唯一入口），断言精确取末条的
-%% 键集契约（after_id = 末条 id − 1、limit = 1）。
+%% 坐席页行种子（fake store 直置；preview 的解密经 enterprise 批量面——
+%% 此处 meck 该 facade 新面 `fetch_message_bodies/2`（仓库既有的跨 Feature
+%% 唯一入口），断言整页恰好一次批量调用（N+1 结构性排除）。
 cs_be02_put_seat_row(Opts) ->
     ok = ?FAKE:put_session_for_list(
         maps:merge(
@@ -608,92 +606,24 @@ cs_be02_put_seat_row(Opts) ->
 cs_be02_seat_page(Opts) ->
     cs_session_app:seat_session_page(?ORG, p(maps:merge(#{status => <<"queued">>}, Opts))).
 
-%% meck facade：末条 Id 的解密行（visible + body）。逐调用断言键集契约。
-cs_be02_meck_decrypted(Id, Plain) ->
+%% meck 批量面（CSB-02R）：Responses：MessageId => Body | undefined（合同里
+%% enterprise 侧已裁决 hidden/空正文/purge/跨 scope/解密失败 → undefined）。
+%% 逐次断言：org 正确、items 与页面行锚点一致（N+1 排除断言用 meck:num_calls）。
+cs_be02_meck_batch(Responses) ->
     meck:new(enterprise_business_facade, [passthrough]),
-    meck:expect(enterprise_business_facade, list_messages, fun(_Org, Query) ->
-        ?assertEqual(?WS, maps:get(workspace_id, Query)),
-        ?assertEqual(?CONV, maps:get(conversation_id, Query)),
-        ?assertEqual(1, maps:get(limit, Query)),
-        ?assertEqual(Id - 1, maps:get(after_id, Query)),
-        {ok, [#{id => Id, visibility => visible, body => Plain}]}
-    end).
-
-%% 多行页的按末条 id 分发 meck（Responses：MessageId => Row | empty | crash；
-%% 缺省 empty——未登记的末条按「已消失」降级）。
-cs_be02_meck_by_row(Responses) ->
-    meck:new(enterprise_business_facade, [passthrough]),
-    meck:expect(enterprise_business_facade, list_messages, fun(_Org, Query) ->
-        ?assertEqual(1, maps:get(limit, Query)),
-        Id = maps:get(after_id, Query) + 1,
-        case maps:get(Id, Responses, empty) of
-            empty ->
-                {ok, []};
-            crash ->
-                erlang:error({body_open_failed, Id, tampered});
-            Row ->
-                {ok, [Row]}
-        end
+    meck:expect(enterprise_business_facade, fetch_message_bodies, fun(Org, Params) ->
+        ?assertEqual(?ORG, Org),
+        Items = maps:get(items, Params),
+        ?assert(is_list(Items), items_must_be_list),
+        {ok,
+            maps:from_list([
+                {Id, maps:get(Id, Responses, undefined)}
+             || {_, _, Id} <- Items
+            ])}
     end).
 
 cs_be02_unmeck() ->
     catch meck:unload(enterprise_business_facade).
-
-%% F-R5 降级 warning 捕获（真 logger handler；logger 是 sticky 内核模块不
-%% meck——与 agent_tool_authorizer_tests 同一惯例）。仅转发本套件关注的
-%% `cs_preview_open_failed` report，其余行不影响其他测试的输出。
--define(PREVIEW_WARN_HANDLER, r3_fr5_preview_warning_capture).
-
-with_preview_warning_capture(F) ->
-    case logger:add_handler(?PREVIEW_WARN_HANDLER, ?MODULE, #{config => self()}) of
-        ok ->
-            ok;
-        {error, {already_exist, _}} ->
-            ok = logger:remove_handler(?PREVIEW_WARN_HANDLER),
-            ok = logger:add_handler(?PREVIEW_WARN_HANDLER, ?MODULE, #{config => self()})
-    end,
-    try
-        F()
-    after
-        _ = logger:remove_handler(?PREVIEW_WARN_HANDLER)
-    end,
-    ok.
-
-recv_preview_warning() ->
-    receive
-        {r3_fr5_preview_warning, Report} -> Report
-    after 2000 -> erlang:error(preview_open_failed_warning_not_emitted)
-    end.
-
-drain_preview_warnings() ->
-    drain_preview_warnings(0).
-
-drain_preview_warnings(N) ->
-    receive
-        {r3_fr5_preview_warning, _} -> drain_preview_warnings(N + 1)
-    after 300 -> N
-    end.
-
-%% logger handler 回调（必须导出——logger 从其管理进程回调）。
-init(Config) ->
-    {ok, #{config => maps:get(config, Config, self())}}.
-
-log(#{msg := {report, Report}} = _Event, HandlerConfig) when is_map(Report) ->
-    case maps:get(what, Report, undefined) of
-        cs_preview_open_failed ->
-            TestPid = maps:get(config, HandlerConfig, undefined),
-            case is_pid(TestPid) of
-                true ->
-                    TestPid ! {r3_fr5_preview_warning, Report},
-                    ok;
-                false ->
-                    ok
-            end;
-        _Other ->
-            ok
-    end;
-log(_Event, _HandlerConfig) ->
-    ok.
 
 %% waiting_seconds 权威值：at − queued_at（epoch 秒，clock_unit => second 面）；
 %% 下限 0（时钟回拨防护）；active 视图与缺 at 的直驱调用不出该键。
@@ -717,8 +647,9 @@ cs_be02_waiting_seconds_is_authoritative() ->
     ?assertEqual(555000202, maps:get(id, ActiveRow)),
     ?assertNot(is_map_key(waiting_seconds, ActiveRow)).
 
-%% preview 截断：按 Unicode 码点取前 64 个（UTF-8 安全，不在多字节字符中间
-%% 切断）；期望值在测试内独立构造（不用被测的 truncate 反推）。
+%% preview 截断（CSB-02R 批量面）：按 Unicode 码点取前 64 个（UTF-8 安全，
+%% 不在多字节字符中间切断）；期望值在测试内独立构造（不用被测的 truncate
+%% 反推）。并断言整页恰好一次批量调用（N+1 结构性排除）。
 cs_be02_preview_unicode_truncation() ->
     ok = ?FAKE:init(),
     %% 73 个码点：3 ASCII + 70 个三字节 CJK——期望 = 3 ASCII + 61 CJK（64 码点）。
@@ -727,7 +658,7 @@ cs_be02_preview_unicode_truncation() ->
     Expected = unicode:characters_to_binary(lists:sublist(Chars, 64), utf8),
     ?assert(byte_size(Plain) > 192),
     cs_be02_put_seat_row(#{id => 555000211, last_message_id => 880011}),
-    cs_be02_meck_decrypted(880011, Plain),
+    cs_be02_meck_batch(#{880011 => Plain}),
     try
         {ok, #{sessions := [Row]}} = cs_be02_seat_page(#{at => 1700000065}),
         LM = maps:get(last_message, Row),
@@ -736,8 +667,9 @@ cs_be02_preview_unicode_truncation() ->
         ?assertEqual(64, string:length(unicode:characters_to_list(Preview, utf8))),
         %% 短文本（< 64 码点）原样出站，不加省略号后缀。
         Short = <<"你好，请问在吗"/utf8>>,
-        meck:expect(enterprise_business_facade, list_messages, fun(_Org, _Query) ->
-            {ok, [#{id => 880011, visibility => visible, body => Short}]}
+        meck:expect(enterprise_business_facade, fetch_message_bodies, fun(Org, Params) ->
+            ?assertEqual(?ORG, Org),
+            {ok, #{880011 => Short}}
         end),
         {ok, #{sessions := [Row2]}} = cs_be02_seat_page(#{at => 1700000065}),
         ?assertEqual(Short, maps:get(preview, maps:get(last_message, Row2)))
@@ -745,30 +677,22 @@ cs_be02_preview_unicode_truncation() ->
         cs_be02_unmeck()
     end.
 
-%% 占位语义：附件-only（空正文）/ 撤回（hidden）/ keyring 未装配（密文投影
-%% 无 body 键）/ 已 purge（首行 id ≠ 末条 id）/ 解密失败（F-R5：D5 的
-%% erlang:error）⇒ preview 为 null（占位），last_message 骨架仍在，页不失败；
-%% 无消息：last_message 整体 undefined；解密失败降级同时记一条含 message id
-%% 的 warning（真 logger handler 捕获断言——logger 是 sticky 内核不 meck）。
+%% 占位语义（CSB-02R 批量面）：enterprise 侧对 hidden / 空正文 / keyring 未
+%% 装配 / purge / 解密失败的逐条裁决以 undefined 出站（语义矩阵的正向测试
+%% 在 eb_message_body_batch_tests）；本测试冻结 CX 侧消费形状：占位 preview
+%% 为 null 而 last_message 骨架保留、无消息行整体 undefined、且**不产生
+%% cs_preview_open_failed warning**（解密失败的 warning 已随语义迁移到
+%% enterprise 侧 eb_message_body_open_failed）。另断言整页恰好一次调用。
 cs_be02_preview_placeholder_semantics() ->
     ok = ?FAKE:init(),
     cs_be02_put_seat_row(#{id => 555000221, last_message_id => 880021}),
     cs_be02_put_seat_row(#{id => 555000222, last_message_id => 880022}),
-    cs_be02_put_seat_row(#{id => 555000223, last_message_id => 880023}),
-    cs_be02_put_seat_row(#{id => 555000224, last_message_id => 880024}),
-    cs_be02_put_seat_row(#{id => 555000225, last_message_id => 880025}),
-    cs_be02_put_seat_row(#{id => 555000226, last_message_id => undefined}),
-    cs_be02_meck_by_row(#{
-        %% 附件-only：空正文（BE-PATCH-01：附件消息 = 空正文 + asset_ids）。
-        880021 => #{id => 880021, visibility => visible, body => <<>>},
-        %% 撤回（hidden）：内容零透出，骨架保留。
-        880022 => #{id => 880022, visibility => hidden, body => <<"withdrawn secret">>},
-        %% keyring 不可用：facade 维持密文投影（无 body 键）——降级 null。
-        880023 => #{id => 880023, visibility => visible, body_cipher => <<"cipher">>},
-        %% 末条已被 purge：首行空——按消息消失降级 null。
-        880024 => empty,
-        %% 解密失败（D5 的 erlang:error）：F-R5 起该行降级 null，页不失败。
-        880025 => crash
+    cs_be02_put_seat_row(#{id => 555000223, last_message_id => undefined}),
+    %% 全部占位：三种企业侧裁决形态（empty body / hidden / keyring 不可用）
+    %% 在出站合同里同形为 undefined。
+    cs_be02_meck_batch(#{
+        880021 => undefined,
+        880022 => undefined
     }),
     try
         {ok, #{sessions := Rows}} = cs_be02_seat_page(#{at => 1700000065, limit => 10}),
@@ -776,36 +700,17 @@ cs_be02_preview_placeholder_semantics() ->
         ?assertEqual(
             undefined, maps:get(preview, maps:get(last_message, maps:get(555000221, ById)))
         ),
-        HiddenLM = maps:get(last_message, maps:get(555000222, ById)),
-        ?assertEqual(880022, maps:get(id, HiddenLM)),
-        ?assertEqual(undefined, maps:get(preview, HiddenLM)),
-        ?assertEqual(
-            undefined, maps:get(preview, maps:get(last_message, maps:get(555000223, ById)))
-        ),
-        ?assertEqual(
-            undefined, maps:get(preview, maps:get(last_message, maps:get(555000224, ById)))
-        ),
+        LM22 = maps:get(last_message, maps:get(555000222, ById)),
+        ?assertEqual(880022, maps:get(id, LM22)),
+        ?assertEqual(undefined, maps:get(preview, LM22)),
         %% 无消息：last_message 整体 undefined。
-        ?assertEqual(undefined, maps:get(last_message, maps:get(555000226, ById))),
-        %% 解密失败（D5 的 erlang:error）⇒ 该行 preview null、骨架保留、页
-        %% 不失败（F-R5：单条解不开的正文不拖垮整页队列）。
-        BadLM = maps:get(last_message, maps:get(555000225, ById)),
-        ?assertEqual(880025, maps:get(id, BadLM)),
-        ?assertEqual(undefined, maps:get(preview, BadLM)),
-        %% 降级伴随恰一条 warning：含 message id、结构化 reason（零 PII）。
-        with_preview_warning_capture(fun() ->
-            {ok, #{sessions := RowsFail}} = cs_be02_seat_page(#{at => 1700000065, limit => 10}),
-            ByIdFail = maps:from_list([{maps:get(id, R), R} || R <- RowsFail]),
-            ?assertEqual(
-                undefined,
-                maps:get(preview, maps:get(last_message, maps:get(555000225, ByIdFail)))
-            ),
-            Warn = recv_preview_warning(),
-            ?assertEqual(cs_preview_open_failed, maps:get(what, Warn)),
-            ?assertEqual(880025, maps:get(message_id, Warn)),
-            ?assert(is_map_key(reason, Warn)),
-            ?assertEqual(0, drain_preview_warnings())
-        end)
+        ?assertEqual(undefined, maps:get(last_message, maps:get(555000223, ById))),
+        %% 整页恰好一次批量调用：两行有锚点（880021/880022）+ 一行无消息
+        %% （不进请求集）——第三次调用数恒 1（N+1 结构性排除）。
+        ?assertEqual(
+            1,
+            meck:num_calls(enterprise_business_facade, fetch_message_bodies, '_')
+        )
     after
         cs_be02_unmeck()
     end.
@@ -815,7 +720,7 @@ cs_be02_preview_placeholder_semantics() ->
 cs_be02_view_never_carries_cipher_material() ->
     ok = ?FAKE:init(),
     cs_be02_put_seat_row(#{id => 555000231, last_message_id => 880031}),
-    cs_be02_meck_decrypted(880031, <<"plain preview text">>),
+    cs_be02_meck_batch(#{880031 => <<"plain preview text">>}),
     try
         {ok, #{sessions := [Row]}} = cs_be02_seat_page(#{at => 1700000065}),
         ?assertEqual(<<"plain preview text">>, maps:get(preview, maps:get(last_message, Row))),

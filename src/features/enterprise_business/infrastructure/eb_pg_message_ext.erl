@@ -18,10 +18,13 @@
 -moduledoc "企业消息只读历史仓储（EB-03R P9，键集分页）。".
 -export([
     list_messages_after/3,
+    fetch_message_rows_by_ids/2,
+    fetch_message_rows_by_ids_sql/0,
     default_limit/0,
     max_limit/0,
     asset_projection_fields/0,
-    sql_statements/0
+    sql_statements/0,
+    preview_row_fields/0
 ]).
 
 -define(DEFAULT_LIMIT, 50).
@@ -53,6 +56,53 @@
     " WHERE w.organization_id = $1 AND w.id = $2"
 >>).
 
+%% CSB-02R 批量摘要读面（enterprise 侧新面，CX-02 队列列表 N+1 消除）：
+%% 按 id 集合一次取回摘要所需的最小行投影。id 是全局唯一 PK，`ANY($2)` 走
+%% PK 索引；workspace/conversation 归属不在 SQL 匹配——由 application 层对
+%% 请求元组逐项复核（跨 scope 项按「无行返回」降级 undefined，与冻结合同
+%% 一致，且避免按 (ws, conv) 组合展开 SQL）。
+-define(SQL_FETCH_MESSAGE_ROWS_BY_IDS, <<
+    "SELECT id, organization_id, workspace_id, conversation_id,"
+    " visibility, body_cipher, key_version, aad_hash"
+    "  FROM enterprise_message"
+    " WHERE organization_id = $1 AND id = ANY($2::bigint[])"
+>>).
+
+%% 摘要面最小投影（非 message_fields 全投影——本面不携带 sender/资产等列，
+%% 密文材料只在本模块与 application 解密层之间内存中转，不出站）。
+-spec preview_row_fields() -> [{atom(), binary(), atom()}].
+preview_row_fields() ->
+    [
+        {id, <<"id">>, int},
+        {organization_id, <<"organization_id">>, int},
+        {workspace_id, <<"workspace_id">>, int},
+        {conversation_id, <<"conversation_id">>, int},
+        {visibility, <<"visibility">>, atom},
+        {body_cipher, <<"body_cipher">>, bin},
+        {key_version, <<"key_version">>, int},
+        {aad_hash, <<"aad_hash">>, bin}
+    ].
+
+%% 批量摘要行读取（只读；跨 workspace 批次——org 门在守卫与 SQL 双钉，
+%% workspace 归属由 application 层对请求元组复核）。
+-spec fetch_message_rows_by_ids(integer(), [integer()]) ->
+    {ok, [map()]} | {error, term()}.
+fetch_message_rows_by_ids(OrgId, Ids) when
+    is_integer(OrgId), OrgId > 0, is_list(Ids), Ids =/= []
+->
+    eb_pg_exec:fetch_many(
+        ?SQL_FETCH_MESSAGE_ROWS_BY_IDS,
+        [OrgId, Ids],
+        preview_row_fields()
+    );
+fetch_message_rows_by_ids(_OrgId, _Ids) ->
+    {error, invalid_ids}.
+
+%% 形状门只读出口（eb_message_body_batch_tests 的批量语句形状门用；
+%% 只读审计面，不执行）。
+fetch_message_rows_by_ids_sql() ->
+    ?SQL_FETCH_MESSAGE_ROWS_BY_IDS.
+
 %% CS-BE-01（历史消息资产投影）：一页消息的绑定资产**批量**读取（`ANY($3)`），
 %% 逐消息 N+1 在此被结构性排除——每页恒定 1 次消息查询 + 1 次资产查询。
 %%   * 投影白名单冻结为 {id, mime, size_bytes, file_name, status}（+分组用
@@ -71,6 +121,12 @@
 >>).
 
 %% @doc 冻结语句（双租户键机械判据用）。
+%%
+%% 豁免声明：`SQL_FETCH_MESSAGE_ROWS_BY_IDS` 不入本表——它是 CSB-02R 批量
+%% 摘要面（跨 workspace 批次），org 单钉（`organization_id = $1`）+
+%% `id = ANY($2::bigint[])`，workspace 归属由 application 层对请求元组逐项
+%% 复核；双租户键判据（org+ws 双参数）对本语句不适用。该语句的专属形状门
+%% 在 eb_message_body_batch_tests（org 钉死 / ANY 数组 / 无 OFFSET）。
 -spec sql_statements() -> [binary()].
 sql_statements() ->
     [?SQL_LIST_MESSAGES_AFTER, ?SQL_LIST_MESSAGE_ASSETS, ?SQL_SCOPE_OK].

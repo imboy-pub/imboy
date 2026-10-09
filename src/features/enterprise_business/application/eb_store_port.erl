@@ -147,6 +147,14 @@
 -callback list_messages_after(OrgId :: integer(), WorkspaceId :: integer(), Query :: page_query()) ->
     {ok, [message()]} | {error, term()}.
 
+%% @doc CSB-02R 批量摘要读面（跨 workspace 批次）：按全局唯一 id 集合一次取回
+%% 摘要最小行投影 {id, organization_id, workspace_id, conversation_id,
+%% visibility, body_cipher, key_version, aad_hash}。第二参是去重后的消息
+%% id 集合（非 WorkspaceId——org 是硬租户边界，SQL 钉死；workspace 归属
+%% 由调用方对请求元组逐项复核，跨 scope 项按「无行返回」降级）。
+-callback fetch_message_rows_by_ids(OrgId :: integer(), Ids :: [integer()]) ->
+    {ok, [map()]} | {error, term()}.
+
 %% @doc 会话列表（§5.1 GET conversations）。
 -callback list_conversations(OrgId :: integer(), WorkspaceId :: integer()) ->
     {ok, [conversation()]} | {error, term()}.

@@ -68,7 +68,10 @@
     %% message 只读历史（EB-06 重开新增：§5.1 GET messages 的 after_id 键集分页、
     %% 单条 canonical 只读读取；两者经契约公开且**零写入**）
     list_messages/2,
-    fetch_message/2
+    fetch_message/2,
+    %% CSB-02R：批量摘要读面（坐席会话列表 preview 的 N+1 消除；只读、
+    %% F-R5 逐条降级，见 eb_message_app:fetch_message_bodies/2 合同）
+    fetch_message_bodies/2
 ]).
 
 %% ===================================================================
@@ -517,6 +520,21 @@ list_messages(OrgId, #{conversation_id := ConversationId} = Params) when
 list_messages(OrgId, Params) when is_integer(OrgId), is_map(Params) ->
     {error, {invalid_argument, list_messages}};
 list_messages(OrgId, _Params) ->
+    {error, {invalid_argument, {organization_id, OrgId}}}.
+
+%% @doc CSB-02R 批量摘要读面：一次调用取回一页会话 last-message 锚点的
+%% 解密正文（#{MessageId => Body | undefined}）。语义合同见
+%% `eb_message_app:fetch_message_bodies/2`（keyring 降级全 undefined、
+%% hidden/空正文/purge/跨 scope → undefined、单条解密失败 F-R5 逐条降级）。
+%% 出站为**全文**；显示截断由调用侧 `cs_message_preview:truncate/1` 负责。
+-spec fetch_message_bodies(integer(), map()) -> term().
+fetch_message_bodies(OrgId, #{items := Items} = Params) when
+    is_integer(OrgId), is_list(Items), is_map(Params)
+->
+    eb_message_app:fetch_message_bodies(OrgId, Params);
+fetch_message_bodies(OrgId, Params) when is_integer(OrgId), is_map(Params) ->
+    {error, {invalid_argument, fetch_message_bodies}};
+fetch_message_bodies(OrgId, _Params) ->
     {error, {invalid_argument, {organization_id, OrgId}}}.
 
 %% @doc 单条 canonical 消息的只读读取（EB-06 重开新增）。**零写入**：不改 seen /

@@ -68,6 +68,7 @@
     %% Port 实现的唯一入口——`eb_infra_ports:resolve(store)` 返回的模块必须实现
     %% `eb_store_port` 的全部 callback）。
     list_messages_after/3,
+    fetch_message_rows_by_ids/2,
     insert_assignment/3,
     list_identities/2,
     list_identities_page/3,
@@ -785,6 +786,11 @@ list_active_holds(OrgId, WorkspaceId) ->
 -spec list_messages_after(integer(), integer(), map()) -> {ok, [map()]} | {error, term()}.
 list_messages_after(OrgId, WorkspaceId, Query) ->
     eb_pg_message_ext:list_messages_after(OrgId, WorkspaceId, Query).
+
+%% -- CSB-02R：批量摘要行读取（跨 workspace 批次，实现下沉 message_ext）------
+-spec fetch_message_rows_by_ids(integer(), [integer()]) -> {ok, [map()]} | {error, term()}.
+fetch_message_rows_by_ids(OrgId, Ids) ->
+    eb_pg_message_ext:fetch_message_rows_by_ids(OrgId, Ids).
 
 %% -- P1/P2/P5/P8 -----------------------------------------------------------
 -spec insert_assignment(integer(), integer(), map()) -> {ok, map()} | {error, term()}.

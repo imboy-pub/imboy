@@ -39,12 +39,14 @@
 %%%   * keyring 不可用。
 %%%
 %%% 代价说明：每队列行一次 facade 单行读（PK/复合索引范围扫描，页上限 50
-%%% ⇒ 每页 ≤ 50 次毫秒级查询）。批量投影需要 Facade 新面（升级触发器），
-%%% 不在本卡范围。
+%%% ⇒ 每页 ≤ 50 次毫秒级查询）。CSB-02R：Facade 批量面已交付
+%%% （`enterprise_business_facade:fetch_message_bodies/2`），整页收敛为一次
+%%% 调用（`preview_batch/2`）；逐行 `preview/2` 保留为单行语义参考与兼容面。
 -module(cs_message_preview).
 
 -export([
     preview/2,
+    preview_batch/2,
     truncate/1,
     max_chars/0
 ]).
@@ -67,6 +69,69 @@ preview(Row, Params) when is_map(Row), is_map(Params) ->
     end;
 preview(_Row, _Params) ->
     {error, invalid_preview_row}.
+
+%% @doc CSB-02R：整页批量 preview（每页**一次** enterprise 批量读，N+1
+%% 结构性排除）。`Rows` 是 store 分页行（同 `preview/2` 行形状）；返回
+%% `#{last_message_id => Preview | undefined}`（只含请求过的 id）。
+%%
+%% 降级合同（与 `preview/2` 逐条同口径，enterprise 侧
+%% `fetch_message_bodies/2` 已实现同款）：
+%%   * 行无 last_message_id → 不进请求集，映射缺席（取侧缺省 undefined）；
+%%   * keyring 不可用 / hidden / 空正文 / purge / 跨 scope / 解密失败
+%%     → enterprise 侧给 undefined；
+%%   * 基础设施不可用（exit 类：读池未起/进程崩溃）→ 整批占位 undefined
+%%     （密文未解出，零内容泄漏；主列表路径不受拖累）；
+%%   * 其他真实异常（DB 错、编程错误）原样上抛——不吞基础设施故障。
+-spec preview_batch([map()], map()) -> {ok, map()} | {error, term()}.
+preview_batch(Rows, Params) when is_list(Rows), is_map(Params) ->
+    case preview_items(Rows) of
+        [] ->
+            {ok, #{}};
+        Items ->
+            OrgId = org_of(Rows),
+            WithKey = cs_optional_key(#{items => Items}, key_ref, Params),
+            try enterprise_business_facade:fetch_message_bodies(OrgId, WithKey) of
+                {ok, Bodies} ->
+                    {ok, previews_from_bodies(Items, Bodies)};
+                {error, _} = Err ->
+                    Err
+            catch
+                exit:_InfrastructureUnavailable ->
+                    {ok, maps:from_list([{Id, undefined} || {_, _, Id} <- Items])}
+            end
+    end;
+preview_batch(_Rows, _Params) ->
+    {error, invalid_preview_rows}.
+
+preview_items(Rows) ->
+    [
+        {ws_of(Row), maps:get(conversation_id, Row, undefined), Id}
+     || Row <- Rows,
+        Id <- [maps:get(last_message_id, Row, undefined)],
+        is_integer(Id),
+        Id > 0
+    ].
+
+org_of([Row | _]) ->
+    maps:get(organization_id, Row, undefined);
+org_of([]) ->
+    undefined.
+
+ws_of(Row) ->
+    maps:get(workspace_id, Row, undefined).
+
+previews_from_bodies(Items, Bodies) ->
+    maps:from_list([
+        {Id, preview_body_value(maps:get(Id, Bodies, undefined))}
+     || {_, _, Id} <- Items
+    ]).
+
+preview_body_value(undefined) ->
+    undefined;
+preview_body_value(Body) when is_binary(Body) ->
+    truncate(Body);
+preview_body_value(_Other) ->
+    undefined.
 
 preview_of(Id, Row, Params) ->
     case fetch_last_decrypted(Id, Row, Params) of

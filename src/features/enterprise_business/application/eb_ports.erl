@@ -182,6 +182,7 @@ contracts() ->
             {update_contact, 3},
             {list_conversations, 2},
             {list_messages_after, 3},
+            {fetch_message_rows_by_ids, 2},
             {insert_offboarding_case, 3},
             {fetch_offboarding_case, 3},
             {list_offboarding_cases, 2},

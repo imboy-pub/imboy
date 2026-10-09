@@ -114,6 +114,7 @@ ports_have_explicit_frozen_contracts_test() ->
             {fetch_hold, 3},
             {fetch_identity, 3},
             {fetch_message, 3},
+            {fetch_message_rows_by_ids, 2},
             {fetch_offboarding_case, 3},
             {insert_assignment, 3},
             {insert_contact, 3},
