@@ -1,0 +1,27 @@
+src/logic/user_deletion_logic.erl:301:                ok = elib_oss:delete_object(Key)
+src/ds/attachment_ds.erl:149:                    case elib_oss:delete_object(Key) of
+src/ds/attachment_ds.erl:201:                            <<>> -> elib_oss:delete_object(Key);
+src/ds/attachment_ds.erl:202:                            B -> elib_oss:delete_object(B, Key)
+src/features/enterprise_business/application/eb_asset_port.erl:44:-callback delete_private(OrgId :: integer(), WorkspaceId :: integer(), AssetId :: asset_id()) ->
+src/logic/attach_logic.erl:155:                    _ = (catch elib_oss:delete_object(Bucket, ObjectKey)),
+src/logic/attach_logic.erl:160:                            _ = (catch elib_oss:delete_object(Bucket, ObjectKey)),
+src/logic/attach_logic.erl:171:                                    _ = (catch elib_oss:delete_object(Bucket, ObjectKey)),
+src/features/enterprise_business/infrastructure/eb_pg_asset_delete_queue.erl:39:    case eb_asset_store:delete_queued_object(Org, Ws, Key) of
+src/features/enterprise_business/infrastructure/eb_asset_store.erl:136:-spec delete_private(integer(), integer(), integer()) -> ok | {error, term()}.
+src/features/enterprise_business/infrastructure/eb_asset_store.erl:137:delete_private(OrgId, WorkspaceId, AssetId) ->
+src/features/enterprise_business/infrastructure/eb_asset_store.erl:144:                        ObjectStore:delete(
+src/features/enterprise_business/infrastructure/eb_asset_store.erl:205:        case ObjectStore:delete(Key, eb_pg_asset_meta:key_prefix(Org, Ws)) of
+src/features/enterprise_business/infrastructure/eb_asset_store.erl:213:delete_queued_object(Org, Ws, Key) ->
+src/features/enterprise_business/infrastructure/eb_asset_store.erl:215:        ObjectStore:delete(Key, eb_pg_asset_meta:key_prefix(Org, Ws))
+src/logic/moya_attach_logic.erl:182:                    case elib_oss:delete_object(Key) of
+src/logic/enterprise_asset_logic.erl:171:            elib_oss:delete_object(Bucket, ObjectKey)
+src/logic/enterprise_asset_retention_logic.erl:259:                    case delete_object(maps:get(<<"path">>, Att)) of
+src/logic/enterprise_asset_retention_logic.erl:285:-spec delete_object(binary()) -> ok | {error, term()}.
+src/logic/enterprise_asset_retention_logic.erl:286:delete_object(ObjectKey) ->
+src/logic/enterprise_asset_retention_logic.erl:288:    try elib_oss:delete_object(Bucket, ObjectKey) of
+src/lib/elib_oss.erl:354:-spec delete_object(binary()) -> ok | {error, term()}.
+src/lib/elib_oss.erl:355:delete_object(ObjectKey) ->
+src/lib/elib_oss.erl:356:    delete_object(default_bucket(), ObjectKey).
+src/lib/elib_oss.erl:359:-spec delete_object(binary(), binary()) -> ok | {error, term()}.
+src/lib/elib_oss.erl:360:delete_object(Bucket, ObjectKey) ->
+src/lib/ack_retry_cache.erl:41:                    true = ets:delete_object(?TAB, Entry),

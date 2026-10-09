@@ -1,0 +1,106 @@
+[
+  {
+    "file": "src/logic/attach_logic.erl",
+    "unchanged": true
+  },
+  {
+    "file": "src/repo/attachment_repo.erl",
+    "unchanged": true
+  },
+  {
+    "file": "src/repo/attach_pending_repo.erl",
+    "unchanged": true
+  },
+  {
+    "file": "src/ds/attachment_ds.erl",
+    "unchanged": true
+  },
+  {
+    "file": "src/logic/attach_cleanup_logic.erl",
+    "unchanged": true
+  },
+  {
+    "file": "src/logic/enterprise_asset_retention_logic.erl",
+    "unchanged": true
+  },
+  {
+    "file": "src/logic/enterprise_asset_logic.erl",
+    "unchanged": true
+  },
+  {
+    "file": "src/repo/enterprise_asset_repo.erl",
+    "unchanged": true
+  },
+  {
+    "file": "src/features/enterprise_business/infrastructure/eb_pg_purge.erl",
+    "unchanged": true
+  },
+  {
+    "file": "src/features/enterprise_business/infrastructure/eb_pg_asset_delete_queue.erl",
+    "unchanged": true
+  },
+  {
+    "file": "src/features/enterprise_business/infrastructure/eb_pg_asset_meta.erl",
+    "unchanged": true
+  },
+  {
+    "file": "src/features/enterprise_business/infrastructure/eb_asset_store.erl",
+    "unchanged": true
+  },
+  {
+    "file": "src/features/enterprise_business/infrastructure/eb_pg_store.erl",
+    "unchanged": true
+  },
+  {
+    "file": "src/lib/user_deletion_executor.erl",
+    "unchanged": true
+  },
+  {
+    "file": "src/logic/user_deletion_logic.erl",
+    "unchanged": true
+  },
+  {
+    "file": "src/logic/moya_attach_logic.erl",
+    "unchanged": true
+  },
+  {
+    "file": "src/logic/user_collect_logic.erl",
+    "unchanged": true
+  },
+  {
+    "file": "src/ds/group_file_ds.erl",
+    "unchanged": true
+  },
+  {
+    "file": "src/ds/moment_ds.erl",
+    "unchanged": true
+  },
+  {
+    "file": "src/lib/elib_oss.erl",
+    "unchanged": true
+  },
+  {
+    "file": "../imboyapp/lib/store/api/attachment_api.dart",
+    "unchanged": false
+  },
+  {
+    "file": "../imboyadmin/src/widget/customer_service/app/attachmentMachine.ts",
+    "unchanged": true
+  },
+  {
+    "file": "../imboyapp/lib/service/migrations/manifest_all.dart",
+    "unchanged": true
+  },
+  {
+    "file": "../imboyapp/lib/service/migrations/upgrade_edges_v32.dart",
+    "unchanged": true
+  },
+  {
+    "file": "../imboyapp/assets/migrations/upgrade.sql",
+    "unchanged": true
+  },
+  {
+    "file": "../imboyadmin/package.json",
+    "unchanged": true
+  }
+]

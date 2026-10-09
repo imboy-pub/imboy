@@ -1,0 +1,36 @@
+{
+  "date": "2026-10-09",
+  "schema_rebuild": {
+    "up_count": 164,
+    "exit": 0,
+    "method": "raw SQL one transaction per migration; not migration engine ledger"
+  },
+  "sql_probes": {
+    "executed": 3,
+    "passed": 3,
+    "exit": 0,
+    "meaning": "baseline defect observations; no fix implemented"
+  },
+  "migration_naming": {
+    "exit": 0
+  },
+  "focused_eunit": {
+    "command": "make eunit t=attach_pending_cleanup_tests",
+    "exit": 2,
+    "executed": 0,
+    "passed": 0,
+    "cancelled_setup": 3,
+    "reason": "missing_config pg_conf",
+    "verdict": "UNVERIFIED"
+  },
+  "contract_structure": {
+    "tasks": 20,
+    "waves": 7,
+    "acceptance_ids": 8,
+    "dependency_cycle": false,
+    "exit": 0
+  },
+  "business_implementation": "NOT_STARTED",
+  "garage_disk_e2e_flutter": "UNVERIFIED",
+  "historical_business_data": "UNVERIFIED"
+}

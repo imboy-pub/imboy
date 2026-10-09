@@ -1,0 +1,17 @@
+{
+  "imboy": {
+    "head": "9c719d264130cdb76c94e3020981615bc7229111",
+    "status": "?? docs/architecture/attachment-lifecycle-v5/\n?? docs/business/imboy-open-source-productization-strategy-v1.md\n?? docs/design/\n?? test/features/customer_service/infrastructure/cs_inbox_pg_tests.erl\n",
+    "tracked_diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "imboyapp": {
+    "head": "0d941418ad17d1d8aa16b7d1430633b85f886a9a",
+    "status": "M  assets/i18n/ar-SA/groupTask.i18n.yaml\nM  assets/i18n/ar-SA/groupVote.i18n.yaml\nM  assets/i18n/de-DE/groupTask.i18n.yaml\nM  assets/i18n/de-DE/groupVote.i18n.yaml\nM  assets/i18n/en-US/groupTask.i18n.yaml\nM  assets/i18n/en-US/groupVote.i18n.yaml\nM  assets/i18n/fr-FR/groupTask.i18n.yaml\nM  assets/i18n/fr-FR/groupVote.i18n.yaml\nM  assets/i18n/it-IT/groupTask.i18n.yaml\nM  assets/i18n/it-IT/groupVote.i18n.yaml\nM  assets/i18n/ja-JP/groupTask.i18n.yaml\nM  assets/i18n/ja-JP/groupVote.i18n.yaml\nM  assets/i18n/ko-KR/groupTask.i18n.yaml\nM  assets/i18n/ko-KR/groupVote.i18n.yaml\nM  assets/i18n/ru-RU/groupTask.i18n.yaml\nM  assets/i18n/ru-RU/groupVote.i18n.yaml\nM  assets/i18n/zh-CN/groupTask.i18n.yaml\nM  assets/i18n/zh-CN/groupVote.i18n.yaml\nM  assets/i18n/zh-Hant/groupTask.i18n.yaml\nM  assets/i18n/zh-Hant/groupVote.i18n.yaml\nA  integration_test/preview/workspace_messages_preview_macos_test.dart\nM  ios/Podfile.lock\nM  ios/Runner.xcodeproj/project.pbxproj\nM  lib/component/web_view.dart\nM  lib/i18n/strings.g.dart\nM  lib/i18n/strings_ar_SA.g.dart\nM  lib/i18n/strings_de_DE.g.dart\nM  lib/i18n/strings_en_US.g.dart\nM  lib/i18n/strings_fr_FR.g.dart\nM  lib/i18n/strings_it_IT.g.dart\nM  lib/i18n/strings_ja_JP.g.dart\nM  lib/i18n/strings_ko_KR.g.dart\nM  lib/i18n/strings_ru_RU.g.dart\nM  lib/i18n/strings_zh_CN.g.dart\nM  lib/i18n/strings_zh_Hant.g.dart\nM  lib/modules/enterprise_oa/presentation/enterprise_workbench_page.dart\n M lib/page/chat/chat/attachment_handler.dart\nM  lib/page/group/task/group_task_detail_page.dart\nA  lib/page/group/task/group_task_form.dart\nM  lib/page/group/task/group_task_page.dart\nM  lib/page/group/vote/group_vote_detail_page.dart\nM  lib/service/group_task_service.dart\n M lib/store/api/attachment_api.dart\nM  macos/Podfile.lock\nM  pubspec.lock\nM  pubspec.yaml\nM  test/unit_test/component/web_view_bridge_test.dart\n M test/unit_test/page/chat/chat/attachment_handler_test.dart\n M test/unit_test/page/group/group_task_detail_assignment_test.dart\n M test/unit_test/store/attachment_upload_presign_test.dart\nMM test/unit_test/widget/group_task_page_test.dart\n",
+    "tracked_diff_sha256": "b20e51eac6721e3d1edf3bc81185634cb8e2dffd7aafcfa13158b6f54903482d"
+  },
+  "imboyadmin": {
+    "head": "62c40f27ba498049dd911e9f7d4e9d1929620c66",
+    "status": " M src/modules/customer_service/seat/workbench/SeatWorkspacePage.tsx\n M src/modules/customer_service/seat/workbench/contract.ts\n M src/modules/customer_service/seat/workbench/detailPanel.test.tsx\n M src/modules/customer_service/seat/workbench/queuePanel.tsx\n M src/modules/customer_service/seat/workbench/workbenchApi.ts\n M src/modules/customer_service/seat/workbench/workbenchHooks.tsx\n?? src/modules/customer_service/seat/workbench/inbox.test.tsx\n",
+    "tracked_diff_sha256": "c772d5adbbf92ec0f3894b0f2201e8b8491bf4f4b4637e09ee6d8a6078ce92a5"
+  }
+}
