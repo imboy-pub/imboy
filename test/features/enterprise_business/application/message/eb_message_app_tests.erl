@@ -661,13 +661,15 @@ a06_hide_and_authorization_events_do_not_change_canonical() ->
         %% ② 授权类事件（suspend / offboarding 语义）：本卡的 application 面**没有任何**
         %%    可改变 canonical 消息的入口——导出白名单锁死，只有 append / ack / 只读历史。
         %%    （EB-06 重开新增 `list_messages/2` 键集分页与 `fetch_message/2` 只读读取；
-        %%    两者也落在下面的「零写」静态断言的覆盖范围内。）
+        %%    两者也落在下面的「零写」静态断言的覆盖范围内。CSB-02R 新增
+        %%    `fetch_message_bodies/2` 批量只读面（零写，同受「零写」静态断言约束）。）
         ?assertEqual(
             lists:sort([
                 {ack_delivery, 2},
                 {append_message, 2},
                 {canonical_view, 1},
                 {fetch_message, 2},
+                {fetch_message_bodies, 2},
                 {list_messages, 2},
                 {notification_keys, 0}
             ]),
