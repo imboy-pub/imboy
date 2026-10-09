@@ -146,8 +146,12 @@ deactivate_tx(Conn, Gid, Uid) ->
     ok.
 
 query_sql() ->
-    Predicate = predicate_sql(<<"$1">>, <<"$2">>),
-    <<"SELECT (", Predicate/binary, ") AS allowed">>.
+    %% Both parameters remain typed and bound even when the disabled predicate
+    %% intentionally ignores uid. epgsql rejects surplus bind parameters.
+    Predicate = predicate_sql(<<"request.gid">>, <<"request.uid">>),
+    <<"SELECT (", Predicate/binary,
+        ") AS allowed FROM "
+        "(SELECT $1::bigint AS gid, $2::bigint AS uid) request">>.
 
 filter_uids(Gid, Uids) ->
     Predicate = predicate_sql(<<"$1">>, <<"mu.uid">>),
