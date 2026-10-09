@@ -4,7 +4,7 @@
 
 ## 一句话
 
-交付包 = **固定 HEAD 的已提交文件白名单** 减去 AC27 禁项（真实配置/凭据/日志/crash/缓存/临时 evidence），
+后端源包 = **固定 HEAD 的已提交文件按正向类别白名单选择**，再排除 AC27 禁项（真实配置/凭据/日志/crash/缓存/临时 evidence）。正向规则位于 `scripts/deliver/backend_allowlist.regex`，对应[产品交付清单](../product/delivery-package-manifest.md)后端部分；新增目录默认不进入包。
 输出 manifest + tar；生成物只落仓外目录（默认 `/tmp`），仓库内不产生任何打包残留。
 
 ## 生成命令
@@ -16,8 +16,11 @@ scripts/deliver/make_delivery_pack.sh
 # 只要 manifest + 自检（不产 tar）
 scripts/deliver/make_delivery_pack.sh --no-tar
 
-# 一期验收：已提交 manifest 必须是一期；完整版会被拒绝
+# 默认已要求一期；显式写出同一要求也有效
 scripts/deliver/make_delivery_pack.sh --require-profile phase1_delivery
+
+# 仅开发源包：明确指定实际已提交 profile，不获得一期交付资格
+scripts/deliver/make_delivery_pack.sh --require-profile full-selected --no-tar
 
 # 指定输出目录（必须在仓库外，脚本会拒绝仓内路径）
 scripts/deliver/make_delivery_pack.sh --out-dir /path/outside/repo
@@ -46,7 +49,7 @@ scripts/deliver/make_delivery_pack.sh --secret-fingerprints ~/.imboy/secret-fp.t
 ## 校验方法
 
 1. `manifest.meta.md`：记录 git SHA、tracked/excluded/manifest 计数、规则摘要——核对计数闭合（tracked = excluded + manifest）。
-   同时记录归档内实际 `profile` 和 `manifest_file_sha256`（manifest 原始文件字节的 SHA256，不是生成器的规范化 hash）。无 manifest 时记为 `unbound`，指定 `--require-profile` 后不得通过。
+   同时记录实际 `profile`、`manifest_file_sha256` 和正向规则哈希。缺少 manifest 或默认一期要求不匹配均失败；开发源包必须显式指定其它实际 profile。
 2. `tar.sha256`：tar 的 SHA256；接收方 `shasum -a 256 -c tar.sha256` 验完整性。
 3. tar 条数 == manifest 条数（脚本内建断言）。
 4. `.pem` 文件触发 WARN 清单：需人工确认全部为公钥/开发 fixture（当前唯一命中 `priv/vendor_pubkey_dev.pem` 已确认为 `BEGIN PUBLIC KEY`）。
@@ -60,4 +63,5 @@ scripts/deliver/make_delivery_pack.sh --secret-fingerprints ~/.imboy/secret-fp.t
   排除段与自检段两处（规则函数注释有对应关系表）。
 - 本脚本只打包 imboy 主仓；App/Admin 仓交付物由各仓自己的发布通道产出（见各自 README），
   三仓指纹对应关系由 Q12 终验冻结（AC30）。
+- 后端源包成功不证明三仓装配完成；Admin 第三方许可证清单及三仓必备文件检查仍须在统一交付流程中验证。
 - 脚本不会自动切换产品 profile：归档中的 manifest 与固定 HEAD 相同。开发完整版源码包不能据此标记为一期交付产物；一期需另外冻结 profile、生成物和构建指纹并验收。

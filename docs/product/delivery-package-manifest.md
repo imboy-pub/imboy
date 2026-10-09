@@ -1,6 +1,6 @@
 # 一期交付包清单（Delivery Package Manifest）
 
-> 状态：CURRENT ｜ 版本：v1.1 ｜ 最后更新：2026-10-09
+> 状态：CURRENT ｜ 版本：v1.2 ｜ 最后更新：2026-10-09
 > 适用：一期交付（`phase1_delivery` profile，能力面与交付锁见 [packaging-contract.md](./packaging-contract.md) §9）
 > 本文定义产品交付内容；任务计划、执行记录和验收证据保存在仓库外。
 
@@ -22,8 +22,8 @@
 - 源码/构建：`src/`、`include/`、`priv/`（迁移 + 静态）、`proto/`、`api/`（openapi/asyncapi；**`api/internal/v1/` 整目录**——集成方交付物，自含 README/endpoints/manifest/openapi）、`erlang.mk`、`Makefile`、`relx.config`、`elvis.config`、`erlang_ls.config`、`rebar.lock`、`dialyzer.baseline`、`Dockerfile`、`docker/`
 - 配置模板：`config/sys.config.example`、`config/vm.args`、`config/cron.config`、`config/nginx-imboy.conf`、`config/product-feature-manifest.json`、`config/product-feature-manifests/`（含 `phase1_delivery.json`）、`deploy/.env.example`、仓根 `.env.example` / `.env.local.example`
 - deploy：`install.sh`、`preflight.sh`、`docker-compose.community.yml` / `.demo.yml` / `.observability.yml` / `.widget.yml` / `.healthcheck.yml` / `docker-compose.secrets.example.yml`、`nginx/`（模板 + init-letsencrypt，**prod-vhosts 除外**，见排除）、`prometheus/` `loki/` `grafana/` `alertmanager/` `promtail/` `uptrace/`、`cron/`、`widget/`、`ops.env.example`；`docker-compose.prod.yml` 与 sales-policy 不在开源仓（商务渠道，保持）
-- scripts/：交付相关保留（`backup_pg` / 恢复 / `backup_garage` / `dev_setup.sh` / smoke 系列 / `imboy_ctl`）；agent_hub_* 脚本为二期域，标注二期后保留
-- docs 白名单：仓根 `README(.en)` / `RELEASES` / `CHANGELOG` / `SECURITY` / `SUPPORT` / `CONTRIBUTING` / `CODE_OF_CONDUCT` / `ROADMAP` / `LICENSE` / `VERSION`；docs 内 `reference/`、`concepts/`、`guides/operations|release|security|migrations`、`api-contracts/`（一期域）、`legal/`（含 third-party-licenses*.md）、`glossary.md`、`README.md`、`CONVENTIONS.md`、`adr/`、`tutorials/`、`explanation/`、`architecture/`（现行篇）、`compliance/`（产品必需清单）、`product/`、`ops/`、`runbooks/bot-webhook-aead-key.md`（一期保留；agent-hub 两篇排除）、`docs/README.md`
+- scripts/：源码维护、构建、运维与自动化回归脚本及配套 fixture；运行日志和生成材料不包含。`agent_hub_*` 为二期域，保留源码不代表一期允许执行。
+- docs 白名单：仓根 `README(.en)` / `RELEASES` / `CHANGELOG` / `SECURITY` / `SUPPORT` / `CONTRIBUTING` / `CODE_OF_CONDUCT` / `ROADMAP` / `LICENSE` / `VERSION`；docs 内 `reference/`、`concepts/`、`guides/operations|release|security|migrations`、`api-contracts/`（一期域）、`legal/`（含 third-party-licenses*.md）、`glossary.md`、`README.md`、`CONVENTIONS.md`、`adr/`、`tutorials/`、`explanation/`、`architecture/`（现行篇）、`compliance/`（产品必需清单）、`product/`、`ops/`、`deliver/`、`runbooks/bot-webhook-aead-key.md`（一期保留；agent-hub 两篇排除）。`deploy/README.md` 随部署入口交付。
 - 测试：`test/`（自动化回归源码；不包含执行报告、运行日志和生成材料）
 
 **排除**
@@ -58,6 +58,9 @@
 
 ## 6. 交付检查
 
+- 后端 README 的单个品牌标识 `docs/brand/logo/imboy_logo_2474E5_0512.png` 随入口交付，其余品牌媒体不纳入此例外。可选 Uptrace 的 `deploy/docker-compose.uptrace.yml` 与 `deploy/uptrace/` 一起交付，保持安装脚本引用完整；不因此纳入 RTC 编排。
+- 后端正向类别选择由 `scripts/deliver/backend_allowlist.regex` 实现；新增 tracked 类别默认不交付，不能用排除列表代替白名单。
+- 后端源包默认要求已提交 `phase1_delivery` manifest；显式指定其它 profile 仅生成对应源包，不取得一期资格。后端单仓包不能代替三仓装配与供应链验收。
 - 三仓冻结提交、一期 profile、配置模板及产物哈希有明确对应关系。
 - 干净目录可通过 README 找到配置、启动、验收和恢复入口。
 - 各仓许可证、依赖锁文件和第三方许可证清单齐全。

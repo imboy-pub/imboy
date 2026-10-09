@@ -181,8 +181,7 @@ docker compose -f docker-compose.demo.yml up -d
 # 30 秒后访问 http://127.0.0.1:9800/api/v1/init
 ```
 
-最小两服务环境（PostgreSQL + 后端），零配置，适合产品评估和现场演示。
-详细演示流程见 [5 分钟 Demo 脚本](./docs/business/demo-runbook.md)。
+该示例用于本地产品评估。启动前核对配置模板、端口和健康检查，详见[部署指南](./deploy/README.md)。实际能力以部署 profile 为准；一期不启用 E2EE、AI 或 RTC。
 
 ## 继续阅读
 
@@ -190,7 +189,6 @@ docker compose -f docker-compose.demo.yml up -d
 - [核心业务概念](./docs/concepts/README.md)（账号 / 组织与工作区 / 消息 / E2EE / 智能体 / 客服 / 企业业务）
 - [术语表](./docs/glossary.md)（三端统一的正式名称与易混裁定）
 - [E2EE 协议规范](./docs/reference/e2ee-protocol-specification.md)
-- [E2EE 安全简报（企业决策者）](./docs/business/e2ee-security-brief.md)
 - [后端架构](./docs/architecture/overview.md)
 - [REST API 目录](./docs/reference/rest-api-v1-catalog.md)
 - [WebSocket 协议](./docs/reference/ws-protocol-contract.md)
