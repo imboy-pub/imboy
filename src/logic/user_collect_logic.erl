@@ -271,6 +271,7 @@ add_kind(0, Uid, KindBin, KindId, Info, Source, Remark, Attach) ->
             end,
         % 构建数据映射
         Data = #{
+            <<"id">> => elib_tsid:generate(user_collect),
             <<"user_id">> => Uid,
             <<"kind">> => Kind,
             <<"kind_id">> => KindId,
