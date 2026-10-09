@@ -1,5 +1,4 @@
 -module(group_task_handler).
--dialyzer({nowarn_function, [maybe_assign_task/3]}).
 %% Thin HTTP adapter for the group_collab task boundary.
 %% Keep transport concerns here and delegate task rules to group_task_logic.
 
@@ -90,39 +89,19 @@ create(Req0, State) ->
             end
     end.
 
-%% 分配成功才发布卡片；明确指定执行人时不扩大范围。
-finish_task_create(Req0, PostVals, Gid2, CurrentUid, TaskId, Title) ->
-    UserIds = maps:get(<<"user_ids">>, PostVals, []),
+finish_task_create(Req0, PostVals, GroupId, CreatorId, TaskId, Title) ->
     Assignees =
-        case maps:is_key(<<"user_ids">>, PostVals) of
-            true -> UserIds;
-            false -> group_ds:member_uids(Gid2)
+        case maps:find(<<"user_ids">>, PostVals) of
+            error ->
+                undefined;
+            {ok, UserIds} when is_list(UserIds) ->
+                lists:usort([Id || Id <- [normalize_id(Uid) || Uid <- UserIds], Id > 0]);
+            {ok, _} ->
+                []
         end,
-    case maybe_assign_task(TaskId, Assignees, CurrentUid) of
-        ok ->
-            Result = #{<<"task_id">> => TaskId},
-            Payload = #{
-                <<"id">> => integer_to_binary(TaskId),
-                <<"group_id">> => integer_to_binary(Gid2),
-                <<"title">> => Title,
-                <<"content">> => Title
-            },
-            Published =
-                case
-                    group_collab_message_logic:publish(
-                        Gid2,
-                        CurrentUid,
-                        <<"groupTask">>,
-                        integer_to_binary(TaskId),
-                        Payload
-                    )
-                of
-                    {ok, Message} -> Result#{<<"chat_message">> => Message};
-                    {error, _} -> Result#{<<"message_status">> => <<"failed">>}
-                end,
-            elib_response:success(Req0, Published, <<"作业创建成功"/utf8>>);
-        {error, Msg, Code} ->
-            elib_response:error(Req0, Msg, Code)
+    case group_task_logic:finish_creation(GroupId, CreatorId, TaskId, Title, Assignees) of
+        {ok, Result} -> elib_response:success(Req0, Result, <<"作业创建成功"/utf8>>);
+        {error, Msg, Code} -> elib_response:error(Req0, Msg, Code)
     end.
 
 %% @doc 更新作业
@@ -500,23 +479,3 @@ normalize_attachment(Value) when is_list(Value); is_map(Value) ->
     jsone:encode(Value);
 normalize_attachment(Value) ->
     ec_cnv:to_binary(Value).
-
--spec maybe_assign_task(integer(), list(), integer()) -> ok | {error, binary(), integer()}.
-maybe_assign_task(TaskId, UserIds, CurrentUid) when
-    is_integer(TaskId), TaskId > 0, is_list(UserIds)
-->
-    UserIds2 = lists:usort([Id || Id <- [normalize_id(Uid) || Uid <- UserIds], Id > 0]),
-    case UserIds2 of
-        [] ->
-            ok;
-        _ ->
-            case group_task_logic:assign(TaskId, UserIds2, CurrentUid) of
-                ok ->
-                    ok;
-                {error, Msg, Code} ->
-                    ?WARN_LOG("group_task create assign failed: ~p ~p", [Msg, Code]),
-                    {error, Msg, Code}
-            end
-    end;
-maybe_assign_task(_TaskId, _UserIds, _CurrentUid) ->
-    ok.

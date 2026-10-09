@@ -7,7 +7,7 @@
 %%%
 
 %% 创建作业
--export([create/4]).
+-export([create/4, finish_creation/5]).
 %% 更新作业
 -export([update/3]).
 %% 分配作业
@@ -759,3 +759,9 @@ update_field(Data, AtomKey, BinaryKey) ->
 %% ===================================================================
 %% EUnit tests.
 %% ===================================================================
+
+%% 创建后的分配与群消息编排保持在业务层。
+-spec finish_creation(integer(), integer(), integer(), binary(), undefined | [integer()]) ->
+    {ok, map()} | {error, binary(), integer()}.
+finish_creation(GroupId, CreatorId, TaskId, Title, Assignees) ->
+    group_task_creation_logic:finish(GroupId, CreatorId, TaskId, Title, Assignees).

@@ -22,7 +22,8 @@ cleanup() ->
     ok.
 
 setup_mocks() ->
-    [meck:new(M, [non_strict, no_link]) || M <- modules()],
+    [meck:new(M, [non_strict, no_link]) || M <- modules(), M =/= group_task_logic],
+    meck:new(group_task_logic, [passthrough, no_link]),
     meck:expect(elib_param, post, fun(_) ->
         #{<<"group_id">> => <<"123">>, <<"title">> => <<"作业"/utf8>>}
     end),
@@ -42,7 +43,13 @@ create() -> group_task_handler:handle_action(create, #{}, #{current_uid => 456})
 
 creation_test_() ->
     {foreach, fun setup/0, fun(_) -> cleanup() end, [
-        fun defaults/0, fun specified/0, fun assignment_failed/0, fun publication_failed/0
+        fun defaults/0,
+        fun specified/0,
+        fun explicit_empty/0,
+        fun normalized_assignees/0,
+        fun invalid_assignees/0,
+        fun assignment_failed/0,
+        fun publication_failed/0
     ]}.
 
 defaults() ->
@@ -73,3 +80,30 @@ publication_failed() ->
     {success, Payload} = create(),
     ?assertEqual(42, maps:get(<<"task_id">>, Payload)),
     ?assertEqual(<<"failed">>, maps:get(<<"message_status">>, Payload)).
+
+explicit_empty() ->
+    set_assignees([]),
+    ?assertMatch({success, _}, create()),
+    ?assertEqual(0, meck:num_calls(group_ds, member_uids, '_')),
+    ?assertEqual(0, meck:num_calls(group_task_logic, assign, '_')).
+
+normalized_assignees() ->
+    set_assignees([<<"789">>, 789, "456", <<"invalid">>, 0]),
+    ?assertMatch({success, _}, create()),
+    ?assertEqual([456, 789], get(assigned)),
+    ?assertEqual(0, meck:num_calls(group_ds, member_uids, '_')).
+
+invalid_assignees() ->
+    set_assignees(<<"invalid">>),
+    ?assertMatch({success, _}, create()),
+    ?assertEqual(0, meck:num_calls(group_ds, member_uids, '_')),
+    ?assertEqual(0, meck:num_calls(group_task_logic, assign, '_')).
+
+set_assignees(Assignees) ->
+    meck:expect(elib_param, post, fun(_) ->
+        #{
+            <<"group_id">> => <<"123">>,
+            <<"title">> => <<"作业"/utf8>>,
+            <<"user_ids">> => Assignees
+        }
+    end).
