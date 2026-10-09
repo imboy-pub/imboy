@@ -92,6 +92,17 @@ join_group_success_test_() ->
                 %% （meck 同名 expect 后注册会覆盖前者，多分支须合并为
                 %%  单个多子句 fun）
                 {'query', 3, fun
+                    (_Conn, Sql = <<"LOCK TABLE public.channel IN ROW EXCLUSIVE MODE">>, []) ->
+                        personal_access_query(Sql, []);
+                    (
+                        _Conn,
+                        Sql =
+                            <<"SELECT id FROM public.channel WHERE discussion_group_id=$1 FOR UPDATE">>,
+                        [1]
+                    ) ->
+                        personal_access_query(Sql, [1]);
+                    (_Conn, Sql, [1, 100]) ->
+                        personal_access_query(Sql, [1, 100]);
                     (_Conn, <<"SELECT workspace_id FROM \"group\"", _/binary>>, _) ->
                         {ok, []};
                     (_Conn, _Sql, [1]) ->
@@ -137,8 +148,20 @@ join_group_already_member_returns_zero_test_() ->
             ]},
             %% T5：前置 workspace 子集校验的 scope 查询（个人群 → 空行放行）
             {elib_pg, [
-                {'query', 3, fun(_Conn, <<"SELECT workspace_id FROM \"group\"", _/binary>>, _) ->
-                    {ok, []}
+                {'query', 3, fun
+                    (_Conn, Sql = <<"LOCK TABLE public.channel IN ROW EXCLUSIVE MODE">>, []) ->
+                        personal_access_query(Sql, []);
+                    (
+                        _Conn,
+                        Sql =
+                            <<"SELECT id FROM public.channel WHERE discussion_group_id=$1 FOR UPDATE">>,
+                        [1]
+                    ) ->
+                        personal_access_query(Sql, [1]);
+                    (_Conn, Sql, [1, 100]) ->
+                        personal_access_query(Sql, [1, 100]);
+                    (_Conn, <<"SELECT workspace_id FROM \"group\"", _/binary>>, [1]) ->
+                        {ok, []}
                 end}
             ]}
         ],
@@ -172,8 +195,20 @@ leave_success_test_() ->
                     (_Conn, _Sql, [1]) ->
                         {ok, 1}
                 end},
-                {'query', 3, fun(_Conn, _Sql, [1]) ->
-                    {ok, [#{<<"member_count">> => 200}]}
+                {'query', 3, fun
+                    (_Conn, Sql = <<"LOCK TABLE public.channel IN ROW EXCLUSIVE MODE">>, []) ->
+                        personal_access_query(Sql, []);
+                    (
+                        _Conn,
+                        Sql =
+                            <<"SELECT id FROM public.channel WHERE discussion_group_id=$1 FOR UPDATE">>,
+                        [1]
+                    ) ->
+                        personal_access_query(Sql, [1]);
+                    (_Conn, Sql, [1, 100]) ->
+                        personal_access_query(Sql, [1, 100]);
+                    (_Conn, _Sql, [1]) ->
+                        {ok, [#{<<"member_count">> => 200}]}
                 end},
                 {'update', 5, fun(_Conn, <<"group">>, Data, <<"id = $1">>, [1]) ->
                     ?assertEqual(200, maps:get(member_count, Data)),
@@ -208,6 +243,11 @@ leave_success_test_() ->
 leave_absent_member_returns_absent_test_() ->
     ?WITH_MECKS(
         [
+            {elib_pg, [
+                {'query', 3, fun(_Conn, Sql, Params) ->
+                    personal_access_query(Sql, Params)
+                end}
+            ]},
             {group_member_repo, [
                 {'tablename', 0, fun() ->
                     <<"group_member">>
@@ -272,5 +312,72 @@ check_admin_true_test_() ->
         ],
         fun() ->
             ?assertEqual(true, group_member_ds:check_admin(100, 1))
+        end
+    ).
+
+%% Personal fixtures have no channel binding; authorization still locks first.
+personal_access_query(<<"LOCK TABLE public.channel IN ROW EXCLUSIVE MODE">>, []) ->
+    put(t_access_lock, table_locked),
+    {ok, []};
+personal_access_query(
+    <<"SELECT id FROM public.channel WHERE discussion_group_id=$1 FOR UPDATE">>, [1]
+) ->
+    ?assertEqual(table_locked, get(t_access_lock)),
+    put(t_access_lock, binding_checked),
+    {ok, []};
+personal_access_query(Sql, [1, 100]) ->
+    ?assertEqual(binding_checked, get(t_access_lock)),
+    Predicate = micro_community_access_repo:predicate_sql(<<"request.gid">>, <<"request.uid">>),
+    ?assertEqual(
+        <<"SELECT (", Predicate/binary,
+            ") AS allowed FROM "
+            "(SELECT $1::bigint AS gid, $2::bigint AS uid) request">>,
+        Sql
+    ),
+    {ok, [#{<<"allowed">> => true}]}.
+
+join_lock_failure_stops_mutation_test_() -> join_guard_failure(lock).
+join_entitlement_denial_stops_mutation_test_() -> join_guard_failure(denied).
+
+join_guard_failure(Kind) ->
+    ?WITH_MECKS(
+        [
+            {elib_pg, [
+                {'query', 3, fun
+                    (_Conn, <<"SELECT workspace_id FROM \"group\"", _/binary>>, [1]) ->
+                        {ok, []};
+                    (_Conn, Sql = <<"LOCK TABLE public.channel IN ROW EXCLUSIVE MODE">>, []) ->
+                        case Kind of
+                            lock -> {error, lock_unavailable};
+                            denied -> personal_access_query(Sql, [])
+                        end;
+                    (
+                        _Conn,
+                        Sql =
+                            <<"SELECT id FROM public.channel WHERE discussion_group_id=$1 FOR UPDATE">>,
+                        [1]
+                    ) ->
+                        personal_access_query(Sql, [1]);
+                    (_Conn, Sql, [1, 100]) ->
+                        {ok, [#{<<"allowed">> := true}]} = personal_access_query(Sql, [1, 100]),
+                        {ok, [#{<<"allowed">> => false}]}
+                end}
+            ]},
+            {group_member_repo, [
+                {'upsert_active', 5, fun(_, _, _, _, _) -> error(unexpected_mutation) end}
+            ]}
+        ],
+        fun() ->
+            Reason =
+                case Kind of
+                    lock -> {discussion_access_query_failed, lock_unavailable};
+                    denied -> discussion_access_denied
+                end,
+            ?assertThrow(
+                {abort_tx, Reason}, group_member_ds:join_group(self(), <<"invite">>, 100, 1, #{})
+            ),
+            ?assertEqual(0, meck:num_calls(group_member_repo, upsert_active, '_')),
+            ?assertEqual(0, meck:num_calls(elib_pg, execute, '_')),
+            ?assertEqual(0, meck:num_calls(elib_pg, update, '_'))
         end
     ).

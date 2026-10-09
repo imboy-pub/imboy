@@ -113,7 +113,7 @@ find_filters_inactive_members_test_() ->
             ]},
             {elib_pg, [
                 {'one', 2, fun(Sql, [1, 2]) ->
-                    ?assertNotEqual(nomatch, binary:match(Sql, <<"AND status = 1">>)),
+                    ?assertNotEqual(nomatch, binary:match(Sql, <<"AND gm.status = 1">>)),
                     {ok, #{<<"id">> => 3}}
                 end}
             ]}

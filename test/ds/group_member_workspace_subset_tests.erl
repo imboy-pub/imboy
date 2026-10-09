@@ -80,6 +80,27 @@ join_group_subset_body() ->
     end.
 
 %% elib_pg:query/3 mock：按 SQL 前缀返回受控行
+subset_query(<<"LOCK TABLE public.channel IN ROW EXCLUSIVE MODE">>, []) ->
+    put(t_subset_access_lock, table_locked),
+    {ok, []};
+subset_query(<<"SELECT id FROM public.channel WHERE discussion_group_id=$1 FOR UPDATE">>, [Gid]) when
+    Gid =:= ?GID; Gid =:= 777099; Gid =:= 1
+->
+    ?assertEqual(table_locked, get(t_subset_access_lock)),
+    put(t_subset_access_lock, binding_checked),
+    {ok, []};
+subset_query(Sql, [Gid, Uid]) when
+    {Gid, Uid} =:= {?GID, ?UID}; {Gid, Uid} =:= {777099, 900009}; {Gid, Uid} =:= {1, ?UID}
+->
+    ?assertEqual(binding_checked, get(t_subset_access_lock)),
+    Predicate = micro_community_access_repo:predicate_sql(<<"request.gid">>, <<"request.uid">>),
+    ?assertEqual(
+        <<"SELECT (", Predicate/binary,
+            ") AS allowed FROM "
+            "(SELECT $1::bigint AS gid, $2::bigint AS uid) request">>,
+        Sql
+    ),
+    {ok, [#{<<"allowed">> => true}]};
 subset_query(<<"SELECT workspace_id FROM \"group\"", _/binary>>, [?GID]) ->
     %% workspace 群
     {ok, [#{<<"workspace_id">> => ?WS_ID}]};
@@ -91,6 +112,8 @@ subset_query(<<"SELECT workspace_id FROM \"group\"", _/binary>>, [777099]) ->
 subset_query(<<"SELECT workspace_id FROM \"group\"", _/binary>>, [1]) ->
     %% 群不存在
     {ok, []};
+subset_query(<<"SELECT status FROM workspace WHERE id = $1">>, [?WS_ID]) ->
+    {ok, [#{<<"status">> => <<"active">>}]};
 subset_query(<<"SELECT role FROM workspace_member", _/binary>>, [?WS_ID, ?UID]) ->
     %% active 工作区成员
     {ok, [#{<<"role">> => <<"member">>}]};
@@ -102,8 +125,8 @@ subset_query(<<"SELECT role FROM workspace_member", _/binary>>, [_, _]) ->
 subset_query(<<"SELECT COUNT(*)", _/binary>>, [_]) ->
     %% update_statistics 的聚合查询（P0 后 COUNT-only）
     {ok, [#{<<"member_count">> => 2}]};
-subset_query(_, _) ->
-    {ok, []}.
+subset_query(Sql, Params) ->
+    error({unexpected_subset_query, Sql, Params}).
 
 %% ===================================================================
 %% with_tx 包装语义：abort_tx → {error, workspace_membership_required}
