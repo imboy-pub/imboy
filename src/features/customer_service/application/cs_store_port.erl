@@ -277,6 +277,21 @@
     }}
     | {error, term()}.
 
+-callback seat_session_page(
+    OrgId :: integer(),
+    Status :: binary(),
+    AfterId :: non_neg_integer(),
+    Limit :: pos_integer(),
+    WorkspaceId :: non_neg_integer(),
+    Filters :: #{
+        business_identity_id := pos_integer(),
+        mine => boolean() | binary(),
+        search => binary()
+    }
+) ->
+    {ok, #{rows := [map()], total := non_neg_integer(), total_by_status := map()}}
+    | {error, term()}.
+
 %% @doc CSB-02R widget 装配：本 Org 缺省 Workspace 解析（org 作用域 active 且
 %% id 最小——访客无 membership，不做成员连接；EB 同款确定性规则）。
 -callback default_workspace(OrgId :: integer()) ->

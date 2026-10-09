@@ -46,6 +46,7 @@
     list_sessions_page/5,
     %% CSB-02R：坐席工作台分页 / widget 装配缺省 Workspace
     seat_session_page/5,
+    seat_session_page/6,
     default_workspace/1,
     %% CS-BE-03：客户上下文只读事实（会话锚定事实行 / 历史页 / 备注页）
     fetch_session_customer_context/3,
@@ -213,6 +214,9 @@ list_sessions_page(OrgId, WorkspaceId, Status, AfterId, Limit) ->
 %% CSB-02R：坐席工作台分页（含稳定计数）。
 seat_session_page(OrgId, Status, AfterId, Limit, WorkspaceId) ->
     cs_pg_session:seat_session_page(OrgId, Status, AfterId, Limit, WorkspaceId).
+
+seat_session_page(OrgId, Status, AfterId, Limit, WorkspaceId, Filters) ->
+    cs_pg_session:seat_session_page(OrgId, Status, AfterId, Limit, WorkspaceId, Filters).
 
 %% CS-BE-03：客户上下文只读事实（cs_store_port 同名 callback 的薄委派）。
 fetch_session_customer_context(OrgId, WorkspaceId, SessionId) ->

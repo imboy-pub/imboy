@@ -125,6 +125,7 @@ FEATURE_BACKEND_MODULES = {
         "cs_widget_session_app",
         "cs_widget_support",
         "cs_pg_common",
+        "cs_pg_inbox",
         "cs_pg_seat",
         "cs_pg_seat_governance",
         "cs_pg_seat_console",

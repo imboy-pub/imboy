@@ -67,6 +67,7 @@
     list_sessions_for_contact/3,
     list_sessions_page/5,
     seat_session_page/5,
+    seat_session_page/6,
     %% CS-BE-07：按需统计（窗口聚合 + 当前 status 计数）
     session_stats/4,
     default_workspace/1,
@@ -379,6 +380,117 @@ seat_session_page(OrgId, Status, AfterId, Limit, WorkspaceId) ->
         ),
     Total = maps:get(binary_status(Status), TotalByStatus, 0),
     {ok, #{rows => take(Ordered, Limit), total => Total, total_by_status => TotalByStatus}}.
+
+seat_session_page(OrgId, Status, AfterId, Limit, WorkspaceId, Filters) ->
+    case cs_pg_inbox:page_args(OrgId, Status, AfterId, Limit, WorkspaceId, Filters) of
+        {error, _} = Error ->
+            Error;
+        {ok, [OrgId, StatusBin, Cursor, WorkspaceId, Size, IdentityId, Mine, Search]} ->
+            Normalized = #{business_identity_id => IdentityId, mine => Mine, search => Search},
+            inbox_page(OrgId, StatusBin, Cursor, Size, WorkspaceId, Normalized)
+    end.
+
+inbox_page(OrgId, Status, AfterId, Limit, WorkspaceId, Normalized) ->
+    note_limit(Limit),
+    {sessions, Sessions} = hd(ets:lookup(?TAB, sessions)),
+    Selected = [
+        Session
+     || Session <- maps:values(Sessions),
+        maps:get(organization_id, Session) =:= OrgId,
+        WorkspaceId =:= 0 orelse maps:get(workspace_id, Session) =:= WorkspaceId,
+        inbox_match(Session, Normalized)
+    ],
+    Counts = lists:foldl(
+        fun(Session, Acc) ->
+            Key = binary_status(maps:get(status, Session)),
+            Acc#{Key => maps:get(Key, Acc, 0) + 1}
+        end,
+        #{<<"queued">> => 0, <<"active">> => 0, <<"closed">> => 0},
+        Selected
+    ),
+    Page = [
+        Session
+     || Session <- Selected,
+        binary_status(maps:get(status, Session)) =:= binary_status(Status),
+        cursor_pass(maps:get(id, Session), AfterId)
+    ],
+    Ordered = lists:sort(
+        fun(Left, Right) ->
+            maps:get(id, Left) > maps:get(id, Right)
+        end,
+        Page
+    ),
+    {read_cursors, Cursors} = hd(ets:lookup(?TAB, read_cursors)),
+    Messages = messages(),
+    Rows = [
+        inbox_facts(Session, Normalized, Cursors, Messages)
+     || Session <- take(Ordered, Limit)
+    ],
+    {ok, #{
+        rows => Rows,
+        total => maps:get(binary_status(Status), Counts),
+        total_by_status => Counts
+    }}.
+
+inbox_match(Session, #{business_identity_id := IdentityId, mine := Mine, search := Search}) ->
+    Fields = [
+        cs_app_support:masked_name(Session),
+        cs_app_support:source_of(Session),
+        integer_to_binary(maps:get(id, Session))
+    ],
+    (not Mine orelse maps:get(business_identity_id, Session, undefined) =:= IdentityId) andalso
+        (Search =:= <<>> orelse
+            lists:any(
+                fun(Field) ->
+                    binary:match(string:lowercase(Field), string:lowercase(Search)) =/= nomatch
+                end,
+                Fields
+            )).
+
+inbox_facts(Session, #{business_identity_id := IdentityId}, Cursors, Messages) ->
+    OrgId = maps:get(organization_id, Session),
+    WorkspaceId = maps:get(workspace_id, Session),
+    ConversationId = maps:get(conversation_id, Session),
+    Cursor = maps:get({OrgId, maps:get(id, Session), IdentityId}, Cursors, 0),
+    Visible = [
+        Message
+     || Message <- Messages,
+        maps:get(organization_id, Message) =:= OrgId,
+        maps:get(workspace_id, Message) =:= WorkspaceId,
+        maps:get(conversation_id, Message) =:= ConversationId,
+        binary_status(maps:get(visibility, Message, undefined)) =:= <<"visible">>
+    ],
+    ContactIds = [
+        maps:get(id, Message)
+     || Message <- Visible,
+        binary_status(maps:get(sender_type, Message)) =:= <<"contact">>
+    ],
+    BusinessIds = [
+        maps:get(id, Message)
+     || Message <- Visible,
+        binary_status(maps:get(sender_type, Message)) =:= <<"business_identity">>
+    ],
+    LastId = lists:max([0 | ContactIds ++ BusinessIds]),
+    Last =
+        case [Message || #{id := MessageId} = Message <- Visible, MessageId =:= LastId] of
+            [Message] ->
+                #{
+                    last_message_id => LastId,
+                    last_message_sender_type => binary_status(maps:get(sender_type, Message)),
+                    last_message_created_at => maps:get(created_at, Message, undefined)
+                };
+            [] ->
+                #{
+                    last_message_id => undefined,
+                    last_message_sender_type => undefined,
+                    last_message_created_at => undefined
+                }
+        end,
+    (maps:merge(Session, Last))#{
+        unread_count => length([MessageId || MessageId <- ContactIds, MessageId > Cursor]),
+        needs_reply => binary_status(maps:get(status, Session)) =/= <<"closed">> andalso
+            lists:max([0 | ContactIds]) > lists:max([0 | BusinessIds])
+    }.
 
 binary_status(StatusBin) when is_binary(StatusBin) -> StatusBin;
 binary_status(Status) when is_atom(Status) -> atom_to_binary(Status, utf8).

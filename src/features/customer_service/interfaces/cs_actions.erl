@@ -274,13 +274,19 @@ table(tenant) ->
                         %% at − queued_at（epoch 秒）；毫秒量纲会把等待时长放大
                         %% 1000 倍。写路径不消费本 GET 的 `at`，量纲切换零外溢。
                         {<<"GET">>, seat_session_queue,
-                            [{after_id, binary, optional}, {limit, binary, optional}], [], #{
+                            [
+                                {after_id, binary, optional},
+                                {limit, binary, optional},
+                                {mine, binary, optional},
+                                {search, binary, optional}
+                            ],
+                            [], #{
                                 workspace => optional,
                                 clock_unit => second
                             }}
                     ],
                     shop_key_auth(),
-                    server_common() ++ [created_by_user_id],
+                    server_common() ++ [created_by_user_id, business_identity_id],
                     path
                 ),
                 #{<<"GET">> => seat_auth(<<"conversation.read">>)}
@@ -542,7 +548,9 @@ table(tenant) ->
                         [
                             {status, binary, required},
                             {after_id, binary, optional},
-                            {limit, binary, optional}
+                            {limit, binary, optional},
+                            {mine, binary, optional},
+                            {search, binary, optional}
                         ],
                         [], #{workspace => optional}}
                 ],

@@ -801,10 +801,9 @@ seat_session_page_status(OrgId, Params, AfterId, Limit) ->
     end.
 
 seat_session_page_fetch(OrgId, Status, AfterId, Limit, Params) ->
-    WorkspaceId = workspace_scope(Params),
     case
         with_store(Params, fun(Store) ->
-            Store:seat_session_page(OrgId, Status, AfterId, Limit, WorkspaceId)
+            seat_session_query(Store, OrgId, Status, AfterId, Limit, Params)
         end)
     of
         {error, _} = Err ->
@@ -825,6 +824,36 @@ seat_session_page_fetch(OrgId, Status, AfterId, Limit, Params) ->
                         total_by_status => ByStatus,
                         next_after_id => Next
                     }}
+            end
+    end.
+
+seat_session_query(Store, OrgId, Status, AfterId, Limit, Params) ->
+    case maps:find(business_identity_id, Params) of
+        {ok, IdentityId} when is_integer(IdentityId), IdentityId > 0 ->
+            case maps:get(workspace_id, Params, 0) of
+                WorkspaceId when is_integer(WorkspaceId), WorkspaceId >= 0 ->
+                    Filters = maps:with([business_identity_id, mine, search], Params),
+                    case lists:member({seat_session_page, 6}, Store:module_info(exports)) of
+                        true ->
+                            Store:seat_session_page(
+                                OrgId, Status, AfterId, Limit, WorkspaceId, Filters
+                            );
+                        false ->
+                            {error, {unimplemented_port, {Store, seat_session_page, 6}}}
+                    end;
+                _ ->
+                    {error, invalid_workspace_id}
+            end;
+        {ok, _} ->
+            {error, {invalid_param_value, business_identity_id}};
+        error ->
+            case maps:is_key(mine, Params) orelse maps:is_key(search, Params) of
+                true ->
+                    {error, {invalid_param_value, business_identity_id}};
+                false ->
+                    Store:seat_session_page(
+                        OrgId, Status, AfterId, Limit, workspace_scope(Params)
+                    )
             end
     end.
 
@@ -885,7 +914,8 @@ seat_view_with(Row, Status, Params, LastMessage) ->
         ],
         Row
     ),
-    View0 = Base#{
+    Facts = maps:with([unread_count, needs_reply], Row),
+    View0 = (maps:merge(Base, Facts))#{
         source => source_of(Row),
         contact => #{masked_name => masked_name(Row)},
         last_message => LastMessage

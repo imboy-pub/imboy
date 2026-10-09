@@ -25,6 +25,7 @@
     list_sessions_for_contact/3,
     list_sessions_page/5,
     seat_session_page/5,
+    seat_session_page/6,
     fetch_session_customer_context/3,
     list_session_history_page/4,
     list_contact_notes_page/3,
@@ -476,6 +477,9 @@ seat_session_page(OrgId, Status, AfterId, Limit, WorkspaceId) ->
                     end
             end
     end.
+
+seat_session_page(OrgId, Status, AfterId, Limit, WorkspaceId, Filters) ->
+    cs_pg_inbox:seat_session_page(OrgId, Status, AfterId, Limit, WorkspaceId, Filters).
 
 seat_session_total(OrgId, Status, WorkspaceId) ->
     case
