@@ -245,15 +245,23 @@ archive_c2g_success_test_() ->
                 {'generate', 1, fun(_Table) -> 888890 end}
             ]},
             {elib_pg, [
-                {'query', 2, fun(_Sql, _Params) ->
-                    {ok, [#{<<"seq">> => 1}]}
+                {'with_tx', 1, fun(F) -> F(synthetic_conn) end},
+                {'query', 3, fun(_, Sql, _Params) ->
+                    case binary:match(Sql, <<"SELECT seq FROM">>) of
+                        nomatch -> {ok, []};
+                        _ -> {ok, [#{<<"seq">> => 0}]}
+                    end
                 end},
-                {'insert', 2, fun(Table, Data) ->
-                    ?assertEqual(<<"public.msg_store">>, Table),
-                    ?assertEqual(<<"c2g">>, maps:get(chat_type, Data)),
-                    ?assertEqual(<<"c2g:9000">>, maps:get(conv_key, Data)),
-                    ?assertEqual(9000, maps:get(group_id, Data)),
-                    ?assertEqual(null, maps:get(to_id, Data)),
+                {'execute', 3, fun(_, Sql, Params) ->
+                    case binary:match(Sql, <<"INSERT INTO public.msg_store ">>) of
+                        nomatch ->
+                            ok;
+                        _ ->
+                            ?assert(lists:member(<<"c2g">>, Params)),
+                            ?assert(lists:member(<<"c2g:9000">>, Params)),
+                            ?assert(lists:member(9000, Params)),
+                            ?assert(lists:member(null, Params))
+                    end,
                     {ok, 1}
                 end}
             ]}
@@ -363,3 +371,78 @@ get_history_db_error_propagates_test_() ->
             ?assertEqual({error, relation_does_not_exist}, Result)
         end
     ).
+
+archive_c2g_true_replay_keeps_sequence_without_update_test_() ->
+    ?WITH_MECKS(c2g_archive_mocks([#{<<"conv_seq">> => 5}], true, {ok, 1}), fun() ->
+        ?assertEqual(ok, msg_archive_repo:archive(c2g_unit_row())),
+        %% Only the seed no-op is executed; no insert/counter update on replay.
+        ?assertEqual(1, meck:num_calls(elib_pg, execute, 3))
+    end).
+archive_c2g_conflicting_replay_rejected_test_() ->
+    ?WITH_MECKS(c2g_archive_mocks([#{<<"conv_seq">> => 5}], false, {ok, 1}), fun() ->
+        ?assertEqual({error, archive_replay_conflict}, msg_archive_repo:archive(c2g_unit_row())),
+        ?assertEqual(1, meck:num_calls(elib_pg, execute, 3))
+    end).
+archive_c2g_false_unique_is_not_success_test_() ->
+    Error = {error, error, <<"23505">>, unique_violation, <<"synthetic">>, []},
+    ?WITH_MECKS(c2g_archive_mocks([], false, {error, Error}), fun() ->
+        ?assertEqual({error, Error}, msg_archive_repo:archive(c2g_unit_row())),
+        %% Seed and failed archive INSERT only; counter UPDATE never runs.
+        ?assertEqual(2, meck:num_calls(elib_pg, execute, 3))
+    end).
+c2g_unit_row() ->
+    #{
+        <<"type">> => <<"c2g">>,
+        <<"msg_id">> => <<"c2g-unit">>,
+        <<"msg_type">> => <<"text">>,
+        <<"from_id">> => 100,
+        <<"to_id">> => 9000,
+        <<"conv_seq">> => 5,
+        <<"e2ee">> => null,
+        <<"payload">> => <<"{\"to\":\"9000\",\"origin\":{\"application_id\":123}}">>,
+        <<"created_at">> => <<"2024-01-01T00:00:00Z">>,
+        <<"server_ts">> => <<"2024-01-01T00:00:00Z">>
+    }.
+c2g_archive_mocks(Existing, Match, Insert) ->
+    [
+        {elib_tsid, [{'generate', 1, fun(_) -> 10001 end}]},
+        {elib_pg, [
+            {'with_tx', 1, fun(F) ->
+                try
+                    F(synthetic_conn)
+                catch
+                    throw:{rollback, R} -> {rollback, R}
+                end
+            end},
+            {'query', 3, fun(_, Sql, Params) ->
+                case
+                    {
+                        binary:match(Sql, <<"SELECT seq FROM">>),
+                        binary:match(Sql, <<"SELECT conv_seq FROM">>),
+                        binary:match(Sql, <<"SELECT id FROM">>)
+                    }
+                of
+                    {_, _, {_, _}} ->
+                        ?assertEqual(13, length(Params)),
+                        ?assertNotEqual(nomatch, binary:match(Sql, <<"payload::jsonb">>)),
+                        ?assertNotEqual(nomatch, binary:match(Sql, <<"group_id IS NOT DISTINCT">>)),
+                        case Match of
+                            true -> {ok, [#{<<"id">> => 10001}]};
+                            false -> {ok, []}
+                        end;
+                    {{_, _}, _, _} ->
+                        {ok, [#{<<"seq">> => 5}]};
+                    {_, {_, _}, _} ->
+                        {ok, Existing};
+                    _ ->
+                        {ok, []}
+                end
+            end},
+            {'execute', 3, fun(_, Sql, _) ->
+                case binary:match(Sql, <<"msg_store_seq">>) of
+                    nomatch -> Insert;
+                    _ -> {ok, 1}
+                end
+            end}
+        ]}
+    ].

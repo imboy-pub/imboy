@@ -25,7 +25,7 @@ delivery_order_test_() ->
                     {"archive_false_23505_keeps_staging_then_retry", fun archive_unique_retry/1},
                     {"archive_replay_rejects_different_identity_and_content",
                         fun archive_replay_conflicts/1},
-                    {"c2g_legacy_archive_replay_path_is_unchanged", fun c2g_replay/1}
+                    {"c2g_legacy_archive_replay_keeps_original_sequence", fun c2g_replay/1}
                 ]
             ]}
         end}}.
@@ -262,7 +262,7 @@ c2g_replay(S) ->
         Before = query(<<"SELECT * FROM public.msg_store WHERE msg_id=$1">>, [M]),
         ok = msg_archive_repo:archive(GroupRow),
         ?assertEqual(Before, query(<<"SELECT * FROM public.msg_store WHERE msg_id=$1">>, [M])),
-        ?assertEqual(2, scalar(<<"SELECT seq FROM public.msg_store_seq WHERE conv_key=$1">>, [Key]))
+        ?assertEqual(1, scalar(<<"SELECT seq FROM public.msg_store_seq WHERE conv_key=$1">>, [Key]))
     after
         execute(<<"DELETE FROM public.msg_store_seq WHERE conv_key=$1">>, [Key])
     end.

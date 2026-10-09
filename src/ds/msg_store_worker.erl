@@ -307,6 +307,7 @@ maybe_archive(Row) ->
                     _ = ?ERROR_LOG([msg_store_worker, archive_error, MsgId, Reason]),
                     case maps:get(<<"type">>, Row) of
                         <<"c2c">> -> {error, {archive_failed, Reason}};
+                        <<"c2g">> -> {error, {archive_failed, Reason}};
                         _ -> ok
                     end
             end;
