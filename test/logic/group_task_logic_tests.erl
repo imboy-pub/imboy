@@ -389,6 +389,67 @@ list_group_view_with_status_success_test_() ->
         end
     ).
 
+%% 用户侧 list/6：每个作业附带查看者提交概要 my_assignment
+%%（已提交的带 assignment 行，未提交的为 null，与 detail/2 同 key 同结构）。
+list_user_side_decorates_my_assignment_test_() ->
+    ?WITH_MECKS(
+        [
+            {group_ds, [{'is_member', 2, fun(_Uid, _Gid) -> true end}]},
+            {group_task_repo, [
+                {'list_by_group_id', 3, fun(_GroupId, _Page, _Size) ->
+                    {ok, [
+                        #{
+                            <<"id">> => 1001,
+                            <<"task_id">> => <<"task_a">>,
+                            <<"title">> => <<"作业A"/utf8>>
+                        },
+                        #{
+                            <<"id">> => 1002,
+                            <<"task_id">> => <<"task_b">>,
+                            <<"title">> => <<"作业B"/utf8>>
+                        }
+                    ]}
+                end}
+            ]},
+            {group_task_assignment_repo, [
+                {'find_by_task_and_user', 2, fun
+                    (<<"task_a">>, _Uid) ->
+                        {ok, #{
+                            <<"status">> => 2,
+                            <<"submitted_at">> => <<"2026-10-09T10:00:00Z">>
+                        }};
+                    (_TaskUid, _Uid) ->
+                        {error, not_found}
+                end}
+            ]}
+        ],
+        fun() ->
+            {ok, [TaskA, TaskB]} =
+                group_task_logic:list(123, 789, undefined, undefined, 1, 20),
+            ?assertMatch(
+                #{<<"my_assignment">> := #{<<"status">> := 2}},
+                TaskA
+            ),
+            ?assertEqual(null, maps:get(<<"my_assignment">>, TaskB))
+        end
+    ).
+
+%% 单条概要查询失败不阻塞整个列表：降级为 my_assignment = null
+decorate_viewer_assignments_degrades_on_lookup_error_test_() ->
+    ?WITH_MECK(
+        group_task_assignment_repo,
+        [
+            {'find_by_task_and_user', 2, fun(_TaskUid, _Uid) ->
+                {error, db_down}
+            end}
+        ],
+        fun() ->
+            Tasks = [#{<<"task_id">> => <<"task_x">>, <<"title">> => <<"X"/utf8>>}],
+            [Decorated] = group_task_logic:decorate_viewer_assignments(Tasks, 789),
+            ?assertEqual(null, maps:get(<<"my_assignment">>, Decorated))
+        end
+    ).
+
 %% ===================================================================
 %% detail/1 测试 - 查询作业详情
 %% ===================================================================
