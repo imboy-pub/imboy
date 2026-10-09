@@ -109,7 +109,9 @@ project(Row) ->
             <<"scope">>,
             <<"scope_ref">>,
             <<"source_name">>,
-            <<"cipher">>
+            <<"cipher">>,
+            <<"retention_state">>,
+            <<"retained_at">>
         ],
         Row
     ).

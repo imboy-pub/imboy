@@ -38,7 +38,7 @@
 -export([orphan_stats/1]).
 
 %% @doc 获取孤儿附件列表（供物理删除）
--export([orphan_list_for_delete/1]).
+-export([orphan_list_for_delete/1, delete_orphan_tx/3]).
 
 %% @doc 物理删除数据库行（S3 删除成功后调用）
 -export([hard_delete_by_ids/1]).
@@ -345,44 +345,59 @@ bind_moment_scope_ref(Conn, Uid, ObjectKeys, MomentId) when is_integer(Uid), Uid
 bind_moment_scope_ref(_, _, _, _) ->
     {error, invalid_user}.
 
+%% One predicate keeps preview, candidate selection and transactional deletion aligned.
+orphan_predicate() ->
+    <<
+        " a.status = 1 AND a.referer_time = 0"
+        " AND a.created_at < NOW() - ($1 * INTERVAL '1 day')"
+        " AND (a.last_referer_at IS NULL"
+        " OR a.last_referer_at < NOW() - ($1 * INTERVAL '1 day'))"
+        " AND NOT EXISTS (SELECT 1 FROM workspace_attachment_retention r"
+        " WHERE r.attachment_id = a.id)"
+        " AND NOT EXISTS (SELECT 1 FROM enterprise_attachment_retention r"
+        " WHERE r.attachment_id = a.id)"
+    >>.
+
 -spec orphan_stats(map()) -> {ok, map()} | {error, term()}.
 orphan_stats(Opts) ->
-    Tb = tablename(),
-    AgeDays = maps:get(age_days, Opts, 30),
-    Sql = [
-        <<"SELECT COUNT(*) AS count, COALESCE(SUM(size), 0) AS total_size FROM ">>,
-        Tb,
-        <<
-            " WHERE status = 1 AND referer_time = 0"
-            " AND created_at < NOW() - ($1 * INTERVAL '1 day')"
-            " AND (last_referer_at IS NULL"
-            " OR last_referer_at < NOW() - ($1 * INTERVAL '1 day'))"
-        >>
-    ],
-    case elib_pg:one(Sql, [AgeDays]) of
-        {ok, Row} -> {ok, Row};
-        {error, R} -> {error, R}
-    end.
+    elib_pg:one(
+        [
+            <<"SELECT COUNT(*) AS count, COALESCE(SUM(a.size), 0) AS total_size FROM ">>,
+            tablename(),
+            <<" a WHERE ">>,
+            orphan_predicate()
+        ],
+        [maps:get(age_days, Opts, 30)]
+    ).
 
 -spec orphan_list_for_delete(map()) -> {ok, [map()]} | {error, term()}.
 orphan_list_for_delete(Opts) ->
-    Tb = tablename(),
-    AgeDays = maps:get(age_days, Opts, 30),
-    Sql = [
-        <<"SELECT id, path FROM ">>,
-        Tb,
-        <<
-            " WHERE status = 1 AND referer_time = 0"
-            " AND created_at < NOW() - ($1 * INTERVAL '1 day')"
-            " AND (last_referer_at IS NULL"
-            " OR last_referer_at < NOW() - ($1 * INTERVAL '1 day'))"
-            " LIMIT 500"
-        >>
-    ],
-    case elib_pg:query(Sql, [AgeDays]) of
-        {ok, Rows} -> {ok, Rows};
-        {error, R} -> {error, R}
-    end.
+    elib_pg:query(
+        [
+            <<"SELECT a.id, a.path FROM ">>,
+            tablename(),
+            <<" a WHERE ">>,
+            orphan_predicate(),
+            <<" LIMIT 500">>
+        ],
+        [maps:get(age_days, Opts, 30)]
+    ).
+
+%% Delete inside the caller's transaction before touching object storage.
+%% FK retention checks and row locks remain effective until commit/rollback.
+-spec delete_orphan_tx(pid(), integer(), map()) -> {ok, [map()]} | {error, term()}.
+delete_orphan_tx(Conn, Id, Opts) ->
+    elib_pg:query(
+        Conn,
+        [
+            <<"DELETE FROM ">>,
+            tablename(),
+            <<" a WHERE a.id = $2 AND ">>,
+            orphan_predicate(),
+            <<" RETURNING a.path,a.scope">>
+        ],
+        [maps:get(age_days, Opts, 30), Id]
+    ).
 
 -spec hard_delete_by_ids([integer()]) -> ok | {error, term()}.
 hard_delete_by_ids([]) ->
