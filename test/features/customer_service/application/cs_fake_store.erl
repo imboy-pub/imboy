@@ -1922,32 +1922,57 @@ ack_session_read(OrgId, WorkspaceId, SessionId, IdentityId, LastReadMessageId, _
             Err;
         {ok, Session} ->
             ConvId = maps:get(conversation_id, Session),
-            %% 候选收敛：只承认会话 conversation 内已存在的消息 id（同
-            %% SQL_ACK_EFFECTIVE_CURSOR）；无更早消息则 0。
-            Effective =
-                lists:max(
-                    [0] ++
-                        [
-                            Id
-                         || #{
-                                id := Id,
-                                organization_id := OrgId,
-                                workspace_id := WorkspaceId,
-                                conversation_id := ConvId
-                            } <- messages(),
-                            Id =< LastReadMessageId
-                        ]
-                ),
-            Key = {OrgId, SessionId, IdentityId},
-            {read_cursors, Cursors} = hd(ets:lookup(?TAB, read_cursors)),
-            Prev = maps:get(Key, Cursors, 0),
-            %% 单调前进：新值 > 旧值才写（同 SQL_ACK_CURSOR_UPSERT 的 WHERE）。
-            case Effective > Prev of
-                true -> update(read_cursors, fun(M) -> M#{Key => Effective} end);
-                false -> ok
-            end,
-            read_state_of(OrgId, WorkspaceId, SessionId, IdentityId, Session)
+            %% CX-04 跨会话守卫（同 cs_pg_session 的
+            %% SQL_ACK_CROSS_CONVERSATION）：候选 id 真实存在但属于别的
+            %% conversation ⇒ 拒绝，游标零变动；不存在的 id 不命中，仍 clamp。
+            Foreign = [
+                Id
+             || #{
+                    id := Id,
+                    organization_id := OrgId2,
+                    workspace_id := WorkspaceId2,
+                    conversation_id := ConvId2
+                } <- messages(),
+                Id =:= LastReadMessageId,
+                {OrgId2, WorkspaceId2, ConvId2} =/= {OrgId, WorkspaceId, ConvId}
+            ],
+            case Foreign of
+                [ForeignId | _] ->
+                    {error, {cross_conversation_message, ForeignId}};
+                [] ->
+                    fake_ack_clamp(
+                        OrgId, WorkspaceId, SessionId, IdentityId, LastReadMessageId, Session
+                    )
+            end
     end.
+
+fake_ack_clamp(OrgId, WorkspaceId, SessionId, IdentityId, LastReadMessageId, Session) ->
+    ConvId = maps:get(conversation_id, Session),
+    %% 候选收敛：只承认会话 conversation 内已存在的消息 id（同
+    %% SQL_ACK_EFFECTIVE_CURSOR）；无更早消息则 0。
+    %% 注意：生成器模式里的 `:= OrgId` 是 shadowing 新绑定、不是相等过滤
+    %% （编译器警告 "shadowed in generate"）——scope 过滤必须走显式谓词。
+    Effective =
+        lists:max(
+            [0] ++
+                [
+                    maps:get(id, M)
+                 || M <- messages(),
+                    maps:get(organization_id, M) =:= OrgId,
+                    maps:get(workspace_id, M) =:= WorkspaceId,
+                    maps:get(conversation_id, M) =:= ConvId,
+                    maps:get(id, M) =< LastReadMessageId
+                ]
+        ),
+    Key = {OrgId, SessionId, IdentityId},
+    {read_cursors, Cursors} = hd(ets:lookup(?TAB, read_cursors)),
+    Prev = maps:get(Key, Cursors, 0),
+    %% 单调前进：新值 > 旧值才写（同 SQL_ACK_CURSOR_UPSERT 的 WHERE）。
+    case Effective > Prev of
+        true -> update(read_cursors, fun(M) -> M#{Key => Effective} end);
+        false -> ok
+    end,
+    read_state_of(OrgId, WorkspaceId, SessionId, IdentityId, Session).
 
 fetch_session_read_state(OrgId, WorkspaceId, SessionId, IdentityId) ->
     case fetch_session(OrgId, WorkspaceId, SessionId) of
@@ -1960,19 +1985,21 @@ fetch_session_read_state(OrgId, WorkspaceId, SessionId, IdentityId) ->
 read_state_of(OrgId, WorkspaceId, SessionId, IdentityId, Session) ->
     ConvId = maps:get(conversation_id, Session),
     Cursor = cursor_of(OrgId, SessionId, IdentityId),
-    Unread = length([
-        ok
-     || #{
-            id := Id,
-            organization_id := OrgId,
-            workspace_id := WorkspaceId,
-            conversation_id := ConvId,
-            sender_type := contact,
-            visibility := visible
-        } <-
-            messages(),
-        Id > Cursor
-    ]),
+    %% 同 fake_ack_clamp：scope/sender/visibility 过滤走显式谓词——生成器
+    %% 模式里的变量绑定是 shadowing，不是相等过滤（历史隐性 bug，由
+    %% cross_conversation_ack_rejected_test 暴露后修正）。
+    Unread = length(
+        [
+            ok
+         || M <- messages(),
+            maps:get(organization_id, M) =:= OrgId,
+            maps:get(workspace_id, M) =:= WorkspaceId,
+            maps:get(conversation_id, M) =:= ConvId,
+            maps:get(sender_type, M) =:= contact,
+            maps:get(visibility, M) =:= visible,
+            maps:get(id, M) > Cursor
+        ]
+    ),
     {ok, #{
         session_id => SessionId,
         business_identity_id => IdentityId,

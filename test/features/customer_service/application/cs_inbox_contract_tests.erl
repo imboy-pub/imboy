@@ -86,6 +86,35 @@ fake_read_and_reply_test() ->
         [closed, <<"closed">>]
     ).
 
+%% CX-04 合同（合同层镜像；真库行为由 cs04_ack_cross_conversation_reject_
+%% red_tests 守卫）：候选 id 是别的 conversation 的真实消息 ⇒ {error,
+%% cross_conversation_message}，游标不动；不存在的 id 仍按 CS-DEC-02 clamp。
+cross_conversation_ack_rejected_test() ->
+    cs_fake_store:init(),
+    Session = session(101, active, 41),
+    ok = cs_fake_store:put_session_for_list(Session),
+    seed(601, contact, visible),
+    {ok, _} = cs_fake_store:ack_session_read(7, 11, 101, 41, 601, 100),
+    %% 同 org/ws、别的 conversation（18）的真实消息 id。
+    _ = cs_fake_store:seed_message(7, 11, 18, #{
+        id => 700,
+        sender_type => contact,
+        visibility => visible,
+        created_at => 100
+    }),
+    ?assertEqual(
+        {error, {cross_conversation_message, 700}},
+        cs_fake_store:ack_session_read(7, 11, 101, 41, 700, 101)
+    ),
+    %% 不存在的 id（未来/已 purge）仍 clamp：收敛回本会话上界 601。
+    {ok, Clamped} = cs_fake_store:ack_session_read(7, 11, 101, 41, 999999, 102),
+    ?assertEqual(601, maps:get(last_read_message_id, Clamped)),
+    %% 拒绝之后游标仍停在 601（幂等回读），unread 只计本 scope
+    %% （锁住 read_state_of 显式谓词化：外来 conversation 消息不计入）。
+    {ok, After} = cs_fake_store:ack_session_read(7, 11, 101, 41, 601, 103),
+    ?assertEqual(601, maps:get(last_read_message_id, After)),
+    ?assertEqual(0, maps:get(unread_count, After)).
+
 sql_closed_reply_guard_test() ->
     [Sql] = cs_pg_inbox:sql_statements(),
     ?assertNotEqual(

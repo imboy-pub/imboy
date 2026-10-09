@@ -354,6 +354,20 @@
     "   AND m.conversation_id = $3 AND m.id <= $4"
 >>).
 
+%% CX-04：跨会话 ACK 拒绝判据——候选 id 是真实存在、但不属于本会话
+%% conversation 的消息（TSID 全局唯一，id 等值即唯一定位；org/workspace/
+%% conversation 三元组不等即「别人的消息」）⇒ crossed = 1。不存在任何消息
+%% 的 id（未来/已 purge）不命中，仍走上面的 clamp 收敛——CS-DEC-02 的
+%% clamp 与 CX-04 的 reject 按输入域正交共存：别人的真实消息拒绝，
+%% 不存在的 id 收敛。
+-define(SQL_ACK_CROSS_CONVERSATION, <<
+    "SELECT count(*)::int AS crossed"
+    "  FROM enterprise_message m"
+    " WHERE m.id = $4"
+    "   AND (m.organization_id, m.workspace_id, m.conversation_id)"
+    "       IS DISTINCT FROM ($1, $2, $3)"
+>>).
+
 %% CS-BE-04：transfer 边界的取值——transfer 时刻会话内已存在的最大
 %% message id（无消息为 0）。
 -define(SQL_TRANSFER_BOUNDARY_MAX, <<
@@ -593,6 +607,7 @@ sql_statements() ->
         %% CS-BE-04：已读游标（单调 ACK upsert / 候选收敛 / 读状态 / transfer 边界）
         ?SQL_ACK_CURSOR_UPSERT,
         ?SQL_ACK_EFFECTIVE_CURSOR,
+        ?SQL_ACK_CROSS_CONVERSATION,
         ?SQL_TRANSFER_BOUNDARY_MAX,
         ?SQL_SESSION_READ_STATE,
         ?SQL_TRANSFER_CURSOR_BOUNDARY,
@@ -880,14 +895,18 @@ cas_in_tx(Sql, Params, OrgId, WorkspaceId, SessionId, Event) ->
 %% ===================================================================
 
 %% @doc 已读游标 ACK（单事务机械单调写；授权由 application 复核后进入）。
-%% 步骤：取会话（同语句租户裁决）→ 候选游标收敛到已存在消息事实上界 →
-%% 单调 upsert → 返回 ACK 后的读状态。任一步失败全回滚。
+%% 步骤：取会话（同语句租户裁决）→ 跨会话守卫（CX-04：候选 id 是别的
+%% conversation 的真实消息 ⇒ 整笔拒绝回滚）→ 候选游标收敛到已存在消息
+%% 事实上界 → 单调 upsert → 返回 ACK 后的读状态。任一步失败全回滚。
 -spec ack_session_read(integer(), integer(), integer(), integer(), non_neg_integer(), integer()) ->
     {ok, cs_store_port:read_state()} | {error, term()}.
 ack_session_read(OrgId, WorkspaceId, SessionId, IdentityId, LastReadMessageId, At) ->
     Result = elib_pg:with_tx(fun(Conn) ->
         {ok, Session} = fetch_session_in(Conn, OrgId, WorkspaceId, SessionId),
         ConversationId = maps:get(conversation_id, Session),
+        ok = cross_conversation_guard_in(
+            Conn, OrgId, WorkspaceId, ConversationId, LastReadMessageId
+        ),
         Effective = effective_cursor_in(
             Conn, OrgId, WorkspaceId, ConversationId, LastReadMessageId
         ),
@@ -929,6 +948,30 @@ effective_cursor_in(Conn, OrgId, WorkspaceId, ConversationId, Candidate) ->
         {ok, [#{<<"effective">> := N}]} when is_integer(N), N >= 0 -> N;
         {ok, _} -> throw({rollback, {error, {cursor_effective_unavailable, Candidate}}});
         {error, Reason} -> throw({rollback, {error, cs_pg_common:normalize_error(Reason)}})
+    end.
+
+%% CX-04 跨会话守卫：候选 id 真实存在但属于别的 conversation ⇒ 拒绝整个
+%% ACK（throw rollback，游标零变动）。不存在任何消息的 id（未来/已 purge）
+%% 不命中本守卫，维持 CS-DEC-02 的 clamp 语义——两条合同的输入域正交：
+%% 「别人的真实消息」拒绝，「不存在的 id」收敛。
+cross_conversation_guard_in(_Conn, _OrgId, _WorkspaceId, _ConversationId, Candidate) when
+    Candidate =< 0
+->
+    ok;
+cross_conversation_guard_in(Conn, OrgId, WorkspaceId, ConversationId, Candidate) ->
+    case
+        elib_pg:query(Conn, ?SQL_ACK_CROSS_CONVERSATION, [
+            OrgId, WorkspaceId, ConversationId, Candidate
+        ])
+    of
+        {ok, [#{<<"crossed">> := 0}]} ->
+            ok;
+        {ok, [#{<<"crossed">> := N}]} when N > 0 ->
+            throw({rollback, {error, {cross_conversation_message, Candidate}}});
+        {ok, _} ->
+            throw({rollback, {error, {cursor_cross_check_unavailable, Candidate}}});
+        {error, Reason} ->
+            throw({rollback, {error, cs_pg_common:normalize_error(Reason)}})
     end.
 
 %% 单调 upsert：DO UPDATE 带 WHERE（旧值 < 新值），条件不满足即零行

@@ -1,27 +1,24 @@
-%%% @doc CX-04「拒绝跨会话消息 ID」合同的 failing regression（故意 RED）。
+%%% @doc CX-04「拒绝跨会话消息 ID」合同的真库守卫（原 failing regression）。
 %%%
-%%% 同一候选上两份有效合同对「ACK 非本会话消息 ID」的要求相反：
+%%% 历史与裁决落地：同一候选上曾有两份合同对「ACK 非本会话消息 ID」的
+%%% 要求表面相反——CS-DEC-02（cs_read_cursor_pg_tests 验收 1/5）的 clamp
+%%% 收敛，与 CX-04（docs/design/2026-10-08-customer-service-experience-
+%%% production/plan-v1.md Step 5，plan SHA256 14289f917fb3e273e495b0e91de
+%%% 27f393844eb7f4c9cdb717bced1d94407f7fc）的「Backend 拒绝非本会话消息
+%%% ID，游标单调且不越 scope」。2026-10-09 晚按 v4 交接「RED 后最小修复」
+%%% 落地为按输入域正交的语义：
 %%%
-%%%   * CS-DEC-02（已冻结决策；cs_read_cursor_pg_tests 验收 1/5 的现有断言）：
-%%%     候选游标收敛到本会话已存在消息的事实上界（clamp 语义）。
-%%%   * CX-04（docs/design/2026-10-08-customer-service-experience-production/
-%%%     plan-v1.md Step 5，plan SHA256 14289f917fb3e273e495b0e91de27f393844
-%%%     eb7f4c9cdb717bced1d94407f7fc）：「Backend 拒绝非本会话消息 ID，
-%%%     游标单调且不越 scope」。
+%%%   * 候选 id 真实存在、但属于别的 conversation ⇒ {error,
+%%%     {cross_conversation_message, Id}}，游标零变动（cs_pg_session 的
+%%%     SQL_ACK_CROSS_CONVERSATION 守卫 + cs_fake_store 合同层镜像）；
+%%%   * 候选 id 不存在任何消息（未来/已 purge）⇒ 维持 CS-DEC-02 的 clamp
+%%%     收敛到本会话已存在消息事实上界（cs_read_cursor_pg_tests 验收 1/5
+%%%     的既有断言原样保留、继续通过）。
 %%%
-%%% 本文件按 CX-04 合同写验收：ACK 一个真实存在、但属于另一 conversation
-%%% 的消息 id 时，必须返回 error 且不得推进本会话游标。当前实现
-%%% （cs_pg_session:effective_cursor_in/5 的 `id <= Candidate` 收敛）会把它
-%%% clamp 到本会话上界并返回 ok——因此本测试**故意失败**，如实暴露
-%%% CONTRACT_CONFLICT（验收状态表用该枚举，不是 PASS/FAIL 二值）。
-%%%
-%%% 处置约束（CX-02 交接 nextUnlock 既定方针）：
-%%%   * 保留冲突——不修改 CS-DEC-02 现有断言、不放宽本文件断言、不加
-%%%     skip、不删测试制造通过；
-%%%   * scoped fix 仅在用户或被授权的合同负责人裁决语义（reject / clamp /
-%%%     折中）之后进行；届时本文件与 cs_read_cursor_pg_tests 的对应断言
-%%%     一起按裁决对齐；
-%%%   * 本文件的红灯不参与任何绿灯声明；它失败 = 合同冲突仍待裁决。
+%%% 本文件以真实 PG 守卫前一分支；后一分支由 cs_read_cursor_pg_tests 与
+%%% cs_inbox_contract_tests:cross_conversation_ack_rejected_test 共同守卫。
+%%% 断言自首次 RED（commit ff719b83 cherry-pick 自 b092e78b）以来未改动——
+%%% 同一断言由红转绿，即修复满足合同的证据。
 %%%
 %%% 隔离与 cs_inbox_pg_tests 同款：随机 TSID scope + fixture 直驱（不自起
 %%% eunit_runner/app config；由本 run 私有 runtime 的 pgsql pool 承载）；
