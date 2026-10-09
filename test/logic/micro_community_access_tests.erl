@@ -406,3 +406,87 @@ direct_s2c_payload_shapes_cannot_bypass_authorization_test_() ->
             ?assertEqual(1, meck:num_calls(micro_community_access_repo, delivery_allowed, [21, 7]))
         end
     ).
+
+%% Real handler -> logic -> DS -> repo; only transport, legacy detail transfer,
+%% workspace boundary and the SQL adapter are fixtures. No authorization mock.
+discussion_detail_guard_regression_test_() ->
+    [
+        {Name, detail_guard_case(Guard, Gid, Allowed, Expected, Queries)}
+     || {Name, Guard, Gid, Allowed, Expected, Queries} <- [
+            {"revoked discussion denies detail", ok, <<"20">>, false, 403, 1},
+            {"current discussion member retains detail", ok, <<"20">>, true, 0, 1},
+            {"unbound legacy detail remains allowed", ok, <<"20">>, true, 0, 1},
+            {"query exception fails closed", ok, <<"20">>, exception, 403, 1},
+            {"workspace denial wins first", {error, {403, <<"workspace denied">>}}, <<"20">>, true,
+                403, 0},
+            {"workspace unavailable wins first", {error, {503, <<"workspace unavailable">>}},
+                <<"20">>, true, 503, 0},
+            {"invalid group preserves validation", ok, <<"bad">>, true, 400, 0}
+        ]
+    ].
+
+detail_guard_case(Guard, Gid, Allowed, Expected, Queries) ->
+    with_live_policy(detail_guard_mocks(Guard, Gid, Allowed), fun() ->
+        ?assertEqual(
+            {response, Expected}, group_handler:handle_action(detail, req, #{current_uid => 7})
+        ),
+        ?assertEqual(Queries, meck:num_calls(elib_pg, one, '_')),
+        ?assertEqual(
+            case Expected of
+                0 -> 1;
+                _ -> 0
+            end,
+            meck:num_calls(group_logic, find_by_id, '_')
+        )
+    end).
+
+detail_guard_mocks(Guard, Gid, Allowed) ->
+    [
+        {cowboy_req, [{parse_qs, 1, fun(req) -> [{<<"gid">>, Gid}] end}]},
+        {workspace_resolver, [
+            {guard_group_gid, 2, fun(7, Gid0) ->
+                ?assertEqual(Gid, Gid0),
+                Guard
+            end}
+        ]},
+        {elib_response, [
+            {error, 3, fun(req, _, Code) -> {response, Code} end},
+            {success, 3, fun(req, _, _) -> {response, 0} end}
+        ]},
+        {imboy_error, [
+            {validate_id, 2, fun(req, Id) ->
+                case Id of
+                    <<"bad">> -> {error, {response, 400}};
+                    <<"20">> -> {ok, 20}
+                end
+            end}
+        ]},
+        {group_logic, [
+            {find_by_id, 2, fun(20, _) -> #{<<"id">> => 20} end},
+            {group_transfer, 1, fun(G) -> G end}
+        ]},
+        {elib_pg, [
+            {one, 2, fun(Sql, Params) ->
+                ?assertEqual([20, 7], Params),
+                ?assertNotEqual(nomatch, binary:match(Sql, <<"gm.status=1">>)),
+                case Allowed of
+                    exception -> erlang:error(db_unavailable);
+                    _ -> {ok, #{<<"allowed">> => Allowed}}
+                end
+            end}
+        ]}
+    ].
+
+discussion_detail_logic_revocation_regression_test_() ->
+    with_live_policy(
+        [
+            {elib_pg, [
+                {one, 2, fun(_, [20, 7]) ->
+                    {ok, #{<<"allowed">> => false}}
+                end}
+            ]}
+        ],
+        fun() ->
+            ?assertMatch({error, {403, _}}, micro_community_access_logic:guard_group_detail(7, 20))
+        end
+    ).

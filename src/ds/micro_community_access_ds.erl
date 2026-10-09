@@ -1,5 +1,12 @@
 -module(micro_community_access_ds).
--export([eligible/2, eligible_tx/3, delivery_allowed/2, revoke_channel_tx/3, join/2]).
+-export([
+    eligible/2,
+    eligible_tx/3,
+    delivery_allowed/2,
+    revoke_channel_tx/3,
+    join/2,
+    group_detail_allowed/2
+]).
 
 join(Uid, Cid) ->
     try
@@ -124,4 +131,13 @@ revoke_channel_tx(Conn, Cid, Uid) ->
                     ),
                     micro_community_access_repo:deactivate_tx(Conn, Gid, Uid)
             end
+    end.
+
+%% Repo preserves unbound behavior; bound groups require entitlement and membership.
+group_detail_allowed(Gid, Uid) ->
+    try micro_community_access_repo:delivery_allowed(Gid, Uid) of
+        true -> true;
+        _ -> false
+    catch
+        _:_ -> false
     end.
