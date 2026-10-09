@@ -26,6 +26,8 @@
 -export([list/5]).
 %% 查询群作业列表（用户侧：额外校验 ViewerUid 为该群成员）
 -export([list/6]).
+%% 用户侧列表附带查看者提交概要（my_assignment）
+-export([decorate_viewer_assignments/2]).
 %% 查询我的作业
 -export([my_tasks/3]).
 -export([my_tasks/4]).
@@ -445,6 +447,34 @@ viewer_assignment(Task, ViewerUid) ->
             {error, imboy_error:error_msg(?ERR_INTERNAL_SERVER_ERROR), ?ERR_INTERNAL_SERVER_ERROR}
     end.
 
+%% @doc 用户侧列表：为每个作业附带查看者的提交概要（my_assignment）。
+%% 与 detail/2 的 my_assignment 同 key 同结构（完整 assignment 行或 null），
+%% 前端列表/详情的归一化逻辑共用。页大小 ≤100，逐条点查走
+%% assignment(task_id, user_id) 索引；列表页若成为瓶颈再升级为批量 IN 查询。
+-spec decorate_viewer_assignments([map()], integer()) -> [map()].
+decorate_viewer_assignments(Tasks, ViewerUid) when
+    is_list(Tasks), is_integer(ViewerUid), ViewerUid > 0
+->
+    [decorate_viewer_assignment(Task, ViewerUid) || Task <- Tasks];
+decorate_viewer_assignments(Tasks, _ViewerUid) when is_list(Tasks) ->
+    Tasks.
+
+decorate_viewer_assignment(Task, ViewerUid) ->
+    case maps:get(<<"task_id">>, Task, undefined) of
+        TaskUid when is_binary(TaskUid), byte_size(TaskUid) > 0 ->
+            case group_task_ds:assignment_find_by_task_and_user(TaskUid, ViewerUid) of
+                {ok, Assignment} ->
+                    Task#{<<"my_assignment">> => Assignment};
+                {error, not_found} ->
+                    Task#{<<"my_assignment">> => null};
+                {error, _Reason} ->
+                    %% 单条概要查询失败不阻塞整个列表：降级为"未提交"
+                    Task#{<<"my_assignment">> => null}
+            end;
+        _Other ->
+            Task#{<<"my_assignment">> => null}
+    end.
+
 %% @doc 查询群作业列表
 %% @param GroupId 群组ID
 %% @param Page 页码
@@ -528,7 +558,12 @@ list(GroupId, ViewerUid, Status, AssigneeId, Page, Size) when
             {error, imboy_error:error_msg(?ERR_TASK_PERMISSION_DENIED),
                 ?ERR_TASK_PERMISSION_DENIED};
         true ->
-            list(GroupId, Status, AssigneeId, Page, Size)
+            case list(GroupId, Status, AssigneeId, Page, Size) of
+                {ok, Tasks} ->
+                    {ok, decorate_viewer_assignments(Tasks, ViewerUid)};
+                Error ->
+                    Error
+            end
     end;
 list(_GroupId, _ViewerUid, _Status, _AssigneeId, _Page, _Size) ->
     {error, imboy_error:error_msg(?ERR_BAD_REQUEST), ?ERR_BAD_REQUEST}.
