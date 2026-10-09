@@ -173,22 +173,9 @@ stage(
     %% 预生成 TSID
     GenId = elib_tsid:generate(msg_store),
     Data2 = Data#{id => GenId},
-    {Sql, Params} = elib_pg_sql:insert(Tb, Data2),
-    %% 【幂等性修复】捕获唯一约束错误
-    %% Q06（AC11 真库注入修复）：真实 epgsql 唯一冲突形状为
-    %% {error, {error, Severity, <<"23505">>, unique_violation, Msg, Extra}}
-    %% （全仓 passport_logic/bot_ds 等 15+ 处同款）；此前的三层
-    %% {error, {error, {error, <<"23505">>, ...}}} 形状在真实链路中不存在，
-    %% 仅被 mock 测试伪造——真实重发（staging UNIQUE(type,msg_id) 冲突）
-    %% 落入兜底分支返回原始错误，C2C 重发无法幂等收敛为 duplicate。
-    case elib_pg:query(Sql, Params) of
-        {ok, _} ->
-            {ok, GenId};
-        {error, {error, _Severity, <<"23505">>, unique_violation, _Msg, _Extra}} ->
-            %% PostgreSQL 唯一约束错误：消息已存在（幂等性）
-            {error, {unique_violation, MsgId}};
-        {error, Reason} ->
-            {error, Reason}
+    case Type of
+        <<"c2c">> -> personal_message_order_repo:stage_c2c(Tb, Data2);
+        _ -> insert_staging_row(Tb, Data2, GenId, MsgId)
     end;
 stage(
     <<"c2g">>,
@@ -896,6 +883,25 @@ persist_c2g_recipient_snapshot(Conn, MsgId, FromId, Gid, Seq, RecipientUids, Cre
             throw({rollback, {recipient_snapshot_persist_failed, Reason}});
         Other ->
             throw({rollback, {unexpected_recipient_snapshot_persist, Other}})
+    end.
+
+insert_staging_row(Tb, Data2, GenId, MsgId) ->
+    {Sql, Params} = elib_pg_sql:insert(Tb, Data2),
+    %% 【幂等性修复】捕获唯一约束错误
+    %% Q06（AC11 真库注入修复）：真实 epgsql 唯一冲突形状为
+    %% {error, {error, Severity, <<"23505">>, unique_violation, Msg, Extra}}
+    %% （全仓 passport_logic/bot_ds 等 15+ 处同款）；此前的三层
+    %% {error, {error, {error, <<"23505">>, ...}}} 形状在真实链路中不存在，
+    %% 仅被 mock 测试伪造——真实重发（staging UNIQUE(type,msg_id) 冲突）
+    %% 落入兜底分支返回原始错误，C2C 重发无法幂等收敛为 duplicate。
+    case elib_pg:query(Sql, Params) of
+        {ok, _} ->
+            {ok, GenId};
+        {error, {error, _Severity, <<"23505">>, unique_violation, _Msg, _Extra}} ->
+            %% PostgreSQL 唯一约束错误：消息已存在（幂等性）
+            {error, {unique_violation, MsgId}};
+        {error, Reason} ->
+            {error, Reason}
     end.
 
 -spec allocate_c2g_seq(pid(), binary()) -> pos_integer().
