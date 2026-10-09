@@ -15,8 +15,8 @@
 %     user/account_type——bind 触发器只保证绑定时点）。任一不满足按
 %     stable 码拒绝：identity_not_mapped / organization_boundary_violation。
 %   * 落库：msg_c2c / msg_c2g 服务端明文行（e2ee 恒 NULL——bot 域同款
-%     先例；不走 msg_c2c_logic human 链、不写 msg_store/msg_store_staging
-%     E2EE 离线真源）；payload 顶层 origin 结构（kind/sender_kind/
+%     先例；不走 msg_c2c_logic human 链或 msg_store_staging；direct 同
+%     原事务归档 msg_store 保留正文）；payload 顶层 origin 结构（kind/sender_kind/
 %     sender_user_id/application_id——A6 Flutter 渲染代发标记的数据源）；
 %     enterprise_audit_event append-only 审计行（actor_role=
 %     'enterprise_application'，detail 列级持久化 origin_application_id——

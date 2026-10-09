@@ -7,8 +7,8 @@
 % 零新表复用既有存储（本卡禁建 migration）：
 %   * msg_c2c / msg_c2g（迁移 5/6）——服务端明文模式（bot 域同款先例：
 %     bot_logic:send_message 直写、e2ee 恒 NULL）。OA 代发不触个人
-%     E2EE 路径：不走 msg_c2c_logic:c2c human 链、不写 msg_store/
-%     msg_store_staging（E2EE 离线真源），payload 顶层无 e2ee 键。
+%     E2EE 路径：不走 msg_c2c_logic:c2c human 链、不写 msg_store_staging；
+%     direct 同原事务归档 msg_store 保留正文，payload 顶层无 e2ee 键。
 %   * enterprise_audit_event（迁移 119，append-only）——OA 代发事实审计：
 %     actor_role='enterprise_application'（审计 actor 是 Application，
 %     不伪造成 Human），detail jsonb 持久化 sender_kind / sender_user_id /
@@ -73,8 +73,21 @@ insert_direct_tx(Conn, MsgId, FromId, ToId, MsgType, Payload) ->
             [RowId, FromId, ToId, MsgId, MsgType, jsone:encode(Payload)]
         )
     of
-        {ok, _} -> {ok, RowId};
-        {error, Reason} -> {error, Reason}
+        {ok, _} ->
+            archive_direct_tx(Conn, MsgId),
+            {ok, RowId};
+        {error, Reason} ->
+            {error, Reason}
+    end.
+
+%% Read the formal row on this connection: DB times and trusted sequence must
+%% exactly match acceptance. An archive failure rolls back origin/audit/idem too.
+archive_direct_tx(Conn, MsgId) ->
+    Sql = <<"SELECT *,payload::text AS payload FROM msg_c2c WHERE msg_id=$1">>,
+    case elib_pg:query(Conn, Sql, [MsgId]) of
+        {ok, [Row]} -> msg_archive_repo:archive_tx(Conn, Row#{<<"type">> => <<"c2c">>});
+        {ok, _} -> throw({rollback, accepted_message_missing});
+        {error, Reason} -> throw({rollback, Reason})
     end.
 
 %% @doc OA 代发 group 消息（同 tx）：ToId=群 id（msg_c2g 语义：to_id=群）。

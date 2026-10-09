@@ -6,9 +6,9 @@
 %%% 由 msg_store_worker 在消息成功写入投递表后异步调用。
 %%%
 %%% == 设计原则 ==
-%%% - 写入由 Worker 负责，不在消息发送热路径上
+%%% - 普通消息由 Worker 归档；OA direct 必须在原受理事务同步归档
 %%% - conv_seq 是 per-conversation 单调递增序列号，用于客户端增量同步
-%%% - msg_id 唯一约束保证幂等（Worker 重试安全）
+%%% - 跨时间分区查重并验证完整消息身份，保持重试幂等
 %%% - 不存储投递状态，只存消息内容
 %%%
 %%% == conv_key 格式 ==
@@ -35,7 +35,7 @@
 
 -export([conv_key/3]).
 -export([next_conv_seq/1]).
--export([archive/1]).
+-export([archive/1, archive_tx/2]).
 -export([get_history/3, get_history/4]).
 -export([get_history_batch/2]).
 
@@ -148,6 +148,54 @@ archive(Row) ->
                 {error, Reason} ->
                     {error, Reason}
             end
+    end.
+
+%% OA direct retention shares its caller's accepted-message transaction. The caller
+%% already holds counter -> msg_c2c identity locks; never allocate another sequence.
+-spec archive_tx(pid(), map()) -> ok.
+archive_tx(Conn, #{<<"type">> := <<"c2c">>, <<"conv_seq">> := Seq} = Row) when
+    is_integer(Seq), Seq > 0
+->
+    {ok, _Key, Data0} = build_archive_data(<<"c2c">>, Row),
+    Data = Data0#{conv_seq => Seq, expire_at => maps:get(<<"expire_at">>, Row, null)},
+    MsgId = maps:get(msg_id, Data),
+    archive_query(Conn, <<"SELECT pg_advisory_xact_lock(hashtextextended('msg_c2c:'||$1,0))">>, [
+        MsgId
+    ]),
+    case archive_query(Conn, <<"SELECT id FROM public.msg_store WHERE msg_id=$1">>, [MsgId]) of
+        [] -> insert_caller_archive(Conn, Data);
+        [_] -> verify_caller_archive(Conn, Data);
+        _ -> throw({rollback, archive_msg_id_conflict})
+    end;
+archive_tx(_Conn, _Row) ->
+    throw({rollback, invalid_accepted_archive}).
+
+insert_caller_archive(Conn, Data) ->
+    {Sql, Params} = elib_pg_sql:insert(?TABLE, Data#{id => elib_tsid:generate(msg_store)}),
+    %% DO NOTHING avoids an aborted transaction for the exact time-partition key.
+    %% Unrelated 23505 (including a trigger) propagates and rolls back the caller.
+    archive_query(
+        Conn, <<Sql/binary, " ON CONFLICT(msg_id,created_at) DO NOTHING RETURNING id">>, Params
+    ),
+    verify_caller_archive(Conn, Data).
+
+verify_caller_archive(Conn, Data) ->
+    case same_archive(Conn, Data) of
+        {ok, [_]} ->
+            case
+                archive_query(
+                    Conn,
+                    <<"SELECT id FROM public.msg_store WHERE msg_id=$1 AND expire_at IS NOT DISTINCT FROM $2::timestamptz">>,
+                    [maps:get(msg_id, Data), maps:get(expire_at, Data)]
+                )
+            of
+                [_] -> ok;
+                _ -> throw({rollback, archive_msg_id_conflict})
+            end;
+        {ok, _} ->
+            throw({rollback, archive_msg_id_conflict});
+        {error, Reason} ->
+            throw({rollback, Reason})
     end.
 
 %% Counter -> msg_c2g message namespace matches the formal dedup trigger.
