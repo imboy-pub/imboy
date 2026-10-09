@@ -29,5 +29,5 @@
 | 四层架构设计理由 | 为什么 Handler→Logic→DS→Repo 单向依赖 | ADR-0001 + module-layer-cheatsheet |
 | TSID 选型 | 为什么不用自增 ID / UUIDv4 | ADR-0004 + CONVENTIONS |
 | E2EE 密钥轮换设计 | 密钥怎么换、为什么这样换 | guides/e2ee/ |
-| Garage S3 直传设计 | 为什么附件不走后端中转 | archive/architecture/fastdfs-to-garage-migration.md |
+| 附件存储与访问边界 | 各存储驱动如何维护对象位置和授权访问 | [附件存储 ADR](../adr/0008-pluggable-attachment-storage.md)；[Garage 运维指南](../guides/operations/garage-deployment.md) |
 | 插件系统隔离模型 | 插件为什么不能直接碰核心 | reference/plugin/ |
