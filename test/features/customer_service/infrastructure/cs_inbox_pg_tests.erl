@@ -387,7 +387,137 @@ masked_search_does_not_expose_name_test() ->
         )
     end).
 
+%% CX02-A03+A04 跨页组合验收（真库，>两页 fixture）：摘要搜索命中「非已
+%% 加载」深处会话；scope 全集键集走查不重不漏、严格降序、计数逐页与服务端
+%% 事实一致；scope 钉死（workspace/跨 org 注入不泄漏）；等待/最近消息/
+%% 接待人字段与库中事实一致（来源真实）；重复认领二次 conflict 且刷新页
+%% 归属真实（「409 刷新归属不盲重写」的后端事实腿）。
+cx02_a03_a04_cross_page_test() ->
+    with_scope_opts(#{max_concurrent => 16}, fun(Scope) ->
+        %% 10 会话：7 active + 2 queued + 1 closed（limit=2 → active 五页）。
+        ConvDeep = insert_conversation(Scope),
+        Deep = insert_session_conv(Scope, <<"active">>, ConvDeep),
+        _MsgDeep = insert_message_conv(Scope, <<"contact">>, <<"visible">>, ConvDeep),
+        ConvMid = insert_conversation(Scope),
+        Mid = insert_session_conv(Scope, <<"active">>, ConvMid),
+        _MsgMid = insert_message_conv(Scope, <<"contact">>, <<"visible">>, ConvMid),
+        Younger = [
+            begin
+                C = insert_conversation(Scope),
+                insert_session_conv(Scope, <<"active">>, C)
+            end
+         || _ <- lists:seq(1, 5)
+        ],
+        ConvQ = insert_conversation(Scope),
+        Queued = insert_session_conv(Scope, <<"queued">>, ConvQ),
+        MsgQ = insert_message_conv(Scope, <<"contact">>, <<"visible">>, ConvQ),
+        ConvQ2 = insert_conversation(Scope),
+        _Queued2 = insert_session_conv(Scope, <<"queued">>, ConvQ2),
+        ConvC = insert_conversation(Scope),
+        _Closed = insert_session_conv(Scope, <<"closed">>, ConvC),
+        ?assert(Deep < Mid),
+        Actives = lists:sort(fun(A, B) -> A > B end, [Deep, Mid] ++ Younger),
+
+        %% CX02-A03：scope 全集走查（limit=2 → 五页）不重不漏、严格降序、
+        %% 计数逐页一致（total=7、queued=2/active=7/closed=1 为服务端事实）。
+        Walk = walk_pages(Scope, <<"active">>, 2, #{}),
+        Ids = Walk,
+        ?assertEqual(Actives, Ids),
+        ?assertEqual(lists:usort(Ids), lists:reverse(Ids)),
+        %% 命中目标在前两「已加载页」（前 4 行）之外——深处会话。
+        ?assertNot(lists:member(Deep, lists:sublist(Ids, 4))),
+        ?assertNot(lists:member(Mid, lists:sublist(Ids, 4))),
+        ?assertEqual(Deep, lists:last(Ids)),
+
+        %% 摘要搜索命中跨页集合：生产阶段 B 形状（非空 search + 注入命中
+        %% 集），limit=1 键集走查两命中各出现恰好一次、降序。
+        Garbage = <<"zzz-no-such-summary-token">>,
+        HitWalk = walk_pages(
+            Scope,
+            <<"active">>,
+            1,
+            #{search => Garbage, summary_match_ids => [Deep, Mid]}
+        ),
+        ?assertEqual([Mid, Deep], HitWalk),
+
+        %% scope 钉死：其他 workspace 无泄漏；跨 org 注入命中 id 也不泄漏。
+        {ok, XWs} = cs_pg_store:seat_session_page(
+            org(Scope),
+            <<"active">>,
+            0,
+            5,
+            maps:get(other_workspace_id, Scope),
+            filters(Scope, #{search => Garbage, summary_match_ids => [Deep]})
+        ),
+        ?assertEqual(0, maps:get(total, XWs)),
+        {ok, XOrg} = cs_pg_store:seat_session_page(
+            maps:get(other_org_id, Scope),
+            <<"active">>,
+            0,
+            5,
+            ws(Scope),
+            filters(Scope, #{search => Garbage, summary_match_ids => [Deep, Mid]})
+        ),
+        ?assertEqual(0, maps:get(total, XOrg)),
+        %% 非持有 identity 的 mine=true → 0；走查后 cursor=0 重查仍全集
+        %% （服务端无游标残留状态）。
+        ?assertEqual(
+            0,
+            maps:get(
+                total,
+                page(Scope, <<"active">>, #{
+                    mine => true,
+                    business_identity_id => maps:get(sales_identity_id, Scope)
+                })
+            )
+        ),
+        ?assertEqual(7, maps:get(total, page(Scope, <<"active">>, #{}))),
+
+        %% CX02-A04 等待事实（认领前，来源真实）：queued 行的等待时间戳、
+        %% 未读/待回复、最近消息均来自库中事实；无接待人。
+        QueuedRow = only_row(
+            page(Scope, <<"queued">>, #{search => integer_to_binary(Queued)})
+        ),
+        ?assertEqual(Queued, maps:get(id, QueuedRow)),
+        ?assertEqual(undefined, maps:get(business_identity_id, QueuedRow)),
+        ?assert(maps:get(queued_at, QueuedRow) > 1600000000),
+        ?assertEqual(1, maps:get(unread_count, QueuedRow)),
+        ?assertEqual(true, maps:get(needs_reply, QueuedRow)),
+        ?assertEqual(MsgQ, maps:get(last_message_id, QueuedRow)),
+        ?assertEqual(<<"contact">>, maps:get(last_message_sender_type, QueuedRow)),
+
+        %% 真实认领 → 重复认领二次 conflict（409 后端腿）→ 刷新页归属真实。
+        {ok, _} =
+            cs_session_app:claim(org(Scope), #{
+                workspace_id => ws(Scope),
+                session_id => Queued,
+                business_identity_id => identity(Scope),
+                expected_version => 1,
+                at => 1700000100
+            }),
+        %% 重复认领：409 后端腿返回结构化冲突，自带权威当前态
+        %% （actual_status/actual_version 即「刷新归属」的事实来源）。
+        ?assertMatch(
+            {error, {cas_mismatch, #{actual_status := active, actual_version := 2}}},
+            cs_session_app:claim(org(Scope), #{
+                workspace_id => ws(Scope),
+                session_id => Queued,
+                business_identity_id => identity(Scope),
+                expected_version => 1,
+                at => 1700000200
+            })
+        ),
+        Refresh = only_row(
+            page(Scope, <<"active">>, #{search => integer_to_binary(Queued)})
+        ),
+        ?assertEqual(identity(Scope), maps:get(business_identity_id, Refresh)),
+        ?assertEqual(1700000100, maps:get(claimed_at, Refresh))
+    end).
+
 with_scope(Check) ->
+    with_scope_opts(#{}, Check).
+
+with_scope_opts(Opts, Check) ->
     %% 真 PG 套件依赖 pgsql 连接池；单模块 t= 运行时没有其他套件顺带启动
     %% app，这里幂等起全量 imboy（与 cs_read_cursor_pg_tests 的 setup 同源；
     %% app 级服务按 eunit_runner 惯例不在测试侧停止）。
@@ -395,11 +525,65 @@ with_scope(Check) ->
         {app_not_started, _} -> erlang:error(imboy_app_not_started);
         _ -> ok
     end,
-    Scope = ?FIX:new_scope(),
+    Scope = ?FIX:new_scope(Opts),
     try
         Check(Scope)
     after
         ?FIX:cleanup(Scope)
+    end.
+
+%% 键集整表走查：逐页断言 total 与 total_by_status 不随游标漂移（counts 与
+%% page 读同一 filtered CTE），页间严格降序（无重复/遗漏的排序侧证）；返回
+%% 全部行 id。
+walk_pages(Scope, Status, Limit, Extra) ->
+    {ok, First} = cs_pg_store:seat_session_page(
+        org(Scope), Status, 0, Limit, ws(Scope), filters(Scope, Extra)
+    ),
+    walk_pages(
+        Scope,
+        Status,
+        Limit,
+        Extra,
+        maps:get(total, First),
+        maps:get(total_by_status, First),
+        undefined,
+        [],
+        0
+    ).
+
+walk_pages(_Scope, _Status, _Limit, _Extra, _Total, _TBS, _Prev, _Acc, 30) ->
+    erlang:error(walk_page_limit_exceeded);
+walk_pages(Scope, Status, Limit, Extra, Total, TBS, Prev, Acc, N) ->
+    Cursor =
+        case Acc of
+            [] -> 0;
+            _ -> lists:last(Acc)
+        end,
+    {ok, Page} = cs_pg_store:seat_session_page(
+        org(Scope), Status, Cursor, Limit, ws(Scope), filters(Scope, Extra)
+    ),
+    ?assertEqual(Total, maps:get(total, Page)),
+    ?assertEqual(TBS, maps:get(total_by_status, Page)),
+    Ids = [maps:get(id, R) || R <- maps:get(rows, Page)],
+    case Prev of
+        undefined -> ok;
+        P -> ?assert(lists:all(fun(I) -> I < P end, Ids))
+    end,
+    case Ids =:= [] orelse length(Ids) < Limit of
+        true ->
+            Acc ++ Ids;
+        false ->
+            walk_pages(
+                Scope,
+                Status,
+                Limit,
+                Extra,
+                Total,
+                TBS,
+                lists:last(Ids),
+                Acc ++ Ids,
+                N + 1
+            )
     end.
 
 page(Scope, Status, Extra) ->
