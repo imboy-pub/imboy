@@ -50,84 +50,88 @@ add(_Uid, _Kind, _KindId, Info, _Source, _Remark) when not is_map(Info) ->
 add(Uid, <<"7">>, KindId, Info, Source, Remark) when is_map(Info) ->
     Count = user_collect_ds:count_by_uid_kind_id(Uid, KindId),
     Info2 = jsone:encode(Info, [native_forward_slash]),
-    add_kind(Count, Uid, <<"7">>, KindId, Info2, Source, Remark, []),
-    {ok, <<"success">>};
+    collect_result(add_kind(Count, Uid, <<"7">>, KindId, Info2, Source, Remark, []));
 add(Uid, <<"6">>, KindId, Info, Source, Remark) when is_map(Info) ->
     Count = user_collect_ds:count_by_uid_kind_id(Uid, KindId),
     MimeType = <<"image/png">>,
     {Attach, Info2} = get_info(Count, MimeType, <<"thumb">>, Info),
-    add_kind(Count, Uid, <<"6">>, KindId, Info2, Source, Remark, [Attach]),
-    {ok, <<"success">>};
+    collect_result(add_kind(Count, Uid, <<"6">>, KindId, Info2, Source, Remark, [Attach]));
 add(Uid, <<"5">>, KindId, Info, Source, Remark) when is_map(Info) ->
     Count = user_collect_ds:count_by_uid_kind_id(Uid, KindId),
     MimeType = <<"octet-stream">>,
     {Attach, Info2} = get_info(Count, MimeType, <<"uri">>, Info),
-    add_kind(Count, Uid, <<"5">>, KindId, Info2, Source, Remark, [Attach]),
-    {ok, <<"success">>};
+    collect_result(add_kind(Count, Uid, <<"5">>, KindId, Info2, Source, Remark, [Attach]));
 add(Uid, <<"4">>, KindId, Info, Source, Remark) when is_map(Info) ->
     Count = user_collect_ds:count_by_uid_kind_id(Uid, KindId),
-    case Count of
-        0 ->
-            Payload = ensure_map(maps:get(<<"payload">>, Info, #{})),
-            % ?DEBUG_LOG([4, 'Payload', Payload]),
-            Thumb = ensure_map(maps:get(<<"thumb">>, Payload, #{})),
-            ThumbUri = maps:get(<<"uri">>, Thumb, <<>>),
-            {ThumbMap, _} = elib_uri:get_params(ThumbUri),
-            ThumbPath = maps:get(path, ThumbMap),
+    Result =
+        case Count of
+            0 ->
+                Payload = ensure_map(maps:get(<<"payload">>, Info, #{})),
+                % ?DEBUG_LOG([4, 'Payload', Payload]),
+                Thumb = ensure_map(maps:get(<<"thumb">>, Payload, #{})),
+                ThumbUri = maps:get(<<"uri">>, Thumb, <<>>),
+                {ThumbMap, _} = elib_uri:get_params(ThumbUri),
+                ThumbPath = maps:get(path, ThumbMap),
 
-            Video = ensure_map(maps:get(<<"video">>, Payload, #{})),
-            VideoUri = maps:get(<<"uri">>, Video, <<>>),
-            {VideoMap, _} = elib_uri:get_params(VideoUri),
-            VideoPath = maps:get(path, VideoMap),
+                Video = ensure_map(maps:get(<<"video">>, Payload, #{})),
+                VideoUri = maps:get(<<"uri">>, Video, <<>>),
+                {VideoMap, _} = elib_uri:get_params(VideoUri),
+                VideoPath = maps:get(path, VideoMap),
 
-            Attach1 = #{
-                %% 双读兼容：新消息 metadata 用 file_hash256，旧消息用 md5
-                <<"file_hash256">> => maps:get(
-                    <<"file_hash256">>, Thumb, maps:get(<<"md5">>, Thumb, <<>>)
-                ),
-                <<"mime_type">> => <<"image/jpeg">>,
-                <<"name">> => maps:get(<<"name">>, Thumb, <<>>),
-                <<"path">> => ThumbPath,
-                <<"url">> => ThumbUri,
-                <<"size">> => maps:get(<<"size">>, Thumb, 0)
-            },
-            Attach2 = #{
-                <<"file_hash256">> => maps:get(
-                    <<"file_hash256">>, Video, maps:get(<<"md5">>, Video, <<>>)
-                ),
-                <<"mime_type">> => <<"octet-stream">>,
-                <<"name">> => maps:get(<<"name">>, Video, <<>>),
-                <<"path">> => VideoPath,
-                <<"url">> => VideoUri,
-                <<"size">> => maps:get(<<"size">>, Video, maps:get(<<"filesize">>, Video, 0))
-            },
+                Attach1 = #{
+                    %% 双读兼容：新消息 metadata 用 file_hash256，旧消息用 md5
+                    <<"file_hash256">> => maps:get(
+                        <<"file_hash256">>, Thumb, maps:get(<<"md5">>, Thumb, <<>>)
+                    ),
+                    <<"mime_type">> => <<"image/jpeg">>,
+                    <<"name">> => maps:get(<<"name">>, Thumb, <<>>),
+                    <<"path">> => ThumbPath,
+                    <<"url">> => ThumbUri,
+                    <<"size">> => maps:get(<<"size">>, Thumb, 0)
+                },
+                Attach2 = #{
+                    <<"file_hash256">> => maps:get(
+                        <<"file_hash256">>, Video, maps:get(<<"md5">>, Video, <<>>)
+                    ),
+                    <<"mime_type">> => <<"octet-stream">>,
+                    <<"name">> => maps:get(<<"name">>, Video, <<>>),
+                    <<"path">> => VideoPath,
+                    <<"url">> => VideoUri,
+                    <<"size">> => maps:get(<<"size">>, Video, maps:get(<<"filesize">>, Video, 0))
+                },
 
-            Info2 = jsone:encode(Info, [native_forward_slash]),
-            % ?DEBUG_LOG(['k4', Count, Info2]),
-            add_kind(Count, Uid, <<"4">>, KindId, Info2, Source, Remark, [Attach1, Attach2]);
-        _ ->
-            ok
-    end,
-    {ok, <<"success">>};
+                Info2 = jsone:encode(Info, [native_forward_slash]),
+                % ?DEBUG_LOG(['k4', Count, Info2]),
+                add_kind(Count, Uid, <<"4">>, KindId, Info2, Source, Remark, [Attach1, Attach2]);
+            _ ->
+                ok
+        end,
+    collect_result(Result);
 add(Uid, <<"3">>, KindId, Info, Source, Remark) when is_map(Info) ->
     Count = user_collect_ds:count_by_uid_kind_id(Uid, KindId),
     MimeType = <<"audio/aac">>,
     {Attach, Info2} = get_info(Count, MimeType, <<"uri">>, Info),
-    add_kind(Count, Uid, <<"3">>, KindId, Info2, Source, Remark, [Attach]),
-    {ok, <<"success">>};
+    collect_result(add_kind(Count, Uid, <<"3">>, KindId, Info2, Source, Remark, [Attach]));
 add(Uid, <<"2">>, KindId, Info, Source, Remark) when is_map(Info) ->
     Count = user_collect_ds:count_by_uid_kind_id(Uid, KindId),
     MimeType = <<"image/jpeg">>,
     {Attach, Info2} = get_info(Count, MimeType, <<"uri">>, Info),
-    add_kind(Count, Uid, <<"2">>, KindId, Info2, Source, Remark, [Attach]),
-    {ok, <<"success">>};
+    collect_result(add_kind(Count, Uid, <<"2">>, KindId, Info2, Source, Remark, [Attach]));
 add(Uid, <<"1">>, KindId, Info, Source, Remark) when is_map(Info) ->
     Count = user_collect_ds:count_by_uid_kind_id(Uid, KindId),
     Info2 = jsone:encode(Info, [native_forward_slash]),
-    add_kind(Count, Uid, <<"1">>, KindId, Info2, Source, Remark, []),
-    {ok, <<"success">>};
+    collect_result(add_kind(Count, Uid, <<"1">>, KindId, Info2, Source, Remark, []));
 add(_Uid, _Kind, _KindId, _Info, _Source, _Remark) ->
     {error, <<"Unsupported collection kind">>}.
+
+collect_result(ok) ->
+    {ok, <<"success">>};
+collect_result({error, Reason}) ->
+    ?ERROR_LOG({collect_persistence_failed, Reason}),
+    {error, <<"收藏保存失败，请重试"/utf8>>};
+collect_result(Other) ->
+    ?ERROR_LOG({collect_persistence_unexpected_result, Other}),
+    {error, <<"收藏保存失败，请重试"/utf8>>}.
 
 %% @doc 删除收藏
 %% 删除指定的收藏内容
@@ -287,10 +291,12 @@ add_kind(0, Uid, KindBin, KindId, Info, Source, Remark, Attach) ->
             "status = 1"
         >>,
         FullSql = [Sql, <<" ">>, OnConflictUpdate],
-        _ = elib_pg:execute(Conn, FullSql, Params),
-        ok
-    end),
-    ok;
+        case elib_pg:execute(Conn, FullSql, Params) of
+            {ok, _} -> ok;
+            {ok, _, _} -> ok;
+            {error, Reason} -> erlang:error({collect_insert_failed, Reason})
+        end
+    end);
 add_kind(_Count, _Kind, _Uid, _KindId, _Info, _Source, _Remark, _) ->
     % 已收藏
     ok.
