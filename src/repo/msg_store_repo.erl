@@ -23,7 +23,7 @@
 
 %% 写入操作
 -export([stage/10]).
--export([stage/11]).
+-export([stage/11, stage_with_sequence/11]).
 -export([stage/12]).
 -export([stage_action/13]).
 %% 真库回归直接执行生产 SQL，避免 mock 只验证字符串形状。
@@ -152,27 +152,20 @@ stage(
     is_integer(ToId)
 ->
     Tb = tablename(),
-    Data0 = #{
-        type => Type,
-        msg_id => MsgId,
-        msg_type => MsgType,
-        action => Action,
-        e2ee => msg_store_e2ee_to_jsonb(E2EE),
-        %% payload 列是 JSONB：
-        %%  - 普通消息：Payload 已经是合法 JSON binary（如 {"text":"..."}）
-        %%  - E2EE 消息：Payload 是裸 base64 密文 binary，必须包装为 JSON 字符串
-        %%  - Map：编码为 JSON object
-        payload => msg_store_payload_to_jsonb(Payload),
-        from_id => FromId,
-        to_id => ToId,
-        created_at => CreatedAt,
-        server_ts => ServerTs,
-        retry_count => 0
-    },
-    Data = put_sender_did(Data0, SenderDid),
-    %% 预生成 TSID
-    GenId = elib_tsid:generate(msg_store),
-    Data2 = Data#{id => GenId},
+    Data2 = single_staging_row(
+        Type,
+        MsgId,
+        MsgType,
+        Action,
+        E2EE,
+        Payload,
+        FromId,
+        ToId,
+        CreatedAt,
+        ServerTs,
+        SenderDid
+    ),
+    GenId = maps:get(id, Data2),
     case Type of
         <<"c2c">> -> personal_message_order_repo:stage_c2c(Tb, Data2);
         _ -> insert_staging_row(Tb, Data2, GenId, MsgId)
@@ -231,6 +224,66 @@ stage(
         {error, Reason} ->
             {error, Reason}
     end.
+
+%% C2C delivery uses the seq returned inside the acceptance transaction.
+stage_with_sequence(
+    <<"c2c">> = Type,
+    MsgId,
+    MsgType,
+    Action,
+    E2EE,
+    Payload,
+    FromId,
+    ToId,
+    CreatedAt,
+    ServerTs,
+    SenderDid
+) when is_integer(ToId) ->
+    Data = single_staging_row(
+        Type,
+        MsgId,
+        MsgType,
+        Action,
+        E2EE,
+        Payload,
+        FromId,
+        ToId,
+        CreatedAt,
+        ServerTs,
+        SenderDid
+    ),
+    personal_message_order_repo:stage_c2c_ordered(tablename(), Data).
+
+single_staging_row(
+    Type,
+    MsgId,
+    MsgType,
+    Action,
+    E2EE,
+    Payload,
+    FromId,
+    ToId,
+    CreatedAt,
+    ServerTs,
+    SenderDid
+) ->
+    put_sender_did(
+        #{
+            id => elib_tsid:generate(msg_store),
+            type => Type,
+            msg_id => MsgId,
+            msg_type => MsgType,
+            action => Action,
+            e2ee => msg_store_e2ee_to_jsonb(E2EE),
+            payload => msg_store_payload_to_jsonb(Payload),
+            from_id => FromId,
+            to_id => ToId,
+            created_at => CreatedAt,
+            server_ts => ServerTs,
+            retry_count => 0
+        },
+        SenderDid
+    ).
 
 %% @doc C2G 持久接受：在序列锁内重验 active sender、最低角色和收件人快照。
 -spec stage(

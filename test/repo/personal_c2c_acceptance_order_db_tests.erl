@@ -186,8 +186,8 @@ same_identity_concurrent_retry_test_() ->
         end
     end).
 
-%% PG trigger+advisory lock 让两个独立会话都走到真实 INSERT，强制覆盖 23505 竞态。
-%% A PG trigger/advisory gate forces both conversations through the actual INSERT.
+%% INSERT gate 阻塞赢家；另一会话必须等待共享 msg_id 锁，不能同时穿过身份检查。
+%% The INSERT gate blocks the winner while the other conversation waits on the shared message lock.
 cross_conversation_insert_race_test_() ->
     ?TEST_WITH_DB_TIMEOUT(30, fun() ->
         A = elib_tsid:generate(),
@@ -333,8 +333,15 @@ await_waiters(Conn, Gate, Attempts) ->
         "AND objid = $1::oid AND NOT granted AND database = (SELECT oid FROM pg_database WHERE datname = current_database())",
         [Gate]
     ),
-    case Count of
-        2 ->
+    {ok, _, [{OtherCount}]} = epgsql:equery(
+        Conn,
+        "SELECT count(*) FROM pg_locks WHERE locktype = 'advisory' AND NOT granted "
+        "AND NOT (classid = 169 AND objid = $1::oid) "
+        "AND database = (SELECT oid FROM pg_database WHERE datname = current_database())",
+        [Gate]
+    ),
+    case {Count, OtherCount} of
+        {1, 1} ->
             ok;
         _ ->
             timer:sleep(25),

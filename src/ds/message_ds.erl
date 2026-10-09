@@ -536,9 +536,14 @@ offline_envelope(Type, Row) ->
     %% 与 with_sender_device/2 同一原则：**没有就不补**——补 <<>> 会让接收侧
     %% 把「服务端没提供」误判成「设备 ID 是空串」，两者失败语义不同。
     %% 旧行（迁移 48 之前落库）与非 C2C 类型的列值为 null，走此分支。
+    WithSequence =
+        case {Type, maps:get(<<"conv_seq">>, Row, null)} of
+            {<<"C2C">>, Seq} when is_integer(Seq), Seq > 0 -> Msg#{<<"conv_seq">> => Seq};
+            _ -> Msg
+        end,
     case maps:get(<<"sender_did">>, Row, null) of
-        Did when is_binary(Did), Did =/= <<>> -> Msg#{<<"sender_did">> => Did};
-        _ -> Msg
+        Did when is_binary(Did), Did =/= <<>> -> WithSequence#{<<"sender_did">> => Did};
+        _ -> WithSequence
     end.
 
 -spec e2ee_relay_action(term()) -> binary().

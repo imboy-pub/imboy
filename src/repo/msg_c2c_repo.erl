@@ -132,8 +132,8 @@ write_msg_with_sender(CreatedAt, Id, Payload, FromId, ToId, ServerTS, MsgType, E
     Sql = [
         <<"INSERT INTO ">>,
         Tb,
-        <<" (id, payload, from_id, to_id, created_at, server_ts, msg_id, msg_type, e2ee, sender_did)">>,
-        <<" VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)">>,
+        <<" (id, payload, from_id, to_id, created_at, server_ts, msg_id, msg_type, e2ee, sender_did, conv_seq)">>,
+        <<" VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)">>,
         <<" ON CONFLICT (msg_id, created_at) DO NOTHING">>
     ],
     %% 【BUG 修复】改用 elib_pg:execute/3 替代 elib_pg:query/3：
@@ -143,7 +143,7 @@ write_msg_with_sender(CreatedAt, Id, Payload, FromId, ToId, ServerTS, MsgType, E
     %% execute 返回 {ok, Count}，Count=0 时返回 {error, conflict_no_insert}，
     %% 由上层（msg_store_worker）按幂等语义处理。
     case
-        elib_pg:execute(Sql, [
+        personal_message_order_repo:execute_formal(FromId, ToId, Id, Sql, [
             GenId,
             Payload,
             FromId,
@@ -188,15 +188,15 @@ write_msg_if_absent(CreatedAt, Id, Payload, FromId, ToId, ServerTS, MsgType, E2E
     Sql = [
         <<"INSERT INTO ">>,
         Tb,
-        <<" (id, payload, from_id, to_id, created_at, server_ts, msg_id, msg_type, e2ee)">>,
-        <<" SELECT $1, $2, $3, $4, $5, $6, $7, $8, $9">>,
+        <<" (id, payload, from_id, to_id, created_at, server_ts, msg_id, msg_type, e2ee, conv_seq)">>,
+        <<" SELECT $1, $2, $3, $4, $5, $6, $7::varchar(40), $8, $9, $10">>,
         <<" WHERE NOT EXISTS (SELECT 1 FROM ">>,
         Tb,
         <<" WHERE msg_id = $7 AND to_id = $4)">>,
         <<" ON CONFLICT (msg_id, created_at) DO NOTHING">>
     ],
     case
-        elib_pg:execute(Sql, [
+        personal_message_order_repo:execute_formal(FromId, ToId, Id, Sql, [
             GenId, Payload, FromId, ToId, CreatedAt, ServerTS, Id, MsgType, E2EEValue
         ])
     of
@@ -236,15 +236,15 @@ write_msg_if_absent_with_sender(
     Sql = [
         <<"INSERT INTO ">>,
         Tb,
-        <<" (id, payload, from_id, to_id, created_at, server_ts, msg_id, msg_type, e2ee, sender_did)">>,
-        <<" SELECT $1, $2, $3, $4, $5, $6, $7, $8, $9, $10">>,
+        <<" (id, payload, from_id, to_id, created_at, server_ts, msg_id, msg_type, e2ee, sender_did, conv_seq)">>,
+        <<" SELECT $1, $2, $3, $4, $5, $6, $7::varchar(40), $8, $9, $10, $11">>,
         <<" WHERE NOT EXISTS (SELECT 1 FROM ">>,
         Tb,
         <<" WHERE msg_id = $7 AND to_id = $4)">>,
         <<" ON CONFLICT (msg_id, created_at) DO NOTHING">>
     ],
     case
-        elib_pg:execute(Sql, [
+        personal_message_order_repo:execute_formal(FromId, ToId, Id, Sql, [
             GenId,
             Payload,
             FromId,
@@ -292,12 +292,12 @@ write_msg(CreatedAt, Id, Payload, FromId, ToId, ServerTS, MsgType, E2EE, ExpireA
     Sql = [
         <<"INSERT INTO ">>,
         Tb,
-        <<" (id, payload, from_id, to_id, created_at, server_ts, msg_id, msg_type, e2ee, expire_at)">>,
-        <<" VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)">>,
+        <<" (id, payload, from_id, to_id, created_at, server_ts, msg_id, msg_type, e2ee, expire_at, conv_seq)">>,
+        <<" VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)">>,
         <<" ON CONFLICT (msg_id, created_at) DO NOTHING">>
     ],
     case
-        elib_pg:execute(Sql, [
+        personal_message_order_repo:execute_formal(FromId, ToId, Id, Sql, [
             GenId, Payload, FromId, ToId, CreatedAt, ServerTS, Id, MsgType, E2EEValue, ExpireAt
         ])
     of
@@ -549,9 +549,9 @@ write_msg_with_reply(
         Tb,
         <<
             " (id, payload, from_id, to_id, created_at, server_ts, msg_id, msg_type, e2ee,"
-            " reply_to_msg_id, reply_to_from_id, reply_snippet)"
+            " reply_to_msg_id, reply_to_from_id, reply_snippet, conv_seq)"
         >>,
-        <<" VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)">>,
+        <<" VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)">>,
         %% RT-P3-03（2026-08-27）：本写入与 staging worker 双写并发存在竞态——
         %% 若 worker 先插入无引用行，原 DO NOTHING 让本次 reply 直写变 no-op，
         %% 引用元数据静默丢失。改为条件补洞：仅当既有行尚未携带引用时回填三列；
@@ -568,7 +568,7 @@ write_msg_with_reply(
         <<".reply_to_msg_id IS NULL">>
     ],
     case
-        elib_pg:execute(Sql, [
+        personal_message_order_repo:execute_formal(FromId, ToId, Id, Sql, [
             GenId,
             Payload,
             FromId,

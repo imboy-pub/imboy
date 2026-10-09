@@ -71,12 +71,19 @@ conv_key(<<"c2g">>, _FromId, Gid) ->
 %% @end
 %%-------------------------------------------------------------------
 %% @doc E2EE-2026-012 §7.2（Task 8/LT-03）：c2g 行在 staging 接受事务已预分配
-%% conv_seq，archive 只搬运既定 seq（绝不再分配）；legacy/c2c 行回退归档期分配。
+%% conv_seq，archive 只搬运既定 seq；C2C 的旧 claimed NULL 读取迁移后权威值。
+%% Preserve accepted seq; resolve a C2C worker's pre-migration claimed NULL copy.
 -spec staged_or_next_seq(binary(), map()) -> {ok, integer()} | {error, term()}.
 staged_or_next_seq(ConvKey, Row) ->
     case maps:get(<<"conv_seq">>, Row, undefined) of
         S when is_integer(S), S > 0 ->
             {ok, S};
+        _ when map_get(<<"type">>, Row) =:= <<"c2c">> ->
+            personal_message_order_repo:accepted_sequence(
+                maps:get(<<"from_id">>, Row),
+                maps:get(<<"to_id">>, Row),
+                maps:get(<<"msg_id">>, Row)
+            );
         _ ->
             next_conv_seq(ConvKey)
     end.
@@ -101,7 +108,7 @@ next_conv_seq(ConvKey) ->
 %% @doc  归档一条消息到永久存储
 %%
 %% 接受 msg_store_staging 中的 Row（map），提取必要字段后写入 msg_store。
-%% 内部调用 next_conv_seq/1 获取序列号。
+%% C2C 使用持久受理序号；C2G 保持原 next_conv_seq/1 路径。
 %%
 %% 幂等性：msg_id + created_at 唯一约束，重复调用安全（返回 ok）。
 %%
@@ -130,9 +137,9 @@ archive(Row) ->
                         %% Q06（AC11 真库注入修复）：真实 epgsql 唯一冲突形状
                         %% {error, {error, Severity, <<"23505">>, unique_violation, Msg, Extra}}
                         %% （与 msg_store_repo stage 同款修正；旧三层形状仅存在于 mock）
-                        {error, {error, _Severity, <<"23505">>, unique_violation, _Msg, _Extra}} ->
-                            %% 幂等：消息已归档（Worker 重试场景），视为成功
-                            ok;
+                        {error,
+                            {error, _Severity, <<"23505">>, unique_violation, _Msg, Extra} = Reason} ->
+                            archive_collision(TypeBin, FinalData, Extra, Reason);
                         {error, Reason} ->
                             {error, Reason}
                     end;
@@ -140,6 +147,52 @@ archive(Row) ->
                     {error, Reason}
             end
     end.
+
+%% C2C collisions succeed only for the complete accepted message, never just a code.
+archive_collision(<<"c2c">>, Data, _Extra, Reason) ->
+    %% Timescale chunk constraint names differ; prove the actual row, not its name.
+    same_c2c_archive(Data, Reason);
+archive_collision(_Other, _Data, _Extra, _Reason) ->
+    %% C2G legacy replay allocates at archive time; its separate repair remains open.
+    ok.
+
+same_c2c_archive(Data, OriginalError) ->
+    Sql = <<
+        "SELECT id FROM public.msg_store WHERE msg_id=$1 AND created_at=$2::timestamptz "
+        "AND chat_type=$3 AND conv_key=$4 AND from_id=$5 "
+        "AND to_id IS NOT DISTINCT FROM $6::bigint "
+        "AND group_id IS NOT DISTINCT FROM $7::bigint AND conv_seq=$8 AND msg_type=$9 "
+        "AND payload::jsonb IS NOT DISTINCT FROM $10::jsonb "
+        "AND e2ee IS NOT DISTINCT FROM $11::jsonb "
+        "AND sender_did IS NOT DISTINCT FROM $12::varchar "
+        "AND server_ts IS NOT DISTINCT FROM $13::timestamptz"
+    >>,
+    Keys = [
+        msg_id,
+        created_at,
+        chat_type,
+        conv_key,
+        from_id,
+        to_id,
+        group_id,
+        conv_seq,
+        msg_type,
+        payload,
+        e2ee,
+        sender_did,
+        server_ts
+    ],
+    Params = [archive_parameter(K, maps:get(K, Data)) || K <- Keys],
+    case elib_pg:query(Sql, Params) of
+        {ok, [_]} -> ok;
+        {ok, _} -> {error, OriginalError};
+        {error, Reason} -> {error, Reason}
+    end.
+
+archive_parameter(K, Value) when (K =:= payload orelse K =:= e2ee), is_map(Value) ->
+    jsone:encode(Value);
+archive_parameter(_K, Value) ->
+    Value.
 
 %%-------------------------------------------------------------------
 %% @doc  游标查询：按 conv_seq 升序拉取历史消息

@@ -259,7 +259,7 @@ stage_and_send_c2c(
                 case message_policy:reply_mode({ReplyToMsgId, ReplyToFromId, ReplySnippet}) of
                     none ->
                         % 没有引用信息，使用常规方式
-                        msg_store_ds:stage(
+                        msg_store_ds:stage_with_sequence(
                             <<"c2c">>,
                             MsgId,
                             MsgType,
@@ -276,7 +276,7 @@ stage_and_send_c2c(
                         % 有引用信息，需要先验证被引用的消息是否存在
                         case msg_c2c_ds:find_msg_by_id(ReplyToMsgId) of
                             {ok, _OriginalMsg} ->
-                                msg_store_ds:stage(
+                                msg_store_ds:stage_with_sequence(
                                     <<"c2c">>,
                                     MsgId,
                                     MsgType,
@@ -298,7 +298,7 @@ stage_and_send_c2c(
                                     "[C2C_REPLY_LOOKUP_FAILED] MsgId=~s, ReplyToMsgId=~s, Reason=~p~n",
                                     [MsgId, ReplyToMsgId, Reason]
                                 ),
-                                msg_store_ds:stage(
+                                msg_store_ds:stage_with_sequence(
                                     <<"c2c">>,
                                     MsgId,
                                     MsgType,
@@ -316,7 +316,7 @@ stage_and_send_c2c(
                                     "[C2C_REPLY_LOOKUP_UNEXPECTED] MsgId=~s, ReplyToMsgId=~s, Result=~p~n",
                                     [MsgId, ReplyToMsgId, Other]
                                 ),
-                                msg_store_ds:stage(
+                                msg_store_ds:stage_with_sequence(
                                     <<"c2c">>,
                                     MsgId,
                                     MsgType,
@@ -337,15 +337,21 @@ stage_and_send_c2c(
                 {reply, ErrMsg} ->
                     % 被引用消息不存在等业务错误，直接返回错误响应
                     {reply, ErrMsg};
-                {ok, duplicate} ->
+                {ok, duplicate, ConvSeq} ->
                     % 客户端重发（未收到 SERVER_ACK）：只补发 ACK，
                     % 跳过整条投递管道，避免接收端重复推送
-                    self() ! {reply, message_policy:build_server_ack(MsgId, NowMS)},
+                    self() !
+                        {reply, (message_policy:build_server_ack(MsgId, NowMS))#{
+                            <<"conv_seq">> => ConvSeq
+                        }},
                     {ok, duplicate};
-                {ok, new} ->
+                {ok, new, ConvSeq} ->
                     % 立即响应和投递
                     % T1.2：ACK 构建退化为外壳调用 message_policy:build_server_ack/2
-                    self() ! {reply, message_policy:build_server_ack(MsgId, NowMS)},
+                    self() !
+                        {reply, (message_policy:build_server_ack(MsgId, NowMS))#{
+                            <<"conv_seq">> => ConvSeq
+                        }},
 
                     % 持久化侧（可安全重放：staging/正式表写入均幂等）
                     elib_async:async_retry(
@@ -418,7 +424,9 @@ stage_and_send_c2c(
                             % 接收侧 PFv3 context binding 第 6 项拿它与受认证的
                             % protected_header.sender_did 硬比对；不带 = 每条
                             % C2C v3 消息都判 context_mismatch_sender_did。
-                            Msg = message_ds:with_sender_device(Msg0, Data),
+                            Msg = (message_ds:with_sender_device(Msg0, Data))#{
+                                <<"conv_seq">> => ConvSeq
+                            },
                             imboy_message_helper:encode_and_send(ToId, MsgId, Msg, <<"c2c">>),
                             msg_c2c_delivery_ds:send_other_devices(
                                 CurrentUid, SenderDid, MsgId, Msg

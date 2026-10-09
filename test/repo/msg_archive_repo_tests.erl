@@ -121,6 +121,7 @@ next_conv_seq_db_error_propagates_test_() ->
 archive_c2c_success_test_() ->
     Row = #{
         <<"type">> => <<"c2c">>,
+        <<"conv_seq">> => 1,
         <<"msg_id">> => <<"msg-001">>,
         <<"msg_type">> => <<"text">>,
         <<"from_id">> => 100,
@@ -137,7 +138,7 @@ archive_c2c_success_test_() ->
             ]},
             {elib_pg, [
                 {'query', 2, fun(_Sql, _Params) ->
-                    %% next_conv_seq 返回序列号 1
+                    %% 受理序号由 staging 携带，不在归档时再分配
                     {ok, [#{<<"seq">> => 1}]}
                 end},
                 {'insert', 2, fun(Table, Data) ->
@@ -162,6 +163,7 @@ archive_c2c_success_test_() ->
 archive_c2c_idempotent_on_unique_violation_test_() ->
     Row = #{
         <<"type">> => <<"c2c">>,
+        <<"conv_seq">> => 5,
         <<"msg_id">> => <<"msg-dup">>,
         <<"msg_type">> => <<"text">>,
         <<"from_id">> => 100,
@@ -177,8 +179,10 @@ archive_c2c_idempotent_on_unique_violation_test_() ->
                 {'generate', 1, fun(_Table) -> 888889 end}
             ]},
             {elib_pg, [
-                {'query', 2, fun(_Sql, _Params) ->
-                    {ok, [#{<<"seq">> => 5}]}
+                {'query', 2, fun(Sql, Params) ->
+                    ?assertNotEqual(nomatch, binary:match(Sql, <<"payload::jsonb">>)),
+                    ?assertEqual(13, length(Params)),
+                    {ok, [#{<<"id">> => 888889}]}
                 end},
                 {'insert', 2, fun(_Table, _Data) ->
                     %% 模拟 PostgreSQL 唯一约束冲突（Worker 重试场景）
@@ -187,7 +191,7 @@ archive_c2c_idempotent_on_unique_violation_test_() ->
             ]}
         ],
         fun() ->
-            %% 唯一约束冲突应被视为成功（幂等）
+            %% 仅查询确认整条既存消息相同，才把冲突视为幂等成功
             Result = msg_archive_repo:archive(Row),
             ?assertEqual(ok, Result)
         end
