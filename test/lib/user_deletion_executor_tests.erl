@@ -262,7 +262,12 @@ maybe_report_absent(_Self, _Other) ->
     ok.
 
 new_uid() ->
-    erlang:system_time(millisecond) * 1000 + rand:uniform(999).
+    ok =
+        case elib_tsid:runtime_handle() of
+            error -> elib_tsid:init(#{dc_id => 1, node_id => 1, dc_bits => 3, names => [user]});
+            {ok, _} -> elib_tsid:register(user)
+        end,
+    elib_tsid:generate(user).
 
 create_user(Uid) ->
     {ok, _} = elib_pg:query(
