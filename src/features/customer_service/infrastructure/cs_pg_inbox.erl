@@ -1,6 +1,13 @@
 -module(cs_pg_inbox).
 
--export([seat_session_page/6, page_args/6, filters/1, sql_statements/0]).
+-export([
+    seat_session_page/6,
+    page_args/6,
+    filters/1,
+    sql_statements/0,
+    search/1,
+    seat_session_search_anchors/3
+]).
 
 -define(ROW_KEYS, [
     id,
@@ -54,6 +61,7 @@
     " queued_at, claimed_at, closed_at, contact_subject_mask FROM scoped"
     " WHERE $8::text='' OR strpos(lower(contact_subject_mask), lower($8))>0"
     " OR strpos(lower(source), lower($8))>0 OR strpos(id::text, $8)>0"
+    " OR id = ANY($9::bigint[])"
     "), counts AS ("
     " SELECT count(*) FILTER (WHERE status=$2) AS total,"
     " count(*) FILTER (WHERE status='queued') AS queued_total,"
@@ -134,7 +142,8 @@ page_args(OrgId, Status, AfterId, Limit, WorkspaceId, Filters) when
                 Size,
                 maps:get(business_identity_id, Normalized),
                 maps:get(mine, Normalized),
-                maps:get(search, Normalized)
+                maps:get(search, Normalized),
+                maps:get(summary_match_ids, Normalized, [])
             ]};
         _ ->
             {error, {invalid_after_id, AfterId}}
@@ -143,7 +152,9 @@ page_args(_OrgId, _Status, _AfterId, _Limit, _WorkspaceId, _Filters) ->
     {error, {invalid_argument, seat_session_page}}.
 
 filters(Filters) when is_map(Filters) ->
-    case maps:keys(maps:without([business_identity_id, mine, search], Filters)) of
+    case
+        maps:keys(maps:without([business_identity_id, mine, search, summary_match_ids], Filters))
+    of
         [Key | _] -> {error, {unexpected_argument, Key}};
         [] -> identity_filters(Filters)
     end;
@@ -155,7 +166,17 @@ identity_filters(#{business_identity_id := IdentityId} = Filters) when
 ->
     case {mine(maps:get(mine, Filters, false)), search(maps:get(search, Filters, <<>>))} of
         {{ok, Mine}, {ok, Search}} ->
-            {ok, #{business_identity_id => IdentityId, mine => Mine, search => Search}};
+            case normalize_summary_match_ids(maps:get(summary_match_ids, Filters, [])) of
+                {ok, Ids} ->
+                    {ok, #{
+                        business_identity_id => IdentityId,
+                        mine => Mine,
+                        search => Search,
+                        summary_match_ids => Ids
+                    }};
+                {error, _} = Error ->
+                    Error
+            end;
         {{error, _} = Error, _} ->
             Error;
         {_, {error, _} = Error} ->
@@ -163,6 +184,27 @@ identity_filters(#{business_identity_id := IdentityId} = Filters) when
     end;
 identity_filters(_Filters) ->
     {error, {invalid_param_value, business_identity_id}}.
+
+%% CSB-02R 摘要搜索两段式的第二段注入：阶段 A（装配层批量摘要匹配）产出的
+%% 命中会话 id 集。空/缺席 → []（`id = ANY(empty)` 恒 false，不改变形状）；
+%% 逐项正整数校验（fail-closed，不静默丢弃）。
+summary_match_ids(Id) when is_integer(Id), Id > 0, Id =< 9223372036854775807 ->
+    {ok, Id};
+summary_match_ids(_Other) ->
+    {error, {invalid_param_value, summary_match_ids}}.
+
+normalize_summary_match_ids([]) ->
+    {ok, []};
+normalize_summary_match_ids(Ids) when is_list(Ids) ->
+    Checked = [summary_match_ids(Id) || Id <- Ids],
+    case [E || {error, _} = E <- Checked] of
+        [] ->
+            {ok, [Id || {ok, Id} <- Checked]};
+        _ ->
+            {error, {invalid_param_value, summary_match_ids}}
+    end;
+normalize_summary_match_ids(_Other) ->
+    {error, {invalid_param_value, summary_match_ids}}.
 
 mine(true) -> {ok, true};
 mine(false) -> {ok, false};
@@ -193,3 +235,48 @@ page_result([Counts | _] = Rows) ->
     }.
 
 sql_statements() -> [?SQL_PAGE].
+
+%% ===================================================================
+%% CSB-02R 摘要搜索两段式 · 阶段 A：锚点读取
+%%
+%% 作用域内全部「有末条消息」会话的最小投影（id/归属/末条锚点）。摘要
+%% 匹配在装配层经 enterprise 批量面（fetch_message_bodies）完成，命中 id
+%% 集作为 `$9` 回注 `?SQL_PAGE` 的 filtered CTE（分页前完成，命中集合 =
+%% 计数集合 = 分页集合）。锚点不携带任何密文/正文。
+%% ===================================================================
+
+-define(SQL_SEARCH_ANCHORS, <<
+    "SELECT s.id, s.organization_id, s.workspace_id, s.conversation_id,"
+    " s.last_message_id"
+    "  FROM customer_service_session s"
+    " WHERE s.organization_id = $1"
+    "   AND ($2::bigint = 0 OR s.workspace_id = $2)"
+    "   AND (NOT $3::boolean OR s.business_identity_id = $4)"
+    "   AND s.last_message_id IS NOT NULL"
+>>).
+
+-define(ANCHOR_KEYS, [
+    id,
+    organization_id,
+    workspace_id,
+    conversation_id,
+    last_message_id
+]).
+
+-spec seat_session_search_anchors(integer(), integer(), map()) ->
+    {ok, [map()]} | {error, term()}.
+seat_session_search_anchors(OrgId, WorkspaceId, Filters) when
+    is_integer(OrgId), OrgId > 0, is_integer(WorkspaceId), WorkspaceId >= 0, is_map(Filters)
+->
+    cs_pg_common:fetch_many(
+        ?SQL_SEARCH_ANCHORS,
+        [
+            OrgId,
+            WorkspaceId,
+            maps:get(mine, Filters, false),
+            maps:get(business_identity_id, Filters, 0)
+        ],
+        ?ANCHOR_KEYS
+    );
+seat_session_search_anchors(_OrgId, _WorkspaceId, _Filters) ->
+    {error, {invalid_argument, seat_session_search_anchors}}.

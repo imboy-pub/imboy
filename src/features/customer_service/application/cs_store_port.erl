@@ -286,11 +286,24 @@
     Filters :: #{
         business_identity_id := pos_integer(),
         mine => boolean() | binary(),
-        search => binary()
+        search => binary(),
+        summary_match_ids => [pos_integer()]
     }
 ) ->
     {ok, #{rows := [map()], total := non_neg_integer(), total_by_status := map()}}
     | {error, term()}.
+
+%% @doc CSB-02R 摘要搜索阶段 A：作用域内「有末条消息」会话的最小锚点投影
+%% {id, organization_id, workspace_id, conversation_id, last_message_id}。
+%% Filters 只携带作用域键（business_identity_id / mine）——搜索词不进锚点
+%% 查询，摘要匹配由装配层经 enterprise 批量面完成后回注 seat_session_page
+%% 的 `summary_match_ids`。锚点零密文/正文。
+-callback seat_session_search_anchors(
+    OrgId :: integer(),
+    WorkspaceId :: non_neg_integer(),
+    Filters :: #{business_identity_id := pos_integer(), mine => boolean() | binary()}
+) ->
+    {ok, [map()]} | {error, term()}.
 
 %% @doc CSB-02R widget 装配：本 Org 缺省 Workspace 解析（org 作用域 active 且
 %% id 最小——访客无 membership，不做成员连接；EB 同款确定性规则）。

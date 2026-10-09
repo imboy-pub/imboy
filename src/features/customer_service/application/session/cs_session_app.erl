@@ -840,13 +840,27 @@ seat_session_query(Store, OrgId, Status, AfterId, Limit, Params) ->
             case maps:get(workspace_id, Params, 0) of
                 WorkspaceId when is_integer(WorkspaceId), WorkspaceId >= 0 ->
                     Filters = maps:with([business_identity_id, mine, search], Params),
-                    case lists:member({seat_session_page, 6}, Store:module_info(exports)) of
-                        true ->
-                            Store:seat_session_page(
-                                OrgId, Status, AfterId, Limit, WorkspaceId, Filters
-                            );
-                        false ->
-                            {error, {unimplemented_port, {Store, seat_session_page, 6}}}
+                    case summary_search_ids(Store, OrgId, WorkspaceId, Filters, Params) of
+                        {error, _} = Err ->
+                            Err;
+                        {ok, FiltersWithSummary} ->
+                            case
+                                lists:member(
+                                    {seat_session_page, 6}, Store:module_info(exports)
+                                )
+                            of
+                                true ->
+                                    Store:seat_session_page(
+                                        OrgId,
+                                        Status,
+                                        AfterId,
+                                        Limit,
+                                        WorkspaceId,
+                                        FiltersWithSummary
+                                    );
+                                false ->
+                                    {error, {unimplemented_port, {Store, seat_session_page, 6}}}
+                            end
                     end;
                 _ ->
                     {error, invalid_workspace_id}
@@ -863,6 +877,82 @@ seat_session_query(Store, OrgId, Status, AfterId, Limit, Params) ->
                     )
             end
     end.
+
+%% ===================================================================
+%% CSB-02R 摘要搜索两段式（解锁项 3；annex 冻结合同）
+%%
+%% 搜索词命中面 = 脱敏显示名 / 来源 / 会话 id（store 文本匹配）∪ **已有
+%% 合法消息摘要**（末条 preview，同 CS-BE-02 口径：服务端解密 + 64 码点
+%% 截断）。阶段 A：锚点批量读（store 面）→ cs_message_preview:preview_batch
+%% （每批 ≤ 200 分块，enterprise 批量上限）→ 截断 + 大小写折叠匹配 → 命中
+%% 会话 id 集；阶段 B：id 集回注 seat_session_page 的 `summary_match_ids`，
+%% filtered CTE 在分页前完成匹配（命中集合 = 计数集合 = 分页集合）。
+%% 负例由构造保证：hidden/撤回正文 enterprise 侧 undefined → 不命中；
+%% keyring 不可用全 undefined → 降级不命中；搜索词不进任何 SQL 拼接。
+%% ===================================================================
+summary_search_ids(Store, OrgId, WorkspaceId, Filters, Params) ->
+    case cs_pg_inbox:search(maps:get(search, Filters, <<>>)) of
+        {ok, <<>>} ->
+            %% 空搜索：无摘要相位，filters 原样。
+            {ok, Filters};
+        {ok, Needle} ->
+            AnchorFilters = maps:without([search], Filters),
+            case
+                lists:member(
+                    {seat_session_search_anchors, 3}, Store:module_info(exports)
+                )
+            of
+                false ->
+                    {error, {unimplemented_port, {Store, seat_session_search_anchors, 3}}};
+                true ->
+                    case
+                        Store:seat_session_search_anchors(
+                            OrgId, WorkspaceId, AnchorFilters
+                        )
+                    of
+                        {error, _} = Err ->
+                            Err;
+                        {ok, Anchors} ->
+                            {ok, Filters#{
+                                summary_match_ids => match_summaries(Anchors, Needle, Params)
+                            }}
+                    end
+            end;
+        {error, _} = Err ->
+            Err
+    end.
+
+match_summaries(Anchors, Needle, Params) ->
+    Needles = string:lowercase(Needle),
+    Bodies = chunked_previews(Anchors, Params, #{}),
+    [
+        maps:get(id, Anchor)
+     || Anchor <- Anchors,
+        begin
+            %% 摘要面 = 截断后的末条 preview（与坐席所见逐字同源）；
+            %% undefined（hidden/空正文/keyring 降级/purge）不命中。
+            Summary = maps:get(maps:get(last_message_id, Anchor), Bodies, undefined),
+            Summary =/= undefined andalso
+                binary:match(string:lowercase(Summary), Needles) =/= nomatch
+        end
+    ].
+
+%% enterprise 批量面上限 200：锚点按 200 分块（N/200 次批量往返，与逐行
+%% N+1 有量级差）；块间合并同一 Previews 映射（键 = last_message_id）。
+chunked_previews([], _Params, Acc) ->
+    Acc;
+chunked_previews(Anchors, Params, Acc) ->
+    {Now, Rest} =
+        case length(Anchors) > 200 of
+            true -> lists:split(200, Anchors);
+            false -> {Anchors, []}
+        end,
+    Acc2 =
+        case cs_message_preview:preview_batch(Now, Params) of
+            {ok, Previews} -> maps:merge(Acc, Previews);
+            {error, _} -> Acc
+        end,
+    chunked_previews(Rest, Params, Acc2).
 
 seat_session_views(Rows, Status, Params, Previews) ->
     seat_session_views(Rows, Status, Params, Previews, []).

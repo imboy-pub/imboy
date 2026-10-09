@@ -90,7 +90,9 @@ cases() ->
         {timeout, 30, fun cs_be02_waiting_seconds_is_authoritative/0},
         {timeout, 30, fun cs_be02_preview_unicode_truncation/0},
         {timeout, 30, fun cs_be02_preview_placeholder_semantics/0},
-        {timeout, 30, fun cs_be02_view_never_carries_cipher_material/0}
+        {timeout, 30, fun cs_be02_view_never_carries_cipher_material/0},
+        %% CSB-02R 摘要搜索两段式：命中=计数=分页同源 + 单次批量 + 空搜索旁路。
+        {timeout, 30, fun cs_be02_summary_search_two_phase/0}
     ].
 
 %% ===================================================================
@@ -760,6 +762,41 @@ cs_be02_view_never_carries_cipher_material() ->
         ],
         lists:foreach(fun(K) -> ?assertNot(is_map_key(K, Row)) end, RedLines),
         lists:foreach(fun(K) -> ?assertNot(is_map_key(K, LM)) end, RedLines)
+    after
+        cs_be02_unmeck()
+    end.
+
+%% CSB-02R 摘要搜索两段式（解锁项 3）：阶段 A 锚点批量读 + enterprise 批量
+%% 正文 + 截断摘要大小写折叠匹配；阶段 B 命中 id 集回注 page。冻结断言：
+%% 命中集合 = 计数集合 = 分页集合；整页恰一次 enterprise 批量调用；空搜索
+%% 不进入摘要相位（形状原样）；无命中 → 零行零计数。
+cs_be02_summary_search_two_phase() ->
+    ok = ?FAKE:init(),
+    cs_be02_put_seat_row(#{id => 555000241, last_message_id => 880041}),
+    cs_be02_put_seat_row(#{id => 555000242, last_message_id => 880042}),
+    cs_be02_put_seat_row(#{id => 555000243, last_message_id => undefined}),
+    cs_be02_meck_batch(#{
+        880041 => <<"我想申请退货退款，麻烦处理"/utf8>>,
+        880042 => <<"需要开一张发票"/utf8>>
+    }),
+    try
+        {ok, #{sessions := Rows, total := 1}} =
+            cs_be02_seat_page(#{
+                search => <<"退货"/utf8>>, business_identity_id => 911000901, at => 1700000065
+            }),
+        ?assertEqual([555000241], [maps:get(id, R) || R <- Rows]),
+        %% 批量面调用数：搜索相位恰 1 次（2 锚点 ≤ 200 单批）。展示相位在本
+        %% 测试恒降级（fake 未种 messages 行 → 页行无 last_message_id →
+        %% preview_items 空集 → 零 enterprise 调用），故总数 = 1。
+        ?assertEqual(
+            1, meck:num_calls(enterprise_business_facade, fetch_message_bodies, '_')
+        ),
+        {ok, #{sessions := [], total := 0}} =
+            cs_be02_seat_page(#{
+                search => <<"不存在的词"/utf8>>, business_identity_id => 911000901, at => 1700000065
+            }),
+        {ok, #{sessions := AllRows, total := 3}} = cs_be02_seat_page(#{at => 1700000065}),
+        ?assertEqual(3, length(AllRows))
     after
         cs_be02_unmeck()
     end.

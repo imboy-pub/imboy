@@ -119,6 +119,8 @@ contracts() ->
             {session_stats, 4},
             {seat_session_page, 5},
             {seat_session_page, 6},
+            %% CSB-02R：摘要搜索阶段 A 锚点（跨 workspace 批次，org+scope 过滤）
+            {seat_session_search_anchors, 3},
             %% CS-BE-03（CS-DEC-01）：客户上下文只读事实（会话锚定事实行 /
             %% 同 contact 历史页 / 授权备注事实页）。
             {fetch_session_customer_context, 3},

@@ -47,6 +47,7 @@
     %% CSB-02R：坐席工作台分页 / widget 装配缺省 Workspace
     seat_session_page/5,
     seat_session_page/6,
+    seat_session_search_anchors/3,
     default_workspace/1,
     %% CS-BE-03：客户上下文只读事实（会话锚定事实行 / 历史页 / 备注页）
     fetch_session_customer_context/3,
@@ -217,6 +218,10 @@ seat_session_page(OrgId, Status, AfterId, Limit, WorkspaceId) ->
 
 seat_session_page(OrgId, Status, AfterId, Limit, WorkspaceId, Filters) ->
     cs_pg_session:seat_session_page(OrgId, Status, AfterId, Limit, WorkspaceId, Filters).
+
+%% CSB-02R：摘要搜索阶段 A 锚点（实现下沉 cs_pg_inbox，薄委派）。
+seat_session_search_anchors(OrgId, WorkspaceId, Filters) ->
+    cs_pg_inbox:seat_session_search_anchors(OrgId, WorkspaceId, Filters).
 
 %% CS-BE-03：客户上下文只读事实（cs_store_port 同名 callback 的薄委派）。
 fetch_session_customer_context(OrgId, WorkspaceId, SessionId) ->

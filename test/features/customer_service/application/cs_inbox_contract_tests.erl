@@ -4,9 +4,12 @@
 
 filters_fail_closed_test() ->
     Base = #{business_identity_id => 41},
-    ?assertEqual({ok, Base#{mine => false, search => <<>>}}, cs_pg_inbox:filters(Base)),
     ?assertEqual(
-        {ok, Base#{mine => true, search => <<"王***明"/utf8>>}},
+        {ok, Base#{mine => false, search => <<>>, summary_match_ids => []}},
+        cs_pg_inbox:filters(Base)
+    ),
+    ?assertEqual(
+        {ok, Base#{mine => true, search => <<"王***明"/utf8>>, summary_match_ids => []}},
         cs_pg_inbox:filters(Base#{mine => <<"true">>, search => <<" 王***明 "/utf8>>})
     ),
     lists:foreach(

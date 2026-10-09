@@ -68,6 +68,7 @@
     list_sessions_page/5,
     seat_session_page/5,
     seat_session_page/6,
+    seat_session_search_anchors/3,
     %% CS-BE-07：按需统计（窗口聚合 + 当前 status 计数）
     session_stats/4,
     default_workspace/1,
@@ -385,20 +386,56 @@ seat_session_page(OrgId, Status, AfterId, Limit, WorkspaceId, Filters) ->
     case cs_pg_inbox:page_args(OrgId, Status, AfterId, Limit, WorkspaceId, Filters) of
         {error, _} = Error ->
             Error;
-        {ok, [OrgId, StatusBin, Cursor, WorkspaceId, Size, IdentityId, Mine, Search]} ->
-            Normalized = #{business_identity_id => IdentityId, mine => Mine, search => Search},
+        {ok, [OrgId, StatusBin, Cursor, WorkspaceId, Size, IdentityId, Mine, Search, SummaryIds]} ->
+            Normalized = #{
+                business_identity_id => IdentityId,
+                mine => Mine,
+                search => Search,
+                summary_match_ids => SummaryIds
+            },
             inbox_page(OrgId, StatusBin, Cursor, Size, WorkspaceId, Normalized)
     end.
+
+%% CSB-02R 摘要搜索阶段 A：作用域内「有末条」会话锚点（鸭子型实现，
+%% 行形状与 cs_pg_inbox:seat_session_search_anchors/3 投影逐列一致）。
+seat_session_search_anchors(OrgId, WorkspaceId, Filters) ->
+    {sessions, Sessions} = hd(ets:lookup(?TAB, sessions)),
+    Mine = maps:get(mine, Filters, false),
+    IdentityId = maps:get(business_identity_id, Filters, 0),
+    Anchors = [
+        #{
+            id => maps:get(id, S),
+            organization_id => OrgId,
+            workspace_id => maps:get(workspace_id, S),
+            conversation_id => maps:get(conversation_id, S),
+            last_message_id => maps:get(last_message_id, S)
+        }
+     || S <- maps:values(Sessions),
+        maps:get(organization_id, S) =:= OrgId,
+        WorkspaceId =:= 0 orelse maps:get(workspace_id, S) =:= WorkspaceId,
+        maps:get(last_message_id, S, undefined) =/= undefined,
+        not Mine orelse maps:get(business_identity_id, S, undefined) =:= IdentityId
+    ],
+    {ok, Anchors}.
 
 inbox_page(OrgId, Status, AfterId, Limit, WorkspaceId, Normalized) ->
     note_limit(Limit),
     {sessions, Sessions} = hd(ets:lookup(?TAB, sessions)),
-    Selected = [
+    SummaryIds = maps:get(summary_match_ids, Normalized, []),
+    %% 镜像 SQL 分层：scope（org/ws/mine/identity）先于 filtered（文本 OR
+    %% 摘要命中 id 集）——摘要命中不绕过作用域过滤。
+    Scoped = [
         Session
      || Session <- maps:values(Sessions),
         maps:get(organization_id, Session) =:= OrgId,
         WorkspaceId =:= 0 orelse maps:get(workspace_id, Session) =:= WorkspaceId,
-        inbox_match(Session, Normalized)
+        scope_match(Session, Normalized)
+    ],
+    Selected = [
+        Session
+     || Session <- Scoped,
+        inbox_match(Session, Normalized) orelse
+            lists:member(maps:get(id, Session), SummaryIds)
     ],
     Counts = lists:foldl(
         fun(Session, Acc) ->
@@ -432,13 +469,16 @@ inbox_page(OrgId, Status, AfterId, Limit, WorkspaceId, Normalized) ->
         total_by_status => Counts
     }}.
 
+scope_match(Session, #{business_identity_id := IdentityId, mine := Mine}) ->
+    not Mine orelse maps:get(business_identity_id, Session, undefined) =:= IdentityId.
+
 inbox_match(Session, #{business_identity_id := IdentityId, mine := Mine, search := Search}) ->
     Fields = [
         cs_app_support:masked_name(Session),
         cs_app_support:source_of(Session),
         integer_to_binary(maps:get(id, Session))
     ],
-    (not Mine orelse maps:get(business_identity_id, Session, undefined) =:= IdentityId) andalso
+    scope_match(Session, #{business_identity_id => IdentityId, mine => Mine}) andalso
         (Search =:= <<>> orelse
             lists:any(
                 fun(Field) ->

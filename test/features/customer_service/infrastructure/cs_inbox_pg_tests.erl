@@ -32,6 +32,32 @@ read_and_reply_facts_test() ->
         ?assert(Last > First)
     end).
 
+%% CSB-02R：summary_match_ids 面（阶段 B SQL 注入）——命中集合 = 计数集合
+%% = 分页集合；空集恒不改变形状；非法项 fail-closed。
+summary_match_ids_face_test() ->
+    with_scope(fun(Scope) ->
+        SessionA = insert_session(Scope, <<"active">>),
+        _MsgA = insert_message(Scope, <<"contact">>, <<"visible">>),
+        SessionB = insert_session(Scope, <<"active">>),
+        _MsgB = insert_message(Scope, <<"contact">>, <<"visible">>),
+        Page = page(Scope, <<"active">>, #{summary_match_ids => [SessionA]}),
+        ?assertEqual(1, maps:get(total, Page)),
+        ?assertEqual([SessionA], [maps:get(id, R) || R <- maps:get(rows, Page)]),
+        PageAll = page(Scope, <<"active">>, #{summary_match_ids => []}),
+        ?assertEqual(2, maps:get(total, PageAll)),
+        ?assertMatch(
+            {error, {invalid_param_value, summary_match_ids}},
+            cs_pg_store:seat_session_page(
+                org(Scope),
+                <<"active">>,
+                0,
+                20,
+                ws(Scope),
+                filters(Scope, #{summary_match_ids => [bad]})
+            )
+        )
+    end).
+
 server_search_and_cursor_test() ->
     with_scope(fun(Scope) ->
         Sessions = [insert_session(Scope, <<"closed">>) || _Index <- lists:seq(1, 7)],
