@@ -20,6 +20,7 @@
 | [error-codes.md](./error-codes.md) | 错误码定义与使用 |
 | [utf8-encoding.md](./utf8-encoding.md) | UTF-8 编码约定 |
 | [ws-protocol-contract.md](./ws-protocol-contract.md) | WebSocket 消息信封与事件约定 |
+| [e2ee-security-boundary.md](./e2ee-security-boundary.md) | 一期关闭边界、消息域与密钥持有者说明 |
 | [websocket-api-2.md](./websocket-api-2.md) | WebSocket API 详细协议（全量参考） |
 | [tsid-field-convention.md](./tsid-field-convention.md) | TSID 跨端字段约定 |
 | [tsid-field-matrix.md](./tsid-field-matrix.md) | TSID 字段矩阵 |

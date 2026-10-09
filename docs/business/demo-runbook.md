@@ -156,7 +156,7 @@ cat deploy/docker-compose.prod.yml | head -20
 > ⚠️ **不要提 Helm / K8s 集群**。仓内的 Helm chart 是实验性的，未经生产集群验证；
 > 客户主动问起时照实说"路线图项，当前按单节点交付"。
 
-**收尾**：递上安全简报（`docs/business/e2ee-security-brief.md` 的 PDF 打印版）
+**收尾**：说明实际部署的[安全边界](../reference/e2ee-security-boundary.md)，不得把演示过程当作发布或安全资格证据。
 
 ---
 

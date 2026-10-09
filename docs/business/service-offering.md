@@ -9,7 +9,7 @@ IMBoy 的商业化定位、行业解决方案、报价假设、PoC、销售、�
 ## 产品仓库中的相关真相源
 
 - 版次和交付边界：`docs/business/edition-boundary.md`
-- E2EE 技术与安全说明：`docs/business/e2ee-security-brief.md`
+- E2EE 与一期安全边界：[产品参考](../reference/e2ee-security-boundary.md)
 - Demo 与部署操作：`docs/business/demo-runbook.md`
 
 商业中心中的价格、客户需求、ROI、交付周期和效果均属于验证材料，除非已有真实报价、付款或客户验收证据，不应视为正式承诺。
