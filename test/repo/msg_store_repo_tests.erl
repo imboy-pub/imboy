@@ -17,6 +17,7 @@ workspace_guard_meck() ->
     {workspace_guard, [
         {'ensure_writable_tx', 2, fun(_Conn, {group, 100}) ->
             put({?MODULE, workspace_locked}, true),
+            put({?MODULE, discussion_binding_checked}, false),
             ok
         end},
         {'abort_on_error', 1, fun(ok) -> ok end}
@@ -416,6 +417,7 @@ c2g_stage_commits_authorized_snapshot_and_role_test_() ->
             ]},
             {epgsql, [
                 {'equery', 3, fun(_, Sql, [<<"c2g:100">>]) ->
+                    assert_discussion_locked(),
                     ?assertEqual(true, get({?MODULE, workspace_locked})),
                     ?assertNotEqual(nomatch, binary:match(Sql, <<"RETURNING seq">>)),
                     {ok, [], [], [{7}]}
@@ -433,6 +435,15 @@ c2g_stage_commits_authorized_snapshot_and_role_test_() ->
             {elib_pg, [
                 {'with_tx', 1, fun(Tx) -> Tx(fake_conn) end},
                 {'query', 3, fun
+                    (_, Sql = <<"LOCK TABLE public.channel IN ROW EXCLUSIVE MODE">>, []) ->
+                        stage_discussion_lock_query(Sql, []);
+                    (
+                        _,
+                        Sql =
+                            <<"SELECT id FROM public.channel WHERE discussion_group_id=$1 FOR UPDATE">>,
+                        [100]
+                    ) ->
+                        stage_discussion_lock_query(Sql, [100]);
                     (_, Sql, [100, 50, 3, 5001]) ->
                         ?assertNotEqual(nomatch, binary:match(Sql, <<"caller.role >= $3">>)),
                         ?assertNotEqual(nomatch, binary:match(Sql, <<"caller.status = 1">>)),
@@ -540,9 +551,13 @@ c2g_stage_sequence_failures_are_rolled_back_test_() ->
                 {'public_tablename', 1, fun(_) -> <<"public.msg_store_staging">> end}
             ]},
             {epgsql, [
-                {'equery', 3, fun(_, _, _) -> get({?MODULE, sequence_result}) end}
+                {'equery', 3, fun(_, _, _) ->
+                    assert_discussion_locked(),
+                    get({?MODULE, sequence_result})
+                end}
             ]},
             {elib_pg, [
+                {'query', 3, fun(_, Sql, Params) -> stage_discussion_lock_query(Sql, Params) end},
                 {'with_tx', 1, fun(Tx) ->
                     try Tx(fake_conn) of
                         Result -> Result
@@ -679,7 +694,12 @@ c2g_stage_attachment_bind_error_rolls_back_test_() ->
             ]},
             workspace_guard_meck(),
             {elib_tsid, [{'generate', 1, fun(msg_store) -> 12345 end}]},
-            {epgsql, [{'equery', 3, fun(_, _, _) -> {ok, [], [], [{7}]} end}]},
+            {epgsql, [
+                {'equery', 3, fun(_, _, _) ->
+                    assert_discussion_locked(),
+                    {ok, [], [], [{7}]}
+                end}
+            ]},
             {elib_pg_sql, [
                 {'public_tablename', 1, fun(_) -> <<"public.msg_store_staging">> end},
                 {'insert', 2, fun(_, _) -> {<<"INSERT staged">>, []} end}
@@ -693,6 +713,15 @@ c2g_stage_attachment_bind_error_rolls_back_test_() ->
                     end
                 end},
                 {'query', 3, fun
+                    (_, Sql = <<"LOCK TABLE public.channel IN ROW EXCLUSIVE MODE">>, []) ->
+                        stage_discussion_lock_query(Sql, []);
+                    (
+                        _,
+                        Sql =
+                            <<"SELECT id FROM public.channel WHERE discussion_group_id=$1 FOR UPDATE">>,
+                        [100]
+                    ) ->
+                        stage_discussion_lock_query(Sql, [100]);
                     (_, _, [100, 50, 1, 5001]) ->
                         {ok, [#{<<"user_id">> => 50}, #{<<"user_id">> => 60}]};
                     (
@@ -749,7 +778,12 @@ c2g_stage_duplicate_does_not_bind_attachment_test_() ->
             ]},
             workspace_guard_meck(),
             {elib_tsid, [{'generate', 1, fun(msg_store) -> 12345 end}]},
-            {epgsql, [{'equery', 3, fun(_, _, _) -> {ok, [], [], [{7}]} end}]},
+            {epgsql, [
+                {'equery', 3, fun(_, _, _) ->
+                    assert_discussion_locked(),
+                    {ok, [], [], [{7}]}
+                end}
+            ]},
             {elib_pg_sql, [
                 {'public_tablename', 1, fun(_) -> <<"public.msg_store_staging">> end},
                 {'insert', 2, fun(_, _) -> {<<"INSERT duplicate">>, []} end}
@@ -763,6 +797,15 @@ c2g_stage_duplicate_does_not_bind_attachment_test_() ->
                     end
                 end},
                 {'query', 3, fun
+                    (_, Sql = <<"LOCK TABLE public.channel IN ROW EXCLUSIVE MODE">>, []) ->
+                        stage_discussion_lock_query(Sql, []);
+                    (
+                        _,
+                        Sql =
+                            <<"SELECT id FROM public.channel WHERE discussion_group_id=$1 FOR UPDATE">>,
+                        [100]
+                    ) ->
+                        stage_discussion_lock_query(Sql, [100]);
                     (_, _, [100, 50, 1, 5001]) ->
                         {ok, [#{<<"user_id">> => 50}]};
                     (
@@ -828,7 +871,7 @@ c2g_stage_duplicate_does_not_bind_attachment_test_() ->
                     1
                 )
             ),
-            ?assertEqual(3, meck:num_calls(elib_pg, query, 3))
+            assert_stage_query_counts(3)
         end
     ).
 
@@ -840,7 +883,12 @@ c2g_stage_rejects_msg_id_owned_by_another_sender_test_() ->
             ]},
             workspace_guard_meck(),
             {elib_tsid, [{'generate', 1, fun(msg_store) -> 12345 end}]},
-            {epgsql, [{'equery', 3, fun(_, _, _) -> {ok, [], [], [{7}]} end}]},
+            {epgsql, [
+                {'equery', 3, fun(_, _, _) ->
+                    assert_discussion_locked(),
+                    {ok, [], [], [{7}]}
+                end}
+            ]},
             {elib_pg_sql, [
                 {'public_tablename', 1, fun(_) -> <<"public.msg_store_staging">> end},
                 {'insert', 2, fun(_, _) -> erlang:error(staging_insert_must_not_run) end}
@@ -854,6 +902,15 @@ c2g_stage_rejects_msg_id_owned_by_another_sender_test_() ->
                     end
                 end},
                 {'query', 3, fun
+                    (_, Sql = <<"LOCK TABLE public.channel IN ROW EXCLUSIVE MODE">>, []) ->
+                        stage_discussion_lock_query(Sql, []);
+                    (
+                        _,
+                        Sql =
+                            <<"SELECT id FROM public.channel WHERE discussion_group_id=$1 FOR UPDATE">>,
+                        [100]
+                    ) ->
+                        stage_discussion_lock_query(Sql, [100]);
                     (_, _, [100, 50, 1, 5001]) ->
                         {ok, [#{<<"user_id">> => 50}]};
                     (
@@ -900,7 +957,10 @@ c2g_stage_5000_recipients_commits_test_() ->
                 {'generate', 1, fun(msg_store) -> 12345 end}
             ]},
             {epgsql, [
-                {'equery', 3, fun(_, _, _) -> {ok, [], [], [{7}]} end}
+                {'equery', 3, fun(_, _, _) ->
+                    assert_discussion_locked(),
+                    {ok, [], [], [{7}]}
+                end}
             ]},
             {elib_pg_sql, [
                 {'public_tablename', 1, fun(_) -> <<"public.msg_store_staging">> end},
@@ -912,6 +972,15 @@ c2g_stage_5000_recipients_commits_test_() ->
             {elib_pg, [
                 {'with_tx', 1, fun(Tx) -> Tx(fake_conn) end},
                 {'query', 3, fun
+                    (_, Sql = <<"LOCK TABLE public.channel IN ROW EXCLUSIVE MODE">>, []) ->
+                        stage_discussion_lock_query(Sql, []);
+                    (
+                        _,
+                        Sql =
+                            <<"SELECT id FROM public.channel WHERE discussion_group_id=$1 FOR UPDATE">>,
+                        [100]
+                    ) ->
+                        stage_discussion_lock_query(Sql, [100]);
                     (_, _, [100, 50, 1, 5001]) ->
                         {ok, [#{<<"user_id">> => Uid} || Uid <- RecipientUids]};
                     (
@@ -966,7 +1035,10 @@ c2g_stage_5001_recipients_rolls_back_test_() ->
                 {'public_tablename', 1, fun(_) -> <<"public.msg_store_staging">> end}
             ]},
             {epgsql, [
-                {'equery', 3, fun(_, _, _) -> {ok, [], [], [{7}]} end}
+                {'equery', 3, fun(_, _, _) ->
+                    assert_discussion_locked(),
+                    {ok, [], [], [{7}]}
+                end}
             ]},
             {elib_pg, [
                 {'with_tx', 1, fun(Tx) ->
@@ -976,8 +1048,18 @@ c2g_stage_5001_recipients_rolls_back_test_() ->
                         throw:{rollback, Reason} -> {rollback, Reason}
                     end
                 end},
-                {'query', 3, fun(_, _, [100, 50, 1, 5001]) ->
-                    {ok, [#{<<"user_id">> => Uid} || Uid <- lists:seq(1, 5001)]}
+                {'query', 3, fun
+                    (_, Sql = <<"LOCK TABLE public.channel IN ROW EXCLUSIVE MODE">>, []) ->
+                        stage_discussion_lock_query(Sql, []);
+                    (
+                        _,
+                        Sql =
+                            <<"SELECT id FROM public.channel WHERE discussion_group_id=$1 FOR UPDATE">>,
+                        [100]
+                    ) ->
+                        stage_discussion_lock_query(Sql, [100]);
+                    (_, _, [100, 50, 1, 5001]) ->
+                        {ok, [#{<<"user_id">> => Uid} || Uid <- lists:seq(1, 5001)]}
                 end}
             ]}
         ],
@@ -1016,7 +1098,10 @@ c2g_stage_snapshot_error_rolls_back_test_() ->
                 {'public_tablename', 1, fun(_) -> <<"public.msg_store_staging">> end}
             ]},
             {epgsql, [
-                {'equery', 3, fun(_, _, _) -> {ok, [], [], [{7}]} end}
+                {'equery', 3, fun(_, _, _) ->
+                    assert_discussion_locked(),
+                    {ok, [], [], [{7}]}
+                end}
             ]},
             {elib_pg, [
                 {'with_tx', 1, fun(Tx) ->
@@ -1026,7 +1111,19 @@ c2g_stage_snapshot_error_rolls_back_test_() ->
                         throw:{rollback, Reason} -> {rollback, Reason}
                     end
                 end},
-                {'query', 3, fun(_, _, [100, 50, 1, 5001]) -> {error, connection_lost} end}
+                {'query', 3, fun
+                    (_, Sql = <<"LOCK TABLE public.channel IN ROW EXCLUSIVE MODE">>, []) ->
+                        stage_discussion_lock_query(Sql, []);
+                    (
+                        _,
+                        Sql =
+                            <<"SELECT id FROM public.channel WHERE discussion_group_id=$1 FOR UPDATE">>,
+                        [100]
+                    ) ->
+                        stage_discussion_lock_query(Sql, [100]);
+                    (_, _, [100, 50, 1, 5001]) ->
+                        {error, connection_lost}
+                end}
             ]}
         ],
         fun() ->
@@ -1062,6 +1159,7 @@ c2g_action_stage_uses_original_snapshot_and_generation_test_() ->
             ]},
             {epgsql, [
                 {'equery', 3, fun(_, Sql, [<<"c2g:100">>]) ->
+                    assert_discussion_locked(),
                     ?assertNotEqual(nomatch, binary:match(Sql, <<"RETURNING seq">>)),
                     {ok, [], [], [{8}]}
                 end}
@@ -1077,6 +1175,15 @@ c2g_action_stage_uses_original_snapshot_and_generation_test_() ->
             {elib_pg, [
                 {'with_tx', 1, fun(Tx) -> Tx(fake_conn) end},
                 {'query', 3, fun
+                    (_, Sql = <<"LOCK TABLE public.channel IN ROW EXCLUSIVE MODE">>, []) ->
+                        stage_discussion_lock_query(Sql, []);
+                    (
+                        _,
+                        Sql =
+                            <<"SELECT id FROM public.channel WHERE discussion_group_id=$1 FOR UPDATE">>,
+                        [100]
+                    ) ->
+                        stage_discussion_lock_query(Sql, [100]);
                     (_, Sql, [100, 50, 1, <<"original-msg">>, 5001]) ->
                         ?assertNotEqual(
                             nomatch, binary:match(Sql, <<"msg_c2g_recipient_snapshot">>)
@@ -1129,7 +1236,7 @@ c2g_action_stage_uses_original_snapshot_and_generation_test_() ->
                     <<"original-msg">>
                 )
             ),
-            ?assertEqual(4, meck:num_calls(elib_pg, query, 3))
+            assert_stage_query_counts(4)
         end
     ).
 
@@ -1144,7 +1251,10 @@ c2g_action_stage_snapshot_primary_key_is_durable_idempotency_test_() ->
                 {'generate', 1, fun(msg_store) -> 12346 end}
             ]},
             {epgsql, [
-                {'equery', 3, fun(_, _, _) -> {ok, [], [], [{9}]} end}
+                {'equery', 3, fun(_, _, _) ->
+                    assert_discussion_locked(),
+                    {ok, [], [], [{9}]}
+                end}
             ]},
             {elib_pg_sql, [
                 {'public_tablename', 1, fun(_) -> <<"public.msg_store_staging">> end},
@@ -1159,6 +1269,15 @@ c2g_action_stage_snapshot_primary_key_is_durable_idempotency_test_() ->
                     end
                 end},
                 {'query', 3, fun
+                    (_, Sql = <<"LOCK TABLE public.channel IN ROW EXCLUSIVE MODE">>, []) ->
+                        stage_discussion_lock_query(Sql, []);
+                    (
+                        _,
+                        Sql =
+                            <<"SELECT id FROM public.channel WHERE discussion_group_id=$1 FOR UPDATE">>,
+                        [100]
+                    ) ->
+                        stage_discussion_lock_query(Sql, [100]);
                     (_, _, [100, 50, 1, <<"original-msg">>, 5001]) ->
                         {ok, [#{<<"user_id">> => 50}, #{<<"user_id">> => 60}]};
                     (
@@ -1241,7 +1360,10 @@ c2g_action_stage_rejects_invisible_original_test_() ->
                 {'public_tablename', 1, fun(_) -> <<"public.msg_store_staging">> end}
             ]},
             {epgsql, [
-                {'equery', 3, fun(_, _, _) -> {ok, [], [], [{8}]} end}
+                {'equery', 3, fun(_, _, _) ->
+                    assert_discussion_locked(),
+                    {ok, [], [], [{8}]}
+                end}
             ]},
             {elib_pg, [
                 {'with_tx', 1, fun(Tx) ->
@@ -1251,8 +1373,18 @@ c2g_action_stage_rejects_invisible_original_test_() ->
                         throw:{rollback, Reason} -> {rollback, Reason}
                     end
                 end},
-                {'query', 3, fun(_, _, [100, 50, 1, <<"old-generation-msg">>, 5001]) ->
-                    {ok, []}
+                {'query', 3, fun
+                    (_, Sql = <<"LOCK TABLE public.channel IN ROW EXCLUSIVE MODE">>, []) ->
+                        stage_discussion_lock_query(Sql, []);
+                    (
+                        _,
+                        Sql =
+                            <<"SELECT id FROM public.channel WHERE discussion_group_id=$1 FOR UPDATE">>,
+                        [100]
+                    ) ->
+                        stage_discussion_lock_query(Sql, [100]);
+                    (_, _, [100, 50, 1, <<"old-generation-msg">>, 5001]) ->
+                        {ok, []}
                 end}
             ]}
         ],
@@ -1974,3 +2106,65 @@ payload_to_jsonb_encodes_map_test() ->
 
 payload_to_jsonb_null_test() ->
     ?assertEqual(<<"null">>, msg_store_repo:msg_store_payload_to_jsonb(null)).
+
+%% Original fixtures have no channel binding; unknown lock SQL has no clause.
+stage_discussion_lock_query(<<"LOCK TABLE public.channel IN ROW EXCLUSIVE MODE">>, []) ->
+    ?assertEqual(true, get({?MODULE, workspace_locked})),
+    put({?MODULE, discussion_table_locked}, true),
+    {ok, []};
+stage_discussion_lock_query(
+    <<"SELECT id FROM public.channel WHERE discussion_group_id=$1 FOR UPDATE">>, [100]
+) ->
+    ?assertEqual(true, get({?MODULE, discussion_table_locked})),
+    put({?MODULE, discussion_binding_checked}, true),
+    {ok, []}.
+
+assert_discussion_locked() ->
+    ?assertEqual(true, get({?MODULE, discussion_binding_checked})).
+
+c2g_discussion_lock_failure_does_not_persist_test_() ->
+    ?WITH_MECKS(
+        [
+            {msg_archive_ds, [{'conv_key_c2g', 1, fun(100) -> <<"c2g:100">> end}]},
+            workspace_guard_meck(),
+            {elib_tsid, [{'generate', 1, fun(msg_store) -> 12345 end}]},
+            {epgsql, [{'equery', 3, fun(_, _, _) -> error(unexpected_sequence_allocation) end}]},
+            {elib_pg_sql, [{'insert', 2, fun(_, _) -> error(unexpected_stage_insert) end}]},
+            {elib_pg, [
+                {'with_tx', 1, fun(Tx) ->
+                    try
+                        Tx(fake_conn)
+                    catch
+                        throw:{abort_tx, Reason} -> {error, Reason}
+                    end
+                end},
+                {'query', 3, fun(
+                    fake_conn, <<"LOCK TABLE public.channel IN ROW EXCLUSIVE MODE">>, []
+                ) ->
+                    ?assertEqual(true, get({?MODULE, workspace_locked})),
+                    {error, lock_unavailable}
+                end}
+            ]}
+        ],
+        fun() ->
+            ?assertEqual(
+                {error, {discussion_access_query_failed, lock_unavailable}},
+                stage_c2g_test_msg(<<"lock-error">>)
+            ),
+            ?assertEqual(0, meck:num_calls(epgsql, equery, '_')),
+            ?assertEqual(0, meck:num_calls(elib_pg_sql, insert, '_')),
+            ?assertEqual(1, meck:num_calls(elib_pg, query, '_'))
+        end
+    ).
+
+%% Preserve the original business-query budget while accounting for two locks.
+assert_stage_query_counts(ExpectedBusiness) ->
+    TableLocks = meck:num_calls(elib_pg, query, [
+        '_', <<"LOCK TABLE public.channel IN ROW EXCLUSIVE MODE">>, []
+    ]),
+    BindingReads = meck:num_calls(elib_pg, query, [
+        '_', <<"SELECT id FROM public.channel WHERE discussion_group_id=$1 FOR UPDATE">>, [100]
+    ]),
+    ?assertEqual(1, TableLocks),
+    ?assertEqual(1, BindingReads),
+    ?assertEqual(ExpectedBusiness, meck:num_calls(elib_pg, query, 3) - TableLocks - BindingReads).
