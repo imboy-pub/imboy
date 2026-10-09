@@ -33,7 +33,7 @@ init_list_success_test_() ->
                     {ok, [
                         #{
                             <<"id">> => 9,
-                            <<"role_name">> => <<"custom_role">>,
+                            <<"role_name">> => <<" 内容运营员 "/utf8>>,
                             <<"status">> => 1,
                             <<"created_at">> => <<"2026-01-01">>
                         }
@@ -41,7 +41,11 @@ init_list_success_test_() ->
                 end}
             ]},
             {config_ds, [
-                {'get', 2, fun(_Key, Default) -> Default end}
+                {'get', 2, fun
+                    (<<"adm_role_names">>, _) -> #{<<"9">> => <<" 内容运营员 "/utf8>>};
+                    (<<"adm_role_descriptions">>, _) -> #{<<"9">> => <<" 内容运营😀 "/utf8>>};
+                    (_, Default) -> Default
+                end}
             ]},
             {elib_response, [
                 {'success', 2, fun(Req, Payload) ->
@@ -62,7 +66,10 @@ init_list_success_test_() ->
             ?assert(lists:member(1, RoleIds)),
             ?assert(lists:member(2, RoleIds)),
             ?assert(lists:member(3, RoleIds)),
-            ?assert(lists:member(9, RoleIds))
+            ?assert(lists:member(9, RoleIds)),
+            [Custom] = [Item || Item <- Items, maps:get(<<"id">>, Item) =:= 9],
+            ?assertEqual(<<"内容运营员"/utf8>>, maps:get(<<"role_name">>, Custom)),
+            ?assertEqual(<<"内容运营😀"/utf8>>, maps:get(<<"description">>, Custom))
         end
     ).
 
@@ -80,8 +87,8 @@ init_create_role_success_test_() ->
             {elib_param, [
                 {'post', 1, fun(_Req) ->
                     #{
-                        <<"name">> => <<"content_ops">>,
-                        <<"description">> => <<"内容运营"/utf8>>,
+                        <<"name">> => <<" 内容运营员 "/utf8>>,
+                        <<"description">> => <<" 内容运营😀 "/utf8>>,
                         <<"permissions">> => [<<"reports:read">>, <<"reports:handle">>],
                         <<"status">> => 1
                     }
@@ -99,7 +106,7 @@ init_create_role_success_test_() ->
                         nomatch ->
                             erlang:error({unexpected_sql, Sql, Params});
                         _ ->
-                            ?assertEqual([<<"content_ops">>], Params),
+                            ?assertEqual([<<"内容运营员"/utf8>>], Params),
                             {ok, []}
                     end
                 end},
@@ -107,7 +114,7 @@ init_create_role_success_test_() ->
                     case binary:match(Sql, <<"SELECT COALESCE(MAX(sort), 99)">>) of
                         nomatch ->
                             ?assertNotEqual(nomatch, binary:match(Sql, <<"INSERT INTO">>)),
-                            ?assertEqual([12, 0, 100, <<"content_ops">>, 1], Params),
+                            ?assertEqual([12, 0, 100, <<"内容运营员"/utf8>>, 1], Params),
                             {ok, #{<<"id">> => 12}};
                         _ ->
                             {ok, #{<<"max_sort">> => 99}}
@@ -116,7 +123,20 @@ init_create_role_success_test_() ->
             ]},
             {config_ds, [
                 {'get', 2, fun(_Key, Default) -> Default end},
-                {'set', 2, fun(_Key, _Value) -> ok end}
+                {'set', 2, fun(Key, Value) ->
+                    case Key of
+                        <<"adm_role_names">> ->
+                            ?assertEqual(<<"内容运营员"/utf8>>, maps:get(<<"12">>, Value));
+                        <<"adm_role_descriptions">> ->
+                            ?assertEqual(<<"内容运营😀"/utf8>>, maps:get(<<"12">>, Value));
+                        <<"adm_role_permissions">> ->
+                            ?assertEqual(
+                                [<<"reports:handle">>, <<"reports:read">>],
+                                maps:get(<<"12">>, Value)
+                            )
+                    end,
+                    ok
+                end}
             ]},
             {elib_response, [
                 {'success', 2, fun(Req, Payload) ->
@@ -133,6 +153,15 @@ init_create_role_success_test_() ->
             Payload = maps:get(payload, RespReq),
             ?assertEqual(12, maps:get(<<"id">>, Payload)),
             ?assertEqual(12, maps:get(<<"role_id">>, Payload)),
+            ?assertEqual(3, meck:num_calls(config_ds, set, 2)),
+            meck:expect(elib_param, post, fun(_) -> #{<<"name">> => <<255>>} end),
+            ?assertException(
+                error,
+                badarg,
+                adm_role_handler:init(Req, #{
+                    action => create, adm_user_id => 1001
+                })
+            ),
             ?assertEqual(3, meck:num_calls(config_ds, set, 2))
         end
     ).
