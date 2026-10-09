@@ -7,7 +7,7 @@
 %
 % 隐私不变量（fail-closed，与 push_notification_logic 常量哲学一致）：
 %   - notification 仅携带 title/alert 调用方传入的常量文案，
-%     不含消息正文/密文片段/发送者身份/extras；
+%     不含消息正文/密文片段/发送者身份；send/4 可附固定路由 extras；
 %   - 错误返回值只含语义原子，不含 AppKey/MasterSecret 明文。
 %
 % 配置（{imboy, push} proplist，凭据走 sys.local/环境注入，严禁入库）：
@@ -15,7 +15,7 @@
 %   {jpush_master_secret, "your-jpush-secret"}
 %   {jpush_push_url,    "https://api.jpush.cn/v3/push"}  %% 可选，默认同左
 %
-% 合同文档：docs/reference/push-provider-jpush-research-2026-09-21.md §3
+% 合同文档：docs/reference/jpush-provider-contract.md
 %%%
 
 -include("log.hrl").
