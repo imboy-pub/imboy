@@ -246,13 +246,21 @@ sql_statements() -> [?SQL_PAGE].
 %% ===================================================================
 
 -define(SQL_SEARCH_ANCHORS, <<
-    "SELECT s.id, s.organization_id, s.workspace_id, s.conversation_id,"
-    " s.last_message_id"
-    "  FROM customer_service_session s"
-    " WHERE s.organization_id = $1"
-    "   AND ($2::bigint = 0 OR s.workspace_id = $2)"
-    "   AND (NOT $3::boolean OR s.business_identity_id = $4)"
-    "   AND s.last_message_id IS NOT NULL"
+    "SELECT a.id, a.organization_id, a.workspace_id, a.conversation_id,"
+    " a.last_message_id"
+    "  FROM ("
+    "   SELECT s.id, s.organization_id, s.workspace_id, s.conversation_id,"
+    "          (SELECT max(m.id) FROM enterprise_message m"
+    "            WHERE m.organization_id = s.organization_id"
+    "              AND m.workspace_id = s.workspace_id"
+    "              AND m.conversation_id = s.conversation_id"
+    "              AND m.visibility = 'visible') AS last_message_id"
+    "     FROM customer_service_session s"
+    "    WHERE s.organization_id = $1"
+    "      AND ($2::bigint = 0 OR s.workspace_id = $2)"
+    "      AND (NOT $3::boolean OR s.business_identity_id = $4)"
+    "  ) a"
+    " WHERE a.last_message_id IS NOT NULL"
 >>).
 
 -define(ANCHOR_KEYS, [
