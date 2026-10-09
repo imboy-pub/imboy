@@ -9,24 +9,33 @@
 
 -include_lib("eunit/include/eunit.hrl").
 
+%% logger handler 回调（with_batch_warning_capture 以本模块挂真 handler，
+%% logger 从其管理进程回调——不导出则 add_handler 报 function_not_exported）。
+-export([init/1, log/2]).
+
 -define(ORG, 911000000000001).
 -define(FAKE_STORE, eb_fake_preview_store).
 
 %% -- 套件 -------------------------------------------------------------------
 
-fetch_message_bodies_contract_test() ->
-    {timeout, 30, fun returns_bodies_for_requested_items/0},
-    {timeout, 30, fun unavailable_keyring_degrades_all_to_undefined/0},
-    {timeout, 30, fun hidden_row_undefined/0},
-    {timeout, 30, fun cross_scope_tuple_undefined/0},
-    {timeout, 30, fun purged_id_undefined/0},
-    {timeout, 30, fun empty_body_undefined/0},
-    {timeout, 30, fun decrypt_error_degrades_with_warning/0},
-    {timeout, 30, fun decrypt_error_class_raise_degrades/0},
-    {timeout, 30, fun invalid_items_rejected/0},
-    {timeout, 30, fun store_error_propagates/0},
-    {timeout, 30, fun facade_shape_guard/0},
-    {timeout, 30, fun batch_sql_shape_gate_test/0}.
+%% 生成器（双下划线 + 显式列表）：返回的 {timeout, fun} 描述符由 eunit 逐项
+%% 执行。此前缺列表括号时函数体只返回最后一个描述符、其余矩阵项从未执行
+%% （eunit 报 2 项空转通过）——2026-10-10 终选重绑扫描发现并修复。
+fetch_message_bodies_contract_test_() ->
+    [
+        {timeout, 30, fun returns_bodies_for_requested_items/0},
+        {timeout, 30, fun unavailable_keyring_degrades_all_to_undefined/0},
+        {timeout, 30, fun hidden_row_undefined/0},
+        {timeout, 30, fun cross_scope_tuple_undefined/0},
+        {timeout, 30, fun purged_id_undefined/0},
+        {timeout, 30, fun empty_body_undefined/0},
+        {timeout, 30, fun decrypt_error_degrades_with_warning/0},
+        {timeout, 30, fun decrypt_error_class_raise_degrades/0},
+        {timeout, 30, fun invalid_items_rejected/0},
+        {timeout, 30, fun store_error_propagates/0},
+        {timeout, 30, fun facade_shape_guard/0},
+        {timeout, 30, fun batch_sql_shape_gate_test/0}
+    ].
 
 %% -- 夹具 --------------------------------------------------------------------
 
