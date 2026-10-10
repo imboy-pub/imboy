@@ -296,6 +296,7 @@ override_payment_gateway_enabled() ->
 %% 校验 fail-fast；deploy/preflight.sh 提前一层拦截（部署期而非运行期）。
 %%   IMBOY_TSID_DC_ID / NODE_ID / DC_BITS     -> 对应 tsid_*（非负整数）
 %%   IMBOY_TSID_CAPACITY_WAIT_TIMEOUT_MS      -> tsid_capacity_wait_timeout_ms（正整数）
+%%   IMBOY_TSID_MAX_CLOCK_DRIFT_MS            -> tsid_max_clock_drift_ms（正整数）
 -spec override_tsid() -> ok.
 override_tsid() ->
     ok = override_nonneg_integer_key("IMBOY_TSID_DC_ID", tsid_dc_id),
@@ -304,6 +305,10 @@ override_tsid() ->
     ok =
         override_positive_integer_key(
             "IMBOY_TSID_CAPACITY_WAIT_TIMEOUT_MS", tsid_capacity_wait_timeout_ms
+        ),
+    ok =
+        override_positive_integer_key(
+            "IMBOY_TSID_MAX_CLOCK_DRIFT_MS", tsid_max_clock_drift_ms
         ).
 
 %% 非负整数键（dc_id/node_id 允许 0；时序参数用正整数版本）

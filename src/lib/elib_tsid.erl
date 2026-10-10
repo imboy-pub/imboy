@@ -295,6 +295,8 @@ aliases() ->
 %%   node_id  - 节点 ID (必填)
 %%   dc_bits  - DC 占用的位数 (默认 3, 即 8 个 DC × 128 个节点)
 %%   capacity_wait_timeout_ms - 序列耗尽等待上限 (默认 100)
+%%   max_clock_drift_ms       - 固定 Offset 时钟与系统钟的允许偏差上界
+%%                              (默认 5000；readiness 检查超限即阻断发号)
 %%
 %% DC/Node 位分配示例:
 %%   dc_bits=0 → 1 DC × 1024 nodes
@@ -310,6 +312,7 @@ init(Opts) ->
     DcId = maps:get(dc_id, Opts),
     NodeId = maps:get(node_id, Opts),
     CapWait = maps:get(capacity_wait_timeout_ms, Opts, 100),
+    MaxDrift = maps:get(max_clock_drift_ms, Opts, 5000),
     true =
         (is_integer(DcBits) andalso DcBits >= 0 andalso DcBits =< ?NODE_BITS) orelse
             error({elib_tsid_invalid_config, #{dc_bits => DcBits}}),
@@ -317,31 +320,41 @@ init(Opts) ->
     true =
         (is_integer(CapWait) andalso CapWait > 0) orelse
             error({elib_tsid_invalid_config, #{capacity_wait_timeout_ms => CapWait}}),
+    true =
+        (is_integer(MaxDrift) andalso MaxDrift > 0) orelse
+            error({elib_tsid_invalid_config, #{max_clock_drift_ms => MaxDrift}}),
 
     case persistent_term:get(?PT_RUNTIME, undefined) of
         undefined ->
-            publish_runtime(CombinedNode, DcBits, CapWait),
+            publish_runtime(CombinedNode, DcBits, CapWait, MaxDrift),
             ok;
-        #{combined_node := CombinedNode, dc_bits := DcBits, capacity_wait_timeout_ms := CapWait} ->
+        #{
+            combined_node := CombinedNode,
+            dc_bits := DcBits,
+            capacity_wait_timeout_ms := CapWait,
+            max_clock_drift_ms := MaxDrift
+        } ->
             %% 幂等：同配置保留既有游标（不回退）
             ok;
         Existing ->
             error(
                 {elib_tsid_already_initialized, #{
                     existing => maps:with(
-                        [combined_node, dc_bits, capacity_wait_timeout_ms], Existing
+                        [combined_node, dc_bits, capacity_wait_timeout_ms, max_clock_drift_ms],
+                        Existing
                     ),
                     requested => #{
                         combined_node => CombinedNode,
                         dc_bits => DcBits,
-                        capacity_wait_timeout_ms => CapWait
+                        capacity_wait_timeout_ms => CapWait,
+                        max_clock_drift_ms => MaxDrift
                     }
                 }}
             )
     end.
 
 %% @private 一次性发布完整 runtime（固定 Offset 采集 + 静态槽位表 + atomics 游标数组）
-publish_runtime(CombinedNode, DcBits, CapWait) ->
+publish_runtime(CombinedNode, DcBits, CapWait, MaxDrift) ->
     Names = namespaces(),
     AliasMap = aliases(),
     %% canonical 槽位：namespaces/0 顺序 + 1（atomics 1-based）；default 追加尾部
@@ -358,14 +371,21 @@ publish_runtime(CombinedNode, DcBits, CapWait) ->
     Lookup = maps:merge(CanonicalSlots, AliasSlots),
     Cursors = atomics:new(length(Names) + 1, [{signed, true}]),
     Stats = atomics:new(1, [{signed, true}]),
+    %% 时钟安全闸（W4）：1=时钟可用，0=readiness 检出偏差超限（阻断发号）。
+    %% readiness/0 低频评估并翻转此闸，生成热路径一次 atomic load 消费——
+    %% 异常状态作用于实际生成入口，而非只改健康检查返回值。
+    ClockOk = atomics:new(1, [{signed, true}]),
+    ok = atomics:put(ClockOk, 1, 1),
     OffsetMs = erlang:system_time(millisecond) - erlang:monotonic_time(millisecond),
     Handle = #{
         cursors => Cursors,
         lookup => Lookup,
         reservations => Stats,
+        clock_ok => ClockOk,
         combined_node => CombinedNode,
         dc_bits => DcBits,
         capacity_wait_timeout_ms => CapWait,
+        max_clock_drift_ms => MaxDrift,
         clock_offset_ms => OffsetMs
     },
     persistent_term:put(?PT_NODE_ID, CombinedNode),
@@ -436,13 +456,34 @@ lookup_or_empty() ->
         undefined -> #{}
     end.
 
-%% @doc 就绪状态（/readyz 消费；W4 扩展时钟偏差检查）。
-%% runtime 已发布 = ready；未初始化 = not_initialized。
--spec readiness() -> ready | not_initialized.
+%% @doc 就绪状态（/readyz 消费）。
+%%
+%% 低频时钟安全检查：固定 Offset 时钟（mono+offset）与真实系统钟的当前
+%% 偏差超过 max_clock_drift_ms 时，翻转 runtime 的 clock_ok 闸并返回
+%% clock_unsafe——生成热路径读取同一闸，阻断发号（异常作用于生成入口）。
+%% 偏差回落（NTP 收敛/挂起恢复后重新评估）自动解除。探针间隔即检查间隔
+%% （部署默认 30s），偏差突增的最长暴露窗口 = 一个探针周期。
+-spec readiness() -> ready | clock_unsafe | not_initialized.
 readiness() ->
     case persistent_term:get(?PT_RUNTIME, undefined) of
-        #{cursors := _} -> ready;
-        undefined -> not_initialized
+        #{
+            clock_ok := ClockOk,
+            clock_offset_ms := Offset,
+            max_clock_drift_ms := MaxDrift
+        } ->
+            Drift = abs(
+                erlang:monotonic_time(millisecond) + Offset - erlang:system_time(millisecond)
+            ),
+            case Drift > MaxDrift of
+                true ->
+                    ok = atomics:put(ClockOk, 1, 0),
+                    clock_unsafe;
+                false ->
+                    ok = atomics:put(ClockOk, 1, 1),
+                    ready
+            end;
+        undefined ->
+            not_initialized
     end.
 
 %% ===================================================================
@@ -520,7 +561,13 @@ chunk_sizes(N, MaxChunk) ->
     map(), pos_integer(), pos_integer(), {timeout, pos_integer()} | {deadline, integer()}
 ) ->
     {FirstSlot :: non_neg_integer(), LastSlot :: non_neg_integer()}.
-reserve(#{cursors := Cursors} = Handle, Idx, Count, Budget0) ->
+reserve(#{cursors := Cursors, clock_ok := ClockOk} = Handle, Idx, Count, Budget0) ->
+    case atomics:get(ClockOk, 1) of
+        1 ->
+            ok;
+        0 ->
+            error({elib_tsid_clock_unsafe, #{hint => 'readiness() reports clock drift'}})
+    end,
     Now = wall_clock_ms() - ?EPOCH_MS,
     case Now < 0 of
         true -> error({elib_tsid_clock_before_epoch, #{now_rel => Now}});

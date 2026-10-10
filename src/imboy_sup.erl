@@ -23,7 +23,8 @@ tsid_init_config() ->
         node_id => application:get_env(imboy, tsid_node_id, 1),
         dc_bits => application:get_env(imboy, tsid_dc_bits, 3),
         capacity_wait_timeout_ms =>
-            application:get_env(imboy, tsid_capacity_wait_timeout_ms, 100)
+            application:get_env(imboy, tsid_capacity_wait_timeout_ms, 100),
+        max_clock_drift_ms => application:get_env(imboy, tsid_max_clock_drift_ms, 5000)
     }.
 
 %% 误配拒启检查：tsid_lock_provider 键已随 V10 删除（V10 单 BEAM 无跨实例

@@ -46,7 +46,8 @@ cleanup_env(Vars) ->
 env_key("IMBOY_TSID_DC_ID") -> tsid_dc_id;
 env_key("IMBOY_TSID_NODE_ID") -> tsid_node_id;
 env_key("IMBOY_TSID_DC_BITS") -> tsid_dc_bits;
-env_key("IMBOY_TSID_CAPACITY_WAIT_TIMEOUT_MS") -> tsid_capacity_wait_timeout_ms.
+env_key("IMBOY_TSID_CAPACITY_WAIT_TIMEOUT_MS") -> tsid_capacity_wait_timeout_ms;
+env_key("IMBOY_TSID_MAX_CLOCK_DRIFT_MS") -> tsid_max_clock_drift_ms.
 
 %% ===================================================================
 %% env 层：合法值
@@ -141,7 +142,29 @@ config_chain_defaults_test() ->
     ?assertEqual(1, maps:get(dc_id, Cfg)),
     ?assertEqual(1, maps:get(node_id, Cfg)),
     ?assertEqual(3, maps:get(dc_bits, Cfg)),
-    ?assertEqual(100, maps:get(capacity_wait_timeout_ms, Cfg)).
+    ?assertEqual(100, maps:get(capacity_wait_timeout_ms, Cfg)),
+    ?assertEqual(5000, maps:get(max_clock_drift_ms, Cfg)).
+
+%% 阈值键经 env 链透传进 init config
+clock_drift_threshold_chain_test() ->
+    ?WITH_ENV(
+        [{"IMBOY_TSID_MAX_CLOCK_DRIFT_MS", "3000"}],
+        begin
+            ok = imboy_env_overrides:override_tsid(),
+            Cfg = imboy_sup:tsid_init_config(),
+            ?assertEqual(3000, maps:get(max_clock_drift_ms, Cfg))
+        end
+    ).
+
+%% 非法阈值 fail-closed
+zero_clock_drift_rejected_test() ->
+    ?WITH_ENV(
+        [{"IMBOY_TSID_MAX_CLOCK_DRIFT_MS", "0"}],
+        ?assertMatch(
+            {invalid_env, "IMBOY_TSID_MAX_CLOCK_DRIFT_MS", _},
+            catch_typed(fun imboy_env_overrides:override_tsid/0)
+        )
+    ).
 
 %% 配置链端到端：tsid_init_config 的合成结果可直接被 elib_tsid:init 接受
 config_chain_feeds_init_test() ->

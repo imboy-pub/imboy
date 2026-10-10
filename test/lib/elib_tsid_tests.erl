@@ -607,6 +607,60 @@ readiness_test() ->
     ?assertEqual(ready, elib_tsid:readiness()).
 
 %% ===================================================================
+%% W4 时钟安全闸：readiness 低频评估 + 生成入口阻断
+%% ===================================================================
+
+clock_drift_beyond_threshold_blocks_generate_test() ->
+    %% 模拟固定 Offset 时钟与系统钟漂移超限：readiness 翻闸 → generate
+    %% 拒绝（异常作用于生成入口）；恢复 offset → 重新 ready 可发号
+    ?SETUP(),
+    ?assertEqual(ready, elib_tsid:readiness()),
+    ok = with_runtime_drift(10000, fun() ->
+        ?assertEqual(clock_unsafe, elib_tsid:readiness()),
+        ?assertMatch(
+            {elib_tsid_clock_unsafe, _},
+            catch_typed(fun() -> elib_tsid:generate(user) end)
+        ),
+        ok
+    end),
+    ?assertEqual(ready, elib_tsid:readiness()),
+    ?assert(elib_tsid:generate(user) > 0).
+
+clock_drift_within_threshold_ready_test() ->
+    %% 真实漂移（NTP 正常）远小于默认 5000ms：readiness 恒 ready
+    ?SETUP(),
+    lists:foreach(
+        fun(_) -> ?assertEqual(ready, elib_tsid:readiness()) end,
+        lists:seq(1, 3)
+    ),
+    ?assert(elib_tsid:generate(user) > 0).
+
+clock_drift_threshold_configurable_test() ->
+    %% 阈值可配：200ms 上界下 1s 漂移即 unsafe
+    elib_tsid:reset_for_test(),
+    ok = elib_tsid:init(#{
+        dc_id => 1, node_id => 1, dc_bits => 3, max_clock_drift_ms => 200
+    }),
+    ok = with_runtime_drift(1000, fun() ->
+        ?assertEqual(clock_unsafe, elib_tsid:readiness())
+    end),
+    ?assertEqual(ready, elib_tsid:readiness()).
+
+with_runtime_drift(DriftMs, Fun) ->
+    %% 测试注入：改写 runtime 的 clock_offset_ms 制造受控漂移，after 还原
+    Runtime = persistent_term:get(elib_tsid_runtime),
+    OldOffset = maps:get(clock_offset_ms, Runtime),
+    persistent_term:put(
+        elib_tsid_runtime,
+        Runtime#{clock_offset_ms := OldOffset + DriftMs}
+    ),
+    try
+        Fun()
+    after
+        persistent_term:put(elib_tsid_runtime, Runtime)
+    end.
+
+%% ===================================================================
 %% 纯 seam（reserve_candidate / slot_to_id / id_to_slot）
 %% ===================================================================
 
