@@ -312,7 +312,9 @@ register_before_init_rejected_test() ->
         {elib_tsid_not_initialized, _},
         catch_typed(fun() -> elib_tsid:register(user) end)
     ),
-    ?assertEqual([default], elib_tsid:registered()).
+    ?assertEqual([default], elib_tsid:registered()),
+    %% 不留空 runtime（后台 worker 保护，见 imboy_env_tsid_tests 同款注释）
+    ok = elib_tsid:init(#{dc_id => 1, node_id => 1, dc_bits => 3}).
 
 %% ===================================================================
 %% 无借支铁律（V10）
@@ -607,7 +609,9 @@ capacity_wait_validation_test() ->
         catch_typed(fun() ->
             elib_tsid:init(#{dc_id => 1, node_id => 1, capacity_wait_timeout_ms => not_int})
         end)
-    ).
+    ),
+    %% 两断言均在 init 抛错后结束，runtime 留空——补恢复（后台 worker 保护）
+    ok = elib_tsid:init(#{dc_id => 1, node_id => 1, dc_bits => 3}).
 
 readiness_test() ->
     elib_tsid:reset_for_test(),

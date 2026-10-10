@@ -185,7 +185,10 @@ config_chain_feeds_init_test() ->
             ?assertEqual(3, maps:get(node_id, P))
         end
     ),
-    elib_tsid:reset_for_test().
+    %% 测试轨道不留空 runtime：后台 worker（plugin audit 等）随时可能发号，
+    %% reset 后必须恢复默认配置（W7 全量轨道 12 条 not_initialized 噪音根因）
+    elib_tsid:reset_for_test(),
+    ok = elib_tsid:init(#{dc_id => 1, node_id => 1, dc_bits => 3}).
 
 %% 越界 node_id（dc_bits=3 上限 127）→ combine_node error →
 %% init 抛错 → sup init 失败（AC-07C 运行时 fail-closed）
