@@ -1,0 +1,56 @@
+id	task	priority	oracle	status
+CX00-A01	CX-00	P0	三仓HEAD/WIP/worktree与主计划handoff快照完整；foreign范围和共享owner明确	NOT_RUN
+CX00-A02	CX-00	P0	旧Required原文精确集合与完整继承映射相等；合同冲突未被改ID消隐	NOT_RUN
+CX00-A03	CX-00	P0	F01-12按当前源码和合成复现实证分类；给出最先失败的3-5个接待旅程	NOT_RUN
+CX00-A04	CX-00	P0	独占PG/Garage/端口/ebin/浏览器/真机租约和展开commands.sh可独立复跑；Required零伪执行	NOT_RUN
+CX00-A05	CX-00	P0	用户预先确认容量/平台/体验目标与重估工时；缺资源有NEXT_UNLOCK且未降门	NOT_RUN
+CX01-A01	CX-01	P0	开通至首条真实回复主线有角色/权限/失败下一步；不用错误空态冒充未开通	NOT_RUN
+CX01-A02	CX-01	P0	待接待/我的/历史及身份连接归属可读；读取不等于回复且所有标签有权威定义	NOT_RUN
+CX01-A03	CX-01	P0	1440/1280/1024/768嵌入和390访客视口及200%缩放无首要操作裁切	NOT_RUN
+CX01-A04	CX-01	P0	loading/error/empty/offline/retry/permission六态、键盘焦点与可见/可播报错误逐态可演示	NOT_RUN
+CX01-A05	CX-01	P0	用户确认首接待流程原型和文案；现场痛点逐条映射任务而非代理主观满意	NOT_RUN
+CX02-A01	CX-02	P0	向未选中会话发消息后列表真实未读增加；阅读后清除但待回复保留至真实回复	NOT_RUN
+CX02-A02	CX-02	P0	我的/团队权限投影与DB归属一致；别人会话不可写；无伪造计数	NOT_RUN
+CX02-A03	CX-02	P0	超过两页fixture中搜索命中非已加载会话；scope过滤/排序/cursor切换无重复遗漏	NOT_RUN
+CX02-A04	CX-02	P0	等待与最近消息/接待人刷新可见且来源真实；409刷新归属不盲重写	NOT_RUN
+CX02-A05	CX-02	P0	锁定负载下首屏/搜索p95≤1.5s；列表无逐行N+1未读请求且跨scope不泄漏	NOT_RUN
+CX03-A01	CX-03	P0	中文IME Enter确认零误发送；Enter一次发送/Shift+Enter换行/空白拒绝与按钮一致	NOT_RUN
+CX03-A02	CX-03	P0	A/B及组织切换草稿正文/附件/id/错误隔离；旧异步完成不清新草稿；退出撤权清敏感态	NOT_RUN
+CX03-A03	CX-03	P0	同参失败重试及双点击最多一条消息；修改失败正文新键；未知结果查真源无跨session重放	NOT_RUN
+CX03-A04	CX-03	P0	confirm成功后发送失败不重复上传；401/403/422/429/断网保留合法草稿并给可操作提示	NOT_RUN
+CX03-A05	CX-03	P0	150ms内pending反馈；已接收/已读与服务器事实一致；无收取ACK不假称已送达	NOT_RUN
+CX04-A01	CX-04	P0	200条消息跨至少4页完整有序去重，能找到最早消息与附件，不限首50条	NOT_RUN
+CX04-A02	CX-04	P0	读历史时新消息和图片加载不跳锚；底部跟随/新消息定位可用；刷新保留已有消息	NOT_RUN
+CX04-A03	CX-04	P0	只有本会话实际可见消息在foreground/focus下推进cursor；后台/未滚到消息不误ACK	NOT_RUN
+CX04-A04	CX-04	P0	切会话ref归零；当前新消息可见后ACK；跨会话消息ID被后端拒绝，cursor单调合法	NOT_RUN
+CX04-A05	CX-04	P0	读ACK失败可诊断安全重试；乱序/断网/分页恢复后UI消息与DB一致	NOT_RUN
+CX05-A01	CX-05	P0	双坐席同刻同version claim恰一成功一CAS冲突；DB唯一归属，输方无发送权限	NOT_RUN
+CX05-A02	CX-05	P0	away/offline/满容量规则与服务端一致；active不被假在线释放；心跳恢复/负载可信	NOT_RUN
+CX05-A03	CX-05	P0	转接确认显示目标/容量/scope；取消不写；提交后原owner只读、新owner能读历史回复	NOT_RUN
+CX05-A04	CX-05	P0	结束确认暴露草稿/在途风险；取消无副作用；并发状态变化给409解释不重复结束	NOT_RUN
+CX05-A05	CX-05	P0	结束再联系按正式重开或新会话合同处理；历史/事件/审计与两端UI和DB一致	NOT_RUN
+CX06-A01	CX-06	P0	Admin开通合成组织/成员/坐席/Widget完成后真实访客发起可被接待；缺配置可定位	NOT_RUN
+CX06-A02	CX-06	P0	Admin生成Widget和Seat snippet真实注入宿主页；Android物理扫码QR登录成功；不用API代扫	NOT_RUN
+CX06-A03	CX-06	P0	访客排队/无人在线留言/接待/断网/失败/结束状态和指引真实一致，无虚假等待排名	NOT_RUN
+CX06-A04	CX-06	P0	访客刷新/关闭再开与凭证过期吊销可恢复或明确重新接入，无重复会话丢失/幽灵消息	NOT_RUN
+CX06-A05	CX-06	P0	真实浏览器evil origin/CSP/sandbox与三凭证隔离有效；App移动坐席及继承平台独立合格	NOT_RUN
+CX07-A01	CX-07	P0	图片/文件上传确认发送预览下载字节hash一致；超限过期断网可解释且合法重试	NOT_RUN
+CX07-A02	CX-07	P0	跨组织/会话及撤权后content/旧票据拒绝；切会话abort/revoke blob无泄漏无错图	NOT_RUN
+CX07-A03	CX-07	P1	客户卡片只读最小授权事实；切scope不留旧数据；无事实显示未知不伪造CRM	NOT_RUN
+CX07-A04	CX-07	P1	实际评价与首响/接待量/关闭量/队列按锁定定义时区SQL对账，未知/未评/已评分开	NOT_RUN
+CX07-A05	CX-07	P0	匿名化request/session可定位认证消息附件故障；浏览器/服务日志无token/secret/客户正文	NOT_RUN
+CX08-A01	CX-08	P0	60s断网/SSE重复乱序超窗/重启/PG与Garage故障恢复业务无丢重、收敛≤10s	NOT_RUN
+CX08-A02	CX-08	P0	三凭证混用/跨组织/越权/QR重放/吊销/附件攻击负例真实拒绝且DB无副作用	NOT_RUN
+CX08-A03	CX-08	P0	锁定容量各方向≥200回显样本p95≤2s/p99≤5s；24h无泄漏丢重崩溃且内存连接有界	NOT_RUN
+CX08-A04	CX-08	P0	同候选targeted/全量EUnit/Admin全测/lint/typecheck/deadcode/build/继承平台回归exit0	NOT_RUN
+CX08-A05	CX-08	P0	静态manifest/Seat/Widget与候选hash配对；clean安装升级PG/Garage恢复业务事实合格	NOT_RUN
+CX09-A01	CX-09	P0	独立复算Required exact-set/父子格/command/exit/执行数/skips/candidate与证据hash全一致	NOT_RUN
+CX09-A02	CX-09	P0	新fixture真实访客至双坐席转接结束附件历史重连完整回放，UI/API/SQL/字节oracle一致	NOT_RUN
+CX09-A03	CX-09	P0	用户无指导完成五项主任务100%且逐项确认，绑定候选版本hash；无人代签	NOT_RUN
+CX09-A04	CX-09	P0	用户指出的阻断/误发送/串台/丢草稿和P0/P1体验缺陷0；修复后重冻重验再签收	NOT_RUN
+CX09-A05	CX-09	P0	报告分开实现/本地技术/UAT/发布资格/生产；必需未验项不能被PARTIAL包装为PASS	NOT_RUN
+CX10-A01	CX-10	P0	交付scope/profile/平台与安装升级回退说明和依赖许可完备，白名单无WIP/秘密/PII	NOT_RUN
+CX10-A02	CX-10	P0	服务容量/监控匿名字段/告警条件/故障runbook/备份RTO/RPO经实际隔离演练验证	NOT_RUN
+CX10-A03	CX-10	P0	发布审批包明确目标组件/时窗/权限/secret/TLS/CSP/回退和复验，未自动执行外向动作	NOT_RUN
+CX10-A04	CX-10	P0	实际承诺外部环境/平台Required全部有资格证据；缺资质报告BLOCKED而非删除ID	NOT_RUN
+CX10-A05	CX-10	P0	用户签收与发布资格证据一致；生产NOT_EXECUTED，联系人/通知和发布等另获明确确认	NOT_RUN

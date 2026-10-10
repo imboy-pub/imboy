@@ -55,7 +55,7 @@ insert_acl_batch(_Conn, _PostId, [], _AclType) ->
 insert_acl_batch(Conn, PostId, Uids, AclType) ->
     Tb = tablename(),
     Now = elib_dt:now(),
-    %% id 为应用侧 TSID（moment_post_acl 在 elib_tsid_guard names 内）：
+    %% id 为应用侧 TSID（moment_post_acl 在 elib_tsid:namespaces/0 内）：
     %% 本表 DDL 的 id 无默认值，INSERT 缺 id 会直接违反 not-null ——
     %% 曾导致任何带 allow_uids/deny_uids 的发帖整事务失败（部分可见/
     %% 不给谁看链路不可用），与 moment_post_repo:add 的同款生成方式对齐。

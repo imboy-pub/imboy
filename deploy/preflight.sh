@@ -712,50 +712,23 @@ else
 fi
 
 
-# ── 2d. TSID durable generator 配置（TSID-07）─────────────────────────────────
-echo ""
-echo "▶ 2d. 检查 TSID durable generator 配置 / TSID config"
+# ── 2d. TSID V10 generator 配置 ───────────────────────────────────────────────
+echo "▶ 2d. 检查 TSID 配置 / TSID config"
 
 TSID_DC_BITS="${IMBOY_TSID_DC_BITS:-3}"
 TSID_DC_ID="${IMBOY_TSID_DC_ID:-1}"
 TSID_NODE_ID="${IMBOY_TSID_NODE_ID:-1}"
-TSID_BOOTSTRAP="${IMBOY_TSID_STORE_BOOTSTRAP:-existing}"
 
-# dc_bits：1..10（dc_bits + node_bits = 10）
 check_tsid_range IMBOY_TSID_DC_BITS "$TSID_DC_BITS" 1 10
-# dc_id：< 2^dc_bits；node_id：< 2^(10-dc_bits)（bash 无 2**，用位移 $((1 << n))）
 check_tsid_range IMBOY_TSID_DC_ID "$TSID_DC_ID" 0 $(( (1 << TSID_DC_BITS) - 1 ))
 check_tsid_range IMBOY_TSID_NODE_ID "$TSID_NODE_ID" 0 $(( (1 << (10 - TSID_DC_BITS)) - 1 ))
-
-# bootstrap 合同：fresh 仅首次部署；existing 是常态
-case "$TSID_BOOTSTRAP" in
-    fresh|existing) ;;
-    *) err "IMBOY_TSID_STORE_BOOTSTRAP 仅支持 fresh|existing（当前: ${TSID_BOOTSTRAP}）" ;;
-esac
-
-# 时序参数（缺省合法；显式配置则必须正整数）
-check_tsid_positive_int IMBOY_TSID_MAX_LOGICAL_LEAD_MS "${IMBOY_TSID_MAX_LOGICAL_LEAD_MS:-}"
-check_tsid_positive_int IMBOY_TSID_CAPACITY_WAIT_TIMEOUT_MS "${IMBOY_TSID_CAPACITY_WAIT_TIMEOUT_MS:-}"
-check_tsid_positive_int IMBOY_TSID_FENCE_WINDOW_MS "${IMBOY_TSID_FENCE_WINDOW_MS:-}"
-check_tsid_positive_int IMBOY_TSID_FENCE_RENEW_MARGIN_MS "${IMBOY_TSID_FENCE_RENEW_MARGIN_MS:-}"
-check_tsid_positive_int IMBOY_TSID_STARTUP_CLOCK_WAIT_TIMEOUT_MS "${IMBOY_TSID_STARTUP_CLOCK_WAIT_TIMEOUT_MS:-}"
-
-# state 卷：backend_tsid 必须存在且可写（compose 把它挂到 /opt/imboy/tsid_state；
-# 缺失/不可写 = durable fence 无法持久化 = 重启失忆 = ID 重复）
-TSID_HOST_DIR="${SCRIPT_DIR}/${DATA_DIR:-./data}/backend_tsid"
-if [[ ! -d "$TSID_HOST_DIR" ]]; then
-    err "TSID 状态目录不存在: ${TSID_HOST_DIR}（mkdir -p 并 chown 给容器运行用户后再部署）"
-elif [[ ! -w "$TSID_HOST_DIR" ]]; then
-    err "TSID 状态目录不可写: ${TSID_HOST_DIR}"
-else
-    ok "TSID 状态目录可写: ${TSID_HOST_DIR}"
-    # fresh + 目录已有状态 = 会无视历史 durable fence（等于主动丢防线），拒绝
-    if [[ "$TSID_BOOTSTRAP" == "fresh" ]] && [[ -n "$(ls -A "$TSID_HOST_DIR" 2>/dev/null)" ]]; then
-        err "IMBOY_TSID_STORE_BOOTSTRAP=fresh 但 ${TSID_HOST_DIR} 非空：fresh 会无视已有 durable fence（ID 可能重复）。确认要重置请先清空该目录"
-    fi
+check_tsid_positive_int IMBOY_TSID_CAPACITY_WAIT_TIMEOUT_MS "${IMBOY_TSID_CAPACITY_WAIT_TIMEOUT_MS:-}" || true
+if [[ -n "${IMBOY_TSID_MAX_CLOCK_DRIFT_MS:-}" ]]; then
+    check_tsid_positive_int IMBOY_TSID_MAX_CLOCK_DRIFT_MS "$IMBOY_TSID_MAX_CLOCK_DRIFT_MS"
 fi
 
-# 单机 preflight 无法验证跨机 node_id 唯一性（每个部署点各自的 .env）
+# V10 无持久化状态目录、无跨实例互斥锁：(DC_ID, NODE_ID) 全集群唯一是
+# 唯一性硬前提，部署层负责（重复 = 同 CombinedNode 双写 = ID 碰撞）。
 info "跨机部署请人工确认各节点 IMBOY_TSID_NODE_ID 互不相同（同 DC 内重复 = ID 碰撞）"
 
 # ── 3. 系统资源 ───────────────────────────────────────────────────────────────

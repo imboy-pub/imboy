@@ -23,30 +23,32 @@ TSID（Time-Sorted ID）是 Imboy 使用的分布式 ID 生成方案，取代原
 | 节点 ID | 10 | 按 `dc_bits`（1..10，缺省 3；应用层 API 允许 0=纯 node 模式，部署链 preflight 限 1..10）动态切分为 dc_id + node_id |
 | 序列号 | 11 | 每毫秒每节点最多 2048 个 ID（= 节点持续容量 2048 ids/ms） |
 
-**特性**（2026-09 TSID correctness hardening 后）：
+**特性**（2026-10 V10 后）：
 
 - **纪元**：2025-01-01 00:00:00 UTC；时间跨度 139.5 年（2025 → 2164）
-- **全局唯一语义**：同一节点上所有命名生成器（label，含 default）共享同一全局
-  cursor——任意两个生成器产生的 ID 数值永不相同；label 仅是治理/兼容标签，
-  跨表/跨域引用可直接按数值关联
-- **时间戳精度**：毫秒；高吞吐下 ID 内 ts 允许有界领先墙钟
-  （`max_logical_lead_ms` 缺省 512ms，borrow 未来毫秒，崩溃恢复由 durable
-  fence 保证不重不越）——因此 ID 提取的时间戳是生成序的近似，排序请用 ID 本身
+- **Namespace 唯一语义（V10）**：一个业务实体一个独立 cursor，同一 namespace
+  内严格唯一；**跨 namespace 数值允许重复**。旧「任意两 label 数值永不相同，
+  跨表按数值关联」的合同已被 V10 显式废除——跨业务引用必须 Domain + ID。
+- **时间戳精度**：毫秒；V10 禁止借用未来毫秒（无借支铁律），序列耗尽时等待
+  真实时间推进（默认上限 100ms，超时 typed 报错）。ID 时间戳 ≤ 当前墙钟，
+  提取的时间戳语义不变：排序请用 ID 本身
+- **跨重启边界**：无持久化状态。单次 BEAM 生命周期内严格唯一；跨重启仅当
+  系统时钟未回拨跨重启点时不重复（NTP 大幅回拨/快照恢复可能产生与历史 ID
+  的数值重叠——文档化的固有边界，禁止表述为"绝不重复"）
 - **生成吞吐量**：持续容量 2048 ids/ms/节点（≈205 万 ID/s）；短突发实测
   10M+ ID/s（基准证据见 hardening status 附录）；多节点水平扩展
-- **有界逻辑时间**：突发超过容量时 fail-closed（typed `capacity_exhausted`），
-  绝不无限借未来
+- **无借支**：序列耗尽不借未来毫秒，有界等待真实时间推进（typed
+  `capacity_exhausted`，clock_wait | cas_contention 两相）
+- **时钟安全**：固定 Offset 时钟与系统钟偏差超限（`tsid_max_clock_drift_ms`）
+  时阻断发号（typed `clock_unsafe`）
 - **数据库类型**：PostgreSQL `BIGINT`（signed 63-bit 上界有校验）
 - **错误族**：全部 typed error（非静默回退）——`elib_tsid_not_initialized` /
-  `elib_tsid_capacity_exhausted`（clock_wait | cas_contention）/
-  `elib_tsid_fenced` / `elib_tsid_invalid_config` / `elib_tsid_invalid_input` /
-  `elib_tsid_clock_before_epoch` / `elib_tsid_timestamp_exhausted` /
-  `elib_tsid_invalid_input`（越界输入）等
-- **部署与 cutover**：多实例唯一性依赖 `IMBOY_TSID_DC_ID`/`IMBOY_TSID_NODE_ID`
-  配置 + preflight 位布局校验 + 双槽 durable 状态 + lifetime lock；
-  存量 BIGSERIAL→TSID 迁移与回滚见
-  `docs/architecture/tsid-cutover-runbook.md` 与
-  `docs/architecture/tsid-rollback-decision-table.md`
+  `elib_tsid_generator_not_registered` / `elib_tsid_capacity_exhausted` /
+  `elib_tsid_clock_before_epoch` / `elib_tsid_clock_unsafe` /
+  `elib_tsid_timestamp_exhausted` / `elib_tsid_already_initialized` /
+  `elib_tsid_invalid_config` / `elib_tsid_invalid_input`
+- **部署**：多实例唯一性依赖 `(IMBOY_TSID_DC_ID, IMBOY_TSID_NODE_ID)` 全集群
+  唯一 + preflight 位布局校验；V10 无持久化状态目录、无跨实例互斥锁
 
 ---
 

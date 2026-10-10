@@ -17,17 +17,16 @@ backend:
   # ⚠️ 固定为 1。后端是有状态的 Erlang 分布式节点，跨 Pod 的 syn 进程注册与消息
   # 路由从未在生产集群验证过，多副本下会话可能落在不同 Pod 而消息投递不确定。
   # 集群水平扩展是路线图项，验证通过前不要调大（见 deploy/helm/README.md 顶部警示）。
-  # TSID 附注（TSID-07）：多副本还意味着同 CombinedNode 双写 generator——
-  # lifetime lock 会拒绝第二个 READY 实例，别用调副本数的方式"试锁"。
+  # TSID 附注（V10）：多副本且共享 nodeId 意味着同 CombinedNode 双写
+  # generator——V10 无跨实例互斥锁，不会拒绝第二个实例，会直接产生 ID
+  # 碰撞。副本数恒为 1，绝不以此"试锁"。
   replicaCount: 1
 
-  # ── rollout 策略（TSID-07 / AC-07A）───────────────────────────────────────
+  # ── rollout 策略 ──────────────────────────────────────────────────────────
   # 默认 Recreate：先停旧 Pod 再起新 Pod，消灭 RollingUpdate 的并发窗口。
-  # 同 Node 双实例是 TSID 唯一性反例的根因（lifetime lock 虽会拒绝第二个
-  # READY，但 RollingUpdate+maxSurge 的重叠期会制造无谓的启动失败/告警）；
-  # 单副本有状态服务的正确 rollout 语义就是 Recreate。
-  # RollingUpdate 仅在确认无共享 TSID state（独立 NodeId 的多副本）时才可
-  # 考虑，且必须同时提供 StatefulSet ordinal NodeId 方案。
+  # 单副本有状态服务的正确 rollout 语义就是 Recreate。若未来引入多副本，
+  # 必须先有 StatefulSet ordinal NodeId 方案，否则 TSID 同 CombinedNode
+  # 双写直接产生 ID 碰撞（V10 无运行时互斥可依赖）。
   strategy:
     type: Recreate
 
@@ -50,40 +49,17 @@ backend:
   # IMBOY_PG_DB / IMBOY_JWT_KEY / IMBOY_POSTGRE_AES_KEY
   # IMBOY_ADM_COOKIE_SECRET / SENTRY_DSN
 
-  # ── TSID durable generator（TSID-07 / AC-07B、AC-07D）────────────────────
-  # 全部非敏感（路径/节点号/时序参数），经 ConfigMap 明文注入。
-  # stateDir 必须位于持久卷挂载（见 persistence.tsid）：durable safe_before
-  # 是重启后不生成重复 ID 的唯一防线，落在镜像层 = 每次重建都失忆。
-  # storeBootstrap：fresh 仅首次部署显式使用（写入全新 fence，无视历史）；
-  # existing 是常态——无有效槽即拒绝启动，绝不静默 fresh。
+  # ── TSID V10 generator（全非敏感，经 ConfigMap 明文注入）─────────────────
+  # 无持久化状态卷。全集群 (dcId, nodeId) 必须唯一：V10 无跨实例互斥锁，
+  # 重复配置 = 同 CombinedNode 双写 = ID 碰撞，部署层负责保证。
   tsid:
-    stateDir: /opt/imboy/tsid_state
     dcId: 1
     nodeId: 1
     dcBits: 3
-    storeBootstrap: existing
-    # 首启自举（TSID-05/08，elib_tsid_bootstrap 直读 os env）：与
-    # storeBootstrap 正交并列——storeBootstrap 管 store 槽位打开合同，
-    # 这里三键管 pristine 首启（无割接 manifest 且 store 无 floor）如何
-    # 求 floor、以及旧 writer 接管确认（割接全流程见
-    # docs/architecture/tsid-cutover-runbook.md）。
-    # bootstrapMode：auto_scan（缺省，扫库求 floor）| manual_floor（必须
-    #   配 bootstrapFloorUnixMs：整数 unix 毫秒，floor = ms - 1735689600000）。
-    # bootstrapFloorUnixMs：manual_floor 必填，auto_scan 下不读取，空串安全。
-    # bootstrapLegacyAck：唯一合法值 I-CONFIRM-OLD-WRITER-STOPPED。保持
-    #   空串 = 不注入该键（configmap 模板按非空才渲染；空串会被读成已
-    #   设置的非法值，pristine 首启拒启）。旧 writer 接管时 --set 精确值，
-    #   割接完成后改回空串。
-    bootstrapMode: auto_scan
-    bootstrapFloorUnixMs: ""
-    bootstrapLegacyAck: ""
-    # 逻辑时间领先上限（ms）：ID 时间戳最多领先墙钟多少（§5.6 有界逻辑时间）
-    maxLogicalLeadMs: 512
+    # 容量等待预算（ms）：序列耗尽时等待真实时间推进的 deadline（无借支）
     capacityWaitTimeoutMs: 100
-    # durable fence 窗口与续租余量（ms）
-    fenceWindowMs: 1000
-    fenceRenewMarginMs: 100
-    startupClockWaitTimeoutMs: 5000
+    # 时钟偏差阈值（ms）：固定 Offset 时钟与系统钟偏差超限即阻断发号
+    maxClockDriftMs: 5000
 
   resources:
     requests:
@@ -110,17 +86,9 @@ backend:
       size: 5Gi
       storageClass: ""
       accessMode: ReadWriteOnce
-    # TSID durable fence 状态卷（TSID-07 / AC-07B）：48 字节×2 槽 + manifest，
-    # 128Mi 绰绰有余；独立于 log/priv 卷，快照与恢复语义单独管理。
-    tsid:
-      enabled: true
-      size: 128Mi
-      storageClass: ""
-      accessMode: ReadWriteOnce
-
-  # 探针语义三分（TSID-06）：liveness 只看进程活着（/livez 恒 200——
-  # 依赖故障（PG 挂 / TSID fenced）不触发容器重启风暴）；readiness 聚合
-  # PG + TSID guard（/readyz，不可生成 ID 即 503 摘流量）。
+  # 探针语义三分：liveness 只看进程活着（/livez 恒 200——依赖故障
+  # （PG 挂 / TSID 时钟偏差阻断）不触发容器重启风暴）；readiness 聚合
+  # PG + TSID（/readyz，不可生成 ID 即 503 摘流量）。
   livenessProbe:
     httpGet:
       path: /livez

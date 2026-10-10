@@ -1,6 +1,6 @@
 # 0004 — TSID 之上预留 origin 命名空间位（不改现有数据）
 
-- 状态：Deferred（DEFERRED_BY_TSID_HARDENING，2026-09-29）
+- 状态：Deferred（DEFERRED_BY_TSID_HARDENING，2026-09-29；**2026-10-10 起 V10 多 namespace 落地，本文的历史描述与 fence/lock 机制引用整体过时——跨域引用的现行合同是 Domain + ID（无 origin 位），见 `elib_tsid:namespaces/0` 与 `.Codex/tsid_v10/` 计划存档**）
 - 日期：2026-07-24
 - 关联文件：`src/lib/elib_tsid.erl`、`src/imboy_app.erl`、`docs/reference/tsid-field-convention.md`、`docs/CONVENTIONS.md`
 - 关联 ADR：无前序（本篇为 ID 命名空间首篇）
