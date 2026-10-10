@@ -132,9 +132,18 @@ EXPOSE 9800
 # 用 `bin/imboy eval` 而不是 curl：运行镜像是 debian-slim，**没有装 curl/wget**。
 # 两段与关系：先 ping（节点没起来时 eval 会超时/报错，先 ping 出错更清晰），
 # 再探依赖。
+#
+# 审计 A3/C-4（2026-10-10）：第三段补 elib_tsid:readiness/0 —— TSID 时钟
+# 闸没有内置周期探针，偏差暴露窗口 = 本健康检查轮询间隔（30s）。sup 在启动
+# 早期同步 init TSID，ping 通过后 readiness 必为 ready | clock_unsafe。
+# 注意 eval 语义：nodetool 经 rpc:call 在**运行节点上**求值——失败分支用
+# erlang:error 远程抛错（nodetool 转 badrpc → 本 healthcheck 退出 1），绝不可
+# 用 halt(1)（那会杀掉后端节点本身；probe_db 段的 halt(1) 是 C-50 既有
+# 自愈语义，本段不复制）。
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD /opt/imboy/bin/imboy ping >/dev/null 2>&1 \
      && /opt/imboy/bin/imboy eval 'case healthz_handler:probe_db() of true -> ok; _ -> halt(1) end.' \
+     && /opt/imboy/bin/imboy eval 'case elib_tsid:readiness() of ready -> ok; _ -> erlang:error(tsid_not_ready) end.' \
      || exit 1
 
 # foreground 让进程前台运行交给 Docker 托管（勿用 start，后台 daemon 会让容器立即退出）
