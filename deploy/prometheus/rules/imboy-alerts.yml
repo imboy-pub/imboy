@@ -18,6 +18,7 @@
 #  15. 在线用户陡降 / Online user drop (W3-A04)
 #  16. 红包过期 job 心跳与失败 / Red packet expiry job heartbeat & errors (W3-A04)
 #  17. L4 SNI listen 漂移巡检 / L4 SNI listen-drift patrol (Task 2)
+#  18. TSID 就绪闸 / TSID readiness gate (Audit A3/C-2)
 #
 # 接入告警渠道 / Alert routing:
 #   在 Prometheus alertmanager.yml 中配置 receiver（钉钉 / Slack / PagerDuty 等）
@@ -1283,3 +1284,33 @@ groups:
             1. 看推送侧现状：curl -s http://127.0.0.1:9091/metrics | grep imboy_l4_sni
             2. 确认 /etc/cron.d/imboy-ops 巡检行与 /etc/imboy/ops.env 的 PUSHGATEWAY_URL
             3. pushgateway 重启会清空数据，等下一轮 cron（≤5 分钟）补推后自愈
+
+  # ============================================================
+  # 18. TSID 就绪闸 / TSID readiness gate (Audit A3/C-2)
+  # ============================================================
+  - name: imboy.tsid
+    interval: 30s
+    rules:
+
+      # TSID 时钟闸翻转或 runtime 未初始化 > 1min → CRITICAL
+      # 时钟闸无内置周期探针：本指标的抓取间隔（30s）即时钟偏差暴露窗口上界
+      # （Dockerfile HEALTHCHECK 同间隔消费 readiness，见 C-4）。
+      - alert: ImBoyTsidNotReady
+        expr: imboy_tsid_readiness{job="imboy_backend"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          team: backend
+        annotations:
+          summary: "TSID 未就绪，发号被阻断 / TSID not ready (ID generation blocked)"
+          description: >
+            elib_tsid:readiness/0 持续非 ready 超过 1 分钟：固定 Offset 时钟与
+            系统钟偏差超 max_clock_drift_ms（clock_unsafe），或 runtime 未初始化
+            （not_initialized）。全部 namespace 的 ID 生成被阻断。
+            注意：挂起（主机休眠/VM 暂停）造成的偏差不会自愈，需重启节点；
+            NTP 回落场景会在下一次 readiness 评估自动解除。
+          runbook: >
+            1. 内网 curl /metrics | grep imboy_tsid_readiness 确认现状
+            2. 检索日志 clock_unsafe / elib_tsid_clock_unsafe 的突增时段
+            3. 核对系统时钟（timedatectl / NTP）；容器环境先查宿主机是否休眠过
+            4. 偏差持续不收敛 → 滚动重启 imboy_backend（重启即重新采集 Offset）

@@ -154,7 +154,12 @@ collect_system_metrics() ->
                 {erlang_vm_memory_bytes_total, #{kind => ets}} => MemEts,
                 process_uptime_seconds => uptime_seconds(),
                 imboy_online_users => OnlineCount,
-                imboy_ws_connections_total => WsConnections
+                imboy_ws_connections_total => WsConnections,
+                %% 审计 A3/C-2（2026-10-10）：TSID 就绪闸指标（1=ready，
+                %% 0=clock_unsafe/not_initialized/异常）。时钟闸无内置周期探针，
+                %% 偏差暴露窗口 = 本指标的抓取间隔；告警 ImBoyTsidNotReady
+                %% 与 deploy/prometheus/rules/imboy-alerts.yml 按名对账。
+                imboy_tsid_readiness => tsid_readiness_value()
             },
             PoolStatus
         ),
@@ -167,6 +172,17 @@ collect_system_metrics() ->
 uptime_seconds() ->
     {Ms, _} = erlang:statistics(wall_clock),
     Ms div 1000.
+
+%% @doc TSID 就绪闸指标值：仅 ready 记 1。elib_tsid 未初始化/时钟闸翻转/
+%% 模块缺失一律 0（fail-safe），由告警侧收口。
+-spec tsid_readiness_value() -> 0 | 1.
+tsid_readiness_value() ->
+    try elib_tsid:readiness() of
+        ready -> 1;
+        _Other -> 0
+    catch
+        _:_ -> 0
+    end.
 
 -spec license_metrics() -> map().
 license_metrics() ->
