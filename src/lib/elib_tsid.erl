@@ -49,7 +49,6 @@
 -export([init/1, register/1]).
 -export([generate/0, generate/1, generate_n/1, generate_n/2]).
 -export([parse/1, timestamp/1, node_id/1, from_binary/1]).
--export([to_base62/1, from_base62/1]).
 -export([registered/0]).
 -export([namespaces/0, aliases/0]).
 -export([readiness/0]).
@@ -901,59 +900,6 @@ is_decimal_digits_1(<<>>) ->
     true;
 is_decimal_digits_1(_) ->
     false.
-
-%% ===================================================================
-%% Base62 编码 (可选, 用于 URL/日志场景)
-%% ===================================================================
-
--define(BASE62_CHARS, "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz").
-%% 62^11 > MAX_ID >= 62^10 → 合法 TSID 的 Base62 最长 11 字符
--define(MAX_BASE62_LEN, 11).
-
-%% @doc 将 TSID 编码为 Base62 字符串 (最长 11 字符)
--spec to_base62(pos_integer()) -> binary().
-to_base62(Id) when is_integer(Id), Id >= 1, Id =< ?MAX_ID ->
-    list_to_binary(to_base62_chars(Id, []));
-to_base62(Id) ->
-    error({elib_tsid_invalid_input, #{id => Id, valid_range => {1, ?MAX_ID}}}).
-
-to_base62_chars(0, Acc) ->
-    Acc;
-to_base62_chars(N, Acc) ->
-    Rem = N rem 62,
-    Char = lists:nth(Rem + 1, ?BASE62_CHARS),
-    to_base62_chars(N div 62, [Char | Acc]).
-
-%% @doc 从 Base62 字符串解码为 TSID
--spec from_base62(binary()) -> pos_integer().
-from_base62(Bin) when is_binary(Bin), byte_size(Bin) > 0, byte_size(Bin) =< ?MAX_BASE62_LEN ->
-    case base62_to_int(Bin, 0) of
-        {ok, Id} when Id >= 1, Id =< ?MAX_ID ->
-            Id;
-        {ok, Id} ->
-            error(
-                {elib_tsid_invalid_input, #{
-                    decoded => Id, valid_range => {1, ?MAX_ID}
-                }}
-            );
-        error ->
-            error({elib_tsid_invalid_input, #{input => not_base62}})
-    end;
-from_base62(Bin) ->
-    error({elib_tsid_invalid_input, #{input => Bin, reason => empty_or_too_long}}).
-
-base62_to_int(<<C, Rest/binary>>, Acc) ->
-    case base62_index(C) of
-        {ok, Idx} -> base62_to_int(Rest, Acc * 62 + Idx);
-        error -> error
-    end;
-base62_to_int(<<>>, Acc) ->
-    {ok, Acc}.
-
-base62_index(C) when C >= $0, C =< $9 -> {ok, C - $0};
-base62_index(C) when C >= $A, C =< $Z -> {ok, C - $A + 10};
-base62_index(C) when C >= $a, C =< $z -> {ok, C - $a + 36};
-base62_index(_) -> error.
 
 %% ===================================================================
 %% 测试 seam：显式重置（仅测试使用）

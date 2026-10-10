@@ -115,22 +115,6 @@ node_id_extraction_test() ->
     Id = elib_tsid:generate(user),
     ?assertEqual(129, elib_tsid:node_id(Id)).
 
-base62_roundtrip_test() ->
-    ?SETUP(),
-    Id = elib_tsid:generate(user),
-    ?assertEqual(Id, elib_tsid:from_base62(elib_tsid:to_base62(Id))).
-
-base62_length_test() ->
-    ?SETUP(),
-    lists:foreach(
-        fun(_) ->
-            Id = elib_tsid:generate(user),
-            B62 = elib_tsid:to_base62(Id),
-            ?assert(byte_size(B62) =< 11)
-        end,
-        lists:seq(1, 50)
-    ).
-
 %% ===================================================================
 %% dc_bits / 节点边界
 %% ===================================================================
@@ -549,39 +533,6 @@ decimal_boundary_corpus_test() ->
     lists:foreach(
         fun(Bin) -> ?assertEqual(error, elib_tsid:from_binary(Bin)) end,
         Invalid
-    ).
-
-base62_corpus_test() ->
-    lists:foreach(
-        fun(Id) ->
-            ?assertEqual(Id, elib_tsid:from_base62(elib_tsid:to_base62(Id)))
-        end,
-        [1, 42, 2097152, 123456789012345, ?MAX_ID]
-    ),
-    Reject = [
-        <<>>,
-        <<"0">>,
-        <<"a!c">>,
-        <<"-z">>,
-        <<" ">>,
-        <<"zzzzzzzzzzz">>,
-        <<"zzzzzzzzzzzz">>
-    ],
-    lists:foreach(
-        fun(Bin) ->
-            ?assertMatch(
-                {elib_tsid_invalid_input, _}, catch_typed(fun() -> elib_tsid:from_base62(Bin) end)
-            )
-        end,
-        Reject
-    ),
-    ?assertMatch({elib_tsid_invalid_input, _}, catch_typed(fun() -> elib_tsid:to_base62(0) end)),
-    ?assertMatch(
-        {elib_tsid_invalid_input, _}, catch_typed(fun() -> elib_tsid:to_base62(?MAX_ID + 1) end)
-    ),
-    ?assertMatch(
-        {elib_tsid_invalid_input, _},
-        catch_typed(fun() -> elib_tsid:to_base62(-1) end)
     ).
 
 calendar_precision_test() ->
