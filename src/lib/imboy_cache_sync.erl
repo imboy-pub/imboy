@@ -52,6 +52,7 @@
     meta_snapshot/0,
     node_boot/0,
     queue_depth/0,
+    overloaded/0,
     is_replicated/1,
     replicate_state/1
 ]).
@@ -160,6 +161,11 @@ node_boot() ->
         [{_, NB}] -> NB;
         [] -> {node(), <<>>}
     end.
+
+%% @doc 过载状态查询（调用方前置检查，W4-09）。
+-spec overloaded() -> boolean().
+overloaded() ->
+    queue_depth() > ?HIGH_WATERMARK.
 
 -spec queue_depth() -> non_neg_integer().
 queue_depth() ->
@@ -470,8 +476,13 @@ discover(#state{retries = R} = State) when R > ?RECOVER_MAX_RETRY ->
 discover(State) ->
     Members = [P || P <- syn_scope_members(), node(P) =/= node()],
     case Members of
+        [] when State#state.retries < 3 ->
+            %% syn 成员视图最终一致：刚 join/重启后可能瞬时为空，
+            %% 有界重试后再判定（防止误判单节点而跳过版本上界恢复）
+            _ = erlang:send_after(500, self(), timeout),
+            {noreply, State#state{retries = State#state.retries + 1}};
         [] ->
-            %% 单节点：允许从空缓存启动（5.3），直接 READY
+            %% 稳定后仍空：真单节点，允许从空缓存启动（5.3）
             become_ready(State);
         _ ->
             %% 多节点：向全部 peer 请求版本上界（5.3 RECOVER_VERSION）
@@ -750,8 +761,10 @@ index_replicate(Key) ->
 
 -spec syn_scope_members() -> [pid()].
 syn_scope_members() ->
-    try syn:get_members(?CACHE_SCOPE, ?CACHE_GROUP_NAME) of
-        L when is_list(L) -> L
+    %% syn 3.4.2 API：syn:members(Scope, Group) -> [{Pid, Meta}]
+    try syn:members(?CACHE_SCOPE, ?CACHE_GROUP_NAME) of
+        L when is_list(L) -> [P || {P, _Meta} <- L];
+        _ -> []
     catch
         _:_ -> []
     end.

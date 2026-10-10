@@ -56,6 +56,8 @@ put_replicate_denied_without_authorization_test_() ->
 
 put_replicate_authorized_in_isolated_test_namespace_test_() ->
     ?TEST_WITH_APP(fun() ->
+        %% 启动恢复屏障：replicate 写在 READY 前被拒（5.3），先等就绪
+        ready = wait_sync_ready(50),
         %% 隔离测试 namespace：override 登记 + 白名单（仅测试配置）
         application:set_env(
             imboy,
@@ -294,6 +296,7 @@ unfenced_memo_uses_legacy_path_test_() ->
 
 not_ready_publish_is_rejected_test_() ->
     ?TEST_WITH_APP(fun() ->
+        ready = wait_sync_ready(50),
         application:set_env(
             imboy,
             cache_registry_overrides,
@@ -322,6 +325,7 @@ not_ready_publish_is_rejected_test_() ->
 
 degraded_replicate_reads_return_unverified_undefined_test_() ->
     ?TEST_WITH_APP(fun() ->
+        ready = wait_sync_ready(50),
         application:set_env(
             imboy,
             cache_registry_overrides,
@@ -347,6 +351,17 @@ degraded_replicate_reads_return_unverified_undefined_test_() ->
 %% ===================================================================
 %% Helpers
 %% ===================================================================
+
+wait_sync_ready(0) ->
+    erlang:error(sync_not_ready);
+wait_sync_ready(N) ->
+    case imboy_cache_sync:status() of
+        ready ->
+            ready;
+        _ ->
+            timer:sleep(100),
+            wait_sync_ready(N - 1)
+    end.
 
 setup_fenced(NS) ->
     Old = application:get_env(imboy, cache_fenced_namespaces, undefined),

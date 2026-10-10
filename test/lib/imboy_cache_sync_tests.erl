@@ -55,6 +55,7 @@ future_ms(Sec) ->
 
 v2_set_applies_newer_revision_test_() ->
     ?TEST_WITH_APP(fun() ->
+        ready = wait_ready(100),
         setup_replicate_env(),
         try
             Key = {cache_v2_test_rep, set1},
@@ -75,6 +76,7 @@ v2_set_applies_newer_revision_test_() ->
 
 v2_equal_revision_is_idempotent_test_() ->
     ?TEST_WITH_APP(fun() ->
+        ready = wait_ready(100),
         setup_replicate_env(),
         try
             Key = {cache_v2_test_rep, idem1},
@@ -109,6 +111,7 @@ v2_equal_revision_is_idempotent_test_() ->
 
 v2_out_of_order_events_converge_test_() ->
     ?TEST_WITH_APP(fun() ->
+        ready = wait_ready(100),
         setup_replicate_env(),
         try
             Key = {cache_v2_test_rep, order1},
@@ -126,6 +129,7 @@ v2_out_of_order_events_converge_test_() ->
 
 v2_delete_tombstone_blocks_resurrection_test_() ->
     ?TEST_WITH_APP(fun() ->
+        ready = wait_ready(100),
         setup_replicate_env(),
         try
             Key = {cache_v2_test_rep, tomb1},
@@ -175,6 +179,7 @@ v2_set_expired_event_is_rejected_test_() ->
 
 v2_set_near_expiry_applies_shrunk_ttl_test_() ->
     ?TEST_WITH_APP(fun() ->
+        ready = wait_ready(100),
         setup_replicate_env(),
         try
             Key = {cache_v2_test_rep, shrink1},
@@ -199,6 +204,7 @@ v2_set_near_expiry_applies_shrunk_ttl_test_() ->
 
 v2_self_emitted_event_is_not_reapplied_test_() ->
     ?TEST_WITH_APP(fun() ->
+        ready = wait_ready(100),
         setup_replicate_env(),
         try
             Key = {cache_v2_test_rep, selfloop1},
@@ -234,6 +240,7 @@ v2_self_emitted_event_is_not_reapplied_test_() ->
 
 v2_unauthorized_key_is_rejected_receiver_side_test_() ->
     ?TEST_WITH_APP(fun() ->
+        ready = wait_ready(100),
         try
             %% 无白名单：接收端独立校验拒绝（发送/接收两端独立校验，19.5）
             Key = {cache_v2_test_rep, unauthorized_1},
@@ -301,6 +308,7 @@ v2_malformed_events_are_rejected_test_() ->
 
 v2_seq_gap_is_detected_test_() ->
     ?TEST_WITH_APP(fun() ->
+        ready = wait_ready(100),
         setup_replicate_env(),
         try
             Origin = 'gap_source@x',

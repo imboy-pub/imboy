@@ -290,11 +290,18 @@ put(Key, Value, TTL, local) ->
             Err
     end;
 put(Key, Value, TTL, replicate) ->
-    case imboy_cache_policy:validate_replicate(Key, Value, TTL) of
-        ok ->
-            imboy_cache_sync:publish_set(Key, Value, TTL);
-        {error, _} = Err ->
-            Err
+    %% 过载保护前置到调用方（W4-09）：队列超水位时直接拒绝，
+    %% 不进入 sync 进程排队（排队后再检查时积压常已被消化）
+    case imboy_cache_sync:overloaded() of
+        true ->
+            {error, overloaded};
+        false ->
+            case imboy_cache_policy:validate_replicate(Key, Value, TTL) of
+                ok ->
+                    imboy_cache_sync:publish_set(Key, Value, TTL);
+                {error, _} = Err ->
+                    Err
+            end
     end.
 
 %% @doc replicate 版本化删除（计划 4.3）：带版本删除事件 + 短期墓碑。
