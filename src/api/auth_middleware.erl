@@ -66,6 +66,13 @@ execute(Req, Env) ->
         %% /adm/*、/static/* 均不冲突）。Seat JWT 语义零涉及（本面只发 HTML 壳）。
         <<"/seat/", _Tail/binary>> ->
             {ok, Req, Env};
+        %% APP-M02（邀请同事）：`/invite/org/:code` 组织邀请 H5 落地页——
+        %% 零凭证导航面（浏览器从分享链接直开，无 IMBoy 设备/JWT/签名），
+        %% 与 /w/、/seat/ 同款直通；内容由 :code 派生、零 DB 查询，
+        %% 形状门外（valid_code/1）一律 404 静态文案。`/invite` 根段全站唯一
+        %% （不与 /api/*、/adm/*、/w/*、/seat/*、/static/* 冲突）。
+        <<"/invite/", _Tail/binary>> ->
+            {ok, Req, Env};
         _ ->
             OpenLi = imboy_router:open(),
             OptionLi = imboy_router:option(),

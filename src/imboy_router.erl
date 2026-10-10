@@ -44,6 +44,11 @@ get_routes() ->
                 {priv_file, imboy, "static/legal/privacy_policy.html"}},
             {"/account-deletion", cowboy_static,
                 {priv_file, imboy, "static/legal/account_deletion.html"}},
+            %% APP-M02 组织邀请 H5 落地页（GET /invite/org/:code）：零凭证、
+            %% 纯静态 HTML（内容由邀请码派生，零 DB 查询）；auth_middleware
+            %% 对 /invite/ 前缀直通（execute 分支，同 /w/、/seat/ 款），
+            %% `/invite` 根段与 /api/*、/adm/*、/w/*、/seat/*、/static/* 均不冲突。
+            {"/invite/org/:code", org_invite_landing_handler, #{}},
             {"/static/[...]", cowboy_static,
                 {priv_dir, imboy, "static", [{mimetypes, cow_mimetypes, all}]}}
         ],
