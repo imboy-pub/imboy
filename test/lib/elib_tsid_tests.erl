@@ -115,6 +115,10 @@ node_id_extraction_test() ->
     Id = elib_tsid:generate(user),
     ?assertEqual(129, elib_tsid:node_id(Id)).
 
+%% base62 编解码（to_base62/from_base62）已随 V10 收口删除：三仓零生产
+%% 引用，属无业务价值的可选面（保留只会扩大维护面）。corpus 覆盖由
+%% decimal_boundary_corpus_test 承担。
+
 %% ===================================================================
 %% dc_bits / 节点边界
 %% ===================================================================
@@ -535,6 +539,8 @@ decimal_boundary_corpus_test() ->
         Invalid
     ).
 
+%% base62_corpus 已随 base62 API 删除（V10 收口：三仓零生产引用）。
+
 calendar_precision_test() ->
     P = elib_tsid:parse(?MAX_ID),
     ?assertEqual(6133736111103, maps:get(timestamp, P)),
@@ -813,6 +819,129 @@ concurrent_batch_disjoint_ranges_test() ->
     AllIds = collect_ids(Workers, []),
     ?assertEqual(Workers * N, length(AllIds)),
     ?assertEqual(Workers * N, length(lists:usort(AllIds))).
+
+%% ===================================================================
+%% 批量跨块预算守恒（V10-A2 黑盒回归；此前仅构造性保证，见 R-11）
+%%
+%% 慢墙钟编排：driver 以 1ms 自调度链持续把 runtime 的 clock_offset_ms
+%% 回退，使 wall = monotonic + offset 以 1/StepMs 速度前进（校正间隙的
+%% 亚毫秒漂移远小于预置的等待需求，见下）；先把 user 游标预置到未来
+%% 1ms 的满毫秒，使 generate_n 的块 1 起就必须真实发生 clock_wait。
+%%
+%% 守恒契约（generate_n 入口一次物化 deadline、全部块共享）：
+%%   - 负例 3 块 × StepMs=60：总等待需求 3~4 个 wall 毫秒 = 180~240ms
+%%     真实时间 > 预算 140ms → 必然 typed error，且真实耗时受预算上界
+%%     约束。若实现退化为每块重物化完整预算（A2 修复前形态），每块
+%%     需求仅 1~2ms wall（60~120ms）< 140ms → 三块全部成功返回，
+%%     assertMatch 随之失败——这是对"换块不获得新预算"的黑盒区分。
+%%   - 正例双 worker 各 2 块：CAS 竞争 + 跨块等待同时发生，总量 4~5 个
+%%     wall 毫秒（240~300ms）在 400ms 预算内 → 全部成功，证明约束的
+%%     是总预算而非"永远失败"。
+%% ===================================================================
+
+batch_budget_shared_across_chunks_test_() ->
+    {timeout, 30, fun batch_budget_shared_across_chunks_body/0}.
+
+batch_budget_shared_across_chunks_body() ->
+    elib_tsid:reset_for_test(),
+    ok = elib_tsid:init(#{
+        dc_id => 1, node_id => 1, dc_bits => 3, capacity_wait_timeout_ms => 140
+    }),
+    preset_user_cursor_one_ms_ahead(),
+    Driver = start_slow_wall_driver(60),
+    try
+        T0 = erlang:monotonic_time(millisecond),
+        ?assertMatch(
+            {elib_tsid_capacity_exhausted, #{phase := clock_wait}},
+            catch_typed(fun() -> elib_tsid:generate_n(user, 2048 * 3) end)
+        ),
+        Elapsed = erlang:monotonic_time(millisecond) - T0,
+        %% 单一预算内失败：预算被真实消耗且不因换块获得新完整预算
+        ?assert(Elapsed >= 120, {budget_not_consumed_ms, Elapsed}),
+        ?assert(Elapsed =< 220, {budget_exceeded_ms, Elapsed})
+    after
+        stop_slow_wall_driver(Driver)
+    end.
+
+batch_budget_sufficient_with_contention_slow_wall_test_() ->
+    {timeout, 30, fun batch_budget_sufficient_with_contention_slow_wall_body/0}.
+
+batch_budget_sufficient_with_contention_slow_wall_body() ->
+    elib_tsid:reset_for_test(),
+    ok = elib_tsid:init(#{
+        dc_id => 1, node_id => 1, dc_bits => 3, capacity_wait_timeout_ms => 400
+    }),
+    preset_user_cursor_one_ms_ahead(),
+    Driver = start_slow_wall_driver(60),
+    try
+        Self = self(),
+        [
+            spawn(fun() -> Self ! {ids, elib_tsid:generate_n(user, 2048 * 2)} end)
+         || _ <- lists:seq(1, 2)
+        ],
+        AllIds = collect_ids(2, []),
+        ?assertEqual(8192, length(AllIds)),
+        ?assertEqual(8192, length(lists:usort(AllIds))),
+        %% 4 块 = 恰好 4 个连续未来毫秒（跨块真实发生）
+        ?assertEqual(
+            4,
+            length(lists:usort([elib_tsid:timestamp(I) || I <- AllIds])),
+            {ms_span, AllIds}
+        )
+    after
+        stop_slow_wall_driver(Driver)
+    end.
+
+%% @private 把 user 游标预置到未来 1ms 的满毫秒（seam 注入未来墙钟发
+%% 2048 个）。此后慢墙钟下的 generate_n 块 1 起就需等待真实 wall 推进。
+preset_user_cursor_one_ms_ahead() ->
+    #{clock_offset_ms := O0} = persistent_term:get(elib_tsid_runtime),
+    FutureWall = erlang:monotonic_time(millisecond) + O0 + 1,
+    with_fixed_clock(FutureWall, fun() ->
+        _ = elib_tsid:generate_n(user, 2048),
+        ok
+    end).
+
+%% @private 慢墙钟驱动：每 1ms 校正一次 clock_offset_ms，使 wall 保持
+%% 在"启动时刻 + floor(真实耗时/StepMs)"（即 1/StepMs 速度前进）。
+%% 校正间隙的漂移（~1ms）远小于预置构造的块等待需求。stop 时还原。
+%% high 优先级：tick 是微秒级轻操作，但普通优先级在全量轨道并发饥饿下
+%% 可能被推迟数秒（2026-10-10 级联实证），使正例的 400ms 预算假性耗尽。
+start_slow_wall_driver(StepMs) ->
+    BaseRuntime = persistent_term:get(elib_tsid_runtime),
+    M0 = erlang:monotonic_time(millisecond),
+    Pid = spawn_opt(
+        fun() -> slow_wall_tick(BaseRuntime, M0, StepMs) end,
+        [{priority, high}]
+    ),
+    erlang:send_after(1, Pid, tick),
+    Pid.
+
+slow_wall_tick(BaseRuntime, M0, StepMs) ->
+    receive
+        stop ->
+            persistent_term:put(elib_tsid_runtime, BaseRuntime),
+            ok;
+        tick ->
+            #{clock_offset_ms := O0} = BaseRuntime,
+            ElapsedReal = erlang:monotonic_time(millisecond) - M0,
+            WallAdvance = ElapsedReal div StepMs,
+            persistent_term:put(
+                elib_tsid_runtime,
+                BaseRuntime#{clock_offset_ms := O0 - (ElapsedReal - WallAdvance)}
+            ),
+            erlang:send_after(1, self(), tick),
+            slow_wall_tick(BaseRuntime, M0, StepMs)
+    end.
+
+stop_slow_wall_driver(Pid) ->
+    Ref = erlang:monitor(process, Pid),
+    Pid ! stop,
+    receive
+        {'DOWN', Ref, process, Pid, _Reason} -> ok
+    after 5000 ->
+        exit(driver_stop_timeout)
+    end.
 
 %% ===================================================================
 %% 高并发混合（跨 namespace 各自独立游标；1M 规模，90s timetrap）
