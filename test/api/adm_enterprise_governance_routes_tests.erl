@@ -48,6 +48,9 @@
     %% A-11 PATCH CAS 增删
     {<<"/api/adm/enterprise/organizations/:org_id/applications/:application_id/grants/:grant_id">>,
         grant},
+    %% A-16 GET 身份映射列表 / A-17 POST 绑定 / A-18 DELETE 解绑（同路径不同方法）
+    {<<"/api/adm/enterprise/organizations/:org_id/applications/:application_id/identities">>,
+        identities},
     %% A-12 GET 投递统计
     {<<"/api/adm/enterprise/organizations/:org_id/applications/:application_id/delivery-stats">>,
         delivery_stats},
@@ -140,7 +143,9 @@ prefix_disjoint() ->
     Gov = [P || P <- Paths, is_governance(P)],
     Eb = [P || P <- Paths, is_eb_platform(P)],
     Internal = [P || P <- Paths, is_internal(P)],
-    ?assertEqual(12, length(Gov)),
+    %% A-01..A-18 共 13 条唯一路径（credentials/grants/identities 各为
+    %% 同路径多方法收敛成一条）；与 imboy_router 治理面注册逐条对账
+    ?assertEqual(13, length(Gov)),
     %% 治理面路径不落在 enterprise-business 运营面或 OA internal 面之下
     ?assertEqual([], [P || P <- Gov, is_eb_platform(P)]),
     ?assertEqual([], [P || P <- Gov, is_internal(P)]),
