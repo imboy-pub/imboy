@@ -69,13 +69,9 @@ scenario_list(A, B, C) ->
         {"invalidate propagates fenced generation", fun() -> s_invalidate(A, B) end},
         {"TTL remaining not reset", fun() -> s_ttl(A, B) end},
         {"restart recovers version ceiling", fun() -> s_restart(A, C) end},
-        {"overload protection rejects new replicate", fun() -> s_overload(A) end}
-        %% W4-03 快照回填：实现已在 imboy_cache_sync（send_snapshot/
-        %% snapshot_request/done 链路），端到端场景 s_snapshot/3 保留于
-        %% 下方但未纳入通过集——端到端验证未闭合（恢复节点未观察到
-        %% 快照事件应用，根因待查），不冒充通过。重新启用：
-        %% {"snapshot backfills lost replicas after restart",
-        %%  fun() -> s_snapshot(A, B, C) end}
+        {"overload protection rejects new replicate", fun() -> s_overload(A) end},
+        {"snapshot backfills lost replicas after restart",
+         fun() -> s_snapshot(A, B, C) end}
     ].
 
 run_one(Name, Fun) ->
@@ -479,7 +475,7 @@ drain_sync_mailbox() ->
     ok.
 
 rindex_dump() ->
-    [K || [K] <- ets:match(imboy_cache_meta, '{{rindex, \'$1\'}, \'_\'}')].
+    [K || [K] <- ets:match(imboy_cache_meta, {{rindex, '$1'}, '_'})].
 
 converge_get_quiet(Node, Key, Expected, TimeoutMs) ->
     Deadline = erlang:monotonic_time(millisecond) + TimeoutMs,

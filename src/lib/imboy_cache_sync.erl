@@ -679,7 +679,7 @@ bump_all_fenced() ->
             [{_, G}] = ets:lookup(?META_TABLE, {gen, Domain}),
             true = ets:insert(?META_TABLE, {{gen, Domain}, G + 1})
         end
-     || [Domain] <- ets:match(?META_TABLE, '{{gen, \'$1\'}, \'_\'}')
+     || [Domain] <- ets:match(?META_TABLE, {{gen, '$1'}, '_'})
     ],
     ok.
 
@@ -800,7 +800,7 @@ send_snapshot(RequestorPid, _State) ->
     NowMs = erlang:system_time(millisecond),
     Entries = [
         K
-     || [K] <- ets:match(?META_TABLE, '{{rindex, \'$1\'}, \'_\'}'),
+     || [K] <- ets:match(?META_TABLE, {{rindex, '$1'}, '_'}),
         valid_live_entry(K, NowMs)
     ],
     %% 快照正确性优先：全部有效条目以原版本回放（单轮发送；条目总量受
