@@ -1,0 +1,455 @@
+{
+  "version": "V2.2.1",
+  "generated_at": "2026-10-10T07:11:54.229679+00:00",
+  "status": "W0_BLOCKED",
+  "architecture": "A",
+  "confirmed": false,
+  "replicate_whitelist": [],
+  "w1_status": "NOT_STARTED / BLOCKED_ON_W0",
+  "plan_sha256": "a5523ee731bc822018831586e3d747ba109c2c66e734daf5633b494d9b18c713",
+  "registry_count": 47,
+  "registry_sha256": "ae062e4e53d2b69c1624226c2e83bce1026468621e0d82912e6b81fdad9f5f48",
+  "binding": {
+    "authorized_by": "user",
+    "date": "2026-10-10",
+    "task_expected_head": "5aff3863efc01ca8f89adadda4a625cb0a0157d1",
+    "authorized_head": "34858496b5efabcfee976ec5bd6525b82e2b271c",
+    "note": "用户重新授权绑定 34858496 为本轮 W0 收尾基线；其上 TSID 提交（5aff3863..34858496 及 13:50:05 的 eb7d4d54）均为外来上下文；缓存证据面在 34858496 与 eb7d4d54 间逐字节一致（r5 vs r7 source-evidence），缓存调用行级漂移为 0（机器核验）"
+  },
+  "candidates": [
+    {
+      "id": "hist-578d83ac",
+      "head": "578d83acd53cf9cccb373b6b004a4b2083eecf49",
+      "role": "历史压测候选（V2.2.1 计划执行轮次 1/2；结果保持原样，不冒称在本轮 HEAD 下执行）",
+      "registry_sha256": "1b07552fb2e33ef495ee3f1dabf383648d79c54ba741f66b91e574e9682e0303",
+      "script_hashes": {
+        "run_cache_w0.py": "966536ca9026666c988cec6442133ae0fd1d1ff005dc451bbe43b958c517041a",
+        "cache_w0_bench.erl": "049026b3e5d8eca3bee05a7a6045965ac0971862caf21024efee6ad7bc73a1e1"
+      },
+      "self_check_oracle": "legacy: cold_memo_workers=32, loader_executions=1, stale_refill_after_flush=reproduced",
+      "runs": [
+        {
+          "path": "/Users/leeyi/project/imboy.pub/.Codex/runs/cache-v2.2.1-w0/hist-imboy-cache-w0-i55ib9ea",
+          "manifest_sha256": "188f68ecca049228d32f03b6fd86119d886b4d23fc29859b99480b4e1584bf4d"
+        },
+        {
+          "path": "/Users/leeyi/project/imboy.pub/.Codex/runs/cache-v2.2.1-w0/hist-imboy-cache-w0-8kn7as_5",
+          "manifest_sha256": "35e3c425a79acf6754df55b404935081b2dc142ed328b712c9544218db1f17bf"
+        }
+      ]
+    },
+    {
+      "id": "closeout-34858496",
+      "head": "eb7d4d548fe88daebb5e45a6a62b5df4becdf998",
+      "authorized_head": "34858496b5efabcfee976ec5bd6525b82e2b271c",
+      "head_note": "绑定轮次 7/8 执行时 HEAD 已因外来 TSID W7 提交（13:50:05）前移至 eb7d4d54；该提交属用户授权的'TSID 提交为外来上下文'范畴；缓存证据面等价性由 head_equivalence_proof 机器验证",
+      "head_equivalence_proof": {
+        "run_at_authorized_head": "/Users/leeyi/project/imboy.pub/.Codex/runs/cache-v2.2.1-w0/r5-20261010-134625",
+        "run_at_execution_head": "/Users/leeyi/project/imboy.pub/.Codex/runs/cache-v2.2.1-w0/r7-20261010-140457",
+        "assertion": "两轮 source-evidence.json（42 个缓存相关源文件全文+SHA）逐字节一致 → 缓存证据面在 34858496 与 eb7d4d54 之间零漂移"
+      },
+      "role": "本轮 W0 收尾候选（授权基线 34858496，执行 HEAD eb7d4d54；绑定轮次 7/8；预绑定轮次 3/4/5/6 因扫描器修复与事务边界核验先后被取代，保留于 RUN_ROOT 供追溯）",
+      "superseded_runs_pre_annotation_fix": [
+        "/Users/leeyi/project/imboy.pub/.Codex/runs/cache-v2.2.1-w0/r3-20261010-131525",
+        "/Users/leeyi/project/imboy.pub/.Codex/runs/cache-v2.2.1-w0/r4-20261010-131543",
+        "/Users/leeyi/project/imboy.pub/.Codex/runs/cache-v2.2.1-w0/r5-20261010-134625",
+        "/Users/leeyi/project/imboy.pub/.Codex/runs/cache-v2.2.1-w0/r6-20261010-134650"
+      ],
+      "registry_sha256": "ae062e4e53d2b69c1624226c2e83bce1026468621e0d82912e6b81fdad9f5f48",
+      "script_hashes": {
+        "run_cache_w0.py": "7621cbbecfae5c8c2936f7f8975d010e021aee7b4a878276e71c2a765f780d0f",
+        "cache_w0_bench.erl": "f17e9806f5d922f51fd6e813d4a9ef50bade3864a7c1bbfaecf6c734df2bec2b"
+      },
+      "self_check_oracle": "extended: legacy 全部 + stale_waiter_value_after_flush=stale, loader_exception_reraised=true, premature_exit_waiter=ok, first_caller_becomes_writer=undefined",
+      "source_drift_vs_hist": {
+        "files": [
+          "src/ds/group_ds.erl",
+          "src/logic/moderation_policy.erl"
+        ],
+        "cache_call_line_drift": 0,
+        "cause": "TSID 提交（外来上下文）；diff 核验无 imboy_cache/depcache 调用行变化"
+      },
+      "runs": [
+        {
+          "path": "/Users/leeyi/project/imboy.pub/.Codex/runs/cache-v2.2.1-w0/r7-20261010-140457",
+          "manifest_sha256": "3cb7872397ffde5d34bf9948eeae6cf3fb111b882416c41806d81ff363182507"
+        },
+        {
+          "path": "/Users/leeyi/project/imboy.pub/.Codex/runs/cache-v2.2.1-w0/r8-20261010-140511",
+          "manifest_sha256": "1e916d1c0da3b25ab82e97b1871a77a9e7678f55c8d9491fc87b3cacb848e9e1"
+        }
+      ]
+    }
+  ],
+  "acceptance_ledger": [
+    {
+      "id": "W0-01",
+      "task": "记录本地 HEAD、工作区变更和依赖版本",
+      "result": "PASS",
+      "candidates": [
+        "hist-578d83ac",
+        "closeout-34858496"
+      ],
+      "oracle": "每轮 baseline.json 记录 head、working_tree_status、平台、负载、depcache/syn/jsone 的 .app 内容与 src/beam SHA256、双脚本 SHA256；baseline.compile_exit=run_exit=0；runner 进程退出码 2 为设计上的 W0_BLOCKED 信号",
+      "command": "python3 scripts/run_cache_w0.py --operations 10000 --output <空目录>",
+      "exit_code": 2,
+      "executions": 4,
+      "evidence": [
+        {
+          "path": "/Users/leeyi/project/imboy.pub/.Codex/runs/cache-v2.2.1-w0/r7-20261010-140457/baseline.json",
+          "sha256": "3968f668d3683b4d6c4782850a67b8251038a4e1dac33c3ee06b4b9456178d4b"
+        },
+        {
+          "path": "/Users/leeyi/project/imboy.pub/.Codex/runs/cache-v2.2.1-w0/r8-20261010-140511/baseline.json",
+          "sha256": "997c6063ed16801986b33e6f2a4ecad1cebba5d2e87bce76168c8f59c7db073f"
+        },
+        {
+          "path": "/Users/leeyi/project/imboy.pub/.Codex/runs/cache-v2.2.1-w0/hist-imboy-cache-w0-i55ib9ea/baseline.json",
+          "sha256": "afdbce62d4fae88458c8652230c440bcea7e6c141b8231de7df81bf9218c9b9d"
+        },
+        {
+          "path": "/Users/leeyi/project/imboy.pub/.Codex/runs/cache-v2.2.1-w0/hist-imboy-cache-w0-8kn7as_5/baseline.json",
+          "sha256": "b07cb1bbd62ed24b683ef8bd86b03681dbd82c27c071c0e85598ba58197cb902"
+        }
+      ],
+      "gaps": [],
+      "skip_reason": null,
+      "notes": "轮次 7/8 执行于 eb7d4d54（外来 TSID W7 提交后；缓存证据面与授权基线 34858496 逐字节一致）；轮次 1/2 绑定 578d83ac 保持原样"
+    },
+    {
+      "id": "W0-02",
+      "task": "全仓缓存调用点扫描",
+      "result": "PASS",
+      "candidates": [
+        "closeout-34858496"
+      ],
+      "oracle": "calls.json 覆盖所有非 vendored .erl 的 imboy_cache|depcache 词法调用并附外层函数；生产调用 disposition 无 EXCEPTION_UNRESOLVED；动态/不可静态解析形态全部登记于 unresolved-forms.json",
+      "command": "python3 scripts/run_cache_w0.py --operations 10000（内含 census 扫描）",
+      "exit_code": 2,
+      "executions": 2,
+      "evidence": [
+        {
+          "path": "/Users/leeyi/project/imboy.pub/.Codex/runs/cache-v2.2.1-w0/r7-20261010-140457/calls.json",
+          "sha256": "4ac2471b40eb1775c1b6579788a98e80f094d9ea2aa5efa3fc1950fbd03c84f9"
+        },
+        {
+          "path": "/Users/leeyi/project/imboy.pub/.Codex/runs/cache-v2.2.1-w0/r8-20261010-140511/calls.json",
+          "sha256": "4ac2471b40eb1775c1b6579788a98e80f094d9ea2aa5efa3fc1950fbd03c84f9"
+        },
+        {
+          "path": "/Users/leeyi/project/imboy.pub/.Codex/runs/cache-v2.2.1-w0/r7-20261010-140457/unresolved-forms.json",
+          "sha256": "29832aca72417b8e80774c11d1ed7fd2027080ba0fd69bd28eacbdb3e0ff67de"
+        },
+        {
+          "path": "/Users/leeyi/project/imboy.pub/.Codex/runs/cache-v2.2.1-w0/r8-20261010-140511/unresolved-forms.json",
+          "sha256": "29832aca72417b8e80774c11d1ed7fd2027080ba0fd69bd28eacbdb3e0ff67de"
+        }
+      ],
+      "gaps": [
+        "词法清单不冒充 AST/完整数据流证明；动态 apply/跨行表达式按 unresolved-forms 显式例外记录"
+      ],
+      "skip_reason": null,
+      "notes": "生产调用 126、全范围 206；EXCEPTION_UNRESOLVED=0；6 类动态形态显式登记"
+    },
+    {
+      "id": "W0-03",
+      "task": "完整 Key Registry",
+      "result": "BLOCKED",
+      "candidates": [
+        "closeout-34858496"
+      ],
+      "oracle": "47 命名空间唯一且含 namespace/key_pattern/policy/authority/ttl/sensitive/owner/mutation_hook(sites/reason)/recovery/failure_policy；replication_allowed 全部 false；owner 必须有真实调用或 find/3 转发",
+      "command": "python3 scripts/run_cache_w0.py --operations 10000（内含 registry 生成）",
+      "exit_code": 2,
+      "executions": 2,
+      "evidence": [
+        {
+          "path": "/Users/leeyi/project/imboy.pub/imboy/docs/architecture/cache-v2.2.1/w0/key-registry.json",
+          "sha256": "ae062e4e53d2b69c1624226c2e83bce1026468621e0d82912e6b81fdad9f5f48"
+        },
+        {
+          "path": "/Users/leeyi/project/imboy.pub/imboy/docs/architecture/cache-v2.2.1/w0/key-registry.md",
+          "sha256": "4775a9bab5a9e21d6e5cb44e12c9b9409baf256c18a79a7176ed61836ebbab2f"
+        },
+        {
+          "path": "/Users/leeyi/project/imboy.pub/.Codex/runs/cache-v2.2.1-w0/r8-20261010-140511/key-registry.json",
+          "sha256": "ae062e4e53d2b69c1624226c2e83bce1026468621e0d82912e6b81fdad9f5f48"
+        }
+      ],
+      "gaps": [
+        "值大小/数量上界与恢复资源预算未冻结（max_value_bytes 保留未冻结态）",
+        "3 项 NO_FLUSH_HOOK_TTL_ONLY（moment_acl 权限类、billing_meter、moderation_sensitive_words）需 W1 裁决 TTL 兜底可否接受",
+        "TRACED_COMMIT_AFTER_OK 仅证明失效时序在提交后；回填竞态 generation 栅栏属 W1/W2 设计实现"
+      ],
+      "skip_reason": null,
+      "notes": "结构/边界策略可冻结：复制白名单为空、未分类禁止复制"
+    },
+    {
+      "id": "W0-04",
+      "task": "敏感数据和权限类缓存分类",
+      "result": "PASS",
+      "candidates": [
+        "closeout-34858496"
+      ],
+      "oracle": "每个命名空间 sensitive 布尔齐全；G-04 调查：legacy_set_broadcast 清单机器推导并逐项登记（含 apns_jwt/fcm/config5/qr/csrf/bind_mail/login_attempt_ip_limit）",
+      "command": "python3 scripts/run_cache_w0.py --operations 10000",
+      "exit_code": 2,
+      "executions": 2,
+      "evidence": [
+        {
+          "path": "/Users/leeyi/project/imboy.pub/imboy/docs/architecture/cache-v2.2.1/w0/key-registry.json",
+          "sha256": "ae062e4e53d2b69c1624226c2e83bce1026468621e0d82912e6b81fdad9f5f48"
+        },
+        {
+          "path": "/Users/leeyi/project/imboy.pub/.Codex/runs/cache-v2.2.1-w0/r8-20261010-140511/unresolved-forms.json",
+          "sha256": "29832aca72417b8e80774c11d1ed7fd2027080ba0fd69bd28eacbdb3e0ff67de"
+        }
+      ],
+      "gaps": [
+        "config5 解密子项敏感度须逐项审查（SECRET_SUBITEM_REVIEW_W1）"
+      ],
+      "skip_reason": null,
+      "notes": "策略矩阵为迁移目标而非现状；legacy 广播为现状证据"
+    },
+    {
+      "id": "W0-05",
+      "task": "confirmed 真实业务需求审查",
+      "result": "PASS",
+      "candidates": [
+        "hist-578d83ac",
+        "closeout-34858496"
+      ],
+      "oracle": "逐真实路径回答 C01-C05；无远端应用前置需求的调用合同则 confirmed=false；测试 ACK 不作为需求证据",
+      "command": "人工源码追踪 + 人工复核（无独立命令）",
+      "exit_code": null,
+      "executions": 2,
+      "evidence": [
+        {
+          "path": "/Users/leeyi/project/imboy.pub/imboy/docs/architecture/cache-v2.2.1/w0/confirmed-requirements.md",
+          "sha256": "fe0f9abfacd00901e411935f39dfe130b74495e1cef977e80016d75c47d1ccf2"
+        }
+      ],
+      "gaps": [],
+      "skip_reason": null,
+      "notes": "confirmed=false；QR/ID/限流原子性走各自权威机制，不用 confirmed 替代"
+    },
+    {
+      "id": "W0-06",
+      "task": "当前 depcache 性能基线",
+      "result": "PASS",
+      "candidates": [
+        "hist-578d83ac",
+        "closeout-34858496"
+      ],
+      "oracle": "GET/SET/get_wait/memo 热/混合 × 并发 1/8/32，单节点每候选≥2 轮独立进程；吞吐/P50/P95/P99/错误率/队列/内存逐轮记录；只代表合成负载技术基线，非生产 SLO",
+      "command": "python3 scripts/run_cache_w0.py --operations 10000",
+      "exit_code": 2,
+      "executions": 4,
+      "evidence": [
+        {
+          "path": "/Users/leeyi/project/imboy.pub/.Codex/runs/cache-v2.2.1-w0/r7-20261010-140457/performance.json",
+          "sha256": "fef1def723a15c0ae9126300eb1c8cc83a980b1bdb2ef77351a47435a139aa72"
+        },
+        {
+          "path": "/Users/leeyi/project/imboy.pub/.Codex/runs/cache-v2.2.1-w0/r8-20261010-140511/performance.json",
+          "sha256": "a98a31731bae83df4a191db9278fbf331fe0a0b47e96bade37552eca1ff5a8f6"
+        },
+        {
+          "path": "/Users/leeyi/project/imboy.pub/.Codex/runs/cache-v2.2.1-w0/hist-imboy-cache-w0-i55ib9ea/performance.json",
+          "sha256": "cd6e126e85d5b3ad24401c839ba2ec1db309d3ca43468fa232719df689e1efbc"
+        },
+        {
+          "path": "/Users/leeyi/project/imboy.pub/.Codex/runs/cache-v2.2.1-w0/hist-imboy-cache-w0-8kn7as_5/performance.json",
+          "sha256": "2651cc65b55747c1c44480dd2f859066d54eda5adfc399cc22121181e64ab3c7"
+        }
+      ],
+      "gaps": [
+        "持续饱和/热点/突发/TTL/容量压力/恢复负载 NOT_EXECUTED（留后续波次）",
+        "仅微秒分辨率；loopback 单机不等于目标硬件"
+      ],
+      "skip_reason": null,
+      "notes": "历史与本轮数据分表呈现，不合并样本"
+    },
+    {
+      "id": "W0-07",
+      "task": "当前 syn 同步性能基线",
+      "result": "PASS",
+      "candidates": [
+        "hist-578d83ac",
+        "closeout-34858496"
+      ],
+      "oracle": "三真实 OTP peer 节点 syn 广播、逐条等待全部接收者 depcache:set 完成 ACK；status=measured、错误率 0；ACK 语义=应用完成延迟，不是 publish 返回，不是生产 confirmed",
+      "command": "python3 scripts/run_cache_w0.py --operations 10000",
+      "exit_code": 2,
+      "executions": 4,
+      "evidence": [
+        {
+          "path": "/Users/leeyi/project/imboy.pub/.Codex/runs/cache-v2.2.1-w0/r7-20261010-140457/performance.json",
+          "sha256": "fef1def723a15c0ae9126300eb1c8cc83a980b1bdb2ef77351a47435a139aa72"
+        },
+        {
+          "path": "/Users/leeyi/project/imboy.pub/.Codex/runs/cache-v2.2.1-w0/r8-20261010-140511/performance.json",
+          "sha256": "a98a31731bae83df4a191db9278fbf331fe0a0b47e96bade37552eca1ff5a8f6"
+        },
+        {
+          "path": "/Users/leeyi/project/imboy.pub/.Codex/runs/cache-v2.2.1-w0/hist-imboy-cache-w0-i55ib9ea/performance.json",
+          "sha256": "cd6e126e85d5b3ad24401c839ba2ec1db309d3ca43468fa232719df689e1efbc"
+        },
+        {
+          "path": "/Users/leeyi/project/imboy.pub/.Codex/runs/cache-v2.2.1-w0/hist-imboy-cache-w0-8kn7as_5/performance.json",
+          "sha256": "2651cc65b55747c1c44480dd2f859066d54eda5adfc399cc22121181e64ab3c7"
+        }
+      ],
+      "gaps": [
+        "队列采样不覆盖 syn 全部内部队列",
+        "同机三 peer 不等于三机部署或生产网络资格"
+      ],
+      "skip_reason": null,
+      "notes": "三节点 P99 μs 级（两候选 455-611μs@32 并发），远小于 1s 收敛预算候选，但不构成 SLO 冻结"
+    },
+    {
+      "id": "W0-08",
+      "task": "三节点故障与恢复现状调查",
+      "result": "PASS",
+      "candidates": [
+        "closeout-34858496"
+      ],
+      "oracle": "源码调查结论文档化：imboy_cache_sync 仅 set/flush/flush、无版本/epoch/快照/重连补偿、未知消息静默丢弃；syn membership 恢复 ≠ 缓存数据恢复",
+      "command": "人工源码调查（证据固化于 source-evidence.json 的 imboy_cache_sync.erl 内容与 SHA）",
+      "exit_code": null,
+      "executions": 1,
+      "evidence": [
+        {
+          "path": "/Users/leeyi/project/imboy.pub/.Codex/runs/cache-v2.2.1-w0/r8-20261010-140511/source-evidence.json",
+          "sha256": "8684dbe60cfff7717b84586b81b2eb5f35002fc3ade1bde19ab6d603aeeae825"
+        }
+      ],
+      "gaps": [
+        "故障注入/分区/重启恢复 NOT_EXECUTED——属 W4 波次实现与验收，不是本轮调查范围"
+      ],
+      "skip_reason": null,
+      "notes": "调查任务完成；不伪称故障恢复已验证"
+    },
+    {
+      "id": "W0-09",
+      "task": "绝对性能 SLO 冻结",
+      "result": "BLOCKED_EXTERNAL",
+      "candidates": [],
+      "oracle": "需实际业务峰值、目标硬件、值大小分布、目标缓存数量、绝对 SLO 与资源预算的可授权来源；合成基线不反向推导业务 SLO",
+      "command": "无（缺外部输入，不冻结）",
+      "exit_code": null,
+      "executions": 0,
+      "evidence": [],
+      "gaps": [
+        "业务峰值与增长率：需产品/运营提供权威数值",
+        "目标硬件与部署拓扑：需运维提供生产规格",
+        "值大小分布与 Key 数量：需业务样本统计",
+        "绝对 SLO 数值与资源预算：需有权方授权冻结"
+      ],
+      "skip_reason": "外部输入缺失，按计划 19.7 明确 W0_BLOCKED，不猜值",
+      "notes": "其余 W0 工作已完成；本项为 W0 保持 BLOCKED 的原因之一"
+    },
+    {
+      "id": "W0-10",
+      "task": "方案 A/B 决策冻结",
+      "result": "PASS",
+      "candidates": [
+        "hist-578d83ac",
+        "closeout-34858496"
+      ],
+      "oracle": "按绑定计划触发条件判定：无生产高频 SET Key、无目标硬件 SLO 缺口、无 A 调优失败证据 → B 不获准；A 保留为默认架构；决策≠生产资格",
+      "command": "人工决策（依据四轮性能数据与源码取证）",
+      "exit_code": null,
+      "executions": 2,
+      "evidence": [
+        {
+          "path": "/Users/leeyi/project/imboy.pub/imboy/docs/architecture/cache-v2.2.1/w0/architecture-decision.md",
+          "sha256": "9f30fdd2b451d324fe8a8d13d423f43c64b6ea2f96a4e3067078b3983101dc34"
+        },
+        {
+          "path": "/Users/leeyi/project/imboy.pub/.Codex/runs/cache-v2.2.1-w0/r7-20261010-140457/performance.json",
+          "sha256": "fef1def723a15c0ae9126300eb1c8cc83a980b1bdb2ef77351a47435a139aa72"
+        },
+        {
+          "path": "/Users/leeyi/project/imboy.pub/.Codex/runs/cache-v2.2.1-w0/r8-20261010-140511/performance.json",
+          "sha256": "a98a31731bae83df4a191db9278fbf331fe0a0b47e96bade37552eca1ff5a8f6"
+        }
+      ],
+      "gaps": [
+        "缺最终 SLO 时仅表示 B 不获准，不伪称 A 已满足生产负载"
+      ],
+      "skip_reason": null,
+      "notes": "ACK/timer 自有 ETS 不包装成方案 B 证据"
+    }
+  ],
+  "blockers": [
+    "尚无实际业务峰值/绝对 SLO 授权冻结；loopback 数据不能代替目标硬件",
+    "Registry 的值大小/数量/恢复资源预算未冻结；失效钩子事务边界仅完成 W0 调查（22 项 W1_VERIFY、5 项已知缺陷）"
+  ],
+  "external_inputs": [
+    {
+      "missing": "生产环境 dsync_enabled 实际值",
+      "impact": "user_device_logic 注释假设 false 而仓内 sys.config 为 true，决定敏感广播发现（apns_jwt/config5/QR 等）的实际影响面",
+      "owner": "运维",
+      "evidence_needed": "生产部署配置核实"
+    },
+    {
+      "missing": "实际业务峰值与增长率",
+      "impact": "无法冻结绝对吞吐/P99/错误率预算",
+      "owner": "产品/运营",
+      "evidence_needed": "权威业务指标或授权估算"
+    },
+    {
+      "missing": "目标硬件与部署拓扑",
+      "impact": "loopback 单机基线不能外推生产容量",
+      "owner": "运维",
+      "evidence_needed": "生产规格清单"
+    },
+    {
+      "missing": "值大小分布与目标缓存数量",
+      "impact": "Registry 的 max_value_bytes/数量上界无法冻结",
+      "owner": "业务负责人",
+      "evidence_needed": "真实样本统计"
+    },
+    {
+      "missing": "绝对 SLO 数值与资源预算授权",
+      "impact": "W0-09 无法关闭",
+      "owner": "有权决策方",
+      "evidence_needed": "书面冻结值"
+    }
+  ],
+  "depcache_timeout_probe": {
+    "result": {
+      "otp": [
+        50,
+        57
+      ],
+      "final_value_after_last_set": "v2",
+      "first_caller_became_writer": "undefined",
+      "second_writer_after_lock_expiry": "undefined",
+      "waiter1_result": "timed_out",
+      "waiter2_result": {
+        "got": "v1"
+      },
+      "canonicalization": "final_value 由 jsone tuple 字符串 \"{ok,v2}\" 解包为 v2"
+    },
+    "result_sha256": "24ead7bb4be5604530202e1da488e69e8070620007f59972a64df03a5d1cf1dd",
+    "script": "scripts/cache_w0_timeout_probe.erl",
+    "raw_log_path": "/tmp/w0_probe_runtime/raw.log",
+    "raw_log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "head_at_execution": "2da28c3fb5241ee73b4668bce9ac9b8d4b3ddd21",
+    "storage_note": "raw.log 位于仓外 /tmp（易失）；机器校验只依赖内嵌 result 与其 SHA256",
+    "summary": "30s writer 锁过期实测：第二并发 writer 出现（单飞 >30s 破坏）、旧等待者 gen_server:call 30s 超时退出、新等待者收到首 writer 迟到值、末次 set 胜出"
+  },
+  "gates": {
+    "single_dependency_benchmark": "PASS",
+    "three_dependency_benchmark": "PASS",
+    "cold_memo": "PASS",
+    "stale_refill_reproduction": "REPRODUCED",
+    "depcache_native_oracles": "PASS",
+    "business_slo": "BLOCKED",
+    "registry_mutation_budget_closure": "BLOCKED",
+    "production_acceptance": "NOT_EXECUTED",
+    "w1_w5": "NOT_EXECUTED"
+  }
+}
