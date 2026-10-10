@@ -15,6 +15,7 @@
 -export([
     tablename/0,
     next_id/0,
+    list_tx/3,
     bind_tx/5,
     find_by_external_tx/4,
     resolve_tx/4,
@@ -107,6 +108,17 @@ resolve_tx(Conn, OrgId, AppId, ExternalUserIds) when is_list(ExternalUserIds) ->
             " WHERE organization_id = $1 AND application_id = $2 AND status = 'active'",
             " AND external_user_id IN (", Placeholders/binary, ")">>,
     elib_pg:query(Conn, Sql, Params).
+
+%% @doc 事务内列出某应用全部身份映射（含 removed 历史；Admin 治理面用）。
+%% 上限 500 行防误拉全量；分页需求出现时再扩展。
+-spec list_tx(any(), integer(), integer()) -> {ok, [map()]} | {error, term()}.
+list_tx(Conn, OrgId, AppId) when is_integer(OrgId), is_integer(AppId) ->
+    Sql =
+        <<"SELECT ", ?COLUMNS/binary, " FROM ", (tablename())/binary,
+            " WHERE organization_id = $1 AND application_id = $2", " ORDER BY id LIMIT 500">>,
+    elib_pg:query(Conn, Sql, [OrgId, AppId]);
+list_tx(_Conn, _OrgId, _AppId) ->
+    {error, badarg}.
 
 %% @doc 事务内解除映射（软删；幂等：非 active 返回 {error, not_active}）。
 %% 解除后同一 external_user_id 可经 bind_tx 重绑；removed 行保留历史。

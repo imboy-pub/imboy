@@ -2016,6 +2016,10 @@ enterprise_application_governance_routes() ->
         %% A-11 Grant CAS 增删（PATCH）
         {"/api/adm/enterprise/organizations/:org_id/applications/:application_id/grants/:grant_id",
             adm_enterprise_application_handler, #{action => grant}},
+        %% A-16 身份映射列表（GET）/ A-17 绑定（POST）/ A-18 解绑（DELETE，
+        %% query external_user_id）——OA 按需免登的工作台可见性与签发前提
+        {"/api/adm/enterprise/organizations/:org_id/applications/:application_id/identities",
+            adm_enterprise_application_handler, #{action => identities}},
         %% A-12 投递统计（GET，无 payload）
         {"/api/adm/enterprise/organizations/:org_id/applications/:application_id/delivery-stats",
             adm_enterprise_application_handler, #{action => delivery_stats}},

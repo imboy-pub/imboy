@@ -29,6 +29,10 @@
 -export([
     list_applications/4,
     application_detail/2,
+    create_application/3,
+    list_identities/2,
+    bind_identity/5,
+    unbind_identity/4,
     list_credentials/2,
     list_grants/2,
     delivery_stats/2,
@@ -298,6 +302,221 @@ patch_grant_fields(C, OrgId, AppId, GrantId, Version, Patch, Scopes, Workspaces)
         false ->
             <<"grant_scopes_changed">>
     end.
+
+%% ===================================================================
+%% OA 按需免登治理（A-15 应用创建 / A-16..A-18 身份映射）
+%% ===================================================================
+
+%% @doc A-15 创建 Application（治理面唯一创建入口；此前应用只能 SQL 手插，
+%% 导致管理后台无法自助开通 OA 接入）。Input：#{application_key => binary(),
+%% name => binary(), redirect_uris => [binary()]}。
+%% 校验先于 DB（友好错误）；redirect allowlist 形态另由 DB 触发器兜底
+%% （trg_enterprise_application_redirect_guard，23514）。审计动作
+%% application_created；返回 application_summary 同形投影。
+-spec create_application(integer(), map(), map()) ->
+    {ok, map()}
+    | {error,
+        invalid_application_key
+        | invalid_name
+        | invalid_redirect_uris
+        | application_key_conflict
+        | term()}.
+create_application(OrgId, Input, Actor) when is_integer(OrgId), OrgId > 0 ->
+    Key = input_bin(Input, application_key),
+    Name = input_bin(Input, name),
+    Uris =
+        case maps:get(redirect_uris, Input, undefined) of
+            L when is_list(L) -> [U || U <- L, is_binary(U)];
+            _ -> []
+        end,
+    case valid_application_key(Key) of
+        false ->
+            {error, invalid_application_key};
+        true ->
+            case valid_name(Name) of
+                false ->
+                    {error, invalid_name};
+                true ->
+                    case valid_redirect_uris(Uris) of
+                        false ->
+                            {error, invalid_redirect_uris};
+                        true ->
+                            create_application_tx(OrgId, Key, Name, Uris, Actor)
+                    end
+            end
+    end;
+create_application(_OrgId, _Input, _Actor) ->
+    {error, invalid_request}.
+
+create_application_tx(OrgId, Key, Name, Uris, Actor) ->
+    tx(fun(C) ->
+        case enterprise_application_repo:create_tx(C, OrgId, Key, Name, undefined, Uris) of
+            {ok, Row} ->
+                AppId = maps:get(<<"id">>, Row),
+                append_audit(
+                    C, OrgId, AppId, <<"application_created">>, #{}, app_diff(Row), Actor
+                ),
+                {ok, application_summary(Row)};
+            {error, key_conflict} ->
+                throw({rollback, application_key_conflict});
+            {error, Reason} ->
+                throw({rollback, Reason})
+        end
+    end).
+
+%% @doc A-16 身份映射列表（含 removed 历史，Admin 可见全貌；≤500 行）。
+%% 先锁应用行确认归属（跨组织 404 语义与详情一致）。
+-spec list_identities(integer(), integer()) -> {ok, [map()]} | {error, not_found | term()}.
+list_identities(OrgId, AppId) ->
+    tx(fun(C) ->
+        must(enterprise_application_repo:lock_tx(C, OrgId, AppId)),
+        case enterprise_external_identity_repo:list_tx(C, OrgId, AppId) of
+            {ok, Rows} ->
+                {ok, [identity_summary(I) || I <- Rows]};
+            {error, Reason} ->
+                throw({rollback, Reason})
+        end
+    end).
+
+%% @doc A-17 绑定 external_user_id <-> user（幂等 upsert，重绑即复活）。
+%% DB 层强制「同 Org active Human member」（23514 → invalid_member）与反向
+%% 唯一（user 已绑其他 external → user_already_mapped）。
+-spec bind_identity(integer(), integer(), binary(), integer(), map()) ->
+    {ok, map()}
+    | {error,
+        invalid_external_user
+        | invalid_user_id
+        | invalid_member
+        | user_already_mapped
+        | not_found
+        | term()}.
+bind_identity(OrgId, AppId, ExternalUserId, UserId, Actor) when
+    is_integer(OrgId), OrgId > 0, is_integer(AppId), AppId > 0
+->
+    case valid_external_user_id(ExternalUserId) of
+        false ->
+            {error, invalid_external_user};
+        true when is_integer(UserId), UserId > 0 ->
+            audited(OrgId, AppId, Actor, fun(C, _App) ->
+                case
+                    enterprise_external_identity_repo:bind_tx(
+                        C, OrgId, AppId, ExternalUserId, UserId
+                    )
+                of
+                    {ok, Row} ->
+                        {<<"identity_bound">>, #{}, identity_diff(Row),
+                            {ok, identity_summary(Row)}};
+                    {error, Reason} ->
+                        throw({rollback, Reason})
+                end
+            end);
+        true ->
+            {error, invalid_user_id}
+    end;
+bind_identity(_OrgId, _AppId, _ExternalUserId, _UserId, _Actor) ->
+    {error, invalid_request}.
+
+%% @doc A-18 解绑（软删；幂等失败区分 not_found / not_active）。
+-spec unbind_identity(integer(), integer(), binary(), map()) ->
+    ok | {error, invalid_external_user | not_found | not_active | term()}.
+unbind_identity(OrgId, AppId, ExternalUserId, Actor) ->
+    case valid_external_user_id(ExternalUserId) of
+        false ->
+            {error, invalid_external_user};
+        true ->
+            audited(OrgId, AppId, Actor, fun(C, _App) ->
+                case
+                    enterprise_external_identity_repo:unbind_tx(
+                        C, OrgId, AppId, ExternalUserId
+                    )
+                of
+                    ok ->
+                        {<<"identity_unbound">>,
+                            #{
+                                <<"external_user_id">> => ExternalUserId,
+                                <<"status">> => <<"active">>
+                            },
+                            #{<<"status">> => <<"removed">>}, ok};
+                    {error, Reason} ->
+                        throw({rollback, Reason})
+                end
+            end)
+    end.
+
+input_bin(Input, Key) when is_map(Input) ->
+    case maps:get(Key, Input, <<>>) of
+        V when is_binary(V) -> V;
+        _ -> <<>>
+    end;
+input_bin(_Input, _Key) ->
+    <<>>.
+
+%% application_key：8..128 可打印 ASCII（与 SSO 签发合同 §3.2 同一口径）。
+-spec valid_application_key(binary() | term()) -> boolean().
+valid_application_key(Key) when is_binary(Key) ->
+    Size = byte_size(Key),
+    Size >= 8 andalso Size =< 128 andalso printable_ascii(Key);
+valid_application_key(_) ->
+    false.
+
+%% 应用名：1..128 字节且非全空白。
+-spec valid_name(binary() | term()) -> boolean().
+valid_name(Name) when is_binary(Name) ->
+    Size = byte_size(Name),
+    Size >= 1 andalso Size =< 128 andalso string:trim(Name) =/= <<>>;
+valid_name(_) ->
+    false.
+
+%% redirect allowlist：≤20 条、无重复、逐条 https:// 非 fragment 非 Empty host
+%% ≤2048（与 DB 触发器同口径；exact-match 语义由 text[] 天然保证）。
+-spec valid_redirect_uris([binary()]) -> boolean().
+valid_redirect_uris(Uris) when is_list(Uris) ->
+    length(Uris) =< 20 andalso
+        length(Uris) =:= length(lists:usort(Uris)) andalso
+        lists:all(fun valid_redirect_uri/1, Uris);
+valid_redirect_uris(_) ->
+    false.
+
+valid_redirect_uri(Uri) when is_binary(Uri) ->
+    Size = byte_size(Uri),
+    Size > 8 andalso Size =< 2048 andalso
+        binary:part(Uri, 0, 8) =:= <<"https://">> andalso
+        binary:match(Uri, <<"#">>) =:= nomatch andalso
+        binary:at(Uri, 8) =/= $/ andalso binary:at(Uri, 8) =/= $?;
+valid_redirect_uri(_) ->
+    false.
+
+%% external_user_id：1..256 字节非空白（DB CHECK 同口径）。
+-spec valid_external_user_id(binary() | term()) -> boolean().
+valid_external_user_id(V) when is_binary(V) ->
+    Size = byte_size(V),
+    Size >= 1 andalso Size =< 256 andalso string:trim(V) =/= <<>>;
+valid_external_user_id(_) ->
+    false.
+
+printable_ascii(<<>>) ->
+    true;
+printable_ascii(<<C, Rest/binary>>) when C >= 16#20, C =< 16#7E ->
+    printable_ascii(Rest);
+printable_ascii(_) ->
+    false.
+
+identity_summary(Row) ->
+    #{
+        <<"id">> => id_bin(maps:get(<<"id">>, Row, 0)),
+        <<"external_user_id">> => maps:get(<<"external_user_id">>, Row, <<>>),
+        <<"user_id">> => id_bin(maps:get(<<"user_id">>, Row, 0)),
+        <<"status">> => maps:get(<<"status">>, Row, <<>>),
+        <<"created_at">> => maps:get(<<"created_at">>, Row, null),
+        <<"updated_at">> => maps:get(<<"updated_at">>, Row, null)
+    }.
+
+identity_diff(Row) ->
+    #{
+        <<"external_user_id">> => maps:get(<<"external_user_id">>, Row, <<>>),
+        <<"user_id">> => id_bin(maps:get(<<"user_id">>, Row, 0)),
+        <<"status">> => maps:get(<<"status">>, Row, <<>>)
+    }.
 
 audited(OrgId, AppId, Actor, Fun) ->
     tx(fun(C) ->

@@ -67,6 +67,8 @@ dispatch(credential_revoke, Method, Req0, State) ->
     credential_revoke_action(Method, Req0, State);
 dispatch(grants, Method, Req0, State) ->
     grants_action(Method, Req0, State);
+dispatch(identities, Method, Req0, State) ->
+    identities_action(Method, Req0, State);
 dispatch(grant, Method, Req0, State) ->
     grant_action(Method, Req0, State);
 dispatch(delivery_stats, Method, Req0, State) ->
@@ -96,6 +98,33 @@ applications_action(<<"GET">>, Req0, State) ->
                 case enterprise_admin_governance_logic:list_applications(OrgId, Page, Size, Opts) of
                     {ok, PageMap} -> elib_response:success(Req1, PageMap);
                     {error, Reason} -> reply_error(Req1, Reason)
+                end
+        end
+    end);
+%% A-15 创建（治理面唯一创建入口；body: application_key / name / redirect_uris）
+applications_action(<<"POST">>, Req0, State) ->
+    with_write(Req0, State, fun(Req1) ->
+        case parse_id(Req1, org_id) of
+            error ->
+                bad_id(Req1);
+            {ok, OrgId} ->
+                case read_body_map(Req1) of
+                    {error, Msg} ->
+                        elib_response:error(Req1, Msg, ?ERR_BAD_REQUEST);
+                    {ok, Body} ->
+                        Input = #{
+                            application_key => bin_field(Body, <<"application_key">>),
+                            name => bin_field(Body, <<"name">>),
+                            redirect_uris => bin_list(Body, <<"redirect_uris">>)
+                        },
+                        case
+                            enterprise_admin_governance_logic:create_application(
+                                OrgId, Input, actor(State)
+                            )
+                        of
+                            {ok, App} -> elib_response:success(Req1, App);
+                            {error, Reason} -> reply_error(Req1, Reason)
+                        end
                 end
         end
     end);
@@ -361,6 +390,72 @@ grant_action(<<"PATCH">>, Req0, State) ->
         end
     end);
 grant_action(_, Req0, _State) ->
+    method_not_allowed(Req0).
+
+%% ===================================================================
+%% A-16 身份映射列表 / A-17 绑定 / A-18 解绑
+%% ===================================================================
+
+-spec identities_action(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
+identities_action(<<"GET">>, Req0, State) ->
+    with_read(Req0, State, fun(Req1) ->
+        case both_ids(Req1) of
+            error ->
+                bad_id(Req1);
+            {ok, OrgId, AppId} ->
+                case enterprise_admin_governance_logic:list_identities(OrgId, AppId) of
+                    {ok, Identities} -> elib_response:success(Req1, Identities);
+                    {error, Reason} -> reply_error(Req1, Reason)
+                end
+        end
+    end);
+identities_action(<<"POST">>, Req0, State) ->
+    with_write(Req0, State, fun(Req1) ->
+        case both_ids(Req1) of
+            error ->
+                bad_id(Req1);
+            {ok, OrgId, AppId} ->
+                case read_body_map(Req1) of
+                    {error, Msg} ->
+                        elib_response:error(Req1, Msg, ?ERR_BAD_REQUEST);
+                    {ok, Body} ->
+                        ExternalUserId = bin_field(Body, <<"external_user_id">>),
+                        case int_field(Body, <<"user_id">>) of
+                            undefined ->
+                                elib_response:error(
+                                    Req1, <<"缺少 user_id"/utf8>>, ?ERR_BAD_REQUEST
+                                );
+                            UserId ->
+                                case
+                                    enterprise_admin_governance_logic:bind_identity(
+                                        OrgId, AppId, ExternalUserId, UserId, actor(State)
+                                    )
+                                of
+                                    {ok, Identity} -> elib_response:success(Req1, Identity);
+                                    {error, Reason} -> reply_error(Req1, Reason)
+                                end
+                        end
+                end
+        end
+    end);
+identities_action(<<"DELETE">>, Req0, State) ->
+    with_write(Req0, State, fun(Req1) ->
+        case both_ids(Req1) of
+            error ->
+                bad_id(Req1);
+            {ok, OrgId, AppId} ->
+                {ok, ExternalUserId} = elib_param:binary(external_user_id, Req1, <<>>),
+                case
+                    enterprise_admin_governance_logic:unbind_identity(
+                        OrgId, AppId, ExternalUserId, actor(State)
+                    )
+                of
+                    ok -> elib_response:success(Req1, #{<<"status">> => <<"removed">>});
+                    {error, Reason} -> reply_error(Req1, Reason)
+                end
+        end
+    end);
+identities_action(_, Req0, _State) ->
     method_not_allowed(Req0).
 
 %% ===================================================================
@@ -634,21 +729,50 @@ reply_error(Req0, Reason) ->
     elib_response:error(Req0, Msg, Code).
 
 -spec error_map(term()) -> {integer(), binary()}.
-error_map(not_found) -> {?ERR_NOT_FOUND, <<"资源不存在或不属该组织"/utf8>>};
-error_map(application_not_found) -> {?ERR_NOT_FOUND, <<"应用不存在或不属该组织"/utf8>>};
-error_map(version_conflict) -> {?ERR_CONFLICT, <<"版本冲突：资源已被他人更新，请刷新后重试"/utf8>>};
-error_map(already_revoked) -> {?ERR_CONFLICT, <<"该授权已被撤销"/utf8>>};
-error_map(not_active) -> {?ERR_CONFLICT, <<"该凭证当前不是有效状态"/utf8>>};
-error_map(key_conflict) -> {?ERR_CONFLICT, <<"同内容的授权已存在（幂等键冲突）"/utf8>>};
-error_map(invalid_status) -> {?ERR_BAD_REQUEST, <<"非法生命周期状态"/utf8>>};
-error_map(invalid_scope) -> {?ERR_BAD_REQUEST, <<"未登记的 scope"/utf8>>};
-error_map(empty_scopes) -> {?ERR_BAD_REQUEST, <<"scope 不能为空"/utf8>>};
-error_map(invalid_workspaces) -> {?ERR_BAD_REQUEST, <<"非法的 workspace 授权组合"/utf8>>};
-error_map(workspace_not_found) -> {?ERR_BAD_REQUEST, <<"workspace 不存在或不属该组织"/utf8>>};
-error_map(missing_idempotency_key) -> {?ERR_BAD_REQUEST, <<"缺少幂等键"/utf8>>};
-error_map(invalid_spec) -> {?ERR_BAD_REQUEST, <<"非法的请求参数"/utf8>>};
-error_map(invalid_request) -> {?ERR_BAD_REQUEST, <<"请求缺少可执行的变更"/utf8>>};
-error_map(Reason) -> {500, reason_msg(Reason)}.
+error_map(not_found) ->
+    {?ERR_NOT_FOUND, <<"资源不存在或不属该组织"/utf8>>};
+error_map(application_not_found) ->
+    {?ERR_NOT_FOUND, <<"应用不存在或不属该组织"/utf8>>};
+error_map(version_conflict) ->
+    {?ERR_CONFLICT, <<"版本冲突：资源已被他人更新，请刷新后重试"/utf8>>};
+error_map(already_revoked) ->
+    {?ERR_CONFLICT, <<"该授权已被撤销"/utf8>>};
+error_map(not_active) ->
+    {?ERR_CONFLICT, <<"该凭证当前不是有效状态"/utf8>>};
+error_map(key_conflict) ->
+    {?ERR_CONFLICT, <<"同内容的授权已存在（幂等键冲突）"/utf8>>};
+error_map(invalid_status) ->
+    {?ERR_BAD_REQUEST, <<"非法生命周期状态"/utf8>>};
+error_map(invalid_scope) ->
+    {?ERR_BAD_REQUEST, <<"未登记的 scope"/utf8>>};
+error_map(empty_scopes) ->
+    {?ERR_BAD_REQUEST, <<"scope 不能为空"/utf8>>};
+error_map(invalid_workspaces) ->
+    {?ERR_BAD_REQUEST, <<"非法的 workspace 授权组合"/utf8>>};
+error_map(workspace_not_found) ->
+    {?ERR_BAD_REQUEST, <<"workspace 不存在或不属该组织"/utf8>>};
+error_map(missing_idempotency_key) ->
+    {?ERR_BAD_REQUEST, <<"缺少幂等键"/utf8>>};
+error_map(invalid_spec) ->
+    {?ERR_BAD_REQUEST, <<"非法的请求参数"/utf8>>};
+error_map(invalid_request) ->
+    {?ERR_BAD_REQUEST, <<"请求缺少可执行的变更"/utf8>>};
+error_map(invalid_application_key) ->
+    {?ERR_BAD_REQUEST, <<"application_key 须为 8..128 位可打印 ASCII"/utf8>>};
+error_map(invalid_name) ->
+    {?ERR_BAD_REQUEST, <<"应用名须为 1..128 字符且非空白"/utf8>>};
+error_map(invalid_redirect_uris) ->
+    {?ERR_BAD_REQUEST, <<"redirect_uri 非法：仅 https、禁 fragment、≤2048 字符、≤20 条且不重复"/utf8>>};
+error_map(application_key_conflict) ->
+    {?ERR_CONFLICT, <<"同 Org 下 application_key 已存在"/utf8>>};
+error_map(invalid_external_user) ->
+    {?ERR_BAD_REQUEST, <<"external_user_id 须为 1..256 字符且非空白"/utf8>>};
+error_map(invalid_member) ->
+    {?ERR_BAD_REQUEST, <<"目标用户不是该组织的 active Human 成员"/utf8>>};
+error_map(user_already_mapped) ->
+    {?ERR_CONFLICT, <<"该用户已绑定其他 external_user_id"/utf8>>};
+error_map(Reason) ->
+    {500, reason_msg(Reason)}.
 
 -spec reason_msg(term()) -> binary().
 reason_msg(_) ->
