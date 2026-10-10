@@ -308,6 +308,13 @@ c2g_stage_with_recipient_list_is_rejected_test_() ->
     {timeout, 30,
         ?WITH_MECKS(
             [
+                {imboy_policy, [
+                    {'current_profile', 0, fun() -> community end}
+                ]},
+                {imboy_feature, [
+                    {'enabled', 1, fun(_) -> true end}
+                ]},
+
                 {elib_pg_sql, [
                     {'public_tablename', 1, fun(_) -> <<"public.msg_store_staging">> end},
                     {'insert', 2, fun(_Tb, Data) ->
@@ -347,6 +354,13 @@ c2g_stage_with_empty_recipient_list_is_rejected_test_() ->
     {timeout, 30,
         ?WITH_MECKS(
             [
+                {imboy_policy, [
+                    {'current_profile', 0, fun() -> community end}
+                ]},
+                {imboy_feature, [
+                    {'enabled', 1, fun(_) -> true end}
+                ]},
+
                 {elib_pg_sql, [
                     {'public_tablename', 1, fun(_) -> <<"msg_store_staging">> end}
                 ]},
@@ -378,6 +392,13 @@ c2g_stage_list_bypass_precedes_database_write_test_() ->
     {timeout, 30,
         ?WITH_MECKS(
             [
+                {imboy_policy, [
+                    {'current_profile', 0, fun() -> community end}
+                ]},
+                {imboy_feature, [
+                    {'enabled', 1, fun(_) -> true end}
+                ]},
+
                 {elib_pg_sql, [
                     {'public_tablename', 1, fun(_) -> <<"msg_store_staging">> end}
                 ]},
@@ -412,6 +433,13 @@ c2g_stage_commits_authorized_snapshot_and_role_test_() ->
     {timeout, 30,
         ?WITH_MECKS(
             [
+                {imboy_policy, [
+                    {'current_profile', 0, fun() -> community end}
+                ]},
+                {imboy_feature, [
+                    {'enabled', 1, fun(_) -> true end}
+                ]},
+
                 {msg_archive_ds, [
                     {'conv_key_c2g', 1, fun(100) -> <<"c2g:100">> end}
                 ]},
@@ -527,6 +555,13 @@ c2g_stage_archived_workspace_does_not_allocate_sequence_test_() ->
     {timeout, 30,
         ?WITH_MECKS(
             [
+                {imboy_policy, [
+                    {'current_profile', 0, fun() -> community end}
+                ]},
+                {imboy_feature, [
+                    {'enabled', 1, fun(_) -> true end}
+                ]},
+
                 {msg_archive_ds, [
                     {'conv_key_c2g', 1, fun(_) -> <<"c2g:100">> end}
                 ]},
@@ -563,6 +598,13 @@ c2g_stage_sequence_failures_are_rolled_back_test_() ->
     {timeout, 30,
         ?WITH_MECKS(
             [
+                {imboy_policy, [
+                    {'current_profile', 0, fun() -> community end}
+                ]},
+                {imboy_feature, [
+                    {'enabled', 1, fun(_) -> true end}
+                ]},
+
                 {msg_archive_ds, [
                     {'conv_key_c2g', 1, fun(_) -> <<"c2g:100">> end}
                 ]},
@@ -728,6 +770,13 @@ c2g_stage_attachment_bind_error_rolls_back_test_() ->
     {timeout, 30,
         ?WITH_MECKS(
             [
+                {imboy_policy, [
+                    {'current_profile', 0, fun() -> community end}
+                ]},
+                {imboy_feature, [
+                    {'enabled', 1, fun(_) -> true end}
+                ]},
+
                 {msg_archive_ds, [
                     {'conv_key_c2g', 1, fun(_) -> <<"c2g:100">> end}
                 ]},
@@ -818,6 +867,13 @@ c2g_stage_duplicate_does_not_bind_attachment_test_() ->
     {timeout, 30,
         ?WITH_MECKS(
             [
+                {imboy_policy, [
+                    {'current_profile', 0, fun() -> community end}
+                ]},
+                {imboy_feature, [
+                    {'enabled', 1, fun(_) -> true end}
+                ]},
+
                 {msg_archive_ds, [
                     {'conv_key_c2g', 1, fun(_) -> <<"c2g:100">> end}
                 ]},
@@ -941,6 +997,13 @@ c2g_stage_rejects_msg_id_owned_by_another_sender_test_() ->
     {timeout, 30,
         ?WITH_MECKS(
             [
+                {imboy_policy, [
+                    {'current_profile', 0, fun() -> community end}
+                ]},
+                {imboy_feature, [
+                    {'enabled', 1, fun(_) -> true end}
+                ]},
+
                 {msg_archive_ds, [
                     {'conv_key_c2g', 1, fun(_) -> <<"c2g:100">> end}
                 ]},
@@ -1028,6 +1091,13 @@ c2g_stage_5000_recipients_commits_test_() ->
     {timeout, 30,
         ?WITH_MECKS(
             [
+                {imboy_policy, [
+                    {'current_profile', 0, fun() -> community end}
+                ]},
+                {imboy_feature, [
+                    {'enabled', 1, fun(_) -> true end}
+                ]},
+
                 {msg_archive_ds, [
                     {'conv_key_c2g', 1, fun(_) -> <<"c2g:100">> end}
                 ]},
@@ -1123,6 +1193,13 @@ c2g_stage_5001_recipients_rolls_back_test_() ->
     {timeout, 30,
         ?WITH_MECKS(
             [
+                {imboy_policy, [
+                    {'current_profile', 0, fun() -> community end}
+                ]},
+                {imboy_feature, [
+                    {'enabled', 1, fun(_) -> true end}
+                ]},
+
                 {msg_archive_ds, [
                     {'conv_key_c2g', 1, fun(_) -> <<"c2g:100">> end}
                 ]},
@@ -1186,6 +1263,13 @@ c2g_stage_snapshot_error_rolls_back_test_() ->
     {timeout, 30,
         ?WITH_MECKS(
             [
+                {imboy_policy, [
+                    {'current_profile', 0, fun() -> community end}
+                ]},
+                {imboy_feature, [
+                    {'enabled', 1, fun(_) -> true end}
+                ]},
+
                 {msg_archive_ds, [
                     {'conv_key_c2g', 1, fun(_) -> <<"c2g:100">> end}
                 ]},
@@ -1249,6 +1333,13 @@ c2g_action_stage_uses_original_snapshot_and_generation_test_() ->
     {timeout, 30,
         ?WITH_MECKS(
             [
+                {imboy_policy, [
+                    {'current_profile', 0, fun() -> community end}
+                ]},
+                {imboy_feature, [
+                    {'enabled', 1, fun(_) -> true end}
+                ]},
+
                 {msg_archive_ds, [
                     {'conv_key_c2g', 1, fun(100) -> <<"c2g:100">> end}
                 ]},
@@ -1366,6 +1457,13 @@ c2g_action_stage_snapshot_primary_key_is_durable_idempotency_test_() ->
     {timeout, 30,
         ?WITH_MECKS(
             [
+                {imboy_policy, [
+                    {'current_profile', 0, fun() -> community end}
+                ]},
+                {imboy_feature, [
+                    {'enabled', 1, fun(_) -> true end}
+                ]},
+
                 {msg_archive_ds, [
                     {'conv_key_c2g', 1, fun(100) -> <<"c2g:100">> end}
                 ]},
@@ -1480,6 +1578,13 @@ c2g_action_stage_rejects_invisible_original_test_() ->
     {timeout, 30,
         ?WITH_MECKS(
             [
+                {imboy_policy, [
+                    {'current_profile', 0, fun() -> community end}
+                ]},
+                {imboy_feature, [
+                    {'enabled', 1, fun(_) -> true end}
+                ]},
+
                 {msg_archive_ds, [
                     {'conv_key_c2g', 1, fun(_) -> <<"c2g:100">> end}
                 ]},
