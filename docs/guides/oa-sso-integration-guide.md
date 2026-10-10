@@ -185,9 +185,14 @@ IMBoy 出于安全，**只允许 WebView 停留在登记的那个域名**（协�
 
 IMBoy 是手机 App。OA 的 H5 页面要在手机宽度的 WebView 里可用（建议按 375px 宽度设计）。如果 OA 目前只有 PC 页面，请提前评估。
 
-### 4.3 OA 无法（也不需要）探测"自己是在 IMBoy 里打开的"
+### 4.3 OA 能否探测"自己是在 IMBoy 里打开的"？
 
-IMBoy 不会向 OA 页面注入任何 JavaScript 变量、标识或接口（协议术语：零 JSBridge）。OA 的页面行为不应依赖"检测运行环境"，正常按 Web 处理即可。
+分两种接入形态：
+
+- **redirect 模式（OA Tab，默认）**：IMBoy 不会向 OA 页面注入任何 JavaScript 变量、标识或接口（协议术语：零 JSBridge）。OA 的页面行为不应依赖"检测运行环境"，正常按 Web 处理即可。
+- **按需取码模式（可选，2026-10 起）**：OA H5 经 IMBoy 工作台「应用」入口在带 JSBridge 的 WebView 内打开时，可通过 `imboyJSBridge` 通道的 `getAuthCode` 方法**按需**申请一次性 code——是否免登、何时取码完全由 H5 自己决定（页面初始化后、按钮点击或业务需要时均可），IMBoy 打开页面时不预取。能力检测用 `ping` 回执的 `methods` 声明判断（不含 `getAuthCode` 即不支持），检测本身不申请 code、不触发登录。同一页面在普通手机浏览器中没有该通道，继续使用 OA 原有账号密码登录。
+
+按需取码的联调示例与错误码说明见 `https://www.imboy.pub/test_oa.html` 第 5 节；取到的 `code` 与 `state` 的核实方式与第 9 章 exchange 一致（`redirect_uri` 用 OA 服务端登记的回调地址——与取码回传值必然一致；`nonce` 用取码回传的 `state` 原值）。
 
 ### 4.4 Cookie 可能被清理
 
@@ -876,7 +881,10 @@ IMBoy 侧维护。OA 只需提供"员工唯一标识用哪个字段（如工号�
 
 **Q12：OA 页面怎么知道自己是被 IMBoy 打开的？**
 
-无法可靠知道，也不需要。IMBoy 不注入任何标识（零 JSBridge），OA 按普通 Web 页面处理即可。
+分接入形态（详见 §4.3）：
+
+- redirect 模式：无法可靠知道，也不需要。IMBoy 不注入任何标识（零 JSBridge），OA 按普通 Web 页面处理即可。
+- 按需取码模式：H5 可通过桥 `ping` 回执的 `methods` 声明检测免登能力（不含 `getAuthCode` 即按普通浏览器处理，走账号密码登录）；检测不发码、不登录。
 
 **Q13：exchange 需要传幂等头（Idempotency-Key）吗？**
 
