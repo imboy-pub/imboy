@@ -7,6 +7,7 @@
 %%%   * list_root_humans/4          —— 未挂任何 active 部门的根成员（同 keyset）
 %%%   * batch_user_departments/2    —— 一批 user 的全部 active 部门 id（禁 N+1）
 %%%   * list_my_departments/2       —— /me：当前用户 active 部门（含 member_count）
+%%%   * count_members/1             —— /me 附加：组织 active 成员总数（共X人）
 %%%   * search_directory/5          —— 部门名/昵称/账号三列 UNION 检索（keyset）
 %%%
 %%% 铁律：
@@ -26,6 +27,7 @@
     list_root_humans/3,
     batch_user_departments/2,
     list_my_departments/2,
+    count_members/1,
     search_directory/5
 ]).
 
@@ -210,6 +212,21 @@ list_my_departments(OrgId, Uid) ->
         >>
     ]),
     elib_pg:query(Sql, [OrgId, Uid]).
+
+%% @doc 组织 active 成员总数（/me 载荷 member_count；通讯录页脚「共X人」）。
+%% 口径与 humans 列表一致：仅计 organization_member.status='active'。
+-spec count_members(integer()) -> {ok, non_neg_integer()} | {error, term()}.
+count_members(OrgId) ->
+    Sql =
+        <<
+            "SELECT count(*) AS member_count FROM organization_member"
+            " WHERE organization_id = $1 AND status = 'active'"
+        >>,
+    case elib_pg:query(Sql, [OrgId]) of
+        {ok, [#{<<"member_count">> := Count}]} -> {ok, Count};
+        {ok, []} -> {ok, 0};
+        {error, Reason} -> {error, Reason}
+    end.
 
 %% ===================================================================
 %% search：部门名 / 昵称 / 账号三列（U-02：不搜手机号/邮箱/职位）

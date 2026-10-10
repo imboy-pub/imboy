@@ -85,18 +85,31 @@ list_members(_OrgId, _Uid, _Params) ->
 %% ===================================================================
 
 %% @doc 当前用户在该 Org 的 active 部门；无部门返回空数组（不报错）。
+%% member_count = 组织 active 成员总数（APP-M02 通讯录页脚「共X人」；
+%% 与 humans 列表同口径，不计 removed/suspended）。
 -spec my_departments(integer(), integer()) ->
-    {ok, #{organization_id := integer(), list := [map()]}} | {error, binary()}.
+    {ok, #{
+        organization_id := integer(),
+        list := [map()],
+        member_count := non_neg_integer()
+    }}
+    | {error, binary()}.
 my_departments(OrgId, Uid) when is_integer(OrgId), is_integer(Uid) ->
     case authorize(OrgId, Uid) of
         ok ->
             case ?PG:list_my_departments(OrgId, Uid) of
                 {ok, Rows} ->
                     Clean = integrity_filter(Rows, <<"departments">>),
-                    {ok, #{
-                        organization_id => OrgId,
-                        list => [project_department(R) || R <- Clean]
-                    }};
+                    case ?PG:count_members(OrgId) of
+                        {ok, MemberCount} ->
+                            {ok, #{
+                                organization_id => OrgId,
+                                list => [project_department(R) || R <- Clean],
+                                member_count => MemberCount
+                            }};
+                        {error, ReasonC} ->
+                            directory_db_error(count_members, ReasonC)
+                    end;
                 {error, Reason} ->
                     directory_db_error(list_my_departments, Reason)
             end;
