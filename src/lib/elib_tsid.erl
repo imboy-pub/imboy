@@ -486,7 +486,10 @@ lookup_or_empty() ->
 %% 低频时钟安全检查：固定 Offset 时钟（mono+offset）与真实系统钟的当前
 %% 偏差超过 max_clock_drift_ms 时，翻转 runtime 的 clock_ok 闸并返回
 %% clock_unsafe——生成热路径读取同一闸，阻断发号（异常作用于生成入口）。
-%% 偏差回落（NTP 收敛/挂起恢复后重新评估）自动解除。
+%% 偏差回落后的下一次 readiness() 评估即解除（clock_ok 翻回 1）。边界
+%% 如实声明：主机/VM 挂起（monotonic 不计休眠时长）造成的偏差**不会
+%% 自愈**，将持续 clock_unsafe 直至节点重启（init 重新采集 Offset）；
+%% 生产服务器不休眠，影响面为开发机与可暂停 VM。
 %%
 %% 探针合同（如实声明，不得夸大）：本模块**没有内置周期探针**。clock_ok
 %% 闸只在 readiness()/0 被调用时重新评估（HTTP /readyz、/healthz 及

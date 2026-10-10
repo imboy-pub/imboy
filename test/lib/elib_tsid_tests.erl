@@ -652,7 +652,14 @@ readiness_test() ->
 %% W4 时钟安全闸：readiness 低频评估 + 生成入口阻断
 %% ===================================================================
 
-clock_drift_beyond_threshold_blocks_generate_test() ->
+clock_drift_beyond_threshold_blocks_generate_test_() ->
+    %% {timeout,60} 防御：5s 默认 timetrap 在全量并发饥饿下若击杀本测试，
+    %% with_runtime_drift 的 after 还原不会执行，+10s offset 将永久毒化
+    %% 共享 runtime（2026-10-10 全量级联实证；runner clock_unsafe 自愈为
+    %% 纵深防御）
+    {timeout, 60, fun clock_drift_beyond_threshold_blocks_generate_body/0}.
+
+clock_drift_beyond_threshold_blocks_generate_body() ->
     %% 模拟固定 Offset 时钟与系统钟漂移超限：readiness 翻闸 → generate
     %% 拒绝（异常作用于生成入口）；恢复 offset → 重新 ready 可发号
     ?SETUP(),
@@ -677,7 +684,11 @@ clock_drift_within_threshold_ready_test() ->
     ),
     ?assert(elib_tsid:generate(user) > 0).
 
-clock_drift_threshold_configurable_test() ->
+clock_drift_threshold_configurable_test_() ->
+    %% 同上：防 timetrap 击杀残留漂移注入（见 beyond_threshold 生成器注释）
+    {timeout, 60, fun clock_drift_threshold_configurable_body/0}.
+
+clock_drift_threshold_configurable_body() ->
     %% 阈值可配：200ms 上界下 1s 漂移即 unsafe
     elib_tsid:reset_for_test(),
     ok = elib_tsid:init(#{

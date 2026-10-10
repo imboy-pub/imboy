@@ -442,6 +442,16 @@ ensure_tsid_runtime() ->
         not_initialized ->
             %% 参数复刻 sup publish（imboy_sup:tsid_init_config/0 默认
             %% 1/1/3）；V10 静态清单在 init 内全量注册，无 names 参数
+            elib_tsid:init(#{dc_id => 1, node_id => 1, dc_bits => 3});
+        clock_unsafe ->
+            %% 测试轨道自愈（2026-10-10 全量实证）：with_runtime_drift 注入
+            %% 漂移后测试进程被 timetrap 击杀，after 还原不执行 → runtime
+            %% offset 永久带毒 → readiness 恒 clock_unsafe，boot 协调者
+            %% case_clause 崩溃后全部后续套件级联取消（本轮 10:47 首崩、
+            %% 无统计跑满 2.5h）。固定 Offset 时钟的漂移不会自愈，测试轨道
+            %% 直接重建干净 runtime；漂移测试本体已加 {timeout, 60} 防 5s
+            %% 击杀，此处为纵深防御。
+            elib_tsid:reset_for_test(),
             elib_tsid:init(#{dc_id => 1, node_id => 1, dc_bits => 3})
     end.
 
