@@ -79,7 +79,7 @@ setup_conn() ->
         _:_ -> ok
     end,
     %% 测试 VM 未起 imboy app：惰性注册本套件触达的 TSID 命名空间
-    %% （生产由 imboy_app:tsid_generator_names/0 全量注册）。
+    %% （生产由 elib_tsid:namespaces/0 静态清单全量注册）。
     lists:foreach(
         fun(Name) ->
             case lists:member(Name, elib_tsid:registered()) of

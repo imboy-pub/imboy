@@ -6,115 +6,34 @@
 -export([start_link/0]).
 -export([init/1]).
 %% TSID-07：部署配置链合同测试直调（env > application env > 默认 的合成结果）
--export([tsid_guard_config/0]).
-%% R1 加固：lock_provider 环境分档纯函数（合同测试直调）
--export([lock_provider_for/1, local_lock_provider/1]).
+-export([tsid_init_config/0]).
 
 %% @doc 启动 supervisor
 -spec start_link() -> {ok, pid()} | {error, term()}.
 start_link() ->
     supervisor:start_link({local, ?MODULE}, ?MODULE, []).
 
-%% @private TSID guard child：lifetime lock + durable fence + runtime 发布。
-%% 配置来自 application env（与 imboy_app 旧内联 init 同源），state 目录
-%% 默认 priv/tsid（TSID-07 在部署配置中显式化为持久卷挂载点）。
-tsid_guard_spec() ->
+%% @private TSID init 配置（env > application env > 默认 的合成结果）。
+%% V10 无持久化、无 guard 进程：init 纯内存（fixed offset 采集 + atomics
+%% 游标数组 + 静态槽位表），在 sup init 内直调即可，失败即 app 拒启。
+tsid_init_config() ->
+    ok = forbidden_tsid_env_check(),
     #{
-        id => elib_tsid_guard,
-        start => {elib_tsid_guard, start_link, [tsid_guard_config()]},
-        restart => permanent,
-        shutdown => 10000,
-        type => worker,
-        modules => [elib_tsid_guard]
+        dc_id => application:get_env(imboy, tsid_dc_id, 1),
+        node_id => application:get_env(imboy, tsid_node_id, 1),
+        dc_bits => application:get_env(imboy, tsid_dc_bits, 3),
+        capacity_wait_timeout_ms =>
+            application:get_env(imboy, tsid_capacity_wait_timeout_ms, 100)
     }.
 
-tsid_guard_config() ->
-    %% R1 加固：误配拒启检查先行——已删除/仅测试轨道的配置键在任何环境
-    %% 被显式设置即 error（sup init 崩 → app 拒启），绝不静默降级。
-    ok = forbidden_tsid_env_check(),
-    DcId = application:get_env(imboy, tsid_dc_id, 1),
-    NodeId = application:get_env(imboy, tsid_node_id, 1),
-    DcBits = application:get_env(imboy, tsid_dc_bits, 3),
-    StateDir =
-        case application:get_env(imboy, tsid_state_dir, default) of
-            default ->
-                case code:priv_dir(imboy) of
-                    {error, bad_name} -> "priv/tsid";
-                    Priv -> filename:join(Priv, "tsid")
-                end;
-            Dir ->
-                Dir
-        end,
-    GuardConf0 = #{
-        root => StateDir,
-        combined_node => elib_tsid:combine_node(DcId, NodeId, DcBits),
-        dc_bits => DcBits,
-        names => imboy_app:tsid_generator_names(),
-        store_bootstrap => application:get_env(imboy, tsid_store_bootstrap, existing),
-        %% lock_provider 环境分档硬编码（R1 加固，配置面为零）：
-        %% prod 恒 flock（唯一合法值）；test 恒 registry（eunit 轨道确定性）；
-        %% local/dev 探测 flock 可用则用（贴近生产路径，缺失回落 registry，
-        %% 仅单机开发场景，绝不在 prod 分档做此探测）。任何环境显式设置
-        %% {imboy, tsid_lock_provider} 均由 forbidden_tsid_env_check/0 拒启
-        %% ——防生产误设 registry 致跨 VM 互斥失效（同 CombinedNode 双实例
-        %% 红线绕过）。无 flock 的 macOS 上 guard 启动即
-        %% {lock_provider_unavailable, flock} fail-fast（保留 0cc0d7ce 语义）。
-        lock_provider => hardcoded_lock_provider(),
-        max_logical_lead_ms => application:get_env(imboy, tsid_max_logical_lead_ms, 512),
-        capacity_wait_timeout_ms =>
-            application:get_env(imboy, tsid_capacity_wait_timeout_ms, 100),
-        fence_window_ms => application:get_env(imboy, tsid_fence_window_ms, 1000),
-        fence_renew_margin_ms =>
-            application:get_env(imboy, tsid_fence_renew_margin_ms, 100),
-        startup_clock_wait_timeout_ms =>
-            application:get_env(imboy, tsid_startup_clock_wait_timeout_ms, 5000)
-    },
-    %% 自举 seam 传递（elib_tsid_guard 官方可选字段 bootstrap_env_fun /
-    %% bootstrap_scan_fun）：仅 test 轨道（imboy_env:current() == <<"test">>）
-    %% 读这两个键——eunit scratch 库未迁移/无 TSID id 列，真 scan 必以
-    %% schema_drift 拒启，测试基建经 application env 注入假 env/scan。
-    %% prod/local/dev 的代码路径根本不读这两个键（检测到设置即拒启，
-    %% 见 forbidden_tsid_env_check/0）——防测试配置泄漏进生产后假 scan
-    %% 从 floor 0 起跳（ID 重用，唯一性反例）。
-    maybe_bootstrap_seams(GuardConf0).
-
-%% R1 加固：lock_provider 分档判定。未知环境值（含 <<"pro">>、拼错的
-%% <<"production">> 等）一律 flock——与 imboy_env:current/0 的 fail-safe
-%% 哲学一致（未设置即 prod），默认即最保守的生产配置。
--spec lock_provider_for(binary()) -> flock | registry.
-lock_provider_for(EnvBin) ->
-    case EnvBin of
-        <<"test">> -> registry;
-        <<"local">> -> local_lock_provider(fun os:find_executable/1);
-        <<"dev">> -> local_lock_provider(fun os:find_executable/1);
-        _ -> flock
-    end.
-
--spec hardcoded_lock_provider() -> flock | registry.
-hardcoded_lock_provider() ->
-    lock_provider_for(imboy_env:current()).
-
-%% local/dev：有 flock 用 flock（保留贴近生产路径的本地验证机会），
-%% 缺失回落 registry（同 VM 互斥，单机开发足够）。FindF 注入仅服务于
-%% 合同测试，生产路径恒 fun os:find_executable/1。
--spec local_lock_provider(fun((string()) -> false | string())) -> flock | registry.
-local_lock_provider(FindF) ->
-    case FindF("flock") of
-        false -> registry;
-        _Path -> flock
-    end.
-
-%% R1 加固：误配拒启检查。两类配置面违规：
-%%   1. tsid_lock_provider——键已从配置面删除（环境分档硬编码），任何
-%%      环境显式设置都是误配；
-%%   2. tsid_bootstrap_env_fun / tsid_bootstrap_scan_fun——仅 test 轨道
-%%      合法，非 test 轨道设置即为测试基建泄漏。
-%% 违规即 error → imboy_sup init 失败 → app 拒启（fail-fast，部署时
-%% 爆炸远好于带病静默运行）。
+%% 误配拒启检查：tsid_lock_provider 键已随 V10 删除（V10 单 BEAM 无跨实例
+%% 互斥，唯一性边界见仓库 docs 与 .Codex/tsid_v10/risks.md R4——部署侧
+%% 保证 (dc_id, node_id) 全局唯一）。任何环境显式设置即为误配，error →
+%% imboy_sup init 失败 → app 拒启（fail-fast，部署时爆炸远好于带病静默运行）。
 forbidden_tsid_env_check() ->
     case application:get_env(imboy, tsid_lock_provider) of
         undefined ->
-            check_test_only_seam_keys();
+            ok;
         {ok, Value} ->
             error(
                 {tsid_config_forbidden, #{
@@ -122,75 +41,12 @@ forbidden_tsid_env_check() ->
                     value => Value,
                     reason =>
                         <<
-                            "tsid_lock_provider is not configurable: lock_provider "
-                            "is hardcoded per environment (prod=flock, test=registry, "
-                            "local/dev=flock-if-available). Remove "
-                            "{imboy, tsid_lock_provider} from config."
+                            "tsid_lock_provider is not configurable: V10 TSID has no "
+                            "cross-instance lock. Remove {imboy, tsid_lock_provider} "
+                            "from config and ensure unique (dc_id, node_id) per node."
                         >>
                 }}
             )
-    end.
-
-check_test_only_seam_keys() ->
-    case imboy_env:current() of
-        <<"test">> ->
-            ok;
-        _ ->
-            Found = [
-                K
-             || K <- [tsid_bootstrap_env_fun, tsid_bootstrap_scan_fun],
-                application:get_env(imboy, K) =/= undefined
-            ],
-            case Found of
-                [] ->
-                    ok;
-                _ ->
-                    error(
-                        {tsid_config_forbidden, #{
-                            keys => Found,
-                            reason =>
-                                <<
-                                    "tsid bootstrap seams are test-track only: "
-                                    "non-test environments must run the real env/scan. "
-                                    "Remove them from config."
-                                >>
-                        }}
-                    )
-            end
-    end.
-
-%% R1 加固后的 seam 透传：test 轨道成对注入 arity-1 函数才透传；
-%% 半设/类型不符按配置错误拒启（0cc0d7ce 的静默忽略收硬）；
-%% 未设则走真实现（真库测试场景合法）。
-maybe_bootstrap_seams(GuardConf0) ->
-    case imboy_env:current() of
-        <<"test">> ->
-            case
-                {
-                    application:get_env(imboy, tsid_bootstrap_env_fun),
-                    application:get_env(imboy, tsid_bootstrap_scan_fun)
-                }
-            of
-                {{ok, EnvFun}, {ok, ScanFun}} when
-                    is_function(EnvFun, 1), is_function(ScanFun, 1)
-                ->
-                    GuardConf0#{bootstrap_env_fun => EnvFun, bootstrap_scan_fun => ScanFun};
-                {undefined, undefined} ->
-                    GuardConf0;
-                _ ->
-                    error(
-                        {tsid_config_invalid, #{
-                            keys => [tsid_bootstrap_env_fun, tsid_bootstrap_scan_fun],
-                            reason =>
-                                <<
-                                    "test track requires both seams set as arity-1 "
-                                    "functions, or neither (real implementations)."
-                                >>
-                        }}
-                    )
-            end;
-        _ ->
-            GuardConf0
     end.
 
 %% @doc 初始化 supervisor
@@ -458,13 +314,13 @@ init([]) ->
         modules => [imboy_mcp_tools]
     },
 
+    %% V10：TSID 无进程化。init 纯内存（fixed offset + atomics 游标），
+    %% 必须早于任何可生成 ID 的 worker；失败（配置非法/重复初始化冲突）
+    %% 即 sup init 崩 → app 拒启（fail-closed）。监听器早于本 sup 启动，
+    %% 就绪窗口由 /readyz（elib_tsid:readiness/0）挡住。
+    ok = elib_tsid:init(tsid_init_config()),
     Specs =
         [
-            %% TSID-06：durable future fence guard 必须早于任何可生成 ID 的
-            %% worker（计划 §8.3）。guard 启动失败（锁被同 Node 双实例持有、
-            %% store 损坏、配置非法）即拒绝进入可生成状态（fail-closed）；
-            %% 监听器早于本 sup 启动，就绪窗口由 /readyz（guard 状态）挡住。
-            tsid_guard_spec(),
             IMBoyCache,
             % , PgoChildSpec
             DomainEventBus,

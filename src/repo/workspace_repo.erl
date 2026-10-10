@@ -45,7 +45,7 @@ tablename() ->
     elib_pg_sql:public_tablename(<<"workspace">>).
 
 %% @doc 插入工作区（事务连接版；Template 原子初始化专用）
-%% TSID 生成器 workspace 已注册（imboy_app:tsid_generator_names/0，
+%% TSID 生成器 workspace 已注册（elib_tsid:namespaces/0，
 %% 由 elib_tsid_registration_guard_tests 守护）。
 -spec add(any(), map()) -> {ok, integer()} | {error, term()}.
 add(Conn, Data) ->

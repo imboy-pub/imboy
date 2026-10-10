@@ -38,7 +38,7 @@
 %% 运行镜像是 debian-slim，没有 curl/wget，探不了 HTTP；
 %% 但 release 自带 `bin/imboy eval`，直接调这个函数即可，无需额外工具。
 -export([probe_db/0]).
-%% TSID-06：tsid_readiness/0 供探针/部署脚本直调；probe/2 为纯决策
+%% tsid_readiness/0 供探针/部署脚本直调；probe/2 为纯决策
 %% 函数，EUnit 合同测试与端点逻辑共用同一判据。
 -export([tsid_readiness/0, probe/2]).
 
@@ -98,12 +98,11 @@ probe_body(false, Tsid, Vsn, Nodes) ->
         <<"{\"status\":\"degraded\",\"db\":\"down\",\"tsid\":\"", TsidBin/binary, "\",\"nodes\":",
             Nodes/binary, ",\"version\":\"", Vsn/binary, "\"}">>}.
 
-%% @doc TSID guard readiness：从 runtime handle 的 guard_ref atomics 读取，
-%% 不查询 guard 进程、不暴露路径等敏感信息。
-%% not_configured = 未启用 guard 的模式（本地裸 init 开发态）。
--spec tsid_readiness() -> ready | fenced | stopping | not_configured.
+%% @doc TSID readiness：V10 无 guard 进程，runtime 已发布（sup init 内
+%% 完成）即 ready；未初始化即 not_initialized（不可发号，503）。
+-spec tsid_readiness() -> ready | not_initialized.
 tsid_readiness() ->
-    elib_tsid_guard:probe().
+    elib_tsid:readiness().
 
 %% @doc 纯决策函数（EUnit 合同测试专用）：live → 恒 200；
 %% ready → 聚合 db 与 tsid，任一不可用即 503。端点路径（init/2）经

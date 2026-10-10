@@ -105,31 +105,9 @@ eunit_setup() ->
     os:putenv("IMBOYENV", "test"),
     application:set_env(imboy, http_port, test_http_port()),
     application:set_env(imboy, dsync_enabled, false),
-    %% TSID guard 锁 provider 不再 set_env（R1 加固）：tsid_lock_provider
-    %% 键已从配置面删除，test 分档由 imboy_sup:lock_provider_for/1 硬编码
-    %% 为 registry（纯 Erlang 测试 provider，语义见 elib_tsid_lock 头注）。
-    %% TSID 自举 seam（仅 test 轨道合法，经 imboy_sup:tsid_guard_config
-    %% 透传给 guard）：eunit scratch 库未迁移/无 TSID id 列，真 scan 必以
-    %% schema_drift 拒启；假 env（全缺省）+ 零 floor 与 tsid10_soak 的
-    %% 测试语义一致。
-    application:set_env(imboy, tsid_bootstrap_env_fun, fun(_K) -> false end),
-    application:set_env(
-        imboy,
-        tsid_bootstrap_scan_fun,
-        fun(_Ctx) -> {ok, #{floor_safe_before => 0}} end
-    ),
-    %% TSID fence 轨道隔离（2026-10-01 全量 23×capacity_exhausted 根治）：
-    %% durable fence（priv/tsid/node-*）跨 VM 共享——dev server/其他会话 VM
-    %% 固化的超前高水位会被本 VM 继承：boot 允许领先墙钟 ≤60s 放行
-    %% （max_initial_lead_ms 默认 60000），而 generate 的 clock_wait 仅
-    %% 100ms（capacity_wait_timeout_ms 默认 100）→ lead>512ms 一律
-    %% capacity_exhausted；且 do_renew 以超前 cursor 为 Base 续写 fence，
-    %% 超前随文件持久化自持传染（9/30 stale-20260930 处置后当日复发实证）。
-    %% 本 VM 的 DB scan floor 已由上方 seam 置 0，不依赖共享 fence 防撞；
-    %% 改用每 VM 独立临时目录 + fresh bootstrap，cursor 从墙钟起步（共享库
-    %% 历史行时间戳均在过去，无撞号面），fence 的 VM 内 durable 语义保留。
-    application:set_env(imboy, tsid_state_dir, eunit_tsid_state_dir()),
-    application:set_env(imboy, tsid_store_bootstrap, fresh),
+    %% TSID V10：无 guard/无持久化/无 seam 配置——sup init 纯内存建
+    %% runtime（fixed offset + atomics 游标 + 静态 namespace 清单），
+    %% 测试轨道无需任何 TSID 注入；VM 隔离语义天然成立（游标不跨 VM）。
     %% 测试环境社区版用户配额拉高：注册/好友全链流程测试会真注册用户，
     %% 本地库测试数据积累极易越过社区版默认 max_users=100 触发 402
     application:set_env(imboy, community_max_users, 1000000),
@@ -316,7 +294,7 @@ do_boot() ->
             %% runtime（含 catalog 校验），setup 前抢跑 init 会扰乱 guard
             %% 前置状态（round2 实证 56 连发 catalog_changed 拒启）。
             %% 参数复刻 sup publish（imboy_sup:tsid_guard_config/0 默认
-            %% 1/1/3 + imboy_app:tsid_generator_names() 全集）——裸 names=[]
+            %% 1/1/3）；V10 静态清单在 init 内全量注册，无 names 参数
             %% 会让按名 generate 的 ds 层（bot_ds:generate(user) 等）全灭。
             ok = ensure_tsid_runtime(),
             {ok, {app_already_started, imboy}};
@@ -456,18 +434,15 @@ app_running(App) ->
 ensure_tsid_runtime() ->
     %% 模块自愈（2026-10-01）：elib_tsid 全量中段被观测到整体卸载（meck
     %% purge 竞态，见 eunit_tsid_module_loaded/0 注释）——丢模块后本函数的
-    %% runtime_handle 直调自身就会 undef，必须先恢复模块。
+    %% readiness 直调自身就会 undef，必须先恢复模块。
     ensure_tsid_module_loaded(),
-    case elib_tsid:runtime_handle() of
-        {ok, _} ->
+    case elib_tsid:readiness() of
+        ready ->
             ok;
-        error ->
-            elib_tsid:init(#{
-                dc_id => 1,
-                node_id => 1,
-                dc_bits => 3,
-                names => imboy_app:tsid_generator_names()
-            })
+        not_initialized ->
+            %% 参数复刻 sup publish（imboy_sup:tsid_init_config/0 默认
+            %% 1/1/3）；V10 静态清单在 init 内全量注册，无 names 参数
+            elib_tsid:init(#{dc_id => 1, node_id => 1, dc_bits => 3})
     end.
 
 %% elib_tsid 模块自愈：恢复被卸载的模块（ebin 在 code path 上，可重载）。
@@ -843,12 +818,6 @@ test_http_port() ->
                 _:_ -> 19800
             end
     end.
-
-%% eunit VM 专属 TSID fence 目录（每 VM 独立，见 boot 序列处注释）：
-%% 放系统临时目录，随系统清理，不进仓库；目录名带 VM pid，杜绝并行会话
-%% 与连续两次 make 之间的 fence 复用。
-eunit_tsid_state_dir() ->
-    filename:join("/tmp", "imboy-eunit-tsid-" ++ os:getpid()).
 
 test_sql_driver() ->
     case application:get_env(imboy, sql_driver) of

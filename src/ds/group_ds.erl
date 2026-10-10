@@ -346,7 +346,7 @@ create_group(Conn, Gid, Uid, Now, Type, JoinLimit) ->
     %% BIGSERIAL→TSID 迁移后必须预生成 id；缺失 id 会触发 NOT NULL 违反，
     %% 而原先静默 fallback(Gid2=0) 让后续 group_member INSERT 与同事务
     %% 后续 SQL 全部撞 25P02 in_failed_sql_transaction。
-    %% TSID generator 注册名为 group_info（见 imboy_app:tsid_generator_names/0）。
+    %% TSID generator 注册名为 group_info（见 elib_tsid:namespaces/0）。
     Gid_for_insert =
         case Gid of
             N when is_integer(N), N > 0 -> N;

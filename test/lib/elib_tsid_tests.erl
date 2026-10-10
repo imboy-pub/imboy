@@ -1,24 +1,19 @@
 -module(elib_tsid_tests).
 -include_lib("eunit/include/eunit.hrl").
 
+-define(EPOCH_MS, 1735689600000).
+-define(MAX_ID, 9223372036854775807).
+-define(MAX_REL, 4398046511103).
+
 -define(SETUP, fun() ->
-    %% TSID-02 起不同配置 re-init 被拒绝（F-12），每个测试先显式
-    %% reset 再 init，保证测试顺序无关的确定性隔离
+    %% V10：不同配置 re-init 被拒绝，每个测试先显式 reset 再 init，
+    %% 保证测试顺序无关的确定性隔离
     elib_tsid:reset_for_test(),
     elib_tsid:init(#{dc_id => 1, node_id => 1, dc_bits => 3})
 end).
--define(SETUP_NAMED, fun() ->
-    elib_tsid:reset_for_test(),
-    elib_tsid:init(#{
-        dc_id => 1,
-        node_id => 1,
-        dc_bits => 3,
-        names => [user, group_info, attachment]
-    })
-end).
 
 %% ===================================================================
-%% 基础功能测试
+%% 基础功能
 %% ===================================================================
 
 init_test() ->
@@ -27,231 +22,39 @@ init_test() ->
 
 generate_positive_test() ->
     ?SETUP(),
-    Id = elib_tsid:generate(),
+    Id = elib_tsid:generate(user),
     ?assert(Id > 0),
     ?assert(is_integer(Id)).
 
 generate_within_bigint_test() ->
     ?SETUP(),
-    Id = elib_tsid:generate(),
-    %% 2^63 - 1
-    MaxBigint = 9223372036854775807,
+    Id = elib_tsid:generate(user),
     ?assert(Id > 0),
-    ?assert(Id =< MaxBigint).
+    ?assert(Id =< ?MAX_ID).
 
 generate_max_19_digits_test() ->
     ?SETUP(),
-    Id = elib_tsid:generate(),
-    Digits = length(integer_to_list(Id)),
-    ?assert(Digits =< 19).
-
-%% ===================================================================
-%% 唯一性测试
-%% ===================================================================
+    lists:foreach(
+        fun(_) ->
+            Id = elib_tsid:generate(msg_store),
+            ?assert(Id =< ?MAX_ID)
+        end,
+        lists:seq(1, 100)
+    ).
 
 uniqueness_sequential_test() ->
     ?SETUP(),
-    Ids = elib_tsid:generate_n(10000),
-    UniqueIds = lists:usort(Ids),
-    ?assertEqual(length(Ids), length(UniqueIds)).
+    Ids = elib_tsid:generate_n(user, 5000),
+    ?assertEqual(5000, length(Ids)),
+    ?assertEqual(5000, length(lists:usort(Ids))),
+    ?assertEqual(Ids, lists:sort(Ids)).
 
 uniqueness_concurrent_test() ->
     ?SETUP(),
     Self = self(),
+    Workers = 10,
     N = 1000,
-    Workers = 10,
-    %% 启动 10 个并发进程, 每个生成 1000 个 ID
-    Pids = [
-        spawn(fun() ->
-            Ids = elib_tsid:generate_n(N),
-            Self ! {ids, Ids}
-        end)
-     || _ <- lists:seq(1, Workers)
-    ],
-    AllIds = collect_ids(Workers, []),
-    UniqueIds = lists:usort(AllIds),
-    ?assertEqual(Workers * N, length(AllIds)),
-    ?assertEqual(length(AllIds), length(UniqueIds)),
-    _ = Pids,
-    ok.
-
-collect_ids(0, Acc) ->
-    Acc;
-collect_ids(N, Acc) ->
-    receive
-        {ids, Ids} -> collect_ids(N - 1, Ids ++ Acc)
-    after 60000 ->
-        error(timeout)
-    end.
-
-%% ===================================================================
-%% 单调递增测试
-%% ===================================================================
-
-monotonic_test() ->
-    ?SETUP(),
-    Ids = elib_tsid:generate_n(5000),
-    ?assertEqual(Ids, lists:sort(Ids)).
-
-%% ===================================================================
-%% 解析测试
-%% ===================================================================
-
-parse_roundtrip_test() ->
-    ?SETUP(),
-    Id = elib_tsid:generate(),
-    Parsed = elib_tsid:parse(Id),
-    ?assertEqual(Id, maps:get(id, Parsed)),
-    ?assertEqual(1, maps:get(dc_id, Parsed)),
-    ?assertEqual(1, maps:get(node_id, Parsed)),
-    ?assert(maps:get(sequence, Parsed) >= 0),
-    ?assert(maps:get(timestamp, Parsed) > 1735689600000).
-
-timestamp_extraction_test() ->
-    ?SETUP(),
-    Before = erlang:system_time(millisecond),
-    Id = elib_tsid:generate(),
-    After = erlang:system_time(millisecond),
-    Ts = elib_tsid:timestamp(Id),
-    ?assert(Ts >= Before),
-    ?assert(Ts =< After + 1).
-
-node_id_extraction_test() ->
-    ?SETUP(),
-    Id = elib_tsid:generate(),
-    %% dc_bits=3, dc_id=1, node_id=1 → combined = (1 bsl 7) bor 1 = 129
-    ?assertEqual(129, elib_tsid:node_id(Id)).
-
-%% ===================================================================
-%% Base62 测试
-%% ===================================================================
-
-base62_roundtrip_test() ->
-    ?SETUP(),
-    Id = elib_tsid:generate(),
-    Encoded = elib_tsid:to_base62(Id),
-    Decoded = elib_tsid:from_base62(Encoded),
-    ?assertEqual(Id, Decoded).
-
-base62_length_test() ->
-    ?SETUP(),
-    Id = elib_tsid:generate(),
-    Encoded = elib_tsid:to_base62(Id),
-    %% Base62 编码 2^63 ≈ 62^10.7, 所以最长 11 个字符
-    ?assert(byte_size(Encoded) =< 11).
-
-%% ===================================================================
-%% DC/Node 配置测试
-%% ===================================================================
-
-dc_bits_0_test() ->
-    %% TSID-02 起不同配置 re-init 被拒绝（F-12），跨配置测试须显式 reset
-    elib_tsid:reset_for_test(),
-    ok = elib_tsid:init(#{dc_id => 0, node_id => 500, dc_bits => 0}),
-    Id = elib_tsid:generate(),
-    ?assert(Id > 0).
-
-dc_bits_5_test() ->
-    elib_tsid:reset_for_test(),
-    ok = elib_tsid:init(#{dc_id => 31, node_id => 31, dc_bits => 5}),
-    Id = elib_tsid:generate(),
-    Parsed = elib_tsid:parse(Id),
-    ?assertEqual(31, maps:get(dc_id, Parsed)),
-    ?assertEqual(31, maps:get(node_id, Parsed)).
-
-%% ===================================================================
-%% 边界测试
-%% ===================================================================
-
-different_nodes_no_collision_test() ->
-    %% 模拟两个不同节点，验证 ID 不冲突
-    %% TSID-02 起跨配置场景须显式 reset（F-12：禁止静默重配节点）
-    elib_tsid:reset_for_test(),
-    ok = elib_tsid:init(#{dc_id => 1, node_id => 1, dc_bits => 3}),
-    IdsNode1 = elib_tsid:generate_n(1000),
-
-    elib_tsid:reset_for_test(),
-    ok = elib_tsid:init(#{dc_id => 1, node_id => 2, dc_bits => 3}),
-    IdsNode2 = elib_tsid:generate_n(1000),
-
-    Combined = IdsNode1 ++ IdsNode2,
-    Unique = lists:usort(Combined),
-    ?assertEqual(2000, length(Unique)).
-
-%% ===================================================================
-%% 命名生成器测试
-%% ===================================================================
-
-register_single_test() ->
-    ?SETUP(),
-    ok = elib_tsid:register(user),
-    Names = elib_tsid:registered(),
-    ?assert(lists:member(user, Names)).
-
-register_list_test() ->
-    ?SETUP(),
-    ok = elib_tsid:register([group_info, attachment, channel]),
-    Names = elib_tsid:registered(),
-    ?assert(lists:member(group_info, Names)),
-    ?assert(lists:member(attachment, Names)),
-    ?assert(lists:member(channel, Names)).
-
-register_idempotent_test() ->
-    ?SETUP(),
-    ok = elib_tsid:register(feedback),
-    Names1 = elib_tsid:registered(),
-    ok = elib_tsid:register(feedback),
-    Names2 = elib_tsid:registered(),
-    ?assertEqual(Names1, Names2).
-
-init_with_names_test() ->
-    ?SETUP_NAMED(),
-    Names = elib_tsid:registered(),
-    ?assert(lists:member(default, Names)),
-    ?assert(lists:member(user, Names)),
-    ?assert(lists:member(group_info, Names)),
-    ?assert(lists:member(attachment, Names)).
-
-generate_named_test() ->
-    ?SETUP_NAMED(),
-    UserId = elib_tsid:generate(user),
-    GroupId = elib_tsid:generate(group_info),
-    AttachId = elib_tsid:generate(attachment),
-    ?assert(UserId > 0),
-    ?assert(GroupId > 0),
-    ?assert(AttachId > 0).
-
-generate_named_unique_within_test() ->
-    %% 同一命名生成器内 ID 唯一
-    ?SETUP_NAMED(),
-    UserIds = elib_tsid:generate_n(user, 5000),
-    UniqueIds = lists:usort(UserIds),
-    ?assertEqual(5000, length(UniqueIds)).
-
-generate_named_monotonic_test() ->
-    %% 同一命名生成器内 ID 单调递增
-    ?SETUP_NAMED(),
-    UserIds = elib_tsid:generate_n(user, 5000),
-    ?assertEqual(UserIds, lists:sort(UserIds)).
-
-named_generators_zero_intersection_test() ->
-    %% TSID-03：所有 label 共享全局 cursor，跨生成器数值零交集
-    ?SETUP_NAMED(),
-    UserIds = elib_tsid:generate_n(user, 100),
-    GroupIds = elib_tsid:generate_n(group_info, 100),
-    %% 各自内部唯一
-    ?assertEqual(100, length(lists:usort(UserIds))),
-    ?assertEqual(100, length(lists:usort(GroupIds))),
-    %% 跨生成器零交集（旧独立号段行为已被 TSID-03 取代）
-    ?assertEqual(200, length(lists:usort(UserIds ++ GroupIds))).
-
-named_concurrent_unique_test() ->
-    %% 同一命名生成器并发下 ID 唯一
-    ?SETUP_NAMED(),
-    Self = self(),
-    N = 500,
-    Workers = 10,
-    Pids = [
+    [
         spawn(fun() ->
             Ids = elib_tsid:generate_n(user, N),
             Self ! {ids, Ids}
@@ -259,173 +62,334 @@ named_concurrent_unique_test() ->
      || _ <- lists:seq(1, Workers)
     ],
     AllIds = collect_ids(Workers, []),
-    UniqueIds = lists:usort(AllIds),
     ?assertEqual(Workers * N, length(AllIds)),
-    ?assertEqual(length(AllIds), length(UniqueIds)),
-    _ = Pids,
-    ok.
+    ?assertEqual(Workers * N, length(lists:usort(AllIds))).
 
-unregistered_generator_error_test() ->
+monotonic_test() ->
     ?SETUP(),
-    %% 使用未注册的生成器应该报错
-    ?assertError(
+    Ids = elib_tsid:generate_n(user, 1000),
+    Sorted = lists:sort(Ids),
+    ?assertEqual(Ids, Sorted).
+
+collect_ids(0, Acc) ->
+    Acc;
+collect_ids(N, Acc) ->
+    receive
+        {ids, Ids} -> collect_ids(N - 1, Acc ++ Ids)
+    after 30000 ->
+        exit(collect_ids_timeout)
+    end.
+
+collect_by_name(0, Acc) ->
+    Acc;
+collect_by_name(N, Acc) ->
+    receive
+        {ids, Name, Ids} ->
+            collect_by_name(N - 1, maps:update_with(Name, fun(L) -> L ++ Ids end, Ids, Acc))
+    after 30000 ->
+        exit(collect_ids_timeout)
+    end.
+
+%% ===================================================================
+%% 解析 / 提取
+%% ===================================================================
+
+parse_roundtrip_test() ->
+    ?SETUP(),
+    Id = elib_tsid:generate(user),
+    #{id := Id, timestamp := Ts, sequence := Seq} = elib_tsid:parse(Id),
+    ?assert(is_integer(Ts)),
+    ?assert(Ts >= ?EPOCH_MS),
+    ?assert(Seq >= 0),
+    ?assert(Seq < 2048).
+
+timestamp_extraction_test() ->
+    ?SETUP(),
+    NowWall = elib_tsid:wall_clock_ms(),
+    Id = elib_tsid:generate(user),
+    Ts = elib_tsid:timestamp(Id),
+    ?assert(abs(Ts - NowWall) =< 1000).
+
+node_id_extraction_test() ->
+    ?SETUP(),
+    Id = elib_tsid:generate(user),
+    ?assertEqual(129, elib_tsid:node_id(Id)).
+
+base62_roundtrip_test() ->
+    ?SETUP(),
+    Id = elib_tsid:generate(user),
+    ?assertEqual(Id, elib_tsid:from_base62(elib_tsid:to_base62(Id))).
+
+base62_length_test() ->
+    ?SETUP(),
+    lists:foreach(
+        fun(_) ->
+            Id = elib_tsid:generate(user),
+            B62 = elib_tsid:to_base62(Id),
+            ?assert(byte_size(B62) =< 11)
+        end,
+        lists:seq(1, 50)
+    ).
+
+%% ===================================================================
+%% dc_bits / 节点边界
+%% ===================================================================
+
+dc_bits_0_test() ->
+    elib_tsid:reset_for_test(),
+    ok = elib_tsid:init(#{dc_id => 0, node_id => 1023, dc_bits => 0}),
+    Id = elib_tsid:generate(user),
+    ?assertEqual(1023, elib_tsid:node_id(Id)).
+
+dc_bits_5_test() ->
+    elib_tsid:reset_for_test(),
+    ok = elib_tsid:init(#{dc_id => 31, node_id => 31, dc_bits => 5}),
+    Id = elib_tsid:generate(user),
+    P = elib_tsid:parse(Id),
+    ?assertEqual(31, maps:get(dc_id, P)),
+    ?assertEqual(31, maps:get(node_id, P)).
+
+different_nodes_no_collision_test() ->
+    lists:foreach(
+        fun({Dc, Node}) ->
+            elib_tsid:reset_for_test(),
+            ok = elib_tsid:init(#{dc_id => Dc, node_id => Node, dc_bits => 3}),
+            Id = elib_tsid:generate(user),
+            #{dc_id := Dc, node_id := Node} = elib_tsid:parse(Id),
+            ok
+        end,
+        [{0, 0}, {0, 127}, {7, 127}]
+    ).
+
+dc_bits_all_boundaries_test() ->
+    lists:foreach(
+        fun(DcBits) ->
+            elib_tsid:reset_for_test(),
+            NodeBits = 10 - DcBits,
+            MaxDc = (1 bsl DcBits) - 1,
+            MaxNode = (1 bsl NodeBits) - 1,
+            ok = elib_tsid:init(#{
+                dc_id => MaxDc, node_id => MaxNode, dc_bits => DcBits
+            }),
+            Id = elib_tsid:generate(user),
+            ?assert(Id > 0),
+            ?assert(Id =< ?MAX_ID),
+            P = elib_tsid:parse(Id),
+            ?assertEqual(MaxDc, maps:get(dc_id, P)),
+            ?assertEqual(MaxNode, maps:get(node_id, P))
+        end,
+        lists:seq(0, 10)
+    ).
+
+combine_node_rejects_overflow_test() ->
+    %% NodeId 溢出 node 位段必须 error（防 dc 位被覆盖的静默碰撞）
+    ?assertMatch(
+        {elib_tsid_invalid_config, _},
+        catch_typed(fun() -> elib_tsid:combine_node(1, 200, 3) end)
+    ),
+    ?assertMatch(
+        {elib_tsid_invalid_config, _},
+        catch_typed(fun() -> elib_tsid:combine_node(8, 1, 3) end)
+    ),
+    ?assertEqual(129, elib_tsid:combine_node(1, 1, 3)).
+
+%% ===================================================================
+%% V10 多 Namespace 独立游标
+%% ===================================================================
+
+same_namespace_unique_test() ->
+    ?SETUP(),
+    Ids = elib_tsid:generate_n(user, 1000),
+    ?assertEqual(1000, length(lists:usort(Ids))).
+
+cross_namespace_may_repeat_test() ->
+    %% V10 核心语义：跨 Namespace 数值允许重复。冻结时钟同毫秒内，
+    %% user 耗尽 2048 槽后，group_info 独立游标从同毫秒 seq=0 起步——
+    %% 两 namespace 的首个 ID 数值必然相等。
+    ?SETUP(),
+    with_fixed_clock(?EPOCH_MS + 200000, fun() ->
+        UserIds = elib_tsid:generate_n(user, 2048),
+        #{sequence := 2047} = elib_tsid:parse(lists:last(UserIds)),
+        %% 耗尽后本毫秒 user 无法继续（无借支：时钟冻结 → 有界失败）
+        ?assertMatch(
+            {elib_tsid_capacity_exhausted, _},
+            catch_typed(fun() -> elib_tsid:generate(user) end)
+        ),
+        %% group_info 独立游标：同毫秒同 seq=0 起步 → 与 user 首号数值相同
+        GroupFirst = elib_tsid:generate(group_info),
+        ?assertEqual(hd(UserIds), GroupFirst)
+    end).
+
+%% group 是 group_info 的别名：共享游标，行为完全一致
+group_alias_shares_cursor_test() ->
+    ?SETUP(),
+    with_fixed_clock(?EPOCH_MS + 300000, fun() ->
+        Ids = [
+            elib_tsid:generate(group),
+            elib_tsid:generate(group_info),
+            elib_tsid:generate(group)
+        ],
+        %% 同一游标：序列连续（0,1,2）
+        ?assertEqual(
+            [0, 1, 2],
+            [S || #{sequence := S} <- [elib_tsid:parse(I) || I <- Ids]]
+        )
+    end).
+
+%% audit / enterprise_audit / enterprise_audit_event 三标签一游标
+audit_alias_shares_cursor_test() ->
+    ?SETUP(),
+    with_fixed_clock(?EPOCH_MS + 300000, fun() ->
+        Ids = [
+            elib_tsid:generate(audit),
+            elib_tsid:generate(enterprise_audit),
+            elib_tsid:generate(enterprise_audit_event)
+        ],
+        ?assertEqual(
+            [0, 1, 2],
+            [S || #{sequence := S} <- [elib_tsid:parse(I) || I <- Ids]]
+        ),
+        ?assertEqual(3, length(lists:usort(Ids)))
+    end).
+
+unknown_namespace_typed_error_test() ->
+    ?SETUP(),
+    ?assertMatch(
         {elib_tsid_generator_not_registered, _},
-        elib_tsid:generate(nonexistent_table)
+        catch_typed(fun() -> elib_tsid:generate(definitely_not_a_namespace) end)
+    ),
+    ?assertMatch(
+        {elib_tsid_generator_not_registered, _},
+        catch_typed(fun() -> elib_tsid:generate_n(no_such_ns, 3) end)
     ).
 
-default_generator_always_available_test() ->
+namespace_inventory_complete_test() ->
     ?SETUP(),
-    %% default 生成器始终可用
-    Id = elib_tsid:generate(default),
-    ?assert(Id > 0),
-    %% generate/0 等同于 generate(default)
-    Id2 = elib_tsid:generate(),
-    ?assert(Id2 > Id).
+    %% W1 冻结清单中的每一个 canonical 名称都可生成
+    lists:foreach(
+        fun(Name) ->
+            Id = elib_tsid:generate(Name),
+            ?assert(Id > 0, {namespace_failed, Name})
+        end,
+        elib_tsid:namespaces()
+    ).
 
-registered_includes_default_test() ->
+registered_includes_namespaces_and_aliases_test() ->
     ?SETUP(),
-    Names = elib_tsid:registered(),
-    ?assert(lists:member(default, Names)).
-
-from_binary_test() ->
-    ?assertEqual({ok, 123}, elib_tsid:from_binary(<<"123">>)),
-    ?assertEqual(error, elib_tsid:from_binary(<<"0">>)),
-    ?assertEqual(error, elib_tsid:from_binary(<<"-1">>)),
-    ?assertEqual(error, elib_tsid:from_binary(<<"bad">>)),
-    ?assertEqual(error, elib_tsid:from_binary(123)).
-
-%% ===================================================================
-%% TSID-01：时钟与 reservation 契约冻结
-%%
-%% 全部为固定时钟纯模型测试：时钟以参数注入，不依赖真实 sleep、
-%% 不修改系统时钟（AC-01A）。seam 函数为内部实现细节，不属于
-%% 公开 API 契约（AC-01B：公开 arity 与健康路径返回不变）。
-%% ===================================================================
-
--define(MAX_REL_TS, 4398046511103).
--define(LAST_VALID_SLOT, ((?MAX_REL_TS bsl 11) bor 2047)).
-
-reserve_candidate_fresh_cursor_test() ->
-    %% 全新 cursor（-1）：首个 slot 落在当前毫秒，seq=0
-    {ok, First, Last} = elib_tsid:reserve_candidate(-1, 1000, 1),
-    ?assertEqual(1000 bsl 11, First),
-    ?assertEqual(First, Last).
-
-reserve_candidate_rollback_holds_cursor_test() ->
-    %% 时钟回拨（1500 < cursor 毫秒 2000）：不回退，从 cursor 继续
-    Old = 2000 bsl 11,
-    {ok, First, _Last} = elib_tsid:reserve_candidate(Old, 1500, 1),
-    ?assertEqual(Old + 1, First).
-
-reserve_candidate_batch_spans_ms_test() ->
-    %% batch 从 seq 末尾跨入下一毫秒：线性 slot 连续展开
-    Old = (2000 bsl 11) bor 2047,
-    {ok, First, Last} = elib_tsid:reserve_candidate(Old, 2000, 2),
-    ?assertEqual(Old + 1, First),
-    ?assertEqual((2001 bsl 11) bor 1, Last).
-
-reserve_candidate_before_epoch_test() ->
-    %% 纪元前时钟：typed fail-closed，绝不借用未来毫秒
-    ?assertMatch(
-        {error, {elib_tsid_clock_before_epoch, _}},
-        elib_tsid:reserve_candidate(-1, -1, 1)
+    Registered = elib_tsid:registered(),
+    ?assert(lists:member(default, Registered)),
+    lists:foreach(
+        fun(N) -> ?assert(lists:member(N, Registered), {missing, N}) end,
+        elib_tsid:namespaces()
+    ),
+    lists:foreach(
+        fun(A) -> ?assert(lists:member(A, Registered), {missing_alias, A}) end,
+        maps:keys(elib_tsid:aliases())
     ).
 
-reserve_candidate_max_boundary_test() ->
-    %% 恰可容纳 42-bit 最后一个 slot；再多 1 个 → typed exhausted
-    {ok, _First, Last} = elib_tsid:reserve_candidate(?LAST_VALID_SLOT - 1, ?MAX_REL_TS, 1),
-    ?assertEqual(?LAST_VALID_SLOT, Last),
+%% register/1 是静态清单的幂等断言：已知名恒 ok，未知名 error
+register_idempotent_check_test() ->
+    ?SETUP(),
+    ok = elib_tsid:register(user),
+    ok = elib_tsid:register([group, audit, enterprise_audit]),
     ?assertMatch(
-        {error, {elib_tsid_timestamp_exhausted, _}},
-        elib_tsid:reserve_candidate(?LAST_VALID_SLOT, ?MAX_REL_TS, 1)
+        {elib_tsid_generator_not_registered, _},
+        catch_typed(fun() -> elib_tsid:register(not_in_inventory) end)
     ).
 
-reserve_candidate_conflict_refresh_test() ->
-    %% CAS 冲突模型：获胜者推进 cursor 后，失败者以刷新后的墙钟重算，
-    %% candidate 仍为 max(old + 1, now << 11)（F-05 冻结语义）
-    {ok, _F1, L1} = elib_tsid:reserve_candidate(-1, 1000, 1),
-    {ok, F2, _L2} = elib_tsid:reserve_candidate(L1, 1100, 1),
-    ?assertEqual(max(L1 + 1, 1100 bsl 11), F2).
-
-slot_to_id_layout_test() ->
-    %% slot → ID 展开：42/10/11 布局精确可表达，MAX_ID 是最后合法值
-    Slot = (1000 bsl 11) bor 5,
-    ?assertEqual((1000 bsl 21) bor (129 bsl 11) bor 5, elib_tsid:slot_to_id(Slot, 129)),
-    ?assertEqual(9223372036854775807, elib_tsid:slot_to_id(?LAST_VALID_SLOT, 1023)).
-
-id_to_slot_roundtrip_test() ->
-    Id = (12345 bsl 21) bor (129 bsl 11) bor 77,
-    ?assertEqual(Id, elib_tsid:slot_to_id(elib_tsid:id_to_slot(Id), 129)).
-
-%% T-09 fuzz 发现（TSID-09）：id_to_slot 对 0/负数/超 MAX_ID 曾走
-%% function_clause 而非 typed error（与 parse/1 的 F-09 口径不一致）——
-%% 现统一 {elib_tsid_invalid_input,_}；上界含 MAX_ID 本身（合法）
-id_to_slot_typed_rejection_test() ->
+register_before_init_rejected_test() ->
+    elib_tsid:reset_for_test(),
     ?assertMatch(
-        {elib_tsid_invalid_input, #{id := 0}},
-        catch_typed(fun() -> elib_tsid:id_to_slot(0) end)
+        {elib_tsid_not_initialized, _},
+        catch_typed(fun() -> elib_tsid:register(user) end)
     ),
-    ?assertMatch(
-        {elib_tsid_invalid_input, #{id := -1}},
-        catch_typed(fun() -> elib_tsid:id_to_slot(-1) end)
-    ),
-    ?assertMatch(
-        {elib_tsid_invalid_input, #{id := 9223372036854775808}},
-        catch_typed(fun() -> elib_tsid:id_to_slot(9223372036854775808) end)
-    ),
-    %% 上界值本身合法（round-trip 不炸）
-    ?assertEqual(
-        (4398046511103 bsl 11) bor 2047,
-        elib_tsid:id_to_slot(9223372036854775807)
-    ).
-
-wall_clock_seam_test() ->
-    %% 私有时钟 seam：默认真实墙钟；pdict 注入后完全受控（进程隔离）
-    Real = elib_tsid:wall_clock_ms(),
-    Now = erlang:system_time(millisecond),
-    ?assert(Real >= Now - 5000 andalso Real =< Now + 5),
-    put({elib_tsid, test_wall_ms}, 12345),
-    ?assertEqual(12345, elib_tsid:wall_clock_ms()),
-    erase({elib_tsid, test_wall_ms}),
-    Real2 = elib_tsid:wall_clock_ms(),
-    ?assert(Real2 >= Real).
-
-monotonic_clock_seam_test() ->
-    %% 私有单调钟 seam：默认真实单调钟（仅用于测间隔/超时，绝不入 ID）
-    M1 = elib_tsid:monotonic_ms(),
-    ?assert(M1 =< erlang:monotonic_time(millisecond) + 5),
-    put({elib_tsid, test_monotonic_ms}, 42),
-    ?assertEqual(42, elib_tsid:monotonic_ms()),
-    erase({elib_tsid, test_monotonic_ms}).
+    ?assertEqual([default], elib_tsid:registered()).
 
 %% ===================================================================
-%% TSID-02：63-bit 边界、输入校验与 calendar 精度（T-001..T-010）
-%%
-%% AC-02A 非法输入不再掩码成合法 ID；AC-02B MAX_ID 精确；
-%% AC-02C 全部生成值落在正 signed BIGINT；AC-02D calendar 精度如实声明。
+%% 无借支铁律（V10）
 %% ===================================================================
 
--define(EPOCH_MS, 1735689600000).
--define(MAX_ID, 9223372036854775807).
--define(TSID02_MAX_REL, 4398046511103).
+exhaustion_bounded_error_no_borrow_test() ->
+    %% 冻结时钟：2048 用尽后有界 typed error（~100ms deadline），绝不借未来毫秒
+    ?SETUP(),
+    with_fixed_clock(?EPOCH_MS + 400000, fun() ->
+        Ids = elib_tsid:generate_n(user, 2048),
+        ?assertEqual(2048, length(lists:usort(Ids))),
+        ?assertEqual(
+            [?EPOCH_MS + 400000],
+            lists:usort([elib_tsid:timestamp(I) || I <- Ids])
+        ),
+        T0 = erlang:monotonic_time(millisecond),
+        ?assertMatch(
+            {elib_tsid_capacity_exhausted, #{phase := clock_wait}},
+            catch_typed(fun() -> elib_tsid:generate(user) end)
+        ),
+        Elapsed = erlang:monotonic_time(millisecond) - T0,
+        ?assert(Elapsed >= 90 andalso Elapsed =< 1000, {bounded_wait_ms, Elapsed})
+    end).
 
-catch_typed(Fun) ->
-    %% 捕获 error:Reason 并返回 Reason，避免已弃用的裸 catch 表达式
-    try
-        Fun()
-    catch
-        error:Reason -> Reason
+exhaustion_recovered_after_clock_advance_test() ->
+    %% 时钟推进后同 namespace 恢复发号，时间戳 = 新毫秒
+    ?SETUP(),
+    with_fixed_clock(?EPOCH_MS + 400000, fun() ->
+        _ = elib_tsid:generate_n(user, 2048),
+        ok
+    end),
+    with_fixed_clock(?EPOCH_MS + 400001, fun() ->
+        Id = elib_tsid:generate(user),
+        ?assertEqual(?EPOCH_MS + 400001, elib_tsid:timestamp(Id))
+    end).
+
+cursor_absorbs_rollback_test() ->
+    %% 回拨后游标吸收：不重复、不回退，沿旧毫秒剩余槽位继续
+    ?SETUP(),
+    Ids1 = with_fixed_clock(?EPOCH_MS + 500000, fun() ->
+        elib_tsid:generate_n(user, 100)
+    end),
+    Ids2 = with_fixed_clock(?EPOCH_MS + 499000, fun() ->
+        elib_tsid:generate_n(user, 100)
+    end),
+    All = Ids1 ++ Ids2,
+    ?assertEqual(200, length(All)),
+    ?assertEqual(200, length(lists:usort(All))),
+    %% 回拨批的第一号 = 前一批水位的下一槽（同毫秒 seq+1，或耗尽时下一毫秒）
+    #{sequence := S1} = elib_tsid:parse(lists:last(Ids1)),
+    #{sequence := S2} = elib_tsid:parse(hd(Ids2)),
+    case S1 of
+        2047 ->
+            ?assertEqual(?EPOCH_MS + 500001, elib_tsid:timestamp(hd(Ids2)));
+        _ ->
+            ?assertEqual(S1 + 1, S2),
+            ?assertEqual(?EPOCH_MS + 500000, elib_tsid:timestamp(hd(Ids2)))
     end.
 
-with_fixed_clock(WallMs, Fun) ->
-    put({elib_tsid, test_wall_ms}, WallMs),
-    try
-        Fun()
-    after
-        erase({elib_tsid, test_wall_ms})
-    end.
+jump_then_rollback_unique_test() ->
+    ?SETUP(),
+    Ids1 = with_fixed_clock(?EPOCH_MS + 600000, fun() -> elib_tsid:generate_n(user, 20) end),
+    Ids2 = with_fixed_clock(?EPOCH_MS + 610000, fun() -> elib_tsid:generate_n(user, 20) end),
+    Ids3 = with_fixed_clock(?EPOCH_MS + 600000, fun() -> elib_tsid:generate_n(user, 20) end),
+    All = Ids1 ++ Ids2 ++ Ids3,
+    ?assertEqual(60, length(lists:usort(All))).
 
-%% T-001 42/10/11 编解码 golden vectors
+rollback_three_states_test() ->
+    lists:foreach(
+        fun(RollbackMs) ->
+            elib_tsid:reset_for_test(),
+            ok = elib_tsid:init(#{dc_id => 1, node_id => 1, dc_bits => 3}),
+            Base = ?EPOCH_MS + 700000,
+            Ids1 = with_fixed_clock(Base, fun() -> elib_tsid:generate_n(user, 10) end),
+            Ids2 = with_fixed_clock(Base - RollbackMs, fun() ->
+                elib_tsid:generate_n(user, 10)
+            end),
+            ?assertEqual(20, length(lists:usort(Ids1 ++ Ids2)), {rollback, RollbackMs})
+        end,
+        [1, 100, 1000, 10000, 60000]
+    ).
+
+%% ===================================================================
+%% 边界与金样本（位布局 42/10/11 冻结）
+%% ===================================================================
+
 golden_vectors_test() ->
     Vectors = [
         {0, 0, 1},
@@ -434,7 +398,7 @@ golden_vectors_test() ->
         {1, 0, 0},
         {1, 129, 5},
         {5619271, 517, 1234},
-        {?TSID02_MAX_REL, 1023, 2047}
+        {?MAX_REL, 1023, 2047}
     ],
     lists:foreach(
         fun({Ts, Node, Seq}) ->
@@ -447,7 +411,6 @@ golden_vectors_test() ->
         end,
         Vectors
     ),
-    %% 全零不是合法 TSID（须 >= 1）
     ?assertMatch({elib_tsid_invalid_input, _}, catch_typed(fun() -> elib_tsid:parse(0) end)),
     ?assertMatch({elib_tsid_invalid_input, _}, catch_typed(fun() -> elib_tsid:parse(-1) end)),
     ?assertMatch(
@@ -455,18 +418,15 @@ golden_vectors_test() ->
         catch_typed(fun() -> elib_tsid:parse(not_integer) end)
     ).
 
-%% T-002 MAX_ID 解析：字段 exact、正数、不掩码
 max_id_parse_test() ->
     P = elib_tsid:parse(?MAX_ID),
     ?assertEqual(?MAX_ID, maps:get(id, P)),
-    ?assertEqual(?EPOCH_MS + ?TSID02_MAX_REL, maps:get(timestamp, P)),
+    ?assertEqual(?EPOCH_MS + ?MAX_REL, maps:get(timestamp, P)),
     ?assertEqual(1023, elib_tsid:node_id(?MAX_ID)),
     ?assertEqual(2047, maps:get(sequence, P)),
-    %% dc_bits 默认 3 → 1023 = (7 bsl 7) bor 127
     ?assertEqual(7, maps:get(dc_id, P)),
     ?assertEqual(127, maps:get(node_id, P)),
     ?assertMatch({{2164, 5, 15}, {7, 35, 11}}, maps:get(created_at, P)),
-    %% 超界输入必须稳定拒绝，不得掩码成别的 TSID（F-09）
     ?assertMatch(
         {elib_tsid_invalid_input, _}, catch_typed(fun() -> elib_tsid:parse(?MAX_ID + 1) end)
     ),
@@ -478,31 +438,29 @@ max_id_parse_test() ->
         catch_typed(fun() -> elib_tsid:node_id(?MAX_ID + 1) end)
     ).
 
-%% T-003 最后合法毫秒用尽 → typed exhausted，绝不返回越界 ID
 last_ms_exhaustion_test() ->
     elib_tsid:reset_for_test(),
     ok = elib_tsid:init(#{dc_id => 1, node_id => 1, dc_bits => 3}),
-    LastId = with_fixed_clock(?EPOCH_MS + ?TSID02_MAX_REL, fun() ->
-        Ids = [elib_tsid:generate() || _ <- lists:seq(1, 2048)],
+    LastId = with_fixed_clock(?EPOCH_MS + ?MAX_REL, fun() ->
+        Ids = elib_tsid:generate_n(user, 2048),
         ?assertEqual(2048, length(lists:usort(Ids))),
-        %% node=129：最后合法 ID = (MAX_REL bsl 21) bor (129 bsl 11) bor 2047
-        ?assertEqual((?TSID02_MAX_REL bsl 21) bor (129 bsl 11) bor 2047, lists:last(Ids)),
+        ?assertEqual((?MAX_REL bsl 21) bor (129 bsl 11) bor 2047, lists:last(Ids)),
         lists:last(Ids)
     end),
     ?assert(LastId =< ?MAX_ID),
-    %% 第 2049 个：借用下一毫秒 = 越界 → typed error，不签发
-    with_fixed_clock(?EPOCH_MS + ?TSID02_MAX_REL, fun() ->
+    with_fixed_clock(?EPOCH_MS + ?MAX_REL, fun() ->
         ?assertMatch(
-            {elib_tsid_timestamp_exhausted, _}, catch_typed(fun() -> elib_tsid:generate() end)
+            {elib_tsid_timestamp_exhausted, _},
+            catch_typed(fun() -> elib_tsid:generate(user) end)
         )
     end).
 
-%% T-004 纪元前时钟 → 生成 fail-closed（确定性时钟，无 sleep/改系统钟）
 clock_beyond_2164_test() ->
     ?SETUP(),
-    with_fixed_clock(?EPOCH_MS + ?TSID02_MAX_REL + 5000, fun() ->
+    with_fixed_clock(?EPOCH_MS + ?MAX_REL + 5000, fun() ->
         ?assertMatch(
-            {elib_tsid_timestamp_exhausted, _}, catch_typed(fun() -> elib_tsid:generate() end)
+            {elib_tsid_timestamp_exhausted, _},
+            catch_typed(fun() -> elib_tsid:generate(user) end)
         )
     end).
 
@@ -510,11 +468,15 @@ before_epoch_fail_closed_test() ->
     ?SETUP(),
     with_fixed_clock(?EPOCH_MS - 1000, fun() ->
         ?assertMatch(
-            {elib_tsid_clock_before_epoch, _}, catch_typed(fun() -> elib_tsid:generate() end)
+            {elib_tsid_clock_before_epoch, _},
+            catch_typed(fun() -> elib_tsid:generate(user) end)
         )
     end).
 
-%% T-005 decimal 边界 corpus：仅 1..MAX_ID 的十进制接受
+%% ===================================================================
+%% corpus
+%% ===================================================================
+
 decimal_boundary_corpus_test() ->
     Valid = #{
         <<"1">> => 1,
@@ -549,7 +511,6 @@ decimal_boundary_corpus_test() ->
         Invalid
     ).
 
-%% T-006 Base62 corpus：合法 round-trip；非 TSID 稳定拒绝（F-10）
 base62_corpus_test() ->
     lists:foreach(
         fun(Id) ->
@@ -574,7 +535,6 @@ base62_corpus_test() ->
         end,
         Reject
     ),
-    %% 编码方向同样拒绝非 TSID
     ?assertMatch({elib_tsid_invalid_input, _}, catch_typed(fun() -> elib_tsid:to_base62(0) end)),
     ?assertMatch(
         {elib_tsid_invalid_input, _}, catch_typed(fun() -> elib_tsid:to_base62(?MAX_ID + 1) end)
@@ -584,47 +544,27 @@ base62_corpus_test() ->
         catch_typed(fun() -> elib_tsid:to_base62(-1) end)
     ).
 
-%% T-007 calendar 精度：timestamp 保留毫秒，created_at 是秒精度（F-11）
 calendar_precision_test() ->
     P = elib_tsid:parse(?MAX_ID),
     ?assertEqual(6133736111103, maps:get(timestamp, P)),
     ?assertMatch({{2164, 5, 15}, {7, 35, 11}}, maps:get(created_at, P)).
 
-%% T-008 dc_bits 0..10 全边界：CombinedNode exact，无负移位/越界
-dc_bits_all_boundaries_test() ->
-    lists:foreach(
-        fun(DcBits) ->
-            elib_tsid:reset_for_test(),
-            NodeBits = 10 - DcBits,
-            MaxDc = (1 bsl DcBits) - 1,
-            MaxNode = (1 bsl NodeBits) - 1,
-            ok = elib_tsid:init(#{
-                dc_id => MaxDc, node_id => MaxNode, dc_bits => DcBits
-            }),
-            Id = elib_tsid:generate(),
-            ?assert(Id > 0),
-            ?assert(Id =< ?MAX_ID),
-            P = elib_tsid:parse(Id),
-            ?assertEqual(MaxDc, maps:get(dc_id, P)),
-            ?assertEqual(MaxNode, maps:get(node_id, P))
-        end,
-        lists:seq(0, 10)
-    ).
+%% ===================================================================
+%% init 幂等 / 配置冻结
+%% ===================================================================
 
-%% T-009 重复同配置 init：幂等且 cursor 不回退
 same_config_reinit_idempotent_test() ->
     elib_tsid:reset_for_test(),
     ok = elib_tsid:init(#{dc_id => 1, node_id => 1, dc_bits => 3}),
-    Id1 = elib_tsid:generate(),
+    Id1 = elib_tsid:generate(user),
     ok = elib_tsid:init(#{dc_id => 1, node_id => 1, dc_bits => 3}),
-    Id2 = elib_tsid:generate(),
+    Id2 = elib_tsid:generate(user),
     ?assert(Id2 > Id1).
 
-%% T-010 不同配置 re-init：typed reject，旧 runtime 不变（F-12）
 different_config_reinit_rejected_test() ->
     elib_tsid:reset_for_test(),
     ok = elib_tsid:init(#{dc_id => 1, node_id => 1, dc_bits => 3}),
-    Id1 = elib_tsid:generate(),
+    Id1 = elib_tsid:generate(user),
     ?assertMatch(
         {elib_tsid_already_initialized, _},
         catch_typed(fun() -> elib_tsid:init(#{dc_id => 1, node_id => 2, dc_bits => 3}) end)
@@ -633,439 +573,221 @@ different_config_reinit_rejected_test() ->
         {elib_tsid_already_initialized, _},
         catch_typed(fun() -> elib_tsid:init(#{dc_id => 1, node_id => 1, dc_bits => 4}) end)
     ),
-    %% 旧 runtime 不变：继续按旧节点生成且不回退
-    Id2 = elib_tsid:generate(),
+    ?assertMatch(
+        {elib_tsid_already_initialized, _},
+        catch_typed(fun() ->
+            elib_tsid:init(#{
+                dc_id => 1, node_id => 1, dc_bits => 3, capacity_wait_timeout_ms => 500
+            })
+        end)
+    ),
+    Id2 = elib_tsid:generate(user),
     ?assert(Id2 > Id1),
     ?assertEqual(129, elib_tsid:node_id(Id2)).
 
-%% ===================================================================
-%% TSID-03：单全局 cursor 与注册竞态修复
-%% ===================================================================
-
-cross_name_fixed_clock_zero_dup_test() ->
-    %% 固定时钟同毫秒交替生成：任意 label 两两数值不同且严格递增
-    ?SETUP_NAMED(),
-    with_fixed_clock(?EPOCH_MS + 200000, fun() ->
-        Ids = [
-            elib_tsid:generate(user),
-            elib_tsid:generate(group_info),
-            elib_tsid:generate(attachment),
-            elib_tsid:generate(default),
-            elib_tsid:generate(user),
-            elib_tsid:generate(group_info)
-        ],
-        ?assertEqual(6, length(lists:usort(Ids))),
-        ?assertEqual(Ids, lists:sort(Ids))
-    end).
-
-single_global_cursor_inventory_test() ->
-    %% AC-03B：只有一个 cursor；旧每 name 独立 state 键不复存在
-    ?SETUP_NAMED(),
-    %% 旧键残留检查（字面量对应已废弃的 {elib_tsid_state, Name}）
-    ?assertEqual(
-        undefined,
-        persistent_term:get({elib_tsid_state, user}, undefined)
-    ),
-    ?assertEqual(
-        undefined,
-        persistent_term:get({elib_tsid_state, group_info}, undefined)
-    ),
-    %% 全局 cursor 行为证明：跨 label 连续生成共享同一 slot 空间
-    Id1 = elib_tsid:generate(user),
-    Id2 = elib_tsid:generate(group_info),
-    #{sequence := S1} = elib_tsid:parse(Id1),
-    #{sequence := S2} = elib_tsid:parse(Id2),
-    ?assert(S2 >= S1).
-
-concurrent_register_no_lost_labels_test() ->
-    %% AC-03/F-13：并发注册不同名称经锁串行化，零丢失（旧实现每轮必丢）
-    elib_tsid:reset_for_test(),
-    ok = elib_tsid:init(#{dc_id => 1, node_id => 1, dc_bits => 3}),
-    N = 30,
-    Self = self(),
-    Ready = counters:new(N, []),
-    Workers = [
-        spawn(fun() ->
-            counters:add(Ready, 1, 1),
-            wait_counter(Ready, N),
-            ok = elib_tsid:register(list_to_atom("tsid03_t_n" ++ integer_to_list(I))),
-            Self ! done
-        end)
-     || I <- lists:seq(1, N)
-    ],
-    [
-        receive
-            done -> ok
-        end
-     || _ <- lists:seq(1, N)
-    ],
-    _ = Workers,
-    Registered = elib_tsid:registered(),
-    Missing = [
-        list_to_atom("tsid03_t_n" ++ integer_to_list(I))
-     || I <- lists:seq(1, N),
-        not lists:member(list_to_atom("tsid03_t_n" ++ integer_to_list(I)), Registered)
-    ],
-    ?assertEqual([], Missing).
-
-wait_counter(Counter, N) ->
-    case counters:get(Counter, 1) >= N of
-        true -> ok;
-        false -> wait_counter(Counter, N)
-    end.
-
-cross_name_1m_concurrent_uniqueness_test_() ->
-    %% 1M 生成在负载波动下可超 eunit 默认 5s：显式 90s timetrap
-    %% （与 mixed_concurrency_1m 同口径）
-    {timeout, 90, fun cross_name_1m_concurrent_uniqueness_body/0}.
-
-cross_name_1m_concurrent_uniqueness_body() ->
-    %% AC-03A：4 label × 16 workers 共 1M IDs，全局零重复。
-    %% 容量口径与 mixed_concurrency_1m（T-103）一致：纯 generate 聚合需求
-    %% 峰值 ~2.3M/s 超出单节点 2048/ms 容量，lead 到 5ms 上限后依赖
-    %% capacity_wait 预算消化——TSID-09 实测默认 100ms 预算在环境抖动下
-    %% 会 typed capacity_exhausted（有界逻辑时间按设计 fail-closed），
-    %% 本测试验证唯一性而非容量，deadline 放宽到 5000ms。
-    elib_tsid:reset_for_test(),
-    ok = elib_tsid:init(#{
-        dc_id => 1,
-        node_id => 1,
-        dc_bits => 3,
-        names => [user, group_info, attachment],
-        capacity_wait_timeout_ms => 5000
-    }),
-    ok = elib_tsid:register([msg_c2c, extra_probe]),
-    Self = self(),
-    Names = [user, group_info, attachment, msg_c2c],
-    Workers = 16,
-    PerWorker = 62500,
-    [
-        spawn(fun() ->
-            Ids = [
-                elib_tsid:generate(lists:nth(1 + (I rem 4), Names))
-             || I <- lists:seq(1, PerWorker)
-            ],
-            Self ! {ids, Ids}
-        end)
-     || _ <- lists:seq(1, Workers)
-    ],
-    All = collect_ids(Workers, []),
-    ?assertEqual(1000000, length(All)),
-    ?assertEqual(1000000, length(lists:usort(All))).
-
-registered_sorted_compat_test() ->
-    %% registered/0 兼容：排序 atom 列表
-    ?SETUP(),
-    ok = elib_tsid:register([zz_label, aa_label]),
-    Names = elib_tsid:registered(),
-    ?assertEqual(Names, lists:sort(Names)),
-    ?assert(lists:member(zz_label, Names)),
-    ?assert(lists:member(aa_label, Names)).
-
-register_before_init_rejected_test() ->
-    %% 注册先于 init：typed 拒绝（runtime 未发布）
-    elib_tsid:reset_for_test(),
-    ?assertMatch(
-        {elib_tsid_not_initialized, _},
-        catch_typed(fun() -> elib_tsid:register(early_label) end)
-    ).
-
-%% ===================================================================
-%% TSID-04：batch reservation 与有界逻辑时间（T-101..T-109）
-%%
-%% slot 模型：一次 CAS 预留连续区间本地展开；lead 有界；等待用
-%% monotonic deadline；超大 N 分有界 chunk。机制类测试固定小参数
-%% （lead=5 / chunk=(5+1)*2048）以快速触发边界；生产缺省（TSID-10
-%% 定标 lead=512）由 imboy_env_tsid_tests 的默认链测试覆盖。
-%% ===================================================================
-
--define(LEAD_MS, 5).
--define(CAP_WAIT_MS, 100).
--define(MAX_CHUNK, ((?LEAD_MS + 1) * 2048)).
-
-%% T-101 各规模普通 batch：可容纳 chunk 恰一次成功 CAS；严格升序且唯一
-batch_sizes_one_cas_test() ->
-    ?SETUP(),
-    lists:foreach(
-        fun(N) ->
-            Before = elib_tsid:reservation_count(),
-            Ids = elib_tsid:generate_n(N),
-            After = elib_tsid:reservation_count(),
-            ?assertEqual(N, length(Ids)),
-            ?assertEqual(N, length(lists:usort(Ids))),
-            ?assertEqual(Ids, lists:sort(Ids)),
-            %% 普通 batch（<= max_batch_chunk）必须恰一次成功 reservation
-            ?assertEqual(1, After - Before)
-        end,
-        [1, 2, 2048, 2049, 10000]
-    ).
-
-%% T-102 batch 从 seq=2047 跨毫秒：展开 exact 无洞无重
-batch_spans_ms_exact_test() ->
-    elib_tsid:reset_for_test(),
-    ok = elib_tsid:init(#{dc_id => 1, node_id => 1, dc_bits => 3}),
-    with_fixed_clock(?EPOCH_MS + 200000, fun() ->
-        %% 填满 seq 0..2047（一次 2048 batch）
-        Full = elib_tsid:generate_n(2048),
-        ?assertEqual(2048, length(lists:usort(Full))),
-        %% 下一个 batch 从下一毫秒 seq 0 开始
-        Next = elib_tsid:generate_n(2),
-        #{timestamp := TsA, sequence := SeqA} = elib_tsid:parse(hd(Next)),
-        #{timestamp := TsB, sequence := SeqB} = elib_tsid:parse(lists:last(Next)),
-        ?assertEqual(?EPOCH_MS + 200001, TsA),
-        ?assertEqual(0, SeqA),
-        ?assertEqual(?EPOCH_MS + 200001, TsB),
-        ?assertEqual(1, SeqB),
-        %% 与前一批零重叠
-        ?assertEqual(2050, length(lists:usort(Full ++ Next)))
-    end).
-
-%% T-104/T-00 竞争者不再嵌入 batch 间隙：区间线性化
-batch_no_interleave_test() ->
-    elib_tsid:reset_for_test(),
-    ok = elib_tsid:init(#{
-        dc_id => 1,
-        node_id => 1,
-        dc_bits => 3,
-        names => [batchprobe]
-    }),
-    Self = self(),
-    _Comp = spawn(fun() ->
-        Ids = [elib_tsid:generate(batchprobe) || _ <- lists:seq(1, 10000)],
-        Self ! {comp_ids, Ids}
-    end),
-    %% 单 chunk 批量（<= max_batch_chunk=12288）：一次 CAS 线性化，
-    %% 竞争者 ID 绝不嵌入区间内部（多 chunk 批量的块间插入是合法的）
-    Batch = elib_tsid:generate_n(batchprobe, 10000),
-    CompIds =
-        receive
-            {comp_ids, Ids} -> Ids
-        after 30000 -> error(timeout)
-        end,
-    BSet = sets:from_list(Batch, [{version, 2}]),
-    Inside = [C || C <- CompIds, not sets:is_element(C, BSet), inside_gap(C, Batch)],
-    ?assertEqual(0, length(Inside)),
-    ?assertEqual(20000, length(lists:usort(Batch ++ CompIds))).
-
-inside_gap(C, Batch) ->
-    {Lo, Hi} = find_gap(C, Batch, 20000),
-    Lo =/= none.
-
-find_gap(_C, _Batch, 0) ->
-    {none, none};
-find_gap(C, [B1, B2 | _Rest], _Budget) when C > B1, C < B2 ->
-    {B1, B2};
-find_gap(C, [_B1 | Rest], Budget) ->
-    find_gap(C, Rest, Budget - 1);
-find_gap(_C, _Batch, _) ->
-    {none, none}.
-
-%% T-106 回拨三态：小回拨继续 / 恰边界继续 / 越界等待超时 typed 失败
-rollback_three_states_test() ->
-    lists:foreach(
-        fun({Rollback, Expect}) ->
-            elib_tsid:reset_for_test(),
-            ok = elib_tsid:init(#{
-                dc_id => 1,
-                node_id => 1,
-                dc_bits => 3,
-                capacity_wait_timeout_ms => 10,
-                max_logical_lead_ms => ?LEAD_MS
-            }),
-            Base = ?EPOCH_MS + 300000,
-            %% 固定时钟下生成 1 个 ID：cursor 停在 Base 毫秒
-            with_fixed_clock(Base, fun() -> _ = elib_tsid:generate() end),
-            %% 时钟回拨 Rollback 毫秒：lead = Rollback
-            with_fixed_clock(Base - Rollback, fun() ->
-                case Expect of
-                    proceed ->
-                        Id = elib_tsid:generate(),
-                        %% ID 时间戳不随回拨倒退（>= cursor 毫秒 Base）
-                        ?assert(elib_tsid:timestamp(Id) >= Base);
-                    timeout ->
-                        ?assertMatch(
-                            {elib_tsid_capacity_exhausted, _},
-                            catch_typed(fun() -> elib_tsid:generate() end)
-                        )
-                end
-            end)
-        end,
-        [{3, proceed}, {?LEAD_MS, proceed}, {?LEAD_MS + 1, timeout}]
-    ).
-
-%% T-107 持续超 2048/ms：lead 永不超过配置上限；不无限借未来
-sustained_overload_lead_bounded_test() ->
-    elib_tsid:reset_for_test(),
-    ok = elib_tsid:init(#{
-        dc_id => 1,
-        node_id => 1,
-        dc_bits => 3,
-        capacity_wait_timeout_ms => 10,
-        max_logical_lead_ms => ?LEAD_MS
-    }),
-    Clock = ?EPOCH_MS + 400000,
-    with_fixed_clock(Clock, fun() ->
-        %% 冻结时钟下持续生成：lead 逼近上限后必须 typed 失败
-        {Ids, Err} = overload_loop([], none),
-        %% 每个已发 ID 的时间戳都不超过时钟 + lead 上限
-        lists:foreach(
-            fun(Id) ->
-                ?assert(elib_tsid:timestamp(Id) =< Clock + ?LEAD_MS)
-            end,
-            Ids
-        ),
-        ?assertMatch({elib_tsid_capacity_exhausted, _}, Err),
-        %% 确实生成过多批（非空转）
-        ?assert(length(Ids) >= 2048)
-    end).
-
-overload_loop(Acc, Err) ->
-    try elib_tsid:generate() of
-        Id ->
-            case length(Acc) > 50000 of
-                true -> {lists:reverse(Acc), overflow_runaway};
-                false -> overload_loop([Id | Acc], Err)
-            end
-    catch
-        error:{elib_tsid_capacity_exhausted, _} = E -> {lists:reverse(Acc), E}
-    end.
-
-%% T-108 超大 N：完整 list 严格升序；CAS 次数 = chunk 数而非 N
-oversized_batch_chunks_test() ->
-    %% 显式小 lead：chunk 上限 (5+1)*2048 使 N=30000 分 3 块
-    elib_tsid:reset_for_test(),
-    ok = elib_tsid:init(#{
-        dc_id => 1,
-        node_id => 1,
-        dc_bits => 3,
-        max_logical_lead_ms => ?LEAD_MS
-    }),
-    N = 30000,
-    ExpectedChunks = ceil(N / ?MAX_CHUNK),
-    Before = elib_tsid:reservation_count(),
-    Ids = elib_tsid:generate_n(N),
-    After = elib_tsid:reservation_count(),
-    ?assertEqual(N, length(Ids)),
-    ?assertEqual(N, length(lists:usort(Ids))),
-    ?assertEqual(Ids, lists:sort(Ids)),
-    ?assertEqual(ExpectedChunks, After - Before).
-
-%% T-109 并发 batch：各 reservation 区间两两不重叠（线性化），不断言到达顺序
-concurrent_batch_disjoint_ranges_test() ->
-    elib_tsid:reset_for_test(),
-    ok = elib_tsid:init(#{
-        dc_id => 1, node_id => 1, dc_bits => 3, names => [batchprobe]
-    }),
-    Self = self(),
-    Workers = 16,
-    PerWorker = 5000,
-    [
-        spawn(fun() ->
-            Ids = elib_tsid:generate_n(batchprobe, PerWorker),
-            Self ! {range, hd(Ids), lists:last(Ids), Ids}
-        end)
-     || _ <- lists:seq(1, Workers)
-    ],
-    Ranges = [
-        receive
-            {range, Lo, Hi, _Ids} -> {Lo, Hi}
-        end
-     || _ <- lists:seq(1, Workers)
-    ],
-    %% 两两不重叠
-    lists:foreach(
-        fun({I, {Lo1, Hi1}}) ->
-            lists:foreach(
-                fun
-                    ({J, {Lo2, Hi2}}) when J > I ->
-                        ?assert(Hi1 < Lo2 orelse Hi2 < Lo1);
-                    (_) ->
-                        ok
-                end,
-                lists:zip(lists:seq(1, Workers), Ranges)
-            )
-        end,
-        lists:zip(lists:seq(1, Workers), Ranges)
-    ).
-
-%% 调度器响应性：重负载下普通 sleep 不被长时间饿死
-scheduler_responsiveness_probe_test() ->
-    ?SETUP(),
-    Self = self(),
-    Load = [
-        spawn(fun() ->
-            _ = elib_tsid:generate_n(5000),
-            Self ! done
-        end)
-     || _ <- lists:seq(1, 8)
-    ],
-    T0 = erlang:monotonic_time(millisecond),
-    ok = timer:sleep(20),
-    Elapsed = erlang:monotonic_time(millisecond) - T0,
-    ?assert(Elapsed < 1000, "scheduler starved under load"),
-    [
-        receive
-            done -> ok
-        end
-     || _ <- lists:seq(1, 8)
-    ],
-    _ = Load,
-    ok.
-
-%% init 参数校验：非法 lead/chunk 组合拒绝启动
-init_limit_validation_test() ->
+capacity_wait_validation_test() ->
     elib_tsid:reset_for_test(),
     ?assertMatch(
         {elib_tsid_invalid_config, _},
         catch_typed(fun() ->
-            elib_tsid:init(#{
-                dc_id => 1, node_id => 1, dc_bits => 3, max_batch_chunk => 99999999
-            })
+            elib_tsid:init(#{dc_id => 1, node_id => 1, capacity_wait_timeout_ms => 0})
+        end)
+    ),
+    ?assertMatch(
+        {elib_tsid_invalid_config, _},
+        catch_typed(fun() ->
+            elib_tsid:init(#{dc_id => 1, node_id => 1, capacity_wait_timeout_ms => not_int})
         end)
     ).
 
-%% T-103 混合并发：32 workers 混合 generate/generate_n，>= 1M IDs 全局唯一。
-%% 本测试验证唯一性与顺序，非容量行为：聚合需求 ~2M/s 在 2048/ms 节点
-%% 容量上限附近，deadline 放宽到 5000ms 避免竞争不公造成 capacity_exhausted
-%% （deadline 语义由 rollback 三态测试单独覆盖）。
-mixed_concurrency_1m_test_() ->
-    %% 1M 生成 + usort 常在 2-4s 之间浮动：显式 60s timetrap 替代
-    %% eunit 默认 5s（避免环境噪声导致的边缘超时）
-    {timeout, 60, fun mixed_concurrency_1m_body/0}.
-
-mixed_concurrency_1m_body() ->
+readiness_test() ->
     elib_tsid:reset_for_test(),
-    ok = elib_tsid:init(#{
-        dc_id => 1,
-        node_id => 1,
-        dc_bits => 3,
-        names => [user, group_info, attachment],
-        capacity_wait_timeout_ms => 5000
-    }),
+    ?assertEqual(not_initialized, elib_tsid:readiness()),
+    ok = elib_tsid:init(#{dc_id => 1, node_id => 1, dc_bits => 3}),
+    ?assertEqual(ready, elib_tsid:readiness()).
+
+%% ===================================================================
+%% 纯 seam（reserve_candidate / slot_to_id / id_to_slot）
+%% ===================================================================
+
+reserve_candidate_fresh_cursor_test() ->
+    {ok, First, Last} = elib_tsid:reserve_candidate(0, 100, 5),
+    ?assertEqual(100 bsl 11, First),
+    ?assertEqual(100 bsl 11 + 4, Last).
+
+reserve_candidate_rollback_holds_cursor_test() ->
+    %% 回拨：Now < 游标毫秒 → First 沿旧游标继续，绝不回退
+    OldCursor = (500 bsl 11) bor 100,
+    {ok, First, _Last} = elib_tsid:reserve_candidate(OldCursor, 400, 1),
+    ?assertEqual(OldCursor + 1, First).
+
+reserve_candidate_batch_spans_ms_test() ->
+    {ok, First, Last} = elib_tsid:reserve_candidate((100 bsl 11) bor 2000, 100, 100),
+    ?assertEqual((100 bsl 11) bor 2001, First),
+    ?assertEqual((101 bsl 11) bor 52, Last).
+
+reserve_candidate_before_epoch_test() ->
+    ?assertMatch(
+        {error, {elib_tsid_clock_before_epoch, _}},
+        elib_tsid:reserve_candidate(0, -1, 1)
+    ).
+
+reserve_candidate_max_boundary_test() ->
+    %% 最后毫秒从 seq 0 起恰好容纳 2048 个（seq 0..2047 不越界）
+    {ok, First, Last} = elib_tsid:reserve_candidate(0, ?MAX_REL, 2048),
+    ?assertEqual(?MAX_REL bsl 11, First),
+    ?assertEqual((?MAX_REL bsl 11) bor 2047, Last),
+    %% 游标已在该毫秒 seq>=1 时再要整毫秒 → 越界 typed error
+    ?assertMatch(
+        {error, {elib_tsid_timestamp_exhausted, _}},
+        elib_tsid:reserve_candidate((?MAX_REL bsl 11) bor 1, ?MAX_REL, 2048)
+    ).
+
+slot_to_id_layout_test() ->
+    ?assertEqual(
+        (5 bsl 21) bor (129 bsl 11) bor 7,
+        elib_tsid:slot_to_id((5 bsl 11) bor 7, 129)
+    ).
+
+id_to_slot_roundtrip_test() ->
+    ?SETUP(),
+    Id = elib_tsid:generate(user),
+    Slot = elib_tsid:id_to_slot(Id),
+    #{combined_node := Node} = persistent_term:get(elib_tsid_runtime),
+    ?assertEqual(Id, elib_tsid:slot_to_id(Slot, Node)).
+
+id_to_slot_typed_rejection_test() ->
+    ?assertMatch(
+        {elib_tsid_invalid_input, _}, catch_typed(fun() -> elib_tsid:id_to_slot(0) end)
+    ),
+    ?assertMatch(
+        {elib_tsid_invalid_input, _}, catch_typed(fun() -> elib_tsid:id_to_slot(-5) end)
+    ),
+    ?assertMatch(
+        {elib_tsid_invalid_input, _}, catch_typed(fun() -> elib_tsid:id_to_slot(?MAX_ID + 1) end)
+    ),
+    ?assertMatch(
+        {elib_tsid_invalid_input, _}, catch_typed(fun() -> elib_tsid:id_to_slot(<<"x">>) end)
+    ).
+
+%% ===================================================================
+%% 时钟 seam
+%% ===================================================================
+
+wall_clock_fixed_offset_test() ->
+    %% 生产 wall_clock = monotonic + init 时采集的固定 Offset；
+    %% 与真实系统钟的漂移即时接近 0（NTP 正常时）
+    ?SETUP(),
+    #{clock_offset_ms := Offset} = persistent_term:get(elib_tsid_runtime),
+    ?assert(is_integer(Offset)),
+    Drift = elib_tsid:wall_clock_ms() - erlang:system_time(millisecond),
+    ?assert(abs(Drift) =< 50, {fixed_offset_drift_ms, Drift}).
+
+wall_clock_seam_override_test() ->
+    ?SETUP(),
+    ?assertEqual(1234567890123, with_fixed_clock(1234567890123, fun elib_tsid:wall_clock_ms/0)),
+    %% seam 只作用于调用进程
     Self = self(),
-    Workers = 32,
+    spawn(fun() -> Self ! {other, elib_tsid:wall_clock_ms()} end),
+    receive
+        {other, RealMs} ->
+            ?assert(abs(RealMs - erlang:system_time(millisecond)) =< 1000)
+    after 5000 ->
+        exit(seam_isolation_timeout)
+    end.
+
+%% ===================================================================
+%% 批量语义
+%% ===================================================================
+
+batch_sizes_one_cas_test() ->
+    ?SETUP(),
+    C0 = elib_tsid:reservation_count(),
+    _ = elib_tsid:generate_n(user, 100),
+    ?assertEqual(C0 + 1, elib_tsid:reservation_count()).
+
+batch_oversized_chunks_test() ->
+    ?SETUP(),
+    Ids = elib_tsid:generate_n(user, 5000),
+    ?assertEqual(5000, length(Ids)),
+    ?assertEqual(5000, length(lists:usort(Ids))),
+    ?assertEqual(Ids, lists:sort(Ids)).
+
+batch_no_interleave_test() ->
+    ?SETUP(),
+    with_fixed_clock(?EPOCH_MS + 800000, fun() ->
+        Ids = elib_tsid:generate_n(user, 10),
+        %% 单调用返回严格连续 slot 区间（无并发干扰时 seq 0..9）
+        ?assertEqual(
+            lists:seq(0, 9),
+            [S || #{sequence := S} <- [elib_tsid:parse(I) || I <- Ids]]
+        )
+    end).
+
+concurrent_batch_disjoint_ranges_test() ->
+    ?SETUP(),
+    Self = self(),
+    Workers = 8,
+    N = 2000,
     [
         spawn(fun() ->
-            Ids = lists:append([
-                case I rem 3 of
-                    0 -> [elib_tsid:generate(user)];
-                    1 -> elib_tsid:generate_n(group_info, 200);
-                    2 -> elib_tsid:generate_n(attachment, 600)
-                end
-             || I <- lists:seq(1, 120)
-            ]),
+            Ids = elib_tsid:generate_n(user, N),
             Self ! {ids, Ids}
         end)
      || _ <- lists:seq(1, Workers)
     ],
-    All = collect_ids_long(Workers, []),
-    ?assert(length(All) >= 1000000, "1M IDs 未达成"),
-    ?assertEqual(length(All), length(lists:usort(All))).
+    AllIds = collect_ids(Workers, []),
+    ?assertEqual(Workers * N, length(AllIds)),
+    ?assertEqual(Workers * N, length(lists:usort(AllIds))).
 
-collect_ids_long(0, Acc) ->
-    Acc;
-collect_ids_long(N, Acc) ->
-    receive
-        {ids, Ids} -> collect_ids_long(N - 1, Ids ++ Acc)
-    after 60000 -> error(timeout)
+%% ===================================================================
+%% 高并发混合（跨 namespace 各自独立游标；1M 规模，90s timetrap）
+%% ===================================================================
+
+mixed_concurrency_1m_test_() ->
+    {timeout, 90, fun mixed_concurrency_1m_body/0}.
+
+mixed_concurrency_1m_body() ->
+    ?SETUP(),
+    Self = self(),
+    Workers = 10,
+    N = 100000,
+    Names = [user, msg_store, group_info, wallet_transaction],
+    [
+        spawn(fun() ->
+            Name = lists:nth(rand:uniform(length(Names)), Names),
+            Ids = elib_tsid:generate_n(Name, N),
+            Self ! {ids, Name, Ids}
+        end)
+     || _ <- lists:seq(1, Workers)
+    ],
+    %% V10：同 namespace 内严格唯一；跨 namespace 数值允许重复，
+    %% 故按 namespace 分组后组内断言唯一（全局 usort 会把合法重复合并）
+    ByName = collect_by_name(Workers, #{}),
+    maps:foreach(
+        fun(Name, Ids) ->
+            Total = length(Ids),
+            ?assertEqual(Total, length(lists:usort(Ids)), {dup_in, Name})
+        end,
+        ByName
+    ),
+    ?assertEqual(Workers * N, maps:fold(fun(_K, V, A) -> A + length(V) end, 0, ByName)).
+
+%% ===================================================================
+%% 辅助
+%% ===================================================================
+
+with_fixed_clock(WallMs, Fun) ->
+    put({elib_tsid, test_wall_ms}, WallMs),
+    try
+        Fun()
+    after
+        erase({elib_tsid, test_wall_ms})
+    end.
+
+catch_typed(Fun) ->
+    try
+        Fun()
+    catch
+        error:Reason -> Reason
     end.

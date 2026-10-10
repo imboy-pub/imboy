@@ -4,8 +4,7 @@
 -export([start/2]).
 -export([stop/1]).
 -export([maybe_migrate/0]).
-%% 纯函数导出供守护测试（elib_tsid_registration_guard_tests）与运行时自省
--export([tsid_generator_names/0]).
+
 %% 导出供守护测试直调（e2ee_throttle_scope_config_tests：RT-P3-02 兜底注册）
 -export([init_throttle_rates/0]).
 %% 导出供纯 HTTP 链套件复刻启动语义（enterprise_mobile_bootstrap_http_tests
@@ -51,10 +50,9 @@ start(_Type, _Args) ->
     %% 内部异常自吞，不阻断主启动链
     ok = imboy_telemetry:init(),
     _ = imboy_syn:init(),
-    %% TSID-06：TSID 初始化移交 imboy_sup 的 elib_tsid_guard child
-    %% （lifetime lock → durable fence → 完整 runtime 发布）。监听器先于
-    %% sup 启动的窗口内 generate 会 fail-closed 报 not_initialized，
-    %% 流量由 /readyz（guard 状态）就绪门挡住。
+    %% TSID V10：初始化移交 imboy_sup（纯内存 init：fixed offset +
+    %% atomics 游标）。监听器先于 sup 启动的窗口内 generate 会 fail-closed
+    %% 报 not_initialized，流量由 /readyz（elib_tsid:readiness/0）挡住。
     % 初始化集群管理（join_cluster 内部已含 License 节点数告警）
     _ = imboy_cluster:init(),
     % 初始化验证码 ETS 表
@@ -215,178 +213,6 @@ priv_dir() ->
 %% ===================================================================
 %% TSID 命名生成器配置
 %% ===================================================================
-
-%% @doc 返回需要注册的 TSID 命名生成器（label）清单
-%%
-%% TSID-03 起全部 label 共享同一全局 cursor：同一节点上任意两个
-%% 生成器产生的 ID 数值永不相同，跨表/跨域引用可直接按数值关联。
-%% label 仅是治理/兼容标签（审计与门面语义），不分配独立数值空间。
--spec tsid_generator_names() -> [atom()].
-tsid_generator_names() ->
-    [
-        %% ── 用户相关 ──
-        user,
-        user_device,
-        user_collect,
-        user_denylist,
-        user_tag,
-        user_tag_relation,
-        user_deletion_request,
-        user_deletion_job,
-        %% R-02：处置动作审计行
-        moderation_action,
-        %% R-04：处置申诉行
-        moderation_appeal,
-        %% ── 好友相关 ──
-        friend,
-        friend_category,
-        %% ── 群组相关 ──
-        group,
-        group_info,
-        group_member,
-        group_notice,
-        group_log,
-        group_random_code,
-        group_category,
-        group_tag,
-        group_vote,
-        group_vote_option,
-        group_schedule,
-        group_schedule_reminder,
-        group_album,
-        group_album_photo,
-        group_album_comment,
-        group_file,
-        group_task,
-        group_task_assignment,
-        %% ── 消息相关 (msg_id 标识用, 不做排序) ──
-        msg_c2c,
-        msg_c2g,
-        msg_c2s,
-        msg_s2c,
-        msg_store,
-        msg_read,
-        msg_mention,
-        msg_forward,
-        msg_reply,
-        msg_reaction,
-        msg_pinned,
-        %% ── 会话相关 ──
-        conversation_pin,
-        conversation_delete,
-        %% ── 附件 / 媒体 ──
-        attachment,
-        %% ── 朋友圈 ──
-        moment_post,
-        moment_comment,
-        moment_like,
-        moment_timeline,
-        moment_post_acl,
-        moment_report,
-        %% ── 频道 ──
-        channel,
-        channel_message,
-        channel_subscription,
-        channel_admin,
-        channel_message_view,
-        channel_order,
-        channel_invitation,
-        channel_webhook,
-        channel_comment,
-        channel_price,
-        %% ── Organization / 工作区（成员关系均为复合主键，不注册；
-        %%    workspace 双体验 v2.5.2 WP3/T4；
-        %%    workspace_invite = 团队码 T2.2，迁移 00000082；
-        %%    owner_activation_invite = 待激活 Owner 邀请，GZAPP-06 迁移 00000138） ──
-        organization,
-        workspace,
-        workspace_invite,
-        %% organization_invite_code = 企业邀请码（GZAPP-01 迁移 00000137；
-        %% GZAPP-09 集成期补登：此前漏注册，真节点上 create 必
-        %% elib_tsid_generator_not_registered → 500）
-        organization_invite_code,
-        owner_activation_invite,
-        %% ── 项目（双体验 v2.5.2 WP4/T6a/T6b；project_event 由 T6a 独占 writer 接口） ──
-        project,
-        project_task,
-        project_event,
-        %% ── 反馈 ──
-        feedback,
-        feedback_reply,
-        %% ── E2EE 恢复 ──
-        e2ee_local_backup,
-        e2ee_key_backup,
-        %% ── 举报 ──
-        report_ticket,
-        report_action_log,
-        %% ── 钱包 ──
-        wallet,
-        wallet_transaction,
-        %% ── 支付 / 充值 ──
-        recharge_order,
-        payment_transaction,
-        red_packet,
-        red_packet_receive,
-        transfer_order,
-        agent_payment_compensation,
-        %% ── SaaS 计费 ──
-        billing_plan,
-        billing_subscription,
-        billing_invoice,
-        billing_usage,
-        %% ── 直播 ──
-        live_room,
-        %% ── 推送 ──
-        push_token,
-        %% ── 公告 ──
-        announcement,
-        %% ── 合规 ──
-        compliance_key,
-        %% ── Olm（X3DH + Double Ratchet）单聊 E2EE ──
-        olm_identity,
-        olm_one_time_key,
-        olm_fallback_key,
-        %% trust_audit = 设备信任决策事件流（olm_identity_logic 换钥审计事件
-        %% 与 e2ee_trust_logic 信任决策写入；EWS-BE-D1 补登：此前漏注册，
-        %% 真节点换钥追加审计事件必 elib_tsid_generator_not_registered 崩溃）
-        trust_audit,
-        %% ── 管理员 ──
-        adm_user,
-        adm_role,
-        admin_op_log,
-        %% ── 插件 ──
-        plugin_audit_log,
-        %% ── 应用配置 ──
-        app_version,
-        app_ddl,
-        app_upgrade_log,
-        app_version_policy,
-        %% ── 全文搜索 ──
-        fts_user,
-        %% ── MCP 治理 (Phase 3) ──
-        mcp_client,
-        mcp_client_grant,
-        mcp_audit_log,
-        %% ── SSO (P0-C) ──
-        sso_identity,
-        %% ── AI Agent ──
-        ai_agent_role_version,
-        %% ── Enterprise Business（enterprise_* 域补登，CP-TD-A02/A1d）──
-        %% 8 个生成器在 enterprise_* logic/repo 内有真实调用点且已编译进
-        %% ebin，但本清单此前漏注册：真节点调用即
-        %% elib_tsid_generator_not_registered 运行时崩溃（同 GZAPP-09
-        %% organization_invite_code 补登先例）。调用点现虽带
-        %% ensure-registered 惰性守卫，启动期登记仍是注册表权威来源，
-        %% elib_tsid_registration_guard_tests 强制此不变量。
-        enterprise_message,
-        enterprise_message_origin,
-        enterprise_audit_event,
-        enterprise_application,
-        enterprise_application_grant,
-        enterprise_application_credential,
-        enterprise_external_identity,
-        enterprise_oa_sso_code
-    ].
 
 %% ===================================================================
 %% Internal Function Definitions

@@ -50,7 +50,7 @@ tablename() ->
     elib_pg_sql:public_tablename(<<"project_milestone">>).
 
 %% @doc 事务内插入里程碑（TSID 用无参 default 生成器——project_milestone 命名
-%% 生成器未注册进 imboy_app:tsid_generator_names()，注册属 ZC-05 patch 清单项）
+%% 生成器未注册进 elib_tsid:namespaces/0，注册属 ZC-05 patch 清单项）
 -spec add_tx(any(), map()) -> {ok, integer()} | {error, term()}.
 add_tx(Conn, Data) ->
     Tb = tablename(),

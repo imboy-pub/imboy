@@ -26,10 +26,10 @@ all_generate_call_sites_registered_test() ->
         ]),
     ?assertEqual([], Unregistered).
 
-%% @doc 返回注册清单（含 default；init 前也可直接读函数字面量）
+%% @doc 返回注册清单（含 default + 别名；V10 静态清单，init 前可直读）
 -spec registered_names() -> [atom()].
 registered_names() ->
-    [default | imboy_app:tsid_generator_names()].
+    [default | elib_tsid:namespaces()] ++ maps:keys(elib_tsid:aliases()).
 
 %% @doc 扫描 src/**/*.erl 中的 elib_tsid:generate(<atom>) 调用
 %% 返回 [{File, Line, GeneratorName}]
