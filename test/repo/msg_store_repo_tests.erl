@@ -305,311 +305,324 @@ stage_with_negative_from_id_accepted_test_() ->
 %% ===================================================================
 
 c2g_stage_with_recipient_list_is_rejected_test_() ->
-    ?WITH_MECKS(
-        [
-            {elib_pg_sql, [
-                {'public_tablename', 1, fun(_) -> <<"public.msg_store_staging">> end},
-                {'insert', 2, fun(_Tb, Data) ->
-                    ?assert(maps:is_key(to_id_list, Data)),
-                    ?assertNot(maps:is_key(to_id, Data)),
-                    ToIdList = maps:get(to_id_list, Data),
-                    ?assertEqual([100, 200, 300], ToIdList),
-                    ?assertEqual(<<"c2g">>, maps:get(type, Data)),
-                    {<<"SELECT 1">>, []}
-                end}
-            ]},
-            {elib_tsid, [
-                {'generate', 1, fun(msg_store) -> 12345 end}
-            ]},
-            {elib_pg, [
-                {'query', 2, fun(_Sql, _Params) -> {ok, 1} end}
-            ]}
-        ],
-        fun() ->
-            Result = msg_store_repo:stage(
-                <<"c2g">>,
-                <<"msg_group">>,
-                <<"text">>,
-                <<"send">>,
-                <<>>,
-                <<"{}">>,
-                50,
-                [100, 200, 300],
-                <<"2024-01-01T00:00:00Z">>,
-                <<"2024-01-01T00:00:01Z">>
-            ),
-            ?assertEqual({error, c2g_group_id_required}, Result)
-        end
-    ).
-
-c2g_stage_with_empty_recipient_list_is_rejected_test_() ->
-    ?WITH_MECKS(
-        [
-            {elib_pg_sql, [
-                {'public_tablename', 1, fun(_) -> <<"msg_store_staging">> end}
-            ]},
-            {elib_tsid, [
-                {'generate', 1, fun(msg_store) -> 12345 end}
-            ]},
-            {elib_pg, [
-                {'query', 2, fun(_Sql, _Params) -> {ok, 1} end}
-            ]}
-        ],
-        fun() ->
-            Result = msg_store_repo:stage(
-                <<"c2g">>,
-                <<"msg_empty_group">>,
-                <<"text">>,
-                <<"send">>,
-                <<>>,
-                <<"{}">>,
-                50,
-                [],
-                <<"2024-01-01T00:00:00Z">>,
-                <<"2024-01-01T00:00:01Z">>
-            ),
-            ?assertEqual({error, c2g_group_id_required}, Result)
-        end
-    ).
-
-c2g_stage_list_bypass_precedes_database_write_test_() ->
-    ?WITH_MECKS(
-        [
-            {elib_pg_sql, [
-                {'public_tablename', 1, fun(_) -> <<"msg_store_staging">> end}
-            ]},
-            {elib_tsid, [
-                {'generate', 1, fun(msg_store) -> 12345 end}
-            ]},
-            {elib_pg, [
-                {'query', 2, fun(_Sql, _Params) ->
-                    {error, {error, error, <<"23505">>, unique_violation, <<"duplicate key">>, []}}
-                end}
-            ]}
-        ],
-        fun() ->
-            Result = msg_store_repo:stage(
-                <<"c2g">>,
-                <<"msg_group_dup">>,
-                <<"text">>,
-                <<"send">>,
-                <<>>,
-                <<"{}">>,
-                50,
-                [100, 200],
-                <<"2024-01-01T00:00:00Z">>,
-                <<"2024-01-01T00:00:01Z">>
-            ),
-            ?assertEqual({error, c2g_group_id_required}, Result)
-        end
-    ).
-
-c2g_stage_commits_authorized_snapshot_and_role_test_() ->
-    ?WITH_MECKS(
-        [
-            {msg_archive_ds, [
-                {'conv_key_c2g', 1, fun(100) -> <<"c2g:100">> end}
-            ]},
-            workspace_guard_meck(),
-            {elib_tsid, [
-                {'generate', 1, fun(msg_store) -> 12345 end}
-            ]},
-            {epgsql, [
-                {'equery', 3, fun(_, Sql, [<<"c2g:100">>]) ->
-                    ?assertEqual(true, get({?MODULE, workspace_locked})),
-                    ?assertNotEqual(nomatch, binary:match(Sql, <<"RETURNING seq">>)),
-                    {ok, [], [], [{7}]}
-                end}
-            ]},
-            {elib_pg_sql, [
-                {'public_tablename', 1, fun(_) -> <<"public.msg_store_staging">> end},
-                {'insert', 2, fun(_, Data) ->
-                    ?assertEqual(100, maps:get(to_id, Data)),
-                    ?assertEqual([50, 60], maps:get(to_id_list, Data)),
-                    ?assertEqual(7, maps:get(conv_seq, Data)),
-                    {<<"INSERT staged">>, []}
-                end}
-            ]},
-            {elib_pg, [
-                {'with_tx', 1, fun(Tx) -> Tx(fake_conn) end},
-                {'query', 3, fun
-                    %% discussion 访问锁（791b8817）：无 discussion 绑定语义 → 放行
-                    (_, <<"LOCK TABLE public.channel", _/binary>>, []) ->
-                        {ok, []};
-                    (_, <<"SELECT id FROM public.channel", _/binary>>, _) ->
-                        {ok, []};
-                    (_, <<"SELECT discussion_group_id FROM public.channel", _/binary>>, _) ->
-                        {ok, []};
-                    (_, <<"SELECT id FROM public.\"group\"", _/binary>>, _) ->
-                        {ok, []};
-                    (_, <<"INSERT INTO public.msg_store_seq", _/binary>>, _) ->
-                        {ok, []};
-                    (_, <<"SELECT id FROM public.channel", _/binary>>, _) ->
-                        {ok, []};
-                    (_, <<"SELECT discussion_group_id FROM public.channel", _/binary>>, _) ->
-                        {ok, []};
-                    (_, <<"SELECT id FROM public.\"group\"", _/binary>>, _) ->
-                        {ok, []};
-                    (_, <<"INSERT INTO public.msg_store_seq", _/binary>>, _) ->
-                        {ok, []};
-                    (_, Sql, [100, 50, 3, 5001]) ->
-                        ?assertNotEqual(nomatch, binary:match(Sql, <<"caller.role >= $3">>)),
-                        ?assertNotEqual(nomatch, binary:match(Sql, <<"caller.status = 1">>)),
-                        ?assertNotEqual(nomatch, binary:match(Sql, <<"recipient.status = 1">>)),
-                        ?assertNotEqual(nomatch, binary:match(Sql, <<"grp.status = 1">>)),
-                        {ok, [#{<<"user_id">> => 50}, #{<<"user_id">> => 60}]};
-                    (
-                        _,
-                        Sql,
-                        [
-                            <<"msg-c2g-role">>,
-                            50,
-                            100,
-                            <<>>,
-                            <<"text">>,
-                            null,
-                            <<"{}">>,
-                            <<"did-50">>,
-                            _
-                        ]
-                    ) ->
-                        request_ledger_new(Sql, <<"msg-c2g-role">>);
-                    (_, <<"INSERT staged">>, []) ->
-                        {ok, 1};
-                    (_, Sql, [<<"msg-c2g-role">>, 50, 100, 7, [50, 60], _]) ->
-                        ?assertNotEqual(
-                            nomatch, binary:match(Sql, <<"msg_c2g_recipient_snapshot">>)
-                        ),
-                        {ok, [#{<<"msg_id">> => <<"msg-c2g-role">>}]};
-                    (_, Sql, [<<"msg-c2g-role">>, 50, 100, 7]) ->
-                        ?assertNotEqual(nomatch, binary:match(Sql, <<"UPDATE public.attachment">>)),
-                        ?assertNotEqual(nomatch, binary:match(Sql, <<"anchor_conv_seq = $4">>)),
-                        ?assertNotEqual(nomatch, binary:match(Sql, <<"group_file_id IS NULL">>)),
-                        ?assertNotEqual(nomatch, binary:match(Sql, <<"anchor_conv_seq IS NULL">>)),
-                        ?assertNotEqual(nomatch, binary:match(Sql, <<"RETURNING id">>)),
-                        {ok, []}
-                end}
-            ]}
-        ],
-        fun() ->
-            ?assertEqual(
-                {ok, 12345, 7, [50, 60]},
-                msg_store_repo:stage(
+    {timeout, 30,
+        ?WITH_MECKS(
+            [
+                {elib_pg_sql, [
+                    {'public_tablename', 1, fun(_) -> <<"public.msg_store_staging">> end},
+                    {'insert', 2, fun(_Tb, Data) ->
+                        ?assert(maps:is_key(to_id_list, Data)),
+                        ?assertNot(maps:is_key(to_id, Data)),
+                        ToIdList = maps:get(to_id_list, Data),
+                        ?assertEqual([100, 200, 300], ToIdList),
+                        ?assertEqual(<<"c2g">>, maps:get(type, Data)),
+                        {<<"SELECT 1">>, []}
+                    end}
+                ]},
+                {elib_tsid, [
+                    {'generate', 1, fun(msg_store) -> 12345 end}
+                ]},
+                {elib_pg, [
+                    {'query', 2, fun(_Sql, _Params) -> {ok, 1} end}
+                ]}
+            ],
+            fun() ->
+                Result = msg_store_repo:stage(
                     <<"c2g">>,
-                    <<"msg-c2g-role">>,
+                    <<"msg_group">>,
                     <<"text">>,
+                    <<"send">>,
                     <<>>,
-                    null,
                     <<"{}">>,
                     50,
-                    100,
-                    <<"2026-09-11T00:00:00Z">>,
-                    <<"2026-09-11T00:00:00Z">>,
-                    <<"did-50">>,
-                    3
+                    [100, 200, 300],
+                    <<"2024-01-01T00:00:00Z">>,
+                    <<"2024-01-01T00:00:01Z">>
+                ),
+                ?assertEqual({error, c2g_group_id_required}, Result)
+            end
+        )}.
+
+c2g_stage_with_empty_recipient_list_is_rejected_test_() ->
+    {timeout, 30,
+        ?WITH_MECKS(
+            [
+                {elib_pg_sql, [
+                    {'public_tablename', 1, fun(_) -> <<"msg_store_staging">> end}
+                ]},
+                {elib_tsid, [
+                    {'generate', 1, fun(msg_store) -> 12345 end}
+                ]},
+                {elib_pg, [
+                    {'query', 2, fun(_Sql, _Params) -> {ok, 1} end}
+                ]}
+            ],
+            fun() ->
+                Result = msg_store_repo:stage(
+                    <<"c2g">>,
+                    <<"msg_empty_group">>,
+                    <<"text">>,
+                    <<"send">>,
+                    <<>>,
+                    <<"{}">>,
+                    50,
+                    [],
+                    <<"2024-01-01T00:00:00Z">>,
+                    <<"2024-01-01T00:00:01Z">>
+                ),
+                ?assertEqual({error, c2g_group_id_required}, Result)
+            end
+        )}.
+
+c2g_stage_list_bypass_precedes_database_write_test_() ->
+    {timeout, 30,
+        ?WITH_MECKS(
+            [
+                {elib_pg_sql, [
+                    {'public_tablename', 1, fun(_) -> <<"msg_store_staging">> end}
+                ]},
+                {elib_tsid, [
+                    {'generate', 1, fun(msg_store) -> 12345 end}
+                ]},
+                {elib_pg, [
+                    {'query', 2, fun(_Sql, _Params) ->
+                        {error,
+                            {error, error, <<"23505">>, unique_violation, <<"duplicate key">>, []}}
+                    end}
+                ]}
+            ],
+            fun() ->
+                Result = msg_store_repo:stage(
+                    <<"c2g">>,
+                    <<"msg_group_dup">>,
+                    <<"text">>,
+                    <<"send">>,
+                    <<>>,
+                    <<"{}">>,
+                    50,
+                    [100, 200],
+                    <<"2024-01-01T00:00:00Z">>,
+                    <<"2024-01-01T00:00:01Z">>
+                ),
+                ?assertEqual({error, c2g_group_id_required}, Result)
+            end
+        )}.
+
+c2g_stage_commits_authorized_snapshot_and_role_test_() ->
+    {timeout, 30,
+        ?WITH_MECKS(
+            [
+                {msg_archive_ds, [
+                    {'conv_key_c2g', 1, fun(100) -> <<"c2g:100">> end}
+                ]},
+                workspace_guard_meck(),
+                {elib_tsid, [
+                    {'generate', 1, fun(msg_store) -> 12345 end}
+                ]},
+                {epgsql, [
+                    {'equery', 3, fun(_, Sql, [<<"c2g:100">>]) ->
+                        ?assertEqual(true, get({?MODULE, workspace_locked})),
+                        ?assertNotEqual(nomatch, binary:match(Sql, <<"RETURNING seq">>)),
+                        {ok, [], [], [{7}]}
+                    end}
+                ]},
+                {elib_pg_sql, [
+                    {'public_tablename', 1, fun(_) -> <<"public.msg_store_staging">> end},
+                    {'insert', 2, fun(_, Data) ->
+                        ?assertEqual(100, maps:get(to_id, Data)),
+                        ?assertEqual([50, 60], maps:get(to_id_list, Data)),
+                        ?assertEqual(7, maps:get(conv_seq, Data)),
+                        {<<"INSERT staged">>, []}
+                    end}
+                ]},
+                {elib_pg, [
+                    {'with_tx', 1, fun(Tx) -> Tx(fake_conn) end},
+                    {'query', 3, fun
+                        %% discussion 访问锁（791b8817）：无 discussion 绑定语义 → 放行
+                        (_, <<"LOCK TABLE public.channel", _/binary>>, []) ->
+                            {ok, []};
+                        (_, <<"SELECT id FROM public.channel", _/binary>>, _) ->
+                            {ok, []};
+                        (_, <<"SELECT discussion_group_id FROM public.channel", _/binary>>, _) ->
+                            {ok, []};
+                        (_, <<"SELECT id FROM public.\"group\"", _/binary>>, _) ->
+                            {ok, []};
+                        (_, <<"INSERT INTO public.msg_store_seq", _/binary>>, _) ->
+                            {ok, []};
+                        (_, <<"SELECT id FROM public.channel", _/binary>>, _) ->
+                            {ok, []};
+                        (_, <<"SELECT discussion_group_id FROM public.channel", _/binary>>, _) ->
+                            {ok, []};
+                        (_, <<"SELECT id FROM public.\"group\"", _/binary>>, _) ->
+                            {ok, []};
+                        (_, <<"INSERT INTO public.msg_store_seq", _/binary>>, _) ->
+                            {ok, []};
+                        (_, Sql, [100, 50, 3, 5001]) ->
+                            ?assertNotEqual(nomatch, binary:match(Sql, <<"caller.role >= $3">>)),
+                            ?assertNotEqual(nomatch, binary:match(Sql, <<"caller.status = 1">>)),
+                            ?assertNotEqual(nomatch, binary:match(Sql, <<"recipient.status = 1">>)),
+                            ?assertNotEqual(nomatch, binary:match(Sql, <<"grp.status = 1">>)),
+                            {ok, [#{<<"user_id">> => 50}, #{<<"user_id">> => 60}]};
+                        (
+                            _,
+                            Sql,
+                            [
+                                <<"msg-c2g-role">>,
+                                50,
+                                100,
+                                <<>>,
+                                <<"text">>,
+                                null,
+                                <<"{}">>,
+                                <<"did-50">>,
+                                _
+                            ]
+                        ) ->
+                            request_ledger_new(Sql, <<"msg-c2g-role">>);
+                        (_, <<"INSERT staged">>, []) ->
+                            {ok, 1};
+                        (_, Sql, [<<"msg-c2g-role">>, 50, 100, 7, [50, 60], _]) ->
+                            ?assertNotEqual(
+                                nomatch, binary:match(Sql, <<"msg_c2g_recipient_snapshot">>)
+                            ),
+                            {ok, [#{<<"msg_id">> => <<"msg-c2g-role">>}]};
+                        (_, Sql, [<<"msg-c2g-role">>, 50, 100, 7]) ->
+                            ?assertNotEqual(
+                                nomatch, binary:match(Sql, <<"UPDATE public.attachment">>)
+                            ),
+                            ?assertNotEqual(nomatch, binary:match(Sql, <<"anchor_conv_seq = $4">>)),
+                            ?assertNotEqual(
+                                nomatch, binary:match(Sql, <<"group_file_id IS NULL">>)
+                            ),
+                            ?assertNotEqual(
+                                nomatch, binary:match(Sql, <<"anchor_conv_seq IS NULL">>)
+                            ),
+                            ?assertNotEqual(nomatch, binary:match(Sql, <<"RETURNING id">>)),
+                            {ok, []}
+                    end}
+                ]}
+            ],
+            fun() ->
+                ?assertEqual(
+                    {ok, 12345, 7, [50, 60]},
+                    msg_store_repo:stage(
+                        <<"c2g">>,
+                        <<"msg-c2g-role">>,
+                        <<"text">>,
+                        <<>>,
+                        null,
+                        <<"{}">>,
+                        50,
+                        100,
+                        <<"2026-09-11T00:00:00Z">>,
+                        <<"2026-09-11T00:00:00Z">>,
+                        <<"did-50">>,
+                        3
+                    )
                 )
-            )
-        end
-    ).
+            end
+        )}.
 
 c2g_stage_archived_workspace_does_not_allocate_sequence_test_() ->
-    ?WITH_MECKS(
-        [
-            {msg_archive_ds, [
-                {'conv_key_c2g', 1, fun(_) -> <<"c2g:100">> end}
-            ]},
-            {workspace_guard, [
-                {'ensure_writable_tx', 2, fun(_, {group, 100}) ->
-                    {error, {980, <<"archived">>}}
-                end},
-                {'abort_on_error', 1, fun({error, Reason}) -> throw({abort_tx, Reason}) end}
-            ]},
-            {elib_tsid, [{'generate', 1, fun(msg_store) -> 12345 end}]},
-            {elib_pg_sql, [
-                {'public_tablename', 1, fun(_) -> <<"public.msg_store_staging">> end}
-            ]},
-            {epgsql, [
-                {'equery', 3, fun(_, _, _) -> erlang:error(sequence_must_not_be_allocated) end}
-            ]},
-            {elib_pg, [
-                {'with_tx', 1, fun(Tx) ->
-                    try Tx(fake_conn) of
-                        Result -> Result
-                    catch
-                        throw:{abort_tx, Reason} -> {error, Reason}
-                    end
-                end}
-            ]}
-        ],
-        fun() ->
-            ?assertEqual({error, {980, <<"archived">>}}, stage_c2g_test_msg(<<"archived">>)),
-            ?assertEqual(0, meck:num_calls(epgsql, equery, 3, self()))
-        end
-    ).
+    {timeout, 30,
+        ?WITH_MECKS(
+            [
+                {msg_archive_ds, [
+                    {'conv_key_c2g', 1, fun(_) -> <<"c2g:100">> end}
+                ]},
+                {workspace_guard, [
+                    {'ensure_writable_tx', 2, fun(_, {group, 100}) ->
+                        {error, {980, <<"archived">>}}
+                    end},
+                    {'abort_on_error', 1, fun({error, Reason}) -> throw({abort_tx, Reason}) end}
+                ]},
+                {elib_tsid, [{'generate', 1, fun(msg_store) -> 12345 end}]},
+                {elib_pg_sql, [
+                    {'public_tablename', 1, fun(_) -> <<"public.msg_store_staging">> end}
+                ]},
+                {epgsql, [
+                    {'equery', 3, fun(_, _, _) -> erlang:error(sequence_must_not_be_allocated) end}
+                ]},
+                {elib_pg, [
+                    {'with_tx', 1, fun(Tx) ->
+                        try Tx(fake_conn) of
+                            Result -> Result
+                        catch
+                            throw:{abort_tx, Reason} -> {error, Reason}
+                        end
+                    end}
+                ]}
+            ],
+            fun() ->
+                ?assertEqual({error, {980, <<"archived">>}}, stage_c2g_test_msg(<<"archived">>)),
+                ?assertEqual(0, meck:num_calls(epgsql, equery, 3, self()))
+            end
+        )}.
 
 c2g_stage_sequence_failures_are_rolled_back_test_() ->
-    ?WITH_MECKS(
-        [
-            {msg_archive_ds, [
-                {'conv_key_c2g', 1, fun(_) -> <<"c2g:100">> end}
-            ]},
-            workspace_guard_meck(),
-            {elib_tsid, [{'generate', 1, fun(msg_store) -> 12345 end}]},
-            {elib_pg_sql, [
-                {'public_tablename', 1, fun(_) -> <<"public.msg_store_staging">> end}
-            ]},
-            {epgsql, [
-                {'equery', 3, fun(_, _, _) -> get({?MODULE, sequence_result}) end}
-            ]},
-            {elib_pg, [
-                {'with_tx', 1, fun(Tx) ->
-                    try Tx(fake_conn) of
-                        Result -> Result
-                    catch
-                        throw:{rollback, Reason} -> {rollback, Reason}
-                    end
-                end},
-                {'query', 3, fun
-                    %% discussion 访问锁（791b8817）：无 discussion 绑定语义 → 放行
-                    (_, <<"LOCK TABLE public.channel", _/binary>>, []) ->
-                        {ok, []};
-                    (_, <<"SELECT id FROM public.channel", _/binary>>, _) ->
-                        {ok, []};
-                    (_, <<"SELECT discussion_group_id FROM public.channel", _/binary>>, _) ->
-                        {ok, []};
-                    (_, <<"SELECT id FROM public.\"group\"", _/binary>>, _) ->
-                        {ok, []};
-                    (_, <<"INSERT INTO public.msg_store_seq", _/binary>>, _) ->
-                        {ok, []};
-                    (_, <<"SELECT id FROM public.channel", _/binary>>, _) ->
-                        {ok, []};
-                    (_, <<"SELECT discussion_group_id FROM public.channel", _/binary>>, _) ->
-                        {ok, []};
-                    (_, <<"SELECT id FROM public.\"group\"", _/binary>>, _) ->
-                        {ok, []};
-                    (_, <<"INSERT INTO public.msg_store_seq", _/binary>>, _) ->
-                        {ok, []}
-                end}
-            ]}
-        ],
-        fun() ->
-            put({?MODULE, sequence_result}, {error, connection_lost}),
-            ?assertEqual(
-                {error, {conv_seq_allocate_failed, connection_lost}},
-                stage_c2g_test_msg(<<"seq-error">>)
-            ),
-            put({?MODULE, sequence_result}, {ok, [], [], []}),
-            ?assertMatch(
-                {error, {conv_seq_allocate_failed, {unexpected_result, _}}},
-                stage_c2g_test_msg(<<"seq-empty">>)
-            ),
-            put({?MODULE, sequence_result}, {ok, [], [], [{0}]}),
-            ?assertMatch(
-                {error, {conv_seq_allocate_failed, {unexpected_result, _}}},
-                stage_c2g_test_msg(<<"seq-invalid">>)
-            )
-        end
-    ).
+    {timeout, 30,
+        ?WITH_MECKS(
+            [
+                {msg_archive_ds, [
+                    {'conv_key_c2g', 1, fun(_) -> <<"c2g:100">> end}
+                ]},
+                workspace_guard_meck(),
+                {elib_tsid, [{'generate', 1, fun(msg_store) -> 12345 end}]},
+                {elib_pg_sql, [
+                    {'public_tablename', 1, fun(_) -> <<"public.msg_store_staging">> end}
+                ]},
+                {epgsql, [
+                    {'equery', 3, fun(_, _, _) -> get({?MODULE, sequence_result}) end}
+                ]},
+                {elib_pg, [
+                    {'with_tx', 1, fun(Tx) ->
+                        try Tx(fake_conn) of
+                            Result -> Result
+                        catch
+                            throw:{rollback, Reason} -> {rollback, Reason}
+                        end
+                    end},
+                    {'query', 3, fun
+                        %% discussion 访问锁（791b8817）：无 discussion 绑定语义 → 放行
+                        (_, <<"LOCK TABLE public.channel", _/binary>>, []) ->
+                            {ok, []};
+                        (_, <<"SELECT id FROM public.channel", _/binary>>, _) ->
+                            {ok, []};
+                        (_, <<"SELECT discussion_group_id FROM public.channel", _/binary>>, _) ->
+                            {ok, []};
+                        (_, <<"SELECT id FROM public.\"group\"", _/binary>>, _) ->
+                            {ok, []};
+                        (_, <<"INSERT INTO public.msg_store_seq", _/binary>>, _) ->
+                            {ok, []};
+                        (_, <<"SELECT id FROM public.channel", _/binary>>, _) ->
+                            {ok, []};
+                        (_, <<"SELECT discussion_group_id FROM public.channel", _/binary>>, _) ->
+                            {ok, []};
+                        (_, <<"SELECT id FROM public.\"group\"", _/binary>>, _) ->
+                            {ok, []};
+                        (_, <<"INSERT INTO public.msg_store_seq", _/binary>>, _) ->
+                            {ok, []}
+                    end}
+                ]}
+            ],
+            fun() ->
+                put({?MODULE, sequence_result}, {error, connection_lost}),
+                ?assertEqual(
+                    {error, {conv_seq_allocate_failed, connection_lost}},
+                    stage_c2g_test_msg(<<"seq-error">>)
+                ),
+                put({?MODULE, sequence_result}, {ok, [], [], []}),
+                ?assertMatch(
+                    {error, {conv_seq_allocate_failed, {unexpected_result, _}}},
+                    stage_c2g_test_msg(<<"seq-empty">>)
+                ),
+                put({?MODULE, sequence_result}, {ok, [], [], [{0}]}),
+                ?assertMatch(
+                    {error, {conv_seq_allocate_failed, {unexpected_result, _}}},
+                    stage_c2g_test_msg(<<"seq-invalid">>)
+                )
+            end
+        )}.
 
 stage_c2g_test_msg(MsgId) ->
     msg_store_repo:stage(
@@ -712,787 +725,820 @@ request_ledger_new(Sql, MsgId) ->
     {ok, [#{<<"msg_id">> => MsgId}]}.
 
 c2g_stage_attachment_bind_error_rolls_back_test_() ->
-    ?WITH_MECKS(
-        [
-            {msg_archive_ds, [
-                {'conv_key_c2g', 1, fun(_) -> <<"c2g:100">> end}
-            ]},
-            workspace_guard_meck(),
-            {elib_tsid, [{'generate', 1, fun(msg_store) -> 12345 end}]},
-            {epgsql, [{'equery', 3, fun(_, _, _) -> {ok, [], [], [{7}]} end}]},
-            {elib_pg_sql, [
-                {'public_tablename', 1, fun(_) -> <<"public.msg_store_staging">> end},
-                {'insert', 2, fun(_, _) -> {<<"INSERT staged">>, []} end}
-            ]},
-            {elib_pg, [
-                {'with_tx', 1, fun(Tx) ->
-                    try Tx(fake_conn) of
-                        Result -> Result
-                    catch
-                        throw:{rollback, Reason} -> {rollback, Reason}
-                    end
-                end},
-                {'query', 3, fun
-                    %% discussion 访问锁（791b8817）：无 discussion 绑定语义 → 放行
-                    (_, <<"LOCK TABLE public.channel", _/binary>>, []) ->
-                        {ok, []};
-                    (_, <<"SELECT id FROM public.channel", _/binary>>, _) ->
-                        {ok, []};
-                    (_, <<"SELECT discussion_group_id FROM public.channel", _/binary>>, _) ->
-                        {ok, []};
-                    (_, <<"SELECT id FROM public.\"group\"", _/binary>>, _) ->
-                        {ok, []};
-                    (_, <<"INSERT INTO public.msg_store_seq", _/binary>>, _) ->
-                        {ok, []};
-                    (_, <<"SELECT id FROM public.channel", _/binary>>, _) ->
-                        {ok, []};
-                    (_, <<"SELECT discussion_group_id FROM public.channel", _/binary>>, _) ->
-                        {ok, []};
-                    (_, <<"SELECT id FROM public.\"group\"", _/binary>>, _) ->
-                        {ok, []};
-                    (_, <<"INSERT INTO public.msg_store_seq", _/binary>>, _) ->
-                        {ok, []};
-                    (_, _, [100, 50, 1, 5001]) ->
-                        {ok, [#{<<"user_id">> => 50}, #{<<"user_id">> => 60}]};
-                    (
-                        _,
-                        Sql,
-                        [
-                            <<"msg-c2g-bind-error">>,
-                            50,
-                            100,
-                            <<>>,
-                            <<"text">>,
-                            null,
-                            <<"{}">>,
-                            null,
-                            _
-                        ]
-                    ) ->
-                        request_ledger_new(Sql, <<"msg-c2g-bind-error">>);
-                    (_, <<"INSERT staged">>, []) ->
-                        {ok, 1};
-                    (_, _, [<<"msg-c2g-bind-error">>, 50, 100, 7, [50, 60], _]) ->
-                        {ok, [#{<<"msg_id">> => <<"msg-c2g-bind-error">>}]};
-                    (_, _, [<<"msg-c2g-bind-error">>, 50, 100, 7]) ->
-                        {error, connection_lost}
-                end}
-            ]}
-        ],
-        fun() ->
-            ?assertEqual(
-                {error, {attachment_anchor_bind_failed, connection_lost}},
-                msg_store_repo:stage(
-                    <<"c2g">>,
-                    <<"msg-c2g-bind-error">>,
-                    <<"text">>,
-                    <<>>,
-                    null,
-                    <<"{}">>,
-                    50,
-                    100,
-                    <<"2026-09-11T00:00:00Z">>,
-                    <<"2026-09-11T00:00:00Z">>,
-                    <<>>,
-                    1
+    {timeout, 30,
+        ?WITH_MECKS(
+            [
+                {msg_archive_ds, [
+                    {'conv_key_c2g', 1, fun(_) -> <<"c2g:100">> end}
+                ]},
+                workspace_guard_meck(),
+                {elib_tsid, [{'generate', 1, fun(msg_store) -> 12345 end}]},
+                {epgsql, [{'equery', 3, fun(_, _, _) -> {ok, [], [], [{7}]} end}]},
+                {elib_pg_sql, [
+                    {'public_tablename', 1, fun(_) -> <<"public.msg_store_staging">> end},
+                    {'insert', 2, fun(_, _) -> {<<"INSERT staged">>, []} end}
+                ]},
+                {elib_pg, [
+                    {'with_tx', 1, fun(Tx) ->
+                        try Tx(fake_conn) of
+                            Result -> Result
+                        catch
+                            throw:{rollback, Reason} -> {rollback, Reason}
+                        end
+                    end},
+                    {'query', 3, fun
+                        %% discussion 访问锁（791b8817）：无 discussion 绑定语义 → 放行
+                        (_, <<"LOCK TABLE public.channel", _/binary>>, []) ->
+                            {ok, []};
+                        (_, <<"SELECT id FROM public.channel", _/binary>>, _) ->
+                            {ok, []};
+                        (_, <<"SELECT discussion_group_id FROM public.channel", _/binary>>, _) ->
+                            {ok, []};
+                        (_, <<"SELECT id FROM public.\"group\"", _/binary>>, _) ->
+                            {ok, []};
+                        (_, <<"INSERT INTO public.msg_store_seq", _/binary>>, _) ->
+                            {ok, []};
+                        (_, <<"SELECT id FROM public.channel", _/binary>>, _) ->
+                            {ok, []};
+                        (_, <<"SELECT discussion_group_id FROM public.channel", _/binary>>, _) ->
+                            {ok, []};
+                        (_, <<"SELECT id FROM public.\"group\"", _/binary>>, _) ->
+                            {ok, []};
+                        (_, <<"INSERT INTO public.msg_store_seq", _/binary>>, _) ->
+                            {ok, []};
+                        (_, _, [100, 50, 1, 5001]) ->
+                            {ok, [#{<<"user_id">> => 50}, #{<<"user_id">> => 60}]};
+                        (
+                            _,
+                            Sql,
+                            [
+                                <<"msg-c2g-bind-error">>,
+                                50,
+                                100,
+                                <<>>,
+                                <<"text">>,
+                                null,
+                                <<"{}">>,
+                                null,
+                                _
+                            ]
+                        ) ->
+                            request_ledger_new(Sql, <<"msg-c2g-bind-error">>);
+                        (_, <<"INSERT staged">>, []) ->
+                            {ok, 1};
+                        (_, _, [<<"msg-c2g-bind-error">>, 50, 100, 7, [50, 60], _]) ->
+                            {ok, [#{<<"msg_id">> => <<"msg-c2g-bind-error">>}]};
+                        (_, _, [<<"msg-c2g-bind-error">>, 50, 100, 7]) ->
+                            {error, connection_lost}
+                    end}
+                ]}
+            ],
+            fun() ->
+                ?assertEqual(
+                    {error, {attachment_anchor_bind_failed, connection_lost}},
+                    msg_store_repo:stage(
+                        <<"c2g">>,
+                        <<"msg-c2g-bind-error">>,
+                        <<"text">>,
+                        <<>>,
+                        null,
+                        <<"{}">>,
+                        50,
+                        100,
+                        <<"2026-09-11T00:00:00Z">>,
+                        <<"2026-09-11T00:00:00Z">>,
+                        <<>>,
+                        1
+                    )
                 )
-            )
-        end
-    ).
+            end
+        )}.
 
 c2g_stage_duplicate_does_not_bind_attachment_test_() ->
-    ?WITH_MECKS(
-        [
-            {msg_archive_ds, [
-                {'conv_key_c2g', 1, fun(_) -> <<"c2g:100">> end}
-            ]},
-            workspace_guard_meck(),
-            {elib_tsid, [{'generate', 1, fun(msg_store) -> 12345 end}]},
-            {epgsql, [{'equery', 3, fun(_, _, _) -> {ok, [], [], [{7}]} end}]},
-            {elib_pg_sql, [
-                {'public_tablename', 1, fun(_) -> <<"public.msg_store_staging">> end},
-                {'insert', 2, fun(_, _) -> {<<"INSERT duplicate">>, []} end}
-            ]},
-            {elib_pg, [
-                {'with_tx', 1, fun(Tx) ->
-                    try Tx(fake_conn) of
-                        Result -> Result
-                    catch
-                        throw:{rollback, Reason} -> {rollback, Reason}
-                    end
-                end},
-                {'query', 3, fun
-                    %% discussion 访问锁（791b8817）：无 discussion 绑定语义 → 放行
-                    (_, <<"LOCK TABLE public.channel", _/binary>>, []) ->
-                        {ok, []};
-                    (_, <<"SELECT id FROM public.channel", _/binary>>, _) ->
-                        {ok, []};
-                    (_, <<"SELECT discussion_group_id FROM public.channel", _/binary>>, _) ->
-                        {ok, []};
-                    (_, <<"SELECT id FROM public.\"group\"", _/binary>>, _) ->
-                        {ok, []};
-                    (_, <<"INSERT INTO public.msg_store_seq", _/binary>>, _) ->
-                        {ok, []};
-                    %% discussion 访问锁（791b8817）：无 discussion 绑定语义 → 放行
-                    (_, <<"LOCK TABLE public.channel", _/binary>>, []) ->
-                        {ok, []};
-                    (_, <<"SELECT id FROM public.channel", _/binary>>, _) ->
-                        {ok, []};
-                    (_, <<"SELECT discussion_group_id FROM public.channel", _/binary>>, _) ->
-                        {ok, []};
-                    (_, <<"SELECT id FROM public.\"group\"", _/binary>>, _) ->
-                        {ok, []};
-                    (_, <<"INSERT INTO public.msg_store_seq", _/binary>>, _) ->
-                        {ok, []};
-                    (_, <<"SELECT id FROM public.channel", _/binary>>, _) ->
-                        {ok, []};
-                    (_, <<"SELECT discussion_group_id FROM public.channel", _/binary>>, _) ->
-                        {ok, []};
-                    (_, <<"SELECT id FROM public.\"group\"", _/binary>>, _) ->
-                        {ok, []};
-                    (_, <<"INSERT INTO public.msg_store_seq", _/binary>>, _) ->
-                        {ok, []};
-                    (_, _, [100, 50, 1, 5001]) ->
-                        {ok, [#{<<"user_id">> => 50}]};
-                    (
-                        _,
-                        _,
-                        [
-                            <<"msg-c2g-duplicate">>,
-                            50,
-                            100,
-                            <<>>,
-                            <<"text">>,
-                            null,
-                            <<"{}">>,
-                            null,
-                            _
-                        ]
-                    ) ->
-                        {ok, []};
-                    (
-                        _,
-                        Sql,
-                        [
-                            <<"msg-c2g-duplicate">>,
-                            <<>>,
-                            <<"text">>,
-                            null,
-                            <<"{}">>,
-                            null
-                        ]
-                    ) ->
-                        case binary:match(Sql, <<"INSERT INTO">>) of
-                            nomatch ->
-                                ?assertEqual(nomatch, binary:match(Sql, <<"$7">>)),
-                                {ok, [
-                                    #{
-                                        <<"from_id">> => 50,
-                                        <<"to_gid">> => 100,
-                                        <<"same_action">> => true,
-                                        <<"same_request">> => true
-                                    }
-                                ]};
-                            _ ->
-                                {ok, []}
+    {timeout, 30,
+        ?WITH_MECKS(
+            [
+                {msg_archive_ds, [
+                    {'conv_key_c2g', 1, fun(_) -> <<"c2g:100">> end}
+                ]},
+                workspace_guard_meck(),
+                {elib_tsid, [{'generate', 1, fun(msg_store) -> 12345 end}]},
+                {epgsql, [{'equery', 3, fun(_, _, _) -> {ok, [], [], [{7}]} end}]},
+                {elib_pg_sql, [
+                    {'public_tablename', 1, fun(_) -> <<"public.msg_store_staging">> end},
+                    {'insert', 2, fun(_, _) -> {<<"INSERT duplicate">>, []} end}
+                ]},
+                {elib_pg, [
+                    {'with_tx', 1, fun(Tx) ->
+                        try Tx(fake_conn) of
+                            Result -> Result
+                        catch
+                            throw:{rollback, Reason} -> {rollback, Reason}
                         end
-                end}
-            ]}
-        ],
-        fun() ->
-            ?assertEqual(
-                {error, {unique_violation, <<"msg-c2g-duplicate">>}},
-                msg_store_repo:stage(
-                    <<"c2g">>,
-                    <<"msg-c2g-duplicate">>,
-                    <<"text">>,
-                    <<>>,
-                    null,
-                    <<"{}">>,
-                    50,
-                    100,
-                    <<"2026-09-11T00:00:00Z">>,
-                    <<"2026-09-11T00:00:00Z">>,
-                    <<>>,
-                    1
-                )
-            ),
-            %% +2：discussion 访问锁（791b8817）新增 LOCK TABLE 与 channel FOR UPDATE 两次查询
-            ?assertEqual(5, meck:num_calls(elib_pg, query, 3))
-        end
-    ).
+                    end},
+                    {'query', 3, fun
+                        %% discussion 访问锁（791b8817）：无 discussion 绑定语义 → 放行
+                        (_, <<"LOCK TABLE public.channel", _/binary>>, []) ->
+                            {ok, []};
+                        (_, <<"SELECT id FROM public.channel", _/binary>>, _) ->
+                            {ok, []};
+                        (_, <<"SELECT discussion_group_id FROM public.channel", _/binary>>, _) ->
+                            {ok, []};
+                        (_, <<"SELECT id FROM public.\"group\"", _/binary>>, _) ->
+                            {ok, []};
+                        (_, <<"INSERT INTO public.msg_store_seq", _/binary>>, _) ->
+                            {ok, []};
+                        %% discussion 访问锁（791b8817）：无 discussion 绑定语义 → 放行
+                        (_, <<"LOCK TABLE public.channel", _/binary>>, []) ->
+                            {ok, []};
+                        (_, <<"SELECT id FROM public.channel", _/binary>>, _) ->
+                            {ok, []};
+                        (_, <<"SELECT discussion_group_id FROM public.channel", _/binary>>, _) ->
+                            {ok, []};
+                        (_, <<"SELECT id FROM public.\"group\"", _/binary>>, _) ->
+                            {ok, []};
+                        (_, <<"INSERT INTO public.msg_store_seq", _/binary>>, _) ->
+                            {ok, []};
+                        (_, <<"SELECT id FROM public.channel", _/binary>>, _) ->
+                            {ok, []};
+                        (_, <<"SELECT discussion_group_id FROM public.channel", _/binary>>, _) ->
+                            {ok, []};
+                        (_, <<"SELECT id FROM public.\"group\"", _/binary>>, _) ->
+                            {ok, []};
+                        (_, <<"INSERT INTO public.msg_store_seq", _/binary>>, _) ->
+                            {ok, []};
+                        (_, _, [100, 50, 1, 5001]) ->
+                            {ok, [#{<<"user_id">> => 50}]};
+                        (
+                            _,
+                            _,
+                            [
+                                <<"msg-c2g-duplicate">>,
+                                50,
+                                100,
+                                <<>>,
+                                <<"text">>,
+                                null,
+                                <<"{}">>,
+                                null,
+                                _
+                            ]
+                        ) ->
+                            {ok, []};
+                        (
+                            _,
+                            Sql,
+                            [
+                                <<"msg-c2g-duplicate">>,
+                                <<>>,
+                                <<"text">>,
+                                null,
+                                <<"{}">>,
+                                null
+                            ]
+                        ) ->
+                            case binary:match(Sql, <<"INSERT INTO">>) of
+                                nomatch ->
+                                    ?assertEqual(nomatch, binary:match(Sql, <<"$7">>)),
+                                    {ok, [
+                                        #{
+                                            <<"from_id">> => 50,
+                                            <<"to_gid">> => 100,
+                                            <<"same_action">> => true,
+                                            <<"same_request">> => true
+                                        }
+                                    ]};
+                                _ ->
+                                    {ok, []}
+                            end
+                    end}
+                ]}
+            ],
+            fun() ->
+                ?assertEqual(
+                    {error, {unique_violation, <<"msg-c2g-duplicate">>}},
+                    msg_store_repo:stage(
+                        <<"c2g">>,
+                        <<"msg-c2g-duplicate">>,
+                        <<"text">>,
+                        <<>>,
+                        null,
+                        <<"{}">>,
+                        50,
+                        100,
+                        <<"2026-09-11T00:00:00Z">>,
+                        <<"2026-09-11T00:00:00Z">>,
+                        <<>>,
+                        1
+                    )
+                ),
+                %% +2：discussion 访问锁（791b8817）新增 LOCK TABLE 与 channel FOR UPDATE 两次查询
+                ?assertEqual(5, meck:num_calls(elib_pg, query, 3))
+            end
+        )}.
 
 c2g_stage_rejects_msg_id_owned_by_another_sender_test_() ->
-    ?WITH_MECKS(
-        [
-            {msg_archive_ds, [
-                {'conv_key_c2g', 1, fun(_) -> <<"c2g:100">> end}
-            ]},
-            workspace_guard_meck(),
-            {elib_tsid, [{'generate', 1, fun(msg_store) -> 12345 end}]},
-            {epgsql, [{'equery', 3, fun(_, _, _) -> {ok, [], [], [{7}]} end}]},
-            {elib_pg_sql, [
-                {'public_tablename', 1, fun(_) -> <<"public.msg_store_staging">> end},
-                {'insert', 2, fun(_, _) -> erlang:error(staging_insert_must_not_run) end}
-            ]},
-            {elib_pg, [
-                {'with_tx', 1, fun(Tx) ->
-                    try Tx(fake_conn) of
-                        Result -> Result
-                    catch
-                        throw:{rollback, Reason} -> {rollback, Reason}
-                    end
-                end},
-                {'query', 3, fun
-                    %% discussion 访问锁（791b8817）：无 discussion 绑定语义 → 放行
-                    (_, <<"LOCK TABLE public.channel", _/binary>>, []) ->
-                        {ok, []};
-                    (_, <<"SELECT id FROM public.channel", _/binary>>, _) ->
-                        {ok, []};
-                    (_, <<"SELECT discussion_group_id FROM public.channel", _/binary>>, _) ->
-                        {ok, []};
-                    (_, <<"SELECT id FROM public.\"group\"", _/binary>>, _) ->
-                        {ok, []};
-                    (_, <<"INSERT INTO public.msg_store_seq", _/binary>>, _) ->
-                        {ok, []};
-                    (_, <<"SELECT id FROM public.channel", _/binary>>, _) ->
-                        {ok, []};
-                    (_, <<"SELECT discussion_group_id FROM public.channel", _/binary>>, _) ->
-                        {ok, []};
-                    (_, <<"SELECT id FROM public.\"group\"", _/binary>>, _) ->
-                        {ok, []};
-                    (_, <<"INSERT INTO public.msg_store_seq", _/binary>>, _) ->
-                        {ok, []};
-                    (_, _, [100, 50, 1, 5001]) ->
-                        {ok, [#{<<"user_id">> => 50}]};
-                    (
-                        _,
-                        _,
-                        [<<"foreign-msg-id">>, 50, 100, <<>>, <<"text">>, null, <<"{}">>, null, _]
-                    ) ->
-                        {ok, []};
-                    (
-                        _,
-                        Sql,
-                        [<<"foreign-msg-id">>, <<>>, <<"text">>, null, <<"{}">>, null]
-                    ) ->
-                        case binary:match(Sql, <<"INSERT INTO">>) of
-                            nomatch ->
-                                {ok, [
-                                    #{
-                                        <<"from_id">> => 999,
-                                        <<"to_gid">> => 100,
-                                        <<"same_action">> => true,
-                                        <<"same_request">> => true
-                                    }
-                                ]};
-                            _ ->
-                                {ok, []}
+    {timeout, 30,
+        ?WITH_MECKS(
+            [
+                {msg_archive_ds, [
+                    {'conv_key_c2g', 1, fun(_) -> <<"c2g:100">> end}
+                ]},
+                workspace_guard_meck(),
+                {elib_tsid, [{'generate', 1, fun(msg_store) -> 12345 end}]},
+                {epgsql, [{'equery', 3, fun(_, _, _) -> {ok, [], [], [{7}]} end}]},
+                {elib_pg_sql, [
+                    {'public_tablename', 1, fun(_) -> <<"public.msg_store_staging">> end},
+                    {'insert', 2, fun(_, _) -> erlang:error(staging_insert_must_not_run) end}
+                ]},
+                {elib_pg, [
+                    {'with_tx', 1, fun(Tx) ->
+                        try Tx(fake_conn) of
+                            Result -> Result
+                        catch
+                            throw:{rollback, Reason} -> {rollback, Reason}
                         end
-                end}
-            ]}
-        ],
-        fun() ->
-            ?assertEqual({error, msg_id_conflict}, stage_c2g_test_msg(<<"foreign-msg-id">>))
-        end
-    ).
+                    end},
+                    {'query', 3, fun
+                        %% discussion 访问锁（791b8817）：无 discussion 绑定语义 → 放行
+                        (_, <<"LOCK TABLE public.channel", _/binary>>, []) ->
+                            {ok, []};
+                        (_, <<"SELECT id FROM public.channel", _/binary>>, _) ->
+                            {ok, []};
+                        (_, <<"SELECT discussion_group_id FROM public.channel", _/binary>>, _) ->
+                            {ok, []};
+                        (_, <<"SELECT id FROM public.\"group\"", _/binary>>, _) ->
+                            {ok, []};
+                        (_, <<"INSERT INTO public.msg_store_seq", _/binary>>, _) ->
+                            {ok, []};
+                        (_, <<"SELECT id FROM public.channel", _/binary>>, _) ->
+                            {ok, []};
+                        (_, <<"SELECT discussion_group_id FROM public.channel", _/binary>>, _) ->
+                            {ok, []};
+                        (_, <<"SELECT id FROM public.\"group\"", _/binary>>, _) ->
+                            {ok, []};
+                        (_, <<"INSERT INTO public.msg_store_seq", _/binary>>, _) ->
+                            {ok, []};
+                        (_, _, [100, 50, 1, 5001]) ->
+                            {ok, [#{<<"user_id">> => 50}]};
+                        (
+                            _,
+                            _,
+                            [
+                                <<"foreign-msg-id">>,
+                                50,
+                                100,
+                                <<>>,
+                                <<"text">>,
+                                null,
+                                <<"{}">>,
+                                null,
+                                _
+                            ]
+                        ) ->
+                            {ok, []};
+                        (
+                            _,
+                            Sql,
+                            [<<"foreign-msg-id">>, <<>>, <<"text">>, null, <<"{}">>, null]
+                        ) ->
+                            case binary:match(Sql, <<"INSERT INTO">>) of
+                                nomatch ->
+                                    {ok, [
+                                        #{
+                                            <<"from_id">> => 999,
+                                            <<"to_gid">> => 100,
+                                            <<"same_action">> => true,
+                                            <<"same_request">> => true
+                                        }
+                                    ]};
+                                _ ->
+                                    {ok, []}
+                            end
+                    end}
+                ]}
+            ],
+            fun() ->
+                ?assertEqual({error, msg_id_conflict}, stage_c2g_test_msg(<<"foreign-msg-id">>))
+            end
+        )}.
 
 c2g_stage_5000_recipients_commits_test_() ->
     RecipientUids = lists:seq(1, 5000),
-    ?WITH_MECKS(
-        [
-            {msg_archive_ds, [
-                {'conv_key_c2g', 1, fun(_) -> <<"c2g:100">> end}
-            ]},
-            workspace_guard_meck(),
-            {elib_tsid, [
-                {'generate', 1, fun(msg_store) -> 12345 end}
-            ]},
-            {epgsql, [
-                {'equery', 3, fun(_, _, _) -> {ok, [], [], [{7}]} end}
-            ]},
-            {elib_pg_sql, [
-                {'public_tablename', 1, fun(_) -> <<"public.msg_store_staging">> end},
-                {'insert', 2, fun(_, Data) ->
-                    ?assertEqual(RecipientUids, maps:get(to_id_list, Data)),
-                    {<<"INSERT staged">>, []}
-                end}
-            ]},
-            {elib_pg, [
-                {'with_tx', 1, fun(Tx) -> Tx(fake_conn) end},
-                {'query', 3, fun
-                    %% discussion 访问锁（791b8817）：无 discussion 绑定语义 → 放行
-                    (_, <<"LOCK TABLE public.channel", _/binary>>, []) ->
-                        {ok, []};
-                    (_, <<"SELECT id FROM public.channel", _/binary>>, _) ->
-                        {ok, []};
-                    (_, <<"SELECT discussion_group_id FROM public.channel", _/binary>>, _) ->
-                        {ok, []};
-                    (_, <<"SELECT id FROM public.\"group\"", _/binary>>, _) ->
-                        {ok, []};
-                    (_, <<"INSERT INTO public.msg_store_seq", _/binary>>, _) ->
-                        {ok, []};
-                    (_, <<"SELECT id FROM public.channel", _/binary>>, _) ->
-                        {ok, []};
-                    (_, <<"SELECT discussion_group_id FROM public.channel", _/binary>>, _) ->
-                        {ok, []};
-                    (_, <<"SELECT id FROM public.\"group\"", _/binary>>, _) ->
-                        {ok, []};
-                    (_, <<"INSERT INTO public.msg_store_seq", _/binary>>, _) ->
-                        {ok, []};
-                    (_, _, [100, 50, 1, 5001]) ->
-                        {ok, [#{<<"user_id">> => Uid} || Uid <- RecipientUids]};
-                    (
-                        _,
-                        Sql,
-                        [<<"msg-c2g-limit-ok">>, 50, 100, <<>>, <<"text">>, null, <<"{}">>, null, _]
-                    ) ->
-                        request_ledger_new(Sql, <<"msg-c2g-limit-ok">>);
-                    (_, <<"INSERT staged">>, []) ->
-                        {ok, 1};
-                    (_, _, [<<"msg-c2g-limit-ok">>, 50, 100, 7, SnapshotUids, _]) ->
-                        ?assertEqual(RecipientUids, SnapshotUids),
-                        {ok, [#{<<"msg_id">> => <<"msg-c2g-limit-ok">>}]};
-                    (_, Sql, [<<"msg-c2g-limit-ok">>, 50, 100, 7]) ->
-                        ?assertNotEqual(nomatch, binary:match(Sql, <<"UPDATE public.attachment">>)),
-                        {ok, []}
-                end}
-            ]}
-        ],
-        fun() ->
-            ?assertEqual(
-                {ok, 12345, 7, RecipientUids},
-                msg_store_repo:stage(
-                    <<"c2g">>,
-                    <<"msg-c2g-limit-ok">>,
-                    <<"text">>,
-                    <<>>,
-                    null,
-                    <<"{}">>,
-                    50,
-                    100,
-                    <<"2026-09-11T00:00:00Z">>,
-                    <<"2026-09-11T00:00:00Z">>,
-                    <<>>,
-                    1
+    {timeout, 30,
+        ?WITH_MECKS(
+            [
+                {msg_archive_ds, [
+                    {'conv_key_c2g', 1, fun(_) -> <<"c2g:100">> end}
+                ]},
+                workspace_guard_meck(),
+                {elib_tsid, [
+                    {'generate', 1, fun(msg_store) -> 12345 end}
+                ]},
+                {epgsql, [
+                    {'equery', 3, fun(_, _, _) -> {ok, [], [], [{7}]} end}
+                ]},
+                {elib_pg_sql, [
+                    {'public_tablename', 1, fun(_) -> <<"public.msg_store_staging">> end},
+                    {'insert', 2, fun(_, Data) ->
+                        ?assertEqual(RecipientUids, maps:get(to_id_list, Data)),
+                        {<<"INSERT staged">>, []}
+                    end}
+                ]},
+                {elib_pg, [
+                    {'with_tx', 1, fun(Tx) -> Tx(fake_conn) end},
+                    {'query', 3, fun
+                        %% discussion 访问锁（791b8817）：无 discussion 绑定语义 → 放行
+                        (_, <<"LOCK TABLE public.channel", _/binary>>, []) ->
+                            {ok, []};
+                        (_, <<"SELECT id FROM public.channel", _/binary>>, _) ->
+                            {ok, []};
+                        (_, <<"SELECT discussion_group_id FROM public.channel", _/binary>>, _) ->
+                            {ok, []};
+                        (_, <<"SELECT id FROM public.\"group\"", _/binary>>, _) ->
+                            {ok, []};
+                        (_, <<"INSERT INTO public.msg_store_seq", _/binary>>, _) ->
+                            {ok, []};
+                        (_, <<"SELECT id FROM public.channel", _/binary>>, _) ->
+                            {ok, []};
+                        (_, <<"SELECT discussion_group_id FROM public.channel", _/binary>>, _) ->
+                            {ok, []};
+                        (_, <<"SELECT id FROM public.\"group\"", _/binary>>, _) ->
+                            {ok, []};
+                        (_, <<"INSERT INTO public.msg_store_seq", _/binary>>, _) ->
+                            {ok, []};
+                        (_, _, [100, 50, 1, 5001]) ->
+                            {ok, [#{<<"user_id">> => Uid} || Uid <- RecipientUids]};
+                        (
+                            _,
+                            Sql,
+                            [
+                                <<"msg-c2g-limit-ok">>,
+                                50,
+                                100,
+                                <<>>,
+                                <<"text">>,
+                                null,
+                                <<"{}">>,
+                                null,
+                                _
+                            ]
+                        ) ->
+                            request_ledger_new(Sql, <<"msg-c2g-limit-ok">>);
+                        (_, <<"INSERT staged">>, []) ->
+                            {ok, 1};
+                        (_, _, [<<"msg-c2g-limit-ok">>, 50, 100, 7, SnapshotUids, _]) ->
+                            ?assertEqual(RecipientUids, SnapshotUids),
+                            {ok, [#{<<"msg_id">> => <<"msg-c2g-limit-ok">>}]};
+                        (_, Sql, [<<"msg-c2g-limit-ok">>, 50, 100, 7]) ->
+                            ?assertNotEqual(
+                                nomatch, binary:match(Sql, <<"UPDATE public.attachment">>)
+                            ),
+                            {ok, []}
+                    end}
+                ]}
+            ],
+            fun() ->
+                ?assertEqual(
+                    {ok, 12345, 7, RecipientUids},
+                    msg_store_repo:stage(
+                        <<"c2g">>,
+                        <<"msg-c2g-limit-ok">>,
+                        <<"text">>,
+                        <<>>,
+                        null,
+                        <<"{}">>,
+                        50,
+                        100,
+                        <<"2026-09-11T00:00:00Z">>,
+                        <<"2026-09-11T00:00:00Z">>,
+                        <<>>,
+                        1
+                    )
                 )
-            )
-        end
-    ).
+            end
+        )}.
 
 c2g_stage_5001_recipients_rolls_back_test_() ->
-    ?WITH_MECKS(
-        [
-            {msg_archive_ds, [
-                {'conv_key_c2g', 1, fun(_) -> <<"c2g:100">> end}
-            ]},
-            workspace_guard_meck(),
-            {elib_tsid, [
-                {'generate', 1, fun(msg_store) -> 12345 end}
-            ]},
-            {elib_pg_sql, [
-                {'public_tablename', 1, fun(_) -> <<"public.msg_store_staging">> end}
-            ]},
-            {epgsql, [
-                {'equery', 3, fun(_, _, _) -> {ok, [], [], [{7}]} end}
-            ]},
-            {elib_pg, [
-                {'with_tx', 1, fun(Tx) ->
-                    try Tx(fake_conn) of
-                        Result -> Result
-                    catch
-                        throw:{rollback, Reason} -> {rollback, Reason}
-                    end
-                end},
-                {'query', 3, fun
-                    %% discussion 访问锁（791b8817）：无 discussion 绑定语义 → 放行
-                    (_, <<"LOCK TABLE public.channel", _/binary>>, []) ->
-                        {ok, []};
-                    (_, <<"SELECT id FROM public.channel", _/binary>>, _) ->
-                        {ok, []};
-                    (_, <<"SELECT discussion_group_id FROM public.channel", _/binary>>, _) ->
-                        {ok, []};
-                    (_, <<"SELECT id FROM public.\"group\"", _/binary>>, _) ->
-                        {ok, []};
-                    (_, <<"INSERT INTO public.msg_store_seq", _/binary>>, _) ->
-                        {ok, []};
-                    (_, _, [100, 50, 1, 5001]) ->
-                        {ok, [#{<<"user_id">> => Uid} || Uid <- lists:seq(1, 5001)]}
-                end}
-            ]}
-        ],
-        fun() ->
-            ?assertEqual(
-                {error, recipient_limit_exceeded},
-                msg_store_repo:stage(
-                    <<"c2g">>,
-                    <<"msg-c2g-limit">>,
-                    <<"text">>,
-                    <<>>,
-                    null,
-                    <<"{}">>,
-                    50,
-                    100,
-                    <<"2026-09-11T00:00:00Z">>,
-                    <<"2026-09-11T00:00:00Z">>,
-                    <<>>,
-                    1
+    {timeout, 30,
+        ?WITH_MECKS(
+            [
+                {msg_archive_ds, [
+                    {'conv_key_c2g', 1, fun(_) -> <<"c2g:100">> end}
+                ]},
+                workspace_guard_meck(),
+                {elib_tsid, [
+                    {'generate', 1, fun(msg_store) -> 12345 end}
+                ]},
+                {elib_pg_sql, [
+                    {'public_tablename', 1, fun(_) -> <<"public.msg_store_staging">> end}
+                ]},
+                {epgsql, [
+                    {'equery', 3, fun(_, _, _) -> {ok, [], [], [{7}]} end}
+                ]},
+                {elib_pg, [
+                    {'with_tx', 1, fun(Tx) ->
+                        try Tx(fake_conn) of
+                            Result -> Result
+                        catch
+                            throw:{rollback, Reason} -> {rollback, Reason}
+                        end
+                    end},
+                    {'query', 3, fun
+                        %% discussion 访问锁（791b8817）：无 discussion 绑定语义 → 放行
+                        (_, <<"LOCK TABLE public.channel", _/binary>>, []) ->
+                            {ok, []};
+                        (_, <<"SELECT id FROM public.channel", _/binary>>, _) ->
+                            {ok, []};
+                        (_, <<"SELECT discussion_group_id FROM public.channel", _/binary>>, _) ->
+                            {ok, []};
+                        (_, <<"SELECT id FROM public.\"group\"", _/binary>>, _) ->
+                            {ok, []};
+                        (_, <<"INSERT INTO public.msg_store_seq", _/binary>>, _) ->
+                            {ok, []};
+                        (_, _, [100, 50, 1, 5001]) ->
+                            {ok, [#{<<"user_id">> => Uid} || Uid <- lists:seq(1, 5001)]}
+                    end}
+                ]}
+            ],
+            fun() ->
+                ?assertEqual(
+                    {error, recipient_limit_exceeded},
+                    msg_store_repo:stage(
+                        <<"c2g">>,
+                        <<"msg-c2g-limit">>,
+                        <<"text">>,
+                        <<>>,
+                        null,
+                        <<"{}">>,
+                        50,
+                        100,
+                        <<"2026-09-11T00:00:00Z">>,
+                        <<"2026-09-11T00:00:00Z">>,
+                        <<>>,
+                        1
+                    )
                 )
-            )
-        end
-    ).
+            end
+        )}.
 
 c2g_stage_snapshot_error_rolls_back_test_() ->
-    ?WITH_MECKS(
-        [
-            {msg_archive_ds, [
-                {'conv_key_c2g', 1, fun(_) -> <<"c2g:100">> end}
-            ]},
-            workspace_guard_meck(),
-            {elib_tsid, [
-                {'generate', 1, fun(msg_store) -> 12345 end}
-            ]},
-            {elib_pg_sql, [
-                {'public_tablename', 1, fun(_) -> <<"public.msg_store_staging">> end}
-            ]},
-            {epgsql, [
-                {'equery', 3, fun(_, _, _) -> {ok, [], [], [{7}]} end}
-            ]},
-            {elib_pg, [
-                {'with_tx', 1, fun(Tx) ->
-                    try Tx(fake_conn) of
-                        Result -> Result
-                    catch
-                        throw:{rollback, Reason} -> {rollback, Reason}
-                    end
-                end},
-                {'query', 3, fun
-                    %% discussion 访问锁（791b8817）：无 discussion 绑定语义 → 放行
-                    (_, <<"LOCK TABLE public.channel", _/binary>>, []) ->
-                        {ok, []};
-                    (_, <<"SELECT id FROM public.channel", _/binary>>, _) ->
-                        {ok, []};
-                    (_, <<"SELECT discussion_group_id FROM public.channel", _/binary>>, _) ->
-                        {ok, []};
-                    (_, <<"SELECT id FROM public.\"group\"", _/binary>>, _) ->
-                        {ok, []};
-                    (_, <<"INSERT INTO public.msg_store_seq", _/binary>>, _) ->
-                        {ok, []};
-                    (_, _, [100, 50, 1, 5001]) ->
-                        {error, connection_lost}
-                end}
-            ]}
-        ],
-        fun() ->
-            ?assertEqual(
-                {error, {recipient_snapshot_failed, connection_lost}},
-                msg_store_repo:stage(
-                    <<"c2g">>,
-                    <<"msg-c2g-db-error">>,
-                    <<"text">>,
-                    <<>>,
-                    null,
-                    <<"{}">>,
-                    50,
-                    100,
-                    <<"2026-09-11T00:00:00Z">>,
-                    <<"2026-09-11T00:00:00Z">>,
-                    <<>>,
-                    1
+    {timeout, 30,
+        ?WITH_MECKS(
+            [
+                {msg_archive_ds, [
+                    {'conv_key_c2g', 1, fun(_) -> <<"c2g:100">> end}
+                ]},
+                workspace_guard_meck(),
+                {elib_tsid, [
+                    {'generate', 1, fun(msg_store) -> 12345 end}
+                ]},
+                {elib_pg_sql, [
+                    {'public_tablename', 1, fun(_) -> <<"public.msg_store_staging">> end}
+                ]},
+                {epgsql, [
+                    {'equery', 3, fun(_, _, _) -> {ok, [], [], [{7}]} end}
+                ]},
+                {elib_pg, [
+                    {'with_tx', 1, fun(Tx) ->
+                        try Tx(fake_conn) of
+                            Result -> Result
+                        catch
+                            throw:{rollback, Reason} -> {rollback, Reason}
+                        end
+                    end},
+                    {'query', 3, fun
+                        %% discussion 访问锁（791b8817）：无 discussion 绑定语义 → 放行
+                        (_, <<"LOCK TABLE public.channel", _/binary>>, []) ->
+                            {ok, []};
+                        (_, <<"SELECT id FROM public.channel", _/binary>>, _) ->
+                            {ok, []};
+                        (_, <<"SELECT discussion_group_id FROM public.channel", _/binary>>, _) ->
+                            {ok, []};
+                        (_, <<"SELECT id FROM public.\"group\"", _/binary>>, _) ->
+                            {ok, []};
+                        (_, <<"INSERT INTO public.msg_store_seq", _/binary>>, _) ->
+                            {ok, []};
+                        (_, _, [100, 50, 1, 5001]) ->
+                            {error, connection_lost}
+                    end}
+                ]}
+            ],
+            fun() ->
+                ?assertEqual(
+                    {error, {recipient_snapshot_failed, connection_lost}},
+                    msg_store_repo:stage(
+                        <<"c2g">>,
+                        <<"msg-c2g-db-error">>,
+                        <<"text">>,
+                        <<>>,
+                        null,
+                        <<"{}">>,
+                        50,
+                        100,
+                        <<"2026-09-11T00:00:00Z">>,
+                        <<"2026-09-11T00:00:00Z">>,
+                        <<>>,
+                        1
+                    )
                 )
-            )
-        end
-    ).
+            end
+        )}.
 
 c2g_action_stage_uses_original_snapshot_and_generation_test_() ->
-    ?WITH_MECKS(
-        [
-            {msg_archive_ds, [
-                {'conv_key_c2g', 1, fun(100) -> <<"c2g:100">> end}
-            ]},
-            workspace_guard_meck(),
-            {elib_tsid, [
-                {'generate', 1, fun(msg_store) -> 12346 end}
-            ]},
-            {epgsql, [
-                {'equery', 3, fun(_, Sql, [<<"c2g:100">>]) ->
-                    ?assertNotEqual(nomatch, binary:match(Sql, <<"RETURNING seq">>)),
-                    {ok, [], [], [{8}]}
-                end}
-            ]},
-            {elib_pg_sql, [
-                {'public_tablename', 1, fun(_) -> <<"public.msg_store_staging">> end},
-                {'insert', 2, fun(_, Data) ->
-                    ?assertEqual([50, 60], maps:get(to_id_list, Data)),
-                    ?assertEqual(8, maps:get(conv_seq, Data)),
-                    {<<"INSERT action">>, []}
-                end}
-            ]},
-            {elib_pg, [
-                {'with_tx', 1, fun(Tx) -> Tx(fake_conn) end},
-                {'query', 3, fun
-                    %% discussion 访问锁（791b8817）：无 discussion 绑定语义 → 放行
-                    (_, <<"LOCK TABLE public.channel", _/binary>>, []) ->
-                        {ok, []};
-                    (_, <<"SELECT id FROM public.channel", _/binary>>, _) ->
-                        {ok, []};
-                    (_, <<"SELECT discussion_group_id FROM public.channel", _/binary>>, _) ->
-                        {ok, []};
-                    (_, <<"SELECT id FROM public.\"group\"", _/binary>>, _) ->
-                        {ok, []};
-                    (_, <<"INSERT INTO public.msg_store_seq", _/binary>>, _) ->
-                        {ok, []};
-                    %% discussion 访问锁（791b8817）：无 discussion 绑定语义 → 放行
-                    (_, <<"LOCK TABLE public.channel", _/binary>>, []) ->
-                        {ok, []};
-                    (_, <<"SELECT id FROM public.channel", _/binary>>, _) ->
-                        {ok, []};
-                    (_, <<"SELECT discussion_group_id FROM public.channel", _/binary>>, _) ->
-                        {ok, []};
-                    (_, <<"SELECT id FROM public.\"group\"", _/binary>>, _) ->
-                        {ok, []};
-                    (_, <<"INSERT INTO public.msg_store_seq", _/binary>>, _) ->
-                        {ok, []};
-                    (_, <<"SELECT id FROM public.channel", _/binary>>, _) ->
-                        {ok, []};
-                    (_, <<"SELECT discussion_group_id FROM public.channel", _/binary>>, _) ->
-                        {ok, []};
-                    (_, <<"SELECT id FROM public.\"group\"", _/binary>>, _) ->
-                        {ok, []};
-                    (_, <<"INSERT INTO public.msg_store_seq", _/binary>>, _) ->
-                        {ok, []};
-                    (_, Sql, [100, 50, 1, <<"original-msg">>, 5001]) ->
-                        ?assertNotEqual(
-                            nomatch, binary:match(Sql, <<"msg_c2g_recipient_snapshot">>)
-                        ),
-                        ?assertEqual(nomatch, binary:match(Sql, <<"msg_c2g_timeline">>)),
-                        ?assertEqual(nomatch, binary:match(Sql, <<"msg_store_staging">>)),
-                        ?assertNotEqual(nomatch, binary:match(Sql, <<"caller_gen.start_seq">>)),
-                        ?assertNotEqual(nomatch, binary:match(Sql, <<"recipient_gen.start_seq">>)),
-                        ?assertNotEqual(nomatch, binary:match(Sql, <<"unnest">>)),
-                        {ok, [#{<<"user_id">> => 50}, #{<<"user_id">> => 60}]};
-                    (
-                        _,
-                        Sql,
-                        [
-                            <<"action-msg">>,
-                            50,
-                            100,
-                            <<"message_revoke_ack">>,
-                            <<"custom">>,
-                            null,
-                            <<"{}">>,
-                            <<"did-50">>,
-                            _
-                        ]
-                    ) ->
-                        request_ledger_new(Sql, <<"action-msg">>);
-                    (_, _, [<<"action-msg">>, 50, 100, 8, [50, 60], _]) ->
-                        {ok, [#{<<"msg_id">> => <<"action-msg">>}]};
-                    (_, <<"INSERT action">>, []) ->
-                        {ok, 1}
-                end}
-            ]}
-        ],
-        fun() ->
-            ?assertEqual(
-                {ok, 12346, 8, [50, 60]},
-                msg_store_repo:stage_action(
-                    <<"c2g">>,
-                    <<"action-msg">>,
-                    <<"custom">>,
-                    <<"message_revoke_ack">>,
-                    null,
-                    <<"{}">>,
-                    50,
-                    100,
-                    <<"2026-09-11T00:00:00Z">>,
-                    <<"2026-09-11T00:00:00Z">>,
-                    <<"did-50">>,
-                    1,
-                    <<"original-msg">>
-                )
-            ),
-            %% +2：discussion 访问锁（791b8817）新增 LOCK TABLE 与 channel FOR UPDATE 两次查询
-            ?assertEqual(6, meck:num_calls(elib_pg, query, 3))
-        end
-    ).
+    {timeout, 30,
+        ?WITH_MECKS(
+            [
+                {msg_archive_ds, [
+                    {'conv_key_c2g', 1, fun(100) -> <<"c2g:100">> end}
+                ]},
+                workspace_guard_meck(),
+                {elib_tsid, [
+                    {'generate', 1, fun(msg_store) -> 12346 end}
+                ]},
+                {epgsql, [
+                    {'equery', 3, fun(_, Sql, [<<"c2g:100">>]) ->
+                        ?assertNotEqual(nomatch, binary:match(Sql, <<"RETURNING seq">>)),
+                        {ok, [], [], [{8}]}
+                    end}
+                ]},
+                {elib_pg_sql, [
+                    {'public_tablename', 1, fun(_) -> <<"public.msg_store_staging">> end},
+                    {'insert', 2, fun(_, Data) ->
+                        ?assertEqual([50, 60], maps:get(to_id_list, Data)),
+                        ?assertEqual(8, maps:get(conv_seq, Data)),
+                        {<<"INSERT action">>, []}
+                    end}
+                ]},
+                {elib_pg, [
+                    {'with_tx', 1, fun(Tx) -> Tx(fake_conn) end},
+                    {'query', 3, fun
+                        %% discussion 访问锁（791b8817）：无 discussion 绑定语义 → 放行
+                        (_, <<"LOCK TABLE public.channel", _/binary>>, []) ->
+                            {ok, []};
+                        (_, <<"SELECT id FROM public.channel", _/binary>>, _) ->
+                            {ok, []};
+                        (_, <<"SELECT discussion_group_id FROM public.channel", _/binary>>, _) ->
+                            {ok, []};
+                        (_, <<"SELECT id FROM public.\"group\"", _/binary>>, _) ->
+                            {ok, []};
+                        (_, <<"INSERT INTO public.msg_store_seq", _/binary>>, _) ->
+                            {ok, []};
+                        %% discussion 访问锁（791b8817）：无 discussion 绑定语义 → 放行
+                        (_, <<"LOCK TABLE public.channel", _/binary>>, []) ->
+                            {ok, []};
+                        (_, <<"SELECT id FROM public.channel", _/binary>>, _) ->
+                            {ok, []};
+                        (_, <<"SELECT discussion_group_id FROM public.channel", _/binary>>, _) ->
+                            {ok, []};
+                        (_, <<"SELECT id FROM public.\"group\"", _/binary>>, _) ->
+                            {ok, []};
+                        (_, <<"INSERT INTO public.msg_store_seq", _/binary>>, _) ->
+                            {ok, []};
+                        (_, <<"SELECT id FROM public.channel", _/binary>>, _) ->
+                            {ok, []};
+                        (_, <<"SELECT discussion_group_id FROM public.channel", _/binary>>, _) ->
+                            {ok, []};
+                        (_, <<"SELECT id FROM public.\"group\"", _/binary>>, _) ->
+                            {ok, []};
+                        (_, <<"INSERT INTO public.msg_store_seq", _/binary>>, _) ->
+                            {ok, []};
+                        (_, Sql, [100, 50, 1, <<"original-msg">>, 5001]) ->
+                            ?assertNotEqual(
+                                nomatch, binary:match(Sql, <<"msg_c2g_recipient_snapshot">>)
+                            ),
+                            ?assertEqual(nomatch, binary:match(Sql, <<"msg_c2g_timeline">>)),
+                            ?assertEqual(nomatch, binary:match(Sql, <<"msg_store_staging">>)),
+                            ?assertNotEqual(nomatch, binary:match(Sql, <<"caller_gen.start_seq">>)),
+                            ?assertNotEqual(
+                                nomatch, binary:match(Sql, <<"recipient_gen.start_seq">>)
+                            ),
+                            ?assertNotEqual(nomatch, binary:match(Sql, <<"unnest">>)),
+                            {ok, [#{<<"user_id">> => 50}, #{<<"user_id">> => 60}]};
+                        (
+                            _,
+                            Sql,
+                            [
+                                <<"action-msg">>,
+                                50,
+                                100,
+                                <<"message_revoke_ack">>,
+                                <<"custom">>,
+                                null,
+                                <<"{}">>,
+                                <<"did-50">>,
+                                _
+                            ]
+                        ) ->
+                            request_ledger_new(Sql, <<"action-msg">>);
+                        (_, _, [<<"action-msg">>, 50, 100, 8, [50, 60], _]) ->
+                            {ok, [#{<<"msg_id">> => <<"action-msg">>}]};
+                        (_, <<"INSERT action">>, []) ->
+                            {ok, 1}
+                    end}
+                ]}
+            ],
+            fun() ->
+                ?assertEqual(
+                    {ok, 12346, 8, [50, 60]},
+                    msg_store_repo:stage_action(
+                        <<"c2g">>,
+                        <<"action-msg">>,
+                        <<"custom">>,
+                        <<"message_revoke_ack">>,
+                        null,
+                        <<"{}">>,
+                        50,
+                        100,
+                        <<"2026-09-11T00:00:00Z">>,
+                        <<"2026-09-11T00:00:00Z">>,
+                        <<"did-50">>,
+                        1,
+                        <<"original-msg">>
+                    )
+                ),
+                %% +2：discussion 访问锁（791b8817）新增 LOCK TABLE 与 channel FOR UPDATE 两次查询
+                ?assertEqual(6, meck:num_calls(elib_pg, query, 3))
+            end
+        )}.
 
 c2g_action_stage_snapshot_primary_key_is_durable_idempotency_test_() ->
-    ?WITH_MECKS(
-        [
-            {msg_archive_ds, [
-                {'conv_key_c2g', 1, fun(100) -> <<"c2g:100">> end}
-            ]},
-            workspace_guard_meck(),
-            {elib_tsid, [
-                {'generate', 1, fun(msg_store) -> 12346 end}
-            ]},
-            {epgsql, [
-                {'equery', 3, fun(_, _, _) -> {ok, [], [], [{9}]} end}
-            ]},
-            {elib_pg_sql, [
-                {'public_tablename', 1, fun(_) -> <<"public.msg_store_staging">> end},
-                {'insert', 2, fun(_, _) -> erlang:error(staging_insert_must_not_run) end}
-            ]},
-            {elib_pg, [
-                {'with_tx', 1, fun(Tx) ->
-                    try Tx(fake_conn) of
-                        Result -> Result
-                    catch
-                        throw:{rollback, Reason} -> {rollback, Reason}
-                    end
-                end},
-                {'query', 3, fun
-                    %% discussion 访问锁（791b8817）：无 discussion 绑定语义 → 放行
-                    (_, <<"LOCK TABLE public.channel", _/binary>>, []) ->
-                        {ok, []};
-                    (_, <<"SELECT id FROM public.channel", _/binary>>, _) ->
-                        {ok, []};
-                    (_, <<"SELECT discussion_group_id FROM public.channel", _/binary>>, _) ->
-                        {ok, []};
-                    (_, <<"SELECT id FROM public.\"group\"", _/binary>>, _) ->
-                        {ok, []};
-                    (_, <<"INSERT INTO public.msg_store_seq", _/binary>>, _) ->
-                        {ok, []};
-                    (_, <<"SELECT id FROM public.channel", _/binary>>, _) ->
-                        {ok, []};
-                    (_, <<"SELECT discussion_group_id FROM public.channel", _/binary>>, _) ->
-                        {ok, []};
-                    (_, <<"SELECT id FROM public.\"group\"", _/binary>>, _) ->
-                        {ok, []};
-                    (_, <<"INSERT INTO public.msg_store_seq", _/binary>>, _) ->
-                        {ok, []};
-                    (_, _, [100, 50, 1, <<"original-msg">>, 5001]) ->
-                        {ok, [#{<<"user_id">> => 50}, #{<<"user_id">> => 60}]};
-                    (
-                        _,
-                        _,
-                        [
-                            <<"replayed-action">>,
-                            50,
-                            100,
-                            <<"message_edit_ack">>,
-                            <<"text">>,
-                            null,
-                            <<"{}">>,
-                            null,
-                            _
-                        ]
-                    ) ->
-                        {ok, []};
-                    (
-                        _,
-                        Sql,
-                        [
-                            <<"replayed-action">>,
-                            <<"message_edit_ack">>,
-                            <<"text">>,
-                            null,
-                            <<"{}">>,
-                            null
-                        ]
-                    ) ->
-                        case binary:match(Sql, <<"INSERT INTO">>) of
-                            nomatch ->
-                                {ok, [
-                                    #{
-                                        <<"from_id">> => 50,
-                                        <<"to_gid">> => 100,
-                                        <<"same_action">> => true,
-                                        <<"same_request">> => true
-                                    }
-                                ]};
-                            _ ->
-                                {ok, []}
+    {timeout, 30,
+        ?WITH_MECKS(
+            [
+                {msg_archive_ds, [
+                    {'conv_key_c2g', 1, fun(100) -> <<"c2g:100">> end}
+                ]},
+                workspace_guard_meck(),
+                {elib_tsid, [
+                    {'generate', 1, fun(msg_store) -> 12346 end}
+                ]},
+                {epgsql, [
+                    {'equery', 3, fun(_, _, _) -> {ok, [], [], [{9}]} end}
+                ]},
+                {elib_pg_sql, [
+                    {'public_tablename', 1, fun(_) -> <<"public.msg_store_staging">> end},
+                    {'insert', 2, fun(_, _) -> erlang:error(staging_insert_must_not_run) end}
+                ]},
+                {elib_pg, [
+                    {'with_tx', 1, fun(Tx) ->
+                        try Tx(fake_conn) of
+                            Result -> Result
+                        catch
+                            throw:{rollback, Reason} -> {rollback, Reason}
                         end
-                end}
-            ]}
-        ],
-        fun() ->
-            ?assertEqual(
-                {error, {unique_violation, <<"replayed-action">>}},
-                msg_store_repo:stage_action(
-                    <<"c2g">>,
-                    <<"replayed-action">>,
-                    <<"text">>,
-                    <<"message_edit_ack">>,
-                    null,
-                    <<"{}">>,
-                    50,
-                    100,
-                    <<"2026-09-11T02:00:00Z">>,
-                    <<"2026-09-11T02:00:00Z">>,
-                    <<>>,
-                    1,
-                    <<"original-msg">>
+                    end},
+                    {'query', 3, fun
+                        %% discussion 访问锁（791b8817）：无 discussion 绑定语义 → 放行
+                        (_, <<"LOCK TABLE public.channel", _/binary>>, []) ->
+                            {ok, []};
+                        (_, <<"SELECT id FROM public.channel", _/binary>>, _) ->
+                            {ok, []};
+                        (_, <<"SELECT discussion_group_id FROM public.channel", _/binary>>, _) ->
+                            {ok, []};
+                        (_, <<"SELECT id FROM public.\"group\"", _/binary>>, _) ->
+                            {ok, []};
+                        (_, <<"INSERT INTO public.msg_store_seq", _/binary>>, _) ->
+                            {ok, []};
+                        (_, <<"SELECT id FROM public.channel", _/binary>>, _) ->
+                            {ok, []};
+                        (_, <<"SELECT discussion_group_id FROM public.channel", _/binary>>, _) ->
+                            {ok, []};
+                        (_, <<"SELECT id FROM public.\"group\"", _/binary>>, _) ->
+                            {ok, []};
+                        (_, <<"INSERT INTO public.msg_store_seq", _/binary>>, _) ->
+                            {ok, []};
+                        (_, _, [100, 50, 1, <<"original-msg">>, 5001]) ->
+                            {ok, [#{<<"user_id">> => 50}, #{<<"user_id">> => 60}]};
+                        (
+                            _,
+                            _,
+                            [
+                                <<"replayed-action">>,
+                                50,
+                                100,
+                                <<"message_edit_ack">>,
+                                <<"text">>,
+                                null,
+                                <<"{}">>,
+                                null,
+                                _
+                            ]
+                        ) ->
+                            {ok, []};
+                        (
+                            _,
+                            Sql,
+                            [
+                                <<"replayed-action">>,
+                                <<"message_edit_ack">>,
+                                <<"text">>,
+                                null,
+                                <<"{}">>,
+                                null
+                            ]
+                        ) ->
+                            case binary:match(Sql, <<"INSERT INTO">>) of
+                                nomatch ->
+                                    {ok, [
+                                        #{
+                                            <<"from_id">> => 50,
+                                            <<"to_gid">> => 100,
+                                            <<"same_action">> => true,
+                                            <<"same_request">> => true
+                                        }
+                                    ]};
+                                _ ->
+                                    {ok, []}
+                            end
+                    end}
+                ]}
+            ],
+            fun() ->
+                ?assertEqual(
+                    {error, {unique_violation, <<"replayed-action">>}},
+                    msg_store_repo:stage_action(
+                        <<"c2g">>,
+                        <<"replayed-action">>,
+                        <<"text">>,
+                        <<"message_edit_ack">>,
+                        null,
+                        <<"{}">>,
+                        50,
+                        100,
+                        <<"2026-09-11T02:00:00Z">>,
+                        <<"2026-09-11T02:00:00Z">>,
+                        <<>>,
+                        1,
+                        <<"original-msg">>
+                    )
                 )
-            )
-        end
-    ).
+            end
+        )}.
 
 c2g_action_stage_rejects_invisible_original_test_() ->
-    ?WITH_MECKS(
-        [
-            {msg_archive_ds, [
-                {'conv_key_c2g', 1, fun(_) -> <<"c2g:100">> end}
-            ]},
-            workspace_guard_meck(),
-            {elib_tsid, [
-                {'generate', 1, fun(msg_store) -> 12346 end}
-            ]},
-            {elib_pg_sql, [
-                {'public_tablename', 1, fun(_) -> <<"public.msg_store_staging">> end}
-            ]},
-            {epgsql, [
-                {'equery', 3, fun(_, _, _) -> {ok, [], [], [{8}]} end}
-            ]},
-            {elib_pg, [
-                {'with_tx', 1, fun(Tx) ->
-                    try Tx(fake_conn) of
-                        Result -> Result
-                    catch
-                        throw:{rollback, Reason} -> {rollback, Reason}
-                    end
-                end},
-                {'query', 3, fun
-                    %% discussion 访问锁（791b8817）：无 discussion 绑定语义 → 放行
-                    (_, <<"LOCK TABLE public.channel", _/binary>>, []) ->
-                        {ok, []};
-                    (_, <<"SELECT id FROM public.channel", _/binary>>, _) ->
-                        {ok, []};
-                    (_, <<"SELECT discussion_group_id FROM public.channel", _/binary>>, _) ->
-                        {ok, []};
-                    (_, <<"SELECT id FROM public.\"group\"", _/binary>>, _) ->
-                        {ok, []};
-                    (_, <<"INSERT INTO public.msg_store_seq", _/binary>>, _) ->
-                        {ok, []};
-                    (_, _, [100, 50, 1, <<"old-generation-msg">>, 5001]) ->
-                        {ok, []}
-                end}
-            ]}
-        ],
-        fun() ->
-            ?assertEqual(
-                {error, action_target_forbidden},
-                msg_store_repo:stage_action(
-                    <<"c2g">>,
-                    <<"action-msg">>,
-                    <<"text">>,
-                    <<"message_edit_ack">>,
-                    null,
-                    <<"{}">>,
-                    50,
-                    100,
-                    <<"2026-09-11T00:00:00Z">>,
-                    <<"2026-09-11T00:00:00Z">>,
-                    <<>>,
-                    1,
-                    <<"old-generation-msg">>
+    {timeout, 30,
+        ?WITH_MECKS(
+            [
+                {msg_archive_ds, [
+                    {'conv_key_c2g', 1, fun(_) -> <<"c2g:100">> end}
+                ]},
+                workspace_guard_meck(),
+                {elib_tsid, [
+                    {'generate', 1, fun(msg_store) -> 12346 end}
+                ]},
+                {elib_pg_sql, [
+                    {'public_tablename', 1, fun(_) -> <<"public.msg_store_staging">> end}
+                ]},
+                {epgsql, [
+                    {'equery', 3, fun(_, _, _) -> {ok, [], [], [{8}]} end}
+                ]},
+                {elib_pg, [
+                    {'with_tx', 1, fun(Tx) ->
+                        try Tx(fake_conn) of
+                            Result -> Result
+                        catch
+                            throw:{rollback, Reason} -> {rollback, Reason}
+                        end
+                    end},
+                    {'query', 3, fun
+                        %% discussion 访问锁（791b8817）：无 discussion 绑定语义 → 放行
+                        (_, <<"LOCK TABLE public.channel", _/binary>>, []) ->
+                            {ok, []};
+                        (_, <<"SELECT id FROM public.channel", _/binary>>, _) ->
+                            {ok, []};
+                        (_, <<"SELECT discussion_group_id FROM public.channel", _/binary>>, _) ->
+                            {ok, []};
+                        (_, <<"SELECT id FROM public.\"group\"", _/binary>>, _) ->
+                            {ok, []};
+                        (_, <<"INSERT INTO public.msg_store_seq", _/binary>>, _) ->
+                            {ok, []};
+                        (_, _, [100, 50, 1, <<"old-generation-msg">>, 5001]) ->
+                            {ok, []}
+                    end}
+                ]}
+            ],
+            fun() ->
+                ?assertEqual(
+                    {error, action_target_forbidden},
+                    msg_store_repo:stage_action(
+                        <<"c2g">>,
+                        <<"action-msg">>,
+                        <<"text">>,
+                        <<"message_edit_ack">>,
+                        null,
+                        <<"{}">>,
+                        50,
+                        100,
+                        <<"2026-09-11T00:00:00Z">>,
+                        <<"2026-09-11T00:00:00Z">>,
+                        <<>>,
+                        1,
+                        <<"old-generation-msg">>
+                    )
                 )
-            )
-        end
-    ).
+            end
+        )}.
 
 %% ===================================================================
 %% unstage/2 测试
