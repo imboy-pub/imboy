@@ -166,7 +166,6 @@ kick_all_sessions(Uid) ->
 %% @private bump 后失效本节点缓存并跨节点广播
 -spec evict(integer()) -> ok.
 evict(Uid) ->
-    Key = {auth_session_epoch, Uid},
-    imboy_cache:delete(Key),
-    _ = imboy_cache:broadcast({flush, Key}),
+    %% W1-05：统一失效入口，替代 delete+手动 broadcast 的重复广播
+    imboy_cache:invalidate({auth_session_epoch, Uid}),
     ok.

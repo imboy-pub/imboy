@@ -252,9 +252,9 @@ safe_query_epoch(AdmId) ->
 %% @private bump 后失效本节点缓存并跨节点广播
 -spec evict(integer()) -> ok.
 evict(AdmId) ->
-    Key = {adm_session_epoch, AdmId},
-    imboy_cache:delete(Key),
-    _ = imboy_cache:broadcast({flush, Key}),
+    %% W1-05：统一失效入口，替代 delete+手动 broadcast 的重复广播
+    %%（flush/1 内部已广播时手动再广播一次形成双份失效消息）
+    imboy_cache:invalidate({adm_session_epoch, AdmId}),
     ok.
 
 -spec uid_int(binary()) -> integer().

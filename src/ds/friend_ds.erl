@@ -79,7 +79,10 @@ is_friend(FromUid, ToUid) ->
 % friend_ds:is_friend(1, 3, <<"remark">>).
 -spec is_friend(integer(), integer(), binary()) -> {boolean(), binary()}.
 is_friend(FromUid, ToUid, Field) ->
-    Key = {is_friend2, FromUid, ToUid},
+    %% W1-02：Key 必须含 Field 维度，否则不同字段查询互相覆盖
+    %% （同一 {is_friend2,F,T} 键先查 remark 再查 nickname 会命中 remark 旧值）。
+    %% 与 is_friend_fields2 相同，经 FRIEND_REL_DEP 依赖标签级联失效。
+    Key = {is_friend2, FromUid, ToUid, Field},
     Fun = fun() ->
         case friend_repo:friend_field(FromUid, ToUid, Field) of
             {ok, [#{Field := Val} | _]} ->
@@ -91,7 +94,7 @@ is_friend(FromUid, ToUid, Field) ->
                 {false, <<>>}
         end
     end,
-    imboy_cache:memo(Fun, Key, ?CACHE_TTL_FRIEND).
+    imboy_cache:memo(Fun, Key, ?CACHE_TTL_FRIEND, [?FRIEND_REL_DEP(FromUid, ToUid)]).
 
 %% @doc 检查好友关系并获取多个字段值
 %%

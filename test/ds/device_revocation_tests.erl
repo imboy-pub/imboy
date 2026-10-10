@@ -345,21 +345,31 @@ is_active_db_error_fails_closed_test_() ->
 %% ===================================================================
 
 delete_flushes_and_broadcasts_active_cache_test_() ->
+    %% W1-05：删除设备改走统一失效入口 imboy_cache:invalidate/1
+    %%（本地清理 + 跨节点失效一步完成），不再有 flush+broadcast 双重消息。
+    %% mock imboy_cache_sync:invalidate 代替旧 broadcast 断言。
     ?WITH_MECKS(
         [
             {user_device_ds, [{'delete', 2, fun(?UID, ?DID) -> ok end}]},
             {imboy_syn, [{'list_by_uid', 1, fun(?UID) -> [] end}]},
             {imboy_cache, [
                 {'flush', 1, fun(_Key) -> ok end},
-                {'broadcast', 1, fun(_Msg) -> {ok, 1} end}
+                {'invalidate', 1, fun(_Key) -> ok end}
             ]}
         ],
         fun() ->
             ActiveKey = {user_device_active, ?UID, ?DID},
             ?assertEqual(ok, user_device_logic:delete(?UID, ?DID)),
             Calls = [{F, A} || {_Pid, {imboy_cache, F, A}, _R} <- meck:history(imboy_cache)],
-            ?assert(lists:member({flush, [ActiveKey]}, Calls)),
-            ?assert(lists:member({broadcast, [{flush, ActiveKey}]}, Calls))
+            ?assert(lists:member({invalidate, [ActiveKey]}, Calls)),
+            %% 旧的手动 broadcast 重复失效路径必须已移除（W1-05 消除双重广播）
+            ?assertNot(
+                lists:keymember(
+                    broadcast,
+                    1,
+                    [{F} || {_Pid, {imboy_cache, F, _A}, _R} <- meck:history(imboy_cache)]
+                )
+            )
         end
     ).
 

@@ -50,27 +50,34 @@ is_friend_with_field_returns_tuple_test_() ->
 
 list_by_uid_returns_list_test_() ->
     {setup,
-     fun() ->
-         meck:new(friend_repo, [no_link, passthrough]),
-         meck:expect(friend_repo, list_by_uid, 2,
-             {ok, [#{<<"to_user_id">> => 2}, #{<<"to_user_id">> => 3}]}),
-         ok
-     end,
-     fun(_) ->
-         meck:unload(friend_repo)
-     end,
-     fun(_) ->
-         ?_test(fun() ->
-             Uid = 1,
-             Result = friend_ds:list_by_uid(Uid),
-             ?assertMatch([_|_], Result),
-             ?assert(length(Result) > 0),
-             lists:foreach(fun(FriendId) ->
-                 ?assert(is_integer(FriendId)),
-                 ?assert(FriendId > 0)
-             end, Result)
-         end)
-     end}.
+        fun() ->
+            meck:new(friend_repo, [no_link, passthrough]),
+            meck:expect(
+                friend_repo,
+                list_by_uid,
+                2,
+                {ok, [#{<<"to_user_id">> => 2}, #{<<"to_user_id">> => 3}]}
+            ),
+            ok
+        end,
+        fun(_) ->
+            meck:unload(friend_repo)
+        end,
+        fun(_) ->
+            ?_test(fun() ->
+                Uid = 1,
+                Result = friend_ds:list_by_uid(Uid),
+                ?assertMatch([_ | _], Result),
+                ?assert(length(Result) > 0),
+                lists:foreach(
+                    fun(FriendId) ->
+                        ?assert(is_integer(FriendId)),
+                        ?assert(FriendId > 0)
+                    end,
+                    Result
+                )
+            end)
+        end}.
 
 list_by_uid_empty_when_no_friends_test_() ->
     ?TEST_WITH_DB(fun() ->
@@ -85,42 +92,61 @@ list_by_uid_empty_when_no_friends_test_() ->
 
 page_by_uid_returns_list_test_() ->
     {setup,
-     fun() ->
-         meck:new(elib_pg, [no_link, passthrough]),
-         meck:new(friend_repo, [no_link, passthrough]),
-         meck:new(user_logic, [no_link, passthrough]),
-         MockRows = [
-             #{<<"id">> => 100, <<"uid">> => 2, <<"remark">> => <<"">>,
-               <<"category_id">> => 0, <<"is_friend">> => 1, <<"is_from">> => <<"false">>,
-               <<"source">> => <<"search">>},
-             #{<<"id">> => 101, <<"uid">> => 3, <<"remark">> => <<"test">>,
-               <<"category_id">> => 1, <<"is_friend">> => 1, <<"is_from">> => <<"false">>,
-               <<"source">> => <<"search">>}
-         ],
-         meck:expect(elib_pg, query, 2, {ok, MockRows}),
-         meck:expect(user_logic, batch_online_state, 1,
-             fun(Rows) -> Rows end),
-         ok
-     end,
-     fun(_) ->
-         meck:unload(user_logic),
-         meck:unload(friend_repo),
-         meck:unload(elib_pg)
-     end,
-     fun(_) ->
-         ?_test(fun() ->
-             Uid = 1,
-             Result = friend_ds:page_by_uid(Uid),
-             ?assertMatch([_|_], Result),
-             ?assert(length(Result) > 0),
-             lists:foreach(fun(Friend) ->
-                 ?assert(is_map(Friend)),
-                 ?assert(maps:is_key(<<"id">>, Friend)),
-                 ?assert(maps:is_key(<<"remark">>, Friend)),
-                 ?assert(maps:is_key(<<"category_id">>, Friend))
-             end, Result)
-         end)
-     end}.
+        fun() ->
+            meck:new(elib_pg, [no_link, passthrough]),
+            meck:new(friend_repo, [no_link, passthrough]),
+            meck:new(user_logic, [no_link, passthrough]),
+            MockRows = [
+                #{
+                    <<"id">> => 100,
+                    <<"uid">> => 2,
+                    <<"remark">> => <<"">>,
+                    <<"category_id">> => 0,
+                    <<"is_friend">> => 1,
+                    <<"is_from">> => <<"false">>,
+                    <<"source">> => <<"search">>
+                },
+                #{
+                    <<"id">> => 101,
+                    <<"uid">> => 3,
+                    <<"remark">> => <<"test">>,
+                    <<"category_id">> => 1,
+                    <<"is_friend">> => 1,
+                    <<"is_from">> => <<"false">>,
+                    <<"source">> => <<"search">>
+                }
+            ],
+            meck:expect(elib_pg, query, 2, {ok, MockRows}),
+            meck:expect(
+                user_logic,
+                batch_online_state,
+                1,
+                fun(Rows) -> Rows end
+            ),
+            ok
+        end,
+        fun(_) ->
+            meck:unload(user_logic),
+            meck:unload(friend_repo),
+            meck:unload(elib_pg)
+        end,
+        fun(_) ->
+            ?_test(fun() ->
+                Uid = 1,
+                Result = friend_ds:page_by_uid(Uid),
+                ?assertMatch([_ | _], Result),
+                ?assert(length(Result) > 0),
+                lists:foreach(
+                    fun(Friend) ->
+                        ?assert(is_map(Friend)),
+                        ?assert(maps:is_key(<<"id">>, Friend)),
+                        ?assert(maps:is_key(<<"remark">>, Friend)),
+                        ?assert(maps:is_key(<<"category_id">>, Friend))
+                    end,
+                    Result
+                )
+            end)
+        end}.
 
 %% ===================================================================
 %% page_by_uid/3 测试
@@ -139,7 +165,7 @@ page_by_uid_large_offset_test_() ->
         Uid = 1,
         Result = friend_ds:page_by_uid(Uid, 10, 1000),
         case Result of
-            [_|_] -> ok;
+            [_ | _] -> ok;
             [] -> ok
         end
     end).
@@ -276,7 +302,7 @@ page_by_uid_with_negative_offset_test_() ->
         Uid = 1,
         Result = friend_ds:page_by_uid(Uid, 10, -1),
         case Result of
-            [_|_] -> ok;
+            [_ | _] -> ok;
             [] -> ok
         end
     end).
@@ -302,3 +328,49 @@ change_remark_with_emoji_test_() ->
         Result = friend_ds:change_remark(FromUid, ToUid, Remark),
         ?assertMatch({ok, _}, Result)
     end).
+
+%% ===================================================================
+%% W1-02：is_friend/3 缓存 Key 字段维度隔离（修复针对性测试）
+%% 修复前 Key 为 {is_friend2,F,T}（不含 Field）：先查 remark 再查 nickname
+%% 会命中 remark 的缓存旧值。修复后 Key 含 Field 维度并依赖 FRIEND_REL_DEP
+%% 标签级联失效。
+%% ===================================================================
+is_friend_field_queries_are_isolated_by_field_test_() ->
+    {setup,
+        fun() ->
+            meck:new(friend_repo, [no_link, passthrough]),
+            meck:new(imboy_cache, [no_link, passthrough]),
+            meck:expect(
+                friend_repo,
+                friend_field,
+                3,
+                fun
+                    (_F, _T, <<"remark">>) ->
+                        {ok, [#{<<"remark">> => <<"备注">>}]};
+                    (_F, _T, <<"nickname">>) ->
+                        {ok, [#{<<"nickname">> => <<"昵称">>}]}
+                end
+            ),
+            %% passthrough 保留真实 imboy_cache:memo（真实 depcache，fenced 关闭走旧路径）
+            ok
+        end,
+        fun(_) ->
+            meck:unload(friend_repo),
+            meck:unload(imboy_cache)
+        end,
+        fun(_) ->
+            ?_test(fun() ->
+                F = 880101,
+                T = 880102,
+                %% 先查 remark（填充缓存）
+                ?assertEqual({true, <<"备注">>}, friend_ds:is_friend(F, T, <<"remark">>)),
+                %% 再查同好友对不同字段：不得命中 remark 的旧缓存值
+                ?assertEqual({true, <<"昵称">>}, friend_ds:is_friend(F, T, <<"nickname">>)),
+                %% 底层 repo 按字段被分别真实调用（未被缓存短路）
+                ?assertEqual(2, meck:num_calls(friend_repo, friend_field, 3)),
+                %% 清理测试键
+                imboy_cache:delete({is_friend2, F, T, <<"remark">>}),
+                imboy_cache:delete({is_friend2, F, T, <<"nickname">>}),
+                imboy_cache:flush({friend_rel_dep, F, T})
+            end)
+        end}.

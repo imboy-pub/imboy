@@ -108,15 +108,11 @@ delete(Uid, DID) ->
     imboy_cache:flush(Key),
     %% 吊销判据缓存必须立刻失效；生产 dsync_enabled=false 时 imboy_cache:flush/1
     %% 不跨节点，故显式广播（其他节点最差也只被 60s TTL 兜底）。
+    %% W1-05：统一失效入口（本地清理+跨节点失效一步完成，消除
+    %% dsync_enabled=true 时 flush/1 与手动 broadcast 的双重广播；
+    %% invalidate 内部对 syn 失败自带兜底，不再需要调用方 try/catch）
     ActiveKey = {user_device_active, Uid, DID},
-    imboy_cache:flush(ActiveKey),
-    _ =
-        try
-            imboy_cache:broadcast({flush, ActiveKey})
-        catch
-            Class:Reason ->
-                ?WARN_LOG({device_active_cache_broadcast_failed, Uid, DID, Class, Reason})
-        end,
+    _ = imboy_cache:invalidate(ActiveKey),
     case find_device_by_did(imboy_syn:list_by_uid(Uid), DID) of
         {ok, Pid, _DType} ->
             send_kick_message(Pid, #{<<"reason">> => <<"设备已被移除"/utf8>>}),
