@@ -93,23 +93,19 @@ init([]) ->
         type => worker,
         modules => dynamic
     },
-    % 根据配置决定是否启动分布式缓存同步服务器
-    CacheSyncSpec =
-        case application:get_env(imboy, dsync_enabled, false) of
-            true ->
-                [
-                    #{
-                        id => imboy_cache_sync,
-                        start => {imboy_cache_sync, start_link, []},
-                        restart => permanent,
-                        shutdown => 5000,
-                        type => worker,
-                        modules => [imboy_cache_sync]
-                    }
-                ];
-            false ->
-                []
-        end,
+    % V2.2.1：缓存同步服务器无条件启动——它现在同时承担本地职责
+    % （generation 栅栏元数据表 19.3、版本元数据），跨节点发布仍由
+    % dsync_enabled 控制（should_broadcast / invalidate 的 legacy 路径）。
+    CacheSyncSpec = [
+        #{
+            id => imboy_cache_sync,
+            start => {imboy_cache_sync, start_link, []},
+            restart => permanent,
+            shutdown => 5000,
+            type => worker,
+            modules => [imboy_cache_sync]
+        }
+    ],
 
     % 领域事件总线（DDD 充血改造地基 / T0.1）
     % Domain event bus: 聚合根产出的领域事件经此派发给订阅者执行副作用。

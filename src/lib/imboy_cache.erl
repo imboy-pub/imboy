@@ -36,6 +36,8 @@
 -export([flush/0, flush/1, delete/1, size/0, record_depcache_event/1]).
 -export([broadcast/1]).
 -export([in_process_server/0, in_process_server/1, in_process/1, flush_process_dict/0]).
+%% V2.2.1 新增最小接口（计划 4.2）
+-export([put/4, put_delete/1, invalidate/1]).
 
 %% @doc 启动基于站点配置的 depcache 实例
 %% 启动本地 depcache 服务，分布式缓存同步由独立的 gen_server 处理
@@ -113,7 +115,75 @@ memo(F, Key, MaxAge) ->
 %% @returns 缓存的值或函数执行结果
 -spec memo(fun(() -> term()), term(), non_neg_integer(), list()) -> term().
 memo(F, Key, MaxAge, Dep) ->
-    depcache:memo(F, Key, MaxAge, Dep, ?DEPCACHE_SERVER).
+    case imboy_cache_policy:is_fenced(Key) of
+        true ->
+            %% 19.3 generation 栅栏路径：物理键 {cache_v2,Key,Gen} + 版本化依赖标签
+            memo_fenced(F, Key, MaxAge, Dep);
+        false ->
+            depcache:memo(F, Key, MaxAge, Dep, ?DEPCACHE_SERVER)
+    end.
+
+%% @doc 19.3 完整并发栅栏：loader 前快照 generation，返回前验证；
+%% 不匹配则最多重试一次；连续失效时直接执行权威查询且不缓存
+%% （计划 7.2：无法协调时返回权威查询结果，不返回陈旧成功、不无限递归）。
+%% 保留 depcache 原生 memo/get_wait 等待合并；不重写 waiter（19.3）。
+-spec memo_fenced(fun(() -> term()), term(), non_neg_integer(), list()) -> term().
+memo_fenced(F, Key, MaxAge, Dep) ->
+    case memo_fenced_attempt(F, Key, MaxAge, Dep) of
+        {ok, Value} ->
+            Value;
+        {stale, Snapshot} ->
+            %% 最多一次重试（19.3）
+            case memo_fenced_attempt(F, Key, MaxAge, Dep, Snapshot) of
+                {ok, Value} ->
+                    Value;
+                {stale, _} ->
+                    %% 连续失效：返回权威结果，不写缓存（旧物理键 TTL 有界自然过期）
+                    F()
+            end
+    end.
+
+-spec memo_fenced_attempt(fun(() -> term()), term(), non_neg_integer(), list()) ->
+    {ok, term()} | {stale, list()}.
+memo_fenced_attempt(F, Key, MaxAge, Dep) ->
+    Snapshot = generation_snapshot(Key, Dep),
+    Value = apply_physical_memo(F, Key, MaxAge, Snapshot),
+    case generation_stable(Key, Snapshot) of
+        true -> {ok, Value};
+        false -> {stale, Snapshot}
+    end.
+
+-spec memo_fenced_attempt(fun(() -> term()), term(), non_neg_integer(), list(), list()) ->
+    {ok, term()} | {stale, list()}.
+memo_fenced_attempt(F, Key, MaxAge, Dep, _PrevSnapshot) ->
+    %% 重试轮：忽略旧快照，重新取当前代（旧 loader 已被物理键隔离，无需 flush 当前键）
+    memo_fenced_attempt(F, Key, MaxAge, Dep).
+
+-spec generation_snapshot(term(), list()) -> [{term(), non_neg_integer(), non_neg_integer()}].
+generation_snapshot(Key, Dep) ->
+    [{Key, direct, imboy_cache_sync:generation(Key)}] ++
+        [{D, dep, imboy_cache_sync:dep_generation(D)} || D <- Dep].
+
+-spec generation_stable(term(), [{term(), non_neg_integer(), non_neg_integer()}]) -> boolean().
+generation_stable(_Key, Snapshot) ->
+    lists:all(
+        fun
+            ({K, direct, G}) -> imboy_cache_sync:generation(K) =:= G;
+            ({D, dep, G}) -> imboy_cache_sync:dep_generation(D) =:= G
+        end,
+        Snapshot
+    ).
+
+-spec apply_physical_memo(
+    fun(() -> term()),
+    term(),
+    non_neg_integer(),
+    [{term(), non_neg_integer(), non_neg_integer()}]
+) -> term().
+apply_physical_memo(F, _Key, MaxAge, [{Key, direct, G} | Deps]) ->
+    PhysKey = {cache_v2, Key, G},
+    PhysDeps = [{cache_v2_dep, D, GD} || {D, dep, GD} <- Deps],
+    depcache:memo(F, PhysKey, MaxAge, PhysDeps, ?DEPCACHE_SERVER).
 
 %% @doc 添加键值对到缓存，保存3600秒，无依赖项
 %% @param Key 缓存键
@@ -167,12 +237,17 @@ set(Key, Data, MaxAge, Depend, Server) ->
         end,
     ok.
 
-%% @doc 判断是否需要广播缓存操作
-%% @param Key 缓存键
-%% @returns true | false
+%% @doc 判断是否需要广播缓存操作（W1-05/W2 策略化）：
+%% 仅未分类的 legacy Key 在 dsync_enabled 时保持旧广播行为（计划 3.3 迁移期兼容）；
+%% local / invalidate / blocked（QR 等）Key 一律不广播——
+%% 普通数据库查询缓存填充不引发无意义广播（计划 2.1、AC-09），
+%% 敏感数据不再经广播复制到其他节点（19.5、W1-05）。
+%% 失效传播不在此路径：数据变更后的跨节点失效统一走 invalidate/1。
 -spec should_broadcast(term()) -> boolean().
 should_broadcast(Key) ->
-    application:get_env(imboy, dsync_enabled, false) andalso not is_local_cache_key(Key).
+    application:get_env(imboy, dsync_enabled, false) andalso
+        not is_local_cache_key(Key) andalso
+        imboy_cache_policy:policy(Key) =:= legacy.
 
 %% @doc 检查是否为本地缓存键
 %% @param Key 缓存键
@@ -191,13 +266,58 @@ is_local_cache_key(_) ->
 get_wait(Key) ->
     depcache:get_wait(Key, ?DEPCACHE_SERVER).
 
+%% @doc V2.2.1 统一失效入口（计划 2.1/4.2/7.2）：
+%% 数据变更（事务 COMMIT）成功后调用；本地清理 + generation 推进 + 跨节点失效通知。
+%% ROLLBACK 后不得调用（7.5：回滚不广播未提交的数据状态）。
+-spec invalidate(term()) -> ok.
+invalidate(Key) ->
+    imboy_cache_sync:invalidate(Key).
+
+%% @doc V2.2.1 策略化写入（计划 4.2）。
+%% put(Key, Value, TTL, local)      -> 只写本地 depcache，不广播；
+%% put(Key, Value, TTL, replicate)  -> 校验（白名单/大小/TTL/敏感性，fail-closed）后
+%%                                     分配 Lamport revision、本地写、发布 V2 SET；
+%%                                     未就绪/未授权/超限返回 {error, Reason}。
+%% 不修改现有 set/4 的第 4 参数含义（那是 depcache 依赖列表，计划 4.2）。
+-spec put(term(), term(), non_neg_integer(), local | replicate) ->
+    ok | {error, term()}.
+put(Key, Value, TTL, local) ->
+    case imboy_cache_policy:validate_put(Key, Value, TTL) of
+        ok ->
+            _ = depcache:set(Key, Value, TTL, [], ?DEPCACHE_SERVER),
+            ok;
+        {error, _} = Err ->
+            Err
+    end;
+put(Key, Value, TTL, replicate) ->
+    case imboy_cache_policy:validate_replicate(Key, Value, TTL) of
+        ok ->
+            imboy_cache_sync:publish_set(Key, Value, TTL);
+        {error, _} = Err ->
+            Err
+    end.
+
+%% @doc replicate 版本化删除（计划 4.3）：带版本删除事件 + 短期墓碑。
+%% 普通键仍用 delete/1（flush 别名，legacy 语义）。
+-spec put_delete(term()) -> ok | {error, term()}.
+put_delete(Key) ->
+    imboy_cache_sync:publish_delete(Key).
+
 %% @doc 从缓存获取键值，返回数据或未找到时返回 undefined
-%% @param Key 缓存键
-%% @returns {ok, Data} | undefined
+%% replicate Key（rindex 登记）额外经过版本/墓碑/同步状态校验（计划 5.5）：
+%% 墓碑或未 READY 时不得返回未校验旧值。
 -spec get(term()) -> {ok, term()} | undefined.
 get(Key) ->
-    % ?DEBUG_LOG(["imboy_cache/get/`", Key]),
-    depcache:get(Key, ?DEPCACHE_SERVER).
+    case imboy_cache_sync:is_replicated(Key) of
+        true ->
+            case imboy_cache_sync:replicate_state(Key) of
+                deleted -> undefined;
+                unverified -> undefined;
+                _ -> depcache:get(Key, ?DEPCACHE_SERVER)
+            end;
+        false ->
+            depcache:get(Key, ?DEPCACHE_SERVER)
+    end.
 
 %% @doc 从缓存中获取子键值
 %% @param Key 缓存键
