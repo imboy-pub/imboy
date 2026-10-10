@@ -60,7 +60,10 @@
     page_safe/7,
     page_with_total_safe/7,
 
-    escape_like/1
+    escape_like/1,
+
+    %% 内部测试 seam：结果形态守卫直调（elib_tsid reserve_candidate 同款惯例）
+    rows_to_maps/2
 ]).
 
 -define(DEFAULT_TIMEOUT, 1000).
@@ -149,6 +152,10 @@ run_with_conn(Driver, Conn, Fun, Retries, Delay) ->
             throw:{rollback, Reason} ->
                 safe_rollback(Conn),
                 {rollback, Reason};
+            %% 结果形态不匹配（rows_to_maps 守卫抛出）：确定性错误，重试无意义
+            throw:{result_shape_mismatch, Details} ->
+                safe_rollback(Conn),
+                {error, {result_shape_mismatch, Details}};
             %% 其他 DB / 运行时异常
             Class:Reason:Stacktrace ->
                 ok = ?ERROR_LOG(
@@ -693,10 +700,27 @@ escape_like(<<C, Rest/binary>>, Acc) ->
 
 %% ================== internal ==================
 
+%% 结果形态守卫（R-12）：列名与数据行宽不一致（epgsql 形态异常 / 测试 mock
+%% 形态误配可致）时不再于 lists:zip 处 function_clause——那会被 run_with_conn
+%% 归为通用 DB 异常睡眠重试 3 次（~6s/次，2026-10-10 v2 全量 10 例超时的
+%% 放大器）。收敛为 typed throw，由 run_with_conn 原样返回、不重试。
 -spec rows_to_maps([#column{}], [tuple()]) -> [map()].
 rows_to_maps(Cols, Rows) ->
     Keys = [C#column.name || C <- Cols],
+    KeyCount = length(Keys),
     [
-        maps:from_list(lists:zip(Keys, tuple_to_list(Row)))
+        begin
+            Values = tuple_to_list(Row),
+            case length(Values) =:= KeyCount of
+                true ->
+                    maps:from_list(lists:zip(Keys, Values));
+                false ->
+                    throw(
+                        {result_shape_mismatch, #{
+                            columns => Keys, row_size => length(Values)
+                        }}
+                    )
+            end
+        end
      || Row <- Rows
     ].

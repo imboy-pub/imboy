@@ -2025,3 +2025,41 @@ escape_like_empty_test_() ->
     ?_test(begin
         ?assertEqual(<<"">>, elib_pg:escape_like(<<"">>))
     end).
+
+%% ===================================================================
+%% R-12 结果形态守卫：列名/行宽不一致 → typed throw，不再 function_clause
+%% ===================================================================
+
+rows_to_maps_zero_columns_nonempty_rows_test_() ->
+    %% 2026-10-10 v2 全量 10 例超时的根因形态：{ok, Count, Cols=[], Rows=[{7}]}
+    %% 落入 rows_to_maps 后 zip 崩溃并被当作通用 DB 异常重试
+    ?_test(begin
+        ?assertThrow(
+            {result_shape_mismatch, #{columns := [], row_size := 1}},
+            elib_pg:rows_to_maps([], [{7}])
+        )
+    end).
+
+rows_to_maps_row_width_mismatch_test_() ->
+    ?_test(begin
+        Cols = [#column{name = <<"id">>}, #column{name = <<"status">>}],
+        ?assertThrow(
+            {result_shape_mismatch, #{columns := [<<"id">>, <<"status">>], row_size := 1}},
+            elib_pg:rows_to_maps(Cols, [{1}])
+        ),
+        ?assertThrow(
+            {result_shape_mismatch, #{row_size := 3}},
+            elib_pg:rows_to_maps(Cols, [{1, <<"on">>, <<"extra">>}])
+        )
+    end).
+
+rows_to_maps_happy_paths_unchanged_test_() ->
+    ?_test(begin
+        Cols = [#column{name = <<"id">>}, #column{name = <<"status">>}],
+        ?assertEqual(
+            [#{<<"id">> => 1, <<"status">> => <<"on">>}, #{<<"id">> => 2, <<"status">> => null}],
+            elib_pg:rows_to_maps(Cols, [{1, <<"on">>}, {2, null}])
+        ),
+        %% 零列 × 零行（非 SELECT 误入形态）合法空集
+        ?assertEqual([], elib_pg:rows_to_maps([], []))
+    end).
