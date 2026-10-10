@@ -50,13 +50,13 @@ main([OutPath | _]) ->
             io:format("usage: LEGACY_EBIN=<old ebin> NEW_EBIN=<new ebin> erl ...~n"),
             halt(1);
         {LE, NE} ->
-            {ok, PeerPids, {A, B, C}} = start_mixed(LE, NE),
+            {ok, Nodes} = start_mixed(LE, NE),
             Results =
                 try
-                    Scenarios = scenario_list(A, B, C),
+                    Scenarios = scenario_list(Nodes),
                     [run_one(Name, Fun) || {Name, Fun} <- Scenarios]
                 after
-                    stop_cluster(PeerPids)
+                    stop_all()
                 end,
             T1 = erlang:monotonic_time(millisecond),
             ok = file:write_file(OutPath, results_json(Results, T1 - T0)),
@@ -74,7 +74,10 @@ main(_) ->
     io:format("usage: cache_v21_mixed_dcheck:main([\"<output.json>\"]).~n"),
     halt(1).
 
-scenario_list(A, B, C) ->
+scenario_list(Nodes) ->
+    A = maps:get(a, Nodes),
+    B = maps:get(b, Nodes),
+    C = maps:get(c, Nodes),
     [
         {"M1 legacy set propagates to new node (original semantics)", fun() ->
             m1_legacy_set(A, B)
@@ -90,6 +93,15 @@ scenario_list(A, B, C) ->
         end},
         {"M5 V2 peer return + node restart restores READY", fun() ->
             m5_recovery_after_v2_peer_returns(A, B, C)
+        end},
+        {"R1 rolling rollback node C: new -> legacy in place", fun() ->
+            r1_rollback_node_c(Nodes)
+        end},
+        {"R2 rolling rollback node B: data-safety oracle, then all-legacy", fun() ->
+            r2_rollback_node_b(Nodes)
+        end},
+        {"R3 full-cluster rollback restart, legacy steady state", fun() ->
+            r3_full_cluster_rollback_restart(Nodes)
         end}
     ].
 
@@ -175,10 +187,69 @@ m5_recovery_after_v2_peer_returns(A, B, C) ->
     ok.
 
 %% ===================================================================
+%% 回滚演练（W5-06）：真实滚动回滚 = 同名 peer 进程以旧代码树重启
+%% ===================================================================
+
+%% 回滚演练（W5-06）：真实滚动回滚 = 同名 peer 进程以旧代码树重启。
+%% 初始角色：A=旧（混合演练用），B/C=新（已升级节点）。回滚顺序 C → B。
+
+%% R1：滚动回滚 C（new → old）。回滚前 B 的 V2 数据就位并已收敛到 C；
+%% 回滚后 B（唯一剩余新节点）继续工作；C（旧）存活，legacy 广播通路
+%% A → C 可用；全程无崩溃。
+r1_rollback_node_c(Nodes) ->
+    #{a := A, b := B, c := C} = Nodes,
+    KeyPre = {mixed_test, r_k1},
+    ok = rpc:call(B, imboy_cache, put, [KeyPre, pre_rb, 300, replicate], ?RPC_MS),
+    {ok, pre_rb} = converge_get(C, KeyPre, {ok, pre_rb}),
+    C2 = restart_peer_as(legacy, c),
+    %% 回滚中 B（新）继续工作（本地写入可读）
+    KeyMid = {mixed_test, r_k2},
+    ok = rpc:call(B, imboy_cache, put, [KeyMid, mid_rb, 300, replicate], ?RPC_MS),
+    {ok, mid_rb} = converge_get(B, KeyMid, {ok, mid_rb}),
+    %% C（旧）存活；legacy 广播通路 A → C 可用
+    true = rpc:call(C2, ?MODULE, sync_alive, [], 5000),
+    KeyL = {mixed_test, r_kl1},
+    ok = rpc:call(A, ?MODULE, m1_broadcast_set, [KeyL, rb_legacy], ?RPC_MS),
+    {ok, rb_legacy} = converge_get(C2, KeyL, {ok, rb_legacy}),
+    ok.
+
+%% R2：滚动回滚 B → 全旧集群（A 本就是旧节点）。数据安全 oracle：回滚前
+%% B 写入的 V2 键在旧节点上不复活（soft-state miss 回权威，无脏值）；
+%% legacy 广播 B → A/C 全组可用、无崩溃。
+r2_rollback_node_b(Nodes) ->
+    #{a := A, c := C2} = Nodes,
+    B2 = restart_peer_as(legacy, b),
+    undefined = rpc:call(B2, imboy_cache, get, [{mixed_test, r_k1}], 5000),
+    undefined = rpc:call(C2, imboy_cache, get, [{mixed_test, r_k1}], 5000),
+    true = rpc:call(B2, ?MODULE, sync_alive, [], 5000),
+    KeyL2 = {mixed_test, r_kl2},
+    ok = rpc:call(B2, ?MODULE, m1_broadcast_set, [KeyL2, rb2_legacy], ?RPC_MS),
+    {ok, rb2_legacy} = converge_get(A, KeyL2, {ok, rb2_legacy}),
+    {ok, rb2_legacy} = converge_get(C2, KeyL2, {ok, rb2_legacy}),
+    ok.
+
+%% R3：全机回滚重启稳态：三节点全部以旧代码树重启一遍，legacy set 广播
+%% 全组收敛，原系统语义完整（数据安全 oracle：旧 V2 键仍不复活）。
+r3_full_cluster_rollback_restart(Nodes) ->
+    #{a := A, b := B, c := C} = Nodes,
+    restart_peer_as(legacy, a),
+    restart_peer_as(legacy, b),
+    restart_peer_as(legacy, c),
+    undefined = rpc:call(A, imboy_cache, get, [{mixed_test, r_k1}], 5000),
+    KeyF = {mixed_test, r_kfinal},
+    ok = rpc:call(A, ?MODULE, m1_broadcast_set, [KeyF, all_legacy], ?RPC_MS),
+    {ok, all_legacy} = converge_get(B, KeyF, {ok, all_legacy}),
+    {ok, all_legacy} = converge_get(C, KeyF, {ok, all_legacy}),
+    true = rpc:call(A, ?MODULE, sync_alive, [], 5000),
+    true = rpc:call(B, ?MODULE, sync_alive, [], 5000),
+    true = rpc:call(C, ?MODULE, sync_alive, [], 5000),
+    ok.
+
+%% ===================================================================
 %% 集群管理
 %% ===================================================================
 
-start_mixed(LegacyEbin, NewEbin) ->
+start_mixed(LegacyRoot, NewRoot) ->
     RandBin = integer_to_binary(erlang:unique_integer([positive]), 36),
     Main = binary_to_atom(iolist_to_binary("c21m" ++ binary_to_list(RandBin)), utf8),
     {ok, _} = net_kernel:start([Main, longnames]),
@@ -190,49 +261,21 @@ start_mixed(LegacyEbin, NewEbin) ->
     ),
     true = erlang:set_cookie(node(), CookieAtom),
     DriverDir = filename:absname(filename:dirname(code:which(?MODULE))),
-    DepsOf =
-        fun(Root) ->
-            [
-                filename:join(Root, "deps/" ++ D ++ "/ebin")
-             || D <- ["depcache", "syn"]
-            ]
-        end,
-    ArgsOf =
-        fun(Name) ->
-            Root =
-                case Name of
-                    legacy -> LegacyEbin;
-                    _ -> NewEbin
-                end,
-            [
-                "-setcookie",
-                atom_to_list(CookieAtom),
-                "-kernel",
-                "inet_dist_use_interface",
-                "{127,0,0,1}",
-                "-pa",
-                DriverDir,
-                "-pa",
-                filename:join(Root, "ebin")
-                | DepsOf(Root)
-            ]
-        end,
+    %% 驱动节点侧可变状态（回滚场景会同名重启 peer，pid 会变）
+    Ctx = ets:new(c21ctx, [set, named_table, public]),
+    true = ets:insert(Ctx, [
+        {legacy_root, LegacyRoot},
+        {new_root, NewRoot},
+        {cookie, CookieAtom},
+        {driver_dir, DriverDir}
+    ]),
     Rand = binary_to_list(RandBin),
     NameA = binary_to_atom(iolist_to_binary("c21" ++ Rand ++ "_la"), utf8),
     NameB = binary_to_atom(iolist_to_binary("c21" ++ Rand ++ "_nb"), utf8),
     NameC = binary_to_atom(iolist_to_binary("c21" ++ Rand ++ "_nc"), utf8),
-    {ok, PA, A} = peer:start(#{
-        name => NameA, host => "127.0.0.1", wait_boot => false, args => ArgsOf(legacy)
-    }),
-    pong = wait_peer(A, 200),
-    {ok, PB, B} = peer:start(#{
-        name => NameB, host => "127.0.0.1", wait_boot => false, args => ArgsOf(new)
-    }),
-    pong = wait_peer(B, 200),
-    {ok, PC, C} = peer:start(#{
-        name => NameC, host => "127.0.0.1", wait_boot => false, args => ArgsOf(new)
-    }),
-    pong = wait_peer(C, 200),
+    {ok, _PA, A} = peer_boot(a, NameA, legacy, Ctx),
+    {ok, _PB, B} = peer_boot(b, NameB, new, Ctx),
+    {ok, _PC, C} = peer_boot(c, NameC, new, Ctx),
     true = rpc:call(A, net_kernel, connect_node, [B], ?RPC_MS),
     true = rpc:call(A, net_kernel, connect_node, [C], ?RPC_MS),
     true = rpc:call(B, net_kernel, connect_node, [C], ?RPC_MS),
@@ -243,16 +286,92 @@ start_mixed(LegacyEbin, NewEbin) ->
     true = rpc:call(A, ?MODULE, sync_alive, [], 5000),
     ready = wait_status(B, 150),
     ready = wait_status(C, 150),
-    {ok, [PA, PB, PC], {A, B, C}}.
+    {ok, #{a => A, b => B, c => C}}.
 
-stop_cluster(PeerPids) ->
+peer_boot(Which, Name, Role, Ctx) ->
+    {ok, Pid, Node} = peer:start(#{
+        name => Name, host => "127.0.0.1", wait_boot => false, args => peer_args(Role, Ctx)
+    }),
+    pong = wait_peer(Node, 200),
+    true = ets:insert(Ctx, {Which, {Pid, Name, Node}}),
+    {ok, Pid, Node}.
+
+peer_args(Role, Ctx) ->
+    [{legacy_root, LR}, {new_root, NR}, {cookie, Cookie}, {driver_dir, DD}] =
+        ets:lookup(Ctx, legacy_root) ++
+            ets:lookup(Ctx, new_root) ++
+            ets:lookup(Ctx, cookie) ++
+            ets:lookup(Ctx, driver_dir),
+    Root =
+        case Role of
+            legacy -> LR;
+            new -> NR
+        end,
+    Deps = [
+        filename:join(Root, "deps/" ++ D ++ "/ebin")
+     || D <- ["depcache", "syn"]
+    ],
+    [
+        "-setcookie",
+        atom_to_list(Cookie),
+        "-kernel",
+        "inet_dist_use_interface",
+        "{127,0,0,1}",
+        "-pa",
+        DD,
+        "-pa",
+        filename:join(Root, "ebin")
+        | Deps
+    ].
+
+%% 同名重启 peer 为指定角色（真实滚动升级/回滚 = 进程换部署）：
+%% 停旧进程 → 以新代码树同名拉起 → 重建全网状连接 → init → 就绪判定。
+restart_peer_as(Role, Which) ->
+    [{Which, {OldPid, ShortName, FullName}}] = ets:lookup(c21ctx, Which),
+    ok = peer:stop(OldPid),
+    {ok, _NewPid, Node} = peer:start(#{
+        name => ShortName,
+        host => "127.0.0.1",
+        wait_boot => false,
+        args => peer_args(Role, c21ctx)
+    }),
+    pong = wait_peer(Node, 200),
+    Others = [N || {K, {_, _, N}} <- ets:tab2list(c21ctx), K =/= Which, is_atom(N)],
+    _ = [ok = connect_retry(Node, N) || N <- Others],
+    _ = [ok = connect_retry(N, Node) || N <- Others],
+    ok = rpc:call(Node, ?MODULE, init_on_peer, [], ?RPC_MS),
+    case Role of
+        legacy -> true = rpc:call(Node, ?MODULE, sync_alive, [], 5000);
+        new -> ready = wait_status(Node, 150)
+    end,
+    true = ets:insert(c21ctx, {Which, {_NewPid, ShortName, Node}}),
+    Node.
+
+%% 同名重启后旧连接拆除期间 connect_node 会瞬时 false，有界重试
+connect_retry(_From, _To, 0) ->
+    erlang:error({connect_timeout, _From, _To});
+connect_retry(From, To, N) ->
+    case rpc:call(From, net_kernel, connect_node, [To], ?RPC_MS) of
+        true ->
+            ok;
+        _ ->
+            timer:sleep(200),
+            connect_retry(From, To, N - 1)
+    end.
+
+connect_retry(From, To) ->
+    connect_retry(From, To, 15).
+
+%% 从 Ctx 读取当前 peer pid 集中清理（回滚场景 pid 已轮换）
+stop_all() ->
+    Pids = [P || {K, {P, _S, _F}} <- ets:tab2list(c21ctx), is_atom(K)],
     _ = [
         try
             peer:stop(P)
         catch
             _:_ -> ok
         end
-     || P <- PeerPids
+     || P <- Pids
     ],
     catch net_kernel:stop(),
     ok.
