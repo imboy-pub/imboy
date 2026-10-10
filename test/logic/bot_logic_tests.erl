@@ -286,7 +286,7 @@ send_message_sends_c2c_message_test_() ->
     ?WITH_MECKS(
         [
             {elib_tsid, [
-                {'generate', 0, fun() -> 12345 end}
+                {'generate', 0, fun() -> 12345 end}, {'generate', 1, fun(_) -> 12345 end}
             ]},
             {bot_repo, [
                 {'find', 1, fun(1) ->
@@ -345,7 +345,7 @@ send_group_message_requires_real_c2g_ack_test_() ->
     ?WITH_MECKS(
         [
             {elib_tsid, [
-                {'generate', 0, fun() -> 67890 end}
+                {'generate', 0, fun() -> 67890 end}, {'generate', 1, fun(_) -> 67890 end}
             ]},
             {bot_repo, [
                 {'find', 1, fun(1) ->
@@ -379,7 +379,7 @@ send_group_message_rejects_c2g_error_test_() ->
     ?WITH_MECKS(
         [
             {elib_tsid, [
-                {'generate', 0, fun() -> 67891 end}
+                {'generate', 0, fun() -> 67891 end}, {'generate', 1, fun(_) -> 67891 end}
             ]},
             {bot_repo, [
                 {'find', 1, fun(1) ->

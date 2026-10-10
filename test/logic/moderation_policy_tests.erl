@@ -128,7 +128,7 @@ enqueue_writes_pending_row_test_() ->
     ?WITH_MECKS(
         [
             {elib_tsid, [
-                {'generate', 0, fun() -> 9001 end}
+                {'generate', 0, fun() -> 9001 end}, {'generate', 1, fun(_) -> 9001 end}
             ]},
             {elib_pg_sql, [
                 {'public_tablename', 1, fun(<<"review_queue">>) -> <<"public.review_queue">> end}
@@ -167,7 +167,7 @@ enqueue_failure_returned_fail_open_by_caller_test_() ->
     ?WITH_MECKS(
         [
             {elib_tsid, [
-                {'generate', 0, fun() -> 9002 end}
+                {'generate', 0, fun() -> 9002 end}, {'generate', 1, fun(_) -> 9002 end}
             ]},
             {elib_pg_sql, [
                 {'public_tablename', 1, fun(<<"review_queue">>) -> <<"public.review_queue">> end}
@@ -193,7 +193,7 @@ enqueue_profile_field_encodes_field_in_msg_type_test_() ->
     ?WITH_MECKS(
         [
             {elib_tsid, [
-                {'generate', 0, fun() -> 9003 end}
+                {'generate', 0, fun() -> 9003 end}, {'generate', 1, fun(_) -> 9003 end}
             ]},
             {elib_pg_sql, [
                 {'public_tablename', 1, fun(<<"review_queue">>) -> <<"public.review_queue">> end}

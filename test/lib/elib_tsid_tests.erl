@@ -297,6 +297,15 @@ register_idempotent_check_test() ->
         catch_typed(fun() -> elib_tsid:register(not_in_inventory) end)
     ).
 
+default_generator_available_test() ->
+    %% default 仅供测试/脚手架，但必须可用（W7 全量轨道 192 失败的根因即
+    %% lookup 漏建 default 槽位）
+    ?SETUP(),
+    ?assert(lists:member(default, elib_tsid:registered())),
+    ?assert(elib_tsid:generate(default) > 0),
+    ?assertEqual(3, length(elib_tsid:generate_n(default, 3))),
+    ok = elib_tsid:register(default).
+
 register_before_init_rejected_test() ->
     elib_tsid:reset_for_test(),
     ?assertMatch(

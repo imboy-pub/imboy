@@ -29,7 +29,7 @@ forward_c2c_to_c2c_with_valid_data_succeeds_test_() ->
                 {'check_relationship', 2, fun(_ToId, _FromUid) -> {true, false} end}
             ]},
             {elib_tsid, [
-                {'generate', 0, fun() -> 987654321 end}
+                {'generate', 0, fun() -> 987654321 end}, {'generate', 1, fun(_) -> 987654321 end}
             ]},
             {elib_dt, [
                 {'millisecond', 0, fun() -> 1700000000000 end}
@@ -67,7 +67,7 @@ forward_c2c_payload_contains_to_field_test_() ->
                 {'check_relationship', 2, fun(_ToId, _FromUid) -> {true, false} end}
             ]},
             {elib_tsid, [
-                {'generate', 0, fun() -> 987654321 end}
+                {'generate', 0, fun() -> 987654321 end}, {'generate', 1, fun(_) -> 987654321 end}
             ]},
             {elib_dt, [
                 {'millisecond', 0, fun() -> 1700000000000 end}
@@ -104,7 +104,7 @@ forward_c2c_reply_rejected_returns_error_test_() ->
                 {'check_relationship', 2, fun(_ToId, _FromUid) -> {true, false} end}
             ]},
             {elib_tsid, [
-                {'generate', 0, fun() -> 987654321 end}
+                {'generate', 0, fun() -> 987654321 end}, {'generate', 1, fun(_) -> 987654321 end}
             ]},
             {elib_dt, [
                 {'millisecond', 0, fun() -> 1700000000000 end}
@@ -163,7 +163,7 @@ forward_c2c_to_c2g_with_valid_data_succeeds_test_() ->
                 {'is_member', 2, fun(_Uid, _Gid) -> true end}
             ]},
             {elib_tsid, [
-                {'generate', 0, fun() -> 987654321 end}
+                {'generate', 0, fun() -> 987654321 end}, {'generate', 1, fun(_) -> 987654321 end}
             ]},
             {elib_dt, [
                 {'millisecond', 0, fun() -> 1700000000000 end}
@@ -235,7 +235,7 @@ forward_c2g_to_c2c_with_valid_data_succeeds_test_() ->
                 {'check_relationship', 2, fun(_ToId, _FromUid) -> {true, false} end}
             ]},
             {elib_tsid, [
-                {'generate', 0, fun() -> 987654321 end}
+                {'generate', 0, fun() -> 987654321 end}, {'generate', 1, fun(_) -> 987654321 end}
             ]},
             {elib_dt, [
                 {'millisecond', 0, fun() -> 1700000000000 end}
@@ -318,7 +318,7 @@ forward_c2g_to_c2g_with_valid_data_succeeds_test_() ->
                 {'is_member', 2, fun(_Uid, _Gid) -> true end}
             ]},
             {elib_tsid, [
-                {'generate', 0, fun() -> 987654321 end}
+                {'generate', 0, fun() -> 987654321 end}, {'generate', 1, fun(_) -> 987654321 end}
             ]},
             {elib_dt, [
                 {'millisecond', 0, fun() -> 1700000000000 end}
@@ -357,7 +357,7 @@ forward_batch_messages_succeeds_test_() ->
                 {'check_relationship', 2, fun(_ToId, _FromUid) -> {true, false} end}
             ]},
             {elib_tsid, [
-                {'generate', 0, fun() -> 987654321 end}
+                {'generate', 0, fun() -> 987654321 end}, {'generate', 1, fun(_) -> 987654321 end}
             ]},
             {elib_dt, [
                 {'millisecond', 0, fun() -> 1700000000000 end}
@@ -480,7 +480,7 @@ forward_c2c_send_rejected_propagates_error_test_() ->
                 {'check_and_record', 1, fun(_Uid) -> {error, muted} end}
             ]},
             {elib_tsid, [
-                {'generate', 0, fun() -> 987654321 end}
+                {'generate', 0, fun() -> 987654321 end}, {'generate', 1, fun(_) -> 987654321 end}
             ]},
             {elib_dt, [
                 {'millisecond', 0, fun() -> 1700000000000 end}
@@ -519,7 +519,7 @@ forward_c2g_send_rejected_propagates_error_test_() ->
                 {'check_mute', 2, fun(_Gid, _Uid) -> true end}
             ]},
             {elib_tsid, [
-                {'generate', 0, fun() -> 987654321 end}
+                {'generate', 0, fun() -> 987654321 end}, {'generate', 1, fun(_) -> 987654321 end}
             ]},
             {elib_dt, [
                 {'millisecond', 0, fun() -> 1700000000000 end}
@@ -566,7 +566,7 @@ forward_batch_with_send_failure_returns_partial_test_() ->
                 {'check_relationship', 2, fun(_ToId, _FromUid) -> {true, false} end}
             ]},
             {elib_tsid, [
-                {'generate', 0, fun() -> 987654321 end}
+                {'generate', 0, fun() -> 987654321 end}, {'generate', 1, fun(_) -> 987654321 end}
             ]},
             {elib_dt, [
                 {'millisecond', 0, fun() -> 1700000000000 end}
@@ -619,7 +619,7 @@ forward_partial_success_test_() ->
                 {'check_relationship', 2, fun(_ToId, _FromUid) -> {true, false} end}
             ]},
             {elib_tsid, [
-                {'generate', 0, fun() -> 987654321 end}
+                {'generate', 0, fun() -> 987654321 end}, {'generate', 1, fun(_) -> 987654321 end}
             ]},
             {elib_dt, [
                 {'millisecond', 0, fun() -> 1700000000000 end}

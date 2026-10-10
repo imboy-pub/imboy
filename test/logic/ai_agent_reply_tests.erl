@@ -50,7 +50,7 @@ agent_dm_triggers_llm_and_delivers_reply_test_() ->
         [
             ?SYNC_ASYNC,
             ?ALLOW_RL,
-            {elib_tsid, [{'generate', 0, fun() -> 8888 end}]},
+            {elib_tsid, [{'generate', 0, fun() -> 8888 end}, {'generate', 1, fun(_) -> 8888 end}]},
             {ai_agent_ds, [
                 {'is_agent', 1, fun(42) ->
                     {true, #{
@@ -231,7 +231,7 @@ agent_dm_streams_deltas_then_finalizes_test_() ->
         [
             ?SYNC_ASYNC,
             ?ALLOW_RL,
-            {elib_tsid, [{'generate', 0, fun() -> 12345 end}]},
+            {elib_tsid, [{'generate', 0, fun() -> 12345 end}, {'generate', 1, fun(_) -> 12345 end}]},
             {ai_agent_ds, [
                 {'is_agent', 1, fun(42) -> {true, #{<<"provider">> => <<"openai">>}} end}
             ]},
@@ -290,7 +290,7 @@ stream_error_finalizes_partial_test_() ->
         [
             ?SYNC_ASYNC,
             ?ALLOW_RL,
-            {elib_tsid, [{'generate', 0, fun() -> 999 end}]},
+            {elib_tsid, [{'generate', 0, fun() -> 999 end}, {'generate', 1, fun(_) -> 999 end}]},
             {ai_agent_ds, [
                 {'is_agent', 1, fun(42) -> {true, #{<<"provider">> => <<"openai">>}} end}
             ]},
@@ -345,7 +345,7 @@ reply_is_persisted_before_push_test_() ->
         [
             ?SYNC_ASYNC,
             ?ALLOW_RL,
-            {elib_tsid, [{'generate', 0, fun() -> 8888 end}]},
+            {elib_tsid, [{'generate', 0, fun() -> 8888 end}, {'generate', 1, fun(_) -> 8888 end}]},
             {ai_agent_ds, [
                 {'is_agent', 1, fun(42) ->
                     {true, #{<<"provider">> => <<"openai">>, <<"model">> => <<"m">>}}
@@ -398,7 +398,7 @@ reply_delivered_when_encryption_required_test_() ->
         [
             ?SYNC_ASYNC,
             ?ALLOW_RL,
-            {elib_tsid, [{'generate', 0, fun() -> 8888 end}]},
+            {elib_tsid, [{'generate', 0, fun() -> 8888 end}, {'generate', 1, fun(_) -> 8888 end}]},
             {ai_agent_ds, [
                 {'is_agent', 1, fun(42) ->
                     {true, #{<<"provider">> => <<"openai">>, <<"model">> => <<"m">>}}

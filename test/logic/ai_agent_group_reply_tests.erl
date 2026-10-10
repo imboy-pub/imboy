@@ -33,7 +33,7 @@ mention_agent_triggers_and_delivers_test_() ->
         [
             ?SYNC_ASYNC,
             ?ALLOW_RL,
-            {elib_tsid, [{'generate', 0, fun() -> 7777 end}]},
+            {elib_tsid, [{'generate', 0, fun() -> 7777 end}, {'generate', 1, fun(_) -> 7777 end}]},
             {ai_agent_ds, [
                 {'is_agent', 1, fun
                     (42) -> {true, #{<<"provider">> => <<"openai">>, <<"trigger_policy">> => #{}}};
@@ -70,7 +70,7 @@ tool_capability_does_not_enter_internal_mcp_test_() ->
                 {'chat', 3, fun(42, _Msgs, _Opts) -> {ok, #{<<"result">> => <<"plain">>}} end}
             ]},
             {msg_c2g_logic, [{'c2g', 3, fun(_, _, _) -> ok end}]},
-            {elib_tsid, [{'generate', 0, fun() -> 7788 end}]}
+            {elib_tsid, [{'generate', 0, fun() -> 7788 end}, {'generate', 1, fun(_) -> 7788 end}]}
         ],
         fun() ->
             Agent = #{<<"tools">> => [<<"get_contacts">>]},
@@ -157,7 +157,7 @@ duplicate_mentions_trigger_once_test_() ->
         [
             ?SYNC_ASYNC,
             ?ALLOW_RL,
-            {elib_tsid, [{'generate', 0, fun() -> 7777 end}]},
+            {elib_tsid, [{'generate', 0, fun() -> 7777 end}, {'generate', 1, fun(_) -> 7777 end}]},
             {ai_agent_ds, [
                 {'is_agent', 1, fun
                     (42) -> {true, #{<<"provider">> => <<"openai">>, <<"trigger_policy">> => #{}}};
@@ -305,7 +305,7 @@ pay_command_authorizes_test_() ->
             ]},
             {agent_rate_limiter, [{'allow', 2, fun(_, _) -> allow end}]},
             {msg_c2g_logic, [{'c2g', 3, fun(_, _, _) -> ok end}]},
-            {elib_tsid, [{'generate', 0, fun() -> 1 end}]}
+            {elib_tsid, [{'generate', 0, fun() -> 1 end}, {'generate', 1, fun(_) -> 1 end}]}
         ],
         fun() ->
             erase(paid),

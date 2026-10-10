@@ -64,7 +64,7 @@ working_ephemeral_online_only_test_() ->
 completed_durable_test_() ->
     ?TEST_WITH_DB(fun() ->
         Mecks = [
-            {elib_tsid, [{'generate', 0, fun() -> 1 end}]},
+            {elib_tsid, [{'generate', 0, fun() -> 1 end}, {'generate', 1, fun(_) -> 1 end}]},
             {imboy_syn, [
                 {'publish', 2, fun(_, _) ->
                     put(pub, true),
@@ -258,7 +258,7 @@ unknown_status_no_atom_no_emit_test_() ->
 awaiting_registers_and_cards_test_() ->
     ?TEST_WITH_DB(fun() ->
         Mecks = [
-            {elib_tsid, [{'generate', 0, fun() -> 1 end}]},
+            {elib_tsid, [{'generate', 0, fun() -> 1 end}, {'generate', 1, fun(_) -> 1 end}]},
             {msg_c2g_logic, [
                 {'c2g', 3, fun(_, _, Data) ->
                     put(c2g, Data),
@@ -307,7 +307,7 @@ awaiting_registers_and_cards_test_() ->
 approve_first_wins_dedup_test_() ->
     ?TEST_WITH_DB(fun() ->
         Mecks = [
-            {elib_tsid, [{'generate', 0, fun() -> 1 end}]},
+            {elib_tsid, [{'generate', 0, fun() -> 1 end}, {'generate', 1, fun(_) -> 1 end}]},
             {msg_c2g_logic, [{'c2g', 3, fun(_, _, _) -> ok end}]},
             {group_ds, [{'member_uids', 1, fun(_) -> [10, 11, 12] end}]}
         ],
@@ -343,7 +343,7 @@ approve_first_wins_dedup_test_() ->
 approve_unauthorized_test_() ->
     ?TEST_WITH_DB(fun() ->
         Mecks = [
-            {elib_tsid, [{'generate', 0, fun() -> 1 end}]},
+            {elib_tsid, [{'generate', 0, fun() -> 1 end}, {'generate', 1, fun(_) -> 1 end}]},
             {msg_c2g_logic, [{'c2g', 3, fun(_, _, _) -> ok end}]},
             {group_ds, [{'member_uids', 1, fun(_) -> [10, 11] end}]}
         ],
@@ -375,7 +375,7 @@ approve_unauthorized_test_() ->
 agent_self_approve_rejected_test_() ->
     ?TEST_WITH_DB(fun() ->
         Mecks = [
-            {elib_tsid, [{'generate', 0, fun() -> 1 end}]},
+            {elib_tsid, [{'generate', 0, fun() -> 1 end}, {'generate', 1, fun(_) -> 1 end}]},
             {msg_c2g_logic, [{'c2g', 3, fun(_, _, _) -> ok end}]},
             %% agent 100 也在成员列表里
             {group_ds, [{'member_uids', 1, fun(_) -> [100, 10] end}]}
@@ -409,7 +409,7 @@ agent_self_approve_rejected_test_() ->
 reject_test_() ->
     ?TEST_WITH_DB(fun() ->
         Mecks = [
-            {elib_tsid, [{'generate', 0, fun() -> 1 end}]},
+            {elib_tsid, [{'generate', 0, fun() -> 1 end}, {'generate', 1, fun(_) -> 1 end}]},
             {msg_c2g_logic, [{'c2g', 3, fun(_, _, _) -> ok end}]},
             {group_ds, [{'member_uids', 1, fun(_) -> [10] end}]}
         ],
@@ -458,7 +458,7 @@ decide_not_found_test_() ->
 decide_error_contained_test_() ->
     ?TEST_WITH_DB(fun() ->
         Mecks = [
-            {elib_tsid, [{'generate', 0, fun() -> 1 end}]},
+            {elib_tsid, [{'generate', 0, fun() -> 1 end}, {'generate', 1, fun(_) -> 1 end}]},
             {msg_c2g_logic, [{'c2g', 3, fun(_, _, _) -> ok end}]},
             {group_ds, [{'member_uids', 1, fun(_) -> erlang:error(db_down) end}]}
         ],

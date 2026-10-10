@@ -243,7 +243,7 @@ logic_mocks(ExecuteReturn) ->
             end}
         ]},
         {elib_tsid, [
-            {'generate', 0, fun() -> 995555555 end}
+            {'generate', 0, fun() -> 995555555 end}, {'generate', 1, fun(_) -> 995555555 end}
         ]},
         {moya_learner_bind_repo, [
             {'operator_role_tx', 3, fun(Conn, Uid, LearnerId) ->

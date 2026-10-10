@@ -274,7 +274,25 @@ namespaces() ->
         enterprise_application_grant,
         enterprise_application_credential,
         enterprise_external_identity,
-        enterprise_oa_sso_code
+        enterprise_oa_sso_code,
+        %% ── Enterprise Business（动态 Kind 补录，W7 全量取证：这些 Kind 经
+        %% eb_*_app:new_id(Kind) 变量传入，W0 字面量扫描未覆盖）──
+        enterprise_asset,
+        enterprise_conversation,
+        enterprise_offboarding_case,
+        enterprise_contact_assignment,
+        enterprise_note,
+        enterprise_retention_hold,
+        enterprise_retention_policy,
+        enterprise_offboarding_item,
+        %% ── Customer Service（动态 Kind 补录，同上）──
+        cs_session,
+        cs_visit_token,
+        cs_shop_key,
+        cs_seat_console,
+        cs_seat_console_public,
+        cs_widget_installation,
+        cs_widget_installation_public
     ].
 
 %% @doc 别名 → canonical 映射：写同一张表的旧标签静态归并到同一游标。
@@ -372,8 +390,10 @@ publish_runtime(CombinedNode, DcBits, CapWait, MaxDrift) ->
             Alias => maps:get(Canonical, CanonicalSlots)
          || Alias := Canonical <- AliasMap
         },
-    Lookup = maps:merge(CanonicalSlots, AliasSlots),
-    Cursors = atomics:new(length(Names) + 1, [{signed, true}]),
+    %% default 占尾槽（仅供测试/脚手架；生产由 registration_guard 禁用）
+    DefaultSlot = length(Names) + 1,
+    Cursors = atomics:new(DefaultSlot, [{signed, true}]),
+    Lookup = maps:merge(maps:merge(CanonicalSlots, AliasSlots), #{default => DefaultSlot}),
     Stats = atomics:new(1, [{signed, true}]),
     %% 时钟安全闸（W4）：1=时钟可用，0=readiness 检出偏差超限（阻断发号）。
     %% readiness/0 低频评估并翻转此闸，生成热路径一次 atomic load 消费——

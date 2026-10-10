@@ -35,7 +35,7 @@
 send_text_delivers_c2c_test_() ->
     ?WITH_MECKS(
         [
-            {elib_tsid, [{'generate', 0, fun() -> 8888 end}]},
+            {elib_tsid, [{'generate', 0, fun() -> 8888 end}, {'generate', 1, fun(_) -> 8888 end}]},
             {elib_retry_config, [{'intervals', 1, fun(<<"c2c">>) -> [0, 3000] end}]},
             {message_ds, [{'send_next', 4, fun(_ToUid, _MsgId, _Json, _MsLi) -> ok end}]},
             ?MSG_STORE_MECK
@@ -80,7 +80,7 @@ send_welcome_template_path_test_() ->
             {ai_agent_ds, [{'is_agent', 1, fun(42) -> {true, #{}} end}]},
             {ai_agent_policy, [{'allows', 2, fun(_, _) -> true end}]},
             {imboy_policy, [{'validate_message_write', 5, fun(_, _, _, _, _) -> ok end}]},
-            {elib_tsid, [{'generate', 0, fun() -> 8888 end}]},
+            {elib_tsid, [{'generate', 0, fun() -> 8888 end}, {'generate', 1, fun(_) -> 8888 end}]},
             {elib_retry_config, [{'intervals', 1, fun(_) -> [0] end}]},
             {message_ds, [{'send_next', 4, fun(_, _, _, _) -> ok end}]},
             {imboy_llm_registry, [{'lookup', 1, fun(_) -> {ok, #{module => x, opts => #{}}} end}]},
@@ -115,7 +115,7 @@ send_welcome_template_default_when_missing_test_() ->
             {ai_agent_ds, [{'is_agent', 1, fun(42) -> {true, #{}} end}]},
             {ai_agent_policy, [{'allows', 2, fun(_, _) -> true end}]},
             {imboy_policy, [{'validate_message_write', 5, fun(_, _, _, _, _) -> ok end}]},
-            {elib_tsid, [{'generate', 0, fun() -> 8888 end}]},
+            {elib_tsid, [{'generate', 0, fun() -> 8888 end}, {'generate', 1, fun(_) -> 8888 end}]},
             {elib_retry_config, [{'intervals', 1, fun(_) -> [0] end}]},
             {message_ds, [{'send_next', 4, fun(_, _, _, _) -> ok end}]},
             ?MSG_STORE_MECK,
@@ -144,7 +144,7 @@ send_welcome_disabled_agent_does_not_deliver_test_() ->
             {ai_agent_ds, [
                 {'is_agent', 1, fun(42) -> false end}
             ]},
-            {elib_tsid, [{'generate', 0, fun() -> 8888 end}]},
+            {elib_tsid, [{'generate', 0, fun() -> 8888 end}, {'generate', 1, fun(_) -> 8888 end}]},
             {elib_retry_config, [{'intervals', 1, fun(_) -> [0] end}]},
             {message_ds, [{'send_next', 4, fun(_, _, _, _) -> ok end}]},
             ?MSG_STORE_MECK
@@ -181,7 +181,7 @@ send_welcome_llm_path_test_() ->
                     {ok, #{<<"result">> => <<"欢迎新朋友！"/utf8>>}}
                 end}
             ]},
-            {elib_tsid, [{'generate', 0, fun() -> 8888 end}]},
+            {elib_tsid, [{'generate', 0, fun() -> 8888 end}, {'generate', 1, fun(_) -> 8888 end}]},
             {elib_retry_config, [{'intervals', 1, fun(_) -> [0] end}]},
             {message_ds, [{'send_next', 4, fun(_, _, _, _) -> ok end}]},
             ?MSG_STORE_MECK
@@ -211,7 +211,7 @@ send_welcome_llm_error_falls_back_to_template_test_() ->
             ]},
             {imboy_llm_openai, [{'chat', 3, fun(_, _, _) -> {error, timeout} end}]},
             {elib_log, [{'internal_log', 5, fun(_, _, _, _, _) -> ok end}]},
-            {elib_tsid, [{'generate', 0, fun() -> 8888 end}]},
+            {elib_tsid, [{'generate', 0, fun() -> 8888 end}, {'generate', 1, fun(_) -> 8888 end}]},
             {elib_retry_config, [{'intervals', 1, fun(_) -> [0] end}]},
             {message_ds, [{'send_next', 4, fun(_, _, _, _) -> ok end}]},
             ?MSG_STORE_MECK
@@ -240,7 +240,7 @@ send_welcome_rate_limited_falls_back_to_template_test_() ->
             {ai_agent_ds, [{'is_agent', 1, fun(42) -> {true, #{}} end}]},
             {ai_agent_policy, [{'allows', 2, fun(_, _) -> true end}]},
             {imboy_policy, [{'validate_message_write', 5, fun(_, _, _, _, _) -> ok end}]},
-            {elib_tsid, [{'generate', 0, fun() -> 8888 end}]},
+            {elib_tsid, [{'generate', 0, fun() -> 8888 end}, {'generate', 1, fun(_) -> 8888 end}]},
             {elib_retry_config, [{'intervals', 1, fun(_) -> [0] end}]},
             {message_ds, [{'send_next', 4, fun(_, _, _, _) -> ok end}]},
             ?MSG_STORE_MECK,
@@ -279,7 +279,7 @@ policy_config_meck(Caps) ->
 send_text_gate_mecks(Caps) ->
     [
         policy_config_meck(Caps),
-        {elib_tsid, [{'generate', 0, fun() -> 8888 end}]},
+        {elib_tsid, [{'generate', 0, fun() -> 8888 end}, {'generate', 1, fun(_) -> 8888 end}]},
         {elib_retry_config, [{'intervals', 1, fun(<<"c2c">>) -> [0, 3000] end}]},
         {message_ds, [{'send_next', 4, fun(_, _, _, _) -> ok end}]},
         ?MSG_STORE_MECK

@@ -263,9 +263,9 @@ maybe_report_absent(_Self, _Other) ->
 
 new_uid() ->
     ok =
-        case elib_tsid:runtime_handle() of
-            error -> elib_tsid:init(#{dc_id => 1, node_id => 1, dc_bits => 3, names => [user]});
-            {ok, _} -> elib_tsid:register(user)
+        case elib_tsid:readiness() of
+            ready -> elib_tsid:register(user);
+            not_initialized -> elib_tsid:init(#{dc_id => 1, node_id => 1, dc_bits => 3})
         end,
     elib_tsid:generate(user).
 

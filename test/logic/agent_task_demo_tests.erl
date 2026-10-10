@@ -31,7 +31,7 @@ run_demo_emits_working_and_awaiting_approval_test_() ->
         [
             {agent_task_observer, capture_emit()},
             %% 隔离 elib_tsid（避免依赖全局 init；对齐同批测试的 mock 惯例）
-            {elib_tsid, [{'generate', 0, fun() -> 7777 end}]}
+            {elib_tsid, [{'generate', 0, fun() -> 7777 end}, {'generate', 1, fun(_) -> 7777 end}]}
         ],
         fun() ->
             AgentUid = 100,
