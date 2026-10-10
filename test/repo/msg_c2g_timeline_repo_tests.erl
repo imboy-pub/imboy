@@ -110,7 +110,9 @@ authorized_pending_count_uses_same_acl_test_() ->
             {elib_pg, [
                 {'query', 2, fun(Sql, Params) ->
                     assert_generation_acl(Sql),
-                    ?assertEqual(nomatch, binary:match(Sql, <<"LIMIT">>)),
+                    %% 顶层分页 LIMIT 必为参数形态（LIMIT $N）；ACL 子查询的
+                    %% LIMIT 1（791b8817 discussion 谓词）不属分页，允许
+                    ?assertEqual(nomatch, binary:match(Sql, <<"LIMIT $">>)),
                     ?assertEqual([42], Params),
                     {ok, [#{<<"count">> => 3}]}
                 end}
@@ -162,7 +164,7 @@ composite_cursor_page_and_count_keep_acl_test_() ->
                             ),
                             {ok, []};
                         [42, At, Id] ->
-                            ?assertEqual(nomatch, binary:match(Sql, <<"LIMIT">>)),
+                            ?assertEqual(nomatch, binary:match(Sql, <<"LIMIT $">>)),
                             {ok, [#{<<"count">> => 3}]}
                     end
                 end}

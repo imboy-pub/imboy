@@ -80,6 +80,15 @@ join_group_subset_body() ->
     end.
 
 %% elib_pg:query/3 mock：按 SQL 前缀返回受控行
+subset_query(<<"LOCK TABLE public.channel", _/binary>>, []) ->
+    {ok, []};
+subset_query(<<"SELECT id FROM public.channel", _/binary>>, _) ->
+    {ok, []};
+subset_query(<<"SELECT id FROM public.\"group\"", _/binary>>, _) ->
+    {ok, []};
+subset_query(<<"SELECT ((NOT EXISTS (SELECT 1 FROM public.channel", _/binary>>, _) ->
+    %% join 的 discussion 访问谓词 → workspace 群放行
+    {ok, [#{<<"allowed">> => true}]};
 subset_query(<<"SELECT workspace_id FROM \"group\"", _/binary>>, [?GID]) ->
     %% workspace 群
     {ok, [#{<<"workspace_id">> => ?WS_ID}]};

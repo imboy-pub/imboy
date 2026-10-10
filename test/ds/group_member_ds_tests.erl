@@ -92,6 +92,20 @@ join_group_success_test_() ->
                 %% （meck 同名 expect 后注册会覆盖前者，多分支须合并为
                 %%  单个多子句 fun）
                 {'query', 3, fun
+                    %% discussion 访问锁（791b8817）：无 discussion 绑定语义 → 放行
+                    (_Conn, <<"LOCK TABLE public.channel", _/binary>>, []) ->
+                        {ok, []};
+                    %% join 成员校验（allowed 谓词）→ 放行
+                    (_Conn, <<"SELECT ((NOT EXISTS (SELECT 1 FROM public.channel", _/binary>>, _) ->
+                        {ok, [#{<<"allowed">> => true}]};
+                    (_Conn, <<"SELECT id FROM public.channel", _/binary>>, _) ->
+                        {ok, []};
+                    (_Conn, <<"SELECT discussion_group_id FROM public.channel", _/binary>>, _) ->
+                        {ok, []};
+                    (_Conn, <<"SELECT id FROM public.\"group\"", _/binary>>, _) ->
+                        {ok, []};
+                    (_Conn, <<"INSERT INTO public.msg_store_seq", _/binary>>, _) ->
+                        {ok, []};
                     (_Conn, <<"SELECT workspace_id FROM \"group\"", _/binary>>, _) ->
                         {ok, []};
                     (_Conn, _Sql, [1]) ->
@@ -137,8 +151,23 @@ join_group_already_member_returns_zero_test_() ->
             ]},
             %% T5：前置 workspace 子集校验的 scope 查询（个人群 → 空行放行）
             {elib_pg, [
-                {'query', 3, fun(_Conn, <<"SELECT workspace_id FROM \"group\"", _/binary>>, _) ->
-                    {ok, []}
+                {'query', 3, fun
+                    %% discussion 访问锁（791b8817）：无 discussion 绑定语义 → 放行
+                    (_Conn, <<"LOCK TABLE public.channel", _/binary>>, []) ->
+                        {ok, []};
+                    %% join 成员校验（allowed 谓词）→ 放行
+                    (_Conn, <<"SELECT ((NOT EXISTS (SELECT 1 FROM public.channel", _/binary>>, _) ->
+                        {ok, [#{<<"allowed">> => true}]};
+                    (_Conn, <<"SELECT id FROM public.channel", _/binary>>, _) ->
+                        {ok, []};
+                    (_Conn, <<"SELECT discussion_group_id FROM public.channel", _/binary>>, _) ->
+                        {ok, []};
+                    (_Conn, <<"SELECT id FROM public.\"group\"", _/binary>>, _) ->
+                        {ok, []};
+                    (_Conn, <<"INSERT INTO public.msg_store_seq", _/binary>>, _) ->
+                        {ok, []};
+                    (_Conn, <<"SELECT workspace_id FROM \"group\"", _/binary>>, _) ->
+                        {ok, []}
                 end}
             ]}
         ],
@@ -172,8 +201,23 @@ leave_success_test_() ->
                     (_Conn, _Sql, [1]) ->
                         {ok, 1}
                 end},
-                {'query', 3, fun(_Conn, _Sql, [1]) ->
-                    {ok, [#{<<"member_count">> => 200}]}
+                {'query', 3, fun
+                    %% discussion 访问锁（791b8817）：无 discussion 绑定语义 → 放行
+                    (_Conn, <<"LOCK TABLE public.channel", _/binary>>, []) ->
+                        {ok, []};
+                    %% join 成员校验（allowed 谓词）→ 放行
+                    (_Conn, <<"SELECT ((NOT EXISTS (SELECT 1 FROM public.channel", _/binary>>, _) ->
+                        {ok, [#{<<"allowed">> => true}]};
+                    (_Conn, <<"SELECT id FROM public.channel", _/binary>>, _) ->
+                        {ok, []};
+                    (_Conn, <<"SELECT discussion_group_id FROM public.channel", _/binary>>, _) ->
+                        {ok, []};
+                    (_Conn, <<"SELECT id FROM public.\"group\"", _/binary>>, _) ->
+                        {ok, []};
+                    (_Conn, <<"INSERT INTO public.msg_store_seq", _/binary>>, _) ->
+                        {ok, []};
+                    (_Conn, _Sql, [1]) ->
+                        {ok, [#{<<"member_count">> => 200}]}
                 end},
                 {'update', 5, fun(_Conn, <<"group">>, Data, <<"id = $1">>, [1]) ->
                     ?assertEqual(200, maps:get(member_count, Data)),
@@ -214,6 +258,13 @@ leave_absent_member_returns_absent_test_() ->
                 end},
                 {'find', 3, fun(_Gid, _Uid, <<"*">>) ->
                     #{}
+                end}
+            ]},
+            {elib_pg, [
+                %% discussion 访问锁（791b8817）：无 discussion 绑定 → 放行
+                {'query', 3, fun
+                    (_Conn, <<"LOCK TABLE public.channel", _/binary>>, []) -> {ok, []};
+                    (_Conn, <<"SELECT id FROM public.channel", _/binary>>, _) -> {ok, []}
                 end}
             ]}
         ],

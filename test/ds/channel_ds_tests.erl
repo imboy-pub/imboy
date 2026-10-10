@@ -18,7 +18,16 @@ subscribe_increments_counter_when_state_changes_test_() ->
             ]},
             writable_guard_mock(),
             {elib_pg, [
-                {'with_tx', 1, fun(Fun) -> Fun(fake_conn) end}
+                {'with_tx', 1, fun(Fun) -> Fun(fake_conn) end},
+                %% discussion 访问锁（791b8817）：无 discussion 绑定语义 → 放行
+                {'query', 3, fun
+                    (fake_conn, <<"LOCK TABLE public.channel", _/binary>>, []) ->
+                        {ok, []};
+                    (fake_conn, <<"SELECT discussion_group_id FROM public.channel", _/binary>>, _) ->
+                        {ok, []};
+                    (fake_conn, <<"LOCK TABLE public.channel", _/binary>>, _) ->
+                        {ok, []}
+                end}
             ]},
             {imboy_cache, [
                 {'flush', 1, fun(Key) ->
@@ -48,7 +57,16 @@ subscribe_is_idempotent_when_already_active_test_() ->
             ]},
             writable_guard_mock(),
             {elib_pg, [
-                {'with_tx', 1, fun(Fun) -> Fun(fake_conn) end}
+                {'with_tx', 1, fun(Fun) -> Fun(fake_conn) end},
+                %% discussion 访问锁（791b8817）：无 discussion 绑定语义 → 放行
+                {'query', 3, fun
+                    (fake_conn, <<"LOCK TABLE public.channel", _/binary>>, []) ->
+                        {ok, []};
+                    (fake_conn, <<"SELECT discussion_group_id FROM public.channel", _/binary>>, _) ->
+                        {ok, []};
+                    (fake_conn, <<"LOCK TABLE public.channel", _/binary>>, _) ->
+                        {ok, []}
+                end}
             ]},
             {imboy_cache, [
                 {'flush', 1, fun(Key) ->
@@ -78,7 +96,16 @@ unsubscribe_decrements_counter_when_state_changes_test_() ->
             ]},
             writable_guard_mock(),
             {elib_pg, [
-                {'with_tx', 1, fun(Fun) -> Fun(fake_conn) end}
+                {'with_tx', 1, fun(Fun) -> Fun(fake_conn) end},
+                %% discussion 访问锁（791b8817）：无 discussion 绑定语义 → 放行
+                {'query', 3, fun
+                    (fake_conn, <<"LOCK TABLE public.channel", _/binary>>, []) ->
+                        {ok, []};
+                    (fake_conn, <<"SELECT discussion_group_id FROM public.channel", _/binary>>, _) ->
+                        {ok, []};
+                    (fake_conn, <<"LOCK TABLE public.channel", _/binary>>, _) ->
+                        {ok, []}
+                end}
             ]},
             {imboy_cache, [
                 {'flush', 1, fun(Key) ->
@@ -108,7 +135,16 @@ unsubscribe_is_idempotent_when_already_inactive_test_() ->
             ]},
             writable_guard_mock(),
             {elib_pg, [
-                {'with_tx', 1, fun(Fun) -> Fun(fake_conn) end}
+                {'with_tx', 1, fun(Fun) -> Fun(fake_conn) end},
+                %% discussion 访问锁（791b8817）：无 discussion 绑定语义 → 放行
+                {'query', 3, fun
+                    (fake_conn, <<"LOCK TABLE public.channel", _/binary>>, []) ->
+                        {ok, []};
+                    (fake_conn, <<"SELECT discussion_group_id FROM public.channel", _/binary>>, _) ->
+                        {ok, []};
+                    (fake_conn, <<"LOCK TABLE public.channel", _/binary>>, _) ->
+                        {ok, []}
+                end}
             ]},
             {imboy_cache, [
                 {'flush', 1, fun(Key) ->
@@ -148,7 +184,14 @@ create_channel_subscribes_creator_in_tx_test_() ->
             ]},
             {elib_pg, [
                 {'with_tx', 1, fun(Fun) -> Fun(fake_conn) end},
-                {'query', 3, fun(fake_conn, _, [100]) -> {ok, []} end}
+                {'query', 3, fun
+                    (fake_conn, <<"LOCK TABLE public.channel", _/binary>>, []) ->
+                        {ok, []};
+                    (fake_conn, <<"SELECT id FROM public.channel", _/binary>>, _) ->
+                        {ok, []};
+                    (fake_conn, _, [100]) ->
+                        {ok, []}
+                end}
             ]}
         ],
         fun() ->
@@ -240,6 +283,12 @@ unsubscribe_returns_error_when_tx_aborts_test_() ->
                     catch
                         throw:{abort_tx, Reason} -> {error, Reason}
                     end
+                end},
+                {'query', 3, fun
+                    (fake_conn, <<"LOCK TABLE public.channel", _/binary>>, []) ->
+                        {ok, []};
+                    (fake_conn, <<"SELECT discussion_group_id FROM public.channel", _/binary>>, _) ->
+                        {ok, []}
                 end}
             ]},
             {imboy_cache, [

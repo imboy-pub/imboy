@@ -205,6 +205,9 @@ websocket_info_timeout_without_ack_resend_test_() ->
     ?WITH_MECKS(
         log_mocks() ++
             [
+                {micro_community_access_logic, [
+                    {'delivery_allowed', 2, fun(_, _) -> true end}
+                ]},
                 {ack_retry_cache, [
                     {'delete_if_value', 2, fun(_Key, _Ref) -> true end},
                     {'get', 1, fun(_Key) -> undefined end}
@@ -315,6 +318,9 @@ websocket_info_timeout_with_invalid_ack_flag_resend_test_() ->
     ?WITH_MECKS(
         log_mocks() ++
             [
+                {micro_community_access_logic, [
+                    {'delivery_allowed', 2, fun(_, _) -> true end}
+                ]},
                 {ack_retry_cache, [
                     {'delete_if_value', 2, fun(_Key, _Ref) -> true end},
                     {'get', 1, fun(_Key) -> {ok, <<"invalid">>} end}
@@ -493,21 +499,29 @@ websocket_handle_binary_ignored_for_json_test_() ->
     end).
 
 websocket_info_reply_map_protobuf_test_() ->
-    ?WITH_MECKS(log_mocks(), fun() ->
-        State = #{protocol => protobuf},
-        %% 使用合法的 IMBoyMessage 格式
-        Msg = #{
-            <<"id">> => <<"msg-test">>,
-            <<"type">> => <<"S2C">>,
-            <<"action">> => <<"test_action">>,
-            <<"server_ts">> => 1700000000
-        },
-        {reply, {binary, Bin}, _State2, hibernate} = websocket_handler:websocket_info(
-            {reply, Msg}, State
-        ),
-        ?assert(is_binary(Bin)),
-        ?assert(byte_size(Bin) > 0)
-    end).
+    ?WITH_MECKS(
+        log_mocks() ++
+            [
+                {micro_community_access_logic, [
+                    {'delivery_allowed', 2, fun(_, _) -> true end}
+                ]}
+            ],
+        fun() ->
+            State = #{protocol => protobuf},
+            %% 使用合法的 IMBoyMessage 格式
+            Msg = #{
+                <<"id">> => <<"msg-test">>,
+                <<"type">> => <<"S2C">>,
+                <<"action">> => <<"test_action">>,
+                <<"server_ts">> => 1700000000
+            },
+            {reply, {binary, Bin}, _State2, hibernate} = websocket_handler:websocket_info(
+                {reply, Msg}, State
+            ),
+            ?assert(is_binary(Bin)),
+            ?assert(byte_size(Bin) > 0)
+        end
+    ).
 
 websocket_info_reply_map_json_test_() ->
     ?WITH_MECKS(log_mocks(), fun() ->
@@ -525,37 +539,53 @@ websocket_info_reply_map_json_test_() ->
 %% ===================================================================
 
 encode_delivery_frame_json_passthrough_test_() ->
-    ?WITH_MECKS(log_mocks(), fun() ->
-        %% JSON 协议：预编码消息直接作为 text frame 透传
-        JsonMsg = jsone:encode(#{<<"id">> => <<"m1">>, <<"type">> => <<"S2C">>}, [native_utf8]),
-        State = #{protocol => json},
-        {reply, {text, Bin}, _, hibernate} = websocket_handler:websocket_info(
-            {reply, JsonMsg}, State
-        ),
-        ?assertEqual(JsonMsg, Bin)
-    end).
+    ?WITH_MECKS(
+        log_mocks() ++
+            [
+                {micro_community_access_logic, [
+                    {'delivery_allowed', 2, fun(_, _) -> true end}
+                ]}
+            ],
+        fun() ->
+            %% JSON 协议：预编码消息直接作为 text frame 透传
+            JsonMsg = jsone:encode(#{<<"id">> => <<"m1">>, <<"type">> => <<"S2C">>}, [native_utf8]),
+            State = #{protocol => json},
+            {reply, {text, Bin}, _, hibernate} = websocket_handler:websocket_info(
+                {reply, JsonMsg}, State
+            ),
+            ?assertEqual(JsonMsg, Bin)
+        end
+    ).
 
 encode_delivery_frame_protobuf_reencode_test_() ->
-    ?WITH_MECKS(log_mocks(), fun() ->
-        %% Protobuf 协议：JSON 预编码消息被 decode -> reencode 为 protobuf binary frame
-        Msg = #{
-            <<"id">> => <<"m2">>,
-            <<"type">> => <<"S2C">>,
-            <<"action">> => <<"pull_offline_msg">>,
-            <<"server_ts">> => 1700000000
-        },
-        JsonMsg = jsone:encode(Msg, [native_utf8]),
-        State = #{protocol => protobuf},
-        {reply, {binary, PbBin}, _, hibernate} = websocket_handler:websocket_info(
-            {reply, JsonMsg}, State
-        ),
-        ?assert(is_binary(PbBin)),
-        ?assert(byte_size(PbBin) > 0),
-        %% 验证 protobuf roundtrip
-        Decoded = imboy_codec:decode(protobuf, PbBin),
-        ?assertEqual(<<"m2">>, maps:get(<<"id">>, Decoded)),
-        ?assertEqual(<<"S2C">>, maps:get(<<"type">>, Decoded))
-    end).
+    ?WITH_MECKS(
+        log_mocks() ++
+            [
+                {micro_community_access_logic, [
+                    {'delivery_allowed', 2, fun(_, _) -> true end}
+                ]}
+            ],
+        fun() ->
+            %% Protobuf 协议：JSON 预编码消息被 decode -> reencode 为 protobuf binary frame
+            Msg = #{
+                <<"id">> => <<"m2">>,
+                <<"type">> => <<"S2C">>,
+                <<"action">> => <<"pull_offline_msg">>,
+                <<"server_ts">> => 1700000000
+            },
+            JsonMsg = jsone:encode(Msg, [native_utf8]),
+            State = #{protocol => protobuf},
+            {reply, {binary, PbBin}, _, hibernate} = websocket_handler:websocket_info(
+                {reply, JsonMsg}, State
+            ),
+            ?assert(is_binary(PbBin)),
+            ?assert(byte_size(PbBin) > 0),
+            %% 验证 protobuf roundtrip
+            Decoded = imboy_codec:decode(protobuf, PbBin),
+            ?assertEqual(<<"m2">>, maps:get(<<"id">>, Decoded)),
+            ?assertEqual(<<"S2C">>, maps:get(<<"type">>, Decoded))
+        end
+    ).
 
 timeout_delivery_protobuf_test_() ->
     ?WITH_MECKS(
@@ -595,6 +625,9 @@ timeout_final_retry_protobuf_test_() ->
     ?WITH_MECKS(
         log_mocks() ++
             [
+                {micro_community_access_logic, [
+                    {'delivery_allowed', 2, fun(_, _) -> true end}
+                ]},
                 {ack_retry_cache, [
                     {'delete_if_value', 2, fun(_Key, ref2) -> true end},
                     {'get', 1, fun(_Key) -> undefined end}

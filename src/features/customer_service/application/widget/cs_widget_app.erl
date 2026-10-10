@@ -245,15 +245,20 @@ update_installation(OrgId, Params) when is_map(Params) ->
 update_installation(_OrgId, _Params) ->
     {error, {invalid_argument, update_installation}}.
 
+<<<<<<< Updated upstream
 update_installation_origins(
     OrgId, WorkspaceId, Id, At, DisplayName, ConsentVersion, Branding, Params
 ) ->
+=======
+update_installation_origins(OrgId, WorkspaceId, Id, At, DisplayName, ConsentVersion, Branding, Params) ->
+>>>>>>> Stashed changes
     case normalize_origins(maps:get(allowed_origins, Params, undefined), []) of
         {error, _} = Err ->
             Err;
         {ok, []} ->
             {error, {invalid_argument, allowed_origins}};
         {ok, AllowedOrigins} ->
+<<<<<<< Updated upstream
             update_installation_in(
                 OrgId,
                 WorkspaceId,
@@ -267,6 +272,14 @@ update_installation_origins(
                 },
                 Params
             )
+=======
+            update_installation_in(OrgId, WorkspaceId, Id, At, #{
+                display_name => DisplayName,
+                allowed_origins => AllowedOrigins,
+                branding => cs_widget:branding_view(Branding),
+                consent_version => ConsentVersion
+            }, Params)
+>>>>>>> Stashed changes
     end.
 
 update_installation_in(OrgId, WorkspaceId, Id, At, Updates, Params) ->

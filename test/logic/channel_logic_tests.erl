@@ -3288,7 +3288,9 @@ remove_subscriber_admin_success_updates_counter_test_() ->
             {'delete', 3, fun(fake_conn, 11, 2002) -> {ok, 1} end}
         ]},
         {channel_ds, [
-            {'increment_subscribers', 3, fun(fake_conn, 11, -1) -> {ok, 1} end}
+            {'increment_subscribers', 3, fun(fake_conn, 11, -1) -> {ok, 1} end},
+            {'lock_discussion_tx', 2, fun(_Conn, _Cid) -> 11 end},
+            {'revoke_discussion_tx', 3, fun(_Conn, _Cid, _Uid) -> ok end}
         ]},
         {imboy_cache, [
             {'flush', 1, fun(Key) ->
@@ -3338,7 +3340,9 @@ remove_subscriber_is_idempotent_when_target_already_inactive_test_() ->
         {channel_ds, [
             {'increment_subscribers', 3, fun(_, _, _) ->
                 erlang:error(should_not_increment_subscribers)
-            end}
+            end},
+            {'lock_discussion_tx', 2, fun(_Conn, _Cid) -> 11 end},
+            {'revoke_discussion_tx', 3, fun(_Conn, _Cid, _Uid) -> ok end}
         ]},
         {imboy_cache, [
             {'flush', 1, fun(Key) ->
@@ -3392,7 +3396,9 @@ remove_subscriber_tx_error_returns_failure_test_() ->
         {channel_ds, [
             {'increment_subscribers', 3, fun(_, _, _) ->
                 erlang:error(should_not_increment_subscribers)
-            end}
+            end},
+            {'lock_discussion_tx', 2, fun(_Conn, _Cid) -> 11 end},
+            {'revoke_discussion_tx', 3, fun(_Conn, _Cid, _Uid) -> ok end}
         ]},
         {imboy_cache, [
             {'flush', 1, fun(_Key) -> ok end}

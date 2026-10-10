@@ -459,6 +459,7 @@ update_widget_installation(OrgId, Params) when is_integer(OrgId), is_map(Params)
 update_widget_installation(OrgId, _Params) ->
     {error, {invalid_argument, {organization_id, OrgId}}}.
 
+<<<<<<< Updated upstream
 %% ===================================================================
 %% seat console 嵌入管理（seat-console-embed SC-BE）
 %% ===================================================================
@@ -521,6 +522,8 @@ seat_console_frame_html(_OrgId, Params) when is_map(Params) ->
 seat_console_frame_html(OrgId, _Params) ->
     {error, {invalid_argument, {organization_id, OrgId}}}.
 
+=======
+>>>>>>> Stashed changes
 %% ===================================================================
 %% widget（CSB-02）：参数收敛只做形状判定；服务端派生事实（contact /
 %% conversation / workspace / identity / 时钟 / HMAC key）由 application 从

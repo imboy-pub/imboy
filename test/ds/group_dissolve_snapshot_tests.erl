@@ -51,7 +51,17 @@ dissolve_recipients_from_tx_snapshot_test_() ->
             ]},
             {elib_pg, [
                 {'with_tx', 1, fun(Fun) -> Fun(self()) end},
-                {'execute', 3, fun(_Conn, _Sql, _Params) -> {ok, 1} end}
+                {'execute', 3, fun(_Conn, _Sql, _Params) -> {ok, 1} end},
+                %% discussion 访问锁（791b8817）：无 discussion 绑定语义 → 放行
+                {'query', 3, fun
+                    (Conn, <<"LOCK TABLE public.channel", _/binary>>, []) ->
+                        ?assertEqual(self(), Conn),
+                        {ok, []};
+                    (_Conn, <<"SELECT id FROM public.channel", _/binary>>, _) ->
+                        {ok, []};
+                    (_Conn, <<"SELECT id FROM public.\"group\"", _/binary>>, _) ->
+                        {ok, []}
+                end}
             ]},
             {imboy_cache, [
                 {'flush', 1, fun(_Key) -> ok end}
@@ -101,7 +111,17 @@ dissolve_empty_group_recipients_test_() ->
             ]},
             {elib_pg, [
                 {'with_tx', 1, fun(Fun) -> Fun(self()) end},
-                {'execute', 3, fun(_Conn, _Sql, _Params) -> {ok, 1} end}
+                {'execute', 3, fun(_Conn, _Sql, _Params) -> {ok, 1} end},
+                %% discussion 访问锁（791b8817）：无 discussion 绑定语义 → 放行
+                {'query', 3, fun
+                    (Conn, <<"LOCK TABLE public.channel", _/binary>>, []) ->
+                        ?assertEqual(self(), Conn),
+                        {ok, []};
+                    (_Conn, <<"SELECT id FROM public.channel", _/binary>>, _) ->
+                        {ok, []};
+                    (_Conn, <<"SELECT id FROM public.\"group\"", _/binary>>, _) ->
+                        {ok, []}
+                end}
             ]},
             {imboy_cache, [
                 {'flush', 1, fun(_Key) -> ok end}

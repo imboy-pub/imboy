@@ -229,30 +229,38 @@ v2_msg_c2s_client_ack_bypasses_throttle() ->
 %% ===================================================================
 
 v2_downstream_s2c_wraps_msg_s2c_frame() ->
-    ?WITH_MECKS(log_mocks(), fun() ->
-        State = #{
-            protocol => protobuf,
-            framing => v2,
-            did => <<"did_down">>,
-            current_uid => 1
-        },
-        Msg = #{
-            <<"id">> => <<"mid-s2c-1">>,
-            <<"type">> => <<"S2C">>,
-            <<"action">> => <<"pull_offline_msg">>,
-            <<"server_ts">> => 1700000000
-        },
-        {reply, {binary, Bin}, _, hibernate} =
-            websocket_handler:websocket_info({reply, Msg}, State),
-        ?assert(is_binary(Bin)),
-        ?assert(byte_size(Bin) > 9),
-        {ok, Frame} = imboy_codec:unwrap_v2_frame(Bin),
-        ?assertEqual(?FRAME_TYPE_MSG_S2C, imboy_frame:type(Frame)),
-        %% 负载可反序列化回 protobuf map
-        Decoded = imboy_codec:decode(protobuf, imboy_frame:payload(Frame)),
-        ?assertEqual(<<"mid-s2c-1">>, maps:get(<<"id">>, Decoded)),
-        ?assertEqual(<<"S2C">>, maps:get(<<"type">>, Decoded))
-    end).
+    ?WITH_MECKS(
+        log_mocks() ++
+            [
+                {micro_community_access_logic, [
+                    {'delivery_allowed', 2, fun(_, _) -> true end}
+                ]}
+            ],
+        fun() ->
+            State = #{
+                protocol => protobuf,
+                framing => v2,
+                did => <<"did_down">>,
+                current_uid => 1
+            },
+            Msg = #{
+                <<"id">> => <<"mid-s2c-1">>,
+                <<"type">> => <<"S2C">>,
+                <<"action">> => <<"pull_offline_msg">>,
+                <<"server_ts">> => 1700000000
+            },
+            {reply, {binary, Bin}, _, hibernate} =
+                websocket_handler:websocket_info({reply, Msg}, State),
+            ?assert(is_binary(Bin)),
+            ?assert(byte_size(Bin) > 9),
+            {ok, Frame} = imboy_codec:unwrap_v2_frame(Bin),
+            ?assertEqual(?FRAME_TYPE_MSG_S2C, imboy_frame:type(Frame)),
+            %% 负载可反序列化回 protobuf map
+            Decoded = imboy_codec:decode(protobuf, imboy_frame:payload(Frame)),
+            ?assertEqual(<<"mid-s2c-1">>, maps:get(<<"id">>, Decoded)),
+            ?assertEqual(<<"S2C">>, maps:get(<<"type">>, Decoded))
+        end
+    ).
 
 %% ===================================================================
 %% 6. v2 垃圾 payload（3 字节随机）返回协议 ERROR 帧且不 crash

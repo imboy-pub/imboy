@@ -113,7 +113,9 @@ find_filters_inactive_members_test_() ->
             ]},
             {elib_pg, [
                 {'one', 2, fun(Sql, [1, 2]) ->
-                    ?assertNotEqual(nomatch, binary:match(Sql, <<"AND status = 1">>)),
+                    %% 生产 SQL 为带表前缀的 gm.status = 1（discussion ACL 谓词
+                    %% 注入后，status 条件从裸 AND status = 1 改为列限定形态）
+                    ?assertNotEqual(nomatch, binary:match(Sql, <<"gm.status = 1">>)),
                     {ok, #{<<"id">> => 3}}
                 end}
             ]}

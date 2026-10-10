@@ -433,6 +433,25 @@ c2g_stage_commits_authorized_snapshot_and_role_test_() ->
             {elib_pg, [
                 {'with_tx', 1, fun(Tx) -> Tx(fake_conn) end},
                 {'query', 3, fun
+                    %% discussion 访问锁（791b8817）：无 discussion 绑定语义 → 放行
+                    (_, <<"LOCK TABLE public.channel", _/binary>>, []) ->
+                        {ok, []};
+                    (_, <<"SELECT id FROM public.channel", _/binary>>, _) ->
+                        {ok, []};
+                    (_, <<"SELECT discussion_group_id FROM public.channel", _/binary>>, _) ->
+                        {ok, []};
+                    (_, <<"SELECT id FROM public.\"group\"", _/binary>>, _) ->
+                        {ok, []};
+                    (_, <<"INSERT INTO public.msg_store_seq", _/binary>>, _) ->
+                        {ok, []};
+                    (_, <<"SELECT id FROM public.channel", _/binary>>, _) ->
+                        {ok, []};
+                    (_, <<"SELECT discussion_group_id FROM public.channel", _/binary>>, _) ->
+                        {ok, []};
+                    (_, <<"SELECT id FROM public.\"group\"", _/binary>>, _) ->
+                        {ok, []};
+                    (_, <<"INSERT INTO public.msg_store_seq", _/binary>>, _) ->
+                        {ok, []};
                     (_, Sql, [100, 50, 3, 5001]) ->
                         ?assertNotEqual(nomatch, binary:match(Sql, <<"caller.role >= $3">>)),
                         ?assertNotEqual(nomatch, binary:match(Sql, <<"caller.status = 1">>)),
@@ -549,6 +568,27 @@ c2g_stage_sequence_failures_are_rolled_back_test_() ->
                     catch
                         throw:{rollback, Reason} -> {rollback, Reason}
                     end
+                end},
+                {'query', 3, fun
+                    %% discussion 访问锁（791b8817）：无 discussion 绑定语义 → 放行
+                    (_, <<"LOCK TABLE public.channel", _/binary>>, []) ->
+                        {ok, []};
+                    (_, <<"SELECT id FROM public.channel", _/binary>>, _) ->
+                        {ok, []};
+                    (_, <<"SELECT discussion_group_id FROM public.channel", _/binary>>, _) ->
+                        {ok, []};
+                    (_, <<"SELECT id FROM public.\"group\"", _/binary>>, _) ->
+                        {ok, []};
+                    (_, <<"INSERT INTO public.msg_store_seq", _/binary>>, _) ->
+                        {ok, []};
+                    (_, <<"SELECT id FROM public.channel", _/binary>>, _) ->
+                        {ok, []};
+                    (_, <<"SELECT discussion_group_id FROM public.channel", _/binary>>, _) ->
+                        {ok, []};
+                    (_, <<"SELECT id FROM public.\"group\"", _/binary>>, _) ->
+                        {ok, []};
+                    (_, <<"INSERT INTO public.msg_store_seq", _/binary>>, _) ->
+                        {ok, []}
                 end}
             ]}
         ],
@@ -693,6 +733,25 @@ c2g_stage_attachment_bind_error_rolls_back_test_() ->
                     end
                 end},
                 {'query', 3, fun
+                    %% discussion 访问锁（791b8817）：无 discussion 绑定语义 → 放行
+                    (_, <<"LOCK TABLE public.channel", _/binary>>, []) ->
+                        {ok, []};
+                    (_, <<"SELECT id FROM public.channel", _/binary>>, _) ->
+                        {ok, []};
+                    (_, <<"SELECT discussion_group_id FROM public.channel", _/binary>>, _) ->
+                        {ok, []};
+                    (_, <<"SELECT id FROM public.\"group\"", _/binary>>, _) ->
+                        {ok, []};
+                    (_, <<"INSERT INTO public.msg_store_seq", _/binary>>, _) ->
+                        {ok, []};
+                    (_, <<"SELECT id FROM public.channel", _/binary>>, _) ->
+                        {ok, []};
+                    (_, <<"SELECT discussion_group_id FROM public.channel", _/binary>>, _) ->
+                        {ok, []};
+                    (_, <<"SELECT id FROM public.\"group\"", _/binary>>, _) ->
+                        {ok, []};
+                    (_, <<"INSERT INTO public.msg_store_seq", _/binary>>, _) ->
+                        {ok, []};
                     (_, _, [100, 50, 1, 5001]) ->
                         {ok, [#{<<"user_id">> => 50}, #{<<"user_id">> => 60}]};
                     (
@@ -763,6 +822,36 @@ c2g_stage_duplicate_does_not_bind_attachment_test_() ->
                     end
                 end},
                 {'query', 3, fun
+                    %% discussion 访问锁（791b8817）：无 discussion 绑定语义 → 放行
+                    (_, <<"LOCK TABLE public.channel", _/binary>>, []) ->
+                        {ok, []};
+                    (_, <<"SELECT id FROM public.channel", _/binary>>, _) ->
+                        {ok, []};
+                    (_, <<"SELECT discussion_group_id FROM public.channel", _/binary>>, _) ->
+                        {ok, []};
+                    (_, <<"SELECT id FROM public.\"group\"", _/binary>>, _) ->
+                        {ok, []};
+                    (_, <<"INSERT INTO public.msg_store_seq", _/binary>>, _) ->
+                        {ok, []};
+                    %% discussion 访问锁（791b8817）：无 discussion 绑定语义 → 放行
+                    (_, <<"LOCK TABLE public.channel", _/binary>>, []) ->
+                        {ok, []};
+                    (_, <<"SELECT id FROM public.channel", _/binary>>, _) ->
+                        {ok, []};
+                    (_, <<"SELECT discussion_group_id FROM public.channel", _/binary>>, _) ->
+                        {ok, []};
+                    (_, <<"SELECT id FROM public.\"group\"", _/binary>>, _) ->
+                        {ok, []};
+                    (_, <<"INSERT INTO public.msg_store_seq", _/binary>>, _) ->
+                        {ok, []};
+                    (_, <<"SELECT id FROM public.channel", _/binary>>, _) ->
+                        {ok, []};
+                    (_, <<"SELECT discussion_group_id FROM public.channel", _/binary>>, _) ->
+                        {ok, []};
+                    (_, <<"SELECT id FROM public.\"group\"", _/binary>>, _) ->
+                        {ok, []};
+                    (_, <<"INSERT INTO public.msg_store_seq", _/binary>>, _) ->
+                        {ok, []};
                     (_, _, [100, 50, 1, 5001]) ->
                         {ok, [#{<<"user_id">> => 50}]};
                     (
@@ -828,7 +917,8 @@ c2g_stage_duplicate_does_not_bind_attachment_test_() ->
                     1
                 )
             ),
-            ?assertEqual(3, meck:num_calls(elib_pg, query, 3))
+            %% +2：discussion 访问锁（791b8817）新增 LOCK TABLE 与 channel FOR UPDATE 两次查询
+            ?assertEqual(5, meck:num_calls(elib_pg, query, 3))
         end
     ).
 
@@ -854,6 +944,25 @@ c2g_stage_rejects_msg_id_owned_by_another_sender_test_() ->
                     end
                 end},
                 {'query', 3, fun
+                    %% discussion 访问锁（791b8817）：无 discussion 绑定语义 → 放行
+                    (_, <<"LOCK TABLE public.channel", _/binary>>, []) ->
+                        {ok, []};
+                    (_, <<"SELECT id FROM public.channel", _/binary>>, _) ->
+                        {ok, []};
+                    (_, <<"SELECT discussion_group_id FROM public.channel", _/binary>>, _) ->
+                        {ok, []};
+                    (_, <<"SELECT id FROM public.\"group\"", _/binary>>, _) ->
+                        {ok, []};
+                    (_, <<"INSERT INTO public.msg_store_seq", _/binary>>, _) ->
+                        {ok, []};
+                    (_, <<"SELECT id FROM public.channel", _/binary>>, _) ->
+                        {ok, []};
+                    (_, <<"SELECT discussion_group_id FROM public.channel", _/binary>>, _) ->
+                        {ok, []};
+                    (_, <<"SELECT id FROM public.\"group\"", _/binary>>, _) ->
+                        {ok, []};
+                    (_, <<"INSERT INTO public.msg_store_seq", _/binary>>, _) ->
+                        {ok, []};
                     (_, _, [100, 50, 1, 5001]) ->
                         {ok, [#{<<"user_id">> => 50}]};
                     (
@@ -912,6 +1021,25 @@ c2g_stage_5000_recipients_commits_test_() ->
             {elib_pg, [
                 {'with_tx', 1, fun(Tx) -> Tx(fake_conn) end},
                 {'query', 3, fun
+                    %% discussion 访问锁（791b8817）：无 discussion 绑定语义 → 放行
+                    (_, <<"LOCK TABLE public.channel", _/binary>>, []) ->
+                        {ok, []};
+                    (_, <<"SELECT id FROM public.channel", _/binary>>, _) ->
+                        {ok, []};
+                    (_, <<"SELECT discussion_group_id FROM public.channel", _/binary>>, _) ->
+                        {ok, []};
+                    (_, <<"SELECT id FROM public.\"group\"", _/binary>>, _) ->
+                        {ok, []};
+                    (_, <<"INSERT INTO public.msg_store_seq", _/binary>>, _) ->
+                        {ok, []};
+                    (_, <<"SELECT id FROM public.channel", _/binary>>, _) ->
+                        {ok, []};
+                    (_, <<"SELECT discussion_group_id FROM public.channel", _/binary>>, _) ->
+                        {ok, []};
+                    (_, <<"SELECT id FROM public.\"group\"", _/binary>>, _) ->
+                        {ok, []};
+                    (_, <<"INSERT INTO public.msg_store_seq", _/binary>>, _) ->
+                        {ok, []};
                     (_, _, [100, 50, 1, 5001]) ->
                         {ok, [#{<<"user_id">> => Uid} || Uid <- RecipientUids]};
                     (
@@ -976,8 +1104,20 @@ c2g_stage_5001_recipients_rolls_back_test_() ->
                         throw:{rollback, Reason} -> {rollback, Reason}
                     end
                 end},
-                {'query', 3, fun(_, _, [100, 50, 1, 5001]) ->
-                    {ok, [#{<<"user_id">> => Uid} || Uid <- lists:seq(1, 5001)]}
+                {'query', 3, fun
+                    %% discussion 访问锁（791b8817）：无 discussion 绑定语义 → 放行
+                    (_, <<"LOCK TABLE public.channel", _/binary>>, []) ->
+                        {ok, []};
+                    (_, <<"SELECT id FROM public.channel", _/binary>>, _) ->
+                        {ok, []};
+                    (_, <<"SELECT discussion_group_id FROM public.channel", _/binary>>, _) ->
+                        {ok, []};
+                    (_, <<"SELECT id FROM public.\"group\"", _/binary>>, _) ->
+                        {ok, []};
+                    (_, <<"INSERT INTO public.msg_store_seq", _/binary>>, _) ->
+                        {ok, []};
+                    (_, _, [100, 50, 1, 5001]) ->
+                        {ok, [#{<<"user_id">> => Uid} || Uid <- lists:seq(1, 5001)]}
                 end}
             ]}
         ],
@@ -1026,7 +1166,21 @@ c2g_stage_snapshot_error_rolls_back_test_() ->
                         throw:{rollback, Reason} -> {rollback, Reason}
                     end
                 end},
-                {'query', 3, fun(_, _, [100, 50, 1, 5001]) -> {error, connection_lost} end}
+                {'query', 3, fun
+                    %% discussion 访问锁（791b8817）：无 discussion 绑定语义 → 放行
+                    (_, <<"LOCK TABLE public.channel", _/binary>>, []) ->
+                        {ok, []};
+                    (_, <<"SELECT id FROM public.channel", _/binary>>, _) ->
+                        {ok, []};
+                    (_, <<"SELECT discussion_group_id FROM public.channel", _/binary>>, _) ->
+                        {ok, []};
+                    (_, <<"SELECT id FROM public.\"group\"", _/binary>>, _) ->
+                        {ok, []};
+                    (_, <<"INSERT INTO public.msg_store_seq", _/binary>>, _) ->
+                        {ok, []};
+                    (_, _, [100, 50, 1, 5001]) ->
+                        {error, connection_lost}
+                end}
             ]}
         ],
         fun() ->
@@ -1077,6 +1231,36 @@ c2g_action_stage_uses_original_snapshot_and_generation_test_() ->
             {elib_pg, [
                 {'with_tx', 1, fun(Tx) -> Tx(fake_conn) end},
                 {'query', 3, fun
+                    %% discussion 访问锁（791b8817）：无 discussion 绑定语义 → 放行
+                    (_, <<"LOCK TABLE public.channel", _/binary>>, []) ->
+                        {ok, []};
+                    (_, <<"SELECT id FROM public.channel", _/binary>>, _) ->
+                        {ok, []};
+                    (_, <<"SELECT discussion_group_id FROM public.channel", _/binary>>, _) ->
+                        {ok, []};
+                    (_, <<"SELECT id FROM public.\"group\"", _/binary>>, _) ->
+                        {ok, []};
+                    (_, <<"INSERT INTO public.msg_store_seq", _/binary>>, _) ->
+                        {ok, []};
+                    %% discussion 访问锁（791b8817）：无 discussion 绑定语义 → 放行
+                    (_, <<"LOCK TABLE public.channel", _/binary>>, []) ->
+                        {ok, []};
+                    (_, <<"SELECT id FROM public.channel", _/binary>>, _) ->
+                        {ok, []};
+                    (_, <<"SELECT discussion_group_id FROM public.channel", _/binary>>, _) ->
+                        {ok, []};
+                    (_, <<"SELECT id FROM public.\"group\"", _/binary>>, _) ->
+                        {ok, []};
+                    (_, <<"INSERT INTO public.msg_store_seq", _/binary>>, _) ->
+                        {ok, []};
+                    (_, <<"SELECT id FROM public.channel", _/binary>>, _) ->
+                        {ok, []};
+                    (_, <<"SELECT discussion_group_id FROM public.channel", _/binary>>, _) ->
+                        {ok, []};
+                    (_, <<"SELECT id FROM public.\"group\"", _/binary>>, _) ->
+                        {ok, []};
+                    (_, <<"INSERT INTO public.msg_store_seq", _/binary>>, _) ->
+                        {ok, []};
                     (_, Sql, [100, 50, 1, <<"original-msg">>, 5001]) ->
                         ?assertNotEqual(
                             nomatch, binary:match(Sql, <<"msg_c2g_recipient_snapshot">>)
@@ -1129,7 +1313,8 @@ c2g_action_stage_uses_original_snapshot_and_generation_test_() ->
                     <<"original-msg">>
                 )
             ),
-            ?assertEqual(4, meck:num_calls(elib_pg, query, 3))
+            %% +2：discussion 访问锁（791b8817）新增 LOCK TABLE 与 channel FOR UPDATE 两次查询
+            ?assertEqual(6, meck:num_calls(elib_pg, query, 3))
         end
     ).
 
@@ -1159,6 +1344,25 @@ c2g_action_stage_snapshot_primary_key_is_durable_idempotency_test_() ->
                     end
                 end},
                 {'query', 3, fun
+                    %% discussion 访问锁（791b8817）：无 discussion 绑定语义 → 放行
+                    (_, <<"LOCK TABLE public.channel", _/binary>>, []) ->
+                        {ok, []};
+                    (_, <<"SELECT id FROM public.channel", _/binary>>, _) ->
+                        {ok, []};
+                    (_, <<"SELECT discussion_group_id FROM public.channel", _/binary>>, _) ->
+                        {ok, []};
+                    (_, <<"SELECT id FROM public.\"group\"", _/binary>>, _) ->
+                        {ok, []};
+                    (_, <<"INSERT INTO public.msg_store_seq", _/binary>>, _) ->
+                        {ok, []};
+                    (_, <<"SELECT id FROM public.channel", _/binary>>, _) ->
+                        {ok, []};
+                    (_, <<"SELECT discussion_group_id FROM public.channel", _/binary>>, _) ->
+                        {ok, []};
+                    (_, <<"SELECT id FROM public.\"group\"", _/binary>>, _) ->
+                        {ok, []};
+                    (_, <<"INSERT INTO public.msg_store_seq", _/binary>>, _) ->
+                        {ok, []};
                     (_, _, [100, 50, 1, <<"original-msg">>, 5001]) ->
                         {ok, [#{<<"user_id">> => 50}, #{<<"user_id">> => 60}]};
                     (
@@ -1251,8 +1455,20 @@ c2g_action_stage_rejects_invisible_original_test_() ->
                         throw:{rollback, Reason} -> {rollback, Reason}
                     end
                 end},
-                {'query', 3, fun(_, _, [100, 50, 1, <<"old-generation-msg">>, 5001]) ->
-                    {ok, []}
+                {'query', 3, fun
+                    %% discussion 访问锁（791b8817）：无 discussion 绑定语义 → 放行
+                    (_, <<"LOCK TABLE public.channel", _/binary>>, []) ->
+                        {ok, []};
+                    (_, <<"SELECT id FROM public.channel", _/binary>>, _) ->
+                        {ok, []};
+                    (_, <<"SELECT discussion_group_id FROM public.channel", _/binary>>, _) ->
+                        {ok, []};
+                    (_, <<"SELECT id FROM public.\"group\"", _/binary>>, _) ->
+                        {ok, []};
+                    (_, <<"INSERT INTO public.msg_store_seq", _/binary>>, _) ->
+                        {ok, []};
+                    (_, _, [100, 50, 1, <<"old-generation-msg">>, 5001]) ->
+                        {ok, []}
                 end}
             ]}
         ],

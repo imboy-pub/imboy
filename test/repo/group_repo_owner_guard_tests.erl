@@ -17,6 +17,16 @@ verify_guard(AffectedRows) ->
             ?assertMatch([200, _, 1, 100], Params),
             {ok, AffectedRows}
         end),
+        %% discussion 访问锁（791b8817）：无 discussion 绑定语义 → 放行
+        meck:expect(elib_pg, query, fun
+            (Conn, <<"LOCK TABLE public.channel", _/binary>>, []) ->
+                ?assertEqual(self(), Conn),
+                {ok, []};
+            (Conn, <<"SELECT id FROM public.channel", _/binary>>, _) ->
+                {ok, []};
+            (Conn, <<"SELECT id FROM public.\"group\"", _/binary>>, _) ->
+                {ok, []}
+        end),
         Result = group_repo:update_owner_tx(self(), 1, 200, 100),
         case AffectedRows of
             1 -> ?assertEqual(ok, Result);
