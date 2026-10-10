@@ -161,13 +161,15 @@ revoke(_, _) ->
 
 %% @doc 读取本组织当前 active 邀请码；无 active 码 → {error, not_found}
 %% （handler 映射为 code => null 的成功信封）。
+%% 读面（APP-M02 邀请同事）：任意 active 成员可读码去分享（成员邀同事
+%% 人人可用）；建码/轮换（create）与撤销（revoke）仍走治理门。
 -spec get(integer(), integer()) ->
     {ok, map()} | {error, not_found | {integer(), binary()}}.
 get(ActorUid, OrgId) when
     is_integer(ActorUid), ActorUid > 0, is_integer(OrgId), OrgId > 0
 ->
     Tx = fun(Conn) ->
-        ok = ensure_governance_tx(Conn, OrgId, ActorUid, reject_archived),
+        ok = ensure_member_tx(Conn, OrgId, ActorUid, reject_archived),
         organization_invite_code_pg:find_active_by_org_tx(Conn, OrgId)
     end,
     case elib_pg:with_tx(Tx) of
@@ -434,6 +436,41 @@ ensure_governance_tx(Conn, OrgId, ActorUid, ArchivedPolicy) ->
             abort(403, <<"仅组织 Owner 或 Admin 可管理邀请码"/utf8>>);
         {error, not_found} ->
             abort(403, <<"仅组织 Owner 或 Admin 可管理邀请码"/utf8>>);
+        {error, Reason2} ->
+            throw({abort_tx, {internal, {actor_member_lookup, Reason2}}})
+    end.
+
+%% 成员门（invite_code 读面 get 专用；镜像 ensure_governance_tx 的锁序：
+%% 组织行 FOR SHARE 先、成员行 FOR SHARE 后；任意 active 成员放行）。
+%% ArchivedPolicy 语义同 ensure_governance_tx（get 用 reject_archived）。
+-spec ensure_member_tx(any(), integer(), integer(), reject_archived | allow_archived) ->
+    ok.
+ensure_member_tx(Conn, OrgId, ActorUid, ArchivedPolicy) ->
+    case
+        organization_member_repo:find_organization_for_share_tx(
+            Conn, OrgId, <<"id,owner_id,status">>
+        )
+    of
+        {ok, #{<<"status">> := <<"active">>}} ->
+            ok;
+        {ok, _NotWritable} when ArchivedPolicy =:= allow_archived ->
+            ok;
+        {ok, #{<<"status">> := <<"pending">>}} ->
+            abort(409, <<"Organization 待审核，审核通过后才能使用邀请码"/utf8>>);
+        {ok, #{<<"status">> := <<"rejected">>}} ->
+            abort(409, <<"Organization 未通过审核，不能使用邀请码"/utf8>>);
+        {ok, _Archived} ->
+            abort(409, <<"Organization 已归档，不能使用邀请码"/utf8>>);
+        {error, not_found} ->
+            abort(404, <<"Organization 不存在"/utf8>>);
+        {error, Reason} ->
+            throw({abort_tx, {internal, {organization_lookup, Reason}}})
+    end,
+    case organization_member_repo:find_active_for_share_tx(Conn, OrgId, ActorUid, <<"role">>) of
+        {ok, _} ->
+            ok;
+        {error, not_found} ->
+            abort(403, <<"仅组织成员可查看邀请码"/utf8>>);
         {error, Reason2} ->
             throw({abort_tx, {internal, {actor_member_lookup, Reason2}}})
     end.

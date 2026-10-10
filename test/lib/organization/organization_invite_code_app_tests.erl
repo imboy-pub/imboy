@@ -1,7 +1,8 @@
 -module(organization_invite_code_app_tests).
 
 %% GZAPP-01 Invite Code 命令（application 层）测试：
-%% 治理门（owner/admin）、archived 409、跨 Org 码 981（不泄露存在性）、
+%% 治理门（create/revoke：owner/admin）、读门（get：任意 active 成员，
+%% APP-M02 邀请同事）、archived 409、跨 Org 码 981（不泄露存在性）、
 %% 过期 982、幂等、code 冲突重试与 join 编排接线。
 %% SQL 真实行为由一次性 PG 上的 organization_invite_code_behavior_harness.escript 覆盖。
 
@@ -383,6 +384,21 @@ get_test_() ->
                 set_role(?OWNER, <<"admin">>),
                 {ok, View} = organization_invite_code_app:get(?OWNER, ?ORG_ID),
                 ?assertEqual(<<"ABCD2345">>, maps:get(code, View))
+            end)
+        end},
+        {"普通 member 读码放行（APP-M02 邀请同事：读面人人可用）", fun() ->
+            with_mocks([], fun() ->
+                set_role(?MEMBER, <<"member">>),
+                {ok, View} = organization_invite_code_app:get(?MEMBER, ?ORG_ID),
+                ?assertEqual(<<"ABCD2345">>, maps:get(code, View))
+            end)
+        end},
+        {"非成员读码 403（读门仍要求 active 成员）", fun() ->
+            with_mocks([], fun() ->
+                ?assertMatch(
+                    {error, {403, _}},
+                    organization_invite_code_app:get(?MEMBER, ?ORG_ID)
+                )
             end)
         end},
         {"无 active 码 → not_found（handler 映射 code=null 成功信封）", fun() ->

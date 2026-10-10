@@ -32,6 +32,16 @@
     "       extract(epoch from updated_at)::bigint AS updated_at"
 ).
 
+%% list_for_org_tx 专用：邀请表别名 it（LEFT JOIN "user" 富化列时消歧义），
+%% 结果键与 ?ROW_COLS 单表行一致。
+-define(ORG_ROW_COLS,
+    "it.id, it.organization_id, it.target_user_id, it.invited_by, it.token_digest, it.status,"
+    "       extract(epoch from it.expires_at)::bigint AS expires_at,"
+    "       extract(epoch from it.responded_at)::bigint AS responded_at,"
+    "       extract(epoch from it.created_at)::bigint AS created_at,"
+    "       extract(epoch from it.updated_at)::bigint AS updated_at"
+).
+
 %% @doc 锁组织行（锁序与既有治理写一致：组织行先、成员/邀请行后）。
 -spec lock_organization_tx(any(), integer()) -> {ok, map()} | {error, not_found | term()}.
 lock_organization_tx(Conn, OrgId) ->
@@ -199,16 +209,27 @@ list_for_target_tx(Conn, TargetUid, Status, Limit) ->
     Params = [TargetUid] ++ StatusParams ++ [Limit],
     elib_pg:query(Conn, Sql, Params).
 
-%% @doc Org 治理视角邀请列表（铁律 6：同语句 Org 作用域）。
+%% @doc Org 视角邀请列表（铁律 6：同语句 Org 作用域）。LEFT JOIN "user"
+%% 富化目标用户昵称/账号/头像与邀请人昵称（APP-M02「可能的同事」展示面；
+%% 不含手机号/邮箱，U-02 隐私口径）。列别名保持与 ?ROW_COLS 单表行同键。
 -spec list_for_org_tx(any(), integer(), atom() | undefined, pos_integer()) ->
     {ok, [map()]} | {error, term()}.
 list_for_org_tx(Conn, OrgId, Status, Limit) ->
     {StatusCond, StatusParams} = status_cond(Status, 2),
     Sql = iolist_to_binary([
-        <<"SELECT ", ?ROW_COLS, " FROM ", (invitation_table())/binary,
-            " WHERE organization_id = $1">>,
+        <<"SELECT ", ?ORG_ROW_COLS,
+            ", "
+            "tu.nickname AS target_nickname, tu.account AS target_account, "
+            "tu.avatar AS target_avatar, iu.nickname AS inviter_name"
+            " FROM ", (invitation_table())/binary,
+            " it"
+            " LEFT JOIN ", (user_table())/binary,
+            " tu ON tu.id = it.target_user_id"
+            " LEFT JOIN ", (user_table())/binary,
+            " iu ON iu.id = it.invited_by"
+            " WHERE it.organization_id = $1">>,
         StatusCond,
-        <<" ORDER BY id DESC LIMIT $", (integer_to_binary(length(StatusParams) + 2))/binary>>
+        <<" ORDER BY it.id DESC LIMIT $", (integer_to_binary(length(StatusParams) + 2))/binary>>
     ]),
     Params = [OrgId] ++ StatusParams ++ [Limit],
     elib_pg:query(Conn, Sql, Params).

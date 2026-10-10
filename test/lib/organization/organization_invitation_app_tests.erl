@@ -780,14 +780,56 @@ list_test_() ->
                 end
             )
         end},
-        {"org 列表要求治理成员", fun() ->
+        {"org 列表放行任意 active 成员（APP-M02 可能的同事：读面人人可用）", fun() ->
             with_mocks([], fun() ->
                 set_member(?OWNER, <<"member">>, <<"active">>),
                 ?assertMatch(
-                    {error, {403, _}},
+                    {ok, []},
                     organization_invitation_app:list_for_org(?OWNER, ?ORG_ID, #{})
                 )
             end)
+        end},
+        {"org 列表对非成员 403", fun() ->
+            with_mocks([], fun() ->
+                ?assertMatch(
+                    {error, {403, _}},
+                    organization_invitation_app:list_for_org(?STRANGER, ?ORG_ID, #{})
+                )
+            end)
+        end},
+        {"org 列表视图富化：target 昵称/账号/头像与邀请人昵称，digest 永不出现", fun() ->
+            with_mocks(
+                [
+                    {list_for_org_tx, 4, fun(fake_conn, _OrgId, _Status, _Limit) ->
+                        {ok, [
+                            base_row(),
+                            (base_row())#{
+                                <<"target_nickname">> => null,
+                                <<"target_account">> => <<>>,
+                                <<"target_avatar">> => <<"https://cdn/a.png">>,
+                                <<"inviter_name">> => <<"李源炳"/utf8>>
+                            }
+                        ]}
+                    end}
+                ],
+                fun() ->
+                    set_member(?OWNER, <<"admin">>, <<"active">>),
+                    {ok, [V1, V2]} = organization_invitation_app:list_for_org(
+                        ?OWNER, ?ORG_ID, #{status => pending}
+                    ),
+                    %% 两行都不得泄露 digest
+                    ?assertEqual(false, is_map_key(token_digest, V1)),
+                    ?assertEqual(false, is_map_key(token_digest, V2)),
+                    %% JOIN 列缺失（null/空串）不出键
+                    ?assertEqual(false, is_map_key(<<"target_nickname">>, V1)),
+                    ?assertEqual(false, is_map_key(<<"target_account">>, V2)),
+                    %% 有效富化值透传
+                    ?assertEqual(
+                        <<"https://cdn/a.png">>, maps:get(<<"target_avatar">>, V2)
+                    ),
+                    ?assertEqual(<<"李源炳"/utf8>>, maps:get(<<"inviter_name">>, V2))
+                end
+            )
         end}
     ].
 

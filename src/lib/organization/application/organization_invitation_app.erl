@@ -427,7 +427,7 @@ list_for_org(ActorUid, OrgId, Opts) when
     Tx = fun(Conn) -> list_org_tx(Conn, ActorUid, OrgId, Status, Limit) end,
     case elib_pg:with_tx(Tx) of
         {ok, Rows} ->
-            {ok, [view(Row) || Row <- Rows]};
+            {ok, [org_view(Row) || Row <- Rows]};
         {error, {Code, Msg}} when is_integer(Code), is_binary(Msg) ->
             {error, {Code, Msg}};
         {error, Reason} ->
@@ -444,13 +444,13 @@ list_org_tx(Conn, ActorUid, OrgId, Status, Limit) ->
         {error, not_found} -> abort(404, <<"Organization 不存在"/utf8>>);
         {error, Reason1} -> throw({abort_tx, {internal, Reason1}})
     end,
+    %% APP-M02 邀请同事：读面（可能的同事）放宽到任意 active 成员；
+    %% 写命令（create/accept/reject/revoke）的治理门不受影响。
     case organization_invitation_pg:member_tx(Conn, OrgId, ActorUid) of
-        {ok, #{<<"status">> := <<"active">>, <<"role">> := Role}} when
-            Role =:= <<"owner">>; Role =:= <<"admin">>
-        ->
+        {ok, #{<<"status">> := <<"active">>}} ->
             ok;
         _ ->
-            abort(403, <<"仅组织 Owner 或 Admin 可查看邀请列表"/utf8>>)
+            abort(403, <<"仅组织成员可查看邀请列表"/utf8>>)
     end,
     organization_invitation_pg:list_for_org_tx(Conn, OrgId, Status, Limit).
 
@@ -506,6 +506,26 @@ view(Row) ->
         ),
         created_at => maps:get(<<"created_at">>, Row, maps:get(created_at, Row, undefined))
     }.
+
+%% @doc Org 视角视图（APP-M02「可能的同事」面）：在 view/1 契约之上附加
+%% 目标用户昵称/账号/头像与邀请人昵称（list_for_org_tx LEFT JOIN "user"
+%% 富化列）。JOIN 列缺失（旧调用方/单表行）时不出键，target 视角仍走
+%% view/1 原契约；不含手机号/邮箱（U-02 隐私口径：目录不外泄联系方式）。
+-spec org_view(map()) -> map().
+org_view(Row) ->
+    Put = fun(Key, Acc) ->
+        case maps:find(Key, Row) of
+            {ok, Value} when Value =/= null, Value =/= undefined, Value =/= <<>> ->
+                Acc#{Key => Value};
+            _ ->
+                Acc
+        end
+    end,
+    lists:foldl(
+        Put,
+        view(Row),
+        [<<"target_nickname">>, <<"target_account">>, <<"target_avatar">>, <<"inviter_name">>]
+    ).
 
 -spec abort(integer(), binary()) -> no_return().
 abort(Code, Msg) ->
