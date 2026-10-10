@@ -70,6 +70,12 @@ scenario_list(A, B, C) ->
         {"TTL remaining not reset", fun() -> s_ttl(A, B) end},
         {"restart recovers version ceiling", fun() -> s_restart(A, C) end},
         {"overload protection rejects new replicate", fun() -> s_overload(A) end}
+        %% W4-03 快照回填：实现已在 imboy_cache_sync（send_snapshot/
+        %% snapshot_request/done 链路），端到端场景 s_snapshot/3 保留于
+        %% 下方但未纳入通过集——端到端验证未闭合（恢复节点未观察到
+        %% 快照事件应用，根因待查），不冒充通过。重新启用：
+        %% {"snapshot backfills lost replicas after restart",
+        %%  fun() -> s_snapshot(A, B, C) end}
     ].
 
 run_one(Name, Fun) ->
@@ -211,6 +217,35 @@ s_restart(A, C) ->
         false ->
             erlang:error(
                 {version_ceiling_regressed, C1, C2, rpc:call(C, ?MODULE, dump_debug, [], 5000)}
+            )
+    end.
+
+%% W4-03/04：C 重启丢失 replicate 数据后，经快照回填恢复；恢复期间
+%% peer 的新写入（delta）也不丢失。
+s_snapshot(A, B, C) ->
+    K1 = {cache_v2_test_rep, d_snap1},
+    K2 = {cache_v2_test_rep, d_snap2},
+    ok = rpc:call(A, imboy_cache, put, [K1, snap_v1, 300, replicate], ?RPC_MS),
+    ok = rpc:call(B, imboy_cache, put, [K2, snap_v2, 300, replicate], ?RPC_MS),
+    %% 两键在 C 上先收敛可见
+    {ok, snap_v1} = converge_get(C, K1, {ok, snap_v1}),
+    {ok, snap_v2} = converge_get(C, K2, {ok, snap_v2}),
+    %% C 重启：内存副本全丢
+    ok = rpc:call(C, ?MODULE, restart_sync, [], ?RPC_MS),
+    undefined = rpc:call(C, imboy_cache, get, [K1], 5000),
+    %% C 恢复完成（discover→version→snapshot→ready）
+    ready = wait_status(C, 300),
+    %% 快照回填：K1/K2 在 C 上重新可见（原版本，TTL 未重置）
+    case converge_get_quiet(C, K1, {ok, snap_v1}, 8000) of
+        {ok, snap_v1} ->
+            {ok, snap_v2} = converge_get(C, K2, {ok, snap_v2}),
+            ok;
+        _Other ->
+            %% 诊断：C 与 A 的元数据状态
+            erlang:error(
+                {snapshot_not_backfilled, {c_get, _Other},
+                    {c_debug, rpc:call(C, ?MODULE, dump_debug, [], 5000)},
+                    {a_rindex, rpc:call(A, ?MODULE, rindex_dump, [], 5000)}}
             )
     end.
 
@@ -371,20 +406,58 @@ inject_v2_set(Key, Value, Rev, OriginNode) ->
     _ = imboy_cache_sync:broadcast(Event),
     ok.
 
+%% 模拟真实节点重启：sync 与 depcache 实例一并重启（内存副本全丢，
+%% 含版本元数据），新 BootId；随后恢复流程 discover→version→snapshot。
 restart_sync() ->
     ok = gen_server:stop(imboy_cache_sync, normal, 10000),
+    case whereis(imboy_cache) of
+        undefined ->
+            ok;
+        DepP ->
+            Ref = monitor(process, DepP),
+            exit(DepP, kill),
+            receive
+                {'DOWN', Ref, process, DepP, _} -> ok
+            after 5000 -> erlang:error(depcache_kill_timeout)
+            end
+    end,
     ok = retry_start(30).
 
 retry_start(0) ->
     {error, cannot_restart};
 retry_start(N) ->
-    case imboy_cache_sync:start_link() of
-        {ok, P} ->
-            true = unlink(P),
+    DepOk =
+        case whereis(imboy_cache) of
+            undefined ->
+                case depcache:start_link(imboy_cache, #{memory_max => 64}) of
+                    {ok, D} ->
+                        true = unlink(D),
+                        true;
+                    _ ->
+                        false
+                end;
+            _ ->
+                true
+        end,
+    SyncOk =
+        case whereis(imboy_cache_sync) of
+            undefined ->
+                case imboy_cache_sync:start_link() of
+                    {ok, P} ->
+                        true = unlink(P),
+                        true;
+                    {error, {already_started, _}} ->
+                        true;
+                    _ ->
+                        false
+                end;
+            _ ->
+                true
+        end,
+    case DepOk andalso SyncOk of
+        true ->
             ok;
-        {error, {already_started, _}} ->
-            ok;
-        _ ->
+        false ->
             timer:sleep(100),
             retry_start(N - 1)
     end.
@@ -404,6 +477,28 @@ overload_probe() ->
 drain_sync_mailbox() ->
     pong = gen_server:call(imboy_cache_sync, ping_ok, 60000),
     ok.
+
+rindex_dump() ->
+    [K || [K] <- ets:match(imboy_cache_meta, '{{rindex, \'$1\'}, \'_\'}')].
+
+converge_get_quiet(Node, Key, Expected, TimeoutMs) ->
+    Deadline = erlang:monotonic_time(millisecond) + TimeoutMs,
+    converge_quiet_loop(Node, Key, Expected, Deadline).
+
+converge_quiet_loop(Node, Key, Expected, Deadline) ->
+    V = rpc:call(Node, imboy_cache, get, [Key], 5000),
+    case V of
+        Expected ->
+            Expected;
+        _ ->
+            case erlang:monotonic_time(millisecond) >= Deadline of
+                true ->
+                    V;
+                false ->
+                    timer:sleep(?POLL_MS),
+                    converge_quiet_loop(Node, Key, Expected, Deadline)
+            end
+    end.
 
 dump_debug() ->
     #{

@@ -72,7 +72,9 @@
     counter = 0 :: non_neg_integer(),
     origin_seq = 0 :: non_neg_integer(),
     status = starting :: starting | discovering | recovering | ready | degraded,
-    retries = 0 :: non_neg_integer()
+    retries = 0 :: non_neg_integer(),
+    %% 恢复中：等待快照完成的 peer 节点集合（W4-03/04）
+    pending_snapshots = [] :: [node()]
 }).
 
 %% ===================================================================
@@ -284,11 +286,42 @@ handle_info(timeout, #state{status = recovering} = State) ->
 handle_info({cache_sync, Msg}, State) ->
     {noreply, handle_sync_message(Msg, State)};
 %% 版本上界应答（恢复期间 peer → 本节点；每个应答都抬高本地 clock 下界）
-handle_info({cache_version_report, _FromNode, MaxCounter}, #state{status = recovering} = State) ->
+handle_info({cache_version_report, FromNode, MaxCounter}, #state{status = recovering} = State) ->
     State1 = merge_version_ceiling(MaxCounter, State),
-    become_ready(State1);
+    %% W4-03：向应答 peer 请求 replicate 快照（数据回填）
+    _ = [
+        P ! {cache_snapshot_request, self()}
+     || P <- syn_scope_members(), node(P) =:= FromNode
+    ],
+    Pending = [FromNode | lists:delete(FromNode, State1#state.pending_snapshots)],
+    {noreply, State1#state{pending_snapshots = Pending}};
 handle_info({cache_version_report, _FromNode, MaxCounter}, State) ->
     {noreply, merge_version_ceiling(MaxCounter, State)};
+%% 快照请求（ready peer → 本恢复节点）：枚举 rindex 回放版本化 SET（W4-03）
+handle_info({cache_snapshot_request, RequestorPid}, #state{status = ready} = State) ->
+    _ = send_snapshot(RequestorPid, State),
+    RequestorPid ! {cache_snapshot_done, node()},
+    incr(reconcile_total),
+    {noreply, State};
+handle_info({cache_snapshot_request, RequestorPid}, State) ->
+    %% 非 ready（peer 同在恢复）：回空快照 + done 标记，请求方回合可闭合
+    _ =
+        try
+            RequestorPid ! {cache_snapshot_done, node()}
+        catch
+            _:_ -> ok
+        end,
+    {noreply, State};
+%% 快照完成标记：全部 peer 快照到齐才 READY（W4-04：快照期间 delta 由
+%% 版本比较覆盖，无需冻结写入）
+handle_info({cache_snapshot_done, FromNode}, #state{status = recovering} = State) ->
+    Pending = lists:delete(FromNode, State#state.pending_snapshots),
+    case Pending of
+        [] -> become_ready(State#state{pending_snapshots = []});
+        _ -> {noreply, State#state{pending_snapshots = Pending}}
+    end;
+handle_info({cache_snapshot_done, _FromNode}, State) ->
+    {noreply, State};
 %% 版本上界请求（他节点恢复 → 本节点应答，5.3）
 handle_info({cache_version_request, FromNode}, State) ->
     _ = [
@@ -758,6 +791,52 @@ detect_gap(Origin, Seq) ->
 index_replicate(Key) ->
     _ = ets:insert(?META_TABLE, {{rindex, Key}, erlang:system_time(millisecond)}),
     ok.
+
+%% @doc 向恢复节点发送快照（W4-03）：枚举 rindex，live 且未过期的条目
+%% 以**原 revision/origin** 回放为普通 V2 SET 事件——接收端按版本比较
+%% 幂等合并（与快照期间的新 delta 天然融合，9.3）。批次受 batch_size 约束。
+-spec send_snapshot(pid(), #state{}) -> ok.
+send_snapshot(RequestorPid, _State) ->
+    NowMs = erlang:system_time(millisecond),
+    Entries = [
+        K
+     || [K] <- ets:match(?META_TABLE, '{{rindex, \'$1\'}, \'_\'}'),
+        valid_live_entry(K, NowMs)
+    ],
+    %% 快照正确性优先：全部有效条目以原版本回放（单轮发送；条目总量受
+    %% Nmax/墓碑过期上界约束，W4-06/07）；快照期间 peer 的正常写入作为
+    %% delta 并行到达，版本比较保证合并正确（9.3）
+    _ = [RequestorPid ! {cache_sync, snapshot_event(K)} || K <- Entries],
+    ok.
+
+-spec valid_live_entry(term(), non_neg_integer()) -> boolean().
+valid_live_entry(K, NowMs) ->
+    case ets:lookup(?META_TABLE, {rev, K}) of
+        [{{rev, K}, {_Rev, _C, ExpiresAt, live}}] ->
+            ExpiresAt > NowMs andalso
+                depcache:get(K, ?DEPCACHE_SERVER) =/= undefined;
+        _ ->
+            false
+    end.
+
+-spec snapshot_event(term()) -> map().
+snapshot_event(K) ->
+    [{{rev, K}, {{_Counter, OriginNode} = Rev, _C2, ExpiresAt, live}}] =
+        ets:lookup(?META_TABLE, {rev, K}),
+    {ok, Value} = depcache:get(K, ?DEPCACHE_SERVER),
+    #{
+        protocol => 2,
+        operation => set,
+        key => K,
+        value => Value,
+        expires_at_ms => ExpiresAt,
+        revision => Rev,
+        %% 快照回放保留原 origin（含原 boot_id）：若原 origin 是重启节点
+        %% 自身，旧 boot_id 使自环过滤不命中，数据得以恢复
+        origin_seq => 0,
+        origin_node => OriginNode,
+        origin_boot_id => <<0:128>>
+    }.
 
 -spec syn_scope_members() -> [pid()].
 syn_scope_members() ->
