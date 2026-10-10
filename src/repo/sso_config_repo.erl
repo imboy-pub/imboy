@@ -30,7 +30,7 @@ select_all() ->
 -spec upsert(binary(), boolean(), binary()) -> {ok, [map()]} | {error, term()}.
 upsert(Provider, Enabled, ConfigJson) ->
     Tb = tablename(),
-    Id = elib_tsid:generate(),
+    Id = elib_tsid:generate(sso_config),
     Sql =
         <<"INSERT INTO ", Tb/binary,
             " (id, provider, enabled, config, created_at, updated_at)"

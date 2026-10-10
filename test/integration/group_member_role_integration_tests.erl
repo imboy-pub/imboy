@@ -210,7 +210,7 @@ get_context() ->
     persistent_term:get({?MODULE, test_context}).
 
 create_test_user(Nickname) ->
-    Uid = elib_tsid:generate(),
+    Uid = elib_tsid:generate(user),
     %% 后缀用 uid 本身：phash2(Uid, 1e9) 在共享库多轮累计下会撞
     %% account/email 唯一索引（23505）
     Suffix = integer_to_binary(Uid),

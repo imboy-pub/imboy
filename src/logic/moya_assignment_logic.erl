@@ -271,7 +271,7 @@ create_in_tx(Conn, Uid, AssignmentId, IdemKey, Digest, LearnerId, Assets) ->
     {ok, NextAttempt} = moya_submission_repo:next_attempt_tx(Conn, AssignmentId),
     case
         moya_submission_repo:create_idempotent_tx(Conn, #{
-            id => elib_tsid:generate(),
+            id => elib_tsid:generate(moya_submission),
             assignment_id => AssignmentId,
             learner_id => LearnerId,
             uid => Uid,

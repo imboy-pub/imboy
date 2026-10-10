@@ -303,8 +303,8 @@ setup_base(Conn) ->
         Conn, <<"SELECT id FROM \"user\" ORDER BY id ASC LIMIT 3">>
     ),
     [OwnerUid, MemberUid, GuestUid] = [Uid || {Uid} <- Rows],
-    WsId = elib_tsid:generate(),
-    ProjectId = elib_tsid:generate(),
+    WsId = elib_tsid:generate(workspace),
+    ProjectId = elib_tsid:generate(project),
     {ok, 1} = epgsql:equery(
         Conn,
         <<"INSERT INTO workspace (id, name, owner_id, status, created_at)",

@@ -26,6 +26,30 @@ all_generate_call_sites_registered_test() ->
         ]),
     ?assertEqual([], Unregistered).
 
+%% V10：生产代码禁止无参 generate()（default 仅供测试/脚手架）——
+%% 无显式 namespace 的发号在多游标语义下无法归属实体，禁止回归。
+no_argumentless_generate_in_src_test() ->
+    Offenders = scan_argumentless_generate(),
+    ?assertEqual([], Offenders).
+
+%% @private 扫描 src/**/*.erl 中的 elib_tsid:generate() （无参）调用
+scan_argumentless_generate() ->
+    Files = find_erl_files(?SRC_DIR),
+    lists:append([
+        begin
+            {ok, Bin} = file:read_file(F),
+            case binary:match(Bin, <<"elib_tsid:generate()">>) of
+                nomatch -> [];
+                {Pos, _} -> [{F, line_of(Bin, Pos)}]
+            end
+        end
+     || F <- Files
+    ]).
+
+line_of(Bin, Pos) ->
+    Head = binary:part(Bin, 0, Pos),
+    1 + length(binary:matches(Head, <<10>>)).
+
 %% @doc 返回注册清单（含 default + 别名；V10 静态清单，init 前可直读）
 -spec registered_names() -> [atom()].
 registered_names() ->

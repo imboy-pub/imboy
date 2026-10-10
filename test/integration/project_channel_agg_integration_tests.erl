@@ -297,7 +297,7 @@ insert_msg(Conn, ChannelId, AuthorId, Content, MsgType, Pinned) ->
     insert_msg(Conn, ChannelId, AuthorId, Content, MsgType, Pinned, 0).
 
 insert_msg(Conn, ChannelId, AuthorId, Content, MsgType, Pinned, Seq) ->
-    Id = elib_tsid:generate(),
+    Id = elib_tsid:generate(channel_message),
     {ok, 1} = epgsql:equery(
         Conn,
         <<"INSERT INTO channel_message",

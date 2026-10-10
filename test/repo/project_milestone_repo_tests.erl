@@ -162,8 +162,8 @@ setup_project(Conn) ->
     {ok, _, [{OwnerUid}]} = epgsql:equery(
         Conn, <<"SELECT id FROM \"user\" ORDER BY id ASC LIMIT 1">>
     ),
-    WsId = elib_tsid:generate(),
-    ProjectId = elib_tsid:generate(),
+    WsId = elib_tsid:generate(workspace),
+    ProjectId = elib_tsid:generate(project),
     {ok, 1} = epgsql:equery(
         Conn,
         <<"INSERT INTO workspace (id, name, owner_id, status, created_at)",

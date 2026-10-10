@@ -56,7 +56,7 @@ get_context() ->
 
 test_via_c2g_logic_survives_pipeline() ->
     #{owner := Owner, gid := Gid} = get_context(),
-    MsgId = integer_to_binary(elib_tsid:generate()),
+    MsgId = integer_to_binary(elib_tsid:generate(msg_c2g)),
     E2EE = #{
         <<"ciphertext">> => <<"Z3JvdXBfZW5jcnlwdGVkX2NpcGhlcnRleHQ">>,
         <<"iv">> => <<"MTIzNDU2Nzg5MDEy">>,
@@ -84,7 +84,7 @@ test_via_c2g_logic_survives_pipeline() ->
 
 test_raw_stage_multi_recipient_survives_pipeline() ->
     #{owner := Owner, member := Member, gid := Gid} = get_context(),
-    MsgId = integer_to_binary(elib_tsid:generate()),
+    MsgId = integer_to_binary(elib_tsid:generate(msg_c2g)),
     E2EE = #{
         <<"ciphertext">> => <<"14bVkXq8ZpQ2mR7sT9uWaBcDeFgHiJkLmNoPqRsTuVwXyZ">>,
         <<"iv">> => <<"OTg3NjU0MzIxMDk4">>,
@@ -172,7 +172,7 @@ wait_for_archive_seq(MsgId, AttemptsLeft) ->
     end.
 
 create_test_user(Nickname) ->
-    Uid = elib_tsid:generate(),
+    Uid = elib_tsid:generate(user),
     %% 后缀用 uid 本身：phash2(Uid, 1e9) 在共享库多轮累计下会撞
     %% account/email 唯一索引（23505）
     Suffix = integer_to_binary(Uid),

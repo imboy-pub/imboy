@@ -69,7 +69,7 @@ upsert_draft_tx(Conn, SubmissionId, #{uid := Uid} = Fields) ->
                     Conn,
                     Sql,
                     [
-                        elib_tsid:generate(),
+                        elib_tsid:generate(teacher_review),
                         SubmissionId,
                         Uid
                         | field_values(Fields)
@@ -456,7 +456,7 @@ insert_review_assets(Conn, ReviewId, Uid, Assets) ->
     Results =
         [
             elib_pg:execute(Conn, Sql, [
-                elib_tsid:generate(), ReviewId, AttId, Kind, Order, Uid
+                elib_tsid:generate(review_asset), ReviewId, AttId, Kind, Order, Uid
             ])
          || {AttId, Kind, Order} <- Assets
         ],

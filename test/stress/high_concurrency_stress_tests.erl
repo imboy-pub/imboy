@@ -113,7 +113,7 @@ test_high_concurrency_messages() ->
             spawn(fun() ->
                 Results = lists:map(
                     fun(N) ->
-                        MsgId = integer_to_binary(elib_tsid:generate()),
+                        MsgId = integer_to_binary(elib_tsid:generate(msg_c2c)),
                         % 使用 setup 中明确建立过的环状好友关系，避免把非好友流量混进成功率统计
                         FriendId = next_ring_friend(UserId, UserIds),
                         MsgData = #{
@@ -272,7 +272,7 @@ do_burst_messages() ->
     Pids = lists:map(
         fun(N) ->
             spawn(fun() ->
-                MsgId = integer_to_binary(elib_tsid:generate()),
+                MsgId = integer_to_binary(elib_tsid:generate(msg_c2c)),
                 MsgData = #{
                     %% N 必须经 integer_to_binary（ASCII 数字）：原
                     %% <<N/integer, ...>> 把 128..255 的 N 当单字节拼进
@@ -352,7 +352,7 @@ sustain_send_loop(User1, User2, StartTime, DurationMs, Stats) ->
         true ->
             Stats;
         false ->
-            MsgId = integer_to_binary(elib_tsid:generate()),
+            MsgId = integer_to_binary(elib_tsid:generate(msg_c2c)),
             MsgData = #{
                 <<"payload">> => <<"持续测试"/utf8>>,
                 <<"msg_type">> => <<"text">>,
@@ -409,7 +409,7 @@ ensure_friends(User1, User2) ->
     ok.
 
 create_test_user(Nickname) ->
-    Uid = elib_tsid:generate(),
+    Uid = elib_tsid:generate(user),
     %% 后缀/mobile 用 uid 本身：phash2(Uid, 1e9) 碰撞域太小，共享库多轮
     %% 累计下会撞 account/mobile 唯一索引（23505，CI-00 run13 同款）；
     %% mobile 完整 TSID 拼接 20 位 < varchar(40)。

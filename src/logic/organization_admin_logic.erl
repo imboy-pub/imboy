@@ -1273,7 +1273,7 @@ admin_invitation_create(AdmUserId, OrgId, TargetUid, ExpiresAt, AuditCtx) when
             %% 4) 插入；pending 唯一冲突 → 409；23503（校验后并发删号）→ 404
             Token = organization_invitation:new_token(),
             FinalRow = #{
-                id => elib_tsid:generate(),
+                id => elib_tsid:generate(organization_invitation),
                 organization_id => OrgId,
                 target_user_id => TargetUid,
                 invited_by => null,

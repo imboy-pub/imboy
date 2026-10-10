@@ -62,7 +62,7 @@ test_raw_ciphertext_payload_survives_pipeline() ->
     User1 = maps:get(user1, Context),
     User2 = maps:get(user2, Context),
 
-    MsgId = integer_to_binary(elib_tsid:generate()),
+    MsgId = integer_to_binary(elib_tsid:generate(msg_c2c)),
     Cipher = <<"14bVkXq8ZpQ2mR7sT9uWaBcDeFgHiJkLmNoPqRsTuVwXyZ0123456789AB+/==">>,
     E2EE = #{
         <<"ciphertext">> => Cipher,
@@ -101,7 +101,7 @@ test_via_c2c_logic_survives_pipeline() ->
     User2 = maps:get(user2, Context),
     ok = ensure_friends(User1, User2),
 
-    MsgId = integer_to_binary(elib_tsid:generate()),
+    MsgId = integer_to_binary(elib_tsid:generate(msg_c2c)),
     E2EE = #{
         <<"ciphertext">> => <<"bE8vQ0NXUmt2QUpvV1RPeU9OZz09">>,
         <<"iv">> => <<"OTg3NjU0MzIxMDk4">>,
@@ -135,7 +135,7 @@ test_pfv3_fanout_survives_pipeline_and_wire() ->
     User2 = maps:get(user2, Context),
     ok = ensure_friends(User1, User2),
 
-    MsgId = integer_to_binary(elib_tsid:generate()),
+    MsgId = integer_to_binary(elib_tsid:generate(msg_c2c)),
     %% chat_network_service.dart buildOlmFanOutPayload 的实际产出形状
     E2EE = #{
         <<"meta_version">> => 3,
@@ -206,7 +206,7 @@ test_sender_did_survives_pipeline_to_offline_envelope() ->
     User1 = maps:get(user1, Context),
     User2 = maps:get(user2, Context),
 
-    MsgId = integer_to_binary(elib_tsid:generate()),
+    MsgId = integer_to_binary(elib_tsid:generate(msg_c2c)),
     SenderDid = <<"dev-a2a-sender-01">>,
     E2EE = #{
         <<"meta_version">> => 3,
@@ -303,7 +303,7 @@ wait_for_final_row(MsgId, AttemptsLeft) ->
     end.
 
 create_test_user(Nickname) ->
-    Uid = elib_tsid:generate(),
+    Uid = elib_tsid:generate(user),
     %% 后缀用 uid 本身：phash2(Uid, 1e9) 在共享库多轮累计下会撞
     %% account/email 唯一索引（23505）
     Suffix = integer_to_binary(Uid),

@@ -176,7 +176,7 @@ test_large_group_broadcast() ->
     MessageCount = 10,
     BroadcastTimes = lists:map(
         fun(N) ->
-            MsgId = integer_to_binary(elib_tsid:generate()),
+            MsgId = integer_to_binary(elib_tsid:generate(msg_c2g)),
             MsgData = #{
                 <<"payload">> => <<N/integer, "群广播测试"/utf8>>,
                 <<"msg_type">> => <<"text">>,
@@ -279,7 +279,7 @@ get_context() ->
     persistent_term:get({?MODULE, test_context}).
 
 create_test_user(Nickname) ->
-    Uid = elib_tsid:generate(),
+    Uid = elib_tsid:generate(user),
     %% 后缀用 uid 本身：phash2(Uid, 1e9) 在共享库多轮累计下会撞
     %% account/email 唯一索引（23505）
     Suffix = integer_to_binary(Uid),
@@ -298,7 +298,7 @@ create_test_user(Nickname) ->
     {ok, Uid}.
 
 create_test_group(OwnerId, Name) ->
-    Gid = elib_tsid:generate(),
+    Gid = elib_tsid:generate(group_info),
     Group = #{
         <<"gid">> => Gid,
         <<"owner_uid">> => OwnerId,

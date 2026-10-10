@@ -145,7 +145,7 @@ insert_assets_tx(Conn, SubmissionId, Uid, Assets) ->
     Results =
         [
             elib_pg:execute(Conn, Sql, [
-                elib_tsid:generate(), SubmissionId, AttId, Kind, Order, Uid
+                elib_tsid:generate(submission_asset), SubmissionId, AttId, Kind, Order, Uid
             ])
          || {AttId, Kind, Order} <- Assets
         ],
@@ -258,7 +258,7 @@ enqueue_ai_draft_tx(Conn, SubmissionId) ->
             " (id, submission_id, status, model_profile, prompt_version, rubric_version) "
             "VALUES ($1, $2, 'queued', '', '', '') "
             "ON CONFLICT DO NOTHING">>,
-    case elib_pg:execute(Conn, Sql, [elib_tsid:generate(), SubmissionId]) of
+    case elib_pg:execute(Conn, Sql, [elib_tsid:generate(calligraphy_review_draft), SubmissionId]) of
         {ok, _} ->
             ok;
         {error, {pgsql_error, #{code := <<"23505">>}}} ->

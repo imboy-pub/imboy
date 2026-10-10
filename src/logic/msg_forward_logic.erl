@@ -192,8 +192,6 @@ validate_forward_permission(Msg, CurrentUid) ->
 -spec create_forward_message(map(), binary(), binary(), integer(), integer(), binary()) ->
     {ok, binary()} | {error, term()}.
 create_forward_message(OriginalMsg, OriginalType, OriginalMsgId, CurrentUid, ToId, ToType) ->
-    % 生成新的消息ID
-    ForwardMsgId = integer_to_binary(elib_tsid:generate()),
     NowMs = elib_dt:millisecond(),
 
     % 构建转发消息数据（复用现有 c2c/c2g 的输入结构）
@@ -212,9 +210,12 @@ create_forward_message(OriginalMsg, OriginalType, OriginalMsgId, CurrentUid, ToI
     OriginalFromId = maps:get(<<"from_id">>, OriginalMsg, 0),
     OriginalToId = resolve_original_to_id(OriginalMsg),
 
-    % 先发送，成功后才落转发记录：避免"库里有记录但根本没进投递管道"
-    case send_forward_message(ToType, ForwardMsgId, CurrentUid, ForwardData) of
-        ok ->
+    % 先发送，成功后才落转发记录：避免"库里有记录但根本没进投递管道"。
+    % MsgId 在 send_forward_message 内按目标类型选 namespace 生成——
+    % c2c 落 msg_c2c 表、c2g 落 msg_c2g 表，V10 下两表游标独立，禁止
+    % 先生成一个 id 再两种表通用。
+    case send_forward_message(ToType, CurrentUid, ForwardData) of
+        {ok, ForwardMsgId} ->
             ok = msg_forward_ds:save_forward_record(
                 OriginalMsgId,
                 OriginalFromId,
@@ -243,12 +244,24 @@ create_forward_message(OriginalMsg, OriginalType, OriginalMsgId, CurrentUid, ToI
 %% ceiling: 投递本身是异步的（msg_store_ds:enqueue → worker 扇出），worker 之后的失败
 %%   不在本函数可见范围内；这与转发无关，是全局投递可靠性问题，不在本次修复范围
 %% upgrade: 真要"已送达"语义，得等 CLIENT_ACK/msg_delivery 落地后回查，属另一条链路
--spec send_forward_message(binary(), binary(), integer(), map()) ->
-    ok | {error, {forward_rejected, binary()}}.
-send_forward_message(<<"c2c">>, MsgId, CurrentUid, ForwardData) ->
-    normalize_send_result(MsgId, msg_c2c_logic:c2c(MsgId, CurrentUid, ForwardData));
-send_forward_message(<<"c2g">>, MsgId, CurrentUid, ForwardData) ->
-    normalize_send_result(MsgId, msg_c2g_logic:c2g(MsgId, CurrentUid, ForwardData)).
+-spec send_forward_message(binary(), integer(), map()) ->
+    {ok, binary()} | {error, {forward_rejected, binary()}}.
+send_forward_message(<<"c2c">>, CurrentUid, ForwardData) ->
+    send_forward(msg_c2c, CurrentUid, ForwardData);
+send_forward_message(<<"c2g">>, CurrentUid, ForwardData) ->
+    send_forward(msg_c2g, CurrentUid, ForwardData).
+
+send_forward(Ns, CurrentUid, ForwardData) ->
+    MsgId = integer_to_binary(elib_tsid:generate(Ns)),
+    case normalize_send_result(MsgId, send_msg(Ns, MsgId, CurrentUid, ForwardData)) of
+        ok -> {ok, MsgId};
+        {error, _} = Err -> Err
+    end.
+
+send_msg(msg_c2c, MsgId, CurrentUid, ForwardData) ->
+    msg_c2c_logic:c2c(MsgId, CurrentUid, ForwardData);
+send_msg(msg_c2g, MsgId, CurrentUid, ForwardData) ->
+    msg_c2g_logic:c2g(MsgId, CurrentUid, ForwardData).
 
 %% @doc 归一化：返回值里的 reply 帧 + 自身邮箱里带外投递的 reply 帧，只要有非 ACK 帧即为失败
 -spec normalize_send_result(binary(), ok | {reply, map()}) ->

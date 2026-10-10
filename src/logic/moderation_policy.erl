@@ -54,7 +54,7 @@ inspect(_Surface, Text) ->
     surface(), integer(), integer(), integer(), binary(), binary(), [hit()]
 ) -> ok | {error, term()}.
 enqueue(Surface, MsgId, ToId, FromId, FromAccount, Content, Hits) ->
-    Id = elib_tsid:generate(),
+    Id = elib_tsid:generate(review_queue),
     HitWords = iolist_to_binary(lists:join(<<",">>, [hit_word(H) || H <- Hits])),
     {MsgType, ToType} = surface_types(Surface),
     Tb = review_table(),

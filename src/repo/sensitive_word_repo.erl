@@ -55,7 +55,7 @@ all() ->
     {ok, created, integer()} | {ok, skipped} | {error, term()}.
 insert(Word, Category, Severity) ->
     Tb = tablename(),
-    Id = elib_tsid:generate(),
+    Id = elib_tsid:generate(sensitive_word),
     Sql =
         <<"INSERT INTO ", Tb/binary,
             " (id, word, category, severity, created_at)"

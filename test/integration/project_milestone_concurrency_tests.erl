@@ -142,9 +142,9 @@ setup_milestone(Conn, Tag) ->
     {ok, _, [{OwnerUid}]} = epgsql:equery(
         Conn, <<"SELECT id FROM \"user\" ORDER BY id ASC LIMIT 1">>, []
     ),
-    WsId = elib_tsid:generate(),
-    ProjId = elib_tsid:generate(),
-    MsId = elib_tsid:generate(),
+    WsId = elib_tsid:generate(workspace),
+    ProjId = elib_tsid:generate(project),
+    MsId = elib_tsid:generate(project_milestone),
     {ok, 1} = epgsql:equery(
         Conn,
         <<"INSERT INTO workspace (id, name, owner_id, status)", " VALUES ($1, $2, $3, 'active')">>,

@@ -38,7 +38,7 @@ create(
 ) ->
     Tb = tablename(),
     PeriodSecs = maps:get(period_secs, Data, 86400),
-    Id = elib_tsid:generate(),
+    Id = elib_tsid:generate(agent_payment_mandate),
     Sql =
         <<"INSERT INTO ", Tb/binary,
             " (id, owner_uid, agent_uid, max_amount_fen, max_total_fen, period_secs,"

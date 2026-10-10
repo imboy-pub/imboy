@@ -1394,7 +1394,7 @@ seed_org(Conn, Prefix) ->
     }.
 
 new_id() ->
-    try elib_tsid:generate() of
+    try elib_tsid:generate(default) of
         Id when is_integer(Id) -> Id
     catch
         _:_ ->

@@ -147,7 +147,7 @@ create_client(OwnerUid, Name, Description) when is_integer(OwnerUid), OwnerUid >
     create_client(OwnerUid, #{name => Name, description => Description}).
 create_client(OwnerUid, Opts) when is_integer(OwnerUid), is_map(Opts) ->
     %% client_id 列为 bigint：保持整数（epgsql int8 编码不接受二进制）
-    ClientId = elib_tsid:generate(),
+    ClientId = elib_tsid:generate(mcp_client),
     ClientKey = iolist_to_binary(
         [<<"mck-">>, binary:encode_hex(crypto:strong_rand_bytes(8), lowercase)]
     ),

@@ -54,7 +54,7 @@ test_c2c_reply() ->
     User2 = maps:get(user2, Context),
 
     % 1. 发送原始消息
-    OriginalMsgId = integer_to_binary(elib_tsid:generate()),
+    OriginalMsgId = integer_to_binary(elib_tsid:generate(msg_c2c)),
     OriginalContent = <<"这是一条原始消息，用于测试引用回复功能"/utf8>>,
     MsgData = #{
         <<"payload">> => OriginalContent,
@@ -66,7 +66,7 @@ test_c2c_reply() ->
     ok = wait_for_c2c_message(OriginalMsgId),
 
     % 2. 发送引用回复
-    ReplyMsgId = integer_to_binary(elib_tsid:generate()),
+    ReplyMsgId = integer_to_binary(elib_tsid:generate(msg_c2c)),
     ReplyData = #{
         <<"payload">> => <<"这是回复内容"/utf8>>,
         <<"msg_type">> => <<"text">>,
@@ -91,7 +91,7 @@ test_c2g_reply() ->
     Group = maps:get(group, Context),
 
     % 1. 发送原始群聊消息
-    OriginalMsgId = integer_to_binary(elib_tsid:generate()),
+    OriginalMsgId = integer_to_binary(elib_tsid:generate(msg_c2g)),
     MsgData = #{
         <<"payload">> => <<"群聊原始消息"/utf8>>,
         <<"msg_type">> => <<"text">>,
@@ -102,7 +102,7 @@ test_c2g_reply() ->
     ok = wait_for_c2g_message(OriginalMsgId),
 
     % 2. 发送引用回复
-    ReplyMsgId = integer_to_binary(elib_tsid:generate()),
+    ReplyMsgId = integer_to_binary(elib_tsid:generate(msg_c2g)),
     ReplyData = #{
         <<"payload">> => <<"群聊回复内容"/utf8>>,
         <<"msg_type">> => <<"text">>,
@@ -128,7 +128,7 @@ test_reply_snippet() ->
     User2 = maps:get(user2, Context),
 
     % 1. 发送一条长消息
-    OriginalMsgId = integer_to_binary(elib_tsid:generate()),
+    OriginalMsgId = integer_to_binary(elib_tsid:generate(msg_c2c)),
     LongContent = <<"这是一条很长的消息，用于测试消息摘要功能。消息摘要应该只截取前50个字符，以便在引用回复时显示简洁的预览。"/utf8>>,
     NowTs = elib_dt:now(),
     ok = msg_c2c_repo:write_msg(
@@ -165,7 +165,7 @@ test_reply_nonexistent_msg() ->
     User2 = maps:get(user2, Context),
 
     % 尝试引用不存在的消息
-    ReplyMsgId = integer_to_binary(elib_tsid:generate()),
+    ReplyMsgId = integer_to_binary(elib_tsid:generate(msg_c2c)),
     ReplyData = #{
         <<"payload">> => <<"回复不存在消息"/utf8>>,
         <<"msg_type">> => <<"text">>,
@@ -188,7 +188,7 @@ test_get_reply_chain() ->
     User2 = maps:get(user2, Context),
 
     % 1. 写入一条原始消息
-    MsgId1 = integer_to_binary(elib_tsid:generate()),
+    MsgId1 = integer_to_binary(elib_tsid:generate(msg_c2c)),
     NowTs = elib_dt:now(),
     ok = msg_c2c_repo:write_msg(
         NowTs, MsgId1, <<"消息1"/utf8>>, User1, User2, NowTs, <<"text">>, null
@@ -208,7 +208,7 @@ test_batch_reply() ->
     % 1. 发送多条消息
     MsgIds = lists:map(
         fun(N) ->
-            MsgId = integer_to_binary(elib_tsid:generate()),
+            MsgId = integer_to_binary(elib_tsid:generate(msg_c2c)),
             MsgData = #{
                 <<"payload">> => <<N/integer, "批量回复测试消息"/utf8>>,
                 <<"msg_type">> => <<"text">>,
@@ -225,7 +225,7 @@ test_batch_reply() ->
     % 2. 对多条消息进行引用回复
     lists:foreach(
         fun(OriginalMsgId) ->
-            ReplyMsgId = integer_to_binary(elib_tsid:generate()),
+            ReplyMsgId = integer_to_binary(elib_tsid:generate(msg_c2c)),
             ReplyData = #{
                 <<"payload">> => <<"批量回复"/utf8>>,
                 <<"msg_type">> => <<"text">>,
@@ -325,7 +325,7 @@ ensure_friends(User1, User2) ->
     ok.
 
 create_test_user(Nickname) ->
-    Uid = elib_tsid:generate(),
+    Uid = elib_tsid:generate(user),
     %% 后缀用 uid 本身：phash2(Uid, 1e9) 在共享库多轮累计下会撞
     %% account/email 唯一索引（23505）
     Suffix = integer_to_binary(Uid),

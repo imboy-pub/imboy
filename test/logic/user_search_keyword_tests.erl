@@ -56,7 +56,7 @@ find_by_keyword_routes_test_() ->
 setup_world() ->
     ?debugFmt("~n[user_search_keyword] user_logic loaded from: ~p~n", [code:which(user_logic)]),
     {ok, Conn} = take_conn(),
-    Uid = elib_tsid:generate(),
+    Uid = elib_tsid:generate(user),
     Account = <<"w2r2fixkw", (integer_to_binary(Uid rem 1000000000000))/binary>>,
     PwdHash = <<"$2b$10$abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKLM">>,
     {ok, 1} = epgsql:equery(

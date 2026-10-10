@@ -41,6 +41,9 @@
 %   elib_tsid:init(#{dc_id => 1, node_id => 1}).   %% imboy_sup 启动时
 %   Id = elib_tsid:generate(user).
 %   Info = elib_tsid:parse(Id).
+%
+% default 生成器仅供测试/脚手架生成唯一整数；生产代码必须使用显式
+% namespace（elib_tsid_registration_guard_tests 扫描 src 强制）。
 %%%
 
 -export([init/1, register/1]).
@@ -252,6 +255,7 @@ namespaces() ->
         moya_assignment,
         moya_submission,
         submission_asset,
+        calligraphy_review_draft,
         teacher_review,
         review_asset,
         teaching_admin_audit,

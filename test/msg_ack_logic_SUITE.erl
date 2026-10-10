@@ -33,12 +33,12 @@
 
 all() ->
     [
-     c2c_ack_deletes_offline_msg,
-     c2c_ack_with_no_msg,
-     c2g_ack_marks_timeline,
-     s2c_ack_deletes_offline_msg,
-     c2s_ack_uses_parameterized_query,
-     unknown_msg_type_handles_gracefully
+        c2c_ack_deletes_offline_msg,
+        c2c_ack_with_no_msg,
+        c2g_ack_marks_timeline,
+        s2c_ack_deletes_offline_msg,
+        c2s_ack_uses_parameterized_query,
+        unknown_msg_type_handles_gracefully
     ].
 
 init_per_suite(Config) ->
@@ -58,7 +58,6 @@ end_per_testcase(_TestCase, _Config) ->
     meck:unload(),
     ok.
 
-
 %% ===================================================================
 %% 测试用例：C2C ACK 处理
 %% ===================================================================
@@ -70,10 +69,14 @@ c2c_ack_deletes_offline_msg(_Config) ->
     MsgId = <<"test_c2c_msg_001">>,
 
     % 准备测试数据
-    Sql = <<"INSERT INTO msg_c2c (id, from_id, to_id, msg_id, msg_type, payload, created_at)
-            VALUES ($1, $2, $3, $4, $5, $6, NOW())">>,
+    Sql = <<
+        "INSERT INTO msg_c2c (id, from_id, to_id, msg_id, msg_type, payload, created_at)\n"
+        "            VALUES ($1, $2, $3, $4, $5, $6, NOW())"
+    >>,
     Payload = <<"{\"content\":\"test message\"}">>,
-    {ok, _} = elib_pg:execute(Sql, [elib_tsid:generate(), 999, Uid, MsgId, <<"text">>, Payload]),
+    {ok, _} = elib_pg:execute(Sql, [
+        elib_tsid:generate(msg_c2c), 999, Uid, MsgId, <<"text">>, Payload
+    ]),
 
     % Mock msg_store_ds:unstage
     meck:new(msg_store_ds, [unstick]),
@@ -92,7 +95,6 @@ c2c_ack_deletes_offline_msg(_Config) ->
     elib_pg:execute(<<"DELETE FROM msg_c2c WHERE msg_id = $1">>, [MsgId]),
     {comment, "C2C ACK 成功删除离线消息"}.
 
-
 c2c_ack_with_no_msg(_Config) ->
     ct:log("测试 C2C ACK 处理不存在的消息"),
     Uid = 1002,
@@ -108,7 +110,6 @@ c2c_ack_with_no_msg(_Config) ->
 
     % 应该正常完成，不抛出异常
     {comment, "消息不存在时 ACK 正常处理"}.
-
 
 %% ===================================================================
 %% 测试用例：C2G ACK 处理
@@ -136,7 +137,6 @@ c2g_ack_marks_timeline(_Config) ->
     ?assert(meck:validate(msg_store_ds)),
     {comment, "C2G ACK 成功标记 timeline"}.
 
-
 %% ===================================================================
 %% 测试用例：S2C ACK 处理
 %% ===================================================================
@@ -148,10 +148,14 @@ s2c_ack_deletes_offline_msg(_Config) ->
     MsgId = <<"test_s2c_msg_001">>,
 
     % 准备测试数据
-    Sql = <<"INSERT INTO msg_s2c (id, from_id, to_id, msg_id, action, msg_type, payload, created_at)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())">>,
+    Sql = <<
+        "INSERT INTO msg_s2c (id, from_id, to_id, msg_id, action, msg_type, payload, created_at)\n"
+        "            VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())"
+    >>,
     Payload = <<"{\"msg_type\":\"system\"}">>,
-    {ok, _} = elib_pg:execute(Sql, [elib_tsid:generate(), 0, Uid, MsgId, <<"notify">>, <<"system">>, Payload]),
+    {ok, _} = elib_pg:execute(Sql, [
+        elib_tsid:generate(msg_c2c), 0, Uid, MsgId, <<"notify">>, <<"system">>, Payload
+    ]),
 
     % Mock msg_store_ds:unstage
     meck:new(msg_store_ds, [unstick]),
@@ -170,7 +174,6 @@ s2c_ack_deletes_offline_msg(_Config) ->
     elib_pg:execute(<<"DELETE FROM msg_s2c WHERE msg_id = $1">>, [MsgId]),
     {comment, "S2C ACK 成功删除离线消息"}.
 
-
 %% ===================================================================
 %% 测试用例：C2S ACK 处理（SQL 安全）
 %% ===================================================================
@@ -182,10 +185,14 @@ c2s_ack_uses_parameterized_query(_Config) ->
     MsgId = <<"test_c2s_msg_001">>,
 
     % 准备测试数据
-    Sql = <<"INSERT INTO msg_c2s (id, from_id, to_id, topic_id, msg_id, msg_type, payload, created_at)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())">>,
+    Sql = <<
+        "INSERT INTO msg_c2s (id, from_id, to_id, topic_id, msg_id, msg_type, payload, created_at)\n"
+        "            VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())"
+    >>,
     Payload = <<"{\"text\":\"hello\"}">>,
-    {ok, _} = elib_pg:execute(Sql, [elib_tsid:generate(), Uid, 123, 123, MsgId, <<"text">>, Payload]),
+    {ok, _} = elib_pg:execute(Sql, [
+        elib_tsid:generate(msg_c2c), Uid, 123, 123, MsgId, <<"text">>, Payload
+    ]),
 
     % Mock msg_store_ds:unstage
     meck:new(msg_store_ds, [unstick]),
@@ -203,7 +210,6 @@ c2s_ack_uses_parameterized_query(_Config) ->
     % 清理测试数据
     elib_pg:execute(<<"DELETE FROM msg_c2s WHERE msg_id = $1">>, [MsgId]),
     {comment, "C2S ACK 使用参数化查询成功"}.
-
 
 %% ===================================================================
 %% 测试用例：未知消息类型处理

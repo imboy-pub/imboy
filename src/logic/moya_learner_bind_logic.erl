@@ -133,7 +133,7 @@ audit_admin_tx(Conn, Action, Role, OperatorUid, LearnerId, TargetUserId) ->
             Conn,
             Sql,
             [
-                elib_tsid:generate(),
+                elib_tsid:generate(teaching_admin_audit),
                 atom_to_binary(Action, utf8),
                 OperatorUid,
                 LearnerId,

@@ -38,9 +38,9 @@ otk_idempotency_test_() ->
     end.
 
 setup() ->
-    Target = elib_tsid:generate(),
-    Claimer = elib_tsid:generate(),
-    Other = elib_tsid:generate(),
+    Target = elib_tsid:generate(user),
+    Claimer = elib_tsid:generate(user),
+    Other = elib_tsid:generate(user),
     Ctx = #{target => Target, claimer => Claimer, other => Other},
     persistent_term:put({?MODULE, ctx}, Ctx),
     Ctx.

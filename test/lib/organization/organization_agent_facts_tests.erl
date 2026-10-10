@@ -349,7 +349,7 @@ repeated_read_zero_side_effect_test_() ->
 %% ===================================================================
 
 new_uid() ->
-    elib_tsid:generate().
+    elib_tsid:generate(user).
 
 create_human(Uid) ->
     create_user(Uid, 0).

@@ -345,7 +345,7 @@ milestone_status_invariant_test_() ->
             _ = epgsql:squery(Conn, <<"BEGIN">>),
             _ = epgsql:squery(Conn, <<"SAVEPOINT sp_w2">>),
             %% 无命名默认生成器（project_milestone 生成器由 ZC-03 应用层接线时再注册）
-            MsId = elib_tsid:generate(),
+            MsId = elib_tsid:generate(project_milestone),
             %% planned 无 reached_at：合法（due_date 用 SQL 字面量——本连接的
             %% rfc3339 codec 不接受 binary date 参数）
             {ok, 1} = epgsql:equery(

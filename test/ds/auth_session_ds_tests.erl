@@ -15,7 +15,7 @@ uid() ->
     %% 会毒化本套件 missing-row 断言（current_epoch 得 {ok,2}，表内实无行）。
     %% 改用 TSID：本轮唯一、不与小 uid 域相交（同 group_user_id_sum_p0_tests
     %% 的防撞先例）；user_auth_epoch.user_id 为 bigint，TSID 容纳无虞。
-    elib_tsid:generate().
+    elib_tsid:generate(user).
 
 %% 缺行默认 epoch=1（已知默认态，非未知态）
 current_epoch_missing_row_defaults_to_1_test_() ->

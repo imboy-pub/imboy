@@ -54,7 +54,7 @@ tablename() ->
 -spec add_tx(any(), map()) -> {ok, integer()} | {error, term()}.
 add_tx(Conn, Data) ->
     Tb = tablename(),
-    Id = elib_tsid:generate(),
+    Id = elib_tsid:generate(project_milestone),
     Data2 = Data#{<<"id">> => Id},
     {Sql, Params} = elib_pg_sql:insert(Tb, Data2),
     case elib_pg:execute(Conn, Sql, Params) of

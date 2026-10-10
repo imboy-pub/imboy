@@ -29,7 +29,7 @@
 -spec run_demo(integer(), integer(), [integer()]) -> ok.
 run_demo(AgentUid, GroupId, MemberUids) ->
     try
-        TaskId = ec_cnv:to_binary(elib_tsid:generate()),
+        TaskId = ec_cnv:to_binary(elib_tsid:generate(agent_task)),
         Base = #{
             task_id => TaskId,
             agent_uid => AgentUid,

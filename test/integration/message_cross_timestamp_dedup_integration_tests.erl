@@ -67,7 +67,7 @@ verifies_year_scale_chunks(Conn) ->
             "SELECT $1::bigint + n, 1, 2, $2 || '_' || n, 'text', '{}', "
             "current_timestamp - n * interval '7 days' FROM generate_series(0, 51) n"
         >>,
-        [elib_tsid:generate(), MsgId]
+        [elib_tsid:generate(msg_c2c), MsgId]
     ),
     {ok, [#{<<"count">> := ChunkCount}]} = elib_pg:query(
         Conn,
@@ -101,7 +101,7 @@ insert_message(Conn, Table, MsgId, Timestamp) ->
                     "VALUES ($1, 1, 2, $2, 'text', '{}', $3)"
                 ])
         end,
-    elib_pg:execute(Conn, Sql, [elib_tsid:generate(), MsgId, Timestamp]).
+    elib_pg:execute(Conn, Sql, [elib_tsid:generate(msg_c2c), MsgId, Timestamp]).
 
 insert_message_on_conflict(Conn, MsgId, Timestamp) ->
     elib_pg:execute(
@@ -112,11 +112,11 @@ insert_message_on_conflict(Conn, MsgId, Timestamp) ->
             "VALUES ($1, 1, 2, $2, 'text', '{}', $3) "
             "ON CONFLICT (msg_id, created_at) DO NOTHING"
         >>,
-        [elib_tsid:generate(), MsgId, Timestamp]
+        [elib_tsid:generate(msg_c2c), MsgId, Timestamp]
     ).
 
 unique_msg_id(Suffix) ->
-    <<"dedup_", Suffix/binary, "_", (integer_to_binary(elib_tsid:generate()))/binary>>.
+    <<"dedup_", Suffix/binary, "_", (integer_to_binary(elib_tsid:generate(default)))/binary>>.
 
 apply_runtime_statements(Conn) ->
     {ok, Sql} = file:read_file("priv/migrations/00000083_message_cross_timestamp_dedup.up.sql"),

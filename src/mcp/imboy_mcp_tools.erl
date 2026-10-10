@@ -268,7 +268,7 @@ do_send_message(Caller, Args) ->
     MsgType = maps:get(<<"msg_type">>, Args, <<"text">>),
     case validate_send(To, Body, MsgType) of
         ok ->
-            MsgId = ec_cnv:to_binary(elib_tsid:generate()),
+            MsgId = ec_cnv:to_binary(elib_tsid:generate(msg_c2c)),
             %% 强制明文 text，不构造 e2ee 字段（E2EE 红线：服务端不解密做 AI）。
             Payload = #{<<"msg_type">> => <<"text">>, <<"body">> => Body},
             case msg_c2c_logic:c2c(MsgId, Caller, integer_to_binary(To), Payload) of

@@ -28,8 +28,8 @@ msg_read_test_() ->
     end.
 
 setup() ->
-    FromUid = elib_tsid:generate(),
-    ToUid = elib_tsid:generate(),
+    FromUid = elib_tsid:generate(user),
+    ToUid = elib_tsid:generate(user),
     Context = #{from_uid => FromUid, to_uid => ToUid, to_did => <<"integration_test_device">>},
     persistent_term:put({?MODULE, test_context}, Context),
     Context.
@@ -102,5 +102,5 @@ get_context() ->
     persistent_term:get({?MODULE, test_context}, undefined).
 
 unique_msg_id() ->
-    Id = integer_to_binary(elib_tsid:generate()),
+    Id = integer_to_binary(elib_tsid:generate(default)),
     <<"integration_test_msg_", Id/binary>>.

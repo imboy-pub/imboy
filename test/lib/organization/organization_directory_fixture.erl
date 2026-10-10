@@ -38,7 +38,7 @@
 -spec id() -> integer().
 id() ->
     try
-        elib_tsid:generate()
+        elib_tsid:generate(default)
     catch
         _:_ ->
             2000000000000000 + erlang:unique_integer([positive, monotonic])

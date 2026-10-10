@@ -185,7 +185,7 @@ decide(TaskId, ApproverUid, Decision) ->
 %% 可靠群消息：msg_c2g_logic:c2g（agent 一等成员身份，复用 QoS/staging/离线补拉）。
 %% 结构化 agent_task 元数据挂在 payload，前端据此渲染可点击卡片；content 为降级文本。
 durable_group_message(GroupId, AgentUid, Text, TaskMeta) ->
-    MsgId = ec_cnv:to_binary(elib_tsid:generate()),
+    MsgId = ec_cnv:to_binary(elib_tsid:generate(msg_c2g)),
     Content = elib_str:replace_single_quote(Text),
     Data = #{
         <<"to">> => ec_cnv:to_binary(GroupId),

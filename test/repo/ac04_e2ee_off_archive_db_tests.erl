@@ -25,7 +25,7 @@
 -define(S5_MANIFEST, "/tmp/q06_ac04_s5_manifest.term").
 
 uid() ->
-    elib_tsid:generate().
+    elib_tsid:generate(user).
 
 ts(I) ->
     BaseMs = 1790100000000,

@@ -77,7 +77,7 @@ test_c2c_send_performance() ->
     % 发送100条单聊消息，计算平均耗时
     Times = lists:map(
         fun(N) ->
-            MsgId = integer_to_binary(elib_tsid:generate()),
+            MsgId = integer_to_binary(elib_tsid:generate(msg_c2c)),
             MsgData = #{
                 <<"payload">> => <<N/integer, "性能测试消息"/utf8>>,
                 <<"msg_type">> => <<"text">>,
@@ -119,7 +119,7 @@ test_c2g_send_performance() ->
     % 发送100条群聊消息，计算平均耗时
     Measurements = lists:map(
         fun(N) ->
-            MsgId = integer_to_binary(elib_tsid:generate()),
+            MsgId = integer_to_binary(elib_tsid:generate(msg_c2g)),
             MsgData = #{
                 <<"payload">> => #{<<"body">> => <<(integer_to_binary(N))/binary, "群聊性能测试"/utf8>>},
                 <<"msg_type">> => <<"text">>,
@@ -166,7 +166,7 @@ test_batch_send_performance() ->
 
     MsgIds = lists:map(
         fun(N) ->
-            MsgId = integer_to_binary(elib_tsid:generate()),
+            MsgId = integer_to_binary(elib_tsid:generate(msg_c2c)),
             MsgData = #{
                 <<"payload">> => <<N/integer, "批量测试"/utf8>>,
                 <<"msg_type">> => <<"text">>,
@@ -204,7 +204,7 @@ test_query_performance() ->
     % 先发送一些消息
     MsgIds = lists:map(
         fun(N) ->
-            MsgId = integer_to_binary(elib_tsid:generate()),
+            MsgId = integer_to_binary(elib_tsid:generate(msg_c2c)),
             MsgData = #{
                 <<"payload">> => <<N/integer, "查询测试"/utf8>>,
                 <<"msg_type">> => <<"text">>,
@@ -265,7 +265,7 @@ test_concurrent_send_performance() ->
     Pids = lists:map(
         fun(N) ->
             spawn(fun() ->
-                MsgId = integer_to_binary(elib_tsid:generate()),
+                MsgId = integer_to_binary(elib_tsid:generate(msg_c2c)),
                 MsgData = #{
                     <<"payload">> => <<N/integer, "并发测试"/utf8>>,
                     <<"msg_type">> => <<"text">>,
@@ -343,7 +343,7 @@ ensure_friends(User1, User2) ->
     ok.
 
 create_test_user(Nickname) ->
-    Uid = elib_tsid:generate(),
+    Uid = elib_tsid:generate(user),
     %% 后缀用 uid 本身：phash2(Uid, 1e9) 在共享库多轮累计下会撞
     %% account/email 唯一索引（23505）
     Suffix = integer_to_binary(Uid),
@@ -363,7 +363,7 @@ create_test_user(Nickname) ->
     {ok, RealUid}.
 
 create_test_group(OwnerId, Name) ->
-    Gid = elib_tsid:generate(),
+    Gid = elib_tsid:generate(group_info),
     Group = #{
         <<"gid">> => Gid,
         <<"owner_uid">> => OwnerId,

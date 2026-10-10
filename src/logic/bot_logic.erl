@@ -179,7 +179,7 @@ has_exchange(BotId, UserId) ->
 send_message(BotId, ToUid, MsgData) ->
     case bot_repo:find(BotId) of
         {ok, #{<<"status">> := 1}} ->
-            MsgId = integer_to_binary(elib_tsid:generate()),
+            MsgId = integer_to_binary(elib_tsid:generate(msg_c2c)),
             send_message(MsgId, BotId, ToUid, MsgData);
         {ok, _} ->
             {error, <<"Bot 已停用"/utf8>>};
@@ -226,7 +226,7 @@ send_group_message(BotId, GroupId, Text) when
 ->
     case bot_repo:find(BotId) of
         {ok, #{<<"status">> := 1}} ->
-            MsgId = integer_to_binary(elib_tsid:generate()),
+            MsgId = integer_to_binary(elib_tsid:generate(msg_c2g)),
             Content = elib_str:replace_single_quote(Text),
             Data = #{
                 <<"to">> => integer_to_binary(GroupId),

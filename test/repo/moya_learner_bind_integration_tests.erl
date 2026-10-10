@@ -429,7 +429,7 @@ audit_rows_after_bind_test_() ->
         seed(C),
         {ok, _} = moya_learner_bind_repo:bind_tx(C, ?LEARNER_A1, ?TARGET_USER, ?OWNER),
         %% 与 audit_admin_tx 同款 INSERT（bind_learner 动作 + owner 角色）
-        AuditId = elib_tsid:generate(),
+        AuditId = elib_tsid:generate(teaching_admin_audit),
         Detail = jsone:encode(#{<<"role">> => <<"owner">>}),
         {ok, 1} = elib_pg:execute(
             C,
@@ -464,7 +464,7 @@ audit_rows_after_bind_test_() ->
                 "VALUES ($1, $2, $3, $4, $5, $6)"
             >>,
             [
-                elib_tsid:generate(),
+                elib_tsid:generate(teaching_admin_audit),
                 <<"unbind_learner">>,
                 ?MANAGER,
                 ?LEARNER_A1,

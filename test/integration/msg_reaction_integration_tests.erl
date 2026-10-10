@@ -330,7 +330,7 @@ ensure_friends(User1, User2) ->
     ok.
 
 create_test_user(Nickname) ->
-    Uid = elib_tsid:generate(),
+    Uid = elib_tsid:generate(user),
     %% 后缀用 uid 本身：phash2(Uid, 1e9) 在共享库多轮累计下会撞
     %% account/email 唯一索引（23505）
     Suffix = integer_to_binary(Uid),
@@ -368,7 +368,7 @@ create_test_group(OwnerId, Name) ->
     {ok, Gid}.
 
 send_c2c_message(From, To, Content) ->
-    MsgId = integer_to_binary(elib_tsid:generate()),
+    MsgId = integer_to_binary(elib_tsid:generate(msg_c2c)),
     MsgData = #{
         <<"payload">> => Content,
         <<"msg_type">> => <<"text">>,
@@ -380,7 +380,7 @@ send_c2c_message(From, To, Content) ->
     MsgId.
 
 send_c2g_message(From, Group, Content) ->
-    MsgId = integer_to_binary(elib_tsid:generate()),
+    MsgId = integer_to_binary(elib_tsid:generate(msg_c2g)),
     MsgData = #{
         <<"payload">> => Content,
         <<"msg_type">> => <<"text">>,

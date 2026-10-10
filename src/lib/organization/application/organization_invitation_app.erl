@@ -141,7 +141,7 @@ create_tx(Conn, Row) ->
     %%    同 (org,target) 已有 pending → 部分唯一索引拒绝
     FinalRow =
         case maps:get(id, Row, undefined) of
-            undefined -> Row#{id => elib_tsid:generate()};
+            undefined -> Row#{id => elib_tsid:generate(organization_invitation)};
             _ -> Row
         end,
     case organization_invitation_pg:insert_tx(Conn, FinalRow) of

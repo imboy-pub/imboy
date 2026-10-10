@@ -51,7 +51,7 @@ create(Uid, GroupId, IdemKey, Digest, TaskFields, Learners) ->
 create_in_tx(Conn, Uid, GroupId, IdemKey, Digest, TaskFields, Learners) ->
     case
         moya_task_repo:create_task_idempotent_tx(Conn, #{
-            id => elib_tsid:generate(),
+            id => elib_tsid:generate(moya_task),
             group_id => GroupId,
             task_id => elib_id:gen(<<"task">>),
             title => maps:get(title, TaskFields),
@@ -90,7 +90,7 @@ insert_assignments(Conn, Id, TaskId, Learners) ->
 insert_assignments(_Conn, Id, _TaskId, [], Acc) ->
     {ok, payload(Id, lists:reverse(Acc), false)};
 insert_assignments(Conn, Id, TaskId, [{LearnerId, GuardianUid} | Rest], Acc) ->
-    AssignmentId = elib_tsid:generate(),
+    AssignmentId = elib_tsid:generate(moya_assignment),
     case
         moya_task_repo:insert_assignment_tx(
             Conn, AssignmentId, TaskId, LearnerId, GuardianUid

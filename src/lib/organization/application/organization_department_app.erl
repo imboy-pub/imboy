@@ -556,7 +556,7 @@ org_role_of(OrgId, UserId) ->
 
 id() ->
     %% default 生成器：命名生成器需显式 register，Core 侧不引入该耦合
-    elib_tsid:generate().
+    elib_tsid:generate(organization_department).
 
 trimmed(Name) when is_binary(Name) ->
     string:trim(Name);
