@@ -469,10 +469,11 @@ register(Name) when is_atom(Name) ->
             error({elib_tsid_not_initialized, 'call elib_tsid:init/1 before register/1'})
     end.
 
-%% @doc 列出全部可用生成器名称（canonical + 别名 + default，排序）
+%% @private 列出全部可用生成器名称（canonical + 别名 + default，排序）。
+%% lookup 在 publish_runtime 已合并 default 键，这里不得再前置追加。
 -spec registered() -> [atom()].
 registered() ->
-    lists:sort([default | maps:keys(lookup_or_empty())]).
+    lists:sort(maps:keys(lookup_or_empty())).
 
 lookup_or_empty() ->
     case persistent_term:get(?PT_RUNTIME, undefined) of
@@ -485,8 +486,14 @@ lookup_or_empty() ->
 %% 低频时钟安全检查：固定 Offset 时钟（mono+offset）与真实系统钟的当前
 %% 偏差超过 max_clock_drift_ms 时，翻转 runtime 的 clock_ok 闸并返回
 %% clock_unsafe——生成热路径读取同一闸，阻断发号（异常作用于生成入口）。
-%% 偏差回落（NTP 收敛/挂起恢复后重新评估）自动解除。探针间隔即检查间隔
-%% （部署默认 30s），偏差突增的最长暴露窗口 = 一个探针周期。
+%% 偏差回落（NTP 收敛/挂起恢复后重新评估）自动解除。
+%%
+%% 探针合同（如实声明，不得夸大）：本模块**没有内置周期探针**。clock_ok
+%% 闸只在 readiness()/0 被调用时重新评估（HTTP /readyz、/healthz 及
+%% healthz_handler:tsid_readiness/0 直调）；两次调用之间偏差突增不受影响，
+%% 生成照常放行。偏差暴露窗口 = 外部就绪探测的轮询间隔；部署侧未配置
+%% 轮询时窗口无固定上界。收敛要求：compose/k8s 必须为 imboy 服务配置
+%% 打 /readyz 的 healthcheck/readinessProbe，该间隔即窗口上界。
 -spec readiness() -> ready | clock_unsafe | not_initialized.
 readiness() ->
     case persistent_term:get(?PT_RUNTIME, undefined) of
@@ -539,13 +546,15 @@ generate_n(N) when N > 0 ->
 %% @doc 指定 Namespace 批量生成 N 个 TSID (有序)
 %%
 %% 按 ?MAX_BATCH_CHUNK 分块，每块一次 CAS 预留连续区间；块间从最新游标
-%% 重新 reserve。等待一律用 monotonic deadline，预算跨块守恒。
+%% 重新 reserve。预算跨块守恒：进入批量即一次性物化为绝对 monotonic
+%% deadline，所有块共享同一剩余预算；块内冲突/等待重试沿用该 deadline，
+%% 不因换块重置。
 -spec generate_n(atom(), pos_integer()) -> [pos_integer()].
 generate_n(Name, N) when is_atom(Name), N > 0 ->
     Handle = require_runtime(Name),
     #{combined_node := NodeId} = Handle,
     Idx = slot_of(Handle, Name),
-    Budget = {timeout, maps:get(capacity_wait_timeout_ms, Handle)},
+    Budget = {deadline, monotonic_ms() + maps:get(capacity_wait_timeout_ms, Handle)},
     lists:append([
         materialize_range(First, Last, NodeId)
      || {First, Last} <-
@@ -622,6 +631,8 @@ slot_of(#{lookup := Lookup}, Name) ->
 %%
 %% 无借支铁律：First 开启的新毫秒（FirstTs > CurTs）且超出时钟当前毫秒
 %% （FirstTs > Now）时，必须等待真实时间推进到该毫秒——绝不借未来。
+%% reserve_candidate 已保证区间不跨毫秒（终点毫秒 == 起点毫秒），
+%% 因此只需校验起点即可覆盖整个区间，含批量终点。
 %% 游标领先于时钟（回拨后 CurTs >= Now）不算借支：这些槽位属于已被
 %% 消费过的毫秒，继续用完它们不会重复。
 commit_reserve(Handle, Idx, Old, First, Last, Now, Budget0, Count) ->
@@ -769,7 +780,8 @@ validate_id(Id) ->
 %%
 %% 契约要点（变更须同步 elib_tsid_tests）：
 %%   - cursor 是线性 slot：Slot = Ts bsl 11 bor Seq，单游标内全程单调；
-%%   - candidate 区间 [First, Last] 满足 First = max(Old+1, Now bsl 11)；
+%%   - candidate 区间 [First, Last] 满足 First = max(Old+1, Now bsl 11)，
+%%     且区间绝不跨毫秒（中段起点 + 满容量时整体滚入下一毫秒 seq 0）；
 %%   - 时钟回拨由 cursor 吸收（First 沿用旧毫秒），绝不回退；
 %%   - 无借支：开新毫秒且超时钟 → 有界等待，超时 typed fail；
 %%   - 纪元前 / 越过 42-bit 上界一律 typed fail-closed，绝不掩码截断；
@@ -778,17 +790,38 @@ validate_id(Id) ->
 %% ===================================================================
 
 %% @private 纯函数：给定 cursor、当前相对毫秒与数量，计算连续 slot 区间
+%%
+%% 区间绝不跨毫秒：起点落在毫秒中段且 Count 顶到容量边界时，整体滚入
+%% 下一毫秒的 seq 0。由此终点毫秒恒等于起点毫秒，无借支检查只需校验
+%% 区间起点（见 commit_reserve）。Count 超过单毫秒容量为调用方错误。
 -spec reserve_candidate(integer(), integer(), pos_integer()) ->
     {ok, FirstSlot :: non_neg_integer(), LastSlot :: non_neg_integer()}
-    | {error, {elib_tsid_clock_before_epoch | elib_tsid_timestamp_exhausted, map()}}.
+    | {error, {
+        elib_tsid_clock_before_epoch
+        | elib_tsid_timestamp_exhausted
+        | elib_tsid_invalid_input,
+        map()
+    }}.
 reserve_candidate(OldCursor, NowRel, Count) when
     is_integer(OldCursor), is_integer(NowRel), is_integer(Count), Count > 0
 ->
     case NowRel < 0 of
         true ->
             {error, {elib_tsid_clock_before_epoch, #{now_rel => NowRel}}};
+        false when Count > ?MAX_BATCH_CHUNK ->
+            {error,
+                {elib_tsid_invalid_input, #{
+                    count => Count, max_chunk => ?MAX_BATCH_CHUNK
+                }}};
         false ->
-            First = max(OldCursor + 1, NowRel bsl ?SEQUENCE_BITS),
+            First0 = max(OldCursor + 1, NowRel bsl ?SEQUENCE_BITS),
+            First =
+                case First0 band ?SEQUENCE_MASK of
+                    Seq0 when Seq0 > 0, Seq0 + Count > ?MAX_BATCH_CHUNK ->
+                        ((First0 bsr ?SEQUENCE_BITS) + 1) bsl ?SEQUENCE_BITS;
+                    _ ->
+                        First0
+                end,
             Last = First + Count - 1,
             LastTs = Last bsr ?SEQUENCE_BITS,
             case LastTs > ?MAX_REL_TS of

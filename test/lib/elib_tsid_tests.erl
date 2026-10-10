@@ -287,6 +287,17 @@ registered_includes_namespaces_and_aliases_test() ->
         maps:keys(elib_tsid:aliases())
     ).
 
+registered_no_duplicate_default_test() ->
+    %% 审计修复（V10-A5）：lookup 在 publish_runtime 已合并 default 键，
+    %% registered/0 不得重复追加（修复前 149 项、去重 148 项）
+    ?SETUP(),
+    Registered = elib_tsid:registered(),
+    ?assertEqual(lists:usort(Registered), Registered),
+    ?assertEqual(
+        length(elib_tsid:namespaces()) + map_size(elib_tsid:aliases()) + 1,
+        length(Registered)
+    ).
+
 %% register/1 是静态清单的幂等断言：已知名恒 ok，未知名 error
 register_idempotent_check_test() ->
     ?SETUP(),
@@ -312,7 +323,9 @@ register_before_init_rejected_test() ->
         {elib_tsid_not_initialized, _},
         catch_typed(fun() -> elib_tsid:register(user) end)
     ),
-    ?assertEqual([default], elib_tsid:registered()),
+    %% 无 runtime 即无任何可用生成器（default 也依赖 init；V10-A5 起
+    %% registered/0 不再对空 lookup 硬造 [default]）
+    ?assertEqual([], elib_tsid:registered()),
     %% 不留空 runtime（后台 worker 保护，见 imboy_env_tsid_tests 同款注释）
     ok = elib_tsid:init(#{dc_id => 1, node_id => 1, dc_bits => 3}).
 
@@ -334,6 +347,22 @@ exhaustion_bounded_error_no_borrow_test() ->
         ?assertMatch(
             {elib_tsid_capacity_exhausted, #{phase := clock_wait}},
             catch_typed(fun() -> elib_tsid:generate(user) end)
+        ),
+        Elapsed = erlang:monotonic_time(millisecond) - T0,
+        ?assert(Elapsed >= 90 andalso Elapsed =< 1000, {bounded_wait_ms, Elapsed})
+    end).
+
+batch_endpoint_no_borrow_frozen_clock_test() ->
+    %% 审计负例（V10-A1）：冻结毫秒 M 发 1 个后紧跟满容量批量 2048——
+    %% 区间滚入 M+1，无借支检查必须命中并 bounded typed error，
+    %% 绝不把 M+1 的未来毫秒号直接发出（修复前 last_lead_ms=1）
+    ?SETUP(),
+    with_fixed_clock(?EPOCH_MS + 400000, fun() ->
+        _ = elib_tsid:generate(user),
+        T0 = erlang:monotonic_time(millisecond),
+        ?assertMatch(
+            {elib_tsid_capacity_exhausted, #{phase := clock_wait}},
+            catch_typed(fun() -> elib_tsid:generate_n(user, 2048) end)
         ),
         Elapsed = erlang:monotonic_time(millisecond) - T0,
         ?assert(Elapsed >= 90 andalso Elapsed =< 1000, {bounded_wait_ms, Elapsed})
@@ -688,10 +717,26 @@ reserve_candidate_rollback_holds_cursor_test() ->
     {ok, First, _Last} = elib_tsid:reserve_candidate(OldCursor, 400, 1),
     ?assertEqual(OldCursor + 1, First).
 
-reserve_candidate_batch_spans_ms_test() ->
+reserve_candidate_batch_never_spans_ms_test() ->
+    %% 审计修复（V10-A1）：中段起点 + 满容量不再跨毫秒——整体滚入下一
+    %% 毫秒 seq 0，终点毫秒恒等于起点毫秒（无借支检查只需覆盖起点）
     {ok, First, Last} = elib_tsid:reserve_candidate((100 bsl 11) bor 2000, 100, 100),
-    ?assertEqual((100 bsl 11) bor 2001, First),
-    ?assertEqual((101 bsl 11) bor 52, Last).
+    ?assertEqual(101 bsl 11, First),
+    ?assertEqual((101 bsl 11) bor 99, Last),
+    ?assertEqual(First bsr 11, Last bsr 11).
+
+reserve_candidate_batch_midms_small_count_stays_test() ->
+    %% 中段起点 + 未顶到容量边界的小批量 → 留在当前毫秒
+    {ok, First, Last} = elib_tsid:reserve_candidate((100 bsl 11) bor 10, 100, 5),
+    ?assertEqual((100 bsl 11) bor 11, First),
+    ?assertEqual((100 bsl 11) bor 15, Last).
+
+reserve_candidate_batch_rejects_oversize_test() ->
+    %% 单次预留超过单毫秒容量 = 调用方错误（chunk_sizes 上界被绕过）
+    ?assertMatch(
+        {error, {elib_tsid_invalid_input, _}},
+        elib_tsid:reserve_candidate(0, 100, 2049)
+    ).
 
 reserve_candidate_before_epoch_test() ->
     ?assertMatch(
@@ -815,7 +860,13 @@ mixed_concurrency_1m_test_() ->
     {timeout, 90, fun mixed_concurrency_1m_body/0}.
 
 mixed_concurrency_1m_body() ->
-    ?SETUP(),
+    %% 无借支合同下批量吞吐上限 = 2048/ms/namespace：1M 突发（最坏全落
+    %% 同一 namespace）需 ≥489ms 真实时间推进，默认 100ms 预算必然
+    %% capacity_exhausted——显式放大预算，等待真实毫秒推进是契约内行为
+    elib_tsid:reset_for_test(),
+    ok = elib_tsid:init(#{
+        dc_id => 1, node_id => 1, dc_bits => 3, capacity_wait_timeout_ms => 30000
+    }),
     Self = self(),
     Workers = 10,
     N = 100000,
