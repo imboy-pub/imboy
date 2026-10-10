@@ -361,6 +361,27 @@
         {teaching_ai_llm_provider, undefined},
         % 启用分布式缓存同步功能
         {dsync_enabled, true},
+        %% ---- 缓存 V2.2.1（W1~W5 本地实施轮新增；详见
+        %% docs/architecture/cache-v2.2.1/ 与 w1-w5-addendum-20261011.md）----
+        %% 同步协议：legacy（默认，未启用 V2）| v2（全局 ENABLE_V2 受 G-QR 等
+        %% 安全 gate 约束——QR 原子消费未完成前不得切 v2，见
+        %% g-qr-atomic-consumption-proposal.md）
+        {cache_sync_protocol, legacy},
+        %% replicate 预算候选（计划 6.1；生产值须按目标硬件另轮冻结）
+        {cache_replication, #{
+            max_ttl_sec => 600,
+            max_value_bytes => 32768,
+            batch_size => 256,
+            recovery_window_sec => 300,
+            %% 复制白名单：默认必须为空（19.5 fail-closed）。未来 Key 须先在
+            %% imboy_cache_policy Registry 登记 replicate 策略条目，再加白名单
+            whitelist => []
+        }},
+        %% 19.3 generation 栅栏 namespace（默认空 = 全部 Key 走 legacy 路径，
+        %% 行为与本轮之前完全一致；迁移逐 namespace 启用）
+        {cache_fenced_namespaces, []},
+        %% 测试/扩展用 Registry 覆盖（生产保持空）
+        {cache_registry_overrides, #{}},
 
         %% Depcache settings,
         {depcache, [
