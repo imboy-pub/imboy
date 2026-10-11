@@ -792,12 +792,13 @@ compile: app
 
 # ==================== Dialyzer 递减基线门（CI-00） ====================
 # make dialyze-check：全量 Dialyzer 分析（dialyze 语义下存量告警 exit 2，此处
-# 吞掉退出码）+ scripts/check_dialyzer_baseline.sh 对照 dialyzer.baseline 裁决：
+# 记录退出码；原始 make rc=2 既可能是告警也可能是执行失败）+ 基线门裁决：
 # 基线外新增 1 条告警即红；存量减少不红（提示可人工收紧基线）。棘轮只准减不准增。
 # 产物 dialyze-last.log 供基线脚本解析与 CI 摘要。
 .PHONY: dialyze-check
 dialyze-check:
-	@$(MAKE) dialyze DIALYZER_OPTS="$(DIALYZER_OPTS)" > dialyze-last.log 2>&1 || true
+	@rc=0; $(MAKE) dialyze DIALYZER_OPTS="$(DIALYZER_OPTS)" > dialyze-last.log 2>&1 || rc=$$?; \
+		printf 'DIALYZER_ANALYSIS_EXIT=%s\n' "$$rc"
 	@bash scripts/check_dialyzer_baseline.sh dialyze-last.log
 
 # L3 gate extension point (l3-gate.sh probes dialyze-local first):
