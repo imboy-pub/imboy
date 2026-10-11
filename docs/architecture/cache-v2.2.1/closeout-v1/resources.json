@@ -1,0 +1,36 @@
+{
+  "task_id": "CACHE_V221_BACKEND_CLOSEOUT_V1",
+  "generated_at_utc": "2026-10-11T13:13:29+00:00",
+  "leases": {
+    "postgres_exclusive_test_db": {
+      "name": "imboy_cache_closeout_v1",
+      "host": "127.0.0.1",
+      "port": 4323,
+      "user": "imboy_user",
+      "status": "TO_BE_CREATED (from template0 by owner task needing it first; isolation from shared imboy_test_v1)",
+      "purpose": "G-QR migration apply/rollback + QR multi-node integration + any PG-backed tests",
+      "exclusivity": "exclusive to this session; other sessions databases untouched"
+    },
+    "beam_nodes": {
+      "naming": "closeout{A,B,C}@<loopback-host> (per-run unique names, released after run)",
+      "cookie": "per-run random cookie (crypto strong), never the production cookie",
+      "epmd": "system epmd; ports dynamically bound, recorded per run"
+    },
+    "http_relay_ports": "dynamically allocated high ports per test run; recorded in run artifacts",
+    "evidence_out_of_repo": "~/.codex/cache-closeout-runs/zcode-20261011T130725Z/",
+    "evidence_in_repo": "docs/architecture/cache-v2.2.1/closeout-v1/ (machine digests, sanitized results, ledgers, ops docs only)",
+    "worktrees": ".Codex/runs/CACHE_V2_2_1_W1_W5_LOCAL_IMPLEMENTATION/ pattern avoided; this session uses ~/.codex/cache-closeout-runs/zcode-20261011T130725Z/wt-* if needed"
+  },
+  "mutex": {
+    "full_eunit": "serial lease held by A0 only (final gate C12)",
+    "heavy_fault_stress": "serial lease (C09 rounds)",
+    "official_perf_window": "serial lease (C12); requires quiet machine"
+  },
+  "forbidden": [
+    "shared/prod DB migration",
+    "host restart",
+    "touching other sessions processes/dbs",
+    "production cookie",
+    "real credentials"
+  ]
+}

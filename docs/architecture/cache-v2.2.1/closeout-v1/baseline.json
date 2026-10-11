@@ -1,0 +1,67 @@
+{
+  "task_id": "CACHE_V221_BACKEND_CLOSEOUT_V1",
+  "session": "zcode-20261011T130725Z",
+  "generated_at_utc": "2026-10-11T13:12:54+00:00",
+  "git": {
+    "root": "/Users/leeyi/project/imboy.pub/imboy",
+    "head": "ee520065253781d0e79ddedc7fb6ab3768d59bc3",
+    "branch": "main",
+    "plan_baseline_head_at_authoring": "bd66525073801af6b9f666c553c714f465e93f92",
+    "head_drift_since_authoring": {
+      "commits": [
+        "ee520065 docs(cache): add backend-only V2.2.1 closeout execution plan",
+        "60e0dfc7 test(e2ee): update sender device staging fixture for ordered transactions"
+      ],
+      "cache_impact": "none - only closeout plan doc itself + e2ee test fixture; cache core zero-drift (verified by diff --stat)"
+    },
+    "external_wip_untracked": [
+      "docs/business/imboy-open-source-productization-strategy-v1.md",
+      "docs/design/2026-10-08-micro-community/"
+    ],
+    "external_wip_modified": [],
+    "policy": "external WIP not touched, not staged, not stashed"
+  },
+  "plan_binding": {
+    "closeout_plan": "docs/architecture/cache-v2.2.1/backend-closeout-plan-v1.md",
+    "closeout_plan_sha256": "806114da93a904108dfa9a2747d1ee59d4efcb1a2562a92ae7ea6ae905882f0f",
+    "expected_closeout_sha256": "806114da93a904108dfa9a2747d1ee59d4efcb1a2562a92ae7ea6ae905882f0f",
+    "hash_match": true,
+    "original_plan": "docs/architecture/cache-v2.2.1/w0/plan-v2.2.1.md",
+    "original_plan_sha256": "a5523ee731bc822018831586e3d747ba109c2c66e734daf5633b494d9b18c713",
+    "expected_original_sha256": "a5523ee731bc822018831586e3d747ba109c2c66e734daf5633b494d9b18c713",
+    "hash_match_original": true
+  },
+  "cache_core": {
+    "src/lib/imboy_cache.erl": {
+      "lines": 434
+    },
+    "src/lib/imboy_cache_sync.erl": {
+      "lines": 894,
+      "violation": "exceeds 800-line project standard; C03 minimal split required"
+    },
+    "src/lib/imboy_cache_policy.erl": {
+      "lines": 288
+    }
+  },
+  "dependencies": {
+    "deps/depcache/src/depcache.erl": "6678e09af2322592d6ae01e4c834ecee1b822d3f87ec7576323d9d1f5f0252e5"
+  },
+  "environment": {
+    "postgres_local": {
+      "host": "127.0.0.1",
+      "port": 4323,
+      "user": "imboy_user",
+      "status": "accepting connections"
+    },
+    "disk_available": "33Gi on / (recovered from prior-session 16Gi crisis)",
+    "os": "macOS arm64 (darwin 27.0.0)"
+  },
+  "historical_run_root": ".Codex/runs/CACHE_V2_2_1_W1_W5_LOCAL_IMPLEMENTATION/zcode-20261010T160733Z",
+  "w0_decision": {
+    "status": "W0_BLOCKED",
+    "architecture": "A",
+    "confirmed": false,
+    "replicate_whitelist": [],
+    "registry_count": 47
+  }
+}

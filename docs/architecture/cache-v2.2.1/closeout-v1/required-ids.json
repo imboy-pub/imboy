@@ -1,0 +1,488 @@
+{
+  "task_id": "CACHE_V221_BACKEND_CLOSEOUT_V1",
+  "source": "mechanical extraction from docs/architecture/cache-v2.2.1/w0/plan-v2.2.1.md (sha256 a5523ee7...c713)",
+  "total": 96,
+  "alias_rule": "plan two-digit form -> historical ledger three-digit form when number >= 10 (e.g. W4-10 -> W4-010, AC-22 -> AC-022); explicit, no silent ID change",
+  "ids": [
+    {
+      "id": "W0-01",
+      "kind": "task",
+      "alias_hist_ledger": null
+    },
+    {
+      "id": "W0-02",
+      "kind": "task",
+      "alias_hist_ledger": null
+    },
+    {
+      "id": "W0-03",
+      "kind": "task",
+      "alias_hist_ledger": null
+    },
+    {
+      "id": "W0-04",
+      "kind": "task",
+      "alias_hist_ledger": null
+    },
+    {
+      "id": "W0-05",
+      "kind": "task",
+      "alias_hist_ledger": null
+    },
+    {
+      "id": "W0-06",
+      "kind": "task",
+      "alias_hist_ledger": null
+    },
+    {
+      "id": "W0-07",
+      "kind": "task",
+      "alias_hist_ledger": null
+    },
+    {
+      "id": "W0-08",
+      "kind": "task",
+      "alias_hist_ledger": null
+    },
+    {
+      "id": "W0-09",
+      "kind": "task",
+      "alias_hist_ledger": null
+    },
+    {
+      "id": "W0-10",
+      "kind": "task",
+      "alias_hist_ledger": "W0-010"
+    },
+    {
+      "id": "W1-01",
+      "kind": "task",
+      "alias_hist_ledger": null
+    },
+    {
+      "id": "W1-02",
+      "kind": "task",
+      "alias_hist_ledger": null
+    },
+    {
+      "id": "W1-03",
+      "kind": "task",
+      "alias_hist_ledger": null
+    },
+    {
+      "id": "W1-04",
+      "kind": "task",
+      "alias_hist_ledger": null
+    },
+    {
+      "id": "W1-05",
+      "kind": "task",
+      "alias_hist_ledger": null
+    },
+    {
+      "id": "W1-06",
+      "kind": "task",
+      "alias_hist_ledger": null
+    },
+    {
+      "id": "W1-07",
+      "kind": "task",
+      "alias_hist_ledger": null
+    },
+    {
+      "id": "W2-01",
+      "kind": "task",
+      "alias_hist_ledger": null
+    },
+    {
+      "id": "W2-02",
+      "kind": "task",
+      "alias_hist_ledger": null
+    },
+    {
+      "id": "W2-03",
+      "kind": "task",
+      "alias_hist_ledger": null
+    },
+    {
+      "id": "W2-04",
+      "kind": "task",
+      "alias_hist_ledger": null
+    },
+    {
+      "id": "W2-05",
+      "kind": "task",
+      "alias_hist_ledger": null
+    },
+    {
+      "id": "W2-06",
+      "kind": "task",
+      "alias_hist_ledger": null
+    },
+    {
+      "id": "W2-07",
+      "kind": "task",
+      "alias_hist_ledger": null
+    },
+    {
+      "id": "W2-08",
+      "kind": "task",
+      "alias_hist_ledger": null
+    },
+    {
+      "id": "W3-01",
+      "kind": "task",
+      "alias_hist_ledger": null
+    },
+    {
+      "id": "W3-02",
+      "kind": "task",
+      "alias_hist_ledger": null
+    },
+    {
+      "id": "W3-03",
+      "kind": "task",
+      "alias_hist_ledger": null
+    },
+    {
+      "id": "W3-04",
+      "kind": "task",
+      "alias_hist_ledger": null
+    },
+    {
+      "id": "W3-05",
+      "kind": "task",
+      "alias_hist_ledger": null
+    },
+    {
+      "id": "W3-06",
+      "kind": "task",
+      "alias_hist_ledger": null
+    },
+    {
+      "id": "W3-07",
+      "kind": "task",
+      "alias_hist_ledger": null
+    },
+    {
+      "id": "W3-08",
+      "kind": "task",
+      "alias_hist_ledger": null
+    },
+    {
+      "id": "W3-09",
+      "kind": "task",
+      "alias_hist_ledger": null
+    },
+    {
+      "id": "W3-10",
+      "kind": "task",
+      "alias_hist_ledger": "W3-010"
+    },
+    {
+      "id": "W4-01",
+      "kind": "task",
+      "alias_hist_ledger": null
+    },
+    {
+      "id": "W4-02",
+      "kind": "task",
+      "alias_hist_ledger": null
+    },
+    {
+      "id": "W4-03",
+      "kind": "task",
+      "alias_hist_ledger": null
+    },
+    {
+      "id": "W4-04",
+      "kind": "task",
+      "alias_hist_ledger": null
+    },
+    {
+      "id": "W4-05",
+      "kind": "task",
+      "alias_hist_ledger": null
+    },
+    {
+      "id": "W4-06",
+      "kind": "task",
+      "alias_hist_ledger": null
+    },
+    {
+      "id": "W4-07",
+      "kind": "task",
+      "alias_hist_ledger": null
+    },
+    {
+      "id": "W4-08",
+      "kind": "task",
+      "alias_hist_ledger": null
+    },
+    {
+      "id": "W4-09",
+      "kind": "task",
+      "alias_hist_ledger": null
+    },
+    {
+      "id": "W4-10",
+      "kind": "task",
+      "alias_hist_ledger": "W4-010"
+    },
+    {
+      "id": "W4-11",
+      "kind": "task",
+      "alias_hist_ledger": "W4-011"
+    },
+    {
+      "id": "W5-01",
+      "kind": "task",
+      "alias_hist_ledger": null
+    },
+    {
+      "id": "W5-02",
+      "kind": "task",
+      "alias_hist_ledger": null
+    },
+    {
+      "id": "W5-03",
+      "kind": "task",
+      "alias_hist_ledger": null
+    },
+    {
+      "id": "W5-04",
+      "kind": "task",
+      "alias_hist_ledger": null
+    },
+    {
+      "id": "W5-05",
+      "kind": "task",
+      "alias_hist_ledger": null
+    },
+    {
+      "id": "W5-06",
+      "kind": "task",
+      "alias_hist_ledger": null
+    },
+    {
+      "id": "W5-07",
+      "kind": "task",
+      "alias_hist_ledger": null
+    },
+    {
+      "id": "W5-08",
+      "kind": "task",
+      "alias_hist_ledger": null
+    },
+    {
+      "id": "W5-09",
+      "kind": "task",
+      "alias_hist_ledger": null
+    },
+    {
+      "id": "W5-10",
+      "kind": "task",
+      "alias_hist_ledger": "W5-010"
+    },
+    {
+      "id": "AC-01",
+      "kind": "ac",
+      "alias_hist_ledger": null
+    },
+    {
+      "id": "AC-02",
+      "kind": "ac",
+      "alias_hist_ledger": null
+    },
+    {
+      "id": "AC-03",
+      "kind": "ac",
+      "alias_hist_ledger": null
+    },
+    {
+      "id": "AC-04",
+      "kind": "ac",
+      "alias_hist_ledger": null
+    },
+    {
+      "id": "AC-05",
+      "kind": "ac",
+      "alias_hist_ledger": null
+    },
+    {
+      "id": "AC-06",
+      "kind": "ac",
+      "alias_hist_ledger": null
+    },
+    {
+      "id": "AC-07",
+      "kind": "ac",
+      "alias_hist_ledger": null
+    },
+    {
+      "id": "AC-08",
+      "kind": "ac",
+      "alias_hist_ledger": null
+    },
+    {
+      "id": "AC-09",
+      "kind": "ac",
+      "alias_hist_ledger": null
+    },
+    {
+      "id": "AC-10",
+      "kind": "ac",
+      "alias_hist_ledger": "AC-010"
+    },
+    {
+      "id": "AC-11",
+      "kind": "ac",
+      "alias_hist_ledger": "AC-011"
+    },
+    {
+      "id": "AC-12",
+      "kind": "ac",
+      "alias_hist_ledger": "AC-012"
+    },
+    {
+      "id": "AC-13",
+      "kind": "ac",
+      "alias_hist_ledger": "AC-013"
+    },
+    {
+      "id": "AC-14",
+      "kind": "ac",
+      "alias_hist_ledger": "AC-014"
+    },
+    {
+      "id": "AC-15",
+      "kind": "ac",
+      "alias_hist_ledger": "AC-015"
+    },
+    {
+      "id": "AC-16",
+      "kind": "ac",
+      "alias_hist_ledger": "AC-016"
+    },
+    {
+      "id": "AC-17",
+      "kind": "ac",
+      "alias_hist_ledger": "AC-017"
+    },
+    {
+      "id": "AC-18",
+      "kind": "ac",
+      "alias_hist_ledger": "AC-018"
+    },
+    {
+      "id": "AC-19",
+      "kind": "ac",
+      "alias_hist_ledger": "AC-019"
+    },
+    {
+      "id": "AC-20",
+      "kind": "ac",
+      "alias_hist_ledger": "AC-020"
+    },
+    {
+      "id": "AC-21",
+      "kind": "ac",
+      "alias_hist_ledger": "AC-021"
+    },
+    {
+      "id": "AC-22",
+      "kind": "ac",
+      "alias_hist_ledger": "AC-022"
+    },
+    {
+      "id": "AC-23",
+      "kind": "ac",
+      "alias_hist_ledger": "AC-023"
+    },
+    {
+      "id": "AC-24",
+      "kind": "ac",
+      "alias_hist_ledger": "AC-024"
+    },
+    {
+      "id": "AC-25",
+      "kind": "ac",
+      "alias_hist_ledger": "AC-025"
+    },
+    {
+      "id": "AC-26",
+      "kind": "ac",
+      "alias_hist_ledger": "AC-026"
+    },
+    {
+      "id": "AC-27",
+      "kind": "ac",
+      "alias_hist_ledger": "AC-027"
+    },
+    {
+      "id": "AC-28",
+      "kind": "ac",
+      "alias_hist_ledger": "AC-028"
+    },
+    {
+      "id": "AC-29",
+      "kind": "ac",
+      "alias_hist_ledger": "AC-029"
+    },
+    {
+      "id": "AC-30",
+      "kind": "ac",
+      "alias_hist_ledger": "AC-030"
+    },
+    {
+      "id": "G-QR",
+      "kind": "sec19_gate",
+      "alias_hist_ledger": null
+    },
+    {
+      "id": "19.3-栅栏",
+      "kind": "sec19_gate",
+      "alias_hist_ledger": null
+    },
+    {
+      "id": "19.4-Registry",
+      "kind": "sec19_gate",
+      "alias_hist_ledger": null
+    },
+    {
+      "id": "19.5-白名单",
+      "kind": "sec19_gate",
+      "alias_hist_ledger": null
+    },
+    {
+      "id": "19.6-有界恢复",
+      "kind": "sec19_gate",
+      "alias_hist_ledger": null
+    },
+    {
+      "id": "19.7-参数纪律",
+      "kind": "sec19_gate",
+      "alias_hist_ledger": null
+    },
+    {
+      "id": "19.8-混合可观测",
+      "kind": "sec19_gate",
+      "alias_hist_ledger": null
+    },
+    {
+      "id": "19.9-SINGLE_NODE_PASS",
+      "kind": "sec19_gate",
+      "alias_hist_ledger": null
+    },
+    {
+      "id": "19.9-THREE_NODE_PASS",
+      "kind": "sec19_gate",
+      "alias_hist_ledger": null
+    },
+    {
+      "id": "19.9-文档一致性",
+      "kind": "sec19_gate",
+      "alias_hist_ledger": null
+    }
+  ]
+}

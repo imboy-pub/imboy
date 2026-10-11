@@ -1,0 +1,91 @@
+{
+  "task_id": "CACHE_V221_BACKEND_CLOSEOUT_V1",
+  "generated_at_utc": "2026-10-11T13:13:29+00:00",
+  "rule": "single-file unique owner; sync core single-writer (A1); tests registered to owners; workers use isolated worktrees/builds",
+  "slots": {
+    "A0": {
+      "role": "coordination, interface freeze, integration, candidate freeze, resource lease, final sign-off",
+      "owns": [
+        "docs/architecture/cache-v2.2.1/closeout-v1/baseline.json",
+        "docs/architecture/cache-v2.2.1/closeout-v1/required-ids.json",
+        "docs/architecture/cache-v2.2.1/closeout-v1/resources.json",
+        "docs/architecture/cache-v2.2.1/closeout-v1/protocol-budget-frozen.md",
+        "integration commits (precise-path, per-feature)"
+      ]
+    },
+    "A1": {
+      "role": "sync core single writer, C02-C05 serial",
+      "owns": [
+        "src/lib/imboy_cache_sync.erl",
+        "src/lib/imboy_cache_sync_*.erl (new internal modules after split)",
+        "test/lib/imboy_cache_sync_tests.erl"
+      ]
+    },
+    "A2": {
+      "role": "policy/registry/config + policy tests",
+      "owns": [
+        "src/lib/imboy_cache_policy.erl",
+        "test/lib/imboy_cache_policy_tests.erl",
+        "config/sys.config.example (cache sections only)",
+        "include/cache.hrl"
+      ]
+    },
+    "A3": {
+      "role": "QR handler/logic/ds/repo + migration + QR tests",
+      "owns": [
+        "src/api/qr_login_handler.erl",
+        "src/logic/qr_login_logic.erl (if exists/new)",
+        "src/ds/qr_login_ds.erl (if exists/new)",
+        "migrations/*qr* (new migration files)",
+        "test/api/qr_login_tests.erl and new QR test files"
+      ]
+    },
+    "A4": {
+      "role": "imboy_cache.erl + backfill/API unit tests",
+      "owns": [
+        "src/lib/imboy_cache.erl",
+        "test/lib/imboy_cache_tests.erl",
+        "test/lib/imboy_cache_v2_tests.erl"
+      ]
+    },
+    "A5": {
+      "role": "three-node fault driver + fault integration tests",
+      "owns": [
+        "scripts/cache_v21_dcheck.erl",
+        "shared test fixtures (sole maintainer)"
+      ]
+    },
+    "A6": {
+      "role": "mixed upgrade/rollback driver + tests",
+      "owns": [
+        "scripts/cache_v21_mixed_dcheck.erl"
+      ]
+    },
+    "A7": {
+      "role": "performance runner/bench + perf report",
+      "owns": [
+        "scripts/cache_w0_bench.erl (if reused for C12)",
+        "performance run artifacts (out-of-repo)"
+      ]
+    },
+    "A8": {
+      "role": "closeout verifier, evidence schema, new ledger, ops docs",
+      "owns": [
+        "scripts/check_cache_closeout_v1.py (new verifier)",
+        "docs/architecture/cache-v2.2.1/closeout-v1/ledger-v1.json",
+        "docs/architecture/cache-v2.2.1/closeout-v1/review-ledger-v1.md",
+        "docs/architecture/cache-v2.2.1/closeout-v1/closeout-report-v1.md",
+        "docs/architecture/cache-v2.2.1/closeout-v1/monitoring.md",
+        "deploy/grafana/dashboards/imboy-cache-sync.json",
+        "deploy/prometheus/rules/imboy-alerts.yml (cache_sync group only)"
+      ]
+    },
+    "A9": {
+      "role": "independent code/security/evidence review",
+      "owns": [],
+      "constraint": "read-only; findings routed to owning slot"
+    }
+  },
+  "conflict_resolution": "business hook files (mutation_hook) that overlap other owners are assigned a single writer by A0; A2 submits only the change description",
+  "shared_main": "no parallel compilation on shared main/ebin; workers use isolated worktrees and independent build products"
+}

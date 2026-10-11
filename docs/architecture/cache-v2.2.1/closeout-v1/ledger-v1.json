@@ -1,0 +1,784 @@
+{
+  "task_id": "CACHE_V221_BACKEND_CLOSEOUT_V1",
+  "generated_at_utc": "2026-10-11T13:14:42+00:00",
+  "source_hist_ledger": ".Codex/runs/CACHE_V2_2_1_W1_W5_LOCAL_IMPLEMENTATION/zcode-20261010T160733Z/evidence/ledger.json (86 items: 77 PASS / 6 BLOCKED / 2 NOT_RUN / 1 PARTIAL)",
+  "rule": "old PASS defaults to re-verify; classifications: REVERIFY / REVERIFY_HIST_INHERIT / GAP_IMPLEMENTATION / GAP_EVIDENCE / NOT_RUN_CARRIED / BLOCKED_EXTERNAL / LEGAL_EXCEPTION",
+  "classes": {
+    "REVERIFY_HIST_INHERIT": 9,
+    "BLOCKED_EXTERNAL": 3,
+    "REVERIFY": 63,
+    "GAP_IMPLEMENTATION": 13,
+    "NOT_RUN_CARRIED": 1,
+    "GAP_EVIDENCE": 7
+  },
+  "entries": [
+    {
+      "id": "W0-01",
+      "kind": "task",
+      "hist_status": "(not in hist ledger; W0 phase 2026-10-10)",
+      "new_class": "REVERIFY_HIST_INHERIT",
+      "reason": "W0 phase executed 2026-10-10; evidence in docs/architecture/cache-v2.2.1/w0/; inputs unchanged -> inheritable, spot-reverified",
+      "closeout_task": "C14"
+    },
+    {
+      "id": "W0-02",
+      "kind": "task",
+      "hist_status": "(not in hist ledger; W0 phase 2026-10-10)",
+      "new_class": "REVERIFY_HIST_INHERIT",
+      "reason": "W0 phase executed 2026-10-10; evidence in docs/architecture/cache-v2.2.1/w0/; inputs unchanged -> inheritable, spot-reverified",
+      "closeout_task": "C14"
+    },
+    {
+      "id": "W0-03",
+      "kind": "task",
+      "hist_status": "(not in hist ledger; W0 phase 2026-10-10)",
+      "new_class": "REVERIFY_HIST_INHERIT",
+      "reason": "W0 phase executed 2026-10-10; evidence in docs/architecture/cache-v2.2.1/w0/; inputs unchanged -> inheritable, spot-reverified",
+      "closeout_task": "C14"
+    },
+    {
+      "id": "W0-04",
+      "kind": "task",
+      "hist_status": "(not in hist ledger; W0 phase 2026-10-10)",
+      "new_class": "REVERIFY_HIST_INHERIT",
+      "reason": "W0 phase executed 2026-10-10; evidence in docs/architecture/cache-v2.2.1/w0/; inputs unchanged -> inheritable, spot-reverified",
+      "closeout_task": "C14"
+    },
+    {
+      "id": "W0-05",
+      "kind": "task",
+      "hist_status": "(not in hist ledger; W0 phase 2026-10-10)",
+      "new_class": "REVERIFY_HIST_INHERIT",
+      "reason": "W0 phase executed 2026-10-10; evidence in docs/architecture/cache-v2.2.1/w0/; inputs unchanged -> inheritable, spot-reverified",
+      "closeout_task": "C14"
+    },
+    {
+      "id": "W0-06",
+      "kind": "task",
+      "hist_status": "(not in hist ledger; W0 phase 2026-10-10)",
+      "new_class": "REVERIFY_HIST_INHERIT",
+      "reason": "W0 phase executed 2026-10-10; evidence in docs/architecture/cache-v2.2.1/w0/; inputs unchanged -> inheritable, spot-reverified",
+      "closeout_task": "C14"
+    },
+    {
+      "id": "W0-07",
+      "kind": "task",
+      "hist_status": "(not in hist ledger; W0 phase 2026-10-10)",
+      "new_class": "REVERIFY_HIST_INHERIT",
+      "reason": "W0 phase executed 2026-10-10; evidence in docs/architecture/cache-v2.2.1/w0/; inputs unchanged -> inheritable, spot-reverified",
+      "closeout_task": "C14"
+    },
+    {
+      "id": "W0-08",
+      "kind": "task",
+      "hist_status": "(not in hist ledger; W0 phase 2026-10-10)",
+      "new_class": "REVERIFY_HIST_INHERIT",
+      "reason": "W0 phase executed 2026-10-10; evidence in docs/architecture/cache-v2.2.1/w0/; inputs unchanged -> inheritable, spot-reverified",
+      "closeout_task": "C14"
+    },
+    {
+      "id": "W0-09",
+      "kind": "task",
+      "hist_status": "(not in hist ledger; W0 phase 2026-10-10)",
+      "new_class": "BLOCKED_EXTERNAL",
+      "reason": "absolute SLO freeze requires business peak/target hardware inputs; mapped to AC-26/27 which stay BLOCKED_EXTERNAL",
+      "closeout_task": "C13"
+    },
+    {
+      "id": "W0-10",
+      "kind": "task",
+      "hist_status": "(not in hist ledger; W0 phase 2026-10-10)",
+      "new_class": "REVERIFY_HIST_INHERIT",
+      "reason": "W0 phase executed 2026-10-10; evidence in docs/architecture/cache-v2.2.1/w0/; inputs unchanged -> inheritable, spot-reverified",
+      "closeout_task": "C14"
+    },
+    {
+      "id": "W1-01",
+      "kind": "task",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate (default rebind rule)",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "W1-02",
+      "kind": "task",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate (default rebind rule)",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "W1-03",
+      "kind": "task",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate (default rebind rule)",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "W1-04",
+      "kind": "task",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate (default rebind rule)",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "W1-05",
+      "kind": "task",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate (default rebind rule)",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "W1-06",
+      "kind": "task",
+      "hist_status": "BLOCKED",
+      "new_class": "GAP_IMPLEMENTATION",
+      "reason": "QR status/SSE one-time consumption now in scope via C08 (authorization includes migration files + exclusive test DB)",
+      "closeout_task": "C08"
+    },
+    {
+      "id": "W1-07",
+      "kind": "task",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate (default rebind rule)",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "W2-01",
+      "kind": "task",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate (default rebind rule)",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "W2-02",
+      "kind": "task",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate (default rebind rule)",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "W2-03",
+      "kind": "task",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate (default rebind rule)",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "W2-04",
+      "kind": "task",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate (default rebind rule)",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "W2-05",
+      "kind": "task",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate (default rebind rule)",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "W2-06",
+      "kind": "task",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate (default rebind rule)",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "W2-07",
+      "kind": "task",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate (default rebind rule)",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "W2-08",
+      "kind": "task",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate (default rebind rule)",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "W3-01",
+      "kind": "task",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate (default rebind rule)",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "W3-02",
+      "kind": "task",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate (default rebind rule)",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "W3-03",
+      "kind": "task",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate (default rebind rule)",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "W3-04",
+      "kind": "task",
+      "hist_status": "PASS",
+      "new_class": "GAP_IMPLEMENTATION",
+      "reason": "BootId type-check + self-loop filter exist; missing incarnation registry, old-incarnation rejection, epoch and config/registry-hash dual-end validation",
+      "closeout_task": "C01+C02"
+    },
+    {
+      "id": "W3-05",
+      "kind": "task",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate (default rebind rule)",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "W3-06",
+      "kind": "task",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate (default rebind rule)",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "W3-07",
+      "kind": "task",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate (default rebind rule)",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "W3-08",
+      "kind": "task",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate (default rebind rule)",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "W3-09",
+      "kind": "task",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate (default rebind rule)",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "W3-10",
+      "kind": "task",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate (default rebind rule)",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "W4-01",
+      "kind": "task",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate (default rebind rule)",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "W4-02",
+      "kind": "task",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate (default rebind rule)",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "W4-03",
+      "kind": "task",
+      "hist_status": "PASS",
+      "new_class": "GAP_IMPLEMENTATION",
+      "reason": "current snapshot enumerates/sends whole-batch (no paging), empty-snapshot completion + counter-only check insufficient",
+      "closeout_task": "C04"
+    },
+    {
+      "id": "W4-04",
+      "kind": "task",
+      "hist_status": "PASS",
+      "new_class": "GAP_IMPLEMENTATION",
+      "reason": "delta catch-up during snapshot lacks round/token/watermark/page-digest contract",
+      "closeout_task": "C04"
+    },
+    {
+      "id": "W4-05",
+      "kind": "task",
+      "hist_status": "PASS",
+      "new_class": "GAP_IMPLEMENTATION",
+      "reason": "only origin_seq gap COUNTER exists; no data compensation for missed invalidations on reconnect",
+      "closeout_task": "C05"
+    },
+    {
+      "id": "W4-06",
+      "kind": "task",
+      "hist_status": "PASS",
+      "new_class": "GAP_IMPLEMENTATION",
+      "reason": "bounded namespace cleanup exists but item/bytes bounds unproven",
+      "closeout_task": "C03+C05"
+    },
+    {
+      "id": "W4-07",
+      "kind": "task",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "tombstone TIME upper bound implemented (Tmax=720s formula-derived); item/bytes bounds re-verified under C03",
+      "closeout_task": "C03+C09"
+    },
+    {
+      "id": "W4-08",
+      "kind": "task",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate (default rebind rule)",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "W4-09",
+      "kind": "task",
+      "hist_status": "PASS",
+      "new_class": "GAP_IMPLEMENTATION",
+      "reason": "mailbox high-watermark sampled, not hard bound; input constraint + overload disposition must be proven effective",
+      "closeout_task": "C03"
+    },
+    {
+      "id": "W4-10",
+      "kind": "task",
+      "hist_status": "NOT_RUN",
+      "new_class": "NOT_RUN_CARRIED",
+      "reason": "final cache perf stress NOT_RUN in history; C12 must run new V2-path perf, old data not inheritable",
+      "closeout_task": "C12"
+    },
+    {
+      "id": "W4-11",
+      "kind": "task",
+      "hist_status": "PASS",
+      "new_class": "GAP_EVIDENCE",
+      "reason": "15 fault scenarios green but matrix lacks: live-node partition reconnection with PG-authority mutation, invalidation gap compensation, resource caps",
+      "closeout_task": "C09"
+    },
+    {
+      "id": "W5-01",
+      "kind": "task",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate (default rebind rule)",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "W5-02",
+      "kind": "task",
+      "hist_status": "NOT_RUN",
+      "new_class": "GAP_EVIDENCE",
+      "reason": "NOT_RUN in history: three-node full SET integration retained + no-safe-key exception statement (whitelist empty) to be formally recorded",
+      "closeout_task": "C09+C14"
+    },
+    {
+      "id": "W5-03",
+      "kind": "task",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate (default rebind rule)",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "W5-04",
+      "kind": "task",
+      "hist_status": "BLOCKED",
+      "new_class": "GAP_IMPLEMENTATION",
+      "reason": "QR/auth/device/permission contract verification depends on C08 + C06 fail-closed closure",
+      "closeout_task": "C06+C08"
+    },
+    {
+      "id": "W5-05",
+      "kind": "task",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate (default rebind rule)",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "W5-06",
+      "kind": "task",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate (default rebind rule)",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "W5-07",
+      "kind": "task",
+      "hist_status": "PARTIAL",
+      "new_class": "GAP_EVIDENCE",
+      "reason": "PARTIAL: same-artifact hash match proven but perf attribution incomplete; new V2-path perf required on quiet window",
+      "closeout_task": "C12"
+    },
+    {
+      "id": "W5-08",
+      "kind": "task",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate (default rebind rule)",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "W5-09",
+      "kind": "task",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate (default rebind rule)",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "W5-10",
+      "kind": "task",
+      "hist_status": "PASS",
+      "new_class": "GAP_EVIDENCE",
+      "reason": "final full EUnit raw log: Failed 4 / Passed 11078 / make exit NONZERO; isolated rerun 8/8 green does not equal full pass. Must re-run full gate on new candidate with exit=0",
+      "closeout_task": "C12"
+    },
+    {
+      "id": "AC-01",
+      "kind": "ac",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate (default rebind rule)",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "AC-02",
+      "kind": "ac",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate (default rebind rule)",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "AC-03",
+      "kind": "ac",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate (default rebind rule)",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "AC-04",
+      "kind": "ac",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate (default rebind rule)",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "AC-05",
+      "kind": "ac",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate (default rebind rule)",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "AC-06",
+      "kind": "ac",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate (default rebind rule)",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "AC-07",
+      "kind": "ac",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate (default rebind rule)",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "AC-08",
+      "kind": "ac",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate (default rebind rule)",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "AC-09",
+      "kind": "ac",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate (default rebind rule)",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "AC-10",
+      "kind": "ac",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate (default rebind rule)",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "AC-11",
+      "kind": "ac",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate (default rebind rule)",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "AC-12",
+      "kind": "ac",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate (default rebind rule)",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "AC-13",
+      "kind": "ac",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate (default rebind rule)",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "AC-14",
+      "kind": "ac",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate (default rebind rule)",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "AC-15",
+      "kind": "ac",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate (default rebind rule)",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "AC-16",
+      "kind": "ac",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate (default rebind rule)",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "AC-17",
+      "kind": "ac",
+      "hist_status": "PASS",
+      "new_class": "GAP_EVIDENCE",
+      "reason": "restart version-ceil recovery verified; epoch/config-hash consistency needs C02+C09 re-verification",
+      "closeout_task": "C02+C09"
+    },
+    {
+      "id": "AC-18",
+      "kind": "ac",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate (default rebind rule)",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "AC-19",
+      "kind": "ac",
+      "hist_status": "PASS",
+      "new_class": "GAP_EVIDENCE",
+      "reason": "snapshot+delta completeness contract needs behavioral oracle under C04/C09",
+      "closeout_task": "C04+C09"
+    },
+    {
+      "id": "AC-20",
+      "kind": "ac",
+      "hist_status": "PASS",
+      "new_class": "GAP_IMPLEMENTATION",
+      "reason": "detect+compensate lost invalidate within deadline not yet implemented",
+      "closeout_task": "C05+C09"
+    },
+    {
+      "id": "AC-21",
+      "kind": "ac",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate (default rebind rule)",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "AC-22",
+      "kind": "ac",
+      "hist_status": "BLOCKED",
+      "new_class": "GAP_IMPLEMENTATION",
+      "reason": "QR atomic claim + SSE/status race oracle (2 backend nodes, real PG) to be delivered by C08",
+      "closeout_task": "C08"
+    },
+    {
+      "id": "AC-23",
+      "kind": "ac",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate (default rebind rule)",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "AC-24",
+      "kind": "ac",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate (default rebind rule)",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "AC-25",
+      "kind": "ac",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate (default rebind rule)",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "AC-26",
+      "kind": "ac",
+      "hist_status": "BLOCKED",
+      "new_class": "BLOCKED_EXTERNAL",
+      "reason": "no production SLO/hardware/peak inputs; local relative thresholds frozen at C12 but original AC remains blocked",
+      "closeout_task": "C13"
+    },
+    {
+      "id": "AC-27",
+      "kind": "ac",
+      "hist_status": "BLOCKED",
+      "new_class": "BLOCKED_EXTERNAL",
+      "reason": "same as AC-26 (three-node sync perf + resource budget vs production SLO)",
+      "closeout_task": "C13"
+    },
+    {
+      "id": "AC-28",
+      "kind": "ac",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate (default rebind rule)",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "AC-29",
+      "kind": "ac",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate (default rebind rule)",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "AC-30",
+      "kind": "ac",
+      "hist_status": "PASS",
+      "new_class": "GAP_EVIDENCE",
+      "reason": "targeted tests green but final full-gate exit=0 not yet achieved on a frozen candidate",
+      "closeout_task": "C12+C14"
+    },
+    {
+      "id": "G-QR",
+      "kind": "sec19_gate",
+      "hist_status": "BLOCKED",
+      "new_class": "GAP_IMPLEMENTATION",
+      "reason": "independent proposal delivered (g-qr-atomic-consumption-proposal.md); C08 re-reviews and implements atomic claim/consume via PG authority + migration on exclusive test DB",
+      "closeout_task": "C08"
+    },
+    {
+      "id": "19.3-栅栏",
+      "kind": "sec19_gate",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "19.4-Registry",
+      "kind": "sec19_gate",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "19.5-白名单",
+      "kind": "sec19_gate",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "19.6-有界恢复",
+      "kind": "sec19_gate",
+      "hist_status": "PASS",
+      "new_class": "GAP_IMPLEMENTATION",
+      "reason": "bounded retention TIME proven, but Nmax/Tmax/Jmax/Bmax/Pmax/Rmax/Dmax item+bytes bounds not enforced; 894-line sync needs split",
+      "closeout_task": "C01+C03+C04"
+    },
+    {
+      "id": "19.7-参数纪律",
+      "kind": "sec19_gate",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "19.8-混合可观测",
+      "kind": "sec19_gate",
+      "hist_status": "PASS",
+      "new_class": "GAP_IMPLEMENTATION",
+      "reason": "observability lacks protocol/config/registry hash, epoch, incarnation, last accepted/applied, peer lag counters",
+      "closeout_task": "C11"
+    },
+    {
+      "id": "19.9-SINGLE_NODE_PASS",
+      "kind": "sec19_gate",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "19.9-THREE_NODE_PASS",
+      "kind": "sec19_gate",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "19.9-文档一致性",
+      "kind": "sec19_gate",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate",
+      "closeout_task": "C12/C14"
+    }
+  ]
+}
