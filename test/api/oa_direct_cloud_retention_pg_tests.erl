@@ -28,7 +28,11 @@ retention_test_() ->
 setup() ->
     S = ?H:setup_all(),
     ok = elib_tsid:register(msg_store),
-    #{port := 4337} = maps:get(server, S),
+    %% marker server 端口断言：默认沿用 phase1 的 4337 隔离容器；后续 run 经
+    %% OA_CLOUD_MARKER_PORT 显式覆盖到自己的隔离 PG（如 relay 端口），防止
+    %% 误连共享库的守卫语义不变。
+    ExpectedMarkerPort = list_to_integer(os:getenv("OA_CLOUD_MARKER_PORT", "4337")),
+    #{port := ExpectedMarkerPort} = maps:get(server, S),
     C = maps:get(conn, S),
     PreviousSuper = application:get_env(imboy, super_account),
     PreviousPool = application:get_env(imboy, pg_conf),
