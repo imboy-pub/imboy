@@ -34,7 +34,7 @@ U00记录三仓HEAD/tree、完整tracked patch与未跟踪白名单内容hash、
 
 历史protected WIP快照保持不变；主树并行演进不等于历史完整性通过。U00按路径、提交与内容归属分类重订本run基线，证明候选未混入外来WIP。新基线不能追溯消除旧run漂移；不得补造 attested 日志。
 
-建立 control/requirements.tsv：cell_id/source_plan/source_id/source_locator/subcase/platform/role/oracle/required_local/dependency/owner/status/evidence/candidate。叶子唯一键为(source_plan, source_id, subcase, platform, role)，cell_id是该元组规范JSON的SHA256；父ID可以合法重复，禁止仅按父ID查重。source_locator绑定冻结源hash及节/行；多角色或多平台场景按原合同拆格，不能以ALL掩盖缺平台。每个原父项展开全部子场景，每格明确本地、依赖、后期或外部。共享测试可映射多格，必须分别证明子断言。U12从冻结源独立复核预期叶子全集，再核requirements与ledger，禁止三表从同一遗漏集合生成后自证完整。
+建立 control/requirements.tsv：cell_id/source_plan/source_id/source_locator/subcase/platform/role/oracle/required_local/dependency/owner/card/status/evidence/candidate。叶子唯一键为(source_plan, source_id, subcase, platform, role)，cell_id是按该顺序组成的五字符串JSON数组的UTF-8字节SHA256（不转义非ASCII、不加空格/换行、不做隐式trim或大小写折叠）；父ID可以合法重复，禁止仅按父ID查重。source_locator绑定冻结源hash及节/行；多角色或多平台场景按原合同拆格，不能以ALL掩盖缺平台。每个原父项展开全部子场景，每格明确本地、依赖、后期或外部，card必须对应U00–U12且owner唯一。共享测试可映射多格，必须分别证明子断言。U12从冻结源独立复核预期叶子全集，再核requirements与ledger，禁止三表从同一遗漏集合生成后自证完整。
 
 U00输出 control/leases.json 与无省略号 commands.sh。每worker独立build/ebin、数据库、端口、BEAM cookie和fixture命名空间。共享设备、PG资源压力、浏览器会话、全量EUnit及最终回退演练串行；没有租约不启动。
 
@@ -56,7 +56,7 @@ U00输出 control/leases.json 与无省略号 commands.sh。每worker独立build
 | U09 / 90min | U00；一期profile/推送及跨会话交接owner | AC01–06/17–24与EO07未覆盖项逐格核验；AC05禁用入口原要求与豁免分账；AC23点击会话/杀进程/切账号逐格真实设备；CX只接收匹配候选证据，OA getAuthCode只做继承核验 |
 | U10 / 2h | U03–09受影响实现稳定；恢复/交付文档owner | AC25–27/29与MC24：tracked交付白名单、文档链接/命令、新环境安装升级；非空消息/订单/成员/附件fixtures，PG+Garage恢复到隔离目标，恢复服务实际读取与ID/字节对拍；业务数据库升级失败回退，不以marker替代 |
 | U11 / 视完整门耗时 | 可执行修改已收束、三仓候选固定；集成owner；不要求受阻U07/U09全闭合 | 按final-gates.tsv运行前置齐备的最终子门，显式含最终候选dialyze；EUnit两轮，其余按冻结原合同轮次；受阻门逐项BLOCKED不挡独立门；全量集中跑 |
-| U12 / 60min | U11可执行门已运行、受阻门有诊断；新独立只读verifier | 先独立复核源合同叶子全集，再验ledger/hash及正反例。FULL审查全required闭合才签统一PASS；PARTIAL审查核成果/阻断/续跑点，只签PARTIAL/BLOCKED；真实包准确性通过不等价功能PASS |
+| U12 / 60min | U11可执行门已运行、受阻门有诊断；新独立只读verifier | 先独立复核源合同叶子全集，再逐类执行第6节U12最低负例。FULL审查全原required闭合才签统一PASS；有真实范围修订时按修订集合审查、仅签REVISED_SCOPE_LOCAL_PASS并保留原合同差异；PARTIAL审查核成果/阻断/续跑点，只签PARTIAL/BLOCKED；包准确性通过不等价功能PASS |
 
 每卡至少一个明确负例。安全/权限/恢复卡必须验证DB无副作用或恢复后的实际业务读取，单纯HTTP200/截图/测试数量均不足。U03/U07共享App文件时协调者切分写集或串行；U04/U05共享群权限文件同理。
 
@@ -73,13 +73,19 @@ U00输出 control/leases.json 与无省略号 commands.sh。每worker独立build
 
 ## 6. 命令与证据合同 / Commands and evidence
 
-复用现有入口：imboy/scripts/test/phase1_gates/、imboy/scripts/verify_micro_community_acceptance.py；App integration_test/micro_community_owned_android_test.dart、micro_community_owned_android_negative_test.dart、enterprise/enterprise_scope_native_test.dart；Admin tests/e2e/enterprise-app-governance-real.spec.ts。U00须先读取runner及原计划命令，生成本run隔离参数；不能原样运行旧脚本误连共享库。
+复用现有入口：imboy/scripts/test/phase1_gates/及既存微社群校验器的可兼容检查；App integration_test/micro_community_owned_android_test.dart、micro_community_owned_android_negative_test.dart、enterprise/enterprise_scope_native_test.dart；Admin tests/e2e/enterprise-app-governance-real.spec.ts。U00须先读取runner及原计划命令，生成本run隔离参数；不能原样运行旧脚本误连共享库。
+
+已读入口限制：G06/G07固定历史config/sys.p1-run和23980/23970/26432端口；U00须在本run副本/隔离分支适配配置和端口，并盘点Makefile实际排除套件与原required覆盖，旧“全量”标签不证明未排除required。现有verify_micro_community_acceptance.py限定NO_FULL_EUNIT、26父项、MC25必须PARTIAL且比较活跃主树WIP，不能原样作为本计划FULL/PARTIAL终审。U02负责最小适配其可复用检查及原工具自测，形成符合新合同的本run校验入口，U12新审查者独立运行；禁止改旧run、降低终审规则或建设通用平台。Makefile的dialyze-local/check是警告棘轮，不能替代最终make dialyze原始RC0门。
 
 基础门从相应候选根执行：Backend make compile / make eunit / make dialyze；Admin bun run test / bun run lint / bun run typecheck / bun run build，deadcode按当前package脚本；App flutter analyze / flutter test，真端runner按实际设备ID。本段是命令模板，不是执行证据，环境/具体spec及参数必须在commands.sh完整展开。
 
-U00冻结control/final-gates.tsv作为轮次、绑定和判定的唯一执行清单：gate_id/required_cells/source_locator/command_ref/candidate_binding/rounds/expected_exit/warning_policy/skip_policy/prerequisites/timeout_ref。Backend compile、dialyze，Admin test/lint/typecheck/deadcode/build，App analyze/test及原required真实集成/恢复门均必须有行，不能漏dialyze或引用U02旧候选结果。EUnit固定最终候选连续两轮；其余至少一次，原合同明确多轮则采用其轮次，并记录来源；无依据不统一强加两轮。遇到互斥原标准先登记BLOCKED_CONTRACT，不凭代理放宽。
+U00冻结control/final-gates.tsv作为轮次、绑定和判定的唯一执行清单：gate_id/required_cells/source_locator/command_ref/candidate_binding/rounds/expected_exit/warning_policy/skip_policy/prerequisites/timeout_ref。Backend compile、EUnit、dialyze，Admin test/lint/typecheck/deadcode/build，App analyze/test及原required真实集成/恢复门均必须有行，不能漏EUnit/dialyze或引用U02旧候选结果。EUnit固定最终候选连续两轮，每轮实际退出码均为0，无中间修复/源或runner/config/fixture指纹改变，日志及receipt分别保存；指纹改变使两轮失效。其余至少一次，原合同明确多轮则采用其轮次，并记录来源；无依据不统一强加两轮。遇到互斥原标准先登记BLOCKED_CONTRACT，不凭代理放宽。
 
 dialyze默认最终候选RC0，原合同更严格警告要求同时保留；警告基线差分用于归因，不能把非零exit转换PASS。每门的exit、警告、skip/cancel规则启动前冻结，无法确定的规则阻断该门，不阻断独立门。真端历史轮次只有通过最终build/candidate影响分析才能继承；最终EUnit与dialyze必须实际在最终候选运行。候选变化按影响闭包失效重验，不因清单冻结拒绝必要修复。
+
+required叶子SKIP、CANCEL、NOT_RUN/NOT_EXECUTED均不得记PASS或让父项PASS；正式授权修订须记录授权出处及摘要、原叶子状态、修订集合和差异，不把被裁剪原叶子改为原合同PASS。所有正常质量门非零exit/TIMEOUT不能由历史结果、警告差分或基线解释转为PASS。负例测试的预期拒绝非零属于另一类receipt，必须标kind=negative_probe并记录expected_exit与拒绝原因；外层负例断言命令只有确认预期拒绝才RC0，不得充当正常质量门receipt。
+
+U12最低必测集合，每类独立case及receipt验证预期拒绝，不能用“正反例”或其他卡的“至少一个负例”代替：缺失叶子；多余叶子；重复叶子；错误SHA/hash；日志复用；正常质量门非零却标PASS；子项未全通过却签父PASS；错误设备或平台；dirty字节漏绑；外来WIP混入候选。每类至少一个单故障样本，记录被拒规则与实际结果，不能以其他先触发错误代替本类覆盖。完整真实包走FULL并得到与事实一致的结论；如实受阻部分包走PARTIAL，包准确性可通过但总体只能PARTIAL/BLOCKED。合成正常/负例包仅证明工具规则，不能替代真实包审查或补登业务AC/U11/U12 PASS。
 
 RUN_ROOT放工作区外。control包含baseline、source-contract hashes、requirements、leases、candidate-manifest、commands、command-receipts、inheritance、recovery；artifacts按card/subcase/round独立目录；final包含ledger、verdict和report。秘密和PII不入仓、不写日志；仅合成数据。
 
@@ -110,6 +116,10 @@ verdict同时输出三个source_original_contract_status、current_scope_status�
 - `docs/design/2026-10-07-phase1-delivery-quality-plan.md`（冻结前）：`3074702ea0b00ab32eb58252a35cc0f62217376b938c932ba9a05ccced1d5e00`。
 - `docs/design/2026-10-06-enterprise-organization-gap/plan-v1.md`（冻结前）：`484408ed8b0fec126267cb155875a75d2d24f7aef377df6b23cae8b48824961f`。
 - 企业历史 verdict SHA256：`f280a117836e088c5f0a887bc190939cff981506c42251871b58e89399ff9aa2`；保留原字节。
+
+同目录[materials-index.json](materials-index.json)记录本轮实际定位的冻结合同、历史审计/EO继承来源及runner；observed_sha256只是本轮读到的字节摘要，expected_sha256只取既有记录，二者不互相覆盖。source-contracts中的相对引用按其原仓库路径解析，不按快照目录解析；docs/plans可能为符号链接，须检查实际文件，不能只据rg默认忽略结果判MISSING。已定位企业V2.1祖先原文及EWS/non-OA合同并匹配既有摘要；历史审计仍只作输入，内容真假与当前适用性本轮UNVERIFIED。若执行现场材料缺失，U00继续可定位源集合及独立任务，为缺来源保留BLOCKED_SOURCE父项占位（不是伪造叶子）；找回原文、匹配既有摘要并补全独立叶子审查后才能签完整原合同PASS。
+
+材料索引SHA256：`eec16f364e2da6d7d2900183ab4e716ab6e9d645c6f3db5dc84be11ca313b98a`。U00先核此索引再解析源摘要；现场runner漂移重新采样登记，不能静默改绑历史receipt。
 
 ## 10. 无人值守执行协议 / Unattended execution protocol
 
@@ -156,7 +166,7 @@ agent失败先核查残留进程/写入，确认安全后释放该任务租约�
 
 全程每5分钟更新progress.md，每张卡交接含下一动作。上下文压缩/工具超时不是任务结束，保留checkpoint并继续。只有以下条件可结束本次无人值守执行：
 
-1. 全部本地required及交接项通过U12，输出UNIFIED_LOCAL_CANDIDATE_PASS与三仓提交/候选/证据。
+1. 全部原本地required及交接项通过U12 FULL，输出UNIFIED_LOCAL_CANDIDATE_PASS；已有可核实正式授权修订且修订required全部闭合时，U12按修订集合签REVISED_SCOPE_LOCAL_PASS，保留原合同PARTIAL及被修订项。缺授权不能走修订路径，两者均须交付三仓提交/候选/证据。
 2. 授权内可执行工作及U11可执行最终门已全部完成，剩余仅经诊断、自恢复和U12 PARTIAL终审确认的真实环境/合同/外部/依赖阻断：输出AUTONOMOUS_RUN_EXHAUSTED和总体PARTIAL/BLOCKED、逐项NEXT_UNLOCK。该状态表示本次自动执行穷尽，不表示功能收口。
 3. 计划hash错误、确定数据隔离失效或越权风险：停止受影响操作，保全现场；其他不受影响任务仅在隔离可证明时继续。
 

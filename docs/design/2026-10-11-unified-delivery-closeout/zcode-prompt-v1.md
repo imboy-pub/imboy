@@ -7,7 +7,7 @@
 
 唯一执行计划：
 /Users/leeyi/project/imboy.pub/imboy/docs/design/2026-10-11-unified-delivery-closeout/plan-v1.md
-固定SHA256：6452be8c97595ca0648ad223227b98fc38464697e5e03ec5ca6711f0dc921cbc
+固定SHA256：58f7e2bdafd69c3c15292b457b0544170f2fba7c982930d586ae58a0220602a8
 
 先读取适用AGENTS.md，机械复算计划文件hash，并核对同目录plan-v1.md.sha256。二者均须等于上述固定hash；不一致则PLAN_HASH_MISMATCH，禁止静默接受新版本。读取三个source-contracts快照并核对计划所列原文hash。旧三个计划已冻结，不继续修改旧台账或历史verdict。
 
@@ -27,11 +27,17 @@ RUN_ROOT置于/Users/leeyi/.zcode-runs/下，使用唯一unified-delivery-closeo
 
 依赖未交接时推进其他卡，按计划第10.3节有限非阻塞检查，禁止无限等待或把缺交接算PASS。已提交且归属明确的依赖可在本run分支集成并重验，不吸收他人dirty补丁。任何候选/runner/config变化使影响门失效，重新冻结并重跑影响闭包。
 
-U00冻结final-gates.tsv，逐门明确原合同定位、命令、最终候选/build绑定、轮次、exit/警告/skip规则及前置条件，显式包含最终候选dialyze。EUnit连续两轮，其余按原合同轮次且至少一次，不把所有门强加两轮。可执行修改收束并冻结候选后进入U11，即使设备或CX依赖阻断也运行其他前置齐备门；受阻门逐项登记BLOCKED。释放并发名额，启动未参与本run实现及requirements/ledger编制的新只读verifier；U12独立从冻结源复核叶子全集，再验台账。全部required闭合走FULL签发，否则走PARTIAL成果/阻断/续跑点审查，不能因U07/U09受阻跳过终审。
+U00冻结final-gates.tsv，逐门明确原合同定位、命令、最终候选/build绑定、轮次、exit/警告/skip规则及前置条件，显式包含最终候选dialyze。EUnit连续两轮，其余按原合同轮次且至少一次，不把所有门强加两轮。可执行修改收束并冻结候选后进入U11，即使设备或CX依赖阻断也运行其他前置齐备门；受阻门逐项登记BLOCKED。释放并发名额，启动未参与本run实现及requirements/ledger编制的新只读verifier；U12独立从冻结源复核叶子全集，再验台账。全部原required闭合走FULL签UNIFIED；仅有可核实正式授权修订且修订集合全闭合时签REVISED_SCOPE_LOCAL_PASS，保留原合同差异；其余走PARTIAL成果/阻断/续跑点审查，不能因U07/U09受阻跳过终审。
+
+最终门必须显式列Backend EUnit，两轮同固定候选实际exit均0；required叶子skip/cancel/未执行不能记PASS。正式授权修订单独记账并保留原合同差异；有真实授权且修订集合全闭合可经U12签REVISED_SCOPE_LOCAL_PASS，不能签原合同统一PASS。dialyze实际在最终候选运行默认RC0，原更严格警告标准保留；警告差分、历史结果、基线解释不得将非零质量门改判PASS。
+
+U12逐类验证预期拒绝，每类独立case/receipt：缺失叶子、多余叶子、重复叶子、错误SHA/hash、日志复用、正常质量门非零却标PASS、子项未全通过却签父PASS、错误设备或平台、dirty字节漏绑、外来WIP混入。正常完整包与如实受阻部分包分别审查，包准确性通过不等价功能PASS。负例receipt标kind=negative_probe，记录expected_exit与命中拒绝规则；预期非零拒绝不属于正常质量门失败，不能用该receipt充当质量门通过。
+
+读取同目录materials-index.json：MISSING/UNVERIFIED源保留阻断且继续可定位合同任务，不编造祖先叶子，不用历史requirements替代原文。现有微社群verifier为NO_FULL_EUNIT策略，不能原样终审；U02最小适配，U12新独立审查者运行。历史一期runner固定端口/config须在本run适配，dialyze-local/check棘轮不能替代原始dialyze RC0。
 
 U00将每个验收叶子绑定(source_plan,source_id,subcase,platform,role)稳定唯一键及冻结原合同定位，映射责任卡。登记共享租约共同入口/授予凭证、命令实际超时/进程身份/心跳与诊断机制；本run自行写leases.json不代表已取得跨会话租约，无共同协议则隔离替代或BLOCKED_RESOURCE。超时触发诊断，不能跳过质量门。会话结束后无既有持久调度器则记录RESUME_REQUIRES_RELAUNCH，不声称自行唤醒。
 
-不要问“是否继续、是否跑测试、是否提交”。持续调度直至全部本地required通过并签UNIFIED_LOCAL_CANDIDATE_PASS；若所有授权内可执行任务已穷尽而仅剩经独立复核的外部/设备/合同/依赖阻断，则签AUTONOMOUS_RUN_EXHAUSTED且总体PARTIAL/BLOCKED，逐项说明解锁条件，绝不称功能已干完。确定隔离失效或计划hash错误按计划停止并保全。
+不要问“是否继续、是否跑测试、是否提交”。持续调度直至全部原本地required通过U12并签UNIFIED_LOCAL_CANDIDATE_PASS；存在真实正式范围修订且修订required全部通过U12时，可按REVISED_SCOPE_LOCAL_PASS结束并保留原合同PARTIAL与被修订项，不新增豁免。若所有授权内可执行任务及U11可执行门已穷尽而仅剩经U12部分终审复核的外部/设备/合同/来源/依赖阻断，则签AUTONOMOUS_RUN_EXHAUSTED且总体PARTIAL/BLOCKED，逐项说明解锁条件，绝不称功能已干完。确定隔离失效或计划hash错误按计划停止并保全。
 
 最终给我：三仓本地提交与分支、最终候选与产物hash、源父项/子项精确ledger、测试命令/exit/断言与证据、U12结果、每个原合同状态、未解决项和NEXT_UNLOCK、可直接再次发送的resume-prompt.md。production/UAT/共享main合并/push实际没做均如实写NOT_PERFORMED。完成前不能以“建议下一步”代替实施。
 ```

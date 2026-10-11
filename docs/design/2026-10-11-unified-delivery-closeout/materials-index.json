@@ -1,0 +1,231 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-11",
+  "path_base": "/Users/leeyi/project/imboy.pub",
+  "purpose": "Read-only authoring inventory; not an execution receipt. Expected digests preserved from existing source records; observed digests are current bytes.",
+  "expected_digest_sources": {
+    "ews-plan": "ews-input-manifest.plan.sha256",
+    "v21-original": "ews-input-manifest.authoritative_inherited_contracts[0].sha256",
+    "nonoa-plan": "ews-input-manifest.authoritative_inherited_contracts[2].sha256",
+    "v21-closure": "existing plan .sha256",
+    "frozen_contracts_and_eo_verdict": "previously frozen plan section 9"
+  },
+  "items": [
+    {
+      "id": "micro-community.md",
+      "path": "imboy/docs/design/2026-10-11-unified-delivery-closeout/source-contracts/micro-community.md",
+      "kind": "frozen_contract",
+      "status": "LOCATED",
+      "expected_sha256": "5388e75002469219a569cd00d00388dced3efe8be686a35c219b1ca03feb1adc",
+      "observed_sha256": "5388e75002469219a569cd00d00388dced3efe8be686a35c219b1ca03feb1adc",
+      "content_verification": "STATIC_ONLY"
+    },
+    {
+      "id": "phase1.md",
+      "path": "imboy/docs/design/2026-10-11-unified-delivery-closeout/source-contracts/phase1.md",
+      "kind": "frozen_contract",
+      "status": "LOCATED",
+      "expected_sha256": "3074702ea0b00ab32eb58252a35cc0f62217376b938c932ba9a05ccced1d5e00",
+      "observed_sha256": "3074702ea0b00ab32eb58252a35cc0f62217376b938c932ba9a05ccced1d5e00",
+      "content_verification": "STATIC_ONLY"
+    },
+    {
+      "id": "enterprise-organization.md",
+      "path": "imboy/docs/design/2026-10-11-unified-delivery-closeout/source-contracts/enterprise-organization.md",
+      "kind": "frozen_contract",
+      "status": "LOCATED",
+      "expected_sha256": "484408ed8b0fec126267cb155875a75d2d24f7aef377df6b23cae8b48824961f",
+      "observed_sha256": "484408ed8b0fec126267cb155875a75d2d24f7aef377df6b23cae8b48824961f",
+      "content_verification": "STATIC_ONLY"
+    },
+    {
+      "id": "eo-verdict",
+      "path": "imboy/docs/design/2026-10-06-enterprise-organization-gap/evidence/eo-20261006T001314Z/final/verdict.json",
+      "kind": "historical_evidence",
+      "status": "LOCATED",
+      "expected_sha256": "f280a117836e088c5f0a887bc190939cff981506c42251871b58e89399ff9aa2",
+      "observed_sha256": "f280a117836e088c5f0a887bc190939cff981506c42251871b58e89399ff9aa2",
+      "content_verification": "UNVERIFIED"
+    },
+    {
+      "id": "eo-requirements",
+      "path": "imboy/docs/design/2026-10-06-enterprise-organization-gap/evidence/eo-20261006T001314Z/control/requirements.json",
+      "kind": "historical_evidence",
+      "status": "LOCATED",
+      "expected_sha256": null,
+      "observed_sha256": "4b3222197aa364a36d74daeb74b76b3bdc7698aeb0943f41aafdea07f72f765f",
+      "content_verification": "UNVERIFIED"
+    },
+    {
+      "id": "phase1-audit",
+      "path": "imboy/docs/design/2026-10-07-phase1-delivery-quality-audit-v1.md",
+      "kind": "historical_audit",
+      "status": "LOCATED",
+      "expected_sha256": null,
+      "observed_sha256": "468228c02e4aabdcdeb45ee24e3863c2375941c496df2cd6e5ac055217083ce7",
+      "content_verification": "UNVERIFIED"
+    },
+    {
+      "id": "ews-plan",
+      "path": "worktrees/q12-g07/docs/plans/2026-10-04-zcode-enterprise-workspace-parallel-acceptance.md",
+      "kind": "inherited_contract",
+      "status": "LOCATED",
+      "expected_sha256": "afefa4d977397567db7e207da12c06dffc2f1b5c20b8d4049e8a67e8a06679e9",
+      "observed_sha256": "afefa4d977397567db7e207da12c06dffc2f1b5c20b8d4049e8a67e8a06679e9",
+      "content_verification": "UNVERIFIED"
+    },
+    {
+      "id": "v21-original",
+      "path": "imboy/docs/plans/2026-09-23-enterprise-organization-admin-internal-v1-unified-plan-v2.1.md",
+      "kind": "inherited_contract",
+      "status": "LOCATED",
+      "expected_sha256": "a866aa137eea856a9a6d9324d3cb46d3fb1f1fb8db73891808c85d1f17d23302",
+      "observed_sha256": "a866aa137eea856a9a6d9324d3cb46d3fb1f1fb8db73891808c85d1f17d23302",
+      "content_verification": "UNVERIFIED"
+    },
+    {
+      "id": "v21-closure",
+      "path": "worktrees/q12-g07/docs/plans/2026-09-26-enterprise-organization-admin-internal-v21-final-closure-plan-v2.1.md",
+      "kind": "inherited_contract",
+      "status": "LOCATED",
+      "expected_sha256": "9ac84b1a2464e4dc3ae9b35c57e8964fc15acbf1768bdb5fa99753f1fc59ef98",
+      "observed_sha256": "9ac84b1a2464e4dc3ae9b35c57e8964fc15acbf1768bdb5fa99753f1fc59ef98",
+      "content_verification": "UNVERIFIED"
+    },
+    {
+      "id": "nonoa-plan",
+      "path": "worktrees/q12-g07/docs/plans/2026-10-02-enterprise-non-oa-final-acceptance-plan-v1.md",
+      "kind": "inherited_contract",
+      "status": "LOCATED",
+      "expected_sha256": "e083be9d911bfec5c76f2b0cfdc87a1c09c9eded7d1172e0f455abf55ddd31f1",
+      "observed_sha256": "e083be9d911bfec5c76f2b0cfdc87a1c09c9eded7d1172e0f455abf55ddd31f1",
+      "content_verification": "UNVERIFIED"
+    },
+    {
+      "id": "ews-input-manifest.json",
+      "path": "worktrees/q12-g07/docs/archive/design/2026-10-04-enterprise-workspace-acceptance/evidence/ews-20261004T065500Z/control/input-manifest.json",
+      "kind": "historical_evidence",
+      "status": "LOCATED",
+      "expected_sha256": null,
+      "observed_sha256": "dc09728f2c57b798440de1a5bd674efaf981f0ea1c891a5cf30ccdf037cf2bc3",
+      "content_verification": "UNVERIFIED"
+    },
+    {
+      "id": "ews-inherited-requirements.json",
+      "path": "worktrees/q12-g07/docs/archive/design/2026-10-04-enterprise-workspace-acceptance/evidence/ews-20261004T065500Z/control/inherited-requirements.json",
+      "kind": "historical_evidence",
+      "status": "LOCATED",
+      "expected_sha256": null,
+      "observed_sha256": "91586f874f6c8c3279907215ab15a2874007ab116c998a4c6e4e38b4f860d06a",
+      "content_verification": "UNVERIFIED"
+    },
+    {
+      "id": "ews-ews-coverage-map.json",
+      "path": "worktrees/q12-g07/docs/archive/design/2026-10-04-enterprise-workspace-acceptance/evidence/ews-20261004T065500Z/control/ews-coverage-map.json",
+      "kind": "historical_evidence",
+      "status": "LOCATED",
+      "expected_sha256": null,
+      "observed_sha256": "0cd62310be15eaea0aca86bf0b5a7f880fbf6d515afa001c635e82acb2484540",
+      "content_verification": "UNVERIFIED"
+    },
+    {
+      "id": "imboy/scripts/test/phase1_gates/g06_eunit_full_run1.sh",
+      "path": "imboy/scripts/test/phase1_gates/g06_eunit_full_run1.sh",
+      "kind": "runner_or_entrypoint",
+      "status": "LOCATED",
+      "expected_sha256": null,
+      "observed_sha256": "bf3385089fddba952de6e49a72422fbc9b323263ffa76d1f491a6035475934d9",
+      "content_verification": "STATIC_ONLY"
+    },
+    {
+      "id": "imboy/scripts/test/phase1_gates/g07_eunit_full_run2.sh",
+      "path": "imboy/scripts/test/phase1_gates/g07_eunit_full_run2.sh",
+      "kind": "runner_or_entrypoint",
+      "status": "LOCATED",
+      "expected_sha256": null,
+      "observed_sha256": "4642b197ebba489c0998977203e627af68e2b962e32a74494e18da5cccd8dd19",
+      "content_verification": "STATIC_ONLY"
+    },
+    {
+      "id": "imboy/scripts/test/phase1_gates/phase1_gate_all.sh",
+      "path": "imboy/scripts/test/phase1_gates/phase1_gate_all.sh",
+      "kind": "runner_or_entrypoint",
+      "status": "LOCATED",
+      "expected_sha256": null,
+      "observed_sha256": "581f89dfb2995d692335f3c888bf227cc72f4bb5c65b12aad646d81946bd6007",
+      "content_verification": "STATIC_ONLY"
+    },
+    {
+      "id": "imboy/scripts/verify_micro_community_acceptance.py",
+      "path": "imboy/scripts/verify_micro_community_acceptance.py",
+      "kind": "runner_or_entrypoint",
+      "status": "LOCATED",
+      "expected_sha256": null,
+      "observed_sha256": "a873794542079596732b942837649c4fefc92a577509fbd8e091700de65aa3d0",
+      "content_verification": "STATIC_ONLY"
+    },
+    {
+      "id": "imboy/test/scripts/test_verify_micro_community_acceptance.py",
+      "path": "imboy/test/scripts/test_verify_micro_community_acceptance.py",
+      "kind": "runner_or_entrypoint",
+      "status": "LOCATED",
+      "expected_sha256": null,
+      "observed_sha256": "68b18fa13d4209deb7e2d4fb4fa3481202f29f420f8a3e4f07a746e86cbba65a",
+      "content_verification": "STATIC_ONLY"
+    },
+    {
+      "id": "imboy/Makefile",
+      "path": "imboy/Makefile",
+      "kind": "runner_or_entrypoint",
+      "status": "LOCATED",
+      "expected_sha256": null,
+      "observed_sha256": "1687afbada66344dd542433000d6270e87e280fa24f34c20b70aebbb6a1227a1",
+      "content_verification": "STATIC_ONLY"
+    },
+    {
+      "id": "imboyadmin/package.json",
+      "path": "imboyadmin/package.json",
+      "kind": "runner_or_entrypoint",
+      "status": "LOCATED",
+      "expected_sha256": null,
+      "observed_sha256": "a6b26bb021862cece7fb4a8cee1a81942a5090a5bc5c7658a6f92bdb8e01b987",
+      "content_verification": "STATIC_ONLY"
+    },
+    {
+      "id": "imboyadmin/tests/e2e/enterprise-app-governance-real.spec.ts",
+      "path": "imboyadmin/tests/e2e/enterprise-app-governance-real.spec.ts",
+      "kind": "runner_or_entrypoint",
+      "status": "LOCATED",
+      "expected_sha256": null,
+      "observed_sha256": "fc5bac17b24c41834a43471a8e4799f4814c6f8fb298432aa5af86f31f60b41f",
+      "content_verification": "STATIC_ONLY"
+    },
+    {
+      "id": "imboyapp/integration_test/micro_community_owned_android_test.dart",
+      "path": "imboyapp/integration_test/micro_community_owned_android_test.dart",
+      "kind": "runner_or_entrypoint",
+      "status": "LOCATED",
+      "expected_sha256": null,
+      "observed_sha256": "31f5003232a080905ecaa7d1f863dceae373d9e461fe788814509ee3709c3c17",
+      "content_verification": "STATIC_ONLY"
+    },
+    {
+      "id": "imboyapp/integration_test/micro_community_owned_android_negative_test.dart",
+      "path": "imboyapp/integration_test/micro_community_owned_android_negative_test.dart",
+      "kind": "runner_or_entrypoint",
+      "status": "LOCATED",
+      "expected_sha256": null,
+      "observed_sha256": "1837bfd207b750ea61c5c5ebac99d3aaf643347a39b21005ea5550622aec6a3a",
+      "content_verification": "STATIC_ONLY"
+    },
+    {
+      "id": "imboyapp/integration_test/enterprise/enterprise_scope_native_test.dart",
+      "path": "imboyapp/integration_test/enterprise/enterprise_scope_native_test.dart",
+      "kind": "runner_or_entrypoint",
+      "status": "LOCATED",
+      "expected_sha256": null,
+      "observed_sha256": "fc541cb7a28b5224428b83ab92aec74e10f9a205e1beae2ce67052d5fd0d51cd",
+      "content_verification": "STATIC_ONLY"
+    }
+  ]
+}
