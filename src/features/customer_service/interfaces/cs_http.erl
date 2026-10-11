@@ -805,6 +805,10 @@ classify({forbidden, contact_scope_mismatch}) ->
 classify({capability_disabled, _}) ->
     ?ERR_FORBIDDEN;
 %% --- 404：资源不在本租户作用域（不区分不存在与跨 Org，避免枚举）---
+classify(visitor_read_storage_failure) ->
+    ?ERR_INTERNAL_SERVER_ERROR;
+classify({visitor_read_hint_failed, _}) ->
+    ?ERR_INTERNAL_SERVER_ERROR;
 classify(not_found) ->
     ?ERR_NOT_FOUND;
 classify({not_found, _}) ->

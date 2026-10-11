@@ -68,6 +68,8 @@
     widget_create_session/2,
     widget_list_sessions/2,
     widget_history_after/2,
+    widget_confirm_reads/2,
+    list_messages/2,
     widget_visitor_message/2,
     widget_rate/2,
     widget_asset_upload/2,
@@ -1122,3 +1124,21 @@ conversation_assignee(Org, #{workspace_id := Ws, conversation_id := Conv} = Para
     cs_session_app:conversation_assignee(Org, Params);
 conversation_assignee(_, _) ->
     {error, {invalid_argument, conversation_assignee}}.
+
+widget_confirm_reads(
+    _Org, #{installation_id := Installation, secret := Secret, session_id := Session} = Params
+) when
+    is_integer(Installation), is_binary(Secret), is_integer(Session)
+->
+    case cs_widget_support:derive_org_by_token(Params) of
+        {error, _} = Error ->
+            Error;
+        {ok, Org} ->
+            case cs_widget_env:merge_visitor(Org, Params) of
+                {ok, Merged} -> cs_visitor_read_app:confirm(Org, Merged);
+                {error, _} = Error -> Error
+            end
+    end;
+widget_confirm_reads(_, _) ->
+    {error, {invalid_argument, widget_confirm_reads}}.
+list_messages(Org, Params) -> cs_visitor_read_app:list_messages(Org, Params).

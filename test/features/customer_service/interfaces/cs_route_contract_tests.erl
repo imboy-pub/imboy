@@ -182,7 +182,7 @@ widget_literal_routes() ->
         {
             <<W/binary, "/sessions/:id/messages">>,
             widget_session_messages,
-            [<<"GET">>, <<"POST">>],
+            [<<"GET">>, <<"PATCH">>, <<"POST">>],
             cs_visit
         },
         {<<W/binary, "/sessions/:id/events">>, widget_session_events, [<<"GET">>], cs_visit},
