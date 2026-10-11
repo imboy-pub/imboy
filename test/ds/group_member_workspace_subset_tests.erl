@@ -86,7 +86,15 @@ subset_query(<<"SELECT id FROM public.channel", _/binary>>, _) ->
     {ok, []};
 subset_query(<<"SELECT id FROM public.\"group\"", _/binary>>, _) ->
     {ok, []};
-subset_query(<<"SELECT ((NOT EXISTS (SELECT 1 FROM public.channel", _/binary>>, _) ->
+subset_query(Sql, [Gid, Uid]) when
+    {Gid, Uid} =:= {?GID, ?UID}; {Gid, Uid} =:= {777099, 900009}; {Gid, Uid} =:= {1, ?UID}
+->
+    Predicate = micro_community_access_repo:predicate_sql(<<"request.gid">>, <<"request.uid">>),
+    ?assertEqual(
+        <<"SELECT (", Predicate/binary,
+            ") AS allowed FROM (SELECT $1::bigint AS gid, $2::bigint AS uid) request">>,
+        Sql
+    ),
     %% join 的 discussion 访问谓词 → workspace 群放行
     {ok, [#{<<"allowed">> => true}]};
 subset_query(<<"SELECT workspace_id FROM \"group\"", _/binary>>, [?GID]) ->
@@ -100,6 +108,8 @@ subset_query(<<"SELECT workspace_id FROM \"group\"", _/binary>>, [777099]) ->
 subset_query(<<"SELECT workspace_id FROM \"group\"", _/binary>>, [1]) ->
     %% 群不存在
     {ok, []};
+subset_query(<<"SELECT status FROM workspace WHERE id = $1">>, [?WS_ID]) ->
+    {ok, [#{<<"status">> => <<"active">>}]};
 subset_query(<<"SELECT role FROM workspace_member", _/binary>>, [?WS_ID, ?UID]) ->
     %% active 工作区成员
     {ok, [#{<<"role">> => <<"member">>}]};
@@ -111,8 +121,8 @@ subset_query(<<"SELECT role FROM workspace_member", _/binary>>, [_, _]) ->
 subset_query(<<"SELECT COUNT(*)", _/binary>>, [_]) ->
     %% update_statistics 的聚合查询（P0 后 COUNT-only）
     {ok, [#{<<"member_count">> => 2}]};
-subset_query(_, _) ->
-    {ok, []}.
+subset_query(Sql, Params) ->
+    error({unexpected_subset_query, Sql, Params}).
 
 %% ===================================================================
 %% with_tx 包装语义：abort_tx → {error, workspace_membership_required}

@@ -1,10 +1,6 @@
 # Enterprise Organization V1 / Customer Service Compatibility
 
-> STATUS: `PASS_ARCHITECTURE`
->
-> RUNTIME_VERIFICATION: `UNVERIFIED_ENVIRONMENT_BLOCKED`
->
-> INPUT: `2026-09-16-customer-service-progress-assessment.md`
+本合同保留组织与客服的兼容边界及行为验收要求，不记录候选通过成绩。Agent 经办能力属于二期，关闭一期入口不取消已有的回归要求。
 
 ## 1. Compatibility Decision
 
@@ -24,21 +20,22 @@ Workspace 动态推导 scope。
 
 ## 2. CS Compatibility Matrix
 
-| Existing CS Contract | Organization V1 decision | Migration required | Breaking? | Verification |
-|---|---|---|---|---|
-| `organization_member` 是组织成员真源 | 原样保留并强化 lifecycle | owner/deletion invariants | NO | unit PASS; DB pending |
-| member `suspended` 即时撤销 Org auth | 原样保留 | 补 lifecycle/API evidence | NO | unit PASS; E2E pending |
-| remove 前 offboarding guard | 原样保留 | User deletion 接入同一 preflight | NO | DB pending |
-| Business Identity 是稳定业务主体 | 原样保留 | NONE | NO | source/tests established |
-| Assignment 是 User 时态经办绑定 | 原样保留；未来可受控支持 Agent | Agent adapter later | NO for Human | DB pending |
-| Seat 是 Identity 的运营 Profile | 原样保留 | NONE | NO | source/tests established |
-| Seat enabled/capacity 是 operational gate | 原样保留 | NONE | NO | CS unit PASS |
-| Session 显式 Org+Workspace | 原样保留 | NONE | NO | source/tests established |
-| Organization 与 Workspace membership 独立 | 原样保留 | NONE | NO | core unit PASS |
-| CS management 使用 Org governance facts | owner/admin 仍可治理；不自动获 Workspace access | adapter checks only | NO | auth unit PASS |
-| active operator 来自 Assignment | Human 保持；Agent 默认关闭 | future Agent/CS gate | NO | new integration pending |
-| Organization archive | 禁止新 Session/claim；历史不删除 | small adapter | additive | runtime pending |
-| default Workspace | 不用于 Session 授权或重解析 | NONE | NO | contract test pending |
+| Existing CS Contract | Organization V1 decision | Migration required | Breaking? |
+|---|---|---|---|
+| `organization_member` 是组织成员真源 | 原样保留并强化 lifecycle | owner/deletion invariants | NO |
+| member `suspended` 即时撤销 Org auth | 原样保留 | 补 lifecycle/API evidence | NO |
+| remove 前 offboarding guard | 原样保留 | User deletion 接入同一 preflight | NO |
+| Business Identity 是稳定业务主体 | 原样保留 | NONE | NO |
+| Assignment 是 User 时态经办绑定 | 原样保留；未来可受控支持 Agent | Agent adapter later | NO for Human |
+| Seat 是 Identity 的运营 Profile | 原样保留 | NONE | NO |
+| Seat enabled/capacity 是 operational gate | 原样保留 | NONE | NO |
+| Session 显式 Org+Workspace | 原样保留 | NONE | NO |
+| Organization 与 Workspace membership 独立 | 原样保留 | NONE | NO |
+| CS management 使用 Org governance facts | owner/admin 仍可治理；不自动获 Workspace access | adapter checks only | NO |
+| active operator 来自 Assignment | Human 保持；Agent 默认关闭 | future Agent/CS gate | NO |
+| Organization archive | 禁止新 Session/claim；历史不删除 | small adapter | additive |
+| default Workspace | 不用于 Session 授权或重解析 | NONE | NO |
+
 
 ## 3. What Stays Unchanged
 
@@ -92,17 +89,6 @@ Workspace 动态推导 scope。
 | CS-ORG-A07 | Agent assignment without Grant | operate Seat | denied and audited | Agent/CS integration |
 | CS-ORG-A08 | Agent assignment + Grant + policies | operate allowed action | principal/actor/scope audited | Agent/CS integration |
 
-## 8. Gate
+## 8. Verification Boundary
 
-```text
-NO_SECOND_ORGANIZATION_MEMBERSHIP = PASS
-BUSINESS_IDENTITY_SEMANTICS = PASS
-SEAT_SEMANTICS = PASS
-SESSION_EXPLICIT_SCOPE = PASS
-SUSPEND_OFFBOARDING_CONTRACT = PASS_ARCHITECTURE
-CS_LARGE_REFACTOR_REQUIRED = NO
-CUSTOMER_SERVICE_COMPATIBILITY = PASS_ARCHITECTURE
-CUSTOMER_SERVICE_RUNTIME_VERIFICATION = UNVERIFIED_ENVIRONMENT_BLOCKED
-```
-
-运行时验证阻塞原因是本地缺少 `pg_conf`/隔离 PostgreSQL fixture。此状态不得被解释为 CS release PASS。
+第 7 节列出的每项行为必须按对应数据库、接口及审计结果验证。架构合同、单元测试或历史候选成绩不能替代当前运行验证。执行日志、审查和验收结论保存于仓外，并绑定实际提交与产物；本文件不授予发布资格。

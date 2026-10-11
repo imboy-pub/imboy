@@ -124,7 +124,16 @@ adm_owner_activation_test_() ->
 setup_db() ->
     _ = (catch elib_tsid:init(#{dc_id => 1, node_id => 1, dc_bits => 3})),
     ok = elib_tsid:register([
-        admin_op_log, organization, workspace, user, owner_activation_invite
+        admin_op_log,
+        organization,
+        workspace,
+        user,
+        owner_activation_invite,
+        group_info,
+        group_member,
+        channel,
+        channel_admin,
+        channel_subscription
     ]),
     ensure_depcache(),
     State =

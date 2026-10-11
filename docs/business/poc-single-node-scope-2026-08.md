@@ -2,7 +2,7 @@
 
 > **版本 / Version**: 2026-08 v1.0 | **状态**：交付定义（未含任何真实客户信息）
 > **配套文档**：[验收矩阵](./poc-single-node-acceptance-matrix-2026-08.md) ｜ [客户签字记录模板](./poc-customer-signoff-template-2026-08.md) ｜ [单节点运维操作链索引](../guides/operations/single-node-ops-chain-index-2026-08.md)
-> **口径来源**：[edition-boundary.md](./edition-boundary.md)（版次边界真相源）｜ [demo-runbook.md](./demo-runbook.md)（对外话术口径）
+> **口径来源**：[edition-boundary.md](./edition-boundary.md)（版次边界真相源）｜ [安全边界](../reference/e2ee-security-boundary.md)（按实际部署与消息域说明）｜ [部署手册](../guides/operations/deployment/deployment.md)（操作入口）
 > 商业化验证材料（客户场景化 Runbook、报价假设台账）另存于商业资料仓 `imboy-commercial-hub`，本文只固化**产品交付与验收事实**，两处口径保持一致、冲突时以本文对交付边界的描述为准。
 
 ---

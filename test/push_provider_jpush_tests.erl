@@ -6,7 +6,7 @@
 %%% W1 骨架（12 RED + 3 GREEN）已在 W2 转绿：adapter
 %%% `push_provider_jpush` / HTTP seam `push_provider_jpush_http` /
 %%% `push_notification_ds:do_send_push` jpush 分派均已实现，合同见
-%%% docs/reference/push-provider-jpush-research-2026-09-21.md。
+%%% docs/reference/jpush-provider-contract.md。
 %%% D 组为 W2 新增的 F3 防御校验用例（handler 400 而非 DB 500）。
 %%%
 %%% 合同来源：.Codex/runs/enterprise-internal-20260921T043945Z/control/

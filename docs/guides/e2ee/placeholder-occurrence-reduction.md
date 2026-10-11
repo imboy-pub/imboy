@@ -1,131 +1,43 @@
-# 「[加密消息]」占位发生率压降方案 / Placeholder Occurrence Reduction
+# 加密消息占位与恢复边界 / Encrypted Message Placeholders
 
-> 最后更新 / Last updated: 2026-09-11
-> 关联 / Related: [history-recoverability.md](./history-recoverability.md)、[key-lifecycle.md](./key-lifecycle.md)
-> 状态：**四路径 + 度量全部实施完毕并已提交 main**（2026-09-11，未 push）。
-> `imboyapp` 26f032f6 / 3d7991d8；`imboy` 15f9326e（路径2）/ 8de50baa（本文档）；
-> `imboy.wiki` b0de333。路径2 尚需重启后端节点生效。
+> 适用范围 / Scope：E2EE 消息的历史兼容、故障分类与恢复操作。一期交付模板关闭 E2EE 新功能入口；本指南不承诺启用二期能力。
+> 维护职责 / Owner：消息与密钥恢复模块维护者。
+> 相关指南 / Related：[历史可恢复性](./history-recoverability.md)、[密钥生命周期](./key-lifecycle.md)。
 
----
+## 用户提示与故障分类 / Failure Categories
 
-## 目标 / Goal
+解密失败需要区分设备缺少消息信封、密钥缺失与暂时无法访问加密存储，不能对所有占位消息都承诺“恢复后即可查看”。
 
-`[加密消息]` 占位气泡（decrypt-on-read 失败的**设计内**产物，ADR 15 §5）对用户
-不可接受的不是"存在"，而是"遇到"——尤其换设备后文案承诺「恢复后即可查看」，
-而单聊（Olm）session 有意不备份（key reuse / ratchet fork，Signal/Matrix 同），
-恢复密钥也永远解不开。
+| 原因 | 提示与处理 |
+|---|---|
+| `no_device_envelope`、`fan_out_missing_devices` | 该设备缺少收件信封；客户端将其归类为不可恢复边界，不显示无效的恢复引导。 |
+| `crypto_store_unavailable` | 加密存储暂时不可访问；先恢复存储可用性，再重试读取。 |
+| 其他解密失败 | 保留占位并按具体密钥、会话和历史版本诊断；密钥恢复成功不代表每条消息都能解密。 |
 
-**目标不是消灭占位（换机且无备份时它在数学上就无法消灭），而是把发生率压到
-用户一辈子遇不到。**
+客户端分类入口为 `E2EEService.isUnrecoverableDecryptFailure` 与占位文案方法。Olm 会话与群密钥的恢复范围不同，详见历史可恢复性指南。服务端不会解密历史密文，也不能通过补发明文绕过此边界。
 
-真根因：**承诺与密码学事实不一致**。修复分四条路径 + 一套度量仪表。
+## 服务端设备过滤 / Device Filtering
 
----
+`messaging_logic:c2c_deliverable_to_device/3` 根据收件用户和设备信封判断消息是否可交付。调用方应携带当前设备 `did`；缺少设备标识的兼容路径不能证明当前设备拥有解密材料。
 
-## 四路径 / Four Paths（全部已实施）
+历史分页过滤不应导致游标停滞；检查返回消息集合和下一页游标，避免只根据过滤后的条数判断历史已经拉取完毕。离线送达标记与历史读取的职责不同，不能把送达当成已读。
 
-| 路径 | 内容 | 关键文件 |
-|------|------|---------|
-| 1. 原因三分（客户端） | `no_device_envelope` / `fan_out_missing_devices` =「注定解不开」→ 边界说明文案 `chat.e2eeMsgBeforeDevice`，点击**不**弹恢复引导；`crypto_store_unavailable` → 重试文案；其余 → 通用占位 + 引导 | `imboyapp/lib/service/e2ee_service.dart`（`isUnrecoverableDecryptFailure` / `e2eeFailedPlaceholderText`）、`chat_page.dart` tap 分流 |
-| 4. 恢复后自动重试 | 密钥恢复成功（文件/云端/URL 三入口共用）→ 自动 `retryFailedMessages` 全量自愈 + 弹窗报恢复条数；失败不阻断成功态 | `imboyapp/lib/page/settings/e2ee_backup_import_page.dart`（`_applyRestoredKeys`） |
-| 2. 服务端信封过滤（治本） | 下发前按 `e2ee.fan_out.devices` 过滤不含请求设备 DID 的 C2C 收件消息；offline 滤行同时按 (uid,did) 标记 acked；history 纯过滤、`next_seq` 按全量行推进；did 缺省 fail-open（旧客户端零破坏） | `imboy/src/logic/messaging_logic.erl`（`c2c_deliverable_to_device/3` 等）、`src/api/msg_handler.erl`；客户端 `msg_api.dart` / `chat_archive_service.dart` 带 `did` |
-| 3. 备份默认化 | 首次启用强制备份向导（不可跳过）+ 密钥变化自动重传 | `imboyapp/lib/page/settings/e2ee_backup_setup_page.dart`、`lib/service/e2ee_backup_setup_service.dart`、`conversation_page.dart` 触发链、`e2ee_key_service.dart` 钩子 |
+## 密钥恢复与重试 / Restore and Retry
 
-注意：**路径2 后端过滤需重启后端节点后生效**。9801 现役为 release 节点
-（`_rel/imboy/bin/imboy`，进程仍加载 09-07 启动的 1.0.0-alpha.71），但磁盘上的
-**1.0.0-alpha.73 release（09-11 构建）已含路径2 全部函数**（含 `delivery_msg_id/1`
-等私有辅助，已用 `beam_lib` 抽象码核对）——因此**重启即生效，无需重新构建 release**。
-生效判据：带 `did` 请求 `/api/v1/msg/history` 后，日志出现
-`e2ee_envelope_filtered` 或响应中不再出现本机无信封的收件行。
+恢复入口在应用密钥后调用失败消息重试。应分别确认密钥导入成功、重试完成和实际恢复条数，保留仍不可恢复的消息原因，不能将重试错误吞掉后宣称全部恢复。
 
-### 路径3 口令方案决策记录（2026-09-11 拍板）
+备份恢复口令应独立于登录密码，不使用低熵数字 PIN。口令缓存需要绑定用户身份，账号切换不得读取上一账号的缓存；服务端不应获得恢复口令。具体备份格式及权限以密钥生命周期指南和当前实现为准。
 
-**方案A：独立恢复口令 / 随机恢复密钥。** 口令只在本地参与 PBKDF2，服务器永远
-见不到；向导内提供一键生成 160-bit 随机恢复密钥（8 组 5 位大写十六进制）。
+## 诊断与验证 / Diagnosis and Verification
 
-- **明确不做「登录密码派生」**：登录密码在登录时发给服务端验证，服务端（或拖库
-  者）见过密码即可解开备份——零信任卖点倒退。要把"全自动恢复"做对，正路是
-  零知识登录协议（SRP/OPAQUE），属认证体系重构，不在备份功能内。
-- **禁止数字 PIN**：百万级组合对 PBKDF2-310k 仍可 GPU 穷举，独立方案必须配
-  口令短语或随机恢复密钥。
-- **A+E 双钥匙槽**（口令 + 随机恢复密钥各 wrap 一份，age/Matrix 同款）为后续
-  增强：需备份二进制格式升版兼容，单独一轮做。
-- **B 端灵活性**：私有化客户若要求"员工忘口令可恢复"，走部署级 PolicyGate
-  开关放开弱模型，默认产品行为永远是方案A。
+累计解密失败与当前失败消息存量是不同指标：前者反映发生过的故障，后者可在恢复后下降。分原因统计，并将不可恢复的历史边界与可恢复故障分开。
 
-实现要点：
+验证应覆盖：
 
-- 向导**不可跳过**：无返回键 + PopScope 拦系统返回；仅上传失败一次后开放
-  「稍后再说」（完成标记不落，下次启动重推）。触发改推 **rootNavigator**，
-  避免宿主壳 tab 切换绕过。
-- 口令缓存进安全存储，值 = JSON `{uid, passphrase}` **uid 绑定**：换号后读不到
-  并清除，防止新账号的备份被旧账号口令加密成废包；currentUid 为空的瞬态只拒绝
-  不清除（防误删唯一凭据副本）。
-- 服务端已有备份的老用户（导出页手动传过）→ 触发判定静默补完成标记，不被打扰。
-- 自动重传 fail-open：无缓存口令 / 密钥缺失 / 上传失败一律静默跳过，绝不阻塞
-  密钥生成主链路。
+- 无本机信封时的提示与点击行为，不误导用户恢复。
+- 加密存储不可用后的可观察失败及恢复重试。
+- 恢复密钥后实际消息内容、失败存量与恢复条数一致。
+- 设备过滤下的历史游标推进、离线送达及已读状态保持正确。
+- 账号切换后口令缓存和恢复结果不跨账号泄漏。
 
----
-
-## 度量 / Measurement（双口径，已实施）
-
-「压到一辈子遇不到」必须可验证：
-
-| 口径 | 实现 | 语义 |
-|------|------|------|
-| **累计发生**（只增不减） | `E2EEDecryptFailureMetrics`（`e2ee_service.dart`），按 reason 分桶持久化于 `e2ee_decrypt_fail_metrics` | 用户到底遇到过几次。计数点仅两处：落库漏斗（`message.dart`，幂等重投不计数）+ mapper 读时解密失败（每次启动按 行×原因 去重，防逐帧膨胀） |
-| **存量盘点**（会下降） | `E2EEHealthCheckService.failureInventory()`：扫 `payload LIKE '%_e2ee_failed%'` 按 reason 分桶，拆 `unrecoverable` / `recoverable`；`getHealthStatus()` 暴露 `decrypt_failures` | 此刻设备上还挂着几条；被路径4自愈消化后应下降，`recoverable` 应趋零 |
-
-判定阈值：`unrecoverable` 是设计内历史边界（换机前消息），不追逐归零；
-**`recoverable` 与累计增量趋零即达成目标**。
-
----
-
-## 验证 / Verification
-
-```bash
-# 客户端（imboyapp/）
-flutter analyze
-flutter test --timeout 180s test/unit_test/service/e2ee_failed_placeholder_text_test.dart \
-  test/unit_test/service/e2ee_failure_metrics_test.dart \
-  test/unit_test/service/e2ee_health_check_service_test.dart \
-  test/unit_test/service/e2ee_backup_setup_service_test.dart \
-  test/unit_test/page/settings/e2ee_backup_setup_page_widget_test.dart \
-  test/unit_test/page/settings/e2ee_backup_import_page_widget_test.dart \
-  test/unit_test/page/chat/chat_archive_service_fail_visibility_test.dart
-
-# 路径3 真壳集成验收（9801 local_office；输出禁 tail 管道）
-flutter test integration_test/settings/e2ee_backup_setup_wizard_test.dart -d macos \
-  --dart-define=APP_ENV=local_office \
-  --dart-define=API_BASE_URL=http://127.0.0.1:9801 \
-  --dart-define=API_BASE_URL_OVERRIDE=http://127.0.0.1:9801 \
-  --dart-define=WS_URL_OVERRIDE=ws://127.0.0.1:9801/api/v1/ws \
-  --dart-define=TEST_PHONE=smoke_bob --dart-define=TEST_PASSWORD=admin888 \
-  --dart-define=TEST_EXPECTED_UID=1000000056 \
-  --dart-define=TEST_ALLOW_WORKSPACE_ACCEPTANCE=true
-
-# 路径1 集成验收（同 define 配方）
-flutter test integration_test/settings/e2ee_boundary_no_device_envelope_test.dart -d macos …
-
-# 后端（imboy/）：单模块跑。勿用裸 `erl -pa ebin -pa test`——test beam 未编译、
-# deps 不在路径上，jsone/ec_cnv 会 undef 报「5 failed」假红。
-mkdir -p /tmp/imboy_test_beam   # erlc 不建输出目录，缺了会报 writing file 失败
-erlc -I include -o /tmp/imboy_test_beam test/lib/messaging_envelope_filter_tests.erl
-erl -noshell -pa ebin -pa /tmp/imboy_test_beam -eval \
-  'code:add_paths(filelib:wildcard("deps/*/ebin")), case eunit:test(messaging_envelope_filter_tests, []) of ok -> halt(0); _ -> halt(1) end.'
-# 实测结果：15/15 passed。
-# 仓内标准门为 `make eunit-local t=messaging_envelope_filter_tests`，但该目标会
-# 重编 ebin（影响从 ./ebin 取码的本地 dev 节点，如并行会话的 9800），本轮为避免
-# 扰动运行节点未执行，改用上面这条不改动 ebin 的等价跑法。
-```
-
----
-
-## 残留与后续 / Residual
-
-- **olm_decrypt_error 残留口径**：单聊 v3 信封失败的主导 reason 已是
-  `no_device_envelope`（不再误导恢复），但 legacy v1/v2 路径的
-  `olm_decrypt_error`/`decrypt_error` 仍属"引导恢复"类——其中 session 丢失型
-  实际也解不回，属极少数遗留形状，待路径1 分类粒度细化。
-- A+E 双钥匙槽（见上）。
-- 部署级 PolicyGate 派生开关（见上）。
+可复用测试入口包括客户端占位文案、失败统计、健康检查、备份导入与备份设置测试，以及后端 `messaging_envelope_filter_tests`。在独立副本运行相关测试，避免重编正在联调的节点产物。每次执行的提交、配置、命令、退出码和结果保存在仓库外；本页不存放某次执行成绩或上线状态。

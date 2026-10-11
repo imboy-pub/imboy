@@ -71,7 +71,7 @@ staging backlog，避免旧节点继续写入缺少 GID/`conv_seq`/snapshot 的�
 | `backup_imboy_db.sh` | 业务库备份 |
 | `restore_smoke.sh` | 备份恢复冒烟（验证可恢复性） |
 
-> 恢复演练记录见 [restore-drill-2026-06.md](../docs/guides/operations/deployment/restore-drill-2026-06.md)。
+> 恢复操作见 [备份与恢复指南](../docs/guides/operations/deployment/backup-restore.md)。每次演练记录保存在仓库外，绑定环境、备份哈希、恢复后校验和实测 RTO。
 
 ## Garage S3
 

@@ -594,10 +594,15 @@ grant_no_actor_oracle(C) ->
 down_up_cycle_test(State) ->
     C = maps:get(conn, State),
     ?_test(begin
-        Before = fn_body_snapshot(C),
+        HeadBefore = fn_body_snapshot(C),
         MigConn = connect_marker(State),
         MigConfig = #{conn => MigConn, dir => "priv/migrations"},
         try
+            %% Isolate migration 143: later migrations may legitimately own fn_%
+            %% functions that disappear while rolling the current head back.
+            ok = erlang_migrate:goto(MigConfig, ?THIS_MIGRATION),
+            ?assertEqual({ok, ?THIS_MIGRATION, false}, erlang_migrate:version(MigConfig)),
+            Before = fn_body_snapshot(C),
             %% --- down 到 142 ---
             ok = erlang_migrate:goto(MigConfig, ?DOWN_TARGET),
             ?assertEqual({ok, ?DOWN_TARGET, false}, erlang_migrate:version(MigConfig)),
@@ -614,7 +619,11 @@ down_up_cycle_test(State) ->
             ?assertEqual(<<"active">>, app_status(C, ?APP_B_ID)),
             %% 非本域函数体未被改写
             ?assertEqual(Before, fn_body_snapshot(C)),
-            %% --- up 回 143 ---
+            %% Rebuild 143 first and verify its non-domain function contract.
+            ok = erlang_migrate:goto(MigConfig, ?THIS_MIGRATION),
+            ?assertEqual({ok, ?THIS_MIGRATION, false}, erlang_migrate:version(MigConfig)),
+            ?assertEqual(Before, fn_body_snapshot(C)),
+            %% Restore the complete head and verify the original head snapshot.
             ok = erlang_migrate:up(MigConfig),
             ?assertEqual({ok, migration_head(), false}, erlang_migrate:version(MigConfig)),
             %% head 动态：只要求 ≥ 本迁移（144/145 入列后 head 前移）。
@@ -626,7 +635,7 @@ down_up_cycle_test(State) ->
             ?assert(
                 has_column(C, <<"enterprise_application_grant">>, <<"revoked_by_adm_user_id">>)
             ),
-            ?assertEqual(Before, fn_body_snapshot(C)),
+            ?assertEqual(HeadBefore, fn_body_snapshot(C)),
             %% 重建后业务 oracle 复现：CAS 命中 + 旧版本 0 行 + 跨 Org 0 行
             V = app_version(C, ?APP_A_ID),
             ?assertEqual(
@@ -667,9 +676,9 @@ down_up_cycle_test(State) ->
             )
         after
             try
+                ok = erlang_migrate:up(MigConfig)
+            after
                 epgsql:close(MigConn)
-            catch
-                _:_ -> ok
             end
         end
     end).

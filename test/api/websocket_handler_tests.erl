@@ -214,7 +214,12 @@ websocket_info_timeout_without_ack_resend_test_() ->
                 ]},
                 {message_ds, [
                     {'send_next', 6, fun(
-                        1, <<"msg_1">>, <<"raw_msg">>, [100, 200], [<<"did_1">>], true
+                        1,
+                        <<"msg_1">>,
+                        <<"{\"id\":\"msg_1\",\"type\":\"C2C\"}">>,
+                        [100, 200],
+                        [<<"did_1">>],
+                        true
                     ) ->
                         ok
                     end}
@@ -222,8 +227,13 @@ websocket_info_timeout_without_ack_resend_test_() ->
             ],
         fun() ->
             State = #{current_uid => 1},
-            Info = {timeout, ref1, {[100, 200], {1, <<"did_1">>, <<"msg_1">>}, <<"raw_msg">>}},
-            {reply, {text, <<"raw_msg">>}, State2, hibernate} = websocket_handler:websocket_info(
+            Info =
+                {timeout, ref1, {
+                    [100, 200],
+                    {1, <<"did_1">>, <<"msg_1">>},
+                    <<"{\"id\":\"msg_1\",\"type\":\"C2C\"}">>
+                }},
+            {reply, {text, <<"{\"id\":\"msg_1\",\"type\":\"C2C\"}">>}, State2, hibernate} = websocket_handler:websocket_info(
                 Info, State
             ),
             ?assertEqual(State, State2)
@@ -234,6 +244,7 @@ positive_delay_chain_delivers_each_current_v2_message_test_() ->
     ?WITH_MECKS(
         log_mocks() ++
             [
+                {micro_community_access_repo, [{delivery_allowed, 2, fun(9, 1) -> true end}]},
                 {ack_retry_cache, [
                     {'delete_if_value', 2, fun(_, _) -> true end},
                     {'get', 1, fun(_) -> undefined end}
@@ -241,8 +252,10 @@ positive_delay_chain_delivers_each_current_v2_message_test_() ->
                 {message_ds, [{'send_next', 6, fun(_, _, _, _, _, _) -> ok end}]}
             ],
         fun() ->
-            Msg = jsone:encode(#{<<"id">> => <<"offline-1">>, <<"type">> => <<"C2G">>}),
-            State = #{protocol => json, framing => v2},
+            Msg = jsone:encode(#{
+                <<"id">> => <<"offline-1">>, <<"type">> => <<"C2G">>, <<"to">> => 9
+            }),
+            State = #{current_uid => 1, protocol => json, framing => v2},
             ExpectedFrame = imboy_codec:wrap_v2_frame(?FRAME_TYPE_MSG_C2G, 0, Msg),
             lists:foreach(
                 fun(Tail) ->
@@ -261,7 +274,8 @@ positive_delay_chain_delivers_each_current_v2_message_test_() ->
                     )
                 end,
                 [[10000, 20000], [20000], []]
-            )
+            ),
+            ?assertEqual(3, meck:num_calls(micro_community_access_repo, delivery_allowed, [9, 1]))
         end
     ).
 
@@ -327,7 +341,12 @@ websocket_info_timeout_with_invalid_ack_flag_resend_test_() ->
                 ]},
                 {message_ds, [
                     {'send_next', 6, fun(
-                        1, <<"msg_3">>, <<"raw_msg_3">>, [100, 200], [<<"did_1">>], true
+                        1,
+                        <<"msg_3">>,
+                        <<"{\"id\":\"msg_3\",\"type\":\"C2C\"}">>,
+                        [100, 200],
+                        [<<"did_1">>],
+                        true
                     ) ->
                         ok
                     end}
@@ -335,8 +354,13 @@ websocket_info_timeout_with_invalid_ack_flag_resend_test_() ->
             ],
         fun() ->
             State = #{current_uid => 1},
-            Info = {timeout, ref3, {[100, 200], {1, <<"did_1">>, <<"msg_3">>}, <<"raw_msg_3">>}},
-            {reply, {text, <<"raw_msg_3">>}, State2, hibernate} = websocket_handler:websocket_info(
+            Info =
+                {timeout, ref3, {
+                    [100, 200],
+                    {1, <<"did_1">>, <<"msg_3">>},
+                    <<"{\"id\":\"msg_3\",\"type\":\"C2C\"}">>
+                }},
+            {reply, {text, <<"{\"id\":\"msg_3\",\"type\":\"C2C\"}">>}, State2, hibernate} = websocket_handler:websocket_info(
                 Info, State
             ),
             ?assertEqual(State, State2),
@@ -512,6 +536,7 @@ websocket_info_reply_map_protobuf_test_() ->
             Msg = #{
                 <<"id">> => <<"msg-test">>,
                 <<"type">> => <<"S2C">>,
+                <<"payload">> => #{},
                 <<"action">> => <<"test_action">>,
                 <<"server_ts">> => 1700000000
             },
@@ -548,7 +573,11 @@ encode_delivery_frame_json_passthrough_test_() ->
             ],
         fun() ->
             %% JSON 协议：预编码消息直接作为 text frame 透传
-            JsonMsg = jsone:encode(#{<<"id">> => <<"m1">>, <<"type">> => <<"S2C">>}, [native_utf8]),
+            JsonMsg = jsone:encode(
+                #{<<"id">> => <<"m1">>, <<"type">> => <<"S2C">>, <<"payload">> => #{}}, [
+                    native_utf8
+                ]
+            ),
             State = #{protocol => json},
             {reply, {text, Bin}, _, hibernate} = websocket_handler:websocket_info(
                 {reply, JsonMsg}, State
@@ -570,6 +599,7 @@ encode_delivery_frame_protobuf_reencode_test_() ->
             Msg = #{
                 <<"id">> => <<"m2">>,
                 <<"type">> => <<"S2C">>,
+                <<"payload">> => #{},
                 <<"action">> => <<"pull_offline_msg">>,
                 <<"server_ts">> => 1700000000
             },
@@ -641,6 +671,7 @@ timeout_final_retry_protobuf_test_() ->
             Msg = #{
                 <<"id">> => <<"m4">>,
                 <<"type">> => <<"S2C">>,
+                <<"payload">> => #{},
                 <<"action">> => <<"test">>,
                 <<"server_ts">> => 1700000000
             },
@@ -1113,5 +1144,53 @@ webrtc_real_signaling_frame_uses_webrtc_bucket_test_() ->
                 websocket_handler:websocket_handle({text, Msg}, State)
             ),
             ?assertEqual(1, meck:num_calls(throttle, check, 2))
+        end
+    ).
+
+malformed_retry_is_denied_without_send_test_() ->
+    ?WITH_MECKS(
+        log_mocks() ++
+            [
+                {ack_retry_cache, [
+                    {delete_if_value, 2, fun({1, <<"did">>, <<"bad">>}, bad_ref) -> true end},
+                    {get, 1, fun(_) -> erlang:error(unexpected_ack_lookup) end}
+                ]},
+                {message_ds, [
+                    {send_next, 6, fun(_, _, _, _, _, _) -> erlang:error(unexpected_send) end}
+                ]}
+            ],
+        fun() ->
+            State = #{current_uid => 1},
+            Info = {timeout, bad_ref, {[100], {1, <<"did">>, <<"bad">>}, <<"not-json">>}},
+            ?assertEqual({ok, State, hibernate}, websocket_handler:websocket_info(Info, State)),
+            ?assertEqual(1, meck:num_calls(ack_retry_cache, delete_if_value, 2)),
+            ?assertEqual(0, meck:num_calls(ack_retry_cache, get, 1)),
+            ?assertEqual(0, meck:num_calls(message_ds, send_next, 6))
+        end
+    ).
+
+revoked_group_retry_is_denied_without_send_test_() ->
+    ?WITH_MECKS(
+        log_mocks() ++
+            [
+                {micro_community_access_repo, [{delivery_allowed, 2, fun(9, 1) -> false end}]},
+                {ack_retry_cache, [
+                    {delete_if_value, 2, fun({1, <<"did">>, <<"revoked">>}, revoked_ref) ->
+                        true
+                    end},
+                    {get, 1, fun(_) -> erlang:error(unexpected_ack_lookup) end}
+                ]},
+                {message_ds, [
+                    {send_next, 6, fun(_, _, _, _, _, _) -> erlang:error(unexpected_send) end}
+                ]}
+            ],
+        fun() ->
+            State = #{current_uid => 1},
+            Msg = jsone:encode(#{<<"id">> => <<"revoked">>, <<"type">> => <<"C2G">>, <<"to">> => 9}),
+            Info = {timeout, revoked_ref, {[100], {1, <<"did">>, <<"revoked">>}, Msg}},
+            ?assertEqual({ok, State, hibernate}, websocket_handler:websocket_info(Info, State)),
+            ?assertEqual(1, meck:num_calls(micro_community_access_repo, delivery_allowed, [9, 1])),
+            ?assertEqual(1, meck:num_calls(ack_retry_cache, delete_if_value, 2)),
+            ?assertEqual(0, meck:num_calls(message_ds, send_next, 6))
         end
     ).

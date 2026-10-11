@@ -31,6 +31,21 @@ projection_hides_storage_test() ->
         workspace_attachment_logic:project(Row)
     ).
 
+retention_projection_preserves_status_without_storage_test() ->
+    Row = #{
+        <<"id">> => 1,
+        <<"retention_state">> => <<"retained">>,
+        <<"retained_at">> => <<"2026-10-09T10:00:00Z">>,
+        <<"path">> => <<"private/key">>,
+        <<"bucket">> => <<"private-bucket">>,
+        <<"url">> => <<"secret">>,
+        <<"organization_internal_note">> => <<"not-public">>
+    },
+    ?assertEqual(
+        maps:with([<<"id">>, <<"retention_state">>, <<"retained_at">>], Row),
+        workspace_attachment_logic:project(Row)
+    ).
+
 authorization_test() ->
     Modules = [workspace_logic, workspace_attachment_ds, attach_logic],
     lists:foreach(fun(M) -> meck:new(M, [non_strict, no_link]) end, Modules),

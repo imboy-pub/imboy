@@ -6,8 +6,12 @@ scan(Ws, Filters) ->
     Sql = <<
         "SELECT a.id,a.name,a.size,a.mime_type,a.created_at,a.creator_user_id,"
         " a.scope,a.scope_ref,a.path,a.status,COALESCE(g.title,c.name) AS source_name,"
-        " u.nickname AS creator_name,a.cipher"
+        " u.nickname AS creator_name,a.cipher,wr.retained_at,"
+        " CASE WHEN wr.attachment_id IS NOT NULL THEN 'retained'"
+        " ELSE 'unmanaged' END AS retention_state"
         " FROM attachment a"
+        " LEFT JOIN workspace_attachment_retention wr"
+        " ON wr.attachment_id=a.id AND wr.workspace_id=$1"
         " LEFT JOIN \"group\" g ON a.scope='group' AND a.scope_ref=g.id::text"
         " LEFT JOIN channel c ON a.scope='channel' AND a.scope_ref=c.id::text"
         " LEFT JOIN \"user\" u ON u.id=a.creator_user_id"

@@ -1,48 +1,46 @@
-# E2EE v2 Architecture — Freeze Gate
+# E2EE v2 Architecture — Change Governance
 
-> **用途**：B.-1 阶段收尾的**架构治理闸门**。含 ADR 完整性核查、Cross-ADR 一致性、冻结项审批、范围控制、向后兼容性验证。全部 ✅ 才算 Architecture Freeze 完成，方可进入 B.0 编码。
-> **状态**：进行中
-> **定位**：本文件不是普通 checklist，而是 Architecture Governance 工具——它定义进入编码阶段的**准入条件**与**签字流程**。
+本文件保留架构文档完整性、跨 ADR 一致性、冻结项、威胁追溯、兼容与审批要求，不记录旧执行阶段的进度或通过成绩。E2EE 属于二期，一期保持入口关闭；这不取消代码的安全回归要求。
 
----
+各项协议决策以既有文档及明确的 supersedes 关系为准，本清单不恢复已被替代的旧协议范围。签字及执行证据须绑定实际候选并保存在仓外。
 
 ## 1. ADR 文档完整性
 
-| # | 文档 | 状态 | 核心决策已落定 |
-|---|---|---|---|
-| 00 | **freeze-gate**（本文） | ✅ | 架构治理闸门、签字流程 |
-| 01 | overview | ✅ | 阶段路线、与现有文档关系、冻结流程 |
-| 02 | protocol | ✅ | E2eeSessionProtocol 接口、Registry、ProtocolSuite、MLS 占位 |
-| 03 | device-identity | ✅ | user_device 扩展、olm_identity 表、capabilities 字段、扩展签名 |
-| 04 | capability-negotiation | ✅ | 协商算法（取交集）、fallback 顺序、Signed Capabilities |
-| 05 | metadata-version | ✅ | meta_version 与 e2ee_ver 解耦、双写期、字段冻结清单 |
-| 06 | device-trust | ✅ | Trust State、Safety Number、CrossSigningService 接口位（不实现） |
-| 07 | storage | ✅ | 客户端分级、StorageProvider 抽象、服务端零密码学、KDF 可迁移 |
-| 08 | threat-model | ✅ | Protected Assets、T1-T9、可追溯矩阵（含 Test 列） |
-| 09 | rejected-decisions | ✅ | R1-R8 带 revisit 触发条件 |
-| 10 | adr-dependency-graph | ✅ | 依赖矩阵、变更传播路径 |
-| 11 | backward-compatibility-matrix | ✅ | 客户端版本×协议套件兼容矩阵 |
-| 12 | reference-implementation | ✅ | Flutter 为 normative，Web 为 derivative |
+| # | 文档 | 决策索引 |
+| --- | --- | --- |
+| 00 | **freeze-gate**（本文） | 架构治理闸门、签字流程 |
+| 01 | overview | 阶段路线、与现有文档关系、冻结流程 |
+| 02 | protocol | E2eeSessionProtocol 接口、Registry、ProtocolSuite、MLS 占位 |
+| 03 | device-identity | user_device 扩展、olm_identity 表、capabilities 字段、扩展签名 |
+| 04 | capability-negotiation | 协商算法（取交集）、fallback 顺序、Signed Capabilities |
+| 05 | metadata-version | meta_version 与 e2ee_ver 解耦、双写期、字段冻结清单 |
+| 06 | device-trust | Trust State、Safety Number、CrossSigningService 接口位（不实现） |
+| 07 | storage | 客户端分级、StorageProvider 抽象、服务端零密码学、KDF 可迁移 |
+| 08 | threat-model | Protected Assets、T1-T9、可追溯矩阵（含 Test 列） |
+| 09 | rejected-decisions | R1-R8 带 revisit 触发条件 |
+| 10 | adr-dependency-graph | 依赖矩阵、变更传播路径 |
+| 11 | backward-compatibility-matrix | 客户端版本×协议套件兼容矩阵 |
+| 12 | reference-implementation | Flutter 为 normative，Web 为 derivative |
 
-**文档总计**：13 份，全部 ✅。
+文档编号用于查找既有决策，不表示当前候选已经完成核查。
 
 ---
 
-## 2. Cross-ADR 一致性（freeze 前 patch 已完成）
+## 2. Cross-ADR 一致性要求
 
-| 核查项 | 状态 | 说明 |
-|---|---|---|
-| 协议名拼写统一（olm/megolm/mls/rsa-oaep） | ✅ 已 patch | 02 的 `'rsa'` 已统一为 `'rsa-oaep'`，与 04/e2ee_protocol.dart 一致 |
-| ProtocolSuite 三元组定义唯一来源 | ✅ | 仅 02 §3 定义，其余引用 |
-| 威胁 ID 引用全部在 08 T1-T9 范围内 | ✅ | 05 用 T7/T9、06 用 T2/T4/T7/T8、07 用 T1/T3/T5/T6/T9，零捏造 |
-| T9 Rollback 在相关 ADR 补引 | ✅ 已 patch | 02 ProtocolSuite.version 注释补 T9；03 §4.3 防御映射补 T9 行 |
-| meta_version 概念跨 02/05 一致 | ✅ | 05 定义 `meta_version`（容器版本）与 `e2ee_ver`（协议族）解耦，02 的 ProtocolSuite 与之双写 |
-| StorageProvider 接口在 07 定义、12 引用 | ✅ | 07 §4 TypeScript 接口，12 §4 衍生约束 |
-| Signed Capabilities 概念跨 04/08 一致 | ✅ | 04 §7 定义，08 §4 可追溯矩阵绑定 `capability_signature_forgery_fails_test` |
-| CrossSigningService 接口位在 06 定义、09 reject 一致 | ✅ | 06 §6 接口位（不实现），09 R6 记录否决理由 + revisit 条件 |
-| CrossSigningService 接口位在 06 定义、02 不引用为实现 | ⏳ 待核 | 06 完成后核 |
-| meta_version 字段名跨 02/05 一致 | ⏳ 待核 | 05 完成后核 |
-| StorageProvider 接口在 07 定义、Web SDK（B.4）复用 | ⏳ 待核 | 07 完成后核 |
+| 核查项 | 说明 |
+| --- | --- |
+| 协议名拼写统一（olm/megolm/mls/rsa-oaep） | 核对 02 与 04/e2ee_protocol.dart 的命名一致性，`'rsa-oaep'` 及其 supersedes 决策须一致 |
+| ProtocolSuite 三元组定义唯一来源 | 仅 02 §3 定义，其余引用 |
+| 威胁 ID 引用全部在 08 T1-T9 范围内 | 05 用 T7/T9、06 用 T2/T4/T7/T8、07 用 T1/T3/T5/T6/T9，零捏造 |
+| T9 Rollback 在相关 ADR 补引 | 02 ProtocolSuite.version 注释补 T9；03 §4.3 防御映射补 T9 行 |
+| meta_version 概念跨 02/05 一致 | 05 定义 `meta_version`（容器版本）与 `e2ee_ver`（协议族）解耦，02 的 ProtocolSuite 与之双写 |
+| StorageProvider 接口在 07 定义、12 引用 | 07 §4 TypeScript 接口，12 §4 衍生约束 |
+| Signed Capabilities 概念跨 04/08 一致 | 04 §7 定义，08 §4 可追溯矩阵绑定 `capability_signature_forgery_fails_test` |
+| CrossSigningService 接口位在 06 定义、09 reject 一致 | 06 §6 接口位（不实现），09 R6 记录否决理由 + revisit 条件 |
+| CrossSigningService 接口位在 06 定义、02 不引用为实现 | 核对 06 定义与 02 引用，不将接口位误作实现 |
+| meta_version 字段名跨 02/05 一致 | 核对 02 与 05 的字段定义及引用 |
+| StorageProvider 接口在 07 定义、Web SDK（B.4）复用 | 核对 07 定义与衍生客户端的复用边界 |
 
 ---
 

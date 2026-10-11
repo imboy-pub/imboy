@@ -10,17 +10,11 @@
 
 - [ADR-0005 模块化单体边界（Modular Monolith Boundaries）](https://github.com/imboy-pub/imboy/blob/main/docs/adr/0005-modular-monolith-boundaries.md): 明确后端继续保持 modular monolith，并仅在高变化扩展点引入轻量插件化。
 
-## 迁移状态（2026-03-28 — 闭环）
+## 扩展点与兼容接口
 
-> Workspace Modular + Plugin Architecture 迁移已全部完成（Task 0-17）。
+`src/lib/imboy_plugin_registry.erl` 提供 manifest 接口。`all/0` 与 `get/1` 是保留的弃用兼容包装，新调用应使用 `manifests/0` 与 `manifest/1`。模块边界检查入口为 `scripts/check_module_boundaries.sh`。
 
-- 已建立稳定领域入口的逻辑层模块：`messaging_logic`、`moment_logic`、`channel_logic`、`group_logic`、`group_vote_logic`、`group_schedule_logic`、`group_task_logic`、`auth_logic`、`passport_logic`、`user_logic`、`e2ee_logic`、`report_logic`、`user_collect_logic`。
-- 生产中的扩展点保持轻量：`src/lib/imboy_plugin_registry.erl` 作为插件 manifest contract，被 `channel_handler`、`moment_handler`、`group_*_handler`、`report_handler`、后台对应 handler 以及 `imboy_policy` 使用。
-- 兼容层仍保留且属于迁移期设计：`imboy_plugin_registry:all/0` 与 `get/1` 继续作为 `manifests/0` 与 `manifest/1` 的 deprecated aliases（代码标注 `Deprecated compatibility wrapper`），待调用点完全收敛后再删除。
-- 边界门禁已启用：`scripts/check_module_boundaries.sh` 在 CI 中防止跨域直接依赖。
-- 回归验证：`make app` 编译通过；2709 非DB断言全部通过；修复 `elib_uri:exclusion_param/2` 无 query 字段崩溃。
-
-> 2026-09-19 勘误：本节此前同段内容出现两个矛盾版本（「兼容层已清理/已移除」与「兼容层仍保留」并存）。以代码为准——`all/0` 与 `get/1` 仍在（`src/lib/imboy_plugin_registry.erl` 导出表），保留上方「仍保留」结论，删除矛盾重复段。
+迁移任务记录、历史编译和测试成绩保存在仓外，不构成当前候选通过的证明。
 
 ## 1. 文档目的
 

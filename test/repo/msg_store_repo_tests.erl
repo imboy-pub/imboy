@@ -48,6 +48,19 @@ find_staged_is_scoped_to_type_and_pending_state_test_() ->
             {elib_pg_sql, [
                 {'public_tablename', 1, fun(_) -> <<"public.msg_store_staging">> end}
             ]},
+            {personal_message_order_repo, [
+                {stage_c2c, 2, fun(Tb, Data) ->
+                    {Sql, Params} = elib_pg_sql:insert(Tb, Data#{conv_seq => 1}),
+                    case elib_pg:query(Sql, Params) of
+                        {ok, _} ->
+                            {ok, maps:get(id, Data)};
+                        {error, {error, _, <<"23505">>, unique_violation, _, _}} ->
+                            {error, {unique_violation, maps:get(msg_id, Data)}};
+                        Error ->
+                            Error
+                    end
+                end}
+            ]},
             {elib_pg, [
                 {'query', 2, fun(Sql, [<<"c2g">>, <<"shared-id">>]) ->
                     ?assertNotEqual(nomatch, binary:match(Sql, <<"type = $1">>)),
@@ -113,6 +126,19 @@ stage_with_integer_toid_validates_all_fields_test_() ->
             {elib_tsid, [
                 {'generate', 1, fun(msg_store) -> 12345 end}
             ]},
+            {personal_message_order_repo, [
+                {stage_c2c, 2, fun(Tb, Data) ->
+                    {Sql, Params} = elib_pg_sql:insert(Tb, Data#{conv_seq => 1}),
+                    case elib_pg:query(Sql, Params) of
+                        {ok, _} ->
+                            {ok, maps:get(id, Data)};
+                        {error, {error, _, <<"23505">>, unique_violation, _, _}} ->
+                            {error, {unique_violation, maps:get(msg_id, Data)}};
+                        Error ->
+                            Error
+                    end
+                end}
+            ]},
             {elib_pg, [
                 {'query', 2, fun(_Sql, _Params) -> {ok, 1} end}
             ]}
@@ -147,6 +173,19 @@ stage_with_empty_e2ee_converts_to_null_test_() ->
             ]},
             {elib_tsid, [
                 {'generate', 1, fun(msg_store) -> 12345 end}
+            ]},
+            {personal_message_order_repo, [
+                {stage_c2c, 2, fun(Tb, Data) ->
+                    {Sql, Params} = elib_pg_sql:insert(Tb, Data#{conv_seq => 1}),
+                    case elib_pg:query(Sql, Params) of
+                        {ok, _} ->
+                            {ok, maps:get(id, Data)};
+                        {error, {error, _, <<"23505">>, unique_violation, _, _}} ->
+                            {error, {unique_violation, maps:get(msg_id, Data)}};
+                        Error ->
+                            Error
+                    end
+                end}
             ]},
             {elib_pg, [
                 {'query', 2, fun(_Sql, _Params) -> {ok, 1} end}
@@ -184,6 +223,19 @@ stage_with_e2ee_data_preserves_value_test_() ->
             {elib_tsid, [
                 {'generate', 1, fun(msg_store) -> 12345 end}
             ]},
+            {personal_message_order_repo, [
+                {stage_c2c, 2, fun(Tb, Data) ->
+                    {Sql, Params} = elib_pg_sql:insert(Tb, Data#{conv_seq => 1}),
+                    case elib_pg:query(Sql, Params) of
+                        {ok, _} ->
+                            {ok, maps:get(id, Data)};
+                        {error, {error, _, <<"23505">>, unique_violation, _, _}} ->
+                            {error, {unique_violation, maps:get(msg_id, Data)}};
+                        Error ->
+                            Error
+                    end
+                end}
+            ]},
             {elib_pg, [
                 {'query', 2, fun(_Sql, _Params) -> {ok, 1} end}
             ]}
@@ -213,6 +265,19 @@ stage_unique_violation_converts_to_business_error_test_() ->
             ]},
             {elib_tsid, [
                 {'generate', 1, fun(msg_store) -> 12345 end}
+            ]},
+            {personal_message_order_repo, [
+                {stage_c2c, 2, fun(Tb, Data) ->
+                    {Sql, Params} = elib_pg_sql:insert(Tb, Data#{conv_seq => 1}),
+                    case elib_pg:query(Sql, Params) of
+                        {ok, _} ->
+                            {ok, maps:get(id, Data)};
+                        {error, {error, _, <<"23505">>, unique_violation, _, _}} ->
+                            {error, {unique_violation, maps:get(msg_id, Data)}};
+                        Error ->
+                            Error
+                    end
+                end}
             ]},
             {elib_pg, [
                 {'query', 2, fun(_Sql, _Params) ->
@@ -248,6 +313,19 @@ stage_with_zero_from_id_accepted_test_() ->
             {elib_tsid, [
                 {'generate', 1, fun(msg_store) -> 12345 end}
             ]},
+            {personal_message_order_repo, [
+                {stage_c2c, 2, fun(Tb, Data) ->
+                    {Sql, Params} = elib_pg_sql:insert(Tb, Data#{conv_seq => 1}),
+                    case elib_pg:query(Sql, Params) of
+                        {ok, _} ->
+                            {ok, maps:get(id, Data)};
+                        {error, {error, _, <<"23505">>, unique_violation, _, _}} ->
+                            {error, {unique_violation, maps:get(msg_id, Data)}};
+                        Error ->
+                            Error
+                    end
+                end}
+            ]},
             {elib_pg, [
                 {'query', 2, fun(_Sql, _Params) -> {ok, 1} end}
             ]}
@@ -278,6 +356,19 @@ stage_with_negative_from_id_accepted_test_() ->
             ]},
             {elib_tsid, [
                 {'generate', 1, fun(msg_store) -> 12345 end}
+            ]},
+            {personal_message_order_repo, [
+                {stage_c2c, 2, fun(Tb, Data) ->
+                    {Sql, Params} = elib_pg_sql:insert(Tb, Data#{conv_seq => 1}),
+                    case elib_pg:query(Sql, Params) of
+                        {ok, _} ->
+                            {ok, maps:get(id, Data)};
+                        {error, {error, _, <<"23505">>, unique_violation, _, _}} ->
+                            {error, {unique_violation, maps:get(msg_id, Data)}};
+                        Error ->
+                            Error
+                    end
+                end}
             ]},
             {elib_pg, [
                 {'query', 2, fun(_Sql, _Params) -> {ok, 1} end}
@@ -477,14 +568,6 @@ c2g_stage_commits_authorized_snapshot_and_role_test_() ->
                             {ok, []};
                         (_, <<"INSERT INTO public.msg_store_seq", _/binary>>, _) ->
                             {ok, []};
-                        (_, <<"SELECT id FROM public.channel", _/binary>>, _) ->
-                            {ok, []};
-                        (_, <<"SELECT discussion_group_id FROM public.channel", _/binary>>, _) ->
-                            {ok, []};
-                        (_, <<"SELECT id FROM public.\"group\"", _/binary>>, _) ->
-                            {ok, []};
-                        (_, <<"INSERT INTO public.msg_store_seq", _/binary>>, _) ->
-                            {ok, []};
                         (_, Sql, [100, 50, 3, 5001]) ->
                             ?assertNotEqual(nomatch, binary:match(Sql, <<"caller.role >= $3">>)),
                             ?assertNotEqual(nomatch, binary:match(Sql, <<"caller.status = 1">>)),
@@ -627,14 +710,6 @@ c2g_stage_sequence_failures_are_rolled_back_test_() ->
                     {'query', 3, fun
                         %% discussion 访问锁（791b8817）：无 discussion 绑定语义 → 放行
                         (_, <<"LOCK TABLE public.channel", _/binary>>, []) ->
-                            {ok, []};
-                        (_, <<"SELECT id FROM public.channel", _/binary>>, _) ->
-                            {ok, []};
-                        (_, <<"SELECT discussion_group_id FROM public.channel", _/binary>>, _) ->
-                            {ok, []};
-                        (_, <<"SELECT id FROM public.\"group\"", _/binary>>, _) ->
-                            {ok, []};
-                        (_, <<"INSERT INTO public.msg_store_seq", _/binary>>, _) ->
                             {ok, []};
                         (_, <<"SELECT id FROM public.channel", _/binary>>, _) ->
                             {ok, []};
@@ -807,14 +882,6 @@ c2g_stage_attachment_bind_error_rolls_back_test_() ->
                             {ok, []};
                         (_, <<"INSERT INTO public.msg_store_seq", _/binary>>, _) ->
                             {ok, []};
-                        (_, <<"SELECT id FROM public.channel", _/binary>>, _) ->
-                            {ok, []};
-                        (_, <<"SELECT discussion_group_id FROM public.channel", _/binary>>, _) ->
-                            {ok, []};
-                        (_, <<"SELECT id FROM public.\"group\"", _/binary>>, _) ->
-                            {ok, []};
-                        (_, <<"INSERT INTO public.msg_store_seq", _/binary>>, _) ->
-                            {ok, []};
                         (_, _, [100, 50, 1, 5001]) ->
                             {ok, [#{<<"user_id">> => 50}, #{<<"user_id">> => 60}]};
                         (
@@ -894,8 +961,6 @@ c2g_stage_duplicate_does_not_bind_attachment_test_() ->
                     end},
                     {'query', 3, fun
                         %% discussion 访问锁（791b8817）：无 discussion 绑定语义 → 放行
-                        (_, <<"LOCK TABLE public.channel", _/binary>>, []) ->
-                            {ok, []};
                         (_, <<"SELECT id FROM public.channel", _/binary>>, _) ->
                             {ok, []};
                         (_, <<"SELECT discussion_group_id FROM public.channel", _/binary>>, _) ->
@@ -906,22 +971,6 @@ c2g_stage_duplicate_does_not_bind_attachment_test_() ->
                             {ok, []};
                         %% discussion 访问锁（791b8817）：无 discussion 绑定语义 → 放行
                         (_, <<"LOCK TABLE public.channel", _/binary>>, []) ->
-                            {ok, []};
-                        (_, <<"SELECT id FROM public.channel", _/binary>>, _) ->
-                            {ok, []};
-                        (_, <<"SELECT discussion_group_id FROM public.channel", _/binary>>, _) ->
-                            {ok, []};
-                        (_, <<"SELECT id FROM public.\"group\"", _/binary>>, _) ->
-                            {ok, []};
-                        (_, <<"INSERT INTO public.msg_store_seq", _/binary>>, _) ->
-                            {ok, []};
-                        (_, <<"SELECT id FROM public.channel", _/binary>>, _) ->
-                            {ok, []};
-                        (_, <<"SELECT discussion_group_id FROM public.channel", _/binary>>, _) ->
-                            {ok, []};
-                        (_, <<"SELECT id FROM public.\"group\"", _/binary>>, _) ->
-                            {ok, []};
-                        (_, <<"INSERT INTO public.msg_store_seq", _/binary>>, _) ->
                             {ok, []};
                         (_, _, [100, 50, 1, 5001]) ->
                             {ok, [#{<<"user_id">> => 50}]};
@@ -1034,14 +1083,6 @@ c2g_stage_rejects_msg_id_owned_by_another_sender_test_() ->
                             {ok, []};
                         (_, <<"INSERT INTO public.msg_store_seq", _/binary>>, _) ->
                             {ok, []};
-                        (_, <<"SELECT id FROM public.channel", _/binary>>, _) ->
-                            {ok, []};
-                        (_, <<"SELECT discussion_group_id FROM public.channel", _/binary>>, _) ->
-                            {ok, []};
-                        (_, <<"SELECT id FROM public.\"group\"", _/binary>>, _) ->
-                            {ok, []};
-                        (_, <<"INSERT INTO public.msg_store_seq", _/binary>>, _) ->
-                            {ok, []};
                         (_, _, [100, 50, 1, 5001]) ->
                             {ok, [#{<<"user_id">> => 50}]};
                         (
@@ -1120,14 +1161,6 @@ c2g_stage_5000_recipients_commits_test_() ->
                     {'query', 3, fun
                         %% discussion 访问锁（791b8817）：无 discussion 绑定语义 → 放行
                         (_, <<"LOCK TABLE public.channel", _/binary>>, []) ->
-                            {ok, []};
-                        (_, <<"SELECT id FROM public.channel", _/binary>>, _) ->
-                            {ok, []};
-                        (_, <<"SELECT discussion_group_id FROM public.channel", _/binary>>, _) ->
-                            {ok, []};
-                        (_, <<"SELECT id FROM public.\"group\"", _/binary>>, _) ->
-                            {ok, []};
-                        (_, <<"INSERT INTO public.msg_store_seq", _/binary>>, _) ->
                             {ok, []};
                         (_, <<"SELECT id FROM public.channel", _/binary>>, _) ->
                             {ok, []};
@@ -1365,8 +1398,6 @@ c2g_action_stage_uses_original_snapshot_and_generation_test_() ->
                     {'with_tx', 1, fun(Tx) -> Tx(fake_conn) end},
                     {'query', 3, fun
                         %% discussion 访问锁（791b8817）：无 discussion 绑定语义 → 放行
-                        (_, <<"LOCK TABLE public.channel", _/binary>>, []) ->
-                            {ok, []};
                         (_, <<"SELECT id FROM public.channel", _/binary>>, _) ->
                             {ok, []};
                         (_, <<"SELECT discussion_group_id FROM public.channel", _/binary>>, _) ->
@@ -1377,22 +1408,6 @@ c2g_action_stage_uses_original_snapshot_and_generation_test_() ->
                             {ok, []};
                         %% discussion 访问锁（791b8817）：无 discussion 绑定语义 → 放行
                         (_, <<"LOCK TABLE public.channel", _/binary>>, []) ->
-                            {ok, []};
-                        (_, <<"SELECT id FROM public.channel", _/binary>>, _) ->
-                            {ok, []};
-                        (_, <<"SELECT discussion_group_id FROM public.channel", _/binary>>, _) ->
-                            {ok, []};
-                        (_, <<"SELECT id FROM public.\"group\"", _/binary>>, _) ->
-                            {ok, []};
-                        (_, <<"INSERT INTO public.msg_store_seq", _/binary>>, _) ->
-                            {ok, []};
-                        (_, <<"SELECT id FROM public.channel", _/binary>>, _) ->
-                            {ok, []};
-                        (_, <<"SELECT discussion_group_id FROM public.channel", _/binary>>, _) ->
-                            {ok, []};
-                        (_, <<"SELECT id FROM public.\"group\"", _/binary>>, _) ->
-                            {ok, []};
-                        (_, <<"INSERT INTO public.msg_store_seq", _/binary>>, _) ->
                             {ok, []};
                         (_, Sql, [100, 50, 1, <<"original-msg">>, 5001]) ->
                             ?assertNotEqual(
@@ -1489,14 +1504,6 @@ c2g_action_stage_snapshot_primary_key_is_durable_idempotency_test_() ->
                     {'query', 3, fun
                         %% discussion 访问锁（791b8817）：无 discussion 绑定语义 → 放行
                         (_, <<"LOCK TABLE public.channel", _/binary>>, []) ->
-                            {ok, []};
-                        (_, <<"SELECT id FROM public.channel", _/binary>>, _) ->
-                            {ok, []};
-                        (_, <<"SELECT discussion_group_id FROM public.channel", _/binary>>, _) ->
-                            {ok, []};
-                        (_, <<"SELECT id FROM public.\"group\"", _/binary>>, _) ->
-                            {ok, []};
-                        (_, <<"INSERT INTO public.msg_store_seq", _/binary>>, _) ->
                             {ok, []};
                         (_, <<"SELECT id FROM public.channel", _/binary>>, _) ->
                             {ok, []};

@@ -16749,9 +16749,13 @@ paths:
                   minimum: 1
                   maximum: 2147483647
               anyOf:
-              - required:
+              - properties:
+                  enabled: {}
+                required:
                 - enabled
-              - required:
+              - properties:
+                  max_concurrent: {}
+                required:
                 - max_concurrent
 components:
   securitySchemes:

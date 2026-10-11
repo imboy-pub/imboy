@@ -23,7 +23,7 @@
 
 %% 写入操作
 -export([stage/10]).
--export([stage/11]).
+-export([stage/11, stage_with_sequence/11]).
 -export([stage/12]).
 -export([stage_action/13]).
 %% 真库回归直接执行生产 SQL，避免 mock 只验证字符串形状。
@@ -152,43 +152,23 @@ stage(
     is_integer(ToId)
 ->
     Tb = tablename(),
-    Data0 = #{
-        type => Type,
-        msg_id => MsgId,
-        msg_type => MsgType,
-        action => Action,
-        e2ee => msg_store_e2ee_to_jsonb(E2EE),
-        %% payload 列是 JSONB：
-        %%  - 普通消息：Payload 已经是合法 JSON binary（如 {"text":"..."}）
-        %%  - E2EE 消息：Payload 是裸 base64 密文 binary，必须包装为 JSON 字符串
-        %%  - Map：编码为 JSON object
-        payload => msg_store_payload_to_jsonb(Payload),
-        from_id => FromId,
-        to_id => ToId,
-        created_at => CreatedAt,
-        server_ts => ServerTs,
-        retry_count => 0
-    },
-    Data = put_sender_did(Data0, SenderDid),
-    %% 预生成 TSID
-    GenId = elib_tsid:generate(msg_store),
-    Data2 = Data#{id => GenId},
-    {Sql, Params} = elib_pg_sql:insert(Tb, Data2),
-    %% 【幂等性修复】捕获唯一约束错误
-    %% Q06（AC11 真库注入修复）：真实 epgsql 唯一冲突形状为
-    %% {error, {error, Severity, <<"23505">>, unique_violation, Msg, Extra}}
-    %% （全仓 passport_logic/bot_ds 等 15+ 处同款）；此前的三层
-    %% {error, {error, {error, <<"23505">>, ...}}} 形状在真实链路中不存在，
-    %% 仅被 mock 测试伪造——真实重发（staging UNIQUE(type,msg_id) 冲突）
-    %% 落入兜底分支返回原始错误，C2C 重发无法幂等收敛为 duplicate。
-    case elib_pg:query(Sql, Params) of
-        {ok, _} ->
-            {ok, GenId};
-        {error, {error, _Severity, <<"23505">>, unique_violation, _Msg, _Extra}} ->
-            %% PostgreSQL 唯一约束错误：消息已存在（幂等性）
-            {error, {unique_violation, MsgId}};
-        {error, Reason} ->
-            {error, Reason}
+    Data2 = single_staging_row(
+        Type,
+        MsgId,
+        MsgType,
+        Action,
+        E2EE,
+        Payload,
+        FromId,
+        ToId,
+        CreatedAt,
+        ServerTs,
+        SenderDid
+    ),
+    GenId = maps:get(id, Data2),
+    case Type of
+        <<"c2c">> -> personal_message_order_repo:stage_c2c(Tb, Data2);
+        _ -> insert_staging_row(Tb, Data2, GenId, MsgId)
     end;
 stage(
     <<"c2g">>,
@@ -244,6 +224,66 @@ stage(
         {error, Reason} ->
             {error, Reason}
     end.
+
+%% C2C delivery uses the seq returned inside the acceptance transaction.
+stage_with_sequence(
+    <<"c2c">> = Type,
+    MsgId,
+    MsgType,
+    Action,
+    E2EE,
+    Payload,
+    FromId,
+    ToId,
+    CreatedAt,
+    ServerTs,
+    SenderDid
+) when is_integer(ToId) ->
+    Data = single_staging_row(
+        Type,
+        MsgId,
+        MsgType,
+        Action,
+        E2EE,
+        Payload,
+        FromId,
+        ToId,
+        CreatedAt,
+        ServerTs,
+        SenderDid
+    ),
+    personal_message_order_repo:stage_c2c_ordered(tablename(), Data).
+
+single_staging_row(
+    Type,
+    MsgId,
+    MsgType,
+    Action,
+    E2EE,
+    Payload,
+    FromId,
+    ToId,
+    CreatedAt,
+    ServerTs,
+    SenderDid
+) ->
+    put_sender_did(
+        #{
+            id => elib_tsid:generate(msg_store),
+            type => Type,
+            msg_id => MsgId,
+            msg_type => MsgType,
+            action => Action,
+            e2ee => msg_store_e2ee_to_jsonb(E2EE),
+            payload => msg_store_payload_to_jsonb(Payload),
+            from_id => FromId,
+            to_id => ToId,
+            created_at => CreatedAt,
+            server_ts => ServerTs,
+            retry_count => 0
+        },
+        SenderDid
+    ).
 
 %% @doc C2G 持久接受：在序列锁内重验 active sender、最低角色和收件人快照。
 -spec stage(
@@ -896,6 +936,25 @@ persist_c2g_recipient_snapshot(Conn, MsgId, FromId, Gid, Seq, RecipientUids, Cre
             throw({rollback, {recipient_snapshot_persist_failed, Reason}});
         Other ->
             throw({rollback, {unexpected_recipient_snapshot_persist, Other}})
+    end.
+
+insert_staging_row(Tb, Data2, GenId, MsgId) ->
+    {Sql, Params} = elib_pg_sql:insert(Tb, Data2),
+    %% 【幂等性修复】捕获唯一约束错误
+    %% Q06（AC11 真库注入修复）：真实 epgsql 唯一冲突形状为
+    %% {error, {error, Severity, <<"23505">>, unique_violation, Msg, Extra}}
+    %% （全仓 passport_logic/bot_ds 等 15+ 处同款）；此前的三层
+    %% {error, {error, {error, <<"23505">>, ...}}} 形状在真实链路中不存在，
+    %% 仅被 mock 测试伪造——真实重发（staging UNIQUE(type,msg_id) 冲突）
+    %% 落入兜底分支返回原始错误，C2C 重发无法幂等收敛为 duplicate。
+    case elib_pg:query(Sql, Params) of
+        {ok, _} ->
+            {ok, GenId};
+        {error, {error, _Severity, <<"23505">>, unique_violation, _Msg, _Extra}} ->
+            %% PostgreSQL 唯一约束错误：消息已存在（幂等性）
+            {error, {unique_violation, MsgId}};
+        {error, Reason} ->
+            {error, Reason}
     end.
 
 -spec allocate_c2g_seq(pid(), binary()) -> pos_integer().

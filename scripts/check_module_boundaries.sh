@@ -89,7 +89,7 @@ allowed_modules_for_handler() {
       echo "moment_logic"
       ;;
     group_handler.erl)
-      echo "auth_ds config_ds group_logic group_member_logic"
+      echo "auth_ds config_ds group_logic group_member_logic micro_community_access_logic"
       ;;
     group_schedule_handler.erl)
       echo "group_schedule_logic"

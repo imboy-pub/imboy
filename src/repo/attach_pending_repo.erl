@@ -12,6 +12,7 @@
 % attach_cleanup_logic 连同 S3 对象一并回收。
 %%%
 
+-export([claim_expired_tx/3]).
 -export([add/4]).
 -export([remove/1]).
 -export([list_expired/1]).
@@ -119,3 +120,31 @@ delete_by_keys(Keys) ->
 normalize({ok, _}) -> ok;
 normalize({ok, _, _}) -> ok;
 normalize({error, R}) -> {error, R}.
+
+%% Serialize with attachment confirmation before rechecking pending eligibility.
+claim_expired_tx(Conn, Key, AgeHours) ->
+    case
+        elib_pg:query(
+            Conn,
+            <<"SELECT pg_advisory_xact_lock(hashtextextended($1,168))">>,
+            [Key]
+        )
+    of
+        {ok, _} ->
+            elib_pg:query(
+                Conn,
+                [
+                    <<"DELETE FROM ">>,
+                    tablename(),
+                    <<
+                        " p WHERE p.object_key=$1"
+                        " AND p.created_at<NOW()-($2*INTERVAL '1 hour')"
+                        " AND NOT EXISTS(SELECT 1 FROM attachment a WHERE a.path=p.object_key)"
+                        " RETURNING p.bucket"
+                    >>
+                ],
+                [Key, AgeHours]
+            );
+        {error, R} ->
+            {error, R}
+    end.

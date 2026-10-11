@@ -1,104 +1,222 @@
 -module(attach_pending_cleanup_tests).
 -include_lib("eunit/include/eunit.hrl").
--include("eunit_setup.hrl").
 
-%%%===================================================================
-%%% @doc #20：待确认 presign 回收
-%%%
-%%% 缺口：attach_logic:presign/5 签发后不落任何库行，而
-%%% attachment_repo:orphan_list_for_delete/1 是
-%%% `SELECT ... FROM attachment WHERE status = 1 AND referer_time = 0`
-%%% —— 只扫表不扫桶。"PUT 上去但从不 confirm"的对象在库里不存在，
-%%% 清理器永远看不见它。
-%%%
-%%% confirm 路径本身已有兜底（verify_and_save 做 HEAD 核实 + max_file_size
-%%% 超限即 delete_object），所以缺口不在"大小无约束"而在"根本不走 confirm"。
-%%%
-%%% 本测试锁定 attachment_ds:pending_cleanup/1 的三条不变量。
-%%%===================================================================
+%% Unit orchestration only; PostgreSQL durability/locks and object bytes require
+%% the separate integration suite. No application boot or external storage here.
+cleanup_test_() ->
+    {foreach, fun setup/0, fun cleanup/1, [
+        fun recorded_bucket/0,
+        fun enqueue_failure/0,
+        fun commit_failure/0,
+        fun confirmation_wins/0,
+        fun old_job_without_expired_pending/0,
+        fun object_failure/0,
+        fun completion_failure/0,
+        fun acknowledgment_commit_failure/0,
+        fun fallback_bucket/0,
+        fun retry_schedule_failure/0,
+        fun scan_failure/0,
+        fun queue_scan_failure/0,
+        fun competing_worker/0,
+        fun orphan_handoff/0
+    ]}.
 
-%% 删对象必须带上登记行里的 bucket，不能走 delete_object/1 的默认桶
-cleanup_deletes_with_recorded_bucket_test_() ->
-    ?WITH_MECKS(
-        [
-            {attach_pending_repo, [
-                {'list_expired', 1, fun(24) ->
-                    {ok, [
-                        #{<<"object_key">> => <<"k1">>, <<"bucket">> => <<"b1">>},
-                        #{<<"object_key">> => <<"k2">>, <<"bucket">> => <<"b2">>}
-                    ]}
-                end},
-                {'delete_by_keys', 1, fun(Keys) ->
-                    put(deleted_keys, lists:sort(Keys)),
-                    ok
-                end}
-            ]},
-            {elib_oss, [
-                {'delete_object', 2, fun(_Bucket, _Key) -> ok end}
-            ]}
-        ],
-        fun() ->
-            ?assertEqual(
-                {ok, #{cleaned => 2, errors => 0}},
-                attachment_ds:pending_cleanup(24)
-            ),
-            ?assertEqual([<<"k1">>, <<"k2">>], erase(deleted_keys)),
-            ?assert(meck:called(elib_oss, delete_object, [<<"b1">>, <<"k1">>])),
-            ?assert(meck:called(elib_oss, delete_object, [<<"b2">>, <<"k2">>]))
-        end
+setup() ->
+    Modules = [
+        attach_pending_repo,
+        attachment_repo,
+        attachment_gc_repo,
+        elib_pg,
+        elib_oss
+    ],
+    lists:foreach(fun(M) -> meck:new(M, [non_strict, no_link]) end, Modules),
+    meck:expect(elib_pg, with_tx, fun transaction/1),
+    meck:expect(attach_pending_repo, list_expired, fun(_) -> {ok, []} end),
+    meck:expect(
+        attach_pending_repo,
+        claim_expired_tx,
+        fun(_, Key, _) -> {ok, [pending_row(Key)]} end
+    ),
+    meck:expect(attachment_gc_repo, enqueue_tx, fun(_, _, _) -> ok end),
+    meck:expect(attachment_gc_repo, pending, fun() -> {ok, []} end),
+    meck:expect(
+        attachment_gc_repo,
+        lock_tx,
+        fun(_, Key) -> {ok, [job_row(Key)]} end
+    ),
+    meck:expect(attachment_gc_repo, complete_tx, fun(_, _) -> ok end),
+    meck:expect(attachment_gc_repo, defer, fun(_) -> {ok, 1} end),
+    meck:expect(elib_oss, delete_object, fun(_, _) -> ok end),
+    meck:expect(elib_oss, get_bucket, fun(_) -> <<"fallback">> end),
+    Modules.
+
+cleanup(Modules) -> lists:foreach(fun meck:unload/1, Modules).
+transaction(Fun) ->
+    try
+        Fun(test_connection)
+    catch
+        throw:{abort_tx, Reason} -> {error, Reason}
+    end.
+pending_row(Key) -> #{<<"object_key">> => Key, <<"bucket">> => <<"recorded">>}.
+job_row(Key) -> #{<<"path">> => Key, <<"bucket">> => <<"recorded">>}.
+expired() ->
+    meck:expect(
+        attach_pending_repo,
+        list_expired,
+        fun(24) -> {ok, [pending_row(<<"key">>)]} end
+    ).
+due() ->
+    meck:expect(
+        attachment_gc_repo,
+        pending,
+        fun() -> {ok, [#{<<"path">> => <<"key">>}]} end
+    ).
+counts(Cleaned, Errors) ->
+    ?assertEqual(
+        {ok, #{cleaned => Cleaned, errors => Errors}},
+        attachment_ds:pending_cleanup(24)
+    ).
+no_delete() -> ?assertNot(meck:called(elib_oss, delete_object, ['_', '_'])).
+retry_called() -> ?assert(meck:called(attachment_gc_repo, defer, [<<"key">>])).
+
+recorded_bucket() ->
+    expired(),
+    due(),
+    meck:expect(elib_pg, with_tx, fun(Fun) ->
+        Result = transaction(Fun),
+        put(committed, true),
+        Result
+    end),
+    meck:expect(elib_oss, delete_object, fun(<<"recorded">>, <<"key">>) ->
+        ?assertEqual(true, get(committed)),
+        ok
+    end),
+    counts(1, 0),
+    ?assert(
+        meck:called(
+            attachment_gc_repo,
+            enqueue_tx,
+            [test_connection, <<"key">>, <<"recorded">>]
+        )
+    ),
+    ?assertNot(meck:called(attach_pending_repo, delete_by_keys, ['_'])),
+    erase(committed).
+
+enqueue_failure() ->
+    expired(),
+    meck:expect(attachment_gc_repo, enqueue_tx, fun(_, _, _) -> {error, unavailable} end),
+    counts(0, 1),
+    no_delete().
+
+commit_failure() ->
+    expired(),
+    meck:expect(elib_pg, with_tx, fun(Fun) ->
+        ?assertEqual(queued, transaction(Fun)),
+        {error, commit_failed}
+    end),
+    counts(0, 1),
+    no_delete().
+
+confirmation_wins() ->
+    expired(),
+    meck:expect(attach_pending_repo, claim_expired_tx, fun(_, _, _) -> {ok, []} end),
+    counts(0, 0),
+    no_delete(),
+    ?assertNot(meck:called(attachment_gc_repo, enqueue_tx, ['_', '_', '_'])).
+
+old_job_without_expired_pending() ->
+    due(),
+    counts(1, 0),
+    ?assert(meck:called(elib_oss, delete_object, [<<"recorded">>, <<"key">>])),
+    ?assert(meck:called(attachment_gc_repo, complete_tx, [test_connection, <<"key">>])).
+
+object_failure() ->
+    due(),
+    meck:expect(elib_oss, delete_object, fun(_, _) -> {error, timeout} end),
+    counts(0, 1),
+    retry_called(),
+    ?assertNot(meck:called(attachment_gc_repo, complete_tx, ['_', '_'])).
+
+completion_failure() ->
+    due(),
+    meck:expect(attachment_gc_repo, complete_tx, fun(_, _) -> {error, commit_failed} end),
+    counts(0, 1),
+    retry_called(),
+    ?assert(meck:called(elib_oss, delete_object, [<<"recorded">>, <<"key">>])).
+
+acknowledgment_commit_failure() ->
+    due(),
+    meck:expect(elib_pg, with_tx, fun(Fun) ->
+        ?assertEqual(cleaned, transaction(Fun)),
+        {error, commit_failed}
+    end),
+    counts(0, 1),
+    retry_called(),
+    ?assert(
+        meck:called(
+            attachment_gc_repo,
+            complete_tx,
+            [test_connection, <<"key">>]
+        )
+    ),
+    ?assert(meck:called(elib_oss, delete_object, [<<"recorded">>, <<"key">>])).
+
+fallback_bucket() ->
+    expired(),
+    meck:expect(attach_pending_repo, claim_expired_tx, fun(_, Key, _) ->
+        {ok, [#{<<"object_key">> => Key, <<"bucket">> => <<>>}]}
+    end),
+    counts(0, 0),
+    ?assert(
+        meck:called(
+            attachment_gc_repo,
+            enqueue_tx,
+            [test_connection, <<"key">>, <<"fallback">>]
+        )
     ).
 
-%% S3 删除失败的键**不得**从登记表里删掉，否则这个对象再也没人管
-cleanup_keeps_row_when_object_delete_fails_test_() ->
-    ?WITH_MECKS(
-        [
-            {attach_pending_repo, [
-                {'list_expired', 1, fun(24) ->
-                    {ok, [
-                        #{<<"object_key">> => <<"ok_key">>, <<"bucket">> => <<"b1">>},
-                        #{<<"object_key">> => <<"bad_key">>, <<"bucket">> => <<"b1">>}
-                    ]}
-                end},
-                {'delete_by_keys', 1, fun(Keys) ->
-                    put(deleted_keys, Keys),
-                    ok
-                end}
-            ]},
-            {elib_oss, [
-                {'delete_object', 2, fun
-                    (<<"b1">>, <<"bad_key">>) -> {error, timeout};
-                    (<<"b1">>, <<"ok_key">>) -> ok
-                end}
-            ]}
-        ],
-        fun() ->
-            ?assertEqual(
-                {ok, #{cleaned => 1, errors => 1}},
-                attachment_ds:pending_cleanup(24)
-            ),
-            %% 只销 ok_key；bad_key 留在表里等下一轮重试
-            ?assertEqual([<<"ok_key">>], erase(deleted_keys))
-        end
-    ).
+retry_schedule_failure() ->
+    due(),
+    meck:expect(elib_oss, delete_object, fun(_, _) -> {error, timeout} end),
+    meck:expect(attachment_gc_repo, defer, fun(_) -> {error, unavailable} end),
+    counts(0, 1),
+    retry_called(),
+    ?assertNot(meck:called(attachment_gc_repo, complete_tx, ['_', '_'])).
 
-%% 无过期登记时不得调用任何删除
-cleanup_noop_when_nothing_expired_test_() ->
-    ?WITH_MECKS(
-        [
-            {attach_pending_repo, [
-                {'list_expired', 1, fun(24) -> {ok, []} end},
-                {'delete_by_keys', 1, fun(_) -> ok end}
-            ]},
-            {elib_oss, [
-                {'delete_object', 2, fun(_, _) -> ok end}
-            ]}
-        ],
-        fun() ->
-            ?assertEqual(
-                {ok, #{cleaned => 0, errors => 0}},
-                attachment_ds:pending_cleanup(24)
-            ),
-            ?assertNot(meck:called(elib_oss, delete_object, ['_', '_'])),
-            ?assertNot(meck:called(attach_pending_repo, delete_by_keys, ['_']))
-        end
-    ).
+scan_failure() ->
+    meck:expect(attach_pending_repo, list_expired, fun(_) -> {error, scan_failed} end),
+    ?assertEqual({error, scan_failed}, attachment_ds:pending_cleanup(24)),
+    ?assertNot(meck:called(attachment_gc_repo, pending, [])),
+    no_delete().
+
+queue_scan_failure() ->
+    meck:expect(attachment_gc_repo, pending, fun() -> {error, unavailable} end),
+    ?assertEqual({error, unavailable}, attachment_ds:pending_cleanup(24)),
+    no_delete().
+
+competing_worker() ->
+    due(),
+    meck:expect(attachment_gc_repo, lock_tx, fun(_, _) -> {ok, []} end),
+    counts(0, 0),
+    no_delete(),
+    ?assertNot(meck:called(attachment_gc_repo, defer, ['_'])).
+
+orphan_handoff() ->
+    meck:expect(
+        attachment_repo,
+        orphan_list_for_delete,
+        fun(#{}) -> {ok, [#{<<"id">> => 1}]} end
+    ),
+    meck:expect(attachment_repo, delete_orphan_tx, fun(_, 1, #{}) ->
+        {ok, [#{<<"path">> => <<"orphan">>, <<"scope">> => <<"group">>}]}
+    end),
+    meck:expect(elib_oss, get_bucket, fun(<<"group">>) -> <<"group-bucket">> end),
+    ?assertEqual({ok, #{cleaned => 0, errors => 0}}, attachment_ds:orphan_cleanup(#{})),
+    ?assert(
+        meck:called(
+            attachment_gc_repo,
+            enqueue_tx,
+            [test_connection, <<"orphan">>, <<"group-bucket">>]
+        )
+    ),
+    no_delete().

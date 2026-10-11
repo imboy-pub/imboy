@@ -6,9 +6,9 @@
 %%% 由 msg_store_worker 在消息成功写入投递表后异步调用。
 %%%
 %%% == 设计原则 ==
-%%% - 写入由 Worker 负责，不在消息发送热路径上
+%%% - 普通消息由 Worker 归档；OA direct 必须在原受理事务同步归档
 %%% - conv_seq 是 per-conversation 单调递增序列号，用于客户端增量同步
-%%% - msg_id 唯一约束保证幂等（Worker 重试安全）
+%%% - 跨时间分区查重并验证完整消息身份，保持重试幂等
 %%% - 不存储投递状态，只存消息内容
 %%%
 %%% == conv_key 格式 ==
@@ -35,7 +35,7 @@
 
 -export([conv_key/3]).
 -export([next_conv_seq/1]).
--export([archive/1]).
+-export([archive/1, archive_tx/2]).
 -export([get_history/3, get_history/4]).
 -export([get_history_batch/2]).
 
@@ -71,12 +71,19 @@ conv_key(<<"c2g">>, _FromId, Gid) ->
 %% @end
 %%-------------------------------------------------------------------
 %% @doc E2EE-2026-012 §7.2（Task 8/LT-03）：c2g 行在 staging 接受事务已预分配
-%% conv_seq，archive 只搬运既定 seq（绝不再分配）；legacy/c2c 行回退归档期分配。
+%% conv_seq，archive 只搬运既定 seq；C2C 的旧 claimed NULL 读取迁移后权威值。
+%% Preserve accepted seq; resolve a C2C worker's pre-migration claimed NULL copy.
 -spec staged_or_next_seq(binary(), map()) -> {ok, integer()} | {error, term()}.
 staged_or_next_seq(ConvKey, Row) ->
     case maps:get(<<"conv_seq">>, Row, undefined) of
         S when is_integer(S), S > 0 ->
             {ok, S};
+        _ when map_get(<<"type">>, Row) =:= <<"c2c">> ->
+            personal_message_order_repo:accepted_sequence(
+                maps:get(<<"from_id">>, Row),
+                maps:get(<<"to_id">>, Row),
+                maps:get(<<"msg_id">>, Row)
+            );
         _ ->
             next_conv_seq(ConvKey)
     end.
@@ -101,7 +108,7 @@ next_conv_seq(ConvKey) ->
 %% @doc  归档一条消息到永久存储
 %%
 %% 接受 msg_store_staging 中的 Row（map），提取必要字段后写入 msg_store。
-%% 内部调用 next_conv_seq/1 获取序列号。
+%% 受理序号保持不变；旧 C2G NULL 分配与归档 INSERT 同事务，重放沿用原值。
 %%
 %% 幂等性：msg_id + created_at 唯一约束，重复调用安全（返回 ok）。
 %%
@@ -119,6 +126,8 @@ archive(Row) ->
             ok;
         {error, Reason} ->
             {error, Reason};
+        {ok, ConvKey, Data} when TypeBin =:= <<"c2g">> ->
+            archive_c2g(ConvKey, Row, Data);
         {ok, ConvKey, Data} ->
             case staged_or_next_seq(ConvKey, Row) of
                 {ok, Seq} ->
@@ -130,9 +139,9 @@ archive(Row) ->
                         %% Q06（AC11 真库注入修复）：真实 epgsql 唯一冲突形状
                         %% {error, {error, Severity, <<"23505">>, unique_violation, Msg, Extra}}
                         %% （与 msg_store_repo stage 同款修正；旧三层形状仅存在于 mock）
-                        {error, {error, _Severity, <<"23505">>, unique_violation, _Msg, _Extra}} ->
-                            %% 幂等：消息已归档（Worker 重试场景），视为成功
-                            ok;
+                        {error,
+                            {error, _Severity, <<"23505">>, unique_violation, _Msg, Extra} = Reason} ->
+                            archive_collision(TypeBin, FinalData, Extra, Reason);
                         {error, Reason} ->
                             {error, Reason}
                     end;
@@ -140,6 +149,211 @@ archive(Row) ->
                     {error, Reason}
             end
     end.
+
+%% OA direct retention shares its caller's accepted-message transaction. The caller
+%% already holds counter -> msg_c2c identity locks; never allocate another sequence.
+-spec archive_tx(pid(), map()) -> ok.
+archive_tx(Conn, #{<<"type">> := <<"c2c">>, <<"conv_seq">> := Seq} = Row) when
+    is_integer(Seq), Seq > 0
+->
+    {ok, _Key, Data0} = build_archive_data(<<"c2c">>, Row),
+    Data = Data0#{conv_seq => Seq, expire_at => maps:get(<<"expire_at">>, Row, null)},
+    MsgId = maps:get(msg_id, Data),
+    archive_query(Conn, <<"SELECT pg_advisory_xact_lock(hashtextextended('msg_c2c:'||$1,0))">>, [
+        MsgId
+    ]),
+    case archive_query(Conn, <<"SELECT id FROM public.msg_store WHERE msg_id=$1">>, [MsgId]) of
+        [] -> insert_caller_archive(Conn, Data);
+        [_] -> verify_caller_archive(Conn, Data);
+        _ -> throw({rollback, archive_msg_id_conflict})
+    end;
+archive_tx(_Conn, _Row) ->
+    throw({rollback, invalid_accepted_archive}).
+
+insert_caller_archive(Conn, Data) ->
+    {Sql, Params} = elib_pg_sql:insert(?TABLE, Data#{id => elib_tsid:generate(msg_store)}),
+    %% DO NOTHING avoids an aborted transaction for the exact time-partition key.
+    %% Unrelated 23505 (including a trigger) propagates and rolls back the caller.
+    archive_query(
+        Conn, <<Sql/binary, " ON CONFLICT(msg_id,created_at) DO NOTHING RETURNING id">>, Params
+    ),
+    verify_caller_archive(Conn, Data).
+
+verify_caller_archive(Conn, Data) ->
+    case same_archive(Conn, Data) of
+        {ok, [_]} ->
+            case
+                archive_query(
+                    Conn,
+                    <<"SELECT id FROM public.msg_store WHERE msg_id=$1 AND expire_at IS NOT DISTINCT FROM $2::timestamptz">>,
+                    [maps:get(msg_id, Data), maps:get(expire_at, Data)]
+                )
+            of
+                [_] -> ok;
+                _ -> throw({rollback, archive_msg_id_conflict})
+            end;
+        {ok, _} ->
+            throw({rollback, archive_msg_id_conflict});
+        {error, Reason} ->
+            throw({rollback, Reason})
+    end.
+
+%% Counter -> msg_c2g message namespace matches the formal dedup trigger.
+%% Never take group/workspace locks or write formal rows while holding these locks.
+archive_c2g(Key, Row, Data) ->
+    case elib_pg:with_tx(fun(Conn) -> archive_c2g_tx(Conn, Key, Row, Data) end) of
+        {rollback, Reason} -> {error, Reason};
+        Result -> Result
+    end.
+
+archive_c2g_tx(Conn, Key, Row, Data) ->
+    archive_execute(
+        Conn,
+        <<"INSERT INTO public.msg_store_seq(conv_key,seq) VALUES($1,0) ON CONFLICT(conv_key) DO NOTHING">>,
+        [Key]
+    ),
+    [#{<<"seq">> := Previous}] = archive_query(
+        Conn, <<"SELECT seq FROM public.msg_store_seq WHERE conv_key=$1 FOR UPDATE">>, [Key]
+    ),
+    MsgId = maps:get(msg_id, Data),
+    archive_query(Conn, <<"SELECT pg_advisory_xact_lock(hashtextextended('msg_c2g:'||$1,0))">>, [
+        MsgId
+    ]),
+    Existing = archive_query(Conn, <<"SELECT conv_seq FROM public.msg_store WHERE msg_id=$1">>, [
+        MsgId
+    ]),
+    finish_c2g_archive(Conn, Key, Row, Data, Previous, Existing).
+
+finish_c2g_archive(Conn, Key, Row, Data, Previous, Existing) ->
+    case Existing of
+        [] ->
+            Seq = c2g_archive_sequence(Conn, Row, Data, Previous + 1),
+            FinalData = Data#{id => elib_tsid:generate(msg_store), conv_seq => Seq},
+            {Sql, Params} = elib_pg_sql:insert(?TABLE, FinalData),
+            archive_execute(Conn, Sql, Params),
+            archive_execute(Conn, <<"UPDATE public.msg_store_seq SET seq=$2 WHERE conv_key=$1">>, [
+                Key, max(Previous, Seq)
+            ]),
+            ok;
+        [#{<<"conv_seq">> := ExistingSeq}] ->
+            Seq = c2g_archive_sequence(Conn, Row, Data, ExistingSeq),
+            case same_archive(Conn, Data#{conv_seq => Seq}) of
+                {ok, [_]} ->
+                    case Seq > Previous of
+                        true ->
+                            archive_execute(
+                                Conn,
+                                <<"UPDATE public.msg_store_seq SET seq=$2 WHERE conv_key=$1">>,
+                                [Key, Seq]
+                            );
+                        false ->
+                            ok
+                    end;
+                {ok, _} ->
+                    throw({rollback, archive_replay_conflict});
+                {error, Reason} ->
+                    throw({rollback, Reason})
+            end;
+        _ ->
+            throw({rollback, archive_replay_conflict})
+    end.
+
+c2g_archive_sequence(Conn, Row, Data, Default) ->
+    Rows = archive_query(
+        Conn,
+        <<
+            "SELECT from_id,to_id AS group_id,conv_seq FROM public.msg_store_staging WHERE type='c2g' AND msg_id=$1 "
+            "UNION ALL SELECT from_id,to_gid AS group_id,conv_seq FROM public.msg_c2g_recipient_snapshot WHERE msg_id=$1"
+        >>,
+        [maps:get(msg_id, Data)]
+    ),
+    case
+        lists:all(
+            fun(R) ->
+                maps:get(<<"from_id">>, R) =:= maps:get(from_id, Data) andalso
+                    maps:get(<<"group_id">>, R) =:= maps:get(group_id, Data)
+            end,
+            Rows
+        )
+    of
+        true -> ok;
+        false -> throw({rollback, archive_acceptance_conflict})
+    end,
+    Seqs = lists:usort([
+        S
+     || S <- [
+            maps:get(<<"conv_seq">>, Row, null) | [maps:get(<<"conv_seq">>, R, null) || R <- Rows]
+        ],
+        S =/= null,
+        S =/= undefined
+    ]),
+    case Seqs of
+        [] -> Default;
+        [S] when is_integer(S), S > 0 -> S;
+        _ -> throw({rollback, archive_acceptance_conflict})
+    end.
+
+archive_query(Conn, Sql, Params) ->
+    case elib_pg:query(Conn, Sql, Params) of
+        {ok, Rows} -> Rows;
+        {error, Reason} -> throw({rollback, Reason})
+    end.
+archive_execute(Conn, Sql, Params) ->
+    case elib_pg:execute(Conn, Sql, Params) of
+        {ok, _} -> ok;
+        {error, Reason} -> throw({rollback, Reason})
+    end.
+
+%% C2C collisions succeed only for the complete accepted message, never just a code.
+archive_collision(<<"c2c">>, Data, _Extra, Reason) ->
+    %% Timescale chunk constraint names differ; prove the actual row, not its name.
+    same_c2c_archive(Data, Reason);
+archive_collision(_Other, _Data, _Extra, Reason) ->
+    {error, Reason}.
+
+same_c2c_archive(Data, OriginalError) ->
+    case same_archive(undefined, Data) of
+        {ok, [_]} -> ok;
+        {ok, _} -> {error, OriginalError};
+        {error, Reason} -> {error, Reason}
+    end.
+
+same_archive(Conn, Data) ->
+    Sql = <<
+        "SELECT id FROM public.msg_store WHERE msg_id=$1 AND created_at=$2::timestamptz "
+        "AND chat_type=$3 AND conv_key=$4 AND from_id=$5 "
+        "AND to_id IS NOT DISTINCT FROM $6::bigint "
+        "AND group_id IS NOT DISTINCT FROM $7::bigint AND conv_seq=$8 AND msg_type=$9 "
+        "AND payload::jsonb IS NOT DISTINCT FROM $10::jsonb "
+        "AND e2ee IS NOT DISTINCT FROM $11::jsonb "
+        "AND sender_did IS NOT DISTINCT FROM $12::varchar "
+        "AND server_ts IS NOT DISTINCT FROM $13::timestamptz"
+    >>,
+    Keys = [
+        msg_id,
+        created_at,
+        chat_type,
+        conv_key,
+        from_id,
+        to_id,
+        group_id,
+        conv_seq,
+        msg_type,
+        payload,
+        e2ee,
+        sender_did,
+        server_ts
+    ],
+    Params = [archive_parameter(K, maps:get(K, Data)) || K <- Keys],
+    case Conn of
+        undefined -> elib_pg:query(Sql, Params);
+        _ -> elib_pg:query(Conn, Sql, Params)
+    end.
+
+archive_parameter(K, Value) when (K =:= payload orelse K =:= e2ee), is_map(Value) ->
+    jsone:encode(Value);
+archive_parameter(_K, Value) ->
+    Value.
 
 %%-------------------------------------------------------------------
 %% @doc  游标查询：按 conv_seq 升序拉取历史消息

@@ -44,7 +44,7 @@
 |---|---|---|
 | PG 恢复脚本 | [scripts/restore_pg.sh](https://github.com/imboy-pub/imboy/blob/main/scripts/restore_pg.sh) | 含恢复后行数抽样校验（演练验收用） |
 | 恢复冒烟 | [scripts/restore_smoke.sh](https://github.com/imboy-pub/imboy/blob/main/scripts/restore_smoke.sh) | 恢复后冒烟验证 |
-| 恢复演练实录 | [deployment/restore-drill-2026-06.md](./deployment/restore-drill-2026-06.md) | 2026-06 演练记录与耗时参考 |
+| 恢复演练操作 | [备份与恢复](./deployment/backup-restore.md) | 操作流程；实际环境的演练记录保存在仓库外 |
 
 ## 4. 升级（Upgrade）
 

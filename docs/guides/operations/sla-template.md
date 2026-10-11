@@ -151,7 +151,7 @@
 - 在非生产环境完整恢复最近备份
 - 验证数据完整性（行数比对、关键 API 冒烟测试）
 - 记录实际 RTO，与目标比对
-- 演练记录格式参照 `docs/guides/operations/deployment/restore-drill-2026-06.md`
+- 演练记录保存在仓库外，包含实际提交、环境、备份哈希、完整性校验、实测 RTO 与目标差异；操作参照 [备份与恢复指南](./deployment/backup-restore.md)
 
 甲方可申请参与观摩演练，须提前 5 个工作日告知。
 

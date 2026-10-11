@@ -89,12 +89,24 @@ unsubscribe_decrements_counter_when_state_changes_test_() ->
     ?WITH_MECKS(
         [
             {channel_subscription_repo, [
-                {'delete', 3, fun(fake_conn, 1, 100) -> {ok, 1} end}
+                {'delete', 3, fun(fake_conn, 1, 100) ->
+                    ?assertEqual(
+                        1, meck:num_calls(micro_community_access_repo, lock_channel_tx, 2)
+                    ),
+                    {ok, 1}
+                end}
             ]},
             {channel_repo, [
                 {'increment_subscribers', 3, fun(fake_conn, 1, -1) -> {ok, 1} end}
             ]},
             writable_guard_mock(),
+            {micro_community_access_repo, [{lock_channel_tx, 2, fun(fake_conn, 1) -> locked end}]},
+            {micro_community_access_ds, [
+                {revoke_channel_tx, 3, fun(fake_conn, 1, 100) ->
+                    ?assertEqual(1, meck:num_calls(channel_subscription_repo, delete, 3)),
+                    ok
+                end}
+            ]},
             {elib_pg, [
                 {'with_tx', 1, fun(Fun) -> Fun(fake_conn) end},
                 %% discussion 访问锁（791b8817）：无 discussion 绑定语义 → 放行
@@ -119,6 +131,7 @@ unsubscribe_decrements_counter_when_state_changes_test_() ->
         ],
         fun() ->
             ?assertEqual(ok, channel_ds:unsubscribe(1, 100)),
+            ?assertEqual(1, meck:num_calls(micro_community_access_ds, revoke_channel_tx, 3)),
             ?assertEqual(1, meck:num_calls(channel_repo, increment_subscribers, 3)),
             ?assertEqual(2, meck:num_calls(imboy_cache, invalidate, 1))
         end
@@ -128,12 +141,24 @@ unsubscribe_is_idempotent_when_already_inactive_test_() ->
     ?WITH_MECKS(
         [
             {channel_subscription_repo, [
-                {'delete', 3, fun(fake_conn, 1, 100) -> {ok, 0} end}
+                {'delete', 3, fun(fake_conn, 1, 100) ->
+                    ?assertEqual(
+                        1, meck:num_calls(micro_community_access_repo, lock_channel_tx, 2)
+                    ),
+                    {ok, 0}
+                end}
             ]},
             {channel_repo, [
                 {'increment_subscribers', 3, fun(_, _, _) -> erlang:error(should_not_increment) end}
             ]},
             writable_guard_mock(),
+            {micro_community_access_repo, [{lock_channel_tx, 2, fun(fake_conn, 1) -> locked end}]},
+            {micro_community_access_ds, [
+                {revoke_channel_tx, 3, fun(fake_conn, 1, 100) ->
+                    ?assertEqual(1, meck:num_calls(channel_subscription_repo, delete, 3)),
+                    ok
+                end}
+            ]},
             {elib_pg, [
                 {'with_tx', 1, fun(Fun) -> Fun(fake_conn) end},
                 %% discussion 访问锁（791b8817）：无 discussion 绑定语义 → 放行
@@ -158,6 +183,7 @@ unsubscribe_is_idempotent_when_already_inactive_test_() ->
         ],
         fun() ->
             ?assertEqual(ok, channel_ds:unsubscribe(1, 100)),
+            ?assertEqual(1, meck:num_calls(micro_community_access_ds, revoke_channel_tx, 3)),
             ?assertEqual(0, meck:num_calls(channel_repo, increment_subscribers, 3)),
             ?assertEqual(2, meck:num_calls(imboy_cache, invalidate, 1))
         end
@@ -270,12 +296,24 @@ unsubscribe_returns_error_when_tx_aborts_test_() ->
     ?WITH_MECKS(
         [
             {channel_subscription_repo, [
-                {'delete', 3, fun(fake_conn, 1, 100) -> {error, db_error} end}
+                {'delete', 3, fun(fake_conn, 1, 100) ->
+                    ?assertEqual(
+                        1, meck:num_calls(micro_community_access_repo, lock_channel_tx, 2)
+                    ),
+                    {error, db_error}
+                end}
             ]},
             {channel_repo, [
                 {'increment_subscribers', 3, fun(_, _, _) -> erlang:error(should_not_increment) end}
             ]},
             writable_guard_mock(),
+            {micro_community_access_repo, [{lock_channel_tx, 2, fun(fake_conn, 1) -> locked end}]},
+            {micro_community_access_ds, [
+                {revoke_channel_tx, 3, fun(fake_conn, 1, 100) ->
+                    ?assertEqual(1, meck:num_calls(channel_subscription_repo, delete, 3)),
+                    ok
+                end}
+            ]},
             {elib_pg, [
                 {'with_tx', 1, fun(Fun) ->
                     try
@@ -297,6 +335,8 @@ unsubscribe_returns_error_when_tx_aborts_test_() ->
         ],
         fun() ->
             ?assertEqual({error, <<"db_error">>}, channel_ds:unsubscribe(1, 100)),
+            ?assertEqual(1, meck:num_calls(micro_community_access_repo, lock_channel_tx, 2)),
+            ?assertEqual(0, meck:num_calls(micro_community_access_ds, revoke_channel_tx, 3)),
             ?assertEqual(0, meck:num_calls(channel_repo, increment_subscribers, 3)),
             ?assertEqual(0, meck:num_calls(imboy_cache, invalidate, 1))
         end

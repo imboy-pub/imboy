@@ -456,7 +456,7 @@ read_msg_filter(Where, Limit, Params) ->
     %% protected_header.sender_did 硬比对。漏列 = 离线拉取的 v3 消息永久判
     %% context_mismatch_sender_did 不可读。见 evidence/E2EE-A2-a-offline-sender-did.md
     Column =
-        <<"id, payload, from_id, to_id, created_at, server_ts, msg_id, msg_type, e2ee, sender_did">>,
+        <<"id, payload, from_id, to_id, created_at, server_ts, msg_id, msg_type, e2ee, sender_did, conv_seq">>,
     Res = msg_c2c_repo:read_msg(Where, Column, Limit, Params),
     % ?DEBUG_LOG([Res]),
     case Res of

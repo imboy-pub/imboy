@@ -1129,6 +1129,20 @@ tables:
     mechanism: delete rows by user ownership column
     review: self-evident
     retention: n/a
+  attachment_object_deletion:
+    action: retain
+    owner: attachments
+    reason: 已提交的对象删除意图及完成墓碑，防止旧对象路径复用，个人注销不得删除
+    mechanism: 对象删除确认仅更新 completed_at，失败保留重试，完成墓碑继续阻止路径复用
+    review: self-evident
+    retention: indefinite
+  workspace_attachment_retention:
+    action: retain
+    owner: workspaces
+    reason: 企业工作区附件的不可变组织留存账本，不随个人聊天清理或账号注销删除
+    mechanism: 迁移 168 触发器禁止更新删除并保护附件 scope，遵循组织留存治理
+    review: self-evident
+    retention: indefinite
   enterprise_asset_delete_queue:
     action: retain
     owner: enterprise

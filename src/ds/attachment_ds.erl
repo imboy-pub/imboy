@@ -135,34 +135,95 @@ soft_delete(Id) -> attachment_repo:update_status(Id, -1).
 -spec orphan_stats(map()) -> {ok, map()} | {error, term()}.
 orphan_stats(Opts) -> attachment_repo:orphan_stats(Opts).
 
-%% @doc 批量物理删除孤儿附件（先删 S3，再删 DB）
+%% Commit metadata deletion and its durable job before deleting object bytes.
 -spec orphan_cleanup(map()) -> {ok, #{cleaned := integer(), errors := integer()}} | {error, term()}.
 orphan_cleanup(Opts) ->
     case attachment_repo:orphan_list_for_delete(Opts) of
-        {ok, []} ->
-            {ok, #{cleaned => 0, errors => 0}};
         {ok, Rows} ->
-            {OkIds, ErrorCount} = lists:foldl(
-                fun(Row, {Acc, ErrCnt}) ->
-                    Key = maps:get(<<"path">>, Row),
-                    Id = maps:get(<<"id">>, Row),
-                    case elib_oss:delete_object(Key) of
-                        ok -> {[Id | Acc], ErrCnt};
-                        {error, _Rsn} -> {Acc, ErrCnt + 1}
+            Errors = lists:foldl(
+                fun(Row, Count) ->
+                    case queue_orphan(maps:get(<<"id">>, Row), Opts) of
+                        queued -> Count;
+                        skipped -> Count;
+                        _ -> Count + 1
                     end
                 end,
-                {[], 0},
+                0,
                 Rows
             ),
-            case attachment_repo:hard_delete_by_ids(OkIds) of
-                ok ->
-                    {ok, #{cleaned => length(OkIds), errors => ErrorCount}};
-                {error, DbReason} ->
-                    ?ERROR_LOG(["orphan_cleanup hard_delete_by_ids failed: ", DbReason]),
-                    {error, DbReason}
-            end;
+            flush_orphan_jobs(Errors);
         {error, R} ->
             {error, R}
+    end.
+
+queue_orphan(Id, Opts) ->
+    elib_pg:with_tx(fun(Conn) ->
+        case attachment_repo:delete_orphan_tx(Conn, Id, Opts) of
+            {ok, []} ->
+                skipped;
+            {ok, [Row]} ->
+                Path = maps:get(<<"path">>, Row),
+                case
+                    attachment_gc_repo:enqueue_tx(
+                        Conn, Path, elib_oss:get_bucket(maps:get(<<"scope">>, Row))
+                    )
+                of
+                    ok -> queued;
+                    {error, R} -> throw({abort_tx, R})
+                end;
+            {error, R} ->
+                throw({abort_tx, R})
+        end
+    end).
+
+flush_orphan_jobs(Errors) ->
+    case attachment_gc_repo:pending() of
+        {ok, Rows} ->
+            Counts = lists:foldl(
+                fun(Row, Acc) ->
+                    case delete_orphan_object(maps:get(<<"path">>, Row)) of
+                        cleaned -> Acc#{cleaned := maps:get(cleaned, Acc) + 1};
+                        skipped -> Acc;
+                        _ -> Acc#{errors := maps:get(errors, Acc) + 1}
+                    end
+                end,
+                #{cleaned => 0, errors => Errors},
+                Rows
+            ),
+            {ok, Counts};
+        {error, R} ->
+            {error, R}
+    end.
+
+delete_orphan_object(Path) ->
+    Result = elib_pg:with_tx(fun(Conn) ->
+        case attachment_gc_repo:lock_tx(Conn, Path) of
+            {ok, []} ->
+                skipped;
+            {ok, [Row]} ->
+                case elib_oss:delete_object(maps:get(<<"bucket">>, Row), Path) of
+                    ok ->
+                        case attachment_gc_repo:complete_tx(Conn, Path) of
+                            ok -> cleaned;
+                            {error, R} -> throw({abort_tx, R})
+                        end;
+                    {error, R} ->
+                        throw({abort_tx, R})
+                end;
+            {error, R} ->
+                throw({abort_tx, R})
+        end
+    end),
+    case Result of
+        cleaned ->
+            cleaned;
+        skipped ->
+            skipped;
+        Error ->
+            case attachment_gc_repo:defer(Path) of
+                {ok, _} -> Error;
+                {error, Reason} -> {error, {retry_schedule_failed, Reason}}
+            end
     end.
 
 %% ===================================================================
@@ -179,46 +240,47 @@ pending_add(ObjectKey, Bucket, Scope, Uid) ->
 pending_remove(ObjectKey) ->
     attach_pending_repo:remove(ObjectKey).
 
-%% @doc 回收超龄仍未 confirm 的对象（先删 S3，再删登记行）
-%%
-%% 与 orphan_cleanup/1 的区别：那边删的是**已确认但长期未被引用**的附件
-%% （30 天 + 7 天下限），这边删的是**从未确认**的垃圾（小时级）。
-%% 且这边用 delete_object/2 显式带桶——pending 行记了 bucket，不能像
-%% orphan_cleanup 那样走 delete_object/1 的默认桶。
+%% Pending garbage shares the confirmation path lock and durable deletion queue.
 -spec pending_cleanup(integer()) ->
     {ok, #{cleaned := integer(), errors := integer()}} | {error, term()}.
 pending_cleanup(AgeHours) ->
     case attach_pending_repo:list_expired(AgeHours) of
-        {ok, []} ->
-            {ok, #{cleaned => 0, errors => 0}};
         {ok, Rows} ->
-            {OkKeys, ErrorCount} = lists:foldl(
-                fun(Row, {Acc, ErrCnt}) ->
-                    Key = maps:get(<<"object_key">>, Row),
-                    Bucket = maps:get(<<"bucket">>, Row, <<>>),
-                    Res =
-                        case Bucket of
-                            <<>> -> elib_oss:delete_object(Key);
-                            B -> elib_oss:delete_object(B, Key)
-                        end,
-                    case Res of
-                        ok -> {[Key | Acc], ErrCnt};
-                        {error, _Rsn} -> {Acc, ErrCnt + 1}
+            Errors = lists:foldl(
+                fun(Row, Count) ->
+                    case queue_pending(maps:get(<<"object_key">>, Row), AgeHours) of
+                        queued -> Count;
+                        skipped -> Count;
+                        _ -> Count + 1
                     end
                 end,
-                {[], 0},
+                0,
                 Rows
             ),
-            case attach_pending_repo:delete_by_keys(OkKeys) of
-                ok ->
-                    {ok, #{cleaned => length(OkKeys), errors => ErrorCount}};
-                {error, DbReason} ->
-                    ?ERROR_LOG(["pending_cleanup delete_by_keys failed: ", DbReason]),
-                    {error, DbReason}
-            end;
+            flush_orphan_jobs(Errors);
         {error, R} ->
             {error, R}
     end.
+
+queue_pending(Key, AgeHours) ->
+    elib_pg:with_tx(fun(Conn) ->
+        case attach_pending_repo:claim_expired_tx(Conn, Key, AgeHours) of
+            {ok, []} ->
+                skipped;
+            {ok, [Row]} ->
+                Bucket =
+                    case maps:get(<<"bucket">>, Row) of
+                        <<>> -> elib_oss:get_bucket(<<"private">>);
+                        B -> B
+                    end,
+                case attachment_gc_repo:enqueue_tx(Conn, Key, Bucket) of
+                    ok -> queued;
+                    {error, R} -> throw({abort_tx, R})
+                end;
+            {error, R} ->
+                throw({abort_tx, R})
+        end
+    end).
 
 %% @doc 根据 object_key(path) 和上传者 uid 查找附件（归属校验）
 -spec find_by_path_and_uid(binary(), integer()) -> {ok, map()} | {error, not_found | term()}.

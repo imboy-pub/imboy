@@ -655,7 +655,10 @@ is_charlist(_) ->
 
 -spec normalize_binary(term()) -> binary().
 normalize_binary(Value) when is_binary(Value) ->
-    unicode:characters_to_binary(string:trim(ec_cnv:to_list(Value)));
+    case unicode:characters_to_list(Value) of
+        Chars when is_list(Chars) -> unicode:characters_to_binary(string:trim(Chars));
+        _ -> erlang:error(badarg)
+    end;
 normalize_binary(Value) when is_list(Value) ->
     unicode:characters_to_binary(string:trim(Value));
 normalize_binary(Value) when is_integer(Value) ->

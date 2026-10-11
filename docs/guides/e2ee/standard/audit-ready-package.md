@@ -1,57 +1,40 @@
-# Audit-ready Package：审计就绪包索引
+# 密码学审计资料索引 / Cryptographic Audit Materials Index
 
-> **层**：交付层 ｜ **建立**：2026-08-01 ｜ **组装任务**：Hardening Plan P5-1..P5-9
-> **定位**：第三方密码学审计方（或买家安全团队）进场时**唯一入口**。目标：审计方仅凭本索引+仓库即可完成报价与开工。
-> **形态说明**：按用户 2026-08-01 决策，本包为"就绪包"而非已采购审计（TT-D5 SHOULD 降级形态）。
+本索引用于确定密码学审计范围和准备交付资料。文档存在不代表对应能力已验收，
+也不代表已采购或通过第三方审计。具体审计以双方确认的候选提交、配置和范围书为准。
 
-## 1. 包内容物（六件套+二附录）
+## 仓内维护的资料 / Maintained Repository Documents
 
-| # | 工件 | 内容 | 当前状态 | 来源任务 |
-|---|---|---|---|---|
-| 1 | 威胁模型 | 攻击者能力分级；每威胁→防御→证据三对照 | ✅ [`../v2/08-threat-model.md`](../v2/08-threat-model.md)（2026-08-02 补齐 T10 附件 / T11 分叉视图，含「有守护测试 ≠ 运行时生效」读法警告） | P5-1 |
-| 2 | 密码学清单 | 原语/参数/曲线/库/版本/许可证；**AGPL 状态醒目标注** | ✅ [`crypto-inventory.md`](./crypto-inventory.md)（原语与参数，每行标注 📄本仓实证 / 📕上游规范 / ⚙️上游默认）+ [`../../../legal/third-party-licenses.md`](https://github.com/imboy-pub/imboy/blob/main/docs/legal/third-party-licenses.md)（143 条许可证清单）。**未含 SBOM hash 锚** | P5-2 |
-| 3 | 协议规范白皮书 | 生效状态解析 + 协议分段导航 + 规范与实现落差 | ✅ [`protocol-whitepaper.md`](./protocol-whitepaper.md)。**刻意不复制 wire 格式**——规范字节留在 ADR 作唯一真源（复制副本正是 `e2ee-key-rotation-policy.md` 失真的成因）。核心是 supersedes 生效解析表：直接读 ADR 03/04/05/06/07/08/13 会读到已被取代的条款 | P5-3 |
-| 4 | 密钥生命周期 | 生成/存储/轮换/备份/销毁/吊销级联全链路 | ✅ [`../key-lifecycle.md`](../key-lifecycle.md)（10 类密钥材料矩阵 + 服务端 8 表敏感度分级 + 三条销毁路径 + 可验证性主张） | P5-4 |
-| 5 | 已知问题台账 | Acknowledged/Open/Blocked 状态机 | ✅ `known-issues-ledger.md`（仓外执行材料）（IMB-2026-001..027，按问题而非按标准条款组织；含 §2「名义防御与运行时不符」三条与 §6 审计方使用说明） | P5-5 |
-| 6 | 审计范围书（SOW 模板） | 范围锚定/方法/环境复现/交付物格式/答疑通道 | ✅ [`audit-sow-template.md`](./audit-sow-template.md)，逐项对齐 `research/public-audit-cases.md` §3 八条惯例。含**命名空间约定**（审计方 findings 勿用 `IMB-2026-` 前缀，已被台账占用）与两处 🔒 待拍板（报告是否公开、答疑通道联系方式） | P5-6 |
-| 附 A | 自审计报告 | 按 `top-tier-standard-2026.md` 逐条核验并绑定候选与证据 | 报告保存在仓外，每次候选重新生成；历史自审不作为当前通过证明 | P5-7 |
-| 附 B | Evidence Manifest | 版本/commit/依赖 hash/测试计数/真机结果/向量 hash/故障注入计数 | ✅ `evidence-manifest.generated.md`（仓外执行材料），由 `scripts/evidence_manifest.sh` 生成（格式=v2/20 §13）。**11 项拿不到的字段全部打印「⛔ 未提供 + 原因」而非省略**——漏报的证据清单比没有清单更危险 | P5-8 |
+| 资料 | 用途 |
+|---|---|
+| [威胁模型](../v2/08-threat-model.md) | 说明攻击者能力、防御边界及需要验证的威胁。 |
+| [密码学清单](./crypto-inventory.md) | 核对原语、参数和依赖；区分代码事实、上游规范和默认值。 |
+| [第三方许可证](../../../legal/third-party-licenses.md) | 核对许可证、再分发义务和 AGPL 边界；以候选实际依赖为准。 |
+| [协议白皮书](./protocol-whitepaper.md) | 定位有效协议和被取代的条款；wire 合同仍以对应 ADR 为准，不在此复制。 |
+| [密钥生命周期](../key-lifecycle.md) | 确定生成、存储、轮换、备份、销毁和吊销的审查边界。 |
+| [审计范围书模板](./audit-sow-template.md) | 约定候选、环境、排除项、审计方法、发现编号、复测及交付格式。 |
+| [公开审计案例](./research/public-audit-cases.md) | 供审计方法和范围设计参考；上游审计不能替代本产品的集成审计。 |
 
-## 2. 审计方快速上手（SOW 模板核心段草稿）
+## 仓外交付的执行材料 / Execution Artifacts Outside Git
 
-```text
-范围锚定：
-  后端  imboy @ <commit>：src/{api,logic,ds,repo,lib} 的 e2ee/olm/trust/kt/backup 模块
-        （清单见 gap-matrix.md E 类行）+ priv/migrations 36-53
-  客户端 imboyapp @ <commit>：lib/service/e2ee/（33 模块）+
-        lib/service/{e2ee_service,olm_session_service,group_session_service,
-        e2ee_crypto_service,e2ee_local_backup_service,e2ee_server_backup_service}.dart
-  依赖  vodozemac 0.5.0（AGPL-3.0，Least Authority 2022-03 已审计——
-        建议复用其结论，重点审我方胶水层与协议集成）
-  排除项：MLS（未实现）、PQ（路线图）、Web SDK（未建）
-方法：白盒代码审计 + 协议层分析（对照白皮书 §3）+ 测试套件复跑（D7）
-环境复现：
-  后端  Docker imboy_pg18 + make eunit-local + make e2ee-verify（一键门禁）
-  客户端 flutter test test/service/e2ee/（60 文件）+ 契约测试（真后端）
-  双端  test harness（P4-2 交付后可用）
-交付物格式：编号 findings/严重度分级/漏洞 vs 弱点/retest 轮/Resolved-Acknowledged
-```
+每次审计应在仓外生成并交付以下材料，不把任务计划、执行台账、审查报告、测试结果、
+截图、日志或测试数据提交到产品仓库：
 
-## 3. 自审计报告骨架（P5-7 填充）
+- 候选清单：Backend、App、Admin 的提交、构建产物及依赖哈希，产品配置和环境边界。
+- 问题台账：发现编号、严重程度、状态、理由、负责人及复测证据。
+- 审计报告：明确审计范围、未覆盖项、实现与协议差异及当前候选的结论。
+- 证据清单：准确记录命令、退出码、实际执行数、日志和产物哈希；缺失或未执行项显式标注。
 
-```text
-1. 范围与版本锚（commit 双仓）
-2. 标准符合性总表：TT-A/B/C/D/E 逐条 [达成/部分/未达+理由+证据链接]
-3. 攻击面复核：对照 ETH 七攻击/2022 Matrix 攻击/TEST_HITLIST 逐条给防御与测试证据
-4. 发现清单（编号 IMB-2026-XXX，严重度，Resolved/Acknowledged）
-5. 签字：安全负责人/日期
-```
+这些材料需要有独立的交付清单及访问方式。仓外历史文件名不能当作买家已经取得的资料，
+旧候选的报告也不能作为当前候选通过的证明。报告是否公开、答疑联系方式和维护窗口
+应由相关负责人确认，不在模板中预设。
 
-## 4. 交付前检查单
+## 验证与交付边界 / Verification and Delivery Boundaries
 
-- [ ] 六件套全部入库（git 跟踪）且与代码现状逐点核对（文档不超前于实现）
-- [ ] Evidence Matrix 全 MUST 行绿
-- [ ] 不可宣称清单与售前材料零冲突（对照 07-31 审计七项口径）
-- [ ] AGPL 决策（P0-6）已闭环且许可证文件一致
-- [ ] 测试套件按 D7 说明可由第三方独立跑通
-- [ ] 台账无"隐瞒项"——所有 Acknowledged 都有理由与负责人
+审计方应先检查所交付的代码、依赖及配置是否与候选清单一致，再按范围书在授权隔离环境
+复跑测试、协议向量和故障注入。命令及前提条件以当前仓库的维护说明和测试入口为准，
+不得用历史模块数、历史通过数或任务状态推定完成。
+
+交付前应核对：文档与实现一致；协议的替代关系无歧义；许可证义务已说明；Evidence Matrix 中全部 MUST 项均有
+当前候选的实际通过证据；AGPL 决策与许可证文件一致；全部已知问题及未验证项已披露。E2EE 未在交付配置中启用时，
+不宣称该配置提供端到端加密；启用与合规审计模式的差异仍须明确说明。

@@ -70,7 +70,14 @@
 -export([start_link/0]).
 
 %% 备份与入队
--export([stage/10, stage/11, stage/12, stage_action/13, enqueue/3, unstage/1, find_staged/2]).
+-export([
+    stage/10, stage/11, stage/12,
+    stage_action/13,
+    stage_with_sequence/11,
+    enqueue/3,
+    unstage/1,
+    find_staged/2
+]).
 
 %% 状态查询
 -export([len/0, status/0]).
@@ -332,6 +339,40 @@ stage_action(
     | {ok, duplicate}
     | {error, term()}
     | error.
+%% Server sequence is returned by the same committed acceptance transaction.
+stage_with_sequence(
+    <<"c2c">> = Type,
+    MsgId,
+    MsgType,
+    Action,
+    E2EE,
+    Payload,
+    FromId,
+    ToId,
+    CreatedAt,
+    ServerTs,
+    SenderDid
+) ->
+    case
+        msg_store_repo:stage_with_sequence(
+            Type,
+            MsgId,
+            MsgType,
+            Action,
+            E2EE,
+            Payload,
+            FromId,
+            ToId,
+            CreatedAt,
+            ServerTs,
+            SenderDid
+        )
+    of
+        {ok, duplicate, Seq} -> {ok, duplicate, Seq};
+        {ok, _Id, Seq} -> {ok, new, Seq};
+        {error, Reason} -> {error, Reason}
+    end.
+
 handle_stage_result(Type, MsgId, Result) ->
     case Result of
         {ok, _, ConvSeq, MemberUids} when

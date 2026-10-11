@@ -44,7 +44,7 @@ umask 077
 OUT_DIR=""
 NO_TAR=0
 FINGERPRINTS=""
-REQUIRED_PROFILE=""
+REQUIRED_PROFILE="phase1_delivery"
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -201,8 +201,15 @@ contract_excluded_paths "$WORK/all.list" >> "$WORK/exclude.list" || true
 sort -u "$WORK/exclude.list" -o "$WORK/exclude.list"
 EXCLUDED_N=$(grep -c . "$WORK/exclude.list" || true)
 
-# 白名单 = tracked - 排除集（整行精确差集）
-grep -vxF -f "$WORK/exclude.list" "$WORK/all.list" > "$MANIFEST" || true
+# Positive selection precedes exclusions. Unknown new tracked categories stay out.
+ALLOW_RULES="scripts/deliver/backend_allowlist.regex"
+[ -s "$ALLOW_RULES" ] || fail "committed backend allowlist is missing"
+grep -v '^#' "$ALLOW_RULES" | grep -v '^$' > "$WORK/allow.regex"
+grep -E -f "$WORK/allow.regex" "$WORK/all.list" > "$WORK/allowed.list" || true
+grep -vxF -f "$WORK/exclude.list" "$WORK/allowed.list" > "$MANIFEST" || true
+# Record all omitted entries, including paths outside positive categories.
+grep -vxF -f "$MANIFEST" "$WORK/all.list" > "$WORK/exclude.list" || true
+EXCLUDED_N=$(grep -c . "$WORK/exclude.list" || true)
 MANIFEST_N=$(grep -c . "$MANIFEST" || true)
 log "  excluded: $EXCLUDED_N  ->  manifest entries: $MANIFEST_N"
 
@@ -211,6 +218,7 @@ log "  excluded: $EXCLUDED_N  ->  manifest entries: $MANIFEST_N"
 # ---------------------------------------------------------------------------
 log "step 3/5: running exclusion self-checks on manifest"
 VIOLATIONS="$WORK/violations.txt"; : > "$VIOLATIONS"
+grep -Ev -f "$WORK/allow.regex" "$MANIFEST" | sed 's/^/[outside-allowlist] /' >> "$VIOLATIONS" || true
 
 grep -E '(^|/)config/sys\.(local|dev|prod|eunit)' "$MANIFEST" >> "$VIOLATIONS" || true
 grep -E '\.log$'                                   "$MANIFEST" >> "$VIOLATIONS" || true
@@ -298,6 +306,7 @@ fi
     echo "- profile: $PROFILE"
     echo "- manifest_file_sha256: $MANIFEST_FILE_HASH"
     echo "- source: immutable git archive snapshot (index/worktree excluded)"
+    echo "- backend_allowlist_sha256: $(sha256 "$ALLOW_RULES")"
     echo "- tracked_files: $TRACKED_N"
     echo "- excluded_files: $EXCLUDED_N"
     echo "- manifest_entries: $MANIFEST_N"

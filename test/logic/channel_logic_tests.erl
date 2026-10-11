@@ -3285,12 +3285,18 @@ remove_subscriber_admin_success_updates_counter_test_() ->
             end}
         ]},
         {channel_subscription_ds, [
-            {'delete', 3, fun(fake_conn, 11, 2002) -> {ok, 1} end}
+            {'delete', 3, fun(fake_conn, 11, 2002) ->
+                ?assertEqual(1, meck:num_calls(channel_ds, lock_discussion_tx, 2)),
+                {ok, 1}
+            end}
         ]},
         {channel_ds, [
-            {'increment_subscribers', 3, fun(fake_conn, 11, -1) -> {ok, 1} end},
-            {'lock_discussion_tx', 2, fun(_Conn, _Cid) -> 11 end},
-            {'revoke_discussion_tx', 3, fun(_Conn, _Cid, _Uid) -> ok end}
+            {lock_discussion_tx, 2, fun(fake_conn, 11) -> 11 end},
+            {revoke_discussion_tx, 3, fun(fake_conn, 11, 2002) ->
+                ?assertEqual(1, meck:num_calls(channel_subscription_ds, delete, 3)),
+                ok
+            end},
+            {'increment_subscribers', 3, fun(fake_conn, 11, -1) -> {ok, 1} end}
         ]},
         {imboy_cache, [
             {'invalidate', 1, fun(Key) ->
@@ -3316,6 +3322,7 @@ remove_subscriber_admin_success_updates_counter_test_() ->
 
             ?assertEqual(ok, Result),
             ?assertEqual(1, meck:num_calls(channel_subscription_ds, delete, 3)),
+            ?assertEqual(1, meck:num_calls(channel_ds, revoke_discussion_tx, 3)),
             ?assertEqual(1, meck:num_calls(channel_ds, increment_subscribers, 3)),
             ?assertEqual(2, meck:num_calls(imboy_cache, invalidate, 1)),
             ?assertEqual(1, meck:num_calls(msg_s2c_ds, send, 7))
@@ -3335,9 +3342,17 @@ remove_subscriber_is_idempotent_when_target_already_inactive_test_() ->
             end}
         ]},
         {channel_subscription_ds, [
-            {'delete', 3, fun(fake_conn, 11, 2002) -> {ok, 0} end}
+            {'delete', 3, fun(fake_conn, 11, 2002) ->
+                ?assertEqual(1, meck:num_calls(channel_ds, lock_discussion_tx, 2)),
+                {ok, 0}
+            end}
         ]},
         {channel_ds, [
+            {lock_discussion_tx, 2, fun(fake_conn, 11) -> locked end},
+            {revoke_discussion_tx, 3, fun(fake_conn, 11, 2002) ->
+                ?assertEqual(1, meck:num_calls(channel_subscription_ds, delete, 3)),
+                ok
+            end},
             {'increment_subscribers', 3, fun(_, _, _) ->
                 erlang:error(should_not_increment_subscribers)
             end},
@@ -3366,6 +3381,7 @@ remove_subscriber_is_idempotent_when_target_already_inactive_test_() ->
 
             ?assertEqual(ok, Result),
             ?assertEqual(1, meck:num_calls(channel_subscription_ds, delete, 3)),
+            ?assertEqual(1, meck:num_calls(channel_ds, revoke_discussion_tx, 3)),
             ?assertEqual(0, meck:num_calls(channel_ds, increment_subscribers, 3)),
             ?assertEqual(2, meck:num_calls(imboy_cache, invalidate, 1)),
             ?assertEqual(0, meck:num_calls(msg_s2c_ds, send, 7))
@@ -3391,9 +3407,17 @@ remove_subscriber_tx_error_returns_failure_test_() ->
             end}
         ]},
         {channel_subscription_ds, [
-            {'delete', 3, fun(fake_conn, 11, 2002) -> {error, db_error} end}
+            {'delete', 3, fun(fake_conn, 11, 2002) ->
+                ?assertEqual(1, meck:num_calls(channel_ds, lock_discussion_tx, 2)),
+                {error, db_error}
+            end}
         ]},
         {channel_ds, [
+            {lock_discussion_tx, 2, fun(fake_conn, 11) -> locked end},
+            {revoke_discussion_tx, 3, fun(fake_conn, 11, 2002) ->
+                ?assertEqual(1, meck:num_calls(channel_subscription_ds, delete, 3)),
+                ok
+            end},
             {'increment_subscribers', 3, fun(_, _, _) ->
                 erlang:error(should_not_increment_subscribers)
             end},
@@ -3409,6 +3433,8 @@ remove_subscriber_tx_error_returns_failure_test_() ->
             Result = channel_logic:remove_subscriber(1001, ChannelIdBin, 2002),
 
             ?assertEqual({error, <<"移除订阅者失败"/utf8>>}, Result),
+            ?assertEqual(1, meck:num_calls(channel_ds, lock_discussion_tx, 2)),
+            ?assertEqual(0, meck:num_calls(channel_ds, revoke_discussion_tx, 3)),
             ?assertEqual(0, meck:num_calls(channel_ds, increment_subscribers, 3)),
             ?assertEqual(0, meck:num_calls(imboy_cache, flush, 1))
         end)
@@ -5874,5 +5900,44 @@ reject_invitation_preserves_archived_980_tuple_test_() ->
             ?assertEqual(
                 {error, ?ARCHIVED_980}, channel_logic:reject_invitation(2002, 501)
             )
+        end)
+    end}.
+
+remove_subscriber_lock_failure_preserves_subscription_test_() ->
+    Mocks = [
+        {elib_pg, [
+            {with_tx, 1, fun(F) ->
+                try
+                    F(fake_conn)
+                catch
+                    throw:{abort_tx, R} -> {error, R}
+                end
+            end}
+        ]},
+        {channel_admin_ds, [
+            {get_role, 2, fun
+                (11, 1001) -> 2;
+                (11, 2002) -> 1
+            end}
+        ]},
+        {channel_ds, [
+            {lock_discussion_tx, 2, fun(fake_conn, 11) -> throw({abort_tx, lock_failed}) end},
+            {revoke_discussion_tx, 3, fun(_, _, _) -> erlang:error(unexpected_revoke) end},
+            {increment_subscribers, 3, fun(_, _, _) -> erlang:error(unexpected_increment) end}
+        ]},
+        {channel_subscription_ds, [
+            {delete, 3, fun(_, _, _) -> erlang:error(unexpected_delete) end}
+        ]},
+        {imboy_cache, [{flush, 1, fun(_) -> erlang:error(unexpected_flush) end}]},
+        {msg_s2c_ds, [{send, 7, fun(_, _, _, _, _, _, _) -> erlang:error(unexpected_notify) end}]}
+    ],
+    {setup, fun() -> setup_mocks(Mocks) end, fun(_) -> cleanup_mocks(Mocks) end, fun(_) ->
+        ?_test(begin
+            ?assertEqual(
+                {error, <<"移除订阅者失败"/utf8>>}, channel_logic:remove_subscriber(1001, 11, 2002)
+            ),
+            ?assertEqual(0, meck:num_calls(channel_subscription_ds, delete, 3)),
+            ?assertEqual(0, meck:num_calls(channel_ds, revoke_discussion_tx, 3)),
+            ?assertEqual(0, meck:num_calls(msg_s2c_ds, send, 7))
         end)
     end}.
