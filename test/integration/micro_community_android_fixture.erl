@@ -11,10 +11,18 @@
 -define(CHANNEL, (?BASE + 20)).
 -define(GROUP, (?BASE + 10)).
 -define(MESSAGE, (?BASE + 30)).
--define(PRIVATE, "/Users/leeyi/.codex/micro-community-runs/mc-20261008T083109Z/private").
--define(CONFIG, ?PRIVATE "/android-app-runtime.config").
--define(CONTEXT, ?PRIVATE "/android-context-r1.json").
--define(STOP, ?PRIVATE "/android-stop-r1").
+%% Run-scoped private dir override (see owned_http_fixture MC_RUN_PRIVATE_DIR).
+-define(PRIVATE, mc_android_private_dir()).
+
+mc_android_private_dir() ->
+    Default = "/Users/leeyi/.codex/micro-community-runs/mc-20261008T083109Z/private",
+    case os:getenv("MC_RUN_PRIVATE_DIR") of
+        false -> Default;
+        D -> D
+    end.
+-define(CONFIG, ?PRIVATE ++ "/android-app-runtime.config").
+-define(CONTEXT, ?PRIVATE ++ "/android-context-r1.json").
+-define(STOP, ?PRIVATE ++ "/android-stop-r1").
 -define(BOOT, mc_owned_android_bootstrap).
 
 %% Root serial lease only; install/device interaction is outside this runner.

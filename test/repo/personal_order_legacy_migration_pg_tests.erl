@@ -42,6 +42,7 @@ setup() ->
         codecs => [{epgsql_codec_rfc3339_bin, []}]
     },
     application:set_env(imboy, sql_driver, pgsql),
+    PgConfBefore = application:get_env(imboy, pg_conf),
     application:set_env(imboy, pg_conf, #{
         name => pgsql,
         max_count => 8,
@@ -49,10 +50,19 @@ setup() ->
         start_mfa => {epgsql, connect, [Opts]}
     }),
     ok = eunit_runner:ensure_default_pool(),
-    S#{opts => Opts}.
+    S#{opts => Opts, pg_conf_before => PgConfBefore}.
 
 close(S) ->
-    pooler:rm_pool(pgsql),
+    %% 恢复共享 VM 的默认 pg_conf 并重建 pgsql 池：setup 覆写的 marker 库
+    %% pg_conf 若不还原，后续套件（如 trust_audit）按残留配置重建池会指向
+    %% 已 release 的 marker 库，全量尾部 no_connection（r2/r3/r5 实证）。
+    case maps:get(pg_conf_before, S, undefined) of
+        {ok, Conf} when is_map(Conf) ->
+            application:set_env(imboy, pg_conf, Conf);
+        _ ->
+            ok
+    end,
+    _ = (catch eunit_runner:ensure_default_pool()),
     inttest_marker_db:release(S).
 
 run_case(S, F) ->

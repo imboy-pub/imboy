@@ -426,10 +426,17 @@ s8_push_dispatch_survives_e2ee_off_test_() ->
             ]},
             {elib_dt, [
                 {'now', 0, fun() -> <<"2026-02-24T10:00:00Z">> end},
-                {'rfc3339_to', 2, fun(<<"2026-02-24T10:00:00Z">>, millisecond) -> 1708768800000 end},
+                {'rfc3339_to', 2, fun
+                    (<<"2026-02-24T10:00:00Z">>, millisecond) -> 1708768800000;
+                    (<<"2026-02-24T10:00:00Z">>, microsecond) -> 1708768800000000;
+                    (<<"2026-02-24T09:58:20Z">>, microsecond) -> 1708768700000000
+                end},
                 {'to_rfc3339', 1, fun(1708768700000) -> <<"2026-02-24T09:58:20Z">> end}
             ]},
             {msg_store_ds, [
+                {'stage_with_sequence', 11, fun(_, _, _, _, _, _, _, _, _, _, _) ->
+                    {ok, new, 1}
+                end},
                 {'stage', 11, fun(_, _, _, _, _, _, _, _, _, _, _) -> {ok, new} end},
                 {'enqueue', 3, fun(_, _, _) -> ok end}
             ]},

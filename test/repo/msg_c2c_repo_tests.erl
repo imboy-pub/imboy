@@ -80,8 +80,8 @@ write_msg_with_valid_data_test_() ->
         [
             ?MOCK_ENV,
             ?MOCK_TSID,
-            {elib_pg, [
-                {'execute', 2, fun(_Sql, _Params) -> {ok, 1} end}
+            {personal_message_order_repo, [
+                {'execute_formal', 5, fun(_From, _To, _MsgId, _Sql, _Params) -> {ok, 1} end}
             ]}
         ],
         fun() ->
@@ -105,8 +105,8 @@ write_msg_with_e2ee_test_() ->
         [
             ?MOCK_ENV,
             ?MOCK_TSID,
-            {elib_pg, [
-                {'execute', 2, fun(_Sql, _Params) -> {ok, 1} end}
+            {personal_message_order_repo, [
+                {'execute_formal', 5, fun(_From, _To, _MsgId, _Sql, _Params) -> {ok, 1} end}
             ]}
         ],
         fun() ->
@@ -130,8 +130,8 @@ write_msg_if_absent_with_sender_preserves_idempotency_and_did_test_() ->
         [
             ?MOCK_ENV,
             ?MOCK_TSID,
-            {elib_pg, [
-                {'execute', 2, fun(Sql, Params) ->
+            {personal_message_order_repo, [
+                {'execute_formal', 5, fun(_From, _To, _MsgId, Sql, Params) ->
                     SqlBin = iolist_to_binary(Sql),
                     ?assert(binary:match(SqlBin, <<"WHERE NOT EXISTS">>) =/= nomatch),
                     ?assert(binary:match(SqlBin, <<"sender_did">>) =/= nomatch),
@@ -444,8 +444,8 @@ write_msg_with_reply_info_test_() ->
         [
             ?MOCK_ENV,
             ?MOCK_TSID,
-            {elib_pg, [
-                {'execute', 2, fun(_Sql, _Params) -> {ok, 1} end}
+            {personal_message_order_repo, [
+                {'execute_formal', 5, fun(_From, _To, _MsgId, _Sql, _Params) -> {ok, 1} end}
             ]}
         ],
         fun() ->
@@ -540,8 +540,8 @@ write_msg_with_sender_conflict_returns_error_test_() ->
         [
             ?MOCK_ENV,
             ?MOCK_TSID,
-            {elib_pg, [
-                {'execute', 2, fun(_Sql, _Params) -> {ok, 0} end}
+            {personal_message_order_repo, [
+                {'execute_formal', 5, fun(_From, _To, _MsgId, _Sql, _Params) -> {ok, 0} end}
             ]}
         ],
         fun() ->
@@ -565,8 +565,8 @@ write_msg_with_sender_inserted_returns_ok_test_() ->
         [
             ?MOCK_ENV,
             ?MOCK_TSID,
-            {elib_pg, [
-                {'execute', 2, fun(_Sql, _Params) -> {ok, 1} end}
+            {personal_message_order_repo, [
+                {'execute_formal', 5, fun(_From, _To, _MsgId, _Sql, _Params) -> {ok, 1} end}
             ]}
         ],
         fun() ->
@@ -590,8 +590,8 @@ write_msg_with_expire_conflict_returns_error_test_() ->
         [
             ?MOCK_ENV,
             ?MOCK_TSID,
-            {elib_pg, [
-                {'execute', 2, fun(_Sql, _Params) -> {ok, 0} end}
+            {personal_message_order_repo, [
+                {'execute_formal', 5, fun(_From, _To, _MsgId, _Sql, _Params) -> {ok, 0} end}
             ]}
         ],
         fun() ->
@@ -615,8 +615,8 @@ write_msg_with_reply_conflict_returns_error_test_() ->
         [
             ?MOCK_ENV,
             ?MOCK_TSID,
-            {elib_pg, [
-                {'execute', 2, fun(_Sql, _Params) -> {ok, 0} end}
+            {personal_message_order_repo, [
+                {'execute_formal', 5, fun(_From, _To, _MsgId, _Sql, _Params) -> {ok, 0} end}
             ]}
         ],
         fun() ->
@@ -642,8 +642,8 @@ write_msg_if_absent_conflict_returns_error_test_() ->
         [
             ?MOCK_ENV,
             ?MOCK_TSID,
-            {elib_pg, [
-                {'execute', 2, fun(_Sql, _Params) -> {ok, 0} end}
+            {personal_message_order_repo, [
+                {'execute_formal', 5, fun(_From, _To, _MsgId, _Sql, _Params) -> {ok, 0} end}
             ]}
         ],
         fun() ->
