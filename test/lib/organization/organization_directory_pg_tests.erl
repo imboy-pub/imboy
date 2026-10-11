@@ -479,9 +479,10 @@ d11_n_plus_1_real_counts() ->
             end)
         ),
 
-        %% /me：gate(1) + mine(1) = 2。
+        %% /me：gate(1) + mine(1) + count_members(1) = 3
+        %%（APP-M02：载荷新增组织 active 成员总数，多一次内联单 SQL）。
         ?assertMatch(
-            {{ok, _}, 2},
+            {{ok, _}, 3},
             with_count(fun() ->
                 me(Org, maps:get(m_dual, Scope))
             end)

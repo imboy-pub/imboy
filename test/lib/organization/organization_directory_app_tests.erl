@@ -361,8 +361,10 @@ me_empty_departments_returns_empty_list_test_() ->
         fun() ->
             gate_ok(),
             meck:expect(?PG, list_my_departments, fun(_O, _U) -> {ok, []} end),
+            %% APP-M02：/me 载荷附带组织 active 成员总数（footer 共N人）
+            meck:expect(?PG, count_members, fun(_O) -> {ok, 5} end),
             ?assertEqual(
-                {ok, #{organization_id => ?ORG, list => []}},
+                {ok, #{organization_id => ?ORG, list => [], member_count => 5}},
                 organization_directory_app:my_departments(?ORG, ?UID)
             )
         end
@@ -375,9 +377,12 @@ me_projection_test_() ->
             meck:expect(?PG, list_my_departments, fun(_O, _U) ->
                 {ok, [dept_row(?DEPT_CHILD, <<"后端"/utf8>>, ?DEPT_ROOT, 2)]}
             end),
+            %% APP-M02：/me 载荷附带组织 active 成员总数（footer 共N人）
+            meck:expect(?PG, count_members, fun(_O) -> {ok, 7} end),
             ?assertEqual(
                 {ok, #{
                     organization_id => ?ORG,
+                    member_count => 7,
                     list => [
                         #{
                             id => ?DEPT_CHILD,
