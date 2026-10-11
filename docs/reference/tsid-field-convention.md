@@ -1,6 +1,6 @@
 # TSID 字段约定
 
-> Last Updated: 2026-09-29（TSID correctness hardening 后同步）  
+> Last Updated: 2026-10-11（TSID V10 风险边界与验收后同步）
 > Status: 长期协议契约文档  
 > Scope: 所有 REST API 与 WebSocket API 中 TSID 字段的传输格式约定
 
@@ -21,7 +21,7 @@ TSID（Time-Sorted ID）是 Imboy 使用的分布式 ID 生成方案，取代原
 | 符号位 | 1 | 始终为 0（正整数） |
 | 时间戳 | 42 | 相对于纪元（2025-01-01 00:00:00 UTC）的毫秒数 |
 | 节点 ID | 10 | 按 `dc_bits`（1..10，缺省 3；应用层 API 允许 0=纯 node 模式，部署链 preflight 限 1..10）动态切分为 dc_id + node_id |
-| 序列号 | 11 | 每毫秒每节点最多 2048 个 ID（= 节点持续容量 2048 ids/ms） |
+| 序列号 | 11 | 每毫秒每节点每 Namespace 最多 2048 个 ID |
 
 **特性**（2026-10 V10 后）：
 
@@ -30,13 +30,13 @@ TSID（Time-Sorted ID）是 Imboy 使用的分布式 ID 生成方案，取代原
   内严格唯一；**跨 namespace 数值允许重复**。旧「任意两 label 数值永不相同，
   跨表按数值关联」的合同已被 V10 显式废除——跨业务引用必须 Domain + ID。
 - **时间戳精度**：毫秒；V10 禁止借用未来毫秒（无借支铁律），序列耗尽时等待
-  真实时间推进（默认上限 100ms，超时 typed 报错）。ID 时间戳 ≤ 当前墙钟，
-  提取的时间戳语义不变：排序请用 ID 本身
+  生成时钟推进（默认上限 100ms，超时 typed 报错）。生成时钟为 monotonic +
+  启动时固定 Offset，可能与当前系统墙钟存在偏差；同域排序可用 ID，跨域不保证全局顺序
 - **跨重启边界**：无持久化状态。单次 BEAM 生命周期内严格唯一；跨重启仅当
-  系统时钟未回拨跨重启点时不重复（NTP 大幅回拨/快照恢复可能产生与历史 ID
-  的数值重叠——文档化的固有边界，禁止表述为"绝不重复"）
-- **生成吞吐量**：持续容量 2048 ids/ms/节点（≈205 万 ID/s）；短突发实测
-  10M+ ID/s（基准证据见 hardening status 附录）；多节点水平扩展
+  新生成时间戳严格大于旧发号水位时不重复。同毫秒重启、跨重启回拨或快照恢复
+  均可能与历史 ID 重叠，禁止表述为"绝不重复"
+- **理论容量**：每 Namespace 每节点 2048 ids/ms（≈205 万 ID/s）；
+  实际吞吐受调度、竞争和有界等待影响，不能将理论容量作为生产承诺
 - **无借支**：序列耗尽不借未来毫秒，有界等待真实时间推进（typed
   `capacity_exhausted`，clock_wait | cas_contention 两相）
 - **时钟安全**：固定 Offset 时钟与系统钟偏差超限（`tsid_max_clock_drift_ms`）
@@ -186,8 +186,23 @@ Payload = #{<<"id">> => Id, <<"from_id">> => FromId}.
 - `imboy-admin-frontend/src/services/api/client.ts` — safeParseBigIntJson 实现
 - `imboy-admin-frontend/src/types/common.ts` — EntityId 类型定义
 
-## 主键治理与 catalog 收缩约束
+## 7. 已知风险与运行约束 / Known Risks and Operating Constraints
 
-TSID 用于需要跨数据中心、跨地域同步的实体主键。非同步实体改用数据库本地生成的主键时，必须先完成历史数据与调用点迁移，再移除 catalog 对应列；不能先缩减扫描范围。历史 TSID 列未完成迁移前，仍须纳入高水位扫描，避免重启后撞号。
+| 场景 | 已验证行为与限制 |
+|---|---|
+| 同毫秒重启 | 两次独立 BEAM 发号实测 100 个 ID 重叠；仅时钟没有回拨不足以保证跨重启唯一 |
+| 跨重启回拨 10 秒 | 回拨期间无重叠，但时间返回旧毫秒后实测 100 个 ID 重叠 |
+| 两个实例复用 NodeId | 同一 `(dc_id, node_id)` 的两个独立 BEAM 实测 50 个 ID 重叠；无跨实例锁 |
+| 固定 Offset 与系统钟偏离 | 超过 `tsid_max_clock_drift_ms` 时阻断发号；调用方必须处理 typed error，不得绕过保护 |
+| 跨 Namespace 同值 | 数字相等不代表同一实体；引用、缓存键与关联条件须包含业务域 |
+| 序列耗尽或 CAS 竞争 | 有界等待可能超时；调用方须处理失败，不能假定发号永远成功 |
 
-每次调整 catalog，必须同步更新版本和 digest，并按 [割接操作手册](../architecture/tsid-cutover-runbook.md) 显式重绑既有 manifest。上线前验证完整 schema 检查、高水位扫描、崩溃恢复、唯一性以及相关 API/外键回归；未经分类的主键或不匹配的 digest 应继续拒绝启动。
+投产前须核对全体实例的 NodeId 分配、位布局及停机重启流程；preflight 检查不能证明未知独立实例没有复用 NodeId。V10 不保存 Cursor/Fence，不执行旧 catalog 高水位扫描或 manifest 重绑，也不保证任意跨重启场景唯一。保留数据库主键约束，遇到冲突应停止并排查原因。
+
+2026-10-11 后端验收：全量 EUnit 11085 项、TSID 专项 72 项、Agent 真实 PG 28 项、客服真实 PG 25 项通过；一小时 121 个漂移样本偏差 0～1ms，仅代表该观测区间。
+同宿主三轮对照早期 V10，公平单 ID 场景吞吐变化 −3.28%～+1.82%；批量场景约下降 93.39%，但批尾时间约束不同，不能作为等约束性能比较，也不能宣称零回归。未验证生产容量、长期漂移及三端运行验收。
+
+V10 is nonpersistent: same-millisecond restarts, clock rollback across restarts,
+and independent instances sharing a NodeId can produce duplicate IDs. Operators
+must assign unique NodeIds; callers must preserve domain-qualified references and
+handle clock/capacity errors. Local backend tests do not establish production capacity.
