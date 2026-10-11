@@ -12,7 +12,14 @@
 -define(GROUP, (?BASE + 10)).
 -define(MESSAGE, (?BASE + 30)).
 -define(PRIVATE, "/Users/leeyi/.codex/micro-community-runs/mc-20261008T083109Z/private").
--define(CONFIG, ?PRIVATE "/android-app-runtime.config").
+%% MC21 收口重跑（2026-10-10）：runtime config 迁至收口 run 私有目录——
+%% 包名必须与 gzCustomer flavor 实际 applicationId（pub.imboy.app.gzcustomer）
+%% 一致，否则 sign_key 键名（pkg_android_vsn）对不上 App 请求头 pkg，验签恒 902。
+%% 旧 run（mc-20261008T083109Z）private 资产保持只读，不回写。
+-define(CONFIG,
+    "/Users/leeyi/.codex/micro-community-runs/mc-closure-20261010T060003Z/private"
+    "/android-app-runtime.config"
+).
 -define(CONTEXT, ?PRIVATE "/android-context-r1.json").
 -define(STOP, ?PRIVATE "/android-stop-r1").
 -define(BOOT, mc_owned_android_bootstrap).
@@ -66,7 +73,7 @@ private_runtime_config() ->
             solidified_key := Key,
             solidified_key_iv := IV,
             login_rsa_pub_key := RSA,
-            package := <<"pub.imboy.app.mc083109">>,
+            package := <<"pub.imboy.app.gzcustomer">>,
             sign_key_version := <<"1">>
         } = Config
     ]} = file:consult(?CONFIG),
