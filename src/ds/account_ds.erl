@@ -35,48 +35,13 @@ init() ->
     end.
 
 %% @doc 分配一个账户ID
-%% 从缓存或数据库中分配一个唯一的账户ID。
-%% 使用Depcache的get_wait机制避免竞争条件，确保ID的唯一性。
-%% 当缓存为空或数据库无法获取ID时，返回{error, no_ids}。
+%% 专用分配进程串行领取（G-01 修复，收口 C06）：批量号来自 PG Sequence
+%% （nextval x 10 随机序，跨节点全局唯一），节点内由
+%% imboy_account_allocator gen_server 串行分配——每个 ID 恰好领取一次；
+%% PG 不可用时明确 {error, no_ids}，不虚假成功。
 -spec allocate() -> non_neg_integer() | {error, term() | no_ids}.
 allocate() ->
-    Key = {local_cache, account_list},
-    % 使用 Depcache 的 get_wait 机制避免竞争条件
-    case imboy_cache:get_wait(Key) of
-        undefined ->
-            init(),
-            % 缓存未命中，获取新ID
-            case safe_get_max_account_id() of
-                [] ->
-                    % 关键修复：当无法从数据库获取到可用 ID 时，需要写入一个短 TTL 的空列表以释放 get_wait 锁，
-                    % 否则其他并发进程会一直等待直到 30s 超时（{timeout,{gen_server,call,[imboy_cache,{get_wait, Key},30000]}}）。
-                    % 这里设置 3 秒的 TTL，既能快速唤醒等待者，也避免长时间缓存空值。
-                    imboy_cache:set(Key, [], 3, []),
-                    {error, no_ids};
-                [AllocatedId | Rest] ->
-                    % 将剩余ID存入缓存
-                    imboy_cache:set(Key, Rest, ?ACCOUNT_ID_CACHE_TTL, []),
-                    AllocatedId
-            end;
-        {ok, IdList} when is_list(IdList) ->
-            case IdList of
-                [] ->
-                    % 缓存为空，获取新ID
-                    case safe_get_max_account_id() of
-                        [] ->
-                            % 同上：写入一个短 TTL 的空列表，释放等待队列，避免后续进程超时
-                            imboy_cache:set(Key, [], 3, []),
-                            {error, no_ids};
-                        [AllocatedId | Rest] ->
-                            imboy_cache:set(Key, Rest, ?ACCOUNT_ID_CACHE_TTL, []),
-                            AllocatedId
-                    end;
-                [AllocatedId | Rest] ->
-                    % 从缓存中取出一个ID并更新缓存
-                    imboy_cache:set(Key, Rest, ?ACCOUNT_ID_CACHE_TTL, []),
-                    AllocatedId
-            end
-    end.
+    imboy_account_allocator:allocate().
 
 %%%===================================================================
 %%% Internal functions
