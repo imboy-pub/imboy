@@ -19,6 +19,10 @@
     read_rev_full/1,
     inject_v2_set/4,
     restart_sync/0,
+    peer_sync_down/0,
+    sync_alive/0,
+    meta_inject/1,
+    meta_probe/1,
     overload_probe/0,
     drain_sync_mailbox/0,
     dump_debug/0
@@ -70,8 +74,19 @@ scenario_list(A, B, C) ->
         {"TTL remaining not reset", fun() -> s_ttl(A, B) end},
         {"restart recovers version ceiling", fun() -> s_restart(A, C) end},
         {"overload protection rejects new replicate", fun() -> s_overload(A) end},
-        {"snapshot backfills lost replicas after restart",
-         fun() -> s_snapshot(A, B, C) end}
+        {"snapshot backfills lost replicas after restart", fun() -> s_snapshot(A, B, C) end},
+        {"F1 peer dies during recovery round; survivor closes the round", fun() ->
+            f1_peer_dies_during_recovery(A, B, C)
+        end},
+        {"F2 delta writes during recovery merge with snapshot", fun() ->
+            f2_delta_during_recovery(A, B, C)
+        end},
+        {"F3 hard crash (halt) + same-name incarnation recovers", fun() ->
+            f3_hard_crash_incarnation(A, B, C)
+        end},
+        {"F4 bounded sweep removes expired meta incl. rindex", fun() ->
+            f4_bounded_sweep(A, B, C)
+        end}
     ].
 
 run_one(Name, Fun) ->
@@ -254,6 +269,104 @@ s_overload(A) ->
     ok.
 
 %% ===================================================================
+%% 故障注入（W4-11：功能性故障矩阵；压测项 W4-10 另需安静窗口）
+%% ===================================================================
+
+%% F1：恢复轮中某 peer（A）sync 下线——C 的恢复回合由存活 reporter（B）
+%% 闭合，READY 后回填 B 侧数据；A 回归后集群完好。
+f1_peer_dies_during_recovery(A, B, C) ->
+    KeyB = {cache_v2_test_rep, d_f1b},
+    ok = rpc:call(B, imboy_cache, put, [KeyB, from_b, 300, replicate], ?RPC_MS),
+    {ok, from_b} = converge_get(A, KeyB, {ok, from_b}),
+    %% 前置断言：A 的 sync 必须存活（若被先前场景打死，显式暴露而非 noproc 含混）
+    true =
+        rpc:call(A, ?MODULE, sync_alive, [], 5000) orelse
+            erlang:error({a_sync_dead, rpc:call(A, ?MODULE, dump_debug, [], 5000)}),
+    ok = rpc:call(C, ?MODULE, restart_sync, [], ?RPC_MS),
+    %% C 已进入恢复窗口，立即下线 A 的 sync（其 report/done 是否已发生均收敛）
+    ok = rpc:call(A, ?MODULE, peer_sync_down, [], ?RPC_MS),
+    ready = wait_status(C, 120),
+    {ok, from_b} = converge_get(C, KeyB, {ok, from_b}),
+    %% sync 不可用时 put 按 overloaded fail-closed 拒绝（不崩业务调用方）
+    case rpc:call(A, imboy_cache, put, [{cache_v2_test_rep, d_f1dead}, x, 60, replicate], 5000) of
+        {error, overloaded} ->
+            ok;
+        {error, sync_unavailable} = Ok2 ->
+            %% 语义上同为 fail-closed 拒绝，但出现路径存疑（sync 应已死）——转储取证
+            erlang:error({f1_unexpected_reject, Ok2, rpc:call(A, ?MODULE, dump_debug, [], 5000)});
+        Other ->
+            erlang:error({f1_put_not_rejected, Other, rpc:call(A, ?MODULE, dump_debug, [], 5000)})
+    end,
+    %% A 回归（sync+depcache 全量重启），集群互通恢复
+    ok = rpc:call(A, ?MODULE, restart_sync, [], ?RPC_MS),
+    ready = wait_status(A, 120),
+    KeyA2 = {cache_v2_test_rep, d_f1a2},
+    ok = rpc:call(A, imboy_cache, put, [KeyA2, back, 120, replicate], ?RPC_MS),
+    {ok, back} = converge_get(C, KeyA2, {ok, back}),
+    ok.
+
+%% F2：恢复窗口内的并发 delta 写——快照旧值不得覆盖 delta 新值（版本比较），
+%% delta 新键不丢失（9.3 融合语义）。
+f2_delta_during_recovery(A, B, C) ->
+    K1 = {cache_v2_test_rep, d_f2a},
+    ok = rpc:call(A, imboy_cache, put, [K1, v1, 300, replicate], ?RPC_MS),
+    {ok, v1} = converge_get(C, K1, {ok, v1}),
+    ok = rpc:call(C, ?MODULE, restart_sync, [], ?RPC_MS),
+    %% C 恢复窗口内的并发写
+    ok = rpc:call(A, imboy_cache, put, [K1, v2, 300, replicate], ?RPC_MS),
+    K2 = {cache_v2_test_rep, d_f2b},
+    ok = rpc:call(B, imboy_cache, put, [K2, fresh, 300, replicate], ?RPC_MS),
+    ready = wait_status(C, 120),
+    {ok, v2} = converge_get(C, K1, {ok, v2}),
+    {ok, fresh} = converge_get(C, K2, {ok, fresh}),
+    ok.
+
+%% F3：节点硬崩（erlang:halt，无 terminate/syn:leave）+ 同名新化身：
+%% 存活节点不受影响；新化身经快照回填恢复，版本上界不回退（AC-17 硬崩路径）。
+f3_hard_crash_incarnation(A, B, C) ->
+    Key = {cache_v2_test_rep, d_f3},
+    ok = rpc:call(A, imboy_cache, put, [Key, f3_v, 300, replicate], ?RPC_MS),
+    {ok, f3_v} = converge_get(B, Key, {ok, f3_v}),
+    {ok, {{C1, _}, _, _, _}} = rpc:call(A, ?MODULE, read_rev_full, [Key], 5000),
+    %% 硬崩
+    catch rpc:call(C, erlang, halt, [0], 3000),
+    timer:sleep(300),
+    C2 = restart_c_hard(A, B),
+    ready = wait_status(C2, 120),
+    {ok, f3_v} = converge_get(C2, Key, {ok, f3_v}),
+    Key2 = {cache_v2_test_rep, d_f3b},
+    ok = rpc:call(C2, imboy_cache, put, [Key2, f3_new, 120, replicate], ?RPC_MS),
+    {ok, {{C2c, _}, _, _, _}} = rpc:call(C2, ?MODULE, read_rev_full, [Key2], 5000),
+    true = C2c >= C1 orelse erlang:error({ceiling_regressed, C1, C2c}),
+    ok.
+
+%% F4：有界清理（W4-06/07）受控注入——过期墓碑、过期 live 元数据连同
+%% rindex 行一并淘汰；未过期条目不受影响。
+f4_bounded_sweep(A, B, C) ->
+    NowMs = erlang:system_time(millisecond),
+    Rev = {1, node()},
+    %% 直接构造三类元数据行（公共 ETS，受控注入）：
+    %% ktomb = 过期墓碑且已跨完整写窗（ExpiresAt+Tmax < now）→ 连 rindex 淘汰；
+    %% kexp  = 过期 live（值已随 depcache TTL 消失）→ 淘汰；
+    %% klive = 未过期 live → 保留。
+    Rows = [
+        {{rev, ktomb}, {Rev, 1, NowMs - 721000, deleted}},
+        {{rindex, ktomb}, NowMs - 721000},
+        {{rev, kexp}, {Rev, 1, NowMs - 1000, live}},
+        {{rindex, kexp}, NowMs - 1000},
+        {{rev, klive}, {Rev, 1, NowMs + 60000, live}},
+        {{rindex, klive}, NowMs}
+    ],
+    ok = rpc:call(C, ?MODULE, meta_inject, [Rows], 5000),
+    %% 直发 reconcile_tick 触发 bounded_sweep（不必等 60s 周期）
+    rpc:call(C, erlang, send, [imboy_cache_sync, reconcile_tick], 5000),
+    ok = rpc:call(C, ?MODULE, drain_sync_mailbox, [], ?RPC_MS),
+    gone = rpc:call(C, ?MODULE, meta_probe, [ktomb], 5000),
+    gone = rpc:call(C, ?MODULE, meta_probe, [kexp], 5000),
+    kept = rpc:call(C, ?MODULE, meta_probe, [klive], 5000),
+    ok.
+
+%% ===================================================================
 %% Cluster 管理（结构经独立实验验证）
 %% ===================================================================
 
@@ -308,6 +421,9 @@ start_cluster() ->
         args => Args
     }),
     pong = wait_peer(C, 200),
+    %% F3 同名硬重启所需身份（驱动节点侧暂存）
+    _ = ets:new(c21dctx, [set, named_table, public]),
+    true = ets:insert(c21dctx, {c, {NameC, Args}}),
     true = rpc:call(A, net_kernel, connect_node, [B], ?RPC_MS),
     true = rpc:call(A, net_kernel, connect_node, [C], ?RPC_MS),
     true = rpc:call(B, net_kernel, connect_node, [C], ?RPC_MS),
@@ -318,6 +434,37 @@ start_cluster() ->
     ready = wait_status(B, 150),
     ready = wait_status(C, 150),
     {ok, [PA, PB, PC], {A, B, C}}.
+
+%% F3：C 硬崩后的同名新化身（同一 args/代码树，新 BootId）
+restart_c_hard(A, B) ->
+    [{c, {NameC, Args}}] = ets:lookup(c21dctx, c),
+    {ok, _P, C2} = peer:start(#{
+        name => NameC,
+        host => "127.0.0.1",
+        wait_boot => false,
+        args => Args
+    }),
+    pong = wait_peer(C2, 200),
+    true = connect_retry(A, C2),
+    true = connect_retry(B, C2),
+    true = rpc:call(C2, net_kernel, connect_node, [A], ?RPC_MS),
+    true = rpc:call(C2, net_kernel, connect_node, [B], ?RPC_MS),
+    ok = rpc:call(C2, ?MODULE, init_on_peer, [], ?RPC_MS),
+    C2.
+
+connect_retry(From, To) ->
+    connect_retry(From, To, 15).
+
+connect_retry(_From, _To, 0) ->
+    erlang:error({connect_timeout, _From, _To});
+connect_retry(From, To, N) ->
+    case rpc:call(From, net_kernel, connect_node, [To], ?RPC_MS) of
+        true ->
+            true;
+        _ ->
+            timer:sleep(200),
+            connect_retry(From, To, N - 1)
+    end.
 
 stop_cluster(PeerPids) ->
     _ = [
@@ -404,8 +551,52 @@ inject_v2_set(Key, Value, Rev, OriginNode) ->
 
 %% 模拟真实节点重启：sync 与 depcache 实例一并重启（内存副本全丢，
 %% 含版本元数据），新 BootId；随后恢复流程 discover→version→snapshot。
+%% V2 能力下线：sync+depcache 停止且不重启（F1 恢复轮故障注入）
+peer_sync_down() ->
+    case whereis(imboy_cache_sync) of
+        undefined -> ok;
+        _ -> ok = gen_server:stop(imboy_cache_sync, normal, 10000)
+    end,
+    case whereis(imboy_cache) of
+        undefined ->
+            ok;
+        DepP ->
+            Ref = monitor(process, DepP),
+            exit(DepP, kill),
+            receive
+                {'DOWN', Ref, process, DepP, _} -> ok
+            after 5000 -> erlang:error(depcache_kill_timeout)
+            end
+    end,
+    ok.
+
+%% F4 受控注入：直接写入公共元数据表
+meta_inject(Rows) ->
+    true = ets:insert(imboy_cache_meta, Rows),
+    ok.
+
+sync_alive() ->
+    case whereis(imboy_cache_sync) of
+        P when is_pid(P) -> is_process_alive(P);
+        undefined -> false
+    end.
+
+%% F4 探针：该键的 rev+rindex 行是否存在（gone/kept）
+meta_probe(K) ->
+    HasRev = ets:member(imboy_cache_meta, {rev, K}),
+    HasIdx = ets:member(imboy_cache_meta, {rindex, K}),
+    case {HasRev, HasIdx} of
+        {false, false} -> gone;
+        {true, true} -> kept;
+        {_, _} -> partial
+    end.
+
 restart_sync() ->
-    ok = gen_server:stop(imboy_cache_sync, normal, 10000),
+    %% F1 场景中 sync 可能已被 peer_sync_down 停掉，stop 需守卫
+    case whereis(imboy_cache_sync) of
+        undefined -> ok;
+        _ -> ok = gen_server:stop(imboy_cache_sync, normal, 10000)
+    end,
     case whereis(imboy_cache) of
         undefined ->
             ok;
@@ -614,6 +805,9 @@ results_json(Results, ElapsedMs) ->
 
 escape(Bin) when is_binary(Bin) -> escape(binary_to_list(Bin));
 escape(L) when is_list(L) ->
+    %% 先拍平：~p 产出的是 io_lib 深列表，子列表会被下面的推导当作单个
+    %% "字符"整段跳过转义（真实换行/引号直达 JSON——f1 轮实证）
+    Flat = lists:flatten(L),
     lists:flatten([
         case Ch of
             $" -> "\\\"";
@@ -623,5 +817,5 @@ escape(L) when is_list(L) ->
             C when C < 16#20 -> io_lib:format("\\u~4.16.0b", [C]);
             C -> [C]
         end
-     || Ch <- L
+     || Ch <- Flat
     ]).
