@@ -25,10 +25,9 @@
 %% API functions
 %% ===================================================================
 
-%% @doc user_friend TSID（friend 命名空间；惰性注册，镜像 A1 口径）。
+%% @doc user_friend TSID（friend 命名空间；固定 Namespace 映射）。
 -spec next_friend_id() -> pos_integer().
 next_friend_id() ->
-    ensure_tsid(friend),
     elib_tsid:generate(friend).
 
 %% @doc 事务内派生 from→to 申请状态：blocked > friends > pending > none
@@ -99,12 +98,3 @@ insert_pending_tx(Conn, FromUid, ToUid, Setting, NowTs) when
 %% ===================================================================
 %% Internal Functions
 %% ===================================================================
-
--spec ensure_tsid(atom()) -> ok.
-ensure_tsid(Name) ->
-    case lists:member(Name, elib_tsid:registered()) of
-        true ->
-            ok;
-        false ->
-            elib_tsid:register(Name)
-    end.

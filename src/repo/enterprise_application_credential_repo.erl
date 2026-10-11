@@ -45,13 +45,9 @@
 tablename() ->
     elib_pg_sql:public_tablename(<<"enterprise_application_credential">>).
 
-%% @doc credential 命名空间 TSID（惰性注册，镜像 agent_grant_pg 口径）。
+%% @doc credential 命名空间 TSID（固定映射，镜像 agent_grant_pg 口径）。
 -spec next_id() -> pos_integer().
 next_id() ->
-    case lists:member(enterprise_application_credential, elib_tsid:registered()) of
-        true -> ok;
-        false -> elib_tsid:register(enterprise_application_credential)
-    end,
     elib_tsid:generate(enterprise_application_credential).
 
 %% @doc secret 的 SHA-256 小写 hex（64 字符；镜像 bot_repo:digest_hex/1）。

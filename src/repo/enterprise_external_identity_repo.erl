@@ -38,13 +38,9 @@
 tablename() ->
     elib_pg_sql:public_tablename(<<"enterprise_external_identity">>).
 
-%% @doc mapping 命名空间 TSID（惰性注册，镜像 agent_grant_pg 口径）。
+%% @doc mapping 命名空间 TSID（固定映射，镜像 agent_grant_pg 口径）。
 -spec next_id() -> pos_integer().
 next_id() ->
-    case lists:member(enterprise_external_identity, elib_tsid:registered()) of
-        true -> ok;
-        false -> elib_tsid:register(enterprise_external_identity)
-    end,
     elib_tsid:generate(enterprise_external_identity).
 
 %% @doc 事务内绑定 external_user_id <-> user（INT-02）。

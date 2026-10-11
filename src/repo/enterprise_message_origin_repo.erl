@@ -33,13 +33,9 @@
 tablename() ->
     elib_pg_sql:public_tablename(<<"enterprise_message_origin">>).
 
-%% @doc origin 账本命名空间 TSID（惰性注册，镜像 enterprise_external_identity_repo）。
+%% @doc origin 账本命名空间 TSID（固定映射，镜像 enterprise_external_identity_repo）。
 -spec next_id() -> pos_integer().
 next_id() ->
-    case lists:member(enterprise_message_origin, elib_tsid:registered()) of
-        true -> ok;
-        false -> elib_tsid:register(enterprise_message_origin)
-    end,
     elib_tsid:generate(enterprise_message_origin).
 
 %% @doc 事务内写入 origin 行。ConversationKind ∈ direct|group；SenderKind ∈

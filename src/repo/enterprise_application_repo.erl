@@ -75,13 +75,9 @@ workbench_entries_tx(Conn, OrgId, Uid) ->
 tablename() ->
     elib_pg_sql:public_tablename(<<"enterprise_application">>).
 
-%% @doc enterprise_application 命名空间 TSID（惰性注册，镜像 agent_grant_pg 口径）。
+%% @doc enterprise_application 命名空间 TSID（固定映射，镜像 agent_grant_pg 口径）。
 -spec next_id() -> pos_integer().
 next_id() ->
-    case lists:member(enterprise_application, elib_tsid:registered()) of
-        true -> ok;
-        false -> elib_tsid:register(enterprise_application)
-    end,
     elib_tsid:generate(enterprise_application).
 
 %% @doc 事务内创建 Application（无 principal_user_id，allowlist 为空）。

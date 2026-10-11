@@ -53,10 +53,9 @@
 %% API functions
 %% ===================================================================
 
-%% @doc group TSID（group_info 命名空间；惰性注册，镜像 A1 identity repo 口径）。
+%% @doc group TSID（group_info 命名空间；固定映射，镜像 A1 identity repo 口径）。
 -spec next_group_id() -> pos_integer().
 next_group_id() ->
-    ensure_tsid(group_info),
     elib_tsid:generate(group_info).
 
 %% @doc 事务内创建 Workspace 企业群行（仅 "group" 行，不含成员）。
@@ -420,16 +419,6 @@ open_history_generation_tx(Conn, Gid, Uid) ->
             ok;
         {error, Reason} ->
             erlang:error({generation_open_failed, Reason})
-    end.
-
-%% @doc TSID 惰性注册（镜像 enterprise_external_identity_repo:next_id 口径）。
--spec ensure_tsid(atom()) -> ok.
-ensure_tsid(Name) ->
-    case lists:member(Name, elib_tsid:registered()) of
-        true ->
-            ok;
-        false ->
-            elib_tsid:register(Name)
     end.
 
 %% @doc 生成 $2,$3,... 逐项占位符（$1 是 workspace_id）。

@@ -41,7 +41,7 @@
 %% @doc 创建邀请。
 %% Opts：
 %%   expires_at     :: integer()  epoch 秒，缺省 now + 7 天；
-%%   invitation_id  :: integer()  测试/编排注入；缺省在插入前经 elib_tsid:generate/0
+%%   invitation_id  :: integer()  测试/编排注入；缺省经 organization_invitation Namespace 发号
 %%                  惰性生成（被拒绝的 create 不消耗 id）。
 %% 返回 {ok, View}，View 含 token（明文，唯一一次）与不含 token_digest 的投影。
 -spec create(integer(), integer(), integer(), opts()) ->

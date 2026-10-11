@@ -1474,7 +1474,12 @@ department_create_tx(AdmUserId, OrgId, ParentId, Name, AuditCtx) ->
         fun(Conn) ->
             case
                 organization_department_pg:insert_department_tx(
-                    Conn, OrgId, ParentId, Name, undefined, fun elib_tsid:generate/0
+                    Conn,
+                    OrgId,
+                    ParentId,
+                    Name,
+                    undefined,
+                    fun() -> elib_tsid:generate(organization_department) end
                 )
             of
                 {ok, Row} ->

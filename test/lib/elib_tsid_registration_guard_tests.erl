@@ -32,15 +32,56 @@ no_argumentless_generate_in_src_test() ->
     Offenders = scan_argumentless_generate(),
     ?assertEqual([], Offenders).
 
+argumentless_function_reference_test() ->
+    ?assertMatch({match, _}, argumentless_match(<<"fun elib_tsid:generate/0">>)),
+    ?assertMatch({match, _}, argumentless_match(<<"elib_tsid:generate()">>)),
+    ?assertEqual(nomatch, argumentless_match(<<"elib_tsid:generate(user)">>)).
+
+argumentless_match(Bin) ->
+    re:run(Bin, <<"elib_tsid:generate\\s*(?:\\(\\s*\\)|/\\s*0\\b)">>).
+
+no_runtime_registration_in_src_test() ->
+    Offenders = lists:append([
+        begin
+            {ok, Bin} = file:read_file(Path),
+            [
+                {Path, Pattern}
+             || Pattern <- [<<"elib_tsid:register(">>, <<"elib_tsid:registered(">>],
+                binary:match(Bin, Pattern) =/= nomatch
+            ]
+        end
+     || Path <- find_erl_files(?SRC_DIR)
+    ]),
+    ?assertEqual([], Offenders).
+
+id_port_callsite_scanner_test() ->
+    lists:foreach(
+        fun({Module, Function}) ->
+            Line = iolist_to_binary([Module, ":", Function, "(missing_namespace)"]),
+            ?assertEqual(
+                [{"fixture.erl", 1, missing_namespace}],
+                parse_line("fixture.erl", 1, Line)
+            ),
+            Variable = iolist_to_binary([Module, ":", Function, "(Kind)"]),
+            ?assertEqual([], parse_line("fixture.erl", 1, Variable))
+        end,
+        [
+            {"agent_grant_pg", "next_id"},
+            {"agent_run_pg", "next_id"},
+            {"eb_tsid", "new_id"},
+            {"cs_tsid", "new_id"}
+        ]
+    ).
+
 %% @private 扫描 src/**/*.erl 中的 elib_tsid:generate() （无参）调用
 scan_argumentless_generate() ->
     Files = find_erl_files(?SRC_DIR),
     lists:append([
         begin
             {ok, Bin} = file:read_file(F),
-            case binary:match(Bin, <<"elib_tsid:generate()">>) of
+            case argumentless_match(Bin) of
                 nomatch -> [];
-                {Pos, _} -> [{F, line_of(Bin, Pos)}]
+                {match, [{Pos, _}]} -> [{F, line_of(Bin, Pos)}]
             end
         end
      || F <- Files
@@ -70,8 +111,8 @@ find_erl_files(Dir) ->
              || E <- Entries,
                 E =/= ".erlang.mk"
             ]);
-        {error, _} ->
-            []
+        {error, Reason} ->
+            error({source_inventory_unreadable, Dir, Reason})
     end.
 
 expand(Dir, Entry) ->
@@ -94,15 +135,17 @@ scan_file(Path) ->
                 parse_line(Path, N, L)
              || {N, L} <- lists:zip(lists:seq(1, length(Lines)), Lines)
             ]);
-        {error, _} ->
-            []
+        {error, Reason} ->
+            error({source_file_unreadable, Path, Reason})
     end.
 
 %% 匹配 elib_tsid:generate(name) / generate_n(name, N)，以及多行调用的首行
 parse_line(Path, N, Line) ->
-    Re = "elib_tsid:generate(_n)?\\((\\w+)",
+    Re =
+        "(?:elib_tsid:generate(?:_n)?|(?:agent_grant_pg|agent_run_pg):next_id|"
+        "(?:eb_tsid|cs_tsid):new_id)\\((\\w+)",
     case re:run(Line, Re, [{capture, all_but_first, list}]) of
-        {match, [_Opt, Name]} ->
+        {match, [Name]} ->
             case is_generator_name(Name) of
                 true -> [{Path, N, list_to_atom(Name)}];
                 false -> []

@@ -178,8 +178,4 @@ find_audit_tx(Conn, OrgId, ResourceId) ->
 %%%===================================================================
 
 next_id(Name) ->
-    case lists:member(Name, elib_tsid:registered()) of
-        true -> ok;
-        false -> elib_tsid:register(Name)
-    end,
     elib_tsid:generate(Name).

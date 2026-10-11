@@ -45,16 +45,12 @@
 -type grant_row() :: map().
 
 %% ===================================================================
-%% ID 生成（elib_tsid 惰性注册；镜像 cs_tsid 口径）
+%% ID 生成（elib_tsid 固定 Namespace；镜像 cs_tsid 口径）
 %% ===================================================================
 
-%% @doc 按资源类型分域生成 TSID；未就绪时惰性注册（不静默兜底）。
+%% @doc 按固定 Namespace 分域生成 TSID；未就绪时拒绝生成。
 -spec next_id(atom()) -> pos_integer().
 next_id(Kind) when is_atom(Kind) ->
-    case lists:member(Kind, elib_tsid:registered()) of
-        true -> ok;
-        false -> elib_tsid:register(Kind)
-    end,
     elib_tsid:generate(Kind).
 
 %% ===================================================================

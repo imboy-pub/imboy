@@ -96,13 +96,9 @@ effective_view() ->
 effective_scope_view() ->
     elib_pg_sql:public_tablename(<<"v_enterprise_effective_application_grant_scope">>).
 
-%% @doc enterprise_application_grant 命名空间 TSID（惰性注册，镜像 agent_grant 口径）。
+%% @doc enterprise_application_grant 命名空间 TSID（固定映射，镜像 agent_grant 口径）。
 -spec next_id() -> pos_integer().
 next_id() ->
-    case lists:member(enterprise_application_grant, elib_tsid:registered()) of
-        true -> ok;
-        false -> elib_tsid:register(enterprise_application_grant)
-    end,
     elib_tsid:generate(enterprise_application_grant).
 
 %% 已锁定应用后按全序锁 Grant 父行；治理降级先 CAS 父行再替换子 scope。

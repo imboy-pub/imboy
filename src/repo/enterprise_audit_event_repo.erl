@@ -85,14 +85,10 @@ list_tx(Conn, OrgId, ResourceType, ResourceId, Opts) when
         {error, Reason} -> {error, Reason}
     end.
 
-%% @doc enterprise_audit_event 命名空间 TSID（惰性注册，口径同
+%% @doc enterprise_audit_event 命名空间 TSID（固定映射，口径同
 %% enterprise_application_repo:next_id/0）。
 -spec next_id() -> pos_integer().
 next_id() ->
-    case lists:member(enterprise_audit_event, elib_tsid:registered()) of
-        true -> ok;
-        false -> elib_tsid:register(enterprise_audit_event)
-    end,
     elib_tsid:generate(enterprise_audit_event).
 
 %% @doc 冻结的 INSERT 语句（供与 eb_pg_audit:sql_statements/0 做机械比对，防止

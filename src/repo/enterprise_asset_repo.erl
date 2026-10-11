@@ -199,15 +199,7 @@ scope_ref(OrgId, AppId) ->
 %%%===================================================================
 
 next_attachment_id() ->
-    ensure_tsid(attachment),
     elib_tsid:generate(attachment).
-
-ensure_tsid(Name) ->
-    case lists:member(Name, elib_tsid:registered()) of
-        true -> ok;
-        false -> elib_tsid:register(Name)
-    end,
-    ok.
 
 safe_basename(FileName) ->
     case unicode:characters_to_binary(filename:basename(FileName)) of

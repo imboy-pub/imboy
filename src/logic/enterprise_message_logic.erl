@@ -563,12 +563,4 @@ push_after_commit_tx(_Conn, _Table, _MsgId) ->
 %%%===================================================================
 
 next_msg_id() ->
-    ensure_tsid(enterprise_message),
     integer_to_binary(elib_tsid:generate(enterprise_message)).
-
-ensure_tsid(Name) ->
-    case lists:member(Name, elib_tsid:registered()) of
-        true -> ok;
-        false -> elib_tsid:register(Name)
-    end,
-    ok.
