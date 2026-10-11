@@ -413,6 +413,50 @@ single_node_startup_reaches_ready_test_() ->
     end).
 
 %% ===================================================================
+%% 有界清理与过载哨兵（集成后回归保护，cd68af2d）
+%% ===================================================================
+
+bounded_sweep_removes_expired_meta_and_rindex_test_() ->
+    ?TEST_WITH_APP(fun() ->
+        %% 回归保护：旧实现的 ets:match('$1') 整行绑定与 [K, V] 列表解构
+        %% 失配，sweep 恒空转；且 rev 淘汰时 rindex 行残留无界增长。
+        NowMs = erlang:system_time(millisecond),
+        Rev = {1, node()},
+        Rows = [
+            %% 过期墓碑（已跨完整写窗）→ rev + rindex 一并淘汰
+            {{rev, f_sweep_tomb}, {Rev, 1, NowMs - 721000, deleted}},
+            {{rindex, f_sweep_tomb}, NowMs - 721000},
+            %% 过期 live（值已随 depcache TTL 消失）→ 淘汰
+            {{rev, f_sweep_exp}, {Rev, 1, NowMs - 1000, live}},
+            {{rindex, f_sweep_exp}, NowMs - 1000},
+            %% 未过期 live → 保留
+            {{rev, f_sweep_live}, {Rev, 1, NowMs + 60000, live}},
+            {{rindex, f_sweep_live}, NowMs}
+        ],
+        ets:insert(imboy_cache_meta, Rows),
+        imboy_cache_sync ! reconcile_tick,
+        pong = gen_server:call(imboy_cache_sync, ping_ok, 5000),
+        ?assertNot(ets:member(imboy_cache_meta, {rev, f_sweep_tomb})),
+        ?assertNot(ets:member(imboy_cache_meta, {rindex, f_sweep_tomb})),
+        ?assertNot(ets:member(imboy_cache_meta, {rev, f_sweep_exp})),
+        ?assertNot(ets:member(imboy_cache_meta, {rindex, f_sweep_exp})),
+        ?assert(ets:member(imboy_cache_meta, {rev, f_sweep_live})),
+        ?assert(ets:member(imboy_cache_meta, {rindex, f_sweep_live})),
+        %% 清理注入行，不污染后续套件
+        ets:delete(imboy_cache_meta, {rev, f_sweep_live}),
+        ets:delete(imboy_cache_meta, {rindex, f_sweep_live}),
+        ok
+    end).
+
+queue_depth_alive_returns_real_length_test_() ->
+    ?TEST_WITH_APP(fun() ->
+        %% sync 存活时 queue_depth 是真实队列长度（非负）；overloaded 为假
+        D = imboy_cache_sync:queue_depth(),
+        ?assert(is_integer(D) andalso D >= 0),
+        ?assertNot(imboy_cache_sync:overloaded())
+    end).
+
+%% ===================================================================
 %% Helpers
 %% ===================================================================
 
