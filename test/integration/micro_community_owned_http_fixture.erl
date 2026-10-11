@@ -261,7 +261,15 @@ with_listener(Conn, Callback, Mode) ->
         micro_community_handler,
         micro_community_join_handler,
         micro_community_content_handler,
-        adm_micro_community_handler
+        adm_micro_community_handler,
+        %% MC21 新候选重跑（2026-10-10）：发现页旅程改走通用频道发现 API
+        %% （/api/v1/channels/{search,discover,featured,trending,categories}），
+        %% fixture listener 须随生产路由演进扩白名单（9 -> 14）。
+        channel_discovery_handler,
+        %% MC22 负例活测（2026-10-10）：prepareOwnedClock 取 sv_ts 预置时间缓存
+        %% （免公网 NTP）需 GET /api/v1/app/features；该 handler 另含
+        %% policy/ice_servers 两条 ApiV1 路由，放行即 +3（14 -> 17）。
+        app_feature_handler
     ],
     Routes = [
         R
@@ -269,7 +277,7 @@ with_listener(Conn, Callback, Mode) ->
         R = {_, Handler, _} <- HostRoutes,
         lists:member(Handler, Wanted)
     ],
-    assert(length(Routes) =:= 9, route_whitelist_mismatch),
+    assert(length(Routes) =:= 17, route_whitelist_mismatch),
     Dispatch = cowboy_router:compile([{'_', Routes ++ admin_read_route() ++ transport_routes(Mode)}]),
     start_listener(Dispatch, Conn, Callback).
 

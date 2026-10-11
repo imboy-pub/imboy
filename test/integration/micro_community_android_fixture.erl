@@ -11,7 +11,11 @@
 -define(CHANNEL, (?BASE + 20)).
 -define(GROUP, (?BASE + 10)).
 -define(MESSAGE, (?BASE + 30)).
-%% Run-scoped private dir override (see owned_http_fixture MC_RUN_PRIVATE_DIR).
+%% Run-scoped private dir override (see owned_http_fixture MC_RUN_PRIVATE_DIR)。
+%% 该目录下的 android-app-runtime.config 其 package 必须与 gzCustomer flavor
+%% 实际 applicationId（pub.imboy.app.gzcustomer）一致，否则 sign_key 键名
+%% （pkg_android_vsn）对不上 App 请求头 pkg，验签恒 902；CONTEXT/STOP 为
+%% 设备侧握手标记，由 runner 写入同一目录。
 -define(PRIVATE, mc_android_private_dir()).
 
 mc_android_private_dir() ->
@@ -74,7 +78,7 @@ private_runtime_config() ->
             solidified_key := Key,
             solidified_key_iv := IV,
             login_rsa_pub_key := RSA,
-            package := <<"pub.imboy.app.mc083109">>,
+            package := <<"pub.imboy.app.gzcustomer">>,
             sign_key_version := <<"1">>
         } = Config
     ]} = file:consult(?CONFIG),
