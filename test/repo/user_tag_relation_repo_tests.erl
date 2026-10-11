@@ -531,12 +531,13 @@ flush_subtitle_test_() ->
     ?TEST_WITH_APP(fun() ->
         meck:new(imboy_cache, [no_link, passthrough]),
 
-        meck:expect(imboy_cache, flush, fun(_Key) -> ok end),
+        meck:expect(imboy_cache, invalidate, fun(_Key) -> ok end),
 
         try
             Result = user_tag_relation_repo:flush_subtitle(?TEST_TAG_ID),
             ?assertEqual(ok, Result),
-            ?assert(meck:called(imboy_cache, flush, 1))
+            %% W5-01：失效入口迁移后断言 invalidate（跨节点扇出语义）
+            ?assert(meck:called(imboy_cache, invalidate, 1))
         after
             meck:unload(imboy_cache)
         end
