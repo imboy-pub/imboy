@@ -113,24 +113,35 @@
 |------|-----|
 | 时间跨度 | 139.5 年（纪元 2025-01-01） |
 | 节点数 | 1024（DC×Node 任意分配） |
-| 每节点每毫秒 | 2048 个 ID |
+| 每节点每毫秒每 Namespace | 2048 个 ID（硬上限，无借支） |
 | 默认 dc_bits | 3（8 DC × 128 节点） |
+| Namespace | 144 canonical + 3 别名（`namespaces/0` 为准） |
 
-**关键 API**：
+**关键 API**（V10：多 Namespace 独立游标、无持久化）：
 
 ```erlang
-elib_tsid:init(#{dc_id => 1, node_id => 1, dc_bits => 3}).  % 启动时调用一次
-Id  = elib_tsid:generate().           % 生成单个
-Ids = elib_tsid:generate_n(100).      % 批量生成
+%% imboy_sup 启动时由 elib_tsid:init/1 发布 runtime（非持久化，纯内存）
+Id  = elib_tsid:generate(user).        % 生产：显式 namespace（必填）
+Ids = elib_tsid:generate_n(user, 100). % 批量（生产零调用，保留）
 #{timestamp := Ts} = elib_tsid:parse(Id).
-Enc = elib_tsid:to_base62(Id).        % URL/日志场景
+elib_tsid:namespaces().                % canonical 清单（顺序即游标槽位）
+elib_tsid:aliases().                   % 别名 → canonical（group/audit 等）
+elib_tsid:readiness().                 % ready | clock_unsafe | not_initialized
 ```
 
+> `generate/0`（无参）仅供测试/脚手架：`elib_tsid_registration_guard_tests` 扫描
+> `src/` 强制生产代码不得使用。未知名 namespace 一律 typed error，无静默兜底。
+
 **约束**：
-- 跨节点唯一，不保证跨节点严格单调顺序
+- 同 Namespace 内、单次 BEAM 生命周期内严格唯一（含任意时钟回拨/前跳）
+- **跨 Namespace 数值允许重复**：跨域引用必须 `Domain + ID`，禁止裸数值等值比较/全局去重
+- **无持久化**：跨重启仅当时钟未回拨跨重启点时不重复（NTP 回拨/快照恢复/同 NodeId 双实例允许重叠，如实声明，勿写"绝不重复"）
+- **禁止借未来毫秒**：Sequence 耗尽时有界等待真实时间推进（`capacity_wait_timeout_ms`，默认 100ms），超时 typed error
+- 固定 Offset 时钟（monotonic + init 采集 Offset）：与系统钟偏差 > `max_clock_drift_ms` 时 `readiness/0` 翻闸阻断发号；无内置周期探针，暴露窗口 = 外部就绪探测轮询间隔
+- `(dc_id, node_id)` 全集群唯一是**部署层责任**（V10 无互斥锁，代码层不可证）
 - 严格排序业务必须用 `conv_seq` / `room_seq` 等专用字段
 - `dc_bits` 全集群必须统一
-- ID 直接以 integer 返回客户端，不做字符串转换
+- ID 直接以 integer 返回客户端，不做字符串转换（客户端以 decimal string 承载 64-bit 精度）
 
 ---
 

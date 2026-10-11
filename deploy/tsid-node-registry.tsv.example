@@ -1,0 +1,23 @@
+# TSID V10 全集群节点登记表（C-1）
+# ---------------------------------------------------------------
+# 为什么需要这张表：
+#   V10 取消了 durable fence 与 lifetime lock（无持久化、无跨实例互斥）。
+#   因此 (dc_id, node_id) 组合在全集群唯一，是 ID 不碰撞的**唯一**前提，
+#   且代码层无法自证——只能由部署清单登记 + 人工核对。
+#   同 (dc_id, node_id) 两个实例同时发号 = 同 CombinedNode 双写 = ID 重叠。
+#
+# 用法：
+#   复制本文件为 deploy/tsid-node-registry.tsv（该文件不入库、按环境维护），
+#   每个集群成员占一行，然后运行：
+#       bash deploy/check_tsid_node_registry.sh deploy/tsid-node-registry.tsv 1 1
+#   末两个参数 = 当前节点的 dc_id / node_id（取自 IMBOY_TSID_DC_ID / _NODE_ID）。
+#   校验：组合唯一性 + 取值范围 + 当前节点在册。
+#
+# 格式：TSV，字段以 <TAB> 分隔；# 开头为注释；空行忽略
+#   host	dc_id	node_id
+#
+imboy-01	1	1
+imboy-02	1	2
+imboy-03	1	3
+# 多 DC 示例（dc_bits 全集群必须统一，默认 3 → dc_id ∈ [0,7]、node_id ∈ [0,127]）：
+# imboy-dc2-01	2	1
