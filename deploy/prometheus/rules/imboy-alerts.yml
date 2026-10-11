@@ -19,6 +19,7 @@
 #  16. 红包过期 job 心跳与失败 / Red packet expiry job heartbeat & errors (W3-A04)
 #  17. L4 SNI listen 漂移巡检 / L4 SNI listen-drift patrol (Task 2)
 #  18. TSID 就绪闸 / TSID readiness gate (Audit A3/C-2)
+#  19. 缓存同步（V2 协议）异常 / Cache sync (V2 protocol) anomalies (AC-028)
 #
 # 接入告警渠道 / Alert routing:
 #   在 Prometheus alertmanager.yml 中配置 receiver（钉钉 / Slack / PagerDuty 等）
@@ -1314,3 +1315,64 @@ groups:
             2. 检索日志 clock_unsafe / elib_tsid_clock_unsafe 的突增时段
             3. 核对系统时钟（timedatectl / NTP）；容器环境先查宿主机是否休眠过
             4. 偏差持续不收敛 → 滚动重启 imboy_backend（重启即重新采集 Offset）
+
+  # ============================================================
+  # 19. 缓存同步（V2 协议）异常 / Cache sync (V2 protocol) anomalies (AC-028)
+  # ============================================================
+  # 指标来源 / Source: /metrics (text/plain) 暴露的 imboy_cache_sync 计数器：
+  #   publish_total / receive_total / reject_total / reconcile_total / unknown_total
+  # （全局唯一名，见 src/lib/imboy_cache_sync.erl；配套面板
+  #   deploy/grafana/dashboards/imboy-cache-sync.json）
+  # 正常流量计数器（publish/receive/reconcile）只做面板不做告警——
+  # 低流量集群本就长期静默，对它们设速率告警只会产生噪声。
+  - name: imboy.cache_sync
+    interval: 60s
+    rules:
+
+      # 跨节点失效被拒（栅栏代际/版本冲突/缺口检测）→ 失效未应用，
+      # 相关缓存可能残留旧值 → WARNING
+      - alert: ImBoyCacheSyncRejected
+        expr: increase(reject_total{job="imboy_backend"}[10m]) > 0
+        for: 0m
+        labels:
+          severity: warning
+          team: backend
+        annotations:
+          summary: "缓存同步拒绝事件增长 / Cache sync invalidations rejected"
+          description: >
+            节点 {{ $labels.instance }} 最近 10 分钟出现 {{ $value }} 次跨节点
+            缓存失效被拒（栅栏代际 / 版本冲突 / origin_seq 缺口检测）。失效未被
+            应用意味着相关缓存可能残留旧值，集群缓存一致性存在发散风险。
+            Cache sync invalidations were rejected on {{ $labels.instance }} in
+            the last 10 minutes; affected caches may hold stale values.
+          runbook: >
+            1. 看面板 IMBoy · Cache Sync →「拒绝 / 未知消息」定位节点与时间窗
+            2. 核对该节点 fenced generation 是否异常推进
+              （imboy_cache_sync 状态查询 / 日志 fence 关键字）
+            3. 核对集群节点版本与 cache_sync_protocol 配置是否一致
+               （混合期 reject 属预期则相应节点调低通知级别）
+
+      # 收到无法识别的缓存同步消息并被静默丢弃（协议漂移信号）→ WARNING
+      # 19.5 双端白名单 fail-closed：unknown 增长 = 有事件不在白名单内，
+      # 通常是集群混入未升级/已回退版本的节点，或同步协议被误改。
+      - alert: ImBoyCacheSyncUnknownEvents
+        expr: increase(unknown_total{job="imboy_backend"}[10m]) > 0
+        for: 0m
+        labels:
+          severity: warning
+          team: backend
+        annotations:
+          summary: "缓存同步未知消息被丢弃 / Unknown cache sync events dropped"
+          description: >
+            节点 {{ $labels.instance }} 最近 10 分钟收到 {{ $value }} 条无法识别的
+            缓存同步消息并已静默丢弃（fail-closed）。通常是集群混入未升级/
+            已回退版本节点（旧节点丢弃 v2 信封不计数，新节点丢弃未知格式会计数）
+            或同步协议被误改，跨节点失效可能未按预期传播。
+            Unknown cache-sync messages were silently dropped on
+            {{ $labels.instance }}; usually a mixed-version cluster or
+            protocol drift.
+          runbook: >
+            1. 核对集群所有节点的 imboy 版本（rolling 升级是否完成）
+            2. 核对各节点 application env cache_sync_protocol 一致性
+               （v2 模式下同时广播 legacy {flush,Key}，见 19.8 能力交集）
+            3. 审查 19.5 事件白名单最近是否有变更（git log src/lib/imboy_cache_sync.erl）
