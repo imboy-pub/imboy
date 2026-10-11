@@ -14,6 +14,7 @@
 -export([main/1]).
 -export([
     init_on_peer/0,
+    init_on_peer_small/0,
     read_rev/1,
     read_expires/1,
     read_rev_full/1,
@@ -86,6 +87,9 @@ scenario_list(A, B, C) ->
         end},
         {"F4 bounded sweep removes expired meta incl. rindex", fun() ->
             f4_bounded_sweep(A, B, C)
+        end},
+        {"F5 early eviction: survivors-only snapshot, no resurrection", fun() ->
+            f5_early_evict_survivors_only(A, B, C)
         end}
     ].
 
@@ -285,7 +289,7 @@ f1_peer_dies_during_recovery(A, B, C) ->
     ok = rpc:call(C, ?MODULE, restart_sync, [], ?RPC_MS),
     %% C 已进入恢复窗口，立即下线 A 的 sync（其 report/done 是否已发生均收敛）
     ok = rpc:call(A, ?MODULE, peer_sync_down, [], ?RPC_MS),
-    ready = wait_status(C, 120),
+    ready = recover_ready(C, heal_restart(C), 2),
     {ok, from_b} = converge_get(C, KeyB, {ok, from_b}),
     %% sync 不可用时 put 按 overloaded fail-closed 拒绝（不崩业务调用方）
     case rpc:call(A, imboy_cache, put, [{cache_v2_test_rep, d_f1dead}, x, 60, replicate], 5000) of
@@ -297,17 +301,25 @@ f1_peer_dies_during_recovery(A, B, C) ->
         Other ->
             erlang:error({f1_put_not_rejected, Other, rpc:call(A, ?MODULE, dump_debug, [], 5000)})
     end,
-    %% A 回归（sync+depcache 全量重启），集群互通恢复
-    ok = rpc:call(A, ?MODULE, restart_sync, [], ?RPC_MS),
-    ready = wait_status(A, 120),
-    KeyA2 = {cache_v2_test_rep, d_f1a2},
-    ok = rpc:call(A, imboy_cache, put, [KeyA2, back, 120, replicate], ?RPC_MS),
-    {ok, back} = converge_get(C, KeyA2, {ok, back}),
+    %% A 回归（sync+depcache 全量重启），集群互通恢复。
+    %% after 兜底：场景中途失败也必恢复 A，不把后续场景拖进 fail-closed。
+    try
+        ready = recover_ready(A, heal_restart(A), 2),
+        KeyA2 = {cache_v2_test_rep, d_f1a2},
+        ok = rpc:call(A, imboy_cache, put, [KeyA2, back, 120, replicate], ?RPC_MS),
+        {ok, back} = converge_get(C, KeyA2, {ok, back})
+    after
+        catch rpc:call(A, ?MODULE, restart_sync, [], ?RPC_MS)
+    end,
     ok.
 
 %% F2：恢复窗口内的并发 delta 写——快照旧值不得覆盖 delta 新值（版本比较），
 %% delta 新键不丢失（9.3 融合语义）。
 f2_delta_during_recovery(A, B, C) ->
+    %% F1 的 after 兜底重启可能让 A 仍在收敛：写方必须自身 ready 才能承载
+    %% “恢复窗口内的并发 delta”语义
+    ready = recover_ready(A, heal_restart(A), 2),
+    ready = recover_ready(B, heal_restart(B), 2),
     K1 = {cache_v2_test_rep, d_f2a},
     ok = rpc:call(A, imboy_cache, put, [K1, v1, 300, replicate], ?RPC_MS),
     {ok, v1} = converge_get(C, K1, {ok, v1}),
@@ -316,7 +328,7 @@ f2_delta_during_recovery(A, B, C) ->
     ok = rpc:call(A, imboy_cache, put, [K1, v2, 300, replicate], ?RPC_MS),
     K2 = {cache_v2_test_rep, d_f2b},
     ok = rpc:call(B, imboy_cache, put, [K2, fresh, 300, replicate], ?RPC_MS),
-    ready = wait_status(C, 120),
+    ready = recover_ready(C, heal_restart(C), 2),
     {ok, v2} = converge_get(C, K1, {ok, v2}),
     {ok, fresh} = converge_get(C, K2, {ok, fresh}),
     ok.
@@ -332,7 +344,7 @@ f3_hard_crash_incarnation(A, B, C) ->
     catch rpc:call(C, erlang, halt, [0], 3000),
     timer:sleep(300),
     C2 = restart_c_hard(A, B),
-    ready = wait_status(C2, 120),
+    ready = recover_ready(C2, heal_restart(C2), 2),
     {ok, f3_v} = converge_get(C2, Key, {ok, f3_v}),
     Key2 = {cache_v2_test_rep, d_f3b},
     ok = rpc:call(C2, imboy_cache, put, [Key2, f3_new, 120, replicate], ?RPC_MS),
@@ -365,6 +377,92 @@ f4_bounded_sweep(A, B, C) ->
     gone = rpc:call(C, ?MODULE, meta_probe, [kexp], 5000),
     kept = rpc:call(C, ?MODULE, meta_probe, [klive], 5000),
     ok.
+
+%% F5：提前逐出（W4-08 功能性回归）。C 以小容量 depcache（1MB）经快照恢复
+%% 后被 depcache 随机逐出裁剪为存活子集；随后 B 仅从 C 恢复——
+%% send_snapshot 的 valid_live_entry 必须跳过已被逐出（depcache 无值）的
+%% 条目：B 的内容与 C 的存活子集完全一致，被逐出的键不得复活。
+f5_early_evict_survivors_only(A, B, C) ->
+    %% 1) A 灌入 400 行 × 2000 元素列表（ets:info(memory) 按 cons cell 计 words，
+    %% 每行约 4000 words ≈ 32KB；合计约 12MB ≫ C 的小容量 1MB——refc binary
+    %% 不计入 ets 内存，此前 4KB binary 版本永不触发逐出）。值经 V2 大小校验
+    %% （external ≈ 6KB < 32KB 上限）。
+    Keys = [{cache_v2_test_rep, {f5, I}} || I <- lists:seq(1, 400)],
+    Val = lists:seq(1, 2000),
+    lists:foreach(
+        fun(K) ->
+            ok = rpc:call(A, imboy_cache, put, [K, Val, 300, replicate], ?RPC_MS)
+        end,
+        Keys
+    ),
+    {ok, Val} = converge_get(B, lists:last(Keys), {ok, Val}),
+    %% 2) C 换小容量 depcache 重启 → 快照回填后被随机逐出裁剪
+    ok = rpc:call(C, ?MODULE, peer_sync_down, [], ?RPC_MS),
+    ok = rpc:call(C, ?MODULE, init_on_peer_small, [], ?RPC_MS),
+    HealCSmall =
+        fun() ->
+            ok = rpc:call(C, ?MODULE, peer_sync_down, [], ?RPC_MS),
+            ok = rpc:call(C, ?MODULE, init_on_peer_small, [], ?RPC_MS)
+        end,
+    ready = recover_ready(C, HealCSmall, 2),
+    Retained = count_retained(C, Keys, Val, 200),
+    true = Retained < length(Keys) orelse erlang:error({no_eviction, Retained}),
+    %% 3) A 下线，B 仅从 C（存活子集持有者）恢复
+    ok = rpc:call(A, ?MODULE, peer_sync_down, [], ?RPC_MS),
+    ok = rpc:call(B, ?MODULE, restart_sync, [], ?RPC_MS),
+    ready = recover_ready(B, heal_restart(B), 2),
+    %% 逐键比对：B 的存在性 == C 的存在性（被逐出键不复活、存活键不丢失）
+    lists:foreach(
+        fun(K) ->
+            VC = rpc:call(C, imboy_cache, get, [K], 5000),
+            VB = rpc:call(B, imboy_cache, get, [K], 5000),
+            case {VC =/= undefined, VB =/= undefined} of
+                {Same, Same} when Same =:= true orelse Same =:= false -> ok;
+                _ -> erlang:error({survivor_mismatch, K, VC, VB})
+            end
+        end,
+        Keys
+    ),
+    %% 4) A 回归，集群互通恢复（after 兜底同 F1）
+    try
+        ready = recover_ready(A, heal_restart(A), 2),
+        KeyNew = {cache_v2_test_rep, {f5, new}},
+        ok = rpc:call(A, imboy_cache, put, [KeyNew, fresh, 120, replicate], ?RPC_MS),
+        {ok, fresh} = converge_get(C, KeyNew, {ok, fresh})
+    after
+        catch rpc:call(A, ?MODULE, restart_sync, [], ?RPC_MS)
+    end,
+    ok.
+
+%% 恢复收敛（含自愈）：syn 视图传播滞后可饿死整个版本应答轮（peer 视图中
+%% 尚无恢复节点的新 pid → 不应答 → 有界重试耗尽 → DEGRADED，fail-closed）。
+%% 产品重试预算按计划冻结不改；测试与运维路径对齐——超时未 ready 则节点级
+%% 重启 sync（视图此时已热）再收敛，仍失败则带状态转储报错。
+recover_ready(Node, _Heal, 0) ->
+    erlang:error({recovery_timeout, Node, rpc:call(Node, ?MODULE, dump_debug, [], 5000)});
+recover_ready(Node, Heal, N) ->
+    case wait_status(Node, 400) of
+        ready ->
+            ready;
+        _ ->
+            ok = Heal(),
+            recover_ready(Node, Heal, N - 1)
+    end.
+
+heal_restart(Node) ->
+    fun() -> ok = rpc:call(Node, ?MODULE, restart_sync, [], ?RPC_MS) end.
+
+count_retained(_C, _Keys, _Val, 0) ->
+    erlang:error(eviction_settle_timeout);
+count_retained(C, Keys, Val, Tries) ->
+    N = length([ok || K <- Keys, rpc:call(C, imboy_cache, get, [K], 5000) =:= {ok, Val}]),
+    case N < length(Keys) of
+        true ->
+            N;
+        false ->
+            timer:sleep(250),
+            count_retained(C, Keys, Val, Tries - 1)
+    end.
 
 %% ===================================================================
 %% Cluster 管理（结构经独立实验验证）
@@ -430,9 +528,9 @@ start_cluster() ->
     ok = rpc:call(A, ?MODULE, init_on_peer, [], ?RPC_MS),
     ok = rpc:call(B, ?MODULE, init_on_peer, [], ?RPC_MS),
     ok = rpc:call(C, ?MODULE, init_on_peer, [], ?RPC_MS),
-    ready = wait_status(A, 150),
-    ready = wait_status(B, 150),
-    ready = wait_status(C, 150),
+    ready = wait_status(A, 400),
+    ready = wait_status(B, 400),
+    ready = wait_status(C, 400),
     {ok, [PA, PB, PC], {A, B, C}}.
 
 %% F3：C 硬崩后的同名新化身（同一 args/代码树，新 BootId）
@@ -511,6 +609,38 @@ init_on_peer() ->
     true = unlink(Dp),
     {ok, M} = elib_metric:start_link(),
     true = unlink(M),
+    {ok, S} = imboy_cache_sync:start_link(),
+    true = unlink(S),
+    ok = wait_local_sync(100).
+
+%% F5：小容量 depcache 变体（1MB，触发 depcache 随机逐出）。供节点已运行
+%% 过一轮 init_on_peer 后复用（crypto/syn/elib_metric 仍在，需幂等）。
+init_on_peer_small() ->
+    %% C 已加载过 imboy（首次 init_on_peer）：already_loaded 幂等放行
+    ok =
+        case application:load(imboy) of
+            ok -> ok;
+            {error, {already_loaded, imboy}} -> ok
+        end,
+    application:set_env(
+        imboy,
+        cache_registry_overrides,
+        #{cache_v2_test_rep => {replicate, false}}
+    ),
+    application:set_env(imboy, cache_replication, #{whitelist => [cache_v2_test_rep]}),
+    application:set_env(imboy, cache_fenced_namespaces, [cache_v2_test]),
+    {ok, _} = application:ensure_all_started(crypto),
+    {ok, _} = application:ensure_all_started(syn),
+    ok = syn:add_node_to_scopes([imboy_cache]),
+    {ok, Dp} = depcache:start_link(imboy_cache, #{memory_max => 1}),
+    true = unlink(Dp),
+    case whereis(elib_metric) of
+        undefined ->
+            {ok, M} = elib_metric:start_link(),
+            true = unlink(M);
+        _ ->
+            already_running
+    end,
     {ok, S} = imboy_cache_sync:start_link(),
     true = unlink(S),
     ok = wait_local_sync(100).
