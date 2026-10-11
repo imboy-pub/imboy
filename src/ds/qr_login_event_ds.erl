@@ -63,13 +63,17 @@ topic_for(_) ->
 %%   - waiting/scanned/expired/cancelled → 单 status 字段
 %%   - confirmed → status + token 两字段
 -spec event(
-    Status :: waiting | scanned | confirmed | cancelled | expired,
+    Status :: waiting | scanned | confirmed | confirmed_ready | cancelled | expired,
     Token :: binary() | undefined
 ) -> map().
 event(confirmed, Token) when is_binary(Token), byte_size(Token) > 0 ->
     #{<<"status">> => <<"confirmed">>, <<"token">> => Token};
 event(confirmed, _) ->
     erlang:error(protocol_violation);
+%% G-QR（收口 C08）：PG 权威 confirm 的 SSE 信号——不含 token；
+%% SSE 连接端服务端代领（claim_login_token）后以 confirmed 形状推送。
+event(confirmed_ready, _) ->
+    #{<<"status">> => <<"confirmed_ready">>};
 event(waiting, _) ->
     #{<<"status">> => <<"waiting">>};
 event(scanned, _) ->

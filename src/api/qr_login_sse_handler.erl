@@ -93,17 +93,49 @@ info(qr_sse_heartbeat, Req0, State) ->
     NewTimer = erlang:send_after(?HEARTBEAT_INTERVAL_MS, self(), qr_sse_heartbeat),
     {ok, Req0, State#{heartbeat_timer => NewTimer}};
 info(Event, Req0, State) when is_map(Event) ->
-    Json = jsone:encode(Event, [native_utf8]),
-    Chunk = <<"data: ", Json/binary, "\n\n">>,
-    ok = cowboy_req:stream_body(Chunk, nofin, Req0),
     case maps:get(<<"status">>, Event, undefined) of
-        <<"confirmed">> -> {stop, Req0, State};
-        <<"expired">> -> {stop, Req0, State};
-        _ -> {ok, Req0, State}
+        <<"confirmed_ready">> ->
+            %% G-QR（收口 C08）：PG 权威信号不含 token——本连接服务端原子
+            %% claim（与 status 轮询同一 UPDATE...RETURNING 消费路径）；
+            %% 恰好一个订阅连接/轮询者拿到 token，其余得到明确失败并关连接
+            %% （客户端 EventSource onerror → 降级轮询 → ALREADY_USED 兼容响应）。
+            SessionToken = maps:get(session_token, State, undefined),
+            case qr_login_session_repo:claim_login_token(SessionToken) of
+                {ok, #{login_token := Token}} ->
+                    push_event(Req0, #{<<"status">> => <<"confirmed">>, <<"token">> => Token}),
+                    {stop, Req0, State};
+                {error, not_claimable} ->
+                    %% token 已被其他消费者领取（status 轮询/另一连接）：
+                    %% 无法无损重试——关闭连接，客户端走轮询兜底（G-QR 语义）
+                    _ = cowboy_req:stream_body(<<": claimed_elsewhere\n\n">>, nofin, Req0),
+                    {stop, Req0, State}
+            end;
+        <<"confirmed">> ->
+            %% cache 权威路径：事件自带 token（原行为保持）
+            push_map(Req0, Event),
+            {stop, Req0, State};
+        <<"expired">> ->
+            push_map(Req0, Event),
+            {stop, Req0, State};
+        _ ->
+            push_map(Req0, Event),
+            {ok, Req0, State}
     end;
 info(_Other, Req, State) ->
     %% 非 map 消息（system / tcp / 其他）容错：保持 loop，不中断
     {ok, Req, State}.
+
+%% @doc 推送事件 map 为 SSE data 帧。
+-spec push_map(cowboy_req:req(), map()) -> ok.
+push_map(Req0, Event) ->
+    Json = jsone:encode(Event, [native_utf8]),
+    Chunk = <<"data: ", Json/binary, "\n\n">>,
+    ok = cowboy_req:stream_body(Chunk, nofin, Req0).
+
+%% @doc 推送事件（同 push_map；显式 map 参数版，供 claim 成功路径）。
+-spec push_event(cowboy_req:req(), map()) -> ok.
+push_event(Req0, Event) ->
+    push_map(Req0, Event).
 
 %% @doc 连接关闭时 syn:leave 释放订阅，防僵尸 group 成员。
 %%
