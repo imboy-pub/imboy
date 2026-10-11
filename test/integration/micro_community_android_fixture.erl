@@ -20,9 +20,9 @@ mc_android_private_dir() ->
         false -> Default;
         D -> D
     end.
--define(CONFIG, ?PRIVATE "/android-app-runtime.config").
--define(CONTEXT, ?PRIVATE "/android-context-r1.json").
--define(STOP, ?PRIVATE "/android-stop-r1").
+-define(CONFIG, ?PRIVATE ++ "/android-app-runtime.config").
+-define(CONTEXT, ?PRIVATE ++ "/android-context-r1.json").
+-define(STOP, ?PRIVATE ++ "/android-stop-r1").
 -define(BOOT, mc_owned_android_bootstrap).
 
 %% Root serial lease only; install/device interaction is outside this runner.
