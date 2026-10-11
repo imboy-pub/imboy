@@ -22,6 +22,16 @@
 #     之后、最后一个 " done in " 之前的内容，PLT 构建段的噪音不入基线。
 # =============================================================================
 set -euo pipefail
+export LC_ALL=C
+
+# Versioned, complete records for QA; human NEW/GONE previews remain capped.
+result_error() {
+    local status=PARSE_ERROR
+    if grep -qE "Could not resolve host|Connection reset by peer|No space left on device|has received a shutdown signal|timed out on the runner|Failed to setup toolchain|error: failed to fetch|fatal: unable to access" "$1"; then
+        status=INFRA_FAILURE
+    fi
+    printf "DIALYZER_RESULT\t1\tERROR\t%s\n" "$status"
+}
 
 BASELINE_FILE="${DIALYZER_BASELINE:-dialyzer.baseline}"
 
@@ -131,6 +141,23 @@ main() {
     last_done_in="$(grep -nE '^[[:space:]]*done in ' "$log_file" | tail -1 | cut -d: -f1 || true)"
     if [[ -z "$last_proceeding" || -z "$last_done_in" || "$last_done_in" -lt "$last_proceeding" ]]; then
         echo "DIALYZER BASELINE GATE: RED —— dialyzer 执行未完成（log 缺 'Proceeding with analysis' 分析段或缺 'done in' 终止行），判定为截断/执行失败，不可与基线比对（与新增告警的 ratchet RED 分离）。" >&2
+        result_error "$log_file"
+        exit 3
+    fi
+
+    # Fail closed on changed warning headers / multiple analyses, not an empty ratchet.
+    if ! awk '
+      /Proceeding with analysis\.\.\./ { starts++; active=1; next }
+      active && /^[[:space:]]*done in / { active=0; next }
+      !active || /^[[:space:]]*$/ { next }
+      /^[A-Za-z0-9_.\/-]+\.erl:[0-9]+(:[0-9]+)?:[[:space:]]*[^[:space:]]/ { context=1; next }
+      /^Unknown (functions|types):$/ { context=1; next }
+      context && /^[[:space:]]/ { next }
+      { bad=1 }
+      END { exit (starts != 1 || active || bad) }
+    ' "$log_file"; then
+        echo "ERROR: unsupported Dialyzer analysis format" >&2
+        printf 'DIALYZER_RESULT\t1\tERROR\tPARSE_ERROR\n'
         exit 3
     fi
 
@@ -158,12 +185,18 @@ main() {
         rm -f "$current"; exit 2
     fi
     # 过滤基线中的注释行
-    grep -v '^#' "$BASELINE_FILE" | LC_ALL=C sort -u > "${BASELINE_FILE}.current_cmp" 2>/dev/null || true
-    local baseline_cmp="${BASELINE_FILE}.current_cmp"
+    grep -v '^#' "$BASELINE_FILE" | LC_ALL=C sort -u > "${current}.baseline" 2>/dev/null || true
+    local baseline_cmp="${current}.baseline"
 
     local new_cnt removed_cnt
     new_cnt="$(comm -23 "$current" "$baseline_cmp" | wc -l | tr -d ' ')"
     removed_cnt="$(comm -13 "$current" "$baseline_cmp" | wc -l | tr -d ' ')"
+
+    printf 'DIALYZER_RESULT\t1\tBEGIN\n'
+    comm -23 "$current" "$baseline_cmp" | sed $'s/^/DIALYZER_RESULT\t1\tNEW\t/'
+    comm -12 "$current" "$baseline_cmp" | sed $'s/^/DIALYZER_RESULT\t1\tKNOWN\t/'
+    comm -13 "$current" "$baseline_cmp" | sed $'s/^/DIALYZER_RESULT\t1\tFIXED\t/'
+    printf 'DIALYZER_RESULT\t1\tEND\t%s\t%s\t%s\n' "$new_cnt" "$((n_cur-new_cnt))" "$removed_cnt"
 
     local rc=0
     if (( new_cnt > 0 )); then
@@ -181,7 +214,7 @@ main() {
     if (( rc == 0 )); then
         echo "DIALYZER BASELINE GATE: GREEN —— 告警 $n_cur 条，全部在基线内，无新增。"
     fi
-    rm -f "$current" "${BASELINE_FILE}.current_cmp"
+    rm -f "$current" "${current}.baseline"
     exit "$rc"
 }
 

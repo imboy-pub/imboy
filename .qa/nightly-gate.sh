@@ -33,7 +33,15 @@ shift 3
 run_gate() {  # run_gate <logfile> <cmd...>；退出码 = gate 命令退出码（pipefail 保护）
   local logfile="$1"; shift
   local rc=0
-  "$@" 2>&1 | tee "$logfile" || rc=${PIPESTATUS[0]}
+  [ "$GATE" != dialyze ] || rm -f dialyze-last.log "${logfile}.raw"
+  local statuses
+  "$@" 2>&1 | tee "$logfile"
+  statuses=("${PIPESTATUS[@]}")
+  rc=${statuses[0]}
+  if [ "${statuses[1]}" -ne 0 ]; then return 3; fi
+  if [ "$GATE" = dialyze ] && [ -f dialyze-last.log ]; then
+    cp dialyze-last.log "${logfile}.raw" || return 3
+  fi
   return "$rc"
 }
 
@@ -75,11 +83,23 @@ run_gate "$RETRY_LOG" "$@"
 rc2=$?
 
 if [ "$rc2" -eq 0 ]; then
-  echo "== nightly-gate: retry 通过 -> 首跑失败全部计 FLAKY（不阻断，单独计数）"
-  capture_classify "$LOGFILE" --flaky-passed
+  echo "== nightly-gate: retry rc=0 -> 校验结果后分类首跑失败"
+  if [ "$GATE" = dialyze ]; then
+    # rc=0 alone is insufficient: validate retry frame before declaring flaky.
+    retry_check="$("$CLASSIFY" "$GATE" "$RETRY_LOG" --gate-rc 0 2>&1)"
+    retry_class_rc=$?
+    if [ "$retry_class_rc" -ne 0 ] || ! printf '%s\n' "$retry_check" | grep -qE 'VERDICT=(PASS|RATCHET)$'; then
+      capture_classify "$RETRY_LOG" --gate-rc 0
+      exit 3
+    fi
+  fi
+  capture_classify "$LOGFILE" --gate-rc "$rc1" --flaky-passed
   exit $?
 fi
 
 echo "== nightly-gate: retry 仍失败 (rc=${rc2}) -> 用 retry 日志做 NEW/KNOWN/FIXED 分类"
 capture_classify "$RETRY_LOG" --gate-rc "$rc2"
-exit $?
+class_rc=$?
+# An incomplete Dialyzer run remains red even when correctly attributed to infra.
+if [ "$GATE" = dialyze ] && [ "$class_rc" -eq 0 ]; then exit "$rc2"; fi
+exit "$class_rc"
