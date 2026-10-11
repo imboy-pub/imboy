@@ -232,11 +232,18 @@ setup_all() ->
     {ok, _} = application:ensure_all_started(cowboy),
     {ok, _} = application:ensure_all_started(ranch),
     Dispatch = cowboy_router:compile(imboy_router:get_routes()),
-    {ok, _} = cowboy:start_clear(
-        ?LISTENER,
-        [{port, 0}],
-        #{env => #{dispatch => Dispatch}, middlewares => ?MIDDLEWARES}
-    ),
+    %% 全量顺序下前序 http-check 模块可能已留下同名 listener（teardown 缺失或
+    %% 复用场景）：already_started 时复用现有 listener，路由同候选等价。
+    case
+        cowboy:start_clear(
+            ?LISTENER,
+            [{port, 0}],
+            #{env => #{dispatch => Dispatch}, middlewares => ?MIDDLEWARES}
+        )
+    of
+        {ok, _} -> ok;
+        {error, {already_started, _}} -> ok
+    end,
     Port = ranch:get_port(?LISTENER),
     State#{
         conn => C,
