@@ -155,7 +155,18 @@ capture_insert() ->
         persistent_term:put({?MODULE, insert_data}, Data),
         {<<"INSERT INTO t DEFAULT VALUES">>, []}
     end),
-    meck:expect(elib_pg, query, fun(_Sql, _Params) -> {ok, 1} end).
+    meck:expect(elib_pg, query, fun(_Sql, _Params) -> {ok, 1} end),
+    %% C2C staging now allocates its sequence in the same transaction.
+    meck:expect(elib_pg, with_tx, fun(Fun) -> Fun(sender_did_test_connection) end),
+    meck:expect(elib_pg, query, fun
+        (sender_did_test_connection, <<"SELECT seq ", _/binary>>, [_Key]) ->
+            {ok, [#{<<"seq">> => 0}]};
+        (sender_did_test_connection, <<"SELECT pg_advisory_xact_lock", _/binary>>, [<<"m-1">>]) ->
+            {ok, []};
+        (sender_did_test_connection, <<"SELECT from_id, to_id, conv_seq", _/binary>>, [<<"m-1">>]) ->
+            {ok, []}
+    end),
+    meck:expect(elib_pg, execute, fun(sender_did_test_connection, _Sql, _Params) -> {ok, 1} end).
 
 release_insert() ->
     persistent_term:erase({?MODULE, insert_data}),
@@ -167,21 +178,31 @@ release_insert() ->
 stage_persists_sender_did_test() ->
     capture_insert(),
     try
-        _ = msg_store_repo:stage(
-            <<"c2c">>,
-            <<"m-1">>,
-            <<"text">>,
-            <<"message">>,
-            #{<<"meta_version">> => 3},
-            <<>>,
-            100,
-            200,
-            <<"2026-07-28T00:00:00+08:00">>,
-            <<"2026-07-28T00:00:00+08:00">>,
-            ?DID
+        ?assertEqual(
+            {ok, 4242},
+            msg_store_repo:stage(
+                <<"c2c">>,
+                <<"m-1">>,
+                <<"text">>,
+                <<"message">>,
+                #{<<"meta_version">> => 3},
+                <<>>,
+                100,
+                200,
+                <<"2026-07-28T00:00:00+08:00">>,
+                <<"2026-07-28T00:00:00+08:00">>,
+                ?DID
+            )
         ),
         Data = persistent_term:get({?MODULE, insert_data}),
-        ?assertEqual(?DID, maps:get(sender_did, Data))
+        ?assertEqual(?DID, maps:get(sender_did, Data)),
+        ?assertEqual(1, maps:get(conv_seq, Data)),
+        ?assert(
+            meck:called(elib_pg, execute, [
+                sender_did_test_connection, <<"INSERT INTO t DEFAULT VALUES">>, []
+            ])
+        ),
+        ?assert(meck:validate(elib_pg))
     after
         release_insert()
     end.
