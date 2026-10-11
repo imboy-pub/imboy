@@ -20,6 +20,29 @@ init_test() ->
     ?SETUP(),
     ok.
 
+concurrent_init_preserves_allocated_cursor_test_() ->
+    {timeout, 30, fun() ->
+        lists:foreach(fun concurrent_init_round/1, lists:seq(1, 5))
+    end}.
+
+concurrent_init_round(_Round) ->
+    elib_tsid:reset_for_test(),
+    Parent = self(),
+    Workers = [
+        spawn(fun() ->
+            receive
+                go ->
+                    ok = elib_tsid:init(#{dc_id => 1, node_id => 1, dc_bits => 3}),
+                    Parent ! {ids, [elib_tsid:generate(user) || _ <- lists:seq(1, 10)]}
+            end
+        end)
+     || _ <- lists:seq(1, 32)
+    ],
+    lists:foreach(fun(Worker) -> Worker ! go end, Workers),
+    Ids = collect_ids(32, []),
+    ?assertEqual(320, length(Ids)),
+    ?assertEqual(320, length(lists:usort(Ids))).
+
 generate_positive_test() ->
     ?SETUP(),
     Id = elib_tsid:generate(user),
@@ -189,6 +212,20 @@ same_namespace_unique_test() ->
     ?SETUP(),
     Ids = elib_tsid:generate_n(user, 1000),
     ?assertEqual(1000, length(lists:usort(Ids))).
+
+agent_namespaces_have_independent_cursors_test() ->
+    ?SETUP(),
+    with_fixed_clock(?EPOCH_MS + 200000, fun() ->
+        Names = [agent_grant, agent_grant_event, agent_run, agent_run_event, agent_effect],
+        FirstIds = [elib_tsid:generate(Name) || Name <- Names],
+        ?assertEqual(1, length(lists:usort(FirstIds))),
+        lists:foreach(
+            fun(Name) ->
+                #{sequence := 1} = elib_tsid:parse(elib_tsid:generate(Name))
+            end,
+            Names
+        )
+    end).
 
 cross_namespace_may_repeat_test() ->
     %% V10 核心语义：跨 Namespace 数值允许重复。冻结时钟同毫秒内，
@@ -847,8 +884,8 @@ batch_budget_shared_across_chunks_body() ->
     ok = elib_tsid:init(#{
         dc_id => 1, node_id => 1, dc_bits => 3, capacity_wait_timeout_ms => 140
     }),
-    preset_user_cursor_one_ms_ahead(),
-    Driver = start_slow_wall_driver(60),
+    {Driver, BaseWall} = start_slow_wall_driver(60),
+    preset_user_cursor_one_ms_ahead(BaseWall),
     try
         T0 = erlang:monotonic_time(millisecond),
         ?assertMatch(
@@ -871,8 +908,8 @@ batch_budget_sufficient_with_contention_slow_wall_body() ->
     ok = elib_tsid:init(#{
         dc_id => 1, node_id => 1, dc_bits => 3, capacity_wait_timeout_ms => 400
     }),
-    preset_user_cursor_one_ms_ahead(),
-    Driver = start_slow_wall_driver(60),
+    {Driver, BaseWall} = start_slow_wall_driver(60),
+    preset_user_cursor_one_ms_ahead(BaseWall),
     try
         Self = self(),
         [
@@ -894,9 +931,8 @@ batch_budget_sufficient_with_contention_slow_wall_body() ->
 
 %% @private 把 user 游标预置到未来 1ms 的满毫秒（seam 注入未来墙钟发
 %% 2048 个）。此后慢墙钟下的 generate_n 块 1 起就需等待真实 wall 推进。
-preset_user_cursor_one_ms_ahead() ->
-    #{clock_offset_ms := O0} = persistent_term:get(elib_tsid_runtime),
-    FutureWall = erlang:monotonic_time(millisecond) + O0 + 1,
+preset_user_cursor_one_ms_ahead(BaseWall) ->
+    FutureWall = BaseWall + 1,
     with_fixed_clock(FutureWall, fun() ->
         _ = elib_tsid:generate_n(user, 2048),
         ok
@@ -915,7 +951,8 @@ start_slow_wall_driver(StepMs) ->
         [{priority, high}]
     ),
     erlang:send_after(1, Pid, tick),
-    Pid.
+    #{clock_offset_ms := Offset} = BaseRuntime,
+    {Pid, M0 + Offset}.
 
 slow_wall_tick(BaseRuntime, M0, StepMs) ->
     receive

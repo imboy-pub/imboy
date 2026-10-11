@@ -191,7 +191,12 @@ namespaces() ->
         cs_seat_console,
         cs_seat_console_public,
         cs_widget_installation,
-        cs_widget_installation_public
+        cs_widget_installation_public,
+        agent_grant,
+        agent_grant_event,
+        agent_run,
+        agent_run_event,
+        agent_effect
     ].
 
 %% @doc 别名 → canonical 映射：写同一张表的旧标签静态归并到同一游标。

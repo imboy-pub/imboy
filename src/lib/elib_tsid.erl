@@ -158,7 +158,13 @@ init(Opts) ->
     true =
         (is_integer(MaxDrift) andalso MaxDrift > 0) orelse
             error({elib_tsid_invalid_config, #{max_clock_drift_ms => MaxDrift}}),
+    global:trans(
+        {{?MODULE, runtime_init}, self()},
+        fun() -> init_runtime(CombinedNode, DcBits, CapWait, MaxDrift) end,
+        [node()]
+    ).
 
+init_runtime(CombinedNode, DcBits, CapWait, MaxDrift) ->
     case persistent_term:get(?PT_RUNTIME, undefined) of
         undefined ->
             publish_runtime(CombinedNode, DcBits, CapWait, MaxDrift),
