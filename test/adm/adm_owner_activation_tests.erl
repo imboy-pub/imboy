@@ -421,7 +421,7 @@ create_conflict_tests() ->
     {"活跃注册用户手机号 → 409 引导已注册模式 + 零残留", fun() ->
         Conn = conn(),
         Mobile = <<"13855556666">>,
-        Uid = new_id(),
+        Uid = elib_tsid:generate(user),
         ok = seed_registered_user(Conn, Uid, Mobile),
         RespReq = create_pending_org(#{
             <<"name">> => <<"gz06-conflict">>,
@@ -721,7 +721,7 @@ transfer_to_registered() ->
     Conn = conn(),
     Mobile1 = <<"13733330001">>,
     RegMobile = <<"13733330002">>,
-    RegUid = new_id(),
+    RegUid = elib_tsid:generate(user),
     ok = seed_registered_user(Conn, RegUid, RegMobile),
     Resp1 = create_pending_org(#{
         <<"name">> => <<"gz06-transfer-reg">>,
@@ -775,7 +775,7 @@ transfer_to_deleted() ->
     Conn = conn(),
     Mobile = <<"13755550001">>,
     DelMobile = <<"13755550002">>,
-    DelUid = new_id(),
+    DelUid = elib_tsid:generate(user),
     ok = seed_user_with_status(Conn, DelUid, DelMobile, 2),
     Resp1 = create_pending_org(#{
         <<"name">> => <<"gz06-transfer-del">>,
