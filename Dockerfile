@@ -136,14 +136,17 @@ EXPOSE 9800
 # 审计 A3/C-4（2026-10-10）：第三段补 elib_tsid:readiness/0 —— TSID 时钟
 # 闸没有内置周期探针，偏差暴露窗口 = 本健康检查轮询间隔（30s）。sup 在启动
 # 早期同步 init TSID，ping 通过后 readiness 必为 ready | clock_unsafe。
-# 注意 eval 语义：nodetool 经 rpc:call 在**运行节点上**求值——失败分支用
-# erlang:error 远程抛错（nodetool 转 badrpc → 本 healthcheck 退出 1），绝不可
-# 用 halt(1)（那会杀掉后端节点本身；probe_db 段的 halt(1) 是 C-50 既有
-# 自愈语义，本段不复制）。
+# 注意 eval 语义：nodetool 经 rpc:call 在**运行节点上**求值；probe_db 段的
+# halt(1) 是 C-50 既有自愈语义（远程 halt 杀掉节点交 restart 策略拉起）。
+# 修复（2026-10-11，容器级实证）：relx_nodetool 的 eval 子命令对表达式异常
+# **只打印 {error,...} 且恒退 0**（badrpc 非零退出是 rpc 子命令的行为，eval
+# 没有）——erlang:error 分支门禁形同虚设。改为输出比较：布尔表达式打印
+# true/false，任何异常/非 true 输出（节点挂掉、rpc 失败、readiness≠ready）
+# 都判失败；本段绝不 halt（那会杀掉后端节点本身）。
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD /opt/imboy/bin/imboy ping >/dev/null 2>&1 \
      && /opt/imboy/bin/imboy eval 'case healthz_handler:probe_db() of true -> ok; _ -> halt(1) end.' \
-     && /opt/imboy/bin/imboy eval 'case elib_tsid:readiness() of ready -> ok; _ -> erlang:error(tsid_not_ready) end.' \
+     && [ "$(/opt/imboy/bin/imboy eval 'elib_tsid:readiness() =:= ready.' 2>&1)" = "true" ] \
      || exit 1
 
 # foreground 让进程前台运行交给 Docker 托管（勿用 start，后台 daemon 会让容器立即退出）
