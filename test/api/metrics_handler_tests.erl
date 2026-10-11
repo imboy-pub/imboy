@@ -56,6 +56,34 @@ init_returns_error_when_metric_fetch_fails_test_() ->
         end
     ).
 
+%% AC-028 暴露贯通：cache_sync 经 incr/1 写入 elib_metric 的计数器
+%% 必须经真实 init/2 → fetch_metrics 载荷可达（/metrics 端点），
+%% 监控管道端到端（elib_metric 不 mock，走真实读取）。
+fetch_metrics_exposes_cache_sync_counters_test_() ->
+    ?WITH_MECKS(
+        [
+            {cowboy_req, [
+                {'peer', 1, fun(_Req) -> {{127, 0, 0, 1}, 12345} end},
+                {'header', 3, fun(_Name, _Req, _Default) -> <<>> end}
+            ]},
+            {elib_response, [
+                {'success', 3, fun(Req, Payload, Msg) ->
+                    Req#{response_status => 200, payload => Payload, msg => Msg}
+                end}
+            ]}
+        ],
+        fun() ->
+            ok = elib_metric:increment(publish_total),
+            ok = elib_metric:increment(publish_total, 2),
+            {ok, RespReq, _State} = metrics_handler:init(#{}, #{}),
+            ?assertEqual(200, maps:get(response_status, RespReq)),
+            Payload = maps:get(payload, RespReq),
+            Counters = maps:get(counters, Payload),
+            ?assert(maps:is_key(publish_total, Counters)),
+            ?assert(maps:get(publish_total, Counters) >= 3)
+        end
+    ).
+
 %% ===================================================================
 %% JSON 分支不得携带 tuple key counter
 %%
