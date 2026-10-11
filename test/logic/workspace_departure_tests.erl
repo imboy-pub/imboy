@@ -45,7 +45,7 @@ removal_case(Mode) ->
                 end}
             ]},
             {imboy_cache, [
-                {flush, 1, fun(Key) ->
+                {invalidate, 1, fun(Key) ->
                     put(flushed, [
                         Key
                         | case get(flushed) of

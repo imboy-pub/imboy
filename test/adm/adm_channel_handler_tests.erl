@@ -370,7 +370,7 @@ init_remove_subscriber_success_test_() ->
                     {'increment_subscribers', 3, fun(fake_conn, 11, -1) -> {ok, 1} end}
                 ]},
                 {imboy_cache, [
-                    {'flush', 1, fun(Key) ->
+                    {'invalidate', 1, fun(Key) ->
                         case Key of
                             {channel_subs, 11} -> ok;
                             {channel, 11} -> ok;
@@ -404,7 +404,7 @@ init_remove_subscriber_success_test_() ->
             ?assertEqual(<<"订阅者已移除"/utf8>>, maps:get(success_msg, RespReq)),
             ?assertEqual(1, meck:num_calls(channel_subscription_repo, delete, 3)),
             ?assertEqual(1, meck:num_calls(channel_repo, increment_subscribers, 3)),
-            ?assertEqual(2, meck:num_calls(imboy_cache, flush, 1)),
+            ?assertEqual(2, meck:num_calls(imboy_cache, invalidate, 1)),
             ?assertEqual(1, meck:num_calls(user_log_repo, add, 1))
         end
     ).
@@ -479,7 +479,7 @@ init_remove_subscriber_noop_still_flushes_cache_test_() ->
                     end}
                 ]},
                 {imboy_cache, [
-                    {'flush', 1, fun(Key) ->
+                    {'invalidate', 1, fun(Key) ->
                         case Key of
                             {channel_subs, 11} -> ok;
                             {channel, 11} -> ok;
@@ -502,7 +502,7 @@ init_remove_subscriber_noop_still_flushes_cache_test_() ->
             ?assertEqual(200, maps:get(response_status, RespReq)),
             ?assertEqual(<<"订阅者已移除"/utf8>>, maps:get(success_msg, RespReq)),
             ?assertEqual(0, meck:num_calls(channel_repo, increment_subscribers, 3)),
-            ?assertEqual(2, meck:num_calls(imboy_cache, flush, 1)),
+            ?assertEqual(2, meck:num_calls(imboy_cache, invalidate, 1)),
             ?assertEqual(0, meck:num_calls(user_log_repo, add, 1))
         end
     ).

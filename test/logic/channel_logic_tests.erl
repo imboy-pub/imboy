@@ -3293,7 +3293,7 @@ remove_subscriber_admin_success_updates_counter_test_() ->
             {'revoke_discussion_tx', 3, fun(_Conn, _Cid, _Uid) -> ok end}
         ]},
         {imboy_cache, [
-            {'flush', 1, fun(Key) ->
+            {'invalidate', 1, fun(Key) ->
                 case Key of
                     {channel_subs, 11} -> ok;
                     {channel, 11} -> ok;
@@ -3317,7 +3317,7 @@ remove_subscriber_admin_success_updates_counter_test_() ->
             ?assertEqual(ok, Result),
             ?assertEqual(1, meck:num_calls(channel_subscription_ds, delete, 3)),
             ?assertEqual(1, meck:num_calls(channel_ds, increment_subscribers, 3)),
-            ?assertEqual(2, meck:num_calls(imboy_cache, flush, 1)),
+            ?assertEqual(2, meck:num_calls(imboy_cache, invalidate, 1)),
             ?assertEqual(1, meck:num_calls(msg_s2c_ds, send, 7))
         end)
     end}.
@@ -3345,7 +3345,7 @@ remove_subscriber_is_idempotent_when_target_already_inactive_test_() ->
             {'revoke_discussion_tx', 3, fun(_Conn, _Cid, _Uid) -> ok end}
         ]},
         {imboy_cache, [
-            {'flush', 1, fun(Key) ->
+            {'invalidate', 1, fun(Key) ->
                 case Key of
                     {channel_subs, 11} -> ok;
                     {channel, 11} -> ok;
@@ -3367,7 +3367,7 @@ remove_subscriber_is_idempotent_when_target_already_inactive_test_() ->
             ?assertEqual(ok, Result),
             ?assertEqual(1, meck:num_calls(channel_subscription_ds, delete, 3)),
             ?assertEqual(0, meck:num_calls(channel_ds, increment_subscribers, 3)),
-            ?assertEqual(2, meck:num_calls(imboy_cache, flush, 1)),
+            ?assertEqual(2, meck:num_calls(imboy_cache, invalidate, 1)),
             ?assertEqual(0, meck:num_calls(msg_s2c_ds, send, 7))
         end)
     end}.
