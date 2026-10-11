@@ -14,6 +14,7 @@
 -moduledoc "缓存 Key 策略真源：Registry 分类、复制白名单与 put/invalidate 校验。".
 
 -export([
+    fenced_namespaces/0,
     policy/1,
     namespace_of/1,
     is_local/1,
@@ -28,7 +29,20 @@
     batch_size/0,
     recovery_window_sec/0,
     tombstone_ttl_sec/0,
-    protocol/0
+    protocol/0,
+    %% C01 冻结的资源预算（closeout-v1/protocol-budget-frozen.md 第 6 节）
+    n_max/0,
+    t_max/0,
+    b_max/0,
+    p_max/0,
+    p_max_bytes/0,
+    r_max_rounds/0,
+    d_max_ms/0,
+    high_watermark/0,
+    grace_window_ms/0,
+    budget_digest/0,
+    config_hash/0,
+    registry_hash/0
 ]).
 
 %% W0 Registry 投影：namespace => {Policy, Sensitive}
@@ -226,6 +240,97 @@ tombstone_ttl_sec() ->
     D = 30,
     C = 5,
     erlang:max(erlang:max(T + C, R + S + D + 2 * C), ?DEFAULT_TOMBSTONE_TTL_SEC).
+
+%% ------------------------------------------------------------------
+%% C01 冻结的资源预算（closeout-v1/protocol-budget-frozen.md 第 6 节）
+%% 本地工程预算，非生产 SLO；故障测试前冻结，不得为通过测试调高。
+%% ------------------------------------------------------------------
+
+-define(DEFAULT_N_MAX, 50000).
+-define(DEFAULT_T_MAX, 20000).
+-define(DEFAULT_B_MAX, 2048).
+-define(DEFAULT_P_MAX, 256).
+-define(DEFAULT_P_MAX_BYTES, 4194304).
+-define(DEFAULT_R_MAX_ROUNDS, 3).
+-define(DEFAULT_HIGH_WATERMARK, 10000).
+
+%% rindex 复制条目上限（项）。
+-spec n_max() -> pos_integer().
+n_max() -> rep_cfg(n_max, ?DEFAULT_N_MAX).
+
+%% 墓碑条目上限（项）。
+-spec t_max() -> pos_integer().
+t_max() -> rep_cfg(t_max, ?DEFAULT_T_MAX).
+
+%% 恢复接收缓冲上限（项，页事件累计条目）。
+-spec b_max() -> pos_integer().
+b_max() -> rep_cfg(b_max, ?DEFAULT_B_MAX).
+
+%% 快照每页条目上限。
+-spec p_max() -> pos_integer().
+p_max() -> rep_cfg(p_max, ?DEFAULT_P_MAX).
+
+%% 快照每页字节上限。
+-spec p_max_bytes() -> pos_integer().
+p_max_bytes() -> rep_cfg(p_max_bytes, ?DEFAULT_P_MAX_BYTES).
+
+%% 单节点快照回合重试上限。
+-spec r_max_rounds() -> pos_integer().
+r_max_rounds() -> rep_cfg(r_max_rounds, ?DEFAULT_R_MAX_ROUNDS).
+
+%% 恢复总 deadline（毫秒，= recovery_window）。
+-spec d_max_ms() -> pos_integer().
+d_max_ms() -> recovery_window_sec() * 1000.
+
+%% sync 消息队列高水位（与 imboy_cache_sync 的 ?HIGH_WATERMARK 一致）。
+-spec high_watermark() -> pos_integer().
+high_watermark() -> rep_cfg(high_watermark, ?DEFAULT_HIGH_WATERMARK).
+
+%% 旧化身/墓碑宽限窗口（毫秒，= W = 墓碑保留）。
+-spec grace_window_ms() -> pos_integer().
+grace_window_ms() -> tombstone_ttl_sec() * 1000.
+
+%% @doc 冻结预算摘要（C01 oracle：配置/实现/测试三方一致）。
+%% 规范化序列化后取 SHA-256 前 16 字节；任何预算值变化都会改变摘要。
+-spec budget_digest() -> binary().
+budget_digest() ->
+    Parts = [
+        {n_max, n_max()},
+        {t_max, t_max()},
+        {b_max, b_max()},
+        {p_max, p_max},
+        {p_max_bytes, p_max_bytes()},
+        {r_max_rounds, r_max_rounds()},
+        {d_max_ms, d_max_ms()},
+        {max_value_bytes, max_value_bytes()},
+        {max_ttl_sec, max_ttl_sec()},
+        {high_watermark, high_watermark()},
+        {grace_window_ms, grace_window_ms()}
+    ],
+    <<Digest:16/binary, _/binary>> = crypto:hash(
+        sha256, term_to_binary(Parts, [{minor_version, 2}])
+    ),
+    Digest.
+
+%% @doc 缓存同步配置摘要：预算 + 白名单 + fenced 集的规范化摘要（V2 信封 config_hash）。
+-spec config_hash() -> binary().
+config_hash() ->
+    Parts = {budget_digest(), whitelist(), fenced_namespaces()},
+    <<Digest:16/binary, _/binary>> = crypto:hash(
+        sha256, term_to_binary(Parts, [{minor_version, 2}])
+    ),
+    Digest.
+
+%% @doc Registry 生效视图摘要（静态表 + overrides 合并后按 namespace 排序；V2 信封 registry_hash）。
+-spec registry_hash() -> binary().
+registry_hash() ->
+    Overrides = application:get_env(imboy, cache_registry_overrides, #{}),
+    Merged = maps:merge(?REGISTRY, Overrides),
+    Sorted = lists:sort(maps:to_list(Merged)),
+    <<Digest:16/binary, _/binary>> = crypto:hash(
+        sha256, term_to_binary(Sorted, [{minor_version, 2}])
+    ),
+    Digest.
 
 %% ------------------------------------------------------------------
 %% Internal

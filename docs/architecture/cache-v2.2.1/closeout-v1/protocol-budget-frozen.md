@@ -33,8 +33,12 @@ expires_at_ms, revision, origin_seq, origin_node, origin_boot_id`。
   并写入元数据表 `{incarnation, NodeId} = BootId`（本节点当前化身）。
 - 元数据表维护 `{peer_incarnation, NodeId} = BootId`：本节点观察到的每个 peer
   的最新合法化身。来源：V2 事件与恢复握手（version_report/snapshot 协议帧）。
-- 拒绝规则：来自 `NodeId` 的事件若其 `origin_boot_id` ≠ 已知最新化身
-  且该旧化身未登记在 `< W` 宽限集合内 → `{reject, stale_incarnation}`。
+- 化身规则（收口修订 r1，2026-10-11 实施）：单条消息无法区分"peer
+  重启后的新化身首现"与"超窗旧化身重放"，拒绝新化身会使重启 peer
+  的全部事件被永久拒绝。化身层降级为检测/注册/补偿：
+  已知最新化身 → ok；宽限集合内旧化身（W）→ ok；全新化身 → 接受 +
+  注册为最新（旧化身转入宽限）并返回 changed 信号触发 C05 补偿。
+  旧值防复活由 Lamport revision + epoch 承担（原计划 5.3，不依赖化身）。
   自环过滤（W3-10）保持：`origin_node==node() andalso origin_boot_id==本化身` 跳过。
 - 节点重启后新化身出现：旧化身进入宽限集合（时间戳登记），宽限 = W = 720s
   （与墓碑保留一致）；超窗清理时淘汰。

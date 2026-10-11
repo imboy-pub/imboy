@@ -19,17 +19,31 @@ send_v2(Event) ->
     ok.
 
 v2_set(Key, Value, Counter, OriginNode, Seq, BootId, ExpiresAt) ->
+    base_v2(set, Key, Value, {Counter, OriginNode}, Seq, OriginNode, BootId, ExpiresAt).
+
+%% C01 冻结协议字段（epoch/config_hash/registry_hash）默认取本节点合法值
+base_v2(Op, Key, Value, Rev, Seq, OriginNode, BootId, ExpiresAt) ->
     #{
         protocol => 2,
-        operation => set,
+        operation => Op,
         key => Key,
         value => Value,
         expires_at_ms => ExpiresAt,
-        revision => {Counter, OriginNode},
+        revision => Rev,
         origin_seq => Seq,
         origin_node => OriginNode,
-        origin_boot_id => BootId
+        origin_boot_id => BootId,
+        epoch => 0,
+        config_hash => imboy_cache_policy:config_hash(),
+        registry_hash => imboy_cache_policy:registry_hash()
     }.
+
+v2_delete(Key, Counter, OriginNode, Seq, BootId) ->
+    Ev = base_v2(delete, Key, undefined, {Counter, OriginNode}, Seq, OriginNode, BootId, 0),
+    Ev#{expires_at_ms := erlang:system_time(millisecond) + 720000}.
+
+v2_invalidate(Key, OriginNode, BootId) ->
+    base_v2(invalidate, Key, undefined, {0, OriginNode}, 0, OriginNode, BootId, 0).
 
 remote_boot() ->
     crypto:strong_rand_bytes(16).
@@ -136,15 +150,7 @@ v2_delete_tombstone_blocks_resurrection_test_() ->
             Boot = remote_boot(),
             ok = send_v2(v2_set(Key, <<"v1">>, 10, 'remote@x', 1, Boot, future_ms(120))),
             %% DELETE（更高版本）→ 墓碑
-            ok = send_v2(#{
-                protocol => 2,
-                operation => delete,
-                key => Key,
-                revision => {20, 'remote@x'},
-                origin_seq => 2,
-                origin_node => 'remote@x',
-                origin_boot_id => Boot
-            }),
+            ok = send_v2(v2_delete(Key, 20, 'remote@x', 2, Boot)),
             ?assertEqual(undefined, imboy_cache:get(Key)),
             %% 延迟旧 SET（低于墓碑版本）不能复活（AC-15）
             ok = send_v2(v2_set(Key, <<"zombie">>, 11, 'remote@x', 1, Boot, future_ms(120))),
@@ -337,15 +343,7 @@ v2_invalidate_event_advances_remote_generation_test_() ->
         try
             Key = {cache_v2_test, remote_inv1},
             G0 = imboy_cache_sync:generation(Key),
-            ok = send_v2(#{
-                protocol => 2,
-                operation => invalidate,
-                key => Key,
-                revision => {0, node()},
-                origin_seq => 0,
-                origin_node => 'remote@x',
-                origin_boot_id => remote_boot()
-            }),
+            ok = send_v2(v2_invalidate(Key, 'remote@x', remote_boot())),
             %% 远端失效推进本地栅栏代次（19.3 跨节点栅栏）
             ?assert(imboy_cache_sync:generation(Key) > G0)
         after
@@ -520,6 +518,415 @@ queue_depth_alive_returns_real_length_test_() ->
         D = imboy_cache_sync:queue_depth(),
         ?assert(is_integer(D) andalso D >= 0),
         ?assertNot(imboy_cache_sync:overloaded())
+    end).
+
+%% ===================================================================
+%% C02 双端一致性：epoch / hash / incarnation（收口 V1）
+%% ===================================================================
+
+c02_hash_mismatch_event_is_rejected_and_marks_divergent_test_() ->
+    ?TEST_WITH_APP(fun() ->
+        ready = wait_ready(50),
+        setup_replicate_env(),
+        try
+            Key = {cache_v2_test_rep, c02_hash1},
+            Origin = 'hash_peer@x',
+            Boot = remote_boot(),
+            %% 首次观察注册化身
+            Good = v2_set(Key, <<"ok">>, 10, Origin, 1, Boot, future_ms(120)),
+            ok = send_v2(Good),
+            ?assertEqual({ok, <<"ok">>}, imboy_cache:get(Key)),
+            %% config_hash 不一致：事件整体拒绝，值不被修改，peer 标记 divergent
+            Bad = Good#{
+                value => <<"sneak">>,
+                origin_seq => 2,
+                config_hash => crypto:strong_rand_bytes(16)
+            },
+            ok = send_v2(Bad),
+            ?assertEqual({ok, <<"ok">>}, imboy_cache:get(Key)),
+            ?assert(imboy_cache_sync_proto:hash_divergent(Origin)),
+            %% registry_hash 不一致同样拒绝
+            Bad2 = Good#{
+                value => <<"sneak2">>,
+                origin_seq => 3,
+                registry_hash => crypto:strong_rand_bytes(16)
+            },
+            ok = send_v2(Bad2),
+            ?assertEqual({ok, <<"ok">>}, imboy_cache:get(Key))
+        after
+            teardown_replicate_env(),
+            imboy_cache:put_delete({cache_v2_test_rep, c02_hash1})
+        end
+    end).
+
+c02_missing_protocol_field_is_rejected_test_() ->
+    ?TEST_WITH_APP(fun() ->
+        ready = wait_ready(50),
+        setup_replicate_env(),
+        try
+            Key = {cache_v2_test_rep, c02_missing1},
+            %% 缺 epoch/config_hash/registry_hash 任一字段 → 结构化拒绝
+            NoEpoch = maps:remove(
+                epoch,
+                v2_set(
+                    Key,
+                    <<"v">>,
+                    10,
+                    'remote@x',
+                    1,
+                    remote_boot(),
+                    future_ms(120)
+                )
+            ),
+            NoCfg = maps:remove(
+                config_hash,
+                v2_set(
+                    Key,
+                    <<"v">>,
+                    10,
+                    'remote@x',
+                    1,
+                    remote_boot(),
+                    future_ms(120)
+                )
+            ),
+            NoReg = maps:remove(
+                registry_hash,
+                v2_set(
+                    Key,
+                    <<"v">>,
+                    10,
+                    'remote@x',
+                    1,
+                    remote_boot(),
+                    future_ms(120)
+                )
+            ),
+            [ok = send_v2(E) || E <- [NoEpoch, NoCfg, NoReg]],
+            ?assertEqual(undefined, imboy_cache:get(Key))
+        after
+            teardown_replicate_env()
+        end
+    end).
+
+c02_stale_epoch_set_is_rejected_invalidate_passes_test_() ->
+    ?TEST_WITH_APP(fun() ->
+        ready = wait_ready(50),
+        setup_replicate_env(),
+        OldF = application:get_env(imboy, cache_fenced_namespaces, undefined),
+        application:set_env(imboy, cache_fenced_namespaces, [cache_v2_test]),
+        try
+            %% 本节点 epoch 推进到 1
+            1 = imboy_cache_sync_proto:bump_epoch(),
+            Key = {cache_v2_test_rep, c02_epoch1},
+            SetEv = v2_set(Key, <<"v">>, 10, 'remote@x', 1, remote_boot(), future_ms(120)),
+            %% 远端 epoch=0 < 本节点 1：set 拒绝
+            ok = send_v2(SetEv),
+            ?assertEqual(undefined, imboy_cache:get(Key)),
+            %% invalidate 不参与 epoch 比较（C01：宁多失效）→ fenced gen 推进
+            FKey = {cache_v2_test, c02_epoch_inv},
+            G0 = imboy_cache_sync:generation(FKey),
+            Inv = v2_invalidate(FKey, 'remote@x', remote_boot()),
+            ok = send_v2(Inv),
+            ?assert(imboy_cache_sync:generation(FKey) > G0),
+            %% 恢复 epoch=0 不污染后续测试
+            true = ets:insert(imboy_cache_meta, {sync_epoch, 0})
+        after
+            teardown_replicate_env(),
+            case OldF of
+                undefined -> application:unset_env(imboy, cache_fenced_namespaces);
+                _ -> application:set_env(imboy, cache_fenced_namespaces, OldF)
+            end
+        end
+    end).
+
+%% C01 第 2 节（收口修订 r1）：化身层为检测/注册/补偿，不再拒绝——
+%% 新化身首现接受并注册（防复活由 revision/epoch 承担）；
+%% 宽限集合内旧化身放行；全新化身事件照常应用。
+c02_incarnation_registration_and_grace_test_() ->
+    ?TEST_WITH_APP(fun() ->
+        ready = wait_ready(50),
+        setup_replicate_env(),
+        try
+            Origin = 'inc_peer@x',
+            Key = {cache_v2_test_rep, c02_inc1},
+            NewBoot = remote_boot(),
+            OldBoot = remote_boot(),
+            true = ets:insert(
+                imboy_cache_meta,
+                {{peer_incarnation, Origin}, NewBoot}
+            ),
+            %% OldBoot 不在宽限集合 → 视为新化身：接受 + 注册 + 补偿信号
+            Ev = v2_set(Key, <<"new_incarnation">>, 10, Origin, 1, OldBoot, future_ms(120)),
+            ok = send_v2(Ev),
+            ?assertEqual({ok, <<"new_incarnation">>}, imboy_cache:get(Key)),
+            [{_, OldBoot}] = ets:lookup(imboy_cache_meta, {peer_incarnation, Origin}),
+            %% 旧化身 NewBoot 进入宽限集合（W 内）
+            true = ets:member(
+                imboy_cache_meta,
+                {grace_incarnation, {Origin, NewBoot}}
+            ),
+            %% 宽限内旧化身重放：接受（防复活由版本比较承担——低版本拒绝）
+            Ev2 = v2_set(Key, <<"stale_replay">>, 2, Origin, 2, NewBoot, future_ms(120)),
+            ok = send_v2(Ev2),
+            %% 版本 2 < 已应用版本 10 → stale_revision 拒绝，值不变
+            ?assertEqual({ok, <<"new_incarnation">>}, imboy_cache:get(Key)),
+            %% 已知化身（当前 OldBoot）事件正常应用
+            Ev3 = v2_set(Key, <<"fresh">>, 20, Origin, 3, OldBoot, future_ms(120)),
+            ok = send_v2(Ev3),
+            ?assertEqual({ok, <<"fresh">>}, imboy_cache:get(Key)),
+            ets:delete(imboy_cache_meta, {peer_incarnation, Origin}),
+            ets:delete(imboy_cache_meta, {grace_incarnation, {Origin, NewBoot}})
+        after
+            teardown_replicate_env(),
+            imboy_cache:put_delete({cache_v2_test_rep, c02_inc1})
+        end
+    end).
+
+c02_incarnation_change_triggers_fenced_compensation_test_() ->
+    ?TEST_WITH_APP(fun() ->
+        ready = wait_ready(50),
+        setup_replicate_env(),
+        OldF = application:get_env(imboy, cache_fenced_namespaces, undefined),
+        application:set_env(imboy, cache_fenced_namespaces, [cache_v2_test_rep]),
+        try
+            Origin = 'reconnect@x',
+            Key = {cache_v2_test_rep, c02_reconnect},
+            %% 建立 fenced generation 基线
+            G0 = imboy_cache_sync:generation(Key),
+            %% 化身变化（peer 重启）：新化身事件触发全量 fenced 补偿（C05）
+            Ev = v2_set(Key, <<"v">>, 10, Origin, 1, remote_boot(), future_ms(120)),
+            ok = send_v2(Ev),
+            %% 化身变化再次发事件
+            Ev2 = v2_set(Key, <<"v2">>, 20, Origin, 2, remote_boot(), future_ms(120)),
+            ok = send_v2(Ev2),
+            %% fenced generation 被推进（有界清理，不依赖 TTL）
+            ?assert(imboy_cache_sync:generation(Key) > G0),
+            imboy_cache:put_delete({cache_v2_test_rep, c02_reconnect})
+        after
+            teardown_replicate_env(),
+            case OldF of
+                undefined -> application:unset_env(imboy, cache_fenced_namespaces);
+                _ -> application:set_env(imboy, cache_fenced_namespaces, OldF)
+            end
+        end
+    end).
+
+%% ===================================================================
+%% C03 资源预算：Nmax / Tmax / budget_digest
+%% ===================================================================
+
+%% 清理 META 表 rindex/rev 残留（预算测试对计数敏感，前序套件留下的
+%% 复制键/墓碑行会污染 Nmax/Tmax 判定）
+cleanup_meta_rows() ->
+    _ = [
+        ets:delete(imboy_cache_meta, K)
+     || {K, _} <- ets:tab2list(imboy_cache_meta),
+        is_tuple(K) andalso tuple_size(K) =:= 2 andalso
+            (element(1, K) =:= rindex orelse element(1, K) =:= rev)
+    ],
+    true = ets:insert(imboy_cache_meta, {rindex_count, 0}),
+    ok.
+
+c03_nmax_full_rejects_new_replicate_test_() ->
+    ?TEST_WITH_APP(fun() ->
+        ready = wait_ready(50),
+        setup_replicate_env(),
+        OldCfg = application:get_env(imboy, cache_replication, #{}),
+        ok = cleanup_meta_rows(),
+        try
+            %% n_max=1：首个新键成功，第二个不同键被拒 index_full
+            application:set_env(
+                imboy,
+                cache_replication,
+                maps:merge(OldCfg, #{whitelist => [cache_v2_test_rep], n_max => 1})
+            ),
+            K1 = {cache_v2_test_rep, c03_nmax1},
+            K2 = {cache_v2_test_rep, c03_nmax2},
+            ?assertEqual(ok, imboy_cache:put(K1, <<"v">>, 120, replicate)),
+            ?assertEqual({error, index_full}, imboy_cache:put(K2, <<"v">>, 120, replicate)),
+            %% 既有键更新不受影响（非新键）
+            ?assertEqual(ok, imboy_cache:put(K1, <<"v2">>, 120, replicate))
+        after
+            application:set_env(imboy, cache_replication, OldCfg),
+            teardown_replicate_env(),
+            imboy_cache:put_delete({cache_v2_test_rep, c03_nmax1})
+        end
+    end).
+
+c03_tmax_full_triggers_controlled_cold_recovery_test_() ->
+    ?TEST_WITH_APP(fun() ->
+        ready = wait_ready(50),
+        setup_replicate_env(),
+        OldCfg = application:get_env(imboy, cache_replication, #{}),
+        ok = cleanup_meta_rows(),
+        try
+            %% t_max=1：两次不同键 delete → 墓碑满 → 受控冷恢复（epoch 推进 +
+            %% 受管副本清空），删除请求 fail-closed 拒绝
+            application:set_env(
+                imboy,
+                cache_replication,
+                maps:merge(OldCfg, #{whitelist => [cache_v2_test_rep], t_max => 1})
+            ),
+            K1 = {cache_v2_test_rep, c03_tmax1},
+            K2 = {cache_v2_test_rep, c03_tmax2},
+            ?assertEqual(ok, imboy_cache:put(K1, <<"v">>, 120, replicate)),
+            ?assertEqual(ok, imboy_cache:put(K2, <<"v">>, 120, replicate)),
+            ?assertEqual(ok, imboy_cache:put_delete(K1)),
+            %% 第二个墓碑使预算满：冷恢复 + 拒绝（fail-closed，不部分应用）
+            ?assertEqual({error, tombstone_budget_exceeded}, imboy_cache:put_delete(K2)),
+            %% epoch 已推进、受管副本（rindex）已清空
+            ?assert(imboy_cache_sync_proto:epoch() > 0),
+            ?assertEqual([], [
+                K
+             || [K] <- ets:match(
+                    imboy_cache_meta,
+                    {{rindex, '$1'}, '_'}
+                )
+            ])
+        after
+            application:set_env(imboy, cache_replication, OldCfg),
+            teardown_replicate_env(),
+            true = ets:insert(imboy_cache_meta, {sync_epoch, 0})
+        end
+    end).
+
+c03_budget_digest_is_stable_and_config_sensitive_test_() ->
+    ?TEST_WITH_APP(fun() ->
+        D1 = imboy_cache_policy:budget_digest(),
+        ?assert(is_binary(D1) andalso byte_size(D1) =:= 16),
+        %% 同配置摘要稳定
+        ?assertEqual(D1, imboy_cache_policy:budget_digest()),
+        %% 预算值变化 → 摘要变化
+        Old = application:get_env(imboy, cache_replication, #{}),
+        application:set_env(imboy, cache_replication, maps:merge(Old, #{n_max => 49999})),
+        D2 = imboy_cache_policy:budget_digest(),
+        application:set_env(imboy, cache_replication, Old),
+        ?assertNotEqual(D1, D2)
+    end).
+
+%% ===================================================================
+%% C04 快照回合：round/页/digest/闭合判定（snapshot 模块单元级）
+%% ===================================================================
+
+c04_round_requires_done_and_pages_test_() ->
+    Round = crypto:strong_rand_bytes(12),
+    Deadline = erlang:system_time(millisecond) + 60000,
+    St0 = imboy_cache_sync_snapshot:new_round(0, Deadline),
+    Round = maps:get(round, St0),
+    Peer = 'snap_peer@x',
+    St1 = imboy_cache_sync_snapshot:expect_peer(St0, Peer),
+    %% 仅空 done 不闭合（C04 核心：三条件）
+    Entries = [{{rep_ns, k1}, <<"v1">>, future_ms(60), {1, Peer}}],
+    Digest = imboy_cache_sync_snapshot:page_digest(Round, 1, Entries),
+    {ok, St2} = imboy_cache_sync_snapshot:handle_page(
+        Peer, Round, 1, Entries, Digest, true, St1
+    ),
+    ?assertNot(imboy_cache_sync_snapshot:round_complete(St2)),
+    %% done 到齐但 expected_more 悬挂（页未收完）→ 不闭合
+    {ok, St3} = imboy_cache_sync_snapshot:handle_done(Peer, Round, 42, St2),
+    ?assertNot(imboy_cache_sync_snapshot:round_complete(St3)),
+    %% 未知 round 的 done 不推进
+    {ok, St4} = imboy_cache_sync_snapshot:handle_done(
+        Peer, crypto:strong_rand_bytes(12), 99, St3
+    ),
+    ?assertNot(imboy_cache_sync_snapshot:round_complete(St4)),
+    ?assertEqual(
+        42,
+        maps:get(
+            watermark,
+            maps:get(Peer, maps:get(peers, St4))
+        )
+    ),
+    %% 第二页（HasMore=false）到齐 → 闭合
+    Entries2 = [{{rep_ns, k2}, <<"v2">>, future_ms(60), {2, Peer}}],
+    Digest2 = imboy_cache_sync_snapshot:page_digest(Round, 2, Entries2),
+    {ok, St5} = imboy_cache_sync_snapshot:handle_page(
+        Peer, Round, 2, Entries2, Digest2, false, St4
+    ),
+    ?assert(imboy_cache_sync_snapshot:round_complete(St5)),
+    ?assertEqual(2, imboy_cache_sync_snapshot:applied_count(St5)).
+
+c04_page_gap_and_digest_mismatch_abort_test_() ->
+    Round = crypto:strong_rand_bytes(12),
+    St0 = imboy_cache_sync_snapshot:new_round(
+        0,
+        erlang:system_time(millisecond) + 60000
+    ),
+    Peer = 'snap_peer2@x',
+    St1 = imboy_cache_sync_snapshot:expect_peer(St0, Peer),
+    %% 页号跳号（1 → 3）→ abort page_gap
+    Entries = [{{rep_ns, k}, <<"v">>, future_ms(60), {1, Peer}}],
+    Digest = imboy_cache_sync_snapshot:page_digest(Round, 3, Entries),
+    {abort, page_gap, _} = imboy_cache_sync_snapshot:handle_page(
+        Peer, Round, 3, Entries, Digest, false, St1
+    ),
+    %% digest 篡改 → abort page_digest_mismatch
+    St1b = imboy_cache_sync_snapshot:expect_peer(
+        imboy_cache_sync_snapshot:new_round(
+            0,
+            erlang:system_time(millisecond) + 60000
+        ),
+        Peer
+    ),
+    DigestBad = Digest bxor 16#deadbeef,
+    {abort, page_digest_mismatch, _} = imboy_cache_sync_snapshot:handle_page(
+        Peer, maps:get(round, St1b), 1, Entries, DigestBad, false, St1b
+    ).
+
+c04_buffer_overflow_abort_test_() ->
+    Round = crypto:strong_rand_bytes(12),
+    Old = application:get_env(imboy, cache_replication, #{}),
+    application:set_env(imboy, cache_replication, maps:merge(Old, #{b_max => 2})),
+    try
+        St0 = imboy_cache_sync_snapshot:new_round(
+            0,
+            erlang:system_time(millisecond) + 60000
+        ),
+        Peer = 'snap_peer3@x',
+        St1 = imboy_cache_sync_snapshot:expect_peer(St0, Peer),
+        %% 三条目页超过 Bmax=2 → abort buffer_overflow
+        Entries = [
+            {{rep_ns, a}, <<"v">>, future_ms(60), {1, Peer}},
+            {{rep_ns, b}, <<"v">>, future_ms(60), {2, Peer}},
+            {{rep_ns, c}, <<"v">>, future_ms(60), {3, Peer}}
+        ],
+        Digest = imboy_cache_sync_snapshot:page_digest(Round, 1, Entries),
+        {abort, buffer_overflow, _} = imboy_cache_sync_snapshot:handle_page(
+            Peer, Round, 1, Entries, Digest, false, St1
+        )
+    after
+        application:set_env(imboy, cache_replication, Old)
+    end.
+
+%% ===================================================================
+%% C05 缺口补偿：fenced namespace 的 generation 推进
+%% ===================================================================
+
+c05_seq_gap_compensates_fenced_generation_test_() ->
+    ?TEST_WITH_APP(fun() ->
+        ready = wait_ready(50),
+        OldF = application:get_env(imboy, cache_fenced_namespaces, undefined),
+        application:set_env(imboy, cache_fenced_namespaces, [cache_v2_test]),
+        setup_replicate_env(),
+        try
+            Origin = 'gap_peer@x',
+            Key = {cache_v2_test, c05_gap_key},
+            G0 = imboy_cache_sync:generation(Key),
+            %% seq 1 → 3 跳号：缺口检测 + fenced namespace 补偿（gen 推进）
+            Boot = remote_boot(),
+            ok = send_v2(v2_set(Key, <<"v1">>, 1, Origin, 1, Boot, future_ms(120))),
+            G1 = imboy_cache_sync:generation(Key),
+            ok = send_v2(v2_set(Key, <<"v3">>, 3, Origin, 3, Boot, future_ms(120))),
+            ?assert(imboy_cache_sync:generation(Key) > G1),
+            ?assert(G1 >= G0)
+        after
+            teardown_replicate_env(),
+            case OldF of
+                undefined -> application:unset_env(imboy, cache_fenced_namespaces);
+                _ -> application:set_env(imboy, cache_fenced_namespaces, OldF)
+            end
+        end
     end).
 
 %% ===================================================================

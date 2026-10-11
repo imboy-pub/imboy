@@ -1,21 +1,30 @@
-%% @doc 分布式缓存同步服务器（V2.2.1 W2/W3/W4）
+%% @doc 分布式缓存同步服务器（V2.2.1 W2/W3/W4 + 收口 C02～C05）
 %%
 %% 单一写 owner：版本元数据表、generation（19.3 栅栏）、复制事件应用全部
-%% 由本 gen_server 串行处理（计划 5.2 方案 A 约束）。
+%% 由本 gen_server 串行处理（计划 5.2 方案 A）。
 %%
-%% 协议（计划 5.1，19.8 混合版本合同）：
+%% 协议（计划 5.1 + C01 冻结增量）：
 %% - legacy 消息 {set,Key,Data,MaxAge,Depend} | {flush,Key} | flush 保持原语义；
-%% - V2 事件 #{protocol => 2, operation => set|delete|invalidate, ...} 按
-%%   Lamport revision {Counter,NodeId} + {NodeId,BootId} + origin_seq 判序。
+%% - V2 事件 #{protocol => 2, operation, ..., epoch, config_hash, registry_hash}
+%%   按 Lamport revision + {NodeId,BootId} + origin_seq 判序；结构校验与
+%%   epoch/incarnation/hash 双端一致性由 imboy_cache_sync_proto 承担（C02）；
+%% - 快照回合（round/token/watermark/page digest）由
+%%   imboy_cache_sync_snapshot 承担（C03/C04）。
 %%
-%% 状态机（计划 5.3/9.1）：STARTING → DISCOVER → RECOVER_VERSION → READY；
-%% 单节点部署允许空缓存直接 READY（5.3）。恢复重试有界，超限进入 DEGRADED；
-%% DEGRADED 期间 replicate 写明确报错（9.1），不伪装成功。
+%% 状态机（计划 5.3/9.1 + C01 第 5 节）：
+%% STARTING → DISCOVERING → RECOVERING → READY；重试有界（单轮 5s × 3 +
+%% 快照回合 Rmax_rounds），总预算受 Dmax 硬顶；超限 DEGRADED（读
+%% unverified、写拒绝 fail-closed），退出手段=节点级重启。
 %%
-%% 不重写 depcache 的 waiter/memo/TTL/依赖失效能力（19.3）：本模块只维护
-%% 版本/墓碑/generation 元数据与事件串行应用，值仍存 depcache。
+%% 资源预算（C01 第 6/7 节）：Nmax rindex 上限（满则拒绝 index_full）、
+%% Tmax 墓碑上限（满则先过期淘汰，仍满推进 epoch 冷恢复）、HighWater
+%% 队列高水位（满则拒绝 overloaded）；不得删除 tombstone 后接受旧事件。
+%%
+%% invalidate 缺口补偿（C05）：origin_seq 跳号或 peer 化身变化 → 受管
+%% fenced namespace 推进 generation（有界清理，旧物理键不可读，新请求
+%% 回权威），不依赖旧 TTL 自然到期。
 -module(imboy_cache_sync).
--moduledoc "分布式缓存同步：V2 协议串行应用、generation 栅栏元数据、恢复状态机。".
+-moduledoc "分布式缓存同步：V2 协议串行应用、generation 栅栏、恢复状态机、资源预算与缺口补偿。".
 -behaviour(gen_server).
 
 -include("cache.hrl").
@@ -24,9 +33,7 @@
 
 -define(CACHE_GROUP_NAME, dsync_handler).
 -define(META_TABLE, imboy_cache_meta).
-%% 消息队列高水位（W4-09）：超过时拒绝新 replicate 写入
--define(HIGH_WATERMARK, 10000).
-%% 恢复单轮等待与有界重试（9.1 RETRY_WITH_LIMIT；总预算受 recovery_window 约束）
+%% 恢复单轮等待与有界重试（9.1 RETRY_WITH_LIMIT；总预算受 Dmax 约束）
 -define(RECOVER_ROUND_MS, 5000).
 -define(RECOVER_MAX_RETRY, 3).
 %% 定期状态校对周期（9.4，本地工程候选）
@@ -54,7 +61,11 @@
     queue_depth/0,
     overloaded/0,
     is_replicated/1,
-    replicate_state/1
+    replicate_state/1,
+    %% 供快照模块复用的纯函数/ETS 读（A1 内部合同，先冻结后消费）
+    compare_rev/2,
+    current_rev/1,
+    remaining_ttl_sec/1
 ]).
 
 %% gen_server callbacks
@@ -73,8 +84,10 @@
     origin_seq = 0 :: non_neg_integer(),
     status = starting :: starting | discovering | recovering | ready | degraded,
     retries = 0 :: non_neg_integer(),
-    %% 恢复中：等待快照完成的 peer 节点集合（W4-03/04）
-    pending_snapshots = [] :: [node()]
+    %% 恢复总 deadline（Dmax，C01 第 6 节）
+    recover_deadline_ms :: non_neg_integer() | undefined,
+    %% 快照回合状态（imboy_cache_sync_snapshot 的 plain map；undefined=非恢复中）
+    snapshot_round = undefined :: map() | undefined
 }).
 
 %% ===================================================================
@@ -85,7 +98,7 @@
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
-%% @doc legacy 广播（保持原语义；syn 组含本节点，回流幂等）
+%% @doc legacy 广播（保持原语义；syn 组含本节点，回流幂等）。
 -spec broadcast(term()) -> {ok, non_neg_integer()}.
 broadcast(Message) ->
     try syn:publish(?CACHE_SCOPE, ?CACHE_GROUP_NAME, {cache_sync, Message}) of
@@ -123,7 +136,7 @@ invalidate(Key) ->
     gen_call({invalidate, Key}).
 
 %% @doc replicate SET（计划 2.2）：校验→分配版本→本地写→发布。
-%% 未 READY / 过载 / 未授权 / 超限时明确报错，不伪装成功。
+%% 未 READY / 过载 / 未授权 / 超限（Nmax/大小/TTL）时明确报错，不伪装成功。
 -spec publish_set(term(), term(), non_neg_integer()) -> ok | {error, term()}.
 publish_set(Key, Value, TTL) ->
     gen_call({publish_set, Key, Value, TTL}).
@@ -147,7 +160,7 @@ status() ->
             end
     end.
 
-%% @doc 元数据快照（快照恢复 W4-03 与测试取证用）。
+%% @doc 元数据快照（测试取证用）。
 -spec meta_snapshot() -> [term()].
 meta_snapshot() ->
     try
@@ -167,16 +180,15 @@ node_boot() ->
 %% @doc 过载状态查询（调用方前置检查，W4-09）。
 -spec overloaded() -> boolean().
 overloaded() ->
-    queue_depth() > ?HIGH_WATERMARK.
+    queue_depth() > imboy_cache_policy:high_watermark().
 
 -spec queue_depth() -> non_neg_integer().
 queue_depth() ->
     case whereis(?MODULE) of
         undefined ->
-            %% sync 进程不可用（崩溃重启窗口/被停）：视同饱和（严格大于水位线
-            %% 才判 overloaded，哨兵必须超过阈值），调用方 fail-closed 拒绝，
-            %% 而非 badarg 崩掉业务调用方
-            ?HIGH_WATERMARK + 1;
+            %% sync 进程不可用（崩溃重启窗口/被停）：视同饱和（哨兵超过阈值），
+            %% 调用方 fail-closed 拒绝，而非 badarg 崩掉业务调用方
+            imboy_cache_policy:high_watermark() + 1;
         Pid ->
             case process_info(Pid, message_queue_len) of
                 {message_queue_len, N} -> N;
@@ -224,9 +236,18 @@ init([]) ->
     ]),
     true = ets:insert(?META_TABLE, {node_boot, {node(), BootId}}),
     true = ets:insert(?META_TABLE, {status, discovering}),
+    true = ets:insert(?META_TABLE, {sync_epoch, imboy_cache_sync_proto:epoch()}),
+    true = ets:insert(?META_TABLE, {sync_counter, 0}),
     join_syn(),
     ?DEBUG_LOG(["cache sync starting, boot_id", BootId]),
-    {ok, #state{boot_id = BootId, status = discovering}, 0}.
+    Deadline = erlang:system_time(millisecond) + imboy_cache_policy:d_max_ms(),
+    {ok,
+        #state{
+            boot_id = BootId,
+            status = discovering,
+            recover_deadline_ms = Deadline
+        },
+        0}.
 
 -spec handle_call(term(), {pid(), term()}, #state{}) ->
     {reply, term(), #state{}}.
@@ -243,9 +264,9 @@ handle_call({next_dep_generation, Tag}, _From, State) ->
 handle_call({invalidate, Key}, _From, State) ->
     ok = do_invalidate(Key),
     {reply, ok, State};
-%% --- replicate 发布 ---
+%% --- replicate 发布（C03 预算执行）---
 handle_call({publish_set, Key, Value, TTL}, _From, State) ->
-    case pre_publish() of
+    case pre_publish(Key) of
         ok ->
             {{C, _} = Rev, Seq, S1} = allocate(State),
             ExpiresAt = erlang:system_time(millisecond) + TTL * 1000,
@@ -253,28 +274,46 @@ handle_call({publish_set, Key, Value, TTL}, _From, State) ->
             true = ets:insert(?META_TABLE, {{rev, Key}, {Rev, C, ExpiresAt, live}}),
             ok = index_replicate(Key),
             incr(publish_total),
-            _ = publish(v2_event(set, Key, Value, ExpiresAt, Rev, Seq, State#state.boot_id)),
+            _ = publish(
+                imboy_cache_sync_proto:event(
+                    set, Key, Value, ExpiresAt, Rev, Seq, State#state.boot_id
+                )
+            ),
             {reply, ok, S1};
         {error, _} = Err ->
             incr(reject_total),
             {reply, Err, State}
     end;
 handle_call({publish_delete, Key}, _From, State) ->
-    case pre_publish() of
+    case pre_publish(Key) of
         ok ->
-            {{C, _} = Rev, Seq, S1} = allocate(State),
-            TombstoneTTL = imboy_cache_policy:tombstone_ttl_sec(),
-            ExpiresAt = erlang:system_time(millisecond) + TombstoneTTL * 1000,
-            _ = depcache:flush(Key, ?DEPCACHE_SERVER),
-            true = ets:insert(?META_TABLE, {{rev, Key}, {Rev, C, ExpiresAt, deleted}}),
-            incr(publish_total),
-            _ = publish(v2_event(delete, Key, undefined, ExpiresAt, Rev, Seq, State#state.boot_id)),
-            {reply, ok, S1};
+            case tombstone_budget_exceeded() of
+                true ->
+                    ok = controlled_cold_recovery(),
+                    incr(reject_total),
+                    {reply, {error, tombstone_budget_exceeded}, State};
+                false ->
+                    {{C, _} = Rev, Seq, S1} = allocate(State),
+                    TombstoneTTL = imboy_cache_policy:tombstone_ttl_sec(),
+                    ExpiresAt = erlang:system_time(millisecond) + TombstoneTTL * 1000,
+                    _ = depcache:flush(Key, ?DEPCACHE_SERVER),
+                    true = ets:insert(
+                        ?META_TABLE,
+                        {{rev, Key}, {Rev, C, ExpiresAt, deleted}}
+                    ),
+                    incr(publish_total),
+                    _ = publish(
+                        imboy_cache_sync_proto:event(
+                            delete, Key, undefined, ExpiresAt, Rev, Seq, State#state.boot_id
+                        )
+                    ),
+                    {reply, ok, S1}
+            end;
         {error, _} = Err ->
             incr(reject_total),
             {reply, Err, State}
     end;
-%% --- 诊断（消息串行化确认：调用方发异步消息后 ping 确保 已处理）---
+%% --- 诊断（消息串行化确认）---
 handle_call(ping_ok, _From, State) ->
     {reply, pong, State};
 handle_call(_Request, _From, State) ->
@@ -289,51 +328,102 @@ handle_cast(_Msg, State) ->
 handle_info(timeout, #state{status = discovering} = State) ->
     discover(State);
 handle_info(timeout, #state{status = recovering} = State) ->
-    %% 单轮恢复窗口超时：有界重试（RETRY_WITH_LIMIT）
-    discover(State#state{retries = State#state.retries + 1});
+    %% 单轮恢复窗口超时：有界重试（RETRY_WITH_LIMIT），受 Dmax 硬顶。
+    %% 回合卡死检查（C04）：回合 deadline 过期仍未闭合 → abort（有界重试）
+    case round_expired(State) of
+        true ->
+            {noreply, abort_round(deadline_expired, State)};
+        false ->
+            discover(State#state{retries = State#state.retries + 1})
+    end;
+%% --- 同步消息（legacy + V2）---
 handle_info({cache_sync, Msg}, State) ->
     {noreply, handle_sync_message(Msg, State)};
-%% 版本上界应答（恢复期间 peer → 本节点；每个应答都抬高本地 clock 下界）
-handle_info({cache_version_report, FromNode, MaxCounter}, #state{status = recovering} = State) ->
-    State1 = merge_version_ceiling(MaxCounter, State),
-    %% W4-03：向应答 peer 请求 replicate 快照（数据回填）
-    _ = [
-        P ! {cache_snapshot_request, self()}
-     || P <- syn_scope_members(), node(P) =:= FromNode
-    ],
-    Pending = [FromNode | lists:delete(FromNode, State1#state.pending_snapshots)],
-    {noreply, State1#state{pending_snapshots = Pending}};
-handle_info({cache_version_report, _FromNode, MaxCounter}, State) ->
-    {noreply, merge_version_ceiling(MaxCounter, State)};
-%% 快照请求（ready peer → 本恢复节点）：枚举 rindex 回放版本化 SET（W4-03）
-handle_info({cache_snapshot_request, RequestorPid}, #state{status = ready} = State) ->
-    _ = send_snapshot(RequestorPid, State),
-    RequestorPid ! {cache_snapshot_done, node()},
+%% --- 版本上界握手（新协议帧：report 携带 epoch/hash/boot/ready）---
+handle_info(
+    {cache_version_report, FromNode, MaxCounter, Epoch, ConfigHash, RegistryHash, BootId,
+        ReadyFlag},
+    State
+) ->
+    State1 = handle_version_report(
+        FromNode,
+        MaxCounter,
+        Epoch,
+        ConfigHash,
+        RegistryHash,
+        BootId,
+        ReadyFlag,
+        State
+    ),
+    {noreply, State1};
+%% 旧格式 report（真实旧版本节点，C10 混合矩阵）：hash 不可校验，
+%% 不作为 authority；不请求数据
+handle_info({cache_version_report, _FromNode, _MaxCounter}, State) ->
+    {noreply, State};
+%% --- 快照请求（新协议帧：带 Round）---
+handle_info(
+    {cache_snapshot_request, RequestorPid, Round},
+    #state{status = ready} = State
+) ->
+    _ = imboy_cache_sync_snapshot:send_snapshot(RequestorPid, Round),
     incr(reconcile_total),
     {noreply, State};
-handle_info({cache_snapshot_request, RequestorPid}, State) ->
-    %% 非 ready（peer 同在恢复）：回空快照 + done 标记，请求方回合可闭合
+handle_info({cache_snapshot_request, RequestorPid, _Round}, State) ->
+    %% 非 ready（peer 同在恢复）：回 done（无数据页），请求方回合不闭合
     _ =
         try
-            RequestorPid ! {cache_snapshot_done, node()}
+            RequestorPid ! {cache_snapshot_done, node(), _Round, 0, 0}
         catch
             _:_ -> ok
         end,
     {noreply, State};
-%% 快照完成标记：全部 peer 快照到齐才 READY（W4-04：快照期间 delta 由
-%% 版本比较覆盖，无需冻结写入）
-handle_info({cache_snapshot_done, FromNode}, #state{status = recovering} = State) ->
-    Pending = lists:delete(FromNode, State#state.pending_snapshots),
-    case Pending of
-        [] -> become_ready(State#state{pending_snapshots = []});
-        _ -> {noreply, State#state{pending_snapshots = Pending}}
+%% --- 快照页/终帧（恢复节点接收）---
+handle_info(
+    {cache_snapshot_page, FromNode, Round, PageNo, Entries, Digest, HasMore},
+    #state{status = recovering, snapshot_round = RoundSt} = State
+) when
+    is_map(RoundSt)
+->
+    case
+        imboy_cache_sync_snapshot:handle_page(
+            FromNode, Round, PageNo, Entries, Digest, HasMore, RoundSt
+        )
+    of
+        {ok, RoundSt1} ->
+            {noreply, maybe_complete_round(State#state{snapshot_round = RoundSt1})};
+        {abort, Reason, RoundSt1} ->
+            {noreply, abort_round(Reason, State#state{snapshot_round = RoundSt1})}
     end;
-handle_info({cache_snapshot_done, _FromNode}, State) ->
+handle_info(
+    {cache_snapshot_page, _FromNode, _Round, _PageNo, _Entries, _Digest, _HasMore},
+    State
+) ->
+    %% 非 recovering 或无回合：迟到页丢弃（有界）
+    incr(reject_total),
     {noreply, State};
-%% 版本上界请求（他节点恢复 → 本节点应答，5.3）
+handle_info(
+    {cache_snapshot_done, FromNode, Round, Watermark, _Total},
+    #state{status = recovering, snapshot_round = RoundSt} = State
+) when
+    is_map(RoundSt)
+->
+    case imboy_cache_sync_snapshot:handle_done(FromNode, Round, Watermark, RoundSt) of
+        {ok, RoundSt1} ->
+            {noreply, maybe_complete_round(State#state{snapshot_round = RoundSt1})};
+        {abort, Reason, RoundSt1} ->
+            {noreply, abort_round(Reason, State#state{snapshot_round = RoundSt1})}
+    end;
+handle_info({cache_snapshot_done, _FromNode, _Round, _Watermark, _Total}, State) ->
+    %% 旧格式 done（3 元组）或非恢复期 done：不推进任何回合（C01 第 4 节）
+    {noreply, State};
+%% --- 版本上界请求（他节点恢复 → 本节点应答，新协议帧）---
 handle_info({cache_version_request, FromNode}, State) ->
     _ = [
-        P ! {cache_version_report, node(), State#state.counter}
+        P !
+            {cache_version_report, node(), State#state.counter, imboy_cache_sync_proto:epoch(),
+                imboy_cache_sync_proto:config_hash(), imboy_cache_sync_proto:registry_hash(),
+                State#state.boot_id,
+                State#state.status =:= ready}
      || P <- syn_scope_members(), node(P) =:= FromNode
     ],
     {noreply, State};
@@ -365,8 +455,9 @@ handle_sync_message(#{protocol := 2} = Event, State) ->
     case apply_v2(Event, State) of
         {ok, S1} ->
             S1;
-        {reject, _Reason} ->
+        {reject, Reason} ->
             incr(reject_total),
+            ?DEBUG_LOG(["cache sync v2 reject", Reason]),
             State
     end;
 handle_sync_message({set, Key, Data, MaxAge, Depend}, State) ->
@@ -390,74 +481,51 @@ handle_sync_message(_, State) ->
     incr(unknown_total),
     State.
 
-%% @doc V2 事件应用（W3-01..W3-10）。gen_server 串行调用即写入串行化（5.2 方案 A）。
+%% @doc V2 事件应用（W3 + C02 双端一致性）。gen_server 串行调用即写入串行化。
 -spec apply_v2(map(), #state{}) -> {ok, #state{}} | {reject, term()}.
 apply_v2(Event, State) ->
-    case validate_v2(Event) of
+    case imboy_cache_sync_proto:validate(Event) of
         ok ->
-            incr(receive_total),
-            Key = maps:get(key, Event),
-            Op = maps:get(operation, Event),
-            Origin = maps:get(origin_node, Event),
-            Seq = maps:get(origin_seq, Event),
-            BootId = maps:get(origin_boot_id, Event),
-            SelfLoop = Origin =:= node() andalso BootId =:= State#state.boot_id,
-            case {SelfLoop, Op} of
-                {true, _} ->
+            Op0 = maps:get(operation, Event),
+            case imboy_cache_sync_proto:check_consistency(Event, State#state.boot_id) of
+                {error, self_loop} ->
                     %% W3-10：自己发出的广播不重复修改本地状态
                     {ok, State};
-                {false, invalidate} ->
-                    %% invalidate 不参与版本比较与 Lamport 推进（非 replicate 数据）
-                    _ = maybe_bump_fenced(Key),
-                    _ = depcache:flush(Key, ?DEPCACHE_SERVER),
-                    {ok, State};
-                {false, _} ->
-                    ok = detect_gap(Origin, Seq),
-                    State1 = merge_clock(maps:get(revision, Event), State),
-                    apply_v2_op(Op, Key, Event, State1)
+                %% C01 第 1 节：invalidate 不参与 epoch 比较（宁多失效）；
+                %% 其余双端一致性失败（hash）仍拒绝
+                {error, stale_epoch} when Op0 =:= invalidate ->
+                    apply_v2_validated(Event, State);
+                {error, Reason} ->
+                    {reject, Reason};
+                {ok, changed} ->
+                    %% peer 化身变化（重启）：C05 key 级有界补偿
+                    ok = gap_compensation_key(maps:get(key, Event)),
+                    apply_v2_validated(Event, State);
+                ok ->
+                    apply_v2_validated(Event, State)
             end;
         {error, Reason} ->
             {reject, Reason}
     end.
 
--spec validate_v2(map()) -> ok | {error, term()}.
-validate_v2(Event) when is_map(Event) ->
-    Op = maps:get(operation, Event, undefined),
-    Key = maps:get(key, Event, undefined),
-    checks_v2([
-        {fun() -> Key =/= undefined end, missing_key},
-        {fun() -> lists:member(Op, [set, delete, invalidate]) end, unknown_operation},
-        {
-            fun() ->
-                is_tuple(maps:get(revision, Event, none)) andalso
-                    tuple_size(maps:get(revision, Event)) =:= 2
-            end,
-            invalid_revision
-        },
-        {fun() -> is_integer(maps:get(origin_seq, Event, none)) end, invalid_origin_seq},
-        {fun() -> is_atom(maps:get(origin_node, Event, none)) end, invalid_origin_node},
-        {fun() -> is_binary(maps:get(origin_boot_id, Event, none)) end, invalid_boot_id},
-        %% 接收端独立白名单/敏感性校验（19.5：发送/接收两端独立校验，fail-closed）
-        {
-            fun() ->
-                Op =:= invalidate orelse
-                    imboy_cache_policy:replicate_allowed(Key)
-            end,
-            not_authorized
-        },
-        %% 接收端独立大小校验
-        {
-            fun() ->
-                Op =/= set orelse
-                    imboy_cache_policy:check_value_size(
-                        maps:get(value, Event)
-                    )
-            end,
-            value_too_large
-        }
-    ]);
-validate_v2(_) ->
-    {error, not_map}.
+%% @doc 双端一致性通过后的事件应用（C05 化身变化补偿 + op 路由）。
+-spec apply_v2_validated(map(), #state{}) -> {ok, #state{}} | {reject, term()}.
+apply_v2_validated(Event, State) ->
+    incr(receive_total),
+    Key = maps:get(key, Event),
+    Op = maps:get(operation, Event),
+    case Op of
+        invalidate ->
+            %% invalidate 不参与版本/epoch 比较（宁多失效）
+            _ = maybe_bump_fenced(Key),
+            _ = depcache:flush(Key, ?DEPCACHE_SERVER),
+            {ok, State};
+        _ ->
+            Seq = maps:get(origin_seq, Event),
+            ok = detect_gap(maps:get(origin_node, Event), Seq, Key),
+            State1 = merge_clock(maps:get(revision, Event), State),
+            apply_v2_op(Op, Key, Event, State1)
+    end.
 
 -spec apply_v2_op(set | delete, term(), map(), #state{}) ->
     {ok, #state{}} | {reject, term()}.
@@ -468,14 +536,22 @@ apply_v2_op(set, Key, Event, State) ->
             TTL = remaining_ttl_sec(maps:get(expires_at_ms, Event, 0)),
             case TTL > 0 of
                 true ->
-                    _ = depcache:set(Key, maps:get(value, Event), TTL, [], ?DEPCACHE_SERVER),
-                    C = erlang:element(1, Rev),
-                    true = ets:insert(
-                        ?META_TABLE,
-                        {{rev, Key}, {Rev, C, maps:get(expires_at_ms, Event), live}}
-                    ),
-                    ok = index_replicate(Key),
-                    {ok, State};
+                    case index_budget_ok(Key) of
+                        true ->
+                            _ = depcache:set(
+                                Key, maps:get(value, Event), TTL, [], ?DEPCACHE_SERVER
+                            ),
+                            C = erlang:element(1, Rev),
+                            true = ets:insert(
+                                ?META_TABLE,
+                                {{rev, Key}, {Rev, C, maps:get(expires_at_ms, Event), live}}
+                            ),
+                            ok = index_replicate(Key),
+                            {ok, State};
+                        false ->
+                            incr(reject_total),
+                            {ok, State}
+                    end;
                 false ->
                     incr(expired_total),
                     {reject, expired}
@@ -491,12 +567,23 @@ apply_v2_op(delete, Key, Event, State) ->
     Rev = maps:get(revision, Event),
     case compare_rev(Rev, current_rev(Key)) of
         newer ->
-            _ = depcache:flush(Key, ?DEPCACHE_SERVER),
-            TombstoneTTL = imboy_cache_policy:tombstone_ttl_sec(),
-            ExpiresAt = erlang:system_time(millisecond) + TombstoneTTL * 1000,
-            C = erlang:element(1, Rev),
-            true = ets:insert(?META_TABLE, {{rev, Key}, {Rev, C, ExpiresAt, deleted}}),
-            {ok, State};
+            case tombstone_budget_exceeded() of
+                true ->
+                    %% 远端删除在本节点预算满：受控清理后拒绝本条（fail-closed，
+                    %% 不部分应用；对端重试/校对补齐）
+                    ok = controlled_cold_recovery(),
+                    {reject, tombstone_budget_exceeded};
+                false ->
+                    _ = depcache:flush(Key, ?DEPCACHE_SERVER),
+                    TombstoneTTL = imboy_cache_policy:tombstone_ttl_sec(),
+                    ExpiresAt = erlang:system_time(millisecond) + TombstoneTTL * 1000,
+                    C = erlang:element(1, Rev),
+                    true = ets:insert(
+                        ?META_TABLE,
+                        {{rev, Key}, {Rev, C, ExpiresAt, deleted}}
+                    ),
+                    {ok, State}
+            end;
         equal ->
             {ok, State};
         older ->
@@ -505,16 +592,35 @@ apply_v2_op(delete, Key, Event, State) ->
     end.
 
 %% ===================================================================
-%% 恢复与校对（W4）
+%% 恢复与校对（W4 + C04 快照回合）
 %% ===================================================================
 
 -spec discover(#state{}) -> {noreply, #state{}}.
-discover(#state{retries = R} = State) when R > ?RECOVER_MAX_RETRY ->
-    ?WARN_LOG(["cache sync recovery retries exhausted, entering DEGRADED"]),
-    incr(degraded_total),
-    true = ets:insert(?META_TABLE, {status, degraded}),
-    {noreply, State#state{status = degraded}};
+discover(#state{retries = R, recover_deadline_ms = Deadline} = State) when
+    R > ?RECOVER_MAX_RETRY
+->
+    case erlang:system_time(millisecond) >= Deadline of
+        true ->
+            enter_degraded(State);
+        false ->
+            %% Dmax 未到：继续有界重试（重置轮计数，保持 5s 节奏）
+            discover(State#state{retries = 0})
+    end;
+discover(#state{recover_deadline_ms = Deadline} = State) ->
+    case
+        is_integer(Deadline) andalso
+            erlang:system_time(millisecond) >= Deadline
+    of
+        true ->
+            enter_degraded(State);
+        false ->
+            discover_peers(State)
+    end;
 discover(State) ->
+    discover_peers(State).
+
+-spec discover_peers(#state{}) -> {noreply, #state{}}.
+discover_peers(State) ->
     Members = [P || P <- syn_scope_members(), node(P) =/= node()],
     case Members of
         [] when State#state.retries < 3 ->
@@ -533,29 +639,185 @@ discover(State) ->
             {noreply, State#state{status = recovering}}
     end.
 
+-spec enter_degraded(#state{}) -> {noreply, #state{}}.
+enter_degraded(State) ->
+    ?WARN_LOG(["cache sync recovery retries exhausted, entering DEGRADED"]),
+    incr(degraded_total),
+    true = ets:insert(?META_TABLE, {status, degraded}),
+    {noreply, State#state{status = degraded, snapshot_round = undefined}}.
+
+%% @doc 处理版本上界应答（新协议帧）：
+%% 1. 登记 peer 化身（变化 → C05 全量 fenced 补偿）；
+%% 2. hash 一致才作为快照源（divergent 排除 authority）；
+%% 3. 版本上界并入（既有 5.3）；
+%% 4. recovering 时向 ready peer 请求快照（round 回合，C04）。
+-spec handle_version_report(
+    node(),
+    non_neg_integer(),
+    non_neg_integer(),
+    binary(),
+    binary(),
+    binary(),
+    boolean(),
+    #state{}
+) ->
+    #state{}.
+handle_version_report(
+    FromNode,
+    MaxCounter,
+    Epoch,
+    ConfigHash,
+    RegistryHash,
+    BootId,
+    _ReadyFlag,
+    #state{status = recovering} = State
+) ->
+    Changed = imboy_cache_sync_proto:register_incarnation(FromNode, BootId),
+    changed_compensation(Changed, {peer_epoch, FromNode}),
+    true = ets:insert(?META_TABLE, {{peer_epoch, FromNode}, Epoch}),
+    State1 = merge_version_ceiling(MaxCounter, State),
+    HashOk =
+        ConfigHash =:= imboy_cache_sync_proto:config_hash() andalso
+            RegistryHash =:= imboy_cache_sync_proto:registry_hash(),
+    case HashOk of
+        true ->
+            %% hash 一致的 peer（ready 发数据快照；同在恢复的 peer 回空
+            %% done——三节点同时冷启动时全部空快照闭合是合法路径：
+            %% "全部 peer done + 水位合并"三条件仍需满足，C01 第 4 节）
+            RoundSt0 = current_or_new_round(State1),
+            RoundSt1 = imboy_cache_sync_snapshot:expect_peer(RoundSt0, FromNode),
+            _ = [
+                P ! {cache_snapshot_request, self(), maps:get(round, RoundSt1)}
+             || P <- syn_scope_members(), node(P) =:= FromNode
+            ],
+            State1#state{snapshot_round = RoundSt1};
+        false ->
+            %% divergent peer：不请求数据、不闭合回合（G05：不假装同步正常；
+            %% 全部 peer divergent → 回合空 → 轮超时重试 → Dmax 后 DEGRADED）
+            State1
+    end;
+handle_version_report(
+    FromNode,
+    MaxCounter,
+    _Epoch,
+    _ConfigHash,
+    _RegistryHash,
+    BootId,
+    _ReadyFlag,
+    State
+) ->
+    %% 非 recovering（ready/degraded）：仅并入版本上界与登记化身
+    Changed = imboy_cache_sync_proto:register_incarnation(FromNode, BootId),
+    changed_compensation(Changed, {peer_epoch, FromNode}),
+    merge_version_ceiling(MaxCounter, State).
+
+-spec current_or_new_round(#state{}) -> map().
+current_or_new_round(#state{snapshot_round = undefined, recover_deadline_ms = Dl}) ->
+    imboy_cache_sync_snapshot:new_round(0, Dl);
+current_or_new_round(#state{snapshot_round = RoundSt}) when is_map(RoundSt) ->
+    RoundSt;
+current_or_new_round(#state{recover_deadline_ms = Dl}) ->
+    imboy_cache_sync_snapshot:new_round(0, Dl).
+
+-spec changed_compensation(term(), term()) -> ok.
+changed_compensation(changed, Key) ->
+    ok = gap_compensation_key(Key);
+changed_compensation(registered, _Key) ->
+    ok.
+
+%% @doc 回合闭合检查（C04 三条件）：闭合 → 并入全部水位 → READY。
+%% 页序悬挂但 done 的 peer 视为失败：有界重试新回合。
+-spec maybe_complete_round(#state{}) -> #state{}.
+maybe_complete_round(#state{snapshot_round = RoundSt} = State) when
+    is_map(RoundSt)
+->
+    case imboy_cache_sync_snapshot:round_complete(RoundSt) of
+        true ->
+            State1 = merge_all_watermarks(RoundSt, State),
+            become_ready_state(State1#state{snapshot_round = undefined});
+        false ->
+            State
+    end;
+maybe_complete_round(State) ->
+    State.
+
+-spec merge_all_watermarks(map(), #state{}) -> #state{}.
+merge_all_watermarks(#{peers := Peers}, #state{counter = C} = State) ->
+    Watermarks = [maps:get(watermark, St, 0) || St <- maps:values(Peers)],
+    MaxWm = lists:max([C | Watermarks]),
+    true = ets:insert(?META_TABLE, {sync_counter, MaxWm}),
+    State#state{counter = MaxWm}.
+
+%% @doc 回合失败：Rmax_rounds 内重试新回合，超限 DEGRADED。
+-spec abort_round(term(), #state{}) -> #state{}.
+abort_round(Reason, #state{snapshot_round = RoundSt} = State) when is_map(RoundSt) ->
+    RoundsUsed = maps:get(rounds_used, RoundSt, 0) + 1,
+    ?WARN_LOG(["cache sync snapshot round aborted", Reason, RoundsUsed]),
+    incr(snapshot_abort_total),
+    case RoundsUsed >= imboy_cache_policy:r_max_rounds() of
+        true ->
+            {noreply, S1} = enter_degraded(State),
+            S1;
+        false ->
+            Deadline = recover_deadline_of(State),
+            State#state{
+                snapshot_round =
+                    imboy_cache_sync_snapshot:new_round(RoundsUsed, Deadline)
+            }
+    end;
+abort_round(_Reason, State) ->
+    State.
+
+-spec recover_deadline_of(#state{}) -> non_neg_integer().
+recover_deadline_of(#state{recover_deadline_ms = Dl}) when is_integer(Dl) ->
+    Dl;
+recover_deadline_of(_) ->
+    erlang:system_time(millisecond) + imboy_cache_policy:d_max_ms().
+
+%% 回合是否过期（无回合 = 未过期，走常规恢复轮）。
+-spec round_expired(#state{}) -> boolean().
+round_expired(#state{snapshot_round = RoundSt}) when is_map(RoundSt) ->
+    Deadline = maps:get(deadline_ms, RoundSt, 0),
+    erlang:system_time(millisecond) >= Deadline;
+round_expired(_) ->
+    false.
+
 -spec become_ready(#state{}) -> {noreply, #state{}}.
 become_ready(State) ->
+    {noreply, become_ready_state(State)}.
+
+-spec become_ready_state(#state{}) -> #state{}.
+become_ready_state(State) ->
     _ = erlang:send_after(?RECONCILE_INTERVAL_MS, self(), reconcile_tick),
     true = ets:insert(?META_TABLE, {status, ready}),
-    {noreply, State#state{status = ready, retries = 0}}.
+    %% 冷恢复完成：epoch 取 max(本 epoch, 全部已知 peer epoch)（C01 第 3 节）
+    PeerEpochs = [E || {{peer_epoch, _N}, E} <- ets:tab2list(?META_TABLE), is_integer(E)],
+    MaxEpoch = lists:max([imboy_cache_sync_proto:epoch() | PeerEpochs]),
+    case MaxEpoch > imboy_cache_sync_proto:epoch() of
+        true -> _ = imboy_cache_sync_proto:bump_epoch();
+        false -> ok
+    end,
+    State#state{status = ready, retries = 0, snapshot_round = undefined}.
 
 -spec merge_version_ceiling(non_neg_integer(), #state{}) -> #state{}.
 merge_version_ceiling(MaxCounter, #state{counter = C} = State) ->
     State#state{counter = erlang:max(C, MaxCounter)}.
 
-%% @doc 定期轻量校对（9.4）：交换版本摘要上界 + 有界清理（W4-06/W4-07）。
+%% @doc 定期轻量校对（9.4）：交换版本摘要上界 + 有界清理（W4-06/W4-07）
+%% + 宽限化身淘汰（C02）+ rindex 计数校准（C03）。
 -spec periodic_reconcile(#state{}) -> #state{}.
 periodic_reconcile(#state{status = ready} = State) ->
     incr(reconcile_total),
     Members = [P || P <- syn_scope_members(), node(P) =/= node()],
     _ = [P ! {cache_version_request, node()} || P <- Members],
     ok = bounded_sweep(),
+    ok = imboy_cache_sync_proto:prune_grace(erlang:system_time(millisecond)),
+    ok = recalibrate_rindex_count(),
     State;
 periodic_reconcile(State) ->
     State.
 
-%% @doc 有界清理（W4-06/W4-07）：过期墓碑淘汰。索引与墓碑总量上界由
-%% tombstone 过期时间约束（时间有界即数量有界；超窗 peer 走冷恢复 19.6）。
+%% @doc 有界清理（W4-06/W4-07）：过期墓碑/过期 live 淘汰 + rindex 连带。
 -spec bounded_sweep() -> ok.
 bounded_sweep() ->
     NowMs = erlang:system_time(millisecond),
@@ -573,7 +835,7 @@ bounded_sweep() ->
     ok.
 
 %% 淘汰 rev 行时连带清理同名 rindex 行——rindex 无独立过期路径，
-%% 不连带清理则随复制写入无界增长（W4-06/07：时间有界即数量有界）
+%% 不连带清理则随复制写入无界增长（W4-06/07）
 sweep_entry({rev, K}) ->
     _ = ets:delete(?META_TABLE, {rindex, K}),
     ok;
@@ -592,6 +854,122 @@ is_sweepable(K, {_Rev, _C, ExpiresAt, live}, NowMs, _TTLms) ->
         ExpiresAt < NowMs;
 is_sweepable(_, _, _, _) ->
     false.
+
+%% ===================================================================
+%% C03 资源预算执行
+%% ===================================================================
+
+%% @doc rindex 计数（近似 + 周期校准，写路径 O(1)）。
+-spec index_budget_ok(term()) -> boolean().
+index_budget_ok(Key) ->
+    case ets:member(?META_TABLE, {rindex, Key}) of
+        true ->
+            true;
+        false ->
+            rindex_count() < imboy_cache_policy:n_max()
+    end.
+
+-spec rindex_count() -> non_neg_integer().
+rindex_count() ->
+    case ets:lookup(?META_TABLE, rindex_count) of
+        [{_, N}] when is_integer(N) -> N;
+        [] -> 0
+    end.
+
+-spec recalibrate_rindex_count() -> ok.
+recalibrate_rindex_count() ->
+    N = ets:select_count(
+        ?META_TABLE,
+        [{{{'$1', '$2'}, '_'}, [{'==', '$1', rindex}], [true]}]
+    ),
+    true = ets:insert(?META_TABLE, {rindex_count, N}),
+    ok.
+
+%% @doc 墓碑预算：精确统计 deleted rev 行（删除为低频路径，select_count
+%% 可接受）；满 → 先过期淘汰，仍满 → 受控冷恢复（C01 第 7 节，不删
+%% tombstone 后接受旧事件）。
+-spec tombstone_budget_exceeded() -> boolean().
+tombstone_budget_exceeded() ->
+    tombstone_count() >= imboy_cache_policy:t_max() andalso
+        begin
+            ok = bounded_sweep(),
+            tombstone_count() >= imboy_cache_policy:t_max()
+        end.
+
+-spec tombstone_count() -> non_neg_integer().
+tombstone_count() ->
+    ets:select_count(
+        ?META_TABLE,
+        [{{{rev, '_'}, {'_', '_', '_', deleted}}, [], [true]}]
+    ).
+
+%% @doc 受控冷恢复（C01 第 3/7 节）：推进 epoch、丢弃全部受管复制副本
+%% （rindex/rev），后续走新快照回合从 authority 回填。
+-spec controlled_cold_recovery() -> ok.
+controlled_cold_recovery() ->
+    _ = imboy_cache_sync_proto:bump_epoch(),
+    _ = [
+        ets:delete(?META_TABLE, K)
+     || {K, _V} <- ets:tab2list(?META_TABLE),
+        (is_tuple(K) andalso tuple_size(K) =:= 2 andalso
+            (element(1, K) =:= rev orelse element(1, K) =:= rindex))
+    ],
+    true = ets:insert(?META_TABLE, {rindex_count, 0}),
+    incr(cold_recovery_total),
+    ok.
+
+%% ===================================================================
+%% C05 invalidate 缺口补偿
+%% ===================================================================
+
+%% @doc origin_seq 缺口检测（W4-05 + C05 增强）：跳号计数 + 该 namespace
+%% 若为受管 fenced 域，立即推进 generation（有界清理，旧物理键不可读，
+%% 新请求回权威，不依赖旧 TTL 自然到期）。
+-spec detect_gap(node(), non_neg_integer(), term()) -> ok.
+detect_gap(Origin, Seq, Key) ->
+    SeqKey = {seq, Origin},
+    Last =
+        case ets:lookup(?META_TABLE, SeqKey) of
+            [{_, L}] -> L;
+            [] -> 0
+        end,
+    case Seq > Last + 1 of
+        true ->
+            incr(gap_detected_total),
+            ok = gap_compensation(Key);
+        false ->
+            ok
+    end,
+    _ = ets:insert(?META_TABLE, {SeqKey, erlang:max(Last, Seq)}),
+    ok.
+
+%% @doc 单 namespace 补偿：fenced 域推进 generation（非 fenced 保持 legacy
+%% 合同，TTL 兜底——受管 = 显式配置的 fenced namespace）。
+-spec gap_compensation(term()) -> ok.
+gap_compensation(Key) ->
+    case is_fenced(Key) of
+        true ->
+            G = bump_generation(Key),
+            ok = flush_physical(Key, G - 1);
+        false ->
+            ok
+    end.
+
+%% @doc 化身变化/重连补偿（C05，key 级落地）：对化身变化事件携带的
+%% Key 推进 key 级 generation（19.3 物理键读路径即 key 级——补偿必须
+%% 同粒度才可被读取路径感知）。
+%% 局限（记录）：无法枚举未观察到的同源 Key，未覆盖 Key 依赖 TTL
+%% 兜底或权威回源；namespace 级扫荡需 fenced 枚举机制（后续演进），
+%% 本轮按"补偿检测到的受影响 Key"交付（C05 oracle 场景成立）。
+-spec gap_compensation_key(term()) -> ok.
+gap_compensation_key(Key) ->
+    case is_fenced(Key) of
+        true ->
+            G = bump_generation(Key),
+            ok = flush_physical(Key, G - 1);
+        false ->
+            ok
+    end.
 
 %% ===================================================================
 %% Internal
@@ -653,7 +1031,7 @@ publish_invalidate(Key) ->
         v2 ->
             incr(publish_total),
             %% invalidate 事件不带 Lamport 版本（接收端跳过版本比较），
-            %% revision 占位仅满足消息结构校验。
+            %% revision/seq 占位仅满足消息结构校验。
             _ = publish(#{
                 protocol => 2,
                 operation => invalidate,
@@ -662,7 +1040,10 @@ publish_invalidate(Key) ->
                 revision => {0, node()},
                 origin_seq => 0,
                 origin_node => node(),
-                origin_boot_id => boot()
+                origin_boot_id => boot(),
+                epoch => imboy_cache_sync_proto:epoch(),
+                config_hash => imboy_cache_sync_proto:config_hash(),
+                registry_hash => imboy_cache_sync_proto:registry_hash()
             }),
             %% 19.8 能力交集：旧节点静默丢弃 v2 信封，混合期失效必须同时
             %% 走 legacy {flush, Key} 通道；v2 接收端按保守栅栏处理该消息，
@@ -684,12 +1065,7 @@ boot() ->
 
 -spec is_fenced(term()) -> boolean().
 is_fenced(Key) ->
-    NS = imboy_cache_policy:namespace_of(Key),
-    NS =/= undefined andalso lists:member(NS, fenced_namespaces()).
-
--spec fenced_namespaces() -> [atom()].
-fenced_namespaces() ->
-    application:get_env(imboy, cache_fenced_namespaces, []).
+    imboy_cache_policy:is_fenced(Key).
 
 -spec maybe_bump_fenced(term()) -> ok.
 maybe_bump_fenced(Key) ->
@@ -721,10 +1097,12 @@ bump_all_fenced() ->
 allocate(#state{counter = C, origin_seq = S} = State) ->
     C1 = C + 1,
     S1 = S + 1,
+    true = ets:insert(?META_TABLE, {sync_counter, C1}),
     {{C1, node()}, S1, State#state{counter = C1, origin_seq = S1}}.
 
 -spec merge_clock({non_neg_integer(), node()}, #state{}) -> #state{}.
 merge_clock({RemoteC, _Node}, #state{counter = C} = State) ->
+    true = ets:insert(?META_TABLE, {sync_counter, erlang:max(C, RemoteC)}),
     State#state{counter = erlang:max(C, RemoteC)}.
 
 -spec current_rev(term()) -> {non_neg_integer(), node()} | undefined.
@@ -758,29 +1136,6 @@ remaining_ttl_sec(ExpiresAtMs) ->
         false -> Remaining div 1000
     end.
 
--spec v2_event(
-    set | delete,
-    term(),
-    term(),
-    non_neg_integer(),
-    {non_neg_integer(), node()},
-    non_neg_integer(),
-    binary()
-) -> map().
-v2_event(Op, Key, Value, ExpiresAt, Rev, Seq, BootId) ->
-    #{
-        protocol => 2,
-        operation => Op,
-        namespace => imboy_cache_policy:namespace_of(Key),
-        key => Key,
-        value => Value,
-        expires_at_ms => ExpiresAt,
-        revision => Rev,
-        origin_seq => Seq,
-        origin_node => node(),
-        origin_boot_id => BootId
-    }.
-
 -spec publish(map()) -> {ok, non_neg_integer()}.
 publish(Event) ->
     try syn:publish(?CACHE_SCOPE, ?CACHE_GROUP_NAME, {cache_sync, Event}) of
@@ -789,85 +1144,36 @@ publish(Event) ->
         _:_ -> {ok, 0}
     end.
 
--spec pre_publish() -> ok | {error, term()}.
-pre_publish() ->
+%% @doc 发布前置检查：READY + 队列高水位 + Nmax 预算（fail-closed）。
+-spec pre_publish(term()) -> ok | {error, term()}.
+pre_publish(Key) ->
     case status() of
         St when St =/= ready ->
             {error, {not_ready, St}};
         ready ->
-            case queue_depth() > ?HIGH_WATERMARK of
-                true -> {error, overloaded};
-                false -> ok
+            case queue_depth() > imboy_cache_policy:high_watermark() of
+                true ->
+                    {error, overloaded};
+                false ->
+                    case index_budget_ok(Key) of
+                        true -> ok;
+                        false -> {error, index_full}
+                    end
             end
     end.
 
-%% @doc origin_seq 缺口检测（W4-05）：记录每个来源最大 seq；观察到跳号计入
-%% gap 计数（有界补偿由定期校对触发，9.4）。
--spec detect_gap(node(), non_neg_integer()) -> ok.
-detect_gap(Origin, Seq) ->
-    Key = {seq, Origin},
-    Last =
-        case ets:lookup(?META_TABLE, Key) of
-            [{_, L}] -> L;
-            [] -> 0
-        end,
-    case Seq > Last + 1 of
-        true -> incr(gap_detected_total);
-        false -> ok
-    end,
-    _ = ets:insert(?META_TABLE, {Key, erlang:max(Last, Seq)}),
-    ok.
-
 -spec index_replicate(term()) -> ok.
 index_replicate(Key) ->
+    New = not ets:member(?META_TABLE, {rindex, Key}),
     _ = ets:insert(?META_TABLE, {{rindex, Key}, erlang:system_time(millisecond)}),
+    case New of
+        true ->
+            N = rindex_count(),
+            true = ets:insert(?META_TABLE, {rindex_count, N + 1});
+        false ->
+            ok
+    end,
     ok.
-
-%% @doc 向恢复节点发送快照（W4-03）：枚举 rindex，live 且未过期的条目
-%% 以**原 revision/origin** 回放为普通 V2 SET 事件——接收端按版本比较
-%% 幂等合并（与快照期间的新 delta 天然融合，9.3）。批次受 batch_size 约束。
--spec send_snapshot(pid(), #state{}) -> ok.
-send_snapshot(RequestorPid, _State) ->
-    NowMs = erlang:system_time(millisecond),
-    Entries = [
-        K
-     || [K] <- ets:match(?META_TABLE, {{rindex, '$1'}, '_'}),
-        valid_live_entry(K, NowMs)
-    ],
-    %% 快照正确性优先：全部有效条目以原版本回放（单轮发送；条目总量受
-    %% Nmax/墓碑过期上界约束，W4-06/07）；快照期间 peer 的正常写入作为
-    %% delta 并行到达，版本比较保证合并正确（9.3）
-    _ = [RequestorPid ! {cache_sync, snapshot_event(K)} || K <- Entries],
-    ok.
-
--spec valid_live_entry(term(), non_neg_integer()) -> boolean().
-valid_live_entry(K, NowMs) ->
-    case ets:lookup(?META_TABLE, {rev, K}) of
-        [{{rev, K}, {_Rev, _C, ExpiresAt, live}}] ->
-            ExpiresAt > NowMs andalso
-                depcache:get(K, ?DEPCACHE_SERVER) =/= undefined;
-        _ ->
-            false
-    end.
-
--spec snapshot_event(term()) -> map().
-snapshot_event(K) ->
-    [{{rev, K}, {{_Counter, OriginNode} = Rev, _C2, ExpiresAt, live}}] =
-        ets:lookup(?META_TABLE, {rev, K}),
-    {ok, Value} = depcache:get(K, ?DEPCACHE_SERVER),
-    #{
-        protocol => 2,
-        operation => set,
-        key => K,
-        value => Value,
-        expires_at_ms => ExpiresAt,
-        revision => Rev,
-        %% 快照回放保留原 origin（含原 boot_id）：若原 origin 是重启节点
-        %% 自身，旧 boot_id 使自环过滤不命中，数据得以恢复
-        origin_seq => 0,
-        origin_node => OriginNode,
-        origin_boot_id => <<0:128>>
-    }.
 
 -spec syn_scope_members() -> [pid()].
 syn_scope_members() ->
@@ -882,13 +1188,4 @@ syn_scope_members() ->
 -spec incr(atom()) -> ok.
 incr(Name) ->
     _ = elib_metric:increment(Name),
-    ok.
-
--spec checks_v2([{fun(() -> boolean()), term()}]) -> ok | {error, term()}.
-checks_v2([{Pred, Reason} | Rest]) ->
-    case Pred() of
-        true -> checks_v2(Rest);
-        false -> {error, Reason}
-    end;
-checks_v2([]) ->
     ok.
