@@ -458,9 +458,13 @@
         %% openssl rsa -pubin -in /etc/imboy/keys/login_rsa_pub.pem -outform DER | base64 -w0
         {login_rsa_pub_key_file, ""},
         {login_rsa_priv_key_file, ""},
-        %% 极光认证 RSA 私钥（可与 login_rsa_priv_key_file 相同或独立）
+        %% 极光认证（一键登录）RSA 私钥，可选：
+        %%   留空 = 复用 login_rsa_priv_key_file 的私钥（默认，推荐）
+        %%   填写 = 使用独立私钥；路径不可读时启动告警并回退 login 私钥（不阻断启动）
+        %% 注意：不要在此处硬编码固定路径——若生产用 IMBOY_LOGIN_RSA_*_KEY_FILE
+        %%      指向其他目录，残留的默认路径会因文件缺失而误报（N-5）。
         %% openssl rsa -pubin -in /etc/imboy/keys/login_rsa_pub.pem -outform DER | base64 -w0
-        {jverification_rsa_priv_key_file, "/etc/imboy/keys/login_rsa_priv.pem"},
+        {jverification_rsa_priv_key_file, ""},
 
         %% 历史 MD5 密码盐值（仅用于旧密码回退验证，新密码使用 hmac_sha512 自带随机 salt）
         %% ⚠️  一旦投产后不可更改，否则已存储的旧格式密码将永久失效

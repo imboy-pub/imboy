@@ -669,19 +669,40 @@ ensure_rsa_keys() ->
             {ok, PrivPem} = file:read_file(binary_to_list(PrivF)),
             ok = application:set_env(imboy, login_rsa_pub_key, PubPem),
             ok = application:set_env(imboy, login_rsa_priv_key, PrivPem),
-            %% jverification 独立私钥（可选，未配置则复用 login 私钥）
-            JvFile = normalize_secret(config_ds:env(jverification_rsa_priv_key_file, "")),
-            JvPem =
-                case JvFile of
-                    <<>> ->
-                        PrivPem;
-                    JvF ->
-                        {ok, P} = file:read_file(binary_to_list(JvF)),
-                        P
-                end,
-            ok = application:set_env(imboy, jverification_rsa_priv_key, JvPem)
+            ok = application:set_env(
+                imboy, jverification_rsa_priv_key, resolve_jverification_priv_key(PrivPem)
+            )
     end,
     ok.
+
+%% @doc 解析极光认证（一键登录）私钥 —— 可选能力，绝不阻断启动。
+%% - 未配置（空）      → 复用 login 私钥
+%% - 已配置且可读      → 使用独立私钥
+%% - 已配置但不可读    → 告警 + 回退 login 私钥
+%% N-5：旧实现对该键做裸 `{ok,P}=file:read_file`，当配置 login_rsa_*_key_file 后
+%% 仍残留 jverification 默认路径（如 /etc/imboy/keys/login_rsa_priv.pem）时，
+%% 文件缺失即 badmatch 拖垮**整个节点**；而该私钥仅被
+%% imboy_sms:decrypt_jverification_phone/1 使用，运行期本就有 try/catch 降级，
+%% 不应在 boot 期拿到生杀权。
+-spec resolve_jverification_priv_key(binary()) -> binary().
+resolve_jverification_priv_key(LoginPrivPem) ->
+    case normalize_secret(config_ds:env(jverification_rsa_priv_key_file, "")) of
+        <<>> ->
+            LoginPrivPem;
+        JvF ->
+            case file:read_file(binary_to_list(JvF)) of
+                {ok, Pem} ->
+                    Pem;
+                {error, Reason} ->
+                    logger:warning(
+                        "[imboy] jverification_rsa_priv_key_file=~ts unreadable (~p) — "
+                        "falling back to login private key. Mount the file, set "
+                        "IMBOY_JVERIFICATION_RSA_PRIV_KEY_FILE, or blank the key.",
+                        [JvF, Reason]
+                    ),
+                    LoginPrivPem
+            end
+    end.
 
 %% @doc 支付宝密钥支持文件路径形态（与 login_rsa_*_key_file 同思路）
 %% alipay_private_key/alipay_public_key 的值以 <<"/">> 开头时视为 PEM 文件路径，
