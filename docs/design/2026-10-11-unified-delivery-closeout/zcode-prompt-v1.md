@@ -1,0 +1,35 @@
+# ZCODE 无人值守统一收口提示词 / Unattended closeout prompt
+
+将下面代码块完整作为一次任务交给 ZCODE。用户发送此提示词即授权其中限定的本地实施；当前编制会话不启动实施。允许最多10个并发agent，包含协调者与verifier。
+
+```text
+你是本任务的ZCODE总协调者。请执行，不要停留在评估或建议；一次启动持续完成全部授权内可执行工作，不需要我逐卡指挥、批准测试或确认常规实现方案。
+
+唯一执行计划：
+/Users/leeyi/project/imboy.pub/imboy/docs/design/2026-10-11-unified-delivery-closeout/plan-v1.md
+固定SHA256：8987f4134000f16282eeb58f218bfe3faf39a0a624749d6422b480a49c1ae83d
+
+先读取适用AGENTS.md，机械复算计划文件hash，并核对同目录plan-v1.md.sha256。二者均须等于上述固定hash；不一致则PLAN_HASH_MISMATCH，禁止静默接受新版本。读取三个source-contracts快照并核对计划所列原文hash。旧三个计划已冻结，不继续修改旧台账或历史verdict。
+
+我授权你按本计划完成imboy、imboyapp、imboyadmin内所需源码、测试、runner、文档的本地修复与验收，建立或复用隔离worktree/执行分支、锁定开发依赖、本run合成数据测试库/服务，在已连接且可合法使用的用户测试设备上执行原合同旅程，验证后按独立功能本地提交。提交命令级身份leeyi <leeyisoft@qq.com>，不改全局配置。所有成果集成到本run分支；不得自行合并共享main、push、部署、发布、生产迁移、设置联系方式、通知第三方、改变签名身份或代签UAT。
+
+最多10个agent总并发，按计划A0–A9角色与U00–U12依赖调度。先本地完成U00基线和隔离门，再并行推进，不等待我批准U00报告。worker不是独占代码库，不得回滚其他会话改动；每卡明确唯一文件owner。共享router/权限/迁移/配置/ebin/数据库/设备/浏览器/全量窗口单owner或串行租约，不要为满10个名额制造冲突。
+
+缓存及CX由其他会话执行，只读发现其候选与交接证据，不重复实施或抢资源。OA getAuthCode默认已经完成，只核验继承；企业OA一次码/撤权等其他原义务继续。E2EE专项、L4/relay专项、AC31–34明确后期；现有IM回归与保留/授权负例不得删除。
+
+采用原合同全部子场景为底线。历史PASS不能直接继承；缺少正式豁免来源时默认补原要求，不向我询问要不要放宽。父项全部required子项通过才PASS。phase1缺口不止AC15/28，必须包含审计指出的AC05/10/12/14/16/23/25/28/29/30和其余父项覆盖复核；微社群按26项全子场景，EO展开原EWS与required cells，不拿任务卡数量当验收集合。
+
+先复现再修，已有通过行为不重写。MC22先确认实际VIEW发送和Flutter路由接收，不预设需要新原生桥接；AC29必须恢复后实际业务读取与PG/Garage联合对拍，marker恢复不替代；MC21每轮不可覆盖日志，绑定dirty字节/源码/build；全量run2九败/run3三败分别核对；dialyze差分及225 skips逐项解释，不关闭检查来求绿。
+
+环境失败先自恢复：本地构建真实hird、本runPATH、独立PG/Garage/端口/连接预算、合法设备与签名诊断。不重启共享服务，不接生产库，不用模拟器替代真机，不删除测试或吞exit。两轮无进展转独立诊断，有新证据继续修复，不能为了省事提前BLOCKED。真实外部条件不可用才保留阻断。
+
+RUN_ROOT置于/Users/leeyi/.zcode-runs/下，使用唯一unified-delivery-closeout时间戳目录。完整记录三仓HEAD/tree/patch/untracked内容hash、构建、锁文件、runner/config/fixture指纹及资源归属。每个子场景写命令/cwd/时间/exit/oracle/日志hash及候选。按计划原子checkpoint与追加events；进度定期更新。重启/压缩读取checkpoint继续，不重新实施已有效通过项。
+
+依赖未交接时推进其他卡，按计划第10.3节有限非阻塞检查，禁止无限等待或把缺交接算PASS。已提交且归属明确的依赖可在本run分支集成并重验，不吸收他人dirty补丁。任何候选/runner/config变化使影响门失效，重新冻结并重跑影响闭包。
+
+专项门先跑；最终集成后串行两轮同候选全EUnit及全部三端质量/真实旅程/恢复门。安排未承担对应实现的agent独立执行U12正反校验；校验器自测通过不等于真实包通过。
+
+不要问“是否继续、是否跑测试、是否提交”。持续调度直至全部本地required通过并签UNIFIED_LOCAL_CANDIDATE_PASS；若所有授权内可执行任务已穷尽而仅剩经独立复核的外部/设备/合同/依赖阻断，则签AUTONOMOUS_RUN_EXHAUSTED且总体PARTIAL/BLOCKED，逐项说明解锁条件，绝不称功能已干完。确定隔离失效或计划hash错误按计划停止并保全。
+
+最终给我：三仓本地提交与分支、最终候选与产物hash、源父项/子项精确ledger、测试命令/exit/断言与证据、U12结果、每个原合同状态、未解决项和NEXT_UNLOCK、可直接再次发送的resume-prompt.md。production/UAT/共享main合并/push实际没做均如实写NOT_PERFORMED。完成前不能以“建议下一步”代替实施。
+```

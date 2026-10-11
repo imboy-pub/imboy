@@ -1,6 +1,6 @@
 # 一期交付、微社群、企业组织统一收口计划 V1 / Unified Delivery Closeout
 
-日期：2026-10-11。状态：PLAN_READY / NOT_EXECUTED。当前授权仅编制计划、冻结旧入口及文档验证；本文件不是业务实施或外向操作授权。
+日期：2026-10-11。状态：PLAN_READY / NOT_EXECUTED。执行模式：UNATTENDED_LOCAL_CLOSEOUT。当前会话仅编制执行包；用户把配套 zcode-prompt-v1.md 交给 ZCODE 启动后，该提示词授权其按本计划持续完成本地实施、测试、隔离环境修复及本地提交；不授权外向或生产操作。
 
 ## 1. 目标与范围 / Goal and scope
 
@@ -26,7 +26,7 @@ phase1 原父项为 AC00–34（35），另有 P1-LOC-02/P1-MOM-01 两子项；�
 
 三个旧计划统一标记 FROZEN / SUPERSEDED_FOR_EXECUTION；原正文与旧哈希保留在本目录 source-contracts，禁止继续向旧计划/旧run补登PASS。企业 verdict.json是历史证据，保持字节不变，冻结其执行入口及证据目录说明，不修改历史 verdict。
 
-旧范围修订没有可核实授权时：保留原项为PARTIAL/UNVERIFIED，输出决策卡；正式修订另记 revised_scope_status，original_contract_status仍反映原合同差异。用户本轮排除的后期专项记 DEFERRED_BY_USER，不伪装原计划完成。
+旧范围修订没有可核实授权时默认恢复原合同，自动补测或修复，不等待用户选择豁免；只有不可兼容产品合同冲突才登记BLOCKED_CONTRACT并继续独立任务。正式修订另记 revised_scope_status，original_contract_status仍反映原合同差异。用户本轮排除的后期专项记 DEFERRED_BY_USER，不伪装原计划完成。
 
 ## 3. 启动门与不可变候选 / Entry gates
 
@@ -69,7 +69,7 @@ U00输出 control/leases.json 与无省略号 commands.sh。每worker独立build
 波次2：稳定接口上的U07/U08执行真端旅程，U10准备恢复包；禁止同一设备/DB压力窗口抢占。
 波次3：U10恢复、U11最终门、U12终审串行。修复任何源/runner/fixture/config后重新冻结并重跑影响项；全量成功必须来自最终指纹。
 
-阻塞单卡继续其他独立卡。每根因最多两轮最小修复，仍失败则交接BLOCKED+复现命令+NEXT_UNLOCK，禁止无限重跑。不存在环境/设备/签名时保留BLOCKED_ENV，不自动缩平台。优先快验收卡，完整全量轮不在每worker重复执行。
+阻塞单卡继续其他独立卡。每根因连续两轮无新证据的相同修复必须转独立诊断；有新根因或新证据可继续修复并登记，不能两轮失败即草率放弃。不存在环境/设备/签名时先按第10节自恢复，再保留BLOCKED_ENV，不自动缩平台。优先快验收卡，完整全量轮不在每worker重复执行。
 
 ## 6. 命令与证据合同 / Commands and evidence
 
@@ -96,7 +96,7 @@ verdict同时输出三个source_original_contract_status、current_scope_status�
 
 ## 8. ZCODE执行交接 / Handoff
 
-执行者启动须机械核对本计划.sha256，失败即PLAN_HASH_MISMATCH并停止依赖操作；重新采样三仓现场状态，不沿用编制时HEAD。先完成U00，输出源合同全集及未核实授权决策卡，再按租约最多10agent持续推进。
+执行者启动须机械核对本计划.sha256及配套提示词硬编码hash，失败即PLAN_HASH_MISMATCH并停止依赖操作；重新采样三仓现场状态，不沿用编制时HEAD。先完成U00，输出源合同全集及默认决策登记，再按租约最多10agent持续推进；不把U00报告作为等待人工批准的检查点。
 
 不要重复开CX、缓存、OA getAuthCode、E2EE专项或L4专项任务；依赖未完成时如实等待交接，不能为了本计划PASS把它们标不适用。不得回滚别的会话WIP。每卡交接提供状态、改动路径、测试命令/exit/断言/hash、候选、NEXT_UNLOCK；最终独立终审不得根据摘要代签。
 
@@ -106,3 +106,56 @@ verdict同时输出三个source_original_contract_status、current_scope_status�
 - `docs/design/2026-10-07-phase1-delivery-quality-plan.md`（冻结前）：`3074702ea0b00ab32eb58252a35cc0f62217376b938c932ba9a05ccced1d5e00`。
 - `docs/design/2026-10-06-enterprise-organization-gap/plan-v1.md`（冻结前）：`484408ed8b0fec126267cb155875a75d2d24f7aef377df6b23cae8b48824961f`。
 - 企业历史 verdict SHA256：`f280a117836e088c5f0a887bc190939cff981506c42251871b58e89399ff9aa2`；保留原字节。
+
+## 10. 无人值守执行协议 / Unattended execution protocol
+
+### 10.1 预授权默认决策
+
+配套提示词启动后，以下本地动作无需再次询问：读取三仓及历史run；建立或复用隔离worktree/执行分支；安装锁定版本开发依赖到本run；构建本地hird；创建合成数据隔离PG/Garage和本run服务；修复本范围源码、runner、测试与文档；在已连接的用户测试设备运行原合同旅程；按功能提交到各自执行分支。不修改Git全局配置，本地提交命令级身份使用 leeyi <leeyisoft@qq.com>。
+
+自动选择规则：原合同优先于无来源豁免；当前源码优先于旧缺陷定性；项目已有实现优先于新抽象；修复最小影响面；未知范围不扩大。macOS不支持移动OA时执行有来源的平台合同，不新增移动OA能力；个人企业入口沿“我→切换企业”，不复活旧通讯录入口。相互不兼容且没有权威裁决的要求保留双方来源，标BLOCKED_CONTRACT，不凭代理投票裁决。
+
+不要发起常规“是否继续/是否跑测试/是否提交/选哪个方案”问题。自动完成授权内动作。外向操作、联系方式、生产、签名身份、凭证购买、第三方/UAT仍未授权：登记外部门禁即可，不阻塞其他本地卡，不把未授权动作强行做完。
+
+### 10.2 启动预检与修复路径
+
+U00逐项检查Git/WIP、工具链、hird、PG/Garage、真实浏览器、Android设备及macOS签名/运行条件，记录检查命令、exit、日志。预检失败先定位现有配置/工具/同仓说明再重试，不立即把“找不到命令”等价无法实施。
+
+| 问题 | 自动恢复 | 不能越过的边界 |
+|---|---|---|
+| hird缺失 | 查本地源码/已安装二进制，按项目锁定工具链构建到本run并设置run级PATH；验证行为与版本 | 不生成假hird、不跳过调用，不替换生产验证逻辑 |
+| PG连接墙、Garage/端口冲突 | 独立本run容器/数据库与端口，控制并发和连接池；记录创建资源及清理清单 | 不重启/改配置/删除共享或缓存/CX会话服务 |
+| macOS签名或Android离线 | 复用现有合法配置与已连接测试设备；检查本run构建与设备状态；限三次有诊断依据的重连/启动 | 不改Apple账号/签名身份、购买描述文件、自动解锁设备或重置设备 |
+| 历史日志缺失/覆盖/dirty漏绑 | 重新执行相应子场景，使用不可覆盖轮次目录与完整源码/构建绑定 | 不补造历史日志，不把新基线当旧完整性通过 |
+| skips/dialyze失败 | 建立逐项归属与基线差分；修复范围内问题；无可核实豁免则执行原required用例 | 基线解释不等价原质量门PASS；不扩大ignore或关闭检查 |
+| 文件写集冲突 | 暂停冲突卡，由A0划分具体路径/时段；先推进其他卡 | 不覆盖外来WIP；不随意复制他人dirty补丁 |
+
+### 10.3 与CX/缓存会话的自动交接
+
+先只读发现已有run、候选及交接文件，记录producer/run/candidate/hash/status。没有交接协议时，在本RUN_ROOT建立 dependency-request.json，详细列依赖ID、所需证据及版本，不自行向第三方发送消息。
+
+有共同祖先与干净提交、范围归属明确、证据匹配时，可在本run集成分支自动集成该本地已提交成果并重验影响项；不合并到共享main、不吸收dirty文件。依赖生产者仍在改动时，消费者固定一个已提交版本，后续版本变化由影响分析触发重验，不跟随每次主树漂移。
+
+没有可用交接则每个调度波次检查一次；独立任务结束后进行三次间隔至少10分钟的非阻塞检查，期间完成台账/恢复包/审查，不阻塞睡眠。仍无交接的required项记BLOCKED_DEPENDENCY并输出可续跑checkpoint；不无限等待，也不签UNIFIED_LOCAL_CANDIDATE_PASS。
+
+### 10.4 控制循环、崩溃恢复与结束条件
+
+A0循环执行：复算可运行卡→分配不冲突写集/资源→实施与专项验收→读取交接并集成→更新账本→释放资源→调度下一卡。每完成子场景原子保存 control/checkpoint.json 和追加 events.jsonl，包含计划hash、源集合hash、候选、owner、task状态、资源、已完成receipt及下一动作。
+
+agent失败先收回该任务租约并核查残留进程/写入；未确认死亡不重复启动资源。最多两次恢复同一无输出worker，之后换agent做独立诊断。恢复会话读取checkpoint并重算现场指纹，证据指纹不匹配则重验影响项，不能复用不明结果。只清理清单内确认属于本run的临时资源；保留失败证据与工作树。
+
+修改后先专项，通过后本地分功能提交，集成到本run三仓分支。最终构建及两轮完整门以已提交的固定候选运行；允许运行生成物的精确白名单hash，其余dirty必须解释并绑定。源或测试发生变化使受影响旧gate失效，按影响闭包重跑；新候选全量两轮不继承旧候选。
+
+全程每5分钟更新progress.md，每张卡交接含下一动作。上下文压缩/工具超时不是任务结束，保留checkpoint并继续。只有以下条件可结束本次无人值守执行：
+
+1. 全部本地required及交接项通过U12，输出UNIFIED_LOCAL_CANDIDATE_PASS与三仓提交/候选/证据。
+2. 授权内可执行工作已全部完成，剩余仅经诊断、自恢复和独立复核确认的真实环境/合同/外部/依赖阻断：输出AUTONOMOUS_RUN_EXHAUSTED和总体PARTIAL/BLOCKED、逐项NEXT_UNLOCK。该状态表示本次自动执行穷尽，不表示功能收口。
+3. 计划hash错误、确定数据隔离失效或越权风险：停止受影响操作，保全现场；其他不受影响任务仅在隔离可证明时继续。
+
+“两轮失败”“剩一个任务”“需要用户选常规实现方案”都不是结束条件。不得只写报告、提交测试准备文件或标一批豁免后宣称干完。不能保证外部条件齐备时一次性全PASS，但必须一次启动完成全部可执行工作，并留下无需重复起步的续跑包。
+
+### 10.5 最终交付物
+
+必须交付三仓本地提交清单/执行分支与集成状态；准确的父项及子项ledger；每个原计划original_contract_status；不可变最终candidate与产物清单；实际commands/exit/oracle/hash；U12正反终审；blockers及NEXT_UNLOCK；resume-prompt.md。没有主仓合并/push/发布则如实记录NOT_PERFORMED，不把执行分支通过说成共享main通过。
+
+resume-prompt.md固定本计划hash与RUN_ROOT，要求从checkpoint继续，仅重跑失效项；缺少设备/交接等条件后续满足时执行者自行发现并推进，无需用户重新拆解任务。
