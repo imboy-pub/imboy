@@ -61,7 +61,7 @@ App 对响应工作区、元数据白名单和游标推进做校验；切换账�
 
 | 约定 | 内容 | 三端落点 |
 |---|---|---|
-| ID 传输 | TSID（64-bit）JSON 中一律字符串 | 后端 `binary_to_integer` 解码；App `EntityId=String`；Admin `safeParseBigIntJson` 自动加引号 + `EntityId` |
+| ID传输 | 常规业务JSON integer；显式string端点遵循各自合同，跨域引用带Domain | 原生Flutter 64位int；Admin safeParseBigIntJson + EntityId；Web独立保护精度，见[TSID规范](../reference/tsid-field-convention.md) |
 | 响应信封 | `{code: integer, msg, payload}`（admin 侧另有 `sv_ts`）；`code=0` 成功 | 后端 `elib_response:reply_json/4`；App `HttpResponse`；Admin `ApiResponse`（`code!==0` reject） |
 | 错误码 | 整数区间 0/1/4xx/5xx/9xx，真源 `include/error_code.hrl` | 客户端不做 message 文本分支 |
 | 分页 | 常规列表 page/size 偏移分页；高基数/会话流键集分页（after_id） | Admin `DataTablePagination`（默认 size=10）+ `CursorPaginationBar`；App 列表页 + CS 队列键集 |

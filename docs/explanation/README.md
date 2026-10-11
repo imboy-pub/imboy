@@ -13,6 +13,7 @@
 
 | 文档 | 回答的问题 | 关联 |
 |------|-----------|------|
+| [tsid-v10.md](./tsid-v10.md) | 为什么采用静态业务游标、固定Offset和无持久化；保障边界 | reference/tsid-field-convention.md |
 | [product-profile-and-plugin-registry-design.md](./product-profile-and-plugin-registry-design.md) | 产品画像与插件注册中心为什么这样设计 | plugin/ 规范 |
 | [current-module-classification.md](./current-module-classification.md) | 现行模块分类的全景与归类逻辑 | architecture/module-map.md |
 | [ai-companion-flutter-ui.md](./ai-companion-flutter-ui.md) | AI 助手冷启动的 Flutter UI 设计蓝图 | — |

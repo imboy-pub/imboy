@@ -22,7 +22,8 @@
 | [ws-protocol-contract.md](./ws-protocol-contract.md) | WebSocket 消息信封与事件约定 |
 | [websocket-api-2.md](./websocket-api-2.md) | WebSocket API 详细协议（全量参考） |
 | [tsid-field-convention.md](./tsid-field-convention.md) | TSID 跨端字段约定 |
-| [tsid-field-matrix.md](./tsid-field-matrix.md) | TSID 字段矩阵 |
+| [tsid-namespaces.md](./tsid-namespaces.md) | V10当前149个静态业务Namespace与3条别名 |
+| [tsid-field-matrix.md](./tsid-field-matrix.md) | TSID历史字段矩阵（物理类型为取证快照） |
 | [ws-repl-cheatsheet.md](./ws-repl-cheatsheet.md) | WebSocket REPL 开发速记 |
 | [contracts/](https://github.com/imboy-pub/imboy/tree/main/docs/reference/contracts) | 频道/朋友圈/E2EE 分片契约 v1 |
 

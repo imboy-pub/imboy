@@ -117,7 +117,7 @@ EUNIT_CONFIG=config/sys make eunit-local     # CI 同款口径（无 sys.local.c
 
 - `make eunit-local` 默认读 `config/sys.local`（`EUNIT_CONFIG` 可覆盖），自动替换 PG/HTTP 端口并起 `test/common/pg_relay.py` 中继（`EUNIT_USE_RELAY=0` 直连）
 - 本地 `imboy_v1` schema 必须已迁移到最新，否则 app 启动 `{out_of_order, ...}`、全套件被取消
-- 少数操纵 VM 级全局状态的套件（`elib_tsid_*` 三套件）已被排除出全量轨道，覆盖由单跑承载：`make eunit-local t=<模块名>`
+- TSID核心套件操纵BEAM全局Runtime，须独立执行`make eunit-local t=elib_tsid`；不要把全量通过当作隔离专项通过。旧guard/bootstrap套件已随V10删除，实际排除集合以Makefile为准。
 - REST 黑盒：`make rest-api-test`（runner 自持隔离 scratch DB，凭证只来自环境变量）
 - E2EE 全套验证：`make e2ee-verify`；覆盖率目标见根 `CLAUDE.md`（Repo 80% / Logic 70% / Handler 60%）
 
@@ -418,7 +418,8 @@ dart run scripts/generate_error_code.dart --check
 
 ### EntityId / TSID canonical 约定
 
-- **canonical**：ID 在 JSON 传输层一律 **integer**（TSID 64-bit）；`server_ts` 等时间戳为 13 位毫秒 number（< 2^53，JSON 安全）。
+- **canonical**：常规业务TSID保持JSON **integer**；已有显式string的Admin/专用端点遵循自身合同，不为文档统一而改协议。`server_ts`为毫秒number；完整边界见[TSID字段规范](docs/reference/tsid-field-convention.md)。
+- **V10生成**：静态Namespace独立游标；同实体入口共用，跨域同值合法，引用/缓存须带Domain。无持久化不保证同毫秒重启、跨重启回拨或同NodeId多实例唯一；生产实体禁用动态register与无参generate。
 - **admin 侧**：网络层经 `safeParseBigIntJson` 转 string，TS 类型一律 `EntityId`；ID 字段（`id`、`user_id`、`wallet_id`、`plan_id`、`tenant_id`、`subscription_id`、`group_id`、`channel_id` 等）**禁止裸 `number`**。
 - **校验**：以上规则由 `scripts/contract_gate.py` 的 EntityId 检查项承担（`make contract-check` 带 admin 目录时自动执行），违规逐条列出并非零退出。
 

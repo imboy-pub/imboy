@@ -1,10 +1,16 @@
 # TSID 字段真值矩阵（首版）
 
-> Last Updated: 2026-04-11  
-> Status: Working draft  
+> Last Updated: 2026-10-11
+> Status: 历史字段盘点（物理类型取证基线2026-04-11，未逐表重新验证）
 > Purpose: 用一份矩阵拆开 TSID 的“生成方式、字段语义、物理类型、API 表示、客户端表示”，作为后续批次修复的单一参考。
 
 ---
+
+## V10当前合同与矩阵使用边界
+
+正式清单以elib_tsid_inventory为准：149 canonical、3 aliases，加default共150槽。group → group_info，audit/enterprise_audit → enterprise_audit_event。同表入口共用游标；新增实体先更新静态清单与专项守护，禁止动态register。
+
+下表是历史字段取证，不是最终Namespace清单或当前数据库全量验收。旧冲突与API描述不能直接当作当前缺陷。业务API保持JSON integer，显式string端点按自身合同。见[字段与风险规范](./tsid-field-convention.md)及[V10设计](../explanation/tsid-v10.md)。
 
 ## 1. 判定规则
 
@@ -146,7 +152,7 @@
 
 ---
 
-## 6. 已确认的冲突点
+## 6. 历史冲突记录（2026-04-11快照）
 
 1. `user_log_repo` 曾向 `user_log` 写入 `id`，但表无此列。
 2. `user_setting_repo` 曾向 `user_setting` 写入 `id`，但表无此列。
@@ -163,5 +169,5 @@
 ## 7. 后续扩展方向
 
 - 补全全部 Repo 和 migration 的字段矩阵
-- 明确 App REST、Admin REST、WebSocket 三条协议边界是否统一使用 string
+- 按端点记录integer/string边界，不为文档统一而修改既有协议
 - 补一份“生成器名 <-> 表名”映射清单，消除命名错位

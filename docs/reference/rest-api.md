@@ -8,13 +8,13 @@
 
 ## 0. TSID 字段约定
 
-所有 REST API 响应中，实体 ID 字段（`id`、`uid`、`from_id`、`to_id`、`group_id`、`peer_id` 等）均为 **TSID（64 位分布式 ID）**，以 **JSON integer（number）** 格式传输。
+实体TSID为正signed 63-bit整数。常规业务接口保持**JSON integer**；部分Admin/专用接口显式返回十进制字符串，以端点合同为准。业务字符串键、本地自增行号不属于TSID，不能仅凭字段名id判断。V10跨Namespace允许同值，引用须带Domain。
 
 客户端精度处理：
 - **Admin 前端（TypeScript）**：`axios` 的 `safeParseBigIntJson` 自动将 16 位以上整数转为 `string`，TypeScript 类型统一使用 `EntityId = string`
 - **Flutter 移动端（Dart）**：Dart `int` 为 64 位，直接接收无精度问题
 
-详见：[docs/api/tsid-field-convention.md](./tsid-field-convention.md)
+详见：[TSID字段与风险规范](./tsid-field-convention.md)
 
 ---
 

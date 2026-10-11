@@ -54,7 +54,7 @@ TSID（Time-Sorted ID）是 Imboy 使用的分布式 ID 生成方案，取代原
 
 ## 2. API 传输格式
 
-**后端以 JSON integer（number）返回 TSID 字段**。
+**常规业务API保持JSON integer（number）返回TSID字段**。部分Admin/专用接口显式返回十进制字符串，例如管理端群资料归一化，以端点合同为准。客户端EntityId=string是解析后的类型，不等于所有服务器响应均为JSON string；V10不统一改写既有API。
 
 ```json
 {
@@ -94,7 +94,7 @@ return JSON.parse(safeText)
 
 ## 3. 哪些字段是 TSID
 
-以下字段在 API 响应中为 TSID（JSON integer，前端接收为 string）：
+以下是常见实体TSID字段；常规响应JSON integer，Admin解析后string，显式string端点按自身合同。本地行号和业务字符串键除外：
 
 | 字段名 | 含义 | 所在接口 |
 |--------|------|---------|
@@ -179,6 +179,10 @@ Payload = #{<<"id">> => Id, <<"from_id">> => FromId}.
 ---
 
 ## 6. 相关文档
+
+- [TSID V10架构与取舍](../explanation/tsid-v10.md)
+- [静态Namespace完整清单](./tsid-namespaces.md)
+- [环境变量](./env-vars.md) — 五个有效TSID覆盖变量
 
 - `docs/reference/rest-api.md` — REST API 通用约定
 - `docs/reference/websocket-api-2.md` — WebSocket 消息协议
