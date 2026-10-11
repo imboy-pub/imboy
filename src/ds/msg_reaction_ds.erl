@@ -105,9 +105,12 @@ is_reacted(MsgId, MsgType, UserId, Emoji) ->
     case msg_reaction_repo:find_by_msg_emoji(MsgId, MsgType, Emoji) of
         {ok, Reactions} ->
             % 检查用户是否在列表中
-            lists:any(fun(R) ->
-                maps:get(<<"user_id">>, R) =:= UserId
-            end, Reactions);
+            lists:any(
+                fun(R) ->
+                    maps:get(<<"user_id">>, R) =:= UserId
+                end,
+                Reactions
+            );
         _ ->
             false
     end.
@@ -122,31 +125,42 @@ is_reacted(MsgId, MsgType, UserId, Emoji) ->
 -spec group_reactions_by_emoji(list(map())) -> list({binary(), map()}).
 group_reactions_by_emoji(Reactions) ->
     % 使用 maps:fold 按 emoji 分组
-    GroupedMap = lists:foldl(fun(Reaction, Acc) ->
-        Emoji = maps:get(<<"emoji">>, Reaction),
-        UserId = maps:get(<<"user_id">>, Reaction),
+    GroupedMap = lists:foldl(
+        fun(Reaction, Acc) ->
+            Emoji = maps:get(<<"emoji">>, Reaction),
+            UserId = maps:get(<<"user_id">>, Reaction),
 
-        case maps:find(Emoji, Acc) of
-            {ok, #{<<"count">> := Count, <<"users">> := Users}} ->
-                % 添加用户到现有组
-                Acc#{Emoji => #{
-                    <<"count">> => Count + 1,
-                    <<"users">> => [UserId | Users]
-                }};
-            error ->
-                % 创建新组
-                Acc#{Emoji => #{
-                    <<"count">> => 1,
-                    <<"users">> => [UserId]
-                }}
-        end
-    end, #{}, Reactions),
+            case maps:find(Emoji, Acc) of
+                {ok, #{<<"count">> := Count, <<"users">> := Users}} ->
+                    % 添加用户到现有组
+                    Acc#{
+                        Emoji => #{
+                            <<"count">> => Count + 1,
+                            <<"users">> => [UserId | Users]
+                        }
+                    };
+                error ->
+                    % 创建新组
+                    Acc#{
+                        Emoji => #{
+                            <<"count">> => 1,
+                            <<"users">> => [UserId]
+                        }
+                    }
+            end
+        end,
+        #{},
+        Reactions
+    ),
 
     % 转换为列表并排序（按数量降序）
     List = maps:to_list(GroupedMap),
-    lists:sort(fun({_, A}, {_, B}) ->
-        maps:get(<<"count">>, A) >= maps:get(<<"count">>, B)
-    end, List).
+    lists:sort(
+        fun({_, A}, {_, B}) ->
+            maps:get(<<"count">>, A) >= maps:get(<<"count">>, B)
+        end,
+        List
+    ).
 
 %% @doc 构建表情统计信息
 %% @param Reactions 表情回应列表
@@ -154,26 +168,37 @@ group_reactions_by_emoji(Reactions) ->
 -spec build_reaction_stats(list(map())) -> list(map()).
 build_reaction_stats(Reactions) ->
     % 按emoji分组
-    GroupedMap = lists:foldl(fun(Reaction, Acc) ->
-        Emoji = maps:get(<<"emoji">>, Reaction),
-        UserId = maps:get(<<"user_id">>, Reaction),
+    GroupedMap = lists:foldl(
+        fun(Reaction, Acc) ->
+            Emoji = maps:get(<<"emoji">>, Reaction),
+            UserId = maps:get(<<"user_id">>, Reaction),
 
-        case maps:find(Emoji, Acc) of
-            {ok, Users} ->
-                Acc#{Emoji => [UserId | Users]};
-            error ->
-                Acc#{Emoji => [UserId]}
-        end
-    end, #{}, Reactions),
+            case maps:find(Emoji, Acc) of
+                {ok, Users} ->
+                    Acc#{Emoji => [UserId | Users]};
+                error ->
+                    Acc#{Emoji => [UserId]}
+            end
+        end,
+        #{},
+        Reactions
+    ),
 
     % 构建统计信息
-    maps:fold(fun(Emoji, UserIds, Acc) ->
-        [#{
-            <<"emoji">> => Emoji,
-            <<"count">> => length(UserIds),
-            <<"users">> => UserIds
-        } | Acc]
-    end, [], GroupedMap).
+    maps:fold(
+        fun(Emoji, UserIds, Acc) ->
+            [
+                #{
+                    <<"emoji">> => Emoji,
+                    <<"count">> => length(UserIds),
+                    <<"users">> => UserIds
+                }
+                | Acc
+            ]
+        end,
+        [],
+        GroupedMap
+    ).
 
 %% @doc 清除表情缓存
 %% @param MsgId 消息ID
