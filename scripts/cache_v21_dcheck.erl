@@ -186,9 +186,18 @@ s_race(A, B, C) ->
     ok.
 
 s_invalidate(A, B) ->
+    %% W5-03 场景级验证：invalidate 的跨节点值扇出（业务迁移依赖的管道）。
+    %% A/B 各自本地写入（非 replicate 键不广播），A 发起失效后两端本地值
+    %% 都必须被清除，且 B 的 fenced generation 推进。
     Key = {cache_v2_test, d_inv1},
+    ok = rpc:call(A, imboy_cache, put, [Key, inv_a, 300, local], ?RPC_MS),
+    ok = rpc:call(B, imboy_cache, put, [Key, inv_b, 300, local], ?RPC_MS),
+    {ok, inv_a} = rpc:call(A, imboy_cache, get, [Key], 5000),
+    {ok, inv_b} = rpc:call(B, imboy_cache, get, [Key], 5000),
     G0 = rpc:call(B, imboy_cache_sync, generation, [Key], 5000),
     ok = rpc:call(A, imboy_cache, invalidate, [Key], ?RPC_MS),
+    undefined = converge_get(A, Key, undefined),
+    undefined = converge_get(B, Key, undefined),
     true = converge_pred(fun() ->
         rpc:call(B, imboy_cache_sync, generation, [Key], 5000) > G0
     end),

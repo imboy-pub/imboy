@@ -11,6 +11,8 @@
 %%   M3 新节点重启，peer 新旧混合：仅 V2 应答者参与恢复，快照回填 V2 键
 %%   M4 新节点仅存 legacy peer：有界重试后 DEGRADED（fail-closed：读 miss、写拒绝）
 %%   M5 V2 peer 回归后重启该节点恢复 READY（DEGRADED 无自动退出路径，运维要点）
+%%   M6 新节点 invalidate 双通道发布：legacy peer 经 {flush, Key} 失效本地值
+%%      （19.8 能力交集；v2 信封被旧节点 catch-all 忽略，缺兼容发布则旧节点滞留陈旧值）
 %%
 %% 运行：erlc 编译本文件后，以
 %%   erl -noshell -pa <driver_dir> -eval 'cache_v21_mixed_dcheck:main(["out.json"]).'
@@ -93,6 +95,9 @@ scenario_list(Nodes) ->
         end},
         {"M5 V2 peer return + node restart restores READY", fun() ->
             m5_recovery_after_v2_peer_returns(A, B, C)
+        end},
+        {"M6 V2-node invalidate flushes legacy peer via legacy channel", fun() ->
+            m6_v2_invalidate_reaches_legacy(A, B)
         end},
         {"R1 rolling rollback node C: new -> legacy in place", fun() ->
             r1_rollback_node_c(Nodes)
@@ -184,6 +189,17 @@ m5_recovery_after_v2_peer_returns(A, B, C) ->
     ok = rpc:call(B, imboy_cache, put, [Key5, revived, 120, replicate], ?RPC_MS),
     {ok, revived} = converge_get(C, Key5, {ok, revived}),
     true = rpc:call(A, ?MODULE, sync_alive, [], 5000),
+    ok.
+
+%% M6：19.8 能力交集——旧节点静默丢弃 v2 信封（catch-all），混合期新节点
+%% invalidate 必须同时经 legacy {flush, Key} 通道发布，否则旧节点滞留
+%% 陈旧值至 TTL。旧节点本地写（不广播），新节点发起失效后旧节点值必须被清除。
+m6_v2_invalidate_reaches_legacy(A, B) ->
+    Key = {mixed_test, m6_k},
+    ok = rpc:call(A, imboy_cache, set, [Key, legacy_stale, 120], ?RPC_MS),
+    {ok, legacy_stale} = converge_get(A, Key, {ok, legacy_stale}),
+    ok = rpc:call(B, imboy_cache, invalidate, [Key], ?RPC_MS),
+    undefined = converge_get(A, Key, undefined),
     ok.
 
 %% ===================================================================
