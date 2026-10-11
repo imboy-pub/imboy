@@ -34,7 +34,7 @@ U00记录三仓HEAD/tree、完整tracked patch与未跟踪白名单内容hash、
 
 历史protected WIP快照保持不变；主树并行演进不等于历史完整性通过。U00按路径、提交与内容归属分类重订本run基线，证明候选未混入外来WIP。新基线不能追溯消除旧run漂移；不得补造 attested 日志。
 
-建立 control/requirements.tsv：source_plan/source_id/subcase/platform/role/oracle/required_local/dependency/owner/status/evidence/candidate。每个原父项必须展开全部子场景；源ID并集无缺失/重复覆盖，每项明确本地、依赖、后期或外部。共享测试可映射多个源ID，必须分别证明其子断言。
+建立 control/requirements.tsv：cell_id/source_plan/source_id/source_locator/subcase/platform/role/oracle/required_local/dependency/owner/status/evidence/candidate。叶子唯一键为(source_plan, source_id, subcase, platform, role)，cell_id是该元组规范JSON的SHA256；父ID可以合法重复，禁止仅按父ID查重。source_locator绑定冻结源hash及节/行；多角色或多平台场景按原合同拆格，不能以ALL掩盖缺平台。每个原父项展开全部子场景，每格明确本地、依赖、后期或外部。共享测试可映射多格，必须分别证明子断言。U12从冻结源独立复核预期叶子全集，再核requirements与ledger，禁止三表从同一遗漏集合生成后自证完整。
 
 U00输出 control/leases.json 与无省略号 commands.sh。每worker独立build/ebin、数据库、端口、BEAM cookie和fixture命名空间。共享设备、PG资源压力、浏览器会话、全量EUnit及最终回退演练串行；没有租约不启动。
 
@@ -44,7 +44,7 @@ U00输出 control/leases.json 与无省略号 commands.sh。每worker独立build
 
 | 卡/首次时间盒 | 依赖与唯一责任面 | 测试与验收oracle |
 |---|---|---|
-| U00 / 60–90min | 协调者，三仓只读基线/原合同/运行资源 | 输出完整源集合、可重建候选、WIP归属、租约；旧PASS降级或历史专项记录有原因；CX/缓存交接边界清楚 |
+| U00 / 60–90min | 协调者，三仓只读基线/原合同/运行资源 | 输出叶子集合/源定位/责任卡映射、最终门清单、可重建候选、WIP归属、共同租约入口和命令超时/心跳清单；旧PASS继承有依据；CX/缓存交接边界清楚 |
 | U01 / 60min | U00；证据台账owner，仅control/reports | 校正3/23与2/24差异、run2九败/run3三败、每文件单独hash、MC22修复方向；缺证据标UNVERIFIED；不覆盖历史文件 |
 | U02 / 90min | U00；后端测试环境owner，构建/runner/fixture | hird依赖可用并绑定版本；全量失败逐项复现；dialyze基线差分可复算；225 skips逐条归属/原合同映射；不得删测试、吞exit或改阈值 |
 | U03 / 2h | U00；Core IM后端+App消息域，具体文件租约 | AC07–14全部子场景：ACK/阅读分离，四种成员事件×回滚/重放/离线，ACK前后崩溃，20页续拉/切网，编辑/附件授权，跨账号残留；真实WS+DB+两端本地集合一致 |
@@ -55,19 +55,19 @@ U00输出 control/leases.json 与无省略号 commands.sh。每worker独立build
 | U08 / 90min | U04–06对应接口稳定；Admin组织/资产/社群页 | MC23及EO资产/治理缺格：真实浏览器双角色、scope切换、绑定冲突/精华管理，UI/API/DB逐一对拍；不拦截伪造业务响应 |
 | U09 / 90min | U00；一期profile/推送及跨会话交接owner | AC01–06/17–24与EO07未覆盖项逐格核验；AC05禁用入口原要求与豁免分账；AC23点击会话/杀进程/切账号逐格真实设备；CX只接收匹配候选证据，OA getAuthCode只做继承核验 |
 | U10 / 2h | U03–09受影响实现稳定；恢复/交付文档owner | AC25–27/29与MC24：tracked交付白名单、文档链接/命令、新环境安装升级；非空消息/订单/成员/附件fixtures，PG+Garage恢复到隔离目标，恢复服务实际读取与ID/字节对拍；业务数据库升级失败回退，不以marker替代 |
-| U11 / 视完整门耗时 | U01–10本地子项完成且依赖已交接；集成owner | 重冻三仓最终候选；同候选全EUnit连续两轮RC0、Admin test/lint/typecheck/deadcode/build、App analyze/test及原必需集成门；required skip/cancel=0或授权修订分账；全量只集中跑 |
-| U12 / 60min | U11；独立只读verifier | 缺/多/重复ID、错SHA/hash、日志复用、非零exit、假父PASS、错误设备、dirty字节漏绑/WIP混入负例应拒；真实正常包通过；父项全子项通过，统计由ledger生成 |
+| U11 / 视完整门耗时 | 可执行修改已收束、三仓候选固定；集成owner；不要求受阻U07/U09全闭合 | 按final-gates.tsv运行前置齐备的最终子门，显式含最终候选dialyze；EUnit两轮，其余按冻结原合同轮次；受阻门逐项BLOCKED不挡独立门；全量集中跑 |
+| U12 / 60min | U11可执行门已运行、受阻门有诊断；新独立只读verifier | 先独立复核源合同叶子全集，再验ledger/hash及正反例。FULL审查全required闭合才签统一PASS；PARTIAL审查核成果/阻断/续跑点，只签PARTIAL/BLOCKED；真实包准确性通过不等价功能PASS |
 
 每卡至少一个明确负例。安全/权限/恢复卡必须验证DB无副作用或恢复后的实际业务读取，单纯HTTP200/截图/测试数量均不足。U03/U07共享App文件时协调者切分写集或串行；U04/U05共享群权限文件同理。
 
 ## 5. 调度与持续推进 / Scheduling
 
-允许后续ZCODE执行时最多10个并发agent，包括协调者与verifier，不能10 worker再加管理agent。建议角色：A0协调集成；A1证据；A2环境全量；A3 IM；A4组织后端；A5社群权限；A6内容；A7 App；A8 Admin；A9恢复交付。结束阶段释放A1后复用为独立verifier，避免自己验收自己的修复。
+允许后续ZCODE执行时最多10个并发agent，包括协调者与verifier，不能10 worker再加管理agent。建议角色：A0协调集成；A1证据；A2环境全量；A3 IM；A4组织后端；A5社群权限；A6内容；A7 App；A8 Admin；A9恢复交付。结束阶段释放A1的并发名额，启动未参与本run实现、requirements/ledger编制及结论映射的新只读verifier；原A1只解释材料，不签发终审。
 
 波次0：U00串行建立合同、候选与租约；U01/U02可随后并行。
 波次1：U03–06并行补后端与专项证据，U09同步核验交接；A7/A8可先准备既存真端runner、定位已有失败。
 波次2：稳定接口上的U07/U08执行真端旅程，U10准备恢复包；禁止同一设备/DB压力窗口抢占。
-波次3：U10恢复、U11最终门、U12终审串行。修复任何源/runner/fixture/config后重新冻结并重跑影响项；全量成功必须来自最终指纹。
+波次3：U10可执行恢复、U11可执行最终门、U12完整或部分结果终审串行；真实阻断不封死该收尾路径。依赖后续到达则集成、重冻并重验影响项，再签新的终审。全量成功必须来自最终指纹。
 
 阻塞单卡继续其他独立卡。每根因连续两轮无新证据的相同修复必须转独立诊断；有新根因或新证据可继续修复并登记，不能两轮失败即草率放弃。不存在环境/设备/签名时先按第10节自恢复，再保留BLOCKED_ENV，不自动缩平台。优先快验收卡，完整全量轮不在每worker重复执行。
 
@@ -76,6 +76,10 @@ U00输出 control/leases.json 与无省略号 commands.sh。每worker独立build
 复用现有入口：imboy/scripts/test/phase1_gates/、imboy/scripts/verify_micro_community_acceptance.py；App integration_test/micro_community_owned_android_test.dart、micro_community_owned_android_negative_test.dart、enterprise/enterprise_scope_native_test.dart；Admin tests/e2e/enterprise-app-governance-real.spec.ts。U00须先读取runner及原计划命令，生成本run隔离参数；不能原样运行旧脚本误连共享库。
 
 基础门从相应候选根执行：Backend make compile / make eunit / make dialyze；Admin bun run test / bun run lint / bun run typecheck / bun run build，deadcode按当前package脚本；App flutter analyze / flutter test，真端runner按实际设备ID。本段是命令模板，不是执行证据，环境/具体spec及参数必须在commands.sh完整展开。
+
+U00冻结control/final-gates.tsv作为轮次、绑定和判定的唯一执行清单：gate_id/required_cells/source_locator/command_ref/candidate_binding/rounds/expected_exit/warning_policy/skip_policy/prerequisites/timeout_ref。Backend compile、dialyze，Admin test/lint/typecheck/deadcode/build，App analyze/test及原required真实集成/恢复门均必须有行，不能漏dialyze或引用U02旧候选结果。EUnit固定最终候选连续两轮；其余至少一次，原合同明确多轮则采用其轮次，并记录来源；无依据不统一强加两轮。遇到互斥原标准先登记BLOCKED_CONTRACT，不凭代理放宽。
+
+dialyze默认最终候选RC0，原合同更严格警告要求同时保留；警告基线差分用于归因，不能把非零exit转换PASS。每门的exit、警告、skip/cancel规则启动前冻结，无法确定的规则阻断该门，不阻断独立门。真端历史轮次只有通过最终build/candidate影响分析才能继承；最终EUnit与dialyze必须实际在最终候选运行。候选变化按影响闭包失效重验，不因清单冻结拒绝必要修复。
 
 RUN_ROOT放工作区外。control包含baseline、source-contract hashes、requirements、leases、candidate-manifest、commands、command-receipts、inheritance、recovery；artifacts按card/subcase/round独立目录；final包含ledger、verdict和report。秘密和PII不入仓、不写日志；仅合成数据。
 
@@ -134,6 +138,8 @@ U00逐项检查Git/WIP、工具链、hird、PG/Garage、真实浏览器、Androi
 
 先只读发现已有run、候选及交接文件，记录producer/run/candidate/hash/status。没有交接协议时，在本RUN_ROOT建立 dependency-request.json，详细列依赖ID、所需证据及版本，不自行向第三方发送消息。
 
+本run的leases.json只是登记，不能证明跨会话授权。U00发现并记录双方共同认可的已有协调入口、规范resource_id、grantor/原子取得凭证、holder(run/agent/host/PID及启动标识)、授予/过期/释放条件及producer可发现的请求路径。没有共同入口或确认的授予凭证时，共享资源保持BLOCKED_RESOURCE；优先用可证明隔离的替代资源，不新建协调服务、不自行宣告租约。持有者是否死亡须核PID启动身份，不能只因TTL过期夺取仍在运行资源；无法确认则不抢占。
+
 有共同祖先与干净提交、范围归属明确、证据匹配时，可在本run集成分支自动集成该本地已提交成果并重验影响项；不合并到共享main、不吸收dirty文件。依赖生产者仍在改动时，消费者固定一个已提交版本，后续版本变化由影响分析触发重验，不跟随每次主树漂移。
 
 没有可用交接则每个调度波次检查一次；独立任务结束后进行三次间隔至少10分钟的非阻塞检查，期间完成台账/恢复包/审查，不阻塞睡眠。仍无交接的required项记BLOCKED_DEPENDENCY并输出可续跑checkpoint；不无限等待，也不签UNIFIED_LOCAL_CANDIDATE_PASS。
@@ -142,14 +148,16 @@ U00逐项检查Git/WIP、工具链、hird、PG/Garage、真实浏览器、Androi
 
 A0循环执行：复算可运行卡→分配不冲突写集/资源→实施与专项验收→读取交接并集成→更新账本→释放资源→调度下一卡。每完成子场景原子保存 control/checkpoint.json 和追加 events.jsonl，包含计划hash、源集合hash、候选、owner、task状态、资源、已完成receipt及下一动作。
 
-agent失败先收回该任务租约并核查残留进程/写入；未确认死亡不重复启动资源。最多两次恢复同一无输出worker，之后换agent做独立诊断。恢复会话读取checkpoint并重算现场指纹，证据指纹不匹配则重验影响项，不能复用不明结果。只清理清单内确认属于本run的临时资源；保留失败证据与工作树。
+U00登记control/runtime-policy.tsv：command/runner、已有超时参数及实际生效值、历史耗时依据、本run进程启动标识/进程组、worker心跳、日志与进度观测、诊断/回收步骤。优先复用runner超时机制。worker每60秒心跳；连续5分钟心跳缺失且无命令进度，或命令达到登记timeout，触发诊断，不直接判测试失败/跳过。健康心跳下的长全量命令按其timeout判断；首次卡时间盒不是timeout。诊断先保存日志/进程树/资源状态，只有确认属于本run且需终止才温和停止，超时中断记录TIMEOUT，不能算RC0。
 
-修改后先专项，通过后本地分功能提交，集成到本run三仓分支。最终构建及两轮完整门以已提交的固定候选运行；允许运行生成物的精确白名单hash，其余dirty必须解释并绑定。源或测试发生变化使受影响旧gate失效，按影响闭包重跑；新候选全量两轮不继承旧候选。
+agent失败先核查残留进程/写入，确认安全后释放该任务租约；未确认死亡不重复启动资源。最多两次恢复同一失联worker，之后换agent做独立诊断。恢复会话读取checkpoint并重算现场指纹，证据指纹不匹配则重验影响项，不能复用不明结果。只清理清单内确认属于本run的临时资源；保留失败证据与工作树。
+
+修改后先专项，通过后本地分功能提交，集成到本run三仓分支。最终构建及各门按final-gates.tsv的唯一轮次在已提交固定候选运行，只有EUnit默认两轮；允许运行生成物的精确白名单hash，其余dirty必须解释并绑定。源或测试发生变化使受影响旧gate失效，按影响闭包重跑；新候选EUnit两轮不继承旧候选。
 
 全程每5分钟更新progress.md，每张卡交接含下一动作。上下文压缩/工具超时不是任务结束，保留checkpoint并继续。只有以下条件可结束本次无人值守执行：
 
 1. 全部本地required及交接项通过U12，输出UNIFIED_LOCAL_CANDIDATE_PASS与三仓提交/候选/证据。
-2. 授权内可执行工作已全部完成，剩余仅经诊断、自恢复和独立复核确认的真实环境/合同/外部/依赖阻断：输出AUTONOMOUS_RUN_EXHAUSTED和总体PARTIAL/BLOCKED、逐项NEXT_UNLOCK。该状态表示本次自动执行穷尽，不表示功能收口。
+2. 授权内可执行工作及U11可执行最终门已全部完成，剩余仅经诊断、自恢复和U12 PARTIAL终审确认的真实环境/合同/外部/依赖阻断：输出AUTONOMOUS_RUN_EXHAUSTED和总体PARTIAL/BLOCKED、逐项NEXT_UNLOCK。该状态表示本次自动执行穷尽，不表示功能收口。
 3. 计划hash错误、确定数据隔离失效或越权风险：停止受影响操作，保全现场；其他不受影响任务仅在隔离可证明时继续。
 
 “两轮失败”“剩一个任务”“需要用户选常规实现方案”都不是结束条件。不得只写报告、提交测试准备文件或标一批豁免后宣称干完。不能保证外部条件齐备时一次性全PASS，但必须一次启动完成全部可执行工作，并留下无需重复起步的续跑包。
@@ -158,4 +166,4 @@ agent失败先收回该任务租约并核查残留进程/写入；未确认死�
 
 必须交付三仓本地提交清单/执行分支与集成状态；准确的父项及子项ledger；每个原计划original_contract_status；不可变最终candidate与产物清单；实际commands/exit/oracle/hash；U12正反终审；blockers及NEXT_UNLOCK；resume-prompt.md。没有主仓合并/push/发布则如实记录NOT_PERFORMED，不把执行分支通过说成共享main通过。
 
-resume-prompt.md固定本计划hash与RUN_ROOT，要求从checkpoint继续，仅重跑失效项；缺少设备/交接等条件后续满足时执行者自行发现并推进，无需用户重新拆解任务。
+resume-prompt.md固定本计划hash与RUN_ROOT，要求从checkpoint继续，仅重跑失效项。会话运行中自动发现设备/交接解锁并推进；执行已结束时，只能由已存在且获授权的持久调度器或重新启动的执行者加载checkpoint续跑。U00记录是否存在该调度入口；没有则如实写RESUME_REQUIRES_RELAUNCH，交付可直接发送的续跑提示词，不暗示已结束会话会自行唤醒，不新增后台守护服务。

@@ -7,7 +7,7 @@
 
 唯一执行计划：
 /Users/leeyi/project/imboy.pub/imboy/docs/design/2026-10-11-unified-delivery-closeout/plan-v1.md
-固定SHA256：8987f4134000f16282eeb58f218bfe3faf39a0a624749d6422b480a49c1ae83d
+固定SHA256：6452be8c97595ca0648ad223227b98fc38464697e5e03ec5ca6711f0dc921cbc
 
 先读取适用AGENTS.md，机械复算计划文件hash，并核对同目录plan-v1.md.sha256。二者均须等于上述固定hash；不一致则PLAN_HASH_MISMATCH，禁止静默接受新版本。读取三个source-contracts快照并核对计划所列原文hash。旧三个计划已冻结，不继续修改旧台账或历史verdict。
 
@@ -27,7 +27,9 @@ RUN_ROOT置于/Users/leeyi/.zcode-runs/下，使用唯一unified-delivery-closeo
 
 依赖未交接时推进其他卡，按计划第10.3节有限非阻塞检查，禁止无限等待或把缺交接算PASS。已提交且归属明确的依赖可在本run分支集成并重验，不吸收他人dirty补丁。任何候选/runner/config变化使影响门失效，重新冻结并重跑影响闭包。
 
-专项门先跑；最终集成后串行两轮同候选全EUnit及全部三端质量/真实旅程/恢复门。安排未承担对应实现的agent独立执行U12正反校验；校验器自测通过不等于真实包通过。
+U00冻结final-gates.tsv，逐门明确原合同定位、命令、最终候选/build绑定、轮次、exit/警告/skip规则及前置条件，显式包含最终候选dialyze。EUnit连续两轮，其余按原合同轮次且至少一次，不把所有门强加两轮。可执行修改收束并冻结候选后进入U11，即使设备或CX依赖阻断也运行其他前置齐备门；受阻门逐项登记BLOCKED。释放并发名额，启动未参与本run实现及requirements/ledger编制的新只读verifier；U12独立从冻结源复核叶子全集，再验台账。全部required闭合走FULL签发，否则走PARTIAL成果/阻断/续跑点审查，不能因U07/U09受阻跳过终审。
+
+U00将每个验收叶子绑定(source_plan,source_id,subcase,platform,role)稳定唯一键及冻结原合同定位，映射责任卡。登记共享租约共同入口/授予凭证、命令实际超时/进程身份/心跳与诊断机制；本run自行写leases.json不代表已取得跨会话租约，无共同协议则隔离替代或BLOCKED_RESOURCE。超时触发诊断，不能跳过质量门。会话结束后无既有持久调度器则记录RESUME_REQUIRES_RELAUNCH，不声称自行唤醒。
 
 不要问“是否继续、是否跑测试、是否提交”。持续调度直至全部本地required通过并签UNIFIED_LOCAL_CANDIDATE_PASS；若所有授权内可执行任务已穷尽而仅剩经独立复核的外部/设备/合同/依赖阻断，则签AUTONOMOUS_RUN_EXHAUSTED且总体PARTIAL/BLOCKED，逐项说明解锁条件，绝不称功能已干完。确定隔离失效或计划hash错误按计划停止并保全。
 
