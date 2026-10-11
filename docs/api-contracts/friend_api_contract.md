@@ -77,6 +77,6 @@ SQL 字段拼接权威源 `src/ds/friend_ds.erl:348-361`（fields/1）：`u.<DEF
 2. **`last_seen_at` 恒 null**：user 表无该列（属 user_friend 侧），batch_online_state 兜底空串、REST 信封转 null。消费方按「不可用」处理。
 3. **`is_from`/`source` 是字符串**：jsonb `->>` 抽出恒为 text；Flutter 用 `parseModelInt(json[isFrom])` 做了字符串→int 容错。新消费方注意不要按 int 断言。
 4. **`is_friend` 的语义是黑名单视角**：仅当**对方**在 `user_denylist` 拉黑了**我**时为 0；单向删除好友后行直接从列表消失（`f.status=1` 过滤），不会出现 is_friend=0 的“僵尸行”。
-5. **`id` 为 JSON number**：`convert_user_id`/`convert_friend_ids` 名义上“转 binary”但实际原样放回 int（`friend_handler.erl:248-255`、`friend_ds.erl:363-375`）。Dart int64 消费无碍；JS 消费方有精度风险——这是与「TSID 出站转 string」约定的**既有漂移**，固化文档时不改代码，仅登记。
+5. **`id`为JSON number**：这些端点保持integer，符合常规业务TSID合同；原生Dart int64消费无碍，JS须在解析阶段保护大整数。不能因客户端EntityId为string而判定服务器必须统一改成string，见[字段规范](../reference/tsid-field-convention.md)。
 6. **列表上限 1000**：`page_by_uid/1` 硬编码 LIMIT 1000 OFFSET 0（`friend_ds.erl:149-151`），无分页参数；超 1000 好友会截断。
 7. **`mine.status` 与 `friend[].status` 语义不同**：mine 是 `online|hide`（自身隐身）；friend 是 `online|offline`（对方视角永远看不到 hide）。

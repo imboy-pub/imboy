@@ -307,8 +307,8 @@ rc.1 → 1.0.0 在 `config/sys.config`（或 `config/sys.pro.config`）中需要
 |--------|------------|-------------|------|
 | `api_auth_switch` | `<<"off">>` | `<<"on">>` | 生产环境**必须**开启 API 签名验证 |
 | `msg_archive_enabled` | `true` | `true` | 消息永久存储（conv_seq 方案 B），**默认已开启**，无需修改 |
-| `tsid_dc_id` | `1` | 按数据中心编号 | 多节点/多DC 时每节点必须唯一 |
-| `tsid_node_id` | `1` | 按节点编号 | 多节点时每节点必须唯一（0–127） |
+| `tsid_dc_id` | `1` | 按数据中心编号 | 所有发号实例DC+Node组合唯一，位布局一致 |
+| `tsid_node_id` | `1` | 按节点编号 | dc_bits=3时0–127；无持久化跨重启边界见[TSID风险](../../reference/tsid-field-convention.md) |
 | `dsync_enabled` | `true` | `true` | 分布式缓存同步，单节点也保持 true |
 | `verification_master_code` | `<<"6666">>` | `<<>>` | 生产环境**必须**清空此万能验证码 |
 | `garage.endpoint` | `<<"http://127.0.0.1:3900">>` | Garage 服务地址 | **1.0.0 新增**，附件对象存储后端 |

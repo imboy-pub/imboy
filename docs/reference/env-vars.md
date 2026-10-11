@@ -1,6 +1,6 @@
 # 环境变量与配置参考 / Environment Variables & Configuration Reference
 
-> **Last Updated:** 2026-09-30
+> **Last Updated:** 2026-10-11
 > **真源 / Source of Truth:**
 > - `deploy/.env.example`（部署期变量）
 > - `config/sys.config.example` 及 `config/sys.*.config` 结构（运行时配置键）
@@ -8,6 +8,14 @@
 > - `src/imboy_app.erl: validate_runtime_config/0` + `src/lib/imboy_secret_policy.erl`（生产 fail-fast 必填清单）
 >
 > 部署流程文档不在本文范围，见 `deploy/README.md`。
+
+## TSID V10 配置边界 / TSID V10 Configuration Boundary
+
+TSID仅消费下表五个覆盖变量，真源为`src/lib/imboy_env_overrides.erl:override_tsid/0`。不配置Cursor/Fence状态目录、store/bootstrap/manifest/catalog或logical-lead参数。升级时移除旧模板中的这些参数；不要删除来源未知的旧状态文件或业务数据。
+
+默认DC/Node只是模板示例，不能用于多个实例。无持久化不保证同毫秒重启、跨重启回拨或同NodeId多实例唯一，见[TSID风险规范](./tsid-field-convention.md)。
+
+V10 has five runtime overrides and no persistent cursor/fence directory. Unique NodeIds and restart risk review remain required.
 
 ## 配置加载链
 
@@ -124,13 +132,9 @@
 | `UPTRACE_IMAGE` 等 12 项 `UPTRACE_*` | 模板值 | Uptrace overlay 镜像与凭据（安装器生成密钥） |
 | `IMBOY_LICENSE_FILE` | 空 | License 文件路径（professional/enterprise 必配） |
 | `PG_EXPORTER_USER` / `PG_EXPORTER_PASSWORD` | 回落 POSTGRES_* | postgres_exporter 只读账号 |
-| `IMBOY_TSID_STATE_DIR` | `/opt/imboy/tsid_state` | TSID durable fence 状态目录 |
-| `IMBOY_TSID_DC_ID` / `IMBOY_TSID_NODE_ID` / `IMBOY_TSID_DC_BITS` | `1` / `1` / `3` | 数据中心/节点标识（同 DC 内 node_id 唯一，重复=ID 碰撞） |
-| `IMBOY_TSID_STORE_BOOTSTRAP` | `existing` | store bootstrap 合同（`fresh` 仅首次部署，割接后必须改回） |
-| `IMBOY_TSID_BOOTSTRAP_MODE` | `auto_scan` | 首启自举模式（`auto_scan` \| `manual_floor`） |
-| `IMBOY_TSID_BOOTSTRAP_FLOOR_UNIX_MS` | 空 | manual_floor 模式必填（unix 毫秒） |
-| `IMBOY_TSID_BOOTSTRAP_LEGACY_ACK` | 注释态（不注入） | 旧 writer 接管确认，唯一合法值 `I-CONFIRM-OLD-WRITER-STOPPED`；割接后必须移除 |
-| `IMBOY_TSID_MAX_LOGICAL_LEAD_MS` 等 5 项时序参数 | `512`/`100`/`1000`/`100`/`5000` | TSID 时序参数（默认已定标，一般无需调整） |
+| `IMBOY_TSID_DC_ID` / `IMBOY_TSID_NODE_ID` / `IMBOY_TSID_DC_BITS` | `1` / `1` / `3` | 全体实例的DC+Node组合须唯一；dc_bits全集群一致，部署范围1..10 |
+| `IMBOY_TSID_CAPACITY_WAIT_TIMEOUT_MS` | `100` | 正整数；有界容量等待/竞争预算（ms），不主动借未来毫秒 |
+| `IMBOY_TSID_MAX_CLOCK_DRIFT_MS` | `5000` | 正整数；固定Offset时钟与系统钟偏差阈值（ms），readiness检出超限后阻断发号 |
 
 <!-- AUTO-GENERATED:conditional-required END -->
 

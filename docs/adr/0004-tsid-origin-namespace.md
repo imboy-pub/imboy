@@ -1,32 +1,17 @@
 # 0004 — TSID 之上预留 origin 命名空间位（不改现有数据）
 
-- 状态：Deferred（DEFERRED_BY_TSID_HARDENING，2026-09-29；**2026-10-10 起 V10 多 namespace 落地，本文的历史描述与 fence/lock 机制引用整体过时——跨域引用的现行合同是 Domain + ID（无 origin 位），见 `elib_tsid:namespaces/0` 与 `.Codex/tsid_v10/` 计划存档**）
+- 状态：Deferred（DEFERRED_BY_TSID_HARDENING，2026-09-29；**2026-10-10 起 V10 多 namespace 落地，本文的历史描述与 fence/lock 机制引用整体过时——跨域引用的现行合同是 Domain + ID（无 origin 位），见[V10架构](../explanation/tsid-v10.md)与elib_tsid:namespaces/0**）
 - 日期：2026-07-24
 - 关联文件：`src/lib/elib_tsid.erl`、`src/imboy_app.erl`、`docs/reference/tsid-field-convention.md`、`docs/CONVENTIONS.md`
 - 关联 ADR：无前序（本篇为 ID 命名空间首篇）
 
-> **2026-09-29 更新（TSID correctness hardening 落地后）**：
-> 本篇暂缓，由 TSID 正确性加固计划（计划原文不入仓，由执行环境持有并以
-> SHA-256 `92eef9736…` 锚定；状态见同日期 `-status.md` 附录）取代其紧迫性。与本文写作时的现状相比，实现已发生以下变化：
->
-> 1. **全局唯一语义已强化**：所有命名生成器（label）共享同一全局 cursor，同一节点上
->    任意两个生成器产生的 ID 数值永不相同（`elib_tsid:generate/1` 的 label 仅是治理
->    标签，不再分配独立数值空间）——本文「背景」中对"现有方案"的描述已过时。
-> 2. **多实例撞键防线已内建**：`dc_bits` 参数化（代码合同 0..10，部署 preflight
->    收紧为 1..10；`IMBOY_TSID_DC_BITS`）+ combine_node 位布局 fail-closed 校验 +
->    双槽 durable fence store（双槽择新以 safe_before 为世代判据；generation 字段
->    恒写 0，非 0 仅见于 v1 历史槽的 split-brain 识别）+ 同 CombinedNode lifetime
->    lock 互斥 + cutover 高水位合同（时序参数与 bootstrap 三键
->    `IMBOY_TSID_BOOTSTRAP_MODE` / `IMBOY_TSID_BOOTSTRAP_FLOOR_UNIX_MS` /
->    `IMBOY_TSID_BOOTSTRAP_LEGACY_ACK` 见 `deploy/.env.example` TSID 段与
->    `deploy/docker-compose.community.yml` /helm configmap 的全量键；
->    `docs/architecture/tsid-cutover-runbook.md`）。
->    「两个实例默认都用 dc=1,node=1 静默撞键」在同机场景已由 preflight 校验
->    （fresh+非空目录拒绝）与 lifetime lock 堵住；跨机 node_id 唯一性仍需
->    部署清单人工保证（preflight 自身如此声明）。
-> 3. **origin_bits 提案推迟**：在上述防线落地后再评估是否仍需把部署实例维度编码进
->    ID 位布局。再评估触发条件：出现真实的跨实例数据合并/联邦需求。届时本文的位
->    分配方案仍可作为起点，但需基于新位布局合同（63-bit 上界、dc_bits 0..10）重新推导。
+## 现行实现与历史提案的边界（2026-10-11）
+
+V10没有origin_bits/origin_id配置，位布局保持42/10/11。业务Namespace是独立atomics游标，不编码进ID；跨域引用Domain + ID。旧Durable Fence、lifetime lock、catalog扫描及bootstrap manifest均已删除，不应据本文历史讨论配置或运行。
+
+下文保留2026-07-24的**延期提案**，配置入口、parse扩展、模板与预期后果均未实现，不是操作说明。未来跨实例合并须重新评审；不能把“设origin即可全局唯一”当作现有保障。当前见[TSID风险](../reference/tsid-field-convention.md)及[V10架构](../explanation/tsid-v10.md)。
+
+The origin-bit proposal remains deferred. V10 uses static business cursors without origin bits or persistent fences.
 
 ## 背景
 

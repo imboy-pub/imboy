@@ -145,7 +145,7 @@ curl -s http://localhost:9800/api/v1/init | jq .
 
 # 健康探针端点（语义见 src/api/healthz_handler.erl）
 curl -s http://localhost:9800/livez | jq .    # liveness：BEAM 活着即恒 200，不检查任何依赖
-curl -s http://localhost:9800/readyz | jq .   # readiness：聚合 PG + TSID guard，就绪 200 / 依赖不可用 503
+curl -s http://localhost:9800/readyz | jq .   # readiness：聚合PG + TSID V10 readiness（固定Offset时钟检查），就绪 200 / 依赖不可用 503
 curl -s http://localhost:9800/healthz | jq .  # /readyz 的兼容别名（保留既有响应字段并追加 tsid）
 
 # Prometheus 指标

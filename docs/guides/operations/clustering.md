@@ -65,9 +65,11 @@ export IMBOY_CTL_COOKIE=<同上cookie值>
 
 ### 1.4 TSID 节点 ID 配置 / TSID Node ID per Node
 
-多节点时，每个节点必须配置**唯一**的 `tsid_dc_id` + `tsid_node_id` 组合，以确保分布式 ID 全局唯一。
+所有发号实例须使用唯一DC+Node组合和一致dc_bits，这是跨节点同Namespace唯一的前提。V10跨Namespace数字允许重复；无跨实例锁，不保证同毫秒重启或跨重启回拨唯一。
 
-In a multi-node setup, each node must have a **unique** `tsid_dc_id` + `tsid_node_id` combination.
+Each generating instance needs a unique DC/Node pair and a common bit layout. Equal IDs across domains and unsupported restart collisions remain possible.
+
+投产前核对deploy/tsid-node-registry.tsv.example与check_tsid_node_registry.sh；已知清单不能发现未知独立实例。无需状态目录，见[TSID风险](../../reference/tsid-field-convention.md)。
 
 ```erlang
 %% 节点 1 的 sys.config（或通过 IMBOY_TSID_DC_ID / IMBOY_TSID_NODE_ID 环境变量覆盖）

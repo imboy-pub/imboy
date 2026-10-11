@@ -14,13 +14,14 @@
 
 **理由**：
 - 时间有序 → 索引友好、分页稳定（迁移 2026-04-07 完成，全量替换 187 文件）
-- 64-bit → JSON `number` 范围内（> 2^53 的值需 `string` 包装传输，详见下方「字段命名」章节）
-- 单点生成无协调成本（雪花算法变种），分布式安全
+- signed 63-bit → PostgreSQL BIGINT；JSON integer不自行截断，但JS普通Number超过2^53−1须在解析阶段保护精度
+- 单BEAM静态Namespace + atomics CAS发号；跨节点同域唯一依赖NodeId唯一，无持久化有跨重启边界
 
 **实现**：
 - 后端（Erlang）：`elib_tsid:generate/1` 生成；DB 列类型 `BIGINT`（不是 `BIGSERIAL`）
 - DB 迁移：所有主键改 `BIGINT` + 应用层填值
-- 跨语言互操作：见「字段命名」章节的 string-encoded id 约定
+- 跨语言互操作：见[TSID字段规范](./reference/tsid-field-convention.md)，保持既有端点integer/string合同
+- V10按业务实体分配静态游标，group/group_info共用；跨域数值允许重复，引用及缓存键必须带Domain；禁止动态register或未知标签静默回退
 
 **禁止**：
 - 新增 `BIGSERIAL` / `SERIAL` / `IDENTITY` 列
@@ -75,9 +76,10 @@
 | 常量 | `UPPER_SNAKE_CASE` | `MAX_FILE_SIZE` |
 
 **ID 跨端编码**：
-- 64-bit TSID 在 JSON 中作为 **`string`** 传输（避免 JS `number` 精度丢失）
+- 常规业务TSID保持**JSON integer**；已有显式string的Admin/专用端点遵循各自合同，不统一改写API
+- Admin使用safeParseBigIntJson + EntityId保精度；原生Flutter使用64位int，Web须独立保护大整数
 - 字段名固定为 `id` / `xxxId`（如 `userId`、`messageId`）
-- 后端反序列化时显式 `binary_to_integer/1` 解码
+- 路径/查询文本经校验后转整数；JSON输入按端点合同处理integer/string，不能由客户端类型推断所有传输字段为string
 
 **禁止**：
 - DB 列名用 `camelCase`

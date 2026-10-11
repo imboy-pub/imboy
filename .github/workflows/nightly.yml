@@ -238,6 +238,9 @@ jobs:
             ~/.cache/rebar3
           key: ${{ runner.os }}-otp28-dialyzer-${{ hashFiles('Makefile', 'include/deps.mk') }}
 
+      - name: Regression test Dialyzer result transmission
+        run: bash scripts/test/dialyzer_nightly_test.sh
+
       - name: Run Dialyzer + baseline gate (retry + classify)
         id: gate
         run: |
@@ -248,9 +251,8 @@ jobs:
         if: always()
         run: |
           echo "## Dialyzer (nightly, classified)" >> "$GITHUB_STEP_SUMMARY"
-          echo "${{ steps.gate.outputs.classify }}" >> "$GITHUB_STEP_SUMMARY" || true
-          warn_count="$(grep -ciE 'warning|Warning' dialyze.log || true)"
-          echo "Dialyzer warning lines: ${warn_count} (CI-00 ratchet: gate verdict by dialyzer.baseline, 见 scripts/check_dialyzer_baseline.sh)" >> "$GITHUB_STEP_SUMMARY"
+          echo "${{ steps.gate.outputs.summary }}" >> "$GITHUB_STEP_SUMMARY" || true
+          echo "Fingerprint verdict: dialyzer.baseline; raw analysis and per-attempt gate records are attached." >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload Dialyzer logs
         if: always()
@@ -260,6 +262,8 @@ jobs:
           path: |
             dialyze.log
             dialyze.log.retry
+            dialyze.log.raw
+            dialyze.log.retry.raw
           retention-days: 14
           if-no-files-found: ignore
 
@@ -634,6 +638,8 @@ jobs:
           echo "::notice::nightly 无 NEW_FAILURE，无需建 issue（KNOWN/FLAKY/FIXED 计数见上方 QA_CLASSIFY 汇总）"
 
       - name: Create gitee issue for NEW_FAILURE
+        env:
+          DIALYZE_NEW_ITEMS: ${{ needs.dialyze.outputs.new_items }}
         if: steps.collect.outputs.total_new != '0'
         run: |
           set -euo pipefail
@@ -661,7 +667,7 @@ jobs:
           # NEW 明细逐 gate 追加（首 60 行/gate，防超长）
           {
             echo "--- full-eunit NEW:";    echo '${{ needs.full-eunit.outputs.new_items }}'
-            echo "--- dialyze NEW:";       echo '${{ needs.dialyze.outputs.new_items }}'
+            echo "--- dialyze NEW:";       printf '%s\n' "$DIALYZE_NEW_ITEMS"
             echo "--- gradualizer NEW:";   echo '${{ needs.gradualize.outputs.new_items }}'
             echo "--- eqwalizer-lib NEW:"; echo '${{ needs.eqwalize.outputs.new_items }}'
             echo "--- elvis NEW:";         echo '${{ needs.elvis.outputs.new_items }}'

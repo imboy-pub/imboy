@@ -58,7 +58,7 @@ while [ $# -gt 0 ]; do
 done
 [ -n "$GATE" ] && [ -n "$LOGFILE" ] || usage
 [ -f "$LOGFILE" ] || { echo "ERROR: 日志不存在: $LOGFILE" >&2; exit 2; }
-[ -f "$KNOWN_FILE" ] || { echo "ERROR: known 清单不存在: $KNOWN_FILE" >&2; exit 2; }
+[ "$GATE" = dialyze ] || [ -f "$KNOWN_FILE" ] || { echo "ERROR: known 清单不存在: $KNOWN_FILE" >&2; exit 2; }
 
 # 去除 ANSI 色码（elvis 默认彩色输出；对其他 gate 无副作用）。
 clean_log() {
@@ -75,9 +75,6 @@ extract_failures() {
     full-eunit)
       grep -E '\.\.\.\*(failed|timed out|aborted)\*' "$log" \
         | sed -E 's/^([a-zA-Z0-9_@]+):.*/\1/' || true ;;
-    # dialyzer 原生: "src/foo.erl:123: Warning: ..."
-    dialyze)
-      grep -oE '^[^ :]+\.erl:[0-9]+: Warning' "$log" | cut -d: -f1 || true ;;
     # make eqwalize-layer: "❌ <mod>"（crash 形如 "❌ mod (crash, ...)"，$2 同样是 mod）
     eqwalizer-lib)
       grep '❌' "$log" | awk '{print $2}' | grep -v '^(' || true ;;
@@ -98,7 +95,6 @@ summary_failed_count() {
   case "$gate" in
     full-eunit)     { grep -oE 'Failed: [0-9]+|Aborted: [1-9][0-9]*' "$log" \
                       | grep -oE '[0-9]+' | awk '{s+=$1} END{print s+0}'; } || true ;;
-    dialyze)        grep -cE '\.erl:[0-9]+: Warning' "$log" || true ;;
     eqwalizer-lib)  { grep -oE 'failing=[0-9]+' "$log" | grep -oE '[0-9]+' \
                       | awk '{s+=$1} END{print s+0}'; } || true ;;
     gradualizer)    { grep -oE 'failing=[0-9]+' "$log" | grep -oE '[0-9]+' \
@@ -133,6 +129,20 @@ infra_hit_count() {
 CLEAN_LOG="$(mktemp "${TMPDIR:-/tmp}/qa_classify.XXXXXX")"
 trap 'rm -f "$CLEAN_LOG"' EXIT
 clean_log "$LOGFILE" > "$CLEAN_LOG"
+
+# Dialyze consumes only the baseline decision, never re-baselines raw warnings
+# against the unrelated module-level known-failures registry.
+if [ "$GATE" = dialyze ]; then
+  if [ "$EMIT_KNOWN" -eq 1 ]; then
+    echo "ERROR: dialyze uses dialyzer.baseline; review fingerprints there" >&2
+    exit 2
+  fi
+  dialyzer_rc=0
+  dialyzer_output="$(bash "${REPO_ROOT}/.qa/classify-dialyzer.sh" "$CLEAN_LOG" "$GATE_RC" "$FLAKY_PASSED")" || dialyzer_rc=$?
+  printf '%s\n' "$dialyzer_output"
+  printf '%s\n' "$dialyzer_output" | sed -n '/^QA_CLASSIFY /p' >> "${GH_OUTPUT:-/dev/null}"
+  exit "$dialyzer_rc"
+fi
 
 if [ "$EMIT_KNOWN" -eq 1 ]; then
   echo "  ${GATE}:"
