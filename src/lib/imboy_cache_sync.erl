@@ -171,9 +171,17 @@ overloaded() ->
 
 -spec queue_depth() -> non_neg_integer().
 queue_depth() ->
-    case process_info(whereis(?MODULE), message_queue_len) of
-        {message_queue_len, N} -> N;
-        _ -> 0
+    case whereis(?MODULE) of
+        undefined ->
+            %% sync 进程不可用（崩溃重启窗口/被停）：视同饱和（严格大于水位线
+            %% 才判 overloaded，哨兵必须超过阈值），调用方 fail-closed 拒绝，
+            %% 而非 badarg 崩掉业务调用方
+            ?HIGH_WATERMARK + 1;
+        Pid ->
+            case process_info(Pid, message_queue_len) of
+                {message_queue_len, N} -> N;
+                _ -> 0
+            end
     end.
 
 %% @doc Key 是否为本地已登记的 replicate Key（get/1 拦截用，计划 5.5）。
@@ -552,18 +560,37 @@ periodic_reconcile(State) ->
 bounded_sweep() ->
     NowMs = erlang:system_time(millisecond),
     TTLms = imboy_cache_policy:tombstone_ttl_sec() * 1000,
+    %% tab2list 直取整行：ets:match('$1') 绑定的是整行元组，按 [K, V] 列表
+    %% 解构永不匹配、清理空转（F4 场景实证的潜伏缺陷）
     _ = [
-        ets:delete(?META_TABLE, K)
-     || [K, V] <- ets:match(?META_TABLE, '$1'),
-        is_expired_tombstone(K, V, NowMs, TTLms)
+        begin
+            ok = sweep_entry(K),
+            true = ets:delete(?META_TABLE, K)
+        end
+     || {K, V} <- ets:tab2list(?META_TABLE),
+        is_sweepable(K, V, NowMs, TTLms)
     ],
     ok.
 
--spec is_expired_tombstone(term(), term(), non_neg_integer(), non_neg_integer()) -> boolean().
-is_expired_tombstone(K, {_Rev, _C, ExpiresAt, deleted}, NowMs, TTLms) ->
+%% 淘汰 rev 行时连带清理同名 rindex 行——rindex 无独立过期路径，
+%% 不连带清理则随复制写入无界增长（W4-06/07：时间有界即数量有界）
+sweep_entry({rev, K}) ->
+    _ = ets:delete(?META_TABLE, {rindex, K}),
+    ok;
+sweep_entry(_) ->
+    ok.
+
+-spec is_sweepable(term(), term(), non_neg_integer(), non_neg_integer()) -> boolean().
+%% 过期墓碑：再保留一个 Tmax 写窗（陈旧事件防复活），之后连同 rindex 淘汰
+is_sweepable(K, {_Rev, _C, ExpiresAt, deleted}, NowMs, TTLms) ->
     is_tuple(K) andalso tuple_size(K) =:= 2 andalso element(1, K) =:= rev andalso
         ExpiresAt + TTLms < NowMs;
-is_expired_tombstone(_, _, _, _) ->
+%% 过期 live：值已随 depcache TTL 消失，延迟重放由事件自带 expires_at 拒绝
+%% （expired），版本上界由 gen_server counter 承载——元数据到期即淘汰
+is_sweepable(K, {_Rev, _C, ExpiresAt, live}, NowMs, _TTLms) ->
+    is_tuple(K) andalso tuple_size(K) =:= 2 andalso element(1, K) =:= rev andalso
+        ExpiresAt < NowMs;
+is_sweepable(_, _, _, _) ->
     false.
 
 %% ===================================================================
