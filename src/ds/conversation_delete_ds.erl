@@ -32,7 +32,7 @@
 delete_conversation(Uid, ConversationId, Type) ->
     case conversation_delete_repo:mark_deleted(Uid, ConversationId, Type) of
         {ok, _Count} ->
-            imboy_cache:flush({conv_deleted, Uid, ConversationId, Type}),
+            imboy_cache:invalidate({conv_deleted, Uid, ConversationId, Type}),
             ok;
         {error, Reason} ->
             {error, Reason}
@@ -46,7 +46,7 @@ delete_conversation(Uid, ConversationId, Type) ->
 -spec restore_conversation(integer(), integer(), binary()) -> ok.
 restore_conversation(Uid, ConversationId, Type) ->
     _ = conversation_delete_repo:restore(Uid, ConversationId, Type),
-    imboy_cache:flush({conv_deleted, Uid, ConversationId, Type}),
+    imboy_cache:invalidate({conv_deleted, Uid, ConversationId, Type}),
     ok.
 
 %% @doc 获取用户的已删除会话列表

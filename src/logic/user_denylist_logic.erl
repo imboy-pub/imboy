@@ -68,7 +68,7 @@ add(Uid, DeniedUserId) ->
     Now = elib_dt:now(),
     _ = user_denylist_ds:add(Uid, DeniedUserId, Now),
     Key = {in_denylist, Uid, DeniedUserId},
-    imboy_cache:flush(Key),
+    imboy_cache:invalidate(Key),
     %% B-01：check_relationship3 旁路缓存（TTL 300s）含 in_denylist 结果，
     %% 拉黑后必须立即失效，否则转发等旁路场景最长 5 分钟漏拦。
     friend_ds:invalidate_cache(Uid, DeniedUserId),
@@ -89,7 +89,7 @@ add(Uid, DeniedUserId, _Remark) ->
 remove(Uid, DeniedUserId) ->
     _ = user_denylist_ds:remove(Uid, DeniedUserId),
     Key = {in_denylist, Uid, DeniedUserId},
-    imboy_cache:flush(Key),
+    imboy_cache:invalidate(Key),
     %% B-01：解除拉黑同样立即使关系旁路缓存失效（对称）
     friend_ds:invalidate_cache(Uid, DeniedUserId),
     ok.

@@ -507,14 +507,14 @@ move_to_category(FromUID, ToUID, CategoryId) ->
 -spec invalidate_cache(integer(), integer()) -> ok.
 invalidate_cache(FromUid, ToUid) ->
     %% 清除 is_friend2 缓存
-    imboy_cache:flush({is_friend2, FromUid, ToUid}),
-    imboy_cache:flush({is_friend2, ToUid, FromUid}),
+    imboy_cache:invalidate({is_friend2, FromUid, ToUid}),
+    imboy_cache:invalidate({is_friend2, ToUid, FromUid}),
     %% 清除 check_relationship3 缓存（双向）
-    imboy_cache:flush({check_relationship3, FromUid, ToUid}),
-    imboy_cache:flush({check_relationship3, ToUid, FromUid}),
+    imboy_cache:invalidate({check_relationship3, FromUid, ToUid}),
+    imboy_cache:invalidate({check_relationship3, ToUid, FromUid}),
     %% 级联清除 is_friend_fields2 缓存（键含 Fields 无法逐一枚举，经依赖标签失效，双向）
-    imboy_cache:flush(?FRIEND_REL_DEP(FromUid, ToUid)),
-    imboy_cache:flush(?FRIEND_REL_DEP(ToUid, FromUid)),
+    imboy_cache:invalidate(?FRIEND_REL_DEP(FromUid, ToUid)),
+    imboy_cache:invalidate(?FRIEND_REL_DEP(ToUid, FromUid)),
     ok.
 
 %% G3: adm_user_handler 不应直调 friend_repo

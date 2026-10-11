@@ -49,7 +49,7 @@ find_by_uid(Uid) when is_integer(Uid) ->
 -spec save(map()) -> ok.
 save(#{<<"user_id">> := Uid0} = Data) ->
     ok = user_dnd_rule_repo:upsert(Data),
-    imboy_cache:delete(?CACHE_KEY(ec_cnv:to_integer(Uid0))),
+    imboy_cache:invalidate(?CACHE_KEY(ec_cnv:to_integer(Uid0))),
     ok.
 
 %% @doc 删除免打扰规则并失效缓存
@@ -59,7 +59,7 @@ save(#{<<"user_id">> := Uid0} = Data) ->
 delete(Uid0) ->
     Uid = ec_cnv:to_integer(Uid0),
     ok = user_dnd_rule_repo:delete_by_uid(Uid),
-    imboy_cache:delete(?CACHE_KEY(Uid)),
+    imboy_cache:invalidate(?CACHE_KEY(Uid)),
     ok.
 
 %% @doc 判断给定时刻（自 0 点起的分钟数，0-1439）是否落在用户免打扰时段

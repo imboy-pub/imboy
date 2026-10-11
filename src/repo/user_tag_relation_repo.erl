@@ -299,7 +299,7 @@ tag_subtitle(2, TagId, _Count) ->
 -spec flush_subtitle(any()) -> ok.
 flush_subtitle(TagId) ->
     Key = elib_cnv:implode("_", ["tag_subtitle_3", TagId]),
-    imboy_cache:flush(Key).
+    imboy_cache:invalidate(Key).
 
 %% ===================================================================
 %% Internal Function Definitions

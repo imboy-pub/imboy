@@ -593,7 +593,7 @@ flush_admin_permission_cache(AdminId) ->
         {adm_user_feedback_permission, AdminId},
         {adm_user_stats_permission, AdminId}
     ],
-    _ = [imboy_cache:flush(Key) || Key <- Keys],
+    _ = [imboy_cache:invalidate(Key) || Key <- Keys],
     ok.
 
 %% ===================================================================

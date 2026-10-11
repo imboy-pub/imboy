@@ -77,7 +77,7 @@ change_name(Uid, DID, Name) ->
     _ = user_device_ds:update_by_did(Uid, DID, Set, SetArgs),
 
     Key = {user_device_name, 2, Uid, DID},
-    imboy_cache:flush(Key),
+    imboy_cache:invalidate(Key),
     ok.
 
 %% @doc 设备是否活跃（未被移除）
@@ -105,9 +105,10 @@ is_active(Uid, DID) ->
 delete(Uid, DID) ->
     user_device_ds:delete(Uid, DID),
     Key = {user_device_name, 2, Uid, DID},
-    imboy_cache:flush(Key),
-    %% 吊销判据缓存必须立刻失效；生产 dsync_enabled=false 时 imboy_cache:flush/1
-    %% 不跨节点，故显式广播（其他节点最差也只被 60s TTL 兜底）。
+    imboy_cache:invalidate(Key),
+    %% 吊销判据缓存必须立刻失效；W5-01 迁移后 user_device_name 也走统一
+    %% 失效入口（本地清理+跨节点扇出一步完成，不再受 dsync_enabled 门控
+    %% 造成"仅本地失效"的滞后缺口）。
     %% W1-05：统一失效入口（本地清理+跨节点失效一步完成，消除
     %% dsync_enabled=true 时 flush/1 与手动 broadcast 的双重广播；
     %% invalidate 内部对 syn 失败自带兜底，不再需要调用方 try/catch）

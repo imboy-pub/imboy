@@ -248,7 +248,7 @@ e2ee_mode(Gid) ->
 %% @doc 开关变更后清除 e2ee_mode 缓存
 -spec flush_e2ee_mode(integer()) -> ok.
 flush_e2ee_mode(Gid) ->
-    imboy_cache:flush({group_e2ee_mode, Gid}).
+    imboy_cache:invalidate({group_e2ee_mode, Gid}).
 
 %% @doc 用户加入群组
 %%
@@ -301,7 +301,7 @@ leave(Uid, Gid) ->
 -spec dissolve(integer()) -> ok.
 dissolve(Gid) ->
     CacheKey = ?GROUP_CACHE_KEY(Gid),
-    imboy_cache:flush(CacheKey).
+    imboy_cache:invalidate(CacheKey).
 
 %% @doc 生成新的群组ID
 %%

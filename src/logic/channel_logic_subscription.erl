@@ -341,6 +341,6 @@ decode_positive_id(Value) ->
 
 -spec flush_remove_subscriber_cache(integer()) -> ok.
 flush_remove_subscriber_cache(ChannelId) ->
-    imboy_cache:flush(?CHANNEL_SUBS_KEY(ChannelId)),
-    imboy_cache:flush(?CHANNEL_CACHE_KEY(ChannelId)),
+    imboy_cache:invalidate(?CHANNEL_SUBS_KEY(ChannelId)),
+    imboy_cache:invalidate(?CHANNEL_CACHE_KEY(ChannelId)),
     ok.

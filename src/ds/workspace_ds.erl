@@ -671,8 +671,8 @@ member_removed(#{user_id := Uid} = Result) ->
     lists:foreach(fun(#{group_id := Gid}) -> group_ds:leave(Uid, Gid) end, Groups),
     lists:foreach(
         fun(#{channel_id := Cid}) ->
-            imboy_cache:flush({channel_subs, Cid}),
-            imboy_cache:flush({channel, Cid})
+            imboy_cache:invalidate({channel_subs, Cid}),
+            imboy_cache:invalidate({channel, Cid})
         end,
         maps:get(affected_channels, Result, [])
     ),

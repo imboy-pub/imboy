@@ -268,8 +268,8 @@ confirm_friend_do(CurrentUid, From, To, Payload, FromBin, ToBin, FromID, ToID) -
     end,
     % 兼容旧缓存键，同时清理当前 friend_ds 使用的缓存键
     _ = friend_ds:invalidate_cache(FromID, ToID),
-    imboy_cache:flush({is_friend, FromID, ToID}),
-    imboy_cache:flush({is_friend, ToID, FromID}),
+    imboy_cache:invalidate({is_friend, FromID, ToID}),
+    imboy_cache:invalidate({is_friend, ToID, FromID}),
     {ok, FromID, Remark2, Source}.
 
 %% @doc 生成确认好友响应
@@ -349,8 +349,8 @@ delete_friend(CurrentUid, Uid) when is_binary(Uid) ->
 delete_friend(CurrentUid, Uid) ->
     _ = friend_ds:delete(CurrentUid, Uid),
     % 为了简单，删除好友关系清理两个缓存
-    imboy_cache:flush({is_friend, CurrentUid, Uid}),
-    imboy_cache:flush({is_friend, Uid, CurrentUid}),
+    imboy_cache:invalidate({is_friend, CurrentUid, Uid}),
+    imboy_cache:invalidate({is_friend, Uid, CurrentUid}),
     ok.
 
 %% @doc 移动好友到分组

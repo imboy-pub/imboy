@@ -108,7 +108,7 @@ role_permissions(RoleId) ->
 %% @doc 失效指定管理员的权限缓存
 -spec flush_cache(integer()) -> ok.
 flush_cache(AdmUserId) ->
-    imboy_cache:flush({adm_user_permission, AdmUserId}),
+    imboy_cache:invalidate({adm_user_permission, AdmUserId}),
     ok.
 
 %% ===================================================================

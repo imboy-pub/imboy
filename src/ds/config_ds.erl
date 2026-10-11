@@ -132,7 +132,7 @@ set(Key, Val) ->
 -spec set(binary(), term(), binary(), binary()) -> ok.
 set(Key, Val, Title, Remark) ->
     Key2 = ec_cnv:to_binary(Key),
-    imboy_cache:flush(cache_key(Key2)),
+    imboy_cache:invalidate(cache_key(Key2)),
     save(
         Key2,
         % value 的值在 do_aes_encrypt/2 放里面处理加密，这里给明文
@@ -164,7 +164,7 @@ save(Key, Data) ->
             {ok, _Count} ->
                 elib_pg:update(<<"config">>, Data#{<<"updated_at">> => Now}, <<"key = $1">>, [Key])
         end,
-    _ = imboy_cache:flush(cache_key(Key)),
+    _ = imboy_cache:invalidate(cache_key(Key)),
     _ = aes_encrypt(Key),
     ok.
 

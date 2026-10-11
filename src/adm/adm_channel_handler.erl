@@ -1088,8 +1088,8 @@ to_lower_binary(Bin) when is_binary(Bin) ->
 
 -spec flush_channel_cache(integer()) -> ok.
 flush_channel_cache(ChannelId) ->
-    imboy_cache:flush(?CHANNEL_SUBS_KEY(ChannelId)),
-    imboy_cache:flush(?CHANNEL_CACHE_KEY(ChannelId)),
+    imboy_cache:invalidate(?CHANNEL_SUBS_KEY(ChannelId)),
+    imboy_cache:invalidate(?CHANNEL_CACHE_KEY(ChannelId)),
     ok.
 
 -spec audit_channel_governance(integer(), integer(), binary(), integer(), map()) -> ok.

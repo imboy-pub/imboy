@@ -206,13 +206,13 @@ subscribe(ChannelId, Uid) ->
     case Result of
         changed ->
             % 清除订阅者缓存
-            imboy_cache:flush(?CHANNEL_SUBS_KEY(ChannelId)),
-            imboy_cache:flush(?CHANNEL_CACHE_KEY(ChannelId)),
+            imboy_cache:invalidate(?CHANNEL_SUBS_KEY(ChannelId)),
+            imboy_cache:invalidate(?CHANNEL_CACHE_KEY(ChannelId)),
             log_subscription_action(Uid, ChannelId, <<"subscribe">>, <<"changed">>, StartMs),
             ok;
         noop ->
-            imboy_cache:flush(?CHANNEL_SUBS_KEY(ChannelId)),
-            imboy_cache:flush(?CHANNEL_CACHE_KEY(ChannelId)),
+            imboy_cache:invalidate(?CHANNEL_SUBS_KEY(ChannelId)),
+            imboy_cache:invalidate(?CHANNEL_CACHE_KEY(ChannelId)),
             log_subscription_action(Uid, ChannelId, <<"subscribe">>, <<"noop">>, StartMs),
             ok;
         {error, {Code, _} = Coded} when is_integer(Code) ->
@@ -253,13 +253,13 @@ unsubscribe(ChannelId, Uid) ->
     case Result of
         changed ->
             % 清除缓存
-            imboy_cache:flush(?CHANNEL_SUBS_KEY(ChannelId)),
-            imboy_cache:flush(?CHANNEL_CACHE_KEY(ChannelId)),
+            imboy_cache:invalidate(?CHANNEL_SUBS_KEY(ChannelId)),
+            imboy_cache:invalidate(?CHANNEL_CACHE_KEY(ChannelId)),
             log_subscription_action(Uid, ChannelId, <<"unsubscribe">>, <<"changed">>, StartMs),
             ok;
         noop ->
-            imboy_cache:flush(?CHANNEL_SUBS_KEY(ChannelId)),
-            imboy_cache:flush(?CHANNEL_CACHE_KEY(ChannelId)),
+            imboy_cache:invalidate(?CHANNEL_SUBS_KEY(ChannelId)),
+            imboy_cache:invalidate(?CHANNEL_CACHE_KEY(ChannelId)),
             log_subscription_action(Uid, ChannelId, <<"unsubscribe">>, <<"noop">>, StartMs),
             ok;
         {error, {Code, _} = Coded} when is_integer(Code) ->
@@ -573,8 +573,8 @@ flush_subscription_cache(Cid) ->
     %% Entitlement reads recheck SQL. Cache failure must not turn a committed
     %% refund into a client-visible retry of the financial operation.
     try
-        imboy_cache:flush(?CHANNEL_SUBS_KEY(Cid)),
-        imboy_cache:flush(?CHANNEL_CACHE_KEY(Cid)),
+        imboy_cache:invalidate(?CHANNEL_SUBS_KEY(Cid)),
+        imboy_cache:invalidate(?CHANNEL_CACHE_KEY(Cid)),
         ok
     catch
         Class:Reason ->
