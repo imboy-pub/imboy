@@ -17,9 +17,30 @@
 ]).
 -include_lib("kernel/include/file.hrl").
 
--define(CONFIG,
-    "/Users/leeyi/.codex/micro-community-runs/mc-20261008T083109Z/private/pg-owned.config"
-).
+%% Run-scoped private dir override: MC_RUN_PRIVATE_DIR lets a later isolated run
+%% keep the historical default untouched while pointing at its own secrets.
+-define(CONFIG, mc_private_config_path()).
+
+mc_private_config_path() ->
+    Default = "/Users/leeyi/.codex/micro-community-runs/mc-20261008T083109Z/private",
+    Dir =
+        case os:getenv("MC_RUN_PRIVATE_DIR") of
+            false -> Default;
+            D -> D
+        end,
+    Dir ++ "/pg-owned.config".
+
+mc_env_int(Name, Default) ->
+    case os:getenv(Name) of
+        false ->
+            Default;
+        V ->
+            try
+                list_to_integer(V)
+            catch
+                _:_ -> Default
+            end
+    end.
 -define(OWNER_COMMENT,
     <<"Owned by MC run mc-20261008T083109Z; synthetic micro-community test data only">>
 ).
@@ -91,8 +112,14 @@ private_config() ->
         _ ->
             fail(private_config_unavailable)
     end,
+    ExpectedPort = mc_env_int("MC_RUN_PG_PORT", 4323),
+    ExpectedDb =
+        case os:getenv("MC_RUN_PG_DATABASE") of
+            false -> "imboy_test_group";
+            Db -> Db
+        end,
     case file:consult(Path) of
-        {ok, [#{database := "imboy_test_group", host := Host, port := 4323} = Opts]} when
+        {ok, [#{database := ExpectedDb, host := Host, port := ExpectedPort} = Opts]} when
             Host =:= "localhost"; Host =:= "127.0.0.1"
         ->
             maps:with([host, port, database, username, password, ssl, timeout, codecs], Opts);
