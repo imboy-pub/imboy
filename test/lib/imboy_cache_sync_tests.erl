@@ -356,6 +356,72 @@ v2_invalidate_event_advances_remote_generation_test_() ->
         end
     end).
 
+%% 19.8 能力交集：v2 模式 invalidate 双通道发布——旧节点静默丢弃 v2 信封
+%% （19.8：legacy 对未知消息静默丢弃），混合期失效必须同时经 legacy
+%% {flush, Key} 通道到达；legacy 模式保持单通道原语义。
+v2_invalidate_dual_publishes_legacy_flush_test_() ->
+    ?TEST_WITH_APP(fun() ->
+        ready = wait_ready(100),
+        Old = application:get_env(imboy, cache_sync_protocol, undefined),
+        application:set_env(imboy, cache_sync_protocol, v2),
+        meck:new(syn, [passthrough]),
+        try
+            meck:expect(syn, publish, 3, fun(_Scope, _Group, _Msg) -> {ok, 1} end),
+            Key = {cache_v2_test, dual_pub1},
+            ok = imboy_cache_sync:invalidate(Key),
+            %% syn:publish 第三参为 {cache_sync, Msg} 包裹，先解包
+            Msgs = [
+                M
+             || {_P, {syn, publish, [_S, _G, {cache_sync, M}]}, _R} <- meck:history(syn)
+            ],
+            V2Ev = [
+                M
+             || M <- Msgs,
+                is_map(M),
+                maps:get(operation, M, none) =:= invalidate,
+                maps:get(key, M, none) =:= Key
+            ],
+            LegacyFl = [
+                M
+             || M <- Msgs,
+                is_tuple(M),
+                element(1, M) =:= flush,
+                element(2, M) =:= Key
+            ],
+            case {V2Ev, LegacyFl} of
+                {[_], [_]} ->
+                    ok;
+                _ ->
+                    erlang:error(
+                        {dual_publish_missed, imboy_cache_policy:protocol(), Msgs}
+                    )
+            end,
+            %% legacy 模式保持单通道：仅 {flush, Key}，无 v2 信封
+            meck:reset(syn),
+            application:set_env(imboy, cache_sync_protocol, legacy),
+            ok = imboy_cache_sync:invalidate(Key),
+            Msgs2 = [
+                M
+             || {_P, {syn, publish, [_S, _G, {cache_sync, M}]}, _R} <- meck:history(syn)
+            ],
+            case {Msgs2, [M || M <- Msgs2, is_map(M)]} of
+                {[M], []} ->
+                    {flush, Key} = M,
+                    ok;
+                _ ->
+                    erlang:error(
+                        {legacy_single_channel_missed, imboy_cache_policy:protocol(), Msgs2}
+                    )
+            end
+        after
+            meck:unload(syn),
+            case Old of
+                undefined -> application:unset_env(imboy, cache_sync_protocol);
+                _ -> application:set_env(imboy, cache_sync_protocol, Old)
+            end
+        end
+    end).
+
 %% ===================================================================
 %% legacy 兼容（19.8：混合期能力交集，行为保持）
 %% ===================================================================

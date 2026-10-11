@@ -664,6 +664,10 @@ publish_invalidate(Key) ->
                 origin_node => node(),
                 origin_boot_id => boot()
             }),
+            %% 19.8 能力交集：旧节点静默丢弃 v2 信封，混合期失效必须同时
+            %% 走 legacy {flush, Key} 通道；v2 接收端按保守栅栏处理该消息，
+            %% 回流自环幂等，重复失效是安全方向（宁多失效）。
+            _ = broadcast({flush, Key}),
             ok;
         legacy ->
             %% legacy 模式跨节点失效用现有 {flush, Key}（19.8 能力交集）
