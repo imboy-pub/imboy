@@ -207,6 +207,6 @@ build_reaction_stats(Reactions) ->
 clear_reaction_cache(MsgId, MsgType) ->
     % 构建缓存键
     CacheKey = {msg_reaction, MsgId, MsgType},
-    % 清除缓存
-    imboy_cache:delete(CacheKey),
+    % 清除缓存（本地 + 跨节点扇出）
+    imboy_cache:invalidate(CacheKey),
     ok.

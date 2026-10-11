@@ -27,7 +27,7 @@ add_reaction_returns_encoded_user_and_timestamp_test_() ->
                 {'add', 4, fun(MsgId, MsgType, UserId, Emoji) -> ok end}
             ]},
             {imboy_cache, [
-                {'delete', 1, fun(CacheKey) -> ok end}
+                {'invalidate', 1, fun(CacheKey) -> ok end}
             ]},
             {elib_dt, [
                 {'now', 0, fun() -> fixed_now end},
@@ -41,7 +41,7 @@ add_reaction_returns_encoded_user_and_timestamp_test_() ->
             ?assertEqual(UserId, maps:get(<<"user_id">>, Result)),
             ?assertEqual(Emoji, maps:get(<<"emoji">>, Result)),
             ?assertEqual(CreatedAt, maps:get(<<"created_at">>, Result)),
-            ?assert(meck:called(imboy_cache, delete, [CacheKey]))
+            ?assert(meck:called(imboy_cache, invalidate, [CacheKey]))
         end
     ).
 
@@ -57,12 +57,12 @@ remove_reaction_clears_cache_test_() ->
                 {'remove', 4, fun(MsgId, MsgType, UserId, Emoji) -> ok end}
             ]},
             {imboy_cache, [
-                {'delete', 1, fun(CacheKey) -> ok end}
+                {'invalidate', 1, fun(CacheKey) -> ok end}
             ]}
         ],
         fun() ->
             ?assertEqual(ok, msg_reaction_ds:remove_reaction(MsgId, MsgType, UserId, Emoji)),
-            ?assert(meck:called(imboy_cache, delete, [CacheKey]))
+            ?assert(meck:called(imboy_cache, invalidate, [CacheKey]))
         end
     ).
 
