@@ -28,7 +28,7 @@
 %%   close_conn(State) -> inttest_marker_db:release(State).
 %%   %% State 内 conn 字段为已连接 epgsql pid；测试体自行 BEGIN/ROLLBACK。
 
--export([provision/1, release/1, safe_connect/1]).
+-export([provision/1, release/1, safe_connect/1, migration_head/0]).
 
 -define(EXTENSIONS, [
     <<"pgcrypto">>,
@@ -451,6 +451,20 @@ migrate_fresh_db(Server, DbName) ->
 migrate_result(ok) -> ok;
 migrate_result({ok, _Applied}) -> ok;
 migrate_result({error, Reason}) -> erlang:error({marker_db_migrate_failed, Reason}).
+
+%% priv/migrations 内最大 up 版本。迁移头随新迁移前移，套件断言
+%% marker 库版本时不得硬编码数字，应引用本函数。
+migration_head() ->
+    {ok, Files} = file:list_dir("priv/migrations"),
+    Versions = [
+        list_to_integer(Ver)
+     || F <- Files,
+        {match, [Ver]} <- [re:run(F, "^(\\d{8})_.*\\.up\\.sql$", [{capture, all_but_first, list}])]
+    ],
+    case Versions of
+        [] -> erlang:error(no_migration_files_found);
+        _ -> lists:max(Versions)
+    end.
 
 try_drop_db(Server, DbName) ->
     case connect_maint_quiet(Server) of

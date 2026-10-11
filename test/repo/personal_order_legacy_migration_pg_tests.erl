@@ -160,7 +160,9 @@ roundtrip(S) ->
     C = maps:get(conn, S),
     formal(C, 101, <<"formal-only">>, <<"2026-09-15T01:00:00Z">>),
     ok = up(C),
-    ?assertEqual({ok, 169, false}, erlang_migrate:version(config(C))),
+    ?assertEqual(
+        {ok, inttest_marker_db:migration_head(), false}, erlang_migrate:version(config(C))
+    ),
     Before = snapshot(C),
     ok = erlang_migrate:goto(config(C), 168),
     ?assertEqual({ok, 168, false}, erlang_migrate:version(config(C))),

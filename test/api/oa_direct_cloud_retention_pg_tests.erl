@@ -41,7 +41,10 @@ setup() ->
     application:set_env(imboy, super_account, OwnOpts),
     {ok, Pool} = PreviousPool,
     application:set_env(imboy, pg_conf, Pool#{start_mfa => {epgsql, connect, [OwnOpts]}}),
-    ?assertEqual({ok, 169, false}, erlang_migrate:version(#{conn => C, dir => "priv/migrations"})),
+    ?assertEqual(
+        {ok, inttest_marker_db:migration_head(), false},
+        erlang_migrate:version(#{conn => C, dir => "priv/migrations"})
+    ),
     ?assertEqual(0, count(C, <<"config">>)),
     io:format(user, "OWN_MARKER ~s PORT4337 SCHEMA169 CONFIG0~n", [maps:get(db, S)]),
     PreviousArchive = application:get_env(imboy, msg_archive_enabled),

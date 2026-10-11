@@ -17,7 +17,10 @@ order_test_() ->
         end}}.
 setup() ->
     {ok, C} = eunit_runner:eunit_setup_with_db(),
-    ?assertEqual({ok, 169, false}, erlang_migrate:version(#{conn => C, dir => "priv/migrations"})),
+    ?assertEqual(
+        {ok, inttest_marker_db:migration_head(), false},
+        erlang_migrate:version(#{conn => C, dir => "priv/migrations"})
+    ),
     C.
 close(C) -> eunit_runner:eunit_cleanup_db(C).
 run(F) ->
