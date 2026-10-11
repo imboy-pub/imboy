@@ -648,7 +648,10 @@ actor_kind_of(Params) ->
 %% 本用例 fail-closed（显式不可用），不做任何客服侧消息副本兜底。
 -ifdef(IMBOY_FEATURE_ENTERPRISE_BUSINESS).
 dispatch_message(OrgId, FacadeParams) ->
-    enterprise_business_facade:append_message(OrgId, FacadeParams).
+    case cs_seat_message_body:validate(FacadeParams) of
+        ok -> enterprise_business_facade:append_message(OrgId, FacadeParams);
+        {error, _} = Error -> Error
+    end.
 -else.
 dispatch_message(_OrgId, _FacadeParams) ->
     {error, {enterprise_business_feature_not_selected, append_session_message}}.
