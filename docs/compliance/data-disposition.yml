@@ -617,6 +617,13 @@ tables:
     mechanism: delete rows by user ownership column
     review: self-evident
     retention: n/a
+  qr_login_session:
+    action: delete
+    owner: account
+    reason: 扫码登录会话（含一次性 login_token）：登录完成后无保留价值，随用户注销一并删除
+    mechanism: delete rows by user ownership column（scanned_by/user 关联；过期未消费行由 expires_at 索引清理）
+    review: self-evident
+    retention: n/a
   sso_identity:
     action: delete
     owner: account

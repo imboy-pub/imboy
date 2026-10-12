@@ -883,12 +883,15 @@ c04_round_requires_done_and_pages_test() ->
     ?assert(imboy_cache_sync_snapshot:round_complete(StA3)),
     ?assertEqual(2, imboy_cache_sync_snapshot:applied_count(StA3)).
 
-c04_page_gap_and_digest_mismatch_abort_test_() ->
-    Round = crypto:strong_rand_bytes(12),
+%% 普通 _test/0（非 generator）+ round token 从 new_round 状态取
+%%（与 c04_round_requires_done_and_pages 同款修复；预生成 token 与
+%% new_round 自生成的身份不一致，round-match 恒失败——全量 r3 实证）
+c04_page_gap_and_digest_mismatch_abort_test() ->
     St0 = imboy_cache_sync_snapshot:new_round(
         0,
         erlang:system_time(millisecond) + 60000
     ),
+    Round = maps:get(round, St0),
     Peer = 'snap_peer2@x',
     St1 = imboy_cache_sync_snapshot:expect_peer(St0, Peer),
     %% 页号跳号（1 → 3）→ abort page_gap
