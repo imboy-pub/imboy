@@ -361,12 +361,13 @@ checks([]) ->
     ok.
 
 %% 值大小估算：external term format 字节数（含 refc binary 全量，符合 19.5 字节上限语义）。
+%% external_size 失败时按超限处理（max+1 → 上层 value_too_large 拒绝），不崩护栏。
 -spec value_size(term()) -> non_neg_integer().
 value_size(Value) ->
     try
         erlang:external_size(Value)
     catch
-        _:_ -> erlang:max_value_bytes() + 1
+        _:_ -> max_value_bytes() + 1
     end.
 
 -spec contains_pid_ref_fun(term()) -> boolean().
