@@ -317,3 +317,21 @@ P1~P6 计划中提交落地后，rollback-v1.md 须增补对应回滚条目（�
 *本报告为 DRAFT_SKELETON，终轮填充完成后由协调者将状态改为 FINAL 并补 CANDIDATE_SHA
 与 96 项终态表；所有 ⏳ 项清零或转为明确终态（PASS/FAIL/PARTIAL/BLOCKED/WAITING_*）
 后方可作为 C14 签发依据。*
+
+---
+
+## 附录 B：签发后登记项翻案（2026-10-12，收尾后核验）
+
+例外 1（全量 EUnit exit=2，inttest marker duplicate_versions 外部归属）**已消解**：
+
+- 根因修正：并非两份**已提交**的 00000150 孪生迁移（git 全历史仅
+  1f293973 一份 `00000150_enterprise_webhook_delivery_keyset`；deorg 迁移以
+  `00000171` 随 bc4d769a 落库，从无 00000150_organization）。r5 运行时
+  `priv/migrations/` 内存在并行会话**未提交**的同号迁移 WIP，机械扫描
+  （版本号去重，与 `erlang_migrate_source:check_duplicates/1` 同谓词）当时命中，
+  现为零重复。
+- 活体验证：恢复 closeout 测试环境（imboy_pg18:4323 + pg_relay）后重跑
+  r5 曾失败套件 `enterprise_human_file_binding_pg_checks`——**PASS**
+  （provision_fresh 严格迁移全绿，2026-10-12 本地）。
+- 处置：本项从「外部归属登记不修」改为 **RESOLVED（外来 WIP 撞号，随并行会话
+  提交自愈，无需本任务修复）**。其余例外 2～5 状态不变。
