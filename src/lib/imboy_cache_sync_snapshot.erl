@@ -385,7 +385,7 @@ round_failed_peers(#{peers := Peers}) ->
 %% @doc 已应用条目总数（缓冲预算监控）。
 -spec applied_count(map()) -> non_neg_integer().
 applied_count(#{peers := Peers}) ->
-    lists:sum([maps:get(applied, St) || St <- maps:get_values(Peers)]).
+    lists:sum([maps:get(applied, St) || St <- maps:values(Peers)]).
 
 %% ===================================================================
 %% Internal
