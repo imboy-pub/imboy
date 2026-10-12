@@ -22,10 +22,14 @@ pre-commit:
     #      （存量 477 legacy 由 CI dialyze-check 基线 ratchet 兜底），零基线负担
     # 降级：PLT 缺失时告警放行（新 clone 先 make dialyze 建基线）。
     compile-dialyze:
-      glob: "{src/*.erl,src/**/*.erl,src/*.hrl,src/**/*.hrl,apps/**/*.erl,apps/**/*.hrl}"
+      # 含 include/*.hrl：仅改头文件的提交也必须过编译门（2026-10-12 review P2-3）
+      glob: "{src/*.erl,src/**/*.erl,src/*.hrl,src/**/*.hrl,include/*.hrl,include/**/*.hrl,apps/**/*.erl,apps/**/*.hrl}"
       run: |
         make compile || { echo "❌ make compile 失败：编译不过的代码不得提交"; exit 1; }
         [ -f .imboy.plt ] || { echo "⚠️ .imboy.plt 缺失，dialyze 门禁降级放行（运行 make dialyze 建立）"; exit 0; }
+        # 边界说明（2026-10-12 review P2-1）：PLT 只含 OTP+deps，本门只拦
+        # OTP/deps 层 undef（qs/2 事故类）；项目内跨模块 undef（如 logic 改名
+        # 漏改调用方）不匹配此文本，由 CI dialyze-check 全量棘轮兜底。
         rc=0
         for f in {staged_files}; do
           case "$f" in
@@ -33,12 +37,18 @@ pre-commit:
             *) continue ;;
           esac
           beam="ebin/$(basename "${f%.erl}").beam"
-          [ -f "$beam" ] || continue
-          out=$(dialyzer --plt .imboy.plt -n "$beam" 2>&1)
+          if [ ! -f "$beam" ]; then
+            echo "⚠️ $f 无对应 beam（ERLC 裁剪或构建异常），该模块未过 undef 门"
+            continue
+          fi
+          out=$(dialyzer --plt .imboy.plt -n "$beam" 2>&1) || true
           if echo "$out" | grep -q "missing or unexported function"; then
             echo "❌ $f 调用了不存在的函数（undef 必崩类，qs/2 事故同类）:"
             echo "$out" | grep "missing or unexported function" | head -5
             rc=1
+          elif [ -z "$out" ]; then
+            # P2-2：dialyzer 执行级失败（不在 PATH/PLT 损坏）不得静默
+            echo "⚠️ dialyzer 无输出（执行失败？），$f 未过 undef 门（CI 兜底）"
           fi
         done
         exit $rc

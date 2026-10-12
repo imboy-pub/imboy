@@ -34,6 +34,38 @@
     cowboy_handler
 ]).
 
+%% P2-13 兜底：eunit {timeout,60} 超时 kill 测试进程时 try/after 不执行，
+%% 全局 meck/listener 会泄漏给同 VM 后续套件（低概率高爆炸）。本前置用例
+%% （eunit inorder 顺序保证先于 http_entries 执行）清掉可能的残留。
+leak_sweep_test_() ->
+    fun() ->
+        _ =
+            try
+                meck:unload(auth_ds)
+            catch
+                _:_ -> ok
+            end,
+        _ =
+            try
+                meck:unload(throttle)
+            catch
+                _:_ -> ok
+            end,
+        _ =
+            try
+                meck:unload(enterprise_oa_sso_logic)
+            catch
+                _:_ -> ok
+            end,
+        _ =
+            try
+                cowboy:stop_listener(?LISTENER)
+            catch
+                _:_ -> ok
+            end,
+        ok
+    end.
+
 http_entries_test_() ->
     {timeout, 60, fun http_entries/0}.
 
@@ -102,9 +134,20 @@ synthetic_entry() ->
 %% 崩溃（undef 等）经 cowboy 兜底为 500，此断言即红。
 assert_success_envelope(Response) ->
     ?assertMatch(<<"HTTP/1.1 200", _/binary>>, Response),
-    ?assertNotEqual(nomatch, binary:match(Response, <<"\"code\":0">>)),
-    ?assertNotEqual(nomatch, binary:match(Response, <<"\"entries\":">>)),
-    ?assertNotEqual(nomatch, binary:match(Response, <<"default-oa">>)).
+    %% body 在 \r\n\r\n 分隔的最后一段（前段是状态行+头）
+    [_, Body] = string:split(Response, <<"\r\n\r\n">>),
+    Decoded = jsone:decode(Body),
+    ?assertEqual(0, maps:get(<<"code">>, Decoded)),
+    Entries = maps:get(<<"entries">>, maps:get(<<"payload">>, Decoded)),
+    %% P2-16：钉长度与元素（返回多条/形变必须红，而不是子串碰巧命中）
+    ?assertEqual(1, length(Entries)),
+    [Entry] = Entries,
+    ?assertEqual(<<"oa">>, maps:get(<<"kind">>, Entry)),
+    ?assertEqual(<<"default-oa">>, maps:get(<<"application_key">>, Entry)),
+    ?assertEqual(
+        <<"https://www.imboy.pub/test_oa.html">>,
+        maps:get(<<"redirect_uri">>, Entry)
+    ).
 
 %%%===================================================================
 %%% 真 HTTP helper（同 enterprise_internal_wiring_http_tests 形态）
