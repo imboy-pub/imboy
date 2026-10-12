@@ -351,3 +351,13 @@ P1~P6 计划中提交落地后，rollback-v1.md 须增补对应回滚条目（�
   ImBoyCacheSyncDegraded 真实 firing（status=-1 语义正确触发）。
   证据：`<RUN_ROOT>/obs-scrape-evidence/evidence.json`。部署栈内端到端抓取仍属
   部署期验证（residual 如实保留）。
+- 例外 4 同日动刀 **RESOLVED**（收口期结束，用户授权后重构）：`imboy_cache_sync.erl`
+  1207 行拆为零行为变更三模块——`imboy_cache_sync_apply`（245 行，V2 事件应用 +
+  C03 预算 + C05 补偿）、`imboy_cache_sync_recover`（285 行，恢复引擎/快照回合/
+  校对清扫）、主文件 712 行（公共 API + gen_server 串行化 + generation 栅栏 +
+  发布路径）；共享 `#state{}`/恢复预算 define 移入 `imboy_cache_sync_state.hrl`；
+  同步族内部合同以显式 export 块约定。验证：erlfmt/check_module_boundaries/
+  arch-check 全过；eunit imboy_cache_sync_tests 29/29 + imboy_cache_tests 11/11 +
+  metrics_handler_tests 7/7；census INFRA_PATHS 随新文件更新后 scan 仍全绿
+  （commit bc39858b）。**残留**：全量 eunit 确认待安静共享树窗口（并行会话活跃，
+  遵守互斥纪律）。
