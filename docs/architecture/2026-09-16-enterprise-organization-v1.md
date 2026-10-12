@@ -1,12 +1,19 @@
 # IMBoy Enterprise Organization V1
 
-> STATUS: `TARGET_V1_ACCEPTED`
+> STATUS: `TARGET_V1_ACCEPTED`（受 2026-10-12 定位修订约束，见下）
 >
 > PHASE: `PHASE 2 / STEP 2 - TARGET ORGANIZATION V1 + CORE CONTRACT DESIGN`
 >
 > 第 1-12 节保留 STEP 1 的 CURRENT MODEL 证据快照；第 13 节起给出 Target V1 决策。
 > 本文不授权实现、数据库迁移或客户端修改。冻结合同见
 > `2026-09-16-enterprise-organization-v1-core-contract.md`。
+>
+> **2026-10-12 定位修订（AMENDMENT，owner 裁决，效力高于本文冲突表述）**：
+> Organization 是**业务对象（business object），不是租户（tenant）**。本文中的
+> 「SaaS 租户」「租户边界」表述（如 §3 `[FACT]`、§13 Organization 行、证据快照
+> 中的历史注释）按新定位重新解读：那些是 2026-09 时点的设计假设与当时代码事实，
+> 不是现行规范。授权边界 = 部署实例；org 仅承载寻址/业务归属。规范性全文见
+> `2026-10-12-organization-positioning-amendment.md`。
 
 ## 1. Evidence Baseline
 

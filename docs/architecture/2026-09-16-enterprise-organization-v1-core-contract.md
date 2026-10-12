@@ -1,6 +1,6 @@
 # IMBoy Enterprise Organization V1 Core Contract
 
-> STATUS: `FROZEN_CORE_CONTRACT`
+> STATUS: `FROZEN_CORE_CONTRACT`（受 2026-10-12 定位修订约束，见下）
 >
 > IMPLEMENTATION_STATE: `NOT_STARTED`
 >
@@ -8,6 +8,15 @@
 >
 > AUTHORITY: 本文是 Organization V1 的规范性合同。Current Model 证据与完整决策见
 > `2026-09-16-enterprise-organization-v1.md`。冻结不等于已实现或已通过运行时验收。
+
+## 2026-10-12 定位修订（AMENDMENT，owner 裁决，效力高于本文冲突条款）
+
+**Organization 是业务对象（business object），不是租户（tenant）。**
+授权与隔离边界是**部署实例**；对外协议（OA 免登、`/api/internal/v1/*` Application
+Credential 面）以应用与凭证为授权主体，不以 Organization 为边界。C02 的「企业租户」
+表述按此降级为业务归属；「跨 Org FK/访问 fail closed」降级为归属完整性约束，不再是
+安全授权边界。裁决原文与完整差距清单、目标设计、迁移计划见
+`2026-10-12-organization-positioning-amendment.md`（效力高于本文冲突条款）。
 
 ## 1. Contract Vocabulary
 
@@ -24,6 +33,9 @@
 - **ACCEPTANCE**：任一 actor 可解析为一个 User identity；非身份实体不能登录或独立持 JWT。
 
 ## C02 Organization Contract
+
+> 2026-10-12 定位修订：「企业租户」表述降级为**业务归属**，非授权边界；详见顶部
+> AMENDMENT 与 `2026-10-12-organization-positioning-amendment.md`。
 
 - **MUST**：Organization 是企业租户与企业资源 owner，支持 `active|archived`。
 - **MUST NOT**：把 Workspace、Department 或 Business Identity 当成 Organization 替代物。

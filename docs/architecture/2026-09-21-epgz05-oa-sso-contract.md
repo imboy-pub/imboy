@@ -15,6 +15,45 @@
 >
 > 红线（继承 plan §4.1）：SSO code 明文、nonce 明文、credential、JWT 不得进入日志或审计。
 
+## ⚠️ 2026-10-12 定位修订（AMENDMENT v2，已实施——效力高于本文冲突条款）
+
+Organization 定位修订（**业务对象，非租户**；owner 裁决，规范性全文见
+`2026-10-12-organization-positioning-amendment.md`，M0-M3 已实施并通过回归）。
+本修订**取代**本文以下条款的原文语义；未列出的条款（code 形态/熵/TTL/单次消费/
+digest-only 存储、redirect exact allowlist、nonce 绑定、redaction 红线、错误信封、
+幂等豁免）**继续有效**：
+
+1. **§2 绑定五元组** → 四元组 `app/user/redirect_uri/nonce`（org 不再是绑定维度；
+   code 行的 `organization_id` 列保留，仅为签发应用的业务归属冗余）。
+2. **§3.4 签发判定** → `JWT 身份 → 请求字段语法（organization_id 容忍并忽略）
+   → application_key 实例内全局解析且 active（迁移 00000171 `uq_ea_key_global`）
+   → redirect exact match → 签发`。org active / org 成员关系 / mapping 前置
+   （原 NEG-H03/H04）全部移除。
+3. **§4.4 兑换判定与 A2 链** → `credential/expiry → application active →
+   scope=sso:exchange → rate`；org 状态门按路由豁免（INT-14 `org_status_gate =>
+   false`，`organization_disabled` 不再出现在 exchange）。绑定校验去 org 比对。
+4. **identity mapping 可选化** → 映射实例级 `(application_id, external_user_id)`
+   唯一（原三元组去 org）；未登记映射回退 `external_user_id = user_id` 十进制
+   字符串；`identity_not_mapped` **收窄**为仅「目标账号非 active Human」触发
+   （账号级 kill-switch，行锁等待语义不变）。工作台发现（HUMAN-entries）实例级
+   返回，不依赖 org/成员/映射。
+5. **§6 负例矩阵** → NEG-05 改义为「跨应用 code 绑定拒绝」（org 维度删除；
+   `uq_ea_key_global` 使跨 org 同 key 不可能存在）；NEG-H03/H04 翻转为正例
+   POS-H03/H04（非成员/无映射签发成功）；NEG-11 改义为回退正例 + 账号停用
+   拒绝两段。现行证据：`test/enterprise_oa_sso_tests.erl`（53 例全绿）。
+
+## 2026-10-12 定位修订警示（原文保留，已被上方 v2 取代）
+
+- §3.4 签发判定中的 org 环节（org active、请求者是该 org active member、
+  `organization_id` 必传）；
+- §2 code 绑定五元组 `org/app/user/redirect_uri/nonce`（目标：四元组，去 org）；
+- §4.4 A2 认证链的 org 环节；
+- §6 NEG-05（跨 org credential 交换负例，目标：删除）；
+- identity mapping 三元组 `(org, app, external_user_id)`（目标：`(app, external_user_id)`）。
+
+不受影响：code 形态/熵/TTL/单次消费/digest 存储、redirect_uri exact allowlist、
+nonce 绑定、redaction 红线、错误信封——这些与 org 无关，继续有效。
+
 ## 0. 词汇与冻结方式
 
 沿用 `2026-09-16-enterprise-organization-v1-core-contract.md` 的合同词汇：`MUST`/`MUST NOT`/

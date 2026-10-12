@@ -47,6 +47,10 @@ User → Conversation → Group → Channel → Bot/Service → 可选公域
 
 **Agent 与 Bot 分离**：Agent（`account_type=1`）是平台自带的 AI 助手，走 LLM 调用链路；Bot（`account_type=3`）是开发者注册的第三方服务，走 Webhook 推送。判定 Bot 须同时检查 `account_type=3` 且 `bot` 表存在该 user_id 行。
 
+### Organization 定位（权威裁决，2026-10-12）
+
+**organization 是业务对象（business object），不是租户（tenant）。** 授权与隔离边界是部署实例；org 只承载寻址与业务归属（`enterprise_*` 域表的 `organization_id` 是业务归属外键，不是授权边界）。`enterprise` 前缀是「企业集成域」命名空间（对接外部系统的能力面），与 organization 不是同层概念，**不要互改命名**。OA 免登（`enterprise_oa_sso_*`）已按此改造：application_key 实例内全局唯一、发现/签发/兑换不依赖 org、身份映射可选（缺省回退 `user_id`）。规范性全文：`docs/architecture/2026-10-12-organization-positioning-amendment.md`（含术语澄清 §2 与迁移计划 §5）。历史文档中的「SaaS 租户/租户边界」表述一律按此裁决重新解读。
+
 ---
 
 ## 构建系统规则 / Build System Rules

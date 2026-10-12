@@ -2,7 +2,18 @@
 
 > **适合阅读对象**：OA 后端、前端、运维、测试工程师
 > **文档目的**：指导 OA 完成「IMBoy App → OA」的免登对接
-> **版本**：v1.0（2026-09-29）
+> **版本**：v2.0（2026-10-12，定位修订完成版）
+> **v2.0 变更**：依据 ADR
+> `docs/architecture/2026-10-12-organization-positioning-amendment.md`
+> （organization 在 IMBoy 里是业务对象、非租户；授权边界是部署实例）：
+> ① **开箱即用**——应用登记与默认授权由 IMBoy 部署自动完成（启动期
+> bootstrap，OA 团队零内部前置，见第 5 章）；② 应用与授权**全程不涉及
+> organization**，`enterprise_application.application_key` 实例内全局唯一；
+> ③ Application Credential 的签发与交付渠道明确（IMBoy 管理员经运维工具
+> 签发、安全渠道交付，见 14.2）；④ 多域名登记说明（见 5.2）；
+> ⑤ v1.1 的四条修订（映射可选回退 / `identity_not_mapped` 收窄 /
+> exchange 不再返回 `organization_disabled` / 去组织化登记）已并入正文。
+> **历史**：v1.1（2026-10-12 补丁修订）、v1.0（2026-09-29）
 > **说明**：本文只介绍 OA 需要实现的内容，不要求 OA 团队了解 IMBoy 内部实现。
 > 技术真源：IMBoy 侧冻结合同 `docs/architecture/2026-09-21-epgz05-oa-sso-contract.md`（本文是它的工程师友好版）。
 
@@ -96,9 +107,12 @@ OA 只需要拿到：
 
 ## 2. OA 团队需要做的 4 件事
 
+**第 0 件事不用 OA 做**：OA 应用登记与默认授权由 IMBoy 部署自动完成（开箱即用，见第 5 章）。OA 团队只需要提供回调地址，其余登记动作由 IMBoy 侧完成。
+
 | # | 事情 | 由谁做 | 工作量 |
 |---|------|--------|--------|
-| 1 | 准备一个回调地址（redirect_uri） | OA 后端 | 提前登记 |
+| 0 | 登记 OA 应用 + 回调地址 + 默认授权 | **IMBoy 部署自动完成** | OA 只需提供回调地址 |
+| 1 | 确定回调地址（redirect_uri） | OA 后端 | 提前约定 |
 | 2 | 接收 IMBoy 带来的 `code` 和 `state` | OA 后端 | 1 个 GET 接口 |
 | 3 | 拿 `code` 调 IMBoy 核实身份（exchange） | OA 后端 | 1 个服务端调用 |
 | 4 | 用返回的员工标识，创建 OA 自己的登录会话 | OA 后端 | 复用 OA 登录体系 |
@@ -221,12 +235,41 @@ https://oa.example.com/sso/imboy/callback
 - 必须使用 **HTTPS**
 - 不能带 `#` 后面的内容（协议术语：fragment / 锚点）
 - 长度不超过 2048 个字符
-- 必须**提前登记到 IMBoy**
+- 必须**提前登记到 IMBoy**（登记方式见 5.1）
 - 后续调用 IMBoy 时必须使用**完全相同的地址**（逐字符一致，见 9.3 节）
 
 建议：
 
 **不要在这个地址后面自己加 `?xxx=xxx` 参数。**
+
+### 5.1 登记由 IMBoy 侧完成（开箱即用）
+
+OA 团队不需要操作 IMBoy 内部的任何登记界面。流程：
+
+```text
+OA 提供回调地址（HTTPS，逐字符确认）
+        ↓
+IMBoy 部署侧登记（二选一，均由 IMBoy 管理员/运维完成）
+        ↓
+① 部署配置：在 IMBoy 的 .env 配一行
+   IMBOY_OA_REDIRECT_URI=https://oa.example.com/sso/imboy/callback
+   节点启动时自动登记默认 OA 应用（application_key=default-oa，
+   名称「办公」）并授予 exchange 权限——部署即开通
+        ↓
+② 管理面登记：换地址、加地址或建多个应用时，
+   由 IMBoy 管理员经管理接口登记（每个应用最多 20 条回调地址）
+        ↓
+Application Credential 由 IMBoy 管理员签发，安全渠道交付给 OA（见 14.2）
+```
+
+### 5.2 多个域名怎么登记
+
+回调地址按**应用**登记，每个应用是一个地址白名单（数组，最多 20 条）。两种形态：
+
+- **多个域名各建一个应用（推荐）**：每个域名（或每套前端）一个独立应用、独立 `application_key`、独立 credential，互不影响，可单独停用。IMBoy 工作台入口也按应用展示，最干净。
+- **一个应用登记多条地址**：白名单里放多条地址都合法，exchange 按本次签发时绑定的地址核验。注意：IMBoy 工作台入口对每个应用只展示**第一条**登记地址；如果多个域名都需要从工作台进入，请用「一域名一应用」形态。
+
+域名允许更换/追加：由 IMBoy 管理员经管理接口更新白名单即可，已签发的 code 不受影响（签发时已绑定当时的地址）。
 
 ---
 
@@ -374,13 +417,13 @@ IMBoy 直接返回一个 JSON 对象（五个字段）：
 
 | 字段 | 说明 |
 | ---- | ---- |
-| `organization_id` | 企业编号（IMBoy 内部 64 位整数，OA 一般用不到） |
+| `organization_id` | IMBoy 业务对象编号（organization 是 IMBoy 内部业务对象、非租户；此字段仅表业务归属，OA **用不到、也不要依赖**） |
 | `application_id` | OA 应用编号（同上） |
 | `user_id` | IMBoy 内部用户编号（同上） |
-| **`external_user_id`** | **OA 最需要的：双方约定的员工唯一标识** |
+| **`external_user_id`** | **OA 关联员工的主键**：已登记映射时是双方约定的员工唯一标识（如工号 `E10023`）；未登记映射时回退为 `user_id` 的十进制字符串（如 `"7301234567890123458"`）——映射是可选别名，见第 12 节 |
 | `consumed_at` | 小票被核销的时间（ISO-8601 格式） |
 
-> **OA 登录用 `external_user_id`，其他三个字段记日志排查问题时参考即可。**
+> **OA 登录用 `external_user_id` 关联自己的员工**：无论是否登记映射，该字段恒非空、稳定唯一，可直接作为 OA 侧员工关联键。其他三个字段记日志排查问题时参考即可。
 > 响应里**永远不会**出现 IMBoy 的 token、JWT、session——这是协议红线。
 
 ### 9.3 `redirect_uri` 的"完全一致"有多严格
@@ -429,22 +472,23 @@ exchange 接口对每个 OA 应用限流：**600 次/分钟**（以 IMBoy 侧环
 | HTTP | `error.code` | 简单理解 | OA 怎么处理 |
 | ---- | ---- | ---- | ---- |
 | 404 | `resource_not_found` | 小票不能用了（不存在/过期/已用过/不匹配） | 提示"登录已失效，请返回 IMBoy 重新进入工作台" |
-| 422 | `identity_not_mapped` | 员工还没绑定 OA 账号 | 提示联系企业管理员 |
+| 422 | `identity_not_mapped` | 该员工在 IMBoy 的账号状态已失效（停用/非人类账号）；**不再是"未绑定"**——未登记映射会自动回退 `user_id`（§9.2/§12） | 提示联系 IMBoy 管理员 |
 | 400 | `invalid_request` | OA 发的数据格式不正确 | 检查程序和配置（多半是 redirect_uri/字段问题） |
 | 401 | `invalid_credential` | OA 的服务端凭证错误 | 联系 IMBoy 管理员 |
 | 401 | `credential_expired` | OA 的服务端凭证过期 | 联系 IMBoy 管理员 |
 | 403 | `insufficient_scope` | OA 没有调用权限 | 联系 IMBoy 管理员 |
 | 403 | `application_disabled` | OA 应用被停用 | 联系 IMBoy 管理员 |
-| 403 | `organization_disabled` | 企业被停用 | 联系 IMBoy 管理员 |
 | 429 | `rate_limited` | 调用太频繁 | 按 `Retry-After` 头稍后重试 |
 | 503 | `security_gate_closed` | IMBoy 安全配置暂时关闭 | 联系 IMBoy |
 | 500 | `internal_error` | IMBoy 内部异常 | 稍后重试，持续异常联系 IMBoy |
 
 > 注意：`resource_not_found` 的 HTTP 状态是 404，但它的意思是"这张小票无效"，**不是**"接口不存在"。
+>
+> 历史版本（2026-10-12 之前）可能返回 `organization_disabled`；现协议中组织归属不影响免登，exchange **不再返回**该码，OA 无需处理。
 
 ### 10.3 `resource_not_found` 为什么不告诉具体原因？
 
-这张小票可能是：不存在 / 已过期 / 已使用 / 属于其他企业 / 回调地址不匹配。IMBoy **故意**统一返回 `resource_not_found`，不区分具体原因。
+这张小票可能是：不存在 / 已过期 / 已使用 / 与本凭证所属应用不匹配 / 回调地址不匹配。IMBoy **故意**统一返回 `resource_not_found`，不区分具体原因。
 
 原因是：
 
@@ -559,11 +603,13 @@ OA 员工（张三）
 - **IMBoy 负责**：维护"IMBoy 用户 ↔ OA 员工标识"的绑定表（企业管理员提供对应关系给 IMBoy）。
 - **OA 负责**：保证拿 `E10023` 能在 OA 数据库里查到唯一员工（例如工号字段）。
 
-如果某员工还没做绑定，IMBoy 在核实时会直接返回 `identity_not_mapped`（422），提示联系管理员即可。
+**映射是可选的（2026-10-12 起）**：没有登记绑定的员工照样免登——IMBoy 会自动回退，把 `external_user_id` 置为 IMBoy `user_id` 的十进制字符串。OA 可以直接拿这个值当员工关联键，联调零前置。
 
-**为什么用 `external_user_id` 而不是 IMBoy 的 `user_id`？**
+什么时候才需要登记映射？只有当 OA 明确要用**自家工号**（如 `E10023`）作为员工关联键时：由企业管理员把"IMBoy 用户 ↔ 工号"对应关系提供给 IMBoy 管理员登记，之后这些员工的 exchange 会返回工号。两种形态可以在同一应用内共存（登记了的返回工号，没登记的返回 `user_id` 字符串）。
 
-因为 `user_id` 是 IMBoy 内部编号，OA 不应该依赖别人家的内部数据结构。`external_user_id` 是双方专门约定的"这个人在 OA 里是谁"。
+**为什么默认回退 `user_id` 也安全？**
+
+`user_id` 在 IMBoy 实例内全局唯一且终身不变，对 OA 来说就是一个稳定的外部主键；它的"内部编号"属性只影响可读性，不影响正确性。OA 不要解析它的内部结构，当不透明字符串用即可。
 
 ---
 
@@ -663,6 +709,8 @@ ib_int_123456.secret_xxxxxxxxx
 ❌ Git 仓库
 ❌ 日志 / 工单 / 聊天记录
 ```
+
+**凭证从哪来**：由 IMBoy 管理员在部署侧签发（首次开通或轮换时，经 IMBoy 运维工具生成），通过**安全渠道**（加密传递，不走群聊/邮件明文）交付给 OA。IMBoy 侧不落明文日志，OA 侧同样不要。
 
 如果这个凭证泄露，**立即联系 IMBoy 处理**（吊销重发）。
 
@@ -817,7 +865,7 @@ Location: https://oa.example.com/
 | 5 | 修改 `state` 一个字符再核实 | 登录失败 |
 | 6 | 修改 `redirect_uri`（如加尾斜杠）再核实 | 登录失败 |
 | 7 | 使用错误的 Application Credential | 401 失败并记录告警 |
-| 8 | 未绑定的员工（无映射）从 IMBoy 进入 | 422，不允许登录 |
+| 8 | 未登记映射的员工从 IMBoy 进入 | **登录成功**（2026-10-12 起），`external_user_id` = IMBoy `user_id` 字符串 |
 | 9 | OA 已停用的员工登录 | 不允许登录 |
 | 10 | 登录前浏览器已有旧 Cookie | 登录成功后 Session ID 已更换 |
 | 11 | 检查 Cookie 属性 | `Secure`、`HttpOnly`、`SameSite=Lax` |
@@ -875,9 +923,9 @@ Location: https://oa.example.com/
 
 由 OA 自己决定。IMBoy 不管理 OA 的 Session。
 
-**Q11：员工绑定关系（external_user_id 映射）谁维护？**
+**Q11：员工绑定关系（external_user_id 映射）还必须登记吗？**
 
-IMBoy 侧维护。OA 只需提供"员工唯一标识用哪个字段（如工号）"和初始对应关系，后续增减人也同步给 IMBoy 管理员。
+不必须（2026-10-12 起）。未登记时 IMBoy 自动回退 `external_user_id = user_id` 字符串，OA 用它关联员工即可，联调零前置。只有当 OA 明确要用自家工号作关联键时才登记映射：IMBoy 侧维护，OA 提供"员工唯一标识用哪个字段（如工号）"和初始对应关系，后续增减人也同步给 IMBoy 管理员。
 
 **Q12：OA 页面怎么知道自己是被 IMBoy 打开的？**
 
@@ -905,7 +953,7 @@ IMBoy 侧维护。OA 只需提供"员工唯一标识用哪个字段（如工号�
      ↓
 生成一次性 code（60 秒、单次）
      ↓
-确认 OA 应用 / 企业 / 员工绑定关系
+确认 OA 应用 / 生效授权 / 员工身份（映射或自动回退）
      ↓
 核实 code（exchange）
      ↓
@@ -970,8 +1018,9 @@ IMBoy 侧维护。OA 只需提供"员工唯一标识用哪个字段（如工号�
 ### IMBoy 提供
 
 - [ ] exchange 接口完整地址（测试环境）
-- [ ] Application Credential（安全渠道交付）
-- [ ] 测试企业与测试员工（已完成绑定）
+- [ ] **OA 应用已登记**（部署即开通；部署配置的回调地址与 OA 提供值逐字符一致）
+- [ ] Application Credential（安全渠道交付，见 14.2）
+- [ ] 测试员工账号（**未登记映射也可联调**——免登自动回退 `user_id`）
 - [ ] 错误响应格式（本文第 10 节即最终格式）
 
 ### OA 提供
@@ -985,8 +1034,7 @@ IMBoy 侧维护。OA 只需提供"员工唯一标识用哪个字段（如工号�
 ### 双方确认
 
 - [ ] redirect_uri 字符串完全一致（复制粘贴，不手敲）
-- [ ] `external_user_id` 对应 OA 哪个员工字段
-- [ ] 测试员工已完成绑定
+- [ ] `external_user_id` 用哪种形态：直接用 `user_id`（零配置）还是登记工号映射（可选）
 - [ ] OA 服务端可以访问 IMBoy exchange 地址（网络/防火墙放行）
 - [ ] 双方 HTTPS 证书有效
 - [ ] 登录成功后的 OA 落地页地址
