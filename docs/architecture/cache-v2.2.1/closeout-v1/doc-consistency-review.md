@@ -220,3 +220,25 @@ verifier（scripts/check_cache_closeout_v1.py，实存在于工作树）口径�
 
 红线遵守声明：本次审查仅读取上述文件与抽查 src/ 工作树；唯一写入为本文件；
 未运行任何测试/节点；未执行任何 git 操作；未触碰外来 WIP。
+
+---
+
+## 补记：引用完整性审计与 w0 §15.3 缺口闭合（2026-10-12，收尾后）
+
+收尾签发后追加引用完整性审计（对 closeout-v1/ 与 w0/ 全部 .md 提取 54 个仓内路径，
+逐个核对磁盘存在性与 git 跟踪状态），发现并处置：
+
+1. **校验器未入库**：`scripts/check_cache_closeout_v1.py` 被 5 份交付文档引用但从未
+   git 跟踪 → 已入库（提交 8cc04a4e），evidence-index.md 归档注记二同步记录。
+2. **w0 §15.3「长期保留文档」三路径全部缺失**（本审查原范围未覆盖 w0 计划文本，
+   故前文 P 项未含）：`docs/architecture/imboy-distributed-cache-v2.md`、
+   `docs/guides/operations/cache-cluster.md`、`docs/plans/2026-10-10-distributed-cache-v2.2.md`
+   在仓库全部 git 历史中均不存在。处置（均为新增，不触碰冻结快照）：
+   - 架构篇与运维篇按当前实现（候选 f1aa1ce0）新撰；
+   - `docs/plans/` 为仓内刻意不跟踪目录（.gitignore:163 `/docs/plans/`，现存 36 个
+     本地计划文件均未跟踪），故不在该目录建桩；路径映射记录于已跟踪文档——
+     架构篇 §7 指明该 plans/ 路径即 w0/plan-v2.2.1.md 快照的原工作路径；
+   - 对收尾三结论无影响：执行权威为 backend-closeout-plan-v1.md（存在且 SHA 核对通过），
+     本缺口属文档交付遗漏而非验收依据缺失。
+3. 审计余项定性：`config/sys.closeout-local.config` 与 `deploy/docker-compose.prod.yml`
+   为既有 .gitignore 规则（`*local*.config`、显式路径）的刻意忽略，非缺口。
