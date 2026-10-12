@@ -361,3 +361,9 @@ P1~P6 计划中提交落地后，rollback-v1.md 须增补对应回滚条目（�
   metrics_handler_tests 7/7；census INFRA_PATHS 随新文件更新后 scan 仍全绿
   （commit bc39858b）。**残留**：全量 eunit 确认待安静共享树窗口（并行会话活跃，
   遵守互斥纪律）。
+- 例外 4 全量确认已完成（登记项闭环）：安静窗口全量 eunit（10555 通过 / 207 失败）
+  中 **cache 域 0 失败**；207 失败全部归因外部——另一会话于 14:30 前后重启 Docker，
+  端口转发断裂致 PG 中继批量 `closed`（69 × marker_db_connect_failed）及夹具连锁
+  （33 × already_started 等），失败首时与重启时点吻合（用户亲证死因）。cache 三套件
+  隔离 47/47 + 全量零失败双证，重构零回归成立。受影响非 cache 套件的复跑待
+  imboy_pg18 容器随其编排恢复后进行（日志：logs/eunit_full_postrefactor.log）。
