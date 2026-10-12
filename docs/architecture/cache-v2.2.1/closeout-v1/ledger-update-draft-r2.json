@@ -1,0 +1,343 @@
+{
+  "task_id": "CACHE_V221_BACKEND_CLOSEOUT_V1",
+  "draft_id": "ledger-update-draft-r2",
+  "generated_at_utc": "2026-10-12T01:36:50+00:00",
+  "author_role": "证据合并子代理：只读本轮证据文档，生成台账更新草稿；不直接修改 ledger-v1.json（单写者约束归协调者）",
+  "base": {
+    "file": "docs/architecture/cache-v2.2.1/closeout-v1/ledger-v1.json",
+    "sha256": "6ac5f32d85457032e10627fc5a29407b8628d9d1c806f1644f72bff813b02118",
+    "entries_total": 96,
+    "class_counts_at_base": {
+      "REVERIFY": 63,
+      "GAP_IMPLEMENTATION": 13,
+      "GAP_EVIDENCE": 7,
+      "BLOCKED_EXTERNAL": 3,
+      "NOT_RUN_CARRIED": 1,
+      "REVERIFY_HIST_INHERIT": 9
+    },
+    "required_ids_ref": {
+      "file": "docs/architecture/cache-v2.2.1/closeout-v1/required-ids.json",
+      "sha256": "568a6c342ced271821609860ab7d7d0ad5344756e8b078b6758f25a542699ce0"
+    },
+    "alias_rule": "计划两位 ID -> 历史台账三位 alias（编号 >= 10 时），取自 required-ids.json；本草稿 updates/pending 同时给出 id 与 alias"
+  },
+  "inputs": [
+    {"doc": "closeout-v1/registry-w1-closeout.md", "role": "C06 W1 尾巴 5 项逐项核查分类"},
+    {"doc": "closeout-v1/external-inputs-c13.md", "role": "C13 AC-26/27 外部输入存在性判定"},
+    {"doc": "closeout-v1/qr-wire-contract-check.md", "role": "G-QR 客户端 wire contract 只读核查"},
+    {"doc": "closeout-v1/observability-check.md", "role": "C11 监控/导出/面板核查（19.8）"},
+    {"doc": "closeout-v1/c10-mixed-plan.md", "role": "C10 混合 dcheck 代码就绪状态"},
+    {"doc": "closeout-v1/c12-window-plan.md", "role": "C12 执行计划（PLAN_READY）+ 执行前盘点快照（含提交事实）"},
+    {"doc": "closeout-v1/ledger-v1.json / required-ids.json / review-ledger-v1.md / backend-closeout-plan-v1.md", "role": "台账结构、分类词汇与任务卡基准"}
+  ],
+  "updates": [
+    {
+      "id": "G-QR",
+      "alias_hist_ledger": null,
+      "kind": "sec19_gate",
+      "旧状态": "GAP_IMPLEMENTATION",
+      "新状态": "REVERIFY",
+      "变更类型": "class_change",
+      "依据文档": ["closeout-v1/c12-window-plan.md §1 盘点快照", "closeout-v1/qr-wire-contract-check.md 总结论"],
+      "证据指针": [
+        "c12-window-plan.md:18 「HEAD 675b0744（G-QR C08 已提交…）」",
+        "qr-wire-contract-check.md:9-18 结论速览（MATCH 14 / TOLERATED 6 / BREAK 0）",
+        "qr-wire-contract-check.md:184-196 总结论（imboyapp 零改动可用；未触发 BLOCKED_CLIENT_CONTRACT_CHANGE）",
+        "c12-window-plan.md §6.4（269-280 行）：QR 终验 = C12 窗口四套件绑候选复跑"
+      ],
+      "置信度": "high",
+      "pending_final_evidence": true,
+      "说明": "原缺口为『独立方案待 C08 实施原子 claim/consume』；实现已提交（675b0744）且客户端 wire contract 保持（BREAK 0），实现缺口闭合，按台账缺省重绑规则转 REVERIFY；终验依赖 C12 §6.4 候选绑定复跑（含 2 后端节点真实 PG 竞争 oracle）。协调者口头『QR 7/7』未见于文档，未作为推导依据。"
+    },
+    {
+      "id": "W1-06",
+      "alias_hist_ledger": null,
+      "kind": "task",
+      "旧状态": "GAP_IMPLEMENTATION",
+      "新状态": "REVERIFY",
+      "变更类型": "class_change",
+      "依据文档": ["closeout-v1/c12-window-plan.md §1 盘点快照", "closeout-v1/qr-wire-contract-check.md"],
+      "证据指针": [
+        "c12-window-plan.md:18（G-QR C08 已提交 675b0744）",
+        "qr-wire-contract-check.md:44-47/85-92（status 原子 claim、SSE confirmed_ready 服务端代领——一次性消费语义已在 HEAD 实现）",
+        "c12-window-plan.md §6.4：QR 定向四套件绑候选复跑待执行"
+      ],
+      "置信度": "high",
+      "pending_final_evidence": true,
+      "说明": "W1-06（QR status/SSE 一次性消费）实现载体即 C08，已提交；终验挂 C12 QR 步骤。"
+    },
+    {
+      "id": "AC-22",
+      "alias_hist_ledger": "AC-022",
+      "kind": "ac",
+      "旧状态": "GAP_IMPLEMENTATION",
+      "新状态": "REVERIFY",
+      "变更类型": "class_change",
+      "依据文档": ["closeout-v1/c12-window-plan.md §1/§2.2/§6.4", "closeout-v1/qr-wire-contract-check.md"],
+      "证据指针": [
+        "c12-window-plan.md:18（C08 已提交）",
+        "c12-window-plan.md:69-72（C08 oracle 断言所在四套件清单）",
+        "c12-window-plan.md §6.4（273-280 行）：『claim/consume 原子性、SSE/status 竞争断言全部通过』为 PASS 判据，绑候选执行",
+        "qr-wire-contract-check.md:39-47（claim_login_token UPDATE...RETURNING 原子代领在 HEAD 实现）"
+      ],
+      "置信度": "high",
+      "pending_final_evidence": true,
+      "说明": "实现与 oracle 断言均已交付；竞争 oracle 的最终通过证据待 C12 候选绑定运行。"
+    },
+    {
+      "id": "W3-04",
+      "alias_hist_ledger": null,
+      "kind": "task",
+      "旧状态": "GAP_IMPLEMENTATION",
+      "新状态": "REVERIFY",
+      "变更类型": "class_change",
+      "依据文档": ["closeout-v1/c12-window-plan.md §1", "closeout-v1/c10-mixed-plan.md 头部（C01 冻结状态引用）"],
+      "证据指针": [
+        "c12-window-plan.md:18（C02～C05 提交 7db4e0af）",
+        "c10-mixed-plan.md:6（『协议依据：protocol-budget-frozen.md（C01 冻结，含 2026-10-11 实施的 r1/r2 修订）』）"
+      ],
+      "置信度": "medium-high",
+      "pending_final_evidence": true,
+      "说明": "原缺口（incarnation registry、旧化身拒绝、epoch 与 config/registry-hash 双端校验）的 closeout 任务 C01+C02 已冻结/提交；逐 ID 实现覆盖度未在文档中逐项展开（提交为 C02～C05 集体声明），故置信度 medium-high；行为级终验挂 C09/C12。"
+    },
+    {
+      "id": "W4-03",
+      "alias_hist_ledger": null,
+      "kind": "task",
+      "旧状态": "GAP_IMPLEMENTATION",
+      "新状态": "REVERIFY",
+      "变更类型": "class_change",
+      "依据文档": ["closeout-v1/c12-window-plan.md §1"],
+      "证据指针": ["c12-window-plan.md:18（C04 随 7db4e0af 提交）"],
+      "置信度": "medium-high",
+      "pending_final_evidence": true,
+      "说明": "快照分页（take_page 等）实现已提交；C09 修复在途涉及同一文件，终验以最终候选为准（协调者口头：C09 含 take_page 修复、dcheck 19/22 验证中——未见文档，不计入依据）。"
+    },
+    {
+      "id": "W4-04",
+      "alias_hist_ledger": null,
+      "kind": "task",
+      "旧状态": "GAP_IMPLEMENTATION",
+      "新状态": "REVERIFY",
+      "变更类型": "class_change",
+      "依据文档": ["closeout-v1/c12-window-plan.md §1"],
+      "证据指针": ["c12-window-plan.md:18（C04 随 7db4e0af 提交）", "c10-mixed-plan.md:28（M7 场景引用冻结协议第 1 节 round/token/watermark/page-digest 契约，佐证契约已落地）"],
+      "置信度": "medium-high",
+      "pending_final_evidence": true,
+      "说明": "delta 追赶契约（round/token/watermark/page digest）实现已提交；终验挂 C09/C12。"
+    },
+    {
+      "id": "W4-05",
+      "alias_hist_ledger": null,
+      "kind": "task",
+      "旧状态": "GAP_IMPLEMENTATION",
+      "新状态": "REVERIFY",
+      "变更类型": "class_change",
+      "依据文档": ["closeout-v1/c12-window-plan.md §1"],
+      "证据指针": ["c12-window-plan.md:18（C05 随 7db4e0af 提交）"],
+      "置信度": "medium-high",
+      "pending_final_evidence": true,
+      "说明": "失效缺口补偿（C05）实现已提交；分区重连行为级终验挂 C09（W4-11 同源）。"
+    },
+    {
+      "id": "W4-06",
+      "alias_hist_ledger": null,
+      "kind": "task",
+      "旧状态": "GAP_IMPLEMENTATION",
+      "新状态": "REVERIFY",
+      "变更类型": "class_change",
+      "依据文档": ["closeout-v1/c12-window-plan.md §1", "closeout-v1/observability-check.md §2"],
+      "证据指针": [
+        "c12-window-plan.md:18（C03+C05 随 7db4e0af 提交）",
+        "observability-check.md:37（reject_total 写入点含 :562『Nmax 预算满拒收』——预算上限已进入运行路径）"
+      ],
+      "置信度": "medium-high",
+      "pending_final_evidence": true,
+      "说明": "item/bytes 上限执行化已提交；资源包络终验挂 C09/C12（≥2 轮 + 资源峰值记录）。"
+    },
+    {
+      "id": "W4-09",
+      "alias_hist_ledger": null,
+      "kind": "task",
+      "旧状态": "GAP_IMPLEMENTATION",
+      "新状态": "REVERIFY",
+      "变更类型": "class_change",
+      "依据文档": ["closeout-v1/c12-window-plan.md §1", "closeout-v1/observability-check.md §1/§2"],
+      "证据指针": [
+        "c12-window-plan.md:18（C03 随 7db4e0af 提交）",
+        "observability-check.md:23（queue_depth/overloaded API 存在）",
+        "observability-check.md:38（degraded_total 写入点 :655『Dmax 耗尽/回合超限进入 DEGRADED』——过载处置已实现）"
+      ],
+      "置信度": "medium-high",
+      "pending_final_evidence": true,
+      "说明": "输入约束与超限处置（DEGRADED 路径）实现已提交；『输入约束 + 过载处置有效』的证明挂 C09/C12 终验。"
+    },
+    {
+      "id": "AC-20",
+      "alias_hist_ledger": "AC-020",
+      "kind": "ac",
+      "旧状态": "GAP_IMPLEMENTATION",
+      "新状态": "REVERIFY",
+      "变更类型": "class_change",
+      "依据文档": ["closeout-v1/c12-window-plan.md §1"],
+      "证据指针": ["c12-window-plan.md:18（C05 随 7db4e0af 提交）"],
+      "置信度": "medium-high",
+      "pending_final_evidence": true,
+      "说明": "检测+补偿失效缺口（C05）实现已提交；『deadline 内返回权威新值』行为级终验挂 C09 三节点矩阵（分区重连场景），与 W4-05/W4-11 同批。"
+    },
+    {
+      "id": "AC-26",
+      "alias_hist_ledger": "AC-026",
+      "kind": "ac",
+      "旧状态": "BLOCKED_EXTERNAL",
+      "新状态": "BLOCKED_EXTERNAL",
+      "变更类型": "evidence_confirmed_unchanged",
+      "依据文档": ["closeout-v1/external-inputs-c13.md"],
+      "证据指针": [
+        "external-inputs-c13.md §2（AC-26 依赖输入表：I-1a/I-1b/I-2a/I-3a 全部 ABSENT）",
+        "external-inputs-c13.md §5（108-117 行）：『AC-26 维持 BLOCKED_EXTERNAL』",
+        "external-inputs-c13.md 附录 C（98-104 行）：与 ledger-v1.json 既有判定一致的独立取证",
+        "external-inputs-c13.md:135（C13 交付本身 PASS；未吞掉原始阻塞）"
+      ],
+      "置信度": "high",
+      "pending_final_evidence": false,
+      "说明": "C13 判定已交付：冻结前置条件（19.7 业务峰值/目标硬件已知）不成立；解除阻塞所需外部输入清单见 §5 末段。"
+    },
+    {
+      "id": "AC-27",
+      "alias_hist_ledger": "AC-027",
+      "kind": "ac",
+      "旧状态": "BLOCKED_EXTERNAL",
+      "新状态": "BLOCKED_EXTERNAL",
+      "变更类型": "evidence_confirmed_unchanged",
+      "依据文档": ["closeout-v1/external-inputs-c13.md"],
+      "证据指针": [
+        "external-inputs-c13.md §3（AC-27 依赖输入表：I-1c/I-2b/I-2c/I-3b 全部 ABSENT；helm replicaCount:1 与三节点假设冲突）",
+        "external-inputs-c13.md §5（119-131 行）：『AC-27 维持 BLOCKED_EXTERNAL』",
+        "external-inputs-c13.md:64（protocol-budget-frozen.md:174 自证生产侧绑定输入缺失）"
+      ],
+      "置信度": "high",
+      "pending_final_evidence": false,
+      "说明": "同 AC-26；另有三节点拓扑权威定义缺失与单副本 TSID 约束的专属缺口。"
+    },
+    {
+      "id": "W0-09",
+      "alias_hist_ledger": null,
+      "kind": "task",
+      "旧状态": "BLOCKED_EXTERNAL",
+      "新状态": "BLOCKED_EXTERNAL",
+      "变更类型": "evidence_confirmed_unchanged",
+      "依据文档": ["closeout-v1/external-inputs-c13.md", "ledger-v1.json W0-09 条目自身 reason"],
+      "证据指针": [
+        "ledger-v1.json W0-09 reason：『mapped to AC-26/27 which stay BLOCKED_EXTERNAL』",
+        "external-inputs-c13.md §5：AC-26/27 经独立取证维持 BLOCKED_EXTERNAL"
+      ],
+      "置信度": "high",
+      "pending_final_evidence": false,
+      "说明": "W0-09 的阻塞映射目标（AC-26/27）经 C13 独立取证确认维持阻塞，状态不变、证据补强。"
+    },
+    {
+      "id": "19.8-混合可观测",
+      "alias_hist_ledger": null,
+      "kind": "sec19_gate",
+      "旧状态": "GAP_IMPLEMENTATION",
+      "新状态": "GAP_IMPLEMENTATION",
+      "变更类型": "scope_narrowed_class_unchanged",
+      "依据文档": ["closeout-v1/observability-check.md"],
+      "证据指针": [
+        "observability-check.md §2（29-44 行）：六个要求计数器写入点 6/6 ✓，且均在真实执行路径",
+        "observability-check.md §3（50-57 行）：计数器导出链 ①→④ 全通（存储→格式化→路由→抓取），名字与 deploy 引用逐字一致",
+        "observability-check.md §3 断链点（59-63 行）：status/epoch/incarnation/peer-lag/queue_depth/hash_divergent 状态类指标在 ② 环节断链",
+        "observability-check.md §4（76-86 行）：snapshot_abort/degraded/卡 recovering 三关键信号面板告警双缺；缺口清单 A 类 3 项（92-98 行）/B 类 3 项（100-106 行）",
+        "协调者口头标注（未见文档）：A 类 3 项（deploy 告警 + gauge 导出）本轮已修复待终验"
+      ],
+      "置信度": "high（文档事实）/ 待协调者终验 A 类修复",
+      "pending_final_evidence": true,
+      "说明": "保持 GAP_IMPLEMENTATION 但范围收窄：计数器与导出链已 ✓；A 类（纯 deploy 配置）称已修复待终验；B 类（peer-lag 派生指标——19.8 明确要求、protocol/reason 标签细分、hash_divergent 导出）仍缺，需代码提交，故不可整体翻 REVERIFY。若协调者确认 A 类修复生效且将 B 类登记为非阻断缺口，可在终轮重分类。"
+    },
+    {
+      "id": "W5-04",
+      "alias_hist_ledger": null,
+      "kind": "task",
+      "旧状态": "GAP_IMPLEMENTATION",
+      "新状态": "GAP_IMPLEMENTATION",
+      "变更类型": "scope_narrowed_class_unchanged",
+      "依据文档": ["closeout-v1/qr-wire-contract-check.md", "closeout-v1/registry-w1-closeout.md", "closeout-v1/c12-window-plan.md §1"],
+      "证据指针": [
+        "qr-wire-contract-check.md:184-196（QR 客户端 wire contract 保持，BREAK 0——W5-04 的 QR 合同面已只读验证）",
+        "registry-w1-closeout.md 汇总表（25-33 行）：C06 尾巴 5 项中 fcm 广播、group join/leave 两项 BLOCKED——C06 fail-closed 闭合未全部完成",
+        "c12-window-plan.md:18（C08 已提交）"
+      ],
+      "置信度": "medium-high",
+      "pending_final_evidence": true,
+      "说明": "QR 半边（C08）实现+合同验证齐备；C06 半边审查已交付但存在 2 项 BLOCKED 尾巴（见 notes 1/4），依赖未全部闭合，不翻类；终态待协调者结合 19.5 处置与终轮验证决定。"
+    },
+    {
+      "id": "19.6-有界恢复",
+      "alias_hist_ledger": null,
+      "kind": "sec19_gate",
+      "旧状态": "GAP_IMPLEMENTATION",
+      "新状态": "GAP_IMPLEMENTATION",
+      "变更类型": "scope_narrowed_class_unchanged",
+      "依据文档": ["closeout-v1/c12-window-plan.md §1/§4.3"],
+      "证据指针": [
+        "c12-window-plan.md:18（C01+C03+C04 侧提交/冻结：7db4e0af + protocol-budget-frozen.md）",
+        "c12-window-plan.md:25（『src/lib/imboy_cache_sync.erl 现 1203 行 > 800 行规范（拆分后仍超，冻结审查须先处理…禁止借机重写）』）",
+        "c12-window-plan.md §4.3 budget_digest（Nmax/Tmax/Jmax/Bmax/Pmax/Rmax/Dmax 等冻结值与三方一致要求）"
+      ],
+      "置信度": "high",
+      "pending_final_evidence": true,
+      "说明": "与 W4-06/W4-09 翻 REVERIFY 不同：19.6 原 reason 同时含『894 行 sync 需拆分』条款，现 1203 行仍超限（冻结前置未闭合），故整条保持 GAP_IMPLEMENTATION；预算执行化部分已提交，待 C09/C12 终验 + 行数问题处置（继续最小拆分或登记例外）后由协调者重分类。"
+    }
+  ],
+  "pending_final_evidence": [
+    {"id": "G-QR", "alias": null, "当前建议类": "REVERIFY", "待补证据": "C12 §6.4 QR 四套件绑候选复跑（2 节点真实 PG 竞争 oracle）"},
+    {"id": "W1-06", "alias": null, "当前建议类": "REVERIFY", "待补证据": "同上（C12 QR 步骤）"},
+    {"id": "AC-22", "alias": "AC-022", "当前建议类": "REVERIFY", "待补证据": "同上"},
+    {"id": "W3-04", "alias": null, "当前建议类": "REVERIFY", "待补证据": "C09/C12 行为级终验（旧化身拒绝、epoch/hash 双端校验）"},
+    {"id": "W4-03", "alias": null, "当前建议类": "REVERIFY", "待补证据": "C09 终轮 dcheck（快照分页场景）≥2 轮 + candidate_sha256 绑定"},
+    {"id": "W4-04", "alias": null, "当前建议类": "REVERIFY", "待补证据": "C09 终轮 dcheck（delta 追赶契约场景）"},
+    {"id": "W4-05", "alias": null, "当前建议类": "REVERIFY", "待补证据": "C09 分区重连补偿场景"},
+    {"id": "W4-06", "alias": null, "当前建议类": "REVERIFY", "待补证据": "C09/C12 资源包络（item/bytes 峰值记录）"},
+    {"id": "W4-09", "alias": null, "当前建议类": "REVERIFY", "待补证据": "C09/C12 过载处置有效性证明"},
+    {"id": "AC-20", "alias": "AC-020", "当前建议类": "REVERIFY", "待补证据": "C09『deadline 内返回权威新值』场景"},
+    {"id": "W4-07", "alias": null, "当前建议类": "REVERIFY（不变）", "待补证据": "C03+C09：tombstone/有界性在最终候选上的复验"},
+    {"id": "W4-11", "alias": "W4-011", "当前建议类": "GAP_EVIDENCE（不变）", "待补证据": "C09 故障矩阵含 live-node 分区重连 + PG 权威突变 + 失效缺口补偿场景，≥2 轮绿"},
+    {"id": "W5-02", "alias": null, "当前建议类": "GAP_EVIDENCE（不变）", "待补证据": "三节点完整 SET 集成 + 白名单空合法例外正式记录（C09+C14）"},
+    {"id": "AC-17", "alias": "AC-017", "当前建议类": "GAP_EVIDENCE（不变）", "待补证据": "C02+C09：epoch/config-hash 一致性重启恢复复验"},
+    {"id": "AC-19", "alias": "AC-019", "当前建议类": "GAP_EVIDENCE（不变）", "待补证据": "C04+C09：快照+delta 完整性行为 oracle"},
+    {"id": "W4-10", "alias": "W4-010", "当前建议类": "NOT_RUN_CARRIED（不变）", "待补证据": "C12 性能窗口新 V2 路径压测（A7 驱动未交付前候选臂 WAITING_RESOURCE，c12-window-plan.md §2.4）"},
+    {"id": "W5-07", "alias": null, "当前建议类": "GAP_EVIDENCE（不变）", "待补证据": "C12 性能窗口；风险：机器态退化未消除（uptime 8 天，同字节 -74%~-79%，c12-window-plan.md:24）"},
+    {"id": "W5-10", "alias": "W5-010", "当前建议类": "GAP_EVIDENCE（不变）", "待补证据": "C12 全量 eunit exit=0 / Failed: 0，绑最终候选"},
+    {"id": "AC-30", "alias": "AC-030", "当前建议类": "GAP_EVIDENCE（不变）", "待补证据": "同 W5-10（C12+C14 全量门）"},
+    {"id": "19.9-SINGLE_NODE_PASS", "alias": null, "当前建议类": "REVERIFY（不变）", "待补证据": "C12 §6.2 三节点 dcheck ≥2 轮（依赖 C09 闭合）"},
+    {"id": "19.9-THREE_NODE_PASS", "alias": null, "当前建议类": "REVERIFY（不变）", "待补证据": "C12 §6.2/§6.3 dcheck + mixed 复跑（依赖 C09+C10 执行）"},
+    {"id": "19.5-白名单", "alias": null, "当前建议类": "REVERIFY（存疑，待协调者定夺）", "待补证据": "fcm/qianfan 一元组/裸原子键 policy 失配族处置（registry-w1-closeout.md §3/关联发现1 判 BLOCKED，修复需冻约流程）；终验配置口径（是否覆盖 dsync_enabled=true）须先冻结"},
+    {"id": "W5-04", "alias": null, "当前建议类": "GAP_IMPLEMENTATION（收窄）", "待补证据": "C06 两个 BLOCKED 尾巴（fcm 广播、group join/leave）处置 + 终轮合同验证"},
+    {"id": "19.8-混合可观测", "alias": null, "当前建议类": "GAP_IMPLEMENTATION（收窄）", "待补证据": "A 类修复生效终验（deploy 告警/gauge 导出）+ B 类（peer-lag 派生、标签细分、hash_divergent 导出）实现或登记非阻断"},
+    {"id": "19.6-有界恢复", "alias": null, "当前建议类": "GAP_IMPLEMENTATION（收窄）", "待补证据": "imboy_cache_sync.erl 1203>800 行处置（最小拆分或登记例外）+ C09/C12 预算执行化终验"}
+  ],
+  "notes": [
+    "W1 尾巴 5 项分类无台账 ID 可绑定：registry-w1-closeout.md §0 明示『W1-01..W1-07 无独立尾巴 ID』，权威标记在 w0/key-registry.json 的 mutation_hook 字段。文档实际分类 = 3 Documented-Exception（tag_subtitle_2/3 键失配、config5 双重失效 7.1 竞态、login_attempt_ip_limit 读改写半边）+ 1 FIXED-with-test（apns_jwt）+ 2 BLOCKED（fcm 一元组键全组广播、group join/leave 读改写+事务内缓存变更）。注：任务描述口径『2 Documented-Exception』与文档实况（3 项）不符，以文档为准。入账方式（LEGAL_EXCEPTION/例外登记/新 registry 条目）留给协调者。",
+    "W1-03 历史结论修正（registry-w1-closeout.md 关联发现 2）：『13 处 with_tx 事务体 0 缓存调用』未覆盖间接调用链（join_group -> group_ds:join -> imboy_cache:set 为现存实例）；W1-03 分类维持 REVERIFY 不变，但 C12/C14 复算必须按间接链口径重扫，不得直接继承旧结论。",
+    "W1-05 增补证据与残余缺陷（registry-w1-closeout.md §2/§3/§5）：config5/apns_jwt/login_attempt_ip_limit 的广播半边经机制级证据闭合（policy=local -> should_broadcast=false）；但 fcm/qianfan 一元组/裸原子键的 local 注册永不生效（namespace_of/1 无对应子句）。W1-05 终验口径须包含该键形族。",
+    "19.5 与 fcm/qianfan 的关系（registry-w1-closeout.md §3 风险描述）：dsync_enabled=true 时 FCM/qianfan OAuth token 经 legacy set 全组广播，文档判定『违反计划 19.5 JWT/OAuth 不得全值复制红线』；当前生产默认 dsync_enabled=false 不暴露。是否翻转 19.5-白名单 分类取决于终验配置口径，无法从文档机械推导，未列入 updates（见 pending 列表）。",
+    "C10 状态（c10-mixed-plan.md）：CODE_UPDATED_COMPILE_VERIFIED——M7-M10 四新场景按冻结协议（含 r1/r2 修订）写入 scripts/cache_v21_mixed_dcheck.erl，erlc 0 error/0 warning（基线 2 warning 清零）；真实 BEAM 混合组网执行（13 场景 M1-M10+R1-R3）留待授权窗口。96-ID 台账无 C10 直接绑定条目，mixed 终验落在 C12 §6.3 与 19.9 门。另 c12-window-plan.md:21 快照记载『C10 未开始』指 raw/ 无执行证据，与代码就绪状态不矛盾。",
+    "C12 状态（c12-window-plan.md）：PLAN_READY / NOT_EXECUTED。冻结前置未满足项（§4.1）：C09 required 场景未闭合（r7 仍有 F5/C9a/C9d/C9e/C9f 失败、工作树未提交）、C10 未执行、C11 B 类未落定、sync 1203 行超限、A9 审查未过。硬缺口：A7 的 V2 路径 bench 驱动不存在（§2.4），候选臂只能 WAITING_RESOURCE，禁止以微基准充候选臂证据。",
+    "证据有效性风险（c12-window-plan.md §3 条 3）：既有 three_node_c09_r*.json 全部未携带 candidate 绑定字段（candidate_sha256 等），C09 终轮证据必须补齐，否则 C14 verifier 必拒；且同系列内禁止混候选。本草稿所有 C09 相关 pending 项均以此为前提。",
+    "协调者口头『已知』事实（本轮六份证据文档中均未见，未用作推导依据，仅留核对）：C09 修复在途（r2 帧直达 + take_page + 首现 changed）、dcheck 19/22 验证中、sync eunit 25/25 绿（含新断言）、QR 7/7、account 6/6。其中 G-01 account 修复已提交（e001fb8e）为 c12-window-plan.md:18 的文档事实，但 96-ID 台账无 G-01 对应条目。",
+    "观测性 A 类『本轮已修复待终验』为协调者口头标注（observability-check.md 成文时仍将 A 类 3 项列为缺口）；且口头口径中『gauge 导出』原属 B 类第 4 项（status/epoch/queue gauge）。合并台账时建议：A 类与 gauge 导出登记为『已修复待终验』，B 类剩余（peer-lag 派生、protocol/reason 标签、hash_divergent/incarnation 计数化导出）维持缺口，终轮以隔离本地 metrics 请求 + Prometheus scrape 验证（C11 oracle 原文要求静态核查不替代消费验证）。",
+    "本草稿一致性自检：updates 16 条 = class_change 10（全部 GAP_IMPLEMENTATION -> REVERIFY，依据为『实现已提交 + 台账缺省重绑规则』）+ evidence_confirmed_unchanged 3（AC-26/AC-27/W0-09 维持 BLOCKED_EXTERNAL）+ scope_narrowed_class_unchanged 3（19.8/W5-04/19.6）。其中 7 条（W3-04/W4-03/W4-04/W4-05/W4-06/W4-09/AC-20）的实现提交依据为 c12-window-plan.md:18 的 C02～C05 集体提交声明，逐 ID 实现覆盖度未在文档中逐项展开，置信度已降为 medium-high；若终轮发现个别子项未随提交闭合，应回退对应条目为 GAP_IMPLEMENTATION。"
+  ],
+  "counts": {
+    "updates_total": 16,
+    "updates_class_change": 10,
+    "updates_confirmed_unchanged": 3,
+    "updates_scope_narrowed": 3,
+    "pending_final_evidence_total": 25,
+    "pending_only_not_in_updates": 9,
+    "notes_total": 10
+  },
+  "red_lines_compliance": "本任务仅写入 docs/architecture/cache-v2.2.1/closeout-v1/ledger-update-draft-r2.json 一个文件；ledger-v1.json 及其余全部文件只读；未执行任何 git 写操作；未运行测试/服务/节点。",
+  "apply_rule": "协调者合并时：updates[].新状态 按 id/alias 覆写 ledger-v1.json 对应 entries[].new_class（evidence_confirmed/scope_narrowed 条目保持类不变、仅更新 reason/证据绑定）；pending_final_evidence 条目在终轮证据落地前不得置 PASS。"
+}

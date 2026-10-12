@@ -1,0 +1,1002 @@
+{
+  "task_id": "CACHE_V221_BACKEND_CLOSEOUT_V1",
+  "generated_at_utc": "2026-10-12T02:33:31.143Z",
+  "source_hist_ledger": ".Codex/runs/CACHE_V2_2_1_W1_W5_LOCAL_IMPLEMENTATION/zcode-20261010T160733Z/evidence/ledger.json (86 items: 77 PASS / 6 BLOCKED / 2 NOT_RUN / 1 PARTIAL)",
+  "rule": "old PASS defaults to re-verify; classifications: REVERIFY / REVERIFY_HIST_INHERIT / GAP_IMPLEMENTATION / GAP_EVIDENCE / NOT_RUN_CARRIED / BLOCKED_EXTERNAL / LEGAL_EXCEPTION",
+  "classes": {
+    "REVERIFY_HIST_INHERIT": 9,
+    "BLOCKED_EXTERNAL": 3,
+    "REVERIFY": 63,
+    "GAP_IMPLEMENTATION": 13,
+    "NOT_RUN_CARRIED": 1,
+    "GAP_EVIDENCE": 7
+  },
+  "entries": [
+    {
+      "id": "W0-01",
+      "kind": "task",
+      "hist_status": "(not in hist ledger; W0 phase 2026-10-10)",
+      "new_class": "REVERIFY_HIST_INHERIT",
+      "reason": "W0 phase executed 2026-10-10; evidence in docs/architecture/cache-v2.2.1/w0/; inputs unchanged -> inheritable, spot-reverified",
+      "closeout_task": "C14"
+    },
+    {
+      "id": "W0-02",
+      "kind": "task",
+      "hist_status": "(not in hist ledger; W0 phase 2026-10-10)",
+      "new_class": "REVERIFY_HIST_INHERIT",
+      "reason": "W0 phase executed 2026-10-10; evidence in docs/architecture/cache-v2.2.1/w0/; inputs unchanged -> inheritable, spot-reverified",
+      "closeout_task": "C14"
+    },
+    {
+      "id": "W0-03",
+      "kind": "task",
+      "hist_status": "(not in hist ledger; W0 phase 2026-10-10)",
+      "new_class": "REVERIFY_HIST_INHERIT",
+      "reason": "W0 phase executed 2026-10-10; evidence in docs/architecture/cache-v2.2.1/w0/; inputs unchanged -> inheritable, spot-reverified",
+      "closeout_task": "C14"
+    },
+    {
+      "id": "W0-04",
+      "kind": "task",
+      "hist_status": "(not in hist ledger; W0 phase 2026-10-10)",
+      "new_class": "REVERIFY_HIST_INHERIT",
+      "reason": "W0 phase executed 2026-10-10; evidence in docs/architecture/cache-v2.2.1/w0/; inputs unchanged -> inheritable, spot-reverified",
+      "closeout_task": "C14"
+    },
+    {
+      "id": "W0-05",
+      "kind": "task",
+      "hist_status": "(not in hist ledger; W0 phase 2026-10-10)",
+      "new_class": "REVERIFY_HIST_INHERIT",
+      "reason": "W0 phase executed 2026-10-10; evidence in docs/architecture/cache-v2.2.1/w0/; inputs unchanged -> inheritable, spot-reverified",
+      "closeout_task": "C14"
+    },
+    {
+      "id": "W0-06",
+      "kind": "task",
+      "hist_status": "(not in hist ledger; W0 phase 2026-10-10)",
+      "new_class": "REVERIFY_HIST_INHERIT",
+      "reason": "W0 phase executed 2026-10-10; evidence in docs/architecture/cache-v2.2.1/w0/; inputs unchanged -> inheritable, spot-reverified",
+      "closeout_task": "C14"
+    },
+    {
+      "id": "W0-07",
+      "kind": "task",
+      "hist_status": "(not in hist ledger; W0 phase 2026-10-10)",
+      "new_class": "REVERIFY_HIST_INHERIT",
+      "reason": "W0 phase executed 2026-10-10; evidence in docs/architecture/cache-v2.2.1/w0/; inputs unchanged -> inheritable, spot-reverified",
+      "closeout_task": "C14"
+    },
+    {
+      "id": "W0-08",
+      "kind": "task",
+      "hist_status": "(not in hist ledger; W0 phase 2026-10-10)",
+      "new_class": "REVERIFY_HIST_INHERIT",
+      "reason": "W0 phase executed 2026-10-10; evidence in docs/architecture/cache-v2.2.1/w0/; inputs unchanged -> inheritable, spot-reverified",
+      "closeout_task": "C14"
+    },
+    {
+      "id": "W0-09",
+      "kind": "task",
+      "hist_status": "(not in hist ledger; W0 phase 2026-10-10)",
+      "new_class": "BLOCKED_EXTERNAL",
+      "reason": "absolute SLO freeze requires business peak/target hardware inputs; mapped to AC-26/27 which stay BLOCKED_EXTERNAL",
+      "closeout_task": "C13",
+      "prev_class": "BLOCKED_EXTERNAL",
+      "update_basis": [
+        "closeout-v1/external-inputs-c13.md",
+        "ledger-v1.json W0-09 条目自身 reason"
+      ],
+      "update_evidence": [
+        "ledger-v1.json W0-09 reason：『mapped to AC-26/27 which stay BLOCKED_EXTERNAL』",
+        "external-inputs-c13.md §5：AC-26/27 经独立取证维持 BLOCKED_EXTERNAL"
+      ],
+      "update_confidence": "high"
+    },
+    {
+      "id": "W0-10",
+      "kind": "task",
+      "hist_status": "(not in hist ledger; W0 phase 2026-10-10)",
+      "new_class": "REVERIFY_HIST_INHERIT",
+      "reason": "W0 phase executed 2026-10-10; evidence in docs/architecture/cache-v2.2.1/w0/; inputs unchanged -> inheritable, spot-reverified",
+      "closeout_task": "C14"
+    },
+    {
+      "id": "W1-01",
+      "kind": "task",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate (default rebind rule)",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "W1-02",
+      "kind": "task",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate (default rebind rule)",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "W1-03",
+      "kind": "task",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate (default rebind rule)",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "W1-04",
+      "kind": "task",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate (default rebind rule)",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "W1-05",
+      "kind": "task",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate (default rebind rule)",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "W1-06",
+      "kind": "task",
+      "hist_status": "BLOCKED",
+      "new_class": "REVERIFY",
+      "reason": "QR status/SSE one-time consumption now in scope via C08 (authorization includes migration files + exclusive test DB)",
+      "closeout_task": "C08",
+      "prev_class": "GAP_IMPLEMENTATION",
+      "update_basis": [
+        "closeout-v1/c12-window-plan.md §1 盘点快照",
+        "closeout-v1/qr-wire-contract-check.md"
+      ],
+      "update_evidence": [
+        "c12-window-plan.md:18（G-QR C08 已提交 675b0744）",
+        "qr-wire-contract-check.md:44-47/85-92（status 原子 claim、SSE confirmed_ready 服务端代领——一次性消费语义已在 HEAD 实现）",
+        "c12-window-plan.md §6.4：QR 定向四套件绑候选复跑待执行"
+      ],
+      "update_confidence": "high",
+      "final_evidence": "account_ds tests 6/6 + allocator committed e001fb8e",
+      "final_evidence_candidate": "f1aa1ce016eaa6e4db18e52e6ee6fba51cdb745303c057aaeff650c9b990020c",
+      "final_evidence_utc": "2026-10-12T04:50:47Z"
+    },
+    {
+      "id": "W1-07",
+      "kind": "task",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate (default rebind rule)",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "W2-01",
+      "kind": "task",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate (default rebind rule)",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "W2-02",
+      "kind": "task",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate (default rebind rule)",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "W2-03",
+      "kind": "task",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate (default rebind rule)",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "W2-04",
+      "kind": "task",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate (default rebind rule)",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "W2-05",
+      "kind": "task",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate (default rebind rule)",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "W2-06",
+      "kind": "task",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate (default rebind rule)",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "W2-07",
+      "kind": "task",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate (default rebind rule)",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "W2-08",
+      "kind": "task",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate (default rebind rule)",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "W3-01",
+      "kind": "task",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate (default rebind rule)",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "W3-02",
+      "kind": "task",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate (default rebind rule)",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "W3-03",
+      "kind": "task",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate (default rebind rule)",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "W3-04",
+      "kind": "task",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "BootId type-check + self-loop filter exist; missing incarnation registry, old-incarnation rejection, epoch and config/registry-hash dual-end validation",
+      "closeout_task": "C01+C02",
+      "prev_class": "GAP_IMPLEMENTATION",
+      "update_basis": [
+        "closeout-v1/c12-window-plan.md §1",
+        "closeout-v1/c10-mixed-plan.md 头部（C01 冻结状态引用）"
+      ],
+      "update_evidence": [
+        "c12-window-plan.md:18（C02～C05 提交 7db4e0af）",
+        "c10-mixed-plan.md:6（『协议依据：protocol-budget-frozen.md（C01 冻结，含 2026-10-11 实施的 r1/r2 修订）』）"
+      ],
+      "update_confidence": "medium-high",
+      "final_evidence": "protocol-budget-frozen.md r2 + sync tests 29/29 x3 + C9a/b scenarios",
+      "final_evidence_candidate": "f1aa1ce016eaa6e4db18e52e6ee6fba51cdb745303c057aaeff650c9b990020c",
+      "final_evidence_utc": "2026-10-12T04:50:47Z"
+    },
+    {
+      "id": "W3-05",
+      "kind": "task",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate (default rebind rule)",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "W3-06",
+      "kind": "task",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate (default rebind rule)",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "W3-07",
+      "kind": "task",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate (default rebind rule)",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "W3-08",
+      "kind": "task",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate (default rebind rule)",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "W3-09",
+      "kind": "task",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate (default rebind rule)",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "W3-10",
+      "kind": "task",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate (default rebind rule)",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "W4-01",
+      "kind": "task",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate (default rebind rule)",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "W4-02",
+      "kind": "task",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate (default rebind rule)",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "W4-03",
+      "kind": "task",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "current snapshot enumerates/sends whole-batch (no paging), empty-snapshot completion + counter-only check insufficient",
+      "closeout_task": "C04",
+      "prev_class": "GAP_IMPLEMENTATION",
+      "update_basis": [
+        "closeout-v1/c12-window-plan.md §1"
+      ],
+      "update_evidence": [
+        "c12-window-plan.md:18（C04 随 7db4e0af 提交）"
+      ],
+      "update_confidence": "medium-high",
+      "final_evidence": "three_node_c09_b2/b3.json 22/22 x2 bound f1aa1ce0 (SET/update/DELETE propagate)",
+      "final_evidence_candidate": "f1aa1ce016eaa6e4db18e52e6ee6fba51cdb745303c057aaeff650c9b990020c",
+      "final_evidence_utc": "2026-10-12T04:50:47Z"
+    },
+    {
+      "id": "W4-04",
+      "kind": "task",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "delta catch-up during snapshot lacks round/token/watermark/page-digest contract",
+      "closeout_task": "C04",
+      "prev_class": "GAP_IMPLEMENTATION",
+      "update_basis": [
+        "closeout-v1/c12-window-plan.md §1"
+      ],
+      "update_evidence": [
+        "c12-window-plan.md:18（C04 随 7db4e0af 提交）",
+        "c10-mixed-plan.md:28（M7 场景引用冻结协议第 1 节 round/token/watermark/page-digest 契约，佐证契约已落地）"
+      ],
+      "update_confidence": "medium-high",
+      "final_evidence": "three_node_c09_b2/b3.json (zombie/dup/race scenarios green)",
+      "final_evidence_candidate": "f1aa1ce016eaa6e4db18e52e6ee6fba51cdb745303c057aaeff650c9b990020c",
+      "final_evidence_utc": "2026-10-12T04:50:47Z"
+    },
+    {
+      "id": "W4-05",
+      "kind": "task",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "only origin_seq gap COUNTER exists; no data compensation for missed invalidations on reconnect",
+      "closeout_task": "C05",
+      "prev_class": "GAP_IMPLEMENTATION",
+      "update_basis": [
+        "closeout-v1/c12-window-plan.md §1"
+      ],
+      "update_evidence": [
+        "c12-window-plan.md:18（C05 随 7db4e0af 提交）"
+      ],
+      "update_confidence": "medium-high",
+      "final_evidence": "three_node_c09_b2/b3.json (invalidate fenced generation green)",
+      "final_evidence_candidate": "f1aa1ce016eaa6e4db18e52e6ee6fba51cdb745303c057aaeff650c9b990020c",
+      "final_evidence_utc": "2026-10-12T04:50:47Z"
+    },
+    {
+      "id": "W4-06",
+      "kind": "task",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "bounded namespace cleanup exists but item/bytes bounds unproven",
+      "closeout_task": "C03+C05",
+      "prev_class": "GAP_IMPLEMENTATION",
+      "update_basis": [
+        "closeout-v1/c12-window-plan.md §1",
+        "closeout-v1/observability-check.md §2"
+      ],
+      "update_evidence": [
+        "c12-window-plan.md:18（C03+C05 随 7db4e0af 提交）",
+        "observability-check.md:37（reject_total 写入点含 :562『Nmax 预算满拒收』——预算上限已进入运行路径）"
+      ],
+      "update_confidence": "medium-high",
+      "final_evidence": "three_node_c09_b2/b3.json (TTL/restart/overload/snapshot green)",
+      "final_evidence_candidate": "f1aa1ce016eaa6e4db18e52e6ee6fba51cdb745303c057aaeff650c9b990020c",
+      "final_evidence_utc": "2026-10-12T04:50:47Z"
+    },
+    {
+      "id": "W4-07",
+      "kind": "task",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "tombstone TIME upper bound implemented (Tmax=720s formula-derived); item/bytes bounds re-verified under C03",
+      "closeout_task": "C03+C09"
+    },
+    {
+      "id": "W4-08",
+      "kind": "task",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate (default rebind rule)",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "W4-09",
+      "kind": "task",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "mailbox high-watermark sampled, not hard bound; input constraint + overload disposition must be proven effective",
+      "closeout_task": "C03",
+      "prev_class": "GAP_IMPLEMENTATION",
+      "update_basis": [
+        "closeout-v1/c12-window-plan.md §1",
+        "closeout-v1/observability-check.md §1/§2"
+      ],
+      "update_evidence": [
+        "c12-window-plan.md:18（C03 随 7db4e0af 提交）",
+        "observability-check.md:23（queue_depth/overloaded API 存在）",
+        "observability-check.md:38（degraded_total 写入点 :655『Dmax 耗尽/回合超限进入 DEGRADED』——过载处置已实现）"
+      ],
+      "update_confidence": "medium-high",
+      "final_evidence": "three_node_c09_b2/b3.json (overload + C9f nmax green)",
+      "final_evidence_candidate": "f1aa1ce016eaa6e4db18e52e6ee6fba51cdb745303c057aaeff650c9b990020c",
+      "final_evidence_utc": "2026-10-12T04:50:47Z"
+    },
+    {
+      "id": "W4-10",
+      "kind": "task",
+      "hist_status": "NOT_RUN",
+      "new_class": "NOT_RUN_CARRIED",
+      "reason": "final cache perf stress NOT_RUN in history; C12 must run new V2-path perf, old data not inheritable",
+      "closeout_task": "C12"
+    },
+    {
+      "id": "W4-11",
+      "kind": "task",
+      "hist_status": "PASS",
+      "new_class": "GAP_EVIDENCE",
+      "reason": "15 fault scenarios green but matrix lacks: live-node partition reconnection with PG-authority mutation, invalidation gap compensation, resource caps",
+      "closeout_task": "C09"
+    },
+    {
+      "id": "W5-01",
+      "kind": "task",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate (default rebind rule)",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "W5-02",
+      "kind": "task",
+      "hist_status": "NOT_RUN",
+      "new_class": "GAP_EVIDENCE",
+      "reason": "NOT_RUN in history: three-node full SET integration retained + no-safe-key exception statement (whitelist empty) to be formally recorded",
+      "closeout_task": "C09+C14"
+    },
+    {
+      "id": "W5-03",
+      "kind": "task",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate (default rebind rule)",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "W5-04",
+      "kind": "task",
+      "hist_status": "BLOCKED",
+      "new_class": "GAP_IMPLEMENTATION",
+      "reason": "QR/auth/device/permission contract verification depends on C08 + C06 fail-closed closure",
+      "closeout_task": "C06+C08",
+      "prev_class": "GAP_IMPLEMENTATION",
+      "update_basis": [
+        "closeout-v1/qr-wire-contract-check.md",
+        "closeout-v1/registry-w1-closeout.md",
+        "closeout-v1/c12-window-plan.md §1"
+      ],
+      "update_evidence": [
+        "qr-wire-contract-check.md:184-196（QR 客户端 wire contract 保持，BREAK 0——W5-04 的 QR 合同面已只读验证）",
+        "registry-w1-closeout.md 汇总表（25-33 行）：C06 尾巴 5 项中 fcm 广播、group join/leave 两项 BLOCKED——C06 fail-closed 闭合未全部完成",
+        "c12-window-plan.md:18（C08 已提交）"
+      ],
+      "update_confidence": "medium-high",
+      "final_evidence": "registry-w1-closeout.md triage + wire contract check",
+      "final_evidence_candidate": "f1aa1ce016eaa6e4db18e52e6ee6fba51cdb745303c057aaeff650c9b990020c",
+      "final_evidence_utc": "2026-10-12T04:50:47Z"
+    },
+    {
+      "id": "W5-05",
+      "kind": "task",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate (default rebind rule)",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "W5-06",
+      "kind": "task",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate (default rebind rule)",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "W5-07",
+      "kind": "task",
+      "hist_status": "PARTIAL",
+      "new_class": "GAP_EVIDENCE",
+      "reason": "PARTIAL: same-artifact hash match proven but perf attribution incomplete; new V2-path perf required on quiet window",
+      "closeout_task": "C12"
+    },
+    {
+      "id": "W5-08",
+      "kind": "task",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate (default rebind rule)",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "W5-09",
+      "kind": "task",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate (default rebind rule)",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "W5-10",
+      "kind": "task",
+      "hist_status": "PASS",
+      "new_class": "GAP_EVIDENCE",
+      "reason": "final full EUnit raw log: Failed 4 / Passed 11078 / make exit NONZERO; isolated rerun 8/8 green does not equal full pass. Must re-run full gate on new candidate with exit=0",
+      "closeout_task": "C12"
+    },
+    {
+      "id": "AC-01",
+      "kind": "ac",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate (default rebind rule)",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "AC-02",
+      "kind": "ac",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate (default rebind rule)",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "AC-03",
+      "kind": "ac",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate (default rebind rule)",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "AC-04",
+      "kind": "ac",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate (default rebind rule)",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "AC-05",
+      "kind": "ac",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate (default rebind rule)",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "AC-06",
+      "kind": "ac",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate (default rebind rule)",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "AC-07",
+      "kind": "ac",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate (default rebind rule)",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "AC-08",
+      "kind": "ac",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate (default rebind rule)",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "AC-09",
+      "kind": "ac",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate (default rebind rule)",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "AC-10",
+      "kind": "ac",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate (default rebind rule)",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "AC-11",
+      "kind": "ac",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate (default rebind rule)",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "AC-12",
+      "kind": "ac",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate (default rebind rule)",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "AC-13",
+      "kind": "ac",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate (default rebind rule)",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "AC-14",
+      "kind": "ac",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate (default rebind rule)",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "AC-15",
+      "kind": "ac",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate (default rebind rule)",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "AC-16",
+      "kind": "ac",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate (default rebind rule)",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "AC-17",
+      "kind": "ac",
+      "hist_status": "PASS",
+      "new_class": "GAP_EVIDENCE",
+      "reason": "restart version-ceil recovery verified; epoch/config-hash consistency needs C02+C09 re-verification",
+      "closeout_task": "C02+C09"
+    },
+    {
+      "id": "AC-18",
+      "kind": "ac",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate (default rebind rule)",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "AC-19",
+      "kind": "ac",
+      "hist_status": "PASS",
+      "new_class": "GAP_EVIDENCE",
+      "reason": "snapshot+delta completeness contract needs behavioral oracle under C04/C09",
+      "closeout_task": "C04+C09"
+    },
+    {
+      "id": "AC-20",
+      "kind": "ac",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "detect+compensate lost invalidate within deadline not yet implemented",
+      "closeout_task": "C05+C09",
+      "prev_class": "GAP_IMPLEMENTATION",
+      "update_basis": [
+        "closeout-v1/c12-window-plan.md §1"
+      ],
+      "update_evidence": [
+        "c12-window-plan.md:18（C05 随 7db4e0af 提交）"
+      ],
+      "update_confidence": "medium-high",
+      "final_evidence": "three_node_c09_b2/b3.json full matrix bound",
+      "final_evidence_candidate": "f1aa1ce016eaa6e4db18e52e6ee6fba51cdb745303c057aaeff650c9b990020c",
+      "final_evidence_utc": "2026-10-12T04:50:47Z"
+    },
+    {
+      "id": "AC-21",
+      "kind": "ac",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate (default rebind rule)",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "AC-22",
+      "kind": "ac",
+      "hist_status": "BLOCKED",
+      "new_class": "REVERIFY",
+      "reason": "QR atomic claim + SSE/status race oracle (2 backend nodes, real PG) to be delivered by C08",
+      "closeout_task": "C08",
+      "prev_class": "GAP_IMPLEMENTATION",
+      "update_basis": [
+        "closeout-v1/c12-window-plan.md §1/§2.2/§6.4",
+        "closeout-v1/qr-wire-contract-check.md"
+      ],
+      "update_evidence": [
+        "c12-window-plan.md:18（C08 已提交）",
+        "c12-window-plan.md:69-72（C08 oracle 断言所在四套件清单）",
+        "c12-window-plan.md §6.4（273-280 行）：『claim/consume 原子性、SSE/status 竞争断言全部通过』为 PASS 判据，绑候选执行",
+        "qr-wire-contract-check.md:39-47（claim_login_token UPDATE...RETURNING 原子代领在 HEAD 实现）"
+      ],
+      "update_confidence": "high",
+      "final_evidence": "qr-wire-contract-check.md + eunit r5 qr suites green",
+      "final_evidence_candidate": "f1aa1ce016eaa6e4db18e52e6ee6fba51cdb745303c057aaeff650c9b990020c",
+      "final_evidence_utc": "2026-10-12T04:50:47Z"
+    },
+    {
+      "id": "AC-23",
+      "kind": "ac",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate (default rebind rule)",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "AC-24",
+      "kind": "ac",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate (default rebind rule)",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "AC-25",
+      "kind": "ac",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate (default rebind rule)",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "AC-26",
+      "kind": "ac",
+      "hist_status": "BLOCKED",
+      "new_class": "BLOCKED_EXTERNAL",
+      "reason": "no production SLO/hardware/peak inputs; local relative thresholds frozen at C12 but original AC remains blocked",
+      "closeout_task": "C13",
+      "prev_class": "BLOCKED_EXTERNAL",
+      "update_basis": [
+        "closeout-v1/external-inputs-c13.md"
+      ],
+      "update_evidence": [
+        "external-inputs-c13.md §2（AC-26 依赖输入表：I-1a/I-1b/I-2a/I-3a 全部 ABSENT）",
+        "external-inputs-c13.md §5（108-117 行）：『AC-26 维持 BLOCKED_EXTERNAL』",
+        "external-inputs-c13.md 附录 C（98-104 行）：与 ledger-v1.json 既有判定一致的独立取证",
+        "external-inputs-c13.md:135（C13 交付本身 PASS；未吞掉原始阻塞）"
+      ],
+      "update_confidence": "high"
+    },
+    {
+      "id": "AC-27",
+      "kind": "ac",
+      "hist_status": "BLOCKED",
+      "new_class": "BLOCKED_EXTERNAL",
+      "reason": "same as AC-26 (three-node sync perf + resource budget vs production SLO)",
+      "closeout_task": "C13",
+      "prev_class": "BLOCKED_EXTERNAL",
+      "update_basis": [
+        "closeout-v1/external-inputs-c13.md"
+      ],
+      "update_evidence": [
+        "external-inputs-c13.md §3（AC-27 依赖输入表：I-1c/I-2b/I-2c/I-3b 全部 ABSENT；helm replicaCount:1 与三节点假设冲突）",
+        "external-inputs-c13.md §5（119-131 行）：『AC-27 维持 BLOCKED_EXTERNAL』",
+        "external-inputs-c13.md:64（protocol-budget-frozen.md:174 自证生产侧绑定输入缺失）"
+      ],
+      "update_confidence": "high"
+    },
+    {
+      "id": "AC-28",
+      "kind": "ac",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate (default rebind rule)",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "AC-29",
+      "kind": "ac",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate (default rebind rule)",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "AC-30",
+      "kind": "ac",
+      "hist_status": "PASS",
+      "new_class": "GAP_EVIDENCE",
+      "reason": "targeted tests green but final full-gate exit=0 not yet achieved on a frozen candidate",
+      "closeout_task": "C12+C14"
+    },
+    {
+      "id": "G-QR",
+      "kind": "sec19_gate",
+      "hist_status": "BLOCKED",
+      "new_class": "REVERIFY",
+      "reason": "independent proposal delivered (g-qr-atomic-consumption-proposal.md); C08 re-reviews and implements atomic claim/consume via PG authority + migration on exclusive test DB",
+      "closeout_task": "C08",
+      "prev_class": "GAP_IMPLEMENTATION",
+      "update_basis": [
+        "closeout-v1/c12-window-plan.md §1 盘点快照",
+        "closeout-v1/qr-wire-contract-check.md 总结论"
+      ],
+      "update_evidence": [
+        "c12-window-plan.md:18 「HEAD 675b0744（G-QR C08 已提交…）」",
+        "qr-wire-contract-check.md:9-18 结论速览（MATCH 14 / TOLERATED 6 / BREAK 0）",
+        "qr-wire-contract-check.md:184-196 总结论（imboyapp 零改动可用；未触发 BLOCKED_CLIENT_CONTRACT_CHANGE）",
+        "c12-window-plan.md §6.4（269-280 行）：QR 终验 = C12 窗口四套件绑候选复跑"
+      ],
+      "update_confidence": "high",
+      "final_evidence": "qr_login tests 7/7 + wire contract BREAK 0 + eunit r5",
+      "final_evidence_candidate": "f1aa1ce016eaa6e4db18e52e6ee6fba51cdb745303c057aaeff650c9b990020c",
+      "final_evidence_utc": "2026-10-12T04:50:47Z"
+    },
+    {
+      "id": "19.3-栅栏",
+      "kind": "sec19_gate",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "19.4-Registry",
+      "kind": "sec19_gate",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "19.5-白名单",
+      "kind": "sec19_gate",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "19.6-有界恢复",
+      "kind": "sec19_gate",
+      "hist_status": "PASS",
+      "new_class": "GAP_IMPLEMENTATION",
+      "reason": "bounded retention TIME proven, but Nmax/Tmax/Jmax/Bmax/Pmax/Rmax/Dmax item+bytes bounds not enforced; 894-line sync needs split",
+      "closeout_task": "C01+C03+C04",
+      "prev_class": "GAP_IMPLEMENTATION",
+      "update_basis": [
+        "closeout-v1/c12-window-plan.md §1/§4.3"
+      ],
+      "update_evidence": [
+        "c12-window-plan.md:18（C01+C03+C04 侧提交/冻结：7db4e0af + protocol-budget-frozen.md）",
+        "c12-window-plan.md:25（『src/lib/imboy_cache_sync.erl 现 1203 行 > 800 行规范（拆分后仍超，冻结审查须先处理…禁止借机重写）』）",
+        "c12-window-plan.md §4.3 budget_digest（Nmax/Tmax/Jmax/Bmax/Pmax/Rmax/Dmax 等冻结值与三方一致要求）"
+      ],
+      "update_confidence": "high",
+      "final_evidence": "dcheck b2/b3 recovery scenarios + F1-F5 green bound",
+      "final_evidence_candidate": "f1aa1ce016eaa6e4db18e52e6ee6fba51cdb745303c057aaeff650c9b990020c",
+      "final_evidence_utc": "2026-10-12T04:50:47Z"
+    },
+    {
+      "id": "19.7-参数纪律",
+      "kind": "sec19_gate",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "19.8-混合可观测",
+      "kind": "sec19_gate",
+      "hist_status": "PASS",
+      "new_class": "GAP_IMPLEMENTATION",
+      "reason": "observability lacks protocol/config/registry hash, epoch, incarnation, last accepted/applied, peer lag counters",
+      "closeout_task": "C11",
+      "prev_class": "GAP_IMPLEMENTATION",
+      "update_basis": [
+        "closeout-v1/observability-check.md"
+      ],
+      "update_evidence": [
+        "observability-check.md §2（29-44 行）：六个要求计数器写入点 6/6 ✓，且均在真实执行路径",
+        "observability-check.md §3（50-57 行）：计数器导出链 ①→④ 全通（存储→格式化→路由→抓取），名字与 deploy 引用逐字一致",
+        "observability-check.md §3 断链点（59-63 行）：status/epoch/incarnation/peer-lag/queue_depth/hash_divergent 状态类指标在 ② 环节断链",
+        "observability-check.md §4（76-86 行）：snapshot_abort/degraded/卡 recovering 三关键信号面板告警双缺；缺口清单 A 类 3 项（92-98 行）/B 类 3 项（100-106 行）",
+        "协调者口头标注（未见文档）：A 类 3 项（deploy 告警 + gauge 导出）本轮已修复待终验"
+      ],
+      "update_confidence": "high（文档事实）/ 待协调者终验 A 类修复",
+      "final_evidence": "metrics 7/7 + gauges exported + panels 12 + alerts 3; scrape-layer GAP_EVIDENCE per plan C11",
+      "final_evidence_candidate": "f1aa1ce016eaa6e4db18e52e6ee6fba51cdb745303c057aaeff650c9b990020c",
+      "final_evidence_utc": "2026-10-12T04:50:47Z"
+    },
+    {
+      "id": "19.9-SINGLE_NODE_PASS",
+      "kind": "sec19_gate",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "19.9-THREE_NODE_PASS",
+      "kind": "sec19_gate",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate",
+      "closeout_task": "C12/C14"
+    },
+    {
+      "id": "19.9-文档一致性",
+      "kind": "sec19_gate",
+      "hist_status": "PASS",
+      "new_class": "REVERIFY",
+      "reason": "historical PASS re-verified on final candidate",
+      "closeout_task": "C12/C14"
+    }
+  ],
+  "supersedes": {
+    "file": "ledger-v1.json",
+    "sha256": "6ac5f32d85457032e10627fc5a29407b8628d9d1c806f1644f72bff813b02118"
+  },
+  "draft_source": {
+    "file": "ledger-update-draft-r2.json",
+    "sha256": "b9193afe3f0c3cd464193397db9e97c799497b349bda9573717d99d65e42c571"
+  },
+  "update_summary": {
+    "applied": 16,
+    "skipped": [],
+    "note": "r2 update: C06 tail triage / C08 QR wire / C11 observability / C13 external inputs merged; final evidence binding (C12 candidate reruns) refreshes pending_final_evidence entries at closeout"
+  },
+  "final_binding_utc": "2026-10-12T04:50:47Z",
+  "final_candidate_sha256": "f1aa1ce016eaa6e4db18e52e6ee6fba51cdb745303c057aaeff650c9b990020c"
+}

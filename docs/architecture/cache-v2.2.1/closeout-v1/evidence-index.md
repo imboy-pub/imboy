@@ -255,3 +255,11 @@ SUMMARY: 0/1 checks passed (failed: candidate)
   输出已原样记录于 §4。
 - 差距核心：G1（绑定全缺，驱动侧改造未落地）+ G2（C9d/C9e/C9f 未闭合，C9d 未收敛）
   是 C14 终验的两个硬阻断；G3（diag 位置）与 G6（C12 系列未产生）次之。
+
+## 归档注记（协调者，2026-10-12T02:35Z 后）
+
+G3 建议已执行：全部 `diag_f5_*` / `diag_c9d_*` / `diag_c9e_*`（24 个诊断轮 JSON）
+已从 raw/ 扁平层迁移至 `raw/diag/` 子目录，C14 verifier 终验扫描时不再被计入
+证据链。扁平层现仅保留：candidate_freeze.json、mixed_c10_r1/r2.json、
+three_node_c09_r1~r15.json（含终验绿轮 r14/r15）。本文 §1/§2 中 diag 文件的
+扁平层路径引用自此注记起以 `raw/diag/` 前缀为准。
