@@ -335,3 +335,9 @@ P1~P6 计划中提交落地后，rollback-v1.md 须增补对应回滚条目（�
   （provision_fresh 严格迁移全绿，2026-10-12 本地）。
 - 处置：本项从「外部归属登记不修」改为 **RESOLVED（外来 WIP 撞号，随并行会话
   提交自愈，无需本任务修复）**。其余例外 2～5 状态不变。
+- 例外 5 同日翻案 **RESOLVED**：根因是 W0 census 的 INFRA 集合只含
+  `imboy_cache`/`imboy_cache_sync` 两文件，F5 重构后 `imboy_cache_sync_snapshot`
+  直连 depcache 的两处机制自用（page_entry 读/apply_entry 写）落入
+  EXCEPTION_UNRESOLVED。已将集合提为 `INFRA_PATHS` 常量并覆盖整个 V2 同步子系统
+  （commit 6d4393f0）；scan_artifacts 全绿（543 calls，34 infrastructure，0 未归类），
+  snapshot 不泄漏进 mutation/write sites，registry 46 行不变。
