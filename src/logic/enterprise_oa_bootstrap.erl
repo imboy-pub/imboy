@@ -45,15 +45,32 @@ maybe_seed() ->
             try
                 Key = cfg_bin(oa_application_key, ?DEFAULT_KEY),
                 Name = cfg_bin(oa_name, ?DEFAULT_NAME),
-                {ok, #{org_id := OrgId, application_id := AppId}} =
+                %% with_tx 契约：成功直接返回事务 fun 的结果（不包 {ok,_}）；
+                %% 回滚 {rollback,_} / 连接错误 {error,_} 是正常返回形状
+                case
                     elib_pg:with_tx(fun(Conn) ->
                         seed_tx(Conn, Key, Name, RedirectUri)
-                    end),
-                ?INFO_LOG([
-                    enterprise_oa_bootstrap_seeded,
-                    #{org_id => OrgId, application_id => AppId, application_key => Key}
-                ]),
-                ok
+                    end)
+                of
+                    #{org_id := _OrgId, application_id := _AppId} = Seeded ->
+                        ?INFO_LOG([
+                            enterprise_oa_bootstrap_seeded,
+                            Seeded#{application_key => Key}
+                        ]),
+                        ok;
+                    {rollback, Reason} ->
+                        ?ERROR_LOG([
+                            enterprise_oa_bootstrap_failed,
+                            #{reason => {rollback, Reason}}
+                        ]),
+                        ok;
+                    {error, Reason} ->
+                        ?ERROR_LOG([
+                            enterprise_oa_bootstrap_failed,
+                            #{reason => Reason}
+                        ]),
+                        ok
+                end
             catch
                 Class:Reason:Stack ->
                     %% 引导失败不阻断启动；工作台入口静默隐藏兜底
