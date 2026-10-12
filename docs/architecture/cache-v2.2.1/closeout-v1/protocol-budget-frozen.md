@@ -81,6 +81,16 @@ expires_at_ms, revision, origin_seq, origin_node, origin_boot_id`。
   `unverified`（既有），C04 增测试覆盖"全部 peer recovering""多 peer 未应答"
   "孤岛空 syn 视图"三态。
 
+握手帧修订（收口修订 r2，2026-10-11 实施）：版本上界握手帧由"应答方
+syn 视图反查请求节点成员"改为 pid 直达——恢复节点刚 restart_sync 换 pid
+时，syn 视图传播滞后会使反查漏发或把应答发向陈旧死 pid，恢复轮被系统性
+饿死（C09 F5 三节点实证：`sync_counter=0` 卡死至超时）。具体：
+`version_request` 帧扩为 `{cache_version_request, FromPid, FromNode}`
+（旧 2 元组仍被应答，走视图反查，兼容 C10 混合矩阵旧节点）；
+`version_report` 帧扩为 9 元组（尾增发送者 sync pid）；
+hash 一致分支的快照请求直达 report 携带的 pid（与请求帧同源竞态一并消除）。
+预算与闭合条件不变；本修订只改帧的寻址方式，不改任何判定逻辑。
+
 ## 5. 错误返回与冷恢复语义（状态转换）
 
 ```text

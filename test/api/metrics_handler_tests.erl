@@ -174,3 +174,43 @@ histogram_legacy_shape_is_not_exported_test() ->
         })
     ),
     ?assertEqual(nomatch, binary:match(Body, <<"old_seconds_bucket">>)).
+
+%% ===================================================================
+%% cache-v2.2.1 C11：sync 状态 gauge 暴露贯通（19.8）
+%% status/epoch/queue/peers/counter 五个 gauge + peer 水平系列的数据源
+%% 必须经真实 init/2 → fetch_metrics 载荷可达（/metrics 端点）。
+%% ===================================================================
+fetch_metrics_exposes_cache_sync_gauges_test_() ->
+    ?WITH_MECKS(
+        [
+            {cowboy_req, [
+                {'peer', 1, fun(_Req) -> {{127, 0, 0, 1}, 12345} end},
+                {'header', 3, fun(_Name, _Req, _Default) -> <<>> end}
+            ]},
+            {elib_response, [
+                {'success', 3, fun(Req, Payload, Msg) ->
+                    Req#{response_status => 200, payload => Payload, msg => Msg}
+                end}
+            ]}
+        ],
+        fun() ->
+            {ok, RespReq, _State} = metrics_handler:init(#{}, #{}),
+            ?assertEqual(200, maps:get(response_status, RespReq)),
+            Counters = maps:get(counters, maps:get(payload, RespReq)),
+            %% sync 进程不在该测试环境：fail-safe 哨兵值也必须可达（-1/0）
+            GaugeKeys = [
+                imboy_cache_sync_status,
+                imboy_cache_sync_epoch,
+                imboy_cache_sync_queue_depth,
+                imboy_cache_sync_peers,
+                imboy_cache_sync_counter
+            ],
+            [
+                begin
+                    ?assert(maps:is_key(K, Counters), {missing_gauge, K}),
+                    ?assert(is_integer(maps:get(K, Counters)), {non_integer, K})
+                end
+             || K <- GaugeKeys
+            ]
+        end
+    ).

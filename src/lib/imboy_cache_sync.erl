@@ -339,12 +339,12 @@ handle_info(timeout, #state{status = recovering} = State) ->
 %% --- 同步消息（legacy + V2）---
 handle_info({cache_sync, Msg}, State) ->
     {noreply, handle_sync_message(Msg, State)};
-%% --- 版本上界握手（新协议帧：report 携带 epoch/hash/boot/ready）---
+%% --- 版本上界握手（新协议帧：report 携带 epoch/hash/boot/ready + 发送者 pid）---
 handle_info(
-    {cache_version_report, FromNode, MaxCounter, Epoch, ConfigHash, RegistryHash, BootId,
-        ReadyFlag},
+    {cache_version_report, FromNode, MaxCounter, Epoch, ConfigHash, RegistryHash, BootId, ReadyFlag,
+        FromPid},
     State
-) ->
+) when is_pid(FromPid) ->
     State1 = handle_version_report(
         FromNode,
         MaxCounter,
@@ -353,6 +353,7 @@ handle_info(
         RegistryHash,
         BootId,
         ReadyFlag,
+        FromPid,
         State
     ),
     {noreply, State1};
@@ -416,14 +417,24 @@ handle_info(
 handle_info({cache_snapshot_done, _FromNode, _Round, _Watermark, _Total}, State) ->
     %% 旧格式 done（3 元组）或非恢复期 done：不推进任何回合（C01 第 4 节）
     {noreply, State};
-%% --- 版本上界请求（他节点恢复 → 本节点应答，新协议帧）---
+%% --- 版本上界请求（他节点恢复 → 本节点应答）---
+%% 新协议帧（r2）：请求自带请求者 pid，应答直达该 pid。恢复节点刚 restart_sync
+%% 换 pid 时，syn 视图传播滞后会让视图反查漏发或把应答发向陈旧死 pid，
+%% 恢复轮被系统性饿死（C09 F5 三节点实证）；pid 直达消除该竞态。
+handle_info({cache_version_request, FromPid, _FromNode}, State) when is_pid(FromPid) ->
+    FromPid !
+        {cache_version_report, node(), State#state.counter, imboy_cache_sync_proto:epoch(),
+            imboy_cache_sync_proto:config_hash(), imboy_cache_sync_proto:registry_hash(),
+            State#state.boot_id, State#state.status =:= ready, self()},
+    {noreply, State};
+%% 旧格式请求（无请求者 pid）：保持视图反查应答（C10 混合矩阵旧节点）
 handle_info({cache_version_request, FromNode}, State) ->
     _ = [
         P !
             {cache_version_report, node(), State#state.counter, imboy_cache_sync_proto:epoch(),
                 imboy_cache_sync_proto:config_hash(), imboy_cache_sync_proto:registry_hash(),
-                State#state.boot_id,
-                State#state.status =:= ready}
+                State#state.boot_id, State#state.status =:= ready,
+                self()}
      || P <- syn_scope_members(), node(P) =:= FromNode
     ],
     {noreply, State};
@@ -631,7 +642,7 @@ discover_peers(State) ->
             become_ready(State);
         _ ->
             %% 多节点：向全部 peer 请求版本上界（5.3 RECOVER_VERSION）
-            _ = [P ! {cache_version_request, node()} || P <- Members],
+            _ = [P ! {cache_version_request, self(), node()} || P <- Members],
             _ = erlang:send_after(?RECOVER_ROUND_MS, self(), timeout),
             true = ets:insert(?META_TABLE, {status, recovering}),
             {noreply, State#state{status = recovering}}
@@ -657,6 +668,7 @@ enter_degraded(State) ->
     binary(),
     binary(),
     boolean(),
+    pid(),
     #state{}
 ) ->
     #state{}.
@@ -668,11 +680,14 @@ handle_version_report(
     RegistryHash,
     BootId,
     _ReadyFlag,
+    FromPid,
     #state{status = recovering} = State
 ) ->
     Changed = imboy_cache_sync_proto:register_incarnation(FromNode, BootId),
     changed_compensation(Changed, {peer_epoch, FromNode}),
     true = ets:insert(?META_TABLE, {{peer_epoch, FromNode}, Epoch}),
+    %% peer 版本水位留痕（19.8 peer-lag 观测数据源；标签按节点集合有界）
+    true = ets:insert(?META_TABLE, {{peer_counter, FromNode}, MaxCounter}),
     State1 = merge_version_ceiling(MaxCounter, State),
     HashOk =
         ConfigHash =:= imboy_cache_sync_proto:config_hash() andalso
@@ -681,13 +696,12 @@ handle_version_report(
         true ->
             %% hash 一致的 peer（ready 发数据快照；同在恢复的 peer 回空
             %% done——三节点同时冷启动时全部空快照闭合是合法路径：
-            %% "全部 peer done + 水位合并"三条件仍需满足，C01 第 4 节）
+            %% "全部 peer done + 水位合并"三条件仍需满足，C01 第 4 节）。
+            %% 快照请求直达 report 携带的 pid（r2）：本端 syn 视图滞后时
+            %% 反查会命中陈旧死 pid，与 version_request 应答同源竞态
             RoundSt0 = current_or_new_round(State1),
             RoundSt1 = imboy_cache_sync_snapshot:expect_peer(RoundSt0, FromNode),
-            _ = [
-                P ! {cache_snapshot_request, self(), maps:get(round, RoundSt1)}
-             || P <- syn_scope_members(), node(P) =:= FromNode
-            ],
+            FromPid ! {cache_snapshot_request, self(), maps:get(round, RoundSt1)},
             State1#state{snapshot_round = RoundSt1};
         false ->
             %% divergent peer：不请求数据、不闭合回合（G05：不假装同步正常；
@@ -702,11 +716,13 @@ handle_version_report(
     _RegistryHash,
     BootId,
     _ReadyFlag,
+    _FromPid,
     State
 ) ->
     %% 非 recovering（ready/degraded）：仅并入版本上界与登记化身
     Changed = imboy_cache_sync_proto:register_incarnation(FromNode, BootId),
     changed_compensation(Changed, {peer_epoch, FromNode}),
+    true = ets:insert(?META_TABLE, {{peer_counter, FromNode}, MaxCounter}),
     merge_version_ceiling(MaxCounter, State).
 
 -spec current_or_new_round(#state{}) -> map().
@@ -804,7 +820,7 @@ merge_version_ceiling(MaxCounter, #state{counter = C} = State) ->
 periodic_reconcile(#state{status = ready} = State) ->
     incr(reconcile_total),
     Members = [P || P <- syn_scope_members(), node(P) =/= node()],
-    _ = [P ! {cache_version_request, node()} || P <- Members],
+    _ = [P ! {cache_version_request, self(), node()} || P <- Members],
     ok = bounded_sweep(),
     ok = imboy_cache_sync_proto:prune_grace(erlang:system_time(millisecond)),
     ok = recalibrate_rindex_count(),

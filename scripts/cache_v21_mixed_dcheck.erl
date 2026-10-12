@@ -14,6 +14,22 @@
 %%   M6 新节点 invalidate 双通道发布：legacy peer 经 {flush, Key} 失效本地值
 %%      （19.8 能力交集；v2 信封被旧节点 catch-all 忽略，缺兼容发布则旧节点滞留陈旧值）
 %%
+%% C10 收口新增（C01 冻结协议 frozen 文档：
+%% docs/architecture/cache-v2.2.1/closeout-v1/protocol-budget-frozen.md）：
+%%   M7 hash-mismatch：漂移节点（C 改 registry overrides）的 V2 事件被 B 整体
+%%      拒绝——reject_total 递增、值不变、peer 标记 hash_divergent（第 1 节）；
+%%      恢复配置后通路复原（一致事件自动清除 divergent 标记）
+%%   M8 epoch-shift：B 推进 epoch 后，C 的旧 epoch 复制事件被拒（stale_epoch，
+%%      第 1/3 节；invalidate 不参与 epoch 比较的豁免由 src 既有测试覆盖）
+%%   M9 old-incarnation-replay：宽限窗（W=720s）内旧化身重放按修订 r1 接受
+%%      ——化身层只检测/注册/补偿不拒绝；旧值不复活由 Lamport revision 承担
+%%      （第 2 节 r1）。同一宽限化身携带更高 revision 的新值必须可应用
+%%      （接受性证明：拒绝旧化身会使重启 peer 全部事件被永久拒绝）
+%%   M10 r2 握手帧：version_request 为 {cache_version_request, FromPid, FromNode}
+%%      3 元组；旧 2 元组请求仍被应答（走 syn 视图反查，兼容混合矩阵旧节点，
+%%      第 4 节 r2）；version_report 9 元组尾增发送者 pid（report 到达 C 由
+%%      peer_incarnation 注册重建显式断言）
+%%
 %% 运行：erlc 编译本文件后，以
 %%   erl -noshell -pa <driver_dir> -eval 'cache_v21_mixed_dcheck:main(["out.json"]).'
 %% 驱动；旧/新两棵构建树的 ebin 路径经环境变量传入（见 main/1 与 start_mixed/0）。
@@ -29,8 +45,12 @@
     sync_alive/0,
     status_get/0,
     rev_present/1,
+    read_rev_value/1,
     m1_broadcast_set/2,
     inject_v2_set/4,
+    inject_v2_set_frozen/5,
+    reject_reset/0,
+    reject_read/0,
     dump_debug/0
 ]).
 
@@ -98,6 +118,19 @@ scenario_list(Nodes) ->
         end},
         {"M6 V2-node invalidate flushes legacy peer via legacy channel", fun() ->
             m6_v2_invalidate_reaches_legacy(A, B)
+        end},
+        %% --- C10 收口新增（C01 冻结协议第 1/2/3/4 节，见头注释）---
+        {"M7 hash mismatch: drifted-node events rejected (reject_total++, value frozen)", fun() ->
+            m7_hash_mismatch(A, B, C)
+        end},
+        {"M8 epoch shift: stale-epoch events rejected after peer bump", fun() ->
+            m8_epoch_shift(A, B, C)
+        end},
+        {"M9 old incarnation replay in grace: accepted-but-no-resurrect (r1)", fun() ->
+            m9_old_incarnation_replay(A, B, C)
+        end},
+        {"M10 r2 handshake: 3-tuple frame, legacy 2-tuple still answered", fun() ->
+            m10_r2_handshake(A, B, C)
         end},
         {"R1 rolling rollback node C: new -> legacy in place", fun() ->
             r1_rollback_node_c(Nodes)
@@ -200,6 +233,161 @@ m6_v2_invalidate_reaches_legacy(A, B) ->
     {ok, legacy_stale} = converge_get(A, Key, {ok, legacy_stale}),
     ok = rpc:call(B, imboy_cache, invalidate, [Key], ?RPC_MS),
     undefined = converge_get(A, Key, undefined),
+    ok.
+
+%% ===================================================================
+%% C10 收口场景（C01 冻结协议：hash / epoch / incarnation / r2 握手）
+%% ===================================================================
+
+%% M7 hash-mismatch（C01 第 1 节）：发送端 C 的 registry 配置漂移
+%% （overrides 增加未同步条目 → registry_hash 变化）后，C 的 V2 事件对 B
+%% 整体拒绝：值不变、reject_total 递增、peer 标记 hash_divergent（供 19.8
+%% 可观测与 C10 断言）；恢复配置后通路复原、divergent 标记被一致事件清除。
+%% 旧节点 A 同场静默忽略（catch-all，不崩溃）——混合组网下的完整 oracle。
+m7_hash_mismatch(A, B, C) ->
+    ok = ensure_new_ready(B),
+    ok = ensure_new_ready(C),
+    Key = {mixed_test, m7_hash},
+    ok = rpc:call(C, imboy_cache, put, [Key, v1, 300, replicate], ?RPC_MS),
+    {ok, v1} = converge_get(B, Key, {ok, v1}),
+    %% 基线：B 侧拒绝计数清零（计数器为节点级，场景前重置保证断言精度）
+    ok = rpc:call(B, ?MODULE, reject_reset, [], 5000),
+    %% C 漂移：registry overrides 增加未同步条目 → C 的 registry_hash 变
+    rpc:call(
+        C,
+        application,
+        set_env,
+        [
+            imboy,
+            cache_registry_overrides,
+            #{mixed_test => {replicate, false}, drift_ns => {local, false}}
+        ],
+        ?RPC_MS
+    ),
+    ok = rpc:call(C, imboy_cache, put, [Key, v2_drift, 300, replicate], ?RPC_MS),
+    timer:sleep(1000),
+    %% oracle：事件整体拒绝（值不变）+ reject_total 递增 + hash_divergent 标记
+    {ok, v1} = rpc:call(B, imboy_cache, get, [Key], ?RPC_MS),
+    Rejected = rpc:call(B, ?MODULE, reject_read, [], 5000),
+    true = Rejected >= 1 orelse erlang:error({hash_reject_not_counted, Rejected}),
+    true = rpc:call(B, imboy_cache_sync_proto, hash_divergent, [C], 5000),
+    %% 混合组网：旧节点 A 对漂移 V2 事件零副作用（catch-all，不崩溃）
+    true = rpc:call(A, ?MODULE, sync_alive, [], 5000),
+    %% 清理：恢复 C 配置；B 侧 divergent 标记由后续一致事件自动清除，
+    %% 显式删除兜底（与 C9b 同款），随后验证通路复原
+    rpc:call(
+        C,
+        application,
+        set_env,
+        [
+            imboy, cache_registry_overrides, #{mixed_test => {replicate, false}}
+        ],
+        ?RPC_MS
+    ),
+    true = rpc:call(B, ets, delete, [imboy_cache_meta, {hash_divergent, C}], 5000),
+    ok = rpc:call(C, imboy_cache, put, [Key, v3_heal, 300, replicate], ?RPC_MS),
+    {ok, v3_heal} = converge_get(B, Key, {ok, v3_heal}),
+    ok.
+
+%% M8 epoch-shift（C01 第 1/3 节）：B 推进 sync epoch（受控清理途径语义）
+%% 后，C 携带旧 epoch 的复制事件对 B 是 stale_epoch → 拒绝、值不变、
+%% reject_total 递增。epoch 回落后通路复原（不污染 R1-R3 回滚场景）。
+%% 注：invalidate 不参与 epoch 比较（第 1 节豁免）由 src 既有测试覆盖。
+m8_epoch_shift(A, B, C) ->
+    ok = ensure_new_ready(B),
+    ok = ensure_new_ready(C),
+    Key = {mixed_test, m8_epoch},
+    ok = rpc:call(C, imboy_cache, put, [Key, v1, 300, replicate], ?RPC_MS),
+    {ok, v1} = converge_get(B, Key, {ok, v1}),
+    ok = rpc:call(B, ?MODULE, reject_reset, [], 5000),
+    %% B 推进 epoch 至 1：C（epoch=0）的后续复制事件对 B 是 stale_epoch
+    1 = rpc:call(B, imboy_cache_sync_proto, bump_epoch, [], ?RPC_MS),
+    1 = rpc:call(B, imboy_cache_sync_proto, epoch, [], 5000),
+    ok = rpc:call(C, imboy_cache, put, [Key, v2_stale, 300, replicate], ?RPC_MS),
+    timer:sleep(1000),
+    %% oracle：旧 epoch 事件被拒（值不变）+ reject_total 递增
+    {ok, v1} = rpc:call(B, imboy_cache, get, [Key], ?RPC_MS),
+    Rejected = rpc:call(B, ?MODULE, reject_read, [], 5000),
+    true = Rejected >= 1 orelse erlang:error({stale_epoch_not_counted, Rejected}),
+    true = rpc:call(A, ?MODULE, sync_alive, [], 5000),
+    %% 清理：epoch 回 0 → C→B 通路复原
+    true = rpc:call(B, ets, insert, [imboy_cache_meta, {sync_epoch, 0}], 5000),
+    ok = rpc:call(C, imboy_cache, put, [Key, v3_heal, 300, replicate], ?RPC_MS),
+    {ok, v3_heal} = converge_get(B, Key, {ok, v3_heal}),
+    ok.
+
+%% M9 old-incarnation-replay（C01 第 2 节修订 r1）：C 重启换化身后，
+%% 旧化身进入 B 的宽限集合（W=720s，时间戳登记）。宽限窗内：
+%%   - 旧化身 + 旧 revision 重放 → 接受（化身层放行）但值不复活
+%%     （Lamport revision older → stale_revision，第 2 节"防复活由
+%%     revision/epoch 承担，不依赖化身"）；
+%%   - 同一宽限化身 + 更高 revision 新值 → 必须可应用（接受性证明：
+%%     拒绝旧化身将使重启 peer 的事件被永久拒绝——r1 修订动机）。
+m9_old_incarnation_replay(A, B, C) ->
+    ok = ensure_new_ready(B),
+    ok = ensure_new_ready(C),
+    Key = {mixed_test, m9_inc},
+    ok = rpc:call(C, imboy_cache, put, [Key, v1, 300, replicate], ?RPC_MS),
+    {ok, v1} = converge_get(B, Key, {ok, v1}),
+    {ok, Rev1} = rpc:call(B, ?MODULE, read_rev_value, [Key], 5000),
+    {_, OldBoot} = rpc:call(C, imboy_cache_sync, node_boot, [], 5000),
+    %% C 换化身（sync+depcache 重启）：B 观察新化身 → 旧化身转入宽限集合
+    ok = rpc:call(C, ?MODULE, restart_sync, [], ?RPC_MS),
+    ready = wait_status(C, 120),
+    ok = rpc:call(C, imboy_cache, put, [Key, v2_newinc, 300, replicate], ?RPC_MS),
+    {ok, v2_newinc} = converge_get(B, Key, {ok, v2_newinc}),
+    %% 前提 oracle：旧化身确实在 B 的宽限集合内（r1 语义成立的前提）
+    true = rpc:call(
+        B, ets, member, [imboy_cache_meta, {grace_incarnation, {C, OldBoot}}], 5000
+    ),
+    %% 重放：旧化身 + 旧 revision → 不复活（值保持 v2_newinc）
+    ok = rpc:call(
+        B,
+        ?MODULE,
+        inject_v2_set_frozen,
+        [Key, <<"replay_stale">>, Rev1, C, OldBoot],
+        5000
+    ),
+    timer:sleep(500),
+    {ok, v2_newinc} = rpc:call(B, imboy_cache, get, [Key], ?RPC_MS),
+    %% 接受性证明：同一宽限化身携带更高 revision → 应用成功（化身层不拒绝）
+    {RevC, _} = Rev1,
+    HiRev = {RevC + 100000, C},
+    ok = rpc:call(
+        B,
+        ?MODULE,
+        inject_v2_set_frozen,
+        [Key, <<"grace_accepted">>, HiRev, C, OldBoot],
+        5000
+    ),
+    {ok, <<"grace_accepted">>} = converge_get(B, Key, {ok, <<"grace_accepted">>}),
+    true = rpc:call(A, ?MODULE, sync_alive, [], 5000),
+    ok.
+
+%% M10 r2 握手帧（C01 第 4 节 r2）：version_request 为 3 元组
+%% {cache_version_request, FromPid, FromNode}（pid 直达，规避 syn 视图
+%% 传播滞后饿死恢复轮）；旧 2 元组请求仍被应答（走视图反查，兼容
+%% 混合矩阵旧节点）。应答为 9 元组 report（尾增发送者 sync pid）——
+%% report 到达 C 的可观察副作用：{peer_incarnation, B} 注册重建。
+m10_r2_handshake(A, B, C) ->
+    ok = ensure_new_ready(B),
+    ok = ensure_new_ready(C),
+    SelfPid = self(),
+    %% r2 新帧形状：3 元组（FromPid/FromNode 由发送端现场填充）
+    {cache_version_request, SelfPid, B} =
+        rpc:call(B, imboy_cache_sync_proto, version_request_frame, [SelfPid], 5000),
+    %% r2 兼容：删掉 C 侧 B 的化身注册后，发送旧 2 元组请求（模拟旧版
+    %% V2 节点）→ B 经视图反查应答 9 元组 report → C 重新注册 B 化身
+    true = rpc:call(C, ets, delete, [imboy_cache_meta, {peer_incarnation, B}], 5000),
+    _ = rpc:call(B, erlang, send, [imboy_cache_sync, {cache_version_request, C}], 5000),
+    Registered = fun() ->
+        rpc:call(C, ets, member, [imboy_cache_meta, {peer_incarnation, B}], 5000)
+    end,
+    true = converge_true(Registered, 100),
+    %% 双向存活：兼容路径无崩溃（B 应答方、C report 处理方）
+    true = rpc:call(B, ?MODULE, sync_alive, [], 5000),
+    true = rpc:call(C, ?MODULE, sync_alive, [], 5000),
+    true = rpc:call(A, ?MODULE, sync_alive, [], 5000),
     ok.
 
 %% ===================================================================
@@ -343,7 +531,7 @@ peer_args(Role, Ctx) ->
 %% 同名重启 peer 为指定角色（真实滚动升级/回滚 = 进程换部署）：
 %% 停旧进程 → 以新代码树同名拉起 → 重建全网状连接 → init → 就绪判定。
 restart_peer_as(Role, Which) ->
-    [{Which, {OldPid, ShortName, FullName}}] = ets:lookup(c21ctx, Which),
+    [{Which, {OldPid, ShortName, _FullName}}] = ets:lookup(c21ctx, Which),
     ok = peer:stop(OldPid),
     {ok, _NewPid, Node} = peer:start(#{
         name => ShortName,
@@ -389,7 +577,11 @@ stop_all() ->
         end
      || P <- Pids
     ],
-    catch net_kernel:stop(),
+    try
+        net_kernel:stop()
+    catch
+        _:_ -> ok
+    end,
     ok.
 
 wait_peer(Full, 0) ->
@@ -415,6 +607,29 @@ wait_status_loop(Node, N, _Last) ->
         _Other ->
             timer:sleep(100),
             wait_status_loop(Node, N - 1, _Other)
+    end.
+
+%% C10 场景前置：新节点确保 ready（前序场景可能留下中间态）。
+%% 仅对新节点调用（旧节点无 imboy_cache_meta 表，走 sync_alive 判定）。
+ensure_new_ready(Node) ->
+    case rpc:call(Node, ?MODULE, status_get, [], 5000) of
+        {ok, ready} ->
+            ok;
+        _ ->
+            ok = rpc:call(Node, ?MODULE, restart_sync, [], ?RPC_MS),
+            ready = wait_status(Node, 150)
+    end.
+
+%% 有界轮询至谓词为真（C10：等待协议副作用落地，非固定 sleep 断言）。
+converge_true(_Pred, 0) ->
+    false;
+converge_true(Pred, Tries) ->
+    case Pred() of
+        true ->
+            true;
+        false ->
+            timer:sleep(100),
+            converge_true(Pred, Tries - 1)
     end.
 
 converge_get(Node, Key, Expected) ->
@@ -574,8 +789,18 @@ m1_broadcast_set(Key, Value) ->
     application:unset_env(imboy, dsync_enabled),
     ok.
 
-%% 定向注入 V2 SET（诊断用；OriginNode 避开自环过滤）
+%% 定向注入 V2 SET（诊断用；OriginNode 避开自环过滤）。
+%% C01 冻结后缺 epoch/config_hash/registry_hash 的事件会被结构性拒绝
+%% （missing_protocol_field，第 1 节），统一走 frozen 构造；
+%% <<0:128>> 为快照回放合法特例 boot_id（第 2 节）。
 inject_v2_set(Key, Value, Rev, OriginNode) ->
+    inject_v2_set_frozen(Key, Value, Rev, OriginNode, <<0:128>>).
+
+%% C01 冻结字段版注入（C10 收口）：epoch/hash 由执行节点现场计算
+%% （同配置 peer 匹配；漂移注入由场景改配置实现，不在此伪造 hash）；
+%% OriginBootId 可指定（M9 宽限化身重放，r1 语义）。仅 rpc 到新节点执行
+%% （旧树无 imboy_cache_sync_proto，模块加载在 peer 上按各自 code path 解析）。
+inject_v2_set_frozen(Key, Value, Rev, OriginNode, OriginBootId) ->
     Event = #{
         protocol => 2,
         operation => set,
@@ -585,10 +810,22 @@ inject_v2_set(Key, Value, Rev, OriginNode) ->
         revision => Rev,
         origin_seq => 99999,
         origin_node => OriginNode,
-        origin_boot_id => <<0:128>>
+        origin_boot_id => OriginBootId,
+        epoch => imboy_cache_sync_proto:epoch(),
+        config_hash => imboy_cache_sync_proto:config_hash(),
+        registry_hash => imboy_cache_sync_proto:registry_hash()
     },
     _ = imboy_cache_sync:broadcast(Event),
     ok.
+
+%% C01 第 1 节拒绝计数探针（elib_metric 节点本地计数器）：
+%% 场景前重置、断言时读取，保证 reject_total 递增断言的精度。
+reject_reset() ->
+    ok = elib_metric:reset_counter(reject_total).
+
+reject_read() ->
+    #{counters := Counters} = elib_metric:get_all_metrics(),
+    maps:get(reject_total, Counters, 0).
 
 dump_debug() ->
     Status =
@@ -621,6 +858,14 @@ rev_present(Key) ->
         [_] -> present
     end.
 
+%% C10/M9：读取键的 Lamport revision（{{Counter, Node}, _C, _Exp, _St} 行）。
+%% 仅对新节点调用。
+read_rev_value(Key) ->
+    case ets:lookup(imboy_cache_meta, {rev, Key}) of
+        [{{rev, Key}, {Rev, _C, _Exp, _St}}] -> {ok, Rev};
+        [] -> {error, not_found}
+    end.
+
 results_json(Results, ElapsedMs) ->
     Scenarios = [
         io_lib:format(
@@ -645,11 +890,11 @@ results_json(Results, ElapsedMs) ->
         "]}"
     ]).
 
+%% 真实 UTC 时间戳（RFC 3339，毫秒取自系统时钟，无伪造占位）
 iso_utc() ->
-    {{Y, Mo, D}, {H, Mi, S}} = calendar:system_time_to_universal_time(
-        erlang:system_time(second), nanosecond
-    ),
-    io_lib:format("~4..0B-~2..0B-~2..0BT~2..0B:~2..0B:~2..0B.000Z", [Y, Mo, D, H, Mi, S]).
+    calendar:system_time_to_rfc3339(
+        erlang:system_time(millisecond), [{unit, millisecond}, {offset, "Z"}]
+    ).
 
 json_str(S) ->
     %% 尾部追加式：保证转义对（反斜杠+引号）顺序不变。头插+reverse 会把

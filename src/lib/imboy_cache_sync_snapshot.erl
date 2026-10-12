@@ -134,13 +134,14 @@ send_pages(RequestorPid, Round, Keys, Pmax, PmaxBytes, PageNo, Count, Bytes) ->
 
 %% @doc 取一页：项数与字节双预算（先到先满；单条超页预算仍单独成页，
 %% 因 MaxValue=32KiB << Pmax_bytes=4MiB，正常不可能触发）。
+%% C09 修复：旧守卫 `length(Acc) >= Pmax; Acc =/= []` 的第二个析取项恒真
+%% （只要页内已有 1 条就切页），快照退化为每页 1 条——400 行数据膨胀为
+%% 400 页，恢复节点单轮 RECOVER_ROUND_MS 内无法收完，回合永不闭合
+%% （F5 三节点实证：30 页/轮 × 35 轮全部超时重开）。
 -spec take_page([term()], pos_integer(), pos_integer(), [term()]) ->
     {[term()], [term()]}.
-take_page(Keys, Pmax, _PmaxBytes, Acc) when length(Acc) >= Pmax; Acc =/= [] ->
-    case Acc of
-        [_ | _] -> {lists:reverse(Acc), Keys};
-        [] -> {[], Keys}
-    end;
+take_page(Keys, Pmax, _PmaxBytes, Acc) when length(Acc) >= Pmax ->
+    {lists:reverse(Acc), Keys};
 take_page([K | Rest], Pmax, PmaxBytes, Acc) ->
     case page_entry(K) of
         skip ->

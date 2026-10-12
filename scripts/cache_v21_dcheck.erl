@@ -19,9 +19,13 @@
     read_expires/1,
     read_rev_full/1,
     inject_v2_set/4,
+    inject_v2_set/5,
+    inject_v2_set/6,
     restart_sync/0,
     peer_sync_down/0,
     sync_alive/0,
+    sync_view/0,
+    restore_nmax_then_put/1,
     meta_inject/1,
     meta_probe/1,
     overload_probe/0,
@@ -42,7 +46,16 @@ main([OutPath | _]) ->
     {ok, PeerPids, {A, B, C}} = start_cluster(),
     Results =
         try
-            Scenarios = scenario_list(A, B, C),
+            Scenarios0 = scenario_list(A, B, C),
+            %% 诊断模式：DCHECK_ONLY=<子串> 只跑命中场景（证据轮禁用——
+            %% 全量 22 场景才是验收口径）
+            Scenarios =
+                case os:getenv("DCHECK_ONLY") of
+                    false ->
+                        Scenarios0;
+                    Pat ->
+                        [S || {Name, _} = S <- Scenarios0, string:find(Name, Pat) =/= nomatch]
+                end,
             [run_one(Name, Fun) || {Name, Fun} <- Scenarios]
         after
             stop_cluster(PeerPids)
@@ -90,6 +103,25 @@ scenario_list(A, B, C) ->
         end},
         {"F5 early eviction: survivors-only snapshot, no resurrection", fun() ->
             f5_early_evict_survivors_only(A, B, C)
+        end},
+        %% --- C09 收口新增（C02/C03/C05 协议、预算与补偿）---
+        {"C9a stale epoch event rejected cross-node", fun() ->
+            c9a_stale_epoch(A, B)
+        end},
+        {"C9b hash mismatch event rejected cross-node", fun() ->
+            c9b_hash_mismatch(A, B)
+        end},
+        {"C9c seq gap compensates fenced generation", fun() ->
+            c9c_gap_compensation(A, B)
+        end},
+        {"C9d incarnation change compensates fenced key", fun() ->
+            c9d_incarnation_compensation(A, B)
+        end},
+        {"C9e partition reconnect returns authority value", fun() ->
+            c9e_partition_reconnect(A, B, C)
+        end},
+        {"C9f nmax ceiling rejects new replicate", fun() ->
+            c9f_nmax(A)
         end}
     ].
 
@@ -160,6 +192,12 @@ s_dup(A, B) ->
     ok.
 
 s_race(A, B, C) ->
+    %% 前置：三节点 ready（前序故障场景的恢复长尾期 get 对 replicate
+    %% key 返回 miss，b1 轮实证 10s 窗口不够——竞态 oracle 的前提是
+    %% 集群正常服务，不是恢复中的收敛）
+    ok = ensure_c9_ready(A),
+    ok = ensure_c9_ready(B),
+    ok = ensure_c9_ready(C),
     Key = {cache_v2_test_rep, d_race1},
     Self = self(),
     spawn(fun() ->
@@ -178,11 +216,14 @@ s_race(A, B, C) ->
         done_b -> ok
     after 35000 -> error(b_timeout)
     end,
-    VA = rpc:call(A, imboy_cache, get, [Key], 5000),
-    VB = rpc:call(B, imboy_cache, get, [Key], 5000),
-    VC = converge_any(C, Key),
-    true = (VA =:= VB) andalso (VB =:= VC),
-    true = lists:member(VA, [{ok, from_a}, {ok, from_b}]),
+    %% 并发双写收敛到确定性 winner（revision 全序）。即时读存在传播窗口
+    %% （r38/39 实证：A/B 各自先见己方值，假阴性），三节点有界等待到达
+    %% 同一终值后再断言。
+    VC0 = converge_any(C, Key),
+    true = lists:member(VC0, [{ok, from_a}, {ok, from_b}]),
+    ok = converge_to(A, Key, VC0, 300),
+    ok = converge_to(B, Key, VC0, 300),
+    ok = converge_to(C, Key, VC0, 300),
     ok.
 
 s_invalidate(A, B) ->
@@ -313,7 +354,7 @@ f1_peer_dies_during_recovery(A, B, C) ->
     %% A 回归（sync+depcache 全量重启），集群互通恢复。
     %% after 兜底：场景中途失败也必恢复 A，不把后续场景拖进 fail-closed。
     try
-        ready = recover_ready(A, heal_restart(A), 2),
+        ready = recover_ready(A, heal_restart(A), 4),
         KeyA2 = {cache_v2_test_rep, d_f1a2},
         ok = rpc:call(A, imboy_cache, put, [KeyA2, back, 120, replicate], ?RPC_MS),
         {ok, back} = converge_get(C, KeyA2, {ok, back})
@@ -328,7 +369,7 @@ f2_delta_during_recovery(A, B, C) ->
     %% F1 的 after 兜底重启可能让 A 仍在收敛：写方必须自身 ready 才能承载
     %% “恢复窗口内的并发 delta”语义
     ready = recover_ready(A, heal_restart(A), 2),
-    ready = recover_ready(B, heal_restart(B), 2),
+    ready = recover_ready(B, heal_restart(B), 4),
     K1 = {cache_v2_test_rep, d_f2a},
     ok = rpc:call(A, imboy_cache, put, [K1, v1, 300, replicate], ?RPC_MS),
     {ok, v1} = converge_get(C, K1, {ok, v1}),
@@ -419,7 +460,50 @@ f5_early_evict_survivors_only(A, B, C) ->
     %% 3) A 下线，B 仅从 C（存活子集持有者）恢复
     ok = rpc:call(A, ?MODULE, peer_sync_down, [], ?RPC_MS),
     ok = rpc:call(B, ?MODULE, restart_sync, [], ?RPC_MS),
-    ready = recover_ready(B, heal_restart(B), 2),
+    %% 诊断开关 DCHECK_TRACE=1：trace 两端 sync 进程收发（stdout）
+    TraceOn =
+        case os:getenv("DCHECK_TRACE") of
+            "1" ->
+                %% collector 各节点本地起（tracer 必须本地）；其 group_leader
+                %% 经 rpc 链回到 driver，io:format 输出进 driver 日志
+                LocalCollector = fun(Node) ->
+                    rpc:call(Node, erlang, spawn, [fun collect_trace_loop/0], ?RPC_MS)
+                end,
+                {Bc, Cc} = {LocalCollector(B), LocalCollector(C)},
+                {Bp, Cp} = {
+                    rpc:call(B, erlang, whereis, [imboy_cache_sync], ?RPC_MS),
+                    rpc:call(C, erlang, whereis, [imboy_cache_sync], ?RPC_MS)
+                },
+                1 = rpc:call(
+                    B, erlang, trace, [Bp, true, ['receive', send, {tracer, Bc}]], ?RPC_MS
+                ),
+                1 = rpc:call(
+                    C, erlang, trace, [Cp, true, ['receive', send, {tracer, Cc}]], ?RPC_MS
+                ),
+                true;
+            _ ->
+                false
+        end,
+    case catch recover_ready(B, heal_restart(B), 4) of
+        ready ->
+            ok;
+        Other ->
+            %% 诊断（C09 根因定位）：B 视图里的 C pid vs C 实际 sync pid
+            Diag = #{
+                b_view => rpc:call(B, ?MODULE, sync_view, [], ?RPC_MS),
+                c_actual_sync => rpc:call(C, erlang, whereis, [imboy_cache_sync], ?RPC_MS),
+                c_status => rpc:call(C, imboy_cache_sync, status, [], ?RPC_MS),
+                c_view => rpc:call(C, ?MODULE, sync_view, [], ?RPC_MS)
+            },
+            erlang:error({f5_b_recover_failed, Other, Diag})
+    end,
+    case TraceOn of
+        true ->
+            {_, _} = rpc:multicall([B, C], erlang, trace, [all, false, ['receive', send]], 5000),
+            ok;
+        false ->
+            ok
+    end,
     %% 逐键比对：B 的存在性 == C 的存在性（被逐出键不复活、存活键不丢失）
     lists:foreach(
         fun(K) ->
@@ -434,7 +518,7 @@ f5_early_evict_survivors_only(A, B, C) ->
     ),
     %% 4) A 回归，集群互通恢复（after 兜底同 F1）
     try
-        ready = recover_ready(A, heal_restart(A), 2),
+        ready = recover_ready(A, heal_restart(A), 4),
         KeyNew = {cache_v2_test_rep, {f5, new}},
         ok = rpc:call(A, imboy_cache, put, [KeyNew, fresh, 120, replicate], ?RPC_MS),
         {ok, fresh} = converge_get(C, KeyNew, {ok, fresh})
@@ -491,13 +575,25 @@ start_cluster() ->
     ),
     true = erlang:set_cookie(node(), CookieAtom),
     Ebin = filename:absname("ebin"),
-    Deps = [filename:absname("deps/" ++ D ++ "/ebin") || D <- ["depcache", "syn"]],
+    %% driver 实际加载 dcheck 的目录（独立构建产物，peer 继承同一路径，
+    %% 避免主 ebin 被 eunit test-build 清理导致 peer undef）
+    DrvDir =
+        case code:which(cache_v21_dcheck) of
+            Path when is_list(Path) -> filename:dirname(Path);
+            _ -> Ebin
+        end,
+    Deps = [DrvDir | [filename:absname("deps/" ++ D ++ "/ebin") || D <- ["depcache", "syn"]]],
     Args = [
         "-setcookie",
         atom_to_list(CookieAtom),
         "-kernel",
         "inet_dist_use_interface",
         "{127,0,0,1}",
+        %% C09 实证：driver 也身处 global 网络，集群拓扑变化（重启/恢复）会
+        %% 触发 global"防重叠分区"预防性断连（driver↔peer 间歇 nodedown，
+        %% C9e/C9f 实证）。回环全连通的测试集群禁用该防护是标准做法。
+        "prevent_overlapping_partitions",
+        "false",
         "-pa",
         Ebin,
         "-pa"
@@ -609,7 +705,7 @@ init_on_peer() ->
         #{cache_v2_test_rep => {replicate, false}}
     ),
     application:set_env(imboy, cache_replication, #{whitelist => [cache_v2_test_rep]}),
-    application:set_env(imboy, cache_fenced_namespaces, [cache_v2_test]),
+    application:set_env(imboy, cache_fenced_namespaces, [cache_v2_test, cache_v2_test_rep]),
     {ok, _} = application:ensure_all_started(crypto),
     {ok, _} = application:ensure_all_started(syn),
     ok = syn:add_node_to_scopes([imboy_cache]),
@@ -637,7 +733,7 @@ init_on_peer_small() ->
         #{cache_v2_test_rep => {replicate, false}}
     ),
     application:set_env(imboy, cache_replication, #{whitelist => [cache_v2_test_rep]}),
-    application:set_env(imboy, cache_fenced_namespaces, [cache_v2_test]),
+    application:set_env(imboy, cache_fenced_namespaces, [cache_v2_test, cache_v2_test_rep]),
     {ok, _} = application:ensure_all_started(crypto),
     {ok, _} = application:ensure_all_started(syn),
     ok = syn:add_node_to_scopes([imboy_cache]),
@@ -674,6 +770,16 @@ read_rev_full(Key) ->
 
 %% 定向注入 V2 事件（模拟延迟/重复消息；OriginNode 避开接收端自环过滤）
 inject_v2_set(Key, Value, Rev, OriginNode) ->
+    inject_v2_set(Key, Value, Rev, OriginNode, 99999).
+
+%% C01 冻结协议字段版本（收口 C09）：epoch/hash 现场计算（同配置 peer 匹配）
+inject_v2_set(Key, Value, Rev, OriginNode, Seq) ->
+    %% 默认 <<0:128>>：快照回放伪装特例（frozen 第 2 节），化身层放行、
+    %% 不触发 changed 补偿（C9c 的 seq-gap 场景即用此语义）
+    inject_v2_set(Key, Value, Rev, OriginNode, Seq, <<0:128>>).
+
+%% 显式化身版本（收口 C09）：C9d 用真实 peer 化身驱动 changed 补偿
+inject_v2_set(Key, Value, Rev, OriginNode, Seq, BootId) ->
     Event = #{
         protocol => 2,
         operation => set,
@@ -681,9 +787,14 @@ inject_v2_set(Key, Value, Rev, OriginNode) ->
         value => Value,
         expires_at_ms => erlang:system_time(millisecond) + 120000,
         revision => Rev,
-        origin_seq => 99999,
+        origin_seq => Seq,
         origin_node => OriginNode,
-        origin_boot_id => <<0:128>>
+        origin_boot_id => BootId,
+        %% C01 冻结新增字段（收口 C09 实证：缺任一即 missing_protocol_field
+        %% 被拒，C9a~d 的 oracle 全部失真——必须现场计算补齐）
+        epoch => imboy_cache_sync_proto:epoch(),
+        config_hash => imboy_cache_sync_proto:config_hash(),
+        registry_hash => imboy_cache_sync_proto:registry_hash()
     },
     _ = imboy_cache_sync:broadcast(Event),
     ok.
@@ -718,6 +829,31 @@ sync_alive() ->
     case whereis(imboy_cache_sync) of
         P when is_pid(P) -> is_process_alive(P);
         undefined -> false
+    end.
+
+%% 诊断（C09）：本节点视角的产品组视图（谁在组里、pid 是什么）
+sync_view() ->
+    [
+        {node(P), P, whereis(imboy_cache_sync) =:= P}
+     || {P, _} <- syn:members(imboy_cache, dsync_handler)
+    ].
+
+%% trace 收集器：把 B/C 两端 sync 进程的收发事件打到 stdout
+%% 诊断辅助：hash binary 前 8 字节转 tuple（~p 对 integer list 会因
+%% latin1 可打印性字符串化污染 JSON，tuple 永不字符串化）
+hash_head(<<A:8, B:8, C:8, D:8, E:8, F:8, G:8, H:8, _/binary>>) ->
+    {A, B, C, D, E, F, G, H};
+hash_head(Other) ->
+    Other.
+
+collect_trace_loop() ->
+    receive
+        Ev when element(1, Ev) =:= trace ->
+            io:format("TRACE ~p~n", [Ev]),
+            collect_trace_loop();
+        _Other ->
+            collect_trace_loop()
+    after 120000 -> ok
     end.
 
 %% F4 探针：该键的 rev+rindex 行是否存在（gone/kept）
@@ -827,9 +963,11 @@ converge_quiet_loop(Node, Key, Expected, Deadline) ->
     end.
 
 dump_debug() ->
+    %% 诊断用产品同款 scope/group（chat.hrl: CACHE_SCOPE=imboy_cache）
+    SyncMembers = [{node(P), P} || {P, _Meta} <- syn:members(imboy_cache, dsync_handler)],
     #{
         status => imboy_cache_sync:status(),
-        members => length(syn:members(imboy_cache, dsync_handler)),
+        sync_members => SyncMembers,
         meta => imboy_cache_sync:meta_snapshot()
     }.
 
@@ -929,9 +1067,24 @@ results_json(Results, ElapsedMs) ->
         )
      || {Name, Status, Detail} <- Results
     ],
+    %% C14 证据 schema：candidate 绑定由环境变量注入（C12 冻结时计算并
+    %% 导出），缺失记 null（校验器对收口系列缺绑定判 FAIL，逐轮可追溯）
+    Candidate =
+        case os:getenv("CANDIDATE_SHA256") of
+            false ->
+                "null";
+            Sha when length(Sha) =:= 64 ->
+                io_lib:format("\"~s\"", [Sha]);
+            Bad ->
+                io:format("CANDIDATE_SHA256 malformed (~p), expect 64-hex~n", [Bad]),
+                halt(3)
+        end,
     io_lib:format(
-        "{\"driver_node\": \"~s\", \"elapsed_ms\": ~p, \"utc\": \"~s\", \"scenarios\": [~s]}",
+        "{\"task_id\": \"CACHE_V221_BACKEND_CLOSEOUT_V1\", "
+        "\"candidate_sha256\": ~s, \"driver_node\": \"~s\", \"elapsed_ms\": ~p, "
+        "\"utc\": \"~s\", \"scenarios\": [~s]}",
         [
+            Candidate,
             escape(atom_to_list(node())),
             ElapsedMs,
             calendar:system_time_to_rfc3339(
@@ -954,7 +1107,285 @@ escape(L) when is_list(L) ->
             $\n -> "\\n";
             $\t -> "\\t";
             C when C < 16#20 -> io_lib:format("\\u~4.16.0b", [C]);
+            %% C09 实证：~p 会把"全部 latin1 可打印"的随机 binary/list
+            %% 打成原文字符串（boot/hash 偶发命中），>=128 字节直接污染
+            %% JSON（UTF-8 解码失败）。字节级消毒：高位一律 \uXXXX
+            C when C >= 16#80 -> io_lib:format("\\u~4.16.0b", [C]);
             C -> [C]
         end
      || Ch <- Flat
     ]).
+
+%% ===================================================================
+%% C09 收口场景（C02 双端一致性 / C03 预算 / C05 补偿）
+%% ===================================================================
+
+%% C02：B 推进 epoch 后，A 的旧 epoch 复制事件被 B 拒绝（值不被修改）。
+
+%% C9 前置自愈：F5 等前序场景可能留下非 ready 的节点状态；
+%% C9 合同验证须独立于前序残留（ensure ready，否则 restart_sync 后等待）。
+ensure_c9_ready(Node) ->
+    case rpc:call(Node, imboy_cache_sync, status, [], ?RPC_MS) of
+        ready ->
+            ok;
+        _ ->
+            ok = rpc:call(Node, ?MODULE, restart_sync, [], ?RPC_MS),
+            ready = recover_ready(Node, heal_restart(Node), 4),
+            ok
+    end.
+
+c9a_stale_epoch(A, B) ->
+    ok = ensure_c9_ready(A),
+    ok = ensure_c9_ready(B),
+    Key = {cache_v2_test_rep, c9a_epoch},
+    ok = rpc:call(A, imboy_cache, put, [Key, v1, 120, replicate], ?RPC_MS),
+    {ok, v1} = converge_get(B, Key, {ok, v1}),
+    %% B 推进 epoch 至 1：A（epoch=0）的后续事件对 B 是 stale_epoch
+    1 = rpc:call(B, imboy_cache_sync_proto, bump_epoch, [], ?RPC_MS),
+    ok = rpc:call(A, imboy_cache, put, [Key, v2, 120, replicate], ?RPC_MS),
+    timer:sleep(1000),
+    %% B 值未被旧 epoch 事件修改
+    {ok, v1} = rpc:call(B, imboy_cache, get, [Key], ?RPC_MS),
+    %% 恢复 epoch（不污染后续场景）
+    true = rpc:call(B, ets, insert, [imboy_cache_meta, {sync_epoch, 0}], ?RPC_MS),
+    ok.
+
+%% C02：B 侧 registry 配置漂移（hash 不一致）后，A 的事件被 B 拒绝。
+c9b_hash_mismatch(A, B) ->
+    ok = ensure_c9_ready(A),
+    ok = ensure_c9_ready(B),
+    Key = {cache_v2_test_rep, c9b_hash},
+    ok = rpc:call(A, imboy_cache, put, [Key, v1, 120, replicate], ?RPC_MS),
+    {ok, v1} = converge_get(B, Key, {ok, v1}),
+    %% B 改 registry override：hash 漂移
+    rpc:call(
+        B,
+        application,
+        set_env,
+        [
+            imboy,
+            cache_registry_overrides,
+            #{cache_v2_test_rep => {replicate, false}, drift_ns => {local, false}}
+        ],
+        ?RPC_MS
+    ),
+    ok = rpc:call(A, imboy_cache, put, [Key, v2, 120, replicate], ?RPC_MS),
+    timer:sleep(1000),
+    {ok, v1} = rpc:call(B, imboy_cache, get, [Key], ?RPC_MS),
+    %% 恢复配置
+    rpc:call(
+        B,
+        application,
+        set_env,
+        [
+            imboy,
+            cache_registry_overrides,
+            #{cache_v2_test_rep => {replicate, false}}
+        ],
+        ?RPC_MS
+    ),
+    true = rpc:call(B, ets, delete, [imboy_cache_meta, {hash_divergent, A}], ?RPC_MS),
+    ok.
+
+%% C05：origin_seq 跳号触发 fenced key 的 generation 补偿（不依赖 TTL）。
+c9c_gap_compensation(A, B) ->
+    ok = ensure_c9_ready(A),
+    ok = ensure_c9_ready(B),
+    FKey = {cache_v2_test_rep, c9c_gap},
+    G0 = rpc:call(B, imboy_cache_sync, generation, [FKey], ?RPC_MS),
+    %% A 注入 seq 跳号事件（1 → 5）：B 检测缺口并补偿 fenced 域
+    ok = rpc:call(A, ?MODULE, inject_v2_set, [FKey, <<"gap">>, {9001, A}, A, 1], ?RPC_MS),
+    timer:sleep(500),
+    ok = rpc:call(A, ?MODULE, inject_v2_set, [FKey, <<"gap2">>, {9002, A}, A, 5], ?RPC_MS),
+    G1 = converge_generation(B, FKey, G0),
+    true = G1 > G0,
+    ok.
+
+%% C05：peer 化身变化（A 的 sync 重启）触发 B 的 key 级 fenced 补偿。
+c9d_incarnation_compensation(A, B) ->
+    ok = ensure_c9_ready(A),
+    ok = ensure_c9_ready(B),
+    %% FKey 必须用授权测试域 cache_v2_test_rep：cache_v2_test 不在
+    %% registry（validate 的 not_authorized 拒——19.5 fail-closed 正确防御，
+    %% r30 三节点实证 reject_total=1 即此拒因）
+    FKey = {cache_v2_test_rep, c9d_inc},
+    G0 = rpc:call(B, imboy_cache_sync, generation, [FKey], ?RPC_MS),
+    %% A 重启 sync（新化身；restart_sync 在 peer 本地原子完成
+    %% stop+start+unlink，rpc 分离的 unlink 有 normal 退出传播竞态）
+    ok = rpc:call(A, ?MODULE, restart_sync, [], ?RPC_MS),
+    ready = wait_status(A, 400),
+    %% A 新化身事件到达 B → changed → key 级补偿
+    %% （事件必须携带 A 的真实新化身：默认 <<0:128>> 是快照回放伪装特例，
+    %%  化身层放行不补偿，C9d 的 oracle 就永不成立）
+    {_, NewBoot} = rpc:call(A, imboy_cache_sync, node_boot, [], ?RPC_MS),
+    true = is_binary(NewBoot) andalso byte_size(NewBoot) > 0,
+    ok = rpc:call(
+        A, ?MODULE, inject_v2_set, [FKey, <<"newinc">>, {9101, A}, A, 1, NewBoot], ?RPC_MS
+    ),
+    G1 = converge_generation(B, FKey, G0),
+    case G1 > G0 of
+        true ->
+            ok;
+        false ->
+            %% 诊断（C09）：B 侧化身表与 FKey 栅栏状态
+            RejectCnt =
+                case rpc:call(B, elib_metric, get_all_metrics, [], ?RPC_MS) of
+                    AM when is_map(AM) ->
+                        maps:get(reject_total, maps:get(counters, AM, #{}), -1);
+                    _ ->
+                        rpc_failed
+                end,
+            ReceiveCnt =
+                case rpc:call(B, elib_metric, get_all_metrics, [], ?RPC_MS) of
+                    AM2 when is_map(AM2) ->
+                        maps:get(receive_total, maps:get(counters, AM2, #{}), -1);
+                    _ ->
+                        rpc_failed
+                end,
+            Diag = #{
+                b_meta => rpc:call(B, imboy_cache_sync, meta_snapshot, [], ?RPC_MS),
+                fkey_gen => rpc:call(B, imboy_cache_sync, generation, [FKey], ?RPC_MS),
+                a_boot => rpc:call(A, imboy_cache_sync, node_boot, [], ?RPC_MS),
+                b_reject_total => RejectCnt,
+                b_receive_total => ReceiveCnt,
+                a_cfg_hash => hash_head(
+                    rpc:call(A, imboy_cache_sync_proto, config_hash, [], ?RPC_MS)
+                ),
+                b_cfg_hash => hash_head(
+                    rpc:call(B, imboy_cache_sync_proto, config_hash, [], ?RPC_MS)
+                ),
+                a_reg_hash => hash_head(
+                    rpc:call(A, imboy_cache_sync_proto, registry_hash, [], ?RPC_MS)
+                ),
+                b_reg_hash => hash_head(
+                    rpc:call(B, imboy_cache_sync_proto, registry_hash, [], ?RPC_MS)
+                ),
+                b_epoch => rpc:call(B, imboy_cache_sync_proto, epoch, [], ?RPC_MS)
+            },
+            erlang:error({c9d_no_compensation, G0, G1, Diag})
+    end,
+    ok.
+
+%% C05 oracle（核心）：分区期间权威侧更新、失效丢失；重连后受影响 Key
+%% 在 deadline 内返回权威值，不依赖旧 TTL 自然到期。
+c9e_partition_reconnect(A, B, C) ->
+    ok = ensure_c9_ready(A),
+    ok = ensure_c9_ready(B),
+    ok = ensure_c9_ready(C),
+    FKey = {cache_v2_test_rep, c9e_part},
+    %% A 预写旧值（fenced namespace 的 invalidate 类语义：值+栅栏）
+    ok = rpc:call(A, imboy_cache_sync, invalidate, [FKey], ?RPC_MS),
+    timer:sleep(300),
+    %% 分区：A 与 B/C 断开
+    true = rpc:call(A, erlang, disconnect_node, [B], ?RPC_MS),
+    true = rpc:call(A, erlang, disconnect_node, [C], ?RPC_MS),
+    timer:sleep(500),
+    %% 权威侧（B）在分区期间推进：模拟 PG 权威变更后的缓存失效（B 侧
+    %% invalidate 广播在分区内丢失，A 不感知）
+    ok = rpc:call(B, imboy_cache_sync, invalidate, [FKey], ?RPC_MS),
+    timer:sleep(500),
+    %% 重连
+    true = rpc:call(A, net_kernel, connect_node, [B], ?RPC_MS),
+    true = rpc:call(A, net_kernel, connect_node, [C], ?RPC_MS),
+    timer:sleep(1500),
+    %% 重连后 B 发新事件（<<0:128>> 伪装化身 ≠ A 已知的 B 化身 → changed）：
+    %% A 检测并补偿 fenced key。G0 必须在事件前读——inject 的 rpc 返回时
+    %% A 可能已完成应用与补偿（r35 实证 GA==G0 假阴性）
+    G0 = rpc:call(A, imboy_cache_sync, generation, [FKey], ?RPC_MS),
+    ok = rpc:call(B, ?MODULE, inject_v2_set, [FKey, <<"authoritative">>, {9201, B}, B, 1], ?RPC_MS),
+    GA = converge_generation(A, FKey, G0),
+    true = GA > G0,
+    %% A 在 deadline 内返回权威值：补偿 flush 旧值 + 事件 set 新值
+    %% （depcache 直读——get 拦截层对未 verified key miss 是另一层语义）
+    <<"authoritative">> = converge_value(A, FKey),
+    ok.
+
+%% C03：Nmax 上限满时新 replicate 写被拒（fail-closed）。
+c9f_nmax(A) ->
+    ok = ensure_c9_ready(A),
+    OldCfg = rpc:call(A, application, get_env, [imboy, cache_replication, #{}], ?RPC_MS),
+    rpc:call(
+        A,
+        application,
+        set_env,
+        [
+            imboy,
+            cache_replication,
+            maps:merge(OldCfg, #{n_max => 1})
+        ],
+        ?RPC_MS
+    ),
+    try
+        %% 前序场景已使 rindex_count > 0（n_max=1 即"已满"）；fail-closed
+        %% 语义：已满状态下任何新 replicate 写一律 {error, index_full}
+        K1 = {cache_v2_test_rep, c9f_n1},
+        K2 = {cache_v2_test_rep, c9f_n2},
+        {error, index_full} = rpc:call(A, imboy_cache, put, [K1, v, 120, replicate], ?RPC_MS),
+        {error, index_full} = rpc:call(A, imboy_cache, put, [K2, v, 120, replicate], ?RPC_MS),
+        %% 预算恢复后写路径立即回归（fail-closed 不残留）
+        ok = rpc:call(A, ?MODULE, restore_nmax_then_put, [K1], ?RPC_MS)
+    after
+        rpc:call(A, application, set_env, [imboy, cache_replication, OldCfg], ?RPC_MS)
+    end,
+    ok.
+
+%% 预算恢复 + 写入验证（C9f after 兜底前的正向回归断言）
+restore_nmax_then_put(K1) ->
+    %% get_env/3 返回裸值（非 {ok,V}——/2 才是 {ok,V} 语义）
+    Cfg = application:get_env(imboy, cache_replication, #{}),
+    application:set_env(imboy, cache_replication, maps:merge(Cfg, #{n_max => 50000})),
+    try
+        ok = imboy_cache:put(K1, v, 120, replicate)
+    after
+        application:set_env(imboy, cache_replication, Cfg)
+    end.
+
+%% 等待节点侧 fenced generation 超过基线（有界轮询）。
+converge_generation(Node, Key, Baseline) ->
+    converge_generation(Node, Key, Baseline, 100).
+
+%% 等待节点读到期望终值（并发双写的确定性收敛；有界轮询）。
+converge_to(_Node, _Key, _Expect, 0) ->
+    error(converge_timeout);
+converge_to(Node, Key, Expect, N) ->
+    case rpc:call(Node, imboy_cache, get, [Key], ?RPC_MS) of
+        Expect ->
+            ok;
+        _ ->
+            timer:sleep(100),
+            converge_to(Node, Key, Expect, N - 1)
+    end.
+
+%% 等待 A 侧收敛到权威值（事件应用 + 补偿 flush 后的最终状态）。
+converge_value(Node, Key) ->
+    converge_value(Node, Key, 50).
+converge_value(Node, _Key, 0) ->
+    timeout_value;
+converge_value(Node, Key, N) ->
+    case depcache_direct_get(Node, Key) of
+        <<"authoritative">> ->
+            <<"authoritative">>;
+        _ ->
+            timer:sleep(100),
+            converge_value(Node, Key, N - 1)
+    end.
+
+%% 直读 depcache（绕过 imboy_cache:get 的 replicate 拦截层：
+%% 未 verified 的 replicate key 对上层 miss 回权威是正确语义，不能作断言）
+depcache_direct_get(Node, Key) ->
+    case rpc:call(Node, depcache, get, [Key, imboy_cache], ?RPC_MS) of
+        {ok, V} -> V;
+        Other -> Other
+    end.
+
+converge_generation(_Node, _Key, Baseline, 0) ->
+    Baseline;
+converge_generation(Node, Key, Baseline, N) ->
+    G = rpc:call(Node, imboy_cache_sync, generation, [Key], ?RPC_MS),
+    case G > Baseline of
+        true ->
+            G;
+        false ->
+            timer:sleep(100),
+            converge_generation(Node, Key, Baseline, N - 1)
+    end.

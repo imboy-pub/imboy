@@ -1,0 +1,381 @@
+# C12 — 最终候选冻结 + 全量 EUnit + 本地性能窗口执行计划
+
+> 任务：CACHE_V221_BACKEND_CLOSEOUT_V1 / C12（最终候选测试及本地性能）
+> 本文性质：只读盘点产出的执行计划（PLAN_READY / NOT_EXECUTED）。执行由协调者
+> （A0）按第 6 节顺序串行完成，本文不含任何已执行的测试结果。
+> 盘点时间基准：2026-10-12 07:11 Asia/Shanghai；HEAD `675b07444955ea87626a3173ea74feb9d39f0054`
+> 上游文档：`backend-closeout-plan-v1.md` §6 C12 / §4 租约 / §7 证据规则；
+> 原计划 `w0/plan-v2.2.1.md` 19.1 / 19.7 / 12.4 / W4；C01 冻结
+> `closeout-v1/protocol-budget-frozen.md`；C00 `closeout-v1/baseline.json`、
+> `resources.json`、`ledger-v1.json`。
+
+---
+
+## 1. 盘点快照（执行前事实，机器核实）
+
+| 项 | 现状 |
+|---|---|
+| HEAD | `675b0744`（G-QR C08 已提交；C02～C05 提交 `7db4e0af`；G-01 提交 `e001fb8e`） |
+| 工作树 | **未冻结**：`scripts/cache_v21_dcheck.erl`、`scripts/cache_v21_mixed_dcheck.erl`、`src/lib/imboy_cache_sync.erl`、`src/lib/imboy_cache_sync_proto.erl`、`src/lib/imboy_cache_sync_snapshot.erl`、`test/lib/imboy_cache_sync_tests.erl`、`closeout-v1/protocol-budget-frozen.md` 均为已修改状态（C09/C10 修复在途） |
+| C09 | 进行中：`raw/three_node_c09_r{1,2,3,4,6,7}.json`（r5 缺号）；r7 仍有失败场景（F5/C9a/C9d/C9e/C9f，见 JSON detail）；`logs/dcheck_r1..r10.log` |
+| C10 | 未开始：raw/ 无任何 mixed 系列证据 |
+| C11 | `closeout-v1/observability-check.md` 已交付核查（A 类 3 项 + B 类 3 项缺口记录在案） |
+| C13 | `closeout-v1/external-inputs-c13.md` 已交付只读取证（AC-26/27 维持 BLOCKED_EXTERNAL） |
+| 机器态 | uptime 8 天（**未重启**），load 5.53/5.02/4.35（12 核 12 调度器）；W5-07 已证同字节构件 get w1 吞吐较 W0 基线 -74%~-79% 的机器态退化**尚未消除**（见 `w1-w5-report-20261011.md` W5-07 节） |
+| 行数红线 | `src/lib/imboy_cache_sync.erl` 现 1203 行 > 800 行规范（拆分后仍超，冻结审查须先处理：继续最小拆分或登记明确例外，禁止借机重写） |
+| 磁盘 | 33Gi 可用（`closeout-v1/baseline.json` environment） |
+
+---
+
+## 2. W0 cache profile 与压测/测试入口盘点
+
+### 2.1 唯一对应 W0 cache profile 的入口
+
+**`scripts/run_cache_w0.py`**（19.1 指定执行入口）。它编译 `scripts/cache_w0_bench.erl`
+到临时目录，起独立 BEAM（随机节点名 + 本次随机 cookie，loopback，不启动 IMBoy/PG/Garage，
+不读业务配置），1+2 个 peer 组成三真实节点，输出整套证据目录。
+
+实际命令行（19.1 原文 + W0 基线 r7/r8 实参）：
+
+```bash
+cd /Users/leeyi/project/imboy.pub/imboy
+python3 scripts/run_cache_w0.py --operations 10000 --output <本次专用空目录>
+```
+
+冻结 profile 口径（19.1 + `w1-w5-addendum-20261011.md` §5，**不可在本轮调整**）：
+
+- 并发 1/8/32；keyspace 1024；value 256 bytes；TTL=3600s；每 worker **10000** ops；
+- 负载种类：GET、SET、90/10 mixed、memo 热命中、get_wait、syn（逐条等全部接收者
+  depcache:set 完成的 ACK，测应用完成延迟而非 publish 返回）；
+- depcache `memory_max=64MB`（bench 内 hardcode）；
+- 同字节微基准仅测 `deps/{depcache,syn,jsone}` 原语 —— C12 原文定位：**只作环境控制，
+  不能替代新 V2 代码性能验证**。
+- 可比性警告：W0 基线 r7/r8（`.Codex/runs/cache-v2.2.1-w0/r7-20261010-140457`、
+  `r8-20261010-140511`）实参 `--operations 10000`；历史 w507 对照轮误用默认 1000，
+  属可比性偏差，C12 一律用 10000。
+- 退出码约定（19.1）：runner 进程**恒退 2（W0_BLOCKED 设计行为）**，不等于压测失败；
+  判定看 `baseline.json` 的 `compile_exit`/`run_exit` 与 `performance.json` 是否产出。
+
+### 2.2 正确性/故障入口（C12 复跑用）
+
+| 入口 | 用法 | 退出码 |
+|---|---|---|
+| `scripts/cache_v21_dcheck.erl`（三节点 dcheck，C09/C12） | `erlc -o ebin_drv scripts/cache_v21_dcheck.erl` 后 `erl -noshell -pa ebin_drv -pa ebin -pa deps/depcache/ebin -pa deps/syn/ebin -eval 'cache_v21_dcheck:main(["<out.json>"]), halt(0).'`（本会话惯例：驱动编译到 `~/.codex/cache-closeout-runs/zcode-20261011T130725Z/ebin_drv/`） | 0 全过 / 2 有失败 / 1 参数错误 |
+| `scripts/cache_v21_mixed_dcheck.erl`（混合版本，C10/C12） | `LEGACY_EBIN=<旧树 ebin> NEW_EBIN=<新树 ebin> erl -noshell -pa <driver_dir> -eval 'cache_v21_mixed_dcheck:main(["<out.json>"]).'`；旧树 = C10 冻结的 INTEGRATION_BASE（V2 引入前 main）独立构建 | 0 全过 / 2 有失败 / 1 参数错误 |
+| `IMBOYENV=local make eunit-local t=<suite>`（定向） | Makefile:557 起；PG relay 动态高端口 + 私有 HTTP 端口，勿与其他会话并发 | make exit 码 |
+| `IMBOYENV=local make eunit-local`（全量） | 同上；前置本地 imboy_v1 schema 已应用最新迁移 | make exit 码 |
+
+C12 定向套件集（自本会话 logs/ 实际使用归纳）：
+`imboy_cache_tests`、`imboy_cache_policy_tests`、`imboy_cache_v2_tests`、
+`imboy_cache_sync_tests`、`account_ds_tests`（G-01）、
+`qr_login_session_repo_tests` / `qr_login_handler_tests` / `qr_login_sse_handler_tests` /
+`qr_login_event_ds_tests`（C08 G-QR）。
+
+### 2.3 明确不是 cache profile 入口的脚本
+
+- `scripts/bench_websocket.sh` —— WebSocket 并发连接基准，需**已启动的后端** + TOKEN，
+  属业务长连接面，与 W0 cache profile 无关，C12 不使用。
+- `scripts/smoke_extended.sh`、`scripts/smoke/`、`run_feature_flag_smoke.sh` —— 业务冒烟，
+  需后端运行，C12 不使用。
+- `scripts/cache_w0_timeout_probe.erl` —— W0 时期的 depcache 超时探针，非 profile 主入口。
+
+### 2.4 缺口：V2 路径 bench 驱动（必须先补，属波次 1 A7 职责）
+
+现状：仓内**不存在**覆盖 V2 新 API/协议路径（`imboy_cache:put/4` V2 信封、同步栅栏、
+fenced generation、epoch/hash 校验）的性能驱动；`cache_w0_bench.erl` 只打 depcache/syn
+原语。C12 候选臂无法直接开跑。A7 须在候选冻结**前**交付驱动并自测（不占用正式窗口），
+驱动合同见第 6.5 节；未交付前 C12 性能窗口只能以环境控制臂先行，候选臂保持
+`WAITING_RESOURCE`，禁止拿微基准充候选臂证据。
+
+---
+
+## 3. 证据 JSON 结构约定（自既有 raw/ 与 C14 verifier 机械提取）
+
+C14 verifier `scripts/check_cache_closeout_v1.py`（未跟踪新文件，A8 交付）对
+`~/.codex/cache-closeout-runs/zcode-20261011T130725Z/raw/` 下**扁平 `*.json`** 的硬性要求：
+
+1. **命名/系列**：`<series>_r<N>.json`；系列名 = 去掉 `_r\d+` 后缀（`series_of()`）。
+   既有系列：`three_node_c09`。**同一系列内禁止混候选**（不同 CANDIDATE_SHA 不得进同一
+   系列编号）。
+2. **结构（check_exits）**：顶层对象，`scenarios` 为非空列表，每项必含
+   `name`（非空字符串）/`status`（必须逐项 == `"pass"`）/`detail`（字符串）；
+   `elapsed_ms` 为非负数值。空 scenarios 直接拒绝（反伪 PASS）。
+3. **候选绑定（check_candidate）**：顶层须携带
+   `candidate_sha256` / `candidate` / `candidate_digest` / `working_tree_digest`
+   任一键，值为 64 位十六进制 sha256；全部证据的候选须与台账最终候选一致。
+   ⚠️ 既有 `three_node_c09_r*.json` **均未携带候选绑定**——C09 终轮证据必须补齐该字段，
+   否则 C14 必挂（执行 C12 时同样适用）。
+4. **UTC（check_utc）**：顶层 `utc` 或任意 `*_utc` 字段必须为带时区偏移的 ISO8601，
+   晚于 1971-01-01 且不超未来 24h（拒绝 1970 哨兵时间戳——即纠正历史混合驱动 1970 问题）。
+5. dcheck/mixed 驱动现状输出（`three_node_c09_r*.json` 实样）：顶层
+   `driver_node` / `elapsed_ms` / `utc` / `scenarios[{name,status,detail}]`，
+   stdout 汇总行 `== cache_v21_dcheck: N passed, M failed, X ms ==` 落 `logs/dcheck_r*.log`。
+   C12 复跑沿用该 schema，**追加** `candidate_sha256` 顶层字段。
+
+性能证据两层结构（沿用 W1-W5 会话 w507 先例 + verifier 兼容）：
+
+- **原始层**（子目录，不被 verifier 扫描）：`raw/perf_c12_<arm>_r<N>/` =
+  `run_cache_w0.py --output` 整目录产物（`performance.json`、`baseline.json`、
+  `compile.log`、`raw.log`、`sha256.json` + census 文件）。`baseline.json` 内嵌
+  `head`/`working_tree_status`/`load`/`dependency_hashes`/`script_hashes`/
+  `compile_exit`/`run_exit` —— 基线与候选的区分即由此 + 臂标签 + 交错序实现，
+  历史先例：`raw/w507_main_r{1,2}/`、`w507_quiet_r{1,2}/`、`w507_probe_load365/`。
+- **汇总层**（扁平，verifier 兼容）：`raw/perf_c12_r<N>.json`，顶层含
+  `candidate_sha256`、`utc`、`elapsed_ms`、`scenarios[]`（每臂每指标组一个
+  scenario：profile 自检、吞吐组、P99 组、资源包络组…，status 由第 6.5 节判据产生）、
+  `arm`、`round`、`load_before/after`、`operations=10000`，并内嵌指向原始层目录的
+  相对路径与 `sha256.json` 摘要。
+
+全量 EUnit 与 QR 的原始日志落 `logs/`（本会话惯例 `<kind>_r<N>.log`，如
+`eunit_full_c12_r1.log`、`qr_c12_r1.log`），make 的 exit 码原样记录，禁止只抄结论行。
+
+---
+
+## 4. 候选冻结步骤与 CANDIDATE_SHA 记录格式
+
+### 4.1 冻结前置（全部满足才可进入第 6 节窗口）
+
+1. C09 全部 required 场景**至少两轮独立通过**且修复已提交（当前 r7 尚有 F5/C9a/
+   C9d/C9e/C9f 失败 + 工作树未提交，均须闭合）；
+2. C10 混合/回滚矩阵两轮完整零失败，LEGACY_EBIN 旧版本 SHA/构建树冻结；
+3. C11 B 类代码项（status/epoch/queue gauge 导出等）落定或明确登记为非阻断缺口；
+4. `imboy_cache_sync.erl` 1203 行超限问题处理完毕（最小拆分或登记例外）；
+5. A9 代码审查无阻断项（波次 3 门）；
+6. 外来 WIP（2 个未跟踪 docs 路径）保持不接管、不 stage。
+
+### 4.2 冻结流程（机械步骤）
+
+```bash
+# 1. 停写声明 + 记录 HEAD
+git -C /Users/leeyi/project/imboy.pub/imboy rev-parse HEAD        # → freeze.head
+git -C ... status --porcelain=v1                                   # → 仅剩已知外来 WIP
+# 2. 干净重建
+make compile && echo compile_exit=0
+# 3. 计算 frozen_set（下表）逐文件 sha256 → 规范序列化 → candidate_sha256
+# 4. 写 ~/.codex/cache-closeout-runs/zcode-20261011T130725Z/raw/candidate_freeze.json
+#    + 更新 closeout-v1/ledger-v1.json 顶层 candidate 字段
+```
+
+`frozen_set`（候选字节面；执行时逐项展开为精确路径清单）：
+
+| 组 | 路径模式 |
+|---|---|
+| 缓存核心 | `src/lib/imboy_cache.erl`、`src/lib/imboy_cache_sync*.erl`、`src/lib/imboy_cache_policy.erl` |
+| 缓存测试 | `test/lib/imboy_cache*_tests.erl`、`test/lib/imboy_cache_sync_tests.erl` |
+| 驱动/runner | `scripts/cache_v21_dcheck.erl`、`scripts/cache_v21_mixed_dcheck.erl`、`scripts/run_cache_w0.py`、`scripts/cache_w0_bench.erl`、A7 交付的 V2 bench 驱动 |
+| 配置 | `config/` 中缓存同步相关段（执行时点名为准） |
+| QR（G-QR 面已随 C08 提交，一并纳入指纹以绑定全量） | `src/ds/qr_login*`、`src/logic/qr_login*`、`src/api/qr_login*`、`test/lib/qr_login*_tests.erl`（执行时按 C00 ownership 展开精确清单） |
+
+### 4.3 CANDIDATE_SHA 记录格式（`raw/candidate_freeze.json`）
+
+```json
+{
+  "candidate_sha256": "<64hex：frozen_set 全部 {path,sha256} 按路径排序后的规范 JSON 序列化的 SHA-256>",
+  "working_tree_digest": "<64hex：sha256(HEAD + '\\n' + git status --porcelain=v1 全文)>",
+  "frozen_at_utc": "<带时区 ISO8601>",
+  "head": "<40hex git commit>",
+  "head_subject": "<git log -1 --format=%s>",
+  "compile_exit": 0,
+  "budget_digest": "budget_v1: Nmax=50000 Nmax_bytes=16MiB Tmax=20000 Tmax_bytes=8MiB Bmax=2048 Bmax_bytes=32MiB Pmax=256 Pmax_bytes=4MiB Rmax=2 Rmax_rounds=3 Dmax=300s MaxValue=32768B MaxTTL=600s HighWater=10000 W=720s",
+  "protocol_budget_frozen_sha256": "<closeout-v1/protocol-budget-frozen.md 的 sha256>",
+  "frozen_set": [{"path": "src/lib/imboy_cache.erl", "sha256": "<64hex>"}, "..."],
+  "perf_thresholds_frozen": {
+    "source": "plan-v2.2.1.md 12.4 候选值，测试前冻结，不得事后调整",
+    "local_get_p99_us_max": 2000,
+    "local_set_p99_us_max": 5000,
+    "three_node_set_converge_p99_ms_max": 1000,
+    "relative_get_p99_regression_max_pct": 10,
+    "sustained_throughput_vs_baseline_min_pct": 95
+  }
+}
+```
+
+同一 `candidate_sha256` 必须随后写入 C12 每份证据（`raw/*.json` 顶层
+`candidate_sha256` 字段）与台账。**重冻规则**（C12 原文）：候选代码/依赖/配置/driver
+任何变更 → 重新计算 CANDIDATE_SHA → 受影响门禁重跑；全量 EUnit 必须绑定**最后**代码
+候选。
+
+---
+
+## 5. 互斥窗口总顺序（A0 串行租约）
+
+resources.json 已冻结互斥项：`full_eunit` / `heavy_fault_stress`（C09 轮）/
+`official_perf_window` 均为串行租约。C12 窗口内部一行顺序：
+
+**全量 EUnit → 三节点 dcheck（≥2 轮）→ mixed dcheck → QR 定向 → 本地性能
+（环境锚 1 轮 + 基线/候选交错 ≥3 组）**
+
+排序理由：全量最先暴露最广失败面；故障/混合次之（负载中等）；性能最后，要求独占
+静默机器。窗口期间不安排其他 10 路高负载并发（收口计划 §4）。
+
+---
+
+## 6. 窗口分步执行卡（命令 / PASS / PARTIAL / 证据）
+
+### 6.0 窗口前置检查（每步之前重复）
+
+- `uptime`、`sysctl -n hw.ncpu`、`top -l 1` 抽查无并行会话全量测试/容器满载；
+- PG（127.0.0.1:4323）`pg_isready`；磁盘可用 ≥ 10Gi；
+- 端口纪律：eunit-local 独占 relay 15432→4323 与 HTTP 19980/19970（并发时按本会话
+  惯例随机高端口）；dcheck/mixed/perf 全部随机节点名 + 随机 cookie，禁用现役 cookie。
+
+### 6.1 全量 EUnit（步骤 ①）
+
+```bash
+cd /Users/leeyi/project/imboy.pub/imboy
+IMBOYENV=local make compile 2>&1 | tee ~/.codex/cache-closeout-runs/zcode-20261011T130725Z/logs/c12_step1_compile_r1.log
+IMBOYENV=local make eunit-local 2>&1 | tee ~/.codex/cache-closeout-runs/zcode-20261011T130725Z/logs/eunit_full_c12_r1.log
+echo "exit=$?"
+```
+
+- **PASS**：`make compile` exit=0；全量 `make eunit-local` exit=0，日志末尾
+  `Failed: 0`，`Passed` 计数与套件汇总一致，非预期取消/跳过 = 0（eunit cancel 归零），
+  原始 exit 保存。失败即 **FAIL**：隔离复跑不能替代整轮通过；无关失败不擅自修复，
+  保留外部归属与阻塞证据（C12 原文）。
+- **PARTIAL**：不适用——全量只有 PASS/FAIL（历史教训：Failed 4/Passed 11078/
+  exit 非零只能记全量 FAIL + 定向复跑 PASS，不得写成全量 PASS）。
+- 证据：`logs/eunit_full_c12_r1.log` + 扁平 `raw/eunit_full_c12_r1.json`
+  （顶层 candidate_sha256/utc/elapsed_ms/scenarios[]：compile、full_run、count_consistency
+  三个 scenario）。
+
+### 6.2 三节点 dcheck（步骤 ②，依赖 C09 完成）
+
+```bash
+mkdir -p <RUN_ROOT>/ebin_drv && erlc -o <RUN_ROOT>/ebin_drv scripts/cache_v21_dcheck.erl
+erl -noshell -pa <RUN_ROOT>/ebin_drv -pa ebin -pa deps/depcache/ebin -pa deps/syn/ebin \
+  -eval 'cache_v21_dcheck:main(["<RUN_ROOT>/raw/three_node_c12_r1.json"]), halt(0).'
+```
+
+- **PASS**：驱动退出码 0；JSON `scenarios[].status` 全 `"pass"`；**≥2 轮独立通过**
+  （C09 口径带入）；JSON 顶层含 `candidate_sha256`/`utc`/`elapsed_ms`。
+- **FAIL**：任一场景 fail 或退出码 2；按 C12 只对受影响场景重跑 + 相邻回归，
+  不得静默改 oracle。
+- 证据：`raw/three_node_c12_r{1,2}.json` + `logs/dcheck_c12_r{1,2}.log`。
+  （新系列 `three_node_c12`，不与 C09 系列混编——系列内候选一致原则。）
+
+### 6.3 mixed dcheck（步骤 ③，依赖 C10 完成）
+
+```bash
+LEGACY_EBIN=<C10 冻结旧树 ebin> NEW_EBIN=<候选树 ebin> \
+erl -noshell -pa <RUN_ROOT>/ebin_drv \
+  -eval 'cache_v21_mixed_dcheck:main(["<RUN_ROOT>/raw/mixed_c12_r1.json"]).'
+```
+
+- **PASS**：退出码 0；M1～M6 全场景 pass + candidate 绑定；旧版本 SHA 与 C10 冻结
+  记录一致（禁"新代码模拟旧版本"）。
+- **FAIL**：任一场景 fail / 退出码 2 / 旧树 SHA 不一致。
+- 证据：`raw/mixed_c12_r{1,2}.json`（两轮，C10 矩阵口径）+ `logs/mixed_c12_r{1,2}.log`。
+
+### 6.4 QR 定向（步骤 ④，依赖 C08 已提交；不依赖 C09/C10 的套件内容）
+
+```bash
+for t in qr_login_session_repo_tests qr_login_handler_tests qr_login_sse_handler_tests qr_login_event_ds_tests; do
+  IMBOYENV=local make eunit-local t=$t 2>&1 | tee <RUN_ROOT>/logs/qr_c12_${t}_r1.log
+done
+```
+
+- **PASS**：每套件 make exit=0 且 `Failed: 0`；claim/consume 原子性、SSE/status 竞争
+  断言全部通过（C08 oracle 既有断言，不新造）。
+- **FAIL**：任一失败；属产品回归走修复预算（每 root cause ≤ 2 轮自动修复）。
+- 证据：`logs/qr_c12_*_r1.log` + 扁平 `raw/qr_c12_r1.json`（四套件各一个 scenario）。
+
+### 6.5 本地性能窗口（步骤 ⑤）
+
+**静默判据（每轮开跑前记录，任一不满足→该轮标记 noisy，不作为 gate 数据）**：
+1min load ≤ 6（12 调度器之半，w507_quiet 同量级）、15min load ≤ 8、无并行会话满载。
+
+**三臂定义**（全部同 W0 冻结 profile：1024 Key/256B/TTL=3600/并发 1/8/32/10000 ops）：
+
+| 臂 | 内容 | 输出 |
+|---|---|---|
+| env（环境锚） | `python3 scripts/run_cache_w0.py --operations 10000 --output raw/perf_c12_env_r1/` 同字节微基准，对照 W0 r7/r8 判机器态 | `raw/perf_c12_env_r1/` |
+| base（基线臂） | **同一候选字节** + V2 复制关闭（默认生产配置：`cache_sync_protocol=legacy`、fenced_namespaces=[]） | `raw/perf_c12_base_r{i}/` |
+| cand（候选臂） | **同一候选字节** + 本地显式覆盖配置启用 V2（fixture namespace），走新 API/协议；覆盖 S/M/L Key/Value 分布、混合业务负载、资源包络 | `raw/perf_c12_cand_r{i}/` |
+
+**交错序列**（≥3 组，机器漂移在交错中抵消）：
+
+```text
+env_r1 → base_r1 → cand_r1 → base_r2 → cand_r2 → base_r3 → cand_r3
+（env 锚 1 轮 + 3 组交错 = 7 轮；每轮全新空输出目录，轮间记录 load before/after）
+```
+
+base/cand 臂由 A7 交付的 V2 bench 驱动执行（第 2.4 节缺口）；驱动合同：
+同 profile 参数、输出 verifier 兼容 JSON + 全量指标（吞吐、P50/P95/P99、错误率、
+三节点同步收敛时间、mailbox/heap/metadata 峰值）、成功退出码 0。
+A7 驱动未交付期间，env 臂可先行，base/cand 记 `WAITING_RESOURCE`。
+
+**PASS 判据（全部满足）**：
+
+1. 每轮 `baseline.json` `compile_exit=0` 且 `run_exit=0`（runner 进程退 2 为设计行为，
+   不算失败）；静默判据每轮满足；
+2. bench 内建 self_checks（单飞 memo、失效竞态、loader 异常、崩溃恢复、get_wait 移交等）
+   与 W0 基线**逐项语义值一致**（正确性零回归）；
+3. 冻结本地相对阈值（12.4 候选值，测试前冻结不得调整）：本地 GET P99 ≤ 2ms、
+   本地 SET P99 ≤ 5ms、同机房三节点 SET 收敛 P99 ≤ 1s、相对 GET P99 退化 ≤ 10%、
+   同等负载持续吞吐 ≥ 冻结基线 95%；
+4. 资源包络不超 C01 冻结预算（budget_digest 三方一致），报告吞吐、P99、错误率、
+   同步收敛时间、mailbox/heap/metadata 峰值全项；
+5. ≥3 组交错中候选臂无系统性劣于基线臂超出阈值的情形。
+
+**PARTIAL 判定（引用 19.7 原文与 W5-07 既定纪律）**：
+
+> 19.7：「W0 结束时只有业务峰值/目标硬件已知，才冻结绝对吞吐、P99、错误率和
+> headroom。本机微基准不反向编造业务 SLO；未知项明确 W0_BLOCKED。」
+> 「当前保留 A；若缺少最终 SLO，仅表示"B 不获准"，不能伪称 A 已满足生产负载。」
+
+触发条件与处置：
+
+- **机器态异常**（当前最大风险：uptime 8 天未重启，W5-07 已证同字节退化 -74%~-79%）：
+  env 臂与 W0 r7/r8 同字节对照（30 项构件 SHA256 逐项 MATCH 方法）出现超出噪声带
+  （±10%）的吞吐/P99 偏离，或静默判据无法满足 → 该窗口性能记 **PARTIAL**，
+  归因机器态（哈希清单铁证），**不调阈值、不用满载数据充 gate**；需要用户主机重启
+  才能继续时记 `WAITING_USER_ACTION`（C12 原文：先验证环境适用性，不预设"重启必能
+  修复"）。机器重启后（若用户授权）重开窗口从 env 锚重新起算。
+- **候选臂真实退化**（排除机器态后仍超阈值）：按 FAIL 处理进入修复预算，
+  修复后重冻候选并重跑受影响门禁；超预算 → `NO_GO`。
+- **SLO 面**：无论本地结果如何，绝对生产 SLO 维持 W0_BLOCKED / AC-26/27
+  BLOCKED_EXTERNAL（C13 已判定），本地 PASS 不推导生产资格。
+
+**证据**：原始层 `raw/perf_c12_{env,base,cand}_r{N}/`（整目录 + sha256.json）；
+汇总层 `raw/perf_c12_r{N}.json`（每轮一个，顶层 candidate_sha256/utc/elapsed_ms/
+arm/round/load/scenarios[]，scenarios 含 profile_self_check、throughput、p99、
+convergence、resource_envelope 五组，status 由上述判据产生）。
+
+---
+
+## 7. 依赖 C09/C10 完成才能执行的步骤清单
+
+| # | 步骤 | 依赖 | 说明 |
+|---|---|---|---|
+| 1 | §4 候选冻结（CANDIDATE_SHA）整体 | **C09 + C10** | 当前工作树未提交修改即 C09/C10 WIP；冻结 = 停止产品代码写入，必须待两者全部 required 场景闭合并提交 |
+| 2 | §6.2 三节点 dcheck 复跑 | **C09** | 场景集以 C09 终版为准（脚本仍在修改中）；C12 复跑绑候选 |
+| 3 | §6.3 mixed dcheck 复跑 | **C10** | 需 C10 冻结的 LEGACY_EBIN 旧版本构建树与两轮绿基线 |
+| 4 | §6.1 全量 EUnit / §6.4 QR / §6.5 性能 | 冻结（传递依赖 C09+C10） | 逻辑上依赖冻结成立；QR 套件本身依赖 C08（已提交 `675b0744`），与 C09/C10 无关 |
+
+**不依赖 C09/C10、可与 C09/C10 并行先做的准备**：
+
+- A7 的 V2 路径 bench 驱动编写与自测（§2.4 缺口，唯一硬前置缺口）；
+- W0 r7/r8 基线指纹核对（30 项构件 SHA256 清单预生成）；
+- 机器态预检脚本化（uptime/load/磁盘采样）、证据目录脚手架、本计划阈值表复核；
+- C09 终轮证据补 `candidate_sha256` 绑定字段的驱动侧改造（`cache_v21_dcheck.erl`
+  输出增加顶层候选字段，属 C09 收尾 owner 的改动）。
+
+---
+
+## 8. 红线（执行时同样适用）
+
+- 窗口执行者只按本计划串行运行；禁止在盘点/计划阶段运行任何测试/bench、占用端口、
+  `git add/commit`（本文写作即遵守）。
+- 不得连接共享/生产目标；禁现役 cookie、真实凭据/数据；日志不含生产 PII。
+- 性能阈值与 C01 预算**测试前冻结**，失败后不得调高获取 PASS（19.7）。
+- 全量非零退出不能用隔离复跑签 PASS；loopback 不代表三机/生产容量。
+- 每步原始 exit 必须保存；证据缺候选绑定/1970 时间戳/空 scenarios 一律 C14 拒绝。
+
+## 9. 交付物
+
+| 文件 | 位置 |
+|---|---|
+| 本执行计划 | `docs/architecture/cache-v2.2.1/closeout-v1/c12-window-plan.md` |
+| 候选冻结记录 | `~/.codex/cache-closeout-runs/zcode-20261011T130725Z/raw/candidate_freeze.json` |
+| 窗口证据（原始） | 同目录 `raw/`（`three_node_c12_r*` / `mixed_c12_r*` / `qr_c12_r1` / `eunit_full_c12_r1` / `perf_c12_*`）与 `logs/` |
+| 机器摘要/台账更新（执行后由协调者写） | `closeout-v1/ledger-v1.json` 候选字段 + 后续 C12 报告 |
