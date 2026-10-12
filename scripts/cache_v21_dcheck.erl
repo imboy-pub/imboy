@@ -192,6 +192,12 @@ s_dup(A, B) ->
     ok.
 
 s_race(A, B, C) ->
+    %% 前置：三节点 ready（前序故障场景的恢复长尾期 get 对 replicate
+    %% key 返回 miss，b1 轮实证 10s 窗口不够——竞态 oracle 的前提是
+    %% 集群正常服务，不是恢复中的收敛）
+    ok = ensure_c9_ready(A),
+    ok = ensure_c9_ready(B),
+    ok = ensure_c9_ready(C),
     Key = {cache_v2_test_rep, d_race1},
     Self = self(),
     spawn(fun() ->
@@ -215,9 +221,9 @@ s_race(A, B, C) ->
     %% 同一终值后再断言。
     VC0 = converge_any(C, Key),
     true = lists:member(VC0, [{ok, from_a}, {ok, from_b}]),
-    ok = converge_to(A, Key, VC0, 100),
-    ok = converge_to(B, Key, VC0, 100),
-    ok = converge_to(C, Key, VC0, 100),
+    ok = converge_to(A, Key, VC0, 300),
+    ok = converge_to(B, Key, VC0, 300),
+    ok = converge_to(C, Key, VC0, 300),
     ok.
 
 s_invalidate(A, B) ->
