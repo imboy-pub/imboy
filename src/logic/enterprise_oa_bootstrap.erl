@@ -72,11 +72,12 @@ maybe_seed() ->
                         ok
                 end
             catch
-                Class:Reason:Stack ->
+                %% 与 try 块内 case 分支的 Reason 区分命名，避免 unsafe variable
+                Class:FailReason:Stack ->
                     %% 引导失败不阻断启动；工作台入口静默隐藏兜底
                     ?ERROR_LOG([
                         enterprise_oa_bootstrap_failed,
-                        #{class => Class, reason => Reason, stack => Stack}
+                        #{class => Class, reason => FailReason, stack => Stack}
                     ]),
                     ok
             end
