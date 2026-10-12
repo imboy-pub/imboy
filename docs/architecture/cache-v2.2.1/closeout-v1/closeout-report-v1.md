@@ -293,6 +293,8 @@ P1~P6 计划中提交落地后，rollback-v1.md 须增补对应回滚条目（�
 
 ## 7. C14 终轮签发检查单
 
+> **签发后 HEAD 漂移注记**：签发期间并行会话向 main 插入 OA SSO 域提交（e2463757/bc4d769a/edb7973f 等）。候选绑定 f1aa1ce0 = sha256(git archive 2873dbfd) 指向特定 commit，不受 HEAD 前进影响；外来提交不触 cache 代码面（A9 红线核查覆盖 6217ec8e..HEAD 全区间 PASS）。
+
 | # | 检查 | 责任 | 状态 |
 |---|---|---|---|
 | 1 | C09 两轮全绿 + P1 提交 + candidate 绑定 | A5/A0 | ⏳ |
