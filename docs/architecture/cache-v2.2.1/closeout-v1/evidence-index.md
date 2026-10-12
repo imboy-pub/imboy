@@ -263,3 +263,31 @@ G3 建议已执行：全部 `diag_f5_*` / `diag_c9d_*` / `diag_c9e_*`（24 个�
 证据链。扁平层现仅保留：candidate_freeze.json、mixed_c10_r1/r2.json、
 three_node_c09_r1~r15.json（含终验绿轮 r14/r15）。本文 §1/§2 中 diag 文件的
 扁平层路径引用自此注记起以 `raw/diag/` 前缀为准。
+
+## 归档注记二（终态口径，2026-10-12 收尾后补记）
+
+候选冻结与终验完成后，扁平层曾残留 20 个非最终轮 JSON（早期 fail 轮、被替代轮与
+无绑定轮：`three_node_c09_b1/r1~r15`、`mixed_c10_b1/b2/r1/r2`、`diag_srace_b2`），
+导致上文 §4 记录的校验命令在终态复跑时 FAIL（--exits 计入 fail 场景、--candidate
+计 19 文件无绑定）。已执行终态归拢（纯 `mv`，未改写任何 JSON 字节；ledger 引用的
+`three_node_c09_b2/b3` 不在移动集合内）：
+
+- 移入 `raw/diag/`：上述 20 个非最终轮（与注记一的 24 个 diag 轮同目录归档）。
+- `raw/` 顶层终态仅保留绑定绿灯轮 4 个：`three_node_c09_b2.json`、
+  `three_node_c09_b3.json`、`mixed_c10_b3.json`、`mixed_c10_b4.json`
+  （另有 `perf/` 子目录；`candidate_freeze.json` 位于 `<RUN_ROOT>` 根）。
+
+归拢后校验器复跑原样输出（命令同 §4，另加 `--utc --ids` 与 ledger 交叉）：
+
+```text
+[PASS] ids: 96/96 required ids found in ledger; duplicates=0 extras=0 both-forms=0
+[PASS] candidate: 4 evidence file(s) in 4 series, single candidate f1aa1ce016ea.. consistent with ledger
+[PASS] exits: all 70 scenario(s) in 4 evidence file(s) status=pass, no missing fields
+[PASS] utc: 19 timestamp(s) validated (evidence + ledger), all tz-aware ISO8601 in sane window
+SUMMARY: 4/4 checks passed
+```
+
+候选绑定独立重算：`git archive 2873dbfd | shasum -a 256` =
+`f1aa1ce016eaa6e4db18e52e6ee6fba51cdb745303c057aaeff650c9b990020c`，与
+`candidate_freeze.json` 及 4 个绿灯轮记录值逐字节一致。校验器脚本
+`scripts/check_cache_closeout_v1.py` 已于同日入库（此前仅存于证据根，未受 git 跟踪）。
