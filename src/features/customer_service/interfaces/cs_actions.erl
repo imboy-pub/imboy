@@ -395,7 +395,13 @@ table(tenant) ->
         {conversation_messages,
             entry(
                 [
-                    {<<"GET">>, list_messages, [{after_id, tsid, optional}, {limit, int, optional}],
+                    {<<"GET">>, list_messages,
+                        [
+                            {after_id, tsid, optional},
+                            {before_id, tsid, optional},
+                            {order, binary, optional},
+                            {limit, int, optional}
+                        ],
                         [{conversation_id, conversation_id}]}
                 ],
                 seat_auth(<<"conversation.read">>),

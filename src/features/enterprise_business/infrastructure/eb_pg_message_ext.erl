@@ -43,6 +43,17 @@
     " LIMIT $5"
 >>).
 
+%% Latest-first history keeps the legacy ascending query unchanged.
+-define(SQL_LIST_MESSAGES_BEFORE, <<
+    "SELECT "
+    ?MESSAGE_COLUMNS
+    "  FROM enterprise_message"
+    " WHERE organization_id = $1 AND workspace_id = $2 AND conversation_id = $3"
+    "   AND ($4::bigint IS NULL OR id < $4)"
+    "   AND EXISTS (SELECT 1 FROM workspace w WHERE w.organization_id = $1 AND w.id = $2)"
+    " ORDER BY id DESC LIMIT $5"
+>>).
+
 -define(MESSAGE_COLUMNS,
     "id, organization_id, workspace_id, conversation_id, sender_type, sender_contact_id,"
     " sender_business_identity_id, actor_user_id, client_msg_id, body_cipher, key_version,"
@@ -129,7 +140,7 @@ fetch_message_rows_by_ids_sql() ->
 %% 在 eb_message_body_batch_tests（org 钉死 / ANY 数组 / 无 OFFSET）。
 -spec sql_statements() -> [binary()].
 sql_statements() ->
-    [?SQL_LIST_MESSAGES_AFTER, ?SQL_LIST_MESSAGE_ASSETS, ?SQL_SCOPE_OK].
+    [?SQL_LIST_MESSAGES_AFTER, ?SQL_LIST_MESSAGES_BEFORE, ?SQL_LIST_MESSAGE_ASSETS, ?SQL_SCOPE_OK].
 
 -spec default_limit() -> pos_integer().
 default_limit() -> ?DEFAULT_LIMIT.
@@ -144,7 +155,8 @@ max_limit() -> ?MAX_LIMIT.
 %%   after_id         可选（默认 0）；严格 `id > after_id`
 %%   limit            可选（默认 50，1..200；越界即 `{error, {invalid_limit, _}}`）
 %%
-%% 返回 `{ok, Messages}`（按 `id` 升序）或 `{error, Reason}`；跨租户错配返回空列表
+%% Query 的 order=desc 使用 before_id（缺省 null 表示最新首页），否则保留 ASC。
+%% 返回 `{ok, Messages}`（按请求方向排序）或 `{error, Reason}`；跨租户错配返回空列表
 %% （不报错、也不返回别人的行）。
 -spec list_messages_after(integer(), integer(), map()) -> {ok, [map()]} | {error, term()}.
 list_messages_after(OrgId, WorkspaceId, Query) when is_map(Query) ->
@@ -157,12 +169,12 @@ list_messages_after(OrgId, WorkspaceId, Query) when is_map(Query) ->
                     OrgId,
                     WorkspaceId,
                     maps:get(conversation_id, Query, undefined),
-                    after_id(Query),
+                    message_cursor(Query),
                     Limit
                 ],
                 case
                     eb_pg_exec:fetch_many(
-                        ?SQL_LIST_MESSAGES_AFTER, Params, eb_pg_store_sql:message_fields()
+                        message_page_sql(Query), Params, eb_pg_store_sql:message_fields()
                     )
                 of
                     {ok, Rows} -> attach_page_assets(OrgId, WorkspaceId, Rows);
@@ -230,6 +242,12 @@ after_id(Query) ->
         Id when is_integer(Id), Id >= 0 -> Id;
         Other -> Other
     end.
+
+message_page_sql(#{order := <<"desc">>}) -> ?SQL_LIST_MESSAGES_BEFORE;
+message_page_sql(_) -> ?SQL_LIST_MESSAGES_AFTER.
+
+message_cursor(#{order := <<"desc">>} = Query) -> maps:get(before_id, Query, null);
+message_cursor(Query) -> after_id(Query).
 
 query_limit(Query) ->
     case maps:get(limit, Query, ?DEFAULT_LIMIT) of

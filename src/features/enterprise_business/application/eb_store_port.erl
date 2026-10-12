@@ -143,6 +143,8 @@
 
 %% @doc 只读历史分页（EB-06「只读历史」）：**键集**分页，不是 offset。
 %% `Query` 必含 `conversation_id`，可选 `after_id`（严格 `id > AfterId`）与 `limit`。
+%% `order=<<"desc">>` selects latest-first; optional `before_id` is strict `id < BeforeId`.
+%% Ascending is the default. The two cursor directions must not be mixed.
 %% 键集语义下删除/新增不产生漂移，故不得退化为 `OFFSET`。
 -callback list_messages_after(OrgId :: integer(), WorkspaceId :: integer(), Query :: page_query()) ->
     {ok, [message()]} | {error, term()}.

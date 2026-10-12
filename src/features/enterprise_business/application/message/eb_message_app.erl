@@ -561,6 +561,8 @@ is_valid_recipient_ref(_Other) ->
 %%   workspace_id     必填整数
 %%   conversation_id  必填整数
 %%   after_id         可选（缺省 0）：游标，语义是**严格 `id > after_id`**
+%%   order            可选 asc（缺省）或 desc；desc 返回最新页
+%%   before_id        仅 desc 可选：严格 id < before_id；与 after_id 互斥
 %%   limit            可选（缺省 50，1..200）
 %%   store            可选端口覆盖
 %%
@@ -573,7 +575,7 @@ is_valid_recipient_ref(_Other) ->
 %% 从头开始。这是键集语义的直接推论（游标是**位置**，不是**引用**），也是它相对 offset
 %% 的可依赖之处。
 %%
-%% 返回 `{ok, [Message]}`（按 `id` 升序）或 `{error, Reason}`。**只读**：不改任何行状态。
+%% 返回 `{ok, [Message]}`（按请求方向排序）或 `{error, Reason}`。**只读**：不改任何行状态。
 -spec list_messages(integer(), map()) -> {ok, [map()]} | {error, term()}.
 list_messages(OrgId, Params) when is_map(Params) ->
     case tenant(OrgId, Params) of
@@ -591,17 +593,16 @@ list_args(OrgId, WorkspaceId, Params) ->
         false ->
             {error, {invalid_conversation_id, ConversationId}};
         true ->
-            case page_cursor(Params) of
+            case message_page_cursor(Params) of
                 {error, _} = Err ->
                     Err;
-                {ok, AfterId} ->
+                {ok, CursorQuery} ->
                     case page_limit(Params) of
                         {error, _} = Err ->
                             Err;
                         {ok, Limit} ->
-                            Query = #{
+                            Query = CursorQuery#{
                                 conversation_id => ConversationId,
-                                after_id => AfterId,
                                 limit => Limit
                             },
                             case
@@ -854,12 +855,39 @@ preview_open_failed(Id, Reason) ->
     undefined.
 
 %% 游标缺省 0（`id > 0` 等价首页）；显式负数/非整数一律 fail-closed（不静默当首页）。
-page_cursor(Params) ->
-    case maps:get(after_id, Params, 0) of
-        undefined -> {ok, 0};
-        null -> {ok, 0};
-        Id when is_integer(Id), Id >= 0 -> {ok, Id};
-        Other -> {error, {invalid_after_id, Other}}
+message_page_cursor(Params) ->
+    case maps:get(order, Params, <<"asc">>) of
+        <<"asc">> -> ascending_cursor(Params);
+        <<"desc">> -> descending_cursor(Params);
+        Other -> {error, {invalid_message_order, Other}}
+    end.
+
+ascending_cursor(Params) ->
+    case maps:is_key(before_id, Params) of
+        true ->
+            {error, invalid_message_cursors};
+        false ->
+            case maps:get(after_id, Params, 0) of
+                undefined -> {ok, #{after_id => 0}};
+                null -> {ok, #{after_id => 0}};
+                Id when is_integer(Id), Id >= 0 -> {ok, #{after_id => Id}};
+                Other -> {error, {invalid_after_id, Other}}
+            end
+    end.
+
+descending_cursor(Params) ->
+    case maps:is_key(after_id, Params) of
+        true ->
+            {error, invalid_message_cursors};
+        false ->
+            case maps:find(before_id, Params) of
+                error ->
+                    {ok, #{order => <<"desc">>, before_id => null}};
+                {ok, Id} when is_integer(Id), Id > 0 ->
+                    {ok, #{order => <<"desc">>, before_id => Id}};
+                {ok, Other} ->
+                    {error, {invalid_before_id, Other}}
+            end
     end.
 
 page_limit(Params) ->

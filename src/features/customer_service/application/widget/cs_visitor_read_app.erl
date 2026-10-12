@@ -59,7 +59,8 @@ list_messages(_, _) ->
     {error, {invalid_argument, list_messages}}.
 seat_messages(Store, Org, Ws, Params) ->
     Base = maps:with(
-        [workspace_id, conversation_id, after_id, limit, business_identity_id], Params
+        [workspace_id, conversation_id, after_id, before_id, order, limit, business_identity_id],
+        Params
     ),
     %% Preserve the existing HTTP/Enterprise history authorization before receipt lookup.
     case enterprise_business_facade:list_messages(Org, cs_widget_support:eb_params(Params, Base)) of
