@@ -170,6 +170,4 @@ html_attr(Bin) when is_binary(Bin) ->
         <<"\"">>,
         <<"&quot;">>,
         [global]
-    );
-html_attr(_) ->
-    <<>>.
+    ).

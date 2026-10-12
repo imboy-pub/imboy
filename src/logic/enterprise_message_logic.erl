@@ -79,9 +79,7 @@ direct_tx(Conn, Ctx, Input) when is_map(Input) ->
                                         <<"msg_c2c">>,
                                         RowId,
                                         MsgId
-                                    );
-                                {error, Reason} ->
-                                    {error, {<<"internal_error">>, Reason}}
+                                    )
                             end;
                         {error, {Code, Detail}} ->
                             {error, {Code, Detail}}

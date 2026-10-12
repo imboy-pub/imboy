@@ -166,7 +166,6 @@ submit_assignment(Task, TaskId, UserId) ->
         true ->
             case group_task_ds:assignment_find_by_task_and_user(TaskId, UserId) of
                 {error, not_found} -> default_assignment(Gid, TaskId, UserId);
-                {error, _} -> assignment_failure();
                 Result -> Result
             end
     end.
@@ -176,8 +175,7 @@ default_assignment(Gid, TaskId, UserId) ->
         {ok, []} ->
             case assign_users(TaskId, group_ds:member_uids(Gid)) of
                 ok -> group_task_ds:assignment_find_by_task_and_user(TaskId, UserId);
-                {error, Msg, Code} -> {error, Msg, Code};
-                _ -> assignment_failure()
+                {error, Msg, Code} -> {error, Msg, Code}
             end;
         {ok, [_ | _]} ->
             {error, not_found};
@@ -192,7 +190,8 @@ assignment_failure() ->
 %% @param TaskId 作业ID
 %% @param UserIds 用户ID列表
 %% @return ok | {error, Reason}
--spec assign(integer(), [integer()], integer()) -> ok | {error, binary()}.
+-spec assign(integer(), [integer()], integer()) ->
+    ok | {error, binary(), integer()}.
 assign(TaskId, UserIds, CurrentUid) when
     is_integer(TaskId), TaskId > 0, is_list(UserIds), is_integer(CurrentUid), CurrentUid > 0
 ->
@@ -399,7 +398,7 @@ review_as_admin(_AssignmentId, _ReviewerId, _Data) ->
 %% @doc 查询作业详情
 %% @param TaskId 作业ID
 %% @return {ok, Task} | {error, Reason}
--spec detail(integer()) -> {ok, map()} | {error, binary()}.
+-spec detail(integer()) -> {ok, map()} | {error, binary(), integer()}.
 detail(TaskId) when is_integer(TaskId), TaskId > 0 ->
     case group_task_ds:find_by_id(TaskId) of
         {ok, Task} ->
@@ -416,7 +415,7 @@ detail(_TaskId) ->
 %% @param TaskId 作业ID
 %% @param ViewerUid 查看者用户ID
 %% @return {ok, Task} | {error, Reason}
--spec detail(integer(), integer()) -> {ok, map()} | {error, binary()}.
+-spec detail(integer(), integer()) -> {ok, map()} | {error, binary(), integer()}.
 detail(TaskId, ViewerUid) when
     is_integer(TaskId), TaskId > 0, is_integer(ViewerUid), ViewerUid > 0
 ->
@@ -442,9 +441,7 @@ viewer_assignment(Task, ViewerUid) ->
         {ok, Assignment} ->
             {ok, Task#{<<"my_assignment">> => Assignment}};
         {error, not_found} ->
-            {ok, Task#{<<"my_assignment">> => null}};
-        {error, _} ->
-            {error, imboy_error:error_msg(?ERR_INTERNAL_SERVER_ERROR), ?ERR_INTERNAL_SERVER_ERROR}
+            {ok, Task#{<<"my_assignment">> => null}}
     end.
 
 %% @doc 用户侧列表：为每个作业附带查看者的提交概要（my_assignment）。
@@ -466,9 +463,6 @@ decorate_viewer_assignment(Task, ViewerUid) ->
                 {ok, Assignment} ->
                     Task#{<<"my_assignment">> => Assignment};
                 {error, not_found} ->
-                    Task#{<<"my_assignment">> => null};
-                {error, _Reason} ->
-                    %% 单条概要查询失败不阻塞整个列表：降级为"未提交"
                     Task#{<<"my_assignment">> => null}
             end;
         _Other ->

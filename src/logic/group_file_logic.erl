@@ -161,9 +161,7 @@ with_object_keys(Files) ->
     ].
 
 existing_object_key(Row) when is_map(Row) ->
-    maps:get(<<"object_key">>, Row, null);
-existing_object_key(_) ->
-    null.
+    maps:get(<<"object_key">>, Row, null).
 
 %% @doc 获取群文件分类统计
 %% @param Gid 群组ID（整数）

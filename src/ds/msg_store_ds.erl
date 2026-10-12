@@ -380,9 +380,6 @@ handle_stage_result(Type, MsgId, Result) ->
         ->
             _ = ?DEBUG_LOG([msg_store_ds, stage, Type, MsgId, ok]),
             {ok, new, ConvSeq, MemberUids};
-        {ok, _, MemberUids} when is_list(MemberUids) ->
-            _ = ?DEBUG_LOG([msg_store_ds, stage, Type, MsgId, ok]),
-            {ok, new, MemberUids};
         {ok, _} ->
             _ = ?DEBUG_LOG([msg_store_ds, stage, Type, MsgId, ok]),
             {ok, new};

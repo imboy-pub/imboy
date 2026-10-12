@@ -155,14 +155,9 @@ start(_Type, _Args) ->
 maybe_migrate() ->
     case config_ds:env(auto_migrate, true) of
         true ->
-            case imboy_migrate:migrate() of
-                ok ->
-                    ok;
-                {error, Reason} ->
-                    %% 自动迁移失败 ⇒ 显式拒绝启动：半迁移 schema 继续服务
-                    %% 会把故障推迟到更难排查的运行期（对齐 invalid_config 的 fail-fast 风格）
-                    erlang:error({auto_migrate_failed, Reason})
-            end;
+            %% migrate/1 失败以 raise（migration_failed/dirty）拒绝启动：半迁移
+            %% schema 继续服务会把故障推迟到更难排查的运行期。
+            ok = imboy_migrate:migrate();
         false ->
             logger:warning(
                 "[imboy_app] automatic migrations disabled; waiting for explicit db migrate"

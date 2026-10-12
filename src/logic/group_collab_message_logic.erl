@@ -14,8 +14,7 @@ publish(Gid, Creator, Type, ResourceId, Payload) ->
         <<"payload">> => Payload
     },
     try msg_c2g_logic:c2g(MsgId, Creator, Message) of
-        ok -> accepted(MsgId, Message);
-        _ -> {error, message_rejected}
+        ok -> accepted(MsgId, Message)
     catch
         Class:_ ->
             logger:warning("Group collaboration message delivery failed: ~p", [Class]),

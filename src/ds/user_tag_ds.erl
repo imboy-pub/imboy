@@ -226,10 +226,11 @@ change_scene_tag(Conn, Scene, Uid, ObjectId, Tag) when is_list(Tag) ->
     % user_tag 改名（READ COMMITTED），merge_tag JOIN 会读到旧标签名，
     % 导致 friend.tag 残留旧名（真机批次72 实证 "新名,旧名,"）。
     % 非事务调用（Conn=undefined）回退池连接。
-    case Conn of
-        undefined -> {ok, _} = elib_pg:execute(Sql, [TagBinWithComma, Uid, ObjectId2]);
-        _ -> {ok, _} = elib_pg:execute(Conn, Sql, [TagBinWithComma, Uid, ObjectId2])
-    end,
+    _ =
+        case Conn of
+            undefined -> {ok, _} = elib_pg:execute(Sql, [TagBinWithComma, Uid, ObjectId2]);
+            _ -> {ok, _} = elib_pg:execute(Conn, Sql, [TagBinWithComma, Uid, ObjectId2])
+        end,
     ok.
 
 %% @doc 清理缓存

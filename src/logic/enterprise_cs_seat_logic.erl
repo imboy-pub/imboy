@@ -175,5 +175,6 @@ code(conflict) -> version_conflict;
 code(seat_limit_exceeded) -> seat_limit_exceeded;
 code({sql, <<"23505">>, _}) -> resource_conflict;
 code(_) -> internal_error.
+-spec fail(atom() | binary()) -> no_return().
 fail(Code) when is_atom(Code) -> fail(atom_to_binary(Code, utf8));
 fail(Code) -> throw({rollback, {internal_error_code, Code}}).

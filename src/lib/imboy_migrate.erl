@@ -76,13 +76,13 @@ migrate_to_msg_v2() ->
 %% imboy_migrate:migrate().
 %% @note 迁移文件用 8 位零填充顺序编号命名（00000001–99999999，取当前最大值 +1），
 %%       strict 模式按 schema_migrations_history 检测乱序，见 docs/standards/migration_naming.md
--spec migrate() -> ok | {error, term()}.
+-spec migrate() -> ok.
 migrate() ->
     migrate(get_scripts_path()).
 
 %% @doc 从指定目录执行迁移（如部署脚本 --local 模式上传的 staging 目录）；
 %% 不传路径时同 migrate/0（读 scripts_path 配置，即 release 内 priv/migrations）。
--spec migrate(file:filename_all()) -> ok | {error, term()}.
+-spec migrate(file:filename_all()) -> ok.
 migrate(Path) ->
     Conf = config_ds:env(super_account),
     ?LOG_INFO("[imboy_migrate] running migrations from ~s", [Path]),

@@ -22,8 +22,7 @@ join(Uid, Cid) ->
                             role => 1
                         })
                     of
-                        {ok, _} -> {ok, #{discussion_group_id => Gid}};
-                        {error, Reason} -> throw({abort_tx, Reason})
+                        {ok, _} -> {ok, #{discussion_group_id => Gid}}
                     end;
                 _ ->
                     throw({abort_tx, discussion_access_denied})

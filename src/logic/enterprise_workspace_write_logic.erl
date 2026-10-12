@@ -66,10 +66,11 @@ mutate(Conn, Ctx, Op, Row, Body, _Digest) ->
             fail(resource_not_found)
     end,
     Id = maps:get(<<"id">>, Row),
-    case Op of
-        update -> update_tx(Conn, Id, Row, Body);
-        archive -> archive_tx(Conn, Ctx, Id, Body)
-    end,
+    _ =
+        case Op of
+            update -> update_tx(Conn, Id, Row, Body);
+            archive -> archive_tx(Conn, Ctx, Id, Body)
+        end,
     Id.
 
 create_tx(Conn, Ctx, Body, Key) ->
@@ -115,7 +116,7 @@ archive_tx(Conn, Ctx, Id, Body) ->
         undefined ->
             ok;
         _ ->
-            lock(Conn, Ctx, Replacement),
+            _ = lock(Conn, Ctx, Replacement),
             case enterprise_internal_boundary:enforce(Conn, Ctx, <<"INT-38">>, Replacement) of
                 ok -> ok;
                 {error, E} -> fail(enterprise_internal_boundary:error_code(E))
@@ -255,5 +256,6 @@ code({default_workspace_handover_required, _}) -> resource_conflict;
 code({default_workspace_handover_invalid, _}) -> resource_conflict;
 code(already_archived) -> resource_not_found;
 code(_) -> internal_error.
+-spec fail(atom() | binary()) -> no_return().
 fail(C) when is_atom(C) -> fail(atom_to_binary(C, utf8));
 fail(C) -> throw({rollback, {internal_error_code, C}}).

@@ -49,22 +49,23 @@ operate(Conn, OrgId, create, P) ->
 operate(Conn, OrgId, update, P) ->
     mutation_guard(Conn, OrgId, P, maps:get(enabled, P, undefined) =:= false),
     %% Same org lock order as capacity-checked creation, before locking a seat.
-    must(elib_pg:query(Conn, <<"SELECT pg_advisory_xact_lock($1::bigint)">>, [OrgId])),
+    _ = must(elib_pg:query(Conn, <<"SELECT pg_advisory_xact_lock($1::bigint)">>, [OrgId])),
     IdentityId = maps:get(business_identity_id, P),
     Before = seat(Conn, OrgId, IdentityId, <<" FOR UPDATE">>),
     case maps:get(version, Before) =:= maps:get(expected_version, P) of
         false ->
             rollback(conflict);
         true ->
-            must(
-                cs_pg_seat:set_enabled_limit_tx(
-                    Conn,
-                    OrgId,
-                    IdentityId,
-                    maps:get(enabled, P, maps:get(enabled, Before)),
-                    maps:get(at, P)
-                )
-            ),
+            _ =
+                must(
+                    cs_pg_seat:set_enabled_limit_tx(
+                        Conn,
+                        OrgId,
+                        IdentityId,
+                        maps:get(enabled, P, maps:get(enabled, Before)),
+                        maps:get(at, P)
+                    )
+                ),
             Max = maps:get(max_concurrent, P, maps:get(max_concurrent, Before)),
             case
                 elib_pg:execute(
