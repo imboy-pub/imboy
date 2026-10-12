@@ -913,8 +913,9 @@ c04_page_gap_and_digest_mismatch_abort_test() ->
         Peer, maps:get(round, St1b), 1, Entries, DigestBad, false, St1b
     ).
 
-c04_buffer_overflow_abort_test_() ->
-    Round = crypto:strong_rand_bytes(12),
+%% 普通 _test/0 + round token 从 new_round 状态取（第三个同款修复，
+%% 全量 r4 实证：预生成 token 与 new_round 身份不一致 → abort 分支永不命中）
+c04_buffer_overflow_abort_test() ->
     Old = application:get_env(imboy, cache_replication, #{}),
     application:set_env(imboy, cache_replication, maps:merge(Old, #{b_max => 2})),
     try
@@ -923,6 +924,7 @@ c04_buffer_overflow_abort_test_() ->
             erlang:system_time(millisecond) + 60000
         ),
         Peer = 'snap_peer3@x',
+        Round = maps:get(round, St0),
         St1 = imboy_cache_sync_snapshot:expect_peer(St0, Peer),
         %% 三条目页超过 Bmax=2 → abort buffer_overflow
         Entries = [
@@ -946,11 +948,14 @@ c05_seq_gap_compensates_fenced_generation_test_() ->
     ?TEST_WITH_APP(fun() ->
         ready = wait_ready(50),
         OldF = application:get_env(imboy, cache_fenced_namespaces, undefined),
-        application:set_env(imboy, cache_fenced_namespaces, [cache_v2_test]),
+        %% fenced 域必须同时是授权 replicate 域（cache_v2_test 不在 registry，
+        %% 事件 not_authorized 被拒、seq-gap 永不触发——全量 r3/单跑实证；
+        %% 与 dcheck C9d 同款教训）
+        application:set_env(imboy, cache_fenced_namespaces, [cache_v2_test_rep]),
         setup_replicate_env(),
         try
             Origin = 'gap_peer@x',
-            Key = {cache_v2_test, c05_gap_key},
+            Key = {cache_v2_test_rep, c05_gap_key},
             G0 = imboy_cache_sync:generation(Key),
             %% seq 1 → 3 跳号：缺口检测 + fenced namespace 补偿（gen 推进）
             Boot = remote_boot(),
