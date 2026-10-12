@@ -336,28 +336,32 @@ docker compose -f docker-compose.prod.yml -f docker-compose-sales-policy.yml log
 
 1. **部署配置注入回调地址**（启动期自动引导，幂等）：
 
-   `.env` 增加：
+   在部署机的 `config/sys.pro.config`（本机本地配置，gitignored，各环境独立维护）的 `{imboy, [...]}` 配置列表加一项（**无需改动启动环境与部署脚本**）：
 
+   \`\`\`erlang
+   %% {imboy, [ ...既有项..., 以下为 OA 免登引导
+   {oa_redirect_uri, "https://oa.example.com/sso/cb"}
+   %% 可选：{oa_application_key, <<"default-oa">>}
+   %% 可选：{oa_name, <<"办公">>}
    \`\`\`
-   IMBOY_OA_REDIRECT_URI=https://oa.example.com/sso/cb
-   # 可选：IMBOY_OA_APPLICATION_KEY（默认 default-oa）
-   # 可选：IMBOY_OA_NAME（默认 办公）
-   # 可选：IMBOY_OA_ORG_ID（缺省取实例首个 active 组织作业务归属）
-   \`\`\`
+
+   业务归属组织自动取实例首个 active 组织，不提供配置项（OA 免登与
+   organization 无关，授权边界是部署实例）。
 
    重启后启动期自动登记默认 OA 应用（app + redirect allowlist + `sso:exchange`
-   Grant）。未配置该变量 = 不登记，App 工作台静默隐藏 OA 入口（不报错）。
+   Grant）。未配置该项 = 不登记，App 工作台静默隐藏 OA 入口（不报错）。
+   兼容通道：OS 环境变量 `IMBOY_OA_REDIRECT_URI` 等价项仍可用（app env 优先）。
 
 2. **签发 OA 侧凭证**（OA 后端要调 exchange 时执行，credential 明文不进日志）：
 
    \`\`\`bash
-   IMBOY_OA_REDIRECT_URI=https://oa.example.com/sso/cb \
    PG_HOST=... PG_PORT=... PG_USER=... PG_PASSWORD=... PG_DATABASE=... \
    scripts/seed_default_oa_application.escript
    \`\`\`
 
-   脚本幂等：应用已存在则只补缺口；新签发 credential 的明文**仅打印一次**，
-   通过安全渠道转交 OA 团队。
+   脚本自动从 `config/sys.pro.config` 读取 `{oa_redirect_uri, ...}`（与节点同源；
+   也可用 `IMBOY_OA_REDIRECT_URI` env 覆盖）。幂等：应用已存在则只补缺口；
+   新签发 credential 的明文**仅打印一次**，通过安全渠道转交 OA 团队。
 
 **验证**：App 重新进入工作台 → 打开 OA 联调页（`https://www.imboy.pub/test_oa.html`）
 → 「检测免登能力」应返回 supported；「获取一次性 code」应成功取码。

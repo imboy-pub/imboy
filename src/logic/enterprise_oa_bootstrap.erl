@@ -3,10 +3,10 @@
 -moduledoc "默认 OA 应用部署引导（M0，ADR 2026-10-12 定位修订 §4.4/§5）。".
 %%%
 % enterprise_oa_bootstrap 是 OA 免登「开箱即用」的部署引导（M0）：
-% 部署环境配置 IMBOY_OA_REDIRECT_URI 后，启动期自动登记实例级默认 OA 应用
-% （application_key 实例内全局唯一；organization_id 仅为业务归属）+ 生效
-% Grant（sso:exchange，按生效 scope 判定；幂等键带时间后缀以支持撤销后重授）。
-% 幂等：重复启动零副作用，只补缺口。
+% 配置 oa_redirect_uri（sys.config 主通道，见下方配置段）后，启动期自动登记
+% 实例级默认 OA 应用（application_key 实例内全局唯一；organization_id 仅为
+% 业务归属）+ 生效 Grant（sso:exchange，按生效 scope 判定；幂等键带时间
+% 后缀以支持撤销后重授）。幂等：重复启动零副作用，只补缺口。
 %
 % 边界（与 scripts/seed_default_oa_application.escript 的分工）：
 %   - 本模块只做应用登记（app + allowlist + grant）——getAuthCode（App 侧
@@ -18,11 +18,13 @@
 % 失败语义：任何异常自吞 + error 日志，绝不阻断节点启动（OA 免登不可用
 % 由工作台入口静默隐藏兜底，比启动失败安全得多）。
 %
-% 环境变量（imboy_env_overrides 同风格的 OS env 直读；部署 .env 注入）：
-%   IMBOY_OA_REDIRECT_URI    必填才触发；未配置 = 本模块零动作
-%   IMBOY_OA_APPLICATION_KEY 可选，默认 <<"default-oa">>
-%   IMBOY_OA_NAME            可选，默认 <<"办公">>
-%   IMBOY_OA_ORG_ID          可选；缺省取实例首个 active 组织作业务归属
+% 配置通道（两层，app env 优先）：
+%   1. sys.config（config/sys.pro.config 的 {imboy, [...]}，权威配置面）：
+%      {oa_redirect_uri,    "https://oa.example.com/sso/imboy/callback"}  必填才触发
+%      {oa_application_key, <<"default-oa">>}                            可选
+%      {oa_name,            <<"办公">>}                                   可选
+%   2. OS env 兜底（部署 .env 注入的旧通道，兼容保留）：
+%      IMBOY_OA_REDIRECT_URI / IMBOY_OA_APPLICATION_KEY / IMBOY_OA_NAME
 %%%
 
 -export([maybe_seed/0]).
@@ -33,19 +35,16 @@
 -define(DEFAULT_NAME, <<"办公"/utf8>>).
 
 %% @doc 启动期引导入口（imboy_app:start/2 在 sup 启动后调用）。
-%% IMBOY_OA_REDIRECT_URI 未配置时零动作；异常自吞。
+%% oa_redirect_uri（sys.config 或 OS env）未配置时零动作；异常自吞。
 -spec maybe_seed() -> ok.
 maybe_seed() ->
-    case os:getenv("IMBOY_OA_REDIRECT_URI") of
-        false ->
+    case oa_redirect_uri() of
+        undefined ->
             ok;
-        "" ->
-            ok;
-        RedirectStr ->
+        RedirectUri ->
             try
-                RedirectUri = unicode:characters_to_binary(RedirectStr),
-                Key = env_bin("IMBOY_OA_APPLICATION_KEY", ?DEFAULT_KEY),
-                Name = env_bin("IMBOY_OA_NAME", ?DEFAULT_NAME),
+                Key = cfg_bin(oa_application_key, ?DEFAULT_KEY),
+                Name = cfg_bin(oa_name, ?DEFAULT_NAME),
                 {ok, #{org_id := OrgId, application_id := AppId}} =
                     elib_pg:with_tx(fun(Conn) ->
                         seed_tx(Conn, Key, Name, RedirectUri)
@@ -76,23 +75,51 @@ seed_tx(Conn, Key, Name, RedirectUri) ->
     ensure_grant(Conn, OrgId, AppId),
     #{org_id => OrgId, application_id => AppId}.
 
-%% 业务归属 org：显式 IMBOY_OA_ORG_ID > 实例首个 active 组织。
+%% redirect_uri 未配置（两通道都无/空）⇒ undefined ⇒ 零动作。
+-spec oa_redirect_uri() -> binary() | undefined.
+oa_redirect_uri() ->
+    case cfg_bin(oa_redirect_uri, <<>>) of
+        <<>> -> undefined;
+        Bin -> Bin
+    end.
+
+%% 业务归属 org：OA 免登与 org 无关（授权边界=部署实例），organization_id
+%% 仅作 DB 业务归属列——取实例首个 active 组织，不提供配置项。
 -spec resolve_org(any()) -> integer().
 resolve_org(Conn) ->
-    case env_int("IMBOY_OA_ORG_ID") of
-        OrgId when is_integer(OrgId), OrgId > 0 ->
+    Sql = <<"SELECT id FROM organization WHERE status = 'active' ORDER BY id LIMIT 1">>,
+    case elib_pg:query(Conn, Sql, []) of
+        {ok, [#{<<"id">> := OrgId} | _]} ->
             OrgId;
-        _ ->
-            Sql = <<"SELECT id FROM organization WHERE status = 'active' ORDER BY id LIMIT 1">>,
-            case elib_pg:query(Conn, Sql, []) of
-                {ok, [#{<<"id">> := OrgId} | _]} ->
-                    OrgId;
-                {ok, []} ->
-                    erlang:error(no_active_organization);
-                {error, Reason} ->
-                    erlang:error({org_lookup, Reason})
-            end
+        {ok, []} ->
+            erlang:error(no_active_organization);
+        {error, Reason} ->
+            erlang:error({org_lookup, Reason})
     end.
+
+%%%===================================================================
+%%% Config helpers（sys.config 主通道 + OS env 兜底）
+%%%===================================================================
+
+%% app env 值统一转 binary（config 里写 string/binary 均可；atom 容错）。
+%% 未配置（undefined/<<>>）时回落 OS env，最终落 Default。
+-spec cfg_bin(atom(), binary()) -> binary().
+cfg_bin(ConfigKey, Default) ->
+    case config_ds:env(ConfigKey, undefined) of
+        undefined -> env_bin(env_name(ConfigKey), Default);
+        <<>> -> env_bin(env_name(ConfigKey), Default);
+        Value -> to_binary(Value)
+    end.
+
+%% config 键 oa_redirect_uri -> OS env IMBOY_OA_REDIRECT_URI（命名对齐）。
+env_name(oa_redirect_uri) -> "IMBOY_OA_REDIRECT_URI";
+env_name(oa_application_key) -> "IMBOY_OA_APPLICATION_KEY";
+env_name(oa_name) -> "IMBOY_OA_NAME".
+
+-spec to_binary(term()) -> binary().
+to_binary(Value) when is_binary(Value) -> Value;
+to_binary(Value) when is_atom(Value) -> atom_to_binary(Value, utf8);
+to_binary(Value) when is_list(Value) -> unicode:characters_to_binary(Value).
 
 -spec ensure_application(any(), integer(), binary(), binary(), binary()) -> integer().
 ensure_application(Conn, OrgId, Key, Name, RedirectUri) ->
@@ -158,17 +185,4 @@ env_bin(Name, Default) ->
         false -> Default;
         "" -> Default;
         V -> unicode:characters_to_binary(V)
-    end.
-
--spec env_int(string()) -> undefined | integer().
-env_int(Name) ->
-    case os:getenv(Name) of
-        false ->
-            undefined;
-        V ->
-            try
-                list_to_integer(V)
-            catch
-                _:_ -> undefined
-            end
     end.

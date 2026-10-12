@@ -20,11 +20,13 @@
 %% credential 缺口；重复部署零副作用。
 %%
 %% 用法（imboy 仓根）：
-%%   IMBOY_OA_REDIRECT_URI=https://oa.example.com/sso/cb \
 %%   PG_HOST=127.0.0.1 PG_PORT=4323 PG_USER=imboy_user PG_PASSWORD=... \
 %%   PG_DATABASE=imboy scripts/seed_default_oa_application.escript
-%% 可选：IMBOY_OA_APPLICATION_KEY（默认 default-oa）/ IMBOY_OA_NAME（默认 办公）
-%%       / IMBOY_OA_ORG_ID（缺省取实例首个 active 组织作业务归属）
+%%
+%% redirect_uri 来源优先级：env IMBOY_OA_REDIRECT_URI > 仓内
+%% config/sys.pro.config 的 {imboy, [{oa_redirect_uri, "..."}]}（与节点
+%% bootstrap 同源配置）。可选 env：IMBOY_OA_APPLICATION_KEY（默认
+%% default-oa）/ IMBOY_OA_NAME（默认 办公）
 %% ============================================================
 
 -mode(compile).
@@ -47,14 +49,46 @@ main(_Args) ->
     catch
         _:_ -> ok
     end,
-    case env_bin("IMBOY_OA_REDIRECT_URI") of
+    case redirect_uri(RepoDir) of
         undefined ->
-            io:format("SKIP: IMBOY_OA_REDIRECT_URI 未配置——不登记默认 OA 应用，"
+            io:format("SKIP: oa_redirect_uri 未配置（env IMBOY_OA_REDIRECT_URI 与 "
+                "config/sys.pro.config 均无）——不登记默认 OA 应用，"
                 "OA 入口将静默隐藏（配置后重跑本脚本即可开通）。~n"),
             halt(0);
         RedirectUri ->
             seed(RedirectUri)
     end.
+
+%% redirect_uri：env IMBOY_OA_REDIRECT_URI 优先；否则从
+%% {RepoDir}/config/sys.pro.config 读 {imboy, [{oa_redirect_uri, ...}]}
+%% （file:consult 解析标准 config 项，与节点 bootstrap 同源）。
+redirect_uri(RepoDir) ->
+    case env_bin("IMBOY_OA_REDIRECT_URI") of
+        undefined -> from_config(filename:join(RepoDir, "config/sys.pro.config"));
+        RedirectUri -> RedirectUri
+    end.
+
+from_config(Path) ->
+    case file:consult(Path) of
+        {ok, Terms} ->
+            Value = lists:foldl(fun
+                ({imboy, Props}, Acc) when is_list(Props) ->
+                    case lists:keyfind(oa_redirect_uri, 1, Props) of
+                        {oa_redirect_uri, V} when Acc =:= undefined -> to_binary(V);
+                        _ -> Acc
+                    end;
+                (_, Acc) -> Acc
+            end, undefined, Terms),
+            Value;
+        {error, Reason} ->
+            io:format("提示：config/sys.pro.config 读取失败（~0p），仅 env 通道可用。~n",
+                [Reason]),
+            undefined
+    end.
+
+to_binary(V) when is_binary(V) -> V;
+to_binary(V) when is_atom(V) -> atom_to_binary(V, utf8);
+to_binary(V) when is_list(V) -> unicode:characters_to_binary(V).
 
 seed(RedirectUri) ->
     ApplicationKey = env_bin("IMBOY_OA_APPLICATION_KEY", ?DEFAULT_KEY),
@@ -84,22 +118,18 @@ seed_tx(Conn, ApplicationKey, Name, RedirectUri) ->
     ensure_credential(Conn, OrgId, AppId),
     #{org_id => OrgId, application_id => AppId, application_key => ApplicationKey}.
 
-%% 业务归属 org：显式指定 > 实例首个 active 组织。无组织则无法落 FK——
-%% FAIL 提示（单租户部署应先完成组织初始化）。
+%% 业务归属 org：OA 免登与 org 无关（授权边界=部署实例），organization_id
+%% 仅作 DB 业务归属列——取实例首个 active 组织，不提供配置项。无组织则
+%% 无法落 FK——FAIL 提示（部署应先完成组织初始化）。
 resolve_org(Conn) ->
-    case env_int("IMBOY_OA_ORG_ID") of
-        OrgId when is_integer(OrgId), OrgId > 0 ->
+    Sql = <<"SELECT id FROM organization WHERE status = 'active' ORDER BY id LIMIT 1">>,
+    case elib_pg:query(Conn, Sql, []) of
+        {ok, [#{<<"id">> := OrgId} | _]} ->
             OrgId;
-        _ ->
-            Sql = <<"SELECT id FROM organization WHERE status = 'active' ORDER BY id LIMIT 1">>,
-            case elib_pg:query(Conn, Sql, []) of
-                {ok, [#{<<"id">> := OrgId} | _]} ->
-                    OrgId;
-                {ok, []} ->
-                    throw({seed_error, no_active_organization});
-                {error, R} ->
-                    throw({seed_error, {org_lookup, R}})
-            end
+        {ok, []} ->
+            throw({seed_error, no_active_organization});
+        {error, R} ->
+            throw({seed_error, {org_lookup, R}})
     end.
 
 ensure_application(Conn, OrgId, ApplicationKey, Name, RedirectUri) ->
