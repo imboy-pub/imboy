@@ -341,3 +341,13 @@ P1~P6 计划中提交落地后，rollback-v1.md 须增补对应回滚条目（�
   EXCEPTION_UNRESOLVED。已将集合提为 `INFRA_PATHS` 常量并覆盖整个 V2 同步子系统
   （commit 6d4393f0）；scan_artifacts 全绿（543 calls，34 infrastructure，0 未归类），
   snapshot 不泄漏进 mutation/write sites，registry 46 行不变。
+- 例外 3 同日闭合 **RESOLVED**（GAP_EVIDENCE → 消费链本地取证）：C11 审计时的缺口
+  是"无本地运行能力、核对全为静态"。现已在本地闭合消费链各环：
+  ① `promtool check rules` SUCCESS（62 rules）；② 新增规则单测
+  `deploy/prometheus/rules/imboy-alerts-test.yml`（promtool test rules SUCCESS：
+  5 条告警的不触发边界 + 触发表达式）；③ 活体 Prometheus 抓取 handler 同源渲染
+  fixture（format_prometheus/1 真实路径 + 后端同款 Content-Type）：up=1、
+  `imboy_cache_sync_status=-1` 入库、5 条规则 health=ok 且 severity/team 接线正确、
+  ImBoyCacheSyncDegraded 真实 firing（status=-1 语义正确触发）。
+  证据：`<RUN_ROOT>/obs-scrape-evidence/evidence.json`。部署栈内端到端抓取仍属
+  部署期验证（residual 如实保留）。
