@@ -366,7 +366,7 @@ value_size(Value) ->
     try
         erlang:external_size(Value)
     catch
-        _:_ -> erlang:max_value_bytes() + 1
+        _:_ -> max_value_bytes() + 1
     end.
 
 -spec contains_pid_ref_fun(term()) -> boolean().

@@ -436,11 +436,11 @@ handle_info(_Info, State) ->
 -spec terminate(term(), #state{}) -> ok.
 terminate(_Reason, _State) ->
     try
-        syn:leave(?CACHE_SCOPE, ?CACHE_GROUP_NAME, self())
+        _ = syn:leave(?CACHE_SCOPE, ?CACHE_GROUP_NAME, self()),
+        ok
     catch
         _:_ -> ok
-    end,
-    ok.
+    end.
 
 -spec code_change(term(), #state{}, term()) -> {ok, #state{}}.
 code_change(_OldVsn, State, _Extra) ->
@@ -615,9 +615,7 @@ discover(#state{recover_deadline_ms = Deadline} = State) ->
             enter_degraded(State);
         false ->
             discover_peers(State)
-    end;
-discover(State) ->
-    discover_peers(State).
+    end.
 
 -spec discover_peers(#state{}) -> {noreply, #state{}}.
 discover_peers(State) ->
@@ -715,9 +713,7 @@ handle_version_report(
 current_or_new_round(#state{snapshot_round = undefined, recover_deadline_ms = Dl}) ->
     imboy_cache_sync_snapshot:new_round(0, Dl);
 current_or_new_round(#state{snapshot_round = RoundSt}) when is_map(RoundSt) ->
-    RoundSt;
-current_or_new_round(#state{recover_deadline_ms = Dl}) ->
-    imboy_cache_sync_snapshot:new_round(0, Dl).
+    RoundSt.
 
 -spec changed_compensation(term(), term()) -> ok.
 changed_compensation(changed, Key) ->
@@ -737,9 +733,7 @@ maybe_complete_round(#state{snapshot_round = RoundSt} = State) when
             become_ready_state(State1#state{snapshot_round = undefined});
         false ->
             State
-    end;
-maybe_complete_round(State) ->
-    State.
+    end.
 
 -spec merge_all_watermarks(map(), #state{}) -> #state{}.
 merge_all_watermarks(#{peers := Peers}, #state{counter = C} = State) ->
@@ -793,10 +787,11 @@ become_ready_state(State) ->
     %% 冷恢复完成：epoch 取 max(本 epoch, 全部已知 peer epoch)（C01 第 3 节）
     PeerEpochs = [E || {{peer_epoch, _N}, E} <- ets:tab2list(?META_TABLE), is_integer(E)],
     MaxEpoch = lists:max([imboy_cache_sync_proto:epoch() | PeerEpochs]),
-    case MaxEpoch > imboy_cache_sync_proto:epoch() of
-        true -> _ = imboy_cache_sync_proto:bump_epoch();
-        false -> ok
-    end,
+    _ =
+        case MaxEpoch > imboy_cache_sync_proto:epoch() of
+            true -> imboy_cache_sync_proto:bump_epoch();
+            false -> ok
+        end,
     State#state{status = ready, retries = 0, snapshot_round = undefined}.
 
 -spec merge_version_ceiling(non_neg_integer(), #state{}) -> #state{}.
@@ -998,8 +993,6 @@ bump_generation(Domain) ->
     G.
 
 -spec flush_physical(term(), integer()) -> ok.
-flush_physical(_Domain, G) when G < 0 ->
-    ok;
 flush_physical(Domain, G) ->
     _ = depcache:flush(phys_key(Domain, G), ?DEPCACHE_SERVER),
     ok.
@@ -1179,8 +1172,7 @@ index_replicate(Key) ->
 syn_scope_members() ->
     %% syn 3.4.2 API：syn:members(Scope, Group) -> [{Pid, Meta}]
     try syn:members(?CACHE_SCOPE, ?CACHE_GROUP_NAME) of
-        L when is_list(L) -> [P || {P, _Meta} <- L];
-        _ -> []
+        L when is_list(L) -> [P || {P, _Meta} <- L]
     catch
         _:_ -> []
     end.

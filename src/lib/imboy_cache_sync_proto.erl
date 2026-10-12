@@ -147,8 +147,6 @@ check_consistency(Event, SelfBootId) ->
             {error, self_loop};
         false ->
             case check_incarnation(Origin, BootId) of
-                {error, Reason} ->
-                    {error, Reason};
                 {ok, changed} = Changed ->
                     case check_epoch(RemoteEpoch) of
                         {error, Reason} ->

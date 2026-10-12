@@ -159,12 +159,13 @@ memo_fenced_attempt(F, Key, MaxAge, Dep, _PrevSnapshot) ->
     %% 重试轮：忽略旧快照，重新取当前代（旧 loader 已被物理键隔离，无需 flush 当前键）
     memo_fenced_attempt(F, Key, MaxAge, Dep).
 
--spec generation_snapshot(term(), list()) -> [{term(), non_neg_integer(), non_neg_integer()}].
+-spec generation_snapshot(term(), list()) ->
+    [{term(), 'dep' | 'direct', non_neg_integer()}].
 generation_snapshot(Key, Dep) ->
     [{Key, direct, imboy_cache_sync:generation(Key)}] ++
         [{D, dep, imboy_cache_sync:dep_generation(D)} || D <- Dep].
 
--spec generation_stable(term(), [{term(), non_neg_integer(), non_neg_integer()}]) -> boolean().
+-spec generation_stable(term(), [{term(), 'dep' | 'direct', non_neg_integer()}]) -> boolean().
 generation_stable(_Key, Snapshot) ->
     lists:all(
         fun
@@ -178,7 +179,7 @@ generation_stable(_Key, Snapshot) ->
     fun(() -> term()),
     term(),
     non_neg_integer(),
-    [{term(), non_neg_integer(), non_neg_integer()}]
+    [{term(), 'dep' | 'direct', non_neg_integer()}]
 ) -> term().
 apply_physical_memo(F, _Key, MaxAge, [{Key, direct, G} | Deps]) ->
     PhysKey = {cache_v2, Key, G},
