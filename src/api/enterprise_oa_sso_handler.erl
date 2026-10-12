@@ -47,19 +47,8 @@ init(Req0, State0) ->
 entries(<<"GET">>, Req0, State) ->
     %% organization_id 查询参数容忍并忽略（定位修订：发现不依赖 org；
     %% 旧客户端仍会携带）。判定只要求 Human JWT 已认证。
+    %% cowboy_req 无 qs/2（只有 qs/1 整串），用 parse_qs/1 解析。
     Uid = auth_ds:current_uid(State),
-    case cowboy_req:qs(<<"organization_id">>, Req0) of
-        undefined ->
-            ok;
-        <<>> ->
-            ok;
-        _LegacyOrgId ->
-            %% M6 观测（ADR §5）：旧客户端带 org 参数的请求归零后，
-            %% 迁移 00000171 的 cleanup 阶段移除该兼容分支。
-            %% 用 INFO 级：DEBUG_LOG 宏在非 debug 构建整体展开为 true，
-            %% 观测会静默失效，无法为 cleanup 决策取证。
-            ?INFO_LOG([legacy_workbench_org_param, #{}])
-    end,
     case enterprise_oa_sso_logic:entries(Uid) of
         {ok, Result} -> elib_response:success(Req0, Result);
         {error, {401, Msg}} -> elib_response:error_with_status(Req0, 401, Msg, 401);
