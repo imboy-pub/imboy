@@ -90,18 +90,36 @@ audit_failure_retry(S) ->
     ?assertNotEqual(null, maps:get(<<"consumed_at">>, Consumed)),
     ?assertEqual(Before + 1, audit_count(C)).
 
+%% 定位修订（ADR 2026-10-12）后语义：
+%%   - mapping 撤销 → 回退 user_id，交换**成功**（200；行锁等待语义保留）
+%%   - org member 撤销 → 不再参与判定（org 是业务对象，非授权边界），
+%%     交换不受 member 行影响（无行锁交互，直接成功）
+%%   - 账号停用 → identity_not_mapped（账号级 kill-switch 保留；行锁
+%%     等待语义保留）
 identity_revocation(S) ->
-    Facts = [
+    MappingFact =
         {"mapping", <<"enterprise_external_identity">>, <<"status">>, <<"removed">>, <<"active">>,
             <<"application_id=(SELECT application_id FROM enterprise_oa_sso_code WHERE code_digest=$1) AND user_id=995017">>},
-        {"member", <<"organization_member">>, <<"status">>, <<"suspended">>, <<"active">>,
-            <<"organization_id=(SELECT organization_id FROM enterprise_oa_sso_code WHERE code_digest=$1) AND user_id=995017">>},
+    revoke_during_exchange_ok(S, MappingFact),
+    C = maps:get(conn, S),
+    {DigestM, BodyM} = issue(S),
+    Before = audit_count(C),
+    {ok, _} = elib_pg:query(
+        C, <<"UPDATE organization_member SET status='suspended' WHERE user_id=995017">>, []
+    ),
+    RM = exchange(S, BodyM),
+    save("oa-revoke-member-response.json", [RM]),
+    ?assertEqual(200, maps:get(status, RM)),
+    {ok, [RowM]} = enterprise_query(C, DigestM),
+    ?assertNotEqual(null, maps:get(<<"consumed_at">>, RowM)),
+    ?assertEqual(Before + 1, audit_count(C)),
+    {ok, _} = elib_pg:query(
+        C, <<"UPDATE organization_member SET status='active' WHERE user_id=995017">>, []
+    ),
+    AccountFact =
         {"account", <<"\"user\"">>, <<"status">>, 0, 1,
-            <<"id=(SELECT user_id FROM enterprise_oa_sso_code WHERE code_digest=$1)">>}
-    ],
-    lists:foreach(
-        fun(Fact) -> revoke_during_exchange(S, Fact, 422, <<"identity_not_mapped">>) end, Facts
-    ).
+            <<"id=(SELECT user_id FROM enterprise_oa_sso_code WHERE code_digest=$1)">>},
+    revoke_during_exchange(S, AccountFact, 422, <<"identity_not_mapped">>).
 
 revoke_during_exchange(S, {Name, Table, Column, Revoked, Active, Where}, Status, Code) ->
     C = maps:get(conn, S),
@@ -142,9 +160,45 @@ revoke_during_exchange(S, {Name, Table, Column, Revoked, Active, Where}, Status,
         {ok, 1} = write_fact(C, Sql, Digest, Active)
     end.
 
+%% 撤销后交换**成功**的变体（定位修订：mapping 撤销回退 user_id；org
+%% 归属事实撤销不再是拒绝条件）：code 被消费、审计 +1；行锁等待语义
+%% 与拒绝变体一致（撤销先取锁时在途交换等待并按最新行判定）。
+revoke_during_exchange_ok(S, {Name, Table, Column, Revoked, Active, Where}) ->
+    C = maps:get(conn, S),
+    {Digest, Body} = issue(S),
+    Sql = fact_update_sql(Table, Column, Where),
+    Before = audit_count(C),
+    ok = intbe02_http_support:sql_exec(C, <<"BEGIN">>),
+    try
+        {ok, 1} = write_fact(C, Sql, Digest, Revoked),
+        Parent = self(),
+        Ref = make_ref(),
+        spawn(fun() -> Parent ! {Ref, exchange(S, Body)} end),
+        Blocked = wait(
+            C,
+            <<"SELECT count(*)>0 AS ready FROM pg_stat_activity WHERE cardinality(pg_blocking_pids(pid))>0 AND (query LIKE '%enterprise_external_identity eei%' OR query LIKE '%organization_member%' OR query LIKE '%enterprise_application%' OR query LIKE '%organization o%')">>,
+            [],
+            100
+        ),
+        ok = intbe02_http_support:sql_exec(C, <<"COMMIT">>),
+        R =
+            receive
+                {Ref, Result} -> Result
+            after 10000 -> error(exchange_timeout)
+            end,
+        save("oa-revoke-" ++ Name ++ "-response.json", [R]),
+        ?assertEqual(200, maps:get(status, R)),
+        ?assert(Blocked),
+        {ok, [Row]} = enterprise_query(C, Digest),
+        ?assertNotEqual(null, maps:get(<<"consumed_at">>, Row)),
+        ?assertEqual(Before + 1, audit_count(C))
+    after
+        intbe02_http_support:sql_exec(C, <<"ROLLBACK">>),
+        {ok, 1} = write_fact(C, Sql, Digest, Active)
+    end.
+
 authority_revocation(S) ->
     AppWhere = <<"id=(SELECT application_id FROM enterprise_oa_sso_code WHERE code_digest=$1)">>,
-    OrgWhere = <<"id=(SELECT organization_id FROM enterprise_oa_sso_code WHERE code_digest=$1)">>,
     CredWhere =
         <<"application_id=(SELECT application_id FROM enterprise_oa_sso_code WHERE code_digest=$1)">>,
     Facts = [
@@ -174,12 +228,6 @@ authority_revocation(S) ->
             <<"application_disabled">>
         },
         {
-            {"organization", <<"organization">>, <<"status">>, <<"archived">>, <<"active">>,
-                OrgWhere},
-            403,
-            <<"organization_disabled">>
-        },
-        {
             {"credential", <<"enterprise_application_credential">>, <<"status">>, <<"revoked">>,
                 <<"active">>, CredWhere},
             401,
@@ -188,7 +236,15 @@ authority_revocation(S) ->
     ],
     lists:foreach(
         fun({Fact, Status, Code}) -> revoke_during_exchange(S, Fact, Status, Code) end, Facts
-    ).
+    ),
+    %% 定位修订（ADR 2026-10-12）：organization archived 不再是 INT-14 的
+    %% 拒绝条件（org 是业务对象非授权边界；路由 org_status_gate=false）。
+    %% 行锁等待语义保留（authority_for_share_tx 仍 FOR SHARE org 行），
+    %% 撤销提交后交换按 app/credential/scope 链继续 → 成功。
+    OrgWhere = <<"id=(SELECT organization_id FROM enterprise_oa_sso_code WHERE code_digest=$1)">>,
+    OrgFact =
+        {"organization", <<"organization">>, <<"status">>, <<"archived">>, <<"active">>, OrgWhere},
+    revoke_during_exchange_ok(S, OrgFact).
 
 write_fact(C, {grant_scopes, Where}, Digest, Scopes) ->
     {ok, [G]} = elib_pg:query(

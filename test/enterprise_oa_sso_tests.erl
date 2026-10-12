@@ -39,6 +39,7 @@
 
 -define(APP_KEY, <<"epgz05-oa">>).
 -define(APP_KEY_B, <<"epgz05-oa-b">>).
+-define(APP_KEY_BB, <<"epgz05-oa-bb">>).
 -define(APP_KEY_EMPTY, <<"epgz05-oa-empty">>).
 -define(APP_KEY_RO, <<"epgz05-oa-ro">>).
 -define(REDIRECT, <<"https://oa.customer.example.com/sso/cb">>).
@@ -190,10 +191,12 @@ seed_sso_fixture(C) ->
     {ok, #{credential := FullE}} = enterprise_internal_ops:issue_credential_tx(
         C, ?ORG_A, AppAId, ?SECRET_E, <<"2020-01-01T00:00:00Z">>
     ),
-    %% org B + credential（NEG-05 跨 org）
+    %% org B + credential（原 NEG-05 跨 org；定位修订后 org 不再是绑定
+    %% 维度——同 key 唯一约束下 org B 应用需独立 key，改作「org 状态门
+    %% 豁免后仍拒绝非本应用 code」的对照夹具）
     ok = seed_org(C, ?ORG_B, ?OWNER_B),
     {ok, AppBB} = enterprise_application_repo:create_tx(
-        C, ?ORG_B, ?APP_KEY, <<"epgz05 oa b-org"/utf8>>, {null, [<<"sso:exchange">>]}, [
+        C, ?ORG_B, ?APP_KEY_BB, <<"epgz05 oa b-org"/utf8>>, {null, [<<"sso:exchange">>]}, [
             ?REDIRECT
         ]
     ),
@@ -260,7 +263,8 @@ enterprise_oa_sso_test_() ->
                 {"NEG-02 exchange 过期 code（>60s）被拒", with_tx(C, fun neg02_expired_code/1)},
                 {"NEG-03 exchange 重放被拒且不回放原响应", with_tx(C, fun neg03_replay/1)},
                 {"NEG-04 并发双 exchange 恰好一个赢家", neg04_concurrent_cas_test(State)},
-                {"NEG-05 exchange 跨 org code 被拒", with_tx(C, fun neg05_cross_org/1)},
+                {"NEG-05 exchange 跨应用 code 被拒（原跨 org 语义，定位修订后 org 非绑定维度）",
+                    with_tx(C, fun neg05_cross_org/1)},
                 {"NEG-06 exchange 跨 app（同 org）被拒", with_tx(C, fun neg06_cross_app/1)},
                 {"NEG-07 exchange redirect_uri 不匹配被拒", with_tx(C, fun neg07_redirect_mismatch/1)},
                 {"NEG-08 exchange nonce 不匹配被拒", with_tx(C, fun neg08_nonce_mismatch/1)},
@@ -277,9 +281,9 @@ enterprise_oa_sso_test_() ->
                 %% HUMAN-SSO-01 面（合同 §3/§6）
                 {"NEG-H01 签发缺 Human JWT 401", with_tx(C, fun neg_h01_no_jwt/1)},
                 {"NEG-H02 签发未知/停用 application 404", with_tx(C, fun neg_h02_unknown_app/1)},
-                {"NEG-H03 签发非目标 org active 成员 403", with_tx(C, fun neg_h03_not_member/1)},
-                {"NEG-H04 签发无 identity mapping 403 fail-early",
-                    with_tx(C, fun neg_h04_no_mapping/1)},
+                {"POS-H03 非成员用户签发成功（org 成员关系不参与判定）", with_tx(C, fun pos_h03_any_human/1)},
+                {"POS-H04 无 identity mapping 签发成功（mapping 可选化）",
+                    with_tx(C, fun pos_h04_no_mapping/1)},
                 {"NEG-H05 签发 redirect_uri 不在 allowlist 400",
                     with_tx(C, fun neg_h05_redirect_not_allowlisted/1)},
                 {"NEG-H06 签发 nonce/body 格式非法 400", neg_h06_malformed_params_test()},
@@ -486,8 +490,10 @@ cleanup_committed_fixture(C) ->
     end),
     ok.
 
-%% NEG-05：org B credential 换 org A 签发的 code → resource_not_found
-%%（统一隐藏，不暴露 organization_boundary_violation）。
+%% NEG-05（定位修订后语义）：app BB（org B 归属）credential 换 app A
+%% 签发的 code → resource_not_found（绑定四元组的 app 维度拒绝；org 不
+%% 再参与绑定）。同时钉住：org B 应用照常通过 A2 认证链（org 状态门
+%% 按路由豁免），拒绝来自 code 绑定而非 org 边界。
 neg05_cross_org(C) ->
     F = seed_sso_fixture(C),
     R = issue_ok(C, ?ALICE),
@@ -572,7 +578,10 @@ neg09_insufficient_scope(C) ->
         )
     ).
 
-%% NEG-10：A2 认证链四类错误透传（SSO 不豁免、不吞错）。
+%% NEG-10：A2 认证链错误透传（SSO 不豁免、不吞错）。organization 停用
+%% 分支已随定位修订调整：INT-14 路由 org_status_gate => false 豁免 org
+%% 状态门，authenticate_tx 直连（无路由上下文）行为保持 fail-closed——
+%% 本用例走 decide/4 编排面分别验证豁免与直连 fail-closed 两侧。
 neg10_credential_chain(C) ->
     F = seed_sso_fixture(C),
     FullA = maps:get(credential, F),
@@ -598,16 +607,44 @@ neg10_credential_chain(C) ->
         {error, application_disabled},
         enterprise_internal_auth:authenticate_tx(C, prefix_of(FullA), ?SECRET_A)
     ),
-    %% ④ organization 停用 → organization_disabled
     ok = exec(C, <<"UPDATE enterprise_application SET status = 'active' WHERE id = $1">>, [
         maps:get(app_id, F)
     ]),
+    %% ④ organization 停用：INT-14 路由豁免 org 状态门（定位修订）——
+    %% decide 编排面照常放行认证（app 级授权链完整）；直连 authenticate_tx
+    %% 无路由上下文，保持 fail-closed（其他 internal 路由仍受门保护）。
     ok = exec(
         C, <<"UPDATE organization SET status = 'archived' WHERE id = $1">>, [?ORG_A]
+    ),
+    %% scope 门前置：零 Grant 时生效 scope 为空集会先拒 insufficient_scope
+    %%（V2.1 §5.2/F-09，同 NEG-13 处理），先给 app A 种生效 Grant。
+    {ok, _} = enterprise_application_grant_repo:create_tx(
+        C,
+        ?ORG_A,
+        maps:get(app_id, F),
+        #{
+            scopes => [<<"sso:exchange">>],
+            expires_at => <<"2099-12-31T23:59:59Z">>,
+            idempotency_key => <<"epgz05-neg10-grant-a">>
+        }
+    ),
+    ?assertMatch(
+        {ok, _},
+        enterprise_internal_auth:decide(
+            <<"POST">>,
+            ?EXCHANGE_PATH,
+            #{<<"authorization">> => <<"Bearer ", FullA/binary>>},
+            fun() ->
+                enterprise_internal_auth:authenticate_tx(C, prefix_of(FullA), ?SECRET_A)
+            end
+        )
     ),
     ?assertEqual(
         {error, organization_disabled},
         enterprise_internal_auth:authenticate_tx(C, prefix_of(FullA), ?SECRET_A)
+    ),
+    ok = exec(
+        C, <<"UPDATE organization SET status = 'active' WHERE id = $1">>, [?ORG_A]
     ),
     %% ⑤ 信封承载：stable 码 → HTTP 映射（A2 冻结表）
     ?assertEqual(401, enterprise_internal_error:http_status(<<"invalid_credential">>)),
@@ -615,13 +652,15 @@ neg10_credential_chain(C) ->
     ?assertEqual(403, enterprise_internal_error:http_status(<<"application_disabled">>)),
     ?assertEqual(403, enterprise_internal_error:http_status(<<"organization_disabled">>)).
 
-%% NEG-11：绑定全过但 mapping 缺失 / user 非 active → identity_not_mapped，
-%% 且 code 不被消费（SAVEPOINT 回滚消费写入；TTL 内修复后重试成功）。
+%% NEG-11（定位修订后语义）：mapping 可选化——绑定全过但 mapping 缺失时
+%% exchange **成功**，external_user_id 回退为 user_id 十进制字符串；code
+%% 被消费。账号非 active Human（status!=1 / account_type!=0）时保留
+%% identity_not_mapped 拒绝（账号级 kill-switch，code 不被消费）。
 neg11_identity_not_mapped(C) ->
     F = seed_sso_fixture(C),
     R = issue_ok(C, ?ALICE),
     Code = maps:get(<<"code">>, R),
-    %% ① mapping 移除（签发后竞态）
+    %% ① mapping 移除（签发后竞态）→ 回退 user_id，成功消费
     ok = exec(C, <<"SAVEPOINT neg11_sp">>),
     ok = exec(
         C,
@@ -630,32 +669,45 @@ neg11_identity_not_mapped(C) ->
             ?ORG_A
         ]
     ),
+    {ok, P1} = do_exchange(C, F, Code, ?REDIRECT, ?NONCE),
+    ?assertEqual(integer_to_binary(?ALICE), maps:get(<<"external_user_id">>, P1)),
+    %% 回退成功即已消费——重放拒绝
     ?assertEqual(
-        {error, <<"identity_not_mapped">>},
+        {error, <<"resource_not_found">>},
         do_exchange(C, F, Code, ?REDIRECT, ?NONCE)
     ),
-    %% 整体回滚（消费写入 + mapping 移除一并撤销——池化路径由
-    %% exchange/2 的 throw({rollback,...}) 等价强制）
     ok = exec(C, <<"ROLLBACK TO SAVEPOINT neg11_sp">>),
     ok = exec(C, <<"RELEASE SAVEPOINT neg11_sp">>),
-    %% TTL 内重试成功：证明 code 停留 issued 而非被消费
-    {ok, _} = do_exchange(C, F, Code, ?REDIRECT, ?NONCE),
-    %% ② user 非 active（member suspended，mapping 行仍在）
-    R2 = issue_ok(C, ?ALICE),
+    %% ② 登记映射的用户在无 mapping 用户上不生效：NOMAP_H（无 mapping 行）
+    %% 签发+交换 → 回退 user_id（此前为 identity_not_mapped 拒绝）
+    R2 = issue_ok(C, ?NOMAP_H),
     Code2 = maps:get(<<"code">>, R2),
-    ok = exec(C, <<"SAVEPOINT neg11_sp2">>),
+    {ok, P2} = do_exchange(C, F, Code2, ?REDIRECT, ?NONCE),
+    ?assertEqual(integer_to_binary(?NOMAP_H), maps:get(<<"external_user_id">>, P2)),
+    %% ③ user 非 active：账号级 kill-switch（mapping 行仍在但账号停用）
+    %% → identity_not_mapped，code 不被消费；SAVEPOINT 回滚后重试成功
+    R3 = issue_ok(C, ?ALICE),
+    Code3 = maps:get(<<"code">>, R3),
+    ok = exec(C, <<"SAVEPOINT neg11_sp3">>),
     ok = exec(
         C,
-        <<"UPDATE organization_member SET status = 'suspended' WHERE organization_id = $1 AND user_id = $2">>,
-        [?ORG_A, ?ALICE]
+        <<"UPDATE \"user\" SET status = 0 WHERE id = $1">>,
+        [?ALICE]
     ),
     ?assertEqual(
         {error, <<"identity_not_mapped">>},
-        do_exchange(C, F, Code2, ?REDIRECT, ?NONCE)
+        do_exchange(C, F, Code3, ?REDIRECT, ?NONCE)
     ),
-    ok = exec(C, <<"ROLLBACK TO SAVEPOINT neg11_sp2">>),
-    ok = exec(C, <<"RELEASE SAVEPOINT neg11_sp2">>),
-    {ok, _} = do_exchange(C, F, Code2, ?REDIRECT, ?NONCE).
+    ok = exec(C, <<"ROLLBACK TO SAVEPOINT neg11_sp3">>),
+    ok = exec(C, <<"RELEASE SAVEPOINT neg11_sp3">>),
+    %% TTL 内重试成功：证明 code 停留 issued 而非被消费
+    {ok, P3} = do_exchange(C, F, Code3, ?REDIRECT, ?NONCE),
+    ?assertEqual(<<"ext-alice">>, maps:get(<<"external_user_id">>, P3)),
+    %% ④ 有 mapping 时外部员工号原样返回（别名优先于回退）
+    R4 = issue_ok(C, ?ALICE),
+    Code4 = maps:get(<<"code">>, R4),
+    {ok, P4} = do_exchange(C, F, Code4, ?REDIRECT, ?NONCE),
+    ?assertEqual(<<"ext-alice">>, maps:get(<<"external_user_id">>, P4)).
 
 %% NEG-12：请求字段语法非法（纯函数面；语法 invalid_request 与绑定
 %% resource_not_found 分离）。
@@ -830,13 +882,11 @@ neg15_zero_log_leak(C) ->
             enterprise_oa_sso_logic:exchange_tx(C, #{}, #{
                 <<"code">> => fake_code(), <<"redirect_uri">> => ?REDIRECT, <<"nonce">> => ?NONCE
             }),
-        %% 签发面 404/403 路径
+        %% 签发面 404 路径 + 无 mapping 用户成功路径（定位修订：mapping 可选化）
         {error, {404, _}} = enterprise_oa_sso_logic:issue_code_tx(
             C, ?ALICE, valid_params(<<"epgz05-no-such-app-x">>, ?REDIRECT, ?NONCE)
         ),
-        {error, {403, _}} = enterprise_oa_sso_logic:issue_code_tx(
-            C, ?NOMAP_H, valid_params()
-        ),
+        {ok, _} = enterprise_oa_sso_logic:issue_code_tx(C, ?NOMAP_H, valid_params()),
         ok
     end),
     lists:foreach(
@@ -883,11 +933,14 @@ neg_h02_unknown_app(C) ->
         enterprise_oa_sso_logic:issue_code_tx(C, ?ALICE, valid_params())
     ).
 
-%% NEG-H03：请求者非目标 org active 成员（未入会 / suspended）→ 403。
-neg_h03_not_member(C) ->
+%% POS-H03（定位修订；原 NEG-H03 翻转）：非 org A 成员（FOREIGN，从未
+%% 入会）对实例内 active 应用照常签发——org 成员关系不再是授权条件，
+%% 授权边界是实例 + Human 账号（JWT 已认证）。ALICE 被 suspend 后同样
+%% 不影响（member 表不参与判定链）。
+pos_h03_any_human(C) ->
     _F = seed_sso_fixture(C),
     ?assertMatch(
-        {error, {403, _}},
+        {ok, _},
         enterprise_oa_sso_logic:issue_code_tx(C, ?FOREIGN, valid_params())
     ),
     ok = exec(
@@ -896,18 +949,20 @@ neg_h03_not_member(C) ->
         [?ORG_A, ?ALICE]
     ),
     ?assertMatch(
-        {error, {403, _}},
+        {ok, _},
         enterprise_oa_sso_logic:issue_code_tx(C, ?ALICE, valid_params())
     ).
 
-%% NEG-H04：无 active identity mapping → 403 fail-early（签发即拦截）。
-neg_h04_no_mapping(C) ->
+%% POS-H04（定位修订；原 NEG-H04 翻转）：无 active identity mapping 的
+%% 用户（NOMAP_H）照常签发——mapping 可选化（ADR §4.4），外部员工号在
+%% exchange 时回退 user_id，不再是签发前置。
+pos_h04_no_mapping(C) ->
     _F = seed_sso_fixture(C),
     ?assertMatch(
-        {error, {403, _}},
+        {ok, _},
         enterprise_oa_sso_logic:issue_code_tx(C, ?NOMAP_H, valid_params())
     ),
-    %% mapping removed 同样拦截
+    %% mapping removed 同样不拦截
     ok = exec(
         C,
         <<"UPDATE enterprise_external_identity SET status = 'removed' WHERE organization_id = $1">>,
@@ -916,7 +971,7 @@ neg_h04_no_mapping(C) ->
         ]
     ),
     ?assertMatch(
-        {error, {403, _}},
+        {ok, _},
         enterprise_oa_sso_logic:issue_code_tx(C, ?ALICE, valid_params())
     ).
 
@@ -941,14 +996,9 @@ neg_h05_redirect_not_allowlisted(C) ->
         end,
         Variants
     ),
-    %% 空 allowlist app（key 不同）：补 mapping 后（合同 §3.4 顺序：mapping
-    %% 检查先于 allowlist）任意合法 https URI 一律拒绝（fail-closed）
-    {ok, AppEmptyRow} = enterprise_application_repo:find_by_key_tx(
-        C, ?ORG_A, ?APP_KEY_EMPTY
-    ),
-    {ok, _} = enterprise_external_identity_repo:bind_tx(
-        C, ?ORG_A, maps:get(<<"id">>, AppEmptyRow), <<"ext-alice-empty">>, ?ALICE
-    ),
+    %% Empty allowlist app (different key): any valid https URI is always rejected
+    %% (fail-closed; after the positioning revision, the mapping check no longer exists,
+    %% the empty-allowlist rejection is the only gate for this key)
     ?assertMatch(
         {error, {400, _}},
         enterprise_oa_sso_logic:issue_code_tx(

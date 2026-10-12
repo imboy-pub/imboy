@@ -21,6 +21,7 @@
 -export([init/2]).
 
 -include("error_code.hrl").
+-include("log.hrl").
 
 %% ===================================================================
 %% API
@@ -44,14 +45,20 @@ init(Req0, State0) ->
 %% ===================================================================
 
 entries(<<"GET">>, Req0, State) ->
+    %% organization_id 查询参数容忍并忽略（定位修订：发现不依赖 org；
+    %% 旧客户端仍会携带）。判定只要求 Human JWT 已认证。
     Uid = auth_ds:current_uid(State),
-    {ok, RawId} = elib_param:binary(organization_id, Req0, <<>>),
-    OrgId =
-        case re:run(RawId, <<"^[1-9][0-9]{0,18}$">>, [{capture, none}]) of
-            match -> binary_to_integer(RawId);
-            nomatch -> 0
-        end,
-    case enterprise_oa_sso_logic:entries(Uid, OrgId) of
+    case cowboy_req:qs(<<"organization_id">>, Req0) of
+        undefined ->
+            ok;
+        <<>> ->
+            ok;
+        _LegacyOrgId ->
+            %% M6 观测（ADR §5）：旧客户端带 org 参数的请求归零后，
+            %% 迁移 00000171 的 cleanup 阶段移除该兼容分支
+            ?DEBUG_LOG([legacy_workbench_org_param, #{}])
+    end,
+    case enterprise_oa_sso_logic:entries(Uid) of
         {ok, Result} -> elib_response:success(Req0, Result);
         {error, {401, Msg}} -> elib_response:error_with_status(Req0, 401, Msg, 401);
         {error, {Code, Msg}} -> elib_response:error(Req0, Msg, Code)

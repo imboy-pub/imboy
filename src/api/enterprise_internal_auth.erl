@@ -10,7 +10,9 @@
 %   -> credential 格式/digest（prefix 定位 + SHA-256 常数时间比对）
 %   -> credential active/expiry（revoked→invalid_credential；过期→credential_expired）
 %   -> application active（disabled→application_disabled）
-%   -> organization active（archived/缺失→organization_disabled）
+%   -> organization active（archived/缺失→organization_disabled；按路由
+%      豁免——org_status_gate => false 的路由如 INT-14 SSO 交换跳过此步，
+%      2026-10-12 定位修订：organization 是业务对象非授权边界）
 %   -> Grant 求值（FULL-01：受管应用的生效 scope = allowed_scopes ∩ 生效 Grant
 %      scopes，逐请求真库读、无缓存；读取失败 fail-closed→security_gate_closed）
 %   -> required scope（静态路由在此判定；INT-09/10 动态 scope 由 handler
@@ -53,6 +55,11 @@
 %% decide/4 的错误返回形态（{error, atom()}，A2 冻结测试按 atom 断言）保持
 %% 不变，秒数经此键在同请求进程内传递，take 后即清（见 take_retry_after_seconds/0）。
 -define(PD_RETRY_AFTER_SECONDS, {enterprise_internal_auth, retry_after_seconds}).
+
+%% org 状态门按路由豁免的通道（chain/3 在 AuthFun 前置入，check_organization
+%% 读取；同请求进程内传递，chain 结束即清）。缺省 true=门在场（直连
+%% authenticate_tx/3 与未声明豁免的路由行为不变）。
+-define(PD_ORG_STATUS_GATE, {enterprise_internal_auth, org_status_gate}).
 
 %%%===================================================================
 %%% API
@@ -169,16 +176,23 @@ take_retry_after_seconds() ->
 
 -spec chain(map(), map(), fun()) -> {ok, map()} | {error, atom()}.
 chain(Route, Headers, AuthFun) ->
-    case AuthFun() of
-        {error, Code} ->
-            {error, Code};
-        {ok, Ctx} ->
-            case scope_gate(Route, Ctx) of
-                {ok, Ctx1} ->
-                    rate_gate(Route, Headers, Ctx1);
-                {error, Code} ->
-                    {error, Code}
-            end
+    %% org 状态门按路由豁免（定位修订 ADR 2026-10-12：organization 是业务
+    %% 对象非授权边界；INT-14 SSO 交换声明 org_status_gate => false）。
+    _ = erlang:put(?PD_ORG_STATUS_GATE, maps:get(org_status_gate, Route, true)),
+    try
+        case AuthFun() of
+            {error, Code} ->
+                {error, Code};
+            {ok, Ctx} ->
+                case scope_gate(Route, Ctx) of
+                    {ok, Ctx1} ->
+                        rate_gate(Route, Headers, Ctx1);
+                    {error, Code} ->
+                        {error, Code}
+                end
+        end
+    after
+        erlang:erase(?PD_ORG_STATUS_GATE)
     end.
 
 %% 静态 scope 在中间件判定；动态 scope（INT-09/10）由 handler 裁决
@@ -310,22 +324,29 @@ check_application(Conn, Row) ->
 
 -spec check_organization(any(), map(), map()) -> {ok, map()} | {error, atom()}.
 check_organization(Conn, Row, App) ->
-    OrgId = maps:get(<<"organization_id">>, Row),
-    case organization_status(Conn, OrgId) of
-        {ok, <<"active">>} ->
+    case erlang:get(?PD_ORG_STATUS_GATE) of
+        false ->
+            %% 路由豁免（INT-14；定位修订）：org 归属是业务归属，其生命周期
+            %% 不阻断实例级集成——application/credential/scope 才是授权链。
             finalize_auth(Conn, Row, App);
-        {ok, _Archived} ->
-            log_reject(organization_disabled, organization_disabled),
-            {error, organization_disabled};
-        {error, not_found} ->
-            %% org 缺失同样落 organization_disabled（fail-closed）
-            log_reject(organization_missing, organization_disabled),
-            {error, organization_disabled};
-        {error, Reason} ->
-            ?ERROR_LOG([
-                enterprise_internal_auth_db_error, #{stage => organization_lookup, reason => Reason}
-            ]),
-            {error, invalid_credential}
+        _ ->
+            case organization_status(Conn, maps:get(<<"organization_id">>, Row)) of
+                {ok, <<"active">>} ->
+                    finalize_auth(Conn, Row, App);
+                {ok, _Archived} ->
+                    log_reject(organization_disabled, organization_disabled),
+                    {error, organization_disabled};
+                {error, not_found} ->
+                    %% org 缺失同样落 organization_disabled（fail-closed）
+                    log_reject(organization_missing, organization_disabled),
+                    {error, organization_disabled};
+                {error, Reason} ->
+                    ?ERROR_LOG([
+                        enterprise_internal_auth_db_error,
+                        #{stage => organization_lookup, reason => Reason}
+                    ]),
+                    {error, invalid_credential}
+            end
     end.
 
 %% organization_repo 未导出普通事务内 find（find_for_update_tx 会行锁
