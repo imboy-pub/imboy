@@ -47,7 +47,6 @@ init(Req0, State0) ->
 entries(<<"GET">>, Req0, State) ->
     %% organization_id 查询参数容忍并忽略（定位修订：发现不依赖 org；
     %% 旧客户端仍会携带）。判定只要求 Human JWT 已认证。
-    %% cowboy_req 无 qs/2（只有 qs/1 整串），用 parse_qs/1 解析。
     Uid = auth_ds:current_uid(State),
     case enterprise_oa_sso_logic:entries(Uid) of
         {ok, Result} -> elib_response:success(Req0, Result);

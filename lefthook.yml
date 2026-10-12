@@ -11,6 +11,37 @@ pre-commit:
       glob: "{src/*.erl,src/**/*.erl,src/*.hrl,src/**/*.hrl,apps/**/*.erl,apps/**/*.hrl,test/*.erl,test/**/*.erl,test/*.hrl,test/**/*.hrl}"
       run: erlfmt --check {staged_files}
       stage_fixed: false
+    # 编译 + 变更模块 dialyze 门禁（2026-10-12 OA 免登连环事故的机制化规避）：
+    # cowboy_req:qs/2 类「不存在的远程函数」Erlang 编译期不报错（remote call
+    # 运行时解析），曾零警告绿过 erlfmt/eunit（mock 层掩蔽）直达 prod 500；
+    # b77cbc2f 亦曾把编译不过的提交送上 main。本命令串行两步：
+    #   1. make compile —— 编译门禁（拦 unsafe variable 等编译错误）
+    #   2. 对 staged 的 src/.erl 逐模块 dialyzer 增量分析（复用 .imboy.plt）：
+    #      只拦 "Call to missing or unexported function" 类 undef（必崩类，
+    #      2026-10-12 qs/2 复盘实证 0.23s/模块稳拦）；其余类型警告不在此拦
+    #      （存量 477 legacy 由 CI dialyze-check 基线 ratchet 兜底），零基线负担
+    # 降级：PLT 缺失时告警放行（新 clone 先 make dialyze 建基线）。
+    compile-dialyze:
+      glob: "{src/*.erl,src/**/*.erl,src/*.hrl,src/**/*.hrl,apps/**/*.erl,apps/**/*.hrl}"
+      run: |
+        make compile || { echo "❌ make compile 失败：编译不过的代码不得提交"; exit 1; }
+        [ -f .imboy.plt ] || { echo "⚠️ .imboy.plt 缺失，dialyze 门禁降级放行（运行 make dialyze 建立）"; exit 0; }
+        rc=0
+        for f in {staged_files}; do
+          case "$f" in
+            *.erl) ;;
+            *) continue ;;
+          esac
+          beam="ebin/$(basename "${f%.erl}").beam"
+          [ -f "$beam" ] || continue
+          out=$(dialyzer --plt .imboy.plt -n "$beam" 2>&1)
+          if echo "$out" | grep -q "missing or unexported function"; then
+            echo "❌ $f 调用了不存在的函数（undef 必崩类，qs/2 事故同类）:"
+            echo "$out" | grep "missing or unexported function" | head -5
+            rc=1
+          fi
+        done
+        exit $rc
     gitleaks:
       run: gitleaks protect --staged --no-banner --redact
     # 迁移文件门禁（ADR-0002）：命名格式 / up-down 成对 / 版本号唯一。
