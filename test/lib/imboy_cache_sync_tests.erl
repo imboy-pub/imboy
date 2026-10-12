@@ -810,94 +810,122 @@ c03_budget_digest_is_stable_and_config_sensitive_test_() ->
 %% ===================================================================
 
 c04_round_requires_done_and_pages_test_() ->
-    Round = crypto:strong_rand_bytes(12),
-    Deadline = erlang:system_time(millisecond) + 60000,
-    St0 = imboy_cache_sync_snapshot:new_round(0, Deadline),
-    Round = maps:get(round, St0),
-    Peer = 'snap_peer@x',
-    St1 = imboy_cache_sync_snapshot:expect_peer(St0, Peer),
-    %% 仅空 done 不闭合（C04 核心：三条件）
-    Entries = [{{rep_ns, k1}, <<"v1">>, future_ms(60), {1, Peer}}],
-    Digest = imboy_cache_sync_snapshot:page_digest(Round, 1, Entries),
-    {ok, St2} = imboy_cache_sync_snapshot:handle_page(
-        Peer, Round, 1, Entries, Digest, true, St1
-    ),
-    ?assertNot(imboy_cache_sync_snapshot:round_complete(St2)),
-    %% done 到齐但 expected_more 悬挂（页未收完）→ 不闭合
-    {ok, St3} = imboy_cache_sync_snapshot:handle_done(Peer, Round, 42, St2),
-    ?assertNot(imboy_cache_sync_snapshot:round_complete(St3)),
-    %% 未知 round 的 done 不推进
-    {ok, St4} = imboy_cache_sync_snapshot:handle_done(
-        Peer, crypto:strong_rand_bytes(12), 99, St3
-    ),
-    ?assertNot(imboy_cache_sync_snapshot:round_complete(St4)),
-    ?assertEqual(
-        42,
-        maps:get(
-            watermark,
-            maps:get(Peer, maps:get(peers, St4))
-        )
-    ),
-    %% 第二页（HasMore=false）到齐 → 闭合
-    Entries2 = [{{rep_ns, k2}, <<"v2">>, future_ms(60), {2, Peer}}],
-    Digest2 = imboy_cache_sync_snapshot:page_digest(Round, 2, Entries2),
-    {ok, St5} = imboy_cache_sync_snapshot:handle_page(
-        Peer, Round, 2, Entries2, Digest2, false, St4
-    ),
-    ?assert(imboy_cache_sync_snapshot:round_complete(St5)),
-    ?assertEqual(2, imboy_cache_sync_snapshot:applied_count(St5)).
+    %% 生成器必须返回测试集：断言体包为延迟 fun（裸体会被 EUnit 立即求值）
+    [
+        fun() ->
+            Deadline = erlang:system_time(millisecond) + 60000,
+            St0 = imboy_cache_sync_snapshot:new_round(0, Deadline),
+            Round = maps:get(round, St0),
+            Peer = 'snap_peer@x',
+            St1 = imboy_cache_sync_snapshot:expect_peer(St0, Peer),
+            %% 仅空 done 不闭合（C04 核心：三条件）
+            Entries = [{{rep_ns, k1}, <<"v1">>, future_ms(60), {1, Peer}}],
+            Digest = imboy_cache_sync_snapshot:page_digest(Round, 1, Entries),
+            {ok, St2} = imboy_cache_sync_snapshot:handle_page(
+                Peer, Round, 1, Entries, Digest, true, St1
+            ),
+            ?assertNot(imboy_cache_sync_snapshot:round_complete(St2)),
+            %% done 到齐但 expected_more 悬挂（页未收完）→ 不闭合
+            {ok, St3} = imboy_cache_sync_snapshot:handle_done(Peer, Round, 42, St2),
+            ?assertNot(imboy_cache_sync_snapshot:round_complete(St3)),
+            %% 未知 round 的 done 不推进
+            {ok, St4} = imboy_cache_sync_snapshot:handle_done(
+                Peer, crypto:strong_rand_bytes(12), 99, St3
+            ),
+            ?assertNot(imboy_cache_sync_snapshot:round_complete(St4)),
+            ?assertEqual(
+                42,
+                maps:get(
+                    watermark,
+                    maps:get(Peer, maps:get(peers, St4))
+                )
+            ),
+            %% done 之后的迟到页被丢弃（幂等安全，协议语义）：状态不变、不闭合
+            Entries2 = [{{rep_ns, k2}, <<"v2">>, future_ms(60), {2, Peer}}],
+            Digest2 = imboy_cache_sync_snapshot:page_digest(Round, 2, Entries2),
+            {ok, St5} = imboy_cache_sync_snapshot:handle_page(
+                Peer, Round, 2, Entries2, Digest2, false, St4
+            ),
+            ?assertEqual(St4, St5),
+            ?assertNot(imboy_cache_sync_snapshot:round_complete(St5)),
+            ?assertEqual(1, imboy_cache_sync_snapshot:applied_count(St5)),
+            %% 闭合路径（新回合）：页收齐（HasMore=false）后 done 才闭合
+            St6 = imboy_cache_sync_snapshot:expect_peer(
+                imboy_cache_sync_snapshot:new_round(0, Deadline), Peer
+            ),
+            Round2 = maps:get(round, St6),
+            Digest3 = imboy_cache_sync_snapshot:page_digest(Round2, 1, Entries2),
+            {ok, St7} = imboy_cache_sync_snapshot:handle_page(
+                Peer, Round2, 1, Entries2, Digest3, false, St6
+            ),
+            ?assertNot(imboy_cache_sync_snapshot:round_complete(St7)),
+            {ok, St8} = imboy_cache_sync_snapshot:handle_done(Peer, Round2, 43, St7),
+            ?assert(imboy_cache_sync_snapshot:round_complete(St8)),
+            ?assertEqual(1, imboy_cache_sync_snapshot:applied_count(St8))
+        end
+    ].
 
 c04_page_gap_and_digest_mismatch_abort_test_() ->
-    Round = crypto:strong_rand_bytes(12),
-    St0 = imboy_cache_sync_snapshot:new_round(
-        0,
-        erlang:system_time(millisecond) + 60000
-    ),
-    Peer = 'snap_peer2@x',
-    St1 = imboy_cache_sync_snapshot:expect_peer(St0, Peer),
-    %% 页号跳号（1 → 3）→ abort page_gap
-    Entries = [{{rep_ns, k}, <<"v">>, future_ms(60), {1, Peer}}],
-    Digest = imboy_cache_sync_snapshot:page_digest(Round, 3, Entries),
-    {abort, page_gap, _} = imboy_cache_sync_snapshot:handle_page(
-        Peer, Round, 3, Entries, Digest, false, St1
-    ),
-    %% digest 篡改 → abort page_digest_mismatch
-    St1b = imboy_cache_sync_snapshot:expect_peer(
-        imboy_cache_sync_snapshot:new_round(
-            0,
-            erlang:system_time(millisecond) + 60000
-        ),
-        Peer
-    ),
-    DigestBad = Digest bxor 16#deadbeef,
-    {abort, page_digest_mismatch, _} = imboy_cache_sync_snapshot:handle_page(
-        Peer, maps:get(round, St1b), 1, Entries, DigestBad, false, St1b
-    ).
+    [
+        fun() ->
+            St0 = imboy_cache_sync_snapshot:new_round(
+                0,
+                erlang:system_time(millisecond) + 60000
+            ),
+            Peer = 'snap_peer2@x',
+            St1 = imboy_cache_sync_snapshot:expect_peer(St0, Peer),
+            Round = maps:get(round, St1),
+            %% 页号跳号（1 → 3）→ abort page_gap
+            Entries = [{{rep_ns, k}, <<"v">>, future_ms(60), {1, Peer}}],
+            Digest = imboy_cache_sync_snapshot:page_digest(Round, 3, Entries),
+            {abort, page_gap, _} = imboy_cache_sync_snapshot:handle_page(
+                Peer, Round, 3, Entries, Digest, false, St1
+            ),
+            %% digest 篡改 → abort page_digest_mismatch
+            St1b = imboy_cache_sync_snapshot:expect_peer(
+                imboy_cache_sync_snapshot:new_round(
+                    0,
+                    erlang:system_time(millisecond) + 60000
+                ),
+                Peer
+            ),
+            DigestBad = Digest bxor 16#deadbeef,
+            {abort, page_digest_mismatch, _} = imboy_cache_sync_snapshot:handle_page(
+                Peer, maps:get(round, St1b), 1, Entries, DigestBad, false, St1b
+            )
+        end
+    ].
 
 c04_buffer_overflow_abort_test_() ->
-    Round = crypto:strong_rand_bytes(12),
-    Old = application:get_env(imboy, cache_replication, #{}),
-    application:set_env(imboy, cache_replication, maps:merge(Old, #{b_max => 2})),
-    try
-        St0 = imboy_cache_sync_snapshot:new_round(
-            0,
-            erlang:system_time(millisecond) + 60000
-        ),
-        Peer = 'snap_peer3@x',
-        St1 = imboy_cache_sync_snapshot:expect_peer(St0, Peer),
-        %% 三条目页超过 Bmax=2 → abort buffer_overflow
-        Entries = [
-            {{rep_ns, a}, <<"v">>, future_ms(60), {1, Peer}},
-            {{rep_ns, b}, <<"v">>, future_ms(60), {2, Peer}},
-            {{rep_ns, c}, <<"v">>, future_ms(60), {3, Peer}}
-        ],
-        Digest = imboy_cache_sync_snapshot:page_digest(Round, 1, Entries),
-        {abort, buffer_overflow, _} = imboy_cache_sync_snapshot:handle_page(
-            Peer, Round, 1, Entries, Digest, false, St1
-        )
-    after
-        application:set_env(imboy, cache_replication, Old)
-    end.
+    [
+        fun() ->
+            Old = application:get_env(imboy, cache_replication, #{}),
+            application:set_env(
+                imboy, cache_replication, maps:merge(Old, #{b_max => 2})
+            ),
+            try
+                St0 = imboy_cache_sync_snapshot:new_round(
+                    0,
+                    erlang:system_time(millisecond) + 60000
+                ),
+                Peer = 'snap_peer3@x',
+                St1 = imboy_cache_sync_snapshot:expect_peer(St0, Peer),
+                Round = maps:get(round, St1),
+                %% 三条目页超过 Bmax=2 → abort buffer_overflow
+                Entries = [
+                    {{rep_ns, a}, <<"v">>, future_ms(60), {1, Peer}},
+                    {{rep_ns, b}, <<"v">>, future_ms(60), {2, Peer}},
+                    {{rep_ns, c}, <<"v">>, future_ms(60), {3, Peer}}
+                ],
+                Digest = imboy_cache_sync_snapshot:page_digest(Round, 1, Entries),
+                {abort, buffer_overflow, _} = imboy_cache_sync_snapshot:handle_page(
+                    Peer, Round, 1, Entries, Digest, false, St1
+                )
+            after
+                application:set_env(imboy, cache_replication, Old)
+            end
+        end
+    ].
 
 %% ===================================================================
 %% C05 缺口补偿：fenced namespace 的 generation 推进
@@ -907,11 +935,14 @@ c05_seq_gap_compensates_fenced_generation_test_() ->
     ?TEST_WITH_APP(fun() ->
         ready = wait_ready(50),
         OldF = application:get_env(imboy, cache_fenced_namespaces, undefined),
-        application:set_env(imboy, cache_fenced_namespaces, [cache_v2_test]),
+        %% 19.5 接收端白名单 fail-closed：set/delete 事件只能落在
+        %% cache_replication.whitelist 内的 namespace（setup_replicate_env
+        %% 授权 cache_v2_test_rep），fenced 配置必须用同一 namespace。
+        application:set_env(imboy, cache_fenced_namespaces, [cache_v2_test_rep]),
         setup_replicate_env(),
         try
             Origin = 'gap_peer@x',
-            Key = {cache_v2_test, c05_gap_key},
+            Key = {cache_v2_test_rep, c05_gap_key},
             G0 = imboy_cache_sync:generation(Key),
             %% seq 1 → 3 跳号：缺口检测 + fenced namespace 补偿（gen 推进）
             Boot = remote_boot(),
