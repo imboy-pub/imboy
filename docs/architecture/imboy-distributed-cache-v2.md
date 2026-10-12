@@ -26,11 +26,14 @@
 |---|---|
 | `src/lib/imboy_cache.erl` | depcache 门面（源自 z_depcache）；`put/4`、`put_delete/1`、`invalidate/1` 对上提供 local/replicate/invalidate 三种行为；同步本身委托独立 gen_server |
 | `src/lib/imboy_cache_policy.erl` | namespace 判定、fenced 开关（`cache_fenced_namespaces`）、replicate 授权（`replicate_allowed/1`）、预算（`b_max/p_max/p_max_bytes`）、config_hash 输入 |
-| `src/lib/imboy_cache_sync.erl` | 同步核心 gen_server：revision 状态机、r1/r2 版本握手、缺口补偿、恢复（`RECOVER_ROUND_MS=5000`、`RECOVER_MAX_RETRY=3`、对账间隔 60s、时钟偏移容限 5s） |
+| `src/lib/imboy_cache_sync.erl` | 同步核心 gen_server：公共 API、gen_server 串行化、generation 栅栏与物理键、发布路径（预算前置检查/Lamport 分配/syn 发布）、时钟与 revision 纯函数；V2 事件应用与恢复引擎分别委托 apply/recover（例外 4 拆分，函数体逐字迁移零行为变更） |
+| `src/lib/imboy_cache_sync_apply.erl` | V2 事件应用（C02 双端一致性后的 op 路由与 rev/tombstone 写入）+ C03 资源预算（Nmax rindex / Tmax 墓碑 / 受控冷恢复）+ C05 缺口与化身补偿 |
+| `src/lib/imboy_cache_sync_recover.erl` | 恢复引擎：发现/降级状态机、r1/r2 版本上界应答处理、C04 快照回合闭合与中止、9.4 定期校对、W4-06/07 有界清扫 |
 | `src/lib/imboy_cache_sync_proto.erl` | 协议帧编解码与纯函数校验：envelope（epoch、config_hash/registry_hash 各 16B）、`check_incarnation`（首见旧化身返回 changed 触发补偿）、`version_request_frame` |
 | `src/lib/imboy_cache_sync_snapshot.erl` | C04 快照轮：Round 令牌、分页发送（每页 ≤Pmax 项且 ≤Pmax_bytes）、页摘要 phash2、接收端 Bmax 缓冲、闭环判定（全对端 done + 无 expected_more + 截止期内） |
 
-共享 ETS：`imboy_cache_meta`（世代、peer counter、恢复状态）。
+共享 ETS：`imboy_cache_meta`（世代、peer counter、恢复状态）；同步族共享状态记录与
+恢复预算 define 在 `imboy_cache_sync_state.hrl`。
 
 ## 3. 关键机制
 

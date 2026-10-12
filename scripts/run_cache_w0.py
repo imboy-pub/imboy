@@ -38,7 +38,9 @@ def measure(arguments, env, cwd):
 INFRA_PATHS = frozenset({
     "src/lib/imboy_cache.erl",
     "src/lib/imboy_cache_sync.erl",
+    "src/lib/imboy_cache_sync_apply.erl",
     "src/lib/imboy_cache_sync_proto.erl",
+    "src/lib/imboy_cache_sync_recover.erl",
     "src/lib/imboy_cache_sync_snapshot.erl",
     "src/lib/imboy_cache_policy.erl",
 })
