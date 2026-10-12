@@ -809,7 +809,10 @@ c03_budget_digest_is_stable_and_config_sensitive_test_() ->
 %% C04 快照回合：round/页/digest/闭合判定（snapshot 模块单元级）
 %% ===================================================================
 
-c04_round_requires_done_and_pages_test_() ->
+%% 普通 _test/0（非 generator）：函数体直接执行断言序列，generator
+%% 命名（尾下划线）会让 eunit 把返回的 ok 当"非测试结果"报 cancelled
+%% （全量 r2 实证：单跑 t= 因计数路径不同未暴露）
+c04_round_requires_done_and_pages_test() ->
     %% round token 由 new_round 自生成（快照回合身份），测试从状态取出使用
     Deadline = erlang:system_time(millisecond) + 60000,
     St0 = imboy_cache_sync_snapshot:new_round(0, Deadline),
