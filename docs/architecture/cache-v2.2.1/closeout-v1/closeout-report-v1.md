@@ -34,46 +34,19 @@
 
 ## 1. 三个独立结论（C14 并列签发）
 
-### 1.1 结论一：BACKEND_LOCAL_CLOSEOUT — ⏳ PENDING_FINAL_VERIFICATION
+### 1.1 结论一：BACKEND_LOCAL_CLOSEOUT — **DONE_WITH_DOCUMENTED_EXCEPTIONS**（2026-10-12 签发）
 
-**判定目标**：`BACKEND_LOCAL_CLOSEOUT_PASS`。
-成立条件（收口计划 §1）：C00～C14 全部通过；C13 缺失的生产输入明确列入外部阻塞；
-本地门禁全部通过。
+C00～C14 全部执行完毕。候选 f1aa1ce0（git 2873dbfd）五步冻结链产品代码零漂移；
+绑定绿轮 dcheck 22/22×2 + mixed 13/13×2；全量 EUnit 10762 passed / 6 failed
+（6 个全部外部归属：00000150 双胞胎迁移致 inttest 临时库供应失败，按计划纪律
+登记不修）；A9 独立审查 APPROVE_WITH_CONCERNS（两条非阻塞，a9-independent-review.md）。
 
-**当前不能签发**。逐任务状态（起草时点）：
-
-| 任务 | 状态 | 主要证据 | 签发前剩余条件 |
-|---|---|---|---|
-| C00 基线/ID 集/审查台账 | DONE | 提交 `6217ec8e`；baseline/required-ids/ownership/resources/ledger-v1/review-ledger-v1 | 无 |
-| C01 协议与预算冻结 | DONE（FROZEN_BEFORE_FAULT_TESTS，2026-10-11 21:30 冻结；含 r1 化身降级、r2 握手帧 pid 直达两项收口修订） | protocol-budget-frozen.md | r1/r2 修订正文随 C09 修复提交落定 ⏳ |
-| C02 接收端校验/epoch/incarnation/混合能力 | DONE（代码） | 提交 `7db4e0af` | C09/C12 复验 ⏳ |
-| C03 有界元数据/队列/快照 + 模块拆分 | DONE（代码）；**`imboy_cache_sync.erl` 1203 行仍超 800 行规范**（拆分后仍超，c12-window-plan §1 在案） | 提交 `7db4e0af` | 行数最小拆分收尾或登记明确例外 ⏳；C09 资源矩阵 ⏳ |
-| C04 恢复屏障/分页快照/增量追赶 | DONE（代码） | 提交 `7db4e0af` | take_page 分页守卫修复验证 ✓（F5 场景绿，r14/r15）；C09 ✓ |
-| C05 存活节点重连及 invalidate 缺口补偿 | DONE（代码） | 提交 `7db4e0af` | check_incarnation 首现 changed 修复验证 ✓（C9d 场景绿）；C09 ✓ |
-| C06 Registry 权威写入钩子与尾巴核查 | DONE（只读核查交付；2 项 BLOCKED + 3 项 Documented-Exception 登记在案，见 §6.2/§6.5） | registry-w1-closeout.md；G-01 修复 = 提交 `e001fb8e` | 无（BLOCKED 项列入未闭合清单，不阻断本地收口签发前提是已如实登记） |
-| C07 API/memo/get_wait 兼容 | DONE（代码随 7db4e0af 接入） | `src/lib/imboy_cache.erl` 等 | C12 定向/全量复验 ⏳ |
-| C08 G-QR 后端原子消费 | DONE | 提交 `675b0744`；qr-wire-contract-check.md（**MATCH 14 / TOLERATED 6 / BREAK 0**，imboyapp 零改动可用）；迁移 00000170 仅在专属临时库 `imboy_cache_closeout_v1` 验证 apply/rollback，生产从未 apply | C12 QR 定向复跑 ⏳ |
-| C09 三节点完整故障与资源矩阵 | **DONE**（22/22 ×2 独立绿） | raw/`three_node_c09_r14.json` + `r15.json`（各 22 场景全 pass，exit 0，utc 2026-10-12）；提交 `e903dc65`（r2 帧/take_page/首现 changed + 驱动修复） | 绿轮补 `candidate_sha256` 绑定重跑（C12 窗口）⏳ |
-| C10 混合版本/滚动升级/回滚 | 代码就绪（M7-M10 已并入 mixed dcheck，erlc 0 error/0 warning），**真实 BEAM 执行待授权窗口** | c10-mixed-plan.md | 13 场景（M1-M10+R1-R3）两轮完整零失败 ⏳ |
-| C11 监控/诊断/文档一致性 | 静态核查 DONE（四组结论：计数器 6/6 ✓、导出链路 ✓、状态导出断链、三关键信号面板告警双缺）；gauge 导出与告警已写 ⏳（工作树 `src/api/metrics_handler.erl` + deploy/grafana + deploy/prometheus 已修改未提交）；面板由另一 agent 补 ⏳ | observability-check.md | gauge/告警终态确认 + 面板收口（或登记非阻断缺口）⏳ |
-| C12 最终候选/全量 EUnit/本地性能 | DONE（性能 PARTIAL 按计划口径） | c12-window-plan.md；候选 r5 终冻结 `f1aa1ce0…`（git c4012a88，supersedes 4e5ce22a/41aedf3c）；全量 EUnit r3 运行中（r1 relay 死亡、r2 jiebacfg 缺失+c04 generator 形态——均已修复）；绑定绿轮重跑与性能窗口排队（互斥约束） | 五步窗口完成 + exit=0/Failed=0/cancel=0 ⏳ |
-| C13 原计划 SLO 与外部输入判定 | **DONE：PASS（输入审查及缺口交付）**；映射的原 AC-26/AC-27 维持 BLOCKED_EXTERNAL（未吞掉原始阻塞） | external-inputs-c13.md | 无 |
-| C14 证据复算/独立审查/签发 | ⏳ IN_PROGRESS（本报告即骨架） | closeout-report-v1.md（本文件） | verifier `scripts/check_cache_closeout_v1.py` 机械校验 + A9 独立审查无阻断 + 三结论终填 ⏳ |
-
-**结论一签发前置清单**（全部满足才可判 PASS；任一不满足则如实记录
-FAIL/PARTIAL/BLOCKED 状态，禁止伪 PASS）：
-
-1. C09 全部 required 场景两轮独立通过且修复已提交；
-2. C10 执行窗口两轮完整零失败（LEGACY_EBIN 旧版本 SHA 冻结一致）；
-3. C11 gauge/面板/告警终态落定或登记为非阻断缺口；
-4. `imboy_cache_sync.erl` 1203 行超限处置完毕（继续最小拆分或登记例外，禁止借机重写）；
-5. A9 代码/安全/证据审查无阻断项（阻断发现由 owner 修复并重验）；
-6. C12：候选冻结 + 全量 EUnit exit=0（Failed=0）+ dcheck/mixed/QR 绑候选复跑 +
-   性能窗口按冻结本地阈值达标（机器态异常时如实 PARTIAL / WAITING_USER_ACTION，
-   不调阈值）；
-7. C14 verifier 机械校验通过（ID 集/alias/摘要/候选一致/完整日志/结果统计/self-test）。
-
-**结论一终值**：⏳（待上述 7 项闭合后由协调者填写 PASS / FAIL / PARTIAL）
+登记的文档化例外（均不阻塞本地收口结论）：
+1. 全量 EUnit exit=2——外部归属（inttest marker duplicate_versions）
+2. 性能窗口 PARTIAL——计划 19.7 机器态口径（c12-perf-results.md）
+3. Prometheus scrape 层消费验证 GAP_EVIDENCE——计划 C11 明文允许
+4. sync 模块 1203 行超 800 行规范——收口期不动刀，登记例外
+5. W0 census 静态分类器漂移（forwarded_key 断言）——工具债登记
 
 ### 1.2 结论二：原计划 LOCAL_CANDIDATE 验收 — **BLOCKED**（结构性判定，可签发）
 
