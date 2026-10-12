@@ -64,7 +64,6 @@ JWT（active Human，account_type=0）
   -> 请求字段语法（application_key 全局解析 / redirect_uri / nonce）
   -> application active（实例内全局唯一 key）
   -> redirect_uri 对 allowed_redirect_uris 逐字节 exact match（空 allowlist 仍 fail-closed）
-  -> (application, user) 的 active identity mapping 存在
   -> 签发 60s one-time code，绑定四元组 app/user/redirect_uri/nonce
 ```
 

@@ -25,6 +25,7 @@
     find_tx/3,
     lock_tx/3,
     find_by_key_tx/3,
+    find_by_application_key_tx/2,
     list_page_tx/5,
     workbench_entries_tx/1,
     update_status_tx/4,
@@ -162,6 +163,17 @@ find_by_key_tx(Conn, OrgId, ApplicationKey) when is_integer(OrgId), is_binary(Ap
         <<"SELECT ", ?COLUMNS/binary, " FROM ", (tablename())/binary,
             " WHERE organization_id = $1 AND application_key = $2 LIMIT 1">>,
     one_tx(Conn, Sql, [OrgId, ApplicationKey]).
+
+%% @doc 事务内按 application_key 实例级直取（uq_ea_key_global 全局唯一；
+%% 部署实例即授权边界，发现/引导不限定 organization——ADR 2026-10-12）。
+%% 多行仅可能出现在唯一约束建立前的数据异常态，LIMIT 1 取最小 id。
+-spec find_by_application_key_tx(any(), binary()) ->
+    {ok, map()} | {error, not_found | term()}.
+find_by_application_key_tx(Conn, ApplicationKey) when is_binary(ApplicationKey) ->
+    Sql =
+        <<"SELECT ", ?COLUMNS/binary, " FROM ", (tablename())/binary,
+            " WHERE application_key = $1 ORDER BY id LIMIT 1">>,
+    one_tx(Conn, Sql, [ApplicationKey]).
 
 %% @doc 事务内按组织分页浏览 Application（Admin 治理面 A-01；迁移 00000143）。
 %% Org 边界在 SQL 内强制：跨 Org 的行一律不可见，不靠调用方守纪律（IDOR 负例

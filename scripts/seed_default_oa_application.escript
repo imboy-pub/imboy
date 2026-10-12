@@ -103,28 +103,47 @@ resolve_org(Conn) ->
     end.
 
 ensure_application(Conn, OrgId, ApplicationKey, Name, RedirectUri) ->
-    case enterprise_application_repo:find_by_key_tx(Conn, OrgId, ApplicationKey) of
-        {ok, #{<<"id">> := AppId, <<"allowed_redirect_uris">> := Allow}} ->
-            case lists:member(RedirectUri, Allow) of
-                true ->
-                    ok;
-                false ->
-                    ok = enterprise_application_repo:update_redirect_uris_tx(
-                        Conn, OrgId, AppId, Allow ++ [RedirectUri]
-                    ),
-                    io:format("APP: allowlist 追加 ~s~n", [RedirectUri])
-            end,
-            AppId;
+    %% 与 enterprise_oa_bootstrap 同口径：按 key 实例级直取（全局唯一），
+    %% 不限定 org——key 已登记于其他 org 时同样复用该应用。
+    case enterprise_application_repo:find_by_application_key_tx(Conn, ApplicationKey) of
+        {ok, App} ->
+            adopt_application(Conn, OrgId, App, RedirectUri);
         {error, not_found} ->
-            {ok, App} = enterprise_application_repo:create_tx(
+            case enterprise_application_repo:create_tx(
                 Conn, OrgId, ApplicationKey, Name, {null, ?SCOPES}, [RedirectUri]
-            ),
-            AppId = maps:get(<<"id">>, App),
-            io:format("APP: 创建 ~ts (org=~p, key=~s)~n", [Name, OrgId, ApplicationKey]),
-            AppId;
+            ) of
+                {ok, App} ->
+                    AppId = maps:get(<<"id">>, App),
+                    io:format("APP: 创建 ~ts (org=~p, key=~s)~n", [Name, OrgId, ApplicationKey]),
+                    AppId;
+                %% 并发/他 org 先种撞 uq_ea_key_global：按 key 重取复用
+                {error, key_conflict} ->
+                    case enterprise_application_repo:find_by_application_key_tx(Conn, ApplicationKey) of
+                        {ok, App2} ->
+                            adopt_application(Conn, OrgId, App2, RedirectUri);
+                        {error, R} ->
+                            throw({seed_error, {application_lookup_after_conflict, R}})
+                    end;
+                {error, R} ->
+                    throw({seed_error, {application_create, R}})
+            end;
         {error, R} ->
             throw({seed_error, {application_lookup, R}})
     end.
+
+adopt_application(Conn, OrgId, App, RedirectUri) ->
+    AppId = maps:get(<<"id">>, App),
+    Allow = maps:get(<<"allowed_redirect_uris">>, App),
+    case lists:member(RedirectUri, Allow) of
+        true ->
+            ok;
+        false ->
+            ok = enterprise_application_repo:update_redirect_uris_tx(
+                Conn, OrgId, AppId, Allow ++ [RedirectUri]
+            ),
+            io:format("APP: allowlist 追加 ~s~n", [RedirectUri])
+    end,
+    AppId.
 
 %% Grant 幂等按**生效 scope**判定（与 enterprise_oa_bootstrap 同语义）：
 %% sso:exchange 已生效即跳过；被撤销/过期/未授予才新建（幂等键带时间

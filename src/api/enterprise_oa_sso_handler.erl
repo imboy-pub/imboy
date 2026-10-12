@@ -55,8 +55,10 @@ entries(<<"GET">>, Req0, State) ->
             ok;
         _LegacyOrgId ->
             %% M6 观测（ADR §5）：旧客户端带 org 参数的请求归零后，
-            %% 迁移 00000171 的 cleanup 阶段移除该兼容分支
-            ?DEBUG_LOG([legacy_workbench_org_param, #{}])
+            %% 迁移 00000171 的 cleanup 阶段移除该兼容分支。
+            %% 用 INFO 级：DEBUG_LOG 宏在非 debug 构建整体展开为 true，
+            %% 观测会静默失效，无法为 cleanup 决策取证。
+            ?INFO_LOG([legacy_workbench_org_param, #{}])
     end,
     case enterprise_oa_sso_logic:entries(Uid) of
         {ok, Result} -> elib_response:success(Req0, Result);

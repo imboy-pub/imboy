@@ -5,7 +5,8 @@
 % enterprise_oa_bootstrap 是 OA 免登「开箱即用」的部署引导（M0）：
 % 部署环境配置 IMBOY_OA_REDIRECT_URI 后，启动期自动登记实例级默认 OA 应用
 % （application_key 实例内全局唯一；organization_id 仅为业务归属）+ 生效
-% Grant（sso:exchange，幂等键固定）。幂等：重复启动零副作用，只补缺口。
+% Grant（sso:exchange，按生效 scope 判定；幂等键带时间后缀以支持撤销后重授）。
+% 幂等：重复启动零副作用，只补缺口。
 %
 % 边界（与 scripts/seed_default_oa_application.escript 的分工）：
 %   - 本模块只做应用登记（app + allowlist + grant）——getAuthCode（App 侧
@@ -96,12 +97,8 @@ resolve_org(Conn) ->
 -spec ensure_application(any(), integer(), binary(), binary(), binary()) -> integer().
 ensure_application(Conn, OrgId, Key, Name, RedirectUri) ->
     %% key 实例内全局唯一（迁移 00000171 uq_ea_key_global），按 key 直取
-    Sql = <<
-        "SELECT id, allowed_redirect_uris FROM enterprise_application"
-        " WHERE application_key = $1 ORDER BY id LIMIT 1"
-    >>,
-    case elib_pg:query(Conn, Sql, [Key]) of
-        {ok, [#{<<"id">> := AppId, <<"allowed_redirect_uris">> := Allow}]} ->
+    case enterprise_application_repo:find_by_application_key_tx(Conn, Key) of
+        {ok, #{<<"id">> := AppId, <<"allowed_redirect_uris">> := Allow}} ->
             case lists:member(RedirectUri, Allow) of
                 true ->
                     AppId;
@@ -111,7 +108,7 @@ ensure_application(Conn, OrgId, Key, Name, RedirectUri) ->
                     ),
                     AppId
             end;
-        {ok, []} ->
+        {error, not_found} ->
             {ok, App} = enterprise_application_repo:create_tx(
                 Conn, OrgId, Key, Name, {null, [<<"sso:exchange">>]}, [RedirectUri]
             ),
