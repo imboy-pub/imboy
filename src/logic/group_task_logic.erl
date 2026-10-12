@@ -166,6 +166,7 @@ submit_assignment(Task, TaskId, UserId) ->
         true ->
             case group_task_ds:assignment_find_by_task_and_user(TaskId, UserId) of
                 {error, not_found} -> default_assignment(Gid, TaskId, UserId);
+                {error, _} -> assignment_failure();
                 Result -> Result
             end
     end.
@@ -441,7 +442,9 @@ viewer_assignment(Task, ViewerUid) ->
         {ok, Assignment} ->
             {ok, Task#{<<"my_assignment">> => Assignment}};
         {error, not_found} ->
-            {ok, Task#{<<"my_assignment">> => null}}
+            {ok, Task#{<<"my_assignment">> => null}};
+        {error, _} ->
+            {error, imboy_error:error_msg(?ERR_INTERNAL_SERVER_ERROR), ?ERR_INTERNAL_SERVER_ERROR}
     end.
 
 %% @doc 用户侧列表：为每个作业附带查看者的提交概要（my_assignment）。
@@ -463,6 +466,9 @@ decorate_viewer_assignment(Task, ViewerUid) ->
                 {ok, Assignment} ->
                     Task#{<<"my_assignment">> => Assignment};
                 {error, not_found} ->
+                    Task#{<<"my_assignment">> => null};
+                {error, _Reason} ->
+                    %% 单条概要查询失败不阻塞整个列表：降级为"未提交"
                     Task#{<<"my_assignment">> => null}
             end;
         _Other ->

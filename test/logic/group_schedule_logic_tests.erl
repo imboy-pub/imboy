@@ -40,6 +40,9 @@ create_schedule_success_test() ->
     _ = catch meck:unload(group_ds),
     meck:new(group_ds, [passthrough, no_link]),
     meck:expect(group_ds, is_member, fun(_Uid, _Gid) -> true end),
+    %% B4 群级 fail-closed 门（group_e2ee_gate）：schedule 逻辑测试不触真库，
+    %% 门默认关（{ok,0}），与 msg_c2g_logic_tests 同口径
+    meck:expect(group_ds, e2ee_mode, fun(_Gid) -> {ok, 0} end),
 
     Result = group_schedule_logic:create_schedule(
         % GroupId
@@ -90,6 +93,9 @@ create_schedule_without_participants_test() ->
     _ = catch meck:unload(group_ds),
     meck:new(group_ds, [passthrough, no_link]),
     meck:expect(group_ds, is_member, fun(_Uid, _Gid) -> true end),
+    %% B4 群级 fail-closed 门（group_e2ee_gate）：schedule 逻辑测试不触真库，
+    %% 门默认关（{ok,0}），与 msg_c2g_logic_tests 同口径
+    meck:expect(group_ds, e2ee_mode, fun(_Gid) -> {ok, 0} end),
 
     Result = group_schedule_logic:create_schedule(
         % GroupId
@@ -134,6 +140,9 @@ create_schedule_with_invalid_time_range_test() ->
     _ = catch meck:unload(group_ds),
     meck:new(group_ds, [passthrough, no_link]),
     meck:expect(group_ds, is_member, fun(_Uid, _Gid) -> true end),
+    %% B4 群级 fail-closed 门（group_e2ee_gate）：schedule 逻辑测试不触真库，
+    %% 门默认关（{ok,0}），与 msg_c2g_logic_tests 同口径
+    meck:expect(group_ds, e2ee_mode, fun(_Gid) -> {ok, 0} end),
 
     Result = group_schedule_logic:create_schedule(
         % GroupId
@@ -735,6 +744,9 @@ create_schedule_with_empty_title_test() ->
     _ = catch meck:unload(group_ds),
     meck:new(group_ds, [passthrough, no_link]),
     meck:expect(group_ds, is_member, fun(_Uid, _Gid) -> true end),
+    %% B4 群级 fail-closed 门（group_e2ee_gate）：schedule 逻辑测试不触真库，
+    %% 门默认关（{ok,0}），与 msg_c2g_logic_tests 同口径
+    meck:expect(group_ds, e2ee_mode, fun(_Gid) -> {ok, 0} end),
 
     Result = group_schedule_logic:create_schedule(
         123,
@@ -771,6 +783,9 @@ create_schedule_with_too_many_participants_test() ->
     _ = catch meck:unload(group_ds),
     meck:new(group_ds, [passthrough, no_link]),
     meck:expect(group_ds, is_member, fun(_Uid, _Gid) -> true end),
+    %% B4 群级 fail-closed 门（group_e2ee_gate）：schedule 逻辑测试不触真库，
+    %% 门默认关（{ok,0}），与 msg_c2g_logic_tests 同口径
+    meck:expect(group_ds, e2ee_mode, fun(_Gid) -> {ok, 0} end),
 
     % 生成超过限制的参与人列表
     ParticipantIds = lists:seq(1, 101),
