@@ -136,6 +136,12 @@ collect_system_metrics() ->
 
     %% License 指标（fail-safe，避免 metrics 因 License 异常不可用）
     LicenseMetrics = license_metrics(),
+    %% cache sync 状态指标（cache-v2.2.1 C11/19.8）：status/epoch/队列/peer 数
+    %% 与各 peer 报告的版本水位（peer-lag 数据源）。名字对齐
+    %% deploy/grafana/dashboards/imboy-cache-sync.json 与 imboy-alerts.yml
+    %% 的 imboy.cache_sync 告警组（B-26 同款对账纪律）。sync 未启动时导出
+    %% -1/0，fail-safe 不让 metrics 因 sync 缺席不可用。
+    CacheSyncMetrics = cache_sync_metrics(),
     %% B-26 指标名对账：下列名字**逐字**对齐 deploy/grafana/dashboards/imboy-overview.json
     %% 与 deploy/prometheus/rules/imboy-alerts.yml。此前导出的是
     %% erlang_process_count / erlang_memory_total_bytes / ws_connections_current，
@@ -145,26 +151,112 @@ collect_system_metrics() ->
     %% 改这里之前先 grep deploy/ 确认新名字确实是那边引用的那个。
     maps:merge(
         maps:merge(
-            #{
-                erlang_vm_process_count => ProcessCount,
-                erlang_vm_port_count => erlang:system_info(port_count),
-                %% kind 标签对应面板的 legendFormat "{{kind}}"
-                {erlang_vm_memory_bytes_total, #{kind => total}} => MemTotal,
-                {erlang_vm_memory_bytes_total, #{kind => processes}} => MemProc,
-                {erlang_vm_memory_bytes_total, #{kind => ets}} => MemEts,
-                process_uptime_seconds => uptime_seconds(),
-                imboy_online_users => OnlineCount,
-                imboy_ws_connections_total => WsConnections,
-                %% 审计 A3/C-2（2026-10-10）：TSID 就绪闸指标（1=ready，
-                %% 0=clock_unsafe/not_initialized/异常）。时钟闸无内置周期探针，
-                %% 偏差暴露窗口 = 本指标的抓取间隔；告警 ImBoyTsidNotReady
-                %% 与 deploy/prometheus/rules/imboy-alerts.yml 按名对账。
-                imboy_tsid_readiness => tsid_readiness_value()
-            },
-            PoolStatus
+            maps:merge(
+                #{
+                    erlang_vm_process_count => ProcessCount,
+                    erlang_vm_port_count => erlang:system_info(port_count),
+                    %% kind 标签对应面板的 legendFormat "{{kind}}"
+                    {erlang_vm_memory_bytes_total, #{kind => total}} => MemTotal,
+                    {erlang_vm_memory_bytes_total, #{kind => processes}} => MemProc,
+                    {erlang_vm_memory_bytes_total, #{kind => ets}} => MemEts,
+                    process_uptime_seconds => uptime_seconds(),
+                    imboy_online_users => OnlineCount,
+                    imboy_ws_connections_total => WsConnections,
+                    %% 审计 A3/C-2（2026-10-10）：TSID 就绪闸指标（1=ready，
+                    %% 0=clock_unsafe/not_initialized/异常）。时钟闸无内置周期探针，
+                    %% 偏差暴露窗口 = 本指标的抓取间隔；告警 ImBoyTsidNotReady
+                    %% 与 deploy/prometheus/rules/imboy-alerts.yml 按名对账。
+                    imboy_tsid_readiness => tsid_readiness_value()
+                },
+                PoolStatus
+            ),
+            LicenseMetrics
         ),
-        LicenseMetrics
+        CacheSyncMetrics
     ).
+
+%% @doc cache 同步状态指标（C11）：ready=2 / recovering=1 / degraded=0 /
+%% sync 进程不存在=-1；epoch、消息队列深度、syn 视图 peer 数、本地版本
+%% 水位，以及各 peer 报告的版本水位（{peer="..."} 标签按节点集合有界，
+%% 不随 Key 无限增长；peer-lag = 本地水位 − peer 水位，在面板侧派生）。
+%% 全部 try/catch fail-safe：任何一项异常不影响其余指标与端点可用性。
+-spec cache_sync_metrics() -> map().
+cache_sync_metrics() ->
+    maps:merge(
+        #{
+            imboy_cache_sync_status => sync_status_value(),
+            imboy_cache_sync_epoch => sync_gauge(fun imboy_cache_sync_proto:epoch/0),
+            %% queue_depth/0 对进程不在返回饱和哨兵（业务 fail-closed 用）；
+            %% 监控语义区分进程不在（-1）与真实队列深度，避免进程死亡
+            %% 被编码成队列积压导致告警归因错误
+            imboy_cache_sync_queue_depth => queue_depth_gauge(),
+            imboy_cache_sync_peers => sync_peer_count(),
+            imboy_cache_sync_counter => local_sync_counter()
+        },
+        peer_counter_gauges()
+    ).
+
+-spec sync_status_value() -> integer().
+sync_status_value() ->
+    try imboy_cache_sync:status() of
+        ready -> 2;
+        recovering -> 1;
+        degraded -> 0;
+        _Other -> -1
+    catch
+        _:_ -> -1
+    end.
+
+-spec sync_gauge(fun(() -> integer())) -> integer().
+sync_gauge(Fun) ->
+    try
+        case Fun() of
+            V when is_integer(V) -> V;
+            _ -> -1
+        end
+    catch
+        _:_ -> -1
+    end.
+
+-spec queue_depth_gauge() -> integer().
+queue_depth_gauge() ->
+    case whereis(imboy_cache_sync) of
+        undefined -> -1;
+        _ -> sync_gauge(fun imboy_cache_sync:queue_depth/0)
+    end.
+
+%% syn scope/group 与 imboy_cache_sync 的 ?CACHE_SCOPE/?CACHE_GROUP_NAME
+%% 对账（include/chat.hrl: imboy_cache / dsync_handler）
+-spec sync_peer_count() -> non_neg_integer().
+sync_peer_count() ->
+    try
+        length([P || P <- syn:members(imboy_cache, dsync_handler), node(P) =/= node()])
+    catch
+        _:_ -> 0
+    end.
+
+%% 本地 Lamport 水位（sync 在 META 表维护 {sync_counter, V}）
+-spec local_sync_counter() -> integer().
+local_sync_counter() ->
+    try ets:lookup(imboy_cache_meta, sync_counter) of
+        [{sync_counter, V}] when is_integer(V) -> V;
+        _ -> -1
+    catch
+        _:_ -> -1
+    end.
+
+%% 各 peer 报告的版本水位（sync 恢复握手写入 {{peer_counter, Node}, V}）
+-spec peer_counter_gauges() -> map().
+peer_counter_gauges() ->
+    try ets:match(imboy_cache_meta, {{peer_counter, '$1'}, '$2'}) of
+        Rows ->
+            maps:from_list([
+                {{imboy_cache_sync_peer_counter, #{peer => Peer}}, V}
+             || [Peer, V] <- Rows
+            ])
+    catch
+        _:_ -> #{}
+    end.
 
 %% @doc 节点运行时长（秒）。告警 IMBoyBackendRestarted 用它判断"刚重启"，
 %% 面板也直接展示；此前根本没导出，那条告警从来不会响。

@@ -1376,3 +1376,78 @@ groups:
             2. 核对各节点 application env cache_sync_protocol 一致性
                （v2 模式下同时广播 legacy {flush,Key}，见 19.8 能力交集）
             3. 审查 19.5 事件白名单最近是否有变更（git log src/lib/imboy_cache_sync.erl）
+
+      # 恢复卡死（recovering 超窗未收敛）→ CRITICAL。status gauge：
+      # 2=ready / 1=recovering / 0=degraded / -1=sync 进程不存在。
+      # 持续 5 分钟 recovering 意味着快照回合反复中止或 authority 无应答，
+      # 按预算将进入/已进入 DEGRADED（replicate 写拒绝，fail-closed）。
+      - alert: ImBoyCacheSyncStuckRecovering
+        expr: imboy_cache_sync_status{job="imboy_backend"} == 1
+        for: 5m
+        labels:
+          severity: critical
+          team: backend
+        annotations:
+          summary: "缓存同步卡在恢复中 / Cache sync stuck recovering"
+          description: >
+            节点 {{ $labels.instance }} 的缓存同步持续 5 分钟以上处于
+            recovering 状态（imboy_cache_sync_status == 1）。快照回合可能
+            反复中止（缺页/digest 不符/authority 无应答），Dmax 耗尽后将进入
+            DEGRADED：replicate 写被拒绝（fail-closed），相关缓存回源权威。
+            Cache sync on {{ $labels.instance }} has been recovering for over
+            5 minutes and is heading for DEGRADED.
+          runbook: >
+            1. 看面板 IMBoy · Cache Sync →「同步状态」与「快照回合中止」
+            2. 核对 snapshot_abort_total 是否增长（增长 → 快照源异常，
+               核对 peer 网络与 hash 一致性）
+            3. 核对该节点与其他节点的 config_hash/registry_hash 一致
+               （divergent peer 不作为快照源，全部 divergent → 永不收敛）
+            4. 运维手册收口手段：节点级重启 sync 进程
+
+      # 进入 DEGRADED（replicate 写拒绝）或 sync 进程消失 → CRITICAL。
+      # status == 0 为 DEGRADED；== -1 为 sync 进程不存在（同样按 critical，
+      # 进程死亡期间所有 replicate 写走 fail-closed 拒绝路径）。
+      - alert: ImBoyCacheSyncDegraded
+        expr: imboy_cache_sync_status{job="imboy_backend"} <= 0
+        for: 0m
+        labels:
+          severity: critical
+          team: backend
+        annotations:
+          summary: "缓存同步降级或进程消失 / Cache sync degraded or process gone"
+          description: >
+            节点 {{ $labels.instance }} 的 imboy_cache_sync_status 为
+            {{ $value }}（0=DEGRADED，replicate 写拒绝；-1=sync 进程不存在）。
+            此状态下跨节点缓存失效不再传播，本地缓存可能发散；
+            写路径 fail-closed 拒绝 replicate 写。
+            Cache sync on {{ $labels.instance }} is degraded or its process
+            is gone; cross-node invalidation is not propagating.
+          runbook: >
+            1. 先看 ImBoyCacheSyncStuckRecovering 是否先行触发（恢复耗尽路径）
+            2. -1：核对 sync 进程是否崩溃循环（日志 imboy_cache_sync 崩溃报告）
+            3. 0：节点级重启 sync 进程（DEGRADED 唯一退出手段，运维手册既有结论）
+            4. 恢复后核对 reject_total / epoch 面板确认一致性回归
+
+      # 快照回合中止（缺页/digest 不符/缓冲溢出/轮超时）→ WARNING：
+      # 单次中止由 Rmax_rounds 有界重试兜住；10 分钟内反复中止说明
+      # 快照源或网络持续异常，恢复无法收敛（与 StuckRecovering 联动）。
+      - alert: ImBoyCacheSyncSnapshotAborting
+        expr: increase(snapshot_abort_total{job="imboy_backend"}[10m]) > 2
+        for: 0m
+        labels:
+          severity: warning
+          team: backend
+        annotations:
+          summary: "快照回合反复中止 / Snapshot rounds repeatedly aborted"
+          description: >
+            节点 {{ $labels.instance }} 最近 10 分钟快照回合中止
+            {{ $value }} 次（page_gap / page_digest_mismatch / buffer_overflow /
+            deadline）。Rmax_rounds=3 内偶发中止属有界重试范围；反复中止
+            说明快照源节点或网络持续异常，恢复将无法闭合。
+            Snapshot rounds were aborted {{ $value }} times in 10 minutes on
+            {{ $labels.instance }}.
+          runbook: >
+            1. 看「快照回合中止」面板的 reason 细分（日志关键字
+               cache sync snapshot round aborted）
+            2. page_gap/digest 类：核对快照源节点负载与网络
+            3. buffer_overflow：核对 Bmax 与缓存规模（Nmax/Tmax 预算）
