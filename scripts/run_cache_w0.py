@@ -33,6 +33,17 @@ def measure(arguments, env, cwd):
         return "TIMEOUT", stdout + stderr
 
 
+# 缓存/同步机制自身文件：它们的 imboy_cache:/depcache: 调用是机制自用，
+# 不构成业务 namespace 使用者（与 docs/architecture/imboy-distributed-cache-v2.md §2 模块图一致）。
+INFRA_PATHS = frozenset({
+    "src/lib/imboy_cache.erl",
+    "src/lib/imboy_cache_sync.erl",
+    "src/lib/imboy_cache_sync_proto.erl",
+    "src/lib/imboy_cache_sync_snapshot.erl",
+    "src/lib/imboy_cache_policy.erl",
+})
+
+
 def census(root):
     calls = []
     evidence = []
@@ -248,7 +259,7 @@ def hook_sites(calls, namespace):
     sites = [dict(path=call["path"], line=call["line"], function=call.get("function", "unknown"),
                   operation=call["operation"])
              for call in calls
-             if call["path"] not in {"src/lib/imboy_cache.erl", "src/lib/imboy_cache_sync.erl"}
+             if call["path"] not in INFRA_PATHS
              and call["operation"] in {"flush", "delete", "broadcast"}
              and namespace in call.get("registry_candidates", [])]
     return sorted(sites, key=lambda item: (item["path"], item["line"]))
@@ -258,7 +269,7 @@ def write_sites(calls, namespace):
     sites = [dict(path=call["path"], line=call["line"], function=call.get("function", "unknown"),
                   operation=call["operation"])
              for call in calls
-             if call["path"] not in {"src/lib/imboy_cache.erl", "src/lib/imboy_cache_sync.erl"}
+             if call["path"] not in INFRA_PATHS
              and call["operation"] in {"set", "memo", "get_wait"}
              and namespace in call.get("registry_candidates", [])]
     return sorted(sites, key=lambda item: (item["path"], item["line"]))
@@ -377,8 +388,7 @@ def scan_artifacts(root, output):
             call["registry_candidates"] = [item["namespace"] for item in keys
                                             if item["namespace"].startswith("adm_user_")]
             call["forwarded_key_contract"] = "外部 find/3 调用者传入 Key；调用者证据见 source-evidence"
-        call["disposition"] = ("infrastructure" if call["path"] in
-                               {"src/lib/imboy_cache.erl", "src/lib/imboy_cache_sync.erl"}
+        call["disposition"] = ("infrastructure" if call["path"] in INFRA_PATHS
                                else "candidate_namespaces_require_dataflow_review" if call["registry_candidates"]
                                else "non_production" if not call["production"] else "EXCEPTION_UNRESOLVED")
     for item in keys:
