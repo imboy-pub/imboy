@@ -143,6 +143,11 @@ start(_Type, _Args) ->
             %% T2.0h: 总线就绪后挂载群组领域事件订阅者（通知桥接）。
             %% 容错：挂载失败不阻断 app 启动（总线为 sup child，通常已就绪）。
             _ = group_event_handler:attach(),
+            %% M0（ADR 2026-10-12 定位修订）：默认 OA 应用部署引导——
+            %% IMBOY_OA_REDIRECT_URI 配置时自动登记（幂等，自吞异常不阻断
+            %% 启动）；未配置零动作。credential 不在此签发（明文不进日志），
+            %% 由 scripts/seed_default_oa_application.escript 运维通道补齐。
+            _ = enterprise_oa_bootstrap:maybe_seed(),
             {ok, Sup};
         Other ->
             Other

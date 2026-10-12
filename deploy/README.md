@@ -327,6 +327,41 @@ docker compose -f docker-compose.prod.yml -f docker-compose-sales-policy.yml log
 
 **忘记密码或误操作**：直接在 PG 中 `DELETE FROM config WHERE key='adm.setup.completed_at'` 并清空 `adm_user` 表后即可重新触发向导。生产环境建议改用 `adm_passport_handler` 的密码重置流程。
 
+## OA 免登开通（默认 OA 应用引导）
+
+> 标准部署下 OA 免登（工作台 `getAuthCode`）随部署自动开通，无需手工 SQL 登记
+> （ADR：`docs/architecture/2026-10-12-organization-positioning-amendment.md` M0）。
+
+**两步开通**：
+
+1. **部署配置注入回调地址**（启动期自动引导，幂等）：
+
+   `.env` 增加：
+
+   \`\`\`
+   IMBOY_OA_REDIRECT_URI=https://oa.example.com/sso/cb
+   # 可选：IMBOY_OA_APPLICATION_KEY（默认 default-oa）
+   # 可选：IMBOY_OA_NAME（默认 办公）
+   # 可选：IMBOY_OA_ORG_ID（缺省取实例首个 active 组织作业务归属）
+   \`\`\`
+
+   重启后启动期自动登记默认 OA 应用（app + redirect allowlist + `sso:exchange`
+   Grant）。未配置该变量 = 不登记，App 工作台静默隐藏 OA 入口（不报错）。
+
+2. **签发 OA 侧凭证**（OA 后端要调 exchange 时执行，credential 明文不进日志）：
+
+   \`\`\`bash
+   IMBOY_OA_REDIRECT_URI=https://oa.example.com/sso/cb \
+   PG_HOST=... PG_PORT=... PG_USER=... PG_PASSWORD=... PG_DATABASE=... \
+   scripts/seed_default_oa_application.escript
+   \`\`\`
+
+   脚本幂等：应用已存在则只补缺口；新签发 credential 的明文**仅打印一次**，
+   通过安全渠道转交 OA 团队。
+
+**验证**：App 重新进入工作台 → 打开 OA 联调页（`https://www.imboy.pub/test_oa.html`）
+→ 「检测免登能力」应返回 supported；「获取一次性 code」应成功取码。
+
 ## 运维
 
 ### 升级

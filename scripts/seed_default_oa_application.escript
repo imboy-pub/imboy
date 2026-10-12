@@ -1,0 +1,241 @@
+#!/usr/bin/env escript
+%%! -noshell
+%% ============================================================
+%% M0（ADR 2026-10-12 定位修订）：部署默认 OA 应用 seed（幂等）
+%% ------------------------------------------------------------
+%% docs/architecture/2026-10-12-organization-positioning-amendment.md §4.4/§5-M0
+%%
+%% 目标：标准部署发布完成后 OA 免登开箱即用——getAuthCode 不因「未登记」
+%% 报 app_not_configured。登记动作从运维手工 SQL 变为本脚本：
+%%   1. 创建实例级默认 OA 应用（application_key 实例内全局唯一，
+%%      organization_id 仅为业务归属）；
+%%   2. redirect_uri 由部署配置注入 allowlist（未配置则跳过 seed，
+%%      OA 入口静默隐藏——不报错）；
+%%   3. 签发 Application Credential（仅在新签发时打印明文一次，
+%%      由运维转交 OA 团队）；
+%%   4. 建立生效 Grant（scope=sso:exchange——零 Grant 时 A2 生效 scope
+%%      为空集，exchange 会 insufficient_scope，V2.1 §5.2/F-09）。
+%%
+%% 幂等：按 application_key 定位应用，已存在则只补齐 allowlist/Grant/
+%% credential 缺口；重复部署零副作用。
+%%
+%% 用法（imboy 仓根）：
+%%   IMBOY_OA_REDIRECT_URI=https://oa.example.com/sso/cb \
+%%   PG_HOST=127.0.0.1 PG_PORT=4323 PG_USER=imboy_user PG_PASSWORD=... \
+%%   PG_DATABASE=imboy scripts/seed_default_oa_application.escript
+%% 可选：IMBOY_OA_APPLICATION_KEY（默认 default-oa）/ IMBOY_OA_NAME（默认 办公）
+%%       / IMBOY_OA_ORG_ID（缺省取实例首个 active 组织作业务归属）
+%% ============================================================
+
+-mode(compile).
+
+-define(DEFAULT_KEY, <<"default-oa">>).
+-define(DEFAULT_NAME, <<"办公"/utf8>>).
+-define(SCOPES, [<<"sso:exchange">>]).
+-define(GRANT_IDEM_KEY, <<"seed-default-oa-grant">>).
+
+main(_Args) ->
+    RepoDir = os:getenv("IMBOY_DIR", "."),
+    code:add_pathsa([
+        filename:join([RepoDir, "ebin"]),
+        filename:join([RepoDir, "deps/epgsql/ebin"]),
+        filename:join([RepoDir, "deps/jsone/ebin"])
+    ]),
+    {ok, _} = application:ensure_all_started(epgsql),
+    try
+        elib_tsid:init(#{dc_id => 1, node_id => 1, dc_bits => 3})
+    catch
+        _:_ -> ok
+    end,
+    case env_bin("IMBOY_OA_REDIRECT_URI") of
+        undefined ->
+            io:format("SKIP: IMBOY_OA_REDIRECT_URI 未配置——不登记默认 OA 应用，"
+                "OA 入口将静默隐藏（配置后重跑本脚本即可开通）。~n"),
+            halt(0);
+        RedirectUri ->
+            seed(RedirectUri)
+    end.
+
+seed(RedirectUri) ->
+    ApplicationKey = env_bin("IMBOY_OA_APPLICATION_KEY", ?DEFAULT_KEY),
+    Name = env_bin("IMBOY_OA_NAME", ?DEFAULT_NAME),
+    Conn = connect(),
+    try
+        ok = exec(Conn, <<"BEGIN">>),
+        try
+            Result = seed_tx(Conn, ApplicationKey, Name, RedirectUri),
+            ok = exec(Conn, <<"COMMIT">>),
+            report(Result)
+        catch
+            throw:{seed_error, Reason} ->
+                _ = exec(Conn, <<"ROLLBACK">>),
+                io:format("FAIL: ~0p~n", [Reason]),
+                halt(1)
+        end
+    after
+        epgsql:close(Conn)
+    end.
+
+%% seed 主体（调用方持有事务）：定位/创建应用 -> 补齐 allowlist/Grant/credential。
+seed_tx(Conn, ApplicationKey, Name, RedirectUri) ->
+    OrgId = resolve_org(Conn),
+    AppId = ensure_application(Conn, OrgId, ApplicationKey, Name, RedirectUri),
+    ensure_grant(Conn, OrgId, AppId),
+    ensure_credential(Conn, OrgId, AppId),
+    #{org_id => OrgId, application_id => AppId, application_key => ApplicationKey}.
+
+%% 业务归属 org：显式指定 > 实例首个 active 组织。无组织则无法落 FK——
+%% FAIL 提示（单租户部署应先完成组织初始化）。
+resolve_org(Conn) ->
+    case env_int("IMBOY_OA_ORG_ID") of
+        OrgId when is_integer(OrgId), OrgId > 0 ->
+            OrgId;
+        _ ->
+            Sql = <<"SELECT id FROM organization WHERE status = 'active' ORDER BY id LIMIT 1">>,
+            case elib_pg:query(Conn, Sql, []) of
+                {ok, [#{<<"id">> := OrgId} | _]} ->
+                    OrgId;
+                {ok, []} ->
+                    throw({seed_error, no_active_organization});
+                {error, R} ->
+                    throw({seed_error, {org_lookup, R}})
+            end
+    end.
+
+ensure_application(Conn, OrgId, ApplicationKey, Name, RedirectUri) ->
+    case enterprise_application_repo:find_by_key_tx(Conn, OrgId, ApplicationKey) of
+        {ok, #{<<"id">> := AppId, <<"allowed_redirect_uris">> := Allow}} ->
+            case lists:member(RedirectUri, Allow) of
+                true ->
+                    ok;
+                false ->
+                    ok = enterprise_application_repo:update_redirect_uris_tx(
+                        Conn, OrgId, AppId, Allow ++ [RedirectUri]
+                    ),
+                    io:format("APP: allowlist 追加 ~s~n", [RedirectUri])
+            end,
+            AppId;
+        {error, not_found} ->
+            {ok, App} = enterprise_application_repo:create_tx(
+                Conn, OrgId, ApplicationKey, Name, {null, ?SCOPES}, [RedirectUri]
+            ),
+            AppId = maps:get(<<"id">>, App),
+            io:format("APP: 创建 ~ts (org=~p, key=~s)~n", [Name, OrgId, ApplicationKey]),
+            AppId;
+        {error, R} ->
+            throw({seed_error, {application_lookup, R}})
+    end.
+
+%% Grant 幂等按**生效 scope**判定（与 enterprise_oa_bootstrap 同语义）：
+%% sso:exchange 已生效即跳过；被撤销/过期/未授予才新建（幂等键带时间
+%% 后缀，绕开 (org, app, key) 唯一约束——revoked 行不可复用键）。
+ensure_grant(Conn, OrgId, AppId) ->
+    case enterprise_application_grant_repo:effective_scopes_tx(Conn, OrgId, AppId) of
+        {ok, Scopes} ->
+            case lists:member(<<"sso:exchange">>, Scopes) of
+                true ->
+                    io:format("GRANT: sso:exchange 已生效（跳过）~n");
+                false ->
+                    IdemKey =
+                        <<"seed-default-oa-grant-",
+                            (integer_to_binary(os:system_time(millisecond)))/binary>>,
+                    {ok, _} = enterprise_application_grant_repo:create_tx(
+                        Conn, OrgId, AppId, #{
+                            scopes => ?SCOPES,
+                            workspace_scope_kind => none,
+                            expires_at => <<"2099-12-31T23:59:59Z">>,
+                            idempotency_key => IdemKey
+                        }
+                    ),
+                    io:format("GRANT: 已授予 sso:exchange（幂等键 ~s）~n", [IdemKey])
+            end;
+        {error, R} ->
+            throw({seed_error, {grant_lookup, R}})
+    end.
+
+%% credential 幂等：已有未过期 active credential 则复用（明文不可再取，
+%% 提示运维用既有凭证）；无则新签发并打印明文（仅此一次）。
+ensure_credential(Conn, OrgId, AppId) ->
+    Sql = <<
+        "SELECT id FROM enterprise_application_credential"
+        " WHERE organization_id = $1 AND application_id = $2 AND status = 'active'"
+        " AND (expires_at IS NULL OR expires_at > clock_timestamp()) LIMIT 1"
+    >>,
+    case elib_pg:query(Conn, Sql, [OrgId, AppId]) of
+        {ok, [_ | _]} ->
+            io:format("CREDENTIAL: 已有生效凭证（明文不再显示；如需新凭证请先轮换）~n"),
+            ok;
+        {ok, []} ->
+            {ok, #{credential := Credential}} =
+                enterprise_internal_ops:issue_credential_tx(Conn, OrgId, AppId, undefined),
+            io:format("CREDENTIAL: 新签发（明文仅此一次，请立即转交 OA 团队）：~n  ~s~n", [
+                Credential
+            ]),
+            ok;
+        {error, R} ->
+            throw({seed_error, {credential_lookup, R}})
+    end.
+
+report(#{org_id := OrgId, application_id := AppId, application_key := Key}) ->
+    io:format("OK: 默认 OA 应用就绪（org=~p, app=~p, key=~s）——"
+        "getAuthCode 已可用；OA 侧 exchange 使用上述 credential。~n", [OrgId, AppId, Key]).
+
+%% ---- 基础设施 ----
+
+connect() ->
+    %% epgsql 连接参数需 string（gen_tcp host 为 binary 时 badarg）；
+    %% 业务值（key/name/redirect）另用 env_bin。
+    Opts = #{
+        host => env_str("PG_HOST", "127.0.0.1"),
+        port => env_int("PG_PORT", 4323),
+        username => env_str("PG_USER", "imboy_user"),
+        password => env_str("PG_PASSWORD", ""),
+        database => env_str("PG_DATABASE", "imboy"),
+        timeout => 10000,
+        codecs => [{epgsql_codec_rfc3339_bin, []}]
+    },
+    case epgsql:connect(Opts) of
+        {ok, C} -> C;
+        {error, R} -> erlang:error({connect_failed, R})
+    end.
+
+exec(Conn, Sql) ->
+    case epgsql:squery(Conn, Sql) of
+        {ok, _, _} -> ok;
+        {ok, _} -> ok;
+        {error, R} -> erlang:error({sql_error, R, Sql})
+    end.
+
+env_bin(Name) ->
+    case os:getenv(Name) of
+        false -> undefined;
+        "" -> undefined;
+        V -> unicode:characters_to_binary(V)
+    end.
+
+env_bin(Name, Default) ->
+    case env_bin(Name) of
+        undefined -> Default;
+        V -> V
+    end.
+
+env_str(Name, Default) ->
+    case os:getenv(Name) of
+        false -> Default;
+        "" -> Default;
+        V -> V
+    end.
+
+env_int(Name) ->
+    env_int(Name, undefined).
+
+env_int(Name, Default) ->
+    case os:getenv(Name) of
+        false -> Default;
+        V ->
+            try
+                list_to_integer(V)
+            catch
+                _:_ -> Default
+            end
+    end.
