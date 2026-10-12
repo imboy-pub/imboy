@@ -203,3 +203,20 @@ make new t=imboy.ds n=demo_ds
 - TSID 规范：[docs/reference/tsid-field-convention.md](./docs/reference/tsid-field-convention.md)
 - API 格式：[docs/reference/api-format.md](./docs/reference/api-format.md)
 - /api/v1/* 端点总目录：[docs/reference/rest-api-v1-catalog.md](./docs/reference/rest-api-v1-catalog.md)
+
+## 工程交付边界 / Engineering delivery boundaries
+
+代码优先复用，保持简洁，避免无需求抽象、重复实现、调试残留和假通过。优先更新权威文档，完成总结放对话，不为每次测试或讨论生成报告。临时日志、截图、覆盖率、缓存、数据和调试脚本默认不提交；必要的脱敏 fixtures、回归测试、生成物、验收证据按项目要求保留。禁止提交秘密或真实用户数据。
+
+开发阶段定向验证，最终集成候选统一执行适用全量检查；不跳过强制门禁，证据失效必须重验。测试/文档可选不代表免验证。仅在任务授权 commit 时提交，push/合并/部署另按授权；一次提交是完整可评审可回滚的功能或 fix，捆绑必要测试/迁移/文档，独立 docs/test/refactor 可单独提交。不按每步或每个小测试提交。审查 diff、明确路径/块暂存、审查最终暂存区，禁止盲目 git add . 或 -A。保护既有 WIP，多 agent 由主集成者控制共享分支提交，不绕过 hooks/CI。
+
+Keep code simple and reuse existing capabilities. Update authoritative docs; summarize in conversation instead of creating routine reports. Exclude temporary artifacts, but retain required sanitized fixtures, regression tests, generated deliverables and acceptance evidence. Never commit secrets or real user data. Use focused validation during development and applicable full gates on the final integration candidate; revalidate stale evidence. Commit only when authorized, with one reviewable, reversible logical change; review explicit staging and preserve existing WIP. The integrator controls shared-branch commits. Do not bypass hooks or CI.
+
+### Erlang 验证节奏 / Erlang validation cadence
+
+- 规划/勘察默认静态取证，必要时定向验证，不默认跑全量 EUnit。实现步骤验证受影响模块与直接调用方；最终集成候选由主集成者统一跑适用全量，子 agent 不分别跑全量。
+- 当前仓库使用 Makefile/erlang.mk（无根级 rebar.config）。定向入口：`IMBOYENV=local make eunit t=user_repo_tests`（按实际影响替换模块）；单个导出测试生成器可用 `t=模块:函数`，先确认函数导出。`make eunit-local t=<模块>` 也是现有入口。这些入口仍可能编译并启动应用/数据库，不等于纯函数轻量 runner。
+- 纯函数测试先核查 setup 无共享状态；涉及 BEAM 注册名、ETS、meck、应用环境或数据库的测试按共享资源分组串行。未经证明独立隔离，不并发运行多个 make/BEAM 或多 agent 测试；独立 VM 仍不隔离共享数据库和构建目录。
+- 最终入口为 `IMBOYENV=local make eunit`，按现有 CI/专项门补足其排除套件及环境前置，不把该命令当全部验收的替代。依赖、OTP、共享基础设施变化、影响无法界定或强制门禁需扩大验证时说明理由；失败修复或候选变化使证据失效时必要重跑，不设绝对一次上限。
+
+Plan with static evidence and focused tests; validate affected modules and direct callers per step. The integrator runs applicable full EUnit and required specialized gates for the final candidate. Explain broader validation for dependency, OTP or shared-infrastructure changes and unknown impact; rerun when evidence becomes stale. Serialize shared BEAM/ETS/meck/database tests unless isolation is proven.
