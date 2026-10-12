@@ -76,7 +76,9 @@ def enclosing_function(lines, line_number):
 def registry_rows():
     database = "PostgreSQL；缓存非权威"
     rows = [
-        ("local_cache/account_list", "{local_cache,account_list}", "local", "PG sequence；现有热命中读改写非原子", "8640000/空值3", True),
+        # G-01（e001fb8e）后移除 local_cache/account_list：ID 池改由
+        # imboy_account_allocator 进程内存持有，该缓存键已不存在于 src
+        #（census 断言 owner 必须有缓存调用，键消失属合法结果）。
         ("is_friend2", "{is_friend2,FromUid,ToUid}", "invalidate", database, "300", True),
         ("is_friend_fields2", "{is_friend_fields2,FromUid,ToUid,Fields}", "invalidate", database, "300", True),
         ("friend_rel_dep", "{friend_rel_dep,FromUid,ToUid}", "invalidate", "依赖标签；不存业务值", "随依赖", False),
