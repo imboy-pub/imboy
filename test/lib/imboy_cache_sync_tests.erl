@@ -810,7 +810,7 @@ c03_budget_digest_is_stable_and_config_sensitive_test_() ->
 %% ===================================================================
 
 c04_round_requires_done_and_pages_test_() ->
-    Round = crypto:strong_rand_bytes(12),
+    %% round token 由 new_round 自生成（快照回合身份），测试从状态取出使用
     Deadline = erlang:system_time(millisecond) + 60000,
     St0 = imboy_cache_sync_snapshot:new_round(0, Deadline),
     Round = maps:get(round, St0),
@@ -838,14 +838,47 @@ c04_round_requires_done_and_pages_test_() ->
             maps:get(Peer, maps:get(peers, St4))
         )
     ),
-    %% 第二页（HasMore=false）到齐 → 闭合
+    %% done 之后到达的页 = 迟到重发（发送端保证页先于 done 且同发送进程
+    %% 保序），幂等丢弃；expected_more 悬挂保持——该 peer 按失败处理，
+    %% 有界重试新回合，不允许据此闭合
     Entries2 = [{{rep_ns, k2}, <<"v2">>, future_ms(60), {2, Peer}}],
     Digest2 = imboy_cache_sync_snapshot:page_digest(Round, 2, Entries2),
     {ok, St5} = imboy_cache_sync_snapshot:handle_page(
         Peer, Round, 2, Entries2, Digest2, false, St4
     ),
-    ?assert(imboy_cache_sync_snapshot:round_complete(St5)),
-    ?assertEqual(2, imboy_cache_sync_snapshot:applied_count(St5)).
+    ?assertNot(imboy_cache_sync_snapshot:round_complete(St5)),
+    ?assertEqual(1, imboy_cache_sync_snapshot:applied_count(St5)),
+    %% 正常时序（协议保证）：页全收齐 → done → 闭合；页收齐但无 done 不闭合
+    StA0 = imboy_cache_sync_snapshot:expect_peer(
+        imboy_cache_sync_snapshot:new_round(0, erlang:system_time(millisecond) + 60000),
+        Peer
+    ),
+    RoundA = maps:get(round, StA0),
+    PageA1 = [{{rep_ns, a1}, <<"a1">>, future_ms(60), {1, Peer}}],
+    {ok, StA1} = imboy_cache_sync_snapshot:handle_page(
+        Peer,
+        RoundA,
+        1,
+        PageA1,
+        imboy_cache_sync_snapshot:page_digest(RoundA, 1, PageA1),
+        true,
+        StA0
+    ),
+    ?assertNot(imboy_cache_sync_snapshot:round_complete(StA1)),
+    PageA2 = [{{rep_ns, a2}, <<"a2">>, future_ms(60), {2, Peer}}],
+    {ok, StA2} = imboy_cache_sync_snapshot:handle_page(
+        Peer,
+        RoundA,
+        2,
+        PageA2,
+        imboy_cache_sync_snapshot:page_digest(RoundA, 2, PageA2),
+        false,
+        StA1
+    ),
+    ?assertNot(imboy_cache_sync_snapshot:round_complete(StA2)),
+    {ok, StA3} = imboy_cache_sync_snapshot:handle_done(Peer, RoundA, 42, StA2),
+    ?assert(imboy_cache_sync_snapshot:round_complete(StA3)),
+    ?assertEqual(2, imboy_cache_sync_snapshot:applied_count(StA3)).
 
 c04_page_gap_and_digest_mismatch_abort_test_() ->
     Round = crypto:strong_rand_bytes(12),

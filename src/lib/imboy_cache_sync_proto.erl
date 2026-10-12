@@ -35,7 +35,7 @@
     registry_hash/0,
     hash_divergent/1,
     %% 快照握手帧构造（新协议帧）
-    version_request_frame/0
+    version_request_frame/1
 ]).
 
 %% ===================================================================
@@ -196,9 +196,12 @@ check_incarnation(Origin, BootId) ->
                     {ok, changed}
             end;
         [] ->
-            %% 首次观察
+            %% 首次观察（r1 语义修订：全新化身含首现。C09 实证：恢复窗口内
+            %% peer 的 report 未到达时，本节点对该 peer 无化身记录，首条
+            %% 事件若按 ok 放行则补偿信号永久丢失——首现同样视为化身变化，
+            %% 注册 + changed，由调用方执行有界补偿）
             _ = register_incarnation(Origin, BootId),
-            ok
+            {ok, changed}
     end.
 
 -spec grace_member(node(), binary()) -> boolean().
@@ -316,10 +319,11 @@ config_hash() ->
 registry_hash() ->
     imboy_cache_policy:registry_hash().
 
-%% @doc 版本上界请求帧（新协议：带 epoch/hash/boot，供对端一致性判定）。
--spec version_request_frame() -> term().
-version_request_frame() ->
-    {cache_version_request, node()}.
+%% @doc 版本上界请求帧（新协议 r2：带请求者 pid 与 epoch/hash/boot 供对端判定；
+%% 应答方直达 FromPid，规避 syn 视图传播滞后导致的应答丢失）。
+-spec version_request_frame(pid()) -> term().
+version_request_frame(FromPid) when is_pid(FromPid) ->
+    {cache_version_request, FromPid, node()}.
 
 %% ===================================================================
 %% Internal
