@@ -107,11 +107,13 @@ Grafana 面板：`deploy/grafana/dashboards/imboy-cache-sync.json`。
 
 ## 7. 文档地图
 
-- 协议与预算（权威、冻结）：`closeout-v1/protocol-budget-frozen.md`
+（路径前缀 `docs/architecture/`）
+
+- 协议与预算（权威、冻结）：`cache-v2.2.1/closeout-v1/protocol-budget-frozen.md`
 - 运维手册（告警处置/诊断/回滚入口）：`docs/guides/operations/cache-cluster.md`
-- 收尾报告与三结论：`closeout-v1/closeout-report-v1.md`
-- 验收台账（96 项）：`closeout-v1/ledger-v2.json`
-- 回滚步骤：`closeout-v1/rollback-v1.md`（注意：G-QR 单特性回滚须**先**执行 down 迁移再回退代码）
+- 收尾报告与三结论：`cache-v2.2.1/closeout-v1/closeout-report-v1.md`
+- 验收台账（96 项）：`cache-v2.2.1/closeout-v1/ledger-v2.json`
+- 回滚步骤：`cache-v2.2.1/closeout-v1/rollback-v1.md`（注意：G-QR 单特性回滚须**先**执行 down 迁移再回退代码）
 - 原计划冻结快照：`cache-v2.2.1/w0/plan-v2.2.1.md`（SHA256 见任务档案）。其 §15.3
   所列 `docs/plans/2026-10-10-distributed-cache-v2.2.md` 即本快照的原工作路径
   （`docs/plans/` 为仓内刻意不跟踪目录，见 .gitignore:163），内容即该快照本身。
