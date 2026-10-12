@@ -878,8 +878,22 @@ results_json(Results, ElapsedMs) ->
         )
      || {Name, Status, Detail} <- Results
     ],
+    %% C14 证据 schema：candidate 绑定由环境变量注入（与 cache_v21_dcheck
+    %% 同款；缺失记 null，校验器对收口系列缺绑定判 FAIL）
+    Candidate =
+        case os:getenv("CANDIDATE_SHA256") of
+            false ->
+                "null";
+            Sha when length(Sha) =:= 64 ->
+                io_lib:format("\"~s\"", [Sha]);
+            Bad ->
+                io:format("CANDIDATE_SHA256 malformed (~p), expect 64-hex~n", [Bad]),
+                halt(3)
+        end,
     iolist_to_binary([
-        "{\"driver_node\": \"",
+        "{\"task_id\": \"CACHE_V221_BACKEND_CLOSEOUT_V1\", \"candidate_sha256\": ",
+        Candidate,
+        ", \"driver_node\": \"",
         atom_to_list(node()),
         "\", \"elapsed_ms\": ",
         integer_to_list(ElapsedMs),
