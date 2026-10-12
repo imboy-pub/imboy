@@ -124,12 +124,12 @@ landing_html(Code) when is_binary(Code) ->
         "setTimeout(function(){b.textContent=o},2000)}"
         "function fallback(b){var i=document.createElement('textarea');i.value=C;"
         "document.body.appendChild(i);i.select();",
-        "try{document.execCommand('copy');flash(b,'已复制，打开 imboy 粘贴即可')}"/utf8,
+        "try{if(!document.execCommand('copy')){throw new Error('copy failed')}flash(b,'已复制，打开 imboy 粘贴即可')}"/utf8,
         "catch(e){flash(b,'复制失败，请长按上方邀请码')}document.body.removeChild(i)}"/utf8,
         "function copyCode(){var b=document.getElementById('copy');"
         "if(navigator.clipboard&&navigator.clipboard.writeText){"
         "navigator.clipboard.writeText(C).then(",
-        "function(){flash(b,'已复制，打开 imboy 粘贴即可')},function(){fallback(b)})}"/utf8,
+        "function(){flash(b,'已复制，打开 imboy 粘贴即可')},function(){fallback(b)})"/utf8,
         "}else{fallback(b)}}",
         "</script></body></html>"
     >>.

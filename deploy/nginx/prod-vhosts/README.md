@@ -61,3 +61,16 @@ ssh -p 32 root@<host> 'cat /www/server/panel/vhost/nginx/<domain>.conf' \
 ```
 
 > ⚠️ 服务器端文件可能缺行尾换行；回填后可在服务器上 `nginx -t` 校验。
+
+## 企业邀请入口 / Organization invitation entry
+
+官网必须将 `/invite/` 转发到 API 后端；仅发布官网静态文件不会启用该路由。
+修改时以服务器当前配置为基线，仅合入邀请 location，避免覆盖现有监听及其他入口。
+App 分享域名由构建参数 `WEB_BASE_URL` 统一指定（默认 `https://imboy.pub`，必须为 HTTPS origin）。
+发布后执行 `bash scripts/check_org_invite_landing.sh https://imboy.pub`，并对
+`https://www.imboy.pub` 重复验证；该检查验证公网状态码、无缓存头、无效链接提示和
+实际页面脚本的复制成功/失败分支。脚本使用合成码，不验证真实企业成员加入。
+
+The public website must proxy `/invite/` to the API. Merge only the invitation
+location into the live configuration and validate with the command above after
+release. Synthetic-code checks do not establish membership-join acceptance.
