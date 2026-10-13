@@ -65,6 +65,7 @@ private_preflight(Ctx) ->
     assert(file:read_link_info(ContextPath) =:= {error, enoent}, android_context_preexisting),
     assert(file:read_link_info(StopPath) =:= {error, enoent}, android_stop_preexisting),
     assert(whereis(user_server) =:= undefined, android_worker_preexisting),
+    assert(whereis(login_attempt_ds) =:= undefined, android_login_attempt_preexisting),
     assert(ets:info(ack_retry_cache_ets) =:= undefined, android_retry_table_preexisting),
     assert(not lists:keymember(syn, 1, application:which_applications()), android_syn_preexisting).
 
@@ -238,6 +239,10 @@ transport_lease(Ctx, Config) ->
         ok = ack_retry_cache:init_table(),
         {ok, Worker} = user_server:start_link(),
         put(android_owned_worker, Worker),
+        %% AT-UP（批次168）白名单放开了 /api/v1/passport/login：
+        %% login_security_logic 依赖 login_attempt_ets（login_attempt_ds 持有）
+        {ok, LoginAttemptSrv} = login_attempt_ds:start_link(),
+        put(android_login_attempt_server, LoginAttemptSrv),
         Ctx1 = start_negative(Ctx, Config),
         Dispatch = cowboy_router:compile([{'_', mode_routes(Ctx1)}]),
         ok = cowboy:set_env(mc_owned_http_listener, dispatch, Dispatch),
@@ -259,6 +264,7 @@ stop_transport() ->
                 ok
             end,
             fun stop_negative/0,
+            fun stop_login_attempt/0,
             fun stop_worker/0,
             fun stop_retry_timer/0,
             fun() ->
@@ -316,7 +322,8 @@ private_hold(Ctx, Data) ->
         ok = file:change_mode(ContextPath, 8#600),
         ok = file:write(File, jsone:encode(Data)),
         io:format("MC_ANDROID_LEASE_READY uid=9007199254744003~n"),
-        wait_stop(erlang:monotonic_time(millisecond) + 600000, StopPath),
+        LeaseMs = list_to_integer(os:getenv("MC_LEASE_MS", "600000")),
+        wait_stop(erlang:monotonic_time(millisecond) + LeaseMs, StopPath),
         mode_final(Ctx)
     after
         file:close(File),
@@ -370,6 +377,10 @@ app_routes() ->
         "/api/v1/app/features",
         "/api/v1/app/manifest",
         "/api/v1/app/policy",
+        %% AT-UP（批次168）真机升级链：账号密码登录 + 升级检查/上报走真实生产链
+        "/api/v1/passport/login",
+        "/api/v1/app_version/check",
+        "/api/v1/app_upgrade/report",
         "/api/v1/channels/discover",
         "/api/v1/channels/categories",
         "/api/v1/channels/subscribed",
@@ -540,6 +551,20 @@ restore_sign_config(Conn, KeyName, Before) ->
             Before,
         android_sign_config_restore_mismatch
     ).
+
+%% AT-UP（批次168）：登录路由放开后 login_attempt_ds 一并纳入 hold 生命周期
+stop_login_attempt() ->
+    case erase(android_login_attempt_server) of
+        Pid when is_pid(Pid) ->
+            Ref = erlang:monitor(process, Pid),
+            ok = gen_server:stop(login_attempt_ds),
+            receive
+                {'DOWN', Ref, process, Pid, _} -> ok
+            after 5000 -> assert(false, android_login_attempt_stop_timeout)
+            end;
+        _ ->
+            ok
+    end.
 
 stop_worker() ->
     case erase(android_owned_worker) of

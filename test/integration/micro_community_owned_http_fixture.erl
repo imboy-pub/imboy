@@ -76,7 +76,11 @@ run(Callback) -> run_mode(Callback, http).
 run_transport(Callback) -> run_mode(Callback, websocket).
 
 run_mode(Callback, Mode) when is_function(Callback, 1) ->
-    _ = logger:set_primary_config(level, none),
+    _ =
+        case os:getenv("MC_KEEP_LOGGER") of
+            "1" -> ok;
+            _ -> logger:set_primary_config(level, none)
+        end,
     try
         fresh_vm(),
         Opts = private_config(),
@@ -137,6 +141,9 @@ connect_owned(Opts) ->
     try epgsql:connect(Opts) of
         {ok, Conn} ->
             try
+                %% 期望库名取自 Opts（runs 可指向不同隔离库），owner comment
+                %% 仍守 MC 域所有权标记；硬编码库名会误拒其他 run 的隔离库。
+                Db = ec_cnv:to_binary(maps:get(database, Opts)),
                 assert(
                     rows(
                         Conn,
@@ -146,13 +153,15 @@ connect_owned(Opts) ->
                         >>,
                         []
                     ) =:=
-                        [{<<"imboy_test_group">>, ?OWNER_COMMENT}],
+                        [{Db, ?OWNER_COMMENT}],
                     owned_database_mismatch
                 ),
                 sql(Conn, <<"SET statement_timeout='15000'; SET lock_timeout='10000'">>),
                 {ok, Conn}
             catch
-                _:_ ->
+                Class:Reason ->
+                    %% 内层守卫异常不吞：打印真实形态再归类（r30-era 取证）。
+                    io:format("MC22_OWNED_TARGET_REJECT ~p:~p~n", [Class, Reason]),
                     epgsql:close(Conn),
                     {error, owned_target_rejected}
             end;
