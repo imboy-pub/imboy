@@ -230,7 +230,13 @@ queue_depth_gauge() ->
 -spec sync_peer_count() -> non_neg_integer().
 sync_peer_count() ->
     try
-        length([P || P <- syn:members(imboy_cache, dsync_handler), node(P) =/= node()])
+        %% syn:members/2 -> [{Pid, Meta}]；直接 node(P) 对 tuple 必 badarg
+        %% （被下方 catch 吞成 0，gauge 恒 0——dialyzer 基线门 r9 实锤）。
+        length([
+            node(P)
+         || {P, _Meta} <- syn:members(imboy_cache, dsync_handler),
+            node(P) =/= node()
+        ])
     catch
         _:_ -> 0
     end.
