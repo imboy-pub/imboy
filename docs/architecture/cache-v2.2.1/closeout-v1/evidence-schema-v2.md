@@ -80,7 +80,7 @@ base/cand 之间必须相同。
 ## 校验器自身验证
 
 `python3 scripts/check_cache_closeout_v1.py --self-test` 在唯一仓外临时目录执行
-一个正向 fixture 及 49 个负向 fixture：缺/重复 ID、计划摘要篡改、失败场景、
+一个正向 fixture 及 52 个负向 fixture：缺/重复 ID、计划摘要篡改、失败场景、
 混用候选、伪 PASS、required FAIL、真实 exit 非零、结果篡改、当前源码改变、
 失败日志，把无关回执复用于所有 ID、covers 错误类型、缺失场景列表以及缩减 required 集合。
 另含 full_eunit 伪 checks 计数、两类 OTP 崩溃日志、组件存活失败、迁移输入及被忽略的测试配置变更。

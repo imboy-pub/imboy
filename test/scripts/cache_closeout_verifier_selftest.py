@@ -531,11 +531,11 @@ def self_test():
         receipt["result"]["sha256"] = sha256_file(result_path)
         rebind_receipt(dest, 7, receipt)
 
-    def mutate_w0_duplicate_row(dest):
+    def mutate_w0_performance(dest, mutation):
         env_dir = os.path.join(dest, "raw/w0_anchor/env")
         performance_path = os.path.join(env_dir, "performance.json")
         performance, _ = load_json(performance_path)
-        performance["single_node"].append(dict(performance["single_node"][0]))
+        mutation(performance)
         _write_json(performance_path, performance)
         hashes_path = os.path.join(env_dir, "sha256.json")
         hashes, _ = load_json(hashes_path)
@@ -550,6 +550,21 @@ def self_test():
         receipt, _ = load_json(os.path.join(dest, "receipt-7.json"))
         receipt["result"]["sha256"] = sha256_file(result_path)
         rebind_receipt(dest, 7, receipt)
+
+    def mutate_w0_duplicate_row(dest):
+        mutate_w0_performance(dest, lambda performance: performance["single_node"].append(
+            dict(performance["single_node"][0])))
+
+    def mutate_w0_missing_row(dest):
+        mutate_w0_performance(dest, lambda performance: performance["single_node"].pop(0))
+
+    def mutate_w0_extra_row(dest):
+        mutate_w0_performance(dest, lambda performance: performance["single_node"].append(
+            dict(performance["single_node"][0], kind="unexpected")))
+
+    def mutate_w0_duplicate_three_node(dest):
+        mutate_w0_performance(dest, lambda performance: performance["three_node"]["results"].append(
+            dict(performance["three_node"]["results"][0])))
 
     def mutate_w0_baseline_without_manifest_update(dest):
         baseline_path = os.path.join(dest, "raw/w0_anchor/env/baseline.json")
@@ -629,6 +644,13 @@ def self_test():
         mutate_w0_duplicate_row,
         "W0 env/r7/r8 performance rows incomplete",
     )
+    for number, label, dirname, mutation in [
+        (34, "missing W0 workload row is rejected", "neg_perf_missing_w0_row", mutate_w0_missing_row),
+        (35, "extra W0 workload row is rejected", "neg_perf_extra_w0_row", mutate_w0_extra_row),
+        (36, "duplicated W0 three-node row is rejected", "neg_perf_duplicate_w0_three_node", mutate_w0_duplicate_three_node),
+    ]:
+        receipt_mutation("negative-%d %s" % (number, label), dirname, mutation,
+                         "W0 env/r7/r8 performance rows incomplete")
 
     def mutate_perf_intervals_out_of_order(dest):
         start = datetime.now(timezone.utc).replace(microsecond=0) - timedelta(seconds=30)
