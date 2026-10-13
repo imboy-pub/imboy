@@ -158,6 +158,8 @@ init(Opts) ->
     true =
         (is_integer(MaxDrift) andalso MaxDrift > 0) orelse
             error({elib_tsid_invalid_config, #{max_clock_drift_ms => MaxDrift}}),
+    is_pid(whereis(global_name_server)) orelse
+        error({elib_tsid_init_lock_unavailable, global_name_server}),
     global:trans(
         {{?MODULE, runtime_init}, self()},
         fun() -> init_runtime(CombinedNode, DcBits, CapWait, MaxDrift) end,
@@ -679,6 +681,8 @@ wall_clock_ms() ->
         undefined ->
             #{clock_offset_ms := Offset} = persistent_term:get(?PT_RUNTIME),
             erlang:monotonic_time(millisecond) + Offset;
+        Clock when is_function(Clock, 0) ->
+            Clock();
         Ms ->
             Ms
     end.

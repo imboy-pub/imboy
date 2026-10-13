@@ -13,6 +13,56 @@
 
 -define(SRC_DIR, "src").
 
+missing_global_service_rejects_initialization_test_() ->
+    {timeout, 20, fun() ->
+        Eval =
+            "undefined = whereis(global_name_server), "
+            "try elib_tsid:init(#{dc_id => 1, node_id => 1}) of "
+            "_ -> halt(2) catch "
+            "error:{elib_tsid_init_lock_unavailable, global_name_server} -> "
+            "not_initialized = elib_tsid:readiness(), halt(0) end.",
+        Port = open_port(
+            {spawn_executable, os:find_executable("erl")},
+            [
+                binary,
+                exit_status,
+                stderr_to_stdout,
+                {args, [
+                    "+S",
+                    "2:2",
+                    "+SDcpu",
+                    "1",
+                    "+SDio",
+                    "1",
+                    "-noshell",
+                    "-kernel",
+                    "start_distribution",
+                    "false",
+                    "-pa",
+                    filename:dirname(code:which(elib_tsid)),
+                    "-eval",
+                    Eval
+                ]}
+            ]
+        ),
+        try
+            ?assertEqual({0, <<>>}, collect_lock_probe(Port, <<>>))
+        after
+            case erlang:port_info(Port) of
+                undefined -> ok;
+                _ -> erlang:port_close(Port)
+            end
+        end
+    end}.
+
+collect_lock_probe(Port, Output) ->
+    receive
+        {Port, {data, Data}} -> collect_lock_probe(Port, <<Output/binary, Data/binary>>);
+        {Port, {exit_status, Status}} -> {Status, Output}
+    after 10000 ->
+        error({tsid_lock_probe_timeout, Output})
+    end.
+
 all_generate_call_sites_registered_test() ->
     CallSites = scan_generate_calls(),
     ?assert(length(CallSites) > 50, "扫描结果异常：调用点过少，扫描逻辑可能失效"),

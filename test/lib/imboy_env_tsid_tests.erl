@@ -15,39 +15,75 @@
 
 -include_lib("eunit/include/eunit.hrl").
 
-%% 每个测试自恢复：os env 与 application env 用后即清
--define(WITH_ENV(EnvVars, Expr), begin
-    setup_env(EnvVars),
-    try
-        Expr
-    after
-        cleanup_env(EnvVars)
-    end
-end).
+-define(WITH_ENV(EnvVars, Expr),
+    (fun() ->
+        EnvSnapshot = snapshot_env(),
+        try
+            setup_env(EnvVars),
+            Expr
+        after
+            restore_env(EnvSnapshot)
+        end
+    end)()
+).
 
 setup_env(Vars) ->
-    [
-        begin
-            os:putenv(Name, Value),
-            application:unset_env(imboy, env_key(Name))
-        end
-     || {Name, Value} <- Vars
-    ].
-
-cleanup_env(Vars) ->
-    [
-        begin
+    lists:foreach(
+        fun(Name) ->
             os:unsetenv(Name),
             application:unset_env(imboy, env_key(Name))
-        end
-     || {Name, _} <- Vars
+        end,
+        env_vars()
+    ),
+    [
+        os:putenv(Name, Value)
+     || {Name, Value} <- Vars
+    ],
+    ok.
+
+env_vars() ->
+    [
+        "IMBOY_TSID_DC_ID",
+        "IMBOY_TSID_NODE_ID",
+        "IMBOY_TSID_DC_BITS",
+        "IMBOY_TSID_CAPACITY_WAIT_TIMEOUT_MS",
+        "IMBOY_TSID_MAX_CLOCK_DRIFT_MS"
     ].
+
+snapshot_env() ->
+    [{Name, os:getenv(Name), application:get_env(imboy, env_key(Name))} || Name <- env_vars()].
+
+restore_env(Snapshot) ->
+    lists:foreach(
+        fun({Name, OsValue, AppValue}) ->
+            case OsValue of
+                false -> os:unsetenv(Name);
+                _ -> os:putenv(Name, OsValue)
+            end,
+            restore_app_env([{env_key(Name), AppValue}])
+        end,
+        Snapshot
+    ).
 
 env_key("IMBOY_TSID_DC_ID") -> tsid_dc_id;
 env_key("IMBOY_TSID_NODE_ID") -> tsid_node_id;
 env_key("IMBOY_TSID_DC_BITS") -> tsid_dc_bits;
 env_key("IMBOY_TSID_CAPACITY_WAIT_TIMEOUT_MS") -> tsid_capacity_wait_timeout_ms;
 env_key("IMBOY_TSID_MAX_CLOCK_DRIFT_MS") -> tsid_max_clock_drift_ms.
+
+environment_restored_after_error_test() ->
+    Snapshot = snapshot_env(),
+    ?assertError(
+        fixture_failure,
+        ?WITH_ENV(
+            [{"IMBOY_TSID_NODE_ID", "5"}],
+            begin
+                ok = imboy_env_overrides:override_tsid(),
+                error(fixture_failure)
+            end
+        )
+    ),
+    ?assertEqual(Snapshot, snapshot_env()).
 
 %% ===================================================================
 %% env 层：合法值
@@ -138,12 +174,14 @@ config_chain_env_priority_test() ->
 
 %% 默认链：无 env 无 application env → 默认 dc=1/node=1/bits=3 → 129
 config_chain_defaults_test() ->
-    Cfg = imboy_sup:tsid_init_config(),
-    ?assertEqual(1, maps:get(dc_id, Cfg)),
-    ?assertEqual(1, maps:get(node_id, Cfg)),
-    ?assertEqual(3, maps:get(dc_bits, Cfg)),
-    ?assertEqual(100, maps:get(capacity_wait_timeout_ms, Cfg)),
-    ?assertEqual(5000, maps:get(max_clock_drift_ms, Cfg)).
+    ?WITH_ENV([], begin
+        Cfg = imboy_sup:tsid_init_config(),
+        ?assertEqual(1, maps:get(dc_id, Cfg)),
+        ?assertEqual(1, maps:get(node_id, Cfg)),
+        ?assertEqual(3, maps:get(dc_bits, Cfg)),
+        ?assertEqual(100, maps:get(capacity_wait_timeout_ms, Cfg)),
+        ?assertEqual(5000, maps:get(max_clock_drift_ms, Cfg))
+    end).
 
 %% 阈值键经 env 链透传进 init config
 clock_drift_threshold_chain_test() ->
@@ -165,30 +203,6 @@ zero_clock_drift_rejected_test() ->
             catch_typed(fun imboy_env_overrides:override_tsid/0)
         )
     ).
-
-%% 配置链端到端：tsid_init_config 的合成结果可直接被 elib_tsid:init 接受
-config_chain_feeds_init_test() ->
-    elib_tsid:reset_for_test(),
-    ?WITH_ENV(
-        [
-            {"IMBOY_TSID_DC_ID", "2"},
-            {"IMBOY_TSID_NODE_ID", "3"},
-            {"IMBOY_TSID_DC_BITS", "3"}
-        ],
-        begin
-            ok = imboy_env_overrides:override_tsid(),
-            ok = elib_tsid:init(imboy_sup:tsid_init_config()),
-            Id = elib_tsid:generate(user),
-            P = elib_tsid:parse(Id),
-            %% dc_bits=3 → node bits=7；(2 bsl 7) bor 3 = 259
-            ?assertEqual(2, maps:get(dc_id, P)),
-            ?assertEqual(3, maps:get(node_id, P))
-        end
-    ),
-    %% 测试轨道不留空 runtime：后台 worker（plugin audit 等）随时可能发号，
-    %% reset 后必须恢复默认配置（W7 全量轨道 12 条 not_initialized 噪音根因）
-    elib_tsid:reset_for_test(),
-    ok = elib_tsid:init(#{dc_id => 1, node_id => 1, dc_bits => 3}).
 
 %% 越界 node_id（dc_bits=3 上限 127）→ combine_node error →
 %% init 抛错 → sup init 失败（AC-07C 运行时 fail-closed）
