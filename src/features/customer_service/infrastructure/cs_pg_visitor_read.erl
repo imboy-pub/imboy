@@ -53,7 +53,7 @@ confirm_in(Conn, Org, Ws, Scope, Ids) ->
     end,
     Base = base(Org, Ws, Scope),
     [_, _, Session, Contact, Conversation] = Base,
-    require_one(
+    _ = require_one(
         query(Conn, session, [
             Org, Ws, Session, Contact, maps:get(installation_id, Scope), Conversation
         ]),

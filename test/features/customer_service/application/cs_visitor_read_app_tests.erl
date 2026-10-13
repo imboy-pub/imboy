@@ -123,6 +123,24 @@ seat_enterprise_failure_propagates_test() ->
     after
         cleanup_seat()
     end.
+seat_invalid_internal_history_is_fail_closed_test() ->
+    setup_seat(),
+    try
+        %% A broken internal facade violates its {ok, [map()]} | {error, _} contract.
+        %% It must never become an unread or successful receipt projection.
+        meck:expect(enterprise_business_facade, list_messages, fun(_, _) ->
+            {ok, invalid_internal_history}
+        end),
+        ?assertException(
+            error,
+            {case_clause, {ok, invalid_internal_history}},
+            cs_visitor_read_app:list_messages(1, seat_params())
+        ),
+        ?assertEqual(0, meck:num_calls(cs_pg_store, fetch_visitor_message_reads, '_'))
+    after
+        cleanup_seat()
+    end.
+
 seat_receipt_storage_failure_is_not_unread_test() ->
     setup_seat(),
     try
