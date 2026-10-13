@@ -60,8 +60,7 @@ main([OutPath | _]) ->
     PrimaryResults =
         try
             Scenarios0 = scenario_list(A, B, C),
-            %% 诊断模式：DCHECK_ONLY=<子串> 只跑命中场景（证据轮禁用——
-            %% 全量 22 场景才是验收口径）
+            %% 诊断模式：DCHECK_ONLY=<子串> 只跑命中场景；证据轮必须运行完整矩阵。
             Scenarios =
                 case os:getenv("DCHECK_ONLY") of
                     false ->
