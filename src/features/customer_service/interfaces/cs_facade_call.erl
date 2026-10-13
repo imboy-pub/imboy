@@ -36,8 +36,10 @@ call(transfer, OrgId, Params) ->
 call(close, OrgId, Params) ->
     customer_service_facade:close(OrgId, Params);
 %% A0 客户端契约基准：客服端企业消息列表——企业真源的唯一读路径（跨 facade 复用）。
+call(widget_confirm_reads, OrgId, Params) ->
+    customer_service_facade:widget_confirm_reads(OrgId, Params);
 call(list_messages, OrgId, Params) ->
-    enterprise_business_facade:list_messages(OrgId, Params);
+    customer_service_facade:list_messages(OrgId, Params);
 call(fetch_session, OrgId, Params) ->
     customer_service_facade:fetch_session(OrgId, Params);
 %% C1（contracts-w2）：平台 session 列表（只读，租户/平台共用同一用例）。
@@ -188,6 +190,7 @@ actions() ->
         seat_presence,
         seat_presence_list,
         list_messages,
+        widget_confirm_reads,
         fetch_session,
         list_sessions,
         create_seat,

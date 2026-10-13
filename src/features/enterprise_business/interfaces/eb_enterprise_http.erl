@@ -663,6 +663,12 @@ classify({missing_param, _}) ->
 %% 不成立」——与 CS 面 `{invalid_after_id,_}` / `{invalid_limit,_}` → 422 同口径。
 classify({invalid_after_id, _}) ->
     ?ERR_UNPROCESSABLE_ENTITY;
+classify({invalid_before_id, _}) ->
+    ?ERR_UNPROCESSABLE_ENTITY;
+classify({invalid_message_order, _}) ->
+    ?ERR_UNPROCESSABLE_ENTITY;
+classify(invalid_message_cursors) ->
+    ?ERR_UNPROCESSABLE_ENTITY;
 classify({invalid_limit, _}) ->
     ?ERR_UNPROCESSABLE_ENTITY;
 classify(empty_patch) ->

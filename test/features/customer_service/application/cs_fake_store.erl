@@ -35,6 +35,8 @@
     seed_member/2,
     seed_provision_fail_after/1,
     %% cs_store_port callbacks
+    confirm_visitor_message_reads/5,
+    fetch_visitor_message_reads/4,
     fetch_identity_function/2,
     insert_seat/2,
     fetch_seat/2,
@@ -151,6 +153,7 @@ init() ->
         {members, #{}},
         {provision_fail_after, infinity},
         {read_cursors, #{}},
+        {visitor_reads, #{}},
         {messages, []},
         {seat_presence, #{}},
         {seat_limits, #{}}
@@ -2115,3 +2118,88 @@ fetch_conversation_session(Org, Ws, Conv) ->
         [R | _] -> {ok, R};
         [] -> {error, not_found}
     end.
+
+%% Test-only per-message ledger. Canonical messages must be explicitly seeded.
+confirm_visitor_message_reads(Org, Ws, Scope, Ids, At) ->
+    Key = visitor_read_key(Org, Ws, Scope),
+    global:trans({{?MODULE, Key}, self()}, fun() ->
+        case fake_read_authorized(Org, Ws, Scope, Ids, At) of
+            false ->
+                {error, not_found};
+            true ->
+                {visitor_reads, Reads} = hd(ets:lookup(?TAB, visitor_reads)),
+                Existing = maps:get(Key, Reads, #{}),
+                Time = elib_dt:to_rfc3339(At * 1000),
+                Next = lists:foldl(
+                    fun(Id, Acc) ->
+                        case maps:is_key(Id, Acc) of
+                            true -> Acc;
+                            false -> Acc#{Id => Time}
+                        end
+                    end,
+                    Existing,
+                    lists:usort(Ids)
+                ),
+                update(visitor_reads, fun(All) -> All#{Key => Next} end),
+                {ok, #{
+                    session_id => maps:get(session_id, Scope),
+                    highest_confirmed_id => lists:max(maps:keys(Next)),
+                    receipts => [
+                        #{message_id => Id, read_at => maps:get(Id, Next)}
+                     || Id <- lists:usort(Ids)
+                    ]
+                }}
+        end
+    end).
+fetch_visitor_message_reads(Org, Ws, Scope, Ids) ->
+    {visitor_reads, Reads} = hd(ets:lookup(?TAB, visitor_reads)),
+    Existing = maps:get(visitor_read_key(Org, Ws, Scope), Reads, #{}),
+    {ok, [
+        #{message_id => Id, read_at => maps:get(Id, Existing)}
+     || Id <- lists:usort(Ids), maps:is_key(Id, Existing)
+    ]}.
+visitor_read_key(Org, Ws, Scope) ->
+    {Org, Ws, maps:get(session_id, Scope), maps:get(contact_id, Scope),
+        maps:get(conversation_id, Scope)}.
+fake_read_authorized(Org, Ws, Scope, Ids, At) ->
+    case
+        {
+            fetch_session(Org, Ws, maps:get(session_id, Scope)),
+            fetch_visit_token(Org, maps:get(token_id, Scope)),
+            fetch_widget_installation(Org, maps:get(installation_id, Scope))
+        }
+    of
+        {{ok, Session}, {ok, Token}, {ok, #{status := active}}} ->
+            case fetch_visit_token(Org, maps:get(visit_token_id, Session, undefined)) of
+                {ok, Original} ->
+                    fake_read_bindings(Session, Token, Original, Scope, At) andalso
+                        fake_read_messages(Org, Ws, Scope, Ids);
+                _ ->
+                    false
+            end;
+        _ ->
+            false
+    end.
+fake_read_bindings(Session, Token, Original, Scope, At) ->
+    Contact = maps:get(contact_id, Scope),
+    Installation = maps:get(installation_id, Scope),
+    maps:get(contact_id, Session) =:= Contact andalso
+        maps:get(conversation_id, Session) =:= maps:get(conversation_id, Scope) andalso
+        maps:get(contact_id, Token) =:= Contact andalso maps:get(contact_id, Original) =:= Contact andalso
+        maps:get(widget_installation_id, Token, undefined) =:= Installation andalso
+        maps:get(widget_installation_id, Original, undefined) =:= Installation andalso
+        maps:get(revoked_at, Token, undefined) =:= undefined andalso
+        maps:get(expires_at, Token, 0) > At.
+fake_read_messages(Org, Ws, Scope, Ids) when is_list(Ids), length(Ids) >= 1, length(Ids) =< 200 ->
+    Allowed = [
+        maps:get(id, M)
+     || M <- messages(),
+        maps:get(organization_id, M) =:= Org,
+        maps:get(workspace_id, M) =:= Ws,
+        maps:get(conversation_id, M) =:= maps:get(conversation_id, Scope),
+        maps:get(sender_type, M) =:= business_identity,
+        maps:get(visibility, M) =:= visible
+    ],
+    lists:all(fun(Id) -> is_integer(Id) andalso Id > 0 andalso lists:member(Id, Allowed) end, Ids);
+fake_read_messages(_, _, _, _) ->
+    false.

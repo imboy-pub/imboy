@@ -213,6 +213,11 @@ server_common() ->
 widget_server_derived() ->
     server_common() ++
         [
+            read_at,
+            highest_confirmed_id,
+            actor,
+            conversation_id,
+            token_id,
             contact_id,
             business_identity_id,
             created_by_user_id,
@@ -390,7 +395,13 @@ table(tenant) ->
         {conversation_messages,
             entry(
                 [
-                    {<<"GET">>, list_messages, [{after_id, tsid, optional}, {limit, int, optional}],
+                    {<<"GET">>, list_messages,
+                        [
+                            {after_id, tsid, optional},
+                            {before_id, tsid, optional},
+                            {order, binary, optional},
+                            {limit, int, optional}
+                        ],
                         [{conversation_id, conversation_id}]}
                 ],
                 seat_auth(<<"conversation.read">>),
@@ -774,6 +785,9 @@ table(widget) ->
         {widget_session_messages,
             widget_token_entry(
                 [
+                    {<<"PATCH">>, widget_confirm_reads,
+                        [{installation_id, tsid, required}, {message_ids, list, required}],
+                        [{id, session_id}], #{require_origin => true}},
                     {<<"GET">>, widget_history_after,
                         [
                             {installation_id, tsid, required},

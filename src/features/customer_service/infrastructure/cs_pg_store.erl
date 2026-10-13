@@ -54,6 +54,8 @@
     list_session_history_page/4,
     list_contact_notes_page/3,
     %% CS-BE-04：已读游标（单调 ACK 幂等 + 未读事实现算）
+    confirm_visitor_message_reads/5,
+    fetch_visitor_message_reads/4,
     ack_session_read/6,
     fetch_session_read_state/4,
     %% CS-BE-07：按需统计（窗口聚合 + 当前 status 计数）
@@ -332,3 +334,8 @@ provision_seat(OrgId, WorkspaceId, Provision) ->
 
 fetch_conversation_session(Org, Ws, Conv) ->
     cs_pg_session:fetch_conversation_session(Org, Ws, Conv).
+
+confirm_visitor_message_reads(Org, Ws, Scope, Ids, At) ->
+    cs_pg_visitor_read:confirm_visitor_message_reads(Org, Ws, Scope, Ids, At).
+fetch_visitor_message_reads(Org, Ws, Scope, Ids) ->
+    cs_pg_visitor_read:fetch_visitor_message_reads(Org, Ws, Scope, Ids).

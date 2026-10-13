@@ -254,7 +254,13 @@ table(tenant) ->
             entry(
                 tenant,
                 [
-                    {<<"GET">>, list_messages, [{after_id, tsid, optional}, {limit, int, optional}],
+                    {<<"GET">>, list_messages,
+                        [
+                            {after_id, tsid, optional},
+                            {before_id, tsid, optional},
+                            {order, binary, optional},
+                            {limit, int, optional}
+                        ],
                         [{id, conversation_id}]},
                     %% F-SEC-02：写真源的动作需要写权限（路径级 read 只服务 GET 列表）。
                     %% CS-BE-01B（坐席发送面协议补全）：`asset_ids` = TSID string 数组
@@ -482,7 +488,13 @@ table(platform) ->
             platform_entry(
                 p_conversation_messages,
                 [
-                    {<<"GET">>, list_messages, [{after_id, tsid, optional}, {limit, int, optional}],
+                    {<<"GET">>, list_messages,
+                        [
+                            {after_id, tsid, optional},
+                            {before_id, tsid, optional},
+                            {order, binary, optional},
+                            {limit, int, optional}
+                        ],
                         [{id, conversation_id}]}
                 ],
                 read_auth(),

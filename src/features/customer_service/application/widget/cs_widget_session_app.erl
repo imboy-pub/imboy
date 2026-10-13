@@ -21,6 +21,7 @@
 -module(cs_widget_session_app).
 
 -export([
+    visitor_session_scope/2,
     create_session/2,
     list_sessions/2,
     history_after/2,

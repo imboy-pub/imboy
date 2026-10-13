@@ -127,6 +127,8 @@ contracts() ->
             {list_session_history_page, 4},
             {list_contact_notes_page, 3},
             %% CS-BE-04（CS-DEC-02）：已读游标（单调 ACK 幂等 / 读状态）。
+            {confirm_visitor_message_reads, 5},
+            {fetch_visitor_message_reads, 4},
             {ack_session_read, 6},
             {fetch_session_read_state, 4},
             {default_workspace, 1},
@@ -202,6 +204,7 @@ facade_targets() ->
         cs_access_app,
         cs_widget_app,
         cs_widget_session_app,
+        cs_visitor_read_app,
         %% CSD-BE-01S：widget 接入面的机械辅助（derive_org_by_token——持
         %% token 动作面的租户解析，facade 在 env 装配前调用）。
         cs_widget_support,

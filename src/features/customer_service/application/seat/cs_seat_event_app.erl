@@ -172,6 +172,8 @@ mapping(<<"session.claimed">>) -> {<<"assignment.changed">>, <<"assignment">>, <
 mapping(<<"session.transferred">>) -> {<<"assignment.changed">>, <<"assignment">>, <<"updated">>};
 mapping(<<"session.closed">>) -> {<<"session.changed">>, <<"session">>, <<"updated">>};
 mapping(<<"session.rated">>) -> {<<"session.changed">>, <<"session">>, <<"updated">>};
+%% 阅读事件复用已有message资源hint；接收者只重新GET，不把此帧当收据。
+mapping(<<"message.read">>) -> {<<"message.appended">>, <<"message">>, <<"updated">>};
 mapping(<<"message.appended">>) -> {<<"message.appended">>, <<"message">>, <<"created">>};
 mapping(<<"seat.created">>) -> {<<"seat.changed">>, <<"seat">>, <<"created">>};
 mapping(<<"seat.resumed">>) -> {<<"seat.changed">>, <<"seat">>, <<"created">>};

@@ -805,6 +805,10 @@ classify({forbidden, contact_scope_mismatch}) ->
 classify({capability_disabled, _}) ->
     ?ERR_FORBIDDEN;
 %% --- 404：资源不在本租户作用域（不区分不存在与跨 Org，避免枚举）---
+classify(visitor_read_storage_failure) ->
+    ?ERR_INTERNAL_SERVER_ERROR;
+classify({visitor_read_hint_failed, _}) ->
+    ?ERR_INTERNAL_SERVER_ERROR;
 classify(not_found) ->
     ?ERR_NOT_FOUND;
 classify({not_found, _}) ->
@@ -901,6 +905,12 @@ classify({invalid_mime, _}) ->
 classify({invalid_size_bytes, _}) ->
     ?ERR_UNPROCESSABLE_ENTITY;
 %% C1~C4（contracts-w2）：列表查询参数的取值不成立——显式登记，无兜底。
+classify({invalid_before_id, _}) ->
+    ?ERR_UNPROCESSABLE_ENTITY;
+classify({invalid_message_order, _}) ->
+    ?ERR_UNPROCESSABLE_ENTITY;
+classify(invalid_message_cursors) ->
+    ?ERR_UNPROCESSABLE_ENTITY;
 classify({invalid_after_id, _}) ->
     ?ERR_UNPROCESSABLE_ENTITY;
 %% CS-BE-07：统计窗口参数的取值不成立（date 非日历日 / tz_offset 越界）。

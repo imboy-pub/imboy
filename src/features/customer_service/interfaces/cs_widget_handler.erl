@@ -136,7 +136,7 @@ authorize_and_invoke(Entry, Case, Req0, Body, OrgId) ->
         {error, Reason} ->
             cs_http:reply_error(Req0, Reason);
         {ok, TokenDerived} ->
-            case origin_guard(Entry, Req0) of
+            case origin_guard(maps:merge(Entry, Case), Req0) of
                 {error, Reason} ->
                     cs_http:reply_error(Req0, Reason);
                 {ok, OriginDerived} ->
@@ -191,7 +191,9 @@ token_credential(Req, Optional) ->
 %% 非法不注入——同源分支自然不生效，fail-closed）——allowlist ∪ 同源的
 %% 判定在 application（`cs_widget:origin_allowed/3`）。
 origin_guard(Entry, Req) ->
-    case maps:get(action, Entry) =:= widget_bootstrap of
+    case
+        maps:get(action, Entry) =:= widget_bootstrap orelse maps:get(require_origin, Entry, false)
+    of
         false ->
             {ok, #{}};
         true ->

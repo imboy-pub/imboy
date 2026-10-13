@@ -598,3 +598,9 @@
 %% 任一步失败全回滚；幂等（重复调用返回既有事实，不重复创建）。
 -callback provision_seat(OrgId :: integer(), WorkspaceId :: integer(), Provision :: map()) ->
     {ok, map()} | {error, term()}.
+
+%% 访客阅读事实，与坐席阅读游标完全独立。Scope仅来自已授权应用层。
+-callback confirm_visitor_message_reads(integer(), integer(), map(), [pos_integer()], term()) ->
+    {ok, map()} | {error, term()}.
+-callback fetch_visitor_message_reads(integer(), integer(), map(), [pos_integer()]) ->
+    {ok, [map()]} | {error, term()}.
