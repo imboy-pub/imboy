@@ -11,7 +11,7 @@
 > 全量使用 GNU Make 4 的 `eunit-local`、既有专属库配置 `sys.closeout-local`，
 > 依赖构件必须与冻结摘要一致；复制环境中的旧绝对路径构建索引不得混入结果。
 
-## dot 接续状态（2026-10-13）
+## dot 接续状态（2026-10-14）
 
 - 计划锚未变：closeout SHA256=`806114da93a904108dfa9a2747d1ee59d4efcb1a2562a92ae7ea6ae905882f0f`，W0 原计划 SHA256=`a5523ee731bc822018831586e3d747ba109c2c66e734daf5633b494d9b18c713`。当前分支 `main`；C14 依赖输入绑定修复为 `2494757b`，矩阵文档对齐为 `ce59d570`，依赖文件链接内容摘要回归为 `d35f9975`。干净交接 worktree `/private/tmp/imboy-unified-main-merge-20261013` 已快进到包含这些变更的 `main`。ZCODE `completion-20261012` 的 HEAD 仍为 `85e559ff` 且有大量活动 WIP；上轮尝试 no-commit merge 期间观测到该工作树发生 reset/stash 状态变化，当前未提交差异还覆盖多个 `main` 改动路径，不能认定已建立合并关系。不要清理或重置该目录；待 ZCODE 停止后先留存并逐项核对 WIP，再建立真实 merge ancestry。attachment-lifecycle、产品化策略、micro-community checksum 三项未跟踪 WIP 属其他任务，不并入本收口候选；原主机隔离副本及 `/tmp` driver 不保证 Dot 可见。
 - 上一轮 `b025b340…` 源码输入摘要及更早候选绑定已失效；当前**未冻结候选**，提交后代码、依赖、配置和驱动需按 C14 清单重算绑定。C14 现拒绝 raw 非零 `exit`/`exit_code`、无效 UTC、缺失/篡改证据、混用候选和 ignored build source；依赖候选输入覆盖 `deps/` 全文件并拒绝外逃/循环 symlink。最新 `--self-test` 为 35/35（1 正向 + 34 负向），`--ids --sha256` 为 2/2（96 IDs 与两份计划摘要）；候选尚未冻结。性能驱动修正仍使用 `invalidate/1` 建立 memo 冷路径；`memo_cold_path=invalidate_then_memo_including_invalidation` 吞吐/延迟包含失效与回填，不代表纯 memo miss。旧 baseline tiny r4 的 72 个 loader oracle 错误保留，不覆盖或豁免；统一修正驱动尚未跑正式 benchmark。
