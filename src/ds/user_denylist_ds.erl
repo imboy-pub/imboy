@@ -47,8 +47,8 @@ add(Uid, DeniedUserId, CreatedAt) ->
 %% @doc 移除黑名单
 %% @param Uid 用户ID
 %% @param DeniedUserId 被移除的用户ID
-%% @return {ok, integer()} | {error, any()}
--spec remove(integer(), integer()) -> {ok, integer()} | {error, any()}.
+%% @return ok | {error, any()}
+-spec remove(integer(), integer()) -> ok | {error, any()}.
 remove(Uid, DeniedUserId) ->
     user_denylist_repo:remove(Uid, DeniedUserId).
 

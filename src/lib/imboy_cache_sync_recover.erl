@@ -36,7 +36,7 @@ discover(#state{retries = R, recover_deadline_ms = Deadline} = State) when
 ->
     case erlang:system_time(millisecond) >= Deadline of
         true ->
-            imboy_cache_sync_proto:record_recovery_timeout(deadline_timeout),
+            _ = imboy_cache_sync_proto:record_recovery_timeout(deadline_timeout),
             enter_degraded(State);
         false ->
             %% Dmax 未到：继续有界重试（重置轮计数，保持 5s 节奏）
@@ -48,7 +48,7 @@ discover(#state{recover_deadline_ms = Deadline} = State) ->
             erlang:system_time(millisecond) >= Deadline
     of
         true ->
-            imboy_cache_sync_proto:record_recovery_timeout(deadline_timeout),
+            _ = imboy_cache_sync_proto:record_recovery_timeout(deadline_timeout),
             enter_degraded(State);
         false ->
             discover_peers(State)
@@ -158,10 +158,11 @@ schedule_recovery(State, Delay) ->
     Ref = erlang:start_timer(erlang:min(Delay, Remaining), self(), cache_recovery),
     State1#state{recovery_timer = Ref}.
 cancel_recovery_timer(#state{recovery_timer = Ref} = State) ->
-    case is_reference(Ref) of
-        true -> erlang:cancel_timer(Ref);
-        false -> ok
-    end,
+    _ =
+        case is_reference(Ref) of
+            true -> erlang:cancel_timer(Ref);
+            false -> ok
+        end,
     State#state{recovery_timer = undefined}.
 handle_timeout(#state{status = discovering} = State) ->
     discover(State);
@@ -169,7 +170,7 @@ handle_timeout(#state{status = recovering} = State) ->
     case round_expired(State) of
         true ->
             ok = imboy_cache_sync_apply:flush_replicas(),
-            imboy_cache_sync_proto:record_recovery_timeout(deadline_timeout),
+            _ = imboy_cache_sync_proto:record_recovery_timeout(deadline_timeout),
             enter_degraded(State);
         false ->
             case has_snapshot_authority(State#state.snapshot_round) of
@@ -286,7 +287,7 @@ handle_recovery_source(FromNode, BootId, Epoch, ReadyFlag, FromPid, Changed, Has
     RoundSt0 = current_or_new_round(State1),
     Cohort = maps:get(cohort_epoch, RoundSt0, Epoch),
     AuthorityOk =
-        HashOk andalso Changed =/= rejected andalso ReadyFlag =:= true andalso
+        HashOk andalso ReadyFlag =:= true andalso
             maps:is_key(FromNode, maps:get(peers, RoundSt0)) andalso Epoch =:= Cohort,
     HigherCohort =
         HashOk andalso ReadyFlag =:= true andalso Epoch > Cohort andalso
@@ -629,7 +630,7 @@ abort_round(Reason, #state{snapshot_round = RoundSt} = State) when is_map(RoundS
     ok = imboy_cache_sync_apply:flush_replicas(),
     RoundsUsed = maps:get(rounds_used, RoundSt, 0) + 1,
     ?WARN_LOG(["cache sync snapshot round aborted", Reason, RoundsUsed]),
-    imboy_cache_sync_proto:record_recovery_abort(Reason),
+    _ = imboy_cache_sync_proto:record_recovery_abort(Reason),
     case RoundsUsed >= imboy_cache_policy:r_max_rounds() of
         true ->
             {noreply, S1} = enter_degraded(State),
@@ -702,10 +703,11 @@ publish_ready_state(State) ->
 %% 使用既有报告/水位，且只在完成恢复后通知；不把部分回合广播成 authority。
 announce_ready(State) ->
     Peers = [P || P <- imboy_cache_sync:syn_scope_members(), node(P) =/= node()],
-    case length(Peers) =< imboy_cache_policy:peer_max() of
-        true -> [ok = imboy_cache_sync:send_version_report(P, State) || P <- Peers];
-        false -> self() ! reconcile_tick
-    end,
+    _ =
+        case length(Peers) =< imboy_cache_policy:peer_max() of
+            true -> [ok = imboy_cache_sync:send_version_report(P, State) || P <- Peers];
+            false -> self() ! reconcile_tick
+        end,
     ok.
 %% 被排除的 hash/epoch 不一致报告不能影响 READY 的 epoch。
 authority_epochs(#{peers := Peers}) ->
@@ -750,10 +752,11 @@ reconcile_tick(reconcile_tick, State) ->
 reconcile_tick(_Stale, State) ->
     State.
 arm_reconcile(#state{reconcile_timer = Ref} = State) ->
-    case is_reference(Ref) of
-        true -> erlang:cancel_timer(Ref);
-        false -> ok
-    end,
+    _ =
+        case is_reference(Ref) of
+            true -> erlang:cancel_timer(Ref);
+            false -> ok
+        end,
     State#state{
         reconcile_timer = erlang:start_timer(?RECONCILE_INTERVAL_MS, self(), reconcile_tick)
     }.
