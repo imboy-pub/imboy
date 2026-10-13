@@ -371,7 +371,10 @@ license_metrics() ->
 %% 支持带标签的计数器：metric_name{plugin="channel"} 42
 -spec format_prometheus(map()) -> iodata().
 format_prometheus(Metrics) ->
-    Counters = maps:get(counters, Metrics, #{}),
+    Counters0 = maps:get(counters, Metrics, #{}),
+    TimeoutKey = {cache_sync_recovery_timeout_total, #{reason => deadline_timeout}},
+    %% Ensure Prometheus observes the zero baseline before the first Dmax event.
+    Counters = maps:put(TimeoutKey, maps:get(TimeoutKey, Counters0, 0), Counters0),
     Histograms = maps:get(histograms, Metrics, #{}),
 
     %% Application counters and system gauges share the JSON-compatible sample map.

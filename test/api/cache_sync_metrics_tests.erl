@@ -1,9 +1,23 @@
 -module(cache_sync_metrics_tests).
 -include_lib("eunit/include/eunit.hrl").
--export([sequence_evidence/0, stopped_sync/0]).
+-export([sequence_evidence/0, stopped_sync/0, timeout_counter_baseline/0]).
 
 sequence_evidence_is_distinct_and_payload_free_test() -> isolated(sequence_evidence).
 stopped_sync_has_no_fabricated_protocol_identity_test() -> isolated(stopped_sync).
+timeout_counter_has_zero_baseline_test() -> isolated(timeout_counter_baseline).
+
+timeout_counter_baseline() ->
+    Key = {cache_sync_recovery_timeout_total, #{reason => deadline_timeout}},
+    Zero = iolist_to_binary(metrics_handler:format_prometheus(#{counters => #{}})),
+    ?assertNotEqual(
+        nomatch,
+        binary:match(Zero, <<"cache_sync_recovery_timeout_total{reason=\"deadline_timeout\"} 0">>)
+    ),
+    One = iolist_to_binary(metrics_handler:format_prometheus(#{counters => #{Key => 1}})),
+    ?assertNotEqual(
+        nomatch,
+        binary:match(One, <<"cache_sync_recovery_timeout_total{reason=\"deadline_timeout\"} 1">>)
+    ).
 
 isolated(Function) ->
     {ok, Peer, _} = peer:start_link(#{

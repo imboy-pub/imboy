@@ -33,6 +33,15 @@ PromQL 查询返回计数（当前实例值 10），`ImBoyCacheSyncRecoveryTimed
 `/api/v1/rules` 与 `ALERTS` 中进入 firing；Grafana 面板使用的 PromQL 也返回序列。
 本次 runner exit=0。该注入验证监控消费链，不是实际恢复超时故障；新增 actor regression
 `expired_recovery_deadline_emits_real_timeout_signal_test_` 已在当前树通过（定向 EUnit exit=0）；最终候选绑定与冻结后 consumer 重跑仍待执行。
+2026-10-14 实际 Dmax 故障复测发现：`deadline_timeout` 计数器首次创建时 Prometheus 只看见值 1，
+原 `increase(...[10m])` 没有 0 基线，告警保持 inactive。修复 `format_prometheus/1`，在尚无事件时
+先导出固定标签的 0 样本，事件后保留真实累计值；JSON 响应不变。`cache_sync_metrics_tests`
+3/3 PASS，包含 0 基线与真实值保留断言。隔离本机用当前源码、实际等待 8s Dmax、loopback
+`/metrics` 和 Prometheus 真实抓取验证：先抓到 0，期限耗尽后抓到 1，`ImBoyCacheSyncRecoveryTimedOut`
+与 `ImBoyCacheSyncDegraded` 均在 `ALERTS` 中 firing，exit=0；临时规则副本把 60s group interval
+缩短为 1s 加快验证，告警表达式未变。正式规则 `promtool check rules`（63 条）及
+`promtool test rules`、Grafana JSON 校验均 exit=0。原始隔离证据位于
+`/tmp/cache-dmax-http.kDoFTv/actual-prom/result.json`，源码/规则哈希在测试前后稳定；仍非冻结候选收据。
 C11 当前为阶段证据通过、整体未签发 PASS；冻结候选后须重跑并保存摘要。
 合成规则 oracle `promtool test rules /tmp/cache-c11-owned/rule-query-tests.yml` exit=0，
 与上述 HTTP/scrape 消费互补，均不替代实际 Dmax 故障和三节点验收。仅终止本次脚本创建的 Erlang/Prometheus 进程。
