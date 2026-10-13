@@ -90,7 +90,8 @@ tablename() ->
     binary(),
     binary(),
     binary(),
-    map(),
+    %% null|<<>>|map|binary 均合法（msg_store_e2ee_to_jsonb/1 消费）
+    map() | binary() | null,
     binary(),
     integer(),
     integer() | [integer()],
@@ -118,7 +119,8 @@ stage(Type, MsgId, MsgType, Action, E2EE, Payload, FromId, ToId, CreatedAt, Serv
     binary(),
     binary(),
     binary(),
-    map(),
+    %% null|<<>>|map|binary 均合法（msg_store_e2ee_to_jsonb/1 消费）
+    map() | binary() | null,
     binary(),
     integer(),
     integer() | [integer()],
@@ -291,7 +293,8 @@ single_staging_row(
     binary(),
     binary(),
     binary(),
-    map(),
+    %% null|<<>>|map|binary 均合法（msg_store_e2ee_to_jsonb/1 消费）
+    map() | binary() | null,
     binary(),
     integer(),
     integer(),
@@ -342,7 +345,8 @@ stage(
     binary(),
     binary(),
     binary(),
-    map(),
+    %% null|<<>>|map|binary 均合法（msg_store_e2ee_to_jsonb/1 消费）
+    map() | binary() | null,
     binary(),
     integer(),
     integer(),
@@ -404,7 +408,8 @@ valid_c2g_msg_id(_) ->
     binary(),
     binary(),
     binary(),
-    map(),
+    %% null|<<>>|map|binary 均合法（msg_store_e2ee_to_jsonb/1 消费）
+    map() | binary() | null,
     binary(),
     integer(),
     integer(),
