@@ -45,6 +45,7 @@ hold(Ctx = #{conn := Conn}) ->
     ]),
     Outcome = capture(fun() ->
         configure_app(Config),
+        verify_sign_chain(Config),
         prepare_fixture(Conn),
         transport_lease(Ctx, Config)
     end),
@@ -119,6 +120,50 @@ configure_app(#{
 
 sign_key_name(#{package := Package, sign_key_version := Version}) ->
     <<Package/binary, "_android_", Version/binary>>.
+
+%% MC22_SIGN_CHAIN: configure_app 后读回服务端注册的 sign_key 并与
+%% runtime config 的 solidified_key 逐一比对，让签名链断裂在 LEASE_READY
+%% 前具名失败（此前会折叠成 902 + negative_final_oracle_failed 误诊）。
+verify_sign_chain(Config) ->
+    #{package := Pkg, sign_key_version := Vsn, solidified_key := Expect} = Config,
+    Read = app_version_ds:sign_key(<<"android">>, Vsn, Pkg),
+    Match = is_binary(Read) andalso Read =:= Expect,
+    io:format(
+        "MC22_SIGN_CHAIN pkg=~ts vsn=~ts expect_len=~p read_len=~p match=~p~n",
+        [
+            Pkg,
+            Vsn,
+            byte_size(Expect),
+            case is_binary(Read) of
+                true -> byte_size(Read);
+                false -> -1
+            end,
+            Match
+        ]
+    ),
+    case Match of
+        true ->
+            ok;
+        false ->
+            %% 读回失败时附一行 DB 原文（aes_cbc_ 前缀=已加密；否则写入链断）
+            KeyName = sign_key_name(Config),
+            Raw = elib_pg:pluck_value(
+                <<"config">>,
+                <<"value">>,
+                #{key => KeyName},
+                #{},
+                <<>>
+            ),
+            io:format(
+                "MC22_SIGN_RAW key=~ts raw_len=~p raw_head=~ts~n",
+                [
+                    KeyName,
+                    byte_size(Raw),
+                    binary:part(Raw, 0, min(24, byte_size(Raw)))
+                ]
+            ),
+            assert(Match, sign_chain_key_mismatch)
+    end.
 
 resource_preflight(Conn) ->
     Users = [?BASE + N || N <- [1, 2, 3, 4]],

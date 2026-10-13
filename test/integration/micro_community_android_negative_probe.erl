@@ -232,7 +232,9 @@ perform(<<"revoke">>, State) ->
         erlang:monotonic_time(millisecond), At
     ]),
     State;
-perform(<<"link_drop_requested">>, State) ->
+%% advance 以 action 名调用 perform（stage 名是执行成功后的下一站），
+%% 子句必须匹配协调器发送的 action 'link_drop'，而非 stage 'link_drop_requested'。
+perform(<<"link_drop">>, State) ->
     %% 断链物证：当前 adb 的 reverse 移除不杀既有 TCP（r6/r7 实证：app
     %% 协议级 ping 对黑洞连接写不失败、无 pong 超时，永远等不到
     %% disconnected）。物理等效断开由服务端执行：关闭该用户全部 WS 会话
