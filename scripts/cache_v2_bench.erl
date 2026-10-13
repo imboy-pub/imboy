@@ -2,7 +2,15 @@
 %% W0 TTL=3600 is checked, never enabled by raising the product TTL budget.
 %% Sampled resource peaks are observations, not hard heap/mailbox bounds.
 -module(cache_v2_bench).
--export([run/0, app_up/0, resource_sample/0, applied/2, runtime_identity/0, members_confirmed/0]).
+-export([
+    run/0,
+    app_up/0,
+    reset_resource_sample/0,
+    resource_sample/0,
+    applied/2,
+    runtime_identity/0,
+    members_confirmed/0
+]).
 -define(REP_NS, cache_v2_bench_rep).
 -define(LOC_NS, cache_v2_bench_loc).
 -define(KEYSPACE, 1024).
@@ -450,6 +458,7 @@ bench(Kind, Workers, Ops, KeyBytes, ValueBytes, Nodes) ->
              || I <- lists:seq(0, ?KEYSPACE - 1)
             ]
     end,
+    [ok = rpc:call(N, ?MODULE, reset_resource_sample, [], 1000) || N <- Nodes],
     Parent = self(),
     Sampler = spawn_monitor(fun() -> sample(Parent, Nodes, #{}) end),
     Start = erlang:monotonic_time(microsecond),
@@ -627,18 +636,48 @@ sample(Parent, Nodes, Peaks) ->
     after 5 -> sample(Parent, Nodes, Next)
     end.
 
+reset_resource_sample() ->
+    gen_server:call(imboy_cache_sync, benchmark_reset_snapshot_page_peak, 1000).
+
 resource_sample() ->
-    Info = process_info(whereis(imboy_cache_sync), [message_queue_len, memory, total_heap_size]),
+    SyncPid = whereis(imboy_cache_sync),
+    Info = process_info(SyncPid, [message_queue_len, memory, total_heap_size]),
     Tables = [T || T <- ets:all(), lists:prefix("imboy_cache_", atom_to_list(ets:info(T, name)))],
     MetaWords = lists:sum([ets:info(T, memory) || T <- Tables]),
     maps:merge(logical_usage(), #{
         mailbox => proplists:get_value(message_queue_len, Info),
+        buffer_count => null,
+        buffer_bytes => null,
+        page_count => snapshot_page_peak(1),
+        page_bytes => snapshot_page_peak(2),
+        journal_count => journal_usage(3),
+        journal_bytes => journal_usage(4),
+        grace_count => ets:select_count(imboy_cache_meta, [{{{grace_incarnation, '_'}, '_'}, [], [true]}]),
+        peer_count => ets:select_count(imboy_cache_meta, [{{{peer_incarnation, '_'}, '_'}, [], [true]}]),
         process_memory_bytes => proplists:get_value(memory, Info),
         heap_bytes => proplists:get_value(total_heap_size, Info) * erlang:system_info(wordsize),
         metadata_entries => lists:sum([ets:info(T, size) || T <- Tables]),
         metadata_bytes => MetaWords * erlang:system_info(wordsize),
         cache_ets_bytes => depcache:size(imboy_cache) * erlang:system_info(wordsize)
     }).
+
+snapshot_page_peak(Index) -> page_peak(snapshot_page_peak, Index).
+
+page_peak(Key, Index) ->
+    case ets:lookup(imboy_cache_meta, Key) of
+        [{Key, Peak}] -> element(Index, Peak);
+        [] -> 0
+    end.
+
+journal_usage(Index) ->
+    case ets:lookup(imboy_cache_meta, journal_window) of
+        [{journal_window, Window}] -> element(Index, Window);
+        [] ->
+            case ets:select_count(imboy_cache_meta, [{{{journal, '_'}, '_'}, [], [true]}]) of
+                0 -> 0;
+                _ -> null
+            end
+    end.
 
 logical_usage() ->
     Current = code:which(imboy_cache_sync_coverage) =/= non_existing,

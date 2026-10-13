@@ -311,6 +311,9 @@ handle_call({publish_delete, Key}, _From, State) ->
 %% --- 诊断（消息串行化确认）---
 handle_call(ping_ok, _From, State) ->
     {reply, pong, State};
+handle_call(benchmark_reset_snapshot_page_peak, _From, State) ->
+    true = ets:delete(?META_TABLE, snapshot_page_peak),
+    {reply, ok, State};
 handle_call(_Request, _From, State) ->
     {reply, ok, State}.
 
