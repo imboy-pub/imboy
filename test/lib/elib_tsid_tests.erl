@@ -20,6 +20,93 @@ init_test() ->
     ?SETUP(),
     ok.
 
+env_suite_preserves_runtime_and_environment_test() ->
+    elib_tsid:reset_for_test(),
+    ok = elib_tsid:init(#{dc_id => 2, node_id => 9, dc_bits => 3}),
+    Vars = [
+        {"IMBOY_TSID_DC_ID", tsid_dc_id},
+        {"IMBOY_TSID_NODE_ID", tsid_node_id},
+        {"IMBOY_TSID_DC_BITS", tsid_dc_bits},
+        {"IMBOY_TSID_CAPACITY_WAIT_TIMEOUT_MS", tsid_capacity_wait_timeout_ms},
+        {"IMBOY_TSID_MAX_CLOCK_DRIFT_MS", tsid_max_clock_drift_ms}
+    ],
+    Snapshot = [{Name, os:getenv(Name), application:get_env(imboy, Key)} || {Name, Key} <- Vars],
+    try
+        lists:foreach(
+            fun({Name, Key}) ->
+                os:putenv(Name, "7"),
+                application:set_env(imboy, Key, 42)
+            end,
+            Vars
+        ),
+        _ = elib_tsid:generate(user),
+        Runtime = persistent_term:get(elib_tsid_runtime),
+        Node = persistent_term:get(elib_tsid_node_id),
+        DcBits = persistent_term:get(elib_tsid_dc_bits),
+        Cursors = maps:get(cursors, Runtime),
+        CursorValues = [
+            atomics:get(Cursors, Index)
+         || Index <- lists:seq(1, maps:get(size, atomics:info(Cursors)))
+        ],
+        Result = eunit:test(imboy_env_tsid_tests, []),
+        ?assertEqual(Runtime, persistent_term:get(elib_tsid_runtime)),
+        ?assertEqual(Node, persistent_term:get(elib_tsid_node_id)),
+        ?assertEqual(DcBits, persistent_term:get(elib_tsid_dc_bits)),
+        ?assertEqual(CursorValues, [
+            atomics:get(Cursors, Index)
+         || Index <- lists:seq(1, length(CursorValues))
+        ]),
+        lists:foreach(
+            fun({Name, Key}) ->
+                ?assertEqual("7", os:getenv(Name)),
+                ?assertEqual({ok, 42}, application:get_env(imboy, Key))
+            end,
+            Vars
+        ),
+        ?assertEqual(ok, Result)
+    after
+        restore_tsid_environment(Vars, Snapshot)
+    end.
+
+restore_tsid_environment(Vars, Snapshot) ->
+    lists:foreach(
+        fun({{Name, Key}, {Name, OsValue, AppValue}}) ->
+            case OsValue of
+                false -> os:unsetenv(Name);
+                _ -> os:putenv(Name, OsValue)
+            end,
+            case AppValue of
+                undefined -> application:unset_env(imboy, Key);
+                {ok, Value} -> application:set_env(imboy, Key, Value)
+            end
+        end,
+        lists:zip(Vars, Snapshot)
+    ).
+
+config_chain_feeds_init_test() ->
+    Keys = [tsid_dc_id, tsid_node_id, tsid_dc_bits, tsid_lock_provider],
+    Snapshot = [{Key, application:get_env(imboy, Key)} || Key <- Keys],
+    try
+        application:unset_env(imboy, tsid_lock_provider),
+        application:set_env(imboy, tsid_dc_id, 2),
+        application:set_env(imboy, tsid_node_id, 3),
+        application:set_env(imboy, tsid_dc_bits, 3),
+        elib_tsid:reset_for_test(),
+        ok = elib_tsid:init(imboy_sup:tsid_init_config()),
+        Parsed = elib_tsid:parse(elib_tsid:generate(user)),
+        ?assertEqual(2, maps:get(dc_id, Parsed)),
+        ?assertEqual(3, maps:get(node_id, Parsed))
+    after
+        lists:foreach(
+            fun
+                ({Key, undefined}) -> application:unset_env(imboy, Key);
+                ({Key, {ok, Value}}) -> application:set_env(imboy, Key, Value)
+            end,
+            Snapshot
+        ),
+        elib_tsid:reset_for_test()
+    end.
+
 concurrent_init_preserves_allocated_cursor_test_() ->
     {timeout, 30, fun() ->
         lists:foreach(fun concurrent_init_round/1, lists:seq(1, 5))
@@ -860,9 +947,8 @@ concurrent_batch_disjoint_ranges_test() ->
 %% ===================================================================
 %% 批量跨块预算守恒（V10-A2 黑盒回归；此前仅构造性保证，见 R-11）
 %%
-%% 慢墙钟编排：driver 以 1ms 自调度链持续把 runtime 的 clock_offset_ms
-%% 回退，使 wall = monotonic + offset 以 1/StepMs 速度前进（校正间隙的
-%% 亚毫秒漂移远小于预置的等待需求，见下）；先把 user 游标预置到未来
+%% 慢墙钟编排：每次读取按真实耗时计算 1/StepMs 速度的墙钟；
+%% 所有 worker 使用同一时钟函数，不改 runtime。先把 user 游标预置到未来
 %% 1ms 的满毫秒，使 generate_n 的块 1 起就必须真实发生 clock_wait。
 %%
 %% 守恒契约（generate_n 入口一次物化 deadline、全部块共享）：
@@ -884,9 +970,9 @@ batch_budget_shared_across_chunks_body() ->
     ok = elib_tsid:init(#{
         dc_id => 1, node_id => 1, dc_bits => 3, capacity_wait_timeout_ms => 140
     }),
-    {Driver, BaseWall} = start_slow_wall_driver(60),
+    {Clock, BaseWall} = slow_wall_clock(60),
     preset_user_cursor_one_ms_ahead(BaseWall),
-    try
+    with_fixed_clock(Clock, fun() ->
         T0 = erlang:monotonic_time(millisecond),
         ?assertMatch(
             {elib_tsid_capacity_exhausted, #{phase := clock_wait}},
@@ -896,9 +982,7 @@ batch_budget_shared_across_chunks_body() ->
         %% 单一预算内失败：预算被真实消耗且不因换块获得新完整预算
         ?assert(Elapsed >= 120, {budget_not_consumed_ms, Elapsed}),
         ?assert(Elapsed =< 220, {budget_exceeded_ms, Elapsed})
-    after
-        stop_slow_wall_driver(Driver)
-    end.
+    end).
 
 batch_budget_sufficient_with_contention_slow_wall_test_() ->
     {timeout, 30, fun batch_budget_sufficient_with_contention_slow_wall_body/0}.
@@ -908,15 +992,18 @@ batch_budget_sufficient_with_contention_slow_wall_body() ->
     ok = elib_tsid:init(#{
         dc_id => 1, node_id => 1, dc_bits => 3, capacity_wait_timeout_ms => 400
     }),
-    {Driver, BaseWall} = start_slow_wall_driver(60),
+    {Clock, BaseWall} = slow_wall_clock(60),
     preset_user_cursor_one_ms_ahead(BaseWall),
+    Self = self(),
+    Workers = [
+        spawn_monitor(fun() ->
+            Ids = with_fixed_clock(Clock, fun() -> elib_tsid:generate_n(user, 2048 * 2) end),
+            Self ! {ids, self(), Ids}
+        end)
+     || _ <- lists:seq(1, 2)
+    ],
     try
-        Self = self(),
-        [
-            spawn(fun() -> Self ! {ids, elib_tsid:generate_n(user, 2048 * 2)} end)
-         || _ <- lists:seq(1, 2)
-        ],
-        AllIds = collect_ids(2, []),
+        AllIds = collect_slow_wall_ids(Workers, []),
         ?assertEqual(8192, length(AllIds)),
         ?assertEqual(8192, length(lists:usort(AllIds))),
         %% 4 块 = 恰好 4 个连续未来毫秒（跨块真实发生）
@@ -926,7 +1013,30 @@ batch_budget_sufficient_with_contention_slow_wall_body() ->
             {ms_span, AllIds}
         )
     after
-        stop_slow_wall_driver(Driver)
+        lists:foreach(
+            fun({Pid, Ref}) ->
+                exit(Pid, kill),
+                erlang:demonitor(Ref, [flush])
+            end,
+            Workers
+        )
+    end.
+
+collect_slow_wall_ids([], Acc) ->
+    Acc;
+collect_slow_wall_ids(Workers, Acc) ->
+    receive
+        {ids, Pid, Ids} ->
+            {Pid, Ref} = lists:keyfind(Pid, 1, Workers),
+            erlang:demonitor(Ref, [flush]),
+            collect_slow_wall_ids(lists:keydelete(Pid, 1, Workers), Acc ++ Ids);
+        {'DOWN', Ref, process, Pid, Reason} ->
+            case lists:member({Pid, Ref}, Workers) of
+                true -> error({slow_wall_worker_failed, Pid, Reason});
+                false -> collect_slow_wall_ids(Workers, Acc)
+            end
+    after 30000 ->
+        exit(collect_ids_timeout)
     end.
 
 %% @private 把 user 游标预置到未来 1ms 的满毫秒（seam 注入未来墙钟发
@@ -938,47 +1048,18 @@ preset_user_cursor_one_ms_ahead(BaseWall) ->
         ok
     end).
 
-%% @private 慢墙钟驱动：每 1ms 校正一次 clock_offset_ms，使 wall 保持
-%% 在"启动时刻 + floor(真实耗时/StepMs)"（即 1/StepMs 速度前进）。
-%% 校正间隙的漂移（~1ms）远小于预置构造的块等待需求。stop 时还原。
-%% high 优先级：tick 是微秒级轻操作，但普通优先级在全量轨道并发饥饿下
-%% 可能被推迟数秒（2026-10-10 级联实证），使正例的 400ms 预算假性耗尽。
-start_slow_wall_driver(StepMs) ->
-    BaseRuntime = persistent_term:get(elib_tsid_runtime),
+slow_wall_clock(StepMs) ->
     M0 = erlang:monotonic_time(millisecond),
-    Pid = spawn_opt(
-        fun() -> slow_wall_tick(BaseRuntime, M0, StepMs) end,
-        [{priority, high}]
-    ),
-    erlang:send_after(1, Pid, tick),
-    #{clock_offset_ms := Offset} = BaseRuntime,
-    {Pid, M0 + Offset}.
+    #{clock_offset_ms := Offset} = persistent_term:get(elib_tsid_runtime),
+    BaseWall = M0 + Offset,
+    {fun() -> BaseWall + ((erlang:monotonic_time(millisecond) - M0) div StepMs) end, BaseWall}.
 
-slow_wall_tick(BaseRuntime, M0, StepMs) ->
-    receive
-        stop ->
-            persistent_term:put(elib_tsid_runtime, BaseRuntime),
-            ok;
-        tick ->
-            #{clock_offset_ms := O0} = BaseRuntime,
-            ElapsedReal = erlang:monotonic_time(millisecond) - M0,
-            WallAdvance = ElapsedReal div StepMs,
-            persistent_term:put(
-                elib_tsid_runtime,
-                BaseRuntime#{clock_offset_ms := O0 - (ElapsedReal - WallAdvance)}
-            ),
-            erlang:send_after(1, self(), tick),
-            slow_wall_tick(BaseRuntime, M0, StepMs)
-    end.
-
-stop_slow_wall_driver(Pid) ->
-    Ref = erlang:monitor(process, Pid),
-    Pid ! stop,
-    receive
-        {'DOWN', Ref, process, Pid, _Reason} -> ok
-    after 5000 ->
-        exit(driver_stop_timeout)
-    end.
+wall_clock_function_seam_restores_nested_value_test() ->
+    with_fixed_clock(fun() -> 123 end, fun() ->
+        ?assertEqual(123, elib_tsid:wall_clock_ms()),
+        ?assertEqual(456, with_fixed_clock(456, fun elib_tsid:wall_clock_ms/0)),
+        ?assertEqual(123, elib_tsid:wall_clock_ms())
+    end).
 
 %% ===================================================================
 %% 高并发混合（跨 namespace 各自独立游标；1M 规模，90s timetrap）
@@ -1024,11 +1105,14 @@ mixed_concurrency_1m_body() ->
 %% ===================================================================
 
 with_fixed_clock(WallMs, Fun) ->
-    put({elib_tsid, test_wall_ms}, WallMs),
+    Previous = put({elib_tsid, test_wall_ms}, WallMs),
     try
         Fun()
     after
-        erase({elib_tsid, test_wall_ms})
+        case Previous of
+            undefined -> erase({elib_tsid, test_wall_ms});
+            _ -> put({elib_tsid, test_wall_ms}, Previous)
+        end
     end.
 
 catch_typed(Fun) ->

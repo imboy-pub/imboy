@@ -1,12 +1,14 @@
 # TSID V10：静态业务游标、固定Offset与无持久化
 
-> 更新：2026-10-11。真源：src/lib/elib_tsid.erl、elib_tsid_inventory.erl、imboy_sup.erl。参数与协议见[字段规范](../reference/tsid-field-convention.md)、[环境变量](../reference/env-vars.md)。
+> 更新：2026-10-13。真源：src/lib/elib_tsid.erl、elib_tsid_inventory.erl、imboy_sup.erl。参数与协议见[字段规范](../reference/tsid-field-convention.md)、[环境变量](../reference/env-vars.md)。
 
 ## 为什么按实体分配游标
 
 同一实体主键空间须唯一，不同实体无需争抢同一序列。149个canonical Namespace使用一个150槽atomics游标数组，尾槽default仅供测试/脚手架。三条别名group → group_info、audit → enterprise_audit_event、enterprise_audit → enterprise_audit_event不增加游标。
 
 热路径读取Runtime、静态查槽、读时钟、有界CAS；无数据库/磁盘/远程调用或每域GenServer。启动init串行发布Runtime，同配置重复初始化保留游标，不同配置拒绝重置。使用elib_tsid:generate(user)等明确标签，未知标签报错；生产实体写入不得generate()或动态register。
+
+初始化互斥依赖OTP的global_name_server；服务缺失时以`{elib_tsid_init_lock_unavailable, global_name_server}`拒绝初始化，不发布Runtime。测试入口保留该服务，不能使用`-kernel start_distribution false`运行正常初始化测试。This initialization lock requires OTP's global_name_server; initialization fails closed when it is unavailable.
 
 Namespace不编码进ID。跨域同值合法，因此表、引用、缓存及权限判断必须保留Domain，不能只比较数字。
 

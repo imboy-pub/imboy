@@ -282,6 +282,7 @@ DIALYZER_WARNINGS ?= 50
 ERLC_COMPILE_OPTS = +'{parse_transform, lager_transform}' +nowarn_unused_function
 ERLC_OPTS += $(ERLC_COMPILE_OPTS)
 TEST_ERLC_OPTS += $(ERLC_COMPILE_OPTS)
+TEST_ERLC_OPTS += -I src/lib
 
 # Common Test
 CT_CONFIG ?= config/sys.config
@@ -581,7 +582,7 @@ EUNIT_CONFIG ?= config/sys.local
 # 未注册，连锁失败 19 例。
 EUNIT_RELAY_CONF := config/sys.eunit-relay.$$$$
 EUNIT_PROCESS_LIMIT ?= 32768
-EUNIT_ERL ?= erl -noinput -boot no_dot_erlang -kernel start_distribution false +P $(EUNIT_PROCESS_LIMIT) +Q 1024
+EUNIT_ERL ?= erl -noinput -boot no_dot_erlang +P $(EUNIT_PROCESS_LIMIT) +Q 1024
 eunit-local:
 	@# A1c：erlang.mk beam-cache 防失步（CP-TD-A02）。L3 门顺序是 make compile →
 	@# eunit-local：当 .erlang.mk/imboy.test 标记与 ebin 内 beam 的 TEST/非TEST 模式
