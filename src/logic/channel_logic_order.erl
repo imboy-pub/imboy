@@ -80,7 +80,9 @@ create_order_for_method(Uid, ChannelIdBin, PaymentMethod) ->
                             end;
                         true ->
                             do_create_order(ChannelId, Uid, PaymentMethod)
-                    end
+                    end;
+                _Unexpected ->
+                    {error, <<"频道不存在"/utf8>>}
             end
     end.
 
@@ -120,20 +122,28 @@ do_create_order(ChannelId, Uid, PaymentMethod) ->
                                                 {ok, _InvalidOrder} ->
                                                     {error, <<"订单不存在"/utf8>>};
                                                 {error, Reason} ->
-                                                    {error, error_binary(Reason)}
+                                                    {error, error_binary(Reason)};
+                                                _UnexpectedOrder ->
+                                                    {error, <<"订单数据异常"/utf8>>}
                                             end;
                                         {error, Reason} ->
-                                            {error, error_binary(Reason)}
+                                            {error, error_binary(Reason)};
+                                        _UnexpectedCreate ->
+                                            {error, <<"订单创建结果异常"/utf8>>}
                                     end
                             end
                     end;
                 {error, not_found} ->
                     {error, <<"频道价格未配置"/utf8>>};
                 {error, Reason} ->
-                    {error, error_binary(Reason)}
+                    {error, error_binary(Reason)};
+                _UnexpectedPrice ->
+                    {error, <<"频道价格数据异常"/utf8>>}
             end;
         {error, Reason} ->
-            {error, error_binary(Reason)}
+            {error, error_binary(Reason)};
+        _UnexpectedPurchased ->
+            {error, <<"购买状态数据异常"/utf8>>}
     end.
 
 %% @returns {ok, Envelope} | {error, binary()}
@@ -196,7 +206,9 @@ pay_order(Uid, OrderNo) ->
         {error, LookupReason} ->
             {error, error_binary(LookupReason)};
         {ok, _InvalidOrder} ->
-            {error, <<"订单不存在"/utf8>>}
+            {error, <<"订单不存在"/utf8>>};
+        _UnexpectedOrder ->
+            {error, <<"订单数据异常"/utf8>>}
     end.
 
 %% @doc 用户取消待支付订单；已支付订单必须走退款，避免绕过支付网关。
@@ -222,7 +234,9 @@ cancel_order(Uid, OrderNo) ->
                         {error, not_found_or_not_pending} ->
                             {error, <<"订单状态不允许取消"/utf8>>};
                         {error, Reason} ->
-                            {error, error_binary(Reason)}
+                            {error, error_binary(Reason)};
+                        _UnexpectedCancel ->
+                            {error, <<"订单取消结果异常"/utf8>>}
                     end
             end;
         {error, not_found} ->
@@ -230,7 +244,9 @@ cancel_order(Uid, OrderNo) ->
         {error, LookupReason} ->
             {error, error_binary(LookupReason)};
         {ok, _InvalidOrder} ->
-            {error, <<"订单不存在"/utf8>>}
+            {error, <<"订单不存在"/utf8>>};
+        _UnexpectedOrder ->
+            {error, <<"订单数据异常"/utf8>>}
     end.
 
 %% @doc 按网关结算模式决定是否就地发货。
@@ -331,7 +347,9 @@ do_pay_order(ChannelId, Uid, OrderNo, PaymentData, Order) ->
                 ok ->
                     channel_logic_notify:notify_order_paid(ChannelId, Uid);
                 {error, _} ->
-                    {error, <<"订单已支付"/utf8>>}
+                    {error, <<"订单已支付"/utf8>>};
+                _UnexpectedSubscribe ->
+                    {error, <<"订阅结果异常"/utf8>>}
             end;
         _ ->
             case
@@ -345,13 +363,17 @@ do_pay_order(ChannelId, Uid, OrderNo, PaymentData, Order) ->
                         ok ->
                             channel_logic_notify:notify_order_paid(ChannelId, Uid);
                         {error, Reason} ->
-                            {error, error_binary(Reason)}
+                            {error, error_binary(Reason)};
+                        _UnexpectedSubscribe ->
+                            {error, <<"订阅结果异常"/utf8>>}
                     end;
                 {error, not_found_or_expired} ->
                     %% payment race: check final state, compensate if already paid
                     maybe_compensate_subscription(OrderNo);
                 {error, Reason} ->
-                    {error, error_binary(Reason)}
+                    {error, error_binary(Reason)};
+                _UnexpectedPay ->
+                    {error, <<"订单支付结果异常"/utf8>>}
             end
     end.
 
@@ -413,7 +435,9 @@ maybe_compensate_subscription(OrderNo) ->
                     {error, <<"订单不存在或已过期"/utf8>>}
             end;
         {error, _} ->
-            {error, <<"订单不存在或已过期"/utf8>>}
+            {error, <<"订单不存在或已过期"/utf8>>};
+        _UnexpectedOrder ->
+            {error, <<"订单数据异常"/utf8>>}
     end.
 
 -spec get_my_orders(integer()) -> {ok, [map()]} | {error, binary()}.
@@ -425,7 +449,9 @@ get_my_orders(Uid) ->
         {error, Reason} when is_binary(Reason) ->
             {error, Reason};
         {error, Reason} ->
-            {error, error_binary(Reason)}
+            {error, error_binary(Reason)};
+        _UnexpectedOrders ->
+            {error, <<"订单列表数据异常"/utf8>>}
     end.
 
 -spec get_order(integer(), binary()) -> {ok, map()} | {error, binary()}.
@@ -449,7 +475,9 @@ get_order(Uid, OrderNo) ->
         {error, LookupReason} ->
             {error, error_binary(LookupReason)};
         {ok, _InvalidOrder} ->
-            {error, <<"订单不存在"/utf8>>}
+            {error, <<"订单不存在"/utf8>>};
+        _UnexpectedOrder ->
+            {error, <<"订单数据异常"/utf8>>}
     end.
 
 -spec refund_order(integer(), binary()) -> ok | {error, binary()}.
@@ -490,7 +518,9 @@ refund_order(Uid, OrderNo, Reason0) ->
         {error, not_found} ->
             {error, <<"订单不存在"/utf8>>};
         {error, LookupReason} ->
-            {error, error_binary(LookupReason)}
+            {error, error_binary(LookupReason)};
+        _UnexpectedOrder ->
+            {error, <<"订单数据异常"/utf8>>}
     end.
 
 %% @doc 管理端代发退款：不做订单归属校验，管理员可退任意订单。
@@ -528,7 +558,9 @@ admin_refund_order(OrderNo, Reason0) ->
         {error, not_found} ->
             {error, <<"订单不存在"/utf8>>};
         {error, LookupReason} ->
-            {error, error_binary(LookupReason)}
+            {error, error_binary(LookupReason)};
+        _UnexpectedOrder ->
+            {error, <<"订单数据异常"/utf8>>}
     end.
 
 %% @doc 退款执行：CAS 占位(1→5) → 调网关 → CAS 收尾(5→2) → 取消订阅。
@@ -585,7 +617,11 @@ do_refund_gateway(ChannelId, Uid, OrderNo, Method, PaymentNo, Amount, Reason) ->
             %% 网关失败：释放占位回到 paid(1)，允许重试
             _ = channel_order_ds:release_refunding(OrderNo),
             _ = release_payment_tx_refunding(OrderNo),
-            {error, error_binary(PayReason)}
+            {error, error_binary(PayReason)};
+        _UnexpectedRefund ->
+            _ = channel_order_ds:release_refunding(OrderNo),
+            _ = release_payment_tx_refunding(OrderNo),
+            {error, <<"退款网关返回格式异常"/utf8>>}
     end.
 
 -spec do_refund_finalize(integer(), integer(), binary(), binary()) ->
@@ -748,7 +784,9 @@ maybe_mark_expired(Order) ->
             case elib_dt:millisecond() >= Ms of
                 true -> Order#{<<"status">> => ?STATUS_EXPIRED};
                 false -> Order
-            end
+            end;
+        _ ->
+            Order
     end.
 
 %% @doc PG `timestamp with time zone` 经 epgsql 回来是 {{Y,M,D},{H,Mi,S}}（UTC，S 可能是浮点秒）。

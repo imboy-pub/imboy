@@ -43,7 +43,9 @@ subscribe(Uid, ChannelIdBin) ->
                     case channel_logic_common:guard_channel_writable(ChannelId) of
                         {error, Reason0} -> {error, Reason0};
                         ok -> subscribe_by_join_policy(Uid, ChannelId, Channel)
-                    end
+                    end;
+                _Unexpected ->
+                    {error, <<"频道不存在"/utf8>>}
             end
     end.
 
@@ -157,7 +159,9 @@ unsubscribe(Uid, ChannelIdBin) ->
                             %% 归档守卫（980）等稳定错误码保留 tuple 供 handler envelope 映射
                             {error, Coded};
                         {error, Reason} ->
-                            {error, elib_cnv:safe_to_binary(Reason)}
+                            {error, elib_cnv:safe_to_binary(Reason)};
+                        Unexpected ->
+                            {error, elib_cnv:safe_to_binary(Unexpected)}
                     end
             end
     end.
@@ -170,7 +174,9 @@ get_subscribed_channels(Uid) ->
         {ok, UnexpectedChannels} ->
             {error, elib_cnv:safe_to_binary(UnexpectedChannels)};
         {error, Reason} ->
-            {error, elib_cnv:safe_to_binary(Reason)}
+            {error, elib_cnv:safe_to_binary(Reason)};
+        Unexpected ->
+            {error, elib_cnv:safe_to_binary(Unexpected)}
     end.
 
 -spec get_managed_channels(integer()) -> {ok, list(map())} | {error, binary()}.
@@ -181,7 +187,9 @@ get_managed_channels(Uid) ->
         {ok, UnexpectedChannels} ->
             {error, elib_cnv:safe_to_binary(UnexpectedChannels)};
         {error, Reason} ->
-            {error, elib_cnv:safe_to_binary(Reason)}
+            {error, elib_cnv:safe_to_binary(Reason)};
+        Unexpected ->
+            {error, elib_cnv:safe_to_binary(Unexpected)}
     end.
 
 -spec get_unread_summary(integer()) -> {ok, map()} | {error, binary()}.
@@ -210,7 +218,11 @@ get_unread_summary(Uid) ->
                 <<"channels">> => ChannelUnreadList
             }};
         {error, Reason} ->
-            {error, elib_cnv:safe_to_binary(Reason)}
+            {error, elib_cnv:safe_to_binary(Reason)};
+        _Unexpected ->
+            %% 仓库契约异常时也必须返回业务错误，不能让未读汇总接口
+            %% 因 case_clause 崩溃，客户端会把它误判成网络断线。
+            {error, <<"频道未读数据异常"/utf8>>}
     end.
 
 -spec get_subscribers(binary(), integer(), integer()) -> {ok, list(map())} | {error, binary()}.
@@ -226,7 +238,9 @@ get_subscribers(ChannelIdBin, Cursor, Limit) ->
                 {ok, UnexpectedSubscribers} ->
                     {error, elib_cnv:safe_to_binary(UnexpectedSubscribers)};
                 {error, Reason} ->
-                    {error, elib_cnv:safe_to_binary(Reason)}
+                    {error, elib_cnv:safe_to_binary(Reason)};
+                Unexpected ->
+                    {error, elib_cnv:safe_to_binary(Unexpected)}
             end
     end.
 

@@ -56,11 +56,17 @@ fetch_channel_stats(ChannelId, ChannelIdBin) ->
                             },
                             {ok, Stats};
                         {error, Reason} ->
-                            {error, elib_cnv:safe_to_binary(Reason)}
+                            {error, elib_cnv:safe_to_binary(Reason)};
+                        UnexpectedReactions ->
+                            {error, elib_cnv:safe_to_binary(UnexpectedReactions)}
                     end;
                 {error, Reason} ->
-                    {error, elib_cnv:safe_to_binary(Reason)}
-            end
+                    {error, elib_cnv:safe_to_binary(Reason)};
+                UnexpectedStats ->
+                    {error, elib_cnv:safe_to_binary(UnexpectedStats)}
+            end;
+        _Unexpected ->
+            {error, <<"频道不存在"/utf8>>}
     end.
 
 -spec get_message_stats(integer()) ->
@@ -105,7 +111,9 @@ record_message_view(Uid, ChannelIdBin, MessageIdBin) ->
                                             {error, elib_cnv:safe_to_binary(Unexpected)}
                                     end;
                                 {error, Reason} ->
-                                    {error, elib_cnv:safe_to_binary(Reason)}
+                                    {error, elib_cnv:safe_to_binary(Reason)};
+                                Unexpected ->
+                                    {error, elib_cnv:safe_to_binary(Unexpected)}
                             end
                     end;
                 {error, Reason} ->
@@ -180,7 +188,8 @@ do_remove_reaction(ChannelId, MessageId, Uid, ReactionType) ->
                 {ok, _} -> ok;
                 %% 稳定错误码（980 等）原样透传供 handler envelope 映射
                 {error, {Code, Msg}} when is_integer(Code) -> {error, {Code, Msg}};
-                {error, Reason} -> reaction_error(Reason)
+                {error, Reason} -> reaction_error(Reason);
+                Unexpected -> {error, elib_cnv:safe_to_binary(Unexpected)}
             end
     end.
 
@@ -238,7 +247,9 @@ get_daily_stats(Uid, ChannelIdBin, Days) ->
                         {ok, UnexpectedStats} ->
                             {error, elib_cnv:safe_to_binary(UnexpectedStats)};
                         {error, Reason} ->
-                            {error, elib_cnv:safe_to_binary(Reason)}
+                            {error, elib_cnv:safe_to_binary(Reason)};
+                        Unexpected ->
+                            {error, elib_cnv:safe_to_binary(Unexpected)}
                     end
             end
     end.

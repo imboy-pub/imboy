@@ -29,7 +29,9 @@ create_invitation(Uid, ChannelIdBin, InviteeUid) ->
                             {error, <<"只有邀请制频道支持邀请功能"/utf8>>};
                         true ->
                             do_create_invitation(ChannelId, Uid, InviteeUid)
-                    end
+                    end;
+                _Unexpected ->
+                    {error, <<"频道不存在"/utf8>>}
             end
     end.
 
@@ -62,7 +64,9 @@ do_create_invitation_checked(ChannelId, InviterUid, InviteeUid) ->
                         {ok, InvalidInvitation} ->
                             {error, elib_cnv:safe_to_binary(InvalidInvitation)};
                         {error, Reason} ->
-                            {error, elib_cnv:safe_to_binary(Reason)}
+                            {error, elib_cnv:safe_to_binary(Reason)};
+                        Unexpected ->
+                            {error, elib_cnv:safe_to_binary(Unexpected)}
                     end;
                 {error, Reason} when is_binary(Reason) ->
                     {error, Reason};
@@ -70,7 +74,9 @@ do_create_invitation_checked(ChannelId, InviterUid, InviteeUid) ->
                     %% 归档守卫（980）等稳定错误码保留 tuple 供 handler envelope 映射
                     {error, Coded};
                 {error, Reason} ->
-                    {error, elib_cnv:safe_to_binary(Reason)}
+                    {error, elib_cnv:safe_to_binary(Reason)};
+                UnexpectedCreate ->
+                    {error, elib_cnv:safe_to_binary(UnexpectedCreate)}
             end;
         false ->
             {error, <<"您不是频道订阅者，无法邀请他人"/utf8>>}
@@ -146,7 +152,9 @@ do_accept_invitation(ChannelId, Uid, InvitationId, Invitation) ->
             %% 归档守卫（980）等稳定错误码保留 tuple 供 handler envelope 映射
             {error, Coded};
         {error, Reason} ->
-            {error, elib_cnv:safe_to_binary(Reason)}
+            {error, elib_cnv:safe_to_binary(Reason)};
+        Unexpected ->
+            {error, elib_cnv:safe_to_binary(Unexpected)}
     end.
 
 -spec reject_invitation(integer(), integer()) -> ok | {error, binary() | {integer(), binary()}}.
@@ -160,7 +168,9 @@ reject_invitation(Uid, InvitationId) ->
             %% 归档守卫（980）等稳定错误码保留 tuple 供 handler envelope 映射
             {error, Coded};
         {error, Reason} ->
-            {error, elib_cnv:safe_to_binary(Reason)}
+            {error, elib_cnv:safe_to_binary(Reason)};
+        Unexpected ->
+            {error, elib_cnv:safe_to_binary(Unexpected)}
     end.
 
 -spec get_my_invitations(integer()) -> {ok, [map()]} | {error, binary()}.

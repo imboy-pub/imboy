@@ -71,7 +71,8 @@ do_create_channel(Uid, Name, Opts) ->
         {ok, ChannelId} ->
             case channel_ds:find_by_id(ChannelId, ?CHANNEL_SAFE_COLUMNS) of
                 {error, Reason} -> {error, elib_cnv:safe_to_binary(Reason)};
-                Channel when is_map(Channel) -> {ok, channel_transfer(Channel)}
+                Channel when is_map(Channel) -> {ok, channel_transfer(Channel)};
+                Unexpected -> {error, elib_cnv:safe_to_binary(Unexpected)}
             end;
         {error, Reason} ->
             {error, elib_cnv:safe_to_binary(Reason)}
@@ -89,7 +90,9 @@ get_channel(ChannelIdBin, Uid) ->
                     {error, <<"频道不存在"/utf8>>};
                 Channel when is_map(Channel), map_size(Channel) =:= 0 -> {error, <<"频道不存在"/utf8>>};
                 Channel when is_map(Channel) ->
-                    channel_view(Channel, ChannelId, Uid)
+                    channel_view(Channel, ChannelId, Uid);
+                _Unexpected ->
+                    {error, <<"频道不存在"/utf8>>}
             end
     end.
 
@@ -110,9 +113,13 @@ get_channel_by_custom_id(CustomId, Uid) ->
                         {error, _} ->
                             {error, <<"频道不存在"/utf8>>};
                         ChannelWithPrice when is_map(ChannelWithPrice) ->
-                            channel_view(ChannelWithPrice, ChannelId, Uid)
+                            channel_view(ChannelWithPrice, ChannelId, Uid);
+                        _Unexpected ->
+                            {error, <<"频道不存在"/utf8>>}
                     end
-            end
+            end;
+        _Unexpected ->
+            {error, <<"频道不存在"/utf8>>}
     end.
 
 %% Scope comes from the repository projection; legacy personal projections omit it.
@@ -156,7 +163,8 @@ channel_with_price_for_custom_id(Channel, ChannelId) ->
         1 ->
             case channel_ds:find_by_id_with_price(ChannelId) of
                 Row when is_map(Row) -> Row;
-                {error, Reason} -> {error, Reason}
+                {error, Reason} -> {error, Reason};
+                _ -> {error, not_found}
             end;
         _ ->
             Channel
@@ -234,7 +242,9 @@ do_update_channel(ChannelId, Data) ->
                     {error, elib_cnv:safe_to_binary(Reason)};
                 Channel when is_map(Channel) ->
                     channel_logic_notify:notify_channel_update(ChannelId, Channel),
-                    {ok, channel_transfer(Channel)}
+                    {ok, channel_transfer(Channel)};
+                Unexpected ->
+                    {error, elib_cnv:safe_to_binary(Unexpected)}
             end;
         %% T7 收口：归档守卫（980）等稳定错误码透传
         {error, {Code, Msg}} when is_integer(Code) ->
@@ -489,7 +499,9 @@ get_messages(Uid, ChannelIdBin, Cursor, Limit) ->
                         {ok, UnexpectedMessages} ->
                             {error, elib_cnv:safe_to_binary(UnexpectedMessages)};
                         {error, Reason} ->
-                            {error, elib_cnv:safe_to_binary(Reason)}
+                            {error, elib_cnv:safe_to_binary(Reason)};
+                        Unexpected ->
+                            {error, elib_cnv:safe_to_binary(Unexpected)}
                     end;
                 {error, Reason} ->
                     {error, Reason}
@@ -532,7 +544,9 @@ search_channels(Keyword, Limit) ->
         {ok, UnexpectedChannels} ->
             {error, elib_cnv:safe_to_binary(UnexpectedChannels)};
         {error, Reason} ->
-            {error, elib_cnv:safe_to_binary(Reason)}
+            {error, elib_cnv:safe_to_binary(Reason)};
+        Unexpected ->
+            {error, elib_cnv:safe_to_binary(Unexpected)}
     end.
 
 -spec get_discover_channels(integer()) -> {ok, list(map())} | {error, binary()}.
@@ -543,7 +557,9 @@ get_discover_channels(Limit) ->
         {ok, UnexpectedChannels} ->
             {error, elib_cnv:safe_to_binary(UnexpectedChannels)};
         {error, Reason} ->
-            {error, elib_cnv:safe_to_binary(Reason)}
+            {error, elib_cnv:safe_to_binary(Reason)};
+        Unexpected ->
+            {error, elib_cnv:safe_to_binary(Unexpected)}
     end.
 
 -spec add_admin(integer(), binary(), integer(), integer()) -> ok | {error, binary()}.
@@ -650,7 +666,9 @@ pin_message(Uid, MessageIdBin, IsPinned) ->
                             end;
                         false ->
                             {error, <<"消息不存在"/utf8>>}
-                    end
+                    end;
+                _UnexpectedMessage ->
+                    {error, <<"消息不存在"/utf8>>}
             end
     end.
 
@@ -694,7 +712,9 @@ delete_message(Uid, MessageIdBin) ->
                                             {error, elib_cnv:safe_to_binary(Reason)}
                                     end
                             end
-                    end
+                    end;
+                _UnexpectedMessage ->
+                    {error, <<"消息不存在"/utf8>>}
             end
     end.
 
@@ -766,13 +786,20 @@ revoke_message(Uid, ChannelIdBin, MessageIdBin) ->
                                                                         {error,
                                                                             elib_cnv:safe_to_binary(
                                                                                 Reason
+                                                                            )};
+                                                                    UnexpectedRevoke ->
+                                                                        {error,
+                                                                            elib_cnv:safe_to_binary(
+                                                                                UnexpectedRevoke
                                                                             )}
                                                                 end
                                                         end
                                                 end
                                         end
                                 end
-                        end
+                        end;
+                    _UnexpectedMessage ->
+                        {error, <<"消息不存在"/utf8>>}
                 end
         end,
     channel_logic_common:log_channel_action(
