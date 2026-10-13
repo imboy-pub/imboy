@@ -1,7 +1,7 @@
 # C11 — 缓存同步 V2.2.1 监控、诊断与文档一致性核查（19.8 节）
 
 > 任务：CACHE_V221_BACKEND_CLOSEOUT_V1 收口 C11。
-> 方式：文件级静态核查（未运行任何服务/测试/节点）。
+> 原始核查：2026-10-11 文件级静态检查；本页顶部追加 2026-10-13 阶段运行证据。
 > 核查日期：2026-10-11。
 > 范围：src/lib/imboy_cache_sync*.erl、src/lib/elib_metric.erl、src/api/metrics_handler.erl、
 > src/api/healthz_handler.erl、src/imboy_router.erl、deploy/{prometheus,grafana,helm}。
@@ -26,14 +26,16 @@ ETS/进程时伪造 stopped 状态或破坏原 owner。缺失 supported_min 的�
 实际阶段消费：真实 Cowboy `/metrics` HTTP 与 Prometheus scrape 已连通，
 `promtool check metrics` 和原 5 条 cache 规则校验通过；生产指标 API 定点注入
 reject/overloaded、gap_detected、degraded、snapshot_abort、legacy 计数，明确不是故障链证据。
-两个完整消费命令 exit=1：原规则组 interval=60s，driver 的 2s/45s 等待没有覆盖
-一次完整评估窗口，未取得 firing 证据，不能签发 scrape+告警完整 PASS。
-原 StuckRecovering、Degraded、SnapshotAborting 三条表达式的合成时序断言
-`promtool test rules /tmp/cache-c11-owned/rule-query-tests.yml` exit=0；这是规则 oracle，
-不是现场故障。仅终止了脚本自己创建的 Erlang/Prometheus 进程。
-可复用 `/tmp/cache-c11-owned/run.py` 已把上限设为 90s，尚未再次执行；冻结候选后
-需统一重跑并保存源码摘要。恢复超时的独立原因信号由核心 owner 补齐。
-C11 仍未签发 PASS。
+此前两个消费尝试 exit=1（分别只等待 2s/45s，未覆盖原规则组 60s 评估周期），保留为失败历史。
+2026-10-13 使用隔离本机运行完成真实 Cowboy `/metrics` HTTP → Prometheus scrape → 查询/告警链：
+Prometheus `up=1`，通过生产 `elib_metric` API 注入 `deadline_timeout` 计数后，
+PromQL 查询返回计数（当前实例值 10），`ImBoyCacheSyncRecoveryTimedOut` 在
+`/api/v1/rules` 与 `ALERTS` 中进入 firing；Grafana 面板使用的 PromQL 也返回序列。
+本次 runner exit=0。该注入验证监控消费链，不是实际恢复超时故障；新增 actor regression
+`expired_recovery_deadline_emits_real_timeout_signal_test_` 已在当前树通过（定向 EUnit exit=0）；最终候选绑定与冻结后 consumer 重跑仍待执行。
+C11 当前为阶段证据通过、整体未签发 PASS；冻结候选后须重跑并保存摘要。
+合成规则 oracle `promtool test rules /tmp/cache-c11-owned/rule-query-tests.yml` exit=0，
+与上述 HTTP/scrape 消费互补，均不替代实际 Dmax 故障和三节点验收。仅终止本次脚本创建的 Erlang/Prometheus 进程。
 
 下方为 2026-10-11 历史静态记录，其中“无导出”等已被上述实现修订替代，不能当作当前状态。
 

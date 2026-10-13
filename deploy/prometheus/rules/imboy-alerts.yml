@@ -1451,3 +1451,21 @@ groups:
                cache sync snapshot round aborted）
             2. page_gap/digest 类：核对快照源节点负载与网络
             3. buffer_overflow：核对 Bmax 与缓存规模（Nmax/Tmax 预算）
+
+      # 恢复总期限耗尽并进入 DEGRADED → WARNING（后续 DEGRADED 状态告警为 CRITICAL）。
+      - alert: ImBoyCacheSyncRecoveryTimedOut
+        expr: increase(cache_sync_recovery_timeout_total{job="imboy_backend",reason="deadline_timeout"}[10m]) > 0
+        for: 0m
+        labels:
+          severity: warning
+          team: backend
+        annotations:
+          summary: "缓存同步恢复期限耗尽 / Cache sync recovery deadline exhausted"
+          description: >
+            节点 {{ $labels.instance }} 的缓存同步恢复超过 Dmax，已计入
+            deadline_timeout 并进入 DEGRADED；跨节点 replicate 写入 fail-closed。
+            Cache sync recovery exceeded Dmax and entered DEGRADED.
+          runbook: >
+            1. 查看 IMBoy · Cache Sync「恢复超时」面板及同节点降级状态
+            2. 检查 authority 节点可达性、快照回合与缓存同步日志
+            3. 恢复 authority 后按运维手册重启该节点 sync 进程并确认回到 READY

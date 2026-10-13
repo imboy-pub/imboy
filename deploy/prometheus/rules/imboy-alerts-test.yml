@@ -41,6 +41,9 @@ tests:
       - eval_time: 12m
         alertname: ImBoyCacheSyncSnapshotAborting
         exp_alerts: []
+      - eval_time: 12m
+        alertname: ImBoyCacheSyncRecoveryTimedOut
+        exp_alerts: []
 
   # 2a) recovering 短暂（4 分钟内自愈）→ for:5m 不满足，不触发
   - interval: 1m
@@ -121,3 +124,25 @@ tests:
         exp_samples:
           - labels: '{job="imboy_backend",instance="n8"}'
             value: 1.1111111111111112
+
+  # 6) 仅总恢复期限耗尽触发告警，普通 round_timeout 不触发该告警
+  - interval: 1m
+    input_series:
+      - series: 'cache_sync_recovery_timeout_total{job="imboy_backend",instance="n9",reason="round_timeout"}'
+        values: "0+0x8 1 1 1"
+      - series: 'cache_sync_recovery_timeout_total{job="imboy_backend",instance="n10",reason="deadline_timeout"}'
+        values: "0+0x8 1 1 1"
+    alert_rule_test:
+      - eval_time: 11m
+        alertname: ImBoyCacheSyncRecoveryTimedOut
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              team: backend
+              instance: n10
+              reason: deadline_timeout
+              job: imboy_backend
+            exp_annotations:
+              summary: "缓存同步恢复期限耗尽 / Cache sync recovery deadline exhausted"
+              description: "节点 n10 的缓存同步恢复超过 Dmax，已计入 deadline_timeout 并进入 DEGRADED；跨节点 replicate 写入 fail-closed。 Cache sync recovery exceeded Dmax and entered DEGRADED.\n"
+              runbook: "1. 查看 IMBoy · Cache Sync「恢复超时」面板及同节点降级状态 2. 检查 authority 节点可达性、快照回合与缓存同步日志 3. 恢复 authority 后按运维手册重启该节点 sync 进程并确认回到 READY\n"

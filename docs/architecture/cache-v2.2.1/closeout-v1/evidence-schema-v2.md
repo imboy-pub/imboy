@@ -17,6 +17,8 @@
 输入集合由当前仓库机械枚举：Git 跟踪及未忽略的 `src/`、`include/`、
 `config/`、`scripts/`、`test/`、`priv/migrations/`、Makefile、erlang.mk、VERSION、rebar.lock；
 另绑定实际存在的本地测试配置 `config/sys.closeout-local.config`（仅摘要，不输出内容）；
+并绑定 Prometheus/Grafana 运行链路：`deploy/docker-compose.prod.yml`、抓取配置、cache-sync
+规则及规则测试、专板、Grafana dashboard 与 datasource provisioning（文件存在时）；
 另绑定 deps 中实际 `.erl/.hrl/.beam/.app/.so/.dylib` 字节，排除 `.git/_build`。
 源码、配置、测试驱动、依赖或运行依赖字节改变后必须重新冻结；新加输入也拒绝。
 此清单不证明用于执行的主应用 BEAM 等价，执行命令仍须从冻结源码隔离编译，
@@ -54,8 +56,8 @@ full_eunit、performance、independent_review 九类 gate。回执声明不代�
 ## 校验器自身验证
 
 `python3 scripts/check_cache_closeout_v1.py --self-test` 在唯一仓外临时目录执行
-一个正向 fixture 及 21 个负向 fixture：缺/重复 ID、计划摘要篡改、失败场景、
+一个正向 fixture 及 24 个负向 fixture：缺/重复 ID、计划摘要篡改、失败场景、
 混用候选、伪 PASS、required FAIL、真实 exit 非零、结果篡改、当前源码改变、
 失败日志，把无关回执复用于所有 ID、covers 错误类型、缺失场景列表以及缩减 required 集合。
 另含 full_eunit 伪 checks 计数、两类 OTP 崩溃日志、组件存活失败、迁移输入及被忽略的测试配置变更。
-fixtures 是 verifier 自测，不是产品验收。
+并包括新增 Prometheus/Grafana 运行配置是否变化候选摘要的负例。fixtures 是 verifier 自测，不是产品验收。

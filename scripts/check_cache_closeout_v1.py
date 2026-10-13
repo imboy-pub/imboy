@@ -527,7 +527,16 @@ def check_utc(args):
 # summary alone cannot prove the shell exit or the complete raw log.
 INPUT_PREFIXES = ("src/", "include/", "config/", "scripts/", "test/", "priv/migrations/")
 INPUT_FILES = {"Makefile", "erlang.mk", "VERSION", "rebar.lock"}
-RUNTIME_INPUTS = {"config/sys.closeout-local.config"}
+RUNTIME_INPUTS = {
+    "config/sys.closeout-local.config",
+    "deploy/docker-compose.prod.yml",
+    "deploy/prometheus/prometheus.yml",
+    "deploy/prometheus/rules/imboy-alerts.yml",
+    "deploy/prometheus/rules/imboy-alerts-test.yml",
+    "deploy/grafana/dashboards/imboy-cache-sync.json",
+    "deploy/grafana/provisioning/dashboards/default.yml",
+    "deploy/grafana/provisioning/datasources/prometheus.yml",
+}
 EXTERNAL_IDS = {"W0-09", "AC-26", "AC-27"}
 
 

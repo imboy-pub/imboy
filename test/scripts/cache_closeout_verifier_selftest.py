@@ -398,8 +398,26 @@ def self_test():
         with open(os.path.join(source, "config/sys.closeout-local.config"), "w") as f:
             f.write("[{imboy, [{synthetic_fixture, changed}]}].\n")
 
+    def mutate_monitoring_inputs(dest):
+        source = os.path.join(dest, "source")
+        paths = [
+            "deploy/docker-compose.prod.yml",
+            "deploy/prometheus/prometheus.yml",
+            "deploy/prometheus/rules/imboy-alerts.yml",
+            "deploy/prometheus/rules/imboy-alerts-test.yml",
+            "deploy/grafana/dashboards/imboy-cache-sync.json",
+            "deploy/grafana/provisioning/dashboards/default.yml",
+            "deploy/grafana/provisioning/datasources/prometheus.yml",
+        ]
+        for relative in paths:
+            path = os.path.join(source, relative)
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "w") as f:
+                f.write("# monitoring candidate fixture\n")
+
     receipt_mutation("negative-22 migration input added after freeze", "neg_migration", mutate_migration)
     receipt_mutation("negative-23 ignored runtime profile added after freeze", "neg_ignored_profile", mutate_ignored_profile)
+    receipt_mutation("negative-24 monitoring runtime inputs added after freeze", "neg_monitoring_inputs", mutate_monitoring_inputs)
 
     results = []
     for label, (dest, flags, expect_fail) in cases.items():
