@@ -576,8 +576,18 @@ def self_test():
     os.symlink("../shared/mac_listener", alias)
     try:
         internal_paths = candidate_inputs(internal_link_root)
+        rows = [{"path": path, "sha256": sha256_file(os.path.join(internal_link_root, path))}
+                for path in internal_paths]
+        before = hashlib.sha256(json.dumps(
+            rows, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+        with open(target, "w") as f:
+            f.write("changed in-repository runtime helper\n")
+        after_rows = [{"path": path, "sha256": sha256_file(os.path.join(internal_link_root, path))}
+                      for path in candidate_inputs(internal_link_root)]
+        after = hashlib.sha256(json.dumps(
+            after_rows, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
         good = "deps/fs/shared/mac_listener" in internal_paths and \
-            "deps/fs/priv/mac_listener" in internal_paths
+            "deps/fs/priv/mac_listener" in internal_paths and before != after
     except (OSError, ValueError, subprocess.CalledProcessError):
         good = False
     results.append(("internal dependency file symlink remains bound", good, 0 if good else 1))
