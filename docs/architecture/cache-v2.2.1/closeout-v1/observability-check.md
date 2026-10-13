@@ -42,6 +42,9 @@ PromQL 查询返回计数（当前实例值 10），`ImBoyCacheSyncRecoveryTimed
 缩短为 1s 加快验证，告警表达式未变。正式规则 `promtool check rules`（63 条）及
 `promtool test rules`、Grafana JSON 校验均 exit=0。原始隔离证据位于
 `/tmp/cache-dmax-http.kDoFTv/actual-prom/result.json`，源码/规则哈希在测试前后稳定；仍非冻结候选收据。
+C14 独立审查补充边界：若进程启动后、Prometheus 首次成功 scrape 前已发生 Dmax 超时，首个观测值可能直接为 1，
+`increase()` 无法从该样本恢复事件前的零基线，超时原因 warning 仍可能漏报；已有 `ImBoyCacheSyncDegraded`
+状态规则会在 DEGRADED 时触发 critical。上述实测覆盖事件前成功 scrape 到零的路径，不证明首次 scrape 竞态消失。
 C11 当前为阶段证据通过、整体未签发 PASS；冻结候选后须重跑并保存摘要。
 合成规则 oracle `promtool test rules /tmp/cache-c11-owned/rule-query-tests.yml` exit=0，
 与上述 HTTP/scrape 消费互补，均不替代实际 Dmax 故障和三节点验收。仅终止本次脚本创建的 Erlang/Prometheus 进程。

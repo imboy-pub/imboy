@@ -373,7 +373,7 @@ license_metrics() ->
 format_prometheus(Metrics) ->
     Counters0 = maps:get(counters, Metrics, #{}),
     TimeoutKey = {cache_sync_recovery_timeout_total, #{reason => deadline_timeout}},
-    %% Ensure Prometheus observes the zero baseline before the first Dmax event.
+    %% Export zero until an event; increase() needs a pre-event scrape to see the transition.
     Counters = maps:put(TimeoutKey, maps:get(TimeoutKey, Counters0, 0), Counters0),
     Histograms = maps:get(histograms, Metrics, #{}),
 
