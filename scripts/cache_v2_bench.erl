@@ -25,17 +25,13 @@ run() ->
         %% TTL profile incompatibility remains independently visible, even with zero measured errors.
         Compatible = maps:get(w0_ttl_compatible, Checks),
         %% Both V2 arms use the legal TTL600 profile; W0 TTL3600 is a separate environment anchor.
-        Absolute = lists:all(fun absolute_threshold/1, Rows),
-        Exit =
-            case Errors =:= 0 andalso Absolute of
-                true -> 0;
-                false -> 2
-            end,
-        Payload = result(Rows, Checks, Ops, Started, Exit),
-        ok = file:write_file(Output, jsone:encode(Payload)),
+        Payload = result(Rows, Checks, Ops, Started),
+        Exit = maps:get(exit_code, Payload),
+        ok = write_result(Output, Payload),
         io:format("cache_v2_bench rows=~p errors=~p profile_compatible=~p exit=~p~n", [
             length(Rows), Errors, Compatible, Exit
         ]),
+        ok = print_counts(Payload),
         halt(Exit)
     catch
         Class:Reason:Stack ->
@@ -44,16 +40,42 @@ run() ->
                 candidate_sha256 => candidate(),
                 status => <<"fail">>,
                 exit => 2,
+                exit_code => 2,
+                utc => list_to_binary(
+                    calendar:system_time_to_rfc3339(erlang:system_time(millisecond), [
+                        {unit, millisecond}, {offset, "Z"}
+                    ])
+                ),
+                counts => #{passed => 0, failed => 1, cancelled => 0, skipped => 0},
+                scenarios => [
+                    #{
+                        name => <<"driver_exception">>,
+                        status => <<"fail">>,
+                        detail => iolist_to_binary(io_lib:format("~p:~p", [Class, reason_tag(Reason)]))
+                    }
+                ],
                 error_class => Class,
                 error => reason_tag(Reason),
                 elapsed_ms => erlang:monotonic_time(millisecond) - Started
             },
-            _ = file:write_file(Output, jsone:encode(Failure)),
+            _ = write_result(Output, Failure),
             io:format("cache_v2_bench failed ~p:~p at ~p~n", [
                 Class, reason_tag(Reason), lists:sublist(Stack, 2)
             ]),
+            _ = print_counts(Failure),
             halt(2)
     end.
+
+write_result(Output, Payload) ->
+    file:write_file(Output, jsone:encode(Payload)).
+
+print_counts(Payload) ->
+    #{cancelled := Cancelled, failed := Failed, passed := Passed, skipped := Skipped} =
+        maps:get(counts, Payload),
+    io:format("CLOSEOUT_COUNTS {\"cancelled\":~B,\"failed\":~B,\"passed\":~B,\"skipped\":~B}~n", [
+        Cancelled, Failed, Passed, Skipped
+    ]),
+    ok.
 
 start_distribution() ->
     {ok, _} = application:ensure_all_started(crypto),
@@ -97,6 +119,12 @@ app_up() ->
     await(fun() -> imboy_cache_sync:status() =:= ready end, 20000).
 
 self_checks() ->
+    RequiredChecks = [
+        memo_single_flight, invalidation_race, loader_exception, writer_crash, get_wait_handoff
+    ],
+    AllChecksPassed = maps:from_list([{Key, true} || Key <- RequiredChecks]),
+    false = self_checks_complete(#{checks => maps:put(loader_exception, false, AllChecksPassed)}),
+    true = self_checks_complete(#{checks => AllChecksPassed}),
     Key = {?REP_NS, profile_ttl},
     TTLResult = imboy_cache:put(Key, <<"ttl-check">>, 3600, replicate),
     Compatible =
@@ -119,7 +147,7 @@ self_checks() ->
     Jobs = [
         spawn_monitor(fun() ->
             Parent ! {memo_attempt, self()},
-            V = imboy_cache:memo(Loader, MemoKey, 3600, []),
+            V = imboy_cache:memo(Loader, MemoKey, 600, []),
             Parent ! {sample_result, self(), V}
         end)
      || _ <- lists:seq(1, 32)
@@ -160,6 +188,7 @@ self_checks() ->
     true = lists:all(fun(V) -> V =:= <<"single-flight">> end, Values),
     1 = atomics:get(Counter, 1),
     #{
+        checks => #{memo_single_flight => true},
         memo_single_flight_workers => 32,
         loader_executions => 1,
         w0_requested_ttl_sec => 3600,
@@ -173,7 +202,7 @@ local_profile(Ops, KB, VB) ->
             ok = reset_components(),
             [bench(Kind, W, Ops, KB, VB, [node()]) || W <- [1, 8, 32]]
         end
-     || Kind <- [rep_put, rep_get, memo_cold, mixed]
+     || Kind <- [rep_put, rep_get, invalidate_then_memo, mixed]
     ]).
 
 reset_components() ->
@@ -274,7 +303,7 @@ bench(Kind, Workers, Ops, KeyBytes, ValueBytes, Nodes) ->
     Value = binary:copy(<<"v">>, ValueBytes),
     %% Every GET has an asserted warmed value; invalidate never contaminates GET rows.
     case Kind of
-        memo_cold ->
+        invalidate_then_memo ->
             ok;
         _ ->
             [
@@ -347,7 +376,7 @@ bench(Kind, Workers, Ops, KeyBytes, ValueBytes, Nodes) ->
         receiver_count => length(Nodes)
     }.
 
-ttl(memo_cold) -> 3600;
+ttl(invalidate_then_memo) -> 600;
 ttl(_) -> 600.
 
 operation(Kind, I, Worker, Workers, KB, Value, Nodes) ->
@@ -360,7 +389,7 @@ operation(Kind, I, Worker, Workers, KB, Value, Nodes) ->
                     ok = imboy_cache:put(Key, Value, 600, replicate);
                 rep_get ->
                     {ok, Value} = imboy_cache:get(Key);
-                memo_cold ->
+                invalidate_then_memo ->
                     Slots = ?KEYSPACE div Workers,
                     MKey = key(local, (Worker - 1) * Slots + I rem Slots, KB),
                     Counter = get(bench_loader_counter),
@@ -372,7 +401,7 @@ operation(Kind, I, Worker, Workers, KB, Value, Nodes) ->
                             Value
                         end,
                         MKey,
-                        3600,
+                        600,
                         []
                     ),
                     true = atomics:get(Counter, 1) =:= Before + 1;
@@ -578,7 +607,44 @@ candidate() ->
             error(malformed_candidate_sha256)
     end.
 
-result(Rows, Checks, Ops, Started, Exit) ->
+result(Rows, Checks, Ops, Started) ->
+    Errors = lists:sum([maps:get(errors, R) || R <- Rows]),
+    Absolute = lists:all(fun absolute_threshold/1, Rows),
+    Compatible = maps:get(w0_ttl_compatible, Checks),
+    Scenarios = [
+        scenario(
+            <<"ttl_protocol_admission">>,
+            not Compatible,
+            io_lib:format("TTL 3600 rejected by V2 profile; measured memo TTL=~B", [
+                maps:get(v2_measured_ttl_sec, Checks)
+            ])
+        ),
+        scenario(
+            <<"measured_operations">>,
+            Errors =:= 0,
+            io_lib:format("~B rows, ~B operations, ~B errors", [
+                length(Rows), lists:sum([maps:get(operations, R) || R <- Rows]), Errors
+            ])
+        ),
+        scenario(
+            <<"frozen_absolute_thresholds">>,
+            Absolute,
+            io_lib:format("~B rows checked against frozen latency and logical budget limits", [
+                length(Rows)
+            ])
+        ),
+        scenario(
+            <<"self_checks">>,
+            self_checks_complete(Checks),
+            io_lib:format("implemented=~p required=~p", [
+                maps:keys(maps:get(checks, Checks, #{})),
+                [memo_single_flight_workers, invalidation_race, loader_exception,
+                    writer_crash, get_wait_handoff]
+            ])
+        )
+    ],
+    Counts = scenario_counts(Scenarios),
+    Exit = case maps:get(failed, Counts) of 0 -> 0; _ -> 2 end,
     #{
         task_id => <<"CACHE_V221_BACKEND_CLOSEOUT_V1">>,
         candidate_sha256 => candidate(),
@@ -589,8 +655,12 @@ result(Rows, Checks, Ops, Started, Exit) ->
         ),
         elapsed_ms => erlang:monotonic_time(millisecond) - Started,
         exit => Exit,
+        exit_code => Exit,
+        status => case Exit of 0 -> <<"pass">>; _ -> <<"fail">> end,
+        counts => Counts,
         profile => <<"v2-contract-ttl600-w0-anchor-ttl3600-not-equivalent">>,
-        memo_cold_path => <<"invalidate_then_memo_including_invalidation">>,
+        performance_scope => <<"single_arm_measurement_receipt_only">>,
+        invalidate_then_memo_path => <<"includes_invalidation_and_refill">>,
         arm => list_to_binary(os:getenv("CACHE_V2_ARM", "candidate")),
         operations_per_worker => Ops,
         env => #{
@@ -602,29 +672,30 @@ result(Rows, Checks, Ops, Started, Exit) ->
         registry_hash => binary:encode_hex(imboy_cache_sync_proto:registry_hash(), lowercase),
         self_checks => Checks,
         rows => Rows,
-        scenarios => [
-            #{name => <<"ttl_protocol_admission">>, status => <<"pass">>},
-            #{
-                name => <<"measured_operations">>,
-                status =>
-                    case lists:sum([maps:get(errors, R) || R <- Rows]) of
-                        0 -> <<"pass">>;
-                        _ -> <<"fail">>
-                    end
-            },
-            #{
-                name => <<"frozen_absolute_thresholds">>,
-                status =>
-                    case lists:all(fun absolute_threshold/1, Rows) of
-                        true -> <<"pass">>;
-                        false -> <<"fail">>
-                    end
-            }
-        ],
+        scenarios => Scenarios,
         frozen_thresholds_us => #{get_p99 => 2000, set_p99 => 5000, convergence_p99 => 1000000},
         relative_gate =>
             <<"requires independently frozen V2 baseline and three interleaved pairs; get degradation<=10%, throughput>=95%">>
     }.
+
+scenario(Name, Passed, Detail) ->
+    #{
+        name => Name,
+        status => case Passed of true -> <<"pass">>; false -> <<"fail">> end,
+        detail => iolist_to_binary(Detail)
+    }.
+
+scenario_counts(Scenarios) ->
+    Passed = length([ok || #{status := <<"pass">>} <- Scenarios]),
+    Failed = length(Scenarios) - Passed,
+    #{passed => Passed, failed => Failed, cancelled => 0, skipped => 0}.
+
+self_checks_complete(Checks) ->
+    Results = maps:get(checks, Checks, #{}),
+    lists:all(
+        fun(Key) -> maps:get(Key, Results, false) =:= true end,
+        [memo_single_flight, invalidation_race, loader_exception, writer_crash, get_wait_handoff]
+    ).
 
 absolute_threshold(Row) ->
     Limit =
