@@ -84,7 +84,11 @@ create_tx(Conn, OrgId, ApplicationKey, Name) ->
 
 %% @doc 事务内创建 Application（无 redirect allowlist，等价空 allowlist）。
 -spec create_tx(
-    any(), integer(), binary(), binary(), undefined | {binary(), [binary()] | binary()}
+    any(),
+    integer(),
+    binary(),
+    binary(),
+    undefined | {binary() | null, [binary()] | binary()}
 ) ->
     {ok, map()} | {error, key_conflict | term()}.
 create_tx(Conn, OrgId, ApplicationKey, Name, PrincipalAndScopes) ->
@@ -99,7 +103,12 @@ create_tx(Conn, OrgId, ApplicationKey, Name, PrincipalAndScopes) ->
 %% allowlist（SSO 签发侧 fail-closed 一律拒绝）。参数以 $N::text[] 直传
 %% Erlang list（epgsql 按服务端推断的 text[] 类型做数组编码）。
 -spec create_tx(
-    any(), integer(), binary(), binary(), undefined | {binary(), [binary()] | binary()}, [binary()]
+    any(),
+    integer(),
+    binary(),
+    binary(),
+    undefined | {binary() | null, [binary()] | binary()},
+    [binary()]
 ) ->
     {ok, map()} | {error, key_conflict | term()}.
 create_tx(Conn, OrgId, ApplicationKey, Name, PrincipalAndScopes, RedirectUris) ->

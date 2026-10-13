@@ -607,17 +607,19 @@ flush() ->
 %% @returns ok
 -spec flush(term()) -> ok.
 flush(Key) ->
-    case
-        imboy_cache_policy:fenced_namespaces() =/= [] orelse
-            application:get_env(imboy, dsync_enabled, false) =:= true
-    of
-        true -> _ = imboy_cache_sync:next_dep_generation(Key);
-        false -> ok
-    end,
-    case imboy_cache_policy:is_fenced(Key) of
-        true -> _ = imboy_cache_sync:next_generation(Key);
-        false -> ok
-    end,
+    _ =
+        case
+            imboy_cache_policy:fenced_namespaces() =/= [] orelse
+                application:get_env(imboy, dsync_enabled, false) =:= true
+        of
+            true -> _ = imboy_cache_sync:next_dep_generation(Key);
+            false -> ok
+        end,
+    _ =
+        case imboy_cache_policy:is_fenced(Key) of
+            true -> _ = imboy_cache_sync:next_generation(Key);
+            false -> ok
+        end,
     depcache:flush(Key, ?DEPCACHE_SERVER),
     % 检查是否启用分布式缓存
     _ =

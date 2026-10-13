@@ -83,7 +83,7 @@ page_for_uid(_Uid, _Limit, _Offset) ->
 %% @param DeniedUserId 被加入黑名单的用户ID
 %% @param Now 创建时间
 %% @return {ok, Id} 添加成功返回记录ID
--spec add(integer(), integer(), binary()) -> {ok, integer()}.
+-spec add(integer(), integer(), binary()) -> {ok, integer()} | {error, any()}.
 add(Uid, DeniedUserId, Now) ->
     Id = elib_tsid:generate(user_denylist),
     {Sql, Params} = elib_pg_sql:insert(tablename(), #{

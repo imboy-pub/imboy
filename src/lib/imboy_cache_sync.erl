@@ -264,7 +264,7 @@ handle_call({publish_set, Key, Value, TTL}, _From, State) ->
             ),
             {reply, ok, S1};
         {error, Reason} = Err ->
-            imboy_cache_sync_proto:record_reject(Reason),
+            _ = imboy_cache_sync_proto:record_reject(Reason),
             {reply, Err, State}
     end;
 handle_call({publish_delete, Key}, _From, State) ->
@@ -281,7 +281,7 @@ handle_call({publish_delete, Key}, _From, State) ->
             of
                 true ->
                     S1 = imboy_cache_sync_recover:start_cold_recovery(State),
-                    imboy_cache_sync_proto:record_reject(tombstone_budget_exceeded),
+                    _ = imboy_cache_sync_proto:record_reject(tombstone_budget_exceeded),
                     {reply, {error, tombstone_budget_exceeded}, S1};
                 false ->
                     {Rev, Seq, S1} = allocate(State),
@@ -305,7 +305,7 @@ handle_call({publish_delete, Key}, _From, State) ->
                     {reply, ok, S1}
             end;
         {error, Reason} = Err ->
-            imboy_cache_sync_proto:record_reject(Reason),
+            _ = imboy_cache_sync_proto:record_reject(Reason),
             {reply, Err, State}
     end;
 %% --- 诊断（消息串行化确认）---
@@ -519,29 +519,30 @@ handle_sync_message(#{protocol := 2} = Event, State) ->
         {ok, S1} ->
             S1;
         {reject, Reason, S1} ->
-            imboy_cache_sync_proto:record_reject(Reason),
+            _ = imboy_cache_sync_proto:record_reject(Reason),
             ?DEBUG_LOG(["cache sync v2 reject", Reason]),
             S1;
         {reject, Reason} ->
-            imboy_cache_sync_proto:record_reject(Reason),
+            _ = imboy_cache_sync_proto:record_reject(Reason),
             ?DEBUG_LOG(["cache sync v2 reject", Reason]),
             State
     end;
 handle_sync_message(#{protocol := _}, State) ->
-    imboy_cache_sync_proto:record_reject(invalid_protocol),
+    _ = imboy_cache_sync_proto:record_reject(invalid_protocol),
     State;
 handle_sync_message({legacy_invalidation_seq, _, _, _, _, _, _} = Frame, State) ->
     imboy_cache_sync_apply:apply_legacy_sequence(Frame, State);
 handle_sync_message({set, Key, Data, MaxAge, Depend}, State) ->
     incr(cache_sync_legacy_receive_total),
     %% 旧 SET 仅兼容未分类键，不能绕过本地策略或版本化写入边界。
-    case legacy_set_allowed(Key) of
-        true ->
-            incr(receive_total),
-            depcache:set(Key, Data, MaxAge, Depend, ?DEPCACHE_SERVER);
-        false ->
-            imboy_cache_sync_proto:record_reject(legacy_policy)
-    end,
+    _ =
+        case legacy_set_allowed(Key) of
+            true ->
+                incr(receive_total),
+                depcache:set(Key, Data, MaxAge, Depend, ?DEPCACHE_SERVER);
+            false ->
+                imboy_cache_sync_proto:record_reject(legacy_policy)
+        end,
     State;
 handle_sync_message({flush, Key}, State) ->
     incr(cache_sync_legacy_receive_total),
