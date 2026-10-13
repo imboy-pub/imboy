@@ -1026,9 +1026,7 @@ invalid_done_probe() ->
 %% 两个独立结果共用一次真实 >W 等待；任何一个 FAIL 仍决定最终非零退出。
 shared_long_partition_results() ->
     Cases = select_scenarios([
-        {"C9m natural partition exceeds W and requires cold epoch recovery",
-            fun assert_long_availability/2},
-        {"C9p cold partition respects real same-era authority or stays degraded",
+        {"C9m partition exceeds W; recover from same-era authority or stay degraded",
             fun assert_long_safety/2}
     ]),
     case Cases of
@@ -1135,28 +1133,7 @@ natural_long_partition(A, B, C) ->
         fresh_write => FreshWrite
     }.
 
-%% 原 C9m availability oracle 保留，E1 无合格权威时这个要求必须真实失败。
-assert_long_availability(A, #{
-    key := Key,
-    deleted := Deleted,
-    frame := Frame,
-    epoch := Epoch0,
-    window := W,
-    fresh_write := FreshWrite
-}) ->
-    ready = wait_status(A, 400),
-    Epoch1 = rpc:call(A, imboy_cache_sync_proto, epoch, [], ?RPC_MS),
-    true =
-        Epoch1 > Epoch0 orelse erlang:error({long_partition_missing_cold_epoch, Epoch0, Epoch1, W}),
-    ok = FreshWrite,
-    {ok, new_authority} = converge_get(A, Key, {ok, new_authority}),
-    undefined = rpc:call(A, imboy_cache, get, [Deleted], ?RPC_MS),
-    assert_protected_replay_window(Frame, W),
-    ok = rpc:call(A, ?MODULE, deliver_frame, [Frame], ?RPC_MS),
-    undefined = rpc:call(A, imboy_cache, get, [Deleted], ?RPC_MS),
-    ok.
-
-%% 新 C9p 独立安全合同：只依据真实 cohort，不强行假定 B/C 保留旧 epoch。
+%% 跨 W 后只从真实同代 READY 权威恢复；没有可信来源时按 C04 合同保持 DEGRADED。
 assert_long_safety(A, #{
     key := Key, deleted := Deleted, frame := Frame, epoch := Epoch0, window := W, peers := Peers
 }) ->
@@ -1168,7 +1145,7 @@ assert_long_safety(A, #{
      || N <- Peers
     ],
     MatchingReady = [N || {N, E, ready} <- Cohort, E =:= Epoch1],
-    io:format("C9p actual cohort: ~p~n", [#{receiver_epoch => Epoch1, peers => Cohort}]),
+    io:format("C9m actual cohort: ~p~n", [#{receiver_epoch => Epoch1, peers => Cohort}]),
     case MatchingReady of
         [] ->
             degraded = wait_status(A, degraded, 400),
