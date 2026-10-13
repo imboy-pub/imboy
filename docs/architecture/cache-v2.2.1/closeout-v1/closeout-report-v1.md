@@ -3,13 +3,33 @@
 > task_id：CACHE_V221_BACKEND_CLOSEOUT_V1
 > 报告版本：closeout-report-v1（DRAFT_SKELETON）
 > 起草时间：2026-10-12（Asia/Shanghai）
-> 状态：**DRAFT——骨架已填，终轮数据待协调者（A0）在 C14 签发时填充**
+> 当前工作树状态：**PARTIAL——旧候选结论不适用于后续未冻结的实现变更**。
+> 以下 f1aa1ce0 / git 2873dbfd 及其签发数据作为历史候选记录保留。
 > 绑定：收口计划 `backend-closeout-plan-v1.md`（SHA-256 见 baseline.json）；
 > 原计划 `w0/plan-v2.2.1.md` SHA-256 `a5523ee7...c713`；
 > 历史运行根 `.Codex/runs/CACHE_V2_2_1_W1_W5_LOCAL_IMPLEMENTATION/zcode-20261010T160733Z/`；
 > 本轮证据根 `~/.codex/cache-closeout-runs/zcode-20261011T130725Z/`（仓外 raw/logs）。
 
 ## 0. 阅读约定与填充状态
+
+### 当前候选适用范围（2026-10-13）
+
+当前实现已改变协议能力摘要、恢复屏障、资源预算及业务失效路径，没有完成新的
+C12 候选冻结和 C14 全项证据绑定。历史 96 项台账中的 `final_evidence_candidate`
+只证明其标注的旧候选；`classes` 是明细分类计数，不是 PASS 计数。
+当前后端收口结论为 **PARTIAL**：C04/AC-19 跨来源完整覆盖仍缺实现与行为证明，
+全部 Registry 失效钩子和最终集成全量门禁仍未完成；不能仅归因于生产输入缺失。
+原计划总体资格仍未达成，生产资格仍未签发。当前协议行为与限制以
+`protocol-budget-frozen.md` 为准；本地 loopback 场景不能外推三机容量或生产 SLO。
+
+C04 接收端边界已由受控探针核实：冻结 A7/B1，先完成 A 的已知来源
+`with_origin(A, BootA, 7)` live 页，再请求并完成 B 的空页集；B cut 候选
+覆盖 A7/B1。当前 `maybe_complete_round` 进入 READY，A 页的值仍存在。
+该结果证明候选向量没有缺席裁决能力，不能直接升级为完整内容证明。
+探针使用合成身份、手工序列和 depcache 替身；未证明发送端自然产生该历史，
+也不是生产复活或 C12 验收证据。后续必须绑定每来源完整页集、逐键来源及
+冻结目标，统一裁决先前应用的行，再提交内容状态和覆盖下限；禁止只合并
+prefix 或将任意空快照当删除。
 
 - **⏳ 标记 = IN_PROGRESS / 待协调者最终确认填充**。未标 ⏳ 的内容为已定稿事实
   （取自仓内 closeout-v1/ 文档与 git 只读取证，起草时点成立）。
@@ -34,7 +54,7 @@
 
 ## 1. 三个独立结论（C14 并列签发）
 
-### 1.1 结论一：BACKEND_LOCAL_CLOSEOUT — **DONE_WITH_DOCUMENTED_EXCEPTIONS**（2026-10-12 签发）
+### 1.1 历史候选结论：BACKEND_LOCAL_CLOSEOUT — **DONE_WITH_DOCUMENTED_EXCEPTIONS**（2026-10-12 签发；不适用于当前工作树）
 
 C00～C14 全部执行完毕。候选 f1aa1ce0（git 2873dbfd）五步冻结链产品代码零漂移；
 绑定绿轮 dcheck 22/22×2 + mixed 13/13×2；全量 EUnit 10762 passed / 6 failed
@@ -270,7 +290,9 @@ P1~P6 计划中提交落地后，rollback-v1.md 须增补对应回滚条目（�
 
 ### 6.5 登记例外与建议项（Documented-Exception，非阻断）
 
-- tag_subtitle_2/3 fill/flush 键失配（TTL 1 天兜底；修复一行待后续轮）；
+- tag_subtitle_2/3 fill/flush 键失配已修复（2026-10-13）：失效对齐实际填充键；
+  真实本地缓存回归验证整数/二进制 TagId 失效后重新查询权威。PG 事务、跨节点
+  通知与并发 loader 不在本项证据范围内，详见 registry-w1-closeout.md §1；
 - config5 双重失效 7.1 残余竞态（彻底闭合依赖 fenced 启用 + 回填改造，计划门控在性能 gate 后；广播半边已由 W1-05 闭合）；
 - login_attempt_ip_limit 读改写非原子（账号级原子锁定第一防线）+ 关联
   `login_security_logic.erl:160` depcache 读错存储（fail-safe 方向）；

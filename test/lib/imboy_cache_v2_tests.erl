@@ -88,13 +88,13 @@ invalidate_flushes_local_and_advances_generation_test_() ->
         {ok, Old} = setup_fenced([cache_v2_test]),
         try
             Key = {cache_v2_test, inv1},
-            ?assertEqual(0, imboy_cache_sync:generation(Key)),
+            G0 = imboy_cache_sync:generation(Key),
             _ = imboy_cache:put(Key, <<"v">>, 60, local),
             ?assertEqual({ok, <<"v">>}, imboy_cache:get(Key)),
             ?assertEqual(ok, imboy_cache:invalidate(Key)),
             %% 逻辑键已清、generation 已推进（19.3：先推进再失效）
             ?assertEqual(undefined, imboy_cache:get(Key)),
-            ?assert(imboy_cache_sync:generation(Key) >= 1)
+            ?assert(imboy_cache_sync:generation(Key) > G0)
         after
             restore_fenced(Old)
         end
@@ -111,6 +111,7 @@ fenced_stale_loader_must_not_return_old_value_test_() ->
         {ok, Old} = setup_fenced([cache_v2_test]),
         try
             Key = {cache_v2_test, stale_loader_1},
+            OldPhysical = physical_key(Key, imboy_cache_sync:generation(Key)),
             Controller = self(),
             Counter = counters:new(1, []),
             LoaderRelease = make_ref(),
@@ -149,7 +150,7 @@ fenced_stale_loader_must_not_return_old_value_test_() ->
             %% 旧物理键存在旧值（19.3 允许，TTL 有界）——但只能从物理键直接读到
             ?assertEqual(
                 {ok, old_value},
-                depcache:get({cache_v2, Key, 0}, ?DEPCACHE_SERVER)
+                depcache:get(OldPhysical, ?DEPCACHE_SERVER)
             )
         after
             restore_fenced(Old)
@@ -235,7 +236,7 @@ fenced_continuous_invalidation_returns_authoritative_uncached_test_() ->
             G = imboy_cache_sync:generation(Key),
             ?assertEqual(
                 undefined,
-                depcache:get({cache_v2, Key, G}, ?DEPCACHE_SERVER)
+                depcache:get(physical_key(Key, G), ?DEPCACHE_SERVER)
             )
         after
             restore_fenced(Old)
@@ -250,6 +251,8 @@ fenced_versioned_dep_tag_cascades_test_() ->
         try
             Key = {cache_v2_test, dep_tag_1},
             Tag = {tag, dep_tag_1},
+            OldPhysical = physical_key(Key, imboy_cache_sync:generation(Key)),
+            DepG0 = imboy_cache_sync:dep_generation(Tag),
             Counter = counters:new(1, []),
             Loader = fun() ->
                 counters:add(Counter, 1, 1),
@@ -263,14 +266,14 @@ fenced_versioned_dep_tag_cascades_test_() ->
             ?assertEqual(1, counters:get(Counter, 1)),
             ?assertMatch(
                 {ok, _},
-                depcache:get({cache_v2, Key, 0}, ?DEPCACHE_SERVER)
+                depcache:get(OldPhysical, ?DEPCACHE_SERVER)
             ),
             %% 依赖标签失效：代次推进 + flush 旧物理标签 → 级联清除条目
             G = imboy_cache_sync:next_dep_generation(Tag),
-            ?assertEqual(1, G),
+            ?assert(G > DepG0),
             ?assertEqual(
                 undefined,
-                depcache:get({cache_v2, Key, 0}, ?DEPCACHE_SERVER)
+                depcache:get(OldPhysical, ?DEPCACHE_SERVER)
             ),
             %% 下次 memo 重新执行 loader（依赖新物理标签）
             ?assertEqual(<<"loaded">>, imboy_cache:memo(Loader, Key, 60, [Tag])),
@@ -286,9 +289,12 @@ unfenced_memo_uses_legacy_path_test_() ->
         Key = {cache_v2_unfenced_probe, legacy_1},
         ?assertEqual(<<"legacy">>, imboy_cache:memo(fun() -> <<"legacy">> end, Key, 60)),
         %% 物理键未被使用（旧路径写逻辑键）
-        ?assertEqual(undefined, depcache:get({cache_v2, Key, 0}, ?DEPCACHE_SERVER)),
+        ?assertEqual(undefined, depcache:get(physical_key(Key, 0), ?DEPCACHE_SERVER)),
         ?assertEqual({ok, <<"legacy">>}, imboy_cache:get(Key))
     end).
+
+physical_key(Key, G) ->
+    {cache_v2, Key, {imboy_cache_sync:node_boot(), G}}.
 
 %% ===================================================================
 %% replicate 状态保护（9.1/5.5）
@@ -351,6 +357,241 @@ degraded_replicate_reads_return_unverified_undefined_test_() ->
 %% ===================================================================
 %% Helpers
 %% ===================================================================
+
+orphan_replica_values_are_hidden_on_all_read_apis_test_() ->
+    ?TEST_WITH_APP(fun() ->
+        with_replicate_read_fixture(orphan, fun(Key) ->
+            Value = [{field, retained}],
+            ok = depcache:set(Key, Value, 60, [], ?DEPCACHE_SERVER),
+            ?assertEqual({ok, Value}, depcache:get(Key, ?DEPCACHE_SERVER)),
+            ?assertEqual(unverified, imboy_cache_sync:replicate_state(Key)),
+            assert_replica_miss(Key)
+        end)
+    end).
+
+replica_revocation_and_expiry_hide_retained_values_test_() ->
+    ?TEST_WITH_APP(fun() ->
+        with_replicate_read_fixture(revoked, fun(Key) ->
+            ?assertEqual(ok, imboy_cache:put(Key, [{field, retained}], 60, replicate)),
+            ?assertEqual({ok, retained}, imboy_cache:get(Key, field)),
+            ?assertEqual({ok, retained}, imboy_cache:get_subkey(Key, field)),
+            application:set_env(imboy, cache_replication, #{whitelist => []}),
+            assert_replica_miss(Key),
+            application:set_env(imboy, cache_replication, #{whitelist => [cache_read_fixture]}),
+            [{_, {Rev, Counter, _, live, EntryEpoch}}] = ets:lookup(imboy_cache_meta, {rev, Key}),
+            ets:insert(
+                imboy_cache_meta,
+                {{rev, Key}, {Rev, Counter, erlang:system_time(millisecond) - 1, live, EntryEpoch}}
+            ),
+            ?assertMatch({ok, _}, depcache:get(Key, ?DEPCACHE_SERVER)),
+            assert_replica_miss(Key)
+        end)
+    end).
+
+assert_replica_miss(Key) ->
+    ?assertEqual(undefined, imboy_cache:get(Key)),
+    ?assertEqual(undefined, imboy_cache:get_wait(Key)),
+    ?assertEqual(undefined, imboy_cache:get(Key, field)),
+    ?assertEqual(undefined, imboy_cache:get_subkey(Key, field)).
+
+implicit_local_memo_keeps_native_cache_behavior_test_() ->
+    ?TEST_WITH_APP(fun() ->
+        Key = <<"implicit_local_memo_fixture">>,
+        erlang:put(implicit_local_calls, 0),
+        F = fun() ->
+            erlang:put(implicit_local_calls, erlang:get(implicit_local_calls) + 1),
+            Key
+        end,
+        try
+            ?assertEqual(Key, imboy_cache:memo(F)),
+            ?assertEqual(Key, imboy_cache:memo(F)),
+            ?assertEqual(3, erlang:get(implicit_local_calls)),
+            ?assertEqual(4, imboy_cache:memo({erlang, abs, [-4]}, 60)),
+            ?assertEqual({ok, 4}, depcache:get({erlang, abs, [-4]}, ?DEPCACHE_SERVER))
+        after
+            erlang:erase(implicit_local_calls),
+            depcache:flush(Key, ?DEPCACHE_SERVER),
+            depcache:flush({erlang, abs, [-4]}, ?DEPCACHE_SERVER)
+        end
+    end).
+
+implicit_mfa_respects_generation_invalidation_test_() ->
+    ?TEST_WITH_APP(fun() ->
+        Old = application:get_env(imboy, cache_fenced_namespaces),
+        MFA = {erlang, unique_integer, [[positive]]},
+        application:set_env(imboy, cache_fenced_namespaces, [erlang]),
+        try
+            First = imboy_cache:memo(MFA, 60),
+            ?assertEqual(First, imboy_cache:memo(MFA, 60)),
+            ok = imboy_cache:invalidate(MFA),
+            ?assertNotEqual(First, imboy_cache:memo(MFA, 60))
+        after
+            case Old of
+                undefined -> application:unset_env(imboy, cache_fenced_namespaces);
+                {ok, Value} -> application:set_env(imboy, cache_fenced_namespaces, Value)
+            end
+        end
+    end).
+
+undefined_memo_key_cannot_read_retained_replica_during_recovery_test_() ->
+    ?TEST_WITH_APP(fun() ->
+        with_replicate_read_fixture(implicit_recovery, fun(Key) ->
+            ok = imboy_cache:put(Key, retained, 60, replicate),
+            true = ets:insert(imboy_cache_meta, {status, recovering}),
+            F = fun() -> Key end,
+            try
+                ?assertEqual({ok, retained}, depcache:get(Key, ?DEPCACHE_SERVER)),
+                ?assertError({unsupported_replicate_api, memo}, imboy_cache:memo(F, undefined, 60)),
+                ?assertError(
+                    {unsupported_replicate_api, memo}, imboy_cache:memo(F, undefined, 60, [])
+                ),
+                ?assertEqual(undefined, imboy_cache:get_wait(Key))
+            after
+                ets:insert(imboy_cache_meta, {status, ready})
+            end
+        end)
+    end).
+
+replica_waiter_rechecks_tombstone_after_native_wakeup_test_() ->
+    ?TEST_WITH_APP(fun() ->
+        with_replicate_read_fixture(waiter_deleted, fun(Key) ->
+            ok = imboy_cache:put(Key, original, 60, replicate),
+            ok = depcache:flush(Key, ?DEPCACHE_SERVER),
+            undefined = depcache:get_wait(Key, ?DEPCACHE_SERVER),
+            Parent = self(),
+            Cache = whereis(?DEPCACHE_SERVER),
+            1 = erlang:trace(Cache, true, ['receive', {tracer, Parent}]),
+            {Waiter, Monitor} = spawn_monitor(fun() ->
+                Parent ! {waiter_result, self(), imboy_cache:get_wait(Key)}
+            end),
+            try
+                receive
+                    {trace, Cache, 'receive', {'$gen_call', {Waiter, _}, {get_wait, Key}}} -> ok
+                after 2000 -> erlang:error(waiter_did_not_enter_native_queue)
+                end,
+                _ = sys:get_state(Cache),
+                ok = imboy_cache:put_delete(Key),
+                %% 模拟仍在工作的旧 loader：只能写裸值，不能改变墓碑。
+                ok = depcache:set(Key, stale_loader, 60, [], ?DEPCACHE_SERVER),
+                receive
+                    {waiter_result, Waiter, Result} -> ?assertEqual(undefined, Result)
+                after 2000 -> erlang:error(waiter_did_not_finish)
+                end,
+                ?assertEqual(deleted, imboy_cache_sync:replicate_state(Key)),
+                ?assertEqual({ok, stale_loader}, depcache:get(Key, ?DEPCACHE_SERVER))
+            after
+                erlang:trace(Cache, false, ['receive']),
+                case is_process_alive(Waiter) of
+                    true -> exit(Waiter, kill);
+                    false -> ok
+                end,
+                erlang:demonitor(Monitor, [flush])
+            end
+        end)
+    end).
+
+unversioned_writers_cannot_overwrite_replica_or_execute_loader_test_() ->
+    ?TEST_WITH_APP(fun() ->
+        with_replicate_read_fixture(unversioned_writer, fun(Key) ->
+            ok = imboy_cache:put(Key, original, 60, replicate),
+            Before = ets:lookup(imboy_cache_meta, {rev, Key}),
+            Loader = fun() -> erlang:error(loader_must_not_execute) end,
+            ?assertError({unsupported_replicate_api, set}, imboy_cache:set(Key, corrupt)),
+            ?assertError({unsupported_replicate_api, memo}, imboy_cache:memo(Loader, Key)),
+            ?assertError({unsupported_replicate_api, memo}, imboy_cache:memo(Loader, Key, 60)),
+            ?assertError({unsupported_replicate_api, memo}, imboy_cache:memo(Loader, Key, 60, [])),
+            ?assertEqual(
+                {error, versioned_write_required}, imboy_cache:put(Key, corrupt, 60, local)
+            ),
+            ?assertEqual(Before, ets:lookup(imboy_cache_meta, {rev, Key})),
+            ?assertEqual({ok, original}, depcache:get(Key, ?DEPCACHE_SERVER)),
+            ?assertEqual({ok, original}, imboy_cache:get_wait(Key))
+        end)
+    end).
+
+replica_reads_bypass_stale_process_cache_without_changing_mode_test_() ->
+    ?TEST_WITH_APP(fun() ->
+        with_replicate_read_fixture(process_cached, fun(Key) ->
+            Previous = erlang:put(depcache_in_process, true),
+            PreviousClock = erlang:get(depcache_now),
+            try
+                ok = imboy_cache:put(Key, [{field, old}], 60, replicate),
+                ?assertEqual({ok, [{field, old}]}, depcache:get(Key, ?DEPCACHE_SERVER)),
+                ?assertEqual({ok, old}, depcache:get_subkey(Key, field, ?DEPCACHE_SERVER)),
+                ok = imboy_cache:put(Key, [{field, new}], 60, replicate),
+                %% 对照：depcache 进程内副本仍旧；公共复制读取必须为新值。
+                ?assertEqual({ok, [{field, old}]}, depcache:get(Key, ?DEPCACHE_SERVER)),
+                FutureClock = erlang:system_time(second) + 86400,
+                erlang:put(depcache_now, FutureClock),
+                ?assertEqual({ok, [{field, new}]}, imboy_cache:get(Key)),
+                ?assertEqual({ok, [{field, new}]}, imboy_cache:get_wait(Key)),
+                ?assertEqual({ok, new}, imboy_cache:get(Key, field)),
+                ?assertEqual({ok, new}, imboy_cache:get_subkey(Key, field)),
+                ?assertEqual(true, erlang:get(depcache_in_process)),
+                ?assertEqual(FutureClock, erlang:get(depcache_now))
+            after
+                depcache:flush_process_dict(),
+                case Previous of
+                    undefined -> erlang:erase(depcache_in_process);
+                    _ -> erlang:put(depcache_in_process, Previous)
+                end,
+                case PreviousClock of
+                    undefined -> erlang:erase(depcache_now);
+                    _ -> erlang:put(depcache_now, PreviousClock)
+                end
+            end
+        end)
+    end).
+
+with_replicate_read_fixture(Name, Test) ->
+    ready = wait_sync_ready(50),
+    Names = [cache_registry_overrides, cache_replication],
+    Old = [{N, application:get_env(imboy, N)} || N <- Names],
+    Key = {cache_read_fixture, Name},
+    try
+        application:set_env(
+            imboy,
+            cache_registry_overrides,
+            #{cache_read_fixture => {replicate, false}}
+        ),
+        application:set_env(imboy, cache_replication, #{whitelist => [cache_read_fixture]}),
+        Test(Key)
+    after
+        imboy_cache:put_delete(Key),
+        lists:foreach(
+            fun
+                ({N, undefined}) -> application:unset_env(imboy, N);
+                ({N, {ok, V}}) -> application:set_env(imboy, N, V)
+            end,
+            Old
+        )
+    end.
+
+replica_read_exception_restores_process_cache_mode_test_() ->
+    {setup, fun eunit_runner:eunit_setup/0, fun eunit_runner:eunit_cleanup/1, fun(_) ->
+        {timeout, 10, fun replica_read_timeout/0}
+    end}.
+
+replica_read_timeout() ->
+    with_replicate_read_fixture(read_failure, fun(Key) ->
+        ok = imboy_cache:put(Key, [{field, value}], 60, replicate),
+        Previous = erlang:put(depcache_in_process, true),
+        Cache = whereis(?DEPCACHE_SERVER),
+        %% 暂停由当前测试进程持有，测试进程退出会自动释放，避免遗留挂起。
+        true = erlang:suspend_process(Cache),
+        try
+            ?assertException(exit, {timeout, _}, imboy_cache:get_subkey(Key, field)),
+            ?assertEqual(true, erlang:get(depcache_in_process)),
+            ?assertEqual(Cache, whereis(?DEPCACHE_SERVER)),
+            ?assert(is_process_alive(Cache))
+        after
+            erlang:resume_process(Cache),
+            case Previous of
+                undefined -> erlang:erase(depcache_in_process);
+                _ -> erlang:put(depcache_in_process, Previous)
+            end
+        end
+    end).
 
 wait_sync_ready(0) ->
     erlang:error(sync_not_ready);

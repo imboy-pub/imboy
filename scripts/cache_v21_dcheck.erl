@@ -11,6 +11,7 @@
 %%       -eval 'cache_v21_dcheck:main(["out.json"]), halt(0).'
 %% 退出码：0 全部通过；2 存在失败场景；1 参数错误。
 -module(cache_v21_dcheck).
+-include("imboy_cache_sync_state.hrl").
 -export([main/1]).
 -export([
     init_on_peer/0,
@@ -22,6 +23,7 @@
     inject_v2_set/5,
     inject_v2_set/6,
     restart_sync/0,
+    restart_sync_only/0,
     peer_sync_down/0,
     sync_alive/0,
     sync_view/0,
@@ -30,7 +32,9 @@
     meta_probe/1,
     overload_probe/0,
     drain_sync_mailbox/0,
-    dump_debug/0
+    dump_debug/0,
+    bulk_snapshot/1,
+    assert_unknown_event_in_actor/3
 ]).
 
 -define(RPC_MS, 30000).
@@ -78,10 +82,19 @@ main(_) ->
 
 scenario_list(A, B, C) ->
     [
+        {"healthy legacy receipts and concurrent reconciliation retain READY", fun() ->
+            healthy_legacy_reconciliation(A, B, C)
+        end},
+        {"ready restart announces incarnation without a data write", fun() ->
+            ready_restart_announces_identity(A, B, C)
+        end},
         {"SET propagates to all nodes", fun() -> s_set(A, B, C) end},
         {"update overwrites everywhere", fun() -> s_update(A, B, C) end},
         {"DELETE tombstone removes everywhere", fun() -> s_delete(A, B, C) end},
         {"delayed stale SET cannot resurrect", fun() -> s_zombie(A, B, C) end},
+        {"short-lived SET retains cross-node floor against delayed old SET", fun() ->
+            s_expired_delta_floor(A, B, C)
+        end},
         {"duplicate events are idempotent", fun() -> s_dup(A, B) end},
         {"concurrent SET converges to winner", fun() -> s_race(A, B, C) end},
         {"invalidate propagates fenced generation", fun() -> s_invalidate(A, B) end},
@@ -89,6 +102,12 @@ scenario_list(A, B, C) ->
         {"restart recovers version ceiling", fun() -> s_restart(A, C) end},
         {"overload protection rejects new replicate", fun() -> s_overload(A) end},
         {"snapshot backfills lost replicas after restart", fun() -> s_snapshot(A, B, C) end},
+        {"evicted live version floor survives cold snapshot and rejects delayed old SET", fun() ->
+            s_evicted_floor_snapshot(A, B, C)
+        end},
+        {"2500-entry pull snapshot exceeds buffer window and fully recovers", fun() ->
+            s_large_snapshot(A, B, C)
+        end},
         {"F1 peer dies during recovery round; survivor closes the round", fun() ->
             f1_peer_dies_during_recovery(A, B, C)
         end},
@@ -122,8 +141,335 @@ scenario_list(A, B, C) ->
         end},
         {"C9f nmax ceiling rejects new replicate", fun() ->
             c9f_nmax(A)
+        end},
+        {"C9g lost tail invalidation reconciles without a new write", fun() ->
+            c9g_tail_checkpoint(A, B, C)
+        end},
+        {"lost tail invalidation recovers through the natural periodic timer", fun() ->
+            tail_checkpoint(A, B, C, periodic)
+        end},
+        {"C9h two recovering nodes share a ready authority", fun() ->
+            c9h_parallel_recovery(A, B, C)
+        end},
+        {"C9j retained replica is hidden during sync-only restart", fun() ->
+            c9j_retained_replica(A, B, C)
+        end},
+        {"C9k mixed epochs adopt the ready cohort and hide old-era values", fun() ->
+            c9k_mixed_epoch_cohort(A, B, C)
+        end},
+        {"unconfirmed higher-epoch incarnation recovers through member snapshot", fun() ->
+            unconfirmed_higher_epoch(A, B, C)
+        end},
+        {"C9i all replicas lost without authority stays degraded", fun() ->
+            c9i_no_authority(A, B, C)
         end}
     ].
+
+ready_restart_announces_identity(A, B, C) ->
+    [ready = wait_status(N, 300) || N <- [A, B, C]],
+    {A, OldBoot} = rpc:call(A, imboy_cache_sync, node_boot, [], ?RPC_MS),
+    ok = rpc:call(A, ?MODULE, restart_sync, [], ?RPC_MS),
+    ready = wait_status(A, 300),
+    {A, NewBoot} = rpc:call(A, imboy_cache_sync, node_boot, [], ?RPC_MS),
+    true = OldBoot =/= NewBoot,
+    %% 不发送数据，也不请求 B/C reconcile；只观察 A 的就绪通知。
+    true = converge_pred(fun() ->
+        lists:all(
+            fun(N) ->
+                rpc:call(N, ets, lookup, [imboy_cache_meta, {peer_incarnation, A}], ?RPC_MS) =:=
+                    [{{peer_incarnation, A}, NewBoot}]
+            end,
+            [B, C]
+        )
+    end),
+    [ready = wait_status(N, 300) || N <- [B, C]],
+    ok.
+
+healthy_legacy_reconciliation(A, B, C) ->
+    Nodes = [A, B, C],
+    Old = [
+        {N, rpc:call(N, application, get_env, [imboy, cache_sync_protocol], ?RPC_MS)}
+     || N <- Nodes
+    ],
+    try
+        [ready = wait_status(N, 300) || N <- Nodes],
+        [
+            ok = rpc:call(N, application, set_env, [imboy, cache_sync_protocol, legacy], ?RPC_MS)
+         || N <- Nodes
+        ],
+        lists:foreach(
+            fun(Source) ->
+                ok = rpc:call(
+                    Source, imboy_cache, invalidate, [{cache_v2_test, healthy_legacy}], ?RPC_MS
+                ),
+                Boot = element(2, rpc:call(Source, sys, get_state, [imboy_cache_sync], ?RPC_MS)),
+                [ok = await_legacy_receipt(N, Source, Boot, 100) || N <- Nodes, N =/= Source]
+            end,
+            Nodes
+        ),
+        lists:foreach(
+            fun(N) ->
+                P = rpc:call(N, erlang, whereis, [imboy_cache_sync], ?RPC_MS),
+                reconcile_tick = rpc:call(N, erlang, send, [P, reconcile_tick], ?RPC_MS)
+            end,
+            Nodes
+        ),
+        timer:sleep(500),
+        [ready = rpc:call(N, imboy_cache_sync, status, [], ?RPC_MS) || N <- Nodes],
+        ok
+    after
+        [
+            case Cfg of
+                undefined ->
+                    rpc:call(N, application, unset_env, [imboy, cache_sync_protocol], ?RPC_MS);
+                {ok, V} ->
+                    rpc:call(N, application, set_env, [imboy, cache_sync_protocol, V], ?RPC_MS)
+            end
+         || {N, Cfg} <- Old
+        ]
+    end.
+
+await_legacy_receipt(_Node, _Source, _Boot, 0) ->
+    error(legacy_receipt_missing);
+await_legacy_receipt(Node, Source, Boot, Left) ->
+    case rpc:call(Node, ets, lookup, [imboy_cache_meta, {seq, {Source, Boot}}], ?RPC_MS) of
+        [{_, 1}] ->
+            ok;
+        _ ->
+            timer:sleep(20),
+            await_legacy_receipt(Node, Source, Boot, Left - 1)
+    end.
+
+c9j_retained_replica(A, B, C) ->
+    Key = {cache_v2_test_rep, retained_restart},
+    Old = [{field, old}],
+    New = [{field, new}],
+    ok = rpc:call(B, imboy_cache, put, [Key, Old, 120, replicate], ?RPC_MS),
+    {ok, Old} = converge_get(A, Key, {ok, Old}),
+    Cookie = rpc:call(A, erlang, get_cookie, [], ?RPC_MS),
+    Cfg = rpc:call(A, application, get_env, [imboy, cluster_nodes], ?RPC_MS),
+    try
+        ok = rpc:call(A, application, set_env, [imboy, cluster_nodes, [A, B, C]], ?RPC_MS),
+        try
+            [
+                true = rpc:call(A, erlang, set_cookie, [N, retained_isolation], ?RPC_MS)
+             || N <- [B, C]
+            ],
+            [true = rpc:call(A, erlang, disconnect_node, [N], ?RPC_MS) || N <- [B, C]],
+            ok = rpc:call(B, imboy_cache, put, [Key, New, 120, replicate], ?RPC_MS),
+            assert_retained_replica_hidden(A, Key, Old)
+        after
+            [true = rpc:call(A, erlang, set_cookie, [N, Cookie], ?RPC_MS) || N <- [B, C]],
+            [true = rpc:call(A, net_kernel, connect_node, [N], ?RPC_MS) || N <- [B, C]]
+        end,
+        ready = wait_status(A, 400),
+        {ok, New} = converge_get(A, Key, {ok, New})
+    after
+        restore_cluster_config(A, Cfg)
+    end,
+    ok.
+
+assert_retained_replica_hidden(Node, Key, Value) ->
+    {Node, OldBoot} = rpc:call(Node, imboy_cache_sync, node_boot, [], ?RPC_MS),
+    ok = rpc:call(Node, ?MODULE, restart_sync_only, [], ?RPC_MS),
+    {Node, NewBoot} = rpc:call(Node, imboy_cache_sync, node_boot, [], ?RPC_MS),
+    true = OldBoot =/= NewBoot,
+    {ok, Value} = rpc:call(Node, depcache, get, [Key, imboy_cache], ?RPC_MS),
+    undefined = rpc:call(Node, imboy_cache, get, [Key], ?RPC_MS),
+    undefined = rpc:call(Node, imboy_cache, get, [Key, field], ?RPC_MS),
+    undefined = rpc:call(Node, imboy_cache, get_subkey, [Key, field], ?RPC_MS).
+
+restore_cluster_config(Node, undefined) ->
+    rpc:call(Node, application, unset_env, [imboy, cluster_nodes], ?RPC_MS);
+restore_cluster_config(Node, {ok, Cfg}) ->
+    rpc:call(Node, application, set_env, [imboy, cluster_nodes, Cfg], ?RPC_MS).
+
+restart_sync_only() ->
+    ok = gen_server:stop(imboy_cache_sync, normal, 10000),
+    {ok, Pid} = imboy_cache_sync:start_link(),
+    unlink(Pid),
+    ok.
+
+c9h_parallel_recovery(A, B, C) ->
+    ready = wait_status(A, 400),
+    Key = {cache_v2_test_rep, parallel_recovery},
+    ok = rpc:call(A, imboy_cache, put, [Key, authority_value, 120, replicate], ?RPC_MS),
+    {[ok, ok], []} = rpc:multicall([B, C], ?MODULE, restart_sync, [], ?RPC_MS),
+    ready = wait_status(B, 400),
+    ready = wait_status(C, 400),
+    {ok, authority_value} = converge_get(B, Key, {ok, authority_value}),
+    {ok, authority_value} = converge_get(C, Key, {ok, authority_value}),
+    ok.
+
+c9k_mixed_epoch_cohort(A, B, C) ->
+    Nodes = [A, B, C],
+    [ok = ensure_c9_ready(N) || N <- Nodes],
+    OldKey = {cache_v2_test_rep, cohort_old},
+    NewKey = {cache_v2_test_rep, cohort_new},
+    ok = rpc:call(A, imboy_cache, put, [OldKey, old_era, 120, replicate], ?RPC_MS),
+    [converge_get(N, OldKey, {ok, old_era}) || N <- Nodes],
+    Epoch = rpc:call(A, imboy_cache_sync_proto, bump_epoch, [], ?RPC_MS),
+    ok = rpc:call(A, imboy_cache, put, [NewKey, fresh_era, 120, replicate], ?RPC_MS),
+    lists:foreach(
+        fun(N) ->
+            {ok, fresh_era} = converge_get(N, NewKey, {ok, fresh_era}),
+            ready = wait_status(N, 300),
+            Epoch = rpc:call(N, imboy_cache_sync_proto, epoch, [], ?RPC_MS),
+            undefined = rpc:call(N, imboy_cache, get, [OldKey], ?RPC_MS),
+            {ok, {_, _, _, live, Epoch}} = rpc:call(N, ?MODULE, read_rev_full, [NewKey], ?RPC_MS)
+        end,
+        Nodes
+    ),
+    [{error, not_found} = rpc:call(N, ?MODULE, read_rev_full, [OldKey], ?RPC_MS) || N <- [B, C]],
+    ok.
+
+unconfirmed_higher_epoch(A, B, C) ->
+    Nodes = [A, B, C],
+    [ready = wait_status(N, 300) || N <- Nodes],
+    {A, OldBoot} = rpc:call(A, imboy_cache_sync, node_boot, [], ?RPC_MS),
+    ok = rpc:call(A, ?MODULE, restart_sync, [], ?RPC_MS),
+    ready = wait_status(A, 300),
+    {A, NewBoot} = rpc:call(A, imboy_cache_sync, node_boot, [], ?RPC_MS),
+    true = OldBoot =/= NewBoot,
+    Key = {cache_v2_test_rep, unknown_high_epoch},
+    ok = rpc:call(B, sys, suspend, [imboy_cache_sync], ?RPC_MS),
+    {Epoch, Rev} =
+        try
+            E = rpc:call(A, imboy_cache_sync_proto, bump_epoch, [], ?RPC_MS),
+            ok = rpc:call(A, imboy_cache, put, [Key, recovered, 120, replicate], ?RPC_MS),
+            {ok, V} = rpc:call(A, ?MODULE, read_rev, [Key], ?RPC_MS),
+            {ok, Exp} = rpc:call(A, ?MODULE, read_expires, [Key], ?RPC_MS),
+            [{sync_origin_seq, Seq}] = rpc:call(
+                A,
+                ets,
+                lookup,
+                [imboy_cache_meta, sync_origin_seq],
+                ?RPC_MS
+            ),
+            Event = rpc:call(
+                A,
+                imboy_cache_sync_proto,
+                event,
+                [set, Key, recovered, Exp, V, Seq, NewBoot],
+                ?RPC_MS
+            ),
+            %% 自证回调断言失败会传播，不能被 sys 的错误返回吞掉。
+            case
+                rpc:call(
+                    B,
+                    ?MODULE,
+                    assert_unknown_event_in_actor,
+                    [#{origin_boot_id => NewBoot, key => Key}, A, OldBoot],
+                    ?RPC_MS
+                )
+            of
+                {badrpc,
+                    {'EXIT', {
+                        {callback_failed, {gen_server, system_replace_state},
+                            {error, {badmatch, {reject, invalid_protocol}}}},
+                        _
+                    }}} ->
+                    ok;
+                BadResult ->
+                    erlang:error({callback_failure_not_propagated, BadResult})
+            end,
+            ok = rpc:call(
+                B,
+                ?MODULE,
+                assert_unknown_event_in_actor,
+                [Event, A, OldBoot],
+                ?RPC_MS
+            ),
+            {E, V}
+        after
+            ok = rpc:call(B, sys, resume, [imboy_cache_sync], ?RPC_MS)
+        end,
+    %% 此处不重启、不 heal；只能由真实成员报告、分页、cut/done 完成恢复。
+    ready = wait_status(B, 300),
+    #state{status = ready, identity_recovery = false, requires_authority = false} =
+        rpc:call(B, sys, get_state, [imboy_cache_sync], ?RPC_MS),
+    {ok, recovered} = converge_get(B, Key, {ok, recovered}),
+    Epoch = rpc:call(B, imboy_cache_sync_proto, epoch, [], ?RPC_MS),
+    {ok, {Rev, _, _, live, Epoch}} = rpc:call(B, ?MODULE, read_rev_full, [Key], ?RPC_MS),
+    [{{peer_incarnation, A}, NewBoot}] = rpc:call(
+        B,
+        ets,
+        lookup,
+        [imboy_cache_meta, {peer_incarnation, A}],
+        ?RPC_MS
+    ),
+    [{{snapshot_seq_floor, {A, NewBoot}}, Floor}] = rpc:call(
+        B,
+        ets,
+        lookup,
+        [imboy_cache_meta, {snapshot_seq_floor, {A, NewBoot}}],
+        ?RPC_MS
+    ),
+    true = Floor > 0,
+    ready = wait_status(C, 300),
+    ok.
+
+assert_unknown_event_in_actor(Event, Origin, OldBoot) ->
+    #state{identity_recovery = true, status = discovering} = sys:replace_state(
+        imboy_cache_sync, fun(S) ->
+            %% 同一 actor 回调内安排尚未确认状态，排除正常报告抢先到达。
+            true = ets:insert(imboy_cache_meta, {{peer_incarnation, Origin}, OldBoot}),
+            true = ets:delete(
+                imboy_cache_meta,
+                {grace_incarnation, {Origin, maps:get(origin_boot_id, Event)}}
+            ),
+            {reject, unknown_incarnation, Next} = imboy_cache_sync_apply:apply_v2(Event, S),
+            true = Next#state.identity_recovery,
+            true = Next#state.requires_authority,
+            discovering = Next#state.status,
+            [{{peer_incarnation, Origin}, OldBoot}] = ets:lookup(
+                imboy_cache_meta, {peer_incarnation, Origin}
+            ),
+            [] = ets:lookup(imboy_cache_meta, {rev, maps:get(key, Event)}),
+            Next
+        end
+    ),
+    ok.
+
+c9i_no_authority(A, B, C) ->
+    Nodes = [A, B, C],
+    lists:foreach(
+        fun(N) ->
+            ok = rpc:call(N, application, set_env, [imboy, cluster_nodes, Nodes], ?RPC_MS),
+            {ok, Cfg} = rpc:call(N, application, get_env, [imboy, cache_replication], ?RPC_MS),
+            ok = rpc:call(
+                N,
+                application,
+                set_env,
+                [imboy, cache_replication, Cfg#{recovery_window_sec => 3}],
+                ?RPC_MS
+            )
+        end,
+        Nodes
+    ),
+    {[ok, ok, ok], []} = rpc:multicall(Nodes, ?MODULE, peer_sync_down, [], ?RPC_MS),
+    {[ok, ok, ok], []} = rpc:multicall(Nodes, ?MODULE, restart_sync, [], ?RPC_MS),
+    lists:foreach(
+        fun(N) ->
+            case wait_status(N, degraded, 400) of
+                degraded ->
+                    ok;
+                Other ->
+                    erlang:error(
+                        {no_authority_status, Other, rpc:call(N, ?MODULE, dump_debug, [], ?RPC_MS)}
+                    )
+            end,
+            {error, {not_ready, degraded}} = rpc:call(
+                N,
+                imboy_cache,
+                put,
+                [{cache_v2_test_rep, no_authority}, unavailable, 60, replicate],
+                ?RPC_MS
+            )
+        end,
+        Nodes
+    ),
+    ok.
 
 run_one(Name, Fun) ->
     try
@@ -177,6 +523,49 @@ s_zombie(A, B, C) ->
     undefined = rpc:call(B, imboy_cache, get, [Key], 5000),
     ok.
 
+s_expired_delta_floor(A, B, C) ->
+    Key = {cache_v2_test_rep, d_expired_delta_floor},
+    [ok = ensure_c9_ready(N) || N <- [A, B, C]],
+    ok = rpc:call(A, imboy_cache, put, [Key, older, 120, replicate], ?RPC_MS),
+    [{ok, older} = converge_get(N, Key, {ok, older}) || N <- [B, C]],
+    {ok, OldRev} = rpc:call(A, ?MODULE, read_rev, [Key], ?RPC_MS),
+    ok = rpc:call(A, imboy_cache, put, [Key, newest, 1, replicate], ?RPC_MS),
+    {ok, NewRev} = rpc:call(A, ?MODULE, read_rev, [Key], ?RPC_MS),
+    {ok, Exp} = rpc:call(A, ?MODULE, read_expires, [Key], ?RPC_MS),
+    true = NewRev > OldRev,
+    [undefined = converge_get(N, Key, undefined) || N <- [B, C]],
+    timer:sleep(erlang:max(1, Exp - erlang:system_time(millisecond) + 20)),
+    Before = [{N, conflict_count(N)} || N <- [B, C]],
+    ok = rpc:call(B, ?MODULE, inject_v2_set, [Key, stale, OldRev, A], ?RPC_MS),
+    [ok = await_conflict(N, Count, 100) || {N, Count} <- Before],
+    [
+        begin
+            ok = rpc:call(N, ?MODULE, drain_sync_mailbox, [], ?RPC_MS),
+            {ok, NewRev} = rpc:call(N, ?MODULE, read_rev, [Key], ?RPC_MS),
+            {ok, Exp} = rpc:call(N, ?MODULE, read_expires, [Key], ?RPC_MS),
+            undefined = rpc:call(N, depcache, get, [Key, imboy_cache], ?RPC_MS),
+            undefined = rpc:call(N, imboy_cache, get, [Key], ?RPC_MS),
+            ready = rpc:call(N, imboy_cache_sync, status, [], ?RPC_MS)
+        end
+     || N <- [B, C]
+    ],
+    ok.
+
+conflict_count(Node) ->
+    Metrics = rpc:call(Node, elib_metric, get_all_metrics, [], ?RPC_MS),
+    maps:get(conflict_total, maps:get(counters, Metrics), 0).
+
+await_conflict(Node, _Before, 0) ->
+    error({stale_frame_not_processed, Node});
+await_conflict(Node, Before, Left) ->
+    case conflict_count(Node) > Before of
+        true ->
+            ok;
+        false ->
+            timer:sleep(?POLL_MS),
+            await_conflict(Node, Before, Left - 1)
+    end.
+
 s_dup(A, B) ->
     Key = {cache_v2_test_rep, d_dup1},
     ok = rpc:call(A, imboy_cache, put, [Key, v1, 120, replicate], ?RPC_MS),
@@ -216,14 +605,22 @@ s_race(A, B, C) ->
         done_b -> ok
     after 35000 -> error(b_timeout)
     end,
-    %% 并发双写收敛到确定性 winner（revision 全序）。即时读存在传播窗口
-    %% （r38/39 实证：A/B 各自先见己方值，假阴性），三节点有界等待到达
-    %% 同一终值后再断言。
-    VC0 = converge_any(C, Key),
-    true = lists:member(VC0, [{ok, from_a}, {ok, from_b}]),
-    ok = converge_to(A, Key, VC0, 300),
-    ok = converge_to(B, Key, VC0, 300),
-    ok = converge_to(C, Key, VC0, 300),
+    %% 两个本地写均已提交；取写入节点版本的最大值，而非 C 首次收到的中间值。
+    {ok, RevA} = rpc:call(A, ?MODULE, read_rev, [Key], ?RPC_MS),
+    {ok, RevB} = rpc:call(B, ?MODULE, read_rev, [Key], ?RPC_MS),
+    Winner = {_Counter, Origin} = erlang:max(RevA, RevB),
+    Value =
+        case Origin of
+            A -> from_a;
+            B -> from_b
+        end,
+    [
+        begin
+            ok = converge_to(N, Key, {ok, Value}, 300),
+            {ok, Winner} = rpc:call(N, ?MODULE, read_rev, [Key], ?RPC_MS)
+        end
+     || N <- [A, B, C]
+    ],
     ok.
 
 s_invalidate(A, B) ->
@@ -260,7 +657,7 @@ s_ttl(A, B) ->
 s_restart(A, C) ->
     Key = {cache_v2_test_rep, d_restart1},
     ok = rpc:call(A, imboy_cache, put, [Key, v1, 300, replicate], ?RPC_MS),
-    {ok, {{C1, _}, _, _, _}} = rpc:call(A, ?MODULE, read_rev_full, [Key], 5000),
+    {ok, {{C1, _}, _, _, _, _}} = rpc:call(A, ?MODULE, read_rev_full, [Key], 5000),
     OldBoot = rpc:call(C, imboy_cache_sync, node_boot, [], 5000),
     ok = rpc:call(C, ?MODULE, restart_sync, [], ?RPC_MS),
     NewBoot = rpc:call(C, imboy_cache_sync, node_boot, [], 5000),
@@ -275,7 +672,7 @@ s_restart(A, C) ->
     Key2 = {cache_v2_test_rep, d_restart2},
     PutR = rpc:call(C, imboy_cache, put, [Key2, from_c, 120, replicate], ?RPC_MS),
     ok = PutR,
-    {ok, {{C2, _}, _, _, _}} = rpc:call(C, ?MODULE, read_rev_full, [Key2], 5000),
+    {ok, {{C2, _}, _, _, _, _}} = rpc:call(C, ?MODULE, read_rev_full, [Key2], 5000),
     case C2 >= C1 of
         true ->
             ok;
@@ -287,11 +684,83 @@ s_restart(A, C) ->
 
 %% W4-03/04：C 重启丢失 replicate 数据后，经快照回填恢复；恢复期间
 %% peer 的新写入（delta）也不丢失。
+s_evicted_floor_snapshot(A, B, C) ->
+    Key = {cache_v2_test_rep, d_evicted_floor},
+    [ok = ensure_c9_ready(N) || N <- [A, B, C]],
+    ok = rpc:call(A, imboy_cache, put, [Key, older, 120, replicate], ?RPC_MS),
+    [{ok, older} = converge_get(N, Key, {ok, older}) || N <- [B, C]],
+    {ok, OldRev} = rpc:call(A, ?MODULE, read_rev, [Key], ?RPC_MS),
+    ok = rpc:call(A, imboy_cache, put, [Key, current, 120, replicate], ?RPC_MS),
+    [{ok, current} = converge_get(N, Key, {ok, current}) || N <- [B, C]],
+    {ok, NewRev} = rpc:call(A, ?MODULE, read_rev, [Key], ?RPC_MS),
+    {ok, Exp} = rpc:call(A, ?MODULE, read_expires, [Key], ?RPC_MS),
+    try
+        [ok = rpc:call(N, depcache, flush, [Key, imboy_cache], ?RPC_MS) || N <- [A, C]],
+        ok = rpc:call(B, ?MODULE, restart_sync, [], ?RPC_MS),
+        ready = recover_ready(B, heal_restart(B), 2),
+        {ok, NewRev} = rpc:call(B, ?MODULE, read_rev, [Key], ?RPC_MS),
+        {ok, Exp} = rpc:call(B, ?MODULE, read_expires, [Key], ?RPC_MS),
+        undefined = rpc:call(B, depcache, get, [Key, imboy_cache], ?RPC_MS),
+        Before = conflict_count(B),
+        ok = rpc:call(C, ?MODULE, inject_v2_set, [Key, stale, OldRev, A], ?RPC_MS),
+        ok = await_conflict(B, Before, 100),
+        {ok, NewRev} = rpc:call(B, ?MODULE, read_rev, [Key], ?RPC_MS),
+        {ok, Exp} = rpc:call(B, ?MODULE, read_expires, [Key], ?RPC_MS),
+        undefined = rpc:call(B, depcache, get, [Key, imboy_cache], ?RPC_MS),
+        undefined = rpc:call(B, imboy_cache, get, [Key], ?RPC_MS),
+        ready = rpc:call(B, imboy_cache_sync, status, [], ?RPC_MS)
+    after
+        ok = ensure_c9_ready(A),
+        ok = rpc:call(A, imboy_cache, put, [Key, restored, 120, replicate], ?RPC_MS)
+    end.
+
+s_large_snapshot(A, B, C) ->
+    ok = rpc:call(A, ?MODULE, bulk_snapshot, [write], ?RPC_MS),
+    true = converge_pred(fun() -> rpc:call(B, ?MODULE, bulk_snapshot, [verify], ?RPC_MS) =:= ok end),
+    ok = rpc:call(C, ?MODULE, restart_sync, [], ?RPC_MS),
+    ready = wait_status(C, 400),
+    ok = rpc:call(C, ?MODULE, bulk_snapshot, [verify], ?RPC_MS),
+    ok.
+
+bulk_snapshot(write) ->
+    [
+        ok = imboy_cache:put({cache_v2_test_rep, {large_snapshot, I}}, I, 300, replicate)
+     || I <- lists:seq(1, 2500)
+    ],
+    ok;
+bulk_snapshot(verify) ->
+    case
+        lists:all(
+            fun(I) -> imboy_cache:get({cache_v2_test_rep, {large_snapshot, I}}) =:= {ok, I} end,
+            lists:seq(1, 2500)
+        )
+    of
+        true -> ok;
+        false -> incomplete
+    end.
+
 s_snapshot(A, B, C) ->
+    [ready = wait_status(N, 300) || N <- [A, B, C]],
     K1 = {cache_v2_test_rep, d_snap1},
     K2 = {cache_v2_test_rep, d_snap2},
     ok = rpc:call(A, imboy_cache, put, [K1, snap_v1, 300, replicate], ?RPC_MS),
     ok = rpc:call(B, imboy_cache, put, [K2, snap_v2, 300, replicate], ?RPC_MS),
+    DeletedKey = {cache_v2_test_rep, d_snap_deleted},
+    ok = rpc:call(A, imboy_cache, put, [DeletedKey, removed, 300, replicate], ?RPC_MS),
+    {ok, removed} = converge_get(C, DeletedKey, {ok, removed}),
+    ok = rpc:call(A, imboy_cache, put_delete, [DeletedKey], ?RPC_MS),
+    {ok, {
+        DeletedRev = {_, _},
+        {DeletedBoot, DeletedSeq},
+        DeletedExp,
+        deleted,
+        DeletedEpoch
+    }} = rpc:call(
+        A, ?MODULE, read_rev_full, [DeletedKey], ?RPC_MS
+    ),
+    true = is_binary(DeletedBoot) andalso byte_size(DeletedBoot) =:= 16,
+    true = is_integer(DeletedSeq) andalso DeletedSeq > 0,
+    undefined = converge_get(C, DeletedKey, undefined),
     %% 两键在 C 上先收敛可见
     {ok, snap_v1} = converge_get(C, K1, {ok, snap_v1}),
     {ok, snap_v2} = converge_get(C, K2, {ok, snap_v2}),
@@ -312,9 +781,15 @@ s_snapshot(A, B, C) ->
                     {c_debug, rpc:call(C, ?MODULE, dump_debug, [], 5000)},
                     {a_rindex, rpc:call(A, ?MODULE, rindex_dump, [], 5000)}}
             )
-    end.
+    end,
+    %% 完整基础快照必须保留原来源 Boot/seq，不能降格为 unknown。
+    {ok, {DeletedRev, {DeletedBoot, DeletedSeq}, DeletedExp, deleted, DeletedEpoch}} =
+        rpc:call(C, ?MODULE, read_rev_full, [DeletedKey], ?RPC_MS),
+    undefined = rpc:call(C, imboy_cache, get, [DeletedKey], ?RPC_MS),
+    ok.
 
 s_overload(A) ->
+    ready = wait_status(A, 300),
     %% 受控注入：同一存活进程内挂起→压队列→put→恢复（suspend 所有权约束）
     {error, overloaded} = rpc:call(A, ?MODULE, overload_probe, [], ?RPC_MS),
     ok = rpc:call(A, ?MODULE, drain_sync_mailbox, [], ?RPC_MS),
@@ -389,7 +864,7 @@ f3_hard_crash_incarnation(A, B, C) ->
     Key = {cache_v2_test_rep, d_f3},
     ok = rpc:call(A, imboy_cache, put, [Key, f3_v, 300, replicate], ?RPC_MS),
     {ok, f3_v} = converge_get(B, Key, {ok, f3_v}),
-    {ok, {{C1, _}, _, _, _}} = rpc:call(A, ?MODULE, read_rev_full, [Key], 5000),
+    {ok, {{C1, _}, _, _, _, _}} = rpc:call(A, ?MODULE, read_rev_full, [Key], 5000),
     %% 硬崩
     catch rpc:call(C, erlang, halt, [0], 3000),
     timer:sleep(300),
@@ -398,7 +873,7 @@ f3_hard_crash_incarnation(A, B, C) ->
     {ok, f3_v} = converge_get(C2, Key, {ok, f3_v}),
     Key2 = {cache_v2_test_rep, d_f3b},
     ok = rpc:call(C2, imboy_cache, put, [Key2, f3_new, 120, replicate], ?RPC_MS),
-    {ok, {{C2c, _}, _, _, _}} = rpc:call(C2, ?MODULE, read_rev_full, [Key2], 5000),
+    {ok, {{C2c, _}, _, _, _, _}} = rpc:call(C2, ?MODULE, read_rev_full, [Key2], 5000),
     true = C2c >= C1 orelse erlang:error({ceiling_regressed, C1, C2c}),
     ok.
 
@@ -409,14 +884,17 @@ f4_bounded_sweep(A, B, C) ->
     Rev = {1, node()},
     %% 直接构造三类元数据行（公共 ETS，受控注入）：
     %% ktomb = 过期墓碑且已跨完整写窗（ExpiresAt+Tmax < now）→ 连 rindex 淘汰；
-    %% kexp  = 过期 live（值已随 depcache TTL 消失）→ 淘汰；
+    %% kexp  = 过期 live 已跨版本保护窗 → 淘汰；
+    %% kguard = 最近过期 live → 保留版本，不能接受更旧的长 TTL 写入；
     %% klive = 未过期 live → 保留。
     Rows = [
-        {{rev, ktomb}, {Rev, 1, NowMs - 721000, deleted}},
+        {{rev, ktomb}, {Rev, 1, NowMs - 721000, deleted, 0}},
         {{rindex, ktomb}, NowMs - 721000},
-        {{rev, kexp}, {Rev, 1, NowMs - 1000, live}},
-        {{rindex, kexp}, NowMs - 1000},
-        {{rev, klive}, {Rev, 1, NowMs + 60000, live}},
+        {{rev, kexp}, {Rev, 1, NowMs - 721000, live, 0}},
+        {{rindex, kexp}, NowMs - 721000},
+        {{rev, kguard}, {Rev, 1, NowMs - 1000, live, 0}},
+        {{rindex, kguard}, NowMs - 1000},
+        {{rev, klive}, {Rev, 1, NowMs + 60000, live, 0}},
         {{rindex, klive}, NowMs}
     ],
     ok = rpc:call(C, ?MODULE, meta_inject, [Rows], 5000),
@@ -425,6 +903,7 @@ f4_bounded_sweep(A, B, C) ->
     ok = rpc:call(C, ?MODULE, drain_sync_mailbox, [], ?RPC_MS),
     gone = rpc:call(C, ?MODULE, meta_probe, [ktomb], 5000),
     gone = rpc:call(C, ?MODULE, meta_probe, [kexp], 5000),
+    kept = rpc:call(C, ?MODULE, meta_probe, [kguard], 5000),
     kept = rpc:call(C, ?MODULE, meta_probe, [klive], 5000),
     ok.
 
@@ -433,6 +912,7 @@ f4_bounded_sweep(A, B, C) ->
 %% send_snapshot 的 valid_live_entry 必须跳过已被逐出（depcache 无值）的
 %% 条目：B 的内容与 C 的存活子集完全一致，被逐出的键不得复活。
 f5_early_evict_survivors_only(A, B, C) ->
+    [ready = wait_status(N, 300) || N <- [A, B, C]],
     %% 1) A 灌入 400 行 × 2000 元素列表（ets:info(memory) 按 cons cell 计 words，
     %% 每行约 4000 words ≈ 32KB；合计约 12MB ≫ C 的小容量 1MB——refc binary
     %% 不计入 ets 内存，此前 4KB binary 版本永不触发逐出）。值经 V2 大小校验
@@ -563,7 +1043,7 @@ count_retained(C, Keys, Val, Tries) ->
 
 start_cluster() ->
     %% 节点名只用安全字符；随机 cookie；loopback 分布接口
-    RandBin = integer_to_binary(erlang:unique_integer([positive]), 36),
+    RandBin = binary:encode_hex(crypto:strong_rand_bytes(6), lowercase),
     Rand = binary_to_atom(iolist_to_binary("c21" ++ binary_to_list(RandBin)), utf8),
     Main = binary_to_atom(iolist_to_binary("c21m" ++ binary_to_list(RandBin)), utf8),
     {ok, _} = net_kernel:start([Main, longnames]),
@@ -631,12 +1111,70 @@ start_cluster() ->
     true = rpc:call(A, net_kernel, connect_node, [C], ?RPC_MS),
     true = rpc:call(B, net_kernel, connect_node, [C], ?RPC_MS),
     ok = rpc:call(A, ?MODULE, init_on_peer, [], ?RPC_MS),
+    %% 首节点以默认空 cluster_nodes 的单节点配置建立权威，再加入其他节点。
+    %% 全节点同时 recovering 不再允许空 done 相互放行为 READY。
+    ready = wait_status(A, 400),
     ok = rpc:call(B, ?MODULE, init_on_peer, [], ?RPC_MS),
     ok = rpc:call(C, ?MODULE, init_on_peer, [], ?RPC_MS),
     ready = wait_status(A, 400),
     ready = wait_status(B, 400),
     ready = wait_status(C, 400),
-    {ok, [PA, PB, PC], {A, B, C}}.
+    try
+        case confirm_initial_identities([A, B, C]) of
+            true -> {ok, [PA, PB, PC], {A, B, C}};
+            false -> erlang:error(initial_identity_handshake_timeout)
+        end
+    catch
+        Class:Reason:Stack ->
+            stop_cluster([PA, PB, PC]),
+            erlang:raise(Class, Reason, Stack)
+    end.
+
+%% READY 是本节点恢复状态；健康流前置还须验证互相确认当前 Boot。
+%% 使用真实 reconcile/report，不注入身份、不重启、不清副本。
+confirm_initial_identities(Nodes) ->
+    ViewReady = converge_pred(fun() ->
+        lists:all(
+            fun(N) ->
+                lists:sort([Peer || {Peer, _, _} <- rpc:call(N, ?MODULE, sync_view, [], ?RPC_MS)]) =:=
+                    lists:sort(Nodes)
+            end,
+            Nodes
+        )
+    end),
+    case ViewReady of
+        false ->
+            false;
+        true ->
+            Boots = [
+                {N, element(2, rpc:call(N, imboy_cache_sync, node_boot, [], ?RPC_MS))}
+             || N <- Nodes
+            ],
+            [
+                reconcile_tick = rpc:call(
+                    N,
+                    erlang,
+                    send,
+                    [imboy_cache_sync, reconcile_tick],
+                    ?RPC_MS
+                )
+             || N <- Nodes
+            ],
+            converge_pred(fun() ->
+                lists:all(
+                    fun({N, Peer, Boot}) ->
+                        rpc:call(
+                            N,
+                            ets,
+                            lookup,
+                            [imboy_cache_meta, {peer_incarnation, Peer}],
+                            ?RPC_MS
+                        ) =:= [{{peer_incarnation, Peer}, Boot}]
+                    end,
+                    [{N, Peer, Boot} || N <- Nodes, {Peer, Boot} <- Boots, N =/= Peer]
+                )
+            end)
+    end.
 
 %% F3：C 硬崩后的同名新化身（同一 args/代码树，新 BootId）
 restart_c_hard(A, B) ->
@@ -752,37 +1290,38 @@ init_on_peer_small() ->
 
 read_rev(Key) ->
     case ets:lookup(imboy_cache_meta, {rev, Key}) of
-        [{{rev, Key}, {Rev, _C, _Exp, _St}}] -> {ok, Rev};
+        [{{rev, Key}, {Rev, _C, _Exp, _St, _Epoch}}] -> {ok, Rev};
         [] -> {error, not_found}
     end.
 
 read_expires(Key) ->
     case ets:lookup(imboy_cache_meta, {rev, Key}) of
-        [{{rev, Key}, {_Rev, _C, Exp, _St}}] -> {ok, Exp};
+        [{{rev, Key}, {_Rev, _C, Exp, _St, _Epoch}}] -> {ok, Exp};
         [] -> {error, not_found}
     end.
 
 read_rev_full(Key) ->
     case ets:lookup(imboy_cache_meta, {rev, Key}) of
-        [{{rev, Key}, {Rev, C, Exp, St}}] -> {ok, {Rev, C, Exp, St}};
+        [{{rev, Key}, {Rev, C, Exp, St, Epoch}}] -> {ok, {Rev, C, Exp, St, Epoch}};
         [] -> {error, not_found}
     end.
 
 %% 定向注入 V2 事件（模拟延迟/重复消息；OriginNode 避开接收端自环过滤）
 inject_v2_set(Key, Value, Rev, OriginNode) ->
-    inject_v2_set(Key, Value, Rev, OriginNode, 99999).
+    inject_v2_set(Key, Value, Rev, OriginNode, 0).
 
 %% C01 冻结协议字段版本（收口 C09）：epoch/hash 现场计算（同配置 peer 匹配）
 inject_v2_set(Key, Value, Rev, OriginNode, Seq) ->
-    %% 默认 <<0:128>>：快照回放伪装特例（frozen 第 2 节），化身层放行、
-    %% 不触发 changed 补偿（C9c 的 seq-gap 场景即用此语义）
-    inject_v2_set(Key, Value, Rev, OriginNode, Seq, <<0:128>>).
+    %% 延迟/重复事件沿用真实来源化身，不伪造新 Boot 或虚构高序列。
+    {OriginNode, Boot} = rpc:call(OriginNode, imboy_cache_sync, node_boot, [], ?RPC_MS),
+    inject_v2_set(Key, Value, Rev, OriginNode, Seq, Boot).
 
 %% 显式化身版本（收口 C09）：C9d 用真实 peer 化身驱动 changed 补偿
 inject_v2_set(Key, Value, Rev, OriginNode, Seq, BootId) ->
     Event = #{
         protocol => 2,
         operation => set,
+        namespace => imboy_cache_policy:namespace_of(Key),
         key => Key,
         value => Value,
         expires_at_ms => erlang:system_time(millisecond) + 120000,
@@ -1025,34 +1564,18 @@ converge_pred_loop(Pred, Deadline) ->
             end
     end.
 
-converge_any(Node, Key) ->
-    Deadline = erlang:monotonic_time(millisecond) + ?CONVERGE_MS,
-    converge_any_loop(Node, Key, Deadline).
-
-converge_any_loop(Node, Key, Deadline) ->
-    V = rpc:call(Node, imboy_cache, get, [Key], 5000),
-    case V of
-        {ok, _} ->
-            V;
-        _ ->
-            case erlang:monotonic_time(millisecond) >= Deadline of
-                true ->
-                    undefined;
-                false ->
-                    timer:sleep(?POLL_MS),
-                    converge_any_loop(Node, Key, Deadline)
-            end
-    end.
-
-wait_status(_Node, 0) ->
-    timeout;
 wait_status(Node, N) ->
+    wait_status(Node, ready, N).
+
+wait_status(_Node, _Expected, 0) ->
+    timeout;
+wait_status(Node, Expected, N) ->
     case rpc:call(Node, imboy_cache_sync, status, [], 5000) of
-        ready ->
-            ready;
+        Expected ->
+            Expected;
         _ ->
             timer:sleep(100),
-            wait_status(Node, N - 1)
+            wait_status(Node, Expected, N - 1)
     end.
 
 %% ===================================================================
@@ -1140,14 +1663,20 @@ c9a_stale_epoch(A, B) ->
     Key = {cache_v2_test_rep, c9a_epoch},
     ok = rpc:call(A, imboy_cache, put, [Key, v1, 120, replicate], ?RPC_MS),
     {ok, v1} = converge_get(B, Key, {ok, v1}),
+    Before = rpc:call(B, ?MODULE, read_rev_full, [Key], 5000),
     %% B 推进 epoch 至 1：A（epoch=0）的后续事件对 B 是 stale_epoch
     1 = rpc:call(B, imboy_cache_sync_proto, bump_epoch, [], ?RPC_MS),
-    ok = rpc:call(A, imboy_cache, put, [Key, v2, 120, replicate], ?RPC_MS),
-    timer:sleep(1000),
-    %% B 值未被旧 epoch 事件修改
-    {ok, v1} = rpc:call(B, imboy_cache, get, [Key], ?RPC_MS),
-    %% 恢复 epoch（不污染后续场景）
-    true = rpc:call(B, ets, insert, [imboy_cache_meta, {sync_epoch, 0}], ?RPC_MS),
+    try
+        ok = rpc:call(A, imboy_cache, put, [Key, v2, 120, replicate], ?RPC_MS),
+        timer:sleep(1000),
+        %% 旧代值不可公开读取；版本和底层值均未被旧事件修改。
+        undefined = rpc:call(B, imboy_cache, get, [Key], ?RPC_MS),
+        Before = rpc:call(B, ?MODULE, read_rev_full, [Key], 5000),
+        {ok, v1} = rpc:call(B, depcache, get, [Key, imboy_cache], ?RPC_MS)
+    after
+        %% 本场景失败仍恢复 epoch，避免污染后续场景。
+        true = rpc:call(B, ets, insert, [imboy_cache_meta, {sync_epoch, 0}], ?RPC_MS)
+    end,
     ok.
 
 %% C02：B 侧 registry 配置漂移（hash 不一致）后，A 的事件被 B 拒绝。
@@ -1191,14 +1720,28 @@ c9b_hash_mismatch(A, B) ->
 c9c_gap_compensation(A, B) ->
     ok = ensure_c9_ready(A),
     ok = ensure_c9_ready(B),
-    FKey = {cache_v2_test_rep, c9c_gap},
-    G0 = rpc:call(B, imboy_cache_sync, generation, [FKey], ?RPC_MS),
-    %% A 注入 seq 跳号事件（1 → 5）：B 检测缺口并补偿 fenced 域
-    ok = rpc:call(A, ?MODULE, inject_v2_set, [FKey, <<"gap">>, {9001, A}, A, 1], ?RPC_MS),
-    timer:sleep(500),
-    ok = rpc:call(A, ?MODULE, inject_v2_set, [FKey, <<"gap2">>, {9002, A}, A, 5], ?RPC_MS),
-    G1 = converge_generation(B, FKey, G0),
+    Key = {cache_v2_test_rep, c9c_gap},
+    ok = rpc:call(A, imboy_cache, put, [Key, <<"initial">>, 120, replicate], ?RPC_MS),
+    {ok, <<"initial">>} = converge_get(B, Key, {ok, <<"initial">>}),
+    G0 = rpc:call(B, imboy_cache_sync, generation, [Key], ?RPC_MS),
+    Members = rpc:call(B, imboy_cache_sync, syn_scope_members, [], ?RPC_MS),
+    Others = lists:usort([node(P) || P <- Members, node(P) =/= B]),
+    Cookie = erlang:get_cookie(),
+    [true = rpc:call(B, erlang, set_cookie, [N, gap_partition], ?RPC_MS) || N <- Others],
+    try
+        [rpc:call(B, erlang, disconnect_node, [N], ?RPC_MS) || N <- Others],
+        ok = rpc:call(A, imboy_cache, put, [Key, <<"missed">>, 120, replicate], ?RPC_MS),
+        {ok, <<"initial">>} = rpc:call(B, imboy_cache, get, [Key], ?RPC_MS)
+    after
+        [true = rpc:call(B, erlang, set_cookie, [N, Cookie], ?RPC_MS) || N <- Others],
+        [true = rpc:call(B, net_kernel, connect_node, [N], ?RPC_MS) || N <- Others]
+    end,
+    %% 新事件暴露中间缺口；A 保留权威新值，不向所有节点注入虚构来源。
+    ok = rpc:call(A, imboy_cache, put, [Key, <<"latest">>, 120, replicate], ?RPC_MS),
+    G1 = converge_generation(B, Key, G0),
     true = G1 > G0,
+    {ok, <<"latest">>} = converge_get(B, Key, {ok, <<"latest">>}),
+    ready = rpc:call(A, imboy_cache_sync, status, [], ?RPC_MS),
     ok.
 
 %% C05：peer 化身变化（A 的 sync 重启）触发 B 的 key 级 fenced 补偿。
@@ -1292,7 +1835,7 @@ c9e_partition_reconnect(A, B, C) ->
     %% A 检测并补偿 fenced key。G0 必须在事件前读——inject 的 rpc 返回时
     %% A 可能已完成应用与补偿（r35 实证 GA==G0 假阴性）
     G0 = rpc:call(A, imboy_cache_sync, generation, [FKey], ?RPC_MS),
-    ok = rpc:call(B, ?MODULE, inject_v2_set, [FKey, <<"authoritative">>, {9201, B}, B, 1], ?RPC_MS),
+    ok = rpc:call(B, imboy_cache, put, [FKey, <<"authoritative">>, 120, replicate], ?RPC_MS),
     GA = converge_generation(A, FKey, G0),
     true = GA > G0,
     %% A 在 deadline 内返回权威值：补偿 flush 旧值 + 事件 set 新值
@@ -1300,9 +1843,83 @@ c9e_partition_reconnect(A, B, C) ->
     <<"authoritative">> = converge_value(A, FKey),
     ok.
 
+%% 同化身、无后续事件：真实分区丢失最后一次失效，水位校对使多 Key 回源。
+c9g_tail_checkpoint(A, B, C) ->
+    tail_checkpoint(A, B, C, manual).
+
+tail_checkpoint(A, B, C, Mode) ->
+    ok = ensure_c9_ready(A),
+    ok = ensure_c9_ready(B),
+    Keys = [{cache_v2_test, {tail_a, Mode}}, {cache_v2_test, {tail_b, Mode}}],
+    [old = rpc:call(A, imboy_cache, memo, [fun() -> old end, K, 120], ?RPC_MS) || K <- Keys],
+    G0 = rpc:call(A, imboy_cache_sync, generation, [hd(Keys)], ?RPC_MS),
+    Cookie = erlang:get_cookie(),
+    Blocked = 'synthetic_tail_partition',
+    [true = rpc:call(A, erlang, set_cookie, [N, Blocked], ?RPC_MS) || N <- [B, C]],
+    try
+        [rpc:call(A, erlang, disconnect_node, [N], ?RPC_MS) || N <- [B, C]],
+        ok = rpc:call(B, imboy_cache, invalidate, [hd(Keys)], ?RPC_MS),
+        %% RPC 屏障确认发送完成；分区中接收方没有推进代次。
+        pong = rpc:call(B, gen_server, call, [imboy_cache_sync, ping_ok], ?RPC_MS),
+        G0 = rpc:call(A, imboy_cache_sync, generation, [hd(Keys)], ?RPC_MS)
+    after
+        [true = rpc:call(A, erlang, set_cookie, [N, Cookie], ?RPC_MS) || N <- [B, C]],
+        [true = rpc:call(A, net_kernel, connect_node, [N], ?RPC_MS) || N <- [B, C]]
+    end,
+    G1 = tail_checkpoint_wait(A, hd(Keys), G0, Mode),
+    case G1 > G0 of
+        true -> ok;
+        false -> error({tail_checkpoint_not_advanced, G0, G1, tail_checkpoint_state([A, B, C])})
+    end,
+    [new = rpc:call(A, imboy_cache, memo, [fun() -> new end, K, 120], ?RPC_MS) || K <- Keys],
+    ok.
+
+tail_checkpoint_wait(A, Key, G0, manual) ->
+    APid = rpc:call(A, erlang, whereis, [imboy_cache_sync], ?RPC_MS),
+    reconcile_tick = rpc:call(A, erlang, send, [APid, reconcile_tick], ?RPC_MS),
+    converge_generation(A, Key, G0);
+tail_checkpoint_wait(A, Key, G0, periodic) ->
+    %% 不发校对消息、不新增业务写入；同时要求实际校对计数增长。
+    Before = reconcile_count(A),
+    await_periodic_checkpoint(A, Key, G0, Before, 750).
+
+reconcile_count(Node) ->
+    Metrics = rpc:call(Node, elib_metric, get_all_metrics, [], ?RPC_MS),
+    maps:get(reconcile_total, maps:get(counters, Metrics), 0).
+
+await_periodic_checkpoint(_Node, _Key, G0, _Before, 0) ->
+    G0;
+await_periodic_checkpoint(Node, Key, G0, Before, Left) ->
+    G = rpc:call(Node, imboy_cache_sync, generation, [Key], ?RPC_MS),
+    case G > G0 andalso reconcile_count(Node) > Before of
+        true ->
+            G;
+        false ->
+            timer:sleep(100),
+            await_periodic_checkpoint(Node, Key, G0, Before, Left - 1)
+    end.
+
+%% 失败现场只取控制状态，不复制缓存值或整张元表。
+tail_checkpoint_state(Nodes) ->
+    [
+        {N, rpc:call(N, imboy_cache_sync, status, [], ?RPC_MS),
+            rpc:call(N, ?MODULE, sync_view, [], ?RPC_MS), [
+                {K, rpc:call(N, ets, lookup, [imboy_cache_meta, K], ?RPC_MS)}
+             || K <- [sync_origin_seq, sync_epoch] ++ [{peer_incarnation, P} || P <- Nodes]
+            ]}
+     || N <- Nodes
+    ].
+
 %% C03：Nmax 上限满时新 replicate 写被拒（fail-closed）。
 c9f_nmax(A) ->
     ok = ensure_c9_ready(A),
+    ok = rpc:call(
+        A,
+        imboy_cache,
+        put,
+        [{cache_v2_test_rep, capacity_precondition}, v, 120, replicate],
+        ?RPC_MS
+    ),
     OldCfg = rpc:call(A, application, get_env, [imboy, cache_replication, #{}], ?RPC_MS),
     rpc:call(
         A,

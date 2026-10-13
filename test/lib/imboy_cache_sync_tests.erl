@@ -9,13 +9,44 @@
 -include("eunit_setup.hrl").
 -include("cache.hrl").
 -include("chat.hrl").
+-include("imboy_cache_sync_state.hrl").
 
 %% V2 事件直发 sync 进程（绕过 syn，等价远端消息送达；自环过滤用 origin≠node()）
 send_v2(Event) ->
+    %% 本套件测试已确认来源的应用；未知来源准入由专属回归覆盖。
+    %% 用真实报告处理逻辑建立合成身份，不将此 fixture 当成员握手验收。
+    confirm_fixture_source(Event),
     Sync = whereis(imboy_cache_sync),
     Sync ! {cache_sync, Event},
     %% 串行化：ping sync 确保消息已处理
     pong = gen_server:call(imboy_cache_sync, ping_ok, 5000),
+    ok.
+
+confirm_fixture_source(#{origin_node := Peer, origin_boot_id := Boot} = E) ->
+    case
+        imboy_cache_sync_proto:validate(E) =:= ok andalso
+            maps:get(config_hash, E) =:= imboy_cache_sync_proto:config_hash() andalso
+            maps:get(epoch, E) =:= imboy_cache_sync_proto:epoch() andalso
+            Peer =/= node() andalso imboy_cache_sync_proto:check_incarnation(Peer, Boot) =/= ok
+    of
+        true ->
+            sys:replace_state(imboy_cache_sync, fun(S) ->
+                imboy_cache_sync_recover:handle_version_report(
+                    Peer,
+                    0,
+                    maps:get(epoch, E),
+                    maps:get(config_hash, E),
+                    maps:get(registry_hash, E),
+                    Boot,
+                    false,
+                    self(),
+                    S
+                )
+            end);
+        false ->
+            ok
+    end;
+confirm_fixture_source(_) ->
     ok.
 
 v2_set(Key, Value, Counter, OriginNode, Seq, BootId, ExpiresAt) ->
@@ -26,6 +57,7 @@ base_v2(Op, Key, Value, Rev, Seq, OriginNode, BootId, ExpiresAt) ->
     #{
         protocol => 2,
         operation => Op,
+        namespace => imboy_cache_policy:namespace_of(Key),
         key => Key,
         value => Value,
         expires_at_ms => ExpiresAt,
@@ -111,7 +143,7 @@ v2_equal_revision_is_idempotent_test_() ->
                     <<"same_counter_higher_node">>,
                     10,
                     OtherNode,
-                    4,
+                    1,
                     remote_boot(),
                     future_ms(120)
                 )
@@ -125,20 +157,25 @@ v2_equal_revision_is_idempotent_test_() ->
 
 v2_out_of_order_events_converge_test_() ->
     ?TEST_WITH_APP(fun() ->
-        ready = wait_ready(100),
-        setup_replicate_env(),
-        try
-            Key = {cache_v2_test_rep, order1},
-            Boot = remote_boot(),
-            %% 乱序送达：v3 → v1 → v2，最终收敛到 v3（W3-09）
-            ok = send_v2(v2_set(Key, <<"v3">>, 30, 'remote@x', 3, Boot, future_ms(120))),
-            ok = send_v2(v2_set(Key, <<"v1">>, 10, 'remote@x', 1, Boot, future_ms(120))),
-            ok = send_v2(v2_set(Key, <<"v2">>, 20, 'remote@x', 2, Boot, future_ms(120))),
-            ?assertEqual({ok, <<"v3">>}, imboy_cache:get(Key))
-        after
-            teardown_replicate_env(),
-            imboy_cache:put_delete({cache_v2_test_rep, order1})
-        end
+        with_recovery_fixture(fun() ->
+            ready = wait_ready(100),
+            setup_replicate_env(),
+            try
+                Key = {cache_v2_test_rep, order1},
+                Boot = remote_boot(),
+                %% 乱序送达：v3 → v1 → v2，最终收敛到 v3（W3-09）
+                ok = send_v2(v2_set(Key, <<"v3">>, 30, 'remote@x', 3, Boot, future_ms(120))),
+                ok = send_v2(v2_set(Key, <<"v1">>, 10, 'remote@x', 1, Boot, future_ms(120))),
+                ok = send_v2(v2_set(Key, <<"v2">>, 20, 'remote@x', 2, Boot, future_ms(120))),
+                ?assertEqual({30, 'remote@x'}, imboy_cache_sync:current_rev(Key)),
+                ?assertEqual({ok, <<"v3">>}, depcache:get(Key, imboy_cache)),
+                ?assertNotEqual(ready, imboy_cache_sync:status()),
+                ?assertEqual(undefined, imboy_cache:get(Key))
+            after
+                teardown_replicate_env(),
+                imboy_cache:put_delete({cache_v2_test_rep, order1})
+            end
+        end)
     end).
 
 v2_delete_tombstone_blocks_resurrection_test_() ->
@@ -195,7 +232,7 @@ v2_set_near_expiry_applies_shrunk_ttl_test_() ->
             ok = send_v2(v2_set(Key, <<"short">>, 10, 'remote@x', 1, Boot, ExpiresAt)),
             ?assertEqual({ok, <<"short">>}, imboy_cache:get(Key)),
             %% 墓碑元数据的 expires_at 与事件一致（未延长）
-            [{{rev, Key}, {_Rev, _C, StoredExp, live}}] =
+            [{{rev, Key}, {_Rev, _C, StoredExp, live, _}}] =
                 ets:lookup(imboy_cache_meta, {rev, Key}),
             ?assertEqual(ExpiresAt, StoredExp)
         after
@@ -216,7 +253,7 @@ v2_self_emitted_event_is_not_reapplied_test_() ->
             Key = {cache_v2_test_rep, selfloop1},
             %% 本地 publish：同步等 ACK 后值与 revision 就位
             ?assertEqual(ok, imboy_cache:put(Key, <<"local_set">>, 120, replicate)),
-            [{{rev, Key}, {Rev0, _C0, _E0, live}}] =
+            [{{rev, Key}, {Rev0, _C0, _E0, live, _}}] =
                 ets:lookup(imboy_cache_meta, {rev, Key}),
             %% syn 组回流自环事件（origin_node=node() + 本 boot_id）：
             %% 通过 ets 读 boot_id 构造完整自环事件
@@ -235,7 +272,7 @@ v2_self_emitted_event_is_not_reapplied_test_() ->
             ok = send_v2(SelfEvent),
             %% 值未被自环事件覆盖（W3-10）；revision 未被 999 污染
             ?assertEqual({ok, <<"local_set">>}, imboy_cache:get(Key)),
-            [{{rev, Key}, {Rev1, _C1, _E1, live}}] =
+            [{{rev, Key}, {Rev1, _C1, _E1, live, _}}] =
                 ets:lookup(imboy_cache_meta, {rev, Key}),
             ?assertEqual(Rev0, Rev1)
         after
@@ -314,23 +351,43 @@ v2_malformed_events_are_rejected_test_() ->
 
 v2_seq_gap_is_detected_test_() ->
     ?TEST_WITH_APP(fun() ->
-        ready = wait_ready(100),
-        setup_replicate_env(),
-        try
-            Origin = 'gap_source@x',
-            %% 先建立 seq 基线 5
-            Key = {cache_v2_test_rep, gap1},
-            Boot = remote_boot(),
-            ok = send_v2(v2_set(Key, <<"v">>, 10, Origin, 5, Boot, future_ms(120))),
-            [{_, 5}] = ets:lookup(imboy_cache_meta, {seq, Origin}),
-            %% 跳号（5 → 8）：缺口被记录
-            ok = send_v2(v2_set(Key, <<"v2">>, 20, Origin, 8, Boot, future_ms(120))),
-            [{_, 8}] = ets:lookup(imboy_cache_meta, {seq, Origin})
-        after
-            teardown_replicate_env(),
-            imboy_cache:put_delete({cache_v2_test_rep, gap1})
-        end
+        with_recovery_fixture(fun() ->
+            ready = wait_ready(100),
+            setup_replicate_env(),
+            try
+                Origin = 'gap_source@x',
+                %% 先建立 seq 基线 1
+                Key = {cache_v2_test_rep, gap1},
+                Boot = remote_boot(),
+                ok = send_v2(v2_set(Key, <<"v">>, 10, Origin, 1, Boot, future_ms(120))),
+                [{_, 1}] = ets:lookup(imboy_cache_meta, {seq, {Origin, Boot}}),
+                %% 跳号（1 → 4）：记录缺口并隐藏待校验副本
+                ok = send_v2(v2_set(Key, <<"v2">>, 20, Origin, 4, Boot, future_ms(120))),
+                [{_, 4}] = ets:lookup(imboy_cache_meta, {seq, {Origin, Boot}}),
+                ?assertNotEqual(ready, imboy_cache_sync:status()),
+                ?assertEqual(undefined, imboy_cache:get(Key))
+            after
+                teardown_replicate_env(),
+                imboy_cache:put_delete({cache_v2_test_rep, gap1})
+            end
+        end)
     end).
+
+%% 合成来源无法提供恢复 authority；断言完成后恢复本 fixture 的初始状态。
+with_recovery_fixture(Fun) ->
+    Original = sys:get_state(imboy_cache_sync),
+    try
+        Fun()
+    after
+        Current = sys:get_state(imboy_cache_sync),
+        case Current#state.recovery_timer of
+            Ref when is_reference(Ref) -> erlang:cancel_timer(Ref);
+            _ -> ok
+        end,
+        ok = imboy_cache_sync_apply:flush_replicas(),
+        sys:replace_state(imboy_cache_sync, fun(_) -> Original end),
+        ets:insert(imboy_cache_meta, {status, Original#state.status})
+    end.
 
 %% ===================================================================
 %% invalidate 事件（远端失效 → fenced gen 推进）
@@ -394,7 +451,7 @@ v2_invalidate_dual_publishes_legacy_flush_test_() ->
                         {dual_publish_missed, imboy_cache_policy:protocol(), Msgs}
                     )
             end,
-            %% legacy 模式保持单通道：仅 {flush, Key}，无 v2 信封
+            %% legacy 保留旧 flush，并发布无值的来源序列收据；无 v2 map 信封。
             meck:reset(syn),
             application:set_env(imboy, cache_sync_protocol, legacy),
             ok = imboy_cache_sync:invalidate(Key),
@@ -403,8 +460,18 @@ v2_invalidate_dual_publishes_legacy_flush_test_() ->
              || {_P, {syn, publish, [_S, _G, {cache_sync, M}]}, _R} <- meck:history(syn)
             ],
             case {Msgs2, [M || M <- Msgs2, is_map(M)]} of
-                {[M], []} ->
-                    {flush, Key} = M,
+                {
+                    [
+                        {flush, Key},
+                        {legacy_invalidation_seq, Source, Boot, Seq, Hash, Registry, Key}
+                    ],
+                    []
+                } ->
+                    ?assertEqual(node(), Source),
+                    ?assertEqual(16, byte_size(Boot)),
+                    ?assert(Seq > 0),
+                    ?assertEqual(imboy_cache_sync_proto:config_hash(), Hash),
+                    ?assertEqual(imboy_cache_sync_proto:registry_hash(), Registry),
                     ok;
                 _ ->
                     erlang:error(
@@ -488,13 +555,15 @@ bounded_sweep_removes_expired_meta_and_rindex_test_() ->
         Rev = {1, node()},
         Rows = [
             %% 过期墓碑（已跨完整写窗）→ rev + rindex 一并淘汰
-            {{rev, f_sweep_tomb}, {Rev, 1, NowMs - 721000, deleted}},
+            {{rev, f_sweep_tomb}, {Rev, 1, NowMs - 721000, deleted, 0}},
             {{rindex, f_sweep_tomb}, NowMs - 721000},
-            %% 过期 live（值已随 depcache TTL 消失）→ 淘汰
-            {{rev, f_sweep_exp}, {Rev, 1, NowMs - 1000, live}},
-            {{rindex, f_sweep_exp}, NowMs - 1000},
+            %% 过期 live 已跨保护窗 → 淘汰；最近过期版本仍须保留
+            {{rev, f_sweep_exp}, {Rev, 1, NowMs - 721000, live, 0}},
+            {{rindex, f_sweep_exp}, NowMs - 721000},
+            {{rev, f_sweep_guard}, {Rev, 1, NowMs - 1000, live, 0}},
+            {{rindex, f_sweep_guard}, NowMs - 1000},
             %% 未过期 live → 保留
-            {{rev, f_sweep_live}, {Rev, 1, NowMs + 60000, live}},
+            {{rev, f_sweep_live}, {Rev, 1, NowMs + 60000, live, 0}},
             {{rindex, f_sweep_live}, NowMs}
         ],
         ets:insert(imboy_cache_meta, Rows),
@@ -504,11 +573,15 @@ bounded_sweep_removes_expired_meta_and_rindex_test_() ->
         ?assertNot(ets:member(imboy_cache_meta, {rindex, f_sweep_tomb})),
         ?assertNot(ets:member(imboy_cache_meta, {rev, f_sweep_exp})),
         ?assertNot(ets:member(imboy_cache_meta, {rindex, f_sweep_exp})),
+        ?assert(ets:member(imboy_cache_meta, {rev, f_sweep_guard})),
+        ?assert(ets:member(imboy_cache_meta, {rindex, f_sweep_guard})),
         ?assert(ets:member(imboy_cache_meta, {rev, f_sweep_live})),
         ?assert(ets:member(imboy_cache_meta, {rindex, f_sweep_live})),
         %% 清理注入行，不污染后续套件
         ets:delete(imboy_cache_meta, {rev, f_sweep_live}),
         ets:delete(imboy_cache_meta, {rindex, f_sweep_live}),
+        ets:delete(imboy_cache_meta, {rev, f_sweep_guard}),
+        ets:delete(imboy_cache_meta, {rindex, f_sweep_guard}),
         ok
     end).
 
@@ -656,7 +729,7 @@ c02_incarnation_registration_and_grace_test_() ->
                 imboy_cache_meta,
                 {{peer_incarnation, Origin}, NewBoot}
             ),
-            %% OldBoot 不在宽限集合 → 视为新化身：接受 + 注册 + 补偿信号
+            %% fixture 先用报告确认 OldBoot，再验证已确认新化身的应用与补偿。
             Ev = v2_set(Key, <<"new_incarnation">>, 10, Origin, 1, OldBoot, future_ms(120)),
             ok = send_v2(Ev),
             ?assertEqual({ok, <<"new_incarnation">>}, imboy_cache:get(Key)),
@@ -672,7 +745,7 @@ c02_incarnation_registration_and_grace_test_() ->
             %% 版本 2 < 已应用版本 10 → stale_revision 拒绝，值不变
             ?assertEqual({ok, <<"new_incarnation">>}, imboy_cache:get(Key)),
             %% 已知化身（当前 OldBoot）事件正常应用
-            Ev3 = v2_set(Key, <<"fresh">>, 20, Origin, 3, OldBoot, future_ms(120)),
+            Ev3 = v2_set(Key, <<"fresh">>, 20, Origin, 2, OldBoot, future_ms(120)),
             ok = send_v2(Ev3),
             ?assertEqual({ok, <<"fresh">>}, imboy_cache:get(Key)),
             ets:delete(imboy_cache_meta, {peer_incarnation, Origin}),
@@ -698,7 +771,7 @@ c02_incarnation_change_triggers_fenced_compensation_test_() ->
             Ev = v2_set(Key, <<"v">>, 10, Origin, 1, remote_boot(), future_ms(120)),
             ok = send_v2(Ev),
             %% 化身变化再次发事件
-            Ev2 = v2_set(Key, <<"v2">>, 20, Origin, 2, remote_boot(), future_ms(120)),
+            Ev2 = v2_set(Key, <<"v2">>, 20, Origin, 1, remote_boot(), future_ms(120)),
             ok = send_v2(Ev2),
             %% fenced generation 被推进（有界清理，不依赖 TTL）
             ?assert(imboy_cache_sync:generation(Key) > G0),
@@ -726,6 +799,7 @@ cleanup_meta_rows() ->
             (element(1, K) =:= rindex orelse element(1, K) =:= rev)
     ],
     true = ets:insert(imboy_cache_meta, {rindex_count, 0}),
+    ok = imboy_cache_sync_apply:recalibrate_rindex_count(),
     ok.
 
 c03_nmax_full_rejects_new_replicate_test_() ->
@@ -760,6 +834,7 @@ c03_tmax_full_triggers_controlled_cold_recovery_test_() ->
         setup_replicate_env(),
         OldCfg = application:get_env(imboy, cache_replication, #{}),
         ok = cleanup_meta_rows(),
+        OriginalState = sys:get_state(imboy_cache_sync),
         try
             %% t_max=1：两次不同键 delete → 墓碑满 → 受控冷恢复（epoch 推进 +
             %% 受管副本清空），删除请求 fail-closed 拒绝
@@ -777,6 +852,7 @@ c03_tmax_full_triggers_controlled_cold_recovery_test_() ->
             ?assertEqual({error, tombstone_budget_exceeded}, imboy_cache:put_delete(K2)),
             %% epoch 已推进、受管副本（rindex）已清空
             ?assert(imboy_cache_sync_proto:epoch() > 0),
+            ?assertNotEqual(ready, imboy_cache_sync:status()),
             ?assertEqual([], [
                 K
              || [K] <- ets:match(
@@ -787,7 +863,15 @@ c03_tmax_full_triggers_controlled_cold_recovery_test_() ->
         after
             application:set_env(imboy, cache_replication, OldCfg),
             teardown_replicate_env(),
-            true = ets:insert(imboy_cache_meta, {sync_epoch, 0})
+            %% 只恢复测试 fixture；产品冷恢复状态已在断言前真实执行。
+            CurrentState = sys:get_state(imboy_cache_sync),
+            Ref = CurrentState#state.recovery_timer,
+            case is_reference(Ref) of
+                true -> erlang:cancel_timer(Ref);
+                false -> ok
+            end,
+            sys:replace_state(imboy_cache_sync, fun(_) -> OriginalState end),
+            true = ets:insert(imboy_cache_meta, [{sync_epoch, 0}, {status, ready}])
         end
     end).
 
@@ -813,75 +897,74 @@ c03_budget_digest_is_stable_and_config_sensitive_test_() ->
 %% 命名（尾下划线）会让 eunit 把返回的 ok 当"非测试结果"报 cancelled
 %% （全量 r2 实证：单跑 t= 因计数路径不同未暴露）
 c04_round_requires_done_and_pages_test() ->
-    %% round token 由 new_round 自生成（快照回合身份），测试从状态取出使用
-    Deadline = erlang:system_time(millisecond) + 60000,
-    St0 = imboy_cache_sync_snapshot:new_round(0, Deadline),
-    Round = maps:get(round, St0),
-    Peer = 'snap_peer@x',
-    St1 = imboy_cache_sync_snapshot:expect_peer(St0, Peer),
-    %% 仅空 done 不闭合（C04 核心：三条件）
-    Entries = [{{rep_ns, k1}, <<"v1">>, future_ms(60), {1, Peer}}],
-    Digest = imboy_cache_sync_snapshot:page_digest(Round, 1, Entries),
-    {ok, St2} = imboy_cache_sync_snapshot:handle_page(
-        Peer, Round, 1, Entries, Digest, true, St1
-    ),
-    ?assertNot(imboy_cache_sync_snapshot:round_complete(St2)),
-    %% done 到齐但 expected_more 悬挂（页未收完）→ 不闭合
-    {ok, St3} = imboy_cache_sync_snapshot:handle_done(Peer, Round, 42, St2),
-    ?assertNot(imboy_cache_sync_snapshot:round_complete(St3)),
-    %% 未知 round 的 done 不推进
-    {ok, St4} = imboy_cache_sync_snapshot:handle_done(
-        Peer, crypto:strong_rand_bytes(12), 99, St3
-    ),
-    ?assertNot(imboy_cache_sync_snapshot:round_complete(St4)),
-    ?assertEqual(
-        42,
-        maps:get(
-            watermark,
-            maps:get(Peer, maps:get(peers, St4))
+    with_snapshot_authorization(fun() ->
+        %% round token 由 new_round 自生成（快照回合身份），测试从状态取出使用
+        Deadline = erlang:system_time(millisecond) + 60000,
+        St0 = imboy_cache_sync_snapshot:new_round(0, Deadline),
+        Round = maps:get(round, St0),
+        Peer = 'snap_peer@x',
+        St1 = snapshot_authority(St0, Peer),
+        %% 仅空 done 不闭合（C04 核心：三条件）
+        Entries = [{{rep_ns, k1}, <<"v1">>, future_ms(60), {1, Peer}}],
+        Digest = imboy_cache_sync_snapshot:page_digest(Round, 1, Entries),
+        {ok, St2} = imboy_cache_sync_snapshot:handle_page(
+            Peer, Round, 1, Entries, Digest, true, St1
+        ),
+        ?assertNot(imboy_cache_sync_snapshot:round_complete(St2)),
+        %% done 到齐但 expected_more 悬挂（页未收完）→ 不闭合
+        {abort, incomplete_snapshot, St3} = imboy_cache_sync_snapshot:handle_done(
+            Peer, Round, 42, 2, St2
+        ),
+        ?assertNot(imboy_cache_sync_snapshot:round_complete(St3)),
+        %% 未知 round 的 done 不推进
+        {ok, St4} = imboy_cache_source_cut_tests:done(
+            Peer, crypto:strong_rand_bytes(12), 99, 2, St3
+        ),
+        ?assertNot(imboy_cache_sync_snapshot:round_complete(St4)),
+        ?assertEqual(
+            0,
+            maps:get(
+                watermark,
+                maps:get(Peer, maps:get(peers, St4))
+            )
+        ),
+        ?assertEqual(1, imboy_cache_sync_snapshot:applied_count(St4)),
+        %% 正常时序（协议保证）：页全收齐 → done → 闭合；页收齐但无 done 不闭合
+        StA0 = snapshot_authority(
+            imboy_cache_sync_snapshot:new_round(0, erlang:system_time(millisecond) + 60000),
+            Peer
+        ),
+        RoundA = maps:get(round, StA0),
+        PageA1 = [{{rep_ns, a1}, <<"a1">>, future_ms(60), {1, Peer}}],
+        {ok, StA1} = imboy_cache_sync_snapshot:handle_page(
+            Peer,
+            RoundA,
+            1,
+            PageA1,
+            imboy_cache_sync_snapshot:page_digest(RoundA, 1, PageA1),
+            true,
+            StA0
+        ),
+        ?assertNot(imboy_cache_sync_snapshot:round_complete(StA1)),
+        PageA2 = [{{rep_ns, a2}, <<"a2">>, future_ms(60), {2, Peer}}],
+        {ok, StA2} = imboy_cache_sync_snapshot:handle_page(
+            Peer,
+            RoundA,
+            2,
+            PageA2,
+            imboy_cache_sync_snapshot:page_digest(RoundA, 2, PageA2),
+            false,
+            StA1
+        ),
+        ?assertNot(imboy_cache_sync_snapshot:round_complete(StA2)),
+        {ok, StA3} = imboy_cache_source_cut_tests:done(Peer, RoundA, 42, 2, StA2),
+        ?assert(imboy_cache_sync_snapshot:round_complete(StA3)),
+        ?assertEqual(2, imboy_cache_sync_snapshot:applied_count(StA3)),
+        %% 已完整闭合后的迟到页不再应用。
+        {ok, StA3} = imboy_cache_sync_snapshot:handle_page(
+            Peer, RoundA, 3, PageA2, 0, false, StA3
         )
-    ),
-    %% done 之后到达的页 = 迟到重发（发送端保证页先于 done 且同发送进程
-    %% 保序），幂等丢弃；expected_more 悬挂保持——该 peer 按失败处理，
-    %% 有界重试新回合，不允许据此闭合
-    Entries2 = [{{rep_ns, k2}, <<"v2">>, future_ms(60), {2, Peer}}],
-    Digest2 = imboy_cache_sync_snapshot:page_digest(Round, 2, Entries2),
-    {ok, St5} = imboy_cache_sync_snapshot:handle_page(
-        Peer, Round, 2, Entries2, Digest2, false, St4
-    ),
-    ?assertNot(imboy_cache_sync_snapshot:round_complete(St5)),
-    ?assertEqual(1, imboy_cache_sync_snapshot:applied_count(St5)),
-    %% 正常时序（协议保证）：页全收齐 → done → 闭合；页收齐但无 done 不闭合
-    StA0 = imboy_cache_sync_snapshot:expect_peer(
-        imboy_cache_sync_snapshot:new_round(0, erlang:system_time(millisecond) + 60000),
-        Peer
-    ),
-    RoundA = maps:get(round, StA0),
-    PageA1 = [{{rep_ns, a1}, <<"a1">>, future_ms(60), {1, Peer}}],
-    {ok, StA1} = imboy_cache_sync_snapshot:handle_page(
-        Peer,
-        RoundA,
-        1,
-        PageA1,
-        imboy_cache_sync_snapshot:page_digest(RoundA, 1, PageA1),
-        true,
-        StA0
-    ),
-    ?assertNot(imboy_cache_sync_snapshot:round_complete(StA1)),
-    PageA2 = [{{rep_ns, a2}, <<"a2">>, future_ms(60), {2, Peer}}],
-    {ok, StA2} = imboy_cache_sync_snapshot:handle_page(
-        Peer,
-        RoundA,
-        2,
-        PageA2,
-        imboy_cache_sync_snapshot:page_digest(RoundA, 2, PageA2),
-        false,
-        StA1
-    ),
-    ?assertNot(imboy_cache_sync_snapshot:round_complete(StA2)),
-    {ok, StA3} = imboy_cache_sync_snapshot:handle_done(Peer, RoundA, 42, StA2),
-    ?assert(imboy_cache_sync_snapshot:round_complete(StA3)),
-    ?assertEqual(2, imboy_cache_sync_snapshot:applied_count(StA3)).
+    end).
 
 %% 普通 _test/0（非 generator）+ round token 从 new_round 状态取
 %%（与 c04_round_requires_done_and_pages 同款修复；预生成 token 与
@@ -893,7 +976,7 @@ c04_page_gap_and_digest_mismatch_abort_test() ->
     ),
     Round = maps:get(round, St0),
     Peer = 'snap_peer2@x',
-    St1 = imboy_cache_sync_snapshot:expect_peer(St0, Peer),
+    St1 = snapshot_authority(St0, Peer),
     %% 页号跳号（1 → 3）→ abort page_gap
     Entries = [{{rep_ns, k}, <<"v">>, future_ms(60), {1, Peer}}],
     Digest = imboy_cache_sync_snapshot:page_digest(Round, 3, Entries),
@@ -901,7 +984,7 @@ c04_page_gap_and_digest_mismatch_abort_test() ->
         Peer, Round, 3, Entries, Digest, false, St1
     ),
     %% digest 篡改 → abort page_digest_mismatch
-    St1b = imboy_cache_sync_snapshot:expect_peer(
+    St1b = snapshot_authority(
         imboy_cache_sync_snapshot:new_round(
             0,
             erlang:system_time(millisecond) + 60000
@@ -925,7 +1008,7 @@ c04_buffer_overflow_abort_test() ->
         ),
         Peer = 'snap_peer3@x',
         Round = maps:get(round, St0),
-        St1 = imboy_cache_sync_snapshot:expect_peer(St0, Peer),
+        St1 = snapshot_authority(St0, Peer),
         %% 三条目页超过 Bmax=2 → abort buffer_overflow
         Entries = [
             {{rep_ns, a}, <<"v">>, future_ms(60), {1, Peer}},
@@ -946,31 +1029,33 @@ c04_buffer_overflow_abort_test() ->
 
 c05_seq_gap_compensates_fenced_generation_test_() ->
     ?TEST_WITH_APP(fun() ->
-        ready = wait_ready(50),
-        OldF = application:get_env(imboy, cache_fenced_namespaces, undefined),
-        %% fenced 域必须同时是授权 replicate 域（cache_v2_test 不在 registry，
-        %% 事件 not_authorized 被拒、seq-gap 永不触发——全量 r3/单跑实证；
-        %% 与 dcheck C9d 同款教训）
-        application:set_env(imboy, cache_fenced_namespaces, [cache_v2_test_rep]),
-        setup_replicate_env(),
-        try
-            Origin = 'gap_peer@x',
-            Key = {cache_v2_test_rep, c05_gap_key},
-            G0 = imboy_cache_sync:generation(Key),
-            %% seq 1 → 3 跳号：缺口检测 + fenced namespace 补偿（gen 推进）
-            Boot = remote_boot(),
-            ok = send_v2(v2_set(Key, <<"v1">>, 1, Origin, 1, Boot, future_ms(120))),
-            G1 = imboy_cache_sync:generation(Key),
-            ok = send_v2(v2_set(Key, <<"v3">>, 3, Origin, 3, Boot, future_ms(120))),
-            ?assert(imboy_cache_sync:generation(Key) > G1),
-            ?assert(G1 >= G0)
-        after
-            teardown_replicate_env(),
-            case OldF of
-                undefined -> application:unset_env(imboy, cache_fenced_namespaces);
-                _ -> application:set_env(imboy, cache_fenced_namespaces, OldF)
+        with_recovery_fixture(fun() ->
+            ready = wait_ready(50),
+            OldF = application:get_env(imboy, cache_fenced_namespaces, undefined),
+            %% fenced 域必须同时是授权 replicate 域（cache_v2_test 不在 registry，
+            %% 事件 not_authorized 被拒、seq-gap 永不触发——全量 r3/单跑实证；
+            %% 与 dcheck C9d 同款教训）
+            application:set_env(imboy, cache_fenced_namespaces, [cache_v2_test_rep]),
+            setup_replicate_env(),
+            try
+                Origin = 'gap_peer@x',
+                Key = {cache_v2_test_rep, c05_gap_key},
+                G0 = imboy_cache_sync:generation(Key),
+                %% seq 1 → 3 跳号：缺口检测 + fenced namespace 补偿（gen 推进）
+                Boot = remote_boot(),
+                ok = send_v2(v2_set(Key, <<"v1">>, 1, Origin, 1, Boot, future_ms(120))),
+                G1 = imboy_cache_sync:generation(Key),
+                ok = send_v2(v2_set(Key, <<"v3">>, 3, Origin, 3, Boot, future_ms(120))),
+                ?assert(imboy_cache_sync:generation(Key) > G1),
+                ?assert(G1 >= G0)
+            after
+                teardown_replicate_env(),
+                case OldF of
+                    undefined -> application:unset_env(imboy, cache_fenced_namespaces);
+                    _ -> application:set_env(imboy, cache_fenced_namespaces, OldF)
+                end
             end
-        end
+        end)
     end).
 
 %% ===================================================================
@@ -995,3 +1080,33 @@ wait_ready(N) ->
             timer:sleep(100),
             wait_ready(N - 1)
     end.
+
+snapshot_authority(State, Peer) ->
+    requested_peer(
+        imboy_cache_sync_snapshot:expect_peer(State, Peer), Peer
+    ).
+
+with_snapshot_authorization(Test) ->
+    Names = [cache_replication, cache_registry_overrides],
+    Previous = [{N, application:get_env(imboy, N)} || N <- Names],
+    Cfg = application:get_env(imboy, cache_replication, #{}),
+    Overrides = application:get_env(imboy, cache_registry_overrides, #{}),
+    try
+        application:set_env(imboy, cache_registry_overrides, Overrides#{
+            rep_ns => {replicate, false}
+        }),
+        application:set_env(imboy, cache_replication, Cfg#{whitelist => [rep_ns]}),
+        Test()
+    after
+        lists:foreach(
+            fun
+                ({N, undefined}) -> application:unset_env(imboy, N);
+                ({N, {ok, Value}}) -> application:set_env(imboy, N, Value)
+            end,
+            Previous
+        )
+    end.
+
+requested_peer(Round, Peer) ->
+    Authorized = imboy_cache_sync_snapshot:authorize_peer(Round, Peer),
+    imboy_cache_sync_snapshot:mark_requested(Authorized, Peer).

@@ -143,7 +143,11 @@ join_group(Conn, JoinMode, Uid, Gid, OptData) ->
             ok = open_history_generation(Conn, Gid, Uid),
             case update_statistics(Conn, Gid) of
                 {ok, UidSum} ->
-                    group_ds:join(Uid, Gid),
+                    ok = elib_pg:after_commit(
+                        Conn,
+                        {group_members, Gid},
+                        fun() -> group_ds:join(Uid, Gid) end
+                    ),
                     {ok, UidSum};
                 {error, Reason} ->
                     {error, Reason}

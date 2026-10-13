@@ -5,6 +5,20 @@
 > 消费方：`scripts/cache_v21_mixed_dcheck.erl`（W5-05 混合组网 + C10 M7-M10 场景）
 > 机制依据：`c10-mixed-plan.md` 第 1 节（旧节点 = worktree + `make app` 独立构建树）
 
+## 当前重建材料（2026-10-13）
+
+原 `.ai/c10-legacy-worktree` 已不存在。冻结提交仍可读取，已在仓外
+`/private/var/folders/8m/wbjj0qmn4ml0mgn56wm56j2m0000gn/T/imboy-c10-legacy-jgg4llal`
+从 `3a01829d32c94bdb15f80150445d0c1b71b88a8b` 归档重建，独立 `make -j1 app`
+退出码为 0，生成 904 个 BEAM。依赖使用现有依赖的独立副本，清除了副本中的
+旧构建缓存；共享依赖未修改。新旧 `include/deps.mk` 相同，运行时关键依赖
+depcache/syn 位于 2.0.0/3.4.2 tag；依赖复制不等于重新从上游验证全部依赖。
+
+`imboy_cache`、`imboy_cache_sync`、`elib_metric` 与依赖定义的源码 Git blob
+均匹配冻结提交；旧缓存/同步/指标 BEAM 存在，V2 proto/snapshot BEAM 不存在。
+日志为仓外 `/tmp/cache-c10-legacy-rebuild.log`。这只恢复构建前置，当前候选
+C10 混合矩阵、两轮验证和 C12 证据绑定尚未完成。以下保留原构建的历史记录。
+
 ## 1. Worktree
 
 | 项 | 值 |

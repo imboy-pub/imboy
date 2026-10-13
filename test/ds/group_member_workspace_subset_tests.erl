@@ -21,6 +21,10 @@ join_group_subset_test_() ->
     ?WITH_MECKS(
         [
             {elib_pg, [
+                {'after_commit', 3, fun(fake_conn, {group_members, Gid}, Action) ->
+                    put(t_gm_after_commit, {Gid, Action}),
+                    ok
+                end},
                 {'query', 3, fun(_Conn, Sql, Params) -> subset_query(Sql, Params) end},
                 {'execute', 3, fun(_Conn, _, _) -> {ok, 1} end},
                 {'update', 5, fun(_Conn, _Tb, _Data, _Where, _Params) -> {ok, 1} end}
@@ -49,6 +53,10 @@ join_group_subset_body() ->
             group_member_ds:join_group(fake_conn, <<"invite">>, ?UID, ?GID, #{})
         ),
         ?assertEqual(?UID, erase(t_gm_added), "member row not written"),
+        ?assertEqual(undefined, get(t_gm_cache_join)),
+        {?GID, CommitAction} = erase(t_gm_after_commit),
+        ok = CommitAction(),
+        ?assertEqual({?UID, ?GID}, erase(t_gm_cache_join)),
 
         %% non workspace member join aborts tx (no member row)
         ?assertThrow(

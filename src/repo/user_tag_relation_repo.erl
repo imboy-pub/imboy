@@ -298,7 +298,7 @@ tag_subtitle(2, TagId, _Count) ->
 % user_tag_relation_repo:flush_subtitle()
 -spec flush_subtitle(any()) -> ok.
 flush_subtitle(TagId) ->
-    Key = elib_cnv:implode("_", ["tag_subtitle_3", TagId]),
+    Key = elib_cnv:implode("_", ["tag_subtitle_2", TagId]),
     imboy_cache:invalidate(Key).
 
 %% ===================================================================

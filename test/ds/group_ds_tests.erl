@@ -191,62 +191,62 @@ check_avatar_returns_empty_map_for_non_map_input_test_() ->
         ?assertEqual(#{}, group_ds:check_avatar(<<"not-a-map">>))
     end).
 
-join_adds_uid_to_cached_member_list_test_() ->
-    ?WITH_MECKS(
-        [
-            {imboy_cache, [
-                {'get', 1, fun({group, 10}) -> {ok, [2, 3]} end},
-                {'set', 3, fun({group, 10}, [1, 2, 3], Ttl) ->
-                    ?assert(is_integer(Ttl)),
-                    ok
-                end}
-            ]}
-        ],
-        fun() ->
-            ?assertEqual(ok, group_ds:join(1, 10))
-        end
-    ).
-
-join_is_idempotent_when_uid_already_exists_test_() ->
+join_invalidates_without_reading_or_overwriting_members_test_() ->
     ?WITH_MECK(
         imboy_cache,
         [
-            {'get', 1, fun({group, 11}) -> {ok, [1, 2, 3]} end}
+            {'invalidate', 1, fun({group, 10}) -> ok end},
+            {'get', 1, fun(_) -> error(unexpected_cache_read) end},
+            {'set', 3, fun(_, _, _) -> error(unexpected_cache_write) end}
         ],
         fun() ->
-            ?assertEqual(ok, group_ds:join(1, 11))
+            ?assertEqual(ok, group_ds:join(1, 10)),
+            ?assertEqual(ok, group_ds:join(2, 10)),
+            ?assertEqual(2, meck:num_calls(imboy_cache, invalidate, [{group, 10}]))
         end
     ).
 
-leave_removes_uid_from_cache_test_() ->
-    ?WITH_MECKS(
+leave_invalidates_without_reading_or_overwriting_members_test_() ->
+    ?WITH_MECK(
+        imboy_cache,
         [
-            {imboy_cache, [
-                {'get', 1, fun({group, 12}) -> {ok, [1, 2, 3]} end},
-                {'set', 3, fun({group, 12}, [2, 3], 3600) ->
-                    ok
-                end}
-            ]}
+            {'invalidate', 1, fun({group, 12}) -> ok end},
+            {'get', 1, fun(_) -> error(unexpected_cache_read) end},
+            {'set', 3, fun(_, _, _) -> error(unexpected_cache_write) end}
         ],
         fun() ->
-            ?assertEqual(ok, group_ds:leave(1, 12))
+            ?assertEqual(ok, group_ds:leave(1, 12)),
+            ?assertEqual(ok, group_ds:leave(1, 12)),
+            ?assertEqual(2, meck:num_calls(imboy_cache, invalidate, [{group, 12}]))
         end
     ).
 
-leave_is_noop_when_group_has_no_members_test_() ->
-    ?WITH_MECKS(
+concurrent_membership_changes_only_invalidate_test_() ->
+    ?WITH_MECK(
+        imboy_cache,
         [
-            {imboy_cache, [
-                {'get', 1, fun({group, 13}) -> undefined end}
-            ]},
-            {group_member_repo, [
-                {'list_by_gid', 2, fun(13, <<"user_id">>) ->
-                    {ok, []}
-                end}
-            ]}
+            {'invalidate', 1, fun({group, 14}) -> ok end},
+            {'get', 1, fun(_) -> error(unexpected_cache_read) end},
+            {'set', 3, fun(_, _, _) -> error(unexpected_cache_write) end}
         ],
         fun() ->
-            ?assertEqual(ok, group_ds:leave(1, 13))
+            Parent = self(),
+            Pids = [
+                spawn(fun() ->
+                    Parent ! {self(), group_ds:join(Uid, 14), group_ds:leave(Uid, 14)}
+                end)
+             || Uid <- lists:seq(1, 20)
+            ],
+            lists:foreach(
+                fun(Pid) ->
+                    receive
+                        {Pid, ok, ok} -> ok
+                    after 2000 -> error(membership_timeout)
+                    end
+                end,
+                Pids
+            ),
+            ?assertEqual(40, meck:num_calls(imboy_cache, invalidate, [{group, 14}]))
         end
     ).
 

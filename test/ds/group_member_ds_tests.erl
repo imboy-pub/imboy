@@ -86,6 +86,10 @@ join_group_success_test_() ->
                 end}
             ]},
             {elib_pg, [
+                {'after_commit', 3, fun(_Conn, {group_members, 1}, Action) ->
+                    put(gm_commit_action, Action),
+                    ok
+                end},
                 %% T5：join_group 前置 workspace 子集校验的 scope 查询——
                 %% 返回空行（个人群/无 workspace 归属）→ 校验放行，
                 %% 保持本测试"普通群入群成功"的原有语义。
@@ -142,7 +146,11 @@ join_group_success_test_() ->
         fun() ->
             ?assertEqual(
                 {ok, 100}, group_member_ds:join_group(self(), <<"invite">>, 100, 1, #{role => 1})
-            )
+            ),
+            ?assertEqual(0, meck:num_calls(group_ds, join, 2)),
+            Action = erase(gm_commit_action),
+            ok = Action(),
+            ?assertEqual(1, meck:num_calls(group_ds, join, 2))
         end
     ).
 

@@ -1,44 +1,34 @@
 %% @doc 缓存同步快照层（V2.2.1 收口 C03/C04）
 %%
-%% 职责（从 imboy_cache_sync 拆出）：
-%% - 快照回合（Round token，C01 第 4 节）：请求/分页发送/页摘要/终帧水位；
-%% - 发送端预算：每页 <= Pmax 项且 <= Pmax_bytes，不预构造全部 payload；
-%% - 接收端校验：Round 匹配、页号连续、digest 复算、Bmax 缓冲预算；
-%% - READY 闭合判定（C04 核心）：全部预期 peer done(Round) + 水位并入 +
-%%   无缺页，三者同时成立；不允许仅凭空 done 推进 READY。
-%%
-%% 回合状态为 plain map（由 imboy_cache_sync gen_server 持有）：
-%% #{round => binary(), deadline_ms => integer(),
-%%   peers => #{node() => PeerSt}, rounds_used => non_neg_integer()}
-%% PeerSt = #{pages => sets(PageNo), applied => non_neg_integer(),
-%%            done => boolean(), watermark => non_neg_integer(),
-%%            expected_more => boolean()}
 -module(imboy_cache_sync_snapshot).
 -moduledoc "分页快照：回合、页摘要、缓冲预算与 READY 闭合判定。".
 
 -include("cache.hrl").
 
 -define(META_TABLE, imboy_cache_meta).
+%% 非空 tuple 条目列表的 ETF 开销：version + LIST_EXT + length + NIL_EXT。
+-define(PAGE_LIST_BYTES, 7).
 
 -export([
     new_round/2,
     round_id/0,
     expect_peer/2,
+    authorize_peer/2,
+    mark_requested/2,
+    exclude_peer/2,
     %% 发送端
     send_snapshot/2,
+    continue_snapshot/3,
+    sweep_senders/0,
     %% 接收端（返回 {ok, RoundSt} | {abort, Reason, RoundSt}）
     handle_page/7,
-    handle_done/4,
-    %% 判定
+    handle_done/5,
     round_complete/1,
     round_failed_peers/1,
     applied_count/1,
+    peer_revision_ceiling/2,
     page_digest/3
 ]).
-
-%% ===================================================================
-%% 回合状态
-%% ===================================================================
 
 %% @doc 新建快照回合：Round token；deadline 由调用方传入（恢复总预算
 %% Dmax 的剩余值，回合自身不另立预算——总恢复期限唯一）。
@@ -48,6 +38,8 @@ new_round(RoundsUsed, DeadlineMs) ->
         round => round_id(),
         deadline_ms => DeadlineMs,
         peers => #{},
+        applied_items => 0,
+        applied_bytes => 0,
         rounds_used => RoundsUsed
     }.
 
@@ -64,148 +56,322 @@ expect_peer(RoundSt, Peer) ->
             RoundSt;
         false ->
             PeerSt = #{
-                pages => #{},
+                pages => 0,
                 applied => 0,
                 done => false,
                 watermark => 0,
-                expected_more => false
+                max_revision_counter => 0,
+                expected_more => false,
+                authority => false,
+                reported => false,
+                requested => false
             },
             RoundSt#{peers := Peers#{Peer => PeerSt}}
     end.
 
--spec deadline_expired(map()) -> boolean().
+authorize_peer(RoundSt, Peer) ->
+    State1 = record_peer_report(RoundSt, Peer, true),
+    Peers = maps:get(peers, State1),
+    case maps:find(Peer, Peers) of
+        {ok, PeerSt} ->
+            Boot =
+                case ets:lookup(?META_TABLE, {peer_incarnation, Peer}) of
+                    [{_, Id}] -> Id;
+                    [] -> undefined
+                end,
+            Epoch =
+                case ets:lookup(?META_TABLE, {peer_epoch, Peer}) of
+                    [{_, Value}] -> Value;
+                    [] -> imboy_cache_sync_proto:epoch()
+                end,
+            State1#{peers := Peers#{Peer := PeerSt#{boot => Boot, source_epoch => Epoch}}};
+        error ->
+            State1
+    end.
+
+mark_requested(RoundSt, Peer) ->
+    Peers = maps:get(peers, RoundSt),
+    PeerSt = maps:get(Peer, Peers),
+    RoundSt#{peers := Peers#{Peer := PeerSt#{requested := true}}}.
+
+exclude_peer(RoundSt, Peer) ->
+    record_peer_report(RoundSt, Peer, false).
+
+record_peer_report(RoundSt, Peer, Authority) ->
+    Peers = maps:get(peers, RoundSt),
+    case maps:find(Peer, Peers) of
+        {ok, #{authority := true}} when Authority =:= false -> RoundSt;
+        {ok, PeerSt} ->
+            RoundSt#{peers := Peers#{Peer := PeerSt#{authority := Authority, reported := true}}};
+        error ->
+            RoundSt
+    end.
+
 deadline_expired(#{deadline_ms := DeadlineMs}) ->
     erlang:system_time(millisecond) >= DeadlineMs.
 
-%% ===================================================================
 %% 发送端（ready peer 应答快照请求）
-%% ===================================================================
 
-%% @doc 分页发送快照（C03：不预构造全部 payload，按页组装逐页发送）。
-%% 每页 <= Pmax 项且累计 external_size <= Pmax_bytes；页摘要
-%% phash2({Round, PageNo, Keys, Revs})；终帧 done 携带本节点版本水位。
-%% 发送预算：发送进程单轮枚举 META 键（元数据级），值在组装页时逐条
-%% 从 depcache 读取；depcache 逐出/过期导致的取值失败直接跳过该条目
-%% （soft-state 缺失，接收端 miss 安全，5.6）。
-%% 帧格式：页/终帧均携带 FromNode（接收端按节点路由回合状态）。
+%% @doc 按项数/字节双预算分页；值在组装时读取，墓碑保留绝对期限。
 -spec send_snapshot(pid(), binary()) -> ok.
-send_snapshot(RequestorPid, Round) ->
-    NowMs = erlang:system_time(millisecond),
-    Keys = live_keys(NowMs),
-    Pmax = imboy_cache_policy:p_max(),
-    PmaxBytes = imboy_cache_policy:p_max_bytes(),
-    Watermark = watermark_counter(),
-    {Total, _} = send_pages(RequestorPid, Round, Keys, Pmax, PmaxBytes, 1, 0, 0),
-    RequestorPid ! {cache_snapshot_done, node(), Round, Watermark, Total},
-    ok.
+send_snapshot(Requestor, Round) ->
+    sweep_senders(),
+    %% 一个接收进程只保留一个回合；新回合撤销其旧游标。
+    ets:delete(?META_TABLE, {snapshot_sender, Requestor}),
+    Cursor = #{
+        round => Round,
+        next => 1,
+        watermark => imboy_cache_sync_proto:snapshot_watermark_counter(),
+        journal_start => imboy_cache_sync_apply:journal_position(),
+        boot => imboy_cache_sync:node_boot(),
+        epoch => imboy_cache_sync_proto:epoch(),
+        config_hash => imboy_cache_policy:config_hash(),
+        registry_hash => imboy_cache_sync_proto:registry_hash(),
+        application_coverage => imboy_cache_sync_proto:application_coverage_candidate(),
+        keys => snapshot_keys(erlang:system_time(millisecond)),
+        deadline => erlang:system_time(millisecond) + imboy_cache_policy:d_max_ms()
+    },
+    send_cursor(Requestor, Cursor).
 
--spec send_pages(
-    pid(),
-    binary(),
-    [term()],
-    pos_integer(),
-    pos_integer(),
-    pos_integer(),
-    non_neg_integer(),
-    non_neg_integer()
-) ->
-    {non_neg_integer(), non_neg_integer()}.
-send_pages(RequestorPid, Round, Keys, Pmax, PmaxBytes, PageNo, Count, Bytes) ->
-    case take_page(Keys, Pmax, PmaxBytes, []) of
-        {[], Rest} ->
-            _ = Rest,
-            {PageNo - 1, 0};
-        {Page, Rest} ->
-            PageBytes = page_bytes(Page),
-            Digest = page_digest(Round, PageNo, Page),
-            HasMore = Rest =/= [],
-            RequestorPid ! {cache_snapshot_page, node(), Round, PageNo, Page, Digest, HasMore},
-            send_pages(
-                RequestorPid,
-                Round,
-                Rest,
-                Pmax,
-                PmaxBytes,
-                PageNo + 1,
-                Count + length(Page),
-                Bytes + PageBytes
-            )
+continue_snapshot(Requestor, Round, PageNo) ->
+    sweep_senders(),
+    case ets:lookup(?META_TABLE, {snapshot_sender, Requestor}) of
+        [{_, #{round := Round, next := PageNo} = Cursor}] ->
+            case
+                maps:get(epoch, Cursor) =:= imboy_cache_sync_proto:epoch() andalso
+                    ets:lookup(?META_TABLE, status) =:= [{status, ready}] andalso
+                    maps:get(boot, Cursor) =:= imboy_cache_sync:node_boot() andalso
+                    maps:get(config_hash, Cursor) =:= imboy_cache_policy:config_hash() andalso
+                    maps:get(registry_hash, Cursor) =:= imboy_cache_sync_proto:registry_hash() andalso
+                    imboy_cache_sync_apply:journal_covers(maps:get(journal_start, Cursor))
+            of
+                true ->
+                    send_cursor(Requestor, Cursor);
+                false ->
+                    ets:delete(?META_TABLE, {snapshot_sender, Requestor}),
+                    ok = imboy_cache_sync_apply:journal_refresh(),
+                    Reason =
+                        case
+                            imboy_cache_sync_apply:journal_covers(maps:get(journal_start, Cursor))
+                        of
+                            true -> source_changed;
+                            false -> journal_window_exceeded
+                        end,
+                    Requestor ! {cache_snapshot_abort, node(), Round, Reason},
+                    ok
+            end;
+        _ ->
+            ok
     end.
 
-%% @doc 取一页：项数与字节双预算（先到先满；单条超页预算仍单独成页，
-%% 因 MaxValue=32KiB << Pmax_bytes=4MiB，正常不可能触发）。
-%% C09 修复：旧守卫 `length(Acc) >= Pmax; Acc =/= []` 的第二个析取项恒真
-%% （只要页内已有 1 条就切页），快照退化为每页 1 条——400 行数据膨胀为
-%% 400 页，恢复节点单轮 RECOVER_ROUND_MS 内无法收完，回合永不闭合
-%% （F5 三节点实证：30 页/轮 × 35 轮全部超时重开）。
+send_cursor(Requestor, #{round := Round, next := PageNo, keys := Keys} = Cursor) ->
+    try
+        Pmax = erlang:min(imboy_cache_policy:p_max(), imboy_cache_policy:b_max()),
+        Pbytes = erlang:min(imboy_cache_policy:p_max_bytes(), imboy_cache_policy:b_max_bytes()),
+        Prepared = maps:get(prepared, Cursor, undefined),
+        {Page, Rest} =
+            case Prepared of
+                undefined -> take_page(Keys, Pmax, Pbytes, []);
+                _ -> Prepared
+            end,
+        {NextKeys, JournalStart} =
+            case Rest of
+                [] -> imboy_cache_sync_apply:journal_keys_after(maps:get(journal_start, Cursor));
+                _ -> {Rest, maps:get(journal_start, Cursor)}
+            end,
+        Next = take_page(NextKeys, Pmax, Pbytes, []),
+        {NextPage, _} = Next,
+        More = NextPage =/= [],
+        Cursor1 = Cursor#{
+            keys := [],
+            prepared => Next,
+            journal_start := JournalStart,
+            next := PageNo + 1,
+            watermark := erlang:max(
+                maps:get(watermark, Cursor), imboy_cache_sync_proto:snapshot_watermark_counter()
+            )
+        },
+        ok = retain_sender(Requestor, Cursor1, More),
+        emit_page(Requestor, Round, PageNo, Page, More, Cursor1)
+    catch
+        error:Reason ->
+            ets:delete(?META_TABLE, {snapshot_sender, Requestor}),
+            ok = imboy_cache_sync_apply:journal_refresh(),
+            Requestor ! {cache_snapshot_abort, node(), Round, sender_error(Reason)},
+            ok
+    end.
+
+emit_page(Requestor, Round, PageNo, Page, More, Cursor) ->
+    ok = ensure_unexpired_page(Page),
+    case Page of
+        [] ->
+            ok;
+        _ ->
+            Requestor !
+                {cache_snapshot_page, node(), Round, PageNo, Page, page_digest(Round, PageNo, Page),
+                    More}
+    end,
+    case More of
+        true ->
+            ok;
+        false ->
+            imboy_cache_sync_proto:send_snapshot_completion(Requestor, Round, PageNo, Page, Cursor)
+    end.
+
+sender_error(snapshot_entry_too_large) -> oversized_entry;
+sender_error(Reason) -> Reason.
+
+ensure_unexpired_page(Page) ->
+    ensure_page_deadline(Page, fun imboy_cache_sync_proto:snapshot_entry_deadline/1).
+
+ensure_page_deadline(Page, Deadline) ->
+    Now = erlang:system_time(millisecond),
+    lists:foreach(
+        fun(E) ->
+            Exp = Deadline(E),
+            case Exp > Now of
+                true -> ok;
+                false -> error(prepared_page_expired)
+            end
+        end,
+        Page
+    ).
+
+retain_sender(Requestor, _Cursor, false) ->
+    ets:delete(?META_TABLE, {snapshot_sender, Requestor}),
+    ok = imboy_cache_sync_apply:journal_refresh(),
+    ok;
+retain_sender(Requestor, Cursor, true) ->
+    Others = ets:match_object(?META_TABLE, {{snapshot_sender, '_'}, '_'}),
+    OtherRows = [R || R = {{_, Pid}, _} <- Others, Pid =/= Requestor],
+    Row = {{snapshot_sender, Requestor}, Cursor},
+    Bytes = lists:sum([erlang:external_size(R) || R <- [Row | OtherRows]]),
+    case length(OtherRows) < 8 andalso Bytes =< imboy_cache_policy:b_max_bytes() of
+        true ->
+            ets:insert(?META_TABLE, Row),
+            ok = imboy_cache_sync_apply:journal_refresh(),
+            ok;
+        false ->
+            error(sender_budget_exceeded)
+    end.
+
+sweep_senders() ->
+    Now = erlang:system_time(millisecond),
+    [
+        ets:delete(?META_TABLE, K)
+     || {K, #{deadline := Deadline}} <-
+            ets:match_object(?META_TABLE, {{snapshot_sender, '_'}, '_'}),
+        Deadline =< Now
+    ],
+    ok = imboy_cache_sync_apply:journal_refresh(),
+    ok.
+
+%% @doc 取一页：项数与完整条目字节双预算；单条超限显式中止回合。
 -spec take_page([term()], pos_integer(), pos_integer(), [term()]) ->
     {[term()], [term()]}.
-take_page(Keys, Pmax, _PmaxBytes, Acc) when length(Acc) >= Pmax ->
+take_page(Keys, Pmax, PmaxBytes, []) ->
+    take_page(Keys, Pmax, PmaxBytes, [], 0, 0).
+
+take_page(Keys, Pmax, _PmaxBytes, Acc, Count, _Bytes) when Count >= Pmax ->
     {lists:reverse(Acc), Keys};
-take_page([K | Rest], Pmax, PmaxBytes, Acc) ->
+take_page([K | Rest], Pmax, PmaxBytes, Acc, Count, Bytes) ->
     case page_entry(K) of
         skip ->
-            take_page(Rest, Pmax, PmaxBytes, Acc);
-        Entry = {_Key, _Value, _ExpiresAt, _Rev} ->
-            case Acc =/= [] andalso entry_sum_bytes(Entry, Acc) > PmaxBytes of
+            take_page(Rest, Pmax, PmaxBytes, Acc, Count, Bytes);
+        Entry ->
+            %% 每条 external_size 含独立 version 字节，嵌入列表时去掉该字节。
+            EntryBytes = entry_bytes(Entry) - 1,
+            case EntryBytes + ?PAGE_LIST_BYTES =< PmaxBytes of
+                true -> ok;
+                false -> error(snapshot_entry_too_large)
+            end,
+            NextBytes = Bytes + EntryBytes,
+            case Count > 0 andalso NextBytes + ?PAGE_LIST_BYTES > PmaxBytes of
                 true ->
                     {lists:reverse(Acc), [K | Rest]};
                 false ->
-                    take_page(Rest, Pmax, PmaxBytes, [Entry | Acc])
+                    take_page(Rest, Pmax, PmaxBytes, [Entry | Acc], Count + 1, NextBytes)
             end
     end;
-take_page([], _Pmax, _PmaxBytes, Acc) ->
+take_page([], _Pmax, _PmaxBytes, Acc, _Count, _Bytes) ->
     {lists:reverse(Acc), []}.
 
-%% @doc 快照页条目：{Key, Value, ExpiresAtMs, Rev}；值缺失（逐出/过期）
-%% 返回 skip。
--spec page_entry(term()) -> {term(), term(), non_neg_integer(), term()} | skip.
+%% @doc live 条目 {Key, Value, ExpiresAtMs, Rev}；墓碑
+%% {deleted, Key, undefined, ExpiresAtMs, Rev} 保留原期限并在保护窗内传递删除下限；
+%% 过期 live 在保护窗内发送 expired 下限。
+%% 尚有效但物理值缺失的 live 发送 unavailable 下限；已知来源保留 Boot/seq。
+-spec page_entry(term()) -> tuple() | skip.
+page_entry({journal_entry, Owner, Entry}) when is_pid(Owner) ->
+    Exp = imboy_cache_sync_proto:snapshot_entry_deadline(Entry),
+    case
+        Exp > erlang:system_time(millisecond) andalso
+            imboy_cache_sync_proto:valid_snapshot_entry(Entry)
+    of
+        true -> Entry;
+        false -> error(journal_entry_expired_or_invalid)
+    end;
 page_entry(K) ->
     case ets:lookup(?META_TABLE, {rev, K}) of
-        [{{rev, K}, {Rev, _C, ExpiresAt, live}}] ->
-            case depcache:get(K, ?DEPCACHE_SERVER) of
-                {ok, Value} ->
-                    {K, Value, ExpiresAt, Rev};
-                undefined ->
-                    skip
+        [{_, Row = {Rev, Slot, _, _, _}}] ->
+            case base_page_entry(K, Row) of
+                skip ->
+                    skip;
+                Entry ->
+                    imboy_cache_policy:snapshot_entry_with_origin(
+                        Entry, imboy_cache_policy:revision_metadata_origin(Rev, Slot)
+                    )
             end;
         _ ->
             skip
     end.
 
--spec live_keys(non_neg_integer()) -> [term()].
-live_keys(NowMs) ->
+base_page_entry(K, {Rev, _, Exp, deleted, Epoch}) ->
+    current_epoch_entry({deleted, K, undefined, Exp, Rev}, Epoch);
+base_page_entry(K, {Rev, _, Exp, live, Epoch}) ->
+    case imboy_cache_sync:remaining_ttl_sec(Exp) =:= 0 of
+        true -> floor_page_entry(expired, K, Rev, Exp, Epoch);
+        false -> live_page_entry(K, Rev, Exp, Epoch)
+    end;
+base_page_entry(_, _) ->
+    skip.
+
+live_page_entry(K, Rev, ExpiresAt, Epoch) ->
+    case depcache:get(K, ?DEPCACHE_SERVER) of
+        {ok, Value} ->
+            Entry = {K, Value, ExpiresAt, Rev},
+            current_epoch_entry(Entry, Epoch);
+        undefined ->
+            floor_page_entry(unavailable, K, Rev, ExpiresAt, Epoch)
+    end.
+
+floor_page_entry(Kind, K, Rev, Exp, Epoch) ->
+    Entry = {Kind, K, undefined, Exp, Rev},
+    current_epoch_entry(Entry, Epoch).
+
+current_epoch_entry(Entry, Epoch) ->
+    case
+        Epoch =:= imboy_cache_sync_proto:epoch() andalso
+            imboy_cache_sync_proto:valid_snapshot_entry(Entry)
+    of
+        true -> Entry;
+        false -> skip
+    end.
+
+-spec snapshot_keys(non_neg_integer()) -> [term()].
+snapshot_keys(NowMs) ->
     [
         K
-     || [K] <- ets:match(?META_TABLE, {{rindex, '$1'}, '_'}),
-        valid_live_entry(K, NowMs)
+     || {{rev, K}, {_, _, Exp, Kind, Epoch}} <- ets:match_object(?META_TABLE, {{rev, '_'}, '_'}),
+        (Kind =:= live orelse Kind =:= deleted),
+        Exp + imboy_cache_policy:tombstone_ttl_sec() * 1000 > NowMs,
+        Epoch =:= imboy_cache_sync_proto:epoch()
     ].
 
--spec valid_live_entry(term(), non_neg_integer()) -> boolean().
-valid_live_entry(K, NowMs) ->
-    case ets:lookup(?META_TABLE, {rev, K}) of
-        [{{rev, K}, {_Rev, _C, ExpiresAt, live}}] ->
-            ExpiresAt > NowMs;
-        _ ->
-            false
-    end.
-
-%% @doc 页摘要（C01 第 4 节）：Round+PageNo+键序列+版本序列。
--spec page_digest(binary(), pos_integer(), [term()]) -> integer().
+%% @doc 页摘要：Round+PageNo+kind/键/版本序列；kind 变化不能沿用 live 摘要。
 page_digest(Round, PageNo, Page) ->
-    erlang:phash2({Round, PageNo, [K || {K, _, _, _} <- Page], [R || {_, _, _, R} <- Page]}).
+    imboy_cache_sync_proto:snapshot_page_digest(Round, PageNo, Page).
 
-%% @doc 发送端版本水位（快照枚举时刻的本地 counter 上界）。
--spec watermark_counter() -> non_neg_integer().
-watermark_counter() ->
-    case ets:lookup(?META_TABLE, sync_counter) of
-        [{_, C}] when is_integer(C) -> C;
-        [] -> 0
-    end.
-
-%% ===================================================================
 %% 接收端
-%% ===================================================================
 
 %% @doc 处理快照页（恢复节点）：Round/连续性/digest/预算校验后应用条目。
 %% 返回 {ok, RoundSt} 或 {abort, Reason, RoundSt}（调用方有界重试新回合）。
@@ -243,48 +409,94 @@ handle_page(FromNode, Round, PageNo, Entries, Digest, HasMore, RoundSt) ->
             {ok, RoundSt}
     end.
 
--spec handle_known_page(
-    node(),
-    binary(),
-    pos_integer(),
-    [term()],
-    integer(),
-    boolean(),
-    map(),
-    map()
-) ->
-    {ok, map()} | {abort, term(), map()}.
 handle_known_page(FromNode, Round, PageNo, Entries, Digest, HasMore, RoundSt, PeerSt) ->
-    case maps:get(done, PeerSt) of
-        true ->
+    case {maps:get(authority, PeerSt), maps:get(requested, PeerSt, false)} of
+        {false, _} ->
+            {abort, invalid_authority, RoundSt};
+        {true, false} ->
+            {ok, RoundSt};
+        {true, true} ->
+            handle_requested_page(
+                FromNode, Round, PageNo, Entries, Digest, HasMore, RoundSt, PeerSt
+            )
+    end.
+
+handle_requested_page(FromNode, Round, PageNo, Entries, Digest, HasMore, RoundSt, PeerSt) ->
+    case {maps:get(authority, PeerSt), maps:get(done, PeerSt)} of
+        {false, _} ->
+            {abort, invalid_authority, RoundSt};
+        {true, true} ->
             %% done 之后的迟到页：丢弃（幂等安全）
             {ok, RoundSt};
-        false ->
+        {true, false} ->
             checks_page(Round, PageNo, Entries, Digest, HasMore, RoundSt, FromNode, PeerSt)
     end.
 
--spec checks_page(
-    binary(),
-    pos_integer(),
-    [term()],
-    integer(),
-    boolean(),
-    map(),
-    node(),
-    map()
-) ->
-    {ok, map()} | {abort, term(), map()}.
 checks_page(Round, PageNo, Entries, Digest, HasMore, RoundSt, FromNode, PeerSt) ->
+    case deadline_expired(RoundSt) of
+        true ->
+            {abort, deadline_expired, RoundSt};
+        false ->
+            case page_shape(PageNo, Entries, Digest, HasMore) of
+                {error, Reason} ->
+                    {abort, Reason, RoundSt};
+                {ok, Count} ->
+                    case
+                        imboy_cache_sync_proto:within_meta_budget(
+                            {FromNode, Round, PageNo, Digest, HasMore}
+                        )
+                    of
+                        false ->
+                            {abort, metadata_too_large, RoundSt};
+                        true ->
+                            check_page_limits(
+                                Round,
+                                PageNo,
+                                Entries,
+                                Digest,
+                                HasMore,
+                                RoundSt,
+                                FromNode,
+                                PeerSt,
+                                Count
+                            )
+                    end
+            end
+    end.
+
+page_shape(PageNo, Entries, Digest, HasMore) ->
+    case
+        is_integer(PageNo) andalso PageNo > 0 andalso is_integer(Digest) andalso is_boolean(HasMore)
+    of
+        false ->
+            {error, invalid_snapshot_page};
+        true ->
+            case page_count(Entries, 0, imboy_cache_policy:p_max()) of
+                overflow -> {error, page_overflow};
+                Count when is_integer(Count), Count > 0 -> {ok, Count};
+                _ -> {error, invalid_snapshot_page}
+            end
+    end.
+
+page_count([_ | _], Count, Limit) when Count >= Limit -> overflow;
+page_count([_ | Tail], Count, Limit) -> page_count(Tail, Count + 1, Limit);
+page_count([], Count, _) -> Count;
+page_count(_, _, _) -> invalid.
+
+check_page_limits(Round, PageNo, Entries, Digest, HasMore, RoundSt, FromNode, PeerSt, Count) ->
     SeenPages = maps:get(pages, PeerSt),
-    ExpectedNo = maps:size(SeenPages) + 1,
-    Applied = maps:get(applied, PeerSt),
+    ExpectedNo = SeenPages + 1,
     Bmax = imboy_cache_policy:b_max(),
+    Bytes = page_bytes(Entries),
     Failed = [
         R
      || {C, R} <- [
+            {not deadline_expired(RoundSt), deadline_expired},
             {PageNo =:= ExpectedNo, page_gap},
-            {page_digest(Round, PageNo, Entries) =:= Digest, page_digest_mismatch},
-            {Applied + length(Entries) =< Bmax, buffer_overflow}
+            {Count =< imboy_cache_policy:p_max(), page_overflow},
+            {Bytes =< imboy_cache_policy:p_max_bytes(), page_bytes_overflow},
+            {Count =< Bmax, buffer_overflow},
+            {Bytes =< imboy_cache_policy:b_max_bytes(), buffer_bytes_overflow}
         ],
         not C
     ],
@@ -292,91 +504,280 @@ checks_page(Round, PageNo, Entries, Digest, HasMore, RoundSt, FromNode, PeerSt) 
         [Reason | _] ->
             {abort, Reason, RoundSt};
         [] ->
-            apply_page_entries(Entries),
-            PeerSt1 = PeerSt#{
-                pages := SeenPages#{PageNo => true},
-                applied := Applied + length(Entries),
-                expected_more := HasMore
-            },
-            Peers = maps:get(peers, RoundSt),
-            {ok, RoundSt#{peers := Peers#{FromNode := PeerSt1}}}
+            validate_and_apply_page(
+                Round,
+                PageNo,
+                Entries,
+                Digest,
+                HasMore,
+                RoundSt,
+                FromNode,
+                PeerSt
+            )
     end.
+
+validate_and_apply_page(
+    Round,
+    PageNo,
+    Entries,
+    Digest,
+    HasMore,
+    RoundSt,
+    FromNode,
+    PeerSt
+) ->
+    case page_digest(Round, PageNo, Entries) =:= Digest of
+        false ->
+            {abort, page_digest_mismatch, RoundSt};
+        true ->
+            case
+                lists:all(
+                    fun(E) ->
+                        imboy_cache_sync_proto:valid_authorized_snapshot_entry(E, FromNode, PeerSt)
+                    end,
+                    Entries
+                )
+            of
+                false ->
+                    {abort, invalid_snapshot_entry, RoundSt};
+                true ->
+                    case
+                        imboy_cache_sync_apply:snapshot_budget_error(
+                            Entries, maps:get(source_epoch, PeerSt)
+                        )
+                    of
+                        Reason when Reason =/= ok ->
+                            {abort, Reason, RoundSt};
+                        ok ->
+                            apply_manifest_page(
+                                RoundSt,
+                                FromNode,
+                                PeerSt,
+                                Entries,
+                                PageNo,
+                                HasMore
+                            )
+                    end
+            end
+    end.
+
+%% 全回合共享有界清单；预算预检在缓存写入前，只有成功页可进入清单。
+apply_manifest_page(Round, Source, Peer, Entries, PageNo, More) ->
+    Rows = [imboy_cache_policy:snapshot_manifest_entry(E) || E <- Entries],
+    Items = maps:get(manifest_items, Round, 0) + length(Rows),
+    Bytes = maps:get(manifest_bytes, Round, 0) + 7 + erlang:external_size({PageNo, Rows}),
+    case
+        {
+            Items =< imboy_cache_policy:n_max() + imboy_cache_policy:t_max(),
+            Bytes =< imboy_cache_policy:n_max_bytes() + imboy_cache_policy:t_max_bytes()
+        }
+    of
+        {false, _} ->
+            {abort, snapshot_manifest_items_overflow, Round};
+        {_, false} ->
+            {abort, snapshot_manifest_bytes_overflow, Round};
+        {true, true} ->
+            case
+                imboy_cache_policy:snapshot_page_result(
+                    apply_page_entries(Entries, maps:get(source_epoch, Peer)),
+                    Round,
+                    Source,
+                    Peer,
+                    Entries,
+                    PageNo,
+                    More
+                )
+            of
+                {ok, Next} ->
+                    Peers = maps:get(peers, Next),
+                    P = maps:get(Source, Peers),
+                    Manifest = [{PageNo, Rows} | maps:get(manifest, P, [])],
+                    {ok, Next#{
+                        manifest_items => Items,
+                        manifest_bytes => Bytes,
+                        peers := Peers#{
+                            Source := P#{
+                                manifest => Manifest,
+                                manifest_own_seq => imboy_cache_policy:snapshot_manifest_own_seq(
+                                    Rows,
+                                    {Source, maps:get(boot, P)},
+                                    maps:get(manifest_own_seq, P, 0)
+                                )
+                            }
+                        }
+                    }};
+                Abort ->
+                    Abort
+            end
+    end.
+
+peer_revision_ceiling(RoundSt, Peer) ->
+    PeerSt = maps:get(Peer, maps:get(peers, RoundSt), #{}),
+    maps:get(max_revision_counter, PeerSt, 0).
 
 %% @doc 页条目应用：逐条按版本比较合并（等价 V2 set，与快照期间 delta
 %% 天然融合；同版本幂等，低版本拒绝——不崩接收进程）。
--spec apply_page_entries([term()]) -> ok.
-apply_page_entries(Entries) ->
-    _ = [
-        apply_entry(K, Value, ExpiresAt, Rev)
-     || {K, Value, ExpiresAt, Rev} <- Entries
-    ],
-    ok.
+-spec apply_page_entries([term()], non_neg_integer()) -> ok | {error, snapshot_entry_expired}.
+apply_page_entries(Entries, Epoch) ->
+    try
+        lists:foreach(
+            fun(E) ->
+                ok = ensure_page_deadline(
+                    [E], fun imboy_cache_policy:snapshot_entry_retention_deadline/1
+                ),
+                apply_snapshot_entry(E, Epoch)
+            end,
+            Entries
+        ),
+        ensure_page_deadline(Entries, fun imboy_cache_policy:snapshot_entry_retention_deadline/1)
+    catch
+        error:prepared_page_expired -> {error, snapshot_entry_expired}
+    end.
 
--spec apply_entry(term(), term(), non_neg_integer(), term()) -> ok.
-apply_entry(K, Value, ExpiresAt, Rev) ->
-    case imboy_cache_sync:compare_rev(Rev, imboy_cache_sync:current_rev(K)) of
+%% 来源保存为逐键注记并转交日志，不提交 foreign floor 或连续覆盖。
+apply_snapshot_entry({with_origin, Origin, Entry}, Epoch) ->
+    apply_snapshot_entry(Entry, Epoch, Origin);
+apply_snapshot_entry(Entry, Epoch) ->
+    apply_snapshot_entry(Entry, Epoch, unknown).
+
+apply_snapshot_entry({K, Value, ExpiresAt, Rev}, Epoch, Origin) ->
+    apply_entry(K, Value, ExpiresAt, Rev, Epoch, Origin);
+apply_snapshot_entry({unavailable, K, undefined, ExpiresAt, Rev}, Epoch, Origin) ->
+    %% 缺值不等于删除：同版可用副本保留；只有更高版本下限清旧值。
+    case imboy_cache_sync_apply:compare_entry(K, Rev, Epoch) of
         newer ->
-            Remaining = imboy_cache_sync:remaining_ttl_sec(ExpiresAt),
-            case Remaining > 0 of
-                true ->
-                    _ = depcache:set(K, Value, Remaining, [], ?DEPCACHE_SERVER),
-                    true = ets:insert(
-                        ?META_TABLE,
-                        {{rev, K}, {Rev, element(1, Rev), ExpiresAt, live}}
-                    ),
-                    _ = ets:insert(
-                        ?META_TABLE,
-                        {{rindex, K}, erlang:system_time(millisecond)}
-                    ),
-                    ok;
-                false ->
+            depcache:flush(K, ?DEPCACHE_SERVER),
+            imboy_cache_sync_apply:store_revision(K, Rev, ExpiresAt, unavailable, Epoch, Origin),
+            imboy_cache_sync:index_replicate(K);
+        _ ->
+            ok
+    end;
+apply_snapshot_entry({expired, K, undefined, ExpiresAt, Rev}, Epoch, Origin) ->
+    imboy_cache_sync_apply:apply_expired_snapshot_entry(K, ExpiresAt, Rev, Epoch, Origin);
+apply_snapshot_entry({deleted, K, undefined, ExpiresAt, Rev}, Epoch, Origin) ->
+    case imboy_cache_sync_apply:compare_entry(K, Rev, Epoch) of
+        newer -> write_snapshot_tombstone(K, ExpiresAt, Rev, Epoch, Origin);
+        _ -> ok
+    end.
+
+write_snapshot_tombstone(K, ExpiresAt, Rev, Epoch, Origin) ->
+    case
+        ExpiresAt + imboy_cache_policy:tombstone_ttl_sec() * 1000 > erlang:system_time(millisecond)
+    of
+        true ->
+            _ = depcache:flush(K, ?DEPCACHE_SERVER),
+            imboy_cache_sync_apply:store_revision(K, Rev, ExpiresAt, deleted, Epoch, Origin);
+        false ->
+            ok
+    end.
+
+apply_entry(K, Value, ExpiresAt, Rev, Epoch, Origin) ->
+    case imboy_cache_sync_apply:compare_entry(K, Rev, Epoch) of
+        newer ->
+            write_snapshot_entry(K, Value, ExpiresAt, Rev, Epoch, Origin);
+        equal ->
+            %% 失败回合清理值但保留版本；同版本合法快照可补回缺失 live 值。
+            case ets:lookup(?META_TABLE, {rev, K}) of
+                [{_, {Rev, _, ExpiresAt, live, Epoch}}] ->
+                    case depcache:get(K, ?DEPCACHE_SERVER) of
+                        undefined -> write_snapshot_entry(K, Value, ExpiresAt, Rev, Epoch, Origin);
+                        _ -> ok
+                    end;
+                _ ->
                     ok
             end;
         _ ->
-            %% 同版本幂等 / 低版本跳过（无漏事件：peer 正常写入以 delta 到达）
+            %% 低版本跳过；缺口补偿是否完整须由恢复/增量闭环另行证明。
             ok
+    end.
+
+write_snapshot_entry(K, Value, ExpiresAt, Rev, Epoch, Origin) ->
+    Remaining = imboy_cache_sync:remaining_ttl_sec(ExpiresAt),
+    case Remaining > 0 of
+        true ->
+            _ = depcache:set(K, Value, Remaining, [], ?DEPCACHE_SERVER),
+            ok = imboy_cache_sync_apply:store_revision(K, Rev, ExpiresAt, live, Epoch, Origin),
+            ok = imboy_cache_sync:index_replicate(K);
+        false ->
+            imboy_cache_sync_apply:apply_expired_snapshot_entry(K, ExpiresAt, Rev, Epoch, Origin)
     end.
 
 %% @doc 处理 peer 终帧：done + 版本水位。Round 不匹配的 done 不推进闭合
 %% （C01 第 4 节：旧 round/未知 peer 的 done 不推进 READY）。
--spec handle_done(node(), binary(), non_neg_integer(), map()) ->
+-spec handle_done(node(), binary(), non_neg_integer(), non_neg_integer(), map()) ->
     {ok, map()} | {abort, term(), map()}.
-handle_done(FromNode, Round, Watermark, RoundSt) ->
+handle_done(FromNode, Round, Watermark, Total, RoundSt) ->
     case maps:get(round, RoundSt, undefined) of
         Round ->
             Peers = maps:get(peers, RoundSt),
             case maps:find(FromNode, Peers) of
                 error ->
                     {ok, RoundSt};
+                {ok, #{authority := false}} ->
+                    {abort, invalid_authority, RoundSt};
+                {ok, P} when not is_map_key(requested, P) ->
+                    {ok, RoundSt};
+                {ok, #{requested := false}} ->
+                    {ok, RoundSt};
+                {ok, _PeerSt} when not is_integer(Watermark); Watermark < 0 ->
+                    {abort, invalid_watermark, RoundSt};
                 {ok, PeerSt} ->
-                    PeerSt1 = PeerSt#{done := true, watermark := Watermark},
-                    RoundSt1 = RoundSt#{peers := Peers#{FromNode := PeerSt1}},
-                    case deadline_expired(RoundSt1) of
-                        true -> {abort, deadline_expired, RoundSt1};
-                        false -> {ok, RoundSt1}
+                    case done_error(FromNode, Round, PeerSt, Watermark, Total, RoundSt) of
+                        none ->
+                            PeerSt1 = PeerSt#{done := true, watermark := Watermark, total => Total},
+                            {ok, RoundSt#{peers := Peers#{FromNode := PeerSt1}}};
+                        Reason ->
+                            {abort, Reason, RoundSt}
                     end
             end;
         _ ->
             {ok, RoundSt}
     end.
 
-%% ===================================================================
+done_error(FromNode, Round, PeerSt, Watermark, Total, RoundSt) ->
+    case deadline_expired(RoundSt) of
+        true ->
+            deadline_expired;
+        false ->
+            case imboy_cache_sync_proto:within_meta_budget({FromNode, Round, Watermark, Total}) of
+                true -> done_count_error(PeerSt, Watermark, Total);
+                false -> metadata_too_large
+            end
+    end.
+
+done_count_error(#{authority := false}, _Watermark, _Total) ->
+    invalid_authority;
+done_count_error(_PeerSt, _Watermark, Total) when not is_integer(Total); Total < 0 ->
+    invalid_page_total;
+done_count_error(#{max_revision_counter := Max}, Watermark, _Total) when Watermark < Max ->
+    invalid_version_watermark;
+done_count_error(#{done := true, watermark := Watermark, total := Total}, Watermark, Total) ->
+    none;
+done_count_error(#{done := true}, _Watermark, _Total) ->
+    conflicting_done;
+done_count_error(#{pages := Pages, expected_more := More} = P, _Watermark, Total) ->
+    case {Total =:= Pages andalso not More, maps:is_key(source_cut, P)} of
+        {true, true} -> none;
+        {true, false} -> missing_source_cut;
+        _ -> incomplete_snapshot
+    end.
+
 %% 判定
-%% ===================================================================
 
 %% @doc 回合是否完整闭合（C04 三条件）：
-%% (1) 全部预期 peer done；(2) 无缺页（每个 peer 的页序完整且无
-%% expected_more 悬挂）；(3) deadline 未超。
+%% 全部发现应答、至少一个权威、全部权威快照完整、deadline 未超。
 -spec round_complete(map()) -> boolean().
 round_complete(#{peers := Peers} = RoundSt) ->
     maps:size(Peers) > 0 andalso
         not deadline_expired(RoundSt) andalso
+        lists:any(fun(P) -> maps:get(authority, P) end, maps:values(Peers)) andalso
         lists:all(fun peer_complete/1, maps:to_list(Peers)).
 
--spec peer_complete({node(), map()}) -> boolean().
 peer_complete({_Node, PeerSt}) ->
-    maps:get(done, PeerSt) =:= true andalso
-        maps:get(expected_more, PeerSt) =:= false.
+    maps:get(reported, PeerSt) andalso
+        (not maps:get(authority, PeerSt) orelse
+            (maps:get(done, PeerSt) andalso maps:is_key(source_cut, PeerSt) andalso
+                not maps:get(expected_more, PeerSt))).
 
 %% @doc 失败 peer（done 但页序悬挂，或未 done）。
 -spec round_failed_peers(map()) -> [node()].
@@ -388,22 +789,10 @@ round_failed_peers(#{peers := Peers}) ->
 applied_count(#{peers := Peers}) ->
     lists:sum([maps:get(applied, St) || St <- maps:values(Peers)]).
 
-%% ===================================================================
 %% Internal
-%% ===================================================================
 
--spec entry_bytes(term()) -> non_neg_integer().
-entry_bytes({_K, V, _E, _R}) ->
-    try
-        erlang:external_size(V)
-    catch
-        _:_ -> 0
-    end.
+entry_bytes(Entry) ->
+    erlang:external_size(Entry).
 
--spec entry_sum_bytes(term(), [term()]) -> non_neg_integer().
-entry_sum_bytes(Entry, Acc) ->
-    entry_bytes(Entry) + lists:sum([entry_bytes(E) || E <- Acc]).
-
--spec page_bytes([term()]) -> non_neg_integer().
 page_bytes(Page) ->
-    lists:sum([entry_bytes(E) || E <- Page]).
+    erlang:external_size(Page).

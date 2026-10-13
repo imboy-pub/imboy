@@ -5,6 +5,7 @@
 -export([init/2]).
 -export([format_prometheus/1]).
 -export([is_internal_ip/1]).
+-export([cache_sync_metrics/0]).
 
 %% @doc Metrics endpoint for runtime observability.
 %% 支持两种格式：
@@ -178,7 +179,7 @@ collect_system_metrics() ->
 %% @doc cache 同步状态指标（C11）：ready=2 / recovering=1 / degraded=0 /
 %% sync 进程不存在=-1；epoch、消息队列深度、syn 视图 peer 数、本地版本
 %% 水位，以及各 peer 报告的版本水位（{peer="..."} 标签按节点集合有界，
-%% 不随 Key 无限增长；peer-lag = 本地水位 − peer 水位，在面板侧派生）。
+%% 不随 Key 无限增长；不同来源的 Lamport counter 差值不代表投递 lag）。
 %% 全部 try/catch fail-safe：任何一项异常不影响其余指标与端点可用性。
 -spec cache_sync_metrics() -> map().
 cache_sync_metrics() ->
@@ -193,8 +194,63 @@ cache_sync_metrics() ->
             imboy_cache_sync_peers => sync_peer_count(),
             imboy_cache_sync_counter => local_sync_counter()
         },
-        peer_counter_gauges()
+        maps:merge(peer_counter_gauges(), cache_protocol_gauges())
     ).
+
+%% 只读取当前化身键与固定字段；不复制 rev/journal 或用户值。
+%% 序列是每个来源自己的坐标，不能用本节点 Lamport counter 减得 peer lag。
+cache_protocol_gauges() ->
+    try
+        {_, Boot} = imboy_cache_sync:node_boot(),
+        true = byte_size(Boot) =:= 16,
+        Info = #{
+            protocol => <<"2">>,
+            boot => binary:encode_hex(Boot, lowercase),
+            config_hash => binary:encode_hex(imboy_cache_sync_proto:config_hash(), lowercase),
+            registry_hash => binary:encode_hex(imboy_cache_sync_proto:registry_hash(), lowercase)
+        },
+        Peers = ets:match(imboy_cache_meta, {{peer_incarnation, '$1'}, '$2'}),
+        maps:from_list([
+            {{imboy_cache_sync_protocol_info, Info}, 1}
+            | lists:append([peer_sequence_gauges(Peer, B) || [Peer, B] <- Peers])
+        ])
+    catch
+        _:_ -> #{}
+    end.
+
+peer_sequence_gauges(Peer, Boot) ->
+    Labels = #{peer => Peer, boot => binary:encode_hex(Boot, lowercase)},
+    [
+        {{Name, Labels}, meta_gauge(Key)}
+     || {Name, Key} <- [
+            {imboy_cache_sync_observed_seq, {seq, {Peer, Boot}}},
+            {imboy_cache_sync_applied_prefix, {covered_seq, {Peer, Boot}}},
+            {imboy_cache_sync_snapshot_floor, {snapshot_seq_floor, {Peer, Boot}}}
+        ]
+    ] ++
+        [
+            {{imboy_cache_sync_peer_epoch, #{peer => Peer}}, meta_gauge({peer_epoch, Peer})},
+            {
+                {imboy_cache_sync_hash_divergent, #{peer => Peer}},
+                case imboy_cache_sync_proto:hash_divergent(Peer) of
+                    true -> 1;
+                    false -> 0
+                end
+            }
+        ].
+
+meta_gauge(Key) ->
+    case ets:lookup(imboy_cache_meta, Key) of
+        [{{covered_seq, _}, {Epoch, Seq}}] when
+            is_integer(Epoch), Epoch >= 0, is_integer(Seq), Seq >= 0
+        ->
+            Seq;
+        [{{covered_seq, _}, _}] ->
+            -1;
+        [{_, V}] when is_integer(V) -> V;
+        _ ->
+            -1
+    end.
 
 -spec sync_status_value() -> integer().
 sync_status_value() ->

@@ -6,8 +6,9 @@ memo_function_forwards_to_depcache_test_() ->
     ?WITH_MECK(
         depcache,
         [
-            {'memo', 2, fun(Function, Server) ->
+            {'memo', 5, fun(Function, Key, _MaxAge, _Deps, Server) ->
                 ?assertEqual(imboy_cache, Server),
+                ?assertEqual(<<"cached_result">>, Key),
                 Function()
             end}
         ],
@@ -16,17 +17,16 @@ memo_function_forwards_to_depcache_test_() ->
         end
     ).
 
-memo_tuple_variant_uses_undefined_key_test_() ->
+memo_tuple_variant_uses_actual_derived_key_test_() ->
     ?WITH_MECK(
         depcache,
         [
             {'memo', 5, fun(Function, Key, MaxAge, Deps, Server) ->
-                ?assertEqual(undefined, Key),
+                ?assertEqual({erlang, binary_to_list, [<<"test">>]}, Key),
                 ?assertEqual(1800, MaxAge),
                 ?assertEqual([], Deps),
                 ?assertEqual(imboy_cache, Server),
-                {M, F, A} = Function,
-                apply(M, F, A)
+                Function()
             end}
         ],
         fun() ->
@@ -214,3 +214,107 @@ size_and_process_helpers_forward_test_() ->
 
 record_depcache_event_returns_ok_test() ->
     ?assertEqual(ok, imboy_cache:record_depcache_event(#{event => test})).
+
+credential_policy_is_enforced_on_real_publish_and_receive_test_() ->
+    ?TEST_WITH_APP(fun() ->
+        Old = application:get_env(imboy, dsync_enabled),
+        Keys = [{fcm_access_token_dyn}, qianfan_access_token, {apns_jwt, synthetic}],
+        Legacy = {credential_legacy_probe, native},
+        application:set_env(imboy, dsync_enabled, true),
+        ok = syn:join(imboy_cache, dsync_handler, self(), #{}),
+        try
+            [
+                ?assertEqual(
+                    {error, policy_denied},
+                    imboy_cache:broadcast(
+                        {set, K, <<"direct-synthetic-token">>, 60, []}
+                    )
+                )
+             || K <- Keys
+            ],
+            [ok = imboy_cache:set(K, <<"local-synthetic-token">>, 60) || K <- Keys],
+            ok = imboy_cache:set(Legacy, compatibility_value, 60),
+            receive
+                {cache_sync, {set, Legacy, compatibility_value, 60, []}} -> ok
+            after 1000 -> error(missing_real_legacy_publish)
+            end,
+            receive
+                {cache_sync, {set, K, _, _, _}} -> ?assertNot(lists:member(K, Keys))
+            after 0 -> ok
+            end,
+            Sync = whereis(imboy_cache_sync),
+            [Sync ! {cache_sync, {set, K, <<"foreign-synthetic-token">>, 60, []}} || K <- Keys],
+            pong = gen_server:call(Sync, ping_ok, 5000),
+            [?assertEqual({ok, <<"local-synthetic-token">>}, imboy_cache:get(K)) || K <- Keys],
+            ?assertEqual({ok, compatibility_value}, imboy_cache:get(Legacy)),
+            ?assertMatch({ok, _}, imboy_cache:broadcast({flush, Legacy})),
+            receive
+                {cache_sync, {flush, Legacy}} -> ok
+            after 1000 -> error(missing_real_legacy_flush)
+            end,
+            pong = gen_server:call(Sync, ping_ok, 5000),
+            ?assertEqual(undefined, imboy_cache:get(Legacy))
+        after
+            syn:leave(imboy_cache, dsync_handler, self()),
+            [depcache:flush(K, imboy_cache) || K <- [Legacy | Keys]],
+            case Old of
+                undefined -> application:unset_env(imboy, dsync_enabled);
+                {ok, V} -> application:set_env(imboy, dsync_enabled, V)
+            end
+        end
+    end).
+
+retired_delete_only_key_keeps_real_read_write_fence_test_() ->
+    ?TEST_WITH_APP(fun() ->
+        OldCfg = application:get_env(imboy, cache_replication),
+        OldReg = application:get_env(imboy, cache_registry_overrides),
+        Key = {retired_delete_only, native},
+        application:set_env(imboy, cache_registry_overrides, #{
+            retired_delete_only => {replicate, false}
+        }),
+        application:set_env(imboy, cache_replication, #{whitelist => [retired_delete_only]}),
+        try
+            wait_for_native_cache_ready(80),
+            ok = imboy_cache:put_delete(Key),
+            ?assertNot(ets:member(imboy_cache_meta, {rindex, Key})),
+            [Before] = ets:lookup(imboy_cache_meta, {rev, Key}),
+            application:unset_env(imboy, cache_registry_overrides),
+            ?assertEqual(legacy, imboy_cache_policy:policy(Key)),
+            ?assertEqual(
+                {error, policy_denied},
+                imboy_cache:broadcast(
+                    {set, Key, direct_resurrection, 60, []}
+                )
+            ),
+            Sync = whereis(imboy_cache_sync),
+            Sync ! {cache_sync, {set, Key, resurrected_old_value, 60, []}},
+            pong = gen_server:call(Sync, ping_ok, 5000),
+            ?assertEqual(undefined, depcache:get(Key, imboy_cache)),
+            ?assertEqual([Before], ets:lookup(imboy_cache_meta, {rev, Key})),
+            ?assertError({unsupported_replicate_api, set}, imboy_cache:set(Key, bypass, 60)),
+            ok = depcache:set(Key, raw_legacy_value, 60, [], imboy_cache),
+            ?assertEqual(undefined, imboy_cache:get(Key))
+        after
+            depcache:flush(Key, imboy_cache),
+            imboy_cache_sync_apply:delete_metadata({rev, Key}),
+            [
+                case V of
+                    undefined -> application:unset_env(imboy, K);
+                    {ok, C} -> application:set_env(imboy, K, C)
+                end
+             || {K, V} <-
+                    [{cache_replication, OldCfg}, {cache_registry_overrides, OldReg}]
+            ]
+        end
+    end).
+
+wait_for_native_cache_ready(Attempts) ->
+    case imboy_cache_sync:status() of
+        ready ->
+            ok;
+        _ when Attempts > 0 ->
+            timer:sleep(25),
+            wait_for_native_cache_ready(Attempts - 1);
+        _ ->
+            error(cache_boot_not_ready)
+    end.

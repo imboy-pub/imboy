@@ -527,6 +527,40 @@ tag_subtitle_scene1_test_() ->
     end).
 
 %% 测试刷新副标题
+subtitle_invalidation_refills_actual_cached_key_test_() ->
+    ?TEST_WITH_APP(fun() ->
+        TagId = 998877,
+        Data = ets:new(subtitle_authority, [public, set]),
+        Key = elib_cnv:implode("_", ["tag_subtitle_2", TagId]),
+        meck:new(elib_pg, [no_link]),
+        meck:new(config_ds, [no_link]),
+        meck:expect(config_ds, env, fun(sql_driver) -> pgsql end),
+        meck:expect(elib_pg, query, fun(_Sql, [QueryTag]) when QueryTag =:= TagId ->
+            [{rows, Rows}] = ets:lookup(Data, rows),
+            {ok, Rows}
+        end),
+        try
+            depcache:flush(Key, imboy_cache),
+            ets:insert(Data, {rows, [#{<<"subtitle">> => <<"Alice">>}]}),
+            ?assertEqual(<<"Alice">>, user_tag_relation_repo:tag_subtitle(2, TagId, 1)),
+            ets:insert(Data, {rows, [#{<<"subtitle">> => <<"Bob">>}]}),
+            ?assertEqual(<<"Alice">>, user_tag_relation_repo:tag_subtitle(2, TagId, 1)),
+            ?assertEqual(1, meck:num_calls(elib_pg, query, 2)),
+            ok = user_tag_relation_repo:flush_subtitle(TagId),
+            ?assertEqual(<<"Bob">>, user_tag_relation_repo:tag_subtitle(2, TagId, 1)),
+            ?assertEqual(2, meck:num_calls(elib_pg, query, 2)),
+            ets:insert(Data, {rows, [#{<<"subtitle">> => <<"Carol">>}]}),
+            ok = user_tag_relation_repo:flush_subtitle(integer_to_binary(TagId)),
+            ?assertEqual(<<"Carol">>, user_tag_relation_repo:tag_subtitle(2, TagId, 1)),
+            ?assertEqual(3, meck:num_calls(elib_pg, query, 2))
+        after
+            depcache:flush(Key, imboy_cache),
+            meck:unload(elib_pg),
+            meck:unload(config_ds),
+            ets:delete(Data)
+        end
+    end).
+
 flush_subtitle_test_() ->
     ?TEST_WITH_APP(fun() ->
         meck:new(imboy_cache, [no_link, passthrough]),

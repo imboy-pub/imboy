@@ -6,8 +6,8 @@
   "classes": {
     "REVERIFY_HIST_INHERIT": 9,
     "BLOCKED_EXTERNAL": 3,
-    "REVERIFY": 63,
-    "GAP_IMPLEMENTATION": 13,
+    "REVERIFY": 73,
+    "GAP_IMPLEMENTATION": 3,
     "NOT_RUN_CARRIED": 1,
     "GAP_EVIDENCE": 7
   },

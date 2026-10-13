@@ -24,6 +24,7 @@
     with_conn/2,
     with_tx/1,
     with_tx/2,
+    after_commit/3,
 
     execute/2,
     execute/3,
@@ -139,16 +140,7 @@ run_with_conn(Driver, Conn, Fun, Retries, Delay) ->
                 %% 会从 catch 分支逃逸崩掉调用方 —— 回滚尽力而为。
                 safe_rollback(Conn),
                 {error, Reason};
-            %% 接受 throw({rollback, Reason})：with_tx 内业务主动回滚信号
-            %% （wallet_repo/transfer_repo/recharge_order_repo/red_packet_repo 等
-            %%  钱路径广泛使用，如 insufficient_balance/already_credited）。
-            %% with_tx 默认 reraise=true：epgsql:with_transaction 会先 ROLLBACK
-            %% 再把该 throw 原样重新抛出；若不在此拦截，会落入下面的通用异常分支
-            %% 被当成"未知运行时异常"重试 3 次，最终返回三元组
-            %% {error, throw, {rollback, Reason}}——与调用方处处期望匹配的二元组
-            %% {rollback, Reason} 完全对不上，导致 case_clause 崩溃（曾在
-            %% withdraw/transfer/recharge/red_packet 的余额不足等路径必现）。
-            %% 此处直接按业务回滚原样返回，不重试。
+            %% 业务回滚原样传播，不进入通用异常重试或改变返回形态。
             throw:{rollback, Reason} ->
                 safe_rollback(Conn),
                 {rollback, Reason};
@@ -162,14 +154,7 @@ run_with_conn(Driver, Conn, Fun, Retries, Delay) ->
                     "DB operation failed: ~p:~p stack=~p~n",
                     [Class, Reason, Stacktrace]
                 ),
-                %% 通用异常同样必须回滚。
-                %% 上面两个 throw 分支都发了 ROLLBACK，唯独这里没有，
-                %% 而 after 子句无条件把连接还池 —— 连接带着 aborted
-                %% transaction 回到池里，下一个借到它的请求所有语句都会
-                %% 报 "current transaction is aborted, commands ignored"，
-                %% 直到该连接被回收。squery 本身失败也无所谓（连接已死时
-                %% 归还后会被池剔除），故用 _ = 忽略返回值。CI-00 加固：
-                %% 同上包 safe_rollback，防死连接 noproc 逃逸。
+                %% 异常连接尽力回滚，避免 aborted transaction 回到池中。
                 safe_rollback(Conn),
                 %% 归一为二元组。此前返回 {error, Class, Reason} 三元组，
                 %% 而 query/2、execute/3 与全项目调用方一律按 {error, Reason}
@@ -223,17 +208,8 @@ when
 with_tx(F) ->
     with_tx(F, [{reraise, true}]).
 
-%% 事务禁止自动重试（Retries = 0）。
-%%
-%% with_conn/4 对通用异常会盲目重试 3 次，这对读是安全的，对写事务不是：
-%% "语句已在服务端执行成功、但响应在返回途中丢失"（连接被 RST、超时、
-%% 节点抖动）与"事务真的失败了"在客户端无法区分，重放整个事务体就是
-%% 重复入账。钱路径（wallet_repo / transfer_repo / recharge_order_repo /
-%% red_packet_repo）全部经由 with_tx，代价不可接受。
-%%
-%% 需要重试的场景由调用方按业务幂等性显式决定（多数已有 reference_no /
-%% 订单 CAS 之类的幂等键），而不是在这一层无差别重放。
 %% 连接获取可有界等待；取得连接后的事务体只执行一次。
+%% 网络中断时 COMMIT 是否成功可能未知，禁止通用重试重放写操作。
 -spec with_tx(fun((epgsql:connection() | pid()) -> R), epgsql:transaction_opts()) ->
     R | {error, term()} | {rollback, term()} | no_return()
 when
@@ -252,14 +228,89 @@ with_tx(F, Opts0) ->
 ) -> R | {error, term()} | {rollback, term()} when R :: term().
 with_tx(F, Opts0, RetriesLeft, Delay) ->
     Driver = config_ds:env(sql_driver),
-    with_conn(
-        Driver,
-        fun(Conn) ->
-            epgsql:with_transaction(Conn, F, Opts0)
+    Tag = make_ref(),
+    case
+        with_conn(
+            Driver,
+            fun(Conn) -> transaction_with_actions(Conn, F, Opts0, Tag) end,
+            RetriesLeft,
+            Delay
+        )
+    of
+        {Tag, Result, Actions} -> run_commit_actions(Result, Actions);
+        Other -> Other
+    end.
+
+%% @doc 登记当前连接事务的提交后动作；同 Id 去重，动作须返回 ok。
+-spec after_commit(pid(), term(), fun(() -> ok)) -> ok.
+after_commit(Conn, Id, Action) when is_function(Action, 0) ->
+    case get(elib_pg_commit_actions) of
+        {Conn, Actions} when map_size(Actions) < 2048; is_map_key(Id, Actions) ->
+            put(elib_pg_commit_actions, {Conn, Actions#{Id => Action}}),
+            ok;
+        {Conn, _} ->
+            throw({abort_tx, commit_actions_full});
+        _ ->
+            throw({abort_tx, transaction_context_missing})
+    end.
+
+transaction_with_actions(Conn, F, Opts, Tag) ->
+    Previous = get(elib_pg_commit_actions),
+    put(elib_pg_commit_actions, {Conn, #{}}),
+    Ref = make_ref(),
+    try
+        case epgsql:with_transaction(Conn, fun(C) -> {Ref, F(C)} end, Opts) of
+            {Ref, Result} ->
+                {Conn, Actions} = erase(elib_pg_commit_actions),
+                confirm_actions(Conn, Result, Actions, Tag);
+            Other ->
+                Other
+        end
+    after
+        case Previous of
+            undefined -> erase(elib_pg_commit_actions);
+            _ -> put(elib_pg_commit_actions, Previous)
+        end
+    end.
+
+confirm_actions(_Conn, Result, Actions, _Tag) when map_size(Actions) =:= 0 -> Result;
+confirm_actions(Conn, Result, Actions, Tag) ->
+    %% COMMIT 的 CommandComplete 可能实际为 ROLLBACK，不能只看事务体返回值。
+    Status =
+        try
+            epgsql:get_cmd_status(Conn)
+        catch
+            C:R -> {error, {C, R}}
         end,
-        RetriesLeft,
-        Delay
-    ).
+    case Status of
+        {ok, commit} -> {Tag, Result, Actions};
+        _ -> {error, {commit_not_confirmed, Result, Status}}
+    end.
+
+%% 连接已归还池；动作不得使用旧 Conn，只执行有界提交后操作。
+run_commit_actions(Result, Actions) ->
+    Failures = maps:fold(
+        fun(Id, Action, Acc) ->
+            case run_commit_action(Action) of
+                ok -> Acc;
+                Error -> [{Id, Error} | Acc]
+            end
+        end,
+        [],
+        Actions
+    ),
+    case Failures of
+        [] -> Result;
+        _ -> {error, {after_commit_failed, Result, Failures}}
+    end.
+
+run_commit_action(Action) ->
+    try Action() of
+        ok -> ok;
+        Other -> {unexpected_result, Other}
+    catch
+        Class:Reason -> {Class, Reason}
+    end.
 
 %%--------------------------------------------------------------------
 %% @doc

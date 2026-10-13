@@ -1,7 +1,5 @@
 -module(group_ds).
-%%%
-% group_ds 是 group domain service 缩写
-%%%
+%%% 群领域服务。
 -export([find_by_id/2]).
 -export([update_owner_tx/4]).
 -export([check_avatar/1]).
@@ -47,14 +45,7 @@
 %% API
 %% ===================================================================
 
-%% @doc 检查用户是否为群组成员
-%%
-%% 检查指定用户是否为指定群组的成员
-%%
-%% @param Uid 用户ID
-%% @param Gid 群组ID
-%% @returns boolean() true表示是成员，false表示不是成员
-% group_ds:is_member(62913, 11)
+%% @doc 从数据库确认当前成员身份，权限判断不使用成员列表缓存。
 -spec is_member(integer(), integer()) -> boolean().
 is_member(Uid, Gid) ->
     Res = group_member_repo:find(Gid, Uid, <<"id">>),
@@ -92,7 +83,6 @@ mark_read(Uid, Gid, MsgIds) ->
 %% fail-closed：无 open 世代（非成员 / 缺边界 / 数据异常）一律 deny，
 %% 绝不回退到 boolean membership。
 %%
-%% @returns {ok, #{generation_no => integer(), start_seq => integer(), end_seq => integer()}} | {error, denied}
 -spec authorize_group_history(integer(), integer()) ->
     {ok, map()} | {error, denied}.
 authorize_group_history(Uid, Gid) ->
@@ -105,21 +95,8 @@ authorize_group_history(Uid, Gid) ->
 authorize_group_history(Uid, Gid, SessionId) ->
     msg_store_repo:authorize_group_session_history(Uid, Gid, SessionId).
 
-%% @doc 获取群组成员用户ID列表
-%%
-%% 获取指定群组所有成员的用户ID列表，使用缓存提高性能
-%%
-%% @param Gid 群组ID
-%% @returns list() 成员用户ID列表
-% group_ds:member_uids(1).
-%% @doc 群成员 uid 列表（宽松版：失败返回 []）。
-%%
-%% 保留此签名是因为它有 30 个调用点（展示、计数、@提及候选等），对这些
-%% 场景"查不到就当空"是可接受的降级。但**投递路径不得使用本函数** —
-%% 详见 member_uids_strict/1。
-%%
-%% 与此前的差别：查询失败不再完全静默，会打 ERROR_LOG 并计数，
-%% 否则 DB 抖动在监控上完全不可见。
+%% @doc 展示场景的宽松成员列表；查询失败记录错误并返回 []。
+%% 投递路径必须使用 member_uids_strict/1 区分空群与查询失败。
 -spec member_uids(integer()) -> [integer()].
 member_uids(Gid) ->
     case member_uids_strict(Gid) of
@@ -149,28 +126,50 @@ member_uids_strict(Gid) ->
     end.
 
 member_uids_cached(Gid) ->
-    CacheKey = ?GROUP_CACHE_KEY(Gid),
-    case imboy_cache:get(CacheKey) of
-        {ok, Li} ->
-            {ok, Li};
+    Key = ?GROUP_CACHE_KEY(Gid),
+    case imboy_cache_policy:is_fenced(Key) of
+        true ->
+            Result = imboy_cache:memo(
+                fun() ->
+                    case load_member_uids(Gid) of
+                        {ok, [_ | _] = Uids} -> Uids;
+                        {ok, []} -> imboy_cache:uncached([]);
+                        {error, _} = Error -> imboy_cache:uncached(Error)
+                    end
+                end,
+                Key,
+                ?HOUR
+            ),
+            case Result of
+                Uids when is_list(Uids) -> {ok, Uids};
+                {error, _} = Error -> Error
+            end;
+        false ->
+            member_uids_legacy(Gid, Key)
+    end.
+
+member_uids_legacy(Gid, Key) ->
+    case imboy_cache:get(Key) of
+        {ok, Uids} ->
+            {ok, Uids};
         undefined ->
-            case group_member_repo:list_by_gid(Gid, <<"user_id">>) of
-                {ok, []} ->
-                    %% 空群是合法结果，但不写缓存：避免把"刚建群还没加人"
-                    %% 的瞬时空态缓存 1 小时。
-                    {ok, []};
-                {ok, Items} ->
-                    Li = [Uid || #{<<"user_id">> := Uid} <- Items],
-                    imboy_cache:set(CacheKey, Li, ?HOUR),
-                    {ok, Li};
-                {error, Reason} ->
-                    {error, Reason};
-                %% 非 {ok,_}/{error,_} 的第三种形态（如驱动返回 undefined）
-                %% 当作失败传播，而不是让 case_clause 崩溃——strict 版的
-                %% 合同就是 DS 层如实报告、调用方 fail-closed。
+            case load_member_uids(Gid) of
+                {ok, [_ | _] = Uids} = Result ->
+                    imboy_cache:set(Key, Uids, ?HOUR),
+                    Result;
                 Other ->
-                    {error, {unexpected_repo_result, Other}}
+                    Other
             end
+    end.
+
+load_member_uids(Gid) ->
+    case group_member_repo:list_by_gid(Gid, <<"user_id">>) of
+        {ok, Items} when is_list(Items) ->
+            {ok, [Uid || #{<<"user_id">> := Uid} <- Items]};
+        {error, _} = Error ->
+            Error;
+        Other ->
+            {error, {unexpected_repo_result, Other}}
     end.
 
 %% @doc room-key fan-out 的权威设备公钥快照。
@@ -250,54 +249,20 @@ e2ee_mode(Gid) ->
 flush_e2ee_mode(Gid) ->
     imboy_cache:invalidate({group_e2ee_mode, Gid}).
 
-%% @doc 用户加入群组
-%%
-%% 将用户添加到群组成员缓存中，如果用户已存在则不做任何操作
-%%
-%% @param Uid 用户ID
-%% @param Gid 群组ID
-%% @returns ok 表示操作成功
-% group_ds:join(1,1), group_ds:join(2,1), group_ds:join(3,1), group_ds:join(4,1).
+%% @doc 成员变更后失效列表；调用方必须在事务提交成功后调用。
+%% 不从旧缓存推导新列表，避免并发加入/离开互相覆盖。
 -spec join(integer(), integer()) -> ok.
-join(Uid, Gid) ->
-    CacheKey = ?GROUP_CACHE_KEY(Gid),
-    case member_uids(Gid) of
-        [] ->
-            imboy_cache:set(CacheKey, [Uid], ?HOUR);
-        Li ->
-            case lists:member(Uid, Li) of
-                true ->
-                    ok;
-                false ->
-                    imboy_cache:set(CacheKey, [Uid | Li], ?HOUR)
-            end
-    end.
+join(_Uid, Gid) ->
+    imboy_cache:invalidate(?GROUP_CACHE_KEY(Gid)).
 
-%% @doc 用户离开群组
-%%
-%% 从群组成员缓存中移除指定用户
-%%
-%% @param Uid 用户ID
-%% @param Gid 群组ID
-%% @returns ok 表示操作成功
-% group_ds:leave(1,1).
 -spec leave(integer(), integer()) -> ok.
-leave(Uid, Gid) ->
-    CacheKey = ?GROUP_CACHE_KEY(Gid),
-    case member_uids(Gid) of
-        [] ->
-            ok;
-        Li ->
-            imboy_cache:set(CacheKey, lists:delete(Uid, Li), ?HOUR)
-    end.
+leave(_Uid, Gid) ->
+    imboy_cache:invalidate(?GROUP_CACHE_KEY(Gid)).
 
 %% @doc 解散群组
 %%
 %% 清除群组相关的缓存数据
 %%
-%% @param Gid 群组ID
-%% @returns ok 表示操作成功
-% group_ds:dissolve(Gid).
 -spec dissolve(integer()) -> ok.
 dissolve(Gid) ->
     CacheKey = ?GROUP_CACHE_KEY(Gid),
@@ -307,8 +272,6 @@ dissolve(Gid) ->
 %%
 %% 获取一个新的群组ID，显式使用 public schema 的序列，避免受 search_path 影响
 %%
-%% @returns integer() 新的群组ID
-% group_ds:gid().
 -spec gid() -> integer().
 gid() ->
     elib_tsid:generate(group_info).
@@ -318,8 +281,6 @@ gid() ->
 %% 检查群组头像是否为空，如果为空则设置默认头像；非 map 输入（如
 %% 上游 {error,_} 误传/畸形数据）返回空 map，不向调用方抛函数子句崩溃。
 %%
-%% @param Group 群组信息列表
-%% @returns list() 处理后的群组信息列表
 -spec check_avatar(term()) -> map().
 check_avatar(Group) when is_map(Group) ->
     Default = <<"/static/image/group_default_avatar.jpeg">>,
@@ -332,12 +293,6 @@ check_avatar(_NonMap) ->
     #{}.
 
 %% @doc 创建群组（事务版本）
-%% @param Conn 数据库连接
-%% @param Gid 群组ID（0表示自动生成）
-%% @param Uid 创建者用户ID
-%% @param Now 创建时间
-%% @param Type 群组类型（1 公开 2 私有）
-%% @param JoinLimit 加入限制
 %% @return integer() 创建的群组ID
 -spec create_group(pid(), integer() | binary(), integer(), binary(), integer(), integer()) ->
     integer().
@@ -417,12 +372,6 @@ do_create_group(Conn, GMap, Uid, _Now) ->
     Gid2.
 
 %% @doc 查询附近的群组（基于地理位置）
-%% @param Lng 经度
-%% @param Lat 纬度
-%% @param Radius 半径
-%% @param _Unit 单位（固定为米）
-%% @param Limit 返回数量限制
-%% @param Code 随机码
 %% @return {ok, list(map())} 附近群组列表
 -spec nearby_gid(
     binary() | string() | number(),
@@ -453,11 +402,6 @@ nearby_gid(Lng, Lat, Radius, _Unit, Limit, Code) ->
     elib_pg:query(Sql, [LngFloat, LatFloat, Code, Now, RadiusInt, LimitInt]).
 
 %% @doc 面对面建群 - 创建随机码（事务版本）
-%% @param Conn 数据库连接
-%% @param Uid 用户ID
-%% @param Code 随机码
-%% @param Lng 经度
-%% @param Lat 纬度
 %% @return {ok, Gid} | {error, Reason}
 -spec face2face_create(pid(), integer(), binary(), float(), float()) ->
     {ok, integer()} | {error, binary() | atom()}.
@@ -490,9 +434,6 @@ face2face_create(Conn, Uid, Code, Lng, Lat) ->
     end.
 
 %% @doc 面对面建群 - 保存（事务版本）
-%% @param Code 随机码
-%% @param Gid 群组ID
-%% @param Uid 用户ID
 %% @return {ok, binary()} | {error, Reason}
 -spec face2face_save(binary(), integer(), integer()) ->
     {ok, binary()} | {error, binary() | atom()} | {rollback, term()}.
@@ -543,10 +484,6 @@ face2face_save(Code, Gid, Uid) ->
     end).
 
 %% @doc 解散群组（完整事务版本）
-%% @param Uid 操作者用户ID
-%% @param Gid 群组ID
-%% @param OwnerUid 群主用户ID
-%% @param G 群组信息
 %% @return ok | {error, Reason}
 -spec dissolve_group(integer(), integer(), integer(), map()) -> ok | {error, binary()}.
 dissolve_group(Uid, _Gid, OwnerUid, _G) when Uid =/= OwnerUid ->
@@ -730,7 +667,6 @@ page(Page, Size, Where, OrderBy) -> group_repo:page(Page, Size, Where, OrderBy).
 update(Data) -> group_repo:update(Data).
 
 %% @doc 统计用户拥有的有效群组数
-%% @param OwnerUid 群主UID
 %% @return 群组数量
 -spec count_by_owner(integer()) -> non_neg_integer().
 count_by_owner(OwnerUid) ->
@@ -738,7 +674,6 @@ count_by_owner(OwnerUid) ->
     elib_pg:pluck_value(Tb, <<"count(*)">>, #{status => 1, owner_uid => OwnerUid}, 0).
 
 %% @doc 判断群组是否存在
-%% @param Gid 群组ID
 %% @return true | false
 -spec exists(integer()) -> boolean().
 exists(Gid) ->
@@ -746,8 +681,6 @@ exists(Gid) ->
     elib_pg:pluck_value(Tb, <<"count(*)">>, #{id => Gid}, 0) > 0.
 
 %% @doc 按 ID 更新群组
-%% @param Gid 群组ID
-%% @param Data 更新数据
 %% @return {ok, Count} | {error, Reason}
 -spec update_by_id(integer(), map()) -> {ok, integer()} | {error, any()}.
 update_by_id(Gid, Data) ->
@@ -758,7 +691,6 @@ update_by_id(Gid, Data) ->
     end).
 
 %% @doc 插入群组记录
-%% @param Data 群组数据
 %% @return {ok, _} | {error, Reason}
 -spec insert(map()) -> {ok, any()} | {error, any()}.
 insert(Data) ->

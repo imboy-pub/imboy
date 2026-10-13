@@ -5,6 +5,7 @@
 -module(imboy_cache_policy_tests).
 -include_lib("eunit/include/eunit.hrl").
 -include("eunit_setup.hrl").
+-include("imboy_cache_sync_state.hrl").
 
 %% --- Registry 投影（W0 47 条的抽样核验）---
 
@@ -12,6 +13,8 @@ registry_policy_classification_test_() ->
     ?TEST_SIMPLE(fun() ->
         ?assertEqual(local, imboy_cache_policy:policy({local_cache, <<"x">>})),
         ?assertEqual(local, imboy_cache_policy:policy({apns_jwt, 1})),
+        ?assertEqual(local, imboy_cache_policy:policy({fcm_access_token_dyn})),
+        ?assertEqual(local, imboy_cache_policy:policy(qianfan_access_token)),
         ?assertEqual(local, imboy_cache_policy:policy({cluster_node_info, node()})),
         ?assertEqual(invalidate, imboy_cache_policy:policy({is_friend2, 1, 2})),
         ?assertEqual(invalidate, imboy_cache_policy:policy({is_friend_fields2, 1, 2, []})),
@@ -45,8 +48,76 @@ namespace_of_variants_test_() ->
             imboy_cache_policy:namespace_of({user_device_active, 1, <<"d">>})
         ),
         ?assertEqual(undefined, imboy_cache_policy:namespace_of(<<"plain">>)),
+        ?assertEqual(undefined, imboy_cache_policy:namespace_of({})),
+        ?assertEqual(unknown_namespace, imboy_cache_policy:namespace_of(unknown_namespace)),
+        ?assertEqual(group, imboy_cache_policy:namespace_of({group, 1, 2, 3, 4, 5})),
         ?assertEqual(undefined, imboy_cache_policy:namespace_of({1, 2}))
     end).
+
+budget_digest_tracks_resource_limits_test() ->
+    Previous = application:get_env(imboy, cache_replication),
+    try
+        application:set_env(imboy, cache_replication, #{p_max => 10, gen_max_bytes => 128}),
+        D0 = imboy_cache_policy:budget_digest(),
+        application:set_env(imboy, cache_replication, #{p_max => 11, gen_max_bytes => 128}),
+        D1 = imboy_cache_policy:budget_digest(),
+        ?assertNotEqual(D0, D1),
+        application:set_env(imboy, cache_replication, #{p_max => 11, gen_max_bytes => 129}),
+        ?assertNotEqual(D1, imboy_cache_policy:budget_digest()),
+        lists:foreach(
+            fun(Key) ->
+                application:set_env(imboy, cache_replication, #{}),
+                Base = imboy_cache_policy:budget_digest(),
+                application:set_env(imboy, cache_replication, #{Key => 12345}),
+                ?assertNotEqual(Base, imboy_cache_policy:budget_digest())
+            end,
+            [n_max_bytes, t_max_bytes]
+        )
+    after
+        case Previous of
+            undefined -> application:unset_env(imboy, cache_replication);
+            {ok, Value} -> application:set_env(imboy, cache_replication, Value)
+        end
+    end.
+
+credential_keys_never_broadcast_test() ->
+    Previous = application:get_env(imboy, dsync_enabled),
+    application:set_env(imboy, dsync_enabled, true),
+    try
+        meck:new(depcache, [unstick, passthrough, no_link]),
+        meck:new(imboy_cache_sync, [unstick, passthrough, no_link]),
+        meck:expect(depcache, set, 5, fun(_, _, _, _, _) -> ok end),
+        meck:expect(imboy_cache_sync, broadcast, 1, fun(_) -> {ok, 1} end),
+        Keys = [{fcm_access_token_dyn}, qianfan_access_token, {apns_jwt, synthetic}],
+        lists:foreach(
+            fun(Key) ->
+                ?assertEqual(local, imboy_cache_policy:policy(Key)),
+                ?assertNot(imboy_cache_policy:replicate_allowed(Key)),
+                ?assertEqual(ok, imboy_cache:set(Key, <<"synthetic-credential">>, 60))
+            end,
+            Keys
+        ),
+        ?assertEqual(3, meck:num_calls(depcache, set, 5)),
+        ?assertEqual(0, meck:num_calls(imboy_cache_sync, broadcast, 1)),
+        %% 未分类旧业务保持既有广播合同，防止通过关闭全部广播掩盖问题。
+        ?assertEqual(ok, imboy_cache:set({unknown_legacy, synthetic}, <<"value">>, 60)),
+        ?assertEqual(1, meck:num_calls(imboy_cache_sync, broadcast, 1))
+    after
+        lists:foreach(
+            fun(Module) ->
+                try
+                    meck:unload(Module)
+                catch
+                    error:{not_mocked, _} -> ok
+                end
+            end,
+            [imboy_cache_sync, depcache]
+        ),
+        case Previous of
+            undefined -> application:unset_env(imboy, dsync_enabled);
+            {ok, Value} -> application:set_env(imboy, dsync_enabled, Value)
+        end
+    end.
 
 %% --- 复制白名单 fail-closed（19.5/AC-11）---
 
@@ -210,3 +281,81 @@ fenced_namespaces_default_empty_test_() ->
             application:unset_env(imboy, cache_fenced_namespaces)
         end
     end).
+
+legacy_set_cannot_overwrite_registered_or_managed_keys_test() ->
+    Old = application:get_env(imboy, cache_registry_overrides),
+    application:set_env(imboy, cache_registry_overrides, #{
+        legacy_guard_replica => {replicate, false}
+    }),
+    ets:new(imboy_cache_meta, [named_table, public, set]),
+    Indexed = {legacy_guard_indexed, key},
+    ets:insert(imboy_cache_meta, [{{rindex, Indexed}, true}, {sentinel, preserved}]),
+    TombOnly = {legacy_guard_deleted, key},
+    ok = imboy_cache_sync_apply:store_revision(
+        TombOnly, {1, node()}, erlang:system_time(millisecond) + 60000, deleted
+    ),
+    meck:new(depcache, [passthrough, no_link]),
+    meck:expect(depcache, set, 5, fun(_, _, _, _, _) -> ok end),
+    meck:new(syn, [non_strict, no_link]),
+    meck:expect(syn, publish, 3, fun(_, _, _) -> {ok, 1} end),
+    try
+        State = #state{status = ready, boot_id = <<1:128>>},
+        Keys = [
+            {fcm_access_token_dyn},
+            qianfan_access_token,
+            {apns_jwt, 1},
+            {config5, key},
+            {qr_login, key},
+            {legacy_guard_replica, key},
+            Indexed,
+            TombOnly
+        ],
+        [
+            ?assertEqual(
+                {noreply, State},
+                imboy_cache_sync:handle_info(
+                    {cache_sync, {set, K, synthetic_credential, 60, []}}, State
+                )
+            )
+         || K <- Keys
+        ],
+        [
+            ?assertEqual(
+                {error, policy_denied},
+                imboy_cache:broadcast(
+                    {set, K, synthetic_credential, 60, []}
+                )
+            )
+         || K <- Keys
+        ],
+        ?assertEqual(0, meck:num_calls(syn, publish, 3)),
+        ?assertEqual(0, meck:num_calls(depcache, set, 5)),
+        ?assertNot(ets:member(imboy_cache_meta, {rindex, TombOnly})),
+        ?assertEqual(undefined, imboy_cache:get(TombOnly)),
+        ?assertError({unsupported_replicate_api, set}, imboy_cache:set(TombOnly, value, 60)),
+        ?assertEqual([{{rindex, Indexed}, true}], ets:lookup(imboy_cache_meta, {rindex, Indexed})),
+        ?assertEqual([{sentinel, preserved}], ets:lookup(imboy_cache_meta, sentinel)),
+        ?assertEqual(
+            {noreply, State},
+            imboy_cache_sync:handle_info(
+                {cache_sync, {set, {legacy_guard_unknown, key}, value, 60, []}}, State
+            )
+        ),
+        ?assertEqual(1, meck:num_calls(depcache, set, 5)),
+        ?assertEqual(
+            {ok, 1},
+            imboy_cache:broadcast(
+                {set, {legacy_guard_unknown, key}, value, 60, []}
+            )
+        ),
+        ?assertEqual({ok, 1}, imboy_cache:broadcast({flush, {fcm_access_token_dyn}})),
+        ?assertEqual(2, meck:num_calls(syn, publish, 3))
+    after
+        meck:unload(syn),
+        meck:unload(depcache),
+        ets:delete(imboy_cache_meta),
+        case Old of
+            undefined -> application:unset_env(imboy, cache_registry_overrides);
+            {ok, V} -> application:set_env(imboy, cache_registry_overrides, V)
+        end
+    end.

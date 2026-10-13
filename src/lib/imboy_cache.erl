@@ -25,13 +25,18 @@
 -module(imboy_cache).
 
 -include("cache.hrl").
+-include_lib("depcache/include/depcache.hrl").
 -include("log.hrl").
 -include("chat.hrl").
+
+-type fence_snapshot() :: [
+    {term(), direct | dep, non_neg_integer()} | {node_boot, boot, {node(), binary()}}
+].
 
 %% gen_server API
 -export([start_link/1]).
 %% depcache exports
--export([memo/1, memo/2, memo/3, memo/4]).
+-export([memo/1, memo/2, memo/3, memo/4, uncached/1]).
 -export([set/2, set/3, set/4, get/1, get_wait/1, get/2, get_subkey/2]).
 -export([flush/0, flush/1, delete/1, size/0, record_depcache_event/1]).
 -export([broadcast/1]).
@@ -79,7 +84,8 @@ start_link(Args) ->
 %% @returns 缓存的值或函数执行结果
 -spec memo(fun(() -> term())) -> term().
 memo(Function) when is_function(Function, 0) ->
-    depcache:memo(Function, ?DEPCACHE_SERVER).
+    %% depcache 的隐式 fun Key 来自第一次调用；随后按实际 Key 统一校验。
+    memo(Function, undefined, ?HOUR, []).
 
 %% @doc 根据参数类型缓存函数结果
 %% 如果 Fun 是函数，则以 Key 为键缓存一小时；如果 Fun 是 {M,F,A} 元组，
@@ -88,15 +94,17 @@ memo(Function) when is_function(Function, 0) ->
 %% @param MaxAge 缓存时间（秒）
 %% @returns 缓存的值或函数执行结果
 -spec memo({module(), atom(), list()} | fun(() -> term()), non_neg_integer()) -> term().
-memo(Function, MaxAge) when is_tuple(Function) ->
-    depcache:memo(Function, undefined, MaxAge, [], ?DEPCACHE_SERVER);
+memo({M, F, Args} = Function, MaxAge) ->
+    memo(fun() -> erlang:apply(M, F, Args) end, implicit_memo_key(Function), MaxAge, []);
+memo({M, F} = Function, MaxAge) ->
+    memo(fun() -> erlang:apply(M, F, []) end, Function, MaxAge, []);
 %% @doc 以 Key 为键缓存函数执行结果 MaxAge 秒
 %% @param F 无参数函数
 %% @param Key 缓存项的键
 %% @returns 缓存的值或函数执行结果
 %% @equiv memo(F, Key, MaxAge, [], Server)
 memo(F, Key) when is_function(F, 0) ->
-    depcache:memo(F, Key, ?HOUR, [], ?DEPCACHE_SERVER).
+    memo(F, Key, ?HOUR, []).
 
 %% @doc 以 Key 为键缓存函数执行结果 MaxAge 秒
 %% @param F 无参数函数
@@ -105,7 +113,7 @@ memo(F, Key) when is_function(F, 0) ->
 %% @returns 缓存的值或函数执行结果
 -spec memo(fun(() -> term()), term(), non_neg_integer()) -> term().
 memo(F, Key, MaxAge) ->
-    depcache:memo(F, Key, MaxAge, [], ?DEPCACHE_SERVER).
+    memo(F, Key, MaxAge, []).
 
 %% @doc 以 Key 为键缓存函数执行结果 MaxAge 秒，如果任何依赖项发生变化则刷新缓存
 %% @param F 无参数函数
@@ -113,15 +121,49 @@ memo(F, Key, MaxAge) ->
 %% @param MaxAge 缓存时间（秒）
 %% @param Dep 依赖项列表
 %% @returns 缓存的值或函数执行结果
--spec memo(fun(() -> term()), term(), non_neg_integer(), list()) -> term().
+-spec memo(depcache:memo_fun(), term(), non_neg_integer(), list()) -> term().
+memo({M, F, Args} = MFA, Key, MaxAge, Dep) ->
+    ActualKey =
+        case Key of
+            undefined -> implicit_memo_key(MFA);
+            _ -> Key
+        end,
+    memo(fun() -> erlang:apply(M, F, Args) end, ActualKey, MaxAge, Dep);
+memo({M, F} = MFA, Key, MaxAge, Dep) ->
+    ActualKey =
+        case Key of
+            undefined -> MFA;
+            _ -> Key
+        end,
+    memo(fun() -> erlang:apply(M, F, []) end, ActualKey, MaxAge, Dep);
+memo(F, undefined, MaxAge, Dep) when is_function(F, 0) ->
+    case F() of
+        undefined -> erlang:error({invalid_memo_key, undefined});
+        ActualKey -> memo(F, ActualKey, MaxAge, Dep)
+    end;
 memo(F, Key, MaxAge, Dep) ->
+    ok = require_unversioned_key(Key, memo),
     case imboy_cache_policy:is_fenced(Key) of
         true ->
-            %% 19.3 generation 栅栏路径：物理键 {cache_v2,Key,Gen} + 版本化依赖标签
+            %% 物理键同时绑定 sync 启动身份与 generation，防止重启后的代次复用。
             memo_fenced(F, Key, MaxAge, Dep);
         false ->
             depcache:memo(F, Key, MaxAge, Dep, ?DEPCACHE_SERVER)
     end.
+
+%% 与 depcache 的 MFA Key 合同一致：context 参数不参与派生键。
+implicit_memo_key({M, F, Args}) ->
+    {M, F, [
+        A
+     || A <- Args, not (is_tuple(A) andalso tuple_size(A) > 0 andalso element(1, A) =:= context)
+    ]}.
+
+%% @doc memo loader 的动态零 TTL 结果；唤醒等待者但不保留缓存值。
+-spec uncached(term()) -> term().
+uncached(Value) -> #memo{value = Value, max_age = 0}.
+
+memo_value(#memo{value = Value}) -> Value;
+memo_value(Value) -> Value.
 
 %% @doc 19.3 完整并发栅栏：loader 前快照 generation，返回前验证；
 %% 不匹配则最多重试一次；连续失效时直接执行权威查询且不缓存
@@ -139,7 +181,7 @@ memo_fenced(F, Key, MaxAge, Dep) ->
                     Value;
                 {stale, _} ->
                     %% 连续失效：返回权威结果，不写缓存（旧物理键 TTL 有界自然过期）
-                    F()
+                    memo_value(F())
             end
     end.
 
@@ -159,17 +201,21 @@ memo_fenced_attempt(F, Key, MaxAge, Dep, _PrevSnapshot) ->
     %% 重试轮：忽略旧快照，重新取当前代（旧 loader 已被物理键隔离，无需 flush 当前键）
     memo_fenced_attempt(F, Key, MaxAge, Dep).
 
--spec generation_snapshot(term(), list()) -> [{term(), non_neg_integer(), non_neg_integer()}].
+-spec generation_snapshot(term(), list()) -> fence_snapshot().
 generation_snapshot(Key, Dep) ->
-    [{Key, direct, imboy_cache_sync:generation(Key)}] ++
+    [
+        {Key, direct, imboy_cache_sync:generation(Key)},
+        {node_boot, boot, imboy_cache_sync:node_boot()}
+    ] ++
         [{D, dep, imboy_cache_sync:dep_generation(D)} || D <- Dep].
 
--spec generation_stable(term(), [{term(), non_neg_integer(), non_neg_integer()}]) -> boolean().
+-spec generation_stable(term(), fence_snapshot()) -> boolean().
 generation_stable(_Key, Snapshot) ->
     lists:all(
         fun
             ({K, direct, G}) -> imboy_cache_sync:generation(K) =:= G;
-            ({D, dep, G}) -> imboy_cache_sync:dep_generation(D) =:= G
+            ({D, dep, G}) -> imboy_cache_sync:dep_generation(D) =:= G;
+            ({node_boot, boot, Boot}) -> imboy_cache_sync:node_boot() =:= Boot
         end,
         Snapshot
     ).
@@ -178,11 +224,12 @@ generation_stable(_Key, Snapshot) ->
     fun(() -> term()),
     term(),
     non_neg_integer(),
-    [{term(), non_neg_integer(), non_neg_integer()}]
+    fence_snapshot()
 ) -> term().
 apply_physical_memo(F, _Key, MaxAge, [{Key, direct, G} | Deps]) ->
-    PhysKey = {cache_v2, Key, G},
-    PhysDeps = [{cache_v2_dep, D, GD} || {D, dep, GD} <- Deps],
+    {node_boot, boot, Boot} = lists:keyfind(node_boot, 1, Deps),
+    PhysKey = {cache_v2, Key, {Boot, G}},
+    PhysDeps = [{cache_v2_dep, D, {Boot, GD}} || {D, dep, GD} <- Deps],
     depcache:memo(F, PhysKey, MaxAge, PhysDeps, ?DEPCACHE_SERVER).
 
 %% @doc 添加键值对到缓存，保存3600秒，无依赖项
@@ -224,6 +271,7 @@ set(Key, Data, MaxAge, Depend) ->
 %% @returns ok
 -spec set(term(), term(), non_neg_integer(), list(), atom()) -> ok.
 set(Key, Data, MaxAge, Depend, Server) ->
+    ok = require_unversioned_key(Key, set),
     % 首先设置本地缓存
     depcache:set(Key, Data, MaxAge, Depend, Server),
 
@@ -264,7 +312,7 @@ is_local_cache_key(_) ->
 %% @returns {ok, Data} | undefined
 -spec get_wait(term()) -> {ok, term()} | undefined.
 get_wait(Key) ->
-    depcache:get_wait(Key, ?DEPCACHE_SERVER).
+    guarded_read(Key, fun() -> depcache:get_wait(Key, ?DEPCACHE_SERVER) end).
 
 %% @doc V2.2.1 统一失效入口（计划 2.1/4.2/7.2）：
 %% 数据变更（事务 COMMIT）成功后调用；本地清理 + generation 推进 + 跨节点失效通知。
@@ -282,7 +330,12 @@ invalidate(Key) ->
 -spec put(term(), term(), non_neg_integer(), local | replicate) ->
     ok | {error, term()}.
 put(Key, Value, TTL, local) ->
-    case imboy_cache_policy:validate_put(Key, Value, TTL) of
+    Check =
+        case is_replica_key(Key) of
+            true -> {error, versioned_write_required};
+            false -> imboy_cache_policy:validate_put(Key, Value, TTL)
+        end,
+    case Check of
         ok ->
             _ = depcache:set(Key, Value, TTL, [], ?DEPCACHE_SERVER),
             ok;
@@ -311,20 +364,11 @@ put_delete(Key) ->
     imboy_cache_sync:publish_delete(Key).
 
 %% @doc 从缓存获取键值，返回数据或未找到时返回 undefined
-%% replicate Key（rindex 登记）额外经过版本/墓碑/同步状态校验（计划 5.5）：
+%% replicate Key（Registry 或 rindex 登记）额外经过版本/授权/同步状态校验：
 %% 墓碑或未 READY 时不得返回未校验旧值。
 -spec get(term()) -> {ok, term()} | undefined.
 get(Key) ->
-    case imboy_cache_sync:is_replicated(Key) of
-        true ->
-            case imboy_cache_sync:replicate_state(Key) of
-                deleted -> undefined;
-                unverified -> undefined;
-                _ -> depcache:get(Key, ?DEPCACHE_SERVER)
-            end;
-        false ->
-            depcache:get(Key, ?DEPCACHE_SERVER)
-    end.
+    guarded_read(Key, fun() -> depcache:get(Key, ?DEPCACHE_SERVER) end).
 
 %% @doc 从缓存中获取子键值
 %% @param Key 缓存键
@@ -332,7 +376,7 @@ get(Key) ->
 %% @returns {ok, Data} | undefined
 -spec get_subkey(term(), term()) -> {ok, term()} | undefined.
 get_subkey(Key, SubKey) ->
-    depcache:get_subkey(Key, SubKey, ?DEPCACHE_SERVER).
+    guarded_read(Key, fun() -> depcache:get_subkey(Key, SubKey, ?DEPCACHE_SERVER) end).
 
 %% @doc 从缓存获取键值，支持子键
 %% @param Key 缓存键
@@ -340,7 +384,71 @@ get_subkey(Key, SubKey) ->
 %% @returns {ok, Data} | undefined
 -spec get(term(), term()) -> {ok, term()} | undefined.
 get(Key, SubKey) ->
-    depcache:get(Key, SubKey, ?DEPCACHE_SERVER).
+    guarded_read(Key, fun() -> depcache:get(Key, SubKey, ?DEPCACHE_SERVER) end).
+
+guarded_read(Key, Read) ->
+    case is_replica_key(Key) of
+        false ->
+            Read();
+        true ->
+            guarded_replica_read(Key, Read)
+    end.
+
+is_replica_key(Key) ->
+    imboy_cache_sync:is_replicated(Key) orelse imboy_cache_policy:policy(Key) =:= replicate.
+
+require_unversioned_key(Key, Api) ->
+    case is_replica_key(Key) of
+        true -> erlang:error({unsupported_replicate_api, Api});
+        false -> ok
+    end.
+
+guarded_replica_read(Key, Read) ->
+    case replica_read_token(Key) of
+        undefined ->
+            undefined;
+        {ok, Token} ->
+            Value = read_replica(Read),
+            case replica_read_token(Key) of
+                {ok, Token} -> Value;
+                _ -> undefined
+            end
+    end.
+
+replica_read_token(Key) ->
+    try
+        case
+            imboy_cache_policy:replicate_allowed(Key) andalso
+                imboy_cache_sync:replicate_state(Key) =:= live
+        of
+            true ->
+                case ets:lookup(imboy_cache_meta, {rev, Key}) of
+                    [Row] -> {ok, {Row, imboy_cache_sync:node_boot()}};
+                    [] -> undefined
+                end;
+            false ->
+                undefined
+        end
+    catch
+        error:badarg -> undefined
+    end.
+
+%% 复制值不读调用者的旧进程字典副本；保留调用者原有 in_process 设置。
+read_replica(Read) ->
+    Previous = erlang:put(depcache_in_process, false),
+    PreviousClock = erlang:erase(depcache_now),
+    try
+        Read()
+    after
+        case Previous of
+            undefined -> erlang:erase(depcache_in_process);
+            _ -> erlang:put(depcache_in_process, Previous)
+        end,
+        case PreviousClock of
+            undefined -> erlang:erase(depcache_now);
+            _ -> erlang:put(depcache_now, PreviousClock)
+        end
+    end.
 
 %% @doc 清空所有缓存中的键
 %% 支持分布式缓存同步，如果启用了 dsync 则广播到其他节点
@@ -420,7 +528,7 @@ record_depcache_event(Args) ->
 %% @doc 广播消息到所有节点
 %% @param Message 要广播的消息
 %% @returns {ok, Count} 成功广播的节点数
--spec broadcast(any()) -> {ok, non_neg_integer()}.
+-spec broadcast(any()) -> {ok, non_neg_integer()} | {error, policy_denied}.
 broadcast(Message) ->
     imboy_cache_sync:broadcast(Message).
 

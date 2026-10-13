@@ -15,8 +15,15 @@
     origin_seq = 0 :: non_neg_integer(),
     status = starting :: starting | discovering | recovering | ready | degraded,
     retries = 0 :: non_neg_integer(),
+    recovery_timer :: reference() | undefined,
     %% 恢复总 deadline（Dmax，C01 第 6 节）
     recover_deadline_ms :: non_neg_integer() | undefined,
     %% 快照回合状态（imboy_cache_sync_snapshot 的 plain map；undefined=非恢复中）
-    snapshot_round = undefined :: map() | undefined
+    snapshot_round = undefined :: map() | undefined,
+    %% 冷清理丢失完整副本集，禁止沿用首次显式单节点启动的空 READY。
+    requires_authority = false :: boolean(),
+    %% 未知化身事件仅触发身份恢复；代次由成员握手决定，不信任事件 payload。
+    identity_recovery = false :: boolean(),
+    %% 单一周期校对定时器；手动校对不派生额外周期链。
+    reconcile_timer = undefined :: reference() | undefined
 }).

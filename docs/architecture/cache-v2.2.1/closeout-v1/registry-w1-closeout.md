@@ -26,9 +26,9 @@
 
 | # | 尾巴项 | 分类 | 一句话结论 |
 |---|---|---|---|
-| 1 | tag_subtitle_2/3 fill/flush 键失配 | **Documented-Exception** | 缺陷在案未修，展示级陈旧 ≤1 天有 TTL 兜底，Registry 已登记根因，修复一行待后续实施轮 |
+| 1 | tag_subtitle_2/3 fill/flush 键失配 | **FIXED-with-test（2026-10-13）** | fill/flush 均指向 tag_subtitle_2；真实缓存回归验证整数与二进制 TagId 的失效后回填 |
 | 2 | config5 双重失效 7.1 竞态 | **Documented-Exception** | 双重失效保留，彻底闭合依赖 fenced 启用 + 回填改造（计划门控在性能 gate 后）；广播半边已由 W1-05 闭合 |
-| 3 | apns_jwt / fcm 广播 vs local | **apns_jwt: FIXED-with-test；fcm: BLOCKED** | apns_jwt 策略化生效且有分类测试；fcm 一元组键 namespace 失配 → legacy → dsync 开启时仍全组广播 OAuth token |
+| 3 | apns_jwt / fcm / qianfan 广播 vs local | **FIXED-with-test（2026-10-13）** | 一元组/裸原子形态已按 local 分类；真实 syn 对照验证正常 set 不发布凭据，旧 SET 接收也不能覆盖本地凭据 |
 | 4 | group join/leave 读改写竞态 | **BLOCKED** | 读改写非原子 + join 缓存变更位于事务内（W1-03 历史结论漏扫实证）均未修，修复涉及多调用方事务边界重构，超本轮只读红线 |
 | 5 | login_attempt_ip_limit | **Documented-Exception** | 广播半边已由 W1-05 闭合（机制级证据）；读改写非原子保留——账号级原子锁定为第一防线，IP 限流计数丢失仅延迟阈值达成 |
 
@@ -39,7 +39,7 @@
 **Registry 标记**: `tag_subtitle_2` → `W1_KNOWN_DEFECT`；
 `tag_subtitle_3` → `LEGACY_TAG_NO_WRITER`（key-registry.json）
 
-### 源码位置
+### 原审计源码位置（2026-10-12）
 
 - 填充键: `src/repo/user_tag_relation_repo.erl:262` —
   `Key = elib_cnv:implode("_", ["tag_subtitle_2", TagId])`，
@@ -53,7 +53,7 @@
 - Policy 注册: `src/lib/imboy_cache_policy.erl:93-94`
   （tag_subtitle_2/3 → invalidate）
 
-### 现状分析
+### 原审计分析（2026-10-12，修复前）
 
 1. 填充键（tag_subtitle_2_<TagId>）与失效键（tag_subtitle_3_<TagId>）自
    0.7.3 架构重构（`83c15f7a`，2026-01-01）以来持续失配。全仓 grep 确认：
@@ -72,9 +72,19 @@
    等 mock 测试仅验证转发语义，不校验 fill/flush 键对齐；
    全 test/ 无键失配回归测试。
 
-### 分类: Documented-Exception
+### 当前分类: FIXED-with-test（2026-10-13）
 
-**保留现状的技术理由**:
+`flush_subtitle/1` 已对齐 scene2 填充键 `tag_subtitle_2`，不再失效无填充方的
+`tag_subtitle_3`。`subtitle_invalidation_refills_actual_cached_key_test_` 使用真实
+不连接 PG 的 depcache/imboy_cache/sync，替换 PG 查询为可变受控数据源：先确认
+Alice 被缓存，权威改为 Bob 后整数 TagId 失效立即回填 Bob；再次改为 Carol 后
+二进制 TagId 失效回填 Carol，查询次数分别为 1/2/3。
+该证据只覆盖键匹配和本地回填，不证明真实 PG COMMIT/ROLLBACK、跨节点通知或
+并发 loader 栅栏；其余 Registry 钩子仍需单独验证。原 W0 Registry 保留原审计快照。
+
+### 历史登记例外（已修复）
+
+**原保留现状的技术理由**:
 
 - 缺陷已由 W0 Registry 完整登记（双条目 + 根因 + 影响上界），不构成静默缺漏
   （19.4 合同满足）；
@@ -85,7 +95,7 @@
   对齐 + 键对齐回归测试），修复时 tag_subtitle_3 本无填充、tag_subtitle_2 旧值
   靠 TTL 自然过期，无需过渡清理，适合在下一实施轮以独立原子提交完成。
 
-**风险描述**: 标签关系/好友备注变更后，标签副标题缓存最长 1 天返回旧值；
+**历史风险描述（已修复）**: 标签关系/好友备注变更后，标签副标题缓存最长 1 天返回旧值；
 每次变更还会对集群广播一次必然 no-op 的 `{flush, tag_subtitle_3_*}` 消息
 （轻微无效流量）。
 
@@ -155,7 +165,7 @@
 dsync_enabled=true 时全节点广播；legacy 行为与 local 策略矩阵不一致
 （G-04/W1-05）"）
 
-### 源码位置
+### 原审计源码位置（2026-10-12）
 
 - apns_jwt 写入: `src/ds/push_notification_ds.erl:491-505` —
   `get_apns_jwt/2`，`imboy_cache:set({apns_jwt, KeyId}, Jwt, 3000)`
@@ -170,7 +180,7 @@ dsync_enabled=true 时全节点广播；legacy 行为与 local 策略矩阵不�
   `namespace_of/1` 仅匹配尺寸 2–5 且首元素为 atom 的元组（及
   `{local_cache, Sub, _}`），**无一元组子句**
 
-### 现状分析
+### 原审计分析（2026-10-12，修复前）
 
 1. **apns_jwt（已修复）**: `{apns_jwt, KeyId}` 为二元组 → namespace =
    apns_jwt → policy = local（policy.erl:53）→ `should_broadcast` = false
@@ -189,9 +199,22 @@ dsync_enabled=true 时全节点广播；legacy 行为与 local 策略矩阵不�
 4. 触发条件限定：`dsync_enabled` 生产默认 false（imboy_cache.erl:248），
    当前单节点/默认部署不暴露；缺陷在多节点且 dsync_enabled=true 时实际发生。
 
-### 分类: apns_jwt = FIXED-with-test；fcm = BLOCKED
+### 当前分类: FIXED-with-test（2026-10-13）
 
-**apns_jwt 证据（FIXED-with-test）**:
+`namespace_of/1` 当前支持裸原子和非空 atom 首项元组，一元组 FCM、裸原子
+qianfan 和 APNs 元组均按 Registry local 策略处理。已有不广播单元回归加上
+`credential_policy_is_enforced_on_real_publish_and_receive_test_` 的真实 syn/depcache/
+sync 对照：启用 dsync 后三类合成凭据的标准 set 不发布 SET，未分类 legacy 键
+仍真实发布；旧格式 SET 注入后，本地凭据值不被覆盖。
+
+旧 SET 接收仅接受未分类且无复制索引/版本行的键。另有真实 DELETE-only →
+撤销 Registry → 旧 SET 回归，验证墓碑保留窗口内不写 raw 值；公开无版本 set
+拒绝，预先存在的 raw ghost 不可读。此证据不等于真实令牌提供商、跨主机或
+保留窗口之外的超窗恢复验收；C10 当前候选混合版本矩阵仍需重跑。
+
+### 历史分类与证据（原 BLOCKED 已由上述实现消解）
+
+**原 apns_jwt 证据（2026-10-12）**:
 
 - `test/lib/imboy_cache_policy_tests.erl:11-28`
   `registry_policy_classification_test_` — `:14`
@@ -206,7 +229,7 @@ dsync_enabled=true 时全节点广播；legacy 行为与 local 策略矩阵不�
   闭合链 = 分类断言（有测试）+ should_broadcast 纯函数（imboy_cache.erl:
   246-250 实现）。建议后续轮补一条该形态的直接断言。
 
-**fcm 阻塞原因（BLOCKED）**:
+**原 fcm 阻塞原因（已消解，2026-10-12）**:
 
 - 修复需要 src/ 写变更，且方案影响面超出单点：
   (a) `namespace_of/1` 增加一元组子句 `{NS} when is_atom(NS) -> NS`（policy
@@ -218,7 +241,7 @@ dsync_enabled=true 时全节点广播；legacy 行为与 local 策略矩阵不�
   裸原子键一并处置，避免修一半。
 - 本轮 C06 尾巴核查红线只读 src/，无法执行上述任一路径。
 
-**风险描述**: `dsync_enabled=true` 的多节点部署下，FCM OAuth access_token
+**历史风险描述（已修复标准写入及接收边界）**: `dsync_enabled=true` 的多节点部署下，FCM OAuth access_token
 （敏感凭据，Registry sensitive=true）经 legacy `{set, ...}` 消息全组复制，
 违反计划 19.5"JWT/OAuth…不得全值复制"红线；qianfan token 同理。当前默认
 配置（dsync_enabled=false）下为潜伏缺陷，开关翻转即暴露。

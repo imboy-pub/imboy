@@ -1,9 +1,8 @@
 %% @doc 缓存策略真源（V2.2.1 W2-04/W2-05）
 %%
 %% 依据 docs/architecture/cache-v2.2.1/w0/key-registry.json（W0 冻结的 47 条
-%% Key 策略矩阵）投影为静态 Erlang 表。本模块只做分类与校验，不持有进程状态。
+%% Key 策略矩阵）投影为静态 Erlang 表。
 %%
-%% 合同（计划 3.1/3.3/19.4/19.5）：
 %% - policy(Key) 返回 local | invalidate | legacy | blocked；
 %%   blocked = G-QR 未决的 QR 两类 Key，永不进入 replicate。
 %% - replicate 生产白名单默认为空；仅配置 `cache_replication.whitelist`
@@ -13,7 +12,38 @@
 -module(imboy_cache_policy).
 -moduledoc "缓存 Key 策略真源：Registry 分类、复制白名单与 put/invalidate 校验。".
 
+-define(SKEW_SEC, 5).
+
 -export([
+    snapshot_entry_deadline/1,
+    snapshot_entry_retention_deadline/1,
+    valid_snapshot_entry/1,
+    valid_snapshot_origin/2,
+    within_meta_budget/1,
+    remaining_ttl_sec/1,
+    snapshot_entry_body/1,
+    snapshot_entry_with_origin/2,
+    revision_metadata_origin/2,
+    snapshot_page_digest/3,
+    snapshot_revision_counter/1,
+    snapshot_page_result/7,
+    snapshot_manifest_entry/1,
+    snapshot_manifest_own_seq/3,
+    snapshot_page_revision_ceiling/2,
+    event_origin_checks/1,
+    valid_watermark/1,
+    valid_snapshot_cut/1,
+    snapshot_cut_base/1,
+    snapshot_cut_coverage/1,
+    valid_version_report/1,
+    version_report_base/1,
+    version_report_target/1,
+    version_report_round_matches/3,
+    snapshot_metadata_kind/1,
+    revision_metadata_row/5,
+    revision_metadata_row/6,
+    prospective_revision_rows/6,
+    snapshot_metadata_rows/2,
     fenced_namespaces/0,
     policy/1,
     namespace_of/1,
@@ -24,22 +54,32 @@
     validate_put/3,
     validate_replicate/3,
     check_value_size/1,
+    check_value_type/1,
     max_ttl_sec/0,
     max_value_bytes/0,
+    protocol_meta_max_bytes/0,
     batch_size/0,
     recovery_window_sec/0,
     tombstone_ttl_sec/0,
     protocol/0,
     %% C01 冻结的资源预算（closeout-v1/protocol-budget-frozen.md 第 6 节）
     n_max/0,
+    n_max_bytes/0,
+    gen_max_bytes/0,
     t_max/0,
+    t_max_bytes/0,
     b_max/0,
+    j_max/0,
+    j_max_bytes/0,
+    b_max_bytes/0,
     p_max/0,
     p_max_bytes/0,
     r_max_rounds/0,
     d_max_ms/0,
     high_watermark/0,
     grace_window_ms/0,
+    grace_max/0,
+    peer_max/0,
     budget_digest/0,
     config_hash/0,
     registry_hash/0
@@ -118,6 +158,10 @@ fenced_namespaces() ->
 check_value_size(Value) ->
     value_size(Value) =< max_value_bytes().
 
+-spec check_value_type(term()) -> boolean().
+check_value_type(Value) ->
+    Value =/= undefined andalso not contains_pid_ref_fun(Value).
+
 %% 计划 6.1/13.1 候选默认（执行补充第 5 节冻结的本地工程候选值）
 -define(DEFAULT_MAX_TTL_SEC, 600).
 -define(DEFAULT_MAX_VALUE_BYTES, 32768).
@@ -137,7 +181,6 @@ policy(Key) ->
         {P, _Sensitive} -> P
     end.
 
--spec registry_entry(atom() | undefined) -> {atom(), boolean()} | undefined.
 registry_entry(undefined) ->
     undefined;
 registry_entry(NS) ->
@@ -148,14 +191,13 @@ registry_entry(NS) ->
     end.
 
 %% @doc 从实际缓存 Key 提取 namespace 标签。
-%% 支持 {NS, _...} 元组形态（生产主流）与 {local_cache, Sub, _} 两段前缀。
+%% 元组首项和裸原子均为 namespace；不按元组长度遗漏凭据 Key。
 -spec namespace_of(term()) -> atom() | undefined.
-namespace_of({local_cache, Sub, _}) when is_atom(Sub) -> local_cache;
-namespace_of({NS, _}) when is_atom(NS) -> NS;
-namespace_of({NS, _, _}) when is_atom(NS) -> NS;
-namespace_of({NS, _, _, _}) when is_atom(NS) -> NS;
-namespace_of({NS, _, _, _, _}) when is_atom(NS) -> NS;
-namespace_of(_) -> undefined.
+namespace_of(Key) when is_atom(Key) -> Key;
+namespace_of(Key) when is_tuple(Key), tuple_size(Key) > 0, is_atom(element(1, Key)) ->
+    element(1, Key);
+namespace_of(_) ->
+    undefined.
 
 %% @doc 是否本地 Key（禁止任何跨节点广播）。
 -spec is_local(term()) -> boolean().
@@ -202,12 +244,14 @@ validate_replicate(Key, Value, TTL) ->
             {error, replicate_not_authorized};
         true ->
             checks([
+                {fun() -> check_value_size(Key) end, key_too_large},
+                {fun() -> check_value_type(Key) end, key_type_forbidden},
                 {fun() -> is_integer(TTL) end, invalid_ttl},
                 {fun() -> TTL > 0 andalso TTL =< max_ttl_sec() end, ttl_out_of_range},
                 {fun() -> Value =/= undefined end, invalid_value},
                 {fun() -> value_size(Value) =< max_value_bytes() end, value_too_large},
                 %% PID/ref/fun 一律禁止复制（提示词第八节 fail-closed）
-                {fun() -> not contains_pid_ref_fun(Value) end, value_type_forbidden}
+                {fun() -> check_value_type(Value) end, value_type_forbidden}
             ])
     end.
 
@@ -241,10 +285,8 @@ tombstone_ttl_sec() ->
     C = 5,
     erlang:max(erlang:max(T + C, R + S + D + 2 * C), ?DEFAULT_TOMBSTONE_TTL_SEC).
 
-%% ------------------------------------------------------------------
 %% C01 冻结的资源预算（closeout-v1/protocol-budget-frozen.md 第 6 节）
 %% 本地工程预算，非生产 SLO；故障测试前冻结，不得为通过测试调高。
-%% ------------------------------------------------------------------
 
 -define(DEFAULT_N_MAX, 50000).
 -define(DEFAULT_T_MAX, 20000).
@@ -258,13 +300,34 @@ tombstone_ttl_sec() ->
 -spec n_max() -> pos_integer().
 n_max() -> rep_cfg(n_max, ?DEFAULT_N_MAX).
 
+-spec n_max_bytes() -> pos_integer().
+n_max_bytes() -> rep_cfg(n_max_bytes, 16 * 1024 * 1024).
+
+%% V2 固定字段及控制帧的独立序列化预算，不借用 Key/Value 容量。
+-spec protocol_meta_max_bytes() -> pos_integer().
+protocol_meta_max_bytes() -> 4096.
+
+%% generation 索引的序列化字节预算；超限时推进全域栅栏并回收索引。
+-spec gen_max_bytes() -> pos_integer().
+gen_max_bytes() -> rep_cfg(gen_max_bytes, n_max() * 128).
+
 %% 墓碑条目上限（项）。
 -spec t_max() -> pos_integer().
 t_max() -> rep_cfg(t_max, ?DEFAULT_T_MAX).
 
-%% 恢复接收缓冲上限（项，页事件累计条目）。
+-spec t_max_bytes() -> pos_integer().
+t_max_bytes() -> rep_cfg(t_max_bytes, 8 * 1024 * 1024).
+
+%% 恢复接收在途页缓冲上限（项，应用完成后释放）。
 -spec b_max() -> pos_integer().
 b_max() -> rep_cfg(b_max, ?DEFAULT_B_MAX).
+
+-spec b_max_bytes() -> pos_integer().
+b_max_bytes() -> rep_cfg(b_max_bytes, 32 * 1024 * 1024).
+
+%% 本地候选 journal 预算；生产容量仍需实际负载与硬件验证。
+j_max() -> rep_cfg(j_max, 2048).
+j_max_bytes() -> rep_cfg(j_max_bytes, 32 * 1024 * 1024).
 
 %% 快照每页条目上限。
 -spec p_max() -> pos_integer().
@@ -290,19 +353,31 @@ high_watermark() -> rep_cfg(high_watermark, ?DEFAULT_HIGH_WATERMARK).
 -spec grace_window_ms() -> pos_integer().
 grace_window_ms() -> tombstone_ttl_sec() * 1000.
 
+grace_max() -> rep_cfg(grace_max, 256).
+peer_max() -> rep_cfg(peer_max, 64).
+
 %% @doc 冻结预算摘要（C01 oracle：配置/实现/测试三方一致）。
 %% 规范化序列化后取 SHA-256 前 16 字节；任何预算值变化都会改变摘要。
 -spec budget_digest() -> binary().
 budget_digest() ->
     Parts = [
         {n_max, n_max()},
+        {n_max_bytes, n_max_bytes()},
         {t_max, t_max()},
+        {t_max_bytes, t_max_bytes()},
+        {j_max, j_max()},
+        {grace_max, grace_max()},
+        {peer_max, peer_max()},
+        {j_max_bytes, j_max_bytes()},
         {b_max, b_max()},
-        {p_max, p_max},
+        {b_max_bytes, b_max_bytes()},
+        {p_max, p_max()},
+        {gen_max_bytes, gen_max_bytes()},
         {p_max_bytes, p_max_bytes()},
         {r_max_rounds, r_max_rounds()},
         {d_max_ms, d_max_ms()},
         {max_value_bytes, max_value_bytes()},
+        {protocol_meta_max_bytes, protocol_meta_max_bytes()},
         {max_ttl_sec, max_ttl_sec()},
         {high_watermark, high_watermark()},
         {grace_window_ms, grace_window_ms()}
@@ -315,7 +390,29 @@ budget_digest() ->
 %% @doc 缓存同步配置摘要：预算 + 白名单 + fenced 集的规范化摘要（V2 信封 config_hash）。
 -spec config_hash() -> binary().
 config_hash() ->
-    Parts = {budget_digest(), whitelist(), fenced_namespaces()},
+    Parts = {
+        budget_digest(),
+        whitelist(),
+        fenced_namespaces(),
+        {snapshot_tombstones_v1, legacy_sequence_v2, gap_recovery_v1, snapshot_pull_v1,
+            tombstone_expiry_v1, snapshot_tail_watermark_v1, authority_epoch_binding_v1,
+            authority_event_epoch_v1, entry_epoch_v1, snapshot_cohort_v1, public_api_boundary_v1,
+            remote_capacity_barrier_v1, journal_capture_v1, journal_revision_replay_v1,
+            recovery_completion_fence_v1, snapshot_source_cut_v1, snapshot_final_identity_v1,
+            snapshot_prepared_expiry_v1, expired_live_revision_window_v1, snapshot_expired_floor_v1,
+            snapshot_transit_floor_v1, delta_expired_floor_v1, snapshot_invalidation_abort_v1,
+            bounded_peer_discovery_v1, contiguous_sequence_evidence_v1,
+            snapshot_unavailable_floor_v1, completed_snapshot_replay_floor_v1, peer_report_pid_v1,
+            confirmed_event_incarnation_v1, ready_identity_announcement_v1,
+            snapshot_origin_envelope_v1, snapshot_origin_forwarding_v1,
+            snapshot_unavailable_journal_v1, revision_origin_metadata_v1, snapshot_base_origin_v1,
+            retained_snapshot_tombstone_v1, snapshot_receive_retention_barrier_v1,
+            snapshot_partial_clock_v1, snapshot_coverage_candidate_cut_v1,
+            event_revision_origin_binding_v1, round_bound_origin_target_v1,
+            snapshot_receive_manifest_v1, snapshot_manifest_origin_cut_v1,
+            legacy_set_policy_boundary_v1, managed_revision_row_boundary_v1,
+            legacy_publish_policy_boundary_v1}
+    },
     <<Digest:16/binary, _/binary>> = crypto:hash(
         sha256, term_to_binary(Parts, [{minor_version, 2}])
     ),
@@ -332,11 +429,8 @@ registry_hash() ->
     ),
     Digest.
 
-%% ------------------------------------------------------------------
 %% Internal
-%% ------------------------------------------------------------------
 
--spec rep_cfg(atom(), non_neg_integer()) -> non_neg_integer().
 rep_cfg(K, Default) ->
     Cfg = application:get_env(imboy, cache_replication, #{}),
     V = maps:get(K, Cfg, Default),
@@ -345,13 +439,11 @@ rep_cfg(K, Default) ->
         false -> Default
     end.
 
--spec whitelist() -> [atom()].
 whitelist() ->
     Cfg = application:get_env(imboy, cache_replication, #{}),
     WL = maps:get(whitelist, Cfg, []),
     [NS || NS <- WL, is_atom(NS)].
 
--spec checks([{fun(() -> boolean()), term()}]) -> ok | {error, term()}.
 checks([{Pred, Reason} | Rest]) ->
     case Pred() of
         true -> checks(Rest);
@@ -362,7 +454,6 @@ checks([]) ->
 
 %% 值大小估算：external term format 字节数（含 refc binary 全量，符合 19.5 字节上限语义）。
 %% external_size 失败时按超限处理（max+1 → 上层 value_too_large 拒绝），不崩护栏。
--spec value_size(term()) -> non_neg_integer().
 value_size(Value) ->
     try
         erlang:external_size(Value)
@@ -370,7 +461,6 @@ value_size(Value) ->
         _:_ -> max_value_bytes() + 1
     end.
 
--spec contains_pid_ref_fun(term()) -> boolean().
 contains_pid_ref_fun(T) when is_pid(T); is_reference(T); is_function(T) -> true;
 contains_pid_ref_fun(T) when is_map(T) ->
     lists:any(
@@ -384,11 +474,326 @@ contains_pid_ref_fun(T) when is_list(T) ->
 contains_pid_ref_fun(_) ->
     false.
 
--spec any_pid_ref_fun([term()]) -> boolean().
 any_pid_ref_fun([H | T]) ->
     case contains_pid_ref_fun(H) of
         true -> true;
         false -> any_pid_ref_fun(T)
     end;
 any_pid_ref_fun([]) ->
+    false;
+any_pid_ref_fun(Tail) ->
+    contains_pid_ref_fun(Tail).
+
+%% 快照条目类型、期限与来源证据的纯策略规则。
+within_meta_budget(Term) -> erlang:external_size(Term) =< protocol_meta_max_bytes().
+
+remaining_ttl_sec(ExpiresAtMs) ->
+    NowMs = erlang:system_time(millisecond),
+    Remaining = ExpiresAtMs - NowMs - ?SKEW_SEC * 1000,
+    case Remaining =< 0 of
+        true -> 0;
+        false -> Remaining div 1000
+    end.
+
+snapshot_entry_deadline({with_origin, _, Entry}) ->
+    snapshot_entry_deadline(Entry);
+snapshot_entry_deadline({Kind, _, undefined, Exp, _}) when
+    Kind =:= expired; Kind =:= unavailable; Kind =:= deleted
+->
+    Exp + imboy_cache_policy:tombstone_ttl_sec() * 1000;
+snapshot_entry_deadline({_, _, Exp, _}) ->
+    Exp.
+
+%% 接收已过期 live 可保留版本下限，但任何条目不得超出保护窗。
+snapshot_entry_retention_deadline(Entry) ->
+    Body = snapshot_entry_body(Entry),
+    element(tuple_size(Body) - 1, Body) + tombstone_ttl_sec() * 1000.
+
+valid_snapshot_entry({with_origin, Origin, Entry}) ->
+    valid_snapshot_origin(Origin, Entry);
+valid_snapshot_entry({unavailable, Key, undefined, Exp, Rev}) when is_integer(Exp), Exp > 0 ->
+    Exp + imboy_cache_policy:tombstone_ttl_sec() * 1000 > erlang:system_time(millisecond) andalso
+        valid_snapshot_entry({Key, <<>>, Exp, Rev});
+valid_snapshot_entry({expired, Key, undefined, Exp, {Counter, Origin}}) when
+    is_integer(Exp), Exp > 0, is_integer(Counter), Counter >= 0, is_atom(Origin)
+->
+    Now = erlang:system_time(millisecond),
+    %% 来源的不可复制阈值含整秒截断；接收方还须容纳合同中的 5s 时钟偏差。
+    remaining_ttl_sec(Exp - 5000) =:= 0 andalso
+        Exp + imboy_cache_policy:tombstone_ttl_sec() * 1000 > Now andalso
+        within_meta_budget({Exp, {Counter, Origin}}) andalso
+        imboy_cache_policy:replicate_allowed(Key) andalso imboy_cache_policy:check_value_size(Key) andalso
+        imboy_cache_policy:check_value_type(Key);
+valid_snapshot_entry({deleted, Key, undefined, ExpiresAt, {Counter, Origin}}) when
+    is_integer(ExpiresAt), ExpiresAt > 0, is_integer(Counter), Counter >= 0, is_atom(Origin)
+->
+    %% 快照删除条目表示保留中的版本下限，不延长原墓碑期限。
+    ExpiresAt + tombstone_ttl_sec() * 1000 > erlang:system_time(millisecond) andalso
+        ExpiresAt =<
+            erlang:system_time(millisecond) +
+                (imboy_cache_policy:tombstone_ttl_sec() + 5) * 1000 andalso
+        within_meta_budget({ExpiresAt, {Counter, Origin}}) andalso
+        imboy_cache_policy:replicate_allowed(Key) andalso
+        imboy_cache_policy:check_value_size(Key) andalso
+        imboy_cache_policy:check_value_type(Key);
+valid_snapshot_entry({Key, Value, ExpiresAt, {Counter, Origin}}) when
+    is_integer(ExpiresAt), ExpiresAt > 0, is_integer(Counter), Counter >= 0, is_atom(Origin)
+->
+    ExpiresAt =< erlang:system_time(millisecond) + (imboy_cache_policy:max_ttl_sec() + 5) * 1000 andalso
+        within_meta_budget({ExpiresAt, {Counter, Origin}}) andalso
+        imboy_cache_policy:validate_replicate(Key, Value, 1) =:= ok;
+valid_snapshot_entry(_) ->
     false.
+
+%% 原始来源与 revision 节点绑定；序列不是 Lamport counter，也不登记化身。
+valid_snapshot_origin({Origin, Boot, Seq} = Provenance, Entry) when
+    is_atom(Origin),
+    is_binary(Boot),
+    byte_size(Boot) =:= 16,
+    is_integer(Seq),
+    Seq > 0,
+    is_tuple(Entry),
+    (tuple_size(Entry) =:= 4 orelse tuple_size(Entry) =:= 5)
+->
+    valid_snapshot_entry(Entry) andalso within_meta_budget(Provenance) andalso
+        element(2, element(tuple_size(Entry), Entry)) =:= Origin;
+valid_snapshot_origin(_, _) ->
+    false.
+
+snapshot_entry_body({with_origin, _, Entry}) -> Entry;
+snapshot_entry_body(Entry) -> Entry.
+snapshot_entry_with_origin(Entry, unknown) -> Entry;
+snapshot_entry_with_origin(Entry, Origin) -> {with_origin, Origin, Entry}.
+
+snapshot_metadata_kind(unavailable) -> live;
+snapshot_metadata_kind(Kind) -> Kind.
+
+%% 预算预检与实际写入共用版本行布局，避免扩展字段时低估字节。
+revision_metadata_row(Key, Rev, Exp, Kind, Epoch) ->
+    revision_metadata_row(Key, Rev, Exp, Kind, Epoch, unknown).
+revision_metadata_row(Key, Rev, Exp, Kind, Epoch, Origin) ->
+    {
+        {rev, Key},
+        {Rev, revision_origin_slot(Rev, Origin), Exp, snapshot_metadata_kind(Kind), Epoch}
+    }.
+
+revision_origin_slot({Counter, Node}, {Node, Boot, Seq} = Origin) when
+    is_binary(Boot), byte_size(Boot) =:= 16, is_integer(Seq), Seq > 0
+->
+    case within_meta_budget(Origin) of
+        true -> {Boot, Seq};
+        false -> Counter
+    end;
+revision_origin_slot(Rev, _) ->
+    element(1, Rev).
+
+prospective_revision_rows(set, Key, Rev, Exp, Epoch, Origin) ->
+    [
+        revision_metadata_row(Key, Rev, Exp, live, Epoch, Origin),
+        {{rindex, Key}, erlang:system_time(millisecond)}
+    ];
+prospective_revision_rows(delete, Key, Rev, Exp, Epoch, Origin) ->
+    [revision_metadata_row(Key, Rev, Exp, deleted, Epoch, Origin)].
+
+snapshot_metadata_rows({with_origin, Origin, Entry}, Epoch) ->
+    snapshot_metadata_rows(Entry, Epoch, Origin);
+snapshot_metadata_rows(Entry, Epoch) ->
+    snapshot_metadata_rows(Entry, Epoch, unknown).
+snapshot_metadata_rows({Key, _, Exp, Rev}, Epoch, Origin) ->
+    prospective_revision_rows(set, Key, Rev, Exp, Epoch, Origin);
+snapshot_metadata_rows({deleted, Key, undefined, Exp, Rev}, Epoch, Origin) ->
+    prospective_revision_rows(delete, Key, Rev, Exp, Epoch, Origin);
+snapshot_metadata_rows({Kind, Key, undefined, Exp, Rev}, Epoch, Origin) when
+    Kind =:= expired; Kind =:= unavailable
+->
+    prospective_revision_rows(set, Key, Rev, Exp, Epoch, Origin).
+
+%% 历史来源注记不代表活跃身份或连续覆盖；整数槽保持未知。
+revision_metadata_origin({_, Node}, {Boot, Seq}) when
+    is_atom(Node), is_binary(Boot), byte_size(Boot) =:= 16, is_integer(Seq), Seq > 0
+->
+    {Node, Boot, Seq};
+revision_metadata_origin(_, _) ->
+    unknown.
+
+snapshot_page_digest(Round, PageNo, Page) ->
+    erlang:phash2({Round, PageNo, [entry_identity(E) || E <- Page]}).
+snapshot_revision_counter(Entry) ->
+    {_, _, {Counter, _}} = entry_identity(snapshot_entry_body(Entry)),
+    Counter.
+entry_identity({with_origin, Origin, Entry}) -> {with_origin, Origin, entry_identity(Entry)};
+entry_identity({K, _, _, Rev}) -> {live, K, Rev};
+entry_identity({deleted, K, undefined, _, Rev}) -> {deleted, K, Rev};
+entry_identity({expired, K, undefined, _, Rev}) -> {expired, K, Rev};
+entry_identity({unavailable, K, undefined, _, Rev}) -> {unavailable, K, Rev};
+entry_identity(Other) -> {invalid, Other}.
+
+%% 接收清单不保留 payload；未知来源仍为 unknown，摘要绑定完整原始条目。
+snapshot_manifest_entry({with_origin, Origin, Entry} = Wire) ->
+    manifest_entry(Entry, Origin, Wire);
+snapshot_manifest_entry(Entry) ->
+    manifest_entry(Entry, unknown, Entry).
+manifest_entry({K, _, Exp, Rev}, Origin, Wire) ->
+    {live, K, Rev, Exp, Origin, crypto:hash(sha256, term_to_binary(Wire))};
+manifest_entry({Kind, K, undefined, Exp, Rev}, Origin, Wire) ->
+    {Kind, K, Rev, Exp, Origin, crypto:hash(sha256, term_to_binary(Wire))}.
+
+snapshot_manifest_own_seq(Rows, {Source, Boot}, Old) ->
+    lists:foldl(
+        fun({_, _, _, _, Origin, _}, Max) ->
+            case Origin of
+                {Source, Boot, Seq} -> erlang:max(Max, Seq);
+                _ -> Max
+            end
+        end,
+        Old,
+        Rows
+    ).
+
+%% 只在实际应用完成后推进页号、完整字节及版本水位。
+snapshot_applied_page(Round, Source, Peer, Page, PageNo, More) ->
+    Count = length(Page),
+    Ceiling = snapshot_page_revision_ceiling(Page, Peer),
+    NextPeer = Peer#{
+        pages := PageNo,
+        max_revision_counter := Ceiling,
+        applied := maps:get(applied, Peer) + Count,
+        expected_more := More
+    },
+    Peers = maps:get(peers, Round),
+    Round#{
+        peers := Peers#{Source := NextPeer},
+        applied_items := maps:get(applied_items, Round, 0) + Count,
+        applied_bytes := maps:get(applied_bytes, Round, 0) + erlang:external_size(Page)
+    }.
+
+%% 应用失败只保留已完整校验的版本上限，不确认页号、项数或内容完整性。
+snapshot_page_result(ok, Round, Source, Peer, Page, PageNo, More) ->
+    {ok, snapshot_applied_page(Round, Source, Peer, Page, PageNo, More)};
+snapshot_page_result({error, Reason}, Round, Source, Peer, Page, _, _) ->
+    NextPeer = Peer#{max_revision_counter := snapshot_page_revision_ceiling(Page, Peer)},
+    Peers = maps:get(peers, Round),
+    {abort, Reason, Round#{peers := Peers#{Source := NextPeer}}}.
+snapshot_page_revision_ceiling(Page, Peer) ->
+    lists:foldl(
+        fun(E, N) -> erlang:max(snapshot_revision_counter(E), N) end,
+        maps:get(max_revision_counter, Peer, 0),
+        Page
+    ).
+
+event_origin_checks(Event) ->
+    Rev = maps:get(revision, Event, none),
+    Seq = maps:get(origin_seq, Event, none),
+    Origin = maps:get(origin_node, Event, none),
+    Boot = maps:get(origin_boot_id, Event, none),
+    [
+        {
+            fun() ->
+                is_tuple(Rev) andalso tuple_size(Rev) =:= 2 andalso
+                    is_integer(element(1, Rev)) andalso element(1, Rev) >= 0 andalso
+                    is_atom(element(2, Rev))
+            end,
+            invalid_revision
+        },
+        {fun() -> is_integer(Seq) andalso Seq >= 0 end, invalid_origin_seq},
+        {fun() -> maps:is_key(origin_node, Event) andalso is_atom(Origin) end, invalid_origin_node},
+        {fun() -> element(2, Rev) =:= Origin end, revision_origin_mismatch},
+        {fun() -> is_binary(Boot) andalso byte_size(Boot) =:= 16 end, invalid_boot_id}
+    ].
+
+valid_watermark(
+    {cache_invalidation_watermark, Origin, Boot, Seq, ConfigHash, RegistryHash} = Frame
+) ->
+    is_atom(Origin) andalso is_binary(Boot) andalso byte_size(Boot) =:= 16 andalso
+        is_integer(Seq) andalso Seq >= 0 andalso is_binary(ConfigHash) andalso
+        byte_size(ConfigHash) =:= 16 andalso is_binary(RegistryHash) andalso
+        byte_size(RegistryHash) =:= 16 andalso within_meta_budget(Frame);
+valid_watermark(_) ->
+    false.
+
+valid_snapshot_cut(
+    {cache_snapshot_cut, Source, Round, Boot, Epoch, Seq, Hash, Registry, Candidate} = F
+) ->
+    valid_coverage_candidate(Candidate, Epoch, Source, Boot, Seq) andalso
+        valid_snapshot_cut({cache_snapshot_cut, Source, Round, Boot, Epoch, Seq, Hash, Registry}) andalso
+        within_meta_budget(F);
+valid_snapshot_cut({cache_snapshot_cut, Origin, Round, Boot, Epoch, Seq, Hash, Registry} = F) ->
+    is_binary(Round) andalso byte_size(Round) =:= 12 andalso
+        is_integer(Epoch) andalso Epoch >= 0 andalso within_meta_budget(F) andalso
+        valid_watermark({cache_invalidation_watermark, Origin, Boot, Seq, Hash, Registry});
+valid_snapshot_cut(_) ->
+    false.
+
+%% 旧切点没有覆盖候选，绝不能补造空向量。
+snapshot_cut_base({cache_snapshot_cut, Source, Round, Boot, Epoch, Seq, Hash, Registry, _}) ->
+    {cache_snapshot_cut, Source, Round, Boot, Epoch, Seq, Hash, Registry};
+snapshot_cut_base(Frame) ->
+    Frame.
+snapshot_cut_coverage({cache_snapshot_cut, _, _, _, _, _, _, _, Candidate}) -> Candidate;
+snapshot_cut_coverage(_) -> {error, missing_application_coverage}.
+
+valid_coverage_candidate({error, Reason}, _, _, _, _) ->
+    lists:member(Reason, [
+        coverage_peer_budget, coverage_byte_budget, incomplete_application_coverage
+    ]);
+valid_coverage_candidate({ok, Vector}, Epoch, Source, Boot, Seq) ->
+    valid_coverage_rows(Vector, Epoch, Source, Boot, Seq, peer_max(), {start});
+valid_coverage_candidate(_, _, _, _, _) ->
+    false.
+
+valid_coverage_rows([], _, _, _, _, _, _) ->
+    true;
+valid_coverage_rows(
+    [{Origin, OriginBoot, Epoch, Prefix} | Rest], Epoch, Source, Boot, Seq, Left, Previous
+) when
+    Left > 0,
+    is_atom(Origin),
+    is_binary(OriginBoot),
+    byte_size(OriginBoot) =:= 16,
+    is_integer(Prefix),
+    Prefix >= 0
+->
+    (Previous =:= {start} orelse Origin > Previous) andalso
+        (Origin =/= Source orelse (OriginBoot =:= Boot andalso Prefix =< Seq)) andalso
+        valid_coverage_rows(Rest, Epoch, Source, Boot, Seq, Left - 1, Origin);
+valid_coverage_rows(_, _, _, _, _, _, _) ->
+    false.
+
+valid_version_report(Report) when
+    is_tuple(Report),
+    tuple_size(Report) >= 9,
+    tuple_size(Report) =< 11,
+    element(1, Report) =:= cache_version_report
+->
+    {cache_version_report, Node, Counter, Epoch, Hash, Registry, Boot, Ready, Pid} = version_report_base(
+        Report
+    ),
+    is_atom(Node) andalso is_integer(Counter) andalso Counter >= 0 andalso
+        is_integer(Epoch) andalso Epoch >= 0 andalso
+        is_binary(Hash) andalso byte_size(Hash) =:= 16 andalso
+        is_binary(Registry) andalso byte_size(Registry) =:= 16 andalso
+        is_binary(Boot) andalso byte_size(Boot) =:= 16 andalso is_boolean(Ready) andalso
+        is_pid(Pid) andalso node(Pid) =:= Node andalso
+        (tuple_size(Report) =:= 9 orelse
+            (is_integer(element(10, Report)) andalso element(10, Report) >= 0)) andalso
+        (tuple_size(Report) < 11 orelse
+            (is_binary(element(11, Report)) andalso byte_size(element(11, Report)) =:= 12)) andalso
+        within_meta_budget(Report);
+valid_version_report(_) ->
+    false.
+version_report_base(Report) when
+    is_tuple(Report), tuple_size(Report) > 9, tuple_size(Report) =< 11
+->
+    list_to_tuple([element(I, Report) || I <- lists:seq(1, 9)]);
+version_report_base(Report) ->
+    Report.
+version_report_target({cache_version_report, Node, _, Epoch, _, _, Boot, _, _, Seq, Round}) ->
+    {Node, Boot, Epoch, Seq, Round};
+version_report_target(_) ->
+    unknown.
+version_report_round_matches(Report, recovering, #{round := Round}) when
+    tuple_size(Report) =:= 11
+->
+    element(11, Report) =:= Round;
+version_report_round_matches(Report, _, _) ->
+    tuple_size(Report) < 11.

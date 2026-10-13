@@ -8,6 +8,16 @@
 
 ---
 
+## 当前实现修订（2026-10-13；以下静态核查为历史记录）
+
+当前 `metrics_handler:cache_sync_metrics/0` 已导出本地协议/Boot/config/registry 身份，
+以及当前已登记化身的最大已见来源序列、连续应用下限、完成快照下限、peer epoch
+和 hash_divergent。输出经既有 Prometheus/JSON 格式化链；只读固定元数据，不复制
+rev/journal，不暴露用户 Key/Value。序列缺少证据用 -1，不能直接当作完整覆盖；
+不同来源 Lamport counter 差值不能解释为消息 lag。读指标不是原子协议快照。
+定向验证见 `test/api/cache_sync_metrics_tests.erl`；该修订不签发完整 19.8 门禁，
+supported range、各拒绝原因/协议计数细分及真实 scrape 消费仍须验证。
+
 ## 1. sync 状态可观测（epoch / incarnation / status / peer-lag）
 
 逐项结论（✓ = 已具备且可从代码定位；△ = 有存储与 Erlang API 但无任何导出通道；✗ = 不存在）：
