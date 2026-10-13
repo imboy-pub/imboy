@@ -2,6 +2,16 @@
 -include_lib("eunit/include/eunit.hrl").
 -include("eunit_setup.hrl").
 
+%% Run the unchanged unit body in an isolated peer; the parent app is untouched.
+-define(LOCAL_MOCKS(Configs, Test),
+    {timeout, 45, fun() ->
+        pure_mock_fixture:run(fun() -> pure_mock_fixture:with_mocks(Configs, Test) end)
+    end}
+).
+-define(LOCAL_MOCK(Module, Expectations, Test),
+    ?LOCAL_MOCKS([{Module, Expectations}], Test)
+).
+
 %%%===================================================================
 %%% @doc
 %%% user_denylist_repo 模块的 EUnit 测试
@@ -25,7 +35,7 @@
 %% ===================================================================
 
 tablename_returns_correct_table_test_() ->
-    ?WITH_MECKS([?MOCK_ENV], fun() ->
+    ?LOCAL_MOCKS([?MOCK_ENV], fun() ->
         Result = user_denylist_repo:tablename(),
         ?assertEqual(<<"public.user_denylist">>, Result)
     end).
@@ -35,7 +45,7 @@ tablename_returns_correct_table_test_() ->
 %% ===================================================================
 
 page_for_uid_test_() ->
-    ?WITH_MECKS(
+    ?LOCAL_MOCKS(
         [
             ?MOCK_ENV,
             {elib_pg, [
@@ -52,7 +62,7 @@ page_for_uid_test_() ->
     ).
 
 in_denylist_test_() ->
-    ?WITH_MECKS(
+    ?LOCAL_MOCKS(
         [
             ?MOCK_ENV,
             {elib_pg, [
@@ -69,7 +79,7 @@ in_denylist_test_() ->
     ).
 
 in_denylist_found_test_() ->
-    ?WITH_MECKS(
+    ?LOCAL_MOCKS(
         [
             ?MOCK_ENV,
             {elib_pg, [
@@ -89,7 +99,7 @@ in_denylist_found_test_() ->
 %% ===================================================================
 
 add_to_denylist_test_() ->
-    ?WITH_MECKS(
+    ?LOCAL_MOCKS(
         [
             ?MOCK_ENV,
             ?MOCK_TSID,
@@ -107,7 +117,7 @@ add_to_denylist_test_() ->
     ).
 
 remove_from_denylist_test_() ->
-    ?WITH_MECKS(
+    ?LOCAL_MOCKS(
         [
             ?MOCK_ENV,
             {elib_pg, [

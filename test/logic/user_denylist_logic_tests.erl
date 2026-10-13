@@ -2,9 +2,19 @@
 -include_lib("eunit/include/eunit.hrl").
 -include("eunit_setup.hrl").
 
+%% Run the unchanged unit body in an isolated peer; the parent app is untouched.
+-define(LOCAL_MOCKS(Configs, Test),
+    {timeout, 45, fun() ->
+        pure_mock_fixture:run(fun() -> pure_mock_fixture:with_mocks(Configs, Test) end)
+    end}
+).
+-define(LOCAL_MOCK(Module, Expectations, Test),
+    ?LOCAL_MOCKS([{Module, Expectations}], Test)
+).
+
 %%% @doc user_denylist_logic 模块测试
 add_to_denylist_success_test_() ->
-    ?WITH_MECKS(
+    ?LOCAL_MOCKS(
         [
             {user_denylist_ds, [
                 {'add', 3, fun(_Uid, _DeniedUid, _Remark) -> {ok, 1} end}
@@ -13,7 +23,7 @@ add_to_denylist_success_test_() ->
                 {'now', 0, fun() -> 1000000 end}
             ]},
             {imboy_cache, [
-                {'flush', 1, fun(_Key) -> ok end}
+                {'invalidate', 1, fun(_Key) -> ok end}
             ]}
         ],
         fun() ->
@@ -23,13 +33,13 @@ add_to_denylist_success_test_() ->
     ).
 
 remove_from_denylist_success_test_() ->
-    ?WITH_MECKS(
+    ?LOCAL_MOCKS(
         [
             {user_denylist_ds, [
                 {'remove', 2, fun(_Uid, _DeniedUid) -> ok end}
             ]},
             {imboy_cache, [
-                {'flush', 1, fun(_Key) -> ok end}
+                {'invalidate', 1, fun(_Key) -> ok end}
             ]}
         ],
         fun() ->
@@ -39,7 +49,7 @@ remove_from_denylist_success_test_() ->
     ).
 
 in_denylist_true_test_() ->
-    ?WITH_MECKS(
+    ?LOCAL_MOCKS(
         [
             {user_denylist_ds, [
                 {'in_denylist', 2, fun(_Uid, _DeniedUid) -> 1 end}
@@ -56,7 +66,7 @@ in_denylist_true_test_() ->
 
 %% B-01：双向拉黑判定（邀请撮合门）
 blocked_between_true_when_inviter_blocked_invitee_test_() ->
-    ?WITH_MECKS(
+    ?LOCAL_MOCKS(
         [
             {user_denylist_ds, [
                 {'in_denylist', 2, fun
@@ -75,7 +85,7 @@ blocked_between_true_when_inviter_blocked_invitee_test_() ->
     ).
 
 blocked_between_true_when_invitee_blocked_inviter_test_() ->
-    ?WITH_MECKS(
+    ?LOCAL_MOCKS(
         [
             {user_denylist_ds, [
                 {'in_denylist', 2, fun
@@ -94,7 +104,7 @@ blocked_between_true_when_invitee_blocked_inviter_test_() ->
     ).
 
 blocked_between_fail_closed_on_db_error_test_() ->
-    ?WITH_MECKS(
+    ?LOCAL_MOCKS(
         [
             {user_denylist_ds, [
                 {'in_denylist', 2, fun(_, _) -> erlang:error(pg_down) end}
