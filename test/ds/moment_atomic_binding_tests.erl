@@ -15,6 +15,7 @@ binding_case(BindResult, Expected, Writes) ->
     ?WITH_MECKS(
         [
             {elib_pg, [
+                {'after_commit', 3, fun(owned_conn, {moment_acl, 555}, _Action) -> ok end},
                 {'with_tx', 1, fun(F) ->
                     try
                         F(owned_conn)

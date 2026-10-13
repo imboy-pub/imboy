@@ -4,6 +4,149 @@
 > 生成: 2026-10-12（Asia/Shanghai）
 > 核查基线: imboy main `675b0744`（工作树含未提交的 sync 系列修改，本文件引用行号以核查时实际读取的工作树为准；引用的 `imboy_cache_sync.erl` 行号来自当前工作树版本）
 
+## 当前实现增量核验（2026-10-13，候选尚未冻结）
+
+以下原审计源码及结论保留为历史记录，不能继承为当前候选 PASS。
+
+- group：当前 `join/leave` 已改为 invalidate-on-change，不再用旧缓存读改写；
+  `group_member_ds:join_group/5` 已登记 `elib_pg:after_commit`，动作须在实际
+  COMMIT CommandComplete 确认、连接归还后运行，ROLLBACK 不执行。
+  原“BLOCKED”描述的实现缺口已修复；真 PG 事务与跨节点业务验收仍须绑定最终候选。
+- tag：fill/flush 键已对齐，但再次追踪发现 `user_tag_ds:delete/change_name`
+  原来忽略事务返回，回滚仍失效；logic 的事务外预删除还会先自动提交关系行。
+  当前删除/改名在同一事务登记提交后副标题失效，直接返回事务错误；去除重复
+  预删除，Repo 更新错误透传并 abort，API 删除/改名不再把回滚当 success。
+  `user_tag_commit_tests` 使用真实 elib_pg 提交动作队列与 mocked PG driver，
+  验证写后 deferred、COMMIT/归还连接后失效、silent ROLLBACK 不失效和更新失败
+  abort；这不是实际 PG COMMIT/跨节点证据。定向 DS/logic/API 共 46 测试、
+  Repo 更新三场景共 3 测试通过（exit 0，Failed/Skipped/取消均 0）。
+- Registry `auth_session_epoch`：`bump/bump_in_tx` 已统一登记提交后 evict，
+  实际 PG 定向三场景通过：COMMIT 后归还连接再失效、显式 abort 回滚不失效、
+  SQL 异常使真实 COMMIT 返回 ROLLBACK 时拒绝动作；epoch 回滚后保持 2。
+  实际表为 public.user_auth_epoch，唯一合成大 UID fixture 删除后查询残留为 0。
+  数据库驱动/事务为真实 PG；失效端是观察替身，不证明跨节点读。
+  本次可执行入口为仓外 /tmp/cache_c06_pg_probe.erl，exit 0 / cases=3 /
+  Failed=0 / Skipped=0；最终候选冻结后仍须正式证据绑定及跨节点业务验证。
+- `moment_acl` 的唯一写入口是 create_post 的事务内 `replace_for_post`；未发现
+  既有 ACL 编辑/吊销入口。但是 `list_uids_by_post` 把 DB 错误变成空列表，
+  visibility=4 的 deny-list 判定因此可能放行。当前增加 `list_for_post/1` 一次
+  SQL 完整 ACL 读取，DB/畸形行错误不转空集合，loader 使用零 TTL error，
+  visibility 3/4 不确定即拒绝；constructor 登记实际 COMMIT 后失效。
+  定向验证使用真实 depcache、真实提交动作队列与 mock PG driver：完整空 ACL
+  与失败可区分，DB 恢复后重新读取，错误不驻留；此处不是实际 PG/分区验收。
+- config5 已改 memo loader：启用 fenced 时保留原 TTL 864000；未启用时
+  loader 返回零 TTL 值，使用 `{config5, Key, uncached_v1}` 合并等待但不保留
+  派生值，避免旧实现遗留 raw 值继续命中。写入先以同一 pgcrypto 算法生成
+  最终密文，再一次实际 insert/update；写/加密失败不广播、不落明文中间态，
+  set 以安全异常终止忽略返回值的调用方，save/aes 错误透传。
+  受控旧 loader 横跨 writer 提交（fenced 与未 fenced）、遗留 raw ghost、
+  authority 写失败、加密失败、主要直接调用方异常传播和入口单次采样 Fenced
+  共 7 场景通过（exit 0）。末项只证明入口已选非 fenced loader 仍零 TTL；
+  C12 冻结后不得改变开关，不代表任意生产热切换已验收。
+  实际 PG 专用 public.config 合成 key 的新增/更新密文往返、约束失败原密文
+  不变、NULL key 加密失败不写库共 4 场景通过（exit 0），DELETE 后残留 0。
+  直接调用方定向 80 测试 exit 0（config、onboarding、知识库、角色、版本及
+  agent 角色缓存路径）；首个广 scope run 将 agent 无关真实 TX 六项拉入，
+  因隔离 runner 缺 pg_conf 取消，原 exit 1 保留，不能以定向 80 替代该整套。
+  一次写入只采样一次加密密钥；运行时主密钥轮换及生产性能不是该证据范围。
+- billing_meter：全部生产订阅 mutation 引用落在 billing_subscription_ds 的
+  create/update/renew（Repo 无 Conn 单语句自动提交）；成功且 Id/Count>0 后
+  失效当前部署级 `{billing_meter,active_sub,0}`，error/Count0 保留返回且不失效。
+- moderation_sensitive_words：全部增删词 mutation 引用落在 moderation_ds，
+  created/delete Count>0 的单语句自动提交成功后失效；error/重复 skipped/Count0
+  不触发。八个新增 hook 断言及直接 meter/policy/DS 回归通过。
+  hooks、既有直接回归与安全 fixture 环境恢复的组合共 29 场景 exit 0；其中
+  权威 Repo 使用 mock，不能替代最终实际 PG 跨节点业务验收。
+
+- CSRF：原 raw binary Key 不能映射 Registry local，已将生产/消费/失效三处
+  统一为 `{local_cache,csrf,Token}`；前端 token 字符串不变。真实 depcache/
+  facade 验证启用 dsync 后不调用广播，完整 handler 与安全队列共 30 场景
+  exit 0。旧页面 token 需刷新取得新本地键；不兼容回读旧 raw Key。
+- adm_session_epoch：bump 事务内登记实际 COMMIT 后动作，不再只凭业务体 ok
+  判断提交；真实队列/mock driver 的 silent ROLLBACK 负例与 handler 回归通过。
+  当前无 bump_in_tx 生产入口，未新增不需要的 API；实际 PG admin fixture 门禁
+  仍待最终候选执行，不能继承用户 epoch 的 PG 证据。
+- 好友 confirm/pending insert/delete 与 DND save/delete 的 Repo PG 错误不再
+  伪装 ok；denylist add/remove 和会话 restore 的错误在业务失效之前安全异常
+  终止，避免忽略 tuple 的直接调用方继续返回成功/发送通知。八个失败爆炸
+  哨兵负例先实际失败再通过，加成功写入/直接恢复调用方及 DND/denylist 旧
+  定向共 33 场景 exit 0；不签发多步好友写入的事务原子性。
+  首个含 friend_ds 全套的广 scope run 因隔离 runner 无 pg_conf 取消，原 exit 1
+  保留；定向不代替最终真实 PG 及完整套件。
+- Tag 追加：find_tag_id 已改 checked pluck，查询失败直接传播，delete 不再把
+  DB 错误当标签不存在/成功；关联对象标签 UPDATE 增加参数化 owner 限定，
+  收藏以 user_id、好友以 from_user_id 为范围，不改其他用户同名标签。
+  新失败 oracle 修复前两项 FAIL，修后真实队列/mock driver 共 9 PASS。
+- DND 追加：getter 移入 memo loader；fenced 值用原 TTL3600，空结果或
+  未启用 fenced 时零 TTL；非 fenced 新 key 绕旧 raw ghost。保持 Repo 既有
+  map 合同，不把空偏好解释为权限拒绝。旧 loader 横跨失效、空结果恢复及
+  非 fenced ghost 三项真实 depcache 回归 PASS；Tag/DND 与直接 API/logic
+  旧测试 51 PASS，均 exit 0。上述定向未执行实际 PG，不是最终候选门禁。
+- 权限冷读：denylist Repo 使用 checked pluck，DB/畸形结果仅以明确的
+  denylist_read_unavailable 安全异常传播；logic 仅捕获该类型并零 TTL 拒绝，
+  moment/WebRTC 拒绝。relationship SQL 非完整布尔行或失败返回零 TTL
+  {false,true}，pending、转发、C2C 消息及回执直接调用方不放行。
+  冷读、恢复及直接调用方共 59 场景 exit 0；不证明旧允许热缓存的分区吊销，
+  该 oracle 依赖核心健康门控及最终三节点候选。
+- user_device_active/name：删除 Repo PG 错误以安全异常在 Olm 清理、失效、
+  kick 之前中止；改名检查实际 UPDATE 结果，失败不失效或假成功，成功返回
+  后失效。删除/改名直接调用方共 4 场景 exit 0；Count0 保持原幂等成功语义。
+  此处驱动为 mock，没有签发设备操作实际 PG 或跨节点吊销。
+- channel_subs：subscribe/unsubscribe/remove subscriber 均在最后业务 SQL 后
+  登记提交动作，实际 COMMIT 确认后失效，silent ROLLBACK 不触发。
+  subscriber_uids 权威读取进入 memo loader，错误零 TTL 空列表，旧 loader
+  横跨失效返回不得驻留；新 getter 两场景 exit 0。真实 elib_pg 队列/mock
+  driver 与原 DS/remove 调用方组合 30 场景 exit 0（其中包括设备删除两项）；
+  不替代实际 PG channel 事务或三节点受众内容验收。
+- 47 个原 Registry owner 路径均存在；account_list 已转专用 allocator，
+  tag_subtitle_3 已退役改为 2。运行时 hrl 实际为 48 个 map 项，包含
+  local_cache 别名及额外 user_tag_relation 条目；原 47 项是逻辑投影而非
+  活跃生产键数量，不能把 map 项数当原计划逻辑条数；CSRF 无独立 hrl 项，由
+  实际 local_cache 键提供，原冻结快照不改写。当前源码/属性需由 C12 统一绑定。
+
+实际 PG 业务 fixture 补验证（仓外 `/tmp/cache_c06_business_pg_probe.erl`）：
+两条独立真实连接，合成 UID/id/pair，动作及外部通知观察替身；未改变 schema。
+首轮 DND smallint 越界在客户端 codec 中断专用连接，exit 1，未签发 PASS。
+第二轮使用服务器 NOT NULL 约束负例，先回收旧 fixture 并查询残留 0；Device
+改名/失败不失效/删除、denylist 增删、DND 保存/失败不失效/删除、Tag 改名/
+真实 SQL 异常 silent ROLLBACK/删除/两个合成 owner 同名标签不串写，共 12
+场景执行至断言成功。随后 channel subscribe 返回 error，整轮 exit 1；未以
+前段定向代替整轮通过。finally 通过健康读取连接逐项回收八表，查询残留 0。
+Channel 独立诊断确认 SQLSTATE23503：现有 fk_channel_subscription_user
+要求 public."user" fixture，前 probe 未创建该行；这是 fixture 前置缺失，
+不是提交钩子的产品失败。诊断 exit 1，连接归还、清理查询残留 0 有明确日志。
+后续独立 Channel probe 已补仅合成 disabled user（status0、email/mobile NULL）
+及其纯 DB fts_user 触发器依赖；首个订正轮错误期待软删除后总行0，exit1，
+保留原日志。按真实 Repo 合同验证 active0、总行1/status0后，四场景实际
+PG exit0 / Failed0 / Skipped0：subscribe COMMIT 后失效、SQL1/0使真实
+COMMIT→ROLLBACK 不失效、unsubscribe、remove_subscriber。缓存/通知为观察
+替身；连接归还后动作、subscriber_count0均有断言，最终物理清理订阅/
+channel/user，user/fts及全部fixture残留0。原综合probe仍exit1，不改写为
+整轮 PASS；该独立定向不证明跨节点投递或最终候选绑定。日志及失败轮次
+保留，源码未因 PG 准备改变。
+
+敏感读取追加收口：auth/admin current_epoch、user_device is_active、billing
+active_sub_id、group e2ee_mode 原来在 memo/set 之前已完成权威读取，旧值
+可于提交后失效后写进新代次。现五条权威读取均移到实际 memo loader 内；
+epoch DB error、设备 false/error、E2EE error/畸形和订阅未知/无订阅不驻留。
+缺 epoch 行=1、缓存故障时 authority fallback 与 soft billing 行为保留。
+Group E2EE 成功缓存仍是原整数0/1，外层返回{ok,Mode}，避免已有 raw热值
+返回裸整数违反 API。原 member_uids_legacy 在当前 policy 下只可能
+`dsync=false` 且未显式 fenced；dsync=true 敏感 invalidate 自动 fenced。
+B2 join/leave 产品债未在本增量扩大。
+
+受控 loader 先捕获旧 epoch/活跃设备/SubId/Mode0，再失效、恢复，第一读与
+后续读必须为新值；五个 race 和五个 error不驻留/恢复场景、旧 E2EE raw
+热值合同共 11 PASS、exit0。auth revoked、admin cookie verify、device logic
+及 billing do_meter 直接路径包含在 oracle；旧直接回归组合78 PASS、exit0
+（最后 Group 返回形状小改后由 native11重验）。这不是最终 core候选绑定。
+初始 billing测试误调私有API的undef、Group旧raw形状负例及 broad group
+suite隔离fixture缺pool/meta ETS等失败日志均保留；最后广scope实际
+104 PASS/13 FAIL、exit1，定向不能替代最终整轮门禁。
+
+本增量核验不能签发 C06 PASS。W0 Registry 是原计划冻结快照，不在此轮重写；
+最终台账必须结合当前实现逐项绑定，不能直接继承旧 TRACED_COMMIT_AFTER_OK。
+
 ## 0. 尾巴项定位与方法
 
 - 台账面（ledger-v1.json / review-ledger-v1.md）：W1-01..W1-07 无独立尾巴 ID；
@@ -27,10 +170,10 @@
 | # | 尾巴项 | 分类 | 一句话结论 |
 |---|---|---|---|
 | 1 | tag_subtitle_2/3 fill/flush 键失配 | **FIXED-with-test（2026-10-13）** | fill/flush 均指向 tag_subtitle_2；真实缓存回归验证整数与二进制 TagId 的失效后回填 |
-| 2 | config5 双重失效 7.1 竞态 | **Documented-Exception** | 双重失效保留，彻底闭合依赖 fenced 启用 + 回填改造（计划门控在性能 gate 后）；广播半边已由 W1-05 闭合 |
+| 2 | config5 双重失效 7.1 竞态 | **实现已修复，最终集成待绑定** | 现已 fenced memo / 未 fenced 零 TTL；仅成功密文写后失效；下文为原审计历史 |
 | 3 | apns_jwt / fcm / qianfan 广播 vs local | **FIXED-with-test（2026-10-13）** | 一元组/裸原子形态已按 local 分类；真实 syn 对照验证正常 set 不发布凭据，旧 SET 接收也不能覆盖本地凭据 |
-| 4 | group join/leave 读改写竞态 | **BLOCKED** | 读改写非原子 + join 缓存变更位于事务内（W1-03 历史结论漏扫实证）均未修，修复涉及多调用方事务边界重构，超本轮只读红线 |
-| 5 | login_attempt_ip_limit | **Documented-Exception** | 广播半边已由 W1-05 闭合（机制级证据）；读改写非原子保留——账号级原子锁定为第一防线，IP 限流计数丢失仅延迟阈值达成 |
+| 4 | group join/leave 读改写竞态 | **实现已修复，最终真 PG 验收待绑定** | 现已 invalidate-on-change + 提交动作队列；下文 BLOCKED 为原审计历史 |
+| 5 | login_attempt_ip_limit | **FIXED-with-test（本地定向；待最终绑定）** | 2026-10-13 复用既有 login_attempt_ds actor 串行原本地读改写；40 路无丢计数及阈值拒绝通过，保持成功滑动续期 3600 秒、拒绝不续期 |
 
 ---
 
@@ -329,6 +472,25 @@ workspace 建群路径部分失败回滚后，缓存脏成员最长 1 小时内�
 ---
 
 ## 5. login_attempt_ip_limit 相关项
+
+### 当前修正（2026-10-13）
+
+历史的 Documented-Exception 不再代表当前代码。此前若其他例外台账已写
+RESOLVED，也不能倒推旧 get→set 实现无竞态；本次先以 40 路并发复现
+2 FAIL/1 PASS（exit 1），再修复既有 actor 的串行入口。
+
+`check_ip_rate_limit/1` 现调用本模块已监督的 gen_server，原缓存读改写在
+一个 handle_call 内完成；没有新增 actor、依赖或缓存键。每次成功仍使用
+原 `{login_attempt_ip_limit,Ip}` local 键、set TTL 3600；Count>=阈值时不写
+或续期。既有账号 record_failure 同一 actor 无回调本入口，不产生自调用。
+
+`login_ip_atomic_tests` 使用真实 depcache 和受控 get 延迟，40 路结果为
+1..40 唯一序号；阈值 10 只允许 10、拒绝 30，拒绝时不追加写；真实
+login_security_logic 直接失败入口达到 IP 阈值后不记录账号失败。三场景
+exit 0，旧 DS/logic 定向另 17 PASS、exit 0。此处不涉及 PG，不签发生产
+吞吐或跨节点统一计数；计数按原合同保持本地。
+
+以下为修复前历史审计，保留其证据与风险描述，不作为当前未修结论。
 
 **Registry 标记**: `login_attempt_ip_limit` → `W1_KNOWN_DEFECT`
 （key-registry.json："get→set 读改写非原子，且每次失败登录都经 set 全节点

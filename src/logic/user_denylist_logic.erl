@@ -66,7 +66,10 @@ page(Uid, Page, Size) when Page > 0 ->
 -spec add(integer(), integer()) -> binary().
 add(Uid, DeniedUserId) ->
     Now = elib_dt:now(),
-    _ = user_denylist_ds:add(Uid, DeniedUserId, Now),
+    case user_denylist_ds:add(Uid, DeniedUserId, Now) of
+        {ok, _} -> ok;
+        {error, _} -> erlang:error(denylist_write_failed)
+    end,
     Key = {in_denylist, Uid, DeniedUserId},
     imboy_cache:invalidate(Key),
     %% B-01：check_relationship3 旁路缓存（TTL 300s）含 in_denylist 结果，
@@ -87,7 +90,11 @@ add(Uid, DeniedUserId, _Remark) ->
 %% @return ok
 -spec remove(integer(), integer()) -> ok.
 remove(Uid, DeniedUserId) ->
-    _ = user_denylist_ds:remove(Uid, DeniedUserId),
+    case user_denylist_ds:remove(Uid, DeniedUserId) of
+        ok -> ok;
+        {ok, _} -> ok;
+        {error, _} -> erlang:error(denylist_write_failed)
+    end,
     Key = {in_denylist, Uid, DeniedUserId},
     imboy_cache:invalidate(Key),
     %% B-01：解除拉黑同样立即使关系旁路缓存失效（对称）
@@ -102,7 +109,13 @@ remove(Uid, DeniedUserId) ->
 -spec in_denylist(integer(), integer()) -> integer().
 in_denylist(Uid, DeniedUserId) ->
     Key = {in_denylist, Uid, DeniedUserId},
-    Fun = fun() -> user_denylist_ds:in_denylist(Uid, DeniedUserId) end,
+    Fun = fun() ->
+        try
+            user_denylist_ds:in_denylist(Uid, DeniedUserId)
+        catch
+            error:denylist_read_unavailable -> imboy_cache:uncached(1)
+        end
+    end,
     % 缓存10天
     imboy_cache:memo(Fun, Key, 864000).
 
@@ -110,8 +123,8 @@ in_denylist(Uid, DeniedUserId) ->
 %% 用于邀请类点对点接触的撮合门（频道邀请/工作区邀请，与好友申请同级）：
 %% 无论拉黑方向性矩阵最终取哪个选项，「存在拉黑关系就不撮合直接邀请」
 %% 在三个选项下语义一致，故先行接线、不依赖矩阵拍板。
-%% 与 check_relationship3 旁路（DB 错误吞成 false，fail-open）不同：邀请
-%% 非高频关键路径，DB 异常按 fail-closed 拒绝（对齐 B-01 测试矩阵口径）。
+%% 与 check_relationship3 一样，无法确认黑名单时拒绝；未知结果零 TTL，
+%% 不把临时 DB 故障保留成长期权限缓存（对齐 B-01 测试矩阵口径）。
 %% 矩阵拍板后此处并入 user_block_decision 单点判定。
 -spec blocked_between(integer(), integer()) -> boolean().
 blocked_between(UidA, UidB) ->

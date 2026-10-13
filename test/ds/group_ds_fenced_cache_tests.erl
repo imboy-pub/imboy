@@ -41,7 +41,7 @@ stale_query_and_waiter_return_current_members_test_() ->
                     [Reader, Waiter]
                 ),
                 ?assertEqual(2, atomics:get(Calls, 1)),
-                ?assertEqual({ok, [42]}, depcache:get(physical(Key), imboy_cache)),
+                ?assertEqual({ok, [42]}, imboy_cache:get(Key)),
                 %% 从 legacy 遗留逻辑键中不能读取旧成员。
                 ok = depcache:set(Key, [99], 60, [], imboy_cache),
                 ?assertEqual({ok, [42]}, group_ds:member_uids_strict(Gid))
@@ -65,7 +65,7 @@ empty_members_are_not_cached_test_() ->
                 end
             end),
             ?assertEqual({ok, []}, group_ds:member_uids_strict(Gid)),
-            ?assertEqual(undefined, depcache:get(physical(Key), imboy_cache)),
+            ?assertEqual(undefined, imboy_cache:get(Key)),
             ?assertEqual({ok, [8]}, group_ds:member_uids_strict(Gid)),
             ?assertEqual(2, atomics:get(Calls, 1))
         end)
@@ -84,7 +84,7 @@ query_errors_are_not_cached_test_() ->
                 end
             end),
             ?assertEqual({error, db_down}, group_ds:member_uids_strict(Gid)),
-            ?assertEqual(undefined, depcache:get(physical(Key), imboy_cache)),
+            ?assertEqual(undefined, imboy_cache:get(Key)),
             ?assertEqual({ok, [8]}, group_ds:member_uids_strict(Gid)),
             ?assertEqual(2, atomics:get(Calls, 1))
         end)
@@ -103,7 +103,7 @@ continuous_invalidation_unwraps_uncached_error_test_() ->
             end),
             ?assertEqual({error, db_down}, group_ds:member_uids_strict(Gid)),
             ?assertEqual(3, atomics:get(Calls, 1)),
-            ?assertEqual(undefined, depcache:get(physical(Key), imboy_cache))
+            ?assertEqual(undefined, imboy_cache:get(Key))
         end)
     end).
 
@@ -119,29 +119,49 @@ unexpected_query_shape_is_not_cached_test_() ->
                 {error, {unexpected_repo_result, {ok, invalid_rows}}},
                 group_ds:member_uids_strict(Gid)
             ),
-            ?assertEqual(undefined, depcache:get(physical(Key), imboy_cache))
+            ?assertEqual(undefined, imboy_cache:get(Key))
         end)
     end).
 
 with_fenced_group(Fun) ->
-    Old = application:get_env(imboy, cache_fenced_namespaces),
-    application:set_env(imboy, cache_fenced_namespaces, [group]),
-    meck:new(group_member_repo, [unstick, passthrough, no_link]),
-    meck:new(micro_community_access_repo, [unstick, passthrough, no_link]),
-    %% 此套只验证缓存回填；真实 discussion ACL 的数据库验证独立执行。
-    meck:expect(micro_community_access_repo, filter_uids, fun(_, Uids) -> {ok, Uids} end),
+    Saved = [{cache_fenced_namespaces, application:get_env(imboy, cache_fenced_namespaces)}],
+    {D, M, S} = cache_fixture_helper:setup(Saved, fun group_components/0),
     try
         Fun()
     after
-        meck:unload(micro_community_access_repo),
-        meck:unload(group_member_repo),
-        case Old of
-            undefined -> application:unset_env(imboy, cache_fenced_namespaces);
-            {ok, V} -> application:set_env(imboy, cache_fenced_namespaces, V)
+        Actions =
+            [
+                fun() -> meck:unload(micro_community_access_repo) end,
+                fun() -> meck:unload(group_member_repo) end,
+                fun() ->
+                    cache_fixture_helper:invalidate([{group, G} || G <- lists:seq(9912101, 9912105)])
+                end
+            ] ++
+                [fun() -> cache_fixture_helper:release(P) end || P <- [S, M, D]],
+        try
+            cache_fixture_helper:cleanup(Actions)
+        after
+            cache_fixture_helper:restore_env(Saved)
         end
     end.
+group_components() ->
+    application:set_env(imboy, cache_fenced_namespaces, [group]),
+    application:ensure_all_started(crypto),
+    application:ensure_all_started(syn),
+    syn:add_node_to_scopes([imboy_cache]),
+    D = cache_fixture_helper:acquire(imboy_cache, fun() ->
+        depcache:start_link(imboy_cache, #{memory_max => 64})
+    end),
+    M = cache_fixture_helper:acquire(elib_metric, fun elib_metric:start_link/0),
+    S = cache_fixture_helper:acquire(imboy_cache_sync, fun imboy_cache_sync:start_link/0),
+    cache_fixture_helper:invalidate([{group, G} || G <- lists:seq(9912101, 9912105)]),
+    cache_fixture_helper:mock(group_member_repo, [unstick, passthrough, no_link]),
+    cache_fixture_helper:mock(micro_community_access_repo, [unstick, passthrough, no_link]),
+    %% 仅验证缓存回填；真实 discussion ACL 的数据库验证独立执行。
+    meck:expect(micro_community_access_repo, filter_uids, fun(_, Uids) -> {ok, Uids} end),
+    {D, M, S}.
+
 rows(Uids) -> {ok, [#{<<"user_id">> => U} || U <- Uids]}.
-physical(Key) -> {cache_v2, Key, {imboy_cache_sync:node_boot(), imboy_cache_sync:generation(Key)}}.
 await_cache_wait(_Pid, 0) ->
     error(waiter_not_blocked);
 await_cache_wait(Pid, N) ->

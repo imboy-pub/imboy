@@ -36,7 +36,6 @@ page_invalid_scene_returns_error_test_() ->
         end
     ).
 
-
 page_collect_scene_success_test_() ->
     ?WITH_MECKS(
         [
@@ -88,7 +87,6 @@ page_collect_scene_success_test_() ->
         end
     ).
 
-
 change_name_success_test_() ->
     ?WITH_MECKS(
         [
@@ -138,7 +136,6 @@ change_name_success_test_() ->
         end
     ).
 
-
 add_success_test_() ->
     ?WITH_MECKS(
         [
@@ -180,7 +177,6 @@ add_success_test_() ->
         end
     ).
 
-
 delete_success_test_() ->
     ?WITH_MECKS(
         [
@@ -215,5 +211,33 @@ delete_success_test_() ->
             {StatusCode, _, _Body} = cowboy_req_h:response(Req),
             ?assertEqual(200, StatusCode),
             meck_helper:verify_called(user_tag_logic, delete, 3)
+        end
+    ).
+
+%% 数据库回滚必须到达 API 错误响应，不能返回 success。
+delete_rollback_returns_error_test_() ->
+    ?WITH_MECKS(
+        [
+            {auth_ds, [{'current_uid', 1, fun(_) -> 101 end}]},
+            {elib_param, [
+                {'post', 1, fun(_) ->
+                    #{<<"scene">> => <<"collect">>, <<"tag">> => <<"tag">>}
+                end}
+            ]},
+            {user_tag_logic, [{'delete', 3, fun(_, _, _) -> {rollback, failed} end}]},
+            {elib_response, [
+                {'error', 2, fun(_, Msg) ->
+                    ?assert(is_binary(Msg)),
+                    cowboy_req_h:new(#{response_status => 400})
+                end},
+                {'success', 3, fun(_, _, _) -> error(rollback_must_not_succeed) end}
+            ]}
+        ],
+        fun() ->
+            MockReq = cowboy_req_h:new(#{method => <<"POST">>}),
+            {ok, Req, _} = user_tag_handler:init(MockReq, #{action => delete}),
+            {Code, _, _} = cowboy_req_h:response(Req),
+            ?assertEqual(400, Code),
+            ?assertEqual(0, meck:num_calls(elib_response, success, 3))
         end
     ).

@@ -205,6 +205,8 @@ cache_protocol_gauges() ->
         true = byte_size(Boot) =:= 16,
         Info = #{
             protocol => <<"2">>,
+            supported_min => <<"1">>,
+            supported_max => <<"2">>,
             boot => binary:encode_hex(Boot, lowercase),
             config_hash => binary:encode_hex(imboy_cache_sync_proto:config_hash(), lowercase),
             registry_hash => binary:encode_hex(imboy_cache_sync_proto:registry_hash(), lowercase)

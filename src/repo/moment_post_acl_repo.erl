@@ -5,6 +5,7 @@
 
 -export([replace_for_post/4]).
 -export([list_uids_by_post/2]).
+-export([list_for_post/1]).
 
 -include("log.hrl").
 
@@ -26,6 +27,35 @@ replace_for_post(Conn, PostId, AllowUids0, DenyUids0) ->
             end;
         {error, Reason} ->
             {error, Reason}
+    end.
+
+%% 权限判定一次读取完整 ACL；失败保留 error，不能伪装为空 deny-list。
+-spec list_for_post(integer()) -> {ok, {[integer()], [integer()]}} | {error, term()}.
+list_for_post(PostId) ->
+    Tb = tablename(),
+    Sql = <<"SELECT uid, acl_type FROM ", Tb/binary, " WHERE post_id = $1">>,
+    case elib_pg:query(Sql, [PostId]) of
+        {ok, Rows} when is_list(Rows) ->
+            Allow = [
+                Uid
+             || #{<<"uid">> := Uid, <<"acl_type">> := 1} <- Rows,
+                is_integer(Uid),
+                Uid > 0
+            ],
+            Deny = [
+                Uid
+             || #{<<"uid">> := Uid, <<"acl_type">> := 2} <- Rows,
+                is_integer(Uid),
+                Uid > 0
+            ],
+            case length(Allow) + length(Deny) =:= length(Rows) of
+                true -> {ok, {Allow, Deny}};
+                false -> {error, malformed_acl_rows}
+            end;
+        {error, _} = Error ->
+            Error;
+        Other ->
+            {error, {unexpected_acl_result, Other}}
     end.
 
 -spec list_uids_by_post(integer(), integer()) -> [integer()].

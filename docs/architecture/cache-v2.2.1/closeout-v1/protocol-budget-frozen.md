@@ -63,7 +63,7 @@ expires_at_ms, revision, origin_seq, origin_node, origin_boot_id`。
 - 应答 peer 发送：分页快照事件
   `{cache_snapshot_page, FromNode, Round, PageNo, Entries, PageDigest, HasMore}`，
   每页 ≤ Pmax 项且 ≤ Pmax_bytes；页摘要
-  `PageDigest = erlang:phash2({Round, PageNo, KindKeyRevs})`（32 位）。
+  `PageDigest = crypto:hash(sha256, term_to_binary({Round, PageNo, Entries}))`（32 字节）。
   live 条目 `{Key, Value, ExpiresAtMs, Rev}`，墓碑
   `{deleted, Key, undefined, ExpiresAtMs, Rev}`；KindKeyRevs 按页顺序记录
   `{live|deleted|expired|unavailable, Key, Rev}`。墓碑按原绝对期限恢复，较旧版本跳过，相同版本不续期。
@@ -319,7 +319,7 @@ generation 与依赖 generation 合计最多 `n_max` 项；序列化条目字节
 
 预算摘要包含实际 `p_max()`、`gen_max_bytes()`、`n_max_bytes()` 与 `t_max_bytes()`。默认配置的机械摘要为：
 `budget_digest=b83368fbaeed214157a33f9db8832e2c`；默认白名单、fenced 集均为空时
-`config_hash=92a168d58e2488aecd83690559498f40`。摘要包含 `snapshot_cohort_v1`、
+`config_hash=d34ccf06b4be4fdc0fd058e922d38b1b`（当前源码默认配置复算；旧摘要仅对应历史候选）。摘要包含 `snapshot_cohort_v1`、
 `public_api_boundary_v1`、`remote_capacity_barrier_v1`、`journal_capture_v1` 和
 `journal_revision_replay_v1`、`recovery_completion_fence_v1`、`snapshot_source_cut_v1` 和
 `snapshot_final_identity_v1`、`snapshot_prepared_expiry_v1`、`expired_live_revision_window_v1`
@@ -470,12 +470,12 @@ Round/Boot/Epoch/cut，并记录有界逐键清单（键、版本、类型、期
 提交内容状态与覆盖下限，再进入 READY。多来源联合证明与两种来源顺序、
 真实写删/分区历史仍需验证，以上是待实现合同，不是当前已达成能力。
 
-### 有界接收清单（已实现，尚未用于最终内容裁决）
+### 有界接收清单与最终内容裁决（实现待最终候选验收）
 
 `snapshot_receive_manifest_v1` 绑定接收页收据：成功页在所属来源 peer 内
 记录 `{PageNo, Rows}`；每行包含类型、键、版本、期限、明确来源或 unknown，
 及完整原始条目 ETF 的 SHA-256 摘要。不长期保存 payload 副本；摘要仅为
-本地接收证据，尚无发送端内容证书或跨版本规范化承诺。来源身份/代次和
+本地接收证据；发送端完整内容证书及规范化承诺见以下当前合同。来源身份/代次和
 Round 沿用既有 peer/cut 门禁。重复、非法或应用失败页不建立成功收据。
 
 全部来源共用回合预算：项数不超过 `Nmax + Tmax`（默认 70000），序列化
@@ -486,8 +486,26 @@ Round 沿用既有 peer/cut 门禁。重复、非法或应用失败页不建立�
 返回 `snapshot_manifest_items_overflow` 或 `snapshot_manifest_bytes_overflow`。
 清单随回合销毁，不设置新进程、定时器或模块。
 
-清单仍只记录实际收到的内容；完整覆盖合同、多个来源间的最终效果/缺席
-裁决和 foreign floor 原子提交未实现，C04/AC-19 不因此闭合。
+以下当前合同替代上文“待实现”的历史边界，预算保持不变；C04/AC-19 的最终状态仍由最终候选真实门禁决定：
+
+- 十二字段版本应答绑定 Round、来源 pid/Boot/epoch 和全 epoch 保留元数据 census。
+  只有真实零内容 census 可分类为空非权威；未知、超限或错误 census 不等于空。
+- 十字段 source-cut 附带候选与独立完整保留元数据 `{count,SHA256}`。
+  同一发送 actor 在尾部直接枚举，接收完整页集逐来源复算；counter 不能替代证书。
+- 恢复回合冻结接收者保护窗口内的逐键义务。最终联合清单必须覆盖且不回退；
+  跨来源序列目标须由该来源清单中的同版或更新行证明，任意空快照不能产生删除。
+- 成功增量另登记有界逐事件收据，只有连续序列能扩展认证前缀；同版须核对
+  实际类型、期限、来源与 live 值体，不能将忽略的冲突 payload 计为已应用。
+- 完成证明后重检当前来源身份、回合期限与已见前缀；全通过才原子安装认证来源
+  floor/covered_seq 与 READY。失效、未知、缺口、超限或超时保留恢复或降级状态。
+- 一个有界 `cache_peer_loss` 槽保留首次任意 peer 失联时间。部分断连或孤岛超过 W
+  均冷清副本并推进 epoch；非法成员配置安全拒绝，不能杀 actor 或伪造单节点 READY。
+  新 epoch 无同 epoch READY 权威时只能降级；权威建立及可用性门禁仍未闭合。
+
+上述能力通过 config_hash 绑定完整源码标记集，包括内容证书、空内容 census、
+连续增量收据、认证 foreign floor、最终提交屏障、相同版本内容核对、
+敏感键 peer Boot 健康与 `observed_peer_loss_window_cold_v2`。
+旧八/九字段 source-cut 只作兼容诊断，不能签完整 READY。
 
 ### 旧 SET 的策略与历史受管边界（已实现）
 
@@ -504,6 +522,26 @@ DELETE-only 墓碑即使无索引、Registry 已撤销，仍通过既有公开�
 
 本地真实 syn/depcache/sync 回归已验证凭据正常 set 不发布、未分类键确实
 发布、旧 SET 不覆盖凭据，以及实际 DELETE-only 撤销策略后的防复活边界。
-当前候选 C10 的旧代码树/混合矩阵还未复验；M1 既有驱动误将声明为 replicate
-的 mixed_test 当作无版本 legacy 键，须分别保留未分类正例与受管拒绝反例，
-不能继续把不安全的 raw 写入作为兼容成功。生产资格未签发。
+当前 C10 驱动 M1 已纠正 replicate/legacy 键混用：未分类正例确实传播且无
+版本行；受管反例先写真实值，再从旧节点广播 SET，同发送进程随后 call
+同一接收 actor 的 ping_ok，确认目标消息已处理后检查值、版本不变且拒绝
+计数增长。真实旧/新节点 M1/M2 定向诊断通过；版本读取对齐含 epoch 的
+五字段行。混合重启 M3、完整矩阵两轮与 C12 绑定仍未通过，详见
+`c10-legacy-build.md`。不能把这些定向结果等同 C10 闭合，生产资格未签发。
+
+后续 `membership_capability_gate_v1` 增量：同步 actor 在现有 syn 成员元数据
+声明 `cache_protocol=2`；公开 SET/DELETE 在分配时钟及修改数据前，要求本地
+成员视图包含自身、数量在 Peermax 内且所有成员明确声明 V2。直接 V2
+SET/DELETE 广播复用门禁，否则返回 `{error,incompatible_peers}`；旧式失效
+不受影响。真实组件验证拒绝不改变值、时钟或 META，成员退出后可重新写入。
+这是当前 syn 视图的能力检查，不替代 Boot/epoch/hash、READY、投递确认或
+全网成员一致性；检查与发布之间仍有成员变化竞态。没有新增进程或模块。
+此前 M1/M2 的结果属于该门禁前诊断；旧驱动仍需对齐混合期复制拒绝语义，
+不能沿用其复制成功断言。M3 及 C04 联合内容证明仍未闭合。
+
+`membership_capability_gate_v2` 再绑定既有 `cluster_nodes` 的预期全集：配置中
+任一节点不在当前成员视图，或列表格式、节点类型及数量不合法，发布均拒绝。
+显式空配置仍表示未声明其他节点，不凭此推断全网完整性；非空配置也不能
+消除 syn 视图滞后或检查到发布间的成员竞态。所有检查在同一 try 表达式体
+内，避免 of 分支异常逃逸。真实 actor 回归覆盖缺席、非法配置/非正规列表、
+非 map 成员元数据、显式单节点以及拒绝后时钟/数据不变与进程存活。

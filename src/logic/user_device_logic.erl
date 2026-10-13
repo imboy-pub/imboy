@@ -74,7 +74,10 @@ device_name(Uid, DID) ->
 change_name(Uid, DID, Name) ->
     Set = <<"device_name = $1">>,
     SetArgs = [Name],
-    _ = user_device_ds:update_by_did(Uid, DID, Set, SetArgs),
+    case user_device_ds:update_by_did(Uid, DID, Set, SetArgs) of
+        {ok, _Count} -> ok;
+        {error, _} -> erlang:error(device_rename_failed)
+    end,
 
     Key = {user_device_name, 2, Uid, DID},
     imboy_cache:invalidate(Key),

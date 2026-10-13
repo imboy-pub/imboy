@@ -41,18 +41,9 @@ page(Scene, Page, Size, Where, OrderBy) when Page > 0 ->
 %% @param Scene 场景（1 收藏 2 好友）
 %% @param Tag 标签名称
 %% @return ok
--spec delete(integer(), integer(), binary()) -> ok.
+-spec delete(integer(), integer(), binary()) -> ok | {error, term()} | {rollback, term()}.
 delete(Uid, Scene, Tag) ->
-    %% 先通过 DS 层查找 TagId，用于级联清理
-    _ =
-        case user_tag_ds:find_tag_id(Uid, Scene, Tag) of
-            {ok, TagId} when TagId > 0 ->
-                %% 先删除 user_tag_relation 中该标签的所有关联记录，防止孤立数据
-                user_tag_relation_ds:delete_by_tag_id(TagId);
-            _ ->
-                ok
-        end,
-    %% 调用 DS 层完成标签删除及相关表 tag 字段更新
+    %% 标签及关联行由 DS 在同一事务内删除，避免提前自动提交破坏回滚。
     user_tag_ds:delete(Uid, Scene, Tag).
 
 %% @doc 修改标签名称
@@ -63,7 +54,8 @@ delete(Uid, Scene, Tag) ->
 %% @param TagId 标签ID
 %% @param TagName 新标签名称
 %% @return ok | binary()
--spec change_name(integer(), integer(), integer(), integer(), binary()) -> ok | binary().
+-spec change_name(integer(), integer(), integer(), integer(), binary()) ->
+    ok | binary() | {error, term()} | {rollback, term()}.
 change_name(Count, _Uid, _Scene, _TagId, TagName) when Count > 0 ->
     <<TagName/binary, " 已存在"/utf8>>;
 change_name(0, Uid, Scene, TagId, TagName) ->

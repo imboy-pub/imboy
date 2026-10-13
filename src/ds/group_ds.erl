@@ -229,19 +229,17 @@ normalize_authorized_key_rows(_Gid, _Rows, _Acc) ->
 -spec e2ee_mode(integer()) -> {ok, integer()} | {error, any()}.
 e2ee_mode(Gid) ->
     CacheKey = {group_e2ee_mode, Gid},
-    case imboy_cache:get(CacheKey) of
-        {ok, Mode} ->
-            {ok, Mode};
-        undefined ->
-            case group_repo:find_by_id(Gid, <<"e2ee_mode">>) of
-                #{<<"e2ee_mode">> := Mode} ->
-                    imboy_cache:set(CacheKey, Mode, ?E2EE_MODE_TTL),
-                    {ok, Mode};
-                {error, Reason} ->
-                    {error, Reason};
-                _ ->
-                    {error, group_not_found}
-            end
+    Fun = fun() ->
+        case group_repo:find_by_id(Gid, <<"e2ee_mode">>) of
+            #{<<"e2ee_mode">> := Mode} when Mode =:= 0; Mode =:= 1 -> Mode;
+            {error, _} = Error -> imboy_cache:uncached(Error);
+            _ -> imboy_cache:uncached({error, group_not_found})
+        end
+    end,
+    case imboy_cache:memo(Fun, CacheKey, ?E2EE_MODE_TTL) of
+        Mode when Mode =:= 0; Mode =:= 1 -> {ok, Mode};
+        {error, _} = Error -> Error;
+        _ -> {error, group_not_found}
     end.
 
 %% @doc 开关变更后清除 e2ee_mode 缓存

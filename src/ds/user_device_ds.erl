@@ -194,23 +194,20 @@ bump_identity_version(Uid, DID) ->
 -spec is_active(integer(), binary()) -> boolean().
 is_active(Uid, DID) ->
     Key = {user_device_active, Uid, DID},
-    case imboy_cache:get(Key) of
-        {ok, {ok, Cached}} when is_boolean(Cached) ->
-            Cached;
-        _ ->
-            case user_device_repo:is_active(Uid, DID) of
-                {ok, true} = OkTrue ->
-                    _ = imboy_cache:memo(fun() -> OkTrue end, Key, 60),
-                    true;
-                {ok, false} ->
-                    false;
-                Other ->
-                    %% 安全不变量：设备活跃状态无法确认时必须 fail-closed。
-                    %% 删除设备会主动清缓存并跨节点广播；数据库短暂不可用时宁可
-                    %% 暂停 did 绑定 token，也不能放行已被吊销的设备。
-                    ok = ?WARN_LOG({user_device_is_active_unavailable, Uid, DID, Other}),
-                    false
-            end
+    Fun = fun() ->
+        case user_device_repo:is_active(Uid, DID) of
+            {ok, true} = Active ->
+                Active;
+            {ok, false} ->
+                imboy_cache:uncached({ok, false});
+            Other ->
+                ok = ?WARN_LOG({user_device_is_active_unavailable, Uid, DID, Other}),
+                imboy_cache:uncached({error, unavailable})
+        end
+    end,
+    case imboy_cache:memo(Fun, Key, 60) of
+        {ok, true} -> true;
+        _ -> false
     end.
 
 %% @doc 根据设备ID更新设备信息

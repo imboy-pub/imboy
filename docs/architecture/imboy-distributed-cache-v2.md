@@ -219,7 +219,7 @@ DEGRADED 不承诺同一补偿时限；水位只触发恢复，不替代完整�
   当前摘要还绑定完整协议能力标记集，包括 `ready_identity_announcement_v1`；
   新增 `snapshot_origin_envelope_v1` 和 `snapshot_origin_forwarding_v1` 绑定来源
   重放包装及接收端日志转交；默认白名单、fenced 集为空时为
-  `92a168d58e2488aecd83690559498f40`；`snapshot_unavailable_journal_v1` 额外绑定
+  `de6d18cefa71d7e07ef7b91058fb8f68`；`snapshot_unavailable_journal_v1` 额外绑定
   unavailable 下限的日志捕获，避免将缺值伪造成删除或有效值。
 - 恢复完成并安装快照下限后，READY 节点复用版本报告通知远端 syn 成员当前身份。
   发送人数受 peer_max 限制，超限交给既有校对入口，不新增进程或定时器。

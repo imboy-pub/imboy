@@ -3,6 +3,22 @@
 -include_lib("eunit/include/eunit.hrl").
 -include("eunit_setup.hrl").
 
+admin_post_detail_propagates_acl_read_error_test_() ->
+    ?WITH_MECKS(
+        [
+            {moment_ds, [
+                {'get_post_any', 1, fun(777) -> #{<<"id">> => 777} end},
+                {'list_post_acl', 1, fun(777) -> {error, <<"database password=secret">>} end}
+            ]}
+        ],
+        fun() ->
+            ?assertEqual(
+                {error, <<"查询失败"/utf8>>},
+                moment_logic:admin_post_detail(777)
+            )
+        end
+    ).
+
 create_post_rejects_empty_content_and_media_test_() ->
     ?TEST_SIMPLE(fun() ->
         Result = moment_logic:create_post(1001, #{}),

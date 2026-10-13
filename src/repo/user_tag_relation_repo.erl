@@ -190,9 +190,8 @@ update_tag(Conn, TagId, TagName, Uid, CreatedAt) ->
         {ok, 0} ->
             % ?LOG_WARNING("No tag found to update"),
             {0, TagName};
-        {error, _Reason} ->
-            % ?LOG_ERROR("Update failed: ~p", [Reason]),
-            {0, TagName}
+        {error, _} = Error ->
+            Error
     end.
 
 %%% 保存user_tag_relation数据

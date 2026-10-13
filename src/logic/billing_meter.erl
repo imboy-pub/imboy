@@ -67,18 +67,16 @@ do_meter(Metric, Delta) ->
             ok
     end.
 
-%% @doc 解析单租户活跃订阅 id，缓存 5 分钟。无生效订阅返回 undefined（也缓存，
-%%      避免无订阅时每条消息查库）。
+%% @doc 解析单租户活跃订阅 id，正结果缓存 5 分钟；未知/无订阅不驻留。
 -spec active_sub_id() -> integer() | undefined.
 active_sub_id() ->
-    case imboy_cache:get(?SUB_CACHE_KEY) of
-        {ok, Cached} ->
-            Cached;
-        undefined ->
-            SubId = lookup_active_sub_id(),
-            ok = imboy_cache:set(?SUB_CACHE_KEY, SubId, ?SUB_CACHE_TTL),
-            SubId
-    end.
+    Fun = fun() ->
+        case lookup_active_sub_id() of
+            undefined -> imboy_cache:uncached(undefined);
+            Id -> Id
+        end
+    end,
+    imboy_cache:memo(Fun, ?SUB_CACHE_KEY, ?SUB_CACHE_TTL).
 
 -spec lookup_active_sub_id() -> integer() | undefined.
 lookup_active_sub_id() ->

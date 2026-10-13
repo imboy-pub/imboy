@@ -259,25 +259,31 @@ remove_subscriber(Uid, ChannelId, TargetUid) ->
         Role when Role >= 2, TargetRole < Role ->
             Result = elib_pg:with_tx(fun(Conn) ->
                 _ = channel_ds:lock_discussion_tx(Conn, ChannelId),
-                case channel_subscription_ds:delete(Conn, ChannelId, TargetUid) of
-                    {ok, Affected} when Affected > 0 ->
-                        ok = channel_ds:revoke_discussion_tx(Conn, ChannelId, TargetUid),
-                        case channel_ds:increment_subscribers(Conn, ChannelId, -1) of
-                            {ok, _} ->
-                                changed;
-                            {error, Reason} ->
-                                throw({abort_tx, Reason})
-                        end;
-                    {ok, 0} ->
-                        ok = channel_ds:revoke_discussion_tx(Conn, ChannelId, TargetUid),
-                        noop;
-                    {error, Reason} ->
-                        throw({abort_tx, Reason})
-                end
+                Change =
+                    case channel_subscription_ds:delete(Conn, ChannelId, TargetUid) of
+                        {ok, Affected} when Affected > 0 ->
+                            ok = channel_ds:revoke_discussion_tx(Conn, ChannelId, TargetUid),
+                            case channel_ds:increment_subscribers(Conn, ChannelId, -1) of
+                                {ok, _} ->
+                                    changed;
+                                {error, Reason} ->
+                                    throw({abort_tx, Reason})
+                            end;
+                        {ok, 0} ->
+                            ok = channel_ds:revoke_discussion_tx(Conn, ChannelId, TargetUid),
+                            noop;
+                        {error, Reason} ->
+                            throw({abort_tx, Reason})
+                    end,
+                ok = elib_pg:after_commit(
+                    Conn,
+                    {channel_subscribers, ChannelId},
+                    fun() -> flush_remove_subscriber_cache(ChannelId) end
+                ),
+                Change
             end),
             case Result of
                 changed ->
-                    flush_remove_subscriber_cache(ChannelId),
                     %% ENT-BE-01：踢出成功（changed）best-effort 通知被踢用户，
                     %% 复用 channel_unsubscribed 动作（与自主退订同语义：客户端
                     %% 将频道移出列表）；noop 幂等路径不发（未发生实际移除）。
@@ -292,7 +298,6 @@ remove_subscriber(Uid, ChannelId, TargetUid) ->
                     ),
                     ok;
                 noop ->
-                    flush_remove_subscriber_cache(ChannelId),
                     channel_logic_common:log_channel_action(
                         Uid,
                         ChannelId,

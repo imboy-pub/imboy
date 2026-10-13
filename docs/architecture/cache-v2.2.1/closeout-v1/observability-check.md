@@ -15,8 +15,27 @@
 和 hash_divergent。输出经既有 Prometheus/JSON 格式化链；只读固定元数据，不复制
 rev/journal，不暴露用户 Key/Value。序列缺少证据用 -1，不能直接当作完整覆盖；
 不同来源 Lamport counter 差值不能解释为消息 lag。读指标不是原子协议快照。
-定向验证见 `test/api/cache_sync_metrics_tests.erl`；该修订不签发完整 19.8 门禁，
-supported range、各拒绝原因/协议计数细分及真实 scrape 消费仍须验证。
+当前 protocol_info 还包含固定 supported_min=1、supported_max=2；reason 标签
+由核心固定枚举的 `cache_sync_reject_reason_total` 产生，legacy 独立计数为
+`cache_sync_legacy_receive_total`，经现有 elib_metric counters 导出，不能按用户输入建标签。
+定向验证 `test/api/cache_sync_metrics_tests.erl` 使用独立 peer VM，避免完整 app 已存在
+ETS/进程时伪造 stopped 状态或破坏原 owner。缺失 supported_min 的失败 oracle 为
+1 FAIL / 1 PASS、exit=1；修复后 2 PASS、exit=0，父 VM 原有 ETS sentinel 保留。
+证据位于 `/tmp/cache-c11-owned/{red,green}.log`，为阶段验证，尚未绑定最终候选。
+本机已有 Prometheus/promtool 3.13.1；仅查询版本与已有镜像，未安装、拉取或操作容器。
+实际阶段消费：真实 Cowboy `/metrics` HTTP 与 Prometheus scrape 已连通，
+`promtool check metrics` 和原 5 条 cache 规则校验通过；生产指标 API 定点注入
+reject/overloaded、gap_detected、degraded、snapshot_abort、legacy 计数，明确不是故障链证据。
+两个完整消费命令 exit=1：原规则组 interval=60s，driver 的 2s/45s 等待没有覆盖
+一次完整评估窗口，未取得 firing 证据，不能签发 scrape+告警完整 PASS。
+原 StuckRecovering、Degraded、SnapshotAborting 三条表达式的合成时序断言
+`promtool test rules /tmp/cache-c11-owned/rule-query-tests.yml` exit=0；这是规则 oracle，
+不是现场故障。仅终止了脚本自己创建的 Erlang/Prometheus 进程。
+可复用 `/tmp/cache-c11-owned/run.py` 已把上限设为 90s，尚未再次执行；冻结候选后
+需统一重跑并保存源码摘要。恢复超时的独立原因信号由核心 owner 补齐。
+C11 仍未签发 PASS。
+
+下方为 2026-10-11 历史静态记录，其中“无导出”等已被上述实现修订替代，不能当作当前状态。
 
 ## 1. sync 状态可观测（epoch / incarnation / status / peer-lag）
 

@@ -34,7 +34,15 @@
     drain_sync_mailbox/0,
     dump_debug/0,
     bulk_snapshot/1,
-    assert_unknown_event_in_actor/3
+    assert_unknown_event_in_actor/3,
+    install_phase_barrier/2,
+    restart_with_phase_barrier/2,
+    invalid_done_probe/0,
+    tombstone_usage/0,
+    stored_set_frame/2,
+    deliver_frame/1,
+    resource_sample/0,
+    install_completion_observer/1
 ]).
 
 -define(RPC_MS, 30000).
@@ -48,7 +56,7 @@
 main([OutPath | _]) ->
     T0 = erlang:monotonic_time(millisecond),
     {ok, PeerPids, {A, B, C}} = start_cluster(),
-    Results =
+    PrimaryResults =
         try
             Scenarios0 = scenario_list(A, B, C),
             %% 诊断模式：DCHECK_ONLY=<子串> 只跑命中场景（证据轮禁用——
@@ -64,6 +72,16 @@ main([OutPath | _]) ->
         after
             stop_cluster(PeerPids)
         end,
+    Extra = [
+        {"C9n delete storm exceeds configured Tmax without resurrection", fun delete_storm/3},
+        {"C9o slow source crosses Dmax and drains stopped-input mailbox",
+            fun slow_source_resource/3}
+    ],
+    SelectedExtra = select_scenarios(Extra),
+    LongResults = shared_long_partition_results(),
+    Results =
+        PrimaryResults ++ LongResults ++
+            [run_isolated_case(Name, Fun) || {Name, Fun} <- SelectedExtra],
     T1 = erlang:monotonic_time(millisecond),
     Json = results_json(Results, T1 - T0),
     ok = file:write_file(OutPath, Json),
@@ -79,6 +97,28 @@ main([OutPath | _]) ->
 main(_) ->
     io:format("usage: cache_v21_dcheck:main([\"<output.json>\"]).~n"),
     halt(1).
+
+%% 超窗/风暴会改变 epoch 或耗尽权威，使用独立真实集群隔离前置。
+%% 仍是 required：正式无 DCHECK_ONLY 入口会全部执行，失败计入同一退出码。
+select_scenarios(Scenarios) ->
+    case os:getenv("DCHECK_ONLY") of
+        false -> Scenarios;
+        Pat -> [S || {Name, _} = S <- Scenarios, string:find(Name, Pat) =/= nomatch]
+    end.
+
+run_isolated_case(Name, Fun) ->
+    try
+        {ok, Pids, {A, B, C}} = start_cluster(),
+        try
+            run_one(Name, fun() -> Fun(A, B, C) end)
+        after
+            stop_cluster(Pids)
+        end
+    catch
+        Class:Reason:Stack ->
+            {Name, fail,
+                io_lib:format("isolated_boot ~p:~p at ~p", [Class, Reason, lists:sublist(Stack, 3)])}
+    end.
 
 scenario_list(A, B, C) ->
     [
@@ -110,6 +150,9 @@ scenario_list(A, B, C) ->
         end},
         {"F1 peer dies during recovery round; survivor closes the round", fun() ->
             f1_peer_dies_during_recovery(A, B, C)
+        end},
+        {"C9l old-round and unknown-source done cannot advance blocked snapshot", fun() ->
+            stale_done_during_snapshot(A, B, C)
         end},
         {"F2 delta writes during recovery merge with snapshot", fun() ->
             f2_delta_during_recovery(A, B, C)
@@ -841,22 +884,515 @@ f1_peer_dies_during_recovery(A, B, C) ->
 %% F2：恢复窗口内的并发 delta 写——快照旧值不得覆盖 delta 新值（版本比较），
 %% delta 新键不丢失（9.3 融合语义）。
 f2_delta_during_recovery(A, B, C) ->
-    %% F1 的 after 兜底重启可能让 A 仍在收敛：写方必须自身 ready 才能承载
-    %% “恢复窗口内的并发 delta”语义
     ready = recover_ready(A, heal_restart(A), 2),
     ready = recover_ready(B, heal_restart(B), 4),
     K1 = {cache_v2_test_rep, d_f2a},
-    ok = rpc:call(A, imboy_cache, put, [K1, v1, 300, replicate], ?RPC_MS),
-    {ok, v1} = converge_get(C, K1, {ok, v1}),
-    ok = rpc:call(C, ?MODULE, restart_sync, [], ?RPC_MS),
-    %% C 恢复窗口内的并发写
-    ok = rpc:call(A, imboy_cache, put, [K1, v2, 300, replicate], ?RPC_MS),
     K2 = {cache_v2_test_rep, d_f2b},
-    ok = rpc:call(B, imboy_cache, put, [K2, fresh, 300, replicate], ?RPC_MS),
-    ready = recover_ready(C, heal_restart(C), 2),
+    KD = {cache_v2_test_rep, d_f2delete},
+    KF = {cache_v2_test_rep, d_f2flush},
+    [ok = rpc:call(A, imboy_cache, put, [K, v1, 300, replicate], ?RPC_MS) || K <- [K1, KD, KF]],
+    [{ok, v1} = converge_get(C, K, {ok, v1}) || K <- [K1, KD, KF]],
+    ok = rpc:call(C, ?MODULE, restart_with_phase_barrier, [page, self()], ?RPC_MS),
+    {C, Actor, Ref, _Round} = wait_phase_barrier(C),
+    try
+        %% 真正的第一页已到 C actor、尚未应用；旧快照捕获已发生。
+        ok = rpc:call(A, imboy_cache, put, [K1, v2, 300, replicate], ?RPC_MS),
+        ok = rpc:call(B, imboy_cache, put, [K2, fresh, 300, replicate], ?RPC_MS),
+        ok = rpc:call(A, imboy_cache, put_delete, [KD], ?RPC_MS),
+        ok = rpc:call(B, imboy_cache, invalidate, [KF], ?RPC_MS)
+    after
+        ok = release_phase_barrier(Actor, Ref)
+    end,
+    ready = wait_status(C, 300),
     {ok, v2} = converge_get(C, K1, {ok, v2}),
     {ok, fresh} = converge_get(C, K2, {ok, fresh}),
+    undefined = rpc:call(C, imboy_cache, get, [KD], ?RPC_MS),
+    deleted = rpc:call(C, imboy_cache_sync, replicate_state, [KD], ?RPC_MS),
+    undefined = rpc:call(C, imboy_cache, get, [KF], ?RPC_MS),
+    [{ok, v2} = converge_get(N, K1, {ok, v2}) || N <- [A, B]],
+    [undefined = rpc:call(N, imboy_cache, get, [KD], ?RPC_MS) || N <- [A, B]],
     ok.
+
+%% A/B 在收到真实 snapshot_request、执行捕获前停住，C 能处理负向 done，
+%% 且没有合法页能竞争推进 READY。仅检查真实当前回合，不制造恢复状态。
+stale_done_during_snapshot(A, B, C) ->
+    ready = wait_status(A, 300),
+    ready = wait_status(B, 300),
+    [ok = rpc:call(N, ?MODULE, install_phase_barrier, [request, self()], ?RPC_MS) || N <- [A, B]],
+    ok = rpc:call(C, ?MODULE, restart_sync, [], ?RPC_MS),
+    {Source, Actor, Ref, _Round} = wait_phase_barrier(any),
+    try
+        true = lists:member(Source, [A, B]),
+        ok = rpc:call(C, ?MODULE, invalid_done_probe, [], ?RPC_MS)
+    after
+        %% 先移除另一个来源的未触发屏障，避免释放首源后下一请求抢先阻塞。
+        Other =
+            case Source of
+                A -> B;
+                B -> A
+            end,
+        try
+            ok = rpc:call(Other, sys, remove, [imboy_cache_sync, cache_phase], ?RPC_MS)
+        after
+            ok = release_phase_barrier(Actor, Ref)
+        end
+    end,
+    ready = wait_status(C, 300),
+    ok.
+
+install_phase_barrier(Phase, Controller) ->
+    Fun = fun(State, Event, _Extra) -> phase_event(State, Event) end,
+    sys:install(imboy_cache_sync, {cache_phase, Fun, {Phase, Controller}}).
+
+restart_with_phase_barrier(Phase, Controller) ->
+    ok = restart_sync(),
+    install_phase_barrier(Phase, Controller).
+
+phase_event({Phase, Controller} = State, {in, Message}) ->
+    Round =
+        case {Phase, Message} of
+            {request, {cache_snapshot_request, _, R}} -> R;
+            {page, {cache_snapshot_page, _, R, _, _, _, _}} -> R;
+            _ -> undefined
+        end,
+    case Round of
+        undefined ->
+            State;
+        _ ->
+            Ref = make_ref(),
+            Controller ! {cache_phase, node(), self(), Ref, Round},
+            receive
+                {release_cache_phase, Ref} ->
+                    Controller ! {cache_phase_released, Ref},
+                    done
+            after 10000 ->
+                Controller ! {cache_phase_timeout, Ref},
+                erlang:error(cache_phase_release_timeout)
+            end
+    end;
+phase_event(State, _) ->
+    State.
+
+release_phase_barrier(Actor, Ref) ->
+    Actor ! {release_cache_phase, Ref},
+    receive
+        {cache_phase_released, Ref} -> ok;
+        {cache_phase_timeout, Ref} -> erlang:error(cache_phase_release_timeout)
+    after 2000 -> erlang:error(cache_phase_release_not_acknowledged)
+    end.
+
+wait_phase_barrier(Expected) ->
+    receive
+        {cache_phase, Node, Actor, Ref, Round} when Expected =:= any; Node =:= Expected ->
+            {Node, Actor, Ref, Round}
+    after 5000 -> erlang:error({cache_phase_not_observed, Expected})
+    end.
+
+invalid_done_probe() ->
+    #state{status = recovering, snapshot_round = Before} = sys:get_state(imboy_cache_sync),
+    Round = maps:get(round, Before),
+    [Known | _] = maps:keys(maps:get(peers, Before)),
+    WrongRound = crypto:strong_rand_bytes(12),
+    true = WrongRound =/= Round,
+    false = maps:is_key(node(), maps:get(peers, Before)),
+    Pid = whereis(imboy_cache_sync),
+    Pid ! {cache_snapshot_done, Known, WrongRound, 0, 0},
+    pong = gen_server:call(Pid, ping_ok, 5000),
+    #state{status = recovering, snapshot_round = AfterOld} = sys:get_state(Pid),
+    Round = maps:get(round, AfterOld),
+    false = lists:any(fun(P) -> maps:get(done, P) end, maps:values(maps:get(peers, AfterOld))),
+    Pid ! {cache_snapshot_done, node(), Round, 0, 0},
+    pong = gen_server:call(Pid, ping_ok, 5000),
+    #state{status = recovering, snapshot_round = AfterUnknown} = sys:get_state(Pid),
+    Round = maps:get(round, AfterUnknown),
+    false = lists:any(fun(P) -> maps:get(done, P) end, maps:values(maps:get(peers, AfterUnknown))),
+    ok.
+
+%% 两个独立结果共用一次真实 >W 等待；任何一个 FAIL 仍决定最终非零退出。
+shared_long_partition_results() ->
+    Cases = select_scenarios([
+        {"C9m natural partition exceeds W and requires cold epoch recovery",
+            fun assert_long_availability/2},
+        {"C9p cold partition respects real same-era authority or stays degraded",
+            fun assert_long_safety/2}
+    ]),
+    case Cases of
+        [] ->
+            [];
+        _ ->
+            try
+                {ok, Pids, {A, B, C}} = start_cluster(),
+                try
+                    Context = natural_long_partition(A, B, C),
+                    [run_one(Name, fun() -> Oracle(A, Context) end) || {Name, Oracle} <- Cases]
+                after
+                    stop_cluster(Pids)
+                end
+            catch
+                Class:Reason:Stack ->
+                    [
+                        {Name, fail,
+                            io_lib:format("shared_long_fixture ~p:~p at ~p", [
+                                Class, Reason, lists:sublist(Stack, 3)
+                            ])}
+                     || {Name, _} <- Cases
+                    ]
+            end
+    end.
+
+%% 真实时钟跨 W。当前策略硬下限 W=720s，正式矩阵不可缩短/跳过。
+natural_long_partition(A, B, C) ->
+    [ready = wait_status(N, 300) || N <- [A, B, C]],
+    %% 只缩短合法恢复 Dmax，W 仍由策略硬下限720秒决定，三节点配置同摘要。
+    [
+        begin
+            Cfg = rpc:call(N, application, get_env, [imboy, cache_replication, #{}], ?RPC_MS),
+            ok = rpc:call(
+                N,
+                application,
+                set_env,
+                [imboy, cache_replication, Cfg#{recovery_window_sec => 3}],
+                ?RPC_MS
+            )
+        end
+     || N <- [A, B, C]
+    ],
+    [Hash, Hash, Hash] = [
+        rpc:call(N, imboy_cache_sync_proto, config_hash, [], ?RPC_MS)
+     || N <- [A, B, C]
+    ],
+    Key = {cache_v2_test_rep, long_partition_live},
+    Deleted = {cache_v2_test_rep, long_partition_deleted},
+    [ok = rpc:call(B, imboy_cache, put, [K, old, 600, replicate], ?RPC_MS) || K <- [Key, Deleted]],
+    [{ok, old} = converge_get(A, K, {ok, old}) || K <- [Key, Deleted]],
+    Frame = rpc:call(B, ?MODULE, stored_set_frame, [Deleted, old], ?RPC_MS),
+    Epoch0 = rpc:call(A, imboy_cache_sync_proto, epoch, [], ?RPC_MS),
+    W = rpc:call(A, imboy_cache_policy, tombstone_ttl_sec, [], ?RPC_MS),
+    true = is_integer(W) andalso W > 0,
+    %% B/C 保留初始显式空 expected 集合，不覆盖门禁配置；实际成员仍需全部 V2。
+    [] = rpc:call(B, application, get_env, [imboy, cluster_nodes, []], ?RPC_MS),
+    [] = rpc:call(C, application, get_env, [imboy, cluster_nodes, []], ?RPC_MS),
+    Config = rpc:call(A, application, get_env, [imboy, cluster_nodes], ?RPC_MS),
+    Cookie = erlang:get_cookie(),
+    ok = rpc:call(A, application, set_env, [imboy, cluster_nodes, [A, B, C]], ?RPC_MS),
+    [true = rpc:call(A, erlang, set_cookie, [N, cache_long_partition], ?RPC_MS) || N <- [B, C]],
+    [true = rpc:call(A, erlang, disconnect_node, [N], ?RPC_MS) || N <- [B, C]],
+    %% 只读取同步actor原生观察槽，绝不手写时间戳；等待从实际失联观察起算。
+    true = converge_pred(fun() ->
+        case rpc:call(A, ets, lookup, [imboy_cache_meta, cache_peer_loss], ?RPC_MS) of
+            [{cache_peer_loss, {AnySince, IslandSince}}] ->
+                is_integer(AnySince) andalso is_integer(IslandSince);
+            _ ->
+                false
+        end
+    end),
+    [{cache_peer_loss, {LossSince, IslandSince}}] = rpc:call(
+        A, ets, lookup, [imboy_cache_meta, cache_peer_loss], ?RPC_MS
+    ),
+    Start = erlang:monotonic_time(millisecond),
+    WallStart = erlang:system_time(millisecond),
+    FreshWrite =
+        try
+            true = converge_pred(fun() ->
+                Members = rpc:call(B, imboy_cache_sync, syn_scope_members, [], ?RPC_MS),
+                is_list(Members) andalso not lists:any(fun(P) -> node(P) =:= A end, Members)
+            end),
+            true = rpc:call(B, imboy_cache_sync, replication_capable, [], ?RPC_MS),
+            ok = rpc:call(B, imboy_cache, put_delete, [Deleted], ?RPC_MS),
+            wait_natural_window(Start + W * 1000 + 1000),
+            true = erlang:system_time(millisecond) - WallStart > W * 1000,
+            %% 如真实 B 已冷恢复，保留公开写失败供 availability oracle，不能跳过 safety 取证。
+            rpc:call(B, imboy_cache, put, [Key, new_authority, 300, replicate], ?RPC_MS)
+        after
+            [true = rpc:call(A, erlang, set_cookie, [N, Cookie], ?RPC_MS) || N <- [B, C]],
+            [true = rpc:call(A, net_kernel, connect_node, [N], ?RPC_MS) || N <- [B, C]]
+        end,
+    #{
+        key => Key,
+        deleted => Deleted,
+        frame => Frame,
+        epoch => Epoch0,
+        window => W,
+        peers => [B, C],
+        config => Config,
+        loss_since => LossSince,
+        island_since => IslandSince,
+        fresh_write => FreshWrite
+    }.
+
+%% 原 C9m availability oracle 保留，E1 无合格权威时这个要求必须真实失败。
+assert_long_availability(A, #{
+    key := Key,
+    deleted := Deleted,
+    frame := Frame,
+    epoch := Epoch0,
+    window := W,
+    fresh_write := FreshWrite
+}) ->
+    ready = wait_status(A, 400),
+    Epoch1 = rpc:call(A, imboy_cache_sync_proto, epoch, [], ?RPC_MS),
+    true =
+        Epoch1 > Epoch0 orelse erlang:error({long_partition_missing_cold_epoch, Epoch0, Epoch1, W}),
+    ok = FreshWrite,
+    {ok, new_authority} = converge_get(A, Key, {ok, new_authority}),
+    undefined = rpc:call(A, imboy_cache, get, [Deleted], ?RPC_MS),
+    assert_protected_replay_window(Frame, W),
+    ok = rpc:call(A, ?MODULE, deliver_frame, [Frame], ?RPC_MS),
+    undefined = rpc:call(A, imboy_cache, get, [Deleted], ?RPC_MS),
+    ok.
+
+%% 新 C9p 独立安全合同：只依据真实 cohort，不强行假定 B/C 保留旧 epoch。
+assert_long_safety(A, #{
+    key := Key, deleted := Deleted, frame := Frame, epoch := Epoch0, window := W, peers := Peers
+}) ->
+    Epoch1 = rpc:call(A, imboy_cache_sync_proto, epoch, [], ?RPC_MS),
+    true = Epoch1 > Epoch0,
+    Cohort = [
+        {N, rpc:call(N, imboy_cache_sync_proto, epoch, [], ?RPC_MS),
+            rpc:call(N, imboy_cache_sync, status, [], ?RPC_MS)}
+     || N <- Peers
+    ],
+    MatchingReady = [N || {N, E, ready} <- Cohort, E =:= Epoch1],
+    io:format("C9p actual cohort: ~p~n", [#{receiver_epoch => Epoch1, peers => Cohort}]),
+    case MatchingReady of
+        [] ->
+            degraded = wait_status(A, degraded, 400),
+            [undefined = rpc:call(A, imboy_cache, get, [K], ?RPC_MS) || K <- [Key, Deleted]],
+            [
+                undefined = rpc:call(A, depcache, get, [K, imboy_cache], ?RPC_MS)
+             || K <- [Key, Deleted]
+            ],
+            {error, {not_ready, degraded}} = rpc:call(
+                A, imboy_cache, put, [Key, unsafe_old_era, 60, replicate], ?RPC_MS
+            );
+        [Source | _] ->
+            %% 有真实同代 READY 权威则验证内容恢复，不套用无源 DEGRADED 判据。
+            ready = wait_status(A, 400),
+            [
+                begin
+                    Value = rpc:call(Source, imboy_cache, get, [K], ?RPC_MS),
+                    Value = converge_get(A, K, Value)
+                end
+             || K <- [Key, Deleted]
+            ]
+    end,
+    assert_protected_replay_window(Frame, W),
+    ok = rpc:call(A, ?MODULE, deliver_frame, [Frame], ?RPC_MS),
+    undefined = rpc:call(A, depcache, get, [Deleted, imboy_cache], ?RPC_MS),
+    Expected =
+        case MatchingReady of
+            [] -> degraded;
+            _ -> ready
+        end,
+    Expected = rpc:call(A, imboy_cache_sync, status, [], ?RPC_MS),
+    ok.
+
+assert_protected_replay_window({cache_sync, Replay}, W) ->
+    Now = erlang:system_time(millisecond),
+    Exp = maps:get(expires_at_ms, Replay),
+    true = Exp < Now andalso Now < Exp + W * 1000,
+    ok.
+
+wait_natural_window(Deadline) ->
+    case erlang:monotonic_time(millisecond) >= Deadline of
+        true ->
+            ok;
+        false ->
+            timer:sleep(200),
+            wait_natural_window(Deadline)
+    end.
+
+%% 仅缩小已有 t_max 预算，真实 public DELETE 造墓碑，绝不手工写过期元数据。
+delete_storm(A, B, C) ->
+    Nodes = [A, B, C],
+    [ready = wait_status(N, 300) || N <- Nodes],
+    [{0, _} = rpc:call(N, ?MODULE, tombstone_usage, [], ?RPC_MS) || N <- Nodes],
+    Old = [
+        {N, rpc:call(N, application, get_env, [imboy, cache_replication, #{}], ?RPC_MS)}
+     || N <- Nodes
+    ],
+    Limit = 4,
+    [
+        ok = rpc:call(
+            N, application, set_env, [imboy, cache_replication, Cfg#{t_max => Limit}], ?RPC_MS
+        )
+     || {N, Cfg} <- Old
+    ],
+    try
+        Keys = [{cache_v2_test_rep, {delete_storm, I}} || I <- lists:seq(1, Limit + 1)],
+        [
+            ok = rpc:call(B, imboy_cache, put, [K, before_delete, 300, replicate], ?RPC_MS)
+         || K <- Keys
+        ],
+        [{ok, before_delete} = converge_get(A, K, {ok, before_delete}) || K <- Keys],
+        [First | _] = Keys,
+        Frame = rpc:call(B, ?MODULE, stored_set_frame, [First, before_delete], ?RPC_MS),
+        Epoch0 = rpc:call(A, imboy_cache_sync_proto, epoch, [], ?RPC_MS),
+        [
+            begin
+                ok = rpc:call(A, imboy_cache, put_delete, [K], ?RPC_MS),
+                true = converge_pred(fun() ->
+                    lists:all(
+                        fun(N) ->
+                            rpc:call(N, imboy_cache_sync, replicate_state, [K], ?RPC_MS) =:= deleted
+                        end,
+                        Nodes
+                    )
+                end)
+            end
+         || K <- lists:sublist(Keys, Limit)
+        ],
+        {error, tombstone_budget_exceeded} = rpc:call(
+            A, imboy_cache, put_delete, [lists:last(Keys)], ?RPC_MS
+        ),
+        [
+            begin
+                {Count, Bytes} = rpc:call(N, ?MODULE, tombstone_usage, [], ?RPC_MS),
+                true = Count =< Limit,
+                true = Bytes =< rpc:call(N, imboy_cache_policy, t_max_bytes, [], ?RPC_MS)
+            end
+         || N <- Nodes
+        ],
+        Epoch1 = rpc:call(A, imboy_cache_sync_proto, epoch, [], ?RPC_MS),
+        true = Epoch1 > Epoch0,
+        ok = rpc:call(A, ?MODULE, deliver_frame, [Frame], ?RPC_MS),
+        undefined = rpc:call(A, imboy_cache, get, [First], ?RPC_MS),
+        undefined = rpc:call(A, depcache, get, [First, imboy_cache], ?RPC_MS),
+        true = rpc:call(A, ?MODULE, sync_alive, [], ?RPC_MS)
+    after
+        [
+            ok = rpc:call(N, application, set_env, [imboy, cache_replication, Cfg], ?RPC_MS)
+         || {N, Cfg} <- Old
+        ]
+    end,
+    ok.
+
+tombstone_usage() ->
+    case ets:lookup(imboy_cache_meta, metadata_usage) of
+        [{metadata_usage, {_Live, _Bytes, Count, TombBytes}}] -> {Count, TombBytes};
+        [] -> {0, 0}
+    end.
+
+stored_set_frame(Key, Value) ->
+    [{{rev, Key}, {Rev, {Boot, Seq}, Exp, live, _Epoch}}] = ets:lookup(
+        imboy_cache_meta, {rev, Key}
+    ),
+    {cache_sync, imboy_cache_sync_proto:event(set, Key, Value, Exp, Rev, Seq, Boot)}.
+
+deliver_frame(Frame) ->
+    Pid = whereis(imboy_cache_sync),
+    Pid ! Frame,
+    pong = gen_server:call(Pid, ping_ok, 5000),
+    ok.
+
+%% 真实请求阶段慢源超过总 Dmax；停止输入后观察队列 drain。
+%% memory/reductions 是实测趋势，绝不把采样峰值冒称 heap/mailbox 硬上限。
+slow_source_resource(A, B, C) ->
+    Nodes = [A, B, C],
+    [ready = wait_status(N, 300) || N <- Nodes],
+    Old = [
+        {N, rpc:call(N, application, get_env, [imboy, cache_replication, #{}], ?RPC_MS)}
+     || N <- Nodes
+    ],
+    [
+        ok = rpc:call(
+            N,
+            application,
+            set_env,
+            [imboy, cache_replication, Cfg#{recovery_window_sec => 3}],
+            ?RPC_MS
+        )
+     || {N, Cfg} <- Old
+    ],
+    [Hash, Hash, Hash] = [
+        rpc:call(N, imboy_cache_sync_proto, config_hash, [], ?RPC_MS)
+     || N <- Nodes
+    ],
+    try
+        [
+            ok = rpc:call(N, ?MODULE, install_phase_barrier, [request, self()], ?RPC_MS)
+         || N <- [A, B]
+        ],
+        ok = rpc:call(C, ?MODULE, restart_sync, [], ?RPC_MS),
+        {Source, Actor, Ref, _Round} = wait_phase_barrier(any),
+        Other =
+            case Source of
+                A -> B;
+                B -> A
+            end,
+        Before = rpc:call(Source, ?MODULE, resource_sample, [], ?RPC_MS),
+        try
+            [
+                ok = rpc:call(
+                    Other,
+                    imboy_cache,
+                    put,
+                    [{cache_v2_test_rep, {slow_source_input, I}}, <<0:2048>>, 120, replicate],
+                    ?RPC_MS
+                )
+             || I <- lists:seq(1, 128)
+            ],
+            %% 从此不再输入业务事件，只采样。真实来源 actor 仍停在request屏障。
+            Peak = rpc:call(Source, ?MODULE, resource_sample, [], ?RPC_MS),
+            true = maps:get(message_queue_len, Peak) > maps:get(message_queue_len, Before),
+            degraded = wait_status(C, degraded, 100),
+            #state{status = degraded, snapshot_round = undefined} =
+                rpc:call(C, sys, get_state, [imboy_cache_sync], ?RPC_MS),
+            ok = rpc:call(Other, sys, remove, [imboy_cache_sync, cache_phase], ?RPC_MS),
+            ok = rpc:call(C, ?MODULE, install_completion_observer, [self()], ?RPC_MS),
+            ok = release_phase_barrier(Actor, Ref),
+            receive
+                {cache_late_done, C, _FinishedRound} -> ok
+            after 5000 -> erlang:error(slow_source_no_real_late_done)
+            end,
+            true = converge_pred(fun() ->
+                Sample = rpc:call(Source, ?MODULE, resource_sample, [], ?RPC_MS),
+                maps:get(message_queue_len, Sample) =:= 0
+            end),
+            After = rpc:call(Source, ?MODULE, resource_sample, [], ?RPC_MS),
+            true = maps:get(message_queue_len, After) < maps:get(message_queue_len, Peak),
+            true = maps:get(reductions, After) > maps:get(reductions, Before),
+            %% 同发送者屏障后检查真实迟到页/done没有解除降级。
+            true = converge_pred(fun() ->
+                #state{snapshot_round = R} = rpc:call(
+                    C, sys, get_state, [imboy_cache_sync], ?RPC_MS
+                ),
+                R =:= undefined
+            end),
+            degraded = rpc:call(C, imboy_cache_sync, status, [], ?RPC_MS),
+            io:format("C9o sampled resource trend (no hard heap claim): ~p~n", [
+                #{before => Before, peak => Peak, stopped => After}
+            ])
+        after
+            Actor ! {release_cache_phase, Ref},
+            _ = rpc:call(Other, sys, remove, [imboy_cache_sync, cache_phase], ?RPC_MS)
+        end
+    after
+        [
+            ok = rpc:call(N, application, set_env, [imboy, cache_replication, Cfg], ?RPC_MS)
+         || {N, Cfg} <- Old
+        ]
+    end,
+    ok.
+
+resource_sample() ->
+    Info = erlang:process_info(whereis(imboy_cache_sync), [message_queue_len, memory, reductions]),
+    Usage =
+        case ets:lookup(imboy_cache_meta, metadata_usage) of
+            [{metadata_usage, Stored}] -> Stored;
+            [] -> {0, 0, 0, 0}
+        end,
+    maps:from_list([{metadata_usage, Usage} | Info]).
+
+install_completion_observer(Controller) ->
+    Fun = fun
+        (State, {in, {cache_snapshot_done, _, Round, _, _}}, _Extra) ->
+            State ! {cache_late_done, node(), Round},
+            done;
+        (State, _, _) ->
+            State
+    end,
+    sys:install(imboy_cache_sync, {cache_late_done, Fun, Controller}).
 
 %% F3：节点硬崩（erlang:halt，无 terminate/syn:leave）+ 同名新化身：
 %% 存活节点不受影响；新化身经快照回填恢复，版本上界不回退（AC-17 硬崩路径）。
@@ -1042,11 +1578,22 @@ count_retained(C, Keys, Val, Tries) ->
 %% ===================================================================
 
 start_cluster() ->
+    ok = new_driver_context(),
+    try
+        boot_cluster()
+    catch
+        Class:Reason:Stack ->
+            stop_cluster([]),
+            erlang:raise(Class, Reason, Stack)
+    end.
+
+boot_cluster() ->
     %% 节点名只用安全字符；随机 cookie；loopback 分布接口
     RandBin = binary:encode_hex(crypto:strong_rand_bytes(6), lowercase),
     Rand = binary_to_atom(iolist_to_binary("c21" ++ binary_to_list(RandBin)), utf8),
     Main = binary_to_atom(iolist_to_binary("c21m" ++ binary_to_list(RandBin)), utf8),
     {ok, _} = net_kernel:start([Main, longnames]),
+    true = ets:insert(c21dctx, {owned_net_kernel, true}),
     CookieAtom = binary_to_atom(
         iolist_to_binary(
             "ck" ++ binary_to_list(integer_to_binary(erlang:unique_integer([positive]), 36))
@@ -1089,6 +1636,7 @@ start_cluster() ->
         wait_boot => false,
         args => Args
     }),
+    ok = register_owned_peer(PA, A),
     pong = wait_peer(A, 200),
     {ok, PB, B} = peer:start(#{
         name => NameB,
@@ -1096,6 +1644,7 @@ start_cluster() ->
         wait_boot => false,
         args => Args
     }),
+    ok = register_owned_peer(PB, B),
     pong = wait_peer(B, 200),
     {ok, PC, C} = peer:start(#{
         name => NameC,
@@ -1103,9 +1652,9 @@ start_cluster() ->
         wait_boot => false,
         args => Args
     }),
+    ok = register_owned_peer(PC, C),
     pong = wait_peer(C, 200),
     %% F3 同名硬重启所需身份（驱动节点侧暂存）
-    _ = ets:new(c21dctx, [set, named_table, public]),
     true = ets:insert(c21dctx, {c, {NameC, Args}}),
     true = rpc:call(A, net_kernel, connect_node, [B], ?RPC_MS),
     true = rpc:call(A, net_kernel, connect_node, [C], ?RPC_MS),
@@ -1179,12 +1728,13 @@ confirm_initial_identities(Nodes) ->
 %% F3：C 硬崩后的同名新化身（同一 args/代码树，新 BootId）
 restart_c_hard(A, B) ->
     [{c, {NameC, Args}}] = ets:lookup(c21dctx, c),
-    {ok, _P, C2} = peer:start(#{
+    {ok, Replacement, C2} = peer:start(#{
         name => NameC,
         host => "127.0.0.1",
         wait_boot => false,
         args => Args
     }),
+    ok = register_owned_peer(Replacement, C2),
     pong = wait_peer(C2, 200),
     true = connect_retry(A, C2),
     true = connect_retry(B, C2),
@@ -1207,17 +1757,57 @@ connect_retry(From, To, N) ->
             connect_retry(From, To, N - 1)
     end.
 
-stop_cluster(PeerPids) ->
-    _ = [
-        try
-            peer:stop(P)
-        catch
-            _:_ -> ok
-        end
-     || P <- PeerPids
-    ],
-    catch net_kernel:stop(),
+new_driver_context() ->
+    case ets:whereis(c21dctx) of
+        undefined ->
+            c21dctx = ets:new(c21dctx, [set, named_table, public]),
+            ok;
+        _ ->
+            erlang:error(driver_context_not_cleaned)
+    end.
+
+register_owned_peer(Pid, Node) ->
+    true = ets:info(c21dctx, owner) =:= self(),
+    true = ets:insert(c21dctx, {{owned_peer, Pid}, Node}),
     ok.
+
+stop_cluster(PeerPids) ->
+    case ets:info(c21dctx, owner) of
+        undefined when PeerPids =:= [] -> ok;
+        Owner when Owner =:= self() ->
+            Owned = [P || {{owned_peer, P}, _Node} <- ets:tab2list(c21dctx)],
+            true = lists:all(fun(P) -> lists:member(P, Owned) end, PeerPids),
+            [ok = stop_owned_peer(P) || P <- Owned],
+            case ets:lookup(c21dctx, owned_net_kernel) of
+                [{owned_net_kernel, true}] -> ok = net_kernel:stop();
+                [] -> ok
+            end,
+            true = ets:delete(c21dctx),
+            ok;
+        _ ->
+            erlang:error(foreign_driver_context)
+    end.
+
+stop_owned_peer(Pid) ->
+    Ref = erlang:monitor(process, Pid),
+    case is_process_alive(Pid) of
+        true ->
+            try
+                peer:stop(Pid)
+            catch
+                Class:Reason:Stack ->
+                    case is_process_alive(Pid) of
+                        false -> ok;
+                        true -> erlang:raise(Class, Reason, Stack)
+                    end
+            end;
+        false ->
+            ok
+    end,
+    receive
+        {'DOWN', Ref, process, Pid, _} -> ok
+    after 5000 -> erlang:error({owned_peer_not_stopped, Pid})
+    end.
 
 wait_peer(Full, 0) ->
     erlang:error({peer_ping_timeout, Full});

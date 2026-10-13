@@ -82,7 +82,7 @@ login_page_returns_html_with_csrf_test_() ->
                 end}
             ]},
             {imboy_cache, [
-                {'set', 2, fun(_Key, _Value) ->
+                {'set', 2, fun({local_cache, csrf, Token}, 1) when is_binary(Token) ->
                     ok
                 end}
             ]},
@@ -150,7 +150,7 @@ login_meta_returns_payload_test_() ->
                 end}
             ]},
             {imboy_cache, [
-                {'set', 2, fun(_Key, _Value) ->
+                {'set', 2, fun({local_cache, csrf, Token}, 1) when is_binary(Token) ->
                     ok
                 end}
             ]},
@@ -215,7 +215,7 @@ login_post_success_with_valid_credentials_test_() ->
                 end}
             ]},
             {imboy_cache, [
-                {'get', 1, fun(<<"valid_csrf_token">>) ->
+                {'get', 1, fun({local_cache, csrf, <<"valid_csrf_token">>}) ->
                     {ok, 1}
                 end},
                 {'flush', 1, fun(_Key) ->
@@ -323,7 +323,7 @@ login_post_accepts_fixed_test_captcha_in_local_env_test_() ->
                         end}
                     ]},
                     {imboy_cache, [
-                        {'get', 1, fun(<<"valid_csrf_token">>) ->
+                        {'get', 1, fun({local_cache, csrf, <<"valid_csrf_token">>}) ->
                             {ok, 1}
                         end},
                         {'flush', 1, fun(_Key) ->
@@ -926,7 +926,7 @@ complete_login_flow_test_() ->
             ]},
             {imboy_cache, [
                 {'set', 2, fun(_, _) -> ok end},
-                {'get', 1, fun(<<"csrf_flow">>) -> {ok, 1} end},
+                {'get', 1, fun({local_cache, csrf, <<"csrf_flow">>}) -> {ok, 1} end},
                 {'flush', 1, fun(_) -> ok end}
             ]},
             {config_ds, [

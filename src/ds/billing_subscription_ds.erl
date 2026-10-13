@@ -18,7 +18,7 @@
 
 %% @doc 创建订阅
 -spec create(map()) -> {ok, integer()} | {error, duplicate | term()}.
-create(Data) -> billing_subscription_repo:create(Data).
+create(Data) -> invalidate_meter_after_write(billing_subscription_repo:create(Data)).
 
 %% @doc 按 id 查询订阅
 -spec find_by_id(integer()) -> map().
@@ -31,13 +31,14 @@ find_active_by_tenant(TenantId) ->
 
 %% @doc 更新订阅
 -spec update(integer(), map()) -> {ok, non_neg_integer()} | {error, term()}.
-update(Id, ChangeMap) -> billing_subscription_repo:update(Id, ChangeMap).
+update(Id, ChangeMap) ->
+    invalidate_meter_after_write(billing_subscription_repo:update(Id, ChangeMap)).
 
 %% @doc 续费（推进周期 + 置生效）
 -spec renew(integer(), integer(), integer()) ->
     {ok, non_neg_integer()} | {error, term()}.
 renew(Id, PeriodStart, PeriodEnd) ->
-    billing_subscription_repo:renew(Id, PeriodStart, PeriodEnd).
+    invalidate_meter_after_write(billing_subscription_repo:renew(Id, PeriodStart, PeriodEnd)).
 
 %% @doc 列出到期订阅
 -spec list_expiring(integer()) -> [map()].
@@ -48,3 +49,10 @@ list_expiring(BeforeTs) -> billing_subscription_repo:list_expiring(BeforeTs).
     {ok, map()} | {error, term()}.
 page(WhereMap, Order, Page, Size) ->
     billing_subscription_repo:page(WhereMap, Order, Page, Size).
+
+%% Repo 单语句自动提交成功后才失效；当前 meter 只缓存部署级 tenant_id=0。
+invalidate_meter_after_write({ok, Value} = Result) when is_integer(Value), Value > 0 ->
+    ok = imboy_cache:invalidate({billing_meter, active_sub, 0}),
+    Result;
+invalidate_meter_after_write(Result) ->
+    Result.

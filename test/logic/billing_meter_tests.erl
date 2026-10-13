@@ -17,8 +17,8 @@
 setup() ->
     %% 强制缓存 miss，走 DB 解析路径；set 直通
     ok = meck:new(imboy_cache, [passthrough]),
-    ok = meck:expect(imboy_cache, get, fun(_Key) -> undefined end),
-    ok = meck:expect(imboy_cache, set, fun(_K, _V, _T) -> ok end),
+    ok = meck:expect(imboy_cache, memo, fun(F, _K, _T) -> F() end),
+    ok = meck:expect(imboy_cache, uncached, fun(V) -> V end),
     ok = meck:new(billing_subscription_ds, [passthrough]),
     ok = meck:new(billing_usage_ds, [passthrough]),
     ok.

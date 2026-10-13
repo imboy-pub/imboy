@@ -141,6 +141,10 @@ change_name(Req0, State) ->
             case user_tag_logic:change_name(Count, CurrentUid, S2, Id, TagName) of
                 ok ->
                     elib_response:success(Req0, #{}, "success.");
+                {error, _} ->
+                    elib_response:error(Req0, <<"修改标签失败"/utf8>>);
+                {rollback, _} ->
+                    elib_response:error(Req0, <<"修改标签失败"/utf8>>);
                 Err ->
                     elib_response:error(Req0, Err)
             end
@@ -211,8 +215,10 @@ delete(Req0, State) ->
         Scene2 == 0 ->
             elib_response:error(Req0, <<"不支持的 Scene"/utf8>>);
         true ->
-            user_tag_logic:delete(CurrentUid, Scene2, Tag),
-            elib_response:success(Req0, #{}, "success.")
+            case user_tag_logic:delete(CurrentUid, Scene2, Tag) of
+                ok -> elib_response:success(Req0, #{}, "success.");
+                _ -> elib_response:error(Req0, <<"删除标签失败"/utf8>>)
+            end
     end.
 
 %% ===================================================================

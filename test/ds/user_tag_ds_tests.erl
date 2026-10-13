@@ -13,7 +13,6 @@
 %% ===================================================================
 %% page/5 测试
 %% ===================================================================
-
 %% @doc 测试标签分页列表成功
 page_returns_tag_list_test_() ->
     ?WITH_MECKS(
@@ -96,7 +95,6 @@ page_with_error_returns_empty_list_test_() ->
 %% ===================================================================
 %% delete/3 测试
 %% ===================================================================
-
 %% @doc 测试删除标签成功
 delete_success_test_() ->
     ?WITH_MECKS(
@@ -105,9 +103,10 @@ delete_success_test_() ->
                 {'tablename', 0, fun() -> <<"user_tag">> end}
             ]},
             {elib_pg, [
-                {'pluck_value', 5, fun(_Tb, _Column, _Where, _Opts, _Default) ->
-                    1
+                {'pluck', 5, fun(_Tb, _Column, _Where, _Opts, _Default) ->
+                    {ok, 1}
                 end},
+                {'after_commit', 3, fun(_Conn, _Id, _Action) -> ok end},
                 {'with_tx', 1, fun(Fun) ->
                     Fun(self())
                 end},
@@ -143,7 +142,9 @@ delete_success_test_() ->
                     case Sql of
                         <<"UPDATE ", _/binary>> ->
                             binary:match(Sql, <<"regexp_replace">>) =/= nomatch andalso
-                                length(Params) == 3 andalso
+                                length(Params) == 4 andalso
+                                lists:nth(4, Params) == 100 andalso
+                                binary:match(Sql, <<"user_id = $4">>) =/= nomatch andalso
                                 hd(Params) == <<"(^|,)", "标签1"/utf8, ",">> andalso
                                 lists:nth(2, Params) == <<"\\1">> andalso
                                 lists:nth(3, Params) == hd(Params);
@@ -164,8 +165,8 @@ delete_nonexistent_tag_returns_ok_test_() ->
                 {'tablename', 0, fun() -> <<"user_tag">> end}
             ]},
             {elib_pg, [
-                {'pluck_value', 5, fun(_Tb, _Column, _Where, _Opts, _Default) ->
-                    0
+                {'pluck', 5, fun(_Tb, _Column, _Where, _Opts, _Default) ->
+                    {ok, 0}
                 end}
             ]}
         ],
@@ -178,7 +179,6 @@ delete_nonexistent_tag_returns_ok_test_() ->
 %% ===================================================================
 %% change_name/5 测试
 %% ===================================================================
-
 %% @doc 测试修改标签名称成功
 change_name_success_test_() ->
     ?WITH_MECKS(
@@ -215,6 +215,7 @@ change_name_success_test_() ->
                 {'execute', 3, fun(_Conn, _Sql, _Params) ->
                     {ok, 1}
                 end},
+                {'after_commit', 3, fun(_Conn, _Id, _Action) -> ok end},
                 {'with_tx', 1, fun(Fun) ->
                     Fun(self())
                 end}
@@ -269,6 +270,7 @@ change_name_without_relation_objects_test_() ->
                 {'query', 2, fun(_Sql, _Params) ->
                     {ok, []}
                 end},
+                {'after_commit', 3, fun(_Conn, _Id, _Action) -> ok end},
                 {'with_tx', 1, fun(Fun) ->
                     Fun(self())
                 end}
@@ -287,7 +289,6 @@ change_name_without_relation_objects_test_() ->
 %% ===================================================================
 %% add/3 测试
 %% ===================================================================
-
 %% @doc 测试添加标签成功
 add_success_test_() ->
     ?WITH_MECKS(
@@ -360,7 +361,6 @@ add_with_empty_tag_returns_error_test_() ->
 %% ===================================================================
 %% find_tag_id/3 测试
 %% ===================================================================
-
 %% @doc 测试查找标签ID成功
 find_tag_id_returns_tag_id_test_() ->
     ?WITH_MECKS(
@@ -369,8 +369,8 @@ find_tag_id_returns_tag_id_test_() ->
                 {'tablename', 0, fun() -> <<"user_tag">> end}
             ]},
             {elib_pg, [
-                {'pluck_value', 5, fun(_Tb, _Column, _Where, _Opts, _Default) ->
-                    5
+                {'pluck', 5, fun(_Tb, _Column, _Where, _Opts, _Default) ->
+                    {ok, 5}
                 end}
             ]}
         ],
@@ -388,8 +388,8 @@ find_tag_id_not_found_returns_zero_test_() ->
                 {'tablename', 0, fun() -> <<"user_tag">> end}
             ]},
             {elib_pg, [
-                {'pluck_value', 5, fun(_Tb, _Column, _Where, _Opts, _Default) ->
-                    0
+                {'pluck', 5, fun(_Tb, _Column, _Where, _Opts, _Default) ->
+                    {ok, 0}
                 end}
             ]}
         ],
@@ -402,7 +402,6 @@ find_tag_id_not_found_returns_zero_test_() ->
 %% ===================================================================
 %% get_relation_objects/3 测试
 %% ===================================================================
-
 %% @doc 测试获取关联对象成功
 get_relation_objects_returns_objects_test_() ->
     ?WITH_MECK(
@@ -440,7 +439,7 @@ get_relation_objects_with_no_results_test_() ->
     ).
 
 %% @doc 测试获取关联对象错误返回空列表
-get_relation_objects_with_error_returns_empty_list_test_() ->
+get_relation_objects_with_error_returns_error_test_() ->
     ?WITH_MECK(
         elib_pg,
         [
@@ -449,15 +448,15 @@ get_relation_objects_with_error_returns_empty_list_test_() ->
             end}
         ],
         fun() ->
-            {ok, Rows} = user_tag_ds:get_relation_objects(1, 100, 5),
-            ?assertEqual(0, length(Rows))
+            ?assertEqual(
+                {error, <<"database_error">>}, user_tag_ds:get_relation_objects(1, 100, 5)
+            )
         end
     ).
 
 %% ===================================================================
 %% change_scene_tag/5 测试
 %% ===================================================================
-
 %% @doc 测试修改场景标签成功（收藏场景）
 change_scene_tag_for_collect_scene_test_() ->
     ?WITH_MECKS(
@@ -517,7 +516,6 @@ change_scene_tag_for_friend_scene_test_() ->
 %% ===================================================================
 %% flush_subtitle/1 测试
 %% ===================================================================
-
 %% @doc 测试清理缓存
 flush_subtitle_success_test_() ->
     ?WITH_MECK(
@@ -758,6 +756,7 @@ complete_tag_lifecycle_test_() ->
                 end}
             ]},
             {elib_pg, [
+                {'pluck', 5, fun(_, _, _, _, _) -> {ok, 1} end},
                 {'pluck_value', 5, fun(Tb, _Column, _Where, _Opts, _Default) ->
                     case Tb of
                         <<"public.user_tag">> -> 0;
@@ -777,6 +776,7 @@ complete_tag_lifecycle_test_() ->
                         ]
                     }}
                 end},
+                {'after_commit', 3, fun(_Conn, _Id, _Action) -> ok end},
                 {'with_tx', 1, fun(Fun) ->
                     Fun(self())
                 end},

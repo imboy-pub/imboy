@@ -19,7 +19,7 @@ find_by_uid_cache_hit_skips_repo_test_() ->
     ?WITH_MECK(
         imboy_cache,
         [
-            {'get', 1, fun({user_dnd_rule, 1}) -> {ok, Rule} end}
+            {'memo', 3, fun(_F, _K, _T) -> Rule end}
         ],
         fun() ->
             %% 命中缓存：不应触及 repo（repo 未 mock，若被调用将 undef 报错）
@@ -32,8 +32,8 @@ find_by_uid_cache_miss_loads_and_sets_test_() ->
     ?WITH_MECKS(
         [
             {imboy_cache, [
-                {'get', 1, fun(_Key) -> undefined end},
-                {'set', 3, fun(_K, _V, _Ttl) -> ok end}
+                {'memo', 3, fun(F, _K, _T) -> F() end},
+                {'uncached', 1, fun(R) -> R end}
             ]},
             {user_dnd_rule_repo, [{'find_by_uid', 1, fun(2) -> Rule end}]}
         ],
@@ -50,7 +50,7 @@ save_upserts_and_invalidates_cache_test_() ->
     ?WITH_MECKS(
         [
             {user_dnd_rule_repo, [{'upsert', 1, fun(#{<<"user_id">> := 1}) -> ok end}]},
-            {imboy_cache, [{'delete', 1, fun({user_dnd_rule, 1}) -> ok end}]}
+            {imboy_cache, [{'invalidate', 1, fun({user_dnd_rule, 1}) -> ok end}]}
         ],
         fun() ->
             Data = #{
@@ -64,7 +64,7 @@ delete_removes_and_invalidates_cache_test_() ->
     ?WITH_MECKS(
         [
             {user_dnd_rule_repo, [{'delete_by_uid', 1, fun(1) -> ok end}]},
-            {imboy_cache, [{'delete', 1, fun({user_dnd_rule, 1}) -> ok end}]}
+            {imboy_cache, [{'invalidate', 1, fun({user_dnd_rule, 1}) -> ok end}]}
         ],
         fun() ->
             ?assertEqual(ok, user_dnd_rule_ds:delete(1))
@@ -128,7 +128,7 @@ with_rule(Rule, TestFun) ->
     ?WITH_MECK(
         imboy_cache,
         [
-            {'get', 1, fun(_Key) -> {ok, Rule} end}
+            {'memo', 3, fun(_F, _K, _T) -> Rule end}
         ],
         TestFun
     ).

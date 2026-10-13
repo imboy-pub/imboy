@@ -413,12 +413,14 @@ check_relationship(FromUid, ToUid) ->
         >>,
         % elib_log:info([<<"check_relationship">>, Sql]),
         case elib_pg:query(Sql, [FromUid, ToUid]) of
-            {ok, [#{<<"is_friend">> := IsFriend, <<"in_denylist">> := InDenylist}]} ->
+            {ok, [#{<<"is_friend">> := IsFriend, <<"in_denylist">> := InDenylist}]} when
+                is_boolean(IsFriend), is_boolean(InDenylist)
+            ->
                 {IsFriend, InDenylist};
-            {ok, []} ->
-                {false, false};
             {error, _Reason} ->
-                {false, false}
+                imboy_cache:uncached({false, true});
+            _ ->
+                imboy_cache:uncached({false, true})
         end
     end,
     imboy_cache:memo(Fun, Key, ?CACHE_TTL_FRIEND).

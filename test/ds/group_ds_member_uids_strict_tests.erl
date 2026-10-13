@@ -17,6 +17,9 @@
 
 setup() ->
     meck:new(group_member_repo, [no_link, passthrough]),
+    meck:new(micro_community_access_repo, [no_link, passthrough]),
+    %% 本套验证成员读取/缓存；discussion ACL 独立门禁负责。
+    meck:expect(micro_community_access_repo, filter_uids, fun(_, Uids) -> {ok, Uids} end),
     meck:new(imboy_cache, [no_link, passthrough]),
     meck:new(elib_metric, [no_link, passthrough]),
     %% 默认缓存未命中，强制走 repo 分支
@@ -26,6 +29,7 @@ setup() ->
     ok.
 
 cleanup(_) ->
+    meck:unload(micro_community_access_repo),
     meck:unload(elib_metric),
     meck:unload(imboy_cache),
     meck:unload(group_member_repo),

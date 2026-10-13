@@ -1,16 +1,13 @@
 %% @doc 缓存同步快照层（V2.2.1 收口 C03/C04）
-%%
 -module(imboy_cache_sync_snapshot).
 -moduledoc "分页快照：回合、页摘要、缓冲预算与 READY 闭合判定。".
-
 -include("cache.hrl").
-
 -define(META_TABLE, imboy_cache_meta).
 %% 非空 tuple 条目列表的 ETF 开销：version + LIST_EXT + length + NIL_EXT。
 -define(PAGE_LIST_BYTES, 7).
-
 -export([
     new_round/2,
+    recovery_round/2,
     round_id/0,
     expect_peer/2,
     authorize_peer/2,
@@ -29,7 +26,6 @@
     peer_revision_ceiling/2,
     page_digest/3
 ]).
-
 %% @doc 新建快照回合：Round token；deadline 由调用方传入（恢复总预算
 %% Dmax 的剩余值，回合自身不另立预算——总恢复期限唯一）。
 -spec new_round(non_neg_integer(), non_neg_integer()) -> map().
@@ -40,13 +36,28 @@ new_round(RoundsUsed, DeadlineMs) ->
         peers => #{},
         applied_items => 0,
         applied_bytes => 0,
+        retained_obligations => unverified,
         rounds_used => RoundsUsed
     }.
-
+%% 只由运行中的恢复 actor 调用，冻结本节点已知键；空 done 不能抹掉它们。
+recovery_round(RoundsUsed, Deadline) ->
+    Round = new_round(RoundsUsed, Deadline),
+    Rows =
+        try
+            Now = erlang:system_time(millisecond),
+            W = imboy_cache_policy:tombstone_ttl_sec() * 1000,
+            [
+                R
+             || R = {{rev, _}, {_, _, Exp, _, _}} <- imboy_cache_sync_coverage:retained_rows(),
+                Exp + W > Now
+            ]
+        catch
+            error:Reason -> {error, Reason}
+        end,
+    Round#{retained_obligations := Rows}.
 -spec round_id() -> binary().
 round_id() ->
     crypto:strong_rand_bytes(12).
-
 %% @doc 登记预期应答 peer（恢复节点在收到 version_report 后调用）。
 -spec expect_peer(map(), node()) -> map().
 expect_peer(RoundSt, Peer) ->
@@ -68,7 +79,6 @@ expect_peer(RoundSt, Peer) ->
             },
             RoundSt#{peers := Peers#{Peer => PeerSt}}
     end.
-
 authorize_peer(RoundSt, Peer) ->
     State1 = record_peer_report(RoundSt, Peer, true),
     Peers = maps:get(peers, State1),
@@ -88,7 +98,6 @@ authorize_peer(RoundSt, Peer) ->
         error ->
             State1
     end.
-
 mark_requested(RoundSt, Peer) ->
     Peers = maps:get(peers, RoundSt),
     PeerSt = maps:get(Peer, Peers),
@@ -109,9 +118,7 @@ record_peer_report(RoundSt, Peer, Authority) ->
 
 deadline_expired(#{deadline_ms := DeadlineMs}) ->
     erlang:system_time(millisecond) >= DeadlineMs.
-
 %% 发送端（ready peer 应答快照请求）
-
 %% @doc 按项数/字节双预算分页；值在组装时读取，墓碑保留绝对期限。
 -spec send_snapshot(pid(), binary()) -> ok.
 send_snapshot(Requestor, Round) ->
@@ -265,7 +272,6 @@ sweep_senders() ->
     ],
     ok = imboy_cache_sync_apply:journal_refresh(),
     ok.
-
 %% @doc 取一页：项数与完整条目字节双预算；单条超限显式中止回合。
 -spec take_page([term()], pos_integer(), pos_integer(), [term()]) ->
     {[term()], [term()]}.
@@ -367,7 +373,7 @@ snapshot_keys(NowMs) ->
         Epoch =:= imboy_cache_sync_proto:epoch()
     ].
 
-%% @doc 页摘要：Round+PageNo+kind/键/版本序列；kind 变化不能沿用 live 摘要。
+%% @doc 页摘要绑定 Round、页号及完整原始条目。
 page_digest(Round, PageNo, Page) ->
     imboy_cache_sync_proto:snapshot_page_digest(Round, PageNo, Page).
 
@@ -466,7 +472,8 @@ checks_page(Round, PageNo, Entries, Digest, HasMore, RoundSt, FromNode, PeerSt) 
 
 page_shape(PageNo, Entries, Digest, HasMore) ->
     case
-        is_integer(PageNo) andalso PageNo > 0 andalso is_integer(Digest) andalso is_boolean(HasMore)
+        is_integer(PageNo) andalso PageNo > 0 andalso is_binary(Digest) andalso
+            byte_size(Digest) =:= 32 andalso is_boolean(HasMore)
     of
         false ->
             {error, invalid_snapshot_page};
@@ -757,27 +764,23 @@ done_count_error(#{done := true}, _Watermark, _Total) ->
     conflicting_done;
 done_count_error(#{pages := Pages, expected_more := More} = P, _Watermark, Total) ->
     case {Total =:= Pages andalso not More, maps:is_key(source_cut, P)} of
-        {true, true} -> none;
-        {true, false} -> missing_source_cut;
-        _ -> incomplete_snapshot
+        {true, true} ->
+            case imboy_cache_policy:final_snapshot_manifest(P) of
+                {ok, _} -> none;
+                {error, _} -> snapshot_content_conflict
+            end;
+        {true, false} ->
+            missing_source_cut;
+        _ ->
+            incomplete_snapshot
     end.
-
-%% 判定
 
 %% @doc 回合是否完整闭合（C04 三条件）：
 %% 全部发现应答、至少一个权威、全部权威快照完整、deadline 未超。
 -spec round_complete(map()) -> boolean().
-round_complete(#{peers := Peers} = RoundSt) ->
-    maps:size(Peers) > 0 andalso
-        not deadline_expired(RoundSt) andalso
-        lists:any(fun(P) -> maps:get(authority, P) end, maps:values(Peers)) andalso
-        lists:all(fun peer_complete/1, maps:to_list(Peers)).
-
-peer_complete({_Node, PeerSt}) ->
-    maps:get(reported, PeerSt) andalso
-        (not maps:get(authority, PeerSt) orelse
-            (maps:get(done, PeerSt) andalso maps:is_key(source_cut, PeerSt) andalso
-                not maps:get(expected_more, PeerSt))).
+round_complete(Round) ->
+    imboy_cache_sync_coverage:transport_complete(Round, erlang:system_time(millisecond)).
+peer_complete(Peer) -> imboy_cache_sync_coverage:peer_complete(Peer).
 
 %% @doc 失败 peer（done 但页序悬挂，或未 done）。
 -spec round_failed_peers(map()) -> [node()].
@@ -788,8 +791,6 @@ round_failed_peers(#{peers := Peers}) ->
 -spec applied_count(map()) -> non_neg_integer().
 applied_count(#{peers := Peers}) ->
     lists:sum([maps:get(applied, St) || St <- maps:values(Peers)]).
-
-%% Internal
 
 entry_bytes(Entry) ->
     erlang:external_size(Entry).

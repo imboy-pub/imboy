@@ -109,19 +109,25 @@ get(Key) ->
 get(Key, Default) ->
     Key2 = ec_cnv:to_binary(Key),
     CacheKey = cache_key(Key2),
-    case imboy_cache:get(CacheKey) of
-        {ok, Val} ->
-            Val;
-        undefined ->
-            case pluck_decrypted_value(Key2, Default) of
-                Default ->
-                    Default;
-                B ->
-                    Result = jsone:decode(B, [{object_format, map}]),
-                    imboy_cache:set(CacheKey, Result, 864000),
-                    Result
-            end
-    end.
+    Fenced = imboy_cache_policy:is_fenced(CacheKey),
+    Fun = fun() ->
+        case pluck_decrypted_value(Key2, Default) of
+            Default ->
+                imboy_cache:uncached(Default);
+            B ->
+                Value = jsone:decode(B, [{object_format, map}]),
+                case Fenced of
+                    true -> Value;
+                    false -> imboy_cache:uncached(Value)
+                end
+        end
+    end,
+    MemoKey =
+        case Fenced of
+            true -> CacheKey;
+            false -> {config5, Key2, uncached_v1}
+        end,
+    imboy_cache:memo(Fun, MemoKey, 864000).
 
 % config_ds:set(<<"dbc">>, <<"ddd2">>).
 % config_ds:get(<<"dbc">>).
@@ -132,41 +138,60 @@ set(Key, Val) ->
 -spec set(binary(), term(), binary(), binary()) -> ok.
 set(Key, Val, Title, Remark) ->
     Key2 = ec_cnv:to_binary(Key),
-    imboy_cache:invalidate(cache_key(Key2)),
-    save(
-        Key2,
-        % value 的值在 do_aes_encrypt/2 放里面处理加密，这里给明文
-        #{
-            <<"value">> => jsone:encode(Val, [native_utf8]),
-            <<"tab">> => <<"sys">>,
-            <<"system">> => true,
-            <<"title">> => ec_cnv:to_binary(Title),
-            <<"remark">> => ec_cnv:to_binary(Remark)
-        }
-    ).
+    case
+        save(
+            Key2,
+            % save 在真正写入前完成加密，不落明文中间态
+            #{
+                <<"value">> => jsone:encode(Val, [native_utf8]),
+                <<"tab">> => <<"sys">>,
+                <<"system">> => true,
+                <<"title">> => ec_cnv:to_binary(Title),
+                <<"remark">> => ec_cnv:to_binary(Remark)
+            }
+        )
+    of
+        ok -> ok;
+        {error, _Reason} -> erlang:error({config_write_failed, authority_write_failed})
+    end.
 
--spec save(binary(), map()) -> ok.
+-spec save(binary(), map()) -> ok | {error, term()}.
 save(Key, Data) ->
-    Now = elib_dt:now(),
-    % 使用安全的参数化查询，避免SQL注入
-    Field = <<"count(*) as count">>,
-    _ =
-        case elib_pg:pluck(<<"config">>, Field, #{key => Key}, #{}) of
-            {ok, 0} ->
-                elib_pg:insert(
-                    <<"config">>,
-                    Data#{
-                        <<"key">> => Key,
-                        <<"updated_at">> => null,
-                        <<"created_at">> => Now
-                    }
-                );
-            {ok, _Count} ->
-                elib_pg:update(<<"config">>, Data#{<<"updated_at">> => Now}, <<"key = $1">>, [Key])
-        end,
-    _ = imboy_cache:invalidate(cache_key(Key)),
-    _ = aes_encrypt(Key),
-    ok.
+    case encrypt_config_value(maps:get(<<"value">>, Data)) of
+        {ok, Cipher} ->
+            Now = elib_dt:now(),
+            Result =
+                case elib_pg:pluck(<<"config">>, <<"count(*) as count">>, #{key => Key}, #{}) of
+                    {ok, 0} ->
+                        elib_pg:insert(<<"config">>, Data#{
+                            <<"value">> => Cipher,
+                            <<"key">> => Key,
+                            <<"updated_at">> => null,
+                            <<"created_at">> => Now
+                        });
+                    {ok, Count} when is_integer(Count), Count > 0 ->
+                        elib_pg:update(
+                            <<"config">>,
+                            Data#{
+                                <<"value">> => Cipher, <<"updated_at">> => Now
+                            },
+                            <<"key = $1">>,
+                            [Key]
+                        );
+                    {error, _} = Error ->
+                        Error
+                end,
+            case Result of
+                {ok, Count1} when is_integer(Count1), Count1 > 0 ->
+                    imboy_cache:invalidate(cache_key(Key));
+                {ok, 0} ->
+                    {error, config_not_written};
+                {error, _} = Error1 ->
+                    Error1
+            end;
+        {error, _} = Error ->
+            Error
+    end.
 
 % config_ds:aes_encrypt(<<"login_rsa_pub_key">>).
 % config_ds:get(<<"login_rsa_pub_key">>).
@@ -176,13 +201,14 @@ save(Key, Data) ->
 
 % config_ds:aes_encrypt(<<"login_pwd_rsa_encrypt">>).
 % config_ds:aes_encrypt(<<"site_name">>).
--spec aes_encrypt(binary()) -> binary().
-aes_encrypt(Key) when is_list(Key) ->
-    aes_encrypt(list_to_binary(Key));
+-spec aes_encrypt(binary() | list()) -> binary() | {error, term()}.
+aes_encrypt(Key) when is_list(Key) -> aes_encrypt(list_to_binary(Key));
 aes_encrypt(Key) ->
-    % 使用安全的参数化查询，避免SQL注入
-    Val = elib_pg:pluck_value(<<"config">>, <<"value">>, #{key => Key}, #{}, <<>>),
-    do_aes_encrypt(Key, Val).
+    case elib_pg:query(<<"SELECT value FROM public.config WHERE key = $1 LIMIT 1">>, [Key]) of
+        {ok, [#{<<"value">> := Val}]} -> do_aes_encrypt(Key, Val);
+        {ok, []} -> {error, config_not_found};
+        {error, _} = Error -> Error
+    end.
 
 %% ===================================================================
 %% Internal Function Definitions
@@ -228,24 +254,34 @@ pluck_decrypted_value(Key, Default) ->
 %%   非用户数据，且 value 在写入前已 base64，未做改造；新代码一律改用
 %%   elib_cipher:aes_gcm_encrypt/2（随机 IV + AEAD），见 elib_hasher:encoded_val/1。
 %% - 密钥在 do_aes_encrypt/2 里走的是 $2 绑定参数，从未进入 SQL 文本，无泄漏。
-do_aes_encrypt(Key, <<"aes_cbc_", _Val/binary>>) ->
-    % 已经加密，直接返回
-    elib_pg:pluck_value(<<"config">>, <<"value">>, #{key => Key}, #{}, <<>>);
-do_aes_encrypt(Key, Val) ->
-    AesKey = config_ds:env(postgre_aes_key),
-    % 与 elib_hasher:encoded_val 保持一致：先 base64 编码再加密
-    % encrypt() 需要 bytea 类型，所以需要 ::bytea 转换
+%% 在写入前生成最终密文；加密失败不先落明文，也不广播失效。
+encrypt_config_value(<<"aes_cbc_", _/binary>> = Cipher) ->
+    {ok, Cipher};
+encrypt_config_value(Val) ->
     Sql = <<
-        "UPDATE config SET value = 'aes_cbc_' || encode(encrypt(encode($1, "
-        "'base64')::bytea, $2, 'aes-cbc/pad:pkcs'), 'base64') WHERE "
-        "key = $3"
+        "SELECT 'aes_cbc_' || encode(encrypt(encode($1::bytea, 'base64')::bytea, "
+        "$2, 'aes-cbc/pad:pkcs'), 'base64') AS value"
     >>,
-    case elib_pg:execute(Sql, [Val, AesKey, Key]) of
-        {ok, _} ->
-            elib_pg:pluck_value(<<"config">>, <<"value">>, #{key => Key}, #{}, <<>>);
-        {error, Reason} ->
-            ?LOG_ERROR("Failed to encrypt config value for key ~p: ~p", [Key, Reason]),
-            <<>>
+    case elib_pg:query(Sql, [Val, config_ds:env(postgre_aes_key)]) of
+        {ok, [#{<<"value">> := Cipher}]} when is_binary(Cipher) -> {ok, Cipher};
+        {error, _} = Error -> Error;
+        _Other -> {error, invalid_encryption_result}
+    end.
+
+do_aes_encrypt(Key, Val) ->
+    case encrypt_config_value(Val) of
+        {ok, Cipher} ->
+            case elib_pg:update(<<"config">>, #{<<"value">> => Cipher}, <<"key = $1">>, [Key]) of
+                {ok, Count} when Count > 0 ->
+                    ok = imboy_cache:invalidate(cache_key(Key)),
+                    Cipher;
+                {ok, 0} ->
+                    {error, config_not_written};
+                {error, _} = Error ->
+                    Error
+            end;
+        {error, _} = Error ->
+            Error
     end.
 
 %% 辅助函数：递归获取嵌套值

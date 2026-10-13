@@ -5,11 +5,8 @@
 %% 写路径仍由 imboy_cache_sync gen_server 串行调用（计划 5.2 方案 A）。
 -module(imboy_cache_sync_proto).
 -moduledoc "缓存同步 V2 协议：信封校验、epoch/incarnation/hash 双端一致性。".
-
 -include("cache.hrl").
-
 -define(META_TABLE, imboy_cache_meta).
-
 -export([
     %% 信封
     event/7,
@@ -58,11 +55,61 @@
     version_request_frame/2,
     send_version_report/6,
     record_origin_target/2,
-    handle_valid_report/2
+    handle_valid_report/2,
+    record_reject/1,
+    record_recovery_abort/1,
+    record_recovery_timeout/1
 ]).
 
-%% 信封构造与校验
+record_reject({not_ready, _}) ->
+    record_reject(not_ready);
+record_reject(Reason) ->
+    Allowed = [
+        invalid_protocol,
+        unknown_protocol_field,
+        hash_mismatch,
+        stale_epoch,
+        expired,
+        stale_revision,
+        stale_sequence,
+        unknown_incarnation,
+        incompatible_peers,
+        overloaded,
+        not_ready,
+        index_full,
+        tombstone_budget_exceeded,
+        event_too_large,
+        revision_content_conflict,
+        legacy_policy,
+        snapshot,
+        other
+    ],
+    Label =
+        case lists:member(Reason, Allowed) of
+            true -> Reason;
+            false -> other
+        end,
+    _ = elib_metric:increment(reject_total),
+    elib_metric:increment(cache_sync_reject_reason_total, 1, #{reason => Label}).
 
+record_recovery_abort(Reason) ->
+    Allowed = [round_timeout, snapshot_invalidated, authority_epoch_changed],
+    Label =
+        case lists:member(Reason, Allowed) of
+            true -> Reason;
+            false -> other
+        end,
+    _ = elib_metric:increment(snapshot_abort_total),
+    elib_metric:increment(cache_sync_snapshot_abort_reason_total, 1, #{reason => Label}).
+
+record_recovery_timeout(Reason) ->
+    Label =
+        case lists:member(Reason, [round_timeout, deadline_timeout]) of
+            true -> Reason;
+            false -> other
+        end,
+    elib_metric:increment(cache_sync_recovery_timeout_total, 1, #{reason => Label}).
+%% 信封构造与校验
 %% @doc V2 事件信封（C01 第 1 节：新增 epoch/config_hash/registry_hash）。
 -spec event(
     set | delete | invalidate,
@@ -89,7 +136,6 @@ event(Op, Key, Value, ExpiresAt, Rev, Seq, BootId) ->
         config_hash => config_hash(),
         registry_hash => registry_hash()
     }.
-
 %% @doc 事件结构校验（W3 既有规则 + C01 新增字段，接收端独立执行）。
 -spec validate(map()) -> ok | {error, term()}.
 validate(Event) when is_map(Event) ->
@@ -101,7 +147,6 @@ validate(Event) when is_map(Event) ->
     );
 validate(_) ->
     {error, not_map}.
-
 %% 发布前构造预览；不得先分配时钟或写入缓存再拒绝信封。
 validate_publish(set, Key, Value, TTL, Rev, Seq, BootId) ->
     case imboy_cache_policy:validate_replicate(Key, Value, TTL) of
@@ -122,7 +167,6 @@ validate_publish(set, Key, Value, TTL, Rev, Seq, BootId) ->
 validate_publish(delete, Key, _Value, _TTL, Rev, Seq, BootId) ->
     Expiry = erlang:system_time(millisecond) + imboy_cache_policy:tombstone_ttl_sec() * 1000,
     validate(event(delete, Key, undefined, Expiry, Rev, Seq, BootId)).
-
 envelope_checks(Event) ->
     Fields = [
         protocol,
@@ -159,15 +203,11 @@ envelope_checks(Event) ->
         },
         {fun() -> within_meta_budget(maps:without([key, value], Event)) end, metadata_too_large}
     ].
-
 valid_version_report(Report) -> imboy_cache_policy:valid_version_report(Report).
-
 valid_watermark(Frame) -> imboy_cache_policy:valid_watermark(Frame).
 valid_snapshot_cut(Frame) -> imboy_cache_policy:valid_snapshot_cut(Frame).
-
 send_snapshot_cut(Requestor, Round) ->
     send_snapshot_cut(Requestor, Round, legacy).
-
 send_snapshot_cut(Requestor, Round, Candidate) ->
     {Origin, Boot} = imboy_cache_sync:node_boot(),
     [{_, Seq}] = ets:lookup(?META_TABLE, sync_origin_seq),
@@ -176,8 +216,15 @@ send_snapshot_cut(Requestor, Round, Candidate) ->
     Cut = {cache_snapshot_cut, Origin, Round, Boot, epoch(), Seq, Hash, Registry},
     Frame =
         case Candidate of
-            legacy -> Cut;
-            _ -> erlang:append_element(Cut, Candidate)
+            legacy ->
+                Cut;
+            _ ->
+                erlang:append_element(
+                    erlang:append_element(Cut, Candidate),
+                    imboy_cache_sync_coverage:source_certificate(
+                        epoch(), erlang:system_time(millisecond)
+                    )
+                )
         end,
     case valid_snapshot_cut(Frame) of
         true -> ok;
@@ -186,7 +233,6 @@ send_snapshot_cut(Requestor, Round, Candidate) ->
     Requestor ! {cache_invalidation_watermark, Origin, Boot, Seq, Hash, Registry},
     Requestor ! Frame,
     ok.
-
 %% 最后一页、尾部切点与 done 仍在同一同步写入者回调内闭合。
 send_snapshot_completion(Requestor, Round, PageNo, Page, Cursor) ->
     ok = send_snapshot_cut(Requestor, Round, maps:get(application_coverage, Cursor)),
@@ -197,9 +243,7 @@ send_snapshot_completion(Requestor, Round, PageNo, Page, Cursor) ->
         end,
     Requestor ! {cache_snapshot_done, node(), Round, maps:get(watermark, Cursor), Total},
     ok.
-
 within_meta_budget(Term) -> imboy_cache_policy:within_meta_budget(Term).
-
 identity_checks(Event, Key, Op) ->
     [
         {fun() -> Key =/= undefined end, missing_key},
@@ -214,9 +258,7 @@ identity_checks(Event, Key, Op) ->
         },
         {fun() -> lists:member(Op, [set, delete, invalidate]) end, unknown_operation}
     ].
-
 origin_checks(Event) -> imboy_cache_policy:event_origin_checks(Event).
-
 contract_checks(Event) ->
     [
         %% C01 第 1 节：新增字段结构性校验（缺字段拒绝，不静默降级）
@@ -242,7 +284,6 @@ contract_checks(Event) ->
             missing_protocol_field
         }
     ].
-
 payload_checks(Event, Key, Op) ->
     [
         %% 接收端独立白名单/敏感性校验（19.5：两端独立，fail-closed）
@@ -259,7 +300,6 @@ payload_checks(Event, Key, Op) ->
             invalid_value
         }
     ] ++ expiry_checks(Event, Op) ++ value_checks(Event, Op).
-
 expiry_checks(Event, Op) ->
     [
         {
@@ -291,7 +331,6 @@ expiry_checks(Event, Op) ->
             expired
         }
     ].
-
 value_checks(Event, Op) ->
     [
         {
@@ -309,12 +348,9 @@ value_checks(Event, Op) ->
             value_too_large
         }
     ].
-
 expiry_limit_sec(delete) -> imboy_cache_policy:tombstone_ttl_sec();
 expiry_limit_sec(set) -> imboy_cache_policy:max_ttl_sec().
-
 %% 双端一致性（C01 第 1/2/3 节）
-
 %% @doc 对照本节点状态校验远端事件的一致性。
 %% 依次：旧化身拒绝 → epoch 推移 → hash 匹配；任一失败返回 {error, Reason}。
 %% hash 不一致同时标记 peer hash_divergent（19.8 可观测 + 排除 authority）。
@@ -340,11 +376,9 @@ check_consistency(Event, SelfBootId) ->
                     HashError
             end
     end.
-
 -spec self_loop(node(), binary(), binary()) -> boolean().
 self_loop(Origin, BootId, SelfBootId) ->
     Origin =:= node() andalso BootId =:= SelfBootId.
-
 %% 事件只能使用已确认或有效宽限化身，不能凭旧帧自行替换当前 Boot。
 %% 新化身由成员握手登记；未知事件触发有界恢复，不保留待确认 payload。
 -spec check_incarnation(node(), binary()) ->
@@ -363,7 +397,6 @@ check_incarnation(Origin, BootId) ->
         [] ->
             {error, unknown_incarnation}
     end.
-
 check_snapshot_replay(Event, Origin, Boot) ->
     Seq = maps:get(origin_seq, Event),
     case
@@ -375,12 +408,19 @@ check_snapshot_replay(Event, Origin, Boot) ->
         _ ->
             check_incarnation(Origin, Boot)
     end.
-
 commit_snapshot_floors(undefined) ->
     ok;
-commit_snapshot_floors(#{peers := Peers} = Round) ->
+commit_snapshot_floors(Round) ->
+    try
+        commit_verified_floors(Round)
+    catch
+        error:Reason -> {error, Reason}
+    end.
+commit_verified_floors(#{peers := Peers} = Round) ->
     true = imboy_cache_sync_snapshot:round_complete(Round),
-    [
+    {ok, _} = imboy_cache_policy:verify_snapshot_coverage(Round),
+    ok = imboy_cache_sync_coverage:verify_current_prefixes(Round),
+    Rows = [
         begin
             RoundId = maps:get(round, Round),
             {cache_snapshot_cut, Origin, RoundId, Boot, Epoch, Seq, Hash, Registry} = imboy_cache_policy:snapshot_cut_base(
@@ -399,11 +439,25 @@ commit_snapshot_floors(#{peers := Peers} = Round) ->
                     [{_, N}] -> N;
                     [] -> 0
                 end,
-            ets:insert(?META_TABLE, {Key, erlang:max(Old, Seq)})
+            {Key, erlang:max(Old, Seq)}
         end
      || {Origin, P = #{authority := true}} <- maps:to_list(Peers)
     ],
-    ok.
+    PrefixRows = lists:append([
+        imboy_cache_sync_coverage:prefix_rows(Origin, Boot, Seq, maps:get(cohort_epoch, Round))
+     || {{Origin, Boot}, Seq} <- maps:to_list(imboy_cache_sync_coverage:certified_prefixes(Round))
+    ]),
+    case
+        imboy_cache_sync_recover:sources_current(Round) andalso
+            erlang:system_time(millisecond) < maps:get(deadline_ms, Round)
+    of
+        true ->
+            FinalRows = maps:to_list(maps:from_list(Rows ++ PrefixRows)),
+            ets:insert(?META_TABLE, [{status, ready} | FinalRows]),
+            ok;
+        false ->
+            {error, snapshot_commit_barrier_changed}
+    end.
 
 -spec grace_member(node(), binary()) -> boolean().
 grace_member(Origin, BootId) ->
@@ -414,7 +468,6 @@ grace_member(Origin, BootId) ->
         [] ->
             false
     end.
-
 %% @doc 登记 peer 当前化身；若与已知化身不同，旧化身转入宽限集合
 %% （W=720s），并返回 changed=true（调用方对受管 namespace 执行
 %% 有界补偿，C05）。
@@ -429,7 +482,6 @@ register_incarnation(Origin, BootId) ->
         [] ->
             register_new_incarnation(Origin, BootId)
     end.
-
 register_new_incarnation(Origin, BootId) ->
     Count = ets:select_count(?META_TABLE, [{{{peer_incarnation, '_'}, '_'}, [], [true]}]),
     case Count < imboy_cache_policy:peer_max() of
@@ -440,7 +492,6 @@ register_new_incarnation(Origin, BootId) ->
         false ->
             {error, incarnation_budget_exceeded}
     end.
-
 register_changed_incarnation(Origin, BootId, OldBootId) ->
     NowMs = erlang:system_time(millisecond),
     ok = prune_grace(NowMs),
@@ -460,7 +511,6 @@ register_changed_incarnation(Origin, BootId, OldBootId) ->
             true = ets:delete(?META_TABLE, {covered_seq, {Origin, OldBootId}}),
             changed
     end.
-
 %% @doc 化身是否发生变化（握手帧路径用：变化即触发 C05 补偿）。
 -spec incarnation_changed(node(), binary()) -> boolean().
 incarnation_changed(Origin, BootId) ->
@@ -469,7 +519,6 @@ incarnation_changed(Origin, BootId) ->
         [{_, _Other}] -> true;
         [] -> false
     end.
-
 %% @doc 淘汰超窗宽限化身；ETS 内删除，不复制 journal/快照 payload。
 -spec prune_grace(non_neg_integer()) -> ok.
 prune_grace(NowMs) ->
@@ -488,7 +537,6 @@ prune_grace(NowMs) ->
         not grace_member(Origin, Boot)
     ],
     ok.
-
 %% 水位超过已接收序列时，丢失的可能就是最后一条事件，无需等下一次业务写。
 %% 仅当前已登记化身可推进水位，重复/迟到报告不反复失效。
 -spec reconcile_sequence(node(), binary(), non_neg_integer()) ->
@@ -514,7 +562,6 @@ reconcile_sequence(Origin, Boot, Seq) ->
         _ ->
             {error, unknown_incarnation}
     end.
-
 %% @doc 按节点/化身检测来源序列缺口；跳号时保守失效全部受管物理键。
 %% 同一来源缺口内容未知，不能从随后事件的 Key 推断受影响 namespace。
 -spec detect_gap({node(), binary()}, non_neg_integer(), term()) -> ok | gap.
@@ -536,7 +583,6 @@ detect_gap(Origin, Seq, _Key) ->
         end,
     _ = ets:insert(?META_TABLE, {SeqKey, erlang:max(Last, Seq)}),
     Result.
-
 %% 连续应用下限独立于最大已见序列；缺口与应用失败不能充当覆盖证明。
 note_applied_event(Event, Result) ->
     case Result of
@@ -557,10 +603,8 @@ note_applied_event(Event, Result) ->
         _ ->
             ok
     end.
-
 note_applied_sequence(Origin, Boot, Seq) ->
     note_applied_sequence(Origin, Boot, Seq, epoch()).
-
 note_applied_sequence(Origin, Boot, Seq, Epoch) ->
     Key = {covered_seq, {Origin, Boot}},
     {LastEpoch, Last} =
@@ -593,12 +637,10 @@ note_applied_sequence(Origin, Boot, Seq, Epoch) ->
             false
     end,
     ok.
-
 reset_sequence_coverage() ->
     ok = imboy_cache_sync_apply:abort_application_coverage(coverage_reset),
     ets:match_delete(?META_TABLE, {{covered_seq, '_'}, '_'}),
     ok.
-
 %% 仅声明当前代连续应用证据；不是快照枚举/缺席证明，也不安装 foreign floor。
 application_coverage_candidate() ->
     Max = imboy_cache_policy:peer_max(),
@@ -608,16 +650,17 @@ application_coverage_candidate() ->
         {Peers, '$end_of_table'} when length(Peers) =< Max -> coverage_candidate(Peers);
         _ -> {error, coverage_peer_budget}
     end.
-
 coverage_candidate(Peers) ->
     try
         Epoch = epoch(),
         Vector = [
             begin
                 true = is_atom(Origin) andalso is_binary(Boot) andalso byte_size(Boot) =:= 16,
-                [{{covered_seq, {Origin, Boot}}, {Epoch, Seq}}] = ets:lookup(
-                    ?META_TABLE, {covered_seq, {Origin, Boot}}
-                ),
+                Seq =
+                    case ets:lookup(?META_TABLE, {covered_seq, {Origin, Boot}}) of
+                        [] -> 0;
+                        [{{covered_seq, {Origin, Boot}}, {Epoch, Prefix}}] -> Prefix
+                    end,
                 true = is_integer(Seq) andalso Seq >= 0,
                 {Origin, Boot, Epoch, Seq}
             end
@@ -628,9 +671,9 @@ coverage_candidate(Peers) ->
             false -> {error, coverage_byte_budget}
         end
     catch
-        error:{badmatch, _} -> {error, incomplete_application_coverage}
+        error:{badmatch, _} -> {error, incomplete_application_coverage};
+        error:{case_clause, _} -> {error, incomplete_application_coverage}
     end.
-
 %% @doc epoch 推移校验（C01 第 1 节）：远端 epoch 小于本节点 → 拒绝
 %% （set/delete）；invalidate 不经此路径（宁多失效语义，见 sync 路由）。
 -spec check_epoch(non_neg_integer()) -> ok | {error, stale_epoch}.
@@ -639,7 +682,6 @@ check_epoch(RemoteEpoch) ->
         true -> {error, stale_epoch};
         false -> ok
     end.
-
 %% @doc hash 双端校验：不一致 → 标记 divergent 并拒绝整事件
 %% （不部分应用；C10 混合矩阵的 hash 不一致场景由此闭合）。
 -spec check_hashes(node(), map()) -> ok | {error, hash_mismatch}.
@@ -754,8 +796,13 @@ send_version_report(Pid, Counter, Boot, Seq, Ready, Round) ->
         {cache_version_report, node(), Counter, epoch(), Hash, Registry, Boot, Ready, self(), Seq},
     Report =
         case Round of
-            undefined -> Base;
-            _ -> erlang:append_element(Base, Round)
+            undefined ->
+                Base;
+            _ ->
+                erlang:append_element(
+                    erlang:append_element(Base, Round),
+                    imboy_cache_sync_coverage:content_census()
+                )
         end,
     true = valid_version_report(Report),
     Pid ! Report,
@@ -763,32 +810,8 @@ send_version_report(Pid, Counter, Boot, Seq, Ready, Round) ->
     ok.
 
 %% 仅由成功登记的报告调用；本轮首次目标不能被后续报告升降。
-record_origin_target({Node, Boot, Epoch, unknown}, #{round := Ref} = Round) ->
-    record_origin_target({Node, Boot, Epoch, unknown, Ref}, Round);
-record_origin_target({_, _, _, unknown}, Round) ->
-    {ok, Round};
-record_origin_target(unknown, Round) ->
-    {ok, Round};
-record_origin_target({Node, Boot, Epoch, Seq, Ref}, #{round := Ref, peers := Peers} = Round) ->
-    case maps:find(Node, Peers) of
-        {ok, Peer} ->
-            case maps:get(origin_target, Peer, unknown) of
-                unknown when Seq =:= unknown -> {ok, Round};
-                unknown ->
-                    {ok, Round#{
-                        peers := Peers#{Node := Peer#{origin_target => {Node, Boot, Epoch, Seq}}}
-                    }};
-                {Node, Boot, Epoch, _} ->
-                    {ok, Round};
-                _ ->
-                    {abort, origin_target_identity_changed, Round}
-            end;
-        error ->
-            {ok, Round}
-    end;
-record_origin_target(_, Round) ->
-    {abort, origin_target_round_mismatch, Round}.
-
+record_origin_target(Target, Round) ->
+    imboy_cache_sync_coverage:record_origin_target(Target, Round).
 handle_valid_report(Report, State) ->
     {cache_version_report, N, C, E, H, R, B, Ready, Pid} = imboy_cache_policy:version_report_base(
         Report

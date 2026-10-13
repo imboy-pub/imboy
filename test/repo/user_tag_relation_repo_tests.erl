@@ -368,7 +368,7 @@ update_tag_error_test_() ->
             Result = user_tag_relation_repo:update_tag(
                 Conn, ?TEST_TAG_ID, <<"updated_tag">>, ?TEST_UID, CreatedAt
             ),
-            ?assertEqual({0, <<"updated_tag">>}, Result)
+            ?assertEqual({error, connection_lost}, Result)
         after
             meck:unload(elib_pg)
         end

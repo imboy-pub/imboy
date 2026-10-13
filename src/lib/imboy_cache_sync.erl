@@ -1,36 +1,13 @@
-%% @doc 分布式缓存同步服务器（V2.2.1 W2/W3/W4 + 收口 C02～C05）
-%%
-%% 单一写 owner：版本元数据表、generation（19.3 栅栏）、复制事件应用全部
-%% 由本 gen_server 串行处理（计划 5.2 方案 A）。
-%%
-%% 协议（计划 5.1 + C01 冻结增量）：
-%% - legacy 消息 {set,Key,Data,MaxAge,Depend} | {flush,Key} | flush 保持原语义；
-%% - V2 的 Lamport/Boot/序列与 epoch/hash 校验由 _sync_proto 承担；
-%% - 分页快照回合由 _sync_snapshot 承担（C03/C04）。
-%% 状态机（计划 5.3/9.1 + C01 第 5 节）：
-%% STARTING → DISCOVERING → RECOVERING → READY；重试有界（单轮 5s × 3 +
-%% 快照回合 Rmax_rounds），总预算受 Dmax 硬顶；超限 DEGRADED（读
-%% unverified、写拒绝 fail-closed），退出手段=节点级重启。
-%%
-%% 资源预算（C01 第 6/7 节）：Nmax rindex 上限（满则拒绝 index_full）、
-%% Tmax 墓碑上限（满则先过期淘汰，仍满推进 epoch 冷恢复）、HighWater
-%% 队列高水位（满则拒绝 overloaded）；不得删除 tombstone 后接受旧事件。
-%%
-%% invalidate 缺口补偿（C05）：origin_seq 跳号或 peer 化身变化 → 受管
-%% fenced namespace 推进 generation（有界清理，旧物理键不可读，新请求
-%% 回权威），不依赖旧 TTL 自然到期。
+%% @doc 分布式缓存单一写入者：串行处理版本、generation、复制和恢复。
+%% 协议/预算/恢复合同见 docs/architecture/cache-v2.2.1/closeout-v1/protocol-budget-frozen.md。
 -module(imboy_cache_sync).
 -moduledoc "分布式缓存同步：V2 协议串行应用、generation 栅栏、恢复状态机、资源预算与缺口补偿。".
 -behaviour(gen_server).
-
 -include("cache.hrl").
 -include("log.hrl").
 -include("chat.hrl").
 -include("imboy_cache_sync_state.hrl").
-
 -define(CACHE_GROUP_NAME, dsync_handler).
-%% 时钟偏差预算（秒，计划 6.1 C=5）
-
 %% API
 -export([
     start_link/0,
@@ -57,7 +34,6 @@
     current_rev/1,
     remaining_ttl_sec/1
 ]).
-
 %% 同步族内部合同（imboy_cache_sync_apply / imboy_cache_sync_recover 消费；
 %% 例外 4 拆分引入，非公共 API，命名与语义随同步族整体演进）
 -export([
@@ -70,9 +46,9 @@
     merge_clock/2,
     index_replicate/1,
     syn_scope_members/0,
+    replication_capable/0,
     send_version_report/2
 ]).
-
 %% gen_server callbacks
 -export([
     init/1,
@@ -82,17 +58,14 @@
     terminate/2,
     code_change/3
 ]).
-
 %% ===================================================================
 %% API
 %% ===================================================================
-
 -spec start_link() -> gen_server:start_ret().
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
-
 %% @doc legacy SET 发布与接收共用策略边界；flush 保留混合版本兼容。
--spec broadcast(term()) -> {ok, non_neg_integer()} | {error, policy_denied}.
+-spec broadcast(term()) -> {ok, non_neg_integer()} | {error, policy_denied | incompatible_peers}.
 broadcast({set, Key, _, _, _} = Message) ->
     case legacy_set_allowed(Key) of
         true ->
@@ -101,12 +74,15 @@ broadcast({set, Key, _, _, _} = Message) ->
             incr(reject_total),
             {error, policy_denied}
     end;
+broadcast(#{protocol := 2, operation := Op} = Message) when Op =:= set; Op =:= delete ->
+    case replication_capable() of
+        true -> publish(Message);
+        false -> {error, incompatible_peers}
+    end;
 broadcast(Message) ->
     publish(Message).
-
 legacy_set_allowed(Key) ->
     imboy_cache_policy:policy(Key) =:= legacy andalso not is_replicated(Key).
-
 %% @doc 当前失效域 generation（读 ETS，不经进程；缺省 0）。
 -spec generation(term()) -> non_neg_integer().
 generation(Domain) ->
@@ -121,38 +97,31 @@ generation(Domain) ->
             [] -> 0
         end,
     erlang:max(Local, Floor).
-
 %% @doc 依赖标签 generation（版本化物理标签 {cache_v2_dep, Tag, Gen} 的 Gen）。
 -spec dep_generation(term()) -> non_neg_integer().
 dep_generation(Tag) ->
     generation({dep, Tag}).
-
 %% @doc 推进失效域 generation 并清理旧物理键（同步；19.3：先推进再失效旧值）。
 -spec next_generation(term()) -> non_neg_integer().
 next_generation(Domain) ->
     gen_call({next_generation, Domain}).
-
 -spec next_dep_generation(term()) -> non_neg_integer().
 next_dep_generation(Tag) ->
     gen_call({next_dep_generation, Tag}).
-
 %% @doc 统一失效入口 imboy_cache:invalidate/1 的服务端：
 %% 本地 gen 推进 + 旧物理键清理 + 逻辑键 flush + 跨节点发布（协议自适应）。
 -spec invalidate(term()) -> ok.
 invalidate(Key) ->
     gen_call({invalidate, Key}).
-
 %% @doc replicate SET（计划 2.2）：校验→分配版本→本地写→发布。
 %% 未 READY / 过载 / 未授权 / 超限（Nmax/大小/TTL）时明确报错，不伪装成功。
 -spec publish_set(term(), term(), non_neg_integer()) -> ok | {error, term()}.
 publish_set(Key, Value, TTL) ->
     gen_call({publish_set, Key, Value, TTL}).
-
 %% @doc replicate DELETE：版本化删除 + 墓碑。
 -spec publish_delete(term()) -> ok | {error, term()}.
 publish_delete(Key) ->
     gen_call({publish_delete, Key}).
-
 -spec status() -> atom().
 status() ->
     case whereis(?MODULE) of
@@ -166,7 +135,6 @@ status() ->
                 _:_ -> starting
             end
     end.
-
 %% @doc 元数据快照（测试取证用）。
 -spec meta_snapshot() -> [term()].
 meta_snapshot() ->
@@ -175,7 +143,6 @@ meta_snapshot() ->
     catch
         _:_ -> []
     end.
-
 %% @doc 本节点 {NodeId, BootId}（可观测性，19.8）。
 -spec node_boot() -> {node(), binary()}.
 node_boot() ->
@@ -183,12 +150,10 @@ node_boot() ->
         [{_, NB}] -> NB;
         [] -> {node(), <<>>}
     end.
-
 %% @doc 过载状态查询（调用方前置检查，W4-09）。
 -spec overloaded() -> boolean().
 overloaded() ->
     queue_depth() > imboy_cache_policy:high_watermark().
-
 -spec queue_depth() -> non_neg_integer().
 queue_depth() ->
     case whereis(?MODULE) of
@@ -234,9 +199,7 @@ replicate_state(Key) ->
         error:badarg -> unverified
     end.
 
-%% ===================================================================
 %% gen_server callbacks
-%% ===================================================================
 
 -spec init([]) -> {ok, #state{}}.
 init([]) ->
@@ -248,6 +211,7 @@ init([]) ->
     true = ets:insert(?META_TABLE, {status, discovering}),
     true = ets:insert(?META_TABLE, {sync_epoch, imboy_cache_sync_proto:epoch()}),
     true = ets:insert(?META_TABLE, [{sync_counter, 0}, {sync_origin_seq, 0}]),
+    _ = net_kernel:monitor_nodes(true),
     join_syn(),
     ?DEBUG_LOG(["cache sync starting, boot_id", BootId]),
     Deadline = erlang:system_time(millisecond) + imboy_cache_policy:d_max_ms(),
@@ -270,14 +234,12 @@ handle_call({next_generation, Domain}, _From, State) ->
     ok = flush_physical(Domain, Old),
     {reply, G, State};
 handle_call({next_dep_generation, Tag}, _From, State) ->
-    Old = dep_generation(Tag),
-    G = bump_generation({dep, Tag}),
-    _ = depcache:flush(phys_dep(Tag, Old), ?DEPCACHE_SERVER),
-    {reply, G, State};
+    {reply, bump_dependency(Tag), State};
 %% --- 统一失效 ---
 handle_call({invalidate, Key}, _From, State) ->
     ok = do_invalidate(Key),
-    {reply, ok, publish_invalidate(Key, State)};
+    {reply, ok,
+        imboy_cache_sync_recover:abort_round(snapshot_invalidated, publish_invalidate(Key, State))};
 %% --- replicate 发布（C03 预算执行）---
 handle_call({publish_set, Key, Value, TTL}, _From, State) ->
     case imboy_cache_sync_apply:pre_publish(set, Key, Value, TTL, State) of
@@ -301,8 +263,8 @@ handle_call({publish_set, Key, Value, TTL}, _From, State) ->
                 )
             ),
             {reply, ok, S1};
-        {error, _} = Err ->
-            incr(reject_total),
+        {error, Reason} = Err ->
+            imboy_cache_sync_proto:record_reject(Reason),
             {reply, Err, State}
     end;
 handle_call({publish_delete, Key}, _From, State) ->
@@ -319,7 +281,7 @@ handle_call({publish_delete, Key}, _From, State) ->
             of
                 true ->
                     S1 = imboy_cache_sync_recover:start_cold_recovery(State),
-                    incr(reject_total),
+                    imboy_cache_sync_proto:record_reject(tombstone_budget_exceeded),
                     {reply, {error, tombstone_budget_exceeded}, S1};
                 false ->
                     {Rev, Seq, S1} = allocate(State),
@@ -342,8 +304,8 @@ handle_call({publish_delete, Key}, _From, State) ->
                     ),
                     {reply, ok, S1}
             end;
-        {error, _} = Err ->
-            incr(reject_total),
+        {error, Reason} = Err ->
+            imboy_cache_sync_proto:record_reject(Reason),
             {reply, Err, State}
     end;
 %% --- 诊断（消息串行化确认）---
@@ -365,11 +327,19 @@ handle_info({timeout, _Ref, cache_recovery}, State) ->
 %% --- 同步消息（legacy + V2）---
 handle_info({cache_sync, Msg}, State) ->
     {noreply, handle_sync_message(Msg, State)};
+handle_info({nodedown, Node}, State) ->
+    case imboy_cache_sync_coverage:observe_node_down(Node) of
+        cold -> {noreply, imboy_cache_sync_recover:start_cold_recovery(State)};
+        continue -> {noreply, State};
+        invalid -> imboy_cache_sync_recover:reject_membership(State)
+    end;
 %% 周期握手附带来源序列水位；末尾事件丢失也能在校对时补偿。
 handle_info(
     {cache_invalidation_watermark, _, _, _, _, _} = Frame, State
 ) ->
     {noreply, imboy_cache_sync_recover:handle_watermark(Frame, State)};
+handle_info({cache_snapshot_cut, _, _, _, _, _, _, _, _, _} = Frame, State) ->
+    {noreply, imboy_cache_sync_recover:handle_snapshot_cut(Frame, State)};
 handle_info({cache_snapshot_cut, _, _, _, _, _, _, _, _} = Frame, State) ->
     {noreply, imboy_cache_sync_recover:handle_snapshot_cut(Frame, State)};
 handle_info({cache_snapshot_cut, _, _, _, _, _, _, _} = Frame, State) ->
@@ -378,7 +348,7 @@ handle_info({cache_snapshot_cut, _, _, _, _, _, _, _} = Frame, State) ->
 handle_info(Report, #state{status = Status, snapshot_round = R} = State) when
     is_tuple(Report),
     tuple_size(Report) >= 9,
-    tuple_size(Report) =< 11,
+    tuple_size(Report) =< 12,
     element(1, Report) =:= cache_version_report
 ->
     {cache_version_report, FromNode, _, _, _, _, _, _, FromPid} =
@@ -543,57 +513,55 @@ terminate(_Reason, _State) ->
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
-%% ===================================================================
-%% 同步消息处理（legacy + V2）
-%% ===================================================================
-
 -spec handle_sync_message(term(), #state{}) -> #state{}.
 handle_sync_message(#{protocol := 2} = Event, State) ->
     case imboy_cache_sync_apply:apply_v2(Event, State) of
         {ok, S1} ->
             S1;
         {reject, Reason, S1} ->
-            incr(reject_total),
+            imboy_cache_sync_proto:record_reject(Reason),
             ?DEBUG_LOG(["cache sync v2 reject", Reason]),
             S1;
         {reject, Reason} ->
-            incr(reject_total),
+            imboy_cache_sync_proto:record_reject(Reason),
             ?DEBUG_LOG(["cache sync v2 reject", Reason]),
             State
     end;
+handle_sync_message(#{protocol := _}, State) ->
+    imboy_cache_sync_proto:record_reject(invalid_protocol),
+    State;
 handle_sync_message({legacy_invalidation_seq, _, _, _, _, _, _} = Frame, State) ->
     imboy_cache_sync_apply:apply_legacy_sequence(Frame, State);
 handle_sync_message({set, Key, Data, MaxAge, Depend}, State) ->
+    incr(cache_sync_legacy_receive_total),
     %% 旧 SET 仅兼容未分类键，不能绕过本地策略或版本化写入边界。
     case legacy_set_allowed(Key) of
         true ->
             incr(receive_total),
             depcache:set(Key, Data, MaxAge, Depend, ?DEPCACHE_SERVER);
         false ->
-            incr(reject_total)
+            imboy_cache_sync_proto:record_reject(legacy_policy)
     end,
     State;
 handle_sync_message({flush, Key}, State) ->
+    incr(cache_sync_legacy_receive_total),
     incr(receive_total),
     ok = imboy_cache_sync_apply:abort_snapshot_senders(snapshot_invalidated),
     _ = depcache:flush(Key, ?DEPCACHE_SERVER),
     %% 保守栅栏：legacy flush 到达时推进 fenced 域 generation（混合版本宁可多失效）
     _ = maybe_bump_fenced(Key),
-    State;
+    imboy_cache_sync_recover:abort_round(snapshot_invalidated, State);
 handle_sync_message(flush, State) ->
+    incr(cache_sync_legacy_receive_total),
     incr(receive_total),
     ok = imboy_cache_sync_apply:abort_snapshot_senders(snapshot_invalidated),
     _ = depcache:flush(?DEPCACHE_SERVER),
     ok = bump_all_fenced(),
-    State;
+    imboy_cache_sync_recover:abort_round(snapshot_invalidated, State);
 handle_sync_message(_, State) ->
     %% 未知消息静默丢弃 + 计数（19.8：可观测，未来升级为告警）
     incr(unknown_total),
     State.
-
-%% ===================================================================
-%% Internal
-%% ===================================================================
 
 version_report_peer(FromNode, FromPid, #state{
     status = recovering, snapshot_round = #{peers := Peers}
@@ -618,7 +586,11 @@ send_version_report(Pid, State, Round) ->
     ).
 
 join_syn() ->
-    try syn:join(?CACHE_SCOPE, ?CACHE_GROUP_NAME, self(), #{}) of
+    try
+        syn:join(?CACHE_SCOPE, ?CACHE_GROUP_NAME, self(), #{
+            cache_protocol => 2, cache_boot => element(2, node_boot())
+        })
+    of
         ok -> ok
     catch
         _:_ -> ok
@@ -721,6 +693,7 @@ is_fenced(Key) ->
     imboy_cache_policy:is_fenced(Key).
 
 maybe_bump_fenced(Key) ->
+    _ = bump_dependency(Key),
     case is_fenced(Key) of
         true ->
             Old = generation(Key),
@@ -729,6 +702,12 @@ maybe_bump_fenced(Key) ->
         false ->
             ok
     end.
+
+bump_dependency(Tag) ->
+    Old = dep_generation(Tag),
+    G = bump_generation({dep, Tag}),
+    _ = depcache:flush(phys_dep(Tag, Old), ?DEPCACHE_SERVER),
+    G.
 
 %% @doc 缺口/整库 flush 推进统一栅栏底座，O(1) 使全部受管物理键不可读。
 %% 包括从未发生单键失效、尚在首次加载中的 Key；旧物理键由 depcache TTL 回收。
@@ -792,7 +771,28 @@ syn_scope_members() ->
         _:_ -> []
     end.
 
+replication_capable() ->
+    try
+        Members = syn:members(?CACHE_SCOPE, ?CACHE_GROUP_NAME),
+        Nodes = [node(Pid) || {Pid, _} <- Members],
+        Expected = application:get_env(imboy, cluster_nodes, []),
+        lists:any(
+            fun({P, M}) ->
+                P =:= whereis(?MODULE) andalso maps:get(cache_protocol, M, undefined) =:= 2
+            end,
+            Members
+        ) andalso
+            length(Members) =< imboy_cache_policy:peer_max() + 1 andalso
+            length(Expected) =< imboy_cache_policy:peer_max() + 1 andalso
+            lists:all(fun(N) -> is_atom(N) andalso lists:member(N, Nodes) end, Expected) andalso
+            lists:all(fun({_, M}) -> maps:get(cache_protocol, M, undefined) =:= 2 end, Members)
+    catch
+        _:_ -> false
+    end.
+
 -spec incr(atom()) -> ok.
+incr(reject_total) ->
+    imboy_cache_sync_proto:record_reject(other);
 incr(Name) ->
     _ = elib_metric:increment(Name),
     ok.

@@ -2,7 +2,7 @@
 -module(imboy_cache_source_cut_tests).
 -include_lib("eunit/include/eunit.hrl").
 -include("imboy_cache_sync_state.hrl").
--export([done/5, drain/0, fixture_identity/3, restore_envs/1]).
+-export([done/5, drain/0, fixture_identity/3, restore_envs/1, requested_peer/2]).
 -define(META, imboy_cache_meta).
 
 nonready_report_does_not_replace_accepted_data_floor_test() ->
@@ -240,10 +240,23 @@ done(Peer, Round, Watermark, Total, R) ->
             [{_, N}] -> N;
             [] -> 0
         end,
-    R0 = R#{peers := Peers#{Peer := P#{boot => Boot, source_epoch => Epoch}}},
+    [SourcePid | _] = imboy_cache_sync:syn_scope_members(),
+    R0 = R#{
+        cohort_epoch => Epoch,
+        retained_obligations := [],
+        peers := Peers#{
+            Peer := P#{
+                boot => Boot,
+                source_epoch => Epoch,
+                source_pid => SourcePid,
+                origin_target => {Peer, Boot, Epoch, Seq}
+            }
+        }
+    },
     F =
         {cache_snapshot_cut, Peer, maps:get(round, R0), Boot, Epoch, Seq,
-            imboy_cache_sync_proto:config_hash(), imboy_cache_sync_proto:registry_hash()},
+            imboy_cache_sync_proto:config_hash(), imboy_cache_sync_proto:registry_hash(), {ok, []},
+            {0, crypto:hash(sha256, term_to_binary([]))}},
     {ok, R1} = imboy_cache_sync_recover:accept_source_cut(F, R0),
     imboy_cache_sync_snapshot:handle_done(Peer, Round, Watermark, Total, R1).
 
@@ -296,7 +309,7 @@ completed_snapshot_rejects_old_events_without_per_key_metadata_test() ->
     fixture(fun(Peer, R, _F) ->
         Boot = <<7:128>>,
         ets:insert(?META, {{seq, {Peer, Boot}}, 2}),
-        ?assertError({badmatch, false}, imboy_cache_sync_proto:commit_snapshot_floors(R)),
+        ?assertEqual({error, {badmatch, false}}, imboy_cache_sync_proto:commit_snapshot_floors(R)),
         ?assertEqual([], ets:match_object(?META, {{snapshot_seq_floor, '_'}, '_'})),
         {ok, Complete} = done(Peer, maps:get(round, R), 2, 0, R),
         ok = imboy_cache_sync_proto:commit_snapshot_floors(Complete),
@@ -473,3 +486,19 @@ restore_envs(Original) ->
         end,
         Original
     ).
+
+requested_peer(Round, Peer) ->
+    Authorized = imboy_cache_sync_snapshot:authorize_peer(Round, Peer),
+    Requested = imboy_cache_sync_snapshot:mark_requested(Authorized, Peer),
+    Peers = maps:get(peers, Requested),
+    P = maps:get(Peer, Peers),
+    Requested#{
+        retained_obligations := [],
+        cohort_epoch => imboy_cache_sync_proto:epoch(),
+        peers := Peers#{
+            Peer := P#{
+                source_pid => whereis(imboy_cache_sync),
+                origin_target => {Peer, <<7:128>>, imboy_cache_sync_proto:epoch(), 0}
+            }
+        }
+    }.

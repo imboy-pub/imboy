@@ -1,247 +1,717 @@
-%% cache_v2_bench — cache-v2.2.1 候选性能驱动（C12/A7）
-%%
-%% 与 W0 profile（scripts/cache_w0_bench.erl）同口径的环境锚与输出约定，
-%% 但路径覆盖 V2 新链路：replicate put / invalidate（fenced generation）/
-%% replicate key 读取（rev+rindex 交互）/ memo 回填，以及 S/M/L Value
-%% 分布（计划 C12：覆盖新 API/协议 + S/M/L Key/Value + 混合负载）。
-%%
-%% 单节点 loopback 口径（本地相对阈值，非生产 SLO——AC-26/27 外部判定）。
-%%
-%% 用法（由 c12-window-plan.md 的窗口命令调用）：
-%%   CACHE_V2_OUTPUT=<json> CACHE_V2_OPERATIONS=10000 \
-%%   CANDIDATE_SHA256=<64hex|unset> \
-%%   erl -noshell -pa ebin -pa <本脚本编译目录> -eval 'cache_v2_bench:run()'
-%% （jsone/depcache/syn 依赖路径由 app_up/0 依据 imboy ebin 位置自动补齐）
+%% C12 V2 benchmark: same driver/API against separately frozen V2 runtime trees.
+%% W0 TTL=3600 is checked, never enabled by raising the product TTL budget.
+%% Sampled resource peaks are observations, not hard heap/mailbox bounds.
 -module(cache_v2_bench).
--export([run/0]).
-
+-export([run/0, app_up/0, resource_sample/0, applied/2, runtime_identity/0, members_confirmed/0]).
 -define(REP_NS, cache_v2_bench_rep).
 -define(LOC_NS, cache_v2_bench_loc).
+-define(KEYSPACE, 1024).
 
 run() ->
     Output = os:getenv("CACHE_V2_OUTPUT"),
-    false = (Output =:= false),
-    Operations = list_to_integer(os:getenv("CACHE_V2_OPERATIONS", "10000")),
-    true = Operations > 0 andalso Operations =< 100000,
-    ok = app_up(),
-    %% 预热：replicate 首写走 register/快照外的全链（journal/rev 行建立），
-    %% 不预热会把首条脏成本计入均摊，轮间不可比
-    warmup(256),
-    Rows = [
-        bench(rep_put_s, 1, Operations, 64, 1024),
-        bench(rep_put_m, 1, Operations, 1024, 1024),
-        bench(rep_put_l, 1, Operations, 8192, 1024),
-        bench(rep_put_m_w8, 8, Operations, 1024, 1024),
-        bench(loc_put_m, 1, Operations, 1024, 1024),
-        bench(rep_inval, 1, Operations, 64, 1024),
-        bench(rep_get, 1, Operations, 64, 1024),
-        bench(memo_refill, 1, Operations, 1024, 256),
-        bench(mixed, 4, Operations, 1024, 1024)
-    ],
-    Json = result_json(Rows, Operations),
-    ok = file:write_file(Output, Json),
-    io:format("== cache_v2_bench: ~p rows, ~p ops ==~n", [length(Rows), Operations]),
-    halt(0).
-
-%% --- 基元：各负载模式的单次操作 ---
-
-op(rep_put_s, K, V, _) ->
-    ok = imboy_cache:put({?REP_NS, {s, K}}, V, 600, replicate);
-op(rep_put_m, K, V, _) ->
-    ok = imboy_cache:put({?REP_NS, {m, K}}, V, 600, replicate);
-op(rep_put_l, K, V, _) ->
-    ok = imboy_cache:put({?REP_NS, {l, K}}, V, 600, replicate);
-op(rep_put_m_w8, K, V, _) ->
-    ok = imboy_cache:put({?REP_NS, {w, K}}, V, 600, replicate);
-op(loc_put_m, K, V, _) ->
-    ok = imboy_cache:put({?LOC_NS, {m, K}}, V, 600, local);
-op(rep_inval, K, _, _) ->
-    ok = imboy_cache_sync:invalidate({?REP_NS, {s, K}});
-op(rep_get, K, _, _) ->
-    _ = imboy_cache:get({?REP_NS, {s, K}}),
-    ok;
-op(memo_refill, K, V, _) ->
-    %% memo 回填兼容（7.x）：flush 后经 get_wait/loader 重建
-    %% （miss 首调用者成为 writer，本进程 set 回填，走真实 miss-rebuild 路径）
-    Key = {?LOC_NS, {memo, K}},
-    ok = imboy_cache:flush(Key),
-    _ = imboy_cache:get_wait(Key),
-    ok = imboy_cache:set(Key, V, 600, []),
-    ok;
-op(mixed, K, V, I) ->
-    case I rem 4 of
-        0 ->
-            ok = imboy_cache:put({?REP_NS, {x, K}}, V, 600, replicate);
-        1 ->
-            _ = imboy_cache:get({?REP_NS, {x, K rem 128}}),
-            ok;
-        2 ->
-            ok = imboy_cache_sync:invalidate({?REP_NS, {x, K}});
-        _ ->
-            ok = imboy_cache:put({?LOC_NS, {x, K}}, V, 600, local)
+    true = is_list(Output),
+    Ops = list_to_integer(os:getenv("CACHE_V2_OPERATIONS", "10000")),
+    true = Ops > 0 andalso Ops =< 100000,
+    Started = erlang:monotonic_time(millisecond),
+    try
+        ok = start_distribution(),
+        ok = app_up(),
+        Checks = self_checks(),
+        Sizes = [{16, 64}, {64, 1024}, {256, 8192}, {32, 256}],
+        Local = lists:append([local_profile(Ops, KB, VB) || {KB, VB} <- Sizes]),
+        Remote = three_node_rows(Ops, Sizes),
+        Rows = Local ++ Remote,
+        Errors = lists:sum([maps:get(errors, R) || R <- Rows]),
+        %% TTL profile incompatibility remains independently visible, even with zero measured errors.
+        Compatible = maps:get(w0_ttl_compatible, Checks),
+        %% Both V2 arms use the legal TTL600 profile; W0 TTL3600 is a separate environment anchor.
+        Absolute = lists:all(fun absolute_threshold/1, Rows),
+        Exit =
+            case Errors =:= 0 andalso Absolute of
+                true -> 0;
+                false -> 2
+            end,
+        Payload = result(Rows, Checks, Ops, Started, Exit),
+        ok = file:write_file(Output, jsone:encode(Payload)),
+        io:format("cache_v2_bench rows=~p errors=~p profile_compatible=~p exit=~p~n", [
+            length(Rows), Errors, Compatible, Exit
+        ]),
+        halt(Exit)
+    catch
+        Class:Reason:Stack ->
+            Failure = #{
+                task_id => <<"CACHE_V221_BACKEND_CLOSEOUT_V1">>,
+                candidate_sha256 => candidate(),
+                status => <<"fail">>,
+                exit => 2,
+                error_class => Class,
+                error => reason_tag(Reason),
+                elapsed_ms => erlang:monotonic_time(millisecond) - Started
+            },
+            _ = file:write_file(Output, jsone:encode(Failure)),
+            io:format("cache_v2_bench failed ~p:~p at ~p~n", [
+                Class, reason_tag(Reason), lists:sublist(Stack, 2)
+            ]),
+            halt(2)
     end.
 
-%% --- 计时骨架 ---
-%% 微秒计时（本地 ETS 读类负载单次 <1us，毫秒精度下 duration_ms=0 会让
-%% ops_per_sec 退化为 fallback，轮间不可比）；duration_ms 四舍五入保留
-
-bench(Kind, Workers, Operations, ValueBytes, Keyspace) when Workers =:= 1 ->
-    V = value_bytes0(ValueBytes),
-    T0 = erlang:monotonic_time(microsecond),
-    loop(Kind, 0, Operations, V, Keyspace),
-    T1 = erlang:monotonic_time(microsecond),
-    row(Kind, Workers, Operations, ValueBytes, Keyspace, T1 - T0);
-bench(Kind, Workers, Operations, ValueBytes, Keyspace) ->
-    V = value_bytes0(ValueBytes),
-    Per = Operations div Workers,
-    Parent = self(),
-    T0 = erlang:monotonic_time(microsecond),
-    %% 固定分片区间（W 序号）：unique_integer 起点会跳号，导致实际执行
-    %% 数与 row 声称的 Per*Workers 不符
-    Pids = [
-        begin
-            Base = (W - 1) * Per,
-            spawn(fun() ->
-                loop(Kind, Base, Base + Per, V, Keyspace),
-                Parent ! done
-            end)
-        end
-     || W <- lists:seq(1, Workers)
-    ],
-    [
-        receive
-            done -> ok
-        end
-     || _ <- Pids
-    ],
-    T1 = erlang:monotonic_time(microsecond),
-    row(Kind, Workers, Per * Workers, ValueBytes, Keyspace, T1 - T0).
-
-loop(_Kind, I, I, _V, _Keyspace) ->
-    ok;
-loop(Kind, I, N, V, Keyspace) ->
-    ok = op(Kind, I rem Keyspace, V, I),
-    loop(Kind, I + 1, N, V, Keyspace).
-
-row(Kind, Workers, Ops, ValueBytes, Keyspace, ElapsedUs) ->
-    #{
-        kind => Kind,
-        workers => Workers,
-        operations => Ops,
-        value_bytes => ValueBytes,
-        keyspace => Keyspace,
-        duration_ms => (ElapsedUs + 500) div 1000,
-        ops_per_sec =>
-            case ElapsedUs of
-                0 -> Ops;
-                _ -> (Ops * 1000000) div ElapsedUs
-            end
-    }.
-
-value_bytes0(N) when N =< 64 -> <<0:(64 * 8)>>;
-value_bytes0(N) when N =< 1024 -> <<0:(1024 * 8)>>;
-value_bytes0(_) -> <<0:(8192 * 8)>>.
-
-warmup(N) ->
-    V = <<0:1024>>,
-    [
-        begin
-            ok = imboy_cache:put({?REP_NS, {warm, I}}, V, 600, replicate),
-            _ = imboy_cache:get({?REP_NS, {warm, I}}),
-            ok = imboy_cache_sync:invalidate({?REP_NS, {warm, I}})
-        end
-     || I <- lists:seq(1, N)
-    ],
-    ok.
+start_distribution() ->
+    {ok, _} = application:ensure_all_started(crypto),
+    case node() of
+        nonode@nohost ->
+            Name = list_to_atom(
+                "cacheperf_" ++ integer_to_list(erlang:unique_integer([positive])) ++ "@127.0.0.1"
+            ),
+            {ok, _} = net_kernel:start([Name, longnames]),
+            true = erlang:set_cookie(
+                node(),
+                list_to_atom(
+                    binary_to_list(binary:encode_hex(crypto:strong_rand_bytes(24), lowercase))
+                )
+            ),
+            ok;
+        _ ->
+            ok
+    end.
 
 app_up() ->
     ok = deps_on_path(),
-    ok = application:load(imboy),
-    %% 隔离测试 namespace（照抄 cache_v21_dcheck:init_on_peer/0 模式，
-    %% 不进生产默认配置）：REP_NS 注册 replicate、LOC_NS 注册 local，
-    %% whitelist 含两者；fenced 列表对齐 dcheck 口径（invalidate 走
-    %% generation 栅栏路径）
-    application:set_env(
-        imboy,
-        cache_registry_overrides,
-        #{?REP_NS => {replicate, false}, ?LOC_NS => {local, false}}
-    ),
+    case application:load(imboy) of
+        ok -> ok;
+        {error, {already_loaded, imboy}} -> ok
+    end,
+    application:set_env(imboy, cache_registry_overrides, #{
+        ?REP_NS => {replicate, false}, ?LOC_NS => {local, false}
+    }),
     application:set_env(imboy, cache_replication, #{whitelist => [?REP_NS, ?LOC_NS]}),
     application:set_env(imboy, cache_fenced_namespaces, [?REP_NS, ?LOC_NS]),
     {ok, _} = application:ensure_all_started(crypto),
     {ok, _} = application:ensure_all_started(syn),
     ok = syn:add_node_to_scopes([imboy_cache]),
-    %% 最小组件（不启动 imboy app：不连 PG、不绑 HTTP/WS 端口）；
-    %% 独立无监督进程（测试专用；unlink 使 eval 进程退出不连坐）
-    {ok, Dp} = depcache:start_link(imboy_cache, #{memory_max => 64}),
-    true = unlink(Dp),
-    case whereis(elib_metric) of
-        undefined ->
-            {ok, M} = elib_metric:start_link(),
-            true = unlink(M);
-        _ ->
-            ok
-    end,
+    {ok, D} = depcache:start_link(imboy_cache, #{memory_max => 64}),
+    true = unlink(D),
+    {ok, M} = elib_metric:start_link(),
+    true = unlink(M),
     {ok, S} = imboy_cache_sync:start_link(),
     true = unlink(S),
-    %% 单节点（无 peer）discover 有界重试（3×500ms）后才 become_ready；
-    %% publish_set fail-closed 要求 ready，不等待则 warmup 首写即
-    %% {error, {not_ready, discovering}}
-    wait_ready(100).
+    await(fun() -> imboy_cache_sync:status() =:= ready end, 20000).
 
-wait_ready(0) ->
-    erlang:error({sync_not_ready, imboy_cache_sync:status()});
-wait_ready(N) ->
-    case imboy_cache_sync:status() of
-        ready ->
-            ok;
-        _ ->
-            timer:sleep(100),
-            wait_ready(N - 1)
+self_checks() ->
+    Key = {?REP_NS, profile_ttl},
+    TTLResult = imboy_cache:put(Key, <<"ttl-check">>, 3600, replicate),
+    Compatible =
+        case TTLResult of
+            ok -> true;
+            {error, ttl_out_of_range} -> false;
+            Other -> error({ttl_check_failed, Other})
+        end,
+    Counter = atomics:new(1, []),
+    Parent = self(),
+    MemoKey = {?LOC_NS, single_flight},
+    Loader = fun() ->
+        atomics:add(Counter, 1, 1),
+        Parent ! {loader_started, self()},
+        receive
+            release_loader -> <<"single-flight">>
+        after 5000 -> error(loader_release_timeout)
+        end
+    end,
+    Jobs = [
+        spawn_monitor(fun() ->
+            Parent ! {memo_attempt, self()},
+            V = imboy_cache:memo(Loader, MemoKey, 3600, []),
+            Parent ! {sample_result, self(), V}
+        end)
+     || _ <- lists:seq(1, 32)
+    ],
+    LoaderPid =
+        receive
+            {loader_started, P} -> P
+        after 5000 -> error(loader_not_started)
+        end,
+    [
+        receive
+            {memo_attempt, Pid} -> ok
+        after 5000 -> error(memo_attempt_timeout)
+        end
+     || {Pid, _} <- Jobs
+    ],
+    try
+        ok = await(
+            fun() ->
+                lists:all(
+                    fun({Pid, _}) ->
+                        Pid =:= LoaderPid orelse process_info(Pid, status) =:= {status, waiting}
+                    end,
+                    Jobs
+                )
+            end,
+            3000
+        )
+    after
+        LoaderPid ! release_loader
+    end,
+    Values =
+        try
+            collect(Jobs, [], erlang:monotonic_time(millisecond) + 10000)
+        after
+            [exit(Pid, kill) || {Pid, _} <- Jobs, is_process_alive(Pid)]
+        end,
+    true = lists:all(fun(V) -> V =:= <<"single-flight">> end, Values),
+    1 = atomics:get(Counter, 1),
+    #{
+        memo_single_flight_workers => 32,
+        loader_executions => 1,
+        w0_requested_ttl_sec => 3600,
+        v2_measured_ttl_sec => 600,
+        w0_ttl_compatible => Compatible
+    }.
+
+local_profile(Ops, KB, VB) ->
+    lists:append([
+        begin
+            ok = reset_components(),
+            [bench(Kind, W, Ops, KB, VB, [node()]) || W <- [1, 8, 32]]
+        end
+     || Kind <- [rep_put, rep_get, memo_cold, mixed]
+    ]).
+
+reset_components() ->
+    %% Only this isolated VM's explicitly constructed benchmark processes are reset.
+    [
+        case whereis(Name) of
+            undefined -> ok;
+            Pid -> ok = gen_server:stop(Pid, normal, 5000)
+        end
+     || Name <- [imboy_cache_sync, imboy_cache, elib_metric]
+    ],
+    app_up().
+
+three_node_rows(Ops, Sizes) ->
+    lists:append([
+        begin
+            ok = reset_components(),
+            three_node_profile(Ops, KB, VB)
+        end
+     || {KB, VB} <- Sizes
+    ]).
+
+three_node_profile(Ops, KB, VB) ->
+    Paths = lists:append([
+        ["-pa", P]
+     || P <- lists:reverse(code:get_path()), filename:pathtype(P) =:= absolute
+    ]),
+    Args =
+        [
+            "-setcookie",
+            atom_to_list(erlang:get_cookie()),
+            "-kernel",
+            "inet_dist_use_interface",
+            "{127,0,0,1}",
+            "prevent_overlapping_partitions",
+            "false"
+        ] ++ Paths,
+    {ok, P1, N1} = peer:start(#{
+        name => peer:random_name("cacheperf1"),
+        host => "127.0.0.1",
+        connection => standard_io,
+        args => Args
+    }),
+    try
+        ok = peer:call(P1, ?MODULE, app_up, [], 30000),
+        Identity = runtime_identity(),
+        Identity = peer:call(P1, ?MODULE, runtime_identity, [], 5000),
+        {ok, P2, N2} = peer:start(#{
+            name => peer:random_name("cacheperf2"),
+            host => "127.0.0.1",
+            connection => standard_io,
+            args => Args
+        }),
+        try
+            ok = peer:call(P2, ?MODULE, app_up, [], 30000),
+            Identity = peer:call(P2, ?MODULE, runtime_identity, [], 5000),
+            true = net_kernel:connect_node(N1),
+            true = net_kernel:connect_node(N2),
+            true = rpc:call(N1, net_kernel, connect_node, [N2], 5000),
+            Nodes = [node(), N1, N2],
+            ok = await(
+                fun() ->
+                    lists:all(
+                        fun(N) ->
+                            M = rpc:call(N, syn, members, [imboy_cache, dsync_handler], 1000),
+                            is_list(M) andalso length(M) =:= 3
+                        end,
+                        Nodes
+                    )
+                end,
+                10000
+            ),
+            %% Establish real actor handshakes before measuring steady-state replication.
+            [
+                reconcile_tick = rpc:call(N, erlang, send, [imboy_cache_sync, reconcile_tick])
+             || N <- Nodes
+            ],
+            ok = await(
+                fun() ->
+                    lists:all(
+                        fun(N) ->
+                            rpc:call(N, ?MODULE, members_confirmed, [], 1000) =:= true
+                        end,
+                        Nodes
+                    )
+                end,
+                10000
+            ),
+            [bench(convergence, W, Ops, KB, VB, Nodes) || W <- [1, 8, 32]]
+        after
+            stop_peer(P2)
+        end
+    after
+        stop_peer(P1)
     end.
 
-%% jsone/depcache/syn 的编译产物在 deps/<dep>/ebin（不在主 ebin），
-%% 依据 imboy_cache beam 位置推导仓库根自动补路径
+bench(Kind, Workers, Ops, KeyBytes, ValueBytes, Nodes) ->
+    Value = binary:copy(<<"v">>, ValueBytes),
+    %% Every GET has an asserted warmed value; invalidate never contaminates GET rows.
+    case Kind of
+        memo_cold ->
+            ok;
+        _ ->
+            [
+                ok = imboy_cache:put(key(rep, I, KeyBytes), Value, 600, replicate)
+             || I <- lists:seq(0, ?KEYSPACE - 1)
+            ]
+    end,
+    Parent = self(),
+    Sampler = spawn_monitor(fun() -> sample(Parent, Nodes, #{}) end),
+    Start = erlang:monotonic_time(microsecond),
+    Jobs = [
+        spawn_monitor(fun() ->
+            put(bench_loader_counter, atomics:new(1, [])),
+            Samples = [
+                operation(Kind, I, W, Workers, KeyBytes, Value, Nodes)
+             || I <- lists:seq(1, Ops)
+            ],
+            Parent ! {sample_result, self(), Samples}
+        end)
+     || W <- lists:seq(1, Workers)
+    ],
+    Samples =
+        try
+            lists:append(collect(Jobs, [], erlang:monotonic_time(millisecond) + 120000))
+        catch
+            Class:Reason:Stack ->
+                {SamplerPid, _} = Sampler,
+                exit(SamplerPid, kill),
+                erlang:raise(Class, Reason, Stack)
+        after
+            [exit(P, kill) || {P, _} <- Jobs, is_process_alive(P)]
+        end,
+    Elapsed = erlang:monotonic_time(microsecond) - Start,
+    {SP, SR} = Sampler,
+    SP ! stop,
+    Peaks =
+        receive
+            {resource_peaks, SP, P} ->
+                receive
+                    {'DOWN', SR, process, SP, normal} -> P
+                after 2000 -> error(sampler_down_timeout)
+                end;
+            {'DOWN', SR, process, SP, Why} ->
+                error({sampler_failed, Why})
+        after 5000 ->
+            exit(SP, kill),
+            error(sampler_timeout)
+        end,
+    Latencies = lists:sort([L || {L, _} <- Samples]),
+    Errors = length([bad || {_, S} <- Samples, S =/= ok]),
+    #{
+        kind => Kind,
+        workers => Workers,
+        operations_per_worker => Ops,
+        operations => length(Samples),
+        key_bytes => KeyBytes,
+        value_bytes => ValueBytes,
+        keyspace => ?KEYSPACE,
+        ttl_sec => ttl(Kind),
+        throughput_ops_sec => length(Samples) * 1000000 / max(1, Elapsed),
+        p50_us => percentile(Latencies, 0.50),
+        p95_us => percentile(Latencies, 0.95),
+        p99_us => percentile(Latencies, 0.99),
+        errors => Errors,
+        error_rate => Errors / length(Samples),
+        elapsed_us => Elapsed,
+        resource_sample_peaks => Peaks,
+        resource_sampling_delay_ms => 5,
+        resource_peak_is_hard_bound => false,
+        receiver_count => length(Nodes)
+    }.
+
+ttl(memo_cold) -> 3600;
+ttl(_) -> 600.
+
+operation(Kind, I, Worker, Workers, KB, Value, Nodes) ->
+    Key = key(rep, (I + Worker) rem ?KEYSPACE, KB),
+    Start = erlang:monotonic_time(microsecond),
+    Status =
+        try
+            case Kind of
+                rep_put ->
+                    ok = imboy_cache:put(Key, Value, 600, replicate);
+                rep_get ->
+                    {ok, Value} = imboy_cache:get(Key);
+                memo_cold ->
+                    Slots = ?KEYSPACE div Workers,
+                    MKey = key(local, (Worker - 1) * Slots + I rem Slots, KB),
+                    Counter = get(bench_loader_counter),
+                    Before = atomics:get(Counter, 1),
+                    ok = imboy_cache:flush(MKey),
+                    Value = imboy_cache:memo(
+                        fun() ->
+                            atomics:add(Counter, 1, 1),
+                            Value
+                        end,
+                        MKey,
+                        3600,
+                        []
+                    ),
+                    true = atomics:get(Counter, 1) =:= Before + 1;
+                mixed when I rem 10 =:= 0 -> ok = imboy_cache:put(Key, Value, 600, replicate);
+                mixed ->
+                    {ok, Value} = imboy_cache:get(Key);
+                convergence ->
+                    %% Each worker owns a key subset: a later competing write cannot satisfy this oracle.
+                    Slots = ?KEYSPACE div Workers,
+                    CKey = key(rep, (Worker - 1) * Slots + I rem Slots, KB),
+                    Tagged = {Worker, I, Value},
+                    ok = imboy_cache:put(CKey, Tagged, 600, replicate),
+                    {ok, Revision} = revision(CKey),
+                    ok = await(
+                        fun() ->
+                            lists:all(
+                                fun(N) ->
+                                    rpc:call(N, ?MODULE, applied, [CKey, {Tagged, Revision}], 1000) =:=
+                                        true
+                                end,
+                                Nodes
+                            )
+                        end,
+                        5000
+                    )
+            end,
+            ok
+        catch
+            Class:Reason -> {error, Class, reason_tag(Reason)}
+        end,
+    {erlang:monotonic_time(microsecond) - Start, Status}.
+
+key(Type, Index, Bytes) ->
+    Namespace =
+        case Type of
+            rep -> ?REP_NS;
+            local -> ?LOC_NS
+        end,
+    Encoded =
+        case Index of
+            N when is_integer(N) -> <<0, N:32/unsigned>>;
+            {Worker, N} -> <<1, Worker:32/unsigned, N:32/unsigned>>
+        end,
+    {Namespace, <<Encoded/binary, 0:(max(0, Bytes - byte_size(Encoded)) * 8)>>}.
+
+revision(Key) ->
+    case ets:lookup(imboy_cache_meta, {rev, Key}) of
+        [{{rev, Key}, Tuple}] -> {ok, element(1, Tuple)};
+        [] -> undefined
+    end.
+
+applied(Key, {Value, Rev}) ->
+    imboy_cache:get(Key) =:= {ok, Value} andalso revision(Key) =:= {ok, Rev}.
+
+collect([], Acc, _) ->
+    lists:reverse(Acc);
+collect([{Pid, Ref} | Rest], Acc, Deadline) ->
+    Left = max(1, Deadline - erlang:monotonic_time(millisecond)),
+    receive
+        {sample_result, Pid, Result} ->
+            receive
+                {'DOWN', Ref, process, Pid, normal} -> ok
+            after Left -> error(worker_down_timeout)
+            end,
+            collect(Rest, [Result | Acc], Deadline);
+        {'DOWN', Ref, process, Pid, Why} ->
+            error({worker_failed, Why})
+    after Left -> error(worker_timeout)
+    end.
+
+sample(Parent, Nodes, Peaks) ->
+    Current = [{atom_to_binary(N), rpc:call(N, ?MODULE, resource_sample, [], 1000)} || N <- Nodes],
+    Next = lists:foldl(
+        fun({N, Row}, Acc) ->
+            true = is_map(Row),
+            Old = maps:get(N, Acc, #{}),
+            Acc#{N => maps:map(fun(K, V) -> peak_value(V, maps:get(K, Old, null)) end, Row)}
+        end,
+        Peaks,
+        Current
+    ),
+    receive
+        stop -> Parent ! {resource_peaks, self(), Next}
+    after 5 -> sample(Parent, Nodes, Next)
+    end.
+
+resource_sample() ->
+    Info = process_info(whereis(imboy_cache_sync), [message_queue_len, memory, total_heap_size]),
+    Tables = [T || T <- ets:all(), lists:prefix("imboy_cache_", atom_to_list(ets:info(T, name)))],
+    MetaWords = lists:sum([ets:info(T, memory) || T <- Tables]),
+    maps:merge(logical_usage(), #{
+        mailbox => proplists:get_value(message_queue_len, Info),
+        process_memory_bytes => proplists:get_value(memory, Info),
+        heap_bytes => proplists:get_value(total_heap_size, Info) * erlang:system_info(wordsize),
+        metadata_entries => lists:sum([ets:info(T, size) || T <- Tables]),
+        metadata_bytes => MetaWords * erlang:system_info(wordsize),
+        cache_ets_bytes => depcache:size(imboy_cache) * erlang:system_info(wordsize)
+    }).
+
+logical_usage() ->
+    Current = code:which(imboy_cache_sync_coverage) =/= non_existing,
+    Usage =
+        case ets:lookup(imboy_cache_meta, metadata_usage) of
+            [{metadata_usage, U}] ->
+                U;
+            [] when Current ->
+                %% No fabricated counter: directly prove there are no managed rows before reporting zero.
+                Empty =
+                    ets:select_count(imboy_cache_meta, [
+                        {
+                            {{'$1', '_'}, '_'},
+                            [{'orelse', {'=:=', '$1', rev}, {'=:=', '$1', rindex}}],
+                            [true]
+                        }
+                    ]) =:= 0,
+                case Empty of
+                    true -> {0, 0, 0, 0};
+                    false -> unavailable
+                end;
+            [] ->
+                unavailable
+        end,
+    {N, NB, T, TB} =
+        case Usage of
+            {_, _, _, _} -> Usage;
+            unavailable -> {null, null, null, null}
+        end,
+    Fields = #{
+        logical_n => N,
+        logical_n_bytes => NB,
+        logical_t => T,
+        logical_t_bytes => TB,
+        logical_gen => metric_counter(gen_count),
+        logical_gen_bytes => metric_counter(gen_bytes)
+    },
+    Pairs = [
+        {N, policy_limit(n_max)},
+        {NB, policy_limit(n_max_bytes)},
+        {T, policy_limit(t_max)},
+        {TB, policy_limit(t_max_bytes)},
+        {maps:get(logical_gen, Fields), policy_limit(n_max)},
+        {maps:get(logical_gen_bytes, Fields), policy_limit(gen_max_bytes)}
+    ],
+    Available = [{V, L} || {V, L} <- Pairs, is_integer(V), is_integer(L)],
+    Violation =
+        case Available of
+            [] ->
+                null;
+            _ ->
+                case lists:any(fun({V, L}) -> V > L end, Available) of
+                    true -> 1;
+                    false -> 0
+                end
+        end,
+    Fields#{logical_budget_violation => Violation}.
+
+metric_counter(Key) ->
+    case ets:lookup(imboy_cache_meta, Key) of
+        [{Key, V}] when is_integer(V) -> V;
+        [] -> null
+    end.
+
+policy_limit(F) ->
+    case erlang:function_exported(imboy_cache_policy, F, 0) of
+        true -> apply(imboy_cache_policy, F, []);
+        false -> null
+    end.
+
+peak_value(null, Old) -> Old;
+peak_value(Value, null) -> Value;
+peak_value(Value, Old) -> max(Value, Old).
+
+await(Pred, Timeout) -> await_until(Pred, erlang:monotonic_time(millisecond) + Timeout).
+await_until(Pred, Deadline) ->
+    case Pred() of
+        true ->
+            ok;
+        false ->
+            case erlang:monotonic_time(millisecond) >= Deadline of
+                true ->
+                    error(oracle_timeout);
+                false ->
+                    timer:sleep(1),
+                    await_until(Pred, Deadline)
+            end
+    end.
+
+percentile(Samples, Fraction) -> lists:nth(max(1, ceil(length(Samples) * Fraction)), Samples).
+reason_tag(Reason) when is_atom(Reason) -> Reason;
+reason_tag(Reason) when is_tuple(Reason) -> element(1, Reason);
+reason_tag(_) -> operation_failed.
+
+candidate() ->
+    case os:getenv("CANDIDATE_SHA256") of
+        false ->
+            null;
+        Sha when length(Sha) =:= 64 ->
+            true = lists:all(
+                fun(C) -> (C >= $0 andalso C =< $9) orelse (C >= $a andalso C =< $f) end, Sha
+            ),
+            list_to_binary(Sha);
+        _ ->
+            error(malformed_candidate_sha256)
+    end.
+
+result(Rows, Checks, Ops, Started, Exit) ->
+    #{
+        task_id => <<"CACHE_V221_BACKEND_CLOSEOUT_V1">>,
+        candidate_sha256 => candidate(),
+        utc => list_to_binary(
+            calendar:system_time_to_rfc3339(erlang:system_time(millisecond), [
+                {unit, millisecond}, {offset, "Z"}
+            ])
+        ),
+        elapsed_ms => erlang:monotonic_time(millisecond) - Started,
+        exit => Exit,
+        profile => <<"v2-contract-ttl600-w0-anchor-ttl3600-not-equivalent">>,
+        arm => list_to_binary(os:getenv("CACHE_V2_ARM", "candidate")),
+        operations_per_worker => Ops,
+        env => #{
+            otp => list_to_binary(erlang:system_info(otp_release)),
+            schedulers => erlang:system_info(schedulers_online)
+        },
+        runtime_beam_hashes => runtime_hashes(),
+        config_hash => binary:encode_hex(imboy_cache_sync_proto:config_hash(), lowercase),
+        registry_hash => binary:encode_hex(imboy_cache_sync_proto:registry_hash(), lowercase),
+        self_checks => Checks,
+        rows => Rows,
+        scenarios => [
+            #{name => <<"ttl_protocol_admission">>, status => <<"pass">>},
+            #{
+                name => <<"measured_operations">>,
+                status =>
+                    case lists:sum([maps:get(errors, R) || R <- Rows]) of
+                        0 -> <<"pass">>;
+                        _ -> <<"fail">>
+                    end
+            },
+            #{
+                name => <<"frozen_absolute_thresholds">>,
+                status =>
+                    case lists:all(fun absolute_threshold/1, Rows) of
+                        true -> <<"pass">>;
+                        false -> <<"fail">>
+                    end
+            }
+        ],
+        frozen_thresholds_us => #{get_p99 => 2000, set_p99 => 5000, convergence_p99 => 1000000},
+        relative_gate =>
+            <<"requires independently frozen V2 baseline and three interleaved pairs; get degradation<=10%, throughput>=95%">>
+    }.
+
+absolute_threshold(Row) ->
+    Limit =
+        case maps:get(kind, Row) of
+            rep_get -> 2000;
+            rep_put -> 5000;
+            convergence -> 1000000;
+            _ -> infinity
+        end,
+    Latency =
+        case Limit of
+            infinity -> true;
+            _ -> maps:get(p99_us, Row) =< Limit
+        end,
+    Latency andalso
+        lists:all(
+            fun(Peak) -> maps:get(logical_budget_violation, Peak, null) =/= 1 end,
+            maps:values(maps:get(resource_sample_peaks, Row))
+        ).
+
+runtime_hashes() -> maps:get(hashes, runtime_identity()).
+
+runtime_identity() ->
+    Required = [
+        imboy_cache,
+        imboy_cache_policy,
+        imboy_cache_sync,
+        imboy_cache_sync_proto,
+        imboy_cache_sync_snapshot
+    ],
+    Optional = [imboy_cache_sync_apply, imboy_cache_sync_recover, imboy_cache_sync_coverage],
+    Present = [M || M <- Optional, code:which(M) =/= non_existing],
+    true = lists:member(Present, [[], [imboy_cache_sync_apply, imboy_cache_sync_recover], Optional]),
+    Modules = Required ++ Present ++ [elib_metric, depcache, syn, jsone],
+    Objects = [
+        begin
+            {M, Beam, Path} = code:get_object_code(M),
+            Path = code:which(M),
+            {M, Beam, Path}
+        end
+     || M <- Modules
+    ],
+    CoreRoot = filename:dirname(code:which(imboy_cache)),
+    true = lists:all(
+        fun(M) -> filename:dirname(code:which(M)) =:= CoreRoot end, Required ++ Present
+    ),
+    #{
+        core_modules => Required ++ Present,
+        hashes => maps:from_list([
+            {atom_to_binary(M), binary:encode_hex(crypto:hash(sha256, B), lowercase)}
+         || {M, B, _} <- Objects
+        ]),
+        paths => maps:from_list([{atom_to_binary(M), list_to_binary(P)} || {M, _, P} <- Objects])
+    }.
+
 deps_on_path() ->
     case code:which(imboy_cache) of
         Path when is_list(Path) ->
             Root = filename:dirname(filename:dirname(filename:absname(Path))),
             [
-                %% add_patha 对已在路径中的目录返回 true（首次 ok），都算成功
-                _ = code:add_patha(filename:join([Root, deps, D, ebin]))
-             || D <- [jsone, depcache, syn]
+                _ = code:add_patha(filename:join([Root, "deps", D, "ebin"]))
+             || D <- ["jsone", "depcache", "syn"]
             ],
             ok;
         _ ->
-            erlang:error(imboy_ebin_not_on_path)
+            error(imboy_ebin_not_on_path)
     end.
 
-%% --- 输出（C14 证据 schema 对齐 dcheck：task_id + candidate 绑定 + UTC）---
+%% Read only the registration written by actual version reports, never synthesize it.
+members_confirmed() ->
+    imboy_cache_sync:status() =:= ready andalso
+        lists:all(
+            fun({Pid, _}) ->
+                case node(Pid) =:= node() of
+                    true ->
+                        true;
+                    false ->
+                        {Origin, Boot} = rpc:call(node(Pid), imboy_cache_sync, node_boot, [], 1000),
+                        ets:lookup(imboy_cache_meta, {peer_incarnation, Origin}) =:=
+                            [{{peer_incarnation, Origin}, Boot}]
+                end
+            end,
+            syn:members(imboy_cache, dsync_handler)
+        ).
 
-result_json(Rows, Operations) ->
-    Candidate =
-        case os:getenv("CANDIDATE_SHA256") of
-            false -> <<"null">>;
-            Sha when length(Sha) =:= 64 -> unicode:characters_to_binary(["\"", Sha, "\""]);
-            Bad -> erlang:error({malformed_candidate_sha256, Bad})
-        end,
-    Env = #{
-        %% otp_release 是 char list，jsone 会把 int list 编成 JSON 数组——转 binary
-        otp => unicode:characters_to_binary(erlang:system_info(otp_release)),
-        schedulers => erlang:system_info(schedulers_online)
-    },
-    Payload = #{
-        task_id => <<"CACHE_V221_BACKEND_CLOSEOUT_V1">>,
-        candidate_sha256 => Candidate,
-        profile => <<"cache-v2-single-node-loopback">>,
-        operations_per_kind => Operations,
-        utc => unicode:characters_to_binary(
-            calendar:system_time_to_rfc3339(
-                erlang:system_time(millisecond),
-                [{unit, millisecond}, {offset, "Z"}]
-            )
-        ),
-        env => Env,
-        rows => Rows
-    },
-    unicode:characters_to_binary(jsone:encode(Payload)).
+stop_peer(Pid) ->
+    try
+        peer:stop(Pid)
+    catch
+        exit:noproc -> ok
+    end.

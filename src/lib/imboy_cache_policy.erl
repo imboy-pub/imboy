@@ -1,18 +1,6 @@
-%% @doc 缓存策略真源（V2.2.1 W2-04/W2-05）
-%%
-%% 依据 docs/architecture/cache-v2.2.1/w0/key-registry.json（W0 冻结的 47 条
-%% Key 策略矩阵）投影为静态 Erlang 表。
-%%
-%% - policy(Key) 返回 local | invalidate | legacy | blocked；
-%%   blocked = G-QR 未决的 QR 两类 Key，永不进入 replicate。
-%% - replicate 生产白名单默认为空；仅配置 `cache_replication.whitelist`
-%%   显式列出的 namespace 可申请 replicate，且仍须经值大小/TTL/敏感性校验。
-%% - 敏感 Key 的值禁止复制（19.5 默认 deny，fail-closed）。
-%% - 未分类 Key 返回 legacy：旧调用保持旧行为，不广播新协议事件（3.3 迁移期）。
+%% @doc 缓存策略、复制预算与快照证据规则；静态Registry见imboy_cache_registry.hrl。
 -module(imboy_cache_policy).
 -moduledoc "缓存 Key 策略真源：Registry 分类、复制白名单与 put/invalidate 校验。".
-
--define(SKEW_SEC, 5).
 
 -export([
     snapshot_entry_deadline/1,
@@ -28,6 +16,9 @@
     snapshot_revision_counter/1,
     snapshot_page_result/7,
     snapshot_manifest_entry/1,
+    final_snapshot_manifest/1,
+    snapshot_manifest_limits/0,
+    verify_snapshot_coverage/1,
     snapshot_manifest_own_seq/3,
     snapshot_page_revision_ceiling/2,
     event_origin_checks/1,
@@ -85,69 +76,16 @@
     registry_hash/0
 ]).
 
-%% W0 Registry 投影：namespace => {Policy, Sensitive}
-%% local 9 / invalidate 36 / G-QR_BLOCKED 2，共 47 条（19.4 零静默缺漏）。
--define(REGISTRY, #{
-    %% --- local（本地重建，禁止跨节点广播）---
-    local_cache => {local, true},
-    apns_jwt => {local, true},
-    bind_mail => {local, true},
-    cluster_node_info => {local, false},
-    fcm_access_token_dyn => {local, true},
-    qianfan_access_token => {local, true},
-    login_attempt => {local, true},
-    login_attempt_ip_limit => {local, true},
-    account_list => {local, true},
-    %% --- invalidate（数据库派生，变更后失效）---
-    adm_session_epoch => {invalidate, true},
-    adm_user_account => {invalidate, true},
-    adm_user_admin_permission => {invalidate, true},
-    adm_user_current => {invalidate, true},
-    adm_user_feedback_permission => {invalidate, true},
-    adm_user_group_permission => {invalidate, true},
-    adm_user_moment_permission => {invalidate, true},
-    adm_user_permission => {invalidate, true},
-    adm_user_rbac => {invalidate, true},
-    adm_user_report_permission => {invalidate, true},
-    adm_user_role_ids => {invalidate, true},
-    adm_user_role_permission => {invalidate, true},
-    adm_user_sample => {invalidate, true},
-    adm_user_stats_permission => {invalidate, true},
-    auth_session_epoch => {invalidate, true},
-    billing_meter => {invalidate, true},
-    channel => {invalidate, false},
-    channel_subs => {invalidate, true},
-    check_relationship3 => {invalidate, true},
-    config5 => {invalidate, true},
-    conv_deleted => {invalidate, true},
-    friend_rel_dep => {invalidate, false},
-    group => {invalidate, true},
-    group_e2ee_mode => {invalidate, true},
-    in_denylist => {invalidate, true},
-    is_friend => {invalidate, true},
-    is_friend2 => {invalidate, true},
-    is_friend_fields2 => {invalidate, true},
-    moderation_sensitive_words => {invalidate, true},
-    moment_acl => {invalidate, true},
-    msg_reaction => {invalidate, false},
-    tag_subtitle_2 => {invalidate, true},
-    tag_subtitle_3 => {invalidate, true},
-    user_device_active => {invalidate, true},
-    user_device_name => {invalidate, true},
-    user_dnd_rule => {invalidate, true},
-    user_tag_relation => {invalidate, true},
-    %% --- blocked（G-QR 未决：19.2 QR 两类 Key 禁止 replicate，
-    %%     不因测试开关或配置绕过；修复须走独立方案与 Schema 决策）---
-    qr_login => {blocked, true},
-    qr_login_qr => {blocked, true}
-}).
+-include("imboy_cache_registry.hrl").
 
 %% @doc Key 是否走 19.3 generation 栅栏（V2 物理键路径）。
-%% 仅 `cache_fenced_namespaces` 显式列出的 namespace 启用；默认空 = 全部 legacy 行为。
+%% 显式 namespace 以及开启分布式同步时的敏感 invalidate 投影启用。
 -spec is_fenced(term()) -> boolean().
 is_fenced(Key) ->
     NS = namespace_of(Key),
-    NS =/= undefined andalso lists:member(NS, fenced_namespaces()).
+    (NS =/= undefined andalso lists:member(NS, fenced_namespaces())) orelse
+        (application:get_env(imboy, dsync_enabled, false) =:= true andalso
+            policy(Key) =:= invalidate andalso is_sensitive(Key)).
 
 -spec fenced_namespaces() -> [atom()].
 fenced_namespaces() ->
@@ -161,14 +99,6 @@ check_value_size(Value) ->
 -spec check_value_type(term()) -> boolean().
 check_value_type(Value) ->
     Value =/= undefined andalso not contains_pid_ref_fun(Value).
-
-%% 计划 6.1/13.1 候选默认（执行补充第 5 节冻结的本地工程候选值）
--define(DEFAULT_MAX_TTL_SEC, 600).
--define(DEFAULT_MAX_VALUE_BYTES, 32768).
--define(DEFAULT_BATCH_SIZE, 256).
--define(DEFAULT_RECOVERY_WINDOW_SEC, 300).
-%% 墓碑保留 >= max(T+C, R+S+D+2C) = max(605,400)，取 720（计划 6.3）
--define(DEFAULT_TOMBSTONE_TTL_SEC, 720).
 
 %% @doc Key 的策略分类。
 %% 未在 Registry 的 Key 一律 legacy（旧行为，不参与 V2 语义，3.3 迁移期合同）。
@@ -285,17 +215,6 @@ tombstone_ttl_sec() ->
     C = 5,
     erlang:max(erlang:max(T + C, R + S + D + 2 * C), ?DEFAULT_TOMBSTONE_TTL_SEC).
 
-%% C01 冻结的资源预算（closeout-v1/protocol-budget-frozen.md 第 6 节）
-%% 本地工程预算，非生产 SLO；故障测试前冻结，不得为通过测试调高。
-
--define(DEFAULT_N_MAX, 50000).
--define(DEFAULT_T_MAX, 20000).
--define(DEFAULT_B_MAX, 2048).
--define(DEFAULT_P_MAX, 256).
--define(DEFAULT_P_MAX_BYTES, 4194304).
--define(DEFAULT_R_MAX_ROUNDS, 3).
--define(DEFAULT_HIGH_WATERMARK, 10000).
-
 %% rindex 复制条目上限（项）。
 -spec n_max() -> pos_integer().
 n_max() -> rep_cfg(n_max, ?DEFAULT_N_MAX).
@@ -411,7 +330,12 @@ config_hash() ->
             event_revision_origin_binding_v1, round_bound_origin_target_v1,
             snapshot_receive_manifest_v1, snapshot_manifest_origin_cut_v1,
             legacy_set_policy_boundary_v1, managed_revision_row_boundary_v1,
-            legacy_publish_policy_boundary_v1}
+            legacy_publish_policy_boundary_v1, membership_capability_gate_v2,
+            snapshot_payload_digest_v2, fenced_producer_proof_v1, receiver_retained_census_v1,
+            source_complete_metadata_certificate_v1, round_empty_content_census_v1,
+            snapshot_contiguous_delta_receipts_v1, snapshot_certified_foreign_floor_v1,
+            snapshot_final_commit_barrier_v1, snapshot_equal_content_evidence_v1,
+            sensitive_peer_boot_health_v1, observed_peer_loss_window_cold_v2}
     },
     <<Digest:16/binary, _/binary>> = crypto:hash(
         sha256, term_to_binary(Parts, [{minor_version, 2}])
@@ -428,8 +352,6 @@ registry_hash() ->
         sha256, term_to_binary(Sorted, [{minor_version, 2}])
     ),
     Digest.
-
-%% Internal
 
 rep_cfg(K, Default) ->
     Cfg = application:get_env(imboy, cache_replication, #{}),
@@ -617,7 +539,7 @@ revision_metadata_origin(_, _) ->
     unknown.
 
 snapshot_page_digest(Round, PageNo, Page) ->
-    erlang:phash2({Round, PageNo, [entry_identity(E) || E <- Page]}).
+    crypto:hash(sha256, term_to_binary({Round, PageNo, Page})).
 snapshot_revision_counter(Entry) ->
     {_, _, {Counter, _}} = entry_identity(snapshot_entry_body(Entry)),
     Counter.
@@ -633,21 +555,34 @@ snapshot_manifest_entry({with_origin, Origin, Entry} = Wire) ->
     manifest_entry(Entry, Origin, Wire);
 snapshot_manifest_entry(Entry) ->
     manifest_entry(Entry, unknown, Entry).
-manifest_entry({K, _, Exp, Rev}, Origin, Wire) ->
-    {live, K, Rev, Exp, Origin, crypto:hash(sha256, term_to_binary(Wire))};
+manifest_entry({K, Value, Exp, Rev}, Origin, Wire) ->
+    {live, K, Rev, Exp, Origin, crypto:hash(sha256, term_to_binary(Wire)),
+        crypto:hash(sha256, term_to_binary(Value))};
 manifest_entry({Kind, K, undefined, Exp, Rev}, Origin, Wire) ->
-    {Kind, K, Rev, Exp, Origin, crypto:hash(sha256, term_to_binary(Wire))}.
+    {Kind, K, Rev, Exp, Origin, crypto:hash(sha256, term_to_binary(Wire)), undefined}.
 
 snapshot_manifest_own_seq(Rows, {Source, Boot}, Old) ->
     lists:foldl(
-        fun({_, _, _, _, Origin, _}, Max) ->
-            case Origin of
+        fun(Row, Max) ->
+            case element(5, Row) of
                 {Source, Boot, Seq} -> erlang:max(Max, Seq);
                 _ -> Max
             end
         end,
         Old,
         Rows
+    ).
+
+%% 预算与当前时间由调用层提供；归并本身不依赖运行状态。
+final_snapshot_manifest(Input) ->
+    imboy_cache_sync_coverage:manifest(
+        Input, snapshot_manifest_limits(), erlang:system_time(millisecond)
+    ).
+
+snapshot_manifest_limits() -> {b_max_bytes() div 2, n_max() + t_max()}.
+verify_snapshot_coverage(Round) ->
+    imboy_cache_sync_coverage:verify(
+        Round, snapshot_manifest_limits(), erlang:system_time(millisecond)
     ).
 
 %% 只在实际应用完成后推进页号、完整字节及版本水位。
@@ -712,6 +647,15 @@ valid_watermark(_) ->
     false.
 
 valid_snapshot_cut(
+    {cache_snapshot_cut, Source, Round, Boot, Epoch, Seq, Hash, Registry, Candidate,
+        {Count, Digest}} = F
+) ->
+    is_integer(Count) andalso Count >= 0 andalso Count =< n_max() + t_max() andalso
+        is_binary(Digest) andalso byte_size(Digest) =:= 32 andalso within_meta_budget(F) andalso
+        valid_snapshot_cut(
+            {cache_snapshot_cut, Source, Round, Boot, Epoch, Seq, Hash, Registry, Candidate}
+        );
+valid_snapshot_cut(
     {cache_snapshot_cut, Source, Round, Boot, Epoch, Seq, Hash, Registry, Candidate} = F
 ) ->
     valid_coverage_candidate(Candidate, Epoch, Source, Boot, Seq) andalso
@@ -725,10 +669,13 @@ valid_snapshot_cut(_) ->
     false.
 
 %% 旧切点没有覆盖候选，绝不能补造空向量。
+snapshot_cut_base({cache_snapshot_cut, Source, Round, Boot, Epoch, Seq, Hash, Registry, _, _}) ->
+    {cache_snapshot_cut, Source, Round, Boot, Epoch, Seq, Hash, Registry};
 snapshot_cut_base({cache_snapshot_cut, Source, Round, Boot, Epoch, Seq, Hash, Registry, _}) ->
     {cache_snapshot_cut, Source, Round, Boot, Epoch, Seq, Hash, Registry};
 snapshot_cut_base(Frame) ->
     Frame.
+snapshot_cut_coverage({cache_snapshot_cut, _, _, _, _, _, _, _, Candidate, _}) -> Candidate;
 snapshot_cut_coverage({cache_snapshot_cut, _, _, _, _, _, _, _, Candidate}) -> Candidate;
 snapshot_cut_coverage(_) -> {error, missing_application_coverage}.
 
@@ -762,7 +709,7 @@ valid_coverage_rows(_, _, _, _, _, _, _) ->
 valid_version_report(Report) when
     is_tuple(Report),
     tuple_size(Report) >= 9,
-    tuple_size(Report) =< 11,
+    tuple_size(Report) =< 12,
     element(1, Report) =:= cache_version_report
 ->
     {cache_version_report, Node, Counter, Epoch, Hash, Registry, Boot, Ready, Pid} = version_report_base(
@@ -778,22 +725,35 @@ valid_version_report(Report) when
             (is_integer(element(10, Report)) andalso element(10, Report) >= 0)) andalso
         (tuple_size(Report) < 11 orelse
             (is_binary(element(11, Report)) andalso byte_size(element(11, Report)) =:= 12)) andalso
+        (tuple_size(Report) < 12 orelse valid_census(element(12, Report))) andalso
         within_meta_budget(Report);
 valid_version_report(_) ->
     false.
 version_report_base(Report) when
-    is_tuple(Report), tuple_size(Report) > 9, tuple_size(Report) =< 11
+    is_tuple(Report), tuple_size(Report) > 9, tuple_size(Report) =< 12
 ->
     list_to_tuple([element(I, Report) || I <- lists:seq(1, 9)]);
 version_report_base(Report) ->
     Report.
+version_report_target(
+    {cache_version_report, Node, _, Epoch, _, _, Boot, _, Pid, Seq, Round, Census}
+) ->
+    {Node, Boot, Epoch, Seq, Round, Census, Pid};
 version_report_target({cache_version_report, Node, _, Epoch, _, _, Boot, _, _, Seq, Round}) ->
     {Node, Boot, Epoch, Seq, Round};
 version_report_target(_) ->
     unknown.
 version_report_round_matches(Report, recovering, #{round := Round}) when
-    tuple_size(Report) =:= 11
+    tuple_size(Report) >= 11
 ->
     element(11, Report) =:= Round;
 version_report_round_matches(Report, _, _) ->
     tuple_size(Report) < 11.
+
+valid_census({error, Reason}) ->
+    lists:member(Reason, [source_census_overflow, source_census_byte_budget]);
+valid_census({Count, Digest}) ->
+    is_integer(Count) andalso Count >= 0 andalso Count =< n_max() + t_max() andalso
+        is_binary(Digest) andalso byte_size(Digest) =:= 32;
+valid_census(_) ->
+    false.

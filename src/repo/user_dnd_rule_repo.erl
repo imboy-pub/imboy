@@ -62,8 +62,10 @@ upsert(#{<<"user_id">> := _Uid} = Data0) ->
     >>,
     {Sql, Params} = elib_pg_sql:insert(tablename(), Data),
     FullSql = [Sql, <<" ">>, OnConflict],
-    _ = elib_pg:execute(FullSql, Params),
-    ok.
+    case elib_pg:execute(FullSql, Params) of
+        {ok, _} -> ok;
+        {error, _} -> erlang:error(dnd_write_failed)
+    end.
 
 %% @doc 删除用户免打扰规则
 %% @param Uid 用户ID（支持 binary 或 integer）
@@ -74,5 +76,7 @@ delete_by_uid(Uid) when is_binary(Uid) ->
 delete_by_uid(Uid) when is_integer(Uid) ->
     Tb = tablename(),
     Sql = <<"DELETE FROM ", Tb/binary, " WHERE user_id = $1">>,
-    _ = elib_pg:execute(Sql, [Uid]),
-    ok.
+    case elib_pg:execute(Sql, [Uid]) of
+        {ok, _} -> ok;
+        {error, _} -> erlang:error(dnd_write_failed)
+    end.

@@ -1,11 +1,9 @@
 %% @doc 同步事件应用、统一 metadata 预算/记账及缺口补偿。
 %% 由 imboy_cache_sync gen_server 串行调用，保持单写者。
 -module(imboy_cache_sync_apply).
-
 -include("cache.hrl").
 -include("log.hrl").
 -include("imboy_cache_sync_state.hrl").
-
 -export([
     apply_v2/2,
     detect_gap/3,
@@ -46,7 +44,6 @@
     adopt_epoch/1,
     flush_replicas/0
 ]).
-
 %% @doc V2 事件应用（W3 + C02 双端一致性）。gen_server 串行调用即写入串行化。
 -spec apply_v2(map(), #state{}) -> {ok, #state{}} | {reject, term()} | {reject, term(), #state{}}.
 apply_v2(Event, State) ->
@@ -74,7 +71,6 @@ apply_v2(Event, State) ->
         {error, Reason} ->
             {reject, Reason}
     end.
-
 %% @doc 双端一致性通过后的事件应用（C05 化身变化补偿 + op 路由）。
 -spec apply_v2_validated(map(), #state{}) ->
     {ok, #state{}} | {reject, term()} | {reject, term(), #state{}}.
@@ -114,8 +110,22 @@ apply_v2_validated(Event, State) ->
                 end
         end,
     ok = imboy_cache_sync_proto:note_applied_event(Event, FinalResult),
-    FinalResult.
-
+    case FinalResult of
+        {ok, Next} ->
+            case
+                imboy_cache_sync_coverage:record_delta(
+                    Event,
+                    Next,
+                    imboy_cache_policy:snapshot_manifest_limits(),
+                    imboy_cache_policy:b_max()
+                )
+            of
+                {ok, _} = Recorded -> Recorded;
+                {error, Reason0} -> {ok, imboy_cache_sync_recover:abort_round(Reason0, Next)}
+            end;
+        _ ->
+            FinalResult
+    end.
 -spec apply_v2_op(set | delete, term(), map(), #state{}) ->
     {ok, #state{}} | {reject, term()} | {reject, term(), #state{}}.
 apply_v2_op(set, Key, Event, State) ->
@@ -153,7 +163,10 @@ apply_v2_op(set, Key, Event, State) ->
             end;
         equal ->
             %% 同版本幂等（W3-08）
-            {ok, State};
+            case imboy_cache_sync_coverage:idempotent_event(Event) of
+                true -> {ok, State};
+                false -> {reject, revision_content_conflict}
+            end;
         older ->
             imboy_cache_sync:incr(conflict_total),
             {reject, stale_revision}
@@ -173,12 +186,14 @@ apply_v2_op(delete, Key, Event, State) ->
                     apply_delete(Key, Rev, ExpiresAt, maps:get(epoch, Event), State, Event)
             end;
         equal ->
-            {ok, State};
+            case imboy_cache_sync_coverage:idempotent_event(Event) of
+                true -> {ok, State};
+                false -> {reject, revision_content_conflict}
+            end;
         older ->
             imboy_cache_sync:incr(conflict_total),
             {reject, stale_revision}
     end.
-
 apply_expired_delta(Key, Event, State) ->
     Rev = maps:get(revision, Event),
     Exp = maps:get(expires_at_ms, Event),
@@ -196,7 +211,6 @@ apply_expired_delta(Key, Event, State) ->
             imboy_cache_sync:incr(reject_total),
             {reject, index_full, imboy_cache_sync_recover:start_cold_recovery(State, Epoch + 1)}
     end.
-
 apply_delete(Key, Rev, ExpiresAt, Epoch, State, Event) ->
     case tombstone_budget_exceeded(Key, Rev, ExpiresAt, Epoch, event_origin(Event)) of
         true ->
@@ -208,18 +222,15 @@ apply_delete(Key, Rev, ExpiresAt, Epoch, State, Event) ->
             ok = store_revision(Key, Rev, ExpiresAt, deleted, Epoch, event_origin(Event)),
             {ok, State}
     end.
-
 %% ===================================================================
 %% C03 资源预算执行
 %% ===================================================================
-
 %% @doc 统一校准索引数量、版本行字节和墓碑预算，写路径复用同一 usage。
 -spec recalibrate_rindex_count() -> ok.
 recalibrate_rindex_count() ->
     Usage = scan_usage(),
     true = ets:insert(?META_TABLE, [{rindex_count, element(1, Usage)}, {metadata_usage, Usage}]),
     ok.
-
 %% @doc 墓碑预算按覆盖后的数量与序列化字节投影；超限先淘汰过期行，
 %% 仍超限由调用方受控冷恢复（C01 第 7 节），不删单条墓碑接受旧事件。
 -spec tombstone_budget_exceeded(term(), term(), integer()) -> boolean().
@@ -236,11 +247,9 @@ tombstone_budget_exceeded(Key, Rev, ExpiresAt, Epoch, Origin) ->
             ok = imboy_cache_sync_recover:bounded_sweep(),
             not tombstones_fit(Rows)
     end.
-
 tombstones_fit(Rows) ->
     {_, _, Count, Bytes} = projected_usage(Rows),
     Count =< imboy_cache_policy:t_max() andalso Bytes =< imboy_cache_policy:t_max_bytes().
-
 pre_publish(Op, Key, Value, TTL, State) ->
     Rev = {State#state.counter + 1, node()},
     case
@@ -275,10 +284,11 @@ pre_publish(Op, Key, Value, TTL, State) ->
         Error ->
             Error
     end.
-
 publish_capacity(Rows) ->
-    case imboy_cache_sync:status() of
-        ready ->
+    case {imboy_cache_sync:status(), imboy_cache_sync:replication_capable()} of
+        {ready, false} ->
+            {error, incompatible_peers};
+        {ready, true} ->
             case imboy_cache_sync:queue_depth() > imboy_cache_policy:high_watermark() of
                 true ->
                     {error, overloaded};
@@ -288,13 +298,11 @@ publish_capacity(Rows) ->
                         false -> {error, index_full}
                     end
             end;
-        Status ->
+        {Status, _} ->
             {error, {not_ready, Status}}
     end.
-
 index_replicate(Key) ->
     store_metadata({{rindex, Key}, erlang:system_time(millisecond)}).
-
 %% 所有受管 metadata 写入复用同一计数；平常写路径不扫描整表。
 prospective_rows(Op, Key, Rev, ExpiresAt) ->
     prospective_rows(Op, Key, Rev, ExpiresAt, imboy_cache_sync_proto:epoch()).
@@ -302,13 +310,11 @@ prospective_rows(Op, Key, Rev, ExpiresAt, Epoch) ->
     prospective_rows(Op, Key, Rev, ExpiresAt, Epoch, unknown).
 prospective_rows(Op, Key, Rev, ExpiresAt, Epoch, Origin) ->
     imboy_cache_policy:prospective_revision_rows(Op, Key, Rev, ExpiresAt, Epoch, Origin).
-
 compare_entry(Key, Rev, Epoch) ->
     case Epoch < required_epoch() of
         true -> older;
         false -> compare_stored_entry(Key, Rev, Epoch)
     end.
-
 compare_stored_entry(Key, Rev, Epoch) ->
     case ets:lookup(?META_TABLE, {rev, Key}) of
         [] ->
@@ -319,11 +325,9 @@ compare_stored_entry(Key, Rev, Epoch) ->
         [_] ->
             older
     end.
-
 metadata_fits(Rows) ->
     {Count, Bytes, _, _} = projected_usage(Rows),
     Count =< imboy_cache_policy:n_max() andalso Bytes =< imboy_cache_policy:n_max_bytes().
-
 %% 重复行按各预算维度取最大值，覆盖 live/delete 混合及中间写入峰值。
 projected_usage(Rows) ->
     Unique = lists:foldl(
@@ -348,7 +352,6 @@ projected_usage(Rows) ->
         metadata_usage(),
         Unique
     ).
-
 store_revision(Key, Rev, ExpiresAt, Kind) ->
     store_revision(Key, Rev, ExpiresAt, Kind, imboy_cache_sync_proto:epoch()).
 store_revision(Key, Rev, ExpiresAt, Kind, Epoch) ->
@@ -365,7 +368,6 @@ journal_position() ->
         [{_, Position}] -> Position;
         [] -> 0
     end.
-
 %% 在 ETS 内排除全值 journal/发送游标，避免先将大对象复制到调用进程再丢弃。
 metadata_snapshot() ->
     Keep =
@@ -416,7 +418,6 @@ journal_after(Start) when is_integer(Start), Start >= 0 ->
 journal_covers(Start) ->
     {Floor, Last, _, _} = journal_window(),
     is_integer(Start) andalso Start >= Floor andalso Start =< Last.
-
 %% 同步单写者内取连续窗口；作为普通快照页重放，保留版本和绝对期限。
 journal_keys_after(Start) ->
     case journal_after(Start) of
@@ -508,7 +509,6 @@ journal_trim({Floor, Last, Count, Bytes} = Window) ->
 
 journal_abort_senders() ->
     abort_snapshot_senders(journal_entry_unavailable).
-
 %% ETS 内只投影成功候选的 PID/Round，避免复制游标预读值；失败候选不声明覆盖。
 abort_application_coverage(Reason) ->
     Captured = ets:select(?META_TABLE, [
@@ -595,7 +595,6 @@ add_usage({A, B, C, D}, {E, F, G, H}) -> {A + E, B + F, C + G, D + H}.
 subtract_usage({A, B, C, D}, {E, F, G, H}) -> {A - E, B - F, C - G, D - H}.
 maximum_usage({A, B, C, D}, {E, F, G, H}) ->
     {erlang:max(A, E), erlang:max(B, F), erlang:max(C, G), erlang:max(D, H)}.
-
 %% @doc 推进 epoch，清理低代副本，保留已接收的当前或未来代版本。
 -spec controlled_cold_recovery() -> ok.
 controlled_cold_recovery() ->
@@ -606,7 +605,6 @@ controlled_cold_recovery(MinimumEpoch) when is_integer(MinimumEpoch), MinimumEpo
     ok = adopt_epoch(Target),
     imboy_cache_sync:incr(cold_recovery_total),
     ok.
-
 %% 仅在恢复读写屏障内调用；代次不得回退或低于已观察数据下限。
 adopt_epoch(Target) ->
     true = Target >= required_epoch(),
@@ -630,7 +628,6 @@ adopt_epoch(Target) ->
     ],
     ok = recalibrate_rindex_count(),
     ok.
-
 %% 仅清理受管 live 副本值；恢复中保留 revision/tombstone 抵御旧事件。
 flush_replicas() ->
     ok = imboy_cache_sync_proto:reset_sequence_coverage(),
@@ -639,10 +636,7 @@ flush_replicas() ->
     ]),
     lists:foreach(fun(K) -> depcache:flush(K, ?DEPCACHE_SERVER) end, Keys),
     ok.
-
-%% ===================================================================
 %% C05 invalidate 缺口补偿
-%% ===================================================================
 
 %% legacy flush 保留旧帧；随后同一发送者发布序列收据，新节点记账，旧节点忽略。
 apply_legacy_sequence(
@@ -684,13 +678,12 @@ apply_legacy_sequence(
                     case detect_gap({Origin, Boot}, Seq, legacy_sequence) of
                         gap when State1 =/= State -> State1;
                         gap -> imboy_cache_sync_recover:start_gap_recovery(State1);
-                        ok -> State1
+                        ok -> imboy_cache_sync_recover:abort_round(snapshot_invalidated, State1)
                     end;
                 _ ->
                     State1
             end
     end.
-
 %% 序列协议状态仍由同步 actor 单写，协议模块集中维护。
 recover_unknown_incarnation(#state{status = ready} = State) ->
     imboy_cache_sync_recover:start_gap_recovery(State#state{identity_recovery = true});
@@ -701,7 +694,6 @@ reconcile_sequence(Origin, Boot, Seq) ->
     imboy_cache_sync_proto:reconcile_sequence(Origin, Boot, Seq).
 detect_gap(Origin, Seq, Key) ->
     imboy_cache_sync_proto:detect_gap(Origin, Seq, Key).
-
 %% 缺口内容未知时推进统一栅栏，普通本地键不受影响。
 -spec gap_compensation_key(term()) -> ok.
 gap_compensation_key(_Key) ->
@@ -709,6 +701,14 @@ gap_compensation_key(_Key) ->
 
 snapshot_budget_error(WireEntries, Epoch) ->
     Entries = [imboy_cache_policy:snapshot_entry_body(E) || E <- WireEntries],
+    case
+        lists:any(fun(E) -> imboy_cache_sync_coverage:snapshot_conflict(E, Epoch) end, WireEntries)
+    of
+        true -> snapshot_content_conflict;
+        false -> snapshot_expiry_budget_error(WireEntries, Entries, Epoch)
+    end.
+
+snapshot_expiry_budget_error(WireEntries, Entries, Epoch) ->
     case lists:any(fun expired_live_outside_window/1, Entries) of
         true ->
             expired_floor_window_exceeded;

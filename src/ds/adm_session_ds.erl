@@ -45,19 +45,24 @@
 -spec current_epoch(integer()) -> {ok, non_neg_integer()} | {error, unavailable}.
 current_epoch(AdmId) when is_integer(AdmId), AdmId > 0 ->
     Key = {adm_session_epoch, AdmId},
-    Cached = safe_cache_get(Key),
-    case Cached of
-        {ok, {ok, N}} when is_integer(N), N >= 1 ->
-            {ok, N};
+    Loader = fun() ->
+        case safe_query_epoch(AdmId) of
+            {ok, E} = Result when E >= 1 -> Result;
+            Error -> imboy_cache:uncached(Error)
+        end
+    end,
+    %% 权威读取在 memo 生产代次内，提交后失效可拒绝旧 loader 的结果。
+    Result =
+        try
+            imboy_cache:memo(Loader, Key, ?EPOCH_MEMO_SEC)
+        catch
+            _:_ -> safe_query_epoch(AdmId)
+        end,
+    case Result of
+        {ok, E} when is_integer(E), E >= 1 -> {ok, E};
         _ ->
-            case safe_query_epoch(AdmId) of
-                {ok, E} when is_integer(E), E >= 1 ->
-                    safe_cache_memo(Key, E),
-                    {ok, E};
-                _ ->
-                    ok = ?WARN_LOG({adm_session_epoch_unavailable, AdmId, unavailable}),
-                    {error, unavailable}
-            end
+            ok = ?WARN_LOG({adm_session_epoch_unavailable, AdmId, unavailable}),
+            {error, unavailable}
     end;
 current_epoch(_) ->
     {error, unavailable}.
@@ -68,11 +73,12 @@ bump(AdmId) ->
     case
         elib_pg:with_tx(fun(Conn) ->
             {ok, _, _, [{_E}]} = epgsql:equery(Conn, ?UPSERT_SQL, [AdmId]),
-            ok
+            elib_pg:after_commit(
+                Conn, {adm_session_epoch, AdmId}, fun() -> evict(AdmId) end
+            )
         end)
     of
         ok ->
-            evict(AdmId),
             ok;
         {rollback, Reason} ->
             {error, Reason};
@@ -209,22 +215,6 @@ verify_claims(Uid, Epoch, ExpTs) ->
 -spec claims(binary(), non_neg_integer(), integer()) -> binary().
 claims(UidBin, Epoch, ExpTs) ->
     <<UidBin/binary, ":", (ec_cnv:to_binary(Epoch))/binary, ":", (ec_cnv:to_binary(ExpTs))/binary>>.
-
--spec safe_cache_get(term()) -> term().
-safe_cache_get(Key) ->
-    try imboy_cache:get(Key) of
-        Other -> Other
-    catch
-        _:_ -> undefined
-    end.
-
--spec safe_cache_memo(term(), non_neg_integer()) -> ok.
-safe_cache_memo(Key, E) ->
-    try imboy_cache:memo(fun() -> {ok, E} end, Key, ?EPOCH_MEMO_SEC) of
-        _ -> ok
-    catch
-        _:_ -> ok
-    end.
 
 -spec safe_query_epoch(integer()) -> {ok, non_neg_integer()} | {error, unavailable}.
 safe_query_epoch(AdmId) ->

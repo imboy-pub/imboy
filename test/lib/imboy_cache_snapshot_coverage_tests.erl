@@ -2,6 +2,52 @@
 -include_lib("eunit/include/eunit.hrl").
 -include("imboy_cache_sync_state.hrl").
 
+fresh_peer_prefix_zero_is_not_an_empty_content_certificate_test() ->
+    fixture(fun(Source, _, _) ->
+        ?assertEqual(
+            {ok, [{Source, <<7:128>>, 0, 0}]},
+            imboy_cache_sync_proto:application_coverage_candidate()
+        ),
+        Empty = {0, crypto:hash(sha256, term_to_binary([]))},
+        ?assertEqual(Empty, imboy_cache_sync_coverage:content_census()),
+        Exp = erlang:system_time(millisecond) + 60000,
+        ets:insert(
+            imboy_cache_meta,
+            imboy_cache_policy:revision_metadata_row(
+                {coverage_wire_test, future}, {7, Source}, Exp, live, 1
+            )
+        ),
+        ?assertMatch({1, _}, imboy_cache_sync_coverage:content_census()),
+        ?assertEqual(
+            Empty, imboy_cache_sync_coverage:source_certificate(0, erlang:system_time(millisecond))
+        )
+    end).
+
+round_census_is_bound_to_exact_pid_boot_epoch_and_first_report_test() ->
+    fixture(fun(_, R, _) ->
+        Empty = {0, crypto:hash(sha256, term_to_binary([]))},
+        Token = maps:get(round, R),
+        Report =
+            {cache_version_report, node(), 0, 0, imboy_cache_sync_proto:config_hash(),
+                imboy_cache_sync_proto:registry_hash(), <<1:128>>, false, self(), 0, Token, Empty},
+        ?assert(imboy_cache_sync_proto:valid_version_report(Report)),
+        Target = imboy_cache_policy:version_report_target(Report),
+        R0 = imboy_cache_sync_snapshot:expect_peer(R, node()),
+        {ok, R1} = imboy_cache_sync_proto:record_origin_target(Target, R0),
+        P = maps:get(node(), maps:get(peers, R1)),
+        ?assert(maps:get(reported_empty, P)),
+        ?assertEqual(self(), maps:get(reported_pid, P)),
+        ?assertMatch(
+            {abort, peer_census_changed, _},
+            imboy_cache_sync_proto:record_origin_target(setelement(6, Target, {1, <<0:256>>}), R1)
+        ),
+        ?assertMatch(
+            {abort, origin_target_round_mismatch, _},
+            imboy_cache_sync_proto:record_origin_target(setelement(5, Target, <<2:96>>), R1)
+        ),
+        ?assertNot(imboy_cache_sync_proto:valid_version_report(setelement(12, Report, {0, <<0>>})))
+    end).
+
 coverage_cut_is_canonical_bounded_and_epoch_bound_test() ->
     fixture(fun(_, _, Base) ->
         A = {a_coverage@synthetic, <<8:128>>, 0, 7},
@@ -65,11 +111,14 @@ coverage_cut_is_immutable_and_cannot_register_foreign_identity_test() ->
     fixture(fun(Source, R, Base) ->
         Foreign = coverage_other@synthetic,
         Candidate = {ok, [{Foreign, <<9:128>>, 0, 7}]},
-        F = erlang:append_element(Base, Candidate),
+        F = erlang:append_element(
+            erlang:append_element(Base, Candidate),
+            {0, crypto:hash(sha256, term_to_binary([]))}
+        ),
         {ok, Next} = imboy_cache_sync_recover:accept_source_cut(F, R),
         ?assertEqual(F, stored_cut(Next, Source)),
         ?assertEqual({ok, Next}, imboy_cache_sync_recover:accept_source_cut(F, Next)),
-        Changed = erlang:append_element(Base, {ok, [{Foreign, <<9:128>>, 0, 8}]}),
+        Changed = setelement(9, F, {ok, [{Foreign, <<9:128>>, 0, 8}]}),
         ?assertMatch(
             {abort, conflicting_source_cut, _},
             imboy_cache_sync_recover:accept_source_cut(Changed, Next)
@@ -85,6 +134,16 @@ coverage_cut_is_immutable_and_cannot_register_foreign_identity_test() ->
         ?assertEqual(
             [{{snapshot_seq_floor, {Source, <<7:128>>}}, 0}],
             ets:lookup(imboy_cache_meta, {snapshot_seq_floor, {Source, <<7:128>>}})
+        )
+    end).
+
+source_cut_cannot_survive_sender_leaving_current_membership_test() ->
+    fixture(fun(_, R, Base) ->
+        F = erlang:append_element(Base, {ok, []}),
+        meck:expect(imboy_cache_sync, syn_scope_members, 0, fun() -> [] end),
+        ?assertMatch(
+            {abort, source_cut_identity_changed, _},
+            imboy_cache_sync_recover:accept_source_cut(F, R)
         )
     end).
 
@@ -160,8 +219,14 @@ sender_uses_captured_coverage_after_prefix_advances_test() ->
         after 1000 -> error(missing_coverage_watermark)
         end,
         receive
-            {cache_snapshot_cut, _, Round, <<1:128>>, 0, 0, _, _, Candidate} ->
-                ?assertEqual({ok, [{Source, <<7:128>>, 0, 7}]}, Candidate)
+            {cache_snapshot_cut, _, Round, <<1:128>>, 0, 0, _, _, Candidate, Certificate} ->
+                ?assertEqual({ok, [{Source, <<7:128>>, 0, 7}]}, Candidate),
+                ?assertEqual(
+                    imboy_cache_sync_coverage:source_certificate(
+                        0, erlang:system_time(millisecond)
+                    ),
+                    Certificate
+                )
         after 1000 -> error(missing_captured_coverage_cut)
         end,
         receive
@@ -242,7 +307,8 @@ manifest_summary_binds_payload_origin_kind_and_deadline_test() ->
     Entry = {{coverage_wire_test, manifest}, value, Exp, {7, node()}},
     Origin = {node(), <<7:128>>, 3},
     Wire = {with_origin, Origin, Entry},
-    {live, K, Rev, Exp, Origin, Hash} = imboy_cache_policy:snapshot_manifest_entry(Wire),
+    {live, K, Rev, Exp, Origin, Hash, BodyHash} = imboy_cache_policy:snapshot_manifest_entry(Wire),
+    ?assertEqual(crypto:hash(sha256, term_to_binary(value)), BodyHash),
     ?assertEqual(element(1, Entry), K),
     ?assertEqual(element(4, Entry), Rev),
     ?assertEqual(crypto:hash(sha256, term_to_binary(Wire)), Hash),
@@ -269,8 +335,56 @@ manifest_summary_binds_payload_origin_kind_and_deadline_test() ->
      || Kind <- [deleted, expired, unavailable]
     ].
 
+proof_preparation_crossing_deadline_cannot_publish_floor_or_ready_test() ->
+    fixture(fun(Source, R, Base) ->
+        Cut = erlang:append_element(
+            erlang:append_element(Base, {ok, []}),
+            {0, crypto:hash(sha256, term_to_binary([]))}
+        ),
+        {ok, R0} = imboy_cache_sync_recover:accept_source_cut(Cut, R),
+        {ok, Complete} = imboy_cache_sync_snapshot:handle_done(
+            Source, maps:get(round, R), 0, 0, R0
+        ),
+        meck:new(imboy_cache_sync_proto, [passthrough, no_link]),
+        meck:expect(imboy_cache_sync_proto, peer_epoch, 1, fun(_) ->
+            timer:sleep(50),
+            0
+        end),
+        try
+            Tight = Complete#{deadline_ms := erlang:system_time(millisecond) + 30},
+            ?assertMatch({error, _}, imboy_cache_sync_proto:commit_snapshot_floors(Tight)),
+            ?assertEqual([], ets:match_object(imboy_cache_meta, {{snapshot_seq_floor, '_'}, '_'})),
+            ?assertNotEqual([{status, ready}], ets:lookup(imboy_cache_meta, status))
+        after
+            meck:unload(imboy_cache_sync_proto)
+        end
+    end).
+
+certified_cut_only_stitches_contiguous_successful_delta_receipts_test() ->
+    fixture(fun(Source, R, Base) ->
+        Boot = <<7:128>>,
+        Cut = erlang:append_element(
+            erlang:append_element(setelement(6, Base, 7), {ok, []}),
+            {0, crypto:hash(sha256, term_to_binary([]))}
+        ),
+        P = maps:get(Source, maps:get(peers, R)),
+        R0 = R#{
+            peers := #{Source => P#{source_cut => Cut}},
+            delta_receipts => #{{Source, Boot, 0, 9} => true}
+        },
+        ets:insert(imboy_cache_meta, {{seq, {Source, Boot}}, 9}),
+        ?assertError(
+            incremental_content_gap, imboy_cache_sync_coverage:verify_current_prefixes(R0)
+        ),
+        R1 = R0#{delta_receipts := #{{Source, Boot, 0, 8} => true, {Source, Boot, 0, 9} => true}},
+        ?assertEqual(ok, imboy_cache_sync_coverage:verify_current_prefixes(R1)),
+        ?assertEqual(#{{Source, Boot} => 9}, imboy_cache_sync_coverage:certified_prefixes(R1))
+    end).
+
 manifest_success_and_rejected_pages_do_not_confuse_receipts_test() ->
     fixture(fun(Source, R, _) ->
+        {ok, Cache} = depcache:start_link(imboy_cache, #{memory_max => 64}),
+        unlink(Cache),
         meck:new(depcache, [passthrough, no_link]),
         meck:expect(depcache, set, 5, fun(_, _, _, _, _) -> ok end),
         meck:expect(depcache, get, 2, fun(_, _) -> {ok, value} end),
@@ -322,6 +436,7 @@ manifest_success_and_rejected_pages_do_not_confuse_receipts_test() ->
             ?assertEqual(LimitItems, maps:get(manifest_items, ExactNext)),
             ?assertEqual(LimitBytes, maps:get(manifest_bytes, ExactNext))
         after
+            gen_server:stop(Cache),
             meck:unload(depcache)
         end
     end).
@@ -396,12 +511,23 @@ fixture(Fun) ->
     application:set_env(imboy, cache_replication, #{whitelist => [coverage_wire_test]}),
     application:set_env(imboy, cache_registry_overrides, #{coverage_wire_test => {replicate, false}}),
     R0 = imboy_cache_sync_snapshot:new_round(0, erlang:system_time(millisecond) + 60000),
-    R = imboy_cache_sync_snapshot:mark_requested(
+    R1 = imboy_cache_sync_snapshot:mark_requested(
         imboy_cache_sync_snapshot:authorize_peer(
             imboy_cache_sync_snapshot:expect_peer(R0, Source), Source
         ),
         Source
     ),
+    Peers = maps:get(peers, R1),
+    Peer = maps:get(Source, Peers),
+    R = R1#{
+        cohort_epoch => 0,
+        retained_obligations := [],
+        peers := Peers#{
+            Source := Peer#{source_pid => self(), origin_target => {Source, <<7:128>>, 0, 0}}
+        }
+    },
+    meck:new(imboy_cache_sync, [passthrough, no_link]),
+    meck:expect(imboy_cache_sync, syn_scope_members, 0, fun() -> [self()] end),
     Base =
         {cache_snapshot_cut, Source, maps:get(round, R), <<7:128>>, 0, 0,
             imboy_cache_sync_proto:config_hash(), imboy_cache_sync_proto:registry_hash()},
@@ -409,12 +535,14 @@ fixture(Fun) ->
         Fun(Source, R, Base)
     after
         drain(),
+        meck:unload(imboy_cache_sync),
         ets:delete(imboy_cache_meta),
         restore(cache_replication, OldCfg),
         restore(cache_registry_overrides, OldRegistry)
     end.
 drain() ->
     receive
+        {cache_snapshot_cut, _, _, _, _, _, _, _, _, _} -> drain();
         {cache_snapshot_page, _, _, _, _, _, _} -> drain();
         {cache_snapshot_cut, _, _, _, _, _, _, _, _} -> drain();
         {cache_invalidation_watermark, _, _, _, _, _} -> drain();

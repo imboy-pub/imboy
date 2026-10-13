@@ -18,7 +18,8 @@ subscribe_increments_counter_when_state_changes_test_() ->
             ]},
             writable_guard_mock(),
             {elib_pg, [
-                {'with_tx', 1, fun(Fun) -> Fun(fake_conn) end},
+                {'with_tx', 1, fun commit_cache_tx/1},
+                {'after_commit', 3, fun record_cache_commit/3},
                 %% discussion 访问锁（791b8817）：无 discussion 绑定语义 → 放行
                 {'query', 3, fun
                     (fake_conn, <<"LOCK TABLE public.channel", _/binary>>, []) ->
@@ -57,7 +58,8 @@ subscribe_is_idempotent_when_already_active_test_() ->
             ]},
             writable_guard_mock(),
             {elib_pg, [
-                {'with_tx', 1, fun(Fun) -> Fun(fake_conn) end},
+                {'with_tx', 1, fun commit_cache_tx/1},
+                {'after_commit', 3, fun record_cache_commit/3},
                 %% discussion 访问锁（791b8817）：无 discussion 绑定语义 → 放行
                 {'query', 3, fun
                     (fake_conn, <<"LOCK TABLE public.channel", _/binary>>, []) ->
@@ -108,7 +110,8 @@ unsubscribe_decrements_counter_when_state_changes_test_() ->
                 end}
             ]},
             {elib_pg, [
-                {'with_tx', 1, fun(Fun) -> Fun(fake_conn) end},
+                {'with_tx', 1, fun commit_cache_tx/1},
+                {'after_commit', 3, fun record_cache_commit/3},
                 %% discussion 访问锁（791b8817）：无 discussion 绑定语义 → 放行
                 {'query', 3, fun
                     (fake_conn, <<"LOCK TABLE public.channel", _/binary>>, []) ->
@@ -160,7 +163,8 @@ unsubscribe_is_idempotent_when_already_inactive_test_() ->
                 end}
             ]},
             {elib_pg, [
-                {'with_tx', 1, fun(Fun) -> Fun(fake_conn) end},
+                {'with_tx', 1, fun commit_cache_tx/1},
+                {'after_commit', 3, fun record_cache_commit/3},
                 %% discussion 访问锁（791b8817）：无 discussion 绑定语义 → 放行
                 {'query', 3, fun
                     (fake_conn, <<"LOCK TABLE public.channel", _/binary>>, []) ->
@@ -209,7 +213,8 @@ create_channel_subscribes_creator_in_tx_test_() ->
                 {'add', 2, fun(_Conn, _AdminData) -> {ok, 1} end}
             ]},
             {elib_pg, [
-                {'with_tx', 1, fun(Fun) -> Fun(fake_conn) end},
+                {'with_tx', 1, fun commit_cache_tx/1},
+                {'after_commit', 3, fun record_cache_commit/3},
                 {'query', 3, fun
                     (fake_conn, <<"LOCK TABLE public.channel", _/binary>>, []) ->
                         {ok, []};
@@ -571,3 +576,18 @@ delete_reaction_retries_once_when_pool_is_temporarily_empty_test_() ->
             ?assertEqual(2, get(reaction_delete_attempt))
         end
     ).
+
+%% 仅模拟业务提交后回调接线；实际 COMMIT/ROLLBACK 由专项队列测试证明。
+commit_cache_tx(Fun) ->
+    put(channel_test_commit_actions, []),
+    try
+        Result = Fun(fake_conn),
+        Actions = erase(channel_test_commit_actions),
+        [Action() || Action <- lists:reverse(Actions)],
+        Result
+    after
+        erase(channel_test_commit_actions)
+    end.
+record_cache_commit(_Conn, _Id, Action) ->
+    put(channel_test_commit_actions, [Action | get(channel_test_commit_actions)]),
+    ok.

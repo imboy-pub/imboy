@@ -991,7 +991,8 @@ c04_page_gap_and_digest_mismatch_abort_test() ->
         ),
         Peer
     ),
-    DigestBad = Digest bxor 16#deadbeef,
+    <<First, Rest/binary>> = Digest,
+    DigestBad = <<(First bxor 1), Rest/binary>>,
     {abort, page_digest_mismatch, _} = imboy_cache_sync_snapshot:handle_page(
         Peer, maps:get(round, St1b), 1, Entries, DigestBad, false, St1b
     ).

@@ -65,7 +65,7 @@ confirm_friend(false, FromID, ToID, Remark, Setting, Tag, NowTs) ->
             ok;
         {error, Reason} ->
             ?ERROR_LOG({friend_upsert_failed, FromID, ToID, Reason}),
-            ok
+            erlang:error(friend_write_failed)
     end.
 
 %% @doc 插入 pending 好友申请行（status=0，单向 from→to）。
@@ -87,7 +87,7 @@ insert_pending(FromID, ToID, Setting, NowTs) ->
             ok;
         {error, Reason} ->
             ?ERROR_LOG({pending_insert_failed, FromID, ToID, Reason}),
-            ok
+            erlang:error(friend_write_failed)
     end.
 
 %% @doc 是否存在 from→to 的 pending(status=0) 申请行。
@@ -113,8 +113,10 @@ delete_pending(FromID, ToID) ->
         Tb/binary,
         " WHERE from_user_id = $1 AND to_user_id = $2 AND status = 0"
     >>,
-    _ = elib_pg:query(Sql, [FromID, ToID]),
-    ok.
+    case elib_pg:query(Sql, [FromID, ToID]) of
+        {ok, _} -> ok;
+        {error, _} -> erlang:error(friend_write_failed)
+    end.
 
 %% @doc 查询好友关系的字段值（单字段）
 %% @param FromID 发起好友关系的用户ID

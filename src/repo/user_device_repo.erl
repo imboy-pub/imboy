@@ -152,8 +152,10 @@ is_active(Uid, DID) ->
 delete(Uid, DID) ->
     Tb = tablename(),
     Sql = <<"DELETE FROM ", Tb/binary, " WHERE status = 1 AND user_id = $1 AND device_id = $2">>,
-    _ = elib_pg:execute(Sql, [Uid, DID]),
-    ok.
+    case elib_pg:execute(Sql, [Uid, DID]) of
+        {ok, _} -> ok;
+        {error, _} -> erlang:error(device_delete_failed)
+    end.
 
 %% @doc 设备身份轮换门 + 版本事件（C01，E2EE 计划 run-20261003-094804）。
 %%

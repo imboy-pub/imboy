@@ -22,6 +22,7 @@
 %%%
 %%% 竞态条件防护：
 %%% - record_failure/2 使用 gen_server + ETS 保证原子操作
+%%% - check_ip_rate_limit/1 复用同一 gen_server 串行本地缓存计数
 %%% - 即使在高并发场景下也能正确限制登录尝试次数
 %%%===================================================================
 
@@ -174,18 +175,7 @@ cache_key(Identifier, Ip) ->
 check_ip_rate_limit(Ip) when
     is_binary(Ip), byte_size(Ip) > 0
 ->
-    Key = ?IP_RATE_LIMIT_CACHE_KEY(Ip),
-    MaxIpAttempts = get_max_ip_attempts_per_hour(),
-    case imboy_cache:get(Key) of
-        undefined ->
-            imboy_cache:set(Key, 1, 3600),
-            {ok, 1};
-        {ok, Count} when Count >= MaxIpAttempts ->
-            {error, rate_limited};
-        {ok, Count} ->
-            imboy_cache:set(Key, Count + 1, 3600),
-            {ok, Count + 1}
-    end;
+    gen_server:call(?MODULE, {check_ip_rate_limit, Ip});
 check_ip_rate_limit(Ip) ->
     %% 空 IP 是本地直连/无反代头的常态（本地开发实测每次登录失败都触发），
     %% 降级为 warning 避免 error 级噪声；限流语义不变（无法按 IP 限流）。
@@ -374,6 +364,22 @@ init([]) ->
     {ok, #{}}.
 
 %% @private
+%% 复用现有账号计数 actor，串行整个本地读改写；成功续期，拒绝不续期。
+handle_call({check_ip_rate_limit, Ip}, _From, State) ->
+    Key = ?IP_RATE_LIMIT_CACHE_KEY(Ip),
+    MaxIpAttempts = get_max_ip_attempts_per_hour(),
+    Result =
+        case imboy_cache:get(Key) of
+            undefined ->
+                imboy_cache:set(Key, 1, 3600),
+                {ok, 1};
+            {ok, Count} when Count >= MaxIpAttempts ->
+                {error, rate_limited};
+            {ok, Count} ->
+                imboy_cache:set(Key, Count + 1, 3600),
+                {ok, Count + 1}
+        end,
+    {reply, Result, State};
 handle_call({record_failure, Key, Identifier, Ip}, _From, State) ->
     Now = elib_dt:now(),
     MaxAttempts = get_max_attempts(),

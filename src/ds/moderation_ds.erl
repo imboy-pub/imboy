@@ -27,11 +27,23 @@ sensitive_word_page(Page, Size, Filters) ->
 -spec sensitive_word_create(binary(), binary(), binary()) ->
     {ok, created, integer()} | {ok, skipped} | {error, term()}.
 sensitive_word_create(Word, Category, Severity) ->
-    sensitive_word_repo:insert(Word, Category, Severity).
+    case sensitive_word_repo:insert(Word, Category, Severity) of
+        {ok, created, _} = Result ->
+            ok = imboy_cache:invalidate({moderation_sensitive_words}),
+            Result;
+        Other ->
+            Other
+    end.
 
 -spec sensitive_word_delete(integer()) -> {ok, non_neg_integer()} | {error, term()}.
 sensitive_word_delete(Id) ->
-    sensitive_word_repo:delete_by_id(Id).
+    case sensitive_word_repo:delete_by_id(Id) of
+        {ok, Count} = Result when Count > 0 ->
+            ok = imboy_cache:invalidate({moderation_sensitive_words}),
+            Result;
+        Other ->
+            Other
+    end.
 
 %% ===================================================================
 %% 复审队列

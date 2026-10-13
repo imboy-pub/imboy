@@ -118,15 +118,18 @@ remove(Uid, DeniedUid) ->
 %% @example user_denylist_repo:in_denylist(4, 1).
 -spec in_denylist(integer(), integer()) -> integer().
 in_denylist(Uid, DeniedUid) ->
-    % user_id 和 denied_user_id 是 bigint 类型，需要传入 integer
-    % use index uk_UserId_DeniedUserId
-    elib_pg:pluck_value(
-        tablename(),
-        <<"count(*) as count">>,
-        #{user_id => Uid, denied_user_id => DeniedUid},
-        #{},
-        0
-    ).
+    case
+        elib_pg:pluck(
+            tablename(),
+            <<"count(*) as count">>,
+            #{user_id => Uid, denied_user_id => DeniedUid},
+            #{}
+        )
+    of
+        {ok, Count} when is_integer(Count), Count >= 0 -> Count;
+        {error, _} -> erlang:error(denylist_read_unavailable);
+        _ -> erlang:error(denylist_read_unavailable)
+    end.
 
 %% ===================================================================
 %% Internal Function Definitions

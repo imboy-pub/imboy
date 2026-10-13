@@ -115,6 +115,7 @@ authorize_group_history_session_delegates_attested_session_test_() ->
 member_uids_reads_repo_and_populates_cache_on_miss_test_() ->
     ?WITH_MECKS(
         [
+            {micro_community_access_repo, [{'filter_uids', 2, fun(_, Uids) -> {ok, Uids} end}]},
             {imboy_cache, [
                 {'get', 1, fun({group, 1}) -> undefined end},
                 {'set', 3, fun({group, 1}, [11, 12], Ttl) ->
@@ -137,10 +138,10 @@ member_uids_reads_repo_and_populates_cache_on_miss_test_() ->
     ).
 
 member_uids_uses_cache_on_hit_test_() ->
-    ?WITH_MECK(
-        imboy_cache,
+    ?WITH_MECKS(
         [
-            {'get', 1, fun({group, 2}) -> {ok, [21, 22]} end}
+            {imboy_cache, [{'get', 1, fun({group, 2}) -> {ok, [21, 22]} end}]},
+            {micro_community_access_repo, [{'filter_uids', 2, fun(_, Uids) -> {ok, Uids} end}]}
         ],
         fun() ->
             ?assertEqual([21, 22], group_ds:member_uids(2))
@@ -254,7 +255,7 @@ dissolve_flushes_group_cache_test_() ->
     ?WITH_MECK(
         imboy_cache,
         [
-            {'flush', 1, fun({group, 14}) ->
+            {'invalidate', 1, fun({group, 14}) ->
                 ok
             end}
         ],

@@ -56,7 +56,7 @@ page(Scene, Page, Size, Where, _OrderBy) when Page > 0 ->
 %% @param Scene 场景（1 收藏 2 好友）
 %% @param Tag 标签名称
 %% @return ok
--spec delete(integer(), integer(), binary()) -> ok.
+-spec delete(integer(), integer(), binary()) -> ok | {error, term()} | {rollback, term()}.
 delete(Uid, Scene, Tag) ->
     case find_tag_id(Uid, Scene, Tag) of
         {ok, TagId} when TagId > 0 ->
@@ -80,15 +80,15 @@ delete(Uid, Scene, Tag) ->
                 ),
 
                 % 更新相关表的 tag 字段
-                update_tag_in_objects(Conn, Scene, Tag, TagId),
-                ok
-            end),
-
-            % 清理缓存
-            flush_subtitle(TagId),
+                update_tag_in_objects(Conn, Scene, Uid, Tag, TagId),
+                elib_pg:after_commit(
+                    Conn, {tag_subtitle, TagId}, fun() -> flush_subtitle(TagId) end
+                )
+            end);
+        {ok, 0} ->
             ok;
-        _ ->
-            ok
+        {error, _} = Error ->
+            Error
     end.
 
 %% @doc 修改标签名称
@@ -98,7 +98,8 @@ delete(Uid, Scene, Tag) ->
 %% @param TagId 标签ID
 %% @param TagName 新标签名称
 %% @return ok | binary()
--spec change_name(integer(), integer(), integer(), integer(), binary()) -> ok | binary().
+-spec change_name(integer(), integer(), integer(), integer(), binary()) ->
+    ok | binary() | {error, term()} | {rollback, term()}.
 change_name(Count, _Uid, _Scene, _TagId, TagName) when Count > 0 ->
     <<TagName/binary, " 已存在"/utf8>>;
 change_name(0, Uid, Scene, TagId, TagName) ->
@@ -117,7 +118,7 @@ change_name(0, Uid, Scene, TagId, TagName) ->
                     {ok, _} ->
                         ok;
                     {error, Reason} ->
-                        ?ERROR_LOG([user_tag_update_failed, TagId, TagName, Uid, Reason]);
+                        throw({abort_tx, Reason});
                     {_Count, _} ->
                         ok
                 end,
@@ -134,14 +135,14 @@ change_name(0, Uid, Scene, TagId, TagName) ->
                          || Row <- Rows
                         ],
                         ok
-                end
+                end,
+                elib_pg:after_commit(
+                    Conn, {tag_subtitle, TagId}, fun() -> flush_subtitle(TagId) end
+                )
             end);
-        _ ->
-            ok
-    end,
-    % 清理缓存
-    flush_subtitle(TagId),
-    ok.
+        {error, _} = Error ->
+            Error
+    end.
 
 %% @doc 添加标签
 %% @param Uid 用户ID
@@ -162,24 +163,28 @@ add(Uid, Scene, Tag) ->
 %% @param Scene 场景
 %% @param Tag 标签名称
 %% @return {ok, TagId} | {ok, 0} (不存在)
--spec find_tag_id(integer(), integer(), binary()) -> {ok, integer()}.
+-spec find_tag_id(integer(), integer(), binary()) -> {ok, integer()} | {error, term()}.
 find_tag_id(Uid, Scene, Tag) ->
-    Tb = user_tag_repo:tablename(),
-    TagId = elib_pg:pluck_value(
-        Tb,
-        <<"id">>,
-        #{creator_user_id => Uid, scene => Scene, name => Tag},
-        #{},
-        0
-    ),
-    {ok, TagId}.
+    case
+        elib_pg:pluck(
+            user_tag_repo:tablename(),
+            <<"id">>,
+            #{creator_user_id => Uid, scene => Scene, name => Tag},
+            #{},
+            0
+        )
+    of
+        {ok, Id} when is_integer(Id), Id >= 0 -> {ok, Id};
+        {error, _} = Error -> Error;
+        _ -> {error, tag_lookup_invalid}
+    end.
 
 %% @doc 获取标签关联的对象列表
 %% @param Scene 场景
 %% @param Uid 用户ID
 %% @param TagId 标签ID
 %% @return {ok, Rows}
--spec get_relation_objects(integer(), integer(), integer()) -> {ok, list()}.
+-spec get_relation_objects(integer(), integer(), integer()) -> {ok, list()} | {error, term()}.
 get_relation_objects(Scene, Uid, TagId) ->
     Sql = <<
         "SELECT object_id FROM public.user_tag_relation\n"
@@ -187,7 +192,7 @@ get_relation_objects(Scene, Uid, TagId) ->
     >>,
     case elib_pg:query(Sql, [Scene, Uid, TagId]) of
         {ok, Rows} -> {ok, Rows};
-        {error, _} -> {ok, []}
+        {error, _} = Error -> Error
     end.
 
 %% @doc 修改场景标签
@@ -313,12 +318,12 @@ add_internal(Uid, Scene, Tag) ->
 %% @param Tag 标签名称
 %% @param TagId 标签ID
 %% @return ok
--spec update_tag_in_objects(pid(), integer(), binary(), integer()) -> ok.
-update_tag_in_objects(Conn, Scene, Tag, _TagId) ->
-    UpTb =
+-spec update_tag_in_objects(pid(), integer(), integer(), binary(), integer()) -> ok.
+update_tag_in_objects(Conn, Scene, Uid, Tag, _TagId) ->
+    {UpTb, OwnerColumn} =
         case Scene of
-            1 -> elib_pg_sql:public_tablename(<<"user_collect">>);
-            2 -> elib_pg_sql:public_tablename(<<"user_friend">>)
+            1 -> {elib_pg_sql:public_tablename(<<"user_collect">>), <<"user_id">>};
+            2 -> {elib_pg_sql:public_tablename(<<"user_friend">>), <<"from_user_id">>}
         end,
     % tag 字段为逗号分隔、每项带尾逗号（"a,b,"）。旧实现 replace(tag, 'name,%', '')
     % 是字面替换，'%' 并非通配 → 尾标签（"name," 无后继逗号）删不掉；
@@ -336,10 +341,12 @@ update_tag_in_objects(Conn, Scene, Tag, _TagId) ->
     UpSql = <<
         "UPDATE ",
         UpTb/binary,
-        " SET tag = regexp_replace(tag, $1, $2, 'g') WHERE tag ~ $3"
+        " SET tag = regexp_replace(tag, $1, $2, 'g') WHERE tag ~ $3 AND ",
+        OwnerColumn/binary,
+        " = $4"
     >>,
     TagPattern = <<"(^|,)", Tag/binary, ",">>,
-    {ok, _} = elib_pg:execute(Conn, UpSql, [TagPattern, <<"\\1">>, TagPattern]),
+    {ok, _} = elib_pg:execute(Conn, UpSql, [TagPattern, <<"\\1">>, TagPattern, Uid]),
     ok.
 
 %% @doc 合并标签

@@ -83,6 +83,11 @@ create_post(AuthorUid, Data) ->
                                 )
                             of
                                 {ok, _} ->
+                                    ok = elib_pg:after_commit(
+                                        Conn,
+                                        {moment_acl, PostId},
+                                        fun() -> imboy_cache:invalidate({moment_acl, PostId}) end
+                                    ),
                                     {ok, PostId};
                                 {error, Reason2} ->
                                     throw({abort_tx, Reason2})
@@ -372,14 +377,14 @@ report_post(UserId, PostId, Reason, Desc) ->
             {error, not_found}
     end.
 
--spec list_post_acl(integer()) -> {[integer()], [integer()]}.
+-spec list_post_acl(integer()) -> {[integer()], [integer()]} | {error, term()}.
 list_post_acl(PostId) ->
     Key = {moment_acl, PostId},
     Fun = fun() ->
-        {
-            moment_post_acl_repo:list_uids_by_post(PostId, 1),
-            moment_post_acl_repo:list_uids_by_post(PostId, 2)
-        }
+        case moment_post_acl_repo:list_for_post(PostId) of
+            {ok, Acl} -> Acl;
+            {error, _} = Error -> imboy_cache:uncached(Error)
+        end
     end,
     imboy_cache:memo(Fun, Key, 300).
 
@@ -392,16 +397,20 @@ can_view_by_visibility(_ViewerUid, _AuthorUid, 2, _Post) ->
     false;
 can_view_by_visibility(ViewerUid, _AuthorUid, 3, Post) ->
     PostId = maps:get(<<"id">>, Post, 0),
-    {AllowUids, _} = list_post_acl(PostId),
-    lists:member(ViewerUid, AllowUids);
+    case list_post_acl(PostId) of
+        {AllowUids, _} when is_list(AllowUids) -> lists:member(ViewerUid, AllowUids);
+        {error, _} -> false
+    end;
 can_view_by_visibility(ViewerUid, AuthorUid, 4, Post) ->
     case friend_ds:is_friend(AuthorUid, ViewerUid) of
         false ->
             false;
         true ->
             PostId = maps:get(<<"id">>, Post, 0),
-            {_, DenyUids} = list_post_acl(PostId),
-            not lists:member(ViewerUid, DenyUids)
+            case list_post_acl(PostId) of
+                {_, DenyUids} when is_list(DenyUids) -> not lists:member(ViewerUid, DenyUids);
+                {error, _} -> false
+            end
     end;
 can_view_by_visibility(_ViewerUid, _AuthorUid, _Visibility, _Post) ->
     false.
@@ -440,8 +449,12 @@ normalize_optional_uid(_) ->
 is_denied_between(UidA, UidB) when UidA =< 0; UidB =< 0 ->
     true;
 is_denied_between(UidA, UidB) ->
-    user_denylist_repo:in_denylist(UidA, UidB) > 0 orelse
-        user_denylist_repo:in_denylist(UidB, UidA) > 0.
+    try
+        user_denylist_repo:in_denylist(UidA, UidB) > 0 orelse
+            user_denylist_repo:in_denylist(UidB, UidA) > 0
+    catch
+        error:denylist_read_unavailable -> true
+    end.
 
 -spec maybe_put_location(map(), term()) -> map().
 maybe_put_location(Data, Location) when is_map(Location), map_size(Location) > 0 ->

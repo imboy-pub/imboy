@@ -1,7 +1,22 @@
 -module(cache_sync_metrics_tests).
 -include_lib("eunit/include/eunit.hrl").
+-export([sequence_evidence/0, stopped_sync/0]).
 
-sequence_evidence_is_distinct_and_payload_free_test() ->
+sequence_evidence_is_distinct_and_payload_free_test() -> isolated(sequence_evidence).
+stopped_sync_has_no_fabricated_protocol_identity_test() -> isolated(stopped_sync).
+
+isolated(Function) ->
+    {ok, Peer, _} = peer:start_link(#{
+        connection => standard_io,
+        args => ["+S", "1:1", "+A", "1", "-pz" | code:get_path()]
+    }),
+    try
+        peer:call(Peer, ?MODULE, Function, [])
+    after
+        peer:stop(Peer)
+    end.
+
+sequence_evidence() ->
     ets:new(imboy_cache_meta, [named_table, public, set]),
     Peer = 'metrics_peer@synthetic',
     Boot = <<7:128>>,
@@ -26,6 +41,8 @@ sequence_evidence_is_distinct_and_payload_free_test() ->
         ?assertEqual(1, maps:get({imboy_cache_sync_hash_divergent, #{peer => Peer}}, M)),
         [Info] = [I || {{imboy_cache_sync_protocol_info, I}, 1} <- maps:to_list(M)],
         ?assertEqual(<<"2">>, maps:get(protocol, Info)),
+        ?assertEqual(<<"1">>, maps:get(supported_min, Info)),
+        ?assertEqual(<<"2">>, maps:get(supported_max, Info)),
         ?assertEqual(
             binary:encode_hex(imboy_cache_sync_proto:config_hash(), lowercase),
             maps:get(config_hash, Info)
@@ -76,7 +93,7 @@ assert_json_response_has_protocol_identity() ->
         meck:unload(Modules)
     end.
 
-stopped_sync_has_no_fabricated_protocol_identity_test() ->
+stopped_sync() ->
     M = metrics_handler:cache_sync_metrics(),
     ?assertEqual(-1, maps:get(imboy_cache_sync_status, M)),
     ?assertEqual([], [I || {{imboy_cache_sync_protocol_info, I}, _} <- maps:to_list(M)]).

@@ -591,12 +591,21 @@ sender_budget_rejection_preserves_clock_and_metadata_test() ->
         true = register(imboy_cache_sync, self()),
         State = #state{status = ready, boot_id = <<2:128>>},
         Before = ets:tab2list(?META_TABLE),
-        ?assertEqual(
-            {reply, {error, index_full}, State},
-            imboy_cache_sync:handle_call(
-                {publish_set, {cache_v2_test_rep, key}, value, 60}, {self(), ref}, State
+        %% 本项隔离测试容量门；先提供已声明 V2 的自身成员视图。
+        meck:new(syn, [no_link, passthrough]),
+        meck:expect(syn, members, fun(imboy_cache, dsync_handler) ->
+            [{self(), #{cache_protocol => 2}}]
+        end),
+        try
+            ?assertEqual(
+                {reply, {error, index_full}, State},
+                imboy_cache_sync:handle_call(
+                    {publish_set, {cache_v2_test_rep, key}, value, 60}, {self(), ref}, State
+                )
             )
-        ),
+        after
+            meck:unload(syn)
+        end,
         ?assertEqual(Before, ets:tab2list(?META_TABLE)),
         true = unregister(imboy_cache_sync)
     end).

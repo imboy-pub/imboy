@@ -7,7 +7,7 @@ add_to_denylist_success_test_() ->
     ?WITH_MECKS(
         [
             {user_denylist_ds, [
-                {'add', 3, fun(_Uid, _DeniedUid, _Remark) -> ok end}
+                {'add', 3, fun(_Uid, _DeniedUid, _Remark) -> {ok, 1} end}
             ]},
             {elib_dt, [
                 {'now', 0, fun() -> 1000000 end}

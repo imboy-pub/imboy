@@ -340,21 +340,27 @@ admin_post_detail(PostIdRaw) ->
         true ->
             case moment_ds:get_post_any(PostId) of
                 Post when is_map(Post), map_size(Post) > 0 ->
-                    {AllowUids, DenyUids} = moment_ds:list_post_acl(PostId),
-                    Reports =
-                        case moment_ds:list_reports_by_post(PostId, 50) of
-                            {ok, Rows} -> [report_transfer(R) || R <- Rows];
-                            _ -> []
-                        end,
-                    PostPayload = admin_post_transfer(Post),
-                    Payload = PostPayload#{
-                        <<"acl">> => #{
-                            <<"allow_uids">> => AllowUids,
-                            <<"deny_uids">> => DenyUids
-                        },
-                        <<"reports">> => Reports
-                    },
-                    {ok, Payload};
+                    case moment_ds:list_post_acl(PostId) of
+                        {AllowUids, DenyUids} when
+                            is_list(AllowUids), is_list(DenyUids)
+                        ->
+                            Reports =
+                                case moment_ds:list_reports_by_post(PostId, 50) of
+                                    {ok, Rows} -> [report_transfer(R) || R <- Rows];
+                                    _ -> []
+                                end,
+                            PostPayload = admin_post_transfer(Post),
+                            Payload = PostPayload#{
+                                <<"acl">> => #{
+                                    <<"allow_uids">> => AllowUids,
+                                    <<"deny_uids">> => DenyUids
+                                },
+                                <<"reports">> => Reports
+                            },
+                            {ok, Payload};
+                        {error, _Reason} ->
+                            {error, <<"查询失败"/utf8>>}
+                    end;
                 _ ->
                     {error, <<"动态不存在"/utf8>>}
             end

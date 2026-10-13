@@ -165,19 +165,15 @@ is_subscribed(ChannelId, Uid) ->
 -spec subscriber_uids(integer()) -> [integer()].
 subscriber_uids(ChannelId) ->
     CacheKey = ?CHANNEL_SUBS_KEY(ChannelId),
-    case imboy_cache:get(CacheKey) of
-        {ok, Uids} ->
-            Uids;
-        undefined ->
-            case channel_subscription_repo:list_by_channel(ChannelId) of
-                {ok, Rows} ->
-                    Uids = [maps:get(<<"user_id">>, R) || R <- Rows],
-                    imboy_cache:set(CacheKey, Uids, ?HOUR),
-                    Uids;
-                _ ->
-                    []
-            end
-    end.
+    Fun = fun() ->
+        case channel_subscription_repo:list_by_channel(ChannelId) of
+            {ok, Rows} when is_list(Rows) ->
+                [maps:get(<<"user_id">>, R) || R <- Rows];
+            _ ->
+                imboy_cache:uncached([])
+        end
+    end,
+    imboy_cache:memo(Fun, CacheKey, ?HOUR).
 
 %% @doc 订阅频道（归档守卫、订阅关系与计数同一事务提交）
 -spec subscribe(integer(), integer()) -> ok | {error, any()}.
@@ -189,30 +185,29 @@ subscribe(ChannelId, Uid) ->
         ok = workspace_guard:abort_on_error(
             workspace_guard:ensure_writable_tx(Conn, {channel, ChannelId})
         ),
-        case channel_subscription_repo:upsert_active(Conn, ChannelId, Uid) of
-            {ok, true} ->
-                % 仅在真实状态变更时增加计数
-                case channel_repo:increment_subscribers(Conn, ChannelId, 1) of
-                    {ok, _} -> changed;
-                    {error, Reason} -> throw({abort_tx, Reason})
-                end;
-            {ok, false} ->
-                % 幂等订阅：原本已订阅
-                noop;
-            {error, Reason} ->
-                throw({abort_tx, Reason})
-        end
+        Change =
+            case channel_subscription_repo:upsert_active(Conn, ChannelId, Uid) of
+                {ok, true} ->
+                    % 仅在真实状态变更时增加计数
+                    case channel_repo:increment_subscribers(Conn, ChannelId, 1) of
+                        {ok, _} -> changed;
+                        {error, Reason} -> throw({abort_tx, Reason})
+                    end;
+                {ok, false} ->
+                    % 幂等订阅：原本已订阅
+                    noop;
+                {error, Reason} ->
+                    throw({abort_tx, Reason})
+            end,
+        ok = defer_subscription_cache(Conn, ChannelId),
+        Change
     end),
     case Result of
         changed ->
             % 清除订阅者缓存
-            imboy_cache:invalidate(?CHANNEL_SUBS_KEY(ChannelId)),
-            imboy_cache:invalidate(?CHANNEL_CACHE_KEY(ChannelId)),
             log_subscription_action(Uid, ChannelId, <<"subscribe">>, <<"changed">>, StartMs),
             ok;
         noop ->
-            imboy_cache:invalidate(?CHANNEL_SUBS_KEY(ChannelId)),
-            imboy_cache:invalidate(?CHANNEL_CACHE_KEY(ChannelId)),
             log_subscription_action(Uid, ChannelId, <<"subscribe">>, <<"noop">>, StartMs),
             ok;
         {error, {Code, _} = Coded} when is_integer(Code) ->
@@ -234,32 +229,31 @@ unsubscribe(ChannelId, Uid) ->
             workspace_guard:ensure_writable_tx(Conn, {channel, ChannelId})
         ),
         _ = micro_community_access_repo:lock_channel_tx(Conn, ChannelId),
-        case channel_subscription_repo:delete(Conn, ChannelId, Uid) of
-            {ok, Affected} when Affected > 0 ->
-                ok = micro_community_access_ds:revoke_channel_tx(Conn, ChannelId, Uid),
-                % 只有实际发生状态变更才更新计数
-                case channel_repo:increment_subscribers(Conn, ChannelId, -1) of
-                    {ok, _} -> changed;
-                    {error, Reason} -> throw({abort_tx, Reason})
-                end;
-            {ok, 0} ->
-                ok = micro_community_access_ds:revoke_channel_tx(Conn, ChannelId, Uid),
-                % 幂等取消：原本已取消或不存在
-                noop;
-            {error, Reason} ->
-                throw({abort_tx, Reason})
-        end
+        Change =
+            case channel_subscription_repo:delete(Conn, ChannelId, Uid) of
+                {ok, Affected} when Affected > 0 ->
+                    ok = micro_community_access_ds:revoke_channel_tx(Conn, ChannelId, Uid),
+                    % 只有实际发生状态变更才更新计数
+                    case channel_repo:increment_subscribers(Conn, ChannelId, -1) of
+                        {ok, _} -> changed;
+                        {error, Reason} -> throw({abort_tx, Reason})
+                    end;
+                {ok, 0} ->
+                    ok = micro_community_access_ds:revoke_channel_tx(Conn, ChannelId, Uid),
+                    % 幂等取消：原本已取消或不存在
+                    noop;
+                {error, Reason} ->
+                    throw({abort_tx, Reason})
+            end,
+        ok = defer_subscription_cache(Conn, ChannelId),
+        Change
     end),
     case Result of
         changed ->
             % 清除缓存
-            imboy_cache:invalidate(?CHANNEL_SUBS_KEY(ChannelId)),
-            imboy_cache:invalidate(?CHANNEL_CACHE_KEY(ChannelId)),
             log_subscription_action(Uid, ChannelId, <<"unsubscribe">>, <<"changed">>, StartMs),
             ok;
         noop ->
-            imboy_cache:invalidate(?CHANNEL_SUBS_KEY(ChannelId)),
-            imboy_cache:invalidate(?CHANNEL_CACHE_KEY(ChannelId)),
             log_subscription_action(Uid, ChannelId, <<"unsubscribe">>, <<"noop">>, StartMs),
             ok;
         {error, {Code, _} = Coded} when is_integer(Code) ->
@@ -581,3 +575,10 @@ flush_subscription_cache(Cid) ->
             ?ERROR_LOG([refund_subscription_cache_flush_failed, Cid, Class, Reason]),
             ok
     end.
+
+%% 仅真实 COMMIT 后失效，连接归还后动作不得使用事务 Conn。
+defer_subscription_cache(Conn, Cid) ->
+    elib_pg:after_commit(Conn, {channel_subscribers, Cid}, fun() ->
+        ok = imboy_cache:invalidate(?CHANNEL_SUBS_KEY(Cid)),
+        imboy_cache:invalidate(?CHANNEL_CACHE_KEY(Cid))
+    end).

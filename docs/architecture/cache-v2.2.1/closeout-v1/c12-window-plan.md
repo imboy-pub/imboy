@@ -1,5 +1,36 @@
 # C12 — 最终候选冻结 + 全量 EUnit + 本地性能窗口执行计划
 
+> 当前执行入口修订（2026-10-13）：下文盘点数字和旧冻结格式保留为历史。
+> 当前候选绑定以 `evidence-schema-v2.md`、`ledger-v2.json` 及 C14 严格校验器为准，
+> 不再使用旧台账或旧运行目录作默认终验。当前运行前冻结全部源码、配置、迁移、
+> 测试驱动及依赖字节，再从隔离目录执行；外来 WIP 保持原位，干净工作树不是前提。
+> 正式性能继续使用本文 §6.5 的既定阈值。W0 环境锚保持 TTL3600；两个 V2 比较臂
+> 均遵守 MaxTTL600，记录 profile 差异，不能提升产品预算来制造同口径。
+> V2 历史比较臂固定 `2873dbfd67dc52a526cd3411def9f6b10f91ed27`，使用同一新驱动
+> 在各自独立集群执行；其非缓存应用构件不作为历史全量应用证据。
+> 全量使用 GNU Make 4 的 `eunit-local`、既有专属库配置 `sys.closeout-local`，
+> 依赖构件必须与冻结摘要一致；复制环境中的旧绝对路径构建索引不得混入结果。
+
+## dot 接续状态（2026-10-13）
+
+- 计划锚未变：closeout SHA256=`806114da93a904108dfa9a2747d1ee59d4efcb1a2562a92ae7ea6ae905882f0f`，W0 原计划 SHA256=`a5523ee731bc822018831586e3d747ba109c2c66e734daf5633b494d9b18c713`。主仓 HEAD=`27bfb1a1deb903f0fe044c3de107ac425c0780e7`；工作树有 95 条变更/新文件，均未提交、未推送。交接必须带上当前完整工作树（包括未跟踪文件），不能从 HEAD 重建。原主机隔离副本及 `/tmp` driver 不保证 Dot 可见。
+- 当前源码输入摘要=`264828af49b5876ada709d653d8bfa541da9e7a74c5f7ecd913e585484a812e2`（4738 项）。C14 `_manifest_binding` 对源树与隔离副本均返回同摘要、无绑定错误；隔离全应用 `gmake compile SKIP_DEPS=1` exit=0。清单仅在原主机临时目录，Dot 收到文件后必须重算并重新绑定；这只是编译和候选绑定，不是测试或冻结后的最终候选。
+- 最新 C06 修正处理 `moment_logic:admin_post_detail/1` 的 ACL 查询错误；新增回归用含诊断字样的 binary reason，当前 ACL 分支统一返回安全通用提示，不透传 repo 文本。源码及回归文件已用 `erlc +debug_info -I include -I src/lib -I test/common` 编译通过，隔离全应用 `gmake compile SKIP_DEPS=1` exit=0。随后尝试定向命令 `IMBOYENV=local gmake eunit-local t=moment_logic_tests:admin_post_detail_propagates_acl_read_error_test_ EUNIT_CONFIG=config/sys.closeout-local`，exit=2、测试尚未执行：隔离副本依赖构建引用不存在的旧绝对路径 `/private/tmp/imboy_base2/deps/cowlib/include/cow_inline.hrl`。Dot 需修复/重建隔离依赖后运行回归。共享 `normalize_error/2` 在其他旧错误路径仍可能原样返回 binary/charlist；本次只修复新增 ACL 错误边界，不代表全模块脱敏审计通过。
+- C11 已有定向 metrics handler 2 PASS 和旧 core actor 14 PASS，但都早于最新 Dmax timeout 改动。新增 `cache_sync_recovery_timeout_total{reason="deadline_timeout"}` 有真实写点和 actor 回归，尚未运行；临时 90 秒消费者脚本 SHA256=`72877736bca39bf931c37379557e5dd6a85985e16ff8aa5c6a07d0be099199ab`，未运行，且没有覆盖该新指标。此前两轮告警消费 exit=1（等待 2 秒/45 秒，未等满 60 秒评估周期）；不能把 snapshot-abort 指标当作 deadline-timeout 的消费证明。脚本硬编码原仓路径，Dot 需重建/改路径并复核脚本摘要。
+- 可继承的其他证据只用于局部历史参考：C14 verifier 自测 22/22；candidate tiny bench 60 行、0 错误，但每 worker 仅 2 次操作。正式性能 baseline tiny r4 在 loader 计数 oracle 下 exit=2（60 行中 72 个 memo_cold 错误）；复制样本通过。不得降 oracle或把 tiny 结果当正式性能 PASS。非本候选全量 EUnit 曾报 11180 Passed、0 Failed、0 Skipped 后仍有测试取消，`make` exit=2，配置为 `sys.uc-run`；不可继承。
+- 尚未闭合：C04/AC-19 最终三节点内容覆盖与 READY 屏障；C09 两轮 39 场景；C10 两轮 16 场景及 QR；C11 新指标、HTTP/Scrape/告警实际消费；最终候选全量 EUnit；正式本地性能三组交错对照；独立审查和 C14 签发。C04 静态审查未发现 READY 误放行，但不能代替三节点实测。全节点丢失 authority 后无可信恢复来源，系统会保守停在 RECOVERING/DEGRADED，应保留为结构性可用性缺口。生产 SLO/硬件/峰值输入继续独立 BLOCKED，生产验收不签发。
+
+Dot 上限 4 个活动 agent（含协调者），建议这样分工，先并行只读审查/准备，按租约串行跑重门禁：
+
+1. A0 协调者：接收 95 条 WIP、复核两份计划 SHA 与当前候选；处理 C06 脱敏边界及定向测试，整合后冻结唯一候选；串行执行最终 EUnit、正式性能窗口、独立审查/C14，维护唯一权威台账。
+2. A1：只负责 C04/AC-19 与 C09 驱动、三节点矩阵和证据；不得改动共享 sync 核心，发现实现缺口交 A0 指派唯一写者。
+3. A2：只负责 C10 混合/回滚与 QR 交叉验证；先审计回滚 oracle，再按计划跑两轮；不得与 A1 同时持有故障/集群租约。
+4. A3：只负责 C11 最终 consumer/告警规则及 C14 独立 verifier 负向审查；补上 `deadline_timeout` 注入、HTTP 和 Prometheus 查询，证明观察窗口覆盖规则周期。重故障、混合、全量和性能期间不抢共享资源。
+
+执行顺序：传输并校验完整 WIP → 修完 C06 调用方/脱敏与必要回归 → 定向测试 → 冻结源码/配置/依赖/driver 并重算 SHA → 串行 C09、C10、QR、最终 EUnit、正式性能 → 独立审查与 C14。任一源码或运行配置改动使后续候选证据失效，按计划重跑受影响门禁；最终全量必须绑定最后候选。性能 baseline 若仍不满足同一 loader oracle，保留精确失败/例外，不能签发 PASS。
+
+> 本节是 Dot 的接续清单，不表示任务已完成；C12 仍 `NOT_EXECUTED`。最终并列结论仍按总计划签发：后端本地收口 PASS 或精确未闭合集合、原计划 LOCAL_CANDIDATE 独立判定（生产输入缺失继续 BLOCKED）、PRODUCTION_ACCEPTANCE=`NOT_ISSUED`。
+
 > 任务：CACHE_V221_BACKEND_CLOSEOUT_V1 / C12（最终候选测试及本地性能）
 > 本文性质：只读盘点产出的执行计划（PLAN_READY / NOT_EXECUTED）。执行由协调者
 > （A0）按第 6 节顺序串行完成，本文不含任何已执行的测试结果。

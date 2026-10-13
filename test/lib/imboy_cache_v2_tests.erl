@@ -147,9 +147,9 @@ fenced_stale_loader_must_not_return_old_value_test_() ->
                 end,
             %% 栅栏丢弃旧结果，重试取新值
             ?assertEqual(new_value, R1),
-            %% 旧物理键存在旧值（19.3 允许，TTL 有界）——但只能从物理键直接读到
+            %% 被识别为过期生产代次的旧物理键一并清理。
             ?assertEqual(
-                {ok, old_value},
+                undefined,
                 depcache:get(OldPhysical, ?DEPCACHE_SERVER)
             )
         after

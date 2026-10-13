@@ -34,14 +34,20 @@ find_by_uid(Uid) when is_binary(Uid) ->
     find_by_uid(ec_cnv:to_integer(Uid));
 find_by_uid(Uid) when is_integer(Uid) ->
     Key = ?CACHE_KEY(Uid),
-    case imboy_cache:get(Key) of
-        undefined ->
-            Rule = user_dnd_rule_repo:find_by_uid(Uid),
-            imboy_cache:set(Key, Rule, ?CACHE_TTL),
-            Rule;
-        {ok, Rule} ->
-            Rule
-    end.
+    Fenced = imboy_cache_policy:is_fenced(Key),
+    Fun = fun() ->
+        case user_dnd_rule_repo:find_by_uid(Uid) of
+            Rule when is_map(Rule), map_size(Rule) > 0, Fenced -> Rule;
+            Rule when is_map(Rule) -> imboy_cache:uncached(Rule);
+            _ -> imboy_cache:uncached(#{})
+        end
+    end,
+    MemoKey =
+        case Fenced of
+            true -> Key;
+            false -> {user_dnd_rule, Uid, uncached_v1}
+        end,
+    imboy_cache:memo(Fun, MemoKey, ?CACHE_TTL).
 
 %% @doc 保存（upsert）免打扰规则并失效缓存
 %% @param Data 含 <<"user_id">> 的规则 map

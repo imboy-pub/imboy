@@ -17,7 +17,6 @@ recovery_completion_rejects_loader_started_during_recovery_test_() ->
             end
         end)
     end).
-
 expired_floor_pages_converge_in_both_orders_in_real_receiver_test_() ->
     ?TEST_WITH_APP(fun() ->
         lists:foreach(
@@ -29,7 +28,6 @@ expired_floor_pages_converge_in_both_orders_in_real_receiver_test_() ->
             [floor_first, floor_last, transit_past, transit_skew]
         )
     end).
-
 assert_expired_floor_page_order(Order) ->
     A = 'expired_page_source@synthetic',
     B = 'older_page_source@synthetic',
@@ -64,34 +62,33 @@ assert_expired_floor_page_order(Order) ->
             whereis(imboy_cache_sync) ! {cache_snapshot_page, Peer, Round, 1, Entry, D, false},
             pong = gen_server:call(imboy_cache_sync, ping_ok)
         end
-     || {Peer, E} <- Ordered, Entry <- [[E]]
+     || {Peer, E} <- Ordered, Entry <- [[{with_origin, {Peer, <<7:128>>, 1}, E}]]
     ],
+    ets:insert(imboy_cache_meta, [{{seq, {A, <<7:128>>}}, 1}, {{seq, {B, <<7:128>>}}, 1}]),
     finish_floor_sources([{A, C + 20}, {B, C + 10}], Round),
     pong = gen_server:call(imboy_cache_sync, ping_ok),
     ?assertEqual(ready, imboy_cache_sync:status()),
     ?assertEqual({C + 20, A}, imboy_cache_sync:current_rev(K)),
     ?assertEqual(undefined, depcache:get(K, imboy_cache)),
     ?assertEqual(undefined, imboy_cache:get(K)).
-
 finish_floor_sources(Sources, Round) ->
     [
         begin
             whereis(imboy_cache_sync) !
-                {cache_snapshot_cut, Peer, Round, <<7:128>>, imboy_cache_sync_proto:epoch(), 0,
-                    imboy_cache_sync_proto:config_hash(), imboy_cache_sync_proto:registry_hash()},
+                {cache_snapshot_cut, Peer, Round, <<7:128>>, imboy_cache_sync_proto:epoch(), 1,
+                    imboy_cache_sync_proto:config_hash(), imboy_cache_sync_proto:registry_hash(),
+                    {ok, []}, source_fixture_certificate(Peer)},
             whereis(imboy_cache_sync) ! {cache_snapshot_done, Peer, Round, Max, 1}
         end
      || {Peer, Max} <- Sources
     ],
     ok.
-
 expired_remote_set_retains_floor_in_real_receiver_test_() ->
     ?TEST_WITH_APP(fun() ->
         with_budget(#{}, fun() ->
             lists:foreach(fun assert_expired_remote_set/1, [past, skew])
         end)
     end).
-
 assert_expired_remote_set(Kind) ->
     K = {cache_v2_test_rep, {expired_delta, Kind}},
     ok = imboy_cache:put(K, old, 60, replicate),
@@ -132,7 +129,6 @@ assert_expired_remote_set(Kind) ->
     pong = gen_server:call(imboy_cache_sync, ping_ok),
     ?assertEqual({C + 20, Peer}, imboy_cache_sync:current_rev(K)),
     ?assertEqual(undefined, depcache:get(K, imboy_cache)).
-
 over_window_remote_set_cannot_mutate_real_cache_test_() ->
     ?TEST_WITH_APP(fun() ->
         with_budget(#{}, fun() ->
@@ -158,7 +154,6 @@ over_window_remote_set_cannot_mutate_real_cache_test_() ->
             ?assertEqual({ok, current}, depcache:get(K, imboy_cache))
         end)
     end).
-
 expired_live_floor_rejects_old_write_with_real_cache_and_sync_test_() ->
     ?TEST_WITH_APP(fun() ->
         with_budget(#{}, fun() ->
@@ -193,10 +188,8 @@ expired_live_floor_rejects_old_write_with_real_cache_and_sync_test_() ->
             ?assertEqual(ready, imboy_cache_sync:status())
         end)
     end).
-
 begin_completion_round() ->
     begin_completion_round('completion_fence@synthetic').
-
 begin_completion_round(Peer) ->
     imboy_cache_source_cut_tests:fixture_identity(Peer, <<7:128>>, imboy_cache_sync_proto:epoch()),
     Deadline = erlang:system_time(millisecond) + 60000,
@@ -211,7 +204,6 @@ begin_completion_round(Peer) ->
     end),
     ets:insert(imboy_cache_meta, {status, recovering}),
     {Peer, R}.
-
 missing_unknown_or_gapped_cut_cannot_complete_real_actor_test_() ->
     ?TEST_WITH_APP(fun() ->
         lists:foreach(
@@ -223,7 +215,7 @@ missing_unknown_or_gapped_cut_cannot_complete_real_actor_test_() ->
                     Frame =
                         {cache_snapshot_cut, Peer, Round, <<7:128>>, imboy_cache_sync_proto:epoch(),
                             0, imboy_cache_sync_proto:config_hash(),
-                            imboy_cache_sync_proto:registry_hash()},
+                            imboy_cache_sync_proto:registry_hash(), {ok, []}},
                     case Kind of
                         missing -> ok;
                         unknown_boot -> whereis(imboy_cache_sync) ! setelement(4, Frame, <<8:128>>);
@@ -253,7 +245,6 @@ missing_unknown_or_gapped_cut_cannot_complete_real_actor_test_() ->
             [missing, unknown_boot, gap]
         )
     end).
-
 completion_loader(Parent, Key) ->
     put(loader_calls, 0),
     Loader = fun() ->
@@ -354,7 +345,8 @@ third_party_gap_after_cut_cannot_complete_real_actor_test_() ->
             Round = maps:get(round, R),
             whereis(imboy_cache_sync) !
                 {cache_snapshot_cut, Peer, Round, <<7:128>>, imboy_cache_sync_proto:epoch(), 0,
-                    imboy_cache_sync_proto:config_hash(), imboy_cache_sync_proto:registry_hash()},
+                    imboy_cache_sync_proto:config_hash(), imboy_cache_sync_proto:registry_hash(),
+                    {ok, []}},
             pong = gen_server:call(imboy_cache_sync, ping_ok),
             Before = sys:get_state(imboy_cache_sync),
             ?assert(
@@ -397,7 +389,8 @@ source_restart_after_cut_cannot_complete_real_actor_test_() ->
             Round = maps:get(round, R),
             whereis(imboy_cache_sync) !
                 {cache_snapshot_cut, Peer, Round, <<7:128>>, imboy_cache_sync_proto:epoch(), 0,
-                    imboy_cache_sync_proto:config_hash(), imboy_cache_sync_proto:registry_hash()},
+                    imboy_cache_sync_proto:config_hash(), imboy_cache_sync_proto:registry_hash(),
+                    {ok, []}},
             pong = gen_server:call(imboy_cache_sync, ping_ok),
             Before = sys:get_state(imboy_cache_sync),
             ?assert(
@@ -428,7 +421,8 @@ assert_completion_loader(Key, Peer, R) ->
         whereis(imboy_cache_sync) !
             {cache_snapshot_cut, Peer, maps:get(round, R), <<7:128>>,
                 imboy_cache_sync_proto:epoch(), 0, imboy_cache_sync_proto:config_hash(),
-                imboy_cache_sync_proto:registry_hash()},
+                imboy_cache_sync_proto:registry_hash(), {ok, []},
+                {0, crypto:hash(sha256, term_to_binary([]))}},
         whereis(imboy_cache_sync) !
             {cache_snapshot_done, Peer, maps:get(round, R), S#state.counter, 0},
         pong = gen_server:call(imboy_cache_sync, ping_ok),
@@ -756,6 +750,13 @@ send_clock_page(Peer, Round, Number, Entry) ->
     whereis(imboy_cache_sync) ! {cache_snapshot_page, Peer, Round, Number, [Entry], Digest, true},
     pong = gen_server:call(imboy_cache_sync, ping_ok).
 
+%% 下层合成来源 fixture；来源独立枚举的证明由 sender/census 测试负责。
+source_fixture_certificate(Peer) ->
+    State = sys:get_state(imboy_cache_sync),
+    P = maps:get(Peer, maps:get(peers, State#state.snapshot_round)),
+    {ok, Rows} = imboy_cache_policy:final_snapshot_manifest(P),
+    imboy_cache_sync_coverage:manifest_certificate(Rows).
+
 with_budget(Limits, Fun) ->
     OldCfg = application:get_env(imboy, cache_replication),
     OldRegistry = application:get_env(imboy, cache_registry_overrides),
@@ -795,6 +796,4 @@ await_degraded(N) ->
             await_degraded(N - 1)
     end.
 
-requested_peer(Round, Peer) ->
-    Authorized = imboy_cache_sync_snapshot:authorize_peer(Round, Peer),
-    imboy_cache_sync_snapshot:mark_requested(Authorized, Peer).
+requested_peer(Round, Peer) -> imboy_cache_source_cut_tests:requested_peer(Round, Peer).

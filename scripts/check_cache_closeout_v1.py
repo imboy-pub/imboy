@@ -22,9 +22,8 @@ Checks (each prints one [PASS]/[FAIL] line; exit code 0 iff all pass):
   --utc        all evidence/ledger timestamps are tz-aware ISO8601, sane range
                (post-1970, not far future)
 
---self-test builds fixtures under /tmp/check_cache_closeout_fixtures/ (never in
-the repo) and asserts 6 negative fixtures fail + 1 positive fixture passes.
-Writes its log to /tmp/check_cache_closeout_fixtures/selftest.log.
+--self-test builds unique temporary fixtures (never in the repo) and asserts negative fixtures fail and a positive fixture passes.
+Writes selftest.log inside that temporary fixture directory.
 
 stdlib only; Python 3.9 compatible.
 """
@@ -34,12 +33,12 @@ import hashlib
 import json
 import os
 import re
-import shutil
 import subprocess
 import sys
 from datetime import datetime, timedelta, timezone
 
 TASK_ID = "CACHE_V221_BACKEND_CLOSEOUT_V1"
+EXPECTED_IDS_SHA256 = "3fcafa2215ba26b6363141c1138807baa8b53a955067f3e3b9dc560890c972b0"
 
 # Frozen references (given by task owner; never overridable via CLI/env).
 EXPECTED_CLOSEOUT_PLAN_SHA256 = (
@@ -51,16 +50,16 @@ SCRIPT_PATH = os.path.abspath(__file__)
 REPO_ROOT = os.path.dirname(os.path.dirname(SCRIPT_PATH))
 _CO = "docs/architecture/cache-v2.2.1"
 DEFAULT_REQUIRED_IDS = os.path.join(REPO_ROOT, _CO, "closeout-v1/required-ids.json")
-DEFAULT_LEDGER = os.path.join(REPO_ROOT, _CO, "closeout-v1/ledger-v1.json")
+DEFAULT_LEDGER = os.path.join(REPO_ROOT, _CO, "closeout-v1/ledger-v2.json")
 DEFAULT_CLOSEOUT_PLAN = os.path.join(REPO_ROOT, _CO, "backend-closeout-plan-v1.md")
 DEFAULT_ORIGINAL_PLAN = os.path.join(REPO_ROOT, _CO, "w0/plan-v2.2.1.md")
 DEFAULT_BASELINE = os.path.join(REPO_ROOT, _CO, "closeout-v1/baseline.json")
-DEFAULT_EVIDENCE_DIR = os.path.expanduser(
-    "~/.codex/cache-closeout-runs/zcode-20261011T130725Z/raw")
+DEFAULT_EVIDENCE_DIR = None
+DEFAULT_MANIFEST = os.path.join(REPO_ROOT, _CO, "closeout-v1/candidate-manifest.json")
 
 CANDIDATE_KEYS = ("candidate_sha256", "candidate", "candidate_digest",
                   "working_tree_digest")
-CHECK_ORDER = ("ids", "sha256", "candidate", "exits", "utc")
+CHECK_ORDER = ("ids", "sha256", "candidate", "exits", "utc", "receipts")
 
 HEX64_RE = re.compile(r"^[0-9a-f]{64}$")
 _TS_RE = re.compile(
@@ -121,8 +120,11 @@ def parse_utc(text):
     else:
         compact = tz.replace(":", "")
         sign = 1 if tz[0] == "+" else -1
-        tzi = timezone(sign * timedelta(hours=int(compact[1:3]),
-                                        minutes=int(compact[3:5])))
+        try:
+            tzi = timezone(sign * timedelta(hours=int(compact[1:3]),
+                                            minutes=int(compact[3:5])))
+        except ValueError as exc:
+            return None, "invalid timezone (%s)" % exc
     try:
         dt = datetime(y, mo, d, h, mi, s, micro, tzinfo=tzi)
     except ValueError as exc:
@@ -173,9 +175,7 @@ def gather_evidence(args):
     return sorted(files)
 
 
-# ---------------------------------------------------------------------------
 # check: --ids
-# ---------------------------------------------------------------------------
 
 def _parse_required_ids(doc):
     """Return (specs, errors): specs = [(id, alias_or_None)]."""
@@ -208,6 +208,9 @@ def _parse_required_ids(doc):
             errors.append("required-ids.json: duplicate id %s" % rid)
         seen[rid] = True
         specs.append((rid, alias))
+    digest = hashlib.sha256(json.dumps(specs, separators=(",", ":")).encode()).hexdigest()
+    if digest != EXPECTED_IDS_SHA256:
+        errors.append("required ID/alias contract differs from frozen 96-item set")
     return specs, errors
 
 
@@ -278,9 +281,7 @@ def check_ids(args):
                       "extras=0 both-forms=0" % (len(specs), len(specs)))
 
 
-# ---------------------------------------------------------------------------
 # check: --sha256
-# ---------------------------------------------------------------------------
 
 def check_sha256(args):
     res = CheckResult("sha256")
@@ -331,9 +332,7 @@ def check_sha256(args):
                          short.get("original-plan", "?")))
 
 
-# ---------------------------------------------------------------------------
 # check: --candidate
-# ---------------------------------------------------------------------------
 
 def _collect_candidate_values(obj, where, out, errors):
     """Pull top-level candidate fields from an evidence/ledger object."""
@@ -370,6 +369,8 @@ def check_candidate(args):
                 _collect_candidate_values(e, "ledger entry[%d]" % i,
                                           ledger_pairs, errors)
     ledger_vals = {v for _, v in ledger_pairs}
+    if not ledger_vals:
+        errors.append("ledger has no candidate binding")
     if len(ledger_vals) > 1:
         errors.append("ledger itself mixes candidates: %s"
                       % ", ".join(sorted(ledger_vals)))
@@ -413,9 +414,7 @@ def check_candidate(args):
                                                   fingerprint[:12]))
 
 
-# ---------------------------------------------------------------------------
 # check: --exits
-# ---------------------------------------------------------------------------
 
 def _audit_evidence_file(path):
     """Return list of structural/exit problems for one evidence file."""
@@ -475,9 +474,7 @@ def check_exits(args):
                       "no missing fields" % (total_scenarios, len(files)))
 
 
-# ---------------------------------------------------------------------------
 # check: --utc
-# ---------------------------------------------------------------------------
 
 def check_utc(args):
     res = CheckResult("utc")
@@ -525,8 +522,205 @@ def check_utc(args):
                       "tz-aware ISO8601 in sane window" % checked)
 
 
+
+# Strict closeout receipts are independent of diagnostic driver JSON. A driver
+# summary alone cannot prove the shell exit or the complete raw log.
+INPUT_PREFIXES = ("src/", "include/", "config/", "scripts/", "test/", "priv/migrations/")
+INPUT_FILES = {"Makefile", "erlang.mk", "VERSION", "rebar.lock"}
+RUNTIME_INPUTS = {"config/sys.closeout-local.config"}
+EXTERNAL_IDS = {"W0-09", "AC-26", "AC-27"}
+
+
+def candidate_inputs(root):
+    proc = subprocess.run(["git", "-C", root, "ls-files", "-z", "--cached",
+                           "--others", "--exclude-standard"],
+                          capture_output=True, check=True)
+    paths = {p for p in proc.stdout.decode().split("\0") if p and
+             (p.startswith(INPUT_PREFIXES) or p in INPUT_FILES)}
+    paths.update(p for p in RUNTIME_INPUTS if os.path.isfile(os.path.join(root, p)))
+    # Dependency source and actual runtime bytes are otherwise ignored by Git.
+    # Include both: a lock/pin alone cannot bind a locally modified dependency.
+    for base, dirs, names in os.walk(os.path.join(root, "deps"), followlinks=True):
+        dirs[:] = [d for d in dirs if d not in (".git", "_build")]
+        for name in names:
+            if name.endswith((".erl", ".hrl", ".beam", ".app", ".so", ".dylib")):
+                paths.add(os.path.relpath(os.path.join(base, name), root))
+    return sorted(paths)
+
+
+def _bound_file(ref, base, errors):
+    if not isinstance(ref, dict) or not isinstance(ref.get("path"), str) or not \
+            HEX64_RE.fullmatch(str(ref.get("sha256", ""))):
+        errors.append("invalid evidence reference: %r" % ref)
+        return None
+    path = os.path.abspath(os.path.join(base, ref["path"]))
+    if not os.path.isfile(path):
+        errors.append("missing evidence: %s" % path)
+        return None
+    if sha256_file(path) != ref["sha256"]:
+        errors.append("evidence digest mismatch: %s" % path)
+        return None
+    return path
+
+
+def _manifest_binding(args, errors):
+    doc, err = load_json(args.candidate_manifest)
+    if err:
+        errors.append(err)
+        return None, None
+    if not isinstance(doc, dict) or not isinstance(doc.get("files"), list) or not doc["files"]:
+        errors.append("candidate manifest lacks nonempty files")
+        return None, None
+    rows = doc["files"]
+    paths = [r.get("path") for r in rows if isinstance(r, dict)]
+    try:
+        expected = candidate_inputs(args.source_root)
+    except (OSError, subprocess.CalledProcessError) as exc:
+        errors.append("cannot inventory current candidate: %s" % exc)
+        return None, None
+    if paths != expected:
+        errors.append("candidate manifest input set/order != current source inventory")
+    for row in rows:
+        path = row.get("path") if isinstance(row, dict) else None
+        if not isinstance(path, str) or path not in expected:
+            errors.append("invalid candidate input: %r" % row)
+            continue
+        _bound_file(row, args.source_root, errors)
+    digest = hashlib.sha256(json.dumps(rows, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+    if doc.get("candidate_sha256") != digest:
+        errors.append("candidate manifest digest mismatch")
+    frozen, err = parse_utc(doc.get("frozen_at_utc"))
+    if err or utc_in_window(frozen):
+        errors.append("invalid candidate freeze timestamp")
+        frozen = None
+    return digest, frozen
+
+
+def check_receipts(args):
+    res = CheckResult("receipts")
+    errors = []
+    candidate, frozen = _manifest_binding(args, errors)
+    ledger, err = load_json(args.ledger)
+    req, reqerr = load_json(args.required_ids)
+    if err or reqerr or not isinstance(ledger, dict):
+        return res.fail("receipt inputs invalid", errors + [err or reqerr or "invalid ledger"])
+    if ledger.get("candidate_sha256") != candidate:
+        errors.append("ledger candidate is absent or differs from current source")
+    specs, spec_errors = _parse_required_ids(req)
+    errors.extend(spec_errors)
+    entries = {e.get("id"): e for e in ledger.get("entries", []) if isinstance(e, dict)}
+    tasks = ledger.get("closeout_tasks")
+    if not isinstance(tasks, list):
+        errors.append("missing C00-C14 closeout_tasks")
+        tasks = []
+    task_ids = [e.get("id") for e in tasks if isinstance(e, dict)]
+    if sorted(task_ids) != ["C%02d" % i for i in range(15)]:
+        errors.append("closeout_tasks must contain C00-C14 exactly once")
+    required = list(tasks)
+    for rid, alias in specs:
+        e = entries.get(rid, entries.get(alias))
+        if not isinstance(e, dict):
+            errors.append("missing required entry %s" % rid)
+            continue
+        if args.scope == "backend" and rid in EXTERNAL_IDS and e.get("status") == "BLOCKED_EXTERNAL":
+            if not all(e.get(k) for k in ("owner", "missing_inputs", "resume_condition")):
+                errors.append("external blocker %s lacks owner/inputs/resume" % rid)
+            continue
+        required.append(e)
+    checked = set()
+    final_gates = set()
+    legal_ids = set(entries) | set(task_ids)
+    for entry in required:
+        if not isinstance(entry, dict) or entry.get("status") != "PASS":
+            errors.append("required item is not PASS: %r" % entry.get("id") if isinstance(entry, dict) else "invalid required item")
+            continue
+        refs = entry.get("receipts")
+        if not isinstance(refs, list) or not refs:
+            errors.append("PASS %s lacks receipts" % entry.get("id"))
+            continue
+        for ref in refs:
+            path = _bound_file(ref, os.path.dirname(args.ledger), errors)
+            if path is None:
+                continue
+            receipt, err = load_json(path)
+            if err or not isinstance(receipt, dict):
+                errors.append(err or "invalid receipt %s" % path)
+                continue
+            covers = receipt.get("covers")
+            if not isinstance(covers, list) or not covers or any(not isinstance(v, str) or v not in legal_ids for v in covers) or len(set(covers)) != len(covers):
+                errors.append("covers must be a unique nonempty legal ID list: %s" % path)
+                covers = []
+            if entry.get("id") not in covers:
+                errors.append("receipt does not cover required item %s: %s" % (entry.get("id"), path))
+            if entry.get("id") == "C12":
+                gate = receipt.get("gate")
+                if isinstance(gate, str):
+                    final_gates.add(gate)
+                else:
+                    errors.append("invalid gate: %s" % path)
+            if path in checked:
+                continue
+            checked.add(path)
+            if receipt.get("task_id") != TASK_ID or receipt.get("candidate_sha256") != candidate:
+                errors.append("receipt task/candidate mismatch: %s" % path)
+            if type(receipt.get("exit_code")) is not int or receipt["exit_code"] != 0:
+                errors.append("real command exit is not zero: %s" % path)
+            for key in ("command", "oracle", "input_sha256"):
+                if not isinstance(receipt.get(key), str) or not receipt[key].strip():
+                    errors.append("receipt missing %s: %s" % (key, path))
+            if receipt.get("input_sha256") != candidate:
+                errors.append("input digest does not bind frozen candidate: %s" % path)
+            times = []
+            for key in ("started_at_utc", "finished_at_utc"):
+                dt, err = parse_utc(receipt.get(key))
+                if err or utc_in_window(dt):
+                    errors.append("invalid receipt time %s: %s" % (key, path))
+                else:
+                    times.append(dt)
+            if len(times) == 2 and (times[0] > times[1] or (frozen and times[0] < frozen)):
+                errors.append("receipt predates frozen candidate or time reversed: %s" % path)
+            counts = receipt.get("counts")
+            if not isinstance(counts, dict) or any(type(counts.get(k)) is not int or counts[k] < 0 for k in ("passed", "failed", "cancelled", "skipped")):
+                errors.append("receipt counts missing/invalid: %s" % path)
+            elif counts["passed"] == 0 or any(counts[k] != 0 for k in ("failed", "cancelled", "skipped")):
+                errors.append("receipt has failures/cancellations/skips or zero passes: %s" % path)
+            log = _bound_file(receipt.get("log"), os.path.dirname(path), errors)
+            result = _bound_file(receipt.get("result"), os.path.dirname(path), errors)
+            count_kind = receipt.get("count_kind")
+            if count_kind not in ("scenarios", "tests", "checks"):
+                errors.append("missing/invalid count_kind: %s" % path)
+            if receipt.get("gate") == "full_eunit" and count_kind != "tests":
+                errors.append("full_eunit requires native EUnit test counts: %s" % path)
+            if log:
+                body = _read_file(log).decode("utf-8", errors="replace")
+                if re.search(r"(?im)(\[FAIL\]|\*failed\*|\*timed out\*|crash dump|unexpected termination|tests? (?:were )?cancelled|Failed:\s*[1-9]|Skipped:\s*[1-9]|\*\*\s+Generic server\b[^\n]*\bterminating\b|\*\*\s+Reason for termination\b|COMPONENT_LIVENESS\s*(?:[:=]\s*)?false\b)", body):
+                    errors.append("failure/cancellation marker in complete log: %s" % log)
+                if count_kind == "tests" and isinstance(counts, dict):
+                    matches = re.findall(r"(?m)(?:All (\d+) tests passed|Passed:\s*(\d+))", body)
+                    if not matches or int(next(x for x in matches[-1] if x)) != counts.get("passed"):
+                        errors.append("EUnit log count does not match receipt: %s" % log)
+                marker = "CLOSEOUT_COUNTS " + json.dumps(counts, sort_keys=True, separators=(",", ":"))
+                if body.count(marker) != 1:
+                    errors.append("complete log lacks unique matching count footer: %s" % log)
+            if result:
+                rd, err = load_json(result)
+                if err or not isinstance(rd, dict) or rd.get("candidate_sha256") != candidate or rd.get("counts") != counts:
+                    errors.append("result candidate/count mismatch: %s" % result)
+                errors.extend(_audit_evidence_file(result))
+                if count_kind == "scenarios" and isinstance(rd, dict) and isinstance(rd.get("scenarios"), list) and isinstance(counts, dict):
+                    passed = sum(isinstance(sc, dict) and sc.get("status") == "pass" for sc in rd["scenarios"])
+                    if counts.get("passed") != passed or len(rd["scenarios"]) != passed:
+                        errors.append("scenario/count mismatch: %s" % result)
+    expected_gates = {"compile", "targeted", "three_node", "mixed", "rollback", "qr", "full_eunit", "performance", "independent_review"}
+    if not expected_gates.issubset(final_gates):
+        errors.append("C12 lacks final-candidate gates: %s" % ",".join(sorted(expected_gates - final_gates)))
+    if errors:
+        return res.fail("closeout receipts/current source binding rejected", errors)
+    return res.passed("%d complete command receipts bound to current candidate %s" % (len(checked), candidate))
+
+
 CHECKS = {"ids": check_ids, "sha256": check_sha256, "candidate": check_candidate,
-          "exits": check_exits, "utc": check_utc}
+          "exits": check_exits, "utc": check_utc, "receipts": check_receipts}
 
 
 def run_checks(names, args):
@@ -543,209 +737,19 @@ def run_checks(names, args):
     return passed == len(results)
 
 
-# ---------------------------------------------------------------------------
 # --self-test
-# ---------------------------------------------------------------------------
-
-SELFTEST_ROOT = "/tmp/check_cache_closeout_fixtures"
-SELFTEST_MARKER = ".check_cache_closeout_fixtures_root"
-CAND_A = "ab" * 32
-CAND_B = "cd" * 32
-
-
-def _now_z():
-    now = datetime.now(timezone.utc)
-    return now.strftime("%Y-%m-%dT%H:%M:%S.") + "%03dZ" % (now.microsecond // 1000)
-
-
-def _now_offset():
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S+00:00")
-
-
-def _base_ids_doc():
-    return {"task_id": TASK_ID, "total": 4,
-            "alias_rule": "two-digit -> three-digit when number >= 10",
-            "ids": [
-                {"id": "W0-01", "kind": "task", "alias_hist_ledger": None},
-                {"id": "W0-02", "kind": "task", "alias_hist_ledger": None},
-                {"id": "W4-10", "kind": "task", "alias_hist_ledger": "W4-010"},
-                {"id": "AC-10", "kind": "ac", "alias_hist_ledger": "AC-010"}]}
-
-
-def _base_ledger():
-    return {"task_id": TASK_ID, "generated_at_utc": _now_offset(),
-            "candidate_sha256": CAND_A,
-            "entries": [
-                {"id": "W0-01", "kind": "task", "new_class": "REVERIFY"},
-                {"id": "W0-02", "kind": "task", "new_class": "REVERIFY"},
-                {"id": "W4-010", "kind": "task", "new_class": "REVERIFY"},
-                {"id": "AC-10", "kind": "ac", "new_class": "REVERIFY"}]}
-
-
-def _base_baseline():
-    return {"task_id": TASK_ID, "generated_at_utc": _now_offset(),
-            "plan_binding": {
-                "closeout_plan_sha256": EXPECTED_CLOSEOUT_PLAN_SHA256,
-                "expected_closeout_sha256": EXPECTED_CLOSEOUT_PLAN_SHA256,
-                "hash_match": True,
-                "original_plan_sha256": EXPECTED_ORIGINAL_PLAN_SHA256,
-                "expected_original_sha256": EXPECTED_ORIGINAL_PLAN_SHA256}}
-
-
-def _evidence_doc(candidate, statuses):
-    scenarios = []
-    for i, st in enumerate(statuses, 1):
-        scenarios.append({"name": "scenario-%02d" % i, "status": st,
-                          "detail": "" if st == "pass" else "induced failure"})
-    return {"driver_node": "selftest@nohost", "utc": _now_z(),
-            "elapsed_ms": 42100, "candidate_sha256": candidate,
-            "scenarios": scenarios}
-
-
-def _write_json(path, obj):
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(obj, f, indent=1, ensure_ascii=False)
-
-
-def _write_case(dest, closeout_bytes, original_bytes, evidences,
-                ids_doc=None, ledger=None):
-    raw = os.path.join(dest, "raw")
-    os.makedirs(raw, exist_ok=True)
-    _write_json(os.path.join(dest, "required-ids.json"),
-                ids_doc if ids_doc is not None else _base_ids_doc())
-    _write_json(os.path.join(dest, "ledger-v1.json"),
-                ledger if ledger is not None else _base_ledger())
-    _write_json(os.path.join(dest, "baseline.json"), _base_baseline())
-    with open(os.path.join(dest, "closeout-plan.md"), "wb") as f:
-        f.write(closeout_bytes)
-    with open(os.path.join(dest, "plan-v2.2.1.md"), "wb") as f:
-        f.write(original_bytes)
-    for fname, obj in evidences.items():
-        _write_json(os.path.join(raw, fname), obj)
-
 
 def _read_file(path):
     with open(path, "rb") as f:
         return f.read()
 
 
-def _cli_paths(case_dir):
-    return ["--required-ids", os.path.join(case_dir, "required-ids.json"),
-            "--ledger", os.path.join(case_dir, "ledger-v1.json"),
-            "--closeout-plan", os.path.join(case_dir, "closeout-plan.md"),
-            "--original-plan", os.path.join(case_dir, "plan-v2.2.1.md"),
-            "--baseline", os.path.join(case_dir, "baseline.json"),
-            "--evidence-dir", os.path.join(case_dir, "raw")]
-
-
-def _run_case(cmd):
-    return subprocess.run(cmd, capture_output=True, text=True)
-
-
 def self_test():
-    lines = []
-
-    def emit(text):
-        print(text)
-        lines.append(text)
-
-    for plan in (DEFAULT_CLOSEOUT_PLAN, DEFAULT_ORIGINAL_PLAN):
-        if not os.path.isfile(plan):
-            print("[FAIL] self-test prerequisite missing: %s" % plan)
-            return 1
-    closeout_bytes = _read_file(DEFAULT_CLOSEOUT_PLAN)
-    original_bytes = _read_file(DEFAULT_ORIGINAL_PLAN)
-
-    if os.path.isdir(SELFTEST_ROOT):
-        if not os.path.isfile(os.path.join(SELFTEST_ROOT, SELFTEST_MARKER)):
-            print("[FAIL] refusing to rm unknown dir %s" % SELFTEST_ROOT)
-            return 1
-        shutil.rmtree(SELFTEST_ROOT)
-    os.makedirs(SELFTEST_ROOT)
-    with open(os.path.join(SELFTEST_ROOT, SELFTEST_MARKER), "w") as f:
-        f.write("managed by check_cache_closeout_v1.py --self-test\n")
-
-    ok_evidence = {"verify_r1.json": _evidence_doc(CAND_A, ("pass",) * 3),
-                   "verify_r2.json": _evidence_doc(CAND_A, ("pass",) * 3)}
-    cases = {}  # label -> (case_dir, flags, expect_fail_check or None)
-
-    def case(label, dirname, flags, expect_fail, **kw):
-        dest = os.path.join(SELFTEST_ROOT, dirname)
-        _write_case(dest, kw.get("closeout_bytes", closeout_bytes),
-                    original_bytes, kw["evidences"],
-                    ids_doc=kw.get("ids_doc"), ledger=kw.get("ledger"))
-        cases[label] = (dest, flags, expect_fail)
-
-    case("positive: valid fixture passes all five checks", "positive",
-         ["--all"], None, evidences=ok_evidence)
-
-    ledger_missing = _base_ledger()
-    ledger_missing["entries"] = [e for e in ledger_missing["entries"]
-                                 if e["id"] != "W0-02"]
-    case("negative-1 missing ID in ledger", "neg_missing_id",
-         ["--ids"], "ids", evidences=ok_evidence, ledger=ledger_missing)
-
-    ledger_dup = _base_ledger()
-    ledger_dup["entries"].append(dict(ledger_dup["entries"][0]))
-    case("negative-2 duplicate ID in ledger", "neg_dup_id",
-         ["--ids"], "ids", evidences=ok_evidence, ledger=ledger_dup)
-
-    case("negative-3 tampered plan sha256", "neg_tampered_sha",
-         ["--sha256"], "sha256",
-         closeout_bytes=closeout_bytes + b"\n# tampered for self-test\n",
-         evidences=ok_evidence)
-
-    fail_evidence = {"exitfail_r1.json": _evidence_doc(
-        CAND_A, ("pass", "fail", "pass"))}
-    case("negative-4 scenario status=fail (non-zero exit)", "neg_exit_fail",
-         ["--exits"], "exits", evidences=fail_evidence)
-
-    mixed = {"mixed_r1.json": _evidence_doc(CAND_A, ("pass",) * 3),
-             "mixed_r2.json": _evidence_doc(CAND_B, ("pass",) * 3)}
-    case("negative-5 mixed candidates in one series", "neg_mixed_candidate",
-         ["--candidate"], "candidate", evidences=mixed)
-
-    fake = {"fake_minimal.json": {"status": "pass", "scenarios": []},
-            "fake_no_detail.json": {"utc": _now_z(), "elapsed_ms": 5,
-                                    "candidate_sha256": CAND_A,
-                                    "scenarios": [{"name": "hand-written",
-                                                   "status": "pass"}]}}
-    case("negative-6 forged PASS structure", "neg_fake_pass",
-         ["--exits"], "exits", evidences=fake)
-
-    results = []
-    for label, (dest, flags, expect_fail) in cases.items():
-        cmd = [sys.executable, SCRIPT_PATH] + flags + _cli_paths(dest)
-        proc = _run_case(cmd)
-        if expect_fail is None:
-            good = proc.returncode == 0 and "[FAIL]" not in proc.stdout \
-                and proc.stdout.count("[PASS]") == len(CHECK_ORDER)
-            results.append((label, good, proc.returncode))
-        else:
-            good = proc.returncode != 0 and \
-                ("[FAIL] %s" % expect_fail) in proc.stdout
-            results.append((label, good, proc.returncode))
-        status = "PASS" if good else "FAIL"
-        emit("[%s] self-test %s (subprocess exit=%d)" % (status, label,
-                                                         proc.returncode))
-        if not good:
-            for outline in proc.stdout.rstrip().splitlines():
-                emit("    | %s" % outline)
-            if proc.stderr.strip():
-                emit("    ! stderr: %s" % proc.stderr.strip()[:400])
-
-    passed = sum(1 for _, good, _ in results if good)
-    emit("SELF-TEST SUMMARY: %d/%d fixture expectations met "
-         "(1 positive + 6 negative)" % (passed, len(results)))
-    log_path = os.path.join(SELFTEST_ROOT, "selftest.log")
-    os.makedirs(SELFTEST_ROOT, exist_ok=True)
-    with open(log_path, "w", encoding="utf-8") as f:
-        f.write("\n".join(lines) + "\n")
-    print("self-test log written to %s" % log_path)
-    return 0 if passed == len(results) else 1
+    import runpy
+    path = os.path.join(REPO_ROOT, "test/scripts/cache_closeout_verifier_selftest.py")
+    return runpy.run_path(path)["self_test"]()
 
 
-# ---------------------------------------------------------------------------
 
 def main(argv):
     parser = argparse.ArgumentParser(
@@ -761,9 +765,13 @@ def main(argv):
                         help="verify all evidence scenarios status=pass, complete")
     parser.add_argument("--utc", action="store_true",
                         help="verify evidence/ledger timestamps are valid UTC")
+    parser.add_argument("--receipts", action="store_true", help="strict statuses, command receipts and current source binding")
+    parser.add_argument("--candidate-manifest", default=DEFAULT_MANIFEST)
+    parser.add_argument("--source-root", default=REPO_ROOT)
+    parser.add_argument("--scope", choices=("backend", "original"), default="backend")
     parser.add_argument("--all", action="store_true", help="run every check")
     parser.add_argument("--self-test", action="store_true",
-                        help="build /tmp fixtures and verify 6 negatives fail")
+                        help="build unique temporary fixtures and verify rejection oracles")
     parser.add_argument("--required-ids", default=DEFAULT_REQUIRED_IDS)
     parser.add_argument("--ledger", default=DEFAULT_LEDGER)
     parser.add_argument("--closeout-plan", default=DEFAULT_CLOSEOUT_PLAN)

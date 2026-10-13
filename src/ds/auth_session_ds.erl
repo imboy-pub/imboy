@@ -43,42 +43,29 @@
 -spec current_epoch(integer()) -> {ok, non_neg_integer()} | {error, unavailable}.
 current_epoch(Uid) when is_integer(Uid), Uid > 0 ->
     Key = {auth_session_epoch, Uid},
-    Cached = safe_cache_get(Key),
-    case Cached of
-        {ok, {ok, N}} when is_integer(N), N >= 1 ->
-            {ok, N};
+    Loader = fun() ->
+        case safe_query_epoch(Uid) of
+            {ok, E} = Result when E >= 1 -> Result;
+            Error -> imboy_cache:uncached(Error)
+        end
+    end,
+    %% 权威读取在 memo 生产代次内，提交后失效可拒绝旧 loader 的结果。
+    Result =
+        try
+            imboy_cache:memo(Loader, Key, ?EPOCH_MEMO_SEC)
+        catch
+            _:_ -> safe_query_epoch(Uid)
+        end,
+    case Result of
+        {ok, E} when is_integer(E), E >= 1 -> {ok, E};
         _ ->
-            case safe_query_epoch(Uid) of
-                {ok, E} when is_integer(E), E >= 1 ->
-                    safe_cache_memo(Key, E),
-                    {ok, E};
-                _ ->
-                    ok = ?WARN_LOG({auth_session_epoch_unavailable, Uid, unavailable}),
-                    {error, unavailable}
-            end
+            ok = ?WARN_LOG({auth_session_epoch_unavailable, Uid, unavailable}),
+            {error, unavailable}
     end;
 current_epoch(_) ->
     {error, unavailable}.
 
-%% @private 缓存读：缓存层崩溃视为未命中（auth 路径不因缓存故障崩溃）
--spec safe_cache_get(term()) -> term().
-safe_cache_get(Key) ->
-    try imboy_cache:get(Key) of
-        Other -> Other
-    catch
-        _:_ -> undefined
-    end.
-
-%% @private 缓存写：失败静默（仅损失 60s 命中收益）
--spec safe_cache_memo(term(), non_neg_integer()) -> ok.
-safe_cache_memo(Key, E) ->
-    try imboy_cache:memo(fun() -> {ok, E} end, Key, ?EPOCH_MEMO_SEC) of
-        _ -> ok
-    catch
-        _:_ -> ok
-    end.
-
-%% @private 查库归一化：缺行=1（已知默认态，bump 首次即写 2）；畸形行/异常=fail-closed
+%% @private 权威读取归一化；数据库未知态不能驻留为默认 epoch。
 -spec safe_query_epoch(integer()) ->
     {ok, non_neg_integer()} | {error, unavailable}.
 safe_query_epoch(Uid) ->
@@ -123,12 +110,10 @@ revoked(_Uid, _Malformed) ->
 bump(Uid) ->
     case
         elib_pg:with_tx(fun(Conn) ->
-            {ok, _, _, [{_E}]} = epgsql:equery(Conn, ?UPSERT_SQL, [Uid]),
-            ok
+            bump_in_tx(Conn, Uid)
         end)
     of
         ok ->
-            evict(Uid),
             ok;
         {rollback, Reason} ->
             {error, Reason};
@@ -144,8 +129,9 @@ bump(Uid) ->
 bump_in_tx(Conn, Uid) ->
     case epgsql:equery(Conn, ?UPSERT_SQL, [Uid]) of
         {ok, _, _, [_]} ->
-            evict(Uid),
-            ok;
+            elib_pg:after_commit(
+                Conn, {auth_session_epoch, Uid}, fun() -> evict(Uid) end
+            );
         {error, Reason} ->
             erlang:throw({abort_tx, {session_epoch_bump_failed, Reason}})
     end.

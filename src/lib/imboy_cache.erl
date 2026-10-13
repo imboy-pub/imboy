@@ -143,12 +143,38 @@ memo(F, undefined, MaxAge, Dep) when is_function(F, 0) ->
     end;
 memo(F, Key, MaxAge, Dep) ->
     ok = require_unversioned_key(Key, memo),
-    case imboy_cache_policy:is_fenced(Key) of
-        true ->
-            %% 物理键同时绑定 sync 启动身份与 generation，防止重启后的代次复用。
-            memo_fenced(F, Key, MaxAge, Dep);
+    case sensitive_cache_allowed(Key) of
         false ->
-            depcache:memo(F, Key, MaxAge, Dep, ?DEPCACHE_SERVER)
+            memo_authority(F, Key);
+        true ->
+            Value =
+                case imboy_cache_policy:is_fenced(Key) of
+                    true -> memo_fenced(F, Key, MaxAge, Dep);
+                    false -> depcache:memo(F, Key, MaxAge, Dep, ?DEPCACHE_SERVER)
+                end,
+            case sensitive_cache_allowed(Key) of
+                true -> Value;
+                false -> memo_authority(F, Key)
+            end
+    end.
+
+%% 无可用失效屏障时，新请求必须执行自己的权威读，不能加入旧 loader 等待池。
+memo_authority(F, Key) ->
+    _ = imboy_cache_sync:next_generation(Key),
+    memo_value(F()).
+
+sensitive_cache_allowed(Key) ->
+    case
+        application:get_env(imboy, dsync_enabled, false) =:= true andalso
+            imboy_cache_policy:policy(Key) =:= invalidate andalso
+            imboy_cache_policy:is_sensitive(Key)
+    of
+        true ->
+            imboy_cache_sync:status() =:= ready andalso
+                imboy_cache_sync:replication_capable() andalso
+                imboy_cache_sync_coverage:sensitive_members_current();
+        false ->
+            true
     end.
 
 %% 与 depcache 的 MFA Key 合同一致：context 参数不参与派生键。
@@ -188,11 +214,20 @@ memo_fenced(F, Key, MaxAge, Dep) ->
 -spec memo_fenced_attempt(fun(() -> term()), term(), non_neg_integer(), list()) ->
     {ok, term()} | {stale, list()}.
 memo_fenced_attempt(F, Key, MaxAge, Dep) ->
+    case sensitive_cache_allowed(Key) of
+        false -> {ok, memo_authority(F, Key)};
+        true -> memo_fenced_safe_attempt(F, Key, MaxAge, Dep)
+    end.
+
+memo_fenced_safe_attempt(F, Key, MaxAge, Dep) ->
     Snapshot = generation_snapshot(Key, Dep),
-    Value = apply_physical_memo(F, Key, MaxAge, Snapshot),
-    case generation_stable(Key, Snapshot) of
-        true -> {ok, Value};
-        false -> {stale, Snapshot}
+    Produced = apply_physical_memo(F, Key, MaxAge, Snapshot),
+    case {generation_stable(Key, Snapshot), fenced_value(Key, Produced)} of
+        {true, {ok, Value}} ->
+            {ok, Value};
+        _ ->
+            depcache:flush(physical_key(Snapshot), ?DEPCACHE_SERVER),
+            {stale, Snapshot}
     end.
 
 -spec memo_fenced_attempt(fun(() -> term()), term(), non_neg_integer(), list(), list()) ->
@@ -226,11 +261,34 @@ generation_stable(_Key, Snapshot) ->
     non_neg_integer(),
     fence_snapshot()
 ) -> term().
-apply_physical_memo(F, _Key, MaxAge, [{Key, direct, G} | Deps]) ->
+apply_physical_memo(F, _Key, MaxAge, Snapshot) ->
+    depcache:memo(
+        fun() -> fenced_result(F(), Snapshot) end,
+        physical_key(Snapshot),
+        MaxAge,
+        physical_deps(Snapshot),
+        ?DEPCACHE_SERVER
+    ).
+
+fenced_result(#memo{value = Value} = Result, Snapshot) ->
+    Result#memo{value = {cache_fenced_value, Snapshot, Value}};
+fenced_result(Value, Snapshot) ->
+    {cache_fenced_value, Snapshot, Value}.
+
+fenced_value(Key, {cache_fenced_value, Snapshot, Value}) ->
+    case generation_stable(Key, Snapshot) andalso sensitive_cache_allowed(Key) of
+        true -> {ok, Value};
+        false -> undefined
+    end;
+fenced_value(_, _) ->
+    undefined.
+
+physical_key([{Key, direct, G} | Deps]) ->
     {node_boot, boot, Boot} = lists:keyfind(node_boot, 1, Deps),
-    PhysKey = {cache_v2, Key, {Boot, G}},
-    PhysDeps = [{cache_v2_dep, D, {Boot, GD}} || {D, dep, GD} <- Deps],
-    depcache:memo(F, PhysKey, MaxAge, PhysDeps, ?DEPCACHE_SERVER).
+    {cache_v2, Key, {Boot, G}}.
+physical_deps([_ | Deps]) ->
+    {node_boot, boot, Boot} = lists:keyfind(node_boot, 1, Deps),
+    [{cache_v2_dep, D, {Boot, GD}} || {D, dep, GD} <- Deps].
 
 %% @doc 添加键值对到缓存，保存3600秒，无依赖项
 %% @param Key 缓存键
@@ -272,8 +330,7 @@ set(Key, Data, MaxAge, Depend) ->
 -spec set(term(), term(), non_neg_integer(), list(), atom()) -> ok.
 set(Key, Data, MaxAge, Depend, Server) ->
     ok = require_unversioned_key(Key, set),
-    % 首先设置本地缓存
-    depcache:set(Key, Data, MaxAge, Depend, Server),
+    ok = cache_write(Key, Data, MaxAge, Depend, Server),
 
     % 检查是否需要广播到其他节点
     _ =
@@ -291,6 +348,23 @@ set(Key, Data, MaxAge, Depend, Server) ->
 %% 普通数据库查询缓存填充不引发无意义广播（计划 2.1、AC-09），
 %% 敏感数据不再经广播复制到其他节点（19.5、W1-05）。
 %% 失效传播不在此路径：数据变更后的跨节点失效统一走 invalidate/1。
+cache_write(Key, Data, MaxAge, Depend, Server) ->
+    case {sensitive_cache_allowed(Key), imboy_cache_policy:is_fenced(Key)} of
+        {false, _} ->
+            ok;
+        {true, true} ->
+            Snapshot = generation_snapshot(Key, Depend),
+            depcache:set(
+                physical_key(Snapshot),
+                {cache_fenced_value, Snapshot, Data},
+                MaxAge,
+                physical_deps(Snapshot),
+                Server
+            );
+        {true, false} ->
+            depcache:set(Key, Data, MaxAge, Depend, Server)
+    end.
+
 -spec should_broadcast(term()) -> boolean().
 should_broadcast(Key) ->
     application:get_env(imboy, dsync_enabled, false) andalso
@@ -312,7 +386,7 @@ is_local_cache_key(_) ->
 %% @returns {ok, Data} | undefined
 -spec get_wait(term()) -> {ok, term()} | undefined.
 get_wait(Key) ->
-    guarded_read(Key, fun() -> depcache:get_wait(Key, ?DEPCACHE_SERVER) end).
+    guarded_read(Key, fun(K) -> depcache:get_wait(K, ?DEPCACHE_SERVER) end).
 
 %% @doc V2.2.1 统一失效入口（计划 2.1/4.2/7.2）：
 %% 数据变更（事务 COMMIT）成功后调用；本地清理 + generation 推进 + 跨节点失效通知。
@@ -337,7 +411,7 @@ put(Key, Value, TTL, local) ->
         end,
     case Check of
         ok ->
-            _ = depcache:set(Key, Value, TTL, [], ?DEPCACHE_SERVER),
+            ok = cache_write(Key, Value, TTL, [], ?DEPCACHE_SERVER),
             ok;
         {error, _} = Err ->
             Err
@@ -368,7 +442,7 @@ put_delete(Key) ->
 %% 墓碑或未 READY 时不得返回未校验旧值。
 -spec get(term()) -> {ok, term()} | undefined.
 get(Key) ->
-    guarded_read(Key, fun() -> depcache:get(Key, ?DEPCACHE_SERVER) end).
+    guarded_read(Key, fun(K) -> depcache:get(K, ?DEPCACHE_SERVER) end).
 
 %% @doc 从缓存中获取子键值
 %% @param Key 缓存键
@@ -376,7 +450,10 @@ get(Key) ->
 %% @returns {ok, Data} | undefined
 -spec get_subkey(term(), term()) -> {ok, term()} | undefined.
 get_subkey(Key, SubKey) ->
-    guarded_read(Key, fun() -> depcache:get_subkey(Key, SubKey, ?DEPCACHE_SERVER) end).
+    case imboy_cache_policy:is_fenced(Key) of
+        true -> fenced_subkey(Key, SubKey);
+        false -> guarded_read(Key, fun(K) -> depcache:get_subkey(K, SubKey, ?DEPCACHE_SERVER) end)
+    end.
 
 %% @doc 从缓存获取键值，支持子键
 %% @param Key 缓存键
@@ -384,15 +461,72 @@ get_subkey(Key, SubKey) ->
 %% @returns {ok, Data} | undefined
 -spec get(term(), term()) -> {ok, term()} | undefined.
 get(Key, SubKey) ->
-    guarded_read(Key, fun() -> depcache:get(Key, SubKey, ?DEPCACHE_SERVER) end).
+    case imboy_cache_policy:is_fenced(Key) of
+        true -> fenced_subkey(Key, SubKey);
+        false -> guarded_read(Key, fun(K) -> depcache:get(K, SubKey, ?DEPCACHE_SERVER) end)
+    end.
 
 guarded_read(Key, Read) ->
-    case is_replica_key(Key) of
+    case sensitive_cache_allowed(Key) of
         false ->
-            Read();
+            _ = imboy_cache_sync:next_generation(Key),
+            undefined;
         true ->
-            guarded_replica_read(Key, Read)
+            case {is_replica_key(Key), imboy_cache_policy:is_fenced(Key)} of
+                {true, _} ->
+                    guarded_replica_read(Key, fun() -> Read(Key) end);
+                {false, true} ->
+                    Snapshot = generation_snapshot(Key, []),
+                    Value = read_replica(fun() -> Read(physical_key(Snapshot)) end),
+                    case generation_stable(Key, Snapshot) andalso sensitive_cache_allowed(Key) of
+                        true ->
+                            case Value of
+                                {ok, Produced} -> fenced_value(Key, Produced);
+                                undefined -> undefined
+                            end;
+                        false ->
+                            undefined
+                    end;
+                {false, false} ->
+                    Read(Key)
+            end
     end.
+
+fenced_subkey(Key, SubKey) ->
+    case ?MODULE:get(Key) of
+        {ok, Value} -> {ok, cache_subvalue(SubKey, Value)};
+        undefined -> undefined
+    end.
+
+%% 保持 depcache 的既有子键语义；先验证完整封装再取子键。
+cache_subvalue(Key, M) when is_map(M) -> maps:get(Key, M, undefined);
+cache_subvalue(Key, L) when is_integer(Key), is_list(L) ->
+    try
+        lists:nth(Key, L)
+    catch
+        _:_ -> undefined
+    end;
+cache_subvalue(Key, L) when is_list(L) -> proplists:get_value(Key, L);
+cache_subvalue(Key, {rsc_list, L}) when is_integer(Key) -> cache_subvalue(Key, L);
+cache_subvalue(Key, {rsc_list, [H | _]}) ->
+    cache_subvalue(Key, H);
+cache_subvalue(_, {rsc_list, []}) ->
+    undefined;
+cache_subvalue(Key, T) when is_integer(Key) ->
+    case array:is_array(T) of
+        true ->
+            array:get(Key, T);
+        false when is_tuple(T) ->
+            try
+                element(Key, T)
+            catch
+                _:_ -> undefined
+            end;
+        false ->
+            undefined
+    end;
+cache_subvalue(_, _) ->
+    undefined.
 
 is_replica_key(Key) ->
     imboy_cache_sync:is_replicated(Key) orelse imboy_cache_policy:policy(Key) =:= replicate.
@@ -473,6 +607,17 @@ flush() ->
 %% @returns ok
 -spec flush(term()) -> ok.
 flush(Key) ->
+    case
+        imboy_cache_policy:fenced_namespaces() =/= [] orelse
+            application:get_env(imboy, dsync_enabled, false) =:= true
+    of
+        true -> _ = imboy_cache_sync:next_dep_generation(Key);
+        false -> ok
+    end,
+    case imboy_cache_policy:is_fenced(Key) of
+        true -> _ = imboy_cache_sync:next_generation(Key);
+        false -> ok
+    end,
     depcache:flush(Key, ?DEPCACHE_SERVER),
     % 检查是否启用分布式缓存
     _ =
@@ -528,7 +673,7 @@ record_depcache_event(Args) ->
 %% @doc 广播消息到所有节点
 %% @param Message 要广播的消息
 %% @returns {ok, Count} 成功广播的节点数
--spec broadcast(any()) -> {ok, non_neg_integer()} | {error, policy_denied}.
+-spec broadcast(any()) -> {ok, non_neg_integer()} | {error, policy_denied | incompatible_peers}.
 broadcast(Message) ->
     imboy_cache_sync:broadcast(Message).
 

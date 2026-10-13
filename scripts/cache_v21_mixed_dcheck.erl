@@ -6,11 +6,11 @@
 %% group（dsync_handler）、同一 depcache server 名（imboy_cache）。
 %%
 %% 场景：
-%%   M1 旧节点 legacy set 广播 → 新节点按原语义应用（不产生 V2 元数据）
-%%   M2 新节点 V2 事件 → 旧节点 catch-all 忽略：不崩溃、不应用、legacy 功能完好
-%%   M3 新节点重启，peer 新旧混合：仅 V2 应答者参与恢复，快照回填 V2 键
+%%   M1 未分类 legacy SET 可应用；受管键拒绝无版本覆盖，值与版本保持。
+%%   M2 混合能力交集拒绝公开 V2 写入/删除/广播；legacy 功能完好
+%%   M3 原混合重启 READY oracle，实际 DEGRADED 必须 FAIL；U1 单列升级恢复
 %%   M4 新节点仅存 legacy peer：有界重试后 DEGRADED（fail-closed：读 miss、写拒绝）
-%%   M5 V2 peer 回归后重启该节点恢复 READY（DEGRADED 无自动退出路径，运维要点）
+%%   M5 原丢失全部新版权威后 READY oracle；L1/L2 保留权威的证据独立登记
 %%   M6 新节点 invalidate 双通道发布：legacy peer 经 {flush, Key} 失效本地值
 %%      （19.8 能力交集；v2 信封被旧节点 catch-all 忽略，缺兼容发布则旧节点滞留陈旧值）
 %%
@@ -42,11 +42,13 @@
     init_on_peer/0,
     restart_sync/0,
     peer_sync_down/0,
+    change_membership/1,
     sync_alive/0,
     status_get/0,
     rev_present/1,
     read_rev_value/1,
     m1_broadcast_set/2,
+    m1_broadcast_set/3,
     inject_v2_set/4,
     inject_v2_set_frozen/5,
     reject_reset/0,
@@ -72,11 +74,21 @@ main([OutPath | _]) ->
             io:format("usage: LEGACY_EBIN=<old ebin> NEW_EBIN=<new ebin> erl ...~n"),
             halt(1);
         {LE, NE} ->
-            {ok, Nodes} = start_mixed(LE, NE),
             Results =
                 try
+                    {ok, Nodes} = start_mixed(LE, NE),
                     Scenarios = scenario_list(Nodes),
-                    [run_one(Name, Fun) || {Name, Fun} <- Scenarios]
+                    Primary = [run_one(Name, Fun) || {Name, Fun} <- Scenarios],
+                    stop_all(),
+                    Primary ++ destructive_legacy_tail(LE, NE)
+                catch
+                    Class:Reason:Stack ->
+                        [
+                            {"BOOT mixed cluster", fail,
+                                io_lib:format("~p:~p at ~p", [
+                                    Class, Reason, lists:sublist(Stack, 3)
+                                ])}
+                        ]
                 after
                     stop_all()
                 end,
@@ -101,20 +113,23 @@ scenario_list(Nodes) ->
     B = maps:get(b, Nodes),
     C = maps:get(c, Nodes),
     [
-        {"M1 legacy set propagates to new node (original semantics)", fun() ->
+        {"M1 legacy SET accepted only for unmanaged keys", fun() ->
             m1_legacy_set(A, B)
         end},
-        {"M2 V2 event ignored by legacy peer without crash", fun() ->
+        {"M2 mixed capability intersection rejects V2 publish", fun() ->
             m2_v2_no_crash_legacy(A, B)
         end},
         {"M3 new-node restart recovers from mixed peers (V2 backfill only)", fun() ->
             m3_mixed_restart_backfill(A, B, C)
         end},
-        {"M4 legacy-only peers degrade new node (fail-closed)", fun() ->
-            m4_legacy_only_degrades(A, B, C)
+        {"U1 full V2 upgrade restores value and deletion coverage", fun() ->
+            upgrade_recovery(A, B, C)
         end},
-        {"M5 V2 peer return + node restart restores READY", fun() ->
-            m5_recovery_after_v2_peer_returns(A, B, C)
+        {"L1 authority-preserving membership leave degrades recovering node", fun() ->
+            leave_authority_degrades(A, B, C)
+        end},
+        {"L2 preserved authority rejoin plus full upgrade restores READY", fun() ->
+            rejoin_authority_recovers(A, B, C)
         end},
         {"M6 V2-node invalidate flushes legacy peer via legacy channel", fun() ->
             m6_v2_invalidate_reaches_legacy(A, B)
@@ -157,49 +172,89 @@ run_one(Name, Fun) ->
 %% ===================================================================
 
 %% M1：旧节点 legacy set（dsync_enabled）→ 全组 {set,K,V,TTL,[]} →
-%% 新节点 B 按原语义 depcache:set；B 无 V2 rev 元数据（legacy 不进 V2 状态）。
+%% 未分类键保持兼容；replicate 键必须拒绝且不改变现有值或版本。
 m1_legacy_set(A, B) ->
-    Key = {mixed_test, m1_k1},
+    Key = {mixed_legacy, m1_k1},
     ok = rpc:call(A, ?MODULE, m1_broadcast_set, [Key, legacy_v1], ?RPC_MS),
     {ok, legacy_v1} = converge_get(B, Key, {ok, legacy_v1}),
     ok = read_rev_expect_absent(B, Key),
+    Managed = {mixed_test, m1_managed},
+    {ok, managed_v1} = rpc:call(B, imboy_cache, get, [Managed], ?RPC_MS),
+    {ok, Revision} = rpc:call(B, ?MODULE, read_rev_value, [Managed], 5000),
+    ok = rpc:call(B, ?MODULE, reject_reset, [], 5000),
+    ok = rpc:call(A, ?MODULE, m1_broadcast_set, [Managed, unsafe_legacy, B], ?RPC_MS),
+    Rejected = rpc:call(B, ?MODULE, reject_read, [], 5000),
+    true = Rejected > 0 orelse erlang:error({legacy_reject_not_counted, Rejected}),
+    {ok, managed_v1} = rpc:call(B, imboy_cache, get, [Managed], 5000),
+    {ok, Revision} = rpc:call(B, ?MODULE, read_rev_value, [Managed], 5000),
     ok.
 
-%% M2：新节点 V2 发布 → 旧节点收到 {cache_sync, #{protocol:=2,...}}：
-%% catch-all 忽略——不崩溃、不应用（soft-state miss 回权威）、legacy 通路无损。
+%% M2：原计划 §19.8 / C02 能力交集：混合期公开 V2 路径必须拒绝，
+%% 不改变已缓存基线及其版本；未分类 legacy SET 通路无损。
 m2_v2_no_crash_legacy(A, B) ->
     Key = {mixed_test, m2_k2},
-    ok = rpc:call(B, imboy_cache, put, [Key, v2_val, 120, replicate], ?RPC_MS),
     {ok, v2_val} = converge_get(B, Key, {ok, v2_val}),
-    timer:sleep(300),
+    {ok, Rev} = rpc:call(B, ?MODULE, read_rev_value, [Key], 5000),
+    {error, incompatible_peers} =
+        rpc:call(B, imboy_cache, put, [Key, unsafe_mixed, 120, replicate], ?RPC_MS),
+    {error, incompatible_peers} = rpc:call(B, imboy_cache, put_delete, [Key], ?RPC_MS),
+    [
+        {error, incompatible_peers} = rpc:call(
+            B,
+            imboy_cache_sync,
+            broadcast,
+            [#{protocol => 2, operation => Op}],
+            ?RPC_MS
+        )
+     || Op <- [set, delete]
+    ],
+    {ok, v2_val} = rpc:call(B, imboy_cache, get, [Key], 5000),
+    {ok, Rev} = rpc:call(B, ?MODULE, read_rev_value, [Key], 5000),
     true = rpc:call(A, ?MODULE, sync_alive, [], 5000),
     undefined = rpc:call(A, imboy_cache, get, [Key], 5000),
     %% 旧节点 legacy 功能在收到 V2 map 后仍然完好
-    KeyL = {mixed_test, m2_kl},
+    KeyL = {mixed_legacy, m2_kl},
     ok = rpc:call(A, ?MODULE, m1_broadcast_set, [KeyL, legacy_after_v2], ?RPC_MS),
     {ok, legacy_after_v2} = converge_get(B, KeyL, {ok, legacy_after_v2}),
     ok.
 
-%% M3：新节点 C 重启（depcache+sync 全换新 BootId），peer = 旧 A + 新 B：
-%% 仅 B 应答版本上界+快照；A 静默不阻塞回合。C READY 后 V2 键回填可见，
-%% legacy 键不回填（无 V2 元数据，soft-state miss）。
+%% 原 M3 READY oracle 原样保留。legacy 静默造成 DEGRADED 时真实 FAIL，
+%% 不能由随后 U1 全 V2 恢复的 PASS 顶替。
 m3_mixed_restart_backfill(A, B, C) ->
     ready = wait_status(B, 60),
-    Key2 = {mixed_test, m2_k2},
-    Key1 = {mixed_test, m1_k1},
     ok = rpc:call(C, ?MODULE, restart_sync, [], ?RPC_MS),
     ready = wait_status(C, 120),
-    {ok, v2_val} = converge_get(C, Key2, {ok, v2_val}),
-    undefined = rpc:call(C, imboy_cache, get, [Key1], 5000),
+    {ok, v2_val} = converge_get(C, {mixed_test, m2_k2}, {ok, v2_val}),
+    undefined = rpc:call(C, imboy_cache, get, [{mixed_legacy, m1_k1}], 5000),
     true = rpc:call(A, ?MODULE, sync_alive, [], 5000),
     ok.
 
-%% M4：停新 B 的 sync/depcache（模拟 V2 能力暂时离场），重启 C：
+%% 新 U1：独立的全 V2 升级恢复证据，不重写原 M3 的结果。
+upgrade_recovery(A, B, C) ->
+    ready = wait_status(B, 60),
+    A = restart_peer_as(new, a),
+    ok = rpc:call(C, ?MODULE, restart_sync, [], ?RPC_MS),
+    ready = wait_status(C, 120),
+    {ok, v2_val} = converge_get(C, {mixed_test, m2_k2}, {ok, v2_val}),
+    undefined = rpc:call(C, imboy_cache, get, [{mixed_test, m3_deleted}], 5000),
+    deleted = rpc:call(C, imboy_cache_sync, replicate_state, [{mixed_test, m3_deleted}], 5000),
+    undefined = rpc:call(C, imboy_cache, get, [{mixed_legacy, m1_k1}], 5000),
+    ok.
+
+%% 新 L1：将 A 回退为 legacy，暂时撤出 B 同步成员（保留其权威），重启 C：
 %% 集群仅剩 legacy A 可见 → 版本上界无人应答 → 有界重试（3×5s）后
 %% DEGRADED：replicate 读 undefined（soft-state miss）、写被拒（fail-closed）。
-m4_legacy_only_degrades(A, B, C) ->
+leave_authority_degrades(A, B, C) ->
     ready = wait_status(B, 60),
-    ok = rpc:call(B, ?MODULE, peer_sync_down, [], ?RPC_MS),
+    A = restart_peer_as(legacy, a),
+    ok = rpc:call(B, ?MODULE, change_membership, [leave], ?RPC_MS),
+    true = converge_true(
+        fun() ->
+            Members = rpc:call(C, imboy_cache_sync, syn_scope_members, [], 5000),
+            is_list(Members) andalso not lists:any(fun(P) -> node(P) =:= B end, Members)
+        end,
+        100
+    ),
     ok = rpc:call(C, ?MODULE, restart_sync, [], ?RPC_MS),
     degraded = wait_status(C, 400),
     Key4 = {mixed_test, m4_k4},
@@ -209,13 +264,12 @@ m4_legacy_only_degrades(A, B, C) ->
     true = rpc:call(A, ?MODULE, sync_alive, [], 5000),
     ok.
 
-%% M5：B 的 sync/depcache 重启回归（V2 能力恢复）；DEGRADED 无自动退出路径，
-%% 重启 C 后经 B 的版本上界应答回到 READY（运维恢复路径演练）。注意：M4 已把
-%% B、C 双端内存副本清空，replica 数据不复活（soft-state miss 语义正确），
-%% 故本场景验证的是恢复后的端到端活性——B 新写 → C 可见。
-m5_recovery_after_v2_peer_returns(A, B, C) ->
-    ok = rpc:call(B, ?MODULE, restart_sync, [], ?RPC_MS),
+%% 新 L2：B 携带原有权威回归，真实升级 A 后重启 C。
+%% 全员具备 V2 能力后恢复 READY，B 新写 → C 可见。
+rejoin_authority_recovers(A, B, C) ->
+    ok = rpc:call(B, ?MODULE, change_membership, [join], ?RPC_MS),
     ready = wait_status(B, 120),
+    A = restart_peer_as(new, a),
     ok = rpc:call(C, ?MODULE, restart_sync, [], ?RPC_MS),
     ready = wait_status(C, 120),
     Key5 = {mixed_test, m5_k5},
@@ -228,11 +282,13 @@ m5_recovery_after_v2_peer_returns(A, B, C) ->
 %% invalidate 必须同时经 legacy {flush, Key} 通道发布，否则旧节点滞留
 %% 陈旧值至 TTL。旧节点本地写（不广播），新节点发起失效后旧节点值必须被清除。
 m6_v2_invalidate_reaches_legacy(A, B) ->
+    A = restart_peer_as(legacy, a),
     Key = {mixed_test, m6_k},
     ok = rpc:call(A, imboy_cache, set, [Key, legacy_stale, 120], ?RPC_MS),
     {ok, legacy_stale} = converge_get(A, Key, {ok, legacy_stale}),
     ok = rpc:call(B, imboy_cache, invalidate, [Key], ?RPC_MS),
     undefined = converge_get(A, Key, undefined),
+    A = restart_peer_as(new, a),
     ok.
 
 %% ===================================================================
@@ -395,33 +451,36 @@ m10_r2_handshake(A, B, C) ->
 %% ===================================================================
 
 %% 回滚演练（W5-06）：真实滚动回滚 = 同名 peer 进程以旧代码树重启。
-%% 初始角色：A=旧（混合演练用），B/C=新（已升级节点）。回滚顺序 C → B。
+%% 初始角色：A/B/C 均已真实升级为 V2。回滚顺序 C → A → B。
 
 %% R1：滚动回滚 C（new → old）。回滚前 B 的 V2 数据就位并已收敛到 C；
-%% 回滚后 B（唯一剩余新节点）继续工作；C（旧）存活，legacy 广播通路
-%% A → C 可用；全程无崩溃。
+%% 回滚后混合能力门禁拒绝 B 的新受管写入；C（旧）不保留 V2 数据，
+%% 未分类 legacy 广播 A → C 可用；全程无崩溃。
 r1_rollback_node_c(Nodes) ->
     #{a := A, b := B, c := C} = Nodes,
     KeyPre = {mixed_test, r_k1},
     ok = rpc:call(B, imboy_cache, put, [KeyPre, pre_rb, 300, replicate], ?RPC_MS),
     {ok, pre_rb} = converge_get(C, KeyPre, {ok, pre_rb}),
     C2 = restart_peer_as(legacy, c),
-    %% 回滚中 B（新）继续工作（本地写入可读）
+    %% 首个 legacy 节点加入后，受管写入必须拒绝。
     KeyMid = {mixed_test, r_k2},
-    ok = rpc:call(B, imboy_cache, put, [KeyMid, mid_rb, 300, replicate], ?RPC_MS),
-    {ok, mid_rb} = converge_get(B, KeyMid, {ok, mid_rb}),
+    {error, incompatible_peers} =
+        rpc:call(B, imboy_cache, put, [KeyMid, mid_rb, 300, replicate], ?RPC_MS),
+    undefined = rpc:call(B, imboy_cache, get, [KeyMid], 5000),
+    undefined = rpc:call(C2, imboy_cache, get, [KeyPre], 5000),
     %% C（旧）存活；legacy 广播通路 A → C 可用
     true = rpc:call(C2, ?MODULE, sync_alive, [], 5000),
-    KeyL = {mixed_test, r_kl1},
+    KeyL = {mixed_legacy, r_kl1},
     ok = rpc:call(A, ?MODULE, m1_broadcast_set, [KeyL, rb_legacy], ?RPC_MS),
     {ok, rb_legacy} = converge_get(C2, KeyL, {ok, rb_legacy}),
     ok.
 
-%% R2：滚动回滚 B → 全旧集群（A 本就是旧节点）。数据安全 oracle：回滚前
+%% R2：滚动回滚 A、B → 全旧集群。数据安全 oracle：回滚前
 %% B 写入的 V2 键在旧节点上不复活（soft-state miss 回权威，无脏值）；
 %% legacy 广播 B → A/C 全组可用、无崩溃。
 r2_rollback_node_b(Nodes) ->
     #{a := A, c := C2} = Nodes,
+    A = restart_peer_as(legacy, a),
     B2 = restart_peer_as(legacy, b),
     undefined = rpc:call(B2, imboy_cache, get, [{mixed_test, r_k1}], 5000),
     undefined = rpc:call(C2, imboy_cache, get, [{mixed_test, r_k1}], 5000),
@@ -449,6 +508,55 @@ r3_full_cluster_rollback_restart(Nodes) ->
     true = rpc:call(C, ?MODULE, sync_alive, [], 5000),
     ok.
 
+%% 原 M4/M5 破坏所有新版内存副本；使用独立尾部集群，避免污染 U1/L1/L2
+%% 及后续回滚前置。失败仍计入同一矩阵并决定进程非零退出。
+destructive_legacy_tail(LegacyRoot, NewRoot) ->
+    try
+        {ok, #{a := A, b := B, c := C}} = start_mixed(LegacyRoot, NewRoot),
+        [
+            run_one("M4 legacy-only peers degrade new node (fail-closed)", fun() ->
+                m4_legacy_only_degrades(A, B, C)
+            end),
+            run_one("M5 V2 peer return + node restart restores READY", fun() ->
+                m5_recovery_after_v2_peer_returns(A, B, C)
+            end)
+        ]
+    catch
+        Class:Reason:Stack ->
+            [
+                {"BOOT original M4/M5 isolated tail", fail,
+                    io_lib:format("~p:~p at ~p", [Class, Reason, lists:sublist(Stack, 3)])}
+            ]
+    after
+        stop_all()
+    end.
+
+%% 原 M4 真路径：停止 B 的 sync/depcache，再重启 C，保留严格降级 oracle。
+m4_legacy_only_degrades(A, B, C) ->
+    ready = wait_status(B, 60),
+    ok = rpc:call(B, ?MODULE, peer_sync_down, [], ?RPC_MS),
+    ok = rpc:call(C, ?MODULE, restart_sync, [], ?RPC_MS),
+    degraded = wait_status(C, 400),
+    Key = {mixed_test, m4_k4},
+    undefined = rpc:call(C, imboy_cache, get, [Key], 5000),
+    {error, {not_ready, degraded}} = rpc:call(
+        C, imboy_cache, put, [Key, nope, 60, replicate], ?RPC_MS
+    ),
+    true = rpc:call(A, ?MODULE, sync_alive, [], 5000),
+    ok.
+
+%% 原 M5 真路径与 READY oracle：无剩余新版权威时不得用 L2 的 PASS 顶替。
+m5_recovery_after_v2_peer_returns(A, B, C) ->
+    ok = rpc:call(B, ?MODULE, restart_sync, [], ?RPC_MS),
+    ready = wait_status(B, 120),
+    ok = rpc:call(C, ?MODULE, restart_sync, [], ?RPC_MS),
+    ready = wait_status(C, 120),
+    Key = {mixed_test, m5_k5},
+    ok = rpc:call(B, imboy_cache, put, [Key, revived, 120, replicate], ?RPC_MS),
+    {ok, revived} = converge_get(C, Key, {ok, revived}),
+    true = rpc:call(A, ?MODULE, sync_alive, [], 5000),
+    ok.
+
 %% ===================================================================
 %% 集群管理
 %% ===================================================================
@@ -465,8 +573,8 @@ start_mixed(LegacyRoot, NewRoot) ->
     ),
     true = erlang:set_cookie(node(), CookieAtom),
     DriverDir = filename:absname(filename:dirname(code:which(?MODULE))),
-    %% 驱动节点侧可变状态（回滚场景会同名重启 peer，pid 会变）
-    Ctx = ets:new(c21ctx, [set, named_table, public]),
+    %% 驱动节点侧可变状态；前一矩阵已完成 stop_all 清理。
+    Ctx = new_context(),
     true = ets:insert(Ctx, [
         {legacy_root, LegacyRoot},
         {new_root, NewRoot},
@@ -480,12 +588,36 @@ start_mixed(LegacyRoot, NewRoot) ->
     {ok, _PA, A} = peer_boot(a, NameA, legacy, Ctx),
     {ok, _PB, B} = peer_boot(b, NameB, new, Ctx),
     {ok, _PC, C} = peer_boot(c, NameC, new, Ctx),
+    %% 先由显式单节点自然建立权威；同时启动的空集群必须 fail-closed，
+    %% 不能在演练中强设 READY 或把无人应答当作已恢复。
+    ok = rpc:call(B, ?MODULE, init_on_peer, [], ?RPC_MS),
+    ready = wait_status(B, 10),
+    true = rpc:call(B, net_kernel, connect_node, [C], ?RPC_MS),
+    ok = rpc:call(C, ?MODULE, init_on_peer, [], ?RPC_MS),
+    ready = wait_status(C, 30),
+    %% 完整 V2 能力阶段写入基线；混合阶段绝不绕过发布门禁。
+    ok = rpc:call(
+        B, imboy_cache, put, [{mixed_test, m1_managed}, managed_v1, 600, replicate], ?RPC_MS
+    ),
+    ok = rpc:call(B, imboy_cache, put, [{mixed_test, m2_k2}, v2_val, 600, replicate], ?RPC_MS),
+    {ok, v2_val} = converge_get(C, {mixed_test, m2_k2}, {ok, v2_val}),
+    ok = rpc:call(
+        B, imboy_cache, put, [{mixed_test, m3_deleted}, deleted_old, 600, replicate], ?RPC_MS
+    ),
+    {ok, deleted_old} = converge_get(C, {mixed_test, m3_deleted}, {ok, deleted_old}),
+    ok = rpc:call(B, imboy_cache, put_delete, [{mixed_test, m3_deleted}], ?RPC_MS),
+    true = converge_true(
+        fun() ->
+            rpc:call(C, imboy_cache_sync, replicate_state, [{mixed_test, m3_deleted}], 5000) =:=
+                deleted
+        end,
+        100
+    ),
+    %% 旧节点没有版本报告能力；先建立 V2 权威组再接入旧节点。
+    %% M3 仍单独验证带 legacy peer 的新版重启恢复，不由启动顺序代替。
     true = rpc:call(A, net_kernel, connect_node, [B], ?RPC_MS),
     true = rpc:call(A, net_kernel, connect_node, [C], ?RPC_MS),
-    true = rpc:call(B, net_kernel, connect_node, [C], ?RPC_MS),
     ok = rpc:call(A, ?MODULE, init_on_peer, [], ?RPC_MS),
-    ok = rpc:call(B, ?MODULE, init_on_peer, [], ?RPC_MS),
-    ok = rpc:call(C, ?MODULE, init_on_peer, [], ?RPC_MS),
     %% 旧节点无 imboy_cache_meta 表：就绪判定用 sync 进程存活
     true = rpc:call(A, ?MODULE, sync_alive, [], 5000),
     ready = wait_status(B, 150),
@@ -496,8 +628,8 @@ peer_boot(Which, Name, Role, Ctx) ->
     {ok, Pid, Node} = peer:start(#{
         name => Name, host => "127.0.0.1", wait_boot => false, args => peer_args(Role, Ctx)
     }),
-    pong = wait_peer(Node, 200),
     true = ets:insert(Ctx, {Which, {Pid, Name, Node}}),
+    pong = wait_peer(Node, 200),
     {ok, Pid, Node}.
 
 peer_args(Role, Ctx) ->
@@ -539,6 +671,7 @@ restart_peer_as(Role, Which) ->
         wait_boot => false,
         args => peer_args(Role, c21ctx)
     }),
+    true = ets:insert(c21ctx, {Which, {_NewPid, ShortName, Node}}),
     pong = wait_peer(Node, 200),
     Others = [N || {K, {_, _, N}} <- ets:tab2list(c21ctx), K =/= Which, is_atom(N)],
     _ = [ok = connect_retry(Node, N) || N <- Others],
@@ -566,9 +699,33 @@ connect_retry(From, To, N) ->
 connect_retry(From, To) ->
     connect_retry(From, To, 15).
 
+%% 上下文只属于本 driver 进程；不得删除或接管其他进程的同名表。
+new_context() ->
+    case ets:whereis(c21ctx) of
+        undefined -> ets:new(c21ctx, [set, named_table, public]);
+        _ -> erlang:error(driver_context_not_cleaned)
+    end.
+
+drop_context() ->
+    case ets:info(c21ctx, owner) of
+        undefined ->
+            ok;
+        Owner when Owner =:= self() ->
+            true = ets:delete(c21ctx),
+            ok;
+        _ ->
+            erlang:error(foreign_driver_context)
+    end.
+
 %% 从 Ctx 读取当前 peer pid 集中清理（回滚场景 pid 已轮换）
 stop_all() ->
-    Pids = [P || {K, {P, _S, _F}} <- ets:tab2list(c21ctx), is_atom(K)],
+    Entries =
+        case ets:info(c21ctx, owner) of
+            undefined -> [];
+            Owner when Owner =:= self() -> ets:tab2list(c21ctx);
+            _ -> erlang:error(foreign_driver_context)
+        end,
+    Pids = [P || {K, {P, _S, _F}} <- Entries, is_atom(K)],
     _ = [
         try
             peer:stop(P)
@@ -577,6 +734,7 @@ stop_all() ->
         end
      || P <- Pids
     ],
+    ok = drop_context(),
     try
         net_kernel:stop()
     catch
@@ -658,6 +816,12 @@ converge_loop(Node, Key, Expected, Deadline) ->
 %% ===================================================================
 %% peer 端辅助（rpc 执行；须在新旧两棵树上都可用）
 %% ===================================================================
+
+%% 暂时从同步成员视图撤出，保留真实 V2 权威，禁止伪造空集群 READY。
+change_membership(leave) ->
+    syn:leave(imboy_cache, dsync_handler, whereis(imboy_cache_sync));
+change_membership(join) ->
+    syn:join(imboy_cache, dsync_handler, whereis(imboy_cache_sync), #{cache_protocol => 2}).
 
 init_on_peer() ->
     ok = application:load(imboy),
@@ -789,6 +953,14 @@ m1_broadcast_set(Key, Value) ->
     application:unset_env(imboy, dsync_enabled),
     ok.
 
+%% syn:publish 在调用进程直接发送消息；同发送者随后 call 同一接收 PID，
+%% pong 证明前一个目标 SET 已被同步 actor 处理，避免只依赖总拒绝数。
+m1_broadcast_set(Key, Value, Receiver) ->
+    [Pid] = [P || {P, _} <- syn:members(imboy_cache, dsync_handler), node(P) =:= Receiver],
+    ok = m1_broadcast_set(Key, Value),
+    pong = gen_server:call(Pid, ping_ok, 5000),
+    ok.
+
 %% 定向注入 V2 SET（诊断用；OriginNode 避开自环过滤）。
 %% C01 冻结后缺 epoch/config_hash/registry_hash 的事件会被结构性拒绝
 %% （missing_protocol_field，第 1 节），统一走 frozen 构造；
@@ -858,11 +1030,11 @@ rev_present(Key) ->
         [_] -> present
     end.
 
-%% C10/M9：读取键的 Lamport revision（{{Counter, Node}, _C, _Exp, _St} 行）。
+%% C10/M1/M9：读取当前包含 epoch 的版本行中的 Lamport revision。
 %% 仅对新节点调用。
 read_rev_value(Key) ->
     case ets:lookup(imboy_cache_meta, {rev, Key}) of
-        [{{rev, Key}, {Rev, _C, _Exp, _St}}] -> {ok, Rev};
+        [{{rev, Key}, {Rev, _C, _Exp, _St, _Epoch}}] -> {ok, Rev};
         [] -> {error, not_found}
     end.
 

@@ -132,7 +132,7 @@ login(<<"POST">>, Req0, _State) ->
     PostVals = elib_param:post(Req0),
     Captcha = maps:get(<<"captcha">>, PostVals, ""),
     Csrf = maps:get(<<"csrf_token">>, PostVals, ""),
-    case imboy_cache:get(Csrf) of
+    case imboy_cache:get({local_cache, csrf, Csrf}) of
         {ok, 1} ->
             case safe_captcha_check(CryptKey, Captcha) of
                 true ->
@@ -144,7 +144,7 @@ login(<<"POST">>, Req0, _State) ->
                         Password ->
                             case adm_passport_logic:do_login(Account, Password) of
                                 {ok, AdmUser} ->
-                                    imboy_cache:flush(Csrf),
+                                    imboy_cache:flush({local_cache, csrf, Csrf}),
                                     #{<<"id">> := AdmUserId} = AdmUser,
                                     AdmUserIdBin = ec_cnv:to_binary(AdmUserId),
                                     case adm_session_ds:issue(AdmUserIdBin) of
@@ -291,7 +291,7 @@ cookie_secure() ->
 -spec build_login_meta() -> map().
 build_login_meta() ->
     Csrf = elib_id:gen("csrf"),
-    imboy_cache:set(Csrf, 1),
+    imboy_cache:set({local_cache, csrf, Csrf}, 1),
     PublicKey =
         case config_ds:env(login_rsa_pub_key) of
             undefined ->

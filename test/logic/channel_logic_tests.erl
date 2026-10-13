@@ -3276,7 +3276,8 @@ remove_subscriber_admin_success_updates_counter_test_() ->
     ChannelIdBin = integer_to_binary(11),
     MockConfigs = [
         {elib_pg, [
-            {'with_tx', 1, fun(Fun) -> Fun(fake_conn) end}
+            {'with_tx', 1, fun commit_cache_tx/1},
+            {'after_commit', 3, fun record_cache_commit/3}
         ]},
         {channel_admin_ds, [
             {'get_role', 2, fun
@@ -3333,7 +3334,8 @@ remove_subscriber_is_idempotent_when_target_already_inactive_test_() ->
     ChannelIdBin = integer_to_binary(11),
     MockConfigs = [
         {elib_pg, [
-            {'with_tx', 1, fun(Fun) -> Fun(fake_conn) end}
+            {'with_tx', 1, fun commit_cache_tx/1},
+            {'after_commit', 3, fun record_cache_commit/3}
         ]},
         {channel_admin_ds, [
             {'get_role', 2, fun
@@ -5941,3 +5943,18 @@ remove_subscriber_lock_failure_preserves_subscription_test_() ->
             ?assertEqual(0, meck:num_calls(msg_s2c_ds, send, 7))
         end)
     end}.
+
+%% 仅模拟业务提交后回调接线；实际 COMMIT/ROLLBACK 由专项队列测试证明。
+commit_cache_tx(Fun) ->
+    put(channel_test_commit_actions, []),
+    try
+        Result = Fun(fake_conn),
+        Actions = erase(channel_test_commit_actions),
+        [Action() || Action <- lists:reverse(Actions)],
+        Result
+    after
+        erase(channel_test_commit_actions)
+    end.
+record_cache_commit(_Conn, _Id, Action) ->
+    put(channel_test_commit_actions, [Action | get(channel_test_commit_actions)]),
+    ok.
