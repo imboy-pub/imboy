@@ -642,14 +642,16 @@ reset_resource_sample() ->
 resource_sample() ->
     SyncPid = whereis(imboy_cache_sync),
     Info = process_info(SyncPid, [message_queue_len, memory, total_heap_size]),
+    PagePeak = snapshot_page_peak(),
     Tables = [T || T <- ets:all(), lists:prefix("imboy_cache_", atom_to_list(ets:info(T, name)))],
     MetaWords = lists:sum([ets:info(T, memory) || T <- Tables]),
     maps:merge(logical_usage(), #{
         mailbox => proplists:get_value(message_queue_len, Info),
-        buffer_count => null,
-        buffer_bytes => null,
-        page_count => snapshot_page_peak(1),
-        page_bytes => snapshot_page_peak(2),
+        %% C01 pulls one authority page at a time; Bmax is this in-flight payload.
+        buffer_count => element(1, PagePeak),
+        buffer_bytes => element(2, PagePeak),
+        page_count => element(1, PagePeak),
+        page_bytes => element(2, PagePeak),
         journal_count => journal_usage(3),
         journal_bytes => journal_usage(4),
         grace_count => ets:select_count(imboy_cache_meta, [{{{grace_incarnation, '_'}, '_'}, [], [true]}]),
@@ -661,12 +663,10 @@ resource_sample() ->
         cache_ets_bytes => depcache:size(imboy_cache) * erlang:system_info(wordsize)
     }).
 
-snapshot_page_peak(Index) -> page_peak(snapshot_page_peak, Index).
-
-page_peak(Key, Index) ->
-    case ets:lookup(imboy_cache_meta, Key) of
-        [{Key, Peak}] -> element(Index, Peak);
-        [] -> 0
+snapshot_page_peak() ->
+    case ets:lookup(imboy_cache_meta, snapshot_page_peak) of
+        [{snapshot_page_peak, Peak}] -> Peak;
+        [] -> {0, 0}
     end.
 
 journal_usage(Index) ->
