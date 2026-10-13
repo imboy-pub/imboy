@@ -15,11 +15,15 @@
 - `frozen_at_utc`：冻结时间，带明确时区；命令启动不能早于该时间。
 
 输入集合由当前仓库机械枚举：Git 跟踪及未忽略的 `src/`、`include/`、
-`config/`、`scripts/`、`test/`、`priv/migrations/`、Makefile、erlang.mk、VERSION、rebar.lock；
+`config/`、`scripts/`、`test/`、`priv/migrations/`、`asn1/`、`mibs/`、`lib/`、
+Makefile、erlang.mk、VERSION、rebar.lock；被 Git 忽略但可被构建/迁移消费的源码拒绝冻结，
+避免源码漏出候选摘要；
 另绑定实际存在的本地测试配置 `config/sys.closeout-local.config`（仅摘要，不输出内容）；
 并绑定 Prometheus/Grafana 运行链路：`deploy/docker-compose.prod.yml`、抓取配置、cache-sync
 规则及规则测试、专板、Grafana dashboard 与 datasource provisioning（文件存在时）；
-另绑定 deps 中实际 `.erl/.hrl/.beam/.app/.so/.dylib` 字节，排除 `.git/_build`。
+另绑定 `deps/` 下所有文件字节（包括无扩展名运行工具及平台构建源码/配置），
+排除 `.git/_build`；依赖锁文件无法覆盖本地依赖树中的修改。`deps/` 根和依赖目录符号链接拒绝冻结，
+依赖文件链接仅允许解析到仓库内，防止循环遍历或将仓外文件混入候选。
 源码、配置、测试驱动、依赖或运行依赖字节改变后必须重新冻结；新加输入也拒绝。
 此清单不证明用于执行的主应用 BEAM 等价，执行命令仍须从冻结源码隔离编译，
 记录构建命令与环境，由独立审查核对实际加载路径。

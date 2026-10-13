@@ -11,7 +11,8 @@ from datetime import datetime, timedelta, timezone
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "scripts"))
 from check_cache_closeout_v1 import (TASK_ID, EXPECTED_CLOSEOUT_PLAN_SHA256,
     EXPECTED_ORIGINAL_PLAN_SHA256, DEFAULT_CLOSEOUT_PLAN, DEFAULT_ORIGINAL_PLAN,
-    SCRIPT_PATH, CHECK_ORDER, DEFAULT_REQUIRED_IDS, sha256_file, load_json, _read_file)
+    SCRIPT_PATH, CHECK_ORDER, DEFAULT_REQUIRED_IDS, sha256_file, load_json, _read_file,
+    candidate_inputs)
 
 SELFTEST_ROOT = "/tmp/check_cache_closeout_fixtures"
 FIXTURE_ROWS = [{"path": "Makefile", "sha256": hashlib.sha256(b"# fixture\n").hexdigest()}]
@@ -415,9 +416,130 @@ def self_test():
             with open(path, "w") as f:
                 f.write("# monitoring candidate fixture\n")
 
+    def mutate_ignored_source(dest):
+        source = os.path.join(dest, "source")
+        ignored_inputs = [
+            "src/local_only.erl",
+            "src/local_only.xrl",
+            "src/local_only.yrl",
+            "src/local_only.app.src",
+            "asn1/local_only.asn1",
+            "mibs/local_only.mib",
+            "lib/local_only.ex",
+        ]
+        with open(os.path.join(source, ".gitignore"), "w") as f:
+            f.write("".join("/%s\n" % path for path in ignored_inputs))
+        for relative in ignored_inputs:
+            path = os.path.join(source, relative)
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "w") as f:
+                f.write("ignored build input\n")
+
+    def mutate_dependency_inputs(dest):
+        source = os.path.join(dest, "source")
+        inputs = {
+            "deps/fs/priv/mac_listener": "runtime helper\n",
+            "deps/fs/priv/inotifywait.exe": "runtime helper\n",
+            "deps/fs/c_src/mac/main.c": "build source\n",
+            "deps/fs/c_src/mac/common.h": "build header\n",
+            "deps/fs/c_src/Makefile.erlang.mk": "build rules\n",
+            "deps/fs/rebar.config": "build config\n",
+        }
+        for relative, contents in inputs.items():
+            path = os.path.join(source, relative)
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "w") as f:
+                f.write(contents)
+
+    def mutate_dependency_directory_symlink(dest):
+        source = os.path.join(dest, "source")
+        dependency = os.path.join(source, "deps/fs")
+        os.makedirs(dependency, exist_ok=True)
+        os.symlink(".", os.path.join(dependency, "cycle"))
+
+    def mutate_dependency_root_symlink(dest):
+        source = os.path.join(dest, "source")
+        outside = os.path.join(dest, "outside-deps")
+        os.makedirs(outside, exist_ok=True)
+        with open(os.path.join(outside, "outside.c"), "w") as f:
+            f.write("outside build input\n")
+        os.symlink(outside, os.path.join(source, "deps"))
+
+    def mutate_dependency_file_symlink_escape(dest):
+        source = os.path.join(dest, "source")
+        external = os.path.join(dest, "outside-helper")
+        with open(external, "w") as f:
+            f.write("outside runtime helper\n")
+        helper = os.path.join(source, "deps/fs/priv/mac_listener")
+        os.makedirs(os.path.dirname(helper), exist_ok=True)
+        os.symlink(external, helper)
+
+    def mutate_receipt_result_utc(dest, utc_value=None):
+        source = os.path.join(dest, "raw/verify_r1.json")
+        result, _ = load_json(source)
+        if utc_value is None:
+            del result["utc"]
+        else:
+            result["utc"] = utc_value
+        external = os.path.join(dest, "receipt-result-outside-evidence-dir.json")
+        _write_json(external, result)
+        receipt_path = os.path.join(dest, "receipt-0.json")
+        receipt, _ = load_json(receipt_path)
+        receipt["result"] = {"path": os.path.basename(external),
+                             "sha256": sha256_file(external)}
+        _write_json(receipt_path, receipt)
+        ledger_path = os.path.join(dest, "ledger-v1.json")
+        ledger, _ = load_json(ledger_path)
+        ref = {"path": "receipt-0.json", "sha256": sha256_file(receipt_path)}
+        for entry in ledger["entries"] + ledger["closeout_tasks"]:
+            entry["receipts"][0] = ref
+        _write_json(ledger_path, ledger)
+
     receipt_mutation("negative-22 migration input added after freeze", "neg_migration", mutate_migration)
     receipt_mutation("negative-23 ignored runtime profile added after freeze", "neg_ignored_profile", mutate_ignored_profile)
     receipt_mutation("negative-24 monitoring runtime inputs added after freeze", "neg_monitoring_inputs", mutate_monitoring_inputs)
+    receipt_mutation("negative-25 ignored Erlang source after freeze", "neg_ignored_source", mutate_ignored_source)
+    receipt_mutation(
+        "negative-26 dependency runtime and build inputs added after freeze",
+        "neg_dependency_inputs",
+        mutate_dependency_inputs,
+        "candidate manifest input set/order != current source inventory",
+    )
+    receipt_mutation(
+        "negative-27 dependency root symlink escapes source root",
+        "neg_dependency_root_symlink_escape",
+        mutate_dependency_root_symlink,
+        "dependency root symlink is unsupported",
+    )
+    receipt_mutation(
+        "negative-28 dependency directory symlink cycle",
+        "neg_dependency_symlink_cycle",
+        mutate_dependency_directory_symlink,
+        "dependency directory symlinks are unsupported",
+    )
+    receipt_mutation(
+        "negative-29 dependency file symlink escapes source root",
+        "neg_dependency_file_symlink_escape",
+        mutate_dependency_file_symlink_escape,
+        "dependency file symlink escapes source root",
+    )
+    receipt_mutation(
+        "negative-30 receipt result UTC outside evidence dir",
+        "neg_receipt_result_utc",
+        mutate_receipt_result_utc,
+        "result has missing/invalid UTC",
+    )
+    for number, utc_value in [
+        (31, "2026-10-13T12:00:00+01:60"),
+        (32, "0001-01-01T00:00:00+23:59"),
+        (33, "9999-12-31T23:59:59-23:59"),
+    ]:
+        receipt_mutation(
+            "negative-%d receipt result invalid UTC boundary" % number,
+            "neg_receipt_result_utc_%d" % number,
+            lambda dest, value=utc_value: mutate_receipt_result_utc(dest, value),
+            "result has missing/invalid UTC",
+        )
 
     results = []
     for label, (dest, flags, expect_fail) in cases.items():
@@ -442,6 +564,25 @@ def self_test():
                 emit("    | %s" % outline)
             if proc.stderr.strip():
                 emit("    ! stderr: %s" % proc.stderr.strip()[:400])
+
+    internal_link_root = tempfile.mkdtemp(prefix="cache-closeout-deps-link-")
+    subprocess.run(["git", "init", "-q", internal_link_root], check=True)
+    target = os.path.join(internal_link_root, "deps/fs/shared/mac_listener")
+    alias = os.path.join(internal_link_root, "deps/fs/priv/mac_listener")
+    os.makedirs(os.path.dirname(target), exist_ok=True)
+    os.makedirs(os.path.dirname(alias), exist_ok=True)
+    with open(target, "w") as f:
+        f.write("in-repository runtime helper\n")
+    os.symlink("../shared/mac_listener", alias)
+    try:
+        internal_paths = candidate_inputs(internal_link_root)
+        good = "deps/fs/shared/mac_listener" in internal_paths and \
+            "deps/fs/priv/mac_listener" in internal_paths
+    except (OSError, ValueError, subprocess.CalledProcessError):
+        good = False
+    results.append(("internal dependency file symlink remains bound", good, 0 if good else 1))
+    emit("[%s] self-test internal dependency file symlink remains bound" %
+         ("PASS" if good else "FAIL"))
 
     passed = sum(1 for _, good, _ in results if good)
     emit("SELF-TEST SUMMARY: %d/%d fixture expectations met "

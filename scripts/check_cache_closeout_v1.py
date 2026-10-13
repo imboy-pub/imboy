@@ -120,16 +120,21 @@ def parse_utc(text):
     else:
         compact = tz.replace(":", "")
         sign = 1 if tz[0] == "+" else -1
+        hours, minutes = int(compact[1:3]), int(compact[3:5])
+        if hours > 23 or minutes > 59:
+            return None, "invalid timezone offset: %r" % tz
         try:
-            tzi = timezone(sign * timedelta(hours=int(compact[1:3]),
-                                            minutes=int(compact[3:5])))
+            tzi = timezone(sign * timedelta(hours=hours, minutes=minutes))
         except ValueError as exc:
             return None, "invalid timezone (%s)" % exc
     try:
         dt = datetime(y, mo, d, h, mi, s, micro, tzinfo=tzi)
     except ValueError as exc:
         return None, "invalid date/time value (%s): %r" % (exc, text)
-    return dt.astimezone(timezone.utc), None
+    try:
+        return dt.astimezone(timezone.utc), None
+    except OverflowError as exc:
+        return None, "UTC conversion out of range (%s): %r" % (exc, text)
 
 
 def utc_in_window(dt):
@@ -525,7 +530,10 @@ def check_utc(args):
 
 # Strict closeout receipts are independent of diagnostic driver JSON. A driver
 # summary alone cannot prove the shell exit or the complete raw log.
-INPUT_PREFIXES = ("src/", "include/", "config/", "scripts/", "test/", "priv/migrations/")
+INPUT_PREFIXES = (
+    "src/", "include/", "config/", "scripts/", "test/", "priv/migrations/",
+    "asn1/", "mibs/", "lib/",
+)
 INPUT_FILES = {"Makefile", "erlang.mk", "VERSION", "rebar.lock"}
 RUNTIME_INPUTS = {
     "config/sys.closeout-local.config",
@@ -546,14 +554,46 @@ def candidate_inputs(root):
                           capture_output=True, check=True)
     paths = {p for p in proc.stdout.decode().split("\0") if p and
              (p.startswith(INPUT_PREFIXES) or p in INPUT_FILES)}
+    ignored = subprocess.run(["git", "-C", root, "ls-files", "-z", "--others",
+                              "--ignored", "--exclude-standard", "--",
+                              "src", "include", "scripts", "test", "priv/migrations",
+                              "asn1", "mibs", "lib"],
+                             capture_output=True, check=True)
+    source_suffixes = (
+        ".erl", ".hrl", ".app.src", ".core", ".xrl", ".yrl", ".asn1",
+        ".mib", ".ex", ".py", ".sh", ".sql",
+    )
+    ignored_sources = sorted(
+        p for p in ignored.stdout.decode().split("\0")
+        if p.endswith(source_suffixes)
+    )
+    if ignored_sources:
+        raise ValueError("ignored build-consumable sources: %s"
+                         % ", ".join(ignored_sources[:20]))
     paths.update(p for p in RUNTIME_INPUTS if os.path.isfile(os.path.join(root, p)))
-    # Dependency source and actual runtime bytes are otherwise ignored by Git.
-    # Include both: a lock/pin alone cannot bind a locally modified dependency.
-    for base, dirs, names in os.walk(os.path.join(root, "deps"), followlinks=True):
+    # Dependencies are ignored by Git; bind all files that may affect their
+    # build or runtime, including extensionless tools and platform build inputs.
+    deps_root = os.path.join(root, "deps")
+    if os.path.islink(deps_root):
+        raise ValueError("dependency root symlink is unsupported: deps")
+    root_real = os.path.realpath(root)
+    for base, dirs, names in os.walk(deps_root):
         dirs[:] = [d for d in dirs if d not in (".git", "_build")]
+        linked_dirs = [d for d in dirs if os.path.islink(os.path.join(base, d))]
+        if linked_dirs:
+            raise ValueError("dependency directory symlinks are unsupported: %s"
+                             % os.path.relpath(os.path.join(base, linked_dirs[0]), root))
         for name in names:
-            if name.endswith((".erl", ".hrl", ".beam", ".app", ".so", ".dylib")):
-                paths.add(os.path.relpath(os.path.join(base, name), root))
+            path = os.path.join(base, name)
+            if os.path.islink(path):
+                try:
+                    inside_root = os.path.commonpath((root_real, os.path.realpath(path))) == root_real
+                except ValueError:
+                    inside_root = False
+                if not inside_root:
+                    raise ValueError("dependency file symlink escapes source root: %s"
+                                     % os.path.relpath(path, root))
+            paths.add(os.path.relpath(path, root))
     return sorted(paths)
 
 
@@ -584,7 +624,7 @@ def _manifest_binding(args, errors):
     paths = [r.get("path") for r in rows if isinstance(r, dict)]
     try:
         expected = candidate_inputs(args.source_root)
-    except (OSError, subprocess.CalledProcessError) as exc:
+    except (OSError, ValueError, subprocess.CalledProcessError) as exc:
         errors.append("cannot inventory current candidate: %s" % exc)
         return None, None
     if paths != expected:
@@ -716,6 +756,9 @@ def check_receipts(args):
                 if err or not isinstance(rd, dict) or rd.get("candidate_sha256") != candidate or rd.get("counts") != counts:
                     errors.append("result candidate/count mismatch: %s" % result)
                 if isinstance(rd, dict):
+                    result_utc, utc_err = parse_utc(rd.get("utc"))
+                    if utc_err or utc_in_window(result_utc):
+                        errors.append("result has missing/invalid UTC: %s" % result)
                     for key in ("exit", "exit_code"):
                         if key in rd and (type(rd[key]) is not int or rd[key] != 0):
                             errors.append("result reports non-zero %s: %s" % (key, result))
