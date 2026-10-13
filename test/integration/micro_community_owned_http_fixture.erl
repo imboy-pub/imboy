@@ -150,10 +150,15 @@ connect_owned(Opts) ->
                     epgsql:close(Conn),
                     {error, owned_target_rejected}
             end;
-        _ ->
+        Error ->
+            %% r7/r7b 稳定复现 owned_connection_unavailable 且 epgsql 手测
+            %% 同参 42ms 连通：先暴露真实失败形态再定性。
+            io:format("MC22_OWNED_CONNECT_ERR ~p~n", [Error]),
             {error, owned_connection_unavailable}
     catch
-        _:_ -> {error, owned_connection_unavailable}
+        Class:Reason:Stack ->
+            io:format("MC22_OWNED_CONNECT_EXC ~p:~p~n~p~n", [Class, Reason, Stack]),
+            {error, owned_connection_unavailable}
     end.
 
 run_owned(Conn, Opts, Callback, Mode) ->
