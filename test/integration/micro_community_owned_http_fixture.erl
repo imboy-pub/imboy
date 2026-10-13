@@ -91,8 +91,14 @@ run_mode(Callback, Mode) when is_function(Callback, 1) ->
                 fail(owned_connection_unavailable)
         end
     catch
-        throw:{mc_http_failed, Code} -> {error, Code};
-        _:_ -> {error, unexpected_failure}
+        throw:{mc_http_failed, Code} ->
+            {error, Code};
+        Class:Reason:Stack ->
+            %% r7d 实证顶层吞异常只剩 unexpected_failure：先暴露形态再定性。
+            io:format("MC22_RUN_MODE_EXC ~p:~p~n~p~n", [
+                Class, Reason, lists:sublist(Stack, 3)
+            ]),
+            {error, unexpected_failure}
     end.
 
 fresh_vm() ->
@@ -205,7 +211,11 @@ configure_runtime() ->
         {product_profile, community},
         {jwt_key, crypto:strong_rand_bytes(32)},
         {adm_cookie_secret, crypto:strong_rand_bytes(32)},
-        {postgre_aes_key, crypto:strong_rand_bytes(32)}
+        % 必须可打印 ASCII：epgsql 以 text 参数通道传 pgcrypto，任意二进制
+        % （strong_rand_bytes）会触发 22023 且 config 加解密两侧不对称 →
+        % sign_key 读回 <<>> → Android 全量 902（r14-r16 实证）。
+        % base64(24B)=32 字符，与 sys.local.config 的形态一致。
+        {postgre_aes_key, base64:encode(crypto:strong_rand_bytes(24))}
     ],
     [application:set_env(imboy, Key, Value) || {Key, Value} <- Settings],
     application:set_env(pooler, pools, []),
