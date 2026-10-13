@@ -706,6 +706,10 @@ def check_receipts(args):
                 rd, err = load_json(result)
                 if err or not isinstance(rd, dict) or rd.get("candidate_sha256") != candidate or rd.get("counts") != counts:
                     errors.append("result candidate/count mismatch: %s" % result)
+                if isinstance(rd, dict):
+                    for key in ("exit", "exit_code"):
+                        if key in rd and (type(rd[key]) is not int or rd[key] != 0):
+                            errors.append("result reports non-zero %s: %s" % (key, result))
                 errors.extend(_audit_evidence_file(result))
                 if count_kind == "scenarios" and isinstance(rd, dict) and isinstance(rd.get("scenarios"), list) and isinstance(counts, dict):
                     passed = sum(isinstance(sc, dict) and sc.get("status") == "pass" for sc in rd["scenarios"])

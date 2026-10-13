@@ -198,8 +198,9 @@ def self_test():
 
     # Change actual receipt exit while retaining pass scenario JSON; update the
     # reference hash so this exercises the exit oracle, not only tamper checks.
-    def receipt_mutation(label, dirname, mutation):
-        case(label, dirname, ["--all"], "receipts", evidences=ok_evidence)
+    def receipt_mutation(label, dirname, mutation, expect_detail=None):
+        expected = ("receipts", expect_detail) if expect_detail else "receipts"
+        case(label, dirname, ["--all"], expected, evidences=ok_evidence)
         dest = cases[label][0]
         mutation(dest)
 
@@ -344,6 +345,26 @@ def self_test():
         mutate_cancelled_count,
     )
 
+    def mutate_result_exit(dest):
+        result_path = os.path.join(dest, "raw/verify_r1.json")
+        result, _ = load_json(result_path)
+        result["exit"] = 2
+        _write_json(result_path, result)
+        result_sha = sha256_file(result_path)
+        for index in range(9):
+            path = os.path.join(dest, "receipt-%d.json" % index)
+            receipt, _ = load_json(path)
+            if receipt["result"]["path"] == "raw/verify_r1.json":
+                receipt["result"]["sha256"] = result_sha
+                rebind_receipt(dest, index, receipt)
+
+    receipt_mutation(
+        "negative-18 result reports nonzero exit despite successful receipt",
+        "neg_result_exit",
+        mutate_result_exit,
+        "result reports non-zero exit",
+    )
+
     def add_runtime_failure(dest, marker):
         log = os.path.join(dest, "command-6.log")
         with open(log, "a") as f:
@@ -353,9 +374,9 @@ def self_test():
         rebind_receipt(dest, 6, receipt)
 
     for number, name, marker in [
-        (18, "OTP generic server terminating", "** Generic server cache_actor terminating"),
-        (19, "OTP reason for termination", "** Reason for termination =="),
-        (20, "component liveness false", "COMPONENT_LIVENESS false"),
+        (19, "OTP generic server terminating", "** Generic server cache_actor terminating"),
+        (20, "OTP reason for termination", "** Reason for termination =="),
+        (21, "component liveness false", "COMPONENT_LIVENESS false"),
     ]:
         receipt_mutation("negative-%d %s" % (number, name), "neg_runtime_%d" % number,
                          lambda dest, marker=marker: add_runtime_failure(dest, marker))
@@ -377,8 +398,8 @@ def self_test():
         with open(os.path.join(source, "config/sys.closeout-local.config"), "w") as f:
             f.write("[{imboy, [{synthetic_fixture, changed}]}].\n")
 
-    receipt_mutation("negative-21 migration input added after freeze", "neg_migration", mutate_migration)
-    receipt_mutation("negative-22 ignored runtime profile added after freeze", "neg_ignored_profile", mutate_ignored_profile)
+    receipt_mutation("negative-22 migration input added after freeze", "neg_migration", mutate_migration)
+    receipt_mutation("negative-23 ignored runtime profile added after freeze", "neg_ignored_profile", mutate_ignored_profile)
 
     results = []
     for label, (dest, flags, expect_fail) in cases.items():
@@ -387,11 +408,14 @@ def self_test():
         if expect_fail is None:
             good = proc.returncode == 0 and "[FAIL]" not in proc.stdout \
                 and proc.stdout.count("[PASS]") == len(CHECK_ORDER)
-            results.append((label, good, proc.returncode))
+        elif isinstance(expect_fail, tuple):
+            check, detail = expect_fail
+            good = proc.returncode != 0 and ("[FAIL] %s" % check) in proc.stdout \
+                and detail in proc.stdout
         else:
             good = proc.returncode != 0 and \
                 ("[FAIL] %s" % expect_fail) in proc.stdout
-            results.append((label, good, proc.returncode))
+        results.append((label, good, proc.returncode))
         status = "PASS" if good else "FAIL"
         emit("[%s] self-test %s (subprocess exit=%d)" % (status, label,
                                                          proc.returncode))

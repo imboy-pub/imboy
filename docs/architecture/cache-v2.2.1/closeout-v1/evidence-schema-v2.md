@@ -41,6 +41,8 @@ full_eunit 强制使用 tests；标准 OTP 终止日志及组件存活失败均�
 
 raw result 需包含候选、counts、utc、elapsed_ms，以及非空
 `scenarios[{name,status,detail}]`，所有 status 为 pass。scenarios 模式数量须匹配；
+如果 raw result 提供顶层 `exit` 或 `exit_code`，该值必须是整数 `0`，不得与成功的
+shell receipt 相矛盾；缺少这些可选字段时仍以原始命令 receipt 的 exit_code 为准。
 完整日志须有唯一终计数 `CLOSEOUT_COUNTS ` 后跟同一 counts 的紧凑排序 JSON。
 该 footer 只作统计交叉检查，不能替代真实 exit 或原生 EUnit 总结。
 失败、超时、异常取消、摘要不符、缺文件、未覆盖当前 ID 均拒绝。
