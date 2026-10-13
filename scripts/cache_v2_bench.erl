@@ -365,7 +365,7 @@ operation(Kind, I, Worker, Workers, KB, Value, Nodes) ->
                     MKey = key(local, (Worker - 1) * Slots + I rem Slots, KB),
                     Counter = get(bench_loader_counter),
                     Before = atomics:get(Counter, 1),
-                    ok = imboy_cache:flush(MKey),
+                    ok = imboy_cache:invalidate(MKey),
                     Value = imboy_cache:memo(
                         fun() ->
                             atomics:add(Counter, 1, 1),
@@ -590,6 +590,7 @@ result(Rows, Checks, Ops, Started, Exit) ->
         elapsed_ms => erlang:monotonic_time(millisecond) - Started,
         exit => Exit,
         profile => <<"v2-contract-ttl600-w0-anchor-ttl3600-not-equivalent">>,
+        memo_cold_path => <<"invalidate_then_memo_including_invalidation">>,
         arm => list_to_binary(os:getenv("CACHE_V2_ARM", "candidate")),
         operations_per_worker => Ops,
         env => #{
