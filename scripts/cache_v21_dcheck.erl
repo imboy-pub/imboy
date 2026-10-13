@@ -33,6 +33,7 @@
     overload_probe/0,
     drain_sync_mailbox/0,
     dump_debug/0,
+    advance_epoch_for_dcheck/0,
     bulk_snapshot/1,
     assert_unknown_event_in_actor/3,
     install_phase_barrier/2,
@@ -82,13 +83,18 @@ main([OutPath | _]) ->
     Results =
         PrimaryResults ++ LongResults ++
             [run_isolated_case(Name, Fun) || {Name, Fun} <- SelectedExtra],
+    FinalResults =
+        case Results of
+            [] -> [{"DCHECK_ONLY selected no scenarios", fail, "no scenario name matched"}];
+            _ -> Results
+        end,
     T1 = erlang:monotonic_time(millisecond),
-    Json = results_json(Results, T1 - T0),
+    Json = results_json(FinalResults, T1 - T0),
     ok = file:write_file(OutPath, Json),
-    Failed = [Name || {Name, fail, _} <- Results],
+    Failed = [Name || {Name, fail, _} <- FinalResults],
     io:format(
         "== cache_v21_dcheck: ~p passed, ~p failed, ~p ms ==~n",
-        [length([ok || {_, pass, _} <- Results]), length(Failed), T1 - T0]
+        [length([ok || {_, pass, _} <- FinalResults]), length(Failed), T1 - T0]
     ),
     case Failed of
         [] -> halt(0);
@@ -351,7 +357,7 @@ c9k_mixed_epoch_cohort(A, B, C) ->
     NewKey = {cache_v2_test_rep, cohort_new},
     ok = rpc:call(A, imboy_cache, put, [OldKey, old_era, 120, replicate], ?RPC_MS),
     [converge_get(N, OldKey, {ok, old_era}) || N <- Nodes],
-    Epoch = rpc:call(A, imboy_cache_sync_proto, bump_epoch, [], ?RPC_MS),
+    Epoch = rpc:call(A, ?MODULE, advance_epoch_for_dcheck, [], ?RPC_MS),
     ok = rpc:call(A, imboy_cache, put, [NewKey, fresh_era, 120, replicate], ?RPC_MS),
     lists:foreach(
         fun(N) ->
@@ -378,7 +384,7 @@ unconfirmed_higher_epoch(A, B, C) ->
     ok = rpc:call(B, sys, suspend, [imboy_cache_sync], ?RPC_MS),
     {Epoch, Rev} =
         try
-            E = rpc:call(A, imboy_cache_sync_proto, bump_epoch, [], ?RPC_MS),
+            E = rpc:call(A, ?MODULE, advance_epoch_for_dcheck, [], ?RPC_MS),
             ok = rpc:call(A, imboy_cache, put, [Key, recovered, 120, replicate], ?RPC_MS),
             {ok, V} = rpc:call(A, ?MODULE, read_rev, [Key], ?RPC_MS),
             {ok, Exp} = rpc:call(A, ?MODULE, read_expires, [Key], ?RPC_MS),
@@ -473,6 +479,15 @@ assert_unknown_event_in_actor(Event, Origin, OldBoot) ->
         end
     ),
     ok.
+
+%% 构造已 READY 的高代 authority 前置状态，并在同一 actor 内重置代次覆盖证据。
+advance_epoch_for_dcheck() ->
+    #state{status = ready} = sys:replace_state(imboy_cache_sync, fun(State) ->
+        _ = imboy_cache_sync_proto:bump_epoch(),
+        ok = imboy_cache_sync_proto:reset_sequence_coverage(),
+        State
+    end),
+    imboy_cache_sync_proto:epoch().
 
 c9i_no_authority(A, B, C) ->
     Nodes = [A, B, C],
@@ -2442,20 +2457,30 @@ tail_checkpoint(A, B, C, Mode) ->
     ok = ensure_c9_ready(B),
     Keys = [{cache_v2_test, {tail_a, Mode}}, {cache_v2_test, {tail_b, Mode}}],
     [old = rpc:call(A, imboy_cache, memo, [fun() -> old end, K, 120], ?RPC_MS) || K <- Keys],
-    G0 = rpc:call(A, imboy_cache_sync, generation, [hd(Keys)], ?RPC_MS),
+    GBeforePartition = rpc:call(A, imboy_cache_sync, generation, [hd(Keys)], ?RPC_MS),
     Cookie = erlang:get_cookie(),
     Blocked = 'synthetic_tail_partition',
     [true = rpc:call(A, erlang, set_cookie, [N, Blocked], ?RPC_MS) || N <- [B, C]],
-    try
-        [rpc:call(A, erlang, disconnect_node, [N], ?RPC_MS) || N <- [B, C]],
-        ok = rpc:call(B, imboy_cache, invalidate, [hd(Keys)], ?RPC_MS),
-        %% RPC 屏障确认发送完成；分区中接收方没有推进代次。
-        pong = rpc:call(B, gen_server, call, [imboy_cache_sync, ping_ok], ?RPC_MS),
-        G0 = rpc:call(A, imboy_cache_sync, generation, [hd(Keys)], ?RPC_MS)
-    after
-        [true = rpc:call(A, erlang, set_cookie, [N, Cookie], ?RPC_MS) || N <- [B, C]],
-        [true = rpc:call(A, net_kernel, connect_node, [N], ?RPC_MS) || N <- [B, C]]
-    end,
+    G0 =
+        try
+            [rpc:call(A, erlang, disconnect_node, [N], ?RPC_MS) || N <- [B, C]],
+            true = converge_pred(fun() ->
+                Connected = rpc:call(A, erlang, nodes, [], ?RPC_MS),
+                not lists:member(B, Connected) andalso not lists:member(C, Connected)
+            end),
+            %% 成员失联的即时 fenced 栅栏是独立行为；以它完成后的代次作为
+            %% 基线，避免把分区保护误判为丢失失效尾部的恢复结果。
+            GBase = converge_generation(A, hd(Keys), GBeforePartition),
+            true = GBase > GBeforePartition,
+            ok = rpc:call(B, imboy_cache, invalidate, [hd(Keys)], ?RPC_MS),
+            %% RPC 屏障确认发送完成；分区中接收方没有推进代次。
+            pong = rpc:call(B, gen_server, call, [imboy_cache_sync, ping_ok], ?RPC_MS),
+            GBase = rpc:call(A, imboy_cache_sync, generation, [hd(Keys)], ?RPC_MS),
+            GBase
+        after
+            [true = rpc:call(A, erlang, set_cookie, [N, Cookie], ?RPC_MS) || N <- [B, C]],
+            [true = rpc:call(A, net_kernel, connect_node, [N], ?RPC_MS) || N <- [B, C]]
+        end,
     G1 = tail_checkpoint_wait(A, hd(Keys), G0, Mode),
     case G1 > G0 of
         true -> ok;

@@ -139,7 +139,9 @@ verify(#{peers := Peers, cohort_epoch := Epoch} = Round, Limits, Now) ->
         lists:foreach(
             fun({Node, P}) -> verify_source(Node, P, Final, Epoch, Limits, Now) end, Sources
         ),
-        lists:foreach(fun(P) -> verify_target(P, Sources, Epoch) end, maps:values(Peers)),
+        lists:foreach(
+            fun({Node, P}) -> verify_target(Node, P, Sources, Epoch) end, maps:to_list(Peers)
+        ),
         {ok, Final}
     catch
         error:Reason -> {error, Reason}
@@ -456,12 +458,17 @@ stored_value(Key) ->
         exit:_ -> {error, cache_unavailable}
     end.
 
-verify_target(P, Sources, Epoch) ->
-    case maps:get(authority, P) orelse maps:get(reported_empty, P, false) of
+verify_target(Node, P, Sources, Epoch) ->
+    StaleEpoch =
+        is_integer(maps:get(reported_epoch, P, unknown)) andalso
+            maps:get(reported_epoch, P) < Epoch,
+    EmptyTarget = empty_target(Node, P, Epoch),
+    case maps:get(authority, P) orelse EmptyTarget orelse StaleEpoch of
         true -> ok;
         false -> error(peer_content_unproven)
     end,
     case maps:get(origin_target, P, unknown) of
+        {Node, _, Epoch, 0} when EmptyTarget -> ok;
         {_, _, Older, _} when Older < Epoch -> ok;
         {Origin, Boot, Epoch, Target} ->
             true = lists:any(
@@ -472,6 +479,20 @@ verify_target(P, Sources, Epoch) ->
             );
         _ ->
             error(snapshot_target_unproven)
+    end.
+
+empty_target(Node, P, Epoch) ->
+    case maps:get(origin_target, P, unknown) of
+        {Node, Boot, Epoch, 0} ->
+            %% 只有同一启动化身零序列的显式空 census 才能证明无需来源前缀。
+            Pid = maps:get(reported_pid, P, undefined),
+            Census = {0, crypto:hash(sha256, term_to_binary([]))},
+            maps:get(reported_empty, P, false) andalso
+                maps:get(reported_boot, P, undefined) =:= Boot andalso
+                maps:get(reported_epoch, P, unknown) =:= Epoch andalso
+                is_pid(Pid) andalso maps:get(content_census, P, undefined) =:= {Census, Pid};
+        _ ->
+            false
     end.
 
 %% 调用方只在已应用成功后登记；保留最终效果摘要，不复制 payload。

@@ -94,7 +94,7 @@ python3 scripts/run_cache_w0.py --operations 10000 --output <本次专用空目�
 
 | 入口 | 用法 | 退出码 |
 |---|---|---|
-| `scripts/cache_v21_dcheck.erl`（三节点 dcheck，C09/C12） | `erlc -o ebin_drv scripts/cache_v21_dcheck.erl` 后 `erl -noshell -pa ebin_drv -pa ebin -pa deps/depcache/ebin -pa deps/syn/ebin -eval 'cache_v21_dcheck:main(["<out.json>"]), halt(0).'`（本会话惯例：驱动编译到 `~/.codex/cache-closeout-runs/zcode-20261011T130725Z/ebin_drv/`） | 0 全过 / 2 有失败 / 1 参数错误 |
+| `scripts/cache_v21_dcheck.erl`（三节点 dcheck，C09/C12） | `erlc -I src/lib -o ebin_drv scripts/cache_v21_dcheck.erl` 后 `erl -noshell -pa ebin_drv -pa ebin -pa deps/depcache/ebin -pa deps/syn/ebin -eval 'cache_v21_dcheck:main(["<out.json>"]), halt(0).'`（本会话惯例：驱动编译到 `~/.codex/cache-closeout-runs/zcode-20261011T130725Z/ebin_drv/`） | 0 全过 / 2 有失败 / 1 参数错误 |
 | `scripts/cache_v21_mixed_dcheck.erl`（混合版本，C10/C12） | `LEGACY_EBIN=<旧树 ebin> NEW_EBIN=<新树 ebin> erl -noshell -pa <driver_dir> -eval 'cache_v21_mixed_dcheck:main(["<out.json>"]).'`；旧树 = C10 冻结的 INTEGRATION_BASE（V2 引入前 main）独立构建 | 0 全过 / 2 有失败 / 1 参数错误 |
 | `IMBOYENV=local make eunit-local t=<suite>`（定向） | Makefile:557 起；PG relay 动态高端口 + 私有 HTTP 端口，勿与其他会话并发 | make exit 码 |
 | `IMBOYENV=local make eunit-local`（全量） | 同上；前置本地 imboy_v1 schema 已应用最新迁移 | make exit 码 |
@@ -275,7 +275,7 @@ echo "exit=$?"
 ### 6.2 三节点 dcheck（步骤 ②，依赖 C09 完成）
 
 ```bash
-mkdir -p <RUN_ROOT>/ebin_drv && erlc -o <RUN_ROOT>/ebin_drv scripts/cache_v21_dcheck.erl
+mkdir -p <RUN_ROOT>/ebin_drv && erlc -I src/lib -o <RUN_ROOT>/ebin_drv scripts/cache_v21_dcheck.erl
 erl -noshell -pa <RUN_ROOT>/ebin_drv -pa ebin -pa deps/depcache/ebin -pa deps/syn/ebin \
   -eval 'cache_v21_dcheck:main(["<RUN_ROOT>/raw/three_node_c12_r1.json"]), halt(0).'
 ```

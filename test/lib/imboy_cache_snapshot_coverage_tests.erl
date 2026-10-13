@@ -175,6 +175,148 @@ coverage_cut_rechecks_source_identity_epoch_and_round_test() ->
         ?assertEqual([], ets:match_object(imboy_cache_meta, {{snapshot_seq_floor, '_'}, '_'}))
     end).
 
+older_nonempty_peer_does_not_invalidate_selected_higher_epoch_cohort_test() ->
+    fixture(fun(Source, R, Base) ->
+        Cohort = 2,
+        SourceBoot = <<7:128>>,
+        Stale = 'coverage_stale_epoch@synthetic',
+        StaleBoot = <<8:128>>,
+        Cut = setelement(5, Base, Cohort),
+        ets:insert(imboy_cache_meta, [
+            {sync_epoch, Cohort},
+            {{peer_epoch, Source}, Cohort},
+            {{peer_incarnation, Stale}, StaleBoot},
+            {{peer_epoch, Stale}, Cohort - 1}
+        ]),
+        Peers0 = maps:get(peers, R),
+        SourcePeer = maps:get(Source, Peers0),
+        R1 = R#{
+            cohort_epoch => Cohort,
+            peers := Peers0#{
+                Source := SourcePeer#{
+                    boot => SourceBoot,
+                    source_epoch => Cohort,
+                    source_pid => self(),
+                    source_cut => Cut
+                },
+                Stale => #{
+                    authority => false,
+                    reported => true,
+                    reported_empty => false,
+                    reported_pid => self(),
+                    reported_boot => StaleBoot,
+                    reported_epoch => Cohort - 1
+                }
+            }
+        },
+        ?assert(imboy_cache_sync_recover:sources_current(R1)),
+        ets:insert(imboy_cache_meta, {{peer_epoch, Stale}, Cohort}),
+        SameEpoch = R1#{
+            peers := (maps:get(peers, R1))#{
+                Stale := (maps:get(Stale, maps:get(peers, R1)))#{reported_epoch => Cohort}
+            }
+        },
+        ?assertNot(imboy_cache_sync_recover:sources_current(SameEpoch))
+    end).
+
+empty_peer_census_covers_its_reported_origin_target_test() ->
+    fixture(fun(Source, R, Base) ->
+        Empty = {0, crypto:hash(sha256, term_to_binary([]))},
+        Peer = 'coverage_empty_peer@synthetic',
+        PeerBoot = <<8:128>>,
+        SourceBoot = <<7:128>>,
+        Exp = erlang:system_time(millisecond) + 60000,
+        Row = imboy_cache_policy:snapshot_manifest_entry(
+            {with_origin, {Source, SourceBoot, 1}, {coverage_wire_test, present, Exp, {1, Source}}}
+        ),
+        SourceCut = erlang:append_element(
+            erlang:append_element(
+                setelement(6, setelement(4, Base, SourceBoot), 1),
+                {ok, [{Source, SourceBoot, 0, 1}]}
+            ),
+            imboy_cache_sync_coverage:manifest_certificate(
+                #{element(2, Row) => Row}
+            )
+        ),
+        SourcePeer = #{
+            authority => true,
+            pages => 1,
+            manifest => [{1, [Row]}],
+            source_cut => SourceCut,
+            origin_target => {Source, SourceBoot, 0, 1}
+        },
+        EmptyPeer = #{
+            authority => false,
+            origin_target => {Peer, PeerBoot, 0, 0},
+            reported_empty => true,
+            reported_pid => self(),
+            reported_boot => PeerBoot,
+            reported_epoch => 0,
+            content_census => {Empty, self()}
+        },
+        Round = R#{
+            cohort_epoch => 0,
+            peers := #{Source => SourcePeer, Peer => EmptyPeer},
+            retained_obligations := []
+        },
+        ?assertMatch(
+            {ok, _},
+            imboy_cache_sync_coverage:verify(
+                Round, {1000000, 100}, erlang:system_time(millisecond)
+            )
+        ),
+        InvalidEmptyPeers = [
+            maps:remove(reported_empty, EmptyPeer),
+            EmptyPeer#{origin_target := {Source, PeerBoot, 0, 0}},
+            EmptyPeer#{origin_target := {Peer, <<9:128>>, 0, 0}},
+            EmptyPeer#{origin_target := {Peer, PeerBoot, 0, 1}},
+            EmptyPeer#{content_census := {{0, <<0:256>>}, self()}},
+            EmptyPeer#{reported_pid := undefined}
+        ],
+        [
+            ?assertEqual(
+                {error, peer_content_unproven},
+                imboy_cache_sync_coverage:verify(
+                    Round#{peers := (maps:get(peers, Round))#{Peer := InvalidPeer}},
+                    {1000000, 100},
+                    erlang:system_time(millisecond)
+                )
+            )
+         || InvalidPeer <- InvalidEmptyPeers
+        ],
+        ?assertEqual(Empty, element(1, maps:get(content_census, EmptyPeer)))
+    end).
+
+reported_watermark_gap_does_not_abort_covered_recovery_test() ->
+    fixture(fun(Source, R, _) ->
+        Boot = <<7:128>>,
+        Peers0 = maps:get(peers, R),
+        Peer0 = maps:get(Source, Peers0),
+        Peer = Peer0#{
+            origin_target => {Source, Boot, 0, 1},
+            reported_boot => Boot,
+            reported_epoch => 0
+        },
+        Round = R#{peers := Peers0#{Source := Peer}},
+        State = #state{boot_id = <<1:128>>, status = recovering, snapshot_round = Round},
+        meck:new(imboy_cache_sync_apply, [passthrough, no_link]),
+        meck:expect(imboy_cache_sync_apply, reconcile_sequence, 3, fun(_, _, _) -> gap end),
+        Frame = {
+            cache_invalidation_watermark,
+            Source,
+            Boot,
+            1,
+            imboy_cache_sync_proto:config_hash(),
+            imboy_cache_sync_proto:registry_hash()
+        },
+        try
+            ?assertEqual(State, imboy_cache_sync_recover:handle_watermark(Frame, State)),
+            ?assert(meck:validate(imboy_cache_sync_apply))
+        after
+            meck:unload(imboy_cache_sync_apply)
+        end
+    end).
+
 coverage_cut_reaches_sync_callback_without_changing_ready_test() ->
     fixture(fun(Source, R, Base) ->
         F = erlang:append_element(Base, {ok, [{coverage_other@synthetic, <<9:128>>, 0, 7}]}),

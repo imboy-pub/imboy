@@ -429,7 +429,10 @@ handle_watermark({cache_invalidation_watermark, Origin, Boot, Seq, Hash, Registr
         true ->
             case imboy_cache_sync_apply:reconcile_sequence(Origin, Boot, Seq) of
                 gap ->
-                    start_gap_recovery(State);
+                    case covered_recovery_watermark(Origin, Boot, Seq, State) of
+                        true -> State;
+                        false -> start_gap_recovery(State)
+                    end;
                 ok ->
                     State;
                 {error, _} ->
@@ -440,6 +443,24 @@ handle_watermark({cache_invalidation_watermark, Origin, Boot, Seq, Hash, Registr
             imboy_cache_sync:incr(reject_total),
             State
     end.
+covered_recovery_watermark(
+    Origin,
+    Boot,
+    Seq,
+    #state{status = recovering, snapshot_round = #{peers := Peers}}
+) ->
+    case maps:find(Origin, Peers) of
+        {ok, #{
+            origin_target := {Origin, Boot, Epoch, Target},
+            reported_boot := Boot,
+            reported_epoch := Epoch
+        }} ->
+            Seq =< Target;
+        _ ->
+            false
+    end;
+covered_recovery_watermark(_, _, _, _) ->
+    false.
 handle_snapshot_cut(Frame, #state{status = recovering, snapshot_round = R} = State) when
     is_map(R)
 ->
@@ -481,6 +502,7 @@ validate_source_cut(F, Boot, Seq, Origin, P, R) ->
     end.
 %% 最后一个来源完成时，重新核对所有已确认来源；前一来源的确认可能已经失效。
 sources_current(#{peers := Peers} = R) ->
+    CohortEpoch = maps:get(cohort_epoch, R, undefined),
     Members = imboy_cache_sync:syn_scope_members(),
     erlang:system_time(millisecond) < maps:get(deadline_ms, R) andalso
         lists:all(
@@ -490,7 +512,11 @@ sources_current(#{peers := Peers} = R) ->
             fun({Origin, P}) ->
                 case maps:get(authority, P) of
                     false ->
-                        maps:get(reported_empty, P, false) andalso
+                        StaleEpoch =
+                            is_integer(CohortEpoch) andalso
+                                is_integer(maps:get(reported_epoch, P, unknown)) andalso
+                                maps:get(reported_epoch, P) < CohortEpoch,
+                        (StaleEpoch orelse maps:get(reported_empty, P, false)) andalso
                             lists:member(maps:get(reported_pid, P, undefined), Members) andalso
                             maps:get(reported_epoch, P, unknown) =:=
                                 imboy_cache_sync_proto:peer_epoch(Origin) andalso
