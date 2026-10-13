@@ -50,7 +50,7 @@
 
 %% SSE 缺省节奏（route Opts 可注入覆盖：sse_retry_ms / sse_poll_ms / sse_max_ms）。
 -define(SSE_RETRY_MS, 5000).
--define(SSE_POLL_MS, 15000).
+-define(SSE_POLL_MS, 1000).
 -define(SSE_MAX_MS, 300000).
 -define(SSE_KEEPALIVE_EVERY, 3).
 %% SSE 增量单次拉取上限（页大小上限 = cs_app_support:max_page_limit/0）。

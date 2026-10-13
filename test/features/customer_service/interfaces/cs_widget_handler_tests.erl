@@ -803,6 +803,38 @@ events_path() ->
 
 a02_sse_tests(_) ->
     [
+        {"Production default widget poll delivers a message without a poll override", fun() ->
+            meck:expect(customer_service_facade, widget_list_sessions, fun(_O, _P) ->
+                {ok, [#{id => ?SESSION, status => claimed}]}
+            end),
+            meck:expect(customer_service_facade, widget_history_after, fun(_O, Params) ->
+                ?assertEqual(?SESSION, maps:get(session_id, Params)),
+                {ok, [
+                    #{
+                        id => 77,
+                        conversation_id => ?CONVERSATION,
+                        body => <<"default widget poll">>,
+                        sender_kind => business_identity,
+                        kind => text
+                    }
+                ]}
+            end),
+            %% Keep the production poll/retry defaults; only bound this test's stream life.
+            Inject = #{auth_facts => cs_fake_facts, sse_max_ms => 1000},
+            ?S:with_listener(widget, widget_session_events, Inject, fun(Port) ->
+                Raw = ?S:stream_request(
+                    Port,
+                    <<"GET">>,
+                    events_path(),
+                    <<>>,
+                    #{<<"x-cs-visit-token">> => ?TOKEN},
+                    1800
+                ),
+                ?assert(string:find(Raw, <<"retry: 5000">>) =/= nomatch),
+                ?assert(string:find(Raw, <<"event: message">>) =/= nomatch),
+                ?assert(string:find(Raw, <<"default widget poll">>) =/= nomatch)
+            end)
+        end},
         {"SSE expiry uses the current poll clock instead of the opening clock",
             fun sse_poll_clock/0},
         {"A02 SSE opens with retry line and current state resource-id event", fun() ->
