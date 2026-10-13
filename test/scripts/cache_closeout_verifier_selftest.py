@@ -311,6 +311,39 @@ def self_test():
 
     receipt_mutation("negative-16 full EUnit mislabeled checks", "neg_full_eunit_kind", mutate_full_eunit_kind)
 
+    def mutate_cancelled_count(dest):
+        result_path = os.path.join(dest, "raw/verify_r1.json")
+        result, _ = load_json(result_path)
+        counts = dict(result["counts"], cancelled=1)
+        result["counts"] = counts
+        _write_json(result_path, result)
+        result_sha = sha256_file(result_path)
+        for index in range(9):
+            path = os.path.join(dest, "receipt-%d.json" % index)
+            receipt, _ = load_json(path)
+            if receipt["result"]["path"] != "raw/verify_r1.json":
+                continue
+            log_path = os.path.join(dest, receipt["log"]["path"])
+            with open(log_path, encoding="utf-8") as f:
+                body = f.read()
+            old_footer = "CLOSEOUT_COUNTS " + json.dumps(
+                receipt["counts"], sort_keys=True, separators=(",", ":"))
+            assert body.count(old_footer) == 1
+            new_footer = "CLOSEOUT_COUNTS " + json.dumps(
+                counts, sort_keys=True, separators=(",", ":"))
+            with open(log_path, "w", encoding="utf-8") as f:
+                f.write(body.replace(old_footer, new_footer))
+            receipt["counts"] = counts
+            receipt["result"]["sha256"] = result_sha
+            receipt["log"]["sha256"] = sha256_file(log_path)
+            rebind_receipt(dest, index, receipt)
+
+    receipt_mutation(
+        "negative-17 cancelled count despite passing scenarios",
+        "neg_cancelled_count",
+        mutate_cancelled_count,
+    )
+
     def add_runtime_failure(dest, marker):
         log = os.path.join(dest, "command-6.log")
         with open(log, "a") as f:
@@ -320,9 +353,9 @@ def self_test():
         rebind_receipt(dest, 6, receipt)
 
     for number, name, marker in [
-        (17, "OTP generic server terminating", "** Generic server cache_actor terminating"),
-        (18, "OTP reason for termination", "** Reason for termination =="),
-        (19, "component liveness false", "COMPONENT_LIVENESS false"),
+        (18, "OTP generic server terminating", "** Generic server cache_actor terminating"),
+        (19, "OTP reason for termination", "** Reason for termination =="),
+        (20, "component liveness false", "COMPONENT_LIVENESS false"),
     ]:
         receipt_mutation("negative-%d %s" % (number, name), "neg_runtime_%d" % number,
                          lambda dest, marker=marker: add_runtime_failure(dest, marker))
@@ -344,8 +377,8 @@ def self_test():
         with open(os.path.join(source, "config/sys.closeout-local.config"), "w") as f:
             f.write("[{imboy, [{synthetic_fixture, changed}]}].\n")
 
-    receipt_mutation("negative-20 migration input added after freeze", "neg_migration", mutate_migration)
-    receipt_mutation("negative-21 ignored runtime profile added after freeze", "neg_ignored_profile", mutate_ignored_profile)
+    receipt_mutation("negative-21 migration input added after freeze", "neg_migration", mutate_migration)
+    receipt_mutation("negative-22 ignored runtime profile added after freeze", "neg_ignored_profile", mutate_ignored_profile)
 
     results = []
     for label, (dest, flags, expect_fail) in cases.items():
