@@ -187,14 +187,153 @@ self_checks() ->
         end,
     true = lists:all(fun(V) -> V =:= <<"single-flight">> end, Values),
     1 = atomics:get(Counter, 1),
+    Checks = #{
+        memo_single_flight => true,
+        invalidation_race => invalidation_race_check(),
+        loader_exception => loader_exception_check(),
+        writer_crash => writer_crash_check(),
+        get_wait_handoff => get_wait_handoff_check()
+    },
     #{
-        checks => #{memo_single_flight => true},
+        checks => Checks,
         memo_single_flight_workers => 32,
         loader_executions => 1,
         w0_requested_ttl_sec => 3600,
         v2_measured_ttl_sec => 600,
         w0_ttl_compatible => Compatible
     }.
+
+invalidation_race_check() ->
+    Parent = self(),
+    Key = {?LOC_NS, {invalidation_race, erlang:unique_integer([positive])}},
+    Counter = atomics:new(1, []),
+    Release = make_ref(),
+    Loader = fun() ->
+        case atomics:add_get(Counter, 1, 1) of
+            1 ->
+                Parent ! {invalidation_loader_started, self()},
+                receive Release -> stale end;
+            _ -> fresh
+        end
+    end,
+    First = spawn(fun() -> Parent ! {invalidation_result, self(), imboy_cache:memo(Loader, Key, 600, [])} end),
+    receive
+        {invalidation_loader_started, First} -> ok
+    after 5000 -> error(invalidation_loader_timeout)
+    end,
+    Second = spawn(fun() ->
+        Parent ! {invalidation_waiter_attempt, self()},
+        Parent ! {invalidation_waiter_result, self(), imboy_cache:memo(Loader, Key, 600, [])}
+    end),
+    try
+        receive
+            {invalidation_waiter_attempt, Second} -> ok
+        after 5000 -> error(invalidation_waiter_timeout)
+        end,
+        ok = await(fun() -> process_info(Second, status) =:= {status, waiting} end, 3000),
+        ok = imboy_cache:invalidate(Key)
+    after
+        First ! Release
+    end,
+    fresh = receive_result(invalidation_result, First),
+    fresh = receive_result(invalidation_waiter_result, Second),
+    2 = atomics:get(Counter, 1),
+    true.
+
+loader_exception_check() ->
+    Parent = self(),
+    Key = {?LOC_NS, {loader_exception, erlang:unique_integer([positive])}},
+    Ball = {cache_v2_loader_exception, make_ref()},
+    Release = make_ref(),
+    Loader = fun() ->
+        Parent ! {exception_loader_started, self()},
+        receive Release -> throw(Ball) end
+    end,
+    LoaderResult = spawn(fun() -> Parent ! {exception_result, self(), memo_exception(Loader, Key, Ball)} end),
+    receive
+        {exception_loader_started, LoaderResult} -> ok
+    after 5000 -> error(exception_loader_timeout)
+    end,
+    Waiters = [spawn(fun() ->
+        Parent ! {exception_waiter_attempt, self()},
+        Parent ! {exception_waiter_result, self(), memo_exception(Loader, Key, Ball)}
+    end) || _ <- lists:seq(1, 3)],
+    try
+        [receive {exception_waiter_attempt, Pid} -> ok after 5000 -> error(exception_waiter_timeout) end || Pid <- Waiters],
+        ok = await(fun() -> all_waiting(Waiters) end, 3000)
+    after
+        LoaderResult ! Release
+    end,
+    [thrown = receive_result(exception_waiter_result, Pid) || Pid <- Waiters],
+    thrown = receive_result(exception_result, LoaderResult),
+    undefined = imboy_cache:get(Key),
+    true.
+
+memo_exception(Loader, Key, Ball) ->
+    try imboy_cache:memo(Loader, Key, 600, []) of
+        _ -> returned
+    catch
+        throw:Ball -> thrown
+    end.
+
+writer_crash_check() ->
+    Parent = self(),
+    Key = {cache_v2_bench_wait, {writer_crash, erlang:unique_integer([positive])}},
+    Cache = whereis(imboy_cache),
+    1 = erlang:trace(Cache, true, ['receive', {tracer, Parent}]),
+    Writer = spawn(fun() ->
+        Parent ! {writer_claim, self(), imboy_cache:get_wait(Key)},
+        receive crash -> ok end
+    end),
+    try
+        receive {writer_claim, Writer, undefined} -> ok after 5000 -> error(writer_claim_timeout) end,
+        Waiter = spawn(fun() -> Parent ! {writer_waiter_result, self(), imboy_cache:get_wait(Key)} end),
+        ok = expect_get_wait(Cache, Waiter, Key),
+        Memo = spawn(fun() ->
+            Parent ! {writer_memo_attempt, self()},
+            Parent ! {writer_memo_result, self(), imboy_cache:memo(fun() -> retried_fresh end, Key, 600, [])}
+        end),
+        receive {writer_memo_attempt, Memo} -> ok after 5000 -> error(writer_memo_timeout) end,
+        ok = await(fun() -> process_info(Memo, status) =:= {status, waiting} end, 3000),
+        exit(Writer, kill),
+        {error, premature_exit} = receive_result(writer_waiter_result, Waiter),
+        retried_fresh = receive_result(writer_memo_result, Memo),
+        true
+    after
+        1 = erlang:trace(Cache, false, ['receive']),
+        case is_process_alive(Writer) of true -> exit(Writer, kill); false -> ok end
+    end.
+
+get_wait_handoff_check() ->
+    Parent = self(),
+    Key = {cache_v2_bench_wait, {get_wait_handoff, erlang:unique_integer([positive])}},
+    Cache = whereis(imboy_cache),
+    1 = erlang:trace(Cache, true, ['receive', {tracer, Parent}]),
+    try
+        undefined = imboy_cache:get_wait(Key),
+        Waiter = spawn(fun() -> Parent ! {handoff_result, self(), imboy_cache:get_wait(Key)} end),
+        ok = expect_get_wait(Cache, Waiter, Key),
+        ok = imboy_cache:put(Key, handed_off, 600, local),
+        {ok, handed_off} = receive_result(handoff_result, Waiter),
+        true
+    after
+        1 = erlang:trace(Cache, false, ['receive'])
+    end.
+
+expect_get_wait(Cache, Pid, Key) ->
+    receive
+        {trace, Cache, 'receive', {'$gen_call', {Pid, _}, {get_wait, Key}}} -> ok
+    after 5000 -> error(get_wait_call_not_observed)
+    end.
+
+receive_result(Tag, Pid) ->
+    receive
+        {Tag, Pid, Result} -> Result
+    after 10000 -> error({self_check_worker_timeout, Tag})
+    end.
+
+all_waiting(Pids) ->
+    lists:all(fun(Pid) -> process_info(Pid, status) =:= {status, waiting} end, Pids).
 
 local_profile(Ops, KB, VB) ->
     lists:append([
