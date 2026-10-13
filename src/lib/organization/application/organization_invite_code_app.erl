@@ -416,7 +416,8 @@ ensure_governance_tx(Conn, OrgId, ActorUid, ArchivedPolicy) ->
     of
         {ok, #{<<"status">> := <<"active">>}} ->
             ok;
-        {ok, _NotWritable} when ArchivedPolicy =:= allow_archived ->
+        {ok, #{<<"status">> := <<"archived">>}} when ArchivedPolicy =:= allow_archived ->
+            %% allow_archived（revoke 收紧面）：归档组织仅放行撤码
             ok;
         {ok, #{<<"status">> := <<"pending">>}} ->
             abort(409, <<"Organization 待审核，审核通过后才能操作邀请码"/utf8>>);
@@ -443,17 +444,15 @@ ensure_governance_tx(Conn, OrgId, ActorUid, ArchivedPolicy) ->
 %% 成员门（invite_code 读面 get 专用；镜像 ensure_governance_tx 的锁序：
 %% 组织行 FOR SHARE 先、成员行 FOR SHARE 后；任意 active 成员放行）。
 %% ArchivedPolicy 语义同 ensure_governance_tx（get 用 reject_archived）。
--spec ensure_member_tx(any(), integer(), integer(), reject_archived | allow_archived) ->
-    ok.
-ensure_member_tx(Conn, OrgId, ActorUid, ArchivedPolicy) ->
+%% get 面只走 reject_archived（ archived/pending/rejected 均禁读入加入流程）。
+-spec ensure_member_tx(any(), integer(), integer(), reject_archived) -> ok.
+ensure_member_tx(Conn, OrgId, ActorUid, reject_archived) ->
     case
         organization_member_repo:find_organization_for_share_tx(
             Conn, OrgId, <<"id,owner_id,status">>
         )
     of
         {ok, #{<<"status">> := <<"active">>}} ->
-            ok;
-        {ok, _NotWritable} when ArchivedPolicy =:= allow_archived ->
             ok;
         {ok, #{<<"status">> := <<"pending">>}} ->
             abort(409, <<"Organization 待审核，审核通过后才能使用邀请码"/utf8>>);

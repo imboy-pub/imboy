@@ -1693,12 +1693,7 @@ department_move_tx(AdmUserId, OrgId, DeptId, NewParentId, ExpectedVersion, Param
                 {error, {cycle, _, _}} ->
                     abort(400, <<"不能移动到自身子树之下"/utf8>>);
                 {error, {invalid_parent_id, _}} ->
-                    abort(400, <<"parent_id 必须是正整数或 null"/utf8>>);
-                {error, Reason} ->
-                    _ = ?ERROR_LOG([
-                        organization_admin_department_failed, move, OrgId, DeptId, Reason
-                    ]),
-                    throw({abort_tx, {internal, Reason}})
+                    abort(400, <<"parent_id 必须是正整数或 null"/utf8>>)
             end
         end,
     case elib_pg:with_tx(Tx) of
@@ -1744,12 +1739,7 @@ admin_department_archive(AdmUserId, OrgId, DeptId, AuditCtx) when
                             ),
                             {ok, Dept};
                         {error, not_found} ->
-                            abort(404, <<"部门不存在"/utf8>>);
-                        {error, Reason} ->
-                            _ = ?ERROR_LOG([
-                                organization_admin_department_failed, archive, OrgId, DeptId, Reason
-                            ]),
-                            throw({abort_tx, {internal, Reason}})
+                            abort(404, <<"部门不存在"/utf8>>)
                     end
                 end,
             case elib_pg:with_tx(Tx) of
@@ -1910,8 +1900,6 @@ insert_code_with_retry(AdmUserId, OrgId, Role, ExpiresAt, Left, AuditCtx) ->
             {ok, invite_code_view(Row)};
         {error, code_conflict} ->
             insert_code_with_retry(AdmUserId, OrgId, Role, ExpiresAt, Left - 1, AuditCtx);
-        {error, {Code, Msg}} when is_integer(Code), is_binary(Msg) ->
-            {error, {Code, Msg}};
         {error, Reason} ->
             _ = ?ERROR_LOG([organization_admin_invite_code_failed, create, OrgId, Reason]),
             {error, {500, <<"生成邀请码失败，请稍后重试"/utf8>>}}

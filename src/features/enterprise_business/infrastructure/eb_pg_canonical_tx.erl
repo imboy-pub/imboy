@@ -312,13 +312,9 @@ do_append_accept_audit(Conn, OrgId, WorkspaceId, Stored, Params, AcceptedAt, Sea
     },
     case eb_pg_audit:append_in(Conn, OrgId, Event) of
         {ok, AuditId} ->
-            case run_persist_hook(Conn, OrgId, WorkspaceId, Stored, Params) of
-                ok ->
-                    accept_result(Conn, OrgId, WorkspaceId, Stored, AuditId, Sealed);
-                {error, _} = HookErr ->
-                    %% 不可达兜底（run_persist_hook 以 throw 裁决回滚），保类型诚实。
-                    HookErr
-            end;
+            %% run_persist_hook 以 throw 裁决回滚，成功只返回 ok。
+            ok = run_persist_hook(Conn, OrgId, WorkspaceId, Stored, Params),
+            accept_result(Conn, OrgId, WorkspaceId, Stored, AuditId, Sealed);
         {error, _} = Err ->
             Err
     end.
@@ -374,7 +370,7 @@ message_with_assets(Conn, OrgId, WorkspaceId, Stored) ->
 
 %% 审计 detail 只放**结构化摘要**：无正文、无密文原文、无密钥、无 Authorization。
 %% 白名单见 audit_detail_keys/0（静态可核对）。
--spec audit_detail_keys() -> [atom()].
+-spec audit_detail_keys() -> [binary()].
 audit_detail_keys() ->
     [
         <<"workspace_id">>,

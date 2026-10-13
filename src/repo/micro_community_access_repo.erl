@@ -67,7 +67,7 @@ eligible_tx(Conn, Gid, Uid) ->
 %% The management binding writer uses a conflicting table lock. Take this before
 %% looking up a nullable binding so a concurrent bind cannot become a phantom.
 lock_group_tx(Conn, Gid) ->
-    checked(Conn, <<"LOCK TABLE public.channel IN ROW EXCLUSIVE MODE">>, []),
+    _ = checked(Conn, <<"LOCK TABLE public.channel IN ROW EXCLUSIVE MODE">>, []),
     case
         checked(Conn, <<"SELECT id FROM public.channel WHERE discussion_group_id=$1 FOR UPDATE">>, [
             Gid
@@ -81,7 +81,7 @@ lock_group_tx(Conn, Gid) ->
     end.
 
 lock_channel_tx(Conn, Cid) ->
-    checked(Conn, <<"LOCK TABLE public.channel IN ROW EXCLUSIVE MODE">>, []),
+    _ = checked(Conn, <<"LOCK TABLE public.channel IN ROW EXCLUSIVE MODE">>, []),
     case
         checked(Conn, <<"SELECT discussion_group_id FROM public.channel WHERE id=$1 FOR UPDATE">>, [
             Cid

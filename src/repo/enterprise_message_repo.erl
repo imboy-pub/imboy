@@ -75,9 +75,7 @@ insert_direct_tx(Conn, MsgId, FromId, ToId, MsgType, Payload) ->
     of
         {ok, _} ->
             archive_direct_tx(Conn, MsgId),
-            {ok, RowId};
-        {error, Reason} ->
-            {error, Reason}
+            {ok, RowId}
     end.
 
 %% Read the formal row on this connection: DB times and trusted sequence must
@@ -191,7 +189,6 @@ find_audit_tx(Conn, OrgId, ResourceId) ->
         >>,
     case elib_pg:query(Conn, Sql, [OrgId, ResourceId]) of
         {ok, Rows} when is_list(Rows) -> {ok, Rows};
-        {ok, _} -> {ok, []};
         {error, Reason} -> {error, Reason}
     end.
 

@@ -820,8 +820,6 @@ seat_session_page_fetch(OrgId, Status, AfterId, Limit, Params) ->
                     ErrBatch;
                 {ok, Previews} ->
                     case seat_session_views(Rows, Status, Params, Previews) of
-                        {error, _} = Err2 ->
-                            Err2;
                         {ok, Views} ->
                             Next = next_cursor(Rows, Limit),
                             {ok, #{
@@ -961,8 +959,6 @@ seat_session_views([], _Status, _Params, _Previews, Acc) ->
     {ok, lists:reverse(Acc)};
 seat_session_views([Row | Rest], Status, Params, Previews, Acc) ->
     case seat_session_view(Row, Status, Params, Previews) of
-        {error, _} = Err ->
-            Err;
         {ok, View} ->
             seat_session_views(Rest, Status, Params, Previews, [View | Acc])
     end.

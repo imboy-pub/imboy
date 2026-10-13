@@ -16,7 +16,7 @@ set(AdminId, Cid, New) ->
         Old = maps:get(<<"discussion_group_id">>, C),
         Owner = maps:get(<<"creator_uid">>, C),
         Ids = lists:usort([G || G <- [Old, New], is_integer(G)]),
-        [micro_community_binding_repo:platform_group_tx(Conn, G, Owner) || G <- Ids],
+        _ = [micro_community_binding_repo:platform_group_tx(Conn, G, Owner) || G <- Ids],
         case Old =:= New of
             true ->
                 ok;

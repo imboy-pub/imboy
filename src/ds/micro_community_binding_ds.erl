@@ -21,7 +21,7 @@ set(Uid, Cid, New) ->
 validate_groups(Conn, Uid, Owner, Old, New) ->
     %% Deterministic group order also covers a simultaneous swap attempt.
     Ids = lists:usort([G || G <- [Old, New], is_integer(G)]),
-    [micro_community_binding_repo:group_tx(Conn, Uid, G, Owner) || G <- Ids],
+    _ = [micro_community_binding_repo:group_tx(Conn, Uid, G, Owner) || G <- Ids],
     case Old =:= New of
         true ->
             ok;

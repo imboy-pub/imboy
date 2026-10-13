@@ -59,7 +59,9 @@ lock_order(Conn, Key, MsgId) ->
         <<"SELECT seq FROM public.msg_store_seq WHERE conv_key = $1 FOR UPDATE">>,
         [Key]
     ),
-    query(Conn, <<"SELECT pg_advisory_xact_lock(hashtextextended('msg_c2c:' || $1, 0))">>, [MsgId]),
+    _ = query(
+        Conn, <<"SELECT pg_advisory_xact_lock(hashtextextended('msg_c2c:' || $1, 0))">>, [MsgId]
+    ),
     Previous.
 
 set_counter(Conn, Key, Seq) ->

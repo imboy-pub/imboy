@@ -158,39 +158,36 @@ do_execute(Delivery, AttemptNo) ->
                     Lat = erlang:monotonic_time(millisecond) - T0,
                     settle(Delivery, AttemptNo, Res, Lat);
                 {error, Reason} ->
-                    retry(Delivery, AttemptNo, <<"credential_error">>, null, 0, Reason)
+                    _ = retry(Delivery, AttemptNo, <<"credential_error">>, null, 0, Reason)
             end;
         {error, Reason} ->
-            dead(Delivery, AttemptNo, guard_class(Reason), null, 0, Reason),
+            _ = dead(Delivery, AttemptNo, guard_class(Reason), null, 0, Reason),
             ok
     end.
 
-guard_class(Reason) when is_atom(Reason) -> atom_to_binary(Reason);
-guard_class(_) -> <<"guard_error">>.
+guard_class(Reason) when is_atom(Reason) -> atom_to_binary(Reason).
 
 settle(Delivery, AttemptNo, {ok, Code} = Res, Lat) ->
     Did = maps:get(<<"delivery_id">>, Delivery),
     Class = class_of(Code),
-    case Class of
-        <<"2xx">> ->
-            ok = audit(Did, AttemptNo, Class, Code, Lat, <<>>),
-            {ok, _} = bot_webhook_delivery_repo:mark_success(Did, AttemptNo);
-        <<"4xx">> when Code =:= 410 ->
-            dead(Delivery, AttemptNo, Class, Code, Lat, <<>>);
-        <<"4xx">> ->
-            %% 4xx 配置类错误：不重试，直接死信
-            dead(Delivery, AttemptNo, Class, Code, Lat, <<>>);
-        _ ->
-            %% 5xx/3xx/1xx：有界重试
-            retry(Delivery, AttemptNo, Class, Code, Lat, <<>>)
-    end,
+    _ =
+        case Class of
+            <<"2xx">> ->
+                ok = audit(Did, AttemptNo, Class, Code, Lat, <<>>),
+                {ok, _} = bot_webhook_delivery_repo:mark_success(Did, AttemptNo);
+            <<"4xx">> when Code =:= 410 ->
+                dead(Delivery, AttemptNo, Class, Code, Lat, <<>>);
+            <<"4xx">> ->
+                %% 4xx 配置类错误：不重试，直接死信
+                dead(Delivery, AttemptNo, Class, Code, Lat, <<>>);
+            _ ->
+                %% 5xx/3xx/1xx：有界重试
+                retry(Delivery, AttemptNo, Class, Code, Lat, <<>>)
+        end,
     Res;
 settle(Delivery, AttemptNo, {error, Reason}, Lat) ->
     retry(Delivery, AttemptNo, <<"error">>, null, Lat, Reason),
     {error, Reason}.
-
-retry(Delivery, AttemptNo, Class, Code) ->
-    retry(Delivery, AttemptNo, Class, Code, 0, <<>>).
 
 retry(Delivery, AttemptNo, Class, Code, Lat, Reason) ->
     Did = maps:get(<<"delivery_id">>, Delivery),
@@ -215,9 +212,6 @@ retries_left(AttemptNo) ->
         true -> [lists:nth(AttemptNo, Schedule)];
         false -> []
     end.
-
-dead(Delivery, AttemptNo, Class, Code) ->
-    dead(Delivery, AttemptNo, Class, Code, 0, <<>>).
 
 dead(Delivery, AttemptNo, Class, Code, Lat, Reason) ->
     Did = maps:get(<<"delivery_id">>, Delivery),
@@ -264,11 +258,5 @@ to_int(V) when is_binary(V) ->
 to_int(_) ->
     0.
 
-to_int_or_bin(V) when is_binary(V) ->
-    try binary_to_integer(V) of
-        I -> I
-    catch
-        _:_ -> V
-    end;
 to_int_or_bin(V) ->
     V.

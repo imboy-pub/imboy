@@ -159,9 +159,9 @@ archive_tx(Conn, #{<<"type">> := <<"c2c">>, <<"conv_seq">> := Seq} = Row) when
     {ok, _Key, Data0} = build_archive_data(<<"c2c">>, Row),
     Data = Data0#{conv_seq => Seq, expire_at => maps:get(<<"expire_at">>, Row, null)},
     MsgId = maps:get(msg_id, Data),
-    archive_query(Conn, <<"SELECT pg_advisory_xact_lock(hashtextextended('msg_c2c:'||$1,0))">>, [
-        MsgId
-    ]),
+    _ = archive_query(
+        Conn, <<"SELECT pg_advisory_xact_lock(hashtextextended('msg_c2c:'||$1,0))">>, [MsgId]
+    ),
     case archive_query(Conn, <<"SELECT id FROM public.msg_store WHERE msg_id=$1">>, [MsgId]) of
         [] -> insert_caller_archive(Conn, Data);
         [_] -> verify_caller_archive(Conn, Data);
@@ -174,7 +174,7 @@ insert_caller_archive(Conn, Data) ->
     {Sql, Params} = elib_pg_sql:insert(?TABLE, Data#{id => elib_tsid:generate(msg_store)}),
     %% DO NOTHING avoids an aborted transaction for the exact time-partition key.
     %% Unrelated 23505 (including a trigger) propagates and rolls back the caller.
-    archive_query(
+    _ = archive_query(
         Conn, <<Sql/binary, " ON CONFLICT(msg_id,created_at) DO NOTHING RETURNING id">>, Params
     ),
     verify_caller_archive(Conn, Data).
@@ -216,9 +216,9 @@ archive_c2g_tx(Conn, Key, Row, Data) ->
         Conn, <<"SELECT seq FROM public.msg_store_seq WHERE conv_key=$1 FOR UPDATE">>, [Key]
     ),
     MsgId = maps:get(msg_id, Data),
-    archive_query(Conn, <<"SELECT pg_advisory_xact_lock(hashtextextended('msg_c2g:'||$1,0))">>, [
-        MsgId
-    ]),
+    _ = archive_query(
+        Conn, <<"SELECT pg_advisory_xact_lock(hashtextextended('msg_c2g:'||$1,0))">>, [MsgId]
+    ),
     Existing = archive_query(Conn, <<"SELECT conv_seq FROM public.msg_store WHERE msg_id=$1">>, [
         MsgId
     ]),

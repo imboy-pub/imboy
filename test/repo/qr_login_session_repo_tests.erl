@@ -133,12 +133,18 @@ concurrent_scan_single_winner_test_() ->
             purpose => <<"human">>,
             expires_at_ms => future_ms(60000)
         }),
-        %% 两个不同用户并发扫码：恰好一人成为 scanned_by
-        {[{ok, _}, {error, not_transitioned}], _} =
+        %% 两个不同用户并发扫码：恰好一人成为 scanned_by（赢家与
+        %% 返回顺序均不确定，按计数断言，与 sse_vs_status_race 同口径）
+        {Results, _} =
             race_two(
                 fun() -> qr_login_session_repo:transition_scan(ST, ?UID) end,
                 fun() -> qr_login_session_repo:transition_scan(ST, ?UID + 1) end
             ),
+        ?assertEqual(1, length([ok || {ok, _} <- Results])),
+        ?assertEqual(
+            1,
+            length([E || {error, _} = E <- Results])
+        ),
         #{<<"scanned_by">> := Winner} =
             qr_login_session_repo:find_by_session_token(ST),
         ?assert(Winner =:= ?UID orelse Winner =:= ?UID + 1),

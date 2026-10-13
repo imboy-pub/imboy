@@ -412,7 +412,9 @@ with_audit_capture(Self, TestFun) ->
     end.
 
 new_uid() ->
-    erlang:system_time(millisecond) * 1000 + rand:uniform(999).
+    %% 毫秒*1000+rand 在并发同毫秒下会碰撞（unique_violation user_pkey 实证）；
+    %% 改用 VM 单调唯一整数，偏移 1e18 避开测试固定 uid 段（int64 内）。
+    1000000000000000000 + erlang:unique_integer([positive, monotonic]).
 
 create_human(Uid) ->
     create_user(Uid, 0).

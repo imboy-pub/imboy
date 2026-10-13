@@ -46,32 +46,3 @@ allocate() ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
-
-%% @doc 从序列中批量申请 10 个 ID
-%% 使用public模式显式访问序列，避免search_path异常。
-%% 返回随机排序的ID列表，避免连续分配。
-%% @returns 账户ID列表或空列表
--spec safe_get_max_account_id() -> [non_neg_integer()].
-safe_get_max_account_id() ->
-    Q = <<"SELECT nextval('", ?ACCOUNT_SEQ/binary, "') FROM generate_series(1, 10);">>,
-    try elib_pg:query(Q, []) of
-        {ok, Res} ->
-            create_rand_list(Res);
-        Error ->
-            ok = ?ERROR_LOG([safe_get_max_account_id_failed, Error]),
-            []
-    catch
-        Class:Reason ->
-            ok = ?ERROR_LOG([safe_get_max_account_id_failed, Class, Reason]),
-            []
-    end.
-
-%% @doc 创建随机排序的ID列表
-%% 为避免连续分配ID导致的安全问题，对ID列表进行随机排序。
-%% @param List 数据库查询返回的原始ID列表
-%% @returns 随机排序后的ID列表
--spec create_rand_list([map()]) -> [non_neg_integer()].
-create_rand_list([]) ->
-    [];
-create_rand_list(List) ->
-    [X || {_, X} <- lists:sort([{rand:uniform(), N} || #{<<"nextval">> := N} <- List])].

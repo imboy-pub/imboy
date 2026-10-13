@@ -349,7 +349,7 @@ delete_tx(Conn, ChannelId) ->
 %% @doc 事务内归档频道（GZAPP-02/G4：复用 status 软删列语义——
 %% 归档= status 1→0（禁用），与删除（→-1）区分、可经 restore_tx 恢复；
 %% WHERE 带 status=1 前置条件，0 行更新 = 已归档/已删除（幂等裁决在 DS/Logic）。
--spec archive_tx(any(), integer(), integer()) -> {ok, non_neg_integer()} | {error, any()}.
+-spec archive_tx(any(), integer(), binary()) -> {ok, non_neg_integer()} | {error, any()}.
 archive_tx(Conn, ChannelId, Now) ->
     Sql =
         <<"UPDATE ", (tablename())/binary,
@@ -358,7 +358,7 @@ archive_tx(Conn, ChannelId, Now) ->
 
 %% @doc 事务内恢复频道（GZAPP-02/G4：status 0→1；WHERE 限定 status=0——
 %% 已删除（-1）的频道不可恢复，0 行更新 = 非归档态（active/已删除））。
--spec restore_tx(any(), integer(), integer()) -> {ok, non_neg_integer()} | {error, any()}.
+-spec restore_tx(any(), integer(), binary()) -> {ok, non_neg_integer()} | {error, any()}.
 restore_tx(Conn, ChannelId, Now) ->
     Sql =
         <<"UPDATE ", (tablename())/binary,

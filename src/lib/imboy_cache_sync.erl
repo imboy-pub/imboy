@@ -533,11 +533,11 @@ handle_info(_Info, State) ->
 -spec terminate(term(), #state{}) -> ok.
 terminate(_Reason, _State) ->
     try
-        syn:leave(?CACHE_SCOPE, ?CACHE_GROUP_NAME, self())
+        _ = syn:leave(?CACHE_SCOPE, ?CACHE_GROUP_NAME, self()),
+        ok
     catch
         _:_ -> ok
-    end,
-    ok.
+    end.
 
 -spec code_change(term(), #state{}, term()) -> {ok, #state{}}.
 code_change(_OldVsn, State, _Extra) ->
@@ -787,8 +787,7 @@ index_replicate(Key) -> imboy_cache_sync_apply:index_replicate(Key).
 
 syn_scope_members() ->
     try syn:members(?CACHE_SCOPE, ?CACHE_GROUP_NAME) of
-        L when is_list(L) -> [P || {P, _Meta} <- L];
-        _ -> []
+        L when is_list(L) -> [P || {P, _Meta} <- L]
     catch
         _:_ -> []
     end.

@@ -233,5 +233,6 @@ text(V, Limit, Required) when is_binary(V), byte_size(V) =< Limit * 4 ->
     end;
 text(_, _, _) ->
     fail(invalid_request).
+-spec fail(atom() | binary()) -> no_return().
 fail(C) when is_atom(C) -> fail(atom_to_binary(C, utf8));
 fail(C) -> throw({rollback, {internal_error_code, C}}).

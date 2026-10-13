@@ -127,7 +127,7 @@ find_by_id(_AssignmentId) ->
 %% @param TaskId 作业唯一标识
 %% @param UserId 用户ID
 %% @return {ok, Assignment} | {error, not_found}
--spec find_by_task_and_user(binary(), integer()) -> {ok, map()} | {error, not_found}.
+-spec find_by_task_and_user(binary(), integer()) -> {ok, map()} | {error, term()}.
 find_by_task_and_user(TaskId, UserId) when
     is_binary(TaskId),
     byte_size(TaskId) > 0,

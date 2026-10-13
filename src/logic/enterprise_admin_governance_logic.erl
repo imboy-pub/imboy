@@ -135,8 +135,7 @@ delivery_stats(OrgId, AppId) ->
         tx(fun(Conn) ->
             case enterprise_webhook_logic:delivery_stats_tx(Conn, Ctx) of
                 {ok, Stats} -> {ok, delivery_stats_view(Stats)};
-                {error, {_Code, Reason}} -> throw({rollback, Reason});
-                {error, Reason} -> throw({rollback, Reason})
+                {error, {_Code, Reason}} -> throw({rollback, Reason})
             end
         end)
     of
@@ -180,18 +179,19 @@ list_audit(OrgId, AppId, Page, Size) ->
 %% 所有治理写入与审计共用连接；失败不返回凭证明文、不提交局部变更。
 set_status(OrgId, AppId, Version, Status, Actor) ->
     audited(OrgId, AppId, Actor, fun(C, App) ->
-        must(
-            enterprise_internal_ops:set_application_status_cas_tx(
-                C, OrgId, AppId, Version, Status
-            )
-        ),
+        _ =
+            must(
+                enterprise_internal_ops:set_application_status_cas_tx(
+                    C, OrgId, AppId, Version, Status
+                )
+            ),
         After = must(enterprise_application_repo:find_tx(C, OrgId, AppId)),
         {<<"application_status_changed">>, app_diff(App), app_diff(After), ok}
     end).
 
 set_scopes(OrgId, AppId, Version, Scopes, Actor) ->
     audited(OrgId, AppId, Actor, fun(C, App) ->
-        must(enterprise_internal_ops:update_scopes_cas_tx(C, OrgId, AppId, Version, Scopes)),
+        _ = must(enterprise_internal_ops:update_scopes_cas_tx(C, OrgId, AppId, Version, Scopes)),
         After = must(enterprise_application_repo:find_tx(C, OrgId, AppId)),
         {<<"application_scopes_changed">>, app_diff(App), app_diff(After), {ok, Scopes}}
     end).
@@ -219,7 +219,7 @@ rotate_credential(OrgId, AppId, CredId, Actor) ->
 revoke_credential(OrgId, AppId, CredId, Actor) ->
     audited(OrgId, AppId, Actor, fun(C, _App) ->
         Old = credential_in(C, OrgId, AppId, CredId),
-        must(enterprise_internal_ops:revoke_credential_tx(C, OrgId, CredId)),
+        _ = must(enterprise_internal_ops:revoke_credential_tx(C, OrgId, CredId)),
         {<<"credential_revoked">>, #{credential_prefix => prefix_of(Old)},
             #{credential_status => <<"revoked">>}, ok}
     end).
@@ -257,11 +257,12 @@ patch_grant_in(C, OrgId, AppId, GrantId, Version, Patch, Actor) ->
     Workspaces = maps:is_key(workspace_scope_kind, Patch) orelse maps:is_key(workspace_ids, Patch),
     case {Revoke, Scopes, Workspaces} of
         {true, _, _} ->
-            must(
-                enterprise_application_grant_repo:revoke_admin_tx(
-                    C, OrgId, AppId, GrantId, Version, maps:get(adm_user_id, Actor, 0)
-                )
-            ),
+            _ =
+                must(
+                    enterprise_application_grant_repo:revoke_admin_tx(
+                        C, OrgId, AppId, GrantId, Version, maps:get(adm_user_id, Actor, 0)
+                    )
+                ),
             <<"grant_revoked">>;
         {false, false, false} ->
             throw({rollback, invalid_request});
@@ -270,16 +271,17 @@ patch_grant_in(C, OrgId, AppId, GrantId, Version, Patch, Actor) ->
     end.
 
 patch_grant_fields(C, OrgId, AppId, GrantId, Version, Patch, Scopes, Workspaces) ->
-    case Scopes of
-        true ->
-            must(
-                enterprise_internal_ops:set_grant_scopes_tx(
-                    C, OrgId, AppId, GrantId, Version, maps:get(scopes, Patch)
-                )
-            );
-        false ->
-            ok
-    end,
+    _ =
+        case Scopes of
+            true ->
+                must(
+                    enterprise_internal_ops:set_grant_scopes_tx(
+                        C, OrgId, AppId, GrantId, Version, maps:get(scopes, Patch)
+                    )
+                );
+            false ->
+                ok
+        end,
     case Workspaces of
         true ->
             NextVersion =
@@ -287,17 +289,18 @@ patch_grant_fields(C, OrgId, AppId, GrantId, Version, Patch, Scopes, Workspaces)
                     true -> Version + 1;
                     false -> Version
                 end,
-            must(
-                enterprise_internal_ops:set_grant_workspaces_tx(
-                    C,
-                    OrgId,
-                    AppId,
-                    GrantId,
-                    NextVersion,
-                    maps:get(workspace_scope_kind, Patch, undefined),
-                    maps:get(workspace_ids, Patch, undefined)
-                )
-            ),
+            _ =
+                must(
+                    enterprise_internal_ops:set_grant_workspaces_tx(
+                        C,
+                        OrgId,
+                        AppId,
+                        GrantId,
+                        NextVersion,
+                        maps:get(workspace_scope_kind, Patch, undefined),
+                        maps:get(workspace_ids, Patch, undefined)
+                    )
+                ),
             <<"grant_workspaces_changed">>;
         false ->
             <<"grant_scopes_changed">>
@@ -369,7 +372,7 @@ create_application_tx(OrgId, Key, Name, Uris, Actor) ->
 -spec list_identities(integer(), integer()) -> {ok, [map()]} | {error, not_found | term()}.
 list_identities(OrgId, AppId) ->
     tx(fun(C) ->
-        must(enterprise_application_repo:lock_tx(C, OrgId, AppId)),
+        _ = must(enterprise_application_repo:lock_tx(C, OrgId, AppId)),
         case enterprise_external_identity_repo:list_tx(C, OrgId, AppId) of
             {ok, Rows} ->
                 {ok, [identity_summary(I) || I <- Rows]};
@@ -452,20 +455,16 @@ input_bin(_Input, _Key) ->
     <<>>.
 
 %% application_key：8..128 可打印 ASCII（与 SSO 签发合同 §3.2 同一口径）。
--spec valid_application_key(binary() | term()) -> boolean().
+-spec valid_application_key(binary()) -> boolean().
 valid_application_key(Key) when is_binary(Key) ->
     Size = byte_size(Key),
-    Size >= 8 andalso Size =< 128 andalso printable_ascii(Key);
-valid_application_key(_) ->
-    false.
+    Size >= 8 andalso Size =< 128 andalso printable_ascii(Key).
 
 %% 应用名：1..128 字节且非全空白。
--spec valid_name(binary() | term()) -> boolean().
+-spec valid_name(binary()) -> boolean().
 valid_name(Name) when is_binary(Name) ->
     Size = byte_size(Name),
-    Size >= 1 andalso Size =< 128 andalso string:trim(Name) =/= <<>>;
-valid_name(_) ->
-    false.
+    Size >= 1 andalso Size =< 128 andalso string:trim(Name) =/= <<>>.
 
 %% redirect allowlist：≤20 条、无重复、逐条 https:// 非 fragment 非 Empty host
 %% ≤2048（与 DB 触发器同口径；exact-match 语义由 text[] 天然保证）。
@@ -473,9 +472,7 @@ valid_name(_) ->
 valid_redirect_uris(Uris) when is_list(Uris) ->
     length(Uris) =< 20 andalso
         length(Uris) =:= length(lists:usort(Uris)) andalso
-        lists:all(fun valid_redirect_uri/1, Uris);
-valid_redirect_uris(_) ->
-    false.
+        lists:all(fun valid_redirect_uri/1, Uris).
 
 valid_redirect_uri(Uri) when is_binary(Uri) ->
     Size = byte_size(Uri),
@@ -584,9 +581,7 @@ stringify_diff(Diff) when is_map(Diff) ->
         end,
         #{},
         Diff
-    );
-stringify_diff(_) ->
-    #{}.
+    ).
 
 stringify_value(V) when is_integer(V) -> integer_to_binary(V);
 stringify_value(V) when is_binary(V) -> V;
@@ -806,9 +801,7 @@ shift_days(From, Days) when is_binary(From) ->
     case elib_dt:add(From, {Days * 86400, second}) of
         T when is_binary(T) -> T;
         _ -> elib_dt:add(elib_dt:now(), {Days * 86400, second})
-    end;
-shift_days(_From, Days) ->
-    shift_days(elib_dt:now(), Days).
+    end.
 
 %% @doc Grant 幂等键：调用方未给时按请求内容生成确定性指纹。
 %% 同内容重复提交会命中 (org, app, idempotency_key) 唯一约束 → key_conflict，

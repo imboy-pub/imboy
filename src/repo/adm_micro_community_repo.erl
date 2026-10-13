@@ -60,6 +60,5 @@ audit_tx(Conn, AdminId, Cid, Mid, Value) ->
 query(Conn, Sql, Params) ->
     case elib_pg:query(Conn, Sql, Params) of
         {ok, Rows} when is_list(Rows) -> Rows;
-        {error, Reason} -> throw({rollback, {query_failed, Reason}});
-        _ -> throw({rollback, query_failed})
+        {error, Reason} -> throw({rollback, {query_failed, Reason}})
     end.

@@ -46,7 +46,7 @@ init([]) ->
     {ok, #{}}.
 
 handle_info(sweep, State) ->
-    run_sweep(),
+    _ = run_sweep(),
     erlang:send_after(interval_ms(), self(), sweep),
     {noreply, State};
 handle_info(_Info, State) ->

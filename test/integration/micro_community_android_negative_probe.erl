@@ -232,6 +232,17 @@ perform(<<"revoke">>, State) ->
         erlang:monotonic_time(millisecond), At
     ]),
     State;
+perform(<<"link_drop_requested">>, State) ->
+    %% 断链物证：当前 adb 的 reverse 移除不杀既有 TCP（r6/r7 实证：app
+    %% 协议级 ping 对黑洞连接写不失败、无 pong 超时，永远等不到
+    %% disconnected）。物理等效断开由服务端执行：关闭该用户全部 WS 会话
+    %% 进程（生产语义：服务端踢除死链），TCP 关闭 → app onClosed →
+    %% disconnected。快照由 disconnected 分支重查询（此时为空，
+    %% registered_new 的"新会话"对拍天然成立）。
+    Pids = [Pid || {Pid, _} <- imboy_syn:list_by_uid(?SUB)],
+    lists:foreach(fun(Pid) -> exit(Pid, kill) end, Pids),
+    io:format("MC22_LINK_DROP_KILLED pids=~p~n", [length(Pids)]),
+    State;
 perform(Action, State) ->
     perform_later(Action, State).
 
