@@ -160,5 +160,4 @@ backup_msg(<<"encrypted_payload_required">>) -> <<"缺少加密备份内容"/utf
 backup_msg(<<"encrypted_payload_too_large">>) -> <<"加密备份内容过大"/utf8>>;
 backup_msg(<<"plaintext_payload_rejected">>) -> <<"拒绝明文备份，请加密后上传"/utf8>>;
 backup_msg(<<"invalid_base64_payload">>) -> <<"备份内容编码格式错误"/utf8>>;
-backup_msg(Msg) when is_binary(Msg) -> Msg;
-backup_msg(_Reason) -> <<"操作失败，请稍后重试"/utf8>>.
+backup_msg(Msg) when is_binary(Msg) -> Msg.

@@ -538,9 +538,7 @@ c2c_deliverable_to_device(Msg, DID, Uid) when is_binary(DID), DID =/= <<>> ->
                     end;
                 _ ->
                     true
-            end;
-        _ ->
-            true
+            end
     end;
 c2c_deliverable_to_device(_Msg, _DID, _Uid) ->
     true.

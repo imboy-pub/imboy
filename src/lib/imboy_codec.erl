@@ -238,9 +238,7 @@ encode_ws_msg(Protocol, _Framing, _FrameType, Msg) when is_map(Msg) ->
 pb_lossless(Msg) when is_map(Msg) ->
     e2ee_pb_lossless(Msg) andalso
         direction_pb_lossless(Msg) andalso
-        ctrl_fields_pb_lossless(Msg);
-pb_lossless(_) ->
-    true.
+        ctrl_fields_pb_lossless(Msg).
 
 %% @private type 非空且不落在 MsgDirection 枚举内 → 不可无损表达
 direction_pb_lossless(Msg) ->

@@ -305,9 +305,6 @@ inherit_role(#{<<"role_id">> := RoleCode} = Agent) when
             end;
         {error, Reason} ->
             log_role_fallback(RoleCode, Reason),
-            Agent;
-        Other ->
-            log_role_fallback(RoleCode, Other),
             Agent
     catch
         Class:Reason ->

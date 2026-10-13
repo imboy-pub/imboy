@@ -110,9 +110,7 @@ page_opts(Params) when is_map(Params) ->
     case maps:get(<<"workspace_id">>, Params, undefined) of
         undefined -> Opts0;
         WsId -> Opts0#{workspace_id => WsId}
-    end;
-page_opts(_Params) ->
-    #{}.
+    end.
 
 -spec reply_json(cowboy_req:req(), non_neg_integer(), map()) -> cowboy_req:req().
 reply_json(Req0, Status, Map) ->

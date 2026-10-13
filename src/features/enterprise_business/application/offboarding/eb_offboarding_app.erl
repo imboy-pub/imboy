@@ -1067,9 +1067,7 @@ contact_count(OrgId, WorkspaceId, IdentityId, Params) ->
 
 stable_hash(Map) when is_map(Map) ->
     Bin = term_to_binary(lists:sort(maps:to_list(Map))),
-    <<<<(nibble(N))>> || <<N:4>> <= crypto:hash(sha256, Bin)>>;
-stable_hash(Other) ->
-    eb_offboarding_flow:reason_binary(Other).
+    <<<<(nibble(N))>> || <<N:4>> <= crypto:hash(sha256, Bin)>>.
 
 nibble(N) when N < 10 -> $0 + N;
 nibble(N) -> $a + N - 10.
@@ -1658,9 +1656,7 @@ audit_suspend(Params, OrgId, Leaver, Actor, Origin) ->
     end.
 
 origin_binary({offboarding, CaseId}) ->
-    <<"offboarding:", (integer_to_binary(CaseId))/binary>>;
-origin_binary(Other) ->
-    eb_offboarding_flow:reason_binary(Other).
+    <<"offboarding:", (integer_to_binary(CaseId))/binary>>.
 
 first_defined([]) ->
     undefined;

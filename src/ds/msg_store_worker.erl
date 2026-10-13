@@ -278,8 +278,7 @@ to_int_or_null(V) when is_integer(V) ->
     V;
 to_int_or_null(V) when is_binary(V) ->
     try binary_to_integer(V) of
-        I when is_integer(I) -> I;
-        _ -> null
+        I when is_integer(I) -> I
     catch
         _:_ -> null
     end;

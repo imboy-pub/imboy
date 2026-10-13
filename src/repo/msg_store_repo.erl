@@ -743,9 +743,7 @@ current_group_generations(Conn, Gid, RecipientUids) ->
         {ok, _} ->
             throw({rollback, e2ee_session_generation_mismatch});
         {error, Reason} ->
-            throw({rollback, {e2ee_session_generation_read_failed, Reason}});
-        Other ->
-            throw({rollback, {unexpected_e2ee_session_generation_read, Other}})
+            throw({rollback, {e2ee_session_generation_read_failed, Reason}})
     end.
 
 -spec persist_group_session_members(pid(), integer(), binary(), [map()]) -> ok.
@@ -762,8 +760,7 @@ persist_group_session_members(Conn, Gid, SessionId, Generations) ->
     case elib_pg:query(Conn, Sql, [Gid, SessionId, Uids, GenNos, StartSeqs]) of
         {ok, Rows} when length(Rows) =:= length(Uids) -> ok;
         {ok, _} -> throw({rollback, e2ee_session_member_persist_mismatch});
-        {error, Reason} -> throw({rollback, {e2ee_session_member_persist_failed, Reason}});
-        Other -> throw({rollback, {unexpected_e2ee_session_member_persist, Other}})
+        {error, Reason} -> throw({rollback, {e2ee_session_member_persist_failed, Reason}})
     end.
 
 -spec verify_existing_group_session(
@@ -805,8 +802,7 @@ verify_group_session_members(Conn, Gid, SessionId, Generations) ->
     case elib_pg:query(Conn, Sql, [Gid, SessionId]) of
         {ok, Generations} -> ok;
         {ok, _} -> throw({rollback, e2ee_session_generation_mismatch});
-        {error, Reason} -> throw({rollback, {e2ee_session_member_read_failed, Reason}});
-        Other -> throw({rollback, {unexpected_e2ee_session_member_read, Other}})
+        {error, Reason} -> throw({rollback, {e2ee_session_member_read_failed, Reason}})
     end.
 
 %% @doc D3 grant source: current active membership must match the immutable generation
@@ -1010,9 +1006,7 @@ bind_group_attachment_anchors(Conn, MsgId, FromId, Gid, Seq) ->
             ),
             ok;
         {error, Reason} ->
-            throw({rollback, {attachment_anchor_bind_failed, Reason}});
-        Other ->
-            throw({rollback, {unexpected_attachment_anchor_bind, Other}})
+            throw({rollback, {attachment_anchor_bind_failed, Reason}})
     end.
 
 %% @private sequence 行锁已由调用方持有；本查询在同一事务的新 READ COMMITTED
@@ -1032,9 +1026,7 @@ authorized_c2g_recipients(Conn, Gid, FromId, RequiredRole) ->
                 _ -> throw({rollback, invalid_recipient_row})
             end;
         {error, Reason} ->
-            throw({rollback, {recipient_snapshot_failed, Reason}});
-        Other ->
-            throw({rollback, {unexpected_recipient_snapshot, Other}})
+            throw({rollback, {recipient_snapshot_failed, Reason}})
     end.
 
 %% @private 原消息的不可变 recipient snapshot 与 staging 在同一事务提交；离线 ACK、
@@ -1055,9 +1047,7 @@ authorized_c2g_action_recipients(Conn, Gid, FromId, RequiredRole, OriginalMsgId)
                 _ -> throw({rollback, invalid_recipient_row})
             end;
         {error, Reason} ->
-            throw({rollback, {recipient_snapshot_failed, Reason}});
-        Other ->
-            throw({rollback, {unexpected_recipient_snapshot, Other}})
+            throw({rollback, {recipient_snapshot_failed, Reason}})
     end.
 
 -spec action_recipient_sql() -> binary().
@@ -1167,9 +1157,7 @@ delete_expired_c2g_ledgers(AgeSeconds, Limit) ->
                     MsgIds = [maps:get(<<"msg_id">>, Row) || Row <- Rows],
                     delete_c2g_ledger_rows(Conn, MsgIds);
                 {error, Reason} ->
-                    throw({rollback, Reason});
-                Other ->
-                    throw({rollback, {unexpected_c2g_ledger_cleanup_select, Other}})
+                    throw({rollback, Reason})
             end
         end)
     of

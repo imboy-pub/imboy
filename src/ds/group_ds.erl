@@ -167,9 +167,7 @@ load_member_uids(Gid) ->
         {ok, Items} when is_list(Items) ->
             {ok, [Uid || #{<<"user_id">> := Uid} <- Items]};
         {error, _} = Error ->
-            Error;
-        Other ->
-            {error, {unexpected_repo_result, Other}}
+            Error
     end.
 
 %% @doc room-key fan-out 的权威设备公钥快照。
@@ -194,9 +192,7 @@ member_public_keys_authoritative(Gid, CurrentUid, Limit) ->
         {ok, Rows} when is_list(Rows) ->
             normalize_authorized_key_rows(Gid, Rows, []);
         {error, Reason} ->
-            {error, Reason};
-        Other ->
-            {error, {unexpected_repo_result, Other}}
+            {error, Reason}
     end.
 
 normalize_authorized_key_rows(_Gid, [], Acc) ->

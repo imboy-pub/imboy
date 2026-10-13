@@ -206,10 +206,7 @@ send_message(MsgId, BotId, ToUid, MsgData) ->
                 ok ->
                     {ok, #{<<"msg_id">> => MsgId}};
                 {reply, _S2c} ->
-                    {ok, #{<<"msg_id">> => MsgId}};
-                Other ->
-                    ?ERROR_LOG("bot_logic:send_message bot_id=~p error: ~p~n", [BotId, Other]),
-                    {error, <<"消息发送失败"/utf8>>}
+                    {ok, #{<<"msg_id">> => MsgId}}
             end;
         {ok, _} ->
             {error, <<"Bot 已停用"/utf8>>};

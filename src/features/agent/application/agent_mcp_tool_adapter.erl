@@ -49,9 +49,7 @@ mcp_gate_then_execute(AgentRunContext, DecisionContext, ToolDescriptor, Resource
         {deny, _McpReason} ->
             %% A17：MCP client grant 仍必需——稳定 reason 归并（原始 binary
             %% 治理文案不进 API 面）。
-            {deny, mcp_gate_denied};
-        _BadShape ->
-            {deny, mcp_gate_unavailable}
+            {deny, mcp_gate_denied}
     catch
         _Class:_Reason ->
             {deny, mcp_gate_unavailable}

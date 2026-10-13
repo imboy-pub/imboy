@@ -359,10 +359,8 @@ keep_agent_account_type(User) when is_map(User) ->
     case maps:get(<<"account_type">>, User, 0) of
         1 -> User;
         _ -> maps:remove(<<"account_type">>, User)
-    end;
+    end.
 %% find_by_id 落空（undefined 等）回空对象，避免 unknown id 打崩免鉴权端点
-keep_agent_account_type(_) ->
-    #{}.
 
 %% @doc 个人数据导出（GDPR 第 20 条 - Right to data portability）
 %% POST /v1/user/export_data

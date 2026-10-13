@@ -101,6 +101,4 @@ error_constraint(Extra) when is_list(Extra) ->
     case lists:keyfind(constraint_name, 1, Extra) of
         {constraint_name, Name} -> Name;
         false -> undefined
-    end;
-error_constraint(_Other) ->
-    undefined.
+    end.

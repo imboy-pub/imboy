@@ -102,13 +102,11 @@ workspace_notice_guard(Req0, Uid) ->
         end,
     PostMap =
         case PostVals of
-            Map when is_map(Map) -> Map;
-            _ -> #{}
+            Map when is_map(Map) -> Map
         end,
     QsList =
         case is_list(Qs) of
-            true -> Qs;
-            _ -> []
+            true -> Qs
         end,
     Gid = first_defined([
         maps:get(<<"gid">>, PostMap, undefined),

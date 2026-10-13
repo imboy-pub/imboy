@@ -196,9 +196,7 @@ resource_id_of(Result) when is_map(Result) ->
     case maps:find(<<"file_id">>, Result) of
         {ok, Id} when is_integer(Id) -> Id;
         _ -> null
-    end;
-resource_id_of(_) ->
-    null.
+    end.
 
 ok_code(Code) when is_integer(Code), Code >= 200, Code < 300 -> Code;
 ok_code(_) -> 200.
@@ -238,6 +236,4 @@ params_to_input(Params) when is_map(Params) ->
         end,
         #{},
         Params
-    );
-params_to_input(_) ->
-    #{}.
+    ).

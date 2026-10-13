@@ -151,10 +151,7 @@ incoming(Req0) ->
 client_ip(Req) ->
     case login_attempt_ds:extract_real_ip(cowboy_req:headers(Req)) of
         {ok, Ip} ->
-            Ip;
-        _ ->
-            {PeerIp, _Port} = cowboy_req:peer(Req),
-            list_to_binary(inet:ntoa(PeerIp))
+            Ip
     end.
 
 %% @doc 读取完整原始报文（1MB/5s 上限，复刻 payment_callback_handler 范式）

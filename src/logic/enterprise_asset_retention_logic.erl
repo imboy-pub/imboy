@@ -288,8 +288,7 @@ delete_object(ObjectKey) ->
     try elib_oss:delete_object(Bucket, ObjectKey) of
         ok -> ok;
         {error, not_found} -> ok;
-        {error, Reason} -> {error, Reason};
-        _Other -> ok
+        {error, Reason} -> {error, Reason}
     catch
         Class:Reason ->
             ?ERROR_LOG([

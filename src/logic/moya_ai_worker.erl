@@ -338,11 +338,8 @@ error_code_of(timeout) ->
 error_code_of(provider_error) ->
     <<"provider_error">>;
 error_code_of(bad_output) ->
-    <<"bad_schema">>;
-error_code_of(R) when is_atom(R) ->
-    atom_to_binary(R, utf8).
+    <<"bad_schema">>.
 
 -spec media_error_code(term()) -> binary().
 media_error_code(file_too_large) -> <<"media_too_large">>;
-media_error_code(invalid_file_type) -> <<"media_invalid_type">>;
-media_error_code(_) -> <<"media_invalid">>.
+media_error_code(invalid_file_type) -> <<"media_invalid_type">>.

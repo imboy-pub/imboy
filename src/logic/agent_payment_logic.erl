@@ -155,8 +155,7 @@ release_reservation(CompensationId) ->
         fun() ->
             case agent_payment_compensation_ds:release(CompensationId) of
                 ok -> ok;
-                {error, ReleaseReason} -> erlang:error({release_failed, ReleaseReason});
-                Other -> erlang:error({release_unexpected, Other})
+                {error, ReleaseReason} -> erlang:error({release_failed, ReleaseReason})
             end
         end,
         ?RELEASE_RETRY_COUNT,
@@ -207,11 +206,10 @@ settle_transfer(OwnerUid, AgentUid, ToUid, AmountFen, RefNo, CompensationId) ->
                 {ok, _} = Ok -> Ok;
                 {rollback, insufficient_balance} -> {error, insufficient_balance};
                 {rollback, _} -> {error, payment_failed};
-                {error, _} -> {error, payment_failed};
+                {error, _} -> {error, payment_failed}
                 %% 兜底：elib_pg:with_tx 对非 rollback 异常重试耗尽会返回 {error,Class,Reason}
                 %% 等其它形态，若不归一会 case_clause 逃逸出 settle_transfer→settle 的 release
                 %% 补偿永不执行，导致预留额度永久泄漏 + 未捕获崩溃。归一为 payment_failed。
-                _Other -> {error, payment_failed}
             end
     end.
 

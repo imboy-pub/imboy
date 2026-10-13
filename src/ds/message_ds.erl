@@ -453,8 +453,7 @@ handle_offline_msgs(Uid, DID, Type, Msgs, Count, Threshold) when Count > 0 ->
 %% @doc DID 有效时定向白名单，只推给当前连接设备；为空则不过滤（全设备广播）
 -spec did_whitelist(binary()) -> [binary()].
 did_whitelist(<<>>) -> [];
-did_whitelist(DID) when is_binary(DID) -> [DID];
-did_whitelist(_) -> [].
+did_whitelist(DID) when is_binary(DID) -> [DID].
 
 %% 发送pull_offline_msg通知（v2.0 格式）
 -spec send_pull_offline_msg(integer(), binary()) -> ok.

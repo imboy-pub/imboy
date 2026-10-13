@@ -891,8 +891,7 @@ class_of(Code) when Code >= 400, Code < 500 -> <<"4xx">>;
 class_of(Code) when Code >= 500 -> <<"5xx">>;
 class_of(_) -> <<"other">>.
 
-guard_class(Reason) when is_atom(Reason) -> atom_to_binary(Reason);
-guard_class(_) -> <<"guard_error">>.
+guard_class(Reason) when is_atom(Reason) -> atom_to_binary(Reason).
 
 sender_mod() ->
     case application:get_env(imboy, bot_webhook_sender_mod) of
@@ -1278,11 +1277,7 @@ new_correlation_id() ->
     binary:encode_hex(crypto:strong_rand_bytes(16)).
 
 ip_to_binary(IP) when is_tuple(IP) ->
-    iolist_to_binary(inet:ntoa(IP));
-ip_to_binary(IP) when is_binary(IP) ->
-    IP;
-ip_to_binary(_) ->
-    <<>>.
+    iolist_to_binary(inet:ntoa(IP)).
 
 occurred_at() ->
     elib_dt:to_rfc3339(erlang:system_time(millisecond), millisecond).

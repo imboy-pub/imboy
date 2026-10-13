@@ -414,5 +414,4 @@ do_compliance_key(Req0) ->
 -spec e2ee_msg(term()) -> binary().
 e2ee_msg(<<"internal_error">>) -> <<"服务器内部错误，请稍后重试"/utf8>>;
 e2ee_msg(<<"forbidden">>) -> <<"无权限访问"/utf8>>;
-e2ee_msg(Msg) when is_binary(Msg) -> Msg;
-e2ee_msg(_Reason) -> <<"操作失败，请稍后重试"/utf8>>.
+e2ee_msg(Msg) when is_binary(Msg) -> Msg.

@@ -203,9 +203,7 @@ params_to_input(Params) when is_map(Params) ->
         end,
         #{},
         Params
-    );
-params_to_input(_) ->
-    #{}.
+    ).
 
 known_key(<<"sender_user_id">>) -> {ok, sender_user_id};
 known_key(<<"target_user_id">>) -> {ok, target_user_id};

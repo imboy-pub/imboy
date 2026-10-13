@@ -244,8 +244,7 @@ client_scheme(Req) ->
         _ ->
             %% cowboy 2.x 返回 binary（<<"http">>/<<"https">>）；atom 形态兼容兜底。
             case cowboy_req:scheme(Req) of
-                S when is_binary(S) -> lower_bin(S);
-                A when is_atom(A) -> atom_to_binary(A, utf8)
+                S when is_binary(S) -> lower_bin(S)
             end
     end.
 
@@ -534,9 +533,7 @@ html_attr(Bin) when is_binary(Bin) ->
         <<"\"">>,
         <<"&quot;">>,
         [global]
-    );
-html_attr(_) ->
-    <<>>.
+    ).
 
 %% ===================================================================
 %% SSE（GET .../sessions/:id/events）
