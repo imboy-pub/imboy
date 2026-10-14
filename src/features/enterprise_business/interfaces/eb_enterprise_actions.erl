@@ -332,7 +332,14 @@ table(tenant) ->
                             {retain_until, int, optional},
                             %% CS-BE-01：展示文件名（可选，1..256 字节；随凭证
                             %% 进 PUT 登记与历史 assets[].file_name 投影）。
-                            {file_name, binary, optional}
+                            {file_name, binary, optional},
+                            %% V5 恢复合同（02 §137）：operation=register（缺省）
+                            %% |status|renew；client_upload_id 幂等登记；
+                            %% asset_id 为 status/renew 的会话定位（新字段必须
+                            %% 进投影表，不得被动作表丢弃）。
+                            {operation, binary, optional},
+                            {client_upload_id, binary, optional},
+                            {asset_id, tsid, optional}
                         ],
                         []},
                     {<<"PUT">>, put_object, [{upload_ref, binary, required}], []}

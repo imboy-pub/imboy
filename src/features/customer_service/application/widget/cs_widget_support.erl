@@ -307,6 +307,11 @@ eb_open_conversation(OrgId, Params) ->
     enterprise_business_facade:open_conversation(OrgId, Params).
 eb_list_messages(OrgId, Params) ->
     enterprise_business_facade:list_messages(OrgId, Params).
+%% V5（02 §137）：operation=status|renew 分流；缺省 register 保持既有动作。
+eb_request_presign(OrgId, #{operation := <<"status">>} = Params) ->
+    enterprise_business_facade:request_session_status(OrgId, Params);
+eb_request_presign(OrgId, #{operation := <<"renew">>} = Params) ->
+    enterprise_business_facade:request_session_renew(OrgId, Params);
 eb_request_presign(OrgId, Params) ->
     enterprise_business_facade:request_presign(OrgId, Params).
 eb_confirm_asset(OrgId, Params) ->
