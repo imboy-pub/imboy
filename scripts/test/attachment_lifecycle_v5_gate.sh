@@ -79,11 +79,11 @@ exec > >(tee -a "$LOG") 2>&1
 
 # ---------------- case executors ----------------
 # ---------------- W2-01 executors ----------------
-w201_db_setup() { # $1 cdir  -> echoes DB name; replay full chain once
-  local cdir="$1"
+w201_db_setup() { # $1 cdir [$2 db-suffix] -> echoes DB name; replay full chain once
+  local cdir="$1" SUF="${2:-w201}"
   mkdir -p "$cdir"
   local PGPASSWORD; PGPASSWORD=$(cat "$RUN_DIR/resources/pg-attv5.password")
-  local DB="attv5_${SLOT}_w201"
+  local DB="attv5_${SLOT}_${SUF}"
   docker exec -i imboy_pg18 psql -X -U imboy_user -d postgres \
     -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '$DB' AND pid <> pg_backend_pid()" \
     -c "DROP DATABASE IF EXISTS $DB" -c "CREATE DATABASE $DB OWNER imboy_user" > "$cdir/db.log" 2>&1 || return 75
@@ -439,6 +439,62 @@ bootstrap_w002_history() {
   grep -qE 'remaining_synthetic_rows' "$cdir/raw.log" || { echo 'ROLLBACK_PROBE_MISSING' >> "$cdir/raw.log"; return 30; }
 }
 
+# ---------------- W2-02 executors ----------------
+# Evidence model: real-PG + real-Garage eunit battery (per-scenario named
+# tests) + EB suite flag for seat/widget shared-protocol leaves (W2-01 ebp
+# precedent). Leaf receipts point at the suite logs as raw output.
+w202_eunit() { # $1 cdir $2 logname $3 module  -> echoes 1/0
+  local cdir="$1" log="$cdir/$2" mod="$3" try rc
+  for try in 1 2 3; do
+    EUNIT_USE_RELAY=0 EUNIT_CONFIG="${EUNIT_CONFIG:-}" make -C "$ROOT" eunit-local "t=$mod" \
+      > "$log" 2>&1
+    rc=$?
+    if [ $rc -eq 0 ] && grep -q "All .* tests passed" "$log"; then echo 1; return 0; fi
+    grep -q "Terminated" "$log" || break
+  done
+  echo 0
+}
+
+w202_case() { # $1 cdir
+  local cdir="$1" RC=0
+  # 证据在任务内共享：三个 case 复用同一套套件日志（各 case 的差异只在封叶矩阵）
+  local SH="$EVID/W2-02-shared"
+  mkdir -p "$SH" "$cdir"
+  # 真 Garage 凭证（confirm_pg 套件按 W202_GARAGE_* 做真实字节往返）
+  if [ -f "$RUN_DIR/resources/garage-w202.env" ]; then
+    . "$RUN_DIR/resources/garage-w202.env"
+    export W202_GARAGE_ENDPOINT W202_GARAGE_BUCKET W202_GARAGE_ACCESS_KEY W202_GARAGE_SECRET_KEY
+  fi
+  local SUITE
+  for SUITE in "attachment_lifecycle_v5_confirm_pg_tests:eunit-confirm.log" \
+               "eb_asset_tests:eunit-ebasset.log" \
+               "attachment_storage_gateway_handler_tests:eunit-gateway.log" \
+               "attach_logic_tests:eunit-attachlogic.log"; do
+    local mod="${SUITE%%:*}" log="${SUITE##*:}"
+    if [ ! -f "$SH/$log" ] || ! grep -q "All .* tests passed" "$SH/$log"; then
+      w202_eunit "$SH" "$log" "$mod" > /dev/null
+    fi
+  done
+  local f log flag
+  for f in "eunit-confirm.log:W202_CONFIRM_PG_OK" "eunit-ebasset.log:W202_EB_ASSET_OK" \
+           "eunit-gateway.log:W202_GATEWAY_OK" "eunit-attachlogic.log:W202_ATTACH_LOGIC_OK"; do
+    log="${f%%:*}"
+    flag="${f##*:}"
+    cp -f "$SH/$log" "$cdir/$log" 2>/dev/null || true
+    if grep -q "All .* tests passed" "$cdir/$log" 2>/dev/null; then
+      export "$flag=1"
+    else
+      export "$flag=0"
+    fi
+  done
+  echo "w202 flags: CONFIRM=$W202_CONFIRM_PG_OK EB=$W202_EB_ASSET_OK GW=$W202_GATEWAY_OK AL=$W202_ATTACH_LOGIC_OK (SH=$SH)" >> "$cdir/raw.log"
+  export W202_GARAGE_ENDPOINT="${W202_GARAGE_ENDPOINT:-}" V5_RUN_DIR="$RUN_DIR"
+  bash "$ROOT/scripts/test/attachment_lifecycle_v5_w202_seal.sh" "$ROOT" "$CUR_CASE" "$cdir" 0 \
+    "bash scripts/test/attachment_lifecycle_v5_gate.sh --task W2-02 --case $CUR_CASE" \
+    >> "$cdir/raw.log" 2>&1 || RC=30
+  return $RC
+}
+
 run_case() {  # $1 case_id
   local cid="$1"
   local cdir="$EVID/${cid#*/}"
@@ -483,6 +539,9 @@ PYC
     W2-01/pending-failclosed|W2-01/pending-multipart|W2-01/session-recovery-api|W2-01/upload-content-pin)
       CUR_CASE="$cid"
       w201_case "$cdir" ;;
+    W2-02/confirm-idempotent|W2-02/confirm-old-client|W2-02/confirmed-content-immutable)
+      CUR_CASE="$cid"
+      w202_case "$cdir" ;;
     W0-01/baseline)
       bash scripts/check_migrations.sh > "$cdir/raw.log" 2>&1
       seal_leafs "$cid" "$cdir" "$?" "bash scripts/check_migrations.sh (bootstrap retroactive)" ;;

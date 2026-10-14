@@ -582,3 +582,140 @@ ent_unknown_legacy_pending() ->
     after
         eb_pg_test_fixture:cleanup(Scope)
     end.
+
+%% ===================================================================
+%% W2-02 confirmed-content-immutable：enterprise_internal 入口场景孪生
+%% （企业内部 confirm 走 enterprise_asset_logic 独立 V5 分支，逐场景覆盖）
+%% ===================================================================
+
+ent_old_capability_put_b_rejected() ->
+    {Ctx, Scope} = ent_setup(),
+    try
+        Key = new_ent_key(maps:get(organization_id, Ctx), maps:get(application_id, Ctx)),
+        BytesA = <<"w2-02 ent payload A">>,
+        {Bucket, ShaA, _} = seed_ent_session(Key, BytesA, maps:get(application_id, Ctx)),
+        {ok, #{<<"file_id">> := AttId}} = ent_confirm(Key, Ctx),
+        %% 换 receipt 的 pin → content_mismatch（同 key 异字节）
+        {error, content_mismatch} =
+            attach_pending_repo:register_content_pin(Key, #{
+                <<"version">> => 1,
+                <<"sha256">> => hex_lower(crypto:hash(sha256, <<"ent payload B">>)),
+                <<"size_bytes">> => <<"99">>,
+                <<"mime">> => ?MIME
+            }),
+        {ok, Replay} = ent_confirm(Key, Ctx),
+        ?assertEqual(AttId, maps:get(<<"file_id">>, Replay)),
+        {ok, ShaNow, _} = elib_oss:object_sha256(Bucket, Key),
+        ?assertEqual(ShaA, ShaNow)
+    after
+        eb_pg_test_fixture:cleanup(Scope)
+    end.
+
+ent_overwrite_between_stat_and_confirm() ->
+    {Ctx, Scope} = ent_setup(),
+    try
+        Key = new_ent_key(maps:get(organization_id, Ctx), maps:get(application_id, Ctx)),
+        {Bucket, _, _} = seed_ent_session(
+            Key, <<"w2-02 ent overwrite A">>, maps:get(application_id, Ctx)
+        ),
+        {ok, _} = elib_oss:head_object(Bucket, Key),
+        ok = elib_oss:put_object(Bucket, Key, <<"w2-02 ent overwrite B">>, ?MIME),
+        {error, {<<"invalid_request">>, content_hash_mismatch}} = ent_confirm(Key, Ctx),
+        {ok, Row} =
+            elib_pg:one(<<"SELECT COUNT(*)::int AS n FROM attachment WHERE path=$1">>, [Key]),
+        ?assertEqual(0, maps:get(<<"n">>, Row)),
+        #{<<"session_state">> := <<"registered">>} = session_state(Key)
+    after
+        eb_pg_test_fixture:cleanup(Scope)
+    end.
+
+ent_inflight_same_content_after_confirm() ->
+    {Ctx, Scope} = ent_setup(),
+    try
+        Key = new_ent_key(maps:get(organization_id, Ctx), maps:get(application_id, Ctx)),
+        Bytes = <<"w2-02 ent inflight same">>,
+        {Bucket, _, _} = seed_ent_session(Key, Bytes, maps:get(application_id, Ctx)),
+        {ok, #{<<"file_id">> := AttId}} = ent_confirm(Key, Ctx),
+        ok = elib_oss:put_object(Bucket, Key, Bytes, ?MIME),
+        {ok, Replay} = ent_confirm(Key, Ctx),
+        ?assertEqual(AttId, maps:get(<<"file_id">>, Replay)),
+        {ok, Sha, _} = elib_oss:object_sha256(Bucket, Key),
+        Row = ent_attachment_row(Key),
+        {ok, MetaRow} =
+            elib_pg:one(<<"SELECT file_hash256 FROM attachment WHERE path=$1">>, [Key]),
+        ?assertEqual(Sha, maps:get(<<"file_hash256">>, MetaRow)),
+        ?assert(is_integer(maps:get(<<"id">>, Row)))
+    after
+        eb_pg_test_fixture:cleanup(Scope)
+    end.
+
+ent_hash_mismatch_no_confirm() ->
+    {Ctx, Scope} = ent_setup(),
+    try
+        Key = new_ent_key(maps:get(organization_id, Ctx), maps:get(application_id, Ctx)),
+        Bucket = elib_oss:get_bucket(<<"enterprise">>),
+        {ok, _} =
+            attach_pending_repo:register_v5(
+                Key, Bucket, <<"enterprise">>, 0, elib_uuid:gen_v7(), #{
+                    <<"subject">> => #{
+                        <<"kind">> => <<"application">>,
+                        <<"principal">> => maps:get(application_id, Ctx)
+                    },
+                    <<"declaration">> => #{<<"mime">> => ?MIME}
+                }
+            ),
+        ok = elib_oss:put_object(Bucket, Key, <<"ent real bytes">>, ?MIME),
+        ok =
+            attach_pending_repo:register_content_pin(Key, #{
+                <<"version">> => 1,
+                <<"sha256">> => hex_lower(crypto:hash(sha256, <<"ent other bytes">>)),
+                <<"size_bytes">> => integer_to_binary(byte_size(<<"ent real bytes">>)),
+                <<"mime">> => ?MIME
+            }),
+        {error, {<<"invalid_request">>, content_hash_mismatch}} = ent_confirm(Key, Ctx),
+        {ok, Row} =
+            elib_pg:one(<<"SELECT COUNT(*)::int AS n FROM attachment WHERE path=$1">>, [Key]),
+        ?assertEqual(0, maps:get(<<"n">>, Row))
+    after
+        eb_pg_test_fixture:cleanup(Scope)
+    end.
+
+ent_crash_after_pin_before_put_resume() ->
+    {Ctx, Scope} = ent_setup(),
+    try
+        Key = new_ent_key(maps:get(organization_id, Ctx), maps:get(application_id, Ctx)),
+        Bucket = elib_oss:get_bucket(<<"enterprise">>),
+        Bytes = <<"w2-02 ent crash resume">>,
+        {ok, _} =
+            attach_pending_repo:register_v5(
+                Key, Bucket, <<"enterprise">>, 0, elib_uuid:gen_v7(), #{
+                    <<"subject">> => #{
+                        <<"kind">> => <<"application">>,
+                        <<"principal">> => maps:get(application_id, Ctx)
+                    },
+                    <<"declaration">> => #{<<"mime">> => ?MIME}
+                }
+            ),
+        ok =
+            attach_pending_repo:register_content_pin(Key, #{
+                <<"version">> => 1,
+                <<"sha256">> => hex_lower(crypto:hash(sha256, Bytes)),
+                <<"size_bytes">> => integer_to_binary(byte_size(Bytes)),
+                <<"mime">> => ?MIME
+            }),
+        {error, {<<"invalid_request">>, object_not_found}} = ent_confirm(Key, Ctx),
+        %% 恢复：同 receipt pin 重放 + 真 PUT → confirm 成功
+        ok =
+            attach_pending_repo:register_content_pin(Key, #{
+                <<"version">> => 1,
+                <<"sha256">> => hex_lower(crypto:hash(sha256, Bytes)),
+                <<"size_bytes">> => integer_to_binary(byte_size(Bytes)),
+                <<"mime">> => ?MIME
+            }),
+        ok = elib_oss:put_object(Bucket, Key, Bytes, ?MIME),
+        {ok, #{<<"file_id">> := AttId}} = ent_confirm(Key, Ctx),
+        {ok, Replay} = ent_confirm(Key, Ctx),
+        ?assertEqual(AttId, maps:get(<<"file_id">>, Replay))
+    after
+        eb_pg_test_fixture:cleanup(Scope)
+    end.
