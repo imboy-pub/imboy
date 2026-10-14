@@ -338,19 +338,19 @@ delete_photo_tx(Conn, Id) ->
 %% @param PhotoId 图片ID
 %% @param UserId 用户ID
 %% @return {ok, Count} | {error, Reason}
--spec like_photo(binary(), integer()) -> {ok, non_neg_integer()} | {error, term()}.
+-spec like_photo(integer(), integer()) -> {ok, non_neg_integer()} | {error, term()}.
 like_photo(PhotoId, UserId) ->
     like_photo_run(fun(Sql, Params) -> elib_pg:execute_count(Sql, Params) end, PhotoId, UserId).
 
 %% @doc 事务内点赞图片（归档写守卫同事务；点赞记录与计数同事务化）
--spec like_photo_tx(any(), binary(), integer()) -> {ok, non_neg_integer()} | {error, term()}.
+-spec like_photo_tx(any(), integer(), integer()) -> {ok, non_neg_integer()} | {error, term()}.
 like_photo_tx(Conn, PhotoId, UserId) ->
     like_photo_run(
         fun(Sql, Params) -> elib_pg:execute_count(Conn, Sql, Params) end, PhotoId, UserId
     ).
 
 -spec like_photo_run(
-    fun((iodata(), [term()]) -> {ok, non_neg_integer()} | {error, term()}), binary(), integer()
+    fun((iodata(), [term()]) -> {ok, non_neg_integer()} | {error, term()}), integer(), integer()
 ) ->
     {ok, non_neg_integer()} | {error, term()}.
 like_photo_run(Exec, PhotoId, UserId) ->
@@ -360,7 +360,12 @@ like_photo_run(Exec, PhotoId, UserId) ->
 
     % 插入点赞记录
     Id = elib_tsid:generate(group_album),
-    LikeData = #{id => Id, photo_id => PhotoId, user_id => UserId, created_at => Now},
+    LikeData = #{
+        id => Id,
+        photo_id => integer_to_binary(PhotoId),
+        user_id => UserId,
+        created_at => Now
+    },
     {SqlInsert, ParamsInsert} = elib_pg_sql:insert(TbLike, LikeData),
     case Exec(SqlInsert, ParamsInsert) of
         {ok, _Count} ->
@@ -375,19 +380,19 @@ like_photo_run(Exec, PhotoId, UserId) ->
 %% @param PhotoId 图片ID
 %% @param UserId 用户ID
 %% @return {ok, Count} | {error, Reason}
--spec unlike_photo(binary(), integer()) -> {ok, non_neg_integer()} | {error, term()}.
+-spec unlike_photo(integer(), integer()) -> {ok, non_neg_integer()} | {error, term()}.
 unlike_photo(PhotoId, UserId) ->
     unlike_photo_run(fun(Sql, Params) -> elib_pg:execute_count(Sql, Params) end, PhotoId, UserId).
 
 %% @doc 事务内取消点赞（归档写守卫同事务；删除记录与计数同事务化）
--spec unlike_photo_tx(any(), binary(), integer()) -> {ok, non_neg_integer()} | {error, term()}.
+-spec unlike_photo_tx(any(), integer(), integer()) -> {ok, non_neg_integer()} | {error, term()}.
 unlike_photo_tx(Conn, PhotoId, UserId) ->
     unlike_photo_run(
         fun(Sql, Params) -> elib_pg:execute_count(Conn, Sql, Params) end, PhotoId, UserId
     ).
 
 -spec unlike_photo_run(
-    fun((iodata(), [term()]) -> {ok, non_neg_integer()} | {error, term()}), binary(), integer()
+    fun((iodata(), [term()]) -> {ok, non_neg_integer()} | {error, term()}), integer(), integer()
 ) ->
     {ok, non_neg_integer()} | {error, term()}.
 unlike_photo_run(Exec, PhotoId, UserId) ->
@@ -396,7 +401,7 @@ unlike_photo_run(Exec, PhotoId, UserId) ->
 
     % 删除点赞记录
     Sql = <<"DELETE FROM ", TbLike/binary, " WHERE photo_id = $1 AND user_id = $2">>,
-    case Exec(Sql, [PhotoId, UserId]) of
+    case Exec(Sql, [integer_to_binary(PhotoId), UserId]) of
         {ok, _} ->
             % 减少点赞计数
             Sql2 =
@@ -411,11 +416,11 @@ unlike_photo_run(Exec, PhotoId, UserId) ->
 %% @param PhotoId 图片ID
 %% @param UserId 用户ID
 %% @return true | false
--spec is_liked(binary(), integer()) -> boolean().
+-spec is_liked(integer(), integer()) -> boolean().
 is_liked(PhotoId, UserId) ->
     Tb = like_tablename(),
     Sql = <<"SELECT 1 FROM ", Tb/binary, " WHERE photo_id = $1 AND user_id = $2 LIMIT 1">>,
-    case elib_pg:one(Sql, [PhotoId, UserId]) of
+    case elib_pg:one(Sql, [integer_to_binary(PhotoId), UserId]) of
         {ok, _} -> true;
         _ -> false
     end.
@@ -429,7 +434,7 @@ is_liked(PhotoId, UserId) ->
 %% @param UserId 用户ID
 %% @param Content 评论内容
 %% @return {ok, Id} | {error, Reason}
--spec add_comment(binary(), integer(), binary()) -> {ok, integer()} | {error, term()}.
+-spec add_comment(integer(), integer(), binary()) -> {ok, integer()} | {error, term()}.
 add_comment(PhotoId, UserId, Content) ->
     add_comment_run(
         fun(Sql, Params) -> elib_pg:execute_count(Sql, Params) end,
@@ -439,7 +444,7 @@ add_comment(PhotoId, UserId, Content) ->
     ).
 
 %% @doc 事务内添加评论（归档写守卫同事务；评论与计数同事务化）
--spec add_comment_tx(any(), binary(), integer(), binary()) -> {ok, integer()} | {error, term()}.
+-spec add_comment_tx(any(), integer(), integer(), binary()) -> {ok, integer()} | {error, term()}.
 add_comment_tx(Conn, PhotoId, UserId, Content) ->
     add_comment_run(
         fun(Sql, Params) -> elib_pg:execute_count(Conn, Sql, Params) end,
@@ -450,7 +455,7 @@ add_comment_tx(Conn, PhotoId, UserId, Content) ->
 
 -spec add_comment_run(
     fun((iodata(), [term()]) -> {ok, non_neg_integer()} | {error, term()}),
-    binary(),
+    integer(),
     integer(),
     binary()
 ) ->
@@ -464,7 +469,7 @@ add_comment_run(Exec, PhotoId, UserId, Content) ->
     CommentId = elib_tsid:generate(group_album_comment),
     CommentData = #{
         id => CommentId,
-        photo_id => PhotoId,
+        photo_id => integer_to_binary(PhotoId),
         user_id => UserId,
         content => Content,
         created_at => Now
@@ -488,13 +493,13 @@ add_comment_run(Exec, PhotoId, UserId, Content) ->
 %% @param PhotoId 图片ID
 %% @param Limit 返回数量限制
 %% @return {ok, List} | {error, Reason}
--spec list_comments(binary(), integer()) -> {ok, list(map())} | {error, term()}.
+-spec list_comments(integer(), integer()) -> {ok, list(map())} | {error, term()}.
 list_comments(PhotoId, Limit) ->
     Tb = comment_tablename(),
     Sql =
         <<"SELECT id, photo_id, user_id, content, created_at FROM ", Tb/binary,
             " WHERE photo_id = $1 AND status = 1 ORDER BY created_at ASC LIMIT $2">>,
-    elib_pg:query(Sql, [PhotoId, Limit]).
+    elib_pg:query(Sql, [integer_to_binary(PhotoId), Limit]).
 
 %% ===================================================================
 %% Internal Function Definitions

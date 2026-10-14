@@ -168,7 +168,7 @@ delete_photo(PhotoId, CurrentUid) ->
 %% @param PhotoId 图片ID
 %% @param CurrentUid 当前用户ID
 %% @return ok | {error, Reason}
--spec like_photo(binary(), integer()) -> ok | {error, term()}.
+-spec like_photo(integer(), integer()) -> ok | {error, term()}.
 like_photo(PhotoId, CurrentUid) ->
     case ensure_photo_group_member(PhotoId, CurrentUid) of
         ok -> normalize_write_result(group_album_ds:like_photo(PhotoId, CurrentUid));
@@ -179,7 +179,7 @@ like_photo(PhotoId, CurrentUid) ->
 %% @param PhotoId 图片ID
 %% @param CurrentUid 当前用户ID
 %% @return ok | {error, Reason}
--spec unlike_photo(binary(), integer()) -> ok | {error, term()}.
+-spec unlike_photo(integer(), integer()) -> ok | {error, term()}.
 unlike_photo(PhotoId, CurrentUid) ->
     case ensure_photo_group_member(PhotoId, CurrentUid) of
         ok -> normalize_write_result(group_album_ds:unlike_photo(PhotoId, CurrentUid));
@@ -189,7 +189,7 @@ unlike_photo(PhotoId, CurrentUid) ->
 %% @doc 校验当前用户是否为图片所在群组的成员
 %% 注意：group_ds:is_member/2 参数顺序为 (Uid, Gid)，与 group_member_ds/group_logic
 %% 同名函数的参数顺序不同，调用时务必确认。
--spec ensure_photo_group_member(binary(), integer()) -> ok | {error, binary()}.
+-spec ensure_photo_group_member(integer(), integer()) -> ok | {error, binary()}.
 ensure_photo_group_member(PhotoId, CurrentUid) ->
     case group_album_ds:find_photo_group_id(PhotoId) of
         {ok, Gid} ->
@@ -206,7 +206,7 @@ ensure_photo_group_member(PhotoId, CurrentUid) ->
 %% @param CurrentUid 当前用户ID
 %% @param Content 评论内容
 %% @return ok | {error, Reason}
--spec add_comment(binary(), integer(), binary()) -> ok | {error, term()}.
+-spec add_comment(integer(), integer(), binary()) -> ok | {error, term()}.
 add_comment(PhotoId, CurrentUid, Content) ->
     case ensure_photo_group_member(PhotoId, CurrentUid) of
         {error, Reason} ->
@@ -297,7 +297,7 @@ rename_album(AlbumId, NewName, CurrentUid) ->
 %% @param CurrentUid 当前用户ID
 %% @param Limit 返回条数上限
 %% @return {ok, CommentList} | {error, Reason}
--spec list_comments(binary(), integer(), integer()) -> {ok, list(map())} | {error, term()}.
+-spec list_comments(integer(), integer(), integer()) -> {ok, list(map())} | {error, term()}.
 list_comments(PhotoId, CurrentUid, Limit) ->
     case ensure_photo_group_member(PhotoId, CurrentUid) of
         ok -> group_album_ds:list_comments(PhotoId, Limit);

@@ -1,6 +1,49 @@
 -module(group_album_logic_tests).
 -include_lib("eunit/include/eunit.hrl").
 -include("eunit_setup.hrl").
+-include("error_code.hrl").
+
+photo_id_authorization_test_() ->
+    [
+        ?_test(photo_id_authorization_case(Action, Member))
+     || Action <- [like_photo, unlike_photo, add_comment, list_comments], Member <- [false, true]
+    ].
+
+photo_id_authorization_case(Action, Member) ->
+    Modules = [group_album_repo, group_ds, workspace_guard],
+    lists:foreach(fun(Module) -> meck:new(Module, [non_strict]) end, Modules),
+    try
+        meck:expect(group_album_repo, find_photo_by_id, fun(42) ->
+            #{<<"id">> => 42, <<"group_id">> => 20}
+        end),
+        meck:expect(group_ds, is_member, fun(100, 20) -> Member end),
+        meck:expect(group_album_repo, is_liked, fun(42, 100) -> false end),
+        meck:expect(group_album_repo, list_comments, fun(42, 20) -> {ok, []} end),
+        meck:expect(workspace_guard, write_tx, fun({group_album_photo, Id}, _) ->
+            ?assertEqual(42, Id),
+            {error, {?ERR_WORKSPACE_ARCHIVED, <<"archived">>}}
+        end),
+        Actual =
+            case Action of
+                add_comment -> group_album_logic:add_comment(42, 100, <<"comment">>);
+                list_comments -> group_album_logic:list_comments(42, 100, 20);
+                _ -> apply(group_album_logic, Action, [42, 100])
+            end,
+        case Member of
+            false ->
+                ?assertEqual({error, <<"你不是该群成员"/utf8>>}, Actual),
+                ?assertEqual([], meck:history(workspace_guard)),
+                ?assertEqual(0, meck:num_calls(group_album_repo, list_comments, '_'));
+            true when Action =:= list_comments ->
+                ?assertEqual({ok, []}, Actual),
+                ?assertEqual(1, meck:num_calls(group_album_repo, list_comments, '_'));
+            true ->
+                ?assertEqual({error, ?ERR_WORKSPACE_ARCHIVED}, Actual),
+                ?assertEqual(1, meck:num_calls(workspace_guard, write_tx, '_'))
+        end
+    after
+        lists:foreach(fun meck:unload/1, Modules)
+    end.
 
 %% @doc 删除相册：创建者可删除
 group_album_logic_test_() ->
@@ -121,7 +164,7 @@ list_comments_non_member_rejected_test_() ->
     ?WITH_MECKS(
         [
             {group_album_repo, [
-                {'find_photo_by_id', 1, fun(<<"photo_1">>) ->
+                {'find_photo_by_id', 1, fun(1) ->
                     #{<<"id">> => 1, <<"group_id">> => 30}
                 end}
             ]},
@@ -132,7 +175,7 @@ list_comments_non_member_rejected_test_() ->
         fun() ->
             ?assertEqual(
                 {error, <<"你不是该群成员"/utf8>>},
-                group_album_logic:list_comments(<<"photo_1">>, 999, 20)
+                group_album_logic:list_comments(1, 999, 20)
             )
         end
     ).
@@ -142,10 +185,10 @@ list_comments_member_success_test_() ->
     ?WITH_MECKS(
         [
             {group_album_repo, [
-                {'find_photo_by_id', 1, fun(<<"photo_2">>) ->
+                {'find_photo_by_id', 1, fun(2) ->
                     #{<<"id">> => 2, <<"group_id">> => 31}
                 end},
-                {'list_comments', 2, fun(<<"photo_2">>, 20) ->
+                {'list_comments', 2, fun(2, 20) ->
                     {ok, [#{<<"id">> => 1, <<"content">> => <<"nice"/utf8>>}]}
                 end}
             ]},
@@ -156,7 +199,7 @@ list_comments_member_success_test_() ->
         fun() ->
             ?assertEqual(
                 {ok, [#{<<"id">> => 1, <<"content">> => <<"nice"/utf8>>}]},
-                group_album_logic:list_comments(<<"photo_2">>, 100, 20)
+                group_album_logic:list_comments(2, 100, 20)
             )
         end
     ).
