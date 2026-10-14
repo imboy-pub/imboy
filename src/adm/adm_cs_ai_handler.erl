@@ -323,8 +323,13 @@ maybe_ws(Req0, Params) ->
 org_id_from(Req0, Data) ->
     Raw =
         case Data of
-            #{<<"org_id">> := V} -> V;
-            _ -> cowboy_req:qs(<<"org_id">>, Req0)
+            #{<<"org_id">> := V} ->
+                V;
+            _ ->
+                %% Cowboy 2 无 qs/2（lefthook 门注释的 qs/2 事故同款）：
+                %% 用 parse_qs + proplists 取值。
+                Qs = cowboy_req:parse_qs(Req0),
+                proplists:get_value(<<"org_id">>, Qs, <<>>)
         end,
     parse_tsid(Raw).
 
