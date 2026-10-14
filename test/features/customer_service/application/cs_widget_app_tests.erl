@@ -721,8 +721,9 @@ a05_messages_only_via_enterprise_source() ->
             )
         ),
         _ = Active,
-        %% 客服域零副本表：库中不存在 customer_service%message/attachment%。
+        %% 阅读事实仅存归属键及 read_at；其他消息/附件副本表仍禁止。
         ?assertEqual(0, copy_table_count()),
+        ok = assert_visitor_read_table_schema(),
         %% cs 侧 session 行不带任何消息体键（副本写路径不存在）。
         {ok, Row} = ?FAKE:fetch_session(Org, Ws, maps:get(session_id, S)),
         ?assertEqual(false, maps:is_key(body, Row)),
@@ -1276,11 +1277,50 @@ copy_table_count() ->
     ?EBFIX:scalar(
         <<
             "SELECT count(*) AS v FROM information_schema.tables"
-            " WHERE table_name LIKE 'customer_service%message%'"
-            " OR table_name LIKE 'customer_service%attachment%'"
+            " WHERE (table_name LIKE 'customer_service%message%'"
+            " OR table_name LIKE 'customer_service%attachment%')"
+            " AND NOT (table_schema='public'"
+            " AND table_name='customer_service_visitor_message_read')"
         >>,
         []
     ).
+
+assert_visitor_read_table_schema() ->
+    ?assertEqual(
+        1,
+        ?EBFIX:scalar(
+            <<
+                "SELECT count(*) AS v FROM information_schema.tables"
+                " WHERE table_schema='public' AND table_name='customer_service_visitor_message_read'"
+                " AND table_type='BASE TABLE'"
+            >>,
+            []
+        )
+    ),
+    ?assertEqual(
+        7,
+        ?EBFIX:scalar(
+            <<
+                "SELECT count(*) AS v FROM information_schema.columns"
+                " WHERE table_schema='public' AND table_name='customer_service_visitor_message_read'"
+            >>,
+            []
+        )
+    ),
+    ?assertEqual(
+        7,
+        ?EBFIX:scalar(
+            <<
+                "SELECT count(*) AS v FROM information_schema.columns"
+                " WHERE table_schema='public' AND table_name='customer_service_visitor_message_read'"
+                " AND is_nullable='NO' AND ((column_name IN ('organization_id','workspace_id',"
+                "'session_id','contact_id','conversation_id','message_id') AND data_type='bigint')"
+                " OR (column_name='read_at' AND data_type='timestamp with time zone'))"
+            >>,
+            []
+        )
+    ),
+    ok.
 
 sha256hex(Bin) ->
     binary:encode_hex(crypto:hash(sha256, Bin)).
