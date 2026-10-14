@@ -8,6 +8,75 @@ uid() ->
     erlang:unique_integer([positive]) +
         erlang:phash2(binary:encode_hex(crypto:strong_rand_bytes(8))).
 
+normalized_query_contract_test_() ->
+    [
+        ?WITH_MECKS(
+            [{elib_pg, [{query, 3, fun(_, _, _) -> QueryResult end}]}],
+            fun() ->
+                ?assertEqual(Expected, bot_webhook_delivery_repo:claim_due_tx(fake_conn, 1))
+            end
+        )
+     || {QueryResult, Expected} <- [
+            {{ok, []}, {ok, []}},
+            {
+                {ok, [#{<<"delivery_id">> => <<"synthetic">>}]},
+                {ok, [#{<<"delivery_id">> => <<"synthetic">>}]}
+            },
+            {{error, connection_closed}, {error, connection_closed}}
+        ]
+    ].
+
+normalized_replay_result_test_() ->
+    [
+        ?WITH_MECKS(
+            [
+                {elib_pg, [
+                    {with_tx, 1, fun(Transaction) -> Transaction(fake_conn) end},
+                    {query, 3, fun(_, Sql, _) ->
+                        case iolist_to_binary(Sql) of
+                            <<"UPDATE", _/binary>> -> UpdateResult;
+                            _ -> LookupResult
+                        end
+                    end}
+                ]},
+                {agent_hub_audit_repo, [
+                    {set_delivery_status_tx, 3, fun(_, _, _) -> ok end}
+                ]}
+            ],
+            fun() ->
+                ?assertEqual(Expected, bot_webhook_delivery_repo:replay(<<"synthetic">>)),
+                ?assertEqual(
+                    AuditCalls, meck:num_calls(agent_hub_audit_repo, set_delivery_status_tx, 3)
+                )
+            end
+        )
+     || {UpdateResult, LookupResult, Expected, AuditCalls} <- [
+            {{ok, [#{}]}, {ok, []}, {ok, reused_delivery}, 1},
+            {{ok, []}, {ok, [#{}]}, {error, not_dead}, 0},
+            {{ok, []}, {ok, []}, {error, notfound}, 0}
+        ]
+    ].
+
+normalized_reply_context_result_test_() ->
+    [
+        ?WITH_MECKS(
+            [{elib_pg, [{query, 2, fun(_, _) -> QueryResult end}]}],
+            fun() ->
+                ?assertEqual(
+                    Expected,
+                    bot_webhook_delivery_repo:consume_reply_context(
+                        <<"synthetic">>, <<"token">>, 100, <<"correlation">>
+                    )
+                )
+            end
+        )
+     || {QueryResult, Expected} <- [
+            {{ok, [#{<<"delivery_id">> => <<"synthetic">>}]}, {ok, consumed}},
+            {{ok, []}, {error, notfound}},
+            {{error, connection_closed}, {error, connection_closed}}
+        ]
+    ].
+
 did() ->
     iolist_to_binary(["dlv-", integer_to_binary(uid())]).
 
