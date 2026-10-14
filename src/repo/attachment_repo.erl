@@ -16,6 +16,7 @@
 %% @param Attach 附件信息列表
 %% @returns ok
 -export([save/4, confirmation_row_tx/2, confirm_if_absent_tx/4]).
+-export([bind_reference_lock_tx/2, refresh_gc_verified_tx/2]).
 
 %% @doc 查询附件统计信息（管理后台用）
 -export([stats/0]).
@@ -177,6 +178,72 @@ confirmation_row_tx(Conn, ObjectKey) ->
         {ok, [Row]} -> {ok, Row};
         {ok, []} -> {ok, not_found};
         {error, _} = Error -> Error
+    end.
+
+%% W3-01 引用首绑/释放同锁（02 §4）：业务关系写入口先取与 intent/GC 相同的
+%% 对象事务锁（迁移 168 的 hashtextextended(path,168)），锁内复核 lifecycle——
+%% delete_intent/deleted（墓碑）拒绝新增引用，绑定事务改变零业务行。
+-spec bind_reference_lock_tx(any(), binary()) -> ok | {error, tombstone | term()}.
+bind_reference_lock_tx(Conn, Path) ->
+    case
+        elib_pg:query(
+            Conn,
+            <<
+                "SELECT pg_advisory_xact_lock(hashtextextended($1,168)),"
+                " lifecycle_state FROM public.attachment WHERE path=$1"
+                " FOR UPDATE"
+            >>,
+            [Path]
+        )
+    of
+        {ok, [#{<<"lifecycle_state">> := <<"live">>}]} ->
+            ok;
+        {ok, [#{<<"lifecycle_state">> := _}]} ->
+            {error, tombstone};
+        {ok, []} ->
+            %% 尚无元数据行（上传绑定前）：仅取对象锁，与 intent 锁域对齐
+            case
+                elib_pg:query(
+                    Conn,
+                    <<"SELECT pg_advisory_xact_lock(hashtextextended($1,168))">>,
+                    [Path]
+                )
+            of
+                {ok, _} -> ok;
+                {error, R} -> {error, R}
+            end;
+        {error, R} ->
+            {error, R}
+    end.
+
+%% W3-01 gc_verified 覆盖证明（02 §5）：gc_verified = 「引用零」的可证明态。
+%% 群附件是唯一可证明通道（attachment.group_file_id 单一关系）：仅当绑定已
+%% 释放（group_file 行不存在）、明文、完整位置且无收藏 hash 关联时置 true；
+%% 绑定活跃/普通 scope 未知/收藏/密文映射不全/历史歧义一律保持 false
+%% （保守保留，GC 永不触及）。
+-spec refresh_gc_verified_tx(any(), binary()) -> {ok, boolean()} | {error, term()}.
+refresh_gc_verified_tx(Conn, Path) ->
+    Sql =
+        <<
+            "UPDATE public.attachment a SET gc_verified = c.proven"
+            " FROM (SELECT a2.path,"
+            "   (a2.scope = 'group' AND a2.group_file_id IS NOT NULL"
+            "    AND NOT EXISTS (SELECT 1 FROM public.group_file gf"
+            "      WHERE gf.id = a2.group_file_id)"
+            "    AND a2.cipher IS NULL"
+            "    AND a2.storage_driver IS NOT NULL AND a2.storage_namespace IS NOT NULL"
+            "    AND a2.storage_container IS NOT NULL AND a2.storage_locator_sha256 IS NOT NULL"
+            "    AND NOT EXISTS (SELECT 1 FROM public.user_collect uc"
+            "      WHERE uc.attach_file_hash256 <> '' AND uc.attach_file_hash256 = a2.file_hash256"
+            "        AND uc.status = 1)"
+            "   ) AS proven"
+            "  FROM public.attachment a2 WHERE a2.path = $1) c"
+            " WHERE a.path = c.path RETURNING a.gc_verified"
+        >>,
+    case elib_pg:query(Conn, Sql, [Path]) of
+        {ok, [#{<<"gc_verified">> := V}]} -> {ok, V};
+        {ok, []} -> {error, not_found};
+        {error, R} -> {error, R}
     end.
 
 %% W2-02 confirm 幂等（04-tasks 实现边界）：metadata insert-if-absent 与真实
@@ -379,10 +446,21 @@ bind_moment_scope_ref(Conn, Uid, ObjectKeys, MomentId) when is_integer(Uid), Uid
         _ ->
             Tb = tablename(),
             %% Client-supplied object paths do not prove ownership.
+            %% W3-01：首绑与 intent/GC 同对象锁（bind_reference_lock_tx）；
+            %% 墓碑（delete_intent/deleted）拒绝新增引用——绑定事务改变零业务行。
             Sql =
                 <<"UPDATE ", Tb/binary, " SET scope_ref = $1, updated_at = $2 ",
                     "WHERE scope = 'moment' AND status = 1 AND scope_ref IS NULL AND path = ANY($3) ",
-                    "AND creator_user_id = $4">>,
+                    "AND creator_user_id = $4 AND lifecycle_state = 'live'">>,
+            lists:foreach(
+                fun(Key) ->
+                    case bind_reference_lock_tx(Conn, Key) of
+                        ok -> ok;
+                        {error, Reason} -> throw({abort_tx, {reference_bind, Key, Reason}})
+                    end
+                end,
+                ObjectKeys
+            ),
             case
                 elib_pg:execute(Conn, Sql, [
                     ec_cnv:to_binary(MomentId),

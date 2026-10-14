@@ -316,7 +316,12 @@ write_attachment_tx(
         <<"scope_ref">> => integer_to_binary(Gid),
         <<"group_file_id">> => GroupFileId
     },
-    attachment_ds:save(Conn, elib_dt:now(), UploaderId, [Attach]).
+    %% W3-01：首绑与 intent/GC 同对象锁（§4 锁序），锁内复核非墓碑后落绑
+    ok = attachment_repo:bind_reference_lock_tx(Conn, ObjectKey),
+    attachment_ds:save(Conn, elib_dt:now(), UploaderId, [Attach]),
+    %% gc_verified 覆盖证明：仅群唯一绑定+明文+完整位置的可证明新对象
+    {ok, _} = attachment_repo:refresh_gc_verified_tx(Conn, ObjectKey),
+    ok.
 
 audit_file_tx(Conn, Gid, Uid, FileId, Action) ->
     workspace_guard:abort_on_error(

@@ -36,22 +36,37 @@
 %% API
 %% ===================================================================
 
-%% @doc 事务内收集用户附件对象键（Garage 删除用），并删除附件行
+%% @doc 事务内收集用户附件对象键（Garage 删除用），并删除附件行。
+%% W3-01 共享引用保护（02 §5「不能按 creator 一把删掉共享资产」）：注销只
+%% 释放个人引用——群绑定/moment 媒体/企业域/密文（映射不可解析）/被收藏
+%% （hash 匹配）的对象一律保留，仅清理无共享证据的个人明文附件。
 -spec collect_attachment_keys_tx(pid(), integer()) -> {ok, [binary()]} | {error, term()}.
 collect_attachment_keys_tx(Conn, Uid) ->
+    SharedGuard =
+        <<
+            " AND a.cipher IS NULL"
+            " AND a.group_file_id IS NULL"
+            " AND a.scope NOT IN ('group','channel','enterprise','teaching','moya')"
+            " AND NOT EXISTS (SELECT 1 FROM public.group_file gf WHERE gf.id = a.group_file_id)"
+            " AND NOT EXISTS (SELECT 1 FROM public.user_collect uc"
+            "     WHERE uc.attach_file_hash256 <> '' AND uc.attach_file_hash256 = a.file_hash256"
+            "       AND uc.status = 1)"
+            " AND NOT EXISTS (SELECT 1 FROM public.moment_post mp"
+            "     WHERE position(a.path in mp.media::text) > 0)"
+        >>,
     case
         elib_pg:query(
             Conn,
-            <<"SELECT path FROM public.attachment WHERE creator_user_id = $1">>,
-            [Uid]
+            <<"SELECT path FROM public.attachment a WHERE a.creator_user_id = $1",
+                SharedGuard/binary>>
         )
     of
         {ok, Rows} ->
             Keys = [maps:get(<<"path">>, R) || R <- Rows, is_map_key(<<"path">>, R)],
             {ok, _} = elib_pg:execute(
                 Conn,
-                <<"DELETE FROM public.attachment WHERE creator_user_id = $1">>,
-                [Uid]
+                <<"DELETE FROM public.attachment a WHERE a.creator_user_id = $1",
+                    SharedGuard/binary>>
             ),
             {ok, Keys};
         {error, Reason} ->
