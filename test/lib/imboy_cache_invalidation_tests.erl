@@ -894,8 +894,24 @@ partial_snapshot_timeout_cannot_expose_value_after_empty_recovery_test() ->
             R2 = snapshot_authority(S1#state.snapshot_round, Peer),
             {ok, R3} = imboy_cache_source_cut_tests:done(Peer, maps:get(round, R2), 1, 0, R2),
             S2 = imboy_cache_sync_recover:maybe_complete_round(S1#state{snapshot_round = R3}),
-            ?assertEqual(ready, S2#state.status),
-            ?assertEqual(undefined, imboy_cache:get(Key))
+            try
+                %% 冻结合同：部分页已让本节点知晓 Key（真实 census 义务），
+                %% 空 done 不能抹掉已知键；回合 fail-closed 不闭合，值也不得暴露。
+                ?assertNotEqual(ready, S2#state.status),
+                ?assertEqual([], ets:lookup(Values, Key)),
+                ?assertEqual(undefined, imboy_cache:get(Key))
+            after
+                case S2#state.recovery_timer of
+                    undefined ->
+                        ok;
+                    Timer ->
+                        erlang:cancel_timer(Timer),
+                        receive
+                            {timeout, Timer, cache_recovery} -> ok
+                        after 0 -> ok
+                        end
+                end
+            end
         after
             ets:delete(Values)
         end
@@ -939,8 +955,10 @@ snapshot_policy(Limits) ->
     application:set_env(imboy, cache_replication, Limits#{whitelist => [snapshot_test]}).
 
 snapshot_round(Peer) ->
+    %% recovery_round 以真实 census 冻结保留义务；new_round 的 unverified
+    %% 无法闭合，也不允许 fixture 清空义务制造闭合。
     snapshot_authority(
-        imboy_cache_sync_snapshot:new_round(
+        imboy_cache_sync_snapshot:recovery_round(
             0, erlang:system_time(millisecond) + 60000
         ),
         Peer

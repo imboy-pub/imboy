@@ -686,7 +686,8 @@ cold_recovery_rejects_older_epoch_authority_test() ->
             )
         ),
         ?assertEqual([], ets:lookup(?META_TABLE, {rev, {cache_v2_test_rep, old}})),
-        %% 合格新 epoch 来源的完整空快照仍可闭合；不能永久卡住状态机。
+        %% 合格新 epoch 来源可成为权威；但回合内已登记的 hash 不一致来源
+        %% 不可证明，按冻结合同 fail-closed：完整回合也不得产出 READY。
         Classified = imboy_cache_sync_recover:handle_version_report(
             Excluded,
             1,
@@ -713,10 +714,57 @@ cold_recovery_rejects_older_epoch_authority_test() ->
             Peer, Round, 1, 0, S2#state.snapshot_round
         ),
         S3 = imboy_cache_sync_recover:maybe_complete_round(S2#state{snapshot_round = DoneRound}),
-        ?assertEqual(ready, S3#state.status),
-        ?assertNot(S3#state.requires_authority),
-        ?assertEqual(Epoch, imboy_cache_sync_proto:epoch())
+        try
+            ?assertNotEqual(ready, S3#state.status),
+            ?assertEqual(recovering, S3#state.status),
+            ?assertEqual(1, maps:get(rounds_used, S3#state.snapshot_round))
+        after
+            cancel_recovery_timer(S3#state.recovery_timer)
+        end,
+        %% 逃逸路径：中止后重开新回合（真实 census 冻结保留义务），仅含可证明
+        %% 来源时完整空快照闭合 READY；不能永久卡住状态机。
+        Fresh0 =
+            imboy_cache_sync_snapshot:recovery_round(
+                0, erlang:system_time(millisecond) + 60000
+            ),
+        Fresh1 = imboy_cache_sync_snapshot:expect_peer(Fresh0, Peer),
+        S4 = imboy_cache_sync_recover:handle_version_report(
+            Peer,
+            1,
+            Epoch,
+            imboy_cache_sync_proto:config_hash(),
+            imboy_cache_sync_proto:registry_hash(),
+            <<3:128>>,
+            true,
+            self(),
+            S1#state{snapshot_round = Fresh1}
+        ),
+        FreshRound = maps:get(round, Fresh1),
+        receive
+            {cache_snapshot_request, Pid, FreshRound} when Pid =:= self() -> ok
+        after 0 -> ?assert(false)
+        end,
+        {ok, FreshDone} = imboy_cache_source_cut_tests:done(
+            Peer, FreshRound, 1, 0, S4#state.snapshot_round
+        ),
+        S5 = imboy_cache_sync_recover:maybe_complete_round(S4#state{snapshot_round = FreshDone}),
+        try
+            ?assertEqual(ready, S5#state.status),
+            ?assertNot(S5#state.requires_authority),
+            ?assertEqual(Epoch, imboy_cache_sync_proto:epoch())
+        after
+            cancel_recovery_timer(S5#state.recovery_timer)
+        end
     end).
+
+cancel_recovery_timer(undefined) ->
+    ok;
+cancel_recovery_timer(Timer) ->
+    erlang:cancel_timer(Timer),
+    receive
+        {timeout, Timer, cache_recovery} -> ok
+    after 0 -> ok
+    end.
 
 assert_accounting() ->
     Rows = [
@@ -738,12 +786,17 @@ set_budget(Config) -> application:set_env(imboy, cache_replication, Config).
 with_metadata(Fun) ->
     OldCfg = application:get_env(imboy, cache_replication),
     OldRegistry = application:get_env(imboy, cache_registry_overrides),
+    %% 真实来源身份：source_identity_current 要求来源 pid 在 syn 成员视图内。
+    {ok, _} = application:ensure_all_started(syn),
+    ok = syn:add_node_to_scopes([imboy_cache]),
+    ok = syn:join(imboy_cache, dsync_handler, self(), #{}),
     ets:new(?META_TABLE, [named_table, public, set]),
     ets:insert(?META_TABLE, {status, ready}),
     try
         Fun()
     after
         clear_fixture_snapshot_requests(),
+        _ = syn:leave(imboy_cache, dsync_handler, self()),
         ets:delete(?META_TABLE),
         case whereis(imboy_cache_sync) of
             P when P =:= self() -> unregister(imboy_cache_sync);

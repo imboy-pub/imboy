@@ -80,6 +80,7 @@ apply_v2_validated(Event, State) ->
     Op = maps:get(operation, Event),
     Origin = maps:get(origin_node, Event),
     Boot = maps:get(origin_boot_id, Event),
+    EntryRound = round_id_of(State#state.snapshot_round),
     BarrierState = imboy_cache_sync_recover:guard_data_epoch(Event, State),
     SourceState = imboy_cache_sync_recover:check_authority_event(Event, BarrierState),
     %% 宽限旧化身的重放不得污染当前化身序列。
@@ -120,12 +121,26 @@ apply_v2_validated(Event, State) ->
                     imboy_cache_policy:b_max()
                 )
             of
-                {ok, _} = Recorded -> Recorded;
-                {error, Reason0} -> {ok, imboy_cache_sync_recover:abort_round(Reason0, Next)}
+                {ok, _} = Recorded ->
+                    Recorded;
+                {error, Reason0} ->
+                    case round_id_of(Next#state.snapshot_round) of
+                        EntryRound ->
+                            {ok, imboy_cache_sync_recover:abort_round(Reason0, Next)};
+                        _ ->
+                            %% 同一事件已中止过进入时的回合；由它产生的新回合
+                            %% 尚无快照状态，重复计费会双倍消耗 Rmax 预算。
+                            {ok, Next}
+                    end
             end;
         _ ->
             FinalResult
     end.
+
+round_id_of(#{round := R}) ->
+    R;
+round_id_of(_) ->
+    undefined.
 -spec apply_v2_op(set | delete, term(), map(), #state{}) ->
     {ok, #state{}} | {reject, term()} | {reject, term(), #state{}}.
 apply_v2_op(set, Key, Event, State) ->

@@ -656,11 +656,10 @@ coverage_candidate(Peers) ->
         Vector = [
             begin
                 true = is_atom(Origin) andalso is_binary(Boot) andalso byte_size(Boot) =:= 16,
-                Seq =
-                    case ets:lookup(?META_TABLE, {covered_seq, {Origin, Boot}}) of
-                        [] -> 0;
-                        [{{covered_seq, {Origin, Boot}}, {Epoch, Prefix}}] -> Prefix
-                    end,
+                %% 冻结合同：每个当前登记来源须有同本地 epoch 的连续前缀；
+                %% 缺项、旧格式、错代整份拒绝，不造零前缀候选。
+                [{{covered_seq, {Origin, Boot}}, {Epoch, Seq}}] =
+                    ets:lookup(?META_TABLE, {covered_seq, {Origin, Boot}}),
                 true = is_integer(Seq) andalso Seq >= 0,
                 {Origin, Boot, Epoch, Seq}
             end
