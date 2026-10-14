@@ -23,6 +23,7 @@
     create_tx/5,
     create_tx/6,
     find_tx/3,
+    find_by_id_tx/2,
     lock_tx/3,
     find_by_key_tx/3,
     find_by_application_key_tx/2,
@@ -77,7 +78,7 @@ next_id() ->
     elib_tsid:generate(enterprise_application).
 
 %% @doc 事务内创建 Application（无 principal_user_id，allowlist 为空）。
--spec create_tx(any(), integer(), binary(), binary()) ->
+-spec create_tx(any(), integer() | null, binary(), binary()) ->
     {ok, map()} | {error, key_conflict | term()}.
 create_tx(Conn, OrgId, ApplicationKey, Name) ->
     create_tx(Conn, OrgId, ApplicationKey, Name, undefined).
@@ -85,10 +86,10 @@ create_tx(Conn, OrgId, ApplicationKey, Name) ->
 %% @doc 事务内创建 Application（无 redirect allowlist，等价空 allowlist）。
 -spec create_tx(
     any(),
-    integer(),
+    integer() | null,
     binary(),
     binary(),
-    undefined | {null | integer() | binary(), [binary()] | binary()}
+    undefined | {binary() | null, [binary()] | binary()}
 ) ->
     {ok, map()} | {error, key_conflict | term()}.
 create_tx(Conn, OrgId, ApplicationKey, Name, PrincipalAndScopes) ->
@@ -104,10 +105,10 @@ create_tx(Conn, OrgId, ApplicationKey, Name, PrincipalAndScopes) ->
 %% Erlang list（epgsql 按服务端推断的 text[] 类型做数组编码）。
 -spec create_tx(
     any(),
-    integer(),
+    integer() | null,
     binary(),
     binary(),
-    undefined | {null | integer() | binary(), [binary()] | binary()},
+    undefined | {binary() | null, [binary()] | binary()},
     [binary()]
 ) ->
     {ok, map()} | {error, key_conflict | term()}.
@@ -149,21 +150,36 @@ create_tx(Conn, OrgId, ApplicationKey, Name, PrincipalAndScopes, RedirectUris) -
             {error, Reason}
     end.
 
-%% @doc 事务内按 (organization_id, id) 取行（Org 边界在 SQL 内强制）。
--spec find_tx(any(), integer(), integer()) -> {ok, map()} | {error, not_found | term()}.
-find_tx(Conn, OrgId, Id) when is_integer(OrgId), is_integer(Id) ->
+%% @doc 按归属和 AppId 精确取行；null 仅匹配无归属，undefined 不作通配。
+-spec find_tx(any(), integer() | null, integer()) -> {ok, map()} | {error, not_found | term()}.
+find_tx(Conn, OrgId, Id) when
+    (is_integer(OrgId) orelse OrgId =:= null), is_integer(Id)
+->
     Sql =
         <<"SELECT ", ?COLUMNS/binary, " FROM ", (tablename())/binary,
-            " WHERE organization_id = $1 AND id = $2 LIMIT 1">>,
-    one_tx(Conn, Sql, [OrgId, Id]).
+            " WHERE organization_id IS NOT DISTINCT FROM $1 AND id = $2 LIMIT 1">>,
+    one_tx(Conn, Sql, [OrgId, Id]);
+find_tx(_Conn, OrgId, _Arg3) when not is_integer(OrgId), OrgId =/= null ->
+    {error, {invalid_organization_id, OrgId}}.
+
+%% Instance credential authentication resolves the actual attribution by AppId.
+%% This does not authorize a resource target; legacy find_tx remains attribution-scoped.
+-spec find_by_id_tx(any(), integer()) -> {ok, map()} | {error, not_found | term()}.
+find_by_id_tx(Conn, Id) when is_integer(Id) ->
+    Sql = <<"SELECT ", ?COLUMNS/binary, " FROM ", (tablename())/binary, " WHERE id = $1 LIMIT 1">>,
+    one_tx(Conn, Sql, [Id]).
 
 %% 与鉴权共享 Application 行锁；治理变更和审计在同一事务内完成。
--spec lock_tx(any(), integer(), integer()) -> {ok, map()} | {error, term()}.
-lock_tx(Conn, OrgId, Id) ->
+-spec lock_tx(any(), integer() | null, integer()) -> {ok, map()} | {error, term()}.
+lock_tx(Conn, OrgId, Id) when
+    (is_integer(OrgId) orelse OrgId =:= null), is_integer(Id)
+->
     Sql =
         <<"SELECT ", ?COLUMNS/binary, " FROM ", (tablename())/binary,
-            " WHERE organization_id = $1 AND id = $2 FOR UPDATE">>,
-    one_tx(Conn, Sql, [OrgId, Id]).
+            " WHERE organization_id IS NOT DISTINCT FROM $1 AND id = $2 FOR UPDATE">>,
+    one_tx(Conn, Sql, [OrgId, Id]);
+lock_tx(_Conn, OrgId, _Arg3) when not is_integer(OrgId), OrgId =/= null ->
+    {error, {invalid_organization_id, OrgId}}.
 
 %% @doc 事务内按 (organization_id, application_key) 取行。
 -spec find_by_key_tx(any(), integer(), binary()) -> {ok, map()} | {error, not_found | term()}.
@@ -202,6 +218,9 @@ find_by_application_key_tx(Conn, ApplicationKey) when is_binary(ApplicationKey) 
 -spec list_page_tx(any(), integer(), pos_integer(), pos_integer(), map()) ->
     {ok, #{items := [map()], total := non_neg_integer()}} | {error, invalid_status | term()}.
 list_page_tx(Conn, OrgId, Page, Size, Opts) when is_integer(OrgId), is_map(Opts) ->
+    list_page_scope_tx(Conn, OrgId, Page, Size, Opts).
+
+list_page_scope_tx(Conn, Scope, Page, Size, Opts) ->
     Page1 = normalize_page(Page),
     Size1 = normalize_size(Size),
     Status = maps:get(status, Opts, undefined),
@@ -210,7 +229,7 @@ list_page_tx(Conn, OrgId, Page, Size, Opts) when is_integer(OrgId), is_map(Opts)
         false ->
             {error, invalid_status};
         true ->
-            {Conds, Params0} = build_list_filters(OrgId, Status, Q),
+            {Conds, Params0} = build_list_filters(Scope, Status, Q),
             LimitIdx = length(Params0) + 1,
             OffsetIdx = LimitIdx + 1,
             LimitB = integer_to_binary(LimitIdx),
@@ -241,29 +260,40 @@ list_page_tx(Conn, OrgId, Page, Size, Opts) when is_integer(OrgId), is_map(Opts)
 %% 并发下只有 expected_version 命中者生效（version+1）；其余 {error, version_conflict}。
 %% status 值域由 DB ck_ea_status 兜底（非法值 23514 归一 invalid_status），本层不重复
 %% 维护枚举副本（避免两处漂移）。
--spec update_status_cas_tx(any(), integer(), integer(), pos_integer(), binary()) ->
+-spec update_status_cas_tx(any(), integer() | null, integer(), pos_integer(), binary()) ->
     ok | {error, invalid_status | not_found | version_conflict | term()}.
 update_status_cas_tx(Conn, OrgId, Id, ExpectedVersion, Status) when
-    is_integer(OrgId), is_integer(Id), is_integer(ExpectedVersion), is_binary(Status)
+    (is_integer(OrgId) orelse OrgId =:= null),
+    is_integer(Id),
+    is_integer(ExpectedVersion),
+    is_binary(Status)
 ->
     Now = elib_dt:now(),
     Sql =
         <<"UPDATE ", (tablename())/binary,
             " SET status = $4, version = version + 1, updated_at = $5",
-            " WHERE organization_id = $1 AND id = $2 AND version = $3">>,
+            " WHERE organization_id IS NOT DISTINCT FROM $1 AND id = $2 AND version = $3">>,
     case elib_pg:execute(Conn, Sql, [OrgId, Id, ExpectedVersion, Status, Now]) of
         {ok, 1} -> ok;
         {ok, 0} -> cas_miss(Conn, OrgId, Id);
         {error, #error{code = <<"23514">>}} -> {error, invalid_status};
         {error, Reason} -> {error, Reason}
-    end.
+    end;
+update_status_cas_tx(_Conn, OrgId, _Arg3, _Arg4, _Arg5) when
+    not is_integer(OrgId), OrgId =/= null
+->
+    {error, {invalid_organization_id, OrgId}}.
 
 %% @doc 事务内 CAS 整体替换 allowed_scopes（Admin 治理面 A-04）。
 %% 与 update_status_cas_tx 同口径的 CAS；scope 值域校验在 logic 层
 %% （enterprise_internal_ops:validate_scopes/1）——Repo 不反向依赖 api 层枚举模块。
--spec update_scopes_cas_tx(any(), integer(), integer(), pos_integer(), [binary()] | binary()) ->
+-spec update_scopes_cas_tx(
+    any(), integer() | null, integer(), pos_integer(), [binary()] | binary()
+) ->
     ok | {error, not_found | version_conflict | term()}.
-update_scopes_cas_tx(Conn, OrgId, Id, ExpectedVersion, Scopes) ->
+update_scopes_cas_tx(Conn, OrgId, Id, ExpectedVersion, Scopes) when
+    (is_integer(OrgId) orelse OrgId =:= null), is_integer(Id), is_integer(ExpectedVersion)
+->
     ScopesJson =
         case Scopes of
             L when is_list(L) -> scopes_to_json(L);
@@ -273,25 +303,36 @@ update_scopes_cas_tx(Conn, OrgId, Id, ExpectedVersion, Scopes) ->
     Sql =
         <<"UPDATE ", (tablename())/binary,
             " SET allowed_scopes = $4::jsonb, version = version + 1, updated_at = $5",
-            " WHERE organization_id = $1 AND id = $2 AND version = $3">>,
+            " WHERE organization_id IS NOT DISTINCT FROM $1 AND id = $2 AND version = $3">>,
     case elib_pg:execute(Conn, Sql, [OrgId, Id, ExpectedVersion, ScopesJson, Now]) of
         {ok, 1} -> ok;
         {ok, 0} -> cas_miss(Conn, OrgId, Id);
         {error, Reason} -> {error, Reason}
-    end.
+    end;
+update_scopes_cas_tx(_Conn, OrgId, _Arg3, _Arg4, _Arg5) when
+    not is_integer(OrgId), OrgId =/= null
+->
+    {error, {invalid_organization_id, OrgId}}.
 
 %% @doc 事务内启停 Application（active|disabled；disabled 即拒绝全部 internal API）。
--spec update_status_tx(any(), integer(), integer(), binary()) -> ok | {error, not_found | term()}.
-update_status_tx(Conn, OrgId, Id, Status) when Status =:= <<"active">>; Status =:= <<"disabled">> ->
+-spec update_status_tx(any(), integer() | null, integer(), binary()) ->
+    ok | {error, not_found | term()}.
+update_status_tx(Conn, OrgId, Id, Status) when
+    (is_integer(OrgId) orelse OrgId =:= null),
+    is_integer(Id),
+    (Status =:= <<"active">> orelse Status =:= <<"disabled">>)
+->
     Now = elib_dt:now(),
     Sql =
         <<"UPDATE ", (tablename())/binary,
-            " SET status = $1, updated_at = $2 WHERE organization_id = $3 AND id = $4">>,
+            " SET status = $1, updated_at = $2 WHERE organization_id IS NOT DISTINCT FROM $3 AND id = $4">>,
     case elib_pg:execute(Conn, Sql, [Status, Now, OrgId, Id]) of
         {ok, 1} -> ok;
         {ok, 0} -> {error, not_found};
         {error, Reason} -> {error, Reason}
-    end.
+    end;
+update_status_tx(_Conn, OrgId, _Arg3, _Arg4) when not is_integer(OrgId), OrgId =/= null ->
+    {error, {invalid_organization_id, OrgId}}.
 
 %% @doc 事务内改名。
 -spec update_name_tx(any(), integer(), integer(), binary()) -> ok | {error, not_found | term()}.
@@ -414,14 +455,21 @@ normalize_size(S) when is_integer(S), S > 0 -> S;
 normalize_size(_) -> 10.
 
 %% @doc 逐条拼 WHERE 条件，同时按最终位置生成 $N 占位符（避免手写错位）。
--spec build_list_filters(integer(), undefined | binary(), undefined | binary()) ->
+-spec build_list_filters(integer() | all, undefined | binary(), undefined | binary()) ->
     {[binary()], [term()]}.
-build_list_filters(OrgId, Status, Q) ->
-    C1 = <<"organization_id = $1">>,
+build_list_filters(Scope, Status, Q) ->
+    {BaseConds, BaseParams} =
+        case Scope of
+            all -> {[<<"TRUE">>], []};
+            OrgId when is_integer(OrgId) -> {[<<"organization_id = $1">>], [OrgId]}
+        end,
     {Conds, Params} =
         case Status of
-            undefined -> {[C1], [OrgId]};
-            S when is_binary(S) -> {[C1, <<"status = $2">>], [OrgId, S]}
+            undefined ->
+                {BaseConds, BaseParams};
+            S when is_binary(S) ->
+                StatusIdx = integer_to_binary(length(BaseParams) + 1),
+                {BaseConds ++ [<<"status = $", StatusIdx/binary>>], BaseParams ++ [S]}
         end,
     case Q of
         Qq when is_binary(Qq), Qq =/= <<>> ->
@@ -445,7 +493,7 @@ to_int(N) when is_integer(N), N >= 0 -> N;
 to_int(_) -> 0.
 
 %% @doc CAS 未命中时区分「行不存在」与「版本已被他人推进」。
--spec cas_miss(any(), integer(), integer()) ->
+-spec cas_miss(any(), integer() | null, integer()) ->
     {error, not_found | version_conflict | term()}.
 cas_miss(Conn, OrgId, Id) ->
     case find_tx(Conn, OrgId, Id) of

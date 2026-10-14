@@ -14,7 +14,7 @@ run() ->
 
 run(#{conn := C} = S) ->
     Routes = enterprise_internal_routes:routes(),
-    ?assertEqual(42, length(Routes)),
+    ?assertEqual(43, length(Routes)),
     {AppId, Credential} = create_application(C),
     check_all(S, Routes, zero_grant, fun(_) -> Credential end),
     {ok, Grant} = enterprise_internal_ops:issue_grant_tx(C, 995101, AppId, #{
@@ -74,7 +74,9 @@ check_all(S, Routes, Kind, CredentialFor) ->
     Before = business_snapshot(maps:get(conn, S)),
     lists:foreach(fun(R) -> check(S, R, Kind, CredentialFor(R)) end, Routes),
     ?assertEqual(Before, business_snapshot(maps:get(conn, S))),
-    io:format("INTERNAL_AUTH_~s=PASS routes=42~n", [string:uppercase(atom_to_list(Kind))]).
+    io:format("INTERNAL_AUTH_~s=PASS routes=~B~n", [
+        string:uppercase(atom_to_list(Kind)), length(Routes)
+    ]).
 
 check(S, Route, Kind, Credential) ->
     check(S, Route, Kind, Credential, body(maps:get(id, Route)), application),
@@ -127,11 +129,30 @@ body(<<"INT-10">>) ->
         <<"msg_type">> => <<"text">>,
         <<"content">> => <<"synthetic authorization probe">>
     };
+body(<<"INT-43">>) ->
+    #{
+        <<"organization">> => #{
+            <<"external_id">> => <<"auth-matrix-unconfigured-source">>,
+            <<"name">> => <<"Synthetic unauthorized source">>,
+            <<"version">> => 1
+        },
+        <<"departments">> => [],
+        <<"persons">> => []
+    };
 body(_) ->
     #{}.
 
 business_snapshot(C) ->
     Tables = [
+        <<"enterprise_source_person">>,
+        <<"enterprise_directory_organization_source">>,
+        <<"enterprise_directory_department_source">>,
+        <<"enterprise_directory_membership_source">>,
+        <<"enterprise_directory_department_member_source">>,
+        <<"organization">>,
+        <<"organization_member">>,
+        <<"organization_department">>,
+        <<"organization_department_member">>,
         <<"workspace">>,
         <<"\"group\"">>,
         <<"group_member">>,

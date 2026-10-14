@@ -61,7 +61,7 @@
 -define(AGGREGATED_COLUMNS, <<
     "g.id, g.organization_id, g.application_id, g.workspace_scope_kind, g.status,"
     " g.valid_from, g.expires_at, g.revoked_at, g.revoked_by_user_id, g.version,"
-    " g.idempotency_key, g.created_at, g.updated_at,"
+    " g.idempotency_key, g.created_at, g.updated_at, g.provisioning_source,"
     " COALESCE((SELECT array_agg(s.scope ORDER BY s.scope)"
     "           FROM enterprise_application_grant_scope s WHERE s.grant_id = g.id), '{}')"
     "   AS scopes,"
@@ -135,6 +135,8 @@ locked_scope_tx(Conn, OrgId, AppId, Scope, GrantIds) ->
     end.
 
 %% @doc 事务内创建 Grant（父行 + scope 集合 + 可选显式 workspace 集合）。
+%% OrgId=null 精确指 application-self；undefined 不是 null 或通配符。
+%% 174 的 DB 约束限制 self scope 和 none/零 Workspace，调用方负责事务回滚。
 %% Spec（map）：
 %%   scopes                :: [binary()] 非空（固定枚举由 DB CHECK 兜底，上层先校验）
 %%   workspace_scope_kind  :: none | explicit（缺省 none）
@@ -149,61 +151,93 @@ locked_scope_tx(Conn, OrgId, AppId, Scope, GrantIds) ->
 %%   {error, invalid_workspaces}（explicit 必须非空 / none 必须为空）、
 %%   {error, key_conflict}（(org, app, idempotency_key) 撞唯一）、
 %%   {error, invalid_scope | term()}（DB 23514 / 23503 等）。
--spec create_tx(any(), integer(), integer(), map()) -> {ok, map()} | {error, atom() | term()}.
-create_tx(Conn, OrgId, AppId, Spec) when is_map(Spec) ->
+-spec create_tx(any(), integer() | null, integer(), map()) ->
+    {ok, map()} | {error, atom() | term()}.
+create_tx(Conn, OrgId, AppId, Spec) when
+    (is_integer(OrgId) orelse OrgId =:= null), is_integer(AppId), is_map(Spec)
+->
     Scopes = maps:get(scopes, Spec, []),
     Kind = maps:get(workspace_scope_kind, Spec, none),
     WorkspaceIds = maps:get(workspace_ids, Spec, []),
     ExpiresAt = maps:get(expires_at, Spec, undefined),
     ValidFrom = maps:get(valid_from, Spec, undefined),
     IdemKey = maps:get(idempotency_key, Spec, undefined),
+    Source = maps:get(provisioning_source, Spec, <<"manual">>),
     case validate_create(Scopes, Kind, WorkspaceIds, ExpiresAt, IdemKey) of
         ok ->
             insert_grant(
-                Conn, OrgId, AppId, Scopes, Kind, WorkspaceIds, ValidFrom, ExpiresAt, IdemKey
+                Conn,
+                OrgId,
+                AppId,
+                Scopes,
+                Kind,
+                WorkspaceIds,
+                ValidFrom,
+                ExpiresAt,
+                IdemKey,
+                Source
             );
         {error, _} = Err ->
             Err
     end;
+create_tx(_Conn, OrgId, _AppId, _Spec) when not is_integer(OrgId), OrgId =/= null ->
+    {error, {invalid_organization_id, OrgId}};
 create_tx(_Conn, _OrgId, _AppId, _Other) ->
     {error, invalid_spec}.
 
 %% @doc 事务内按 (organization_id, application_id, id) 取 Grant（聚合 scopes/workspace_ids）。
--spec find_tx(any(), integer(), integer(), integer()) -> {ok, map()} | {error, not_found | term()}.
+-spec find_tx(any(), integer() | null, integer(), integer()) ->
+    {ok, map()} | {error, not_found | term()}.
 find_tx(Conn, OrgId, AppId, GrantId) when
-    is_integer(OrgId), is_integer(AppId), is_integer(GrantId)
+    (is_integer(OrgId) orelse OrgId =:= null), is_integer(AppId), is_integer(GrantId)
 ->
     Sql =
         <<"SELECT ", ?AGGREGATED_COLUMNS/binary, " FROM ", (tablename())/binary,
-            " g WHERE g.organization_id = $1 AND g.application_id = $2 AND g.id = $3 LIMIT 1">>,
-    one_tx(Conn, Sql, [OrgId, AppId, GrantId]).
+            " g WHERE g.organization_id IS NOT DISTINCT FROM $1 AND g.application_id = $2 AND g.id = $3 LIMIT 1">>,
+    one_tx(Conn, Sql, [OrgId, AppId, GrantId]);
+find_tx(_Conn, OrgId, _AppId, _GrantId) when not is_integer(OrgId), OrgId =/= null ->
+    {error, {invalid_organization_id, OrgId}}.
 
 %% @doc 事务内按幂等键取 Grant（治理接口的幂等读回）。
--spec find_by_idempotency_key_tx(any(), integer(), integer(), binary()) ->
+-spec find_by_idempotency_key_tx(any(), integer() | null, integer(), binary()) ->
     {ok, map()} | {error, not_found | term()}.
-find_by_idempotency_key_tx(Conn, OrgId, AppId, IdempotencyKey) when is_binary(IdempotencyKey) ->
+find_by_idempotency_key_tx(Conn, OrgId, AppId, IdempotencyKey) when
+    (is_integer(OrgId) orelse OrgId =:= null), is_integer(AppId), is_binary(IdempotencyKey)
+->
     Sql =
         <<"SELECT ", ?AGGREGATED_COLUMNS/binary, " FROM ", (tablename())/binary,
-            " g WHERE g.organization_id = $1 AND g.application_id = $2"
+            " g WHERE g.organization_id IS NOT DISTINCT FROM $1 AND g.application_id = $2"
             " AND g.idempotency_key = $3 LIMIT 1">>,
-    one_tx(Conn, Sql, [OrgId, AppId, IdempotencyKey]).
+    one_tx(Conn, Sql, [OrgId, AppId, IdempotencyKey]);
+find_by_idempotency_key_tx(_Conn, OrgId, _AppId, _Key) when
+    not is_integer(OrgId), OrgId =/= null
+->
+    {error, {invalid_organization_id, OrgId}}.
 
-%% @doc 事务内列出一个 Application 的全部 Grant（含 revoked/过期，治理读面）。
--spec list_tx(any(), integer(), integer()) -> {ok, [map()]} | {error, term()}.
-list_tx(Conn, OrgId, AppId) when is_integer(OrgId), is_integer(AppId) ->
+%% @doc 列出指定资源目标下的 Grant；null 只列 self，不跨目标聚合。
+-spec list_tx(any(), integer() | null, integer()) -> {ok, [map()]} | {error, term()}.
+list_tx(Conn, OrgId, AppId) when
+    (is_integer(OrgId) orelse OrgId =:= null), is_integer(AppId)
+->
     Sql =
         <<"SELECT ", ?AGGREGATED_COLUMNS/binary, " FROM ", (tablename())/binary,
-            " g WHERE g.organization_id = $1 AND g.application_id = $2 ORDER BY g.id">>,
+            " g WHERE g.organization_id IS NOT DISTINCT FROM $1 AND g.application_id = $2 ORDER BY g.id">>,
     case elib_pg:query(Conn, Sql, [OrgId, AppId]) of
         {ok, Rows} -> {ok, Rows};
         {error, Reason} -> {error, Reason}
-    end.
+    end;
+list_tx(_Conn, OrgId, _AppId) when not is_integer(OrgId), OrgId =/= null ->
+    {error, {invalid_organization_id, OrgId}}.
 
 %% @doc 事务内撤销 Grant（CAS：expected version 且仅 active 可撤销）。
 %% 撤权**立即生效**：下一次 auth context 读取（effective 视图）即看不到该 Grant。
 %% 既有行为逐字不变（租户 user 通道）：只是委托到带双通道的内部实现。
--spec revoke_tx(any(), integer(), integer(), integer(), integer(), integer()) ->
+-spec revoke_tx(any(), integer() | null, integer(), integer(), integer(), integer()) ->
     ok | {error, not_found | version_conflict | already_revoked | term()}.
+revoke_tx(_Conn, OrgId, _AppId, _GrantId, _ExpectedVersion, _RevokedByUserId) when
+    not is_integer(OrgId), OrgId =/= null
+->
+    {error, {invalid_organization_id, OrgId}};
 revoke_tx(Conn, OrgId, AppId, GrantId, ExpectedVersion, RevokedByUserId) ->
     revoke_with_actor_tx(Conn, OrgId, AppId, GrantId, ExpectedVersion, RevokedByUserId, null).
 
@@ -213,8 +247,12 @@ revoke_tx(Conn, OrgId, AppId, GrantId, ExpectedVersion, RevokedByUserId) ->
 %% 为什么必须开第二通道：平台管理员是 adm_user，**不是**租户 user，
 %% 而 ck_eag_status_revoked_match 要求 revoked 行必须有且仅有一个执行者——
 %% 用它顶替租户 user 会伪造归因，撤销不写执行者则等于放弃留痕。
--spec revoke_admin_tx(any(), integer(), integer(), integer(), integer(), integer()) ->
+-spec revoke_admin_tx(any(), integer() | null, integer(), integer(), integer(), integer()) ->
     ok | {error, not_found | version_conflict | already_revoked | term()}.
+revoke_admin_tx(_Conn, OrgId, _AppId, _GrantId, _ExpectedVersion, _AdmUserId) when
+    not is_integer(OrgId), OrgId =/= null
+->
+    {error, {invalid_organization_id, OrgId}};
 revoke_admin_tx(Conn, OrgId, AppId, GrantId, ExpectedVersion, AdmUserId) when
     is_integer(AdmUserId), AdmUserId > 0
 ->
@@ -222,8 +260,12 @@ revoke_admin_tx(Conn, OrgId, AppId, GrantId, ExpectedVersion, AdmUserId) when
 
 %% @doc 事务内整体替换 Grant 的 scope 集合（CAS；scope downgrade 的机制）。
 %% Scopes 非空；替换后 version+1。降级对**下一请求**立即生效。
--spec replace_scopes_tx(any(), integer(), integer(), integer(), integer(), [binary()]) ->
+-spec replace_scopes_tx(any(), integer() | null, integer(), integer(), integer(), [binary()]) ->
     ok | {error, not_found | version_conflict | already_revoked | empty_scopes | term()}.
+replace_scopes_tx(_Conn, OrgId, _AppId, _GrantId, _ExpectedVersion, _Scopes) when
+    not is_integer(OrgId), OrgId =/= null
+->
+    {error, {invalid_organization_id, OrgId}};
 replace_scopes_tx(_Conn, _OrgId, _AppId, _GrantId, _ExpectedVersion, []) ->
     {error, empty_scopes};
 replace_scopes_tx(Conn, OrgId, AppId, GrantId, ExpectedVersion, Scopes) when is_list(Scopes) ->
@@ -241,10 +283,16 @@ replace_scopes_tx(Conn, OrgId, AppId, GrantId, ExpectedVersion, Scopes) when is_
 %% TargetKind=none ⇒ 清空 workspace 行（org 全域授权）；explicit ⇒ 必须有非空
 %% workspace_ids（kind 闸门 FK 由 DB 兜底：none 类型不允许挂 workspace 行）。
 -spec set_workspace_scope_tx(
-    any(), integer(), integer(), integer(), integer(), none | explicit, [integer()]
+    any(), integer() | null, integer(), integer(), integer(), none | explicit, [integer()]
 ) ->
     ok
     | {error, not_found | version_conflict | already_revoked | invalid_workspaces | term()}.
+set_workspace_scope_tx(
+    _Conn, OrgId, _AppId, _GrantId, _ExpectedVersion, _TargetKind, _WorkspaceIds
+) when
+    not is_integer(OrgId), OrgId =/= null
+->
+    {error, {invalid_organization_id, OrgId}};
 set_workspace_scope_tx(_Conn, _OrgId, _AppId, _GrantId, _V, explicit, []) ->
     {error, invalid_workspaces};
 set_workspace_scope_tx(Conn, OrgId, AppId, GrantId, ExpectedVersion, TargetKind, WorkspaceIds) ->
@@ -283,11 +331,16 @@ set_workspace_scope_tx(Conn, OrgId, AppId, GrantId, ExpectedVersion, TargetKind,
 %% 与已过期）即为 true。授权行被 migration 00000139 的触发器禁止物理删除，故该
 %% 判定一旦为真永不回退——撤权只会把生效 scope 压到空集（fail-closed），
 %% 绝不会退回未受管（更宽）的边界。
--spec grant_governed_tx(any(), integer(), integer()) -> {ok, boolean()} | {error, term()}.
+-spec grant_governed_tx(any(), integer() | null | null, integer()) ->
+    {ok, boolean()} | {error, term()}.
+grant_governed_tx(_Conn, OrgId, _AppId) when
+    not is_integer(OrgId), OrgId =/= null
+->
+    {error, {invalid_organization_id, OrgId}};
 grant_governed_tx(Conn, OrgId, AppId) ->
     Sql =
         <<"SELECT EXISTS (SELECT 1 FROM ", (tablename())/binary,
-            " WHERE organization_id = $1 AND application_id = $2) AS governed">>,
+            " WHERE organization_id IS NOT DISTINCT FROM $1 AND application_id = $2) AS governed">>,
     case elib_pg:query(Conn, Sql, [OrgId, AppId]) of
         {ok, [Row | _]} -> {ok, maps:get(<<"governed">>, Row)};
         {ok, []} -> {ok, false};
@@ -296,23 +349,33 @@ grant_governed_tx(Conn, OrgId, AppId) ->
 
 %% @doc 当前生效的 scope 并集（跨全部生效 Grant），经 effective 视图读时求值。
 %% 这是 auth context 的 scope 读取面：App allowed_scopes ∩ 本集合 由 logic 求交。
--spec effective_scopes_tx(any(), integer(), integer()) -> {ok, [binary()]} | {error, term()}.
+-spec effective_scopes_tx(any(), integer() | null | null, integer()) ->
+    {ok, [binary()]} | {error, term()}.
+effective_scopes_tx(_Conn, OrgId, _AppId) when
+    not is_integer(OrgId), OrgId =/= null
+->
+    {error, {invalid_organization_id, OrgId}};
 effective_scopes_tx(Conn, OrgId, AppId) ->
     Sql =
         <<"SELECT DISTINCT scope FROM ", (effective_scope_view())/binary,
-            " WHERE organization_id = $1 AND application_id = $2 ORDER BY scope">>,
+            " WHERE organization_id IS NOT DISTINCT FROM $1 AND application_id = $2 ORDER BY scope">>,
     case elib_pg:query(Conn, Sql, [OrgId, AppId]) of
         {ok, Rows} -> {ok, [maps:get(<<"scope">>, R) || R <- Rows]};
         {error, Reason} -> {error, Reason}
     end.
 
 %% @doc 当前生效的 Grant 行（治理/诊断读面）。
--spec effective_grants_tx(any(), integer(), integer()) -> {ok, [map()]} | {error, term()}.
+-spec effective_grants_tx(any(), integer() | null | null, integer()) ->
+    {ok, [map()]} | {error, term()}.
+effective_grants_tx(_Conn, OrgId, _AppId) when
+    not is_integer(OrgId), OrgId =/= null
+->
+    {error, {invalid_organization_id, OrgId}};
 effective_grants_tx(Conn, OrgId, AppId) ->
     Sql =
         <<"SELECT grant_id, workspace_scope_kind, version, valid_from, expires_at FROM ",
             (effective_view())/binary,
-            " WHERE organization_id = $1 AND application_id = $2 ORDER BY grant_id">>,
+            " WHERE organization_id IS NOT DISTINCT FROM $1 AND application_id = $2 ORDER BY grant_id">>,
     case elib_pg:query(Conn, Sql, [OrgId, AppId]) of
         {ok, Rows} -> {ok, Rows};
         {error, Reason} -> {error, Reason}
@@ -424,16 +487,17 @@ validate_workspaces(explicit, []) ->
 
 -spec insert_grant(
     any(),
-    integer(),
+    integer() | null,
     integer(),
     [binary()],
     none | explicit,
     [integer()],
     binary() | undefined,
     binary(),
+    binary(),
     binary()
 ) -> {ok, map()} | {error, atom() | term()}.
-insert_grant(Conn, OrgId, AppId, Scopes, Kind, WorkspaceIds, ValidFrom, ExpiresAt, IdemKey) ->
+insert_grant(Conn, OrgId, AppId, Scopes, Kind, WorkspaceIds, ValidFrom, ExpiresAt, IdemKey, Source) ->
     Id = next_id(),
     Now = elib_dt:now(),
     %% valid_from 缺省用 DB 侧 CURRENT_TIMESTAMP（同一事务内即刻生效；避免
@@ -446,9 +510,9 @@ insert_grant(Conn, OrgId, AppId, Scopes, Kind, WorkspaceIds, ValidFrom, ExpiresA
     Sql =
         <<"INSERT INTO ", (tablename())/binary,
             " (id, organization_id, application_id, workspace_scope_kind, status,"
-            " valid_from, expires_at, version, idempotency_key, created_at, updated_at)",
+            " valid_from, expires_at, version, idempotency_key, created_at, updated_at, provisioning_source)",
             " VALUES ($1, $2, $3, $4, 'active', COALESCE($5::timestamptz, CURRENT_TIMESTAMP),"
-            " $6::timestamptz, 1, $7, $8, $8)">>,
+            " $6::timestamptz, 1, $7, $8, $8, $9)">>,
     case
         elib_pg:execute(Conn, Sql, [
             Id,
@@ -458,7 +522,8 @@ insert_grant(Conn, OrgId, AppId, Scopes, Kind, WorkspaceIds, ValidFrom, ExpiresA
             ValidFromParam,
             ExpiresAt,
             IdemKey,
-            Now
+            Now,
+            Source
         ])
     of
         {ok, 1} ->
@@ -469,7 +534,9 @@ insert_grant(Conn, OrgId, AppId, Scopes, Kind, WorkspaceIds, ValidFrom, ExpiresA
             map_error(Reason)
     end.
 
--spec after_insert_children(any(), integer(), integer(), integer(), [binary()], atom(), [integer()]) ->
+-spec after_insert_children(any(), integer() | null, integer(), integer(), [binary()], atom(), [
+    integer()
+]) ->
     {ok, map()} | {error, term()}.
 after_insert_children(Conn, OrgId, AppId, Id, Scopes, Kind, WorkspaceIds) ->
     case replace_scope_rows_tx(Conn, Id, Scopes) of
@@ -482,7 +549,7 @@ after_insert_children(Conn, OrgId, AppId, Id, Scopes, Kind, WorkspaceIds) ->
             {error, Reason}
     end.
 
--spec maybe_insert_workspace_rows_tx(any(), integer(), integer(), atom(), [integer()]) ->
+-spec maybe_insert_workspace_rows_tx(any(), integer() | null, integer(), atom(), [integer()]) ->
     ok | {error, term()}.
 maybe_insert_workspace_rows_tx(_Conn, _OrgId, _GrantId, none, []) ->
     ok;
@@ -538,13 +605,13 @@ insert_workspace_rows_tx(Conn, OrgId, GrantId, WorkspaceIds) ->
     end.
 
 %% CAS 版本自增（Grant 存在性/状态/版本三重判定）。
--spec bump_version_tx(any(), integer(), integer(), integer(), integer()) ->
+-spec bump_version_tx(any(), integer() | null, integer(), integer(), integer()) ->
     ok | {error, not_found | version_conflict | already_revoked | term()}.
 bump_version_tx(Conn, OrgId, AppId, GrantId, ExpectedVersion) ->
     Now = elib_dt:now(),
     Sql =
         <<"UPDATE ", (tablename())/binary, " SET version = version + 1, updated_at = $5",
-            " WHERE organization_id = $1 AND application_id = $2 AND id = $3"
+            " WHERE organization_id IS NOT DISTINCT FROM $1 AND application_id = $2 AND id = $3"
             " AND version = $4 AND status = 'active'">>,
     case elib_pg:execute(Conn, Sql, [OrgId, AppId, GrantId, ExpectedVersion, Now]) of
         {ok, 1} -> ok;
@@ -553,16 +620,18 @@ bump_version_tx(Conn, OrgId, AppId, GrantId, ExpectedVersion) ->
     end.
 
 %% kind 变更 + （explicit 时）workspace 行整体替换（CAS 在同一事务内）。
--spec set_workspace_scope_kind_tx(any(), integer(), integer(), integer(), integer(), atom(), [
-    integer()
-]) ->
+-spec set_workspace_scope_kind_tx(
+    any(), integer() | null, integer(), integer(), integer(), atom(), [
+        integer()
+    ]
+) ->
     ok | {error, not_found | version_conflict | already_revoked | term()}.
 set_workspace_scope_kind_tx(Conn, OrgId, AppId, GrantId, ExpectedVersion, TargetKind, WorkspaceIds) ->
     Now = elib_dt:now(),
     Sql =
         <<"UPDATE ", (tablename())/binary,
             " SET workspace_scope_kind = $5, version = version + 1, updated_at = $6",
-            " WHERE organization_id = $1 AND application_id = $2 AND id = $3"
+            " WHERE organization_id IS NOT DISTINCT FROM $1 AND application_id = $2 AND id = $3"
             " AND version = $4 AND status = 'active'">>,
     case
         elib_pg:execute(Conn, Sql, [
@@ -588,7 +657,7 @@ set_workspace_scope_kind_tx(Conn, OrgId, AppId, GrantId, ExpectedVersion, Target
 %% 由 ck_eag_status_revoked_match（迁移 00000143）在 DB 侧强制，本层不重复校验，
 %% 但违反时 DB 抛 23514，map_error/1 归一后上层可见。
 -spec revoke_with_actor_tx(
-    any(), integer(), integer(), integer(), integer(), integer() | null, integer() | null
+    any(), integer() | null, integer(), integer(), integer(), integer() | null, integer() | null
 ) ->
     ok | {error, not_found | version_conflict | already_revoked | term()}.
 revoke_with_actor_tx(
@@ -600,7 +669,7 @@ revoke_with_actor_tx(
             " SET status = 'revoked', revoked_at = $5, revoked_by_user_id = $6,"
             " revoked_by_adm_user_id = $7,"
             " version = version + 1, updated_at = $5",
-            " WHERE organization_id = $1 AND application_id = $2 AND id = $3"
+            " WHERE organization_id IS NOT DISTINCT FROM $1 AND application_id = $2 AND id = $3"
             " AND version = $4 AND status = 'active'">>,
     case
         elib_pg:execute(Conn, Sql, [
@@ -616,12 +685,12 @@ revoke_with_actor_tx(
     end.
 
 %% CAS 未命中：区分「不存在」「已撤销」「版本冲突」——失败原因对治理接口可见。
--spec cas_miss(any(), integer(), integer(), integer()) ->
+-spec cas_miss(any(), integer() | null, integer(), integer()) ->
     {error, not_found | version_conflict | already_revoked | term()}.
 cas_miss(Conn, OrgId, AppId, GrantId) ->
     Sql =
         <<"SELECT status, version FROM ", (tablename())/binary,
-            " WHERE organization_id = $1 AND application_id = $2 AND id = $3 LIMIT 1">>,
+            " WHERE organization_id IS NOT DISTINCT FROM $1 AND application_id = $2 AND id = $3 LIMIT 1">>,
     case elib_pg:query(Conn, Sql, [OrgId, AppId, GrantId]) of
         {ok, [#{<<"status">> := <<"revoked">>} | _]} -> {error, already_revoked};
         {ok, [_ | _]} -> {error, version_conflict};
@@ -643,6 +712,7 @@ one_tx(Conn, Sql, Params) ->
 map_error(#error{code = <<"23505">>, extra = Extra}) ->
     case constraint_name(Extra) of
         ?UQ_IDEMPOTENCY -> {error, key_conflict};
+        <<"uq_eag_self_app_idempotency">> -> {error, key_conflict};
         <<"pk_enterprise_application_grant">> -> {error, key_conflict};
         _ -> {error, unique_violation}
     end;

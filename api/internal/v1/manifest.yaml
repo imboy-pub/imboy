@@ -6,7 +6,8 @@
 # appending new rows; existing GZ rows' method/path/scope contract is frozen.
 # Every route: method / path / scope / grant / resource / actor / idempotency / rate bucket / sender_mode
 # Auth order (plan-gz §4.1): TLS -> credential format/digest -> credential active/expiry
-#   -> application active -> organization active -> required scope
+#   -> application active -> effective Grant scopes -> required scope
+# Organization lifecycle is not a credential auth gate (ADR 2026-10-12); resource governance remains.
 #   -> organization/workspace/resource boundary -> rate limit -> operation -> audit
 # Hard invariants:
 #   INV-1  /api/open/v1/* production routes, aliases, handlers, migrations == 0 (verified at BASE-00: grep=0)
@@ -211,20 +212,6 @@ routes:
     idempotency: not_required
     rate: internal_sso
     sender_mode: none
-
-stable_error_codes: [invalid_credential, credential_expired, application_disabled,
-  organization_disabled, insufficient_scope, resource_not_found, identity_not_mapped,
-  organization_boundary_violation, idempotency_conflict, rate_limited,
-  security_gate_closed, invalid_request, internal_error, version_conflict, resource_conflict, seat_limit_exceeded]
-
-mechanical_assertions:  # re-runnable script: control/assert_manifest.sh
-  - name: open_v1_production_surface_zero
-    check: grep -rn "open/v1" src/ config/ priv/ (excluding tests) => count == 0
-    base_verdict: PASS (count=0 at BASE-00, HEAD 9f5a5fc6)
-  - name: internal_routes_only_under_internal_v1
-    check: all new application-credential routes must start /api/internal/v1/
-  - name: credential_admin_isolation
-    check: Application Credential vs /api/adm/* and /api/v1/* => 401/403 (negative tests, A2/A7 own)
 
   # ---- FULL-02 新增（A0 接线，stage=FULL）。token 只落 0/1，数值真源在
   #      config/sys.config.example 的 imboy.enterprise_internal_rate_limits。----
@@ -535,3 +522,28 @@ mechanical_assertions:  # re-runnable script: control/assert_manifest.sh
     idempotency: required
     rate: internal_write
     sender_mode: none
+
+  - id: INT-43
+    method: POST
+    path: /api/internal/v1/directory/sync
+    scope: identities:write
+    grant: source-scoped enabled directory mapping
+    resource: directory
+    actor: application
+    idempotency: required
+    rate: internal_write
+    sender_mode: none
+
+stable_error_codes: [invalid_credential, credential_expired, application_disabled,
+  organization_disabled, insufficient_scope, resource_not_found, identity_not_mapped,
+  organization_boundary_violation, idempotency_conflict, rate_limited,
+  security_gate_closed, invalid_request, internal_error, version_conflict, resource_conflict, seat_limit_exceeded]
+
+mechanical_assertions:  # re-runnable script: control/assert_manifest.sh
+  - name: open_v1_production_surface_zero
+    check: grep -rn "open/v1" src/ config/ priv/ (excluding tests) => count == 0
+    base_verdict: PASS (count=0 at BASE-00, HEAD 9f5a5fc6)
+  - name: internal_routes_only_under_internal_v1
+    check: all new application-credential routes must start /api/internal/v1/
+  - name: credential_admin_isolation
+    check: Application Credential vs /api/adm/* and /api/v1/* => 401/403 (negative tests, A2/A7 own)

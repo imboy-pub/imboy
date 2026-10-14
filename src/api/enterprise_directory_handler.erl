@@ -38,6 +38,7 @@ init(Req0, State0) ->
         case Action of
             mappings -> mappings(Method, Req0, State);
             users -> users(Method, Req0, State);
+            sync -> sync(Method, Req0, State);
             _ -> Req0
         end,
     {ok, Req1, State}.
@@ -45,6 +46,41 @@ init(Req0, State0) ->
 %% ===================================================================
 %% Internal
 %% ===================================================================
+
+sync(<<"POST">>, Req0, State) ->
+    Ctx = maps:get(enterprise_internal, State, #{}),
+    Key = cowboy_req:header(<<"idempotency-key">>, Req0, <<>>),
+    case enterprise_directory_sync_logic:sync(Ctx, Key, elib_param:post(Req0)) of
+        {ok, _, #{response_code := Code, response_body := Body}} ->
+            cowboy_req:reply(Code, #{<<"content-type">> => <<"application/json">>}, Body, Req0);
+        {error, Reason} ->
+            enterprise_internal_error:reply(Req0, sync_error(Reason));
+        _ ->
+            enterprise_internal_error:reply(Req0, <<"internal_error">>)
+    end;
+sync(_, Req0, _) ->
+    cowboy_req:reply(405, #{}, <<"Method Not Allowed">>, Req0).
+
+sync_error(invalid_request) -> <<"invalid_request">>;
+sync_error(invalid_idempotency_key) -> <<"invalid_request">>;
+sync_error(insufficient_scope) -> <<"insufficient_scope">>;
+sync_error(invalid_source_context) -> <<"invalid_credential">>;
+sync_error(source_not_enabled) -> <<"insufficient_scope">>;
+sync_error(directory_source_not_configured) -> <<"insufficient_scope">>;
+sync_error(directory_bootstrap_not_authorized) -> <<"insufficient_scope">>;
+sync_error(organization_not_active) -> <<"organization_boundary_violation">>;
+sync_error(organization_boundary_violation) -> <<"organization_boundary_violation">>;
+sync_error(security_gate_closed) -> <<"security_gate_closed">>;
+sync_error(local_membership_conflict) -> <<"resource_conflict">>;
+sync_error(confirmed_human_owner_required) -> <<"resource_conflict">>;
+sync_error(initial_owner_conflict) -> <<"resource_conflict">>;
+sync_error(not_found) -> <<"resource_not_found">>;
+sync_error(digest_conflict) -> <<"idempotency_conflict">>;
+sync_error(idempotency_pending) -> <<"idempotency_conflict">>;
+sync_error(stale_source_version) -> <<"version_conflict">>;
+sync_error(source_version_conflict) -> <<"version_conflict">>;
+sync_error(identity_conflict) -> <<"resource_conflict">>;
+sync_error(_) -> <<"internal_error">>.
 
 %% @doc INT-16 映射目录（等价于 enterprise_identity_handler 的 directory action；
 %% 两条路由指向同一逻辑，Router 侧任选其一登记即可）。

@@ -4,6 +4,15 @@
 
 ## 1. 目标与范围 / Goal and scope
 
+2026-10-14 用户范围修订：一期外部系统接入收敛为 **OA 通过 Internal API 同步人员、组织、
+部门及成员关系，用户自己在 IMBoy 聊天**。外部业务授权留在 OA；一期不交付自动建群、
+代发消息或应用授权管理表单。以 [组织定位修订 §8.2](../../architecture/2026-10-12-organization-positioning-amendment.md#82-一期收敛为组织通讯录与用户聊天2026-10-14-owner-最终澄清)
+为最新产品依据。原验收项须逐项登记本次范围影响，延期项不得改记 PASS；其余交付义务不变。
+
+Owner scope update: phase one accepts OA-initiated personnel and organization directory sync through
+Internal API; users chat themselves in IMBoy. External business permissions stay in OA. Automated
+group creation, delegated messages and application-grant management UI are deferred, not passed.
+
 以原验收合同为底线，复用已有实现与可信子证据，先补证、再修已复现缺陷，最后冻结三仓候选统一验收。目标是可按卡交付、逐格测试、快速发现阻断，不承诺省略真端门或压缩稳定性时间。
 
 范围包含 imboy 后端、imboyapp Android 真机/macOS 原生、imboyadmin 真实浏览器及对应文档。缓存计划的 backend-only 限定仅适用于缓存，不适用于这里的三端原合同。不新增 iOS 强制验收；继承合同如包含 iOS，登记来源及范围决策，不能静默删除。

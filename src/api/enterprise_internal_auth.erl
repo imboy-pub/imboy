@@ -10,9 +10,7 @@
 %   -> credential 格式/digest（prefix 定位 + SHA-256 常数时间比对）
 %   -> credential active/expiry（revoked→invalid_credential；过期→credential_expired）
 %   -> application active（disabled→application_disabled）
-%   -> organization active（archived/缺失→organization_disabled；按路由
-%      豁免——org_status_gate => false 的路由如 INT-14 SSO 交换跳过此步，
-%      2026-10-12 定位修订：organization 是业务对象非授权边界）
+%   organization 是业务归属；认证不读取其生命周期（ADR 2026-10-12）。
 %   -> Grant 求值（FULL-01：受管应用的生效 scope = allowed_scopes ∩ 生效 Grant
 %      scopes，逐请求真库读、无缓存；读取失败 fail-closed→security_gate_closed）
 %   -> required scope（静态路由在此判定；INT-09/10 动态 scope 由 handler
@@ -56,11 +54,6 @@
 %% 不变，秒数经此键在同请求进程内传递，take 后即清（见 take_retry_after_seconds/0）。
 -define(PD_RETRY_AFTER_SECONDS, {enterprise_internal_auth, retry_after_seconds}).
 
-%% org 状态门按路由豁免的通道（chain/3 在 AuthFun 前置入，check_organization
-%% 读取；同请求进程内传递，chain 结束即清）。缺省 true=门在场（直连
-%% authenticate_tx/3 与未声明豁免的路由行为不变）。
--define(PD_ORG_STATUS_GATE, {enterprise_internal_auth, org_status_gate}).
-
 %%%===================================================================
 %%% API
 %%%===================================================================
@@ -79,7 +72,7 @@ parse_bearer(_) ->
     {error, invalid_credential}.
 
 %% @doc 事务内执行完整认证链（prefix 定位 → digest 常数时间比对 →
-%% credential active/expiry → application active → organization active →
+%% credential active/expiry → application active → Grant scopes →
 %% touch last_used）。成功返回认证产物 context。
 -spec authenticate_tx(any(), binary(), binary()) ->
     {ok, map()}
@@ -87,7 +80,6 @@ parse_bearer(_) ->
         invalid_credential
         | credential_expired
         | application_disabled
-        | organization_disabled
         | security_gate_closed
         | internal_error}.
 authenticate_tx(Conn, Prefix, Secret) when
@@ -176,23 +168,14 @@ take_retry_after_seconds() ->
 
 -spec chain(map(), map(), fun()) -> {ok, map()} | {error, atom()}.
 chain(Route, Headers, AuthFun) ->
-    %% org 状态门按路由豁免（定位修订 ADR 2026-10-12：organization 是业务
-    %% 对象非授权边界；INT-14 SSO 交换声明 org_status_gate => false）。
-    _ = erlang:put(?PD_ORG_STATUS_GATE, maps:get(org_status_gate, Route, true)),
-    try
-        case AuthFun() of
-            {error, Code} ->
-                {error, Code};
-            {ok, Ctx} ->
-                case scope_gate(Route, Ctx) of
-                    {ok, Ctx1} ->
-                        rate_gate(Route, Headers, Ctx1);
-                    {error, Code} ->
-                        {error, Code}
-                end
-        end
-    after
-        erlang:erase(?PD_ORG_STATUS_GATE)
+    case AuthFun() of
+        {error, Code} ->
+            {error, Code};
+        {ok, Ctx} ->
+            case scope_gate(Route, Ctx) of
+                {ok, Ctx1} -> rate_gate(Route, Headers, Ctx1);
+                {error, Code} -> {error, Code}
+            end
     end.
 
 %% 静态 scope 在中间件判定；动态 scope（INT-09/10）由 handler 裁决
@@ -200,6 +183,12 @@ chain(Route, Headers, AuthFun) ->
 -spec scope_gate(map(), map()) -> {ok, map()} | {error, atom()}.
 scope_gate(#{scope := {dynamic, Kind}}, Ctx) ->
     {ok, Ctx#{dynamic_scope => Kind}};
+scope_gate(#{id := <<"INT-43">>} = Route, Ctx) ->
+    Admission = Ctx#{granted_scopes => maps:get(allowed_scopes, Ctx, [])},
+    case scope_gate(maps:remove(id, Route), Admission) of
+        {ok, _} -> {ok, Ctx};
+        Error -> Error
+    end;
 scope_gate(#{scope := Required}, Ctx) ->
     case enterprise_internal_scope:authorize(Required, maps:get(granted_scopes, Ctx, [])) of
         ok ->
@@ -303,16 +292,15 @@ check_credential_expiry(Conn, Row) ->
 
 -spec check_application(any(), map()) -> {ok, map()} | {error, atom()}.
 check_application(Conn, Row) ->
-    OrgId = maps:get(<<"organization_id">>, Row),
     AppId = maps:get(<<"application_id">>, Row),
-    case enterprise_application_repo:find_tx(Conn, OrgId, AppId) of
+    case enterprise_application_repo:find_by_id_tx(Conn, AppId) of
         {ok, #{<<"status">> := <<"active">>} = App} ->
-            check_organization(Conn, Row, App);
+            finalize_auth(Conn, Row, App);
         {ok, _DisabledApp} ->
             log_reject(application_disabled, application_disabled),
             {error, application_disabled};
         {error, not_found} ->
-            %% 复合 FK 保证存在；缺失即异常态：fail-closed，不给 oracle
+            %% AppId FK 保证存在；缺失即异常态：fail-closed，不给 oracle
             log_reject(application_missing, invalid_credential),
             {error, invalid_credential};
         {error, Reason} ->
@@ -322,57 +310,13 @@ check_application(Conn, Row) ->
             {error, invalid_credential}
     end.
 
--spec check_organization(any(), map(), map()) -> {ok, map()} | {error, atom()}.
-check_organization(Conn, Row, App) ->
-    case erlang:get(?PD_ORG_STATUS_GATE) of
-        false ->
-            %% 路由豁免（INT-14；定位修订）：org 归属是业务归属，其生命周期
-            %% 不阻断实例级集成——application/credential/scope 才是授权链。
-            finalize_auth(Conn, Row, App);
-        _ ->
-            case organization_status(Conn, maps:get(<<"organization_id">>, Row)) of
-                {ok, <<"active">>} ->
-                    finalize_auth(Conn, Row, App);
-                {ok, _Archived} ->
-                    log_reject(organization_disabled, organization_disabled),
-                    {error, organization_disabled};
-                {error, not_found} ->
-                    %% org 缺失同样落 organization_disabled（fail-closed）
-                    log_reject(organization_missing, organization_disabled),
-                    {error, organization_disabled};
-                {error, Reason} ->
-                    ?ERROR_LOG([
-                        enterprise_internal_auth_db_error,
-                        #{stage => organization_lookup, reason => Reason}
-                    ]),
-                    {error, invalid_credential}
-            end
-    end.
-
-%% organization_repo 未导出普通事务内 find（find_for_update_tx 会行锁
-%% organization 行，认证高频路径不可接受）——此处在认证模块内做无锁
-%% 只读 status 查询（repo 缺口已记录 EPGZ-02 checkpoint 交 A0 裁决）。
--spec organization_status(any(), integer()) ->
-    {ok, binary()} | {error, not_found | term()}.
-organization_status(Conn, OrgId) ->
-    Sql =
-        <<"SELECT status FROM organization WHERE id = $1 LIMIT 1">>,
-    case elib_pg:query(Conn, Sql, [OrgId]) of
-        {ok, [#{<<"status">> := Status} | _]} ->
-            {ok, Status};
-        {ok, []} ->
-            {error, not_found};
-        {error, Reason} ->
-            {error, Reason}
-    end.
-
 -spec finalize_auth(any(), map(), map()) -> {ok, map()} | {error, atom()}.
 finalize_auth(Conn, Row, App) ->
     CredId = maps:get(<<"id">>, Row),
     %% last_used 记录失败不影响认证结果
     _ = enterprise_application_credential_repo:touch_last_used_tx(Conn, CredId),
     Scopes = decode_scopes(App),
-    OrgId = maps:get(<<"organization_id">>, Row),
+    OrgId = maps:get(<<"organization_id">>, App),
     AppId = maps:get(<<"application_id">>, Row),
     %% FULL-01 Grant 求值（V2.1 §5.2 收紧）：同一事务、逐请求真库读（无缓存）。
     %% 生效 scope 恒为 allowed_scopes ∩ 生效 Grant scopes——零 Grant（从未授予/
@@ -382,6 +326,7 @@ finalize_auth(Conn, Row, App) ->
         {ok, #{grant_governed := Governed, effective_scopes := Effective}} ->
             {ok, #{
                 organization_id => OrgId,
+                application_organization_id => OrgId,
                 application_id => AppId,
                 credential_id => CredId,
                 application_key => maps:get(<<"application_key">>, App, undefined),
@@ -390,6 +335,7 @@ finalize_auth(Conn, Row, App) ->
                 %% message/webhook 壳在 handler 层自行预取，其余 mutation 的
                 %% 审计 actor 只能落 null。
                 principal_user_id => maps:get(<<"principal_user_id">>, App, null),
+                allowed_scopes => Scopes,
                 granted_scopes => Effective,
                 grant_governed => Governed
             }};

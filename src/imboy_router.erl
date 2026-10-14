@@ -1994,6 +1994,13 @@ enterprise_platform_routes() ->
 -spec enterprise_application_governance_routes() -> list().
 enterprise_application_governance_routes() ->
     [
+        {"/api/adm/enterprise/directory/connections", adm_enterprise_directory_handler, #{
+            action => create_connection
+        }},
+        {"/api/adm/enterprise/directory/applications/:application_id/credentials",
+            adm_enterprise_directory_handler, #{action => issue_credential}},
+        {"/api/adm/enterprise/directory/applications/:application_id/sources",
+            adm_enterprise_directory_handler, #{action => configure_source}},
         %% A-01 列表（GET）
         {"/api/adm/enterprise/organizations/:org_id/applications",
             adm_enterprise_application_handler, #{action => applications}},
@@ -2571,6 +2578,7 @@ enterprise_internal_routes() ->
             action => mappings
         }},
         %% INT-17 成员受限游标目录
+        {"/api/internal/v1/directory/sync", enterprise_directory_handler, #{action => sync}},
         {"/api/internal/v1/directory/users", enterprise_directory_handler, #{
             action => users
         }},

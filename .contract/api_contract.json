@@ -1857,6 +1857,12 @@
         "static": false
       },
       {
+        "action": "sync",
+        "handler": "enterprise_directory_handler",
+        "path": "/api/internal/v1/directory/sync",
+        "static": false
+      },
+      {
         "action": "confirm",
         "handler": "enterprise_asset_handler",
         "path": "/api/internal/v1/files/confirm",

@@ -51,11 +51,11 @@
 %% 零 Grant ⇒ 空集（scope gate 必然拒绝，「撤权/降级/从未授权下一请求即
 %% 失败」统一成立）。grant_governed 只是诊断标记（是否存在任何 Grant 行），
 %% 不再作为回退 allowed_scopes 的开关。
--spec context_tx(any(), integer(), integer(), [binary()]) ->
+-spec context_tx(any(), integer() | null, integer(), [binary()]) ->
     {ok, #{grant_governed := boolean(), effective_scopes := [binary()]}}
     | {error, security_gate_closed}.
 context_tx(Conn, OrgId, AppId, AppScopes) when
-    is_integer(OrgId), is_integer(AppId), is_list(AppScopes)
+    (is_integer(OrgId) orelse OrgId =:= null), is_integer(AppId), is_list(AppScopes)
 ->
     case enterprise_application_grant_repo:grant_governed_tx(Conn, OrgId, AppId) of
         {ok, Governed} ->
