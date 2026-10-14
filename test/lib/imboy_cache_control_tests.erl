@@ -879,20 +879,22 @@ new_epoch_event_cancels_selected_authority_before_report_checks() ->
         try
             ?assertNotEqual(maps:get(round, R1), maps:get(round, Next#state.snapshot_round)),
             #{counters := Counters} = elib_metric:get_all_metrics(),
-            ?assertEqual(2, maps:get(snapshot_abort_total, Counters)),
+            ?assertEqual(1, maps:get(snapshot_abort_total, Counters)),
             lists:foreach(
-                fun(Reason) ->
+                fun({Reason, Expected}) ->
                     ?assertEqual(
-                        1,
+                        Expected,
                         maps:get(
-                            {cache_sync_snapshot_abort_reason_total, #{reason => Reason}}, Counters
+                            {cache_sync_snapshot_abort_reason_total, #{reason => Reason}},
+                            Counters,
+                            0
                         )
                     )
                 end,
-                [authority_epoch_changed, snapshot_invalidated]
+                [{authority_epoch_changed, 1}, {snapshot_invalidated, 0}]
             ),
             ?assertEqual(
-                maps:get(rounds_used, R1) + maps:get(snapshot_abort_total, Counters),
+                maps:get(rounds_used, R1) + 1,
                 maps:get(rounds_used, Next#state.snapshot_round)
             ),
             ?assertEqual(recovering, Next#state.status),
