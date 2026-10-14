@@ -35,6 +35,8 @@
     authorize/3,
     ai_delivery_allowed/4
 ]).
+%% D 组（v4 02-D）：证据 gate 工厂 + 离线指标
+-export([grounding_gate/2, false_confidence_buckets/2]).
 
 %% 注入 prompt 的 FAQ 条数上限（"受控证据"规模）。
 -define(FAQ_TOP, 3).
@@ -640,7 +642,10 @@ deliver(_OrgId, _WsId, _Params) ->
     {error, {invalid_argument, deliver}}.
 
 %% 快速预检：deadline 过 ⇒ {skipped, expired}；闩锁置位 ⇒ {skipped,
-%% superseded}（C-3：接管后 AI 不再产生新投递）；然后坐席身份与 actor 解析。
+%% superseded}（C-3：接管后 AI 不再产生新投递）；会话已关闭 ⇒ {skipped,
+%% superseded}（gate_7 前置快检——canonical 事务外同谓语提前求值，避免
+%% 整条消息链组装后在 append 侧以 session_already_closed 报错；事务内
+%% 复核仍由 delivery_hook 的 gate_fun 承担）；然后坐席身份与 actor 解析。
 deliver_preflight(Impl, OrgId, Job, Params) ->
     case deadline_passed(Job) of
         true ->
@@ -656,7 +661,17 @@ deliver_preflight(Impl, OrgId, Job, Params) ->
                     _ = Impl:mark_job_skipped(OrgId, maps:get(id, Job), superseded),
                     {skipped, superseded};
                 ok ->
-                    preflight_seat(Impl, OrgId, Params)
+                    case Impl:session_open(OrgId, maps:get(session_id, Job)) of
+                        {ok, true} ->
+                            preflight_seat(Impl, OrgId, Params);
+                        {ok, false} ->
+                            _ = Impl:mark_job_skipped(
+                                OrgId, maps:get(id, Job), superseded
+                            ),
+                            {skipped, superseded};
+                        {error, Reason} ->
+                            {error, Reason}
+                    end
             end
     end.
 
@@ -720,11 +735,17 @@ deliver_message(
     case cs_session_app:append_conversation_message(OrgId, MsgParams) of
         {ok, _} ->
             {ok, delivered};
-        {error, {skipped, Reason}} when Reason =:= expired; Reason =:= superseded ->
-            %% 钩子事务内复核失败已回滚消息；此处落 job 终态
-            %% （dead/cancelled + last_error_code 细分，02-B.4 返回值冻结形状）。
+        %% B.4 冻结映射：expired/superseded/stale_citation ⇒ job 终态
+        %% （dead/cancelled/cancelled），no_grounding ⇒ failed（I9）；
+        %% last_error_code 细分见 cs_pg_ai:mark_job_skipped/3。
+        {error, {skipped, Reason}} when
+            Reason =:= expired; Reason =:= superseded; Reason =:= stale_citation
+        ->
             _ = Impl:mark_job_skipped(OrgId, JobId, Reason),
             {skipped, Reason};
+        {error, {skipped, no_grounding}} ->
+            _ = Impl:mark_job_skipped(OrgId, JobId, no_grounding),
+            {skipped, no_grounding};
         {error, {skipped, Other}} ->
             {error, Other};
         {error, Reason} ->
@@ -874,6 +895,146 @@ scoped(seat_identity, _Ctx) ->
     {error, {forbidden, seat_identity_required}};
 scoped(purge, _Ctx) ->
     ok.
+
+%% ===================================================================
+%% D 组（v4 02-D）：七道放行 gate（合取式）与离线指标
+%% ===================================================================
+
+%% @doc 证据 gate 工厂（P0-3 delivery_hook 的 gate_fun 注入位）。
+%%
+%% 合取式（02-D.3；gate_2 handoff_clear 在 deliver preflight、gate_6
+%% budget_admitted 属 P0-6，不在此处）：
+%%   gate_1 mode_ok      — auto_reply_mode：enabled 直接过；canary 需白名单
+%%                         覆盖（cs_pg_ai:canary_covers）；disabled/shadow 拒
+%%   gate_3 faq_require_hit — 配置为真时 cited_faq_ids 非空，否则 no_grounding
+%%   gate_4 citations_current — 引用版本/状态/有效期与投递时刻一致（I10）
+%%   gate_5 answerable   — 无据答复不投递（I9 的 gate 侧）
+%%   gate_7 session_open — 会话 status ∈ {queued, active}
+%%
+%% Evidence：`cited_faq_ids` / `cited_faq_versions` / `answerable`。
+%% 任一 gate 不成立 ⇒ `{error, {skipped, Reason}}`（B.4 冻结语义，
+%% **禁止静默丢弃**；自报置信度（D-5 观测字段）**不出现在任何 gate**——
+%% D-5，仅作观测与影子校准）。
+-spec grounding_gate(integer(), map()) ->
+    fun((term(), map()) -> ok | {error, term()}).
+grounding_gate(OrgId, Evidence) when is_integer(OrgId), is_map(Evidence) ->
+    fun(Conn, Job) ->
+        Impl = cs_ai_port:impl(#{}),
+        %% gate 只消费 v4 列（auto_reply_mode/faq_require_hit），走 gate 窄读取；
+        %% v1 fetch_config 的字段对齐属 P0-8，不在此处混改。
+        case Impl:fetch_gate_config(OrgId) of
+            {ok, Config} ->
+                evaluate_gates(Conn, Impl, OrgId, Config, Job, Evidence);
+            {error, not_found} ->
+                {error, {skipped, superseded}};
+            {error, Reason} ->
+                {error, Reason}
+        end
+    end;
+grounding_gate(_OrgId, _Evidence) ->
+    fun(_Conn, _Job) -> {error, {skipped, superseded}} end.
+
+evaluate_gates(Conn, Impl, OrgId, Config, Job, Evidence) ->
+    %% gate_1 mode_ok
+    case mode_gate(Impl, OrgId, Config, Job) of
+        ok ->
+            %% gate_3 faq_require_hit
+            Cited = maps:get(cited_faq_ids, Evidence, []),
+            CitedVersions = maps:get(cited_faq_versions, Evidence, []),
+            case maps:get(faq_require_hit, Config, true) andalso Cited =:= [] of
+                true ->
+                    {error, {skipped, no_grounding}};
+                false ->
+                    %% gate_4 citations_current
+                    case Impl:citations_current(Conn, OrgId, Cited, CitedVersions) of
+                        {ok, true} ->
+                            %% gate_5 answerable
+                            case maps:get(answerable, Evidence, false) of
+                                true ->
+                                    %% gate_7 session_open
+                                    case
+                                        Impl:session_open_tx(
+                                            Conn, OrgId, maps:get(session_id, Job)
+                                        )
+                                    of
+                                        {ok, true} -> ok;
+                                        {ok, false} -> {error, {skipped, superseded}};
+                                        {error, Reason} -> {error, Reason}
+                                    end;
+                                false ->
+                                    {error, {skipped, no_grounding}}
+                            end;
+                        {ok, false} ->
+                            %% I10：引用过期/停更 ⇒ stale_citation（B.4 冻结
+                            %% 语义；job 侧映射 cancelled，细分 last_error_code）。
+                            {error, {skipped, stale_citation}};
+                        {error, Reason} ->
+                            {error, Reason}
+                    end
+            end;
+        {error, _} = Err ->
+            Err
+    end.
+
+mode_gate(Impl, OrgId, Config, Job) ->
+    case mode_of(Config) of
+        enabled ->
+            ok;
+        canary ->
+            case
+                Impl:canary_covers(OrgId, maps:get(workspace_id, Job), maps:get(session_id, Job))
+            of
+                {ok, true} -> ok;
+                {ok, false} -> {error, {skipped, superseded}};
+                {error, Reason} -> {error, Reason}
+            end;
+        _ ->
+            {error, {skipped, superseded}}
+    end.
+
+mode_of(Config) ->
+    case maps:get(auto_reply_mode, Config, undefined) of
+        M when is_atom(M) -> M;
+        M when is_binary(M) -> binary_to_atom(M, utf8);
+        _ -> disabled
+    end.
+
+%% @doc false_confidence_rate 分桶（D.4.2，离线指标；不进热路径）。
+%%
+%% Samples：`[#{intent => binary(), faq_hit => boolean(),
+%%              confidence => float(), support => boolean()}]`——support 是
+%% 人工复核判定（姐姐复审环节天然产生）。
+%% 返回分桶表：`[#{intent, faq_hit, n, support_rate}]`（n < MinSamples 的桶
+%% 不输出——MIN_SAMPLES 是假定值，G4 重估前不得用于放行）。
+-spec false_confidence_buckets([map()], pos_integer()) -> [map()].
+false_confidence_buckets(Samples, MinSamples) when is_list(Samples), is_integer(MinSamples) ->
+    Grouped = lists:foldl(
+        fun(S, Acc) ->
+            Key = {maps:get(intent, S, <<>>), maps:get(faq_hit, S, false) =:= true},
+            maps:update_with(Key, fun(L) -> [S | L] end, [S], Acc)
+        end,
+        #{},
+        Samples
+    ),
+    [
+        #{
+            intent => Intent,
+            faq_hit => Hit,
+            n => length(Members),
+            support_rate => support_rate_of(Members)
+        }
+     || {{Intent, Hit}, Members} <- maps:to_list(Grouped),
+        length(Members) >= MinSamples
+    ];
+false_confidence_buckets(_Samples, _MinSamples) ->
+    [].
+
+support_rate_of(Members) ->
+    Supported = length([ok || #{support := true} <- Members]),
+    case length(Members) of
+        0 -> 0.0;
+        N -> Supported / N
+    end.
 
 %% ===================================================================
 %% 历史（多轮上下文）

@@ -53,6 +53,14 @@
     %% C 组（v4 02-C）：接管闩锁（粘性 + generation_epoch 自增）。
     latch_handoff/4,
     latch_org_pending/2,
+    %% D 组（v4 02-D）：gate 数据面（config 窄读取 / canary / 引用复核 /
+    %% session_open）。非 cs_ai_port 冻结 callback，经 impl/1 动态调用。
+    fetch_gate_config/1,
+    canary_covers/3,
+    citations_current/4,
+    session_open_tx/3,
+    session_open/2,
+    search_faq_lexical/4,
     %% 冻结语句静态断言面（cs_pg_seat:sql_statements/0 先例；零 DB）。
     sql_statements/0
 ]).
@@ -139,6 +147,30 @@ fetch_config(OrgId) ->
     >>,
     cs_pg_common:fetch_one(Sql, [OrgId], ?CONFIG_KEYS).
 
+%% @doc D 组 gate 专用窄读取：只取 gate 需要的 v4 列（02-D gate_1/gate_3）。
+%% 与 v1 `fetch_config/1` 分离：字段对照表的逐项替换属 P0-8（04 合同 §P0-8.4），
+%% 而 gate_1 语义只能读 v4 列（`auto_reply_mode`/`faq_require_hit`）；P0-8
+%% 对齐后本函数可由对齐版 fetch_config 取代。
+-spec fetch_gate_config(integer()) -> {ok, map()} | {error, term()}.
+fetch_gate_config(OrgId) ->
+    Sql = <<
+        "SELECT auto_reply_mode, faq_require_hit, config_version, seat_identity_id "
+        "FROM customer_service_ai_agent WHERE organization_id=$1 ORDER BY id LIMIT 1"
+    >>,
+    case elib_pg:query(Sql, [OrgId]) of
+        {ok, [Row]} ->
+            {ok, #{
+                auto_reply_mode => maps:get(<<"auto_reply_mode">>, Row, <<"disabled">>),
+                faq_require_hit => maps:get(<<"faq_require_hit">>, Row, true),
+                config_version => maps:get(<<"config_version">>, Row, 1),
+                seat_identity_id => maps:get(<<"seat_identity_id">>, Row, undefined)
+            }};
+        {ok, []} ->
+            {error, not_found};
+        {error, Reason} ->
+            {error, Reason}
+    end.
+
 upsert_config(OrgId, Params) ->
     Sql = <<
         "INSERT INTO customer_service_ai_agent "
@@ -161,7 +193,7 @@ upsert_config(OrgId, Params) ->
     Args = [
         OrgId,
         maps:get(id, Params),
-        opt(Params, name, <<"智能客服">>),
+        opt(Params, name, <<"智能客服"/utf8>>),
         opt(Params, provider, <<"bigmodel">>),
         opt(Params, model, <<>>),
         opt(Params, system_prompt, <<>>),
@@ -232,42 +264,51 @@ delete_faq(OrgId, FaqId) when is_integer(FaqId) ->
 delete_faq(_OrgId, _FaqId) ->
     {error, {invalid_argument, faq_id}}.
 
-%% 词法检索：PG 侧分词 → OR 组 tsquery（见模块头注释）。
+%% 词法检索（02-D.5 v4 语义）：PG 侧分词 → OR 组 tsquery（多词 AND 会
+%% 零命中）；status='published' + 有效期窗 + workspace 适用范围。
+%% 02-D.5 字面的 `f.workspace_id = $2` 在 v4 schema 中以 scope_workspace_ids
+%% 数组语义等价落地（表无 workspace_id 列，P0-1 时已记录该张力）：
+%% 空数组 = 本 org 全部 workspace。
 search_faq_lexical(OrgId, Query, Limit) when is_binary(Query), Query =/= <<>> ->
+    search_faq_lexical(OrgId, 0, Query, Limit);
+search_faq_lexical(_OrgId, _Query, _Limit) ->
+    {ok, []}.
+
+%% @doc 带 workspace 约束的词法检索（WorkspaceId = 0 时不约束，管理面用；
+%% 运行时检索必须传真实 workspace）。有效期窗与 status 双门：过期/停更
+%% FAQ 不可被引用（D-3 的检索侧源头）。
+search_faq_lexical(OrgId, WsId, Query, Limit) when is_binary(Query), Query =/= <<>> ->
+    %% 02-D.5 的 OR 组构造有一个与本 pg_jieba 构建冲突的洞：jiebacfg 会把
+    %% 词间空格本身产出 ' ' 词位，array_to_string 后得到 " | 发票 | 退款"
+    %% 这类非法 tsquery（服务端 syntax error in tsquery）。此处过滤空白
+    %% 词位——语义与合同一致（多词 OR），D-4 验收（多词命中>0）优先。
     Sql = <<
         "WITH q AS MATERIALIZED ("
-        "  SELECT array_to_string(tsvector_to_array(to_tsvector('jiebacfg',$2)), ' | ') AS tsq"
+        "  SELECT (SELECT string_agg(x, ' | ')"
+        "            FROM unnest(tsvector_to_array(to_tsvector('jiebacfg',$3))) AS x"
+        "           WHERE btrim(x) <> '') AS tsq"
         ") "
         "SELECT f.id, "
         "  ts_rank(f.search_tsv, CASE WHEN q.tsq='' THEN NULL ELSE to_tsquery('jiebacfg',q.tsq) END)::float8 AS score "
         "FROM customer_service_faq f, q "
-        "WHERE f.organization_id=$1 AND f.enabled = true "
+        "WHERE f.organization_id=$1 AND f.status = 'published' "
+        "  AND (f.valid_until IS NULL OR f.valid_until > now())"
+        "  AND (f.valid_from IS NULL OR f.valid_from <= now()) "
+        "  AND ($2::bigint = 0 OR $2 = ANY(f.scope_workspace_ids) OR f.scope_workspace_ids = '{}') "
         "  AND f.search_tsv @@ CASE WHEN q.tsq='' THEN NULL ELSE to_tsquery('jiebacfg',q.tsq) END "
-        "ORDER BY score DESC, f.id ASC LIMIT $3"
+        "ORDER BY score DESC, f.id ASC LIMIT $4"
     >>,
-    case cs_pg_common:fetch_many(Sql, [OrgId, Query, pos(Limit, 10)], [id, score]) of
+    Args = [OrgId, int(WsId, 0), Query, pos(Limit, 10)],
+    case cs_pg_common:fetch_many(Sql, Args, [id, score]) of
         {ok, Rows} -> {ok, [{maps:get(id, R), maps:get(score, R, 0.0)} || R <- Rows]};
         {error, _} = Err -> Err
     end;
-search_faq_lexical(_OrgId, _Query, _Limit) ->
+search_faq_lexical(_OrgId, _WsId, _Query, _Limit) ->
     {ok, []}.
 
-%% 语义检索（pgvector）：embedding 为 NULL 的行天然被 `IS NOT NULL` 排除。
-search_faq_vector(OrgId, Vector, Limit) when is_list(Vector), Vector =/= [] ->
-    Sql = <<
-        "SELECT id, (1 - (embedding <=> $2::text::vector))::float8 AS similarity "
-        "FROM customer_service_faq "
-        "WHERE organization_id=$1 AND enabled = true AND embedding IS NOT NULL "
-        "ORDER BY embedding <=> $2::text::vector LIMIT $3"
-    >>,
-    case
-        cs_pg_common:fetch_many(Sql, [OrgId, vector_literal(Vector), pos(Limit, 10)], [
-            id, similarity
-        ])
-    of
-        {ok, Rows} -> {ok, [{maps:get(id, R), maps:get(similarity, R, 0.0)} || R <- Rows]};
-        {error, _} = Err -> Err
-    end;
+%% 语义检索：v4 迁移**无 vector 列**（R17；向量/RRF 扩展不在 P0 范围，
+%% 由后续独立迁移添加）。通道恒空 = fail-closed（应用层未配置 embedding
+%% provider 时不调用为前提，双保险：误调用也不产生 SQL 错误或假数据）。
 search_faq_vector(_OrgId, _Vector, _Limit) ->
     {ok, []}.
 
@@ -432,7 +473,7 @@ list_sessions(OrgId, Params) ->
         "LEFT JOIN customer_service_ai_session a "
         "  ON a.organization_id=s.organization_id AND a.workspace_id=s.workspace_id AND a.session_id=s.id "
         "WHERE s.organization_id=$1 "
-        "  AND ($2 = 0 OR s.workspace_id = $2) "
+        "  AND ($2::bigint = 0 OR s.workspace_id = $2) "
         "  AND ($3 = '' OR s.status = $3) "
         "  AND ($4 = '' OR coalesce(a.current_intent,'') = $4) "
         "ORDER BY s.id DESC LIMIT $5 OFFSET $6"
@@ -459,7 +500,7 @@ list_sessions(OrgId, Params) ->
         "LEFT JOIN customer_service_ai_session a "
         "  ON a.organization_id=s.organization_id AND a.workspace_id=s.workspace_id AND a.session_id=s.id "
         "WHERE s.organization_id=$1 "
-        "  AND ($2 = 0 OR s.workspace_id = $2) "
+        "  AND ($2::bigint = 0 OR s.workspace_id = $2) "
         "  AND ($3 = '' OR s.status = $3) "
         "  AND ($4 = '' OR coalesce(a.current_intent,'') = $4)"
     >>,
@@ -487,23 +528,23 @@ stats(OrgId, Params) ->
         "count(*) FILTER (WHERE rating = 2)::bigint AS rating_2,"
         "count(*) FILTER (WHERE rating = 1)::bigint AS rating_1,"
         "count(*) FILTER (WHERE status = 'closed')::bigint AS closed "
-        "FROM customer_service_session WHERE organization_id=$1 AND ($2 = 0 OR workspace_id = $2)"
+        "FROM customer_service_session WHERE organization_id=$1 AND ($2::bigint = 0 OR workspace_id = $2)"
     >>,
     IntentSql = <<
         "SELECT coalesce(current_intent,'') AS intent, count(*)::bigint AS n,"
         "count(*) FILTER (WHERE handoff)::bigint AS handoff_n "
-        "FROM customer_service_ai_session WHERE organization_id=$1 AND ($2 = 0 OR workspace_id = $2) "
+        "FROM customer_service_ai_session WHERE organization_id=$1 AND ($2::bigint = 0 OR workspace_id = $2) "
         "GROUP BY 1 ORDER BY n DESC, 1 ASC"
     >>,
     ActionSql = <<
         "SELECT action, count(*)::bigint AS n FROM customer_service_ai_turn "
-        "WHERE organization_id=$1 AND ($2 = 0 OR workspace_id = $2) GROUP BY 1 ORDER BY n DESC, 1 ASC"
+        "WHERE organization_id=$1 AND ($2::bigint = 0 OR workspace_id = $2) GROUP BY 1 ORDER BY n DESC, 1 ASC"
     >>,
     TurnSql = <<
         "SELECT count(*)::bigint AS turns,"
         "count(*) FILTER (WHERE action = 'handoff')::bigint AS handoff_turns,"
         "coalesce(avg(latency_ms),0)::float8 AS avg_latency_ms "
-        "FROM customer_service_ai_turn WHERE organization_id=$1 AND ($2 = 0 OR workspace_id = $2)"
+        "FROM customer_service_ai_turn WHERE organization_id=$1 AND ($2::bigint = 0 OR workspace_id = $2)"
     >>,
     SessionKeys = [
         sessions,
@@ -980,6 +1021,89 @@ identity_actor(OrgId, IdentityId) ->
     end.
 
 %% ===================================================================
+%% D 组（v4 02-D）：证据 gate 数据面
+%% ===================================================================
+
+%% @doc gate_1（mode_ok）的 canary 覆盖检查：canary 白名单覆盖
+%% workspace 或 session 粒度；空集 = canary 不投任何会话（迁移 180 注释）。
+-spec canary_covers(integer(), integer(), integer()) -> {ok, boolean()} | {error, term()}.
+canary_covers(OrgId, WsId, SessionId) ->
+    Sql = <<
+        "SELECT EXISTS ("
+        "  SELECT 1 FROM customer_service_ai_canary"
+        "   WHERE organization_id=$1 AND scope_kind='workspace' AND scope_id=$2"
+        ") OR EXISTS ("
+        "  SELECT 1 FROM customer_service_ai_canary"
+        "   WHERE organization_id=$1 AND scope_kind='session' AND scope_id=$3"
+        ") AS covers"
+    >>,
+    case elib_pg:query(Sql, [OrgId, WsId, SessionId]) of
+        {ok, [#{<<"covers">> := V}]} when is_boolean(V) -> {ok, V};
+        {ok, _} -> {ok, false};
+        {error, Reason} -> {error, Reason}
+    end.
+
+%% @doc gate_4（citations_current）：每个 cited (id, version) 的当前行仍是
+%% published、未过期、version 一致——任一失配即 stale（I10：引用版本一致）。
+%% 无引用时返回 {ok, false}（gate_3 的 require_hit 另判）。
+-spec citations_current(term(), integer(), [integer()], [integer()]) ->
+    {ok, boolean()} | {error, term()}.
+citations_current(_Conn, _OrgId, [], _Versions) ->
+    {ok, false};
+citations_current(Conn, OrgId, FaqIds, FaqVersions) when
+    is_list(FaqIds), is_list(FaqVersions), length(FaqIds) =:= length(FaqVersions)
+->
+    Sql = <<
+        "SELECT count(*)::bigint AS ok_count"
+        "  FROM unnest($2::bigint[], $3::integer[]) AS c(fid, fver)"
+        "  JOIN customer_service_faq f"
+        "    ON f.organization_id = $1 AND f.id = c.fid AND f.version = c.fver"
+        " WHERE f.status = 'published'"
+        "   AND (f.valid_until IS NULL OR f.valid_until > now())"
+        "   AND (f.valid_from IS NULL OR f.valid_from <= now())"
+    >>,
+    Expected = length(FaqIds),
+    case elib_pg:query(Conn, Sql, [OrgId, FaqIds, FaqVersions]) of
+        {ok, [#{<<"ok_count">> := N}]} when is_integer(N) -> {ok, N =:= Expected};
+        {ok, _} -> {ok, false};
+        {error, Reason} -> {error, Reason}
+    end;
+citations_current(_Conn, _OrgId, _Ids, _Versions) ->
+    {error, {invalid_argument, citations}}.
+
+%% @doc gate_7（session_open）：会话 status ∈ {queued, active}。
+-spec session_open_tx(term(), integer(), integer()) -> {ok, boolean()} | {error, term()}.
+session_open_tx(Conn, OrgId, SessionId) ->
+    Sql = <<
+        "SELECT status FROM customer_service_session"
+        " WHERE organization_id=$1 AND id=$2"
+    >>,
+    case elib_pg:query(Conn, Sql, [OrgId, SessionId]) of
+        {ok, [#{<<"status">> := <<"queued">>}]} -> {ok, true};
+        {ok, [#{<<"status">> := <<"active">>}]} -> {ok, true};
+        {ok, [_]} -> {ok, false};
+        {ok, []} -> {ok, false};
+        {error, Reason} -> {error, Reason}
+    end.
+
+%% @doc gate_7 的投递前置快检（池连接版）：会话在进入 canonical 事务**之前**
+%% 已关闭 ⇒ 免组装整条消息链直接跳过。事务内复核（竞态窗口）仍由
+%% delivery_hook 里的 gate_fun 承担——本函数只是同谓语的提前求值。
+-spec session_open(integer(), integer()) -> {ok, boolean()} | {error, term()}.
+session_open(OrgId, SessionId) ->
+    Sql = <<
+        "SELECT status FROM customer_service_session"
+        " WHERE organization_id=$1 AND id=$2"
+    >>,
+    case elib_pg:query(Sql, [OrgId, SessionId]) of
+        {ok, [#{<<"status">> := <<"queued">>}]} -> {ok, true};
+        {ok, [#{<<"status">> := <<"active">>}]} -> {ok, true};
+        {ok, [_]} -> {ok, false};
+        {ok, []} -> {ok, false};
+        {error, Reason} -> {error, Reason}
+    end.
+
+%% ===================================================================
 %% C 组（v4 02-C）：人工接管闩锁
 %% ===================================================================
 
@@ -1095,13 +1219,18 @@ job_row(Row) ->
 %% （无 superseded/expired），映射：expired → dead、superseded → cancelled；
 %% 细分原因写 `last_error_code`，调用方返回值保持 `{skipped, expired |
 %% superseded}` 冻结形状。
--spec mark_job_skipped(integer(), integer(), expired | superseded) ->
-    {ok, skipped, expired | superseded} | {error, term()}.
+%% 180 七态映射（B.4 冻结语义 × CHECK 值域）：expired→dead、
+%% superseded/stale_citation→cancelled、no_grounding→failed（I9/I10 细分
+%% 写 last_error_code）。
+-spec mark_job_skipped(integer(), integer(), expired | superseded | stale_citation | no_grounding) ->
+    {ok, skipped, expired | superseded | stale_citation | no_grounding} | {error, term()}.
 mark_job_skipped(OrgId, JobId, Reason) ->
     {Status, Code} =
         case Reason of
             expired -> {<<"dead">>, <<"expired">>};
-            superseded -> {<<"cancelled">>, <<"superseded">>}
+            superseded -> {<<"cancelled">>, <<"superseded">>};
+            stale_citation -> {<<"cancelled">>, <<"stale_citation">>};
+            no_grounding -> {<<"failed">>, <<"no_grounding">>}
         end,
     Sql = <<
         "UPDATE customer_service_ai_job"
