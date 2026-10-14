@@ -476,10 +476,10 @@ link_or_provision(Sub, Email, Name, Verified) ->
         Id when is_integer(Id), Id > 0 ->
             bind_identity(Sub, Id, Email);
         _ ->
-            provision(Sub, Email, Name)
+            provision(Sub, Email, Name, Verified)
     end.
 
-provision(Sub, Email, Name) ->
+provision(Sub, Email, Name, Verified) ->
     %% License 规模 gate：复用 passport_logic:quota_guard/0（勿绕过）
     case passport_logic:quota_guard() of
         {error, Msg, ErrCode} ->
@@ -501,8 +501,8 @@ provision(Sub, Email, Name) ->
                 {ok, Uid} ->
                     bind_identity(Sub, Uid, Email);
                 {error, {error, error, <<"23505">>, unique_violation, _Msg, _Details}} ->
-                    %% 并发注册竞态：回读 email 关联
-                    case Email =/= <<>> andalso user_ds:find_id_by_email(Email) of
+                    %% 唯一键冲突不提升邮箱可信度；回读仍须满足初次关联的验证条件。
+                    case Verified andalso Email =/= <<>> andalso user_ds:find_id_by_email(Email) of
                         Id2 when is_integer(Id2), Id2 > 0 ->
                             bind_identity(Sub, Id2, Email);
                         _ ->
