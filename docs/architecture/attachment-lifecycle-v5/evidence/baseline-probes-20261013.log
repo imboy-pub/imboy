@@ -1,0 +1,29 @@
+BEGIN
+INSERT 0 1
+INSERT 0 1
+DO
+               evidence                
+---------------------------------------
+ OBSERVED_CONFIRM_STYLE_UPSERT_COUNT_2
+(1 row)
+
+INSERT 0 1
+INSERT 0 1
+DO
+             evidence              
+-----------------------------------
+ OBSERVED_PENDING_IDENTITY_MUTABLE
+(1 row)
+
+UPDATE 1
+DO
+                 evidence                 
+------------------------------------------
+ OBSERVED_ATTACHMENT_IDENTITY_NO_DB_GUARD
+(1 row)
+
+ROLLBACK
+ remaining_synthetic_rows 
+--------------------------
+                        0
+(1 row)

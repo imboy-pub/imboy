@@ -1,0 +1,9 @@
+!evidence/
+evidence/*
+!evidence/current-baseline.json
+!evidence/schema-rebuild-20261013.log
+!evidence/catalog-20261013.txt
+!evidence/catalog-extra-20261013.txt
+!evidence/baseline-probes-20261013.log
+!evidence/catalog-query.sql
+!evidence/baseline-probes.sql

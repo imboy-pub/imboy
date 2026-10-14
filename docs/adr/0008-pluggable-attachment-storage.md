@@ -1,7 +1,7 @@
 # ADR: 建立附件 Storage Boundary 并固化对象位置
 
-- Status: Proposed
-- Date: 2026-09-25
+- Status: Accepted（V5.5 生命周期合同对齐；存储搬迁建议由 V5 proof 回填合同替代）
+- Date: 2026-09-25（V5 对齐修订 2026-10-14）
 - 关联：ADR 0001（四层单向依赖）、ADR 0007（Feature Slice）、
   `docs/architecture/2026-09-25-attachment-pluggable-storage-disk-phase1-plan.md`
 
@@ -116,10 +116,13 @@ Garage/COS/OSS 的 `put_url` 和私有查看 URL 指向对象存储，public sco
 
 ### 3. 固化 AttachmentStorageLocation
 
-`attachment` 增加非空 `storage_driver` 和可空 `storage_bucket`；`attach_pending` 增加
-`storage_driver`，并允许现有 `bucket` 在 disk 行为 NULL。存量附件回填为 `garage`，
-bucket 按现有 scope 规则回填。数据库约束要求 Garage/COS/OSS 的 bucket 非空，disk 的
-bucket 为 NULL。
+`attachment`/`attach_pending` 增加可空 `storage_driver`/`storage_namespace`/
+`storage_container`/`storage_locator_sha256`（V5 完整身份 I，见
+`docs/architecture/attachment-lifecycle-v5/`，本节由 V5 生命周期合同修订）。
+**存量附件不做按 scope 的全量 garage 回填**：历史位置或引用完整性不可证明的行
+保持 NULL 且 `gc_verified=false`，仅在专用 proof 流程（manifest 摘要 + 同事务 CAS +
+审计）下一次性回填；回填不伴随删除。Garage 的 container 必须与既有 bucket 相等，
+Disk 的旧 bucket 允许空串兼容。
 
 业务层使用统一位置值：
 

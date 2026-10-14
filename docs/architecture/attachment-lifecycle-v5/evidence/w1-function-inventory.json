@@ -1,0 +1,219 @@
+{
+    "phase": "guards-contract",
+    "roles": [
+        "v5_app_runtime",
+        "v5_fn_owner",
+        "v5_probe_runtime",
+        "v5_proof",
+        "v5_worker"
+    ],
+    "run_id": "att-v5-20261014-121848-3714",
+    "task_id": "W1-02",
+    "functions": [
+        {
+            "acl": "{v5_fn_owner=X/v5_fn_owner,v5_worker=X/v5_fn_owner}",
+            "name": "fn_v5_ack_eb",
+            "owner": "v5_fn_owner",
+            "signature": "p_org bigint, p_ws bigint, p_asset bigint, p_token uuid, p_ok boolean",
+            "definition_sha256": "9db56b6776b7ebca691112dbc4f92201"
+        },
+        {
+            "acl": "{v5_fn_owner=X/v5_fn_owner,v5_worker=X/v5_fn_owner}",
+            "name": "fn_v5_ack_ordinary",
+            "owner": "v5_fn_owner",
+            "signature": "p_path text, p_token uuid, p_ok boolean",
+            "definition_sha256": "f1e32431adfb2219586ab3ff8716d4e1"
+        },
+        {
+            "acl": "{imboy_user=X/imboy_user}",
+            "name": "fn_v5_attachment_identity_immutable",
+            "owner": "imboy_user",
+            "signature": "",
+            "definition_sha256": "735d6a3962ffae7f767829b30b2d448a"
+        },
+        {
+            "acl": "{imboy_user=X/imboy_user}",
+            "name": "fn_v5_attachment_location_immutable",
+            "owner": "imboy_user",
+            "signature": "",
+            "definition_sha256": "5963739d436dad648a7092106db58190"
+        },
+        {
+            "acl": "{v5_fn_owner=X/v5_fn_owner,v5_worker=X/v5_fn_owner}",
+            "name": "fn_v5_claim_eb",
+            "owner": "v5_fn_owner",
+            "signature": "p_token uuid",
+            "definition_sha256": "2c286c539acacdf9f1582d6995a638b5"
+        },
+        {
+            "acl": "{v5_fn_owner=X/v5_fn_owner,v5_worker=X/v5_fn_owner}",
+            "name": "fn_v5_claim_ordinary",
+            "owner": "v5_fn_owner",
+            "signature": "p_token uuid",
+            "definition_sha256": "b1e4bba5dfd8d596691933110fdeeb54"
+        },
+        {
+            "acl": "{v5_fn_owner=X/v5_fn_owner,v5_app_runtime=X/v5_fn_owner}",
+            "name": "fn_v5_confirm_pending",
+            "owner": "v5_fn_owner",
+            "signature": "p_object_key text, p_attachment_id bigint",
+            "definition_sha256": "5547cd517151c5806b43405a1a2c6a48"
+        },
+        {
+            "acl": "{v5_fn_owner=X/v5_fn_owner,v5_app_runtime=X/v5_fn_owner}",
+            "name": "fn_v5_copy_eb_recovery_tombstone",
+            "owner": "v5_fn_owner",
+            "signature": "p_org bigint, p_ws bigint, p_asset bigint",
+            "definition_sha256": "b0bf53c51bf24d54f035a4f3157f52ac"
+        },
+        {
+            "acl": "{imboy_user=X/imboy_user}",
+            "name": "fn_v5_eb_audit_actor_guard",
+            "owner": "imboy_user",
+            "signature": "",
+            "definition_sha256": "63ed9c071ccd4701ba304fd99849fd31"
+        },
+        {
+            "acl": "{imboy_user=X/imboy_user}",
+            "name": "fn_v5_eb_registration_guard",
+            "owner": "imboy_user",
+            "signature": "",
+            "definition_sha256": "7f20917e3a82318cbedb143b7cb7e758"
+        },
+        {
+            "acl": "{imboy_user=X/imboy_user}",
+            "name": "fn_v5_first_bind_guard",
+            "owner": "imboy_user",
+            "signature": "",
+            "definition_sha256": "72f9f7787f813c9452b222e553762787"
+        },
+        {
+            "acl": "{v5_fn_owner=X/v5_fn_owner,v5_app_runtime=X/v5_fn_owner}",
+            "name": "fn_v5_intent_eb_delete",
+            "owner": "v5_fn_owner",
+            "signature": "p_org bigint, p_ws bigint, p_asset bigint, p_reason text",
+            "definition_sha256": "1c47bf121589e8d8322e5e3cfa5a1bd2"
+        },
+        {
+            "acl": "{v5_fn_owner=X/v5_fn_owner,v5_app_runtime=X/v5_fn_owner}",
+            "name": "fn_v5_intent_ordinary_delete",
+            "owner": "v5_fn_owner",
+            "signature": "p_path text, p_reason text",
+            "definition_sha256": "6331ea3dcab93ab39e52d394c3519c60"
+        },
+        {
+            "acl": "{v5_fn_owner=X/v5_fn_owner,v5_app_runtime=X/v5_fn_owner,v5_worker=X/v5_fn_owner}",
+            "name": "fn_v5_lock_identity",
+            "owner": "v5_fn_owner",
+            "signature": "p_driver text, p_root text, p_container text, p_key text",
+            "definition_sha256": "dae4fbe43e538df3fc524fad60af1bb0"
+        },
+        {
+            "acl": "{imboy_user=X/imboy_user}",
+            "name": "fn_v5_metadata_delete_guard",
+            "owner": "imboy_user",
+            "signature": "",
+            "definition_sha256": "af2fdf9f417509a14075c2e16be3ebe1"
+        },
+        {
+            "acl": "{imboy_user=X/imboy_user}",
+            "name": "fn_v5_pending_session_guard",
+            "owner": "imboy_user",
+            "signature": "",
+            "definition_sha256": "c0568ac090146c262e16d633655c7b57"
+        },
+        {
+            "acl": "{v5_fn_owner=X/v5_fn_owner,v5_app_runtime=X/v5_fn_owner}",
+            "name": "fn_v5_pin_pending_content",
+            "owner": "v5_fn_owner",
+            "signature": "p_object_key text, p_content jsonb",
+            "definition_sha256": "a659bc744471d63546091ad2924e8a9d"
+        },
+        {
+            "acl": "{v5_fn_owner=X/v5_fn_owner,v5_proof=X/v5_fn_owner}",
+            "name": "fn_v5_proof_activate_ordinary",
+            "owner": "v5_fn_owner",
+            "signature": "p_path text, p_driver text, p_namespace text, p_container text, p_locator text",
+            "definition_sha256": "0ca09213ba252967657c7b799ded4c8b"
+        },
+        {
+            "acl": "{imboy_user=X/imboy_user}",
+            "name": "fn_v5_queue_job_guard",
+            "owner": "imboy_user",
+            "signature": "",
+            "definition_sha256": "256137d856967e1a280b8ded75201e14"
+        },
+        {
+            "acl": "{v5_fn_owner=X/v5_fn_owner,v5_worker=X/v5_fn_owner}",
+            "name": "fn_v5_reaper_eb",
+            "owner": "v5_fn_owner",
+            "signature": "p_limit integer",
+            "definition_sha256": "5f7b619dcd81d16fe39ac65a505c13fc"
+        },
+        {
+            "acl": "{v5_fn_owner=X/v5_fn_owner,v5_worker=X/v5_fn_owner}",
+            "name": "fn_v5_reaper_ordinary",
+            "owner": "v5_fn_owner",
+            "signature": "p_limit integer",
+            "definition_sha256": "b5252c46616ae5196e921ab6bab4a32b"
+        },
+        {
+            "acl": "{v5_fn_owner=X/v5_fn_owner,v5_app_runtime=X/v5_fn_owner}",
+            "name": "fn_v5_register_eb",
+            "owner": "v5_fn_owner",
+            "signature": "p_org bigint, p_ws bigint, p_asset bigint, p_object_key text, p_client_upload_id uuid, p_registration jsonb, p_subject_kind text, p_deadline timestamp with time zone, p_expiry timestamp with time zone",
+            "definition_sha256": "dd9789fe3c9e7ae37a0bb9bbc65f3373"
+        },
+        {
+            "acl": "{v5_fn_owner=X/v5_fn_owner,v5_app_runtime=X/v5_fn_owner}",
+            "name": "fn_v5_register_pending",
+            "owner": "v5_fn_owner",
+            "signature": "p_object_key text, p_bucket text, p_scope text, p_creator bigint, p_client_upload_id uuid, p_registration jsonb, p_deadline timestamp with time zone, p_expiry timestamp with time zone, p_driver text, p_namespace text, p_container text, p_locator text",
+            "definition_sha256": "6bc13561eb39423d8cf3c39cc7b1f57a"
+        }
+    ],
+    "migrations": {
+        "m1": "00000177_attachment_lifecycle_v5_expand",
+        "m2": "00000178_attachment_lifecycle_v5_queue",
+        "m3": "docs/architecture/attachment-lifecycle-v5/guards-contract.sql (deferred to W4-04)"
+    },
+    "generated_at": "2026-10-14 13:12:22.82526+08",
+    "triggers_attached": [
+        {
+            "table": "attachment_object_deletion",
+            "trigger": "trg_v5_aod_job_guard"
+        },
+        {
+            "table": "attachment",
+            "trigger": "trg_v5_attachment_first_bind"
+        },
+        {
+            "table": "attachment",
+            "trigger": "trg_v5_attachment_identity_immutable"
+        },
+        {
+            "table": "attachment",
+            "trigger": "trg_v5_attachment_location_immutable"
+        },
+        {
+            "table": "enterprise_asset",
+            "trigger": "trg_v5_eb_audit_actor_guard"
+        },
+        {
+            "table": "enterprise_asset",
+            "trigger": "trg_v5_eb_registration_guard"
+        },
+        {
+            "table": "enterprise_asset_delete_queue",
+            "trigger": "trg_v5_ebdq_job_guard"
+        },
+        {
+            "table": "attachment",
+            "trigger": "trg_v5_metadata_delete_guard"
+        },
+        {
+            "table": "attach_pending",
+            "trigger": "trg_v5_pending_session_guard"
+        }
+    ]
+}
