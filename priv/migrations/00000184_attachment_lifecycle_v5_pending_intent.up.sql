@@ -5,7 +5,9 @@
 --   'reject'：主动拒绝（confirm 内容复核失败即撤权）。registered → rejected
 --             → delete_intent 同事务两跳（触发器强制合法转换）；不查能力窗
 --             ——主动拒绝本身即写权限耗尽的权威动作。
---   'sweep' ：回收清扫。仅 rejected/expired 起点；上传能力窗必须已耗尽。
+--   'sweep' ：回收清扫。registered（超龄从未 confirm，能力窗已耗尽 →
+--             expired → delete_intent 两跳）或 rejected/expired 起点；
+--             上传能力窗必须已耗尽。
 -- 公共资格：同 path 无 live metadata 行（有则必须走
 -- fn_v5_intent_ordinary_delete，metadata 域资格在其锁内复核）；无既有
 -- tombstone。锁序与 metadata intent 一致：identity 锁（seed 1685）→
@@ -24,13 +26,21 @@ BEGIN
         RAISE EXCEPTION 'v5 pending intent unknown session' USING ERRCODE = 'P0002';
     END IF;
     IF p_mode = 'sweep' THEN
-        IF v_p.session_state NOT IN ('rejected', 'expired') THEN
+        IF v_p.session_state NOT IN ('registered', 'rejected', 'expired') THEN
             RAISE EXCEPTION 'v5 pending sweep illegal from %', v_p.session_state
                 USING ERRCODE = '23510';
         END IF;
         IF v_p.upload_expires_at IS NULL OR v_p.upload_expires_at > now() THEN
             RAISE EXCEPTION 'v5 pending intent upload capability not exhausted'
                 USING ERRCODE = '23510';
+        END IF;
+        IF v_p.session_state = 'registered' THEN
+            UPDATE attach_pending SET session_state = 'expired'
+                WHERE object_key = p_object_key AND session_state = 'registered';
+            IF NOT FOUND THEN
+                RAISE EXCEPTION 'v5 pending intent lost eligibility race'
+                    USING ERRCODE = '40001';
+            END IF;
         END IF;
     ELSE
         IF v_p.session_state <> 'registered' THEN

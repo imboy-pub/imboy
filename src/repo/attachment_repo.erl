@@ -40,6 +40,8 @@
 
 %% @doc 获取孤儿附件列表（供物理删除）
 -export([orphan_list_for_delete/1, delete_orphan_tx/3]).
+%% W4-01 入口收口：metadata 域删除意图（fn_v5_intent_ordinary_delete 包装）
+-export([intent_ordinary_delete_tx/3, intent_ordinary_delete/2, orphan_path_tx/3]).
 
 %% @doc 物理删除数据库行（S3 删除成功后调用）
 -export([hard_delete_by_ids/1]).
@@ -64,6 +66,7 @@
 -include_lib("eunit/include/eunit.hrl").
 -include("log.hrl").
 -include_lib("kernel/include/logger.hrl").
+-include_lib("epgsql/include/epgsql.hrl").
 
 %% image mime 归一为标准子类型（eunit 验收；修复前 image/jpeg 被扩展名
 %% 重写成 image/jpg），定义见文件尾 normalize_image_mime/1
@@ -535,6 +538,41 @@ delete_orphan_tx(Conn, Id, Opts) ->
             <<" a WHERE a.id = $2 AND ">>,
             orphan_predicate(),
             <<" RETURNING a.path,a.scope">>
+        ],
+        [maps:get(age_days, Opts, 30), Id]
+    ).
+
+%% W4-01 入口收口（02 §4/§5）：metadata 域删除意图（迁移 179 fn）。
+%% 资格全部在 fn 内锁后复核：gc_verified=true + 无治理行/绑定/收藏/moment
+%% + 能力窗耗尽。23510=资格不满足（保守保留，调用方按 skipped 裁决）；
+%% 23505=tombstone（job 已在队列）；P0002=无 metadata 行。
+-spec intent_ordinary_delete_tx(pid() | any(), binary(), binary()) ->
+    ok | {error, intent_conflict | tombstone | not_found | term()}.
+intent_ordinary_delete_tx(Conn, Path, Reason) ->
+    case elib_pg:query(Conn, <<"SELECT fn_v5_intent_ordinary_delete($1, $2)">>, [Path, Reason]) of
+        {ok, _} -> ok;
+        {error, #error{code = <<"23510">>}} -> {error, intent_conflict};
+        {error, #error{code = <<"23505">>}} -> {error, tombstone};
+        {error, #error{code = <<"P0002">>}} -> {error, not_found};
+        {error, R} -> {error, R}
+    end.
+
+-spec intent_ordinary_delete(binary(), binary()) ->
+    ok | {error, intent_conflict | tombstone | not_found | term()}.
+intent_ordinary_delete(Path, Reason) ->
+    elib_pg:with_tx(fun(Conn) -> intent_ordinary_delete_tx(Conn, Path, Reason) end).
+
+%% 孤儿意图的只读定位（收口后行删除由队列 ack 协议负责，意图阶段不删行）。
+-spec orphan_path_tx(pid() | any(), integer(), map()) -> {ok, [map()]} | {error, term()}.
+orphan_path_tx(Conn, Id, Opts) ->
+    elib_pg:query(
+        Conn,
+        [
+            <<"SELECT a.path, a.scope FROM ">>,
+            tablename(),
+            <<" a WHERE a.id = $2 AND ">>,
+            orphan_predicate(),
+            <<" LIMIT 1">>
         ],
         [maps:get(age_days, Opts, 30), Id]
     ).

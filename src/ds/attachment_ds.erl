@@ -160,39 +160,47 @@ soft_delete(Id) -> attachment_repo:update_status(Id, -1).
 orphan_stats(Opts) -> attachment_repo:orphan_stats(Opts).
 
 %% Commit metadata deletion and its durable job before deleting object bytes.
+%% W4-01 入口收口（02 §4/§5）：orphan 清理不再删字节——对每个孤儿发
+%% metadata 域删除意图（fn_v5_intent_ordinary_delete 锁后复核 gc_verified/
+%% 治理/绑定；不可证明对象保守保留），字节由 Worker 删；行删除由队列 ack
+%% 协议负责。cleaned 计数语义 = 已发删除意图数。
 -spec orphan_cleanup(map()) -> {ok, #{cleaned := integer(), errors := integer()}} | {error, term()}.
 orphan_cleanup(Opts) ->
     case attachment_repo:orphan_list_for_delete(Opts) of
         {ok, Rows} ->
-            Errors = lists:foldl(
-                fun(Row, Count) ->
+            {Queued, Errors} = lists:foldl(
+                fun(Row, {Q, E}) ->
                     case queue_orphan(maps:get(<<"id">>, Row), Opts) of
-                        queued -> Count;
-                        skipped -> Count;
-                        _ -> Count + 1
+                        queued -> {Q + 1, E};
+                        skipped -> {Q, E};
+                        _ -> {Q, E + 1}
                     end
                 end,
-                0,
+                {0, 0},
                 Rows
             ),
-            flush_orphan_jobs(Errors);
+            {ok, #{cleaned => Queued, errors => Errors}};
         {error, R} ->
             {error, R}
     end.
 
 queue_orphan(Id, Opts) ->
     elib_pg:with_tx(fun(Conn) ->
-        case attachment_repo:delete_orphan_tx(Conn, Id, Opts) of
+        case attachment_repo:orphan_path_tx(Conn, Id, Opts) of
             {ok, []} ->
                 skipped;
             {ok, [Row]} ->
                 Path = maps:get(<<"path">>, Row),
                 case
-                    attachment_gc_repo:enqueue_tx(
-                        Conn, Path, elib_oss:get_bucket(maps:get(<<"scope">>, Row))
+                    attachment_repo:intent_ordinary_delete_tx(
+                        Conn, Path, <<"orphan cleanup">>
                     )
                 of
                     ok -> queued;
+                    %% 资格不满足（gc_verified=false/治理/绑定）或已在队列：
+                    %% 保守保留，不计错误
+                    {error, intent_conflict} -> skipped;
+                    {error, tombstone} -> skipped;
                     {error, R} -> throw({abort_tx, R})
                 end;
             {error, R} ->
@@ -265,44 +273,44 @@ pending_remove(ObjectKey) ->
     attach_pending_repo:remove(ObjectKey).
 
 %% Pending garbage shares the confirmation path lock and durable deletion queue.
+%% W4-01 入口收口（02 §2/§5）：pending 清理不再删 pending 行+字节——对每个
+%% 超龄 session 发 pending 域删除意图（fn_v5_intent_pending_delete sweep：
+%% registered→expired→delete_intent，同事务 ready job+审计），字节由 Worker
+%% 删。cleaned 计数语义 = 已发删除意图数。
 -spec pending_cleanup(integer()) ->
     {ok, #{cleaned := integer(), errors := integer()}} | {error, term()}.
 pending_cleanup(AgeHours) ->
     case attach_pending_repo:list_expired(AgeHours) of
         {ok, Rows} ->
-            Errors = lists:foldl(
-                fun(Row, Count) ->
+            {Queued, Errors} = lists:foldl(
+                fun(Row, {Q, E}) ->
                     case queue_pending(maps:get(<<"object_key">>, Row), AgeHours) of
-                        queued -> Count;
-                        skipped -> Count;
-                        _ -> Count + 1
+                        queued -> {Q + 1, E};
+                        skipped -> {Q, E};
+                        _ -> {Q, E + 1}
                     end
                 end,
-                0,
+                {0, 0},
                 Rows
             ),
-            flush_orphan_jobs(Errors);
+            {ok, #{cleaned => Queued, errors => Errors}};
         {error, R} ->
             {error, R}
     end.
 
-queue_pending(Key, AgeHours) ->
+queue_pending(Key, _AgeHours) ->
     elib_pg:with_tx(fun(Conn) ->
-        case attach_pending_repo:claim_expired_tx(Conn, Key, AgeHours) of
-            {ok, []} ->
-                skipped;
-            {ok, [Row]} ->
-                Bucket =
-                    case maps:get(<<"bucket">>, Row) of
-                        <<>> -> elib_oss:get_bucket(<<"private">>);
-                        B -> B
-                    end,
-                case attachment_gc_repo:enqueue_tx(Conn, Key, Bucket) of
-                    ok -> queued;
-                    {error, R} -> throw({abort_tx, R})
-                end;
-            {error, R} ->
-                throw({abort_tx, R})
+        case
+            attach_pending_repo:intent_pending_delete_tx(
+                Conn, Key, <<"sweep">>, <<"pending cleanup">>
+            )
+        of
+            ok -> queued;
+            %% 资格不满足（能力窗未耗尽等）或已在队列/已清：保守保留
+            {error, intent_conflict} -> skipped;
+            {error, tombstone} -> skipped;
+            {error, not_found} -> skipped;
+            {error, R} -> throw({abort_tx, R})
         end
     end).
 

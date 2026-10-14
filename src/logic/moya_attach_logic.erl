@@ -167,7 +167,9 @@ authorize_review_asset(Uid, Path) ->
 list_unbound(AgeHours) ->
     moya_submission_repo:unbound_teaching_attachments(max(?MIN_UNBOUND_AGE_HOURS, AgeHours)).
 
-%% @doc 清理未绑定教学孤儿附件：先删对象再软删行（status=-1）。
+%% @doc 清理未绑定教学孤儿附件：不再删字节/软删行——发 metadata 域删除
+%% 意图（W4-01 入口收口，02 §4：不在 DB 事务中网络 DELETE），资格由 fn 锁后
+%% 复核（gc_verified/治理/绑定）；字节由 Worker 删，行由队列 ack 协议删。
 %% 供 ecron 定时接线（首版交付函数+测试，定时接线遗留，见 STEP-10/notes.md）。
 -spec cleanup_unbound(integer()) -> {ok, #{cleaned => integer(), errors => integer()}}.
 cleanup_unbound(AgeHours) ->
@@ -178,18 +180,22 @@ cleanup_unbound(AgeHours) ->
             {Cleaned, Errors} = lists:foldl(
                 fun(Row, {C, E}) ->
                     Key = maps:get(<<"path">>, Row, <<>>),
-                    Id = maps:get(<<"id">>, Row, 0),
-                    case elib_oss:delete_object(Key) of
+                    case
+                        attachment_repo:intent_ordinary_delete(
+                            Key, <<"teaching unbound cleanup">>
+                        )
+                    of
                         ok ->
-                            _ =
-                                (try
-                                    attachment_ds:soft_delete(Id)
-                                catch
-                                    _:_ -> ok
-                                end),
                             {C + 1, E};
+                        %% 资格不满足/已在队列/无行：保守保留，不计错误
+                        {error, intent_conflict} ->
+                            {C, E};
+                        {error, tombstone} ->
+                            {C, E};
+                        {error, not_found} ->
+                            {C, E};
                         _ ->
-                            %% 删对象失败：保留行（下轮重试），绝不先删行留对象
+                            %% 意图落败：保留行（下轮重试），绝不直接删
                             {C, E + 1}
                     end
                 end,
