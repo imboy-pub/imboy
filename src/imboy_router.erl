@@ -1056,6 +1056,17 @@ get_routes() ->
             {"/api/adm/feedback/reply", adm_feedback_handler, #{action => reply}},
             {"/api/adm/feedback/status", adm_feedback_handler, #{action => status}},
             {"/api/adm/feedback/delete", adm_feedback_handler, #{action => delete}},
+            %% v4 P0-10（G.4 冻结路径族 /api/adm/cs/ai/*；治理/平台面，
+            %% adm session + customer_service ACL，业务委派 customer_service_facade）
+            {"/api/adm/cs/ai/config", adm_cs_ai_handler, #{action => config_view}},
+            {"/api/adm/cs/ai/config/set", adm_cs_ai_handler, #{action => config_set}},
+            {"/api/adm/cs/ai/faq", adm_cs_ai_handler, #{action => faq_list}},
+            {"/api/adm/cs/ai/faq/upsert", adm_cs_ai_handler, #{action => faq_upsert}},
+            {"/api/adm/cs/ai/faq/delete", adm_cs_ai_handler, #{action => faq_delete}},
+            {"/api/adm/cs/ai/sessions", adm_cs_ai_handler, #{action => sessions}},
+            {"/api/adm/cs/ai/session_turns", adm_cs_ai_handler, #{action => session_turns}},
+            {"/api/adm/cs/ai/stats", adm_cs_ai_handler, #{action => stats}},
+            {"/api/adm/cs/ai/preview", adm_cs_ai_handler, #{action => preview}},
             {"/api/adm/role/list", adm_role_handler, #{action => list}},
             {"/api/adm/roles/list", adm_role_handler, #{action => list}},
             {"/api/adm/role/create", adm_role_handler, #{action => create}},
