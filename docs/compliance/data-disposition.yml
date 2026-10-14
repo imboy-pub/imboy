@@ -1052,6 +1052,20 @@ tables:
     mechanism: delete rows by user ownership column
     review: self-evident
     retention: n/a
+  customer_service_visitor_message_read:
+    action: delete
+    owner: customer_service
+    reason: 访客逐消息首次阅读事实元数据，无正文或凭证
+    mechanism: cascade on customer_service_session or canonical enterprise_message deletion
+    review: self-evident
+    retention: n/a
+  customer_service_visitor_read_cursor:
+    action: delete
+    owner: customer_service
+    reason: 访客阅读辅助最高游标，不证明较低消息已读
+    mechanism: cascade on customer_service_session deletion
+    review: self-evident
+    retention: n/a
   customer_service_seat:
     action: delete
     owner: customer_service
