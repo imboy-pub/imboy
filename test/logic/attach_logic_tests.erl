@@ -713,6 +713,49 @@ authorize_paid_channel_subscription_without_purchase_denies_test_() ->
         end
     ).
 
+authorize_paid_channel_purchase_error_mints_no_capability_test_() ->
+    ?WITH_MECKS(
+        [
+            {attachment_ds, [
+                {authorize_channel_scope, 2, fun(_, _) -> true end},
+                {find_by_path, 1, fun(_) ->
+                    {ok, #{<<"scope">> => <<"channel">>, <<"scope_ref">> => <<"9">>}}
+                end}
+            ]},
+            {channel_ds, [
+                {find_by_id, 2, fun(_, _) ->
+                    #{
+                        <<"id">> => 9,
+                        <<"access_type">> => 1,
+                        <<"visibility">> => 0,
+                        <<"status">> => 1
+                    }
+                end}
+            ]},
+            {channel_admin_ds, [{get_role, 2, fun(_, _) -> 0 end}]},
+            {channel_order_ds, [
+                {has_purchased, 2, fun(_, _) ->
+                    {error, connection_closed}
+                end}
+            ]},
+            {attachment_download_ticket, [
+                {issue, 3, fun(_, _, _) ->
+                    error(purchase_error_must_not_issue_ticket)
+                end}
+            ]},
+            {elib_oss, [
+                {presign_get_for_key, 3, fun(_, _, _) ->
+                    error(purchase_error_must_not_sign_download)
+                end}
+            ]}
+        ],
+        fun() ->
+            ?assertEqual({error, forbidden}, attach_logic:view_url(7, <<"u7/ch9/a.png">>)),
+            ?assertEqual(0, meck:num_calls(attachment_download_ticket, issue, '_')),
+            ?assertEqual(0, meck:num_calls(elib_oss, presign_get_for_key, '_'))
+        end
+    ).
+
 %% 上传者本人：channel scope 下「订阅者可访问」语义优先于 creator 归属，
 %% 上传者（creator=查看者）若仍订阅则该频道附件可访问（退订后不可访问，同上例）。
 authorize_channel_uploader_subscribed_grants_test_() ->
