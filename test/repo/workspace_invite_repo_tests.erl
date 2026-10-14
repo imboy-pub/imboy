@@ -1,6 +1,7 @@
 -module(workspace_invite_repo_tests).
 -include_lib("eunit/include/eunit.hrl").
 -include("eunit_setup.hrl").
+-include_lib("epgsql/include/epgsql.hrl").
 
 %%% 工作区团队码 T2.2 — workspace_invite_repo 单元测试（meck DB 层，无数据库依赖）
 %%% 覆盖：团队码字符集/长度性质、rand 边界、add_tx 参数化+23505 归一、
@@ -142,7 +143,7 @@ add_tx_normalizes_unique_violation_test_() ->
             ]},
             {elib_pg, [
                 {'query', 3, fun(_Conn, _Sql, _Params) ->
-                    {error, {pgsql_error, #{code => <<"23505">>}}}
+                    {error, #error{code = <<"23505">>}}
                 end}
             ]}
         ],
