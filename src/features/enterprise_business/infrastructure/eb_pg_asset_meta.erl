@@ -25,6 +25,7 @@
     object_key/3,
     register_v5/9,
     v5_session/3,
+    v5_session_by_cid/3,
     renew_v5/4,
     sql_statements/0
 ]).
@@ -287,6 +288,26 @@ v5_session(OrgId, WsId, AssetId) ->
             )
         of
             {ok, [Row | _]} -> {ok, Row};
+            {ok, []} -> {error, not_found};
+            {error, Reason} -> {error, Reason}
+        end
+    end).
+
+%% @doc 按 client_upload_id 定位会话主行 id（status/renew 的恢复入口）。
+-spec v5_session_by_cid(integer(), integer(), binary()) ->
+    {ok, integer()} | {error, not_found | term()}.
+v5_session_by_cid(OrgId, WsId, Cid) ->
+    eb_pg_exec:with_tenant(OrgId, WsId, fun() ->
+        case
+            elib_pg:query(
+                <<
+                    "SELECT id FROM enterprise_asset WHERE organization_id = $1"
+                    " AND workspace_id = $2 AND client_upload_id = $3::uuid LIMIT 1"
+                >>,
+                [OrgId, WsId, Cid]
+            )
+        of
+            {ok, [#{<<"id">> := Id} | _]} -> {ok, Id};
             {ok, []} -> {error, not_found};
             {error, Reason} -> {error, Reason}
         end
