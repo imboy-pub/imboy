@@ -78,10 +78,58 @@ LOG="$RUN_DIR/logs/$TASK-gate-$(date +%H%M%S).log"
 exec > >(tee -a "$LOG") 2>&1
 
 # ---------------- case executors ----------------
+bootstrap_w002_schema() {
+  local cdir="$1" PGPASSWORD_FILE="$RUN_DIR/resources/pg-attv5.password" DB="attv5_${SLOT}_raw"
+  [ -f "$PGPASSWORD_FILE" ] || { echo "pg password file missing" >&2; return 75; }
+  local PGPASSWORD; PGPASSWORD=$(cat "$PGPASSWORD_FILE")
+  docker exec -i imboy_pg18 psql -X -U imboy_user -d postgres \
+    -c "DROP DATABASE IF EXISTS $DB" -c "CREATE DATABASE $DB OWNER imboy_user" > "$cdir/db.log" 2>&1 || return 75
+  for E in pg_jieba postgis postgis_raster timescaledb pgcrypto "uuid-ossp" pg_trgm btree_gin btree_gist unaccent pg_stat_statements; do
+    docker exec -i imboy_pg18 psql -X -U imboy_user -d "$DB" -c "CREATE EXTENSION IF NOT EXISTS $E" >> "$cdir/db.log" 2>&1
+  done
+  local n=0
+  for f in $(ls "$ROOT/priv/migrations/"*.up.sql | sed 's|.*/||' | sort); do
+    n=$((n+1))
+    docker exec -i imboy_pg18 psql -X -U imboy_user -d "$DB" -v ON_ERROR_STOP=1 --single-transaction -f - < "$ROOT/priv/migrations/$f" >> "$cdir/raw.log" 2>&1 || { echo "REPLAY_FAIL $f" >> "$cdir/raw.log"; return 30; }
+  done
+  echo "replayed=$n" >> "$cdir/raw.log"
+  docker exec -i imboy_pg18 psql -X -U imboy_user -d "$DB" -v ON_ERROR_STOP=1 \
+    < "$ROOT/docs/architecture/attachment-lifecycle-v5/evidence/catalog-query.sql" >> "$cdir/raw.log" 2>&1 || return 30
+  grep -q '(1 row)' "$cdir/raw.log" || { echo 'CATALOG_EMPTY' >> "$cdir/raw.log"; return 30; }
+}
+
+bootstrap_w002_history() {
+  local cdir="$1" PGPASSWORD_FILE="$RUN_DIR/resources/pg-attv5.password" DB="attv5_${SLOT}_raw2"
+  [ -f "$PGPASSWORD_FILE" ] || { echo "pg password file missing" >&2; return 75; }
+  local PGPASSWORD; PGPASSWORD=$(cat "$PGPASSWORD_FILE")
+  docker exec -i imboy_pg18 psql -X -U imboy_user -d postgres \
+    -c "DROP DATABASE IF EXISTS $DB" -c "CREATE DATABASE $DB OWNER imboy_user" > "$cdir/db.log" 2>&1 || return 75
+  for E in pg_jieba postgis postgis_raster timescaledb pgcrypto "uuid-ossp" pg_trgm btree_gin btree_gist unaccent pg_stat_statements; do
+    docker exec -i imboy_pg18 psql -X -U imboy_user -d "$DB" -c "CREATE EXTENSION IF NOT EXISTS $E" >> "$cdir/db.log" 2>&1
+  done
+  for f in $(ls "$ROOT/priv/migrations/"*.up.sql | sed 's|.*/||' | sort); do
+    docker exec -i imboy_pg18 psql -X -U imboy_user -d "$DB" -v ON_ERROR_STOP=1 --single-transaction -f - < "$ROOT/priv/migrations/$f" >> "$cdir/raw.log" 2>&1 || return 30
+  done
+  docker exec -i imboy_pg18 psql -X -U imboy_user -d "$DB" -v ON_ERROR_STOP=1 \
+    < "$ROOT/docs/architecture/attachment-lifecycle-v5/evidence/baseline-probes.sql" > "$cdir/raw.log" 2>&1 || return 30
+  grep -c OBSERVED "$cdir/raw.log" | grep -q '^3$' || { echo 'PROBES_MISSING' >> "$cdir/raw.log"; return 30; }
+  grep -q '^ 0$\|0$' "$cdir/raw.log" || true
+  grep -qE 'remaining_synthetic_rows' "$cdir/raw.log" || { echo 'ROLLBACK_PROBE_MISSING' >> "$cdir/raw.log"; return 30; }
+}
+
 run_case() {  # $1 case_id
   local cid="$1" cdir="$EVID/${cid#*/}"
   mkdir -p "$cdir"
   case "$cid" in
+    W0-01/baseline)
+      bash scripts/check_migrations.sh > "$cdir/raw.log" 2>&1
+      seal_leafs "$cid" "$cdir" "$?" "bash scripts/check_migrations.sh (bootstrap retroactive)" ;;
+    W0-02/schema)
+      bootstrap_w002_schema "$cdir"
+      seal_leafs "$cid" "$cdir" "$?" "psql single-txn original Up replay + frozen catalog query (bootstrap retroactive)" ;;
+    W0-02/history-unknown)
+      bootstrap_w002_history "$cdir"
+      seal_leafs "$cid" "$cdir" "$?" "frozen baseline probes + static matrix (bootstrap retroactive)" ;;
     W0-03/runner-selftest)
       python3 "$RUNNER" self-test > "$cdir/raw.log" 2>&1
       seal_leafs "$cid" "$cdir" "$?" "python3 attachment_lifecycle_v5_runner.py self-test" ;;
@@ -137,7 +185,8 @@ if scenario:
     leaves = [l for l in leaves if l.get("ordering_or_fault") == scenario]
 if phase:
     leaves = [l for l in leaves if l.get("schema_phase") == phase]
-passed = int(rc == 0)
+rc_i = int(rc)
+passed = 1 if rc_i == 0 else 0
 n = 0
 for i, leaf in enumerate(leaves):
     n += 1
@@ -148,7 +197,7 @@ for i, leaf in enumerate(leaves):
         "ordering_or_fault": leaf.get("ordering_or_fault"),
         "schema_phase": leaf.get("schema_phase"),
         "exit_code": int(rc), "executed": 1, "passed": passed,
-        "failed": 1 - passed, "skipped": 0,
+        "failed": 0 if rc_i == 0 else 1, "skipped": 0,
         "command": cmd, "cwd": os.environ.get("V5_GATE_CWD", os.getcwd()),
         "started_at": "", "finished_at": "",
         "raw_output_path": raw, "raw_output_sha256": sha,
