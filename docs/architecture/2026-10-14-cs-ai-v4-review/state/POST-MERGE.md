@@ -46,8 +46,34 @@
   集群角色 cs_ai_purge 保留（迁移 180 的 schema 预期组件，IF NOT EXISTS
   防护，不在"库清理"授权范围）。
 
+## 范围外 /utf8 扫尾调查（2026-10-15，全仓清零）
+
+P0-12 遗留的"范围外 /utf8 扫尾（group_schedule/group_vote 等）"已闭环：
+
+- **erlc 拼接语义探针实证**（/tmp utf8_probe，真红留档）：单段无 /utf8 截断
+  （"中文test" → 6 字节低 8 位）；相邻字符串字面量**拼接后整体作为一个
+  segment**，任意段带 /utf8 即整体安全（10 字节完整 UTF-8）；**逗号分段各段
+  独立**（`"中文", "test"/utf8` 仍截断）；`"x"/utf8` 后继续拼接直接语法错误。
+- **窄口径全仓扫描**（binary 字面量内非 ASCII 且无 /utf8）：src/ 命中 12 处
+  —— 11 处为多行拼接 + 末段 /utf8（按探针语义安全，含 audit_policy 6 处、
+  workspace_logic 2 处、moya_ai_draft_logic、user_export_logic 各 1 处），
+  1 处为注释示例误报；test/+scripts/ 命中 1 处真暴露
+  （test/lib/elib_multipart_tests.erl:106 单段文件名，套件断言只校验
+  payload 与 filename 无关 → 无假绿，仅字面意图被截断）→ **e9c7cb21 修复，
+  套件 15/15 绿**。
+- P0-5 点名的 group_schedule/group_vote/friend_ds/group_file_logic 四文件
+  已由 b9b900ab 全部覆盖（现态：error_msg 集中映射或已带 /utf8）。
+- 结论：**全仓 erlc /utf8 截断暴露清零**。宽口径（含 char list/moduledoc）
+  的 802 行命中不受此陷阱影响——截断只发生在 binary 字面量。
+- 运维注记：复跑验证时发现 worktree 的 `config/sys.local.config`
+  （gitignored 本机文件，eunit-local 的 PG relay 以它为 sed 源）曾丢失，
+  已从主工作区拷回；另清理了一次失败跑残留的 15432 端口 relay 进程。
+
 ## 当前状态与待决策
 
 - 分支 **未合并回 main、未 push**（计划约束：合并由用户另行决定）。
 - 待用户决策：① 分支合回 main 的时机；② 合并后 CI 全量复跑。
-  （原第②项"main 侧 contract-check 漂移收口"已由本分支收口，撤销。）
+  （原第②项"main 侧 contract-check 漂移收口"已由本分支收口，撤销；
+  原"/utf8 范围外扫尾"已清零，撤销。全量 eunit 剩 1 例非客服域失败
+  （project_milestone_handler，基线/环境类，moya 例已由 e9c02322 修复）
+  待归因。）
