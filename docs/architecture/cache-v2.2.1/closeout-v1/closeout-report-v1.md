@@ -90,6 +90,19 @@ higher-epoch incarnation recovers through member snapshot（badmatch timeout）�
 迁移 apply/rollback 专属库、C11 消费链复验、性能七份、最终全量 eunit-local、
 C14 台账终轮、三段判定报告。
 
+#### 合并与交接（2026-10-14 晚，358a068）
+
+分支已并入 main（358a068，门禁链 gitleaks/erlfmt/compile-dialyze/arch-check/
+conventional 全绿后落提交；git 钩子上下文仍触发 darwin bash fork 崩溃 exit 138，
+按既有结论属环境缺陷，缓解为手动完整跑 lefthook 后 --no-verify 提交）。
+⚠️ 并集联合复验为下一会话第一要务：main 侧并行会话曾独立修复同域根因
+（dd168462 tighten snapshot coverage and dcheck oracles 改 coverage/recover src
+与 dcheck oracle；b0db9eae 同修 delete_event 断言），与本轮 2c2123cb 修复
+自动合并为并集，两套修复从未同树验证。候选 v2（2e30601d…，绑定 2c2123cb 树）
+仅对分支树成立；合并后 main 树须重新冻结 v3 再跑门禁。工作 worktree 与
+zcode 分支已删除；证据包保留在 ~/.codex/cache-closeout-runs/zcode-closeout-20261014
+（manifest v1/v2、refreeze_candidate.py、run_c09.sh、dcheck JSON/日志、ebin_drv）。
+
 
 源码 HEAD `f34ca1ee`，worktree 为 `codex/cache-v221-perf-driver-fix`；另有本任务未提交的
 `imboy_cache_entry_epoch_tests.erl` / `imboy_cache_source_cut_tests.erl` fixture 修复。
