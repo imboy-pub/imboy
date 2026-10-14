@@ -8,13 +8,22 @@ higher_epoch_page_can_replace_lower_epoch_tombstone_test() ->
         imboy_cache_sync_apply:store_revision(K, {1000, node()}, Exp, deleted, 0),
         Peer = 'higher_epoch@synthetic',
         R0 = requested_round(Peer, 1),
-        Entry = {with_origin, {Peer, <<2:128>>, 1}, {K, fresh, Exp, {10, Peer}}},
-        {ok, R1} = page(Peer, Entry, R0),
+        R = R0#{cohort_epoch => 1},
+        {Wire, Cut, Done, _} = ready_source_fixture:snapshot(
+            Peer,
+            <<2:128>>,
+            1,
+            1,
+            [{K, fresh, Exp, {10, Peer}}],
+            maps:get(round, R)
+        ),
+        ?assertEqual([], ets:lookup(Cache, K)),
+        {ok, R1} = page(Peer, hd(Wire), R),
         ?assertMatch(
             [{_, {{10, Peer}, {<<2:128>>, 1}, Exp, live, 1}}], ets:lookup(?META_TABLE, {rev, K})
         ),
         ?assertEqual([{K, fresh}], ets:lookup(Cache, K)),
-        {ok, R2} = imboy_cache_source_cut_tests:done(Peer, maps:get(round, R1), 1000, 1, R1),
+        {ok, R2} = ready_source_fixture:finish(Peer, {Cut, Done}, R1),
         S = imboy_cache_sync_recover:maybe_complete_round(#state{
             status = recovering,
             counter = 1000,
@@ -662,21 +671,30 @@ same_epoch_confirmed_delta_survives_older_snapshot_and_becomes_readable_test() -
             {cache_snapshot_request, _, Round} -> ok
         after 0 -> ?assert(false)
         end,
+        {Wire, Cut, Done, _} = ready_source_fixture:snapshot(
+            Peer, <<2:128>>, 1, 1, [{K, stale, Exp, {10, Peer}}], Round
+        ),
+        ?assertEqual([], ets:lookup(Cache, K)),
         Initial = (imboy_cache_sync_proto:event(set, K, stale, Exp, {10, Peer}, 1, <<2:128>>))#{
             origin_node => Peer, epoch => 1
         },
         {ok, InitialApplied} = imboy_cache_sync_apply:apply_v2(Initial, S1),
-        Wire = {with_origin, {Peer, <<2:128>>, 1}, {K, stale, Exp, {10, Peer}}},
-        {ok, R1} = page(Peer, Wire, InitialApplied#state.snapshot_round),
         Event = (imboy_cache_sync_proto:event(set, K, confirmed, Exp, {1000, Peer}, 2, <<2:128>>))#{
             origin_node => Peer, epoch => 1
         },
-        {ok, Applied} = imboy_cache_sync_apply:apply_v2(Event, InitialApplied#state{
-            snapshot_round = R1
-        }),
+        {ok, Applied} = imboy_cache_sync_apply:apply_v2(Event, InitialApplied),
         try
-            {ok, R2} = imboy_cache_source_cut_tests:done(
-                Peer, Round, 1000, 1, Applied#state.snapshot_round
+            {ok, R1} = page(Peer, hd(Wire), Applied#state.snapshot_round),
+            Receipts = maps:get(delta_receipts, R1),
+            ?assertEqual(
+                #{{Peer, <<2:128>>, 1, 1} => true, {Peer, <<2:128>>, 1, 2} => true}, Receipts
+            ),
+            {ok, R2} = ready_source_fixture:finish(Peer, {Cut, Done}, R1),
+            ?assertError(
+                incremental_content_gap,
+                imboy_cache_sync_coverage:verify_current_prefixes(R2#{
+                    delta_receipts := maps:remove({Peer, <<2:128>>, 1, 2}, Receipts)
+                })
             ),
             S2 = imboy_cache_sync_recover:maybe_complete_round(Applied#state{snapshot_round = R2}),
             ?assertEqual(ready, S2#state.status),
@@ -777,6 +795,9 @@ cancel(Timer) ->
     end.
 
 with_epoch(Fun) ->
+    pure_mock_fixture:run(fun() -> epoch_fixture_checks(Fun) end).
+
+epoch_fixture_checks(Fun) ->
     application:load(imboy),
     application:ensure_all_started(crypto),
     {ok, _} = application:ensure_all_started(syn),

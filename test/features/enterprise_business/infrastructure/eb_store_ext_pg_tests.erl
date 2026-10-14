@@ -279,23 +279,34 @@ p9_list_messages_after_is_keyset_pagination() ->
 p9_statement_never_uses_offset() ->
     Statements = eb_pg_message_ext:sql_statements(),
     ?assert(length(Statements) >= 1),
-    %% 分页语句 = 命中 enterprise_message 的那条；其余是租户自检语句。
+    %% 历史支持 after 升序与 before 降序，两条都必须保持键集分页。
     PageStatements = [
         Sql
      || Sql <- Statements,
         binary:match(Sql, <<"FROM enterprise_message">>) =/= nomatch
     ],
-    ?assertEqual(1, length(PageStatements)),
+    ?assertEqual(2, length(PageStatements)),
+    AfterStatements = [Sql || Sql <- PageStatements, binary:match(Sql, <<"id > $4">>) =/= nomatch],
+    BeforeStatements = [Sql || Sql <- PageStatements, binary:match(Sql, <<"id < $4">>) =/= nomatch],
+    ?assertEqual(1, length(AfterStatements)),
+    ?assertEqual(1, length(BeforeStatements)),
     lists:foreach(
         fun(Sql) ->
             Upper = string:uppercase(binary_to_list(Sql)),
             ?assertEqual(nomatch, string:find(Upper, "OFFSET")),
-            ?assertNotEqual(nomatch, string:find(Upper, "ID > $4")),
             ?assertNotEqual(nomatch, string:find(Upper, "LIMIT $5")),
             ?assertNotEqual(nomatch, string:find(Upper, "ORDER BY ID"))
         end,
         PageStatements
     ),
+    [AfterSql] = AfterStatements,
+    [BeforeSql] = BeforeStatements,
+    ?assertEqual(
+        nomatch, string:find(string:uppercase(binary_to_list(AfterSql)), "ORDER BY ID DESC")
+    ),
+    BeforeUpper = string:uppercase(binary_to_list(BeforeSql)),
+    ?assertNotEqual(nomatch, string:find(BeforeUpper, "($4::BIGINT IS NULL OR ID < $4)")),
+    ?assertNotEqual(nomatch, string:find(BeforeUpper, "ORDER BY ID DESC")),
     %% 每条语句都带双租户键（本 Feature 的 store 纪律）
     lists:foreach(
         fun(Sql) ->

@@ -281,33 +281,40 @@ settle_rollback_maps_payment_failed_test_() ->
         end
     ).
 
-%% with_tx 非 rollback 异常重试耗尽返回 {error,Class,Reason}(3元组)等未知形态 →
-%% 归一为 payment_failed 且释放预留（H1：不 case_clause 崩溃、不永久泄漏预留额度）
+%% 数据库层归一后的异常二元组必须转为支付失败，并释放预留额度。
 settle_unknown_error_releases_reservation_test_() ->
-    ?WITH_MECKS(
-        [
-            {agent_payment_mandate_ds, [
-                {find_active, 1, fun(100) -> {ok, mandate()} end},
-                {try_reserve_with_compensation, 3, fun(555, 5000, _) -> {ok, 5000, 7001} end}
-            ]},
-            {agent_payment_compensation_ds, [
-                {release, 1, fun(7001) ->
-                    put(released, true),
-                    ok
-                end}
-            ]},
-            {wallet_ds, [
-                {find_transaction_by_ref, 1, fun(_) -> #{} end},
-                {ensure_wallet, 1, ensure_wallet_fun()},
-                {atomic_transfer, 2, fun(_, _) -> {error, badarg, []} end}
-            ]}
-        ],
-        fun() ->
-            clear(),
-            R = agent_payment_logic:pay_with_mandate(100, 200, 5000, <<"REF8">>),
-            ?assertEqual({error, payment_failed}, R),
-            ?assertEqual(true, get(released))
-        end
+    ?_test(
+        pure_mock_fixture:run(fun() ->
+            pure_mock_fixture:with_mocks(
+                [
+                    {agent_payment_mandate_ds, [
+                        {find_active, 1, fun(100) -> {ok, mandate()} end},
+                        {try_reserve_with_compensation, 3, fun(555, 5000, _) ->
+                            {ok, 5000, 7001}
+                        end}
+                    ]},
+                    {agent_payment_compensation_ds, [
+                        {release, 1, fun(7001) ->
+                            put(released, true),
+                            ok
+                        end}
+                    ]},
+                    {wallet_ds, [
+                        {find_transaction_by_ref, 1, fun(_) -> #{} end},
+                        {ensure_wallet, 1, ensure_wallet_fun()},
+                        {atomic_transfer, 2, fun(_, _) ->
+                            {error, {db_exception, error, badarg}}
+                        end}
+                    ]}
+                ],
+                fun() ->
+                    clear(),
+                    R = agent_payment_logic:pay_with_mandate(100, 200, 5000, <<"REF8">>),
+                    ?assertEqual({error, payment_failed}, R),
+                    ?assertEqual(true, get(released))
+                end
+            )
+        end)
     ).
 
 %% 释放预留遇到瞬时数据库错误 → 有限重试后成功，不把周期额度永久空耗

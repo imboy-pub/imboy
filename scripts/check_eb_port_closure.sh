@@ -37,6 +37,7 @@ if ! command -v python3 >/dev/null 2>&1; then
 fi
 
 python3 - "$@" <<'PYEOF'
+import hashlib
 import re
 import sys
 from pathlib import Path
@@ -396,6 +397,36 @@ def git_show(sha, rel):
 FROZEN_BASELINE_DIR = (Path("../../control/contract-baseline-post-eb03r")).resolve()
 FROZEN_BASELINE_MANIFEST = FROZEN_BASELINE_DIR / "MANIFEST.tsv"
 
+# 最后回退到已提交交付快照；这是替代来源，不是恢复原未提交冻结工件。
+ARCHIVED_DELIVERY_SHA = "d4254b92273f1cd08f1a2f870e72c91862972883"
+ARCHIVED_DELIVERY_HASHES = {
+    "eb_store_port.erl": "8007a146d8b1b5ac8712cc9f87f6decf687eeb1fd4771955585842888b2f406a",
+    "eb_crypto_port.erl": "de662641c9750226dec805772f85708ac7a7c205f12582eaafc0e1842335e54e",
+}
+
+
+def verified_archive_text(raw, expected_hash):
+    if hashlib.sha256(raw).hexdigest() != expected_hash:
+        return None
+    return raw.decode("utf-8")
+
+
+def archived_delivery_reference(rel, basename):
+    import subprocess
+    expected = ARCHIVED_DELIVERY_HASHES.get(basename)
+    if expected is None or rel != APP_REL + "/" + basename:
+        return None
+    try:
+        out = subprocess.run(["git", "show", ARCHIVED_DELIVERY_SHA + ":" + rel], capture_output=True)
+    except OSError:
+        return None
+    if out.returncode != 0:
+        return None
+    text = verified_archive_text(out.stdout, expected)
+    if text is None:
+        fail("A02 archived-delivery %s 的完整内容 SHA256 不匹配" % basename)
+    return text
+
 
 def frozen_baseline_reference(basename):
     """从冻结工件目录取基准（若存在且 MANIFEST 记录匹配）。"""
@@ -409,7 +440,8 @@ def frozen_reference(rel, expected_count, basename):
     """既有 callback 的比对基准（按优先级）：
        1) `control/contract-baseline-post-eb03r/<basename>`（**冻结工件，权威**）；
        2) `git show <frozen_base>:<path>`（若该路径已进入 Base 提交）；
-       3) 兄弟 worktree 里的 EB-02 原始快照（末位回退，只在前两者都不可用时）。
+       3) 兄弟 worktree 里的 EB-02 原始快照；
+       4) 固定历史交付 commit 的两份完整文件（验证固定 SHA256 后，最后回退）。
     说明：端口契约文件在本 run 里是**未提交的工作树产物**（EB-02 交付时未 commit），
     故 Base 提交里没有它；(1) 是 A0 在 EB-03R PASS 时冻结的逐字节快照，是**同一份冻结
     事实**的权威来源。下方负例证明该比对是活的（改一个参数名即红）。"""
@@ -425,12 +457,15 @@ def frozen_reference(rel, expected_count, basename):
             text = candidate.read_text(errors="replace")
             if len(callbacks_of(text)) == expected_count:
                 return text, "worktree-snapshot:%s" % sib.name
+    archive = archived_delivery_reference(rel, basename)
+    if archive is not None:
+        return archive, "archived-delivery:%s (原冻结工件未恢复)" % ARCHIVED_DELIVERY_SHA
     return None, None
 
 
 if not FROZEN_BASELINE_DIR.is_dir():
     notes.append(
-        "A02 冻结基准目录不存在（%s）——本门已回退到 base-commit/worktree 快照"
+        "A02 冻结基准目录不存在（%s）——本门按 base-commit/worktree/archived-delivery 顺序寻找来源"
         % FROZEN_BASELINE_DIR
     )
 
@@ -452,7 +487,7 @@ for fname, names in FROZEN:
         else:
             frozen_checked += 1
 if frozen_checked and not any(m.startswith("A02") for m in failures):
-    ok("A02 既有 %d 个 callback 声明与冻结基准一致（空白规范化后逐字符相同，"
+    ok("A02 既有 %d 个 callback 声明与选定基准来源一致（空白规范化后逐字符相同，"
        "仅忽略折行/空白差异；基准来源=%s）" % (frozen_checked, source))
 
 # ------------------------------------------------------------------ CLI
@@ -730,6 +765,32 @@ if self_test:
         ok("负例「改既有 callback 的参数名」被点名判红：%s" % caught[0][:90])
     else:
         fail("负例「改既有 callback 的参数名」本应判红却放行")
+
+    for basename, names in FROZEN:
+        archived = archived_delivery_reference(APP_REL + "/" + basename, basename)
+        if archived is None:
+            fail("A02 自测缺少已固定历史交付对象：%s" % basename)
+            continue
+        raw = archived.encode("utf-8")
+        expected = ARCHIVED_DELIVERY_HASHES[basename]
+        declaration = callback_decl_text(archived, names[0])
+        parameter = "OrgId" if basename == "eb_store_port.erl" else "Aad"
+        tampered_declaration = declaration.replace(parameter, "Changed" + parameter, 1)
+        parameter_tampered = raw.replace(declaration.encode("utf-8"),
+                                        tampered_declaration.encode("utf-8"), 1)
+        if verified_archive_text(raw, expected) is None:
+            fail("A02 已校验历史对象的正向自测失败：%s" % basename)
+        for label, changed, digest in [
+            ("历史内容哈希篡改", raw + b"\n", expected),
+            ("固定哈希篡改", raw, "0" * 64),
+            ("历史声明参数篡改", parameter_tampered, expected),
+        ]:
+            if changed == raw and digest == expected:
+                fail("A02 %s/%s 未实际改变夹具" % (basename, label))
+            elif verified_archive_text(changed, digest) is None:
+                ok("负例「%s/%s」被固定 SHA256 拒绝" % (basename, label))
+            else:
+                fail("A02 %s/%s 本应拒绝却放行" % (basename, label))
 
     # 真正跑一遍「未声明调用」静态判定：临时夹具文件参与判定
     fixture = Path(FEATURE) / "application" / "zz_closure_gate_selftest.erl"
