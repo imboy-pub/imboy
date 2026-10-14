@@ -1,0 +1,7 @@
+{
+  "oracle": "baseline",
+  "manifest": "/tmp/limiter-candidate-manifest.txt",
+  "case_id": "AC-01",
+  "candidate": "124dcbb7",
+  "rest_run_id": "limiter-l0-20261014T155741-81062"
+}

@@ -68,7 +68,9 @@ get_client_ip_test_() ->
         fun trusted_proxy_hops_falls_back_to_one_when_config_garbage/0,
         fun trusted_proxy_without_xff_falls_back_to_peer/0,
         fun trusted_proxy_with_empty_xff_does_not_crash/0,
-        fun trusted_proxy_trims_whitespace/0
+        fun trusted_proxy_trims_whitespace/0,
+        fun limiter_oidc_ip_trust_fork/0,
+        fun limiter_oidc_ipv6_text_not_normalized/0
     ]}.
 
 %% 核心不变量：直连对端不可信时，伪造的 XFF 必须被完全忽略
@@ -152,3 +154,45 @@ trusted_proxy_trims_whitespace() ->
     mock_peer(?TRUSTED),
     mock_xff(<<"  198.51.100.7 ,10.0.0.1 ">>),
     ?assertEqual(<<"10.0.0.1">>, elib_req:get_client_ip(req())).
+
+%% ===================================================================
+%% Limiter V1 L0 缺陷复现（计划 docs/plans/2026-10-13-limiter-v1-*
+%% §5.F6、§4 线索 8）。oracle：断言旧实现的坏结果（两条 IP 提取路径
+%% 对同一非可信请求给出不同答案）；L3 统一信任 helper 后翻转。
+%% ===================================================================
+
+%% F6 旧侧复现：非可信 peer 下，伪造 CF-Connecting-IP 时——
+%%   * throttle_middleware（elib_req:get_client_ip，可信代理白名单判定）
+%%     忽略伪造头，稳定返回直连 peer；
+%%   * OIDC 入口（auth_oidc_handler:client_ip →
+%%     login_attempt_ds:extract_real_ip，无 peer 信任检查）
+%%     采信伪造头，每次换一个头就换一个限流桶 key。
+%% 同一请求两个入口得到不同 IP，IP 维度限流在 OIDC 面可被任意旁路。
+limiter_oidc_ip_trust_fork() ->
+    ForgedCfIp = <<"1.2.3.4">>,
+    Headers = #{
+        <<"cf-connecting-ip">> => ForgedCfIp,
+        <<"x-real-ip">> => <<"5.6.7.8">>,
+        <<"x-forwarded-for">> => ForgedCfIp
+    },
+    %% 中间件路径：非可信 peer + 伪造头 → 直连 peer（既有不变量）
+    mock_peer(?UNTRUSTED),
+    mock_xff(ForgedCfIp),
+    MiddlewareIp = elib_req:get_client_ip(req()),
+    ?assertEqual(<<"203.0.113.9">>, MiddlewareIp),
+    %% OIDC 路径：同一 peer、同一伪造头 → 采信 CF 头
+    {ok, OidcIp} = login_attempt_ds:extract_real_ip(Headers),
+    %% L0 旧侧 oracle：两路径分叉（OIDC 采信了不可信来源的头）
+    ?assertEqual(ForgedCfIp, OidcIp),
+    ?assertNotEqual(MiddlewareIp, OidcIp).
+
+%% F6 旧侧复现（IPv6 文本不规范化）：等价 IPv6 的不同文本表示产生
+%% 不同限流键。压缩/展开/IPv4-mapped 属同一地址，三个文本各占一个桶。
+limiter_oidc_ipv6_text_not_normalized() ->
+    Compressed = #{<<"cf-connecting-ip">> => <<"2001:db8::1">>},
+    Expanded = #{<<"cf-connecting-ip">> => <<"2001:0db8:0000:0000:0000:0000:0000:0001">>},
+    V4Mapped = #{<<"cf-connecting-ip">> => <<"::ffff:192.0.2.1">>},
+    {ok, Ip1} = login_attempt_ds:extract_real_ip(Compressed),
+    {ok, Ip2} = login_attempt_ds:extract_real_ip(Expanded),
+    ?assertNotEqual(Ip1, Ip2),
+    ?assertMatch({ok, <<"::ffff:192.0.2.1">>}, login_attempt_ds:extract_real_ip(V4Mapped)).
