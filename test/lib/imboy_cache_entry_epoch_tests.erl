@@ -8,11 +8,24 @@ higher_epoch_page_can_replace_lower_epoch_tombstone_test() ->
         imboy_cache_sync_apply:store_revision(K, {1000, node()}, Exp, deleted, 0),
         Peer = 'higher_epoch@synthetic',
         R0 = requested_round(Peer, 1),
-        Entry = {K, fresh, Exp, {10, Peer}},
-        {ok, R1} = page(Peer, Entry, R0),
-        ?assertMatch([{_, {{10, Peer}, 10, Exp, live, 1}}], ets:lookup(?META_TABLE, {rev, K})),
+        R = R0#{
+            retained_obligations := imboy_cache_sync_coverage:retained_rows(), cohort_epoch => 1
+        },
+        {Wire, Cut, Done, _} = ready_source_fixture:snapshot(
+            Peer,
+            <<2:128>>,
+            1,
+            1,
+            [{K, fresh, Exp, {10, Peer}}],
+            maps:get(round, R)
+        ),
+        ?assertEqual([], ets:lookup(Cache, K)),
+        {ok, R1} = page(Peer, hd(Wire), R),
+        ?assertMatch(
+            [{_, {{10, Peer}, {<<2:128>>, 1}, Exp, live, 1}}], ets:lookup(?META_TABLE, {rev, K})
+        ),
         ?assertEqual([{K, fresh}], ets:lookup(Cache, K)),
-        {ok, R2} = imboy_cache_source_cut_tests:done(Peer, maps:get(round, R1), 1000, 1, R1),
+        {ok, R2} = ready_source_fixture:finish(Peer, {Cut, Done}, R1),
         S = imboy_cache_sync_recover:maybe_complete_round(#state{
             status = recovering,
             counter = 1000,
@@ -653,8 +666,6 @@ same_epoch_confirmed_delta_survives_older_snapshot_and_becomes_readable_test() -
         Peer = 'cohort_delta@synthetic',
         K = {entry_epoch_test, delta},
         Exp = expiry(),
-        imboy_cache_sync_apply:store_revision(K, {1000, Peer}, Exp, live, 1),
-        ets:insert(Cache, {K, confirmed}),
         S1 = report(Peer, 1, true, discovery_state([Peer])),
         R = S1#state.snapshot_round,
         Round = maps:get(round, R),
@@ -662,9 +673,28 @@ same_epoch_confirmed_delta_survives_older_snapshot_and_becomes_readable_test() -
             {cache_snapshot_request, _, Round} -> ok
         after 0 -> ?assert(false)
         end,
-        {ok, R1} = page(Peer, {K, stale, Exp, {10, Peer}}, R),
-        {ok, R2} = imboy_cache_source_cut_tests:done(Peer, Round, 1000, 1, R1),
-        S2 = imboy_cache_sync_recover:maybe_complete_round(S1#state{snapshot_round = R2}),
+        {Wire, Cut, Done, _} = ready_source_fixture:snapshot(
+            Peer,
+            <<2:128>>,
+            1,
+            1,
+            [{K, stale, Exp, {10, Peer}}],
+            Round
+        ),
+        ets:delete(Cache, K),
+        ets:insert(?META_TABLE, {{seq, {Peer, <<2:128>>}}, 1}),
+        Event = (imboy_cache_sync_proto:event(set, K, confirmed, Exp, {1000, Peer}, 2, <<2:128>>))#{
+            origin_node => Peer, epoch => 1
+        },
+        {ok, Delta} = imboy_cache_sync_apply:apply_v2(Event, S1),
+        {ok, R1} = page(Peer, hd(Wire), Delta#state.snapshot_round),
+        ?assertEqual(#{{Peer, <<2:128>>, 1, 2} => true}, maps:get(delta_receipts, R1)),
+        {ok, R2} = ready_source_fixture:finish(Peer, {Cut, Done}, R1),
+        ?assertError(
+            incremental_content_gap,
+            imboy_cache_sync_coverage:verify_current_prefixes(R2#{delta_receipts := #{}})
+        ),
+        S2 = imboy_cache_sync_recover:maybe_complete_round(Delta#state{snapshot_round = R2}),
         ?assertEqual(ready, S2#state.status),
         ?assertEqual({ok, confirmed}, imboy_cache:get(K)),
         ?assertMatch([{_, {{1000, Peer}, _, _, live, 1}}], ets:lookup(?META_TABLE, {rev, K}))
@@ -700,7 +730,7 @@ cold_recovery_cannot_adopt_different_epoch_source_test() ->
 discovery_state(Peers) ->
     ets:insert(?META_TABLE, {status, recovering}),
     Deadline = erlang:system_time(millisecond) + 60000,
-    R = imboy_cache_sync_snapshot:new_round(0, Deadline),
+    R = imboy_cache_sync_snapshot:recovery_round(0, Deadline),
     Round = lists:foldl(fun(P, Acc) -> imboy_cache_sync_snapshot:expect_peer(Acc, P) end, R, Peers),
     #state{
         status = recovering, counter = 100, snapshot_round = Round, recover_deadline_ms = Deadline
@@ -756,6 +786,9 @@ cancel(Timer) ->
     end.
 
 with_epoch(Fun) ->
+    pure_mock_fixture:run(fun() -> epoch_fixture_checks(Fun) end).
+
+epoch_fixture_checks(Fun) ->
     application:load(imboy),
     application:ensure_all_started(crypto),
     Keys = [cache_registry_overrides, cache_replication, cache_fenced_namespaces],
@@ -787,10 +820,14 @@ with_epoch(Fun) ->
         ets:delete(Cache, K),
         ok
     end),
+    Owner = self(),
+    meck:new(syn, [non_strict, no_link]),
+    meck:expect(syn, members, 2, fun(imboy_cache, dsync_handler) -> [{Owner, #{}}] end),
     try
         Fun(Cache)
     after
         imboy_cache_source_cut_tests:drain(),
+        meck:unload(syn),
         meck:unload(depcache),
         unregister(imboy_cache_sync),
         ets:delete(Cache),
