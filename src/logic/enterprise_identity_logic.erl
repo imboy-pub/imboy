@@ -37,8 +37,8 @@
 %% ===================================================================
 
 %% @doc INT-02：绑定 external_user_id <-> active Human member。
-%% 幂等 upsert 语义（A1 bind_tx）：同 (org, app, external) 重绑覆盖
-%% user_id 并复活为 active；该 user 已绑其他 external → invalid_request。
+%% 相同身份和 user_id 可幂等恢复；换绑其他 user_id 返回 resource_conflict。
+%% 该 user 已绑其他 external → invalid_request。
 %% 前置甄别把 DB 触发器 23514 细分为 boundary / not-mapped 两类 stable 码。
 -spec bind_mapping_tx(any(), map(), binary(), integer()) ->
     {ok, map()} | {error, {binary(), term()}}.
@@ -87,9 +87,9 @@ resolve_mappings_tx(_Conn, _Ctx, _Other) ->
     {error, {<<"invalid_request">>, external_ids_not_list}}.
 
 %% @doc FULL-02 INT-02 撤销面：撤销（软删）本 (org, app) 下某 external_user_id 的
-%% 映射（repo unbind_tx：status -> 'removed'，行保留供审计/重绑）。撤销后该
+%% 映射（repo unbind_tx：status -> 'removed'，行保留供审计/原账号恢复）。撤销后该
 %% external_user_id 立即不再是 sender/成员解析来源（resolve 只认 active 行），
-%% 重绑走 bind_mapping_tx/4 的 upsert。
+%% 恢复走 bind_mapping_tx/4，不允许更换原关联账号。
 %% 语义与拒绝码：
 %%   * 撤销成功 → {ok, #{external_user_id, status => <<"removed">>, revoked => true}}，
 %%     记 identity.revoked 聚合计量（同事务）；
@@ -254,6 +254,8 @@ do_bind(Conn, Ctx, ExternalUserId, UserId) ->
             {error, {<<"identity_not_mapped">>, member_guard_rejected}};
         {error, user_already_mapped} ->
             {error, {<<"invalid_request">>, user_already_mapped}};
+        {error, identity_already_mapped} ->
+            {error, {<<"resource_conflict">>, identity_already_mapped}};
         {error, Reason} ->
             {error, {<<"internal_error">>, Reason}}
     end.

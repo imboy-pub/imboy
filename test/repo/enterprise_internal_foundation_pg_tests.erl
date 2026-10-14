@@ -513,13 +513,21 @@ identity_oracle(C) ->
         end)
     ),
     exec(C, [<<"UPDATE \"user\" SET status = 1 WHERE id = ">>, integer_to_binary(?HUMAN_B)]),
-    %% 复合 org 约束：ORG_B member（触发器通过）+ AppA（ORG_A 的 application）
-    %% → 复合 FK (org, app) 23503 拒绝
     ?assertMatch(
-        {error, #error{code = <<"23503">>}},
+        {ok, #{<<"organization_id">> := ?ORG_B, <<"user_id">> := ?OWNER_B}},
+        enterprise_external_identity_repo:bind_tx(
+            C, ?ORG_B, AppAId, <<"oa-emp-cross">>, ?OWNER_B
+        )
+    ),
+    ?assertMatch(
+        {ok, #{<<"user_id">> := ?OWNER_B}},
+        enterprise_source_person_repo:find_tx(C, AppAId, <<"oa-emp-cross">>)
+    ),
+    ?assertEqual(
+        {error, identity_already_mapped},
         in_savepoint(C, fun() ->
             enterprise_external_identity_repo:bind_tx(
-                C, ?ORG_B, AppAId, <<"oa-emp-cross">>, ?OWNER_B
+                C, ?ORG_A, AppAId, <<"oa-emp-cross">>, ?OWNER_A
             )
         end)
     ),

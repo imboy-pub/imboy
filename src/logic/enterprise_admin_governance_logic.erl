@@ -576,8 +576,11 @@ account_of(Actor) ->
 -spec stringify_diff(map()) -> map().
 stringify_diff(Diff) when is_map(Diff) ->
     maps:fold(
-        fun(K, V, Acc) ->
-            Acc#{atom_to_binary(K, utf8) => stringify_value(V)}
+        fun
+            (K, V, Acc) when is_binary(K) ->
+                Acc#{K => stringify_value(V)};
+            (K, V, Acc) ->
+                Acc#{atom_to_binary(K, utf8) => stringify_value(V)}
         end,
         #{},
         Diff

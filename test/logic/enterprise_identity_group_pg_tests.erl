@@ -8,7 +8,7 @@
 %% 显式 COMMIT 验证失败后 ROLLBACK 清理。
 %%
 %% 覆盖（plan-gz §4.3/§6 INT-02..06/11；manifest INV）：
-%%   ① INT-02 绑定：成功/重绑 upsert/跨 Org boundary/非 active member/
+%%   ① INT-02 绑定：成功/同账号幂等/拒绝换绑/跨 Org boundary/非 active member/
 %%      非 Human/停用 user/user 已被同 app 映射/参数矩阵
 %%   ② INT-03 resolve：只返回命中项/跨 Org 不可见/空与超限与元素非法
 %%   ③ 导出面（负例）：identity/friend_request/group logic 无 list-all、
@@ -286,7 +286,7 @@ enterprise_identity_group_pg_test_() ->
             [
                 %% ① INT-02 绑定
                 {"bind_success", with_tx(C, fun(C1) -> bind_success(C1, CtxA) end)},
-                {"bind_rebind_upsert_overwrites_user",
+                {"bind_rebind_cannot_overwrite_user",
                     with_tx(C, fun(C1) -> bind_rebind_upsert(C1, CtxA) end)},
                 {"bind_user_already_mapped_invalid_request",
                     with_tx(C, fun(C1) -> bind_user_already_mapped(C1, CtxA) end)},
@@ -400,8 +400,8 @@ bind_success(C, CtxA) ->
     ok.
 
 bind_rebind_upsert(C, CtxA) ->
-    %% 同 external 重绑：覆盖 user_id 并复活 active（A1 upsert 语义）
-    {ok, #{<<"user_id">> := ?H_A5}} =
+    %% ADR8.3: 已有身份不能被普通绑定请求改到另一个账号。
+    {error, {<<"resource_conflict">>, identity_already_mapped}} =
         enterprise_identity_logic:bind_mapping_tx(C, CtxA, ?EXT_A1, ?H_A5),
     Row =
         one(
@@ -410,7 +410,7 @@ bind_rebind_upsert(C, CtxA) ->
                 " WHERE external_user_id = $1 AND application_id = $2">>,
             [?EXT_A1, maps:get(application_id, CtxA)]
         ),
-    ?assertEqual(?H_A5, maps:get(<<"user_id">>, Row)),
+    ?assertEqual(?H_A1, maps:get(<<"user_id">>, Row)),
     ?assertEqual(<<"active">>, maps:get(<<"status">>, Row)),
     ok.
 

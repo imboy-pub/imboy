@@ -771,6 +771,8 @@ error_map(invalid_member) ->
     {?ERR_BAD_REQUEST, <<"目标用户不是该组织的 active Human 成员"/utf8>>};
 error_map(user_already_mapped) ->
     {?ERR_CONFLICT, <<"该用户已绑定其他 external_user_id"/utf8>>};
+error_map(identity_already_mapped) ->
+    {?ERR_CONFLICT, <<"该外部身份已关联其他用户，不能自动换绑"/utf8>>};
 error_map(Reason) ->
     {500, reason_msg(Reason)}.
 

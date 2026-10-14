@@ -522,11 +522,15 @@ id_revoke_rebind(C, State) ->
         enterprise_identity_logic:revoke_mapping_tx(C, Ctx, ?EXT_A2),
     {ok, [Mapped]} = enterprise_identity_logic:resolve_mappings_tx(C, Ctx, [?EXT_A1, ?EXT_A2]),
     ?assertEqual(?EXT_A1, maps:get(<<"external_user_id">>, Mapped)),
-    %% rebind 同一 external 可复活（upsert 覆盖 + status -> active）
+    %% 解除不会允许换绑；恢复只接受原账号。
+    ?assertEqual(
+        {error, {<<"resource_conflict">>, identity_already_mapped}},
+        enterprise_identity_logic:bind_mapping_tx(C, Ctx, ?EXT_A2, ?H_A5)
+    ),
     {ok, #{<<"status">> := <<"active">>}} =
-        enterprise_identity_logic:bind_mapping_tx(C, Ctx, ?EXT_A2, ?H_A5),
+        enterprise_identity_logic:bind_mapping_tx(C, Ctx, ?EXT_A2, ?H_A2),
     {ok, Found} = enterprise_identity_logic:resolve_mappings_tx(C, Ctx, [?EXT_A2]),
-    ?assertEqual(?H_A5, maps:get(<<"user_id">>, hd(Found))),
+    ?assertEqual(?H_A2, maps:get(<<"user_id">>, hd(Found))),
     %% 撤销是软删：行仍在（status=removed）
     ?assertEqual(
         1,

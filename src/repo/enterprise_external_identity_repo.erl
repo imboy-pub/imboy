@@ -44,12 +44,12 @@ next_id() ->
     elib_tsid:generate(enterprise_external_identity).
 
 %% @doc 事务内绑定 external_user_id <-> user（INT-02）。
-%% 幂等 upsert：同 (org, app, external_user_id) 已存在即覆盖 user_id 并复活为
-%% active（重绑）。目标不满足「同 Org active Human member」被触发器 23514 拒绝，
+%% 同一身份只允许相同 user_id 幂等恢复；其他 user_id 返回 identity_already_mapped。
+%% 目标不满足「同 Org active Human member」被触发器 23514 拒绝，
 %% 归一 {error, invalid_member}；反向唯一 (org, app, user_id) 冲突（该 user 已绑
 %% 到其他 external_user_id）归一 {error, user_already_mapped}。
 -spec bind_tx(any(), integer(), integer(), binary(), integer()) ->
-    {ok, map()} | {error, invalid_member | user_already_mapped | term()}.
+    {ok, map()} | {error, invalid_member | user_already_mapped | identity_already_mapped | term()}.
 bind_tx(Conn, OrgId, AppId, ExternalUserId, UserId) when
     is_integer(OrgId), is_integer(AppId), is_binary(ExternalUserId), is_integer(UserId)
 ->
@@ -57,19 +57,22 @@ bind_tx(Conn, OrgId, AppId, ExternalUserId, UserId) when
     Id = next_id(),
     Now = elib_dt:now(),
     Sql =
-        <<"INSERT INTO ", Tb/binary,
+        <<"INSERT INTO ", Tb/binary, " AS existing",
             " (id, organization_id, application_id, external_user_id, user_id, status,",
             " created_at, updated_at)", " VALUES ($1, $2, $3, $4, $5, 'active', $6, $6)",
             " ON CONFLICT (organization_id, application_id, external_user_id)",
-            " DO UPDATE SET user_id = EXCLUDED.user_id, status = 'active',",
-            " updated_at = EXCLUDED.updated_at", " RETURNING ", ?COLUMNS/binary>>,
+            " DO UPDATE SET status = 'active', updated_at = EXCLUDED.updated_at",
+            " WHERE existing.user_id = EXCLUDED.user_id", " RETURNING ", ?COLUMNS/binary>>,
     case elib_pg:query(Conn, Sql, [Id, OrgId, AppId, ExternalUserId, UserId, Now]) of
         {ok, [Row | _]} ->
             {ok, Row};
         {ok, []} ->
-            {error, insert_empty_result};
-        {error, #error{code = <<"23514">>}} ->
-            {error, invalid_member};
+            {error, identity_already_mapped};
+        {error, #error{code = <<"23514">>, extra = Extra}} ->
+            case proplists:get_value(constraint_name, Extra) of
+                <<"ck_eei_source_identity_conflict">> -> {error, identity_already_mapped};
+                _ -> {error, invalid_member}
+            end;
         {error, #error{code = <<"23505">>}} ->
             {error, user_already_mapped};
         {error, Reason} ->
@@ -117,7 +120,7 @@ list_tx(_Conn, _OrgId, _AppId) ->
     {error, badarg}.
 
 %% @doc 事务内解除映射（软删；幂等：非 active 返回 {error, not_active}）。
-%% 解除后同一 external_user_id 可经 bind_tx 重绑；removed 行保留历史。
+%% 解除后同一 external_user_id 只可经 bind_tx 恢复原用户；removed 行保留历史。
 -spec unbind_tx(any(), integer(), integer(), binary()) ->
     ok | {error, not_found | not_active | term()}.
 unbind_tx(Conn, OrgId, AppId, ExternalUserId) when is_binary(ExternalUserId) ->
