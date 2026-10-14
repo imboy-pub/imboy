@@ -61,6 +61,14 @@
     session_open_tx/3,
     session_open/2,
     search_faq_lexical/4,
+    %% E 组（v4 03-E）：预算 attempt 账本数据面（非 cs_ai_port 冻结 callback）。
+    budget_current_period/0,
+    budget_admit/5,
+    budget_settle/3,
+    budget_release/2,
+    budget_to_uncertain/2,
+    budget_reconcile/0,
+    budget_reconcile/1,
     %% 冻结语句静态断言面（cs_pg_seat:sql_statements/0 先例；零 DB）。
     sql_statements/0
 ]).
@@ -1101,6 +1109,415 @@ session_open(OrgId, SessionId) ->
         {ok, [_]} -> {ok, false};
         {ok, []} -> {ok, false};
         {error, Reason} -> {error, Reason}
+    end.
+
+%% ===================================================================
+%% E 组（v4 03-E）：预算 attempt 账本
+%% ===================================================================
+
+-define(BUDGET_LAYERS, [session, org, global]).
+
+%% @doc 当前预算周期（'YYYY-MM-DD'，UTC 日粒度）。180 允许日/月两种粒度，
+%% 准入固定取日粒度；配额行的 period 须由管理面按同一粒度播种（fail-closed：
+%% 粒度不配 ⇒ 条件 UPDATE 0 行 ⇒ 拒绝）。
+-spec budget_current_period() -> binary().
+budget_current_period() ->
+    Sec = os:system_time(second),
+    {{Y, M, D}, _} = calendar:system_time_to_universal_time(Sec, second),
+    iolist_to_binary(io_lib:format("~4..0B-~2..0B-~2..0B", [Y, M, D])).
+
+%% @doc E.4 三层准入：session → org → global（与 B 组锁序 L3 兼容）。每层
+%% 单语句条件 UPDATE（谓词在 WHERE 内，R10：拒绝时 0 行、不抛异常）；任一
+%% 层拒绝 ⇒ **同事务补偿**已预占层（E-6 原子）。attempt_id 冻结规则
+%% '<job_id>:<attempt>:<layer>'；重复 admit 命中已有行 ⇒ 不重复预占（E.7）。
+-spec budget_admit(integer(), integer(), integer(), integer(), pos_integer()) ->
+    {ok, reserved}
+    | {ok, already_admitted}
+    | {error, {budget_exceeded, session | org | global}}
+    | {error, {attempt_state_conflict, session | org | global}}
+    | {error, term()}.
+budget_admit(OrgId, SessionId, JobId, Attempt, EstTokens) ->
+    Period = budget_current_period(),
+    Fun = fun(Conn) ->
+        budget_admit_layers(
+            Conn, OrgId, SessionId, JobId, Attempt, EstTokens, Period, ?BUDGET_LAYERS, []
+        )
+    end,
+    case elib_pg:with_tx(Fun, [{reraise, false}]) of
+        {rollback, Reason} -> {error, Reason};
+        Other -> Other
+    end.
+
+budget_admit_layers(_Conn, _OrgId, _S, _J, _A, _Est, _Period, [], _Done) ->
+    {ok, reserved};
+budget_admit_layers(Conn, OrgId, SessionId, JobId, Attempt, Est, Period, [Layer | Rest], Done) ->
+    ScopeId = budget_scope_id(Layer, OrgId, SessionId),
+    AttemptId = budget_attempt_id(JobId, Attempt, Layer),
+    case
+        budget_insert_attempt_if_absent(
+            Conn, AttemptId, OrgId, SessionId, JobId, Layer, ScopeId, Period, Est
+        )
+    of
+        {ok, inserted} ->
+            case budget_reserve(Conn, OrgId, Period, Layer, ScopeId, Est) of
+                {ok, 1} ->
+                    Done1 =
+                        Done ++ [#{attempt_id => AttemptId, layer => Layer, scope_id => ScopeId}],
+                    budget_admit_layers(
+                        Conn, OrgId, SessionId, JobId, Attempt, Est, Period, Rest, Done1
+                    );
+                {ok, 0} ->
+                    %% 拒绝层自身的 attempt 同事务落 released。合同 E.4 伪代码
+                    %% 此处只补偿 done 层，但残留 reserved 行会让同号重试
+                    %% 命中 already_admitted 而 budget 未预占（正确性洞，
+                    %% 偏差记录于 state/P0-6.md）。
+                    _ = elib_pg:execute(
+                        Conn,
+                        <<
+                            "UPDATE customer_service_ai_budget_attempt"
+                            "   SET state='released', version = version + 1,"
+                            "       updated_at = now()"
+                            " WHERE attempt_id=$1 AND state='reserved'"
+                        >>,
+                        [AttemptId]
+                    ),
+                    budget_compensate(Conn, OrgId, Period, Done, Est),
+                    {error, {budget_exceeded, Layer}};
+                {error, Reason} ->
+                    %% PG 异常 ⇒ 整事务回滚（含本层及之前的预占），无需补偿。
+                    {error, Reason}
+            end;
+        {ok, existing_reserved} ->
+            {ok, already_admitted};
+        {ok, existing_terminal} ->
+            {error, {attempt_state_conflict, Layer}};
+        {error, Reason} ->
+            {error, Reason}
+    end.
+
+budget_scope_id(session, _OrgId, SessionId) -> SessionId;
+budget_scope_id(org, OrgId, _SessionId) -> OrgId;
+budget_scope_id(global, _OrgId, _SessionId) -> 0.
+
+%% attempt_id 冻结规则（E.2.2）：'<job_id>:<attempt>:<layer_kind>'，稳定可重放。
+budget_attempt_id(JobId, Attempt, Layer) ->
+    iolist_to_binary(io_lib:format("~B:~B:~s", [JobId, Attempt, atom_to_binary(Layer)])).
+
+budget_insert_attempt_if_absent(
+    Conn, AttemptId, OrgId, SessionId, JobId, Layer, ScopeId, Period, Est
+) ->
+    Sql = <<
+        "INSERT INTO customer_service_ai_budget_attempt"
+        " (attempt_id, organization_id, session_id, job_id, layer_kind, scope_id,"
+        "  period, reserved_tokens, state)"
+        " VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'reserved')"
+        " ON CONFLICT (attempt_id) DO NOTHING"
+    >>,
+    case
+        elib_pg:execute(Conn, Sql, [
+            AttemptId, OrgId, SessionId, JobId, atom_to_binary(Layer), ScopeId, Period, Est
+        ])
+    of
+        {ok, 1} ->
+            {ok, inserted};
+        {ok, 0} ->
+            case
+                elib_pg:query(
+                    Conn,
+                    <<
+                        "SELECT state FROM customer_service_ai_budget_attempt"
+                        " WHERE attempt_id=$1"
+                    >>,
+                    [AttemptId]
+                )
+            of
+                {ok, [#{<<"state">> := <<"reserved">>}]} -> {ok, existing_reserved};
+                {ok, [_]} -> {ok, existing_terminal};
+                {ok, []} -> {error, attempt_row_vanished};
+                {error, Reason} -> {error, Reason}
+            end;
+        {error, Reason} ->
+            {error, Reason}
+    end.
+
+%% 单层预占：条件 UPDATE 在 WHERE 内携带 `reserved + used + est <= limit`
+%% （E.4/R10）。行不存在或限额 NULL（H.3 fail-closed）或超限 ⇒ 0 行。
+budget_reserve(Conn, OrgId, Period, Layer, ScopeId, Est) ->
+    Sql = <<
+        "UPDATE customer_service_ai_budget"
+        "   SET reserved_tokens = reserved_tokens + $5,"
+        "       version = version + 1, updated_at = now()"
+        " WHERE organization_id=$1 AND period=$2 AND scope_kind=$3 AND scope_id=$4"
+        "   AND reserved_tokens + used_tokens + $5 <= limit_tokens"
+    >>,
+    case
+        elib_pg:execute(Conn, Sql, [
+            OrgId, Period, atom_to_binary(Layer), ScopeId, Est
+        ])
+    of
+        {ok, Count} when Count =:= 0; Count =:= 1 -> {ok, Count};
+        {error, Reason} -> {error, Reason}
+    end.
+
+%% 同事务补偿（E.4 done 循环）：逐层反向 `reserved -= est` + attempt
+%% CAS reserved→released。与预占对称，拒绝层的中间态不落库。
+budget_compensate(_Conn, _OrgId, _Period, [], _Est) ->
+    ok;
+budget_compensate(Conn, OrgId, Period, [Done | Rest], Est) ->
+    #{attempt_id := Id, layer := Layer, scope_id := ScopeId} = Done,
+    _ = elib_pg:execute(
+        Conn,
+        <<
+            "UPDATE customer_service_ai_budget"
+            "   SET reserved_tokens = reserved_tokens - $5,"
+            "       version = version + 1, updated_at = now()"
+            " WHERE organization_id=$1 AND period=$2 AND scope_kind=$3"
+            "   AND scope_id=$4 AND reserved_tokens >= $5"
+        >>,
+        [OrgId, Period, atom_to_binary(Layer), ScopeId, Est]
+    ),
+    _ = elib_pg:execute(
+        Conn,
+        <<
+            "UPDATE customer_service_ai_budget_attempt"
+            "   SET state='released', version = version + 1, updated_at = now()"
+            " WHERE attempt_id=$1 AND state='reserved'"
+        >>,
+        [Id]
+    ),
+    budget_compensate(Conn, OrgId, Period, Rest, Est).
+
+%% @doc E.5 结算（I8 幂等）：reserved → settled，budget `reserved -= R,
+%% used += actual`。actual > reserved 由 ck_csaiba_settled（23514）拦截，
+%% 整事务回滚（E-5）。重复 settle：state 已非 reserved ⇒ 0 行 ⇒ 跳过。
+-spec budget_settle(integer(), binary(), non_neg_integer()) ->
+    {ok, settled}
+    | {skipped, already_settled | {not_reserved, binary()}}
+    | {error, not_found}
+    | {error, term()}.
+budget_settle(OrgId, AttemptId, ActualTokens) ->
+    budget_reserved_transition(OrgId, AttemptId, settled, ActualTokens).
+
+%% @doc E.3 release：reserved → released，budget `reserved -= R`。
+-spec budget_release(integer(), binary()) ->
+    {ok, released}
+    | {skipped, {not_reserved, binary()}}
+    | {error, not_found}
+    | {error, term()}.
+budget_release(OrgId, AttemptId) ->
+    budget_reserved_transition(OrgId, AttemptId, released, keep).
+
+%% @doc E.3 to_uncertain：reserved → uncertain；**budget 不动**（保守：
+%% 额度仍占，E-7 不变量在 uncertain 期间继续成立），由 reconcile 收口。
+-spec budget_to_uncertain(integer(), binary()) ->
+    {ok, uncertain}
+    | {skipped, {not_reserved, binary()}}
+    | {error, not_found}
+    | {error, term()}.
+budget_to_uncertain(OrgId, AttemptId) ->
+    budget_reserved_transition(OrgId, AttemptId, uncertain, keep).
+
+%% reserved 态三迁移共用骨架：FOR UPDATE 行锁下读 state+version，
+%% CAS WHERE state/version 双条件（合同 §4「每次迁移 CAS state + version」）。
+budget_reserved_transition(OrgId, AttemptId, Target, ActualOrKeep) ->
+    Fun = fun(Conn) ->
+        case budget_attempt_for_update(Conn, OrgId, AttemptId) of
+            {ok, Att} ->
+                case maps:get(<<"state">>, Att) of
+                    <<"reserved">> ->
+                        Version = maps:get(<<"version">>, Att),
+                        Reserved = maps:get(<<"reserved_tokens">>, Att),
+                        TargetBin = atom_to_binary(Target),
+                        Settled =
+                            case ActualOrKeep of
+                                keep -> maps:get(<<"settled_tokens">>, Att);
+                                N when is_integer(N) -> N
+                            end,
+                        case
+                            elib_pg:execute(
+                                Conn,
+                                <<
+                                    "UPDATE customer_service_ai_budget_attempt"
+                                    "   SET state = $2, settled_tokens = $3,"
+                                    "       version = version + 1, updated_at = now()"
+                                    " WHERE attempt_id = $1 AND state = 'reserved'"
+                                    "   AND version = $4"
+                                >>,
+                                [AttemptId, TargetBin, Settled, Version]
+                            )
+                        of
+                            {ok, 1} ->
+                                Apply =
+                                    case Target of
+                                        settled ->
+                                            {ok, settled};
+                                        released ->
+                                            _ = budget_apply(Conn, Att, -Reserved, 0),
+                                            {ok, released};
+                                        %% uncertain：budget 不动（E.3 保守语义）
+                                        uncertain ->
+                                            {ok, uncertain}
+                                    end,
+                                case Apply of
+                                    {ok, settled} ->
+                                        _ = budget_apply(Conn, Att, -Reserved, Settled),
+                                        {ok, settled};
+                                    Other ->
+                                        Other
+                                end;
+                            {ok, 0} ->
+                                {skipped, already_migrated};
+                            {error, Reason} ->
+                                {error, Reason}
+                        end;
+                    <<"settled">> when Target =:= settled ->
+                        {skipped, already_settled};
+                    OtherState ->
+                        {skipped, {not_reserved, OtherState}}
+                end;
+            {error, Reason} ->
+                {error, Reason}
+        end
+    end,
+    case elib_pg:with_tx(Fun, [{reraise, false}]) of
+        {rollback, Reason} -> {error, Reason};
+        Other -> Other
+    end.
+
+budget_attempt_for_update(Conn, OrgId, AttemptId) ->
+    case
+        elib_pg:query(
+            Conn,
+            <<
+                "SELECT attempt_id, organization_id, layer_kind, scope_id, period,"
+                "       reserved_tokens, settled_tokens, state, version"
+                "  FROM customer_service_ai_budget_attempt"
+                " WHERE attempt_id=$1 AND organization_id=$2"
+                "   FOR UPDATE"
+            >>,
+            [AttemptId, OrgId]
+        )
+    of
+        {ok, [Row]} -> {ok, Row};
+        {ok, []} -> {error, not_found};
+        {error, Reason} -> {error, Reason}
+    end.
+
+budget_apply(Conn, Att, ReservedDelta, UsedDelta) ->
+    elib_pg:execute(
+        Conn,
+        <<
+            "UPDATE customer_service_ai_budget"
+            "   SET reserved_tokens = reserved_tokens + $1,"
+            "       used_tokens = used_tokens + $2,"
+            "       version = version + 1, updated_at = now()"
+            " WHERE organization_id = $3 AND period = $4"
+            "   AND scope_kind = $5 AND scope_id = $6"
+        >>,
+        [
+            ReservedDelta,
+            UsedDelta,
+            maps:get(<<"organization_id">>, Att),
+            maps:get(<<"period">>, Att),
+            maps:get(<<"layer_kind">>, Att),
+            maps:get(<<"scope_id">>, Att)
+        ]
+    ),
+    ok.
+
+%% @doc E.6 reconcile：**provider 查询在事务外**（慢 I/O 铁律），逐条短事务
+%% 写。LookupFun(AttemptRow) ⇒ `{ok, ActualTokens}`（已知用量 ⇒ settled）
+%% | `unknown`（查不到 ⇒ released）。重复 reconcile：CAS ⇒ 只生效一次。
+%% 只处理 `created_at < now() - interval '10 minutes'` 的到期行（E.6 冻结）。
+-spec budget_reconcile() -> {ok, [map()]} | {error, term()}.
+budget_reconcile() ->
+    budget_reconcile(fun(_Att) -> unknown end).
+
+-spec budget_reconcile(fun((map()) -> {ok, non_neg_integer()} | unknown)) ->
+    {ok, [map()]} | {error, term()}.
+budget_reconcile(LookupFun) when is_function(LookupFun, 1) ->
+    case
+        elib_pg:query(
+            <<
+                "SELECT attempt_id, organization_id, layer_kind, scope_id, period,"
+                "       reserved_tokens, settled_tokens, state, version"
+                "  FROM customer_service_ai_budget_attempt"
+                " WHERE state = 'uncertain'"
+                "   AND created_at < now() - interval '10 minutes'"
+                " ORDER BY created_at"
+            >>,
+            []
+        )
+    of
+        {ok, Rows} ->
+            {ok, [budget_reconcile_one(R, LookupFun) || R <- Rows]};
+        {error, Reason} ->
+            {error, Reason}
+    end.
+
+budget_reconcile_one(Att, LookupFun) ->
+    AttemptId = maps:get(<<"attempt_id">>, Att),
+    case LookupFun(Att) of
+        {ok, Actual} ->
+            {AttemptId, budget_uncertain_transition(Att, settled, Actual)};
+        _Unknown ->
+            {AttemptId, budget_uncertain_transition(Att, released, keep)}
+    end.
+
+%% uncertain 短事务：CAS uncertain → settled/released + 累计表对账
+%% （settled：-R +A；released：-R +0）。Version 从行内读（结算前的快照），
+%% CAS 失配 ⇒ {skipped, already_migrated}。
+budget_uncertain_transition(Att, Target, ActualOrKeep) ->
+    AttemptId = maps:get(<<"attempt_id">>, Att),
+    OrgId = maps:get(<<"organization_id">>, Att),
+    Fun = fun(Conn) ->
+        case budget_attempt_for_update(Conn, OrgId, AttemptId) of
+            {ok, Att1} ->
+                case maps:get(<<"state">>, Att1) of
+                    <<"uncertain">> ->
+                        Version = maps:get(<<"version">>, Att1),
+                        Reserved = maps:get(<<"reserved_tokens">>, Att1),
+                        TargetBin = atom_to_binary(Target),
+                        Settled =
+                            case ActualOrKeep of
+                                keep -> maps:get(<<"settled_tokens">>, Att1);
+                                N when is_integer(N) -> N
+                            end,
+                        case
+                            elib_pg:execute(
+                                Conn,
+                                <<
+                                    "UPDATE customer_service_ai_budget_attempt"
+                                    "   SET state = $2, settled_tokens = $3,"
+                                    "       version = version + 1, updated_at = now()"
+                                    " WHERE attempt_id = $1 AND state = 'uncertain'"
+                                    "   AND version = $4"
+                                >>,
+                                [AttemptId, TargetBin, Settled, Version]
+                            )
+                        of
+                            {ok, 1} ->
+                                _ =
+                                    case Target of
+                                        settled -> budget_apply(Conn, Att1, -Reserved, Settled);
+                                        released -> budget_apply(Conn, Att1, -Reserved, 0)
+                                    end,
+                                {ok, Target};
+                            {ok, 0} ->
+                                {skipped, already_migrated};
+                            {error, Reason} ->
+                                {error, Reason}
+                        end;
+                    OtherState ->
+                        {skipped, {not_uncertain, OtherState}}
+                end;
+            {error, Reason} ->
+                {error, Reason}
+        end
+    end,
+    case elib_pg:with_tx(Fun, [{reraise, false}]) of
+        {rollback, Reason} -> {error, Reason};
+        Other -> Other
     end.
 
 %% ===================================================================
