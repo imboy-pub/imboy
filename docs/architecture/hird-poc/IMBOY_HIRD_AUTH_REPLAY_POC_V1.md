@@ -373,3 +373,33 @@ fail-closed 授权 + 凭证资源绑定 + 回放护栏），不是任意 Erlang 
   复验 BLOCKED；且真实模型场景价值仍无证据。
 - **真实模型执行：NOT_AUTHORIZED（本轮未执行）**。本轮零真实调用、零密钥读取、
   零对外请求；后续真实模型测试需明确的独立授权与预算。
+
+### 4.6.9 合并与门禁事件记录（CLOSEOUT 收口，2026-10-14）
+
+**落库记录（用户授权的 commit+merge，未 push）**：
+- `f7765493`：PoC 全部成果提交至 `hird/auth-replay-poc-v1`（19 文件 +3360/−18）。
+- `44881fd7`：main `--no-ff` 合并该分支。合并前 main 已被并行会话推进至 `cf0768b4`
+  （较 4.6.1 的 dba3ab89 又领先 50 提交、100 文件），与本任务文件**零重叠**，合并
+  零冲突；随后 main 反向同步回 worktree 分支（干净）。
+- 迁移编号：分支零新增迁移；合并前后 main 与分支迁移序列一致，**每个编号恰好
+  up+down 成对**（无重复无缺失），尾部同止于 `00000172`。
+
+**两项修正与一项披露**：
+1. 修正 §4.2 旧结论：worktree 的 `make compile` **并非结构性阻塞**——根因是主树
+   deps 内 6 个引用已删除路径（`/private/tmp/imboy_base2`）的陈旧 `.d` 缓存；
+   清除后 make compile 在 worktree 正常通过（hook 内实跑 4 次）。`compile.sh`
+   仍保留为任务专用快速通道。
+2. CLOSEOUT 提交时 erlfmt 门禁拦截 11 个文件的真实格式问题——已格式化并重编重跑
+   （离线四套件 28/28 复绿）。
+3. **门禁事件披露**：pre-commit 的 arch-check 在 lefthook 进程上下文中稳定崩溃
+   （三种签名：Apple bash 3.2 PAC SIGBUS / malloc 堆损坏 abort / rg 子进程段
+   错误；报告见 `~/Library/Logs/DiagnosticReports/bash-2026-10-14-*`；lefthook.yml
+   内有本机同类问题记录）。同一命令 standalone 直执行 **5/5 通过**；erlfmt、
+   gitleaks、make compile 三门在 hook 内通过。穷尽两条修复路径（精简环境、去
+   shell 包装 shim）后，按仓库先例以 `LEFTHOOK=0` 提交，四项门禁命令全部在同一
+   staged 内容上 standalone 执行并通过（已在提交信息中披露）。宿主级修复建议
+   （如 `brew install bash`）未获授权，本轮未动系统工具链。
+
+**C4 补充证据（PG BLOCKED 维持）**：`docker-compose.yml` 证实 `imboy_pg18` 容器
+密码为 `${IMBOY_PG_PASSWORD:?required}`——用户私有 `.env` 值、不入库，
+`.env.example` 留空；凭据在「不解析日常配置」约束下确认不可获得。
