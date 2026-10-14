@@ -73,6 +73,9 @@
     sql_statements/0
 ]).
 
+%% v4 列（180）：auto_reply_mode/config_version/faq_require_hit/max_inflight/
+%% job_timeout_ms/max_job_age_ms 取代 v1 的 auto_reply_enabled/
+%% auto_reply_threshold/faq_min_score（04 对照表，R17/R23 对治）。
 -define(CONFIG_KEYS, [
     id,
     name,
@@ -80,11 +83,14 @@
     model,
     system_prompt,
     greeting,
-    auto_reply_enabled,
-    auto_reply_threshold,
-    max_unresolved_turns,
-    faq_min_score,
+    auto_reply_mode,
+    config_version,
     seat_identity_id,
+    max_unresolved_turns,
+    faq_require_hit,
+    max_inflight,
+    job_timeout_ms,
+    max_job_age_ms,
     version,
     created_at,
     updated_at
@@ -106,7 +112,7 @@
     intent,
     category,
     keywords,
-    enabled,
+    status,
     hit_count,
     version,
     created_at,
@@ -131,7 +137,7 @@
     seq,
     direction,
     intent,
-    confidence,
+    model_reported_confidence,
     action,
     faq_ids,
     reply_text,
@@ -147,8 +153,9 @@
 
 fetch_config(OrgId) ->
     Sql = <<
-        "SELECT id,name,provider,model,system_prompt,greeting,auto_reply_enabled,"
-        "auto_reply_threshold,max_unresolved_turns,faq_min_score,seat_identity_id,version,"
+        "SELECT id,name,provider,model,system_prompt,greeting,auto_reply_mode,"
+        "config_version,seat_identity_id,max_unresolved_turns,faq_require_hit,"
+        "max_inflight,job_timeout_ms,max_job_age_ms,version,"
         "extract(epoch from created_at)::bigint AS created_at,"
         "extract(epoch from updated_at)::bigint AS updated_at "
         "FROM customer_service_ai_agent WHERE organization_id=$1 ORDER BY id LIMIT 1"
@@ -182,19 +189,25 @@ fetch_gate_config(OrgId) ->
 upsert_config(OrgId, Params) ->
     Sql = <<
         "INSERT INTO customer_service_ai_agent "
-        "(organization_id,id,name,provider,model,system_prompt,greeting,auto_reply_enabled,"
-        "auto_reply_threshold,max_unresolved_turns,faq_min_score,seat_identity_id) "
-        "VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) "
+        "(organization_id,id,name,provider,model,system_prompt,greeting,auto_reply_mode,"
+        "config_version,seat_identity_id,max_unresolved_turns,faq_require_hit,"
+        "max_inflight,job_timeout_ms,max_job_age_ms) "
+        "VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) "
         "ON CONFLICT (organization_id,id) DO UPDATE SET "
         "name=EXCLUDED.name,provider=EXCLUDED.provider,model=EXCLUDED.model,"
         "system_prompt=EXCLUDED.system_prompt,greeting=EXCLUDED.greeting,"
-        "auto_reply_enabled=EXCLUDED.auto_reply_enabled,"
-        "auto_reply_threshold=EXCLUDED.auto_reply_threshold,"
+        "auto_reply_mode=EXCLUDED.auto_reply_mode,"
+        "config_version=customer_service_ai_agent.config_version+1,"
+        "seat_identity_id=EXCLUDED.seat_identity_id,"
         "max_unresolved_turns=EXCLUDED.max_unresolved_turns,"
-        "faq_min_score=EXCLUDED.faq_min_score,seat_identity_id=EXCLUDED.seat_identity_id,"
+        "faq_require_hit=EXCLUDED.faq_require_hit,"
+        "max_inflight=EXCLUDED.max_inflight,"
+        "job_timeout_ms=EXCLUDED.job_timeout_ms,"
+        "max_job_age_ms=EXCLUDED.max_job_age_ms,"
         "updated_at=now(),version=customer_service_ai_agent.version+1 "
-        "RETURNING id,name,provider,model,system_prompt,greeting,auto_reply_enabled,"
-        "auto_reply_threshold,max_unresolved_turns,faq_min_score,seat_identity_id,version,"
+        "RETURNING id,name,provider,model,system_prompt,greeting,auto_reply_mode,"
+        "config_version,seat_identity_id,max_unresolved_turns,faq_require_hit,"
+        "max_inflight,job_timeout_ms,max_job_age_ms,version,"
         "extract(epoch from created_at)::bigint AS created_at,"
         "extract(epoch from updated_at)::bigint AS updated_at"
     >>,
@@ -206,11 +219,14 @@ upsert_config(OrgId, Params) ->
         opt(Params, model, <<>>),
         opt(Params, system_prompt, <<>>),
         opt(Params, greeting, <<>>),
-        maps:get(auto_reply_enabled, Params, false),
-        maps:get(auto_reply_threshold, Params, 0.6),
+        opt(Params, auto_reply_mode, <<"disabled">>),
+        maps:get(config_version, Params, 1),
+        maps:get(seat_identity_id, Params, undefined),
         maps:get(max_unresolved_turns, Params, 2),
-        maps:get(faq_min_score, Params, 0.2),
-        maps:get(seat_identity_id, Params, undefined)
+        maps:get(faq_require_hit, Params, true),
+        maps:get(max_inflight, Params, 1),
+        maps:get(job_timeout_ms, Params, 120000),
+        maps:get(max_job_age_ms, Params, 300000)
     ],
     cs_pg_common:fetch_one(Sql, Args, ?CONFIG_KEYS).
 
@@ -220,8 +236,8 @@ upsert_config(OrgId, Params) ->
 
 list_faq(OrgId, Params) ->
     Sql = <<
-        "SELECT id,question,answer,intent,category,keywords,enabled,hit_count,version,"
-        "(embedding IS NOT NULL) AS embedded,"
+        "SELECT id,question,answer,intent,category,keywords,status,hit_count,version,"
+        "(embedded_at IS NOT NULL) AS embedded,"
         "extract(epoch from created_at)::bigint AS created_at,"
         "extract(epoch from updated_at)::bigint AS updated_at "
         "FROM customer_service_faq WHERE organization_id=$1 "
@@ -239,14 +255,14 @@ list_faq(OrgId, Params) ->
 upsert_faq(OrgId, Params) ->
     Sql = <<
         "INSERT INTO customer_service_faq "
-        "(organization_id,id,question,answer,intent,category,keywords,enabled) "
+        "(organization_id,id,question,answer,intent,category,keywords,status) "
         "VALUES ($1,$2,$3,$4,$5,$6,$7::text[],$8) "
         "ON CONFLICT (organization_id,id) DO UPDATE SET "
         "question=EXCLUDED.question,answer=EXCLUDED.answer,intent=EXCLUDED.intent,"
-        "category=EXCLUDED.category,keywords=EXCLUDED.keywords,enabled=EXCLUDED.enabled,"
+        "category=EXCLUDED.category,keywords=EXCLUDED.keywords,status=EXCLUDED.status,"
         "updated_at=now(),version=customer_service_faq.version+1 "
-        "RETURNING id,question,answer,intent,category,keywords,enabled,hit_count,version,"
-        "(embedding IS NOT NULL) AS embedded,"
+        "RETURNING id,question,answer,intent,category,keywords,status,hit_count,version,"
+        "(embedded_at IS NOT NULL) AS embedded,"
         "extract(epoch from created_at)::bigint AS created_at,"
         "extract(epoch from updated_at)::bigint AS updated_at"
     >>,
@@ -258,7 +274,7 @@ upsert_faq(OrgId, Params) ->
         opt(Params, intent, <<"other">>),
         opt(Params, category, <<>>),
         maps:get(keywords, Params, []),
-        maps:get(enabled, Params, true)
+        opt(Params, status, <<"draft">>)
     ],
     cs_pg_common:fetch_one(Sql, Args, ?FAQ_KEYS).
 
@@ -322,7 +338,7 @@ search_faq_vector(_OrgId, _Vector, _Limit) ->
 
 fetch_faq(OrgId, Ids) when is_list(Ids), Ids =/= [] ->
     Sql = <<
-        "SELECT id,question,answer,intent,category,keywords,enabled,hit_count,version,"
+        "SELECT id,question,answer,intent,category,keywords,status,hit_count,version,"
         "extract(epoch from created_at)::bigint AS created_at,"
         "extract(epoch from updated_at)::bigint AS updated_at "
         "FROM customer_service_faq WHERE organization_id=$1 AND id = ANY($2::bigint[]) ORDER BY id"
@@ -416,11 +432,12 @@ upsert_session_state(OrgId, WsId, SessionId, Params) ->
 append_turn(OrgId, WsId, SessionId, Params) ->
     Sql = <<
         "INSERT INTO customer_service_ai_turn "
-        "(organization_id,workspace_id,session_id,seq,direction,intent,confidence,action,"
+        "(organization_id,workspace_id,session_id,seq,direction,intent,"
+        "model_reported_confidence,action,"
         "faq_ids,reply_text,model,latency_ms,detail) "
         "SELECT $1,$2,$3,coalesce(max(seq),0)+1,$4,$5,$6,$7,$8::bigint[],$9,$10,$11,$12::jsonb "
         "FROM customer_service_ai_turn WHERE organization_id=$1 AND session_id=$3 "
-        "RETURNING seq,direction,intent,confidence,action,faq_ids,reply_text,model,latency_ms,detail,"
+        "RETURNING seq,direction,intent,model_reported_confidence,action,faq_ids,reply_text,model,latency_ms,detail,"
         "extract(epoch from created_at)::bigint AS created_at"
     >>,
     Args = [
@@ -429,7 +446,7 @@ append_turn(OrgId, WsId, SessionId, Params) ->
         SessionId,
         opt(Params, direction, <<"inbound">>),
         opt(Params, intent, <<>>),
-        maps:get(confidence, Params, 0.0),
+        maps:get(model_reported_confidence, Params, 0.0),
         opt(Params, action, <<>>),
         maps:get(faq_ids, Params, []),
         opt(Params, reply_text, <<>>),
@@ -440,14 +457,19 @@ append_turn(OrgId, WsId, SessionId, Params) ->
     cs_pg_common:fetch_one(Sql, Args, ?TURN_KEYS).
 
 list_turns(OrgId, #{session_id := SessionId} = Params) ->
+    %% 铁律 6：workspace 可选收窄（0/缺省 = org-wide，管理面语义）。
+    Ws = int(maps:get(workspace_id, Params, 0), 0),
     Sql = <<
-        "SELECT seq,direction,intent,confidence,action,faq_ids,reply_text,model,latency_ms,detail,"
+        "SELECT seq,direction,intent,model_reported_confidence,action,faq_ids,"
+        "reply_text,model,latency_ms,detail,"
         "extract(epoch from created_at)::bigint AS created_at "
-        "FROM customer_service_ai_turn WHERE organization_id=$1 AND session_id=$2 "
+        "FROM customer_service_ai_turn"
+        " WHERE organization_id=$1 AND session_id=$2"
+        "   AND ($4::bigint = 0 OR workspace_id = $4) "
         "ORDER BY seq ASC LIMIT $3"
     >>,
     cs_pg_common:fetch_many(
-        Sql, [OrgId, SessionId, pos(maps:get(limit, Params, 200), 200)], ?TURN_KEYS
+        Sql, [OrgId, SessionId, pos(maps:get(limit, Params, 200), 200), Ws], ?TURN_KEYS
     );
 list_turns(_OrgId, _Params) ->
     {error, {invalid_argument, session_id}}.

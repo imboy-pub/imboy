@@ -84,21 +84,29 @@ config_set(OrgId, Params) when is_integer(OrgId), OrgId > 0, is_map(Params) ->
 config_set(OrgId, _Params) ->
     {error, {invalid_argument, {organization_id, OrgId}}}.
 
-%% 阈值/轮数必须落在有意义区间：坏配置会让裁决规则静默失效（如阈值 > 1 永不回复）。
+%% v4（04 对照表）：阈值字段删除；校验 auto_reply_mode 值域 +
+%% faq_require_hit 布尔 + 轮数非负。坏值会让门控语义静默失效，fail-fast。
 validate_thresholds(Params) ->
-    Threshold = maps:get(auto_reply_threshold, Params, undefined),
+    Mode = maps:get(auto_reply_mode, Params, undefined),
+    RequireHit = maps:get(faq_require_hit, Params, undefined),
     MaxTurns = maps:get(max_unresolved_turns, Params, undefined),
-    FaqMin = maps:get(faq_min_score, Params, undefined),
-    case valid_unit(Threshold) andalso valid_non_neg(MaxTurns) andalso valid_unit(FaqMin) of
+    case valid_mode(Mode) andalso valid_bool(RequireHit) andalso valid_non_neg(MaxTurns) of
         true ->
             ok;
         false ->
-            {error, {invalid_argument, thresholds}}
+            {error, {invalid_argument, config_fields}}
     end.
 
-valid_unit(undefined) -> true;
-valid_unit(V) when is_number(V) -> V >= 0 andalso V =< 1;
-valid_unit(_) -> false.
+valid_mode(undefined) ->
+    true;
+valid_mode(M) when is_binary(M) ->
+    lists:member(M, [<<"disabled">>, <<"observe">>, <<"canary">>, <<"enabled">>]);
+valid_mode(_) ->
+    false.
+
+valid_bool(undefined) -> true;
+valid_bool(B) when is_boolean(B) -> true;
+valid_bool(_) -> false.
 
 valid_non_neg(undefined) -> true;
 valid_non_neg(V) when is_integer(V) -> V >= 0;

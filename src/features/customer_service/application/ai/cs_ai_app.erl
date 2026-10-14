@@ -97,7 +97,9 @@ run(OrgId, Ws, SessionId, Text, Params) ->
         {error, Reason} ->
             {error, {ai_config_unavailable, Reason}};
         {ok, Config} ->
-            case maps:get(auto_reply_enabled, Config, false) of
+            %% v4（04 对照表）：auto_reply_enabled 删除，由 auto_reply_mode 承载；
+            %% 只有 enabled 放行（observe/canary/disabled 均不自动应答）。
+            case mode_of(Config) =:= enabled of
                 false -> {ok, disabled(ai_disabled)};
                 true -> run_enabled(OrgId, Ws, SessionId, Text, Params, Impl, Config)
             end
@@ -256,7 +258,7 @@ append_turn(Ctx, Reply, Delivered, Handoff) ->
         maps:get(org_id, Ctx), maps:get(workspace_id, Ctx), maps:get(session_id, Ctx), #{
             direction => <<"inbound">>,
             intent => atom_to_binary(maps:get(intent, Ctx), utf8),
-            confidence => maps:get(confidence, Ctx),
+            model_reported_confidence => maps:get(confidence, Ctx),
             action => atom_to_binary(maps:get(action, Decision), utf8),
             faq_ids => maps:get(faq_ids, Ctx),
             reply_text => Reply,
@@ -1129,11 +1131,12 @@ decide_only(Facts) -> cs_ai_decision:decide(Facts).
 %% 内部辅助
 %% ===================================================================
 
+%% v4（04 对照表）：auto_reply_threshold/faq_min_score 删除——放行由 D 组
+%% 七道 gate 承担，不再有阈值；决策只剩轮数上限。cs_ai_decision 对缺失键
+%% 的域默认值（0.6/0.2）属 domain 层（不在 P0-8 文件清单），见 state 偏差。
 decision_config(Config) ->
     #{
-        threshold => maps:get(auto_reply_threshold, Config, 0.6),
-        max_unresolved_turns => maps:get(max_unresolved_turns, Config, 2),
-        faq_min_score => maps:get(faq_min_score, Config, 0.2)
+        max_unresolved_turns => maps:get(max_unresolved_turns, Config, 2)
     }.
 
 passthrough(Params, Keys) ->
