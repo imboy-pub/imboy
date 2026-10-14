@@ -455,6 +455,41 @@ w202_eunit() { # $1 cdir $2 logname $3 module  -> echoes 1/0
   echo 0
 }
 
+# ---------------- W2-03 executor ----------------
+w203_case() { # $1 cdir
+  local cdir="$1" RC=0
+  mkdir -p "$cdir"
+  # 屏障套件（真实双连接，inttest_marker_db 自管供给库）；直连 erl 复用
+  # eunit-local 同款参数（A1c 全量重编窗口是跨会话 SIGTERM 的主要暴露面，
+  # 构建已由 test-build 预热时直连运行更稳）。
+  local PZ="" d
+  for d in deps/*/ebin; do [ -d "$d" ] && PZ="$PZ -pz $PWD/$d"; done
+  ln -sfn . imboy
+  sed -e "s/{http_port, 9800}/{http_port, ${EUNIT_HTTP_PORT:-19980}}/" \
+      -e "s/{http_port_adm, 9706}/{http_port_adm, ${EUNIT_HTTP_ADM_PORT:-19970}}/" \
+      "${EUNIT_CONFIG:-config/sys.local}.config" > "$cdir/w203-direct.config"
+  EUNIT_USE_RELAY=0 erl -noinput -boot no_dot_erlang +P 1048576 +Q 1024 \
+    -config "$cdir/w203-direct.config" -pa imboy/ebin -pa ebin -pa test $PZ \
+    -eval 'CoverSetup = fun() -> ok end, CoverExport = fun(_) -> ok end, CoverSetup(),
+      case eunit:test([attachment_lifecycle_v5_pg_tests], [verbose]) of
+        ok -> io:format("W203_DIRECT_OK~n");
+        error -> halt(2)
+      end,
+      halt()' > "$cdir/eunit-w203.log" 2>&1
+  local rc=$?
+  rm -f imboy
+  if [ $rc -eq 0 ] && grep -q "tests passed" "$cdir/eunit-w203.log"; then
+    W203_PG_OK=1
+  else
+    W203_PG_OK=0
+  fi
+  export W203_PG_OK V5_RUN_DIR="$RUN_DIR"
+  bash "$ROOT/scripts/test/attachment_lifecycle_v5_w203_seal.sh" "$ROOT" "$CUR_CASE" "$cdir" \
+    "bash scripts/test/attachment_lifecycle_v5_gate.sh --task W2-03 --case $CUR_CASE" \
+    >> "$cdir/raw.log" 2>&1 || RC=30
+  return $RC
+}
+
 w202_case() { # $1 cdir
   local cdir="$1" RC=0
   # 证据在任务内共享：三个 case 复用同一套套件日志（各 case 的差异只在封叶矩阵）
@@ -542,6 +577,9 @@ PYC
     W2-02/confirm-idempotent|W2-02/confirm-old-client|W2-02/confirmed-content-immutable)
       CUR_CASE="$cid"
       w202_case "$cdir" ;;
+    W2-03/confirm-gc-race)
+      CUR_CASE="$cid"
+      w203_case "$cdir" ;;
     W0-01/baseline)
       bash scripts/check_migrations.sh > "$cdir/raw.log" 2>&1
       seal_leafs "$cid" "$cdir" "$?" "bash scripts/check_migrations.sh (bootstrap retroactive)" ;;
