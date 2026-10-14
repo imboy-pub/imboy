@@ -408,16 +408,21 @@ insert_attachment_row_at(C, State, ObjectKey, AttId) ->
     OrgId = ?ORG_A,
     AppId = maps:get(app_a, State),
     ScopeRef = enterprise_asset_repo:scope_ref(OrgId, AppId),
+    %% locator 64-hex 小写必填：active 删除 job 与 gc 资格要求 digest 匹配
+    %% ^[0-9a-f]{64}$（03）
+    Locator = binary:encode_hex(crypto:hash(sha256, ObjectKey), lowercase),
     exec_params(
         C,
         <<
             "INSERT INTO attachment (id, file_hash256, mime_type, ext, name, path, url,"
             " size, info, referer_time, last_referer_user_id, last_referer_at,"
-            " creator_user_id, scope, scope_ref, cipher, status, created_at, updated_at)"
+            " creator_user_id, scope, scope_ref, cipher, status, created_at, updated_at,"
+            " storage_driver, storage_namespace, storage_container, storage_locator_sha256)"
             " VALUES ($1,'', 'application/pdf', '.pdf', 'a.pdf', $2, $2, 1024, '{}'::jsonb,"
-            " 1, 0, NOW(), 0, 'enterprise', $3, null, 1, NOW(), NOW())"
+            " 1, 0, NOW(), 0, 'enterprise', $3, null, 1, NOW(), NOW(),"
+            " 'garage', 'ns1', 'c1', $4)"
         >>,
-        [AttId, ObjectKey, ScopeRef]
+        [AttId, ObjectKey, ScopeRef, Locator]
     ),
     AttId.
 
@@ -1411,13 +1416,31 @@ asset_retention(C, State) ->
         [DueAtt, OrgId, AppId]
     ),
     ?assertEqual(true, element(2, enterprise_attachment_retention_repo:is_purgeable_tx(C, DueAtt))),
-    with_oss([{delete_object, 2, fun(_B, _K) -> ok end}], fun() ->
-        {ok, Purged} = enterprise_asset_retention_logic:governance_tx(C, Ctx, #{
-            op => <<"purge">>, object_key => DueKey
-        }),
-        ?assertEqual(true, maps:get(<<"purged">>, Purged)),
-        ?assertEqual(1, meck:num_calls(elib_oss, delete_object, 2))
-    end),
+    %% W4-01 入口收口：purge 不再直接删字节——同事务置治理终态后发删除
+    %% 意图（迁移 185：EAR purged 终态即资格权威），字节由 Worker 删
+    {ok, Purged} = enterprise_asset_retention_logic:governance_tx(C, Ctx, #{
+        op => <<"purge">>, object_key => DueKey
+    }),
+    ?assertEqual(true, maps:get(<<"purged">>, Purged)),
+    ?assertEqual(
+        1,
+        scalar(
+            C,
+            <<
+                "SELECT COUNT(*) FROM attachment_object_deletion"
+                " WHERE path = $1 AND job_state = 'ready'"
+            >>,
+            [DueKey]
+        )
+    ),
+    ?assertEqual(
+        <<"delete_intent">>,
+        scalar(
+            C,
+            <<"SELECT lifecycle_state FROM attachment WHERE id = $1">>,
+            [DueAtt]
+        )
+    ),
     ?assertEqual(
         true,
         scalar(

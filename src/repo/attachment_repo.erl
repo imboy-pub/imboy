@@ -42,6 +42,7 @@
 -export([orphan_list_for_delete/1, delete_orphan_tx/3]).
 %% W4-01 入口收口：metadata 域删除意图（fn_v5_intent_ordinary_delete 包装）
 -export([intent_ordinary_delete_tx/3, intent_ordinary_delete/2, orphan_path_tx/3]).
+-export([intent_purged_delete_tx/3]).
 
 %% @doc 物理删除数据库行（S3 删除成功后调用）
 -export([hard_delete_by_ids/1]).
@@ -550,6 +551,20 @@ delete_orphan_tx(Conn, Id, Opts) ->
     ok | {error, intent_conflict | tombstone | not_found | term()}.
 intent_ordinary_delete_tx(Conn, Path, Reason) ->
     case elib_pg:query(Conn, <<"SELECT fn_v5_intent_ordinary_delete($1, $2)">>, [Path, Reason]) of
+        {ok, _} -> ok;
+        {error, #error{code = <<"23510">>}} -> {error, intent_conflict};
+        {error, #error{code = <<"23505">>}} -> {error, tombstone};
+        {error, #error{code = <<"P0002">>}} -> {error, not_found};
+        {error, R} -> {error, R}
+    end.
+
+%% W4-01：EAR purge 专用意图（迁移 185）——EAR 治理终态（purged）即资格
+%% 权威（密文企业附件的统一资格谓词恒 false）。仅同事务已置 purged 的
+%% 行可发；23510=非 purged/非 live。
+-spec intent_purged_delete_tx(pid() | any(), binary(), binary()) ->
+    ok | {error, intent_conflict | tombstone | not_found | term()}.
+intent_purged_delete_tx(Conn, Path, Reason) ->
+    case elib_pg:query(Conn, <<"SELECT fn_v5_intent_purged_delete($1, $2)">>, [Path, Reason]) of
         {ok, _} -> ok;
         {error, #error{code = <<"23510">>}} -> {error, intent_conflict};
         {error, #error{code = <<"23505">>}} -> {error, tombstone};
