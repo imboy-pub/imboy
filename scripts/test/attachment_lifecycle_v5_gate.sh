@@ -520,6 +520,38 @@ w302_case() { # $1 cdir — 与 w301_case 同一直连 erl 模式，套件含 W3
   return $RC
 }
 
+# ---------------- W3-03 executor ----------------
+w303_case() { # $1 cdir — 与 w302_case 同一直连 erl 模式（投影+绑定套件）
+  local cdir="$1" RC=0
+  mkdir -p "$cdir"
+  local PZ="" d
+  for d in deps/*/ebin; do [ -d "$d" ] && PZ="$PZ -pz $PWD/$d"; done
+  ln -sfn . imboy
+  sed -e "s/{http_port, 9800}/{http_port, ${EUNIT_HTTP_PORT:-19980}}/" \
+      -e "s/{http_port_adm, 9706}/{http_port_adm, ${EUNIT_HTTP_ADM_PORT:-19970}}/" \
+      "${EUNIT_CONFIG:-config/sys.local}.config" > "$cdir/w303-direct.config"
+  EUNIT_USE_RELAY=0 erl -noinput -boot no_dot_erlang +P 1048576 +Q 1024 \
+    -config "$cdir/w303-direct.config" -pa imboy/ebin -pa ebin -pa test $PZ \
+    -eval 'CoverSetup = fun() -> ok end, CoverExport = fun(_) -> ok end, CoverSetup(),
+      case eunit:test([eb_message_assets_projection_tests], [verbose]) of
+        ok -> io:format("W303_DIRECT_OK~n");
+        error -> halt(2)
+      end,
+      halt()' > "$cdir/eunit-w303.log" 2>&1
+  local rc=$?
+  rm -f imboy
+  if [ $rc -eq 0 ] && grep -q "W303_DIRECT_OK" "$cdir/eunit-w303.log"; then
+    W303_PG_OK=1
+  else
+    W303_PG_OK=0
+  fi
+  export W303_PG_OK V5_RUN_DIR="$RUN_DIR"
+  bash "$ROOT/scripts/test/attachment_lifecycle_v5_w303_seal.sh" "$ROOT" "$CUR_CASE" "$cdir" \
+    "bash scripts/test/attachment_lifecycle_v5_gate.sh --task W3-03 --case $CUR_CASE" \
+    >> "$cdir/raw.log" 2>&1 || RC=30
+  return $RC
+}
+
 w203_case() { # $1 cdir
   local cdir="$1" RC=0
   mkdir -p "$cdir"
@@ -650,6 +682,9 @@ PYC
     W3-02/hold-all-entrypoints|W3-02/hold-gc-race)
       CUR_CASE="$cid"
       w302_case "$cdir" ;;
+    W3-03/enterprise-bind|W3-03/cs-bind)
+      CUR_CASE="$cid"
+      w303_case "$cdir" ;;
     W0-01/baseline)
       bash scripts/check_migrations.sh > "$cdir/raw.log" 2>&1
       seal_leafs "$cid" "$cdir" "$?" "bash scripts/check_migrations.sh (bootstrap retroactive)" ;;
