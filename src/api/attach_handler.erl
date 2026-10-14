@@ -394,79 +394,97 @@ strip_quotes(Part0) ->
     integer(), binary(), binary(), binary(), cowboy_req:req()
 ) -> cowboy_req:req().
 upload_stream(Uid, ObjectKey, MimeType, Boundary, Req0) ->
-    TmpPath = tmp_path(),
-    case file:open(TmpPath, [write, binary, raw, exclusive, {mode, 8#0600}]) of
-        {ok, Fd} ->
-            upload_stream_fd(Fd, TmpPath, Uid, ObjectKey, MimeType, Boundary, Req0);
-        {error, OpenReason} ->
-            %% 临时文件创建失败（磁盘满/tmp 不可写）= 服务端故障，映射 5xx
-            ?ERROR_LOG([
-                "attach_handler tmp file open failed: ",
-                TmpPath,
-                OpenReason
-            ]),
-            elib_response:error(
-                Req0, <<"附件写入服务端临时存储失败"/utf8>>, ?ERR_INTERNAL_SERVER_ERROR
-            )
+    TmpDir = tmp_path(),
+    case file:make_dir(TmpDir) of
+        ok ->
+            try
+                case file:change_mode(TmpDir, 8#0700) of
+                    ok ->
+                        TmpPath = filename:join(TmpDir, "file.part"),
+                        case file:open(TmpPath, [write, binary, raw, exclusive]) of
+                            {ok, Fd} ->
+                                upload_stream_fd(
+                                    Fd, TmpPath, Uid, ObjectKey, MimeType, Boundary, Req0
+                                );
+                            {error, Reason} ->
+                                temporary_storage_error(Req0, Reason)
+                        end;
+                    {error, Reason} ->
+                        temporary_storage_error(Req0, Reason)
+                end
+            after
+                _ = file:del_dir(TmpDir)
+            end;
+        {error, Reason} ->
+            temporary_storage_error(Req0, Reason)
     end.
 
-%% @doc 持有 Fd 的收包主体：无论成功失败，退出时关闭并删除临时文件。
+%% 私有目录先封闭访问，文件权限确认成功后才接收正文；所有出口清理。
 -spec upload_stream_fd(
     file:io_device(), string(), integer(), binary(), binary(), binary(), cowboy_req:req()
 ) -> cowboy_req:req().
 upload_stream_fd(Fd, TmpPath, Uid, ObjectKey, MimeType, Boundary, Req0) ->
+    try
+        case file:change_mode(TmpPath, 8#0600) of
+            ok -> receive_upload(Fd, TmpPath, Uid, ObjectKey, MimeType, Boundary, Req0);
+            {error, Reason} -> temporary_storage_error(Req0, Reason)
+        end
+    after
+        _ = file:close(Fd),
+        _ = file:delete(TmpPath)
+    end.
+
+receive_upload(Fd, TmpPath, Uid, ObjectKey, MimeType, Boundary, Req0) ->
     St0 = elib_multipart:new(
         Boundary,
         fun(Data) -> ok = file:write(Fd, Data) end,
         elib_oss:max_file_size()
     ),
-    Resp =
-        try
-            case stream_body(Req0, St0) of
-                {ok, St} ->
-                    file:sync(Fd),
-                    case elib_multipart:result(St) of
-                        {ok, #{size := Size}} ->
-                            case
-                                attachment_upload_logic:upload_multipart(
-                                    Uid, ObjectKey, MimeType, TmpPath, Size
-                                )
-                            of
-                                {ok, Data} ->
-                                    elib_response:success(Req0, Data, "success.");
-                                {error, Reason} ->
-                                    upload_error(Req0, Reason)
-                            end;
-                        {error, no_file_part} ->
-                            elib_response:error(
-                                Req0, <<"缺少 multipart 文件字段 file"/utf8>>, ?ERR_BAD_REQUEST
-                            )
-                    end;
-                {error, file_too_large} ->
-                    elib_response:error(Req0, <<"文件超过大小限制"/utf8>>, ?ERR_PAYLOAD_TOO_LARGE);
-                {error, incomplete_body} ->
-                    elib_response:error(Req0, <<"multipart 请求体不合法"/utf8>>, ?ERR_BAD_REQUEST);
-                {error, {bad_part, _Reason}} ->
-                    elib_response:error(Req0, <<"multipart 请求体不合法"/utf8>>, ?ERR_BAD_REQUEST);
-                {error, {write_failed, _WErr}} ->
-                    %% WriteFun 故障（磁盘满/IO 错误）是服务端故障，映射 5xx
-                    elib_response:error(
-                        Req0, <<"附件写入服务端临时存储失败"/utf8>>, ?ERR_INTERNAL_SERVER_ERROR
-                    );
-                {error, {read_body, _ReadReason}} ->
-                    elib_response:error(Req0, <<"请求体读取失败"/utf8>>, ?ERR_BAD_REQUEST)
-            end
-        after
-            _ = file:close(Fd),
-            _ = file:delete(TmpPath)
-        end,
-    Resp.
+    case stream_body(Req0, St0) of
+        {ok, St} ->
+            case file:sync(Fd) of
+                ok -> upload_parsed_file(St, TmpPath, Uid, ObjectKey, MimeType, Req0);
+                {error, Reason} -> temporary_storage_error(Req0, Reason)
+            end;
+        {error, file_too_large} ->
+            elib_response:error(Req0, <<"文件超过大小限制"/utf8>>, ?ERR_PAYLOAD_TOO_LARGE);
+        {error, incomplete_body} ->
+            elib_response:error(Req0, <<"multipart 请求体不合法"/utf8>>, ?ERR_BAD_REQUEST);
+        {error, {bad_part, _Reason}} ->
+            elib_response:error(Req0, <<"multipart 请求体不合法"/utf8>>, ?ERR_BAD_REQUEST);
+        {error, {write_failed, Reason}} ->
+            temporary_storage_error(Req0, Reason);
+        {error, {read_body, _ReadReason}} ->
+            elib_response:error(Req0, <<"请求体读取失败"/utf8>>, ?ERR_BAD_REQUEST)
+    end.
+
+upload_parsed_file(St, TmpPath, Uid, ObjectKey, MimeType, Req0) ->
+    case elib_multipart:result(St) of
+        {ok, #{size := Size}} ->
+            case
+                attachment_upload_logic:upload_multipart(Uid, ObjectKey, MimeType, TmpPath, Size)
+            of
+                {ok, Data} -> elib_response:success(Req0, Data, "success.");
+                {error, Reason} -> upload_error(Req0, Reason)
+            end;
+        {error, no_file_part} ->
+            elib_response:error(Req0, <<"缺少 multipart 文件字段 file"/utf8>>, ?ERR_BAD_REQUEST)
+    end.
+
+temporary_storage_error(Req0, Reason) ->
+    ?ERROR_LOG(["attach_handler temporary storage failed: ", Reason]),
+    elib_response:error(Req0, <<"附件写入服务端临时存储失败"/utf8>>, ?ERR_INTERNAL_SERVER_ERROR).
 
 %% 循环 cowboy_req:read_body 直到读完；每块喂给 elib_multipart。
 %% 读完了解析仍未 done（缺 closing boundary）→ incomplete_body。
 -spec stream_body(cowboy_req:req(), elib_multipart:state()) ->
     {ok, elib_multipart:state()}
-    | {error, file_too_large | {bad_part, term()} | incomplete_body | {read_body, term()}}.
+    | {error,
+        file_too_large
+        | {bad_part, term()}
+        | {write_failed, term()}
+        | incomplete_body
+        | {read_body, term()}}.
 stream_body(Req0, St) ->
     %% length 256KB 是单次读取目标，不是返回块的硬上限。
     Opts = #{length => 262144, period => 30000, timeout => 60000},
@@ -511,7 +529,7 @@ upload_error(Req0, {storage_error, _Reason}) ->
 upload_error(Req0, _Reason) ->
     elib_response:error(Req0, <<"附件上传失败"/utf8>>, ?ERR_BAD_REQUEST).
 
-%% @doc 临时落盘路径（/tmp 写完即删，不依赖任何应用配置）。
+%% @doc 临时私有目录路径（正文写完即删，不依赖任何应用配置）。
 -spec tmp_path() -> string().
 tmp_path() ->
     Rand = binary_to_list(binary:encode_hex(crypto:strong_rand_bytes(8))),
