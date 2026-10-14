@@ -173,7 +173,8 @@ for i, leaf in enumerate(leaves):
         "raw_output_path": raw, "raw_output_sha256": sha,
         "probe_result": probes.get(name),
     }
-    with open(os.path.join(cdir, "leaf%03d.json" % i), "w") as fh:
+    ph_slug = phase.replace("-", "_")
+    with open(os.path.join(cdir, "leaf-%s-%03d.json" % (ph_slug, i)), "w") as fh:
         json.dump(receipt, fh, indent=1)
 print("sealed %d leaf receipts for %s/%s (rc=%s, passed=%d, unmapped=%s)"
       % (n, cid, phase, rc, passed, missing[:4]))
@@ -341,7 +342,8 @@ for i, leaf in enumerate(leaves):
         "started_at": "", "finished_at": "",
         "raw_output_path": raw, "raw_output_sha256": sha,
     }
-    with open(os.path.join(cdir, "leaf%03d.json" % i), "w") as fh:
+    ph_slug = phase.replace("-", "_")
+    with open(os.path.join(cdir, "leaf-%s-%03d.json" % (ph_slug, i)), "w") as fh:
         json.dump(receipt, fh, indent=1)
 print("sealed %d leaf receipts for %s (rc=%s)" % (n, cid, rc))
 sys.exit(0 if rc == "0" else int(rc))
