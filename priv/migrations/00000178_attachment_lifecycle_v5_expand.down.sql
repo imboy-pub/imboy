@@ -1,4 +1,4 @@
--- Down for 00000177 (V5.5 M1-expand).
+-- Down for 00000178 (V5.5 M1-expand).
 -- Empty-schema down removes the added constraints/columns/indexes in reverse.
 -- Any persisted V5 identity/session state blocks the down (forward-fix only).
 DO $$
