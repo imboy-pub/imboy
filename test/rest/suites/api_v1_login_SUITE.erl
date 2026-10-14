@@ -15,7 +15,8 @@
     login_002_wrong_password/1,
     login_003_unknown_account/1,
     login_004_malformed_json/1,
-    login_005_device_signature_boundary/1
+    login_005_device_signature_boundary/1,
+    limiter_real_failures/1
 ]).
 
 -define(PATH, <<"/api/v1/passport/login">>).
@@ -29,7 +30,8 @@ all() ->
         login_002_wrong_password,
         login_003_unknown_account,
         login_004_malformed_json,
-        login_005_device_signature_boundary
+        login_005_device_signature_boundary,
+        limiter_real_failures
     ].
 
 %% The application itself is real: config load, core dependency apps and
@@ -208,6 +210,104 @@ login_005_device_signature_boundary(Config) ->
             rest_assert:json_contains(#{<<"code">> => 902}, ResponseTampered)
         end
     ).
+
+%% ===================================================================
+%% Limiter V1 L0 缺陷复现（计划 docs/plans/2026-10-13-limiter-v1-*
+%% §5.F1、§9.2 AC-01）。真实 handler → passport_logic →
+%% login_security_logic → login_attempt_ds 全链（本 suite 起的就是真实
+%% 应用），不 mock 任何生产模块。
+%%
+%% L0 旧侧 oracle：F 次真实错误密码与 F 次真实错误验证码后，账户失败
+%% 计数恒为 0、不锁定、第 F+1 次请求照常进入认证——失败计数链因空 IP
+%% 断开（record_login_failure 先做 check_ip_rate_limit(<<>>)，invalid_ip
+%% 提前返回，账户 ETS 从未被写）。这是缺陷复现成功，不是产品 PASS；
+%% L3 修复后本 case 按 AC-01 翻转 oracle（计数 1..F，F 后锁定拒绝）。
+%% ===================================================================
+limiter_real_failures(Config) ->
+    %% IP 外层预算足够（fixture 标准做法：本 case 需要 2F+1 次真实
+    %% passport POST，默认 10/min 不够；这同时是 AC-14 揭示的"重复 setup
+    %% 即调高限额"机制的正当使用面）
+    ok = rest_fixture:ensure_login_throttle_capacity(),
+    application:set_env(imboy, login_max_attempts, 5),
+    Golden = rest_fixture:session(golden),
+    Account = maps:get(account, Golden),
+    AttemptKey = login_attempt_ds:cache_key(Account, <<>>),
+    try
+        ets:delete(login_attempt_ets, AttemptKey)
+    catch
+        _:_ -> ok
+    end,
+
+    WrongPwdRequests = [
+        login_request(Golden, did(Config, <<"l0p">>), <<"LimiterWrongPwd!">>)
+     || _ <- lists:seq(1, 5)
+    ],
+    %% F 次真实错误密码：每次读真实 S 快照
+    PwdSnapshots =
+        [
+            begin
+                Response = post(Config, did(Config, <<"l0p">>), Req),
+                #{<<"code">> := 1} = maps:get(body, Response),
+                {ok, LockInfo} = login_security_logic:get_lock_info(Account, <<>>),
+                maps:get(<<"attempts">>, LockInfo)
+            end
+         || Req <- WrongPwdRequests
+        ],
+    %% L0 旧侧 oracle：真实链上失败计数恒 0（从未写入）
+    [0 = Count || Count <- PwdSnapshots],
+
+    %% 第 F+1 次错误密码照常进入认证（未被锁定拒绝）
+    Resp6 = post(
+        Config,
+        did(Config, <<"l0p">>),
+        login_request(Golden, did(Config, <<"l0p">>), <<"LimiterWrongPwd!">>)
+    ),
+    #{<<"code">> := 1} = maps:get(body, Resp6),
+
+    %% F 次真实错误验证码（code 非空 → do_login_by_code 路径）；
+    %% 最后一次经 rest_evidence:verify 产出证据文件（runner 的
+    %% evidence cross-check 要求每个 case 落盘）
+    CodeBody = #{
+        <<"type">> => <<"account">>,
+        <<"account">> => Account,
+        <<"code">> => <<"000000">>,
+        <<"rsa_encrypt">> => <<"0">>,
+        <<"did">> => did(Config, <<"l0c">>)
+    },
+    CodeSnapshots =
+        [
+            begin
+                Response = post(Config, did(Config, <<"l0c">>), CodeBody),
+                #{<<"code">> := 1} = maps:get(body, Response),
+                {ok, LockInfo} = login_security_logic:get_lock_info(Account, <<>>),
+                maps:get(<<"attempts">>, LockInfo)
+            end
+         || _ <- lists:seq(1, 5)
+        ],
+    [0 = Count || Count <- CodeSnapshots],
+
+    %% 最终仍不锁定
+    false = login_attempt_ds:is_locked(Account, <<>>),
+    {ok, FinalInfo} = login_security_logic:get_lock_info(Account, <<>>),
+    0 = maps:get(<<"attempts">>, FinalInfo),
+
+    %% 证据：第 5 次错误验证码响应（业务错误照常返回，计数仍 0）
+    LastResp = post(Config, did(Config, <<"l0c">>), CodeBody),
+    verify(
+        <<"AC-01">>,
+        CodeBody,
+        LastResp,
+        #{<<"http_status">> => 200, <<"code">> => 1},
+        fun(Resp) ->
+            common_assertions(Resp),
+            rest_assert:json_contains(#{<<"code">> => 1, <<"payload">> => #{}}, Resp),
+            rest_assert:predicate([<<"msg">>], fun nonempty_binary/1, Resp)
+        end
+    ),
+
+    %% 清理本 case 的合成状态
+    true = ets:delete(login_attempt_ets, AttemptKey),
+    {comment, "L0 baseline: real-chain failure accounting is broken (all 0); see plan AC-01"}.
 
 %% ===================================================================
 %% Helpers
