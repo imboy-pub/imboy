@@ -272,6 +272,10 @@ prepared_expired_floor_crossing_retention_window_aborts_test() ->
         after 0 -> ok
         end,
         receive
+            {cache_snapshot_cut, _, Round, _, _, _, _, _, _, _} -> error(unexpected_cut)
+        after 0 -> ok
+        end,
+        receive
             {cache_snapshot_cut, _, Round, _, _, _, _, _, _} -> error(unexpected_cut)
         after 0 -> ok
         end,
@@ -656,6 +660,8 @@ requested_peer(Round, Peer) ->
 drain_fixture_watermarks() ->
     receive
         {cache_invalidation_watermark, Origin, <<1:128>>, _, _, _} when Origin =:= node() ->
+            drain_fixture_watermarks();
+        {cache_snapshot_cut, Origin, _, <<1:128>>, _, _, _, _, _, _} when Origin =:= node() ->
             drain_fixture_watermarks();
         {cache_snapshot_cut, Origin, _, <<1:128>>, _, _, _, _, _} when Origin =:= node() ->
             drain_fixture_watermarks();
