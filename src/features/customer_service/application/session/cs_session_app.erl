@@ -273,21 +273,34 @@ claim_session(OrgId, WorkspaceId, Session, ExpectedVersion, At, Params) ->
 
 do_claim(OrgId, WorkspaceId, Session, IdentityId, ExpectedVersion, At, Params) ->
     case cs_session:assert_cas_expectation(Session, queued, ExpectedVersion) of
-        {error, _} = Err ->
-            Err;
+        {error, CasErr} ->
+            {error, CasErr};
         ok ->
             Event = claim_event(Session, IdentityId, At, Params),
-            with_store(Params, fun(Store) ->
-                Store:claim_session(
-                    OrgId,
-                    WorkspaceId,
-                    maps:get(id, Session),
-                    IdentityId,
-                    ExpectedVersion,
-                    At,
-                    Event
-                )
-            end)
+            case
+                with_store(Params, fun(Store) ->
+                    Store:claim_session(
+                        OrgId,
+                        WorkspaceId,
+                        maps:get(id, Session),
+                        IdentityId,
+                        ExpectedVersion,
+                        At,
+                        Event
+                    )
+                end)
+            of
+                {ok, _} = Ok ->
+                    %% v4 P0-4（02-C.3 E2）：人工 claim ⇒ AI 接管闩锁置位
+                    %% （粘性 + generation_epoch+1）。永不影响 claim 自身结果
+                    %% （AI 侧故障不拖垮人工坐席路径，on_human_takeover 内吞错）。
+                    cs_ai_app:on_human_takeover(
+                        OrgId, WorkspaceId, maps:get(id, Session), <<"human_claim">>
+                    ),
+                    Ok;
+                {error, ClaimErr} ->
+                    {error, ClaimErr}
+            end
     end.
 
 claim_event(Session, IdentityId, At, Params) ->
@@ -376,6 +389,11 @@ do_transfer(OrgId, WorkspaceId, SessionId, ToIdentityId, ExpectedVersion, At, Pa
                         detail => #{<<"from">> => maps:get(business_identity_id, Session)},
                         workspace_id => WorkspaceId
                     },
+                    %% v4 P0-4（02-C.3 E2）：transfer 至 human seat 同为接管，
+                    %% 闩锁置位语义与 claim 相同（吞错，不改变 transfer 结果）。
+                    _ = cs_ai_app:on_human_takeover(
+                        OrgId, WorkspaceId, SessionId, <<"human_transfer">>
+                    ),
                     cas_write(
                         Params,
                         OrgId,

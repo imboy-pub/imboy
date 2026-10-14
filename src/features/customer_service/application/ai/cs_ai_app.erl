@@ -28,6 +28,13 @@
 ]).
 %% B 组（v4 02-B）：投递协议编排（错误语义表 02-B.4 冻结）
 -export([deliver/3]).
+%% C 组（v4 02-C）：闩锁触发 + 权限矩阵（fail-closed）
+-export([
+    on_human_takeover/4,
+    on_config_revoked/2,
+    authorize/3,
+    ai_delivery_allowed/4
+]).
 
 %% 注入 prompt 的 FAQ 条数上限（"受控证据"规模）。
 -define(FAQ_TOP, 3).
@@ -632,21 +639,36 @@ deliver(OrgId, WsId, #{job_id := JobId, worker_id := WorkerId} = Params) when
 deliver(_OrgId, _WsId, _Params) ->
     {error, {invalid_argument, deliver}}.
 
-%% 快速预检：deadline 过 ⇒ 终态 + {skipped, expired}；坐席身份缺失 ⇒ 拒。
+%% 快速预检：deadline 过 ⇒ {skipped, expired}；闩锁置位 ⇒ {skipped,
+%% superseded}（C-3：接管后 AI 不再产生新投递）；然后坐席身份与 actor 解析。
 deliver_preflight(Impl, OrgId, Job, Params) ->
     case deadline_passed(Job) of
         true ->
             _ = Impl:mark_job_skipped(OrgId, maps:get(id, Job), expired),
             {skipped, expired};
         false ->
-            case maps:get(seat_identity_id, Params, undefined) of
-                Seat when is_integer(Seat) ->
-                    seat_actor(Impl, OrgId, Seat, Params);
-                _ ->
-                    case seat_identity_from_config(Impl, OrgId) of
-                        {ok, Seat} -> seat_actor(Impl, OrgId, Seat, Params);
-                        {error, _} = Err -> Err
-                    end
+            case
+                ai_delivery_allowed(
+                    Impl, OrgId, maps:get(workspace_id, Job), maps:get(session_id, Job)
+                )
+            of
+                {error, handoff_latched} ->
+                    _ = Impl:mark_job_skipped(OrgId, maps:get(id, Job), superseded),
+                    {skipped, superseded};
+                ok ->
+                    preflight_seat(Impl, OrgId, Params)
+            end
+    end.
+
+%% seat 身份与 actor 解析（deadline/闩锁检查通过后）。
+preflight_seat(Impl, OrgId, Params) ->
+    case maps:get(seat_identity_id, Params, undefined) of
+        Seat when is_integer(Seat) ->
+            seat_actor(Impl, OrgId, Seat, Params);
+        _ ->
+            case seat_identity_from_config(Impl, OrgId) of
+                {ok, Seat} -> seat_actor(Impl, OrgId, Seat, Params);
+                {error, _} = Err -> Err
             end
     end.
 
@@ -713,6 +735,145 @@ deliver_message(
 %% 逻辑回复（与 uq_csaid_reply 同键集）。
 reply_key(JobId) ->
     <<"ai-job-", (integer_to_binary(JobId))/binary>>.
+
+%% ===================================================================
+%% C 组（v4 02-C）：人工接管闩锁触发 + 投递前置门
+%% ===================================================================
+
+%% @doc E2 触发一（人工 claim / transfer 至 human seat）：置粘性闩锁 +
+%% generation_epoch+1。**永不抛错**——人工坐席路径绝不被 AI 侧故障拖垮
+%% （与 respond/2 的失败哲学同构），失败只留 error 日志。
+-spec on_human_takeover(integer(), integer(), integer(), binary()) -> ok.
+on_human_takeover(OrgId, WsId, SessionId, Reason) when
+    is_integer(OrgId), is_integer(WsId), is_integer(SessionId)
+->
+    Impl = cs_ai_port:impl(#{}),
+    try
+        case Impl:latch_handoff(OrgId, WsId, SessionId, Reason) of
+            {ok, _} ->
+                ok;
+            {error, Reason0} ->
+                logger:warning(
+                    "cs_ai_latch_failed ~p org=~p ws=~p session=~p",
+                    [Reason0, OrgId, WsId, SessionId]
+                ),
+                ok
+        end
+    catch
+        _Class:_Reason -> ok
+    end;
+on_human_takeover(_OrgId, _WsId, _SessionId, _Reason) ->
+    ok.
+
+%% @doc E2 触发二（auto_reply_mode / canary 撤销）：org 内全部未闩锁的
+%% AI 会话置位。同样永不抛错（管理面写路径的附带动作）。
+-spec on_config_revoked(integer(), binary()) -> ok.
+on_config_revoked(OrgId, Reason) when is_integer(OrgId) ->
+    Impl = cs_ai_port:impl(#{}),
+    try
+        case Impl:latch_org_pending(OrgId, Reason) of
+            {ok, _N} ->
+                ok;
+            {error, Reason0} ->
+                logger:warning("cs_ai_latch_all_failed ~p org=~p", [Reason0, OrgId]),
+                ok
+        end
+    catch
+        _Class:_Reason -> ok
+    end;
+on_config_revoked(_OrgId, _Reason) ->
+    ok.
+
+%% @doc C 组投递前置门（C-3）：闩锁置位 ⇒ AI 不再产生新投递。
+%% 粘性 ⇒ 无解除 API（E3 清除仅发生在 closed 后新会话 = 新 ai_session 行）；
+%% C-4 的「尝试清除被拒」由该函数无清除入口 + 02-C.3 冻结边集共同保证。
+-spec ai_delivery_allowed(module(), integer(), integer(), integer()) ->
+    ok | {error, handoff_latched}.
+ai_delivery_allowed(Impl, OrgId, WsId, SessionId) ->
+    case Impl:fetch_session_state(OrgId, WsId, SessionId) of
+        {ok, #{handoff := true}} -> {error, handoff_latched};
+        _ -> ok
+    end.
+
+%% ===================================================================
+%% C 组（v4 02-C.4）：权限矩阵（冻结，fail-closed）
+%% ===================================================================
+
+%% @doc 权限矩阵判定（02-C.4 逐格编码）。
+%%
+%% 角色：org_admin | workspace_admin | seat（本 ws active 坐席）| ai_runtime
+%%      | anonymous | superuser。
+%% 动作：read_config | set_mode | set_limits | set_canary | faq_write
+%%      | faq_publish | read_sessions | read_stats | claim | ai_deliver
+%%      | purge_trace。
+%%
+%% 返回 ok | {error, forbidden} | {error, {forbidden, scope}}（C 条件的
+%% scope 约束不满足）。**未列出的 (动作, 角色) 组合一律禁止**（fail-closed
+%% 规则 1）；ai_runtime 无人类身份 ⇒ 不能改配置/claim/transfer/purge（规则 2）。
+-spec authorize(atom(), atom(), map()) -> ok | {error, term()}.
+authorize(Action, Role, Ctx) when is_atom(Action), is_atom(Role), is_map(Ctx) ->
+    case matrix(Action, Role) of
+        allow -> ok;
+        deny -> {error, forbidden};
+        {scoped, Kind} -> scoped(Kind, Ctx);
+        _ -> {error, forbidden}
+    end;
+authorize(_Action, _Role, _Ctx) ->
+    {error, forbidden}.
+
+%% 矩阵真源（02-C.4；A=allow、—=deny、C=scoped）。
+matrix(read_config, org_admin) -> allow;
+matrix(read_config, workspace_admin) -> allow;
+matrix(read_config, seat) -> allow;
+%% 只读自身 org（org 隔离由 SQL 首参保证）
+matrix(read_config, ai_runtime) -> allow;
+matrix(read_config, superuser) -> allow;
+matrix(set_mode, org_admin) -> allow;
+matrix(set_mode, superuser) -> allow;
+matrix(set_limits, org_admin) -> allow;
+matrix(set_limits, superuser) -> allow;
+matrix(set_canary, org_admin) -> allow;
+matrix(set_canary, superuser) -> allow;
+matrix(faq_write, org_admin) -> allow;
+matrix(faq_write, workspace_admin) -> {scoped, workspace};
+matrix(faq_write, superuser) -> allow;
+matrix(faq_publish, org_admin) -> allow;
+matrix(faq_publish, workspace_admin) -> {scoped, workspace};
+matrix(faq_publish, superuser) -> allow;
+matrix(read_sessions, org_admin) -> allow;
+matrix(read_sessions, workspace_admin) -> {scoped, workspace};
+matrix(read_sessions, seat) -> {scoped, workspace};
+matrix(read_sessions, superuser) -> allow;
+matrix(read_stats, org_admin) -> allow;
+matrix(read_stats, workspace_admin) -> {scoped, workspace};
+matrix(read_stats, superuser) -> allow;
+matrix(claim, org_admin) -> {scoped, seat_identity};
+matrix(claim, workspace_admin) -> {scoped, seat_identity};
+matrix(claim, seat) -> allow;
+matrix(claim, superuser) -> allow;
+%% 唯一投递者（02-C.4）
+matrix(ai_deliver, ai_runtime) -> allow;
+%% 且走 SECURITY DEFINER（F 组）
+matrix(purge_trace, superuser) -> {scoped, purge};
+matrix(_, _) -> deny.
+
+%% C 条件的 scope 约束：
+%%   workspace     — Ctx 需 workspace_id 且与操作目标一致（调用方比对；
+%%                   本函数校验键存在与同值）
+%%   seat_identity — 需携带 seat 身份（org/ws admin 仅在自有 seat 身份下可 claim）
+%%   purge         — 走 cs_ai_purge_trace 的 session_user 白名单（F 组），
+%%                   应用层只允许 superuser 发起
+scoped(workspace, #{workspace_id := Ws, target_workspace_id := Ws}) ->
+    ok;
+scoped(workspace, #{workspace_id := _Ws, target_workspace_id := _Other}) ->
+    {error, {forbidden, workspace_scope}};
+scoped(workspace, _Ctx) ->
+    {error, {forbidden, workspace_scope}};
+scoped(seat_identity, #{seat_identity_id := Id}) when is_integer(Id) -> ok;
+scoped(seat_identity, _Ctx) ->
+    {error, {forbidden, seat_identity_required}};
+scoped(purge, _Ctx) ->
+    ok.
 
 %% ===================================================================
 %% 历史（多轮上下文）

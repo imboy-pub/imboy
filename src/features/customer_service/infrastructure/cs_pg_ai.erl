@@ -50,6 +50,9 @@
     input_version/3,
     delivery_hook/5,
     identity_actor/2,
+    %% C 组（v4 02-C）：接管闩锁（粘性 + generation_epoch 自增）。
+    latch_handoff/4,
+    latch_org_pending/2,
     %% 冻结语句静态断言面（cs_pg_seat:sql_statements/0 先例；零 DB）。
     sql_statements/0
 ]).
@@ -299,12 +302,25 @@ bump_faq_hits(_OrgId, _Ids) ->
 fetch_session_state(OrgId, WsId, SessionId) ->
     Sql = <<
         "SELECT session_id,contact_id,conversation_id,current_intent,intent_confidence,"
-        "ai_turns,unresolved_turns,handoff,handoff_reason,version,"
+        "ai_turns,unresolved_turns,handoff,handoff_reason,generation_epoch,version,"
         "extract(epoch from updated_at)::bigint AS updated_at "
         "FROM customer_service_ai_session "
         "WHERE organization_id=$1 AND workspace_id=$2 AND session_id=$3"
     >>,
-    cs_pg_common:fetch_one(Sql, [OrgId, WsId, SessionId], ?STATE_KEYS).
+    cs_pg_common:fetch_one(Sql, [OrgId, WsId, SessionId], [
+        session_id,
+        contact_id,
+        conversation_id,
+        current_intent,
+        intent_confidence,
+        ai_turns,
+        unresolved_turns,
+        handoff,
+        handoff_reason,
+        generation_epoch,
+        version,
+        updated_at
+    ]).
 
 %% 单调推进：ai_turns 累加、handoff 粘性、handoff_at 只写一次（见模块头）。
 upsert_session_state(OrgId, WsId, SessionId, Params) ->
@@ -961,6 +977,64 @@ identity_actor(OrgId, IdentityId) ->
             {error, identity_creator_missing};
         {error, Reason} ->
             {error, Reason}
+    end.
+
+%% ===================================================================
+%% C 组（v4 02-C）：人工接管闩锁
+%% ===================================================================
+
+%% @doc E2 置位：粘性（handoff 一旦 true 不回退）+ generation_epoch+1
+%% （「人工永远优先」的投递栅栏载体；在途旧生成结果因 epoch 失配被拦）。
+%% handoff_at/handoff_reason 只在首次置位时写入（粘性语义）。
+-spec latch_handoff(integer(), integer(), integer(), binary()) ->
+    {ok, map()} | {error, term()}.
+latch_handoff(OrgId, WsId, SessionId, Reason) ->
+    Sql = <<
+        "INSERT INTO customer_service_ai_session"
+        " (organization_id, workspace_id, session_id, handoff, handoff_reason,"
+        "  handoff_at, generation_epoch)"
+        " VALUES ($1,$2,$3,true,$4,now(),2)"
+        " ON CONFLICT (organization_id, workspace_id, session_id) DO UPDATE SET"
+        "  handoff = true,"
+        "  handoff_reason = CASE WHEN customer_service_ai_session.handoff"
+        "                        THEN customer_service_ai_session.handoff_reason"
+        "                        ELSE EXCLUDED.handoff_reason END,"
+        "  handoff_at = CASE WHEN customer_service_ai_session.handoff"
+        "                    THEN customer_service_ai_session.handoff_at ELSE now() END,"
+        "  generation_epoch = customer_service_ai_session.generation_epoch + 1,"
+        "  version = customer_service_ai_session.version + 1, updated_at = now()"
+        " RETURNING handoff, handoff_reason, generation_epoch"
+    >>,
+    case elib_pg:query(Sql, [OrgId, WsId, SessionId, Reason]) of
+        {ok, [Row]} ->
+            {ok, #{
+                handoff => maps:get(<<"handoff">>, Row),
+                handoff_reason => maps:get(<<"handoff_reason">>, Row),
+                generation_epoch => maps:get(<<"generation_epoch">>, Row)
+            }};
+        {ok, []} ->
+            {error, latch_failed};
+        {error, Reason0} ->
+            {error, Reason0}
+    end.
+
+%% @doc E2（配置撤销面）：把 org 内全部未闩锁的 AI 会话置位（auto_reply_mode
+%% 撤销 / canary 撤销 => 在途会话一并停）。返回置位行数。
+-spec latch_org_pending(integer(), binary()) -> {ok, non_neg_integer()} | {error, term()}.
+latch_org_pending(OrgId, Reason) ->
+    Sql = <<
+        "UPDATE customer_service_ai_session"
+        " SET handoff = true,"
+        "     handoff_reason = $2,"
+        "     handoff_at = now(),"
+        "     generation_epoch = generation_epoch + 1,"
+        "     version = version + 1, updated_at = now()"
+        " WHERE organization_id=$1 AND handoff = false"
+    >>,
+    case elib_pg:execute(Sql, [OrgId, Reason]) of
+        {ok, N} when is_integer(N) -> {ok, N};
+        {ok, N, _} when is_integer(N) -> {ok, N};
+        {error, Reason0} -> {error, Reason0}
     end.
 
 %% job 七态（180 CHECK）binary → atom；未知值 fail-closed 原样返回。
