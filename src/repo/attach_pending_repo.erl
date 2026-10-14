@@ -17,6 +17,7 @@
 -export([register_v5/5, register_v5/6, status_lookup/1, register_content_pin/2]).
 -export([register_v5_tx/7, renew_capability/3, renew_capability_tx/4]).
 -export([lock_session_tx/2, confirm_session_tx/3]).
+-export([intent_pending_delete_tx/4, intent_pending_delete/3]).
 -export([remove/1]).
 -export([list_expired/1]).
 -export([delete_by_keys/1]).
@@ -379,6 +380,32 @@ confirm_session_tx(Conn, ObjectKey, AttachmentId) ->
         {error, #error{code = <<"P0002">>}} -> {error, not_found};
         {error, R} -> {error, R}
     end.
+
+%% W4-01 入口收口（02 §4/§5）：pending 域删除意图（迁移 184）。同事务
+%% 状态迁移 + ready job + 审计；字节由 Worker 删。Mode='reject'（主动拒绝，
+%% registered→rejected→delete_intent 两跳）|'sweep'（回收清扫，能力窗已耗尽）。
+-spec intent_pending_delete_tx(pid() | any(), binary(), binary(), binary()) ->
+    ok | {error, term()}.
+intent_pending_delete_tx(Conn, ObjectKey, Mode, Reason) ->
+    case
+        elib_pg:query(
+            Conn,
+            <<"SELECT fn_v5_intent_pending_delete($1, $2, $3)">>,
+            [ObjectKey, Reason, Mode]
+        )
+    of
+        {ok, _} -> ok;
+        {error, #error{code = <<"23510">>}} -> {error, intent_conflict};
+        {error, #error{code = <<"23505">>}} -> {error, tombstone};
+        {error, #error{code = <<"P0002">>}} -> {error, not_found};
+        {error, R} -> {error, R}
+    end.
+
+-spec intent_pending_delete(binary(), binary(), binary()) -> ok | {error, term()}.
+intent_pending_delete(ObjectKey, Mode, Reason) ->
+    elib_pg:with_tx(fun(Conn) ->
+        intent_pending_delete_tx(Conn, ObjectKey, Mode, Reason)
+    end).
 
 %% @doc status/renew 查找：client_upload_id 或 object_key。
 -spec status_lookup(binary()) -> {ok, map()} | {error, not_found | term()}.

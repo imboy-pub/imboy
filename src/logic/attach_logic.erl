@@ -416,12 +416,12 @@ verify_and_save(Uid, ObjectKey, Scope, ScopeRef, Meta) ->
         {ok, #{size := RealSize, content_type := RealType}} ->
             case RealSize > elib_oss:max_file_size() of
                 true ->
-                    _ = (catch elib_oss:delete_object(Bucket, ObjectKey)),
+                    reject_upload_object(ObjectKey, <<"confirm reject file_too_large">>),
                     {error, file_too_large};
                 false ->
                     case elib_oss:validate_file_type(RealType) of
                         false ->
-                            _ = (catch elib_oss:delete_object(Bucket, ObjectKey)),
+                            reject_upload_object(ObjectKey, <<"confirm reject invalid_file_type">>),
                             {error, invalid_file_type};
                         true ->
                             %% Step 10 教学附件：教学白名单/大小上限/时长复核
@@ -432,11 +432,44 @@ verify_and_save(Uid, ObjectKey, Scope, ScopeRef, Meta) ->
                                         Uid, ObjectKey, Scope, ScopeRef, Meta, RealSize, RealType
                                     );
                                 {error, Reason} ->
-                                    _ = (catch elib_oss:delete_object(Bucket, ObjectKey)),
+                                    reject_upload_object(
+                                        ObjectKey,
+                                        <<"confirm reject teaching: ",
+                                            (ec_cnv:to_binary(Reason))/binary>>
+                                    ),
                                     {error, Reason}
                             end
                     end
             end
+    end.
+
+%% W4-01 入口收口（02 §4/§5，F11）：内容拒绝不再直接删字节——同事务
+%% registered→rejected→delete_intent + ready job + 审计（迁移 184），字节由
+%% Worker 删；主动拒绝即写权限撤权，不受能力窗限制。无 pending 行（旧客户端
+%% 未登记对象）无意图锚点：ERROR 留痕隔离，绝不绕过队列直接删。
+-spec reject_upload_object(binary(), binary()) -> ok.
+reject_upload_object(ObjectKey, Reason) ->
+    case attach_pending_repo:intent_pending_delete(ObjectKey, <<"reject">>, Reason) of
+        ok ->
+            ok;
+        {error, not_found} ->
+            ?ERROR_LOG([
+                "attach_logic reject: no pending session anchor, bytes isolated "
+                "(not deleted, queue-only reclamation): ",
+                ObjectKey,
+                Reason
+            ]),
+            ok;
+        {error, Reason2} ->
+            %% intent 落败（并发 tombstone/锁冲突等）：对象保留，日志留痕；
+            %% 绝不回退到直接删字节。
+            ?ERROR_LOG([
+                "attach_logic reject: pending delete_intent failed, bytes retained: ",
+                ObjectKey,
+                Reason,
+                Reason2
+            ]),
+            ok
     end.
 
 %% 教学复核；非教学 scope 直通（既有行为零变化）
