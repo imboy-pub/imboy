@@ -285,7 +285,7 @@ historical_annotation_requires_current_snapshot_authority_test() ->
         ?assertMatch(
             {abort, page_digest_mismatch, _},
             imboy_cache_sync_snapshot:handle_page(
-                Peer, Round, 1, [Wire], tamper_digest(Digest), false, R
+                Peer, Round, 1, [Wire], corrupt_digest(Digest), false, R
             )
         ),
         ?assertEqual([], ets:lookup(imboy_cache_meta, {rev, {origin_wire_test, key}}))
@@ -330,7 +330,7 @@ base_snapshot_emits_original_boot_and_sequence_for_all_kinds_test() ->
                 [live, deleted, expired, unavailable]
             ),
             Round = <<89:96>>,
-            ok = imboy_cache_sync_snapshot:send_snapshot(self(), Round),
+            ok = send_fixture_snapshot(Round),
             receive
                 {cache_snapshot_page, _, Round, 1, Page, _, false} ->
                     ?assertEqual(4, length(Page)),
@@ -366,7 +366,9 @@ base_snapshot_emits_original_boot_and_sequence_for_all_kinds_test() ->
             after 1000 -> error(missing_origin_base_watermark)
             end,
             receive
-                {cache_snapshot_cut, _, Round, <<1:128>>, 0, 0, _, _, _, _} -> ok
+                {cache_snapshot_cut, _Source, Round, <<1:128>>, 0, 0, _Hash, _Registry, _Candidate,
+                    _Certificate} = Cut ->
+                    assert_frozen_cut(Cut)
             after 1000 -> error(missing_origin_base_cut)
             end,
             receive
@@ -392,7 +394,7 @@ retained_expired_tombstone_is_sent_with_original_deadline_test() ->
         ]),
         imboy_cache_sync_apply:store_revision(Key, Rev, Exp, deleted, 0, {Peer, Boot, 7}),
         Round = <<90:96>>,
-        ok = imboy_cache_sync_snapshot:send_snapshot(self(), Round),
+        ok = send_fixture_snapshot(Round),
         try
             receive
                 {cache_snapshot_page, _, Round, 1, [Wire], _, false} -> ok
@@ -617,7 +619,7 @@ partial_page_abort_retains_accepted_clock_and_hides_values_test() ->
             Round2 = maps:get(round, R2),
             {noreply, Rejected} = imboy_cache_sync:handle_info(
                 {cache_snapshot_page, Peer, Round2, 1, BadPage,
-                    tamper_digest(imboy_cache_sync_snapshot:page_digest(Round2, 1, BadPage)),
+                    corrupt_digest(imboy_cache_sync_snapshot:page_digest(Round2, 1, BadPage)),
                     false},
                 Next#state{status = recovering, snapshot_round = R2}
             ),
@@ -636,7 +638,10 @@ sender_end(Round, Total) ->
     after 1000 -> error(missing_origin_base_watermark)
     end,
     receive
-        {cache_snapshot_cut, _, Round, <<1:128>>, 0, 0, _, _, _, _} -> ok
+        {cache_snapshot_cut, _Source, Round, <<1:128>>, 0, 0, _Hash, _Registry, _Candidate,
+            _Certificate} =
+                Cut ->
+            assert_frozen_cut(Cut)
     after 1000 -> error(missing_origin_base_cut)
     end,
     receive
@@ -645,12 +650,21 @@ sender_end(Round, Total) ->
     end.
 drain_sender(Round) ->
     receive
-        {cache_snapshot_page, _, Round, _, _, _, _} -> drain_sender(Round);
-        {cache_snapshot_cut, _, Round, _, _, _, _, _, _, _} -> drain_sender(Round);
-        {cache_snapshot_cut, _, Round, _, _, _, _, _, _} -> drain_sender(Round);
-        {cache_snapshot_done, _, Round, _, _} -> drain_sender(Round);
-        {cache_snapshot_abort, _, Round, _} -> drain_sender(Round);
-        {cache_invalidation_watermark, _, <<1:128>>, 0, _, _} -> drain_sender(Round)
+        {cache_snapshot_page, _, Round, _, _, _, _} ->
+            drain_sender(Round);
+        {cache_snapshot_cut, Source, Round, <<1:128>>, 0, 0, _Hash, _Registry, _Candidate,
+            _Certificate} =
+                Cut when
+            Source =:= node()
+        ->
+            assert_frozen_cut(Cut),
+            drain_sender(Round);
+        {cache_snapshot_done, _, Round, _, _} ->
+            drain_sender(Round);
+        {cache_snapshot_abort, _, Round, _} ->
+            drain_sender(Round);
+        {cache_invalidation_watermark, _, <<1:128>>, 0, _, _} ->
+            drain_sender(Round)
     after 0 -> ok
     end.
 
@@ -691,6 +705,20 @@ with_metadata(Fun) ->
 restore(Key, undefined) -> application:unset_env(imboy, Key);
 restore(Key, {ok, Value}) -> application:set_env(imboy, Key, Value).
 
-tamper_digest(Digest) ->
-    <<Prefix:(byte_size(Digest) - 1)/binary, Last>> = Digest,
-    <<Prefix/binary, (Last bxor 1)>>.
+corrupt_digest(<<First, Rest/binary>>) -> <<(First bxor 1), Rest/binary>>.
+
+send_fixture_snapshot(Round) ->
+    {Source, Boot} = imboy_cache_sync:node_boot(),
+    [{sync_origin_seq, Seq}] = ets:lookup(imboy_cache_meta, sync_origin_seq),
+    Epoch = imboy_cache_sync_proto:epoch(),
+    Cut =
+        {cache_snapshot_cut, Source, Round, Boot, Epoch, Seq, imboy_cache_policy:config_hash(),
+            imboy_cache_sync_proto:registry_hash(),
+            imboy_cache_sync_proto:application_coverage_candidate(),
+            imboy_cache_sync_coverage:source_certificate(Epoch, erlang:system_time(millisecond))},
+    ?assert(imboy_cache_sync_proto:valid_snapshot_cut(Cut)),
+    put({fixture_cut, Round}, Cut),
+    imboy_cache_sync_snapshot:send_snapshot(self(), Round).
+
+assert_frozen_cut({cache_snapshot_cut, _, Round, _, _, _, _, _, _, _} = Cut) ->
+    ?assertEqual(get({fixture_cut, Round}), Cut).

@@ -28,7 +28,7 @@
 %% BE-S01b（sse-event-contract）：SSE 缺省节奏（route Opts 可注入覆盖：
 %% sse_poll_ms / sse_max_ms）。retry: 2000 是合同首帧字面值，不注入。
 -define(SSE_RETRY_MS, 2000).
--define(SSE_POLL_MS, 2000).
+-define(SSE_POLL_MS, 1000).
 -define(SSE_MAX_MS, 300000).
 -define(SSE_KEEPALIVE_EVERY, 3).
 %% 撤权复查节奏：每 N 次轮询做一次逐请求认证复查（cs_auth 全链——facts +

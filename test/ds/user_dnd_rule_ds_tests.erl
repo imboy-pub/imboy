@@ -2,6 +2,16 @@
 -include_lib("eunit/include/eunit.hrl").
 -include("eunit_setup.hrl").
 
+%% Run the unchanged unit body in an isolated peer; the parent app is untouched.
+-define(LOCAL_MOCKS(Configs, Test),
+    {timeout, 45, fun() ->
+        pure_mock_fixture:run(fun() -> pure_mock_fixture:with_mocks(Configs, Test) end)
+    end}
+).
+-define(LOCAL_MOCK(Module, Expectations, Test),
+    ?LOCAL_MOCKS([{Module, Expectations}], Test)
+).
+
 %%%===================================================================
 %%% @doc
 %%% user_dnd_rule_ds 模块的 EUnit 测试
@@ -16,7 +26,7 @@
 
 find_by_uid_cache_hit_skips_repo_test_() ->
     Rule = #{<<"user_id">> => 1, <<"status">> => 1},
-    ?WITH_MECK(
+    ?LOCAL_MOCK(
         imboy_cache,
         [
             {'memo', 3, fun(_F, _K, _T) -> Rule end}
@@ -29,7 +39,7 @@ find_by_uid_cache_hit_skips_repo_test_() ->
 
 find_by_uid_cache_miss_loads_and_sets_test_() ->
     Rule = #{<<"user_id">> => 2, <<"status">> => 1},
-    ?WITH_MECKS(
+    ?LOCAL_MOCKS(
         [
             {imboy_cache, [
                 {'memo', 3, fun(F, _K, _T) -> F() end},
@@ -47,7 +57,7 @@ find_by_uid_cache_miss_loads_and_sets_test_() ->
 %% ===================================================================
 
 save_upserts_and_invalidates_cache_test_() ->
-    ?WITH_MECKS(
+    ?LOCAL_MOCKS(
         [
             {user_dnd_rule_repo, [{'upsert', 1, fun(#{<<"user_id">> := 1}) -> ok end}]},
             {imboy_cache, [{'invalidate', 1, fun({user_dnd_rule, 1}) -> ok end}]}
@@ -61,7 +71,7 @@ save_upserts_and_invalidates_cache_test_() ->
     ).
 
 delete_removes_and_invalidates_cache_test_() ->
-    ?WITH_MECKS(
+    ?LOCAL_MOCKS(
         [
             {user_dnd_rule_repo, [{'delete_by_uid', 1, fun(1) -> ok end}]},
             {imboy_cache, [{'invalidate', 1, fun({user_dnd_rule, 1}) -> ok end}]}
@@ -125,7 +135,7 @@ is_dnd_at_no_rule_returns_false_test_() ->
 %% 内部辅助：用缓存命中喂入指定规则
 %% ===================================================================
 with_rule(Rule, TestFun) ->
-    ?WITH_MECK(
+    ?LOCAL_MOCK(
         imboy_cache,
         [
             {'memo', 3, fun(_F, _K, _T) -> Rule end}

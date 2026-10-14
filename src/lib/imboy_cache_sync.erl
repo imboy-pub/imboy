@@ -67,13 +67,14 @@ start_link() ->
 %% @doc legacy SET 发布与接收共用策略边界；flush 保留混合版本兼容。
 -spec broadcast(term()) -> {ok, non_neg_integer()} | {error, policy_denied | incompatible_peers}.
 broadcast({set, Key, _, _, _} = Message) ->
-    case legacy_set_allowed(Key) of
-        true ->
-            publish(Message);
-        false ->
-            incr(reject_total),
-            {error, policy_denied}
-    end;
+    _ =
+        case legacy_set_allowed(Key) of
+            true ->
+                publish(Message);
+            false ->
+                incr(reject_total),
+                {error, policy_denied}
+        end;
 broadcast(#{protocol := 2, operation := Op} = Message) when Op =:= set; Op =:= delete ->
     case replication_capable() of
         true -> publish(Message);

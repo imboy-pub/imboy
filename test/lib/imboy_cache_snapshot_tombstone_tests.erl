@@ -11,7 +11,7 @@ evicted_live_snapshot_transfers_version_floor_without_value_test() ->
         meck:expect(depcache, get, 2, fun(_, _) -> undefined end),
         ok = imboy_cache_sync_apply:store_revision(K, Rev, Exp, live),
         Round = crypto:strong_rand_bytes(12),
-        ok = imboy_cache_sync_snapshot:send_snapshot(self(), Round),
+        ok = send_fixture_snapshot(Round),
         Entry = {unavailable, K, undefined, Exp, Rev},
         receive
             {cache_snapshot_page, _, Round, 1, [Entry], _, false} -> ok
@@ -109,7 +109,10 @@ unavailable_floor_negative_boundaries_are_atomic_test() ->
         ?assertEqual(0, meck:num_calls(depcache, flush, 2)),
         set_limits(#{}),
         ok = imboy_cache_sync_apply:store_revision(K, Rev, Exp, deleted),
-        {ok, _} = apply_page([Floor], 1, R),
+        Rows = lists:sort(ets:tab2list(?META_TABLE)),
+        ?assertEqual({abort, snapshot_content_conflict, R}, apply_page([Floor], 1, R)),
+        ?assertEqual(Rows, lists:sort(ets:tab2list(?META_TABLE))),
+        {ok, _} = apply_page([{deleted, K, undefined, Exp, Rev}], 1, R),
         ?assertMatch([{_, {Rev, _, Exp, deleted, _}}], ets:lookup(?META_TABLE, {rev, K}))
     end).
 
@@ -181,7 +184,7 @@ expired_floor_blocks_same_revision_ttl_extension_atomically_test() ->
             {11, node()}
         },
         Renewed = {K, stale, erlang:system_time(millisecond) + 60000, Rev},
-        ?assertEqual({abort, expired_floor_conflict, R1}, apply_page([Other, Renewed], 2, R1)),
+        ?assertEqual({abort, snapshot_content_conflict, R1}, apply_page([Other, Renewed], 2, R1)),
         ?assertEqual(lists:sort(Rows), lists:sort(ets:tab2list(?META_TABLE))),
         ?assertEqual(0, meck:num_calls(depcache, set, 5))
     end).
@@ -194,13 +197,27 @@ expired_floor_preserves_equal_delete_and_newer_live_test() ->
         Past = erlang:system_time(millisecond) - 1,
         ok = imboy_cache_sync_apply:store_revision(Deleted, {10, node()}, Exp, deleted),
         ok = imboy_cache_sync_apply:store_revision(Live, {20, node()}, Exp, live),
+        R = authorized_round(),
+        Rows = lists:sort(ets:tab2list(?META_TABLE)),
+        ?assertEqual(
+            {abort, snapshot_content_conflict, R},
+            apply_page(
+                [
+                    {expired, Deleted, undefined, Past, {10, node()}},
+                    {expired, Live, undefined, Past, {10, node()}}
+                ],
+                1,
+                R
+            )
+        ),
+        ?assertEqual(Rows, lists:sort(ets:tab2list(?META_TABLE))),
         {ok, _} = apply_page(
             [
-                {expired, Deleted, undefined, Past, {10, node()}},
+                {deleted, Deleted, undefined, Exp, {10, node()}},
                 {expired, Live, undefined, Past, {10, node()}}
             ],
             1,
-            authorized_round()
+            R
         ),
         ?assertMatch([{_, {_, _, Exp, deleted, _}}], ets:lookup(?META_TABLE, {rev, Deleted})),
         ?assertMatch([{_, {{20, _}, _, Exp, live, _}}], ets:lookup(?META_TABLE, {rev, Live})),
@@ -256,7 +273,7 @@ prepared_expired_floor_crossing_retention_window_aborts_test() ->
          || N <- [1, 2]
         ],
         Round = crypto:strong_rand_bytes(12),
-        ok = imboy_cache_sync_snapshot:send_snapshot(self(), Round),
+        ok = send_fixture_snapshot(Round),
         receive
             {cache_snapshot_page, _, Round, 1, _, _, true} -> ok
         after 1000 -> error(no_first_floor)
@@ -276,10 +293,6 @@ prepared_expired_floor_crossing_retention_window_aborts_test() ->
         after 0 -> ok
         end,
         receive
-            {cache_snapshot_cut, _, Round, _, _, _, _, _, _} -> error(unexpected_cut)
-        after 0 -> ok
-        end,
-        receive
             {cache_snapshot_done, _, Round, _, _} -> error(unexpected_done)
         after 0 -> ok
         end
@@ -295,7 +308,7 @@ sender_preserves_delete_and_receiver_rejects_old_live_test() ->
             {snapshot_delete_test, expired}, {3, node()}, 1, deleted
         ),
         Round = crypto:strong_rand_bytes(12),
-        ok = imboy_cache_sync_snapshot:send_snapshot(self(), Round),
+        ok = send_fixture_snapshot(Round),
         Entries =
             receive
                 {cache_snapshot_page, _, Round, 1, Page, _, false} -> Page
@@ -314,7 +327,13 @@ sender_preserves_delete_and_receiver_rejects_old_live_test() ->
         ?assertEqual(deleted, imboy_cache_sync:replicate_state(K)),
         ?assertEqual({2, node()}, imboy_cache_sync:current_rev(K)),
         {ok, R2} = apply_page([{K, old, Exp, {1, node()}}], 2, R1),
-        {ok, _} = apply_page([{deleted, K, undefined, Exp + 1000, Rev}], 3, R2),
+        Rows = lists:sort(ets:tab2list(?META_TABLE)),
+        ?assertEqual(
+            {abort, snapshot_content_conflict, R2},
+            apply_page([{deleted, K, undefined, Exp + 1000, Rev}], 3, R2)
+        ),
+        ?assertEqual(Rows, lists:sort(ets:tab2list(?META_TABLE))),
+        {ok, _} = apply_page([{deleted, K, undefined, Exp, Rev}], 3, R2),
         ?assertNot(meck:called(depcache, set, [K, old, '_', [], imboy_cache])),
         ?assertMatch([{_, {Rev, _, Exp, deleted, _}}], ets:lookup(?META_TABLE, {rev, K}))
     end).
@@ -456,7 +475,7 @@ store_source_entry({deleted, K, _, Exp, Rev}) ->
 assert_sender_pages(Ordered, Limit) ->
     set_limits(#{p_max => 3, p_max_bytes => Limit}),
     Round = crypto:strong_rand_bytes(12),
-    ok = imboy_cache_sync_snapshot:send_snapshot(self(), Round),
+    ok = send_fixture_snapshot(Round),
     Pages = collect_source_pages(Round, []),
     ?assertEqual(Ordered, lists:append(Pages)),
     lists:foreach(
@@ -504,7 +523,7 @@ sender_waits_for_exact_pull_and_expires_cursor_test() ->
         ],
         ets:insert(?META_TABLE, {sync_counter, 3}),
         Round = crypto:strong_rand_bytes(12),
-        ok = imboy_cache_sync_snapshot:send_snapshot(self(), Round),
+        ok = send_fixture_snapshot(Round),
         receive
             {cache_snapshot_page, _, Round, 1, [_], _, true} -> ok
         after 1000 -> error(no_first_page)
@@ -541,7 +560,7 @@ source_identity_change(Kind) ->
          || I <- lists:seq(1, 3)
         ],
         Round = crypto:strong_rand_bytes(12),
-        ok = imboy_cache_sync_snapshot:send_snapshot(self(), Round),
+        ok = send_fixture_snapshot(Round),
         receive
             {cache_snapshot_page, _, Round, 1, [_], _, true} -> ok
         after 1000 -> error(no_first_page)
@@ -595,7 +614,7 @@ sender_done_is_preceded_by_current_origin_sequence_test() ->
     with_snapshot(fun() ->
         ets:insert(?META_TABLE, {sync_origin_seq, 17}),
         Round = crypto:strong_rand_bytes(12),
-        ok = imboy_cache_sync_snapshot:send_snapshot(self(), Round),
+        ok = send_fixture_snapshot(Round),
         receive
             {cache_invalidation_watermark, Origin, <<1:128>>, 17, Hash, Registry} ->
                 ?assertEqual(node(), Origin),
@@ -604,6 +623,18 @@ sender_done_is_preceded_by_current_origin_sequence_test() ->
             Other ->
                 error({watermark_not_first, Other})
         after 1000 -> error(no_tail_watermark)
+        end,
+        receive
+            {cache_snapshot_cut, Source, Round, <<1:128>>, 0, 17, CutHash, CutRegistry, {ok, []},
+                Certificate} = Cut ->
+                ?assertEqual(node(), Source),
+                ?assertEqual(imboy_cache_policy:config_hash(), CutHash),
+                ?assertEqual(imboy_cache_sync_proto:registry_hash(), CutRegistry),
+                ?assertEqual({0, crypto:hash(sha256, term_to_binary([]))}, Certificate),
+                ?assert(imboy_cache_sync_proto:valid_snapshot_cut(Cut));
+            OtherCut ->
+                error({cut_not_second, OtherCut})
+        after 1000 -> error(no_tail_cut)
         end,
         receive
             {cache_snapshot_done, _, Round, _, 0} -> ok
@@ -641,14 +672,46 @@ with_snapshot(Fun) ->
     meck:new(depcache, [passthrough, no_link]),
     meck:expect(depcache, set, 5, fun(_, _, _, _, _) -> ok end),
     meck:expect(depcache, flush, 2, fun(_, _) -> ok end),
+    meck:expect(depcache, get, 2, fun(_, _) -> undefined end),
+    Source = self(),
+    meck:new(syn, [non_strict, no_link]),
+    meck:expect(syn, members, fun(imboy_cache, dsync_handler) ->
+        [{Source, #{cache_boot => <<1:128>>}}]
+    end),
+    {CachePid, CacheMonitor} = spawn_monitor(fun cache_fixture/0),
+    true = register(imboy_cache, CachePid),
     try
         Fun()
     after
-        drain_fixture_watermarks(),
-        meck:unload(depcache),
-        ets:delete(?META_TABLE),
-        restore(cache_replication, OldCfg),
-        restore(cache_registry_overrides, OldReg)
+        try
+            try
+                CachePid ! stop,
+                receive
+                    {'DOWN', CacheMonitor, process, CachePid, normal} -> ok
+                after 1000 -> error(cache_fixture_not_stopped)
+                end
+            after
+                drain_fixture_watermarks()
+            end
+        after
+            try
+                meck:unload(syn)
+            after
+                try
+                    meck:unload(depcache)
+                after
+                    try
+                        ets:delete(?META_TABLE)
+                    after
+                        try
+                            restore(cache_replication, OldCfg)
+                        after
+                            restore(cache_registry_overrides, OldReg)
+                        end
+                    end
+                end
+            end
+        end
     end.
 restore(K, undefined) -> application:unset_env(imboy, K);
 restore(K, {ok, V}) -> application:set_env(imboy, K, V).
@@ -661,11 +724,38 @@ drain_fixture_watermarks() ->
     receive
         {cache_invalidation_watermark, Origin, <<1:128>>, _, _, _} when Origin =:= node() ->
             drain_fixture_watermarks();
-        {cache_snapshot_cut, Origin, _, <<1:128>>, _, _, _, _, _, _} when Origin =:= node() ->
-            drain_fixture_watermarks();
-        {cache_snapshot_cut, Origin, _, <<1:128>>, _, _, _, _, _} when Origin =:= node() ->
+        {cache_snapshot_cut, Origin, Round, <<1:128>>, 0, _, _, _, _, _} = Cut when
+            Origin =:= node()
+        ->
+            assert_frozen_cut(Cut),
+            erase({fixture_cut, Round}),
             drain_fixture_watermarks();
         {cache_snapshot_done, Origin, _, _, _} when Origin =:= node() ->
             drain_fixture_watermarks()
     after 0 -> ok
     end.
+
+cache_fixture() ->
+    receive
+        {'$gen_call', From, {get, Key}} ->
+            gen_server:reply(From, depcache:get(Key, imboy_cache)),
+            cache_fixture();
+        stop ->
+            ok
+    end.
+
+send_fixture_snapshot(Round) ->
+    {Source, Boot} = imboy_cache_sync:node_boot(),
+    [{sync_origin_seq, Seq}] = ets:lookup(imboy_cache_meta, sync_origin_seq),
+    Epoch = imboy_cache_sync_proto:epoch(),
+    Cut =
+        {cache_snapshot_cut, Source, Round, Boot, Epoch, Seq, imboy_cache_policy:config_hash(),
+            imboy_cache_sync_proto:registry_hash(),
+            imboy_cache_sync_proto:application_coverage_candidate(),
+            imboy_cache_sync_coverage:source_certificate(Epoch, erlang:system_time(millisecond))},
+    ?assert(imboy_cache_sync_proto:valid_snapshot_cut(Cut)),
+    put({fixture_cut, Round}, Cut),
+    imboy_cache_sync_snapshot:send_snapshot(self(), Round).
+
+assert_frozen_cut({cache_snapshot_cut, _, Round, _, _, _, _, _, _, _} = Cut) ->
+    ?assertEqual(get({fixture_cut, Round}), Cut).

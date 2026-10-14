@@ -88,7 +88,7 @@ create_tx(Conn, OrgId, ApplicationKey, Name) ->
     integer(),
     binary(),
     binary(),
-    undefined | {binary() | null, [binary()] | binary()}
+    undefined | {null | integer() | binary(), [binary()] | binary()}
 ) ->
     {ok, map()} | {error, key_conflict | term()}.
 create_tx(Conn, OrgId, ApplicationKey, Name, PrincipalAndScopes) ->
@@ -107,7 +107,7 @@ create_tx(Conn, OrgId, ApplicationKey, Name, PrincipalAndScopes) ->
     integer(),
     binary(),
     binary(),
-    undefined | {binary() | null, [binary()] | binary()},
+    undefined | {null | integer() | binary(), [binary()] | binary()},
     [binary()]
 ) ->
     {ok, map()} | {error, key_conflict | term()}.

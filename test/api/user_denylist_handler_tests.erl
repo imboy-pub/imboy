@@ -2,6 +2,16 @@
 -include_lib("eunit/include/eunit.hrl").
 -include("eunit_setup.hrl").
 
+%% Run the unchanged unit body in an isolated peer; the parent app is untouched.
+-define(LOCAL_MOCKS(Configs, Test),
+    {timeout, 45, fun() ->
+        pure_mock_fixture:run(fun() -> pure_mock_fixture:with_mocks(Configs, Test) end)
+    end}
+).
+-define(LOCAL_MOCK(Module, Expectations, Test),
+    ?LOCAL_MOCKS([{Module, Expectations}], Test)
+).
+
 mock_request() ->
     #{method => <<"POST">>, path => <<"/api/v1/user/denylist">>}.
 
@@ -16,7 +26,7 @@ init_false_action_passthrough_test_() ->
     end).
 
 init_add_success_test_() ->
-    ?WITH_MECKS(
+    ?LOCAL_MOCKS(
         [
             {elib_param, [
                 {'post', 1, fun(_Req) ->
@@ -47,7 +57,7 @@ init_add_success_test_() ->
     ).
 
 init_remove_success_test_() ->
-    ?WITH_MECKS(
+    ?LOCAL_MOCKS(
         [
             {elib_param, [
                 {'post', 1, fun(_Req) ->
@@ -75,7 +85,7 @@ init_remove_success_test_() ->
     ).
 
 init_page_success_test_() ->
-    ?WITH_MECKS(
+    ?LOCAL_MOCKS(
         [
             {elib_param, [
                 {'page', 1, fun(_Req) ->

@@ -493,6 +493,42 @@ transfer_targets_tests(_) ->
 
 seat_events_placeholder_tests(_) ->
     [
+        {"Production default seat poll emits an event after an empty opening page", fun() ->
+            cs_fake_facts:set(seat_facts()),
+            meck:expect(customer_service_facade, fetch_seat, fun(_O, _P) ->
+                {ok, #{business_identity_id => ?IDENTITY, enabled => true}}
+            end),
+            Counter = counters:new(1, []),
+            meck:expect(customer_service_facade, seat_events, fun(_O, _P) ->
+                counters:add(Counter, 1, 1),
+                case counters:get(Counter, 1) of
+                    1 ->
+                        {ok, #{events => [], cursor => 0, resync_required => false}};
+                    _ ->
+                        {ok, #{
+                            events => [seat_event_envelope()],
+                            cursor => 880001,
+                            resync_required => false
+                        }}
+                end
+            end),
+            %% No sse_poll_ms override: exercise the production default, not first-page replay.
+            Inject = maps:merge(seat_inject(), #{sse_max_ms => 1000}),
+            ?S:with_listener(tenant, seat_events, Inject, fun(Port) ->
+                Raw = ?S:stream_request(
+                    Port,
+                    <<"GET">>,
+                    <<"/api/v1/cs/organizations/", (int_bin(?ORG))/binary,
+                        "/seats/me/events?workspace_id=", (int_bin(?WS))/binary>>,
+                    <<>>,
+                    #{<<"authorization">> => <<"Bearer x">>},
+                    1800
+                ),
+                ?assert(string:find(Raw, <<"retry: 2000">>) =/= nomatch),
+                ?assert(string:find(Raw, <<"event: message.appended">>) =/= nomatch),
+                ?assert(string:find(Raw, <<"\"resource_id\":\"990001\"">>) =/= nomatch)
+            end)
+        end},
         {"Seat events streams retry+resync+event frames after full auth and workspace gate",
             fun() ->
                 cs_fake_facts:set(seat_facts()),

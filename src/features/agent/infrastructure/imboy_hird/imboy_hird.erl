@@ -92,14 +92,25 @@ run_tool(RunCtx, ToolDescriptor, ResourceContext, HandlerMap, HirðToolName) ->
         {approval_required, _AC} = Approval ->
             Approval;
         {allow, DecisionContext} ->
-            EffectId = maps:get(effect_id, DecisionContext, undefined),
-            Args = maps:get(hird_args, ResourceContext, #{}),
-            dispatch_with_timeout(
-                HirðToolName, caller_for(RunCtx, ToolDescriptor), Args, HandlerMap, #{
-                    timeout_ms => maps:get(timeout_ms, RunCtx, ?DEFAULT_TIMEOUT_MS),
-                    effect_id => EffectId
-                }
-            )
+            %% P1（IMBOY_HIRD_AUTH_REPLAY_POC_V1）同工具递归防护：内层 dispatch
+            %% 的 resolve 是 threaded map 优先、注册表兜底——若 HandlerMap 未
+            %% 覆盖目标 tool，dispatch 会落 hird_handlers 注册表；当注册表侧
+            %% 同时安装了以本函数收尾的桥 handler 时即构成
+            %% dispatcher→run_tool→dispatcher 无界递归（每层 spawn 新 worker，
+            %% 进程字典不可防）。结构上强制内层 dispatch 永不查注册表。
+            case maps:is_key({tool, HirðToolName}, HandlerMap) of
+                true ->
+                    EffectId = maps:get(effect_id, DecisionContext, undefined),
+                    Args = maps:get(hird_args, ResourceContext, #{}),
+                    dispatch_with_timeout(
+                        HirðToolName, caller_for(RunCtx, ToolDescriptor), Args, HandlerMap, #{
+                            timeout_ms => maps:get(timeout_ms, RunCtx, ?DEFAULT_TIMEOUT_MS),
+                            effect_id => EffectId
+                        }
+                    );
+                false ->
+                    {error, {handler_map_missing, HirðToolName}}
+            end
     end.
 
 %% @doc run scope caller（D2#2）：`<<"agent_run:<run_id>:<tool_id>">>`。
