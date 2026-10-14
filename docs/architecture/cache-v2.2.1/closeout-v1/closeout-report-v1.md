@@ -12,6 +12,69 @@
 
 ## 0. 阅读约定与填充状态
 
+### 会话交接与补丁归档（2026-10-14）
+
+用户要求提交、合入 main 并清理本会话 worktree。以下复验段落记录的是当时 WIP，
+两个失败测试文件现已按字节封存于仓外 `cache-review-20261014/`，从本任务 worktree
+恢复至已提交基线；失败补丁不合入 main。已提交文档与此前通过提交进入本次合并。
+接续指令见 [zcode-handoff-20261014.md](zcode-handoff-20261014.md)，其中额外两轮
+授权仅在用户将指令发送给 ZCODE 后生效。证据传输包不含专属库凭据或运行配置。
+
+### 当前复验与停止点（2026-10-14）
+
+源码 HEAD `f34ca1ee`，worktree 为 `codex/cache-v221-perf-driver-fix`；另有本任务未提交的
+`imboy_cache_entry_epoch_tests.erl` / `imboy_cache_source_cut_tests.erl` fixture 修复。
+**BACKEND_LOCAL_CLOSEOUT 未通过**：C04/AC-19 fixture 修复达到 §7 自动重试上限，
+该修复项记 **NO_GO**，保留失败补丁，不继续自动试改，不提交为通过实现。
+原计划 LOCAL_CANDIDATE 继续 **BLOCKED**；PRODUCTION_ACCEPTANCE **NOT_ISSUED**。
+这不是仅因生产输入缺失而阻塞：本地正确性、独立审查及最终证据仍有缺口。
+
+最近两轮 fixture 修复验证分别为四组 `77 passed / 1 failed`、七组直接调用方
+`141 passed / 6 failed / 0 skipped`，EUnit 原始退出均为 1。
+七组为 source_cut、entry_epoch、snapshot_origin、snapshot_tombstone、invalidation、control、metadata。
+六个失败用例及实际 oracle：
+
+| 模块 / 用例 | 实际失败 |
+|---|---|
+| entry_epoch / same_epoch_confirmed_delta_survives_older_snapshot_and_becomes_readable | snapshot_content_conflict，发生于同版本页读取校验 |
+| control / delete_event_preserves_absolute_expiry_and_rejects_invalid_expiry | revision_content_conflict |
+| control / completed_authority_epoch_change_aborts_round | source_cut_identity_changed |
+| control / new_epoch_event_cancels_selected_authority_before_report | rounds_used 期望 1、实际 2 |
+| metadata / application_coverage_candidate_requires_every_current_identity | 期望 incomplete_application_coverage、实际返回零序列候选 |
+| metadata / cold_recovery_rejects_older_epoch_authority | source_cut_identity_changed |
+
+独立审查阻断：共享 `done/5` 从收到的 manifest 推导 CutSeq，并用同一值覆盖
+origin_target，缺少来源独立冻结的目标；既有 `retained_obligations := []` 也使这些
+fixture 无法证明保留内容义务。恢复执行前应明确授权重开该根因修复预算，按独立
+source cut/target、真实 cache 值读取及实际应用增量重建 oracle；不得弱化产品校验，
+不得调整断言强行通过。其余失败须逐项定性，不能全部宣称为 fixture 问题。
+
+独立可执行项已取得新证据：当前 QR 五个产品模块与入口 driver 隔离重编译后，
+运行 `cache_v221_qr_entry_dcheck:main/1,2`，专属库 `imboy_cache_closeout_v1`
+中的 status/status、SSE/status、SSE/SSE 三种真实双节点 PG 竞争均通过，exit=0，
+3 passed / 0 failed / 0 skipped，每场景仅一个消费者取得凭据，合成行清理后为 0。
+Cowboy 运输层仍是 observer；这不是 HTTP 端到端、迁移回滚或最终候选验收。
+当前 worktree 缺少专属库配置，本次显式使用 main 的既有专属配置，未打印凭据。
+
+C10 旧运行树 `/tmp/cache-v221-legacy-source.7cvuC3` 已从固定提交
+`3a01829d32c94bdb15f80150445d0c1b71b88a8b` 恢复；cache/sync/metric/log 由旧源码
+编译，syn/depcache 为独立副本。旧版服务启动/加载路径检查 exit=0、V2 proto 不存在。
+仅覆盖混合测试所需局部运行树，不是历史 904 模块全应用重建或混合矩阵通过。
+
+`python3 scripts/check_cache_closeout_v1.py --all` 实际 exit=1，2/6 通过；candidate、
+exits、utc、receipts 未通过。最终候选未冻结，compile/targeted/three_node/mixed/
+rollback/qr/full_eunit/performance/independent_review 九类最终回执仍不齐全。
+C09/C10 最终两轮矩阵、C11 冻结后消费复验、QR 完整门禁、最终全量与正式性能不能
+越过当前 C04 阻断签发 PASS。后续运行前须重新采样资源；旧全量 PID 72900/97234
+已结束，不能继续将其记录为活动租约。
+
+原始日志、QR 结果、未验证 patch 及 SHA256 清单保留于仓外
+`~/.codex/cache-closeout-runs/cache-review-20261014/`：
+
+- `epoch-fix-all.log`：`49c0f56af659ba7272d5d8ec05bbad2b363af4523f5246123a52fbdd43ba1e0b`
+- `c14-all.log`：`6a239c8a8d7b49b10959fdf94fcfd04397768298e649fa85f478ad76ac77c4f0`
+- `qr-entry.json`：`1bfc7b678600db56e63a8e698f6ef1ca1cf4b90db22922aa653e133aa1290d44`
+
 ### 当前候选适用范围（2026-10-13）
 
 当前实现已改变协议能力摘要、恢复屏障、资源预算及业务失效路径，没有完成新的
