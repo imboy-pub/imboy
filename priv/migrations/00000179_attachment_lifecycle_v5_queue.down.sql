@@ -1,4 +1,4 @@
--- Down for 00000178 (V5.5 M2-queue).
+-- Down for 00000179 (V5.5 M2-queue).
 -- Empty-schema down drops functions/indexes/columns in reverse; any queue
 -- activity (non-blocked jobs, leases, tombstones, EB recovery snapshots,
 -- intent audit rows) blocks the down.
