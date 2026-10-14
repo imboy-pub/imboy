@@ -84,7 +84,7 @@ expired_source_revision_floor_blocks_other_source_old_live_page_test() ->
         after 1000 -> error(no_watermark)
         end,
         receive
-            {cache_snapshot_cut, _, Round, _, _, _, _, _, _} -> ok
+            {cache_snapshot_cut, _, Round, _, _, _, _, _, _, _} -> ok
         after 1000 -> error(no_cut)
         end,
         receive
@@ -324,7 +324,7 @@ collect_snapshot_tail(Round, N, Acc) ->
             after 1000 -> error(no_watermark)
             end,
             receive
-                {cache_snapshot_cut, _, Round, _, _, _, _, _, _} -> ok
+                {cache_snapshot_cut, _, Round, _, _, _, _, _, _, _} -> ok
             after 1000 -> error(no_source_cut)
             end,
             receive
@@ -376,7 +376,7 @@ prepared_journal_expiring_before_pull_cannot_send_done_test_() ->
             after 0 -> ok
             end,
             receive
-                {cache_snapshot_cut, _, Round, _, _, _, _, _, _} -> error(unexpected_cut)
+                {cache_snapshot_cut, _, Round, _, _, _, _, _, _, _} -> error(unexpected_cut)
             after 0 -> ok
             end,
             ?assertEqual([], ets:lookup(?META_TABLE, {snapshot_sender, self()}))
@@ -424,7 +424,7 @@ next_page_construction_cannot_send_expired_prepared_page_test_() ->
             after 0 -> ok
             end,
             receive
-                {cache_snapshot_cut, _, Round, _, _, _, _, _, _} -> error(unexpected_cut)
+                {cache_snapshot_cut, _, Round, _, _, _, _, _, _, _} -> error(unexpected_cut)
             after 0 -> ok
             end
         end)

@@ -143,6 +143,7 @@ report_from_unregistered_process_cannot_replace_incarnation_test() ->
 
 drain() ->
     receive
+        {cache_snapshot_cut, _, _, _, _, _, _, _, _, _} -> drain();
         {cache_snapshot_cut, _, _, _, _, _, _, _, _} -> drain();
         {cache_snapshot_cut, _, _, _, _, _, _, _} -> drain();
         {cache_snapshot_abort, _, _, _} -> drain()
