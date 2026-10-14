@@ -15,6 +15,11 @@
 %%       回放护栏在资源解析/授权之前拦截 live 回退；trap+atomics 零执行）
 %%   C3  effect 凭证绑定  → t_effect_credential_binding（拒绝面 + trap
 %%       边界信号；真实读取的正向对照在 P1，需 PG）
+%%   C5  模型驱动决策步  → t_model_decision_finish（决策 Finish 时业务
+%%       Tool 零执行）/ t_model_decision_callws（决策 CallWs 时恰一次
+%%       调用）——类型化 Decision ADT + match 分派（Provider 返回封闭
+%%       ADT，无法表达签名外工具请求——类型层拒绝证据）；真实授权链下
+%%       的循环验证在 P1/PG（BLOCKED 口径不变，本组为零 PG 前置）
 %%
 %% 运行前置：IMBOY_HIRD_BIN（无 HIRDPOC_PG_* —— 本套件零 PG、零 marker 库）。
 -module(imboy_hird_replay_offline_tests).
@@ -45,7 +50,9 @@ offline_replay_test_() ->
                 {~B'schema 版本不兼容：加载期 unsupported_schema_version 拒绝', fun t_schema_version_gate/0}},
             {timeout, 120, {~B'cursor 运行中死亡：护栏拦截 live 回退，真实执行零次', fun t_cursor_death/0}},
             {timeout, 120,
-                {~B'effect 凭证资源绑定：窗口内跨资源拒绝、匹配凭证到达执行边界', fun t_effect_credential_binding/0}}
+                {~B'effect 凭证资源绑定：窗口内跨资源拒绝、匹配凭证到达执行边界', fun t_effect_credential_binding/0}},
+            {timeout, 120, {~B'模型决策 Finish（不请求工具）：业务 Tool 零执行', fun t_model_decision_finish/0}},
+            {timeout, 120, {~B'模型决策 CallWs（请求工具）：业务 Tool 恰一次调用', fun t_model_decision_callws/0}}
         ]}}.
 
 %%%===================================================================
@@ -114,7 +121,8 @@ offline_log() ->
     Path.
 
 variant_mod(alias) -> hird_imboy_agent_probe_alias;
-variant_mod(reversed) -> hird_imboy_agent_probe_reversed.
+variant_mod(reversed) -> hird_imboy_agent_probe_reversed;
+variant_mod(loop) -> hird_imboy_agent_loop.
 
 %% 别名变体：WsDetailAlias 与 WsDetail 同签名——离线日志（ws_detail 行）
 %% 可被变体签名表解码（加载期放行），程序体只调 alias → 运行时
@@ -219,6 +227,62 @@ variant_src(reversed) ->
       let ProbeStatus(n) = request(r, ProbeDone) in
       send(r, Shutdown);
       if n >= 0 then () else crash!("no steps")
+    """/utf8>>;
+variant_src(loop) ->
+    <<"""
+    module ImboyAgentLoop
+
+    tool ModelDecide : { step: Int } → Decision ! {Exn<AgentToolError>}
+    tool WsDetail : { ws_id: Int } → String ! {Exn<AgentToolError>}
+
+    type Decision = | CallWs(Int) | Finish(String)
+    type AgentToolError = ToolDenied(String)
+    type LoopStatus = LoopStatus(Int, String)
+    type alias LoopState = { steps: Int, answer: String }
+
+    actor LoopRunner {
+      state: LoopState,
+
+      message: LoopMsg =
+        | LoopStart
+        | LoopDone(ReplyTo<LoopStatus>)
+        | Shutdown,
+
+      init: fn(cfg: Int) ! {} = { steps: 0, answer: "" },
+
+      handle LoopStart, st ! {Tool<ModelDecide>, Tool<WsDetail>, Exn<AgentToolError>} =
+        let d = model_decide({ step: st.steps }) in
+        match d {
+          CallWs(id) →
+            let detail = ws_detail({ ws_id: id }) in
+            Continue({ steps: st.steps + 1, answer: detail }),
+          Finish(a) →
+            Continue({ steps: st.steps + 1, answer: a }),
+        },
+
+      handle LoopDone(reply_to), st ! {Send<LoopStatus>} =
+        reply(reply_to, LoopStatus(st.steps, st.answer));
+        Continue(st),
+
+      handle Shutdown, _ ! {} = Stop,
+    } ! {Tool<ModelDecide>, Tool<WsDetail>, Exn<AgentToolError>, Send<LoopStatus>}
+
+    supervisor LoopSup {
+      strategy: one_for_one,
+      intensity: 5,
+      period: 60,
+      children: [
+        { id: loop_runner, actor: LoopRunner, start_args: 0, restart: transient },
+      ]
+    }
+
+    fn main() → () ! {Supervise, Send<LoopMsg>, Await<LoopStatus>} =
+      supervise(LoopSup);
+      let r = child(LoopSup, loop_runner) in
+      send(r, LoopStart);
+      let LoopStatus(n, a) = request(r, LoopDone) in
+      send(r, Shutdown);
+      if n >= 0 then () else crash!("bad steps")
     """/utf8>>.
 
 ensure_variant_built(Kind) ->
@@ -240,8 +304,16 @@ ensure_variant_built(Kind) ->
             %% C0019：module 名与 .hird 文件名须一致（snake_case 归一化）。
             Src = filename:join([
                 ?OUT_ROOT,
-                "imboy_agent_probe_" ++
-                    atom_to_list(Kind) ++ ".hird"
+                %% C0019：文件名 = 模块名去 hird_ 前缀（snake_case 与
+                %% module 声明一一对应，跨变体统一成立）。
+                (fun(M) ->
+                    case M of
+                        "hird_" ++ Rest -> Rest;
+                        Other -> Other
+                    end
+                end)(
+                    atom_to_list(variant_mod(Kind))
+                ) ++ ".hird"
             ]),
             ok = file:write_file(Src, variant_src(Kind)),
             Cmd = io_lib:format(
@@ -556,3 +628,57 @@ t_effect_credential_binding() ->
     }),
     ?assertEqual({error, no_effect_credential}, Handler(ReqA)),
     ?assertEqual(0, biz_calls()).
+
+%%%===================================================================
+%%% C5 前置：模型驱动的工具决策步（类型化 Decision ADT + match 分派）
+%%%===================================================================
+
+%% 跑一次决策步程序：脚本化 Decision + 业务 stub（atomics 计数）。
+%% 返回 {Outcome, WsCalls, DecideCalls}。
+run_decision_step(DecideFun) ->
+    run_isolated(fun() ->
+        LoopMod = ensure_variant_built(loop),
+        #{counters := #{biz := B, provider := P}} = state(),
+        Decide = fun(_Args, _Hs) ->
+            _ = atomics:add_get(P, 1, 1),
+            DecideFun()
+        end,
+        WsStub = fun(_Args, _Hs) ->
+            _ = atomics:add_get(B, 1, 1),
+            <<"{\"id\":912001,\"stub\":true}">>
+        end,
+        Outcome =
+            try
+                ok = hird_handlers:with_handlers(
+                    [{{tool, model_decide}, Decide}, {{tool, ws_detail}, WsStub}],
+                    fun() -> LoopMod:main(#{}) end
+                ),
+                ok
+            catch
+                Class:Reason -> {caught, Class, Reason}
+            end,
+        try
+            gen_server:stop(hird_loop_sup)
+        catch
+            _:_ -> ok
+        end,
+        {Outcome, atomics:get(B, 1), atomics:get(P, 1)}
+    end).
+
+%% C5#1：模型决策 Finish（不请求工具）→ 业务 Tool 零执行（对照旧固定
+%% 流程程序：无条件调用 ws_detail，见 P1 t_provider_variant）。
+t_model_decision_finish() ->
+    {Outcome, WsCalls, DecideCalls} =
+        run_decision_step(fun() -> {finish, <<"all done">>} end),
+    ?assertEqual(ok, Outcome),
+    ?assertEqual(1, DecideCalls),
+    ?assertEqual(0, WsCalls).
+
+%% C5#2：模型决策 CallWs（请求工具）→ 业务 Tool 恰一次调用（离线 stub
+%% 面；经真实授权链的同路径在 P1/PG，BLOCKED 口径不变）。
+t_model_decision_callws() ->
+    {Outcome, WsCalls, DecideCalls} =
+        run_decision_step(fun() -> {call_ws, 912001} end),
+    ?assertEqual(ok, Outcome),
+    ?assertEqual(1, DecideCalls),
+    ?assertEqual(1, WsCalls).
