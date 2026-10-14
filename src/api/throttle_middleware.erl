@@ -38,28 +38,30 @@ execute(Req, Env) ->
 %%%===================================================================
 
 %% @doc passport 路径专用宽松限流（登录/注册接口）
-%% 基于 IP，使用 passport_per_ip 规则（宽松于通用规则）
-%% GAP-09: 修复原有完全豁免导致暴力破解无 HTTP 层防护的问题
+%% 基于 IP，scope=passport_per_ip（宽松于通用规则），权威 owner 为
+%% login_attempt_ds（limiter-v1 L3 迁移，C.8：未 ready 即 503，不再
+%% rate_not_set fail-open）。
 %% @private
 -spec do_throttle_passport(cowboy_req:req(), map()) ->
     {ok, cowboy_req:req(), map()} | {stop, cowboy_req:req()}.
 do_throttle_passport(Req, Env) ->
     Ip = elib_req:get_client_ip(Req),
-    case throttle:check(passport_per_ip, Ip) of
-        {ok, _Remaining, _RetryAfter} ->
+    case login_attempt_ds:admit(passport_per_ip, Ip) of
+        {ok, _Snap} ->
             {ok, Req, Env};
-        {limit_exceeded, _, _} ->
+        {error, rate_limited} ->
             ?WARN_LOG([
                 passport_rate_limited, #{key_type => ip, key => Ip, path => cowboy_req:path(Req)}
             ]),
             reply_429(Req);
-        rate_not_set ->
-            %% passport_per_ip 规则未初始化时 fail-open（不阻断登录）
-            %% 此时 login_attempt_ds 暴力破解保护仍有效
-            ?WARN_LOG([
-                throttle_rate_not_set, #{scope => passport_per_ip, path => cowboy_req:path(Req)}
+        {error, Reason} ->
+            %% capacity/unavailable：owner 故障或容量满 —— 503（C.6 协议映射，
+            %% 不伪装成 429、不 fail-open）
+            ?ERROR_LOG([
+                limiter_unavailable,
+                #{scope => passport_per_ip, reason => Reason, path => cowboy_req:path(Req)}
             ]),
-            {ok, Req, Env}
+            reply_503(Req)
     end.
 
 %% @doc widget 接入面专用限流（CSB-03）：cs_widget_per_ip 规则，按 IP。
@@ -98,22 +100,24 @@ do_throttle_cs_widget(Req, Env) ->
 do_throttle(Req, Env) ->
     case get_current_uid(Env) of
         0 ->
-            %% 未认证请求，基于 IP 限流
+            %% 未认证请求，基于 IP 限流（scope=api_per_ip，权威 owner 为
+            %% login_attempt_ds；C.6：owner 故障 503，不 fail-open）
             Ip = elib_req:get_client_ip(Req),
-            case throttle:check(api_per_ip, Ip) of
-                {ok, _Remaining, _RetryAfter} ->
+            case login_attempt_ds:admit(api_per_ip, Ip) of
+                {ok, _Snap} ->
                     {ok, Req, Env};
-                {limit_exceeded, _, _} ->
+                {error, rate_limited} ->
                     ?WARN_LOG([
-                        rate_limited, #{key_type => ip, key => Ip, path => cowboy_req:path(Req)}
+                        rate_limited,
+                        #{key_type => ip, key => Ip, path => cowboy_req:path(Req)}
                     ]),
                     reply_429(Req);
-                rate_not_set ->
-                    %% 速率规则未初始化，放行并告警（fail-open）
-                    ?WARN_LOG([
-                        throttle_rate_not_set, #{scope => api_per_ip, path => cowboy_req:path(Req)}
+                {error, Reason} ->
+                    ?ERROR_LOG([
+                        limiter_unavailable,
+                        #{scope => api_per_ip, reason => Reason, path => cowboy_req:path(Req)}
                     ]),
-                    {ok, Req, Env}
+                    reply_503(Req)
             end;
         Uid ->
             %% 已认证请求，基于 UID 限流：双桶串联——
@@ -188,6 +192,19 @@ reply_429(Req) ->
         429,
         <<"请求过于频繁，请稍后重试"/utf8>>,
         429
+    ),
+    {stop, Req1}.
+
+%% @doc 返回 HTTP 503 JSON 响应（limiter-v1 C.6）：限流权威 owner 故障
+%% （capacity/unavailable）时的统一对外形态——不伪装 429、不 fail-open。
+%% @private
+-spec reply_503(cowboy_req:req()) -> {stop, cowboy_req:req()}.
+reply_503(Req) ->
+    Req1 = elib_response:error_with_status(
+        Req,
+        503,
+        <<"服务暂不可用，请稍后重试"/utf8>>,
+        503
     ),
     {stop, Req1}.
 

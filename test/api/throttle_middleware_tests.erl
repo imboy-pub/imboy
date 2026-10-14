@@ -3,10 +3,27 @@
 -include("eunit_setup.hrl").
 
 %%% @doc throttle_middleware 模块测试
+%%%
+%%% limiter-v1 L3（AC-14，计划 docs/plans/2026-10-13-limiter-v1-* §9.2）：
+%%% 两只 IP scope（passport_per_ip / api_per_ip）的权威 owner 已迁至
+%%% login_attempt_ds:admit/2（owner 故障 → 503，不再 rate_not_set fail-open）；
+%%% UID 双桶与 cs_widget_per_ip 仍走 throttle 原库。middleware 分支测试
+%%% meck admit 观测调用契约（被测单元是 middleware 分支，不是 DS 本体）；
+%%% owner 测试用真实 DS（eunit 环境带 imboy app）。
+
+%% @doc login_attempt_ds:admit 放行时返回的快照（middleware 只匹配 {ok, _}）
+admit_snap(N) ->
+    #{
+        count => N,
+        remaining => 9 - N,
+        locked => false,
+        expires_at_ms => undefined,
+        rule_version => {10, 60000}
+    }.
 
 %% @doc passport 路径命中专用宽松限流（非完全豁免，GAP-09），需要
-%% mock elib_req:get_client_ip + throttle:check(passport_per_ip, _)，
-%% 否则会真的调用 cowboy_req:header/3 在 fake_req 上崩溃。
+%% mock elib_req:get_client_ip + login_attempt_ds:admit(passport_per_ip, _)；
+%% 同时断言该分支不再触碰 throttle 原库（旧权威已移除）。
 whitelist_passport_test_() ->
     ?WITH_MECKS(
         [
@@ -16,8 +33,13 @@ whitelist_passport_test_() ->
             {elib_req, [
                 {'get_client_ip', 1, fun(_Req) -> <<"203.0.113.1">> end}
             ]},
+            {login_attempt_ds, [
+                {'admit', 2, fun(passport_per_ip, <<"203.0.113.1">>) -> {ok, admit_snap(1)} end}
+            ]},
             {throttle, [
-                {'check', 2, fun(passport_per_ip, _Key) -> {ok, 9, 60000} end}
+                {'check', 2, fun(_Scope, _Key) ->
+                    erlang:error(throttle_must_not_be_called_for_ip_scopes)
+                end}
             ]}
         ],
         fun() ->
@@ -103,7 +125,7 @@ normal_uid_request_pass_test_() ->
         end
     ).
 
-%% @doc 正常请求通过（未认证用户，基于 IP 限流）
+%% @doc 正常请求通过（未认证用户，基于 IP，新权威 admit）
 normal_ip_request_pass_test_() ->
     ?WITH_MECKS(
         [
@@ -113,8 +135,8 @@ normal_ip_request_pass_test_() ->
             {elib_req, [
                 {'get_client_ip', 1, fun(_Req) -> <<"192.168.1.1">> end}
             ]},
-            {throttle, [
-                {'check', 2, fun(api_per_ip, _Key) -> {ok, 59, 60000} end}
+            {login_attempt_ds, [
+                {'admit', 2, fun(api_per_ip, <<"192.168.1.1">>) -> {ok, admit_snap(1)} end}
             ]}
         ],
         fun() ->
@@ -122,6 +144,52 @@ normal_ip_request_pass_test_() ->
             Env = #{handler_opts => #{}},
             Result = throttle_middleware:execute(Req, Env),
             ?assertMatch({ok, _, _}, Result)
+        end
+    ).
+
+%% @doc admit 各返回值 → 对外合同（C.6）：放行 / 429 / 503。
+%% passport 分支同样三态（429/503 各验一只即可，分支代码同构）。
+passport_admit_rate_limited_429_test_() ->
+    ?WITH_MECKS(
+        [
+            {cowboy_req, [
+                {'path', 1, fun(_Req) -> <<"/api/v1/passport/do_login">> end},
+                {'reply', 4, fun(429, _H, _B, R) -> R end}
+            ]},
+            {elib_req, [
+                {'get_client_ip', 1, fun(_Req) -> <<"203.0.113.2">> end}
+            ]},
+            {login_attempt_ds, [
+                {'admit', 2, fun(passport_per_ip, _) -> {error, rate_limited} end}
+            ]}
+        ],
+        fun() ->
+            Req = fake_req,
+            Env = #{handler_opts => #{}},
+            Result = throttle_middleware:execute(Req, Env),
+            ?assertMatch({stop, _}, Result)
+        end
+    ).
+
+passport_admit_owner_unavailable_503_test_() ->
+    ?WITH_MECKS(
+        [
+            {cowboy_req, [
+                {'path', 1, fun(_Req) -> <<"/api/v1/passport/do_login">> end},
+                {'reply', 4, fun(503, _H, _B, R) -> R end}
+            ]},
+            {elib_req, [
+                {'get_client_ip', 1, fun(_Req) -> <<"203.0.113.3">> end}
+            ]},
+            {login_attempt_ds, [
+                {'admit', 2, fun(passport_per_ip, _) -> {error, unavailable} end}
+            ]}
+        ],
+        fun() ->
+            Req = fake_req,
+            Env = #{handler_opts => #{}},
+            Result = throttle_middleware:execute(Req, Env),
+            ?assertMatch({stop, _}, Result)
         end
     ).
 
@@ -183,7 +251,7 @@ uid_burst_rate_limit_exceeded_test_() ->
         end
     ).
 
-%% @doc 超限返回 429（未认证用户，基于 IP）
+%% @doc 超限返回 429（未认证用户，基于 IP，新权威 admit）
 ip_rate_limit_exceeded_test_() ->
     ?WITH_MECKS(
         [
@@ -194,8 +262,55 @@ ip_rate_limit_exceeded_test_() ->
             {elib_req, [
                 {'get_client_ip', 1, fun(_Req) -> <<"10.0.0.1">> end}
             ]},
-            {throttle, [
-                {'check', 2, fun(api_per_ip, _Key) -> {limit_exceeded, 0, 5000} end}
+            {login_attempt_ds, [
+                {'admit', 2, fun(api_per_ip, <<"10.0.0.1">>) -> {error, rate_limited} end}
+            ]}
+        ],
+        fun() ->
+            Req = fake_req,
+            Env = #{handler_opts => #{}},
+            Result = throttle_middleware:execute(Req, Env),
+            ?assertMatch({stop, _}, Result)
+        end
+    ).
+
+%% @doc owner 容量满（capacity）→ 503（不伪装 429、不 fail-open）
+ip_limit_owner_capacity_503_test_() ->
+    ?WITH_MECKS(
+        [
+            {cowboy_req, [
+                {'path', 1, fun(_Req) -> <<"/api/v1/app_version/check">> end},
+                {'reply', 4, fun(503, _Headers, _Body, Req) -> Req end}
+            ]},
+            {elib_req, [
+                {'get_client_ip', 1, fun(_Req) -> <<"10.0.0.2">> end}
+            ]},
+            {login_attempt_ds, [
+                {'admit', 2, fun(api_per_ip, _) -> {error, capacity} end}
+            ]}
+        ],
+        fun() ->
+            Req = fake_req,
+            Env = #{handler_opts => #{}},
+            Result = throttle_middleware:execute(Req, Env),
+            ?assertMatch({stop, _}, Result)
+        end
+    ).
+
+%% @doc owner 未 ready（unavailable）→ 503（旧 rate_not_set fail-open 已删，
+%% C.8：未 ready 不准入）
+ip_limit_owner_not_ready_503_test_() ->
+    ?WITH_MECKS(
+        [
+            {cowboy_req, [
+                {'path', 1, fun(_Req) -> <<"/api/v1/app_version/check">> end},
+                {'reply', 4, fun(503, _Headers, _Body, Req) -> Req end}
+            ]},
+            {elib_req, [
+                {'get_client_ip', 1, fun(_Req) -> <<"10.0.0.3">> end}
+            ]},
+            {login_attempt_ds, [
+                {'admit', 2, fun(api_per_ip, _) -> {error, unavailable} end}
             ]}
         ],
         fun() ->
@@ -232,7 +347,8 @@ uid_vs_ip_selection_uid_test_() ->
         end
     ).
 
-%% @doc UID vs IP 限流选择 - 无 current_uid 走 IP 限流
+%% @doc UID vs IP 限流选择 - 无 current_uid 走 IP 限流（新权威 admit；
+%% throttle 任意 scope 若被误调即 429 短路，断言必失败）
 uid_vs_ip_selection_ip_test_() ->
     ?WITH_MECKS(
         [
@@ -242,14 +358,11 @@ uid_vs_ip_selection_ip_test_() ->
             {elib_req, [
                 {'get_client_ip', 1, fun(_Req) -> <<"172.16.0.1">> end}
             ]},
+            {login_attempt_ds, [
+                {'admit', 2, fun(api_per_ip, <<"172.16.0.1">>) -> {ok, admit_snap(1)} end}
+            ]},
             {throttle, [
-                {'check', 2, fun(Scope, _Key) ->
-                    %% 确保使用的是 api_per_ip scope
-                    case Scope of
-                        api_per_ip -> {ok, 50, 60000};
-                        api_per_user -> {limit_exceeded, 0, 5000}
-                    end
-                end}
+                {'check', 2, fun(_Scope, _Key) -> {limit_exceeded, 0, 5000} end}
             ]}
         ],
         fun() ->
@@ -261,61 +374,102 @@ uid_vs_ip_selection_ip_test_() ->
     ).
 
 %% ===================================================================
-%% Limiter V1 L0 缺陷复现（计划 docs/plans/2026-10-13-limiter-v1-*
-%% §5.F7、§9.2 AC-14）。真实 throttle 库（deps/throttle，未 mock）。
-%% oracle：断言旧实现的坏结果；L3 scope 迁移到唯一 owner 后翻转。
+%% Limiter V1 L3 fixed oracle（计划 docs/plans/2026-10-13-limiter-v1-*
+%% §9.2 AC-14，limiter_scope_owner）。原 L0 复现（throttle:setup 重复
+%% 装配产生双 worker、旧 reset timer 清新额度）已随 L3 迁移翻转：
+%% 两只 IP scope 唯一权威是 login_attempt_ds。
 %% ===================================================================
 
--define(L0_SCOPE, limiter_l0_probe_20261014).
+-define(L3_PASSPORT_IP, <<"203.0.113.77">>).
 
-%% 记录当前 throttle_sup children 的 pid 集
-l0_scope_workers() ->
-    [Pid || {_, Pid, _, _} <- supervisor:which_children(throttle_sup), is_pid(Pid)].
-
-%% AC-14 旧侧复现：throttle:setup/3 每次调用都 start_child 一个新 worker
-%% 并让新 worker initialize 覆写 scope→表 映射（throttle_ets:initialize/3），
-%% 旧 worker 连同它的 reset timer 一起存活。reset 按 scope 查**最新**表
-%% （throttle_ets:reset/2）——旧 worker 的 timer 触发 reset_counters 时，
-%% 清掉的是新表的全部计数。重复装配不幂等，且旧 timer 持续重置新额度。
-%% 生产中 imboy_app:init_throttle_rates/0 与 throttle_app（sys.config rates）
-%% 对 api_per_ip / passport_per_ip 各 setup 一次即构成此形态。
+%% AC-14 目标行为：
+%% 1) 真实 admit（新 owner）对同 IP 连续计数，额度只随请求消耗；
+%% 2) 重复初始化（init_throttle_rates 重跑 + set_ip_rates 同值重放）不得
+%%    重置有效额度；
+%% 3) 无旧 worker/index/Cache 回落：throttle 的 scope 映射表无两 IP 行；
+%% 4) UID / cs_widget 等其它 scope 仍走 throttle 原库。
 limiter_scope_owner_test_() ->
     {timeout, 30,
         ?WITH_MECKS(
             [],
             fun() ->
-                Before = l0_scope_workers(),
-                %% 第一次装配（N=2/min）
-                ok = throttle:setup(?L0_SCOPE, 2, per_minute),
-                [WorkerA] = l0_scope_workers() -- Before,
-                %% 占满额度（真实 update_counter；N=2，第 3 次拒绝）
-                {ok, _, _} = throttle:check(?L0_SCOPE, l0_key),
-                {ok, _, _} = throttle:check(?L0_SCOPE, l0_key),
-                {limit_exceeded, 0, _} = throttle:check(?L0_SCOPE, l0_key),
-                %% 第二次装配（重复 setup，新 worker + 新表，覆写映射）
-                AfterA = l0_scope_workers(),
-                ok = throttle:setup(?L0_SCOPE, 2, per_minute),
-                [WorkerB] = l0_scope_workers() -- AfterA,
-                true = (WorkerA =/= WorkerB),
-                %% 新表满额度：2 次通过、第 3 次拒绝
-                {ok, _, _} = throttle:check(?L0_SCOPE, l0_key),
-                {ok, _, _} = throttle:check(?L0_SCOPE, l0_key),
-                {limit_exceeded, 0, _} = throttle:check(?L0_SCOPE, l0_key),
-                %% 旧 worker 的 reset timer 到期（或任何来源的重复 reset）：
-                %% 直接投递 reset_counters 消息（与 timer:send_interval 投递
-                %% 的消息一致），旧 worker 按 scope 找到的是**新表**
-                WorkerA ! reset_counters,
-                %% 同步等待旧 worker 处理完该消息（sys 消息排在普通消息之后，
-                %% get_state 返回即表示 reset_counters 已处理完）
-                {_, _, _} = sys:get_state(WorkerA),
-                %% L0 旧侧 oracle：新表的额度被旧 worker 清零——第 4 次请求
-                %% 又被放行（N+1 饱和计数同时被重置）
-                ?assertMatch({ok, _, _}, throttle:check(?L0_SCOPE, l0_key)),
-                %% 清理：杀掉本用例创建的两个 worker（transient，不重启），
-                %% 其拥有的匿名表随之消亡；删除 STATE_TABLE 的 scope 行
-                exit(WorkerA, shutdown),
-                exit(WorkerB, shutdown),
-                true = ets:delete(throttle_state_table, ?L0_SCOPE),
+                ?assert(login_attempt_ds:ready()),
+                Ip = ?L3_PASSPORT_IP,
+                %% 1. 新 owner 装配一次并计数
+                {ok, S1} = login_attempt_ds:admit(passport_per_ip, Ip),
+                C1 = maps:get(count, S1),
+                {ok, S2} = login_attempt_ds:admit(passport_per_ip, Ip),
+                ?assertEqual(C1 + 1, maps:get(count, S2)),
+                %% 2. 重复初始化不重置有效额度：init_throttle_rates 重跑
+                %%    （幂等，不再 setup 两 IP scope）+ set_ip_rates 同值重放
+                %%    （C.4：重复提交在生效前按最后一次替换，不动已有窗口）
+                ok = imboy_app:init_throttle_rates(),
+                ok = login_attempt_ds:set_ip_rates(#{passport_per_ip => {10, 60000}}),
+                {ok, S3} = login_attempt_ds:admit(passport_per_ip, Ip),
+                ?assertEqual(C1 + 2, maps:get(count, S3)),
+                %% 3. 无旧回落：throttle scope→表 映射中不存在两 IP scope
+                ?assertNot(ets:member(throttle_state_table, passport_per_ip)),
+                ?assertNot(ets:member(throttle_state_table, api_per_ip)),
+                %% 4. UID/widget scope 仍原库：cs_widget_per_ip 已注册且可计数
+                ?assert(ets:member(throttle_state_table, cs_widget_per_ip)),
+                ProbeKey = {ac14_probe, erlang:unique_integer()},
+                ?assertMatch({ok, _, _}, throttle:check(cs_widget_per_ip, ProbeKey)),
                 ok
             end
         )}.
+
+%% AC-14 旧权威移除的直接证据：passport 分支执行成功且全程未触碰
+%% throttle 原库（throttle:check 被替换为遇调即错的哨兵）。
+middleware_ip_scopes_not_via_throttle_test_() ->
+    ?WITH_MECKS(
+        [
+            {cowboy_req, [
+                {'path', 1, fun(_Req) -> <<"/api/v1/passport/meta">> end}
+            ]},
+            {elib_req, [
+                {'get_client_ip', 1, fun(_Req) -> <<"203.0.113.88">> end}
+            ]},
+            {throttle, [
+                {'check', 2, fun(_Scope, _Key) ->
+                    erlang:error(throttle_must_not_be_called_for_ip_scopes)
+                end}
+            ]}
+        ],
+        fun() ->
+            %% 不 mock login_attempt_ds：真实 DS（新权威）放行
+            Req = fake_req,
+            Env = #{handler_opts => #{}},
+            ?assertMatch({ok, _, _}, throttle_middleware:execute(Req, Env))
+        end
+    ).
+
+%% C.8 启动校验：{throttle, rates} 仍含两 IP scope → 报迁移缺项并拒绝
+%% （error 退出阻止旧新混跑）；迁出后（当前 config 状态）→ ok。
+limiter_migration_validation_rejects_stale_scopes_test_() ->
+    ?WITH_MECKS(
+        [],
+        fun() ->
+            OldRates = application:get_env(throttle, rates),
+            try
+                application:set_env(throttle, rates, [{passport_per_ip, 10, per_minute}]),
+                ?assertError(
+                    {limiter_migration_incomplete, [passport_per_ip]},
+                    imboy_app:validate_limiter_ip_migration()
+                ),
+                application:set_env(throttle, rates, [{api_per_ip, 60, per_minute}]),
+                ?assertError(
+                    {limiter_migration_incomplete, [api_per_ip]},
+                    imboy_app:validate_limiter_ip_migration()
+                ),
+                application:unset_env(throttle, rates),
+                ?assertEqual(ok, imboy_app:validate_limiter_ip_migration())
+            after
+                case OldRates of
+                    {ok, R} -> application:set_env(throttle, rates, R);
+                    undefined -> application:unset_env(throttle, rates)
+                end
+            end,
+            %% 当前启动配置（已迁出）必须通过
+            ?assertEqual(ok, imboy_app:validate_limiter_ip_migration())
+        end
+    ).
