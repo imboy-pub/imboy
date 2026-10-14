@@ -131,10 +131,8 @@ merge_default_workspace(_OrgId, Params) ->
         true ->
             {ok, Params};
         false ->
-            case default_workspace_fun() of
-                {ok, Fun} -> {ok, Params#{default_workspace => Fun}};
-                {error, _} -> {skip, Params}
-            end
+            {ok, Fun} = default_workspace_fun(),
+            {ok, Params#{default_workspace => Fun}}
     end.
 
 merge_assertion_verifier(_OrgId, Params) ->
@@ -142,10 +140,8 @@ merge_assertion_verifier(_OrgId, Params) ->
         true ->
             {ok, Params};
         false ->
-            case assertion_verifier_fun() of
-                {ok, Fun} -> {ok, Params#{assertion_verifier => Fun}};
-                {error, _} -> {skip, Params}
-            end
+            {ok, Fun} = assertion_verifier_fun(),
+            {ok, Params#{assertion_verifier => Fun}}
     end.
 
 merge_intake_identity(OrgId, Params) ->
@@ -167,7 +163,7 @@ merge_intake_identity(OrgId, Params) ->
 %% ===================================================================
 
 %% 匿名 subject HMAC 材料：env 非空 binary 才可用；缺配置 = 不可用（fail-closed）。
--spec subject_key() -> {ok, binary()} | {error, missing_config}.
+-spec subject_key() -> {ok, binary()} | {error, {missing_config, cs_widget_subject_key}}.
 subject_key() ->
     case config_ds:env(cs_widget_subject_key, <<>>) of
         Key when is_binary(Key), Key =/= <<>> -> {ok, Key};
@@ -176,7 +172,7 @@ subject_key() ->
 
 %% 缺省 Workspace 解析器：fun(Org) → 经 store 端口取本 Org active 最小
 %% workspace（org 作用域确定性规则冻结在 SQL，见 cs_pg_widget:default_workspace/1）。
--spec default_workspace_fun() -> {ok, fun((integer()) -> term())} | {error, term()}.
+-spec default_workspace_fun() -> {ok, fun((integer()) -> term())}.
 default_workspace_fun() ->
     {ok, fun(OrgId) ->
         cs_app_support:with_store(#{}, fun(Store) -> Store:default_workspace(OrgId) end)

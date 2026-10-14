@@ -41,6 +41,7 @@
     list_assignments/2,
     %% 同一 store 的其余资源写读（canonical 事务 / EB-05+ 复用；同样租户贯穿）
     insert_contact/3,
+    ensure_contact_in/5,
     fetch_contact/3,
     insert_contact_identity/3,
     fetch_contact_identity/3,
@@ -552,6 +553,97 @@ list_assignments(OrgId, WorkspaceId) ->
 %% ===================================================================
 %% contact / contact_identity
 %% ===================================================================
+
+%% 复用既有 ON CONFLICT DO NOTHING，冲突不会使调用方事务进入 aborted 状态。
+ensure_contact_in(Conn, OrgId, WorkspaceId, Contact, Identity) ->
+    Params = [
+        OrgId,
+        WorkspaceId,
+        maps:get(id, Contact),
+        eb_pg_store_sql:nullify(maps:get(imboy_user_id, Contact, undefined)),
+        maps:get(display_name, Contact, undefined),
+        eb_pg_store_sql:nullify(maps:get(profile_cipher, Contact, undefined)),
+        eb_pg_store_sql:nullify(maps:get(profile_key_version, Contact, undefined)),
+        eb_pg_store_sql:nullify(maps:get(created_by_business_identity_id, Contact, undefined))
+    ],
+    case elib_pg:execute(Conn, eb_pg_store_sql:sql(insert_contact), Params) of
+        {ok, 1, _} -> insert_contact_identity_in(Conn, OrgId, WorkspaceId, Identity);
+        {ok, 0, _} -> verify_contact_in(Conn, OrgId, WorkspaceId, Identity, true);
+        {error, Reason} -> {error, eb_pg_store_sql:normalize_error(Reason)};
+        Other -> {error, {unexpected_contact_insert, Other}}
+    end.
+
+insert_contact_identity_in(Conn, OrgId, WorkspaceId, Identity) ->
+    Params = [
+        OrgId,
+        WorkspaceId,
+        maps:get(id, Identity),
+        maps:get(contact_id, Identity),
+        maps:get(channel, Identity),
+        maps:get(subject_hmac, Identity),
+        eb_pg_store_sql:nullify(maps:get(subject_mask, Identity, undefined))
+    ],
+    case elib_pg:execute(Conn, eb_pg_store_sql:sql(insert_contact_identity), Params) of
+        {ok, 1, _} ->
+            verify_contact_in(Conn, OrgId, WorkspaceId, Identity, false);
+        {error, Reason} ->
+            {error, {contact_identity_not_created, eb_pg_store_sql:normalize_error(Reason)}};
+        Other ->
+            {error, {contact_identity_not_created, Other}}
+    end.
+
+verify_contact_in(Conn, OrgId, WorkspaceId, Identity, Reused) ->
+    ContactId = maps:get(contact_id, Identity),
+    case
+        contact_fetch_in(
+            Conn,
+            fetch_contact,
+            [OrgId, WorkspaceId, ContactId],
+            eb_pg_store_sql:contact_fields()
+        )
+    of
+        {ok,
+            #{
+                id := ContactId,
+                organization_id := OrgId,
+                workspace_id := WorkspaceId,
+                status := active
+            } = Stored} ->
+            verify_contact_identity_in(Conn, OrgId, WorkspaceId, Identity, Stored, Reused);
+        {error, _} = Err ->
+            Err;
+        _ ->
+            {error, contact_scope_conflict}
+    end.
+
+verify_contact_identity_in(Conn, OrgId, WorkspaceId, Identity, Stored, Reused) ->
+    Fields = eb_pg_store_sql:contact_identity_fields() ++ [{workspace_id, <<"workspace_id">>, int}],
+    case
+        contact_fetch_in(
+            Conn,
+            fetch_contact_identity,
+            [OrgId, WorkspaceId, maps:get(id, Identity)],
+            Fields
+        )
+    of
+        {ok, Existing} ->
+            Expected = Identity#{organization_id => OrgId, workspace_id => WorkspaceId},
+            Keys = [id, organization_id, workspace_id, contact_id, channel, subject_hmac],
+            case maps:with(Keys, Existing) =:= maps:with(Keys, Expected) of
+                true -> {ok, #{contact => Stored, contact_identity => Existing, reused => Reused}};
+                false -> {error, contact_identity_conflict}
+            end;
+        {error, _} = Err ->
+            Err
+    end.
+
+contact_fetch_in(Conn, Kind, Params, Fields) ->
+    case elib_pg:query(Conn, eb_pg_store_sql:sql(Kind), Params) of
+        {ok, [Row]} -> {ok, eb_pg_store_sql:normalize(Row, Fields)};
+        {ok, []} -> {error, contact_identity_or_contact_missing};
+        {error, Reason} -> {error, eb_pg_store_sql:normalize_error(Reason)};
+        Other -> {error, {unexpected_contact_fetch, Other}}
+    end.
 
 -spec insert_contact(integer(), integer(), map()) -> {ok, map()} | {error, term()}.
 insert_contact(OrgId, WorkspaceId, Contact) when is_map(Contact) ->

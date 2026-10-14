@@ -160,6 +160,8 @@ contracts() ->
             {revoke_widget_identity_key, 4},
             %% widget bootstrap token（复用 visit_token 存储）
             {insert_widget_bootstrap_token, 2},
+            {insert_widget_bootstrap_audited, 2},
+            {exchange_widget_identity_audited, 2},
             {fetch_widget_bootstrap_token_by_digest, 3},
             %% CSD-BE-01S：digest 全局命中（S3 v1.1 持 token 面 Org 派生）。
             {fetch_widget_bootstrap_token_by_digest_global, 2},

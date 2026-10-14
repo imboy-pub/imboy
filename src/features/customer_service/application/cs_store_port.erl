@@ -604,3 +604,6 @@
     {ok, map()} | {error, term()}.
 -callback fetch_visitor_message_reads(integer(), integer(), map(), [pos_integer()]) ->
     {ok, [map()]} | {error, term()}.
+
+-callback insert_widget_bootstrap_audited(integer(), map()) -> {ok, map()} | {error, term()}.
+-callback exchange_widget_identity_audited(integer(), map()) -> {ok, map()} | {error, term()}.

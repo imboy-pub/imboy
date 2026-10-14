@@ -6,7 +6,7 @@ run(TestFun) when is_function(TestFun, 0) ->
     Paths = [filename:absname(P) || P <- code:get_path()],
     {ok, Peer, _} = peer:start(#{
         connection => standard_io,
-        args => ["-no_dot_erlang", "-pa" | Paths],
+        args => ["-no_dot_erlang", "-pa" | lists:reverse(Paths)],
         wait_boot => 10000
     }),
     try
