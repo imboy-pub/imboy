@@ -3,6 +3,64 @@
 -include("eunit_setup.hrl").
 -include("error_code.hrl").
 
+batch_upload_results_test_() ->
+    [?_test(batch_upload_results_case(Mode)) || Mode <- [success, mixed, denied, archived]].
+
+batch_upload_results_case(Mode) ->
+    Modules = [group_ds, workspace_guard, elib_oss, group_album_repo, elib_dt],
+    lists:foreach(fun(Module) -> meck:new(Module, [non_strict]) end, Modules),
+    try
+        meck:expect(group_ds, is_member, fun(100, 20) -> Mode =/= denied end),
+        meck:expect(workspace_guard, ensure_writable, fun({group, 20}) ->
+            case Mode of
+                archived -> {error, ?ERR_WORKSPACE_ARCHIVED};
+                _ -> ok
+            end
+        end),
+        meck:expect(workspace_guard, write_tx, fun({group, 20}, Callback) -> Callback(conn) end),
+        meck:expect(elib_oss, upload, fun(Data, Name, #{mime_type := <<"image/jpeg">>}) ->
+            case {Mode, Data} of
+                {mixed, <<"second">>} -> {error, upload_failed};
+                _ -> {ok, <<"https://example.invalid/photo.jpg">>, Name}
+            end
+        end),
+        meck:expect(group_album_repo, insert_photo_tx, fun(conn, #{album_id := <<"album">>}) ->
+            {ok, 42}
+        end),
+        meck:expect(group_album_repo, find_album_by_album_id, fun(<<"album">>) ->
+            #{<<"id">> => 11}
+        end),
+        meck:expect(group_album_repo, increment_photo_count_tx, fun(conn, 11) -> {ok, 1} end),
+        meck:expect(elib_dt, timestamp, fun() -> 123 end),
+        Photos = [
+            {<<"album">>, <<"first">>, <<"first.jpg">>},
+            {<<"album">>, <<"second">>, <<"second.jpg">>}
+        ],
+        {ok, Results} = group_album_logic:batch_upload_photos(<<"20">>, 100, Photos),
+        ?assertEqual(2, length(Results)),
+        batch_upload_results_assert(Mode, Results)
+    after
+        lists:foreach(fun meck:unload/1, Modules)
+    end.
+
+batch_upload_results_assert(success, [{ok, First}, {ok, Second}]) ->
+    ?assertMatch(
+        #{<<"id">> := 42, <<"gid">> := <<"20">>, <<"photo_id">> := <<"first.jpg">>}, First
+    ),
+    ?assertMatch(
+        #{<<"id">> := 42, <<"gid">> := <<"20">>, <<"photo_id">> := <<"second.jpg">>}, Second
+    );
+batch_upload_results_assert(mixed, [{ok, First}, {error, upload_failed}]) ->
+    ?assertMatch(#{<<"id">> := 42, <<"gid">> := <<"20">>}, First);
+batch_upload_results_assert(denied, Results) ->
+    ?assertEqual([{error, <<"非群组成员"/utf8>>}, {error, <<"非群组成员"/utf8>>}], Results),
+    ?assertEqual([], meck:history(workspace_guard)),
+    ?assertEqual([], meck:history(elib_oss));
+batch_upload_results_assert(archived, Results) ->
+    ?assertEqual([{error, ?ERR_WORKSPACE_ARCHIVED}, {error, ?ERR_WORKSPACE_ARCHIVED}], Results),
+    ?assertEqual([], meck:history(elib_oss)),
+    ?assertEqual([], meck:history(group_album_repo)).
+
 photo_id_authorization_test_() ->
     [
         ?_test(photo_id_authorization_case(Action, Member))

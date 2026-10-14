@@ -97,7 +97,7 @@ upload_photo(Gid, CurrentUid, AlbumId, PhotoBinary, PhotoName) ->
 %% @param Photos 图片列表 [{AlbumId, PhotoBinary, PhotoName}]
 %% @return {ok, Results} | {error, Reason}
 -spec batch_upload_photos(binary(), integer(), list({binary(), binary(), binary()})) ->
-    {ok, list(map())} | {error, term()}.
+    {ok, list({ok, map()} | {error, term()})} | {error, term()}.
 batch_upload_photos(Gid, CurrentUid, Photos) ->
     % 1. 解码群组ID
     Gid2 = ec_cnv:to_integer(Gid),

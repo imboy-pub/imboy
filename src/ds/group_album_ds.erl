@@ -214,11 +214,11 @@ do_upload_photo(Gid, UploaderId, AlbumId, PhotoBinary, PhotoName, PhotoSize, Mim
     end.
 
 %% @doc 批量上传图片
-%% @param Photos 图片列表 [{AlbumId, PhotoBinary, PhotoName}]
+%% @param Photos 图片列表 [{Gid, AlbumId, PhotoBinary, PhotoName}]
 %% @param UploaderId 上传者ID
 %% @return {ok, Results} | {error, Reason}
--spec batch_upload_photos(list({integer(), integer(), binary(), binary(), binary()}), integer()) ->
-    {ok, list(map())} | {error, term()}.
+-spec batch_upload_photos(list({integer(), binary(), binary(), binary()}), integer()) ->
+    {ok, list({ok, map()} | {error, term()})} | {error, term()}.
 batch_upload_photos(Photos, UploaderId) ->
     % 逐个上传图片
     Results = lists:map(
