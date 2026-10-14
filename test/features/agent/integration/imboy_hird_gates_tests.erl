@@ -7,7 +7,13 @@
 -include_lib("eunit/include/eunit.hrl").
 
 -define(HIRD_BIN, os:getenv("IMBOY_HIRD_BIN", "hird")).
--define(OUT_ROOT, <<"_build/ag31_10b">>).
+%% P0（IMBOY_HIRD_AUTH_REPLAY_POC_V1）：输出根 env 化 + 强制重建支持，
+%% 默认值保持原相对路径（工作目录下 _build/，gitignored）。
+-define(OUT_ROOT,
+    unicode:characters_to_binary(
+        os:getenv("IMBOY_HIRD_OUT_ROOT", "_build/ag31_10b")
+    )
+).
 -define(PG, agent_run_pg).
 -define(GPG, agent_grant_pg).
 -define(MEMBERSHIP, agent_org_membership_adapter).
@@ -243,6 +249,14 @@ disp_calls() ->
 ensure_built() ->
     OutDir = filename:join([?OUT_ROOT, "out_gate"]),
     Beam = filename:join([OutDir, "hird_gate_echo.beam"]),
+    %% P0：强制重建——BEAM 必须来自本轮 IMBOY_HIRD_BIN 编译器。
+    case os:getenv("IMBOY_HIRD_FORCE_REBUILD") of
+        "1" ->
+            _ = file:del_dir_r(binary_to_list(OutDir)),
+            ok;
+        _ ->
+            ok
+    end,
     case filelib:is_regular(Beam) of
         true -> ok;
         false -> build()

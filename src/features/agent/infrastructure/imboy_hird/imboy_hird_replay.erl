@@ -1,12 +1,20 @@
-%%% @doc Hirð deterministic replay bridge（AG31-10B；G16/G17/A18）。
+%%% @doc Hirð deterministic **re-execution consistency** bridge
+%%%（AG31-10B；G16/G17/A18）。
 %%%
-%%% 录制=一次执行的（输入指纹 + audit JSONL 行集 + 外呼计数）三元组；
-%%% 重放=同输入、**零外呼**（handler 全部替换为录制值/纯 mock，外部
-%%% Model/Tool/CS 计数器由调用方注入并在重放中恒 0）二次执行，比对
-%%% 归一化 audit hash 一致性。
+%%% 【命名修正（IMBOY_HIRD_AUTH_REPLAY_POC_V1 P2）】本模块**不是**离线
+%%% Replay：它是「同一程序重复执行两次 + 归一化 audit hash 一致性」——
+%%% 两次执行都会真实解析 handler（尽管是纯/mock），不使用 hird_replay
+%%% cursor。真正的离线 Replay（录制的 audit 日志驱动程序执行、handler
+%%% 与业务零调用）由 hird runtime 的 `hird_replay` cursor 提供，其端到端
+%%% 验证见 test/features/agent/integration/imboy_hird_p2_replay_tests.erl。
+%%% G16/G17/A18 的「deterministic replay / replay offline」命名沿用历史
+%%% 验收矩阵字面，实际语义以本说明为准。
 %%%
-%%% 归一化：audit 行内的时间戳/进程字典序噪声按字段裁剪（保留
-%%% caller/tool/result 骨架），保证确定程序两次运行 hash 稳定。
+%%% 录制=一次执行的（audit JSONL 行集 + 归一化 hash）；重放=同输入二次
+%%% 执行，比对 hash 一致性。
+%%%
+%%% 归一化：audit 行内的 timestamp 字段按骨架裁剪（保留
+%%% caller/tool/result），保证确定程序两次运行 hash 稳定。
 -module(imboy_hird_replay).
 
 -export([record/3, normalize_audit/1, audit_hash/1]).
