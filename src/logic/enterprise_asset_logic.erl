@@ -572,33 +572,49 @@ confirm_head(Conn, Ctx, ObjectKey, Hash) ->
     end.
 
 %% @doc confirm 侧内容策略复核（**服务端真实值**）：超有效上限或类型不在策略内
-%% 的对象一律删除并拒绝（与广州期 too_large/invalid_type 同口径）。
+%% 的对象拒绝（与广州期 too_large/invalid_type 同口径）。W4-01 入口收口：
+%% 拒绝不再直接删字节——pending 登记（V5 或旧 presign 登记行）发 reject
+%% 意图（迁移 184），字节由 Worker 删；无登记行的对象 ERROR 留痕隔离，
+%% 绝不绕过队列直接删。
 confirm_policy(Conn, Ctx, ObjectKey, Hash, RealSize, RealType, Policy, MaxBytes) ->
     MimeOk = enterprise_asset_retention_logic:mime_allowed(Policy, RealType),
     case RealSize > MaxBytes of
         true ->
-            discard_object(ObjectKey),
+            reject_object(Conn, ObjectKey, <<"enterprise confirm reject file_too_large">>),
             {error, {<<"invalid_request">>, file_too_large}};
         false ->
             case MimeOk of
                 false ->
-                    discard_object(ObjectKey),
+                    reject_object(
+                        Conn, ObjectKey, <<"enterprise confirm reject invalid_file_type">>
+                    ),
                     {error, {<<"invalid_request">>, invalid_file_type}};
                 true ->
                     save_confirmed(Conn, Ctx, ObjectKey, Hash, RealSize, RealType)
             end
     end.
 
--spec discard_object(binary()) -> ok.
-discard_object(ObjectKey) ->
-    Bucket = elib_oss:get_bucket(<<"enterprise">>),
-    _ =
-        try
-            elib_oss:delete_object(Bucket, ObjectKey)
-        catch
-            _:_ -> ok
-        end,
-    ok.
+-spec reject_object(pid() | any(), binary(), binary()) -> ok.
+reject_object(Conn, ObjectKey, Reason) ->
+    case attach_pending_repo:intent_pending_delete_tx(Conn, ObjectKey, <<"reject">>, Reason) of
+        ok ->
+            ok;
+        {error, not_found} ->
+            ?ERROR_LOG([
+                "enterprise_asset reject: no pending session anchor, bytes isolated "
+                "(not deleted, queue-only reclamation): ",
+                ObjectKey
+            ]),
+            ok;
+        {error, _Reason2} ->
+            %% intent 落败：对象保留，日志留痕；绝不回退到直接删字节
+            ?ERROR_LOG([
+                "enterprise_asset reject: pending delete_intent failed, bytes retained: ",
+                ObjectKey,
+                Reason
+            ]),
+            ok
+    end.
 
 save_confirmed(Conn, Ctx, ObjectKey, Hash, RealSize, RealType) ->
     OrgId = maps:get(organization_id, Ctx),
