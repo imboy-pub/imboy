@@ -11,5 +11,10 @@
   - elib_req_client_ip_tests: All 14 tests passed
   - throttle_middleware_tests: All 13 tests passed
   - passport_handler_tests: All 7 tests passed
-  - api_v1_login_SUITE: 此前 REST runner 通道 AC-01 PASS（候选 42f5ade5 与本次合并
-    在该 suite 相关文件上零差异，不重跑；证据见 AC-01/）
+  - api_v1_login_SUITE: REST runner 通道复验于候选 124dcbb7（整改后真实退出码）：
+    limiter 所在 suite **6 ok, 0 failed of 6**（含 limiter_real_failures AC-01 oracle），
+    evidence cross-check case_pass=46/46；通道整体 rc=3 归因 api_v1_msg_SUITE
+    fixture 失败（c2c_sequence_missing，非本任务域，见
+    docs/qa/limiter-v1/124dcbb7/20261014T155741-81062/AC01_EVIDENCE_NOTES.md）。
+    注：早前记录的"AC-01 PASS"系 escript 管道吞退出码产生的假象，旧证据目录
+    已清除并以新运行证据取代。

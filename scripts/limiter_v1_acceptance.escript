@@ -170,9 +170,11 @@ run_ac01_baseline(Opts) ->
     %% + 完整环境 + evidence 交叉校验）。数据库凭据由调用方环境提供
     %% （REST_PG_*，runner 合同），本工具不读取、不落盘任何凭据。
     %% runner 自带 ct_imboy 共享节点等待（BLOCKED_SHARED_CT 退出码 75）。
+    %% 输出重定向落盘而非 `| tee`：POSIX 管道下 $? 取 tee 的退出码（恒 0），
+    %% 会把 runner 失败伪装成 PASS（run_shell 依赖尾部 printf 传播真实码）。
     Cmd = lists:flatten(
         io_lib:format(
-            "cd ~s && REST_RUN_ID=~s bash scripts/run_rest_api_tests.sh 2>&1 | tee ~s/output.log",
+            "cd ~s && REST_RUN_ID=~s bash scripts/run_rest_api_tests.sh > ~s/output.log 2>&1",
             [Root, RunId, EvDir]
         )
     ),
