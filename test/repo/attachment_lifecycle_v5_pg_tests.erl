@@ -130,18 +130,16 @@ worker_claim_ack(Conn) ->
     {ok, _, _} = epgsql:equery(
         Conn, "SELECT fn_v5_intent_ordinary_delete($1,'eunit')", [?REG_KEY]
     ),
-    Token = one(Conn, "SELECT gen_random_uuid()", []),
-    {ok, _, [{Path}]} = epgsql:equery(
-        Conn, "SELECT out_path FROM fn_v5_claim_ordinary($1)", [Token]
-    ),
+    %% uuid 走 SQL 内联（token 为同库 gen_random_uuid 服务端生成，无注入面；
+    %% 绕开 vendored epgsql 的 uuid/text codec 参数推断坑）
+    {Token} = one(Conn, "SELECT gen_random_uuid()", []),
+    ClaimSql = <<"SELECT out_path FROM fn_v5_claim_ordinary('", Token/binary, "')">>,
+    {ok, _, [{Path}]} = epgsql:equery(Conn, ClaimSql, []),
     ?assertEqual(?REG_KEY, Path),
-    {ok, _, [{<<"done">>}]} = epgsql:equery(
-        Conn, "SELECT fn_v5_ack_ordinary($1,$2,true)", [?REG_KEY, Token]
-    ),
+    AckSql = <<"SELECT fn_v5_ack_ordinary('", ?REG_KEY/binary, "','", Token/binary, "',true)">>,
+    {ok, _, [{<<"done">>}]} = epgsql:equery(Conn, AckSql, []),
     %% stale token cannot mutate done row
-    {ok, _, [{<<"not_leased">>}]} = epgsql:equery(
-        Conn, "SELECT fn_v5_ack_ordinary($1,$2,true)", [?REG_KEY, Token]
-    ).
+    {ok, _, [{<<"not_leased">>}]} = epgsql:equery(Conn, AckSql, []).
 
 %% ===================================================================
 %% W2-03 confirm/GC 状态协议屏障：真实双连接（conn + maint_conn）屏障，
@@ -161,7 +159,7 @@ w203_run() ->
     ),
     try
         w203_intent_first(maps:get(conn, State)),
-        w203_confirm_first(maps:get(conn, State), maps:get(maint_conn, State))
+        w203_confirm_first(maps:get(conn, State), maps:get(server, State), State)
     after
         inttest_marker_db:release(State)
     end.
@@ -229,7 +227,7 @@ w203_intent_first(Conn) ->
     ok.
 
 %% confirm 先提交 => intent 落败、无删除任务；有界重试不改变胜者。
-w203_confirm_first(Conn, BarrierConn) ->
+w203_confirm_first(Conn, Server, State) ->
     Key = <<"v5e2e/w203/confirm-first">>,
     w203_seed(Conn, Key),
     w203_insert_asset(Conn, Key, ?ASSET_ID + 20),
@@ -243,15 +241,27 @@ w203_confirm_first(Conn, BarrierConn) ->
         spawn_link(fun() ->
             R =
                 try
-                    {ok, _, _} =
-                        epgsql:equery(
-                            BarrierConn,
-                            "BEGIN",
-                            []
+                    %% 屏障连接由本进程自建（epgsql 命令与连接属主进程绑定）
+                    {ok, HConn} =
+                        inttest_marker_db:safe_connect(
+                            maps:merge(
+                                #{
+                                    host => maps:get(host, Server),
+                                    port => maps:get(port, Server),
+                                    username => maps:get(username, Server),
+                                    password => maps:get(password, Server),
+                                    database => maps:get(db, State),
+                                    timeout => 10000
+                                },
+                                maps:get(connect_extra, Server, #{})
+                            )
                         ),
+                    %% BEGIN/ROLLBACK 是命令标签（epgsql 回 {ok, Tag} 二元组），
+                    %% 不做形状断言
+                    _ = epgsql:equery(HConn, "BEGIN", []),
                     {ok, _, _} =
                         epgsql:equery(
-                            BarrierConn,
+                            HConn,
                             "SELECT path FROM attachment WHERE path=$1 FOR UPDATE",
                             [Key]
                         ),
@@ -260,7 +270,7 @@ w203_confirm_first(Conn, BarrierConn) ->
                         release -> ok
                     after 8000 -> ok
                     end,
-                    _ = epgsql:equery(BarrierConn, "ROLLBACK", []),
+                    _ = epgsql:equery(HConn, "ROLLBACK", []),
                     released
                 catch
                     C:E -> {C, E}
