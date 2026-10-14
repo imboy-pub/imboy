@@ -294,6 +294,4 @@ params_to_input(Params) when is_map(Params) ->
         end,
         #{},
         Params
-    );
-params_to_input(_) ->
-    #{}.
+    ).

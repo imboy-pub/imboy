@@ -188,8 +188,7 @@ read_grant(Conn, _OrgId, GrantId) when is_integer(GrantId) ->
     try
         case agent_run_pg:get_grant(Conn, GrantId) of
             {ok, _} = Ok -> Ok;
-            {error, not_found} = E -> E;
-            _ -> {error, grant_read_failed}
+            {error, not_found} = E -> E
         end
     catch
         _Class:_Reason -> {error, grant_read_failed}
@@ -203,16 +202,14 @@ read_ws_ids(Conn, OrgId, GrantId) ->
     %% 放行语义（fail-open）。对比 read_caps 的 [] 只导致 not_granted（fail
     %% closed 方向正确），此处必须区分。
     try agent_grant_pg:list_workspace_ids(Conn, OrgId, GrantId) of
-        L when is_list(L) -> L;
-        _ -> error(ws_ids_bad_shape)
+        L when is_list(L) -> L
     catch
         _Class:_Reason -> error(ws_ids_read_failed)
     end.
 
 read_caps(Conn, OrgId, GrantId) ->
     try agent_grant_pg:list_capabilities(Conn, OrgId, GrantId) of
-        L when is_list(L) -> L;
-        _ -> []
+        L when is_list(L) -> L
     catch
         _Class:_Reason -> []
     end.
@@ -234,8 +231,7 @@ approval_fact(Conn, RunCtx) ->
             try
                 case agent_run_pg:get_effect(Conn, EffectId) of
                     {ok, _} = Ok -> Ok;
-                    {error, not_found} -> {error, not_found};
-                    _ -> {error, approval_read_failed}
+                    {error, not_found} -> {error, not_found}
                 end
             catch
                 _Class:_Reason -> {error, approval_read_failed}
@@ -596,8 +592,7 @@ persist_brief(not_persistable) -> <<"not_persistable">>;
 persist_brief({persisted, _EffectId}) -> <<"ok">>;
 persist_brief({persist_failed, _Reason}) -> <<"persist_failed">>;
 persist_brief(duplicate_effect) -> <<"duplicate_effect">>;
-persist_brief(run_not_active) -> <<"run_not_active">>;
-persist_brief(_) -> <<"other">>.
+persist_brief(run_not_active) -> <<"run_not_active">>.
 
 safe_get(Key, Map) when is_map(Map) -> maps:get(Key, Map, undefined);
 safe_get(_Key, _NotMap) -> undefined.

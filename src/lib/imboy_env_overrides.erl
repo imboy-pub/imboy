@@ -189,9 +189,7 @@ override_origin_list_key(EnvVar, AppKey) ->
 non_empty(false) ->
     false;
 non_empty(Value) when is_list(Value) ->
-    string:trim(Value) =/= "";
-non_empty(_) ->
-    false.
+    string:trim(Value) =/= "".
 
 %% ===================================================================
 %% 迁入的自包含子系统开关族（原 imboy_env；仅 os:getenv + set_env，

@@ -175,6 +175,4 @@ classify_bind_error(Reason) ->
 %% config_ds:env 未初始化，public_tablename 可能原样返回 atom，atom 不能
 %% 直接进 binary 拼接段）。
 tb(Tb) when is_atom(Tb) ->
-    tablename(ec_cnv:to_binary(Tb));
-tb(Tb) ->
-    tablename(Tb).
+    tablename(ec_cnv:to_binary(Tb)).

@@ -173,6 +173,4 @@ parse_params(Params) ->
 
 %% @private
 in_bounds(Iter) when is_integer(Iter) ->
-    Iter >= ?ITER_MIN andalso Iter =< ?ITER_MAX;
-in_bounds(_) ->
-    false.
+    Iter >= ?ITER_MIN andalso Iter =< ?ITER_MAX.

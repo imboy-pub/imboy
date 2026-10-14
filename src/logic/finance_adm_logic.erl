@@ -223,8 +223,7 @@ do_gateway_refund(Gateway, GwPayNo, Amount, TradeNo) ->
         {error, Msg} ->
             _ = release_refunding_quietly(TradeNo),
             case Msg of
-                M when is_binary(M) -> {error, M};
-                Other -> {error, elib_cnv:safe_to_binary(Other)}
+                M when is_binary(M) -> {error, M}
             end
     end.
 

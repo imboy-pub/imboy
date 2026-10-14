@@ -165,8 +165,7 @@ ssl_opts(Host) ->
     Hostname = binary_to_list(Host),
     Cacerts =
         try public_key:cacerts_get() of
-            Cs when is_list(Cs) -> Cs;
-            _ -> []
+            Cs when is_list(Cs) -> Cs
         catch
             _:_ -> []
         end,

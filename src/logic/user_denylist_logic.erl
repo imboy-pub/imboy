@@ -92,7 +92,6 @@ add(Uid, DeniedUserId, _Remark) ->
 remove(Uid, DeniedUserId) ->
     case user_denylist_ds:remove(Uid, DeniedUserId) of
         ok -> ok;
-        {ok, _} -> ok;
         {error, _} -> erlang:error(denylist_write_failed)
     end,
     Key = {in_denylist, Uid, DeniedUserId},

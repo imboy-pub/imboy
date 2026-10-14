@@ -96,9 +96,7 @@ is_webrtc_offer(Msg) when is_binary(Msg) ->
     catch
         _:_ ->
             false
-    end;
-is_webrtc_offer(_) ->
-    false.
+    end.
 
 %% ===================================================================
 %% EUnit tests.

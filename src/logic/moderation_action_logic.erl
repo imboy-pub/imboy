@@ -174,9 +174,7 @@ do_execute(AdmUid, CaseId, Action, TargetUid, Opts0, CaseRow) ->
             <<"account_restrict">> ->
                 case user_ds:find_by_id(TargetUid, <<"status">>) of
                     Prev when is_map(Prev) ->
-                        maps:put(prev_status, maps:get(<<"status">>, Prev, 1), Opts1);
-                    _ ->
-                        Opts1
+                        maps:put(prev_status, maps:get(<<"status">>, Prev, 1), Opts1)
                 end;
             _ ->
                 Opts1

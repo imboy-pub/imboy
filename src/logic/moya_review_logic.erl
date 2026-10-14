@@ -847,9 +847,7 @@ parse_review_assets(Body) when is_map(Body) ->
             parse_asset_items(Assets, Body, []);
         _ ->
             {error, assets_invalid}
-    end;
-parse_review_assets(_) ->
-    {error, assets_invalid}.
+    end.
 
 -spec parse_asset_items(list(), map(), [{integer(), binary(), integer()}]) ->
     {ok, [{integer(), binary(), integer()}]} | {error, assets_invalid}.

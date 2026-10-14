@@ -24,17 +24,13 @@ sync_channels(Uid, Since) ->
                         {ok, UnexpectedChannels} ->
                             {error, elib_cnv:safe_to_binary(UnexpectedChannels)};
                         {error, Reason} ->
-                            {error, elib_cnv:safe_to_binary(Reason)};
-                        Unexpected ->
-                            {error, elib_cnv:safe_to_binary(Unexpected)}
+                            {error, elib_cnv:safe_to_binary(Reason)}
                     end
             end;
         {ok, UnexpectedSubscriptions} ->
             {error, elib_cnv:safe_to_binary(UnexpectedSubscriptions)};
         {error, Reason} ->
-            {error, elib_cnv:safe_to_binary(Reason)};
-        Unexpected ->
-            {error, elib_cnv:safe_to_binary(Unexpected)}
+            {error, elib_cnv:safe_to_binary(Reason)}
     end.
 
 -spec extract_channel_ids(list()) -> list(integer()).

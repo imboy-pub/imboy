@@ -23,7 +23,7 @@
 
 % config_ds:env(test).
 % config_ds:env(lager, colors, undefined).
--spec env(atom() | binary()) -> any().
+-spec env(atom() | binary() | [atom() | binary()]) -> any().
 env(Attr) ->
     env(Attr, undefined).
 

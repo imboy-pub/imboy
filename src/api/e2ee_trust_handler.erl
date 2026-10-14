@@ -86,5 +86,4 @@ trust_msg(<<"invalid_signature">>) -> <<"签名校验失败"/utf8>>;
 trust_msg(<<"internal_error">>) -> <<"服务器内部错误，请稍后重试"/utf8>>;
 trust_msg(<<"identity_version_rollback">>) -> <<"身份密钥版本异常，操作被拒绝"/utf8>>;
 trust_msg(<<"event_id_conflict">>) -> <<"事件冲突，请刷新后重试"/utf8>>;
-trust_msg(Msg) when is_binary(Msg) -> Msg;
-trust_msg(_Reason) -> <<"操作失败，请稍后重试"/utf8>>.
+trust_msg(Msg) when is_binary(Msg) -> Msg.

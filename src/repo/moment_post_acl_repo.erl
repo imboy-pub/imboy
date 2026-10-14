@@ -53,9 +53,7 @@ list_for_post(PostId) ->
                 false -> {error, malformed_acl_rows}
             end;
         {error, _} = Error ->
-            Error;
-        Other ->
-            {error, {unexpected_acl_result, Other}}
+            Error
     end.
 
 -spec list_uids_by_post(integer(), integer()) -> [integer()].

@@ -210,14 +210,15 @@ send_cursor(Requestor, #{round := Round, next := PageNo, keys := Keys} = Cursor)
 
 emit_page(Requestor, Round, PageNo, Page, More, Cursor) ->
     ok = ensure_unexpired_page(Page),
-    case Page of
-        [] ->
-            ok;
-        _ ->
-            Requestor !
-                {cache_snapshot_page, node(), Round, PageNo, Page, page_digest(Round, PageNo, Page),
-                    More}
-    end,
+    _ =
+        case Page of
+            [] ->
+                ok;
+            _ ->
+                Requestor !
+                    {cache_snapshot_page, node(), Round, PageNo, Page,
+                        page_digest(Round, PageNo, Page), More}
+        end,
     case More of
         true ->
             ok;

@@ -82,8 +82,7 @@ active(_, Req0, _State) ->
 reason_msg(invalid_params) -> <<"参数不合法"/utf8>>;
 reason_msg(not_agent_owner) -> <<"无权授权该 Agent"/utf8>>;
 reason_msg(not_authorized) -> <<"无权操作"/utf8>>;
-reason_msg(create_failed) -> <<"授权失败"/utf8>>;
-reason_msg(_) -> <<"操作失败"/utf8>>.
+reason_msg(create_failed) -> <<"授权失败"/utf8>>.
 
 -spec method_not_allowed(cowboy_req:req()) -> cowboy_req:req().
 method_not_allowed(Req0) ->

@@ -84,9 +84,7 @@ template_ids(Body) when is_map(Body) ->
             end;
         _ ->
             error
-    end;
-template_ids(_) ->
-    error.
+    end.
 
 -spec valid_template_id(term()) -> boolean().
 valid_template_id(Bin) when is_binary(Bin), Bin =/= <<>> ->
