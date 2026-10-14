@@ -271,74 +271,66 @@ ws_legacy_didless_token_unaffected_test_() ->
 %% 判据与缓存：user_device_ds:is_active/2
 %% ===================================================================
 
-%% 缓存窗口内：命中缓存直接返回，不触达 repo（repo 未 mock，被调用即 undef），
-%% 且不得走 memo 回填（RT-P3-04 起：命中判定在 get，条件式写缓存在回源之后）
+%% Exercise the current memo path with a real private cache; repository I/O is guarded.
 is_active_within_cache_ttl_skips_repo_test_() ->
-    ?WITH_MECK(
-        imboy_cache,
-        [
-            {'get', 1, fun({user_device_active, ?UID, ?DID}) -> {ok, {ok, true}} end},
-            {'memo', 3, fun(_F, _K, _TTL) ->
-                erlang:error(memo_must_not_be_called_on_cache_hit)
-            end}
-        ],
-        fun() ->
-            ?assert(user_device_ds:is_active(?UID, ?DID))
-        end
-    ).
+    device_cache_case(fun(Key) ->
+        ok = depcache:set(Key, {ok, true}, 60, [], imboy_cache),
+        ?assert(user_device_ds:is_active(?UID, ?DID)),
+        ?assertEqual(0, meck:num_calls(user_device_repo, is_active, 2))
+    end).
 
-%% 缓存窗口外（miss）：回源 repo，查无此行 → 判吊销。
-%% RT-P3-04 关键契约：**负结果绝不允许写入缓存**——login 后设备行异步落库，
-%% 把竞态期的 false 负缓存 60s 会放大成整分钟 device_revoked。
 is_active_cache_miss_queries_repo_test_() ->
-    ?WITH_MECKS(
-        [
-            {imboy_cache, [
-                {'get', 1, fun(_Key) -> undefined end},
-                {'memo', 3, fun(_F, _K, _TTL) ->
-                    erlang:error(negative_result_must_not_be_cached)
-                end}
-            ]},
-            {user_device_repo, [{'is_active', 2, fun(?UID, ?DID) -> {ok, false} end}]}
-        ],
-        fun() ->
-            ?assertNot(user_device_ds:is_active(?UID, ?DID))
-        end
-    ).
+    device_cache_case(fun(Key) ->
+        meck:expect(user_device_repo, is_active, fun(?UID, ?DID) -> {ok, false} end),
+        ?assertNot(user_device_ds:is_active(?UID, ?DID)),
+        ?assertEqual(undefined, depcache:get(Key, imboy_cache)),
+        ?assertNot(user_device_ds:is_active(?UID, ?DID)),
+        ?assertEqual(2, meck:num_calls(user_device_repo, is_active, 2))
+    end).
 
-%% 缓存窗口外（miss）：活跃行 → 正结果以 60s TTL 写入缓存
 is_active_cache_miss_active_row_test_() ->
-    ?WITH_MECKS(
-        [
-            {imboy_cache, [
-                {'get', 1, fun(_Key) -> undefined end},
-                {'memo', 3, fun(_Fun, Key, MaxAge) ->
-                    ?assertEqual({user_device_active, ?UID, ?DID}, Key),
-                    ?assertEqual(60, MaxAge),
-                    {ok, {ok, true}}
-                end}
-            ]},
-            {user_device_repo, [{'is_active', 2, fun(?UID, ?DID) -> {ok, true} end}]}
-        ],
-        fun() ->
-            ?assert(user_device_ds:is_active(?UID, ?DID))
-        end
-    ).
+    device_cache_case(fun(Key) ->
+        meck:expect(user_device_repo, is_active, fun(?UID, ?DID) -> {ok, true} end),
+        ?assert(user_device_ds:is_active(?UID, ?DID)),
+        ?assertEqual({ok, {ok, true}}, depcache:get(Key, imboy_cache)),
+        {ok, {Meta, _, _}} = gen_server:call(imboy_cache, get_tables),
+        [{meta, Key, Expiry, _, _}] = ets:lookup(Meta, Key),
+        Now = element(2, sys:get_state(imboy_cache)),
+        ?assert(Expiry - Now >= 59 andalso Expiry - Now =< 60),
+        ?assert(user_device_ds:is_active(?UID, ?DID)),
+        ?assertEqual(1, meck:num_calls(user_device_repo, is_active, 2))
+    end).
 
-%% DB 查不出来时 fail-closed：不可确认设备仍活跃就拒绝绑定 token
 is_active_db_error_fails_closed_test_() ->
-    ?WITH_MECKS(
-        [
-            {imboy_cache, [
-                {'get', 1, fun(_Key) -> undefined end},
-                {'memo', 3, fun(_F, _K, _TTL) -> erlang:error(db_error_must_not_be_cached) end}
-            ]},
-            {user_device_repo, [{'is_active', 2, fun(_, _) -> {error, timeout} end}]}
-        ],
-        fun() ->
-            ?assertNot(user_device_ds:is_active(?UID, ?DID))
-        end
-    ).
+    device_cache_case(fun(Key) ->
+        meck:expect(user_device_repo, is_active, fun(?UID, ?DID) -> {error, timeout} end),
+        ?assertNot(user_device_ds:is_active(?UID, ?DID)),
+        ?assertEqual(undefined, depcache:get(Key, imboy_cache)),
+        ?assertNot(user_device_ds:is_active(?UID, ?DID)),
+        ?assertEqual(2, meck:num_calls(user_device_repo, is_active, 2))
+    end).
+
+device_cache_case(Fun) ->
+    {timeout, 45, fun() ->
+        pure_mock_fixture:run(fun() ->
+            {ok, Cache} = depcache:start_link(imboy_cache, #{memory_max => 8}),
+            unlink(Cache),
+            try
+                pure_mock_fixture:with_mocks(
+                    [
+                        {user_device_repo, [
+                            {is_active, 2, fun(_, _) ->
+                                erlang:error(unexpected_repository_read)
+                            end}
+                        ]}
+                    ],
+                    fun() -> Fun({user_device_active, ?UID, ?DID}) end
+                )
+            after
+                gen_server:stop(Cache)
+            end
+        end)
+    end}.
 
 %% ===================================================================
 %% 删除设备：吊销判据缓存必须立即失效并跨节点广播

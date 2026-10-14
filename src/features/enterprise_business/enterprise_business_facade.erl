@@ -29,6 +29,7 @@
     end_assignment/2,
     %% contact / note
     create_contact/2,
+    ensure_contact_in/3,
     append_note/2,
     %% contact 读 / 改 / 经办（EB-05 重开新增：§5 GET /contacts、GET /contacts/{id}、
     %% PATCH /contacts/{id}、POST /contacts/{id}/assignment）
@@ -123,6 +124,10 @@ end_assignment(OrgId, _Params) ->
 %% ===================================================================
 %% contact / note
 %% ===================================================================
+
+%% 仅供内部事务 owner 使用，不进入 HTTP 动作表。
+ensure_contact_in(Conn, OrgId, Params) ->
+    eb_contact_app:ensure_contact_in(Conn, OrgId, Params).
 
 -spec create_contact(integer(), map()) -> term().
 create_contact(OrgId, #{channel := Channel, subject := Subject} = Params) when

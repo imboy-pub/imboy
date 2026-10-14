@@ -83,6 +83,8 @@
     fetch_widget_identity_key/3,
     revoke_widget_identity_key/4,
     insert_widget_bootstrap_token/2,
+    insert_widget_bootstrap_audited/2,
+    exchange_widget_identity_audited/2,
     fetch_widget_bootstrap_token_by_digest/3,
     fetch_widget_bootstrap_token_by_digest_global/2,
     touch_widget_bootstrap_token/4,
@@ -339,3 +341,57 @@ confirm_visitor_message_reads(Org, Ws, Scope, Ids, At) ->
     cs_pg_visitor_read:confirm_visitor_message_reads(Org, Ws, Scope, Ids, At).
 fetch_visitor_message_reads(Org, Ws, Scope, Ids) ->
     cs_pg_visitor_read:fetch_visitor_message_reads(Org, Ws, Scope, Ids).
+
+insert_widget_bootstrap_audited(OrgId, Command) ->
+    elib_pg:with_tx(
+        fun(Conn) ->
+            #{contact := Contact} = widget_tx_result(
+                enterprise_business_facade:ensure_contact_in(
+                    Conn, OrgId, maps:get(contact_params, Command)
+                )
+            ),
+            ContactId = maps:get(id, Contact),
+            Token = (maps:get(token, Command))#{contact_id => ContactId},
+            Stored = widget_tx_result(
+                cs_pg_widget:insert_widget_bootstrap_token_in(Conn, OrgId, Token)
+            ),
+            widget_event_in(Conn, OrgId, ContactId, maps:get(event, Command)),
+            {ok, Stored}
+        end,
+        [{reraise, true}, {ensure_committed, true}]
+    ).
+
+exchange_widget_identity_audited(OrgId, Command) ->
+    elib_pg:with_tx(
+        fun(Conn) ->
+            ok = widget_tx_result(
+                cs_pg_widget:record_widget_nonce_in(
+                    Conn,
+                    OrgId,
+                    maps:get(installation_id, Command),
+                    maps:get(jti_digest, Command),
+                    maps:get(expires_at, Command)
+                )
+            ),
+            #{contact := Contact, reused := Reused} = widget_tx_result(
+                enterprise_business_facade:ensure_contact_in(
+                    Conn, OrgId, maps:get(contact_params, Command)
+                )
+            ),
+            ContactId = maps:get(id, Contact),
+            widget_event_in(Conn, OrgId, ContactId, maps:get(event, Command)),
+            {ok, #{contact_id => ContactId, reused => Reused}}
+        end,
+        [{reraise, true}, {ensure_committed, true}]
+    ).
+
+widget_event_in(Conn, OrgId, ContactId, Event) ->
+    Detail = (maps:get(detail, Event))#{<<"contact_id">> => ContactId},
+    case append_event_in(Conn, OrgId, Event#{detail => Detail}) of
+        {ok, _} -> ok;
+        {error, Reason} -> throw({abort_tx, {audit_append_failed, Reason}})
+    end.
+
+widget_tx_result({ok, Result}) -> Result;
+widget_tx_result(ok) -> ok;
+widget_tx_result({error, Reason}) -> throw({abort_tx, Reason}).

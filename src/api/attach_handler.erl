@@ -444,6 +444,8 @@ upload_stream_fd(Fd, TmpPath, Uid, ObjectKey, MimeType, Boundary, Req0) ->
                     end;
                 {error, file_too_large} ->
                     elib_response:error(Req0, <<"文件超过大小限制"/utf8>>, ?ERR_PAYLOAD_TOO_LARGE);
+                {error, incomplete_body} ->
+                    elib_response:error(Req0, <<"multipart 请求体不合法"/utf8>>, ?ERR_BAD_REQUEST);
                 {error, {bad_part, _Reason}} ->
                     elib_response:error(Req0, <<"multipart 请求体不合法"/utf8>>, ?ERR_BAD_REQUEST);
                 {error, {write_failed, _WErr}} ->
@@ -466,9 +468,9 @@ upload_stream_fd(Fd, TmpPath, Uid, ObjectKey, MimeType, Boundary, Req0) ->
     {ok, elib_multipart:state()}
     | {error, file_too_large | {bad_part, term()} | incomplete_body | {read_body, term()}}.
 stream_body(Req0, St) ->
-    %% read_length 256KB：控制单次读块；length 8MB：cowboy 内部聚合上限
-    Opts = #{length => 8388608, period => 30000, read_length => 262144, read_timeout => 60000},
-    case cowboy_req:read_body(Req0, Opts) of
+    %% length 256KB 是单次读取目标，不是返回块的硬上限。
+    Opts = #{length => 262144, period => 30000, timeout => 60000},
+    try cowboy_req:read_body(Req0, Opts) of
         {ok, Data, _Req} ->
             case elib_multipart:stream(Data, St) of
                 {done, St2} -> {ok, St2};
@@ -483,6 +485,8 @@ stream_body(Req0, St) ->
             end;
         {error, R} ->
             {error, {read_body, R}}
+    catch
+        exit:timeout -> {error, {read_body, timeout}}
     end.
 
 %% 错误映射与 confirm 同口径（forbidden_key/invalid_file_type 等共用文案），

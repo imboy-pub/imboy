@@ -657,6 +657,9 @@ set_limits(Limits) ->
     application:set_env(imboy, cache_replication, Limits#{whitelist => [snapshot_delete_test]}).
 
 with_snapshot(Fun) ->
+    pure_mock_fixture:run(fun() -> with_snapshot_local(Fun) end).
+
+with_snapshot_local(Fun) ->
     OldCfg = application:get_env(imboy, cache_replication),
     OldReg = application:get_env(imboy, cache_registry_overrides),
     ets:new(?META_TABLE, [named_table, public, set]),

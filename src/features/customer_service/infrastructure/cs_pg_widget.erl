@@ -26,6 +26,8 @@
     fetch_widget_identity_key/3,
     revoke_widget_identity_key/4,
     insert_widget_bootstrap_token/2,
+    insert_widget_bootstrap_token_in/3,
+    record_widget_nonce_in/5,
     fetch_widget_bootstrap_token_by_digest/3,
     fetch_widget_bootstrap_token_by_digest_global/2,
     touch_widget_bootstrap_token/4,
@@ -551,4 +553,42 @@ update_exactly_one(Sql, Params) ->
         {ok, 1} -> ok;
         {ok, 0} -> {error, not_found};
         {error, Reason} -> {error, cs_pg_common:normalize_error(Reason)}
+    end.
+
+insert_widget_bootstrap_token_in(Conn, OrgId, Token) ->
+    Params = [
+        maps:get(id, Token),
+        OrgId,
+        maps:get(contact_id, Token),
+        maps:get(token_digest, Token),
+        maps:get(expires_at, Token),
+        maps:get(widget_installation_id, Token),
+        cs_pg_common:nullify(maps:get(anonymous_subject_hmac, Token, undefined))
+    ],
+    case elib_pg:execute(Conn, ?SQL_INSERT_BOOTSTRAP_TOKEN, Params) of
+        {ok, 1} ->
+            cs_pg_common:fetch_one_conn(
+                Conn,
+                ?SQL_FETCH_BOOTSTRAP_BY_DIGEST,
+                [OrgId, maps:get(widget_installation_id, Token), maps:get(token_digest, Token)],
+                ?BOOTSTRAP_KEYS
+            );
+        {ok, 0} ->
+            {error, no_row};
+        {error, Reason} ->
+            {error, cs_pg_common:normalize_error(Reason)}
+    end.
+
+record_widget_nonce_in(Conn, OrgId, InstallationId, JtiDigest, ExpiresAt) ->
+    Params = [cs_tsid:new_id(cs_widget_nonce), OrgId, InstallationId, JtiDigest, ExpiresAt],
+    case elib_pg:execute(Conn, ?SQL_INSERT_NONCE, Params) of
+        {ok, 1} ->
+            ok;
+        {ok, 0} ->
+            {error, no_row};
+        {error, Reason} ->
+            case cs_pg_common:normalize_error(Reason) of
+                {sql, <<"23505">>, _} -> {error, replay};
+                Normalized -> {error, Normalized}
+            end
     end.

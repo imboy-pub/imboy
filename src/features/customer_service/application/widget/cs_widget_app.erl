@@ -628,29 +628,18 @@ fresh_bootstrap(OrgId, Installation, SubjectHmac, Params) ->
         {error, _} = Err ->
             Err;
         {ok, WorkspaceId} ->
-            case ensure_contact(OrgId, WorkspaceId, SubjectHmac, Params) of
+            case cs_widget_support:new_id(cs_visit_token, Params) of
                 {error, _} = Err2 ->
                     Err2;
-                {ok, ContactId, _Reused} ->
-                    issue_token(OrgId, Installation, ContactId, SubjectHmac, WorkspaceId, Params)
+                {ok, TokenId} ->
+                    do_issue_token(OrgId, Installation, SubjectHmac, WorkspaceId, TokenId, Params)
             end
     end.
 
-issue_token(OrgId, Installation, ContactId, SubjectHmac, WorkspaceId, Params) ->
-    case cs_widget_support:new_id(cs_visit_token, Params) of
-        {error, _} = Err ->
-            Err;
-        {ok, TokenId} ->
-            do_issue_token(
-                OrgId, Installation, ContactId, SubjectHmac, WorkspaceId, TokenId, Params
-            )
-    end.
-
-do_issue_token(OrgId, Installation, ContactId, SubjectHmac, WorkspaceId, TokenId, Params) ->
+do_issue_token(OrgId, Installation, SubjectHmac, WorkspaceId, TokenId, Params) ->
     Secret = cs_widget_support:new_token_secret(Params),
     Token = #{
         id => TokenId,
-        contact_id => ContactId,
         token_digest => cs_widget_support:token_digest(Params, Secret),
         expires_at => maps:get(at, Params) + cs_widget_support:token_ttl(Params),
         widget_installation_id => maps:get(id, Installation),
@@ -658,20 +647,16 @@ do_issue_token(OrgId, Installation, ContactId, SubjectHmac, WorkspaceId, TokenId
     },
     case
         cs_widget_support:with_store(Params, fun(Store) ->
-            Store:insert_widget_bootstrap_token(OrgId, Token)
+            atomic_store(Store, insert_widget_bootstrap_audited, OrgId, #{
+                token => Token,
+                contact_params => contact_params(WorkspaceId, SubjectHmac, Params),
+                event => widget_event(Installation, WorkspaceId, <<"widget.bootstrapped">>)
+            })
         end)
     of
         {error, _} = Err ->
             Err;
         {ok, Stored} ->
-            cs_widget_support:append_event(Params, OrgId, WorkspaceId, #{
-                actor_kind => <<"visitor">>,
-                action => <<"widget.bootstrapped">>,
-                detail => #{
-                    <<"installation_id">> => maps:get(id, Installation),
-                    <<"contact_id">> => ContactId
-                }
-            }),
             {ok, bootstrap_view(Installation, Stored#{secret => Secret}, false)}
     end.
 
@@ -797,43 +782,30 @@ exchange_verify(OrgId, Installation, Token, Key, Assertion, Params) ->
     end.
 
 consume_nonce(OrgId, Installation, Token, Claims, Params) ->
-    JtiDigest = cs_widget_support:token_digest(Params, maps:get(jti, Claims)),
-    case
-        cs_widget_support:with_store(Params, fun(Store) ->
-            Store:record_widget_nonce(
-                OrgId, maps:get(id, Installation), JtiDigest, maps:get(exp, Claims)
-            )
-        end)
-    of
-        {error, _} = Err ->
-            Err;
-        ok ->
-            bind_verified_contact(OrgId, Installation, Token, Claims, Params)
-    end.
-
-bind_verified_contact(OrgId, Installation, Token, Claims, Params) ->
-    PublicId = maps:get(public_widget_id, Installation),
-    VerifiedHmac = cs_widget:verified_subject_hmac(
-        PublicId, maps:get(sub, Claims), maps:get(subject_key, Params)
+    Subject = cs_widget:verified_subject_hmac(
+        maps:get(public_widget_id, Installation),
+        maps:get(sub, Claims),
+        maps:get(subject_key, Params)
     ),
     case cs_widget_support:resolve_default_workspace(OrgId, Params) of
         {error, _} = Err ->
             Err;
         {ok, WorkspaceId} ->
-            case ensure_contact(OrgId, WorkspaceId, VerifiedHmac, Params) of
-                {error, _} = Err2 ->
-                    Err2;
-                {ok, ContactId, Reused} ->
-                    cs_widget_support:append_event(
-                        Params, OrgId, WorkspaceId, #{
-                            actor_kind => <<"visitor">>,
-                            action => <<"widget.identity_exchanged">>,
-                            detail => #{
-                                <<"installation_id">> => maps:get(id, Installation),
-                                <<"contact_id">> => ContactId
-                            }
-                        }
-                    ),
+            Result = cs_widget_support:with_store(Params, fun(Store) ->
+                atomic_store(Store, exchange_widget_identity_audited, OrgId, #{
+                    installation_id => maps:get(id, Installation),
+                    jti_digest => cs_widget_support:token_digest(Params, maps:get(jti, Claims)),
+                    expires_at => maps:get(exp, Claims),
+                    contact_params => contact_params(WorkspaceId, Subject, Params),
+                    event => widget_event(
+                        Installation, WorkspaceId, <<"widget.identity_exchanged">>
+                    )
+                })
+            end),
+            case Result of
+                {error, _} = Err ->
+                    Err;
+                {ok, #{contact_id := ContactId, reused := Reused}} ->
                     {ok, #{
                         installation_id => maps:get(id, Installation),
                         contact_id => ContactId,
@@ -843,20 +815,23 @@ bind_verified_contact(OrgId, Installation, Token, Claims, Params) ->
             end
     end.
 
-%% (installation, subject) 幂等映射的唯一写入口：enterprise contact 的
-%% 确定性资源键（EB-05 幂等锚）——重复映射 `{error, {contact_exists, Id}}`
-%% 且零新增行，应用层复用该 id（不重复建）。
-ensure_contact(OrgId, WorkspaceId, SubjectHmac, Params) ->
-    EbParams = cs_widget_support:eb_params(Params, #{
+contact_params(WorkspaceId, Subject, Params) ->
+    cs_widget_support:eb_params(Params, #{
         workspace_id => WorkspaceId,
         channel => <<"other">>,
-        subject => SubjectHmac
-    }),
-    case cs_widget_support:eb_create_contact(OrgId, EbParams) of
-        {ok, Result} ->
-            {ok, maps:get(id, maps:get(contact, Result)), false};
-        {error, {contact_exists, ContactId}} ->
-            {ok, ContactId, true};
-        {error, _} = Err ->
-            Err
+        subject => Subject
+    }).
+
+widget_event(Installation, WorkspaceId, Action) ->
+    #{
+        workspace_id => WorkspaceId,
+        actor_kind => <<"visitor">>,
+        action => Action,
+        detail => #{<<"installation_id">> => maps:get(id, Installation)}
+    }.
+
+atomic_store(Store, Operation, OrgId, Command) ->
+    case erlang:function_exported(Store, Operation, 2) of
+        true -> apply(Store, Operation, [OrgId, Command]);
+        false -> {error, {missing_store_capability, Operation}}
     end.

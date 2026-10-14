@@ -283,6 +283,10 @@ fenced_namespaces_default_empty_test_() ->
     end).
 
 legacy_set_cannot_overwrite_registered_or_managed_keys_test() ->
+    %% The full suite owns the named ETS table; keep this mock fixture in its own peer.
+    pure_mock_fixture:run(fun legacy_set_guard_checks/0).
+
+legacy_set_guard_checks() ->
     Old = application:get_env(imboy, cache_registry_overrides),
     application:set_env(imboy, cache_registry_overrides, #{
         legacy_guard_replica => {replicate, false}

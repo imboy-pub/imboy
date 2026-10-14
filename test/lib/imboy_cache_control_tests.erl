@@ -3,7 +3,14 @@
 -include_lib("eunit/include/eunit.hrl").
 -include("imboy_cache_sync_state.hrl").
 
-malformed_version_reports_leave_state_and_metadata_unchanged_test() ->
+malformed_version_reports_leave_state_and_metadata_unchanged_test_() ->
+    {timeout, 30, fun() ->
+        pure_mock_fixture:run(
+            fun malformed_version_reports_leave_state_and_metadata_unchanged_checks/0
+        )
+    end}.
+
+malformed_version_reports_leave_state_and_metadata_unchanged_checks() ->
     Report = {cache_version_report, node(), 1, 0, <<0:128>>, <<0:128>>, <<1:128>>, true, self()},
     ?assert(imboy_cache_sync_proto:valid_version_report(Report)),
     Bad = [
@@ -41,7 +48,12 @@ malformed_version_reports_leave_state_and_metadata_unchanged_test() ->
         ets:delete(?META_TABLE)
     end.
 
-invalid_envelopes_do_not_allocate_or_mutate_test() ->
+invalid_envelopes_do_not_allocate_or_mutate_test_() ->
+    {timeout, 30, fun() ->
+        pure_mock_fixture:run(fun invalid_envelopes_do_not_allocate_or_mutate_checks/0)
+    end}.
+
+invalid_envelopes_do_not_allocate_or_mutate_checks() ->
     ets:new(?META_TABLE, [named_table, public, set]),
     try
         ets:insert(?META_TABLE, [{sentinel, preserved}, {status, ready}]),
@@ -94,7 +106,12 @@ invalid_envelopes_do_not_allocate_or_mutate_test() ->
         ets:delete(?META_TABLE)
     end.
 
-near_limit_envelope_and_oversize_sender_test() ->
+near_limit_envelope_and_oversize_sender_test_() ->
+    {timeout, 30, fun() ->
+        pure_mock_fixture:run(fun near_limit_envelope_and_oversize_sender_checks/0)
+    end}.
+
+near_limit_envelope_and_oversize_sender_checks() ->
     OldRep = application:get_env(imboy, cache_replication),
     OldRegistry = application:get_env(imboy, cache_registry_overrides),
     application:set_env(imboy, cache_replication, #{whitelist => [cache_v2_test_rep]}),
@@ -143,7 +160,12 @@ near_limit_envelope_and_oversize_sender_test() ->
 restore_env(Key, undefined) -> application:unset_env(imboy, Key);
 restore_env(Key, {ok, Value}) -> application:set_env(imboy, Key, Value).
 
-metadata_cannot_borrow_payload_budget_test() ->
+metadata_cannot_borrow_payload_budget_test_() ->
+    {timeout, 30, fun() ->
+        pure_mock_fixture:run(fun metadata_cannot_borrow_payload_budget_checks/0)
+    end}.
+
+metadata_cannot_borrow_payload_budget_checks() ->
     with_control_metadata(fun() ->
         Huge = 1 bsl (8 * imboy_cache_policy:protocol_meta_max_bytes()),
         Event = imboy_cache_sync_proto:event(
@@ -163,7 +185,12 @@ metadata_cannot_borrow_payload_budget_test() ->
         ?assertEqual(Before, ets:tab2list(?META_TABLE))
     end).
 
-oversized_report_and_watermark_leave_clock_unchanged_test() ->
+oversized_report_and_watermark_leave_clock_unchanged_test_() ->
+    {timeout, 30, fun() ->
+        pure_mock_fixture:run(fun oversized_report_and_watermark_leave_clock_unchanged_checks/0)
+    end}.
+
+oversized_report_and_watermark_leave_clock_unchanged_checks() ->
     with_control_metadata(fun() ->
         Huge = 1 bsl (8 * imboy_cache_policy:protocol_meta_max_bytes()),
         Hash = imboy_cache_sync_proto:config_hash(),
@@ -188,7 +215,12 @@ oversized_report_and_watermark_leave_clock_unchanged_test() ->
         )
     end).
 
-malformed_snapshot_requests_do_not_serve_data_test() ->
+malformed_snapshot_requests_do_not_serve_data_test_() ->
+    {timeout, 30, fun() ->
+        pure_mock_fixture:run(fun malformed_snapshot_requests_do_not_serve_data_checks/0)
+    end}.
+
+malformed_snapshot_requests_do_not_serve_data_checks() ->
     with_control_metadata(fun() ->
         State = #state{boot_id = <<2:128>>, status = ready},
         Before = ets:tab2list(?META_TABLE),
@@ -209,7 +241,12 @@ malformed_snapshot_requests_do_not_serve_data_test() ->
         end
     end).
 
-snapshot_metadata_overflow_aborts_before_application_test() ->
+snapshot_metadata_overflow_aborts_before_application_test_() ->
+    {timeout, 30, fun() ->
+        pure_mock_fixture:run(fun snapshot_metadata_overflow_aborts_before_application_checks/0)
+    end}.
+
+snapshot_metadata_overflow_aborts_before_application_checks() ->
     with_control_metadata(fun() ->
         Previous = application:get_env(imboy, cache_replication),
         OldRegistry = application:get_env(imboy, cache_registry_overrides),
@@ -251,7 +288,14 @@ snapshot_metadata_overflow_aborts_before_application_test() ->
         end
     end).
 
-incompatible_reports_do_not_change_peer_identity_or_clock_test() ->
+incompatible_reports_do_not_change_peer_identity_or_clock_test_() ->
+    {timeout, 30, fun() ->
+        pure_mock_fixture:run(
+            fun incompatible_reports_do_not_change_peer_identity_or_clock_checks/0
+        )
+    end}.
+
+incompatible_reports_do_not_change_peer_identity_or_clock_checks() ->
     with_control_metadata(fun() ->
         Peer = 'incompatible_report@synthetic',
         Boot = <<7:128>>,
@@ -300,7 +344,12 @@ assert_incompatible_report(Peer, State, {Config, Reg, Epoch}, Before) ->
             ?assertNot(imboy_cache_sync_snapshot:round_complete(S1#state.snapshot_round))
     end.
 
-authorized_source_hash_change_still_aborts_round_test() ->
+authorized_source_hash_change_still_aborts_round_test_() ->
+    {timeout, 30, fun() ->
+        pure_mock_fixture:run(fun authorized_source_hash_change_still_aborts_round_checks/0)
+    end}.
+
+authorized_source_hash_change_still_aborts_round_checks() ->
     with_control_metadata(fun() ->
         Peer = 'changed_hash_authority@synthetic',
         ets:insert(?META_TABLE, {{peer_incarnation, Peer}, <<8:128>>}),
@@ -337,7 +386,12 @@ authorized_source_hash_change_still_aborts_round_test() ->
         end
     end).
 
-legacy_receipts_keep_contiguous_healthy_watermarks_ready_test() ->
+legacy_receipts_keep_contiguous_healthy_watermarks_ready_test_() ->
+    {timeout, 30, fun() ->
+        pure_mock_fixture:run(fun legacy_receipts_keep_contiguous_healthy_watermarks_ready_checks/0)
+    end}.
+
+legacy_receipts_keep_contiguous_healthy_watermarks_ready_checks() ->
     with_legacy_control_metadata(fun() ->
         State = #state{boot_id = <<2:128>>, status = ready},
         lists:foreach(
@@ -363,7 +417,12 @@ legacy_receipts_keep_contiguous_healthy_watermarks_ready_test() ->
         ?assertEqual([{status, ready}], ets:lookup(?META_TABLE, status))
     end).
 
-legacy_grace_receipt_does_not_replace_current_identity_test() ->
+legacy_grace_receipt_does_not_replace_current_identity_test_() ->
+    {timeout, 30, fun() ->
+        pure_mock_fixture:run(fun legacy_grace_receipt_does_not_replace_current_identity_checks/0)
+    end}.
+
+legacy_grace_receipt_does_not_replace_current_identity_checks() ->
     with_legacy_control_metadata(fun() ->
         Peer = 'legacy_grace_peer@synthetic',
         Current = <<3:128>>,
@@ -382,7 +441,14 @@ legacy_grace_receipt_does_not_replace_current_identity_test() ->
         ?assertEqual(Before, lists:sort(ets:tab2list(?META_TABLE)))
     end).
 
-rejected_event_cannot_replace_incarnation_or_erase_sequence_test() ->
+rejected_event_cannot_replace_incarnation_or_erase_sequence_test_() ->
+    {timeout, 30, fun() ->
+        pure_mock_fixture:run(
+            fun rejected_event_cannot_replace_incarnation_or_erase_sequence_checks/0
+        )
+    end}.
+
+rejected_event_cannot_replace_incarnation_or_erase_sequence_checks() ->
     with_control_metadata(fun() ->
         Peer = 'rejected_identity@synthetic',
         Boot = <<7:128>>,
@@ -428,7 +494,14 @@ rejected_event_cannot_replace_incarnation_or_erase_sequence_test() ->
         )
     end).
 
-stale_epoch_invalidation_with_bad_hash_is_rejected_by_sync_test() ->
+stale_epoch_invalidation_with_bad_hash_is_rejected_by_sync_test_() ->
+    {timeout, 30, fun() ->
+        pure_mock_fixture:run(
+            fun stale_epoch_invalidation_with_bad_hash_is_rejected_by_sync_checks/0
+        )
+    end}.
+
+stale_epoch_invalidation_with_bad_hash_is_rejected_by_sync_checks() ->
     with_control_metadata(fun() ->
         Peer = 'rejected_invalidation@synthetic',
         Boot = <<7:128>>,
@@ -461,10 +534,20 @@ stale_epoch_invalidation_with_bad_hash_is_rejected_by_sync_test() ->
         ?assertEqual([{sync_counter, 17}], ets:lookup(?META_TABLE, sync_counter))
     end).
 
-new_event_incarnation_cancels_old_snapshot_authority_test() ->
+new_event_incarnation_cancels_old_snapshot_authority_test_() ->
+    {timeout, 30, fun() ->
+        pure_mock_fixture:run(fun new_event_incarnation_cancels_old_snapshot_authority_checks/0)
+    end}.
+
+new_event_incarnation_cancels_old_snapshot_authority_checks() ->
     restarted_authority_case(v2).
 
-new_legacy_incarnation_cancels_old_snapshot_authority_test() ->
+new_legacy_incarnation_cancels_old_snapshot_authority_test_() ->
+    {timeout, 30, fun() ->
+        pure_mock_fixture:run(fun new_legacy_incarnation_cancels_old_snapshot_authority_checks/0)
+    end}.
+
+new_legacy_incarnation_cancels_old_snapshot_authority_checks() ->
     restarted_authority_case(legacy).
 
 restarted_authority_case(Protocol) ->
@@ -534,7 +617,12 @@ restarted_authority_case(Protocol) ->
         end
     end).
 
-unchanged_authority_and_other_peer_do_not_cancel_round_test() ->
+unchanged_authority_and_other_peer_do_not_cancel_round_test_() ->
+    {timeout, 30, fun() ->
+        pure_mock_fixture:run(fun unchanged_authority_and_other_peer_do_not_cancel_round_checks/0)
+    end}.
+
+unchanged_authority_and_other_peer_do_not_cancel_round_checks() ->
     with_control_metadata(fun() ->
         Peer = 'stable_source@synthetic',
         Boot = <<7:128>>,
@@ -553,7 +641,12 @@ unchanged_authority_and_other_peer_do_not_cancel_round_test() ->
         )
     end).
 
-unrequested_authority_cannot_send_page_or_empty_done_test() ->
+unrequested_authority_cannot_send_page_or_empty_done_test_() ->
+    {timeout, 30, fun() ->
+        pure_mock_fixture:run(fun unrequested_authority_cannot_send_page_or_empty_done_checks/0)
+    end}.
+
+unrequested_authority_cannot_send_page_or_empty_done_checks() ->
     with_control_metadata(fun() ->
         Peer = 'waiting_source@synthetic',
         R0 = imboy_cache_sync_snapshot:new_round(0, erlang:system_time(millisecond) + 60000),
@@ -571,7 +664,14 @@ unrequested_authority_cannot_send_page_or_empty_done_test() ->
         ?assertNot(imboy_cache_sync_snapshot:round_complete(R1))
     end).
 
-delete_event_preserves_absolute_expiry_and_rejects_invalid_expiry_test() ->
+delete_event_preserves_absolute_expiry_and_rejects_invalid_expiry_test_() ->
+    {timeout, 30, fun() ->
+        pure_mock_fixture:run(
+            fun delete_event_preserves_absolute_expiry_and_rejects_invalid_expiry_checks/0
+        )
+    end}.
+
+delete_event_preserves_absolute_expiry_and_rejects_invalid_expiry_checks() ->
     with_legacy_control_metadata(fun() ->
         Peer = 'delete_expiry@synthetic',
         Boot = <<9:128>>,
@@ -608,7 +708,14 @@ delete_event_preserves_absolute_expiry_and_rejects_invalid_expiry_test() ->
                 [{_, {{1, Peer}, {Boot, 1}, Expiry, deleted, _}}],
                 ets:lookup(?META_TABLE, {rev, Key})
             ),
-            {ok, _} = imboy_cache_sync_apply:apply_v2(E#{expires_at_ms := Expiry + 1000}, S1),
+            Tombstone = ets:lookup(?META_TABLE, {rev, Key}),
+            ?assertEqual({ok, S1}, imboy_cache_sync_apply:apply_v2(E, S1)),
+            ?assertEqual(
+                {reject, revision_content_conflict, S1},
+                imboy_cache_sync_apply:apply_v2(E#{expires_at_ms := Expiry + 1000}, S1)
+            ),
+            ?assertEqual(Tombstone, ets:lookup(?META_TABLE, {rev, Key})),
+            ?assertNot(ets:member(?META_TABLE, {rindex, Key})),
             ?assertMatch(
                 [{_, {{1, Peer}, {Boot, 1}, Expiry, deleted, _}}],
                 ets:lookup(?META_TABLE, {rev, Key})
@@ -638,7 +745,14 @@ delete_event_preserves_absolute_expiry_and_rejects_invalid_expiry_test() ->
 restore_delete_test_env(Key, undefined) -> application:unset_env(imboy, Key);
 restore_delete_test_env(Key, {ok, Value}) -> application:set_env(imboy, Key, Value).
 
-snapshot_tail_sequence_gap_prevents_old_done_from_closing_test() ->
+snapshot_tail_sequence_gap_prevents_old_done_from_closing_test_() ->
+    {timeout, 30, fun() ->
+        pure_mock_fixture:run(
+            fun snapshot_tail_sequence_gap_prevents_old_done_from_closing_checks/0
+        )
+    end}.
+
+snapshot_tail_sequence_gap_prevents_old_done_from_closing_checks() ->
     with_legacy_control_metadata(fun() ->
         Peer = 'tail_source@synthetic',
         Boot = <<9:128>>,
@@ -672,7 +786,12 @@ snapshot_tail_sequence_gap_prevents_old_done_from_closing_test() ->
         end
     end).
 
-completed_authority_epoch_change_aborts_round_test() ->
+completed_authority_epoch_change_aborts_round_test_() ->
+    {timeout, 30, fun() ->
+        pure_mock_fixture:run(fun completed_authority_epoch_change_aborts_round_checks/0)
+    end}.
+
+completed_authority_epoch_change_aborts_round_checks() ->
     with_legacy_control_metadata(fun() ->
         A = 'completed_epoch_source@synthetic',
         B = 'waiting_epoch_source@synthetic',
@@ -682,6 +801,9 @@ completed_authority_epoch_change_aborts_round_test() ->
         R0 = imboy_cache_sync_snapshot:new_round(0, Deadline),
         R1 = requested_peer(imboy_cache_sync_snapshot:expect_peer(R0, A), A),
         R2 = imboy_cache_sync_snapshot:expect_peer(R1, B),
+        SourcePid = self(),
+        meck:new(syn, [non_strict, no_link]),
+        meck:expect(syn, members, fun(_, _) -> [{SourcePid, #{}}] end),
         {ok, R3} = imboy_cache_source_cut_tests:done(A, maps:get(round, R2), 0, 0, R2),
         State = #state{status = recovering, snapshot_round = R3, recover_deadline_ms = Deadline},
         Next = imboy_cache_sync_recover:handle_version_report(
@@ -700,6 +822,7 @@ completed_authority_epoch_change_aborts_round_test() ->
             ?assertEqual(recovering, Next#state.status),
             ?assertEqual(Deadline, Next#state.recover_deadline_ms)
         after
+            meck:unload(syn),
             case Next#state.recovery_timer of
                 undefined ->
                     ok;
@@ -713,7 +836,12 @@ completed_authority_epoch_change_aborts_round_test() ->
         end
     end).
 
-new_epoch_event_cancels_selected_authority_before_report_test() ->
+new_epoch_event_cancels_selected_authority_before_report_test_() ->
+    {timeout, 30, fun() ->
+        pure_mock_fixture:run(fun new_epoch_event_cancels_selected_authority_before_report_checks/0)
+    end}.
+
+new_epoch_event_cancels_selected_authority_before_report_checks() ->
     with_legacy_control_metadata(fun() ->
         Peer = 'event_epoch_source@synthetic',
         Boot = <<8:128>>,
@@ -739,12 +867,31 @@ new_epoch_event_cancels_selected_authority_before_report_test() ->
             origin_node => Peer, epoch => 1
         },
         ?assertEqual(ok, imboy_cache_sync_proto:validate(Event)),
+        {ok, MetricPid} = elib_metric:start_link(),
         {ok, Next} = imboy_cache_sync_apply:apply_v2(Event, State),
         try
             ?assertNotEqual(maps:get(round, R1), maps:get(round, Next#state.snapshot_round)),
-            ?assertEqual(1, maps:get(rounds_used, Next#state.snapshot_round)),
+            #{counters := Counters} = elib_metric:get_all_metrics(),
+            ?assertEqual(2, maps:get(snapshot_abort_total, Counters)),
+            lists:foreach(
+                fun(Reason) ->
+                    ?assertEqual(
+                        1,
+                        maps:get(
+                            {cache_sync_snapshot_abort_reason_total, #{reason => Reason}}, Counters
+                        )
+                    )
+                end,
+                [authority_epoch_changed, snapshot_invalidated]
+            ),
+            ?assertEqual(
+                maps:get(rounds_used, R1) + maps:get(snapshot_abort_total, Counters),
+                maps:get(rounds_used, Next#state.snapshot_round)
+            ),
+            ?assertEqual(recovering, Next#state.status),
             ?assertEqual(Deadline, Next#state.recover_deadline_ms)
         after
+            gen_server:stop(MetricPid),
             case Next#state.recovery_timer of
                 undefined ->
                     ok;
