@@ -771,189 +771,471 @@ record_login_device_failure_test_() ->
     ).
 
 %% ===================================================================
-%% Limiter V1 L0 缺陷复现（计划 docs/plans/2026-10-13-limiter-v1-*
-%% §5.F2/F3、§9.2 AC-02）。真实 login_security_logic + 真实
-%% login_attempt_ds（含 ETS），只 mock 存储边界（user_ds /
-%% verification_code_ds / token 签发）。oracle 说明：断言**旧实现的坏
-%% 结果**（复现成功 = 测试通过）；L3 修复后按 AC-02 翻转 oracle。
+%% Limiter V1 L3（计划附录 C、§9.2 AC-01/02/17/19）。
+%%
+%% 真实链 = passport_logic 编排 + login_security_logic + 真实
+%% login_attempt_ds（owner + ETS，limiter_test_support 装配）；只 mock
+%% 存储边界（user_ds / verification_code_ds 消费观测 / token 签发 /
+%% 密码 verify）与故障注入场景的 DS 单函数（AC-12 许可）。
+%% oracle 为 L1 冻结合同的正确行为。
 %% ===================================================================
 
 -define(L0_ID, <<"limiter-l0@e2e.test">>).
 -define(L0_ACCT, <<"limiter-l0-acct">>).
--define(L0_NOW_TS, <<"2026-10-14T00:00:00Z">>).
+-define(L3_UID, 990001).
+-define(L3_ID_USER, {user, ?L3_UID}).
+-define(L3_LOCK_MSG, <<"失败次数过多，账户已临时锁定，请稍后再试"/utf8>>).
+-define(L3_SVC_MSG, <<"服务暂不可用，请稍后重试"/utf8>>).
 
-l0_ensure_ds() ->
-    case whereis(login_attempt_ds) of
-        undefined -> {ok, _} = login_attempt_ds:start_link();
-        _ -> ok
+ensure_l3_ds() ->
+    ok = limiter_test_support:ensure_owner().
+
+cleanup_l3_ds() ->
+    try
+        limiter_test_support:ensure_owner()
+    catch
+        _:_ ->
+            ok
     end,
-    ets:delete_all_objects(login_attempt_ets),
-    application:set_env(imboy, login_max_attempts, 5),
-    application:set_env(imboy, login_lock_duration_minutes, 30),
     ok.
 
-l0_mock_log() ->
-    {elib_log, [
-        {'internal_log', 4, fun(_Level, _Msg, _Module, _Line) -> ok end}
-    ]}.
-
-l0_user_map() ->
+l3_user_map() ->
     #{
-        <<"id">> => 990001,
+        <<"id">> => ?L3_UID,
         <<"password">> => <<"$2a$12$hash">>,
         <<"email">> => ?L0_ID,
-        <<"nickname">> => <<"L0">>,
+        <<"nickname">> => <<"L3">>,
         <<"avatar">> => <<>>,
         <<"account">> => ?L0_ACCT,
+        <<"mobile">> => <<"+8619900010000">>,
         <<"gender">> => 0,
         <<"region">> => <<>>,
         <<"sign">> => <<>>,
         <<"status">> => 1
     }.
 
-l0_user_map(StatusOverride) ->
-    (l0_user_map())#{<<"status">> => StatusOverride}.
+l3_user_map(StatusOverride) ->
+    (l3_user_map())#{<<"status">> => StatusOverride}.
 
-%% code 路径锁定门所需的共享 mock：验证码消费可观测、用户查询可控。
-l0_code_mocks(UserMap, ConsumeFun) ->
+%% 密码 verify（mock 边界）：expected = {ok, true} | {error, Msg}
+l3_pwd_mocks(VerifyResult) ->
+    {elib_password, [
+        {'verify', 2, fun(_Pwd, _Hash) -> VerifyResult end},
+        %% KDF 升级链不需要真实跑（合成 hash）
+        {'verify_and_plan', 2, fun(_Pwd, _Hash) -> {error, skip} end}
+    ]}.
+
+%% 登录链共享 mock：用户查询可控 + token 签发可观测 + 存储边界静音。
+%% FindEmail / FindAccount 按入参分支：合成用户命中，其它 → 空查无。
+l3_base_mocks(FindEmail, FindAccount) ->
     [
-        l0_mock_log(),
-        {elib_dt, [
-            {'now', 0, fun() -> ?L0_NOW_TS end},
-            {'add', 2, fun(_From, _Dur) -> <<"2026-10-14T00:30:00Z">> end}
+        {elib_log, [
+            {'internal_log', 4, fun(_Level, _Msg, _Module, _Line) -> ok end}
         ]},
-        {verification_code_ds, [
-            {'consume', 2, ConsumeFun}
+        {elib_dt, [
+            {'now', 0, fun() -> 1790000000 end}
         ]},
         {user_ds, [
-            {'find_by_email', 2, fun(?L0_ID, _Fields) -> UserMap end},
-            {'find_by_account', 2, fun(?L0_ACCT, _Fields) -> UserMap end}
+            {'find_by_email', 2, fun(Id, _Fields) -> FindEmail(Id) end},
+            {'find_by_account', 2, fun(Id, _Fields) -> FindAccount(Id) end},
+            {'find_by_mobile', 2, fun(_Id, _Fields) -> #{} end},
+            {'update_friends_last_seen_at', 2, fun(_, _) -> ok end}
         ]},
         {token_ds, [
-            {'encrypt_token', 2, fun(_Uid, _Did) -> <<"l0-token">> end},
-            {'encrypt_token', 1, fun(_Uid) -> <<"l0-token">> end},
-            {'encrypt_refreshtoken', 2, fun(_Uid, _Did) -> <<"l0-rtoken">> end},
-            {'encrypt_refreshtoken', 1, fun(_Uid) -> <<"l0-rtoken">> end}
+            {'encrypt_token', 2, fun(_Uid, _Did) -> <<"l3-token">> end},
+            {'encrypt_token', 1, fun(_Uid) -> <<"l3-token">> end},
+            {'encrypt_refreshtoken', 2, fun(_Uid, _Did) -> <<"l3-rtoken">> end},
+            {'encrypt_refreshtoken', 1, fun(_Uid) -> <<"l3-rtoken">> end}
         ]},
         {user_device_logic, [
             {'validate_device_type', 1, fun(_) -> true end},
             {'check_login_conflict', 2, fun(_, _) -> {ok, no_conflict} end}
         ]},
+        {user_device_ds, [
+            {'save', 4, fun(_, _, _, _) -> ok end}
+        ]},
+        {message_ds, [
+            {'check_and_notify_offline_msgs', 2, fun(_, _) -> ok end}
+        ]},
         {user_log_ds, [
             {'add_internal', 5, fun(_, _, _, _, _) -> ok end}
+        ]},
+        {elib_async, [
+            {'async', 1, fun(_F) -> ok end}
         ]}
     ].
 
-%% AC-02（F2）旧侧复现：check_login_allowed 的真实返回是三元组
-%% {error, locked, LockInfo}，而 do_login_by_code/5 只匹配二元组
-%% {error, LockMsg}——锁定结果落到默认分支继续消费验证码。真实 D/S，
-%% 锁定状态按计划 §5.F2 以 ETS fixture 注入该入口实际使用的
-%% {Account, <<>>} 键（record_failure 拒绝空 IP，真实链无法写入此键，
-%% 这本身就是 F1 的另一半证据）。
+l3_code_consume_mock(ConsumeFun) ->
+    {verification_code_ds, [
+        {'consume', 2, ConsumeFun}
+    ]}.
+
+%% AC-02（F2）fixed oracle：真实 DS 置锁（真实 failure 累计到阈值），
+%% 真实 P/S 执行 do_login_by_code → 锁定拒绝、验证码未被消费（consume
+%% 调用与否是观测点）、返回锁定消息。反例：若实现回退为旧二元匹配
+%% 漏掉 {error, locked, _}，锁定门失效 → consume 会被调用，本用例的
+%% consumed=0 断言首先变红。
 limiter_code_locked_test_() ->
-    {timeout, 30,
-        ?WITH_MECKS(
-            l0_code_mocks(l0_user_map(), fun(_Id, _Code) -> {ok, <<"verified">>} end),
-            fun() ->
-                ok = l0_ensure_ds(),
-                %% 注入锁定：count 已达 5（阈值），窗口内
-                ets:insert(
-                    login_attempt_ets,
-                    {
-                        login_attempt_ds:cache_key(?L0_ID, <<>>),
-                        #{<<"count">> => 5, <<"first_fail_at">> => ?L0_NOW_TS}
-                    }
+    FindEmail = fun
+        (?L0_ID) -> l3_user_map();
+        (_) -> #{}
+    end,
+    FindAccount = fun
+        (?L0_ACCT) -> l3_user_map();
+        (_) -> #{}
+    end,
+    ?WITH_MECKS(
+        l3_base_mocks(FindEmail, FindAccount) ++
+            [l3_code_consume_mock(fun(_Id, _Code) -> {ok, <<"verified">>} end)],
+        fun() ->
+            ok = ensure_l3_ds(),
+            try
+                %% 真实累计到阈值置锁（已知用户键 {user, Uid}，跨别名）
+                lists:foreach(
+                    fun(_) ->
+                        {ok, _} = login_security_logic:record_login_failure(?L3_ID_USER)
+                    end,
+                    lists:seq(1, 5)
                 ),
-                ?assertEqual(true, login_attempt_ds:is_locked(?L0_ID, <<>>)),
-                persistent_term:put({?MODULE, l0_consumed}, 0),
+                {ok, Snap} = login_attempt_ds:snapshot(?L3_ID_USER),
+                ?assertEqual(true, maps:get(locked, Snap)),
+                persistent_term:put({?MODULE, l3_consumed}, 0),
                 try
                     ok = meck:expect(verification_code_ds, consume, fun(_Id, _Code) ->
-                        persistent_term:put({?MODULE, l0_consumed}, 1),
+                        persistent_term:put({?MODULE, l3_consumed}, 1),
                         {ok, <<"verified">>}
                     end),
                     Result = passport_logic:do_login_by_code(
-                        <<"email">>, ?L0_ID, <<"123456">>, <<"android">>, <<"l0-did">>
+                        <<"email">>, ?L0_ID, <<"123456">>, <<"android">>, <<"l3-did">>
                     ),
-                    %% L0 旧侧 oracle：锁定门失效——验证码仍被消费，且锁定状态下
-                    %% 登录竟然成功
-                    ?assertEqual(1, persistent_term:get({?MODULE, l0_consumed}, 0)),
-                    ?assertMatch({ok, _}, Result)
+                    %% 锁定拒绝 + 明确锁定消息
+                    ?assertEqual({error, ?L3_LOCK_MSG}, Result),
+                    %% 关键观测：锁定时验证码未被消费（不触碰验证码存储）
+                    ?assertEqual(0, persistent_term:get({?MODULE, l3_consumed}, 0))
                 after
-                    %% 断言失败也保证清理 VM 级键与 ETS 状态
-                    persistent_term:erase({?MODULE, l0_consumed}),
-                    ets:delete_all_objects(login_attempt_ets)
+                    persistent_term:erase({?MODULE, l3_consumed})
                 end,
                 ok
+            after
+                cleanup_l3_ds()
             end
-        )}.
+        end
+    ).
 
-%% F3a 旧侧复现：code 路径的失败计数键是**输入** Account（do_login_by_code
-%% 的 check 与 record_login_failure 均用输入值），成功 reset 的键却是
-%% **User.account**（do_login_by_code_verify 从查回用户提取）——同一账户
-%% 两个别名落两个键，成功登录清不掉别名的失败历史（反之亦然）。
-%% 失败历史按计划允许以 ETS fixture 注入（真实 record_failure 因空 IP
-%% 断链写不进，见 F1/AC-01）。
+%% AC-19/09 业务部分（F3 修复）：已知用户的所有登录别名合并到同一
+%% {user, Uid} 键——email 失败 K 次 + account 失败 M 次 = K+M；两个不同
+%% 未知账号计数互不影响、未知与已知分键。反例：若实现回退为旧键分叉
+%% （输入别名 vs User.account 两个键），合并断言 count=K+M 首先变红。
 limiter_identity_key_fork_test_() ->
-    {timeout, 30,
-        ?WITH_MECKS(
-            l0_code_mocks(l0_user_map(), fun(_Id, _Code) -> {ok, <<"verified">>} end),
-            fun() ->
-                ok = l0_ensure_ds(),
-                %% 以 email 输入失败 4 次后的历史（键 = 输入 email）
-                ets:insert(
-                    login_attempt_ets,
-                    {
-                        login_attempt_ds:cache_key(?L0_ID, <<>>),
-                        #{<<"count">> => 4, <<"first_fail_at">> => ?L0_NOW_TS}
-                    }
+    FindEmail = fun
+        (?L0_ID) -> l3_user_map();
+        (<<"unknown-a@e2e.test">>) -> #{};
+        (<<"unknown-b@e2e.test">>) -> #{};
+        (_) -> #{}
+    end,
+    FindAccount = fun
+        (?L0_ACCT) -> l3_user_map();
+        (_) -> #{}
+    end,
+    ?WITH_MECKS(
+        l3_base_mocks(FindEmail, FindAccount) ++ [l3_pwd_mocks({error, <<"密码有误"/utf8>>})],
+        fun() ->
+            ok = ensure_l3_ds(),
+            try
+                %% email 别名失败 K=2
+                lists:foreach(
+                    fun(N) ->
+                        ?assertMatch(
+                            {error, <<"密码有误"/utf8>>},
+                            passport_logic:do_login(<<"email">>, ?L0_ID, <<"wrong">>)
+                        ),
+                        {ok, Snap} = login_attempt_ds:snapshot(?L3_ID_USER),
+                        ?assertEqual(N, maps:get(count, Snap))
+                    end,
+                    lists:seq(1, 2)
                 ),
-                %% 以同一 email 输入 + 正确验证码成功登录
-                Result = passport_logic:do_login_by_code(
-                    <<"email">>, ?L0_ID, <<"123456">>, <<"android">>, <<"l0-did">>
+                %% account 别名失败 M=3（查到同一用户 → 同一 {user, Uid} 键）
+                lists:foreach(
+                    fun(N) ->
+                        ?assertMatch(
+                            {error, <<"密码有误"/utf8>>},
+                            passport_logic:do_login(<<"account">>, ?L0_ACCT, <<"wrong">>)
+                        ),
+                        {ok, Snap} = login_attempt_ds:snapshot(?L3_ID_USER),
+                        ?assertEqual(2 + N, maps:get(count, Snap))
+                    end,
+                    lists:seq(1, 3)
                 ),
-                ?assertMatch({ok, _}, Result),
-                %% L0 旧侧 oracle：成功登录后，输入键的失败历史原样残留
-                %%（reset 清的是 User.account 键，别名的失败历史不被成功清除）
-                ?assertEqual(
-                    {ok, 4},
-                    login_attempt_ds:get_attempts(?L0_ID, <<>>)
+                {ok, Snap5} = login_attempt_ds:snapshot(?L3_ID_USER),
+                ?assertEqual(5, maps:get(count, Snap5)),
+                %% 未知账号：有界独立键，不并入已知用户
+                ?assertMatch(
+                    {error, <<"账号不存在"/utf8>>},
+                    passport_logic:do_login(<<"email">>, <<"unknown-a@e2e.test">>, <<"wrong">>)
                 ),
-                ?assertEqual(
-                    {ok, 0},
-                    login_attempt_ds:get_attempts(?L0_ACCT, <<>>)
+                ?assertMatch(
+                    {error, <<"账号不存在"/utf8>>},
+                    passport_logic:do_login(<<"email">>, <<"unknown-b@e2e.test">>, <<"wrong">>)
                 ),
-                ets:delete_all_objects(login_attempt_ets),
+                {ok, SnapA} = login_attempt_ds:snapshot(
+                    {unknown, email, <<"unknown-a@e2e.test">>}
+                ),
+                ?assertEqual(1, maps:get(count, SnapA)),
+                {ok, SnapB} = login_attempt_ds:snapshot(
+                    {unknown, email, <<"unknown-b@e2e.test">>}
+                ),
+                ?assertEqual(1, maps:get(count, SnapB)),
+                {ok, SnapUser} = login_attempt_ds:snapshot(?L3_ID_USER),
+                ?assertEqual(5, maps:get(count, SnapUser)),
                 ok
+            after
+                cleanup_l3_ds()
             end
-        )}.
+        end
+    ).
 
-%% F3b 旧侧复现：code 路径在检查用户 status **之前**就 reset（成功 reset
-%% 早于"账户被禁用"判定）——禁用账户的一次失败登录会清掉全部失败历史。
+%% AC-17 部分成功点（F3b 修复）：禁用账户 + 正确验证码 → 不 reset
+%% （计数保留）、按禁用错误返回；允许账户 → reset 确认成功才签发。
+%% 反例：若实现回退为旧「reset 早于 status 检查」，禁用段后计数断言
+%% count=3 首先变红；若 reset 未确认就签发，允许段的 unavailable 注入
+%% 下 token 计数断言首先变红。
 limiter_code_reset_before_status_test_() ->
-    {timeout, 30,
-        ?WITH_MECKS(
-            l0_code_mocks(l0_user_map(0), fun(_Id, _Code) -> {ok, <<"verified">>} end),
-            fun() ->
-                ok = l0_ensure_ds(),
-                %% 键 = 输入 account（与 User.account 相同，隔离键分叉变量）
-                ets:insert(
-                    login_attempt_ets,
-                    {
-                        login_attempt_ds:cache_key(?L0_ACCT, <<>>),
-                        #{<<"count">> => 3, <<"first_fail_at">> => ?L0_NOW_TS}
-                    }
+    FindAccount = fun
+        (?L0_ACCT) -> l3_user_map();
+        (_) -> #{}
+    end,
+    FindEmail = fun
+        (?L0_ID) -> l3_user_map();
+        (_) -> #{}
+    end,
+    ?WITH_MECKS(
+        l3_base_mocks(FindEmail, FindAccount) ++
+            [l3_code_consume_mock(fun(_Id, _Code) -> {ok, <<"verified">>} end)],
+        fun() ->
+            ok = ensure_l3_ds(),
+            try
+                %% 段一：禁用账户（status=0）+ 正确验证码
+                ok = meck:expect(user_ds, find_by_account, fun(?L0_ACCT, _F) ->
+                    l3_user_map(0)
+                end),
+                lists:foreach(
+                    fun(_) ->
+                        {ok, _} = login_security_logic:record_login_failure(?L3_ID_USER)
+                    end,
+                    lists:seq(1, 3)
                 ),
-                %% 有效验证码 + 禁用账户（status=0）
-                Result = passport_logic:do_login_by_code(
-                    <<"account">>, ?L0_ACCT, <<"123456">>, <<"android">>, <<"l0-did">>
+                ?assertMatch(
+                    {error, <<"账号被禁用"/utf8>>},
+                    passport_logic:do_login_by_code(
+                        <<"account">>, ?L0_ACCT, <<"123456">>, <<"android">>, <<"l3-did">>
+                    )
                 ),
-                ?assertMatch({error, _}, Result),
-                %% L0 旧侧 oracle：登录失败，但失败计数已被清零（过早 reset）
-                ?assertEqual(
-                    {ok, 0},
-                    login_attempt_ds:get_attempts(?L0_ACCT, <<>>)
-                ),
-                ets:delete_all_objects(login_attempt_ets),
+                %% 不 reset：失败历史完整保留（旧实现此处已清零）
+                {ok, Snap} = login_attempt_ds:snapshot(?L3_ID_USER),
+                ?assertEqual(3, maps:get(count, Snap)),
+                %% 段二：允许账户 + 正确验证码 → reset 确认后才签发
+                ok = cleanup_l3_ds(),
+                ok = meck:expect(user_ds, find_by_account, fun(?L0_ACCT, _F) ->
+                    l3_user_map()
+                end),
+                persistent_term:put({?MODULE, l3_tokens}, 0),
+                try
+                    ok = meck:expect(token_ds, encrypt_token, fun(_Uid, _Did) ->
+                        persistent_term:put({?MODULE, l3_tokens}, 1),
+                        <<"l3-token">>
+                    end),
+                    ?assertMatch(
+                        {ok, #{<<"token">> := <<"l3-token">>}},
+                        passport_logic:do_login_by_code(
+                            <<"account">>, ?L0_ACCT, <<"123456">>, <<"android">>, <<"l3-did">>
+                        )
+                    ),
+                    ?assertEqual(1, persistent_term:get({?MODULE, l3_tokens}, 0)),
+                    {ok, Snap2} = login_attempt_ds:snapshot(?L3_ID_USER),
+                    ?assertEqual(0, maps:get(count, Snap2))
+                after
+                    persistent_term:erase({?MODULE, l3_tokens})
+                end,
                 ok
+            after
+                cleanup_l3_ds()
             end
-        )}.
+        end
+    ).
+
+%% AC-17 顺序协议（reset 失败注入）：正确密码 + reset 强制失败 →
+%% 不签发（token 未生成）、logic 层返回服务不可用标记。反例：若实现
+%% 回退为旧「login_resp 先于 reset 且 reset 忽略结果」，token 计数
+%% 断言首先变红。
+limiter_password_reset_fail_no_token_test_() ->
+    FindEmail = fun
+        (?L0_ID) -> l3_user_map();
+        (_) -> #{}
+    end,
+    FindAccount = fun
+        (?L0_ACCT) -> l3_user_map();
+        (_) -> #{}
+    end,
+    ?WITH_MECKS(
+        l3_base_mocks(FindEmail, FindAccount) ++ [l3_pwd_mocks({ok, true})],
+        fun() ->
+            ok = ensure_l3_ds(),
+            try
+                %% 故障注入（AC-12 许可）：meck DS 单函数模拟 degraded reset
+                ok = meck:new(login_attempt_ds, [passthrough]),
+                ok = meck:expect(login_attempt_ds, reset, fun(_Identity) ->
+                    {error, unavailable}
+                end),
+                persistent_term:put({?MODULE, l3_tokens}, 0),
+                try
+                    ok = meck:expect(token_ds, encrypt_token, fun(_Uid, _Did) ->
+                        persistent_term:put({?MODULE, l3_tokens}, 1),
+                        <<"l3-token">>
+                    end),
+                    Result = passport_logic:do_login(
+                        <<"email">>, ?L0_ID, <<"right-pwd">>, <<"android">>, <<"l3-did">>
+                    ),
+                    ?assertEqual({error, service_unavailable}, Result),
+                    %% reset 未确认 → 无凭据生成、无凭据返回
+                    ?assertEqual(0, persistent_term:get({?MODULE, l3_tokens}, 0))
+                after
+                    persistent_term:erase({?MODULE, l3_tokens}),
+                    catch meck:unload(login_attempt_ds)
+                end,
+                ok
+            after
+                cleanup_l3_ds()
+            end
+        end
+    ).
+
+%% AC-01 logic 侧：F 次错误密码逐次 +1，第 F 次后锁定拒绝且**不继续
+%% 认证**（verify 不再被调用）、错误密码不泄露锁定前计数。反例：若
+%% 实现回退为旧空 IP 断链，计数恒 0，第一次 +1 断言即变红；若锁定门
+%% 丢失，第 F+1 次 verify 计数断言变红。
+limiter_password_lock_after_f_test_() ->
+    FindEmail = fun
+        (?L0_ID) -> l3_user_map();
+        (_) -> #{}
+    end,
+    FindAccount = fun
+        (?L0_ACCT) -> l3_user_map();
+        (_) -> #{}
+    end,
+    ?WITH_MECKS(
+        l3_base_mocks(FindEmail, FindAccount) ++ [l3_pwd_mocks({error, <<"密码有误"/utf8>>})],
+        fun() ->
+            ok = ensure_l3_ds(),
+            try
+                lists:foreach(
+                    fun(N) ->
+                        ?assertMatch(
+                            {error, <<"密码有误"/utf8>>},
+                            passport_logic:do_login(<<"email">>, ?L0_ID, <<"wrong">>)
+                        ),
+                        {ok, Snap} = login_attempt_ds:snapshot(?L3_ID_USER),
+                        ?assertEqual(N, maps:get(count, Snap))
+                    end,
+                    lists:seq(1, 5)
+                ),
+                {ok, Snap5} = login_attempt_ds:snapshot(?L3_ID_USER),
+                ?assertEqual(true, maps:get(locked, Snap5)),
+                persistent_term:put({?MODULE, l3_verified}, 0),
+                try
+                    ok = meck:expect(elib_password, verify, fun(_Pwd, _Hash) ->
+                        persistent_term:put({?MODULE, l3_verified}, 1),
+                        {ok, true}
+                    end),
+                    %% 第 F+1 次：锁定拒绝（含正确密码也不认证）
+                    Result = passport_logic:do_login(
+                        <<"email">>, ?L0_ID, <<"right-pwd">>, <<"android">>, <<"l3-did">>
+                    ),
+                    ?assertEqual({error, ?L3_LOCK_MSG}, Result),
+                    ?assertEqual(0, persistent_term:get({?MODULE, l3_verified}, 0)),
+                    {ok, Snap} = login_attempt_ds:snapshot(?L3_ID_USER),
+                    ?assertEqual(5, maps:get(count, Snap))
+                after
+                    persistent_term:erase({?MODULE, l3_verified})
+                end,
+                ok
+            after
+                cleanup_l3_ds()
+            end
+        end
+    ).
+
+%% AC-19 导出兼容：login/3、do_login/3、do_login/5、verify_user/3 各走
+%% 成功/失败；计数只发生在 do_login_verify 层（一次失败 = +1），直调
+%% verify_user 不触发计数。反例：若低层另加重复计数，count 步进断言
+%% （+1 而非 +2）首先变红；若 verify_user 直调计数，末段 count=0 断言
+%% 变红。
+limiter_exports_compat_test_() ->
+    FindEmail = fun
+        (?L0_ID) -> l3_user_map();
+        (_) -> #{}
+    end,
+    FindAccount = fun
+        (?L0_ACCT) -> l3_user_map();
+        (_) -> #{}
+    end,
+    ?WITH_MECKS(
+        l3_base_mocks(FindEmail, FindAccount) ++ [l3_pwd_mocks({ok, true})],
+        fun() ->
+            ok = ensure_l3_ds(),
+            try
+                %% login/3：输入是合法 email → type=email；未知账户查无用户
+                %% 仍计失败（C.2，verify 不被触达）= 计数 +1，返回兼容
+                %% {error, Msg, 400}。elib_type 未 mock（真实判定）。
+                ?assertMatch(
+                    {error, <<"账号不存在"/utf8>>, 400},
+                    passport_logic:login(<<"unknown-a@e2e.test">>, <<"whatever">>, #{
+                        <<"did">> => <<"d1">>
+                    })
+                ),
+                {ok, Snap1} = login_attempt_ds:snapshot(
+                    {unknown, email, <<"unknown-a@e2e.test">>}
+                ),
+                ?assertEqual(1, maps:get(count, Snap1)),
+                %% 已知用户：do_login/5 失败一次 = +1（verify mock 失败路径）
+                ok = meck:expect(elib_password, verify, fun(_Pwd, _Hash) ->
+                    {error, <<"密码有误"/utf8>>}
+                end),
+                ?assertMatch(
+                    {error, <<"密码有误"/utf8>>},
+                    passport_logic:do_login(<<"email">>, ?L0_ID, <<"wrong">>, <<"ios">>, <<"d1">>)
+                ),
+                {ok, Snap2} = login_attempt_ds:snapshot(?L3_ID_USER),
+                ?assertEqual(1, maps:get(count, Snap2)),
+                %% do_login/3 成功一次 = reset 清零 + 签发
+                ok = meck:expect(elib_password, verify, fun(_Pwd, _Hash) -> {ok, true} end),
+                ?assertMatch(
+                    {ok, #{<<"token">> := <<"l3-token">>}},
+                    passport_logic:do_login(<<"email">>, ?L0_ID, <<"right-pwd">>)
+                ),
+                {ok, Snap3} = login_attempt_ds:snapshot(?L3_ID_USER),
+                ?assertEqual(0, maps:get(count, Snap3)),
+                %% login/3 成功（已知用户走 mobile 键）→ 返回兼容 {ok, Data}
+                ok = meck:expect(user_ds, find_by_mobile, fun(_M, _F) -> l3_user_map() end),
+                ?assertMatch(
+                    {ok, #{<<"uid">> := ?L3_UID, <<"token">> := <<"l3-token">>}},
+                    passport_logic:login(<<"+8619900010000">>, <<"right-pwd">>, #{
+                        <<"did">> => <<"d1">>
+                    })
+                ),
+                %% verify_user/3 直调：失败 + 成功各一次，均**不计数**
+                ?assertMatch(
+                    {error, <<"账号不存在"/utf8>>},
+                    passport_logic:verify_user(<<"x">>, #{}, <<>>)
+                ),
+                ?assertMatch(
+                    {ok, #{<<"uid">> := ?L3_UID}},
+                    passport_logic:verify_user(<<"right-pwd">>, l3_user_map(), <<>>)
+                ),
+                {ok, Snap4} = login_attempt_ds:snapshot(?L3_ID_USER),
+                ?assertEqual(0, maps:get(count, Snap4)),
+                ok
+            after
+                cleanup_l3_ds()
+            end
+        end
+    ).

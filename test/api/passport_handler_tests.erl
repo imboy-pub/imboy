@@ -340,3 +340,101 @@ user_server_loop() ->
     receive
         _Msg -> user_server_loop()
     end.
+
+%% ===================================================================
+%% Limiter V1（计划附录 C.6）：HTTP 协议映射
+%% - limiter 服务不可用 → HTTP 503 envelope（code503，不泄凭据）
+%% - 账户锁定 → 现有 HTTP200 + code1 + 锁定 msg（不冒充 429/503）
+%% ===================================================================
+
+-define(L3_LOCK_MSG, <<"失败次数过多，账户已临时锁定，请稍后再试"/utf8>>).
+
+login_service_unavailable_test_() ->
+    ?WITH_MECKS(
+        [
+            {elib_param, [
+                {'post', 1, fun(_Req) ->
+                    #{
+                        <<"type">> => <<"email">>,
+                        <<"account">> => <<"test@example.com">>,
+                        <<"pwd">> => <<"password123">>,
+                        <<"rsa_encrypt">> => <<"0">>
+                    }
+                end}
+            ]},
+            {cowboy_req, [
+                {'header', 3, fun(_Name, _Req, Default) -> Default end}
+            ]},
+            {elib_cipher, [
+                {'safe_rsa_decrypt', 2, fun(Pwd, _RsaEncrypt) -> Pwd end}
+            ]},
+            {passport_logic, [
+                {'do_login', 5, fun(<<"email">>, _, _, _DType, _Did) ->
+                    {error, service_unavailable}
+                end}
+            ]},
+            {elib_response, [
+                {'error_with_status', 4, fun(_Req, 503, Message, 503) ->
+                    ?assertEqual(<<"服务暂不可用，请稍后重试"/utf8>>, Message),
+                    cowboy_req_h:new(#{
+                        response_status => 503,
+                        response_body => #{code => 503, msg => Message}
+                    })
+                end}
+            ]}
+        ],
+        fun() ->
+            MockReq = cowboy_req_h:new(#{method => <<"POST">>}),
+            {ok, Req, _State} = passport_handler:init(MockReq, #{action => login}),
+            {StatusCode, _, Body} = cowboy_req_h:response(Req),
+            ?assertEqual(503, StatusCode),
+            ?assertEqual(503, maps:get(code, Body)),
+            %% 服务不可用绝不返回凭据
+            ?assertNot(maps:is_key(<<"token">>, Body))
+        end
+    ).
+
+login_locked_message_test_() ->
+    ?WITH_MECKS(
+        [
+            {elib_param, [
+                {'post', 1, fun(_Req) ->
+                    #{
+                        <<"type">> => <<"email">>,
+                        <<"account">> => <<"test@example.com">>,
+                        <<"pwd">> => <<"password123">>,
+                        <<"rsa_encrypt">> => <<"0">>
+                    }
+                end}
+            ]},
+            {cowboy_req, [
+                {'header', 3, fun(_Name, _Req, Default) -> Default end}
+            ]},
+            {elib_cipher, [
+                {'safe_rsa_decrypt', 2, fun(Pwd, _RsaEncrypt) -> Pwd end}
+            ]},
+            {passport_logic, [
+                {'do_login', 5, fun(<<"email">>, _, _, _DType, _Did) ->
+                    {error, ?L3_LOCK_MSG}
+                end}
+            ]},
+            {elib_response, [
+                %% 账户锁定走现有 HTTP200 + code1 envelope（C.6）
+                {'error', 2, fun(_Req, Message) ->
+                    ?assertEqual(?L3_LOCK_MSG, Message),
+                    cowboy_req_h:new(#{
+                        response_status => 200,
+                        response_body => #{code => 1, msg => Message}
+                    })
+                end}
+            ]}
+        ],
+        fun() ->
+            MockReq = cowboy_req_h:new(#{method => <<"POST">>}),
+            {ok, Req, _State} = passport_handler:init(MockReq, #{action => login}),
+            {StatusCode, _, Body} = cowboy_req_h:response(Req),
+            ?assertEqual(200, StatusCode),
+            ?assertEqual(1, maps:get(code, Body)),
+            ?assertEqual(?L3_LOCK_MSG, maps:get(msg, Body))
+        end
+    ).
