@@ -284,7 +284,9 @@ historical_annotation_requires_current_snapshot_authority_test() ->
         ets:delete(imboy_cache_meta, {peer_epoch, Peer}),
         ?assertMatch(
             {abort, page_digest_mismatch, _},
-            imboy_cache_sync_snapshot:handle_page(Peer, Round, 1, [Wire], Digest + 1, false, R)
+            imboy_cache_sync_snapshot:handle_page(
+                Peer, Round, 1, [Wire], tamper_digest(Digest), false, R
+            )
         ),
         ?assertEqual([], ets:lookup(imboy_cache_meta, {rev, {origin_wire_test, key}}))
     end).
@@ -364,7 +366,7 @@ base_snapshot_emits_original_boot_and_sequence_for_all_kinds_test() ->
             after 1000 -> error(missing_origin_base_watermark)
             end,
             receive
-                {cache_snapshot_cut, _, Round, <<1:128>>, 0, 0, _, _, _} -> ok
+                {cache_snapshot_cut, _, Round, <<1:128>>, 0, 0, _, _, _, _} -> ok
             after 1000 -> error(missing_origin_base_cut)
             end,
             receive
@@ -615,7 +617,8 @@ partial_page_abort_retains_accepted_clock_and_hides_values_test() ->
             Round2 = maps:get(round, R2),
             {noreply, Rejected} = imboy_cache_sync:handle_info(
                 {cache_snapshot_page, Peer, Round2, 1, BadPage,
-                    imboy_cache_sync_snapshot:page_digest(Round2, 1, BadPage) + 1, false},
+                    tamper_digest(imboy_cache_sync_snapshot:page_digest(Round2, 1, BadPage)),
+                    false},
                 Next#state{status = recovering, snapshot_round = R2}
             ),
             ?assertEqual(5000, Rejected#state.counter),
@@ -633,7 +636,7 @@ sender_end(Round, Total) ->
     after 1000 -> error(missing_origin_base_watermark)
     end,
     receive
-        {cache_snapshot_cut, _, Round, <<1:128>>, 0, 0, _, _, _} -> ok
+        {cache_snapshot_cut, _, Round, <<1:128>>, 0, 0, _, _, _, _} -> ok
     after 1000 -> error(missing_origin_base_cut)
     end,
     receive
@@ -643,6 +646,7 @@ sender_end(Round, Total) ->
 drain_sender(Round) ->
     receive
         {cache_snapshot_page, _, Round, _, _, _, _} -> drain_sender(Round);
+        {cache_snapshot_cut, _, Round, _, _, _, _, _, _, _} -> drain_sender(Round);
         {cache_snapshot_cut, _, Round, _, _, _, _, _, _} -> drain_sender(Round);
         {cache_snapshot_done, _, Round, _, _} -> drain_sender(Round);
         {cache_snapshot_abort, _, Round, _} -> drain_sender(Round);
@@ -686,3 +690,7 @@ with_metadata(Fun) ->
 
 restore(Key, undefined) -> application:unset_env(imboy, Key);
 restore(Key, {ok, Value}) -> application:set_env(imboy, Key, Value).
+
+tamper_digest(Digest) ->
+    <<Prefix:(byte_size(Digest) - 1)/binary, Last>> = Digest,
+    <<Prefix/binary, (Last bxor 1)>>.
