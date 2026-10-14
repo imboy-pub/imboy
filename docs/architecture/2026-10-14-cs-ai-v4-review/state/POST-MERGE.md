@@ -69,11 +69,19 @@ P0-12 遗留的"范围外 /utf8 扫尾（group_schedule/group_vote 等）"已闭
   （gitignored 本机文件，eunit-local 的 PG relay 以它为 sed 源）曾丢失，
   已从主工作区拷回；另清理了一次失败跑残留的 15432 端口 relay 进程。
 
+## project_milestone 归因闭环（2026-10-15）
+
+P0-11 全量 eunit 946 例中最后一例失败
+`project_milestone_handler_tests:-list_success_test_` **单跑不复现**：
+`IMBOYENV=local make eunit t=project_milestone_handler` → **10/10 全绿**
+（2026-10-15 07:13，boot 期 migrate econnrefused 噪声不影响该套件——
+纯 handler 单测走 mock 路径）。归因确认 P0-11 初判：全量轨道当时的
+并行会话共享容器资源竞争，非代码问题。至此 P0-11 的 2 例非客服域
+失败全部闭环（moya 例代码问题已修 e9c02322，本例环境类不复现）。
+
 ## 当前状态与待决策
 
 - 分支 **未合并回 main、未 push**（计划约束：合并由用户另行决定）。
-- 待用户决策：① 分支合回 main 的时机；② 合并后 CI 全量复跑。
-  （原第②项"main 侧 contract-check 漂移收口"已由本分支收口，撤销；
-  原"/utf8 范围外扫尾"已清零，撤销。全量 eunit 剩 1 例非客服域失败
-  （project_milestone_handler，基线/环境类，moya 例已由 e9c02322 修复）
-  待归因。）
+- 待用户决策（最终收敛）：① 分支合回 main 的时机；② 合并后 CI 全量复跑。
+  （contract 收口、/utf8 扫尾、eunit 非客服域失败归因三项均已闭环，
+  无遗留技术待办。）
