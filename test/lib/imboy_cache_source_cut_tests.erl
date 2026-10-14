@@ -240,7 +240,7 @@ done(Peer, Round, Watermark, Total, R) ->
             [{_, N}] -> N;
             [] -> 0
         end,
-    [SourcePid | _] = imboy_cache_sync:syn_scope_members(),
+    SourcePid = self(),
     R0 = R#{
         cohort_epoch => Epoch,
         retained_obligations := [],
@@ -352,6 +352,7 @@ completed_snapshot_rejects_old_events_without_per_key_metadata_test() ->
 
 done_requires_current_source_cut_test() ->
     fixture(fun(Peer, R, F) ->
+        fixture_identity(Peer, <<7:128>>, 0),
         Round = maps:get(round, R),
         ?assertEqual(
             {abort, missing_source_cut, R},
@@ -369,6 +370,7 @@ done_requires_current_source_cut_test() ->
 
 current_cut_rejects_identity_changes_and_expiry_test() ->
     fixture(fun(Peer, R, F) ->
+        fixture_identity(Peer, <<7:128>>, 0),
         [
             ?assertMatch(
                 {abort, source_cut_identity_changed, R},
@@ -391,6 +393,7 @@ current_cut_rejects_identity_changes_and_expiry_test() ->
 
 cut_cannot_regress_below_frozen_origin_target_test() ->
     fixture(fun(Peer, R, F) ->
+        fixture_identity(Peer, <<7:128>>, 0),
         Ps = maps:get(peers, R),
         Targeted = R#{
             peers := Ps#{
@@ -414,6 +417,7 @@ cut_cannot_regress_below_frozen_origin_target_test() ->
 
 duplicate_cut_cannot_bypass_new_sequence_floor_test() ->
     fixture(fun(Peer, R, F) ->
+        fixture_identity(Peer, <<7:128>>, 0),
         {ok, Confirmed} = imboy_cache_sync_recover:accept_source_cut(F, R),
         ets:insert(?META, {{seq, {Peer, <<7:128>>}}, 1}),
         ?assertEqual(
@@ -424,6 +428,7 @@ duplicate_cut_cannot_bypass_new_sequence_floor_test() ->
 
 cut_sequence_gap_and_regression_cannot_confirm_test() ->
     fixture(fun(Peer, R, F) ->
+        fixture_identity(Peer, <<7:128>>, 0),
         ets:insert(?META, {{seq, {Peer, <<7:128>>}}, 2}),
         ?assertMatch(
             {abort, regressed_source_cut, R}, imboy_cache_sync_recover:accept_source_cut(F, R)
@@ -454,23 +459,30 @@ old_unrequested_or_unrelated_cut_does_not_confirm_test() ->
     end).
 
 fixture(Fun) ->
+    {ok, _} = application:ensure_all_started(syn),
+    ok = syn:add_node_to_scopes([imboy_cache]),
+    ok = syn:join(imboy_cache, dsync_handler, self(), #{}),
     ets:new(?META, [named_table, public, set]),
     Peer = 'source_cut@synthetic',
     Boot = <<7:128>>,
     ets:insert(?META, [{sync_epoch, 0}, {{peer_incarnation, Peer}, Boot}]),
     R0 = imboy_cache_sync_snapshot:new_round(0, erlang:system_time(millisecond) + 60000),
-    R = imboy_cache_sync_snapshot:mark_requested(
+    Requested = imboy_cache_sync_snapshot:mark_requested(
         imboy_cache_sync_snapshot:authorize_peer(
             imboy_cache_sync_snapshot:expect_peer(R0, Peer), Peer
         ),
         Peer
     ),
+    Peers = maps:get(peers, Requested),
+    P = maps:get(Peer, Peers),
+    R = Requested#{peers := Peers#{Peer := P#{source_pid => self()}}},
     F =
         {cache_snapshot_cut, Peer, maps:get(round, R), Boot, 0, 0,
             imboy_cache_sync_proto:config_hash(), imboy_cache_sync_proto:registry_hash()},
     try
         Fun(Peer, R, F)
     after
+        _ = syn:leave(imboy_cache, dsync_handler, self()),
         ets:delete(?META)
     end.
 

@@ -411,20 +411,26 @@ v2_invalidate_event_advances_remote_generation_test_() ->
         end
     end).
 
-%% 19.8 能力交集：v2 模式 invalidate 双通道发布——旧节点静默丢弃 v2 信封
-%% （19.8：legacy 对未知消息静默丢弃），混合期失效必须同时经 legacy
-%% {flush, Key} 通道到达；legacy 模式保持单通道原语义。
-v2_invalidate_dual_publishes_legacy_flush_test_() ->
+%% 19.8：V2 失效发给全部成员，legacy 兼容帧只发旧节点且不回流本节点。
+v2_invalidate_targets_legacy_peers_test_() ->
     ?TEST_WITH_APP(fun() ->
         ready = wait_ready(100),
         Old = application:get_env(imboy, cache_sync_protocol, undefined),
         application:set_env(imboy, cache_sync_protocol, v2),
         meck:new(syn, [passthrough]),
+        Parent = self(),
+        LegacyPeer = spawn(fun() -> invalidation_test_peer(Parent) end),
+        V2Peer = spawn(fun() -> invalidation_test_peer(Parent) end),
+        Members = [
+            {whereis(imboy_cache_sync), #{cache_protocol => 2}},
+            {LegacyPeer, #{}},
+            {V2Peer, #{cache_protocol => 2}}
+        ],
         try
             meck:expect(syn, publish, 3, fun(_Scope, _Group, _Msg) -> {ok, 1} end),
+            meck:expect(syn, members, 2, fun(_Scope, _Group) -> Members end),
             Key = {cache_v2_test, dual_pub1},
             ok = imboy_cache_sync:invalidate(Key),
-            %% syn:publish 第三参为 {cache_sync, Msg} 包裹，先解包
             Msgs = [
                 M
              || {_P, {syn, publish, [_S, _G, {cache_sync, M}]}, _R} <- meck:history(syn)
@@ -436,23 +442,14 @@ v2_invalidate_dual_publishes_legacy_flush_test_() ->
                 maps:get(operation, M, none) =:= invalidate,
                 maps:get(key, M, none) =:= Key
             ],
-            LegacyFl = [
-                M
-             || M <- Msgs,
-                is_tuple(M),
-                element(1, M) =:= flush,
-                element(2, M) =:= Key
-            ],
-            case {V2Ev, LegacyFl} of
-                {[_], [_]} ->
-                    ok;
-                _ ->
-                    erlang:error(
-                        {dual_publish_missed, imboy_cache_policy:protocol(), Msgs}
-                    )
-            end,
-            %% legacy 保留旧 flush，并发布无值的来源序列收据；无 v2 map 信封。
+            ?assertEqual(1, length(V2Ev)),
+            ?assertEqual([], [M || M <- Msgs, is_tuple(M), element(1, M) =:= flush]),
+            ?assertEqual({cache_sync, {flush, Key}}, receive_invalidation_peer(LegacyPeer)),
+            ?assertEqual(none, receive_invalidation_peer(V2Peer)),
+            %% legacy 配置仍向所有远端成员发送 flush 和来源序列收据。
             meck:reset(syn),
+            meck:expect(syn, publish, 3, fun(_Scope, _Group, _Msg) -> {ok, 1} end),
+            meck:expect(syn, members, 2, fun(_Scope, _Group) -> Members end),
             application:set_env(imboy, cache_sync_protocol, legacy),
             ok = imboy_cache_sync:invalidate(Key),
             Msgs2 = [
@@ -460,25 +457,23 @@ v2_invalidate_dual_publishes_legacy_flush_test_() ->
              || {_P, {syn, publish, [_S, _G, {cache_sync, M}]}, _R} <- meck:history(syn)
             ],
             case {Msgs2, [M || M <- Msgs2, is_map(M)]} of
-                {
-                    [
-                        {flush, Key},
-                        {legacy_invalidation_seq, Source, Boot, Seq, Hash, Registry, Key}
-                    ],
-                    []
-                } ->
+                {[{legacy_invalidation_seq, Source, Boot, Seq, Hash, Registry, Key}], []} ->
                     ?assertEqual(node(), Source),
                     ?assertEqual(16, byte_size(Boot)),
                     ?assert(Seq > 0),
                     ?assertEqual(imboy_cache_sync_proto:config_hash(), Hash),
                     ?assertEqual(imboy_cache_sync_proto:registry_hash(), Registry),
+                    ?assertEqual({cache_sync, {flush, Key}}, receive_invalidation_peer(LegacyPeer)),
+                    ?assertEqual({cache_sync, {flush, Key}}, receive_invalidation_peer(V2Peer)),
                     ok;
                 _ ->
                     erlang:error(
-                        {legacy_single_channel_missed, imboy_cache_policy:protocol(), Msgs2}
+                        {legacy_publish_missed, imboy_cache_policy:protocol(), Msgs2}
                     )
             end
         after
+            LegacyPeer ! stop,
+            V2Peer ! stop,
             meck:unload(syn),
             case Old of
                 undefined -> application:unset_env(imboy, cache_sync_protocol);
@@ -486,6 +481,22 @@ v2_invalidate_dual_publishes_legacy_flush_test_() ->
             end
         end
     end).
+
+invalidation_test_peer(Parent) ->
+    receive
+        stop ->
+            ok;
+        Message ->
+            Parent ! {invalidation_peer_message, self(), Message},
+            invalidation_test_peer(Parent)
+    end.
+
+receive_invalidation_peer(Pid) ->
+    receive
+        {invalidation_peer_message, Pid, Message} -> Message
+    after 1000 ->
+        none
+    end.
 
 %% ===================================================================
 %% legacy 兼容（19.8：混合期能力交集，行为保持）
@@ -893,9 +904,6 @@ c03_budget_digest_is_stable_and_config_sensitive_test_() ->
 %% C04 快照回合：round/页/digest/闭合判定（snapshot 模块单元级）
 %% ===================================================================
 
-%% 普通 _test/0（非 generator）：函数体直接执行断言序列，generator
-%% 命名（尾下划线）会让 eunit 把返回的 ok 当"非测试结果"报 cancelled
-%% （全量 r2 实证：单跑 t= 因计数路径不同未暴露）
 c04_round_requires_done_and_pages_test() ->
     with_snapshot_authorization(fun() ->
         %% round token 由 new_round 自生成（快照回合身份），测试从状态取出使用
@@ -917,7 +925,7 @@ c04_round_requires_done_and_pages_test() ->
         ),
         ?assertNot(imboy_cache_sync_snapshot:round_complete(St3)),
         %% 未知 round 的 done 不推进
-        {ok, St4} = imboy_cache_source_cut_tests:done(
+        {ok, St4} = imboy_cache_sync_snapshot:handle_done(
             Peer, crypto:strong_rand_bytes(12), 99, 2, St3
         ),
         ?assertNot(imboy_cache_sync_snapshot:round_complete(St4)),
@@ -931,7 +939,9 @@ c04_round_requires_done_and_pages_test() ->
         ?assertEqual(1, imboy_cache_sync_snapshot:applied_count(St4)),
         %% 正常时序（协议保证）：页全收齐 → done → 闭合；页收齐但无 done 不闭合
         StA0 = snapshot_authority(
-            imboy_cache_sync_snapshot:new_round(0, erlang:system_time(millisecond) + 60000),
+            imboy_cache_sync_snapshot:new_round(
+                0, erlang:system_time(millisecond) + 60000
+            ),
             Peer
         ),
         RoundA = maps:get(round, StA0),
@@ -957,7 +967,8 @@ c04_round_requires_done_and_pages_test() ->
             StA1
         ),
         ?assertNot(imboy_cache_sync_snapshot:round_complete(StA2)),
-        {ok, StA3} = imboy_cache_source_cut_tests:done(Peer, RoundA, 42, 2, StA2),
+        {ok, StA2Cut} = accept_test_source_cut(Peer, StA2),
+        {ok, StA3} = imboy_cache_sync_snapshot:handle_done(Peer, RoundA, 42, 2, StA2Cut),
         ?assert(imboy_cache_sync_snapshot:round_complete(StA3)),
         ?assertEqual(2, imboy_cache_sync_snapshot:applied_count(StA3)),
         %% 已完整闭合后的迟到页不再应用。
@@ -970,59 +981,63 @@ c04_round_requires_done_and_pages_test() ->
 %%（与 c04_round_requires_done_and_pages 同款修复；预生成 token 与
 %% new_round 自生成的身份不一致，round-match 恒失败——全量 r3 实证）
 c04_page_gap_and_digest_mismatch_abort_test() ->
-    St0 = imboy_cache_sync_snapshot:new_round(
-        0,
-        erlang:system_time(millisecond) + 60000
-    ),
-    Round = maps:get(round, St0),
-    Peer = 'snap_peer2@x',
-    St1 = snapshot_authority(St0, Peer),
-    %% 页号跳号（1 → 3）→ abort page_gap
-    Entries = [{{rep_ns, k}, <<"v">>, future_ms(60), {1, Peer}}],
-    Digest = imboy_cache_sync_snapshot:page_digest(Round, 3, Entries),
-    {abort, page_gap, _} = imboy_cache_sync_snapshot:handle_page(
-        Peer, Round, 3, Entries, Digest, false, St1
-    ),
-    %% digest 篡改 → abort page_digest_mismatch
-    St1b = snapshot_authority(
-        imboy_cache_sync_snapshot:new_round(
-            0,
-            erlang:system_time(millisecond) + 60000
-        ),
-        Peer
-    ),
-    <<First, Rest/binary>> = Digest,
-    DigestBad = <<(First bxor 1), Rest/binary>>,
-    {abort, page_digest_mismatch, _} = imboy_cache_sync_snapshot:handle_page(
-        Peer, maps:get(round, St1b), 1, Entries, DigestBad, false, St1b
-    ).
-
-%% 普通 _test/0 + round token 从 new_round 状态取（第三个同款修复，
-%% 全量 r4 实证：预生成 token 与 new_round 身份不一致 → abort 分支永不命中）
-c04_buffer_overflow_abort_test() ->
-    Old = application:get_env(imboy, cache_replication, #{}),
-    application:set_env(imboy, cache_replication, maps:merge(Old, #{b_max => 2})),
-    try
+    with_snapshot_authorization(fun() ->
         St0 = imboy_cache_sync_snapshot:new_round(
             0,
             erlang:system_time(millisecond) + 60000
         ),
-        Peer = 'snap_peer3@x',
         Round = maps:get(round, St0),
+        Peer = 'snap_peer2@x',
         St1 = snapshot_authority(St0, Peer),
-        %% 三条目页超过 Bmax=2 → abort buffer_overflow
-        Entries = [
-            {{rep_ns, a}, <<"v">>, future_ms(60), {1, Peer}},
-            {{rep_ns, b}, <<"v">>, future_ms(60), {2, Peer}},
-            {{rep_ns, c}, <<"v">>, future_ms(60), {3, Peer}}
-        ],
-        Digest = imboy_cache_sync_snapshot:page_digest(Round, 1, Entries),
-        {abort, buffer_overflow, _} = imboy_cache_sync_snapshot:handle_page(
-            Peer, Round, 1, Entries, Digest, false, St1
+        %% 页号跳号（1 → 3）→ abort page_gap
+        Entries = [{{rep_ns, k}, <<"v">>, future_ms(60), {1, Peer}}],
+        Digest = imboy_cache_sync_snapshot:page_digest(Round, 3, Entries),
+        {abort, page_gap, _} = imboy_cache_sync_snapshot:handle_page(
+            Peer, Round, 3, Entries, Digest, false, St1
+        ),
+        %% digest 篡改 → abort page_digest_mismatch
+        St1b = snapshot_authority(
+            imboy_cache_sync_snapshot:new_round(
+                0,
+                erlang:system_time(millisecond) + 60000
+            ),
+            Peer
+        ),
+        <<First, Rest/binary>> = Digest,
+        DigestBad = <<(First bxor 1), Rest/binary>>,
+        {abort, page_digest_mismatch, _} = imboy_cache_sync_snapshot:handle_page(
+            Peer, maps:get(round, St1b), 1, Entries, DigestBad, false, St1b
         )
-    after
-        application:set_env(imboy, cache_replication, Old)
-    end.
+    end).
+
+%% 普通 _test/0 + round token 从 new_round 状态取（第三个同款修复，
+%% 全量 r4 实证：预生成 token 与 new_round 身份不一致 → abort 分支永不命中）
+c04_buffer_overflow_abort_test() ->
+    with_snapshot_authorization(fun() ->
+        Old = application:get_env(imboy, cache_replication, #{}),
+        application:set_env(imboy, cache_replication, maps:merge(Old, #{b_max => 2})),
+        try
+            St0 = imboy_cache_sync_snapshot:new_round(
+                0,
+                erlang:system_time(millisecond) + 60000
+            ),
+            Peer = 'snap_peer3@x',
+            Round = maps:get(round, St0),
+            St1 = snapshot_authority(St0, Peer),
+            %% 三条目页超过 Bmax=2 → abort buffer_overflow
+            Entries = [
+                {{rep_ns, a}, <<"v">>, future_ms(60), {1, Peer}},
+                {{rep_ns, b}, <<"v">>, future_ms(60), {2, Peer}},
+                {{rep_ns, c}, <<"v">>, future_ms(60), {3, Peer}}
+            ],
+            Digest = imboy_cache_sync_snapshot:page_digest(Round, 1, Entries),
+            {abort, buffer_overflow, _} = imboy_cache_sync_snapshot:handle_page(
+                Peer, Round, 1, Entries, Digest, false, St1
+            )
+        after
+            application:set_env(imboy, cache_replication, Old)
+        end
+    end).
 
 %% ===================================================================
 %% C05 缺口补偿：fenced namespace 的 generation 推进
@@ -1087,12 +1102,51 @@ snapshot_authority(State, Peer) ->
         imboy_cache_sync_snapshot:expect_peer(State, Peer), Peer
     ).
 
+accept_test_source_cut(Peer, Round) ->
+    Boot = <<7:128>>,
+    Epoch = imboy_cache_sync_proto:epoch(),
+    ets:insert(imboy_cache_meta, [
+        {{peer_incarnation, Peer}, Boot}, {{peer_epoch, Peer}, Epoch}
+    ]),
+    Peers = maps:get(peers, Round),
+    PeerState = maps:get(Peer, Peers),
+    [SourcePid | _] = imboy_cache_sync:syn_scope_members(),
+    Round1 = Round#{
+        cohort_epoch => Epoch,
+        retained_obligations := [],
+        peers := Peers#{
+            Peer := PeerState#{
+                boot => Boot,
+                source_epoch => Epoch,
+                source_pid => SourcePid,
+                origin_target => {Peer, Boot, Epoch, 0}
+            }
+        }
+    },
+    Frame =
+        {cache_snapshot_cut, Peer, maps:get(round, Round1), Boot, Epoch, 0,
+            imboy_cache_sync_proto:config_hash(), imboy_cache_sync_proto:registry_hash(), {ok, []},
+            {0, crypto:hash(sha256, term_to_binary([]))}},
+    imboy_cache_sync_recover:accept_source_cut(Frame, Round1).
+
 with_snapshot_authorization(Test) ->
     Names = [cache_replication, cache_registry_overrides],
     Previous = [{N, application:get_env(imboy, N)} || N <- Names],
     Cfg = application:get_env(imboy, cache_replication, #{}),
     Overrides = application:get_env(imboy, cache_registry_overrides, #{}),
+    OwnMeta = ets:info(imboy_cache_meta) =:= undefined,
+    case OwnMeta of
+        true -> ets:new(imboy_cache_meta, [named_table, public, set]);
+        false -> ok
+    end,
+    OwnCache = whereis(imboy_cache) =:= undefined,
     try
+        meck:new(syn, [passthrough]),
+        meck:expect(syn, members, 2, fun(_Scope, _Group) -> [{self(), #{cache_protocol => 2}}] end),
+        case OwnCache of
+            true -> {ok, _} = depcache:start_link(imboy_cache, #{});
+            false -> ok
+        end,
         application:set_env(imboy, cache_registry_overrides, Overrides#{
             rep_ns => {replicate, false}
         }),
@@ -1105,7 +1159,16 @@ with_snapshot_authorization(Test) ->
                 ({N, {ok, Value}}) -> application:set_env(imboy, N, Value)
             end,
             Previous
-        )
+        ),
+        case OwnCache of
+            true -> gen_server:stop(imboy_cache);
+            false -> ok
+        end,
+        meck:unload(syn),
+        case OwnMeta of
+            true -> ets:delete(imboy_cache_meta);
+            false -> ok
+        end
     end.
 
 requested_peer(Round, Peer) ->
