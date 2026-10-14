@@ -243,3 +243,4 @@ docs/design/**/evidence/
 /docs/compliance/IMBoy T-02 Retention Enforcement Checklist.md
 /docs/compliance/IMBoy V-01 Third-party Data Inventory Checklist.md
 /docs/compliance/IMBoy V-02 Logging and Crash Redaction Checklist.md
+/config/sys.cs-ai-eunit.config
