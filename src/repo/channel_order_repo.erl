@@ -116,7 +116,7 @@ create_order(Data) ->
 %% @doc 根据订单号查找订单
 %% JOIN channel 带出 channel_name：详情页与列表页（list_by_user）
 %% 行为保持一致，客户端频道字段不再回退显示 #<channelId>。
--spec find_by_order_no(binary()) -> {ok, map()} | {error, not_found}.
+-spec find_by_order_no(binary()) -> {ok, map()} | {error, term()}.
 find_by_order_no(OrderNo) ->
     Sql =
         <<"SELECT o.id, o.channel_id, o.user_id, o.order_no, o.amount, o.currency, o.status, ",

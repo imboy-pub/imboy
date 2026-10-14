@@ -17,6 +17,17 @@
 %% 准备工作测试
 %% ===================================================================
 
+find_by_order_no_preserves_database_error_test_() ->
+    ?WITH_MECKS(
+        [{elib_pg, [{'query', 2, fun(_, _) -> {error, connection_closed} end}]}],
+        fun() ->
+            ?assertEqual(
+                {error, connection_closed},
+                channel_order_repo:find_by_order_no(<<"CH-test">>)
+            )
+        end
+    ).
+
 setup_test_() ->
     ?TEST_SIMPLE(fun() ->
         case application:get_env(imboy, env) of
