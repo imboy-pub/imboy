@@ -11,7 +11,7 @@
 %%   ② 错误信封：13 个 stable 码 → HTTP 状态映射 + 信封形态
 %%   ③ credential 解析：合法/畸形各形态
 %%   ④ 认证链负例矩阵：unknown prefix / 错 secret / revoked / expired /
-%%      application disabled / organization archived / 成功 context 形态
+%%      application disabled / organization archived 仍认证成功 / 成功 context 形态
 %%      （V2.1：零 Grant ⇒ granted_scopes 空集，授权后交集生效）
 %%   ⑤ 中间件 decide：路由匹配、scope、rate（含 fail-closed）、
 %%      mutation 缺/畸形 Idempotency-Key 拒绝（INV-7 + §11 形态）、INT-14 豁免
@@ -496,10 +496,16 @@ auth_chain_organization_archived(C) ->
         <<"UPDATE organization SET status = 'archived' WHERE id = ">>,
         integer_to_binary(?ORG_A)
     ]),
-    ?assertEqual(
-        {error, organization_disabled},
-        enterprise_internal_auth:authenticate_tx(C, maps:get(prefix, F), maps:get(secret, F))
-    ).
+    %% Organization 是业务归属，归档不撤销实例级 Application/Credential。
+    {ok, Ctx} = enterprise_internal_auth:authenticate_tx(
+        C, maps:get(prefix, F), maps:get(secret, F)
+    ),
+    ?assertEqual(maps:get(app_id, F), maps:get(application_id, Ctx)),
+    ?assertEqual(maps:get(credential_id, F), maps:get(credential_id, Ctx)),
+    ?assertEqual(?ORG_A, maps:get(application_organization_id, Ctx)),
+    ?assertEqual(lists:sort(?WRITE_SCOPES), lists:sort(maps:get(allowed_scopes, Ctx))),
+    %% 未签发 Grant 仍不获得任何资源权限。
+    ?assertEqual([], maps:get(granted_scopes, Ctx)).
 
 auth_chain_touches_last_used(C) ->
     F = seed_app_fixture(C),

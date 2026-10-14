@@ -131,7 +131,8 @@ foundation_pg_test_() ->
             C = maps:get(conn, State),
             [
                 {"empty_db_full_up_reaches_139", empty_db_full_up_test(C)},
-                {"grant_row_constraints_and_cross_org_fk", with_tx(C, fun grant_row_oracle/1)},
+                {"grant_row_constraints_and_independent_target",
+                    with_tx(C, fun grant_row_oracle/1)},
                 {"grant_scope_fixed_enum_and_pk", with_tx(C, fun grant_scope_oracle/1)},
                 {"grant_workspace_kind_gate_and_org_boundary",
                     with_tx(C, fun grant_workspace_oracle/1)},
@@ -224,11 +225,31 @@ grant_row_oracle(C) ->
         end)
     ),
 
-    %% 跨 Org 的 application 引用被复合 FK 拒绝（Org B 引用 Org A 的 Application）；
-    %% ops 层把 FK 归一为 application_not_found（不给存在性 oracle）
+    %% migration 173：资源目标 Org B 独立于 App A 的业务归属。
+    {ok, CrossGrant} = issue(C, ?ORG_B, AppA, <<"k-cross">>, [<<"groups:write">>]),
+    ?assertEqual(AppA, maps:get(<<"application_id">>, CrossGrant)),
+    ?assertEqual(?ORG_B, maps:get(<<"organization_id">>, CrossGrant)),
+    ?assertEqual([<<"groups:write">>], maps:get(<<"scopes">>, CrossGrant)),
+    ?assertEqual(<<"none">>, maps:get(<<"workspace_scope_kind">>, CrossGrant)),
+    ?assertEqual([], maps:get(<<"workspace_ids">>, CrossGrant)),
+    {ok, OwnedApp} = enterprise_application_repo:find_by_id_tx(C, AppA),
+    ?assertEqual(?ORG_A, maps:get(<<"organization_id">>, OwnedApp)),
+    {ok, StoredCross} = enterprise_application_grant_repo:find_tx(
+        C, ?ORG_B, AppA, maps:get(<<"id">>, CrossGrant)
+    ),
+    ?assertEqual(CrossGrant, StoredCross),
+    ?assertEqual(
+        {error, not_found},
+        enterprise_application_grant_repo:find_tx(
+            C, ?ORG_A, AppA, maps:get(<<"id">>, CrossGrant)
+        )
+    ),
+    %% 独立 App FK 仍拒绝不存在的应用。
     ?assertEqual(
         {error, application_not_found},
-        in_savepoint(C, fun() -> issue(C, ?ORG_B, AppA, <<"k-cross">>, [<<"groups:write">>]) end)
+        in_savepoint(C, fun() ->
+            issue(C, ?ORG_B, 999999999, <<"k-missing">>, [<<"groups:write">>])
+        end)
     ),
 
     %% 未登记 scope：ops 治理面先拦（invalid_scope），DB CHECK 兜底
@@ -252,8 +273,8 @@ grant_row_oracle(C) ->
     %% 受管判定基于「是否存在任何 Grant 行」（含 revoked/过期），另一 Application 不受影响
     ?assertEqual({ok, true}, grant_governed(C, ?ORG_A, AppA)),
     ?assertEqual({ok, false}, grant_governed(C, ?ORG_A, AppB)),
-    %% 跨 Org 查询同一 AppId 不串号（Org 边界在 SQL 内强制）
-    ?assertEqual({ok, false}, grant_governed(C, ?ORG_B, AppA)).
+    %% 按独立资源目标读取 Grant，Org B 的 App A 授权确实存在。
+    ?assertEqual({ok, true}, grant_governed(C, ?ORG_B, AppA)).
 
 %%%===================================================================
 %%% ② enterprise_application_grant_scope（固定 scope 枚举）
