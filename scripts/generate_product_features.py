@@ -108,6 +108,16 @@ FEATURE_BACKEND_MODULES = {
         # （customer_service 无 enterprise 生成即失败）。
         "cs_access_app",
         "cs_actions",
+        # v4 AI 管理面/运行时（P0-9 冻结名单 8 模块 + P0-7 purge worker）：
+        # application/ai 三件 + domain 三件 + infrastructure/cs_pg_ai。
+        "cs_ai_admin_app",
+        "cs_ai_app",
+        "cs_ai_port",
+        "cs_ai_prompt",
+        "cs_ai_purge_worker",
+        "cs_ai_decision",
+        "cs_ai_intent",
+        "cs_ai_retrieval",
         "cs_app_support",
         "cs_auth",
         "cs_dispatch",
@@ -127,6 +137,7 @@ FEATURE_BACKEND_MODULES = {
         "cs_widget_app",
         "cs_widget_session_app",
         "cs_widget_support",
+        "cs_pg_ai",
         "cs_pg_common",
         "cs_pg_inbox",
         "cs_pg_seat",
