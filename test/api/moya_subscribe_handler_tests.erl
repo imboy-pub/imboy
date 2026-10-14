@@ -110,31 +110,50 @@ report_invalid_body_test_() ->
         {element_too_long, #{<<"template_ids">> => [TooLong]}}
     ],
     [
-        begin
-            {Label, Body} = Case,
-            {
-                lists:flatten(io_lib:format("report ~p -> 422/5488", [Label])),
-                ?WITH_MECKS(
-                    handler_mocks(Body) ++ [report_logic_mock({ok, 0})],
-                    fun() ->
-                        Req = moya_subscribe_handler:handle_action(
-                            report,
-                            req0,
-                            #{current_uid => ?UID}
-                        ),
+        {
+            lists:flatten(io_lib:format("report ~p -> 422/5488", [Label])),
+            ?_test(
+                pure_mock_fixture:run(fun() ->
+                    RawBody = jsone:encode(Body),
+                    Mocks = [
+                        {cowboy_req, [
+                            {parse_header, 2, fun(<<"content-type">>, req0) ->
+                                {<<"application">>, <<"json">>, []}
+                            end},
+                            {read_body, 2, fun(req0, _Options) -> {ok, RawBody, req0} end}
+                        ]},
+                        {elib_response, [
+                            {error_with_status, 4, fun(_Req, Status, _Msg, Code) ->
+                                #{resp => error, http => Status, code => Code}
+                            end}
+                        ]},
+                        report_logic_mock({ok, 0})
+                    ],
+                    pure_mock_fixture:with_mocks(Mocks, fun() ->
+                        %% 原始非法 JSON 经过真实参数边界，不伪造 post 的返回类型。
+                        Parsed = elib_param:post(req0),
+                        ?assert(is_map(Parsed)),
+                        case Label of
+                            body_not_map -> ?assertEqual(#{}, Parsed);
+                            _ -> ?assertEqual(Body, Parsed)
+                        end,
+                        Req = moya_subscribe_handler:handle_action(report, req0, #{
+                            current_uid => ?UID
+                        }),
                         ?assertEqual(error, maps:get(resp, Req)),
                         ?assertEqual(422, maps:get(http, Req)),
                         ?assertEqual(?ERR_SUBSCRIBE_TEMPLATES_INVALID, maps:get(code, Req)),
+                        ?assert(meck:called(cowboy_req, read_body, [req0, '_'])),
                         receive
                             {logic_report, _, _} ->
                                 ?assert(false, "logic must not be called on invalid body")
                         after 0 -> ok
                         end
-                    end
-                )
-            }
-        end
-     || Case <- Cases
+                    end)
+                end)
+            )
+        }
+     || {Label, Body} <- Cases
     ].
 
 %%%===================================================================
