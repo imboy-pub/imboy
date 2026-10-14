@@ -26,6 +26,13 @@
 - 全量 EUnit 历史仍未通过：最新 `eunit_full_postrefactor.log` 记录 10,555 passed / 207 failed / 0 skipped，且有测试取消，`make` exit=2；前一轮 `eunit_full_candidate_r5.log` 为 10,762 passed / 6 failed / 0 skipped、取消，`make` exit=2。都不是当前冻结候选的全量 PASS。
 - 尚未闭合：C04/AC-19 最终三节点内容覆盖与 READY 屏障；当前候选 C09 两轮全矩阵、C10 两轮混合/回滚与 QR；C11 冻结候选 HTTP/Scrape/告警重验；最终候选全量 EUnit；正式本地性能三组交错对照；独立审查和 C14 签发。C04 静态审查未发现 READY 误放行，但不能代替三节点实测。全节点丢失 authority 后无可信恢复来源，系统会保守停在 RECOVERING/DEGRADED，应保留为结构性可用性缺口。生产 SLO/硬件/峰值输入继续独立 BLOCKED，生产验收不签发。
 
+### 本轮 worktree 续接（2026-10-14）
+
+- 在 `/private/tmp/imboy-cache-v221-perf-driver-fix` 复核后，`main` 已从本节记载的 `38c8bdb9` 前进至 `7bcca5a9`（TSID 累计分配优化）。该提交已合入 `codex/cache-v221-perf-driver-fix`，合并提交 `bcee750`；数据库迁移目录在新增提交及合并差异中均无改动，不产生迁移编号冲突。代码候选 HEAD 为 `bcee750`，其源码工作树当时干净；候选摘要尚未冻结，任何后续源码/配置/driver 修改都须重新绑定证据。
+- 本轮功能提交 `77d0cd48` 修复 legacy flush 对 V2 成员的重复路由、补足 C12 五场景/资源与候选字段，并校正相关失效、同步及 source-cut 回归。合并后的定向 EUnit：`imboy_cache_invalidation_tests` 26/26、`imboy_cache_sync_tests` 29/29、`imboy_cache_source_cut_tests` 15/15、`elib_tsid_tests` 82/82，均 exit=0；缓存套件使用单节点临时配置 `/tmp/cache-v221-eunit.config` 且 `IMBOY_AUTO_MIGRATE=false`。bench 驱动以 `erlc -Werror` 独立编译通过，`erlfmt --check` 覆盖改动 Erlang 文件通过。
+- C14 `python3 scripts/check_cache_closeout_v1.py --self-test` exit=0：verifier 自测 53/53（1 正向、52 负向）；另行执行 `--ids --sha256` exit=0，96 个 required ID 与两份冻结计划摘要校验通过。提交钩子的 gitleaks、erlfmt、编译及架构门通过；hook 将 Dialyzer 因 `.imboy.plt` 缺失降级放行，不能记为 Dialyzer PASS。
+- 这些是当前源码上的定向证据，不是冻结候选签发证据。三节点 C04/C09、混合/回滚与 QR、冻结候选全量 EUnit、正式本地性能窗口、Dialyzer、C11 冻结后复验和 A9 独立终审仍未闭合；正式性能窗口仍按互斥租约执行，未用 tiny smoke 替代。
+
 Dot 上限 4 个活动 agent（含协调者），建议这样分工，先并行只读审查/准备，按租约串行跑重门禁：
 
 1. A0 协调者：接收 95 条 WIP、复核两份计划 SHA 与当前候选；处理 C06 脱敏边界及定向测试，整合后冻结唯一候选；串行执行最终 EUnit、正式性能窗口、独立审查/C14，维护唯一权威台账。
