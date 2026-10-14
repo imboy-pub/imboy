@@ -341,6 +341,16 @@ fail-closed 授权 + 凭证资源绑定 + 回放护栏），不是任意 Erlang 
 （`lookup/1` → `chat/3` behaviour，主树 `src/lib/imboy_llm_*.erl`）只是 provider
 调用面的替换点之一。
 
+**下一轮前置已就位（CLOSEOUT 后增量，全部离线）**：Hirð 完全具备类型化工具决策
+能力——新增 `ImboyAgentLoop` 程序变体（`Decision = CallWs(Int) | Finish(String)`
+ADT + `match` 分派，编译一次通过），离线套件补两个用例（7/7 全绿）：
+**决策 Finish → 业务 Tool 零执行**（对照旧固定流程的无条件调用）；
+**决策 CallWs → 业务 Tool 恰一次调用**。且 Decision 为封闭 ADT——Provider 只能
+返回类型化决策，**无法表达签名外的工具请求**（类型层拒绝证据，C5「未知工具被拒」
+在决策面上天然成立）。注意边界：本组为 stub 业务面（离线）；经真实授权链的
+循环验证仍属 P1/PG BLOCKED 项，多轮循环（步进驱动 + 上限守卫）与真实模型
+Provider 替换留待下一轮立项。
+
 #### 4.6.7 测试执行台账、修改清单与候选指纹
 
 | 套件 | 结果 | 日志（logs/）|
