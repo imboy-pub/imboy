@@ -35,6 +35,7 @@
     note_applied_event/2,
     note_applied_sequence/3,
     reset_sequence_coverage/0,
+    rebase_sequence_coverage/0,
     application_coverage_candidate/0,
     commit_snapshot_floors/1,
     %% epoch
@@ -488,6 +489,7 @@ register_new_incarnation(Origin, BootId) ->
         true ->
             ok = imboy_cache_sync_apply:abort_application_coverage(coverage_identity_changed),
             true = ets:insert(?META_TABLE, {{peer_incarnation, Origin}, BootId}),
+            ensure_sequence_floor(Origin, BootId),
             registered;
         false ->
             {error, incarnation_budget_exceeded}
@@ -509,6 +511,7 @@ register_changed_incarnation(Origin, BootId, OldBootId) ->
             %% 每个 peer 仅保留当前化身的序列，防止重启后旧高水位遮蔽缺口。
             true = ets:delete(?META_TABLE, {seq, {Origin, OldBootId}}),
             true = ets:delete(?META_TABLE, {covered_seq, {Origin, OldBootId}}),
+            ensure_sequence_floor(Origin, BootId),
             changed
     end.
 %% @doc 化身是否发生变化（握手帧路径用：变化即触发 C05 补偿）。
@@ -641,6 +644,19 @@ reset_sequence_coverage() ->
     ok = imboy_cache_sync_apply:abort_application_coverage(coverage_reset),
     ets:match_delete(?META_TABLE, {{covered_seq, '_'}, '_'}),
     ok.
+%% 冻结合同（covered_seq 节）：每个已登记来源必有无缺的当前代下限行。
+%% 高代切换重置前缀为零、不继承旧代计数；缺席不等于零，缺项由候选整份拒绝。
+ensure_sequence_floor(Origin, Boot) ->
+    Epoch = epoch(),
+    case ets:lookup(?META_TABLE, {covered_seq, {Origin, Boot}}) of
+        [{_, {E, _}}] when E >= Epoch -> ok;
+        _ -> true = ets:insert(?META_TABLE, {{covered_seq, {Origin, Boot}}, {Epoch, 0}})
+    end.
+-spec rebase_sequence_coverage() -> ok.
+rebase_sequence_coverage() ->
+    Peers = ets:select(?META_TABLE, [{{{peer_incarnation, '$1'}, '$2'}, [], [{{'$1', '$2'}}]}]),
+    lists:foreach(fun({Origin, Boot}) -> ensure_sequence_floor(Origin, Boot) end, Peers),
+    ok.
 %% 仅声明当前代连续应用证据；不是快照枚举/缺席证明，也不安装 foreign floor。
 application_coverage_candidate() ->
     Max = imboy_cache_policy:peer_max(),
@@ -656,11 +672,10 @@ coverage_candidate(Peers) ->
         Vector = [
             begin
                 true = is_atom(Origin) andalso is_binary(Boot) andalso byte_size(Boot) =:= 16,
-                Seq =
-                    case ets:lookup(?META_TABLE, {covered_seq, {Origin, Boot}}) of
-                        [] -> 0;
-                        [{{covered_seq, {Origin, Boot}}, {Epoch, Prefix}}] -> Prefix
-                    end,
+                %% 冻结合同：每个当前登记来源须有同本地 epoch 的连续前缀；
+                %% 缺项、旧格式、错代整份拒绝，不造零前缀候选。
+                [{{covered_seq, {Origin, Boot}}, {Epoch, Seq}}] =
+                    ets:lookup(?META_TABLE, {covered_seq, {Origin, Boot}}),
                 true = is_integer(Seq) andalso Seq >= 0,
                 {Origin, Boot, Epoch, Seq}
             end
@@ -719,6 +734,7 @@ epoch() ->
 bump_epoch() ->
     E = epoch() + 1,
     true = ets:insert(?META_TABLE, {sync_epoch, E}),
+    ok = rebase_sequence_coverage(),
     E.
 
 %% @doc 观察 peer epoch（握手帧路径记录；authority 判定用）。

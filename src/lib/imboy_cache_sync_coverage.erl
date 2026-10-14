@@ -136,8 +136,10 @@ verify(#{peers := Peers, cohort_epoch := Epoch} = Round, Limits, Now) ->
         verify_retained(maps:get(retained_obligations, Round, unverified), Final, Epoch),
         Sources = [{N, P} || {N, P = #{authority := true}} <- maps:to_list(Peers)],
         true = Sources =/= [],
+        Receipts = maps:get(delta_receipts, Round, #{}),
         lists:foreach(
-            fun({Node, P}) -> verify_source(Node, P, Final, Epoch, Limits, Now) end, Sources
+            fun({Node, P}) -> verify_source(Node, P, Final, Epoch, Limits, Now, Receipts) end,
+            Sources
         ),
         lists:foreach(
             fun({Node, P}) -> verify_target(Node, P, Sources, Epoch) end, maps:to_list(Peers)
@@ -147,7 +149,7 @@ verify(#{peers := Peers, cohort_epoch := Epoch} = Round, Limits, Now) ->
         error:Reason -> {error, Reason}
     end.
 
-verify_source(Node, P, Final, Epoch, Limits, Now) ->
+verify_source(Node, P, Final, Epoch, Limits, Now, Receipts) ->
     Prefixes = source_prefixes(Node, P, Epoch),
     {ok, Rows} = manifest(P, Limits, Now),
     case maps:get(source_cut, P) of
@@ -166,9 +168,31 @@ verify_source(Node, P, Final, Epoch, Limits, Now) ->
                         true ->
                             case maps:find(Key, Rows) of
                                 {ok, Seen} ->
-                                    case compare_rev(element(3, Seen), element(3, Row)) of
-                                        older -> error(snapshot_covered_content_regressed);
-                                        _ -> ok
+                                    %% 冻结合同：声明覆盖某来源序列时，最终效果须为
+                                    %% 同版或新版（真回退拒绝）；最终效果更新时，该
+                                    %% 推进须由本回合同来源序列的增量收据证明，否则
+                                    %% 来源的覆盖声明与其页内容矛盾，同样拒绝。
+                                    case compare_rev(element(3, Row), element(3, Seen)) of
+                                        older ->
+                                            error(snapshot_covered_content_regressed);
+                                        _ ->
+                                            case compare_rev(element(3, Seen), element(3, Row)) of
+                                                older ->
+                                                    case
+                                                        maps:is_key(
+                                                            {Origin, Boot, Epoch, Seq}, Receipts
+                                                        )
+                                                    of
+                                                        true ->
+                                                            ok;
+                                                        false ->
+                                                            error(
+                                                                snapshot_covered_content_regressed
+                                                            )
+                                                    end;
+                                                _ ->
+                                                    ok
+                                            end
                                     end;
                                 error ->
                                     error(snapshot_absence_unproven)
