@@ -22,6 +22,7 @@
 -export([get_url/1]).
 -export([presign_put/3, presign_put_for_key/3, presign_put_for_key/4]).
 -export([put_object/4, put_object_from_file/4]).
+-export([put_object_ctx/5, put_object_from_file_ctx/5]).
 -export([presign_get_for_key/2, presign_get_for_key/3]).
 -export([build_object_key/2, build_object_key/4, owner_of_key/1]).
 -export([get_bucket/1, public_base_url/0, public_url_for_key/1]).
@@ -126,6 +127,64 @@ put_object_from_file(Bucket, ObjectKey, FilePath, MimeType) ->
     case file:read_file(FilePath) of
         {ok, Bin} ->
             put_object(Bucket, ObjectKey, Bin, MimeType);
+        {error, R} ->
+            {error, R}
+    end.
+
+%% @doc 冻结签名 Context 的服务端 PUT（V5.5 受控上传，02 §15）。
+%%
+%% Ctx 必须含绝对 issued_at/expires_at（calendar:datetime()，UTC），由调用方
+%% 在登记/签发时冻结后端到端传入；本入口与 elib_s3_sign 均不读取当前时钟。
+%% 旧 put_object/4、put_object_from_file/4 只保留给不属于 V5 的调用者。
+-spec put_object_ctx(binary(), binary(), binary(), binary(), map()) -> ok | {error, term()}.
+put_object_ctx(Bucket, ObjectKey, Bin, MimeType, Ctx) when is_binary(Bin), is_map(Ctx) ->
+    case signature_times(Ctx) of
+        {ok, IssuedAt, ExpiresAt} ->
+            ok = assert_garage_configured(),
+            case
+                elib_s3_sign:presign_put_ctx(
+                    endpoint(), Bucket, ObjectKey, MimeType, IssuedAt, ExpiresAt
+                )
+            of
+                {ok, Url} -> http_put_object(Url, MimeType, Bin);
+                {error, invalid_context} -> {error, invalid_signature_context}
+            end;
+        {error, invalid_context} ->
+            {error, invalid_signature_context}
+    end;
+put_object_ctx(_Bucket, _ObjectKey, _Bin, _MimeType, _Ctx) ->
+    {error, invalid_signature_context}.
+
+-spec put_object_from_file_ctx(binary(), binary(), string(), binary(), map()) ->
+    ok | {error, term()}.
+put_object_from_file_ctx(Bucket, ObjectKey, FilePath, MimeType, Ctx) ->
+    case file:read_file(FilePath) of
+        {ok, Bin} -> put_object_ctx(Bucket, ObjectKey, Bin, MimeType, Ctx);
+        {error, R} -> {error, R}
+    end.
+
+signature_times(Ctx) ->
+    I = maps:get(issued_at, Ctx, undefined),
+    E = maps:get(expires_at, Ctx, undefined),
+    case is_utc_datetime(I) andalso is_utc_datetime(E) of
+        true -> {ok, I, E};
+        false -> {error, invalid_context}
+    end.
+
+is_utc_datetime({{Y, M, D}, {H, Mi, S}}) when
+    is_integer(Y), is_integer(M), is_integer(D), is_integer(H), is_integer(Mi), is_integer(S)
+->
+    true;
+is_utc_datetime(_) ->
+    false.
+
+http_put_object(Url, MimeType, Bin) ->
+    Req = {binary_to_list(Url), [], binary_to_list(MimeType), Bin},
+    case httpc:request(put, Req, [{timeout, 30000}], []) of
+        {ok, {{_, S, _}, _, _}} when S >= 200, S < 300 ->
+            ok;
+        {ok, {{_, S, _}, _, Body}} ->
+            {error, {http_status, S, Body}};
         {error, R} ->
             {error, R}
     end.

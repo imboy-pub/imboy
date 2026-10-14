@@ -121,20 +121,36 @@ presign_authorized(Uid, FileName, MimeType, Scope, ScopeRef, ClientUploadId) ->
                 end,
             case RegResult of
                 {ok, Session} ->
-                    PutUrl = elib_oss:presign_put_for_key(
-                        Bucket, ObjectKey, MimeType, ?PUT_EXPIRES
-                    ),
-                    Base = #{
-                        <<"put_url">> => PutUrl,
-                        <<"object_key">> => ObjectKey,
-                        <<"expires_at">> => erlang:system_time(second) + ?PUT_EXPIRES
-                    },
-                    Base1 =
+                    %% V5 新会话（有 client_upload_id）不发可变内容直传 URL：
+                    %% put 能力是绑定 key/mime、以登记冻结 expires_at 为界的
+                    %% 受控网关 token（02 §14）。legacy 会话（无 UUID 旧客户端）
+                    %% 保留直传 URL 兼容。
+                    Base =
                         case maps:get(client_upload_id, Session, undefined) of
-                            undefined -> Base;
-                            Cid -> Base#{<<"client_upload_id">> => Cid}
+                            undefined ->
+                                PutUrl = elib_oss:presign_put_for_key(
+                                    Bucket, ObjectKey, MimeType, ?PUT_EXPIRES
+                                ),
+                                #{
+                                    <<"put_url">> => PutUrl,
+                                    <<"object_key">> => ObjectKey,
+                                    <<"expires_at">> => erlang:system_time(second) + ?PUT_EXPIRES
+                                };
+                            Cid ->
+                                FrozenExpiry = maps:get(expires_at, Session),
+                                {ok, Capability} = imboy_jwt:issue_upload_capability(
+                                    ObjectKey, MimeType, FrozenExpiry
+                                ),
+                                #{
+                                    <<"put_url">> => gateway_put_url(Cid, Capability),
+                                    <<"object_key">> => ObjectKey,
+                                    <<"expires_at">> => FrozenExpiry,
+                                    <<"upload_capability">> => Capability,
+                                    <<"gateway">> => true,
+                                    <<"client_upload_id">> => Cid
+                                }
                         end,
-                    {ok, maybe_public_url(Scope, ObjectKey, Base1)};
+                    {ok, maybe_public_url(Scope, ObjectKey, Base)};
                 {error, RegReason2} ->
                     %% fail-closed：无登记对象、无 URL；客户端同 ID 重试恢复。
                     ?ERROR_LOG([
@@ -643,6 +659,14 @@ maybe_public_url(<<"public">>, ObjectKey, Map) ->
     Map#{<<"public_url">> => elib_oss:public_url_for_key(ObjectKey)};
 maybe_public_url(_Scope, _ObjectKey, Map) ->
     Map.
+
+%% @doc V5 受控网关 PUT 地址：路径段是会话 client_upload_id（UUID，单段）；
+%% 真实 ObjectKey/mime/到期都在 capability token claims 内，网关不信任路径寻址。
+%% token 经 query 传递（客户端无 header 能力时也可用），网关侧与
+%% x-upload-capability header 等价接受。
+-spec gateway_put_url(binary(), binary()) -> binary().
+gateway_put_url(ClientUploadId, Capability) ->
+    <<"/api/v1/attachment/gateway/", ClientUploadId/binary, "?capability=", Capability/binary>>.
 
 -spec scope_ref(map()) -> binary() | undefined.
 scope_ref(Rec) ->

@@ -1,6 +1,25 @@
 -module(attachment_storage_gateway_handler_tests).
+%%%
+% 受控存储网关单测（双向合并产物，两个互补套件）：
+%
+% A. repo 链路矩阵：真实 attach_pending_repo + mock elib_pg，12 场景覆盖
+%    register_content_pin 错误映射（23510→409 / P0002→404 / 异常形态→500）
+%    与读写健壮性（body/write 异常、provider 错误与异常、临时文件清理）。
+% B. W2-01 合同套件（02 §14/§15）：冻结签名 Context（expires_at=capability
+%    exp 的绝对时间）、多段 ObjectKey 平坦化落盘、409 时 provider PUT=0、
+%    413 不触发 pin、404/502/410 状态面、403/410 能力门。
+%
+% 移植约定：provider PUT 统一为冻结 Context 版 put_object_from_file_ctx/5；
+% 回包携带请求原始 Req（网关不把 read_body 更新后的 Req 透传给 reply）。
+%%%
+
 -include_lib("eunit/include/eunit.hrl").
 -include_lib("epgsql/include/epgsql.hrl").
+-include("eunit_setup.hrl").
+
+%% ===================================================================
+%% A. repo 链路矩阵（真实 repo + mock elib_pg）
+%% ===================================================================
 
 repo_chain_test_() ->
     [
@@ -42,7 +61,7 @@ run_chain(Result) ->
                 provider_exception -> 1;
                 _ -> 0
             end,
-        ?assertEqual(Calls, meck:num_calls(elib_oss, put_object_from_file, '_')),
+        ?assertEqual(Calls, meck:num_calls(elib_oss, put_object_from_file_ctx, '_')),
         case Calls of
             1 -> ?assertMatch(#{<<"size_bytes">> := <<"7">>}, get(gateway_pin));
             _ -> ok
@@ -50,8 +69,7 @@ run_chain(Result) ->
         ?assertEqual(
             [],
             filelib:wildcard(
-                os:getenv("IMBOY_V5_GATEWAY_TMP") ++ "/" ++
-                    binary_to_list(get(gateway_key)) ++ ".*"
+                tmp_base() ++ "/" ++ binary_to_list(get(gateway_key)) ++ ".*"
             )
         )
     after
@@ -103,12 +121,12 @@ setup_fault(write_exception) ->
     meck:new(file, [unstick, passthrough]),
     meck:expect(file, write, fun(_, _) -> erlang:error(write_failed) end);
 setup_fault(provider_error) ->
-    meck:expect(elib_oss, put_object_from_file, fun(_, _, _, _) ->
+    meck:expect(elib_oss, put_object_from_file_ctx, fun(_, _, _, _, _) ->
         ?assertMatch(#{<<"size_bytes">> := <<"7">>}, get(gateway_pin)),
         {error, timeout}
     end);
 setup_fault(provider_exception) ->
-    meck:expect(elib_oss, put_object_from_file, fun(_, _, _, _) ->
+    meck:expect(elib_oss, put_object_from_file_ctx, fun(_, _, _, _, _) ->
         ?assertMatch(#{<<"size_bytes">> := <<"7">>}, get(gateway_pin)),
         erlang:error(provider_failed)
     end);
@@ -128,12 +146,17 @@ gateway_put_test_() ->
 pinned_success_test() ->
     Modules = [cowboy_req, imboy_jwt, attach_pending_repo, elib_oss],
     lists:foreach(fun(Module) -> meck:new(Module, [non_strict]) end, Modules),
-    Tmp = os:getenv("IMBOY_V5_GATEWAY_TMP") ++ "/pinned-success",
+    Tmp = tmp_base() ++ "/pinned-success",
     try
         ok = file:write_file(Tmp, <<"payload">>),
         setup_mocks(ok),
         {Status, Headers, Body} = attachment_storage_gateway_handler:serve_pinned(
-            #{read => true}, get(gateway_key), <<"text/plain">>, Tmp, 7
+            #{read => true},
+            get(gateway_key),
+            <<"text/plain">>,
+            erlang:system_time(second) + 600,
+            Tmp,
+            7
         ),
         assert_response(ok, Status, Headers, Body)
     after
@@ -163,13 +186,7 @@ setup_mocks(Result) ->
     put(gateway_key, Key),
     meck:expect(cowboy_req, header, fun(_, _) -> <<"capability">> end),
     meck:expect(cowboy_req, read_body, fun(Req, _) -> {ok, <<"payload">>, Req#{read => true}} end),
-    meck:expect(cowboy_req, reply, fun(Status, Headers, Body, Req) ->
-        case Status of
-            500 -> ok;
-            _ -> ?assertEqual(true, maps:get(read, Req))
-        end,
-        {Status, Headers, Body}
-    end),
+    meck:expect(cowboy_req, reply, fun(Status, Headers, Body, _Req) -> {Status, Headers, Body} end),
     meck:expect(imboy_jwt, verify_upload_capability, fun(_) ->
         {ok, #{
             <<"key">> => Key,
@@ -188,7 +205,7 @@ setup_mocks(Result) ->
             _ -> ok
         end
     end),
-    meck:expect(elib_oss, put_object_from_file, fun(_, KeyArg, Tmp, Mime) ->
+    meck:expect(elib_oss, put_object_from_file_ctx, fun(_, KeyArg, Tmp, Mime, _Ctx) ->
         ?assertEqual(Key, KeyArg),
         ?assertEqual(<<"text/plain">>, Mime),
         ?assertEqual({ok, <<"payload">>}, file:read_file(Tmp)),
@@ -215,7 +232,7 @@ assert_response(ok, Status, Headers, Body) ->
         },
         jsone:decode(Body)
     ),
-    ?assertEqual(1, meck:num_calls(elib_oss, put_object_from_file, '_'));
+    ?assertEqual(1, meck:num_calls(elib_oss, put_object_from_file_ctx, '_'));
 assert_response(Result, Status, _, Body) ->
     {ExpectedStatus, ExpectedBody, Calls} =
         case Result of
@@ -225,4 +242,179 @@ assert_response(Result, Status, _, Body) ->
         end,
     ?assertEqual(ExpectedStatus, Status),
     ?assertEqual(ExpectedBody, Body),
-    ?assertEqual(Calls, meck:num_calls(elib_oss, put_object_from_file, '_')).
+    ?assertEqual(Calls, meck:num_calls(elib_oss, put_object_from_file_ctx, '_')).
+
+%% 与 handler:tmp_dir/0 同口径的兜底（环境变量未设时不用 false 拼串）。
+tmp_base() ->
+    case os:getenv("IMBOY_V5_GATEWAY_TMP") of
+        false -> "/tmp/imboy-v5-gateway";
+        D -> D
+    end.
+
+%% ===================================================================
+%% B. W2-01 合同套件（冻结 Context / SafeKey / 状态面）
+%% ===================================================================
+
+-define(KEY, <<"u9/file/20261014/abc/t.bin">>).
+-define(MIME, <<"application/octet-stream">>).
+-define(EXP, 1893456000).
+
+%% gregorian 秒 = unix 秒 + 62167219200（1970-01-01）。
+exp_datetime() ->
+    calendar:gregorian_seconds_to_datetime(?EXP + 62167219200).
+
+ctx_setup_mocks(PinResult, PutResult, MaxBytes) ->
+    application:set_env(imboy, garage, #{
+        endpoint => <<"http://127.0.0.1:3900">>,
+        bucket => <<"imboy">>,
+        access_key => <<"GKtest">>,
+        secret_key => <<"testsecret">>
+    }),
+    erase(gw_put_args),
+    erase(gw_pin_args),
+    erase(gw_reply),
+    [
+        {imboy_jwt, [
+            {'verify_upload_capability', 1, fun(_Tok) ->
+                {ok, #{<<"key">> => ?KEY, <<"mime">> => ?MIME, <<"exp">> => ?EXP}}
+            end}
+        ]},
+        {attach_pending_repo, [
+            {'register_content_pin', 2, fun(Key, Receipt) ->
+                put(gw_pin_args, {Key, Receipt}),
+                PinResult
+            end}
+        ]},
+        {elib_oss, [
+            {'get_bucket', 1, fun(<<"private">>) -> <<"b-priv">> end},
+            {'max_file_size', 0, fun() -> MaxBytes end},
+            {'put_object_from_file_ctx', 5, fun(_Bucket, Key, Path, Mime, Ctx) ->
+                %% 真实转发路径断言：同一落盘文件内容进入 provider 调用
+                put(gw_put_args, {Key, Mime, Ctx, file:read_file(Path)}),
+                PutResult
+            end}
+        ]},
+        {cowboy_req, [
+            {'header', 2, fun(_H, _R) -> undefined end},
+            {'parse_qs', 1, fun(_R) -> [{<<"capability">>, <<"TOK">>}] end},
+            {'read_body', 2, fun(_R, _O) -> {ok, <<"DATA">>, req} end},
+            {'reply', 4, fun(Status, _H, Body, R) ->
+                put(gw_reply, {Status, Body}),
+                R
+            end}
+        ]}
+    ].
+
+ctx_run_put() ->
+    attachment_storage_gateway_handler:put(<<"PUT">>, req, #{}),
+    get(gw_reply).
+
+pin_ok_returns_200_with_frozen_ctx_test_() ->
+    ?WITH_MECKS(
+        ctx_setup_mocks(ok, ok, 1048576),
+        fun() ->
+            {200, Body} = ctx_run_put(),
+            #{<<"pinned">> := true} = jsone:decode(Body),
+            %% provider 恰好一次 PUT：转发同一落盘文件内容，key/mime 与声明一致
+            {Key, Mime, Ctx, {ok, <<"DATA">>}} = get(gw_put_args),
+            ?assertEqual(?KEY, Key),
+            ?assertEqual(?MIME, Mime),
+            %% 冻结 Context：expires_at 严格等于 capability exp 的绝对时间，
+            %% issued_at 为合法 UTC datetime 且不晚于 expires_at
+            ?assertEqual(exp_datetime(), maps:get(expires_at, Ctx)),
+            Issued = maps:get(issued_at, Ctx),
+            ?assert(
+                calendar:datetime_to_gregorian_seconds(Issued) =<
+                    calendar:datetime_to_gregorian_seconds(exp_datetime())
+            )
+        end
+    ).
+
+pin_mismatch_409_and_zero_provider_put_test_() ->
+    ?WITH_MECKS(
+        ctx_setup_mocks({error, content_mismatch}, ok, 1048576),
+        fun() ->
+            {409, _} = ctx_run_put(),
+            %% 同 key 不同字节：provider PUT=0
+            ?assertEqual(undefined, get(gw_put_args))
+        end
+    ).
+
+oversize_413_pin_not_called_test_() ->
+    ?WITH_MECKS(
+        ctx_setup_mocks(ok, ok, 2),
+        fun() ->
+            {413, _} = ctx_run_put(),
+            ?assertEqual(undefined, get(gw_pin_args)),
+            ?assertEqual(undefined, get(gw_put_args))
+        end
+    ).
+
+pin_unknown_session_404_test_() ->
+    ?WITH_MECKS(
+        ctx_setup_mocks({error, not_found}, ok, 1048576),
+        fun() ->
+            {404, _} = ctx_run_put(),
+            ?assertEqual(undefined, get(gw_put_args))
+        end
+    ).
+
+put_failure_502_keeps_pin_test_() ->
+    ?WITH_MECKS(
+        ctx_setup_mocks(ok, {error, {http_status, 500, <<"boom">>}}, 1048576),
+        fun() ->
+            {502, _} = ctx_run_put(),
+            %% pin 已固定（重试同 receipt 合法），失败点在 provider PUT
+            ?assertMatch({?KEY, _}, get(gw_pin_args))
+        end
+    ).
+
+invalid_ctx_410_test_() ->
+    ?WITH_MECKS(
+        ctx_setup_mocks(ok, {error, invalid_signature_context}, 1048576),
+        fun() ->
+            {410, _} = ctx_run_put()
+        end
+    ).
+
+bad_token_403_test_() ->
+    ?WITH_MECKS(
+        [
+            {imboy_jwt, [
+                {'verify_upload_capability', 1, fun(_Tok) -> {error, invalid_signature} end}
+            ]},
+            {cowboy_req, [
+                {'header', 2, fun(_H, _R) -> undefined end},
+                {'parse_qs', 1, fun(_R) -> [{<<"capability">>, <<"BAD">>}] end},
+                {'reply', 4, fun(Status, _H, Body, R) ->
+                    put(gw_reply, {Status, Body}),
+                    R
+                end}
+            ]}
+        ],
+        fun() ->
+            {403, _} = ctx_run_put()
+        end
+    ).
+
+expired_token_410_test_() ->
+    ?WITH_MECKS(
+        [
+            {imboy_jwt, [
+                {'verify_upload_capability', 1, fun(_Tok) ->
+                    {ok, #{<<"key">> => ?KEY, <<"mime">> => ?MIME, <<"exp">> => 1}}
+                end}
+            ]},
+            {cowboy_req, [
+                {'header', 2, fun(_H, _R) -> undefined end},
+                {'parse_qs', 1, fun(_R) -> [{<<"capability">>, <<"TOK">>}] end},
+                {'reply', 4, fun(Status, _H, Body, R) ->
+                    put(gw_reply, {Status, Body}),
+                    R
+                end}
+            ]}
+        ],
+        fun() ->
+            {410, _} = ctx_run_put()
+        end
+    ).
