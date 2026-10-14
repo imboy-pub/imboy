@@ -2,6 +2,58 @@
 -include_lib("eunit/include/eunit.hrl").
 -include("eunit_setup.hrl").
 
+binary_default_semantics_test_() ->
+    [
+        ?_test(binary_default_case(Method, Params, Default, Expected))
+     || {Method, Params, Default, Expected} <- [
+            {<<"GET">>, [], undefined, undefined},
+            {<<"POST">>, #{}, undefined, undefined},
+            {<<"GET">>, [], <<"fallback">>, <<"fallback">>},
+            {<<"POST">>, #{}, <<"fallback">>, <<"fallback">>},
+            {<<"GET">>, [{<<"value">>, <<"present">>}], undefined, <<"present">>},
+            {<<"GET">>, [{<<"value">>, "present"}], <<"fallback">>, <<"present">>},
+            {<<"POST">>, #{<<"value">> => 42}, undefined, <<"42">>},
+            {<<"POST">>, #{<<"value">> => <<"present">>}, <<"fallback">>, <<"present">>}
+        ]
+    ].
+
+binary_default_case(Method, Params, Default, Expected) ->
+    param_default_case(binary, Method, Params, Default, Expected).
+
+int_default_semantics_test_() ->
+    [
+        ?_test(param_default_case(int, Method, Params, Default, Expected))
+     || {Method, Params, Default, Expected} <- [
+            {<<"GET">>, [], undefined, undefined},
+            {<<"POST">>, #{}, undefined, undefined},
+            {<<"GET">>, [], 10, 10},
+            {<<"POST">>, #{}, 10, 10},
+            {<<"GET">>, [{<<"value">>, <<"42">>}], undefined, 42},
+            {<<"POST">>, #{<<"value">> => <<"42">>}, undefined, 42}
+        ]
+    ].
+
+param_default_case(Function, Method, Params, Default, Expected) ->
+    meck:new(cowboy_req, [non_strict]),
+    erase({elib_param, post_vals}),
+    erase({elib_param, qs_vals}),
+    try
+        meck:expect(cowboy_req, method, fun(_) -> Method end),
+        meck:expect(cowboy_req, parse_qs, fun(_) -> Params end),
+        meck:expect(cowboy_req, parse_header, fun(_, _) ->
+            {<<"application">>, <<"json">>, []}
+        end),
+        meck:expect(cowboy_req, read_body, fun(Req, _) ->
+            {ok, jsone:encode(Params), Req}
+        end),
+        ?assertEqual({ok, Expected}, apply(elib_param, Function, [value, #{}, Default])),
+        ?assert(meck:validate(cowboy_req))
+    after
+        meck:unload(cowboy_req),
+        erase({elib_param, post_vals}),
+        erase({elib_param, qs_vals})
+    end.
+
 %%%===================================================================
 %%% @doc
 %%% elib_param 模块的 EUnit 测试

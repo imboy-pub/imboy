@@ -3,6 +3,88 @@
 -include("eunit_setup.hrl").
 -include("error_code.hrl").
 
+photo_id_boundary_test_() ->
+    [
+        ?_test(photo_id_boundary_case(Action, Value))
+     || Action <- [
+            photo_detail, delete_photo, like_photo, unlike_photo, add_comment, list_comments
+        ],
+        Value <- [
+            42,
+            <<"42">>,
+            9007199254740993,
+            <<"9007199254740993">>,
+            9223372036854775807,
+            <<"9223372036854775807">>,
+            <<>>,
+            <<"bad">>,
+            undefined,
+            null,
+            0,
+            -1,
+            1.5,
+            <<"-1">>,
+            <<"+42">>,
+            <<"42.0">>,
+            <<" 42">>,
+            9223372036854775808,
+            <<"9223372036854775808">>,
+            #{},
+            []
+        ]
+    ].
+
+photo_id_boundary_case(Action, Value) ->
+    Modules = [cowboy_req, elib_req, elib_response, group_album_logic],
+    lists:foreach(fun(Module) -> meck:new(Module, [non_strict]) end, Modules),
+    try
+        Body = #{<<"photo_id">> => Value, <<"content">> => <<"comment">>},
+        meck:expect(cowboy_req, parse_qs, fun(_) -> maps:to_list(Body) end),
+        meck:expect(elib_req, body, fun(Req, _) -> {ok, Body, Req} end),
+        meck:expect(elib_response, error, fun(_, _, Code) -> {error, Code} end),
+        meck:expect(elib_response, success, fun(_, _, _) -> success end),
+        ExpectedId =
+            case Value of
+                Id when is_integer(Id), Id > 0, Id =< 9223372036854775807 -> Id;
+                <<"42">> -> 42;
+                <<"9007199254740993">> -> 9007199254740993;
+                <<"9223372036854775807">> -> 9223372036854775807;
+                _ -> invalid
+            end,
+        setup_photo_action(Action, ExpectedId),
+        Actual = group_album_handler:handle_action(Action, #{}, #{current_uid => 100}),
+        case ExpectedId of
+            invalid ->
+                ?assertEqual({error, ?ERR_BAD_REQUEST}, Actual),
+                ?assertEqual([], meck:history(group_album_logic));
+            _ ->
+                ?assertEqual(success, Actual)
+        end
+    after
+        lists:foreach(fun meck:unload/1, Modules)
+    end.
+
+setup_photo_action(photo_detail, Expected) ->
+    meck:expect(group_album_logic, get_photo_detail, fun(Id, _) ->
+        ?assertEqual(Expected, Id),
+        {ok, #{<<"id">> => Id}}
+    end);
+setup_photo_action(list_comments, Expected) ->
+    meck:expect(group_album_logic, list_comments, fun(Id, _, _) ->
+        ?assertEqual(Expected, Id),
+        {ok, []}
+    end);
+setup_photo_action(add_comment, Expected) ->
+    meck:expect(group_album_logic, add_comment, fun(Id, _, _) ->
+        ?assertEqual(Expected, Id),
+        ok
+    end);
+setup_photo_action(Action, Expected) ->
+    meck:expect(group_album_logic, Action, fun(Id, _) ->
+        ?assertEqual(Expected, Id),
+        ok
+    end).
+
 %%%===================================================================
 %%% @doc
 %%% group_album_handler 模块的 EUnit 测试

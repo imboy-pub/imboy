@@ -341,32 +341,34 @@ show_strips_account_type_for_human_account_test_() ->
     ).
 
 show_unknown_id_returns_empty_object_fail_closed_test_() ->
-    ?WITH_MECKS(
-        [
-            {cowboy_req, [
-                {'parse_qs', 1, fun(_Req) -> [{<<"id">>, <<"999">>}] end}
-            ]},
-            {imboy_error, [
-                {'validate_id', 2, fun(_Req, <<"999">>) -> {ok, 999} end}
-            ]},
-            {user_logic, [
-                {'find_by_id', 2, fun(999, _Columns) -> undefined end}
-            ]},
-            {elib_response, [
-                {'success', 2, fun(_Req, Payload) ->
-                    cowboy_req_h:new(#{
-                        response_status => 200,
-                        response_body => Payload
-                    })
-                end}
-            ]}
-        ],
-        fun() ->
-            MockReq = cowboy_req_h:new(#{method => <<"GET">>}),
-            {ok, Req, _State} = user_handler:init(MockReq, #{action => show}),
-            {StatusCode, _, Body} = cowboy_req_h:response(Req),
-            ?assertEqual(200, StatusCode),
-            %% 未知 id 免鉴权端点 fail-closed：回空对象，不打崩也不泄露
-            ?assertEqual(#{}, Body)
-        end
+    ?_test(
+        pure_mock_fixture:run(fun() ->
+            pure_mock_fixture:with_mocks(
+                [
+                    {cowboy_req, [
+                        {parse_qs, 1, fun(_Req) -> [{<<"id">>, <<"999">>}] end}
+                    ]},
+                    {imboy_error, [
+                        {validate_id, 2, fun(_Req, <<"999">>) -> {ok, 999} end}
+                    ]},
+                    {elib_pg, [
+                        %% 真实 Repo/DS/Logic 将 PG 未命中转换为空 map。
+                        {one, 2, fun(_Sql, [999]) -> {ok, undefined} end}
+                    ]},
+                    {elib_response, [
+                        {success, 2, fun(_Req, Payload) ->
+                            cowboy_req_h:new(#{response_status => 200, response_body => Payload})
+                        end}
+                    ]}
+                ],
+                fun() ->
+                    MockReq = cowboy_req_h:new(#{method => <<"GET">>}),
+                    {ok, Req, _State} = user_handler:init(MockReq, #{action => show}),
+                    {StatusCode, _, Body} = cowboy_req_h:response(Req),
+                    ?assertEqual(200, StatusCode),
+                    ?assertEqual(#{}, Body),
+                    ?assert(meck:called(elib_pg, one, ['_', [999]]))
+                end
+            )
+        end)
     ).

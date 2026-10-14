@@ -3,7 +3,7 @@
 %%% 这是**真扩展点**：只有 `-callback` 声明，零实现、零 meck。
 %%%
 %%% 冻结语义（plan EB-D05 / §4.1 / §4.3）：
-%%%   * **append-only**：本契约只有 `append/2`，不提供 update / delete /
+%%%   * **append-only**：本契约提供 `append/2` 和同事务 `append_in/3`，不提供 update / delete /
 %%%     rewrite。审计事实一旦写入即不可变更，纠正只能再追加一条。
 %%%   * 首个业务参数是 `organization_id`（铁律 6）——审计事件同样 tenant-scoped。
 %%%   * `detail` 不得包含 secret / 密文 / 明文 / Authorization（plan §5.4）。
@@ -21,4 +21,8 @@
 %% @doc 追加一条审计事实。成功返回审计 id 供引用（如 hold 的 audit id）。
 %% 失败必须显式返回 error，不得静默丢弃——静默丢弃会让「接受成功」失去证据。
 -callback append(OrgId :: integer(), Event :: event()) ->
+    {ok, audit_id()} | {error, term()}.
+
+%% 调用方持有连接；审计失败必须使其事务显式回滚。
+-callback append_in(Conn :: term(), OrgId :: integer(), Event :: event()) ->
     {ok, audit_id()} | {error, term()}.

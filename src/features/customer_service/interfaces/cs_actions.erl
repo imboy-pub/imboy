@@ -986,7 +986,13 @@ table(widget) ->
                             {object_hash, binary, required},
                             %% CS-BE-01：展示文件名（可选；随凭证进 PUT 登记
                             %% 与历史 assets[].file_name 投影）。
-                            {file_name, binary, optional}
+                            {file_name, binary, optional},
+                            %% V5 恢复合同（02 §137）：operation=register（缺省）
+                            %% |status|renew；client_upload_id 幂等登记；
+                            %% asset_id 为 status/renew 会话定位。
+                            {operation, binary, optional},
+                            {client_upload_id, binary, optional},
+                            {asset_id, tsid, optional}
                         ],
                         [{id, session_id}]}
                 ]

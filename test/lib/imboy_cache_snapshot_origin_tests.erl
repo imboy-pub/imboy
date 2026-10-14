@@ -541,10 +541,6 @@ retained_expired_tombstone_replays_without_renewing_deadline_test() ->
 
 receiver_crossing_tombstone_window_does_not_ack_page_test() ->
     with_metadata(fun(Peer, Boot, Base) ->
-        Exp =
-            erlang:system_time(millisecond) + 300 -
-                imboy_cache_policy:tombstone_ttl_sec() * 1000,
-        Tomb = {with_origin, {Peer, Boot, 7}, setelement(4, Base, Exp)},
         Live = {
             {origin_wire_test, slow}, value, erlang:system_time(millisecond) + 60000, {1, Peer}
         },
@@ -557,6 +553,10 @@ receiver_crossing_tombstone_window_does_not_ack_page_test() ->
         end),
         meck:expect(depcache, flush, 2, fun(_, _) -> ok end),
         try
+            Exp =
+                erlang:system_time(millisecond) + 300 -
+                    imboy_cache_policy:tombstone_ttl_sec() * 1000,
+            Tomb = {with_origin, {Peer, Boot, 7}, setelement(4, Base, Exp)},
             Page = [Live, Tomb],
             {abort, snapshot_entry_expired, Failed} = imboy_cache_sync_snapshot:handle_page(
                 Peer,
@@ -581,8 +581,6 @@ partial_page_abort_retains_accepted_clock_and_hides_values_test() ->
         application:set_env(imboy, cache_replication, #{
             whitelist => [origin_wire_test], r_max_rounds => 1
         }),
-        Exp = erlang:system_time(millisecond) + 300 - imboy_cache_policy:tombstone_ttl_sec() * 1000,
-        Tomb = {with_origin, {Peer, Boot, 7}, setelement(4, Base, Exp)},
         LiveKey = {origin_wire_test, partial_high},
         Live = {LiveKey, value, erlang:system_time(millisecond) + 60000, {5000, Peer}},
         Cache = ets:new(origin_partial_values, [public, set]),
@@ -600,6 +598,10 @@ partial_page_abort_retains_accepted_clock_and_hides_values_test() ->
             ok
         end),
         try
+            Exp =
+                erlang:system_time(millisecond) + 300 -
+                    imboy_cache_policy:tombstone_ttl_sec() * 1000,
+            Tomb = {with_origin, {Peer, Boot, 7}, setelement(4, Base, Exp)},
             Page = [Live, Tomb],
             {noreply, Next} = imboy_cache_sync:handle_info(
                 {cache_snapshot_page, Peer, Round, 1, Page,
@@ -683,6 +685,9 @@ requested_round(Peer) ->
         Peer
     ).
 with_metadata(Fun) ->
+    pure_mock_fixture:run(fun() -> with_metadata_checks(Fun) end).
+
+with_metadata_checks(Fun) ->
     OldCfg = application:get_env(imboy, cache_replication),
     OldRegistry = application:get_env(imboy, cache_registry_overrides),
     Peer = 'origin_wire@synthetic',

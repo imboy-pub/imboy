@@ -23,6 +23,10 @@
     claim_pending_cleanup/5,
     finish_pending_cleanup/3,
     object_key/3,
+    register_v5/9,
+    v5_session/3,
+    v5_session_by_cid/3,
+    renew_v5/4,
     sql_statements/0
 ]).
 
@@ -203,6 +207,143 @@ asset_fields() ->
         {deleted_at, <<"deleted_at">>, ts},
         {pending_object_delete, <<"pending_object_delete">>, raw}
     ].
+
+%%%===================================================================
+%%% V5.5 会话协议（M1 企业资产主行 V5 列 + M2 fn_v5_register_eb，02 §137/§143）
+%%%
+%%% EB pending 复用自己的主行作为 session：presign 先 insert_asset 预建
+%%% pending_confirm 行，再由 fn_v5_register_eb 填 client_upload_id/
+%%% upload_registration/session_deadline/upload_expires_at（UUID 锁 +
+%%% 墓碑拒绝 + 快照等值）。稳定身份在事务内保存；能力签发（upload_ref
+%%% token）由调用方在 COMMIT 后完成（与普通链 F19 同口径）。
+%%%===================================================================
+
+%% @doc V5 登记（幂等：同 UUID 同快照返回原会话；重指派/快照漂移/
+%% 墓碑命中由 fn_v5_register_eb 以 SQLSTATE 拒绝）。单语句自动提交原子；
+%% 稳定身份落库后能力签发（upload_ref mint）由调用方完成。
+%% Deadline/Expiry 为调用方冻结的绝对 unix 秒；SubjectKind ∈
+%% user|seat|visitor_session|application。
+-spec register_v5(
+    integer(), integer(), integer(), binary(), binary(), map(), binary(), integer(), integer()
+) ->
+    {ok, #{session_state := binary(), client_upload_id := binary()}}
+    | {error, term()}.
+register_v5(
+    OrgId,
+    WsId,
+    AssetId,
+    ObjectKey,
+    ClientUploadId,
+    Registration,
+    SubjectKind,
+    DeadlineSec,
+    ExpirySec
+) ->
+    eb_pg_exec:with_tenant(OrgId, WsId, fun() ->
+        case
+            elib_pg:query(
+                <<
+                    "SELECT out_session_state, out_client_upload_id FROM fn_v5_register_eb("
+                    "$1,$2,$3,$4,$5::uuid,$6::jsonb,$7,"
+                    "$8::timestamptz,$9::timestamptz)"
+                >>,
+                [
+                    OrgId,
+                    WsId,
+                    AssetId,
+                    ObjectKey,
+                    ClientUploadId,
+                    jsone:encode(Registration),
+                    SubjectKind,
+                    iso8601_utc(DeadlineSec),
+                    iso8601_utc(ExpirySec)
+                ]
+            )
+        of
+            {ok, [Row | _]} ->
+                {ok, #{
+                    session_state => maps:get(<<"out_session_state">>, Row),
+                    client_upload_id => maps:get(<<"out_client_upload_id">>, Row)
+                }};
+            {ok, []} ->
+                {error, registration_not_returned};
+            {error, Reason} ->
+                {error, Reason}
+        end
+    end).
+
+%% @doc 会话回查（status 投影）：只读，含 V5 会话列与登记快照。
+-spec v5_session(integer(), integer(), integer()) -> {ok, map()} | {error, term()}.
+v5_session(OrgId, WsId, AssetId) ->
+    eb_pg_exec:with_tenant(OrgId, WsId, fun() ->
+        case
+            elib_pg:query(
+                <<
+                    "SELECT id, object_key, object_hash, mime, size_bytes, status,"
+                    " client_upload_id, session_deadline, upload_expires_at,"
+                    " upload_registration FROM enterprise_asset"
+                    " WHERE organization_id = $1 AND workspace_id = $2 AND id = $3"
+                >>,
+                [OrgId, WsId, AssetId]
+            )
+        of
+            {ok, [Row | _]} -> {ok, Row};
+            {ok, []} -> {error, not_found};
+            {error, Reason} -> {error, Reason}
+        end
+    end).
+
+%% @doc 按 client_upload_id 定位会话主行 id（status/renew 的恢复入口）。
+-spec v5_session_by_cid(integer(), integer(), binary()) ->
+    {ok, integer()} | {error, not_found | term()}.
+v5_session_by_cid(OrgId, WsId, Cid) ->
+    eb_pg_exec:with_tenant(OrgId, WsId, fun() ->
+        case
+            elib_pg:query(
+                <<
+                    "SELECT id FROM enterprise_asset WHERE organization_id = $1"
+                    " AND workspace_id = $2 AND client_upload_id = $3::uuid LIMIT 1"
+                >>,
+                [OrgId, WsId, Cid]
+            )
+        of
+            {ok, [#{<<"id">> := Id} | _]} -> {ok, Id};
+            {ok, []} -> {error, not_found};
+            {error, Reason} -> {error, Reason}
+        end
+    end).
+
+%% @doc renew：单调提交新能力到期（GREATEST 保留历次最晚；deadline 不可
+%% 延长）。条件 UPDATE 与 intent 以行锁线性化；0 行 → not_renewable。
+-spec renew_v5(integer(), integer(), integer(), integer()) ->
+    {ok, #{committed_expires_at := integer()}} | {error, term()}.
+renew_v5(OrgId, WsId, AssetId, NewExpirySec) ->
+    eb_pg_exec:with_tenant(OrgId, WsId, fun() ->
+        case
+            elib_pg:query(
+                <<
+                    "UPDATE enterprise_asset SET upload_expires_at ="
+                    " GREATEST(COALESCE(upload_expires_at, to_timestamp($4)), to_timestamp($4))"
+                    " WHERE organization_id = $1 AND workspace_id = $2 AND id = $3"
+                    " AND status = 'pending_confirm' AND client_upload_id IS NOT NULL"
+                    " AND session_deadline IS NOT NULL AND session_deadline > now()"
+                    " RETURNING extract(epoch from upload_expires_at)::bigint AS committed_expiry"
+                >>,
+                [OrgId, WsId, AssetId, iso8601_utc(NewExpirySec)]
+            )
+        of
+            {ok, [Row | _]} ->
+                {ok, #{committed_expires_at => maps:get(<<"committed_expiry">>, Row)}};
+            {ok, []} ->
+                {error, not_renewable};
+            {error, Reason} ->
+                {error, Reason}
+        end
+    end).
+
+iso8601_utc(UnixSeconds) ->
+    B = calendar:system_time_to_rfc3339(UnixSeconds, [{unit, second}, {offset, "Z"}]),
+    unicode:characters_to_binary(B).
 
 %% Workspace FOR UPDATE conflicts with hold INSERT's FK KEY SHARE lock.
 %% Claim is committed before network deletion; confirm can never revive this tombstone.

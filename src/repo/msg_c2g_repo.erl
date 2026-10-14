@@ -38,7 +38,7 @@ tablename() ->
 %% 与 msg_c2c 主表对齐，防止 msg_store_worker 写入成功后、标记 processed_at
 %% 前崩溃，重启重新处理 staging 行导致主表重复入库。
 %% 依赖唯一索引 uk_c2g_msgid_createdat (msg_id, created_at)（见迁移 00000016）。
--spec insert_msg_idempotent(term(), binary(), map()) -> {ok, term()} | {error, term()}.
+-spec insert_msg_idempotent(term(), binary(), map()) -> ok.
 insert_msg_idempotent(Conn, TbMsg, MsgData) ->
     {Sql0, Params} = elib_pg_sql:insert(TbMsg, MsgData),
     Sql = iolist_to_binary([
@@ -266,21 +266,13 @@ write_msg_impl(
             end,
         GenId = elib_tsid:generate(msg_c2g),
         MsgData3 = MsgDataR#{id => GenId},
-        InsertResult =
+        ok =
             case ReplyMeta of
                 undefined ->
                     insert_msg_idempotent(Conn, TbMsg, MsgData3);
                 _ ->
                     insert_msg_with_reply_idempotent(Conn, TbMsg, MsgData3)
             end,
-        case InsertResult of
-            ok ->
-                ok;
-            {error, InsertReason} ->
-                ?ERROR_LOG({msg_c2g_insert_failed, MsgId, InsertReason}),
-                error({msg_c2g_insert_failed, InsertReason})
-        end,
-
         %% ---------- 批量插入时间线表 ----------
         Vals = [[MsgId, ToId, Gid, CreatedAt, ConvSeq] || ToId <- ToUids],
         {SqlTimeline0, ParamsTimeline} =

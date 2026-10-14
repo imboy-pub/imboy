@@ -1,12 +1,14 @@
 %%% @doc imboy_cache_sync V2 协议测试（W3-01..W3-10 + legacy 兼容）
 %%%
-%%% 采用真实 sync 进程（TEST_WITH_APP 后 app 常驻，imboy_cache_sync 无条件启动）
+%%% 每个用例在独立 VM 使用真实缓存组件，不启动完整 App。
 %%% 定向注入 V2 事件 / legacy 消息，验证版本比较、幂等、乱序收敛、墓碑、
 %%% TTL 剩余、自环过滤、白名单 fail-closed 与恢复状态机。
 %%% 隔离测试 namespace（cache_v2_test_rep）不进入生产默认配置。
 -module(imboy_cache_sync_tests).
 -include_lib("eunit/include/eunit.hrl").
--include("eunit_setup.hrl").
+-define(TEST_WITH_CACHE_SYNC(TestFun),
+    ?_test(pure_mock_fixture:run(fun() -> with_sync_components(TestFun) end))
+).
 -include("cache.hrl").
 -include("chat.hrl").
 -include("imboy_cache_sync_state.hrl").
@@ -100,7 +102,7 @@ future_ms(Sec) ->
 %% ===================================================================
 
 v2_set_applies_newer_revision_test_() ->
-    ?TEST_WITH_APP(fun() ->
+    ?TEST_WITH_CACHE_SYNC(fun() ->
         ready = wait_ready(100),
         setup_replicate_env(),
         try
@@ -121,7 +123,7 @@ v2_set_applies_newer_revision_test_() ->
     end).
 
 v2_equal_revision_is_idempotent_test_() ->
-    ?TEST_WITH_APP(fun() ->
+    ?TEST_WITH_CACHE_SYNC(fun() ->
         ready = wait_ready(100),
         setup_replicate_env(),
         try
@@ -156,7 +158,7 @@ v2_equal_revision_is_idempotent_test_() ->
     end).
 
 v2_out_of_order_events_converge_test_() ->
-    ?TEST_WITH_APP(fun() ->
+    ?TEST_WITH_CACHE_SYNC(fun() ->
         with_recovery_fixture(fun() ->
             ready = wait_ready(100),
             setup_replicate_env(),
@@ -179,7 +181,7 @@ v2_out_of_order_events_converge_test_() ->
     end).
 
 v2_delete_tombstone_blocks_resurrection_test_() ->
-    ?TEST_WITH_APP(fun() ->
+    ?TEST_WITH_CACHE_SYNC(fun() ->
         ready = wait_ready(100),
         setup_replicate_env(),
         try
@@ -206,7 +208,7 @@ v2_delete_tombstone_blocks_resurrection_test_() ->
 %% ===================================================================
 
 v2_set_expired_event_is_rejected_test_() ->
-    ?TEST_WITH_APP(fun() ->
+    ?TEST_WITH_CACHE_SYNC(fun() ->
         setup_replicate_env(),
         try
             Key = {cache_v2_test_rep, expired1},
@@ -221,7 +223,7 @@ v2_set_expired_event_is_rejected_test_() ->
     end).
 
 v2_set_near_expiry_applies_shrunk_ttl_test_() ->
-    ?TEST_WITH_APP(fun() ->
+    ?TEST_WITH_CACHE_SYNC(fun() ->
         ready = wait_ready(100),
         setup_replicate_env(),
         try
@@ -246,7 +248,7 @@ v2_set_near_expiry_applies_shrunk_ttl_test_() ->
 %% ===================================================================
 
 v2_self_emitted_event_is_not_reapplied_test_() ->
-    ?TEST_WITH_APP(fun() ->
+    ?TEST_WITH_CACHE_SYNC(fun() ->
         ready = wait_ready(100),
         setup_replicate_env(),
         try
@@ -282,7 +284,7 @@ v2_self_emitted_event_is_not_reapplied_test_() ->
     end).
 
 v2_unauthorized_key_is_rejected_receiver_side_test_() ->
-    ?TEST_WITH_APP(fun() ->
+    ?TEST_WITH_CACHE_SYNC(fun() ->
         ready = wait_ready(100),
         try
             %% 无白名单：接收端独立校验拒绝（发送/接收两端独立校验，19.5）
@@ -321,7 +323,7 @@ v2_unauthorized_key_is_rejected_receiver_side_test_() ->
     end).
 
 v2_malformed_events_are_rejected_test_() ->
-    ?TEST_WITH_APP(fun() ->
+    ?TEST_WITH_CACHE_SYNC(fun() ->
         try
             %% 缺字段/类型错误 → 结构化拒绝（计数，不崩溃）
             ok = send_v2(#{protocol => 2, operation => set, key => <<"k">>}),
@@ -350,7 +352,7 @@ v2_malformed_events_are_rejected_test_() ->
 %% ===================================================================
 
 v2_seq_gap_is_detected_test_() ->
-    ?TEST_WITH_APP(fun() ->
+    ?TEST_WITH_CACHE_SYNC(fun() ->
         with_recovery_fixture(fun() ->
             ready = wait_ready(100),
             setup_replicate_env(),
@@ -394,7 +396,7 @@ with_recovery_fixture(Fun) ->
 %% ===================================================================
 
 v2_invalidate_event_advances_remote_generation_test_() ->
-    ?TEST_WITH_APP(fun() ->
+    ?TEST_WITH_CACHE_SYNC(fun() ->
         Old = application:get_env(imboy, cache_fenced_namespaces, undefined),
         application:set_env(imboy, cache_fenced_namespaces, [cache_v2_test]),
         try
@@ -413,7 +415,7 @@ v2_invalidate_event_advances_remote_generation_test_() ->
 
 %% 19.8：V2 失效发给全部成员，legacy 兼容帧只发旧节点且不回流本节点。
 v2_invalidate_targets_legacy_peers_test_() ->
-    ?TEST_WITH_APP(fun() ->
+    ?TEST_WITH_CACHE_SYNC(fun() ->
         ready = wait_ready(100),
         Old = application:get_env(imboy, cache_sync_protocol, undefined),
         application:set_env(imboy, cache_sync_protocol, v2),
@@ -503,7 +505,7 @@ receive_invalidation_peer(Pid) ->
 %% ===================================================================
 
 legacy_messages_still_work_test_() ->
-    ?TEST_WITH_APP(fun() ->
+    ?TEST_WITH_CACHE_SYNC(fun() ->
         try
             Key = {cache_v2_legacy_probe, legacy_set_1},
             %% legacy {set,...}（含本节点回流语义）正常写
@@ -521,7 +523,7 @@ legacy_messages_still_work_test_() ->
     end).
 
 legacy_flush_of_fenced_key_advances_generation_test_() ->
-    ?TEST_WITH_APP(fun() ->
+    ?TEST_WITH_CACHE_SYNC(fun() ->
         Old = application:get_env(imboy, cache_fenced_namespaces, undefined),
         application:set_env(imboy, cache_fenced_namespaces, [cache_v2_test]),
         try
@@ -545,7 +547,7 @@ legacy_flush_of_fenced_key_advances_generation_test_() ->
 %% ===================================================================
 
 single_node_startup_reaches_ready_test_() ->
-    ?TEST_WITH_APP(fun() ->
+    ?TEST_WITH_CACHE_SYNC(fun() ->
         %% app 常驻 sync 已完成 discover：单节点（无其他 scope 成员）→ ready
         ready = wait_ready(50),
         ?assertEqual(ready, imboy_cache_sync:status()),
@@ -559,7 +561,7 @@ single_node_startup_reaches_ready_test_() ->
 %% ===================================================================
 
 bounded_sweep_removes_expired_meta_and_rindex_test_() ->
-    ?TEST_WITH_APP(fun() ->
+    ?TEST_WITH_CACHE_SYNC(fun() ->
         %% 回归保护：旧实现的 ets:match('$1') 整行绑定与 [K, V] 列表解构
         %% 失配，sweep 恒空转；且 rev 淘汰时 rindex 行残留无界增长。
         NowMs = erlang:system_time(millisecond),
@@ -597,7 +599,7 @@ bounded_sweep_removes_expired_meta_and_rindex_test_() ->
     end).
 
 queue_depth_alive_returns_real_length_test_() ->
-    ?TEST_WITH_APP(fun() ->
+    ?TEST_WITH_CACHE_SYNC(fun() ->
         %% sync 存活时 queue_depth 是真实队列长度（非负）；overloaded 为假
         D = imboy_cache_sync:queue_depth(),
         ?assert(is_integer(D) andalso D >= 0),
@@ -609,7 +611,7 @@ queue_depth_alive_returns_real_length_test_() ->
 %% ===================================================================
 
 c02_hash_mismatch_event_is_rejected_and_marks_divergent_test_() ->
-    ?TEST_WITH_APP(fun() ->
+    ?TEST_WITH_CACHE_SYNC(fun() ->
         ready = wait_ready(50),
         setup_replicate_env(),
         try
@@ -644,7 +646,7 @@ c02_hash_mismatch_event_is_rejected_and_marks_divergent_test_() ->
     end).
 
 c02_missing_protocol_field_is_rejected_test_() ->
-    ?TEST_WITH_APP(fun() ->
+    ?TEST_WITH_CACHE_SYNC(fun() ->
         ready = wait_ready(50),
         setup_replicate_env(),
         try
@@ -694,7 +696,7 @@ c02_missing_protocol_field_is_rejected_test_() ->
     end).
 
 c02_stale_epoch_set_is_rejected_invalidate_passes_test_() ->
-    ?TEST_WITH_APP(fun() ->
+    ?TEST_WITH_CACHE_SYNC(fun() ->
         ready = wait_ready(50),
         setup_replicate_env(),
         OldF = application:get_env(imboy, cache_fenced_namespaces, undefined),
@@ -728,7 +730,7 @@ c02_stale_epoch_set_is_rejected_invalidate_passes_test_() ->
 %% 新化身首现接受并注册（防复活由 revision/epoch 承担）；
 %% 宽限集合内旧化身放行；全新化身事件照常应用。
 c02_incarnation_registration_and_grace_test_() ->
-    ?TEST_WITH_APP(fun() ->
+    ?TEST_WITH_CACHE_SYNC(fun() ->
         ready = wait_ready(50),
         setup_replicate_env(),
         try
@@ -768,7 +770,7 @@ c02_incarnation_registration_and_grace_test_() ->
     end).
 
 c02_incarnation_change_triggers_fenced_compensation_test_() ->
-    ?TEST_WITH_APP(fun() ->
+    ?TEST_WITH_CACHE_SYNC(fun() ->
         ready = wait_ready(50),
         setup_replicate_env(),
         OldF = application:get_env(imboy, cache_fenced_namespaces, undefined),
@@ -814,7 +816,7 @@ cleanup_meta_rows() ->
     ok.
 
 c03_nmax_full_rejects_new_replicate_test_() ->
-    ?TEST_WITH_APP(fun() ->
+    ?TEST_WITH_CACHE_SYNC(fun() ->
         ready = wait_ready(50),
         setup_replicate_env(),
         OldCfg = application:get_env(imboy, cache_replication, #{}),
@@ -840,7 +842,7 @@ c03_nmax_full_rejects_new_replicate_test_() ->
     end).
 
 c03_tmax_full_triggers_controlled_cold_recovery_test_() ->
-    ?TEST_WITH_APP(fun() ->
+    ?TEST_WITH_CACHE_SYNC(fun() ->
         ready = wait_ready(50),
         setup_replicate_env(),
         OldCfg = application:get_env(imboy, cache_replication, #{}),
@@ -887,7 +889,7 @@ c03_tmax_full_triggers_controlled_cold_recovery_test_() ->
     end).
 
 c03_budget_digest_is_stable_and_config_sensitive_test_() ->
-    ?TEST_WITH_APP(fun() ->
+    ?TEST_WITH_CACHE_SYNC(fun() ->
         D1 = imboy_cache_policy:budget_digest(),
         ?assert(is_binary(D1) andalso byte_size(D1) =:= 16),
         %% 同配置摘要稳定
@@ -1044,7 +1046,7 @@ c04_buffer_overflow_abort_test() ->
 %% ===================================================================
 
 c05_seq_gap_compensates_fenced_generation_test_() ->
-    ?TEST_WITH_APP(fun() ->
+    ?TEST_WITH_CACHE_SYNC(fun() ->
         with_recovery_fixture(fun() ->
             ready = wait_ready(50),
             OldF = application:get_env(imboy, cache_fenced_namespaces, undefined),
@@ -1077,6 +1079,47 @@ c05_seq_gap_compensates_fenced_generation_test_() ->
 %% ===================================================================
 %% Helpers
 %% ===================================================================
+
+with_sync_components(Test) ->
+    {ok, _} = application:ensure_all_started(crypto),
+    {ok, _} = application:ensure_all_started(syn),
+    ok = syn:add_node_to_scopes([imboy_cache]),
+    Saved = [
+        {K, application:get_env(imboy, K)}
+     || K <- [
+            cluster_nodes,
+            dsync_enabled,
+            cache_fenced_namespaces,
+            cache_sync_protocol,
+            cache_replication,
+            cache_registry_overrides
+        ]
+    ],
+    Components = cache_fixture_helper:setup(Saved, fun() ->
+        application:set_env(imboy, cluster_nodes, []),
+        application:set_env(imboy, dsync_enabled, false),
+        D = cache_fixture_helper:acquire(imboy_cache, fun() ->
+            depcache:start_link(imboy_cache, #{memory_max => 64})
+        end),
+        M = cache_fixture_helper:acquire(elib_metric, fun elib_metric:start_link/0),
+        S = cache_fixture_helper:acquire(imboy_cache_sync, fun imboy_cache_sync:start_link/0),
+        ready = wait_ready(50),
+        {D, M, S}
+    end),
+    try
+        Test()
+    after
+        {D0, M0, S0} = Components,
+        try
+            cache_fixture_helper:cleanup([
+                fun() -> cache_fixture_helper:release(S0) end,
+                fun() -> cache_fixture_helper:release(M0) end,
+                fun() -> cache_fixture_helper:release(D0) end
+            ])
+        after
+            cache_fixture_helper:restore_env(Saved)
+        end
+    end.
 
 entries_for(Key) ->
     [
@@ -1130,6 +1173,9 @@ accept_test_source_cut(Peer, Round) ->
     imboy_cache_sync_recover:accept_source_cut(Frame, Round1).
 
 with_snapshot_authorization(Test) ->
+    pure_mock_fixture:run(fun() -> snapshot_authorization_checks(Test) end).
+
+snapshot_authorization_checks(Test) ->
     Names = [cache_replication, cache_registry_overrides],
     Previous = [{N, application:get_env(imboy, N)} || N <- Names],
     Cfg = application:get_env(imboy, cache_replication, #{}),

@@ -711,8 +711,13 @@ become_ready_state(State) ->
     %% 恢复期间新启动的查询也必须跨完成栅栏；不能只依赖恢复开始时的失效。
     ok = imboy_cache_sync:bump_all_fenced(),
     case imboy_cache_sync_proto:commit_snapshot_floors(State#state.snapshot_round) of
-        ok -> publish_ready_state(State);
-        {error, Reason} -> abort_round(Reason, State)
+        ok ->
+            %% floor 只覆盖本轮来源；已登记但无 floor 的来源在此补零下限行，
+            %% 否则 ready 后 send_snapshot 的 census 缺项整份拒绝，恢复方无法闭合。
+            ok = imboy_cache_sync_proto:rebase_sequence_coverage(),
+            publish_ready_state(State);
+        {error, Reason} ->
+            abort_round(Reason, State)
     end.
 publish_ready_state(State) ->
     State1 = arm_reconcile(cancel_recovery_timer(State)),

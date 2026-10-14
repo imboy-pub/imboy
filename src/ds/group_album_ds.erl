@@ -214,11 +214,11 @@ do_upload_photo(Gid, UploaderId, AlbumId, PhotoBinary, PhotoName, PhotoSize, Mim
     end.
 
 %% @doc 批量上传图片
-%% @param Photos 图片列表 [{AlbumId, PhotoBinary, PhotoName}]
+%% @param Photos 图片列表 [{Gid, AlbumId, PhotoBinary, PhotoName}]
 %% @param UploaderId 上传者ID
 %% @return {ok, Results} | {error, Reason}
--spec batch_upload_photos(list({integer(), integer(), binary(), binary(), binary()}), integer()) ->
-    {ok, list(map())} | {error, term()}.
+-spec batch_upload_photos(list({integer(), binary(), binary(), binary()}), integer()) ->
+    {ok, list({ok, map()} | {error, term()})} | {error, term()}.
 batch_upload_photos(Photos, UploaderId) ->
     % 逐个上传图片
     Results = lists:map(
@@ -295,7 +295,7 @@ delete_photo(PhotoId, CurrentUid) ->
 %% @doc 查询图片所属的群组ID，供上层做群成员校验
 %% @param PhotoId 图片ID
 %% @return {ok, GroupId} | {error, not_found}
--spec find_photo_group_id(binary()) -> {ok, integer()} | {error, not_found}.
+-spec find_photo_group_id(integer()) -> {ok, integer()} | {error, not_found}.
 find_photo_group_id(PhotoId) ->
     case group_album_repo:find_photo_by_id(PhotoId) of
         #{<<"group_id">> := Gid} -> {ok, Gid};
@@ -306,7 +306,7 @@ find_photo_group_id(PhotoId) ->
 %% @param PhotoId 图片ID
 %% @param UserId 用户ID
 %% @return ok | {error, Reason}
--spec like_photo(binary(), integer()) -> ok | {error, term()}.
+-spec like_photo(integer(), integer()) -> ok | {error, term()}.
 like_photo(PhotoId, UserId) ->
     % 检查是否已点赞
     case group_album_repo:is_liked(PhotoId, UserId) of
@@ -328,7 +328,7 @@ like_photo(PhotoId, UserId) ->
 %% @param PhotoId 图片ID
 %% @param UserId 用户ID
 %% @return ok | {error, Reason}
--spec unlike_photo(binary(), integer()) -> ok | {error, term()}.
+-spec unlike_photo(integer(), integer()) -> ok | {error, term()}.
 unlike_photo(PhotoId, UserId) ->
     %% T7 归档写守卫：{group_album_photo, PhotoId}
     case
@@ -345,7 +345,7 @@ unlike_photo(PhotoId, UserId) ->
 %% @param UserId 用户ID
 %% @param Content 评论内容
 %% @return ok | {error, Reason}
--spec add_comment(binary(), integer(), binary()) -> ok | {error, term()}.
+-spec add_comment(integer(), integer(), binary()) -> ok | {error, term()}.
 add_comment(PhotoId, UserId, Content) ->
     % 验证评论内容
     case validate_comment_content(Content) of
@@ -440,8 +440,7 @@ get_photo_detail(PhotoId, CurrentUid) ->
                     {error, <<"非群组成员"/utf8>>};
                 true ->
                     % 查询是否已点赞
-                    PhotoIdBin = maps:get(<<"photo_id">>, Photo, <<>>),
-                    IsLiked = group_album_repo:is_liked(PhotoIdBin, CurrentUid),
+                    IsLiked = group_album_repo:is_liked(PhotoId, CurrentUid),
                     Photo2 = Photo#{<<"is_liked">> => IsLiked},
 
                     {ok, authorized_photo_urls(Photo2)}
@@ -565,7 +564,7 @@ update_album(UpdateData) ->
     end).
 
 %% G3: group_album_handler 不应直调 group_album_repo
--spec list_comments(binary(), integer()) -> {ok, list(map())} | {error, term()}.
+-spec list_comments(integer(), integer()) -> {ok, list(map())} | {error, term()}.
 list_comments(PhotoId, Limit) -> group_album_repo:list_comments(PhotoId, Limit).
 
 %% G3: adm_group_handler 不应直调 group_album_repo

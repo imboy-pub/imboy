@@ -708,6 +708,8 @@ delete_event_preserves_absolute_expiry_and_rejects_invalid_expiry_checks() ->
                 [{_, {{1, Peer}, {Boot, 1}, Expiry, deleted, _}}],
                 ets:lookup(?META_TABLE, {rev, Key})
             ),
+            %% 冻结合同：相同版本内容核对、同版本不续期。同 revision 携带不同
+            %% 绝对期限属于内容冲突，拒绝且首次绝对期限不被覆盖。
             Tombstone = ets:lookup(?META_TABLE, {rev, Key}),
             ?assertEqual({ok, S1}, imboy_cache_sync_apply:apply_v2(E, S1)),
             ?assertEqual(
@@ -719,6 +721,11 @@ delete_event_preserves_absolute_expiry_and_rejects_invalid_expiry_checks() ->
             ?assertMatch(
                 [{_, {{1, Peer}, {Boot, 1}, Expiry, deleted, _}}],
                 ets:lookup(?META_TABLE, {rev, Key})
+            ),
+            %% 字节一致的重放保持幂等。
+            ?assertEqual(
+                {ok, S1},
+                imboy_cache_sync_apply:apply_v2(E, S1)
             ),
             [
                 ?assertEqual(
@@ -872,20 +879,22 @@ new_epoch_event_cancels_selected_authority_before_report_checks() ->
         try
             ?assertNotEqual(maps:get(round, R1), maps:get(round, Next#state.snapshot_round)),
             #{counters := Counters} = elib_metric:get_all_metrics(),
-            ?assertEqual(2, maps:get(snapshot_abort_total, Counters)),
+            ?assertEqual(1, maps:get(snapshot_abort_total, Counters)),
             lists:foreach(
-                fun(Reason) ->
+                fun({Reason, Expected}) ->
                     ?assertEqual(
-                        1,
+                        Expected,
                         maps:get(
-                            {cache_sync_snapshot_abort_reason_total, #{reason => Reason}}, Counters
+                            {cache_sync_snapshot_abort_reason_total, #{reason => Reason}},
+                            Counters,
+                            0
                         )
                     )
                 end,
-                [authority_epoch_changed, snapshot_invalidated]
+                [{authority_epoch_changed, 1}, {snapshot_invalidated, 0}]
             ),
             ?assertEqual(
-                maps:get(rounds_used, R1) + maps:get(snapshot_abort_total, Counters),
+                maps:get(rounds_used, R1) + 1,
                 maps:get(rounds_used, Next#state.snapshot_round)
             ),
             ?assertEqual(recovering, Next#state.status),
@@ -915,11 +924,16 @@ with_legacy_control_metadata(Fun) ->
     end.
 
 with_control_metadata(Fun) ->
+    %% 真实来源身份：source_identity_current 要求来源 pid 在 syn 成员视图内。
+    {ok, _} = application:ensure_all_started(syn),
+    ok = syn:add_node_to_scopes([imboy_cache]),
+    ok = syn:join(imboy_cache, dsync_handler, self(), #{}),
     ets:new(?META_TABLE, [named_table, public, set]),
     ets:insert(?META_TABLE, [{status, ready}, {sync_epoch, 0}, {sentinel, preserved}]),
     try
         Fun()
     after
+        _ = syn:leave(imboy_cache, dsync_handler, self()),
         ets:delete(?META_TABLE)
     end.
 

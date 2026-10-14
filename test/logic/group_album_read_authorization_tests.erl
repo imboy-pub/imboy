@@ -26,7 +26,10 @@ setup() ->
         fun(_, _, _, _) -> {ok, #{list => [photo()], total => 1}} end
     ),
     meck:expect(group_album_repo, find_photo_by_id, fun(_) -> photo() end),
-    meck:expect(group_album_repo, is_liked, fun(_, _) -> false end),
+    meck:expect(group_album_repo, is_liked, fun(Id, _) ->
+        ?assertEqual(1, Id),
+        false
+    end),
     meck:expect(group_ds, is_member, fun(Uid, 20) -> Uid =:= 100 end),
     meck:expect(elib_oss, object_key_from_url, fun(_) -> <<"file_1_1/a.png">> end),
     meck:expect(

@@ -78,6 +78,7 @@ DEPS += opentelemetry_api opentelemetry opentelemetry_exporter grpcbox tls_certi
 DEPS += simple_captcha erlydtl
 # Payment（同工作区本地纯 Erlang 第三方支付库）
 DEPS += erlang_pay
+DEPS += hird_runtime
 
 # 开发期热重载：sync 会扫描源码目录自动重编译并热加载改动的模块。
 # DEPS 会被 erlang.mk 写进 ebin/imboy.app 的 applications，随 release 发布
@@ -187,6 +188,15 @@ beam-presence-guard:
 
 include erlang.mk
 
+autopatch-hird_runtime::
+	$(verbose) mkdir -p $(DEPS_DIR)/hird_runtime/src
+	$(verbose) for source in $(DEPS_DIR)/hird_runtime/runtime/*.erl; do \
+		ln -sf "../runtime/$$(basename "$$source")" "$(DEPS_DIR)/hird_runtime/src/$$(basename "$$source")"; \
+	done
+	$(verbose) printf '%s\n' 'PROJECT = hird_runtime' \
+		'PROJECT_VERSION = $(word 3,$(dep_hird_runtime))' 'ERLC_OPTS = +debug_info' \
+		'include $(CURDIR)/erlang.mk' > $(DEPS_DIR)/hird_runtime/Makefile
+
 # 本仓源码位于 src/<子目录>/*.erl（erlang.mk 递归 find），erlang.mk 默认的
 # ERLC_EXCLUDE_PATHS 只生成平铺 src/<mod>.erl，filter-out 永不命中——按本仓
 # 实际布局覆写为递归解析（BUILD-00R）。递归定义：ERLC_EXCLUDE 由 .mk 注入。
@@ -274,7 +284,7 @@ APP_VERSION = $(shell cat $(RELX_OUTPUT_DIR)/$(RELX_REL_NAME)/version)
 
 # Dialyzer — EUnit test beams land in ebin/ after `make eunit`; scan only non-test beams.
 DIALYZER_EBIN_BEAMS = $(filter-out %_tests.beam, $(wildcard ebin/*.beam))
-DIALYZER_DIRS = $(DIALYZER_EBIN_BEAMS) deps
+DIALYZER_DIRS = $(DIALYZER_EBIN_BEAMS) $(wildcard $(DEPS_DIR)/hird_runtime/ebin/*.beam) deps
 DIALYZER_OPTS = -Wunmatched_returns --plt $(DIALYZER_PLT) -I $(CURDIR)/include $(DIALYZER_DIRS)
 DIALYZER_WARNINGS ?= 50
 

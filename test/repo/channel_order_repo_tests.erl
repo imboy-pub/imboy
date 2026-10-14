@@ -17,6 +17,43 @@
 %% 准备工作测试
 %% ===================================================================
 
+find_by_order_no_preserves_database_error_test_() ->
+    ?WITH_MECKS(
+        [{elib_pg, [{'query', 2, fun(_, _) -> {error, connection_closed} end}]}],
+        fun() ->
+            ?assertEqual(
+                {error, connection_closed},
+                channel_order_repo:find_by_order_no(<<"CH-test">>)
+            )
+        end
+    ).
+
+has_purchased_preserves_database_error_test_() ->
+    [
+        ?WITH_MECKS(
+            [{elib_pg, [{query, 2, fun(_, _) -> {error, Reason} end}]}],
+            fun() ->
+                ?assertEqual({error, Reason}, channel_order_repo:has_purchased(11, 1001)),
+                ?assertEqual({error, Reason}, channel_order_ds:has_purchased(11, 1001))
+            end
+        )
+     || Reason <- [connection_closed, {database_error, #{code => <<"08006">>}}]
+    ].
+
+has_purchased_count_contract_test_() ->
+    [
+        ?WITH_MECKS(
+            [{elib_pg, [{query, 2, fun(_, _) -> Reply end}]}],
+            fun() -> ?assertEqual(Expected, channel_order_repo:has_purchased(11, 1001)) end
+        )
+     || {Reply, Expected} <- [
+            {{ok, [#{<<"cnt">> => 0}]}, false},
+            {{ok, [#{<<"cnt">> => 1}]}, true},
+            {{ok, []}, {error, invalid_purchase_count}},
+            {{ok, [#{<<"cnt">> => <<"bad">>}]}, {error, invalid_purchase_count}}
+        ]
+    ].
+
 setup_test_() ->
     ?TEST_SIMPLE(fun() ->
         case application:get_env(imboy, env) of

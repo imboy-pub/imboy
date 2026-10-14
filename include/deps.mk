@@ -234,3 +234,5 @@ dep_acceptor_pool = hex 1.0.1
 dep_gproc = hex 1.3.0
 # tls_certificate_check 传递依赖
 dep_ssl_verify_fun = hex 1.1.7
+
+dep_hird_runtime = git https://github.com/no-materials/hird.git 2bb12f35a8209915849b5e103b44349c5c2a5595

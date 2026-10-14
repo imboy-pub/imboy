@@ -15,12 +15,14 @@
 -export([claim_expired_tx/3]).
 -export([add/4]).
 -export([register_v5/5, register_v5/6, status_lookup/1, register_content_pin/2]).
+-export([register_v5_tx/7, renew_capability/3, renew_capability_tx/4]).
 -export([remove/1]).
 -export([list_expired/1]).
 -export([delete_by_keys/1]).
 -export([get_by_key/1]).
 
 -include("log.hrl").
+-include_lib("epgsql/include/epgsql.hrl").
 
 %% V5 恢复合同：会话绝对 deadline=登记+2h；单次能力默认 3600s（02 §12）
 -define(V5_SESSION_DEADLINE_SECONDS, 7200).
@@ -138,7 +140,12 @@ delete_by_keys(Keys) ->
     undefined | binary(),
     map() | undefined
 ) ->
-    {ok, #{session_state => binary(), client_upload_id => binary() | undefined}}
+    {ok, #{
+        session_state => binary(),
+        client_upload_id => binary() | undefined,
+        deadline => integer(),
+        expires_at => integer()
+    }}
     | {error, term()}.
 register_v5(ObjectKey, Bucket, Scope, Uid, ClientUploadId, Registration) when
     is_map(Registration), map_size(Registration) > 0
@@ -193,9 +200,13 @@ register_v5(ObjectKey, Bucket, Scope, Uid, ClientUploadId, Registration) when
             Params = [A || {I, A} <- lists:zip(lists:seq(1, 12), Args), I =/= 5],
             case elib_pg:query(Sql, Params) of
                 {ok, [Row | _]} ->
+                    %% deadline/expires_at 为本次登记冻结并写入 DB 的绝对 unix 秒，
+                    %% 透传给签发方构造 capability/签名 Context，不得重新计时。
                     {ok, #{
                         session_state => maps:get(<<"out_session_state">>, Row),
-                        client_upload_id => maps:get(<<"out_client_upload_id">>, Row)
+                        client_upload_id => maps:get(<<"out_client_upload_id">>, Row),
+                        deadline => Deadline,
+                        expires_at => Expiry
                     }};
                 {ok, []} ->
                     {error, registration_not_returned};
@@ -207,13 +218,122 @@ register_v5(ObjectKey, Bucket, Scope, Uid, ClientUploadId, Registration) when
 register_v5(ObjectKey, Bucket, Scope, Uid, ClientUploadId) ->
     register_v5(ObjectKey, Bucket, Scope, Uid, ClientUploadId, undefined).
 
+%% @doc 事务内 V5 登记（企业内部入口的幂等事务回调使用，F19：稳定身份
+%% 只在事务内保存，签发一律由 handler COMMIT 分支完成）。
+%% Registration 为完整快照（必含 <<"subject">> 与 <<"declaration">>，
+%% 如 kind=application）；复用 fn_v5_register_pending 协议（uuid 查重/
+%% 快照等值/key 不复用/位置冻结）。
+-spec register_v5_tx(
+    any(), binary(), binary(), binary(), integer() | binary(), binary() | undefined, map()
+) ->
+    {ok, #{
+        session_state => binary(),
+        client_upload_id => binary(),
+        deadline => integer(),
+        expires_at => integer()
+    }}
+    | {error, term()}.
+register_v5_tx(Conn, ObjectKey, Bucket, Scope, UidOrPrincipal, ClientUploadId, Registration) when
+    is_map(Registration), map_size(Registration) > 0, ClientUploadId =/= undefined
+->
+    Now = erlang:system_time(second),
+    Deadline = Now + ?V5_SESSION_DEADLINE_SECONDS,
+    Expiry = Now + ?V5_PUT_EXPIRY_SECONDS,
+    Args = [
+        ObjectKey,
+        Bucket,
+        Scope,
+        principal_to_int(UidOrPrincipal),
+        ClientUploadId,
+        jsone:encode(Registration),
+        iso8601(Deadline),
+        iso8601(Expiry),
+        null,
+        null,
+        null,
+        null
+    ],
+    Sql =
+        <<
+            "SELECT out_object_key, out_session_state, out_client_upload_id"
+            " FROM fn_v5_register_pending($1,$2,$3,$4,$5::uuid,"
+            "$6::jsonb,$7::timestamptz,$8::timestamptz,NULL,NULL,NULL,NULL)"
+        >>,
+    Params = [A || {I, A} <- lists:zip(lists:seq(1, 12), Args), I =/= 5],
+    case elib_pg:query(Conn, Sql, Params) of
+        {ok, [Row | _]} ->
+            {ok, #{
+                session_state => maps:get(<<"out_session_state">>, Row),
+                client_upload_id => maps:get(<<"out_client_upload_id">>, Row),
+                deadline => Deadline,
+                expires_at => Expiry
+            }};
+        {ok, []} ->
+            {error, registration_not_returned};
+        {error, R} ->
+            {error, R}
+    end.
+
+principal_to_int(I) when is_integer(I) -> I;
+principal_to_int(B) when is_binary(B) ->
+    case
+        try
+            binary_to_integer(B)
+        catch
+            _:_ -> 0
+        end
+    of
+        N when is_integer(N) -> N;
+        _ -> 0
+    end.
+
+%% @doc renew：同 key 单调提交新能力到期（02 §143）。
+%% 条件 UPDATE（registered 且绝对 deadline 未过）与 intent/GC 以行锁线性化：
+%% intent 先提交则 0 行（终态），本函数先提交则 intent 读到更晚 expiry。
+%% NewExpirySec 由调用方以 min(now+TTL, deadline) 冻结传入；历史最晚值保留。
+-spec renew_capability(binary(), integer(), integer()) ->
+    {ok, #{committed_expires_at => integer(), deadline => integer()}} | {error, term()}.
+renew_capability(Key, Uid, NewExpirySec) ->
+    renew_result(elib_pg:query(renew_sql(), [Key, Uid, iso8601(NewExpirySec)])).
+
+%% 事务内版本（企业内部入口幂等事务回调使用）。
+-spec renew_capability_tx(any(), binary(), integer() | binary(), integer()) ->
+    {ok, #{committed_expires_at => integer(), deadline => integer()}} | {error, term()}.
+renew_capability_tx(Conn, Key, UidOrPrincipal, NewExpirySec) ->
+    renew_result(
+        elib_pg:query(
+            Conn, renew_sql(), [Key, principal_to_int(UidOrPrincipal), iso8601(NewExpirySec)]
+        )
+    ).
+
+renew_sql() ->
+    <<
+        "UPDATE attach_pending SET upload_expires_at = "
+        "GREATEST(COALESCE(upload_expires_at, to_timestamp($3)), to_timestamp($3)) "
+        "WHERE object_key = $1 AND creator_user_id = $2 "
+        "AND session_state = 'registered' "
+        "AND session_deadline IS NOT NULL AND session_deadline > now() "
+        "RETURNING extract(epoch from upload_expires_at)::bigint AS committed_expiry, "
+        "extract(epoch from session_deadline)::bigint AS deadline"
+    >>.
+
+renew_result({ok, [Row | _]}) ->
+    {ok, #{
+        committed_expires_at => maps:get(<<"committed_expiry">>, Row),
+        deadline => maps:get(<<"deadline">>, Row)
+    }};
+renew_result({ok, []}) ->
+    {error, not_renewable};
+renew_result({error, R}) ->
+    {error, R}.
+
 %% @doc status/renew 查找：client_upload_id 或 object_key。
 -spec status_lookup(binary()) -> {ok, map()} | {error, not_found | term()}.
 status_lookup(IdOrKey) ->
     Tb = tablename(),
     Sql = [
         <<"SELECT object_key, bucket, scope, creator_user_id, session_state,">>,
-        <<" client_upload_id, upload_expires_at, session_deadline">>,
+        <<" client_upload_id, upload_expires_at, session_deadline, upload_registration">>,
         <<" FROM ">>,
         Tb,
         <<" WHERE (client_upload_id::text = $1 OR object_key = $1) LIMIT 1">>
@@ -230,7 +350,7 @@ iso8601(UnixSeconds) ->
 
 %% @doc V5 内容 pin（02 §14）：upload_content 从 NULL 一次固定；
 %% 同 receipt 幂等；不同值 {error, content_mismatch}（网关 409）。
-%% 由迁移 178 的受限函数 fn_v5_pin_pending_content 在库内裁决。
+%% 由迁移 179 的受限函数 fn_v5_pin_pending_content 在库内裁决。
 -spec register_content_pin(binary(), map()) -> ok | {error, term()}.
 register_content_pin(ObjectKey, Receipt) ->
     case status_lookup(ObjectKey) of
@@ -239,11 +359,14 @@ register_content_pin(ObjectKey, Receipt) ->
                 <<"SELECT fn_v5_pin_pending_content($1, $2::jsonb)">>
             ],
             case elib_pg:query(Sql, [ObjectKey, jsone:encode(Receipt)]) of
-                {ok, _, _} -> ok;
+                {ok, [#{<<"fn_v5_pin_pending_content">> := true}]} -> ok;
+                {error, #error{code = <<"23510">>}} -> {error, content_mismatch};
+                {error, #error{code = <<"P0002">>}} -> {error, not_found};
+                {ok, _} -> {error, invalid_pin_result};
                 {error, R} -> {error, R}
             end;
-        {error, not_found} ->
-            {error, not_found}
+        {error, Reason} ->
+            {error, Reason}
     end.
 
 %% elib_pg:execute/2 的成功返回有 {ok, N} 与 {ok, N, Rows} 两种形态

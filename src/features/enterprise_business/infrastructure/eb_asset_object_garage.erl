@@ -11,9 +11,22 @@ put(Key, Bytes, Meta) when is_binary(Key), is_binary(Bytes), byte_size(Bytes) > 
                 Value when is_binary(Value), byte_size(Value) > 0 -> Value;
                 _ -> <<"application/octet-stream">>
             end,
-        case elib_oss:put_object(elib_oss:get_bucket(<<"private">>), Key, Bytes, Mime) of
-            ok -> ok;
-            {error, _} -> {error, storage_unavailable}
+        Bucket = elib_oss:get_bucket(<<"private">>),
+        %% V5.5（02 §15）：带冻结 signature_context 的调用走显式 Context 入口，
+        %% 签名时间由上层冻结传入、底层不重新计时；无 Context 的调用方
+        %% （非 V5）保留旧路径。
+        case maps:get(signature_context, Meta, undefined) of
+            Ctx when is_map(Ctx) ->
+                case elib_oss:put_object_ctx(Bucket, Key, Bytes, Mime, Ctx) of
+                    ok -> ok;
+                    {error, invalid_signature_context} -> {error, invalid_signature_context};
+                    {error, _} -> {error, storage_unavailable}
+                end;
+            _ ->
+                case elib_oss:put_object(Bucket, Key, Bytes, Mime) of
+                    ok -> ok;
+                    {error, _} -> {error, storage_unavailable}
+                end
         end
     end);
 put(_Key, _Bytes, _Meta) ->

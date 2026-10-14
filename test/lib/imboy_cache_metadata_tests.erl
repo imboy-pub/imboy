@@ -227,9 +227,15 @@ application_coverage_candidate_requires_every_current_identity_test() ->
         Peer = 'candidate_peer@synthetic',
         Boot = <<4:128>>,
         ?assertEqual({ok, []}, imboy_cache_sync_proto:application_coverage_candidate()),
-        registered = imboy_cache_sync_proto:register_incarnation(Peer, Boot),
+        %% 表手术直接登记化身（绕过真实登记函数的零下限初始化）构造缺项。
+        true = ets:insert(?META_TABLE, {{peer_incarnation, Peer}, Boot}),
         ?assertEqual(
             {error, incomplete_application_coverage},
+            imboy_cache_sync_proto:application_coverage_candidate()
+        ),
+        ets:insert(?META_TABLE, {{covered_seq, {Peer, Boot}}, {0, 0}}),
+        ?assertEqual(
+            {ok, [{Peer, Boot, 0, 0}]},
             imboy_cache_sync_proto:application_coverage_candidate()
         ),
         ok = imboy_cache_sync_proto:note_applied_sequence(Peer, Boot, 1),
@@ -248,7 +254,14 @@ application_coverage_candidate_requires_every_current_identity_test() ->
             imboy_cache_sync_proto:application_coverage_candidate()
         ),
         ets:insert(?META_TABLE, {{covered_seq, {Peer, Boot}}, {0, 1}}),
+        %% 真实登记函数维护不变量：换 Boot 删除旧下限并重建当前代零前缀行。
         changed = imboy_cache_sync_proto:register_incarnation(Peer, <<5:128>>),
+        ?assertEqual(
+            {ok, [{Peer, <<5:128>>, 0, 0}]},
+            imboy_cache_sync_proto:application_coverage_candidate()
+        ),
+        %% 表手术改登记化身但不建行：换 Boot 缺项仍整份拒绝。
+        true = ets:insert(?META_TABLE, {{peer_incarnation, Peer}, <<6:128>>}),
         ?assertEqual(
             {error, incomplete_application_coverage},
             imboy_cache_sync_proto:application_coverage_candidate()
@@ -298,9 +311,10 @@ coverage_prefix_cannot_stitch_different_epochs_test() ->
         ok = imboy_cache_sync_proto:note_applied_event(E, {ok, ignored}),
         ?assertEqual([{K, {1, 0}}], ets:lookup(?META_TABLE, K)),
         ok = imboy_cache_sync_apply:adopt_epoch(1),
-        ?assertEqual([], ets:lookup(?META_TABLE, K)),
+        %% 采纳新代重建登记来源的零前缀行（不继承旧代计数）。
+        ?assertEqual([{K, {1, 0}}], ets:lookup(?META_TABLE, K)),
         ok = imboy_cache_sync_proto:note_applied_event(E, {ok, ignored}),
-        ?assertEqual([], ets:lookup(?META_TABLE, K)),
+        ?assertEqual([{K, {1, 0}}], ets:lookup(?META_TABLE, K)),
         ok = imboy_cache_sync_proto:note_applied_event(E#{epoch => 1}, {ok, ignored}),
         ?assertEqual([{K, {1, 1}}], ets:lookup(?META_TABLE, K))
     end).
@@ -333,7 +347,11 @@ observed_sequence_is_not_contiguous_application_coverage_test() ->
         E = #{origin_node => Peer, origin_boot_id => Boot, origin_seq => 1, epoch => 0},
         ok = imboy_cache_sync_apply:detect_gap({Peer, Boot}, 1, ignored),
         ok = imboy_cache_sync_proto:note_applied_event(E, {reject, index_full, ignored}),
-        ?assertEqual([], ets:lookup(?META_TABLE, {covered_seq, {Peer, Boot}})),
+        %% index_full 拒绝不推进前缀；登记初始化的零下限行保持为零。
+        ?assertEqual(
+            [{{covered_seq, {Peer, Boot}}, {0, 0}}],
+            ets:lookup(?META_TABLE, {covered_seq, {Peer, Boot}})
+        ),
         ok = imboy_cache_sync_proto:note_applied_event(E, {ok, ignored}),
         gap = imboy_cache_sync_apply:detect_gap({Peer, Boot}, 3, ignored),
         ok = imboy_cache_sync_proto:note_applied_event(E#{origin_seq => 3}, {ok, ignored}),
@@ -646,7 +664,7 @@ cold_recovery_rejects_older_epoch_authority_test() ->
         Peer = 'cold_authority@synthetic',
         Epoch = 2,
         ets:insert(?META_TABLE, {sync_epoch, Epoch}),
-        R0 = imboy_cache_sync_snapshot:new_round(0, erlang:system_time(millisecond) + 60000),
+        R0 = imboy_cache_sync_snapshot:recovery_round(0, erlang:system_time(millisecond) + 60000),
         Excluded = 'excluded_epoch@synthetic',
         R1 = imboy_cache_sync_snapshot:expect_peer(
             imboy_cache_sync_snapshot:expect_peer(R0, Peer), Excluded
@@ -686,7 +704,8 @@ cold_recovery_rejects_older_epoch_authority_test() ->
             )
         ),
         ?assertEqual([], ets:lookup(?META_TABLE, {rev, {cache_v2_test_rep, old}})),
-        %% 合格新 epoch 来源的完整空快照仍可闭合；不能永久卡住状态机。
+        %% 合格新 epoch 来源可成为权威；但回合内已登记的 hash 不一致来源
+        %% 不可证明，按冻结合同 fail-closed：完整回合也不得产出 READY。
         Classified = imboy_cache_sync_recover:handle_version_report(
             Excluded,
             1,
@@ -712,11 +731,78 @@ cold_recovery_rejects_older_epoch_authority_test() ->
         {ok, DoneRound} = imboy_cache_source_cut_tests:done(
             Peer, Round, 1, 0, S2#state.snapshot_round
         ),
+        ?assertEqual(
+            {error, peer_content_unproven}, imboy_cache_policy:verify_snapshot_coverage(DoneRound)
+        ),
         S3 = imboy_cache_sync_recover:maybe_complete_round(S2#state{snapshot_round = DoneRound}),
-        ?assertEqual(ready, S3#state.status),
-        ?assertNot(S3#state.requires_authority),
-        ?assertEqual(Epoch, imboy_cache_sync_proto:epoch())
+        try
+            ?assertNotEqual(ready, S3#state.status),
+            ?assertEqual(recovering, S3#state.status),
+            ?assertEqual(1, maps:get(rounds_used, S3#state.snapshot_round))
+        after
+            cancel_recovery_timer(S3#state.recovery_timer)
+        end,
+        %% 新回合独立证明旧代来源；不改写前一回合冻结的 epoch99 义务。
+        Fresh = imboy_cache_sync_snapshot:recovery_round(
+            0, erlang:system_time(millisecond) + 60000
+        ),
+        Expected = imboy_cache_sync_snapshot:expect_peer(
+            imboy_cache_sync_snapshot:expect_peer(Fresh, Peer), Excluded
+        ),
+        Token = maps:get(round, Expected),
+        {[], OldCut, _, OldCensus} = ready_source_fixture:snapshot(
+            Excluded, <<5:128>>, Epoch - 1, 0, [], Token
+        ),
+        {cache_snapshot_cut, Excluded, Token, OldBoot, OldEpoch, OldSeq, Hash, Registry, _, _} =
+            OldCut,
+        OldReport = imboy_cache_sync_recover:handle_version_report(
+            Excluded,
+            1000,
+            OldEpoch,
+            Hash,
+            Registry,
+            OldBoot,
+            true,
+            self(),
+            {Excluded, OldBoot, OldEpoch, OldSeq, Token},
+            State#state{snapshot_round = Expected}
+        ),
+        imboy_cache_source_cut_tests:fixture_identity(Excluded, OldBoot, OldEpoch),
+        {ok, RecordedOld} = imboy_cache_sync_proto:record_origin_target(
+            {Excluded, OldBoot, OldEpoch, OldSeq, Token, OldCensus, self()},
+            OldReport#state.snapshot_round
+        ),
+        Positive = imboy_cache_sync_recover:handle_version_report(
+            Peer, 1000, Epoch, Hash, Registry, <<3:128>>, true, self(), OldReport#state{
+                snapshot_round = RecordedOld
+            }
+        ),
+        receive
+            {cache_snapshot_request, Pid, Token} when Pid =:= self() -> ok
+        after 0 -> ?assert(false)
+        end,
+        {[], Cut, Done, _} = ready_source_fixture:snapshot(Peer, <<3:128>>, Epoch, 0, [], Token),
+        {ok, Complete} = ready_source_fixture:finish(
+            Peer, {Cut, Done}, Positive#state.snapshot_round
+        ),
+        S5 = imboy_cache_sync_recover:maybe_complete_round(Positive#state{snapshot_round = Complete}),
+        try
+            ?assertEqual(ready, S5#state.status),
+            ?assertNot(S5#state.requires_authority),
+            ?assertEqual(Epoch, imboy_cache_sync_proto:epoch())
+        after
+            cancel_recovery_timer(S5#state.recovery_timer)
+        end
     end).
+
+cancel_recovery_timer(undefined) ->
+    ok;
+cancel_recovery_timer(Timer) ->
+    erlang:cancel_timer(Timer),
+    receive
+        {timeout, Timer, cache_recovery} -> ok
+    after 0 -> ok
+    end.
 
 assert_accounting() ->
     Rows = [
@@ -736,14 +822,22 @@ assert_accounting() ->
 set_budget(Config) -> application:set_env(imboy, cache_replication, Config).
 
 with_metadata(Fun) ->
+    pure_mock_fixture:run(fun() -> metadata_fixture_checks(Fun) end).
+
+metadata_fixture_checks(Fun) ->
     OldCfg = application:get_env(imboy, cache_replication),
     OldRegistry = application:get_env(imboy, cache_registry_overrides),
+    %% 真实来源身份：source_identity_current 要求来源 pid 在 syn 成员视图内。
+    {ok, _} = application:ensure_all_started(syn),
+    ok = syn:add_node_to_scopes([imboy_cache]),
+    ok = syn:join(imboy_cache, dsync_handler, self(), #{}),
     ets:new(?META_TABLE, [named_table, public, set]),
     ets:insert(?META_TABLE, {status, ready}),
     try
         Fun()
     after
         clear_fixture_snapshot_requests(),
+        _ = syn:leave(imboy_cache, dsync_handler, self()),
         ets:delete(?META_TABLE),
         case whereis(imboy_cache_sync) of
             P when P =:= self() -> unregister(imboy_cache_sync);

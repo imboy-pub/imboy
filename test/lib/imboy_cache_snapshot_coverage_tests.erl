@@ -4,6 +4,9 @@
 
 fresh_peer_prefix_zero_is_not_an_empty_content_certificate_test() ->
     fixture(fun(Source, _, _) ->
+        %% 冻结合同：候选要求每个登记来源有显式 covered_seq 行（缺项整份拒绝）；
+        %% 新化身合法零前缀以显式零行表达，不以缺项造零。
+        ets:insert(imboy_cache_meta, {{covered_seq, {Source, <<7:128>>}}, {0, 0}}),
         ?assertEqual(
             {ok, [{Source, <<7:128>>, 0, 0}]},
             imboy_cache_sync_proto:application_coverage_candidate()

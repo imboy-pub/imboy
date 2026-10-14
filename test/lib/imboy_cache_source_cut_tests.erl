@@ -236,28 +236,42 @@ done(Peer, Round, Watermark, Total, R) ->
     Epoch = maps:get(source_epoch, P, imboy_cache_sync_proto:epoch()),
     %% 合法合成来源 fixture，不能用于未知/换 Boot/缺口负例。
     fixture_identity(Peer, Boot, Epoch),
-    Seq =
+    {ok, Manifest} = imboy_cache_policy:final_snapshot_manifest(P),
+    %% CutSeq 取来源自身声明完整点：自身序列计数器（由真实 apply_v2/
+    %% note_applied_sequence 推进）与刚发送页集所证明前缀的较大者——真实发送端
+    %% 的计数器必然覆盖其发出的页前缀。origin_target 经产品入口以同一声明值独立
+    %% 冻结（绑定回合与身份），不从接收侧状态反推，也不清空保留义务。
+    Seq0 =
         case ets:lookup(?META, {seq, {Peer, Boot}}) of
             [{_, N}] -> N;
             [] -> 0
         end,
-    SourcePid = self(),
-    R0 = R#{
+    Seq = erlang:max(
+        Seq0, imboy_cache_policy:snapshot_manifest_own_seq(maps:values(Manifest), {Peer, Boot}, 0)
+    ),
+    {ok, RT} = imboy_cache_sync_proto:record_origin_target(
+        {Peer, Boot, Epoch, Seq, maps:get(round, R)}, R
+    ),
+    PeersT = maps:get(peers, RT),
+    PT = maps:get(Peer, PeersT),
+    %% 不清空 retained_obligations（由 recovery_round 的真实 census 冻结）；
+    %% cohort_epoch 为 fixture 声明的同代分类（单代来源，与 select_cohort 一致）。
+    R0 = RT#{
         cohort_epoch => Epoch,
-        retained_obligations := [],
-        peers := Peers#{
-            Peer := P#{
+        peers := PeersT#{
+            Peer := PT#{
                 boot => Boot,
                 source_epoch => Epoch,
-                source_pid => SourcePid,
-                origin_target => {Peer, Boot, Epoch, Seq}
+                source_pid => self()
             }
         }
     },
+    %% 证书证明来源声明已发送的内容，接收端按页集核验。
+    Certificate = imboy_cache_sync_coverage:manifest_certificate(Manifest),
     F =
         {cache_snapshot_cut, Peer, maps:get(round, R0), Boot, Epoch, Seq,
             imboy_cache_sync_proto:config_hash(), imboy_cache_sync_proto:registry_hash(), {ok, []},
-            {0, crypto:hash(sha256, term_to_binary([]))}},
+            Certificate},
     {ok, R1} = imboy_cache_sync_recover:accept_source_cut(F, R0),
     imboy_cache_sync_snapshot:handle_done(Peer, Round, Watermark, Total, R1).
 
@@ -460,6 +474,9 @@ old_unrequested_or_unrelated_cut_does_not_confirm_test() ->
     end).
 
 fixture(Fun) ->
+    pure_mock_fixture:run(fun() -> fixture_checks(Fun) end).
+
+fixture_checks(Fun) ->
     {ok, _} = application:ensure_all_started(syn),
     ok = syn:add_node_to_scopes([imboy_cache]),
     ok = syn:join(imboy_cache, dsync_handler, self(), #{}),
@@ -467,7 +484,9 @@ fixture(Fun) ->
     Peer = 'source_cut@synthetic',
     Boot = <<7:128>>,
     ets:insert(?META, [{sync_epoch, 0}, {{peer_incarnation, Peer}, Boot}]),
-    R0 = imboy_cache_sync_snapshot:new_round(0, erlang:system_time(millisecond) + 60000),
+    %% recovery_round 以真实 census 冻结保留义务（本 fixture 无 rev 行 → 空表），
+    %% 不能由 fixture 清空义务制造可闭合回合。
+    R0 = imboy_cache_sync_snapshot:recovery_round(0, erlang:system_time(millisecond) + 60000),
     Requested = imboy_cache_sync_snapshot:mark_requested(
         imboy_cache_sync_snapshot:authorize_peer(
             imboy_cache_sync_snapshot:expect_peer(R0, Peer), Peer
@@ -505,13 +524,20 @@ requested_peer(Round, Peer) ->
     Requested = imboy_cache_sync_snapshot:mark_requested(Authorized, Peer),
     Peers = maps:get(peers, Requested),
     P = maps:get(Peer, Peers),
-    Requested#{
-        retained_obligations := [],
-        cohort_epoch => imboy_cache_sync_proto:epoch(),
-        peers := Peers#{
-            Peer := P#{
+    Boot = maps:get(boot, P, <<7:128>>),
+    Epoch = maps:get(source_epoch, P, imboy_cache_sync_proto:epoch()),
+    %% 空来源的零目标同样经产品入口冻结；不动 retained_obligations/cohort_epoch。
+    {ok, Targeted} = imboy_cache_sync_proto:record_origin_target(
+        {Peer, Boot, Epoch, 0, maps:get(round, Requested)}, Requested
+    ),
+    PeersT = maps:get(peers, Targeted),
+    PT = maps:get(Peer, PeersT),
+    Targeted#{
+        peers := PeersT#{
+            Peer := PT#{
                 source_pid => whereis(imboy_cache_sync),
-                origin_target => {Peer, <<7:128>>, imboy_cache_sync_proto:epoch(), 0}
+                boot => Boot,
+                source_epoch => Epoch
             }
         }
     }.

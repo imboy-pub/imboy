@@ -2,6 +2,57 @@
 -include_lib("eunit/include/eunit.hrl").
 -include("eunit_setup.hrl").
 
+photo_primary_key_storage_test_() ->
+    [
+        ?_test(photo_primary_key_storage_case(Action))
+     || Action <- [like_photo, unlike_photo, is_liked, add_comment, list_comments]
+    ].
+
+photo_primary_key_storage_case(Action) ->
+    Modules = [elib_pg_sql, elib_pg, elib_tsid, elib_dt],
+    lists:foreach(fun(Module) -> meck:new(Module, [non_strict]) end, Modules),
+    try
+        meck:expect(elib_pg_sql, public_tablename, fun(Name) -> Name end),
+        meck:expect(elib_tsid, generate, fun(_) -> 99 end),
+        meck:expect(elib_dt, now, fun() -> 0 end),
+        meck:expect(elib_pg_sql, insert, fun(_, Data) ->
+            ?assertEqual(<<"42">>, maps:get(photo_id, Data)),
+            {<<"INSERT">>, []}
+        end),
+        meck:expect(elib_pg, execute_count, fun(Sql, Params) ->
+            case binary:match(Sql, <<"UPDATE">>) of
+                {0, _} ->
+                    ?assertEqual([42], Params);
+                nomatch ->
+                    case Params of
+                        [] -> ok;
+                        _ -> ?assertEqual([<<"42">>, 100], Params)
+                    end
+            end,
+            {ok, 1}
+        end),
+        meck:expect(elib_pg, one, fun(_, Params) ->
+            ?assertEqual([<<"42">>, 100], Params),
+            {ok, #{}}
+        end),
+        meck:expect(elib_pg, query, fun(_, Params) ->
+            ?assertEqual([<<"42">>, 20], Params),
+            {ok, []}
+        end),
+        case Action of
+            add_comment ->
+                ?assertEqual({ok, 99}, group_album_repo:add_comment(42, 100, <<"text">>));
+            list_comments ->
+                ?assertEqual({ok, []}, group_album_repo:list_comments(42, 20));
+            is_liked ->
+                ?assertEqual(true, group_album_repo:is_liked(42, 100));
+            _ ->
+                ?assertEqual({ok, 1}, apply(group_album_repo, Action, [42, 100]))
+        end
+    after
+        lists:foreach(fun meck:unload/1, Modules)
+    end.
+
 %%%===================================================================
 %%% @doc
 %%% group_album_repo 模块的 EUnit 测试
@@ -260,7 +311,7 @@ like_photo_test_() ->
             ]}
         ],
         fun() ->
-            PhotoId = <<"200">>,
+            PhotoId = 200,
             UserId = 1,
             Result = group_album_repo:like_photo(PhotoId, UserId),
             ?assertMatch({ok, _}, Result)
@@ -284,7 +335,7 @@ unlike_photo_test_() ->
             ]}
         ],
         fun() ->
-            PhotoId = <<"200">>,
+            PhotoId = 200,
             UserId = 1,
             Result = group_album_repo:unlike_photo(PhotoId, UserId),
             ?assertMatch({ok, _}, Result)
@@ -306,7 +357,7 @@ is_liked_true_test_() ->
             ]}
         ],
         fun() ->
-            PhotoId = <<"200">>,
+            PhotoId = 200,
             UserId = 1,
             Result = group_album_repo:is_liked(PhotoId, UserId),
             ?assertEqual(true, Result)
@@ -324,7 +375,7 @@ is_liked_false_test_() ->
             ]}
         ],
         fun() ->
-            PhotoId = <<"photo_not_exist">>,
+            PhotoId = 999,
             UserId = 1,
             Result = group_album_repo:is_liked(PhotoId, UserId),
             ?assertEqual(false, Result)
@@ -357,7 +408,7 @@ add_comment_test_() ->
             ]}
         ],
         fun() ->
-            PhotoId = <<"200">>,
+            PhotoId = 200,
             UserId = 1,
             Content = <<"这是一条测试评论"/utf8>>,
             Result = group_album_repo:add_comment(PhotoId, UserId, Content),
@@ -382,7 +433,7 @@ list_comments_test_() ->
             ]}
         ],
         fun() ->
-            PhotoId = <<"200">>,
+            PhotoId = 200,
             Result = group_album_repo:list_comments(PhotoId, 10),
             case Result of
                 {ok, List} when is_list(List) ->

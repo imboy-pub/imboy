@@ -9,7 +9,7 @@
 %%   * 一次性 marker 库（inttest_marker_db 配方，env 前缀 EPGZ05_INTTEST，
 %%     直连 imboy_pg18:4323），业务用例每条 BEGIN ... ROLLBACK 不留数据；
 %%     NEG-04 并发 CAS 用例例外（跨连接行锁需要已提交数据），自带
-%%     seed-commit-race-cleanup 全序，结束时清库复原。
+%%     seed-commit-race 全序，保留已提交事实，最后释放专用 marker 库。
 %%   * 覆盖合同 §6 负例矩阵 26 条（NEG-01..15 / NEG-H01..H07 /
 %%     NEG-X01..02 / STORAGE-01..02）+ 1 条实现在场哨兵（W1 哨兵翻转）。
 %%   * 认证链产物（A2）经 enterprise_internal_auth:authenticate_tx 真链获取；
@@ -24,11 +24,8 @@
 
 %% ---- 夹具（989 段独立 ID，与 A1 987 / A2 988 段互不冲突） ----
 
-%% INT-BE-06 候选门回归修复：audit append-only（fk RESTRICT + DELETE 触发器）
-%% 使固定段 + cleanup 模式失效（INT-BE-03 SSO 审计接线后，NEG-04 cleanup 删
-%% org 被审计行 RESTRICT 挡死 → 行残留 → 后续用例 unique 连锁）。改为
-%% **run 级唯一 base**（每进程随机一次，persistent_term memoize）+ seed 幂等
-%% + cleanup 对 org/user 残留容忍——跨 run/同 run 双向无冲突。
+%% 用户/组织采用 run 唯一 ID；每次 seed 的应用 key 独立，已提交身份与审计
+%% 不做逐行删除，随专用 marker 库释放清理。
 -define(OWNER_A, run_base() + 1).
 -define(OWNER_B, run_base() + 2).
 -define(ORG_A, run_base() + 101).
@@ -37,11 +34,11 @@
 -define(NOMAP_H, run_base() + 202).
 -define(FOREIGN, run_base() + 203).
 
--define(APP_KEY, <<"epgz05-oa">>).
--define(APP_KEY_B, <<"epgz05-oa-b">>).
--define(APP_KEY_BB, <<"epgz05-oa-bb">>).
--define(APP_KEY_EMPTY, <<"epgz05-oa-empty">>).
--define(APP_KEY_RO, <<"epgz05-oa-ro">>).
+-define(APP_KEY, fixture_app_key(<<"">>)).
+-define(APP_KEY_B, fixture_app_key(<<"-b">>)).
+-define(APP_KEY_BB, fixture_app_key(<<"-bb">>)).
+-define(APP_KEY_EMPTY, fixture_app_key(<<"-empty">>)).
+-define(APP_KEY_RO, fixture_app_key(<<"-ro">>)).
 -define(REDIRECT, <<"https://oa.customer.example.com/sso/cb">>).
 -define(NONCE, <<"nonce_0123456789abcdef">>).
 -define(SECRET_A, <<"epgz05_high_entropy_secret_A_0123456789">>).
@@ -100,7 +97,7 @@ exec(C, IoData, Params) ->
     end.
 
 seed_user(C, Uid) ->
-    %% 幂等：NEG-04 审计 RESTRICT 残留 org 时，后续用例 seed 跳过已存在行。
+    %% NEG-04 已提交的用户/组织仍在本专用库中；后续 seed 复用这些业务对象。
     exec(C, [
         <<"INSERT INTO \"user\" (id, password, account, reg_ip, reg_cosv) VALUES (">>,
         integer_to_binary(Uid),
@@ -140,6 +137,7 @@ seed_member(C, OrgId, Uid) ->
 %% app B（同 org，NEG-06）；空 allowlist app（NEG-H05）；只读 scope app
 %% （NEG-09）；过期 credential（NEG-10）；org B + app + credential（NEG-05）。
 seed_sso_fixture(C) ->
+    put({?MODULE, fixture_app_key}, binary:encode_hex(crypto:strong_rand_bytes(16), lowercase)),
     ok = seed_org(C, ?ORG_A, ?OWNER_A),
     ok = seed_member(C, ?ORG_A, ?ALICE),
     ok = seed_member(C, ?ORG_A, ?NOMAP_H),
@@ -270,7 +268,7 @@ enterprise_oa_sso_test_() ->
                 {"NEG-08 exchange nonce 不匹配被拒", with_tx(C, fun neg08_nonce_mismatch/1)},
                 {"NEG-09 exchange 缺 sso:exchange scope 被拒",
                     with_tx(C, fun neg09_insufficient_scope/1)},
-                {"NEG-10 exchange A2 认证链四类错误透传", with_tx(C, fun neg10_credential_chain/1)},
+                {"NEG-10 凭证/应用拒绝与组织归档无关性", with_tx(C, fun neg10_credential_chain/1)},
                 {"NEG-11 identity_not_mapped 且 code 不被消费",
                     with_tx(C, fun neg11_identity_not_mapped/1)},
                 {"NEG-12 exchange 语法非法请求 invalid_request", neg12_malformed_request_test()},
@@ -350,7 +348,7 @@ neg03_replay(C) ->
 
 %% NEG-04：并发双 exchange 同一 code——跨连接行锁串行化 CAS，
 %% 恰好 1 赢家。本用例需要已提交数据（两个独立连接互不可见未提交行），
-%% 故自带 seed-commit-race-cleanup 全序（套件中唯一非 BEGIN/ROLLBACK 用例）。
+%% 故自带 seed-commit-race 全序；已提交身份/审计保留至专用库释放。
 neg04_concurrent_cas_test(State) ->
     ?_test(begin
         C = maps:get(conn, State),
@@ -374,8 +372,7 @@ neg04_concurrent_cas_test(State) ->
             ?assertEqual(2, length(Results))
         after
             close_extra(C2),
-            close_extra(C3),
-            cleanup_committed_fixture(C)
+            close_extra(C3)
         end
     end).
 
@@ -444,50 +441,6 @@ close_extra(Conn) ->
     catch
         _:_ -> ok
     end,
-    ok.
-
-%% NEG-04 已提交夹具清理（FK 逆序；989 段全量，含 owner member 行）。
-cleanup_committed_fixture(C) ->
-    %% INT-BE-06 回归修复：INT-BE-03 SSO 审计接线后，exchange 落 audit 行
-    %% （append-only：fk RESTRICT org + DELETE 触发器），原「删 org/user」
-    %% 清场与 append-only 审计本质冲突（member 段再撞 owner-invariant 触发
-    %% 器）。套件库是 disposable marker（EPGZ05_INTTEST，release 整库
-    %% DROP）——清场收敛为**业务行四段**（code/credential/identity/
-    %% application），member/org/user 残留随整库 DROP 兜底；run 级唯一
-    %% base（run_base/0）保证同 run 内 NEG-05+ 的 re-seed 幂等无冲突。
-    _ = try_ok(fun() ->
-        exec(C, [
-            <<"DELETE FROM enterprise_oa_sso_code WHERE organization_id IN (">>,
-            integer_to_binary(?ORG_A),
-            <<", ">>,
-            integer_to_binary(?ORG_B),
-            <<")">>
-        ])
-    end),
-    _ = try_ok(fun() ->
-        exec(C, [
-            <<"DELETE FROM enterprise_application_credential WHERE organization_id IN (">>,
-            integer_to_binary(?ORG_A),
-            <<", ">>,
-            integer_to_binary(?ORG_B),
-            <<")">>
-        ])
-    end),
-    _ = try_ok(fun() ->
-        exec(C, [
-            <<"DELETE FROM enterprise_external_identity WHERE organization_id = ">>,
-            integer_to_binary(?ORG_A)
-        ])
-    end),
-    _ = try_ok(fun() ->
-        exec(C, [
-            <<"DELETE FROM enterprise_application WHERE organization_id IN (">>,
-            integer_to_binary(?ORG_A),
-            <<", ">>,
-            integer_to_binary(?ORG_B),
-            <<")">>
-        ])
-    end),
     ok.
 
 %% NEG-05（定位修订后语义）：app BB（org B 归属）credential 换 app A
@@ -578,10 +531,7 @@ neg09_insufficient_scope(C) ->
         )
     ).
 
-%% NEG-10：A2 认证链错误透传（SSO 不豁免、不吞错）。organization 停用
-%% 分支已随定位修订调整：INT-14 路由 org_status_gate => false 豁免 org
-%% 状态门，authenticate_tx 直连（无路由上下文）行为保持 fail-closed——
-%% 本用例走 decide/4 编排面分别验证豁免与直连 fail-closed 两侧。
+%% NEG-10：凭证/应用授权仍拒绝失效状态；组织归档不关闭应用认证。
 neg10_credential_chain(C) ->
     F = seed_sso_fixture(C),
     FullA = maps:get(credential, F),
@@ -610,9 +560,7 @@ neg10_credential_chain(C) ->
     ok = exec(C, <<"UPDATE enterprise_application SET status = 'active' WHERE id = $1">>, [
         maps:get(app_id, F)
     ]),
-    %% ④ organization 停用：INT-14 路由豁免 org 状态门（定位修订）——
-    %% decide 编排面照常放行认证（app 级授权链完整）；直连 authenticate_tx
-    %% 无路由上下文，保持 fail-closed（其他 internal 路由仍受门保护）。
+    %% ④ organization 是业务对象：归档后编排和直接认证均沿用应用授权。
     ok = exec(
         C, <<"UPDATE organization SET status = 'archived' WHERE id = $1">>, [?ORG_A]
     ),
@@ -639,10 +587,8 @@ neg10_credential_chain(C) ->
             end
         )
     ),
-    ?assertEqual(
-        {error, organization_disabled},
-        enterprise_internal_auth:authenticate_tx(C, prefix_of(FullA), ?SECRET_A)
-    ),
+    {ok, ArchivedCtx} = enterprise_internal_auth:authenticate_tx(C, prefix_of(FullA), ?SECRET_A),
+    ?assertEqual(maps:get(app_id, F), maps:get(application_id, ArchivedCtx)),
     ok = exec(
         C, <<"UPDATE organization SET status = 'active' WHERE id = $1">>, [?ORG_A]
     ),
@@ -1237,6 +1183,13 @@ event_text(#{msg := Msg}) ->
     iolist_to_binary(io_lib:format("~0p", [Msg]));
 event_text(_) ->
     <<>>.
+
+%% 每次 seed 唯一，同一用例所有宏调用稳定；纯参数验证无需 seed。
+fixture_app_key(Label) ->
+    case get({?MODULE, fixture_app_key}) of
+        undefined -> <<"epgz05-oa", Label/binary>>;
+        Namespace -> <<"epgz05-oa", Label/binary, "-", Namespace/binary>>
+    end.
 
 %% run 级随机 base（24 位空间、64 位安全整数内；每 VM 一次）。
 run_base() ->

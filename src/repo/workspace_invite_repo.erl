@@ -20,6 +20,7 @@
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 -include_lib("kernel/include/logger.hrl").
+-include_lib("epgsql/include/epgsql.hrl").
 -include("log.hrl").
 
 %% 团队码字符集：大写字母（排除 I/O）+ 数字 2-9（32 个；
@@ -61,7 +62,7 @@ add_tx(Conn, WsId, Code, CreatedBy, ExpiresAt) ->
             {ok, Row};
         {ok, []} ->
             {error, insert_empty_result};
-        {error, {pgsql_error, #{code := <<"23505">>}}} ->
+        {error, #error{code = <<"23505">>}} ->
             {error, code_conflict};
         {error, Reason} ->
             {error, Reason}

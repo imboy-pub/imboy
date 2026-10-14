@@ -434,11 +434,10 @@ photo_detail(Req0, State) ->
     PhotoId = proplists:get_value(<<"photo_id">>, Qs, <<>>),
 
     % 验证参数
-    case PhotoId of
-        <<>> ->
+    case photo_primary_id(PhotoId) of
+        error ->
             elib_response:error(Req0, <<"图片ID不能为空"/utf8>>, ?ERR_BAD_REQUEST);
-        _ ->
-            PhotoIdInt = elib_cnv:safe_to_integer(PhotoId),
+        {ok, PhotoIdInt} ->
             case group_album_logic:get_photo_detail(PhotoIdInt, CurrentUid) of
                 {ok, PhotoDetail} ->
                     elib_response:success(Req0, PhotoDetail, <<"查询成功"/utf8>>);
@@ -463,11 +462,10 @@ delete_photo(Req0, State) ->
     PhotoId = maps:get(<<"photo_id">>, Body, <<>>),
 
     % 验证参数
-    case PhotoId of
-        <<>> ->
+    case photo_primary_id(PhotoId) of
+        error ->
             elib_response:error(Req1, <<"图片ID不能为空"/utf8>>, ?ERR_BAD_REQUEST);
-        _ ->
-            PhotoIdInt = elib_cnv:safe_to_integer(PhotoId),
+        {ok, PhotoIdInt} ->
             case group_album_logic:delete_photo(PhotoIdInt, CurrentUid) of
                 ok ->
                     elib_response:success(Req1, #{}, <<"删除成功"/utf8>>);
@@ -496,11 +494,11 @@ like_photo(Req0, State) ->
     PhotoId = maps:get(<<"photo_id">>, Body, <<>>),
 
     % 验证参数
-    case PhotoId of
-        <<>> ->
+    case photo_primary_id(PhotoId) of
+        error ->
             elib_response:error(Req1, <<"图片ID不能为空"/utf8>>, ?ERR_BAD_REQUEST);
-        _ ->
-            case group_album_logic:like_photo(PhotoId, CurrentUid) of
+        {ok, PhotoIdInt} ->
+            case group_album_logic:like_photo(PhotoIdInt, CurrentUid) of
                 ok ->
                     elib_response:success(Req1, #{}, <<"点赞成功"/utf8>>);
                 {error, ?ERR_WORKSPACE_ARCHIVED} ->
@@ -528,11 +526,11 @@ unlike_photo(Req0, State) ->
     PhotoId = maps:get(<<"photo_id">>, Body, <<>>),
 
     % 验证参数
-    case PhotoId of
-        <<>> ->
+    case photo_primary_id(PhotoId) of
+        error ->
             elib_response:error(Req1, <<"图片ID不能为空"/utf8>>, ?ERR_BAD_REQUEST);
-        _ ->
-            case group_album_logic:unlike_photo(PhotoId, CurrentUid) of
+        {ok, PhotoIdInt} ->
+            case group_album_logic:unlike_photo(PhotoIdInt, CurrentUid) of
                 ok ->
                     elib_response:success(Req1, #{}, <<"取消点赞成功"/utf8>>);
                 {error, ?ERR_WORKSPACE_ARCHIVED} ->
@@ -561,13 +559,13 @@ add_comment(Req0, State) ->
     Content = maps:get(<<"content">>, Body, <<>>),
 
     % 验证参数
-    case {PhotoId, Content} of
-        {<<>>, _} ->
+    case {photo_primary_id(PhotoId), Content} of
+        {error, _} ->
             elib_response:error(Req1, <<"图片ID不能为空"/utf8>>, ?ERR_BAD_REQUEST);
         {_, <<>>} ->
             elib_response:error(Req1, <<"评论内容不能为空"/utf8>>, ?ERR_BAD_REQUEST);
-        _ ->
-            case group_album_logic:add_comment(PhotoId, CurrentUid, Content) of
+        {{ok, PhotoIdInt}, _} ->
+            case group_album_logic:add_comment(PhotoIdInt, CurrentUid, Content) of
                 ok ->
                     elib_response:success(Req1, #{}, <<"评论成功"/utf8>>);
                 {error, ?ERR_WORKSPACE_ARCHIVED} ->
@@ -598,11 +596,11 @@ list_comments(Req0, State) ->
     Limit = min(max(Limit0, 1), ?MAX_PAGE_SIZE),
 
     % 验证参数
-    case PhotoId of
-        <<>> ->
+    case photo_primary_id(PhotoId) of
+        error ->
             elib_response:error(Req0, <<"图片ID不能为空"/utf8>>, ?ERR_BAD_REQUEST);
-        _ ->
-            case group_album_logic:list_comments(PhotoId, CurrentUid, Limit) of
+        {ok, PhotoIdInt} ->
+            case group_album_logic:list_comments(PhotoIdInt, CurrentUid, Limit) of
                 {ok, Comments} ->
                     % 编码用户ID
                     Comments2 = lists:map(
@@ -660,6 +658,17 @@ update_cover(Req0, State) ->
                     )
             end
     end.
+
+-spec photo_primary_id(term()) -> {ok, pos_integer()} | error.
+photo_primary_id(Id) when is_integer(Id), Id > 0, Id =< 9223372036854775807 ->
+    {ok, Id};
+photo_primary_id(Id) when is_binary(Id), byte_size(Id) > 0, byte_size(Id) =< 19 ->
+    case lists:all(fun(Digit) -> Digit >= $0 andalso Digit =< $9 end, binary_to_list(Id)) of
+        true -> photo_primary_id(binary_to_integer(Id));
+        false -> error
+    end;
+photo_primary_id(_) ->
+    error.
 
 %% @doc 错误原因安全转文案：binary（logic/ds 层已中文化的业务消息，
 %% 如「相册权限不足」「你不是该群成员」）直接透传；

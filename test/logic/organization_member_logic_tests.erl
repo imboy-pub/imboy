@@ -706,6 +706,8 @@ db_error(Code, Constraint) ->
 core_has_zero_feature_module_references_test() ->
     {ok, Src} = file:read_file(?CORE_REL),
     ?assertEqual([], feature_refs(Src)),
+    ?assertNotEqual([], feature_refs(<<"f() -> cs_pg_store_typo:list_sessions(1, 2, #{}).">>)),
+    ?assertNotEqual([], feature_refs(<<"f() -> eb_contact_app_typo:create_contact(1, #{}).">>)),
     ?assertNotEqual(
         [],
         feature_refs(<<"f() -> enterprise_business_facade:open_offboarding(1, #{}).">>)
@@ -714,17 +716,17 @@ core_has_zero_feature_module_references_test() ->
         [],
         feature_refs(<<"f() -> customer_service_logic:handover(1).">>)
     ),
+    ?assertNotEqual([], feature_refs(<<"f() -> eb_contact_app:create_contact(1, #{}).">>)),
+    ?assertEqual(
+        [],
+        feature_refs(
+            <<"f() -> enterprise_directory_source_repo:authorize_member_tx(C, 1, 2, 3).">>
+        )
+    ),
     ?assertEqual(
         [],
         feature_refs(<<"f() -> organization_member_repo:remove_tx(C, 1, 2).">>)
     ).
 
 feature_refs(Bin) ->
-    case
-        re:run(Bin, "\\b(enterprise_[a-z0-9_]+|customer_service_[a-z0-9_]+)", [
-            global, {capture, first, binary}
-        ])
-    of
-        {match, Matches} -> Matches;
-        nomatch -> []
-    end.
+    feature_reference_fixture:refs(Bin).

@@ -17,6 +17,35 @@ get:
       required: false
       schema: { type: string, default: application/octet-stream }
       description: MIME 类型
+    - in: query
+      name: scope
+      required: false
+      schema: { type: string, default: private, enum: [private, public, c2c, group, teaching] }
+      description: 上传域（含 scope_ref 时按域校验）
+    - in: query
+      name: scope_ref
+      required: false
+      schema: { type: string }
+      description: 域引用（group/c2c 的会话 id）
+    - in: query
+      name: client_upload_id
+      required: false
+      schema: { type: string, format: uuid }
+      description: |
+        V5.5 恢复合同（02 §12/§14）：携带 UUID 时进入受控会话链——登记先行
+        （AC01 失败关闭：登记失败无 URL），put_url 指向受控网关
+        /api/v1/attachment/gateway/{client_upload_id} 并附带
+        upload_capability token（x-upload-capability 头或 query capability）；
+        同 UUID 重试幂等恢复同一会话。缺省（旧客户端）保留直传 URL 兼容。
+    - in: query
+      name: operation
+      required: false
+      schema: { type: string, enum: [register, status, renew], default: register }
+      description: |
+        V5 会话操作：register 登记（缺省）；status 只读回查
+        （session_state/deadline/can_resume/retry_action，无能力，
+        响应 Cache-Control: no-store）；renew 同 key 单调续期并重签
+        受控能力（deadline 过期 410 session_expired/reupload_required）。
   responses:
     '200':
       description: 成功
@@ -33,13 +62,35 @@ get:
                     properties:
                       put_url:
                         type: string
-                        description: Garage S3 预签名 PUT URL，客户端直接 PUT 上传 / Presigned S3 PUT URL for direct upload
+                        description: |
+                          上传地址。legacy（无 client_upload_id）为 Garage 预签名
+                          PUT URL；V5 会话为受控网关地址（能力 token 在 query
+                          capability），实际字节经网关校验声明并 pin 后转存。
                       object_key:
                         type: string
                         description: 对象键（含 uid 前缀），confirm 时回传 / Object key with uid prefix, returned to confirm
                       expires_at:
                         type: integer
-                        description: URL 过期时间（Unix 秒）/ URL expiry as Unix timestamp in seconds
+                        description: 能力过期时间（Unix 秒）；V5 会话为登记冻结值
+                      client_upload_id:
+                        type: string
+                        format: uuid
+                        description: V5 会话恢复标识（仅 V5 会话返回）
+                      upload_capability:
+                        type: string
+                        description: 受控网关能力 token（aud=upload；仅 V5 会话返回）
+                      gateway:
+                        type: boolean
+                        description: true 表示 put_url 为受控网关而非直传 URL
+                      session_state:
+                        type: string
+                        description: status 操作返回的会话状态
+                      can_resume:
+                        type: boolean
+                        description: status/renew 返回的是否可续传
+                      retry_action:
+                        type: string
+                        description: status/renew 返回的续传建议（resume_same_id 等）
     '4XX':
       description: 未鉴权 / 参数非法
       content:

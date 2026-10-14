@@ -145,8 +145,6 @@ claim_due_tx(Conn, Limit) ->
         >>,
     case elib_pg:query(Conn, Sql, [Limit]) of
         {ok, Rows} when is_list(Rows) -> {ok, Rows};
-        {ok, _N} when is_integer(_N) -> {ok, []};
-        {ok, _N, Rows} when is_list(Rows) -> {ok, Rows};
         {error, Reason} -> {error, Reason}
     end.
 
@@ -258,10 +256,7 @@ replay_tx(Conn, DeliveryId) ->
             " WHERE delivery_id = $1 AND status = 'dead' RETURNING delivery_id">>,
     case elib_pg:query(Conn, Sql, [DeliveryId]) of
         {ok, [_]} -> replayed_with_audit(Conn, DeliveryId);
-        {ok, _N, [_]} -> replayed_with_audit(Conn, DeliveryId);
         {ok, []} -> replay_not_updated(Conn, DeliveryId);
-        {ok, 0} -> replay_not_updated(Conn, DeliveryId);
-        {ok, 0, []} -> replay_not_updated(Conn, DeliveryId);
         {error, Reason} -> throw({abort_tx, Reason});
         Other -> throw({abort_tx, {unexpected_replay_result, Other}})
     end.
@@ -278,9 +273,7 @@ replay_not_updated(Conn, DeliveryId) ->
         ])
     of
         {ok, []} -> {error, notfound};
-        {ok, 0} -> {error, notfound};
         {ok, [_]} -> {error, not_dead};
-        {ok, _N, [_]} -> {error, not_dead};
         {error, Reason} -> throw({abort_tx, Reason});
         Other -> throw({abort_tx, {unexpected_replay_lookup_result, Other}})
     end.
@@ -312,9 +305,5 @@ consume_reply_context(DeliveryId, Token, BotId, Corr) ->
     case elib_pg:query(Sql, [DeliveryId, Token, integer_to_binary(BotId), Corr]) of
         {ok, [_]} -> {ok, consumed};
         {ok, []} -> {error, notfound};
-        {ok, N} when is_integer(N), N > 0 -> {ok, consumed};
-        {ok, 0} -> {error, notfound};
-        {ok, N, _} when is_integer(N), N > 0 -> {ok, consumed};
-        {ok, 0, []} -> {error, notfound};
         {error, Reason} -> {error, Reason}
     end.

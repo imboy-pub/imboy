@@ -116,7 +116,7 @@ create_order(Data) ->
 %% @doc 根据订单号查找订单
 %% JOIN channel 带出 channel_name：详情页与列表页（list_by_user）
 %% 行为保持一致，客户端频道字段不再回退显示 #<channelId>。
--spec find_by_order_no(binary()) -> {ok, map()} | {error, not_found}.
+-spec find_by_order_no(binary()) -> {ok, map()} | {error, term()}.
 find_by_order_no(OrderNo) ->
     Sql =
         <<"SELECT o.id, o.channel_id, o.user_id, o.order_no, o.amount, o.currency, o.status, ",
@@ -243,15 +243,16 @@ list_by_user(UserId, Limit) ->
     end.
 
 %% @doc 检查用户是否已购买频道
--spec has_purchased(integer(), integer()) -> boolean().
+-spec has_purchased(integer(), integer()) -> boolean() | {error, term()}.
 has_purchased(ChannelId, UserId) ->
     Sql =
         <<"SELECT COUNT(*) as cnt FROM channel_order ",
             "WHERE channel_id = $1 AND user_id = $2 AND status = 1 ",
             "AND (subscription_end_at IS NULL OR subscription_end_at > NOW())">>,
     case elib_pg:query(Sql, [ChannelId, UserId]) of
-        {ok, [#{<<"cnt">> := Count}]} when Count > 0 -> true;
-        _ -> false
+        {ok, [#{<<"cnt">> := Count}]} when is_integer(Count), Count >= 0 -> Count > 0;
+        {error, Reason} -> {error, Reason};
+        {ok, _} -> {error, invalid_purchase_count}
     end.
 
 %% @doc 获取用户的有效订阅
