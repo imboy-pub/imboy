@@ -54,12 +54,206 @@
     put_object/2,
     confirm_asset/2,
     content_stream/2,
-    cleanup_pending/2
+    cleanup_pending/2,
+    session_status/2,
+    session_renew/2
 ]).
 
 -define(DEFAULT_UPLOAD_TTL_SEC, 900).
 -define(MAX_UPLOAD_TTL_SEC, 3600).
+%% V5 会话绝对 deadline（02 §143：登记 DB 时间 + 2h，不可延长）。
+-define(V5_EB_SESSION_DEADLINE_SEC, 7200).
 -define(DEFAULT_CLEANUP_TTL_SEC, 3600).
+
+%% ===================================================================
+%% 1b. V5 会话协议（02 §137/§143）：status 只读回查、renew 单调续期
+%% ===================================================================
+
+%% @doc 会话回查：Params 需 `workspace_id` + (`asset_id` | `client_upload_id`)
+%% + actor/auth/store 端口（与 presign 同门）。只读，响应绝不含能力。
+session_status(OrgId, Params) ->
+    with_authorized_session(OrgId, Params, fun(_Org, _Ws, AssetId, Row, _Cid) ->
+        {ok, v5_status_view(AssetId, Row)}
+    end).
+
+%% @doc 续期：min(now+既有TTL, deadline) 冻结后单调提交，COMMIT 后按已
+%% 提交绝对值重新 mint upload_ref（不延长 deadline；终态/越期 fail-closed）。
+session_renew(OrgId, Params) ->
+    with_authorized_session(OrgId, Params, fun(Org, Ws, AssetId, Row, _Cid) ->
+        Deadline = eb_deadline_sec(Row),
+        Now = (port(Params, clock)):now(),
+        case Now >= Deadline of
+            true ->
+                {error, session_expired};
+            false ->
+                NewExpiry = min(Now + upload_ttl_value(Params), Deadline),
+                case eb_pg_asset_meta:renew_v5(Org, Ws, AssetId, NewExpiry) of
+                    {ok, #{committed_expires_at := Committed}} ->
+                        case v5_session_mint(Org, Params, AssetId, Row, Now, Committed) of
+                            {ok, Token} ->
+                                Base = v5_status_view(AssetId, Row),
+                                {ok, Base#{
+                                    upload_ref => Token,
+                                    expires_at => Committed,
+                                    renewed => true,
+                                    can_resume => true,
+                                    retry_action => <<"resume_same_asset">>
+                                }};
+                            {error, _} = Err ->
+                                Err
+                        end;
+                    {error, not_renewable} ->
+                        {error, session_not_renewable};
+                    {error, Reason} ->
+                        {error, Reason}
+                end
+        end
+    end).
+
+%% 会话定位 + 授权门（复用 presign 同一 scope 门），然后执行回调。
+with_authorized_session(OrgId, Params, Fun) ->
+    Ws = maps:get(workspace_id, Params, undefined),
+    Auth = port(Params, auth),
+    Store = port(Params, store),
+    case presign_args_actor(Params) of
+        {error, _} = Err ->
+            Err;
+        {ok, Args0} ->
+            Args = Args0#{ws => Ws},
+            case presign_scope_check(Auth, Store, OrgId, Args) of
+                ok -> locate_session(OrgId, Params, Fun);
+                {error, _} = Err -> Err
+            end
+    end.
+
+presign_args_actor(Params) ->
+    case actor_scope(Params) of
+        {error, _} = Err -> Err;
+        {ok, Actor} -> {ok, #{actor => Actor}}
+    end.
+
+locate_session(OrgId, Params, Fun) ->
+    Ws = maps:get(workspace_id, Params, undefined),
+    AssetId = maps:get(asset_id, Params, undefined),
+    Cid = maps:get(client_upload_id, Params, undefined),
+    case {is_integer(AssetId), Cid} of
+        {true, _} ->
+            run_session_fun(OrgId, Ws, AssetId, Fun);
+        {false, Cid} when is_binary(Cid), byte_size(Cid) =:= 36 ->
+            case lookup_asset_by_cid(OrgId, Ws, Cid) of
+                {ok, AssetId} -> run_session_fun(OrgId, Ws, AssetId, Fun);
+                {error, _} = Err -> Err
+            end;
+        _ ->
+            {error, {invalid_argument, session_identity}}
+    end.
+
+lookup_asset_by_cid(OrgId, Ws, Cid) ->
+    %% 铁律5：SQL 经 infrastructure（eb_pg_asset_meta），本层不触 elib_pg。
+    eb_pg_asset_meta:v5_session_by_cid(OrgId, Ws, Cid).
+
+run_session_fun(OrgId, Ws, AssetId, Fun) ->
+    case eb_pg_asset_meta:v5_session(OrgId, Ws, AssetId) of
+        {ok, Row} -> Fun(OrgId, Ws, AssetId, Row, maps:get(<<"client_upload_id">>, Row, undefined));
+        {error, _} = Err -> Err
+    end.
+
+v5_status_view(AssetId, Row) ->
+    State = session_state_of(Row),
+    #{
+        asset_id => AssetId,
+        client_upload_id => maps:get(<<"client_upload_id">>, Row, undefined),
+        object_key => maps:get(<<"object_key">>, Row),
+        session_state => State,
+        session_deadline => eb_deadline_sec(Row),
+        upload_expires_at => eb_expiry_sec(Row),
+        can_resume => State =:= <<"registered">>,
+        retry_action =>
+            case State of
+                <<"registered">> -> <<"resume_same_asset">>;
+                _ -> <<"none">>
+            end
+    }.
+
+session_state_of(Row) ->
+    case maps:get(<<"status">>, Row) of
+        pending_confirm -> <<"registered">>;
+        active -> <<"confirmed">>;
+        deleted -> <<"deleted">>;
+        Other -> Other
+    end.
+
+eb_deadline_sec(Row) ->
+    ts_to_sec(maps:get(<<"session_deadline">>, Row)).
+
+eb_expiry_sec(Row) ->
+    ts_to_sec(maps:get(<<"upload_expires_at">>, Row)).
+
+ts_to_sec(undefined) ->
+    undefined;
+ts_to_sec({{_, _, _}, {_, _, _}} = Dt) ->
+    calendar:datetime_to_gregorian_seconds(Dt) - 62167219200;
+ts_to_sec(Bin) when is_binary(Bin) ->
+    case
+        try
+            calendar:rfc3339_to_system_time(binary_to_list(Bin), [{unit, second}])
+        catch
+            _:_ -> undefined
+        end
+    of
+        N when is_integer(N) -> N;
+        _ -> undefined
+    end;
+ts_to_sec(_) ->
+    undefined.
+
+upload_ttl_value(Params) ->
+    case maps:get(upload_ttl_seconds, Params, ?DEFAULT_UPLOAD_TTL_SEC) of
+        T when is_integer(T), T > 0, T =< ?MAX_UPLOAD_TTL_SEC -> T;
+        _ -> ?DEFAULT_UPLOAD_TTL_SEC
+    end.
+
+%% 按已提交会话与主行声明重新 mint upload_ref（冻结绝对到期）。
+v5_session_mint(Org, Params, AssetId, Row, Now, ExpiresAt) ->
+    Crypto = port(Params, crypto),
+    KeyRef = key_ref(Params),
+    Conv =
+        case maps:get(<<"conversation_id">>, Row) of
+            undefined -> undefined;
+            C when is_integer(C) -> C;
+            _ -> undefined
+        end,
+    Msg =
+        case maps:get(<<"message_id">>, Row) of
+            M when is_integer(M) -> M;
+            _ -> undefined
+        end,
+    Actor = actor_from_row(Row),
+    Aad = eb_asset_upload_ref:aad(Org, maps:get(<<"workspace_id">>, Row), Conv, Msg),
+    Claims = maps:merge(
+        #{
+            asset_id => AssetId,
+            object_hash => maps:get(<<"object_hash">>, Row),
+            mime => maps:get(<<"mime">>, Row),
+            size_bytes => maps:get(<<"size_bytes">>, Row),
+            file_name => maps:get(<<"file_name">>, Row),
+            retain_until => undefined,
+            conversation_id => Conv,
+            message_id => Msg,
+            issued_at => Now,
+            expires_at => ExpiresAt
+        },
+        actor_claim(Actor)
+    ),
+    eb_asset_upload_ref:mint(Aad, Claims, Crypto, KeyRef).
+
+%% 主行审计字段可能为 NULL（uploaded_by_user_id SET NULL）：续期签发按
+%% 已撤销语义 fail-closed，仅 actor 仍可解析时才 mint。
+actor_from_row(Row) ->
+    case maps:get(<<"uploaded_by_user_id">>, Row) of
+        Id when is_integer(Id) -> #{kind => member, id => Id};
+        _ -> {error, actor_revoked}
+    end.
 
 %% ===================================================================
 %% 1. presign：签发不透明上传凭证
@@ -239,30 +433,106 @@ presign_mint(OrgId, Args, Retain, Params) ->
         {ok, Ttl} ->
             AssetId = Id:new_id(enterprise_asset),
             ExpiresAt = Now + Ttl,
-            Aad = eb_asset_upload_ref:aad(
-                OrgId, maps:get(ws, Args), maps:get(conv, Args), msg_or_undefined(Params)
-            ),
-            Claims = maps:merge(
-                #{
-                    asset_id => AssetId,
-                    object_hash => maps:get(hash, Args),
-                    mime => maps:get(mime, Args),
-                    size_bytes => maps:get(size, Args),
-                    file_name => maps:get(file_name, Args, undefined),
-                    retain_until => Retain,
-                    conversation_id => maps:get(conv, Args),
-                    message_id => msg_or_undefined(Params),
-                    issued_at => Now,
-                    expires_at => ExpiresAt
-                },
-                actor_claim(maps:get(actor, Args))
-            ),
-            case eb_asset_upload_ref:mint(Aad, Claims, Crypto, KeyRef) of
-                {ok, Token} ->
-                    {ok, presign_view(AssetId, Args, Retain, ExpiresAt, Token)};
+            %% V5（02 §137/§143 + F20）：带 client_upload_id 的会话先登记
+            %% （预建 pending 主行 + fn_v5_register_eb 填会话列），登记失败
+            %% 不 mint 任何能力（失败关闭）；旧客户端（无 UUID）行为不变。
+            case maybe_v5_register(OrgId, Args, Params, AssetId, Now, ExpiresAt) of
                 {error, _} = Err ->
-                    Err
+                    Err;
+                ok ->
+                    Aad = eb_asset_upload_ref:aad(
+                        OrgId, maps:get(ws, Args), maps:get(conv, Args), msg_or_undefined(Params)
+                    ),
+                    Claims = maps:merge(
+                        #{
+                            asset_id => AssetId,
+                            object_hash => maps:get(hash, Args),
+                            mime => maps:get(mime, Args),
+                            size_bytes => maps:get(size, Args),
+                            file_name => maps:get(file_name, Args, undefined),
+                            retain_until => Retain,
+                            conversation_id => maps:get(conv, Args),
+                            message_id => msg_or_undefined(Params),
+                            issued_at => Now,
+                            expires_at => ExpiresAt
+                        },
+                        actor_claim(maps:get(actor, Args))
+                    ),
+                    case eb_asset_upload_ref:mint(Aad, Claims, Crypto, KeyRef) of
+                        {ok, Token} ->
+                            {ok, presign_view(AssetId, Args, Retain, ExpiresAt, Token)};
+                        {error, _} = Err1 ->
+                            Err1
+                    end
             end
+    end.
+
+%% V5 会话登记（EB 主行即 session）。Subject kind 按 actor 主体分流：
+%% member→seat、contact→visitor_session（fn_v5_register_eb 白名单）。
+%% 快照只含稳定声明（mime/hash/size/file_name/conv/msg/retain），不含
+%% 能力 token/到期（02 §15：快照不含能力）。
+maybe_v5_register(OrgId, Args, Params, AssetId, Now, ExpiresAt) ->
+    case maps:get(client_upload_id, Params, undefined) of
+        undefined ->
+            ok;
+        Cid when is_binary(Cid), byte_size(Cid) =:= 36 ->
+            Ws = maps:get(ws, Args),
+            ObjectKey = eb_pg_asset_meta:object_key(OrgId, Ws, AssetId),
+            Actor = maps:get(actor, Args),
+            SubjectKind =
+                case maps:get(kind, Actor, member) of
+                    contact -> <<"visitor_session">>;
+                    _ -> <<"seat">>
+                end,
+            Registration = #{
+                <<"subject">> => #{
+                    <<"kind">> => SubjectKind,
+                    <<"principal">> => integer_to_binary(maps:get(id, Actor)),
+                    <<"org_id">> => integer_to_binary(OrgId)
+                },
+                <<"declaration">> => #{
+                    <<"mime">> => maps:get(mime, Args),
+                    <<"object_hash">> => maps:get(hash, Args),
+                    <<"size_bytes">> => maps:get(size, Args),
+                    <<"file_name">> => maps:get(file_name, Args, undefined),
+                    <<"conversation_id">> => maps:get(conv, Args),
+                    <<"message_id">> => msg_or_undefined(Params),
+                    <<"retain_until">> => maps:get(retain_until, Args, undefined)
+                }
+            },
+            Descriptor = #{
+                id => AssetId,
+                object_hash => maps:get(hash, Args),
+                mime => maps:get(mime, Args),
+                size_bytes => maps:get(size, Args),
+                file_name => maps:get(file_name, Args, undefined),
+                conversation_id => maps:get(conv, Args),
+                message_id => msg_or_undefined(Params)
+            },
+            case eb_pg_asset_meta:insert_asset(OrgId, Ws, Descriptor) of
+                {ok, _Row} ->
+                    Deadline = Now + ?V5_EB_SESSION_DEADLINE_SEC,
+                    case
+                        eb_pg_asset_meta:register_v5(
+                            OrgId,
+                            Ws,
+                            AssetId,
+                            ObjectKey,
+                            Cid,
+                            Registration,
+                            SubjectKind,
+                            Deadline,
+                            ExpiresAt
+                        )
+                    of
+                        {ok, _} -> ok;
+                        {error, Reason} -> {error, {v5_registration_failed, Reason}}
+                    end;
+                {error, Reason} ->
+                    {error, {v5_registration_failed, Reason}}
+            end;
+        Other ->
+            {error, {invalid_client_upload_id, Other}}
     end.
 
 %% 凭证 actor claim：按主体种类二选一落 claims（D6；与 upload_ref 的

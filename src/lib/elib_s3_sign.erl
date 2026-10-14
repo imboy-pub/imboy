@@ -8,6 +8,7 @@
 %%%
 
 -export([presign_put/5, presign_get/4, presign_delete/4, authorization_header/7]).
+-export([presign_put_ctx/6]).
 -export([format_date/1, format_amz_date/1]).
 -export([uri_encode_path/1]).
 
@@ -17,10 +18,34 @@
 presign_put(Endpoint, Bucket, ObjectKey, MimeType, Expires) ->
     presign_url(<<"PUT">>, Endpoint, Bucket, ObjectKey, MimeType, Expires).
 
+%% @doc 冻结签名 Context 的 presigned PUT（V5.5 受控上传，02 §15）。
+%%
+%% IssuedAt/ExpiresAt 为调用方传入的绝对 UTC 时间（calendar:datetime()）：
+%% 签名按 IssuedAt 计算 X-Amz-Date，X-Amz-Expires = 两者差值秒数。
+%% 本入口绝不读取当前时钟——同一 Context 重复签名必须产出同一 URL；
+%% 时间语义由上层在登记/签发时冻结。ExpiresAt <= IssuedAt 视为无效。
+-spec presign_put_ctx(
+    binary(), binary(), binary(), binary(), calendar:datetime(), calendar:datetime()
+) ->
+    {ok, binary()} | {error, invalid_context}.
+presign_put_ctx(Endpoint, Bucket, ObjectKey, MimeType, IssuedAt, ExpiresAt) ->
+    IssuedSec = calendar:datetime_to_gregorian_seconds(IssuedAt),
+    ExpiresSec = calendar:datetime_to_gregorian_seconds(ExpiresAt),
+    case ExpiresSec - IssuedSec of
+        Diff when Diff > 0, Diff =< 604800 ->
+            {ok, presign_url_at(<<"PUT">>, Endpoint, Bucket, ObjectKey, MimeType, IssuedAt, Diff)};
+        _ ->
+            {error, invalid_context}
+    end.
+
 %% @doc presigned URL 生成核心，按 HTTP 方法签名（PUT 上传 / GET 下载）
 -spec presign_url(binary(), binary(), binary(), binary(), binary(), pos_integer()) -> binary().
 presign_url(Method, Endpoint, Bucket, ObjectKey, MimeType, Expires) ->
-    Now = calendar:universal_time(),
+    presign_url_at(
+        Method, Endpoint, Bucket, ObjectKey, MimeType, calendar:universal_time(), Expires
+    ).
+
+presign_url_at(Method, Endpoint, Bucket, ObjectKey, MimeType, Now, Expires) ->
     DateStr = format_date(Now),
     AmzDate = format_amz_date(Now),
     Cfg = garage_config(),

@@ -744,6 +744,8 @@ paths:
     $ref: './paths/api/v1/friend-reject/reject.yaml'
   /api/v1/attachment/presign:
     $ref: './paths/api/v1/attachment/presign.yaml'
+  /api/v1/attachment/gateway/{client_upload_id}:
+    $ref: './paths/api/v1/attachment/gateway-put.yaml'
   /api/v1/attachment/confirm:
     $ref: './paths/api/v1/attachment/confirm.yaml'
   /api/v1/attachment/view_url:

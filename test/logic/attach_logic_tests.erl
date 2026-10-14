@@ -905,3 +905,45 @@ soft_deleted_group_and_channel_downloads_are_denied_test_() ->
             )
         end
     ).
+
+%% ===================================================================
+%% W2-01：V5 新会话 presign 发受控网关能力，不发可变内容直传 URL（02 §14）
+%% ===================================================================
+
+presign_v5_session_issues_gateway_capability_test_() ->
+    ?WITH_MECKS(
+        [
+            {attach_pending_repo, [
+                {'register_v5', 6, fun(_K, _B, _S, _U, _C, _R) ->
+                    {ok, #{
+                        session_state => <<"registered">>,
+                        client_upload_id => <<"0f0e0d0c-1111-2222-3333-444455556666">>,
+                        deadline => 1893460000,
+                        expires_at => 1893456000
+                    }}
+                end}
+            ]}
+        ],
+        fun presign_v5_gateway_body/0
+    ).
+
+presign_v5_gateway_body() ->
+    set_garage_env(),
+    application:set_env(imboy, jwt_secret, <<"test-jwt-secret">>),
+    Cid = <<"0f0e0d0c-1111-2222-3333-444455556666">>,
+    {ok, Data} = attach_logic:presign(
+        789, <<"a.png">>, <<"image/png">>, <<"private">>, undefined, Cid
+    ),
+    ?assertMatch(
+        <<"/api/v1/attachment/gateway/", _/binary>>, maps:get(<<"put_url">>, Data)
+    ),
+    ?assertEqual(Cid, maps:get(<<"client_upload_id">>, Data)),
+    ?assertEqual(true, maps:get(<<"gateway">>, Data)),
+    %% expires_at 是登记冻结值，不是底层重新计时
+    ?assertEqual(1893456000, maps:get(<<"expires_at">>, Data)),
+    %% capability 与网关验证回路（真签发 + 真验证）
+    Capability = maps:get(<<"upload_capability">>, Data),
+    {ok, Claims} = imboy_jwt:verify_upload_capability(Capability),
+    ?assertEqual(1893456000, maps:get(<<"exp">>, Claims)),
+    ?assertEqual(maps:get(<<"object_key">>, Data), maps:get(<<"key">>, Claims)),
+    ?assertEqual(<<"image/png">>, maps:get(<<"mime">>, Claims)).

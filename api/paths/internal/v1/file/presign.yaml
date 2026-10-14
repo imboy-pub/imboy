@@ -47,6 +47,28 @@ post:
               type: integer
               format: int64
               description: 大小预检提示（正整数，<= 有效上限）
+            client_upload_id:
+              type: string
+              format: uuid
+              description: |
+                V5.5 恢复合同（02 §137/§143）：携带 UUID 进入受控会话链——
+                幂等事务内登记（application 主体快照，失败关闭无能力），
+                COMMIT 后签发受控网关能力（put_url 指向
+                /api/v1/attachment/gateway/{client_upload_id}，附带
+                upload_capability token）。同 UUID 重试幂等恢复；缺省保持
+                legacy 直传 URL 兼容。
+            operation:
+              type: string
+              enum: [register, status, renew]
+              default: register
+              description: |
+                V5 会话操作：register（缺省）登记；status 只读回查
+                （client_upload_id 或 object_key 定位；无能力；
+                Cache-Control: no-store）；renew 单调续期并重签能力
+                （deadline 过期 410 session_expired）。
+            object_key:
+              type: string
+              description: status/renew 的备选会话定位键（client_upload_id 缺省时使用）
   responses:
     '200':
       description: 预签名结果
@@ -54,14 +76,50 @@ post:
         application/json:
           schema:
             type: object
-            required: [object_key, put_url, expires_at]
+            required: [object_key, expires_at]
             additionalProperties: false
             properties:
               object_key: { type: string }
-              put_url: { type: string, format: uri }
+              put_url:
+                type: string
+                description: |
+                  legacy 为对象存储直传 URL；V5 会话为受控网关地址
+                  （能力 token 在 query capability，不存签名 URL）。
               expires_at:
                 type: integer
-                description: 过期时间（epoch seconds）
+                description: 能力过期（epoch seconds）；V5 会话为登记冻结值
+              upload_capability:
+                type: string
+                description: 受控网关能力 token（aud=upload；仅 V5 会话）
+              gateway:
+                type: boolean
+                description: true 表示 put_url 为受控网关
+              client_upload_id:
+                type: string
+                format: uuid
+                description: V5 会话标识（仅 V5 会话）
+              session_state:
+                type: string
+                description: 会话状态（status/renew/register 均返回）
+              session_deadline:
+                type: integer
+                description: 绝对会话截止（epoch seconds，不可延长）
+              can_resume:
+                type: boolean
+                description: 是否可续传（status/renew）
+              retry_action:
+                type: string
+                description: 续传建议（resume_same_id / resume_same_key / none）
+    '404':
+      description: 会话不存在或跨应用（status/renew；不泄露存在性）
+      content:
+        application/json:
+          schema: { $ref: '../../../../components/schemas/Envelope.yaml' }
+    '410':
+      description: 会话已过绝对截止（renew；reupload_required）
+      content:
+        application/json:
+          schema: { $ref: '../../../../components/schemas/Envelope.yaml' }
     '400': { $ref: '../../../../components/responses/internal/invalid_request.yaml' }
     '401': { $ref: '../../../../components/responses/internal/invalid_credential.yaml' }
     '403': { $ref: '../../../../components/responses/internal/insufficient_scope.yaml' }
