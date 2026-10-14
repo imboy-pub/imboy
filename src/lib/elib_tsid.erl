@@ -64,6 +64,19 @@
 %% 部署配置链最后一道布局校验（imboy_sup 装配 init 配置时直调）
 -export([combine_node/3]).
 
+%% 定向 CAS 冲突注入仅存在于 TEST 编译；生产 BEAM 没有 hook 读取开销。
+-ifdef(TEST).
+-export([reserve_size/3, wait_step/2, wait_until/2, capacity_wait/3]).
+-define(BEFORE_TSID_CAS,
+    case get({?MODULE, test_before_cas}) of
+        undefined -> ok;
+        Hook -> Hook()
+    end
+).
+-else.
+-define(BEFORE_TSID_CAS, ok).
+-endif.
+
 %% ===================================================================
 %% 位布局常量
 %% ===================================================================
@@ -96,6 +109,20 @@
 
 %% generate_n 分块：单次 CAS 预留的 slot 区间上限（= 单毫秒容量，保守不跨毫秒放大会大）
 -define(MAX_BATCH_CHUNK, 2048).
+%% Separate hot cursor/stat slots to reduce cross-namespace cacheline contention.
+-define(CURSOR_STRIDE, 8).
+-compile(
+    {inline, [
+        require_runtime/1,
+        reserve_size/3,
+        reserve_candidate/3,
+        commit_reserve/8,
+        commit_cas/7,
+        ensure_deadline/1,
+        slot_to_id/2,
+        clock_read/1
+    ]}
+).
 
 -define(PT_RUNTIME, elib_tsid_runtime).
 -define(PT_NODE_ID, elib_tsid_node_id).
@@ -200,10 +227,10 @@ init_runtime(CombinedNode, DcBits, CapWait, MaxDrift) ->
 publish_runtime(CombinedNode, DcBits, CapWait, MaxDrift) ->
     Names = namespaces(),
     AliasMap = aliases(),
-    %% canonical 槽位：namespaces/0 顺序 + 1（atomics 1-based）；default 追加尾部
+    %% canonical 槽位按 inventory 顺序隔开；default 追加尾部，alias 仍共享同槽。
     CanonicalSlots =
         #{
-            Name => I
+            Name => (I - 1) * ?CURSOR_STRIDE + 1
          || {I, Name} <- lists:zip(lists:seq(1, length(Names)), Names)
         },
     AliasSlots =
@@ -212,20 +239,24 @@ publish_runtime(CombinedNode, DcBits, CapWait, MaxDrift) ->
          || Alias := Canonical <- AliasMap
         },
     %% default 占尾槽（仅供测试/脚手架；生产由 registration_guard 禁用）
-    DefaultSlot = length(Names) + 1,
-    Cursors = atomics:new(DefaultSlot, [{signed, true}]),
+    SlotCount = length(Names) + 1,
+    DefaultSlot = (SlotCount - 1) * ?CURSOR_STRIDE + 1,
+    Cursors = atomics:new(SlotCount * ?CURSOR_STRIDE, [{signed, true}]),
     Lookup = maps:merge(maps:merge(CanonicalSlots, AliasSlots), #{default => DefaultSlot}),
-    Stats = atomics:new(1, [{signed, true}]),
+    Stats = atomics:new(SlotCount * ?CURSOR_STRIDE, [{signed, true}]),
     %% 时钟安全闸（W4）：1=时钟可用，0=readiness 检出偏差超限（阻断发号）。
     %% readiness/0 低频评估并翻转此闸，生成热路径一次 atomic load 消费——
     %% 异常状态作用于实际生成入口，而非只改健康检查返回值。
     ClockOk = atomics:new(1, [{signed, true}]),
     ok = atomics:put(ClockOk, 1, 1),
-    OffsetMs = erlang:system_time(millisecond) - erlang:monotonic_time(millisecond),
+    %% Snapshot the VM offset directly: subtracting separately rounded clocks
+    %% can introduce a permanent +1ms phase bias in the fixed-offset clock.
+    OffsetMs = erlang:time_offset(millisecond),
     Handle = #{
         cursors => Cursors,
         lookup => Lookup,
         reservations => Stats,
+        cursor_stride => ?CURSOR_STRIDE,
         clock_ok => ClockOk,
         combined_node => CombinedNode,
         dc_bits => DcBits,
@@ -355,11 +386,10 @@ generate() ->
 %% 同 Namespace 内严格唯一（单次运行内）；跨 Namespace 允许数值重复。
 -spec generate(atom()) -> pos_integer().
 generate(Name) when is_atom(Name) ->
-    Handle = require_runtime(Name),
+    {Handle, Idx} = require_runtime(Name),
     #{combined_node := NodeId} = Handle,
-    Idx = slot_of(Handle, Name),
-    Budget = {timeout, maps:get(capacity_wait_timeout_ms, Handle)},
-    {First, _Last} = reserve(Handle, Idx, 1, Budget),
+    Budget = maps:get(capacity_wait_timeout_ms, Handle),
+    First = reserve(Handle, Idx, 1, Budget),
     slot_to_id(First, NodeId).
 
 %% @doc default 批量生成 N 个 TSID (有序)
@@ -369,31 +399,27 @@ generate_n(N) when N > 0 ->
 
 %% @doc 指定 Namespace 批量生成 N 个 TSID (有序)
 %%
-%% 按 ?MAX_BATCH_CHUNK 分块，每块一次 CAS 预留连续区间；块间从最新游标
+%% 每块优先用完当前毫秒剩余槽位，每次 CAS 至多预留 ?MAX_BATCH_CHUNK；块间从最新游标
 %% 重新 reserve。预算跨块守恒：进入批量即一次性物化为绝对 monotonic
 %% deadline，所有块共享同一剩余预算；块内冲突/等待重试沿用该 deadline，
 %% 不因换块重置。
 -spec generate_n(atom(), pos_integer()) -> [pos_integer()].
 generate_n(Name, N) when is_atom(Name), N > 0 ->
-    Handle = require_runtime(Name),
+    {Handle, Idx} = require_runtime(Name),
     #{combined_node := NodeId} = Handle,
-    Idx = slot_of(Handle, Name),
     Budget = {deadline, monotonic_ms() + maps:get(capacity_wait_timeout_ms, Handle)},
-    lists:append([
-        materialize_range(First, Last, NodeId)
-     || {First, Last} <-
-            [reserve(Handle, Idx, C, Budget) || C <- chunk_sizes(N, ?MAX_BATCH_CHUNK)]
-    ]).
+    Ranges = reserve_batch_ranges(Handle, Idx, N, Budget, []),
+    materialize_ranges(Ranges, NodeId, []).
 
 %% @private 名称校验 + runtime 读取（返回槽位已解析的 Handle）
--spec require_runtime(atom()) -> map().
+-spec require_runtime(atom()) -> {map(), pos_integer()}.
 require_runtime(Name) ->
     case persistent_term:get(?PT_RUNTIME, undefined) of
         #{lookup := Lookup} = Handle ->
-            case maps:find(Name, Lookup) of
-                {ok, _Slot} ->
-                    Handle;
-                error ->
+            case Lookup of
+                #{Name := Slot} ->
+                    {Handle, Slot};
+                _ ->
                     error(
                         {elib_tsid_generator_not_registered,
                             {Name, 'not in elib_tsid:namespaces/0 or aliases/0'}}
@@ -403,29 +429,50 @@ require_runtime(Name) ->
             error({elib_tsid_not_initialized, 'call elib_tsid:init/1 first'})
     end.
 
-%% @private 超大 N 分有界 chunk
--spec chunk_sizes(pos_integer(), pos_integer()) -> [pos_integer()].
-chunk_sizes(N, MaxChunk) when N =< MaxChunk ->
-    [N];
-chunk_sizes(N, MaxChunk) ->
-    [MaxChunk | chunk_sizes(N - MaxChunk, MaxChunk)].
+%% @private 批量按当前毫秒剩余容量预留；全部区间共用同一 deadline。
+reserve_batch_ranges(_Handle, _Idx, 0, _Budget, Acc) ->
+    lists:reverse(Acc);
+reserve_batch_ranges(Handle, Idx, Remaining, Budget, Acc) ->
+    {First, Last} = reserve(Handle, Idx, {up_to, Remaining}, Budget),
+    Used = Last - First + 1,
+    %% 多块 batch 主动让出 scheduler；不重置 deadline，不引入等待队列。
+    case Remaining > Used of
+        true -> erlang:yield();
+        false -> ok
+    end,
+    reserve_batch_ranges(Handle, Idx, Remaining - Used, Budget, [{First, Last} | Acc]).
+
+%% CAS 重试必须按最新游标重新计算容量，不能沿用冲突前的块大小。
+reserve_size(Old, Now, {up_to, Limit}) ->
+    First = max(Old + 1, Now bsl ?SEQUENCE_BITS),
+    min(min(Limit, 64), ?MAX_BATCH_CHUNK - (First band ?SEQUENCE_MASK));
+reserve_size(_Old, _Now, Count) ->
+    Count.
 
 %% @private 单次 reservation：读时钟 → 纯 candidate → 无借支检查 → CAS。
-%% Budget 为 {timeout, Ms}（未物化）或 {deadline, AbsMs}（已物化）：
+%% Budget 为正整数 Ms（未物化）或 {deadline, AbsMs}（已物化）：
 %% 热路径零单调钟开销，首次需要等待/冲突重试时才惰性物化，物化后
 %% 递归全程携带同一绝对 deadline（预算守恒，不因重试重置）。
 -spec reserve(
-    map(), pos_integer(), pos_integer(), {timeout, pos_integer()} | {deadline, integer()}
+    map(),
+    pos_integer(),
+    pos_integer() | {up_to, pos_integer()},
+    pos_integer() | {timeout, pos_integer()} | {deadline, integer()}
 ) ->
-    {FirstSlot :: non_neg_integer(), LastSlot :: non_neg_integer()}.
-reserve(#{cursors := Cursors, clock_ok := ClockOk} = Handle, Idx, Count, Budget0) ->
+    non_neg_integer() | {FirstSlot :: non_neg_integer(), LastSlot :: non_neg_integer()}.
+reserve(
+    #{cursors := Cursors, clock_ok := ClockOk, clock_offset_ms := Offset} = Handle,
+    Idx,
+    Request,
+    Budget0
+) ->
     case atomics:get(ClockOk, 1) of
         1 ->
             ok;
         0 ->
             error({elib_tsid_clock_unsafe, #{hint => 'readiness() reports clock drift'}})
     end,
-    Now = wall_clock_ms() - ?EPOCH_MS,
+    Now = clock_read(Offset) - ?EPOCH_MS,
     case Now < 0 of
         true -> error({elib_tsid_clock_before_epoch, #{now_rel => Now}});
         false -> ok
@@ -441,15 +488,13 @@ reserve(#{cursors := Cursors, clock_ok := ClockOk} = Handle, Idx, Count, Budget0
             ok
     end,
     Old = atomics:get(Cursors, Idx),
+    Count = reserve_size(Old, Now, Request),
     case reserve_candidate(Old, Now, Count) of
         {ok, First, Last} ->
-            commit_reserve(Handle, Idx, Old, First, Last, Now, Budget0, Count);
+            commit_reserve(Handle, Idx, Old, First, Last, Now, Budget0, Request);
         {error, Reason} ->
             error(Reason)
     end.
-
-slot_of(#{lookup := Lookup}, Name) ->
-    maps:get(Name, Lookup).
 
 %% @private 无借支检查 + CAS 提交
 %%
@@ -459,15 +504,15 @@ slot_of(#{lookup := Lookup}, Name) ->
 %% 因此只需校验起点即可覆盖整个区间，含批量终点。
 %% 游标领先于时钟（回拨后 CurTs >= Now）不算借支：这些槽位属于已被
 %% 消费过的毫秒，继续用完它们不会重复。
-commit_reserve(Handle, Idx, Old, First, Last, Now, Budget0, Count) ->
+commit_reserve(Handle, Idx, Old, First, Last, Now, Budget0, Request) ->
     FirstTs = First bsr ?SEQUENCE_BITS,
     CurTs = Old bsr ?SEQUENCE_BITS,
     case FirstTs > Now andalso FirstTs > CurTs of
         true ->
             Budget = ensure_deadline(Budget0),
-            case wait_step(Budget, FirstTs - Now) of
+            case capacity_wait(Handle, FirstTs, Budget) of
                 ok ->
-                    reserve(Handle, Idx, Count, {deadline, Budget});
+                    reserve(Handle, Idx, Request, {deadline, Budget});
                 timeout ->
                     error(
                         {elib_tsid_capacity_exhausted, #{
@@ -477,16 +522,25 @@ commit_reserve(Handle, Idx, Old, First, Last, Now, Budget0, Count) ->
                     )
             end;
         false ->
-            commit_cas(Handle, Idx, Old, First, Last, Budget0, Count)
+            commit_cas(Handle, Idx, Old, First, Last, Budget0, Request)
     end.
 
 commit_cas(
-    #{cursors := Cursors, reservations := Stats} = Handle, Idx, Old, First, Last, Budget0, Count
+    #{cursors := Cursors, reservations := Stats} = Handle, Idx, Old, First, Last, Budget0, Request
 ) ->
+    ?BEFORE_TSID_CAS,
     case atomics:compare_exchange(Cursors, Idx, Old, Last) of
         ok ->
-            _ = atomics:add(Stats, 1, 1),
-            {First, Last};
+            StatsIdx =
+                case Handle of
+                    #{cursor_stride := ?CURSOR_STRIDE} -> Idx;
+                    _ -> 1
+                end,
+            _ = atomics:add(Stats, StatsIdx, 1),
+            case Request of
+                1 -> First;
+                _ -> {First, Last}
+            end;
         _Other ->
             %% 冲突：deadline 预算内用刷新后的墙钟重试；
             %% 预算在此物化一次并随重试守恒
@@ -499,31 +553,87 @@ commit_cas(
                         }}
                     );
                 false ->
-                    reserve(Handle, Idx, Count, {deadline, Budget})
+                    reserve(Handle, Idx, Request, {deadline, Budget})
             end
     end.
 
--spec ensure_deadline({timeout, pos_integer()} | {deadline, integer()}) -> integer().
+-spec ensure_deadline(pos_integer() | {timeout, pos_integer()} | {deadline, integer()}) ->
+    integer().
+ensure_deadline(T) when is_integer(T), T > 0 -> monotonic_ms() + T;
 ensure_deadline({timeout, T}) -> monotonic_ms() + T;
 ensure_deadline({deadline, D}) -> D.
 
-%% @private 无 busy-spin 等待：睡眠由 deadline 剩余量约束；单调钟停滞
-%% （异常/seam 冻结）立即 fail-closed，绝不无限等待。
+%% Wait for the slot's actual monotonic millisecond, not a stale relative lead.
+capacity_wait(#{clock_offset_ms := Offset}, FirstTs, Deadline) ->
+    capacity_wait_clock(Offset, FirstTs, Deadline).
+
+-ifdef(TEST).
+capacity_wait_clock(Offset, FirstTs, Deadline) ->
+    case get(?TEST_WALL_MS) of
+        undefined ->
+            wait_until(Deadline, FirstTs + ?EPOCH_MS - Offset);
+        _ ->
+            %% A synthetic wall clock need not share the runtime's real offset.
+            case monotonic_ms() >= Deadline of
+                true ->
+                    timeout;
+                false ->
+                    Needed = FirstTs + ?EPOCH_MS - clock_read(Offset),
+                    case Needed =< 0 of
+                        true -> ok;
+                        false -> wait_step(Deadline, Needed)
+                    end
+            end
+    end.
+-else.
+capacity_wait_clock(Offset, FirstTs, Deadline) ->
+    wait_until(Deadline, FirstTs + ?EPOCH_MS - Offset).
+-endif.
+
+%% Retained TEST seam helper: a relative delay anchored in real ERTS time.
+-ifdef(TEST).
 -spec wait_step(integer(), pos_integer()) -> ok | timeout.
 wait_step(Deadline, NeededMs) ->
+    wait_until(Deadline, erlang:monotonic_time(millisecond) + max(1, NeededMs)).
+-endif.
+
+%% One absolute deadline for the whole reservation/batch. An already-reached
+%% slot retries immediately; receive selects only our own timer reference.
+wait_until(Deadline, TargetMono) ->
+    RealBefore = erlang:monotonic_time(millisecond),
     Before = monotonic_ms(),
     case Before >= Deadline of
         true ->
             timeout;
         false ->
-            Remaining = Deadline - Before,
-            Sleep = erlang:min(erlang:max(1, NeededMs), Remaining),
-            ok = timer:sleep(Sleep),
-            case monotonic_advanced(Before) of
-                true -> ok;
-                false -> timeout
+            Wake = wait_wake(Deadline, TargetMono, RealBefore, Before),
+            case Wake =< RealBefore of
+                true ->
+                    ok;
+                false ->
+                    Ref = erlang:start_timer(
+                        Wake,
+                        self(),
+                        elib_tsid_capacity_wait,
+                        [{abs, true}]
+                    ),
+                    receive
+                        {timeout, Ref, elib_tsid_capacity_wait} -> ok
+                    end,
+                    case monotonic_ms() < Deadline andalso monotonic_advanced(Before) of
+                        true -> ok;
+                        false -> timeout
+                    end
             end
     end.
+
+-ifdef(TEST).
+wait_wake(Deadline, TargetMono, RealBefore, Before) ->
+    min(TargetMono, RealBefore + (Deadline - Before)).
+-else.
+wait_wake(Deadline, TargetMono, _RealBefore, _Before) ->
+    min(TargetMono, Deadline).
+-endif.
 
 -spec monotonic_advanced(integer()) -> boolean().
 monotonic_advanced(BeforeMs) ->
@@ -535,18 +645,35 @@ monotonic_advanced(BeforeMs) ->
     end.
 
 %% @private slot 区间本地展开为 ID 列表（纯计算，无共享状态访问）
--spec materialize_range(
-    non_neg_integer(), non_neg_integer(), 0..1023
-) -> [pos_integer()].
-materialize_range(First, Last, NodeId) ->
-    [slot_to_id(S, NodeId) || S <- lists:seq(First, Last)].
+%% One tail-recursive traversal avoids transient slot lists and chunk append.
+materialize_ranges([], _NodeId, Acc) ->
+    lists:reverse(Acc);
+materialize_ranges([{First, Last} | Rest], NodeId, Acc) ->
+    materialize_range(First, Last, Rest, NodeId, Acc).
+
+materialize_range(First, Last, Rest, NodeId, Acc) when First =< Last ->
+    materialize_range(
+        First + 1,
+        Last,
+        Rest,
+        NodeId,
+        [slot_to_id(First, NodeId) | Acc]
+    );
+materialize_range(_First, _Last, Rest, NodeId, Acc) ->
+    materialize_ranges(Rest, NodeId, Acc).
 
 %% @private reservation 成功计数（全局观测）
 -spec reservation_count() -> non_neg_integer().
 reservation_count() ->
     case persistent_term:get(?PT_RUNTIME, undefined) of
-        #{reservations := Stats} -> atomics:get(Stats, 1);
-        undefined -> 0
+        #{reservations := Stats, cursor_stride := ?CURSOR_STRIDE} ->
+            #{size := Size} = atomics:info(Stats),
+            %% Exact once producers quiesce; no single atomic cross-slot snapshot.
+            lists:sum([atomics:get(Stats, I) || I <- lists:seq(1, Size, ?CURSOR_STRIDE)]);
+        #{reservations := LegacyStats} ->
+            atomics:get(LegacyStats, 1);
+        undefined ->
+            0
     end.
 
 %% ===================================================================
@@ -664,7 +791,7 @@ reserve_candidate(OldCursor, NowRel, Count) when
 slot_to_id(Slot, CombinedNode) when is_integer(Slot), Slot >= 0 ->
     Ts = Slot bsr ?SEQUENCE_BITS,
     Seq = Slot band ?SEQUENCE_MASK,
-    (Ts bsl ?TIMESTAMP_SHIFT) bor (CombinedNode bsl ?NODE_SHIFT) bor Seq.
+    (Ts bsl ?TIMESTAMP_SHIFT) bor ((CombinedNode bsl ?NODE_SHIFT) bor Seq).
 
 %% @private 纯函数：ID 折叠回线性 slot（丢弃 node 段）。
 -spec id_to_slot(pos_integer()) -> non_neg_integer().
@@ -685,6 +812,14 @@ wall_clock_ms() ->
             Clock();
         Ms ->
             Ms
+    end.
+
+%% Hot-path clock uses the already-loaded runtime offset, avoiding another PT read.
+clock_read(Offset) ->
+    case get(?TEST_WALL_MS) of
+        undefined -> erlang:monotonic_time(millisecond) + Offset;
+        Clock when is_function(Clock, 0) -> Clock();
+        Ms -> Ms
     end.
 
 %% @private 单调钟 seam：仅用于等待 deadline/超时，绝不编码进 ID
