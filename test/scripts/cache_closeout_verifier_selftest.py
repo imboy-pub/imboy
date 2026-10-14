@@ -12,7 +12,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
 from check_cache_closeout_v1 import (TASK_ID, EXPECTED_CLOSEOUT_PLAN_SHA256,
     EXPECTED_ORIGINAL_PLAN_SHA256, DEFAULT_CLOSEOUT_PLAN, DEFAULT_ORIGINAL_PLAN,
     SCRIPT_PATH, CHECK_ORDER, DEFAULT_REQUIRED_IDS, sha256_file, load_json, _read_file,
-    candidate_inputs)
+    candidate_inputs, parse_utc)
 
 SELFTEST_ROOT = "/tmp/check_cache_closeout_fixtures"
 FIXTURE_ROWS = [{"path": "Makefile", "sha256": hashlib.sha256(b"# fixture\n").hexdigest()}]
@@ -60,6 +60,46 @@ def _evidence_doc(candidate, statuses):
             "scenarios": scenarios}
 
 
+def _performance_result(candidate, arm, round_no):
+    def scenario(name, **values):
+        return dict({"name": name, "status": "pass", "detail": "fixture oracle"}, **values)
+    if arm == "env":
+        scenarios = [scenario("environment_anchor", artifacts={})]
+    else:
+        scenarios = [scenario("profile_self_check", checks={
+            "memo_single_flight": True, "invalidation_race": True,
+            "loader_exception": True, "writer_crash": True,
+            "get_wait_handoff": True}),
+            scenario("throughput", ops_per_sec=1000 if arm == "base" else 980,
+                errors=0, error_rate=0, operations=10000),
+            scenario("p99", get_us=1000 if arm == "base" else 1050,
+                set_us=2000, get_p50_us=100, get_p95_us=300,
+                set_p50_us=100, set_p95_us=300, errors=0, error_rate=0,
+                operations=10000),
+            scenario("convergence", set_ms=100, errors=0, error_rate=0,
+                operations=10000),
+            scenario("resource_envelope", mailbox_peak=1, heap_peak_bytes=1,
+                metadata_peak_bytes=1, budget_usage={"n_count": 1, "n_bytes": 1,
+                    "t_count": 1, "t_bytes": 1, "journal_count": 1,
+                    "journal_bytes": 1, "buffer_count": 1, "buffer_bytes": 1,
+                    "page_count": 1, "page_bytes": 1, "generation_count": 1,
+                    "generation_bytes": 1, "grace_count": 1, "peer_count": 1})]
+    profile = {"operations": 10000, "concurrency": [1, 8, 32], "keyspace": 1024,
+        "value_bytes": 256, "ttl_seconds": 3600 if arm == "env" else 600}
+    return {"candidate_sha256": candidate, "counts": {"passed": len(scenarios),
+        "failed": 0, "cancelled": 0, "skipped": 0}, "utc": _now_z(),
+        "elapsed_ms": 1, "arm": arm, "round": round_no,
+        "profile_sha256": hashlib.sha256(json.dumps(profile, sort_keys=True,
+            separators=(",", ":")).encode()).hexdigest(),
+        "budget_digest": "budget_v1: Nmax=50000 Nmax_bytes=16MiB Tmax=20000 Tmax_bytes=8MiB Bmax=2048 Bmax_bytes=32MiB Pmax=256 Pmax_bytes=4MiB Rmax=2 Rmax_rounds=3 Dmax=300s MaxValue=32768B MaxTTL=600s HighWater=10000 W=720s",
+        "operations": 10000, "operations_per_worker": 10000,
+        "concurrency": [1, 8, 32], "keyspace": 1024,
+        "value_bytes": 256, "ttl_seconds": 3600 if arm == "env" else 600,
+        "load": {"before_1m": 1, "after_1m": 1, "before_15m": 2, "after_15m": 2},
+        "parallel_full_load": False, "compile_exit": 0, "run_exit": 0,
+        "scenarios": scenarios}
+
+
 def _write_json(path, obj):
     with open(path, "w", encoding="utf-8") as f:
         json.dump(obj, f, indent=1, ensure_ascii=False)
@@ -67,6 +107,11 @@ def _write_json(path, obj):
 
 def _write_case(dest, closeout_bytes, original_bytes, evidences,
                 ids_doc=None, ledger=None):
+    evidences = dict(evidences)
+    for arm, round_no in [("env", 1)] + [(arm, n) for n in range(1, 4)
+                                          for arm in ("base", "cand")]:
+        name = "perf_%s_r%d.json" % (arm, round_no)
+        evidences.setdefault(name, _performance_result(CAND_A, arm, round_no))
     raw = os.path.join(dest, "raw")
     os.makedirs(raw, exist_ok=True)
     _write_json(os.path.join(dest, "required-ids.json"),
@@ -78,6 +123,47 @@ def _write_case(dest, closeout_bytes, original_bytes, evidences,
         f.write(closeout_bytes)
     with open(os.path.join(dest, "plan-v2.2.1.md"), "wb") as f:
         f.write(original_bytes)
+    anchor_dir = os.path.join(raw, "w0_anchor")
+    os.makedirs(anchor_dir)
+    for role in ("env", "w0_r7", "w0_r8"):
+        role_dir = os.path.join(anchor_dir, role)
+        os.makedirs(role_dir)
+        baseline = {"compile_exit": 0, "run_exit": 0, "operations": 10000,
+            "dependency_hashes": {"deps/%02d.erl" % i: ("12" * 32) for i in range(28)},
+            "script_hashes": {"scripts/%s.erl" % name: "34" * 32
+                              for name in ("runner", "bench")}}
+        kinds = ("get", "get_wait", "set", "mixed", "memo", "syn")
+        rows = [{"kind": kind, "workers": workers, "operations": workers * 10000,
+                 "throughput_ops_sec": 1000,
+                 "p50_us": 100, "p95_us": 300, "p99_us": 500,
+                 "errors": 0, "error_rate": 0}
+                for kind in kinds for workers in (1, 8, 32)]
+        performance = {"operations_per_worker": 10000, "keyspace": 1024,
+            "value_bytes": 256, "ttl_seconds": 3600, "single_node": rows,
+            "three_node": {"status": "measured", "nodes": 3,
+                "results": [{"workers": workers, "operations": workers * 10000,
+                    "throughput_ops_sec": 1000,
+                    "p50_us": 100, "p95_us": 300, "p99_us": 500,
+                    "errors": 0, "error_rate": 0} for workers in (1, 8, 32)]}}
+        baseline_path = os.path.join(role_dir, "baseline.json")
+        performance_path = os.path.join(role_dir, "performance.json")
+        hashes_path = os.path.join(role_dir, "sha256.json")
+        _write_json(baseline_path, baseline)
+        _write_json(performance_path, performance)
+        _write_json(hashes_path, {"baseline.json": sha256_file(baseline_path),
+                                  "performance.json": sha256_file(performance_path)})
+        artifacts = {}
+        for kind, path in (("baseline", baseline_path), ("performance", performance_path),
+                           ("sha256", hashes_path)):
+            artifacts[kind] = {"path": "w0_anchor/%s/%s.json" % (role, kind),
+                               "sha256": sha256_file(path)}
+        if role == "env":
+            env_result = evidences["perf_env_r1.json"]
+            env_anchor = next(s for s in env_result["scenarios"]
+                              if s["name"] == "environment_anchor")
+            env_anchor["artifacts"][role] = artifacts
+        else:
+            env_anchor["artifacts"][role] = artifacts
     for fname, obj in evidences.items():
         _write_json(os.path.join(raw, fname), obj)
     source = os.path.join(dest, "source")
@@ -90,23 +176,41 @@ def _write_case(dest, closeout_bytes, original_bytes, evidences,
                 {"files": FIXTURE_ROWS, "candidate_sha256": CAND_A, "frozen_at_utc": freeze})
     refs = []
     fixture_gates = ["compile", "targeted", "three_node", "mixed", "rollback", "qr", "full_eunit", "performance", "independent_review"]
+    perf_names = ["perf_env_r1.json"] + ["perf_%s_r%d.json" % (arm, n)
+        for n in range(1, 4) for arm in ("base", "cand")]
+    performance_start = datetime.now(timezone.utc).replace(microsecond=0) - timedelta(seconds=30)
+    performance_intervals = {}
+    for position, name in enumerate(perf_names):
+        started = performance_start + timedelta(seconds=position * 2)
+        finished = started + timedelta(seconds=1)
+        evidences[name]["utc"] = (started + timedelta(milliseconds=500)).isoformat()
+        performance_intervals[name] = (started, finished)
+        _write_json(os.path.join(raw, name), evidences[name])
     for i, gate in enumerate(fixture_gates):
-        fname, obj = list(evidences.items())[i % len(evidences)]
-        counts = obj.get("counts", {"passed": 0, "failed": 0, "cancelled": 0, "skipped": 0})
-        log = os.path.join(dest, "command-%d.log" % i)
-        with open(log, "w") as f:
-            if gate == "full_eunit":
-                f.write("All %d tests passed.\n" % counts["passed"])
-            f.write("fixture verification\nCLOSEOUT_COUNTS " + json.dumps(counts, sort_keys=True, separators=(",", ":")) + "\n")
-        receipt = os.path.join(dest, "receipt-%d.json" % i)
-        _write_json(receipt, {"task_id": TASK_ID, "candidate_sha256": obj.get("candidate_sha256"),
-            "command": "python3 fixture.py", "exit_code": 0, "oracle": "all scenarios pass",
-            "covers": [e["id"] for e in (ledger or _base_ledger())["entries"]] + ["C%02d" % n for n in range(15)],
-            "gate": gate, "count_kind": "tests" if gate == "full_eunit" else "scenarios",
-            "input_sha256": CAND_A, "started_at_utc": _now_z(), "finished_at_utc": _now_z(),
-            "counts": counts, "log": {"path": os.path.basename(log), "sha256": sha256_file(log)},
-            "result": {"path": "raw/" + fname, "sha256": sha256_file(os.path.join(raw, fname))}})
-        refs.append({"path": os.path.basename(receipt), "sha256": sha256_file(receipt)})
+        selected = ([(name, evidences[name]) for name in perf_names]
+                    if gate == "performance" else
+                    list(evidences.items())[:2][i % 2:i % 2 + 1])
+        for fname, obj in selected:
+            index = len(refs)
+            if gate == "performance":
+                started, finished = performance_intervals[fname]
+            else:
+                started = finished = datetime.now(timezone.utc)
+            counts = obj.get("counts", {"passed": 0, "failed": 0, "cancelled": 0, "skipped": 0})
+            log = os.path.join(dest, "command-%d.log" % index)
+            with open(log, "w") as f:
+                if gate == "full_eunit":
+                    f.write("All %d tests passed.\n" % counts["passed"])
+                f.write("fixture verification\nCLOSEOUT_COUNTS " + json.dumps(counts, sort_keys=True, separators=(",", ":")) + "\n")
+            receipt = os.path.join(dest, "receipt-%d.json" % index)
+            _write_json(receipt, {"task_id": TASK_ID, "candidate_sha256": obj.get("candidate_sha256"),
+                "command": "python3 fixture.py", "exit_code": 0, "oracle": "all scenarios pass",
+                "covers": [e["id"] for e in (ledger or _base_ledger())["entries"]] + ["C%02d" % n for n in range(15)],
+                "gate": gate, "count_kind": "tests" if gate == "full_eunit" else "scenarios",
+                "input_sha256": CAND_A, "started_at_utc": started.isoformat(), "finished_at_utc": finished.isoformat(),
+                "counts": counts, "log": {"path": os.path.basename(log), "sha256": sha256_file(log)},
+                "result": {"path": "raw/" + fname, "sha256": sha256_file(os.path.join(raw, fname))}})
+            refs.append({"path": os.path.basename(receipt), "sha256": sha256_file(receipt)})
     ld, _ = load_json(os.path.join(dest, "ledger-v1.json"))
     for entry in ld["entries"]:
         entry.setdefault("status", "PASS")
@@ -151,6 +255,10 @@ def self_test():
 
     ok_evidence = {"verify_r1.json": _evidence_doc(CAND_A, ("pass",) * 3),
                    "verify_r2.json": _evidence_doc(CAND_A, ("pass",) * 3)}
+    perf_runs = [("env", 1)] + [(arm, n) for n in range(1, 4)
+                                  for arm in ("base", "cand")]
+    for arm, round_no in perf_runs:
+        ok_evidence["perf_%s_r%d.json" % (arm, round_no)] = _performance_result(CAND_A, arm, round_no)
     cases = {}  # label -> (case_dir, flags, expect_fail_check or None)
 
     def case(label, dirname, flags, expect_fail, **kw):
@@ -359,11 +467,271 @@ def self_test():
                 receipt["result"]["sha256"] = result_sha
                 rebind_receipt(dest, index, receipt)
 
+    def mutate_performance_single_arm(dest):
+        ledger_path = os.path.join(dest, "ledger-v1.json")
+        ledger, _ = load_json(ledger_path)
+        for entry in ledger["entries"] + ledger["closeout_tasks"]:
+            retained = []
+            for ref in entry["receipts"]:
+                path = os.path.join(dest, ref["path"])
+                receipt, _ = load_json(path)
+                if receipt["gate"] != "performance":
+                    retained.append(ref)
+                    continue
+                result, _ = load_json(os.path.join(dest, receipt["result"]["path"]))
+                if result.get("arm") == "cand" and result.get("round") == 1:
+                    retained.append(ref)
+            entry["receipts"] = retained
+        _write_json(ledger_path, ledger)
+
     receipt_mutation(
         "negative-18 result reports nonzero exit despite successful receipt",
         "neg_result_exit",
         mutate_result_exit,
         "result reports non-zero exit",
+    )
+
+    receipt_mutation(
+        "negative-19 single-arm performance cannot satisfy interleaved window",
+        "neg_perf_single_arm",
+        mutate_performance_single_arm,
+        "performance",
+    )
+
+    def mutate_perf_result(dest, filename, mutation):
+        result_path = os.path.join(dest, "raw", filename)
+        result, _ = load_json(result_path)
+        mutation(result)
+        _write_json(result_path, result)
+        for index in range(7, 14):
+            receipt_path = os.path.join(dest, "receipt-%d.json" % index)
+            receipt, _ = load_json(receipt_path)
+            if receipt["result"]["path"] == "raw/" + filename:
+                receipt["result"]["sha256"] = sha256_file(result_path)
+                rebind_receipt(dest, index, receipt)
+
+    def mutate_w0_env_drift(dest):
+        env_dir = os.path.join(dest, "raw/w0_anchor/env")
+        performance_path = os.path.join(env_dir, "performance.json")
+        performance, _ = load_json(performance_path)
+        next(row for row in performance["single_node"]
+             if row["kind"] == "get" and row["workers"] == 1)["throughput_ops_sec"] = 1300
+        _write_json(performance_path, performance)
+        hashes_path = os.path.join(env_dir, "sha256.json")
+        hashes, _ = load_json(hashes_path)
+        hashes["performance.json"] = sha256_file(performance_path)
+        _write_json(hashes_path, hashes)
+        result_path = os.path.join(dest, "raw/perf_env_r1.json")
+        result, _ = load_json(result_path)
+        anchor = next(s for s in result["scenarios"] if s["name"] == "environment_anchor")
+        anchor["artifacts"]["env"]["performance"]["sha256"] = sha256_file(performance_path)
+        anchor["artifacts"]["env"]["sha256"]["sha256"] = sha256_file(hashes_path)
+        _write_json(result_path, result)
+        receipt, _ = load_json(os.path.join(dest, "receipt-7.json"))
+        receipt["result"]["sha256"] = sha256_file(result_path)
+        rebind_receipt(dest, 7, receipt)
+
+    def mutate_w0_performance(dest, mutation):
+        env_dir = os.path.join(dest, "raw/w0_anchor/env")
+        performance_path = os.path.join(env_dir, "performance.json")
+        performance, _ = load_json(performance_path)
+        mutation(performance)
+        _write_json(performance_path, performance)
+        hashes_path = os.path.join(env_dir, "sha256.json")
+        hashes, _ = load_json(hashes_path)
+        hashes["performance.json"] = sha256_file(performance_path)
+        _write_json(hashes_path, hashes)
+        result_path = os.path.join(dest, "raw/perf_env_r1.json")
+        result, _ = load_json(result_path)
+        anchor = next(s for s in result["scenarios"] if s["name"] == "environment_anchor")
+        anchor["artifacts"]["env"]["performance"]["sha256"] = sha256_file(performance_path)
+        anchor["artifacts"]["env"]["sha256"]["sha256"] = sha256_file(hashes_path)
+        _write_json(result_path, result)
+        receipt, _ = load_json(os.path.join(dest, "receipt-7.json"))
+        receipt["result"]["sha256"] = sha256_file(result_path)
+        rebind_receipt(dest, 7, receipt)
+
+    def mutate_w0_duplicate_row(dest):
+        mutate_w0_performance(dest, lambda performance: performance["single_node"].append(
+            dict(performance["single_node"][0])))
+
+    def mutate_w0_missing_row(dest):
+        mutate_w0_performance(dest, lambda performance: performance["single_node"].pop(0))
+
+    def mutate_w0_extra_row(dest):
+        mutate_w0_performance(dest, lambda performance: performance["single_node"].append(
+            dict(performance["single_node"][0], kind="unexpected")))
+
+    def mutate_w0_duplicate_three_node(dest):
+        mutate_w0_performance(dest, lambda performance: performance["three_node"]["results"].append(
+            dict(performance["three_node"]["results"][0])))
+
+    def mutate_w0_baseline_without_manifest_update(dest):
+        baseline_path = os.path.join(dest, "raw/w0_anchor/env/baseline.json")
+        baseline, _ = load_json(baseline_path)
+        baseline["dependency_hashes"]["deps/00.erl"] = "ff" * 32
+        _write_json(baseline_path, baseline)
+        result_path = os.path.join(dest, "raw/perf_env_r1.json")
+        result, _ = load_json(result_path)
+        receipt, _ = load_json(os.path.join(dest, "receipt-7.json"))
+        receipt["result"]["sha256"] = sha256_file(result_path)
+        rebind_receipt(dest, 7, receipt)
+
+    receipt_mutation(
+        "negative-20 performance error count cannot PASS",
+        "neg_perf_errors",
+        lambda dest: mutate_perf_result(dest, "perf_cand_r1.json",
+            lambda result: next(s for s in result["scenarios"] if s["name"] == "throughput").update(errors=99)),
+        "throughput missing",
+    )
+    receipt_mutation(
+        "negative-21 C01 resource budget is enforced numerically",
+        "neg_perf_budget",
+        lambda dest: mutate_perf_result(dest, "perf_base_r2.json",
+            lambda result: next(s for s in result["scenarios"] if s["name"] == "resource_envelope")["budget_usage"].update(n_count=50001)),
+        "resource usage",
+    )
+    receipt_mutation(
+        "negative-22 W0 environment drift cannot PASS",
+        "neg_perf_env_drift",
+        lambda dest: mutate_w0_env_drift(dest),
+        "W0 environment metric",
+    )
+    receipt_mutation(
+        "negative-23 boolean compile exit is not integer zero",
+        "neg_perf_bool_exit",
+        lambda dest: mutate_perf_result(dest, "perf_cand_r1.json",
+            lambda result: result.update(compile_exit=False)),
+        "compile/run exit",
+    )
+    receipt_mutation(
+        "negative-24 boolean error count is not integer zero",
+        "neg_perf_bool_errors",
+        lambda dest: mutate_perf_result(dest, "perf_cand_r1.json",
+            lambda result: next(s for s in result["scenarios"] if s["name"] == "throughput").update(errors=False)),
+        "throughput missing",
+    )
+    receipt_mutation(
+        "negative-25 malformed profile digest is rejected without crashing",
+        "neg_perf_bad_profile",
+        lambda dest: mutate_perf_result(dest, "perf_cand_r1.json",
+            lambda result: result.update(profile_sha256=[])),
+        "profile digest",
+    )
+    receipt_mutation(
+        "negative-26 missing P95 metric is rejected",
+        "neg_perf_missing_p95",
+        lambda dest: mutate_perf_result(dest, "perf_cand_r1.json",
+            lambda result: next(s for s in result["scenarios"] if s["name"] == "p99").pop("get_p95_us")),
+        "P99 missing",
+    )
+    receipt_mutation(
+        "negative-27 nonzero error rate is rejected even with zero error count",
+        "neg_perf_error_rate",
+        lambda dest: mutate_perf_result(dest, "perf_cand_r1.json",
+            lambda result: next(s for s in result["scenarios"] if s["name"] == "throughput").update(error_rate=0.1)),
+        "throughput missing",
+    )
+    receipt_mutation(
+        "negative-28 raw W0 baseline tampering breaks sha256.json binding",
+        "neg_perf_w0_tamper",
+        mutate_w0_baseline_without_manifest_update,
+        "evidence digest mismatch",
+    )
+    receipt_mutation(
+        "negative-29 duplicated W0 workload row is rejected",
+        "neg_perf_duplicate_w0_row",
+        mutate_w0_duplicate_row,
+        "W0 env/r7/r8 performance rows incomplete",
+    )
+    for number, label, dirname, mutation in [
+        (34, "missing W0 workload row is rejected", "neg_perf_missing_w0_row", mutate_w0_missing_row),
+        (35, "extra W0 workload row is rejected", "neg_perf_extra_w0_row", mutate_w0_extra_row),
+        (36, "duplicated W0 three-node row is rejected", "neg_perf_duplicate_w0_three_node", mutate_w0_duplicate_three_node),
+    ]:
+        receipt_mutation("negative-%d %s" % (number, label), dirname, mutation,
+                         "W0 env/r7/r8 performance rows incomplete")
+
+    def mutate_perf_intervals_out_of_order(dest):
+        start = datetime.now(timezone.utc).replace(microsecond=0) - timedelta(seconds=30)
+        for index, source_index in enumerate(reversed(range(7))):
+            receipt_path = os.path.join(dest, "receipt-%d.json" % (7 + index))
+            receipt, _ = load_json(receipt_path)
+            result_path = os.path.join(dest, "raw", receipt["result"]["path"].split("raw/", 1)[1])
+            result, _ = load_json(result_path)
+            interval_start = start + timedelta(seconds=source_index * 2)
+            interval_end = interval_start + timedelta(seconds=1)
+            receipt["started_at_utc"] = interval_start.isoformat()
+            receipt["finished_at_utc"] = interval_end.isoformat()
+            result["utc"] = (interval_start + timedelta(milliseconds=500)).isoformat()
+            _write_json(result_path, result)
+            receipt["result"]["sha256"] = sha256_file(result_path)
+            rebind_receipt(dest, 7 + index, receipt)
+
+    receipt_mutation(
+        "negative-30 out-of-order real performance intervals are rejected",
+        "neg_perf_interval_order",
+        mutate_perf_intervals_out_of_order,
+        "performance receipt intervals are not strictly chronological",
+    )
+
+    def mutate_perf_result_outside_interval(dest):
+        receipt_path = os.path.join(dest, "receipt-13.json")
+        receipt, _ = load_json(receipt_path)
+        result_path = os.path.join(dest, "raw", receipt["result"]["path"].split("raw/", 1)[1])
+        result, _ = load_json(result_path)
+        receipt_start, _ = parse_utc(receipt["started_at_utc"])
+        result["utc"] = (receipt_start - timedelta(seconds=1)).isoformat()
+        _write_json(result_path, result)
+        receipt["result"]["sha256"] = sha256_file(result_path)
+        rebind_receipt(dest, 13, receipt)
+
+    receipt_mutation(
+        "negative-31 performance result time outside command interval is rejected",
+        "neg_perf_result_time",
+        mutate_perf_result_outside_interval,
+        "performance result UTC is outside command receipt interval",
+    )
+
+    def mutate_perf_zero_duration(dest):
+        start = datetime.now(timezone.utc).replace(microsecond=0) - timedelta(seconds=20)
+        for index in range(7):
+            receipt_path = os.path.join(dest, "receipt-%d.json" % (7 + index))
+            receipt, _ = load_json(receipt_path)
+            instant = start + timedelta(microseconds=index + 1)
+            result_path = os.path.join(dest, "raw", receipt["result"]["path"].split("raw/", 1)[1])
+            result, _ = load_json(result_path)
+            receipt["started_at_utc"] = instant.isoformat()
+            receipt["finished_at_utc"] = instant.isoformat()
+            result["utc"] = instant.isoformat()
+            result["elapsed_ms"] = 0
+            _write_json(result_path, result)
+            receipt["result"]["sha256"] = sha256_file(result_path)
+            rebind_receipt(dest, 7 + index, receipt)
+
+    receipt_mutation(
+        "negative-32 zero-duration performance commands are rejected",
+        "neg_perf_zero_duration",
+        mutate_perf_zero_duration,
+        "performance receipt interval must have positive duration",
+    )
+
+    def mutate_perf_zero_elapsed(dest):
+        for index in range(7):
+            receipt_path = os.path.join(dest, "receipt-%d.json" % (7 + index))
+            receipt, _ = load_json(receipt_path)
+            result_path = os.path.join(dest, "raw", receipt["result"]["path"].split("raw/", 1)[1])
+            result, _ = load_json(result_path)
+            result["elapsed_ms"] = 0
+            _write_json(result_path, result)
+            receipt["result"]["sha256"] = sha256_file(result_path)
+            rebind_receipt(dest, 7 + index, receipt)
+
+    receipt_mutation(
+        "negative-33 zero elapsed performance results are rejected",
+        "neg_perf_zero_elapsed",
+        mutate_perf_zero_elapsed,
+        "performance result elapsed_ms must be positive",
     )
 
     def add_runtime_failure(dest, marker):

@@ -448,6 +448,7 @@ checks_page(Round, PageNo, Entries, Digest, HasMore, RoundSt, FromNode, PeerSt) 
                 {error, Reason} ->
                     {abort, Reason, RoundSt};
                 {ok, Count} ->
+                    Bytes = page_bytes(Entries),
                     case
                         imboy_cache_sync_proto:within_meta_budget(
                             {FromNode, Round, PageNo, Digest, HasMore}
@@ -465,7 +466,8 @@ checks_page(Round, PageNo, Entries, Digest, HasMore, RoundSt, FromNode, PeerSt) 
                                 RoundSt,
                                 FromNode,
                                 PeerSt,
-                                Count
+                                Count,
+                                Bytes
                             )
                     end
             end
@@ -491,11 +493,10 @@ page_count([_ | Tail], Count, Limit) -> page_count(Tail, Count + 1, Limit);
 page_count([], Count, _) -> Count;
 page_count(_, _, _) -> invalid.
 
-check_page_limits(Round, PageNo, Entries, Digest, HasMore, RoundSt, FromNode, PeerSt, Count) ->
+check_page_limits(Round, PageNo, Entries, Digest, HasMore, RoundSt, FromNode, PeerSt, Count, Bytes) ->
     SeenPages = maps:get(pages, PeerSt),
     ExpectedNo = SeenPages + 1,
     Bmax = imboy_cache_policy:b_max(),
-    Bytes = page_bytes(Entries),
     Failed = [
         R
      || {C, R} <- [
@@ -520,7 +521,8 @@ check_page_limits(Round, PageNo, Entries, Digest, HasMore, RoundSt, FromNode, Pe
                 HasMore,
                 RoundSt,
                 FromNode,
-                PeerSt
+                PeerSt,
+                Bytes
             )
     end.
 
@@ -532,7 +534,8 @@ validate_and_apply_page(
     HasMore,
     RoundSt,
     FromNode,
-    PeerSt
+    PeerSt,
+    Bytes
 ) ->
     case page_digest(Round, PageNo, Entries) =:= Digest of
         false ->
@@ -563,14 +566,15 @@ validate_and_apply_page(
                                 PeerSt,
                                 Entries,
                                 PageNo,
-                                HasMore
+                                HasMore,
+                                Bytes
                             )
                     end
             end
     end.
 
 %% 全回合共享有界清单；预算预检在缓存写入前，只有成功页可进入清单。
-apply_manifest_page(Round, Source, Peer, Entries, PageNo, More) ->
+apply_manifest_page(Round, Source, Peer, Entries, PageNo, More, PageBytes) ->
     Rows = [imboy_cache_policy:snapshot_manifest_entry(E) || E <- Entries],
     Items = maps:get(manifest_items, Round, 0) + length(Rows),
     Bytes = maps:get(manifest_bytes, Round, 0) + 7 + erlang:external_size({PageNo, Rows}),
@@ -597,6 +601,7 @@ apply_manifest_page(Round, Source, Peer, Entries, PageNo, More) ->
                 )
             of
                 {ok, Next} ->
+                    record_page_peak(length(Entries), PageBytes),
                     Peers = maps:get(peers, Next),
                     P = maps:get(Source, Peers),
                     Manifest = [{PageNo, Rows} | maps:get(manifest, P, [])],
@@ -618,6 +623,16 @@ apply_manifest_page(Round, Source, Peer, Entries, PageNo, More) ->
                     Abort
             end
     end.
+
+record_page_peak(Count, Bytes) ->
+    Key = snapshot_page_peak,
+    Peak =
+        case ets:lookup(?META_TABLE, Key) of
+            [{Key, {OldCount, OldBytes}}] -> {max(Count, OldCount), max(Bytes, OldBytes)};
+            [] -> {Count, Bytes}
+        end,
+    true = ets:insert(?META_TABLE, {Key, Peak}),
+    ok.
 
 peer_revision_ceiling(RoundSt, Peer) ->
     PeerSt = maps:get(Peer, maps:get(peers, RoundSt), #{}),

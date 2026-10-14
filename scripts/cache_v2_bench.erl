@@ -2,7 +2,15 @@
 %% W0 TTL=3600 is checked, never enabled by raising the product TTL budget.
 %% Sampled resource peaks are observations, not hard heap/mailbox bounds.
 -module(cache_v2_bench).
--export([run/0, app_up/0, resource_sample/0, applied/2, runtime_identity/0, members_confirmed/0]).
+-export([
+    run/0,
+    app_up/0,
+    reset_resource_sample/0,
+    resource_sample/0,
+    applied/2,
+    runtime_identity/0,
+    members_confirmed/0
+]).
 -define(REP_NS, cache_v2_bench_rep).
 -define(LOC_NS, cache_v2_bench_loc).
 -define(KEYSPACE, 1024).
@@ -25,17 +33,13 @@ run() ->
         %% TTL profile incompatibility remains independently visible, even with zero measured errors.
         Compatible = maps:get(w0_ttl_compatible, Checks),
         %% Both V2 arms use the legal TTL600 profile; W0 TTL3600 is a separate environment anchor.
-        Absolute = lists:all(fun absolute_threshold/1, Rows),
-        Exit =
-            case Errors =:= 0 andalso Absolute of
-                true -> 0;
-                false -> 2
-            end,
-        Payload = result(Rows, Checks, Ops, Started, Exit),
-        ok = file:write_file(Output, jsone:encode(Payload)),
+        Payload = result(Rows, Checks, Ops, Started),
+        Exit = maps:get(exit_code, Payload),
+        ok = write_result(Output, Payload),
         io:format("cache_v2_bench rows=~p errors=~p profile_compatible=~p exit=~p~n", [
             length(Rows), Errors, Compatible, Exit
         ]),
+        ok = print_counts(Payload),
         halt(Exit)
     catch
         Class:Reason:Stack ->
@@ -44,16 +48,44 @@ run() ->
                 candidate_sha256 => candidate(),
                 status => <<"fail">>,
                 exit => 2,
+                exit_code => 2,
+                utc => list_to_binary(
+                    calendar:system_time_to_rfc3339(erlang:system_time(millisecond), [
+                        {unit, millisecond}, {offset, "Z"}
+                    ])
+                ),
+                counts => #{passed => 0, failed => 1, cancelled => 0, skipped => 0},
+                scenarios => [
+                    #{
+                        name => <<"driver_exception">>,
+                        status => <<"fail">>,
+                        detail => iolist_to_binary(
+                            io_lib:format("~p:~p", [Class, reason_tag(Reason)])
+                        )
+                    }
+                ],
                 error_class => Class,
                 error => reason_tag(Reason),
                 elapsed_ms => erlang:monotonic_time(millisecond) - Started
             },
-            _ = file:write_file(Output, jsone:encode(Failure)),
+            _ = write_result(Output, Failure),
             io:format("cache_v2_bench failed ~p:~p at ~p~n", [
                 Class, reason_tag(Reason), lists:sublist(Stack, 2)
             ]),
+            _ = print_counts(Failure),
             halt(2)
     end.
+
+write_result(Output, Payload) ->
+    file:write_file(Output, jsone:encode(Payload)).
+
+print_counts(Payload) ->
+    #{cancelled := Cancelled, failed := Failed, passed := Passed, skipped := Skipped} =
+        maps:get(counts, Payload),
+    io:format("CLOSEOUT_COUNTS {\"cancelled\":~B,\"failed\":~B,\"passed\":~B,\"skipped\":~B}~n", [
+        Cancelled, Failed, Passed, Skipped
+    ]),
+    ok.
 
 start_distribution() ->
     {ok, _} = application:ensure_all_started(crypto),
@@ -80,11 +112,18 @@ app_up() ->
         ok -> ok;
         {error, {already_loaded, imboy}} -> ok
     end,
+    Arm = arm(),
+    {Protocol, FencedNamespaces} =
+        case Arm of
+            <<"base">> -> {legacy, []};
+            <<"cand">> -> {v2, [?REP_NS, ?LOC_NS]}
+        end,
+    application:set_env(imboy, cache_sync_protocol, Protocol),
     application:set_env(imboy, cache_registry_overrides, #{
         ?REP_NS => {replicate, false}, ?LOC_NS => {local, false}
     }),
     application:set_env(imboy, cache_replication, #{whitelist => [?REP_NS, ?LOC_NS]}),
-    application:set_env(imboy, cache_fenced_namespaces, [?REP_NS, ?LOC_NS]),
+    application:set_env(imboy, cache_fenced_namespaces, FencedNamespaces),
     {ok, _} = application:ensure_all_started(crypto),
     {ok, _} = application:ensure_all_started(syn),
     ok = syn:add_node_to_scopes([imboy_cache]),
@@ -94,9 +133,18 @@ app_up() ->
     true = unlink(M),
     {ok, S} = imboy_cache_sync:start_link(),
     true = unlink(S),
-    await(fun() -> imboy_cache_sync:status() =:= ready end, 20000).
+    await(fun() -> imboy_cache_sync:status() =:= ready end, 20000),
+    Protocol = imboy_cache_policy:protocol(),
+    FencedNamespaces = imboy_cache_policy:fenced_namespaces(),
+    ok.
 
 self_checks() ->
+    RequiredChecks = [
+        memo_single_flight, invalidation_race, loader_exception, writer_crash, get_wait_handoff
+    ],
+    AllChecksPassed = maps:from_list([{Key, true} || Key <- RequiredChecks]),
+    false = self_checks_complete(#{checks => maps:put(loader_exception, false, AllChecksPassed)}),
+    true = self_checks_complete(#{checks => AllChecksPassed}),
     Key = {?REP_NS, profile_ttl},
     TTLResult = imboy_cache:put(Key, <<"ttl-check">>, 3600, replicate),
     Compatible =
@@ -119,7 +167,7 @@ self_checks() ->
     Jobs = [
         spawn_monitor(fun() ->
             Parent ! {memo_attempt, self()},
-            V = imboy_cache:memo(Loader, MemoKey, 3600, []),
+            V = imboy_cache:memo(Loader, MemoKey, 600, []),
             Parent ! {sample_result, self(), V}
         end)
      || _ <- lists:seq(1, 32)
@@ -159,7 +207,20 @@ self_checks() ->
         end,
     true = lists:all(fun(V) -> V =:= <<"single-flight">> end, Values),
     1 = atomics:get(Counter, 1),
+    Checks = #{
+        memo_single_flight => true,
+        invalidation_race => invalidation_race_check(),
+        loader_exception => loader_exception_check(),
+        writer_crash => writer_crash_check(),
+        get_wait_handoff => get_wait_handoff_check()
+    },
     #{
+        checks => Checks,
+        invalidation_race_oracle =>
+            case arm() of
+                <<"base">> -> <<"w0_stale_refill_reproduced">>;
+                <<"cand">> -> <<"stale_refill_fenced">>
+            end,
         memo_single_flight_workers => 32,
         loader_executions => 1,
         w0_requested_ttl_sec => 3600,
@@ -167,13 +228,190 @@ self_checks() ->
         w0_ttl_compatible => Compatible
     }.
 
+invalidation_race_check() ->
+    Parent = self(),
+    Key = {?LOC_NS, {invalidation_race, erlang:unique_integer([positive])}},
+    Counter = atomics:new(1, []),
+    Release = make_ref(),
+    Loader = fun() ->
+        case atomics:add_get(Counter, 1, 1) of
+            1 ->
+                Parent ! {invalidation_loader_started, self()},
+                receive
+                    Release -> stale
+                end;
+            _ ->
+                fresh
+        end
+    end,
+    First = spawn(fun() ->
+        Parent ! {invalidation_result, self(), imboy_cache:memo(Loader, Key, 600, [])}
+    end),
+    receive
+        {invalidation_loader_started, First} -> ok
+    after 5000 -> error(invalidation_loader_timeout)
+    end,
+    Second = spawn(fun() ->
+        Parent ! {invalidation_waiter_attempt, self()},
+        Parent ! {invalidation_waiter_result, self(), imboy_cache:memo(Loader, Key, 600, [])}
+    end),
+    try
+        receive
+            {invalidation_waiter_attempt, Second} -> ok
+        after 5000 -> error(invalidation_waiter_timeout)
+        end,
+        ok = await(fun() -> process_info(Second, status) =:= {status, waiting} end, 3000),
+        ok = imboy_cache:invalidate(Key)
+    after
+        First ! Release
+    end,
+    %% base reproduces W0's stale refill; cand must fence the same race.
+    Expected =
+        case arm() of
+            <<"base">> -> stale;
+            <<"cand">> -> fresh
+        end,
+    Expected = receive_result(invalidation_result, First),
+    Expected = receive_result(invalidation_waiter_result, Second),
+    {ok, Expected} = imboy_cache:get(Key),
+    ExpectedExecutions =
+        case arm() of
+            <<"base">> -> 1;
+            <<"cand">> -> 2
+        end,
+    ExpectedExecutions = atomics:get(Counter, 1),
+    true.
+
+loader_exception_check() ->
+    Parent = self(),
+    Key = {?LOC_NS, {loader_exception, erlang:unique_integer([positive])}},
+    Ball = {cache_v2_loader_exception, make_ref()},
+    Release = make_ref(),
+    Loader = fun() ->
+        Parent ! {exception_loader_started, self()},
+        receive
+            Release -> throw(Ball)
+        end
+    end,
+    LoaderResult = spawn(fun() ->
+        Parent ! {exception_result, self(), memo_exception(Loader, Key, Ball)}
+    end),
+    receive
+        {exception_loader_started, LoaderResult} -> ok
+    after 5000 -> error(exception_loader_timeout)
+    end,
+    Waiters = [
+        spawn(fun() ->
+            Parent ! {exception_waiter_attempt, self()},
+            Parent ! {exception_waiter_result, self(), memo_exception(Loader, Key, Ball)}
+        end)
+     || _ <- lists:seq(1, 3)
+    ],
+    try
+        [
+            receive
+                {exception_waiter_attempt, Pid} -> ok
+            after 5000 -> error(exception_waiter_timeout)
+            end
+         || Pid <- Waiters
+        ],
+        ok = await(fun() -> all_waiting(Waiters) end, 3000)
+    after
+        LoaderResult ! Release
+    end,
+    [thrown = receive_result(exception_waiter_result, Pid) || Pid <- Waiters],
+    thrown = receive_result(exception_result, LoaderResult),
+    undefined = imboy_cache:get(Key),
+    true.
+
+memo_exception(Loader, Key, Ball) ->
+    try imboy_cache:memo(Loader, Key, 600, []) of
+        _ -> returned
+    catch
+        throw:Ball -> thrown
+    end.
+
+writer_crash_check() ->
+    Parent = self(),
+    Key = {cache_v2_bench_wait, {writer_crash, erlang:unique_integer([positive])}},
+    Cache = whereis(imboy_cache),
+    1 = erlang:trace(Cache, true, ['receive', {tracer, Parent}]),
+    Writer = spawn(fun() ->
+        Parent ! {writer_claim, self(), imboy_cache:get_wait(Key)},
+        receive
+            crash -> ok
+        end
+    end),
+    try
+        receive
+            {writer_claim, Writer, undefined} -> ok
+        after 5000 -> error(writer_claim_timeout)
+        end,
+        Waiter = spawn(fun() ->
+            Parent ! {writer_waiter_result, self(), imboy_cache:get_wait(Key)}
+        end),
+        ok = expect_get_wait(Cache, Waiter, Key),
+        Memo = spawn(fun() ->
+            Parent ! {writer_memo_attempt, self()},
+            Parent !
+                {writer_memo_result, self(),
+                    imboy_cache:memo(fun() -> retried_fresh end, Key, 600, [])}
+        end),
+        receive
+            {writer_memo_attempt, Memo} -> ok
+        after 5000 -> error(writer_memo_timeout)
+        end,
+        ok = await(fun() -> process_info(Memo, status) =:= {status, waiting} end, 3000),
+        exit(Writer, kill),
+        {error, premature_exit} = receive_result(writer_waiter_result, Waiter),
+        retried_fresh = receive_result(writer_memo_result, Memo),
+        true
+    after
+        1 = erlang:trace(Cache, false, ['receive']),
+        case is_process_alive(Writer) of
+            true -> exit(Writer, kill);
+            false -> ok
+        end
+    end.
+
+get_wait_handoff_check() ->
+    Parent = self(),
+    Key = {cache_v2_bench_wait, {get_wait_handoff, erlang:unique_integer([positive])}},
+    Cache = whereis(imboy_cache),
+    1 = erlang:trace(Cache, true, ['receive', {tracer, Parent}]),
+    try
+        undefined = imboy_cache:get_wait(Key),
+        Waiter = spawn(fun() -> Parent ! {handoff_result, self(), imboy_cache:get_wait(Key)} end),
+        ok = expect_get_wait(Cache, Waiter, Key),
+        ok = imboy_cache:put(Key, handed_off, 600, local),
+        {ok, handed_off} = receive_result(handoff_result, Waiter),
+        true
+    after
+        1 = erlang:trace(Cache, false, ['receive'])
+    end.
+
+expect_get_wait(Cache, Pid, Key) ->
+    receive
+        {trace, Cache, 'receive', {'$gen_call', {Pid, _}, {get_wait, Key}}} -> ok
+    after 5000 -> error(get_wait_call_not_observed)
+    end.
+
+receive_result(Tag, Pid) ->
+    receive
+        {Tag, Pid, Result} -> Result
+    after 10000 -> error({self_check_worker_timeout, Tag})
+    end.
+
+all_waiting(Pids) ->
+    lists:all(fun(Pid) -> process_info(Pid, status) =:= {status, waiting} end, Pids).
+
 local_profile(Ops, KB, VB) ->
     lists:append([
         begin
             ok = reset_components(),
             [bench(Kind, W, Ops, KB, VB, [node()]) || W <- [1, 8, 32]]
         end
-     || Kind <- [rep_put, rep_get, memo_cold, mixed]
+     || Kind <- [rep_put, rep_get, invalidate_then_memo, mixed]
     ]).
 
 reset_components() ->
@@ -274,7 +512,7 @@ bench(Kind, Workers, Ops, KeyBytes, ValueBytes, Nodes) ->
     Value = binary:copy(<<"v">>, ValueBytes),
     %% Every GET has an asserted warmed value; invalidate never contaminates GET rows.
     case Kind of
-        memo_cold ->
+        invalidate_then_memo ->
             ok;
         _ ->
             [
@@ -282,6 +520,7 @@ bench(Kind, Workers, Ops, KeyBytes, ValueBytes, Nodes) ->
              || I <- lists:seq(0, ?KEYSPACE - 1)
             ]
     end,
+    [ok = rpc:call(N, ?MODULE, reset_resource_sample, [], 1000) || N <- Nodes],
     Parent = self(),
     Sampler = spawn_monitor(fun() -> sample(Parent, Nodes, #{}) end),
     Start = erlang:monotonic_time(microsecond),
@@ -347,7 +586,7 @@ bench(Kind, Workers, Ops, KeyBytes, ValueBytes, Nodes) ->
         receiver_count => length(Nodes)
     }.
 
-ttl(memo_cold) -> 3600;
+ttl(invalidate_then_memo) -> 600;
 ttl(_) -> 600.
 
 operation(Kind, I, Worker, Workers, KB, Value, Nodes) ->
@@ -360,7 +599,7 @@ operation(Kind, I, Worker, Workers, KB, Value, Nodes) ->
                     ok = imboy_cache:put(Key, Value, 600, replicate);
                 rep_get ->
                     {ok, Value} = imboy_cache:get(Key);
-                memo_cold ->
+                invalidate_then_memo ->
                     Slots = ?KEYSPACE div Workers,
                     MKey = key(local, (Worker - 1) * Slots + I rem Slots, KB),
                     Counter = get(bench_loader_counter),
@@ -372,7 +611,7 @@ operation(Kind, I, Worker, Workers, KB, Value, Nodes) ->
                             Value
                         end,
                         MKey,
-                        3600,
+                        600,
                         []
                     ),
                     true = atomics:get(Counter, 1) =:= Before + 1;
@@ -459,18 +698,54 @@ sample(Parent, Nodes, Peaks) ->
     after 5 -> sample(Parent, Nodes, Next)
     end.
 
+reset_resource_sample() ->
+    gen_server:call(imboy_cache_sync, benchmark_reset_snapshot_page_peak, 1000).
+
 resource_sample() ->
-    Info = process_info(whereis(imboy_cache_sync), [message_queue_len, memory, total_heap_size]),
+    SyncPid = whereis(imboy_cache_sync),
+    Info = process_info(SyncPid, [message_queue_len, memory, total_heap_size]),
+    PagePeak = snapshot_page_peak(),
+    GraceCount = table_count(grace_incarnation),
+    PeerCount = table_count(peer_incarnation),
     Tables = [T || T <- ets:all(), lists:prefix("imboy_cache_", atom_to_list(ets:info(T, name)))],
     MetaWords = lists:sum([ets:info(T, memory) || T <- Tables]),
     maps:merge(logical_usage(), #{
         mailbox => proplists:get_value(message_queue_len, Info),
+        %% C01 pulls one authority page at a time; Bmax is this in-flight payload.
+        buffer_count => element(1, PagePeak),
+        buffer_bytes => element(2, PagePeak),
+        page_count => element(1, PagePeak),
+        page_bytes => element(2, PagePeak),
+        journal_count => journal_usage(3),
+        journal_bytes => journal_usage(4),
+        grace_count => GraceCount,
+        peer_count => PeerCount,
         process_memory_bytes => proplists:get_value(memory, Info),
         heap_bytes => proplists:get_value(total_heap_size, Info) * erlang:system_info(wordsize),
         metadata_entries => lists:sum([ets:info(T, size) || T <- Tables]),
         metadata_bytes => MetaWords * erlang:system_info(wordsize),
         cache_ets_bytes => depcache:size(imboy_cache) * erlang:system_info(wordsize)
     }).
+
+table_count(Prefix) ->
+    ets:select_count(imboy_cache_meta, [{{{Prefix, '_'}, '_'}, [], [true]}]).
+
+snapshot_page_peak() ->
+    case ets:lookup(imboy_cache_meta, snapshot_page_peak) of
+        [{snapshot_page_peak, Peak}] -> Peak;
+        [] -> {0, 0}
+    end.
+
+journal_usage(Index) ->
+    case ets:lookup(imboy_cache_meta, journal_window) of
+        [{journal_window, Window}] ->
+            element(Index, Window);
+        [] ->
+            case ets:select_count(imboy_cache_meta, [{{{journal, '_'}, '_'}, [], [true]}]) of
+                0 -> 0;
+                _ -> null
+            end
+    end.
 
 logical_usage() ->
     Current = code:which(imboy_cache_sync_coverage) =/= non_existing,
@@ -500,13 +775,14 @@ logical_usage() ->
             {_, _, _, _} -> Usage;
             unavailable -> {null, null, null, null}
         end,
+    {GenCount, GenBytes} = generation_usage(),
     Fields = #{
         logical_n => N,
         logical_n_bytes => NB,
         logical_t => T,
         logical_t_bytes => TB,
-        logical_gen => metric_counter(gen_count),
-        logical_gen_bytes => metric_counter(gen_bytes)
+        logical_gen => GenCount,
+        logical_gen_bytes => GenBytes
     },
     Pairs = [
         {N, policy_limit(n_max)},
@@ -528,6 +804,16 @@ logical_usage() ->
                 end
         end,
     Fields#{logical_budget_violation => Violation}.
+
+generation_usage() ->
+    case {metric_counter(gen_count), metric_counter(gen_bytes)} of
+        {Count, Bytes} when is_integer(Count), is_integer(Bytes) -> {Count, Bytes};
+        _ ->
+            case ets:select_count(imboy_cache_meta, [{{{gen, '_'}, '_'}, [], [true]}]) of
+                0 -> {0, 0};
+                _ -> {null, null}
+            end
+    end.
 
 metric_counter(Key) ->
     case ets:lookup(imboy_cache_meta, Key) of
@@ -578,7 +864,16 @@ candidate() ->
             error(malformed_candidate_sha256)
     end.
 
-result(Rows, Checks, Ops, Started, Exit) ->
+result(Rows, Checks, Ops, Started) ->
+    ProfileComplete = profile_complete(Rows, Ops),
+    Absolute = ProfileComplete andalso lists:all(fun absolute_threshold/1, Rows),
+    Scenarios = performance_scenarios(Rows, Checks, Ops, ProfileComplete, Absolute),
+    Counts = scenario_counts(Scenarios),
+    Exit =
+        case maps:get(failed, Counts) of
+            0 -> 0;
+            _ -> 2
+        end,
     #{
         task_id => <<"CACHE_V221_BACKEND_CLOSEOUT_V1">>,
         candidate_sha256 => candidate(),
@@ -589,10 +884,36 @@ result(Rows, Checks, Ops, Started, Exit) ->
         ),
         elapsed_ms => erlang:monotonic_time(millisecond) - Started,
         exit => Exit,
+        exit_code => Exit,
+        status =>
+            case Exit of
+                0 -> <<"pass">>;
+                _ -> <<"fail">>
+            end,
+        counts => Counts,
         profile => <<"v2-contract-ttl600-w0-anchor-ttl3600-not-equivalent">>,
-        memo_cold_path => <<"invalidate_then_memo_including_invalidation">>,
-        arm => list_to_binary(os:getenv("CACHE_V2_ARM", "candidate")),
+        performance_scope => <<"single_arm_measurement_receipt_only">>,
+        invalidate_then_memo_path => <<"includes_invalidation_and_refill">>,
+        arm => arm(),
+        round => round_number(),
+        operations => Ops,
         operations_per_worker => Ops,
+        concurrency => [1, 8, 32],
+        keyspace => ?KEYSPACE,
+        value_bytes => 256,
+        ttl_seconds => 600,
+        profile_sha256 => profile_digest(Ops),
+        budget_digest =>
+            <<"budget_v1: Nmax=50000 Nmax_bytes=16MiB Tmax=20000 Tmax_bytes=8MiB Bmax=2048 Bmax_bytes=32MiB Pmax=256 Pmax_bytes=4MiB Rmax=2 Rmax_rounds=3 Dmax=300s MaxValue=32768B MaxTTL=600s HighWater=10000 W=720s">>,
+        compile_exit => optional_integer("CACHE_V2_COMPILE_EXIT"),
+        run_exit => Exit,
+        load => #{
+            before_1m => optional_number("CACHE_V2_LOAD_BEFORE_1M"),
+            after_1m => optional_number("CACHE_V2_LOAD_AFTER_1M"),
+            before_15m => optional_number("CACHE_V2_LOAD_BEFORE_15M"),
+            after_15m => optional_number("CACHE_V2_LOAD_AFTER_15M")
+        },
+        parallel_full_load => optional_boolean("CACHE_V2_PARALLEL_FULL_LOAD"),
         env => #{
             otp => list_to_binary(erlang:system_info(otp_release)),
             schedulers => erlang:system_info(schedulers_online)
@@ -602,29 +923,401 @@ result(Rows, Checks, Ops, Started, Exit) ->
         registry_hash => binary:encode_hex(imboy_cache_sync_proto:registry_hash(), lowercase),
         self_checks => Checks,
         rows => Rows,
-        scenarios => [
-            #{name => <<"ttl_protocol_admission">>, status => <<"pass">>},
-            #{
-                name => <<"measured_operations">>,
-                status =>
-                    case lists:sum([maps:get(errors, R) || R <- Rows]) of
-                        0 -> <<"pass">>;
-                        _ -> <<"fail">>
-                    end
-            },
-            #{
-                name => <<"frozen_absolute_thresholds">>,
-                status =>
-                    case lists:all(fun absolute_threshold/1, Rows) of
-                        true -> <<"pass">>;
-                        false -> <<"fail">>
-                    end
-            }
-        ],
+        resource_envelope => resource_envelope(Rows, Ops),
+        scenarios => Scenarios,
         frozen_thresholds_us => #{get_p99 => 2000, set_p99 => 5000, convergence_p99 => 1000000},
         relative_gate =>
             <<"requires independently frozen V2 baseline and three interleaved pairs; get degradation<=10%, throughput>=95%">>
     }.
+
+performance_scenarios(Rows, Checks, Ops, ProfileComplete, Absolute) ->
+    Fixed = [
+        R
+     || R <- Rows,
+        maps:get(key_bytes, R) =:= 32,
+        maps:get(value_bytes, R) =:= 256
+    ],
+    Gets = [R || R <- Fixed, maps:get(kind, R) =:= rep_get],
+    Sets = [R || R <- Fixed, maps:get(kind, R) =:= rep_put],
+    Convergence = [R || R <- Fixed, maps:get(kind, R) =:= convergence],
+    PerfRows = Gets ++ Sets ++ Convergence,
+    Errors = lists:sum([maps:get(errors, R) || R <- PerfRows]),
+    Operations = lists:sum([maps:get(operations, R) || R <- Gets ++ Sets]),
+    Elapsed = lists:sum([maps:get(elapsed_us, R) || R <- Gets ++ Sets]),
+    OpsPerSec =
+        case Elapsed > 0 of
+            true -> Operations * 1000000 / Elapsed;
+            false -> null
+        end,
+    GetErrors = lists:sum([maps:get(errors, R) || R <- Gets]),
+    SetErrors = lists:sum([maps:get(errors, R) || R <- Sets]),
+    ConvErrors = lists:sum([maps:get(errors, R) || R <- Convergence]),
+    P99Values = #{
+        get_us => max_metric(Gets, p99_us),
+        get_p50_us => max_metric(Gets, p50_us),
+        get_p95_us => max_metric(Gets, p95_us),
+        set_us => max_metric(Sets, p99_us),
+        set_p50_us => max_metric(Sets, p50_us),
+        set_p95_us => max_metric(Sets, p95_us),
+        errors => GetErrors + SetErrors,
+        error_rate => safe_rate(
+            GetErrors + SetErrors, lists:sum([maps:get(operations, R) || R <- Gets ++ Sets])
+        )
+    },
+    ConvMs =
+        case max_metric(Convergence, p99_us) of
+            N when is_number(N) -> N / 1000;
+            _ -> null
+        end,
+    Resource = performance_resource(Rows, Ops),
+    SelfCheck = self_checks_complete(Checks),
+    [
+        scenario_metrics(
+            <<"profile_self_check">>,
+            SelfCheck,
+            "five required behavioral checks",
+            #{checks => maps:get(checks, Checks, #{})}
+        ),
+        scenario_metrics(
+            <<"throughput">>,
+            ProfileComplete andalso OpsPerSec =/= null andalso Errors =:= 0,
+            "fixed 32-byte key / 256-byte value GET and SET profile",
+            #{
+                ops_per_sec => OpsPerSec,
+                errors => Errors,
+                error_rate => safe_rate(Errors, Operations)
+            }
+        ),
+        scenario_metrics(
+            <<"p99">>,
+            ProfileComplete andalso Absolute andalso GetErrors + SetErrors =:= 0,
+            "maximum latency across fixed-profile concurrency levels",
+            P99Values
+        ),
+        scenario_metrics(
+            <<"convergence">>,
+            ProfileComplete andalso ConvMs =/= null andalso ConvErrors =:= 0,
+            "maximum three-node SET convergence P99 across concurrency levels",
+            #{
+                set_ms => ConvMs,
+                errors => ConvErrors,
+                error_rate => safe_rate(
+                    ConvErrors,
+                    lists:sum([maps:get(operations, R) || R <- Convergence])
+                )
+            }
+        ),
+        scenario_metrics(
+            <<"resource_envelope">>,
+            ProfileComplete andalso resource_envelope_pass(Rows, Ops) andalso
+                resource_metrics_complete(Resource),
+            "observed peaks across complete benchmark matrix; sampled peaks are not hard bounds",
+            Resource
+        )
+    ].
+
+scenario_metrics(Name, Passed, Detail, Metrics) ->
+    maps:merge(scenario(Name, Passed, Detail), Metrics).
+
+max_metric([], _) ->
+    null;
+max_metric(Rows, Key) ->
+    Values = [maps:get(Key, Row, null) || Row <- Rows],
+    case lists:all(fun is_number/1, Values) of
+        true -> lists:max(Values);
+        false -> null
+    end.
+
+safe_rate(_, 0) -> null;
+safe_rate(Errors, Operations) -> Errors / Operations.
+
+performance_resource(Rows, Ops) ->
+    Envelope = resource_envelope(Rows, Ops),
+    Peaks = [Peak || Row <- Rows, Peak <- maps:values(maps:get(resource_sample_peaks, Row, #{}))],
+    BudgetFields = [
+        {n_count, logical_n},
+        {n_bytes, logical_n_bytes},
+        {t_count, logical_t},
+        {t_bytes, logical_t_bytes},
+        {journal_count, journal_count},
+        {journal_bytes, journal_bytes},
+        {buffer_count, buffer_count},
+        {buffer_bytes, buffer_bytes},
+        {page_count, page_count},
+        {page_bytes, page_bytes},
+        {generation_count, logical_gen},
+        {generation_bytes, logical_gen_bytes},
+        {grace_count, grace_count},
+        {peer_count, peer_count}
+    ],
+    Usage = maps:from_list([{Out, max_peak(Peaks, In)} || {Out, In} <- BudgetFields]),
+    maps:merge(
+        #{
+            mailbox_peak => max_peak(Peaks, mailbox),
+            heap_peak_bytes => max_peak(Peaks, heap_bytes),
+            metadata_peak_bytes => max_peak(Peaks, metadata_bytes),
+            budget_usage => Usage,
+            sampled_peaks_are_hard_bounds => false
+        },
+        #{resource_diagnostics => Envelope}
+    ).
+
+max_peak([], _) ->
+    null;
+max_peak(Peaks, Key) ->
+    Values = [maps:get(Key, Peak, null) || Peak <- Peaks],
+    case lists:all(fun is_integer/1, Values) of
+        true -> lists:max(Values);
+        false -> null
+    end.
+
+resource_metrics_complete(#{
+    mailbox_peak := M,
+    heap_peak_bytes := H,
+    metadata_peak_bytes := D,
+    budget_usage := Usage
+}) ->
+    is_integer(M) andalso is_integer(H) andalso is_integer(D) andalso
+        map_size(Usage) =:= 14 andalso lists:all(fun is_integer/1, maps:values(Usage));
+resource_metrics_complete(_) ->
+    false.
+
+profile_digest(Ops) ->
+    Canonical = iolist_to_binary(
+        io_lib:format(
+            "{\"concurrency\":[1,8,32],\"keyspace\":1024,\"operations\":~B,\"ttl_seconds\":600,\"value_bytes\":256}",
+            [Ops]
+        )
+    ),
+    binary:encode_hex(crypto:hash(sha256, Canonical), lowercase).
+
+optional_number(Name) ->
+    case os:getenv(Name) of
+        false ->
+            null;
+        Value ->
+            try
+                list_to_float(Value)
+            catch
+                _:_ ->
+                    try
+                        list_to_integer(Value)
+                    catch
+                        _:_ -> null
+                    end
+            end
+    end.
+
+optional_boolean(Name) ->
+    case os:getenv(Name) of
+        "true" -> true;
+        "false" -> false;
+        _ -> null
+    end.
+
+optional_integer(Name) ->
+    case os:getenv(Name) of
+        false ->
+            null;
+        Value ->
+            try
+                list_to_integer(Value)
+            catch
+                _:_ -> null
+            end
+    end.
+
+arm() ->
+    case os:getenv("CACHE_V2_ARM", "cand") of
+        Arm when Arm =:= "base"; Arm =:= "cand" -> list_to_binary(Arm);
+        Other -> error({invalid_performance_arm, Other})
+    end.
+
+round_number() ->
+    case list_to_integer(os:getenv("CACHE_V2_ROUND", "1")) of
+        Round when Round > 0 -> Round;
+        _ -> error(invalid_performance_round)
+    end.
+
+resource_envelope(Rows, Ops) ->
+    ExpectedDigest = <<"b83368fbaeed214157a33f9db8832e2c">>,
+    RuntimeDigest = binary:encode_hex(imboy_cache_policy:budget_digest(), lowercase),
+    Limits = #{
+        logical_n => imboy_cache_policy:n_max(),
+        logical_n_bytes => imboy_cache_policy:n_max_bytes(),
+        logical_t => imboy_cache_policy:t_max(),
+        logical_t_bytes => imboy_cache_policy:t_max_bytes(),
+        logical_gen => imboy_cache_policy:n_max(),
+        logical_gen_bytes => imboy_cache_policy:gen_max_bytes(),
+        journal_count => imboy_cache_policy:j_max(),
+        journal_bytes => imboy_cache_policy:j_max_bytes(),
+        buffer_count => imboy_cache_policy:b_max(),
+        buffer_bytes => imboy_cache_policy:b_max_bytes(),
+        page_count => imboy_cache_policy:p_max(),
+        page_bytes => imboy_cache_policy:p_max_bytes(),
+        grace_count => imboy_cache_policy:grace_max(),
+        peer_count => imboy_cache_policy:peer_max()
+    },
+    Usage = [
+        #{
+            kind => maps:get(kind, Row),
+            workers => maps:get(workers, Row),
+            nodes => maps:map(
+                fun(_, Peak) -> budget_usage(Peak, Limits) end,
+                maps:get(resource_sample_peaks, Row, #{})
+            )
+        }
+     || Row <- Rows
+    ],
+    ProfileComplete = profile_complete(Rows, Ops),
+    ProfileFixture = [
+        #{
+            kind => Kind,
+            workers => Workers,
+            key_bytes => KeyBytes,
+            value_bytes => ValueBytes,
+            receiver_count => Receivers,
+            operations => Workers
+        }
+     || {Kind, Workers, KeyBytes, ValueBytes, Receivers} <- expected_profile()
+    ],
+    CompleteZeroUsage = maps:from_list([
+        {Key, 0}
+     || Key <- maps:keys(Limits)
+    ]),
+    MissingRejected =
+        not usage_within_limits(#{
+            nodes => #{test => budget_usage(maps:remove(logical_n, CompleteZeroUsage), Limits)}
+        }),
+    OverLimitRejected =
+        not usage_within_limits(#{
+            nodes => #{
+                test => budget_usage(
+                    maps:put(logical_n, maps:get(logical_n, Limits) + 1, CompleteZeroUsage), Limits
+                )
+            }
+        }),
+    EmptyProfileRejected = not profile_complete([], 1),
+    MissingProfileRowRejected = not profile_complete(tl(ProfileFixture), 1),
+    SelfChecks = #{
+        missing_usage_rejected => MissingRejected,
+        over_limit_rejected => OverLimitRejected,
+        empty_profile_rejected => EmptyProfileRejected,
+        missing_profile_row_rejected => MissingProfileRowRejected
+    },
+    #{
+        expected_budget_digest => ExpectedDigest,
+        runtime_budget_digest => RuntimeDigest,
+        budget_digest_matches => RuntimeDigest =:= ExpectedDigest,
+        expected_rows => length(expected_profile()),
+        profile_complete => ProfileComplete,
+        limits => Limits,
+        budget_usage => Usage,
+        self_checks => SelfChecks,
+        sample_interval_ms => 5,
+        sampled_peaks_are_hard_bounds => false,
+        within_limits => RuntimeDigest =:= ExpectedDigest andalso
+            ProfileComplete andalso
+            maps:get(missing_usage_rejected, SelfChecks) andalso
+            maps:get(over_limit_rejected, SelfChecks) andalso
+            maps:get(empty_profile_rejected, SelfChecks) andalso
+            maps:get(missing_profile_row_rejected, SelfChecks) andalso
+            lists:all(fun usage_within_limits/1, Usage)
+    }.
+
+expected_profile() ->
+    Sizes = [{16, 64}, {64, 1024}, {256, 8192}, {32, 256}],
+    Local = [
+        {Kind, Workers, KeyBytes, ValueBytes, 1}
+     || {KeyBytes, ValueBytes} <- Sizes,
+        Kind <- [rep_put, rep_get, invalidate_then_memo, mixed],
+        Workers <- [1, 8, 32]
+    ],
+    Remote = [
+        {convergence, Workers, KeyBytes, ValueBytes, 3}
+     || {KeyBytes, ValueBytes} <- Sizes,
+        Workers <- [1, 8, 32]
+    ],
+    lists:sort(Local ++ Remote).
+
+profile_complete(Rows, Ops) when is_list(Rows), is_integer(Ops), Ops > 0 ->
+    Expected = expected_profile(),
+    Actual = lists:sort([
+        {
+            maps:get(kind, Row),
+            maps:get(workers, Row),
+            maps:get(key_bytes, Row),
+            maps:get(value_bytes, Row),
+            maps:get(receiver_count, Row)
+        }
+     || Row <- Rows
+    ]),
+    length(Rows) =:= length(Expected) andalso Actual =:= Expected andalso
+        lists:all(
+            fun(Row) -> maps:get(operations, Row) =:= maps:get(workers, Row) * Ops end,
+            Rows
+        );
+profile_complete(_, _) ->
+    false.
+
+budget_usage(Peak, Limits) ->
+    Required = maps:keys(Limits),
+    Values = maps:from_list([{Key, maps:get(Key, Peak, null)} || Key <- Required]),
+    Checks = maps:from_list([
+        {Key,
+            case maps:find(Key, Limits) of
+                {ok, Limit} ->
+                    case maps:get(Key, Values) of
+                        Value when is_integer(Value), is_integer(Limit) -> Value =< Limit;
+                        _ -> false
+                    end;
+                error ->
+                    is_integer(maps:get(Key, Values))
+            end}
+     || Key <- Required
+    ]),
+    #{usage => Values, within_limits => Checks}.
+
+usage_within_limits(#{nodes := Nodes}) when map_size(Nodes) > 0 ->
+    maps:fold(
+        fun
+            (_, #{within_limits := Checks}, Acc) ->
+                Acc andalso maps:size(Checks) > 0 andalso
+                    lists:all(fun(Value) -> Value =:= true end, maps:values(Checks));
+            (_, _, _) ->
+                false
+        end,
+        true,
+        Nodes
+    );
+usage_within_limits(_) ->
+    false.
+
+resource_envelope_pass(Rows, Ops) ->
+    maps:get(within_limits, resource_envelope(Rows, Ops)).
+
+scenario(Name, Passed, Detail) ->
+    #{
+        name => Name,
+        status =>
+            case Passed of
+                true -> <<"pass">>;
+                false -> <<"fail">>
+            end,
+        detail => iolist_to_binary(Detail)
+    }.
+
+scenario_counts(Scenarios) ->
+    Passed = length([ok || #{status := <<"pass">>} <- Scenarios]),
+    Failed = length(Scenarios) - Passed,
+    #{passed => Passed, failed => Failed, cancelled => 0, skipped => 0}.
+
+self_checks_complete(Checks) ->
+    Results = maps:get(checks, Checks, #{}),
+    lists:all(
+        fun(Key) -> maps:get(Key, Results, false) =:= true end,
+        [memo_single_flight, invalidation_race, loader_exception, writer_crash, get_wait_handoff]
+    ).
 
 absolute_threshold(Row) ->
     Limit =

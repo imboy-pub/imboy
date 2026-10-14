@@ -31,6 +31,7 @@ stdlib only; Python 3.9 compatible.
 import argparse
 import hashlib
 import json
+import math
 import os
 import re
 import subprocess
@@ -612,6 +613,167 @@ def _bound_file(ref, base, errors):
     return path
 
 
+def _performance_run_errors(doc, candidate, where, evidence_root):
+    """Validate one C12 result in the documented per-arm/per-round format."""
+    errors = []
+    if not isinstance(doc, dict):
+        return ["invalid performance result: %s" % where]
+    arm, round_no = doc.get("arm"), doc.get("round")
+    if arm not in ("env", "base", "cand") or type(round_no) is not int or round_no < 1:
+        return ["performance result lacks arm/round: %s" % where]
+    if doc.get("candidate_sha256") != candidate:
+        errors.append("performance result candidate mismatch: %s" % where)
+    elapsed = doc.get("elapsed_ms")
+    if not isinstance(elapsed, (int, float)) or isinstance(elapsed, bool) or not math.isfinite(elapsed) or elapsed <= 0:
+        errors.append("performance result elapsed_ms must be positive: %s" % where)
+    profile = {key: doc.get(key) for key in
+               ("operations", "concurrency", "keyspace", "value_bytes", "ttl_seconds")}
+    profile_sha = hashlib.sha256(json.dumps(profile, sort_keys=True,
+        separators=(",", ":")).encode()).hexdigest()
+    if doc.get("profile_sha256") != profile_sha:
+        errors.append("performance result profile digest invalid: %s" % where)
+    budget = "budget_v1: Nmax=50000 Nmax_bytes=16MiB Tmax=20000 Tmax_bytes=8MiB Bmax=2048 Bmax_bytes=32MiB Pmax=256 Pmax_bytes=4MiB Rmax=2 Rmax_rounds=3 Dmax=300s MaxValue=32768B MaxTTL=600s HighWater=10000 W=720s"
+    if doc.get("budget_digest") != budget:
+        errors.append("performance result differs from frozen C01 budget: %s" % where)
+    if doc.get("operations") != 10000 or doc.get("operations_per_worker") != 10000 or doc.get("concurrency") != [1, 8, 32] or doc.get("keyspace") != 1024 or doc.get("value_bytes") != 256 or doc.get("ttl_seconds") != (3600 if arm == "env" else 600):
+        errors.append("performance profile differs from frozen C12 profile: %s" % where)
+    load = doc.get("load")
+    load_keys = ("before_1m", "after_1m", "before_15m", "after_15m")
+    if not isinstance(load, dict) or any(not isinstance(load.get(k), (int, float)) or isinstance(load.get(k), bool) or not math.isfinite(load[k]) or load[k] < 0 for k in load_keys) or max(load.get("before_1m", 99), load.get("after_1m", 99)) > 6 or max(load.get("before_15m", 99), load.get("after_15m", 99)) > 8 or doc.get("parallel_full_load") is not False:
+        errors.append("performance result violates quiet-window limits: %s" % where)
+    if type(doc.get("compile_exit")) is not int or doc["compile_exit"] != 0 or type(doc.get("run_exit")) is not int or doc["run_exit"] != 0:
+        errors.append("performance result compile/run exit is not zero: %s" % where)
+    scenarios = doc.get("scenarios")
+    names = [s.get("name") for s in scenarios if isinstance(s, dict)] if isinstance(scenarios, list) else []
+    required = {"environment_anchor"} if arm == "env" else {"profile_self_check", "throughput", "p99", "convergence", "resource_envelope"}
+    if any(not isinstance(name, str) for name in names) or set(names) != required or len(names) != len(required):
+        errors.append("performance result scenario names differ from plan: %s" % where)
+    by_name = {s["name"]: s for s in scenarios if isinstance(s, dict) and isinstance(s.get("name"), str)} if isinstance(scenarios, list) else {}
+    for name in required:
+        scenario = by_name.get(name, {})
+        if scenario.get("status") != "pass" or not isinstance(scenario.get("detail"), str) or not scenario["detail"].strip():
+            errors.append("performance scenario is not a detailed PASS (%s): %s" % (name, where))
+    def number(value):
+        return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value) and value >= 0
+    if arm == "env":
+        anchor = by_name.get("environment_anchor", {})
+        artifacts = anchor.get("artifacts")
+        if not isinstance(artifacts, dict) or set(artifacts) != {"env", "w0_r7", "w0_r8"}:
+            return errors + ["W0 anchor must reference env/r7/r8 runner artifacts: %s" % where]
+        runs = {}
+        component_hashes = []
+        for role, files in artifacts.items():
+            if not isinstance(files, dict) or set(files) != {"baseline", "performance", "sha256"}:
+                errors.append("W0 %s references must include baseline/performance/sha256.json" % role)
+                continue
+            docs = {}
+            paths = {}
+            for kind, ref in files.items():
+                path = _bound_file(ref, os.path.dirname(where), errors)
+                if path is None:
+                    continue
+                try:
+                    in_root = os.path.commonpath((os.path.realpath(evidence_root), os.path.realpath(path))) == os.path.realpath(evidence_root)
+                except ValueError:
+                    in_root = False
+                if not in_root:
+                    errors.append("W0 raw artifact escapes evidence root: %s" % path)
+                    continue
+                docs[kind], load_error = load_json(path)
+                paths[kind] = path
+                if load_error or not isinstance(docs[kind], dict):
+                    errors.append("invalid W0 %s artifact: %s" % (role, load_error or path))
+            if len(docs) != 3:
+                continue
+            manifest = docs["sha256"]
+            for name, kind in (("baseline.json", "baseline"), ("performance.json", "performance")):
+                if manifest.get(name) != sha256_file(paths[kind]):
+                    errors.append("W0 sha256.json does not bind %s: %s" % (name, role))
+            baseline = docs["baseline"]
+            if type(baseline.get("compile_exit")) is not int or baseline["compile_exit"] != 0 or type(baseline.get("run_exit")) is not int or baseline["run_exit"] != 0:
+                errors.append("W0 %s compile/run did not pass: %s" % (role, paths["baseline"]))
+            if baseline.get("operations") != 10000:
+                errors.append("W0 %s baseline operations differ from frozen profile" % role)
+            deps_hashes = baseline.get("dependency_hashes")
+            scripts_hashes = baseline.get("script_hashes")
+            if not isinstance(deps_hashes, dict) or not isinstance(scripts_hashes, dict):
+                errors.append("W0 %s lacks dependency/script hash maps" % role)
+                continue
+            hashes = dict(deps_hashes)
+            hashes.update(scripts_hashes)
+            if len(hashes) != 30 or any(not isinstance(value, str) or not HEX64_RE.fullmatch(value) for value in hashes.values()):
+                errors.append("W0 %s must bind all 30 dependency/script components: %s" % (role, paths["baseline"]))
+            component_hashes.append(hashes)
+            runs[role] = docs["performance"]
+        if len(component_hashes) == 3 and any(item != component_hashes[0] for item in component_hashes[1:]):
+            errors.append("W0 env/r7/r8 dependency and runner component hashes differ")
+        def rows_for(performance):
+            if not isinstance(performance, dict) or performance.get("operations_per_worker") != 10000 or performance.get("keyspace") != 1024 or performance.get("value_bytes") != 256 or performance.get("ttl_seconds") != 3600 or not isinstance(performance.get("single_node"), list):
+                return {}
+            rows = {}
+            expected_single = {(kind, workers) for kind in
+                               ("get", "get_wait", "set", "mixed", "memo", "syn")
+                               for workers in (1, 8, 32)}
+            for row in performance["single_node"]:
+                if not isinstance(row, dict) or not isinstance(row.get("kind"), str) or type(row.get("workers")) is not int:
+                    return {}
+                key = (row["kind"], row["workers"])
+                if key not in expected_single or key in rows or row.get("operations") != row["workers"] * 10000:
+                    return {}
+                rows[key] = row
+            three = performance.get("three_node")
+            if (set(rows) != expected_single or not isinstance(three, dict) or
+                    three.get("status") != "measured" or three.get("nodes") != 3 or
+                    not isinstance(three.get("results"), list)):
+                return {}
+            for row in three["results"]:
+                if not isinstance(row, dict) or type(row.get("workers")) is not int:
+                    return {}
+                key = ("three_node_syn", row["workers"])
+                if row["workers"] not in (1, 8, 32) or key in rows or row.get("operations") != row["workers"] * 10000:
+                    return {}
+                rows[key] = row
+            return rows
+        measured, r7, r8 = (rows_for(runs.get(role)) for role in ("env", "w0_r7", "w0_r8"))
+        required_rows = {(kind, workers) for kind in ("get", "get_wait", "set", "mixed", "memo", "syn")
+                         for workers in (1, 8, 32)} | {("three_node_syn", workers) for workers in (1, 8, 32)}
+        if any(set(rows) != required_rows for rows in (measured, r7, r8)):
+            errors.append("W0 env/r7/r8 performance rows incomplete")
+        else:
+            for key in required_rows:
+                for metric in ("throughput_ops_sec", "p50_us", "p95_us", "p99_us"):
+                    actual = measured[key].get(metric)
+                    if any(not number(actual) or not number(reference[key].get(metric)) or reference[key][metric] <= 0 or not reference[key][metric] * 0.9 <= actual <= reference[key][metric] * 1.1 for reference in (r7, r8)):
+                        errors.append("W0 environment metric outside r7/r8 noise band: %s/%s/%s" % (where, key, metric))
+                if any(type(rows[key].get("errors")) is not int or rows[key]["errors"] != 0 or not isinstance(rows[key].get("error_rate"), (int, float)) or isinstance(rows[key].get("error_rate"), bool) or not math.isfinite(rows[key]["error_rate"]) or rows[key]["error_rate"] != 0 for rows in (measured, r7, r8)):
+                    errors.append("W0 environment or reference run has errors: %s/%s" % (where, key))
+        return errors
+    check = by_name.get("profile_self_check", {}).get("checks", {})
+    if not isinstance(check, dict) or set(check) != {"memo_single_flight", "invalidation_race", "loader_exception", "writer_crash", "get_wait_handoff"} or any(value is not True for value in check.values()):
+        errors.append("performance self-check values incomplete/false: %s" % where)
+    throughput, p99, convergence, resource = (by_name.get(name, {}) for name in ("throughput", "p99", "convergence", "resource_envelope"))
+    if not number(throughput.get("ops_per_sec")) or throughput.get("ops_per_sec", 0) <= 0 or type(throughput.get("errors")) is not int or throughput["errors"] != 0 or isinstance(throughput.get("error_rate"), bool) or throughput.get("error_rate") != 0:
+        errors.append("throughput missing or has errors: %s" % where)
+    if any(not number(p99.get(key)) or p99.get(key, 0) <= 0 for key in ("get_us", "set_us")) or any(not number(p99.get(key)) for key in ("get_p50_us", "get_p95_us", "set_p50_us", "set_p95_us")) or type(p99.get("errors")) is not int or p99["errors"] != 0 or isinstance(p99.get("error_rate"), bool) or p99.get("error_rate") != 0:
+        errors.append("P99 missing or has errors: %s" % where)
+    if not number(convergence.get("set_ms")) or convergence.get("set_ms", 0) <= 0 or type(convergence.get("errors")) is not int or convergence["errors"] != 0 or isinstance(convergence.get("error_rate"), bool) or convergence.get("error_rate") != 0:
+        errors.append("convergence missing or has errors: %s" % where)
+    limits = {"n_count": 50000, "n_bytes": 16 * 1024 * 1024, "t_count": 20000,
+              "t_bytes": 8 * 1024 * 1024, "journal_count": 2048,
+              "journal_bytes": 32 * 1024 * 1024, "buffer_count": 2048,
+              "buffer_bytes": 32 * 1024 * 1024, "page_count": 256,
+              "page_bytes": 4 * 1024 * 1024, "generation_count": 50000,
+              "generation_bytes": 6400000, "grace_count": 256, "peer_count": 64}
+    observed = resource.get("budget_usage", {})
+    if not isinstance(observed, dict):
+        observed = {}
+    if any(not number(resource.get(k)) for k in ("mailbox_peak", "heap_peak_bytes", "metadata_peak_bytes")) or any(type(observed.get(k)) is not int or observed[k] < 0 or observed[k] > cap for k, cap in limits.items()):
+        errors.append("resource usage missing or exceeds frozen C01 limits: %s" % where)
+    if all(number(p99.get(key)) for key in ("get_us", "set_us")) and number(convergence.get("set_ms")) and (p99["get_us"] > 2000 or p99["set_us"] > 5000 or convergence["set_ms"] > 1000):
+        errors.append("performance absolute threshold exceeded: %s" % where)
+    return errors
+
+
 def _manifest_binding(args, errors):
     doc, err = load_json(args.candidate_manifest)
     if err:
@@ -678,6 +840,7 @@ def check_receipts(args):
         required.append(e)
     checked = set()
     final_gates = set()
+    performance_runs, performance_paths = [], set()
     legal_ids = set(entries) | set(task_ids)
     for entry in required:
         if not isinstance(entry, dict) or entry.get("status") != "PASS":
@@ -728,6 +891,8 @@ def check_receipts(args):
                     times.append(dt)
             if len(times) == 2 and (times[0] > times[1] or (frozen and times[0] < frozen)):
                 errors.append("receipt predates frozen candidate or time reversed: %s" % path)
+            if receipt.get("gate") == "performance" and len(times) == 2 and times[0] >= times[1]:
+                errors.append("performance receipt interval must have positive duration: %s" % path)
             counts = receipt.get("counts")
             if not isinstance(counts, dict) or any(type(counts.get(k)) is not int or counts[k] < 0 for k in ("passed", "failed", "cancelled", "skipped")):
                 errors.append("receipt counts missing/invalid: %s" % path)
@@ -753,16 +918,27 @@ def check_receipts(args):
                     errors.append("complete log lacks unique matching count footer: %s" % log)
             if result:
                 rd, err = load_json(result)
+                result_dt = None
                 if err or not isinstance(rd, dict) or rd.get("candidate_sha256") != candidate or rd.get("counts") != counts:
                     errors.append("result candidate/count mismatch: %s" % result)
                 if isinstance(rd, dict):
                     result_utc, utc_err = parse_utc(rd.get("utc"))
                     if utc_err or utc_in_window(result_utc):
                         errors.append("result has missing/invalid UTC: %s" % result)
+                    else:
+                        result_dt = result_utc
                     for key in ("exit", "exit_code"):
                         if key in rd and (type(rd[key]) is not int or rd[key] != 0):
                             errors.append("result reports non-zero %s: %s" % (key, result))
                 errors.extend(_audit_evidence_file(result))
+                if receipt.get("gate") == "performance" and isinstance(rd, dict):
+                    evidence_root = args.evidence_dir or os.path.dirname(args.ledger)
+                    errors.extend(_performance_run_errors(rd, candidate, result, evidence_root))
+                    if len(times) == 2 and result_dt is not None and not times[0] <= result_dt <= times[1]:
+                        errors.append("performance result UTC is outside command receipt interval: %s" % result)
+                    if result not in performance_paths:
+                        performance_paths.add(result)
+                        performance_runs.append((rd, times[0], times[1]) if len(times) == 2 else (rd, None, None))
                 if count_kind == "scenarios" and isinstance(rd, dict) and isinstance(rd.get("scenarios"), list) and isinstance(counts, dict):
                     passed = sum(isinstance(sc, dict) and sc.get("status") == "pass" for sc in rd["scenarios"])
                     if counts.get("passed") != passed or len(rd["scenarios"]) != passed:
@@ -770,6 +946,37 @@ def check_receipts(args):
     expected_gates = {"compile", "targeted", "three_node", "mixed", "rollback", "qr", "full_eunit", "performance", "independent_review"}
     if not expected_gates.issubset(final_gates):
         errors.append("C12 lacks final-candidate gates: %s" % ",".join(sorted(expected_gates - final_gates)))
+    expected_perf = [("env", 1)] + [(arm, round_no) for round_no in range(1, 4)
+                                    for arm in ("base", "cand")]
+    actual_perf = [(run.get("arm"), run.get("round")) for run, _, _ in performance_runs]
+    if actual_perf != expected_perf:
+        errors.append("C12 performance receipts must be ordered env_r1 then three base/candidate pairs")
+    for previous, current in zip(performance_runs, performance_runs[1:]):
+        if previous[2] is None or current[1] is None or previous[2] >= current[1]:
+            errors.append("C12 performance receipt intervals are not strictly chronological")
+            break
+    perf_by_arm_round = {(run.get("arm"), run.get("round")): run for run, _, _ in performance_runs
+                         if run.get("arm") in ("env", "base", "cand") and type(run.get("round")) is int}
+    v2_profiles = {run.get("profile_sha256") for run, _, _ in performance_runs
+                   if run.get("arm") in ("base", "cand") and
+                   isinstance(run.get("profile_sha256"), str)}
+    if len(v2_profiles) != 1:
+        errors.append("C12 base/candidate performance receipts use mixed profiles")
+    for round_no in range(1, 4):
+        base = perf_by_arm_round.get(("base", round_no), {})
+        cand = perf_by_arm_round.get(("cand", round_no), {})
+        def scenario_metric(run, name, key):
+            scenarios = run.get("scenarios") if isinstance(run.get("scenarios"), list) else []
+            return next((s.get(key) for s in scenarios
+                         if isinstance(s, dict) and s.get("name") == name), None)
+        base_get = scenario_metric(base, "p99", "get_us")
+        cand_get = scenario_metric(cand, "p99", "get_us")
+        base_throughput = scenario_metric(base, "throughput", "ops_per_sec")
+        cand_throughput = scenario_metric(cand, "throughput", "ops_per_sec")
+        if all(isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v) and v > 0
+               for v in (base_get, cand_get, base_throughput, cand_throughput)) and (
+                cand_get > base_get * 1.10 or cand_throughput < base_throughput * 0.95):
+            errors.append("C12 performance relative threshold exceeded in pair %d" % round_no)
     if errors:
         return res.fail("closeout receipts/current source binding rejected", errors)
     return res.passed("%d complete command receipts bound to current candidate %s" % (len(checked), candidate))
