@@ -56,6 +56,8 @@ TEST_MODS=(
   test/features/agent/integration/imboy_hird_p1_auth_tool_tests.erl
   test/features/agent/integration/imboy_hird_p2_replay_tests.erl
   test/features/agent/integration/imboy_hird_p3_compare_tests.erl
+  test/features/agent/integration/imboy_hird_poc_model_bridge.erl
+  test/features/agent/integration/imboy_hird_poc_fake_llm.erl
   test/features/agent/integration/imboy_hird_replay_offline_tests.erl
   test/features/agent/integration/imboy_hird_poc_catalog.erl
   test/features/agent/integration/imboy_hird_poc_policy.erl

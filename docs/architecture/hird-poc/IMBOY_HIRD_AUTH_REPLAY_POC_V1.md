@@ -352,8 +352,14 @@ handler 内**同步递归 fn**（`run_steps`）驱动全部步进——无 mailb
 编译期效果行精确一致检查（C0030）顺带实锚（handle 声明必须与 body 实际
 效果完全一致）。两用例：**CallWs×2 后 Finish → 业务恰两次、正常终止**；
 **Provider 永远 CallWs → 步进止于上限 5**（终止条件与循环上限的离线实证）。
-注意边界：本组为 stub 业务面（离线）；经真实授权链的循环验证仍属 P1/PG
-BLOCKED 项，真实模型 Provider 替换留待下一轮立项（离线准备至此全部就绪）。
+模型桥已成型（`imboy_hird_poc_model_bridge`，离线套件 11/11 全绿）：content
+JSON → Decision ADT 的解析/校验矩阵（未知 action、非法 JSON、非法参数全部
+fail-closed，统一 `{hird_exn,{tool_denied,_}}` 域错误——与授权 deny 同形状，
+模型无法用畸形输出伪装合法决策）；provider 链经 `imboy_llm` behaviour fake
+验证直注与 `imboy_llm_registry` 两条路。「只差一处替换」的真实落点即此桥：
+下一轮授权到位后把 fake provider 换成 `imboy_llm_registry` 里的真实模块即可。
+注意边界：本组为 stub 业务面 + fake provider（零真实调用、零密钥）；经真实
+授权链的循环验证仍属 P1/PG BLOCKED 项。
 
 #### 4.6.7 测试执行台账、修改清单与候选指纹
 

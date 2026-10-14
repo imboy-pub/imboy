@@ -54,7 +54,10 @@ offline_replay_test_() ->
             {timeout, 120, {~B'模型决策 Finish（不请求工具）：业务 Tool 零执行', fun t_model_decision_finish/0}},
             {timeout, 120, {~B'模型决策 CallWs（请求工具）：业务 Tool 恰一次调用', fun t_model_decision_callws/0}},
             {timeout, 120, {~B'多轮决策循环正常终止：CallWs×2 后 Finish，业务恰两次', fun t_loop_multi_normal/0}},
-            {timeout, 120, {~B'多轮决策循环上限守卫：Provider 永远 CallWs，步进止于 5', fun t_loop_multi_guard/0}}
+            {timeout, 120, {~B'多轮决策循环上限守卫：Provider 永远 CallWs，步进止于 5', fun t_loop_multi_guard/0}},
+            {timeout, 120, {~B'模型桥解析矩阵：合法/未知 action/非法 JSON/缺字段全裁决', fun t_bridge_parse_matrix/0}},
+            {timeout, 120,
+                {~B'模型桥 provider 链：fake provider 合法决策与错误域回传', fun t_bridge_provider_chain/0}}
         ]}}.
 
 %%%===================================================================
@@ -803,3 +806,119 @@ t_loop_multi_guard() ->
     ?assertEqual(ok, Outcome),
     ?assertEqual(5, WsCalls),
     ?assertEqual(5, DecideCalls).
+
+%%%===================================================================
+%%% C5 前置：模型桥（content JSON → Decision；provider 链离线验证）
+%%%===================================================================
+
+%% 解析/校验矩阵：合法两种 + 三类畸形输出全部 fail-closed。
+t_bridge_parse_matrix() ->
+    B = imboy_hird_poc_model_bridge,
+    ?assertEqual(
+        {call_ws, 912001},
+        B:decision_from_content(<<"{\"action\":\"call_ws\",\"ws_id\":912001}">>)
+    ),
+    ?assertEqual(
+        {finish, <<"done">>},
+        B:decision_from_content(<<"{\"action\":\"finish\",\"answer\":\"done\"}">>)
+    ),
+    %% 未知 action（模型试图请求签名外工具）→ 协议层拒绝。
+    ?assertEqual(
+        {error, {unknown_action, <<"delete_user">>}},
+        B:decision_from_content(<<"{\"action\":\"delete_user\",\"ws_id\":1}">>)
+    ),
+    ?assertEqual(
+        {error, bad_json},
+        B:decision_from_content(<<"not-json">>)
+    ),
+    ?assertEqual(
+        {error, bad_ws_id},
+        B:decision_from_content(<<"{\"action\":\"call_ws\",\"ws_id\":-1}">>)
+    ),
+    ?assertEqual(
+        {error, action_missing},
+        B:decision_from_content(<<"{\"ws_id\":912001}">>)
+    ).
+
+%% provider 链（imboy_llm behaviour fake）：合法决策直通；畸形输出/provider
+%% 错误统一 {hird_exn,{tool_denied,_}} 域错误（与授权 deny 同形状）。
+t_bridge_provider_chain() ->
+    B = imboy_hird_poc_model_bridge,
+    run_isolated(fun() ->
+        H1 = B:make_decide_handler(
+            1,
+            {mod, imboy_hird_poc_fake_llm, #{
+                resp => #{
+                    <<"choices">> => [
+                        #{
+                            <<"message">> =>
+                                #{
+                                    <<"content">> =>
+                                        <<"{\"action\":\"call_ws\",\"ws_id\":912001}">>
+                                }
+                        }
+                    ]
+                }
+            }}
+        ),
+        R1 = hird_handlers:with_handlers([{{tool, model_decide}, H1}], fun() ->
+            H1(#{step => 0}, #{})
+        end),
+        ?assertEqual({call_ws, 912001}, R1),
+        %% 未知 action（模型试图请求签名外工具）→ 域错误回传。
+        H2 = B:make_decide_handler(
+            1,
+            {mod, imboy_hird_poc_fake_llm, #{
+                resp => #{
+                    <<"choices">> => [
+                        #{
+                            <<"message">> =>
+                                #{<<"content">> => <<"{\"action\":\"delete_user\"}">>}
+                        }
+                    ]
+                }
+            }}
+        ),
+        ?assertThrow(
+            {hird_exn, {tool_denied, _}},
+            hird_handlers:with_handlers([{{tool, model_decide}, H2}], fun() ->
+                H2(#{step => 1}, #{})
+            end)
+        ),
+        %% provider 错误 → 域错误回传。
+        H3 = B:make_decide_handler(1, {mod, imboy_hird_poc_fake_llm, #{}}),
+        ?assertThrow(
+            {hird_exn, {tool_denied, _}},
+            hird_handlers:with_handlers([{{tool, model_decide}, H3}], fun() ->
+                H3(#{step => 2}, #{})
+            end)
+        ),
+        %% registry 路：app env 注入 fake provider，经 imboy_llm_registry 适配。
+        ok = application:set_env(
+            imboy,
+            llm_providers,
+            [
+                #{
+                    name => <<"poc-fake">>,
+                    module => imboy_hird_poc_fake_llm,
+                    resp => #{
+                        <<"choices">> => [
+                            #{
+                                <<"message">> =>
+                                    #{
+                                        <<"content">> =>
+                                            <<"{\"action\":\"finish\",\"answer\":\"via-registry\"}">>
+                                    }
+                            }
+                        ]
+                    }
+                }
+            ]
+        ),
+        H4 = B:make_decide_handler(1, {name, <<"poc-fake">>}),
+        R4 = hird_handlers:with_handlers([{{tool, model_decide}, H4}], fun() ->
+            H4(#{step => 3}, #{})
+        end),
+        ?assertEqual({finish, <<"via-registry">>}, R4),
+        ok = application:unset_env(imboy, llm_providers)
+    end).
