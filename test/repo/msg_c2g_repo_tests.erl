@@ -68,6 +68,44 @@ write_msg_with_valid_data_test_() ->
         end
     ).
 
+write_msg_insert_failure_stops_timeline_test_() ->
+    [
+        ?WITH_MECKS(
+            [
+                ?MOCK_ENV,
+                ?MOCK_TSID,
+                ?MOCK_WORKSPACE_GUARD,
+                {elib_pg, [
+                    {'with_tx', 1, fun(Transaction) -> Transaction(fake_conn) end},
+                    {'execute', 3, fun(_, _, _) -> {error, storage_failed} end}
+                ]}
+            ],
+            fun() ->
+                Arguments = [
+                    <<"2024-01-01T00:00:00Z">>,
+                    <<"failed-message">>,
+                    <<"{}">>,
+                    1,
+                    [2],
+                    7,
+                    <<"text">>,
+                    <<>>
+                ],
+                {Function, Extra} =
+                    case WithReply of
+                        false -> {write_msg, []};
+                        true -> {write_msg_with_reply, [<<"original">>, 2, <<"reply">>]}
+                    end,
+                ?assertError(
+                    {badmatch, {error, storage_failed}},
+                    apply(msg_c2g_repo, Function, Arguments ++ Extra)
+                ),
+                ?assertEqual(1, meck:num_calls(elib_pg, execute, 3))
+            end
+        )
+     || WithReply <- [false, true]
+    ].
+
 write_msg_with_e2ee_test_() ->
     ?WITH_MECKS(
         [
