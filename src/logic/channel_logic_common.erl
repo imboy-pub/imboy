@@ -125,9 +125,10 @@ ensure_channel_content_access_by_fields(Uid, ChannelId, AccessType, Visibility) 
             HasPurchased = channel_order_ds:has_purchased(ChannelId, Uid),
             %% 付费频道的订单购买是唯一权益来源；不能因为历史脏订阅或其他
             %% 订阅写入路径存在，就把付费内容免费放行。
-            case HasPurchased =:= true of
+            case HasPurchased of
                 true -> ok;
-                false -> {error, <<"付费频道需要先购买"/utf8>>}
+                {error, Reason} -> {error, elib_cnv:safe_to_binary(Reason)};
+                _ -> {error, <<"付费频道需要先购买"/utf8>>}
             end;
         _ ->
             case Visibility of

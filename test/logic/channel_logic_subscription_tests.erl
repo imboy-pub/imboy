@@ -2,6 +2,32 @@
 -include_lib("eunit/include/eunit.hrl").
 -include("eunit_setup.hrl").
 
+purchase_query_error_never_subscribes_test_() ->
+    [
+        ?WITH_MECKS(
+            [
+                {channel_ds, [
+                    {find_by_id, 2, fun(_, _) ->
+                        #{<<"id">> => 42, <<"access_type">> => 1, <<"join_policy">> => 3}
+                    end},
+                    {subscribe, 2, fun(_, _) -> error(unexpected_subscribe) end}
+                ]},
+                {channel_logic_common, [{guard_channel_writable, 1, fun(_) -> ok end}]},
+                {channel_order_ds, [{has_purchased, 2, fun(_, _) -> {error, Reason} end}]}
+            ],
+            fun() ->
+                ?assertEqual(
+                    {error, Expected}, channel_logic_subscription:subscribe(1001, <<"42">>)
+                ),
+                ?assertEqual(0, meck:num_calls(channel_ds, subscribe, '_'))
+            end
+        )
+     || {Reason, Expected} <- [
+            {connection_closed, <<"connection_closed">>},
+            {{980, <<"archived">>}, {980, <<"archived">>}}
+        ]
+    ].
+
 get_unread_summary_success_filters_invalid_rows_test_() ->
     ?WITH_MECKS(
         [

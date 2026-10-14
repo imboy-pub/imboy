@@ -243,15 +243,16 @@ list_by_user(UserId, Limit) ->
     end.
 
 %% @doc 检查用户是否已购买频道
--spec has_purchased(integer(), integer()) -> boolean().
+-spec has_purchased(integer(), integer()) -> boolean() | {error, term()}.
 has_purchased(ChannelId, UserId) ->
     Sql =
         <<"SELECT COUNT(*) as cnt FROM channel_order ",
             "WHERE channel_id = $1 AND user_id = $2 AND status = 1 ",
             "AND (subscription_end_at IS NULL OR subscription_end_at > NOW())">>,
     case elib_pg:query(Sql, [ChannelId, UserId]) of
-        {ok, [#{<<"cnt">> := Count}]} when Count > 0 -> true;
-        _ -> false
+        {ok, [#{<<"cnt">> := Count}]} when is_integer(Count), Count >= 0 -> Count > 0;
+        {error, Reason} -> {error, Reason};
+        {ok, _} -> {error, invalid_purchase_count}
     end.
 
 %% @doc 获取用户的有效订阅

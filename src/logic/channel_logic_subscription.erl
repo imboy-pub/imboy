@@ -135,6 +135,10 @@ subscribe_paid_channel(Uid, ChannelId) ->
                 {error, Reason} ->
                     {error, elib_cnv:safe_to_binary(Reason)}
             end;
+        {error, {Code, _} = Coded} when is_integer(Code) ->
+            {error, Coded};
+        {error, Reason} ->
+            {error, elib_cnv:safe_to_binary(Reason)};
         _ ->
             {error, <<"付费频道需要先购买"/utf8>>}
     end.

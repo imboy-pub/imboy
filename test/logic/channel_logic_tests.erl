@@ -2,6 +2,29 @@
 -include_lib("eunit/include/eunit.hrl").
 -include("eunit_setup.hrl").
 
+paid_content_purchase_query_error_is_preserved_test_() ->
+    [
+        ?WITH_MECKS(
+            [
+                {channel_ds, [
+                    {find_by_id, 2, fun(_, _) ->
+                        #{<<"id">> => 42, <<"access_type">> => 1, <<"status">> => 1}
+                    end}
+                ]},
+                {channel_admin_ds, [{get_role, 2, fun(_, _) -> 0 end}]},
+                {channel_order_ds, [{has_purchased, 2, fun(_, _) -> Reply end}]}
+            ],
+            fun() ->
+                ?assertEqual(Expected, channel_logic_common:ensure_channel_content_access(1001, 42))
+            end
+        )
+     || {Reply, Expected} <- [
+            {{error, connection_closed}, {error, <<"connection_closed">>}},
+            {false, {error, <<"付费频道需要先购买"/utf8>>}},
+            {true, ok}
+        ]
+    ].
+
 %% P1-7b：与 src/logic/channel_logic_message.erl /
 %% channel_logic_subscription.erl 的 ?CHANNEL_SAFE_COLUMNS 保持一致。
 %% 钉住精确列清单可防 <<"*">> 宽列查询回流。
