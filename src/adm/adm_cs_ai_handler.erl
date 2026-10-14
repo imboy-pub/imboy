@@ -36,6 +36,10 @@ init(Req0, State0) ->
     Req1 = dispatch(Action, Method, Req0, State),
     {ok, Req1, State}.
 
+%% 特性裁剪门（auth_middleware_api_v1 同款）：customer_service 未选中档时
+%% 本 handler 的全部 action 返回 404——adm 模块恒编译，不得在未选中档下
+%% 遥指 feature 模块（prune 门 hard/裸调用永不豁免）。
+-ifdef(IMBOY_FEATURE_CUSTOMER_SERVICE).
 dispatch(config_view, Method, Req0, State) ->
     config_view_action(Method, Req0, State);
 dispatch(config_set, Method, Req0, State) ->
@@ -259,6 +263,12 @@ write_delegate(Req0, OrgId, {FacadeFun, AppParams}, none) ->
         {error, Reason} ->
             elib_response:error(Req0, to_binary(Reason), ?ERR_BAD_REQUEST)
     end.
+
+-else.
+dispatch(_Action, _Method, Req0, _State) ->
+    %% 未选中 customer_service 档：路由虽未注册，直访也 fail-closed 404。
+    elib_response:error(Req0, <<"not found"/utf8>>, ?ERR_NOT_FOUND).
+-endif.
 
 %% ===================================================================
 %% 参数装配（binary JSON 键 → application atom 键；只白名单放行）
