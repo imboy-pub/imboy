@@ -52,7 +52,9 @@ offline_replay_test_() ->
             {timeout, 120,
                 {~B'effect 凭证资源绑定：窗口内跨资源拒绝、匹配凭证到达执行边界', fun t_effect_credential_binding/0}},
             {timeout, 120, {~B'模型决策 Finish（不请求工具）：业务 Tool 零执行', fun t_model_decision_finish/0}},
-            {timeout, 120, {~B'模型决策 CallWs（请求工具）：业务 Tool 恰一次调用', fun t_model_decision_callws/0}}
+            {timeout, 120, {~B'模型决策 CallWs（请求工具）：业务 Tool 恰一次调用', fun t_model_decision_callws/0}},
+            {timeout, 120, {~B'多轮决策循环正常终止：CallWs×2 后 Finish，业务恰两次', fun t_loop_multi_normal/0}},
+            {timeout, 120, {~B'多轮决策循环上限守卫：Provider 永远 CallWs，步进止于 5', fun t_loop_multi_guard/0}}
         ]}}.
 
 %%%===================================================================
@@ -122,7 +124,8 @@ offline_log() ->
 
 variant_mod(alias) -> hird_imboy_agent_probe_alias;
 variant_mod(reversed) -> hird_imboy_agent_probe_reversed;
-variant_mod(loop) -> hird_imboy_agent_loop.
+variant_mod(loop) -> hird_imboy_agent_loop;
+variant_mod(multi) -> hird_imboy_agent_loop_multi.
 
 %% 别名变体：WsDetailAlias 与 WsDetail 同签名——离线日志（ws_detail 行）
 %% 可被变体签名表解码（加载期放行），程序体只调 alias → 运行时
@@ -259,6 +262,68 @@ variant_src(loop) ->
           Finish(a) →
             Continue({ steps: st.steps + 1, answer: a }),
         },
+
+      handle LoopDone(reply_to), st ! {Send<LoopStatus>} =
+        reply(reply_to, LoopStatus(st.steps, st.answer));
+        Continue(st),
+
+      handle Shutdown, _ ! {} = Stop,
+    } ! {Tool<ModelDecide>, Tool<WsDetail>, Exn<AgentToolError>, Send<LoopStatus>}
+
+    supervisor LoopSup {
+      strategy: one_for_one,
+      intensity: 5,
+      period: 60,
+      children: [
+        { id: loop_runner, actor: LoopRunner, start_args: 0, restart: transient },
+      ]
+    }
+
+    fn main() → () ! {Supervise, Send<LoopMsg>, Await<LoopStatus>} =
+      supervise(LoopSup);
+      let r = child(LoopSup, loop_runner) in
+      send(r, LoopStart);
+      let LoopStatus(n, a) = request(r, LoopDone) in
+      send(r, Shutdown);
+      if n >= 0 then () else crash!("bad steps")
+    """/utf8>>;
+variant_src(multi) ->
+    <<"""
+    module ImboyAgentLoopMulti
+
+    tool ModelDecide : { step: Int } → Decision ! {Exn<AgentToolError>}
+    tool WsDetail : { ws_id: Int } → String ! {Exn<AgentToolError>}
+
+    type Decision = | CallWs(Int) | Finish(String)
+    type AgentToolError = ToolDenied(String)
+    type LoopStatus = LoopStatus(Int, String)
+    type alias LoopState = { steps: Int, answer: String }
+
+    fn run_steps(st: LoopState) → LoopState ! {Tool<ModelDecide>, Tool<WsDetail>, Exn<AgentToolError>} =
+      if st.steps >= 5 then
+        st
+      else
+        let d = model_decide({ step: st.steps }) in
+        match d {
+          CallWs(id) →
+            run_steps({ steps: st.steps + 1, answer: ws_detail({ ws_id: id }) }),
+          Finish(a) →
+            { steps: st.steps + 1, answer: a },
+        }
+
+    actor LoopRunner {
+      state: LoopState,
+
+      message: LoopMsg =
+        | LoopStart
+        | LoopDone(ReplyTo<LoopStatus>)
+        | Shutdown,
+
+      init: fn(cfg: Int) ! {} = { steps: 0, answer: "" },
+
+      handle LoopStart, st ! {Tool<ModelDecide>, Tool<WsDetail>, Exn<AgentToolError>} =
+        let st2 = run_steps(st) in
+        Continue(st2),
 
       handle LoopDone(reply_to), st ! {Send<LoopStatus>} =
         reply(reply_to, LoopStatus(st.steps, st.answer));
@@ -682,3 +747,59 @@ t_model_decision_callws() ->
     ?assertEqual(ok, Outcome),
     ?assertEqual(1, DecideCalls),
     ?assertEqual(1, WsCalls).
+
+%%%===================================================================
+%%% C5 前置：多轮决策循环（handler 内同步递归 fn 驱动 + 上限守卫）
+%%%===================================================================
+
+%% 多轮循环编排：decide 按 step 参数化，stub 业务面计数。返回
+%% {Outcome, WsCalls, DecideCalls}。
+run_loop_multi(DecideFun) ->
+    run_isolated(fun() ->
+        LoopMod = ensure_variant_built(multi),
+        #{counters := #{biz := B, provider := P}} = state(),
+        Decide = fun(#{step := S}, _Hs) ->
+            _ = atomics:add_get(P, 1, 1),
+            DecideFun(S)
+        end,
+        WsStub = fun(_Args, _Hs) ->
+            _ = atomics:add_get(B, 1, 1),
+            <<"{\"id\":912001,\"stub\":true}">>
+        end,
+        Outcome =
+            try
+                ok = hird_handlers:with_handlers(
+                    [{{tool, model_decide}, Decide}, {{tool, ws_detail}, WsStub}],
+                    fun() -> LoopMod:main(#{}) end
+                ),
+                ok
+            catch
+                Class:Reason -> {caught, Class, Reason}
+            end,
+        try
+            gen_server:stop(hird_loop_sup)
+        catch
+            _:_ -> ok
+        end,
+        {Outcome, atomics:get(B, 1), atomics:get(P, 1)}
+    end).
+
+%% C5#终止：Provider 前 2 步 CallWs 后 Finish → 业务恰 2 次、正常终止。
+t_loop_multi_normal() ->
+    {Outcome, WsCalls, DecideCalls} =
+        run_loop_multi(fun
+            (S) when S < 2 -> {call_ws, 912001};
+            (_S) -> {finish, <<"done">>}
+        end),
+    ?assertEqual(ok, Outcome),
+    ?assertEqual(2, WsCalls),
+    ?assertEqual(3, DecideCalls).
+
+%% C5#上限：Provider 永远 CallWs → 步进止于上限 5（决策恰 5 次，无无限
+%% 循环），main 正常返回——终止条件与循环上限的离线实证。
+t_loop_multi_guard() ->
+    {Outcome, WsCalls, DecideCalls} =
+        run_loop_multi(fun(_S) -> {call_ws, 912001} end),
+    ?assertEqual(ok, Outcome),
+    ?assertEqual(5, WsCalls),
+    ?assertEqual(5, DecideCalls).
