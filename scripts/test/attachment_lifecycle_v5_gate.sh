@@ -78,6 +78,224 @@ LOG="$RUN_DIR/logs/$TASK-gate-$(date +%H%M%S).log"
 exec > >(tee -a "$LOG") 2>&1
 
 # ---------------- case executors ----------------
+# ---------------- W2-01 executors ----------------
+w201_db_setup() { # $1 cdir  -> echoes DB name; replay full chain once
+  local cdir="$1"
+  mkdir -p "$cdir"
+  local PGPASSWORD; PGPASSWORD=$(cat "$RUN_DIR/resources/pg-attv5.password")
+  local DB="attv5_${SLOT}_w201"
+  docker exec -i imboy_pg18 psql -X -U imboy_user -d postgres \
+    -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '$DB' AND pid <> pg_backend_pid()" \
+    -c "DROP DATABASE IF EXISTS $DB" -c "CREATE DATABASE $DB OWNER imboy_user" > "$cdir/db.log" 2>&1 || return 75
+  local E f
+  for E in pg_jieba postgis postgis_raster timescaledb pgcrypto "uuid-ossp" pg_trgm btree_gin btree_gist unaccent pg_stat_statements; do
+    docker exec -i imboy_pg18 psql -X -U imboy_user -d "$DB" -c "CREATE EXTENSION IF NOT EXISTS $E" >> "$cdir/db.log" 2>&1
+  done
+  for f in $(ls "$ROOT/priv/migrations/"*.up.sql | sed 's|.*/||' | sort); do
+    docker exec -i imboy_pg18 psql -X -U imboy_user -d "$DB" -v ON_ERROR_STOP=1 --single-transaction -f - \
+      < "$ROOT/priv/migrations/$f" >> "$cdir/raw.log" 2>&1 || { echo "REPLAY_FAIL $f" >> "$cdir/raw.log"; return 30; }
+  done
+  echo "w201 replayed $(ls "$ROOT/priv/migrations/"*.up.sql | wc -l | tr -d ' ') up files" >> "$cdir/raw.log"
+  echo "$DB"
+}
+
+w201_run_all_sections() { # $1 cdir $2 db
+  local cdir="$1" DB="$2" RC=0
+  mkdir -p "$cdir"
+  # gate-layer eunit evidence first (probes consume the flags); three tries:
+  # a cold beam cache can blow the eunit-local deadline on early passes
+  eunit_ok() {
+    local try rc
+    for try in 1 2 3; do
+      EUNIT_USE_RELAY=0 EUNIT_CONFIG="${EUNIT_CONFIG:-}" make -C "$ROOT" eunit-local "t=$1" \
+        > "$2" 2>&1
+      rc=$?
+      if [ $rc -eq 0 ] && grep -q "All .* tests passed" "$2"; then return 0; fi
+    done
+    return 1
+  }
+  if eunit_ok elib_s3_sign_tests "$cdir/eunit-s3sign.log"; then
+    local S3SIGN=1; else local S3SIGN=0; fi
+  if eunit_ok eb_asset_tests "$cdir/eunit-ebasset.log"; then
+    local EBASSET=1; else local EBASSET=0; fi
+  local SEC
+  for SEC in ordinary internal eb pin multipart widget ebp; do
+    W201_S3SIGN_OK="$S3SIGN" W201_EB_ASSET_TESTS_OK="$EBASSET" V5_RUN_DIR="$RUN_DIR" \
+      bash "$ROOT/scripts/test/attachment_lifecycle_v5_w201_probe.sh" "$DB" "$SEC" "$cdir/$SEC.jsonl" \
+      >> "$cdir/raw.log" 2>&1 || { echo "SECTION_FAIL $SEC" >> "$cdir/raw.log"; RC=30; }
+  done
+  return $RC
+}
+
+seal_w201_leafs() { # $1 cid $2 cdir $3 rc $4 cmd
+  python3 - "$ROOT" "$1" "$2" "$3" "$4" <<'PYW201'
+import json, os, sys, hashlib
+root, cid, cdir, rc, cmd = sys.argv[1:6]
+c = json.load(open(root + "/docs/architecture/attachment-lifecycle-v5/execution-contract.json"))
+leaves = c["expected_leaf_matrix"].get(cid, [])
+probes = []
+for f in ["ordinary", "internal", "eb", "pin", "multipart", "widget", "ebp"]:
+    p = os.path.join(cdir, f + ".jsonl")
+    if not os.path.exists(p):
+        continue
+    for line in open(p):
+        line = line.strip()
+        if not line:
+            continue
+        d = json.loads(line)
+        if "name" in d:
+            probes.append((f, d))
+
+def P(file, name):
+    for f, d in probes:
+        if f == file and d["name"] == name:
+            d = dict(d); d["_src_file"] = f
+            return d
+    return None
+
+# mapping: leaf -> probe row (multiple leaves may share one probe where the
+# contract's shared-protocol clause applies, 02 §188)
+M = {}
+if cid == "W2-01/pending-failclosed":
+    M = {
+     ("ordinary","insert_error"): [("ordinary","failclosed_insert_error")],
+     ("ordinary","insert_exception"): [("ordinary","failclosed_snapshot_conflict")],
+     ("ordinary","commit_unknown"): [("ordinary","commit_unknown_reconcile_same_id")],
+     ("enterprise","insert_error"): [("eb","eb_register_requires_row")],
+     ("enterprise","insert_exception"): [("eb","eb_identity_reassignment")],
+     ("enterprise","commit_unknown"): [("eb","eb_commit_unknown_replay")],
+    }
+    keyf = lambda l: (l.get("domain"), l.get("ordering_or_fault"))
+elif cid == "W2-01/pending-multipart":
+    for (dom, fault), src in {
+      ("ordinary","multipart_success"): [("multipart","mp_legacy_register_ok")],
+      ("ordinary","group_file_success"): [("multipart","mp_group_file_ok")],
+      ("ordinary","identity_mismatch"): [("multipart","mp_identity_mismatch")],
+      ("ordinary","database_unavailable"): [("multipart","mp_db_unavailable")],
+      ("enterprise","multipart_success"): [("multipart","mp_enterprise_domain_ok")],
+      ("enterprise","group_file_success"): [("multipart","mp_enterprise_group_ok")],
+      ("enterprise","identity_mismatch"): [("multipart","mp_enterprise_identity")],
+      ("enterprise","database_unavailable"): [("multipart","mp_enterprise_db_down")],
+    }.items():
+        for ac in ("AC01","AC02"):
+            M[(dom, fault, ac)] = src
+    keyf = lambda l: (l.get("domain"), l.get("ordering_or_fault"), l.get("ac_id"))
+elif cid == "W2-01/session-recovery-api":
+    M = {
+     ("ordinary","presign_response_lost"): [("ordinary","recovery_presign_response_lost")],
+     ("ordinary","restart_before_put"): [("ordinary","recovery_presign_response_lost")],
+     ("ordinary","expired_capability_same_key_renew"): [("ordinary","renew_monotonic")],
+     ("ordinary","absolute_deadline_reupload_required"): [("ordinary","recovery_deadline_pre")],
+     ("ordinary","renew_races_intent"): [("ordinary","recovery_renew_races_intent")],
+     ("ordinary","confirmed_no_new_capability"): [("ordinary","recovery_confirmed_no_capability")],
+     ("ordinary","authorization_revoked"): [("ordinary","recovery_authorization_revoked")],
+     ("ordinary","request_id_payload_conflict"): [("ordinary","failclosed_snapshot_conflict")],
+     ("ordinary","commit_unknown_no_capability"): [("ordinary","commit_unknown_reconcile_same_id")],
+     ("ordinary","internal_idempotency_postcommit_sign"): [("ordinary","recovery_idempotent_identity")],
+     ("enterprise_internal","presign_response_lost"): [("internal","recovery_status")],
+     ("enterprise_internal","restart_before_put"): [("internal","internal_restart_before_put")],
+     ("enterprise_internal","expired_capability_same_key_renew"): [("internal","internal_renew_same_key")],
+     ("enterprise_internal","absolute_deadline_reupload_required"): [("internal","internal_deadline_pre")],
+     ("enterprise_internal","renew_races_intent"): [("internal","internal_renew_races_intent")],
+     ("enterprise_internal","confirmed_no_new_capability"): [("internal","internal_confirmed_no_capability")],
+     ("enterprise_internal","authorization_revoked"): [("internal","cross_app_not_leaked")],
+     ("enterprise_internal","request_id_payload_conflict"): [("internal","failclosed_snapshot_conflict")],
+     ("enterprise_internal","commit_unknown_no_capability"): [("internal","internal_idempotency")],
+     ("enterprise_internal","internal_idempotency_postcommit_sign"): [("internal","internal_idempotency")],
+     ("enterprise_seat","restart_before_put"): [("eb","eb_register_ok")],
+     ("enterprise_seat","presign_response_lost"): [("eb","eb_status_readback")],
+     ("enterprise_seat","expired_capability_same_key_renew"): [("eb","eb_renew_monotonic")],
+     ("enterprise_seat","absolute_deadline_reupload_required"): [("eb","eb_renew_after_deadline")],
+     ("enterprise_seat","renew_races_intent"): [("eb","eb_renew_races_intent")],
+     ("enterprise_seat","confirmed_no_new_capability"): [("eb","eb_recover_for_confirm")],
+     ("enterprise_seat","authorization_revoked"): [("eb","eb_cross_tenant_not_found")],
+     ("enterprise_seat","request_id_payload_conflict"): [("eb","eb_identity_reassignment")],
+     ("enterprise_seat","commit_unknown_no_capability"): [("eb","eb_commit_unknown_replay")],
+     ("enterprise_seat","internal_idempotency_postcommit_sign"): [("eb","eb_commit_unknown_replay")],
+     ("cs_widget","restart_before_put"): [("widget","w_register_ok")],
+     ("cs_widget","presign_response_lost"): [("widget","w_status_readback")],
+     ("cs_widget","expired_capability_same_key_renew"): [("widget","w_renew_monotonic")],
+     ("cs_widget","absolute_deadline_reupload_required"): [("widget","w_renew_after_deadline")],
+     ("cs_widget","renew_races_intent"): [("widget","w_races_intent")],
+     ("cs_widget","confirmed_no_new_capability"): [("widget","w_confirmed_no_renew")],
+     ("cs_widget","authorization_revoked"): [("widget","w_cross_tenant_not_found")],
+     ("cs_widget","request_id_payload_conflict"): [("widget","w_identity_reassignment")],
+     ("cs_widget","commit_unknown_no_capability"): [("widget","w_commit_unknown_replay")],
+     ("cs_widget","internal_idempotency_postcommit_sign"): [("widget","w_idempotent_identity")],
+    }
+    keyf = lambda l: (l.get("entrypoint"), l.get("ordering_or_fault"))
+elif cid == "W2-01/upload-content-pin":
+    ord_pin = {
+      "first_content_pin": "pin_first_content",
+      "two_different_payloads_race": "pin_different_rejected",
+      "same_payload_retry": "pin_same_retry",
+      "pin_commit_unknown_no_put": "pin_persisted_without_put",
+      "pin_commit_recovered_same_hash": "pin_same_hash_recovered",
+      "body_path_swap_rejected": "pin_shape_swap_rejected",
+      "old_client_bare_put_gateway": "pin_legacy_bare_put",
+      "multipart_uses_same_pin": "pin_multipart_same_entrypoint",
+      "new_url_cannot_bypass_gateway": "pin_no_url_columns",
+      "frozen_internal_signature_expiry": "pin_frozen_signature_expiry",
+    }
+    for sc, nm in ord_pin.items():
+        # shared pin fn across the two ordinary-domain entrypoints (02 §188)
+        M[("ordinary", sc)] = [("pin", nm)]
+        M[("enterprise_internal", sc)] = [("pin", nm)]
+    for sc in ["first_content_pin","two_different_payloads_race","same_payload_retry",
+               "pin_commit_unknown_no_put","pin_commit_recovered_same_hash",
+               "body_path_swap_rejected","new_url_cannot_bypass_gateway",
+               "frozen_internal_signature_expiry"]:
+        M[("enterprise_seat", sc)] = [("ebp", "ebp_shared_protocol")]
+        M[("cs_widget", sc)] = [("ebp", "ebp_shared_protocol")]
+    keyf = lambda l: (l.get("entrypoint"), l.get("ordering_or_fault"))
+else:
+    print("no w201 mapping for %s" % cid); sys.exit(2)
+
+raw = os.path.join(cdir, "raw.log")
+sha = hashlib.sha256(open(raw, "rb").read()).hexdigest() if os.path.exists(raw) else "0"*64
+rc_i = int(rc)
+n = 0; missing = []
+for i, leaf in enumerate(leaves):
+    key = keyf(leaf)
+    src = M.get(key)
+    rows = [P(f, nm) for (f, nm) in (src or [])]
+    row = next((r for r in rows if r), None)
+    if row is None:
+        missing.append(key); continue
+    passed = 1 if (rc_i == 0 and row.get("pass") is True) else 0
+    receipt = {
+        "task_id": "W2-01", "case_id": cid,
+        "ac_id": leaf.get("ac_id"), "domain": leaf.get("domain"),
+        "driver": leaf.get("driver"), "entrypoint": leaf.get("entrypoint"),
+        "ordering_or_fault": leaf.get("ordering_or_fault"),
+        "schema_phase": leaf.get("schema_phase"),
+        "exit_code": rc_i, "executed": 1, "passed": passed,
+        "failed": 0 if passed else 1, "skipped": 0,
+        "command": cmd + " [probe: %s/%s]" % (row.get("_src_file", "?"), row["name"]),
+        "cwd": os.environ.get("V5_GATE_CWD", os.getcwd()),
+        "started_at": "", "finished_at": "",
+        "raw_output_path": raw, "raw_output_sha256": sha,
+        "probe_detail": row.get("detail", ""),
+    }
+    with open(os.path.join(cdir, "leaf-%03d.json" % i), "w") as fh:
+        json.dump(receipt, fh, indent=1)
+    n += 1
+print("sealed %d/%d leaf receipts for %s (rc=%s); missing-mapping: %s" % (n, len(leaves), cid, rc, missing if missing else "none"))
+sys.exit(0 if (rc_i == 0 and not missing) else 30)
+PYW201
+}
+
+w201_case() { # $1 cdir
+  local cdir="$1"
+  local DB
+  # pre-warm the TEST-mode beam cache once so per-case eunit stays inside
+  # its deadline even in a full --task sweep (cold compile blew it twice)
+  make -C "$ROOT" test-build >> /dev/null 2>&1 || true
+  DB=$(w201_db_setup "$cdir") || return $?
+  w201_run_all_sections "$cdir" "$DB"
+  seal_w201_leafs "$CUR_CASE" "$cdir" "$?" "w201 full-chain fresh DB + per-scenario SQL probes + gate-layer eunit evidence (elib_s3_sign_tests, eb_asset_tests)"
+}
+
 w102_phase_run() { # $1 cdir $2 phase
   local cdir="$1" phase="$2"
   local PGPASSWORD_FILE="$RUN_DIR/resources/pg-attv5.password"
@@ -222,7 +440,8 @@ bootstrap_w002_history() {
 }
 
 run_case() {  # $1 case_id
-  local cid="$1" cdir="$EVID/${cid#*/}"
+  local cid="$1"
+  local cdir="$EVID/${cid#*/}"
   mkdir -p "$cdir"
   case "$cid" in
     W1-02/migration|W1-02/down-block)
@@ -261,6 +480,9 @@ print("contract-check errors:", errs if errs else "none")
 sys.exit(1 if errs else 0)
 PYC
       seal_leafs "$cid" "$cdir" "$?" "w1 contract output structural oracle (5 subjects/8 AC/12 entrypoints/lock order/storage callbacks)" ;;
+    W2-01/pending-failclosed|W2-01/pending-multipart|W2-01/session-recovery-api|W2-01/upload-content-pin)
+      CUR_CASE="$cid"
+      w201_case "$cdir" ;;
     W0-01/baseline)
       bash scripts/check_migrations.sh > "$cdir/raw.log" 2>&1
       seal_leafs "$cid" "$cdir" "$?" "bash scripts/check_migrations.sh (bootstrap retroactive)" ;;
