@@ -251,6 +251,48 @@ callback_state_replay_test_() ->
         end
     ).
 
+callback_subject_consistency_test_() ->
+    [
+        subject_rejection_case(TokenSub, InfoSub)
+     || {TokenSub, InfoSub} <- [
+            {<<"sub-001">>, <<"sub-002">>},
+            {<<"sub-001">>, missing},
+            {missing, <<"sub-001">>},
+            {missing, missing},
+            {<<>>, <<>>},
+            {null, null},
+            {123, 123}
+        ]
+    ].
+
+subject_rejection_case(TokenSub, InfoSub) ->
+    with_oidc_mocks(
+        [
+            sso_config_mock(),
+            rate_limit_mock(),
+            dyn_httpc_mock(),
+            {sso_identity_ds, [{'find_uid', 2, fun(_, _) -> {ok, 55} end}]},
+            {user_ds, [{'find_by_id', 2, fun(_, _) -> #{<<"id">> => 55, <<"status">> => 1} end}]},
+            {passport_logic, [{'login_resp', 2, fun(_, _) -> #{<<"uid">> => 55} end}]}
+        ],
+        fun() ->
+            {State, Nonce, _} = prime_flow(<<"test">>, subject_field(InfoSub, #{})),
+            Claims = subject_field(TokenSub, maps:remove(<<"sub">>, base_claims(Nonce))),
+            erlang:put(oidc_tc_id_token, signed_jwt(Claims)),
+            Params = #{<<"code">> => <<"code-1">>, <<"state">> => State},
+            ?assertEqual({error, ?FAIL_MSG}, auth_oidc_logic:callback(Params, <<"1.2.3.4">>)),
+            lists:foreach(
+                fun(Module) -> ?assertEqual([], meck:history(Module)) end,
+                [sso_identity_ds, user_ds, passport_logic]
+            )
+        end
+    ).
+
+subject_field(missing, Fields) ->
+    Fields;
+subject_field(Subject, Fields) ->
+    Fields#{<<"sub">> => Subject}.
+
 %% @doc id_token nonce 与缓存不符 -> 拒绝
 callback_nonce_mismatch_test_() ->
     with_oidc_mocks(

@@ -339,7 +339,7 @@ https_request_opts() ->
 fetch_userinfo(Cfg, AccessToken, Claims) ->
     case maps:get(<<"userinfo_url">>, Cfg, <<>>) of
         <<>> ->
-            userinfo_fields(Claims);
+            userinfo_fields(Claims, Claims);
         Url ->
             Headers = [{"authorization", "Bearer " ++ binary_to_list(AccessToken)}],
             Opts = https_request_opts(),
@@ -348,7 +348,7 @@ fetch_userinfo(Cfg, AccessToken, Claims) ->
             of
                 {ok, {{_, 200, _}, _, RespBody}} ->
                     case decode_json(RespBody) of
-                        {ok, Info} -> userinfo_fields(Info);
+                        {ok, Info} -> userinfo_fields(Info, Claims);
                         {error, Reason} -> {error, Reason}
                     end;
                 {ok, {{_, HttpCode, _}, _, _}} ->
@@ -356,6 +356,14 @@ fetch_userinfo(Cfg, AccessToken, Claims) ->
                 {error, Reason} ->
                     {error, Reason}
             end
+    end.
+
+userinfo_fields(Info, Claims) ->
+    case {maps:get(<<"sub">>, Claims, undefined), maps:get(<<"sub">>, Info, undefined)} of
+        {Subject, Subject} when is_binary(Subject), byte_size(Subject) > 0 ->
+            userinfo_fields(Info);
+        _ ->
+            {error, userinfo_subject_mismatch}
     end.
 
 userinfo_fields(Info) ->
