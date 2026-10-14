@@ -29,6 +29,8 @@
     "/api/v1/passport/quick_login",
     "/api/v1/passport/signup",
     "/api/v1/refreshtoken",
+    "/api/v1/test/req_get",
+    "/api/v1/test/req_post",
     "/api/v1/user/show",
     "/api/v1/wechat/mini/events",
     "/api/v1/ws",
@@ -38,7 +40,28 @@
     "/livez",
     "/metrics",
     "/privacy-policy",
-    "/readyz"
+    "/readyz",
+    "GET",
+    "POST",
+    "PUT",
+    "admin",
+    "asset.read",
+    "asset.write",
+    "contact.read",
+    "conversation.read",
+    "conversation.write",
+    "customer_service",
+    "customer_service:read",
+    "customer_service:write",
+    "enterprise_business:read",
+    "enterprise_business:write",
+    "message.write",
+    "note.write",
+    "owner",
+    "pro",
+    "prod",
+    "production",
+    "sales"
   ],
   "endpoints": {
     "adm": [
@@ -415,6 +438,18 @@
         "static": false
       },
       {
+        "action": "discussion",
+        "handler": "adm_micro_community_handler",
+        "path": "/api/adm/channel/:channel_id/discussion",
+        "static": false
+      },
+      {
+        "action": "candidates",
+        "handler": "adm_micro_community_handler",
+        "path": "/api/adm/channel/:channel_id/discussion/candidates",
+        "static": false
+      },
+      {
         "action": "invitations",
         "handler": "adm_channel_handler",
         "path": "/api/adm/channel/:channel_id/invitations",
@@ -424,6 +459,12 @@
         "action": "delete_message",
         "handler": "adm_channel_handler",
         "path": "/api/adm/channel/:channel_id/message/:message_id/delete",
+        "static": false
+      },
+      {
+        "action": "essence",
+        "handler": "adm_micro_community_handler",
+        "path": "/api/adm/channel/:channel_id/message/:message_id/essence",
         "static": false
       },
       {
@@ -514,6 +555,60 @@
         "action": "search",
         "handler": "adm_channel_handler",
         "path": "/api/adm/channel/search",
+        "static": false
+      },
+      {
+        "action": "config_view",
+        "handler": "adm_cs_ai_handler",
+        "path": "/api/adm/cs/ai/config",
+        "static": false
+      },
+      {
+        "action": "config_set",
+        "handler": "adm_cs_ai_handler",
+        "path": "/api/adm/cs/ai/config/set",
+        "static": false
+      },
+      {
+        "action": "faq_list",
+        "handler": "adm_cs_ai_handler",
+        "path": "/api/adm/cs/ai/faq",
+        "static": false
+      },
+      {
+        "action": "faq_delete",
+        "handler": "adm_cs_ai_handler",
+        "path": "/api/adm/cs/ai/faq/delete",
+        "static": false
+      },
+      {
+        "action": "faq_upsert",
+        "handler": "adm_cs_ai_handler",
+        "path": "/api/adm/cs/ai/faq/upsert",
+        "static": false
+      },
+      {
+        "action": "preview",
+        "handler": "adm_cs_ai_handler",
+        "path": "/api/adm/cs/ai/preview",
+        "static": false
+      },
+      {
+        "action": "session_turns",
+        "handler": "adm_cs_ai_handler",
+        "path": "/api/adm/cs/ai/session_turns",
+        "static": false
+      },
+      {
+        "action": "sessions",
+        "handler": "adm_cs_ai_handler",
+        "path": "/api/adm/cs/ai/sessions",
+        "static": false
+      },
+      {
+        "action": "stats",
+        "handler": "adm_cs_ai_handler",
+        "path": "/api/adm/cs/ai/stats",
         "static": false
       },
       {
@@ -1851,15 +1946,15 @@
         "static": false
       },
       {
-        "action": "users",
-        "handler": "enterprise_directory_handler",
-        "path": "/api/internal/v1/directory/users",
-        "static": false
-      },
-      {
         "action": "sync",
         "handler": "enterprise_directory_handler",
         "path": "/api/internal/v1/directory/sync",
+        "static": false
+      },
+      {
+        "action": "users",
+        "handler": "enterprise_directory_handler",
+        "path": "/api/internal/v1/directory/users",
         "static": false
       },
       {
@@ -2129,6 +2224,12 @@
         "static": false
       },
       {
+        "action": "put",
+        "handler": "attachment_storage_gateway_handler",
+        "path": "/api/v1/attachment/gateway/:session_key",
+        "static": false
+      },
+      {
         "action": "presign",
         "handler": "attach_handler",
         "path": "/api/v1/attachment/presign",
@@ -2339,6 +2440,24 @@
         "static": false
       },
       {
+        "action": "discussion",
+        "handler": "micro_community_handler",
+        "path": "/api/v1/channel/:channel_id/discussion",
+        "static": false
+      },
+      {
+        "action": "candidates",
+        "handler": "micro_community_handler",
+        "path": "/api/v1/channel/:channel_id/discussion/candidates",
+        "static": false
+      },
+      {
+        "action": null,
+        "handler": "micro_community_join_handler",
+        "path": "/api/v1/channel/:channel_id/discussion/join",
+        "static": false
+      },
+      {
         "action": "create_invitation",
         "handler": "channel_handler_admin",
         "path": "/api/v1/channel/:channel_id/invitation",
@@ -2414,6 +2533,24 @@
         "action": "create_order",
         "handler": "channel_handler_order",
         "path": "/api/v1/channel/:channel_id/order",
+        "static": false
+      },
+      {
+        "action": "search",
+        "handler": "micro_community_content_handler",
+        "path": "/api/v1/channel/:channel_id/posts",
+        "static": false
+      },
+      {
+        "action": "essence",
+        "handler": "micro_community_content_handler",
+        "path": "/api/v1/channel/:channel_id/posts/:message_id/essence",
+        "static": false
+      },
+      {
+        "action": "tags",
+        "handler": "micro_community_content_handler",
+        "path": "/api/v1/channel/:channel_id/posts/:message_id/tags",
         "static": false
       },
       {
@@ -4871,6 +5008,18 @@
         "static": false
       },
       {
+        "action": null,
+        "handler": "workspace_attachment_handler",
+        "path": "/api/v1/workspaces/:workspace_id/attachments",
+        "static": false
+      },
+      {
+        "action": null,
+        "handler": "workspace_attachment_handler",
+        "path": "/api/v1/workspaces/:workspace_id/attachments/:attachment_id/open",
+        "static": false
+      },
+      {
         "action": "branding",
         "handler": "workspace_handler",
         "path": "/api/v1/workspaces/:workspace_id/branding",
@@ -5014,6 +5163,12 @@
         "action": "help",
         "handler": "index_handler",
         "path": "/help",
+        "static": false
+      },
+      {
+        "action": null,
+        "handler": "org_invite_landing_handler",
+        "path": "/invite/org/:code",
         "static": false
       },
       {
@@ -5441,6 +5596,12 @@
         "route": "c2g"
       },
       {
+        "action": "message_read",
+        "function": "c2g_read",
+        "handler": "msg_c2g_logic",
+        "route": "c2g"
+      },
+      {
         "action": "message_revoke",
         "function": "c2g_revoke",
         "handler": "msg_c2g_logic",
@@ -5465,17 +5626,23 @@
         ]
       },
       {
+        "action": "feature_disabled",
+        "sources": [
+          "src/logic/message_router_logic.erl:92"
+        ]
+      },
+      {
         "action": "in_denylist",
         "sources": [
           "src/logic/msg_c2c_logic.erl:113",
-          "src/logic/msg_c2c_logic.erl:881",
+          "src/logic/msg_c2c_logic.erl:901",
           "src/logic/webrtc_ws_logic.erl:58"
         ]
       },
       {
         "action": "internal_error",
         "sources": [
-          "src/logic/msg_c2c_logic.erl:989",
+          "src/logic/msg_c2c_logic.erl:1009",
           "src/logic/msg_c2s_logic.erl:164",
           "src/logic/msg_s2c_logic.erl:62"
         ]
@@ -5483,46 +5650,46 @@
       {
         "action": "invalid_message_type",
         "sources": [
-          "src/logic/message_router_logic.erl:115"
+          "src/logic/message_router_logic.erl:123"
         ]
       },
       {
         "action": "invalid_msgid",
         "sources": [
-          "src/logic/msg_c2g_logic.erl:943"
+          "src/logic/msg_c2g_logic.erl:1037"
         ]
       },
       {
         "action": "invalid_operation",
         "sources": [
-          "src/logic/msg_c2c_logic.erl:868"
+          "src/logic/msg_c2c_logic.erl:888"
         ]
       },
       {
         "action": "msg_not_found",
         "sources": [
           "src/logic/msg_c2c_logic.erl:294",
-          "src/logic/msg_c2c_logic.erl:573",
-          "src/logic/msg_c2c_logic.erl:639",
-          "src/logic/msg_c2g_logic.erl:347",
-          "src/logic/msg_c2g_logic.erl:697",
-          "src/logic/msg_c2g_logic.erl:866",
-          "src/logic/msg_s2c_logic.erl:137"
+          "src/logic/msg_c2c_logic.erl:593",
+          "src/logic/msg_c2c_logic.erl:659",
+          "src/logic/msg_c2g_logic.erl:348",
+          "src/logic/msg_c2g_logic.erl:791",
+          "src/logic/msg_c2g_logic.erl:960",
+          "src/logic/msg_s2c_logic.erl:145"
         ]
       },
       {
         "action": "not_a_friend",
         "sources": [
           "src/logic/msg_c2c_logic.erl:116",
-          "src/logic/msg_c2c_logic.erl:884",
+          "src/logic/msg_c2c_logic.erl:904",
           "src/logic/webrtc_ws_logic.erl:61"
         ]
       },
       {
         "action": "not_group_member",
         "sources": [
-          "src/logic/msg_c2g_logic.erl:702",
-          "src/logic/msg_c2g_logic.erl:873"
+          "src/logic/msg_c2g_logic.erl:796",
+          "src/logic/msg_c2g_logic.erl:967"
         ]
       },
       {
@@ -5534,25 +5701,26 @@
       {
         "action": "permission_denied",
         "sources": [
-          "src/logic/msg_c2c_logic.erl:568",
-          "src/logic/msg_c2c_logic.erl:578",
-          "src/logic/msg_c2c_logic.erl:637",
-          "src/logic/msg_c2c_logic.erl:643",
-          "src/logic/msg_c2c_logic.erl:889",
-          "src/logic/msg_c2g_logic.erl:695",
-          "src/logic/msg_c2g_logic.erl:700",
-          "src/logic/msg_c2g_logic.erl:861",
-          "src/logic/msg_c2g_logic.erl:870",
-          "src/logic/msg_c2g_logic.erl:945",
+          "src/logic/msg_c2c_logic.erl:588",
+          "src/logic/msg_c2c_logic.erl:598",
+          "src/logic/msg_c2c_logic.erl:657",
+          "src/logic/msg_c2c_logic.erl:663",
+          "src/logic/msg_c2c_logic.erl:909",
+          "src/logic/msg_c2g_logic.erl:789",
+          "src/logic/msg_c2g_logic.erl:794",
+          "src/logic/msg_c2g_logic.erl:955",
+          "src/logic/msg_c2g_logic.erl:964",
+          "src/logic/msg_c2g_logic.erl:1039",
           "src/logic/msg_s2c_logic.erl:88",
           "src/logic/msg_s2c_logic.erl:108",
-          "src/logic/msg_s2c_logic.erl:135"
+          "src/logic/msg_s2c_logic.erl:140",
+          "src/logic/msg_s2c_logic.erl:143"
         ]
       },
       {
         "action": "pull_offline_msg",
         "sources": [
-          "src/ds/message_ds.erl:464"
+          "src/ds/message_ds.erl:463"
         ]
       },
       {
@@ -5562,23 +5730,17 @@
         ]
       },
       {
-        "action": "server_error",
-        "sources": [
-          "src/api/websocket_handler.erl:574"
-        ]
-      },
-      {
         "action": "service_unavailable",
         "sources": [
-          "src/logic/msg_c2g_logic.erl:958",
-          "src/logic/msg_c2g_logic.erl:960"
+          "src/logic/msg_c2g_logic.erl:1052",
+          "src/logic/msg_c2g_logic.erl:1054"
         ]
       },
       {
         "action": "unknown_action",
         "sources": [
-          "src/logic/message_router_logic.erl:149",
-          "src/logic/msg_s2c_logic.erl:177"
+          "src/logic/message_router_logic.erl:157",
+          "src/logic/msg_s2c_logic.erl:185"
         ]
       }
     ],

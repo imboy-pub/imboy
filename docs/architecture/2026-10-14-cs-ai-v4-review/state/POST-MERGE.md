@@ -28,14 +28,26 @@
 1. **consume 套件首跑 A-5 失败（seen=0）为 xmin-horizon 并发抖动**：复跑 8/8
    绿、并发 beam 消失。xmin-horizon 闸门在并发 xid 分配下把新事件延迟到下一
    轮，是"宁可延迟不可越过"冻结语义的正确行为，非回归。
-2. **contract-check 失败为 main 自身遗留**：adm_channel 路由注册表与生成产物
-   漂移，合并前后均在、与本分支无关（详见 state/P0-8.md、P0-11.md 记录）。
+2. **contract-check 失败 = 本分支遗漏 + main 累积漂移（2026-10-15 复查修正）**：
+   初判"纯 main 遗留"不准确——实跑 `make contract-export` 后 diff 含本分支
+   P0-10 的 9 个 `/api/adm/cs/ai/*` 端点（此前未按"改真源同 PR 内 export 并
+   提交产物"规矩登记落仓产物），另含 main 带入的累积漂移（micro_community
+   discussion/candidates、essence/posts/tags、attachment gateway、workspaces
+   attachments、invite 等 15 端点及枚举排序）。已在本分支 export 收口，
+   完整 contract-check（--admin/--flutter 指向主工作区两仓）PASS；
+   合并回 main 后该门即绿。
+
+## 收口与清理（2026-10-15）
+
+- 契约产物再生成 + 本文件与 state/P0-11.md 定性修正：单提交收口。
+- 任务期 PG 库（cs_ai_v4_probe / probe2 / accept）已按计划"用后清理"DROP，
+  残留 0；验收库重建路径 = createdb + 全量迁移（head=180，见
+  state/P0-11.md），`scripts/test/cs_ai_v4_acceptance.sh` 自带前置校验。
+  集群角色 cs_ai_purge 保留（迁移 180 的 schema 预期组件，IF NOT EXISTS
+  防护，不在"库清理"授权范围）。
 
 ## 当前状态与待决策
 
 - 分支 **未合并回 main、未 push**（计划约束：合并由用户另行决定）。
-- 待用户决策：① 分支合回 main 的时机；② main 侧 contract-check 注册表漂移
-  收口（属 main 遗留）；③ 合并后 CI 全量复跑。
-- 任务期 PG 库（cs_ai_v4_probe / probe2 / accept）按计划"用后清理"于本记录
-  落档后 DROP；验收库重建路径 = createdb + 全量迁移（head=180，见
-  state/P0-11.md），`scripts/test/cs_ai_v4_acceptance.sh` 自带前置校验。
+- 待用户决策：① 分支合回 main 的时机；② 合并后 CI 全量复跑。
+  （原第②项"main 侧 contract-check 漂移收口"已由本分支收口，撤销。）
