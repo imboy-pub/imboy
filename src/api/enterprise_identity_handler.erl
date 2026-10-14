@@ -269,9 +269,7 @@ page_opts(Params) when is_map(Params) ->
     case maps:get(<<"workspace_id">>, Params, undefined) of
         undefined -> Opts0;
         WsId -> Opts0#{workspace_id => WsId}
-    end;
-page_opts(_Params) ->
-    #{}.
+    end.
 
 %% @doc 分页应答（只读路径；无幂等键）。
 -spec reply_page_result(cowboy_req:req(), term()) -> cowboy_req:req().

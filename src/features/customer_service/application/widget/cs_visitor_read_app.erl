@@ -71,9 +71,7 @@ seat_messages(Store, Org, Ws, Params) ->
                 {error, _} = Error -> Error
             end;
         {error, _} = Error ->
-            Error;
-        _ ->
-            {error, visitor_read_storage_failure}
+            Error
     end.
 
 project(Store, Org, Ws, Session, Messages) ->

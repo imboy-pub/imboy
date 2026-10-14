@@ -38,8 +38,7 @@ load_request_facts(_Request) ->
 -spec permissions(integer()) -> [binary()].
 permissions(AdmUserId) ->
     try adm_acl:permissions(AdmUserId) of
-        Permissions when is_list(Permissions) -> [P || P <- Permissions, is_binary(P)];
-        _Other -> []
+        Permissions when is_list(Permissions) -> [P || P <- Permissions, is_binary(P)]
     catch
         _:_ -> []
     end.

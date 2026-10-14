@@ -40,8 +40,7 @@ replay(<<"POST">>, Req0, State) ->
         ok ->
             Post =
                 try elib_param:post(Req0) of
-                    M when is_map(M) -> M;
-                    _ -> #{}
+                    M when is_map(M) -> M
                 catch
                     _:_ -> #{}
                 end,

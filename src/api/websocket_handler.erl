@@ -565,14 +565,7 @@ handle_json_message(Msg, State) ->
                         %% 分支（handle_protobuf_message_decoded）同样走
                         %% reply_frame，修复 v2 连接上裸 text 下发导致 Dart
                         %% 客户端解帧失败丢弃回执的问题
-                        {reply, reply_frame(Msg2, State), State, hibernate};
-                    Other ->
-                        %% 路由返回异常结果（如 staging 失败时 logic 返回裸 error）：
-                        %% 原先落 case_clause 崩掉 WS 进程，客户端只见 invalid_json。
-                        %% 改为回结构化错误帧，客户端可按 msgId 关联并走重试。
-                        ok = ?ERROR_LOG({route_unexpected_result, Type, MsgId, Other}),
-                        ErrMsg = message_ds:assemble_s2c(MsgId, <<"server_error">>, <<>>),
-                        {reply, reply_frame(ErrMsg, State), State, hibernate}
+                        {reply, reply_frame(Msg2, State), State, hibernate}
                 end
         end
     catch

@@ -38,8 +38,7 @@ find_by_uid(Uid) when is_integer(Uid) ->
     Fun = fun() ->
         case user_dnd_rule_repo:find_by_uid(Uid) of
             Rule when is_map(Rule), map_size(Rule) > 0, Fenced -> Rule;
-            Rule when is_map(Rule) -> imboy_cache:uncached(Rule);
-            _ -> imboy_cache:uncached(#{})
+            Rule when is_map(Rule) -> imboy_cache:uncached(Rule)
         end
     end,
     MemoKey =

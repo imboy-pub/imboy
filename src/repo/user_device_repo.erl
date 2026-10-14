@@ -144,8 +144,7 @@ is_active(Uid, DID) ->
             " WHERE status = 1 AND user_id = $1 AND device_id = $2 LIMIT 1">>,
     case elib_pg:query(Sql, [Uid, DID]) of
         {ok, Rows} when is_list(Rows) -> {ok, Rows =/= []};
-        {error, Reason} -> {error, Reason};
-        Other -> {error, Other}
+        {error, Reason} -> {error, Reason}
     end.
 
 -spec delete(integer(), binary()) -> ok.

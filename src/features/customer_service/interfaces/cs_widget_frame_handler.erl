@@ -171,9 +171,7 @@ frame_document(_InstallationId, _PublicWidgetId) ->
 value_to_binary(V) when is_integer(V) ->
     integer_to_binary(V);
 value_to_binary(V) when is_binary(V) ->
-    V;
-value_to_binary(_) ->
-    <<>>.
+    V.
 
 html_attr(Bin) when is_binary(Bin) ->
     binary:replace(

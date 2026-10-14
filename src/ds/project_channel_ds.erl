@@ -203,9 +203,7 @@ resources(ProjectId) ->
         #{} ->
             {error, {404, <<"项目不存在"/utf8>>}};
         {error, Reason} ->
-            {error, Reason};
-        Other ->
-            {error, {unexpected_project_result, Other}}
+            {error, Reason}
     end.
 
 %% ===================================================================

@@ -129,9 +129,7 @@ target_uid(Body) when is_map(Body) ->
             end;
         _ ->
             error
-    end;
-target_uid(_) ->
-    error.
+    end.
 
 %% 契约硬规则1（STEP-04）：64-bit ID 字段 JSON 一律 string（防 JS 精度丢失）。
 %% repo 行回显经此归一：id / organization_id / user_id / account_bound_by。
