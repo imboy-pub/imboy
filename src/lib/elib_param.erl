@@ -60,7 +60,8 @@ qs_int(Qs, Key, Default) ->
 %% @param Def 默认值
 %% @returns {ok, Value} 整数值
 %% 示例: {ok, Ajax} = elib_param:int(ajax, Req0, -2)
--spec int(atom() | binary() | list(), cowboy_req:req(), integer()) -> {ok, integer()}.
+-spec int(atom() | binary() | list(), cowboy_req:req(), Default) -> {ok, integer() | Default} when
+    Default :: term().
 
 int(Key, Req, Def) ->
     % ?DEBUG_LOG([get_int, Key, Val, Def, Val == Def]),
@@ -105,7 +106,8 @@ int(Key, Req, Def) ->
 %% @param Def 默认值
 %% @returns {ok, Value} 二进制值
 %% 示例: {ok, Name} = elib_param:binary(name, Req0, <<"">>)
--spec binary(atom() | binary() | list(), cowboy_req:req(), binary()) -> {ok, binary()}.
+-spec binary(atom() | binary() | list(), cowboy_req:req(), Default) -> {ok, binary() | Default} when
+    Default :: term().
 
 binary(Key, Req, Def) ->
     Method = cowboy_req:method(Req),
