@@ -601,3 +601,112 @@ Cache closeout 中的“账号第一防线”例外理由失效，应作为后�
 
 存储限制：已核实.gitignore:163忽略/docs/plans/，本报告不会自动进入Git交付。本轮不改ignore、不add。后续经授权应将**本唯一权威报告、必要正式测试/fixture和最小复现工具**纳入版本控制；临时日志/压测输出保留原忽略策略，不能仅留下本机临时目录作为长期验收依据。
 
+---
+
+## 附录 C. L1 实施合同冻结（2026-10-14，用户一次性授权 D1～D7）
+
+> 本附录由 Limiter V1 实施任务（分支 `zcode/limiter-v1-impl-20261014`，基线 main `0d28ad4f`）冻结。
+> 授权来源：用户 2026-10-14 实施指令第四节的"一次性授权"，取代 §10 的"待业务批准"状态；
+> 本附录是 §7 推荐合同的实施落定版。冲突时以本附录为准（针对实施细节），安全目标不变。
+
+### C.1 身份与键（D1 冻结）
+
+- 账户域身份：已知用户（user_ds 按现有规则查到）用 `{user, Uid :: pos_integer()}`，**账户域跨 IP**（不再按 Identifier×Ip 分叉）。身份解析沿用现有查询（find_by_mobile/find_by_email/find_by_account 及 account→mobile 回退），不改变相等规则、不做大小写折叠。
+- 未知身份：`{unknown, Kind, Norm}`，Kind ∈ `email | mobile | account`（按登录 Type 分支定），Norm = trim 后原输入截断 320 字节。不把未知身份折成空键。
+- Admin（adm_passport_*）与 OIDC 不进入账户域。
+- ETS 行 Key：`{limiter_account, Identity}`、`{limiter_admit, Scope, Key}`。
+
+### C.2 事件表（D2 冻结）
+
+| 事件 | 计账户失败 | 说明 |
+|---|---|---|
+| 密码错误（含未知账户、含账户禁用但密码错） | 是 | 在凭据校验结果处分类，不靠事后 status 覆盖 |
+| 验证码 consume 失败（无效码，含未知账户） | 是 | 同上 |
+| 空密码/格式非法提前返回 | 否 | 不进入校验 |
+| 服务故障（DB/供应商 error） | 否 | 按故障合同 503 |
+| 验证码有效但用户不存在/禁用 | 否 | 非凭据失败 |
+| 密码正确但 status 禁用 | 否 | 不 reset、不计失败，按现有禁用错误返回 |
+| OIDC 任何失败（D7） | 否 | 移除无消费者的 oidc ETS 失败写 |
+
+成功点：**凭据正确且 status ∈ {1,2} 后，先 reset 确认成功，再签发（login_resp）**。reset 失败/未知 → 丢弃响应 Data、不返回凭据、503。reset 之后设备登记失败 → 保持已清零、503（现有），不回补失败。
+
+### C.3 权威状态 API（§7.2/7.3 实施版，owner = login_attempt_ds gen_server）
+
+```erlang
+%% Identity = {user, Uid} | {unknown, Kind, Norm}
+check(Identity)        -> {ok, Snap} | {error, unavailable}
+failure(Identity)      -> {ok, Snap} | {error, capacity_lost | unavailable}
+reset(Identity)        -> ok | {error, unavailable}
+snapshot(Identity)     -> {ok, Snap} | {error, unavailable}   %% degraded 也算 unavailable
+admin_unlock(AdminUid, Identity) -> {ok, unlocked} | {error, unauthorized | invalid_input | unavailable}
+%% Scope ∈ passport_per_ip | api_per_ip | oidc_request；Key = 规范 IP binary
+admit(Scope, Key)      -> {ok, Snap} | {error, rate_limited | capacity | unavailable}
+%% 生命周期（认证准入专用）
+begin_attempt(Identity, Pid, DeadlineMs) -> {ok, AttemptRef} | {error, unavailable}
+end_attempt(AttemptRef, Outcome) -> ok    %% Outcome ∈ failure | reset | no_count
+ready() -> boolean()
+```
+
+`Snap = #{count, remaining, locked, expires_at_ms (integer()|undefined), rule_version}`，同一逻辑判断产出。旧导出（record_failure/2、is_locked/2、get_attempts/2、reset/2、get_remaining_attempts/2、check_ip_rate_limit/1 等）由 A1/A2 重写或删除，全部生产调用者同步更新，不留双权威。
+
+### C.4 时间与窗口
+
+- 统一 `erlang:monotonic_time(millisecond)`；逻辑过期 `now >= expires_at_ms`。
+- 账户窗：首次失败 anchor，期限 = login_lock_duration_minutes（默认 30 分钟）。
+- OIDC 请求域：首次 admit anchor，固定 3600000 ms，不续期。
+- HTTP scope：t0=0、period P（默认 60000 ms），窗口 = floor((now−t0)/P)，scope 级统一换窗，所有 Key 同版本。
+- 配置变更：账户/OIDC 逐 Key 窗口创建时冻结规则；HTTP scope 在下一 scope 边界切换（pending 登记）。
+
+### C.5 配置键
+
+| 键 | 默认 | 说明 |
+|---|---|---|
+| imboy.login_max_attempts | 5 | 现有，保留 |
+| imboy.login_lock_duration_minutes | 30 | 现有，保留 |
+| imboy.limiter_ip_rates | #{passport_per_ip => {10,60000}, api_per_ip => {60,60000}, oidc_request => {100,3600000}} | 新：两 HTTP scope 从 throttle.rates 迁出；OIDC 沿用旧 login_max_ip_attempts_per_hour 语义 |
+| imboy.limiter_max_account_entries | 200000 | 账户域条目上限 |
+| imboy.limiter_max_ip_entries | 200000 | admit 域条目上限（每 scope） |
+| imboy.limiter_max_key_bytes | 256 | Key 字节上限 |
+| imboy.limiter_cleanup_batch | 1000 | cleanup 每批行数 |
+| imboy.limiter_auth_deadline_ms | 10000 | 认证生命周期 deadline（本地预算推导值） |
+
+环境变量 `IMBOY_THROTTLE_API_PER_IP`/`IMBOY_THROTTLE_PASSPORT_PER_IP` 保留原名，改写 `limiter_ip_rates`；`imboy.login_max_ip_attempts_per_hour` 键迁移为 oidc_request 阈值默认来源后废弃。旧 throttle.rates 若仍含两 IP scope → 启动校验失败拒绝 ready。
+
+### C.6 协议映射（D5 冻结）
+
+| 条件 | 对外 |
+|---|---|
+| 账户锁定（密码/验证码） | 现有 HTTP200 code1 msg |
+| HTTP IP 超限 | HTTP 429（现 envelope） |
+| OIDC 请求域超限 | 沿用现有 authorize/callback 业务错误形态 |
+| capacity/degraded/unavailable/timeout/unknown | `error_with_status` 503、code503、"服务暂不可用，请稍后重试" |
+| reset 后设备登记失败 | 现有 503 |
+
+### C.7 容量与降级（D5 冻结）
+
+账户域 failure 建行且容量满 → 原子置账户域 degraded、返回 `{error, capacity_lost}`；此后本域 check/reset/snapshot/unlock 全拒绝（unavailable），**不自动恢复**，恢复仅走 §9.3 受控空态重启。HTTP/OIDC 新 Key admit 容量满 → `{error, capacity}`，不置 degraded，有位置后自动可用。cleanup 由 owner 分批，仅删逻辑过期行。
+
+### C.8 初始化与装配（D3 冻结）
+
+- `imboy_app:init_throttle_rates/0` 移除 passport_per_ip / api_per_ip 两项 setup；其余 scope（UID 双桶、cs_widget 等）留 throttle 原库。
+- 两 IP 规则迁至 imboy 应用 `limiter_ip_rates`，login_attempt_ds:init 读取并持 scope 元信息；未 ready 不准入（unavailable→503），不再 rate_not_set 放行。
+- throttle_middleware 两 IP 分支改调 `login_attempt_ds:admit/2`。
+- OIDC：auth_oidc_handler/auth_oidc_logic 统一走 `elib_req:get_client_ip/1`（含可信代理），authorize/callback 各 admit 一次，exchange 不占；移除 Cache IP 桶与 oidc 失败 ETS 写，保留有界审计日志。
+- rest_fixture 移除旧 passport scope setup，改设 limiter_ip_rates。
+
+### C.9 本地性能预算（AC-16，测前冻结推导框架；数字在旧基线实测后、候选测量前冻结）
+
+- 硬件/软件固定：本机 Apple Silicon 12C/36GB、macOS 27.0.1、OTP29、同一编译档；输入表（Key 长度/分布、并发、认证耗时模型、warmup、时长、重复次数）由 A4 基线报告冻结。
+- 预算形式（本地工程预算，非生产 SLO）：
+  1. 同有效记账工作量下，新 owner 单事件成本 ≤ 旧实现同口径成本 × 1.5（µs 级 ETS/gen_server 操作推导：旧 S 侧一次失败记账 ≈ 1 次 gen_server call + 1–2 次 ETS + Cache set；新实现同量级 + 快照构建）。
+  2. 账户域操作（check/failure/reset/snapshot）p99 等待 ≤ 100 ms、最大等待 ≤ 500 ms（推导：上层 HTTP 处理超时秒级，单 owner µs 级操作 × 混合负载排队）。
+  3. owner mailbox 峰值有界（≤ 10000 消息），降载后 5 s 内回落到 ≤ 100。
+  4. 持续超载期间账户操作不被 HTTP admit 饿死：账户 p99 仍 ≤ 上述预算。
+- 单 owner 不满足 → 最小瓶颈修复；架构变更须 A0 组织审查；不预分片。
+
+### C.10 就绪状态（本任务起点）
+
+- L0：缺陷复现（AC-01/02/04/07/14 旧侧 oracle）、验收入口、退出码传播已合入 main（f93b071d 一串提交，证据 docs/qa/limiter-v1/）。**缺口：AC-16 旧性能基线两条（E2E 旧真实成本、同有效记账工作量）**，本任务 A4 补齐。
+- L1：本附录即冻结记录（D1～D7 已获一次性授权）。
+- L2/L3/L4：未实施，按 §9.1 推进。
+
