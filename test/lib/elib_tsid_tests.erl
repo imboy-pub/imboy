@@ -887,6 +887,11 @@ wall_clock_fixed_offset_test() ->
     Drift = elib_tsid:wall_clock_ms() - erlang:system_time(millisecond),
     ?assert(abs(Drift) =< 50, {fixed_offset_drift_ms, Drift}).
 
+wall_clock_offset_uses_vm_snapshot_test() ->
+    ?SETUP(),
+    #{clock_offset_ms := Offset} = persistent_term:get(elib_tsid_runtime),
+    ?assertEqual(erlang:time_offset(millisecond), Offset).
+
 wall_clock_seam_override_test() ->
     ?SETUP(),
     ?assertEqual(1234567890123, with_fixed_clock(1234567890123, fun elib_tsid:wall_clock_ms/0)),
@@ -904,11 +909,113 @@ wall_clock_seam_override_test() ->
 %% 批量语义
 %% ===================================================================
 
-batch_sizes_one_cas_test() ->
+namespace_cursor_and_stats_isolation_test() ->
+    ?SETUP(),
+    #{lookup := Lookup, cursor_stride := 8, reservations := Stats} =
+        persistent_term:get(elib_tsid_runtime),
+    User = maps:get(user, Lookup),
+    Device = maps:get(user_device, Lookup),
+    ?assertEqual(8, Device - User),
+    C0 = elib_tsid:reservation_count(),
+    _ = elib_tsid:generate(user),
+    _ = elib_tsid:generate(user_device),
+    ?assertEqual(1, atomics:get(Stats, User)),
+    ?assertEqual(1, atomics:get(Stats, Device)),
+    ?assertEqual(C0 + 2, elib_tsid:reservation_count()).
+
+legacy_runtime_cursor_and_counter_compatibility_test() ->
+    ?SETUP(),
+    Original = persistent_term:get(elib_tsid_runtime),
+    #{lookup := PaddedLookup} = Original,
+    LegacyLookup = maps:map(fun(_Name, I) -> ((I - 1) div 8) + 1 end, PaddedLookup),
+    Count = length(elib_tsid:namespaces()) + 1,
+    LegacyCursors = atomics:new(Count, [{signed, true}]),
+    LegacyStats = atomics:new(1, [{signed, true}]),
+    atomics:put(LegacyStats, 1, 42),
+    Base = ?EPOCH_MS + 890000,
+    OldSlot = ((Base - ?EPOCH_MS) bsl 11) + 100,
+    atomics:put(LegacyCursors, maps:get(user, LegacyLookup), OldSlot),
+    Legacy = maps:remove(cursor_stride, Original#{
+        cursors := LegacyCursors, lookup := LegacyLookup, reservations := LegacyStats
+    }),
+    persistent_term:put(elib_tsid_runtime, Legacy),
+    try
+        ?assertEqual(42, elib_tsid:reservation_count()),
+        Ids = with_fixed_clock(Base, fun() -> elib_tsid:generate_n(user, 5) end),
+        ?assertEqual(
+            lists:seq(OldSlot + 1, OldSlot + 5),
+            [elib_tsid:id_to_slot(I) || I <- Ids]
+        ),
+        ?assertEqual(43, elib_tsid:reservation_count()),
+        ?assertEqual(ok, elib_tsid:init(#{dc_id => 1, node_id => 1})),
+        #{cursors := Kept} = persistent_term:get(elib_tsid_runtime),
+        ?assertEqual(LegacyCursors, Kept)
+    after
+        persistent_term:put(elib_tsid_runtime, Original)
+    end.
+
+absolute_capacity_wait_mailbox_and_expiry_test() ->
+    Fake = make_ref(),
+    self() ! {timeout, Fake, elib_tsid_capacity_wait},
+    Before = erlang:monotonic_time(millisecond),
+    ?assertEqual(timeout, elib_tsid:wait_step(Before - 1, 1)),
+    ?assertEqual(ok, elib_tsid:wait_step(Before + 100, 1)),
+    receive
+        {timeout, Fake, elib_tsid_capacity_wait} -> ok
+    after 0 -> error(unrelated_timeout_consumed)
+    end,
+    {messages, Messages} = process_info(self(), messages),
+    ?assertEqual([], [X || X = {timeout, _, elib_tsid_capacity_wait} <- Messages]).
+
+absolute_slot_target_already_elapsed_test() ->
+    Fake = make_ref(),
+    self() ! {timeout, Fake, elib_tsid_capacity_wait},
+    Before = erlang:monotonic_time(millisecond),
+    ?assertEqual(ok, elib_tsid:wait_until(Before + 100, Before - 1)),
+    ?assertEqual(timeout, elib_tsid:wait_until(Before - 1, Before - 1)),
+    receive
+        {timeout, Fake, elib_tsid_capacity_wait} -> ok
+    after 0 -> error(unrelated_timeout_consumed)
+    end,
+    {messages, Messages} = process_info(self(), messages),
+    ?assertEqual([], [X || X = {timeout, _, elib_tsid_capacity_wait} <- Messages]).
+
+capacity_wait_refreshes_synthetic_wall_test() ->
+    ?SETUP(),
+    #{clock_offset_ms := _} = Handle = persistent_term:get(elib_tsid_runtime),
+    Base = ?EPOCH_MS + 990000,
+    with_fixed_clock(Base + 1, fun() ->
+        Deadline = elib_tsid:monotonic_ms() + 100,
+        %% The reserve's old sample was Base; before timer creation wall reached target.
+        ?assertEqual(ok, elib_tsid:capacity_wait(Handle, 990001, Deadline)),
+        ?assertEqual(timeout, elib_tsid:capacity_wait(Handle, 990001, Deadline - 101))
+    end).
+
+slot_assembly_small_low_bits_equivalence_test() ->
+    lists:foreach(
+        fun(Ts) ->
+            lists:foreach(
+                fun(Node) ->
+                    lists:foreach(
+                        fun(Seq) ->
+                            Slot = (Ts bsl 11) bor Seq,
+                            Expected = (Ts bsl 21) bor (Node bsl 11) bor Seq,
+                            ?assertEqual(Expected, elib_tsid:slot_to_id(Slot, Node))
+                        end,
+                        [0, 1, 63, 64, 2047]
+                    )
+                end,
+                [0, 1, 129, 1023]
+            )
+        end,
+        [0, 1, (1 bsl 39) - 1, (1 bsl 42) - 1]
+    ).
+
+batch_sizes_bounded_cas_test() ->
     ?SETUP(),
     C0 = elib_tsid:reservation_count(),
     _ = elib_tsid:generate_n(user, 100),
-    ?assertEqual(C0 + 1, elib_tsid:reservation_count()).
+    ?assertEqual(C0 + 2, elib_tsid:reservation_count()).
 
 batch_oversized_chunks_test() ->
     ?SETUP(),
@@ -916,6 +1023,118 @@ batch_oversized_chunks_test() ->
     ?assertEqual(5000, length(Ids)),
     ?assertEqual(5000, length(lists:usort(Ids))),
     ?assertEqual(Ids, lists:sort(Ids)).
+
+%% 批量不能丢弃上一调用留下的毫秒尾部；不改变纯 exact candidate 合同。
+batch_remaining_capacity_contiguous_test() ->
+    ?SETUP(),
+    Base = ?EPOCH_MS + 850000,
+    with_fixed_clock(Base, fun() -> _ = elib_tsid:generate_n(user, 904) end),
+    Key = {?MODULE, batch_clock_reads},
+    put(Key, 0),
+    Clock = fun() ->
+        K = get(Key),
+        put(Key, K + 1),
+        Base +
+            case K < 18 of
+                true -> 0;
+                false -> 1 + ((K - 18) div 32)
+            end
+    end,
+    try
+        Ids = with_fixed_clock(Clock, fun() -> elib_tsid:generate_n(user, 5000) end),
+        Slots = [elib_tsid:id_to_slot(I) || I <- Ids],
+        Start = ((Base - ?EPOCH_MS) bsl 11) + 904,
+        ?assertEqual(lists:seq(Start, Start + 4999), Slots),
+        ?assertEqual(79, get(Key))
+    after
+        erase(Key)
+    end.
+
+batch_remaining_capacity_frozen_clock_bounded_test() ->
+    ?SETUP(),
+    with_fixed_clock(?EPOCH_MS + 860000, fun() ->
+        _ = elib_tsid:generate_n(user, 904),
+        C0 = elib_tsid:reservation_count(),
+        ?assertMatch(
+            {elib_tsid_capacity_exhausted, #{phase := clock_wait}},
+            catch_typed(fun() -> elib_tsid:generate_n(user, 1500) end)
+        ),
+        %% 先消耗合法的剩余 1144，再等待新毫秒；冻结时钟必须 bounded fail。
+        ?assertEqual(C0 + 18, elib_tsid:reservation_count()),
+        ?assertMatch(
+            {elib_tsid_capacity_exhausted, _},
+            catch_typed(fun() -> elib_tsid:generate(user) end)
+        )
+    end).
+
+batch_up_to_size_bounds_test() ->
+    Now = 870000,
+    lists:foreach(
+        fun(Seq) ->
+            Old = (Now bsl 11) + Seq,
+            First = Old + 1,
+            Available = 2048 - (First band 2047),
+            lists:foreach(
+                fun(Limit) ->
+                    Count = elib_tsid:reserve_size(Old, Now, {up_to, Limit}),
+                    ?assert(Count >= 1),
+                    ?assert(Count =< Limit),
+                    ?assertEqual(min(min(Limit, 64), Available), Count)
+                end,
+                [1, 64, 904, 1144, 2048, 5000]
+            )
+        end,
+        lists:seq(0, 2047)
+    ).
+
+batch_cas_retry_recomputes_remaining_capacity_test() ->
+    ?SETUP(),
+    Base = ?EPOCH_MS + 880000,
+    with_fixed_clock(Base, fun() -> _ = elib_tsid:generate_n(user, 904) end),
+    #{cursors := Cursors, lookup := Lookup} = persistent_term:get(elib_tsid_runtime),
+    Idx = maps:get(user, Lookup),
+    HookKey = {elib_tsid, test_before_cas},
+    ClockKey = {?MODULE, retry_clock_reads},
+    put(ClockKey, 0),
+    %% 首次 CAS 前模拟另一个 allocator 用到 seq1800，必定触发 CAS 失败。
+    put(HookKey, fun() ->
+        erase(HookKey),
+        atomics:put(Cursors, Idx, ((Base - ?EPOCH_MS) bsl 11) + 1800)
+    end),
+    Clock = fun() ->
+        K = get(ClockKey),
+        put(ClockKey, K + 1),
+        Base +
+            case K < 5 of
+                true -> 0;
+                false -> 1
+            end
+    end,
+    try
+        Ids = with_fixed_clock(Clock, fun() -> elib_tsid:generate_n(user, 1500) end),
+        Start = ((Base - ?EPOCH_MS) bsl 11) + 1801,
+        ?assertEqual(lists:seq(Start, Start + 1499), [elib_tsid:id_to_slot(I) || I <- Ids]),
+        ?assertEqual(25, get(ClockKey)),
+        ?assertEqual(undefined, get(HookKey))
+    after
+        erase(HookKey),
+        erase(ClockKey)
+    end.
+
+batch_mixed_sizes_concurrent_disjoint_test() ->
+    ?SETUP(),
+    Self = self(),
+    Sizes = [904, 1144, 1500, 2048, 5000, 904, 1144, 1500],
+    Workers = [
+        spawn_monitor(fun() ->
+            Ids = elib_tsid:generate_n(user, N),
+            Self ! {ids, self(), Ids}
+        end)
+     || N <- Sizes
+    ],
+    All = collect_slow_wall_ids(Workers, []),
+    ?assertEqual(lists:sum(Sizes), length(All)),
+    ?assertEqual(length(All), length(lists:usort(All))).
 
 batch_no_interleave_test() ->
     ?SETUP(),
