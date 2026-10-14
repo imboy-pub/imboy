@@ -933,22 +933,42 @@ write_callbacks(PortModule) ->
 %% 依赖方向：Core 侧文件零 enterprise_*/customer_service_* 模块引用（A06）。
 reverse_reference_count() ->
     {ok, Src} = file:read_file(reverse_reference_path()),
-    length(
-        [
-            M
-         || M <- re_matches(Src, "\\b(enterprise_[a-z0-9_]+|customer_service_[a-z0-9_]+)\\b"),
-            true
-        ]
+    length(feature_reference_fixture:refs(Src)).
+
+reverse_reference_classifier_test() ->
+    ?assertNotEqual(
+        [],
+        feature_reference_fixture:refs(
+            <<"f() -> cs_pg_store_typo:list_sessions(1, 2, #{}).">>
+        )
+    ),
+    ?assertNotEqual(
+        [],
+        feature_reference_fixture:refs(
+            <<"f() -> eb_contact_app_typo:create_contact(1, #{}).">>
+        )
+    ),
+    ?assertEqual(
+        [],
+        feature_reference_fixture:refs(
+            <<"f() -> enterprise_directory_source_repo:authorize_tx(C, #{}).">>
+        )
+    ),
+    ?assertNotEqual(
+        [],
+        feature_reference_fixture:refs(
+            <<"f() -> enterprise_business_facade:open_offboarding(1, #{}).">>
+        )
+    ),
+    ?assertNotEqual(
+        [],
+        feature_reference_fixture:refs(
+            <<"f() -> cs_pg_store:list_sessions(1, 2, #{}).">>
+        )
     ).
 
 reverse_reference_path() ->
     "src/logic/organization_member_logic.erl".
-
-re_matches(Subject, Pattern) ->
-    case re:run(Subject, Pattern, [global, {capture, first, binary}]) of
-        {match, Matches} -> [M || [M] <- Matches];
-        nomatch -> []
-    end.
 
 insert_member(Org, Uid, Role) ->
     ?FIX:exec(

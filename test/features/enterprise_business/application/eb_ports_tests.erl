@@ -109,6 +109,7 @@ ports_have_explicit_frozen_contracts_test() ->
             {advance_assignment, 5},
             {advance_offboarding_case, 6},
             {append_message, 3},
+            {ensure_contact_in, 5},
             {fetch_contact, 3},
             {fetch_conversation, 3},
             {fetch_hold, 3},
@@ -152,7 +153,7 @@ ports_have_explicit_frozen_contracts_test() ->
     ),
     ?assertEqual([{now, 0}], maps:get(eb_clock_port, Contracts)),
     ?assertEqual([{new_id, 1}], maps:get(eb_id_port, Contracts)),
-    ?assertEqual([{append, 2}], maps:get(eb_audit_port, Contracts)),
+    ?assertEqual([{append, 2}, {append_in, 3}], maps:get(eb_audit_port, Contracts)),
     %% 原 put/stream/delete 三件保留，追加 R0-4 的 metadata 生命周期
     ?assertEqual(
         [
@@ -259,9 +260,9 @@ store_port_has_cas_shaped_advance_test() ->
     ?assertEqual(5, callback_arity(eb_store_port, advance_assignment)).
 
 audit_port_is_append_only_test() ->
-    %% append-only：只有 append，不得出现 update/delete/rewrite。
+    %% append-only：独立/同连接追加，不得出现 update/delete/rewrite。
     Names = [Name || {Name, _} <- eb_audit_port:behaviour_info(callbacks)],
-    ?assertEqual([append], Names),
+    ?assertEqual([append, append_in], lists:sort(Names)),
     lists:foreach(
         fun(Name) ->
             ?assertEqual(
