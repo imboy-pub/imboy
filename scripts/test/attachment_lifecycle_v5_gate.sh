@@ -121,6 +121,27 @@ run_case() {  # $1 case_id
   local cid="$1" cdir="$EVID/${cid#*/}"
   mkdir -p "$cdir"
   case "$cid" in
+    W1-01/contract)
+      python3 - "$ROOT" > "$cdir/raw.log" 2>&1 <<'PYC'
+import json, sys
+root = sys.argv[1]
+d = json.load(open(root + "/docs/architecture/attachment-lifecycle-v5/evidence/w1-contract-output.json"))
+errs = []
+if len(d.get("five_subjects", {})) != 5: errs.append("subjects != 5")
+if len(d.get("acceptance_contracts", [])) != 8 or any(len(a) < 10 for a in d["acceptance_contracts"]): errs.append("AC empty/missing")
+if len(d.get("delete_entrypoints_mapped", [])) != 12: errs.append("delete entrypoints != 12")
+if d.get("todo_placeholders") != 0: errs.append("TODO placeholder present")
+if "never reassigned" not in d.get("key_lifetime", ""): errs.append("key lifetime missing")
+if "GC must reject" not in d.get("hold_linearization", ""): errs.append("hold linearization missing")
+if len(d.get("lock_order", [])) < 5: errs.append("lock order incomplete")
+if len(d.get("storage_interface_frozen", {}).get("callbacks", [])) != 6: errs.append("storage callbacks != 6")
+import re
+adr = open(root + "/docs/adr/0008-pluggable-attachment-storage.md").read()
+if "存量附件不做按 scope 的全量 garage 回填" not in adr: errs.append("ADR0008 V5 alignment missing")
+print("contract-check errors:", errs if errs else "none")
+sys.exit(1 if errs else 0)
+PYC
+      seal_leafs "$cid" "$cdir" "$?" "w1 contract output structural oracle (5 subjects/8 AC/12 entrypoints/lock order/storage callbacks)" ;;
     W0-01/baseline)
       bash scripts/check_migrations.sh > "$cdir/raw.log" 2>&1
       seal_leafs "$cid" "$cdir" "$?" "bash scripts/check_migrations.sh (bootstrap retroactive)" ;;
