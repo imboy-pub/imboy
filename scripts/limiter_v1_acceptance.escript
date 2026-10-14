@@ -83,6 +83,7 @@ dispatch(#{action := {run_case, Case}} = Opts) ->
 %% Q(模块) 承载的 case：本工具不重复执行，给出定向命令。
 -define(Q_CASES, [
     {<<"AC-02">>, <<"passport_logic_tests">>},
+    {<<"AC-03">>, <<"login_attempt_ds_tests">>},
     {<<"AC-04">>, <<"login_attempt_ds_tests">>},
     {<<"AC-05">>, <<"login_security_logic_tests">>},
     {<<"AC-06">>, <<"login_attempt_ds_tests">>},
@@ -153,7 +154,8 @@ pending(Case, Reason) ->
 
 run_ac01(Opts) ->
     case maps:get(oracle, Opts) of
-        baseline -> run_ac01_baseline(Opts);
+        baseline ->
+            run_ac01_baseline(Opts);
         fixed ->
             io:format("AC-01 fixed oracle 未实现（L3 修复后接线）~n"),
             halt(4)
@@ -161,7 +163,7 @@ run_ac01(Opts) ->
 
 run_ac01_baseline(Opts) ->
     Root = project_root(),
-    EvDir = evidence_dir(Opts, <<"AC-01">>),
+    EvDir = abs_evidence_dir(Root, evidence_dir(Opts, <<"AC-01">>)),
     ok = filelib:ensure_dir(<<EvDir/binary, "/x">>),
     RunId = "limiter-l0-" ++ strftime_run_ref(),
     %% 走项目正规 REST 通道（scripts/run_rest_api_tests.sh：scratch 数据库
@@ -196,7 +198,9 @@ run_ac01_baseline(Opts) ->
             io:format("~ts~n", [PassMsg]),
             halt(0);
         _ ->
-            FailMsg0 = <<"AC-01 baseline FAIL rc="/utf8, (integer_to_binary(Rc))/binary, "（证据: "/utf8, EvDir/binary, "）"/utf8>>,
+            FailMsg0 =
+                <<"AC-01 baseline FAIL rc="/utf8, (integer_to_binary(Rc))/binary, "（证据: "/utf8,
+                    EvDir/binary, "）"/utf8>>,
             io:format(standard_error, "~ts~n", [FailMsg0]),
             halt(3)
     end.
@@ -264,6 +268,14 @@ evidence_dir(_Opts, Case) ->
     RunRef = list_to_binary(strftime_run_ref()),
     <<"docs/qa/limiter-v1/", (candidate_id())/binary, "/", RunRef/binary, "/", Case/binary>>.
 
+%% @private 默认证据目录相对仓根：绝对化，避免 Cmd 子 shell（cd Root 后 tee
+%% output.log）与主进程 write_file（调用者 cwd）各按一处相对基准落盘。
+abs_evidence_dir(Root, Dir) ->
+    case filename:pathtype(Dir) of
+        absolute -> Dir;
+        _ -> list_to_binary(filename:join(Root, unicode:characters_to_list(Dir)))
+    end.
+
 strftime_run_ref() ->
     {{Y, Mo, D}, {H, Mi, S}} = calendar:local_time(),
     lists:flatten(
@@ -296,7 +308,6 @@ to_bin(V) when is_binary(V) -> V;
 to_bin(V) when is_atom(V) -> atom_to_binary(V);
 to_bin(V) -> list_to_binary(V).
 
-
 %% @private os:cmd 不返回退出码：用尾部标记 __LVA_EXIT__<rc> 传递。
 %% 命令本体由本工具构造（无该标记字面量），tee 输出与标记同流。
 run_shell(Cmd) ->
@@ -308,7 +319,6 @@ run_shell(Cmd) ->
             %% 标记缺失（异常路径）按失败处理
             255
     end.
-
 
 usage_error(missing_case_or_list) ->
     io:format(standard_error, "missing --case / --list / --emit-manifest~n", []),

@@ -866,19 +866,23 @@ limiter_code_locked_test_() ->
                 ),
                 ?assertEqual(true, login_attempt_ds:is_locked(?L0_ID, <<>>)),
                 persistent_term:put({?MODULE, l0_consumed}, 0),
-                ok = meck:expect(verification_code_ds, consume, fun(_Id, _Code) ->
-                    persistent_term:put({?MODULE, l0_consumed}, 1),
-                    {ok, <<"verified">>}
-                end),
-                Result = passport_logic:do_login_by_code(
-                    <<"email">>, ?L0_ID, <<"123456">>, <<"android">>, <<"l0-did">>
-                ),
-                %% L0 旧侧 oracle：锁定门失效——验证码仍被消费，且锁定状态下
-                %% 登录竟然成功
-                ?assertEqual(1, persistent_term:get({?MODULE, l0_consumed}, 0)),
-                ?assertMatch({ok, _}, Result),
-                persistent_term:erase({?MODULE, l0_consumed}),
-                ets:delete_all_objects(login_attempt_ets),
+                try
+                    ok = meck:expect(verification_code_ds, consume, fun(_Id, _Code) ->
+                        persistent_term:put({?MODULE, l0_consumed}, 1),
+                        {ok, <<"verified">>}
+                    end),
+                    Result = passport_logic:do_login_by_code(
+                        <<"email">>, ?L0_ID, <<"123456">>, <<"android">>, <<"l0-did">>
+                    ),
+                    %% L0 旧侧 oracle：锁定门失效——验证码仍被消费，且锁定状态下
+                    %% 登录竟然成功
+                    ?assertEqual(1, persistent_term:get({?MODULE, l0_consumed}, 0)),
+                    ?assertMatch({ok, _}, Result)
+                after
+                    %% 断言失败也保证清理 VM 级键与 ETS 状态
+                    persistent_term:erase({?MODULE, l0_consumed}),
+                    ets:delete_all_objects(login_attempt_ets)
+                end,
                 ok
             end
         )}.
