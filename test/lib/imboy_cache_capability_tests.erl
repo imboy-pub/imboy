@@ -37,25 +37,38 @@ rejection_metrics_are_bounded_and_legacy_frames_are_counted_test_() ->
     end).
 
 expired_recovery_deadline_emits_real_timeout_signal_test_() ->
-    ?TEST_WITH_APP(fun() ->
-        Before = elib_metric:get_all_metrics(),
-        Past = erlang:system_time(millisecond) - 1,
-        State = #state{
-            status = recovering,
-            snapshot_round = #{deadline_ms => Past, peers => #{}},
-            recover_deadline_ms = Past
-        },
-        {noreply, Degraded} = imboy_cache_sync_recover:handle_timeout(State),
-        ?assertEqual(degraded, Degraded#state.status),
-        #{counters := Counters} = elib_metric:get_all_metrics(),
-        #{counters := Previous} = Before,
-        ?assertEqual(
-            maps:get(
-                {cache_sync_recovery_timeout_total, #{reason => deadline_timeout}}, Previous, 0
-            ) + 1,
-            maps:get({cache_sync_recovery_timeout_total, #{reason => deadline_timeout}}, Counters)
-        )
-    end).
+    ?_test(
+        pure_mock_fixture:run(fun() ->
+            ets:new(imboy_cache_meta, [named_table, public, set]),
+            {ok, Metric} = elib_metric:start_link(),
+            try
+                Before = elib_metric:get_all_metrics(),
+                Past = erlang:system_time(millisecond) - 1,
+                State = #state{
+                    status = recovering,
+                    snapshot_round = #{deadline_ms => Past, peers => #{}},
+                    recover_deadline_ms = Past
+                },
+                {noreply, Degraded} = imboy_cache_sync_recover:handle_timeout(State),
+                ?assertEqual(degraded, Degraded#state.status),
+                #{counters := Counters} = elib_metric:get_all_metrics(),
+                #{counters := Previous} = Before,
+                ?assertEqual(
+                    maps:get(
+                        {cache_sync_recovery_timeout_total, #{reason => deadline_timeout}},
+                        Previous,
+                        0
+                    ) + 1,
+                    maps:get(
+                        {cache_sync_recovery_timeout_total, #{reason => deadline_timeout}}, Counters
+                    )
+                )
+            after
+                gen_server:stop(Metric),
+                ets:delete(imboy_cache_meta)
+            end
+        end)
+    ).
 
 unnegotiated_member_blocks_managed_writes_without_mutation_test_() ->
     ?TEST_WITH_APP(fun capability_boundary/0).
