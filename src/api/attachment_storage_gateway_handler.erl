@@ -85,18 +85,21 @@ receive_body(Req0, Key, DeclMime) ->
     Tmp =
         TmpDir ++ "/" ++ binary_to_list(Key) ++ "." ++
             integer_to_list(erlang:unique_integer([positive])),
+    try
+        receive_to_file(Req0, Key, DeclMime, Tmp)
+    catch
+        _:_ -> cowboy_req:reply(500, #{}, <<"body receive failed">>, Req0)
+    after
+        _ = file:delete(Tmp)
+    end.
+
+receive_to_file(Req0, Key, DeclMime, Tmp) ->
     case read_body_to_file(Req0, Tmp, 0) of
-        {ok, Size} ->
-            try
-                serve_pinned(Req0, Key, DeclMime, Tmp, Size)
-            after
-                _ = file:delete(Tmp)
-            end;
+        {ok, Req1, Size} ->
+            serve_pinned(Req1, Key, DeclMime, Tmp, Size);
         {error, too_large} ->
-            _ = file:delete(Tmp),
             cowboy_req:reply(413, #{}, <<"payload exceeds limit">>, Req0);
         {error, _} ->
-            _ = file:delete(Tmp),
             cowboy_req:reply(500, #{}, <<"body receive failed">>, Req0)
     end.
 
@@ -145,22 +148,21 @@ serve_pinned(Req0, Key, DeclMime, Tmp, Size) ->
             case attach_pending_repo:register_content_pin(Key, Receipt) of
                 ok ->
                     %% pin 已 COMMIT；转发同一已校验文件（不重新读可替换路径）
-                    Bucket = elib_oss:get_bucket(<<"private">>),
-                    case elib_oss:put_object_from_file(Bucket, Key, Tmp, DeclMime) of
+                    case provider_put(Key, Tmp, DeclMime) of
                         ok ->
                             cowboy_req:reply(
                                 200,
                                 #{
                                     <<"content-type">> => <<"application/json">>
                                 },
-                                elib_json:encode(#{
+                                jsone:encode(#{
                                     <<"pinned">> => true,
                                     <<"sha256">> => Sha256,
                                     <<"size">> => Size
                                 }),
                                 Req0
                             );
-                        {error, put_failed} ->
+                        {error, _} ->
                             %% 对象存储 PUT 失败：pin 保留，同 receipt 重试合法
                             cowboy_req:reply(
                                 502, #{}, <<"object store put failed, retry same content">>, Req0
@@ -172,10 +174,23 @@ serve_pinned(Req0, Key, DeclMime, Tmp, Size) ->
                         409, #{}, <<"content already pinned to different receipt">>, Req0
                     );
                 {error, not_found} ->
-                    cowboy_req:reply(404, #{}, <<"unknown session">>, Req0)
+                    cowboy_req:reply(404, #{}, <<"unknown session">>, Req0);
+                {error, _} ->
+                    cowboy_req:reply(500, #{}, <<"content pin failed">>, Req0)
             end;
         {error, _} ->
             cowboy_req:reply(500, #{}, <<"hash failed">>, Req0)
+    end.
+
+provider_put(Key, Tmp, DeclMime) ->
+    try
+        Bucket = elib_oss:get_bucket(<<"private">>),
+        case elib_oss:put_object_from_file(Bucket, Key, Tmp, DeclMime) of
+            ok -> ok;
+            _ -> {error, put_failed}
+        end
+    catch
+        _:_ -> {error, put_failed}
     end.
 
 file_sha256(Path) ->

@@ -21,6 +21,7 @@
 -export([get_by_key/1]).
 
 -include("log.hrl").
+-include_lib("epgsql/include/epgsql.hrl").
 
 %% V5 恢复合同：会话绝对 deadline=登记+2h；单次能力默认 3600s（02 §12）
 -define(V5_SESSION_DEADLINE_SECONDS, 7200).
@@ -230,7 +231,7 @@ iso8601(UnixSeconds) ->
 
 %% @doc V5 内容 pin（02 §14）：upload_content 从 NULL 一次固定；
 %% 同 receipt 幂等；不同值 {error, content_mismatch}（网关 409）。
-%% 由迁移 178 的受限函数 fn_v5_pin_pending_content 在库内裁决。
+%% 由迁移 179 的受限函数 fn_v5_pin_pending_content 在库内裁决。
 -spec register_content_pin(binary(), map()) -> ok | {error, term()}.
 register_content_pin(ObjectKey, Receipt) ->
     case status_lookup(ObjectKey) of
@@ -239,11 +240,14 @@ register_content_pin(ObjectKey, Receipt) ->
                 <<"SELECT fn_v5_pin_pending_content($1, $2::jsonb)">>
             ],
             case elib_pg:query(Sql, [ObjectKey, jsone:encode(Receipt)]) of
-                {ok, _, _} -> ok;
+                {ok, [#{<<"fn_v5_pin_pending_content">> := true}]} -> ok;
+                {error, #error{code = <<"23510">>}} -> {error, content_mismatch};
+                {error, #error{code = <<"P0002">>}} -> {error, not_found};
+                {ok, _} -> {error, invalid_pin_result};
                 {error, R} -> {error, R}
             end;
-        {error, not_found} ->
-            {error, not_found}
+        {error, Reason} ->
+            {error, Reason}
     end.
 
 %% elib_pg:execute/2 的成功返回有 {ok, N} 与 {ok, N, Rows} 两种形态
