@@ -2,6 +2,16 @@
 -include_lib("eunit/include/eunit.hrl").
 -include("eunit_setup.hrl").
 
+%% Run the unchanged unit body in an isolated peer; the parent app is untouched.
+-define(LOCAL_MOCKS(Configs, Test),
+    {timeout, 45, fun() ->
+        pure_mock_fixture:run(fun() -> pure_mock_fixture:with_mocks(Configs, Test) end)
+    end}
+).
+-define(LOCAL_MOCK(Module, Expectations, Test),
+    ?LOCAL_MOCKS([{Module, Expectations}], Test)
+).
+
 %%%===================================================================
 %%% @doc
 %%% user_dnd_rule_repo 模块的 EUnit 测试
@@ -15,7 +25,7 @@
 %% ===================================================================
 
 tablename_returns_correct_table_test_() ->
-    ?WITH_MECK(
+    ?LOCAL_MOCK(
         elib_pg_sql,
         [
             {'public_tablename', 1, fun(_Table) -> <<"public.user_dnd_rule">> end}
@@ -30,7 +40,7 @@ tablename_returns_correct_table_test_() ->
 %% ===================================================================
 
 find_by_uid_found_test_() ->
-    ?WITH_MECKS(
+    ?LOCAL_MOCKS(
         [
             {elib_pg_sql, [{'public_tablename', 1, fun(_) -> <<"public.user_dnd_rule">> end}]},
             {elib_pg, [
@@ -55,7 +65,7 @@ find_by_uid_found_test_() ->
     ).
 
 find_by_uid_not_found_returns_empty_map_test_() ->
-    ?WITH_MECKS(
+    ?LOCAL_MOCKS(
         [
             {elib_pg_sql, [{'public_tablename', 1, fun(_) -> <<"public.user_dnd_rule">> end}]},
             {elib_pg, [{'one', 2, fun(_Sql, _Params) -> {ok, []} end}]}
@@ -67,7 +77,7 @@ find_by_uid_not_found_returns_empty_map_test_() ->
 
 %% binary Uid 应被 ec_cnv:to_integer 归一为 integer
 find_by_uid_accepts_binary_uid_test_() ->
-    ?WITH_MECKS(
+    ?LOCAL_MOCKS(
         [
             {elib_pg_sql, [{'public_tablename', 1, fun(_) -> <<"public.user_dnd_rule">> end}]},
             {elib_pg, [
@@ -88,7 +98,7 @@ find_by_uid_accepts_binary_uid_test_() ->
 %% ===================================================================
 
 upsert_executes_insert_on_conflict_test_() ->
-    ?WITH_MECKS(
+    ?LOCAL_MOCKS(
         [
             {elib_pg_sql, [
                 {'public_tablename', 1, fun(_) -> <<"public.user_dnd_rule">> end},
@@ -123,7 +133,7 @@ upsert_executes_insert_on_conflict_test_() ->
 %% ===================================================================
 
 delete_by_uid_test_() ->
-    ?WITH_MECKS(
+    ?LOCAL_MOCKS(
         [
             {elib_pg_sql, [{'public_tablename', 1, fun(_) -> <<"public.user_dnd_rule">> end}]},
             {elib_pg, [
