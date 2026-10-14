@@ -88,9 +88,11 @@ missing = []
 n = 0
 case_name = cid.split("/", 1)[1]
 for leaf in leaves:
-    ep = leaf["entrypoint"]
+    # 回执 entrypoint 必须逐字保留矩阵原文（G2 叶键核对按原文拼接）
+    ep_out = leaf["entrypoint"]
+    ep = ep_out
     sc = leaf["ordering_or_fault"]
-    # confirm-idempotent/old-client 的叶 entrypoint 即 case 名，按域归位：
+    # confirm-idempotent/old-client 的叶 entrypoint 即 case 名，查找时按域归位：
     # ordinary -> ordinary 入口（t_*），enterprise -> enterprise_internal（ent_*）
     if ep == case_name:
         ep = "enterprise_internal" if leaf["domain"] == "enterprise" else "ordinary"
@@ -122,7 +124,7 @@ for leaf in leaves:
         "ac_id": leaf["ac_id"],
         "domain": leaf["domain"],
         "driver": leaf["driver"],
-        "entrypoint": ep,
+        "entrypoint": ep_out,
         "ordering_or_fault": sc,
         "schema_phase": leaf["schema_phase"],
         "executed": 1,
