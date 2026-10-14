@@ -63,7 +63,7 @@ CASES_JSON="$(pyval cases)"
 PHASES_JSON="$(pyval phases)"
 [ "$TASK_OK" = "yes" ] || { echo "task $TASK not in frozen contract" >&2; exit 20; }
 if [ -n "$CASE" ]; then
-  echo "$CASES_JSON" | grep -q "\"$CASE\"" || { echo "case $CASE not registered under $TASK" >&2; exit 2; }
+  echo "$CASES_JSON" | grep -q "\"$TASK/$CASE\"" || { echo "case $CASE not registered under $TASK" >&2; exit 2; }
 fi
 if [ -n "$PHASE" ]; then
   echo "$PHASES_JSON" | grep -q "\"$PHASE\"" || { echo "phase $PHASE not declared by task $TASK" >&2; exit 2; }
@@ -78,6 +78,109 @@ LOG="$RUN_DIR/logs/$TASK-gate-$(date +%H%M%S).log"
 exec > >(tee -a "$LOG") 2>&1
 
 # ---------------- case executors ----------------
+w102_phase_run() { # $1 cdir $2 phase
+  local cdir="$1" phase="$2"
+  local PGPASSWORD_FILE="$RUN_DIR/resources/pg-attv5.password"
+  [ -f "$PGPASSWORD_FILE" ] || { echo "pg password file missing" >&2; return 75; }
+  local PGPASSWORD; PGPASSWORD=$(cat "$PGPASSWORD_FILE")
+  local DB="attv5_${SLOT}_w102_${phase}"
+  docker exec -i imboy_pg18 psql -X -U imboy_user -d postgres \
+    -c "DROP DATABASE IF EXISTS $DB" -c "CREATE DATABASE $DB OWNER imboy_user" > "$cdir/db.log" 2>&1 || return 75
+  for E in pg_jieba postgis postgis_raster timescaledb pgcrypto "uuid-ossp" pg_trgm btree_gin btree_gist unaccent pg_stat_statements; do
+    docker exec -i imboy_pg18 psql -X -U imboy_user -d "$DB" -c "CREATE EXTENSION IF NOT EXISTS $E" >> "$cdir/db.log" 2>&1
+  done
+  local f
+  for f in $(ls "$ROOT/priv/migrations/"*.up.sql | sed 's|.*/||' | sort); do
+    docker exec -i imboy_pg18 psql -X -U imboy_user -d "$DB" -v ON_ERROR_STOP=1 --single-transaction -f - \
+      < "$ROOT/priv/migrations/$f" >> "$cdir/raw.log" 2>&1 || { echo "REPLAY_FAIL $f" >> "$cdir/raw.log"; return 30; }
+  done
+  echo "replayed $(ls "$ROOT/priv/migrations/"*.up.sql | wc -l | tr -d ' ') up files" >> "$cdir/raw.log"
+  local GUARDS_DB="attv5_${SLOT}_w102_guards"
+  if [ "$phase" = "guards" ]; then
+    docker exec -i imboy_pg18 psql -X -U imboy_user -d "$DB" -v ON_ERROR_STOP=1 --single-transaction -f - \
+      < "$ROOT/docs/architecture/attachment-lifecycle-v5/guards-contract.sql" >> "$cdir/raw.log" 2>&1 \
+      || { echo "GUARDS_FAIL" >> "$cdir/raw.log"; return 30; }
+    V5_EXPAND_DB="${V5_EXPAND_DB:-attv5_${SLOT}_w102_expand}" V5_GUARDS_DB="$DB" \
+      V5_RUN_DIR="$RUN_DIR" bash "$ROOT/scripts/test/attachment_lifecycle_v5_w102_probe.sh" "$DB" guards "$cdir/probes.jsonl" >> "$cdir/raw.log" 2>&1
+  else
+    # cross-phase leaves need the guards DB too: build it alongside
+    docker exec -i imboy_pg18 psql -X -U imboy_user -d postgres \
+      -c "DROP DATABASE IF EXISTS $GUARDS_DB" -c "CREATE DATABASE $GUARDS_DB OWNER imboy_user" >> "$cdir/db.log" 2>&1 || return 75
+    for E in pg_jieba postgis postgis_raster timescaledb pgcrypto "uuid-ossp" pg_trgm btree_gin btree_gist unaccent pg_stat_statements; do
+      docker exec -i imboy_pg18 psql -X -U imboy_user -d "$GUARDS_DB" -c "CREATE EXTENSION IF NOT EXISTS $E" >> "$cdir/db.log" 2>&1
+    done
+    for f in $(ls "$ROOT/priv/migrations/"*.up.sql | sed 's|.*/||' | sort); do
+      docker exec -i imboy_pg18 psql -X -U imboy_user -d "$GUARDS_DB" -v ON_ERROR_STOP=1 --single-transaction -f - \
+        < "$ROOT/priv/migrations/$f" >> "$cdir/raw.log" 2>&1 || { echo "GUARDS_REPLAY_FAIL $f" >> "$cdir/raw.log"; return 30; }
+    done
+    docker exec -i imboy_pg18 psql -X -U imboy_user -d "$GUARDS_DB" -v ON_ERROR_STOP=1 --single-transaction -f - \
+      < "$ROOT/docs/architecture/attachment-lifecycle-v5/guards-contract.sql" >> "$cdir/raw.log" 2>&1 \
+      || { echo "GUARDS_FAIL" >> "$cdir/raw.log"; return 30; }
+    V5_EXPAND_DB="$DB" V5_GUARDS_DB="$GUARDS_DB" \
+      V5_RUN_DIR="$RUN_DIR" bash "$ROOT/scripts/test/attachment_lifecycle_v5_w102_probe.sh" "$DB" expand "$cdir/probes.jsonl" >> "$cdir/raw.log" 2>&1
+  fi
+  return $?
+}
+
+seal_w102_leafs() { # $1 cid $2 cdir $3 rc $4 phase
+  local cid="$1" cdir="$2" rc="$3" phase="$4"
+  case "$phase" in
+    expand) phase="expand-queue" ;;
+    guards) phase="guards-contract" ;;
+  esac
+  python3 - "$PLAN_DIR" "$cid" "$cdir" "$rc" "$phase" "$TASK" <<'PY'
+import json, os, sys, hashlib
+plan, cid, cdir, rc, phase, task = sys.argv[1:7]
+c = json.load(open(plan + "/execution-contract.json"))
+leaves = [l for l in c["expected_leaf_matrix"].get(cid, [])
+          if l.get("schema_phase") == phase]
+probes = {}
+pl = os.path.join(cdir, "probes.jsonl")
+if os.path.exists(pl):
+    for line in open(pl):
+        line = line.strip()
+        if not line:
+            continue
+        d = json.loads(line)
+        if "name" in d:
+            probes[d["name"]] = d.get("pass", False)
+raw = os.path.join(cdir, "raw.log")
+sha = hashlib.sha256(open(raw, "rb").read()).hexdigest() if os.path.exists(raw) else "0" * 64
+rc_i = int(rc)
+missing = []
+n = passed = 0
+for i, leaf in enumerate(leaves):
+    name = leaf.get("ordering_or_fault")
+    ok = probes.get(name)
+    if ok is None:
+        # tolerate probe aliases used before rename
+        ok = probes.get({"attempted_job": "attempted_job"}.get(name, name), False)
+    if ok is None:
+        missing.append(name)
+        ok = False
+    n += 1
+    passed += 1 if ok else 0
+    receipt = {
+        "task_id": task, "case_id": cid,
+        "ac_id": leaf.get("ac_id"), "domain": leaf.get("domain"),
+        "driver": leaf.get("driver"), "entrypoint": leaf.get("entrypoint"),
+        "ordering_or_fault": name, "schema_phase": leaf.get("schema_phase"),
+        "exit_code": rc_i, "executed": 1,
+        "passed": 1 if (ok and rc_i == 0) else 0,
+        "failed": 0 if (ok and rc_i == 0) else 1, "skipped": 0,
+        "command": "w102 fresh-db rebuild + per-leaf SQL probes (%s)" % phase,
+        "cwd": os.getcwd(),
+        "raw_output_path": raw, "raw_output_sha256": sha,
+        "probe_result": probes.get(name),
+    }
+    with open(os.path.join(cdir, "leaf%03d.json" % i), "w") as fh:
+        json.dump(receipt, fh, indent=1)
+print("sealed %d leaf receipts for %s/%s (rc=%s, passed=%d, unmapped=%s)"
+      % (n, cid, phase, rc, passed, missing[:4]))
+sys.exit(0 if (rc_i == 0 and not missing and passed == n) else (30 if rc_i else 20))
+PY
+}
+
 bootstrap_w002_schema() {
   local cdir="$1" PGPASSWORD_FILE="$RUN_DIR/resources/pg-attv5.password" DB="attv5_${SLOT}_raw"
   [ -f "$PGPASSWORD_FILE" ] || { echo "pg password file missing" >&2; return 75; }
@@ -121,6 +224,21 @@ run_case() {  # $1 case_id
   local cid="$1" cdir="$EVID/${cid#*/}"
   mkdir -p "$cdir"
   case "$cid" in
+    W1-02/migration|W1-02/down-block)
+      w102_phase_run "$cdir" expand; RC1=$?
+      if [ $RC1 -ne 0 ]; then seal_w102_leafs "$cid" "$cdir" $RC1 expand; RC=$RC1;
+      else
+        mkdir -p "$cdir/guards"
+        w102_phase_run "$cdir/guards" guards; RC2=$?
+        cat "$cdir/guards/raw.log" >> "$cdir/raw.log" 2>/dev/null
+        cat "$cdir/guards/probes.jsonl" >> "$cdir/probes.jsonl" 2>/dev/null
+        seal_w102_leafs "$cid" "$cdir" $RC2 expand
+        seal_w102_leafs "$cid" "$cdir" $RC2 guards
+        RC=$RC2
+      fi ;;
+    W1-02/immutable|W1-02/session-link-integrity|W1-02/intent-authority|W1-02/audit-actor-anonymization|W1-02/registration-integrity|W1-02/recovery-tombstone-integrity)
+      w102_phase_run "$cdir" guards
+      seal_w102_leafs "$cid" "$cdir" "$?" guards ;;
     W1-01/contract)
       python3 - "$ROOT" > "$cdir/raw.log" 2>&1 <<'PYC'
 import json, sys
