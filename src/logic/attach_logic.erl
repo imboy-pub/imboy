@@ -184,7 +184,14 @@ confirm(Uid, ObjectKey, Scope, ScopeRef, Meta) ->
         {ok, Uid} ->
             case can_upload(Uid, Scope, ScopeRef) of
                 ok ->
-                    verify_and_save(Uid, ObjectKey, Scope, ScopeRef, Meta);
+                    %% W2-02：V5 会话（client_upload_id 非空，登记时由
+                    %% fn_v5_register_pending 固定）走字节校验 + 原子会话确认；
+                    %% 旧客户端 pending（无 V5 列）与无 pending 行保持 legacy。
+                    case v5_session(ObjectKey) of
+                        {ok, true} -> verify_and_save_v5(Uid, ObjectKey, Scope, ScopeRef, Meta);
+                        {ok, false} -> verify_and_save(Uid, ObjectKey, Scope, ScopeRef, Meta);
+                        {error, _} = E -> E
+                    end;
                 {error, _} = E ->
                     E
             end;
@@ -193,6 +200,205 @@ confirm(Uid, ObjectKey, Scope, ScopeRef, Meta) ->
         {error, R} ->
             {error, R}
     end.
+
+%% V5 会话判别：仅 client_upload_id 非空的登记行（迁移 178 列集）；
+%% 旧 add/4 写入的 pending 行各 V5 列为 NULL，继续 legacy 链。
+v5_session(ObjectKey) ->
+    case attach_pending_repo:status_lookup(ObjectKey) of
+        {ok, #{<<"session_state">> := State, <<"client_upload_id">> := Cid}} when
+            State =:= <<"registered">>; State =:= <<"confirmed">>
+        ->
+            {ok, Cid =/= null};
+        {ok, _} ->
+            {ok, false};
+        {error, not_found} ->
+            {ok, false};
+        {error, R} ->
+            {error, R}
+    end.
+
+%% W2-02 V5 confirm：真实字节校验（02 §4「HEAD 本身不充分」）+ 原子会话确认。
+%% 与 legacy 的差异：GET 全量字节算 SHA256/size 对照登记会话的 pin 快照；
+%% confirm 事务内持锁重查 upload_content（锁前读数不构成授权）；
+%% 失败不删对象——pin 保留供同 receipt 重试，物理回收归 W4 GC。
+-spec verify_and_save_v5(integer(), binary(), binary(), binary() | undefined, map()) ->
+    {ok, map()} | {error, term()}.
+verify_and_save_v5(Uid, ObjectKey, Scope, ScopeRef, Meta) ->
+    Bucket = elib_oss:get_bucket(Scope),
+    case elib_oss:head_object(Bucket, ObjectKey) of
+        {error, not_found} ->
+            {error, object_not_found};
+        {error, R} ->
+            ?ERROR_LOG(["attach_logic v5 confirm head_object failed: ", Bucket, ObjectKey, R]),
+            {error, R};
+        {ok, #{content_type := RealType}} ->
+            case elib_oss:object_sha256(Bucket, ObjectKey) of
+                {error, not_found} ->
+                    {error, object_not_found};
+                {error, R2} ->
+                    ?ERROR_LOG([
+                        "attach_logic v5 confirm read_bytes failed: ", Bucket, ObjectKey, R2
+                    ]),
+                    {error, R2};
+                {ok, Sha256, RealSize} ->
+                    case v5_meta_guard(Scope, RealType, RealSize, Meta) of
+                        ok ->
+                            do_save_v5(
+                                Uid, ObjectKey, Scope, ScopeRef, Meta, RealSize, RealType, Sha256
+                            );
+                        {error, Reason} ->
+                            {error, Reason}
+                    end
+            end
+    end.
+
+%% 与 legacy verify_and_save 同口径的白名单/上限/教学复核；V5 失败不删对象。
+v5_meta_guard(Scope, RealType, RealSize, Meta) ->
+    case RealSize > elib_oss:max_file_size() of
+        true ->
+            {error, file_too_large};
+        false ->
+            case elib_oss:validate_file_type(RealType) of
+                false ->
+                    {error, invalid_file_type};
+                true ->
+                    teaching_verify_guard(Scope, RealType, RealSize, Meta)
+            end
+    end.
+
+-spec do_save_v5(
+    integer(),
+    binary(),
+    binary(),
+    binary() | undefined,
+    map(),
+    non_neg_integer(),
+    binary(),
+    binary()
+) ->
+    {ok, map()} | {error, term()}.
+do_save_v5(Uid, ObjectKey, Scope, ScopeRef, Meta, RealSize, RealType, Sha256) ->
+    case group_anchor_msg_id(Scope, Meta) of
+        {error, attachment_anchor_required} = E ->
+            E;
+        AnchorMsgId ->
+            case normalize_cipher(maps:get(<<"cipher">>, Meta, undefined)) of
+                {error, unsupported_cipher} ->
+                    {error, unsupported_cipher};
+                Cipher ->
+                    do_save_v5_1(
+                        Uid,
+                        ObjectKey,
+                        Scope,
+                        ScopeRef,
+                        Meta,
+                        RealSize,
+                        RealType,
+                        Cipher,
+                        AnchorMsgId,
+                        Sha256
+                    )
+            end
+    end.
+
+do_save_v5_1(
+    Uid, ObjectKey, Scope, ScopeRef, _Meta, RealSize, RealType, Cipher, AnchorMsgId, Sha256
+) ->
+    Attach = confirm_attach_map(
+        ObjectKey, Scope, ScopeRef, RealSize, RealType, Cipher, AnchorMsgId, Sha256
+    ),
+    Now = elib_dt:now(),
+    try
+        case
+            elib_pg:with_tx(fun(Conn) ->
+                confirm_v5_tx(Conn, ObjectKey, Scope, Cipher, Now, Uid, Attach)
+            end)
+        of
+            ok ->
+                {ok, maybe_public_url(Scope, ObjectKey, confirm_payload(ObjectKey))};
+            {error, SaveReason} ->
+                ?ERROR_LOG(["attach_logic v5 confirm tx failed: ", ObjectKey, SaveReason]),
+                {error, SaveReason}
+        end
+    catch
+        Class:Reason ->
+            ?ERROR_LOG(["attach_logic v5 confirm save failed: ", Class, Reason]),
+            {error, Reason}
+    end.
+
+%% confirm 行：真实字节 hash 落库（file_hash256=服务端 GET 校验值），
+%% 其余列与 legacy save/4 同形状（md5 输入回退仅作用于无字节校验的 legacy）。
+confirm_attach_map(ObjectKey, Scope, ScopeRef, RealSize, RealType, Cipher, AnchorMsgId, Sha256) ->
+    #{
+        <<"file_hash256">> => Sha256,
+        <<"cipher">> => Cipher,
+        <<"mime_type">> => RealType,
+        <<"name">> => filename:basename(ObjectKey),
+        <<"path">> => ObjectKey,
+        <<"url">> => ObjectKey,
+        <<"size">> => RealSize,
+        <<"scope">> => Scope,
+        <<"scope_ref">> => normalize_ref(ScopeRef),
+        <<"anchor_msg_id">> => AnchorMsgId
+    }.
+
+%% confirm 线性化事务（02 §4）：workspace 资格 → 锁 pending 行重查 pin 与
+%% scope → metadata insert-if-absent → fn_v5_confirm_pending registered→confirmed。
+confirm_v5_tx(Conn, ObjectKey, Scope, _Cipher, Now, Uid, Attach) ->
+    case attach_scope_target(Scope, maps:get(<<"scope_ref">>, Attach, undefined)) of
+        {ok, Target} ->
+            ok = workspace_guard:abort_on_error(
+                attachment_ds:ensure_upload_scope_tx(Conn, Target, Uid)
+            );
+        passthrough ->
+            ok
+    end,
+    case attach_pending_repo:lock_session_tx(Conn, ObjectKey) of
+        {ok, not_found} ->
+            throw({abort_tx, session_vanished});
+        {ok, Session} ->
+            %% 持锁重查 pin（锁前哈希结果只用于事务外 GET，此处为裁决基准）
+            case pin_of(Session) of
+                #{<<"sha256">> := PinSha, <<"size_bytes">> := PinSize} ->
+                    PinSizeInt = ec_cnv:to_integer(PinSize),
+                    case
+                        PinSha =:= maps:get(<<"file_hash256">>, Attach) andalso
+                            PinSizeInt =:= ec_cnv:to_integer(maps:get(<<"size">>, Attach))
+                    of
+                        true -> ok;
+                        false -> throw({abort_tx, content_hash_mismatch})
+                    end;
+                _ ->
+                    throw({abort_tx, content_not_pinned})
+            end,
+            case maps:get(<<"scope">>, Session, null) of
+                PendingScope when PendingScope =/= null, PendingScope =/= Scope ->
+                    throw({abort_tx, scope_conflict});
+                _ ->
+                    ok
+            end,
+            %% metadata insert-if-absent + scope/cipher 冲突复核 + 首审计一次
+            %% （save_confirmed_tx 复用：重放不递增 referer，审计只在首行）
+            ok = attachment_ds:save_confirmed_tx(Conn, Now, Uid, [Attach]),
+            case attachment_repo:confirmation_row_tx(Conn, ObjectKey) of
+                {ok, #{<<"id">> := Id}} ->
+                    case attach_pending_repo:confirm_session_tx(Conn, ObjectKey, Id) of
+                        {ok, Id} ->
+                            ok;
+                        {ok, _OtherId} ->
+                            throw({abort_tx, confirm_id_mismatch});
+                        {error, ConfirmReason} ->
+                            throw({abort_tx, ConfirmReason})
+                    end;
+                {ok, not_found} ->
+                    throw({abort_tx, confirm_row_vanished});
+                {error, RowReason} ->
+                    throw({abort_tx, RowReason})
+            end
+    end.
+
+pin_of(#{<<"upload_content">> := Content}) when is_map(Content) -> Content;
+pin_of(_) -> #{}.
 
 %% @doc 服务端 HEAD 核实真实性后落库（真实值覆盖客户端自报值）
 -spec verify_and_save(integer(), binary(), binary(), binary() | undefined, map()) ->
@@ -326,7 +532,12 @@ do_save_1(Uid, ObjectKey, Scope, ScopeRef, Meta, RealSize, RealType, Cipher, Anc
                         ),
                         attachment_ds:save_confirmed_tx(Conn, Now, Uid, [Attach]);
                     passthrough ->
-                        attachment_ds:save(Conn, Now, Uid, [Attach])
+                        %% W2-02：个人域 confirm 同样 insert-if-absent（重放
+                        %% 不递增 referer；真实引用新增仍走 save/4）。
+                        case attachment_repo:confirm_if_absent_tx(Conn, Now, Uid, Attach) of
+                            {ok, _Id, _First} -> ok;
+                            {error, Reason} -> throw({abort_tx, Reason})
+                        end
                 end
             end),
         case SaveResult of

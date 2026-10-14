@@ -16,6 +16,7 @@
 -export([add/4]).
 -export([register_v5/5, register_v5/6, status_lookup/1, register_content_pin/2]).
 -export([register_v5_tx/7, renew_capability/3, renew_capability_tx/4]).
+-export([lock_session_tx/2, confirm_session_tx/3]).
 -export([remove/1]).
 -export([list_expired/1]).
 -export([delete_by_keys/1]).
@@ -197,7 +198,10 @@ register_v5(ObjectKey, Bucket, Scope, Uid, ClientUploadId, Registration) when
                 {error, R} -> {error, R}
             end;
         _ ->
-            Params = [A || {I, A} <- lists:zip(lists:seq(1, 12), Args), I =/= 5],
+            %% $1..$8 依序取 Args 前 8 个（$5=uuid 占位与 Args 第 5 项对位；
+            %% 尾部 4 个 NULL 是 SQL 字面量）。W2-02 修正：原先错误过滤
+            %% 第 5 项导致 11 参数对 8 占位符，真实 DB 上必然绑定失败。
+            Params = lists:sublist(Args, 8),
             case elib_pg:query(Sql, Params) of
                 {ok, [Row | _]} ->
                     %% deadline/expires_at 为本次登记冻结并写入 DB 的绝对 unix 秒，
@@ -259,7 +263,8 @@ register_v5_tx(Conn, ObjectKey, Bucket, Scope, UidOrPrincipal, ClientUploadId, R
             " FROM fn_v5_register_pending($1,$2,$3,$4,$5::uuid,"
             "$6::jsonb,$7::timestamptz,$8::timestamptz,NULL,NULL,NULL,NULL)"
         >>,
-    Params = [A || {I, A} <- lists:zip(lists:seq(1, 12), Args), I =/= 5],
+    %% $1..$8 依序取 Args 前 8 个（$5=uuid 对位；尾部 4 个 NULL 是字面量）。
+    Params = lists:sublist(Args, 8),
     case elib_pg:query(Conn, Sql, Params) of
         {ok, [Row | _]} ->
             {ok, #{
@@ -327,6 +332,54 @@ renew_result({ok, []}) ->
 renew_result({error, R}) ->
     {error, R}.
 
+%% @doc 持锁重查（02 §4：真实对象字节校验在事务外，持锁后必须重查
+%% 会话状态与 upload_content）：锁定 pending 行并回读最新 pin 快照，
+%% 字节比对基准以此为准，锁前读到的快照不构成授权。
+-spec lock_session_tx(any(), binary()) -> {ok, map() | not_found} | {error, term()}.
+lock_session_tx(Conn, ObjectKey) ->
+    case
+        elib_pg:query(
+            Conn,
+            <<
+                "SELECT object_key, session_state, upload_content, creator_user_id, scope,"
+                " storage_driver, storage_namespace, storage_container,"
+                " storage_locator_sha256"
+                " FROM attach_pending WHERE object_key=$1 FOR UPDATE"
+            >>,
+            [ObjectKey]
+        )
+    of
+        {ok, [Row]} -> {ok, decode_content(Row)};
+        {ok, []} -> {ok, not_found};
+        {error, _} = Error -> Error
+    end.
+
+%% jsonb 列形态归一：epgsql 依连接配置可能回已解码 map 或原始 binary，
+%% pin 复核层统一按 map 消费。
+decode_content(Row) ->
+    case maps:get(<<"upload_content">>, Row, undefined) of
+        B when is_binary(B) -> Row#{<<"upload_content">> => jsone:decode(B)};
+        _ -> Row
+    end.
+
+%% @doc confirm 线性化点（02 §4）：持锁后合法 registered→confirmed，
+%% metadata 与会话确认同事务；同 attachment_id 重放返回原 id（幂等），
+%% 已确认会话换 id / 非法来源态 → {error, confirm_conflict}（23510）。
+-spec confirm_session_tx(any(), binary(), integer() | binary()) ->
+    {ok, ConfirmedId :: integer()} | {error, term()}.
+confirm_session_tx(Conn, ObjectKey, AttachmentId) ->
+    case
+        elib_pg:query(Conn, <<"SELECT fn_v5_confirm_pending($1, $2)">>, [
+            ObjectKey, ec_cnv:to_integer(AttachmentId)
+        ])
+    of
+        {ok, [#{<<"fn_v5_confirm_pending">> := Id}]} -> {ok, Id};
+        {ok, []} -> {error, confirm_not_returned};
+        {error, #error{code = <<"23510">>}} -> {error, confirm_conflict};
+        {error, #error{code = <<"P0002">>}} -> {error, not_found};
+        {error, R} -> {error, R}
+    end.
+
 %% @doc status/renew 查找：client_upload_id 或 object_key。
 -spec status_lookup(binary()) -> {ok, map()} | {error, not_found | term()}.
 status_lookup(IdOrKey) ->
@@ -339,9 +392,16 @@ status_lookup(IdOrKey) ->
         <<" WHERE (client_upload_id::text = $1 OR object_key = $1) LIMIT 1">>
     ],
     case elib_pg:query(Sql, [IdOrKey]) of
-        {ok, [Row | _]} -> {ok, Row};
-        {ok, []} -> {error, not_found};
-        {error, R} -> {error, R}
+        {ok, [Row | _]} ->
+            %% 登记快照同口径归一（renew 的 declared_mime 按 map 消费）
+            case maps:get(<<"upload_registration">>, Row, undefined) of
+                B when is_binary(B) -> {ok, Row#{<<"upload_registration">> => jsone:decode(B)}};
+                _ -> {ok, Row}
+            end;
+        {ok, []} ->
+            {error, not_found};
+        {error, R} ->
+            {error, R}
     end.
 
 iso8601(UnixSeconds) ->

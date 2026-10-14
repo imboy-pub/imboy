@@ -58,29 +58,42 @@ save_confirmed_tx(Conn, CreatedAt, Uid, [Attach | Tail]) ->
     Path = maps:get(<<"path">>, Attach),
     {ok, Before} = confirmation_result(attachment_repo:confirmation_row_tx(Conn, Path)),
     ok = ensure_confirmed_scope(Before, Uid, Attach),
-    ok = attachment_repo:save(Conn, CreatedAt, Uid, [Attach]),
+    %% W2-02：metadata insert-if-absent 与真实引用新增拆开——confirm 重放
+    %% 复用既有行且不递增 referer（referer 只属于 save/4 的新引用写入）。
+    case attachment_repo:confirm_if_absent_tx(Conn, CreatedAt, Uid, Attach) of
+        {ok, _Id, _First} -> ok;
+        {error, Reason} -> throw({abort_tx, Reason})
+    end,
     case Before of
         not_found ->
             {ok, Row} = confirmation_result(attachment_repo:confirmation_row_tx(Conn, Path)),
             ok = ensure_confirmed_scope(Row, Uid, Attach),
-            Kind =
+            %% W2-02：V5 confirm 对全部 scope 复用本入口；workspace 级审计
+            %% 只对 group/channel（个人域首确认以元数据行为记录，无治理审计）。
+            case
                 case maps:get(<<"scope">>, Row) of
                     <<"group">> -> group;
-                    <<"channel">> -> channel
-                end,
-            Ref = elib_cnv:safe_to_integer(maps:get(<<"scope_ref">>, Row)),
-            ok = workspace_guard:abort_on_error(
-                enterprise_audit_event_repo:append_scope_file_tx(
-                    Conn,
-                    {Kind, Ref},
-                    Uid,
-                    #{
-                        resource_type => <<"attachment">>,
-                        resource_id => maps:get(<<"id">>, Row),
-                        action => <<"file.confirmed">>
-                    }
-                )
-            );
+                    <<"channel">> -> channel;
+                    _ -> none
+                end
+            of
+                none ->
+                    ok;
+                Kind ->
+                    Ref = elib_cnv:safe_to_integer(maps:get(<<"scope_ref">>, Row)),
+                    ok = workspace_guard:abort_on_error(
+                        enterprise_audit_event_repo:append_scope_file_tx(
+                            Conn,
+                            {Kind, Ref},
+                            Uid,
+                            #{
+                                resource_type => <<"attachment">>,
+                                resource_id => maps:get(<<"id">>, Row),
+                                action => <<"file.confirmed">>
+                            }
+                        )
+                    )
+            end;
         _ ->
             ok
     end,
@@ -103,6 +116,17 @@ ensure_confirmed_scope(Row, Uid, Attach) ->
             end;
         _ ->
             throw({abort_tx, forbidden})
+    end,
+    %% W2-02：conflicting cipher 拒绝——重放请求的加密形态必须与既有行一致
+    %% （历史行 cipher=NULL，旧客户端重放 normalize 后同为 null，兼容不受影响）。
+    case maps:get(<<"cipher">>, Row, null) of
+        Cipher when is_atom(Cipher); is_binary(Cipher) ->
+            case maps:get(<<"cipher">>, Attach, null) of
+                Cipher -> ok;
+                _ -> throw({abort_tx, cipher_conflict})
+            end;
+        _ ->
+            throw({abort_tx, cipher_conflict})
     end.
 
 confirmation_result({ok, _} = Result) -> Result;

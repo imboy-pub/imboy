@@ -356,13 +356,198 @@ confirm_tx(_Conn, _Ctx, _Input) ->
 
 confirm_owned(Conn, Ctx, ObjectKey, Hash) ->
     case enterprise_asset_repo:pending_find_tx(Conn, ObjectKey) of
-        {ok, _} ->
-            confirm_head(Conn, Ctx, ObjectKey, Hash);
+        {ok, Pending} ->
+            case pending_v5(Pending) of
+                true ->
+                    %% W2-02 V5 会话：字节级校验 + fn_v5_confirm_pending 原子确认
+                    confirm_head_v5(Conn, Ctx, ObjectKey, Hash, Pending);
+                false ->
+                    confirm_head(Conn, Ctx, ObjectKey, Hash)
+            end;
         {error, not_found} ->
-            {error, {<<"invalid_request">>, not_presigned}};
+            %% W2-02 兼容回读：pending 已销账但附件已转正 → 幂等回读同一
+            %% file_id（响应丢失恢复，不新建会话）；从未登记 → 稳定
+            %% not_presigned 重传指引，绝不静默删除对象。
+            case
+                enterprise_asset_repo:find_confirmed_tx(
+                    Conn,
+                    maps:get(organization_id, Ctx),
+                    maps:get(application_id, Ctx),
+                    ObjectKey
+                )
+            of
+                {ok, Row} ->
+                    {ok, #{
+                        <<"file_id">> => maps:get(<<"id">>, Row),
+                        <<"object_key">> => maps:get(<<"path">>, Row),
+                        <<"size">> => maps:get(<<"size">>, Row),
+                        <<"mime_type">> => maps:get(<<"mime_type">>, Row)
+                    }};
+                {error, not_found} ->
+                    {error, {<<"invalid_request">>, not_presigned}}
+            end;
         {error, Reason} ->
             {error, {<<"internal_error">>, Reason}}
     end.
+
+%% V5 会话判别：client_upload_id 非空（fn_v5_register_pending 登记行）。
+pending_v5(#{<<"client_upload_id">> := Cid}) when Cid =/= null -> true;
+pending_v5(_) -> false.
+
+%% V5 confirm：HEAD 仅作 MIME/策略预检，字节裁决以 GET 真实读流为准
+%% （02 §4「HEAD 本身不充分」）；超限/类型拒绝不删对象——pin 保留供同
+%% receipt 重试，物理回收归 W4 GC。
+confirm_head_v5(Conn, Ctx, ObjectKey, Hash, Pending) ->
+    Bucket = elib_oss:get_bucket(<<"enterprise">>),
+    case elib_oss:head_object(Bucket, ObjectKey) of
+        {error, not_found} ->
+            {error, {<<"invalid_request">>, object_not_found}};
+        {error, Reason} ->
+            ?ERROR_LOG(["enterprise_asset v5 confirm head failed: ", Bucket, ObjectKey, Reason]),
+            {error, {<<"internal_error">>, Reason}};
+        {ok, #{content_type := RealType}} ->
+            case elib_oss:object_sha256(Bucket, ObjectKey) of
+                {error, not_found} ->
+                    {error, {<<"invalid_request">>, object_not_found}};
+                {error, Reason2} ->
+                    ?ERROR_LOG([
+                        "enterprise_asset v5 confirm read_bytes failed: ",
+                        Bucket,
+                        ObjectKey,
+                        Reason2
+                    ]),
+                    {error, {<<"internal_error">>, Reason2}};
+                {ok, Sha256, ByteSize} ->
+                    case enterprise_asset_retention_logic:content_policy_tx(Conn, Ctx, #{}) of
+                        {ok, Policy} ->
+                            MaxBytes = enterprise_asset_retention_logic:effective_max_bytes(
+                                Policy, ByteSize
+                            ),
+                            confirm_policy_v5(
+                                Conn,
+                                Ctx,
+                                ObjectKey,
+                                Hash,
+                                ByteSize,
+                                RealType,
+                                Policy,
+                                MaxBytes,
+                                Pending,
+                                Sha256
+                            );
+                        {error, _} = Err ->
+                            Err
+                    end
+            end
+    end.
+
+confirm_policy_v5(
+    Conn, Ctx, ObjectKey, Hash, RealSize, RealType, Policy, MaxBytes, Pending, Sha256
+) ->
+    MimeOk = enterprise_asset_retention_logic:mime_allowed(Policy, RealType),
+    case RealSize > MaxBytes of
+        true ->
+            {error, {<<"invalid_request">>, file_too_large}};
+        false ->
+            case MimeOk of
+                false ->
+                    {error, {<<"invalid_request">>, invalid_file_type}};
+                true ->
+                    save_confirmed_v5(
+                        Conn, Ctx, ObjectKey, Hash, RealSize, RealType, Pending, Sha256
+                    )
+            end
+    end.
+
+save_confirmed_v5(Conn, Ctx, ObjectKey, _Hash, RealSize, RealType, _Pending, Sha256) ->
+    OrgId = maps:get(organization_id, Ctx),
+    AppId = maps:get(application_id, Ctx),
+    ScopeRef = enterprise_asset_repo:scope_ref(OrgId, AppId),
+    %% V5：file_hash256 以服务端字节校验值为准（客户端声明仅完整性参考）
+    InfoMap = #{
+        scope_ref => ScopeRef,
+        origin_kind => <<"enterprise_application">>,
+        origin_application_id => AppId,
+        file_hash256 => Sha256
+    },
+    case enterprise_asset_repo:confirm_save_tx(Conn, ObjectKey, RealType, RealSize, InfoMap) of
+        {ok, AttId, First} ->
+            %% 持锁重查 pin（锁前读数不构成授权，02 §4）后原子确认
+            case confirm_v5_link_tx(Conn, ObjectKey, AttId, Sha256, RealSize) of
+                ok ->
+                    case First of
+                        true ->
+                            case
+                                enterprise_asset_retention_logic:register_retention_tx(
+                                    Conn, {AttId, OrgId, AppId}
+                                )
+                            of
+                                ok ->
+                                    case audit_mutation(Conn, Ctx, <<"file.confirmed">>, AttId) of
+                                        ok ->
+                                            ok = confirm_side_effects(Conn, Ctx, AttId),
+                                            {ok, #{
+                                                <<"file_id">> => AttId,
+                                                <<"object_key">> => ObjectKey,
+                                                <<"size">> => RealSize,
+                                                <<"mime_type">> => RealType
+                                            }};
+                                        {error, Reason} ->
+                                            {error, {<<"internal_error">>, {audit, Reason}}}
+                                    end;
+                                {error, Reason} ->
+                                    {error, Reason}
+                            end;
+                        false ->
+                            %% 重放：同一 file_id，审计/留存/副作用均已首确认落一次
+                            {ok, #{
+                                <<"file_id">> => AttId,
+                                <<"object_key">> => ObjectKey,
+                                <<"size">> => RealSize,
+                                <<"mime_type">> => RealType
+                            }}
+                    end;
+                {error, Reason} ->
+                    {error, Reason}
+            end;
+        {error, Reason} ->
+            {error, {<<"internal_error">>, Reason}}
+    end.
+
+%% confirm 线性化（02 §4）：锁 pending 行重查 pin → fn_v5_confirm_pending
+%% registered→confirmed（同 id 重放幂等）。失败按企业稳定码返回，
+%% with_idempotency 对 {error, {Code, _}} 统一回滚（插入行一并撤销）。
+confirm_v5_link_tx(Conn, ObjectKey, AttId, Sha256, RealSize) ->
+    case attach_pending_repo:lock_session_tx(Conn, ObjectKey) of
+        {ok, not_found} ->
+            {error, {<<"resource_not_found">>, session_vanished}};
+        {ok, Session} ->
+            case pin_of_session(Session) of
+                #{<<"sha256">> := PinSha, <<"size_bytes">> := PinSize} ->
+                    case PinSha =:= Sha256 andalso ec_cnv:to_integer(PinSize) =:= RealSize of
+                        true ->
+                            case attach_pending_repo:confirm_session_tx(Conn, ObjectKey, AttId) of
+                                {ok, AttId} ->
+                                    ok;
+                                {ok, _OtherId} ->
+                                    {error, {<<"resource_conflict">>, confirm_id_mismatch}};
+                                {error, confirm_conflict} ->
+                                    {error, {<<"resource_conflict">>, confirm_conflict}};
+                                {error, Reason} ->
+                                    {error, {<<"internal_error">>, Reason}}
+                            end;
+                        false ->
+                            {error, {<<"invalid_request">>, content_hash_mismatch}}
+                    end;
+                _ ->
+                    {error, {<<"invalid_request">>, content_not_pinned}}
+            end;
+        {error, Reason} ->
+            {error, {<<"internal_error">>, Reason}}
+    end.
+
+pin_of_session(#{<<"upload_content">> := Content}) when is_map(Content) -> Content;
+pin_of_session(_) -> #{}.
 
 confirm_head(Conn, Ctx, ObjectKey, Hash) ->
     Bucket = elib_oss:get_bucket(<<"enterprise">>),
@@ -430,32 +615,44 @@ save_confirmed(Conn, Ctx, ObjectKey, Hash, RealSize, RealType) ->
             _ -> Info#{file_hash256 => Hash}
         end,
     case enterprise_asset_repo:confirm_save_tx(Conn, ObjectKey, RealType, RealSize, InfoMap) of
-        {ok, AttId} ->
+        {ok, AttId, First} ->
             ok = enterprise_asset_repo:pending_remove_tx(Conn, ObjectKey),
             %% FULL-02：留存/法务 hold 治理行与附件转正**同事务**登记
             %% （migration 00000140；附件与治理行要么都在、要么都不在）。
-            case
-                enterprise_asset_retention_logic:register_retention_tx(
-                    Conn, {AttId, OrgId, AppId}
-                )
-            of
-                ok ->
-                    %% INT-BE-03 冻结政策 INT-08=REQUIRED_AUDIT：转正审计与
-                    %% 业务写同事务（审计失败 → error → 调用方整体回滚）。
-                    case audit_mutation(Conn, Ctx, <<"file.confirmed">>, AttId) of
+            %% W2-02：以下均只在首确认执行一次（重放同一 file_id，不重复
+            %% 审计/登记/计量——first audit count=1）。
+            case First of
+                false ->
+                    {ok, #{
+                        <<"file_id">> => AttId,
+                        <<"object_key">> => ObjectKey,
+                        <<"size">> => RealSize,
+                        <<"mime_type">> => RealType
+                    }};
+                true ->
+                    case
+                        enterprise_asset_retention_logic:register_retention_tx(
+                            Conn, {AttId, OrgId, AppId}
+                        )
+                    of
                         ok ->
-                            ok = confirm_side_effects(Conn, Ctx, AttId),
-                            {ok, #{
-                                <<"file_id">> => AttId,
-                                <<"object_key">> => ObjectKey,
-                                <<"size">> => RealSize,
-                                <<"mime_type">> => RealType
-                            }};
+                            %% INT-BE-03 冻结政策 INT-08=REQUIRED_AUDIT：转正审计与
+                            %% 业务写同事务（审计失败 → error → 调用方整体回滚）。
+                            case audit_mutation(Conn, Ctx, <<"file.confirmed">>, AttId) of
+                                ok ->
+                                    ok = confirm_side_effects(Conn, Ctx, AttId),
+                                    {ok, #{
+                                        <<"file_id">> => AttId,
+                                        <<"object_key">> => ObjectKey,
+                                        <<"size">> => RealSize,
+                                        <<"mime_type">> => RealType
+                                    }};
+                                {error, Reason} ->
+                                    {error, {<<"internal_error">>, {audit, Reason}}}
+                            end;
                         {error, Reason} ->
-                            {error, {<<"internal_error">>, {audit, Reason}}}
-                    end;
-                {error, Reason} ->
-                    {error, Reason}
+                            {error, Reason}
+                    end
             end;
         {error, Reason} ->
             {error, {<<"internal_error">>, Reason}}

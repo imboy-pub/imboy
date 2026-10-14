@@ -308,6 +308,18 @@ confirm(<<"POST">>, Req0, State) ->
         {error, unsupported_cipher} ->
             %% fail-closed：宁可拒绝 confirm，也不把密文对象落成「明文」
             elib_response:error(Req0, <<"不支持的附件加密套件"/utf8>>, ?ERR_BAD_REQUEST);
+        {error, content_not_pinned} ->
+            %% V5 会话要求网关 pin 先行（02 §14）：未固定内容不得确认
+            elib_response:error(Req0, <<"上传内容未固定，请先完成网关上传"/utf8>>, ?ERR_BAD_REQUEST);
+        {error, content_hash_mismatch} ->
+            %% 真实字节与登记 pin 快照不一致：拒绝确认（重试需重新网关上传）
+            elib_response:error(Req0, <<"对象内容与登记快照不一致"/utf8>>, ?ERR_BAD_REQUEST);
+        {error, scope_conflict} ->
+            elib_response:error(Req0, <<"确认请求与既有附件范围冲突"/utf8>>, ?ERR_FORBIDDEN);
+        {error, cipher_conflict} ->
+            elib_response:error(Req0, <<"确认请求与既有附件加密形态冲突"/utf8>>, ?ERR_FORBIDDEN);
+        {error, confirm_conflict} ->
+            elib_response:error(Req0, <<"会话已确认且不可变更"/utf8>>, ?ERR_BAD_REQUEST);
         {error, attachment_anchor_required} ->
             elib_response:error(Req0, <<"群附件缺少消息锚点"/utf8>>, ?ERR_BAD_REQUEST);
         {error, _Reason} ->

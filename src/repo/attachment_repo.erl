@@ -15,7 +15,7 @@
 %% @param Uid 用户ID
 %% @param Attach 附件信息列表
 %% @returns ok
--export([save/4, confirmation_row_tx/2]).
+-export([save/4, confirmation_row_tx/2, confirm_if_absent_tx/4]).
 
 %% @doc 查询附件统计信息（管理后台用）
 -export([stats/0]).
@@ -170,7 +170,7 @@ confirmation_row_tx(Conn, ObjectKey) ->
     case
         elib_pg:query(
             Conn,
-            <<"SELECT id, scope, scope_ref, creator_user_id FROM public.attachment WHERE path=$1 FOR UPDATE">>,
+            <<"SELECT id, scope, scope_ref, creator_user_id, cipher FROM public.attachment WHERE path=$1 FOR UPDATE">>,
             [ObjectKey]
         )
     of
@@ -178,6 +178,60 @@ confirmation_row_tx(Conn, ObjectKey) ->
         {ok, []} -> {ok, not_found};
         {error, _} = Error -> Error
     end.
+
+%% W2-02 confirm 幂等（04-tasks 实现边界）：metadata insert-if-absent 与真实
+%% 引用新增拆开——confirm 重放不再递增 referer（收藏/转发等真实引用仍走
+%% save/4 递增）。命中既有行时复用原 id 返回 First=false，由调用方对照
+%% confirmation_row_tx 的行做 scope/cipher 冲突复核。
+-spec confirm_if_absent_tx(any(), binary(), integer() | binary(), map()) ->
+    {ok, Id :: integer() | binary(), First :: boolean()} | {error, term()}.
+confirm_if_absent_tx(Conn, CreatedAt, Uid, Attach) ->
+    Md5 = maps:get(<<"file_hash256">>, Attach, maps:get(<<"md5">>, Attach, <<>>)),
+    Path2 = ec_cnv:to_binary(maps:get(<<"path">>, Attach)),
+    Attach2 = build_confirm_row(CreatedAt, Uid, Attach, Md5),
+    {Sql, Params} = elib_pg_sql:insert(tablename(), Attach2),
+    case elib_pg:query(Conn, [Sql, <<" ON CONFLICT (path) DO NOTHING RETURNING id">>], Params) of
+        {ok, [#{<<"id">> := Id}]} ->
+            {ok, Id, true};
+        {ok, []} ->
+            case confirmation_row_tx(Conn, Path2) of
+                {ok, #{<<"id">> := Id2}} -> {ok, Id2, false};
+                {ok, not_found} -> {error, confirm_row_vanished};
+                {error, _} = Error -> Error
+            end;
+        {error, _} = Error ->
+            Error
+    end.
+
+%% confirm 行构造：与 save/4 同列集（confirm 重放与首确认写同一形状），
+%% mime 归一化/双读兼容/TSID 预生成语义一致，仅 ON CONFLICT 行为不同。
+build_confirm_row(CreatedAt, Uid, Attach, Md5) ->
+    MimeType = maps:get(<<"mime_type">>, Attach),
+    Path = maps:get(<<"path">>, Attach),
+    Ext2 = ec_cnv:to_binary(filename:extension(Path)),
+    #{
+        <<"file_hash256">> => Md5,
+        <<"mime_type">> => normalize_image_mime(MimeType),
+        <<"ext">> => Ext2,
+        <<"name">> => maps:get(<<"name">>, Attach),
+        <<"path">> => Path,
+        <<"url">> => maps:get(<<"url">>, Attach),
+        <<"size">> => ec_cnv:to_integer(maps:get(<<"size">>, Attach)),
+        <<"info">> => jsone:encode(Attach),
+        <<"referer_time">> => 1,
+        <<"last_referer_user_id">> => Uid,
+        <<"last_referer_at">> => CreatedAt,
+        <<"creator_user_id">> => Uid,
+        <<"scope">> => maps:get(<<"scope">>, Attach, <<"private">>),
+        <<"scope_ref">> => maps:get(<<"scope_ref">>, Attach, null),
+        <<"cipher">> => maps:get(<<"cipher">>, Attach, null),
+        <<"anchor_msg_id">> => maps:get(<<"anchor_msg_id">>, Attach, null),
+        <<"group_file_id">> => maps:get(<<"group_file_id">>, Attach, null),
+        <<"updated_at">> => CreatedAt,
+        <<"created_at">> => CreatedAt,
+        <<"status">> => 1,
+        <<"id">> => elib_tsid:generate(attachment)
+    }.
 
 %% ===================================================================
 %% Admin Query Functions

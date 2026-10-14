@@ -344,6 +344,12 @@ confirm_group_persists_anchor_message_id_test_() ->
                 {'save_confirmed_tx', 4, fun(_, _, _, _) -> ok end},
                 {'pending_remove', 1, fun(_) -> ok end},
                 {'find_by_path', 1, fun(_) -> {error, not_found} end}
+            ]},
+            {attach_pending_repo, [
+                {'status_lookup', 1, fun(_K) -> {error, not_found} end}
+            ]},
+            {attachment_repo, [
+                {'confirm_if_absent_tx', 4, fun(_Conn, _Now, _Uid, _Attach) -> {ok, 9003, true} end}
             ]}
         ],
         fun() ->
@@ -374,7 +380,15 @@ confirm_rejects_missing_object_test_() ->
         [
             {elib_oss, [{'head_object', 2, fun(_B, _K) -> {error, not_found} end}]},
             {elib_pg, [{'with_tx', 1, fun(F) -> F(fake_conn) end}]},
-            {attachment_ds, [{'save', 4, fun(_, _, _, _) -> ok end}]}
+            {attach_pending_repo, [
+                {'status_lookup', 1, fun(_K) -> {error, not_found} end}
+            ]},
+            {attachment_ds, [
+                {'find_by_path', 1, fun(_K) -> {error, not_found} end}
+            ]},
+            {attachment_repo, [
+                {'confirm_if_absent_tx', 4, fun(_Conn, _Now, _Uid, _Attach) -> {ok, 9001, true} end}
+            ]}
         ],
         fun() ->
             Key = <<"u789/file/20260620/file_x/a.png">>,
@@ -445,7 +459,15 @@ confirm_persists_real_metadata_and_scope_test_() ->
                 end}
             ]},
             {elib_pg, [{'with_tx', 1, fun(F) -> F(fake_conn) end}]},
-            {attachment_ds, [{'save', 4, fun(_, _, _, _) -> ok end}]}
+            {attach_pending_repo, [
+                {'status_lookup', 1, fun(_K) -> {error, not_found} end}
+            ]},
+            {attachment_ds, [
+                {'find_by_path', 1, fun(_K) -> {error, not_found} end}
+            ]},
+            {attachment_repo, [
+                {'confirm_if_absent_tx', 4, fun(_Conn, _Now, _Uid, _Attach) -> {ok, 9001, true} end}
+            ]}
         ],
         fun() ->
             Key = <<"u789/file/20260620/file_x/a.png">>,
@@ -456,12 +478,20 @@ confirm_persists_real_metadata_and_scope_test_() ->
                 {ok, #{<<"object_key">> => Key}},
                 attach_logic:confirm(789, Key, <<"private">>, undefined, Meta)
             ),
-            [Attach] = meck:capture(first, attachment_ds, save, ['_', '_', '_', '_'], 4),
-            ?assertEqual(2048, maps:get(<<"size">>, Attach)),
-            ?assertEqual(<<"image/png">>, maps:get(<<"mime_type">>, Attach)),
-            ?assertEqual(<<"deadbeef">>, maps:get(<<"file_hash256">>, Attach)),
-            ?assertEqual(<<"private">>, maps:get(<<"scope">>, Attach)),
-            ?assertEqual(null, maps:get(<<"scope_ref">>, Attach))
+            %% 捕获第 4 参（Attach map；前三为 Conn/Now/Uid；first 返回单值）
+            AttachMap =
+                meck:capture(
+                    first,
+                    attachment_repo,
+                    confirm_if_absent_tx,
+                    ['_', '_', '_', '_'],
+                    4
+                ),
+            ?assertEqual(2048, maps:get(<<"size">>, AttachMap)),
+            ?assertEqual(<<"image/png">>, maps:get(<<"mime_type">>, AttachMap)),
+            ?assertEqual(<<"deadbeef">>, maps:get(<<"file_hash256">>, AttachMap)),
+            ?assertEqual(<<"private">>, maps:get(<<"scope">>, AttachMap)),
+            ?assertEqual(null, maps:get(<<"scope_ref">>, AttachMap))
         end
     ).
 
@@ -475,7 +505,15 @@ confirm_public_returns_public_url_test_() ->
                 end}
             ]},
             {elib_pg, [{'with_tx', 1, fun(F) -> F(fake_conn) end}]},
-            {attachment_ds, [{'save', 4, fun(_, _, _, _) -> ok end}]}
+            {attach_pending_repo, [
+                {'status_lookup', 1, fun(_K) -> {error, not_found} end}
+            ]},
+            {attachment_ds, [
+                {'find_by_path', 1, fun(_K) -> {error, not_found} end}
+            ]},
+            {attachment_repo, [
+                {'confirm_if_absent_tx', 4, fun(_Conn, _Now, _Uid, _Attach) -> {ok, 9002, true} end}
+            ]}
         ],
         fun() ->
             set_garage_env(),
@@ -484,8 +522,15 @@ confirm_public_returns_public_url_test_() ->
             {ok, Data} = attach_logic:confirm(52278, Key, <<"public">>, undefined, Meta),
             ?assertEqual(Key, maps:get(<<"object_key">>, Data)),
             ?assertEqual(<<"https://s3.imboy.pub/", Key/binary>>, maps:get(<<"public_url">>, Data)),
-            [Attach] = meck:capture(first, attachment_ds, save, ['_', '_', '_', '_'], 4),
-            ?assertEqual(<<"public">>, maps:get(<<"scope">>, Attach))
+            AttachMap =
+                meck:capture(
+                    first,
+                    attachment_repo,
+                    confirm_if_absent_tx,
+                    ['_', '_', '_', '_'],
+                    4
+                ),
+            ?assertEqual(<<"public">>, maps:get(<<"scope">>, AttachMap))
         end
     ).
 
