@@ -364,7 +364,7 @@ insert_widget_bootstrap_audited(OrgId, Command) ->
 exchange_widget_identity_audited(OrgId, Command) ->
     elib_pg:with_tx(
         fun(Conn) ->
-            widget_tx_result(
+            ok = widget_tx_result(
                 cs_pg_widget:record_widget_nonce_in(
                     Conn,
                     OrgId,
