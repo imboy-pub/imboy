@@ -92,7 +92,7 @@ callback_mode() ->
 
 %% @private
 -spec idle(gen_statem:event_type(), term(), state()) ->
-    {next_state, state_name(), state(), [gen_statem:transition_action()]}
+    {next_state, state_name(), state(), [gen_statem:action()]}
     | {keep_state, state()}.
 %% gen_statem state_functions 回调的实参形态是 idle(EventType原子, Content,
 %% State)——kick 子句头此前误写为 idle({cast, kick}, _Content, State)，第一
@@ -108,7 +108,8 @@ idle(_EventType, _Event, State) ->
 
 %% @private
 -spec draining(gen_statem:event_type(), term(), state()) ->
-    {next_state, state_name(), state(), [gen_statem:transition_action()]}
+    {next_state, idle, state()}
+    | {keep_state, state(), [gen_statem:action()]}
     | {keep_state, state()}.
 draining(internal, drain, State) ->
     case claim_and_process_batch() of

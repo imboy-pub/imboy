@@ -103,6 +103,10 @@
 %% -- contact / contact_identity（R0-1：调用点已在用，契约未声明）-------------
 
 %% @doc 客户建档（Org 域；workspace 只做归属校验，见实现的同语句 scope 子查询）。
+-callback ensure_contact_in(term(), integer(), integer(), contact(), contact_identity()) ->
+    {ok, map()} | {error, term()}.
+-optional_callbacks([ensure_contact_in/5]).
+
 -callback insert_contact(OrgId :: integer(), WorkspaceId :: integer(), Contact :: contact()) ->
     {ok, contact()} | {error, conflict | term()}.
 

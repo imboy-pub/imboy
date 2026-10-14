@@ -42,11 +42,86 @@ init(Req0, State0) ->
 presign(<<"GET">>, Req0, State) ->
     Uid = auth_ds:current_uid(State),
     Qs = cowboy_req:parse_qs(Req0),
+    %% V5 恢复合同（02 §12）：operation=register（缺省，旧行为）| status | renew
+    Operation = proplists:get_value(<<"operation">>, Qs, <<"register">>),
+    presign_operation(Operation, Uid, Qs, Req0, State);
+presign(_, Req0, _State) ->
+    cowboy_req:reply(405, #{}, <<"Method Not Allowed">>, Req0).
+
+%% V5：status 只读回查，不返回任何上传能力；响应 Cache-Control: no-store。
+presign_operation(<<"status">>, Uid, Qs, Req0, _State) ->
+    IdOrKey = proplists:get_value(
+        <<"client_upload_id">>,
+        Qs,
+        proplists:get_value(<<"object_key">>, Qs, undefined)
+    ),
+    case IdOrKey of
+        undefined ->
+            elib_response:error(
+                Req0, <<"缺少 client_upload_id 或 object_key"/utf8>>, ?ERR_BAD_REQUEST
+            );
+        _ ->
+            case attach_pending_repo:status_lookup(IdOrKey) of
+                {ok, Row} ->
+                    reauthorize_status(Uid, Row, Req0);
+                {error, not_found} ->
+                    %% 跨主体不泄露存在性：404
+                    elib_response:error(Req0, <<"not found"/utf8>>, ?ERR_NOT_FOUND)
+            end
+    end;
+%% V5：renew —— 仅 registered 且未过绝对 deadline；同 key 重签，
+%% 不延长 deadline；终态 409；与 GC 共锁由 fn_v5_register_pending 路径保证。
+presign_operation(<<"renew">>, Uid, Qs, Req0, _State) ->
+    IdOrKey = proplists:get_value(
+        <<"client_upload_id">>,
+        Qs,
+        proplists:get_value(<<"object_key">>, Qs, undefined)
+    ),
+    case IdOrKey of
+        undefined ->
+            elib_response:error(
+                Req0, <<"缺少 client_upload_id 或 object_key"/utf8>>, ?ERR_BAD_REQUEST
+            );
+        _ ->
+            case attach_pending_repo:status_lookup(IdOrKey) of
+                {ok,
+                    #{<<"creator_user_id">> := Uid, <<"session_state">> := <<"registered">>} = Row} ->
+                    Key = maps:get(<<"object_key">>, Row),
+                    Bucket = maps:get(<<"bucket">>, Row),
+                    Scope = maps:get(<<"scope">>, Row),
+                    %% 能力过期而 session 未过期才可同 key 重签
+                    reauthorize_renew(Key, Bucket, Scope, Uid, Row, Req0);
+                {ok, #{<<"creator_user_id">> := _Other}} ->
+                    elib_response:error(Req0, <<"not found"/utf8>>, ?ERR_NOT_FOUND);
+                {ok, #{<<"session_state">> := Terminal}} when
+                    Terminal =:= <<"confirmed">>;
+                    Terminal =:= <<"rejected">>;
+                    Terminal =:= <<"expired">>;
+                    Terminal =:= <<"delete_intent">>;
+                    Terminal =:= <<"deleted">>
+                ->
+                    elib_response:error(
+                        Req0,
+                        <<"session terminal, retry with new upload"/utf8>>,
+                        ?ERR_CONFLICT
+                    );
+                {error, not_found} ->
+                    elib_response:error(Req0, <<"not found"/utf8>>, ?ERR_NOT_FOUND)
+            end
+    end;
+%% 缺省 register：登记先行、失败关闭（AC01）
+presign_operation(<<"register">>, Uid, Qs, Req0, _State) ->
+    do_presign_register(Uid, Qs, Req0);
+presign_operation(_, _Uid, _Qs, Req0, _State) ->
+    elib_response:error(Req0, <<"不支持的操作"/utf8>>, ?ERR_BAD_REQUEST).
+
+do_presign_register(Uid, Qs, Req0) ->
     FileName = proplists:get_value(<<"filename">>, Qs, <<"file">>),
     MimeType = proplists:get_value(<<"mime_type">>, Qs, <<"application/octet-stream">>),
     Scope = proplists:get_value(<<"scope">>, Qs, <<"private">>),
     ScopeRef = proplists:get_value(<<"scope_ref">>, Qs, undefined),
-    case attach_logic:presign(Uid, FileName, MimeType, Scope, ScopeRef) of
+    ClientUploadId = proplists:get_value(<<"client_upload_id">>, Qs, undefined),
+    case attach_logic:presign(Uid, FileName, MimeType, Scope, ScopeRef, ClientUploadId) of
         {ok, Data0} ->
             %% &method=multipart → 附带 upload_url（put_url 保留，向后兼容）
             Data = maybe_upload_url(
@@ -58,10 +133,90 @@ presign(<<"GET">>, Req0, State) ->
         {error, upload_not_supported} ->
             elib_response:error(Req0, <<"该资源类型暂不支持上传"/utf8>>, ?ERR_BAD_REQUEST);
         {error, forbidden} ->
-            elib_response:error(Req0, <<"无权向该范围上传"/utf8>>, ?ERR_FORBIDDEN)
+            elib_response:error(Req0, <<"无权向该范围上传"/utf8>>, ?ERR_FORBIDDEN);
+        {error, registration_failed} ->
+            %% AC01：登记失败/提交未知——503，无 URL；同 ID 重试可恢复
+            elib_response:error(
+                Req0,
+                <<"登记未完成，请使用同一 client_upload_id 重试"/utf8>>,
+                ?ERR_SERVICE_UNAVAILABLE
+            )
+    end.
+
+%% status 回查授权：仅登记主体本人可读；他主体 404（不泄露存在性）
+reauthorize_status(Uid, #{<<"creator_user_id">> := Uid} = Row, Req0) ->
+    Expires = maps:get(<<"upload_expires_at">>, Row, undefined),
+    Deadline = maps:get(<<"session_deadline">>, Row, undefined),
+    State = maps:get(<<"session_state">>, Row, <<"registered">>),
+    SessionState =
+        case {Expires, Deadline} of
+            {E, D} when is_binary(E), is_binary(D), State =:= <<"registered">> ->
+                %% 能力与 deadline 都未到 → registered；能力过而 deadline 未到 → 可续
+                State;
+            _ ->
+                State
+        end,
+    Data = #{
+        <<"client_upload_id">> => maps:get(<<"client_upload_id">>, Row, undefined),
+        <<"object_key">> => maps:get(<<"object_key">>, Row),
+        <<"session_state">> => SessionState,
+        <<"session_deadline">> => Deadline,
+        <<"upload_expires_at">> => Expires,
+        <<"can_resume">> => State =:= <<"registered">>,
+        <<"retry_action">> => retry_action(State)
+    },
+    Req1 = cowboy_req:set_resp_header(<<"cache-control">>, <<"no-store">>, Req0),
+    elib_response:success(Req1, Data, "success.");
+reauthorize_status(_Uid, _Row, Req0) ->
+    elib_response:error(Req0, <<"not found"/utf8>>, ?ERR_NOT_FOUND).
+
+reauthorize_renew(Key, Bucket, Scope, Uid, Row, Req0) ->
+    Deadline = maps:get(<<"session_deadline">>, Row, undefined),
+    NowSec = erlang:system_time(second),
+    DeadlineSec =
+        case Deadline of
+            undefined -> 0;
+            _ -> unix_seconds(Deadline)
+        end,
+    case NowSec >= DeadlineSec of
+        true ->
+            elib_response:error(
+                Req0,
+                <<"session expired, reupload required"/utf8>>,
+                ?ERR_GONE
+            );
+        false ->
+            %% 同 key 重签（保留原登记；fn 路径已在登记时冻结身份）
+            PutUrl = elib_oss:presign_put_for_key(
+                Bucket,
+                Key,
+                proplists:get_value(<<"mime_type">>, [], <<"application/octet-stream">>),
+                3600
+            ),
+            _ = attach_pending_repo:register_v5(Key, Bucket, Scope, Uid, undefined),
+            Data = #{
+                <<"put_url">> => PutUrl,
+                <<"object_key">> => Key,
+                <<"expires_at">> => NowSec + 3600,
+                <<"can_resume">> => true,
+                <<"retry_action">> => <<"resume_same_key">>
+            },
+            Req1 = cowboy_req:set_resp_header(<<"cache-control">>, <<"no-store">>, Req0),
+            elib_response:success(Req1, Data, "success.")
+    end.
+
+retry_action(<<"registered">>) -> <<"resume_same_id">>;
+retry_action(<<"confirmed">>) -> <<"none">>;
+retry_action(_) -> <<"none">>.
+
+unix_seconds(Bin) when is_binary(Bin) ->
+    try
+        calendar:rfc3339_to_system_time(binary_to_list(Bin), [{unit, second}])
+    catch
+        _:_ -> 0
     end;
-presign(_, Req0, _State) ->
-    cowboy_req:reply(405, #{}, <<"Method Not Allowed">>, Req0).
+unix_seconds(_) ->
+    0.
 
 %% @doc multipart 上传 URL：以当前请求 Host 派生绝对地址（同源部署形态），
 %% query 携带 object_key 与 presign 时声明的 mime_type（mime 以 presign 为准，
@@ -289,6 +444,8 @@ upload_stream_fd(Fd, TmpPath, Uid, ObjectKey, MimeType, Boundary, Req0) ->
                     end;
                 {error, file_too_large} ->
                     elib_response:error(Req0, <<"文件超过大小限制"/utf8>>, ?ERR_PAYLOAD_TOO_LARGE);
+                {error, incomplete_body} ->
+                    elib_response:error(Req0, <<"multipart 请求体不合法"/utf8>>, ?ERR_BAD_REQUEST);
                 {error, {bad_part, _Reason}} ->
                     elib_response:error(Req0, <<"multipart 请求体不合法"/utf8>>, ?ERR_BAD_REQUEST);
                 {error, {write_failed, _WErr}} ->
@@ -311,9 +468,9 @@ upload_stream_fd(Fd, TmpPath, Uid, ObjectKey, MimeType, Boundary, Req0) ->
     {ok, elib_multipart:state()}
     | {error, file_too_large | {bad_part, term()} | incomplete_body | {read_body, term()}}.
 stream_body(Req0, St) ->
-    %% read_length 256KB：控制单次读块；length 8MB：cowboy 内部聚合上限
-    Opts = #{length => 8388608, period => 30000, read_length => 262144, read_timeout => 60000},
-    case cowboy_req:read_body(Req0, Opts) of
+    %% length 256KB 是单次读取目标，不是返回块的硬上限。
+    Opts = #{length => 262144, period => 30000, timeout => 60000},
+    try cowboy_req:read_body(Req0, Opts) of
         {ok, Data, _Req} ->
             case elib_multipart:stream(Data, St) of
                 {done, St2} -> {ok, St2};
@@ -328,6 +485,8 @@ stream_body(Req0, St) ->
             end;
         {error, R} ->
             {error, {read_body, R}}
+    catch
+        exit:timeout -> {error, {read_body, timeout}}
     end.
 
 %% 错误映射与 confirm 同口径（forbidden_key/invalid_file_type 等共用文案），

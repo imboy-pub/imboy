@@ -86,7 +86,7 @@ insert_department(OrgId, ParentId, Name, ActorId, IdGen) ->
 %% 内传入 Conn，使「部门写 + 平台审计」同一事务提交。语义与 insert_department/5
 %% 逐字一致，仅连接来源从池换成调用方事务（RETURNING 单行，用 query 取首行）。
 -spec insert_department_tx(
-    epgsql:connection(), integer(), integer() | null, binary(), integer() | undefined, term()
+    epgsql:connection(), integer(), integer() | null, binary(), integer() | undefined | null, term()
 ) ->
     {ok, map()} | {error, term()}.
 insert_department_tx(Conn, OrgId, ParentId, Name, ActorId, IdGen) ->
@@ -202,7 +202,7 @@ update_name(OrgId, DeptId, Name, ActorId, ExpectedVersion) ->
 %% （语句级 CAS、{ok,0} 归因回查），仅连接来源从池换成调用方事务；
 %% 归因回查用同事务内的锁读（locked_fetch），不出事务、不借第二个池连接。
 -spec update_name_tx(
-    epgsql:connection(), integer(), integer(), binary(), integer() | undefined, integer()
+    epgsql:connection(), integer(), integer(), binary(), integer() | undefined | null, integer()
 ) ->
     ok | {error, conflict} | {error, name_conflict} | {error, term()}.
 update_name_tx(Conn, OrgId, DeptId, Name, ActorId, ExpectedVersion) ->
@@ -261,7 +261,12 @@ move_tx(OrgId, DeptId, NewParentId, ActorId, ExpectedVersion) ->
 %% @doc move（调用方事务连接版，CP-ASSET-05）：语义与 move_tx/5 事务体逐字一致，
 %% 由调用方在 elib_pg:with_tx 内传入 Conn，使「move 写 + 平台审计」同一事务提交。
 -spec move_in_tx(
-    epgsql:connection(), integer(), integer(), integer() | null, integer() | undefined, integer()
+    epgsql:connection(),
+    integer(),
+    integer(),
+    integer() | null,
+    integer() | undefined | null,
+    integer()
 ) ->
     {ok, map()} | {error, term()}.
 move_in_tx(Conn, OrgId, DeptId, NewParentId, ActorId, ExpectedVersion) ->

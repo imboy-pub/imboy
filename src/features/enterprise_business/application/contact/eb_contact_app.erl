@@ -39,6 +39,7 @@
 -moduledoc "企业客户与客户资料/备注的应用层用例（EB-05）。".
 -export([
     create_contact/2,
+    ensure_contact_in/3,
     get_contact/2,
     list_contacts/2,
     update_contact/2,
@@ -76,10 +77,21 @@ create_contact(OrgId, Params) when is_map(Params) ->
         {error, _} = Err ->
             Err;
         {ok, WorkspaceId} ->
-            create_contact_args(OrgId, WorkspaceId, Params)
+            create_contact_args(OrgId, WorkspaceId, maps:remove(contact_conn, Params))
     end;
 create_contact(_OrgId, _Params) ->
     {error, {invalid_argument, create_contact}}.
+
+%% 内部入口：调用方拥有事务，并须对 error 显式 abort。
+ensure_contact_in(Conn, OrgId, Params) when is_map(Params) ->
+    case tenant(OrgId, Params) of
+        {ok, WorkspaceId} ->
+            create_contact_args(OrgId, WorkspaceId, Params#{contact_conn => Conn});
+        {error, _} = Err ->
+            Err
+    end;
+ensure_contact_in(_Conn, _OrgId, _Params) ->
+    {error, {invalid_argument, ensure_contact_in}}.
 
 create_contact_args(OrgId, WorkspaceId, Params) ->
     Channel = maps:get(channel, Params, undefined),
@@ -128,6 +140,43 @@ create_contact_rows(OrgId, WorkspaceId, Channel, SubjectHmac, ContactId, Subject
             )
     end.
 
+insert_contact(
+    OrgId,
+    WorkspaceId,
+    Channel,
+    SubjectHmac,
+    ContactId,
+    SubjectId,
+    Contact,
+    #{contact_conn := Conn} = Params
+) ->
+    Identity = #{
+        id => SubjectId,
+        contact_id => ContactId,
+        channel => Channel,
+        subject_hmac => SubjectHmac,
+        subject_mask => maps:get(subject_mask, Params, undefined)
+    },
+    case
+        with_store(Params, fun(Store) ->
+            Store:ensure_contact_in(Conn, OrgId, WorkspaceId, Contact, Identity)
+        end)
+    of
+        {ok, #{contact := Stored, contact_identity := ChannelIdentity, reused := true}} ->
+            {ok, #{
+                contact => Stored,
+                contact_identity => ChannelIdentity,
+                reused => true,
+                personal_friend_rows => 0
+            }};
+        {ok, #{contact := Stored, contact_identity := ChannelIdentity, reused := false}} ->
+            case contact_audit(OrgId, Channel, ChannelIdentity, Stored, Params) of
+                {ok, Result} -> {ok, Result#{reused => false}};
+                {error, _} = Err -> Err
+            end;
+        {error, _} = Err ->
+            Err
+    end;
 insert_contact(OrgId, WorkspaceId, Channel, SubjectHmac, ContactId, SubjectId, Contact, Params) ->
     case
         with_store(Params, fun(Store) ->
@@ -184,7 +233,7 @@ contact_audit(OrgId, Channel, ChannelIdentity, Stored, Params) ->
         {error, _} = Err ->
             Err;
         {ok, Audit} ->
-            case Audit:append(OrgId, Event) of
+            case append_contact_audit(Audit, OrgId, Event, Params) of
                 {error, Reason} ->
                     {error, {audit_append_failed, Reason}};
                 {ok, AuditId} ->
@@ -198,6 +247,11 @@ contact_audit(OrgId, Channel, ChannelIdentity, Stored, Params) ->
                     }}
             end
     end.
+
+append_contact_audit(Audit, OrgId, Event, #{contact_conn := Conn}) ->
+    Audit:append_in(Conn, OrgId, Event);
+append_contact_audit(Audit, OrgId, Event, _Params) ->
+    Audit:append(OrgId, Event).
 
 %% 客户资料：明文经企业托管加密（AAD 绑定 Org/Workspace/资源）后落密文；
 %% 已经是密文时要求 key_version 成对出现（与 DB CHECK 同口径）。

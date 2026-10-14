@@ -98,6 +98,8 @@
     fetch_widget_identity_key/3,
     revoke_widget_identity_key/4,
     insert_widget_bootstrap_token/2,
+    insert_widget_bootstrap_audited/2,
+    exchange_widget_identity_audited/2,
     fetch_widget_bootstrap_token_by_digest/3,
     fetch_widget_bootstrap_token_by_digest_global/2,
     touch_widget_bootstrap_token/4,
@@ -2203,3 +2205,67 @@ fake_read_messages(Org, Ws, Scope, Ids) when is_list(Ids), length(Ids) >= 1, len
     lists:all(fun(Id) -> is_integer(Id) andalso Id > 0 andalso lists:member(Id, Allowed) end, Ids);
 fake_read_messages(_, _, _, _) ->
     false.
+
+%% Mixed PG fixtures keep enterprise writes in one transaction; ETS is restored
+%% on failure. This test adapter does not prove PostgreSQL rollback semantics.
+insert_widget_bootstrap_audited(OrgId, Command) ->
+    widget_fake_tx(fun(Conn) ->
+        #{contact := Contact} = widget_fake_result(
+            enterprise_business_facade:ensure_contact_in(
+                Conn, OrgId, maps:get(contact_params, Command)
+            )
+        ),
+        ContactId = maps:get(id, Contact),
+        Stored = widget_fake_result(
+            insert_widget_bootstrap_token(
+                OrgId,
+                (maps:get(token, Command))#{contact_id => ContactId}
+            )
+        ),
+        widget_fake_event(OrgId, ContactId, maps:get(event, Command)),
+        {ok, Stored}
+    end).
+
+exchange_widget_identity_audited(OrgId, Command) ->
+    widget_fake_tx(fun(Conn) ->
+        widget_fake_result(
+            record_widget_nonce(
+                OrgId,
+                maps:get(installation_id, Command),
+                maps:get(jti_digest, Command),
+                maps:get(expires_at, Command)
+            )
+        ),
+        #{contact := Contact, reused := Reused} = widget_fake_result(
+            enterprise_business_facade:ensure_contact_in(
+                Conn, OrgId, maps:get(contact_params, Command)
+            )
+        ),
+        ContactId = maps:get(id, Contact),
+        widget_fake_event(OrgId, ContactId, maps:get(event, Command)),
+        {ok, #{contact_id => ContactId, reused => Reused}}
+    end).
+
+widget_fake_tx(Fun) ->
+    Snapshot = ets:tab2list(?TAB),
+    try elib_pg:with_tx(Fun) of
+        {ok, _} = Ok ->
+            Ok;
+        Error ->
+            ets:delete_all_objects(?TAB),
+            ets:insert(?TAB, Snapshot),
+            Error
+    catch
+        Class:Reason:Stack ->
+            ets:delete_all_objects(?TAB),
+            ets:insert(?TAB, Snapshot),
+            erlang:raise(Class, Reason, Stack)
+    end.
+
+widget_fake_event(OrgId, ContactId, Event) ->
+    Detail = (maps:get(detail, Event))#{<<"contact_id">> => ContactId},
+    widget_fake_result(append_event(OrgId, Event#{detail => Detail})).
+
+widget_fake_result({ok, Value}) -> Value;
+widget_fake_result(ok) -> ok;
+widget_fake_result({error, Reason}) -> throw({abort_tx, Reason}).

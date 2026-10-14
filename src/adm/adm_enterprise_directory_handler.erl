@@ -24,26 +24,22 @@ authorize(Req, State) ->
     end.
 
 dispatch(Req, create_connection, Actor) ->
-    case elib_param:post(Req) of
-        Body when is_map(Body) ->
-            Input = #{
-                application_key => maps:get(<<"application_key">>, Body, <<>>),
-                name => maps:get(<<"name">>, Body, <<>>),
-                redirect_uris => maps:get(<<"redirect_uris">>, Body, [])
-            },
-            case enterprise_directory_source_config_logic:create_connection(Input, Actor) of
-                {ok, Row} ->
-                    elib_response:success(Req, #{
-                        <<"application_id">> =>
-                            integer_to_binary(maps:get(<<"id">>, Row)),
-                        <<"allowed_scopes">> =>
-                            [<<"identities:write">>, <<"identities:read">>]
-                    });
-                Error ->
-                    reply(Req, Error)
-            end;
-        _ ->
-            elib_response:error(Req, <<"invalid_directory_connection">>, ?ERR_BAD_REQUEST)
+    Body = elib_param:post(Req),
+    Input = #{
+        application_key => maps:get(<<"application_key">>, Body, <<>>),
+        name => maps:get(<<"name">>, Body, <<>>),
+        redirect_uris => maps:get(<<"redirect_uris">>, Body, [])
+    },
+    case enterprise_directory_source_config_logic:create_connection(Input, Actor) of
+        {ok, Row} ->
+            elib_response:success(Req, #{
+                <<"application_id">> =>
+                    integer_to_binary(maps:get(<<"id">>, Row)),
+                <<"allowed_scopes">> =>
+                    [<<"identities:write">>, <<"identities:read">>]
+            });
+        Error ->
+            reply(Req, Error)
     end;
 dispatch(Req, issue_credential, Actor) ->
     case {positive_id(cowboy_req:binding(application_id, Req)), elib_param:post(Req)} of

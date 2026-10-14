@@ -1,0 +1,45 @@
+{
+  "task_id": "W0-02",
+  "run_id": "att-v5-20261014-121848-3714",
+  "executed_at": "2026-10-14T04:32:23Z",
+  "schema": {
+    "database": "attv5_w002_raw_20261014",
+    "container": "imboy_pg18 (127.0.0.1:4323, run-owned DB inside shared local pg18 container, per resource allowlist and historical audit convention)",
+    "postgres_version": "18.1",
+    "replayed_up_migrations": 172,
+    "replay_mode": "ascending, each --single-transaction, ON_ERROR_STOP=1",
+    "up_file_hashes": "verified identical before/after replay",
+    "catalog_main_vs_frozen_20261013": "identical for all lifecycle-scoped tables/constraints/indexes/triggers; only diff = extension superset (btree_gin/btree_gist/pg_stat_statements/pg_trgm/postgis_raster/unaccent/uuid-ossp added per repo convention; required pg_jieba/pgcrypto/plpgsql/postgis/timescaledb all present at same versions)",
+    "catalog_extra_vs_frozen": "identical set (workspace_attachment_retention + attachment_object_deletion constraints/indexes + attachment/retention triggers incl. trg_attachment_deleted_path_guard, trg_register_workspace_attachment_retention)",
+    "migration_head_note": "current head includes 171 organization_positioning_deorg, 172 customer_service_visitor_read, 176 enterprise_source_person (baseline rebind; none touch lifecycle tables per catalog identity)"
+  },
+  "case_results": {
+    "W0-02/schema": {
+      "exit_code": 0, "executed": 1, "passed": 1, "failed": 0, "skipped": 0,
+      "oracle": "original_up_and_catalog",
+      "observed": "172/172 up replayed single-txn; catalog identical to frozen evidence for scoped objects"
+    },
+    "W0-02/history-unknown": {
+      "exit_code": 0, "executed": 3, "passed": 3, "failed": 0, "skipped": 0,
+      "oracle_scenarios": ["unknown_location", "opaque_reference", "ambiguous_reference"],
+      "probes": "3 OBSERVED baseline gaps reproduced exactly: OBSERVED_CONFIRM_STYLE_UPSERT_COUNT_2 (F04), OBSERVED_PENDING_IDENTITY_MUTABLE (F02), OBSERVED_ATTACHMENT_IDENTITY_NO_DB_GUARD (F03); ROLLBACK clean, remaining_synthetic_rows=0",
+      "static_matrix": {
+        "group_file": {"write": "group_file_ds.erl:317 group_file_id anchor; attachment.group_file_id + migrations 108/157", "release": "group file delete", "proof": "structured column/index; new objects provable", "class": "ambiguous for history (non-null column != full relation proof)", "protection": "gc_verified=false until W3-01 same-lock bind/release proof"},
+        "c2g_messages": {"write": "msg_c2g_ds anchor_msg_id/anchor_conv_seq + staging/archive", "release": "ACK/offline cleanup != reference release; archive toggle", "proof": "ciphertext history incomplete", "class": "opaque", "protection": "confirmed objects never auto-GC in V5"},
+        "c2c_e2ee": {"write": "msg_c2c_ds + client-side descriptor", "release": "no provable release mechanism", "proof": "descriptor undecryptable server-side", "class": "opaque", "protection": "no auto-GC for confirmed objects"},
+        "moment": {"write": "moment_ds.erl:65 bind_moment_scope_ref + moment_post.media JSON MediaJson", "release": "moment delete/state", "proof": "scope_ref proves ownership not zero-ref; media JSON enumeration incomplete", "class": "partially opaque (legacy JSON/URL ambiguity frozen)", "protection": "only exclusive-scope-proven new objects eligible; history frozen"},
+        "channel": {"write": "channel_message payload (ciphertext)", "release": "none provable", "proof": "scope_ref proves channel ownership only", "class": "opaque", "protection": "default no auto-GC for confirmed channel objects unless W3 completes full relation proof"},
+        "collect_forward": {"write": "user_collect_logic.erl:255,264 attach_file_hash256 + info JSON", "release": "uncollect", "proof": "hash is not a delete key; byte-hash sharing across assets", "class": "ambiguous", "protection": "source assets permanently protected; ordinary new assets entering this chain get gc_verified=false"},
+        "moya_teaching": {"write": "moya_submission_repo bindings", "release": "unbind", "proof": "graded/homework references must block cleanup", "class": "mixed", "protection": "same object lock on unbound scan; legacy unknown permanent protection"},
+        "cs_enterprise": {"write": "eb_pg_canonical_tx asset_ids (lines 254-424 idempotent replay) + enterprise_asset.message_id", "release": "message retention/workspace purge", "proof": "structured two-key/state CAS", "class": "provable domain, dual-connection race UNVERIFIED", "protection": "W3-03 atomic bind regression required"},
+        "ear_governance": {"write": "enterprise_attachment_retention", "release": "retention expiry", "proof": "governance source of truth", "class": "provable", "protection": "Hold blocks GC"},
+        "account_deletion": {"write": "user_deletion_executor.erl:41 / user_deletion_logic.erl:297", "release": "personal reference release only", "proof": "uploader != sole owner", "class": "ambiguous", "protection": "cannot delete shared/enterprise assets by creator; unknown refs isolated record"},
+        "unknown_location_rows": {"write": "attach_pending.bucket default '' (migration 54); legacy bucket='', FastDFS/legacy_key, hash sharing, one-key-multi-location", "class": "unknown_location", "protection": "gc_verified=false forever until dedicated proof backfill (M4); blocked jobs keep last_error_code=legacy_location_unverified"}
+      }
+    }
+  },
+  "raw_output_sha256": "aa16803aa3aec900961d2757b4bc695c77723c0dcc53b9cf11dc712c425970b6",
+  "raw_outputs": ["run_dir/evidence/w0-02-schema-replay.log", "run_dir/evidence/w0-02-catalog.log", "run_dir/evidence/w0-02-catalog-extra.log", "run_dir/evidence/w0-02-probes.log"],
+  "schema_phase": "base",
+  "strict_ledger_note": "raw replay only; strict erlang_migrate ledger validation deferred to W0-03 per bootstrap contract"
+}

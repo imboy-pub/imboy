@@ -1,0 +1,23 @@
+workspace_attachment_retentio_organization_id_workspace_id_fkey|FOREIGN KEY (organization_id, workspace_id) REFERENCES workspace(organization_id, id) ON DELETE RESTRICT
+workspace_attachment_retention_attachment_id_fkey|FOREIGN KEY (attachment_id) REFERENCES attachment(id) ON DELETE RESTRICT
+workspace_attachment_retention_attachment_id_not_null|NOT NULL attachment_id
+workspace_attachment_retention_organization_id_fkey|FOREIGN KEY (organization_id) REFERENCES organization(id) ON DELETE RESTRICT
+workspace_attachment_retention_organization_id_not_null|NOT NULL organization_id
+workspace_attachment_retention_pkey|PRIMARY KEY (attachment_id)
+workspace_attachment_retention_retained_at_not_null|NOT NULL retained_at
+workspace_attachment_retention_scope_check|CHECK ((scope = ANY (ARRAY['group'::text, 'channel'::text])))
+workspace_attachment_retention_scope_not_null|NOT NULL scope
+workspace_attachment_retention_scope_ref_not_null|NOT NULL scope_ref
+workspace_attachment_retention_workspace_id_not_null|NOT NULL workspace_id
+attachment_object_deletion_attempts_check|CHECK ((attempts >= 0))
+attachment_object_deletion_attempts_not_null|NOT NULL attempts
+attachment_object_deletion_bucket_not_null|NOT NULL bucket
+attachment_object_deletion_created_at_not_null|NOT NULL created_at
+attachment_object_deletion_next_retry_at_not_null|NOT NULL next_retry_at
+attachment_object_deletion_path_not_null|NOT NULL path
+attachment_object_deletion_pkey|PRIMARY KEY (path)
+trg_attachment_updated_at|CREATE TRIGGER trg_attachment_updated_at BEFORE UPDATE ON public.attachment FOR EACH ROW EXECUTE FUNCTION set_updated_at()
+trg_workspace_attachment_retention_immutable|CREATE TRIGGER trg_workspace_attachment_retention_immutable BEFORE DELETE OR UPDATE ON public.workspace_attachment_retention FOR EACH ROW EXECUTE FUNCTION fn_workspace_attachment_retention_immutable()
+trg_register_workspace_attachment_retention|CREATE TRIGGER trg_register_workspace_attachment_retention AFTER INSERT OR UPDATE OF scope, scope_ref ON public.attachment FOR EACH ROW EXECUTE FUNCTION fn_register_workspace_attachment_retention()
+trg_retained_workspace_attachment_scope_guard|CREATE TRIGGER trg_retained_workspace_attachment_scope_guard BEFORE UPDATE OF scope, scope_ref ON public.attachment FOR EACH ROW EXECUTE FUNCTION fn_retained_workspace_attachment_scope_guard()
+trg_attachment_deleted_path_guard|CREATE TRIGGER trg_attachment_deleted_path_guard BEFORE INSERT OR UPDATE OF path ON public.attachment FOR EACH ROW EXECUTE FUNCTION fn_attachment_deleted_path_guard()

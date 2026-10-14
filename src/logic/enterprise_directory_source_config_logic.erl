@@ -27,7 +27,7 @@ create_connection(Input, #{adm_user_id := AdminId}) when is_integer(AdminId), Ad
                         Uris
                     )
                 ),
-                must(
+                _ = must(
                     enterprise_audit_event_repo:append_tx(
                         Conn,
                         null,
@@ -110,13 +110,14 @@ configure_source_tx(Conn, #{adm_user_id := AdminId}, AppId, ExternalId, Spec) wh
         application_not_active
     ),
     Owner = maps:get(confirmed_owner_user_id, Spec),
-    case maps:get(enabled, Spec) of
-        true ->
-            scope_gate(maps:get(<<"allowed_scopes">>, App)),
-            must(enterprise_directory_source_repo:confirmed_owner_tx(Conn, Owner));
-        false ->
-            ok
-    end,
+    _ =
+        case maps:get(enabled, Spec) of
+            true ->
+                scope_gate(maps:get(<<"allowed_scopes">>, App)),
+                must(enterprise_directory_source_repo:confirmed_owner_tx(Conn, Owner));
+            false ->
+                ok
+        end,
     Until = maps:get(authorization_expires_at, Spec),
     ExpirySql =
         case maps:get(enabled, Spec) of
@@ -205,7 +206,7 @@ configure(Conn, AdminId, AppId, ExternalId, #{expected_version := 0} = Spec, [])
         ),
         configuration_conflict
     ),
-    audit(Conn, AdminId, AppId, Row),
+    _ = audit(Conn, AdminId, AppId, Row),
     {ok, Row};
 configure(Conn, AdminId, AppId, ExternalId, Spec, [Previous]) ->
     Expected = maps:get(expected_version, Spec),
@@ -239,8 +240,8 @@ configure(Conn, AdminId, AppId, ExternalId, Spec, [Previous]) ->
         ),
         configuration_conflict
     ),
-    disable_grant(Conn, AdminId, AppId, Spec, Row),
-    audit(Conn, AdminId, AppId, Row),
+    _ = disable_grant(Conn, AdminId, AppId, Spec, Row),
+    _ = audit(Conn, AdminId, AppId, Row),
     {ok, Row};
 configure(_, _, _, _, _, _) ->
     throw({abort_tx, configuration_conflict}).
