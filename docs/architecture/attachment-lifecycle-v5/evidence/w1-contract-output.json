@@ -1,0 +1,45 @@
+{
+  "task_id": "W1-01",
+  "run_id": "att-v5-20261014-121848-3714",
+  "frozen_at": "2026-10-14T04:45:00Z",
+  "schema_phase": "base",
+  "five_subjects": {
+    "upload_session": {"persistence": ["attach_pending", "enterprise_asset.pending_confirm"], "states": {"registered": ["confirmed", "rejected", "expired"], "confirmed": [], "rejected": ["delete_intent"], "expired": ["delete_intent"], "delete_intent": ["deleted"], "deleted": []}, "invariant": "terminal states never regress; ordinary confirmed is terminal and permanently keeps confirmed_attachment_id; confirmed iff linked"},
+    "asset_metadata": {"persistence": ["attachment", "enterprise_asset"], "states": {"live": ["delete_intent"], "delete_intent": ["deleted"], "deleted": []}, "invariant": "history defaults live with gc_verified=false; business status 0/-1 never directly sets delete_intent"},
+    "business_reference": {"persistence": ["group_file", "moment_post.media", "channel_message", "user_collect", "msg_c2c/c2g", "moya_submission", "enterprise_asset.message_id", "canonical asset_ids"], "states": {"absent": ["bound"], "bound": ["released"], "released": []}, "invariant": "same business id replay inserts no duplicate; delete_intent/deleted forbids new references"},
+    "retention_authorization": {"persistence": ["EAR", "EB policy/hold", "workspace_attachment_retention", "scope ACL"], "states": {"none": ["held"], "held": ["none"], "purged": []}, "invariant": "retention only extends; hold none<->held reversible until delete_intent commits, purged irreversible; workspace permanent retention cannot be degraded by TTL or account deletion"},
+    "physical_delete_job": {"persistence": ["attachment_object_deletion", "enterprise_asset_delete_queue"], "states": {"ready": ["leased"], "leased": ["done", "retry_wait", "blocked"], "retry_wait": ["leased"], "blocked": ["ready ONLY legacy_location_unverified attempts=0 never-leased proof-role full-eligibility re-audit"], "done": []}, "invariant": "done permanent tombstone; 8 durable claim attempts then blocked; identity fields immutable after fill"}
+  },
+  "lock_order": [
+    "1. existing organization/membership locks -> workspace row FOR UPDATE (EB hold/purge); personal domain skips unrelated parent locks",
+    "2. enterprise register/intent/purge UUID xact lock hashtextextended('v5-eb-upload:'||uuid::text,169) AFTER parent/workspace BEFORE identity/asset row locks; multi-UUID byte-sorted",
+    "3. cross-domain full identity advisory lock hashtextextended(jsonb_build_array(driver,storage_root_id,container,object_key)::text,1685), canonical alias normalization, byte-sorted multi-object",
+    "4. per-domain object xact lock: ordinary hashtextextended(object_key,168) preserving migration-168 trigger domain; enterprise domain+object_key stable key; lock core re-verifies full identity",
+    "5. session row -> asset row (id ascending FOR UPDATE) -> governance row (EAR) -> business relation rows (stable business key sorted) -> job row",
+    "6. READ COMMITTED default; re-query all eligibility after lock; whole-transaction bounded retry on deadlock/serialization failure"
+  ],
+  "linearization_points": {
+    "pending_register": "INSERT transaction COMMIT; failure or unknown commit returns no usable URL, recovery via registration lookup",
+    "confirm": "locked legal registered->confirmed + metadata + audit same-transaction COMMIT; real object hash/size verified outside transaction but re-verified under lock; HEAD alone insufficient",
+    "new_reference": "object lock + asset live + authorization + business relation same-transaction COMMIT; job existing/delete_intent/deleted forbids",
+    "delete_intent": "parent + object + row locks re-verify GC eligibility, metadata set delete_intent + immutable job snapshot + audit COMMIT; arbitration point vs references and holds",
+    "worker": "short-transaction CAS lease COMMIT before DELETE; completion by queue PK + lease_token in separate short transaction"
+  },
+  "hold_linearization": "hold commits first: GC must reject. delete_intent commits first: no new hold/retention extension/new reference; explicit already_deleting, never fake hold success then delete. workspace-level later hold covers remaining live objects, receipt lists already-deleted exclusions.",
+  "delete_entrypoints_mapped": ["reject-size", "reject-mime", "reject-teaching", "orphan-cleanup", "pending-cleanup", "account-deletion", "teaching-unbound", "app-confirm-reject", "app-retention-purge", "eb-private-delete", "eb-pending-cleanup", "eb-purge-drain"],
+  "reference_entrypoints_mapped": ["group-file-bind", "c2g-anchor", "c2c-descriptor", "moment-scope-bind", "channel-payload", "collect-attach", "moya-submission", "cs-canonical-append", "eb-message-assets", "ear-registration", "account-release"],
+  "key_lifetime": "one key never reassigned to another session/object; deleted metadata or terminal job keeps anti-reuse marker; identical byte hash is not the same object; path tombstone (migration 168) blocks reuse of deleted ordinary paths",
+  "storage_interface_frozen": {
+    "callbacks": ["presign_put(Location, Context)", "put_file(Location, Path, Context)", "stat(Location, Context)", "private_url(Location, Context)", "public_url(Location, Context)", "delete(Location, Context)"],
+    "location": "full identity I=(driver,namespace,container,key)",
+    "context_fields": ["mime", "pinned content receipt", "absolute issued_at/expires_at", "request_id", "range/timeout params"],
+    "returns": "{ok,Value}|ok|{error,not_found|timeout|unauthorized|invalid_location|invalid_key|unsupported_driver|term()}",
+    "notes": "stat maps 404 to not_found; DELETE unknown result is never ok; client never passes driver"
+  },
+  "gc_eligibility_conjunction": ["complete proven location", "session write capability exhausted", "metadata legally cleanable", "reference check complete and zero", "retention expired", "no hold", "ownership/business attribution match", "no in-flight first-bind/confirm", "policy allows", "audit same-transaction"],
+  "authorization_boundary": "DB SECURITY DEFINER intent functions owned by NOLOGIN role, fixed search_path, schema-qualified names, REVOKE PUBLIC EXECUTE; business roles no queue DML nor protected column writes; workers claim/ack/reaper only; proof role not SET ROLE-able by runtime; runtime credentials never table owner/superuser",
+  "rollback_preconditions": "Down blocked when any non-null location/client_upload_id/registration/content/deadline/expiry or intent/tombstone exists (V5_DOWN_BLOCKED_USE_FORWARD_FIX); empty-db Down removes in reverse with owner/dependency check; physical deletion reversible only via pre-verified backup else IRREVERSIBLE",
+  "activation_preconditions": ["FROZEN", "WRITERS_QUIESCED", "DDL_VERIFIED", "GUARDS_VERIFIED", "NEW_WORKER_ENABLED"],
+  "acceptance_contracts": ["AC01 pending-fail-closed no-url-no-sign", "AC02 frozen identity across config switch", "AC03 confirm replay 100x single asset", "AC04 dual-connection barriers unique winner", "AC05 hold/delete-entrypoint DELETE=0", "AC06 intent fault injection storage DELETE=0", "AC07 worker crash matrix bounded outcomes", "AC08 legacy client/E2EE/group-history/range compat"],
+  "todo_placeholders": 0
+}

@@ -27,6 +27,7 @@
 %%%
 
 -export([sign/2, verify/2, verify/3]).
+-export([issue_upload_capability/3, verify_upload_capability/1]).
 
 -include("log.hrl").
 
@@ -136,4 +137,49 @@ leeway(Key, Opts) ->
     case Opts of
         #{Key := V} when is_integer(V), V >= 0 -> V;
         #{} -> 0
+    end.
+
+%% ===================================================================
+%% V5 网关上传能力（02 §14）：专用 upload audience，不是读/confirm 授权。
+%% claim：aud=upload、key（session object_key）、mime（登记时声明）、
+%% 绝对 exp（已提交的到期值，不续）。签名密钥复用平台 JWT secret。
+%% ===================================================================
+
+-spec issue_upload_capability(binary(), binary(), integer()) ->
+    {ok, binary()} | {error, term()}.
+issue_upload_capability(ObjectKey, Mime, ExpiresAtUnix) ->
+    Secret = upload_secret(),
+    Claims = #{
+        <<"aud">> => <<"upload">>,
+        <<"key">> => ObjectKey,
+        <<"mime">> => Mime,
+        <<"iat">> => erlang:system_time(second),
+        <<"exp">> => ExpiresAtUnix
+    },
+    try
+        {ok, sign(Claims, Secret)}
+    catch
+        _:_ -> {error, sign_failed}
+    end.
+
+-spec verify_upload_capability(binary()) -> {ok, map()} | {error, term()}.
+verify_upload_capability(Token) when is_binary(Token) ->
+    case verify(Token, upload_secret()) of
+        {ok, #{<<"aud">> := <<"upload">>} = Claims} ->
+            {ok, Claims};
+        {ok, _} ->
+            {error, bad_audience};
+        {error, _} = E ->
+            E
+    end;
+verify_upload_capability(_) ->
+    {error, invalid}.
+
+upload_secret() ->
+    case application:get_env(imboy, jwt_secret) of
+        {ok, S} when is_binary(S), byte_size(S) > 0 ->
+            S;
+        _ ->
+            %% 网关能力与用户 JWT 同源密钥（部署密钥轮换统一处理）
+            <<>>
     end.

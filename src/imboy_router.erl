@@ -703,6 +703,10 @@ get_routes() ->
                 % 附件 multipart 直传（大文件流式：form-data file 字段 → 临时文件
                 % → Garage；需 JWT 认证；confirm 仍是唯一落库真源）
                 {"/api/v1/attachment/upload", attach_handler, #{action => upload}},
+                %% V5 受控存储网关（专用 upload 能力 token，非 JWT 认证路由）
+                {"/api/v1/attachment/gateway/:session_key", attachment_storage_gateway_handler, #{
+                    action => put
+                }},
 
                 %% ============================================================
                 %% 工作区 / 项目 / 任务（双体验 v2.5.2 WP3+WP4）

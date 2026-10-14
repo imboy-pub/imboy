@@ -35,7 +35,19 @@ presign_rejects_invalid_mime_test() ->
         )
     ).
 
-presign_private_ok_returns_bound_key_test() ->
+presign_private_ok_returns_bound_key_test_() ->
+    ?WITH_MECKS(
+        [
+            {attach_pending_repo, [
+                {'register_v5', 6, fun(_K, _B, _S, _U, _C, _R) ->
+                    {ok, #{session_state => <<"registered">>, client_upload_id => undefined}}
+                end}
+            ]}
+        ],
+        fun presign_private_ok_body/0
+    ).
+
+presign_private_ok_body() ->
     set_garage_env(),
     {ok, Data} = attach_logic:presign(789, <<"a.png">>, <<"image/png">>, <<"private">>, undefined),
     ?assertMatch(<<"u789/file/", _/binary>>, maps:get(<<"object_key">>, Data)),
@@ -44,7 +56,19 @@ presign_private_ok_returns_bound_key_test() ->
     %% 非 public 不返回 public_url
     ?assertEqual(error, maps:find(<<"public_url">>, Data)).
 
-presign_arbitrary_file_as_binary_test() ->
+presign_arbitrary_file_as_binary_test_() ->
+    ?WITH_MECKS(
+        [
+            {attach_pending_repo, [
+                {'register_v5', 6, fun(_K, _B, _S, _U, _C, _R) ->
+                    {ok, #{session_state => <<"registered">>, client_upload_id => undefined}}
+                end}
+            ]}
+        ],
+        fun presign_arbitrary_body/0
+    ).
+
+presign_arbitrary_body() ->
     set_garage_env(),
     lists:foreach(
         fun(Name) ->
@@ -57,7 +81,19 @@ presign_arbitrary_file_as_binary_test() ->
         [<<"settings.toml">>, <<"archive.unknown">>, <<"tool.exe">>]
     ).
 
-presign_public_returns_public_url_test() ->
+presign_public_returns_public_url_test_() ->
+    ?WITH_MECKS(
+        [
+            {attach_pending_repo, [
+                {'register_v5', 6, fun(_K, _B, _S, _U, _C, _R) ->
+                    {ok, #{session_state => <<"registered">>, client_upload_id => undefined}}
+                end}
+            ]}
+        ],
+        fun presign_public_body/0
+    ).
+
+presign_public_body() ->
     set_garage_env(),
     {ok, Data} = attach_logic:presign(
         52278, <<"head.jpg">>, <<"image/jpeg">>, <<"public">>, undefined
@@ -67,7 +103,19 @@ presign_public_returns_public_url_test() ->
         <<"https://s3.imboy.pub/u52278/avatar/", _/binary>>, maps:get(<<"public_url">>, Data)
     ).
 
-presign_c2c_member_ok_test() ->
+presign_c2c_member_ok_test_() ->
+    ?WITH_MECKS(
+        [
+            {attach_pending_repo, [
+                {'register_v5', 6, fun(_K, _B, _S, _U, _C, _R) ->
+                    {ok, #{session_state => <<"registered">>, client_upload_id => undefined}}
+                end}
+            ]}
+        ],
+        fun presign_c2c_body/0
+    ).
+
+presign_c2c_body() ->
     set_garage_env(),
     {ok, Data} = attach_logic:presign(1, <<"a.png">>, <<"image/png">>, <<"c2c">>, <<"c2c:1:2">>),
     ?assertMatch(<<"u1/c2c/", _/binary>>, maps:get(<<"object_key">>, Data)).
@@ -80,9 +128,15 @@ presign_c2c_non_member_forbidden_test() ->
     ).
 
 presign_group_member_ok_test_() ->
-    ?WITH_MECK(
-        group_member_ds,
-        [{'is_member', 2, fun(66, 1) -> true end}],
+    ?WITH_MECKS(
+        [
+            {group_member_ds, [{'is_member', 2, fun(66, 1) -> true end}]},
+            {attach_pending_repo, [
+                {'register_v5', 6, fun(_K, _B, _S, _U, _C, _R) ->
+                    {ok, #{session_state => <<"registered">>, client_upload_id => undefined}}
+                end}
+            ]}
+        ],
         fun() ->
             set_garage_env(),
             {ok, Data} = attach_logic:presign(
@@ -114,7 +168,12 @@ presign_channel_subscriber_ok_test_() ->
             {channel_ds, [
                 {'find_by_id', 2, fun(9, _Fields) -> #{<<"access_type">> => 0} end}
             ]},
-            {channel_subscription_ds, [{'is_subscribed', 2, fun(9, 1) -> true end}]}
+            {channel_subscription_ds, [{'is_subscribed', 2, fun(9, 1) -> true end}]},
+            {attach_pending_repo, [
+                {'register_v5', 6, fun(_K, _B, _S, _U, _C, _R) ->
+                    {ok, #{session_state => <<"registered">>, client_upload_id => undefined}}
+                end}
+            ]}
         ],
         fun() ->
             set_garage_env(),
@@ -160,7 +219,12 @@ presign_paid_channel_subscription_without_purchase_forbidden_test_() ->
             ]},
             {channel_admin_ds, [{'get_role', 2, fun(9, 1) -> 0 end}]},
             {channel_order_ds, [{'has_purchased', 2, fun(9, 1) -> false end}]},
-            {channel_subscription_ds, [{'is_subscribed', 2, fun(9, 1) -> true end}]}
+            {channel_subscription_ds, [{'is_subscribed', 2, fun(9, 1) -> true end}]},
+            {attach_pending_repo, [
+                {'register_v5', 6, fun(_K, _B, _S, _U, _C, _R) ->
+                    {ok, #{session_state => <<"registered">>, client_upload_id => undefined}}
+                end}
+            ]}
         ],
         fun() ->
             set_garage_env(),

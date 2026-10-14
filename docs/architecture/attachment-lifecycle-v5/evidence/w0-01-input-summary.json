@@ -1,0 +1,48 @@
+{
+  "task_id": "W0-01",
+  "case_id": "W0-01/baseline",
+  "run_id": "att-v5-20261014-121848-3714",
+  "executed_at": "2026-10-14T04:22:33Z",
+  "candidate_heads": {
+    "imboy": "417ba55fb9859b95dca16c2d2a14d12e18fa8c2e",
+    "imboyapp": "83f24ffb01151678aec6d74fbe3987f2204481a3",
+    "imboyadmin": "817b6801b22e04885b7aa832630eaa4b3bdf10c1"
+  },
+  "baseline_rebind": {
+    "plan_original_heads": {"imboy": "35f13d7316420eddda9872e29d8843a13f4ffa66", "imboyapp": "bc32be472cb00ecd73cd73cfd065a0dfe717e0b2", "imboyadmin": "817b6801b22e04885b7aa832630eaa4b3bdf10c1"},
+    "user_authorization": "trusted user message sha256 624094f3eb57f66d4b296ff10e68b59664bec5121878da37336c16af0f65e816 authorizes sampled-main baseline",
+    "drift_analysis": "imboy 26 files changed all in enterprise-identity/hird-poc/agent domain, zero attachment-lifecycle owned files; migration 176 added (next number 177). imboyapp 6 files cs/enterprise API parse only. imboyadmin identical.",
+    "affected_tasks": "none blocked; W2-01/W5-02 must re-verify cs widget tests on current candidate (old PASS not inherited)"
+  },
+  "plan_manifest_sha256": "c2d436ebfa793fd4b9c9eeec3ca9fc1e148f525dbca22ac799c381034e52fc3a",
+  "owned_paths_sha256_manifest": "e0b3ccf1cc4d022b3bba3aba36fee99a224faf08fd818d4e628183e77c85e309",
+  "environment_fingerprint": {
+    "os": "darwin 27.0.0 arm64",
+    "erlang_otp": "29",
+    "rebar3": "3.27.0",
+    "python3": "3.9.6",
+    "docker": "29.8.2",
+    "garage": "2.3.0",
+    "flutter": "3.47.6 stable",
+    "bun": "1.3.14"
+  },
+  "migrations": {"up_files": 172, "latest_version": "00000176", "gaps": ["173","174","175"], "gate": "check_migrations.sh exit=0 with 1 non-blocking gap warning"},
+  "foreign_status_unchanged": true,
+  "foreign_wip": {
+    "imboy": ["docs/architecture/attachment-lifecycle-v5/ (frozen plan, now committed via this task per frozen_input_commit_paths)", "docs/business/imboy-open-source-productization-strategy-v1.md (other session)", "docs/design/2026-10-08-micro-community/plan-v1.md.sha256 (other session)"],
+    "imboyapp": ["ios/Podfile.lock", "ios/Runner.xcodeproj/project.pbxproj (protected zone, untouched)"],
+    "imboyadmin": ["zcode-resume-prompt-v5.md (other session)"]
+  },
+  "command": "bash scripts/check_migrations.sh",
+  "cwd": "run worktree imboy",
+  "exit_code": 0,
+  "executed": 1, "passed": 1, "failed": 0, "skipped": 0,
+  "oracle_results": {
+    "three_heads_match_frozen_manifest": true,
+    "foreign_diff_unchanged": true,
+    "migration_count_nonzero_and_latest_consistent": true
+  },
+  "raw_output_sha256": "f85c8b20a1a7dbad9e5b53cf8c63dd52e165d11b482b4ebb3c54257c27e1bd86",
+  "raw_output_path": "run_dir/evidence/w0-01-baseline.log",
+  "schema_phase": "base"
+}

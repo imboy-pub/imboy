@@ -14,7 +14,7 @@
 % 详见 docs/architecture/resource-access-control.md。
 %%%
 
--export([presign/5, confirm/5, view_url/2, download/1]).
+-export([presign/5, presign/6, confirm/5, view_url/2, download/1]).
 -export([authorize/2]).
 
 -ifdef(TEST).
@@ -38,6 +38,9 @@
 -spec presign(integer(), binary(), binary(), binary(), binary() | undefined) ->
     {ok, map()} | {error, invalid_file_type | forbidden | upload_not_supported}.
 presign(Uid, FileName, MimeType, Scope, ScopeRef) ->
+    presign(Uid, FileName, MimeType, Scope, ScopeRef, undefined).
+
+presign(Uid, FileName, MimeType, Scope, ScopeRef, ClientUploadId) ->
     case elib_oss:validate_file_type(MimeType) of
         false ->
             {error, invalid_file_type};
@@ -45,7 +48,9 @@ presign(Uid, FileName, MimeType, Scope, ScopeRef) ->
             %% Step 10 教学附件：声明 MIME 预检（confirm 阶段以 HEAD 真实值复核）
             case teaching_presign_guard(Scope, MimeType) of
                 ok ->
-                    presign_authorized(Uid, FileName, MimeType, Scope, ScopeRef);
+                    presign_authorized(
+                        Uid, FileName, MimeType, Scope, ScopeRef, ClientUploadId
+                    );
                 {error, _} = E ->
                     E
             end
@@ -59,49 +64,86 @@ teaching_presign_guard(_Scope, _MimeType) ->
     ok.
 
 -spec presign_authorized(integer(), binary(), binary(), binary(), binary() | undefined) ->
-    {ok, map()} | {error, invalid_file_type | forbidden | upload_not_supported}.
+    {ok, map()}
+    | {error,
+        invalid_file_type
+        | forbidden
+        | upload_not_supported
+        | registration_failed}.
 presign_authorized(Uid, FileName, MimeType, Scope, ScopeRef) ->
+    presign_authorized(Uid, FileName, MimeType, Scope, ScopeRef, undefined).
+
+%% V5 恢复合同（AC01 / 02 §12）：登记事务 COMMIT 成功后才签发能力。
+%% 登记失败、异常或提交结果未知一律不返回可用 put_url —— 签名器调用 0 次。
+%% 同 client_upload_id 重试经 fn_v5_register_pending 幂等返回原登记；
+%% 快照不一致由数据库拒绝，恢复走 status 而不是重新签发。
+-spec presign_authorized(
+    integer(),
+    binary(),
+    binary(),
+    binary(),
+    binary() | undefined,
+    undefined | binary()
+) ->
+    {ok, map()}
+    | {error,
+        invalid_file_type
+        | forbidden
+        | upload_not_supported
+        | registration_failed}.
+presign_authorized(Uid, FileName, MimeType, Scope, ScopeRef, ClientUploadId) ->
     case can_upload(Uid, Scope, ScopeRef) of
         ok ->
             ObjectKey = elib_oss:build_object_key(Uid, Scope, ScopeRef, FileName),
             Bucket = elib_oss:get_bucket(Scope),
-            PutUrl = elib_oss:presign_put_for_key(
-                Bucket, ObjectKey, MimeType, ?PUT_EXPIRES
-            ),
-            %% #20：登记待确认。不登记的话，"PUT 上去但从不 confirm"
-            %% 的对象在库里没有任何行，attachment_repo 的孤儿清理
-            %% （只扫 attachment 表）永远看不见它，空间收不回来。
-            %% 登记失败不阻断签发 —— 拿不到 URL 是功能故障，
-            %% 漏登记只是这一个对象暂时收不回，代价不对等。
-            %% 必须 try/catch 而不只是判返回值：DB 不可用时
-            %% elib_pg:execute 是**抛异常**不是返回 {error,_}，
-            %% 只写 case 会让 presign 整个失败——签不出 URL 是功能中断，
-            %% 漏登记只是这一个对象暂时收不回，代价不对等。
-            _ =
-                try attachment_ds:pending_add(ObjectKey, Bucket, Scope, Uid) of
-                    ok ->
-                        ok;
-                    {error, PendReason} ->
-                        ?ERROR_LOG([
-                            "attach_logic presign pending_add failed: ",
-                            ObjectKey,
-                            PendReason
-                        ])
+            Registration = #{
+                <<"filename">> => FileName,
+                <<"mime">> => MimeType,
+                <<"scope">> => Scope
+            },
+            RegResult =
+                try
+                    attach_pending_repo:register_v5(
+                        ObjectKey, Bucket, Scope, Uid, ClientUploadId, Registration
+                    )
+                of
+                    {ok, _Session} = OK -> OK;
+                    {error, RegReason} -> {error, RegReason}
                 catch
                     PClass:PReason ->
                         ?ERROR_LOG([
-                            "attach_logic presign pending_add crashed: ",
+                            "attach_logic presign register_v5 crashed: ",
                             ObjectKey,
                             PClass,
                             PReason
-                        ])
+                        ]),
+                        {error, registration_crashed}
                 end,
-            Base = #{
-                <<"put_url">> => PutUrl,
-                <<"object_key">> => ObjectKey,
-                <<"expires_at">> => erlang:system_time(second) + ?PUT_EXPIRES
-            },
-            {ok, maybe_public_url(Scope, ObjectKey, Base)};
+            case RegResult of
+                {ok, Session} ->
+                    PutUrl = elib_oss:presign_put_for_key(
+                        Bucket, ObjectKey, MimeType, ?PUT_EXPIRES
+                    ),
+                    Base = #{
+                        <<"put_url">> => PutUrl,
+                        <<"object_key">> => ObjectKey,
+                        <<"expires_at">> => erlang:system_time(second) + ?PUT_EXPIRES
+                    },
+                    Base1 =
+                        case maps:get(client_upload_id, Session, undefined) of
+                            undefined -> Base;
+                            Cid -> Base#{<<"client_upload_id">> => Cid}
+                        end,
+                    {ok, maybe_public_url(Scope, ObjectKey, Base1)};
+                {error, RegReason2} ->
+                    %% fail-closed：无登记对象、无 URL；客户端同 ID 重试恢复。
+                    ?ERROR_LOG([
+                        "attach_logic presign registration failed (no URL issued): ",
+                        ObjectKey,
+                        RegReason2
+                    ]),
+                    {error, registration_failed}
+            end;
         {error, _} = E ->
             E
     end.
