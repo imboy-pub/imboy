@@ -119,7 +119,7 @@ recovery_request_echoes_round_and_true_sequence_test() ->
         Sender = State#state{counter = 5000, origin_seq = 7, boot_id = <<7:128>>, status = ready},
         {noreply, Sender} = imboy_cache_sync:handle_info(Request, Sender),
         receive
-            {cache_version_report, N, 5000, 0, _, _, <<7:128>>, true, Pid, 7, Round} = F ->
+            {cache_version_report, N, 5000, 0, _, _, <<7:128>>, true, Pid, 7, Round, _Census} = F ->
                 ?assertEqual(node(), N),
                 ?assertEqual(self(), Pid),
                 ?assert(imboy_cache_sync_proto:valid_version_report(F))

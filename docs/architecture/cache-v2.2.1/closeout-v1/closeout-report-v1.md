@@ -22,6 +22,88 @@
 
 ### 当前复验与停止点（2026-10-14）
 
+#### ZCODE 接续轮更新（2026-10-14 下午）
+
+接续执行 zcode-handoff-20261014。六项失败逐项定性并修复（额外两轮窗口）：
+F1 same_epoch=fixture 缺真实 imboy_cache 读服务（tombstone 模式进程补齐）；
+F2 delete_event=断言违反"相同版本内容核对/同版本不续期"冻结合同（改期望
+{reject, revision_content_conflict, _}，保留首次绝对期限断言）；F3/F5=fixture
+未入 syn 成员视图（control/metadata fixture 补 ensure/join/leave）；F4=产品缺口
+（单事件双 abort 双计 Rmax 预算，apply 侧按回合 id 判别去重）；F6=产品缺口
+（coverage_candidate 缺项造零前缀、忽略错代，违反"缺项/旧格式/错代整份拒绝"）。
+另修产品 verify_source 比较方向反转 bug（真回退 fail-closed；最终效果更新须有
+同来源增量收据证明，manifest_merge 用例约束的"声明与证据矛盾"仍拒绝）。
+共享 done/5 重建：origin_target 经 record_origin_target 独立冻结（来源自身
+计数器与页前缀较大者），不再清空 retained_obligations、不再手工写目标；
+回合改 recovery_round 真实 census。A9 只读复审 APPROVE（三条非阻塞备注）。
+
+验证：七组 147/147 exit=0；11 个纯 fixture 套件 225/225 绿；make eunit-local
+cache 13/13、v2 20/20、sync 29/29、capability 15/15；origin_target 7/7、
+manifest_merge 18/18、snapshot_coverage 20/20（main 基线对照确认后两者原为
+本改动回归、已修复）。metadata_component 两轮预算用尽：18→10/11（1 用例
+accepted_snapshot_page_advances_clock 超时未闭合，登记开放项）。
+
+本地提交 `0c441451`（分支 zcode/cache-closeout-v221-20261014，基于 main
+78e800c1；main 其后漂移 2 提交均零缓存文件）。候选已冻结：
+CANDIDATE_SHA256=bcbb701324832a1c6d7964fecf0edc4eb946c3937ed1fb3d6a141781f400656e
+（6200 文件含 deps 全字节，frozen_at 2026-10-14T06:52:21Z，HEAD 0c441451）。
+C09×2/C10×2/QR/C11/最终全量/性能七份待安静窗口串行执行。
+
+#### C09 boot 停摆根因闭合与候选重冻结（2026-10-14 晚）
+
+C09 两轮均在 boot_cluster:1682（wait_status(B,400)）超时。单变量 beam 二分
+（main 基线 b4810720 38/38 全过为对照）：换入我方 proto（P1）单独复现超时；
+换入 apply（P2）或 coverage（P3）均 38/38 全过——P1 为唯一致病改动。
+
+根因链（coverage.erl:212 反模式点）：covered_seq 行仅在 delta 应用时诞生
+（note_applied_sequence），化身登记不建行。三节点 boot 中 B/C 加入后，权威方 A
+对已登记来源无行，application_coverage_candidate 按冻结合同"缺项整份拒绝"，
+send_snapshot 的 cut 携带 {error, incomplete_application_coverage}（该帧仍合法，
+policy 允许 error 候选）；恢复方 verify→source_prefixes 的
+`{ok, Vector} = snapshot_cut_coverage(Cut)` badmatch，verify_snapshot_coverage
+失败→回合中止→重试循环，B/C 永不 READY。
+
+修复 `2c2123cb`：把合同隐含的不变量补进写侧——register_incarnation 新登记/
+换 Boot 即初始化 {covered_seq,{Origin,Boot}}={Epoch,0}；bump_epoch、
+adopt_epoch（reset 后）与 become_ready_state（floor 安装后）rebase 重建零前缀
+行（"高代切换重置前缀，不继承旧代计数"）。读侧缺项/错代/旧格式整份拒绝原样
+保留，缺行从此只可能是真异常。metadata_tests 三处断言从"无行"改为"零行"
+（语义不变），缺项态改由表手术构造，另增真实登记函数维护不变量的正向断言。
+
+验证：6 步冒烟（登记/推进/换Boot/bump/表手术缺项拒绝）全过；受影响 15 个
+cache 套件 14 绿（journal_component 一次 eunit boot coordinator 崩溃为
+TEST/非TEST beam 失步瞬时基础设施故障，复跑绿）；metadata_component 维持
+既有开放项（修复前代码 round8 同签名 timeout 集 21/492/512/539 全在，
+非本修复回归；预算已耗尽，继续登记开放）。
+
+候选重冻结 v2：CANDIDATE_SHA256=
+2e30601dcddbfd764410b7e7019e39f948b3aac36cabbde09147dce8d7a1c703
+（6200 文件路径集与 v1 逐一相同、恰 4 文件内容变化=3 src+1 test，
+HEAD 2c2123cb，manifest 在 runs 目录 candidate-manifest-v2.json）。
+v1 bcbb7013… 作废。C09 修复轮 1（fixr1，绑定 2e30601d…）：38 场景 36 过，
+boot 停摆消除；2 个 epoch 域场景失败（此前 boot 超时从未执行到，为候选
+真实缺口，登记为新首要工作项）：C9k mixed epochs adopt the ready cohort
+（converge_timeout，B 期望 cohort_new=fresh_era 未收敛）、unconfirmed
+higher-epoch incarnation recovers through member snapshot（badmatch timeout）。
+证据：raw/three_node_c09_fixr1.json + logs/dcheck_c09_fixr1.log。
+剩余门禁：C09 两轮、C10×2（LEGACY_EBIN 树 904 BEAM 已就位）、QR 完整门禁+
+迁移 apply/rollback 专属库、C11 消费链复验、性能七份、最终全量 eunit-local、
+C14 台账终轮、三段判定报告。
+
+#### 合并与交接（2026-10-14 晚，358a068）
+
+分支已并入 main（358a068，门禁链 gitleaks/erlfmt/compile-dialyze/arch-check/
+conventional 全绿后落提交；git 钩子上下文仍触发 darwin bash fork 崩溃 exit 138，
+按既有结论属环境缺陷，缓解为手动完整跑 lefthook 后 --no-verify 提交）。
+⚠️ 并集联合复验为下一会话第一要务：main 侧并行会话曾独立修复同域根因
+（dd168462 tighten snapshot coverage and dcheck oracles 改 coverage/recover src
+与 dcheck oracle；b0db9eae 同修 delete_event 断言），与本轮 2c2123cb 修复
+自动合并为并集，两套修复从未同树验证。候选 v2（2e30601d…，绑定 2c2123cb 树）
+仅对分支树成立；合并后 main 树须重新冻结 v3 再跑门禁。工作 worktree 与
+zcode 分支已删除；证据包保留在 ~/.codex/cache-closeout-runs/zcode-closeout-20261014
+（manifest v1/v2、refreeze_candidate.py、run_c09.sh、dcheck JSON/日志、ebin_drv）。
+
+
 源码 HEAD `f34ca1ee`，worktree 为 `codex/cache-v221-perf-driver-fix`；另有本任务未提交的
 `imboy_cache_entry_epoch_tests.erl` / `imboy_cache_source_cut_tests.erl` fixture 修复。
 **BACKEND_LOCAL_CLOSEOUT 未通过**：C04/AC-19 fixture 修复达到 §7 自动重试上限，

@@ -193,9 +193,11 @@ begin_completion_round() ->
 begin_completion_round(Peer) ->
     imboy_cache_source_cut_tests:fixture_identity(Peer, <<7:128>>, imboy_cache_sync_proto:epoch()),
     Deadline = erlang:system_time(millisecond) + 60000,
-    R = requested_peer(
+    %% recovery_round 冻结真实 census；共享 requested_peer 经产品入口记录
+    %% 独立 origin_target（不再由 fixture 手工清空义务或手写目标）。
+    R = imboy_cache_source_cut_tests:requested_peer(
         imboy_cache_sync_snapshot:expect_peer(
-            imboy_cache_sync_snapshot:new_round(0, Deadline), Peer
+            imboy_cache_sync_snapshot:recovery_round(0, Deadline), Peer
         ),
         Peer
     ),
@@ -757,11 +759,27 @@ source_fixture_certificate(Peer) ->
     {ok, Rows} = imboy_cache_policy:final_snapshot_manifest(P),
     imboy_cache_sync_coverage:manifest_certificate(Rows).
 
+wait_sync_ready(0) ->
+    timeout;
+wait_sync_ready(WaitMs) ->
+    case imboy_cache_sync:status() of
+        ready ->
+            ok;
+        _ ->
+            receive
+            after 100 -> ok
+            end,
+            wait_sync_ready(WaitMs - 100)
+    end.
+
 with_budget(Limits, Fun) ->
     OldCfg = application:get_env(imboy, cache_replication),
     OldRegistry = application:get_env(imboy, cache_registry_overrides),
     OriginalState = sys:get_state(imboy_cache_sync),
     try
+        %% 启动后 sync 需经历有界发现重试（3×500ms）才单节点转 READY；
+        %% 测试体先等待就绪，避免对 discovering 瞬态的时序竞态。
+        wait_sync_ready(5000),
         ?assertEqual(ready, imboy_cache_sync:status()),
         ok = imboy_cache_sync_apply:controlled_cold_recovery(),
         application:set_env(imboy, cache_replication, Limits#{whitelist => [cache_v2_test_rep]}),
@@ -777,11 +795,32 @@ with_budget(Limits, Fun) ->
             true -> erlang:cancel_timer(Ref);
             false -> ok
         end,
-        sys:replace_state(imboy_cache_sync, fun(_) -> OriginalState end),
-        ets:insert(imboy_cache_meta, {status, OriginalState#state.status}),
+        %% 合成回合注入会与产品恢复自动机（member_loss/冷恢复/回合超时）
+        %% 交互，仅回放快照状态会留下不一致定时器与恢复循环；结束后重启
+        %% sync 进程取干净初态，等待其单节点就绪后再交还下一用例。
+        OldPid = whereis(imboy_cache_sync),
+        case is_pid(OldPid) of
+            true ->
+                exit(OldPid, kill),
+                wait_sync_restart(OldPid, 100);
+            false ->
+                ok
+        end,
+        wait_sync_ready(5000),
         restore(cache_replication, OldCfg),
         restore(cache_registry_overrides, OldRegistry)
     end.
+wait_sync_restart(_OldPid, 0) ->
+    ok;
+wait_sync_restart(OldPid, N) ->
+    case whereis(imboy_cache_sync) of
+        P when is_pid(P), P =/= OldPid ->
+            ok;
+        _ ->
+            timer:sleep(50),
+            wait_sync_restart(OldPid, N - 1)
+    end.
+
 restore(Key, undefined) -> application:unset_env(imboy, Key);
 restore(Key, {ok, Value}) -> application:set_env(imboy, Key, Value).
 
