@@ -138,7 +138,12 @@ delete_by_keys(Keys) ->
     undefined | binary(),
     map() | undefined
 ) ->
-    {ok, #{session_state => binary(), client_upload_id => binary() | undefined}}
+    {ok, #{
+        session_state => binary(),
+        client_upload_id => binary() | undefined,
+        deadline => integer(),
+        expires_at => integer()
+    }}
     | {error, term()}.
 register_v5(ObjectKey, Bucket, Scope, Uid, ClientUploadId, Registration) when
     is_map(Registration), map_size(Registration) > 0
@@ -193,9 +198,13 @@ register_v5(ObjectKey, Bucket, Scope, Uid, ClientUploadId, Registration) when
             Params = [A || {I, A} <- lists:zip(lists:seq(1, 12), Args), I =/= 5],
             case elib_pg:query(Sql, Params) of
                 {ok, [Row | _]} ->
+                    %% deadline/expires_at 为本次登记冻结并写入 DB 的绝对 unix 秒，
+                    %% 透传给签发方构造 capability/签名 Context，不得重新计时。
                     {ok, #{
                         session_state => maps:get(<<"out_session_state">>, Row),
-                        client_upload_id => maps:get(<<"out_client_upload_id">>, Row)
+                        client_upload_id => maps:get(<<"out_client_upload_id">>, Row),
+                        deadline => Deadline,
+                        expires_at => Expiry
                     }};
                 {ok, []} ->
                     {error, registration_not_returned};

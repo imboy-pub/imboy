@@ -42,8 +42,8 @@ init(Req0, State0) ->
 -spec put(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 put(<<"PUT">>, Req0, _State) ->
     case gateway_session(Req0) of
-        {ok, #{key := Key, mime := DeclMime}} ->
-            receive_body(Req0, Key, DeclMime);
+        {ok, #{key := Key, mime := DeclMime, exp := Exp}} ->
+            receive_body(Req0, Key, DeclMime, Exp);
         {error, bad_token} ->
             cowboy_req:reply(403, #{}, <<"invalid gateway capability">>, Req0);
         {error, expired} ->
@@ -70,7 +70,7 @@ token_check(Token) ->
     case imboy_jwt:verify_upload_capability(Token) of
         {ok, #{<<"key">> := Key, <<"mime">> := Mime, <<"exp">> := Exp}} ->
             case erlang:system_time(second) < Exp of
-                true -> {ok, #{key => Key, mime => Mime}};
+                true -> {ok, #{key => Key, mime => Mime, exp => Exp}};
                 false -> {error, expired}
             end;
         _ ->
@@ -79,16 +79,26 @@ token_check(Token) ->
 
 %% 流式收体 → 0600 临时文件 → hash/size → 校验声明 → pin（受限函数，
 %% NULL 一次固定）→ COMMIT 后转发同一文件字节到 Garage。
-receive_body(Req0, Key, DeclMime) ->
+%%
+%% 转存签名用冻结 Context（02 §15）：expires_at 取 capability token 的
+%% exp（签发时自登记冻结值），issued_at 为本请求转存时刻——由本层显式
+%% 构造传入，elib_oss/elib_s3_sign 不读取当前时钟重新计时。
+receive_body(Req0, Key, DeclMime, CapabilityExp) ->
     TmpDir = tmp_dir(),
     ok = filelib:ensure_dir(TmpDir ++ "/"),
-    Tmp =
-        TmpDir ++ "/" ++ binary_to_list(Key) ++ "." ++
-            integer_to_list(erlang:unique_integer([positive])),
+    %% Tmp 是平坦目录下的独立文件：ObjectKey 的 '/' 不构成子目录结构
+    SafeKey = lists:map(
+        fun
+            ($/) -> $_;
+            (C) -> C
+        end,
+        binary_to_list(Key)
+    ),
+    Tmp = TmpDir ++ "/" ++ SafeKey ++ "." ++ integer_to_list(erlang:unique_integer([positive])),
     case read_body_to_file(Req0, Tmp, 0) of
         {ok, Size} ->
             try
-                serve_pinned(Req0, Key, DeclMime, Tmp, Size)
+                serve_pinned(Req0, Key, DeclMime, CapabilityExp, Tmp, Size)
             after
                 _ = file:delete(Tmp)
             end;
@@ -111,29 +121,24 @@ read_body_to_file(Req0, Tmp, Size) ->
 
 read_loop(Req0, Fh, Size, Max) ->
     case cowboy_req:read_body(Req0, #{length => ?CHUNK, period => 5000}) of
-        {ok, Data, Req1} ->
+        %% {ok, _, _}：body 收完；{more, _, _}：还有分片，继续累计
+        {Fin, Data, Req1} when Fin =:= ok; Fin =:= more ->
             N = Size + byte_size(Data),
             case N > Max of
                 true ->
                     {error, too_large};
                 false ->
                     ok = file:write(Fh, Data),
-                    {ok, Req1, N}
-            end;
-        {more, Data, Req1} ->
-            N = Size + byte_size(Data),
-            case N > Max of
-                true ->
-                    {error, too_large};
-                false ->
-                    ok = file:write(Fh, Data),
-                    read_loop(Req1, Fh, N, Max)
+                    case Fin of
+                        ok -> {ok, N};
+                        more -> read_loop(Req1, Fh, N, Max)
+                    end
             end;
         {error, _} = E ->
             E
     end.
 
-serve_pinned(Req0, Key, DeclMime, Tmp, Size) ->
+serve_pinned(Req0, Key, DeclMime, CapabilityExp, Tmp, Size) ->
     case file_sha256(Tmp) of
         {ok, Sha256} ->
             Receipt = #{
@@ -144,23 +149,34 @@ serve_pinned(Req0, Key, DeclMime, Tmp, Size) ->
             },
             case attach_pending_repo:register_content_pin(Key, Receipt) of
                 ok ->
-                    %% pin 已 COMMIT；转发同一已校验文件（不重新读可替换路径）
+                    %% pin 已 COMMIT；转发同一已校验文件（不重新读可替换路径）。
+                    %% 签名 Context 冻结：expires_at=capability exp（unix 秒），
+                    %% issued_at=转存时刻；provider 端不重新计时。
                     Bucket = elib_oss:get_bucket(<<"private">>),
-                    case elib_oss:put_object_from_file(Bucket, Key, Tmp, DeclMime) of
+                    Ctx = #{
+                        issued_at => unix_to_datetime(erlang:system_time(second)),
+                        expires_at => unix_to_datetime(CapabilityExp)
+                    },
+                    case elib_oss:put_object_from_file_ctx(Bucket, Key, Tmp, DeclMime, Ctx) of
                         ok ->
                             cowboy_req:reply(
                                 200,
                                 #{
                                     <<"content-type">> => <<"application/json">>
                                 },
-                                elib_json:encode(#{
+                                jsone:encode(#{
                                     <<"pinned">> => true,
                                     <<"sha256">> => Sha256,
                                     <<"size">> => Size
                                 }),
                                 Req0
                             );
-                        {error, put_failed} ->
+                        {error, invalid_signature_context} ->
+                            %% capability 过短/异常：不 PUT，pin 保留供同 receipt 重试
+                            cowboy_req:reply(
+                                410, #{}, <<"capability window invalid">>, Req0
+                            );
+                        {error, _put_failed} ->
                             %% 对象存储 PUT 失败：pin 保留，同 receipt 重试合法
                             cowboy_req:reply(
                                 502, #{}, <<"object store put failed, retry same content">>, Req0
@@ -177,6 +193,9 @@ serve_pinned(Req0, Key, DeclMime, Tmp, Size) ->
         {error, _} ->
             cowboy_req:reply(500, #{}, <<"hash failed">>, Req0)
     end.
+
+unix_to_datetime(UnixSec) ->
+    calendar:gregorian_seconds_to_datetime(UnixSec + 62167219200).
 
 file_sha256(Path) ->
     try
