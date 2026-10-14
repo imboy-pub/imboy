@@ -95,6 +95,10 @@ returns_bodies_for_requested_items() ->
     ).
 
 unavailable_keyring_degrades_all_to_undefined() ->
+    pure_mock_fixture:run(fun unavailable_keyring_without_app_env/0).
+
+unavailable_keyring_without_app_env() ->
+    ?assertEqual(undefined, application:get_env(imboy, eb_enterprise_keyring)),
     ?FAKE_STORE:init(),
     ?FAKE_STORE:set_rows([row(501, 11, 101)]),
     with_crypto_meck(
