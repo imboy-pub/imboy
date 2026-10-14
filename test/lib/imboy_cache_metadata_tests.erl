@@ -227,7 +227,8 @@ application_coverage_candidate_requires_every_current_identity_test() ->
         Peer = 'candidate_peer@synthetic',
         Boot = <<4:128>>,
         ?assertEqual({ok, []}, imboy_cache_sync_proto:application_coverage_candidate()),
-        registered = imboy_cache_sync_proto:register_incarnation(Peer, Boot),
+        %% 表手术直接登记化身（绕过真实登记函数的零下限初始化）构造缺项。
+        true = ets:insert(?META_TABLE, {{peer_incarnation, Peer}, Boot}),
         ?assertEqual(
             {error, incomplete_application_coverage},
             imboy_cache_sync_proto:application_coverage_candidate()
@@ -248,7 +249,14 @@ application_coverage_candidate_requires_every_current_identity_test() ->
             imboy_cache_sync_proto:application_coverage_candidate()
         ),
         ets:insert(?META_TABLE, {{covered_seq, {Peer, Boot}}, {0, 1}}),
+        %% 真实登记函数维护不变量：换 Boot 删除旧下限并重建当前代零前缀行。
         changed = imboy_cache_sync_proto:register_incarnation(Peer, <<5:128>>),
+        ?assertEqual(
+            {ok, [{Peer, <<5:128>>, 0, 0}]},
+            imboy_cache_sync_proto:application_coverage_candidate()
+        ),
+        %% 表手术改登记化身但不建行：换 Boot 缺项仍整份拒绝。
+        true = ets:insert(?META_TABLE, {{peer_incarnation, Peer}, <<6:128>>}),
         ?assertEqual(
             {error, incomplete_application_coverage},
             imboy_cache_sync_proto:application_coverage_candidate()
@@ -298,9 +306,10 @@ coverage_prefix_cannot_stitch_different_epochs_test() ->
         ok = imboy_cache_sync_proto:note_applied_event(E, {ok, ignored}),
         ?assertEqual([{K, {1, 0}}], ets:lookup(?META_TABLE, K)),
         ok = imboy_cache_sync_apply:adopt_epoch(1),
-        ?assertEqual([], ets:lookup(?META_TABLE, K)),
+        %% 采纳新代重建登记来源的零前缀行（不继承旧代计数）。
+        ?assertEqual([{K, {1, 0}}], ets:lookup(?META_TABLE, K)),
         ok = imboy_cache_sync_proto:note_applied_event(E, {ok, ignored}),
-        ?assertEqual([], ets:lookup(?META_TABLE, K)),
+        ?assertEqual([{K, {1, 0}}], ets:lookup(?META_TABLE, K)),
         ok = imboy_cache_sync_proto:note_applied_event(E#{epoch => 1}, {ok, ignored}),
         ?assertEqual([{K, {1, 1}}], ets:lookup(?META_TABLE, K))
     end).
@@ -333,7 +342,11 @@ observed_sequence_is_not_contiguous_application_coverage_test() ->
         E = #{origin_node => Peer, origin_boot_id => Boot, origin_seq => 1, epoch => 0},
         ok = imboy_cache_sync_apply:detect_gap({Peer, Boot}, 1, ignored),
         ok = imboy_cache_sync_proto:note_applied_event(E, {reject, index_full, ignored}),
-        ?assertEqual([], ets:lookup(?META_TABLE, {covered_seq, {Peer, Boot}})),
+        %% index_full 拒绝不推进前缀；登记初始化的零下限行保持为零。
+        ?assertEqual(
+            [{{covered_seq, {Peer, Boot}}, {0, 0}}],
+            ets:lookup(?META_TABLE, {covered_seq, {Peer, Boot}})
+        ),
         ok = imboy_cache_sync_proto:note_applied_event(E, {ok, ignored}),
         gap = imboy_cache_sync_apply:detect_gap({Peer, Boot}, 3, ignored),
         ok = imboy_cache_sync_proto:note_applied_event(E#{origin_seq => 3}, {ok, ignored}),
