@@ -170,7 +170,10 @@ reauthorize_status(Uid, #{<<"creator_user_id">> := Uid} = Row, Req0) ->
 reauthorize_status(_Uid, _Row, Req0) ->
     elib_response:error(Req0, <<"not found"/utf8>>, ?ERR_NOT_FOUND).
 
-reauthorize_renew(Key, Bucket, Scope, Uid, Row, Req0) ->
+reauthorize_renew(Key, _Bucket, _Scope, Uid, Row, Req0) ->
+    %% V5 renew（02 §143）：min(now+TTL, deadline) 为新到期，
+    %% 单调持久提交后按已提交绝对值签发受控网关能力；
+    %% 直传 URL 不再签发（新地址不能绕过网关，upload-content-pin）。
     Deadline = maps:get(<<"session_deadline">>, Row, undefined),
     NowSec = erlang:system_time(second),
     DeadlineSec =
@@ -186,23 +189,43 @@ reauthorize_renew(Key, Bucket, Scope, Uid, Row, Req0) ->
                 ?ERR_GONE
             );
         false ->
-            %% 同 key 重签（保留原登记；fn 路径已在登记时冻结身份）
-            PutUrl = elib_oss:presign_put_for_key(
-                Bucket,
-                Key,
-                proplists:get_value(<<"mime_type">>, [], <<"application/octet-stream">>),
-                3600
-            ),
-            _ = attach_pending_repo:register_v5(Key, Bucket, Scope, Uid, undefined),
-            Data = #{
-                <<"put_url">> => PutUrl,
-                <<"object_key">> => Key,
-                <<"expires_at">> => NowSec + 3600,
-                <<"can_resume">> => true,
-                <<"retry_action">> => <<"resume_same_key">>
-            },
-            Req1 = cowboy_req:set_resp_header(<<"cache-control">>, <<"no-store">>, Req0),
-            elib_response:success(Req1, Data, "success.")
+            NewExpiry = min(NowSec + 3600, DeadlineSec),
+            Mime = declared_mime(Row),
+            case attach_pending_repo:renew_capability(Key, Uid, NewExpiry) of
+                {ok, #{committed_expires_at := Committed}} ->
+                    {ok, Capability} = imboy_jwt:issue_upload_capability(Key, Mime, Committed),
+                    Data = #{
+                        <<"put_url">> =>
+                            <<"/api/v1/attachment/gateway/",
+                                (maps:get(<<"client_upload_id">>, Row))/binary, "?capability=",
+                                Capability/binary>>,
+                        <<"object_key">> => Key,
+                        <<"upload_capability">> => Capability,
+                        <<"gateway">> => true,
+                        %% 已提交的绝对到期（历次最晚），非本地现算
+                        <<"expires_at">> => Committed,
+                        <<"can_resume">> => true,
+                        <<"retry_action">> => <<"resume_same_key">>
+                    },
+                    Req1 = cowboy_req:set_resp_header(<<"cache-control">>, <<"no-store">>, Req0),
+                    elib_response:success(Req1, Data, "success.");
+                {error, not_renewable} ->
+                    elib_response:error(
+                        Req0, <<"session not renewable"/utf8>>, ?ERR_CONFLICT
+                    );
+                {error, _} ->
+                    elib_response:error(
+                        Req0, <<"service unavailable"/utf8>>, ?ERR_SERVICE_UNAVAILABLE
+                    )
+            end
+    end.
+
+%% 声明 mime 取自登记冻结快照（旧行 NULL 回退 application/octet-stream）；
+%% 不可信客户端输入不参与 renew 能力构造。
+declared_mime(Row) ->
+    case maps:get(<<"upload_registration">>, Row, undefined) of
+        #{<<"declaration">> := #{<<"mime">> := M}} when is_binary(M), byte_size(M) > 0 -> M;
+        _ -> <<"application/octet-stream">>
     end.
 
 retry_action(<<"registered">>) -> <<"resume_same_id">>;
