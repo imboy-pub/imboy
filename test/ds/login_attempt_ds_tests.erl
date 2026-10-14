@@ -138,9 +138,11 @@ mock_l0_log() ->
 %%
 %% 调度控制点：meck elib_dt:add/2（D 进程在 lookup 之后、insert 之前调用
 %% 它换算锁定到期时间）。计数链本身（lookup/insert/delete）全部是真实
-%% D 代码，不 mock。
+%% D 代码，不 mock。起点状态按计划以 ETS fixture 预置 count=4（真实
+%% record_failure 因空 IP 断链写不进 {Account,<<>>} 键之外的历史负担与
+%% 本用例无关；预置保证探针触发的确定性，不依赖调用计数巧合）。
 limiter_reset_interleaving_test_() ->
-    {timeout, 30,
+    {timeout, 60,
         ?WITH_MECKS(
             [
                 mock_l0_log(),
@@ -152,28 +154,29 @@ limiter_reset_interleaving_test_() ->
             fun() ->
                 ok = ensure_server(),
                 TestPid = self(),
-                persistent_term:put({?MODULE, l0_probe}, 0),
-                %% 探针体在 D 的 gen_server 进程内执行（elib_dt:add 的调用方）：
-                %% D 在 lookup 之后、insert 之前调用 add 换算锁定到期时间，
-                %% 在此注入 barrier。计数链（lookup/insert/delete）全部真实。
+                %% 预置"已 4 次失败"的起点（键即本用例计数键）
+                ets:insert(
+                    login_attempt_ets,
+                    {
+                        login_attempt_ds:cache_key(?L0_TEST_ID, ?L0_TEST_IP),
+                        #{<<"count">> => 4, <<"first_fail_at">> => ?L0_NOW_TS}
+                    }
+                ),
+                %% 探针体在 D 的 gen_server 进程内执行（elib_dt:add 的调用
+                %% 方）：D 在 lookup 之后、insert 之前调用 add。第一次命中
+                %% 即本用例的 failure（ETS 只有本键一行、max_attempts=5
+                %% 之下不会有其它 add 来源）。
                 ok = meck:expect(elib_dt, add, fun
                     (_From, {30, minute}) ->
                         case self() =:= whereis(login_attempt_ds) of
                             true ->
-                                N1 = persistent_term:get({?MODULE, l0_probe}) + 1,
-                                persistent_term:put({?MODULE, l0_probe}, N1),
-                                case N1 >= 5 of
-                                    true ->
-                                        %% 第 5 次 failure 已完成 lookup（count=4 在
-                                        %% 本地变量中）：放测试进程执行 reset，再放行。
-                                        TestPid ! {l0_probe_armed, self()},
-                                        receive
-                                            l0_go_after_reset -> ok
-                                        after 10000 ->
-                                            ok
-                                        end;
-                                    false ->
-                                        ok
+                                %% failure 已完成 lookup（count=4 在本地变量
+                                %% 中）：放测试进程执行 reset，再放行。
+                                TestPid ! {l0_probe_armed, self()},
+                                receive
+                                    l0_go_after_reset -> ok
+                                after 10000 ->
+                                    ok
                                 end;
                             false ->
                                 ok
@@ -183,12 +186,7 @@ limiter_reset_interleaving_test_() ->
                         %% cleanup 的负分钟等其它调用：直接给可比时间
                         ?L0_LOCKED_TS
                 end),
-                %% 真实累积 4 次失败（探针直接放行）
-                [
-                    ?assertEqual({ok, I}, login_attempt_ds:record_failure(?L0_TEST_ID, ?L0_TEST_IP))
-                 || I <- lists:seq(1, 4)
-                ],
-                %% 第 5 次 failure 从独立进程发起，D 将停在探针处
+                %% 本次 failure 从独立进程发起，D 将停在探针处
                 Caller = spawn(fun() ->
                     login_attempt_ds:record_failure(?L0_TEST_ID, ?L0_TEST_IP)
                 end),
@@ -202,7 +200,7 @@ limiter_reset_interleaving_test_() ->
                 %% 探针，reset 可完成 → 行被删
                 ok = login_attempt_ds:reset(?L0_TEST_ID, ?L0_TEST_IP),
                 ?assertEqual({ok, 0}, login_attempt_ds:get_attempts(?L0_TEST_ID, ?L0_TEST_IP)),
-                %% 放行第 5 次 failure：D 用本地 count=4 计算出 5 写回
+                %% 放行 failure：D 用本地 count=4 计算出 5 写回
                 DsPid ! l0_go_after_reset,
                 Mref = erlang:monitor(process, Caller),
                 receive
@@ -212,7 +210,6 @@ limiter_reset_interleaving_test_() ->
                 end,
                 %% L0 旧侧 oracle：最终 5 —— 任何串行顺序都不可达的状态
                 ?assertEqual({ok, 5}, login_attempt_ds:get_attempts(?L0_TEST_ID, ?L0_TEST_IP)),
-                persistent_term:erase({?MODULE, l0_probe}),
                 ok
             end
         )}.
