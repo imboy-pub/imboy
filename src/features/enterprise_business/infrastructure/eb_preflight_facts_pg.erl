@@ -48,7 +48,10 @@ facts_enterprise_business(UserId) when is_integer(UserId), UserId > 0 ->
                 }
              || Row <- Rows
             ],
-            {ok, fact(UserId, Blockers)};
+            case pending_directory_owners(UserId) of
+                {ok, Pending} -> {ok, fact(UserId, Blockers ++ Pending)};
+                {error, _} -> {error, unavailable}
+            end;
         {error, _Reason} ->
             {error, unavailable}
     end;
@@ -58,6 +61,43 @@ facts_enterprise_business(_) ->
 -spec fact_version() -> pos_integer().
 fact_version() ->
     ?FACT_VERSION.
+
+pending_directory_owners(UserId) ->
+    case
+        elib_pg:query(
+            <<"SELECT to_regclass('enterprise_directory_organization_source') IS NOT NULL AS present">>,
+            []
+        )
+    of
+        {ok, [#{<<"present">> := false}]} ->
+            {ok, []};
+        {ok, [#{<<"present">> := true}]} ->
+            case
+                elib_pg:query(
+                    <<
+                        "SELECT application_id FROM enterprise_directory_organization_source"
+                        " WHERE confirmed_owner_user_id=$1 AND organization_id IS NULL"
+                        " ORDER BY application_id,external_organization_id"
+                    >>,
+                    [UserId]
+                )
+            of
+                {ok, Rows} ->
+                    {ok, [
+                        #{
+                            code => <<"DIRECTORY_INITIAL_OWNER_PENDING">>,
+                            resource_type => <<"enterprise_application">>,
+                            resource_id => opaque(maps:get(<<"application_id">>, Row)),
+                            organization_id => null
+                        }
+                     || Row <- Rows
+                    ]};
+                _ ->
+                    {error, unavailable}
+            end;
+        _ ->
+            {error, unavailable}
+    end.
 
 %% ------------------------------------------------------------------
 %% Internal

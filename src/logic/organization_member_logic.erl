@@ -22,7 +22,8 @@
     transfer_owner/3,
     suspend/3,
     restore/3,
-    dependent_resources_conflict/1
+    dependent_resources_conflict/1,
+    directory_remove_tx/4
 ]).
 
 -include("log.hrl").
@@ -332,6 +333,45 @@ remove_by_role_tx(Conn, Uid, Org, OrgId, TargetUid, Status, Member) ->
         _MemberLike ->
             remove_active_tx(Conn, OrgId, TargetUid, Status)
     end.
+
+-spec directory_remove_tx(any(), map(), pos_integer(), pos_integer()) -> {ok, map()}.
+directory_remove_tx(Conn, #{application_id := AppId} = Ctx, OrgId, TargetUid) when
+    is_integer(AppId),
+    AppId > 0,
+    is_integer(OrgId),
+    OrgId > 0,
+    is_integer(TargetUid),
+    TargetUid > 0
+->
+    case enterprise_directory_source_repo:authorize_tx(Conn, Ctx#{organization_id => OrgId}) of
+        {ok, _} -> ok;
+        {error, AuthReason} -> throw({abort_tx, AuthReason})
+    end,
+    Org =
+        case organization_repo:find_for_update_tx(Conn, OrgId) of
+            {ok, #{<<"status">> := <<"active">>} = Found} -> Found;
+            {ok, _} -> throw({abort_tx, organization_not_active});
+            {error, OrgReason} -> throw({abort_tx, OrgReason})
+        end,
+    case enterprise_directory_source_repo:authorize_member_tx(Conn, AppId, OrgId, TargetUid) of
+        ok ->
+            Result = remove_tx(Conn, {directory_source, AppId}, Org, OrgId, TargetUid),
+            {ok, Removed} = Result,
+            lists:foreach(
+                fun(Workspace) ->
+                    ok = elib_pg:after_commit(Conn, {directory_departure, Workspace}, fun() ->
+                        workspace_ds:member_removed(Workspace),
+                        ok
+                    end)
+                end,
+                maps:get(affected_workspaces, Removed, [])
+            ),
+            Result;
+        {error, Reason} ->
+            throw({abort_tx, Reason})
+    end;
+directory_remove_tx(_, _, _, _) ->
+    throw({abort_tx, invalid_source_context}).
 
 remove_active_tx(Conn, OrgId, TargetUid, Status) ->
     Workspaces = workspace_ds:remove_organization_memberships_tx(Conn, OrgId, TargetUid),

@@ -57,10 +57,13 @@ tablename() ->
 %% 同一时刻的事件顺序稳定，避免分页抖动）。
 %% Opts 键（均可缺省）：page :: integer()、size :: integer()。
 %% 越界值被夹紧而不是报错（读面 fail-soft；但**绝不**放宽上限）。
--spec list_tx(any(), integer(), binary(), integer() | undefined, map()) ->
+-spec list_tx(any(), integer() | null, binary(), integer() | undefined, map()) ->
     {ok, [map()]} | {error, term()}.
 list_tx(Conn, OrgId, ResourceType, ResourceId, Opts) when
-    is_integer(OrgId), is_binary(ResourceType), ResourceType =/= <<>>, is_map(Opts)
+    (is_integer(OrgId) orelse OrgId =:= null),
+    is_binary(ResourceType),
+    ResourceType =/= <<>>,
+    is_map(Opts)
 ->
     Page = clamp_page(maps:get(page, Opts, 1)),
     Size = clamp_size(maps:get(size, Opts, 20)),
@@ -68,11 +71,14 @@ list_tx(Conn, OrgId, ResourceType, ResourceId, Opts) when
     {Where, Params} =
         case ResourceId of
             RId when is_integer(RId) ->
-                {<<"organization_id = $1 AND resource_type = $2 AND resource_id = $3">>, [
-                    OrgId, ResourceType, RId
-                ]};
+                {<<"organization_id IS NOT DISTINCT FROM $1 AND resource_type = $2 AND resource_id = $3">>,
+                    [
+                        OrgId, ResourceType, RId
+                    ]};
             _ ->
-                {<<"organization_id = $1 AND resource_type = $2">>, [OrgId, ResourceType]}
+                {<<"organization_id IS NOT DISTINCT FROM $1 AND resource_type = $2">>, [
+                    OrgId, ResourceType
+                ]}
         end,
     LimitB = integer_to_binary(length(Params) + 1),
     OffsetB = integer_to_binary(length(Params) + 2),
@@ -83,7 +89,11 @@ list_tx(Conn, OrgId, ResourceType, ResourceId, Opts) when
     case elib_pg:query(Conn, Sql, Params ++ [Size, (Page - 1) * Size]) of
         {ok, Rows} when is_list(Rows) -> {ok, Rows};
         {error, Reason} -> {error, Reason}
-    end.
+    end;
+list_tx(_Conn, OrgId, _ResourceType, _ResourceId, _Opts) when
+    not is_integer(OrgId), OrgId =/= null
+->
+    {error, {invalid_organization_id, OrgId}}.
 
 %% @doc enterprise_audit_event 命名空间 TSID（固定映射，口径同
 %% enterprise_application_repo:next_id/0）。
@@ -102,8 +112,12 @@ insert_sql() ->
 %% Event 键：resource_type（必填非空）、action（必填非空）、resource_id、
 %% business_identity_id、actor_user_id、actor_role、detail（map 或 binary JSON）。
 %% 缺省值口径与 eb_pg_audit:audit_params/2 保持一致。
--spec append_tx(any(), integer(), map()) -> {ok, integer()} | {error, term()}.
-append_tx(Conn, OrgId, Event) when is_integer(OrgId), is_map(Event) ->
+%% 显式 OrgId=null 用于实例/application-self 事件；undefined 仍拒绝。
+%% business_identity_id 非空必须有组织，由 174 CHECK 与原复合 FK 兜底。
+-spec append_tx(any(), integer() | null, map()) -> {ok, integer()} | {error, term()}.
+append_tx(Conn, OrgId, Event) when
+    (is_integer(OrgId) orelse OrgId =:= null), is_map(Event)
+->
     Params = [
         maps:get(id, Event, next_id()),
         OrgId,

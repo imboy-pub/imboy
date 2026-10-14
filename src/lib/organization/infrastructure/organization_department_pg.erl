@@ -25,7 +25,9 @@
     list_active_subtree_ids/3,
     fetch_member/3,
     insert_member/5,
+    insert_member_tx/5,
     delete_member/3,
+    delete_member_tx/3,
     set_admin/5,
     list_members/2,
     count_members/2,
@@ -199,7 +201,9 @@ update_name(OrgId, DeptId, Name, ActorId, ExpectedVersion) ->
 %% @doc 改名（调用方事务连接版，CP-ASSET-05）：语义与 update_name/5 逐字一致
 %% （语句级 CAS、{ok,0} 归因回查），仅连接来源从池换成调用方事务；
 %% 归因回查用同事务内的锁读（locked_fetch），不出事务、不借第二个池连接。
--spec update_name_tx(epgsql:connection(), integer(), integer(), binary(), integer() | undefined, integer()) ->
+-spec update_name_tx(
+    epgsql:connection(), integer(), integer(), binary(), integer() | undefined, integer()
+) ->
     ok | {error, conflict} | {error, name_conflict} | {error, term()}.
 update_name_tx(Conn, OrgId, DeptId, Name, ActorId, ExpectedVersion) ->
     case
@@ -568,6 +572,43 @@ insert_member(OrgId, DeptId, UserId, ActorId, _Ctx) ->
             {error, member_not_org_member};
         {error, Reason} ->
             {error, Reason}
+    end.
+
+insert_member_tx(Conn, OrgId, DeptId, UserId, ActorId) ->
+    case
+        normalize(
+            elib_pg:query(
+                Conn,
+                <<
+                    "INSERT INTO organization_department_member"
+                    " (organization_id,department_id,user_id,is_admin,added_by_user_id)"
+                    " VALUES ($1,$2,$3,false,$4) ON CONFLICT (department_id,user_id) DO NOTHING"
+                    " RETURNING ",
+                    ?MEMBER_COLS/binary
+                >>,
+                [OrgId, DeptId, UserId, ActorId]
+            )
+        )
+    of
+        {ok, [Row]} -> {ok, Row, added};
+        {ok, []} -> {ok, #{}, already_member};
+        {error, Reason} -> {error, Reason}
+    end.
+
+delete_member_tx(Conn, DeptId, UserId) ->
+    case
+        elib_pg:execute(
+            Conn,
+            <<
+                "DELETE FROM organization_department_member"
+                " WHERE department_id=$1 AND user_id=$2 AND NOT is_admin"
+            >>,
+            [DeptId, UserId]
+        )
+    of
+        {ok, 1} -> {ok, removed};
+        {ok, 0} -> {ok, not_present};
+        {error, Reason} -> {error, Reason}
     end.
 
 %% @doc 移除成员；返回是否真的删除（false=本就不在，幂等）。

@@ -18,10 +18,6 @@
 %   rate_bucket   :: internal_read | internal_write | internal_sso
 %   idempotency   :: required | not_required | single_use_code（INT-14 豁免）
 %   sender_mode   :: none | application | human | application_human
-%   org_status_gate :: true（缺省）| false——org 状态门豁免（2026-10-12
-%                    定位修订：organization 是业务对象非授权边界；仅
-%                    INT-14 SSO 交换声明 false，org 归属应用的生命周期
-%                    不阻断实例级集成；其余路由保持 fail-closed 门）
 %%%
 
 -export([routes/0, match/2, prefix/0]).
@@ -165,10 +161,7 @@ routes() ->
             scope => <<"sso:exchange">>,
             rate_bucket => internal_sso,
             idempotency => single_use_code,
-            sender_mode => none,
-            %% 定位修订（ADR 2026-10-12）：SSO 交换为实例级集成，org 归属
-            %% 是业务归属而非授权条件——credential/app/scope/rate 才是链。
-            org_status_gate => false
+            sender_mode => none
         },
         %% ---- FULL-02 新增（A0 接线）。grant 边界规格见
         %%      enterprise_internal_boundary:spec/1，两侧必须逐条一致
@@ -450,6 +443,15 @@ routes() ->
             method => <<"DELETE">>,
             path => <<"/api/internal/v1/channels/{channel_id}">>,
             scope => <<"channels:write">>,
+            rate_bucket => internal_write,
+            idempotency => required,
+            sender_mode => none
+        },
+        #{
+            id => <<"INT-43">>,
+            method => <<"POST">>,
+            path => <<"/api/internal/v1/directory/sync">>,
+            scope => <<"identities:write">>,
             rate_bucket => internal_write,
             idempotency => required,
             sender_mode => none

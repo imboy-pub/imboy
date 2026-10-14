@@ -26,6 +26,7 @@
     touch_last_used_tx/2,
     authority_for_share_tx/4,
     find_tx/3,
+    find_by_id_tx/2,
     lock_tx/3,
     expired_tx/2
 ]).
@@ -58,7 +59,7 @@ digest_hex(Secret) when is_binary(Secret) ->
 
 %% @doc 事务内创建凭证（无过期时间）。CredentialPrefix 是认证定位键
 %% （如 <<"ib_int_", Id/binary>>），Secret 明文只在此前的生成阶段出现一次。
--spec create_tx(any(), integer(), integer(), binary(), binary()) ->
+-spec create_tx(any(), integer() | null, integer(), binary(), binary()) ->
     {ok, map()} | {error, prefix_conflict | invalid_secret | term()}.
 create_tx(Conn, OrgId, AppId, CredentialPrefix, Secret) ->
     create_tx(Conn, OrgId, AppId, CredentialPrefix, Secret, undefined).
@@ -66,7 +67,7 @@ create_tx(Conn, OrgId, AppId, CredentialPrefix, Secret) ->
 %% @doc 事务内创建凭证；ExpiresAt 为二进制 RFC3339 或 undefined（永不过期）。
 %% digest 计算失败（空 secret）前置拒绝，不产生任何 DB 写入。
 %% credential_prefix 撞全局唯一归一 {error, prefix_conflict}。
--spec create_tx(any(), integer(), integer(), binary(), binary(), undefined | binary()) ->
+-spec create_tx(any(), integer() | null, integer(), binary(), binary(), undefined | binary()) ->
     {ok, map()} | {error, prefix_conflict | invalid_secret | term()}.
 create_tx(Conn, OrgId, AppId, CredentialPrefix, Secret, ExpiresAt) when Secret =/= <<>> ->
     case digest_hex(Secret) of
@@ -195,12 +196,16 @@ find_active_by_prefix_tx(Conn, CredentialPrefix) when
     end.
 
 %% @doc 事务内吊销凭证（幂等：非 active 返回 {error, not_active}）。
--spec revoke_tx(any(), integer(), integer()) -> ok | {error, not_found | not_active | term()}.
-revoke_tx(Conn, OrgId, Id) ->
+-spec revoke_tx(any(), integer() | null, integer()) ->
+    ok | {error, not_found | not_active | term()}.
+revoke_tx(Conn, OrgId, Id) when
+    (is_integer(OrgId) orelse OrgId =:= null), is_integer(Id)
+->
     Now = elib_dt:now(),
     Sql =
         <<"UPDATE ", (tablename())/binary, " SET status = 'revoked', revoked_at = $1::timestamptz",
-            " WHERE organization_id = $2 AND id = $3 AND status = 'active'", " RETURNING id">>,
+            " WHERE organization_id IS NOT DISTINCT FROM $2 AND id = $3 AND status = 'active'",
+            " RETURNING id">>,
     case elib_pg:query(Conn, Sql, [Now, OrgId, Id]) of
         {ok, [_Row | _]} ->
             ok;
@@ -212,7 +217,9 @@ revoke_tx(Conn, OrgId, Id) ->
             end;
         {error, Reason} ->
             {error, Reason}
-    end.
+    end;
+revoke_tx(_Conn, OrgId, _Arg3) when not is_integer(OrgId), OrgId =/= null ->
+    {error, {invalid_organization_id, OrgId}}.
 
 %% @doc 事务内记录最近认证时间（认证成功路径；不改变凭证生命周期）。
 -spec touch_last_used_tx(any(), integer()) -> ok | {error, not_found | term()}.
@@ -234,25 +241,44 @@ touch_last_used_tx(Conn, Id) ->
 %% Internal Functions
 %% ===================================================================
 
-%% 调用方先锁 Application，再锁 credential，避免轮换并发及逆序死锁。
--spec lock_tx(any(), integer(), integer()) -> {ok, map()} | {error, term()}.
-lock_tx(Conn, OrgId, Id) ->
-    Sql =
-        <<"SELECT ", ?COLUMNS/binary, " FROM ", (tablename())/binary,
-            " WHERE organization_id = $1 AND id = $2 FOR UPDATE">>,
-    case elib_pg:query(Conn, Sql, [OrgId, Id]) of
+%% Resolve AppId and actual credential attribution; callers must authorize and
+%% lock the application before using this row for credential mutations.
+-spec find_by_id_tx(any(), integer()) -> {ok, map()} | {error, not_found | term()}.
+find_by_id_tx(Conn, Id) when is_integer(Id) ->
+    Sql = <<"SELECT ", ?COLUMNS/binary, " FROM ", (tablename())/binary, " WHERE id = $1 LIMIT 1">>,
+    case elib_pg:query(Conn, Sql, [Id]) of
         {ok, [Row]} -> {ok, Row};
         {ok, []} -> {error, not_found};
         {error, Reason} -> {error, Reason}
     end.
 
--spec find_tx(any(), integer(), integer()) -> {ok, map()} | {error, not_found | term()}.
-find_tx(Conn, OrgId, Id) ->
+%% 调用方先锁 Application，再锁 credential，避免轮换并发及逆序死锁。
+-spec lock_tx(any(), integer() | null, integer()) -> {ok, map()} | {error, term()}.
+lock_tx(Conn, OrgId, Id) when
+    (is_integer(OrgId) orelse OrgId =:= null), is_integer(Id)
+->
     Sql =
         <<"SELECT ", ?COLUMNS/binary, " FROM ", (tablename())/binary,
-            " WHERE organization_id = $1 AND id = $2 LIMIT 1">>,
+            " WHERE organization_id IS NOT DISTINCT FROM $1 AND id = $2 FOR UPDATE">>,
+    case elib_pg:query(Conn, Sql, [OrgId, Id]) of
+        {ok, [Row]} -> {ok, Row};
+        {ok, []} -> {error, not_found};
+        {error, Reason} -> {error, Reason}
+    end;
+lock_tx(_Conn, OrgId, _Arg3) when not is_integer(OrgId), OrgId =/= null ->
+    {error, {invalid_organization_id, OrgId}}.
+
+-spec find_tx(any(), integer() | null, integer()) -> {ok, map()} | {error, not_found | term()}.
+find_tx(Conn, OrgId, Id) when
+    (is_integer(OrgId) orelse OrgId =:= null), is_integer(Id)
+->
+    Sql =
+        <<"SELECT ", ?COLUMNS/binary, " FROM ", (tablename())/binary,
+            " WHERE organization_id IS NOT DISTINCT FROM $1 AND id = $2 LIMIT 1">>,
     case elib_pg:query(Conn, Sql, [OrgId, Id]) of
         {ok, [Row | _]} -> {ok, Row};
         {ok, []} -> {error, not_found};
         {error, Reason} -> {error, Reason}
-    end.
+    end;
+find_tx(_Conn, OrgId, _Arg3) when not is_integer(OrgId), OrgId =/= null ->
+    {error, {invalid_organization_id, OrgId}}.

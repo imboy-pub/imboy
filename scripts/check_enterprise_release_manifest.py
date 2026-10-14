@@ -30,6 +30,8 @@ import re
 import sys
 from pathlib import Path
 
+import yaml
+
 FROZEN_TABLE = "src/api/enterprise_internal_routes.erl"
 ROUTER = "src/imboy_router.erl"
 AUTH_MW = "src/api/auth_middleware.erl"
@@ -40,8 +42,8 @@ DEFAULT_MANIFEST = os.environ.get("IMBOY_INTERNAL_MANIFEST", str(Path(__file__).
 
 PREFIX = "/api/internal/v1/"
 # V2.1 只读扩面（INT-24..31）：路由 23→31、cowboy path 19→25（2026-09-24）
-MANIFEST_ROUTE_COUNT = 42
-ROUTER_PATH_COUNT = 28
+MANIFEST_ROUTE_COUNT = 43
+ROUTER_PATH_COUNT = 29
 # 代码类扫描根（§8「含 alias / handler / migration / OpenAPI 全谱」）
 CODE_ROOTS = ("src", "config", "priv")
 CODE_SUFFIXES = {".erl", ".hrl", ".config", ".example", ".json", ".yaml", ".sql"}
@@ -84,6 +86,39 @@ def router_paths(repo: Path) -> list[str]:
     if not m:
         return []
     return re.findall(r'\{\s*"(/api/internal/v1/[^"]*)"\s*,', src[m.start() :])
+
+
+class UniqueKeyLoader(yaml.SafeLoader):
+    def construct_mapping(self, node, deep=False):
+        mapping = super().construct_mapping(node, deep=deep)
+        if len(mapping) != len(node.value):
+            raise ValueError("duplicate YAML mapping key")
+        return mapping
+
+
+def manifest_operations(path: Path) -> list[tuple[str, str, str]]:
+    document = yaml.load(path.read_text(encoding="utf-8"), Loader=UniqueKeyLoader)
+    if not isinstance(document, dict) or not isinstance(document.get("routes"), list):
+        raise ValueError("manifest.routes must be an array")
+    operations = []
+    ids = set()
+    for route in document["routes"]:
+        if not isinstance(route, dict) or not all(
+            isinstance(route.get(key), str) and route[key] for key in ("id", "method", "path")
+        ):
+            raise ValueError("route requires string id/method/path")
+        ident = route["id"]
+        if ident in ids:
+            raise ValueError("duplicate route id: " + ident)
+        ids.add(ident)
+        if ident == "HUMAN-SSO-01":
+            if (route["method"], route["path"]) != ("POST", "/api/v1/oa/sso/code"):
+                raise ValueError("invalid human SSO counterpart")
+            continue
+        if not re.fullmatch(r"INT-\d+", ident):
+            raise ValueError("unknown route id: " + ident)
+        operations.append((ident, route["method"], route["path"]))
+    return operations
 
 
 def main() -> int:
@@ -169,15 +204,17 @@ def main() -> int:
     # ---------------- ⑧ A0 冻结 manifest 的 INT id 序列 == 冻结表 ----------------
     mf = Path(args.manifest)
     if mf.is_file():
-        ids = re.findall(r"^\s*-\s*id:\s*(INT-\d+)", mf.read_text(encoding="utf-8"), re.M)
         table_ids = re.findall(
             r'id\s*=>\s*<<"(INT-\d+)"', (repo / FROZEN_TABLE).read_text(encoding="utf-8")
         )
-        check(
-            ids == table_ids and len(ids) == MANIFEST_ROUTE_COUNT,
-            f"8) manifest_ids == frozen_table_ids ({MANIFEST_ROUTE_COUNT}, 有序)",
-            "" if ids == table_ids else f"manifest={len(ids)} table={len(table_ids)}",
-        )
+        expected = [(ident, method, path) for ident, (method, path) in zip(table_ids, routes)]
+        try:
+            actual = manifest_operations(mf)
+            check(actual == expected and len(actual) == MANIFEST_ROUTE_COUNT,
+                  f"8) manifest.routes == frozen_table ID/method/path ({MANIFEST_ROUTE_COUNT}, 有序)",
+                  "" if actual == expected else f"manifest={len(actual)} table={len(expected)}; operation mismatch")
+        except (ValueError, yaml.YAMLError, OSError) as exc:
+            check(False, "8) manifest.routes schema", str(exc))
     else:
         check(False, "8) manifest_ids == frozen_table_ids", f"manifest 缺失: {mf}")
 
