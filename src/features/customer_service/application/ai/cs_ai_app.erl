@@ -26,6 +26,8 @@
     validate_consume_config/0,
     apply_event/6
 ]).
+%% B 组（v4 02-B）：投递协议编排（错误语义表 02-B.4 冻结）
+-export([deliver/3]).
 
 %% 注入 prompt 的 FAQ 条数上限（"受控证据"规模）。
 -define(FAQ_TOP, 3).
@@ -581,6 +583,136 @@ opt_binary(Map, Key, Default) ->
         B when is_binary(B), B =/= <<>> -> B;
         _ -> Default
     end.
+
+%% ===================================================================
+%% B 组（v4 02-B）：投递协议编排
+%% ===================================================================
+
+%% @doc 投递一条已生成的 AI 回复（02-B.4 伪代码的编排面）。
+%%
+%% 事务结构：canonical 唯一写路径承载整个投递事务——L1 由方案甲的
+%% `fetch_conversation FOR NO KEY UPDATE`（conversation 行锁，cs 会话↔
+%% conversation 一对一）取得；deadline / input_version 复核、L4 delivery
+%% 幂等 INSERT、job → completed CAS 全部在 `ai_delivery_hook` 内同事务
+%% 执行（`cs_session_app:compose_ai_hook/2` 组合），任一失败 ⇒ 消息与
+%% delivery 原子回滚。
+%%
+%% 返回值语义（02-B.4 冻结，调用方**不得**对 `{skipped, _}` 重试）：
+%% `{ok, delivered}` | `{skipped, expired | superseded}` |
+%% `{error, lease_lost | conflict | term()}`。
+%%
+%% Params：`job_id` / `worker_id` / `reply` 必填；`seat_identity_id`
+%% 可选（缺省从 agent 配置取）；`gate_fun`（P0-5 D 组注入位）可选。
+-spec deliver(integer(), integer(), map()) ->
+    {ok, delivered} | {skipped, expired | superseded} | {error, term()}.
+deliver(OrgId, WsId, #{job_id := JobId, worker_id := WorkerId} = Params) when
+    is_integer(OrgId), is_integer(WsId), is_binary(WorkerId)
+->
+    Impl = cs_ai_port:impl(Params),
+    case Impl:fetch_job(OrgId, JobId) of
+        {ok, #{status := running, lease_owner := WorkerId, version := V} = Job} ->
+            case deliver_preflight(Impl, OrgId, Job, Params) of
+                {skipped, _} = Skip ->
+                    Skip;
+                {ok, SeatIdentity, ActorUser} ->
+                    deliver_message(
+                        OrgId, WsId, Impl, Job, WorkerId, V, SeatIdentity, ActorUser, Params
+                    )
+            end;
+        {ok, #{status := running}} ->
+            %% running 但 owner/version 失配 = 陈旧租约（I4：无任何副作用）。
+            {error, lease_lost};
+        {ok, #{status := Status}} ->
+            {error, {conflict, Status}};
+        {ok, _} ->
+            {error, lease_lost};
+        {error, Reason} ->
+            {error, Reason}
+    end;
+deliver(_OrgId, _WsId, _Params) ->
+    {error, {invalid_argument, deliver}}.
+
+%% 快速预检：deadline 过 ⇒ 终态 + {skipped, expired}；坐席身份缺失 ⇒ 拒。
+deliver_preflight(Impl, OrgId, Job, Params) ->
+    case deadline_passed(Job) of
+        true ->
+            _ = Impl:mark_job_skipped(OrgId, maps:get(id, Job), expired),
+            {skipped, expired};
+        false ->
+            case maps:get(seat_identity_id, Params, undefined) of
+                Seat when is_integer(Seat) ->
+                    seat_actor(Impl, OrgId, Seat, Params);
+                _ ->
+                    case seat_identity_from_config(Impl, OrgId) of
+                        {ok, Seat} -> seat_actor(Impl, OrgId, Seat, Params);
+                        {error, _} = Err -> Err
+                    end
+            end
+    end.
+
+%% actor 解析：Params.actor_user_id 显式注入优先（测试面），否则取
+%% seat 身份归属用户（canonical 出站 actor 非空不变量；见
+%% cs_pg_ai:identity_actor/2 注释——C 组「actor NULL」字面与既有
+%% eb_message domain 不变量冲突的实现性偏差，P0-4 state 详述）。
+seat_actor(Impl, OrgId, Seat, Params) ->
+    case maps:get(actor_user_id, Params, undefined) of
+        Actor when is_integer(Actor) ->
+            {ok, Seat, Actor};
+        _ ->
+            case Impl:identity_actor(OrgId, Seat) of
+                {ok, Actor} -> {ok, Seat, Actor};
+                {error, Reason} -> {error, {ai_seat_actor_unavailable, Reason}}
+            end
+    end.
+
+deadline_passed(#{deadline_at := Dl}) when is_integer(Dl), Dl > 0 ->
+    os:system_time(second) >= Dl;
+deadline_passed(_) ->
+    true.
+
+seat_identity_from_config(Impl, OrgId) ->
+    case Impl:fetch_config(OrgId) of
+        {ok, #{seat_identity_id := Seat}} when is_integer(Seat) -> {ok, Seat};
+        {ok, _} -> {error, ai_seat_unconfigured};
+        {error, Reason} -> {error, {ai_config_unavailable, Reason}}
+    end.
+
+deliver_message(
+    OrgId, WsId, Impl, Job, WorkerId, ExpectedVersion, SeatIdentity, ActorUser, Params
+) ->
+    JobId = maps:get(id, Job),
+    Hook = Impl:delivery_hook(OrgId, JobId, WorkerId, ExpectedVersion, #{
+        seat_identity_id => SeatIdentity,
+        gate_fun => maps:get(gate_fun, Params, undefined)
+    }),
+    MsgParams = #{
+        workspace_id => WsId,
+        conversation_id => maps:get(conversation_id, Job),
+        sender_type => <<"business_identity">>,
+        identity_id => SeatIdentity,
+        actor_user_id => ActorUser,
+        client_msg_id => reply_key(JobId),
+        body => maps:get(reply, Params, <<>>),
+        ai_delivery_hook => Hook
+    },
+    case cs_session_app:append_conversation_message(OrgId, MsgParams) of
+        {ok, _} ->
+            {ok, delivered};
+        {error, {skipped, Reason}} when Reason =:= expired; Reason =:= superseded ->
+            %% 钩子事务内复核失败已回滚消息；此处落 job 终态
+            %% （dead/cancelled + last_error_code 细分，02-B.4 返回值冻结形状）。
+            _ = Impl:mark_job_skipped(OrgId, JobId, Reason),
+            {skipped, Reason};
+        {error, {skipped, Other}} ->
+            {error, Other};
+        {error, Reason} ->
+            {error, Reason}
+    end.
+
+%% 投递幂等键（02-B.4 `reply_key(j)`）：跨重试稳定，一条逻辑 job 一条
+%% 逻辑回复（与 uq_csaid_reply 同键集）。
+reply_key(JobId) ->
+    <<"ai-job-", (integer_to_binary(JobId))/binary>>.
 
 %% ===================================================================
 %% 历史（多轮上下文）

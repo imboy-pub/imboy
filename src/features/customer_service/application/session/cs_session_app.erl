@@ -589,10 +589,32 @@ append_message_in(OrgId, WorkspaceId, Params) ->
                             %% 不落库），同 client_msg_id 重试即安全（无半态）。
                             %% 审计丢失显式失败（audit_append_failed），不静默
                             %% 降级为"发了没事件"。
-                            dispatch_message(OrgId, FacadeParams#{persist_hook => Hook})
+                            %% v4 P0-3（02-B.4）：AI 投递路径把 deadline/
+                            %% input_version 复核 + L4 delivery + job 终态并入
+                            %% 同一 canonical 事务——Params 带 ai_delivery_hook
+                            %% 时先于事件钩子执行（复核失败 ⇒ 整体回滚，
+                            %% 消息与 delivery 原子）。钩子经 append_* 参数
+                            %% 透传，非 sender 路径零影响。
+                            dispatch_message(
+                                OrgId,
+                                FacadeParams#{
+                                    persist_hook => compose_ai_hook(Params, Hook)
+                                }
+                            )
                     end
             end
     end.
+
+%% AI 投递钩子组合：AI 复核/落账先跑（失败即回滚，事件钩子不再执行）。
+compose_ai_hook(#{ai_delivery_hook := AiHook}, EventHook) when is_function(AiHook, 2) ->
+    fun(Conn, StoredMessage) ->
+        case AiHook(Conn, StoredMessage) of
+            ok -> EventHook(Conn, StoredMessage);
+            {error, _} = Err -> Err
+        end
+    end;
+compose_ai_hook(_Params, EventHook) ->
+    EventHook.
 
 %% F-2：canonical 事务内的 `message.appended` 事件写钩子。canonical tx 在
 %% 消息+审计+附件绑定写毕、事务仍开放时以 `(Conn, StoredMessage)` 调用本闭包；

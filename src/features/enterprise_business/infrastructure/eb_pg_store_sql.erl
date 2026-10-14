@@ -127,11 +127,17 @@ sql(fetch_contact_identity) ->
         "   AND w.id = $2 AND w.organization_id = $1"
     >>;
 sql(fetch_conversation) ->
+    %% 02-B.2 L1（v4 P0-3 方案甲）：canonical 接受路径上的会话级行锁。
+    %% FOR NO KEY UPDATE 不阻塞并发外键引用（区别于 FOR UPDATE），只与
+    %% 同行的写互斥 ⇒ 同 conversation 的消息事务（入站与 AI 投递共用
+    %% canonical 唯一写路径）严格串行，input_version 复核因此在持锁
+    %% 事务内稳定（探针 B2 的对治）。只读调用面短事务，锁开销可忽略。
     <<
         "SELECT id, organization_id, workspace_id, contact_id, business_identity_id, status,"
         "       version, notice_version, consent_at, consent_subject, consent_evidence_kind"
         "  FROM enterprise_conversation"
         " WHERE organization_id = $1 AND workspace_id = $2 AND id = $3"
+        " FOR NO KEY UPDATE"
     >>;
 %% EB-01 / A01.36 方案 a：授权层 hint 预取专用只读。**刻意不列入 statements()
 %% 冻结清单**（a01_every_statement_carries_both_tenants 双租户门不适用）：无

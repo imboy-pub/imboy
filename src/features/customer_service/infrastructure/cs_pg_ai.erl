@@ -41,6 +41,15 @@
     fetch_consume_cursor/3,
     list_consume_cursors/0,
     derive_job_tx/5,
+    %% B 组（v4 02-B）：租约四操作 + 投递数据面（02-B.4/B.5）。
+    claim_job/4,
+    renew_lease/5,
+    takeover_job/5,
+    fetch_job/2,
+    mark_job_skipped/3,
+    input_version/3,
+    delivery_hook/5,
+    identity_actor/2,
     %% 冻结语句静态断言面（cs_pg_seat:sql_statements/0 先例；零 DB）。
     sql_statements/0
 ]).
@@ -869,6 +878,361 @@ session_epoch(Conn, OrgId, WsId, SessionId) ->
     case elib_pg:query(Conn, Sql, [OrgId, WsId, SessionId]) of
         {ok, [#{<<"generation_epoch">> := Epoch}]} when is_integer(Epoch) -> Epoch;
         _ -> 1
+    end.
+
+%% ===================================================================
+%% B 组（v4 02-B）：租约四操作 + 投递数据面
+%% ===================================================================
+
+%% 租约 TTL 默认 60s（工程参数；job_timeout_ms 配置化读取属 P0-5 后接线）。
+-define(LEASE_TTL_SECONDS, 60).
+
+%% @doc 认领（02-B.5）：pending → running，CAS 带 version。影响 0 行 ⇒
+%% 已被认领或 version 失配（B-1 栅栏）。
+-spec claim_job(integer(), integer(), binary(), pos_integer()) ->
+    {ok, map()} | {error, already_claimed | not_found | term()}.
+claim_job(OrgId, JobId, WorkerId, TtlSeconds) ->
+    Sql = <<
+        "UPDATE customer_service_ai_job"
+        " SET status='running', lease_owner=$3, lease_until=now() + make_interval(secs => $4),"
+        "     version=version+1"
+        " WHERE organization_id=$1 AND id=$2 AND status='pending' AND attempt=attempt"
+        " RETURNING id, status, attempt, version, lease_owner,"
+        " extract(epoch from lease_until)::bigint AS lease_until,"
+        " extract(epoch from deadline_at)::bigint AS deadline_at"
+    >>,
+    case elib_pg:query(Sql, [OrgId, JobId, WorkerId, TtlSeconds]) of
+        {ok, [Row]} -> {ok, job_row(Row)};
+        {ok, []} -> {error, already_claimed};
+        {error, Reason} -> {error, Reason}
+    end.
+
+%% @doc 续租：owner + version 双断言。
+-spec renew_lease(integer(), integer(), binary(), integer(), pos_integer()) ->
+    ok | {error, lease_lost}.
+renew_lease(OrgId, JobId, WorkerId, ExpectedVersion, TtlSeconds) ->
+    lease_cast(
+        <<
+            "UPDATE customer_service_ai_job"
+            " SET lease_until=now() + make_interval(secs => $5), version=version+1"
+            " WHERE organization_id=$1 AND id=$2 AND lease_owner=$3 AND version=$4"
+            "   AND status='running'"
+        >>,
+        [OrgId, JobId, WorkerId, ExpectedVersion, TtlSeconds]
+    ).
+
+%% @doc 接管：**必须含 `lease_until < now()`**（02-B.5 冻结；缺此条件双活）。
+-spec takeover_job(integer(), integer(), binary(), integer(), pos_integer()) ->
+    ok | {error, lease_lost}.
+takeover_job(OrgId, JobId, WorkerId, ExpectedVersion, TtlSeconds) ->
+    lease_cast(
+        <<
+            "UPDATE customer_service_ai_job"
+            " SET lease_owner=$3, lease_until=now() + make_interval(secs => $5),"
+            "     version=version+1"
+            " WHERE organization_id=$1 AND id=$2 AND status='running' AND version=$4"
+            "   AND lease_until < now()"
+        >>,
+        [OrgId, JobId, WorkerId, ExpectedVersion, TtlSeconds]
+    ).
+
+lease_cast(Sql, Args) ->
+    case elib_pg:execute(Sql, Args) of
+        {ok, N} when N > 0 -> ok;
+        {ok, N, _} when N > 0 -> ok;
+        {ok, _, _, _} -> ok;
+        _ -> {error, lease_lost}
+    end.
+
+%% @doc AI seat 身份的归属用户（organization_business_identity.created_by_user_id）。
+%% 既有 canonical 不变量要求出站消息 actor_user_id 非空（eb_message domain）；
+%% AI 消息的发言方语义由 sender_type=business_identity + delivery.origin_kind
+%% 承载，actor 取身份归属账户（与坐席代发同构，不伪装人类对话方）。
+-spec identity_actor(integer(), integer()) -> {ok, integer()} | {error, term()}.
+identity_actor(OrgId, IdentityId) ->
+    Sql = <<
+        "SELECT created_by_user_id FROM organization_business_identity"
+        " WHERE organization_id=$1 AND id=$2"
+    >>,
+    case elib_pg:query(Sql, [OrgId, IdentityId]) of
+        {ok, [#{<<"created_by_user_id">> := Creator}]} when is_integer(Creator) ->
+            {ok, Creator};
+        {ok, _} ->
+            {error, identity_creator_missing};
+        {error, Reason} ->
+            {error, Reason}
+    end.
+
+%% job 七态（180 CHECK）binary → atom；未知值 fail-closed 原样返回。
+job_status(<<"pending">>) -> pending;
+job_status(<<"running">>) -> running;
+job_status(<<"retry">>) -> retry;
+job_status(<<"completed">>) -> completed;
+job_status(<<"cancelled">>) -> cancelled;
+job_status(<<"failed">>) -> failed;
+job_status(<<"dead">>) -> dead;
+job_status(Other) -> Other.
+
+%% @doc job 快读（投递编排的预检面）。
+-spec fetch_job(integer(), integer()) -> {ok, map()} | {error, not_found | term()}.
+fetch_job(OrgId, JobId) ->
+    Sql = <<
+        "SELECT id, organization_id, workspace_id, session_id, conversation_id,"
+        "       inbound_message_id, generation_epoch, context_watermark, status, attempt,"
+        "       version, lease_owner,"
+        "       extract(epoch from lease_until)::bigint AS lease_until,"
+        "       extract(epoch from deadline_at)::bigint AS deadline_at"
+        "  FROM customer_service_ai_job WHERE organization_id=$1 AND id=$2"
+    >>,
+    case
+        cs_pg_common:fetch_one(Sql, [OrgId, JobId], [
+            id,
+            organization_id,
+            workspace_id,
+            session_id,
+            conversation_id,
+            inbound_message_id,
+            generation_epoch,
+            context_watermark,
+            status,
+            attempt,
+            version,
+            lease_owner,
+            lease_until,
+            deadline_at
+        ])
+    of
+        {ok, Job} -> {ok, Job#{status => job_status(maps:get(status, Job))}};
+        {error, _} = Err -> Err
+    end.
+
+job_row(Row) ->
+    #{
+        id => maps:get(<<"id">>, Row),
+        status => job_status(maps:get(<<"status">>, Row)),
+        attempt => maps:get(<<"attempt">>, Row),
+        version => maps:get(<<"version">>, Row),
+        lease_owner => maps:get(<<"lease_owner">>, Row),
+        lease_until => maps:get(<<"lease_until">>, Row),
+        deadline_at => maps:get(<<"deadline_at">>, Row)
+    }.
+
+%% @doc 不可投递终态转换（02-B.4 错误语义）。180 迁移的 status CHECK 是七态
+%% （无 superseded/expired），映射：expired → dead、superseded → cancelled；
+%% 细分原因写 `last_error_code`，调用方返回值保持 `{skipped, expired |
+%% superseded}` 冻结形状。
+-spec mark_job_skipped(integer(), integer(), expired | superseded) ->
+    {ok, skipped, expired | superseded} | {error, term()}.
+mark_job_skipped(OrgId, JobId, Reason) ->
+    {Status, Code} =
+        case Reason of
+            expired -> {<<"dead">>, <<"expired">>};
+            superseded -> {<<"cancelled">>, <<"superseded">>}
+        end,
+    Sql = <<
+        "UPDATE customer_service_ai_job"
+        " SET status=$3, last_error_code=$4, version=version+1,"
+        "     lease_owner=NULL, lease_until=NULL, completed_at=now()"
+        " WHERE organization_id=$1 AND id=$2"
+    >>,
+    case elib_pg:execute(Sql, [OrgId, JobId, Status, Code]) of
+        {ok, _} -> {ok, skipped, Reason};
+        {ok, _, _} -> {ok, skipped, Reason};
+        {error, R} -> {error, R}
+    end.
+
+%% @doc `input_version` 求值（02-B.3.2 逐字；在持 L1 的 canonical 事务内
+%% 调用——方案甲的 conversation 行锁使入站写与本读互斥，B-5 稳定）。
+-spec input_version(term(), integer(), integer()) -> {ok, non_neg_integer()} | {error, term()}.
+input_version(Conn, OrgId, ConversationId) ->
+    Sql = <<
+        "SELECT COALESCE(max(m.id), 0) AS watermark"
+        "  FROM enterprise_message m"
+        " WHERE m.organization_id = $1"
+        "   AND m.conversation_id = $2"
+        "   AND m.sender_type     = 'contact'"
+    >>,
+    case elib_pg:query(Conn, Sql, [OrgId, ConversationId]) of
+        {ok, [#{<<"watermark">> := V}]} when is_integer(V) -> {ok, V};
+        {ok, _} -> {ok, 0};
+        {error, Reason} -> {error, Reason}
+    end.
+
+%% @doc AI 投递的 persist_hook 数据面（02-B.4 投递事务的尾部三件事）：
+%% deadline 复核 → input_version 复核（L1 内）→ L4 delivery 幂等 INSERT →
+%% job → completed（owner+version CAS）。任一失败返回 `{error, _}` ⇒
+%% canonical 事务整体回滚（消息与 delivery 原子，`{persist_hook_failed, _}`
+%% 由 canonical 解包）。注意 02-B.4 的 D 组 gate（faq_require_hit/citations）
+%% 与 E 组结算（L3）由 P0-5/P0-6 以 GateFun/after_delivery 注入，本版本
+%% 预留参数位。
+-spec delivery_hook(
+    integer(), integer(), binary(), integer(), map()
+) ->
+    fun((term(), map()) -> ok | {error, term()}).
+delivery_hook(OrgId, JobId, WorkerId, ExpectedVersion, Opts) ->
+    fun(Conn, StoredMessage) ->
+        Job0 = job_in_delivery_tx(Conn, OrgId, JobId),
+        Job = Job0#{seat_identity_id => maps:get(seat_identity_id, Opts)},
+        case maps:get(status, Job) of
+            running ->
+                deliver_check_deadline(
+                    Conn,
+                    OrgId,
+                    JobId,
+                    Job,
+                    WorkerId,
+                    ExpectedVersion,
+                    StoredMessage,
+                    Opts
+                );
+            _ ->
+                {error, {skipped, job_not_running}}
+        end
+    end.
+
+job_in_delivery_tx(Conn, OrgId, JobId) ->
+    %% L2：job 行锁（FOR UPDATE）——投递事务内的栅栏。
+    Sql = <<
+        "SELECT workspace_id, session_id, status, lease_owner, version, attempt,"
+        "       conversation_id, context_watermark, generation_epoch,"
+        "       extract(epoch from deadline_at)::bigint AS deadline_at"
+        "  FROM customer_service_ai_job WHERE organization_id=$1 AND id=$2 FOR UPDATE"
+    >>,
+    case elib_pg:query(Conn, Sql, [OrgId, JobId]) of
+        {ok, [Row]} ->
+            #{
+                workspace_id => maps:get(<<"workspace_id">>, Row),
+                session_id => maps:get(<<"session_id">>, Row),
+                status => job_status(maps:get(<<"status">>, Row)),
+                lease_owner => maps:get(<<"lease_owner">>, Row),
+                version => maps:get(<<"version">>, Row),
+                attempt => maps:get(<<"attempt">>, Row),
+                conversation_id => maps:get(<<"conversation_id">>, Row),
+                context_watermark => maps:get(<<"context_watermark">>, Row),
+                generation_epoch => maps:get(<<"generation_epoch">>, Row),
+                deadline_at => maps:get(<<"deadline_at">>, Row)
+            };
+        {ok, []} ->
+            throw({delivery_failed, job_not_found});
+        {error, Reason} ->
+            throw({delivery_failed, Reason})
+    end.
+
+deliver_check_deadline(
+    Conn, OrgId, JobId, Job, WorkerId, ExpectedVersion, StoredMessage, Opts
+) ->
+    case maps:get(deadline_at, Job) of
+        Dl when is_integer(Dl), Dl > 0 ->
+            Now = os:system_time(second),
+            case Now >= Dl of
+                true ->
+                    %% 超时终态写在钩子外由调用方 mark_job_skipped 完成；
+                    %% 钩子内只裁决"不投递"（回滚消息）。
+                    {error, {skipped, expired}};
+                false ->
+                    deliver_check_lease_and_version(
+                        Conn, OrgId, JobId, Job, WorkerId, ExpectedVersion, StoredMessage, Opts
+                    )
+            end;
+        _ ->
+            {error, {skipped, expired}}
+    end.
+
+deliver_check_lease_and_version(
+    Conn, OrgId, JobId, Job, WorkerId, ExpectedVersion, StoredMessage, Opts
+) ->
+    case
+        maps:get(lease_owner, Job) =:= WorkerId andalso
+            maps:get(version, Job) =:= ExpectedVersion
+    of
+        false ->
+            %% 陈旧租约/失配 version ⇒ I4：不产生任何副作用（回滚消息）。
+            {error, {skipped, lease_lost}};
+        true ->
+            deliver_check_input(
+                Conn, OrgId, JobId, Job, WorkerId, ExpectedVersion, StoredMessage, Opts
+            )
+    end.
+
+deliver_check_input(
+    Conn, OrgId, JobId, Job, WorkerId, ExpectedVersion, StoredMessage, Opts
+) ->
+    ConversationId = maps:get(conversation_id, Job),
+    {ok, Current} = input_version(Conn, OrgId, ConversationId),
+    case Current > maps:get(context_watermark, Job, 0) of
+        true ->
+            {error, {skipped, superseded}};
+        false ->
+            run_delivery_gates(
+                Conn, OrgId, JobId, Job, WorkerId, ExpectedVersion, StoredMessage, Opts
+            )
+    end.
+
+%% P0-5/P0-6 的注入位：Opts.gate_fun(Conn, Job) -> ok | {error, {skipped, X}}
+%% （D 组证据 gate）；通过后写 L4 + 完成 job。
+run_delivery_gates(Conn, OrgId, JobId, Job, WorkerId, ExpectedVersion, StoredMessage, Opts) ->
+    case maps:get(gate_fun, Opts, undefined) of
+        Gate when is_function(Gate, 2) ->
+            case Gate(Conn, Job) of
+                ok ->
+                    write_delivery_row(
+                        Conn, OrgId, JobId, Job, WorkerId, ExpectedVersion, StoredMessage
+                    );
+                {error, _} = Err ->
+                    Err
+            end;
+        _ ->
+            write_delivery_row(
+                Conn, OrgId, JobId, Job, WorkerId, ExpectedVersion, StoredMessage
+            )
+    end.
+
+write_delivery_row(Conn, OrgId, JobId, Job, WorkerId, ExpectedVersion, StoredMessage) ->
+    MessageId = maps:get(id, StoredMessage),
+    %% seat_identity_id 不在 job 表——由编排层从 agent 配置经 Opts 注入。
+    SeatIdentity =
+        case Job of
+            #{seat_identity_id := Sid} -> Sid;
+            _ -> erlang:error({delivery_failed, seat_identity_missing})
+        end,
+    Sql = <<
+        "INSERT INTO customer_service_ai_delivery"
+        " (organization_id, workspace_id, session_id, job_id, message_id, conversation_id,"
+        "  origin_kind, seat_identity_id, generation_epoch)"
+        " VALUES ($1,$2,$3,$4,$5,$6,'ai_product',$7,$8)"
+        " ON CONFLICT (organization_id, session_id, job_id) DO NOTHING"
+    >>,
+    case
+        elib_pg:execute(Conn, Sql, [
+            OrgId,
+            maps:get(workspace_id, Job),
+            maps:get(session_id, Job),
+            JobId,
+            MessageId,
+            maps:get(conversation_id, Job),
+            SeatIdentity,
+            maps:get(generation_epoch, Job)
+        ])
+    of
+        {ok, N} when N > 0 -> complete_job_in_tx(Conn, OrgId, JobId, WorkerId, ExpectedVersion);
+        {ok, N, _} when N > 0 -> complete_job_in_tx(Conn, OrgId, JobId, WorkerId, ExpectedVersion);
+        _ ->
+            %% uq_csaid_reply 冲突：另一 worker 已投递（B-3）⇒ 本侧让位。
+            {error, {skipped, already_delivered}}
+    end.
+
+complete_job_in_tx(Conn, OrgId, JobId, WorkerId, ExpectedVersion) ->
+    Sql = <<
+        "UPDATE customer_service_ai_job"
+        " SET status='completed', version=version+1, lease_owner=NULL, lease_until=NULL,"
+        "     completed_at=now()"
+        " WHERE organization_id=$1 AND id=$2 AND lease_owner=$3 AND version=$4"
+        "   AND status='running'"
+    >>,
+    case elib_pg:execute(Conn, Sql, [OrgId, JobId, WorkerId, ExpectedVersion]) of
+        {ok, N} when N > 0 -> ok;
+        {ok, N, _} when N > 0 -> ok;
+        _ -> {error, {skipped, lease_lost}}
     end.
 
 int_opt(Opts, Key, Default) when is_map(Opts) ->
