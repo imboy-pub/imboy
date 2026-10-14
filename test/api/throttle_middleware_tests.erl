@@ -259,3 +259,63 @@ uid_vs_ip_selection_ip_test_() ->
             ?assertMatch({ok, _, _}, Result)
         end
     ).
+
+%% ===================================================================
+%% Limiter V1 L0 缺陷复现（计划 docs/plans/2026-10-13-limiter-v1-*
+%% §5.F7、§9.2 AC-14）。真实 throttle 库（deps/throttle，未 mock）。
+%% oracle：断言旧实现的坏结果；L3 scope 迁移到唯一 owner 后翻转。
+%% ===================================================================
+
+-define(L0_SCOPE, limiter_l0_probe_20261014).
+
+%% 记录当前 throttle_sup children 的 pid 集
+l0_scope_workers() ->
+    [Pid || {_, Pid, _, _} <- supervisor:which_children(throttle_sup), is_pid(Pid)].
+
+%% AC-14 旧侧复现：throttle:setup/3 每次调用都 start_child 一个新 worker
+%% 并让新 worker initialize 覆写 scope→表 映射（throttle_ets:initialize/3），
+%% 旧 worker 连同它的 reset timer 一起存活。reset 按 scope 查**最新**表
+%% （throttle_ets:reset/2）——旧 worker 的 timer 触发 reset_counters 时，
+%% 清掉的是新表的全部计数。重复装配不幂等，且旧 timer 持续重置新额度。
+%% 生产中 imboy_app:init_throttle_rates/0 与 throttle_app（sys.config rates）
+%% 对 api_per_ip / passport_per_ip 各 setup 一次即构成此形态。
+limiter_scope_owner_test_() ->
+    {timeout, 30,
+        ?WITH_MECKS(
+            [],
+            fun() ->
+                Before = l0_scope_workers(),
+                %% 第一次装配（N=2/min）
+                ok = throttle:setup(?L0_SCOPE, 2, per_minute),
+                [WorkerA] = l0_scope_workers() -- Before,
+                %% 占满额度（真实 update_counter；N=2，第 3 次拒绝）
+                {ok, _, _} = throttle:check(?L0_SCOPE, l0_key),
+                {ok, _, _} = throttle:check(?L0_SCOPE, l0_key),
+                {limit_exceeded, 0, _} = throttle:check(?L0_SCOPE, l0_key),
+                %% 第二次装配（重复 setup，新 worker + 新表，覆写映射）
+                AfterA = l0_scope_workers(),
+                ok = throttle:setup(?L0_SCOPE, 2, per_minute),
+                [WorkerB] = l0_scope_workers() -- AfterA,
+                true = (WorkerA =/= WorkerB),
+                %% 新表满额度：2 次通过、第 3 次拒绝
+                {ok, _, _} = throttle:check(?L0_SCOPE, l0_key),
+                {ok, _, _} = throttle:check(?L0_SCOPE, l0_key),
+                {limit_exceeded, 0, _} = throttle:check(?L0_SCOPE, l0_key),
+                %% 旧 worker 的 reset timer 到期（或任何来源的重复 reset）：
+                %% 直接投递 reset_counters 消息（与 timer:send_interval 投递
+                %% 的消息一致），旧 worker 按 scope 找到的是**新表**
+                WorkerA ! reset_counters,
+                %% 同步等待旧 worker 处理完该消息（sys 消息排在普通消息之后，
+                %% get_state 返回即表示 reset_counters 已处理完）
+                {_, _, _} = sys:get_state(WorkerA),
+                %% L0 旧侧 oracle：新表的额度被旧 worker 清零——第 4 次请求
+                %% 又被放行（N+1 饱和计数同时被重置）
+                ?assertMatch({ok, _, _}, throttle:check(?L0_SCOPE, l0_key)),
+                %% 清理：杀掉本用例创建的两个 worker（transient，不重启），
+                %% 其拥有的匿名表随之消亡；删除 STATE_TABLE 的 scope 行
+                exit(WorkerA, shutdown),
+                exit(WorkerB, shutdown),
+                true = ets:delete(throttle_state_table, ?L0_SCOPE),
+                ok
+            end
+        )}.

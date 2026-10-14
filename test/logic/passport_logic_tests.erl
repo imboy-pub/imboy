@@ -769,3 +769,191 @@ record_login_device_failure_test_() ->
             )
         end
     ).
+
+%% ===================================================================
+%% Limiter V1 L0 缺陷复现（计划 docs/plans/2026-10-13-limiter-v1-*
+%% §5.F2/F3、§9.2 AC-02）。真实 login_security_logic + 真实
+%% login_attempt_ds（含 ETS），只 mock 存储边界（user_ds /
+%% verification_code_ds / token 签发）。oracle 说明：断言**旧实现的坏
+%% 结果**（复现成功 = 测试通过）；L3 修复后按 AC-02 翻转 oracle。
+%% ===================================================================
+
+-define(L0_ID, <<"limiter-l0@e2e.test">>).
+-define(L0_ACCT, <<"limiter-l0-acct">>).
+-define(L0_NOW_TS, <<"2026-10-14T00:00:00Z">>).
+
+l0_ensure_ds() ->
+    case whereis(login_attempt_ds) of
+        undefined -> {ok, _} = login_attempt_ds:start_link();
+        _ -> ok
+    end,
+    ets:delete_all_objects(login_attempt_ets),
+    application:set_env(imboy, login_max_attempts, 5),
+    application:set_env(imboy, login_lock_duration_minutes, 30),
+    ok.
+
+l0_mock_log() ->
+    {elib_log, [
+        {'internal_log', 4, fun(_Level, _Msg, _Module, _Line) -> ok end}
+    ]}.
+
+l0_user_map() ->
+    #{
+        <<"id">> => 990001,
+        <<"password">> => <<"$2a$12$hash">>,
+        <<"email">> => ?L0_ID,
+        <<"nickname">> => <<"L0">>,
+        <<"avatar">> => <<>>,
+        <<"account">> => ?L0_ACCT,
+        <<"gender">> => 0,
+        <<"region">> => <<>>,
+        <<"sign">> => <<>>,
+        <<"status">> => 1
+    }.
+
+l0_user_map(StatusOverride) ->
+    (l0_user_map())#{<<"status">> => StatusOverride}.
+
+%% code 路径锁定门所需的共享 mock：验证码消费可观测、用户查询可控。
+l0_code_mocks(UserMap, ConsumeFun) ->
+    [
+        l0_mock_log(),
+        {elib_dt, [
+            {'now', 0, fun() -> ?L0_NOW_TS end},
+            {'add', 2, fun(_From, _Dur) -> <<"2026-10-14T00:30:00Z">> end}
+        ]},
+        {verification_code_ds, [
+            {'consume', 2, ConsumeFun}
+        ]},
+        {user_ds, [
+            {'find_by_email', 2, fun(?L0_ID, _Fields) -> UserMap end},
+            {'find_by_account', 2, fun(?L0_ACCT, _Fields) -> UserMap end}
+        ]},
+        {token_ds, [
+            {'encrypt_token', 2, fun(_Uid, _Did) -> <<"l0-token">> end},
+            {'encrypt_token', 1, fun(_Uid) -> <<"l0-token">> end},
+            {'encrypt_refreshtoken', 2, fun(_Uid, _Did) -> <<"l0-rtoken">> end},
+            {'encrypt_refreshtoken', 1, fun(_Uid) -> <<"l0-rtoken">> end}
+        ]},
+        {user_device_logic, [
+            {'validate_device_type', 1, fun(_) -> true end},
+            {'check_login_conflict', 2, fun(_, _) -> {ok, no_conflict} end}
+        ]},
+        {user_log_ds, [
+            {'add_internal', 5, fun(_, _, _, _, _) -> ok end}
+        ]}
+    ].
+
+%% AC-02（F2）旧侧复现：check_login_allowed 的真实返回是三元组
+%% {error, locked, LockInfo}，而 do_login_by_code/5 只匹配二元组
+%% {error, LockMsg}——锁定结果落到默认分支继续消费验证码。真实 D/S，
+%% 锁定状态按计划 §5.F2 以 ETS fixture 注入该入口实际使用的
+%% {Account, <<>>} 键（record_failure 拒绝空 IP，真实链无法写入此键，
+%% 这本身就是 F1 的另一半证据）。
+limiter_code_locked_test_() ->
+    {timeout, 30,
+        ?WITH_MECKS(
+            l0_code_mocks(l0_user_map(), fun(_Id, _Code) -> {ok, <<"verified">>} end),
+            fun() ->
+                ok = l0_ensure_ds(),
+                %% 注入锁定：count 已达 5（阈值），窗口内
+                ets:insert(
+                    login_attempt_ets,
+                    {
+                        login_attempt_ds:cache_key(?L0_ID, <<>>),
+                        #{<<"count">> => 5, <<"first_fail_at">> => ?L0_NOW_TS}
+                    }
+                ),
+                ?assertEqual(true, login_attempt_ds:is_locked(?L0_ID, <<>>)),
+                persistent_term:put({?MODULE, l0_consumed}, 0),
+                try
+                    ok = meck:expect(verification_code_ds, consume, fun(_Id, _Code) ->
+                        persistent_term:put({?MODULE, l0_consumed}, 1),
+                        {ok, <<"verified">>}
+                    end),
+                    Result = passport_logic:do_login_by_code(
+                        <<"email">>, ?L0_ID, <<"123456">>, <<"android">>, <<"l0-did">>
+                    ),
+                    %% L0 旧侧 oracle：锁定门失效——验证码仍被消费，且锁定状态下
+                    %% 登录竟然成功
+                    ?assertEqual(1, persistent_term:get({?MODULE, l0_consumed}, 0)),
+                    ?assertMatch({ok, _}, Result)
+                after
+                    %% 断言失败也保证清理 VM 级键与 ETS 状态
+                    persistent_term:erase({?MODULE, l0_consumed}),
+                    ets:delete_all_objects(login_attempt_ets)
+                end,
+                ok
+            end
+        )}.
+
+%% F3a 旧侧复现：code 路径的失败计数键是**输入** Account（do_login_by_code
+%% 的 check 与 record_login_failure 均用输入值），成功 reset 的键却是
+%% **User.account**（do_login_by_code_verify 从查回用户提取）——同一账户
+%% 两个别名落两个键，成功登录清不掉别名的失败历史（反之亦然）。
+%% 失败历史按计划允许以 ETS fixture 注入（真实 record_failure 因空 IP
+%% 断链写不进，见 F1/AC-01）。
+limiter_identity_key_fork_test_() ->
+    {timeout, 30,
+        ?WITH_MECKS(
+            l0_code_mocks(l0_user_map(), fun(_Id, _Code) -> {ok, <<"verified">>} end),
+            fun() ->
+                ok = l0_ensure_ds(),
+                %% 以 email 输入失败 4 次后的历史（键 = 输入 email）
+                ets:insert(
+                    login_attempt_ets,
+                    {
+                        login_attempt_ds:cache_key(?L0_ID, <<>>),
+                        #{<<"count">> => 4, <<"first_fail_at">> => ?L0_NOW_TS}
+                    }
+                ),
+                %% 以同一 email 输入 + 正确验证码成功登录
+                Result = passport_logic:do_login_by_code(
+                    <<"email">>, ?L0_ID, <<"123456">>, <<"android">>, <<"l0-did">>
+                ),
+                ?assertMatch({ok, _}, Result),
+                %% L0 旧侧 oracle：成功登录后，输入键的失败历史原样残留
+                %%（reset 清的是 User.account 键，别名的失败历史不被成功清除）
+                ?assertEqual(
+                    {ok, 4},
+                    login_attempt_ds:get_attempts(?L0_ID, <<>>)
+                ),
+                ?assertEqual(
+                    {ok, 0},
+                    login_attempt_ds:get_attempts(?L0_ACCT, <<>>)
+                ),
+                ets:delete_all_objects(login_attempt_ets),
+                ok
+            end
+        )}.
+
+%% F3b 旧侧复现：code 路径在检查用户 status **之前**就 reset（成功 reset
+%% 早于"账户被禁用"判定）——禁用账户的一次失败登录会清掉全部失败历史。
+limiter_code_reset_before_status_test_() ->
+    {timeout, 30,
+        ?WITH_MECKS(
+            l0_code_mocks(l0_user_map(0), fun(_Id, _Code) -> {ok, <<"verified">>} end),
+            fun() ->
+                ok = l0_ensure_ds(),
+                %% 键 = 输入 account（与 User.account 相同，隔离键分叉变量）
+                ets:insert(
+                    login_attempt_ets,
+                    {
+                        login_attempt_ds:cache_key(?L0_ACCT, <<>>),
+                        #{<<"count">> => 3, <<"first_fail_at">> => ?L0_NOW_TS}
+                    }
+                ),
+                %% 有效验证码 + 禁用账户（status=0）
+                Result = passport_logic:do_login_by_code(
+                    <<"account">>, ?L0_ACCT, <<"123456">>, <<"android">>, <<"l0-did">>
+                ),
+                ?assertMatch({error, _}, Result),
+                %% L0 旧侧 oracle：登录失败，但失败计数已被清零（过早 reset）
+                ?assertEqual(
+                    {ok, 0},
+                    login_attempt_ds:get_attempts(?L0_ACCT, <<>>)
+                ),
+                ets:delete_all_objects(login_attempt_ets),
+                ok
+            end
+        )}.
