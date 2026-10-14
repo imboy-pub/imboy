@@ -59,6 +59,8 @@
 
 -define(DEFAULT_UPLOAD_TTL_SEC, 900).
 -define(MAX_UPLOAD_TTL_SEC, 3600).
+%% V5 会话绝对 deadline（02 §143：登记 DB 时间 + 2h，不可延长）。
+-define(V5_EB_SESSION_DEADLINE_SEC, 7200).
 -define(DEFAULT_CLEANUP_TTL_SEC, 3600).
 
 %% ===================================================================
@@ -239,30 +241,106 @@ presign_mint(OrgId, Args, Retain, Params) ->
         {ok, Ttl} ->
             AssetId = Id:new_id(enterprise_asset),
             ExpiresAt = Now + Ttl,
-            Aad = eb_asset_upload_ref:aad(
-                OrgId, maps:get(ws, Args), maps:get(conv, Args), msg_or_undefined(Params)
-            ),
-            Claims = maps:merge(
-                #{
-                    asset_id => AssetId,
-                    object_hash => maps:get(hash, Args),
-                    mime => maps:get(mime, Args),
-                    size_bytes => maps:get(size, Args),
-                    file_name => maps:get(file_name, Args, undefined),
-                    retain_until => Retain,
-                    conversation_id => maps:get(conv, Args),
-                    message_id => msg_or_undefined(Params),
-                    issued_at => Now,
-                    expires_at => ExpiresAt
-                },
-                actor_claim(maps:get(actor, Args))
-            ),
-            case eb_asset_upload_ref:mint(Aad, Claims, Crypto, KeyRef) of
-                {ok, Token} ->
-                    {ok, presign_view(AssetId, Args, Retain, ExpiresAt, Token)};
+            %% V5（02 §137/§143 + F20）：带 client_upload_id 的会话先登记
+            %% （预建 pending 主行 + fn_v5_register_eb 填会话列），登记失败
+            %% 不 mint 任何能力（失败关闭）；旧客户端（无 UUID）行为不变。
+            case maybe_v5_register(OrgId, Args, Params, AssetId, Now, ExpiresAt) of
                 {error, _} = Err ->
-                    Err
+                    Err;
+                ok ->
+                    Aad = eb_asset_upload_ref:aad(
+                        OrgId, maps:get(ws, Args), maps:get(conv, Args), msg_or_undefined(Params)
+                    ),
+                    Claims = maps:merge(
+                        #{
+                            asset_id => AssetId,
+                            object_hash => maps:get(hash, Args),
+                            mime => maps:get(mime, Args),
+                            size_bytes => maps:get(size, Args),
+                            file_name => maps:get(file_name, Args, undefined),
+                            retain_until => Retain,
+                            conversation_id => maps:get(conv, Args),
+                            message_id => msg_or_undefined(Params),
+                            issued_at => Now,
+                            expires_at => ExpiresAt
+                        },
+                        actor_claim(maps:get(actor, Args))
+                    ),
+                    case eb_asset_upload_ref:mint(Aad, Claims, Crypto, KeyRef) of
+                        {ok, Token} ->
+                            {ok, presign_view(AssetId, Args, Retain, ExpiresAt, Token)};
+                        {error, _} = Err1 ->
+                            Err1
+                    end
             end
+    end.
+
+%% V5 会话登记（EB 主行即 session）。Subject kind 按 actor 主体分流：
+%% member→seat、contact→visitor_session（fn_v5_register_eb 白名单）。
+%% 快照只含稳定声明（mime/hash/size/file_name/conv/msg/retain），不含
+%% 能力 token/到期（02 §15：快照不含能力）。
+maybe_v5_register(OrgId, Args, Params, AssetId, Now, ExpiresAt) ->
+    case maps:get(client_upload_id, Params, undefined) of
+        undefined ->
+            ok;
+        Cid when is_binary(Cid), byte_size(Cid) =:= 36 ->
+            Ws = maps:get(ws, Args),
+            ObjectKey = eb_pg_asset_meta:object_key(OrgId, Ws, AssetId),
+            Actor = maps:get(actor, Args),
+            SubjectKind =
+                case maps:get(kind, Actor, member) of
+                    contact -> <<"visitor_session">>;
+                    _ -> <<"seat">>
+                end,
+            Registration = #{
+                <<"subject">> => #{
+                    <<"kind">> => SubjectKind,
+                    <<"principal">> => integer_to_binary(maps:get(id, Actor)),
+                    <<"org_id">> => integer_to_binary(OrgId)
+                },
+                <<"declaration">> => #{
+                    <<"mime">> => maps:get(mime, Args),
+                    <<"object_hash">> => maps:get(hash, Args),
+                    <<"size_bytes">> => maps:get(size, Args),
+                    <<"file_name">> => maps:get(file_name, Args, undefined),
+                    <<"conversation_id">> => maps:get(conv, Args),
+                    <<"message_id">> => msg_or_undefined(Params),
+                    <<"retain_until">> => maps:get(retain_until, Args, undefined)
+                }
+            },
+            Descriptor = #{
+                id => AssetId,
+                object_hash => maps:get(hash, Args),
+                mime => maps:get(mime, Args),
+                size_bytes => maps:get(size, Args),
+                file_name => maps:get(file_name, Args, undefined),
+                conversation_id => maps:get(conv, Args),
+                message_id => msg_or_undefined(Params)
+            },
+            case eb_pg_asset_meta:insert_asset(OrgId, Ws, Descriptor) of
+                {ok, _Row} ->
+                    Deadline = Now + ?V5_EB_SESSION_DEADLINE_SEC,
+                    case
+                        eb_pg_asset_meta:register_v5(
+                            OrgId,
+                            Ws,
+                            AssetId,
+                            ObjectKey,
+                            Cid,
+                            Registration,
+                            SubjectKind,
+                            Deadline,
+                            ExpiresAt
+                        )
+                    of
+                        {ok, _} -> ok;
+                        {error, Reason} -> {error, {v5_registration_failed, Reason}}
+                    end;
+                {error, Reason} ->
+                    {error, {v5_registration_failed, Reason}}
+            end;
+        Other ->
+            {error, {invalid_client_upload_id, Other}}
     end.
 
 %% 凭证 actor claim：按主体种类二选一落 claims（D6；与 upload_ref 的
