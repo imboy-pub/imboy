@@ -159,7 +159,7 @@ workspace_tablename() ->
     elib_pg_sql:public_tablename(<<"workspace">>).
 
 %% @doc 幂等邀请或恢复。active 同角色不写库；active 异角色交给角色接口处理。
--spec upsert_active_tx(any(), integer(), integer(), binary(), integer()) ->
+-spec upsert_active_tx(any(), integer(), integer(), binary(), integer() | null) ->
     {ok, changed | unchanged | role_conflict, map()} | {error, term()}.
 upsert_active_tx(Conn, OrgId, Uid, Role, InvitedBy) ->
     case find_for_update_tx(Conn, OrgId, Uid, <<"role,status">>) of
@@ -202,7 +202,7 @@ find_active_with(Query, OrgId, Uid, Columns) ->
         {error, Reason} -> {error, Reason}
     end.
 
--spec activate_tx(any(), integer(), integer(), binary(), integer()) ->
+-spec activate_tx(any(), integer(), integer(), binary(), integer() | null) ->
     {ok, changed, map()} | {error, term()}.
 activate_tx(Conn, OrgId, Uid, Role, InvitedBy) ->
     Sql =

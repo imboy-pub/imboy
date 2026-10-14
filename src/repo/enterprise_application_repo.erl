@@ -455,14 +455,10 @@ normalize_size(S) when is_integer(S), S > 0 -> S;
 normalize_size(_) -> 10.
 
 %% @doc 逐条拼 WHERE 条件，同时按最终位置生成 $N 占位符（避免手写错位）。
--spec build_list_filters(integer() | all, undefined | binary(), undefined | binary()) ->
+-spec build_list_filters(integer(), undefined | binary(), undefined | binary()) ->
     {[binary()], [term()]}.
-build_list_filters(Scope, Status, Q) ->
-    {BaseConds, BaseParams} =
-        case Scope of
-            all -> {[<<"TRUE">>], []};
-            OrgId when is_integer(OrgId) -> {[<<"organization_id = $1">>], [OrgId]}
-        end,
+build_list_filters(OrgId, Status, Q) ->
+    {BaseConds, BaseParams} = {[<<"organization_id = $1">>], [OrgId]},
     {Conds, Params} =
         case Status of
             undefined ->
