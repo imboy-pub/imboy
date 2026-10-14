@@ -481,10 +481,13 @@ bind_validated(Conn, OrgId, WorkspaceId, Stored, AssetIds, Rows, ConversationId,
     end.
 
 %% 逐行可绑校验（attachment-state-machine：Org/Workspace 由语句作用域保证；
-%% 这里裁决 unbound / 会话一致 / 上传人主体一致；retain_until 由 SQL
+%% 这里裁决 live / unbound / 会话一致 / 上传人主体一致；retain_until 由 SQL
 %% GREATEST + 迁移 118 触发器裁决）。
+%% W3-03 资格（02 §4/§5）：删除意图先提交（lifecycle!=live）的对象不再允许
+%% 新增引用——墓碑资产按 not_found 裁决（与「不存在」不区分，不泄露状态）。
 bindable(Row, Stored, ConversationId) ->
     maps:get(status, Row) =:= active andalso
+        maps:get(lifecycle_state, Row, <<"live">>) =:= <<"live">> andalso
         maps:get(message_id, Row, undefined) =:= undefined andalso
         maps:get(conversation_id, Row, undefined) =:= ConversationId andalso
         uploader_matches(Row, Stored).

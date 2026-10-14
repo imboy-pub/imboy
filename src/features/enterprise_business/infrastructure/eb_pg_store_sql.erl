@@ -194,16 +194,36 @@ sql(fetch_message_by_client) ->
 sql(lock_assets_by_ids) ->
     <<
         "SELECT a.id, a.conversation_id, a.message_id, a.status,"
-        " a.uploaded_by_user_id, a.retain_until"
+        " a.uploaded_by_user_id, a.retain_until, a.lifecycle_state"
         "  FROM enterprise_asset a"
         " WHERE a.organization_id = $1 AND a.workspace_id = $2"
         "   AND a.id = ANY($3::bigint[])"
         " ORDER BY a.id"
         " FOR UPDATE"
     >>;
+%% W3-03 锁序（02 §4）：绑定入口参与跨域对象身份锁——身份读按完整 identity
+%% 字节序（COLLATE "C"）返回，调用方逐个取 advisory 锁后再 FOR UPDATE。
+%% 身份三主体+object_key 首次写入后不可变（03），锁前无锁读无漂移窗口。
+sql(lock_assets_identity) ->
+    <<
+        "SELECT a.id, a.storage_driver, a.storage_namespace,"
+        " a.storage_container, a.object_key"
+        "  FROM enterprise_asset a"
+        " WHERE a.organization_id = $1 AND a.workspace_id = $2"
+        "   AND a.id = ANY($3::bigint[])"
+        " ORDER BY a.storage_driver COLLATE \"C\", a.storage_namespace COLLATE \"C\","
+        "   a.storage_container COLLATE \"C\", a.object_key COLLATE \"C\""
+    >>;
+%% 与 fn_v5_lock_identity 逐字同键同 seed（03：不同实现必须同一规范）。
+sql(lock_asset_identity) ->
+    <<
+        "SELECT pg_advisory_xact_lock(hashtextextended("
+        " jsonb_build_array($1::text, $2::text, $3::text, $4::text)::text, 1685))"
+    >>;
 %% BE-PATCH-01：绑定（写 message_id）。只接 active+unbound；retain_until 取
 %% 「资产现有值与消息保留期的较大者」（只能后移；NULL 资产继承消息保留期——
 %% 迁移 118 触发器在 message_id 非空时要求 retain 非空且 >= 消息值，此处预满足）。
+%% W3-03 资格（02 §5）：删除意图先提交（lifecycle!=live）后禁止新增引用。
 sql(bind_asset_message) ->
     <<
         "UPDATE enterprise_asset a"
@@ -212,6 +232,7 @@ sql(bind_asset_message) ->
         "       version = a.version + 1, updated_at = now()"
         " WHERE a.organization_id = $1 AND a.workspace_id = $2 AND a.id = $3"
         "   AND a.status = 'active' AND a.message_id IS NULL"
+        "   AND a.lifecycle_state = 'live'"
         " RETURNING a.id"
     >>;
 %% BE-PATCH-01：读某消息已绑定的资产 id 集（重放奇偶校验：同一 client_msg_id +
@@ -391,6 +412,8 @@ statements() ->
         sql(list_messages),
         %% BE-PATCH-01：消息-附件事务绑定（attachment-state-machine）。
         sql(lock_assets_by_ids),
+        sql(lock_assets_identity),
+        sql(lock_asset_identity),
         sql(bind_asset_message),
         sql(fetch_asset_ids_by_message),
         %% CS-BE-01：POST 回显的资产白名单投影（canonical 事务内）。
