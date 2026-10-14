@@ -26,8 +26,14 @@
 %%% gitignored 的 _build/ 下）；mock handler，不接真实 Model/Tool/DB/网络。
 
 -define(HIRD_BIN, os:getenv("IMBOY_HIRD_BIN", "hird")).
+%% 输出根目录可经 IMBOY_HIRD_OUT_ROOT 覆盖（默认工作目录下 _build/，gitignored）。
+%% P0（IMBOY_HIRD_AUTH_REPLAY_POC_V1）：原值硬编码旧 worktree 绝对路径，
+%% 旧目录残留历史 BEAM 且 ensure_built 见 BEAM 即复用——无法证明被测产物
+%% 来自本轮工具链。改为相对默认 + IMBOY_HIRD_FORCE_REBUILD=1 时强制重建。
 -define(OUT_ROOT,
-    <<"/Users/leeyi/project/imboy.pub/.worktrees/track-agent-v31-20260916/imboy/_build/spike_ag31_10a">>
+    unicode:characters_to_binary(
+        os:getenv("IMBOY_HIRD_OUT_ROOT", "_build/hird_poc_v1/spike")
+    )
 ).
 
 %%% hird 源程序（两个纯函数实例 + 两个带 supervisor 树实例）。
@@ -431,6 +437,7 @@ case_host_mock_injection() ->
 ensure_built(Which) ->
     OutDir = out_dir(Which),
     BeamFile = filename:join([OutDir, program_module(Which) ++ ".beam"]),
+    ok = maybe_force_rebuild(OutDir),
     case filelib:is_regular(BeamFile) of
         true -> ok;
         false -> build_program(Which, OutDir)
@@ -446,6 +453,17 @@ ensure_built(Which) ->
         %% 未加载才 load：同 beam 反复 load_file 会累积 old 版本（not_purged）.
         false ->
             {module, Mod} = code:load_file(Mod),
+            ok
+    end.
+
+%% P0：IMBOY_HIRD_FORCE_REBUILD=1 时清空本实例输出目录，确保 BEAM 来自
+%% 本轮 IMBOY_HIRD_BIN 指定的编译器，而非目录中恰好存在的旧产物。
+maybe_force_rebuild(OutDir) ->
+    case os:getenv("IMBOY_HIRD_FORCE_REBUILD") of
+        "1" ->
+            _ = file:del_dir_r(binary_to_list(OutDir)),
+            ok;
+        _ ->
             ok
     end.
 
