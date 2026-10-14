@@ -325,6 +325,9 @@ legacy_invalidation_also_advances_checkpoint_test() ->
     end).
 
 with_sync_fixture(Test) ->
+    pure_mock_fixture:run(fun() -> with_sync_fixture_local(Test) end).
+
+with_sync_fixture_local(Test) ->
     Names = [
         cache_sync_protocol,
         cache_fenced_namespaces,
