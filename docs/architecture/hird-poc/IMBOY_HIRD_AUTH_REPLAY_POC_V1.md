@@ -423,3 +423,20 @@ fail-closed，统一 `{hird_exn,{tool_denied,_}}` 域错误——与授权 deny 
 **C4 补充证据（PG BLOCKED 维持）**：`docker-compose.yml` 证实 `imboy_pg18` 容器
 密码为 `${IMBOY_PG_PASSWORD:?required}`——用户私有 `.env` 值、不入库，
 `.env.example` 留空；凭据在「不解析日常配置」约束下确认不可获得。
+
+### 4.6.10 下一轮启动清单（CLOSEOUT 终态，2026-10-14）
+
+**已就位（零授权即可用）**：类型化决策（Decision 封闭 ADT）、多轮循环
+（同步递归 fn + 上限守卫 5）、模型桥（content JSON → Decision，fail-closed
+解析矩阵 + provider 链两条路）、离线套件 11 用例、全量编译门 1057/1057。
+最终回归基线：四套件 34/34（offline 11 + gates 14 + acceptance 3 + spike 6）。
+
+| 启动项 | 需要的授权/输入 | 首个动作 |
+|---|---|---|
+| PG 端到端循环验证 | 获准的测试连接参数（host/port/user/password），或授权临时读取 sys.local.config | `scripts/hird_poc_v1/run_pg_suite.sh imboy_hird_p1_auth_tool_tests …`（P1 含 t_same_org_other_ws / t_effect_resource_binding / t_provider_variant 三个待执行用例）|
+| 有限真实模型验证 | 独立授权 + 预算 + provider 配置（`llm_providers` app env，api_key 经 `{env, VAR}` 注入）| 把 `imboy_hird_poc_model_bridge:make_decide_handler/2` 的 `{mod, imboy_hird_poc_fake_llm, …}` 换为 `{name, <<ProviderName>>}`——唯一替换点 |
+| hook 崩溃根治 | 系统工具链授权 | `brew install bash` 后 `lefthook install --force` |
+| 多轮循环生产化 | 下一轮任务书 | run_steps 上限参数化 + 与 agent_run 生命周期接线 |
+
+**两项裁决不变**：生产 HOLD；真实模型 NOT_AUTHORIZED（本轮零真实调用、
+零密钥读取）。
