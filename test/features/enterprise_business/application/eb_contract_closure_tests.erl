@@ -171,7 +171,7 @@ application_layer_has_zero_pg_modules_test() ->
     ],
     ?assertEqual([], Hits),
     %% 负例①：注释里的边界声明**不得**被判红（否则删注释就成了过门手段）。
-    ?assertEqual([], pg_hits(<<"%% 本模块不触 eb_pg_store，零 SQL\n">>)),
+    ?assertEqual([], pg_hits(<<"%% 本模块不触 eb_pg_store，零 SQL\n"/utf8>>)),
     %% 负例②：代码位置命中**必须**判红（否则判定恒真）。
     ?assertEqual([<<"X = eb_pg_store:fetch(1) ">>], pg_hits(<<"X = eb_pg_store:fetch(1) % ok\n">>)).
 

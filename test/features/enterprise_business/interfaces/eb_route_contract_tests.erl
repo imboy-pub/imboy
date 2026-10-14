@@ -666,7 +666,7 @@ a05_handlers_have_no_db_or_cross_layer_calls_test() ->
     Poisoned = <<(code_only(read(?TENANT_HANDLER)))/binary, "\nf() -> elib_pg:query(1).\n">>,
     ?assertNotEqual(nomatch, binary:match(Poisoned, <<"elib_pg">>)),
     %% 注释里的同名 token 不会被判红（判据只看代码）
-    Commented = <<"%% elib_pg 只是注释\nf() -> ok.\n">>,
+    Commented = <<"%% elib_pg 只是注释\nf() -> ok.\n"/utf8>>,
     ?assertEqual(nomatch, binary:match(code_only(Commented), <<"elib_pg">>)).
 
 %% @doc content 动作经 facade 取流（proxy_content），且**非**走个人下载能力。

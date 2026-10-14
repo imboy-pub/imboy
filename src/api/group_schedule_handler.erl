@@ -173,7 +173,7 @@ create_schedule_response(Req0, Response) ->
         {error, not_group_member} ->
             elib_response:error(Req0, <<"你不是该群成员"/utf8>>, ?ERR_FORBIDDEN);
         {error, {missing_field, Field}} ->
-            Msg = <<"缺少必填字段: ", (ec_cnv:to_binary(Field))/binary>>,
+            Msg = <<"缺少必填字段: "/utf8, (ec_cnv:to_binary(Field))/binary>>,
             elib_response:error(Req0, Msg, ?ERR_BAD_REQUEST);
         {error, {invalid_time_range, _, _}} ->
             elib_response:error(Req0, <<"结束时间必须晚于开始时间"/utf8>>, ?ERR_BAD_REQUEST);

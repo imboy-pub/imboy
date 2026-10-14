@@ -129,15 +129,15 @@ object_key_preserve_sql_test_() ->
 object_key_from_url_direct_test_() ->
     [
         ?_assertEqual(
-            <<"u1/g1/20261006/季度报告.txt">>,
+            <<"u1/g1/20261006/季度报告.txt"/utf8>>,
             elib_oss:object_key_from_url(
-                <<"http://192.168.2.120:3900/imboy/u1/g1/20261006/季度报告.txt">>
+                <<"http://192.168.2.120:3900/imboy/u1/g1/20261006/季度报告.txt"/utf8>>
             )
         ),
         ?_assertEqual(
-            <<"u1/g1/文件 名 with space.txt">>,
+            <<"u1/g1/文件 名 with space.txt"/utf8>>,
             elib_oss:object_key_from_url(
-                <<"http://192.168.2.120:3900/imboy/u1/g1/文件 名 with space.txt">>
+                <<"http://192.168.2.120:3900/imboy/u1/g1/文件 名 with space.txt"/utf8>>
             )
         ),
         ?_assertEqual(

@@ -96,9 +96,11 @@ create(Req0, State) ->
                 {ok, Vote} ->
                     elib_response:success(Req0, Vote, <<"创建投票成功"/utf8>>);
                 {error, {missing_param, Field}} ->
-                    elib_response:error(Req0, <<"缺少必填参数: ", (ec_cnv:to_binary(Field))/binary>>);
+                    elib_response:error(
+                        Req0, <<"缺少必填参数: "/utf8, (ec_cnv:to_binary(Field))/binary>>
+                    );
                 {error, {invalid_param, Reason}} ->
-                    elib_response:error(Req0, <<"参数错误: ", (ec_cnv:to_binary(Reason))/binary>>);
+                    elib_response:error(Req0, <<"参数错误: "/utf8, (ec_cnv:to_binary(Reason))/binary>>);
                 {error, not_group_member} ->
                     elib_response:error(Req0, "您不是该群成员");
                 {error, ?ERR_WORKSPACE_ARCHIVED} ->

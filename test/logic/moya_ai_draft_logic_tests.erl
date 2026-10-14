@@ -426,7 +426,7 @@ ai01_think_truncated_no_json_test_() ->
 ai01_wrapped_bad_schema_test_() ->
     ?WITH_MECKS(provider_mocks(), fun() ->
         Inner = jsone:encode(#{<<"positive_point">> => <<"只有一项"/utf8>>}),
-        _ = put(fake_chat, {ok, #{<<"content">> => <<"<think>想完了</think>", Inner/binary>>}}),
+        _ = put(fake_chat, {ok, #{<<"content">> => <<"<think>想完了</think>"/utf8, Inner/binary>>}}),
         try
             ?assertEqual(
                 {error, bad_output},

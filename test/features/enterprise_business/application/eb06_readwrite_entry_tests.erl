@@ -396,7 +396,7 @@ a13_application_code_positions_have_zero_pg_modules() ->
     ],
     ?assertEqual([], Hits),
     %% 负例①：注释里的**边界声明**不得判红（不得靠删注释过门）
-    ?assertEqual([], pg_hits(<<"%%% 本模块不触 eb_pg_store，零 SQL\n">>)),
+    ?assertEqual([], pg_hits(<<"%%% 本模块不触 eb_pg_store，零 SQL\n"/utf8>>)),
     %% 负例②：代码位置命中必须判红（判定非恒真）
     ?assertEqual([<<"X = eb_pg_store:go(1) ">>], pg_hits(<<"X = eb_pg_store:go(1) % ok\n">>)).
 
