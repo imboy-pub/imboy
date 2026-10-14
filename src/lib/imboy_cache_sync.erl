@@ -311,6 +311,9 @@ handle_call({publish_delete, Key}, _From, State) ->
 %% --- 诊断（消息串行化确认）---
 handle_call(ping_ok, _From, State) ->
     {reply, pong, State};
+handle_call(benchmark_reset_snapshot_page_peak, _From, State) ->
+    true = ets:delete(?META_TABLE, snapshot_page_peak),
+    {reply, ok, State};
 handle_call(_Request, _From, State) ->
     {reply, ok, State}.
 
@@ -674,14 +677,13 @@ publish_invalidate(Key, State) ->
                     invalidate, Key, undefined, 0, Rev, Seq, State#state.boot_id
                 )
             ),
-            %% 19.8 能力交集：旧节点静默丢弃 v2 信封，混合期失效必须同时
-            %% 走 legacy {flush, Key} 通道；v2 接收端按保守栅栏处理该消息，
-            %% 回流自环幂等，重复失效是安全方向（宁多失效）。
-            _ = broadcast({flush, Key}),
+            %% 旧节点静默丢弃 v2 信封；兼容帧只发给未声明 V2 的成员，
+            %% 避免新节点重复推进 generation，并避免本节点自回流触发重读。
+            _ = publish_legacy_flush(Key, v2),
             NextState;
         legacy ->
             %% legacy 模式跨节点失效用现有 {flush, Key}（19.8 能力交集）
-            _ = broadcast({flush, Key}),
+            _ = publish_legacy_flush(Key, legacy),
             _ = broadcast(
                 {legacy_invalidation_seq, node(), State#state.boot_id, Seq,
                     imboy_cache_sync_proto:config_hash(), imboy_cache_sync_proto:registry_hash(),
@@ -761,6 +763,26 @@ publish(Event) ->
     catch
         _:_ -> {ok, 0}
     end.
+
+publish_legacy_flush(Key, Protocol) ->
+    try syn:members(?CACHE_SCOPE, ?CACHE_GROUP_NAME) of
+        Members when is_list(Members) ->
+            Targets = [
+                Pid
+             || {Pid, Meta} <- Members,
+                Pid =/= self(),
+                Protocol =:= legacy orelse not member_uses_v2(Meta)
+            ],
+            lists:foreach(fun(Pid) -> Pid ! {cache_sync, {flush, Key}} end, Targets),
+            {ok, length(Targets)}
+    catch
+        _:_ -> {ok, 0}
+    end.
+
+member_uses_v2(Meta) when is_map(Meta) ->
+    maps:get(cache_protocol, Meta, undefined) =:= 2;
+member_uses_v2(_) ->
+    false.
 
 -spec index_replicate(term()) -> ok.
 index_replicate(Key) -> imboy_cache_sync_apply:index_replicate(Key).

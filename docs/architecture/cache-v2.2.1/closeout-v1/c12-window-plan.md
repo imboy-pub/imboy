@@ -13,8 +13,8 @@
 
 ## dot 接续状态（2026-10-14）
 
-- 计划锚未变：closeout SHA256=`806114da93a904108dfa9a2747d1ee59d4efcb1a2562a92ae7ea6ae905882f0f`，W0 原计划 SHA256=`a5523ee731bc822018831586e3d747ba109c2c66e734daf5633b494d9b18c713`。当前分支 `main`；C14 依赖输入绑定修复为 `2494757b`，矩阵文档对齐为 `ce59d570`，依赖文件链接内容摘要回归为 `d35f9975`。干净交接 worktree `/private/tmp/imboy-unified-main-merge-20261013` 已快进到包含这些变更的 `main`。本次采样时 ZCODE `completion-20261012` HEAD 为 `87e9ed15`，仍有活动 WIP 和运行中的 ZCode 进程；与 `main` 的共同基点是 `dba3ab89`，两边都有尚未整合的独立提交。上轮 no-commit merge 期间观测到 reset/stash 状态变化，当前未提交差异覆盖多个 `main` 改动路径，不能认定已建立合并关系。迁移文件相对 `main` 无差异。不要清理或重置该目录；待 ZCODE 停止后先留存并逐项核对 WIP，再建立真实 merge ancestry。attachment-lifecycle、产品化策略、micro-community checksum 三项未跟踪 WIP 属其他任务，不并入本收口候选；原主机隔离副本及 `/tmp` driver 不保证 Dot 可见。
-- 上一轮 `b025b340…` 源码输入摘要及更早候选绑定已失效；当前**未冻结候选**，提交后代码、依赖、配置和驱动需按 C14 清单重算绑定。C14 现拒绝 raw 非零 `exit`/`exit_code`、无效 UTC、缺失/篡改证据、混用候选和 ignored build source；依赖候选输入覆盖 `deps/` 全文件并拒绝外逃/循环 symlink。最新 `--self-test` 为 35/35（1 正向 + 34 负向），`--ids --sha256` 为 2/2（96 IDs 与两份计划摘要）；候选尚未冻结。性能驱动修正仍使用 `invalidate/1` 建立 memo 冷路径；`memo_cold_path=invalidate_then_memo_including_invalidation` 吞吐/延迟包含失效与回填，不代表纯 memo miss。旧 baseline tiny r4 的 72 个 loader oracle 错误保留，不覆盖或豁免；统一修正驱动尚未跑正式 benchmark。
+- 计划锚未变：closeout SHA256=`806114da93a904108dfa9a2747d1ee59d4efcb1a2562a92ae7ea6ae905882f0f`，W0 原计划 SHA256=`a5523ee731bc822018831586e3d747ba109c2c66e734daf5633b494d9b18c713`。`main` HEAD=`38c8bdb9`；C14 依赖输入绑定修复 `2494757b`、矩阵文档对齐 `ce59d570`、依赖文件链接内容摘要回归 `d35f9975` 均已包含。当前驱动修复在隔离分支 `codex/cache-v221-perf-driver-fix`，基于 `main` 的两个本地提交，工作树干净，尚未合入 `main`。ZCODE `completion-20261012` HEAD=`98eace02`，仍有 14 个修改/新增路径及四个活动进程；相对 `main` 为 23 个提交待整合、5 个分支独有提交。迁移目录与 `main` 无差异，两边最新编号均为 `00000172`；整合前仍须复核新增编号及 up/down 配对。此前 no-commit merge 期间观测到 reset/stash 状态变化，不能据此认定已建立合并关系；不要清理或重置 ZCODE worktree，待进程退出后先留存并逐项核对 WIP，再建立真实 merge ancestry。attachment-lifecycle、产品化策略、micro-community checksum 三项未跟踪 WIP 属其他任务，不并入本收口候选。
+- 上一轮 `b025b340…` 源码输入摘要及更早候选绑定已失效；当前**未冻结候选**，提交后代码、依赖、配置和驱动需按 C14 清单重算绑定。C14 现拒绝 raw 非零 `exit`/`exit_code`、无效 UTC、缺失/篡改证据、混用候选和 ignored build source；依赖候选输入覆盖 `deps/` 全文件并拒绝外逃/循环 symlink。当前 `--self-test` 为 53/53（1 正向 + 52 负向），性能 gate 要求七份逐轮、按 env/base/candidate 顺序且命令时间严格递增的正时长回执，result UTC 必须落在自身回执区间且 `elapsed_ms>0`；W0 env/r7/r8 必须绑定 runner 原生 `baseline.json`、`performance.json`、`sha256.json`，核验 30 项依赖/脚本摘要、10000 操作数以及无重复/多余的完整 workload 行集。校验器按 TTL 分开重算 profile digest，检查非零/布尔错误和退出、C01 数值预算、env 漂移及三组相对阈值。`--ids --sha256` 最近为 2/2（96 IDs 与两份计划摘要）；候选尚未冻结。性能驱动将 memo 负载明确标记为 `invalidate_then_memo`，MaxTTL=600，结果包含 C14 scenarios/detail/counts 与唯一计数 footer；该负载吞吐/延迟包含失效与回填，不代表纯 memo miss。五项自检现要求结果值严格为 `true`；失效竞态、loader 异常、writer 崩溃恢复及 `get_wait` 移交已按 V2 API 实现，并在隔离 VM 对当前 main 源码 `38c8bdb9` 逐项验证为 `true`（命令 exit=0）。正式性能窗口仍未运行：静态检查到 `cache_v2_bench.erl` 仅输出单臂原始 rows/四项诊断 scenario，没有证据汇总器把它转成 C14 五项 scenario、profile/budget/load 和命令回执；需先完成该适配并测试其拒绝缺失资源计数。旧 baseline tiny r4 的 72 个 loader oracle 错误保留，不覆盖或豁免。
 - 最新驱动矩阵经只读核对为 C09 **38**（35 primary + C9m + C9n/C9o）和 C10 **16**（14 primary + 隔离尾部 M4/M5）；C10 历史 13/13、C09 历史 22/22 均不覆盖当前矩阵。`c10-mixed-plan.md` 已对齐场景数，C09 入口注释不再写旧的 22 场景。规则静态检查 `promtool check rules` 63 条通过，`promtool test rules` 通过；当前候选仍未冻结，38/16 场景两轮验证、C11 Dmax 故障链、最终全量及性能窗口均未完成。
 - 资源采样（2026-10-13 23:45 +08）：观察到另一会话正在运行 `msg_c2c_logic_tests`/PG relay，端口 15432 与 PG 4323 均占用；未启动新的 EUnit、C09/C10 或 PG 验证。接续时须重新采样活跃进程、端口和租约，再取得串行测试窗口。
 - 2026-10-13 接续复验：当前提交涉及的四个 Erlang 文件重编译通过；`imboy_cache_snapshot_coverage_tests` **20/20 PASS**。C14 `--ids --sha256` 为 **2/2 PASS**（96/96 required IDs、两份计划摘要），`--self-test` 为 **25/25 PASS**。上述均非最终候选签发证据。C09 有四个场景曾各 1/1 诊断通过，但输出无候选绑定，且随后新增严格 member-loss fence oracle；这些诊断结果全部作废，不可继承。当前另一个会话在运行 `ai_agent_reply` EUnit/PG relay，另有两个长驻 BEAM；遵守重型测试互斥租约，本次未启动 C09/C10/全量或性能门禁。
@@ -25,6 +25,13 @@
 - 历史终轮证据：candidate `f1aa1ce0…` 上 C09 `three_node_c09_b2/b3` 各 22/22 PASS，C10 `mixed_c10_b3/b4` 各 13/13 PASS；对应旧 V2 性能 `v2_cand_4/5/6` 有数据但因缺同环境基线判 PARTIAL。它们不能证明当前候选：之后主线提交 `8ee8f899`、`bc39858b`、`f93a842a` 等改动了同步恢复/缓存实现；当前 C14 输入集也已扩展到监控运行文件。旧轮保留作历史，不得改写候选摘要或伪造重绑定。
 - 全量 EUnit 历史仍未通过：最新 `eunit_full_postrefactor.log` 记录 10,555 passed / 207 failed / 0 skipped，且有测试取消，`make` exit=2；前一轮 `eunit_full_candidate_r5.log` 为 10,762 passed / 6 failed / 0 skipped、取消，`make` exit=2。都不是当前冻结候选的全量 PASS。
 - 尚未闭合：C04/AC-19 最终三节点内容覆盖与 READY 屏障；当前候选 C09 两轮全矩阵、C10 两轮混合/回滚与 QR；C11 冻结候选 HTTP/Scrape/告警重验；最终候选全量 EUnit；正式本地性能三组交错对照；独立审查和 C14 签发。C04 静态审查未发现 READY 误放行，但不能代替三节点实测。全节点丢失 authority 后无可信恢复来源，系统会保守停在 RECOVERING/DEGRADED，应保留为结构性可用性缺口。生产 SLO/硬件/峰值输入继续独立 BLOCKED，生产验收不签发。
+
+### 本轮 worktree 续接（2026-10-14）
+
+- 在 `/private/tmp/imboy-cache-v221-perf-driver-fix` 复核后，`main` 已从本节记载的 `38c8bdb9` 前进至 `7bcca5a9`（TSID 累计分配优化）。该提交已合入 `codex/cache-v221-perf-driver-fix`，合并提交 `bcee750`；数据库迁移目录在新增提交及合并差异中均无改动，不产生迁移编号冲突。代码候选 HEAD 为 `bcee750`，其源码工作树当时干净；候选摘要尚未冻结，任何后续源码/配置/driver 修改都须重新绑定证据。
+- 本轮功能提交 `77d0cd48` 修复 legacy flush 对 V2 成员的重复路由、补足 C12 五场景/资源与候选字段，并校正相关失效、同步及 source-cut 回归。合并后的定向 EUnit：`imboy_cache_invalidation_tests` 26/26、`imboy_cache_sync_tests` 29/29、`imboy_cache_source_cut_tests` 15/15、`elib_tsid_tests` 82/82，均 exit=0；缓存套件使用单节点临时配置 `/tmp/cache-v221-eunit.config` 且 `IMBOY_AUTO_MIGRATE=false`。bench 驱动以 `erlc -Werror` 独立编译通过，`erlfmt --check` 覆盖改动 Erlang 文件通过。
+- C14 `python3 scripts/check_cache_closeout_v1.py --self-test` exit=0：verifier 自测 53/53（1 正向、52 负向）；另行执行 `--ids --sha256` exit=0，96 个 required ID 与两份冻结计划摘要校验通过。提交钩子的 gitleaks、erlfmt、编译及架构门通过；hook 将 Dialyzer 因 `.imboy.plt` 缺失降级放行，不能记为 Dialyzer PASS。
+- 这些是当前源码上的定向证据，不是冻结候选签发证据。三节点 C04/C09、混合/回滚与 QR、冻结候选全量 EUnit、正式本地性能窗口、Dialyzer、C11 冻结后复验和 A9 独立终审仍未闭合；正式性能窗口仍按互斥租约执行，未用 tiny smoke 替代。
 
 Dot 上限 4 个活动 agent（含协调者），建议这样分工，先并行只读审查/准备，按租约串行跑重门禁：
 
@@ -377,6 +384,10 @@ A7 驱动未交付期间，env 臂可先行，base/cand 记 `WAITING_RESOURCE`�
 汇总层 `raw/perf_c12_r{N}.json`（每轮一个，顶层 candidate_sha256/utc/elapsed_ms/
 arm/round/load/scenarios[]，scenarios 含 profile_self_check、throughput、p99、
 convergence、resource_envelope 五组，status 由上述判据产生）。
+env 汇总需引用本轮及 W0 r7/r8 的原生 `baseline.json`、`performance.json`、`sha256.json`；
+r7/r8 原始文件按字节复制到本轮 `raw/w0_anchor/r{7,8}/`，复制前后以历史 sha256.json
+核对，避免 C14 依赖 evidence-dir 外或可变路径。每个臂/轮的 profile_sha256 按
+evidence-schema-v2.md 的规范 JSON 字段重算；env 的 TTL3600 profile 与 V2 TTL600 分开。
 
 ---
 

@@ -543,6 +543,10 @@ manifest_success_and_rejected_pages_do_not_confuse_receipts_test() ->
             {ok, Next} = imboy_cache_sync_snapshot:handle_page(Source, Ref, 1, Page, D, true, R),
             P = maps:get(Source, maps:get(peers, Next)),
             ?assertEqual(
+                [{snapshot_page_peak, {length(Page), erlang:external_size(Page)}}],
+                ets:lookup(imboy_cache_meta, snapshot_page_peak)
+            ),
+            ?assertEqual(
                 [{1, [imboy_cache_policy:snapshot_manifest_entry(E)]}], maps:get(manifest, P)
             ),
             ?assertEqual(1, maps:get(manifest_items, Next)),
@@ -576,7 +580,17 @@ manifest_success_and_rejected_pages_do_not_confuse_receipts_test() ->
                 Source, Ref, 1, Page, D, true, Exact
             ),
             ?assertEqual(LimitItems, maps:get(manifest_items, ExactNext)),
-            ?assertEqual(LimitBytes, maps:get(manifest_bytes, ExactNext))
+            ?assertEqual(LimitBytes, maps:get(manifest_bytes, ExactNext)),
+            E2 = setelement(1, E, {coverage_wire_test, manifest_receipt_2}),
+            LargerPage = [E, E2],
+            LargerDigest = imboy_cache_sync_snapshot:page_digest(Ref, 1, LargerPage),
+            {ok, _} = imboy_cache_sync_snapshot:handle_page(
+                Source, Ref, 1, LargerPage, LargerDigest, true, R
+            ),
+            ?assertEqual(
+                [{snapshot_page_peak, {length(LargerPage), erlang:external_size(LargerPage)}}],
+                ets:lookup(imboy_cache_meta, snapshot_page_peak)
+            )
         after
             gen_server:stop(Cache),
             meck:unload(depcache)

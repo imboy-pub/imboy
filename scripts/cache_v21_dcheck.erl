@@ -891,7 +891,11 @@ f1_peer_dies_during_recovery(A, B, C) ->
         ok = rpc:call(A, imboy_cache, put, [KeyA2, back, 120, replicate], ?RPC_MS),
         {ok, back} = converge_get(C, KeyA2, {ok, back})
     after
-        catch rpc:call(A, ?MODULE, restart_sync, [], ?RPC_MS)
+        try
+            rpc:call(A, ?MODULE, restart_sync, [], ?RPC_MS)
+        catch
+            _:_ -> ok
+        end
     end,
     ok.
 
@@ -1393,7 +1397,12 @@ f3_hard_crash_incarnation(A, B, C) ->
     {ok, f3_v} = converge_get(B, Key, {ok, f3_v}),
     {ok, {{C1, _}, _, _, _, _}} = rpc:call(A, ?MODULE, read_rev_full, [Key], 5000),
     %% 硬崩
-    catch rpc:call(C, erlang, halt, [0], 3000),
+    _ =
+        try
+            rpc:call(C, erlang, halt, [0], 3000)
+        catch
+            _:_ -> ok
+        end,
     timer:sleep(300),
     C2 = restart_c_hard(A, B),
     ready = recover_ready(C2, heal_restart(C2), 2),
@@ -1406,7 +1415,7 @@ f3_hard_crash_incarnation(A, B, C) ->
 
 %% F4：有界清理（W4-06/07）受控注入——过期墓碑、过期 live 元数据连同
 %% rindex 行一并淘汰；未过期条目不受影响。
-f4_bounded_sweep(A, B, C) ->
+f4_bounded_sweep(_A, _B, C) ->
     NowMs = erlang:system_time(millisecond),
     Rev = {1, node()},
     %% 直接构造三类元数据行（公共 ETS，受控注入）：
@@ -1491,7 +1500,15 @@ f5_early_evict_survivors_only(A, B, C) ->
             _ ->
                 false
         end,
-    case catch recover_ready(B, heal_restart(B), 4) of
+    Recovery =
+        try
+            recover_ready(B, heal_restart(B), 4)
+        catch
+            throw:Value -> Value;
+            exit:Reason -> {'EXIT', Reason};
+            error:Reason:Stack -> {'EXIT', {Reason, Stack}}
+        end,
+    case Recovery of
         ready ->
             ok;
         Other ->
@@ -1530,7 +1547,11 @@ f5_early_evict_survivors_only(A, B, C) ->
         ok = rpc:call(A, imboy_cache, put, [KeyNew, fresh, 120, replicate], ?RPC_MS),
         {ok, fresh} = converge_get(C, KeyNew, {ok, fresh})
     after
-        catch rpc:call(A, ?MODULE, restart_sync, [], ?RPC_MS)
+        try
+            rpc:call(A, ?MODULE, restart_sync, [], ?RPC_MS)
+        catch
+            _:_ -> ok
+        end
     end,
     ok.
 
@@ -2060,9 +2081,6 @@ drain_sync_mailbox() ->
     pong = gen_server:call(imboy_cache_sync, ping_ok, 60000),
     ok.
 
-rindex_dump() ->
-    [K || [K] <- ets:match(imboy_cache_meta, {{rindex, '$1'}, '_'})].
-
 converge_get_quiet(Node, Key, Expected, TimeoutMs) ->
     Deadline = erlang:monotonic_time(millisecond) + TimeoutMs,
     converge_quiet_loop(Node, Key, Expected, Deadline).
@@ -2567,7 +2585,7 @@ converge_to(Node, Key, Expect, N) ->
 %% 等待 A 侧收敛到权威值（事件应用 + 补偿 flush 后的最终状态）。
 converge_value(Node, Key) ->
     converge_value(Node, Key, 50).
-converge_value(Node, _Key, 0) ->
+converge_value(_Node, _Key, 0) ->
     timeout_value;
 converge_value(Node, Key, N) ->
     case depcache_direct_get(Node, Key) of

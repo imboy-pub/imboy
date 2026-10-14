@@ -78,9 +78,66 @@ invalidation_uses_shared_origin_sequence_test() ->
         ),
         ?assertEqual(9, S2#state.origin_seq),
         ?assertEqual([8, 9], [maps:get(origin_seq, receive_event()) || _ <- [1, 2]]),
-        %% 每次同时保留 legacy flush 通道，混合版本节点仍能收到失效。
-        ?assertEqual(4, meck:num_calls(syn, publish, 3))
+        %% v2 信封已覆盖新节点；legacy 兼容帧按成员能力单独路由。
+        ?assertEqual(2, meck:num_calls(syn, publish, 3))
     end).
+
+legacy_flush_targets_only_compatible_peers_test() ->
+    with_sync_fixture(fun() ->
+        Parent = self(),
+        LegacyPeer = spawn(fun() -> invalidation_test_peer(Parent) end),
+        V2Peer = spawn(fun() -> invalidation_test_peer(Parent) end),
+        meck:expect(syn, members, 2, fun(_, _) ->
+            [
+                {self(), #{cache_protocol => 2}},
+                {LegacyPeer, #{}},
+                {V2Peer, #{cache_protocol => 2}}
+            ]
+        end),
+        Key = {cache_invalidation_test, peer_routing},
+        try
+            Clock0 = fence_clock(),
+            S0 = #state{boot_id = <<0:128>>, status = ready},
+            {reply, ok, S1} = imboy_cache_sync:handle_call(
+                {invalidate, Key}, {self(), make_ref()}, S0
+            ),
+            Clock1 = fence_clock(),
+            ?assertEqual(Clock0 + 2, Clock1),
+            ?assertEqual({cache_sync, {flush, Key}}, receive_invalidation_peer(LegacyPeer)),
+            ?assertEqual(none, receive_invalidation_peer(V2Peer)),
+            application:set_env(imboy, cache_sync_protocol, legacy),
+            {reply, ok, _S2} = imboy_cache_sync:handle_call(
+                {invalidate, Key}, {self(), make_ref()}, S1
+            ),
+            ?assertEqual({cache_sync, {flush, Key}}, receive_invalidation_peer(LegacyPeer)),
+            ?assertEqual({cache_sync, {flush, Key}}, receive_invalidation_peer(V2Peer))
+        after
+            LegacyPeer ! stop,
+            V2Peer ! stop
+        end
+    end).
+
+invalidation_test_peer(Parent) ->
+    receive
+        stop ->
+            ok;
+        Message ->
+            Parent ! {invalidation_peer_message, self(), Message},
+            invalidation_test_peer(Parent)
+    end.
+
+receive_invalidation_peer(Pid) ->
+    receive
+        {invalidation_peer_message, Pid, Message} -> Message
+    after 1000 ->
+        none
+    end.
+
+fence_clock() ->
+    case ets:lookup(?META_TABLE, fence_clock) of
+        [{fence_clock, Clock}] -> Clock;
+        [] -> 0
+    end.
 
 missing_invalidation_advances_fence_test() ->
     with_sync_fixture(fun() ->
@@ -92,10 +149,10 @@ missing_invalidation_advances_fence_test() ->
         Event0 = imboy_cache_sync_proto:event(invalidate, Key, undefined, 0, {1, Origin}, 1, Boot),
         Event = Event0#{origin_node => Origin},
         {ok, S1} = imboy_cache_sync_apply:apply_v2(Event, S0),
-        ?assertEqual(1, imboy_cache_sync:generation(Key)),
+        ?assertEqual(2, imboy_cache_sync:generation(Key)),
         %% 中间 seq=2 丢失，seq=3 必须同时补偿缺口和执行本次失效。
         {ok, _} = imboy_cache_sync_apply:apply_v2(Event#{origin_seq => 3}, S1),
-        ?assertEqual(3, imboy_cache_sync:generation(Key)),
+        ?assertEqual(5, imboy_cache_sync:generation(Key)),
         ?assertEqual([{{seq, {Origin, Boot}}, 3}], ets:lookup(?META_TABLE, {seq, {Origin, Boot}}))
     end).
 
@@ -143,7 +200,7 @@ restarted_origin_does_not_inherit_old_sequence_test() ->
         ?assertEqual([], ets:lookup(?META_TABLE, {seq, {Node, OldBoot}})),
         G1 = imboy_cache_sync:generation(Key),
         {ok, _} = imboy_cache_sync_apply:apply_v2(Event#{origin_seq => 3}, S2),
-        ?assertEqual(G1 + 2, imboy_cache_sync:generation(Key))
+        ?assertEqual(G1 + 3, imboy_cache_sync:generation(Key))
     end).
 
 sync_restart_isolates_cached_and_inflight_values_test() ->
@@ -239,28 +296,32 @@ legacy_invalidation_also_advances_checkpoint_test() ->
     with_sync_fixture(fun() ->
         application:set_env(imboy, cache_sync_protocol, legacy),
         Controller = self(),
+        LegacyPeer = spawn(fun() -> invalidation_test_peer(Controller) end),
+        meck:expect(syn, members, 2, fun(_, _) -> [{self(), #{}}, {LegacyPeer, #{}}] end),
         Key = {cache_invalidation_test, legacy},
-        meck:expect(syn, publish, 3, fun(_, _, {cache_sync, Message}) ->
-            Controller ! {legacy_message, Message},
-            {ok, 1}
-        end),
-        State = #state{boot_id = <<8:128>>, status = ready},
-        {reply, ok, Next} = imboy_cache_sync:handle_call(
-            {invalidate, Key}, {self(), make_ref()}, State
-        ),
-        ?assertEqual(1, Next#state.origin_seq),
-        receive
-            {legacy_message, Message} -> ?assertEqual({flush, Key}, Message)
-        after 1000 -> error(missing_legacy_flush)
-        end,
-        receive
-            {legacy_message, {legacy_invalidation_seq, Source, <<8:128>>, 1, Hash, Registry, Key}} ->
-                ?assertEqual(node(), Source),
-                ?assertEqual(imboy_cache_sync_proto:config_hash(), Hash),
-                ?assertEqual(imboy_cache_sync_proto:registry_hash(), Registry)
-        after 1000 -> error(missing_legacy_sequence_receipt)
-        end,
-        ?assertEqual(2, meck:num_calls(syn, publish, 3))
+        try
+            meck:expect(syn, publish, 3, fun(_, _, {cache_sync, Message}) ->
+                Controller ! {legacy_message, Message},
+                {ok, 1}
+            end),
+            State = #state{boot_id = <<8:128>>, status = ready},
+            {reply, ok, Next} = imboy_cache_sync:handle_call(
+                {invalidate, Key}, {self(), make_ref()}, State
+            ),
+            ?assertEqual(1, Next#state.origin_seq),
+            receive
+                {legacy_message,
+                    {legacy_invalidation_seq, Source, <<8:128>>, 1, Hash, Registry, Key}} ->
+                    ?assertEqual(node(), Source),
+                    ?assertEqual(imboy_cache_sync_proto:config_hash(), Hash),
+                    ?assertEqual(imboy_cache_sync_proto:registry_hash(), Registry)
+            after 1000 -> error(missing_legacy_sequence_receipt)
+            end,
+            ?assertEqual({cache_sync, {flush, Key}}, receive_invalidation_peer(LegacyPeer)),
+            ?assertEqual(1, meck:num_calls(syn, publish, 3))
+        after
+            LegacyPeer ! stop
+        end
     end).
 
 with_sync_fixture(Test) ->
@@ -281,6 +342,9 @@ with_sync_fixture(Test) ->
         application:set_env(imboy, dsync_enabled, false),
         meck:new(depcache, [unstick, passthrough, no_link]),
         meck:new(syn, [unstick, passthrough, no_link]),
+        meck:expect(syn, members, 2, fun(imboy_cache, dsync_handler) ->
+            [{self(), #{cache_protocol => 2}}]
+        end),
         meck:expect(depcache, flush, 2, fun(_, _) -> ok end),
         Test()
     after
@@ -519,7 +583,7 @@ oversized_snapshot_entry_aborts_sender_without_sending_a_page_test() ->
         end
     end).
 
-filtered_snapshot_tail_closes_round_test() ->
+filtered_snapshot_tail_without_certificate_aborts_round_test() ->
     with_sync_fixture(fun() ->
         snapshot_policy(#{p_max => 2}),
         meck:expect(depcache, set, 5, fun(_, _, _, _, _) -> ok end),
@@ -547,17 +611,16 @@ filtered_snapshot_tail_closes_round_test() ->
             {cache_snapshot_page, _, Round, 1, Page, Digest, HasMore} ->
                 ?assertEqual(2, length(Page)),
                 ?assertEqual(false, HasMore),
-                R0 = (snapshot_round(node()))#{round := Round},
-                {ok, R1} = imboy_cache_sync_snapshot:handle_page(
-                    node(), Round, 1, Page, Digest, HasMore, R0
+                R0 = (snapshot_round(node()))#{round := Round, retained_obligations := []},
+                ?assertMatch(
+                    {abort, snapshot_content_conflict, _},
+                    imboy_cache_sync_snapshot:handle_page(
+                        node(), Round, 1, Page, Digest, HasMore, R0
+                    )
                 ),
+                ?assertNot(imboy_cache_sync_snapshot:round_complete(R0)),
                 receive
-                    {cache_snapshot_done, _, Round, Watermark, Total} ->
-                        ?assertEqual(1, Total),
-                        {ok, R2} = imboy_cache_source_cut_tests:done(
-                            node(), Round, Watermark, Total, R1
-                        ),
-                        ?assert(imboy_cache_sync_snapshot:round_complete(R2))
+                    {cache_snapshot_done, _, Round, _, _} -> ok
                 after 1000 -> error(missing_snapshot_done)
                 end
         after 1000 -> error(missing_snapshot_page)
@@ -661,106 +724,117 @@ simultaneously_recovering_peers_use_ready_authority_test() ->
         A = 'ready_authority@synthetic',
         B = 'recovering_b@synthetic',
         C = 'recovering_c@synthetic',
-        lists:foreach(
-            fun(Other) ->
-                R0 = imboy_cache_sync_snapshot:expect_peer(snapshot_round(A), Other),
-                R = maps:get(round, R0),
-                {ok, R1} = imboy_cache_source_cut_tests:done(A, R, 2, 0, R0),
-                S0 = #state{status = recovering, snapshot_round = R1},
-                S1 = imboy_cache_sync_recover:handle_version_report(
-                    Other,
-                    0,
-                    0,
-                    imboy_cache_sync_proto:config_hash(),
-                    imboy_cache_sync_proto:registry_hash(),
-                    <<10:128>>,
-                    false,
-                    self(),
-                    S0
-                ),
-                ?assertEqual(ready, S1#state.status)
-            end,
-            [B, C]
+        R0 = imboy_cache_sync_snapshot:expect_peer(
+            imboy_cache_sync_snapshot:expect_peer(snapshot_round(A), B), C
         ),
-        R0 = imboy_cache_sync_snapshot:new_round(0, erlang:system_time(millisecond) + 60000),
-        R1 = lists:foldl(
-            fun(P, R) ->
+        R = maps:get(round, R0),
+        {ok, R1} = imboy_cache_source_cut_tests:done(A, R, 2, 0, R0),
+        Empty = {0, crypto:hash(sha256, term_to_binary([]))},
+        Report = fun(Node, Boot, State) ->
+            imboy_cache_sync_recover:handle_version_report(
+                Node,
+                0,
+                0,
+                imboy_cache_sync_proto:config_hash(),
+                imboy_cache_sync_proto:registry_hash(),
+                Boot,
+                false,
+                self(),
+                {Node, Boot, 0, 0, R, Empty, self()},
+                State
+            )
+        end,
+        S0 = #state{status = recovering, snapshot_round = R1},
+        S1 = Report(B, <<10:128>>, S0),
+        ?assertEqual(recovering, S1#state.status),
+        S2 = Report(C, <<11:128>>, S1),
+        ?assertEqual(ready, S2#state.status),
+        EmptyRound = imboy_cache_sync_snapshot:new_round(
+            0, erlang:system_time(millisecond) + 60000
+        ),
+        ExcludedRound = lists:foldl(
+            fun(P, RoundState) ->
                 imboy_cache_sync_snapshot:exclude_peer(
-                    imboy_cache_sync_snapshot:expect_peer(R, P), P
+                    imboy_cache_sync_snapshot:expect_peer(RoundState, P), P
                 )
             end,
-            R0,
+            EmptyRound,
             [B, C]
         ),
-        ?assertNot(imboy_cache_sync_snapshot:round_complete(R1))
+        ?assertNot(imboy_cache_sync_snapshot:round_complete(ExcludedRound))
     end).
 
 authority_change_aborts_partial_snapshot_and_preserves_versions_test() ->
     lists:foreach(
         fun(Change) ->
             with_sync_fixture(fun() ->
-                snapshot_policy(#{}),
-                meck:expect(depcache, set, 5, fun(_, _, _, _, _) -> ok end),
-                A = 'complete_authority@synthetic',
-                B = 'partial_authority@synthetic',
-                ets:insert(?META_TABLE, {{peer_incarnation, B}, <<11:128>>}),
-                R0 = snapshot_authority(snapshot_round(A), B),
-                R = maps:get(round, R0),
-                {ok, R1} = imboy_cache_source_cut_tests:done(A, R, 1, 0, R0),
-                Entry = {Key, _, _, Rev} = snapshot_entry(partial),
-                {ok, R2} = imboy_cache_sync_snapshot:handle_page(
-                    B,
-                    R,
-                    1,
-                    [Entry],
-                    imboy_cache_sync_snapshot:page_digest(R, 1, [Entry]),
-                    true,
-                    R1
-                ),
-                {Ready, Boot} =
-                    case Change of
-                        not_ready ->
-                            {false, <<11:128>>};
-                        new_boot ->
-                            {true, <<12:128>>};
-                        new_boot_already_registered ->
-                            ets:insert(?META_TABLE, {{peer_incarnation, B}, <<12:128>>}),
-                            {true, <<12:128>>}
-                    end,
-                S0 = #state{
-                    status = recovering,
-                    snapshot_round = R2,
-                    recover_deadline_ms = erlang:system_time(millisecond) + 60000
-                },
-                S1 = imboy_cache_sync_recover:handle_version_report(
-                    B,
-                    1,
-                    0,
-                    imboy_cache_sync_proto:config_hash(),
-                    imboy_cache_sync_proto:registry_hash(),
-                    Boot,
-                    Ready,
-                    self(),
-                    S0
-                ),
-                ?assertEqual(recovering, S1#state.status),
-                ?assertNotEqual(R, maps:get(round, S1#state.snapshot_round)),
-                ?assertEqual(Rev, imboy_cache_sync:current_rev(Key)),
-                ?assert(meck:called(depcache, flush, [Key, imboy_cache])),
-                %% 值已清理，下一轮同版本快照仍可回填；不删除版本/墓碑来假恢复。
-                meck:expect(depcache, get, 2, fun(_, _) -> undefined end),
-                R3 = snapshot_round(A),
-                RNew = maps:get(round, R3),
-                {ok, _} = imboy_cache_sync_snapshot:handle_page(
-                    A,
-                    RNew,
-                    1,
-                    [Entry],
-                    imboy_cache_sync_snapshot:page_digest(RNew, 1, [Entry]),
-                    false,
-                    R3
-                ),
-                ?assertEqual(2, meck:num_calls(depcache, set, 5))
+                {ok, Cache} = depcache:start_link(imboy_cache, #{}),
+                try
+                    snapshot_policy(#{}),
+                    meck:expect(depcache, set, 5, fun(_, _, _, _, _) -> ok end),
+                    A = 'complete_authority@synthetic',
+                    B = 'partial_authority@synthetic',
+                    ets:insert(?META_TABLE, {{peer_incarnation, B}, <<11:128>>}),
+                    R0 = snapshot_authority(snapshot_round(A), B),
+                    R = maps:get(round, R0),
+                    {ok, R1} = imboy_cache_source_cut_tests:done(A, R, 1, 0, R0),
+                    Entry = {Key, _, _, Rev} = snapshot_entry(partial),
+                    {ok, R2} = imboy_cache_sync_snapshot:handle_page(
+                        B,
+                        R,
+                        1,
+                        [Entry],
+                        imboy_cache_sync_snapshot:page_digest(R, 1, [Entry]),
+                        true,
+                        R1
+                    ),
+                    {Ready, Boot} =
+                        case Change of
+                            not_ready ->
+                                {false, <<11:128>>};
+                            new_boot ->
+                                {true, <<12:128>>};
+                            new_boot_already_registered ->
+                                ets:insert(?META_TABLE, {{peer_incarnation, B}, <<12:128>>}),
+                                {true, <<12:128>>}
+                        end,
+                    S0 = #state{
+                        status = recovering,
+                        snapshot_round = R2,
+                        recover_deadline_ms = erlang:system_time(millisecond) + 60000
+                    },
+                    S1 = imboy_cache_sync_recover:handle_version_report(
+                        B,
+                        1,
+                        0,
+                        imboy_cache_sync_proto:config_hash(),
+                        imboy_cache_sync_proto:registry_hash(),
+                        Boot,
+                        Ready,
+                        self(),
+                        S0
+                    ),
+                    ?assertEqual(recovering, S1#state.status),
+                    ?assertNotEqual(R, maps:get(round, S1#state.snapshot_round)),
+                    ?assertEqual(Rev, imboy_cache_sync:current_rev(Key)),
+                    ?assert(meck:called(depcache, flush, [Key, imboy_cache])),
+                    %% 值已清理，下一轮同版本快照仍可回填；不删除版本/墓碑来假恢复。
+                    meck:expect(depcache, get, 2, fun(_, _) -> undefined end),
+                    R3 = snapshot_round(A),
+                    RNew = maps:get(round, R3),
+                    {ok, _} = imboy_cache_sync_snapshot:handle_page(
+                        A,
+                        RNew,
+                        1,
+                        [Entry],
+                        imboy_cache_sync_snapshot:page_digest(RNew, 1, [Entry]),
+                        false,
+                        R3
+                    ),
+                    ?assertEqual(2, meck:num_calls(depcache, set, 5))
+                after
+                    gen_server:stop(Cache)
+                end
             end)
         end,
         [not_ready, new_boot, new_boot_already_registered]
