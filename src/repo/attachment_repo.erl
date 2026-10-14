@@ -217,25 +217,33 @@ bind_reference_lock_tx(Conn, Path) ->
     end.
 
 %% W3-01 gc_verified 覆盖证明（02 §5）：gc_verified = 「引用零」的可证明态。
-%% 群附件是唯一可证明通道（attachment.group_file_id 单一关系）：仅当绑定已
-%% 释放（group_file 行不存在）、明文、完整位置且无收藏 hash 关联时置 true；
-%% 绑定活跃/普通 scope 未知/收藏/密文映射不全/历史歧义一律保持 false
-%% （保守保留，GC 永不触及）。
+%% W3-02 两域统一资格（02 §5 统一判据 + 企业应用附件行）：proven 与 intent
+%% 函数锁后复核同一引用集（group_file 绑定 / 收藏 hash / moment 媒体 /
+%% WAR 行 / EAR hold 或未 purged）+ 明文 + 完整位置；绑定活跃/密文/位置
+%% 缺失/治理 hold 一律 false。资格标志陈旧 true 不破坏安全——intent 在
+%% 对象锁内重查全部引用。
 -spec refresh_gc_verified_tx(any(), binary()) -> {ok, boolean()} | {error, term()}.
 refresh_gc_verified_tx(Conn, Path) ->
     Sql =
         <<
             "UPDATE public.attachment a SET gc_verified = c.proven"
             " FROM (SELECT a2.path,"
-            "   (a2.scope = 'group' AND a2.group_file_id IS NOT NULL"
-            "    AND NOT EXISTS (SELECT 1 FROM public.group_file gf"
-            "      WHERE gf.id = a2.group_file_id)"
-            "    AND a2.cipher IS NULL"
+            "   (a2.cipher IS NULL"
             "    AND a2.storage_driver IS NOT NULL AND a2.storage_namespace IS NOT NULL"
             "    AND a2.storage_container IS NOT NULL AND a2.storage_locator_sha256 IS NOT NULL"
+            "    AND (a2.group_file_id IS NULL OR NOT EXISTS"
+            "      (SELECT 1 FROM public.group_file gf WHERE gf.id = a2.group_file_id))"
             "    AND NOT EXISTS (SELECT 1 FROM public.user_collect uc"
             "      WHERE uc.attach_file_hash256 <> '' AND uc.attach_file_hash256 = a2.file_hash256"
             "        AND uc.status = 1)"
+            "    AND NOT EXISTS (SELECT 1 FROM public.moment_post mp"
+            "      WHERE position(a2.path in mp.media::text) > 0)"
+            "    AND NOT EXISTS (SELECT 1 FROM public.workspace_attachment_retention war"
+            "      WHERE war.attachment_id = a2.id)"
+            "    AND NOT EXISTS (SELECT 1 FROM public.enterprise_attachment_retention ear"
+            "      WHERE ear.attachment_id = a2.id"
+            "        AND (ear.hold_state = 'held'"
+            "             OR ear.purge_state IS DISTINCT FROM 'purged'))"
             "   ) AS proven"
             "  FROM public.attachment a2 WHERE a2.path = $1) c"
             " WHERE a.path = c.path RETURNING a.gc_verified"

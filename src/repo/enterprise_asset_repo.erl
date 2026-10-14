@@ -174,7 +174,8 @@ find_confirmed_tx(Conn, OrgId, AppId, ObjectKey) ->
     ScopeRef = scope_ref(OrgId, AppId),
     Sql =
         <<
-            "SELECT id, path, name, mime_type, size, scope, scope_ref, info"
+            "SELECT id, path, name, mime_type, size, scope, scope_ref, info,"
+            " lifecycle_state"
             " FROM attachment WHERE path = $1 AND status = 1 AND scope = 'enterprise'"
             " AND scope_ref = $2"
         >>,

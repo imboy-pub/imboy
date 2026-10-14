@@ -120,18 +120,26 @@ governance_tx(Conn, Ctx, Input) when is_map(Input) ->
     Op = maps:get(op, Input, undefined),
     case resolve_attachment(Conn, Ctx, maps:get(object_key, Input, undefined)) of
         {ok, Att} ->
-            %% INT-BE-03 冻结政策 INT-22=REQUIRED_AUDIT：治理审计（audit_action
-            %% 冻结为 file.governance.op，具体 op 落 detail.op）与治理写同事务
-            %% ——审计失败 → error → 调用方整体回滚（purge 不可逆动作尤其要求
-            %% 留痕原子）。
-            case apply_op(Conn, Ctx, Op, Att, Input) of
-                {ok, Ok} ->
-                    case audit_mutation(Conn, Ctx, Op, maps:get(<<"id">>, Att, null)) of
-                        ok -> {ok, Ok};
-                        {error, Reason} -> {error, {<<"internal_error">>, {audit, Reason}}}
+            %% W3-02 Hold 竞争协议（02 §4）：intent 先提交（delete_intent/
+            %% deleted）时治理操作返回 already_deleting——Hold/留存延长不得
+            %% 追认已进删除流程的对象。
+            case maps:get(<<"lifecycle_state">>, Att, <<"live">>) of
+                <<"live">> ->
+                    %% INT-BE-03 冻结政策 INT-22=REQUIRED_AUDIT：治理审计（audit_action
+                    %% 冻结为 file.governance.op，具体 op 落 detail.op）与治理写同事务
+                    %% ——审计失败 → error → 调用方整体回滚（purge 不可逆动作尤其要求
+                    %% 留痕原子）。
+                    case apply_op(Conn, Ctx, Op, Att, Input) of
+                        {ok, Ok} ->
+                            case audit_mutation(Conn, Ctx, Op, maps:get(<<"id">>, Att, null)) of
+                                ok -> {ok, Ok};
+                                {error, Reason} -> {error, {<<"internal_error">>, {audit, Reason}}}
+                            end;
+                        {error, _} = Err ->
+                            Err
                     end;
-                {error, _} = Err ->
-                    Err
+                _ ->
+                    {error, {<<"invalid_request">>, already_deleting}}
             end;
         {error, _} = Err ->
             Err
