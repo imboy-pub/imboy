@@ -146,7 +146,10 @@ attachment_parent_member_mock() ->
         {'authorize_upload_scope_tx', 4, fun(_, _, _, _) -> true end},
         {'authorize_channel_scope', 2, fun(_, _) -> true end},
         {'authorize_group_scope', 2, fun(_, _) -> true end},
-        {'find_path_by_group_file', 2, fun(_, _) -> {ok, <<"u">>} end}
+        {'find_path_by_group_file', 2, fun(_, _) -> {ok, <<"u">>} end},
+        {'confirm_if_absent_tx', 4, fun(_, _, _, _) -> {ok, 1, true} end},
+        {'bind_reference_lock_tx', 2, fun(_, _) -> ok end},
+        {'refresh_gc_verified_tx', 2, fun(_, _) -> {ok, 1} end}
     ]}.
 
 %% ⚠️ eunit 不解释 {Desc, fun} 返回的 {setup,...} spec（探针实证），
@@ -154,6 +157,11 @@ attachment_parent_member_mock() ->
 %% setup → 执行断言 → cleanup，使断言真实生效（simple fun 与 generator 同进程，
 %% Self 哨兵可用，无需改进程字典）。
 run_with_mocks(MockConfigs, TestFun) ->
+    LegacyPending =
+        {attach_pending_repo, [
+            {status_lookup, 1, fun(_) -> {error, not_found} end}
+        ]},
+    Configs = [LegacyPending | MockConfigs],
     lists:foreach(
         fun({Module, Expectations}) ->
             case meck_helper:setup_mock(Module, Expectations) of
@@ -163,14 +171,14 @@ run_with_mocks(MockConfigs, TestFun) ->
                     erlang:error({mock_setup_failed, Module, Reason})
             end
         end,
-        MockConfigs
+        Configs
     ),
     try
         TestFun()
     after
         lists:foreach(
             fun({Module, _}) -> meck_helper:cleanup_mock(Module) end,
-            MockConfigs
+            Configs
         )
     end.
 

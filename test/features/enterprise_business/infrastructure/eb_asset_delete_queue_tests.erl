@@ -12,28 +12,21 @@ delete_failure_is_reported_test_() ->
     drain_case(
         {error, unavailable},
         <<"retry_wait">>,
-        {ok, [
-            #{
-                organization_id => 11,
-                workspace_id => 22,
-                asset_id => 33,
-                reason => unavailable
-            }
-        ]}
+        {error, {object_delete_failed, {error, unavailable}}}
     ).
 
 stale_ack_is_not_success_test_() ->
     drain_case(
         ok,
         <<"stale_token">>,
-        {error, {ack_failed, {ack_rejected, <<"stale_token">>}}}
+        {error, {object_ack_failed, {ack_rejected, <<"stale_token">>}}}
     ).
 
 ack_error_is_not_success_test_() ->
     drain_case(
         ok,
         {error, disconnected},
-        {error, {ack_failed, disconnected}}
+        {error, {object_ack_failed, disconnected}}
     ).
 
 purge_reports_only_its_own_scope_failures_test_() ->
@@ -82,7 +75,7 @@ drain_case(DeleteResult, AckResult, Expected) ->
         [
             {elib_pg, [
                 {'query', 2, fun
-                    (<<"SELECT out_organization_id,", _/binary>>, [Token]) ->
+                    (<<"SELECT * FROM fn_v5_claim_eb($1, $2, $3)">>, [Token, 11, 22]) ->
                         ?assertEqual(16, byte_size(epgsql_codec_uuid:encode(Token, uuid, []))),
                         case atomics:add_get(Calls, 1, 1) of
                             1 -> {ok, [Row]};
@@ -112,7 +105,7 @@ drain_case(DeleteResult, AckResult, Expected) ->
             ]}
         ],
         fun() ->
-            ?assertEqual(Expected, eb_pg_asset_delete_queue:drain(99, 88, 2)),
+            ?assertEqual(Expected, eb_pg_asset_delete_queue:drain(11, 22, 2)),
             ?assertEqual(1, meck:num_calls(attachment_storage, frozen_location, '_')),
             ?assertEqual(1, meck:num_calls(attachment_storage, delete_snapshot, '_')),
             ?assertEqual(

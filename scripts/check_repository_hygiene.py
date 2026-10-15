@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """Reject tracked execution artifacts without excluding test source or product contracts."""
 import argparse
-from pathlib import PurePosixPath
+from pathlib import Path, PurePosixPath
+import hashlib
+import json
 import subprocess
 import re
 
@@ -16,6 +18,12 @@ def forbidden_reason(path):
         return "compiled artifact"
     if any(part in {"evidence", "test-results", "playwright-report"} for part in parts):
         return "execution evidence"
+    # Formal versioned contracts are deliverables; ad-hoc plans/reports still fail.
+    if path.startswith(("docs/design/", "docs/architecture/", "docs/plans/")) and re.fullmatch(
+        r"(?:\d{4}-\d{2}-\d{2}-.+-v\d+|(?:.+-)?plan-v\d+(?:\.\d+)*|\d+-main-plan)\.md",
+        PurePosixPath(path).name,
+    ):
+        return None
     if "docs" in parts and any(
         part in {"plans", "planning", "qa", "review", "analysis"} for part in parts
     ):
@@ -53,19 +61,52 @@ def tracked_paths(repo, revision=None):
     return subprocess.check_output(command).decode().strip("\0").split("\0")
 
 
+def preserved_artifacts(repo, revision=None):
+    registry = "docs/reference/contracts/repository-artifacts.json"
+    if revision:
+        raw = subprocess.check_output(["git", "-C", str(repo), "show", f"{revision}:{registry}"])
+    else:
+        path = Path(repo) / registry
+        if not path.exists():
+            return set()
+        raw = path.read_bytes()
+    data = json.loads(raw)
+    if data.get("schema_version") != 1:
+        raise ValueError("invalid delivery artifact registry")
+    preserved = set()
+    tracked = set(tracked_paths(repo, revision))
+    for item in data["artifacts"]:
+        path = item["path"]
+        if (path in preserved or not path.startswith("docs/") or ".." in PurePosixPath(path).parts
+                or forbidden_reason(path) not in {"execution evidence", "execution documentation", "named AI execution plan"}
+                or item["source_contract"] not in tracked or not item["purpose"].strip()):
+            raise ValueError(f"invalid preserved delivery artifact: {path}")
+        raw = subprocess.check_output(["git", "-C", str(repo), "show", f"{revision or ''}:{path}"])
+        if hashlib.sha256(raw).hexdigest() != item["sha256"]:
+            raise ValueError(f"preserved delivery artifact changed: {path}")
+        preserved.add(path)
+    return preserved
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repo", default=".", help="Git repository to inspect")
     parser.add_argument("--revision", help="Inspect a commit instead of the current index")
     args = parser.parse_args()
-    violations = [(path, forbidden_reason(path)) for path in tracked_paths(args.repo, args.revision)]
+    try:
+        preserved = preserved_artifacts(args.repo, args.revision)
+    except (OSError, ValueError, KeyError, TypeError, subprocess.CalledProcessError) as error:
+        print(f"Repository hygiene FAIL: {error}")
+        return 1
+    violations = [(path, forbidden_reason(path)) for path in tracked_paths(args.repo, args.revision)
+                  if path not in preserved]
     violations = [(path, reason) for path, reason in violations if reason]
     for path, reason in violations:
         print(f"FAIL: {reason}: {path}")
     if violations:
         print(f"Repository hygiene failed: {len(violations)} tracked execution artifacts")
         return 1
-    print("Repository hygiene PASS: no tracked execution artifacts in checked categories")
+    print(f"Repository hygiene PASS: {len(preserved)} registered delivery materials preserved")
     return 0
 
 

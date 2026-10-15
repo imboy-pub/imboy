@@ -2,19 +2,32 @@
 -include_lib("eunit/include/eunit.hrl").
 
 permission_errors_test_() ->
-    {foreach, fun setup/0, fun cleanup/1, [
-        fun(_) -> ?_test(denylist_query_failure_is_checked()) end,
-        fun(_) -> ?_test(denylist_failure_is_not_cached()) end,
-        fun(_) -> ?_test(invitation_failure_is_denied()) end,
-        fun(_) -> ?_test(moment_failure_is_denied()) end,
-        fun(_) -> ?_test(relationship_failure_is_not_cached()) end,
-        fun(_) -> ?_test(relationship_malformed_is_denied()) end,
-        fun(_) -> ?_test(pending_status_failure_is_blocked()) end,
-        fun(_) -> ?_test(forward_failure_is_denied()) end,
-        fun(_) -> ?_test(c2c_failure_is_denied()) end,
-        fun(_) -> ?_test(read_receipt_failure_is_denied()) end,
-        fun(_) -> ?_test(webrtc_failure_is_denied()) end
-    ]}.
+    [
+        {timeout, 35,
+            ?_test(
+                pure_mock_fixture:run(fun() ->
+                    State = setup(),
+                    try
+                        ?assertEqual(ok, eunit:test(Test(State), [verbose]))
+                    after
+                        cleanup(State)
+                    end
+                end)
+            )}
+     || Test <- [
+            fun(_) -> ?_test(denylist_query_failure_is_checked()) end,
+            fun(_) -> ?_test(denylist_failure_is_not_cached()) end,
+            fun(_) -> ?_test(invitation_failure_is_denied()) end,
+            fun(_) -> ?_test(moment_failure_is_denied()) end,
+            fun(_) -> ?_test(relationship_failure_is_not_cached()) end,
+            fun(_) -> ?_test(relationship_malformed_is_denied()) end,
+            fun(_) -> ?_test(pending_status_failure_is_blocked()) end,
+            fun(_) -> ?_test(forward_failure_is_denied()) end,
+            fun(_) -> ?_test(c2c_failure_is_denied()) end,
+            fun(_) -> ?_test(read_receipt_failure_is_denied()) end,
+            fun(_) -> ?_test(webrtc_failure_is_denied()) end
+        ]
+    ].
 setup() ->
     Saved = [
         {K, application:get_env(imboy, K)}

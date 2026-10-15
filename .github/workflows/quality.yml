@@ -346,8 +346,20 @@ jobs:
   third-party-inventory:
     name: Third-party data inventory (V-01)
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: imboy
     steps:
       - uses: actions/checkout@v7
+        with:
+          path: imboy
+      - uses: actions/checkout@v7
+        with:
+          repository: imboy-pub/imboy-flutter
+          path: imboyapp
+
+      - name: Checkout pinned payment evidence
+        run: git clone --depth 1 --branch v0.3.2 https://gitee.com/imboy-pub/erlang_pay.git deps/erlang_pay
 
       - name: Validate third-party data inventory
         run: |
@@ -400,14 +412,14 @@ jobs:
       - name: Checkout imboyapp (sibling)
         uses: actions/checkout@v7
         with:
-          repository: imboy/imboy-flutter
+          repository: imboy-pub/imboy-flutter
           path: imboyapp
           ref: main
 
       - name: Checkout imboyadmin (sibling)
         uses: actions/checkout@v7
         with:
-          repository: imboy/imboy-admin-frontend
+          repository: imboy-pub/imboy-admin-frontend
           path: imboyadmin
           ref: main
 

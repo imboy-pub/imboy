@@ -658,6 +658,9 @@ own_manifest_sequence_ignores_foreign_old_boot_and_unknown_test() ->
 
 stored_cut(R, Source) -> maps:get(source_cut, maps:get(Source, maps:get(peers, R))).
 fixture(Fun) ->
+    pure_mock_fixture:run(fun() -> isolated_fixture(Fun) end).
+
+isolated_fixture(Fun) ->
     OldCfg = application:get_env(imboy, cache_replication),
     OldRegistry = application:get_env(imboy, cache_registry_overrides),
     ets:new(imboy_cache_meta, [named_table, public, set]),

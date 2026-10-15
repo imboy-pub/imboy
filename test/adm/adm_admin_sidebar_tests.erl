@@ -25,6 +25,18 @@
     {<<"企业审计/业务数据"/utf8>>, <<"/enterprise-business">>, <<"enterprise_business:read">>, [1, 2]}
 ]).
 
+%% 已合入的 AI 客服扩展；C1 九项核心合同保持独立。
+-define(AI_LEAVES, [
+    {<<"AI 客服配置"/utf8>>, <<"/customer-service/ai/config">>, <<"customer_service:read">>, [1, 2]},
+    {<<"AI FAQ 知识库"/utf8>>, <<"/customer-service/ai/faq">>, <<"customer_service:read">>, [1, 2]},
+    {<<"AI 会话记录"/utf8>>, <<"/customer-service/ai/sessions">>, <<"customer_service:read">>, [1, 2]},
+    {<<"AI 满意度统计"/utf8>>, <<"/customer-service/ai/metrics">>, <<"customer_service:read">>, [1, 2]}
+]).
+
+current_leaves() ->
+    {Before, After} = lists:split(6, ?C1_LEAVES),
+    Before ++ ?AI_LEAVES ++ After.
+
 -define(SEAT_WORKBENCH_PATH, <<"/customer-service/workspace">>).
 
 sidebar_config() ->
@@ -57,17 +69,17 @@ contract_triples(Children) ->
     ]).
 
 %%--------------------------------------------------------------------
-%% 1. 「企业管理」顶级组存在，恰 9 个叶子（§13.1 目标菜单）
+%% 1. 「企业管理」顶级组存在，C1 九项核心与 AI 四项扩展
 %%--------------------------------------------------------------------
 
 sidebar_enterprise_group_exists_test_() ->
     [
         ?_assertMatch(#{<<"children">> := [_ | _]}, enterprise_group()),
-        ?_assertEqual(9, length(enterprise_children()))
+        ?_assertEqual(length(?C1_LEAVES) + length(?AI_LEAVES), length(enterprise_children()))
     ].
 
 %%--------------------------------------------------------------------
-%% 2. 9 叶子逐条精确匹配（label + path + permission + roles，含顺序）
+%% 2. 核心与扩展逐条精确匹配（label + path + permission + roles，含顺序）
 %%--------------------------------------------------------------------
 
 sidebar_seat_workbench_removed_test_() ->
@@ -89,7 +101,7 @@ sidebar_enterprise_leaves_exact_test_() ->
      || C <- Children
     ],
     [
-        ?_assertEqual(?C1_LEAVES, Actual)
+        ?_assertEqual(current_leaves(), Actual)
     ].
 
 %%--------------------------------------------------------------------
@@ -101,7 +113,7 @@ sidebar_enterprise_contract_bidirectional_test_() ->
     ActualSet = contract_triples(enterprise_children()),
     ExpectedSet = lists:usort([
         {Path, Permission, lists:usort(Roles)}
-     || {_, Path, Permission, Roles} <- ?C1_LEAVES
+     || {_, Path, Permission, Roles} <- current_leaves()
     ]),
     [
         ?_assertEqual(ExpectedSet, ActualSet),

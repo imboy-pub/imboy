@@ -132,7 +132,24 @@ f4_authorized_purge_audited(Scope, Baseline) ->
     seed_turn(Org, SessionId, 4),
     %% purge 是 org 级（before_ts 之前的全部 turn）：前置行数含 f1/f2 留存行。
     Expected = turn_count(Org),
-    {ok, Expected} = cs_ai_purge_worker:purge(Org, now_ts(), <<"retention-sweep">>, <<"req-f4">>),
+    OldConfig = application:get_env(imboy, cs_ai_purge),
+    {ok, PgConf} = application:get_env(imboy, pg_conf),
+    {_M, _F, [Opts]} = maps:get(start_mfa, PgConf),
+    application:set_env(
+        imboy,
+        cs_ai_purge,
+        Opts#{username => <<"cs_ai_purge">>, password => ?PURGE_PASS}
+    ),
+    try
+        {ok, Expected} = cs_ai_purge_worker:purge(
+            Org, now_ts(), <<"retention-sweep">>, <<"req-f4">>
+        )
+    after
+        case OldConfig of
+            {ok, Value} -> application:set_env(imboy, cs_ai_purge, Value);
+            undefined -> application:unset_env(imboy, cs_ai_purge)
+        end
+    end,
     0 = turn_count(Org),
     ?assertEqual(Baseline + 1, audit_count(Org)).
 

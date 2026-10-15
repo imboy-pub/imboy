@@ -856,10 +856,17 @@ C14 使用显式本轮 source-root、ledger、manifest、evidence-dir 执行 `--
 复验和全量 EUnit 尚未完成，旧 121 失败不能直接减去定向用例数量推算剩余数。
 HTTP 限流 fixture 污染、SSE 保活失败、异步对象删除的旧测试断言、19 张表的
 数据处置策略覆盖、四个客服 AI 菜单的一期开放依据及其他未复验项继续开放。
-删除队列的冻结存储定位核验及独立 worker 身份装配也未在此轮闭合。
+集成时保留最新 main 已有的冻结存储定位核验、按 Org/Workspace 领取及
+object_ack_failed/object_delete_failed 错误契约；独立 worker 身份装配及完整门禁仍未闭合。
 
 源码输入已变化，旧 v3 SHA 的缓存门禁与回执不得重新绑定到本次交付候选。
 **BACKEND_LOCAL_CLOSEOUT=PARTIAL / NO_GO；LOCAL_CANDIDATE=BLOCKED；
 PRODUCTION_ACCEPTANCE=NOT_ISSUED**。后续生产验收仍需完成原门禁和外部输入。
 本地提交及合并保留正常 hooks；不 push、不部署。具体提交号和清理结果以最终
 Git 历史及对话交付记录为准。
+
+合并补充：与最新 main 的重叠修复优先保留较强的仓储结果校验、共享 keyring
+fixture、附件锁顺序与墓碑拒绝断言。集成候选编译通过；删除队列和 ACK 共 13 项
+补充单元检查通过，应用启动/清理边界使用 mock，未连接数据库，不替代
+eunit-local、真实 PG 授权用例或最终全量门禁。固定 15432 仍由其他会话的中继
+占用，本次未借用或终止该中继，完整复验继续开放。

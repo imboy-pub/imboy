@@ -69,7 +69,8 @@ eb_drain_preserves_ack_failure() ->
         end
     end),
     ?assertEqual(
-        {error, {ack_failed, ack_db_down}}, eb_pg_asset_delete_queue:drain(1, 2, 1, <<"token">>)
+        {error, {object_ack_failed, ack_db_down}},
+        eb_pg_asset_delete_queue:drain(1, 2, 1, <<"token">>)
     ).
 ordinary_worker_does_not_count_failed_delete() ->
     meck:expect(attachment_storage, frozen_location, fun(_, _) ->

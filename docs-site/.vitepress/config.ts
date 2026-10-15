@@ -9,6 +9,17 @@ export default defineConfig({
   lastUpdated: true,
   srcDir: 'content',
   outDir: '.vitepress/dist',
+  markdown: {
+    config(md) {
+      // Inline Erlang tuples are literal code, not Vue template expressions.
+      const render = md.renderer.rules.code_inline!;
+      md.renderer.rules.code_inline = (...args) => render(...args).replace('<code>', '<code v-pre>');
+      const html = md.renderer.rules.html_inline!;
+      // Preserve the frozen contract's filename placeholder without changing its hash.
+      md.renderer.rules.html_inline = (...args) => args[0][args[1]].content === '<unique>'
+        ? '&lt;unique&gt;' : html(...args);
+    },
+  },
 
   themeConfig: {
     logo: '/imboy-logo.svg',

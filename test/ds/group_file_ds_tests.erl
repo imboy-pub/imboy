@@ -105,19 +105,23 @@ upload_file_success_test_() ->
         % 上传时选定的含前缀真实路径一致。
         meck:new(elib_pg, [passthrough]),
         meck:expect(elib_pg, with_tx, fun(F) -> F(conn) end),
+        meck:expect(attachment_ds, ensure_upload_scope_tx, fun(conn, {group, 1}, 100) -> ok end),
         meck:new(attachment_repo, [passthrough]),
-        meck:expect(attachment_repo, bind_reference_lock_tx, fun(conn, Key) when
-            Key =:= ObjectKey
-        ->
+        meck:expect(attachment_repo, bind_reference_lock_tx, fun(conn, ObjectKey0) ->
+            ?assertEqual(ObjectKey, ObjectKey0),
+            self() ! attachment_locked,
             ok
         end),
-        meck:expect(attachment_repo, refresh_gc_verified_tx, fun(conn, Key) when
-            Key =:= ObjectKey
-        ->
-            {ok, false}
+        meck:expect(attachment_repo, refresh_gc_verified_tx, fun(conn, ObjectKey0) ->
+            ?assertEqual(ObjectKey, ObjectKey0),
+            self() ! attachment_refreshed,
+            {ok, 1}
         end),
-        meck:expect(attachment_ds, ensure_upload_scope_tx, fun(conn, {group, 1}, 100) -> ok end),
         meck:expect(attachment_ds, save, fun(Conn, CreatedAt, Uid, Attaches) ->
+            receive
+                attachment_locked -> ok
+            after 0 -> ?assert(false)
+            end,
             self() ! attachment_saved,
             ?assertEqual(conn, Conn),
             ?assertEqual(NowTs, CreatedAt),
@@ -138,10 +142,13 @@ upload_file_success_test_() ->
         end),
 
         Result = group_file_ds:upload_file(Gid, UploaderId, FileName, FileBinary, FileType),
-        ?assertEqual(1, meck:num_calls(attachment_repo, bind_reference_lock_tx, [conn, ObjectKey])),
-        ?assertEqual(1, meck:num_calls(attachment_repo, refresh_gc_verified_tx, [conn, ObjectKey])),
         receive
             removed -> ok
+        after 0 -> ?assert(false)
+        end,
+
+        receive
+            attachment_refreshed -> ok
         after 0 -> ?assert(false)
         end,
 
