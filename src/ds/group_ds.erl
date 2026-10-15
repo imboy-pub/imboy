@@ -167,7 +167,9 @@ load_member_uids(Gid) ->
         {ok, Items} when is_list(Items) ->
             {ok, [Uid || #{<<"user_id">> := Uid} <- Items]};
         {error, _} = Error ->
-            Error
+            Error;
+        Other ->
+            {error, {unexpected_repo_result, Other}}
     end.
 
 %% @doc room-key fan-out 的权威设备公钥快照。

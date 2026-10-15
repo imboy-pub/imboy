@@ -105,6 +105,17 @@ upload_file_success_test_() ->
         % 上传时选定的含前缀真实路径一致。
         meck:new(elib_pg, [passthrough]),
         meck:expect(elib_pg, with_tx, fun(F) -> F(conn) end),
+        meck:new(attachment_repo, [passthrough]),
+        meck:expect(attachment_repo, bind_reference_lock_tx, fun(conn, Key) when
+            Key =:= ObjectKey
+        ->
+            ok
+        end),
+        meck:expect(attachment_repo, refresh_gc_verified_tx, fun(conn, Key) when
+            Key =:= ObjectKey
+        ->
+            {ok, false}
+        end),
         meck:expect(attachment_ds, ensure_upload_scope_tx, fun(conn, {group, 1}, 100) -> ok end),
         meck:expect(attachment_ds, save, fun(Conn, CreatedAt, Uid, Attaches) ->
             self() ! attachment_saved,
@@ -127,6 +138,8 @@ upload_file_success_test_() ->
         end),
 
         Result = group_file_ds:upload_file(Gid, UploaderId, FileName, FileBinary, FileType),
+        ?assertEqual(1, meck:num_calls(attachment_repo, bind_reference_lock_tx, [conn, ObjectKey])),
+        ?assertEqual(1, meck:num_calls(attachment_repo, refresh_gc_verified_tx, [conn, ObjectKey])),
         receive
             removed -> ok
         after 0 -> ?assert(false)
@@ -569,20 +582,57 @@ get_file_categories_empty_test_() ->
         ?assertEqual({ok, []}, Result)
     end).
 
+with_scope_cleans_failure_test() ->
+    Test = with_scope(fun() ->
+        meck:new(group_file_repo, [passthrough]),
+        error(injected_failure)
+    end),
+    ?assertError(injected_failure, Test()),
+    lists:foreach(
+        fun(Module) ->
+            ?assertNot(lists:member(Module, meck:mocked()))
+        end,
+        [group_file_repo, attachment_ds, enterprise_audit_event_repo]
+    ).
+
 with_scope(Test) ->
     fun() ->
-        meck:new(enterprise_audit_event_repo, [passthrough]),
-        meck:expect(enterprise_audit_event_repo, append_scope_file_tx, fun(_, _, _, _) -> ok end),
-        meck:new(attachment_ds, [passthrough]),
-        meck:expect(attachment_ds, authorize_group_scope, fun(_, _) -> true end),
-        meck:expect(attachment_ds, find_path_by_group_file, fun(_, _) ->
-            {ok, <<"http://example.com/file.pdf">>}
-        end),
-        meck:expect(attachment_ds, ensure_upload_scope_tx, fun(_, _, _) -> ok end),
+        Existing = meck:mocked(),
+        Modules = [
+            attachment_ds,
+            attachment_repo,
+            enterprise_audit_event_repo,
+            group_ds,
+            elib_oss,
+            elib_dt,
+            group_file_repo,
+            workspace_resolver,
+            elib_pg,
+            group_member_repo,
+            workspace_guard
+        ],
         try
+            meck:new(enterprise_audit_event_repo, [passthrough]),
+            meck:expect(enterprise_audit_event_repo, append_scope_file_tx, fun(_, _, _, _) -> ok end),
+            meck:new(attachment_ds, [passthrough]),
+            meck:expect(attachment_ds, authorize_group_scope, fun(_, _) -> true end),
+            meck:expect(attachment_ds, find_path_by_group_file, fun(_, _) ->
+                {ok, <<"http://example.com/file.pdf">>}
+            end),
+            meck:expect(attachment_ds, ensure_upload_scope_tx, fun(_, _, _) -> ok end),
             Test()
         after
-            meck:unload(attachment_ds),
-            meck:unload(enterprise_audit_event_repo)
+            lists:foreach(
+                fun(Module) ->
+                    case
+                        lists:member(Module, Existing) orelse
+                            not lists:member(Module, meck:mocked())
+                    of
+                        true -> ok;
+                        false -> meck:unload(Module)
+                    end
+                end,
+                Modules
+            )
         end
     end.

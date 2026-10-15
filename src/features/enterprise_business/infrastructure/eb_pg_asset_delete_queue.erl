@@ -26,18 +26,26 @@ enqueue_in(Conn, Org, Ws, MessageIds, AssetIds) ->
     end.
 
 drain(Org, Ws, Limit) ->
-    drain(Org, Ws, Limit, erlang:make_ref()).
+    drain(Org, Ws, Limit, elib_uuid:gen_v7()).
 
 %% 消费至多 Limit 个 job（租约 CAS；删除成功 ack done、失败 ack 退避/终止）。
 drain(Org, Ws, Limit, Token) when Limit > 0 ->
     case claim(Token) of
         {ok, Row} ->
-            case process_job(Org, Ws, Row, Token) of
+            case process_job(Row, Token) of
                 ok ->
                     drain(Org, Ws, Limit - 1, Token);
-                {error, _Reason} ->
-                    %% 失败已 ack（退避/max_attempts 由 fn 裁决）；本批结束
-                    {ok, []}
+                {error, {ack_failed, Reason}} ->
+                    {error, {object_queue_ack_failed, Reason}};
+                {error, Reason} ->
+                    {ok, [
+                        #{
+                            organization_id => maps:get(<<"out_organization_id">>, Row),
+                            workspace_id => maps:get(<<"out_workspace_id">>, Row),
+                            asset_id => maps:get(<<"out_asset_id">>, Row),
+                            reason => Reason
+                        }
+                    ]}
             end;
         {error, empty} ->
             {ok, []};
@@ -47,7 +55,9 @@ drain(Org, Ws, Limit, Token) when Limit > 0 ->
 drain(_Org, _Ws, _Limit, _Token) ->
     {ok, []}.
 
-process_job(Org, Ws, Row, Token) ->
+process_job(Row, Token) ->
+    Org = maps:get(<<"out_organization_id">>, Row),
+    Ws = maps:get(<<"out_workspace_id">>, Row),
     AssetId = maps:get(<<"out_asset_id">>, Row),
     Key = maps:get(<<"out_object_key">>, Row),
     DeleteResult =
@@ -57,8 +67,11 @@ process_job(Org, Ws, Row, Token) ->
             _C:_R -> {error, worker_crash}
         end,
     AckOk = DeleteResult =:= ok orelse DeleteResult =:= {error, not_found},
-    _ = ack(Org, Ws, AssetId, Token, AckOk),
-    AckOk.
+    case ack(Org, Ws, AssetId, Token, AckOk) of
+        ok when AckOk -> ok;
+        ok -> DeleteResult;
+        {error, Reason} -> {error, {ack_failed, Reason}}
+    end.
 
 %% 企业队列 claim（租约 CAS；fn 返回单 job 或空集）。
 claim(Token) ->
@@ -85,8 +98,16 @@ ack(Org, Ws, AssetId, Token, Ok) ->
             [Org, Ws, AssetId, Token, Ok]
         )
     of
-        {ok, _} -> ok;
-        {error, R} -> {error, R}
+        {ok, [#{<<"fn_v5_ack_eb">> := State}]} when
+            Ok =:= true, State =:= <<"done">>;
+            Ok =:= false, State =:= <<"retry_wait">>;
+            Ok =:= false, State =:= <<"blocked">>
+        ->
+            ok;
+        {ok, Other} ->
+            {error, {unexpected_ack_result, Other}};
+        {error, R} ->
+            {error, R}
     end.
 
 reap(Limit) ->

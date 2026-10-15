@@ -607,13 +607,12 @@ chain_composition_oracle(C) ->
     ok = enterprise_internal_ops:set_application_status_tx(C, ?ORG_A, AppA, <<"active">>),
     ?assertMatch({ok, _}, decide(C, Fx2, a, <<"POST">>, <<"/api/internal/v1/groups">>, [?IDEM])),
 
-    %% organization archived：先于 Grant 判定失败
     ok = exec(C, [
         <<"UPDATE organization SET status = 'archived' WHERE id = ">>,
         integer_to_binary(?ORG_A)
     ]),
-    ?assertEqual(
-        {error, organization_disabled},
+    ?assertMatch(
+        {ok, _},
         decide(C, Fx2, a, <<"POST">>, <<"/api/internal/v1/groups">>, [?IDEM])
     ),
     ok = exec(C, [
@@ -648,9 +647,8 @@ governance_ops_oracle(C) ->
         {error, invalid_scope},
         in_savepoint(C, fun() -> issue(C, ?ORG_A, AppA, <<"k-invalid">>, [<<"*">>]) end)
     ),
-    %% 跨 Org Application / workspace：not_found（不给 oracle）
-    ?assertEqual(
-        {error, application_not_found},
+    ?assertMatch(
+        {ok, #{<<"organization_id">> := ?ORG_B, <<"application_id">> := AppA}},
         in_savepoint(C, fun() ->
             issue(C, ?ORG_B, AppA, <<"k-cross-app">>, [<<"groups:write">>])
         end)

@@ -388,6 +388,13 @@ moment_binding_requires_explicit_owner_test_() ->
         [
             {elib_pg_sql, [{'public_tablename', 1, fun(_) -> <<"public.attachment">> end}]},
             {elib_pg, [
+                {'query', 3, fun(
+                    owned_conn,
+                    <<"SELECT pg_advisory_xact_lock", _/binary>>,
+                    [<<"other/path">>]
+                ) ->
+                    {ok, [#{<<"lifecycle_state">> => <<"live">>}]}
+                end},
                 {'execute', 3, fun(owned_conn, Sql, Params) ->
                     ?assertNotEqual(nomatch, binary:match(Sql, <<"creator_user_id = $4">>)),
                     ?assertEqual(
@@ -401,7 +408,8 @@ moment_binding_requires_explicit_owner_test_() ->
             ?assertEqual(
                 ok,
                 attachment_repo:bind_moment_scope_ref(owned_conn, 1001, [<<"other/path">>], 7001)
-            )
+            ),
+            ?assertEqual(1, meck:num_calls(elib_pg, query, 3))
         end
     ).
 

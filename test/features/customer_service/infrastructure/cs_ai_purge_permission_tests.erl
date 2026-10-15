@@ -28,13 +28,25 @@ setup() ->
             Scope = seed_scope(),
             ok = setup_roles(),
             Baseline = audit_count(maps:get(org, Scope)),
-            {ok, Conn, State} = {ok, Conn, #{scope => Scope, baseline => Baseline}},
+            Previous = application:get_env(imboy, cs_ai_purge),
+            {ok, PgConf} = application:get_env(imboy, pg_conf),
+            {_Module, _Function, [Options]} = maps:get(start_mfa, PgConf),
+            ok = application:set_env(
+                imboy,
+                cs_ai_purge,
+                Options#{username => <<"cs_ai_purge">>, password => ?PURGE_PASS}
+            ),
+            State = #{scope => Scope, baseline => Baseline, previous_purge => Previous},
             {ok, Conn, State};
         {error, Reason} ->
             {error, Reason}
     end.
 
-cleanup({ok, Conn, #{scope := Scope}}) ->
+cleanup({ok, Conn, #{scope := Scope, previous_purge := Previous}}) ->
+    case Previous of
+        undefined -> application:unset_env(imboy, cs_ai_purge);
+        {ok, Value} -> application:set_env(imboy, cs_ai_purge, Value)
+    end,
     cleanup_scope(Scope),
     eunit_runner:eunit_cleanup_db(Conn);
 cleanup(Other) ->

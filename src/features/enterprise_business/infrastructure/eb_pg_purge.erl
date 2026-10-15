@@ -175,8 +175,16 @@ run(OrgId, WorkspaceId, Now, Limit, AgeSec) ->
             {error, Reason};
         {ok, Summary} ->
             case eb_pg_asset_delete_queue:drain(OrgId, WorkspaceId, Limit) of
-                {ok, Failures} -> {ok, Summary#{object_delete_failures => Failures}};
-                {error, Reason} -> {error, Reason}
+                {ok, Failures} ->
+                    ScopedFailures = [
+                        Failure
+                     || #{organization_id := Org, workspace_id := Ws} = Failure <- Failures,
+                        Org =:= OrgId,
+                        Ws =:= WorkspaceId
+                    ],
+                    {ok, Summary#{object_delete_failures => ScopedFailures}};
+                {error, Reason} ->
+                    {error, Reason}
             end;
         Other ->
             Other

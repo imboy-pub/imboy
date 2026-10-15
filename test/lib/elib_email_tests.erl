@@ -54,14 +54,15 @@ send_with_list_subject_test_() ->
                 {'send', 2, fun(_Email, _Option) -> ok end}
             ]},
             {mimemail, [
-                {'encode', 1, fun(_Email) -> <<"encoded">> end}
-            ]},
-            {ec_cnv, [
-                {'to_binary', 1, fun(_Input) -> <<"test@example.com">> end}
+                {'encode', 1, fun({_, _, Headers, _, _}) ->
+                    ?assertEqual(<<"列表主题"/utf8>>, proplists:get_value(<<"Subject">>, Headers)),
+                    <<"encoded">>
+                end}
             ]}
         ],
         fun() ->
-            Result = elib_email:send(<<"recipient@example.com">>, "列表主题" / utf8),
+            Subject = binary_to_list(<<"列表主题"/utf8>>),
+            Result = elib_email:send(<<"recipient@example.com">>, Subject),
             ?assertEqual({ok, success}, Result)
         end
     ).
