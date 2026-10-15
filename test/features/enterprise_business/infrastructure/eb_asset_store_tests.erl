@@ -44,7 +44,7 @@ cases({ok, _Conn}) ->
         {timeout, 60, fun a11b_put_then_stream_round_trips_within_scope/0},
         {timeout, 60, fun a11b_cross_org_stream_and_delete_fail/0},
         {timeout, 60, fun a11c_bottom_failures_are_propagated/0},
-        {timeout, 60, fun delete_private_removes_the_object_only/0},
+        {timeout, 60, fun delete_private_enqueues_without_deleting_bytes/0},
         {timeout, 60, fun metadata_lifecycle_is_reachable_through_the_port/0}
     ];
 cases(_Skipped) ->
@@ -154,17 +154,16 @@ a11c_bottom_failures_are_propagated() ->
             {error, {object_store, not_found}},
             eb_asset_store:stream_content(Org, Ws, AssetId)
         ),
-        ?assertEqual(
-            {error, {object_store, not_found}},
-            eb_asset_store:delete_private(Org, Ws, AssetId)
-        ),
+        %% 删除入口只持久化意图，不读取或删除对象。
+        ok = eb_asset_store:delete_private(Org, Ws, AssetId),
+        assert_blocked_delete_intent(Org, Ws, AssetId),
         _ = Summary,
         ok
     after
         eb_pg_test_fixture:cleanup(Scope)
     end.
 
-delete_private_removes_the_object_only() ->
+delete_private_enqueues_without_deleting_bytes() ->
     Scope = eb_pg_test_fixture:new_scope(),
     try
         {Org, Ws} = tenant(Scope),
@@ -175,11 +174,12 @@ delete_private_removes_the_object_only() ->
             payload => <<"to-be-deleted">>
         }),
         ok = eb_asset_store:delete_private(Org, Ws, AssetId),
-        %% 对象没了，但元数据仍在（对象回收与元数据状态是两件事）
+        %% 未证明真实存储身份的 stub 只能入 blocked，字节保持原样。
         ?assertEqual(
-            {error, {object_store, not_found}},
+            {ok, {content_stream, <<"to-be-deleted">>}},
             eb_asset_store:stream_content(Org, Ws, AssetId)
         ),
+        assert_blocked_delete_intent(Org, Ws, AssetId),
         ?assertEqual(
             pending_confirm,
             maps:get(status, element(2, eb_asset_store:fetch_asset(Org, Ws, AssetId)))
@@ -218,3 +218,11 @@ tenant(Scope) ->
 
 sha256_hex(Bin) ->
     binary:encode_hex(crypto:hash(sha256, Bin), lowercase).
+
+assert_blocked_delete_intent(Org, Ws, AssetId) ->
+    {ok, [Row]} = elib_pg:query(
+        <<"SELECT job_state,last_error_code FROM enterprise_asset_delete_queue WHERE organization_id=$1 AND workspace_id=$2 AND asset_id=$3">>,
+        [Org, Ws, AssetId]
+    ),
+    ?assertEqual(<<"blocked">>, maps:get(<<"job_state">>, Row)),
+    ?assertEqual(<<"legacy_location_unverified">>, maps:get(<<"last_error_code">>, Row)).

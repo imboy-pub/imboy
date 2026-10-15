@@ -5,7 +5,11 @@ cd "$(dirname "$0")/../.."
 RUN_DIR=$(mktemp -d /tmp/imboy-asset-garage.XXXXXX)
 CONTAINER="imboy-asset-garage-${RUN_DIR##*.}"
 IMAGE=${IMBOY_TEST_GARAGE_IMAGE:-dxflrs/garage:v2.3.0}
-cleanup() { docker rm -f -v "$CONTAINER" >/dev/null 2>&1 || true; }
+cleanup() {
+  if [[ "$(docker inspect -f '{{index .Config.Labels "imboy.test.owner"}}' "$CONTAINER" 2>/dev/null || true)" == "$RUN_DIR" ]]; then
+    docker rm -f -v "$CONTAINER" >/dev/null 2>&1 || true
+  fi
+}
 trap cleanup EXIT
 umask 077
 mkdir "$RUN_DIR/beams"
@@ -24,7 +28,7 @@ s3_region = "garage"
 api_bind_addr = "0.0.0.0:3900"
 CONFIG
 docker image inspect "$IMAGE" --format '{{.Id}}' > "$RUN_DIR/image-id.txt"
-docker run -d --name "$CONTAINER" -p 127.0.0.1::3900 \
+docker run -d --name "$CONTAINER" --label "imboy.test.owner=$RUN_DIR" -p 127.0.0.1::3900 \
   -v "$RUN_DIR/garage.toml:/etc/garage.toml:ro" \
   --entrypoint /garage "$IMAGE" server > "$RUN_DIR/container-id.txt"
 garage() { docker exec "$CONTAINER" /garage "$@"; }
@@ -41,6 +45,16 @@ garage bucket create synthetic-enterprise-assets > "$RUN_DIR/bucket.log" 2>&1
 garage key import --yes "$IMBOY_TEST_ACCESS" "$IMBOY_TEST_SECRET" > "$RUN_DIR/key-private.log" 2>&1
 garage bucket allow synthetic-enterprise-assets --read --write --key "$IMBOY_TEST_ACCESS" > "$RUN_DIR/grant.log" 2>&1
 export IMBOY_TEST_ENDPOINT="http://$(docker port "$CONTAINER" 3900/tcp)"
+if [[ "$#" -gt 0 ]]; then
+  [[ "$1" == -- && "$#" -gt 1 ]] || { echo 'Usage: enterprise_asset_garage_gate.sh [-- command ...]' >&2; exit 2; }
+  shift
+  export W202_GARAGE_ENDPOINT="$IMBOY_TEST_ENDPOINT"
+  export W202_GARAGE_BUCKET=synthetic-enterprise-assets
+  export W202_GARAGE_ACCESS_KEY="$IMBOY_TEST_ACCESS" W202_GARAGE_SECRET_KEY="$IMBOY_TEST_SECRET"
+  "$@"
+  exit $?
+fi
+
 erlc -I include -o "$RUN_DIR/beams" src/lib/elib_s3_sign.erl src/lib/elib_oss.erl \
   src/features/enterprise_business/infrastructure/eb_asset_object_garage.erl
 cat > "$RUN_DIR/check.erl" <<'CHECK'

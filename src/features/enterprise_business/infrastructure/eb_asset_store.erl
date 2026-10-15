@@ -45,7 +45,11 @@
     cleanup_asset/3,
     cleanup_pending_private/5,
     delete_queued_object/3,
-    scope_key/3
+    scope_key/3,
+    fetch_session/3,
+    session_by_client_id/3,
+    renew_session/4,
+    register_session/8
 ]).
 
 %% @doc 由作用域派生对象 key（与元数据 `object_key` 同源，单一真源）。
@@ -251,3 +255,28 @@ delete_queued_object(Org, Ws, Key) ->
     with_object_store(fun(ObjectStore) ->
         ObjectStore:delete(Key, eb_pg_asset_meta:key_prefix(Org, Ws))
     end).
+
+fetch_session(Org, Ws, AssetId) -> eb_pg_asset_meta:v5_session(Org, Ws, AssetId).
+session_by_client_id(Org, Ws, ClientId) -> eb_pg_asset_meta:v5_session_by_cid(Org, Ws, ClientId).
+renew_session(Org, Ws, AssetId, ExpiresAt) ->
+    eb_pg_asset_meta:renew_v5(Org, Ws, AssetId, ExpiresAt).
+
+register_session(Org, Ws, Descriptor, ClientId, Registration, Kind, Deadline, ExpiresAt) ->
+    case eb_pg_asset_meta:insert_asset(Org, Ws, Descriptor) of
+        {ok, _} ->
+            AssetId = maps:get(id, Descriptor),
+            Key = scope_key(Org, Ws, AssetId),
+            eb_pg_asset_meta:register_v5(
+                Org,
+                Ws,
+                AssetId,
+                Key,
+                ClientId,
+                Registration,
+                Kind,
+                Deadline,
+                ExpiresAt
+            );
+        {error, _} = Error ->
+            Error
+    end.

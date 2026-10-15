@@ -6,7 +6,7 @@
 
 选择 `phase1_delivery` 时，E2EE、AI 助手、Bot 产品、RTC、直播、Agent Hub 和 MCP 属于关闭的二期能力。共享代码或编译产物中存在这些实现，不表示交付实例允许启用它们。
 
-一期预设的消息存储为 `archived`、`e2ee_mode=disabled`，允许消息检索和导出。这些设置来自 [imboy_profile_preset.erl](../../src/lib/imboy_profile_preset.erl)，有效策略由 [imboy_policy.erl](../../src/lib/imboy_policy.erl) 与功能授权共同决定。配置项不能替代 HTTP、WebSocket、后台任务和客户端入口的关闭验收。
+一期预设的消息存储为 `archived`、`e2ee_mode=disabled`，允许消息检索和导出。这些设置来自 [imboy_profile_preset.erl](https://github.com/imboy-pub/imboy/blob/main/src/lib/imboy_profile_preset.erl)，有效策略由 [imboy_policy.erl](https://github.com/imboy-pub/imboy/blob/main/src/lib/imboy_policy.erl) 与功能授权共同决定。配置项不能替代 HTTP、WebSocket、后台任务和客户端入口的关闭验收。
 
 一期普通消息不具有客户端端到端加密保证，获授权的服务端处理链路可以接触正文。传输加密、服务端存储加密、密钥管理、组织权限和附件授权是不同层面的能力；关闭 E2EE 不表示可以关闭这些保护，也不能宣称服务端对所有消息“零知识”。实际 TLS 边界取决于部署配置。
 
@@ -27,4 +27,4 @@ E2EE 协议定义见 [协议规范](./e2ee-protocol-specification.md)，部署�
 
 运行测试、攻击复测、代码审查和恢复演练的证据保存在仓外，并绑定冻结提交与产物哈希。历史候选的通过数量、单元测试或协议描述不能替代当前端到端验收。
 
-安全问题报告入口见 [SECURITY.md](../../SECURITY.md)。本参考不复制旧执行报告、竞争产品比较、销售周期或安全认证承诺。
+安全问题报告入口见 [SECURITY.md](https://github.com/imboy-pub/imboy/blob/main/SECURITY.md)。本参考不复制旧执行报告、竞争产品比较、销售周期或安全认证承诺。

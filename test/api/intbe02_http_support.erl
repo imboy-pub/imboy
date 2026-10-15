@@ -653,6 +653,10 @@ http(Port, Method, Path, Body0, Headers0) ->
     Headers = maps:merge(
         #{
             <<"host">> => request_host(),
+            %% 协议矩阵模拟独立客户端；IP 限流用例须显式传入稳定 XFF。
+            <<"x-forwarded-for">> =>
+                <<"2001:db8:", (integer_to_binary(Port, 16))/binary, "::",
+                    (integer_to_binary(erlang:unique_integer([positive]) rem 65536, 16))/binary>>,
             <<"connection">> => <<"close">>,
             <<"content-type">> => <<"application/json">>,
             <<"content-length">> => integer_to_binary(byte_size(Body))

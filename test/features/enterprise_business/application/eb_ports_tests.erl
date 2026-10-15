@@ -154,7 +154,7 @@ ports_have_explicit_frozen_contracts_test() ->
     ?assertEqual([{now, 0}], maps:get(eb_clock_port, Contracts)),
     ?assertEqual([{new_id, 1}], maps:get(eb_id_port, Contracts)),
     ?assertEqual([{append, 2}, {append_in, 3}], maps:get(eb_audit_port, Contracts)),
-    %% 原 put/stream/delete 三件保留，追加 R0-4 的 metadata 生命周期
+    %% 原 put/stream/delete 三件保留，追加 metadata 生命周期与 V5 会话元数据。
     ?assertEqual(
         [
             {cleanup_asset, 3},
@@ -162,8 +162,12 @@ ports_have_explicit_frozen_contracts_test() ->
             {confirm_asset, 3},
             {delete_private, 3},
             {fetch_asset, 3},
+            {fetch_session, 3},
             {insert_asset, 3},
             {put_private, 3},
+            {register_session, 8},
+            {renew_session, 4},
+            {session_by_client_id, 3},
             {stream_content, 3}
         ],
         lists:sort(maps:get(eb_asset_port, Contracts))
@@ -297,7 +301,7 @@ crypto_port_aad_shape_frozen_test() ->
 asset_port_callback_names_cannot_leak_storage_handle_test() ->
     Names = [Name || {Name, _} <- eb_asset_port:behaviour_info(callbacks)],
     %% 冻结正表：新增任何泄漏型 callback 都会让本断言变红。
-    %% EB-03R：追加 metadata 生命周期四件；名称仍不得泄漏存储句柄。
+    %% metadata 生命周期与 V5 会话操作均不得泄漏存储句柄。
     ?assertEqual(
         [
             cleanup_asset,
@@ -305,8 +309,12 @@ asset_port_callback_names_cannot_leak_storage_handle_test() ->
             confirm_asset,
             delete_private,
             fetch_asset,
+            fetch_session,
             insert_asset,
             put_private,
+            register_session,
+            renew_session,
+            session_by_client_id,
             stream_content
         ],
         lists:sort(Names)

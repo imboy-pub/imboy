@@ -1,0 +1,336 @@
+{
+  "schema_version": 1,
+  "purpose": "Exact preserved delivery materials. Registration proves classification and integrity only, never business acceptance.",
+  "artifacts": [
+    {
+      "path": "docs/architecture/attachment-lifecycle-v5/evidence/baseline-probes-20261013.log",
+      "sha256": "f4a4c2aa1ebb2110122f782f2cfd83e37bf28e1158e6a3c7bdbce620b2349cf8",
+      "source_contract": "docs/architecture/attachment-lifecycle-v5/02-main-plan.md",
+      "purpose": "Frozen attachment lifecycle design inputs and schema evidence"
+    },
+    {
+      "path": "docs/architecture/attachment-lifecycle-v5/evidence/baseline-probes.sql",
+      "sha256": "9fb0bf3bc01cb1b07a89b4fcb96b94d0b3162737817cf47550b0e567a1d3d5a7",
+      "source_contract": "docs/architecture/attachment-lifecycle-v5/02-main-plan.md",
+      "purpose": "Frozen attachment lifecycle design inputs and schema evidence"
+    },
+    {
+      "path": "docs/architecture/attachment-lifecycle-v5/evidence/catalog-20261013.txt",
+      "sha256": "5c07a3cd5f0b56fb9384176d1de383272772f4ab4417e080171d25d05b9abf77",
+      "source_contract": "docs/architecture/attachment-lifecycle-v5/02-main-plan.md",
+      "purpose": "Frozen attachment lifecycle design inputs and schema evidence"
+    },
+    {
+      "path": "docs/architecture/attachment-lifecycle-v5/evidence/catalog-extra-20261013.txt",
+      "sha256": "b670cc15d471442a9c00197b74b881f7b6c3cd77d930484f0aacd34f3d737048",
+      "source_contract": "docs/architecture/attachment-lifecycle-v5/02-main-plan.md",
+      "purpose": "Frozen attachment lifecycle design inputs and schema evidence"
+    },
+    {
+      "path": "docs/architecture/attachment-lifecycle-v5/evidence/catalog-query.sql",
+      "sha256": "6b1f4cd587e8fb973dc562a2182d7f9991e070f1ec84dad6858c8daa4a9accca",
+      "source_contract": "docs/architecture/attachment-lifecycle-v5/02-main-plan.md",
+      "purpose": "Frozen attachment lifecycle design inputs and schema evidence"
+    },
+    {
+      "path": "docs/architecture/attachment-lifecycle-v5/evidence/current-baseline.json",
+      "sha256": "ad8cdfdc57eeae958b933d86e349beeacaccf1f84460a3bba4f06d90b3eb3950",
+      "source_contract": "docs/architecture/attachment-lifecycle-v5/02-main-plan.md",
+      "purpose": "Frozen attachment lifecycle design inputs and schema evidence"
+    },
+    {
+      "path": "docs/architecture/attachment-lifecycle-v5/evidence/migration-renumber-20261014.md",
+      "sha256": "11d4f048ad9ad7c67fd767f009c3af2abc560b9b4b724474c99350d606a93019",
+      "source_contract": "docs/architecture/attachment-lifecycle-v5/02-main-plan.md",
+      "purpose": "Frozen attachment lifecycle design inputs and schema evidence"
+    },
+    {
+      "path": "docs/architecture/attachment-lifecycle-v5/evidence/schema-rebuild-20261013.log",
+      "sha256": "6d1f592403e576d1874bb9ceed49196b96732cb9384665214cc3162740d9f539",
+      "source_contract": "docs/architecture/attachment-lifecycle-v5/02-main-plan.md",
+      "purpose": "Frozen attachment lifecycle design inputs and schema evidence"
+    },
+    {
+      "path": "docs/architecture/attachment-lifecycle-v5/evidence/w0-01-input-summary.json",
+      "sha256": "c17ba0b9fd874745000a60d0a568fbb5363590fc2338f5c7c2eca81cfe153b7f",
+      "source_contract": "docs/architecture/attachment-lifecycle-v5/02-main-plan.md",
+      "purpose": "Frozen attachment lifecycle design inputs and schema evidence"
+    },
+    {
+      "path": "docs/architecture/attachment-lifecycle-v5/evidence/w0-02-input-summary.json",
+      "sha256": "642bf548948acf3010c664f694f29550566c540732b15ef90e3ea94e20a6acad",
+      "source_contract": "docs/architecture/attachment-lifecycle-v5/02-main-plan.md",
+      "purpose": "Frozen attachment lifecycle design inputs and schema evidence"
+    },
+    {
+      "path": "docs/architecture/attachment-lifecycle-v5/evidence/w1-contract-output.json",
+      "sha256": "0083e9a741c55d80e2a214e94d9fca1c4be224123e0c9189296cb5685a7bebf4",
+      "source_contract": "docs/architecture/attachment-lifecycle-v5/02-main-plan.md",
+      "purpose": "Frozen attachment lifecycle design inputs and schema evidence"
+    },
+    {
+      "path": "docs/architecture/attachment-lifecycle-v5/evidence/w1-function-inventory.json",
+      "sha256": "4a80aeca63b1886893e0719701173c33237993a825db40f5c7713a009cf83ead",
+      "source_contract": "docs/architecture/attachment-lifecycle-v5/02-main-plan.md",
+      "purpose": "Frozen attachment lifecycle design inputs and schema evidence"
+    },
+    {
+      "path": "docs/architecture/cache-v2.2.1/closeout-v1/c10-mixed-plan.md",
+      "sha256": "beb32d674c3a30c84e19335bda6462f8f5593ab0215a35288732e97300a848da",
+      "source_contract": "docs/architecture/cache-v2.2.1/closeout-v1/evidence-index.md",
+      "purpose": "Versioned cache compatibility and acceptance window contracts"
+    },
+    {
+      "path": "docs/architecture/cache-v2.2.1/closeout-v1/c12-window-plan.md",
+      "sha256": "f6a8b69899a56f3f19a7dcda5c603ab129fc51cfb16e1fcf70a08818ed703111",
+      "source_contract": "docs/architecture/cache-v2.2.1/closeout-v1/evidence-index.md",
+      "purpose": "Versioned cache compatibility and acceptance window contracts"
+    },
+    {
+      "path": "docs/design/2026-10-06-enterprise-organization-gap/evidence/eo-20261006T001314Z/final/FROZEN.md",
+      "sha256": "05e467188018353495bc9f42bea610f9b864a182d8b6b63ef52785abfaf39b98",
+      "source_contract": "docs/design/2026-10-11-unified-delivery-closeout/plan-v1.md",
+      "purpose": "Historical evidence freeze notice preventing stale PASS inheritance"
+    },
+    {
+      "path": "docs/design/2026-10-07-phase1-delivery-quality-plan.md",
+      "sha256": "3afaebe7c47b0a8aabc2391f187255dfbe8a02c80123b9ad4280368bebad0e8a",
+      "source_contract": "docs/design/2026-10-11-unified-delivery-closeout/plan-v1.md",
+      "purpose": "Delivery source contract or reproducible execution handoff"
+    },
+    {
+      "path": "docs/design/2026-10-11-unified-delivery-closeout/zcode-prompt-v1.md",
+      "sha256": "5d642e7cb016986cb06bfba32c54f05dde906090589460af73f56ac01ad352f6",
+      "source_contract": "docs/design/2026-10-11-unified-delivery-closeout/plan-v1.md",
+      "purpose": "Delivery source contract or reproducible execution handoff"
+    },
+    {
+      "path": "docs/plans/2026-10-13-limiter-v1-local-evidence-and-plan.md",
+      "sha256": "15f76e2951a51f3bb87426049c5983554d98176317587113c000c60306f2cb8f",
+      "source_contract": "docs/plans/2026-10-13-limiter-v1-local-evidence-and-plan.md",
+      "purpose": "Limiter acceptance and failure attribution evidence; no PASS inheritance"
+    },
+    {
+      "path": "docs/qa/limiter-v1/0d28ad4f/baseline/BASELINE_REPORT.md",
+      "sha256": "fccfddda16c4ad59055d65396c941cb50051444d0bca02d411e70c21e6eb31fa",
+      "source_contract": "docs/plans/2026-10-13-limiter-v1-local-evidence-and-plan.md",
+      "purpose": "Limiter acceptance and failure attribution evidence; no PASS inheritance"
+    },
+    {
+      "path": "docs/qa/limiter-v1/0d28ad4f/baseline/FROZEN_INPUTS.md",
+      "sha256": "c454717b0801b4a1cf1acee6f8abd1def6bac41a684540bab3d582de8309b383",
+      "source_contract": "docs/plans/2026-10-13-limiter-v1-local-evidence-and-plan.md",
+      "purpose": "Limiter acceptance and failure attribution evidence; no PASS inheritance"
+    },
+    {
+      "path": "docs/qa/limiter-v1/0d28ad4f/baseline/baseline_a.escript",
+      "sha256": "12b75169aec0bb61fe149f8e9da6871afaba546302ba969b3bdae7dafeeb2223",
+      "source_contract": "docs/plans/2026-10-13-limiter-v1-local-evidence-and-plan.md",
+      "purpose": "Limiter acceptance and failure attribution evidence; no PASS inheritance"
+    },
+    {
+      "path": "docs/qa/limiter-v1/0d28ad4f/baseline/baseline_a.json",
+      "sha256": "f95f2dfd501c375c2a55d9cdbdf7bf1fde8c838004b744336311136fc6c8dd4d",
+      "source_contract": "docs/plans/2026-10-13-limiter-v1-local-evidence-and-plan.md",
+      "purpose": "Limiter acceptance and failure attribution evidence; no PASS inheritance"
+    },
+    {
+      "path": "docs/qa/limiter-v1/0d28ad4f/baseline/baseline_b.escript",
+      "sha256": "1a44b2753481540861483fc702ba4b77d0766cb169ac77f7110aeed9205f4c32",
+      "source_contract": "docs/plans/2026-10-13-limiter-v1-local-evidence-and-plan.md",
+      "purpose": "Limiter acceptance and failure attribution evidence; no PASS inheritance"
+    },
+    {
+      "path": "docs/qa/limiter-v1/0d28ad4f/baseline/baseline_b.json",
+      "sha256": "f5eb79df8df43d1f22c99c73585129a83cbe357fddfeb8c402ed2fb75b872780",
+      "source_contract": "docs/plans/2026-10-13-limiter-v1-local-evidence-and-plan.md",
+      "purpose": "Limiter acceptance and failure attribution evidence; no PASS inheritance"
+    },
+    {
+      "path": "docs/qa/limiter-v1/124dcbb7/20261014T155741-81062/AC-01/exit_code",
+      "sha256": "4e07408562bedb8b60ce05c1decfe3ad16b72230967de01f640b7e4729b49fce",
+      "source_contract": "docs/plans/2026-10-13-limiter-v1-local-evidence-and-plan.md",
+      "purpose": "Limiter acceptance and failure attribution evidence; no PASS inheritance"
+    },
+    {
+      "path": "docs/qa/limiter-v1/124dcbb7/20261014T155741-81062/AC-01/input.json",
+      "sha256": "59d3ecf4ff46eab6790cddfbceebd507f8ee03c42e02a0c24390f5c27468e5d7",
+      "source_contract": "docs/plans/2026-10-13-limiter-v1-local-evidence-and-plan.md",
+      "purpose": "Limiter acceptance and failure attribution evidence; no PASS inheritance"
+    },
+    {
+      "path": "docs/qa/limiter-v1/124dcbb7/20261014T155741-81062/AC-01/output.log",
+      "sha256": "31b17fa7a46feee33909471990b7182ccfc2794d5205442e2b102e0a409283c8",
+      "source_contract": "docs/plans/2026-10-13-limiter-v1-local-evidence-and-plan.md",
+      "purpose": "Limiter acceptance and failure attribution evidence; no PASS inheritance"
+    },
+    {
+      "path": "docs/qa/limiter-v1/124dcbb7/20261014T155741-81062/AC01_EVIDENCE_NOTES.md",
+      "sha256": "dce749d30b93f2e35c6a2a9af906130a82cbec140ea07a8f5f26034399e62a9b",
+      "source_contract": "docs/plans/2026-10-13-limiter-v1-local-evidence-and-plan.md",
+      "purpose": "Limiter acceptance and failure attribution evidence; no PASS inheritance"
+    },
+    {
+      "path": "docs/qa/limiter-v1/417ba55f/20261014T130107-82080/eunit/ATTRIBUTION.md",
+      "sha256": "e6a390dfaf6c5be44b1a7477caf0f45881610730394ab959ecea18527d06b343",
+      "source_contract": "docs/plans/2026-10-13-limiter-v1-local-evidence-and-plan.md",
+      "purpose": "Limiter acceptance and failure attribution evidence; no PASS inheritance"
+    },
+    {
+      "path": "docs/qa/limiter-v1/417ba55f/20261014T130107-82080/eunit/eunit-full-final.log",
+      "sha256": "a691b8476de5f07e532c48edd0d8b696c26da20bae53ade9a219010fc6960ee1",
+      "source_contract": "docs/plans/2026-10-13-limiter-v1-local-evidence-and-plan.md",
+      "purpose": "Limiter acceptance and failure attribution evidence; no PASS inheritance"
+    },
+    {
+      "path": "docs/qa/limiter-v1/417ba55f/20261014T130107-82080/eunit/failures-final-by-module.txt",
+      "sha256": "716d718266b9621b8715210d0ffa197433e031e2f90246f485d83fe8e93addde",
+      "source_contract": "docs/plans/2026-10-13-limiter-v1-local-evidence-and-plan.md",
+      "purpose": "Limiter acceptance and failure attribution evidence; no PASS inheritance"
+    },
+    {
+      "path": "docs/qa/limiter-v1/417ba55f/20261014T130107-82080/gates/MERGE_ROUND3_NOTES.md",
+      "sha256": "4fe1eed1b7cda9cafb63d1d85a29173b3c4043294245ec195e53cae3fd5a96d0",
+      "source_contract": "docs/plans/2026-10-13-limiter-v1-local-evidence-and-plan.md",
+      "purpose": "Limiter acceptance and failure attribution evidence; no PASS inheritance"
+    },
+    {
+      "path": "docs/qa/limiter-v1/7d2239a5/20261015T111105-46546/AC-16/input.json",
+      "sha256": "2e3b8c9e405af30b5b560240603f164fce4a59580e3779811f0043fb279b70e7",
+      "source_contract": "docs/plans/2026-10-13-limiter-v1-local-evidence-and-plan.md",
+      "purpose": "Limiter acceptance and failure attribution evidence; no PASS inheritance"
+    },
+    {
+      "path": "docs/qa/limiter-v1/7d2239a5/20261015T111109-46629/AC-16/ac16_fixed_report.txt",
+      "sha256": "63a85bc5d3ababa6c92da2dc1298cbd254fa7241278e7c7a1f42d8cb031349c4",
+      "source_contract": "docs/plans/2026-10-13-limiter-v1-local-evidence-and-plan.md",
+      "purpose": "Limiter acceptance and failure attribution evidence; no PASS inheritance"
+    },
+    {
+      "path": "docs/qa/limiter-v1/7d2239a5/20261015T111109-46629/AC-16/input.json",
+      "sha256": "5f821098d69ce69c6c493785d06e1868c656907d45d6e5ad87ff61e5c5fe1ab6",
+      "source_contract": "docs/plans/2026-10-13-limiter-v1-local-evidence-and-plan.md",
+      "purpose": "Limiter acceptance and failure attribution evidence; no PASS inheritance"
+    },
+    {
+      "path": "docs/qa/limiter-v1/7d2239a5/20261015T111109-48595/AC-15/exit_code",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+      "source_contract": "docs/plans/2026-10-13-limiter-v1-local-evidence-and-plan.md",
+      "purpose": "Limiter acceptance and failure attribution evidence; no PASS inheritance"
+    },
+    {
+      "path": "docs/qa/limiter-v1/7d2239a5/20261015T111109-48595/AC-15/input.json",
+      "sha256": "dff473d0c304c6cd7b1977def03f0168626f3959c300471589b95c00a288fb46",
+      "source_contract": "docs/plans/2026-10-13-limiter-v1-local-evidence-and-plan.md",
+      "purpose": "Limiter acceptance and failure attribution evidence; no PASS inheritance"
+    },
+    {
+      "path": "docs/qa/limiter-v1/7d2239a5/20261015T111109-48595/AC-15/output.log",
+      "sha256": "f712b90fe03d356517106e6814794f66feb7f16bec307f51a1fc19e86bd3a7bc",
+      "source_contract": "docs/plans/2026-10-13-limiter-v1-local-evidence-and-plan.md",
+      "purpose": "Limiter acceptance and failure attribution evidence; no PASS inheritance"
+    },
+    {
+      "path": "docs/qa/limiter-v1/7d2239a5/20261015T111110-48871/AC-01/exit_code",
+      "sha256": "5feceb66ffc86f38d952786c6d696c79c2dbc239dd4e91b46729d73a27fb57e9",
+      "source_contract": "docs/plans/2026-10-13-limiter-v1-local-evidence-and-plan.md",
+      "purpose": "Limiter acceptance and failure attribution evidence; no PASS inheritance"
+    },
+    {
+      "path": "docs/qa/limiter-v1/7d2239a5/20261015T111110-48871/AC-01/input.json",
+      "sha256": "cec5e8eb3037d8bc63750cd70124ba2f23c02a72159fe7aeb8dc814bcf38a477",
+      "source_contract": "docs/plans/2026-10-13-limiter-v1-local-evidence-and-plan.md",
+      "purpose": "Limiter acceptance and failure attribution evidence; no PASS inheritance"
+    },
+    {
+      "path": "docs/qa/limiter-v1/7d2239a5/20261015T111110-48871/AC-01/output.log",
+      "sha256": "5806516ce3afec5e636ee220d1c47f1bcee37ac20eff5703d1b758d295ea0012",
+      "source_contract": "docs/plans/2026-10-13-limiter-v1-local-evidence-and-plan.md",
+      "purpose": "Limiter acceptance and failure attribution evidence; no PASS inheritance"
+    },
+    {
+      "path": "docs/qa/limiter-v1/7d2239a5/final-binding-manifest.txt",
+      "sha256": "410a6fe6fb7f96df8eb07c17b912ca9f5c7b7914af5be5ffaa01db05070fd3f3",
+      "source_contract": "docs/plans/2026-10-13-limiter-v1-local-evidence-and-plan.md",
+      "purpose": "Limiter acceptance and failure attribution evidence; no PASS inheritance"
+    },
+    {
+      "path": "docs/qa/limiter-v1/997aedfb/20261015T110137-64560/AC-15/input.json",
+      "sha256": "dff473d0c304c6cd7b1977def03f0168626f3959c300471589b95c00a288fb46",
+      "source_contract": "docs/plans/2026-10-13-limiter-v1-local-evidence-and-plan.md",
+      "purpose": "Limiter acceptance and failure attribution evidence; no PASS inheritance"
+    },
+    {
+      "path": "docs/qa/limiter-v1/997aedfb/20261015T110145-64717/AC-16/input.json",
+      "sha256": "68f3222a646cbe2506a9289003b8fef4c06f4e594da45e6ad247ad487131c207",
+      "source_contract": "docs/plans/2026-10-13-limiter-v1-local-evidence-and-plan.md",
+      "purpose": "Limiter acceptance and failure attribution evidence; no PASS inheritance"
+    },
+    {
+      "path": "docs/qa/limiter-v1/997aedfb/20261015T110148-64753/AC-16/ac16_fixed_report.txt",
+      "sha256": "2ae98184912530dda8ad876d805abf1d495e0e07e0d1d2f4c9487847d320ceb3",
+      "source_contract": "docs/plans/2026-10-13-limiter-v1-local-evidence-and-plan.md",
+      "purpose": "Limiter acceptance and failure attribution evidence; no PASS inheritance"
+    },
+    {
+      "path": "docs/qa/limiter-v1/997aedfb/20261015T110148-64753/AC-16/input.json",
+      "sha256": "f734f2dee868850a9b454b19d223e9b4e54fa342e9a4db01dba0638176295d30",
+      "source_contract": "docs/plans/2026-10-13-limiter-v1-local-evidence-and-plan.md",
+      "purpose": "Limiter acceptance and failure attribution evidence; no PASS inheritance"
+    },
+    {
+      "path": "docs/qa/limiter-v1/997aedfb/20261015T110149-64799/AC-01/exit_code",
+      "sha256": "5feceb66ffc86f38d952786c6d696c79c2dbc239dd4e91b46729d73a27fb57e9",
+      "source_contract": "docs/plans/2026-10-13-limiter-v1-local-evidence-and-plan.md",
+      "purpose": "Limiter acceptance and failure attribution evidence; no PASS inheritance"
+    },
+    {
+      "path": "docs/qa/limiter-v1/997aedfb/20261015T110149-64799/AC-01/input.json",
+      "sha256": "9df79844edff3f310b4c1a70b7971fa7682306c4d423eef8cd2545cfbf4a3c5f",
+      "source_contract": "docs/plans/2026-10-13-limiter-v1-local-evidence-and-plan.md",
+      "purpose": "Limiter acceptance and failure attribution evidence; no PASS inheritance"
+    },
+    {
+      "path": "docs/qa/limiter-v1/997aedfb/20261015T110149-64799/AC-01/output.log",
+      "sha256": "7f0ddd5b5775cb4cd09456cd667f7351e67093e1406b0cc1fda1a1848eeef847",
+      "source_contract": "docs/plans/2026-10-13-limiter-v1-local-evidence-and-plan.md",
+      "purpose": "Limiter acceptance and failure attribution evidence; no PASS inheritance"
+    },
+    {
+      "path": "docs/qa/limiter-v1/997aedfb/final-eunit/ATTRIBUTION.md",
+      "sha256": "b429b1f0bb695cd5f7d8e7e72feec97b8212a3002f053ed2f64785c5301d2354",
+      "source_contract": "docs/plans/2026-10-13-limiter-v1-local-evidence-and-plan.md",
+      "purpose": "Limiter acceptance and failure attribution evidence; no PASS inheritance"
+    },
+    {
+      "path": "docs/qa/limiter-v1/997aedfb/final-eunit/eunit-full-final.log",
+      "sha256": "c6ed95ec146688dd4fc97dcd9f13b3f8602df98a5eef8fa2fbfa8407870dfb12",
+      "source_contract": "docs/plans/2026-10-13-limiter-v1-local-evidence-and-plan.md",
+      "purpose": "Limiter acceptance and failure attribution evidence; no PASS inheritance"
+    },
+    {
+      "path": "docs/qa/limiter-v1/997aedfb/final-eunit/failures-by-module.txt",
+      "sha256": "8c2cec9bb0a64c40e3cbbf24c2a4a00fb89ca59fa0d6504b3172991f05e80efe",
+      "source_contract": "docs/plans/2026-10-13-limiter-v1-local-evidence-and-plan.md",
+      "purpose": "Limiter acceptance and failure attribution evidence; no PASS inheritance"
+    },
+    {
+      "path": "docs/qa/limiter-v1/fcc9013a/final-eunit/ATTRIBUTION.md",
+      "sha256": "254bbab26a3fb738c3f718bae3142b65a1a74a4a17961d371a3386e9e1ffdf3f",
+      "source_contract": "docs/plans/2026-10-13-limiter-v1-local-evidence-and-plan.md",
+      "purpose": "Limiter acceptance and failure attribution evidence; no PASS inheritance"
+    },
+    {
+      "path": "docs/qa/limiter-v1/fcc9013a/final-eunit/eunit-full-final-candidate.log",
+      "sha256": "f08ae673a6340ac00a4dbbe01fa32d43f35d2df3fa3eb7c789965d05f563c69e",
+      "source_contract": "docs/plans/2026-10-13-limiter-v1-local-evidence-and-plan.md",
+      "purpose": "Limiter acceptance and failure attribution evidence; no PASS inheritance"
+    },
+    {
+      "path": "docs/qa/limiter-v1/fcc9013a/final-eunit/failures-by-module.txt",
+      "sha256": "b67d8b5c0c84b39925a2a38dd06091f178438a275e96fb215cc84f22e5f10830",
+      "source_contract": "docs/plans/2026-10-13-limiter-v1-local-evidence-and-plan.md",
+      "purpose": "Limiter acceptance and failure attribution evidence; no PASS inheritance"
+    }
+  ]
+}

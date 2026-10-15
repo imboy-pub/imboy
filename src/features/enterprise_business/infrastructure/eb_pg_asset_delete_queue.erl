@@ -26,18 +26,17 @@ enqueue_in(Conn, Org, Ws, MessageIds, AssetIds) ->
     end.
 
 drain(Org, Ws, Limit) ->
-    drain(Org, Ws, Limit, erlang:make_ref()).
+    drain(Org, Ws, Limit, elib_uuid:gen_v7()).
 
 %% 消费至多 Limit 个 job（租约 CAS；删除成功 ack done、失败 ack 退避/终止）。
 drain(Org, Ws, Limit, Token) when Limit > 0 ->
-    case claim(Token) of
+    case claim(Token, Org, Ws) of
         {ok, Row} ->
             case process_job(Org, Ws, Row, Token) of
                 ok ->
                     drain(Org, Ws, Limit - 1, Token);
                 {error, _Reason} ->
-                    %% 失败已 ack（退避/max_attempts 由 fn 裁决）；本批结束
-                    {ok, []}
+                    {error, _Reason}
             end;
         {error, empty} ->
             {ok, []};
@@ -48,17 +47,46 @@ drain(_Org, _Ws, _Limit, _Token) ->
     {ok, []}.
 
 process_job(Org, Ws, Row, Token) ->
+    Org = maps:get(<<"out_organization_id">>, Row),
+    Ws = maps:get(<<"out_workspace_id">>, Row),
     AssetId = maps:get(<<"out_asset_id">>, Row),
     Key = maps:get(<<"out_object_key">>, Row),
     DeleteResult =
         try
-            eb_asset_store:delete_queued_object(Org, Ws, Key)
+            delete_recorded_object(Row, Key)
         catch
             _C:_R -> {error, worker_crash}
         end,
     AckOk = DeleteResult =:= ok orelse DeleteResult =:= {error, not_found},
-    _ = ack(Org, Ws, AssetId, Token, AckOk),
-    AckOk.
+    case ack(Org, Ws, AssetId, Token, AckOk) of
+        ok when AckOk -> ok;
+        ok -> {error, {object_delete_failed, DeleteResult}};
+        {error, Reason} -> {error, {object_ack_failed, Reason}}
+    end.
+
+%% Frozen queue identity must still resolve to the same physical storage.
+delete_recorded_object(Row, Key) ->
+    Namespace = maps:get(<<"out_storage_namespace">>, Row),
+    Container = maps:get(<<"out_storage_container">>, Row),
+    Driver = maps:get(<<"out_storage_driver">>, Row),
+    Digest = maps:get(<<"out_storage_locator_sha256">>, Row),
+    case attachment_storage:identity(Namespace, Container, Key) of
+        {ok, #{
+            driver := DriverAtom,
+            namespace := CanonicalNamespace,
+            container := Container,
+            locator_digest := Digest
+        }} ->
+            case atom_to_binary(DriverAtom, utf8) of
+                Driver ->
+                    Module = attachment_storage:driver_module(Driver),
+                    Module:delete(CanonicalNamespace, Container, Key);
+                _ ->
+                    {error, storage_identity_changed}
+            end;
+        _ ->
+            {error, storage_identity_changed}
+    end.
 
 %% 企业队列 claim（租约 CAS；fn 返回单 job 或空集）。
 claim(Token) ->
@@ -78,6 +106,17 @@ claim(Token) ->
         {error, R} -> {error, R}
     end.
 
+claim(Token, Org, Ws) ->
+    case
+        elib_pg:query(
+            <<"SELECT * FROM fn_v5_claim_eb($1, $2, $3)">>, [Token, Org, Ws]
+        )
+    of
+        {ok, [Row]} -> {ok, Row};
+        {ok, []} -> {error, empty};
+        {error, R} -> {error, R}
+    end.
+
 ack(Org, Ws, AssetId, Token, Ok) ->
     case
         elib_pg:query(
@@ -85,8 +124,14 @@ ack(Org, Ws, AssetId, Token, Ok) ->
             [Org, Ws, AssetId, Token, Ok]
         )
     of
-        {ok, _} -> ok;
-        {error, R} -> {error, R}
+        {ok, [#{<<"fn_v5_ack_eb">> := State}]} when
+            State =:= <<"done">>; State =:= <<"retry_wait">>; State =:= <<"blocked">>
+        ->
+            ok;
+        {ok, [#{<<"fn_v5_ack_eb">> := State}]} ->
+            {error, State};
+        {error, R} ->
+            {error, R}
     end.
 
 reap(Limit) ->

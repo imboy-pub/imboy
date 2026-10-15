@@ -388,6 +388,11 @@ moment_binding_requires_explicit_owner_test_() ->
         [
             {elib_pg_sql, [{'public_tablename', 1, fun(_) -> <<"public.attachment">> end}]},
             {elib_pg, [
+                {'query', 3, fun(owned_conn, Sql, [<<"other/path">>]) ->
+                    ?assertNotEqual(nomatch, binary:match(Sql, <<"pg_advisory_xact_lock">>)),
+                    ?assertNotEqual(nomatch, binary:match(Sql, <<"FOR UPDATE">>)),
+                    {ok, [#{<<"lifecycle_state">> => <<"live">>}]}
+                end},
                 {'execute', 3, fun(owned_conn, Sql, Params) ->
                     ?assertNotEqual(nomatch, binary:match(Sql, <<"creator_user_id = $4">>)),
                     ?assertEqual(
@@ -402,6 +407,25 @@ moment_binding_requires_explicit_owner_test_() ->
                 ok,
                 attachment_repo:bind_moment_scope_ref(owned_conn, 1001, [<<"other/path">>], 7001)
             )
+        end
+    ).
+
+moment_binding_rejects_tombstone_before_write_test_() ->
+    ?WITH_MECKS(
+        [
+            {elib_pg, [
+                {'query', 3, fun(owned_conn, _, [<<"deleted/path">>]) ->
+                    {ok, [#{<<"lifecycle_state">> => <<"delete_intent">>}]}
+                end},
+                {'execute', 3, fun(_, _, _) -> error(should_not_bind_tombstone) end}
+            ]}
+        ],
+        fun() ->
+            ?assertThrow(
+                {abort_tx, {reference_bind, <<"deleted/path">>, tombstone}},
+                attachment_repo:bind_moment_scope_ref(owned_conn, 1001, [<<"deleted/path">>], 7001)
+            ),
+            ?assertEqual(0, meck:num_calls(elib_pg, execute, 3))
         end
     ).
 

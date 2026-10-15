@@ -223,7 +223,11 @@ contracts() ->
             {fetch_asset, 3},
             {confirm_asset, 3},
             {cleanup_asset, 3},
-            {cleanup_pending_private, 5}
+            {cleanup_pending_private, 5},
+            {fetch_session, 3},
+            {session_by_client_id, 3},
+            {renew_session, 4},
+            {register_session, 8}
         ],
         auth() => [
             {load_request_facts, 1}

@@ -21,7 +21,7 @@
 %%%     墓碑键不可复用（168 守卫/驱动层 delete 后重写语义一致）。
 %%%
 %%% garage 分支需要真 Garage（W202_GARAGE_* env，gate 提供）；env 缺失时
-%%% garage 断言 skip（fail-safe，不伪造）。
+%%% 缺少专用环境时显式失败，不读取应用的普通开发配置。
 -module(attachment_lifecycle_v5_w403_driver_matrix_tests).
 
 -include_lib("eunit/include/eunit.hrl").
@@ -33,7 +33,19 @@ w403_driver_matrix_test_() ->
     {setup, fun setup/0, fun cleanup/1, fun cases/1}.
 
 setup() ->
-    GarageReady = garage_env_present(),
+    {ok, _} = application:ensure_all_started(inets),
+    true = garage_env_present(),
+    GarageReady = true,
+    OldGarage = application:get_env(imboy, garage),
+    OldRegistry = application:get_env(imboy, attachment_storage_registry),
+    OldDiskRoot = application:get_env(imboy, attachment_disk_root),
+    application:set_env(imboy, garage, #{
+        endpoint => garage_endpoint(),
+        bucket => garage_bucket(),
+        region => <<"garage">>,
+        access_key => required_env("W202_GARAGE_ACCESS_KEY"),
+        secret_key => required_env("W202_GARAGE_SECRET_KEY")
+    }),
     Registry = #{
         version => 1,
         roots => #{
@@ -74,12 +86,20 @@ setup() ->
             "w403dm-disk-" ++ integer_to_list(erlang:unique_integer([positive]))
         )
     ),
-    #{garage_ready => GarageReady}.
+    #{
+        garage_ready => GarageReady,
+        old_garage => OldGarage,
+        old_registry => OldRegistry,
+        old_disk_root => OldDiskRoot
+    }.
 
-cleanup(_S) ->
-    application:unset_env(imboy, attachment_storage_registry),
-    application:unset_env(imboy, attachment_disk_root),
-    ok.
+cleanup(#{old_garage := Garage, old_registry := Registry, old_disk_root := DiskRoot}) ->
+    restore_env(garage, Garage),
+    restore_env(attachment_storage_registry, Registry),
+    restore_env(attachment_disk_root, DiskRoot).
+
+restore_env(Key, {ok, Value}) -> application:set_env(imboy, Key, Value);
+restore_env(Key, undefined) -> application:unset_env(imboy, Key).
 
 cases(S) ->
     Drivers =
@@ -184,50 +204,57 @@ late_put_expiry_window(D) ->
 %% ---------- driver 抽象 ----------
 
 put(disk, K, Body) -> attachment_storage_disk:put(?NS_DISK, <<"c">>, K, Body);
-put(garage, K, Body) -> attachment_storage_garage:put(?NS_GARAGE, <<"c">>, K, Body).
+put(garage, K, Body) -> attachment_storage_garage:put(?NS_GARAGE, garage_bucket(), K, Body).
 
 read(disk, K) -> attachment_storage_disk:read(?NS_DISK, <<"c">>, K);
 read(garage, K) -> garage_read(K).
 
 head(disk, K) -> attachment_storage_disk:head(?NS_DISK, <<"c">>, K);
-head(garage, K) -> attachment_storage_garage:head(?NS_GARAGE, <<"c">>, K).
+head(garage, K) -> attachment_storage_garage:head(?NS_GARAGE, garage_bucket(), K).
 
 cleanup_key(disk, K) -> attachment_storage_disk:delete(?NS_DISK, <<"c">>, K);
-cleanup_key(garage, K) -> attachment_storage_garage:delete(?NS_GARAGE, <<"c">>, K).
+cleanup_key(garage, K) -> attachment_storage_garage:delete(?NS_GARAGE, garage_bucket(), K).
 
 key(D, Tag) ->
     <<"w403dm/", (atom_to_binary(D))/binary, "/", Tag/binary>>.
 
-%% garage 无本地 read（elib_oss 无 get_object 整读 API）——以 HEAD+字节
-%% 不可读降级：read 场景在 garage 分支用 head size 判等（同字节数）
+%% 比较真实 GET 字节，大小相同不能证明内容一致。
 garage_read(K) ->
-    case elib_oss:head_object(elib_oss:get_bucket(<<"private">>), K) of
-        {ok, #{size := Size}} -> {ok, crypto:strong_rand_bytes(Size)};
-        {error, R} -> {error, R}
+    {ok, Url} = attachment_storage_garage:presign_get(?NS_GARAGE, garage_bucket(), K, 60),
+    case
+        httpc:request(
+            get,
+            {binary_to_list(Url), []},
+            [{timeout, 10000}],
+            [{body_format, binary}]
+        )
+    of
+        {ok, {{_, 200, _}, _, Body}} -> {ok, Body};
+        {ok, {{_, 404, _}, _, _}} -> {error, not_found};
+        {ok, {{_, Status, _}, _, _}} -> {error, {http_error, Status}};
+        {error, Reason} -> {error, Reason}
     end.
 
 garage_env_present() ->
-    os:getenv("W202_GARAGE_ACCESS_KEY") =/= false orelse
-        is_map_key(garage_key, application:get_env(imboy, garage, #{})) =:=
-            true orelse garage_configured().
+    lists:all(
+        fun(K) -> byte_size(required_env(K)) > 0 end,
+        [
+            "W202_GARAGE_ACCESS_KEY",
+            "W202_GARAGE_SECRET_KEY",
+            "W202_GARAGE_ENDPOINT",
+            "W202_GARAGE_BUCKET"
+        ]
+    ).
 
-garage_configured() ->
-    Cfg = application:get_env(imboy, garage, undefined),
-    is_map(Cfg) andalso maps:size(Cfg) > 0.
-
-garage_endpoint() ->
-    case os:getenv("W202_GARAGE_ENDPOINT") of
-        false -> <<"http://127.0.0.1:3900">>;
-        [] -> <<"http://127.0.0.1:3900">>;
-        S -> unicode:characters_to_binary(S)
+required_env(Key) ->
+    case os:getenv(Key) of
+        false -> error({required_owned_garage_environment_missing, Key});
+        [] -> error({required_owned_garage_environment_missing, Key});
+        Value -> unicode:characters_to_binary(Value)
     end.
 
-garage_bucket() ->
-    case os:getenv("W202_GARAGE_BUCKET") of
-        false -> <<"imboy">>;
-        [] -> <<"imboy">>;
-        S -> unicode:characters_to_binary(S)
-    end.
+garage_endpoint() -> required_env("W202_GARAGE_ENDPOINT").
+garage_bucket() -> required_env("W202_GARAGE_BUCKET").
 
 %% 场景分派（8 场景 × driver；见模块头注释的叶映射）
 scenario(confirm_old_put_different_bytes, D) -> confirm_old_put_different_bytes(D);

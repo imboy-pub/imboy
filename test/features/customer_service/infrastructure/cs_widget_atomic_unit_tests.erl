@@ -25,7 +25,7 @@ run(Operation, Fault) ->
         meck:expect(
             enterprise_business_facade,
             ensure_contact_in,
-            fun(conn, 1, #{workspace_id := 2}) ->
+            fun(1, #{workspace_id := 2, contact_conn := conn}) ->
                 step(contact),
                 result(contact, Fault, #{contact => #{id => 3}, reused => true})
             end
@@ -219,7 +219,7 @@ commit_confirmation(Operation, Status) ->
             ?assertEqual(Conn, C),
             Status
         end),
-        meck:expect(enterprise_business_facade, ensure_contact_in, fun(C, 1, _) ->
+        meck:expect(enterprise_business_facade, ensure_contact_in, fun(1, #{contact_conn := C}) ->
             ?assertEqual(Conn, C),
             {ok, #{contact => #{id => 3}, reused => true}}
         end),

@@ -15,6 +15,11 @@ binding_case(BindResult, Expected, Writes) ->
     ?WITH_MECKS(
         [
             {elib_pg, [
+                {'query', 3, fun(owned_conn, Sql, [Key]) ->
+                    ?assert(lists:member(Key, [<<"cover">>, <<"image">>])),
+                    ?assertNotEqual(nomatch, binary:match(Sql, <<"pg_advisory_xact_lock">>)),
+                    {ok, [#{<<"lifecycle_state">> => <<"live">>}]}
+                end},
                 {'after_commit', 3, fun(owned_conn, {moment_acl, 555}, _Action) -> ok end},
                 {'with_tx', 1, fun(F) ->
                     try

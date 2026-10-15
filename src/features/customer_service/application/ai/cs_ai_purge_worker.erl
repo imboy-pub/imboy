@@ -33,14 +33,14 @@ purge(OrgId, BeforeTs, Reason, RequestId) when
     #{host := _Host} = Cfg = config_ds:env(cs_ai_purge),
     case epgsql:connect(connect_opts(Cfg)) of
         {ok, Conn} ->
-            EventId = elib_tsid:generate(),
+            EventId = elib_tsid:generate(enterprise_audit_event),
             try
                 purge_tx(Conn, OrgId, BeforeTs, Reason, RequestId, EventId)
             after
                 epgsql:close(Conn)
             end;
-        {error, Reason} ->
-            {error, {purge_connect_failed, Reason}}
+        {error, ConnectReason} ->
+            {error, {purge_connect_failed, ConnectReason}}
     end;
 purge(_OrgId, _BeforeTs, _Reason, _RequestId) ->
     {error, {invalid_argument, purge}}.
@@ -54,9 +54,9 @@ purge_tx(Conn, OrgId, BeforeTs, Reason, RequestId, EventId) ->
             Count = to_int(CountBin),
             {ok, _, _} = epgsql:squery(Conn, <<"COMMIT">>),
             {ok, Count};
-        {error, Reason} ->
+        {error, QueryReason} ->
             _ = epgsql:squery(Conn, <<"ROLLBACK">>),
-            {error, Reason};
+            {error, QueryReason};
         Other ->
             _ = epgsql:squery(Conn, <<"ROLLBACK">>),
             {error, {unexpected_purge_result, Other}}

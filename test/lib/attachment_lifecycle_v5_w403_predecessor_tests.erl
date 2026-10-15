@@ -230,7 +230,7 @@ p_entrypoint_intents_disk_env(Conn) ->
         Conn,
         "SELECT * FROM fn_v5_register_pending($1,'b','private',101,"
         "gen_random_uuid(),$2::jsonb,now()+interval '2 hours',"
-        "now()+interval '1 hour','disk','" ++ binary_to_list(?NS) ++ "','c',$3)",
+        "now()-interval '2 hours','disk','" ++ binary_to_list(?NS) ++ "','c',$3)",
         [
             PKey,
             <<
@@ -239,12 +239,6 @@ p_entrypoint_intents_disk_env(Conn) ->
             >>,
             hex64(crypto:hash(sha256, PKey))
         ]
-    ),
-    q(
-        Conn,
-        "UPDATE attach_pending SET upload_expires_at = now() - interval '2 hours'"
-        " WHERE object_key=$1",
-        [PKey]
     ),
     {ok, _, _} = e(
         Conn, "SELECT fn_v5_intent_pending_delete($1,'w403p sweep','sweep')", [PKey]

@@ -145,10 +145,9 @@ flush_and_delete_forward_to_depcache_test_() ->
         meck:new(imboy_cache_sync, [unstick, passthrough, no_link]),
         try
             meck:expect(depcache, flush, 1, fun(imboy_cache) -> ok end),
-            meck:expect(depcache, flush, 2, fun(Key, Server) ->
-                ?assertEqual(imboy_cache, Server),
-                ?assert(lists:member(Key, [<<"flush_key">>, <<"delete_key">>])),
-                ok
+            meck:expect(depcache, flush, 2, fun
+                (Key, imboy_cache) when Key =:= <<"flush_key">>; Key =:= <<"delete_key">> -> ok;
+                (Key, Server) -> meck:passthrough([Key, Server])
             end),
             meck:expect(imboy_cache_sync, broadcast, 1, fun
                 (flush) -> {ok, 1};
@@ -159,6 +158,8 @@ flush_and_delete_forward_to_depcache_test_() ->
             ?assertEqual(ok, imboy_cache:flush()),
             ?assertEqual(ok, imboy_cache:flush(<<"flush_key">>)),
             ?assertEqual(ok, imboy_cache:delete(<<"delete_key">>)),
+            ?assert(meck:called(depcache, flush, [<<"flush_key">>, imboy_cache])),
+            ?assert(meck:called(depcache, flush, [<<"delete_key">>, imboy_cache])),
             ?assertEqual(3, meck:num_calls(imboy_cache_sync, broadcast, 1))
         after
             application:unset_env(imboy, dsync_enabled),

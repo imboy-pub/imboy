@@ -20,7 +20,9 @@
     scalar/3,
     count/2,
     table/1,
-    key_ref/0
+    key_ref/0,
+    install_keyring/0,
+    restore_keyring/1
 ]).
 
 -define(ACCOUNT_PREFIX, <<"cs01-account-">>).
@@ -354,3 +356,17 @@ account(Id) ->
 
 name(Prefix, Id) ->
     <<Prefix/binary, (integer_to_binary(Id))/binary>>.
+
+%% 合成投递沿真实服务端密钥装配路径执行，结束后恢复调用前配置。
+install_keyring() ->
+    Old = application:get_env(imboy, eb_enterprise_keyring),
+    Hex = binary:encode_hex(crypto:strong_rand_bytes(32), lowercase),
+    ok = application:set_env(
+        imboy,
+        eb_enterprise_keyring,
+        #{active_version => 1, keys => #{1 => Hex}}
+    ),
+    Old.
+
+restore_keyring({ok, Value}) -> application:set_env(imboy, eb_enterprise_keyring, Value);
+restore_keyring(undefined) -> application:unset_env(imboy, eb_enterprise_keyring).

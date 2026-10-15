@@ -26,16 +26,17 @@ cs_pg_ai_delivery_test_() ->
 
 setup() ->
     case eunit_runner:eunit_setup_with_db() of
-        {ok, Conn} -> {ok, Conn};
+        {ok, Conn} -> {ok, Conn, ?FIX:install_keyring()};
         {error, Reason} -> {error, Reason}
     end.
 
-cleanup({ok, Conn}) ->
+cleanup({ok, Conn, OldKeyring}) ->
+    ?FIX:restore_keyring(OldKeyring),
     eunit_runner:eunit_cleanup_db(Conn);
 cleanup(Other) ->
     Other.
 
-cases({ok, _Conn}) ->
+cases({ok, _Conn, _OldKeyring}) ->
     [
         {timeout, 60, fun b1_stale_version_commits_zero_rows/0},
         {timeout, 60, fun b2_same_inbound_creates_single_job/0},

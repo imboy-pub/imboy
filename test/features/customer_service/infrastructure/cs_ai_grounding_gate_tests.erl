@@ -23,16 +23,17 @@ cs_ai_grounding_gate_test_() ->
 
 setup() ->
     case eunit_runner:eunit_setup_with_db() of
-        {ok, Conn} -> {ok, Conn};
+        {ok, Conn} -> {ok, Conn, ?FIX:install_keyring()};
         {error, Reason} -> {error, Reason}
     end.
 
-cleanup({ok, Conn}) ->
+cleanup({ok, Conn, OldKeyring}) ->
+    ?FIX:restore_keyring(OldKeyring),
     eunit_runner:eunit_cleanup_db(Conn);
 cleanup(Other) ->
     Other.
 
-cases({ok, _Conn}) ->
+cases({ok, _Conn, _OldKeyring}) ->
     [
         {timeout, 60, fun d1_three_layers_independent/0},
         {timeout, 60, fun d2_i9_no_citation_no_delivery/0},

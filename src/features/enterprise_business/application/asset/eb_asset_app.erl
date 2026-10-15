@@ -87,7 +87,8 @@ session_renew(OrgId, Params) ->
                 {error, session_expired};
             false ->
                 NewExpiry = min(Now + upload_ttl_value(Params), Deadline),
-                case eb_pg_asset_meta:renew_v5(Org, Ws, AssetId, NewExpiry) of
+                Asset = port(Params, asset),
+                case Asset:renew_session(Org, Ws, AssetId, NewExpiry) of
                     {ok, #{committed_expires_at := Committed}} ->
                         case v5_session_mint(Org, Params, AssetId, Row, Now, Committed) of
                             {ok, Token} ->
@@ -136,24 +137,21 @@ locate_session(OrgId, Params, Fun) ->
     Ws = maps:get(workspace_id, Params, undefined),
     AssetId = maps:get(asset_id, Params, undefined),
     Cid = maps:get(client_upload_id, Params, undefined),
+    Asset = port(Params, asset),
     case {is_integer(AssetId), Cid} of
         {true, _} ->
-            run_session_fun(OrgId, Ws, AssetId, Fun);
+            run_session_fun(Asset, OrgId, Ws, AssetId, Fun);
         {false, Cid} when is_binary(Cid), byte_size(Cid) =:= 36 ->
-            case lookup_asset_by_cid(OrgId, Ws, Cid) of
-                {ok, AssetId} -> run_session_fun(OrgId, Ws, AssetId, Fun);
+            case Asset:session_by_client_id(OrgId, Ws, Cid) of
+                {ok, AssetId} -> run_session_fun(Asset, OrgId, Ws, AssetId, Fun);
                 {error, _} = Err -> Err
             end;
         _ ->
             {error, {invalid_argument, session_identity}}
     end.
 
-lookup_asset_by_cid(OrgId, Ws, Cid) ->
-    %% 铁律5：SQL 经 infrastructure（eb_pg_asset_meta），本层不触 elib_pg。
-    eb_pg_asset_meta:v5_session_by_cid(OrgId, Ws, Cid).
-
-run_session_fun(OrgId, Ws, AssetId, Fun) ->
-    case eb_pg_asset_meta:v5_session(OrgId, Ws, AssetId) of
+run_session_fun(Asset, OrgId, Ws, AssetId, Fun) ->
+    case Asset:fetch_session(OrgId, Ws, AssetId) of
         {ok, Row} -> Fun(OrgId, Ws, AssetId, Row, maps:get(<<"client_upload_id">>, Row, undefined));
         {error, _} = Err -> Err
     end.
@@ -477,7 +475,6 @@ maybe_v5_register(OrgId, Args, Params, AssetId, Now, ExpiresAt) ->
             ok;
         Cid when is_binary(Cid), byte_size(Cid) =:= 36 ->
             Ws = maps:get(ws, Args),
-            ObjectKey = eb_pg_asset_meta:object_key(OrgId, Ws, AssetId),
             Actor = maps:get(actor, Args),
             SubjectKind =
                 case maps:get(kind, Actor, member) of
@@ -509,27 +506,22 @@ maybe_v5_register(OrgId, Args, Params, AssetId, Now, ExpiresAt) ->
                 conversation_id => maps:get(conv, Args),
                 message_id => msg_or_undefined(Params)
             },
-            case eb_pg_asset_meta:insert_asset(OrgId, Ws, Descriptor) of
-                {ok, _Row} ->
-                    Deadline = Now + ?V5_EB_SESSION_DEADLINE_SEC,
-                    case
-                        eb_pg_asset_meta:register_v5(
-                            OrgId,
-                            Ws,
-                            AssetId,
-                            ObjectKey,
-                            Cid,
-                            Registration,
-                            SubjectKind,
-                            Deadline,
-                            ExpiresAt
-                        )
-                    of
-                        {ok, _} -> ok;
-                        {error, Reason} -> {error, {v5_registration_failed, Reason}}
-                    end;
-                {error, Reason} ->
-                    {error, {v5_registration_failed, Reason}}
+            Asset = port(Params, asset),
+            Deadline = Now + ?V5_EB_SESSION_DEADLINE_SEC,
+            case
+                Asset:register_session(
+                    OrgId,
+                    Ws,
+                    Descriptor,
+                    Cid,
+                    Registration,
+                    SubjectKind,
+                    Deadline,
+                    ExpiresAt
+                )
+            of
+                {ok, _} -> ok;
+                {error, Reason} -> {error, {v5_registration_failed, Reason}}
             end;
         Other ->
             {error, {invalid_client_upload_id, Other}}

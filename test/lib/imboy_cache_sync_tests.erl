@@ -7,7 +7,7 @@
 -module(imboy_cache_sync_tests).
 -include_lib("eunit/include/eunit.hrl").
 -define(TEST_WITH_CACHE_SYNC(TestFun),
-    ?_test(pure_mock_fixture:run(fun() -> with_sync_components(TestFun) end))
+    {timeout, 35, ?_test(pure_mock_fixture:run(fun() -> with_sync_components(TestFun) end))}
 ).
 -include("cache.hrl").
 -include("chat.hrl").

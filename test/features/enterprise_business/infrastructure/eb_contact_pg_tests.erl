@@ -140,7 +140,16 @@ a01_contact_identity_is_tenant_scoped() ->
     end.
 
 a01_store_statements_carry_both_tenants() ->
-    Statements = eb_pg_store:sql_statements(),
+    %% identity 锁只接收已通过双租户筛选的物理定位，不读写租户业务行。
+    Lock = eb_pg_store_sql:sql(lock_asset_identity),
+    ?assertEqual(
+        <<
+            "SELECT pg_advisory_xact_lock(hashtextextended("
+            " jsonb_build_array($1::text, $2::text, $3::text, $4::text)::text, 1685))"
+        >>,
+        Lock
+    ),
+    Statements = [Sql || Sql <- eb_pg_store:sql_statements(), Sql =/= Lock],
     ?assert(length(Statements) >= 12),
     lists:foreach(
         fun(Sql) ->

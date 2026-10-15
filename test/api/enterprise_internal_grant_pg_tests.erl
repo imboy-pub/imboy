@@ -607,13 +607,13 @@ chain_composition_oracle(C) ->
     ok = enterprise_internal_ops:set_application_status_tx(C, ?ORG_A, AppA, <<"active">>),
     ?assertMatch({ok, _}, decide(C, Fx2, a, <<"POST">>, <<"/api/internal/v1/groups">>, [?IDEM])),
 
-    %% organization archived：先于 Grant 判定失败
+    %% 归属 organization 是业务元数据，不是机器凭证的全局授权边界。
     ok = exec(C, [
         <<"UPDATE organization SET status = 'archived' WHERE id = ">>,
         integer_to_binary(?ORG_A)
     ]),
-    ?assertEqual(
-        {error, organization_disabled},
+    ?assertMatch(
+        {ok, _},
         decide(C, Fx2, a, <<"POST">>, <<"/api/internal/v1/groups">>, [?IDEM])
     ),
     ok = exec(C, [
@@ -648,13 +648,12 @@ governance_ops_oracle(C) ->
         {error, invalid_scope},
         in_savepoint(C, fun() -> issue(C, ?ORG_A, AppA, <<"k-invalid">>, [<<"*">>]) end)
     ),
-    %% 跨 Org Application / workspace：not_found（不给 oracle）
-    ?assertEqual(
-        {error, application_not_found},
-        in_savepoint(C, fun() ->
-            issue(C, ?ORG_B, AppA, <<"k-cross-app">>, [<<"groups:write">>])
-        end)
-    ),
+    %% 实例 Application 可显式授权其他资源组织；未知应用和跨组织 workspace 仍拒绝。
+    {ok, CrossGrant} = in_savepoint(C, fun() ->
+        issue(C, ?ORG_B, AppA, <<"k-cross-app">>, [<<"groups:write">>])
+    end),
+    ?assertEqual(?ORG_B, maps:get(<<"organization_id">>, CrossGrant)),
+    ?assertEqual(AppA, maps:get(<<"application_id">>, CrossGrant)),
     ?assertEqual(
         {error, application_not_found},
         in_savepoint(C, fun() ->
