@@ -267,7 +267,7 @@ apply_m188_up(Conn) ->
     Up = binary_to_list(
         read_sql(
             priv_mig_path(
-                "00000188_attachment_lifecycle_v5_m3_guards_activation.up.sql"
+                "00000190_attachment_lifecycle_v5_m3_guards_activation.up.sql"
             )
         )
     ),
