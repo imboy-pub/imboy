@@ -146,7 +146,13 @@ join_group(Conn, JoinMode, Uid, Gid, OptData) ->
                     ok = elib_pg:after_commit(
                         Conn,
                         {group_members, Gid},
-                        fun() -> group_ds:join(Uid, Gid) end
+                        %% 缓存失效尽力而为：sync 不可用时 group_ds:join 内
+                        %% invalidate 返回 {error,_}，不得判为提交后失败
+                        %% （否则成员写入成功却向调用方报 403，MC join 实证）。
+                        fun() ->
+                            _ = group_ds:join(Uid, Gid),
+                            ok
+                        end
                     ),
                     {ok, UidSum};
                 {error, Reason} ->

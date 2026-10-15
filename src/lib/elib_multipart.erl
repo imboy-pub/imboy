@@ -26,7 +26,7 @@
 
 -export_type([state/0]).
 
--type write_fun() :: fun((binary()) -> ok).
+-type write_fun() :: fun((binary()) -> ok | {error, term()}).
 
 -type reason() :: file_too_large | {bad_part, term()} | {write_failed, term()}.
 
@@ -170,8 +170,12 @@ write_selected(Data, #{part_name := <<"file">>, write := Write} = St) ->
             try Write(Data) of
                 ok ->
                     {next, St#{file_size := Size, file_seen := true}};
+                {error, WErr} ->
+                    %% WriteFun 报错（磁盘满/IO 错误）原样分流为写失败，
+                    %% 调用方映射 5xx
+                    {error, {write_failed, WErr}};
                 Unexpected ->
-                    %% WriteFun 返回非 ok（契约违例）同样按写失败处理
+                    %% WriteFun 返回非契约值（契约违例）同样按写失败处理
                     erlang:throw({write_failed, {bad_return, Unexpected}})
             catch
                 C:R ->

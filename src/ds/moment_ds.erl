@@ -86,7 +86,12 @@ create_post(AuthorUid, Data) ->
                                     ok = elib_pg:after_commit(
                                         Conn,
                                         {moment_acl, PostId},
-                                        fun() -> imboy_cache:invalidate({moment_acl, PostId}) end
+                                        %% 缓存失效尽力而为：sync 不可用时
+                                        %% invalidate 返回 {error,_} 不判提交后失败。
+                                        fun() ->
+                                            _ = imboy_cache:invalidate({moment_acl, PostId}),
+                                            ok
+                                        end
                                     ),
                                     {ok, PostId};
                                 {error, Reason2} ->
