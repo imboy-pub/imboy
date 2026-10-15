@@ -63,8 +63,8 @@ protocol_roundtrip(Conn) ->
     {ok, _, _} = epgsql:equery(
         Conn,
         "SELECT * FROM fn_v5_register_pending($1,'b','private',101,"
-        "gen_random_uuid(),$2::jsonb,now()+interval '2 hours',"
-        "now()+interval '1 hour','garage','ns1','c1',$3)",
+        "gen_random_uuid(),$2::jsonb,now(),"
+        "now() - interval '2 hours','garage','ns1','c1',$3)",
         [?REG_KEY, registration(), locator()]
     ),
     {ok, _, _} = epgsql:equery(
@@ -176,8 +176,27 @@ w203_seed(Conn, Key) ->
     {ok, _, _} = epgsql:equery(
         Conn,
         "SELECT * FROM fn_v5_register_pending($1,'b','private',101,"
-        "gen_random_uuid(),$2::jsonb,now()+interval '2 hours',"
-        "now()+interval '1 hour','garage','ns1','c1',$3)",
+        "gen_random_uuid(),$2::jsonb,now(),"
+        "now() - interval '2 hours','garage','ns1','c1',$3)",
+        [Key, registration(), locator()]
+    ),
+    {ok, _, _} = epgsql:equery(
+        Conn, "SELECT fn_v5_pin_pending_content($1,$2::jsonb)", [Key, content_receipt()]
+    ),
+    ok.
+
+%% confirm-first 专用：注册即"能力窗未过"（deadline/expiry 均未来且
+%% expiry <= deadline）。M3 守卫禁 UPDATE 扩 session_deadline（immutable），
+%% 窗口只能在注册时一次定死。
+w203_seed_open(Conn, Key) ->
+    q(Conn, "DELETE FROM attach_pending WHERE object_key=$1", [Key]),
+    q(Conn, "DELETE FROM attachment WHERE path=$1", [Key]),
+    {ok, _, _} = epgsql:equery(
+        Conn,
+        "SELECT * FROM fn_v5_register_pending($1,'b','private',101,"
+        "gen_random_uuid(),$2::jsonb,"
+        "now() + interval '2 hours',"
+        "now() + interval '1 hour','garage','ns1','c1',$3)",
         [Key, registration(), locator()]
     ),
     {ok, _, _} = epgsql:equery(
@@ -229,7 +248,7 @@ w203_intent_first(Conn) ->
 %% confirm 先提交 => intent 落败、无删除任务；有界重试不改变胜者。
 w203_confirm_first(Conn, Server, State) ->
     Key = <<"v5e2e/w203/confirm-first">>,
-    w203_seed(Conn, Key),
+    w203_seed_open(Conn, Key),
     w203_insert_asset(Conn, Key, ?ASSET_ID + 20),
     {ok, _, _} = epgsql:equery(
         Conn, "SELECT fn_v5_confirm_pending($1,$2)", [Key, ?ASSET_ID + 20]
@@ -363,8 +382,8 @@ w301_seed_group_asset(Conn, Key, Opts) ->
     {ok, _, _} = epgsql:equery(
         Conn,
         "SELECT * FROM fn_v5_register_pending($1,'b','group',101,"
-        "gen_random_uuid(),$2::jsonb,now()+interval '2 hours',"
-        "now()+interval '1 hour','garage','ns1','c1',$3)",
+        "gen_random_uuid(),$2::jsonb,now(),"
+        "now() - interval '2 hours','garage','ns1','c1',$3)",
         [Key, registration(), locator()]
     ),
     {ok, _, _} = epgsql:equery(
@@ -563,7 +582,10 @@ w301_shared_owner(Conn) ->
     {ok, _, [{1}]} = epgsql:equery(
         Conn, "SELECT COUNT(*) FROM attachment WHERE path=$1", [K2]
     ),
-    %% 无共享证据的个人明文附件：注销正常清理（个人引用释放语义）
+    %% 无共享证据的个人明文附件：注销正常清理（个人引用释放语义）。
+    %% M3 守卫：metadata DELETE 需已提交 delete_intent + 队列 tombstone；
+    %% 真实注销路径即 intent_ordinary_delete_tx（user_deletion_logic），
+    %% 故先走 intent 再删。
     K3 = <<"v5e2e/w301/owner/personal">>,
     q(Conn, "DELETE FROM attachment WHERE path=$1", [K3]),
     q(
@@ -571,8 +593,11 @@ w301_shared_owner(Conn) ->
         "INSERT INTO attachment(id,path,scope,creator_user_id,storage_driver,"
         "storage_namespace,storage_container,storage_locator_sha256,gc_verified,"
         "cipher,file_hash256) VALUES ($1,$2,'private',101,'garage','ns1','c1',"
-        "$3,false,NULL,$4)",
+        "$3,true,NULL,$4)",
         [?ASSET_ID + 42, K3, locator(), binary:copy(<<"7">>, 64)]
+    ),
+    {ok, _, _} = epgsql:equery(
+        Conn, "SELECT fn_v5_intent_ordinary_delete($1,'w301 account deletion')", [K3]
     ),
     {ok, _, [{Cnt3}]} = epgsql:equery(
         Conn,
@@ -601,14 +626,20 @@ w301_shared_owner(Conn) ->
 
 %% history-unknown：位置未知/密文/收藏歧义 => gc_verified 恒 false + 0 删除。
 w301_history_unknown(Conn) ->
-    %% unknown_location：locator 为 NULL 的群资产（绑定已释放）
+    %% unknown_location：locator 为 NULL 的群资产（绑定已释放）。
+    %% M3 位置不可变守卫禁 UPDATE 四元组，且 confirm 协议要求注册/行
+    %% 位置一致——NULL 位置形态不经 pending 协议，直接落元数据行。
     K1 = <<"v5e2e/w301/hist/unknown-location">>,
-    w301_seed_group_asset(Conn, K1, #{id => 50, gf => 50, bound => false}),
+    q(Conn, "DELETE FROM attach_pending WHERE object_key=$1", [K1]),
+    q(Conn, "DELETE FROM attachment WHERE path=$1", [K1]),
+    q(Conn, "DELETE FROM group_file WHERE id=$1", [?ASSET_ID + 50]),
     q(
         Conn,
-        "UPDATE attachment SET storage_driver=NULL, storage_namespace=NULL,"
-        " storage_container=NULL, storage_locator_sha256=NULL WHERE path=$1",
-        [K1]
+        "INSERT INTO attachment(id,path,scope,creator_user_id,"
+        "storage_driver,storage_namespace,storage_container,"
+        "storage_locator_sha256,gc_verified,cipher,group_file_id,file_hash256)"
+        " VALUES ($1,$2,'group',101,NULL,NULL,NULL,NULL,false,NULL,$3,$4)",
+        [?ASSET_ID + 50, K1, ?ASSET_ID + 50, w301_hash()]
     ),
     ?assertEqual(false, w301_gc_verified_refresh(Conn, K1)),
     {error, #error{code = <<"23510">>}} =
