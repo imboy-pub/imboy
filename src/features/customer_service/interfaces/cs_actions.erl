@@ -500,6 +500,150 @@ table(tenant) ->
                 server_common(),
                 path
             )},
+        %% —— v4 P0-8：AI 管理面（03-G/P0-10 的后端面；治理 principal 同
+        %% session_stats。矩阵授权真源 02-C.4：read_config/set_mode/
+        %% set_limits/set_canary/faq_write/faq_publish/read_sessions/
+        %% read_stats——HTTP 侧 principal（owner/admin）是必要非充分条件，
+        %% 用例内矩阵裁决在 cs_ai_app:authorize/3）。——
+        {ai_config_view,
+            entry(
+                [{<<"GET">>, ai_config_view, [], []}],
+                governance_auth(),
+                server_common(),
+                path
+            )},
+        {ai_config_set,
+            entry(
+                [
+                    {<<"POST">>, ai_config_set,
+                        [
+                            {name, binary, optional},
+                            {provider, binary, optional},
+                            {model, binary, optional},
+                            {system_prompt, binary, optional},
+                            {greeting, binary, optional},
+                            {auto_reply_mode, binary, optional},
+                            {faq_require_hit, binary, optional},
+                            {max_unresolved_turns, int, optional},
+                            {max_inflight, int, optional},
+                            {job_timeout_ms, int, optional},
+                            {max_job_age_ms, int, optional},
+                            {seat_identity_id, tsid, optional}
+                        ],
+                        []}
+                ],
+                governance_auth(),
+                server_common(),
+                path
+            )},
+        {ai_faq_list,
+            entry(
+                [
+                    {<<"GET">>, ai_faq_list,
+                        [
+                            {intent, binary, optional},
+                            {limit, int, optional},
+                            {offset, int, optional}
+                        ],
+                        []}
+                ],
+                governance_auth(),
+                server_common(),
+                path
+            )},
+        {ai_faq_upsert,
+            entry(
+                [
+                    {<<"POST">>, ai_faq_upsert,
+                        [
+                            {id, tsid, optional},
+                            {question, binary, required},
+                            {answer, binary, optional},
+                            {intent, binary, optional},
+                            {category, binary, optional},
+                            {keywords, binary, optional},
+                            {status, binary, optional}
+                        ],
+                        []}
+                ],
+                governance_auth(),
+                server_common() ++ [created_by_user_id],
+                path
+            )},
+        {ai_faq_delete,
+            entry(
+                [
+                    {<<"DELETE">>, ai_faq_delete, [{id, tsid, required}], []}
+                ],
+                governance_auth(),
+                server_common(),
+                path
+            )},
+        {ai_sessions,
+            entry(
+                [
+                    {<<"GET">>, ai_sessions,
+                        [
+                            {limit, int, optional},
+                            {offset, int, optional},
+                            {workspace_id, tsid, optional}
+                        ],
+                        [], #{workspace => optional}}
+                ],
+                governance_auth(),
+                server_common(),
+                path
+            )},
+        {ai_session_turns,
+            entry(
+                [
+                    {<<"GET">>, ai_session_turns,
+                        [
+                            {session_id, tsid, required},
+                            {limit, int, optional},
+                            {workspace_id, tsid, optional}
+                        ],
+                        [], #{workspace => optional}}
+                ],
+                governance_auth(),
+                server_common(),
+                path
+            )},
+        {ai_stats,
+            entry(
+                [
+                    {<<"GET">>, ai_stats,
+                        [
+                            {date, binary, optional},
+                            {tz_offset, int, optional}
+                        ],
+                        [], #{
+                            workspace => optional,
+                            clock_unit => second
+                        }}
+                ],
+                governance_auth(),
+                server_common(),
+                path
+            )},
+        {ai_preview,
+            entry(
+                [
+                    {<<"POST">>, ai_preview,
+                        [
+                            {text, binary, required},
+                            {intent, binary, optional},
+                            {confidence, binary, optional},
+                            {resolved, binary, optional},
+                            {faq_score, binary, optional},
+                            {unresolved_turns, int, optional}
+                        ],
+                        []}
+                ],
+                governance_auth(),
+                server_common(),
+                path
+            )},
         %% CS-BE-05（CS-DEC-02）：presence 心跳 lease——POST /seats/me/heartbeat
         %% 刷新心跳 lease 并返回派生运行态；PUT /seats/me/presence 设置/清除
         %% 手动 away（manual_status 缺省 = clear）。`at` 是服务端派生时钟
@@ -842,7 +986,13 @@ table(widget) ->
                             {object_hash, binary, required},
                             %% CS-BE-01：展示文件名（可选；随凭证进 PUT 登记
                             %% 与历史 assets[].file_name 投影）。
-                            {file_name, binary, optional}
+                            {file_name, binary, optional},
+                            %% V5 恢复合同（02 §137）：operation=register（缺省）
+                            %% |status|renew；client_upload_id 幂等登记；
+                            %% asset_id 为 status/renew 会话定位。
+                            {operation, binary, optional},
+                            {client_upload_id, binary, optional},
+                            {asset_id, tsid, optional}
                         ],
                         [{id, session_id}]}
                 ]

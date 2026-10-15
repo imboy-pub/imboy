@@ -121,10 +121,11 @@ apply_transition(Session, _From, closed, Ctx) ->
                 version := maps:get(version, Session, 1) + 1,
                 updated_at := At
             }}
-    end;
-apply_transition(Session, _From, queued, Ctx) ->
-    At = maps:get(at, Ctx, undefined),
-    {ok, Session#{version := maps:get(version, Session, 1) + 1, updated_at := At, queued_at => At}}.
+    end.
+%% v4 P0-4（02-C.3）：原第三子句 `apply_transition(Session, _From, queued, Ctx)`
+%% 删除——valid_transition/2 无任何 →queued 边，该子句不可达；且它不置 NULL
+%% business_identity_id，若可达即违反 ck_csss_queued_no_identity。不存在合法
+%% 目标态 ⇒ 删除而非修复（合同 §5 步骤 1）。
 
 %% ===================================================================
 %% CAS 期望（A02 的 domain 判定真源）

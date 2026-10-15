@@ -130,27 +130,37 @@ channel_view(Channel, ChannelId, Uid) ->
             _ -> ok
         end,
     case Access of
-        ok -> {ok, channel_transfer(add_user_channel_state(Channel, ChannelId, Uid))};
-        {error, _} = Error -> Error
+        ok ->
+            case add_user_channel_state(Channel, ChannelId, Uid) of
+                {error, _} = Error -> Error;
+                ChannelState when is_map(ChannelState) -> {ok, channel_transfer(ChannelState)}
+            end;
+        {error, _} = Error ->
+            Error
     end.
 
 %% @doc 详情接口返回与当前用户有关的频道状态；付费频道的内容权益只认购买订单。
--spec add_user_channel_state(map(), integer(), integer()) -> map().
+-spec add_user_channel_state(map(), integer(), integer()) -> map() | {error, binary()}.
 add_user_channel_state(Channel, ChannelId, Uid) ->
-    UserRole = channel_logic_common:get_user_role(ChannelId, Uid),
-    IsSubscribed =
-        case UserRole of
-            % 创建者恒订阅
-            3 -> true;
-            _ -> channel_subscription_ds:is_subscribed(ChannelId, Uid)
-        end,
-    Channel#{
-        user_role => UserRole,
-        is_subscribed => IsSubscribed,
-        has_purchased => has_purchased(Channel, ChannelId, Uid)
-    }.
+    case has_purchased(Channel, ChannelId, Uid) of
+        {error, Reason} ->
+            {error, elib_cnv:safe_to_binary(Reason)};
+        HasPurchased when is_boolean(HasPurchased) ->
+            UserRole = channel_logic_common:get_user_role(ChannelId, Uid),
+            IsSubscribed =
+                case UserRole of
+                    % 创建者恒订阅
+                    3 -> true;
+                    _ -> channel_subscription_ds:is_subscribed(ChannelId, Uid)
+                end,
+            Channel#{
+                user_role => UserRole,
+                is_subscribed => IsSubscribed,
+                has_purchased => HasPurchased
+            }
+    end.
 
--spec has_purchased(map(), integer(), integer()) -> boolean().
+-spec has_purchased(map(), integer(), integer()) -> boolean() | {error, term()}.
 has_purchased(Channel, ChannelId, Uid) ->
     case maps:get(<<"access_type">>, Channel, 0) of
         1 -> channel_order_ds:has_purchased(ChannelId, Uid);

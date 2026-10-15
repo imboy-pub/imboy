@@ -29,7 +29,7 @@
     end_assignment/2,
     %% contact / note
     create_contact/2,
-    ensure_contact_in/3,
+    ensure_contact_in/2,
     append_note/2,
     %% contact 读 / 改 / 经办（EB-05 重开新增：§5 GET /contacts、GET /contacts/{id}、
     %% PATCH /contacts/{id}、POST /contacts/{id}/assignment）
@@ -45,6 +45,8 @@
     ack_delivery/2,
     %% asset
     request_presign/2,
+    request_session_status/2,
+    request_session_renew/2,
     confirm_asset/2,
     put_object/2,
     content_stream/2,
@@ -126,8 +128,13 @@ end_assignment(OrgId, _Params) ->
 %% ===================================================================
 
 %% 仅供内部事务 owner 使用，不进入 HTTP 动作表。
-ensure_contact_in(Conn, OrgId, Params) ->
-    eb_contact_app:ensure_contact_in(Conn, OrgId, Params).
+-spec ensure_contact_in(integer(), map()) -> term().
+ensure_contact_in(OrgId, #{contact_conn := Conn} = Params) when is_integer(OrgId), OrgId > 0 ->
+    eb_contact_app:ensure_contact_in(Conn, OrgId, Params);
+ensure_contact_in(OrgId, Params) when is_integer(OrgId), is_map(Params) ->
+    {error, {invalid_argument, ensure_contact_in}};
+ensure_contact_in(OrgId, _Params) ->
+    {error, {invalid_argument, {organization_id, OrgId}}}.
 
 -spec create_contact(integer(), map()) -> term().
 create_contact(OrgId, #{channel := Channel, subject := Subject} = Params) when
@@ -309,6 +316,28 @@ request_presign(
 request_presign(OrgId, Params) when is_integer(OrgId), is_map(Params) ->
     {error, {invalid_argument, request_presign}};
 request_presign(OrgId, _Params) ->
+    {error, {invalid_argument, {organization_id, OrgId}}}.
+
+%% V5 会话协议（02 §137）：status 只读回查 / renew 单调续期，与 presign
+%% 同 tenant 校验形状；实现委托 eb_asset_app（能力只经 COMMIT 后路径）。
+-spec request_session_status(integer(), map()) -> term().
+request_session_status(OrgId, #{workspace_id := WorkspaceId} = Params) when
+    is_integer(OrgId), is_integer(WorkspaceId), is_map(Params)
+->
+    eb_asset_app:session_status(OrgId, Params);
+request_session_status(OrgId, Params) when is_integer(OrgId), is_map(Params) ->
+    {error, {invalid_argument, request_session_status}};
+request_session_status(OrgId, _Params) ->
+    {error, {invalid_argument, {organization_id, OrgId}}}.
+
+-spec request_session_renew(integer(), map()) -> term().
+request_session_renew(OrgId, #{workspace_id := WorkspaceId} = Params) when
+    is_integer(OrgId), is_integer(WorkspaceId), is_map(Params)
+->
+    eb_asset_app:session_renew(OrgId, Params);
+request_session_renew(OrgId, Params) when is_integer(OrgId), is_map(Params) ->
+    {error, {invalid_argument, request_session_renew}};
+request_session_renew(OrgId, _Params) ->
     {error, {invalid_argument, {organization_id, OrgId}}}.
 
 %% @doc confirm 必须重新鉴权：presign 后被 suspend 的 actor 在此 fail-closed。

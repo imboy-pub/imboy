@@ -61,7 +61,7 @@ send_with_list_subject_test_() ->
             ]}
         ],
         fun() ->
-            Result = elib_email:send(<<"recipient@example.com">>, "列表主题"),
+            Result = elib_email:send(<<"recipient@example.com">>, "列表主题" / utf8),
             ?assertEqual({ok, success}, Result)
         end
     ).
@@ -365,7 +365,7 @@ send_with_special_characters_test_() ->
         ],
         fun() ->
             SpecialSubject = <<"主题!@#$%^&*()"/utf8>>,
-            SpecialBody = <<"正文<>{}[]|\\\"'">>,
+            SpecialBody = <<"正文<>{}[]|\\\"'"/utf8>>,
             Result = elib_email:send(<<"to@example.com">>, SpecialSubject, SpecialBody),
             ?assertEqual({ok, success}, Result)
         end

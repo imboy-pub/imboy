@@ -81,12 +81,22 @@ reserve_and_put(OrgId, WorkspaceId, Descriptor, Payload, ObjectStore) ->
             _ -> byte_size(Payload)
         end,
     case eb_pg_asset_meta:insert_asset(OrgId, WorkspaceId, Descriptor#{size_bytes => Size}) of
-        {ok, Row} -> write_reserved(Row, Payload, ObjectStore);
-        {error, _} = Error -> Error
+        {ok, Row} ->
+            %% V5.5（02 §15）：Descriptor 可携带冻结签名 Context
+            %% （绝对 issued_at/expires_at），经 Meta 端到端传到对象适配器；
+            %% 无 Context 的调用方（非 V5）保持原 Meta 形状。
+            Meta0 = maps:with([mime, size_bytes], Row),
+            Meta =
+                case maps:get(signature_context, Descriptor, undefined) of
+                    Ctx when is_map(Ctx) -> Meta0#{signature_context => Ctx};
+                    _ -> Meta0
+                end,
+            write_reserved(Row, Payload, Meta, ObjectStore);
+        {error, _} = Error ->
+            Error
     end.
 
-write_reserved(Row, Payload, ObjectStore) ->
-    Meta = maps:with([mime, size_bytes], Row),
+write_reserved(Row, Payload, Meta, ObjectStore) ->
     case ObjectStore:put(maps:get(object_key, Row), Payload, Meta) of
         ok ->
             {ok, #{

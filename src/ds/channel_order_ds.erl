@@ -43,7 +43,7 @@ refund(OrderNo, _OperatorUid, Reason) ->
 -spec cancel(binary()) -> ok | {error, term()}.
 cancel(OrderNo) -> channel_order_repo:cancel(OrderNo).
 
--spec has_purchased(integer(), integer()) -> boolean().
+-spec has_purchased(integer(), integer()) -> boolean() | {error, term()}.
 has_purchased(ChannelId, Uid) -> channel_order_repo:has_purchased(ChannelId, Uid).
 
 %% @doc 获取频道价格配置（启用状态的价格记录）

@@ -2,6 +2,72 @@
 -include_lib("eunit/include/eunit.hrl").
 -include("eunit_setup.hrl").
 
+purchase_query_error_never_enters_channel_json_test_() ->
+    ?WITH_MECKS(
+        [
+            {channel_ds, [
+                {find_by_id_with_price, 1, fun(_) -> #{<<"id">> => 42, <<"access_type">> => 1} end},
+                {find_by_custom_id, 1, fun(_) -> #{<<"id">> => 42, <<"access_type">> => 1} end}
+            ]},
+            {channel_order_ds, [{has_purchased, 2, fun(_, _) -> {error, connection_closed} end}]}
+        ],
+        fun() ->
+            ?assertEqual(
+                {error, <<"connection_closed">>}, channel_logic_message:get_channel(<<"42">>, 1001)
+            ),
+            ?assertEqual(
+                {error, <<"connection_closed">>},
+                channel_logic_message:get_channel_by_custom_id(<<"paid">>, 1001)
+            )
+        end
+    ).
+
+purchase_query_error_blocks_message_read_and_ack_test_() ->
+    [
+        ?WITH_MECKS(
+            [
+                {channel_ds, [
+                    {find_by_id, 2, fun(_, _) ->
+                        #{<<"id">> => 42, <<"access_type">> => 1, <<"status">> => 1}
+                    end}
+                ]},
+                {channel_admin_ds, [{get_role, 2, fun(_, _) -> 0 end}]},
+                {channel_order_ds, [
+                    {has_purchased, 2, fun(_, _) ->
+                        {error, connection_closed}
+                    end}
+                ]},
+                {channel_message_ds, [
+                    {list_by_channel, 3, fun(_, _, _) ->
+                        error(purchase_error_must_not_read_messages)
+                    end}
+                ]},
+                {channel_subscription_ds, [
+                    {clear_unread, 2, fun(_, _) ->
+                        error(purchase_error_must_not_clear_unread)
+                    end}
+                ]},
+                {channel_logic_notify, [
+                    {notify_channel_unread_count, 3, fun(_, _, _) ->
+                        error(purchase_error_must_not_notify)
+                    end}
+                ]}
+            ],
+            fun() ->
+                ?assertEqual({error, <<"connection_closed">>}, Read()),
+                ?assertEqual(0, meck:num_calls(channel_message_ds, list_by_channel, '_')),
+                ?assertEqual(0, meck:num_calls(channel_subscription_ds, clear_unread, '_')),
+                ?assertEqual(
+                    0, meck:num_calls(channel_logic_notify, notify_channel_unread_count, '_')
+                )
+            end
+        )
+     || Read <- [
+            fun() -> channel_logic_message:get_messages(1001, <<"42">>, 0, 10) end,
+            fun() -> channel_logic_message:mark_as_read(1001, <<"42">>, <<"99">>) end
+        ]
+    ].
+
 %% P1-7b：与 src/logic/channel_logic_message.erl 的 ?CHANNEL_SAFE_COLUMNS
 %% 保持一致，钉住精确列清单防 <<"*">> 宽列查询回流。
 -define(CHANNEL_SAFE_COLUMNS, <<
@@ -96,6 +162,7 @@ get_paid_channel_returns_purchase_state_test_() ->
                 {'find_by_id_with_price', 1, fun(_ChannelId) ->
                     #{
                         <<"id">> => 42,
+                        <<"access_type">> => 1,
                         <<"type">> => 2,
                         <<"price">> => 990
                     }

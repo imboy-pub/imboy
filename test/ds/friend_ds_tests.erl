@@ -346,9 +346,9 @@ is_friend_field_queries_are_isolated_by_field_test_() ->
                 3,
                 fun
                     (_F, _T, <<"remark">>) ->
-                        {ok, [#{<<"remark">> => <<"备注">>}]};
+                        {ok, [#{<<"remark">> => <<"备注"/utf8>>}]};
                     (_F, _T, <<"nickname">>) ->
-                        {ok, [#{<<"nickname">> => <<"昵称">>}]}
+                        {ok, [#{<<"nickname">> => <<"昵称"/utf8>>}]}
                 end
             ),
             %% passthrough 保留真实 imboy_cache:memo（真实 depcache，fenced 关闭走旧路径）
@@ -363,9 +363,9 @@ is_friend_field_queries_are_isolated_by_field_test_() ->
                 F = 880101,
                 T = 880102,
                 %% 先查 remark（填充缓存）
-                ?assertEqual({true, <<"备注">>}, friend_ds:is_friend(F, T, <<"remark">>)),
+                ?assertEqual({true, <<"备注"/utf8>>}, friend_ds:is_friend(F, T, <<"remark">>)),
                 %% 再查同好友对不同字段：不得命中 remark 的旧缓存值
-                ?assertEqual({true, <<"昵称">>}, friend_ds:is_friend(F, T, <<"nickname">>)),
+                ?assertEqual({true, <<"昵称"/utf8>>}, friend_ds:is_friend(F, T, <<"nickname">>)),
                 %% 底层 repo 按字段被分别真实调用（未被缓存短路）
                 ?assertEqual(2, meck:num_calls(friend_repo, friend_field, 3)),
                 %% 清理测试键

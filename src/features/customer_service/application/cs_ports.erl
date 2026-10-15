@@ -195,6 +195,8 @@ contracts() ->
 -spec facade_targets() -> [module()].
 facade_targets() ->
     [
+        %% v4 P0-8：AI 管理面用例（ai_* 九动作的委派目标）。
+        cs_ai_admin_app,
         cs_seat_app,
         cs_seat_governance_app,
         %% BE-S01b：坐席 SSE 事件流用例（sse-event-contract 的 application 面）。
@@ -231,4 +233,6 @@ facade_reference_whitelist() ->
 %%     OTP/lib 白名单单独放行，不在此列。
 -spec external_reference_whitelist() -> [module()].
 external_reference_whitelist() ->
-    [enterprise_business_facade, organization_repo].
+    %% imboy_llm_registry（P0-9 方甲冻结）：LLM registry 属基础设施端口，
+    %% feature 内直呼是端口级外部依赖，非跨 Feature 业务边。
+    [enterprise_business_facade, organization_repo, imboy_llm_registry].

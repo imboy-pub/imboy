@@ -2,6 +2,24 @@
 -include_lib("eunit/include/eunit.hrl").
 -export([subject_hmac/4, seal_scoped/3, ensure_contact_in/5, append_in/3]).
 
+facade_internal_contact_rejects_invalid_arguments_test() ->
+    ?assertEqual(
+        {error, {invalid_argument, ensure_contact_in}},
+        enterprise_business_facade:ensure_contact_in(1, #{})
+    ),
+    ?assertMatch(
+        {error, {invalid_argument, _}},
+        enterprise_business_facade:ensure_contact_in(<<"1">>, #{contact_conn => test_conn})
+    ),
+    ?assertMatch(
+        {error, {invalid_argument, _}},
+        enterprise_business_facade:ensure_contact_in(0, #{contact_conn => test_conn})
+    ),
+    ?assertMatch(
+        {error, {invalid_argument, _}},
+        enterprise_business_facade:ensure_contact_in(1, invalid)
+    ).
+
 same_connection_and_failure_propagation_test() ->
     pure_mock_fixture:run(fun same_connection_and_failure_propagation/0).
 
@@ -18,19 +36,19 @@ same_connection_and_failure_propagation() ->
         put(store_result, success),
         put(audit_result, {ok, 99}),
         {ok, #{reused := false, audit_id := 99}} =
-            enterprise_business_facade:ensure_contact_in(test_conn, 1, Params),
+            enterprise_business_facade:ensure_contact_in(1, Params#{contact_conn => test_conn}),
         ?assertEqual(test_conn, get(store_conn)),
         ?assertEqual(test_conn, get(audit_conn)),
         put(audit_result, {error, audit_down}),
         ?assertEqual(
             {error, {audit_append_failed, audit_down}},
-            enterprise_business_facade:ensure_contact_in(test_conn, 1, Params)
+            enterprise_business_facade:ensure_contact_in(1, Params#{contact_conn => test_conn})
         ),
         put(store_result, {error, identity_failed}),
         erase(audit_conn),
         ?assertEqual(
             {error, identity_failed},
-            enterprise_business_facade:ensure_contact_in(test_conn, 1, Params)
+            enterprise_business_facade:ensure_contact_in(1, Params#{contact_conn => test_conn})
         ),
         ?assertEqual(undefined, get(audit_conn))
     after
@@ -51,7 +69,9 @@ reused_contact_does_not_append_create_audit_test() ->
             put(store_result, reused),
             put(audit_result, {error, audit_must_not_be_called}),
             erase(audit_conn),
-            {ok, Result} = enterprise_business_facade:ensure_contact_in(test_conn, 1, Params),
+            {ok, Result} = enterprise_business_facade:ensure_contact_in(1, Params#{
+                contact_conn => test_conn
+            }),
             ?assertEqual(true, maps:get(reused, Result)),
             ?assert(maps:is_key(contact, Result)),
             ?assert(maps:is_key(contact_identity, Result)),

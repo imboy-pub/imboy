@@ -474,6 +474,9 @@ old_unrequested_or_unrelated_cut_does_not_confirm_test() ->
     end).
 
 fixture(Fun) ->
+    pure_mock_fixture:run(fun() -> fixture_checks(Fun) end).
+
+fixture_checks(Fun) ->
     {ok, _} = application:ensure_all_started(syn),
     ok = syn:add_node_to_scopes([imboy_cache]),
     ok = syn:join(imboy_cache, dsync_handler, self(), #{}),

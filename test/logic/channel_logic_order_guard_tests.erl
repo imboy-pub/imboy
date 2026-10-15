@@ -5,6 +5,30 @@
 -include_lib("eunit/include/eunit.hrl").
 -include("eunit_setup.hrl").
 
+purchase_query_failure_never_creates_order_test_() ->
+    ?WITH_MECKS(
+        [
+            {imboy_env, [{current, 0, fun() -> <<"local">> end}]},
+            {channel_ds, [
+                {find_by_id, 2, fun(_, _) ->
+                    #{<<"status">> => 1, <<"access_type">> => 1, <<"join_policy">> => 3}
+                end}
+            ]},
+            {elib_pg, [{query, 2, fun(_, _) -> {error, connection_closed} end}]},
+            {channel_order_ds, [
+                {get_price, 1, fun(_) -> {ok, #{<<"price">> => 10}} end},
+                {create_order, 1, fun(_) -> error(database_failure_allowed_creation) end}
+            ]}
+        ],
+        fun() ->
+            ?assertEqual(
+                {error, <<"connection_closed">>}, channel_logic_order:create_order(1001, <<"11">>)
+            ),
+            ?assertEqual(0, meck:num_calls(channel_order_ds, get_price, '_')),
+            ?assertEqual(0, meck:num_calls(channel_order_ds, create_order, '_'))
+        end
+    ).
+
 zero_price_fixture_never_creates_order_test_() ->
     ?WITH_MECKS(
         [

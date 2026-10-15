@@ -1,0 +1,50 @@
+# PUT /api/v1/attachment/gateway/{client_upload_id} — V5.5 受控存储网关（02 §14）
+# Handler: src/api/attachment_storage_gateway_handler.erl
+#
+# 网关能力为 aud=upload 的短期 JWT（presign/renew 下发，exp=登记冻结到期）。
+# body 为原始字节流：网关在既有限额内写入独占 0600 临时文件，计算 SHA256/size，
+# 校验登记冻结声明后先 pin（upload_content NULL 一次固定）并 COMMIT，
+# 再以冻结签名 Context 转存对象存储（同 key 不同字节 409 且 provider PUT=0）。
+put:
+  tags: [user]
+  summary: V5 受控上传网关（字节直传端点）
+  operationId: attachmentGatewayPut
+  parameters:
+    - in: path
+      name: client_upload_id
+      required: true
+      schema: { type: string, format: uuid }
+      description: V5 会话标识（真实对象键/声明在能力 token 内，路径不寻址）
+    - in: query
+      name: capability
+      required: false
+      schema: { type: string }
+      description: 上传能力 token；与 x-upload-capability 请求头等价，二选一
+  requestBody:
+    required: true
+    content:
+      application/octet-stream:
+        schema: { type: string, format: binary }
+  responses:
+    '200':
+      description: 已 pin 并转存（pinned=true）
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              pinned: { type: boolean }
+              sha256: { type: string, description: 小写 64 位 hex }
+              size: { type: integer }
+    '403':
+      description: 能力 token 无效
+    '404':
+      description: 未知会话
+    '409':
+      description: 同 key 已 pin 到不同内容（provider PUT=0；同字节重试幂等）
+    '410':
+      description: 能力已过期或窗口非法（reupload_required）
+    '413':
+      description: 超出限额（pin 未发生）
+    '502':
+      description: 对象存储转存失败（pin 保留，同内容重试合法）

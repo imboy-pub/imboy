@@ -233,7 +233,7 @@ org_manager_authority_test_() ->
                 org_manager_mocks(0, {error, {503, <<"权限校验暂时不可用，请稍后重试"/utf8>>}}, {ok, 1}),
                 fun() ->
                     ?assertMatch(
-                        {error, <<"权限校验暂时不可用", _/binary>>},
+                        {error, <<"权限校验暂时不可用"/utf8, _/binary>>},
                         channel_logic:archive_channel(?OTHER, integer_to_binary(?CID))
                     ),
                     ?assertEqual(0, meck:num_calls(channel_ds, archive_with_authz, 2))

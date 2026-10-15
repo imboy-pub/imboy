@@ -117,7 +117,7 @@ dissolve_authority_test_() ->
                 ],
                 fun() ->
                     ?assertMatch(
-                        {error, <<"权限校验暂时不可用", _/binary>>},
+                        {error, <<"权限校验暂时不可用"/utf8, _/binary>>},
                         group_logic:dissolve(?OUTSIDER, ?GID)
                     ),
                     ?assertEqual(0, meck:num_calls(group_ds, dissolve_by_org_manager, 3))

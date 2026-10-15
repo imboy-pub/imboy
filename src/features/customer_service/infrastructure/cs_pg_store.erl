@@ -347,7 +347,7 @@ insert_widget_bootstrap_audited(OrgId, Command) ->
         fun(Conn) ->
             #{contact := Contact} = widget_tx_result(
                 enterprise_business_facade:ensure_contact_in(
-                    Conn, OrgId, maps:get(contact_params, Command)
+                    OrgId, (maps:get(contact_params, Command))#{contact_conn => Conn}
                 )
             ),
             ContactId = maps:get(id, Contact),
@@ -375,7 +375,7 @@ exchange_widget_identity_audited(OrgId, Command) ->
             ),
             #{contact := Contact, reused := Reused} = widget_tx_result(
                 enterprise_business_facade:ensure_contact_in(
-                    Conn, OrgId, maps:get(contact_params, Command)
+                    OrgId, (maps:get(contact_params, Command))#{contact_conn => Conn}
                 )
             ),
             ContactId = maps:get(id, Contact),

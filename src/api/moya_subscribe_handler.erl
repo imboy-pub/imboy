@@ -84,7 +84,12 @@ template_ids(Body) when is_map(Body) ->
             end;
         _ ->
             error
-    end.
+    end;
+%% 非 map body（如客户端直接 POST JSON 数组）→ 422/5488（deny-by-default）。
+%% 87e9ed15 的 dialyzer 清理曾按"不可达"删除本兜底；report_invalid_body_test_
+%% 实证可达（elib_param:post 可返回 list）——回归修复，勿再删。
+template_ids(_Body) ->
+    error.
 
 -spec valid_template_id(term()) -> boolean().
 valid_template_id(Bin) when is_binary(Bin), Bin =/= <<>> ->

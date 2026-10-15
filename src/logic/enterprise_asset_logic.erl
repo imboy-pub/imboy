@@ -33,6 +33,25 @@
 %% 返回 {ok, #{file_id, object_key, put_url, expires_at}}。
 -spec presign_tx(any(), map(), map()) -> {ok, map()} | {error, {binary(), term()}}.
 presign_tx(Conn, Ctx, Input) when is_map(Input) ->
+    Operation = maps:get(operation, Input, undefined),
+    ClientUploadId = maps:get(client_upload_id, Input, undefined),
+    case {Operation, ClientUploadId} of
+        {<<"status">>, _} ->
+            presign_status_tx(Ctx, Input);
+        {<<"renew">>, _} ->
+            presign_renew_tx(Conn, Ctx, Input);
+        %% V5 register：带 client_upload_id 的新会话走失败关闭协议链
+        %% （02 §137：内部应用复用 attach_pending 既有 session 表）；
+        %% 旧客户端（无 UUID、无 operation）保留 legacy 链兼容。
+        {_, Cid} when Cid =/= undefined, Cid =/= <<>> ->
+            presign_register_v5_tx(Conn, Ctx, Input);
+        _ ->
+            presign_legacy_tx(Conn, Ctx, Input)
+    end;
+presign_tx(_Conn, _Ctx, _Input) ->
+    {error, {<<"invalid_request">>, input_not_map}}.
+
+presign_legacy_tx(Conn, Ctx, Input) ->
     OrgId = maps:get(organization_id, Ctx),
     AppId = maps:get(application_id, Ctx),
     FileName = maps:get(file_name, Input, undefined),
@@ -53,9 +72,231 @@ presign_tx(Conn, Ctx, Input) when is_map(Input) ->
             end;
         {error, _} = Err ->
             Err
-    end;
-presign_tx(_Conn, _Ctx, _Input) ->
-    {error, {<<"invalid_request">>, input_not_map}}.
+    end.
+
+%%%===================================================================
+%%% V5 恢复 API（02 §137/§143）：register 失败关闭、status 只读、renew 单调
+%%% 稳定身份在事务内保存；签发一律由 handler COMMIT 分支完成（F19），
+%%% 因此本节返回的 map 绝不含 put_url/upload_capability。
+%%%===================================================================
+
+v5_snapshot(Ctx, Input) ->
+    OrgId = maps:get(organization_id, Ctx),
+    AppId = maps:get(application_id, Ctx),
+    #{
+        <<"subject">> => #{
+            <<"kind">> => <<"application">>,
+            <<"principal">> => integer_to_binary(AppId),
+            <<"org_id">> => integer_to_binary(OrgId)
+        },
+        <<"declaration">> => #{
+            <<"filename">> => maps:get(file_name, Input, undefined),
+            <<"mime">> => maps:get(mime_type, Input, undefined),
+            <<"scope">> => <<"enterprise">>,
+            <<"org_id">> => OrgId,
+            <<"application_id">> => AppId
+        }
+    }.
+
+presign_register_v5_tx(Conn, Ctx, Input) ->
+    OrgId = maps:get(organization_id, Ctx),
+    AppId = maps:get(application_id, Ctx),
+    FileName = maps:get(file_name, Input, undefined),
+    MimeType = maps:get(mime_type, Input, undefined),
+    SizeHint = maps:get(size_bytes, Input, undefined),
+    ClientUploadId = maps:get(client_upload_id, Input),
+    case enterprise_asset_retention_logic:content_policy_tx(Conn, Ctx, Input) of
+        {ok, Policy} ->
+            MaxBytes = enterprise_asset_retention_logic:effective_max_bytes(Policy, SizeHint),
+            case
+                valid_name(FileName) andalso
+                    enterprise_asset_retention_logic:mime_allowed(Policy, MimeType) andalso
+                    valid_size_hint(SizeHint, MaxBytes) andalso
+                    valid_client_upload_id(ClientUploadId)
+            of
+                true ->
+                    ObjectKey = enterprise_asset_repo:build_object_key(OrgId, AppId, FileName),
+                    Bucket = elib_oss:get_bucket(<<"enterprise">>),
+                    case
+                        attach_pending_repo:register_v5_tx(
+                            Conn,
+                            ObjectKey,
+                            Bucket,
+                            <<"enterprise">>,
+                            0,
+                            ClientUploadId,
+                            v5_snapshot(Ctx, Input)
+                        )
+                    of
+                        {ok, Registration} ->
+                            {ok, stable_registration(ObjectKey, Bucket, MimeType, Registration)};
+                        {error, Reason} ->
+                            %% 失败关闭：登记失败无任何能力，COMMIT 回滚由
+                            %% handler 以业务错误应答（AC01）。
+                            {error, {<<"service_unavailable">>, Reason}}
+                    end;
+                false ->
+                    {error, {<<"invalid_request">>, invalid_presign_input}}
+            end;
+        {error, _} = Err ->
+            Err
+    end.
+
+%% 只读回查：无能力、跨主体不泄露存在性（02 §137）。
+presign_status_tx(Ctx, Input) ->
+    IdOrKey = id_or_key(Input),
+    AppId = maps:get(application_id, Ctx),
+    case IdOrKey of
+        undefined ->
+            {error, {<<"invalid_request">>, missing_session_identity}};
+        _ ->
+            case attach_pending_repo:status_lookup(IdOrKey) of
+                {ok, Row} ->
+                    case v5_subject_app(Row) =:= AppId of
+                        true -> {ok, status_view(Row)};
+                        false -> {error, {<<"not_found">>, session_not_found}}
+                    end;
+                {error, not_found} ->
+                    {error, {<<"not_found">>, session_not_found}};
+                {error, Reason} ->
+                    {error, {<<"service_unavailable">>, Reason}}
+            end
+    end.
+
+%% renew：单调提交新到期（事务内稳定状态），签发在 handler COMMIT 分支。
+presign_renew_tx(Conn, Ctx, Input) ->
+    IdOrKey = id_or_key(Input),
+    AppId = maps:get(application_id, Ctx),
+    case IdOrKey of
+        undefined ->
+            {error, {<<"invalid_request">>, missing_session_identity}};
+        _ ->
+            case attach_pending_repo:status_lookup(IdOrKey) of
+                {ok, #{<<"session_state">> := <<"registered">>} = Row} ->
+                    case v5_subject_app(Row) =:= AppId of
+                        false ->
+                            {error, {<<"not_found">>, session_not_found}};
+                        true ->
+                            Deadline = unix_of(maps:get(<<"session_deadline">>, Row)),
+                            Now = erlang:system_time(second),
+                            case Now >= Deadline of
+                                true ->
+                                    {error, {<<"gone">>, session_expired}};
+                                false ->
+                                    Key = maps:get(<<"object_key">>, Row),
+                                    NewExpiry = min(Now + ?PUT_EXPIRES, Deadline),
+                                    case
+                                        attach_pending_repo:renew_capability_tx(
+                                            Conn, Key, 0, NewExpiry
+                                        )
+                                    of
+                                        {ok, #{committed_expires_at := Committed}} ->
+                                            {ok, #{
+                                                <<"object_key">> => Key,
+                                                <<"client_upload_id">> =>
+                                                    maps:get(<<"client_upload_id">>, Row),
+                                                <<"bucket">> => maps:get(<<"bucket">>, Row),
+                                                <<"mime_type">> => declared_mime(Row),
+                                                <<"session_state">> => <<"registered">>,
+                                                <<"deadline">> => Deadline,
+                                                <<"expires_at">> => Committed,
+                                                <<"renew">> => true
+                                            }};
+                                        {error, not_renewable} ->
+                                            {error, {<<"conflict">>, session_not_renewable}};
+                                        {error, Reason} ->
+                                            {error, {<<"service_unavailable">>, Reason}}
+                                    end
+                            end
+                    end;
+                {ok, #{<<"session_state">> := _Terminal}} ->
+                    {error, {<<"conflict">>, session_terminal}};
+                {error, not_found} ->
+                    {error, {<<"not_found">>, session_not_found}};
+                {error, Reason} ->
+                    {error, {<<"service_unavailable">>, Reason}}
+            end
+    end.
+
+id_or_key(Input) ->
+    case maps:get(client_upload_id, Input, undefined) of
+        undefined -> maps:get(object_key, Input, undefined);
+        <<>> -> maps:get(object_key, Input, undefined);
+        Cid -> Cid
+    end.
+
+valid_client_upload_id(Cid) when is_binary(Cid) ->
+    byte_size(Cid) =:= 36 andalso binary:replace(Cid, <<"-">>, <<>>) =/= Cid;
+valid_client_upload_id(_) ->
+    false.
+
+%% 登记快照里的 subject.principal（application 身份）——授权复核基准。
+v5_subject_app(Row) ->
+    case maps:get(<<"upload_registration">>, Row, undefined) of
+        #{<<"subject">> := #{<<"principal">> := P}} ->
+            case
+                try
+                    binary_to_integer(P)
+                catch
+                    _:_ -> undefined
+                end
+            of
+                N when is_integer(N) -> N;
+                _ -> undefined
+            end;
+        _ ->
+            %% 旧行（legacy add 无快照）不泄露，按不匹配处理
+            undefined
+    end.
+
+declared_mime(Row) ->
+    case maps:get(<<"upload_registration">>, Row, undefined) of
+        #{<<"declaration">> := #{<<"mime">> := M}} when is_binary(M), byte_size(M) > 0 -> M;
+        _ -> <<"application/octet-stream">>
+    end.
+
+unix_of(undefined) ->
+    0;
+unix_of(Bin) when is_binary(Bin) ->
+    case
+        try
+            calendar:rfc3339_to_system_time(binary_to_list(Bin), [{unit, second}])
+        catch
+            _:_ -> 0
+        end
+    of
+        N when is_integer(N) -> N;
+        _ -> 0
+    end.
+
+%% 稳定登记结果（无能力）：handler COMMIT 后据此签发。
+stable_registration(ObjectKey, Bucket, MimeType, Registration) ->
+    #{
+        <<"object_key">> => ObjectKey,
+        <<"bucket">> => Bucket,
+        <<"mime_type">> => MimeType,
+        <<"session_state">> => maps:get(session_state, Registration),
+        <<"client_upload_id">> => maps:get(client_upload_id, Registration),
+        <<"session_deadline">> => maps:get(deadline, Registration),
+        <<"expires_at">> => maps:get(expires_at, Registration)
+    }.
+
+status_view(Row) ->
+    #{<<"session_state">> := State} = Row,
+    Deadline = unix_of(maps:get(<<"session_deadline">>, Row)),
+    #{
+        <<"client_upload_id">> => maps:get(<<"client_upload_id">>, Row, undefined),
+        <<"object_key">> => maps:get(<<"object_key">>, Row),
+        <<"session_state">> => State,
+        <<"session_deadline">> => Deadline,
+        <<"upload_expires_at">> => unix_of(maps:get(<<"upload_expires_at">>, Row)),
+        <<"can_resume">> => State =:= <<"registered">>,
+        <<"retry_action">> =>
+            case State of
+                <<"registered">> -> <<"resume_same_id">>;
+                _ -> <<"none">>
+            end
+    }.
 
 %% @doc 签发（内容策略通过后）：object key 前缀 + pending 登记 + 返回 URL。
 presign_ok(Conn, OrgId, AppId, FileName, MimeType) ->

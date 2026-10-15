@@ -49,6 +49,12 @@ call(append_message, OrgId, Params) ->
     enterprise_business_facade:append_message(OrgId, Params);
 call(ack_delivery, OrgId, Params) ->
     enterprise_business_facade:ack_delivery(OrgId, Params);
+%% V5（02 §137）：operation=status|renew 分流到只读回查/单调续期；
+%% 缺省 register 保持既有动作。
+call(request_presign, OrgId, #{operation := <<"status">>} = Params) ->
+    enterprise_business_facade:request_session_status(OrgId, Params);
+call(request_presign, OrgId, #{operation := <<"renew">>} = Params) ->
+    enterprise_business_facade:request_session_renew(OrgId, Params);
 call(request_presign, OrgId, Params) ->
     enterprise_business_facade:request_presign(OrgId, Params);
 %% CS-BE-01B：presign 路径的 PUT 用例（坐席字节上传；payload=原始体字节，

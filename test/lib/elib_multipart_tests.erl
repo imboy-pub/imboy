@@ -103,7 +103,7 @@ extra_field_then_file_test() ->
     FilePart =
         [
             <<"--", ?BOUNDARY/binary, "\r\n">>,
-            <<"Content-Disposition: form-data; name=\"file\"; filename=\"trae测试.jpg\"\r\n">>,
+            <<"Content-Disposition: form-data; name=\"file\"; filename=\"trae测试.jpg\"\r\n"/utf8>>,
             <<"Content-Type: image/jpeg\r\n\r\n">>,
             File,
             <<"\r\n--", ?BOUNDARY/binary, "--\r\n">>

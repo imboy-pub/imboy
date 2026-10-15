@@ -233,6 +233,11 @@ application_coverage_candidate_requires_every_current_identity_test() ->
             {error, incomplete_application_coverage},
             imboy_cache_sync_proto:application_coverage_candidate()
         ),
+        ets:insert(?META_TABLE, {{covered_seq, {Peer, Boot}}, {0, 0}}),
+        ?assertEqual(
+            {ok, [{Peer, Boot, 0, 0}]},
+            imboy_cache_sync_proto:application_coverage_candidate()
+        ),
         ok = imboy_cache_sync_proto:note_applied_sequence(Peer, Boot, 1),
         ?assertEqual(
             {ok, [{Peer, Boot, 0, 1}]},
@@ -659,7 +664,7 @@ cold_recovery_rejects_older_epoch_authority_test() ->
         Peer = 'cold_authority@synthetic',
         Epoch = 2,
         ets:insert(?META_TABLE, {sync_epoch, Epoch}),
-        R0 = imboy_cache_sync_snapshot:new_round(0, erlang:system_time(millisecond) + 60000),
+        R0 = imboy_cache_sync_snapshot:recovery_round(0, erlang:system_time(millisecond) + 60000),
         Excluded = 'excluded_epoch@synthetic',
         R1 = imboy_cache_sync_snapshot:expect_peer(
             imboy_cache_sync_snapshot:expect_peer(R0, Peer), Excluded
@@ -726,6 +731,9 @@ cold_recovery_rejects_older_epoch_authority_test() ->
         {ok, DoneRound} = imboy_cache_source_cut_tests:done(
             Peer, Round, 1, 0, S2#state.snapshot_round
         ),
+        ?assertEqual(
+            {error, peer_content_unproven}, imboy_cache_policy:verify_snapshot_coverage(DoneRound)
+        ),
         S3 = imboy_cache_sync_recover:maybe_complete_round(S2#state{snapshot_round = DoneRound}),
         try
             ?assertNotEqual(ready, S3#state.status),
@@ -734,33 +742,50 @@ cold_recovery_rejects_older_epoch_authority_test() ->
         after
             cancel_recovery_timer(S3#state.recovery_timer)
         end,
-        %% 逃逸路径：中止后重开新回合（真实 census 冻结保留义务），仅含可证明
-        %% 来源时完整空快照闭合 READY；不能永久卡住状态机。
-        Fresh0 =
-            imboy_cache_sync_snapshot:recovery_round(
-                0, erlang:system_time(millisecond) + 60000
-            ),
-        Fresh1 = imboy_cache_sync_snapshot:expect_peer(Fresh0, Peer),
-        S4 = imboy_cache_sync_recover:handle_version_report(
-            Peer,
-            1,
-            Epoch,
-            imboy_cache_sync_proto:config_hash(),
-            imboy_cache_sync_proto:registry_hash(),
-            <<3:128>>,
+        %% 新回合独立证明旧代来源；不改写前一回合冻结的 epoch99 义务。
+        Fresh = imboy_cache_sync_snapshot:recovery_round(
+            0, erlang:system_time(millisecond) + 60000
+        ),
+        Expected = imboy_cache_sync_snapshot:expect_peer(
+            imboy_cache_sync_snapshot:expect_peer(Fresh, Peer), Excluded
+        ),
+        Token = maps:get(round, Expected),
+        {[], OldCut, _, OldCensus} = ready_source_fixture:snapshot(
+            Excluded, <<5:128>>, Epoch - 1, 0, [], Token
+        ),
+        {cache_snapshot_cut, Excluded, Token, OldBoot, OldEpoch, OldSeq, Hash, Registry, _, _} =
+            OldCut,
+        OldReport = imboy_cache_sync_recover:handle_version_report(
+            Excluded,
+            1000,
+            OldEpoch,
+            Hash,
+            Registry,
+            OldBoot,
             true,
             self(),
-            S1#state{snapshot_round = Fresh1}
+            {Excluded, OldBoot, OldEpoch, OldSeq, Token},
+            State#state{snapshot_round = Expected}
         ),
-        FreshRound = maps:get(round, Fresh1),
+        imboy_cache_source_cut_tests:fixture_identity(Excluded, OldBoot, OldEpoch),
+        {ok, RecordedOld} = imboy_cache_sync_proto:record_origin_target(
+            {Excluded, OldBoot, OldEpoch, OldSeq, Token, OldCensus, self()},
+            OldReport#state.snapshot_round
+        ),
+        Positive = imboy_cache_sync_recover:handle_version_report(
+            Peer, 1000, Epoch, Hash, Registry, <<3:128>>, true, self(), OldReport#state{
+                snapshot_round = RecordedOld
+            }
+        ),
         receive
-            {cache_snapshot_request, Pid, FreshRound} when Pid =:= self() -> ok
+            {cache_snapshot_request, Pid, Token} when Pid =:= self() -> ok
         after 0 -> ?assert(false)
         end,
-        {ok, FreshDone} = imboy_cache_source_cut_tests:done(
-            Peer, FreshRound, 1, 0, S4#state.snapshot_round
+        {[], Cut, Done, _} = ready_source_fixture:snapshot(Peer, <<3:128>>, Epoch, 0, [], Token),
+        {ok, Complete} = ready_source_fixture:finish(
+            Peer, {Cut, Done}, Positive#state.snapshot_round
         ),
-        S5 = imboy_cache_sync_recover:maybe_complete_round(S4#state{snapshot_round = FreshDone}),
+        S5 = imboy_cache_sync_recover:maybe_complete_round(Positive#state{snapshot_round = Complete}),
         try
             ?assertEqual(ready, S5#state.status),
             ?assertNot(S5#state.requires_authority),
@@ -797,6 +822,9 @@ assert_accounting() ->
 set_budget(Config) -> application:set_env(imboy, cache_replication, Config).
 
 with_metadata(Fun) ->
+    pure_mock_fixture:run(fun() -> metadata_fixture_checks(Fun) end).
+
+metadata_fixture_checks(Fun) ->
     OldCfg = application:get_env(imboy, cache_replication),
     OldRegistry = application:get_env(imboy, cache_registry_overrides),
     %% 真实来源身份：source_identity_current 要求来源 pid 在 syn 成员视图内。

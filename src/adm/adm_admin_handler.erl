@@ -1055,6 +1055,34 @@ default_sidebar_config() ->
                         <<"permission">> => <<"customer_service:read">>
                     },
                     #{
+                        <<"path">> => <<"/customer-service/ai/config">>,
+                        <<"icon">> => <<"Bot">>,
+                        <<"label">> => <<"AI 客服配置"/utf8>>,
+                        <<"roles">> => [1, 2],
+                        <<"permission">> => <<"customer_service:read">>
+                    },
+                    #{
+                        <<"path">> => <<"/customer-service/ai/faq">>,
+                        <<"icon">> => <<"BookOpen">>,
+                        <<"label">> => <<"AI FAQ 知识库"/utf8>>,
+                        <<"roles">> => [1, 2],
+                        <<"permission">> => <<"customer_service:read">>
+                    },
+                    #{
+                        <<"path">> => <<"/customer-service/ai/sessions">>,
+                        <<"icon">> => <<"MessagesSquare">>,
+                        <<"label">> => <<"AI 会话记录"/utf8>>,
+                        <<"roles">> => [1, 2],
+                        <<"permission">> => <<"customer_service:read">>
+                    },
+                    #{
+                        <<"path">> => <<"/customer-service/ai/metrics">>,
+                        <<"icon">> => <<"LineChart">>,
+                        <<"label">> => <<"AI 满意度统计"/utf8>>,
+                        <<"roles">> => [1, 2],
+                        <<"permission">> => <<"customer_service:read">>
+                    },
+                    #{
                         <<"path">> => <<"/enterprise/applications">>,
                         <<"icon">> => <<"ShieldCheck">>,
                         <<"label">> => <<"应用与集成"/utf8>>,

@@ -117,9 +117,10 @@ recovery_request_echoes_round_and_true_sequence_test() ->
     fixture(fun(State, Round) ->
         Request = imboy_cache_sync_proto:version_request_frame(self(), Round),
         Sender = State#state{counter = 5000, origin_seq = 7, boot_id = <<7:128>>, status = ready},
+        Census = imboy_cache_sync_coverage:content_census(),
         {noreply, Sender} = imboy_cache_sync:handle_info(Request, Sender),
         receive
-            {cache_version_report, N, 5000, 0, _, _, <<7:128>>, true, Pid, 7, Round, _Census} = F ->
+            {cache_version_report, N, 5000, 0, _, _, <<7:128>>, true, Pid, 7, Round, Census} = F ->
                 ?assertEqual(node(), N),
                 ?assertEqual(self(), Pid),
                 ?assert(imboy_cache_sync_proto:valid_version_report(F))
@@ -146,6 +147,9 @@ cancel(_) ->
     ok.
 
 fixture(Fun) ->
+    pure_mock_fixture:run(fun() -> fixture_checks(Fun) end).
+
+fixture_checks(Fun) ->
     OldCfg = application:get_env(imboy, cache_replication),
     OldFenced = application:get_env(imboy, cache_fenced_namespaces),
     application:set_env(imboy, cache_replication, #{}),

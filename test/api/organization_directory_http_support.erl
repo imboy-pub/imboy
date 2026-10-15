@@ -19,6 +19,7 @@
 %%% TSID；场景矩阵：suspended/removed/outsider/archived org/跨 Org 隔离
 %%% 全齐）；marker 库随 release 整库 DROP，不触碰共享库。
 -module(organization_directory_http_support).
+-compile([nowarn_deprecated_catch]).
 
 -export([
     setup_all/0,

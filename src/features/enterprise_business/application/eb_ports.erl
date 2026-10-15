@@ -192,7 +192,8 @@ contracts() ->
             {advance_offboarding_case, 6},
             {update_offboarding_case_counts, 6},
             %% ---- EB-03R 追加：P6 四件齐 ----
-            {fetch_hold, 3}
+            {fetch_hold, 3},
+            {ensure_contact_in, 5}
         ],
         crypto() => [
             %% ---- EB-02 冻结的 2 个（逐字未动）----
@@ -209,7 +210,8 @@ contracts() ->
             {new_id, 1}
         ],
         audit() => [
-            {append, 2}
+            {append, 2},
+            {append_in, 3}
         ],
         asset() => [
             %% ---- EB-02 冻结的 3 个（逐字未动）----
