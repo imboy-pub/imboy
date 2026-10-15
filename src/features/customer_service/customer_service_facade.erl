@@ -99,7 +99,17 @@
     %% BE-S01a：坐席上下文清单 / 转接目标最小投影 / SSE 占位
     seat_contexts/2,
     transfer_targets/2,
-    seat_events/2
+    seat_events/2,
+    %% AI 管理面（v4 P0-8：委派 cs_ai_admin_app，本模块只做参数收敛）
+    ai_config_view/2,
+    ai_config_set/2,
+    ai_faq_list/2,
+    ai_faq_upsert/2,
+    ai_faq_delete/2,
+    ai_sessions/2,
+    ai_session_turns/2,
+    ai_stats/2,
+    ai_preview/2
 ]).
 
 %% ===================================================================
@@ -1142,3 +1152,66 @@ widget_confirm_reads(
 widget_confirm_reads(_, _) ->
     {error, {invalid_argument, widget_confirm_reads}}.
 list_messages(Org, Params) -> cs_visitor_read_app:list_messages(Org, Params).
+
+%% ===================================================================
+%% AI 管理面（v4 P0-8：经 cs_actions 登记的治理动作；本模块只做参数
+%% 收敛 + 委派 cs_ai_admin_app——不新增 facade，R23）
+%% ===================================================================
+
+-spec ai_config_view(integer(), map()) -> term().
+ai_config_view(OrgId, Params) when is_integer(OrgId), OrgId > 0, is_map(Params) ->
+    cs_ai_admin_app:config_view(OrgId, Params);
+ai_config_view(OrgId, _Params) ->
+    {error, {invalid_argument, {organization_id, OrgId}}}.
+
+-spec ai_config_set(integer(), map()) -> term().
+ai_config_set(OrgId, Params) when is_integer(OrgId), OrgId > 0, is_map(Params) ->
+    cs_ai_admin_app:config_set(OrgId, Params);
+ai_config_set(OrgId, _Params) ->
+    {error, {invalid_argument, {organization_id, OrgId}}}.
+
+-spec ai_faq_list(integer(), map()) -> term().
+ai_faq_list(OrgId, Params) when is_integer(OrgId), OrgId > 0, is_map(Params) ->
+    cs_ai_admin_app:faq_list(OrgId, Params);
+ai_faq_list(OrgId, _Params) ->
+    {error, {invalid_argument, {organization_id, OrgId}}}.
+
+-spec ai_faq_upsert(integer(), map()) -> term().
+ai_faq_upsert(OrgId, Params) when is_integer(OrgId), OrgId > 0, is_map(Params) ->
+    cs_ai_admin_app:faq_upsert(OrgId, Params);
+ai_faq_upsert(OrgId, _Params) ->
+    {error, {invalid_argument, {organization_id, OrgId}}}.
+
+-spec ai_faq_delete(integer(), map()) -> term().
+ai_faq_delete(OrgId, #{id := FaqId} = Params) when
+    is_integer(OrgId), OrgId > 0, is_integer(FaqId), is_map(Params)
+->
+    cs_ai_admin_app:faq_delete(OrgId, Params);
+ai_faq_delete(OrgId, _Params) ->
+    {error, {invalid_argument, {organization_id, OrgId}}}.
+
+-spec ai_sessions(integer(), map()) -> term().
+ai_sessions(OrgId, Params) when is_integer(OrgId), OrgId > 0, is_map(Params) ->
+    cs_ai_admin_app:sessions(OrgId, Params);
+ai_sessions(OrgId, _Params) ->
+    {error, {invalid_argument, {organization_id, OrgId}}}.
+
+-spec ai_session_turns(integer(), map()) -> term().
+ai_session_turns(OrgId, #{session_id := SessionId} = Params) when
+    is_integer(OrgId), OrgId > 0, is_integer(SessionId), is_map(Params)
+->
+    cs_ai_admin_app:session_turns(OrgId, Params);
+ai_session_turns(OrgId, _Params) ->
+    {error, {invalid_argument, {organization_id, OrgId}}}.
+
+-spec ai_stats(integer(), map()) -> term().
+ai_stats(OrgId, Params) when is_integer(OrgId), OrgId > 0, is_map(Params) ->
+    cs_ai_admin_app:stats(OrgId, Params);
+ai_stats(OrgId, _Params) ->
+    {error, {invalid_argument, {organization_id, OrgId}}}.
+
+-spec ai_preview(integer(), map()) -> term().
+ai_preview(OrgId, Params) when is_integer(OrgId), OrgId > 0, is_map(Params) ->
+    cs_ai_admin_app:preview(OrgId, Params);
+ai_preview(OrgId, _Params) ->
+    {error, {invalid_argument, {organization_id, OrgId}}}.

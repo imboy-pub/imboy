@@ -143,6 +143,26 @@ call(seat_limit_view, OrgId, Params) ->
 %% CS-BE-07：按需统计（date/tz_offset 显式窗口；治理面只读）。
 call(session_stats, OrgId, Params) ->
     customer_service_facade:session_stats(OrgId, Params);
+%% AI 管理面（v4 P0-8：治理动作；矩阵授权见 cs_ai_app:authorize/3 的
+%% 02-C.4 真源，HTTP 侧 principal 由 governance_auth 声明）。
+call(ai_config_view, OrgId, Params) ->
+    customer_service_facade:ai_config_view(OrgId, Params);
+call(ai_config_set, OrgId, Params) ->
+    customer_service_facade:ai_config_set(OrgId, Params);
+call(ai_faq_list, OrgId, Params) ->
+    customer_service_facade:ai_faq_list(OrgId, Params);
+call(ai_faq_upsert, OrgId, Params) ->
+    customer_service_facade:ai_faq_upsert(OrgId, Params);
+call(ai_faq_delete, OrgId, Params) ->
+    customer_service_facade:ai_faq_delete(OrgId, Params);
+call(ai_sessions, OrgId, Params) ->
+    customer_service_facade:ai_sessions(OrgId, Params);
+call(ai_session_turns, OrgId, Params) ->
+    customer_service_facade:ai_session_turns(OrgId, Params);
+call(ai_stats, OrgId, Params) ->
+    customer_service_facade:ai_stats(OrgId, Params);
+call(ai_preview, OrgId, Params) ->
+    customer_service_facade:ai_preview(OrgId, Params);
 call(seat_heartbeat, OrgId, Params) ->
     customer_service_facade:seat_heartbeat(OrgId, Params);
 call(seat_manual_status, OrgId, Params) ->
@@ -184,6 +204,15 @@ actions() ->
         seat_limit_view,
         %% CS-BE-07：按需统计
         session_stats,
+        ai_config_view,
+        ai_config_set,
+        ai_faq_list,
+        ai_faq_upsert,
+        ai_faq_delete,
+        ai_sessions,
+        ai_session_turns,
+        ai_stats,
+        ai_preview,
         %% CS-BE-05：presence 心跳 lease / 手动状态 / 运行态视图
         seat_heartbeat,
         seat_manual_status,

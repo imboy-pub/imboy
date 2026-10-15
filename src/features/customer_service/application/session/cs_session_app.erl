@@ -273,21 +273,34 @@ claim_session(OrgId, WorkspaceId, Session, ExpectedVersion, At, Params) ->
 
 do_claim(OrgId, WorkspaceId, Session, IdentityId, ExpectedVersion, At, Params) ->
     case cs_session:assert_cas_expectation(Session, queued, ExpectedVersion) of
-        {error, _} = Err ->
-            Err;
+        {error, CasErr} ->
+            {error, CasErr};
         ok ->
             Event = claim_event(Session, IdentityId, At, Params),
-            with_store(Params, fun(Store) ->
-                Store:claim_session(
-                    OrgId,
-                    WorkspaceId,
-                    maps:get(id, Session),
-                    IdentityId,
-                    ExpectedVersion,
-                    At,
-                    Event
-                )
-            end)
+            case
+                with_store(Params, fun(Store) ->
+                    Store:claim_session(
+                        OrgId,
+                        WorkspaceId,
+                        maps:get(id, Session),
+                        IdentityId,
+                        ExpectedVersion,
+                        At,
+                        Event
+                    )
+                end)
+            of
+                {ok, _} = Ok ->
+                    %% v4 P0-4（02-C.3 E2）：人工 claim ⇒ AI 接管闩锁置位
+                    %% （粘性 + generation_epoch+1）。永不影响 claim 自身结果
+                    %% （AI 侧故障不拖垮人工坐席路径，on_human_takeover 内吞错）。
+                    cs_ai_delivery_app:on_human_takeover(
+                        OrgId, WorkspaceId, maps:get(id, Session), <<"human_claim">>
+                    ),
+                    Ok;
+                {error, ClaimErr} ->
+                    {error, ClaimErr}
+            end
     end.
 
 claim_event(Session, IdentityId, At, Params) ->
@@ -376,6 +389,11 @@ do_transfer(OrgId, WorkspaceId, SessionId, ToIdentityId, ExpectedVersion, At, Pa
                         detail => #{<<"from">> => maps:get(business_identity_id, Session)},
                         workspace_id => WorkspaceId
                     },
+                    %% v4 P0-4（02-C.3 E2）：transfer 至 human seat 同为接管，
+                    %% 闩锁置位语义与 claim 相同（吞错，不改变 transfer 结果）。
+                    _ = cs_ai_delivery_app:on_human_takeover(
+                        OrgId, WorkspaceId, SessionId, <<"human_transfer">>
+                    ),
                     cas_write(
                         Params,
                         OrgId,
@@ -589,10 +607,32 @@ append_message_in(OrgId, WorkspaceId, Params) ->
                             %% 不落库），同 client_msg_id 重试即安全（无半态）。
                             %% 审计丢失显式失败（audit_append_failed），不静默
                             %% 降级为"发了没事件"。
-                            dispatch_message(OrgId, FacadeParams#{persist_hook => Hook})
+                            %% v4 P0-3（02-B.4）：AI 投递路径把 deadline/
+                            %% input_version 复核 + L4 delivery + job 终态并入
+                            %% 同一 canonical 事务——Params 带 ai_delivery_hook
+                            %% 时先于事件钩子执行（复核失败 ⇒ 整体回滚，
+                            %% 消息与 delivery 原子）。钩子经 append_* 参数
+                            %% 透传，非 sender 路径零影响。
+                            dispatch_message(
+                                OrgId,
+                                FacadeParams#{
+                                    persist_hook => compose_ai_hook(Params, Hook)
+                                }
+                            )
                     end
             end
     end.
+
+%% AI 投递钩子组合：AI 复核/落账先跑（失败即回滚，事件钩子不再执行）。
+compose_ai_hook(#{ai_delivery_hook := AiHook}, EventHook) when is_function(AiHook, 2) ->
+    fun(Conn, StoredMessage) ->
+        case AiHook(Conn, StoredMessage) of
+            ok -> EventHook(Conn, StoredMessage);
+            {error, _} = Err -> Err
+        end
+    end;
+compose_ai_hook(_Params, EventHook) ->
+    EventHook.
 
 %% F-2：canonical 事务内的 `message.appended` 事件写钩子。canonical tx 在
 %% 消息+审计+附件绑定写毕、事务仍开放时以 `(Conn, StoredMessage)` 调用本闭包；

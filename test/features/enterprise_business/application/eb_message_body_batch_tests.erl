@@ -102,7 +102,7 @@ unavailable_keyring_without_app_env() ->
     ?FAKE_STORE:init(),
     ?FAKE_STORE:set_rows([row(501, 11, 101)]),
     with_crypto_meck(
-        fun(_O, _W, _C, _M, _Cipher, _KV, _AAD, _KR) -> {ok, <<"不应被解出">>} end,
+        fun(_O, _W, _C, _M, _Cipher, _KV, _AAD, _KR) -> {ok, <<"不应被解出"/utf8>>} end,
         fun() ->
             %% 不可用判定的确定性入口：**非 map** key_ref 走 env 解析
             %% （bare VM 无 imboy env → {error, keyring_unavailable} → undefined）。
@@ -119,7 +119,7 @@ hidden_row_undefined() ->
     Hidden = (row(501, 11, 101))#{visibility => hidden},
     ?FAKE_STORE:set_rows([Hidden]),
     with_crypto_meck(
-        fun(_O, _W, _C, _M, _Cipher, _KV, _AAD, _KR) -> {ok, <<"撤回内容不透出">>} end,
+        fun(_O, _W, _C, _M, _Cipher, _KV, _AAD, _KR) -> {ok, <<"撤回内容不透出"/utf8>>} end,
         fun() ->
             {ok, Bodies} = call([{11, 101, 501}]),
             ?assertEqual(#{501 => undefined}, Bodies),
@@ -131,7 +131,7 @@ cross_scope_tuple_undefined() ->
     ?FAKE_STORE:init(),
     ?FAKE_STORE:set_rows([row(501, 11, 101)]),
     with_crypto_meck(
-        fun(_O, _W, _C, _M, _Cipher, _KV, _AAD, _KR) -> {ok, <<"不越 scope">>} end,
+        fun(_O, _W, _C, _M, _Cipher, _KV, _AAD, _KR) -> {ok, <<"不越 scope"/utf8>>} end,
         fun() ->
             %% 行存在但请求元组的 ws / conv 与行归属不符 → 「无行返回」。
             {ok, B1} = call([{99, 101, 501}]),
@@ -145,7 +145,7 @@ purged_id_undefined() ->
     ?FAKE_STORE:init(),
     ?FAKE_STORE:set_rows([]),
     with_crypto_meck(
-        fun(_O, _W, _C, _M, _Cipher, _KV, _AAD, _KR) -> {ok, <<"已消失">>} end,
+        fun(_O, _W, _C, _M, _Cipher, _KV, _AAD, _KR) -> {ok, <<"已消失"/utf8>>} end,
         fun() ->
             {ok, Bodies} = call([{11, 101, 404}]),
             ?assertEqual(#{404 => undefined}, Bodies)
