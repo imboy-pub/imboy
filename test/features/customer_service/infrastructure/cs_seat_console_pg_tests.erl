@@ -68,69 +68,57 @@ a01_migration_files_present() ->
     ).
 
 a01_up_idempotent_and_roundtrip_no_residue() ->
-    %% 前置：app 启动 migrate 已把 153 应用到 scratch 库；再跑一次 up 全量
-    %% 仍全绿（IF NOT EXISTS 幂等）。
-    ?assert(table_exists(?TABLE)),
-    ok = with_migrate_conn(fun(Conn) ->
+    ok = with_console_migration(fun(Conn) ->
         Config = #{conn => Conn, dir => imboy_migrate:get_scripts_path(), strict => true},
-        ok = erlang_migrate:up(Config),
-        %% down 回滚越过 153（head 落到 152）：down 步数按在册版本推导——
-        %% down_steps_to(Target) = count(>Target)+1，head 落到 Target-1，
-        %% 随后 up 1 步恰重新应用 Target=153（head 再前移不红）。
-        Steps = down_steps_to(153),
-        ?assert(Steps >= 1),
-        ok = erlang_migrate:down(Config, Steps),
+        {ok, UpSql} = file:read_file(
+            filename:join(
+                ?MIG_DIR, "00000153_customer_service_seat_console.up.sql"
+            )
+        ),
+        ok = erlang_migrate_pg:exec_sql(Conn, UpSql),
+        ok = erlang_migrate:down(Config, 1),
         ?assertNot(table_exists_on(Conn, ?TABLE)),
-        %% up 1 步 = 重新应用 153（Target）；再全量 up（幂等）。
         ok = erlang_migrate:up(Config, 1),
         ?assert(table_exists_on(Conn, ?TABLE)),
-        ok = erlang_migrate:up(Config)
+        ?assert(column_exists_on(Conn, ?TABLE, <<"public_seat_console_id">>)),
+        ?assert(column_exists_on(Conn, ?TABLE, <<"workspace_id">>)),
+        ?assert(column_exists_on(Conn, ?TABLE, <<"revoked_at">>))
     end),
-    ?assert(column_exists(?TABLE, <<"public_seat_console_id">>)),
-    ?assert(column_exists(?TABLE, <<"workspace_id">>)),
-    ?assert(column_exists(?TABLE, <<"revoked_at">>)).
+    ?assert(table_exists(?TABLE)).
 
 %% A01（fail-closed down）：表内有行（含 revoked 行）时 down 必须 RAISE——
 %% 已分发的 public_seat_console_id 不得静默丢弃；清空后 down 成功、up 回补。
 a01_down_with_rows_fails_closed() ->
-    Scope = ?FIX:new_scope(),
-    Org = org(Scope),
-    Ws = maps:get(workspace_id, Scope),
-    ConsoleId = ?FIX:id(),
-    try
-        {ok, _} = cs_pg_seat_console:insert_seat_console(Org, console(Org, Ws, ConsoleId)),
-        %% 造一个 revoked 行：先吊销首行释放槽位，再插入第二行并吊销——
-        %% 表内同时有 revoked 行与（无）active 行，down 仍必须拒绝。
-        ok = cs_pg_seat_console:revoke_seat_console(Org, Ws, ConsoleId, now_sec()),
-        RevokedId = ?FIX:id(),
-        {ok, _} =
-            cs_pg_seat_console:insert_seat_console(
-                Org, console(Org, Ws, RevokedId, #{public_id => <<"sc_pub_pgdown2">>})
-            ),
-        ok = cs_pg_seat_console:revoke_seat_console(Org, Ws, RevokedId, now_sec()),
-        %% 有行（含 revoked 行）→ down 返回 {error, _} 且表保持原样
-        %% （fail-closed：已分发的 public_seat_console_id 不得静默丢弃）。
-        %% down 步数**按在册版本推导到 153**，不写死 1：fail-closed 门在
-        %% 153.down 内，head 前移（如 154 起）后 down 1 步只回滚更晚的纯
-        %% 索引迁移（无守卫，成功返回 ok）而根本没轮到 153 的门——历史
-        %% 教训同 cs_pg_widget_tests（断言两度被 head 前移打红）。
-        Steps = down_steps_to(153),
-        ?assert(Steps >= 1),
-        {error, _} = with_migrate_down(Steps),
-        ?assert(table_exists(?TABLE)),
-        {ok, [_, _]} = cs_pg_seat_console:list_seat_consoles_page(Org, Ws, 0, 50),
-        %% 失败的 down 按契约置 dirty（fail-closed 语义的一部分）；force/2
-        %% 恢复后（head=153 clean）清空行再 down 即成功；up 回补 head。
-        ok = with_migrate_force(153),
-        ok = purge_scope(Org),
-        ok = with_migrate_down(1),
-        ?assertNot(table_exists(?TABLE)),
-        ok = with_migrate_up(),
-        ?assert(table_exists(?TABLE))
-    after
-        _ = purge_scope(Org),
-        ok = ?FIX:cleanup(Scope)
-    end.
+    ok = with_console_migration(fun(Conn) ->
+        Config = #{conn => Conn, dir => imboy_migrate:get_scripts_path(), strict => true},
+        ok = erlang_migrate_pg:exec_sql(Conn, <<
+            "INSERT INTO \"user\"(id,password,account,reg_ip,reg_cosv)"
+            " VALUES(1,'synthetic','console-migration','127.0.0.1','synthetic');"
+            "INSERT INTO organization(id,name,owner_id,status) VALUES(1,'synthetic',1,'active');"
+            "INSERT INTO workspace(id,name,owner_id,status,type,organization_id)"
+            " VALUES(1,'synthetic',1,'active','project',1);"
+            "INSERT INTO customer_service_seat_console"
+            " (id,organization_id,workspace_id,public_seat_console_id,status,revoked_at)"
+            " VALUES(1,1,1,'synthetic-console-1','revoked',now()),"
+            " (2,1,1,'synthetic-console-2','revoked',now())"
+        >>),
+        {error, _} = erlang_migrate:down(Config, 1),
+        ?assert(table_exists_on(Conn, ?TABLE)),
+        ?assertMatch(
+            {ok, _, [{2}]},
+            epgsql:equery(
+                Conn,
+                "SELECT count(*)::int FROM customer_service_seat_console WHERE status='revoked'",
+                []
+            )
+        ),
+        ok = erlang_migrate:force(Config, 153),
+        ok = erlang_migrate_pg:exec_sql(Conn, <<"DELETE FROM customer_service_seat_console">>),
+        ok = erlang_migrate:down(Config, 1),
+        ?assertNot(table_exists_on(Conn, ?TABLE)),
+        ok = erlang_migrate:up(Config, 1),
+        ?assert(table_exists_on(Conn, ?TABLE))
+    end).
 
 %% ===================================================================
 %% 铁律 6 机械断言：冻结语句每条同语句带 organization_id
@@ -440,9 +428,6 @@ f6_update_expected_version_cas() ->
 %% 内部辅助
 %% ===================================================================
 
-console(Org, Ws, Id) ->
-    console(Org, Ws, Id, #{}).
-
 console(_Org, Ws, Id, Opts) ->
     PublicId =
         case maps:get(public_id, Opts, undefined) of
@@ -481,39 +466,14 @@ with_migrate_conn(Fun) ->
         _ = epgsql:close(Conn)
     end.
 
-with_migrate_down(Steps) ->
-    with_migrate_conn(fun(Conn) ->
-        Config = #{conn => Conn, dir => imboy_migrate:get_scripts_path(), strict => true},
-        erlang_migrate:down(Config, Steps)
-    end).
-
-with_migrate_force(Version) ->
-    with_migrate_conn(fun(Conn) ->
-        Config = #{conn => Conn, dir => imboy_migrate:get_scripts_path(), strict => true},
-        erlang_migrate:force(Config, Version)
-    end).
-
-with_migrate_up() ->
-    with_migrate_conn(fun(Conn) ->
-        Config = #{conn => Conn, dir => imboy_migrate:get_scripts_path(), strict => true},
-        erlang_migrate:up(Config)
-    end).
-
-down_steps_to(TargetVersion) ->
-    {ok, Files} = file:list_dir(?MIG_DIR),
-    Versions = lists:usort([
-        V
-     || F <- Files,
-        {ok, V} <- [migration_version_of(F)]
-    ]),
-    length([V || V <- Versions, V > TargetVersion]) + 1.
-
-migration_version_of(FileName) ->
-    case re:run(FileName, <<"^([0-9]{8})_.*\\.(up|down)\\.sql$">>, [{capture, [1], binary}]) of
-        {match, [V]} ->
-            {ok, binary_to_integer(V)};
-        _ ->
-            error
+with_console_migration(Fun) ->
+    State = inttest_marker_db:provision(#{
+        env_prefix => <<"CS_CONSOLE_MIGRATION">>, migration_target => 153
+    }),
+    try
+        Fun(maps:get(conn, State))
+    after
+        inttest_marker_db:release(State)
     end.
 
 table_exists(Name) ->
@@ -528,9 +488,6 @@ table_exists_on(Conn, Name) ->
             [Name]
         ),
     1 =:= N.
-
-column_exists(Table, Column) ->
-    with_migrate_conn(fun(Conn) -> column_exists_on(Conn, Table, Column) end).
 
 column_exists_on(Conn, Table, Column) ->
     {ok, _, [{N}]} =

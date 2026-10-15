@@ -276,15 +276,15 @@ sql_statements() -> [?SQL_PAGE].
 seat_session_search_anchors(OrgId, WorkspaceId, Filters) when
     is_integer(OrgId), OrgId > 0, is_integer(WorkspaceId), WorkspaceId >= 0, is_map(Filters)
 ->
-    cs_pg_common:fetch_many(
-        ?SQL_SEARCH_ANCHORS,
-        [
-            OrgId,
-            WorkspaceId,
-            maps:get(mine, Filters, false),
-            maps:get(business_identity_id, Filters, 0)
-        ],
-        ?ANCHOR_KEYS
-    );
+    case mine(maps:get(mine, Filters, false)) of
+        {ok, Mine} ->
+            cs_pg_common:fetch_many(
+                ?SQL_SEARCH_ANCHORS,
+                [OrgId, WorkspaceId, Mine, maps:get(business_identity_id, Filters, 0)],
+                ?ANCHOR_KEYS
+            );
+        {error, _} = Error ->
+            Error
+    end;
 seat_session_search_anchors(_OrgId, _WorkspaceId, _Filters) ->
     {error, {invalid_argument, seat_session_search_anchors}}.

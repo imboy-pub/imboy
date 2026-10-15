@@ -163,6 +163,30 @@ search_anchors_derivation_test() ->
         ),
         ById = maps:from_list([{maps:get(id, A), A} || A <- Anchors]),
         ?assertEqual(
+            {ok, Anchors},
+            cs_pg_store:seat_session_search_anchors(
+                org(Scope),
+                ws(Scope),
+                #{business_identity_id => identity(Scope), mine => <<"false">>}
+            )
+        ),
+        ?assertEqual(
+            {ok, Anchors},
+            cs_pg_store:seat_session_search_anchors(
+                org(Scope),
+                ws(Scope),
+                #{business_identity_id => identity(Scope), mine => <<"true">>}
+            )
+        ),
+        ?assertEqual(
+            {error, {invalid_param_value, mine}},
+            cs_pg_store:seat_session_search_anchors(
+                org(Scope),
+                ws(Scope),
+                #{business_identity_id => identity(Scope), mine => <<"invalid">>}
+            )
+        ),
+        ?assertEqual(
             [SessionA, SessionB, SessionC], lists:sort(maps:keys(ById))
         ),
         AnchorA = maps:get(SessionA, ById),
