@@ -164,13 +164,18 @@ save_proof(Org, SeedConversation) ->
             true -> 3;
             false -> 2
         end,
-    Expected = 2 * ExpectedEach,
+    HistoryCount =
+        case attachments() of
+            true -> 194;
+            false -> 0
+        end,
+    Expected = 2 * ExpectedEach + HistoryCount,
     ?assertEqual(Expected, length(Messages)),
     ?assertEqual(
         ExpectedEach, length([M || M <- Messages, maps:get(<<"sender_type">>, M) =:= <<"contact">>])
     ),
     SeatMessages = [M || M <- Messages, maps:get(<<"sender_type">>, M) =:= <<"business_identity">>],
-    ?assertEqual(ExpectedEach, length(SeatMessages)),
+    ?assertEqual(ExpectedEach + HistoryCount, length(SeatMessages)),
     ?assertEqual(
         Expected, length(lists:usort([maps:get(<<"client_msg_id">>, M) || M <- Messages]))
     ),
