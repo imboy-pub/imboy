@@ -671,6 +671,43 @@ w403_case() { # $1 cdir
   return $RC
 }
 
+# ---------------- W4-04 executor ----------------
+w404_case() { # $1 cdir
+  local cdir="$1" RC=0 try rc
+  mkdir -p "$cdir"
+  local PZ="" d
+  for d in deps/*/ebin; do [ -d "$d" ] && PZ="$PZ -pz $PWD/$d"; done
+  ln -sfn . imboy
+  sed -e "s/{http_port, 9800}/{http_port, ${EUNIT_HTTP_PORT:-19980}}/" \
+      -e "s/{http_port_adm, 9706}/{http_port_adm, ${EUNIT_HTTP_ADM_PORT:-19970}}/" \
+      "${EUNIT_CONFIG:-config/sys.local}.config" > "$cdir/w404-direct.config"
+  for try in 1 2 3; do
+    EUNIT_USE_RELAY=0 erl -noinput -boot no_dot_erlang +P 1048576 +Q 1024 \
+      -config "$cdir/w404-direct.config" -pa imboy/ebin -pa ebin -pa test $PZ \
+      -eval 'CoverSetup = fun() -> ok end, CoverExport = fun(_) -> ok end, CoverSetup(),
+        Mods = [attachment_lifecycle_v5_w404_activation_tests],
+        case eunit:test(Mods, [verbose]) of
+          ok -> io:format("W404_DIRECT_OK~n");
+          error -> halt(2)
+        end,
+        halt()' > "$cdir/eunit-w404.log" 2>&1
+    rc=$?
+    [ $rc -eq 0 ] && break
+    [ $try -lt 3 ] && sleep 5
+  done
+  rm -f imboy
+  if [ $rc -eq 0 ] && grep -q "W404_DIRECT_OK" "$cdir/eunit-w404.log"; then
+    W404S_PG_OK=1
+  else
+    W404S_PG_OK=0
+  fi
+  export W404S_PG_OK V5_RUN_DIR="$RUN_DIR"
+  bash "$ROOT/scripts/test/attachment_lifecycle_v5_w404_seal.sh" "$ROOT" "$CUR_CASE" "$cdir" \
+    "bash scripts/test/attachment_lifecycle_v5_gate.sh --task W4-04 --case $CUR_CASE" \
+    >> "$cdir/raw.log" 2>&1 || RC=30
+  return $RC
+}
+
 w203_case() { # $1 cdir
   local cdir="$1" RC=0
   mkdir -p "$cdir"
@@ -819,6 +856,10 @@ W4-03/late-put|W4-03/namespace-alias-integrity|\
 W4-03/disk-predecessor-protocols|W4-03/driver-content-immutable)
       CUR_CASE="$cid"
       w403_case "$cdir" ;;
+    W4-04/reconcile|W4-04/no-infinite-loop|W4-04/guards-activation|\
+W4-04/all-writer-compat|W4-04/activation-commit-unknown)
+      CUR_CASE="$cid"
+      w404_case "$cdir" ;;
     W0-01/baseline)
       bash scripts/check_migrations.sh > "$cdir/raw.log" 2>&1
       seal_leafs "$cid" "$cdir" "$?" "bash scripts/check_migrations.sh (bootstrap retroactive)" ;;
