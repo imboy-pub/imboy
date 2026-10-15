@@ -212,102 +212,97 @@ login_005_device_signature_boundary(Config) ->
     ).
 
 %% ===================================================================
-%% Limiter V1 L0 缺陷复现（计划 docs/plans/2026-10-13-limiter-v1-*
-%% §5.F1、§9.2 AC-01）。真实 handler → passport_logic →
-%% login_security_logic → login_attempt_ds 全链（本 suite 起的就是真实
-%% 应用），不 mock 任何生产模块。
+%% Limiter V1 AC-01 fixed oracle（计划 docs/plans/2026-10-13-limiter-v1-*
+%% §9.2 AC-01）。真实 handler → passport_logic → login_security_logic →
+%% login_attempt_ds 全链（本 suite 起的就是真实应用），不 mock 任何生产
+%% 模块。
 %%
-%% L0 旧侧 oracle：F 次真实错误密码与 F 次真实错误验证码后，账户失败
-%% 计数恒为 0、不锁定、第 F+1 次请求照常进入认证——失败计数链因空 IP
-%% 断开（record_login_failure 先做 check_ip_rate_limit(<<>>)，invalid_ip
-%% 提前返回，账户 ETS 从未被写）。这是缺陷复现成功，不是产品 PASS；
-%% L3 修复后本 case 按 AC-01 翻转 oracle（计数 1..F，F 后锁定拒绝）。
+%% fixed 侧 oracle（L3 后翻转）：F=5 次真实错误密码顺序完成，每次读真实
+%% D 快照断言计数递增 1..F；失败记账按稳定身份键 {user, Uid} 归并（D1：
+%% 跨 IP 合并），因此每次请求用不同的唯一 X-Forwarded-For IP 也不影响
+%% 计数——这同时证明空 IP 断链已修复。第 F 次后锁定拒绝：下一次请求
+%% 即使给正确密码也返回 code1+锁定消息（不再触碰凭据——正确密码未被
+%% 校验），错误验证码同样过同一锁定门被拒。测试用唯一合成账户与唯一
+%% XFF IP，不污染其他用例；finally 清理该测试键。
+%%
+%% 历史：L0 基线时本 case 是缺陷复现 oracle（旧侧计数恒 0），L3 落地后
+%% 按计划 §9.2 翻转为上述 fixed 断言。
 %% ===================================================================
 limiter_real_failures(Config) ->
-    %% IP 外层预算足够（fixture 标准做法：本 case 需要 2F+1 次真实
-    %% passport POST，默认 10/min 不够；这同时是 AC-14 揭示的"重复 setup
-    %% 即调高限额"机制的正当使用面）
+    %% IP 外层预算足够（fixture 标准做法：放大 limiter_ip_rates 三键，
+    %% 见 rest_fixture:ensure_login_throttle_capacity/0）
     ok = rest_fixture:ensure_login_throttle_capacity(),
     application:set_env(imboy, login_max_attempts, 5),
-    Golden = rest_fixture:session(golden),
-    Account = maps:get(account, Golden),
-    AttemptKey = login_attempt_ds:cache_key(Account, <<>>),
+    F = 5,
+    %% 唯一合成账户：不复用 golden（本 case 会把它推进锁定，不能污染
+    %% 其他用例）；identity 按 {user, Uid} 稳定键归并（D1 修复）
+    Suffix = ?config(suffix, Config),
+    User = rest_fixture:create_user(#{
+        account => <<"rest-lim-", Suffix/binary>>,
+        email => <<"rest-lim-", Suffix/binary, "@example.invalid">>,
+        nickname => <<"REST Limiter ", Suffix/binary>>
+    }),
+    Identity = {user, maps:get(uid, User)},
     try
-        ets:delete(login_attempt_ets, AttemptKey)
-    catch
-        _:_ -> ok
+        %% F 次真实错误密码：每次换唯一 XFF IP，真实 D 快照断言计数
+        %% 1..F 递增（跨 IP 归并 = 空 IP 断链已修复的直接证据）
+        lists:foreach(
+            fun(I) ->
+                Did = did(Config, <<"l0p">>),
+                Req = wrong_pwd_request(User, Did),
+                Response = post_xff(Config, Did, xff_ip(I), Req),
+                Body = maps:get(body, Response),
+                #{<<"code">> := 1} = Body,
+                false = (maps:get(<<"msg">>, Body, <<>>) =:= lock_msg()),
+                {ok, Snap} = login_attempt_ds:snapshot(Identity),
+                I = maps:get(count, Snap),
+                %% 达到 F 即锁定（locked = count >= F）：仅前 F-1 次未锁定；
+                %% 第 F 次的锁定翻转由下方 SnapLocked 段断言
+                case I < F of
+                    true -> false = maps:get(locked, Snap);
+                    false -> true = maps:get(locked, Snap)
+                end
+            end,
+            lists:seq(1, F)
+        ),
+        {ok, SnapF} = login_attempt_ds:snapshot(Identity),
+        F = maps:get(count, SnapF),
+
+        %% 第 F 次后锁定拒绝：下一次请求即使给正确密码也拒绝（正确密码
+        %% 未被触碰——校验未发生），HTTP200 + code1 + 锁定消息
+        DidOk = did(Config, <<"l0ok">>),
+        CorrectReq = login_request(User, DidOk),
+        RespLocked = post_xff(Config, DidOk, xff_ip(F + 1), CorrectReq),
+        verify(
+            <<"AC-01">>,
+            CorrectReq,
+            RespLocked,
+            #{<<"http_status">> => 200, <<"code">> => 1},
+            fun(Resp) ->
+                common_assertions(Resp),
+                rest_assert:json_contains(
+                    #{<<"code">> => 1, <<"msg">> => lock_msg(), <<"payload">> => #{}},
+                    Resp
+                )
+            end
+        ),
+        {ok, SnapLocked} = login_attempt_ds:snapshot(Identity),
+        true = maps:get(locked, SnapLocked),
+        F = maps:get(count, SnapLocked),
+
+        %% 错误验证码走同一锁定门：同样拒绝、同样锁定消息
+        DidCode = did(Config, <<"l0c">>),
+        CodeReq = wrong_code_request(User, DidCode),
+        RespCode = post_xff(Config, DidCode, xff_ip(F + 2), CodeReq),
+        #{<<"code">> := 1, <<"msg">> := CodeMsg} = maps:get(body, RespCode),
+        CodeMsg = lock_msg()
+    after
+        %% 清理本 case 的合成状态（锁定行与计数），不给其他用例留状态
+        ok = login_attempt_ds:reset(Identity)
     end,
-
-    WrongPwdRequests = [
-        login_request(Golden, did(Config, <<"l0p">>), <<"LimiterWrongPwd!">>)
-     || _ <- lists:seq(1, 5)
-    ],
-    %% F 次真实错误密码：每次读真实 S 快照
-    PwdSnapshots =
-        [
-            begin
-                Response = post(Config, did(Config, <<"l0p">>), Req),
-                #{<<"code">> := 1} = maps:get(body, Response),
-                {ok, LockInfo} = login_security_logic:get_lock_info(Account, <<>>),
-                maps:get(<<"attempts">>, LockInfo)
-            end
-         || Req <- WrongPwdRequests
-        ],
-    %% L0 旧侧 oracle：真实链上失败计数恒 0（从未写入）
-    [0 = Count || Count <- PwdSnapshots],
-
-    %% 第 F+1 次错误密码照常进入认证（未被锁定拒绝）
-    Resp6 = post(
-        Config,
-        did(Config, <<"l0p">>),
-        login_request(Golden, did(Config, <<"l0p">>), <<"LimiterWrongPwd!">>)
-    ),
-    #{<<"code">> := 1} = maps:get(body, Resp6),
-
-    %% F 次真实错误验证码（code 非空 → do_login_by_code 路径）；
-    %% 最后一次经 rest_evidence:verify 产出证据文件（runner 的
-    %% evidence cross-check 要求每个 case 落盘）
-    CodeBody = #{
-        <<"type">> => <<"account">>,
-        <<"account">> => Account,
-        <<"code">> => <<"000000">>,
-        <<"rsa_encrypt">> => <<"0">>,
-        <<"did">> => did(Config, <<"l0c">>)
-    },
-    CodeSnapshots =
-        [
-            begin
-                Response = post(Config, did(Config, <<"l0c">>), CodeBody),
-                #{<<"code">> := 1} = maps:get(body, Response),
-                {ok, LockInfo} = login_security_logic:get_lock_info(Account, <<>>),
-                maps:get(<<"attempts">>, LockInfo)
-            end
-         || _ <- lists:seq(1, 5)
-        ],
-    [0 = Count || Count <- CodeSnapshots],
-
-    %% 最终仍不锁定
-    false = login_attempt_ds:is_locked(Account, <<>>),
-    {ok, FinalInfo} = login_security_logic:get_lock_info(Account, <<>>),
-    0 = maps:get(<<"attempts">>, FinalInfo),
-
-    %% 证据：第 5 次错误验证码响应（业务错误照常返回，计数仍 0）
-    LastResp = post(Config, did(Config, <<"l0c">>), CodeBody),
-    verify(
-        <<"AC-01">>,
-        CodeBody,
-        LastResp,
-        #{<<"http_status">> => 200, <<"code">> => 1},
-        fun(Resp) ->
-            common_assertions(Resp),
-            rest_assert:json_contains(#{<<"code">> => 1, <<"payload">> => #{}}, Resp),
-            rest_assert:predicate([<<"msg">>], fun nonempty_binary/1, Resp)
-        end
-    ),
-
-    %% 清理本 case 的合成状态
-    true = ets:delete(login_attempt_ets, AttemptKey),
-    {comment, "L0 baseline: real-chain failure accounting is broken (all 0); see plan AC-01"}.
+    {comment,
+        "AC-01 fixed: real-chain failure accounting counts 1..F, locks, and never touches "
+        "credentials after lock; see plan AC-01"}.
 
 %% ===================================================================
 %% Helpers
@@ -326,6 +321,35 @@ verify(CaseId, Request, Response, Expected, AssertFun) ->
 post(Config, Did, Body) ->
     Headers = signed_headers(Did, rest_fixture:sign_key()),
     rest_client:post(?config(http_port, Config), ?PATH, Body, Headers).
+
+%% post 变体：带唯一 X-Forwarded-For。peer 127.0.0.1 在 trusted_proxy_ips
+%% 缺省内，get_client_ip 取 XFF 第 1 跳（elib_req:get_client_ip/1）——AC-01
+%% 每次失败请求落进不同 IP 桶，账户域 {user, Uid} 跨 IP 归并由此被真实验证。
+post_xff(Config, Did, XffIp, Body) ->
+    Signed = signed_headers(Did, rest_fixture:sign_key()),
+    Headers = Signed#{<<"x-forwarded-for">> => XffIp},
+    rest_client:post(?config(http_port, Config), ?PATH, Body, Headers).
+
+%% Per-attempt unique client IP (private range).
+xff_ip(I) ->
+    list_to_binary(io_lib:format("10.77.~b.10", [I])).
+
+%% 生产 lock_error_msg 文案（passport_logic；本地复制以避免测试构建的
+%% include 路径依赖，与 ?ERR_SIGNATURE_INVALID 同例）。
+lock_msg() ->
+    <<"失败次数过多，账户已临时锁定，请稍后再试"/utf8>>.
+
+wrong_pwd_request(User, Did) ->
+    (login_request(User, Did))#{<<"pwd">> => <<"LimiterWrongPwd!">>}.
+
+wrong_code_request(User, Did) ->
+    #{
+        <<"type">> => <<"account">>,
+        <<"account">> => maps:get(account, User),
+        <<"code">> => <<"000000">>,
+        <<"rsa_encrypt">> => <<"0">>,
+        <<"did">> => Did
+    }.
 
 login_request(User, Did) ->
     login_request(User, Did, maps:get(plain_password, User)).
