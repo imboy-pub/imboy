@@ -208,55 +208,10 @@ queue_orphan(Id, Opts) ->
         end
     end).
 
-flush_orphan_jobs(Errors) ->
-    case attachment_gc_repo:pending() of
-        {ok, Rows} ->
-            Counts = lists:foldl(
-                fun(Row, Acc) ->
-                    case delete_orphan_object(maps:get(<<"path">>, Row)) of
-                        cleaned -> Acc#{cleaned := maps:get(cleaned, Acc) + 1};
-                        skipped -> Acc;
-                        _ -> Acc#{errors := maps:get(errors, Acc) + 1}
-                    end
-                end,
-                #{cleaned => 0, errors => Errors},
-                Rows
-            ),
-            {ok, Counts};
-        {error, R} ->
-            {error, R}
-    end.
-
-delete_orphan_object(Path) ->
-    Result = elib_pg:with_tx(fun(Conn) ->
-        case attachment_gc_repo:lock_tx(Conn, Path) of
-            {ok, []} ->
-                skipped;
-            {ok, [Row]} ->
-                case elib_oss:delete_object(maps:get(<<"bucket">>, Row), Path) of
-                    ok ->
-                        case attachment_gc_repo:complete_tx(Conn, Path) of
-                            ok -> cleaned;
-                            {error, R} -> throw({abort_tx, R})
-                        end;
-                    {error, R} ->
-                        throw({abort_tx, R})
-                end;
-            {error, R} ->
-                throw({abort_tx, R})
-        end
-    end),
-    case Result of
-        cleaned ->
-            cleaned;
-        skipped ->
-            skipped;
-        Error ->
-            case attachment_gc_repo:defer(Path) of
-                {ok, _} -> Error;
-                {error, Reason} -> {error, {retry_schedule_failed, Reason}}
-            end
-    end.
+%% W4-01 入口收口：旧 gc repo 的 flush_orphan_jobs/delete_orphan_object
+%% （业务侧直接删字节）已移除——删除意图统一走 fn_v5_intent_ordinary_delete
+%% / fn_v5_intent_pending_delete（迁移 179/184/186），字节由删除队列 Worker
+%% 执行；旧 attachment_gc 表存量行的接管属 W4-02（preserve legacy attempts）。
 
 %% ===================================================================
 %% 待确认 presign 登记（#20）

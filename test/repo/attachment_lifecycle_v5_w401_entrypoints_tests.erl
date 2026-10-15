@@ -42,11 +42,114 @@ run() ->
         w401_pending_reject(Conn),
         w401_capability_window(Conn),
         w401_metadata_backed_rejected(Conn),
-        w401_metadata_intent(Conn)
+        w401_metadata_intent(Conn),
+        w401_static_callgraph()
     after
         inttest_marker_db:release(State),
         eunit_runner:eunit_cleanup(Boot)
     end.
+
+%% ===================================================================
+%% delete-entrypoints：物理删除调用图静态门（04 W4-01 断言：扫描所有
+%% 直接调用只允许 driver/worker）
+%% ===================================================================
+
+%% 12 入口所属模块（02 §6 入口表 → 生产入口实现模块）。
+-define(ENTRYPOINT_MODULES, [
+    %% reject_size / reject_mime / reject_teaching
+    attach_logic,
+    %% orphan_cleanup / pending_cleanup
+    attach_cleanup_logic,
+    attachment_ds,
+    %% teaching_unbound
+    moya_attach_logic,
+    %% account_deletion
+    user_deletion_logic,
+    user_deletion_executor,
+    %% app_confirm_reject
+    enterprise_asset_logic,
+    %% app_retention_purge
+    enterprise_asset_retention_logic,
+    %% eb_private_delete / eb_pending_cleanup
+    eb_asset_app,
+    eb_asset_store,
+    %% eb_purge_drain（drain 侧 worker，W4-02）
+    eb_pg_purge
+]).
+
+w401_static_callgraph() ->
+    %% 入口模块源码零存储删除直调（elib_oss:delete_object / ObjectStore:delete）
+    Violations =
+        [
+            Violation
+         || Mod <- ?ENTRYPOINT_MODULES,
+            Violation <- [w401_scan_module(Mod)],
+            element(1, Violation) =/= ok
+        ],
+    ?assertEqual([], Violations).
+
+w401_scan_module(Mod) ->
+    File = w401_module_src(Mod),
+    case file:read_file(File) of
+        {ok, Bin} ->
+            DirectCalls = [
+                P
+             || P <- [<<"elib_oss:delete_object">>, <<"ObjectStore:delete">>],
+                binary:match(Bin, P) =/= nomatch
+            ],
+            case DirectCalls of
+                [] ->
+                    ok;
+                _ ->
+                    %% eb_asset_store 唯一豁免：delete_queued_object/3（drain 侧
+                    %% worker，01 调用链「commit后drain→eb_asset_store」）
+                    case
+                        Mod =:= eb_asset_store andalso
+                            length(DirectCalls) =:= 1 andalso
+                            hd(DirectCalls) =:= <<"ObjectStore:delete">>
+                    of
+                        true -> ok;
+                        false -> {violation, Mod, DirectCalls}
+                    end
+            end;
+        {error, Reason} ->
+            {src_missing, Mod, Reason}
+    end.
+
+w401_module_src(Mod) ->
+    filename:join("src", w401_module_path(Mod)).
+
+w401_module_path(M) when is_atom(M) ->
+    Name = atom_to_list(M),
+    case filelib:is_regular(filename:join("src", Name ++ ".erl")) of
+        true -> Name ++ ".erl";
+        false -> w401_feature_path(Name)
+    end.
+
+w401_feature_path("attach_logic") ->
+    "logic/attach_logic.erl";
+w401_feature_path("attach_cleanup_logic") ->
+    "logic/attach_cleanup_logic.erl";
+w401_feature_path("attachment_ds") ->
+    "ds/attachment_ds.erl";
+w401_feature_path("moya_attach_logic") ->
+    "logic/moya_attach_logic.erl";
+w401_feature_path("user_deletion_logic") ->
+    "logic/user_deletion_logic.erl";
+w401_feature_path("user_deletion_executor") ->
+    "lib/user_deletion_executor.erl";
+w401_feature_path("enterprise_asset_logic") ->
+    "logic/enterprise_asset_logic.erl";
+w401_feature_path("enterprise_asset_retention_logic") ->
+    "logic/enterprise_asset_retention_logic.erl";
+w401_feature_path("eb_asset_app") ->
+    "features/enterprise_business/application/asset/eb_asset_app.erl";
+w401_feature_path("eb_asset_store") ->
+    "features/enterprise_business/infrastructure/eb_asset_store.erl";
+w401_feature_path("eb_pg_purge") ->
+    "features/enterprise_business/infrastructure/eb_pg_purge.erl";
+w401_feature_path(Name) ->
+    Name ++ ".erl".
 
 hex64(Bin) ->
     iolist_to_binary([io_lib:format("~2.16.0b", [B]) || B <- binary_to_list(Bin)]).
