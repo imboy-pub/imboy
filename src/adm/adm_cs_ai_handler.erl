@@ -20,6 +20,7 @@
 -include("log.hrl").
 -include("common.hrl").
 -include("error_code.hrl").
+-include("generated/imboy_product_features.hrl").
 
 -define(ACL_READ, <<"customer_service:read">>).
 -define(ACL_WRITE, <<"customer_service:write">>).
@@ -264,12 +265,6 @@ write_delegate(Req0, OrgId, {FacadeFun, AppParams}, none) ->
             elib_response:error(Req0, to_binary(Reason), ?ERR_BAD_REQUEST)
     end.
 
--else.
-dispatch(_Action, _Method, Req0, _State) ->
-    %% 未选中 customer_service 档：路由虽未注册，直访也 fail-closed 404。
-    elib_response:error(Req0, <<"not found"/utf8>>, ?ERR_NOT_FOUND).
--endif.
-
 %% ===================================================================
 %% 参数装配（binary JSON 键 → application atom 键；只白名单放行）
 %% ===================================================================
@@ -418,3 +413,8 @@ to_binary(V) -> iolist_to_binary(io_lib:format("~0p", [V])).
 
 method_not_allowed(Req0) ->
     elib_response:error(Req0, <<"method not allowed"/utf8>>, ?ERR_METHOD_NOT_ALLOWED).
+
+-else.
+dispatch(_Action, _Method, Req0, _State) ->
+    elib_response:error(Req0, <<"not found"/utf8>>, ?ERR_NOT_FOUND).
+-endif.
