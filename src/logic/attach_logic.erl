@@ -36,7 +36,7 @@
 %% ===================================================================
 
 -spec presign(integer(), binary(), binary(), binary(), binary() | undefined) ->
-    {ok, map()} | {error, invalid_file_type | forbidden | upload_not_supported}.
+    {ok, map()} | {error, invalid_file_type | forbidden | registration_failed}.
 presign(Uid, FileName, MimeType, Scope, ScopeRef) ->
     presign(Uid, FileName, MimeType, Scope, ScopeRef, undefined).
 
@@ -63,16 +63,6 @@ teaching_presign_guard(<<"teaching">>, MimeType) ->
 teaching_presign_guard(_Scope, _MimeType) ->
     ok.
 
--spec presign_authorized(integer(), binary(), binary(), binary(), binary() | undefined) ->
-    {ok, map()}
-    | {error,
-        invalid_file_type
-        | forbidden
-        | upload_not_supported
-        | registration_failed}.
-presign_authorized(Uid, FileName, MimeType, Scope, ScopeRef) ->
-    presign_authorized(Uid, FileName, MimeType, Scope, ScopeRef, undefined).
-
 %% V5 恢复合同（AC01 / 02 §12）：登记事务 COMMIT 成功后才签发能力。
 %% 登记失败、异常或提交结果未知一律不返回可用 put_url —— 签名器调用 0 次。
 %% 同 client_upload_id 重试经 fn_v5_register_pending 幂等返回原登记；
@@ -89,7 +79,6 @@ presign_authorized(Uid, FileName, MimeType, Scope, ScopeRef) ->
     | {error,
         invalid_file_type
         | forbidden
-        | upload_not_supported
         | registration_failed}.
 presign_authorized(Uid, FileName, MimeType, Scope, ScopeRef, ClientUploadId) ->
     case can_upload(Uid, Scope, ScopeRef) of

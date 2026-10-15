@@ -262,3 +262,14 @@ write_fun_failure_isolated_test() ->
     St0 = elib_multipart:new(?BOUNDARY, Write, 1024 * 1024),
     {error, {write_failed, _}} = feed(Body, 5, St0),
     ok.
+
+%% WriteFun 按契约返回 {error, Reason}（attach_handler 直传 file:write/2）时
+%% 同样分流为 {write_failed, Reason}，与抛错路径等价。
+write_fun_error_return_isolated_test() ->
+    Body = iolist_to_binary(
+        make_body(<<"file">>, <<"a.jpg">>, <<"image/jpeg">>, <<"DATA">>)
+    ),
+    Write = fun(_) -> {error, enospc} end,
+    St0 = elib_multipart:new(?BOUNDARY, Write, 1024 * 1024),
+    {error, {write_failed, enospc}} = feed(Body, 5, St0),
+    ok.

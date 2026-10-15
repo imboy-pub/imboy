@@ -130,8 +130,6 @@ do_presign_register(Uid, Qs, Req0) ->
             elib_response:success(Req0, Data, "success.");
         {error, invalid_file_type} ->
             elib_response:error(Req0, <<"不支持的文件类型"/utf8>>, ?ERR_BAD_REQUEST);
-        {error, upload_not_supported} ->
-            elib_response:error(Req0, <<"该资源类型暂不支持上传"/utf8>>, ?ERR_BAD_REQUEST);
         {error, forbidden} ->
             elib_response:error(Req0, <<"无权向该范围上传"/utf8>>, ?ERR_FORBIDDEN);
         {error, registration_failed} ->
@@ -415,16 +413,18 @@ upload_stream(Uid, ObjectKey, MimeType, Boundary, Req0) ->
     file:io_device(), string(), integer(), binary(), binary(), binary(), cowboy_req:req()
 ) -> cowboy_req:req().
 upload_stream_fd(Fd, TmpPath, Uid, ObjectKey, MimeType, Boundary, Req0) ->
+    %% WriteFun 以 {error, _} 上报写失败，elib_multipart 转为
+    %% {error, {write_failed, _}} 返回，调用方映射 5xx（磁盘满不 crash）。
     St0 = elib_multipart:new(
         Boundary,
-        fun(Data) -> ok = file:write(Fd, Data) end,
+        fun(Data) -> file:write(Fd, Data) end,
         elib_oss:max_file_size()
     ),
     Resp =
         try
             case stream_body(Req0, St0) of
                 {ok, St} ->
-                    file:sync(Fd),
+                    _ = file:sync(Fd),
                     case elib_multipart:result(St) of
                         {ok, #{size := Size}} ->
                             case
@@ -466,7 +466,12 @@ upload_stream_fd(Fd, TmpPath, Uid, ObjectKey, MimeType, Boundary, Req0) ->
 %% 读完了解析仍未 done（缺 closing boundary）→ incomplete_body。
 -spec stream_body(cowboy_req:req(), elib_multipart:state()) ->
     {ok, elib_multipart:state()}
-    | {error, file_too_large | {bad_part, term()} | incomplete_body | {read_body, term()}}.
+    | {error,
+        file_too_large
+        | {bad_part, term()}
+        | {write_failed, term()}
+        | incomplete_body
+        | {read_body, term()}}.
 stream_body(Req0, St) ->
     %% length 256KB 是单次读取目标，不是返回块的硬上限。
     Opts = #{length => 262144, period => 30000, timeout => 60000},
@@ -482,9 +487,7 @@ stream_body(Req0, St) ->
                 {more, St2} -> stream_body(Req, St2);
                 {done, St2} -> {ok, St2};
                 {error, R} -> {error, R}
-            end;
-        {error, R} ->
-            {error, {read_body, R}}
+            end
     catch
         exit:timeout -> {error, {read_body, timeout}}
     end.
@@ -507,9 +510,7 @@ upload_error(Req0, {db_error, _Reason}) ->
 upload_error(Req0, {storage_error, _Reason}) ->
     elib_response:error(
         Req0, <<"附件存储服务暂不可用，请稍后重试"/utf8>>, ?ERR_INTERNAL_SERVER_ERROR
-    );
-upload_error(Req0, _Reason) ->
-    elib_response:error(Req0, <<"附件上传失败"/utf8>>, ?ERR_BAD_REQUEST).
+    ).
 
 %% @doc 临时落盘路径（/tmp 写完即删，不依赖任何应用配置）。
 -spec tmp_path() -> string().

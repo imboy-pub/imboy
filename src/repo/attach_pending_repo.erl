@@ -141,6 +141,13 @@ delete_by_keys(Keys) ->
 ) ->
     {ok, #{session_state => binary(), client_upload_id => binary() | undefined}}
     | {error, term()}.
+%% legacy：无登记快照（renew 同 key 重签、无 UUID 旧客户端）走 add，
+%% 保留 V5 之前的行为；不写入 fn_v5 快照与 deadline。
+register_v5(ObjectKey, Bucket, Scope, Uid, _ClientUploadId, undefined) ->
+    case add(ObjectKey, Bucket, Scope, Uid) of
+        ok -> {ok, #{session_state => <<"registered">>, client_upload_id => undefined}};
+        {error, R} -> {error, R}
+    end;
 register_v5(ObjectKey, Bucket, Scope, Uid, ClientUploadId, Registration) when
     is_map(Registration), map_size(Registration) > 0
 ->

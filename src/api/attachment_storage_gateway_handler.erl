@@ -98,9 +98,7 @@ receive_to_file(Req0, Key, DeclMime, Tmp) ->
         {ok, Req1, Size} ->
             serve_pinned(Req1, Key, DeclMime, Tmp, Size);
         {error, too_large} ->
-            cowboy_req:reply(413, #{}, <<"payload exceeds limit">>, Req0);
-        {error, _} ->
-            cowboy_req:reply(500, #{}, <<"body receive failed">>, Req0)
+            cowboy_req:reply(413, #{}, <<"payload exceeds limit">>, Req0)
     end.
 
 read_body_to_file(Req0, Tmp, Size) ->
@@ -131,9 +129,7 @@ read_loop(Req0, Fh, Size, Max) ->
                 false ->
                     ok = file:write(Fh, Data),
                     read_loop(Req1, Fh, N, Max)
-            end;
-        {error, _} = E ->
-            E
+            end
     end.
 
 serve_pinned(Req0, Key, DeclMime, Tmp, Size) ->
