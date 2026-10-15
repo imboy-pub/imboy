@@ -353,6 +353,9 @@ authorized_source_hash_change_still_aborts_round_checks() ->
     with_control_metadata(fun() ->
         Peer = 'changed_hash_authority@synthetic',
         ets:insert(?META_TABLE, {{peer_incarnation, Peer}, <<8:128>>}),
+        %% 不变量（reset 重建零下限行后）：登记化身必带当前代零行；fixture
+        %% 表手术建身份时须一并建行，否则中止路径的合法维护会被误判为 debris。
+        ets:insert(?META_TABLE, {{covered_seq, {Peer, <<8:128>>}}, {0, 0}}),
         R0 = imboy_cache_sync_snapshot:new_round(0, erlang:system_time(millisecond) + 60000),
         Round = requested_peer(
             imboy_cache_sync_snapshot:expect_peer(R0, Peer), Peer

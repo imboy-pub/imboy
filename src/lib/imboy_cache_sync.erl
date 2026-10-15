@@ -46,6 +46,7 @@
     merge_clock/2,
     index_replicate/1,
     syn_scope_members/0,
+    scope_members_by_capability/0,
     replication_capable/0,
     send_version_report/2
 ]).
@@ -793,6 +794,34 @@ syn_scope_members() ->
         L when is_list(L) -> [P || {P, _Meta} <- L]
     catch
         _:_ -> []
+    end.
+
+%% 混合期成员视图一次读取并按 V2 能力分区（均排除本节点）：
+%% 全员用于成员预算与"有对端但全部 legacy"的 fail-closed 判定，
+%% V2 子集作为发现回合的应答屏障（V1 对端无 V2 应答义务）。
+-spec scope_members_by_capability() -> {AllPeers :: [pid()], V2Peers :: [pid()]}.
+scope_members_by_capability() ->
+    SelfNode = node(),
+    try syn:members(?CACHE_SCOPE, ?CACHE_GROUP_NAME) of
+        L when is_list(L) ->
+            {All, V2} = lists:foldl(
+                fun({P, M}, {A, V}) ->
+                    case node(P) =:= SelfNode of
+                        true ->
+                            {A, V};
+                        false ->
+                            case member_uses_v2(M) of
+                                true -> {[P | A], [P | V]};
+                                false -> {[P | A], V}
+                            end
+                    end
+                end,
+                {[], []},
+                L
+            ),
+            {lists:reverse(All), lists:reverse(V2)}
+    catch
+        _:_ -> {[], []}
     end.
 
 replication_capable() ->

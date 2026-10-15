@@ -642,8 +642,8 @@ adopt_epoch(Target) ->
      || Key <- Keys
     ],
     ok = recalibrate_rindex_count(),
-    %% reset_sequence_coverage 清空了下限行；采纳新代后按登记化身重建零前缀，
-    %% 保证 ready 时 census（application_coverage_candidate）不因缺项整份拒绝。
+    %% reset 的重建停在旧代零行；采纳新代后按登记化身重建当前代零前缀，
+    %% 保证 ready 时 census（application_coverage_candidate）不因错代整份拒绝。
     ok = imboy_cache_sync_proto:rebase_sequence_coverage(),
     ok.
 %% 仅清理受管 live 副本值；恢复中保留 revision/tombstone 抵御旧事件。

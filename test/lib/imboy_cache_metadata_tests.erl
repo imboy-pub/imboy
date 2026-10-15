@@ -373,7 +373,12 @@ observed_sequence_is_not_contiguous_application_coverage_test() ->
         ?assertEqual([], ets:lookup(?META_TABLE, {covered_seq, {Peer, Boot}})),
         ok = imboy_cache_sync_proto:note_applied_sequence(Peer, <<2:128>>, 1),
         ok = imboy_cache_sync_apply:flush_replicas(),
-        ?assertEqual([], ets:match_object(?META_TABLE, {{covered_seq, '_'}, '_'}))
+        %% reset 清的是覆盖证据不是登记：当前登记化身保留零下限行（冻结合同
+        %% 不变量），缺项态只允许表手术构造。
+        ?assertEqual(
+            [{{covered_seq, {Peer, <<2:128>>}}, {0, 0}}],
+            ets:match_object(?META_TABLE, {{covered_seq, '_'}, '_'})
+        )
     end).
 
 discovery_and_reconciliation_reject_over_capacity_scope_test() ->

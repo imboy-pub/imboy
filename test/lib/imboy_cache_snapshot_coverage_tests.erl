@@ -144,6 +144,7 @@ source_cut_cannot_survive_sender_leaving_current_membership_test() ->
     fixture(fun(_, R, Base) ->
         F = erlang:append_element(Base, {ok, []}),
         meck:expect(imboy_cache_sync, syn_scope_members, 0, fun() -> [] end),
+        meck:expect(imboy_cache_sync, scope_members_by_capability, 0, fun() -> {[], []} end),
         ?assertMatch(
             {abort, source_cut_identity_changed, _},
             imboy_cache_sync_recover:accept_source_cut(F, R)
@@ -687,6 +688,12 @@ fixture(Fun) ->
     },
     meck:new(imboy_cache_sync, [passthrough, no_link]),
     meck:expect(imboy_cache_sync, syn_scope_members, 0, fun() -> [self()] end),
+    meck:expect(
+        imboy_cache_sync,
+        scope_members_by_capability,
+        0,
+        fun() -> {[self()], [self()]} end
+    ),
     Base =
         {cache_snapshot_cut, Source, maps:get(round, R), <<7:128>>, 0, 0,
             imboy_cache_sync_proto:config_hash(), imboy_cache_sync_proto:registry_hash()},
