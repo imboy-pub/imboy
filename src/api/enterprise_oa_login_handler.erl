@@ -65,4 +65,7 @@ error_code(invalid_ticket) -> {401, <<"invalid_ticket">>};
 error_code(invalid_request) -> {400, <<"invalid_request">>};
 error_code(explicit_confirmation_required) -> {400, <<"explicit_confirmation_required">>};
 error_code(account_quota_exceeded) -> {402, <<"account_quota_exceeded">>};
+%% claim 的 source-person CHECK（23514）：绑定目标不是 active Human——按
+%% ADR 8.3「停用账号拒绝登录」返回明确 403，不落入兜底 500。
+error_code(invalid_person) -> {403, <<"account_not_active">>};
 error_code(_) -> {500, <<"internal_error">>}.
