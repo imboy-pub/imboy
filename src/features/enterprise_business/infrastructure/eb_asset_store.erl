@@ -33,6 +33,8 @@
 -moduledoc "eb_asset_port 的唯一装配实现（EB-03R P13 + P12）。".
 -behaviour(eb_asset_port).
 
+-include_lib("epgsql/include/epgsql.hrl").
+
 -export([
     put_private/3,
     stream_content/3,
@@ -142,24 +144,33 @@ read_object(OrgId, WorkspaceId, _AssetId, Row) ->
         end
     end).
 
-%% @doc 仅由 Org policy 或未确认对象回收触发；不是 uploader 可自主决定的动作。
+%% @doc 仅由 Org policy 触发；不是 uploader 可自主决定的动作。
+%% W4-01 入口收口（02 §4）：不再直接删对象——发企业域删除意图
+%% （fn_v5_intent_eb_delete 锁后复核 lifecycle/retain/hold/队列查重；
+%% 身份缺失 → blocked job 明示，迁移 186），字节由队列 Worker 删；
+%% 消息保留期内的资产拒绝（23510→intent_conflict，消息保留权威优先）。
 -spec delete_private(integer(), integer(), integer()) -> ok | {error, term()}.
 delete_private(OrgId, WorkspaceId, AssetId) ->
-    with_object_store(fun(ObjectStore) ->
-        eb_pg_exec:with_tenant(OrgId, WorkspaceId, fun() ->
-            case eb_pg_asset_meta:fetch_asset(OrgId, WorkspaceId, AssetId) of
-                {ok, Row} ->
-                    Key = maps:get(object_key, Row),
-                    case
-                        ObjectStore:delete(
-                            Key, eb_pg_asset_meta:key_prefix(OrgId, WorkspaceId)
-                        )
-                    of
-                        ok -> ok;
-                        {error, Reason} -> {error, {object_store, Reason}}
-                    end;
-                {error, _} = Err ->
-                    Err
+    eb_pg_exec:with_tenant(OrgId, WorkspaceId, fun() ->
+        elib_pg:with_tx(fun(Conn) ->
+            case
+                elib_pg:query(
+                    Conn,
+                    <<"SELECT fn_v5_intent_eb_delete($1,$2,$3,'org policy private delete')">>,
+                    [OrgId, WorkspaceId, AssetId]
+                )
+            of
+                {ok, _} ->
+                    ok;
+                {error, #error{code = <<"23505">>}} ->
+                    %% job 已在队列：意图已存在即达成目的
+                    ok;
+                {error, #error{code = <<"23510">>}} ->
+                    {error, intent_conflict};
+                {error, #error{code = <<"P0002">>}} ->
+                    {error, not_found};
+                {error, Reason} ->
+                    {error, Reason}
             end
         end)
     end).
@@ -210,12 +221,28 @@ cleanup_pending_private(Org, Ws, Id, Now, Ttl) when
 cleanup_pending_private(_, _, _, _, _) ->
     {error, invalid_cleanup_scope}.
 
-delete_pending_object(Org, Ws, Id, Key) ->
-    with_object_store(fun(ObjectStore) ->
-        case ObjectStore:delete(Key, eb_pg_asset_meta:key_prefix(Org, Ws)) of
-            ok -> eb_pg_asset_meta:finish_pending_cleanup(Org, Ws, Id);
-            {error, not_found} -> eb_pg_asset_meta:finish_pending_cleanup(Org, Ws, Id);
-            {error, Reason} -> {error, {object_store, Reason}}
+%% W4-01 入口收口（02 §4）：pending 字节回收不再直接删对象——发企业域
+%% 删除意图（fn_v5_intent_eb_delete：lifecycle→delete_intent + queue job
+%% + 审计；资格 claim CAS 已预检，fn 锁内再复核；身份缺失 → blocked job
+%% 明示，迁移 186），字节由队列 Worker 删（delete_queued_object/3）。
+%% finish 与 fn 同事务同连接：fn 已持该行锁，跨连接 finish 会自等锁超时。
+delete_pending_object(Org, Ws, Id, _Key) ->
+    elib_pg:with_tx(fun(Conn) ->
+        case
+            elib_pg:query(
+                Conn,
+                <<"SELECT fn_v5_intent_eb_delete($1,$2,$3,'pending cleanup')">>,
+                [Org, Ws, Id]
+            )
+        of
+            {ok, _} ->
+                %% job 已在队列（幂等重放）也照常收口 metadata 终态
+                case eb_pg_asset_meta:finish_pending_cleanup_tx(Conn, Org, Ws, Id) of
+                    ok -> ok;
+                    {error, Reason} -> {error, Reason}
+                end;
+            {error, Reason} ->
+                {error, {intent_failed, Reason}}
         end
     end).
 
