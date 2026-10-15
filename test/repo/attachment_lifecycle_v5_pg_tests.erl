@@ -7,7 +7,7 @@
 -define(ASSET_ID, 901100101).
 
 r20_test_() ->
-    {timeout, 900, fun run/0}.
+    {timeout, 900, fun() -> isolated_pg_fixture:run(fun run/0) end}.
 
 run() ->
     elib_tsid:init(#{dc_id => 1, node_id => 1, dc_bits => 3}),
