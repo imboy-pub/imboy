@@ -116,11 +116,36 @@ initial_state() ->
     }.
 
 %% C.5：limiter_ip_rates（缺省取内置默认）；逐 scope 校验为正整数二元组。
+%% 非法规则按 fail-safe 原则剔除该 scope（该 scope 恒 unavailable→503，
+%% 不放行），但必须留下启动期诊断——与 validate_limiter_ip_migration 的
+%% fail-fast 先例对称（A5 审查 P2-5）。
 -spec init_ip_rates() -> #{scope() => rule()}.
 init_ip_rates() ->
     case application:get_env(imboy, limiter_ip_rates) of
         {ok, Rates} when is_map(Rates) ->
-            maps:filter(fun(_S, R) -> valid_rule(R) end, Rates);
+            %% maps:fold 单趟分区（不用 maps:partition——本仓 OTP 下该函数
+            %% 运行期 undef、编译期仅告警，lefthook qs/2 先例同款失效类）
+            {Valid, Invalid} =
+                maps:fold(
+                    fun(S, R, {V, I}) ->
+                        case valid_rule(R) of
+                            true -> {V#{S => R}, I};
+                            false -> {V, I#{S => R}}
+                        end
+                    end,
+                    {#{}, #{}},
+                    Rates
+                ),
+            case maps:keys(Invalid) of
+                [] ->
+                    Valid;
+                Stale ->
+                    logger:error(
+                        "limiter_ip_rates invalid entries dropped (scope stays unavailable): ~p",
+                        [Stale]
+                    ),
+                    Valid
+            end;
         _ ->
             ?IP_RATES_DEFAULT
     end.

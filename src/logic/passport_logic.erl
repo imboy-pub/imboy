@@ -664,9 +664,9 @@ do_login_credential(Ref, Identity, User, Pwd, DType, Did) ->
             login_attempt_ds:end_attempt(Ref, no_count),
             {error, Msg};
         {fail, Msg} ->
-            %% 凭据失败（密码错/查无用户，含未知账户）：failure 记账，
-            %% no_count 仅释放生命周期（DS 的 end_attempt(failure) 自带
-            %% 记账，若再叠加 failure/1 会双计数——单次提交语义）。
+            %% 凭据失败（密码错/查无用户，含未知账户）：failure 记账一次，
+            %% end_attempt(no_count) 仅释放生命周期（若用 end_attempt(failure)
+            %% 会再记一次——apply_outcome(failure) 自带记账，单次提交语义）。
             _ = login_security_logic:record_login_failure(Identity),
             login_attempt_ds:end_attempt(Ref, no_count),
             {error, Msg}

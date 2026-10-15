@@ -135,7 +135,8 @@ admin_unlock(_, _) ->
 %% @doc 原子请求准入：先判断并占额度，再由调用者执行业务；拒绝不加数、
 %% 不退款。HTTP scope 按 t0=0 对齐 period 统一换窗；OIDC 每 Key 首次 admit
 %% anchor 固定 3600000ms。新 Key 容量满 → {error, capacity}（不降级，有位置
-%% 后自动可用）；空/非法 Key → {error, capacity}（资源边界拒绝）。
+%% 后自动可用）；超长 Key 同 capacity（资源边界）、空 Key → {error,
+%% unavailable}（无效请求）。
 -spec admit(scope(), binary()) ->
     {ok, snapshot()} | {error, rate_limited | capacity | unavailable}.
 admit(Scope, Key) when is_binary(Key) ->
