@@ -24,8 +24,8 @@
 
 ## 维护入口
 
-- [消息访问处理器](../../src/adm/adm_message_handler.erl)：授权、内容清洗、导出和审计调用。
-- [角色权限基线](../../src/adm/adm_index_handler.erl)：内置角色权限的代码真源。
-- [消息访问回归](../../test/adm/adm_message_handler_tests.erl)：权限、工单、原因和审计失败的回归；运行结果单独保存在仓外。
+- [消息访问处理器](https://github.com/imboy-pub/imboy/blob/main/src/adm/adm_message_handler.erl)：授权、内容清洗、导出和审计调用。
+- [角色权限基线](https://github.com/imboy-pub/imboy/blob/main/src/adm/adm_index_handler.erl)：内置角色权限的代码真源。
+- [消息访问回归](https://github.com/imboy-pub/imboy/blob/main/test/adm/adm_message_handler_tests.erl)：权限、工单、原因和审计失败的回归；运行结果单独保存在仓外。
 
 历史任务清单与测试结果由执行方在仓外保管，不作为当前版本通过验收的依据。

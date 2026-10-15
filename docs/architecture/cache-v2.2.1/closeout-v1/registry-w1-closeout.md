@@ -198,7 +198,7 @@ suite隔离fixture缺pool/meta ETS等失败日志均保留；最后广scope实�
 
 ### 原审计分析（2026-10-12，修复前）
 
-1. 填充键（tag_subtitle_2_<TagId>）与失效键（tag_subtitle_3_<TagId>）自
+1. 填充键（`tag_subtitle_2_<TagId>`）与失效键（`tag_subtitle_3_<TagId>`）自
    0.7.3 架构重构（`83c15f7a`，2026-01-01）以来持续失配。全仓 grep 确认：
    `tag_subtitle_3_*` 键无任何填充方（纯删除标签）；
    `tag_subtitle_2_*` 键无任何失效方。

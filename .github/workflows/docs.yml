@@ -7,6 +7,11 @@ on:
       - 'docs/**'
       - 'docs-site/**'
   workflow_dispatch:
+    inputs:
+      deploy:
+        description: 'Deploy Pages after build (requires separate authorization)'
+        type: boolean
+        default: false
 
 # 设置 GITHUB_TOKEN 权限以允许部署到 GitHub Pages
 permissions:
@@ -39,7 +44,9 @@ jobs:
 
       - name: Sync content & build
         working-directory: docs-site
-        run: bun run build
+        run: |
+          bun test ./scripts/markdown-literals.test.ts
+          bun run build
 
       - name: Setup Pages
         uses: actions/configure-pages@v6
@@ -50,6 +57,7 @@ jobs:
           path: docs-site/.vitepress/dist
 
   deploy:
+    if: github.event_name == 'push' || inputs.deploy
     name: Deploy to GitHub Pages
     environment:
       name: github-pages

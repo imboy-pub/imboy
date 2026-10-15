@@ -1381,6 +1381,141 @@ tables:
     mechanism: delete rows by created_by or owner_user_id column
     review: self-evident
     retention: n/a
+# 迁移 176-190 的当前处置行为映射；pending-owner 不是隐私或发布验收通过。
+  attachment_lifecycle_v5_audit:
+    action: retain
+    owner: attachments
+    reason: 附件删除状态机审计含对象键与 details，不随个人账号删除
+    mechanism: 迁移 179 的审计表；保留期限与 details 脱敏仍待复核
+    review: pending-owner
+    retention: unknown
+  customer_service_ai_agent:
+    action: retain
+    owner: customer-service
+    reason: 组织级 AI 坐席配置，非个人账号所有物
+    mechanism: 迁移 180 组织外键 RESTRICT；随组织配置生命周期管理
+    review: pending-owner
+    retention: unknown
+  customer_service_ai_budget:
+    action: retain
+    owner: customer-service
+    reason: 组织级预算汇总，不随单一用户删除
+    mechanism: 迁移 180 预算账本；不声明已匿名化
+    review: pending-owner
+    retention: unknown
+  customer_service_ai_budget_attempt:
+    action: retain
+    owner: customer-service
+    reason: AI 请求预算尝试与计量事实，关联组织作业
+    mechanism: 迁移 180 计量行；保留窗口待 owner 确认
+    review: pending-owner
+    retention: unknown
+  customer_service_ai_canary:
+    action: retain
+    owner: customer-service
+    reason: 组织的工作区或会话投递白名单
+    mechanism: 迁移 180 组织配置；不按个人账号级联删除
+    review: pending-owner
+    retention: unknown
+  customer_service_ai_consume_cursor:
+    action: retain
+    owner: customer-service
+    reason: 组织事件消费水位，删除会造成事件重放
+    mechanism: 迁移 180 游标；随组织消费者生命周期管理
+    review: pending-owner
+    retention: unknown
+  customer_service_ai_consume_seen:
+    action: retain
+    owner: customer-service
+    reason: 客服 AI 消费去重事实，删除可能重复投递
+    mechanism: 迁移 180 去重事实；过期清理策略待复核
+    review: pending-owner
+    retention: unknown
+  customer_service_ai_delivery:
+    action: retain
+    owner: customer-service
+    reason: AI 投递与企业消息关联事实
+    mechanism: 迁移 180 会话外键 RESTRICT；由组织会话治理处置
+    review: pending-owner
+    retention: unknown
+  customer_service_ai_job:
+    action: retain
+    owner: customer-service
+    reason: 组织会话 AI 作业及栅栏，不属于个人账号直接删除范围
+    mechanism: 迁移 180 会话外键 RESTRICT；由组织作业治理处置
+    review: pending-owner
+    retention: unknown
+  customer_service_ai_session:
+    action: retain
+    owner: customer-service
+    reason: 客服 AI 会话状态含意图与客户关联，不声明无个人数据
+    mechanism: 迁移 180 会话外键 RESTRICT；与客服会话共同处置
+    review: pending-owner
+    retention: unknown
+  customer_service_ai_turn:
+    action: retain
+    owner: customer-service
+    reason: 逐轮决策审计含 reply_text，不能当作无个人数据的聚合表
+    mechanism: 迁移 180 append-only；cs_ai_purge_trace 受独立身份与显式确认约束
+    review: pending-owner
+    retention: unknown
+  customer_service_faq:
+    action: retain
+    owner: customer-service
+    reason: 组织知识库正文与版本，不随个人账号删除
+    mechanism: 迁移 180 组织外键 RESTRICT；由组织知识库管理处置
+    review: pending-owner
+    retention: unknown
+  enterprise_directory_organization_source:
+    action: anonymize
+    owner: enterprise-directory
+    reason: 外部组织投影保留，IMBoy 确认所有者关联置空
+    mechanism: 迁移 177 confirmed_owner_user_id ON DELETE SET NULL；保留外部组织标识
+    review: pending-owner
+    retention: unknown
+  enterprise_directory_department_source:
+    action: retain
+    owner: enterprise-directory
+    reason: 外部部门来源与组织投影事实
+    mechanism: 迁移 177 来源外键 RESTRICT；随外部目录同步治理
+    review: pending-owner
+    retention: unknown
+  enterprise_directory_membership_source:
+    action: anonymize
+    owner: enterprise-directory
+    reason: 注销时仅解除 IMBoy 账号投影，外部人员与来源事实保留
+    mechanism: 迁移 177 projected_user_id ON DELETE SET NULL；不声明清除 external_user_id
+    review: pending-owner
+    retention: unknown
+  enterprise_directory_department_member_source:
+    action: delete
+    owner: enterprise-directory
+    reason: 用户退出组织或部门后移除来源成员关系
+    mechanism: 迁移 177 organization_member 与 organization_department_member 外键 ON DELETE CASCADE
+    review: pending-owner
+    retention: unknown
+  enterprise_oa_login_ticket:
+    action: retain
+    owner: enterprise-auth
+    reason: 短期票据过期后拒绝认证，仍含外部人员与设备标识
+    mechanism: 迁移 181 与 enterprise_oa_login_repo 只按 expires_at 失效；物理清理未实现
+    review: pending-owner
+    retention: unknown
+  enterprise_source_person:
+    action: anonymize
+    owner: enterprise-directory
+    reason: 注销仅解除 IMBoy 账号绑定；外部源人员档案独立存在
+    mechanism: 迁移 176 user_id ON DELETE SET NULL；display_name 与 external_user_id 的处置待复核
+    review: pending-owner
+    retention: unknown
+  cs_ai_purge_principal:
+    action: retain
+    owner: customer-service
+    reason: 数据库清理服务身份白名单，不是终端用户账号
+    mechanism: 迁移 180 独立数据库角色治理
+    review: self-evident
+    retention: 随服务身份生命周期
+
 exclusions:
   adm_role:
     reason: 管理端 RBAC 角色配置，非终端用户数据

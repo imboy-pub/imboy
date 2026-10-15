@@ -163,11 +163,20 @@ member_uids_legacy(Gid, Key) ->
     end.
 
 load_member_uids(Gid) ->
-    case group_member_repo:list_by_gid(Gid, <<"user_id">>) of
-        {ok, Items} when is_list(Items) ->
-            {ok, [Uid || #{<<"user_id">> := Uid} <- Items]};
-        {error, _} = Error ->
-            Error
+    try
+        case group_member_repo:list_by_gid(Gid, <<"user_id">>) of
+            {ok, Items} when is_list(Items) ->
+                Uids = [Uid || #{<<"user_id">> := Uid} <- Items, is_integer(Uid), Uid > 0],
+                case length(Uids) =:= length(Items) of
+                    true -> {ok, Uids};
+                    false -> {error, {unexpected_repo_result, {ok, Items}}}
+                end;
+            {error, _} = Error ->
+                Error
+        end
+    catch
+        %% 历史适配器可能违背 repo 返回合同，strict 接口仍返回明确错误。
+        error:{case_clause, Other} -> {error, {unexpected_repo_result, Other}}
     end.
 
 %% @doc room-key fan-out 的权威设备公钥快照。

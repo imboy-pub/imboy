@@ -4,7 +4,7 @@
 #
 # 职责（每个慢门 job 调一行，替代在 workflow 里内联重复 retry/classify 逻辑）：
 #   1. 执行 gate 命令，输出 tee 落盘（含 ANSI 原样保存，classify 自行清洗）
-#   2. 失败 -> step 级 retry 一次（FLAKY 判定的唯一实现形态：
+#   2. 除 full-eunit 外，失败 -> step 级 retry 一次（FLAKY 判定的唯一实现形态：
 #      re-run 整 job 无法自动判 flaky，必须 step 内重试）
 #      retry 过 -> 首跑失败全计 FLAKY（不阻断）；retry 仍败 -> 用 retry 日志分类
 #   3. 调 .qa/classify.sh 出五分类（NEW/KNOWN/FIXED/FLAKY/INFRA）
@@ -12,7 +12,7 @@
 #
 # 退出码（= job 红/绿）：
 #   NEW_FAILURE / PARSE_ERROR -> 非零（阻断）；KNOWN 存量 / FLAKY / RATCHET / PASS -> 0
-#   （KNOWN 不阻断是计划 §6.1 钉死语义；NEW 阻断即「零 NEW_FAILURE 棘轮」）
+#   full-eunit 另强制 raw exit=0、完整成功汇总、零失败/跳过/中断；分类不能豁免。
 #
 # 用法: nightly-gate.sh GATE LOGFILE -- <gate 命令...>
 #   例: nightly-gate.sh full-eunit eunit-full.log -- make eunit EUNIT_ERL_OPTS=...
@@ -67,6 +67,29 @@ capture_classify() {  # capture_classify <logfile> [额外 classify 参数...]�
   return "$rc"
 }
 
+# Business assertions cannot be waived by known-failure or flaky classification.
+# Run full EUnit once here; the final acceptance recorder owns its two rounds.
+if [ "$GATE" = full-eunit ]; then
+  run_gate "$LOGFILE" "$@"
+  raw_rc=$?
+  capture_classify "$LOGFILE" --gate-rc "$raw_rc"
+  classify_rc=$?
+  [ "$raw_rc" -eq 0 ] || exit "$raw_rc"
+  python3 - "$LOGFILE" <<'PY_CHECK'
+import re
+import sys
+from pathlib import Path
+raw = Path(sys.argv[1]).read_text()
+complete = re.search(r"All [1-9][0-9]* tests passed\.", raw)
+bad = re.search(r"\*failed\*|\*timed out\*|One or more tests were cancelled|Failed:\s*[1-9]|Skipped:\s*[1-9]|SIG(?:TERM|INT) received - shutting down|ABORTED_BY_RESOURCE_GUARD=1|NOT_A_COMPLETE_FULL_RESULT|make(?:\[\d+\])?: \*\*\*|tests? aborted", raw, re.I)
+if not complete or bad:
+    sys.exit("full EUnit missing success summary or contains failure/skip/cancel")
+PY_CHECK
+  summary_rc=$?
+  [ "$summary_rc" -eq 0 ] || exit "$summary_rc"
+  exit "$classify_rc"
+fi
+
 # --- 首跑 ----------------------------------------------------------------------
 run_gate "$LOGFILE" "$@"
 rc1=$?
@@ -98,8 +121,11 @@ if [ "$rc2" -eq 0 ]; then
 fi
 
 echo "== nightly-gate: retry 仍失败 (rc=${rc2}) -> 用 retry 日志做 NEW/KNOWN/FIXED 分类"
-capture_classify "$RETRY_LOG" --gate-rc "$rc2"
+classified="$(capture_classify "$RETRY_LOG" --gate-rc "$rc2")"
 class_rc=$?
-# An incomplete Dialyzer run remains red even when correctly attributed to infra.
-if [ "$GATE" = dialyze ] && [ "$class_rc" -eq 0 ]; then exit "$rc2"; fi
+printf '%s\n' "$classified"
+# Classification is diagnostic: an infrastructure failure is never a green job.
+if [ "$class_rc" -eq 0 ] && { [ "$GATE" = dialyze ] || printf '%s\n' "$classified" | grep -q 'VERDICT=INFRA_FAILURE'; }; then
+  exit "$rc2"
+fi
 exit "$class_rc"

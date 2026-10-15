@@ -132,3 +132,16 @@ is_probe_marker(?PROBE_MARKER) -> true;
 is_probe_marker({?PROBE_MARKER, _Stack}) -> true;
 is_probe_marker({?PROBE_MARKER, _Stack, _Info}) -> true;
 is_probe_marker(_Other) -> false.
+
+cleanup_legacy_helper_releases_mock_test_() ->
+    {timeout, 35,
+        ?_test(
+            pure_mock_fixture:run(fun() ->
+                ok = meck:new(elib_uuid, [passthrough]),
+                ?assert(lists:member(elib_uuid, meck:mocked())),
+                ok = test_helper:cleanup_mock(elib_uuid),
+                ?assertNot(lists:member(elib_uuid, meck:mocked())),
+                ok = test_helper:cleanup_mock(elib_uuid),
+                ?assertEqual(36, byte_size(elib_uuid:gen_v7()))
+            end)
+        )}.

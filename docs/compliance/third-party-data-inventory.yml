@@ -120,21 +120,11 @@ providers:
     build_flavors: imboyapp-android
     evidence: app android/app/build.gradle.kts com.amap.api:3dmap 10.0.600（注释声明仅注册依赖）
   sentry_flutter:
-    provider: Sentry（SaaS 崩溃上报）
+    provider: Sentry（历史 SDK 已移除）
     category: crash
-    version: sentry_flutter 9.29.0
-    purpose: 崩溃与异常聚合（诊断）
-    data_fields: 崩溃堆栈, 设备与OS信息, 面包屑, 用户标识标签
-    endpoints: https://o436562.ingest.sentry.io
-    region: global
-    necessity: optional
-    consent: 编译期 SENTRY_DSN 为空即整体禁用；隐私声明需披露
-    privacy_url: https://sentry.io/privacy/
-    dpa_status: unknown
-    retention: unknown
-    deletion_api: unknown
+    no_data: 当前受版本控制的 App pubspec 与启动代码未接入 Sentry；本结论不覆盖私有部署注入
     build_flavors: imboyapp-android, imboyapp-ios
-    evidence: imboyapp pubspec.yaml sentry_flutter 9.29.0 + lib/service/sentry_service.dart + .env SENTRY_DSN（gitignored）
+    evidence: imboyapp pubspec.yaml 与 lib/run.dart；不得读取 gitignored .env 作为 CI 证据
   alipay:
     provider: 支付宝开放平台
     category: payment
@@ -150,7 +140,7 @@ providers:
     retention: unknown
     deletion_api: unknown
     build_flavors: backend
-    evidence: erlang_pay src 支付宝网关 openapi.alipay.com/gateway.do；app 端仅包可见性检测唤起（AndroidManifest queries）无 SDK 嵌入
+    evidence: imboy deps/erlang_pay/src 支付宝网关 openapi.alipay.com/gateway.do；app 端仅包可见性检测唤起（AndroidManifest queries）无 SDK 嵌入
   wechat_pay:
     provider: 微信支付
     category: payment
@@ -166,7 +156,7 @@ providers:
     retention: unknown
     deletion_api: unknown
     build_flavors: backend
-    evidence: erlang_pay src 微信支付 api.mch.weixin.qq.com
+    evidence: imboy deps/erlang_pay/src 微信支付 api.mch.weixin.qq.com
   stripe:
     provider: Stripe
     category: payment
@@ -182,7 +172,7 @@ providers:
     retention: unknown
     deletion_api: unknown
     build_flavors: backend
-    evidence: erlang_pay src api.stripe.com
+    evidence: imboy deps/erlang_pay/src api.stripe.com
   smtp_qq:
     provider: 腾讯企业邮 SMTP（smtp.qq.com）
     category: email
@@ -198,7 +188,7 @@ providers:
     retention: unknown
     deletion_api: unknown
     build_flavors: backend
-    evidence: imboy config/sys.pro.config smtp_option relay smtp.qq.com
+    evidence: imboy config/sys.config.example smtp_option relay smtp.qq.com
   llm_volces:
     provider: 火山引擎方舟 LLM（OpenAI 兼容）
     category: llm
@@ -214,7 +204,7 @@ providers:
     retention: unknown
     deletion_api: unknown
     build_flavors: backend
-    evidence: imboy config/sys.pro.config llm_providers ark.cn-beijing.volces.com
+    evidence: imboy config/sys.config.example llm_providers ark.cn-beijing.volces.com
   llm_aliyun_maas:
     provider: 阿里云百炼 LLM（OpenAI 兼容）
     category: llm
@@ -230,7 +220,7 @@ providers:
     retention: unknown
     deletion_api: unknown
     build_flavors: backend
-    evidence: imboy config/sys.pro.config llm_providers cn-beijing.maas.aliyuncs.com
+    evidence: imboy config/sys.config.example llm_providers cn-beijing.maas.aliyuncs.com
   garage_s3:
     provider: Garage S3 对象存储（自托管）
     category: storage
@@ -246,7 +236,7 @@ providers:
     retention: 跟随部署生命周期（D-03 编排器删除对象）
     deletion_api: 账号删除时由 D-03 编排器入队删除
     build_flavors: backend
-    evidence: imboy config/sys.pro.config garage endpoint s3.imboy.pub
+    evidence: imboy config/sys.config.example garage endpoint s3.imboy.pub
   livekit:
     provider: LiveKit SFU（自托管单容器，信令经自域名反代）
     category: rtc
@@ -278,23 +268,13 @@ providers:
     retention: 不落盘
     deletion_api: not-applicable
     build_flavors: backend, imboyapp-android, imboyapp-ios
-    evidence: imboy deploy/docker-compose.livekit-turn.yml turn.enabled turn.imboy.pub 5349 与 deploy/.env.example TURN_DOMAIN
+    evidence: imboy deploy/livekit-l4-sni.env.example TURN_DOMAIN 与 deploy/docker-compose.livekit-turn.yml
   alipay_sandbox:
-    provider: 支付宝沙箱网关
+    provider: 支付宝自定义沙箱网关
     category: payment
-    version: sandbox
-    purpose: 仅本地/联调环境支付验证
-    data_fields: 测试订单数据（无真实用户）
-    endpoints: https://openapi-sandbox.dl.alipaydev.com
-    region: cn
-    necessity: dev-only
-    consent: 不适用（无真实用户数据）
-    privacy_url: https://www.alipay.com/
-    dpa_status: not-applicable
-    retention: unknown
-    deletion_api: unknown
+    no_data: 受版本控制的配置未指定沙箱出站 URL；私有部署覆盖需另外盘点，不从忽略配置推断实际流量
     build_flavors: dev-local
-    evidence: imboy config/sys.local.config alipay 网关地址
+    evidence: config/sys.config.example 与 src/logic/payment_alipay_gateway.erl 可选 gateway_url
   fcm:
     provider: Firebase Cloud Messaging
     category: push

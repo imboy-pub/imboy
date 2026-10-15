@@ -106,7 +106,22 @@ upload_file_success_test_() ->
         meck:new(elib_pg, [passthrough]),
         meck:expect(elib_pg, with_tx, fun(F) -> F(conn) end),
         meck:expect(attachment_ds, ensure_upload_scope_tx, fun(conn, {group, 1}, 100) -> ok end),
+        meck:new(attachment_repo, [passthrough]),
+        meck:expect(attachment_repo, bind_reference_lock_tx, fun(conn, ObjectKey0) ->
+            ?assertEqual(ObjectKey, ObjectKey0),
+            self() ! attachment_locked,
+            ok
+        end),
+        meck:expect(attachment_repo, refresh_gc_verified_tx, fun(conn, ObjectKey0) ->
+            ?assertEqual(ObjectKey, ObjectKey0),
+            self() ! attachment_refreshed,
+            {ok, 1}
+        end),
         meck:expect(attachment_ds, save, fun(Conn, CreatedAt, Uid, Attaches) ->
+            receive
+                attachment_locked -> ok
+            after 0 -> ?assert(false)
+            end,
             self() ! attachment_saved,
             ?assertEqual(conn, Conn),
             ?assertEqual(NowTs, CreatedAt),
@@ -129,6 +144,11 @@ upload_file_success_test_() ->
         Result = group_file_ds:upload_file(Gid, UploaderId, FileName, FileBinary, FileType),
         receive
             removed -> ok
+        after 0 -> ?assert(false)
+        end,
+
+        receive
+            attachment_refreshed -> ok
         after 0 -> ?assert(false)
         end,
 
@@ -582,7 +602,22 @@ with_scope(Test) ->
         try
             Test()
         after
-            meck:unload(attachment_ds),
-            meck:unload(enterprise_audit_event_repo)
+            %% 断言失败也必须卸载本用例创建的 mock，避免污染后续套件。
+            lists:foreach(
+                fun(Module) -> catch meck:unload(Module) end,
+                [
+                    attachment_ds,
+                    attachment_repo,
+                    enterprise_audit_event_repo,
+                    group_ds,
+                    elib_oss,
+                    elib_dt,
+                    group_file_repo,
+                    workspace_resolver,
+                    elib_pg,
+                    workspace_guard,
+                    group_member_repo
+                ]
+            )
         end
     end.

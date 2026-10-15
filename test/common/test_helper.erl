@@ -18,18 +18,18 @@
     setup_mock/3,
     cleanup_mock/1,
     cleanup_mocks/1,
-    
+
     generate_user/0,
     generate_user/1,
     generate_group/0,
     generate_group/1,
     generate_message/0,
     generate_message/1,
-    
+
     assert_ok/1,
     assert_error/1,
     assert_match/2,
-    
+
     with_db/1,
     with_mock/3
 ]).
@@ -44,17 +44,23 @@
 setup_mock(Module, Expectations) ->
     try
         meck:new(Module, [passthrough]),
-        lists:foreach(fun({Func, Arity, Fun}) ->
-            meck:expect(Module, Func, Arity, normalize_mock_fun(Fun, Arity))
-        end, Expectations)
+        lists:foreach(
+            fun({Func, Arity, Fun}) ->
+                meck:expect(Module, Func, Arity, normalize_mock_fun(Fun, Arity))
+            end,
+            Expectations
+        )
     catch
         error:{already_started, _} ->
             % 如果已经启动，先卸载再重新创建
             meck:unload(Module),
             meck:new(Module, [passthrough]),
-            lists:foreach(fun({Func, Arity, Fun}) ->
-                meck:expect(Module, Func, Arity, normalize_mock_fun(Fun, Arity))
-            end, Expectations)
+            lists:foreach(
+                fun({Func, Arity, Fun}) ->
+                    meck:expect(Module, Func, Arity, normalize_mock_fun(Fun, Arity))
+                end,
+                Expectations
+            )
     end.
 
 %% @doc 为单个模块设置Mock（带选项）
@@ -63,33 +69,30 @@ setup_mock(Module, Expectations) ->
 %% Expectations: 期望函数列表
 setup_mock(Module, Options, Expectations) ->
     meck:new(Module, Options),
-    lists:foreach(fun({Func, Arity, Fun}) ->
-        meck:expect(Module, Func, Arity, normalize_mock_fun(Fun, Arity))
-    end, Expectations).
+    lists:foreach(
+        fun({Func, Arity, Fun}) ->
+            meck:expect(Module, Func, Arity, normalize_mock_fun(Fun, Arity))
+        end,
+        Expectations
+    ).
 
 %% @doc 设置 Mock 配置
 %% @param MockConfigs Mock 配置列表
 %% @returns Mock 列表
 setup_mock(MockConfigs) ->
-    Mocks = lists:map(fun({Module, Function, Arity, MockFun}) ->
-        ok = meck:new(Module, [passthrough]),
-        ok = meck:expect(Module, Function, Arity, normalize_mock_fun(MockFun, Arity)),
-        {Module, Function}
-    end, MockConfigs),
+    Mocks = lists:map(
+        fun({Module, Function, Arity, MockFun}) ->
+            ok = meck:new(Module, [passthrough]),
+            ok = meck:expect(Module, Function, Arity, normalize_mock_fun(MockFun, Arity)),
+            {Module, Function}
+        end,
+        MockConfigs
+    ),
     Mocks.
 
 %% @doc 清理单个Mock
 cleanup_mock(Module) ->
-    try
-        case meck:is_loaded(Module) of
-            true -> meck:unload(Module);
-            false -> ok
-        end
-    catch
-        _:undef -> 
-            % meck 可能未加载，忽略错误
-            ok
-    end.
+    meck_helper:cleanup_mock(Module).
 
 %% @doc 批量清理Mock
 cleanup_mocks(Modules) ->
@@ -239,24 +242,33 @@ wrap_drop_first_arg(Fun, _) ->
 cleanup_test_data(Conn) ->
     % 清理测试用户数据
     TestUsers = [12345, 67890],
-    lists:foreach(fun(Uid) ->
-        Sql = <<"DELETE FROM public.user WHERE id = $1">>,
-        elib_pg:query(Sql, [Uid], Conn)
-    end, TestUsers),
-    
+    lists:foreach(
+        fun(Uid) ->
+            Sql = <<"DELETE FROM public.user WHERE id = $1">>,
+            elib_pg:query(Sql, [Uid], Conn)
+        end,
+        TestUsers
+    ),
+
     % 清理测试群组数据
     TestGroups = [54321],
-    lists:foreach(fun(Gid) ->
-        Sql = <<"DELETE FROM public.group WHERE id = $1">>,
-        elib_pg:query(Sql, [Gid], Conn)
-    end, TestGroups),
-    
+    lists:foreach(
+        fun(Gid) ->
+            Sql = <<"DELETE FROM public.group WHERE id = $1">>,
+            elib_pg:query(Sql, [Gid], Conn)
+        end,
+        TestGroups
+    ),
+
     % 清理测试消息数据
     TestMsgs = [99999],
-    lists:foreach(fun(MsgId) ->
-        Sql = <<"DELETE FROM public.msg_c2c WHERE id = $1">>,
-        elib_pg:query(Sql, [MsgId], Conn)
-    end, TestMsgs).
+    lists:foreach(
+        fun(MsgId) ->
+            Sql = <<"DELETE FROM public.msg_c2c WHERE id = $1">>,
+            elib_pg:query(Sql, [MsgId], Conn)
+        end,
+        TestMsgs
+    ).
 
 %% ===================================================================
 %% EUnit 测试辅助宏
@@ -264,39 +276,46 @@ cleanup_test_data(Conn) ->
 
 %% @doc 创建带Mock的测试
 -define(WITH_MOCK(Module, Expectations, TestFun),
-    {setup,
-     fun() -> test_helper:setup_mock(Module, Expectations) end,
-     fun(_) -> test_helper:cleanup_mock(Module) end,
-     fun(_) -> ?_test(TestFun()) end}).
+    {setup, fun() -> test_helper:setup_mock(Module, Expectations) end,
+        fun(_) -> test_helper:cleanup_mock(Module) end, fun(_) -> ?_test(TestFun()) end}
+).
 
 %% @doc 创建带多个Mock的测试
 -define(WITH_MOCKS(MockConfigs, TestFun),
     {setup,
-     fun() -> 
-         lists:foreach(fun({Mod, Exp}) -> 
-             test_helper:setup_mock(Mod, Exp) 
-         end, MockConfigs)
-     end,
-     fun(_) -> 
-         Modules = [Mod || {Mod, _} <- MockConfigs],
-         test_helper:cleanup_mocks(Modules)
-     end,
-     fun(_) -> ?_test(TestFun()) end}).
+        fun() ->
+            lists:foreach(
+                fun({Mod, Exp}) ->
+                    test_helper:setup_mock(Mod, Exp)
+                end,
+                MockConfigs
+            )
+        end,
+        fun(_) ->
+            Modules = [Mod || {Mod, _} <- MockConfigs],
+            test_helper:cleanup_mocks(Modules)
+        end,
+        fun(_) -> ?_test(TestFun()) end}
+).
 
 %% @doc 创建数据库测试
 -define(WITH_DB(TestFun),
     {setup,
-     fun() -> 
-         case eunit_runner:eunit_setup_with_db() of
-             {ok, Conn} -> {ok, Conn};
-             {error, _} -> skip
-         end
-     end,
-     fun({ok, Conn}) ->
-         test_helper:cleanup_test_data(Conn),
-         eunit_runner:eunit_cleanup_db(Conn);
-        (skip) -> ok
-     end,
-     fun({ok, Conn}) -> ?_test(TestFun(Conn));
-        (skip) -> []
-     end}).
+        fun() ->
+            case eunit_runner:eunit_setup_with_db() of
+                {ok, Conn} -> {ok, Conn};
+                {error, _} -> skip
+            end
+        end,
+        fun
+            ({ok, Conn}) ->
+                test_helper:cleanup_test_data(Conn),
+                eunit_runner:eunit_cleanup_db(Conn);
+            (skip) ->
+                ok
+        end,
+        fun
+            ({ok, Conn}) -> ?_test(TestFun(Conn));
+            (skip) -> []
+        end}
+).

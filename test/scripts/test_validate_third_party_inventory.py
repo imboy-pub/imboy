@@ -81,7 +81,8 @@ class ValidateTests(unittest.TestCase):
         blocked_line = next(e for e in errors if "BLOCKED" in e)
         # 真实出站行（dpa=unknown）必须被点名
         self.assertIn("jpush_sms", blocked_line)
-        self.assertIn("sentry_flutter", blocked_line)
+        self.assertNotIn("sentry_flutter", blocked_line)
+        self.assertIn("stripe", blocked_line)
         # self-hosted / dev-only / no_data 行必须豁免
         self.assertNotIn("garage_s3", blocked_line)
         self.assertNotIn("livekit", blocked_line)
@@ -204,6 +205,11 @@ class ValidateTests(unittest.TestCase):
             self.assertFalse(ok)
             self.assertTrue(any("region" in e for e in errors))
 
+    def test_evidence_never_reads_private_runtime_config(self) -> None:
+        paths = {row[1] for row in EVIDENCE}
+        self.assertFalse(paths & {"config/sys.pro.config", "config/sys.local.config", "../imboyapp/.env"})
+        self.assertIn("config/sys.config.example", paths)
+
     def test_real_evidence_table_covers_required_categories_sources(self) -> None:
         """内建证据表的每条特征在真仓都必须命中——防止脚本证据表自身过期。"""
         from validate_third_party_inventory import load_evidence_texts
@@ -212,10 +218,10 @@ class ValidateTests(unittest.TestCase):
         missing = [
             e["marker"]
             for e in loaded
-            if e["text"] is None
+            if e["text"] is None and not e["optional"]
         ]
         self.assertEqual(missing, [], msg=f"local run should find all evidence sources: {missing}")
-        unmatched = [e["marker"] for e in loaded if not e["pattern"].search(e["text"])]
+        unmatched = [e["marker"] for e in loaded if e["text"] is not None and not e["pattern"].search(e["text"])]
         self.assertEqual(unmatched, [], msg=f"evidence patterns not matched in source: {unmatched}")
 
 

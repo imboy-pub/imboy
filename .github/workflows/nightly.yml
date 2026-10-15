@@ -30,7 +30,12 @@ name: Backend Nightly
 on:
   schedule:
     - cron: '0 20 * * *' # 每日 20:00 UTC（北京 04:00）
-  workflow_dispatch: # 手动触发：棘轮/分类调试与首次验证用
+  workflow_dispatch:
+    inputs:
+      notify_external:
+        description: 'Create external issue notifications (requires separate authorization)'
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -90,7 +95,7 @@ jobs:
   # EUNIT_USE_RELAY=0：fork-per-connection 中继是 macOS Docker Desktop 后端
   # 楔死 bug 的本地对策（CP-TD-A02），Linux runner 无此问题，直连更少一跳。
   # timeout 200：首次镜像构建（~60min，gha 缓存后秒级）+ 迁移（~10min）+
-  # eunit 45min + 失败 retry 一次（45min）+ 缓冲；缓存命中后 ~100min。
+  # EUnit 单次原始结果 + Hird 编译及缓冲；全量失败不重试掩盖。
   # ----------------------------------------------------------------
   full-eunit:
     name: Full EUnit (nightly, classified)
@@ -122,6 +127,13 @@ jobs:
             ~/.cache/rebar3
           key: ${{ runner.os }}-otp28-beam-${{ hashFiles('Makefile', 'include/deps.mk') }}
 
+      - name: Build pinned Hird compiler for integration tests
+        run: |
+          make deps
+          rustup toolchain install 1.97.1 --profile minimal
+          cargo +1.97.1 build --locked --release --manifest-path deps/hird_runtime/Cargo.toml -p hird-cli
+          echo "$GITHUB_WORKSPACE/deps/hird_runtime/target/release" >> "$GITHUB_PATH"
+
       - name: Materialize config/sys.config from example
         # 同 backend-ci.yml moment-eunit：sys.config 不入仓，检出后必须从
         # example 物化，否则 eunit 起节点时 config 缺失直接崩。
@@ -131,7 +143,7 @@ jobs:
         # 与 pg-behavior-harnesses job 同镜像同 scope：nightly 两个 PG job 谁先
         # 跑谁付首次构建，后者 gha 缓存秒级命中。
         run: |
-          docker buildx build             --file docker/pg18_Dockerfile             --tag imboy-pg18:ci             --load             --cache-from type=gha,scope=pg18             --cache-to type=gha,scope=pg18,mode=max             docker/
+          docker buildx build             --file docker/pg18_Dockerfile             --tag imboy-pg18:ci             --load             --cache-from type=gha,scope=pg18             --cache-to type=gha,scope=pg18,mode=max             .
 
       - name: Start scratch PG on 127.0.0.1:4323 (imboy_v1)
         # 端口/库/账号与 config/sys.config.example 的 pg_conf + super_account
@@ -166,7 +178,7 @@ jobs:
           done
           ./scripts/drill_migrate.escript up
 
-      - name: Run full EUnit (retry + classify)
+      - name: Run full EUnit (owned storage, raw result)
         id: gate
         run: |
           # CI-00：与本地 `make eunit-local` 完全同口径（eunit-local 目标负责
@@ -175,8 +187,10 @@ jobs:
           # 原 `make eunit` 裸口径缺 -config 注入，依赖 app 启动的用例级联失败。
           # 不带 EUNIT_MODS = erlang.mk 默认全量 test/*_tests（本地 4 批分跑仅是
           # 宿主 8min SIGTERM 限制的适配，CI 单跑无此限制，见 W1-A01）。
-          bash .qa/nightly-gate.sh full-eunit eunit-full.log \
-            -- env IMBOYENV=local make eunit-local EUNIT_CONFIG=config/sys EUNIT_USE_RELAY=0
+          docker pull dxflrs/garage:v2.3.0
+          bash scripts/test/enterprise_asset_garage_gate.sh -- \
+            bash .qa/nightly-gate.sh full-eunit eunit-full.log \
+              -- env IMBOYENV=local make eunit-local EUNIT_CONFIG=config/sys EUNIT_USE_RELAY=0
 
       - name: Dump PG logs on failure
         if: failure()
@@ -542,7 +556,7 @@ jobs:
 
       - name: Build PG image from docker/pg18_Dockerfile (no registry push)
         run: |
-          docker buildx build             --file docker/pg18_Dockerfile             --tag imboy-pg18:ci             --load             --cache-from type=gha,scope=pg18             --cache-to type=gha,scope=pg18,mode=max             docker/
+          docker buildx build             --file docker/pg18_Dockerfile             --tag imboy-pg18:ci             --load             --cache-from type=gha,scope=pg18             --cache-to type=gha,scope=pg18,mode=max             .
 
       - name: Start PG and wait for readiness
         run: |
@@ -640,7 +654,7 @@ jobs:
       - name: Create gitee issue for NEW_FAILURE
         env:
           DIALYZE_NEW_ITEMS: ${{ needs.dialyze.outputs.new_items }}
-        if: steps.collect.outputs.total_new != '0'
+        if: steps.collect.outputs.total_new != '0' && (github.event_name == 'schedule' || inputs.notify_external)
         run: |
           set -euo pipefail
           if [ -z "${GITEE_TOKEN}" ]; then

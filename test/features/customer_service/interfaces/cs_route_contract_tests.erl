@@ -1179,3 +1179,46 @@ read_source(Path) ->
 strip_comments(Src) ->
     NoBlock = re:replace(Src, "%%%.*", "", [global, multiline]),
     re:replace(NoBlock, "%[^%].*", "", [global, multiline]).
+
+%% AI 平台管理面不登记成没有 HTTP 路由的 tenant 动作。
+ai_admin_surface_is_separate_test() ->
+    Router = read_source("src/imboy_router.erl"),
+    lists:foreach(
+        fun({Suffix, Action}) ->
+            Route = iolist_to_binary([
+                "{\"/api/adm/cs/ai/",
+                Suffix,
+                "\", adm_cs_ai_handler, #{action => ",
+                atom_to_binary(Action),
+                "}}"
+            ]),
+            ?assertEqual(1, length(binary:matches(Router, Route)))
+        end,
+        [
+            {"config", config_view},
+            {"config/set", config_set},
+            {"faq", faq_list},
+            {"faq/upsert", faq_upsert},
+            {"faq/delete", faq_delete},
+            {"sessions", sessions},
+            {"session_turns", session_turns},
+            {"stats", stats},
+            {"preview", preview}
+        ]
+    ),
+    lists:foreach(
+        fun(Action) ->
+            ?assertEqual({error, {unknown_action, Action}}, cs_actions:tenant(Action))
+        end,
+        [
+            ai_config_view,
+            ai_config_set,
+            ai_faq_list,
+            ai_faq_upsert,
+            ai_faq_delete,
+            ai_sessions,
+            ai_session_turns,
+            ai_stats,
+            ai_preview
+        ]
+    ).

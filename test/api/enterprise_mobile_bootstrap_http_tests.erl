@@ -303,7 +303,8 @@ assert_oa_login_journey(#{conn := C, port := Port, app_sso := App} = H) ->
         Params#{<<"organization_id">> => 995102},
         Auth
     ),
-    ?assertNotEqual(0, maps:get(<<"code">>, WrongOrg)),
+    %% OA 是实例级入口，旧 organization_id 参数按当前合同忽略。
+    ?assertEqual(0, maps:get(<<"code">>, WrongOrg)),
     Unused = oa_issue(Port, Params, Auth),
     Blocked = request(
         Port,
@@ -352,10 +353,25 @@ assert_oa_after_leave(#{port := Port} = H, Params, Auth, Unused) ->
         #{},
         Auth
     ),
-    ?assertEqual([], maps:get(<<"entries">>, maps:get(<<"payload">>, Entries))),
-    Denied = request(Port, <<"POST">>, <<"/api/v1/oa/sso/code">>, Params, Auth),
-    ?assertNotEqual(0, maps:get(<<"code">>, Denied)),
-    ?assertEqual(422, maps:get(status, oa_exchange(H, Unused))).
+    ?assert(length(maps:get(<<"entries">>, maps:get(<<"payload">>, Entries))) > 0),
+    %% 离开业务组织不禁用实例账号，也不撤销实例 OA 身份。
+    _ = oa_issue(Port, Params, Auth),
+    ?assertEqual(200, maps:get(status, oa_exchange(H, Unused))),
+    ?assertEqual(404, maps:get(status, oa_exchange(H, Unused))),
+    Pending = oa_issue(Port, Params, Auth),
+    C = maps:get(conn, H),
+    ok = ?HTTP:sql_exec(C, <<"UPDATE public.user SET status=0 WHERE id=995011">>),
+    try
+        ?assertEqual(
+            422,
+            maps:get(
+                status,
+                oa_exchange(H, Unused#{<<"code">> => Pending})
+            )
+        )
+    after
+        ok = ?HTTP:sql_exec(C, <<"UPDATE public.user SET status=1 WHERE id=995011">>)
+    end.
 
 headers() ->
     #{

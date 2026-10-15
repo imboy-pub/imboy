@@ -61,7 +61,7 @@ send_with_list_subject_test_() ->
             ]}
         ],
         fun() ->
-            Result = elib_email:send(<<"recipient@example.com">>, "列表主题" / utf8),
+            Result = elib_email:send(<<"recipient@example.com">>, "列表主题"),
             ?assertEqual({ok, success}, Result)
         end
     ).

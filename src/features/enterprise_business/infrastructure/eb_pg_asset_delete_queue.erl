@@ -30,13 +30,11 @@ drain(Org, Ws, Limit) ->
 
 %% 消费至多 Limit 个 job（租约 CAS；删除成功 ack done、失败 ack 退避/终止）。
 drain(Org, Ws, Limit, Token) when Limit > 0 ->
-    case claim(Token) of
+    case claim(Token, Org, Ws) of
         {ok, Row} ->
             case process_job(Org, Ws, Row, Token) of
                 ok ->
                     drain(Org, Ws, Limit - 1, Token);
-                {error, delete_failed} ->
-                    {ok, []};
                 {error, _} = Error ->
                     Error
             end;
@@ -48,7 +46,7 @@ drain(Org, Ws, Limit, Token) when Limit > 0 ->
 drain(_Org, _Ws, _Limit, _Token) ->
     {ok, []}.
 
-process_job(_RequestedOrg, _RequestedWs, Row, Token) ->
+process_job(Org, Ws, Row, Token) ->
     Org = maps:get(<<"out_organization_id">>, Row),
     Ws = maps:get(<<"out_workspace_id">>, Row),
     AssetId = maps:get(<<"out_asset_id">>, Row),
@@ -75,8 +73,8 @@ process_job(_RequestedOrg, _RequestedWs, Row, Token) ->
     AckOk = Result =:= ok orelse Result =:= {error, not_found},
     case ack(Org, Ws, AssetId, Token, AckOk) of
         ok when AckOk -> ok;
-        ok -> {error, delete_failed};
-        {error, R} -> {error, {ack_failed, R}}
+        ok -> {error, {object_delete_failed, Result}};
+        {error, R} -> {error, {object_ack_failed, R}}
     end.
 
 %% 企业队列 claim（租约 CAS；fn 返回单 job 或空集）。
@@ -93,6 +91,13 @@ claim(Token) ->
         )
     of
         {ok, [Row | _]} -> {ok, Row};
+        {ok, []} -> {error, empty};
+        {error, R} -> {error, R}
+    end.
+
+claim(Token, Org, Ws) ->
+    case elib_pg:query(<<"SELECT * FROM fn_v5_claim_eb($1, $2, $3)">>, [Token, Org, Ws]) of
+        {ok, [Row]} -> {ok, Row};
         {ok, []} -> {error, empty};
         {error, R} -> {error, R}
     end.
