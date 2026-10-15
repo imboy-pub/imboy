@@ -1,0 +1,3420 @@
+REST run: limiter-l0-20261015T111110-48871
+Scratch DB: imboy_rest_limiter_l0_20261015T111110_48871 @ 127.0.0.1:4323
+Report: /Users/leeyi/project/imboy.pub/.worktrees/limiter-v1-impl/.reports/rest/limiter-l0-20261015T111110-48871
+GO POST /api/v1/passport/login auth=open+device-sign cases=LOGIN-001,LOGIN-002,LOGIN-003,LOGIN-004,LOGIN-005
+GO POST /api/v1/refreshtoken auth=open+device-sign cases=AUTH-001,AUTH-002,AUTH-003
+GO GET /api/v1/user/show auth=open cases=USER-001,USER-002,USER-003,USER-004,USER-005,USER-006
+GO POST /api/v1/friend/add auth=jwt cases=FRIEND-001,FRIEND-002,FRIEND-003,FRIEND-004,FRIEND-005,FRIEND-006,FRIEND-007
+GO POST /api/v1/group/add auth=jwt cases=GROUP-001,GROUP-002,GROUP-003,GROUP-004,GROUP-005,GROUP-006
+GO GET /api/v1/conversation/mine auth=jwt cases=CONV-001,CONV-002,CONV-003,CONV-004,CONV-005,CONV-006
+GO GET /api/v1/msg/history auth=jwt cases=MSG-001,MSG-002,MSG-003,MSG-004,MSG-005,MSG-006,MSG-007
+GO POST /api/v1/channel/create auth=jwt cases=CHANNEL-001,CHANNEL-002,CHANNEL-003,CHANNEL-004,CHANNEL-005,CHANNEL-006,CHANNEL-007
+evidence cross-check: REST support unit tests PASS
+=== REST suite: api_v1_login ===
+make: Entering directory '/Users/leeyi/project/imboy.pub/.worktrees/limiter-v1-impl'
+Makefile:256: warning: overriding recipe for target 'beam-cache-restore-app'
+erlang.mk:1336: warning: ignoring old recipe for target 'beam-cache-restore-app'
+Makefile:258: warning: overriding recipe for target 'beam-cache-restore-test'
+erlang.mk:1348: warning: ignoring old recipe for target 'beam-cache-restore-test'
+Makefile:256: warning: overriding recipe for target 'beam-cache-restore-app'
+erlang.mk:1336: warning: ignoring old recipe for target 'beam-cache-restore-app'
+Makefile:258: warning: overriding recipe for target 'beam-cache-restore-test'
+erlang.mk:1348: warning: ignoring old recipe for target 'beam-cache-restore-test'
+Makefile:256: warning: overriding recipe for target 'beam-cache-restore-app'
+erlang.mk:1336: warning: ignoring old recipe for target 'beam-cache-restore-app'
+Makefile:258: warning: overriding recipe for target 'beam-cache-restore-test'
+erlang.mk:1348: warning: ignoring old recipe for target 'beam-cache-restore-test'
+ GEN    test-build
+Makefile:256: warning: overriding recipe for target 'beam-cache-restore-app'
+erlang.mk:1336: warning: ignoring old recipe for target 'beam-cache-restore-app'
+Makefile:258: warning: overriding recipe for target 'beam-cache-restore-test'
+erlang.mk:1348: warning: ignoring old recipe for target 'beam-cache-restore-test'
+ GEN   
+=PROGRESS REPORT==== 15-Oct-2026::11:11:22.440324 ===
+    application: kernel
+    started_at: 'ct_imboy@liyideMacBook-Pro'
+
+=PROGRESS REPORT==== 15-Oct-2026::11:11:22.442243 ===
+    application: stdlib
+    started_at: 'ct_imboy@liyideMacBook-Pro'
+
+
+
+Common Test v1.31 starting (cwd is /Users/leeyi/project/imboy.pub/.worktrees/limiter-v1-impl)
+
+
+
+CWD set to: "/Users/leeyi/project/imboy.pub/.worktrees/limiter-v1-impl/.reports/rest/limiter-l0-20261015T111110-48871/ct/ct_run.ct_imboy@liyideMacBook-Pro.2026-10-15_11.11.22"
+
+TEST INFO: 1 test(s), 6 case(s) in 1 suite(s)
+
+Testing .worktrees.limiter-v1-impl.api_v1_login_SUITE: Starting test, 6 test cases
+=PROGRESS REPORT==== 15-Oct-2026::03:11:22.623164 UTC ===
+    application: crypto
+    started_at: 'ct_imboy@liyideMacBook-Pro'
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:22.623574 UTC ===
+    application: asn1
+    started_at: 'ct_imboy@liyideMacBook-Pro'
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:22.623899 UTC ===
+    application: public_key
+    started_at: 'ct_imboy@liyideMacBook-Pro'
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:22.628112 UTC ===
+    supervisor: {local,ssl_admin_sup}
+    started: [{pid,<0.130.0>},
+              {id,ssl_pem_cache},
+              {mfargs,{ssl_pem_cache,start_link,[[]]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,worker}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:22.632070 UTC ===
+    supervisor: {local,ssl_admin_sup}
+    started: [{pid,<0.131.0>},
+              {id,ssl_manager},
+              {mfargs,{ssl_manager,start_link,[[]]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,worker}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:22.632810 UTC ===
+    supervisor: {local,ssl_admin_sup}
+    started: [{pid,<0.132.0>},
+              {id,tls_client_ticket_store},
+              {mfargs,{tls_client_ticket_store,start_link,[1000,7200]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,worker}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:22.632852 UTC ===
+    supervisor: {local,ssl_sup}
+    started: [{pid,<0.129.0>},
+              {id,ssl_admin_sup},
+              {mfargs,{ssl_admin_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:22.634341 UTC ===
+    supervisor: {local,tls_sup}
+    started: [{pid,<0.135.0>},
+              {id,tls_connection_sup},
+              {mfargs,{tls_connection_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:22.635787 UTC ===
+    supervisor: {local,tls_server_sup}
+    started: [{pid,<0.137.0>},
+              {id,ssl_listen_tracker_sup},
+              {mfargs,{ssl_listen_tracker_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:22.636212 UTC ===
+    supervisor: {local,tls_server_sup}
+    started: [{pid,<0.138.0>},
+              {id,tls_server_session_ticket},
+              {mfargs,{tls_server_session_ticket_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:22.637531 UTC ===
+    supervisor: {local,tls_server_sup}
+    started: [{pid,<0.139.0>},
+              {id,ssl_server_session_cache_sup},
+              {mfargs,{ssl_server_session_cache_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:22.638712 UTC ===
+    supervisor: {local,tls_server_sup}
+    started: [{pid,<0.140.0>},
+              {id,ssl_upgrade_server_session_cache_sup},
+              {mfargs,{ssl_upgrade_server_session_cache_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:22.638757 UTC ===
+    supervisor: {local,tls_sup}
+    started: [{pid,<0.136.0>},
+              {id,tls_server_sup},
+              {mfargs,{tls_server_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:22.638799 UTC ===
+    supervisor: {local,ssl_connection_sup}
+    started: [{pid,<0.134.0>},
+              {id,tls_sup},
+              {mfargs,{tls_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:22.639782 UTC ===
+    supervisor: {local,dtls_sup}
+    started: [{pid,<0.142.0>},
+              {id,dtls_connection_sup},
+              {mfargs,{dtls_connection_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:22.640569 UTC ===
+    supervisor: {local,dtls_server_sup}
+    started: [{pid,<0.144.0>},
+              {id,dtls_listener_sup},
+              {mfargs,{dtls_listener_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:22.641153 UTC ===
+    supervisor: {local,dtls_server_sup}
+    started: [{pid,<0.145.0>},
+              {id,dtls_server_session_cache_sup},
+              {mfargs,{dtls_server_session_cache_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:22.641187 UTC ===
+    supervisor: {local,dtls_sup}
+    started: [{pid,<0.143.0>},
+              {id,dtls_server_sup},
+              {mfargs,{dtls_server_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:22.641214 UTC ===
+    supervisor: {local,ssl_connection_sup}
+    started: [{pid,<0.141.0>},
+              {id,dtls_sup},
+              {mfargs,{dtls_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:22.641239 UTC ===
+    supervisor: {local,ssl_sup}
+    started: [{pid,<0.133.0>},
+              {id,ssl_connection_sup},
+              {mfargs,{ssl_connection_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:22.641272 UTC ===
+    application: ssl
+    started_at: 'ct_imboy@liyideMacBook-Pro'
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:22.647296 UTC ===
+    supervisor: {local,httpc_profile_sup}
+    started: [{pid,<0.151.0>},
+              {id,httpc_manager},
+              {mfargs,{httpc_manager,start_link,
+                                     [default,only_session_cookies,inets]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,worker}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:22.647362 UTC ===
+    supervisor: {local,httpc_sup}
+    started: [{pid,<0.150.0>},
+              {id,httpc_profile_sup},
+              {mfargs,
+                  {httpc_profile_sup,start_link,
+                      [[{httpc,{default,only_session_cookies}}]]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,infinity},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:22.648013 UTC ===
+    supervisor: {local,httpc_sup}
+    started: [{pid,<0.152.0>},
+              {id,httpc_handler_sup},
+              {mfargs,{httpc_handler_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,infinity},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:22.648114 UTC ===
+    supervisor: {local,inets_sup}
+    started: [{pid,<0.149.0>},
+              {id,httpc_sup},
+              {mfargs,{httpc_sup,start_link,
+                                 [[{httpc,{default,only_session_cookies}}]]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,infinity},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:22.648932 UTC ===
+    supervisor: {local,inets_sup}
+    started: [{pid,<0.153.0>},
+              {id,httpd_sup},
+              {mfargs,{httpd_sup,start_link,[[]]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,infinity},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:22.649043 UTC ===
+    application: inets
+    started_at: 'ct_imboy@liyideMacBook-Pro'
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:22.649412 UTC ===
+    application: jsone
+    started_at: 'ct_imboy@liyideMacBook-Pro'
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:22.650358 UTC ===
+    application: syntax_tools
+    started_at: 'ct_imboy@liyideMacBook-Pro'
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:22.650632 UTC ===
+    application: compiler
+    started_at: 'ct_imboy@liyideMacBook-Pro'
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:22.651764 UTC ===
+    supervisor: {local,gr_sup}
+    started: [{pid,<0.157.0>},
+              {id,gr_counter_sup},
+              {mfargs,{gr_counter_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,5000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:22.652688 UTC ===
+    supervisor: {local,gr_sup}
+    started: [{pid,<0.158.0>},
+              {id,gr_param_sup},
+              {mfargs,{gr_param_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,5000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:22.653020 UTC ===
+    supervisor: {local,gr_sup}
+    started: [{pid,<0.159.0>},
+              {id,gr_manager_sup},
+              {mfargs,{gr_manager_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,5000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:22.653073 UTC ===
+    application: goldrush
+    started_at: 'ct_imboy@liyideMacBook-Pro'
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:22.656119 UTC ===
+    supervisor: {local,lager_sup}
+    started: [{pid,<0.163.0>},
+              {id,lager},
+              {mfargs,{gen_event,start_link,[{local,lager_event}]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,5000},
+              {child_type,worker}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:22.656483 UTC ===
+    supervisor: {local,lager_sup}
+    started: [{pid,<0.164.0>},
+              {id,lager_handler_watcher_sup},
+              {mfargs,{lager_handler_watcher_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,5000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:22.657984 UTC ===
+    supervisor: {local,lager_sup}
+    started: [{pid,<0.165.0>},
+              {id,lager_crash_log},
+              {mfargs,
+                  {lager_crash_log,start_link,
+                      ["crash.log",65536,10485760,
+                       [{hour,0}],
+                       5,lager_rotator_default]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,5000},
+              {child_type,worker}]
+
+Starting Sync (Automatic Code Compiler / Reloader)
+[1;32m2026-10-15 03:11:22.749 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application lager started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:22.751 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application depcache started on node 'ct_imboy@liyideMacBook-Pro'
+Scanning source files...
+[1;32m2026-10-15 03:11:22.769 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application sync started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:22.820 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application mnesia started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:22.825 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application sasl started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:22.825 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application eunit started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:22.826 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application ranch started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:22.827 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application cowlib started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:22.829 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application cowboy started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:22.831 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application gun started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:22.832 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application cf started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:22.832 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application erlware_commons started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:22.875 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application jose started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:22.876 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application gen_smtp started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:22.879 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application throttle started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:22.880 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application epgsql started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:22.883 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application pooler started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:22.884 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application erlang_migrate started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:22.886 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application syn started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:22.889 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application telemetry started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:22.893 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application ecron started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:22.893 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application uid started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:22.894 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application recon started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:22.894 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application observer_cli started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:22.898 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application runtime_tools started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:22.898 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application redbug started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:22.898 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application opentelemetry_api started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:22.913 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application opentelemetry started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:22.914 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application ctx started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:22.917 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application hpack started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:22.917 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application chatterbox started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:22.918 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application acceptor_pool started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:22.919 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application ssl_verify_fun started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:22.926 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application gproc started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:22.928 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application grpcbox started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:22.962 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application tls_certificate_check started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:22.962 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application opentelemetry_exporter started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:22.963 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application simple_captcha started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:22.963 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application erlydtl started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:22.963 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application erlang_pay started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:22.964 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application hird_runtime started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:22.971 UTC [info] ct_imboy@liyideMacBook-Pro#<0.339.0> [license] valid edition=trial licensee=è¯ç¨ status=trial
+[1;32m2026-10-15 03:11:26.092 UTC [info] ct_imboy@liyideMacBook-Pro#<0.339.0> Ã©ÂÂÃ§Â¾Â¤Ã§Â®Â¡Ã§ÂÂÃ¥ÂÂÃ¥Â§ÂÃ¥ÂÂÃ¯Â¼ÂÃ¥Â½ÂÃ¥ÂÂÃ¨ÂÂÃ§ÂÂ¹: 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:26.092 UTC [info] ct_imboy@liyideMacBook-Pro#<0.339.0> æªéç½®éç¾¤èç¹ï¼ä»¥åèç¹æ¨¡å¼è¿è¡
+[1;32m2026-10-15 03:11:26.640 UTC [info] ct_imboy@liyideMacBook-Pro#<0.580.0> msg_store_ds started successfully
+[1;32m2026-10-15 03:11:26.641 UTC [info] ct_imboy@liyideMacBook-Pro#<0.581.0> msg_store_worker started successfully
+[1;32m2026-10-15 03:11:26.642 UTC [info] ct_imboy@liyideMacBook-Pro#<0.582.0> [msg_burn_logic,started,#{interval => 60000,batch_size => 500}]
+[1;32m2026-10-15 03:11:26.643 UTC [info] ct_imboy@liyideMacBook-Pro#<0.583.0> [moderation_sweep_logic,started,#{interval => 300000}]
+[1;32m2026-10-15 03:11:26.644 UTC [info] ct_imboy@liyideMacBook-Pro#<0.584.0> [user_deletion_logic,disabled]
+[1;32m2026-10-15 03:11:26.661 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application imboy started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:26.662 UTC [info] ct_imboy@liyideMacBook-Pro#<0.598.0> Application sync exited with reason: stopped
+Testing .worktrees.limiter-v1-impl.api_v1_login_SUITE: TEST COMPLETE, 6 ok, 0 failed of 6 test cases
+
+Updating /Users/leeyi/project/imboy.pub/.worktrees/limiter-v1-impl/.reports/rest/limiter-l0-20261015T111110-48871/ct/index.html ... done
+Updating /Users/leeyi/project/imboy.pub/.worktrees/limiter-v1-impl/.reports/rest/limiter-l0-20261015T111110-48871/ct/all_runs.html ... done
+
+make: Leaving directory '/Users/leeyi/project/imboy.pub/.worktrees/limiter-v1-impl'
+=== REST suite: api_v1_auth ===
+make: Entering directory '/Users/leeyi/project/imboy.pub/.worktrees/limiter-v1-impl'
+Makefile:256: warning: overriding recipe for target 'beam-cache-restore-app'
+erlang.mk:1336: warning: ignoring old recipe for target 'beam-cache-restore-app'
+Makefile:258: warning: overriding recipe for target 'beam-cache-restore-test'
+erlang.mk:1348: warning: ignoring old recipe for target 'beam-cache-restore-test'
+Makefile:256: warning: overriding recipe for target 'beam-cache-restore-app'
+erlang.mk:1336: warning: ignoring old recipe for target 'beam-cache-restore-app'
+Makefile:258: warning: overriding recipe for target 'beam-cache-restore-test'
+erlang.mk:1348: warning: ignoring old recipe for target 'beam-cache-restore-test'
+Makefile:256: warning: overriding recipe for target 'beam-cache-restore-app'
+erlang.mk:1336: warning: ignoring old recipe for target 'beam-cache-restore-app'
+Makefile:258: warning: overriding recipe for target 'beam-cache-restore-test'
+erlang.mk:1348: warning: ignoring old recipe for target 'beam-cache-restore-test'
+ GEN    test-build
+Makefile:256: warning: overriding recipe for target 'beam-cache-restore-app'
+erlang.mk:1336: warning: ignoring old recipe for target 'beam-cache-restore-app'
+Makefile:258: warning: overriding recipe for target 'beam-cache-restore-test'
+erlang.mk:1348: warning: ignoring old recipe for target 'beam-cache-restore-test'
+ GEN   
+=PROGRESS REPORT==== 15-Oct-2026::11:11:34.009063 ===
+    application: kernel
+    started_at: 'ct_imboy@liyideMacBook-Pro'
+
+=PROGRESS REPORT==== 15-Oct-2026::11:11:34.010607 ===
+    application: stdlib
+    started_at: 'ct_imboy@liyideMacBook-Pro'
+
+
+
+Common Test v1.31 starting (cwd is /Users/leeyi/project/imboy.pub/.worktrees/limiter-v1-impl)
+
+
+
+CWD set to: "/Users/leeyi/project/imboy.pub/.worktrees/limiter-v1-impl/.reports/rest/limiter-l0-20261015T111110-48871/ct/ct_run.ct_imboy@liyideMacBook-Pro.2026-10-15_11.11.34"
+
+TEST INFO: 1 test(s), 3 case(s) in 1 suite(s)
+
+Testing .worktrees.limiter-v1-impl.api_v1_auth_SUITE: Starting test, 3 test cases
+=PROGRESS REPORT==== 15-Oct-2026::03:11:34.178303 UTC ===
+    application: crypto
+    started_at: 'ct_imboy@liyideMacBook-Pro'
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:34.178712 UTC ===
+    application: asn1
+    started_at: 'ct_imboy@liyideMacBook-Pro'
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:34.179071 UTC ===
+    application: public_key
+    started_at: 'ct_imboy@liyideMacBook-Pro'
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:34.183066 UTC ===
+    supervisor: {local,ssl_admin_sup}
+    started: [{pid,<0.131.0>},
+              {id,ssl_pem_cache},
+              {mfargs,{ssl_pem_cache,start_link,[[]]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,worker}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:34.186589 UTC ===
+    supervisor: {local,ssl_admin_sup}
+    started: [{pid,<0.132.0>},
+              {id,ssl_manager},
+              {mfargs,{ssl_manager,start_link,[[]]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,worker}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:34.187150 UTC ===
+    supervisor: {local,ssl_admin_sup}
+    started: [{pid,<0.133.0>},
+              {id,tls_client_ticket_store},
+              {mfargs,{tls_client_ticket_store,start_link,[1000,7200]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,worker}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:34.187192 UTC ===
+    supervisor: {local,ssl_sup}
+    started: [{pid,<0.130.0>},
+              {id,ssl_admin_sup},
+              {mfargs,{ssl_admin_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:34.188233 UTC ===
+    supervisor: {local,tls_sup}
+    started: [{pid,<0.136.0>},
+              {id,tls_connection_sup},
+              {mfargs,{tls_connection_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:34.188823 UTC ===
+    supervisor: {local,tls_server_sup}
+    started: [{pid,<0.138.0>},
+              {id,ssl_listen_tracker_sup},
+              {mfargs,{ssl_listen_tracker_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:34.189154 UTC ===
+    supervisor: {local,tls_server_sup}
+    started: [{pid,<0.139.0>},
+              {id,tls_server_session_ticket},
+              {mfargs,{tls_server_session_ticket_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:34.189729 UTC ===
+    supervisor: {local,tls_server_sup}
+    started: [{pid,<0.140.0>},
+              {id,ssl_server_session_cache_sup},
+              {mfargs,{ssl_server_session_cache_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:34.190092 UTC ===
+    supervisor: {local,tls_server_sup}
+    started: [{pid,<0.141.0>},
+              {id,ssl_upgrade_server_session_cache_sup},
+              {mfargs,{ssl_upgrade_server_session_cache_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:34.190146 UTC ===
+    supervisor: {local,tls_sup}
+    started: [{pid,<0.137.0>},
+              {id,tls_server_sup},
+              {mfargs,{tls_server_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:34.190189 UTC ===
+    supervisor: {local,ssl_connection_sup}
+    started: [{pid,<0.135.0>},
+              {id,tls_sup},
+              {mfargs,{tls_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:34.190849 UTC ===
+    supervisor: {local,dtls_sup}
+    started: [{pid,<0.143.0>},
+              {id,dtls_connection_sup},
+              {mfargs,{dtls_connection_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:34.191530 UTC ===
+    supervisor: {local,dtls_server_sup}
+    started: [{pid,<0.145.0>},
+              {id,dtls_listener_sup},
+              {mfargs,{dtls_listener_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:34.191854 UTC ===
+    supervisor: {local,dtls_server_sup}
+    started: [{pid,<0.146.0>},
+              {id,dtls_server_session_cache_sup},
+              {mfargs,{dtls_server_session_cache_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:34.191902 UTC ===
+    supervisor: {local,dtls_sup}
+    started: [{pid,<0.144.0>},
+              {id,dtls_server_sup},
+              {mfargs,{dtls_server_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:34.191935 UTC ===
+    supervisor: {local,ssl_connection_sup}
+    started: [{pid,<0.142.0>},
+              {id,dtls_sup},
+              {mfargs,{dtls_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:34.191964 UTC ===
+    supervisor: {local,ssl_sup}
+    started: [{pid,<0.134.0>},
+              {id,ssl_connection_sup},
+              {mfargs,{ssl_connection_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:34.192024 UTC ===
+    application: ssl
+    started_at: 'ct_imboy@liyideMacBook-Pro'
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:34.197006 UTC ===
+    supervisor: {local,httpc_profile_sup}
+    started: [{pid,<0.152.0>},
+              {id,httpc_manager},
+              {mfargs,{httpc_manager,start_link,
+                                     [default,only_session_cookies,inets]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,worker}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:34.197045 UTC ===
+    supervisor: {local,httpc_sup}
+    started: [{pid,<0.151.0>},
+              {id,httpc_profile_sup},
+              {mfargs,
+                  {httpc_profile_sup,start_link,
+                      [[{httpc,{default,only_session_cookies}}]]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,infinity},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:34.197426 UTC ===
+    supervisor: {local,httpc_sup}
+    started: [{pid,<0.153.0>},
+              {id,httpc_handler_sup},
+              {mfargs,{httpc_handler_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,infinity},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:34.197463 UTC ===
+    supervisor: {local,inets_sup}
+    started: [{pid,<0.150.0>},
+              {id,httpc_sup},
+              {mfargs,{httpc_sup,start_link,
+                                 [[{httpc,{default,only_session_cookies}}]]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,infinity},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:34.197962 UTC ===
+    supervisor: {local,inets_sup}
+    started: [{pid,<0.154.0>},
+              {id,httpd_sup},
+              {mfargs,{httpd_sup,start_link,[[]]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,infinity},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:34.198001 UTC ===
+    application: inets
+    started_at: 'ct_imboy@liyideMacBook-Pro'
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:34.198276 UTC ===
+    application: jsone
+    started_at: 'ct_imboy@liyideMacBook-Pro'
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:34.198879 UTC ===
+    application: syntax_tools
+    started_at: 'ct_imboy@liyideMacBook-Pro'
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:34.199146 UTC ===
+    application: compiler
+    started_at: 'ct_imboy@liyideMacBook-Pro'
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:34.200263 UTC ===
+    supervisor: {local,gr_sup}
+    started: [{pid,<0.158.0>},
+              {id,gr_counter_sup},
+              {mfargs,{gr_counter_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,5000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:34.200533 UTC ===
+    supervisor: {local,gr_sup}
+    started: [{pid,<0.159.0>},
+              {id,gr_param_sup},
+              {mfargs,{gr_param_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,5000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:34.200891 UTC ===
+    supervisor: {local,gr_sup}
+    started: [{pid,<0.160.0>},
+              {id,gr_manager_sup},
+              {mfargs,{gr_manager_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,5000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:34.200927 UTC ===
+    application: goldrush
+    started_at: 'ct_imboy@liyideMacBook-Pro'
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:34.203234 UTC ===
+    supervisor: {local,lager_sup}
+    started: [{pid,<0.164.0>},
+              {id,lager},
+              {mfargs,{gen_event,start_link,[{local,lager_event}]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,5000},
+              {child_type,worker}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:34.203560 UTC ===
+    supervisor: {local,lager_sup}
+    started: [{pid,<0.165.0>},
+              {id,lager_handler_watcher_sup},
+              {mfargs,{lager_handler_watcher_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,5000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:34.204717 UTC ===
+    supervisor: {local,lager_sup}
+    started: [{pid,<0.166.0>},
+              {id,lager_crash_log},
+              {mfargs,
+                  {lager_crash_log,start_link,
+                      ["crash.log",65536,10485760,
+                       [{hour,0}],
+                       5,lager_rotator_default]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,5000},
+              {child_type,worker}]
+
+Starting Sync (Automatic Code Compiler / Reloader)
+Scanning source files...
+[1;32m2026-10-15 03:11:34.270 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application lager started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:34.272 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application depcache started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:34.282 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application sync started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:34.329 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application mnesia started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:34.332 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application sasl started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:34.332 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application eunit started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:34.333 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application ranch started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:34.334 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application cowlib started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:34.335 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application cowboy started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:34.337 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application gun started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:34.337 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application cf started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:34.338 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application erlware_commons started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:34.374 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application jose started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:34.374 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application gen_smtp started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:34.376 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application throttle started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:34.377 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application epgsql started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:34.380 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application pooler started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:34.380 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application erlang_migrate started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:34.382 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application syn started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:34.383 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application telemetry started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:34.388 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application ecron started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:34.388 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application uid started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:34.388 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application recon started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:34.388 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application observer_cli started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:34.391 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application runtime_tools started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:34.391 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application redbug started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:34.392 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application opentelemetry_api started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:34.407 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application opentelemetry started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:34.407 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application ctx started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:34.410 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application hpack started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:34.410 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application chatterbox started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:34.411 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application acceptor_pool started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:34.411 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application ssl_verify_fun started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:34.418 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application gproc started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:34.420 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application grpcbox started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:34.447 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application tls_certificate_check started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:34.447 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application opentelemetry_exporter started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:34.448 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application simple_captcha started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:34.448 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application erlydtl started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:34.448 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application erlang_pay started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:34.448 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application hird_runtime started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:34.454 UTC [info] ct_imboy@liyideMacBook-Pro#<0.340.0> [license] valid edition=trial licensee=è¯ç¨ status=trial
+[1;32m2026-10-15 03:11:34.510 UTC [info] ct_imboy@liyideMacBook-Pro#<0.340.0> Ã©ÂÂÃ§Â¾Â¤Ã§Â®Â¡Ã§ÂÂÃ¥ÂÂÃ¥Â§ÂÃ¥ÂÂÃ¯Â¼ÂÃ¥Â½ÂÃ¥ÂÂÃ¨ÂÂÃ§ÂÂ¹: 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:34.510 UTC [info] ct_imboy@liyideMacBook-Pro#<0.340.0> æªéç½®éç¾¤èç¹ï¼ä»¥åèç¹æ¨¡å¼è¿è¡
+[1;32m2026-10-15 03:11:34.996 UTC [info] ct_imboy@liyideMacBook-Pro#<0.550.0> msg_store_ds started successfully
+[1;32m2026-10-15 03:11:34.997 UTC [info] ct_imboy@liyideMacBook-Pro#<0.552.0> msg_store_worker started successfully
+[1;32m2026-10-15 03:11:34.997 UTC [info] ct_imboy@liyideMacBook-Pro#<0.553.0> [msg_burn_logic,started,#{interval => 60000,batch_size => 500}]
+[1;32m2026-10-15 03:11:34.998 UTC [info] ct_imboy@liyideMacBook-Pro#<0.554.0> [moderation_sweep_logic,started,#{interval => 300000}]
+[1;32m2026-10-15 03:11:34.998 UTC [info] ct_imboy@liyideMacBook-Pro#<0.555.0> [user_deletion_logic,disabled]
+[1;32m2026-10-15 03:11:35.009 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application imboy started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:35.009 UTC [info] ct_imboy@liyideMacBook-Pro#<0.568.0> Application sync exited with reason: stopped
+[1;31m2026-10-15 03:11:35.138 UTC [error] ct_imboy@liyideMacBook-Pro#<0.591.0> Token decrypt failed: error:function_clause
+Stacktrace: [{imboy_jwt,verify,
+                        [undefined,<<"rPWaWDXmXwmNBCes8Dm94RhFBkwZFtnX">>,#{}],
+                        [{file,"src/lib/imboy_jwt.erl"},{line,70}]},
+             {token_ds,decrypt_token,1,
+                       [{file,"src/ds/token_ds.erl"},{line,64}]},
+             {passport_handler,refreshtoken,1,
+                               [{file,"src/api/passport_handler.erl"},
+                                {line,310}]},
+             {passport_handler,init,2,
+                               [{file,"src/api/passport_handler.erl"},
+                                {line,53}]},
+             {cowboy_handler,execute,2,
+                             [{file,"src/cowboy_handler.erl"},{line,37}]},
+             {cowboy_stream_h,execute,3,
+                              [{file,"src/cowboy_stream_h.erl"},{line,311}]},
+             {cowboy_stream_h,request_process,3,
+                              [{file,"src/cowboy_stream_h.erl"},{line,300}]},
+             {proc_lib,init_p_do_apply,3,[{file,"proc_lib.erl"},{line,333}]}]
+Testing .worktrees.limiter-v1-impl.api_v1_auth_SUITE: TEST COMPLETE, 3 ok, 0 failed of 3 test cases
+
+Updating /Users/leeyi/project/imboy.pub/.worktrees/limiter-v1-impl/.reports/rest/limiter-l0-20261015T111110-48871/ct/index.html ... done
+Updating /Users/leeyi/project/imboy.pub/.worktrees/limiter-v1-impl/.reports/rest/limiter-l0-20261015T111110-48871/ct/all_runs.html ... done
+
+make: Leaving directory '/Users/leeyi/project/imboy.pub/.worktrees/limiter-v1-impl'
+=== REST suite: api_v1_user ===
+make: Entering directory '/Users/leeyi/project/imboy.pub/.worktrees/limiter-v1-impl'
+Makefile:256: warning: overriding recipe for target 'beam-cache-restore-app'
+erlang.mk:1336: warning: ignoring old recipe for target 'beam-cache-restore-app'
+Makefile:258: warning: overriding recipe for target 'beam-cache-restore-test'
+erlang.mk:1348: warning: ignoring old recipe for target 'beam-cache-restore-test'
+Makefile:256: warning: overriding recipe for target 'beam-cache-restore-app'
+erlang.mk:1336: warning: ignoring old recipe for target 'beam-cache-restore-app'
+Makefile:258: warning: overriding recipe for target 'beam-cache-restore-test'
+erlang.mk:1348: warning: ignoring old recipe for target 'beam-cache-restore-test'
+Makefile:256: warning: overriding recipe for target 'beam-cache-restore-app'
+erlang.mk:1336: warning: ignoring old recipe for target 'beam-cache-restore-app'
+Makefile:258: warning: overriding recipe for target 'beam-cache-restore-test'
+erlang.mk:1348: warning: ignoring old recipe for target 'beam-cache-restore-test'
+ GEN    test-build
+Makefile:256: warning: overriding recipe for target 'beam-cache-restore-app'
+erlang.mk:1336: warning: ignoring old recipe for target 'beam-cache-restore-app'
+Makefile:258: warning: overriding recipe for target 'beam-cache-restore-test'
+erlang.mk:1348: warning: ignoring old recipe for target 'beam-cache-restore-test'
+ GEN   
+=PROGRESS REPORT==== 15-Oct-2026::11:11:41.407884 ===
+    application: kernel
+    started_at: 'ct_imboy@liyideMacBook-Pro'
+
+=PROGRESS REPORT==== 15-Oct-2026::11:11:41.409359 ===
+    application: stdlib
+    started_at: 'ct_imboy@liyideMacBook-Pro'
+
+
+
+Common Test v1.31 starting (cwd is /Users/leeyi/project/imboy.pub/.worktrees/limiter-v1-impl)
+
+
+
+CWD set to: "/Users/leeyi/project/imboy.pub/.worktrees/limiter-v1-impl/.reports/rest/limiter-l0-20261015T111110-48871/ct/ct_run.ct_imboy@liyideMacBook-Pro.2026-10-15_11.11.41"
+
+TEST INFO: 1 test(s), 6 case(s) in 1 suite(s)
+
+Testing .worktrees.limiter-v1-impl.api_v1_user_SUITE: Starting test, 6 test cases
+=PROGRESS REPORT==== 15-Oct-2026::03:11:41.575993 UTC ===
+    application: crypto
+    started_at: 'ct_imboy@liyideMacBook-Pro'
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:41.576227 UTC ===
+    application: asn1
+    started_at: 'ct_imboy@liyideMacBook-Pro'
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:41.576416 UTC ===
+    application: public_key
+    started_at: 'ct_imboy@liyideMacBook-Pro'
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:41.579784 UTC ===
+    supervisor: {local,ssl_admin_sup}
+    started: [{pid,<0.131.0>},
+              {id,ssl_pem_cache},
+              {mfargs,{ssl_pem_cache,start_link,[[]]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,worker}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:41.583111 UTC ===
+    supervisor: {local,ssl_admin_sup}
+    started: [{pid,<0.132.0>},
+              {id,ssl_manager},
+              {mfargs,{ssl_manager,start_link,[[]]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,worker}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:41.583807 UTC ===
+    supervisor: {local,ssl_admin_sup}
+    started: [{pid,<0.133.0>},
+              {id,tls_client_ticket_store},
+              {mfargs,{tls_client_ticket_store,start_link,[1000,7200]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,worker}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:41.583865 UTC ===
+    supervisor: {local,ssl_sup}
+    started: [{pid,<0.130.0>},
+              {id,ssl_admin_sup},
+              {mfargs,{ssl_admin_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:41.584821 UTC ===
+    supervisor: {local,tls_sup}
+    started: [{pid,<0.136.0>},
+              {id,tls_connection_sup},
+              {mfargs,{tls_connection_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:41.585541 UTC ===
+    supervisor: {local,tls_server_sup}
+    started: [{pid,<0.138.0>},
+              {id,ssl_listen_tracker_sup},
+              {mfargs,{ssl_listen_tracker_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:41.585775 UTC ===
+    supervisor: {local,tls_server_sup}
+    started: [{pid,<0.139.0>},
+              {id,tls_server_session_ticket},
+              {mfargs,{tls_server_session_ticket_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:41.586201 UTC ===
+    supervisor: {local,tls_server_sup}
+    started: [{pid,<0.140.0>},
+              {id,ssl_server_session_cache_sup},
+              {mfargs,{ssl_server_session_cache_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:41.586496 UTC ===
+    supervisor: {local,tls_server_sup}
+    started: [{pid,<0.141.0>},
+              {id,ssl_upgrade_server_session_cache_sup},
+              {mfargs,{ssl_upgrade_server_session_cache_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:41.586557 UTC ===
+    supervisor: {local,tls_sup}
+    started: [{pid,<0.137.0>},
+              {id,tls_server_sup},
+              {mfargs,{tls_server_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:41.586605 UTC ===
+    supervisor: {local,ssl_connection_sup}
+    started: [{pid,<0.135.0>},
+              {id,tls_sup},
+              {mfargs,{tls_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:41.587084 UTC ===
+    supervisor: {local,dtls_sup}
+    started: [{pid,<0.143.0>},
+              {id,dtls_connection_sup},
+              {mfargs,{dtls_connection_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:41.587754 UTC ===
+    supervisor: {local,dtls_server_sup}
+    started: [{pid,<0.145.0>},
+              {id,dtls_listener_sup},
+              {mfargs,{dtls_listener_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:41.588039 UTC ===
+    supervisor: {local,dtls_server_sup}
+    started: [{pid,<0.146.0>},
+              {id,dtls_server_session_cache_sup},
+              {mfargs,{dtls_server_session_cache_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:41.588073 UTC ===
+    supervisor: {local,dtls_sup}
+    started: [{pid,<0.144.0>},
+              {id,dtls_server_sup},
+              {mfargs,{dtls_server_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:41.588104 UTC ===
+    supervisor: {local,ssl_connection_sup}
+    started: [{pid,<0.142.0>},
+              {id,dtls_sup},
+              {mfargs,{dtls_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:41.588133 UTC ===
+    supervisor: {local,ssl_sup}
+    started: [{pid,<0.134.0>},
+              {id,ssl_connection_sup},
+              {mfargs,{ssl_connection_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:41.588183 UTC ===
+    application: ssl
+    started_at: 'ct_imboy@liyideMacBook-Pro'
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:41.592198 UTC ===
+    supervisor: {local,httpc_profile_sup}
+    started: [{pid,<0.152.0>},
+              {id,httpc_manager},
+              {mfargs,{httpc_manager,start_link,
+                                     [default,only_session_cookies,inets]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,worker}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:41.592251 UTC ===
+    supervisor: {local,httpc_sup}
+    started: [{pid,<0.151.0>},
+              {id,httpc_profile_sup},
+              {mfargs,
+                  {httpc_profile_sup,start_link,
+                      [[{httpc,{default,only_session_cookies}}]]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,infinity},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:41.592479 UTC ===
+    supervisor: {local,httpc_sup}
+    started: [{pid,<0.153.0>},
+              {id,httpc_handler_sup},
+              {mfargs,{httpc_handler_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,infinity},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:41.592515 UTC ===
+    supervisor: {local,inets_sup}
+    started: [{pid,<0.150.0>},
+              {id,httpc_sup},
+              {mfargs,{httpc_sup,start_link,
+                                 [[{httpc,{default,only_session_cookies}}]]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,infinity},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:41.592846 UTC ===
+    supervisor: {local,inets_sup}
+    started: [{pid,<0.154.0>},
+              {id,httpd_sup},
+              {mfargs,{httpd_sup,start_link,[[]]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,infinity},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:41.592886 UTC ===
+    application: inets
+    started_at: 'ct_imboy@liyideMacBook-Pro'
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:41.593056 UTC ===
+    application: jsone
+    started_at: 'ct_imboy@liyideMacBook-Pro'
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:41.593594 UTC ===
+    application: syntax_tools
+    started_at: 'ct_imboy@liyideMacBook-Pro'
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:41.593737 UTC ===
+    application: compiler
+    started_at: 'ct_imboy@liyideMacBook-Pro'
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:41.594274 UTC ===
+    supervisor: {local,gr_sup}
+    started: [{pid,<0.158.0>},
+              {id,gr_counter_sup},
+              {mfargs,{gr_counter_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,5000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:41.594607 UTC ===
+    supervisor: {local,gr_sup}
+    started: [{pid,<0.159.0>},
+              {id,gr_param_sup},
+              {mfargs,{gr_param_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,5000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:41.595093 UTC ===
+    supervisor: {local,gr_sup}
+    started: [{pid,<0.160.0>},
+              {id,gr_manager_sup},
+              {mfargs,{gr_manager_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,5000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:41.595224 UTC ===
+    application: goldrush
+    started_at: 'ct_imboy@liyideMacBook-Pro'
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:41.597100 UTC ===
+    supervisor: {local,lager_sup}
+    started: [{pid,<0.164.0>},
+              {id,lager},
+              {mfargs,{gen_event,start_link,[{local,lager_event}]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,5000},
+              {child_type,worker}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:41.597318 UTC ===
+    supervisor: {local,lager_sup}
+    started: [{pid,<0.165.0>},
+              {id,lager_handler_watcher_sup},
+              {mfargs,{lager_handler_watcher_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,5000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:41.598460 UTC ===
+    supervisor: {local,lager_sup}
+    started: [{pid,<0.166.0>},
+              {id,lager_crash_log},
+              {mfargs,
+                  {lager_crash_log,start_link,
+                      ["crash.log",65536,10485760,
+                       [{hour,0}],
+                       5,lager_rotator_default]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,5000},
+              {child_type,worker}]
+
+Starting Sync (Automatic Code Compiler / Reloader)
+Scanning source files...
+[1;32m2026-10-15 03:11:41.668 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application lager started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:41.669 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application depcache started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:41.678 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application sync started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:41.721 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application mnesia started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:41.724 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application sasl started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:41.724 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application eunit started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:41.724 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application ranch started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:41.725 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application cowlib started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:41.726 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application cowboy started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:41.727 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application gun started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:41.727 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application cf started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:41.727 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application erlware_commons started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:41.759 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application jose started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:41.759 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application gen_smtp started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:41.761 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application throttle started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:41.762 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application epgsql started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:41.763 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application pooler started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:41.764 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application erlang_migrate started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:41.765 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application syn started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:41.767 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application telemetry started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:41.770 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application ecron started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:41.770 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application uid started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:41.771 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application recon started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:41.771 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application observer_cli started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:41.773 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application runtime_tools started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:41.773 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application redbug started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:41.773 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application opentelemetry_api started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:41.786 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application ssl_verify_fun started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:41.787 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application opentelemetry started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:41.787 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application ctx started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:41.788 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application hpack started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:41.788 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application chatterbox started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:41.788 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application acceptor_pool started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:41.793 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application gproc started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:41.795 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application grpcbox started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:41.816 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application tls_certificate_check started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:41.816 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application opentelemetry_exporter started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:41.816 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application simple_captcha started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:41.816 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application erlydtl started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:41.816 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application erlang_pay started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:41.816 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application hird_runtime started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:41.821 UTC [info] ct_imboy@liyideMacBook-Pro#<0.340.0> [license] valid edition=trial licensee=è¯ç¨ status=trial
+[1;32m2026-10-15 03:11:41.887 UTC [info] ct_imboy@liyideMacBook-Pro#<0.340.0> Ã©ÂÂÃ§Â¾Â¤Ã§Â®Â¡Ã§ÂÂÃ¥ÂÂÃ¥Â§ÂÃ¥ÂÂÃ¯Â¼ÂÃ¥Â½ÂÃ¥ÂÂÃ¨ÂÂÃ§ÂÂ¹: 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:41.887 UTC [info] ct_imboy@liyideMacBook-Pro#<0.340.0> æªéç½®éç¾¤èç¹ï¼ä»¥åèç¹æ¨¡å¼è¿è¡
+[1;32m2026-10-15 03:11:42.366 UTC [info] ct_imboy@liyideMacBook-Pro#<0.550.0> msg_store_ds started successfully
+[1;32m2026-10-15 03:11:42.366 UTC [info] ct_imboy@liyideMacBook-Pro#<0.551.0> msg_store_worker started successfully
+[1;32m2026-10-15 03:11:42.367 UTC [info] ct_imboy@liyideMacBook-Pro#<0.552.0> [msg_burn_logic,started,#{interval => 60000,batch_size => 500}]
+[1;32m2026-10-15 03:11:42.367 UTC [info] ct_imboy@liyideMacBook-Pro#<0.553.0> [moderation_sweep_logic,started,#{interval => 300000}]
+[1;32m2026-10-15 03:11:42.368 UTC [info] ct_imboy@liyideMacBook-Pro#<0.554.0> [user_deletion_logic,disabled]
+[1;32m2026-10-15 03:11:42.378 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application imboy started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:42.379 UTC [info] ct_imboy@liyideMacBook-Pro#<0.567.0> Application sync exited with reason: stopped
+Testing .worktrees.limiter-v1-impl.api_v1_user_SUITE: TEST COMPLETE, 6 ok, 0 failed of 6 test cases
+
+Updating /Users/leeyi/project/imboy.pub/.worktrees/limiter-v1-impl/.reports/rest/limiter-l0-20261015T111110-48871/ct/index.html ... done
+Updating /Users/leeyi/project/imboy.pub/.worktrees/limiter-v1-impl/.reports/rest/limiter-l0-20261015T111110-48871/ct/all_runs.html ... done
+
+make: Leaving directory '/Users/leeyi/project/imboy.pub/.worktrees/limiter-v1-impl'
+=== REST suite: api_v1_friend ===
+make: Entering directory '/Users/leeyi/project/imboy.pub/.worktrees/limiter-v1-impl'
+Makefile:256: warning: overriding recipe for target 'beam-cache-restore-app'
+erlang.mk:1336: warning: ignoring old recipe for target 'beam-cache-restore-app'
+Makefile:258: warning: overriding recipe for target 'beam-cache-restore-test'
+erlang.mk:1348: warning: ignoring old recipe for target 'beam-cache-restore-test'
+Makefile:256: warning: overriding recipe for target 'beam-cache-restore-app'
+erlang.mk:1336: warning: ignoring old recipe for target 'beam-cache-restore-app'
+Makefile:258: warning: overriding recipe for target 'beam-cache-restore-test'
+erlang.mk:1348: warning: ignoring old recipe for target 'beam-cache-restore-test'
+Makefile:256: warning: overriding recipe for target 'beam-cache-restore-app'
+erlang.mk:1336: warning: ignoring old recipe for target 'beam-cache-restore-app'
+Makefile:258: warning: overriding recipe for target 'beam-cache-restore-test'
+erlang.mk:1348: warning: ignoring old recipe for target 'beam-cache-restore-test'
+ GEN    test-build
+Makefile:256: warning: overriding recipe for target 'beam-cache-restore-app'
+erlang.mk:1336: warning: ignoring old recipe for target 'beam-cache-restore-app'
+Makefile:258: warning: overriding recipe for target 'beam-cache-restore-test'
+erlang.mk:1348: warning: ignoring old recipe for target 'beam-cache-restore-test'
+ GEN   
+=PROGRESS REPORT==== 15-Oct-2026::11:11:49.197230 ===
+    application: kernel
+    started_at: 'ct_imboy@liyideMacBook-Pro'
+
+=PROGRESS REPORT==== 15-Oct-2026::11:11:49.198895 ===
+    application: stdlib
+    started_at: 'ct_imboy@liyideMacBook-Pro'
+
+
+
+Common Test v1.31 starting (cwd is /Users/leeyi/project/imboy.pub/.worktrees/limiter-v1-impl)
+
+
+
+CWD set to: "/Users/leeyi/project/imboy.pub/.worktrees/limiter-v1-impl/.reports/rest/limiter-l0-20261015T111110-48871/ct/ct_run.ct_imboy@liyideMacBook-Pro.2026-10-15_11.11.49"
+
+TEST INFO: 1 test(s), 7 case(s) in 1 suite(s)
+
+Testing .worktrees.limiter-v1-impl.api_v1_friend_SUITE: Starting test, 7 test cases
+=PROGRESS REPORT==== 15-Oct-2026::03:11:49.376318 UTC ===
+    application: crypto
+    started_at: 'ct_imboy@liyideMacBook-Pro'
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:49.376536 UTC ===
+    application: asn1
+    started_at: 'ct_imboy@liyideMacBook-Pro'
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:49.376708 UTC ===
+    application: public_key
+    started_at: 'ct_imboy@liyideMacBook-Pro'
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:49.379540 UTC ===
+    supervisor: {local,ssl_admin_sup}
+    started: [{pid,<0.131.0>},
+              {id,ssl_pem_cache},
+              {mfargs,{ssl_pem_cache,start_link,[[]]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,worker}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:49.382613 UTC ===
+    supervisor: {local,ssl_admin_sup}
+    started: [{pid,<0.132.0>},
+              {id,ssl_manager},
+              {mfargs,{ssl_manager,start_link,[[]]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,worker}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:49.383134 UTC ===
+    supervisor: {local,ssl_admin_sup}
+    started: [{pid,<0.133.0>},
+              {id,tls_client_ticket_store},
+              {mfargs,{tls_client_ticket_store,start_link,[1000,7200]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,worker}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:49.383177 UTC ===
+    supervisor: {local,ssl_sup}
+    started: [{pid,<0.130.0>},
+              {id,ssl_admin_sup},
+              {mfargs,{ssl_admin_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:49.384038 UTC ===
+    supervisor: {local,tls_sup}
+    started: [{pid,<0.136.0>},
+              {id,tls_connection_sup},
+              {mfargs,{tls_connection_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:49.384664 UTC ===
+    supervisor: {local,tls_server_sup}
+    started: [{pid,<0.138.0>},
+              {id,ssl_listen_tracker_sup},
+              {mfargs,{ssl_listen_tracker_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:49.385192 UTC ===
+    supervisor: {local,tls_server_sup}
+    started: [{pid,<0.139.0>},
+              {id,tls_server_session_ticket},
+              {mfargs,{tls_server_session_ticket_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:49.385504 UTC ===
+    supervisor: {local,tls_server_sup}
+    started: [{pid,<0.140.0>},
+              {id,ssl_server_session_cache_sup},
+              {mfargs,{ssl_server_session_cache_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:49.385787 UTC ===
+    supervisor: {local,tls_server_sup}
+    started: [{pid,<0.141.0>},
+              {id,ssl_upgrade_server_session_cache_sup},
+              {mfargs,{ssl_upgrade_server_session_cache_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:49.385831 UTC ===
+    supervisor: {local,tls_sup}
+    started: [{pid,<0.137.0>},
+              {id,tls_server_sup},
+              {mfargs,{tls_server_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:49.385898 UTC ===
+    supervisor: {local,ssl_connection_sup}
+    started: [{pid,<0.135.0>},
+              {id,tls_sup},
+              {mfargs,{tls_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:49.386556 UTC ===
+    supervisor: {local,dtls_sup}
+    started: [{pid,<0.143.0>},
+              {id,dtls_connection_sup},
+              {mfargs,{dtls_connection_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:49.387214 UTC ===
+    supervisor: {local,dtls_server_sup}
+    started: [{pid,<0.145.0>},
+              {id,dtls_listener_sup},
+              {mfargs,{dtls_listener_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:49.387605 UTC ===
+    supervisor: {local,dtls_server_sup}
+    started: [{pid,<0.146.0>},
+              {id,dtls_server_session_cache_sup},
+              {mfargs,{dtls_server_session_cache_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:49.387645 UTC ===
+    supervisor: {local,dtls_sup}
+    started: [{pid,<0.144.0>},
+              {id,dtls_server_sup},
+              {mfargs,{dtls_server_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:49.387677 UTC ===
+    supervisor: {local,ssl_connection_sup}
+    started: [{pid,<0.142.0>},
+              {id,dtls_sup},
+              {mfargs,{dtls_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:49.387708 UTC ===
+    supervisor: {local,ssl_sup}
+    started: [{pid,<0.134.0>},
+              {id,ssl_connection_sup},
+              {mfargs,{ssl_connection_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:49.387742 UTC ===
+    application: ssl
+    started_at: 'ct_imboy@liyideMacBook-Pro'
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:49.391947 UTC ===
+    supervisor: {local,httpc_profile_sup}
+    started: [{pid,<0.152.0>},
+              {id,httpc_manager},
+              {mfargs,{httpc_manager,start_link,
+                                     [default,only_session_cookies,inets]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,worker}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:49.392001 UTC ===
+    supervisor: {local,httpc_sup}
+    started: [{pid,<0.151.0>},
+              {id,httpc_profile_sup},
+              {mfargs,
+                  {httpc_profile_sup,start_link,
+                      [[{httpc,{default,only_session_cookies}}]]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,infinity},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:49.392324 UTC ===
+    supervisor: {local,httpc_sup}
+    started: [{pid,<0.153.0>},
+              {id,httpc_handler_sup},
+              {mfargs,{httpc_handler_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,infinity},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:49.392360 UTC ===
+    supervisor: {local,inets_sup}
+    started: [{pid,<0.150.0>},
+              {id,httpc_sup},
+              {mfargs,{httpc_sup,start_link,
+                                 [[{httpc,{default,only_session_cookies}}]]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,infinity},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:49.392765 UTC ===
+    supervisor: {local,inets_sup}
+    started: [{pid,<0.154.0>},
+              {id,httpd_sup},
+              {mfargs,{httpd_sup,start_link,[[]]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,infinity},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:49.392803 UTC ===
+    application: inets
+    started_at: 'ct_imboy@liyideMacBook-Pro'
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:49.393074 UTC ===
+    application: jsone
+    started_at: 'ct_imboy@liyideMacBook-Pro'
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:49.393631 UTC ===
+    application: syntax_tools
+    started_at: 'ct_imboy@liyideMacBook-Pro'
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:49.393804 UTC ===
+    application: compiler
+    started_at: 'ct_imboy@liyideMacBook-Pro'
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:49.394531 UTC ===
+    supervisor: {local,gr_sup}
+    started: [{pid,<0.158.0>},
+              {id,gr_counter_sup},
+              {mfargs,{gr_counter_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,5000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:49.394896 UTC ===
+    supervisor: {local,gr_sup}
+    started: [{pid,<0.159.0>},
+              {id,gr_param_sup},
+              {mfargs,{gr_param_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,5000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:49.395167 UTC ===
+    supervisor: {local,gr_sup}
+    started: [{pid,<0.160.0>},
+              {id,gr_manager_sup},
+              {mfargs,{gr_manager_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,5000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:49.395203 UTC ===
+    application: goldrush
+    started_at: 'ct_imboy@liyideMacBook-Pro'
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:49.397190 UTC ===
+    supervisor: {local,lager_sup}
+    started: [{pid,<0.164.0>},
+              {id,lager},
+              {mfargs,{gen_event,start_link,[{local,lager_event}]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,5000},
+              {child_type,worker}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:49.397491 UTC ===
+    supervisor: {local,lager_sup}
+    started: [{pid,<0.165.0>},
+              {id,lager_handler_watcher_sup},
+              {mfargs,{lager_handler_watcher_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,5000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:49.398341 UTC ===
+    supervisor: {local,lager_sup}
+    started: [{pid,<0.166.0>},
+              {id,lager_crash_log},
+              {mfargs,
+                  {lager_crash_log,start_link,
+                      ["crash.log",65536,10485760,
+                       [{hour,0}],
+                       5,lager_rotator_default]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,5000},
+              {child_type,worker}]
+
+Starting Sync (Automatic Code Compiler / Reloader)
+Scanning source files...
+[1;32m2026-10-15 03:11:49.463 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application lager started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:49.465 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application depcache started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:49.474 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application sync started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:49.517 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application mnesia started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:49.520 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application sasl started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:49.520 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application eunit started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:49.521 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application ranch started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:49.521 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application cowlib started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:49.522 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application cowboy started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:49.523 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application gun started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:49.523 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application cf started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:49.523 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application erlware_commons started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:49.569 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application jose started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:49.570 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application gen_smtp started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:49.576 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application throttle started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:49.576 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application epgsql started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:49.580 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application pooler started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:49.580 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application erlang_migrate started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:49.582 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application syn started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:49.583 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application telemetry started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:49.591 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application ecron started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:49.591 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application uid started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:49.591 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application recon started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:49.591 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application observer_cli started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:49.597 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application runtime_tools started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:49.597 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application redbug started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:49.597 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application opentelemetry_api started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:49.614 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application opentelemetry started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:49.615 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application ctx started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:49.616 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application hpack started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:49.616 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application chatterbox started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:49.618 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application acceptor_pool started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:49.620 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application ssl_verify_fun started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:49.628 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application gproc started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:49.629 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application grpcbox started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:49.655 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application tls_certificate_check started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:49.655 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application opentelemetry_exporter started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:49.655 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application simple_captcha started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:49.656 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application erlydtl started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:49.656 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application erlang_pay started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:49.656 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application hird_runtime started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:49.661 UTC [info] ct_imboy@liyideMacBook-Pro#<0.340.0> [license] valid edition=trial licensee=è¯ç¨ status=trial
+[1;32m2026-10-15 03:11:49.728 UTC [info] ct_imboy@liyideMacBook-Pro#<0.340.0> Ã©ÂÂÃ§Â¾Â¤Ã§Â®Â¡Ã§ÂÂÃ¥ÂÂÃ¥Â§ÂÃ¥ÂÂÃ¯Â¼ÂÃ¥Â½ÂÃ¥ÂÂÃ¨ÂÂÃ§ÂÂ¹: 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:49.728 UTC [info] ct_imboy@liyideMacBook-Pro#<0.340.0> æªéç½®éç¾¤èç¹ï¼ä»¥åèç¹æ¨¡å¼è¿è¡
+[1;32m2026-10-15 03:11:50.198 UTC [info] ct_imboy@liyideMacBook-Pro#<0.551.0> msg_store_ds started successfully
+[1;32m2026-10-15 03:11:50.198 UTC [info] ct_imboy@liyideMacBook-Pro#<0.552.0> msg_store_worker started successfully
+[1;32m2026-10-15 03:11:50.199 UTC [info] ct_imboy@liyideMacBook-Pro#<0.553.0> [msg_burn_logic,started,#{interval => 60000,batch_size => 500}]
+[1;32m2026-10-15 03:11:50.199 UTC [info] ct_imboy@liyideMacBook-Pro#<0.554.0> [moderation_sweep_logic,started,#{interval => 300000}]
+[1;32m2026-10-15 03:11:50.199 UTC [info] ct_imboy@liyideMacBook-Pro#<0.555.0> [user_deletion_logic,disabled]
+[1;32m2026-10-15 03:11:50.209 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application imboy started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:50.210 UTC [info] ct_imboy@liyideMacBook-Pro#<0.568.0> Application sync exited with reason: stopped
+Testing .worktrees.limiter-v1-impl.api_v1_friend_SUITE: TEST COMPLETE, 7 ok, 0 failed of 7 test cases
+
+Updating /Users/leeyi/project/imboy.pub/.worktrees/limiter-v1-impl/.reports/rest/limiter-l0-20261015T111110-48871/ct/index.html ... done
+Updating /Users/leeyi/project/imboy.pub/.worktrees/limiter-v1-impl/.reports/rest/limiter-l0-20261015T111110-48871/ct/all_runs.html ... done
+
+make: Leaving directory '/Users/leeyi/project/imboy.pub/.worktrees/limiter-v1-impl'
+=== REST suite: api_v1_group ===
+make: Entering directory '/Users/leeyi/project/imboy.pub/.worktrees/limiter-v1-impl'
+Makefile:256: warning: overriding recipe for target 'beam-cache-restore-app'
+erlang.mk:1336: warning: ignoring old recipe for target 'beam-cache-restore-app'
+Makefile:258: warning: overriding recipe for target 'beam-cache-restore-test'
+erlang.mk:1348: warning: ignoring old recipe for target 'beam-cache-restore-test'
+Makefile:256: warning: overriding recipe for target 'beam-cache-restore-app'
+erlang.mk:1336: warning: ignoring old recipe for target 'beam-cache-restore-app'
+Makefile:258: warning: overriding recipe for target 'beam-cache-restore-test'
+erlang.mk:1348: warning: ignoring old recipe for target 'beam-cache-restore-test'
+Makefile:256: warning: overriding recipe for target 'beam-cache-restore-app'
+erlang.mk:1336: warning: ignoring old recipe for target 'beam-cache-restore-app'
+Makefile:258: warning: overriding recipe for target 'beam-cache-restore-test'
+erlang.mk:1348: warning: ignoring old recipe for target 'beam-cache-restore-test'
+ GEN    test-build
+Makefile:256: warning: overriding recipe for target 'beam-cache-restore-app'
+erlang.mk:1336: warning: ignoring old recipe for target 'beam-cache-restore-app'
+Makefile:258: warning: overriding recipe for target 'beam-cache-restore-test'
+erlang.mk:1348: warning: ignoring old recipe for target 'beam-cache-restore-test'
+ GEN   
+=PROGRESS REPORT==== 15-Oct-2026::11:11:59.459208 ===
+    application: kernel
+    started_at: 'ct_imboy@liyideMacBook-Pro'
+
+=PROGRESS REPORT==== 15-Oct-2026::11:11:59.461272 ===
+    application: stdlib
+    started_at: 'ct_imboy@liyideMacBook-Pro'
+
+
+
+Common Test v1.31 starting (cwd is /Users/leeyi/project/imboy.pub/.worktrees/limiter-v1-impl)
+
+
+
+CWD set to: "/Users/leeyi/project/imboy.pub/.worktrees/limiter-v1-impl/.reports/rest/limiter-l0-20261015T111110-48871/ct/ct_run.ct_imboy@liyideMacBook-Pro.2026-10-15_11.11.59"
+
+TEST INFO: 1 test(s), 6 case(s) in 1 suite(s)
+
+Testing .worktrees.limiter-v1-impl.api_v1_group_SUITE: Starting test, 6 test cases
+=PROGRESS REPORT==== 15-Oct-2026::03:11:59.632668 UTC ===
+    application: crypto
+    started_at: 'ct_imboy@liyideMacBook-Pro'
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:59.632908 UTC ===
+    application: asn1
+    started_at: 'ct_imboy@liyideMacBook-Pro'
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:59.633127 UTC ===
+    application: public_key
+    started_at: 'ct_imboy@liyideMacBook-Pro'
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:59.636414 UTC ===
+    supervisor: {local,ssl_admin_sup}
+    started: [{pid,<0.131.0>},
+              {id,ssl_pem_cache},
+              {mfargs,{ssl_pem_cache,start_link,[[]]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,worker}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:59.639691 UTC ===
+    supervisor: {local,ssl_admin_sup}
+    started: [{pid,<0.132.0>},
+              {id,ssl_manager},
+              {mfargs,{ssl_manager,start_link,[[]]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,worker}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:59.640493 UTC ===
+    supervisor: {local,ssl_admin_sup}
+    started: [{pid,<0.133.0>},
+              {id,tls_client_ticket_store},
+              {mfargs,{tls_client_ticket_store,start_link,[1000,7200]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,worker}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:59.640609 UTC ===
+    supervisor: {local,ssl_sup}
+    started: [{pid,<0.130.0>},
+              {id,ssl_admin_sup},
+              {mfargs,{ssl_admin_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:59.641580 UTC ===
+    supervisor: {local,tls_sup}
+    started: [{pid,<0.136.0>},
+              {id,tls_connection_sup},
+              {mfargs,{tls_connection_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:59.642291 UTC ===
+    supervisor: {local,tls_server_sup}
+    started: [{pid,<0.138.0>},
+              {id,ssl_listen_tracker_sup},
+              {mfargs,{ssl_listen_tracker_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:59.642753 UTC ===
+    supervisor: {local,tls_server_sup}
+    started: [{pid,<0.139.0>},
+              {id,tls_server_session_ticket},
+              {mfargs,{tls_server_session_ticket_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:59.643072 UTC ===
+    supervisor: {local,tls_server_sup}
+    started: [{pid,<0.140.0>},
+              {id,ssl_server_session_cache_sup},
+              {mfargs,{ssl_server_session_cache_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:59.643378 UTC ===
+    supervisor: {local,tls_server_sup}
+    started: [{pid,<0.141.0>},
+              {id,ssl_upgrade_server_session_cache_sup},
+              {mfargs,{ssl_upgrade_server_session_cache_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:59.643417 UTC ===
+    supervisor: {local,tls_sup}
+    started: [{pid,<0.137.0>},
+              {id,tls_server_sup},
+              {mfargs,{tls_server_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:59.643473 UTC ===
+    supervisor: {local,ssl_connection_sup}
+    started: [{pid,<0.135.0>},
+              {id,tls_sup},
+              {mfargs,{tls_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:59.643985 UTC ===
+    supervisor: {local,dtls_sup}
+    started: [{pid,<0.143.0>},
+              {id,dtls_connection_sup},
+              {mfargs,{dtls_connection_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:59.644710 UTC ===
+    supervisor: {local,dtls_server_sup}
+    started: [{pid,<0.145.0>},
+              {id,dtls_listener_sup},
+              {mfargs,{dtls_listener_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:59.645027 UTC ===
+    supervisor: {local,dtls_server_sup}
+    started: [{pid,<0.146.0>},
+              {id,dtls_server_session_cache_sup},
+              {mfargs,{dtls_server_session_cache_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:59.645070 UTC ===
+    supervisor: {local,dtls_sup}
+    started: [{pid,<0.144.0>},
+              {id,dtls_server_sup},
+              {mfargs,{dtls_server_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:59.645103 UTC ===
+    supervisor: {local,ssl_connection_sup}
+    started: [{pid,<0.142.0>},
+              {id,dtls_sup},
+              {mfargs,{dtls_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:59.645133 UTC ===
+    supervisor: {local,ssl_sup}
+    started: [{pid,<0.134.0>},
+              {id,ssl_connection_sup},
+              {mfargs,{ssl_connection_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:59.645168 UTC ===
+    application: ssl
+    started_at: 'ct_imboy@liyideMacBook-Pro'
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:59.649972 UTC ===
+    supervisor: {local,httpc_profile_sup}
+    started: [{pid,<0.152.0>},
+              {id,httpc_manager},
+              {mfargs,{httpc_manager,start_link,
+                                     [default,only_session_cookies,inets]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,worker}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:59.650034 UTC ===
+    supervisor: {local,httpc_sup}
+    started: [{pid,<0.151.0>},
+              {id,httpc_profile_sup},
+              {mfargs,
+                  {httpc_profile_sup,start_link,
+                      [[{httpc,{default,only_session_cookies}}]]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,infinity},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:59.650507 UTC ===
+    supervisor: {local,httpc_sup}
+    started: [{pid,<0.153.0>},
+              {id,httpc_handler_sup},
+              {mfargs,{httpc_handler_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,infinity},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:59.650536 UTC ===
+    supervisor: {local,inets_sup}
+    started: [{pid,<0.150.0>},
+              {id,httpc_sup},
+              {mfargs,{httpc_sup,start_link,
+                                 [[{httpc,{default,only_session_cookies}}]]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,infinity},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:59.651012 UTC ===
+    supervisor: {local,inets_sup}
+    started: [{pid,<0.154.0>},
+              {id,httpd_sup},
+              {mfargs,{httpd_sup,start_link,[[]]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,infinity},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:59.651052 UTC ===
+    application: inets
+    started_at: 'ct_imboy@liyideMacBook-Pro'
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:59.651372 UTC ===
+    application: jsone
+    started_at: 'ct_imboy@liyideMacBook-Pro'
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:59.651983 UTC ===
+    application: syntax_tools
+    started_at: 'ct_imboy@liyideMacBook-Pro'
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:59.652243 UTC ===
+    application: compiler
+    started_at: 'ct_imboy@liyideMacBook-Pro'
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:59.652981 UTC ===
+    supervisor: {local,gr_sup}
+    started: [{pid,<0.158.0>},
+              {id,gr_counter_sup},
+              {mfargs,{gr_counter_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,5000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:59.653276 UTC ===
+    supervisor: {local,gr_sup}
+    started: [{pid,<0.159.0>},
+              {id,gr_param_sup},
+              {mfargs,{gr_param_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,5000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:59.653852 UTC ===
+    supervisor: {local,gr_sup}
+    started: [{pid,<0.160.0>},
+              {id,gr_manager_sup},
+              {mfargs,{gr_manager_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,5000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:59.653905 UTC ===
+    application: goldrush
+    started_at: 'ct_imboy@liyideMacBook-Pro'
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:59.655878 UTC ===
+    supervisor: {local,lager_sup}
+    started: [{pid,<0.164.0>},
+              {id,lager},
+              {mfargs,{gen_event,start_link,[{local,lager_event}]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,5000},
+              {child_type,worker}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:59.656218 UTC ===
+    supervisor: {local,lager_sup}
+    started: [{pid,<0.165.0>},
+              {id,lager_handler_watcher_sup},
+              {mfargs,{lager_handler_watcher_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,5000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:11:59.657288 UTC ===
+    supervisor: {local,lager_sup}
+    started: [{pid,<0.166.0>},
+              {id,lager_crash_log},
+              {mfargs,
+                  {lager_crash_log,start_link,
+                      ["crash.log",65536,10485760,
+                       [{hour,0}],
+                       5,lager_rotator_default]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,5000},
+              {child_type,worker}]
+
+Starting Sync (Automatic Code Compiler / Reloader)
+[1;32m2026-10-15 03:11:59.735 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application lager started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:59.736 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application depcache started on node 'ct_imboy@liyideMacBook-Pro'
+Scanning source files...
+[1;32m2026-10-15 03:11:59.748 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application sync started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:59.792 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application mnesia started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:59.796 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application sasl started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:59.796 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application eunit started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:59.796 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application ranch started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:59.797 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application cowlib started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:59.798 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application cowboy started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:59.799 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application gun started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:59.799 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application cf started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:59.799 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application erlware_commons started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:59.834 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application jose started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:59.834 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application gen_smtp started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:59.836 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application throttle started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:59.837 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application epgsql started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:59.839 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application pooler started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:59.839 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application erlang_migrate started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:59.840 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application syn started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:59.842 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application telemetry started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:59.845 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application ecron started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:59.845 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application uid started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:59.845 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application recon started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:59.845 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application observer_cli started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:59.848 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application runtime_tools started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:59.848 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application redbug started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:59.848 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application opentelemetry_api started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:59.864 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application ssl_verify_fun started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:59.864 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application opentelemetry started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:59.864 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application ctx started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:59.866 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application hpack started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:59.866 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application chatterbox started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:59.866 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application acceptor_pool started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:59.873 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application gproc started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:59.875 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application grpcbox started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:59.897 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application tls_certificate_check started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:59.897 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application opentelemetry_exporter started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:59.897 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application simple_captcha started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:59.897 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application erlydtl started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:59.897 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application erlang_pay started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:59.898 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application hird_runtime started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:59.902 UTC [info] ct_imboy@liyideMacBook-Pro#<0.340.0> [license] valid edition=trial licensee=è¯ç¨ status=trial
+[1;32m2026-10-15 03:11:59.961 UTC [info] ct_imboy@liyideMacBook-Pro#<0.340.0> Ã©ÂÂÃ§Â¾Â¤Ã§Â®Â¡Ã§ÂÂÃ¥ÂÂÃ¥Â§ÂÃ¥ÂÂÃ¯Â¼ÂÃ¥Â½ÂÃ¥ÂÂÃ¨ÂÂÃ§ÂÂ¹: 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:11:59.961 UTC [info] ct_imboy@liyideMacBook-Pro#<0.340.0> æªéç½®éç¾¤èç¹ï¼ä»¥åèç¹æ¨¡å¼è¿è¡
+[1;32m2026-10-15 03:12:00.534 UTC [info] ct_imboy@liyideMacBook-Pro#<0.553.0> msg_store_ds started successfully
+[1;32m2026-10-15 03:12:00.534 UTC [info] ct_imboy@liyideMacBook-Pro#<0.554.0> msg_store_worker started successfully
+[1;32m2026-10-15 03:12:00.535 UTC [info] ct_imboy@liyideMacBook-Pro#<0.555.0> [msg_burn_logic,started,#{interval => 60000,batch_size => 500}]
+[1;32m2026-10-15 03:12:00.535 UTC [info] ct_imboy@liyideMacBook-Pro#<0.556.0> [moderation_sweep_logic,started,#{interval => 300000}]
+[1;32m2026-10-15 03:12:00.535 UTC [info] ct_imboy@liyideMacBook-Pro#<0.557.0> [user_deletion_logic,disabled]
+[1;32m2026-10-15 03:12:00.548 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application imboy started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:00.549 UTC [info] ct_imboy@liyideMacBook-Pro#<0.570.0> Application sync exited with reason: stopped
+Testing .worktrees.limiter-v1-impl.api_v1_group_SUITE: TEST COMPLETE, 6 ok, 0 failed of 6 test cases
+
+Updating /Users/leeyi/project/imboy.pub/.worktrees/limiter-v1-impl/.reports/rest/limiter-l0-20261015T111110-48871/ct/index.html ... done
+Updating /Users/leeyi/project/imboy.pub/.worktrees/limiter-v1-impl/.reports/rest/limiter-l0-20261015T111110-48871/ct/all_runs.html ... done
+
+make: Leaving directory '/Users/leeyi/project/imboy.pub/.worktrees/limiter-v1-impl'
+=== REST suite: api_v1_conversation ===
+make: Entering directory '/Users/leeyi/project/imboy.pub/.worktrees/limiter-v1-impl'
+Makefile:256: warning: overriding recipe for target 'beam-cache-restore-app'
+erlang.mk:1336: warning: ignoring old recipe for target 'beam-cache-restore-app'
+Makefile:258: warning: overriding recipe for target 'beam-cache-restore-test'
+erlang.mk:1348: warning: ignoring old recipe for target 'beam-cache-restore-test'
+Makefile:256: warning: overriding recipe for target 'beam-cache-restore-app'
+erlang.mk:1336: warning: ignoring old recipe for target 'beam-cache-restore-app'
+Makefile:258: warning: overriding recipe for target 'beam-cache-restore-test'
+erlang.mk:1348: warning: ignoring old recipe for target 'beam-cache-restore-test'
+Makefile:256: warning: overriding recipe for target 'beam-cache-restore-app'
+erlang.mk:1336: warning: ignoring old recipe for target 'beam-cache-restore-app'
+Makefile:258: warning: overriding recipe for target 'beam-cache-restore-test'
+erlang.mk:1348: warning: ignoring old recipe for target 'beam-cache-restore-test'
+ GEN    test-build
+Makefile:256: warning: overriding recipe for target 'beam-cache-restore-app'
+erlang.mk:1336: warning: ignoring old recipe for target 'beam-cache-restore-app'
+Makefile:258: warning: overriding recipe for target 'beam-cache-restore-test'
+erlang.mk:1348: warning: ignoring old recipe for target 'beam-cache-restore-test'
+ GEN   
+=PROGRESS REPORT==== 15-Oct-2026::11:12:08.354316 ===
+    application: kernel
+    started_at: 'ct_imboy@liyideMacBook-Pro'
+
+=PROGRESS REPORT==== 15-Oct-2026::11:12:08.356074 ===
+    application: stdlib
+    started_at: 'ct_imboy@liyideMacBook-Pro'
+
+
+
+Common Test v1.31 starting (cwd is /Users/leeyi/project/imboy.pub/.worktrees/limiter-v1-impl)
+
+
+
+CWD set to: "/Users/leeyi/project/imboy.pub/.worktrees/limiter-v1-impl/.reports/rest/limiter-l0-20261015T111110-48871/ct/ct_run.ct_imboy@liyideMacBook-Pro.2026-10-15_11.12.08"
+
+TEST INFO: 1 test(s), 6 case(s) in 1 suite(s)
+
+Testing .worktrees.limiter-v1-impl.api_v1_conversation_SUITE: Starting test, 6 test cases
+=PROGRESS REPORT==== 15-Oct-2026::03:12:08.527703 UTC ===
+    application: crypto
+    started_at: 'ct_imboy@liyideMacBook-Pro'
+
+=PROGRESS REPORT==== 15-Oct-2026::03:12:08.528080 UTC ===
+    application: asn1
+    started_at: 'ct_imboy@liyideMacBook-Pro'
+
+=PROGRESS REPORT==== 15-Oct-2026::03:12:08.528285 UTC ===
+    application: public_key
+    started_at: 'ct_imboy@liyideMacBook-Pro'
+
+=PROGRESS REPORT==== 15-Oct-2026::03:12:08.531636 UTC ===
+    supervisor: {local,ssl_admin_sup}
+    started: [{pid,<0.131.0>},
+              {id,ssl_pem_cache},
+              {mfargs,{ssl_pem_cache,start_link,[[]]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,worker}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:12:08.535123 UTC ===
+    supervisor: {local,ssl_admin_sup}
+    started: [{pid,<0.132.0>},
+              {id,ssl_manager},
+              {mfargs,{ssl_manager,start_link,[[]]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,worker}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:12:08.536207 UTC ===
+    supervisor: {local,ssl_admin_sup}
+    started: [{pid,<0.133.0>},
+              {id,tls_client_ticket_store},
+              {mfargs,{tls_client_ticket_store,start_link,[1000,7200]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,worker}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:12:08.536252 UTC ===
+    supervisor: {local,ssl_sup}
+    started: [{pid,<0.130.0>},
+              {id,ssl_admin_sup},
+              {mfargs,{ssl_admin_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:12:08.537346 UTC ===
+    supervisor: {local,tls_sup}
+    started: [{pid,<0.136.0>},
+              {id,tls_connection_sup},
+              {mfargs,{tls_connection_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:12:08.538178 UTC ===
+    supervisor: {local,tls_server_sup}
+    started: [{pid,<0.138.0>},
+              {id,ssl_listen_tracker_sup},
+              {mfargs,{ssl_listen_tracker_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:12:08.538813 UTC ===
+    supervisor: {local,tls_server_sup}
+    started: [{pid,<0.139.0>},
+              {id,tls_server_session_ticket},
+              {mfargs,{tls_server_session_ticket_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:12:08.539120 UTC ===
+    supervisor: {local,tls_server_sup}
+    started: [{pid,<0.140.0>},
+              {id,ssl_server_session_cache_sup},
+              {mfargs,{ssl_server_session_cache_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:12:08.539633 UTC ===
+    supervisor: {local,tls_server_sup}
+    started: [{pid,<0.141.0>},
+              {id,ssl_upgrade_server_session_cache_sup},
+              {mfargs,{ssl_upgrade_server_session_cache_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:12:08.539678 UTC ===
+    supervisor: {local,tls_sup}
+    started: [{pid,<0.137.0>},
+              {id,tls_server_sup},
+              {mfargs,{tls_server_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:12:08.539712 UTC ===
+    supervisor: {local,ssl_connection_sup}
+    started: [{pid,<0.135.0>},
+              {id,tls_sup},
+              {mfargs,{tls_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:12:08.540679 UTC ===
+    supervisor: {local,dtls_sup}
+    started: [{pid,<0.143.0>},
+              {id,dtls_connection_sup},
+              {mfargs,{dtls_connection_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:12:08.541799 UTC ===
+    supervisor: {local,dtls_server_sup}
+    started: [{pid,<0.145.0>},
+              {id,dtls_listener_sup},
+              {mfargs,{dtls_listener_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:12:08.542063 UTC ===
+    supervisor: {local,dtls_server_sup}
+    started: [{pid,<0.146.0>},
+              {id,dtls_server_session_cache_sup},
+              {mfargs,{dtls_server_session_cache_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:12:08.542104 UTC ===
+    supervisor: {local,dtls_sup}
+    started: [{pid,<0.144.0>},
+              {id,dtls_server_sup},
+              {mfargs,{dtls_server_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:12:08.542135 UTC ===
+    supervisor: {local,ssl_connection_sup}
+    started: [{pid,<0.142.0>},
+              {id,dtls_sup},
+              {mfargs,{dtls_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:12:08.542170 UTC ===
+    supervisor: {local,ssl_sup}
+    started: [{pid,<0.134.0>},
+              {id,ssl_connection_sup},
+              {mfargs,{ssl_connection_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:12:08.542212 UTC ===
+    application: ssl
+    started_at: 'ct_imboy@liyideMacBook-Pro'
+
+=PROGRESS REPORT==== 15-Oct-2026::03:12:08.547917 UTC ===
+    supervisor: {local,httpc_profile_sup}
+    started: [{pid,<0.152.0>},
+              {id,httpc_manager},
+              {mfargs,{httpc_manager,start_link,
+                                     [default,only_session_cookies,inets]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,worker}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:12:08.547997 UTC ===
+    supervisor: {local,httpc_sup}
+    started: [{pid,<0.151.0>},
+              {id,httpc_profile_sup},
+              {mfargs,
+                  {httpc_profile_sup,start_link,
+                      [[{httpc,{default,only_session_cookies}}]]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,infinity},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:12:08.548300 UTC ===
+    supervisor: {local,httpc_sup}
+    started: [{pid,<0.153.0>},
+              {id,httpc_handler_sup},
+              {mfargs,{httpc_handler_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,infinity},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:12:08.548352 UTC ===
+    supervisor: {local,inets_sup}
+    started: [{pid,<0.150.0>},
+              {id,httpc_sup},
+              {mfargs,{httpc_sup,start_link,
+                                 [[{httpc,{default,only_session_cookies}}]]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,infinity},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:12:08.549121 UTC ===
+    supervisor: {local,inets_sup}
+    started: [{pid,<0.154.0>},
+              {id,httpd_sup},
+              {mfargs,{httpd_sup,start_link,[[]]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,infinity},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:12:08.549177 UTC ===
+    application: inets
+    started_at: 'ct_imboy@liyideMacBook-Pro'
+
+=PROGRESS REPORT==== 15-Oct-2026::03:12:08.549590 UTC ===
+    application: jsone
+    started_at: 'ct_imboy@liyideMacBook-Pro'
+
+=PROGRESS REPORT==== 15-Oct-2026::03:12:08.550038 UTC ===
+    application: syntax_tools
+    started_at: 'ct_imboy@liyideMacBook-Pro'
+
+=PROGRESS REPORT==== 15-Oct-2026::03:12:08.550220 UTC ===
+    application: compiler
+    started_at: 'ct_imboy@liyideMacBook-Pro'
+
+=PROGRESS REPORT==== 15-Oct-2026::03:12:08.551207 UTC ===
+    supervisor: {local,gr_sup}
+    started: [{pid,<0.158.0>},
+              {id,gr_counter_sup},
+              {mfargs,{gr_counter_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,5000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:12:08.551933 UTC ===
+    supervisor: {local,gr_sup}
+    started: [{pid,<0.159.0>},
+              {id,gr_param_sup},
+              {mfargs,{gr_param_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,5000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:12:08.552242 UTC ===
+    supervisor: {local,gr_sup}
+    started: [{pid,<0.160.0>},
+              {id,gr_manager_sup},
+              {mfargs,{gr_manager_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,5000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:12:08.552281 UTC ===
+    application: goldrush
+    started_at: 'ct_imboy@liyideMacBook-Pro'
+
+=PROGRESS REPORT==== 15-Oct-2026::03:12:08.554299 UTC ===
+    supervisor: {local,lager_sup}
+    started: [{pid,<0.164.0>},
+              {id,lager},
+              {mfargs,{gen_event,start_link,[{local,lager_event}]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,5000},
+              {child_type,worker}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:12:08.555283 UTC ===
+    supervisor: {local,lager_sup}
+    started: [{pid,<0.165.0>},
+              {id,lager_handler_watcher_sup},
+              {mfargs,{lager_handler_watcher_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,5000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:12:08.556464 UTC ===
+    supervisor: {local,lager_sup}
+    started: [{pid,<0.166.0>},
+              {id,lager_crash_log},
+              {mfargs,
+                  {lager_crash_log,start_link,
+                      ["crash.log",65536,10485760,
+                       [{hour,0}],
+                       5,lager_rotator_default]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,5000},
+              {child_type,worker}]
+
+Starting Sync (Automatic Code Compiler / Reloader)
+[1;32m2026-10-15 03:12:08.640 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application lager started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:08.641 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application depcache started on node 'ct_imboy@liyideMacBook-Pro'
+Scanning source files...
+[1;32m2026-10-15 03:12:08.657 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application sync started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:08.708 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application mnesia started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:08.713 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application sasl started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:08.713 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application eunit started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:08.714 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application ranch started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:08.715 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application cowlib started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:08.716 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application cowboy started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:08.718 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application gun started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:08.718 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application cf started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:08.718 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application erlware_commons started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:08.761 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application jose started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:08.761 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application gen_smtp started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:08.764 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application throttle started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:08.764 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application epgsql started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:08.766 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application pooler started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:08.767 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application erlang_migrate started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:08.768 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application syn started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:08.770 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application telemetry started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:08.774 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application ecron started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:08.774 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application uid started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:08.774 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application recon started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:08.774 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application observer_cli started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:08.776 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application runtime_tools started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:08.776 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application redbug started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:08.777 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application opentelemetry_api started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:08.792 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application opentelemetry started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:08.792 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application ctx started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:08.793 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application ssl_verify_fun started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:08.793 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application hpack started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:08.793 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application chatterbox started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:08.794 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application acceptor_pool started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:08.801 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application gproc started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:08.803 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application grpcbox started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:08.829 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application tls_certificate_check started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:08.829 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application opentelemetry_exporter started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:08.829 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application simple_captcha started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:08.829 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application erlydtl started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:08.829 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application erlang_pay started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:08.829 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application hird_runtime started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:08.834 UTC [info] ct_imboy@liyideMacBook-Pro#<0.340.0> [license] valid edition=trial licensee=è¯ç¨ status=trial
+[1;32m2026-10-15 03:12:08.903 UTC [info] ct_imboy@liyideMacBook-Pro#<0.340.0> Ã©ÂÂÃ§Â¾Â¤Ã§Â®Â¡Ã§ÂÂÃ¥ÂÂÃ¥Â§ÂÃ¥ÂÂÃ¯Â¼ÂÃ¥Â½ÂÃ¥ÂÂÃ¨ÂÂÃ§ÂÂ¹: 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:08.903 UTC [info] ct_imboy@liyideMacBook-Pro#<0.340.0> æªéç½®éç¾¤èç¹ï¼ä»¥åèç¹æ¨¡å¼è¿è¡
+[1;32m2026-10-15 03:12:09.435 UTC [info] ct_imboy@liyideMacBook-Pro#<0.551.0> msg_store_ds started successfully
+[1;32m2026-10-15 03:12:09.436 UTC [info] ct_imboy@liyideMacBook-Pro#<0.552.0> msg_store_worker started successfully
+[1;32m2026-10-15 03:12:09.437 UTC [info] ct_imboy@liyideMacBook-Pro#<0.553.0> [msg_burn_logic,started,#{interval => 60000,batch_size => 500}]
+[1;32m2026-10-15 03:12:09.437 UTC [info] ct_imboy@liyideMacBook-Pro#<0.554.0> [moderation_sweep_logic,started,#{interval => 300000}]
+[1;32m2026-10-15 03:12:09.438 UTC [info] ct_imboy@liyideMacBook-Pro#<0.555.0> [user_deletion_logic,disabled]
+[1;32m2026-10-15 03:12:09.448 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application imboy started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:09.449 UTC [info] ct_imboy@liyideMacBook-Pro#<0.568.0> Application sync exited with reason: stopped
+Testing .worktrees.limiter-v1-impl.api_v1_conversation_SUITE: TEST COMPLETE, 6 ok, 0 failed of 6 test cases
+
+Updating /Users/leeyi/project/imboy.pub/.worktrees/limiter-v1-impl/.reports/rest/limiter-l0-20261015T111110-48871/ct/index.html ... done
+Updating /Users/leeyi/project/imboy.pub/.worktrees/limiter-v1-impl/.reports/rest/limiter-l0-20261015T111110-48871/ct/all_runs.html ... done
+
+make: Leaving directory '/Users/leeyi/project/imboy.pub/.worktrees/limiter-v1-impl'
+=== REST suite: api_v1_msg ===
+make: Entering directory '/Users/leeyi/project/imboy.pub/.worktrees/limiter-v1-impl'
+Makefile:256: warning: overriding recipe for target 'beam-cache-restore-app'
+erlang.mk:1336: warning: ignoring old recipe for target 'beam-cache-restore-app'
+Makefile:258: warning: overriding recipe for target 'beam-cache-restore-test'
+erlang.mk:1348: warning: ignoring old recipe for target 'beam-cache-restore-test'
+Makefile:256: warning: overriding recipe for target 'beam-cache-restore-app'
+erlang.mk:1336: warning: ignoring old recipe for target 'beam-cache-restore-app'
+Makefile:258: warning: overriding recipe for target 'beam-cache-restore-test'
+erlang.mk:1348: warning: ignoring old recipe for target 'beam-cache-restore-test'
+Makefile:256: warning: overriding recipe for target 'beam-cache-restore-app'
+erlang.mk:1336: warning: ignoring old recipe for target 'beam-cache-restore-app'
+Makefile:258: warning: overriding recipe for target 'beam-cache-restore-test'
+erlang.mk:1348: warning: ignoring old recipe for target 'beam-cache-restore-test'
+ GEN    test-build
+Makefile:256: warning: overriding recipe for target 'beam-cache-restore-app'
+erlang.mk:1336: warning: ignoring old recipe for target 'beam-cache-restore-app'
+Makefile:258: warning: overriding recipe for target 'beam-cache-restore-test'
+erlang.mk:1348: warning: ignoring old recipe for target 'beam-cache-restore-test'
+ GEN   
+=PROGRESS REPORT==== 15-Oct-2026::11:12:17.103832 ===
+    application: kernel
+    started_at: 'ct_imboy@liyideMacBook-Pro'
+
+=PROGRESS REPORT==== 15-Oct-2026::11:12:17.105480 ===
+    application: stdlib
+    started_at: 'ct_imboy@liyideMacBook-Pro'
+
+
+
+Common Test v1.31 starting (cwd is /Users/leeyi/project/imboy.pub/.worktrees/limiter-v1-impl)
+
+
+
+CWD set to: "/Users/leeyi/project/imboy.pub/.worktrees/limiter-v1-impl/.reports/rest/limiter-l0-20261015T111110-48871/ct/ct_run.ct_imboy@liyideMacBook-Pro.2026-10-15_11.12.17"
+
+TEST INFO: 1 test(s), 7 case(s) in 1 suite(s)
+
+Testing .worktrees.limiter-v1-impl.api_v1_msg_SUITE: Starting test, 7 test cases
+=PROGRESS REPORT==== 15-Oct-2026::03:12:17.273823 UTC ===
+    application: crypto
+    started_at: 'ct_imboy@liyideMacBook-Pro'
+
+=PROGRESS REPORT==== 15-Oct-2026::03:12:17.274008 UTC ===
+    application: asn1
+    started_at: 'ct_imboy@liyideMacBook-Pro'
+
+=PROGRESS REPORT==== 15-Oct-2026::03:12:17.274165 UTC ===
+    application: public_key
+    started_at: 'ct_imboy@liyideMacBook-Pro'
+
+=PROGRESS REPORT==== 15-Oct-2026::03:12:17.276874 UTC ===
+    supervisor: {local,ssl_admin_sup}
+    started: [{pid,<0.131.0>},
+              {id,ssl_pem_cache},
+              {mfargs,{ssl_pem_cache,start_link,[[]]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,worker}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:12:17.279886 UTC ===
+    supervisor: {local,ssl_admin_sup}
+    started: [{pid,<0.132.0>},
+              {id,ssl_manager},
+              {mfargs,{ssl_manager,start_link,[[]]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,worker}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:12:17.280331 UTC ===
+    supervisor: {local,ssl_admin_sup}
+    started: [{pid,<0.133.0>},
+              {id,tls_client_ticket_store},
+              {mfargs,{tls_client_ticket_store,start_link,[1000,7200]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,worker}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:12:17.280364 UTC ===
+    supervisor: {local,ssl_sup}
+    started: [{pid,<0.130.0>},
+              {id,ssl_admin_sup},
+              {mfargs,{ssl_admin_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:12:17.281591 UTC ===
+    supervisor: {local,tls_sup}
+    started: [{pid,<0.136.0>},
+              {id,tls_connection_sup},
+              {mfargs,{tls_connection_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:12:17.282132 UTC ===
+    supervisor: {local,tls_server_sup}
+    started: [{pid,<0.138.0>},
+              {id,ssl_listen_tracker_sup},
+              {mfargs,{ssl_listen_tracker_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:12:17.282411 UTC ===
+    supervisor: {local,tls_server_sup}
+    started: [{pid,<0.139.0>},
+              {id,tls_server_session_ticket},
+              {mfargs,{tls_server_session_ticket_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:12:17.282781 UTC ===
+    supervisor: {local,tls_server_sup}
+    started: [{pid,<0.140.0>},
+              {id,ssl_server_session_cache_sup},
+              {mfargs,{ssl_server_session_cache_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:12:17.283301 UTC ===
+    supervisor: {local,tls_server_sup}
+    started: [{pid,<0.141.0>},
+              {id,ssl_upgrade_server_session_cache_sup},
+              {mfargs,{ssl_upgrade_server_session_cache_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:12:17.283335 UTC ===
+    supervisor: {local,tls_sup}
+    started: [{pid,<0.137.0>},
+              {id,tls_server_sup},
+              {mfargs,{tls_server_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:12:17.283370 UTC ===
+    supervisor: {local,ssl_connection_sup}
+    started: [{pid,<0.135.0>},
+              {id,tls_sup},
+              {mfargs,{tls_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:12:17.284013 UTC ===
+    supervisor: {local,dtls_sup}
+    started: [{pid,<0.143.0>},
+              {id,dtls_connection_sup},
+              {mfargs,{dtls_connection_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:12:17.284585 UTC ===
+    supervisor: {local,dtls_server_sup}
+    started: [{pid,<0.145.0>},
+              {id,dtls_listener_sup},
+              {mfargs,{dtls_listener_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:12:17.284828 UTC ===
+    supervisor: {local,dtls_server_sup}
+    started: [{pid,<0.146.0>},
+              {id,dtls_server_session_cache_sup},
+              {mfargs,{dtls_server_session_cache_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:12:17.284854 UTC ===
+    supervisor: {local,dtls_sup}
+    started: [{pid,<0.144.0>},
+              {id,dtls_server_sup},
+              {mfargs,{dtls_server_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:12:17.284878 UTC ===
+    supervisor: {local,ssl_connection_sup}
+    started: [{pid,<0.142.0>},
+              {id,dtls_sup},
+              {mfargs,{dtls_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:12:17.284905 UTC ===
+    supervisor: {local,ssl_sup}
+    started: [{pid,<0.134.0>},
+              {id,ssl_connection_sup},
+              {mfargs,{ssl_connection_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:12:17.284941 UTC ===
+    application: ssl
+    started_at: 'ct_imboy@liyideMacBook-Pro'
+
+=PROGRESS REPORT==== 15-Oct-2026::03:12:17.288893 UTC ===
+    supervisor: {local,httpc_profile_sup}
+    started: [{pid,<0.152.0>},
+              {id,httpc_manager},
+              {mfargs,{httpc_manager,start_link,
+                                     [default,only_session_cookies,inets]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,worker}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:12:17.288935 UTC ===
+    supervisor: {local,httpc_sup}
+    started: [{pid,<0.151.0>},
+              {id,httpc_profile_sup},
+              {mfargs,
+                  {httpc_profile_sup,start_link,
+                      [[{httpc,{default,only_session_cookies}}]]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,infinity},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:12:17.289162 UTC ===
+    supervisor: {local,httpc_sup}
+    started: [{pid,<0.153.0>},
+              {id,httpc_handler_sup},
+              {mfargs,{httpc_handler_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,infinity},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:12:17.289192 UTC ===
+    supervisor: {local,inets_sup}
+    started: [{pid,<0.150.0>},
+              {id,httpc_sup},
+              {mfargs,{httpc_sup,start_link,
+                                 [[{httpc,{default,only_session_cookies}}]]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,infinity},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:12:17.289591 UTC ===
+    supervisor: {local,inets_sup}
+    started: [{pid,<0.154.0>},
+              {id,httpd_sup},
+              {mfargs,{httpd_sup,start_link,[[]]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,infinity},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:12:17.289635 UTC ===
+    application: inets
+    started_at: 'ct_imboy@liyideMacBook-Pro'
+
+=PROGRESS REPORT==== 15-Oct-2026::03:12:17.289781 UTC ===
+    application: jsone
+    started_at: 'ct_imboy@liyideMacBook-Pro'
+
+=PROGRESS REPORT==== 15-Oct-2026::03:12:17.290289 UTC ===
+    application: syntax_tools
+    started_at: 'ct_imboy@liyideMacBook-Pro'
+
+=PROGRESS REPORT==== 15-Oct-2026::03:12:17.290481 UTC ===
+    application: compiler
+    started_at: 'ct_imboy@liyideMacBook-Pro'
+
+=PROGRESS REPORT==== 15-Oct-2026::03:12:17.291638 UTC ===
+    supervisor: {local,gr_sup}
+    started: [{pid,<0.158.0>},
+              {id,gr_counter_sup},
+              {mfargs,{gr_counter_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,5000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:12:17.291907 UTC ===
+    supervisor: {local,gr_sup}
+    started: [{pid,<0.159.0>},
+              {id,gr_param_sup},
+              {mfargs,{gr_param_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,5000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:12:17.292254 UTC ===
+    supervisor: {local,gr_sup}
+    started: [{pid,<0.160.0>},
+              {id,gr_manager_sup},
+              {mfargs,{gr_manager_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,5000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:12:17.292289 UTC ===
+    application: goldrush
+    started_at: 'ct_imboy@liyideMacBook-Pro'
+
+=PROGRESS REPORT==== 15-Oct-2026::03:12:17.294413 UTC ===
+    supervisor: {local,lager_sup}
+    started: [{pid,<0.164.0>},
+              {id,lager},
+              {mfargs,{gen_event,start_link,[{local,lager_event}]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,5000},
+              {child_type,worker}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:12:17.294663 UTC ===
+    supervisor: {local,lager_sup}
+    started: [{pid,<0.165.0>},
+              {id,lager_handler_watcher_sup},
+              {mfargs,{lager_handler_watcher_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,5000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:12:17.295935 UTC ===
+    supervisor: {local,lager_sup}
+    started: [{pid,<0.166.0>},
+              {id,lager_crash_log},
+              {mfargs,
+                  {lager_crash_log,start_link,
+                      ["crash.log",65536,10485760,
+                       [{hour,0}],
+                       5,lager_rotator_default]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,5000},
+              {child_type,worker}]
+
+Starting Sync (Automatic Code Compiler / Reloader)
+Scanning source files...
+[1;32m2026-10-15 03:12:17.373 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application lager started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:17.374 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application depcache started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:17.386 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application sync started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:17.432 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application mnesia started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:17.436 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application sasl started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:17.436 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application eunit started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:17.437 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application ranch started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:17.437 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application cowlib started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:17.438 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application cowboy started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:17.439 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application gun started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:17.440 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application cf started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:17.440 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application erlware_commons started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:17.474 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application jose started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:17.474 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application gen_smtp started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:17.476 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application throttle started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:17.476 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application epgsql started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:17.479 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application pooler started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:17.479 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application erlang_migrate started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:17.480 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application syn started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:17.482 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application telemetry started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:17.486 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application ecron started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:17.486 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application uid started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:17.486 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application recon started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:17.486 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application observer_cli started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:17.488 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application runtime_tools started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:17.488 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application redbug started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:17.489 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application opentelemetry_api started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:17.503 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application opentelemetry started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:17.504 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application ctx started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:17.505 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application ssl_verify_fun started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:17.505 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application hpack started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:17.505 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application chatterbox started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:17.505 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application acceptor_pool started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:17.512 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application gproc started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:17.513 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application grpcbox started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:17.539 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application tls_certificate_check started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:17.539 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application opentelemetry_exporter started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:17.539 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application simple_captcha started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:17.539 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application erlydtl started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:17.539 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application erlang_pay started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:17.540 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application hird_runtime started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:17.544 UTC [info] ct_imboy@liyideMacBook-Pro#<0.340.0> [license] valid edition=trial licensee=è¯ç¨ status=trial
+[1;32m2026-10-15 03:12:17.617 UTC [info] ct_imboy@liyideMacBook-Pro#<0.340.0> Ã©ÂÂÃ§Â¾Â¤Ã§Â®Â¡Ã§ÂÂÃ¥ÂÂÃ¥Â§ÂÃ¥ÂÂÃ¯Â¼ÂÃ¥Â½ÂÃ¥ÂÂÃ¨ÂÂÃ§ÂÂ¹: 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:17.617 UTC [info] ct_imboy@liyideMacBook-Pro#<0.340.0> æªéç½®éç¾¤èç¹ï¼ä»¥åèç¹æ¨¡å¼è¿è¡
+[1;32m2026-10-15 03:12:18.166 UTC [info] ct_imboy@liyideMacBook-Pro#<0.551.0> msg_store_ds started successfully
+[1;32m2026-10-15 03:12:18.166 UTC [info] ct_imboy@liyideMacBook-Pro#<0.552.0> msg_store_worker started successfully
+[1;32m2026-10-15 03:12:18.167 UTC [info] ct_imboy@liyideMacBook-Pro#<0.553.0> [msg_burn_logic,started,#{interval => 60000,batch_size => 500}]
+[1;32m2026-10-15 03:12:18.167 UTC [info] ct_imboy@liyideMacBook-Pro#<0.554.0> [moderation_sweep_logic,started,#{interval => 300000}]
+[1;32m2026-10-15 03:12:18.168 UTC [info] ct_imboy@liyideMacBook-Pro#<0.555.0> [user_deletion_logic,disabled]
+[1;32m2026-10-15 03:12:18.179 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application imboy started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:18.180 UTC [info] ct_imboy@liyideMacBook-Pro#<0.568.0> Application sync exited with reason: stopped
+Testing .worktrees.limiter-v1-impl.api_v1_msg_SUITE: TEST COMPLETE, 7 ok, 0 failed of 7 test cases
+
+Updating /Users/leeyi/project/imboy.pub/.worktrees/limiter-v1-impl/.reports/rest/limiter-l0-20261015T111110-48871/ct/index.html ... done
+Updating /Users/leeyi/project/imboy.pub/.worktrees/limiter-v1-impl/.reports/rest/limiter-l0-20261015T111110-48871/ct/all_runs.html ... done
+
+make: Leaving directory '/Users/leeyi/project/imboy.pub/.worktrees/limiter-v1-impl'
+=== REST suite: api_v1_channel ===
+make: Entering directory '/Users/leeyi/project/imboy.pub/.worktrees/limiter-v1-impl'
+Makefile:256: warning: overriding recipe for target 'beam-cache-restore-app'
+erlang.mk:1336: warning: ignoring old recipe for target 'beam-cache-restore-app'
+Makefile:258: warning: overriding recipe for target 'beam-cache-restore-test'
+erlang.mk:1348: warning: ignoring old recipe for target 'beam-cache-restore-test'
+Makefile:256: warning: overriding recipe for target 'beam-cache-restore-app'
+erlang.mk:1336: warning: ignoring old recipe for target 'beam-cache-restore-app'
+Makefile:258: warning: overriding recipe for target 'beam-cache-restore-test'
+erlang.mk:1348: warning: ignoring old recipe for target 'beam-cache-restore-test'
+Makefile:256: warning: overriding recipe for target 'beam-cache-restore-app'
+erlang.mk:1336: warning: ignoring old recipe for target 'beam-cache-restore-app'
+Makefile:258: warning: overriding recipe for target 'beam-cache-restore-test'
+erlang.mk:1348: warning: ignoring old recipe for target 'beam-cache-restore-test'
+ GEN    test-build
+Makefile:256: warning: overriding recipe for target 'beam-cache-restore-app'
+erlang.mk:1336: warning: ignoring old recipe for target 'beam-cache-restore-app'
+Makefile:258: warning: overriding recipe for target 'beam-cache-restore-test'
+erlang.mk:1348: warning: ignoring old recipe for target 'beam-cache-restore-test'
+ GEN   
+=PROGRESS REPORT==== 15-Oct-2026::11:12:24.819355 ===
+    application: kernel
+    started_at: 'ct_imboy@liyideMacBook-Pro'
+
+=PROGRESS REPORT==== 15-Oct-2026::11:12:24.820927 ===
+    application: stdlib
+    started_at: 'ct_imboy@liyideMacBook-Pro'
+
+
+
+Common Test v1.31 starting (cwd is /Users/leeyi/project/imboy.pub/.worktrees/limiter-v1-impl)
+
+
+
+CWD set to: "/Users/leeyi/project/imboy.pub/.worktrees/limiter-v1-impl/.reports/rest/limiter-l0-20261015T111110-48871/ct/ct_run.ct_imboy@liyideMacBook-Pro.2026-10-15_11.12.24"
+
+TEST INFO: 1 test(s), 7 case(s) in 1 suite(s)
+
+Testing .worktrees.limiter-v1-impl.api_v1_channel_SUITE: Starting test, 7 test cases
+=PROGRESS REPORT==== 15-Oct-2026::03:12:24.985533 UTC ===
+    application: crypto
+    started_at: 'ct_imboy@liyideMacBook-Pro'
+
+=PROGRESS REPORT==== 15-Oct-2026::03:12:24.985736 UTC ===
+    application: asn1
+    started_at: 'ct_imboy@liyideMacBook-Pro'
+
+=PROGRESS REPORT==== 15-Oct-2026::03:12:24.985903 UTC ===
+    application: public_key
+    started_at: 'ct_imboy@liyideMacBook-Pro'
+
+=PROGRESS REPORT==== 15-Oct-2026::03:12:24.988917 UTC ===
+    supervisor: {local,ssl_admin_sup}
+    started: [{pid,<0.131.0>},
+              {id,ssl_pem_cache},
+              {mfargs,{ssl_pem_cache,start_link,[[]]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,worker}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:12:24.992025 UTC ===
+    supervisor: {local,ssl_admin_sup}
+    started: [{pid,<0.132.0>},
+              {id,ssl_manager},
+              {mfargs,{ssl_manager,start_link,[[]]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,worker}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:12:24.992537 UTC ===
+    supervisor: {local,ssl_admin_sup}
+    started: [{pid,<0.133.0>},
+              {id,tls_client_ticket_store},
+              {mfargs,{tls_client_ticket_store,start_link,[1000,7200]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,worker}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:12:24.992574 UTC ===
+    supervisor: {local,ssl_sup}
+    started: [{pid,<0.130.0>},
+              {id,ssl_admin_sup},
+              {mfargs,{ssl_admin_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:12:24.993445 UTC ===
+    supervisor: {local,tls_sup}
+    started: [{pid,<0.136.0>},
+              {id,tls_connection_sup},
+              {mfargs,{tls_connection_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:12:24.994139 UTC ===
+    supervisor: {local,tls_server_sup}
+    started: [{pid,<0.138.0>},
+              {id,ssl_listen_tracker_sup},
+              {mfargs,{ssl_listen_tracker_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:12:24.994472 UTC ===
+    supervisor: {local,tls_server_sup}
+    started: [{pid,<0.139.0>},
+              {id,tls_server_session_ticket},
+              {mfargs,{tls_server_session_ticket_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:12:24.994831 UTC ===
+    supervisor: {local,tls_server_sup}
+    started: [{pid,<0.140.0>},
+              {id,ssl_server_session_cache_sup},
+              {mfargs,{ssl_server_session_cache_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:12:24.995194 UTC ===
+    supervisor: {local,tls_server_sup}
+    started: [{pid,<0.141.0>},
+              {id,ssl_upgrade_server_session_cache_sup},
+              {mfargs,{ssl_upgrade_server_session_cache_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:12:24.995235 UTC ===
+    supervisor: {local,tls_sup}
+    started: [{pid,<0.137.0>},
+              {id,tls_server_sup},
+              {mfargs,{tls_server_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:12:24.995283 UTC ===
+    supervisor: {local,ssl_connection_sup}
+    started: [{pid,<0.135.0>},
+              {id,tls_sup},
+              {mfargs,{tls_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:12:24.995977 UTC ===
+    supervisor: {local,dtls_sup}
+    started: [{pid,<0.143.0>},
+              {id,dtls_connection_sup},
+              {mfargs,{dtls_connection_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:12:24.996844 UTC ===
+    supervisor: {local,dtls_server_sup}
+    started: [{pid,<0.145.0>},
+              {id,dtls_listener_sup},
+              {mfargs,{dtls_listener_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:12:24.997237 UTC ===
+    supervisor: {local,dtls_server_sup}
+    started: [{pid,<0.146.0>},
+              {id,dtls_server_session_cache_sup},
+              {mfargs,{dtls_server_session_cache_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:12:24.997274 UTC ===
+    supervisor: {local,dtls_sup}
+    started: [{pid,<0.144.0>},
+              {id,dtls_server_sup},
+              {mfargs,{dtls_server_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:12:24.997307 UTC ===
+    supervisor: {local,ssl_connection_sup}
+    started: [{pid,<0.142.0>},
+              {id,dtls_sup},
+              {mfargs,{dtls_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:12:24.997333 UTC ===
+    supervisor: {local,ssl_sup}
+    started: [{pid,<0.134.0>},
+              {id,ssl_connection_sup},
+              {mfargs,{ssl_connection_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:12:24.997369 UTC ===
+    application: ssl
+    started_at: 'ct_imboy@liyideMacBook-Pro'
+
+=PROGRESS REPORT==== 15-Oct-2026::03:12:25.001876 UTC ===
+    supervisor: {local,httpc_profile_sup}
+    started: [{pid,<0.152.0>},
+              {id,httpc_manager},
+              {mfargs,{httpc_manager,start_link,
+                                     [default,only_session_cookies,inets]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,4000},
+              {child_type,worker}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:12:25.001934 UTC ===
+    supervisor: {local,httpc_sup}
+    started: [{pid,<0.151.0>},
+              {id,httpc_profile_sup},
+              {mfargs,
+                  {httpc_profile_sup,start_link,
+                      [[{httpc,{default,only_session_cookies}}]]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,infinity},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:12:25.002157 UTC ===
+    supervisor: {local,httpc_sup}
+    started: [{pid,<0.153.0>},
+              {id,httpc_handler_sup},
+              {mfargs,{httpc_handler_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,infinity},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:12:25.002200 UTC ===
+    supervisor: {local,inets_sup}
+    started: [{pid,<0.150.0>},
+              {id,httpc_sup},
+              {mfargs,{httpc_sup,start_link,
+                                 [[{httpc,{default,only_session_cookies}}]]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,infinity},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:12:25.002603 UTC ===
+    supervisor: {local,inets_sup}
+    started: [{pid,<0.154.0>},
+              {id,httpd_sup},
+              {mfargs,{httpd_sup,start_link,[[]]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,infinity},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:12:25.002644 UTC ===
+    application: inets
+    started_at: 'ct_imboy@liyideMacBook-Pro'
+
+=PROGRESS REPORT==== 15-Oct-2026::03:12:25.002892 UTC ===
+    application: jsone
+    started_at: 'ct_imboy@liyideMacBook-Pro'
+
+=PROGRESS REPORT==== 15-Oct-2026::03:12:25.003397 UTC ===
+    application: syntax_tools
+    started_at: 'ct_imboy@liyideMacBook-Pro'
+
+=PROGRESS REPORT==== 15-Oct-2026::03:12:25.003547 UTC ===
+    application: compiler
+    started_at: 'ct_imboy@liyideMacBook-Pro'
+
+=PROGRESS REPORT==== 15-Oct-2026::03:12:25.004187 UTC ===
+    supervisor: {local,gr_sup}
+    started: [{pid,<0.158.0>},
+              {id,gr_counter_sup},
+              {mfargs,{gr_counter_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,5000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:12:25.004442 UTC ===
+    supervisor: {local,gr_sup}
+    started: [{pid,<0.159.0>},
+              {id,gr_param_sup},
+              {mfargs,{gr_param_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,5000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:12:25.004659 UTC ===
+    supervisor: {local,gr_sup}
+    started: [{pid,<0.160.0>},
+              {id,gr_manager_sup},
+              {mfargs,{gr_manager_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,5000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:12:25.004692 UTC ===
+    application: goldrush
+    started_at: 'ct_imboy@liyideMacBook-Pro'
+
+=PROGRESS REPORT==== 15-Oct-2026::03:12:25.006810 UTC ===
+    supervisor: {local,lager_sup}
+    started: [{pid,<0.164.0>},
+              {id,lager},
+              {mfargs,{gen_event,start_link,[{local,lager_event}]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,5000},
+              {child_type,worker}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:12:25.007047 UTC ===
+    supervisor: {local,lager_sup}
+    started: [{pid,<0.165.0>},
+              {id,lager_handler_watcher_sup},
+              {mfargs,{lager_handler_watcher_sup,start_link,[]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,5000},
+              {child_type,supervisor}]
+
+=PROGRESS REPORT==== 15-Oct-2026::03:12:25.008156 UTC ===
+    supervisor: {local,lager_sup}
+    started: [{pid,<0.166.0>},
+              {id,lager_crash_log},
+              {mfargs,
+                  {lager_crash_log,start_link,
+                      ["crash.log",65536,10485760,
+                       [{hour,0}],
+                       5,lager_rotator_default]}},
+              {restart_type,permanent},
+              {significant,false},
+              {shutdown,5000},
+              {child_type,worker}]
+
+Starting Sync (Automatic Code Compiler / Reloader)
+Scanning source files...
+[1;32m2026-10-15 03:12:25.072 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application lager started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:25.074 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application depcache started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:25.083 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application sync started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:25.128 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application mnesia started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:25.131 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application sasl started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:25.131 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application eunit started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:25.131 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application ranch started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:25.132 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application cowlib started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:25.133 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application cowboy started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:25.134 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application gun started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:25.134 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application cf started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:25.134 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application erlware_commons started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:25.166 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application jose started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:25.167 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application gen_smtp started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:25.169 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application throttle started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:25.169 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application epgsql started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:25.171 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application pooler started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:25.171 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application erlang_migrate started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:25.172 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application syn started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:25.174 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application telemetry started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:25.177 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application ecron started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:25.177 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application uid started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:25.177 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application recon started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:25.177 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application observer_cli started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:25.179 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application runtime_tools started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:25.179 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application redbug started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:25.179 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application opentelemetry_api started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:25.193 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application ssl_verify_fun started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:25.193 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application opentelemetry started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:25.194 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application ctx started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:25.194 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application hpack started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:25.194 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application chatterbox started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:25.194 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application acceptor_pool started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:25.200 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application gproc started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:25.201 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application grpcbox started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:25.225 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application tls_certificate_check started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:25.225 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application opentelemetry_exporter started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:25.225 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application simple_captcha started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:25.225 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application erlydtl started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:25.225 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application erlang_pay started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:25.226 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application hird_runtime started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:25.230 UTC [info] ct_imboy@liyideMacBook-Pro#<0.340.0> [license] valid edition=trial licensee=è¯ç¨ status=trial
+[1;32m2026-10-15 03:12:25.297 UTC [info] ct_imboy@liyideMacBook-Pro#<0.340.0> Ã©ÂÂÃ§Â¾Â¤Ã§Â®Â¡Ã§ÂÂÃ¥ÂÂÃ¥Â§ÂÃ¥ÂÂÃ¯Â¼ÂÃ¥Â½ÂÃ¥ÂÂÃ¨ÂÂÃ§ÂÂ¹: 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:25.297 UTC [info] ct_imboy@liyideMacBook-Pro#<0.340.0> æªéç½®éç¾¤èç¹ï¼ä»¥åèç¹æ¨¡å¼è¿è¡
+[1;32m2026-10-15 03:12:25.793 UTC [info] ct_imboy@liyideMacBook-Pro#<0.550.0> msg_store_ds started successfully
+[1;32m2026-10-15 03:12:25.794 UTC [info] ct_imboy@liyideMacBook-Pro#<0.551.0> msg_store_worker started successfully
+[1;32m2026-10-15 03:12:25.794 UTC [info] ct_imboy@liyideMacBook-Pro#<0.552.0> [msg_burn_logic,started,#{interval => 60000,batch_size => 500}]
+[1;32m2026-10-15 03:12:25.795 UTC [info] ct_imboy@liyideMacBook-Pro#<0.553.0> [moderation_sweep_logic,started,#{interval => 300000}]
+[1;32m2026-10-15 03:12:25.795 UTC [info] ct_imboy@liyideMacBook-Pro#<0.554.0> [user_deletion_logic,disabled]
+[1;32m2026-10-15 03:12:25.805 UTC [info] ct_imboy@liyideMacBook-Pro#<0.45.0> Application imboy started on node 'ct_imboy@liyideMacBook-Pro'
+[1;32m2026-10-15 03:12:25.806 UTC [info] ct_imboy@liyideMacBook-Pro#<0.568.0> Application sync exited with reason: stopped
+[1;32m2026-10-15 03:12:26.000 UTC [info] ct_imboy@liyideMacBook-Pro#<0.599.0> [channel_subscription_action,
+ {uid,118162657514883072},
+ {channel_id,118162657869301760},
+ {action,<<"subscribe">>},
+ {result,<<"noop">>},
+ {cost_ms,5}]
+[1;32m2026-10-15 03:12:26.010 UTC [info] ct_imboy@liyideMacBook-Pro#<0.602.0> [channel_subscription_action,
+ {uid,118162657514883072},
+ {channel_id,118162657869301760},
+ {action,<<"subscribe">>},
+ {result,<<"noop">>},
+ {cost_ms,2}]
+Testing .worktrees.limiter-v1-impl.api_v1_channel_SUITE: TEST COMPLETE, 7 ok, 0 failed of 7 test cases
+
+Updating /Users/leeyi/project/imboy.pub/.worktrees/limiter-v1-impl/.reports/rest/limiter-l0-20261015T111110-48871/ct/index.html ... done
+Updating /Users/leeyi/project/imboy.pub/.worktrees/limiter-v1-impl/.reports/rest/limiter-l0-20261015T111110-48871/ct/all_runs.html ... done
+
+make: Leaving directory '/Users/leeyi/project/imboy.pub/.worktrees/limiter-v1-impl'
+REST run limiter-l0-20261015T111110-48871 => PASS (case_pass=48/48)

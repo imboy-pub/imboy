@@ -1,0 +1,6 @@
+{
+  "case_id": "AC-15",
+  "node_results": "[{ac15_alpha,16985,{ok,100}},{ac15_beta,16986,{ok,100}}]",
+  "n_each": "100",
+  "total_admitted": "200"
+}
