@@ -2,15 +2,28 @@
 -include_lib("eunit/include/eunit.hrl").
 
 config_cache_test_() ->
-    {foreach, fun setup/0, fun cleanup/1, [
-        fun(C) -> {timeout, 10, ?_test(stale_loader(C, false))} end,
-        fun(C) -> {timeout, 10, ?_test(stale_loader(C, true))} end,
-        fun(C) -> ?_test(write_failure_does_not_invalidate(C)) end,
-        fun(C) -> ?_test(encryption_failure_does_not_write(C)) end,
-        fun(_) -> ?_test(public_callers_do_not_swallow_write_failure()) end,
-        fun(_) -> ?_test(legacy_retained_value_not_reused()) end,
-        fun(C) -> {timeout, 10, ?_test(unfenced_loader_keeps_zero_ttl(C))} end
-    ]}.
+    [
+        {timeout, 35,
+            ?_test(
+                pure_mock_fixture:run(fun() ->
+                    State = setup(),
+                    try
+                        ?assertEqual(ok, eunit:test(Test(State), [verbose]))
+                    after
+                        cleanup(State)
+                    end
+                end)
+            )}
+     || Test <- [
+            fun(C) -> {timeout, 10, ?_test(stale_loader(C, false))} end,
+            fun(C) -> {timeout, 10, ?_test(stale_loader(C, true))} end,
+            fun(C) -> ?_test(write_failure_does_not_invalidate(C)) end,
+            fun(C) -> ?_test(encryption_failure_does_not_write(C)) end,
+            fun(_) -> ?_test(public_callers_do_not_swallow_write_failure()) end,
+            fun(_) -> ?_test(legacy_retained_value_not_reused()) end,
+            fun(C) -> {timeout, 10, ?_test(unfenced_loader_keeps_zero_ttl(C))} end
+        ]
+    ].
 
 setup() ->
     Keys = [dsync_enabled, cluster_nodes, cache_fenced_namespaces, postgre_aes_key],

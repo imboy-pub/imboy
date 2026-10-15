@@ -201,7 +201,7 @@ confirmed(C, Org, App) ->
     Key =
         <<"eoa/", (integer_to_binary(Org))/binary, "/", (integer_to_binary(App))/binary,
             "/20261002/synthetic/fixture.txt">>,
-    {ok, _} = enterprise_asset_repo:confirm_save_tx(C, Key, <<"text/plain">>, 3, #{
+    {ok, _, _} = enterprise_asset_repo:confirm_save_tx(C, Key, <<"text/plain">>, 3, #{
         scope_ref => Ref, <<"origin_application_id">> => App
     }),
     {ok, _} = enterprise_asset_repo:find_confirmed_tx(C, Org, App, Key),

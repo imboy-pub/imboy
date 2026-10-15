@@ -44,7 +44,11 @@
     confirm_asset/3,
     cleanup_asset/3,
     cleanup_pending_private/5,
-    scope_key/3
+    scope_key/3,
+    fetch_session/3,
+    session_by_client_id/3,
+    renew_session/4,
+    register_session/6
 ]).
 
 %% @doc 由作用域派生对象 key（与元数据 `object_key` 同源，单一真源）。
@@ -320,3 +324,9 @@ delete_pending_object(Org, Ws, Id, _Key) ->
                 {error, {intent_failed, Reason}}
         end
     end).
+
+fetch_session(Org, Ws, Id) -> eb_pg_asset_meta:v5_session(Org, Ws, Id).
+session_by_client_id(Org, Ws, Cid) -> eb_pg_asset_meta:v5_session_by_cid(Org, Ws, Cid).
+renew_session(Org, Ws, Id, Expiry) -> eb_pg_asset_meta:renew_v5(Org, Ws, Id, Expiry).
+register_session(Org, Ws, Descriptor, Cid, Registration, Window) ->
+    eb_pg_asset_meta:register_session_v5(Org, Ws, Descriptor, Cid, Registration, Window).

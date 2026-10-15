@@ -2,7 +2,7 @@
 
 > 生效日期：2026-09-14
 > 适用范围：2026-09-14 及之后首次公开发布的版本
-> 相关：根 [`LICENSE`](../../LICENSE) ｜ [`MulanPSL-2.0.txt`](./MulanPSL-2.0.txt)（历史授权文本）｜ [CONTRIBUTING.md](../../CONTRIBUTING.md)
+> 相关：根 [`LICENSE`](https://github.com/imboy-pub/imboy/blob/main/LICENSE) ｜ [`MulanPSL-2.0.txt`](./MulanPSL-2.0.txt)（历史授权文本）｜ [CONTRIBUTING.md](https://github.com/imboy-pub/imboy/blob/main/CONTRIBUTING.md)
 
 ---
 
@@ -55,7 +55,7 @@ BSL 1.1 的默认授予是"复制、修改、创作演绎作品、再分发，�
 
 > ⚠️ **不要把该文件移回仓库根目录，也不要改回 `LICENSE-*` 一类的名字。** 代码托管平台的许可证扫描会把根目录下任何 `LICENSE*` / `COPYING*` 文件识别为一个独立许可证。由于这类平台普遍**识别不出 BSL 1.1**（会被归入 "Other"），一旦历史文本出现在根目录，仓库侧边栏里**唯一被具名的许可证就会变成最宽松的那个**，可能被误读为"双授权、可择一适用"。
 
-**2026-09-14 及之后**首次公开发布的版本按 [BSL 1.1](../../LICENSE) 授权。
+**2026-09-14 及之后**首次公开发布的版本按 [BSL 1.1](https://github.com/imboy-pub/imboy/blob/main/LICENSE) 授权。
 
 > ⚠️ **许可证变更不具追溯力。** MulanPSL-2.0 授予的是"永久性的、全球性的、免费的、非独占的、**不可撤销的**"授权。已经取得 2026-09-14 之前版本的人，对该版本仍享有不受限制的商用、修改与再分发权利，BSL 1.1 无法收回。本次变更只约束新版本。
 
@@ -71,13 +71,13 @@ BSL 1.1 的默认授予是"复制、修改、创作演绎作品、再分发，�
 
 ## 商标 / Trademark
 
-BSL 1.1 的正文明确**不授予**许可方及其关联方的商标、服务标记或产品名称的任何权利。"IMBoy" 名称与 Logo 的使用权限独立于代码许可证，任何商业产品均不得使用。详见 [`docs/brand/README.md`](../brand/README.md)。
+BSL 1.1 的正文明确**不授予**许可方及其关联方的商标、服务标记或产品名称的任何权利。"IMBoy" 名称与 Logo 的使用权限独立于代码许可证，任何商业产品均不得使用。详见 [`docs/brand/README.md`](https://github.com/imboy-pub/imboy/blob/main/docs/brand/README.md)。
 
 ---
 
 ## 贡献 / Contributions
 
-贡献以 BSL 1.1 授权给项目（DCO 形式确认）。依 BSL 1.1 的条款，全部代码——含所有贡献——将在 Change Date 自动转为 MPL 2.0，无需额外授权动作。若日后需要变更 Change License 或增加商业双授权，则需另行取得贡献者同意；**引入外部贡献之前应先引入 CLA**。详见 [CONTRIBUTING.md](../../CONTRIBUTING.md)。
+贡献以 BSL 1.1 授权给项目（DCO 形式确认）。依 BSL 1.1 的条款，全部代码——含所有贡献——将在 Change Date 自动转为 MPL 2.0，无需额外授权动作。若日后需要变更 Change License 或增加商业双授权，则需另行取得贡献者同意；**引入外部贡献之前应先引入 CLA**。详见 [CONTRIBUTING.md](https://github.com/imboy-pub/imboy/blob/main/CONTRIBUTING.md)。
 
 ---
 

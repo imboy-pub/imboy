@@ -49,6 +49,7 @@ member_uids_strict_test_() ->
         fun authoritative_key_snapshot_rejects_invalid_row/0,
         fun authoritative_key_snapshot_propagates_repo_error/0,
         fun unexpected_repo_shape_is_treated_as_error/0,
+        fun malformed_rows_cannot_be_silently_dropped/0,
         fun lenient_version_degrades_but_reports/0
     ]}.
 
@@ -195,6 +196,19 @@ unexpected_repo_shape_is_treated_as_error() ->
         {error, {unexpected_repo_result, undefined}},
         group_ds:member_uids_strict(?GID)
     ).
+
+malformed_rows_cannot_be_silently_dropped() ->
+    lists:foreach(
+        fun(Bad) ->
+            Items = [#{<<"user_id">> => 11}, Bad],
+            meck:expect(group_member_repo, list_by_gid, fun(?GID, _) -> {ok, Items} end),
+            ?assertEqual(
+                {error, {unexpected_repo_result, {ok, Items}}}, group_ds:member_uids_strict(?GID)
+            )
+        end,
+        [#{}, #{<<"user_id">> => <<"12">>}, #{<<"user_id">> => 0}, malformed]
+    ),
+    ?assertEqual(0, length(meck_calls(imboy_cache, set))).
 
 %% 宽松版仍返回 []（30 个既有调用点依赖此签名），但必须计数，不得静默
 lenient_version_degrades_but_reports() ->

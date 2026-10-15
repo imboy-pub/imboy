@@ -169,7 +169,7 @@ media01_withdrawn_denied_test_() ->
 %%% MEDIA-02：cleanup_unbound 不误删
 %%%===================================================================
 
-media02_cleanup_deletes_orphan_test_() ->
+media02_cleanup_enqueues_orphan_intent_test_() ->
     ?WITH_MECKS(
         [
             {moya_submission_repo, [
@@ -177,8 +177,15 @@ media02_cleanup_deletes_orphan_test_() ->
                     {ok, [#{<<"id">> => 501, <<"path">> => <<"u99/orphan1">>}]}
                 end}
             ]},
+            {attachment_repo, [
+                {'intent_ordinary_delete', 2, fun(
+                    <<"u99/orphan1">>, <<"teaching unbound cleanup">>
+                ) ->
+                    ok
+                end}
+            ]},
             {elib_oss, [
-                {'delete_object', 1, fun(<<"u99/orphan1">>) -> ok end}
+                {'delete_object', 1, fun(_) -> error(should_not_delete_inline) end}
             ]},
             {attachment_ds, [
                 {'soft_delete', 1, fun(501) -> ok end}
@@ -188,12 +195,15 @@ media02_cleanup_deletes_orphan_test_() ->
             ?assertEqual(
                 {ok, #{cleaned => 1, errors => 0}},
                 moya_attach_logic:cleanup_unbound(24)
-            )
+            ),
+            ?assertEqual(1, meck:num_calls(attachment_repo, intent_ordinary_delete, 2)),
+            ?assertEqual(0, meck:num_calls(elib_oss, delete_object, 1)),
+            ?assertEqual(0, meck:num_calls(attachment_ds, soft_delete, 1))
         end
     ).
 
-%% 删对象失败：保留行（下轮重试），绝不先删行留孤儿对象
-media02_cleanup_object_error_keeps_row_test_() ->
+%% 意图写入失败：保留字节与元数据供下轮重试。
+media02_cleanup_intent_error_keeps_row_test_() ->
     ?WITH_MECKS(
         [
             {moya_submission_repo, [
@@ -201,8 +211,15 @@ media02_cleanup_object_error_keeps_row_test_() ->
                     {ok, [#{<<"id">> => 502, <<"path">> => <<"u99/orphan2">>}]}
                 end}
             ]},
+            {attachment_repo, [
+                {'intent_ordinary_delete', 2, fun(
+                    <<"u99/orphan2">>, <<"teaching unbound cleanup">>
+                ) ->
+                    {error, db_down}
+                end}
+            ]},
             {elib_oss, [
-                {'delete_object', 1, fun(_) -> {error, s3_down} end}
+                {'delete_object', 1, fun(_) -> error(should_not_delete_inline) end}
             ]},
             {attachment_ds, [
                 {'soft_delete', 1, fun(_) -> erlang:error(should_not_soft_delete) end}
@@ -212,7 +229,10 @@ media02_cleanup_object_error_keeps_row_test_() ->
             ?assertEqual(
                 {ok, #{cleaned => 0, errors => 1}},
                 moya_attach_logic:cleanup_unbound(24)
-            )
+            ),
+            ?assertEqual(1, meck:num_calls(attachment_repo, intent_ordinary_delete, 2)),
+            ?assertEqual(0, meck:num_calls(elib_oss, delete_object, 1)),
+            ?assertEqual(0, meck:num_calls(attachment_ds, soft_delete, 1))
         end
     ).
 

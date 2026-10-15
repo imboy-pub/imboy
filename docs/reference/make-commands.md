@@ -114,7 +114,7 @@
 | `make new t=imboy.rest_handler n=demo_handler` | 代码生成模板（`t=` 可选 `imboy.rest_handler` / `imboy.logic` / `imboy.repository` / `imboy.ds`，模板定义在 `include/tpl.mk`） |
 | `make mod-check` | 审计 `include/deps.mk` 全部依赖的上游最新版本 |
 | `make mod-up MOD="cowboy cowlib=2.17.0"` | 定点升级依赖（`MOD=all` 升全部；升级后需清 `deps/<name>` 与 `.erlang.mk/dep_built/<name>` 再 make） |
-| `make docs-serve` / `make docs-stop` | 启停 API 文档服务器（Docker，http://localhost:8080） |
+| `make docs-serve` / `make docs-stop` | 启停 API 文档服务器（Docker，`http://localhost:8080`） |
 
 ## erlang.mk 内建目标（vendored，勿改）
 

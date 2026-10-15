@@ -2,7 +2,7 @@
 %%%
 %%% 覆盖：
 %%%   * 超龄孤儿 pending 资产（status='pending_confirm' + message_id IS NULL +
-%%%     created_at 早于 age 线）随批清理：元数据行与对象字节都消失；
+%%%     created_at 早于 age 线）随批清理元数据并持久化对象回收意图；
 %%%   * 新鲜孤儿（未到 age 线）与已 confirm 绑定消息的资产**不动**；
 %%%   * 绑定消息但未 confirm 的 pending 资产（message_id 非空）不进孤儿候选
 %%%     （由其消息的保留期治理，age 不扩大到它们）；
@@ -99,9 +99,21 @@ f1_aged_orphan_purged_fresh_and_confirmed_kept() ->
         ?assertEqual([], maps:get(skipped, Summary)),
         ?assertEqual([], maps:get(object_delete_failures, Summary)),
         ?assert(is_integer(maps:get(audit_id, Summary))),
-        %% 超龄孤儿：元数据行与对象字节都消失（对象先删、元数据后删的正面证据）
+        %% 超龄孤儿：元数据清除；旧对象身份未核验时保留字节与 blocked 意图。
         ?assertEqual(0, alive_asset_count(Org, Ws, AgedId)),
-        ?assertMatch({error, not_found}, object_get(Org, Ws, AgedKey)),
+        ?assertMatch({ok, _}, object_get(Org, Ws, AgedKey)),
+        %% 未验证物理定位的旧 stub 只允许 durable blocked intent，不能猜测删除。
+        ?assertEqual(
+            1,
+            eb_pg_test_fixture:scalar(
+                <<
+                    "SELECT count(*) FROM enterprise_asset_delete_queue"
+                    " WHERE organization_id=$1 AND workspace_id=$2 AND asset_id=$3"
+                    " AND job_state='blocked' AND last_error_code='legacy_location_unverified'"
+                >>,
+                [Org, Ws, AgedId]
+            )
+        ),
         %% 新鲜孤儿：行与对象原样保留
         ?assertEqual(1, alive_asset_count(Org, Ws, FreshId)),
         ?assertMatch({ok, _}, object_get(Org, Ws, FreshKey)),

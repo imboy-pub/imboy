@@ -132,7 +132,7 @@ a06_purge_deletes_children_then_message_and_audits() ->
         {Org, Ws} = scope_tenant(Scope),
         Now = eb_system_clock:now(),
         RetainUntil = Now - 120,
-        %% FND-4 正向证据：对象字节真实存在（synthetic 前缀），purge 后必须消失
+        %% synthetic 对象真实存在；V5 purge 必须留下对应的持久化回收意图。
         ObjectKey = scoped_object_key(Org, Ws, eb_pg_test_fixture:id()),
         ok = eb_asset_object_stub:put(ObjectKey, <<"fnd4-object-bytes">>, #{}),
         MsgId = insert_message(Scope, <<"eb03-purge-1">>, RetainUntil),
@@ -144,8 +144,20 @@ a06_purge_deletes_children_then_message_and_audits() ->
         ?assertEqual(1, maps:get(deleted, Summary)),
         ?assertEqual([MsgId], maps:get(purged, Summary)),
         ?assert(is_integer(maps:get(audit_id, Summary))),
-        %% FND-4：对象字节随 purge 消失（先对象后元数据顺序的正面证据）
-        ?assertMatch({error, not_found}, object_get(Org, Ws, ObjectKey)),
+        %% V5：元数据 purge 与对象回收解耦；未核验存储位置不得删除字节。
+        ?assertMatch({ok, _}, object_get(Org, Ws, ObjectKey)),
+        %% 未验证物理定位的旧 stub 只允许 durable blocked intent，不能猜测删除。
+        ?assertEqual(
+            1,
+            eb_pg_test_fixture:scalar(
+                <<
+                    "SELECT count(*) FROM enterprise_asset_delete_queue"
+                    " WHERE organization_id=$1 AND workspace_id=$2 AND asset_id=$3"
+                    " AND job_state='blocked' AND last_error_code='legacy_location_unverified'"
+                >>,
+                [Org, Ws, AssetId]
+            )
+        ),
         %% FND-4：无作用域 key 的对象不得被 purge 触碰（跨租户 fail-closed）
         ?assertMatch([], maps:get(object_delete_failures, Summary)),
         ?assertEqual(0, alive_message_count(Org, Ws, MsgId)),

@@ -410,7 +410,18 @@ confirm_rejects_oversize_object_test_() ->
                 end},
                 {'delete_object', 2, fun(_B, _K) -> ok end}
             ]},
-            {elib_pg, [{'with_tx', 1, fun(F) -> F(fake_conn) end}]},
+            {attach_pending_repo, [
+                {'intent_pending_delete', 3, fun(Key, <<"reject">>, Reason) ->
+                    ?assertMatch(<<"u789/", _/binary>>, Key),
+                    ?assert(
+                        lists:member(Reason, [
+                            <<"confirm reject file_too_large">>,
+                            <<"confirm reject invalid_file_type">>
+                        ])
+                    ),
+                    ok
+                end}
+            ]},
             {attachment_ds, [{'save', 4, fun(_, _, _, _) -> ok end}]}
         ],
         fun() ->
@@ -420,7 +431,8 @@ confirm_rejects_oversize_object_test_() ->
                 {error, file_too_large},
                 attach_logic:confirm(789, Key, <<"private">>, undefined, Meta)
             ),
-            ?assertEqual(1, meck:num_calls(elib_oss, delete_object, 2)),
+            ?assertEqual(0, meck:num_calls(elib_oss, delete_object, 2)),
+            ?assertEqual(1, meck:num_calls(attach_pending_repo, intent_pending_delete, 3)),
             ?assertEqual(0, meck:num_calls(attachment_ds, save, 4))
         end
     ).
@@ -434,7 +446,18 @@ confirm_rejects_invalid_type_object_test_() ->
                 end},
                 {'delete_object', 2, fun(_B, _K) -> ok end}
             ]},
-            {elib_pg, [{'with_tx', 1, fun(F) -> F(fake_conn) end}]},
+            {attach_pending_repo, [
+                {'intent_pending_delete', 3, fun(Key, <<"reject">>, Reason) ->
+                    ?assertMatch(<<"u789/", _/binary>>, Key),
+                    ?assert(
+                        lists:member(Reason, [
+                            <<"confirm reject file_too_large">>,
+                            <<"confirm reject invalid_file_type">>
+                        ])
+                    ),
+                    ok
+                end}
+            ]},
             {attachment_ds, [{'save', 4, fun(_, _, _, _) -> ok end}]}
         ],
         fun() ->
@@ -444,7 +467,8 @@ confirm_rejects_invalid_type_object_test_() ->
                 {error, invalid_file_type},
                 attach_logic:confirm(789, Key, <<"private">>, undefined, Meta)
             ),
-            ?assertEqual(1, meck:num_calls(elib_oss, delete_object, 2)),
+            ?assertEqual(0, meck:num_calls(elib_oss, delete_object, 2)),
+            ?assertEqual(1, meck:num_calls(attach_pending_repo, intent_pending_delete, 3)),
             ?assertEqual(0, meck:num_calls(attachment_ds, save, 4))
         end
     ).

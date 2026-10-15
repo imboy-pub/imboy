@@ -118,7 +118,7 @@ elvis-output.txt
 # eunit-local 的 -pa imboy/ebin 让 code:priv_dir(imboy) 可解析（worktree
 # 根目录名是 rg-*，不带 imboy/ebin 结构）；主树无此文件，零副作用。
 /imboy
-docs/plans
+/docs/plans/*
 docs/planning
 tmp
 
@@ -160,7 +160,8 @@ docs/design/**/evidence/
 /docs/design/2026-10-07-phase1-delivery-quality-audit-v1.md
 
 # One-off execution materials are retained outside Git.
-/docs/plans/
+/docs/plans/*
+!/docs/plans/2026-10-14-three-platform-ci-micro-community-closeout-v2.md
 /docs/planning/
 /docs/qa/
 /docs/archive/plans/

@@ -87,3 +87,14 @@
 %% Atomically claim eligible pending metadata and durably retry object deletion.
 -callback cleanup_pending_private(integer(), integer(), asset_id(), integer(), non_neg_integer()) ->
     ok | {error, term()}.
+
+%% 可续传会话元数据；对象定位仅由存储适配器派生。
+-callback fetch_session(integer(), integer(), asset_id()) -> {ok, map()} | {error, term()}.
+-callback session_by_client_id(integer(), integer(), binary()) ->
+    {ok, asset_id()} | {error, term()}.
+-callback renew_session(integer(), integer(), asset_id(), integer()) ->
+    {ok, map()} | {error, term()}.
+-callback register_session(integer(), integer(), descriptor(), binary(), map(), {
+    integer(), integer()
+}) ->
+    {ok, asset_id()} | {error, term()}.

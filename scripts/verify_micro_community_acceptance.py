@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Read-only NO_FULL_EUNIT micro-community evidence integrity verifier.
+"""Read-only micro-community verifier (legacy NO_FULL_EUNIT and explicit V2).
+
+V2 schema and limits: docs/plans/2026-10-14-three-platform-ci-micro-community-closeout-v2.md.
+The contract below documents the unchanged legacy mode.
 
 Input contract (all evidence paths relative to --run-root):
 * acceptance.tsv: id/status/candidate_manifest_sha256/plan_sha256/policy_sha256/
@@ -72,7 +75,7 @@ def evidence(run, name, sha):
     require(digest(path) == sha, 'evidence hash mismatch')
 
 
-def command_record(run, command, candidate):
+def command_record(run, command, candidate, full_eunit=False):
     require(command['candidate_manifest_sha256'] == candidate, 'command candidate drift')
     argv = command['argv']
     require(isinstance(argv, list) and argv and all(isinstance(a, str) and a.strip() for a in argv), 'empty argv')
@@ -82,7 +85,9 @@ def command_record(run, command, candidate):
             and not command.get('skipped', False), 'cancel/timeout/skip')
     require(not any(a in {'check', '*'} for a in argv), 'indirect full EUnit')
     if any(a in {'eunit', 'eunit-local'} for a in argv):
-        require(argv[0] == 'make' and len(argv) == 3 and re.fullmatch(r't=[A-Za-z0-9_]+_tests', argv[2]), 'full EUnit forbidden')
+        require((full_eunit and argv in [['make', 'eunit'], ['make', 'eunit-local']]) or
+                (argv[0] == 'make' and len(argv) == 3 and re.fullmatch(r't=[A-Za-z0-9_]+_tests', argv[2])),
+                'full EUnit forbidden or filtered invocation')
     evidence(run, command['log_path'], command['log_sha256'])
     parse_execution_log(run, command)
 
@@ -102,11 +107,20 @@ def parse_execution_log(run, command):
     begin, finish = datetime.fromisoformat(start['started_at']), datetime.fromisoformat(end['ended_at'])
     require(begin.tzinfo is not None and finish.tzinfo is not None and finish > begin, 'execution timestamps')
     raw = re.sub(r'\x1b\[[0-9;]*[a-zA-Z]', '', '\n'.join(lines[1:-1]))
+    if command['argv'] in [['make', 'eunit'], ['make', 'eunit-local']]:
+        # Expected-error test cases may log errors; only actual runner outcomes count.
+        require(not re.search(r'\*failed\*|\*timed out\*|One or more tests were cancelled|Failed:\s*[1-9]|Skipped:\s*[1-9]|'
+                              r'make(?:\[\d+\])?: \*\*\*|tests? aborted|SIG(?:TERM|INT) received - shutting down|'
+                              r'ABORTED_BY_RESOURCE_GUARD=1|NOT_A_COMPLETE_FULL_RESULT', raw, re.I),
+                'runner failure/skip/cancel log')
+        return raw
+    # EUnit prints zero counters on successful runs; these are not failures.
+    checked = re.sub(r'\b(?:Failed|Skipped):\s*0\b', '', raw, flags=re.I)
     require(not re.search(r'(?im)\bFAILED\b|\bFAILURE\b|\bERROR(?: TS\d+|:| •)|'
                           r'\bskipped\b|\bcancelled\b|\btimed out\b|'
                           r'\b[1-9]\d* (?:fail|skip|error)s?\b|\bexit [1-9]\d*\b|'
                           r'\bsyntax error\b|make(?:\[\d+\])?: \*\*\*|\berlc:|'
-                          r'\btests? aborted\b|\bbuild failed\b', raw),
+                          r'\btests? aborted\b|\bbuild failed\b', checked),
             'runner failure/skip/cancel log')
     return raw
 
@@ -207,7 +221,7 @@ def verify_sources(sources):
         require(actual == source['untracked'], 'source untracked/WIP drift')
 
 
-def verify(run, plan, policy, candidate):
+def verify_legacy(run, plan, policy, candidate):
     manifest_path = run / 'candidate-manifest.json'
     require(digest(manifest_path) == candidate, 'candidate drift')
     manifest = json.loads(manifest_path.read_text())
@@ -274,6 +288,124 @@ def verify(run, plan, policy, candidate):
     return state['status']
 
 
+
+def verify_full_rounds(run, quality, commands, sources):
+    ids = quality['backend_full_rounds']
+    require(quality['backend_full_eunit'] == 'PASS' and len(ids) == 2
+            and len(set(ids)) == 2, 'two distinct full EUnit rounds required')
+    records = [commands[key] for key in ids]
+    require(len({r['log_path'] for r in records}) == 2
+            and len({r['log_sha256'] for r in records}) == 2, 'full round log reuse')
+    require(datetime.fromisoformat(records[0]['ended_at']) <=
+            datetime.fromisoformat(records[1]['started_at']), 'full rounds overlap')
+    for record in records:
+        require(record['argv'] in [['make', 'eunit'], ['make', 'eunit-local']],
+                'filtered full EUnit invocation')
+        allowed = {'IMBOYENV', 'EUNIT_CONFIG', 'EUNIT_USE_RELAY', 'EUNIT_HTTP_PORT',
+                   'EUNIT_HTTP_ADM_PORT', 'EUNIT_RELAY_PORT', 'EUNIT_RELAY_TARGET'}
+        require(set(record['environment_overrides']) <= allowed, 'filtered EUnit environment')
+        scoped_result(run, record, sources['backend']['repo_path'])
+
+
+def verify_leaves(run, policy, manifest, candidate, commands, rows):
+    expected = policy['leaves']
+    require(set(expected) == IDS and all(isinstance(items, dict) and items
+            for items in expected.values()), 'policy must retain all 26 parents')
+    required = {key: (parent, description) for parent, items in expected.items()
+                for key, description in items.items()}
+    require(len(required) == sum(map(len, expected.values())), 'duplicate policy leaf')
+    leaves = json.loads((run / 'acceptance-leaves.json').read_text())
+    require(len(leaves) == len(required) and {r['id'] for r in leaves} == set(required),
+            'exact leaf ID set')
+    for leaf in leaves:
+        parent, description = required[leaf['id']]
+        require(leaf['parent'] == parent and leaf['requirement'] == description
+                and leaf['status'] == 'PASS', 'leaf requirement/status mismatch')
+        require(leaf['candidate_manifest_sha256'] == candidate, 'leaf candidate drift')
+        command = commands[leaf['command_id']]
+        require(leaf['log_sha256'] == command['log_sha256'], 'leaf command log mismatch')
+        evidence(run, leaf['evidence_path'], leaf['evidence_sha256'])
+        oracle = json.loads((run / leaf['evidence_path']).read_text())
+        require(oracle['leaf_id'] == leaf['id'] and oracle['command_id'] == command['id']
+                and oracle['candidate_manifest_sha256'] == candidate
+                and oracle['log_sha256'] == command['log_sha256'], 'oracle identity mismatch')
+        require(oracle['assertions'] and all(a['passed'] is True and a['name'].strip()
+                and 'expected' in a and 'actual' in a for a in oracle['assertions']),
+                'missing/failed behavior assertions')
+        if parent in {'MC-AC-21', 'MC-AC-22'}:
+            require(oracle['device_id'] == manifest['device']['resource_id']
+                    and oracle['platform'] == 'android', 'leaf device/platform mismatch')
+    require(all(row['status'] == 'PASS' for row in rows), 'parent not PASS')
+
+
+def verify_independent_review(run, manifest, candidate):
+    review = json.loads((run / 'independent-review.json').read_text())
+    require(review['reviewer'].strip() and review['reviewer'] != manifest['executor']
+            and review['candidate_manifest_sha256'] == candidate
+            and review['status'] == 'PASS', 'independent review required')
+    for name in ('acceptance-leaves.json', 'acceptance.tsv', 'quality-gates.json', 'commands.jsonl'):
+        require(review['artifacts'][name] == digest(run / name), 'review artifact drift')
+
+
+def verify_v2(run, plan, policy_path, candidate):
+    manifest_path = run / 'candidate-manifest.json'
+    require(digest(manifest_path) == candidate, 'candidate drift')
+    manifest = json.loads(manifest_path.read_text())
+    require(manifest['execution_policy'] == 'MICRO_COMMUNITY_V2', 'wrong V2 policy')
+    require(manifest['plan_sha256'] == digest(plan)
+            and manifest['policy_sha256'] == digest(policy_path), 'plan/policy drift')
+    policy = json.loads(policy_path.read_text())
+    require(policy['schema_version'] == 2, 'unsupported V2 policy schema')
+    sources = manifest['sources']
+    verify_sources(sources)
+    for source in sources.values():
+        require(source['diff_sha256'] == hashlib.sha256(b'').hexdigest()
+                and not source['untracked'], 'V2 final candidate must be clean and committed')
+        for args in (['diff', '--quiet'], ['diff', '--cached', '--quiet']):
+            require(subprocess.run(['git', '-C', source['repo_path'], *args],
+                                   capture_output=True).returncode == 0, 'V2 hidden index/worktree changes')
+    # The caller cannot shrink the contract while keeping the same source candidate.
+    contract = Path(sources['backend']['repo_path']) / 'docs/reference/contracts/micro-community-v2-policy.json'
+    require(digest(contract) == digest(policy_path), 'V2 policy differs from candidate contract')
+    original, current = run / 'protected-wip.sha256', run / 'current-protected-wip.sha256'
+    require(original.read_bytes() == current.read_bytes()
+            and digest(original) == manifest['protected_wip_sha256'], 'protected WIP drift')
+    verify_protected_wip(run, manifest)
+    require(re.fullmatch(r'[0-9a-f]{64}', manifest['environment_sha256']), 'missing environment fingerprint')
+    evidence(run, manifest['environment_path'], manifest['environment_sha256'])
+    records = [json.loads(line) for line in (run / 'commands.jsonl').read_text().splitlines() if line.strip()]
+    require(records and len({r['id'] for r in records}) == len(records), 'duplicate/empty command IDs')
+    commands = {r['id']: r for r in records}
+    for record in records:
+        require(record['environment_sha256'] == manifest['environment_sha256'], 'command environment drift')
+        command_record(run, record, candidate, full_eunit=True)
+    verify_device(run, manifest['device'], commands, sources)
+    with (run / 'acceptance.tsv').open() as handle:
+        rows = list(csv.DictReader(handle, delimiter='\t'))
+    require(len(rows) == 26 and {r['id'] for r in rows} == IDS, 'exact ID set')
+    for row in rows:
+        require(row['candidate_manifest_sha256'] == candidate
+                and row['plan_sha256'] == digest(plan)
+                and row['policy_sha256'] == digest(policy_path), 'row candidate/contract drift')
+    verify_leaves(run, policy, manifest, candidate, commands, rows)
+    quality = json.loads((run / 'quality-gates.json').read_text())
+    require(set(quality['gates']) == GATES, 'quality gate set')
+    for gate, command_id in quality['gates'].items():
+        quality_result(run, commands[command_id], gate, sources)
+    verify_full_rounds(run, quality, commands, sources)
+    verify_independent_review(run, manifest, candidate)
+    state = json.loads((run / 'state.json').read_text())
+    require(state['status'] == 'MICRO_COMMUNITY_CANDIDATE_PASS'
+            and state['acceptance_ids'] == {r['id']: r['status'] for r in rows}, 'false V2 completion')
+    return state['status']
+
+
+def verify(run, plan, policy, candidate):
+    mode = json.loads((run / 'candidate-manifest.json').read_text()).get('execution_policy')
+    if mode == 'MICRO_COMMUNITY_V2':
+        return verify_v2(run, plan, policy, candidate)
+    return verify_legacy(run, plan, policy, candidate)
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--run-root', type=Path, required=True)
@@ -282,7 +414,7 @@ def main():
     parser.add_argument('--expected-candidate-sha256', required=True)
     args = parser.parse_args()
     result = verify(args.run_root, args.plan_path, args.policy_path, args.expected_candidate_sha256)
-    print(f'INTEGRITY_PASS: 26 IDs; {result}; full EUnit not executed; business acceptance not implied')
+    print(f'INTEGRITY_PASS: 26 IDs; {result}; independent provenance review required; not a remote CI or release verdict')
     return 0
 
 
