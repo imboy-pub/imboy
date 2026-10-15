@@ -1,6 +1,7 @@
 -module(attachment_gc_repo).
 -moduledoc "Durable object deletion jobs; completed rows reserve retired object keys.".
 -export([enqueue_tx/3, pending/0, lock_tx/2, complete_tx/2, defer/1]).
+-export([v5_claim/2, v5_ack/4, v5_reap/2]).
 
 enqueue_tx(Conn, Path, Bucket) ->
     case
@@ -72,3 +73,56 @@ defer(Path) ->
         >>,
         [Path]
     ).
+
+%% ===================================================================
+%% W4-02 V5 队列协议封装（迁移 179 SECURITY DEFINER 函数；worker 只可
+%% claim/ack/reaper）。fn 内 CAS 租约（SKIP LOCKED、lease 120s、attempts<8、
+%% 7 档退避、max_attempts→blocked）——本模块只做参数/结果归一。
+%% ===================================================================
+
+-include_lib("epgsql/include/epgsql.hrl").
+
+%% claim 一个 ready/retry_wait job（租约 120s；attempts 已由 fn 递增）。
+-spec v5_claim(epgsql:connection() | pid(), binary()) ->
+    {ok, map()} | {error, empty | term()}.
+v5_claim(Conn, Token) ->
+    case
+        elib_pg:query(
+            Conn,
+            <<
+                "SELECT out_path, out_bucket, out_storage_driver,"
+                " out_storage_namespace, out_storage_container,"
+                " out_storage_locator_sha256, out_attempts"
+                " FROM fn_v5_claim_ordinary($1)"
+            >>,
+            [Token]
+        )
+    of
+        {ok, [Row | _]} -> {ok, Row};
+        {ok, []} -> {error, empty};
+        {error, R} -> {error, R}
+    end.
+
+%% ack 删除结果：ok=done；failed=退避重试/8 次终止（fn 裁决）。
+-spec v5_ack(epgsql:connection() | pid(), binary(), binary(), boolean()) ->
+    ok | {error, term()}.
+v5_ack(Conn, Path, Token, Ok) ->
+    case
+        elib_pg:query(
+            Conn,
+            <<"SELECT fn_v5_ack_ordinary($1, $2, $3)">>,
+            [Path, Token, Ok]
+        )
+    of
+        {ok, _} -> ok;
+        {error, R} -> {error, R}
+    end.
+
+%% 过期租约回收（返回回收行数）。
+-spec v5_reap(epgsql:connection() | pid(), integer()) -> {ok, integer()} | {error, term()}.
+v5_reap(Conn, Limit) ->
+    case elib_pg:query(Conn, <<"SELECT fn_v5_reaper_ordinary($1)">>, [Limit]) of
+        {ok, [#{<<"fn_v5_reaper_ordinary">> := N}]} when is_integer(N) -> {ok, N};
+        {ok, _} -> {ok, 0};
+        {error, R} -> {error, R}
+    end.
