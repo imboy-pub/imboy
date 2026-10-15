@@ -1267,82 +1267,129 @@
   {
    "id": "C00",
    "status": "PENDING",
-   "receipts": []
+   "receipts": [],
+   "reason": "v3 已冻结；本任务尚无冻结后严格有效回执，保留待验，不以历史或预验证结果签发 PASS。"
   },
   {
    "id": "C01",
    "status": "PENDING",
-   "receipts": []
+   "receipts": [],
+   "reason": "v3 已冻结；本任务尚无冻结后严格有效回执，保留待验，不以历史或预验证结果签发 PASS。"
   },
   {
    "id": "C02",
    "status": "PENDING",
-   "receipts": []
+   "receipts": [],
+   "reason": "v3 已冻结；本任务尚无冻结后严格有效回执，保留待验，不以历史或预验证结果签发 PASS。"
   },
   {
    "id": "C03",
    "status": "PENDING",
-   "receipts": []
+   "receipts": [],
+   "reason": "v3 已冻结；本任务尚无冻结后严格有效回执，保留待验，不以历史或预验证结果签发 PASS。"
   },
   {
    "id": "C04",
    "status": "PENDING",
-   "receipts": []
+   "receipts": [],
+   "reason": "v3 已冻结；本任务尚无冻结后严格有效回执，保留待验，不以历史或预验证结果签发 PASS。"
   },
   {
    "id": "C05",
    "status": "PENDING",
-   "receipts": []
+   "receipts": [],
+   "reason": "v3 已冻结；本任务尚无冻结后严格有效回执，保留待验，不以历史或预验证结果签发 PASS。"
   },
   {
    "id": "C06",
    "status": "PENDING",
-   "receipts": []
+   "receipts": [],
+   "reason": "v3 已冻结；本任务尚无冻结后严格有效回执，保留待验，不以历史或预验证结果签发 PASS。"
   },
   {
    "id": "C07",
    "status": "PENDING",
-   "receipts": []
+   "receipts": [],
+   "reason": "v3 已冻结；本任务尚无冻结后严格有效回执，保留待验，不以历史或预验证结果签发 PASS。"
   },
   {
    "id": "C08",
-   "status": "PENDING",
-   "receipts": []
+   "status": "PARTIAL",
+   "receipts": [
+    {
+     "path": "/Users/leeyi/.codex-runs/cache-closeout-round3-20261015/evidence-v3/receipts/qr_v3_r1.json",
+     "sha256": "bc00aeb591fb65dcbf02e5a943aa9152d900c25ac2d99871e117431b54e39c43"
+    },
+    {
+     "path": "/Users/leeyi/.codex-runs/cache-closeout-round3-20261015/evidence-v3/receipts/migration170_v3.json",
+     "sha256": "fb3e9b958d671aeff1acff5e9fbf6080c3d8ea853b8614a75515f2c3e1e13e98"
+    }
+   ],
+   "reason": "冻结后真实 PG 两节点三种竞争 3/3、exit=0，每种只取得一份凭据且合成行清理为0；新空专属库 170 单迁移往返两次通过、exit=0。Cowboy 为 callback observer，不能扩大为完整 HTTP/权限链或169->170->169全历史迁移通过。"
   },
   {
    "id": "C09",
-   "status": "PENDING",
-   "receipts": [],
-   "reason": "本轮联合预验未全绿，v3 未冻结；正式候选回执未签发。"
+   "status": "PASS",
+   "receipts": [
+    {
+     "path": "/Users/leeyi/.codex-runs/cache-closeout-round3-20261015/evidence-v3/receipts/c09_v3_r1.json",
+     "sha256": "54582984575d97c3827e880cc8c6ab6d0bbff1a5bc419544da4814efb0649680"
+    },
+    {
+     "path": "/Users/leeyi/.codex-runs/cache-closeout-round3-20261015/evidence-v3/receipts/c09_v3_r2.json",
+     "sha256": "c814a392e7f8bdb875aa6c2b0dbd4bdaa35aeff851d8dd006ebfaf73db30ae09"
+    }
+   ],
+   "reason": "v3 冻结后完整三节点矩阵两轮各 38/38，native exit=0，W=720 秒自然窗口，无 DCHECK_ONLY。仅签本地 loopback 协议/故障矩阵；不替代 96 项逐叶、C10 或生产资格。规范回执保留原生日志前缀和原生结果摘要。"
   },
   {
    "id": "C10",
-   "status": "PENDING",
-   "receipts": [],
-   "reason": "本轮联合预验未全绿，v3 未冻结；正式候选回执未签发。"
+   "status": "FAIL",
+   "receipts": [
+    {
+     "path": "/Users/leeyi/.codex-runs/cache-closeout-round3-20261015/evidence-v3/receipts/c10_v3_r3.json",
+     "sha256": "d73fcfb64087f7c9d3b7ede3a78418e1959534eca8d3e78aefe4c1675529495c"
+    },
+    {
+     "path": "/Users/leeyi/.codex-runs/cache-closeout-round3-20261015/evidence-v3/receipts/c10_v3_r4.json",
+     "sha256": "0824a26e994f44778da0ca82ad1327fd326112a15a85bf8a843aa735e3a10580"
+    }
+   ],
+   "reason": "修正仓外旧/新树根执行参数后，冻结候选完整两轮均12/16、native exit=2，M5/M8/M9/M10仍失败。M8异常清理缺口可能级联M9/M10，M5为独立尾部READY未闭合；不改oracle、保留失败。第二轮结束发现外部EUnit，不能宣称整段资源独占。"
   },
   {
    "id": "C11",
-   "status": "PENDING",
-   "receipts": [],
-   "reason": "本轮联合预验未全绿，v3 未冻结；正式候选回执未签发。"
+   "status": "PARTIAL",
+   "receipts": [
+    {
+     "path": "/Users/leeyi/.codex-runs/cache-closeout-round3-20261015/evidence-v3/receipts/c11_core_v3_r1.json",
+     "sha256": "fd4bba53fa155ed913dc0814c83b459eda2b71893c9ae610bcc4e7aa89089226"
+    }
+   ],
+   "reason": "真实隔离 VM 的自然 Dmax90秒、HTTP指标、15秒scrape、原60秒规则周期及两条核心告警firing全部通过、exit=0，11个模块按同字节load_binary绑定。尚未覆盖完整应用/DB、多节点、拒绝/过载/缺口其它信号及全部dashboard query，不能签全C11 PASS。"
   },
   {
    "id": "C12",
-   "status": "PENDING",
-   "receipts": [],
-   "reason": "本轮联合预验未全绿，v3 未冻结；正式候选回执未签发。"
+   "status": "FAIL",
+   "receipts": [
+    {
+     "path": "/Users/leeyi/.codex-runs/cache-closeout-round3-20261015/evidence-v3/receipts/full_eunit_v3.json",
+     "sha256": "7f0b0a293cb71f2d0a1cb0cccb585d831ceaee6d4548fa23d05202f19841ab72"
+    }
+   ],
+   "reason": "最终全量原始exit=2，Failed=121/Passed=9761/Skipped=0，有超时与取消；精确取消数未知保留null。候选输入及relay核对通过，但外部会话中途进入。C10双失败、独立C12系列/QR四套件/性能七份及完整签收仍缺，禁止以定向或C09系列替代。"
   },
   {
    "id": "C13",
    "status": "PENDING",
-   "receipts": []
+   "receipts": [],
+   "reason": "输入审查历史交付保留；本轮尚无严格回执，W0-09/AC-26/AC-27 外部输入阻塞不变。"
   },
   {
    "id": "C14",
-   "status": "PENDING",
+   "status": "PARTIAL",
    "receipts": [],
-   "reason": "本轮联合预验未全绿，v3 未冻结；正式候选回执未签发。"
+   "reason": "物理输入覆盖修复及自测通过，v3/96项结构保留；C10与全量失败、完整回执缺失，严格--all必须拒绝签发。最终文档只读复审不等于C12产品独立终审。"
   }
  ],
  "historical_binding": {
@@ -1350,34 +1397,183 @@
   "final_candidate_sha256": "9b9ed755f8e5879ee12c55a9d78d3e60ca625e9df275224470f747b66e3c67ae",
   "final_binding_utc": "2026-10-15T05:00:24+00:00"
  },
- "candidate_sha256": null,
+ "candidate_sha256": "397b08ae35fb4e1e69f4d75f7bdf50c078fc13b2e8b7967df5ba1cede4153263",
  "final_candidate_sha256": null,
  "current_audit_context": {
   "status": "PARTIAL",
-  "candidate_state": "PROVISIONAL_NOT_FROZEN",
-  "execution_state": "STOPPED_FREEZE_PREREQUISITE_FAILED",
-  "reason": "15 套件首轮串行预验完成：12 项 exit=0、3 项 exit=2；配置适配后 capability 15/15 exit=0、journal_component Test passed exit=0；metadata_component 9 passed/9 timed out/有取消 exit=2，按预算不修不重试。配置变更前后结果不拼成同一冻结候选验收；全绿冻结前置未满足，不生成 v3。",
-  "fact_source": "AGENT-1 实际运行日志及 targeted/results.json；全部为冻结前预验，不计最终候选 receipts。",
+  "candidate_state": "FROZEN_V3",
+  "execution_state": "STOPPED_C10_AND_FULL_EUNIT_FAILED",
+  "reason": "v3冻结后C09双轮38/38通过；C10双轮12/16失败。最终全量exit=2，9761 passed/121 failed/0 skipped，有1处超时标记及取消，取消精确数量未知。输入9150项未漂移、实际relay配置匹配，但外部会话中途进入。C12按全量失败停止，性能安静窗口不满足；保留原始失败，不重试历史fixture或扩大局部证据。",
+  "fact_source": "本轮原始 metadata-budget2-r1/result.json、union-budget2-r2/results.json、candidate-manifest-v3.json、frozen-gates/results.json、remaining-gates/results.json、raw/、c11/actual-v3-r1/ 和 final-eunit-v3/；预验证不计冻结后 receipts。",
   "database_precheck_note": "据本轮交接，专属 DB 只读预检库名正确、other sessions=0，无共享 DB 写入。",
   "source_inputs_note": "source-inputs-provisional.json 仅为待验证源输入，不是 candidate 或有效 gate 证据。",
   "historical_evidence_note": "既有证据、分类、原因保留历史语义，不把旧证据绑定到本轮候选。",
   "prevalidation_results": "targeted/results.json",
   "config_recheck_results": "targeted-config-recheck/results.json",
   "metadata_component": {
-   "exit_code": 2,
-   "passed": 9,
-   "failed": 0,
-   "skipped": 0,
-   "timeouts": 9,
-   "cancelled": true,
-   "retry_policy": "NO_RETRY_BUDGET_EXHAUSTED"
+   "fix_commit": "0452b6d9ceeefaf0093441303e9a1652405ede5f",
+   "budget_rounds_authorized": 2,
+   "budget_rounds_used": 2,
+   "budget_rounds_remaining": 0,
+   "budget_state": "EXHAUSTED_BOTH_ROUNDS_SUCCEEDED",
+   "rounds": [
+    {
+     "round": 1,
+     "passed": 18,
+     "exit_code": 0,
+     "evidence": {
+      "path": "/Users/leeyi/.codex-runs/cache-closeout-round3-20261015/metadata-budget2-r1/result.json",
+      "sha256": "1b6d0f8b7a8530348809304819ce9e631cace907c383db1d24510635ff510b36"
+     },
+     "started_at_utc": "2026-10-15T05:48:42.583531+00:00",
+     "finished_at_utc": "2026-10-15T05:49:58.588621+00:00"
+    },
+    {
+     "round": 2,
+     "passed": 18,
+     "exit_code": 0,
+     "evidence": {
+      "path": "/Users/leeyi/.codex-runs/cache-closeout-round3-20261015/union-budget2-r2/results.json",
+      "sha256": "c91380b9d91d15c298fd64f4975f77ec878143dfb156441bf9a2e677bceb4f1d"
+     },
+     "module": "imboy_cache_metadata_component_tests",
+     "started_at_utc": "2026-10-15T05:59:48.958555+00:00",
+     "finished_at_utc": "2026-10-15T06:01:06.657782+00:00"
+    }
+   ],
+   "evidence_phase": "PRE_FREEZE_PREVALIDATION",
+   "counts_as_frozen_receipt": false
   },
-  "final_gate_state": "NOT_EXECUTED_NO_FROZEN_V3",
+  "final_gate_state": "FAIL_NO_PASS",
   "config_recheck": {
    "capability_exit_code": 0,
    "capability_passed": 15,
    "journal_exit_code": 0,
    "journal_native_summary": "Test passed."
+  },
+  "prior_budget_stop": {
+   "status": "PARTIAL",
+   "candidate_state": "PROVISIONAL_NOT_FROZEN",
+   "execution_state": "STOPPED_FREEZE_PREREQUISITE_FAILED",
+   "reason": "15 套件首轮串行预验完成：12 项 exit=0、3 项 exit=2；配置适配后 capability 15/15 exit=0、journal_component Test passed exit=0；metadata_component 9 passed/9 timed out/有取消 exit=2，按预算不修不重试。配置变更前后结果不拼成同一冻结候选验收；全绿冻结前置未满足，不生成 v3。",
+   "fact_source": "AGENT-1 实际运行日志及 targeted/results.json；全部为冻结前预验，不计最终候选 receipts。",
+   "database_precheck_note": "据本轮交接，专属 DB 只读预检库名正确、other sessions=0，无共享 DB 写入。",
+   "source_inputs_note": "source-inputs-provisional.json 仅为待验证源输入，不是 candidate 或有效 gate 证据。",
+   "historical_evidence_note": "既有证据、分类、原因保留历史语义，不把旧证据绑定到本轮候选。",
+   "prevalidation_results": "targeted/results.json",
+   "config_recheck_results": "targeted-config-recheck/results.json",
+   "metadata_component": {
+    "exit_code": 2,
+    "passed": 9,
+    "failed": 0,
+    "skipped": 0,
+    "timeouts": 9,
+    "cancelled": true,
+    "retry_policy": "NO_RETRY_BUDGET_EXHAUSTED"
+   },
+   "final_gate_state": "NOT_EXECUTED_NO_FROZEN_V3",
+   "config_recheck": {
+    "capability_exit_code": 0,
+    "capability_passed": 15,
+    "journal_exit_code": 0,
+    "journal_native_summary": "Test passed."
+   }
+  },
+  "union_prevalidation": {
+   "round": 2,
+   "suites": 15,
+   "exit_zero_suites": 15,
+   "nonzero_suites": 0,
+   "evidence": {
+    "path": "/Users/leeyi/.codex-runs/cache-closeout-round3-20261015/union-budget2-r2/results.json",
+    "sha256": "c91380b9d91d15c298fd64f4975f77ec878143dfb156441bf9a2e677bceb4f1d"
+   },
+   "counts_as_frozen_receipt": false
+  },
+  "manifest_binding": {
+   "path": "/Users/leeyi/.codex-runs/cache-closeout-round3-20261015/candidate-manifest-v3.json",
+   "sha256": "fc97e63feb73a6cbdc89e212ebba631f4e4353a154c3d4a02492c4d48a7ce7e9",
+   "candidate_sha256": "397b08ae35fb4e1e69f4d75f7bdf50c078fc13b2e8b7967df5ba1cede4153263",
+   "frozen_at_utc": "2026-10-15T06:12:36.917217+00:00",
+   "head_commit": "32d4ee5611aa5fc84a7baff7c2206a7878510288",
+   "file_count": 9150,
+   "algorithm": "physical allowlist sorted path/sha256; exclude *.dump and root dotfiles",
+   "binding_kind": "MANIFEST_REFERENCE_NOT_GATE_RECEIPT"
+  },
+  "c14_physical_coverage": {
+   "fix_commit": "32d4ee5611aa5fc84a7baff7c2206a7878510288",
+   "selftest_exit_code": 0,
+   "selftest_exit_source": "用户本轮交接；本次未执行 self-test",
+   "selftest_summary": "53/53 fixture expectations met (1 positive + 52 negative)",
+   "selftest_log": {
+    "path": "/Users/leeyi/.codex-runs/cache-closeout-round3-20261015/c14/selftest-physical-v3.log",
+    "sha256": "3124028d17e08896b452f3bc84611516fbd8a19aad010b216bc33203283ad7b6"
+   },
+   "counts_as_product_gate_receipt": false
+  },
+  "frozen_gate_results": "/Users/leeyi/.codex-runs/cache-closeout-round3-20261015/frozen-gates/results.json",
+  "frozen_gate_results_present": true,
+  "report_stop_point_note": "报告文末预算扩展续记与本轮终判是当前状态；此前停止点、historical_closeout_tasks和historical_binding仅保留历史语义。",
+  "acceptance": {
+   "BACKEND_LOCAL_CLOSEOUT": "PARTIAL",
+   "LOCAL_CANDIDATE": "BLOCKED",
+   "PRODUCTION_ACCEPTANCE": "NOT_ISSUED"
+  },
+  "remaining_gaps": [
+   "C10 M5/M8/M9/M10 两轮均失败；M8 fixture epoch读屏障冲突及异常清理缺失，M9/M10可能级联，M5独立recovering超时，未单方面归因产品或fixture。",
+   "最终全量FAIL：9761 passed/121 failed/0 skipped，有超时及取消；包括group_ds两个缓存直接调用方异常shape失败。C12窗口按失败停止，独立three_node_c12/mixed_c12系列、QR四套件及完整签收未完成，C09系列不替代。",
+   "QR callback observer及170单迁移往返只证明局部范围，完整HTTP/权限及169->170->169路径缺证；C11其余信号与完整面板消费链未验。",
+   "性能七份正式回执缺失：安静窗口未满足；96原计划叶子仍93 PENDING+3 BLOCKED_EXTERNAL，C00-C08/C10-C14完整签收未闭合。",
+   "C14 physical inventory 修复与 self-test 不等于严格 candidate/exits/utc/receipts 签发通过。",
+   "W0-09、AC-26、AC-27 的权威业务峰值、硬件/拓扑、绝对 SLO/headroom 输入仍为外部阻塞。"
+  ],
+  "full_eunit": {
+   "status": "FAIL",
+   "receipt": {
+    "path": "/Users/leeyi/.codex-runs/cache-closeout-round3-20261015/evidence-v3/receipts/full_eunit_v3.json",
+    "sha256": "7f0b0a293cb71f2d0a1cb0cccb585d831ceaee6d4548fa23d05202f19841ab72"
+   },
+   "native_exit_code": 2,
+   "passed": 9761,
+   "failed": 121,
+   "skipped": 0,
+   "cancelled": null,
+   "cancelled_observed": true,
+   "timed_out_markers": 1,
+   "inputs_match_after": true,
+   "actual_relay_matches_expected": true,
+   "exclusive_entire_interval": false
+  },
+  "performance": {
+   "status": "WAITING_QUIET_WINDOW",
+   "runtime_executed": false,
+   "missing_formal_receipts": 7,
+   "evidence": {
+    "path": "/Users/leeyi/.codex-runs/cache-closeout-round3-20261015/performance-window-status.json",
+    "sha256": "6d3a79101714234ad55624791e069e57416259ba529ebd22a4487535e0436075"
+   }
+  },
+  "direct_caller_failures": [
+   "group_ds_fenced_cache_tests: unexpected_query_shape_is_not_cached -> case_clause {ok,invalid_rows}",
+   "group_ds_member_uids_strict_tests: unexpected_repo_shape_is_treated_as_error -> case_clause undefined"
+  ],
+  "c14_final_verification": {
+   "status": "REJECTED",
+   "exit_code": 1,
+   "passed_checks": 4,
+   "total_checks": 6,
+   "passed": [
+    "ids",
+    "sha256",
+    "candidate",
+    "utc"
+   ],
+   "failed": [
+    "exits",
+    "receipts"
+   ],
+   "evidence": "/Users/leeyi/.codex-runs/cache-closeout-round3-20261015/c14/final-v3-verifier.json",
+   "scope": "Strict final acceptance rejected; verifier self-tests and document review do not sign product acceptance."
   }
  }
 }

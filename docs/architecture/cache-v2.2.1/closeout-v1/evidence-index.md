@@ -1,5 +1,30 @@
 # C14 证据索引与复算盘点 — evidence-index.md
 
+> 最新接续：用户新增两轮 metadata 修复预算已使用，`metadata-budget2-r1/` 为
+> 18/18、exit=0；`union-budget2-r2/results.json` 为完整 15 套件各 exit=0。
+> `0452b6d9` 修 fixture 生命周期，`32d4ee56` 补 C14 物理输入覆盖；正常 hooks 通过。
+> v3 已于 `2026-10-15T06:12:36.917217+00:00` 冻结，9150 文件，摘要
+> `397b08ae35fb4e1e69f4d75f7bdf50c078fc13b2e8b7967df5ba1cede4153263`。
+> `candidate-manifest-v3.json`、`pre-freeze-build/`、`frozen-gates/`、`raw/`
+> 均位于本轮新运行根。冻结后 C09 两轮各38/38、exit=0；C10 实际 r3/r4
+> 两轮各12/16、exit=2（M5/M8/M9/M10），前两次路径参数 BOOT 失败也保留。
+> QR 三种 PG 竞争3/3、exit=0；新空专属库170单迁移往返两次通过、exit=0，
+> 不代表169→170→169全历史路径。C11 真实自然Dmax→HTTP→scrape→两条核心告警
+> 通过、exit=0，仅为局部消费链。最终全量 exit=2，9761过/121失败/0跳过，
+> 一处超时标记且有取消（原生精确取消数未知）；包括两个 group_ds 缓存调用方失败。
+> 9150项输入及实际relay配置匹配，但外部会话中途进入，不宣称全程独占。
+> 预验与自测不计最终回执；C12=FAIL，性能七份因无安静窗口均未执行。
+> `evidence-v3/receipts/full_eunit_v3.json` 保留失败与未知取消数，不制造PASS。
+> C14最终 `--all` exit=1、4/6（IDs/计划/candidate/UTC通过，exits/receipts拒绝），
+> 见 `c14/final-v3-verifier.json/.log`；`performance-window-status.json` 保存七臂缺口。
+> 三段终判为 BACKEND_LOCAL_CLOSEOUT=PARTIAL/NO_GO、LOCAL_CANDIDATE=BLOCKED、
+> PRODUCTION_ACCEPTANCE=NOT_ISSUED；96叶子仍93待验+3外部阻塞。
+> `remaining-gates/`、`raw/c10_v3_r{3,4}.json` 记录真实失败；
+> `raw/migration170_v3.json`、`c11/actual-v3-r1/`、`final-eunit-v3/` 分别保存迁移、
+> 实际消费链及全量原件；`evidence-v3/` 是透明适配层，`receipts/` 绑定原件摘要，
+> 绝不覆盖原始日志或把局部通过扩为完整验收。C09 已挂task回执，96叶子仍逐项待验。
+> 下列“metadata 不再重试 / v3 未冻结”是预算扩展前停止点，当前状态以报告文末为准。
+
 > 2026-10-15 接续核验：以下 2026-10-12 盘点保留历史。
 > 当前源码观察点为 `4c48e666`；新运行根
 > `/Users/leeyi/.codex-runs/cache-closeout-round3-20261015/`。
@@ -15,8 +40,8 @@
 > `targeted-config-recheck/` 保存配置适配后 capability 15/15、journal Test passed，
 > 两项均 exit=0；原始失败保留。`prevalidation-evidence-index.json` 保存日志摘要。
 > 所有这些结果均为冻结前预验，不是最终候选回执；metadata 不再重试。
-> 本次 C09/C10/QR/迁移/全量/性能和实际 C11 消费均未运行。当前判定与未闭合集合
-> 以 closeout-report-v1.md 文末“本次接续核验”为准。
+> 上述均为预算扩展前停止点；其中未执行/未冻结表述已由本页顶部最新接续取代。
+> 当前判定与未闭合集合以 closeout-report-v1.md 文末预算扩展续记为准。
 
 > 任务：CACHE_V221_BACKEND_CLOSEOUT_V1 / C14 证据复算前置盘点
 > 本文性质：只读取证产出的证据清单（EVIDENCE_INDEX / NOT_EXECUTED）。
