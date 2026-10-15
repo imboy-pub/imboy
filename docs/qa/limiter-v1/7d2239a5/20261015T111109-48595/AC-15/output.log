@@ -1,0 +1,3 @@
+AC-15: 启动两个隔离 -noshell 节点（独立 epmd 端口），各 admit 100 次（同规则同 IP）…
+AC-15: per-node admitted = [100, 100]; total = 200 (expected 2 x 100 = 200)
+AC-15 PASS（两节点各本地允许 N，合计 2N 如实报告——节点本地合同成立；证据: /Users/leeyi/project/imboy.pub/.worktrees/limiter-v1-impl/docs/qa/limiter-v1/84662f05/20261015T113303-4423/AC-15

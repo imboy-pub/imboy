@@ -755,7 +755,14 @@ ready() -> boolean()
 
 - A5 独立审查（候选 ca736743）：**无 P0**；1×P1（证据候选重绑——最终候选上已重放）、6×P2 全部关闭或转 C.12 记录；反例 A/B/C 实测确认测试可识别目标错误实现。
 - A5 整改已提交（`89fc032b`）：非法 limiter_ip_rates 启动诊断（fail-safe 保留）、admit @doc 对齐、fail 分支注释更正。整改中发现并修正 `maps:partition/2` 运行期 undef（lefthook qs/2 同款"编译不报错远程调用"失效类）。
-- 全量 EUnit（最终候选统一执行）：见最终交付报告归档（含逐失败模块归因；limiter 面模块零失败）。
+- 独立审查（A5）后的整改提交（`89fc032b`）与本评审（review）整改由 A0 实施，
+  经 A5 审查清单逐项核对与运行时验证（`maps:partition/2` undef 实测复现并修正）。
+- 全量 EUnit：**绑定候选 `997aedfb`**（12066 过/132 败全归因非 limiter 既有家族）；
+  最终 HEAD `84662f05` 相对 997aedfb 仅含文档/证据提交与一次零重叠 main 吸收
+  （`7d2239a5`←`3a5d6f2a`），limiter 11 模块（180 项）已在最终 HEAD 重验全绿，
+  按 §9.1"候选改变按失效范围必要重验"已满足；未在最终 HEAD 重跑全量。
+- AC-01/15/16 在最终 HEAD 重放 PASS（证据 `docs/qa/limiter-v1/7d2239a5/`，
+  review 整改补齐 AC-15 output/exit_code 落盘与 manifest 副本）。
 
 #### C.12 遗留、未通过与记录项（不阻塞本地功能完成判定）
 
