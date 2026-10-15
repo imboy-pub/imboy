@@ -212,14 +212,7 @@ register_v5(ObjectKey, Bucket, Scope, Uid, ClientUploadId, Registration) when
             Params = lists:sublist(Args, 8),
             case elib_pg:query(Sql, Params) of
                 {ok, [Row | _]} ->
-                    %% deadline/expires_at 为本次登记冻结并写入 DB 的绝对 unix 秒，
-                    %% 透传给签发方构造 capability/签名 Context，不得重新计时。
-                    {ok, #{
-                        session_state => maps:get(<<"out_session_state">>, Row),
-                        client_upload_id => maps:get(<<"out_client_upload_id">>, Row),
-                        deadline => Deadline,
-                        expires_at => Expiry
-                    }};
+                    persisted_registration(fun elib_pg:query/2, Row);
                 {ok, []} ->
                     {error, registration_not_returned};
                 {error, R} ->
@@ -275,16 +268,34 @@ register_v5_tx(Conn, ObjectKey, Bucket, Scope, UidOrPrincipal, ClientUploadId, R
     Params = lists:sublist(Args, 8),
     case elib_pg:query(Conn, Sql, Params) of
         {ok, [Row | _]} ->
-            {ok, #{
-                session_state => maps:get(<<"out_session_state">>, Row),
-                client_upload_id => maps:get(<<"out_client_upload_id">>, Row),
-                deadline => Deadline,
-                expires_at => Expiry
-            }};
+            persisted_registration(fun(Sql0, Params0) -> elib_pg:query(Conn, Sql0, Params0) end, Row);
         {ok, []} ->
             {error, registration_not_returned};
         {error, R} ->
             {error, R}
+    end.
+
+%% A UUID replay returns the original key and committed window, never this attempt's random key/time.
+persisted_registration(Query, Row) ->
+    Key = maps:get(<<"out_object_key">>, Row),
+    Sql = [
+        <<"SELECT object_key, bucket, scope, session_state, client_upload_id, confirmed_attachment_id, ">>,
+        <<"extract(epoch from session_deadline)::bigint AS deadline, ">>,
+        <<"extract(epoch from upload_expires_at)::bigint AS expires_at FROM ">>,
+        tablename(), <<" WHERE object_key=$1">>
+    ],
+    case Query(Sql, [Key]) of
+        {ok, [Session]} ->
+            {ok, #{object_key => maps:get(<<"object_key">>, Session),
+                   bucket => maps:get(<<"bucket">>, Session),
+                   scope => maps:get(<<"scope">>, Session),
+                   session_state => maps:get(<<"session_state">>, Session),
+                   client_upload_id => maps:get(<<"client_upload_id">>, Session),
+                   confirmed_attachment_id => maps:get(<<"confirmed_attachment_id">>, Session),
+                   deadline => maps:get(<<"deadline">>, Session),
+                   expires_at => maps:get(<<"expires_at">>, Session)}};
+        {ok, []} -> {error, registration_not_returned};
+        {error, Reason} -> {error, Reason}
     end.
 
 principal_to_int(I) when is_integer(I) -> I;

@@ -88,7 +88,8 @@ presign_authorized(Uid, FileName, MimeType, Scope, ScopeRef, ClientUploadId) ->
             Registration = #{
                 <<"filename">> => FileName,
                 <<"mime">> => MimeType,
-                <<"scope">> => Scope
+                <<"scope">> => Scope,
+                <<"scope_ref">> => case ScopeRef of undefined -> null; _ -> ScopeRef end
             },
             RegResult =
                 try
@@ -110,36 +111,7 @@ presign_authorized(Uid, FileName, MimeType, Scope, ScopeRef, ClientUploadId) ->
                 end,
             case RegResult of
                 {ok, Session} ->
-                    %% V5 新会话（有 client_upload_id）不发可变内容直传 URL：
-                    %% put 能力是绑定 key/mime、以登记冻结 expires_at 为界的
-                    %% 受控网关 token（02 §14）。legacy 会话（无 UUID 旧客户端）
-                    %% 保留直传 URL 兼容。
-                    Base =
-                        case maps:get(client_upload_id, Session, undefined) of
-                            undefined ->
-                                PutUrl = elib_oss:presign_put_for_key(
-                                    Bucket, ObjectKey, MimeType, ?PUT_EXPIRES
-                                ),
-                                #{
-                                    <<"put_url">> => PutUrl,
-                                    <<"object_key">> => ObjectKey,
-                                    <<"expires_at">> => erlang:system_time(second) + ?PUT_EXPIRES
-                                };
-                            Cid ->
-                                FrozenExpiry = maps:get(expires_at, Session),
-                                {ok, Capability} = imboy_jwt:issue_upload_capability(
-                                    ObjectKey, MimeType, FrozenExpiry
-                                ),
-                                #{
-                                    <<"put_url">> => gateway_put_url(Cid, Capability),
-                                    <<"object_key">> => ObjectKey,
-                                    <<"expires_at">> => FrozenExpiry,
-                                    <<"upload_capability">> => Capability,
-                                    <<"gateway">> => true,
-                                    <<"client_upload_id">> => Cid
-                                }
-                        end,
-                    {ok, maybe_public_url(Scope, ObjectKey, Base)};
+                    presign_session(Session, ObjectKey, Bucket, MimeType, Scope);
                 {error, RegReason2} ->
                     %% fail-closed：无登记对象、无 URL；客户端同 ID 重试恢复。
                     ?ERROR_LOG([
@@ -151,6 +123,39 @@ presign_authorized(Uid, FileName, MimeType, Scope, ScopeRef, ClientUploadId) ->
             end;
         {error, _} = E ->
             E
+    end.
+
+presign_session(#{client_upload_id := undefined}, ObjectKey, Bucket, MimeType, Scope) ->
+    PutUrl = elib_oss:presign_put_for_key(Bucket, ObjectKey, MimeType, ?PUT_EXPIRES),
+    Base = #{<<"put_url">> => PutUrl, <<"object_key">> => ObjectKey,
+             <<"expires_at">> => erlang:system_time(second) + ?PUT_EXPIRES},
+    {ok, maybe_public_url(Scope, ObjectKey, Base)};
+presign_session(Session, _ProposedKey, _Bucket, MimeType, Scope) ->
+    Key = maps:get(object_key, Session),
+    State = maps:get(session_state, Session),
+    case State of
+        <<"confirmed">> ->
+            {ok, #{<<"object_key">> => Key, <<"session_state">> => State,
+                   <<"client_upload_id">> => maps:get(client_upload_id, Session),
+                   <<"can_resume">> => false, <<"retry_action">> => <<"none">>}};
+        <<"registered">> -> presign_registered(Session, Key, MimeType, Scope);
+        _ -> {error, session_not_renewable}
+    end.
+
+presign_registered(Session, Key, MimeType, Scope) ->
+    Expiry = maps:get(expires_at, Session),
+    Deadline = maps:get(deadline, Session),
+    Now = erlang:system_time(second),
+    case is_integer(Expiry) andalso is_integer(Deadline) andalso Now < Expiry andalso Now < Deadline of
+        false -> {error, session_expired};
+        true ->
+            Cid = maps:get(client_upload_id, Session),
+            {ok, Capability} = imboy_jwt:issue_upload_capability(Key, MimeType, Expiry),
+            Base = #{<<"put_url">> => gateway_put_url(Cid, Capability),
+                     <<"object_key">> => Key, <<"expires_at">> => Expiry,
+                     <<"upload_capability">> => Capability, <<"gateway">> => true,
+                     <<"client_upload_id">> => Cid, <<"session_state">> => <<"registered">>},
+            {ok, maybe_public_url(Scope, Key, Base)}
     end.
 
 %% ===================================================================

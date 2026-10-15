@@ -129,7 +129,8 @@ presign_register_v5_tx(Conn, Ctx, Input) ->
                         )
                     of
                         {ok, Registration} ->
-                            {ok, stable_registration(ObjectKey, Bucket, MimeType, Registration)};
+                            {ok, stable_registration(maps:get(object_key, Registration),
+                                                     maps:get(bucket, Registration), MimeType, Registration)};
                         {error, Reason} ->
                             %% 失败关闭：登记失败无任何能力，COMMIT 回滚由
                             %% handler 以业务错误应答（AC01）。
