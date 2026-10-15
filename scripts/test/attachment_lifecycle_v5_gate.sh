@@ -592,6 +592,44 @@ w401_case() { # $1 cdir
   return $RC
 }
 
+# ---------------- W4-02 executor ----------------
+w402_case() { # $1 cdir — worker 协议 + purged-recovery + 队列 fn 重跑
+  local cdir="$1" RC=0 try rc
+  mkdir -p "$cdir"
+  local PZ="" d
+  for d in deps/*/ebin; do [ -d "$d" ] && PZ="$PZ -pz $PWD/$d"; done
+  ln -sfn . imboy
+  sed -e "s/{http_port, 9800}/{http_port, ${EUNIT_HTTP_PORT:-19980}}/" \
+      -e "s/{http_port_adm, 9706}/{http_port_adm, ${EUNIT_HTTP_ADM_PORT:-19970}}/" \
+      "${EUNIT_CONFIG:-config/sys.local}.config" > "$cdir/w402-direct.config"
+  for try in 1 2 3; do
+    EUNIT_USE_RELAY=0 erl -noinput -boot no_dot_erlang +P 1048576 +Q 1024 \
+      -config "$cdir/w402-direct.config" -pa imboy/ebin -pa ebin -pa test $PZ \
+      -eval 'CoverSetup = fun() -> ok end, CoverExport = fun(_) -> ok end, CoverSetup(),
+        Mods = [attachment_lifecycle_v5_w402_worker_tests,
+                attachment_lifecycle_v5_w402_purged_recovery_tests],
+        case eunit:test(Mods, [verbose]) of
+          ok -> io:format("W402_DIRECT_OK~n");
+          error -> halt(2)
+        end,
+        halt()' > "$cdir/eunit-w402.log" 2>&1
+    rc=$?
+    [ $rc -eq 0 ] && break
+    [ $try -lt 3 ] && sleep 5
+  done
+  rm -f imboy
+  if [ $rc -eq 0 ] && grep -q "W402_DIRECT_OK" "$cdir/eunit-w402.log"; then
+    W402_PG_OK=1
+  else
+    W402_PG_OK=0
+  fi
+  export W402_PG_OK V5_RUN_DIR="$RUN_DIR"
+  bash "$ROOT/scripts/test/attachment_lifecycle_v5_w402_seal.sh" "$ROOT" "$CUR_CASE" "$cdir" \
+    "bash scripts/test/attachment_lifecycle_v5_gate.sh --task W4-02 --case $CUR_CASE" \
+    >> "$cdir/raw.log" 2>&1 || RC=30
+  return $RC
+}
+
 w203_case() { # $1 cdir
   local cdir="$1" RC=0
   mkdir -p "$cdir"
@@ -729,6 +767,12 @@ PYC
 W4-01/confirm-gc-race|W4-01/reference-gc-race|W4-01/hold-gc-race)
       CUR_CASE="$cid"
       w401_case "$cdir" ;;
+    W4-02/worker-crash|W4-02/worker-lease|W4-02/worker-db-fault|\
+W4-02/queue-adoption|W4-02/last-attempt-crash|W4-02/old-attempts-preserved|\
+W4-02/cross-queue-identity|W4-02/ordinary-queue-recovery|\
+W4-02/claim-capacity-and-liveness|W4-02/purged-session-recovery)
+      CUR_CASE="$cid"
+      w402_case "$cdir" ;;
     W0-01/baseline)
       bash scripts/check_migrations.sh > "$cdir/raw.log" 2>&1
       seal_leafs "$cid" "$cdir" "$?" "bash scripts/check_migrations.sh (bootstrap retroactive)" ;;
