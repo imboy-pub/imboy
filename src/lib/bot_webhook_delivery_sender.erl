@@ -14,8 +14,8 @@
 %     防挂死/防 SSRF 慢速读取的一部分，只能收紧，不能被关掉。
 %   * response cap：只读到响应头结束（\r\n\r\n）为止，头上限
 %     response_cap_bytes/0（64KiB），超限 {error, head_too_large}；
-%     **正文一个字节都不读**（connection: close 由 socket 关闭兜底），
-%     因此恶意/超大响应体不会进内存。
+%     不继续读取正文；最后一个接收块可能同时带有正文，解析时仅保留头部，
+%     随后关闭 socket，不累计响应体。
 %   * redirect：3xx 只作为状态码返回（上层判为可重试失败），**不跟随**
 %     Location——不产生第二次出站（SSRF 跳板防护）。
 %%%
@@ -37,7 +37,7 @@ timeouts() ->
 clamp_timeout(Ms) when is_integer(Ms), Ms >= ?MIN_TIMEOUT_MS, Ms =< ?MAX_TIMEOUT_MS -> Ms;
 clamp_timeout(_) -> ?DEFAULT_TIMEOUT_MS.
 
-%% @doc 响应头字节上限（正文不读；超限即失败，不静默截断）。
+%% @doc 响应头字节上限（不继续读取正文；超限即失败，不静默截断）。
 -spec response_cap_bytes() -> pos_integer().
 response_cap_bytes() ->
     ?MAX_RESP_HEAD_BYTES.
@@ -66,7 +66,7 @@ post(IP, Port, IsTls, PathQS, Host, Headers, Body) ->
         {ok, Sock} when IsTls ->
             case ssl:connect(Sock, ssl_opts(Host), ConnectMs) of
                 {ok, TlsSock} ->
-                    R = request(TlsSock, PathQS, Host, Headers, Body),
+                    R = request(ssl, TlsSock, PathQS, Host, Headers, Body),
                     try
                         ssl:close(TlsSock)
                     catch
@@ -82,7 +82,7 @@ post(IP, Port, IsTls, PathQS, Host, Headers, Body) ->
                     {error, {tls_connect, Reason}}
             end;
         {ok, Sock} ->
-            R = request(Sock, PathQS, Host, Headers, Body),
+            R = request(gen_tcp, Sock, PathQS, Host, Headers, Body),
             try
                 gen_tcp:close(Sock)
             catch
@@ -93,7 +93,7 @@ post(IP, Port, IsTls, PathQS, Host, Headers, Body) ->
             {error, {connect, Reason}}
     end.
 
-request(Sock, PathQS, Host, ExtraHeaders, Body) ->
+request(Transport, Sock, PathQS, Host, ExtraHeaders, Body) ->
     Hdrs = [
         {<<"host">>, Host},
         {<<"user-agent">>, <<"IMBoy-Webhook/1.0">>},
@@ -112,22 +112,16 @@ request(Sock, PathQS, Host, ExtraHeaders, Body) ->
             Body
         ]
     ),
-    case gen_tcp:send(Sock, Req) of
-        ok -> read_status(Sock);
+    case Transport:send(Sock, Req) of
+        ok -> read_status(Transport, Sock);
         {error, Reason} -> {error, {send, Reason}}
     end.
 
-send_all(Sock, Bin) ->
-    case gen_tcp:send(Sock, Bin) of
-        ok -> ok;
-        {error, Reason} -> {error, {send, Reason}}
-    end.
-
-%% 读状态行 + 头，取 status code（正文按 connection: close 由 close 兜底，不读；
+%% 读状态行 + 头，取 status code（头结束后不继续读取正文；
 %% 头累计超 response_cap_bytes/0 即失败——不静默截断）。
-read_status(Sock) ->
+read_status(Transport, Sock) ->
     {_ConnectMs, RespMs} = timeouts(),
-    case read_head(Sock, <<>>, RespMs) of
+    case read_head(Transport, Sock, <<>>, RespMs) of
         {ok, HeadBin} ->
             case
                 re:run(
@@ -145,17 +139,19 @@ read_status(Sock) ->
             {error, Reason}
     end.
 
-read_head(Sock, Acc, Timeout) ->
-    case gen_tcp:recv(Sock, 0, Timeout) of
+read_head(Transport, Sock, Acc, Timeout) ->
+    case Transport:recv(Sock, 0, Timeout) of
         {ok, Data} ->
             Acc2 = <<Acc/binary, Data/binary>>,
             case binary:match(Acc2, <<"\r\n\r\n">>) of
                 nomatch when byte_size(Acc2) < ?MAX_RESP_HEAD_BYTES ->
-                    read_head(Sock, Acc2, Timeout);
+                    read_head(Transport, Sock, Acc2, Timeout);
                 nomatch ->
                     {error, head_too_large};
+                {End, 4} when End + 4 =< ?MAX_RESP_HEAD_BYTES ->
+                    {ok, binary:part(Acc2, 0, End + 4)};
                 _ ->
-                    {ok, Acc2}
+                    {error, head_too_large}
             end;
         {error, Reason} ->
             {error, {recv, Reason}}
