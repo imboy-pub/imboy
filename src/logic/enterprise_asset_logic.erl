@@ -42,37 +42,14 @@ presign_tx(Conn, Ctx, Input) when is_map(Input) ->
             presign_renew_tx(Conn, Ctx, Input);
         %% V5 register：带 client_upload_id 的新会话走失败关闭协议链
         %% （02 §137：内部应用复用 attach_pending 既有 session 表）；
-        %% 旧客户端（无 UUID、无 operation）保留 legacy 链兼容。
+        %% 无 UUID 的旧调用方由服务端补 UUID，同样只返回已登记的稳定结果。
         {_, Cid} when Cid =/= undefined, Cid =/= <<>> ->
             presign_register_v5_tx(Conn, Ctx, Input);
         _ ->
-            presign_legacy_tx(Conn, Ctx, Input)
+            presign_register_v5_tx(Conn, Ctx, Input#{client_upload_id => elib_uuid:gen_v7()})
     end;
 presign_tx(_Conn, _Ctx, _Input) ->
     {error, {<<"invalid_request">>, input_not_map}}.
-
-presign_legacy_tx(Conn, Ctx, Input) ->
-    OrgId = maps:get(organization_id, Ctx),
-    AppId = maps:get(application_id, Ctx),
-    FileName = maps:get(file_name, Input, undefined),
-    MimeType = maps:get(mime_type, Input, undefined),
-    SizeHint = maps:get(size_bytes, Input, undefined),
-    case enterprise_asset_retention_logic:content_policy_tx(Conn, Ctx, Input) of
-        {ok, Policy} ->
-            MaxBytes = enterprise_asset_retention_logic:effective_max_bytes(Policy, SizeHint),
-            Ok =
-                valid_name(FileName) andalso
-                    enterprise_asset_retention_logic:mime_allowed(Policy, MimeType) andalso
-                    valid_size_hint(SizeHint, MaxBytes),
-            case Ok of
-                true ->
-                    presign_ok(Conn, OrgId, AppId, FileName, MimeType);
-                false ->
-                    {error, {<<"invalid_request">>, invalid_presign_input}}
-            end;
-        {error, _} = Err ->
-            Err
-    end.
 
 %%%===================================================================
 %%% V5 恢复 API（02 §137/§143）：register 失败关闭、status 只读、renew 单调
@@ -300,27 +277,6 @@ status_view(Row) ->
     }.
 
 %% @doc 签发（内容策略通过后）：object key 前缀 + pending 登记 + 返回 URL。
-presign_ok(Conn, OrgId, AppId, FileName, MimeType) ->
-    ObjectKey = enterprise_asset_repo:build_object_key(OrgId, AppId, FileName),
-    Bucket = elib_oss:get_bucket(<<"enterprise">>),
-    PutUrl = elib_oss:presign_put_for_key(Bucket, ObjectKey, MimeType, ?PUT_EXPIRES),
-    %% pending 登记（迁移 54 生命周期）：失败不阻断签发（与 attach_logic
-    %% 同口径——拿不到 URL 是功能中断，漏登记只影响孤儿回收）。
-    _ =
-        case enterprise_asset_repo:pending_add_tx(Conn, ObjectKey, Bucket, <<"enterprise">>) of
-            {ok, inserted} ->
-                ok;
-            {error, Reason} ->
-                ?ERROR_LOG([
-                    "enterprise_asset presign pending_add failed: ", ObjectKey, Reason
-                ])
-        end,
-    {ok, #{
-        <<"object_key">> => ObjectKey,
-        <<"put_url">> => PutUrl,
-        <<"expires_at">> => erlang:system_time(second) + ?PUT_EXPIRES
-    }}.
-
 %%%===================================================================
 %%% INT-08 confirm
 %%%===================================================================
@@ -330,7 +286,7 @@ presign_ok(Conn, OrgId, AppId, FileName, MimeType) ->
 %%   object_key    必填 binary（必须是本 org/app 域 eoa/ 前缀且已 presign 登记）
 %%   file_hash256  可选 binary（64 位小写/大写 hex；SHA-256 完整性参考）
 %% 返回 {ok, #{file_id, object_key, size, mime_type}}；
-%% 失败 {error, {Code, Detail}}，超限/非法类型对象被删除（与 attach_logic 同口径）。
+%% 失败 {error, {Code, Detail}}；拒绝只记录意图，字节交既有删除 Worker。
 %%
 %% 取舍说明：HEAD 核实在调用方事务内执行（网络 IO，上限 10s）——为换
 %% attachment 行、pending 销账、file.confirmed 事件的原子性（一期一致性
@@ -399,47 +355,29 @@ pending_v5(_) -> false.
 %% （02 §4「HEAD 本身不充分」）；超限/类型拒绝不删对象——pin 保留供同
 %% receipt 重试，物理回收归 W4 GC。
 confirm_head_v5(Conn, Ctx, ObjectKey, Hash, Pending) ->
-    Bucket = elib_oss:get_bucket(<<"enterprise">>),
-    case elib_oss:head_object(Bucket, ObjectKey) of
-        {error, not_found} ->
-            {error, {<<"invalid_request">>, object_not_found}};
-        {error, Reason} ->
-            ?ERROR_LOG(["enterprise_asset v5 confirm head failed: ", Bucket, ObjectKey, Reason]),
-            {error, {<<"internal_error">>, Reason}};
-        {ok, #{content_type := RealType}} ->
-            case elib_oss:object_sha256(Bucket, ObjectKey) of
-                {error, not_found} ->
-                    {error, {<<"invalid_request">>, object_not_found}};
-                {error, Reason2} ->
-                    ?ERROR_LOG([
-                        "enterprise_asset v5 confirm read_bytes failed: ",
-                        Bucket,
-                        ObjectKey,
-                        Reason2
-                    ]),
-                    {error, {<<"internal_error">>, Reason2}};
-                {ok, Sha256, ByteSize} ->
+    case attachment_storage:frozen_location(ObjectKey, Pending) of
+        {ok, legacy_unknown} ->
+            {error, {<<"conflict">>, historical_location_unverified}};
+        {ok, #{driver := Driver, mime := RealType} = Snapshot} ->
+            BytesResult = case Driver of
+                garage -> attachment_storage_garage:read_snapshot(Snapshot);
+                disk -> attachment_storage_disk:read_snapshot(Snapshot)
+            end,
+            case BytesResult of
+                {ok, Bytes} ->
+                    Sha256 = binary:encode_hex(crypto:hash(sha256, Bytes), lowercase),
+                    ByteSize = byte_size(Bytes),
                     case enterprise_asset_retention_logic:content_policy_tx(Conn, Ctx, #{}) of
                         {ok, Policy} ->
-                            MaxBytes = enterprise_asset_retention_logic:effective_max_bytes(
-                                Policy, ByteSize
-                            ),
-                            confirm_policy_v5(
-                                Conn,
-                                Ctx,
-                                ObjectKey,
-                                Hash,
-                                ByteSize,
-                                RealType,
-                                Policy,
-                                MaxBytes,
-                                Pending,
-                                Sha256
-                            );
-                        {error, _} = Err ->
-                            Err
-                    end
-            end
+                            MaxBytes = enterprise_asset_retention_logic:effective_max_bytes(Policy, ByteSize),
+                            confirm_policy_v5(Conn, Ctx, ObjectKey, Hash, ByteSize,
+                                RealType, Policy, MaxBytes, Pending, Sha256);
+                        {error, _} = Err -> Err
+                    end;
+                {error, not_found} -> {error, {<<"invalid_request">>, object_not_found}};
+                {error, Reason} -> {error, {<<"internal_error">>, Reason}}
+            end;
+        {error, Reason} -> {error, {<<"conflict">>, Reason}}
     end.
 
 confirm_policy_v5(
@@ -460,7 +398,7 @@ confirm_policy_v5(
             end
     end.
 
-save_confirmed_v5(Conn, Ctx, ObjectKey, _Hash, RealSize, RealType, _Pending, Sha256) ->
+save_confirmed_v5(Conn, Ctx, ObjectKey, _Hash, RealSize, RealType, Pending, Sha256) ->
     OrgId = maps:get(organization_id, Ctx),
     AppId = maps:get(application_id, Ctx),
     ScopeRef = enterprise_asset_repo:scope_ref(OrgId, AppId),
@@ -469,7 +407,11 @@ save_confirmed_v5(Conn, Ctx, ObjectKey, _Hash, RealSize, RealType, _Pending, Sha
         scope_ref => ScopeRef,
         origin_kind => <<"enterprise_application">>,
         origin_application_id => AppId,
-        file_hash256 => Sha256
+        file_hash256 => Sha256,
+        storage_driver => maps:get(<<"storage_driver">>, Pending),
+        storage_namespace => maps:get(<<"storage_namespace">>, Pending),
+        storage_container => maps:get(<<"storage_container">>, Pending),
+        storage_locator_sha256 => maps:get(<<"storage_locator_sha256">>, Pending)
     },
     case enterprise_asset_repo:confirm_save_tx(Conn, ObjectKey, RealType, RealSize, InfoMap) of
         {ok, AttId, First} ->

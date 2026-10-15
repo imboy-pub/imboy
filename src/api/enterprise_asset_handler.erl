@@ -237,6 +237,37 @@ presign_signed_reply(Req0, Status, Body, Kind, NoStore) ->
         end,
     cowboy_req:reply(Status, maps:merge(Base, Headers), Body, Req0).
 
+%% Historical NULL locations cannot obtain a fresh write capability.
+signed_session_reply(Req0, Reg, Kind) ->
+    Base = application:get_env(imboy, base_url, <<>>),
+    case uri_string:parse(Base) of
+        #{scheme := Scheme, host := Host} when
+            (Scheme =:= <<"http">> orelse Scheme =:= <<"https">>), Host =/= <<>> ->
+            signed_session_at(Req0, Reg, Kind, Base);
+        _ -> enterprise_internal_error:reply(Req0, <<"service_unavailable">>)
+    end.
+
+signed_session_at(Req0, Reg, Kind, Base) ->
+    Key = maps:get(<<"object_key">>, Reg),
+    case attachment_storage:session_location(Key) of
+        {ok, Snapshot} when is_map(Snapshot) ->
+            case imboy_jwt:issue_upload_capability(Key,
+                    maps:get(<<"mime_type">>, Reg, <<"application/octet-stream">>),
+                    maps:get(<<"expires_at">>, Reg)) of
+                {ok, Capability} ->
+                    Cid = maps:get(<<"client_upload_id">>, Reg),
+                    Prefix = list_to_binary(string:trim(binary_to_list(Base), trailing, "/")),
+                    Url = <<Prefix/binary, "/api/v1/attachment/gateway/", Cid/binary,
+                        "?capability=", Capability/binary>>,
+                    Signed = Reg#{<<"put_url">> => Url,
+                        <<"upload_capability">> => Capability, <<"gateway">> => true},
+                    presign_signed_reply(Req0, 200, jsone:encode(Signed), Kind, true);
+                _ -> enterprise_internal_error:reply(Req0, <<"service_unavailable">>)
+            end;
+        {ok, legacy_unknown} -> enterprise_internal_error:reply(Req0, <<"conflict">>);
+        {error, _} -> enterprise_internal_error:reply(Req0, <<"service_unavailable">>)
+    end.
+
 resource_id_of(Result) when is_map(Result) ->
     case maps:find(<<"file_id">>, Result) of
         {ok, Id} when is_integer(Id) -> Id;
@@ -245,7 +276,7 @@ resource_id_of(Result) when is_map(Result) ->
 
 %% COMMIT（含重放）后的能力签发（02 §137：内部应用 V5 会话发受控网关
 %% 能力；重放同样走这里，以冻结 expiry 重签新 token）。status 只读视图
-%% 不产生能力；legacy 响应原样返回。
+%% 不产生能力；旧缓存裸 PUT URL 拒绝重放。
 post_commit_presign(Req0, Body, Kind) ->
     Decoded =
         try
@@ -257,39 +288,11 @@ post_commit_presign(Req0, Body, Kind) ->
         #{<<"session_state">> := <<"registered">>, <<"client_upload_id">> := Cid} = Reg when
             is_binary(Cid), byte_size(Cid) > 0, is_map_key(<<"bucket">>, Reg)
         ->
-            {ok, Capability} = imboy_jwt:issue_upload_capability(
-                maps:get(<<"object_key">>, Reg),
-                maps:get(<<"mime_type">>, Reg, <<"application/octet-stream">>),
-                maps:get(<<"expires_at">>, Reg)
-            ),
-            Signed = Reg#{
-                <<"put_url">> =>
-                    <<"/api/v1/attachment/gateway/", Cid/binary, "?capability=",
-                        Capability/binary>>,
-                <<"upload_capability">> => Capability,
-                <<"gateway">> => true
-            },
-            presign_signed_reply(Req0, 200, jsone:encode(Signed), Kind, true);
-        #{<<"renew">> := true, <<"client_upload_id">> := Cid} = Renewed when
-            is_binary(Cid), byte_size(Cid) > 0
-        ->
-            {ok, Capability} = imboy_jwt:issue_upload_capability(
-                maps:get(<<"object_key">>, Renewed),
-                maps:get(<<"mime_type">>, Renewed, <<"application/octet-stream">>),
-                maps:get(<<"expires_at">>, Renewed)
-            ),
-            Signed = Renewed#{
-                <<"put_url">> =>
-                    <<"/api/v1/attachment/gateway/", Cid/binary, "?capability=",
-                        Capability/binary>>,
-                <<"upload_capability">> => Capability,
-                <<"gateway">> => true,
-                <<"can_resume">> => true,
-                <<"retry_action">> => <<"resume_same_key">>
-            },
-            presign_signed_reply(Req0, 200, jsone:encode(Signed), Kind, true);
+            signed_session_reply(Req0, Reg, Kind);
         #{<<"can_resume">> := _} = StatusView when is_map(StatusView) ->
             presign_signed_reply(Req0, 200, jsone:encode(StatusView), Kind, true);
+        #{<<"put_url">> := _} ->
+            enterprise_internal_error:reply(Req0, <<"conflict">>);
         _ when Kind =:= replay ->
             replay_json_body(Req0, 200, Body);
         _ ->
@@ -303,18 +306,6 @@ ok_code(_) -> 200.
 reply_json_body(Req0, Status, Body) ->
     cowboy_req:reply(
         Status, #{<<"content-type">> => <<"application/json">>}, Body, Req0
-    ).
-
-%% V5 status/renew 响应（02 §137）：Cache-Control: no-store。
-reply_json_no_store(Req0, Status, Body) ->
-    cowboy_req:reply(
-        Status,
-        #{
-            <<"content-type">> => <<"application/json">>,
-            <<"cache-control">> => <<"no-store">>
-        },
-        Body,
-        Req0
     ).
 
 -spec replay_json_body(cowboy_req:req(), non_neg_integer(), binary() | null) ->

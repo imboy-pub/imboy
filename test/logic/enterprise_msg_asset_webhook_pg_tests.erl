@@ -35,6 +35,7 @@
 %%      签名头断言/worker 企业分派 hook（eapp: 委托、纯数字不委托）
 %%   ⑫ 导出面负例：无 list-all/批量导出形态
 -module(enterprise_msg_asset_webhook_pg_tests).
+-export([attachment_contract_cases/0]).
 
 -include_lib("eunit/include/eunit.hrl").
 -include_lib("epgsql/include/epgsql.hrl").
@@ -105,19 +106,23 @@ setup_conn() ->
         [group_info, group_member, enterprise_message, enterprise_audit_event, msg_c2c, msg_c2g]
     ),
     {ok, _} = application:ensure_all_started(throttle),
-    State = inttest_marker_db:provision(#{
+    State = attachment_fixture_database(fun() -> inttest_marker_db:provision(#{
         env_prefix => <<"EPGZ04_INTTEST">>,
         connect_extra => #{codecs => [{epgsql_codec_rfc3339_bin, []}]}
-    }),
+    }) end),
     C = maps:get(conn, State),
     ok = exec(C, <<"BEGIN">>),
     try
-        seed_matrix(C),
+        case {maps:get(owned_connection, State, false),
+              one(C, <<"SELECT id FROM enterprise_application WHERE application_key = $1">>, [<<"epgz04-oa-a">>])} of
+            {true, #{<<"id">> := _}} -> ok;
+            _ -> seed_matrix(C)
+        end,
         ok = exec(C, <<"COMMIT">>)
     catch
         Class:Reason:Stack ->
             _ = exec_quiet(C, <<"ROLLBACK">>),
-            inttest_marker_db:release(State),
+            attachment_fixture_release(State),
             erlang:raise(Class, {fixture_seed_failed, Reason}, Stack)
     end,
     {AppA, AppB, AppNoPin, AppASendOnly, AppAHumanOnly} = app_ids(C),
@@ -131,7 +136,7 @@ setup_conn() ->
     }.
 
 close_conn(State) ->
-    inttest_marker_db:release(State),
+    attachment_fixture_release(State),
     ok.
 
 with_tx(C, TestFun) ->
@@ -439,7 +444,7 @@ enterprise_msg_asset_webhook_pg_test_() ->
                     with_tx(C, fun(C1) -> confirm_cross_app(C1, State) end)},
                 {"confirm_object_not_found",
                     with_tx(C, fun(C1) -> confirm_not_found(C1, State) end)},
-                {"confirm_file_too_large_deleted",
+                {"confirm_file_too_large_queued_without_delete",
                     with_tx(C, fun(C1) -> confirm_too_large(C1, State) end)},
                 %% ③ INT-09 direct sender 矩阵
                 {"direct_human_success_non_e2ee",
@@ -553,7 +558,8 @@ presign_success(C, State) ->
     ?assertEqual(Prefix, binary:part(Key, 0, PrefixLen)),
     %% 个人附件前缀 u<Uid>/ 物理隔离
     ?assertMatch(false, binary:part(Key, 0, 1) =:= <<"u">>),
-    ?assertMatch(true, is_binary(maps:get(<<"put_url">>, Result))),
+    ?assertNot(maps:is_key(<<"put_url">>, Result)),
+    ?assertEqual(36, byte_size(maps:get(<<"client_upload_id">>, Result))),
     ?assertMatch(true, is_integer(maps:get(<<"expires_at">>, Result))),
     Row = one(
         C,
@@ -592,10 +598,11 @@ presign_invalid(C, State) ->
 %%%===================================================================
 
 presigned_key(C, State) ->
-    Ctx = ctx_a(State),
-    {ok, #{<<"object_key">> := Key}} = enterprise_asset_logic:presign_tx(C, Ctx, #{
-        file_name => <<"data.txt">>, mime_type => <<"text/plain">>
-    }),
+    %% Explicit historical fixture; V5 bytes/confirm are covered by enterprise_asset_driver_pg_tests.
+    AppId = maps:get(app_a, State),
+    Key = enterprise_asset_repo:build_object_key(?ORG_A, AppId, <<"data.txt">>),
+    {ok, inserted} = enterprise_asset_repo:pending_add_tx(C, Key,
+        elib_oss:get_bucket(<<"enterprise">>), <<"enterprise">>),
     Key.
 
 confirm_success(C, State) ->
@@ -691,7 +698,12 @@ confirm_too_large(C, State) ->
             {error, {<<"invalid_request">>, file_too_large}},
             enterprise_asset_logic:confirm_tx(C, ctx_a(State), #{object_key => Key})
         ),
-        ?assertEqual(1, meck:num_calls(elib_oss, delete_object, 2))
+        ?assertEqual(0, meck:num_calls(elib_oss, delete_object, 2)),
+        ?assertEqual(<<"delete_intent">>, maps:get(<<"session_state">>,
+            one(C, <<"SELECT session_state FROM attach_pending WHERE object_key=$1">>, [Key]))),
+        ?assertEqual(#{<<"job_state">> => <<"blocked">>,
+            <<"last_error_code">> => <<"legacy_location_unverified">>},
+            one(C, <<"SELECT job_state,last_error_code FROM attachment_object_deletion WHERE path=$1">>, [Key]))
     after
         meck:unload(elib_oss)
     end.
@@ -1903,3 +1915,37 @@ repair_int23_handler(C, State) ->
             meck:unload(cowboy_req)
         end
     end).
+
+%% Explicit owned mode never creates/drops databases or uses the default business database.
+attachment_fixture_database(Default) ->
+    Prior = application:get_env(imboy, attachment_storage_registry),
+    Ns = <<"attachment-internal-fixture">>,
+    application:set_env(imboy, attachment_storage_registry, #{version=>1,
+        upload_namespaces=>#{<<"enterprise">>=>Ns},roots=>#{Ns=>#{driver=><<"disk">>,
+        namespace=>Ns,endpoint=><<"file:///private/tmp/attachment-internal-policy-fixture">>,container=><<"fixture">>}}}),
+    State = case os:getenv("ATTV5_INTERNAL_OWNED_DB") of
+        false -> Default();
+        Name ->
+            Db=list_to_binary(Name), <<"attv5_chain_",_/binary>>=Db,
+            {ok,Pg}=application:get_env(imboy,pg_conf),
+            {epgsql,connect,[Config]}=maps:get(start_mfa,Pg),
+            {ok,C}=epgsql:connect(Config#{database=>Name,codecs=>[{epgsql_codec_rfc3339_bin,[]}]}),
+            {ok,[#{<<"db">>:=Db}]}=elib_pg:query(C,<<"SELECT current_database() AS db">>,[]),
+            #{conn=>C,owned_connection=>true}
+    end,
+    State#{prior_storage_registry=>Prior}.
+attachment_fixture_release(State) ->
+    case maps:get(prior_storage_registry,State,undefined) of
+        {ok,R}->application:set_env(imboy,attachment_storage_registry,R);
+        _->application:unset_env(imboy,attachment_storage_registry)
+    end,
+    case maps:get(owned_connection,State,false) of
+        true->epgsql:close(maps:get(conn,State));
+        false->inttest_marker_db:release(State)
+    end.
+
+attachment_contract_cases() ->
+    {timeout,120,{setup,fun setup_conn/0,fun close_conn/1,fun(State)->
+        C=maps:get(conn,State),
+        [{Name,with_tx(C,fun(C1)-> F(C1,State) end)} || {Name,F} <- [{"presign_success",fun presign_success/2},{"presign_invalid",fun presign_invalid/2},{"confirm_success",fun confirm_success/2},{"confirm_not_presigned",fun confirm_not_presigned/2},{"confirm_cross_app",fun confirm_cross_app/2},{"confirm_not_found",fun confirm_not_found/2},{"confirm_too_large",fun confirm_too_large/2}]]
+    end}}.

@@ -23,6 +23,7 @@
 %%      + 冻结路由表机械对齐 + **handler 实际调用接线点**（beam 抽象码断言）
 %%   ⑥ 聚合计量：usage 列集封闭（无正文/PII）+ metric 枚举 + 只增不减
 -module(enterprise_full_api_pg_tests).
+-export([attachment_contract_cases/0]).
 
 -include_lib("eunit/include/eunit.hrl").
 -include_lib("epgsql/include/epgsql.hrl").
@@ -108,20 +109,24 @@ setup_conn() ->
     %% CP-CON-01：INT-16/17 游标走 CURSOR-V2 验签（§10.1）——套件级注入
     %% 签名密钥（与 enterprise_internal_read_pg_tests 同款配方）。
     ok = application:set_env(imboy, ?CURSOR_KEY_CFG, ?CURSOR_SECRET),
-    State = inttest_marker_db:provision(#{
+    State = attachment_fixture_database(fun() -> inttest_marker_db:provision(#{
         env_prefix => <<"FULL02_INTTEST">>,
         connect_extra => #{codecs => [{epgsql_codec_rfc3339_bin, []}]}
-    }),
+    }) end),
     C = maps:get(conn, State),
     ok = exec(C, <<"BEGIN">>),
     try
-        seed_matrix(C),
+        case {maps:get(owned_connection, State, false),
+              one(C, <<"SELECT id FROM enterprise_application WHERE application_key = $1">>, [<<"f02-oa-a">>])} of
+            {true, #{<<"id">> := _}} -> ok;
+            _ -> seed_matrix(C)
+        end,
         ok = exec(C, <<"COMMIT">>)
     catch
         Class:Reason:Stack ->
             _ = exec_quiet(C, <<"ROLLBACK">>),
             application:unset_env(imboy, ?CURSOR_KEY_CFG),
-            inttest_marker_db:release(State),
+            attachment_fixture_release(State),
             erlang:raise(Class, {fixture_seed_failed, Reason}, Stack)
     end,
     {AppA, AppB} = app_ids(C),
@@ -130,7 +135,7 @@ setup_conn() ->
 
 close_conn(State) ->
     application:unset_env(imboy, ?CURSOR_KEY_CFG),
-    inttest_marker_db:release(State),
+    attachment_fixture_release(State),
     ok.
 
 with_tx(C, TestFun) ->
@@ -477,7 +482,7 @@ enterprise_full_api_pg_test_() ->
                 {"group_cross_org_and_workspace_constraints",
                     with_tx(C, fun(C1) -> grp_cross_org(C1, State) end)},
                 %% ③ 企业附件：内容策略 / 原子绑定 / retention·hold·purge
-                {"asset_content_policy_presign_and_confirm",
+                {"asset_policy_presign_and_confirm",
                     with_tx(C, fun(C1) -> asset_policy(C1, State) end)},
                 {"asset_effective_limit_never_widens_global", asset_limit_test()},
                 {"asset_retention_hold_purge_lifecycle",
@@ -1215,7 +1220,8 @@ asset_policy(C, State) ->
     {ok, P1} = enterprise_asset_logic:presign_tx(C, Ctx, #{
         file_name => <<"a.pdf">>, mime_type => <<"application/pdf">>, size_bytes => 100
     }),
-    ?assertMatch(#{<<"object_key">> := _, <<"put_url">> := _}, P1),
+    ?assertMatch(#{<<"object_key">> := _, <<"client_upload_id">> := _}, P1),
+    ?assertNot(maps:is_key(<<"put_url">>, P1)),
     ?assert(is_binary(maps:get(<<"object_key">>, P1))),
     %% presign：策略外类型拒
     ?assertMatch(
@@ -1258,7 +1264,7 @@ asset_policy(C, State) ->
         ]
     ),
     %% confirm：HEAD 真实类型不在策略内 -> 拒 + 删对象（meck 计数）
-    ObjectKey = maps:get(<<"object_key">>, P1),
+    ObjectKey = enterprise_asset_repo:build_object_key(OrgId, AppId, <<"historical.pdf">>),
     _ = enterprise_asset_repo:pending_add_tx(
         C, ObjectKey, elib_oss:get_bucket(<<"enterprise">>), <<"enterprise">>
     ),
@@ -1274,7 +1280,10 @@ asset_policy(C, State) ->
                 {error, {<<"invalid_request">>, _}},
                 enterprise_asset_logic:confirm_tx(C, Ctx, #{object_key => ObjectKey})
             ),
-            ?assertEqual(1, meck:num_calls(elib_oss, delete_object, 2))
+            ?assertEqual(0, meck:num_calls(elib_oss, delete_object, 2)),
+            ?assertEqual(#{<<"job_state">> => <<"blocked">>,
+                <<"last_error_code">> => <<"legacy_location_unverified">>},
+                one(C, <<"SELECT job_state,last_error_code FROM attachment_object_deletion WHERE path=$1">>, [ObjectKey]))
         end
     ),
     %% 策略读取：不存在的 app -> not_found（logic 层归一 fail-closed）
@@ -1634,10 +1643,11 @@ asset_retention_db(C, State) ->
 asset_confirm(C, State) ->
     Ctx = ctx_unmanaged(State),
     FileName = <<"atomic.pdf">>,
-    {ok, P} = enterprise_asset_logic:presign_tx(C, Ctx, #{
-        file_name => FileName, mime_type => <<"application/pdf">>
-    }),
-    ObjectKey = maps:get(<<"object_key">>, P),
+    %% Historical confirmation fixture; real V5 two-driver confirmation has its own suite.
+    ObjectKey = enterprise_asset_repo:build_object_key(maps:get(organization_id,Ctx),
+        maps:get(application_id,Ctx), FileName),
+    {ok, inserted} = enterprise_asset_repo:pending_add_tx(C, ObjectKey,
+        elib_oss:get_bucket(<<"enterprise">>), <<"enterprise">>),
     with_oss(
         [
             {head_object, 2, fun(_B, _K) ->
@@ -2389,3 +2399,37 @@ usage_meter(C, State) ->
             [OrgId]
         )
     ).
+
+%% Explicit owned mode never creates/drops databases or uses the default business database.
+attachment_fixture_database(Default) ->
+    Prior = application:get_env(imboy, attachment_storage_registry),
+    Ns = <<"attachment-internal-fixture">>,
+    application:set_env(imboy, attachment_storage_registry, #{version=>1,
+        upload_namespaces=>#{<<"enterprise">>=>Ns},roots=>#{Ns=>#{driver=><<"disk">>,
+        namespace=>Ns,endpoint=><<"file:///private/tmp/attachment-internal-policy-fixture">>,container=><<"fixture">>}}}),
+    State = case os:getenv("ATTV5_INTERNAL_OWNED_DB") of
+        false -> Default();
+        Name ->
+            Db=list_to_binary(Name), <<"attv5_chain_",_/binary>>=Db,
+            {ok,Pg}=application:get_env(imboy,pg_conf),
+            {epgsql,connect,[Config]}=maps:get(start_mfa,Pg),
+            {ok,C}=epgsql:connect(Config#{database=>Name,codecs=>[{epgsql_codec_rfc3339_bin,[]}]}),
+            {ok,[#{<<"db">>:=Db}]}=elib_pg:query(C,<<"SELECT current_database() AS db">>,[]),
+            #{conn=>C,owned_connection=>true}
+    end,
+    State#{prior_storage_registry=>Prior}.
+attachment_fixture_release(State) ->
+    case maps:get(prior_storage_registry,State,undefined) of
+        {ok,R}->application:set_env(imboy,attachment_storage_registry,R);
+        _->application:unset_env(imboy,attachment_storage_registry)
+    end,
+    case maps:get(owned_connection,State,false) of
+        true->epgsql:close(maps:get(conn,State));
+        false->inttest_marker_db:release(State)
+    end.
+
+attachment_contract_cases() ->
+    {timeout,120,{setup,fun setup_conn/0,fun close_conn/1,fun(State)->
+        C=maps:get(conn,State),
+        [{Name,with_tx(C,fun(C1)-> F(C1,State) end)} || {Name,F} <- [{"asset_policy",fun asset_policy/2},{"asset_confirm",fun asset_confirm/2}]]
+    end}}.
