@@ -740,8 +740,14 @@ capture(Fun) ->
         ok -> ok;
         _ -> {error, unexpected_result}
     catch
-        throw:{mc_http_failed, Code} -> {error, Code};
-        _:_ -> {error, unexpected_failure}
+        throw:{mc_http_failed, Code} ->
+            {error, Code};
+        Class:Reason:Stack ->
+            %% r7d 同款：暴露用例层异常形态再定性，避免只剩 unexpected_failure。
+            io:format("MC_HTTP_CASE_EXC ~p:~p~n~p~n", [
+                Class, Reason, lists:sublist(Stack, 5)
+            ]),
+            {error, unexpected_failure}
     end.
 
 report_outcome(Outcome, Cleanup) ->
