@@ -595,7 +595,32 @@ def candidate_inputs(root):
                     raise ValueError("dependency file symlink escapes source root: %s"
                                      % os.path.relpath(path, root))
             paths.add(os.path.relpath(path, root))
-    return sorted(paths)
+    for directory in ("src", "test", "priv", "scripts", "include", "config", "deploy", "deps"):
+        directory_path = os.path.join(root, directory)
+        if os.path.islink(directory_path):
+            raise ValueError("candidate directory symlink is unsupported: %s" % directory)
+        for base, dirs, names in os.walk(directory_path):
+            for name in dirs:
+                path = os.path.join(base, name)
+                if os.path.islink(path):
+                    raise ValueError("candidate directory symlink is unsupported: %s"
+                                     % os.path.relpath(path, root))
+            for name in names:
+                if name.endswith(".dump"):
+                    continue
+                path = os.path.join(base, name)
+                if os.path.commonpath((root_real, os.path.realpath(path))) != root_real:
+                    raise ValueError("candidate input escapes source root: %s"
+                                     % os.path.relpath(path, root))
+                if not os.path.isfile(path):
+                    raise ValueError("candidate input is not a regular file: %s"
+                                     % os.path.relpath(path, root))
+                paths.add(os.path.relpath(path, root))
+    paths.update(p for p in INPUT_FILES if os.path.isfile(os.path.join(root, p)))
+    for path in paths:
+        if os.path.commonpath((root_real, os.path.realpath(os.path.join(root, path)))) != root_real:
+            raise ValueError("candidate input escapes source root: %s" % path)
+    return sorted(path for path in paths if not path.endswith(".dump"))
 
 
 def _bound_file(ref, base, errors):
@@ -1009,6 +1034,63 @@ def _read_file(path):
 
 def self_test():
     import runpy
+    import tempfile
+    from types import SimpleNamespace
+
+    with tempfile.TemporaryDirectory(prefix="cache-input-selftest-") as temporary:
+        root = os.path.join(temporary, "source")
+        os.mkdir(root)
+        subprocess.run(["git", "init", "-q", root], check=True)
+        with open(os.path.join(root, ".gitignore"), "w") as output:
+            output.write("/deploy/plain.txt\n/priv/plain.txt\n/config/sys.runtime.config\n")
+        inputs = ("Makefile", "deploy/plain.txt", "priv/plain.txt",
+                  "config/sys.runtime.config", "test/.hidden/generated.beam",
+                  "deps/example/_build/generated.beam", "deps/example/.git/input")
+        for relative in inputs + ("priv/crash.dump", ".root-input"):
+            path = os.path.join(root, relative)
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "w") as output:
+                output.write("fixture\n")
+        assert candidate_inputs(root) == sorted(inputs)
+        rows = [{"path": path, "sha256": sha256_file(os.path.join(root, path))}
+                for path in candidate_inputs(root)]
+        manifest = os.path.join(temporary, "manifest.json")
+        args = SimpleNamespace(candidate_manifest=manifest, source_root=root)
+
+        def binding_errors(entries):
+            digest = hashlib.sha256(json.dumps(entries, sort_keys=True,
+                                               separators=(",", ":")).encode()).hexdigest()
+            with open(manifest, "w") as output:
+                json.dump({"files": entries, "candidate_sha256": digest,
+                           "frozen_at_utc": (datetime.now(timezone.utc) -
+                                             timedelta(seconds=1)).isoformat()}, output)
+            errors = []
+            _manifest_binding(args, errors)
+            return errors
+
+        assert not binding_errors(rows)
+        for missing in ("deploy/plain.txt", "priv/plain.txt"):
+            assert any("input set/order" in error for error in
+                       binding_errors([row for row in rows if row["path"] != missing]))
+        assert any("input set/order" in error for error in binding_errors(rows + [rows[0]]))
+        assert any("input set/order" in error for error in binding_errors(list(reversed(rows))))
+        for escaped in ("../outside", os.path.join(temporary, "outside")):
+            assert any("invalid candidate input" in error for error in
+                       binding_errors(rows + [{"path": escaped, "sha256": "0" * 64}]))
+        with open(os.path.join(root, "deploy/plain.txt"), "w") as output:
+            output.write("changed\n")
+        assert any("digest mismatch" in error for error in binding_errors(rows))
+        outside = os.path.join(temporary, "outside")
+        with open(outside, "w") as output:
+            output.write("outside\n")
+        os.symlink(outside, os.path.join(root, "priv", "escape"))
+        try:
+            candidate_inputs(root)
+        except ValueError as error:
+            assert "escapes source root" in str(error)
+        else:
+            raise AssertionError("escaped physical input accepted")
+    print("[PASS] physical input coverage, manifest omissions/tampering/order/escape")
     path = os.path.join(REPO_ROOT, "test/scripts/cache_closeout_verifier_selftest.py")
     return runpy.run_path(path)["self_test"]()
 
