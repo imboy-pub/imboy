@@ -137,13 +137,15 @@ override_from_env() ->
     %% SMTP 配置覆盖
     ok = override_smtp(),
 
-    %% 限流上限覆盖：本地/CI 自动化测试需要放宽 throttle rates，
+    %% 限流上限覆盖：本地/CI 自动化测试需要放宽限流，
     %% 避免每次调整都要重编 release（默认 120/min 会让连续巡检 429）
     ok = override_throttle_rate("IMBOY_THROTTLE_API_PER_USER", api_per_user),
-    ok = override_throttle_rate("IMBOY_THROTTLE_API_PER_IP", api_per_ip),
-    %% GAP-09：passport 登录面（meta/captcha/do_login）走独立 passport_per_ip=5/min，
-    %% 浏览器 E2E 每用例 goto /login 即 3 请求，5/min 秒穿且无法经上两行放宽
-    ok = override_throttle_rate("IMBOY_THROTTLE_PASSPORT_PER_IP", passport_per_ip),
+    %% limiter-v1 C.5：两 HTTP IP scope 已从 {throttle, rates} 迁至
+    %% {imboy, limiter_ip_rates}（owner login_attempt_ds）——环境变量名与
+    %% 「放宽阈值」语义保留，改写新表；绝不写回 throttle rates（启动校验
+    %% 会拒绝混跑）。
+    ok = override_limiter_ip_rate("IMBOY_THROTTLE_API_PER_IP", api_per_ip),
+    ok = override_limiter_ip_rate("IMBOY_THROTTLE_PASSPORT_PER_IP", passport_per_ip),
 
     %% 百度千帆 API 配置覆盖
     ok = override_qianfan(),
@@ -322,7 +324,9 @@ parse_feature_boolean(EnvVar, Value) ->
 
 %% @doc 覆盖 binary 类型的简单 app env key
 -spec override_binary_key(string(), atom()) -> ok.
-%% @doc 覆盖 throttle rates 里的单条限流（整数 + 时间单位保持 per_minute）
+%% @doc 覆盖 throttle rates 里的单条限流（整数 + 时间单位保持 per_minute）。
+%% limiter-v1 C.8：仅剩 UID 侧 scope 仍走 throttle 原库；两 IP scope
+%% （api_per_ip / passport_per_ip）由 override_limiter_ip_rate/2 处理。
 override_throttle_rate(EnvVar, RateKey) ->
     case os:getenv(EnvVar) of
         false ->
@@ -342,6 +346,40 @@ override_throttle_rate(EnvVar, RateKey) ->
         _ ->
             ok
     end.
+
+%% @doc 覆盖 {imboy, limiter_ip_rates} 里的单条 IP 限流（limiter-v1 C.5）。
+%% 环境变量沿用 IMBOY_THROTTLE_API_PER_IP / IMBOY_THROTTLE_PASSPORT_PER_IP，
+%% 语义仍是「放宽每分钟阈值」：只改阈值 N，周期保留表内现值（缺表时用
+%% 代码默认表，周期 60000ms，与 login_attempt_state:?IP_RATES_DEFAULT 一致）。
+%% 在 imboy_app:start 早期（override_from_env）执行，先于 login_attempt_ds
+%% init 读取——DS 首装配即拿到覆盖后的规则。
+-spec override_limiter_ip_rate(string(), passport_per_ip | api_per_ip) -> ok.
+override_limiter_ip_rate(EnvVar, Scope) ->
+    case os:getenv(EnvVar) of
+        false ->
+            ok;
+        Value when is_list(Value), length(Value) > 0 ->
+            case string:to_integer(Value) of
+                {Limit, _} when is_integer(Limit), Limit > 0 ->
+                    Rates0 = application:get_env(
+                        imboy, limiter_ip_rates, default_limiter_ip_rates()
+                    ),
+                    {_, Period} = maps:get(Scope, Rates0, {Limit, 60000}),
+                    application:set_env(imboy, limiter_ip_rates, Rates0#{Scope => {Limit, Period}}),
+                    ok;
+                _ ->
+                    ok
+            end;
+        _ ->
+            ok
+    end.
+
+%% @doc limiter_ip_rates 代码级默认（与 login_attempt_state:?IP_RATES_DEFAULT
+%% 及 config/sys.config.example 声明一致；仅当 env 完全缺失时兜底）。
+-spec default_limiter_ip_rates() ->
+    #{passport_per_ip => {10, 60000}, api_per_ip => {60, 60000}, oidc_request => {100, 3600000}}.
+default_limiter_ip_rates() ->
+    #{passport_per_ip => {10, 60000}, api_per_ip => {60, 60000}, oidc_request => {100, 3600000}}.
 
 override_binary_key(EnvVar, AppKey) ->
     case os:getenv(EnvVar) of

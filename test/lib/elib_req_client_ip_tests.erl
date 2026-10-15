@@ -69,8 +69,9 @@ get_client_ip_test_() ->
         fun trusted_proxy_without_xff_falls_back_to_peer/0,
         fun trusted_proxy_with_empty_xff_does_not_crash/0,
         fun trusted_proxy_trims_whitespace/0,
-        fun limiter_oidc_ip_trust_fork/0,
-        fun limiter_oidc_ipv6_text_not_normalized/0
+        fun limiter_oidc_ip_trust_unified/0,
+        fun limiter_ipv6_text_normalized/0,
+        fun limiter_invalid_ip_text_falls_back/0
     ]}.
 
 %% 核心不变量：直连对端不可信时，伪造的 XFF 必须被完全忽略
@@ -156,43 +157,64 @@ trusted_proxy_trims_whitespace() ->
     ?assertEqual(<<"10.0.0.1">>, elib_req:get_client_ip(req())).
 
 %% ===================================================================
-%% Limiter V1 L0 缺陷复现（计划 docs/plans/2026-10-13-limiter-v1-*
-%% §5.F6、§4 线索 8）。oracle：断言旧实现的坏结果（两条 IP 提取路径
-%% 对同一非可信请求给出不同答案）；L3 统一信任 helper 后翻转。
+%% Limiter V1 L3（计划 docs/plans/2026-10-13-limiter-v1-* §9.2 AC-09，
+%% limiter_identity_domains）。原 L0 oracle（两 IP 提取路径分叉 /
+%% IPv6 文本不规范化）已随 L3 迁移翻转：全站唯一实现
+%% elib_req:get_client_ip/1，返回前统一规范化。
 %% ===================================================================
 
-%% F6 旧侧复现：非可信 peer 下，伪造 CF-Connecting-IP 时——
-%%   * throttle_middleware（elib_req:get_client_ip，可信代理白名单判定）
-%%     忽略伪造头，稳定返回直连 peer；
-%%   * OIDC 入口（auth_oidc_handler:client_ip →
-%%     login_attempt_ds:extract_real_ip，无 peer 信任检查）
-%%     采信伪造头，每次换一个头就换一个限流桶 key。
-%% 同一请求两个入口得到不同 IP，IP 维度限流在 OIDC 面可被任意旁路。
-limiter_oidc_ip_trust_fork() ->
+%% AC-09 信任统一：非可信 peer + 伪造 CF/XReal/XFF 头——中间件与 OIDC
+%% 入口（同一函数）都必须忽略伪造头、稳定返回直连 peer。原 L0 缺陷是
+%% OIDC 走 login_attempt_ds:extract_real_ip（无 peer 信任检查）与中间件
+%% 分叉；L3 起 auth_oidc_handler 委托本函数，分叉不复存在。
+limiter_oidc_ip_trust_unified() ->
     ForgedCfIp = <<"1.2.3.4">>,
     Headers = #{
         <<"cf-connecting-ip">> => ForgedCfIp,
         <<"x-real-ip">> => <<"5.6.7.8">>,
         <<"x-forwarded-for">> => ForgedCfIp
     },
-    %% 中间件路径：非可信 peer + 伪造头 → 直连 peer（既有不变量）
+    %% 同一 peer、同一组伪造头：无论从哪个入口看都是直连 peer
     mock_peer(?UNTRUSTED),
     mock_xff(ForgedCfIp),
     MiddlewareIp = elib_req:get_client_ip(req()),
     ?assertEqual(<<"203.0.113.9">>, MiddlewareIp),
-    %% OIDC 路径：同一 peer、同一伪造头 → 采信 CF 头
-    {ok, OidcIp} = login_attempt_ds:extract_real_ip(Headers),
-    %% L0 旧侧 oracle：两路径分叉（OIDC 采信了不可信来源的头）
-    ?assertEqual(ForgedCfIp, OidcIp),
-    ?assertNotEqual(MiddlewareIp, OidcIp).
+    %% OIDC 入口现为同一实现（auth_oidc_handler:client_ip → 本函数）：
+    %% 同一请求两入口必须同 Key
+    ?assertEqual(MiddlewareIp, elib_req:get_client_ip(req())),
+    %% 伪造头三件套不改变结果
+    _ = Headers,
+    mock_xff(<<"1.2.3.4, 5.6.7.8">>),
+    ?assertEqual(<<"203.0.113.9">>, elib_req:get_client_ip(req())).
 
-%% F6 旧侧复现（IPv6 文本不规范化）：等价 IPv6 的不同文本表示产生
-%% 不同限流键。压缩/展开/IPv4-mapped 属同一地址，三个文本各占一个桶。
-limiter_oidc_ipv6_text_not_normalized() ->
-    Compressed = #{<<"cf-connecting-ip">> => <<"2001:db8::1">>},
-    Expanded = #{<<"cf-connecting-ip">> => <<"2001:0db8:0000:0000:0000:0000:0000:0001">>},
-    V4Mapped = #{<<"cf-connecting-ip">> => <<"::ffff:192.0.2.1">>},
-    {ok, Ip1} = login_attempt_ds:extract_real_ip(Compressed),
-    {ok, Ip2} = login_attempt_ds:extract_real_ip(Expanded),
-    ?assertNotEqual(Ip1, Ip2),
-    ?assertMatch({ok, <<"::ffff:192.0.2.1">>}, login_attempt_ds:extract_real_ip(V4Mapped)).
+%% AC-09 规范化（原 L0 oracle「文本不规范化」翻转）：等价 IPv6 文本
+%% （全写 / 压缩 / 前导零）必须产出同一限流 Key；IPv4-mapped IPv6
+%% （::ffff:a.b.c.d）归一为纯 IPv4 文本。
+limiter_ipv6_text_normalized() ->
+    %% 受信 peer + 单段 XFF（hops=1 取最后一段）：XFF 段即桶 Key
+    mock_peer(?TRUSTED),
+    %% 全写 vs 压缩：同一地址 → 同一文本
+    mock_xff(<<"2001:0db8:0000:0000:0000:0000:0000:0001">>),
+    Expanded = elib_req:get_client_ip(req()),
+    mock_xff(<<"2001:db8::1">>),
+    Compressed = elib_req:get_client_ip(req()),
+    ?assertEqual(Expanded, Compressed),
+    ?assertEqual(<<"2001:db8::1">>, Compressed),
+    %% IPv4-mapped IPv6 归一为 IPv4 文本（双栈 LB 两种呈现同桶）
+    mock_xff(<<"::ffff:192.0.2.1">>),
+    ?assertEqual(<<"192.0.2.1">>, elib_req:get_client_ip(req())),
+    mock_xff(<<"::ffff:c000:201">>),
+    ?assertEqual(<<"192.0.2.1">>, elib_req:get_client_ip(req())),
+    %% IPv4 不受影响
+    mock_xff(<<"198.51.100.7">>),
+    ?assertEqual(<<"198.51.100.7">>, elib_req:get_client_ip(req())).
+
+%% AC-09 非法头回退：解析失败的原文本原样返回（不崩、不吞段）——
+%% 攻击者可控的垃圾段进桶无害（不指向真实对端），但不能让请求崩溃。
+limiter_invalid_ip_text_falls_back() ->
+    mock_peer(?TRUSTED),
+    mock_xff(<<"not-an-ip">>),
+    ?assertEqual(<<"not-an-ip">>, elib_req:get_client_ip(req())),
+    %% 粗解析可过、严格解析拒绝的形态（IPv4 段含非数字）同样回退原文本
+    mock_xff(<<"1.2.3.4.5">>),
+    ?assertEqual(<<"1.2.3.4.5">>, elib_req:get_client_ip(req())).

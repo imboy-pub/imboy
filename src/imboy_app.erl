@@ -7,6 +7,8 @@
 
 %% 导出供守护测试直调（e2ee_throttle_scope_config_tests：RT-P3-02 兜底注册）
 -export([init_throttle_rates/0]).
+%% 导出供启动装配校验测试直调（throttle_middleware_tests：C.8 旧配置拒绝 ready）
+-export([validate_limiter_ip_migration/0]).
 %% 导出供纯 HTTP 链套件复刻启动语义（enterprise_mobile_bootstrap_http_tests
 %% 等不起 imboy app 的 marker DB 套件需显式准备 RSA env）；幂等，纯 env/文件操作
 -export([ensure_rsa_keys/0]).
@@ -263,12 +265,17 @@ ensure_listener_started({error, Reason}, StartMode) ->
 %% @doc 显式初始化 API throttle 限流规则
 %% throttle 库通过 sys.config 的 {rates, [...]} 自动 setup，但在某些启动时序下
 %% 可能在 Cowboy 中间件就绪前未完成初始化，导致 throttle:check/2 返回 rate_not_set。
-%% 此处显式 setup 两个关键规则作为保障。
+%% 此处显式 setup 剩余规则作为保障。
 %% 上限优先读取 {throttle, [{rates, [{Key, N, per_minute}, ...]}]} 应用配置，
 %% 读不到时回落到硬编码默认值——本地/e2e 环境可通过 sys.local.config 放宽限流，
 %% 否则管理后台一轮自动化测试（每页十余个请求）很容易打满限流被踢回登录页。
+%% limiter-v1 L3（C.8）：passport_per_ip / api_per_ip 两只 IP scope 的权威
+%% owner 是 login_attempt_ds（读 {imboy, limiter_ip_rates}），不再由本函数
+%% setup；且若 {throttle, rates} 仍含它们（旧配置残留）→ 启动校验拒绝
+%% ready（报迁移缺项），不允许旧 throttle worker 与新 owner 双权威混跑。
 -spec init_throttle_rates() -> ok.
 init_throttle_rates() ->
+    ok = validate_limiter_ip_migration(),
     Rates =
         case application:get_env(throttle, rates) of
             {ok, R} when is_list(R) -> R;
@@ -290,11 +297,6 @@ init_throttle_rates() ->
             _ -> 300
         end,
     ok = throttle:setup(api_per_user_burst, BurstN, per_second),
-    %% 每 IP 每分钟 API 调用上限（与 sys.config 保持一致）
-    ok = throttle:setup(api_per_ip, RateFor(api_per_ip, 60), per_minute),
-    %% GAP-09: passport 路径专用限流（登录/注册，宽松于通用 IP 限流，严于完全豁免）
-    %% 每 IP 每分钟最多 10 次 passport 请求（兼容短时间内正常登录重试）
-    ok = throttle:setup(passport_per_ip, RateFor(passport_per_ip, 10), per_minute),
     %% CSB-03：widget 接入面每 IP 每分钟限流（bootstrap/消息/SSE 共享；访客无
     %% UID 恒按 IP）。代码级缺省与 sys.config.example 同值，配置仅用于覆写。
     ok = throttle:setup(cs_widget_per_ip, RateFor(cs_widget_per_ip, 30), per_minute),
@@ -309,6 +311,38 @@ init_throttle_rates() ->
     ok = throttle:setup(olm_claim, RateFor(olm_claim, 30), per_minute),
     ok = throttle:setup(olm_claim_target, RateFor(olm_claim_target, 60), per_minute),
     ok.
+
+%% @doc limiter-v1 L3 装配校验（C.8 唯一装配）：{throttle, rates} 不得再含
+%% passport_per_ip / api_per_ip —— 两只 HTTP IP scope 已迁至
+%% {imboy, limiter_ip_rates}（owner login_attempt_ds）。旧配置仍含任一项即
+%% 「旧 throttle worker + 新 owner」双权威混跑（重复装配不幂等、旧 reset
+%% timer 清新额度，AC-14 缺陷形态），ERROR 日志报迁移缺项并以 error 拒绝
+%% 启动（fail-fast 先例：validate_runtime_config 系列）。
+%% 导出供测试直调（throttle_middleware_tests）。
+-spec validate_limiter_ip_migration() -> ok.
+validate_limiter_ip_migration() ->
+    Rates =
+        case application:get_env(throttle, rates) of
+            {ok, R} when is_list(R) -> R;
+            _ -> []
+        end,
+    Stale = [
+        S
+     || S <- [passport_per_ip, api_per_ip], lists:keymember(S, 1, Rates)
+    ],
+    case Stale of
+        [] ->
+            ok;
+        _ ->
+            logger:error(
+                "[imboy] limiter migration incomplete: {throttle, rates} still contains "
+                "~p. These IP scopes are owned by login_attempt_ds via {imboy, "
+                "limiter_ip_rates} since limiter-v1 L3 — remove them from throttle "
+                "rates (old/new dual authority is not allowed).",
+                [Stale]
+            ),
+            erlang:error({limiter_migration_incomplete, Stale})
+    end.
 
 %% @doc BE-W01 A02：特性可选的企业密钥环 _FILE 装载守卫。
 %% eb_keyring_file 随 enterprise_business 裁剪（ERLC_EXCLUDE）不参与

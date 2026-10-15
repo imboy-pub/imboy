@@ -204,18 +204,51 @@ peer_ip(Req) ->
 -spec get_client_ip(cowboy_req:req()) -> binary().
 get_client_ip(Req) ->
     {PeerIp, _Port} = cowboy_req:peer(Req),
-    PeerIpBin = ec_cnv:to_binary(inet:ntoa(PeerIp)),
+    PeerIpBin = normalize_ip(ec_cnv:to_binary(inet:ntoa(PeerIp))),
     TrustedProxies = config_ds:env(trusted_proxy_ips, [<<"127.0.0.1">>, <<"::1">>]),
     case lists:member(PeerIpBin, TrustedProxies) of
         true ->
-            forwarded_ip_at_hop(
-                cowboy_req:header(<<"x-forwarded-for">>, Req, PeerIpBin),
-                PeerIpBin,
-                trusted_proxy_hops()
+            normalize_ip(
+                forwarded_ip_at_hop(
+                    cowboy_req:header(<<"x-forwarded-for">>, Req, PeerIpBin),
+                    PeerIpBin,
+                    trusted_proxy_hops()
+                )
             );
         false ->
             PeerIpBin
     end.
+
+%% @doc IP 文本规范化（limiter-v1 L3，AC-09）：本函数的返回值是全站 IP 维度
+%% 限流桶（passport_per_ip / api_per_ip / oidc_request）的 Key，必须对
+%% 「同一地址」产出同一文本——否则等价 IPv6 写法（全写 vs 压缩、前导零）
+%% 会被拆进不同桶，限流按文本计数而失效。
+%%
+%% 规则：inet:parse_ipv4strict/ipv6strict 解析成功后经 inet:ntoa 往返生成
+%% 规范文本；IPv4-mapped IPv6（::ffff:a.b.c.d）归一为纯 IPv4 文本（同一
+%% 地址在双栈 LB 下两种呈现必须同桶）。解析失败回退原文本——保持现行为
+%% 不崩；攻击段（如 XFF 里的 "evil"）原样进桶也无碍，它们不指向真实对端。
+-spec normalize_ip(binary()) -> binary().
+normalize_ip(Ip) when is_binary(Ip) ->
+    Str = binary_to_list(Ip),
+    case inet:parse_ipv4strict_address(Str) of
+        {ok, Addr} ->
+            ip_text(Addr);
+        {error, _} ->
+            case inet:parse_ipv6strict_address(Str) of
+                {ok, Addr} -> ip_text(Addr);
+                {error, _} -> Ip
+            end
+    end;
+normalize_ip(Ip) ->
+    Ip.
+
+%% @private 规范地址 tuple → 文本；v4-mapped 归一为 IPv4。
+-spec ip_text(inet:ip_address()) -> binary().
+ip_text({0, 0, 0, 0, 0, 16#FFFF, Hi, Lo}) ->
+    list_to_binary(inet:ntoa({Hi bsr 8, Hi band 16#FF, Lo bsr 8, Lo band 16#FF}));
+ip_text(Addr) ->
+    list_to_binary(inet:ntoa(Addr)).
 
 %% @private 代理层数，归一化成 >= 1 的整数。
 %%

@@ -197,6 +197,12 @@ login(Req0) ->
         {{error, conflict}, ConflictInfo} ->
             % 返回设备冲突信息
             elib_response:error(Req0, ConflictInfo, 5100);
+        {error, service_unavailable} ->
+            %% Limiter V1（C.6）：limiter 不可用/容量丢失/reset 未确认，
+            %% 不冒充普通口令错误，也绝不返回已生成凭据 → HTTP 503
+            elib_response:error_with_status(
+                Req0, 503, <<"服务暂不可用，请稍后重试"/utf8>>, 503
+            );
         {error, Msg} ->
             elib_response:error(Req0, Msg)
     end.

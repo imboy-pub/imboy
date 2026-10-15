@@ -1,0 +1,7 @@
+{
+  "oracle": "baseline",
+  "case_id": "AC-16",
+  "candidate": "7d2239a5",
+  "baseline_dir": "docs/qa/limiter-v1/0d28ad4f/baseline",
+  "old_head": "0d28ad4f"
+}

@@ -281,24 +281,48 @@ await_device_active(Uid, Did, Attempts) ->
 
 %% Test-environment CAPACITY configuration, not a bypass of any behavior
 %% under test (rate-limit semantics are not in this batch's tested
-%% contract list): throttle_middleware gates POST /api/v1/passport/*
-%% through the passport_per_ip scope via throttle:check/2 on every
-%% request. The rule itself is registered once at app boot
-%% (imboy_app:init_throttle_rates/0, default 10/min; the {throttle, rates}
-%% env override is read only at boot), and the per-request check reads the
-%% registered rule, not the env — so a post-boot application:set_env has
-%% no effect on the live ceiling. Re-registering the scope with the same
-%% primitive the product uses (throttle:setup/3; throttle_sup is
-%% simple_one_for_one and the fresh child re-initializes the driver
-%% limit) raises it. Domain suites that log in more than 6 fixture users
-%% per run call this from init_per_suite so the shared 127.0.0.1 passport
-%% bucket does not hand 429s to fixture logins.
-%% Node-scope note: the raised ceiling lives on the shared ct_imboy VM for
-%% its remaining lifetime — later suites or runs on the same node inherit it
-%% until that VM restarts. Rate-limit semantics are not under test here.
+%% contract list). Since limiter-v1 L3 (plan C.8) the two HTTP IP scopes
+%% (passport_per_ip / api_per_ip) are owned by login_attempt_ds and read
+%% {imboy, limiter_ip_rates}; calling throttle:setup/3 for them again
+%% would resurrect the old throttle worker as a second authority (the
+%% exact AC-14 defect shape) — and booting with them still inside
+%% {throttle, rates} fails the imboy_app migration validation outright,
+%% which is why the old "raise the ceiling via throttle:setup" fixture
+%% hook must not come back.
+%%
+%% Authority-safe capacity raise, two layers:
+%%   1) application:set_env — records the amplified rules so any later
+%%      owner init (and the evidence of intent) carries them;
+%%   2) login_attempt_ds:set_ip_rates/1 — registers the amplified rule on
+%%      the live owner. HTTP scopes switch at the NEXT scope window
+%%      boundary (anchor-aligned; <= 60 s away) — the CURRENT window keeps
+%%      the boot-time rules, which sys.local.config already amplifies for
+%%      local/e2e (passport_per_ip 120/min, api_per_ip 3000/min). Suite
+%%      login volume (a handful of fixture users per suite) stays far
+%%      below that, and every window after the first boundary uses the
+%%      amplified rules registered here.
+%% Domain suites call this from init_per_suite. Rate-limit semantics are
+%% not under test here; per-request throttling behaviour is owned by
+%% throttle_middleware_tests (AC-14).
 -spec ensure_login_throttle_capacity() -> ok.
 ensure_login_throttle_capacity() ->
-    ok = throttle:setup(passport_per_ip, 300, per_minute).
+    Rates = amplified_ip_rates(),
+    ok = application:set_env(imboy, limiter_ip_rates, Rates),
+    case login_attempt_ds:set_ip_rates(Rates) of
+        ok -> ok;
+        {error, Reason} -> erlang:error({limiter_ip_rates_rejected, Reason})
+    end.
+
+%% Amplified fixture rules (plan C.5 shape): thresholds far above any
+%% suite's request volume, windows kept at production lengths so window
+%% semantics stay realistic.
+-spec amplified_ip_rates() -> #{atom() => {pos_integer(), pos_integer()}}.
+amplified_ip_rates() ->
+    #{
+        passport_per_ip => {100000, 60000},
+        api_per_ip => {100000, 60000},
+        oidc_request => {1000000, 3600000}
+    }.
 
 login_port() ->
     ranch:get_port(imboy_listener).

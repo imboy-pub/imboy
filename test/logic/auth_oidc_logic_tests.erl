@@ -2,6 +2,9 @@
 -include_lib("eunit/include/eunit.hrl").
 -include("eunit_setup.hrl").
 
+%% AC-09 失败审计捕获的 logger handler 回调（logger:add_handler 要求导出）
+-export([init/1, log/2]).
+
 %%%===================================================================
 %%% @doc
 %%% auth_oidc_logic 模块的 EUnit 测试（P0-C OIDC 登录流 + SEC-01 验签接线）
@@ -58,6 +61,10 @@ cfg() ->
 sso_config_mock() ->
     {sso_config_ds, [{'get_provider', 1, fun(<<"oauth2">>) -> {ok, cfg()} end}]}.
 
+%% limiter-v1 L3：旧 IP 限流/失败锁入口哨兵。logic 层已不再调用
+%% check_ip_rate_limit / record_failure（限流上移为 handler 层 admit(oidc_request,_)，
+%% oidc 失败 ETS 写按 D7 移除）；AC-09 用例以真实 DS 计数/锁行观测等价证明
+%% （见 limiter_admit_* 用例），此 mock 仅隔离历史直调残余。
 rate_limit_mock() ->
     {login_attempt_ds, [
         {'check_ip_rate_limit', 1, fun(_Ip) -> {ok, 1} end},
@@ -860,6 +867,144 @@ callback_legacy_verification_off_test_() ->
             end
         end
     ).
+
+%% ===================================================================
+%% Limiter V1 L3 AC-09（limiter_identity_domains）：OIDC 请求域 admit 契约
+%% —— authorize / callback 各 admit 一次（handler 层，elib_req:get_client_ip
+%% 统一取 IP），exchange 不占；失败仅保留有界审计日志（D7）。
+%%
+%% 观测面全部走**真实 login_attempt_ds**（?WITH_MECKS 先幂等 boot 全量 app，
+%% owner 未被 mock——meck DS 本体可能 purge 杀掉长驻 owner 引入竞态）：
+%% - admit 计数：读 owner 表 {limiter_admit, oidc_request, <<"127.0.0.1">>}
+%%   行的 count **增量**（免疫同 VM 其它套件的既有计数）；
+%% - 旧入口零调用等价观测：旧 check_ip_rate_limit 若被调用同样走
+%%   admit(oidc_request,_) → 计数必多涨；旧 fail→record_failure 若被调用
+%%   → {limiter_account, {unknown, account, <<"oidc">>}} 锁行必出现。
+%% ===================================================================
+
+%% 经 auth_oidc_handler:handle_request/2 驱动 cowboy 面。peer 固定
+%% 127.0.0.1（受信代理默认白名单），无 XFF 头 → 桶 Key = <<"127.0.0.1">>。
+oidc_cowboy_mock() ->
+    {cowboy_req, [
+        %% method 可经进程字典切换（exchange 面需 POST），缺省 GET
+        {'method', 1, fun(_R) ->
+            case erlang:get(oidc_req_method) of
+                undefined -> <<"GET">>;
+                M -> M
+            end
+        end},
+        {'path', 1, fun(_R) -> <<"/api/v1/auth/oidc/probe">> end},
+        {'peer', 1, fun(_R) -> {{127, 0, 0, 1}, 54321} end},
+        {'header', 3, fun(_H, _R, Default) -> Default end},
+        {'parse_qs', 1, fun(_R) -> [{<<"state">>, <<"forged-state">>}] end},
+        {'read_body', 1, fun(R) -> {ok, <<"{\"otc\":\"nope\"}">>, R} end},
+        {'reply', 4, fun(_Status, _H, _B, R) -> R end}
+    ]}.
+
+%% 真实 owner 表中 oidc_request(127.0.0.1) 的当前计数（无行为 0）
+oidc_request_count() ->
+    case ets:lookup(login_attempt_ets, {limiter_admit, oidc_request, <<"127.0.0.1">>}) of
+        [{_, #{count := C}}] -> C;
+        [] -> 0
+    end.
+
+%% oidc 失败锁行必须恒为零（D7：该写无准入消费者，已移除）
+assert_no_oidc_failure_row() ->
+    ?assertEqual(
+        [],
+        ets:match(login_attempt_ets, {{limiter_account, {unknown, account, <<"oidc">>}}, '_'})
+    ).
+
+%% @doc authorize 恰好 admit(oidc_request, 规范 IP) 一次，失败锁零行
+limiter_admit_authorize_once_test_() ->
+    ?WITH_MECKS(
+        [
+            oidc_cowboy_mock(),
+            {sso_config_ds, [{'get_provider', 1, fun(<<"oauth2">>) -> {ok, cfg()} end}]}
+        ],
+        fun() ->
+            ?assert(login_attempt_ds:ready()),
+            Before = oidc_request_count(),
+            {stop, _Req, _State} =
+                auth_oidc_handler:handle_request(fake_req, #{action => authorize}),
+            ?assertEqual(Before + 1, oidc_request_count()),
+            assert_no_oidc_failure_row()
+        end
+    ).
+
+%% @doc callback 恰好 admit 一次；失败（伪造 state）不写失败锁，且失败审计
+%% 日志存在（D7：保留有界审计，移除无消费者账户锁写）
+limiter_admit_callback_once_fail_no_ets_test_() ->
+    ?WITH_MECKS(
+        [oidc_cowboy_mock()],
+        fun() ->
+            ?assert(login_attempt_ds:ready()),
+            Before = oidc_request_count(),
+            {stop, _Req, _State} = with_oidc_audit_capture(fun() ->
+                auth_oidc_handler:handle_request(fake_req, #{action => callback})
+            end),
+            ?assertEqual(Before + 1, oidc_request_count()),
+            assert_no_oidc_failure_row(),
+            receive
+                oidc_audit_seen -> ok
+            after 500 -> erlang:error(oidc_audit_line_missing)
+            end
+        end
+    ).
+
+%% @doc exchange 不占请求桶（authorize/callback 各一次之外的第三入口零 admit）
+limiter_exchange_no_admit_test_() ->
+    ?WITH_MECKS(
+        [oidc_cowboy_mock()],
+        fun() ->
+            ?assert(login_attempt_ds:ready()),
+            erlang:put(oidc_req_method, <<"POST">>),
+            Before = oidc_request_count(),
+            {stop, _Req, _State} =
+                auth_oidc_handler:handle_request(fake_req, #{action => exchange}),
+            ?assertEqual(Before, oidc_request_count()),
+            ?assertEqual({error, ?FAIL_MSG}, auth_oidc_logic:exchange(<<"nope">>)),
+            assert_no_oidc_failure_row()
+        end
+    ).
+
+%% ===================================================================
+%% AC-09 失败审计捕获（logger handler 回调；同 agent_grant_tests 先例——
+%% 自定义 handler 的 log/2 在触发日志的用户进程内同步执行）
+%% ===================================================================
+
+init(Config) ->
+    {ok, maps:get(config, Config, self())}.
+
+log(#{level := warning, msg := {Format, _Args}}, HandlerConfig) ->
+    TestPid = maps:get(config, HandlerConfig, undefined),
+    case
+        is_pid(TestPid) andalso
+            is_list(Format) andalso
+            string:find(Format, "auth_oidc callback failed") =/= nomatch
+    of
+        true ->
+            TestPid ! oidc_audit_seen,
+            ok;
+        false ->
+            ok
+    end;
+log(_Event, _HandlerConfig) ->
+    ok.
+
+with_oidc_audit_capture(F) ->
+    case logger:add_handler(oidc_audit_probe, ?MODULE, #{config => self()}) of
+        ok ->
+            ok;
+        {error, {already_exist, _}} ->
+            ok = logger:remove_handler(oidc_audit_probe),
+            ok = logger:add_handler(oidc_audit_probe, ?MODULE, #{config => self()})
+    end,
+    try
+        F()
+    after
+        _ = logger:remove_handler(oidc_audit_probe)
+    end.
 
 %% ===================================================================
 %% 多节点一次性状态自检（C0-OPS/C0-IAM）
