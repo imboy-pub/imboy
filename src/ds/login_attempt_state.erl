@@ -307,7 +307,7 @@ advance_scope_window(Scope, Meta, Now, Scopes) ->
     Anchor = maps:get(window_start_ms, Meta),
     %% monotonic 基准任意（可为负）：统一 floor((now-anchor)/P) 定位当前窗，
     %% 正/负方向跨界都直接对齐，不依赖"now 已越过 anchor+P"的正向假设。
-    Boundary = Anchor + ((Now - Anchor) div P) * P,
+    Boundary = Now - (((Now - Anchor) rem P + P) rem P),
     case Boundary =:= Anchor of
         true ->
             {Meta, Scopes};
@@ -318,10 +318,13 @@ advance_scope_window(Scope, Meta, Now, Scopes) ->
 %% 边界推进：pending 到期则切换规则（所有 Key 同版本）。
 -spec apply_boundary(scope(), scope_meta(), integer(), integer(), map()) ->
     {scope_meta(), map()}.
-apply_boundary(Scope, Meta, Boundary, _Now, Scopes) ->
+apply_boundary(Scope, Meta, Boundary, Now, Scopes) ->
     case maps:find(pending, Meta) of
         {ok, {FromMs, NewRule}} when FromMs =< Boundary ->
-            Meta2 = Meta#{rule => NewRule, window_start_ms => Boundary},
+            %% 首次观察可能迟于生效点多个新窗口，须按新 period 定位。
+            {_NewN, NewP} = NewRule,
+            NewStart = FromMs + ((Now - FromMs) div NewP) * NewP,
+            Meta2 = Meta#{rule => NewRule, window_start_ms => NewStart},
             {maps:remove(pending, Meta2), Scopes#{Scope := Meta2}};
         _ ->
             Meta2 = Meta#{window_start_ms => Boundary},
@@ -364,7 +367,5 @@ register_scope_rule(Scope, Meta, Rule, Scopes) ->
     end.
 
 -spec next_boundary(integer(), pos_integer(), integer()) -> integer().
-next_boundary(Anchor, _P, Now) when Now < Anchor ->
-    Anchor;
 next_boundary(Anchor, P, Now) ->
-    Anchor + ((Now - Anchor) div P + 1) * P.
+    Now - (((Now - Anchor) rem P + P) rem P) + P.

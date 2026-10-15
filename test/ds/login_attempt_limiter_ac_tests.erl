@@ -365,9 +365,8 @@ limiter_capacity_during_auth_test_() ->
                 lists:seq(1, 3)
             ),
             ?assertEqual(3, limiter_test_support:account_rows()),
-            %% 释放 A 的失败：无法精确记账 → 域 degraded（end_attempt 冻结
-            %% 签名 ok，degraded 经后续 check 的 unavailable 表达）
-            ok = login_attempt_ds:end_attempt(Ref, failure),
+            %% 无法精确记账：本次返回 capacity_lost，后续域拒绝。
+            ?assertEqual({error, capacity_lost}, login_attempt_ds:end_attempt(Ref, failure)),
             ?assertEqual({error, unavailable}, login_attempt_ds:check(A)),
             ?assertEqual(
                 {error, unavailable},
@@ -494,7 +493,7 @@ limiter_lifecycle_owner_missing_test_() ->
                     {error, unavailable},
                     login_attempt_ds:begin_attempt(I, self(), default)
                 ),
-                ?assertEqual(ok, login_attempt_ds:end_attempt(mkref(), no_count))
+                ?assertEqual({error, unavailable}, login_attempt_ds:end_attempt(mkref(), no_count))
             after
                 limiter_test_support:attach_owner()
             end,
@@ -517,8 +516,8 @@ limiter_lifecycle_down_degrades_test_() ->
             %% 等确认 DOWN 已被 owner 处理（attempts 行清除）
             limiter_test_support:wait_until(fun() -> attempt_rows() =:= 0 end, 200),
             ?assertEqual({error, unavailable}, login_attempt_ds:check(I)),
-            %% end_attempt 幂等（DOWN 已清理该 ref）
-            ?assertEqual(ok, login_attempt_ds:end_attempt(Ref, no_count)),
+            %% DOWN 已令域 degraded，终态不能再伪报成功。
+            ?assertEqual({error, unavailable}, login_attempt_ds:end_attempt(Ref, no_count)),
             ok
         end)}.
 
@@ -580,7 +579,7 @@ limiter_lifecycle_deadline_degrades_test_() ->
             limiter_test_support:send_deadline_check(),
             ?assertEqual(0, attempt_rows()),
             ?assertEqual({error, unavailable}, login_attempt_ds:check(I)),
-            ?assertEqual(ok, login_attempt_ds:end_attempt(Ref, no_count)),
+            ?assertEqual({error, unavailable}, login_attempt_ds:end_attempt(Ref, no_count)),
             ok
         end)}.
 
@@ -610,7 +609,7 @@ limiter_lifecycle_stale_down_no_harm_test_() ->
 
 %% ===================================================================
 %% AC-13（limiter_restart_recovery）DS 部分：杀 owner → 表失；重启
-%% （新 owner）ready 且空态重新累计；degraded 同 owner 内不因腾位解除。
+%% 新 owner 保持关闭，经 PID 绑定空态批准后重新累计。
 %% ===================================================================
 
 limiter_restart_recovery_test_() ->
@@ -625,8 +624,11 @@ limiter_restart_recovery_test_() ->
             limiter_test_support:detach_owner(),
             ?assertEqual(undefined, whereis(login_attempt_ds)),
             ?assertEqual(undefined, ets:info(login_attempt_ets)),
-            %% 新 owner：ready 且空态重新累计
-            limiter_test_support:attach_owner(),
+            %% 原始 restart_child 不包含测试装配的空态批准。
+            {ok, NewOwner} = supervisor:restart_child(imboy_sup, login_attempt_ds),
+            ?assertEqual(false, login_attempt_ds:ready()),
+            ?assertEqual({error, unavailable}, login_attempt_ds:check(I)),
+            ?assertEqual(ok, login_attempt_ds:activate_empty(NewOwner)),
             ?assertEqual(true, login_attempt_ds:ready()),
             ?assertMatch({ok, #{count := 0, locked := false}}, login_attempt_ds:check(I)),
             ?assertMatch({ok, #{count := 1}}, login_attempt_ds:failure(I)),

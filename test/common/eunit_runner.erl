@@ -97,6 +97,8 @@ eunit_setup() ->
     enforce_pool_capacity(),
     application:set_env(imboy, sql_driver, pgsql),
     application:set_env(imboy, env, test),
+    %% 一次性测试 VM 明确批准应用启动空态；不开放 child 自动重启。
+    application:set_env(imboy, limiter_allow_empty_start, true),
     %% eunit 轨道环境声明：IMBOYENV OS 变量优先于 application env
     %% （imboy_env:current/0 合同），显式 putenv 覆盖外部启动方式
     %% （如 IMBOYENV=local make eunit），保证 VM 内 current() 恒 <<"test">>

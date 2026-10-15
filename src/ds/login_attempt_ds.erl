@@ -1,43 +1,19 @@
 -module(login_attempt_ds).
-%%%===================================================================
-%%% @doc
-%%% login_attempt_ds - Limiter V1 唯一权威状态 owner（计划附录 C.3~C.7）
-%%%
-%%% 职责（L1 冻结合同，docs/plans/2026-10-13-limiter-v1-* 附录 C）：
-%%% - 账户失败域：{user, Uid} | {unknown, Kind, Norm} 身份，跨 IP 锁定；
-%%%   窗口 = 首次失败 anchor + login_lock_duration_minutes（创建时冻结规则）。
-%%% - admit 请求域：passport_per_ip / api_per_ip（t0=0 对齐 period，scope 级
-%%%   统一换窗，pending 登记下一边界切换）与 oidc_request（首次 admit
-%%%   anchor，固定 3600000ms，逐 Key 冻结）。
-%%% - 认证生命周期：begin_attempt/end_attempt + monitor/deadline；
-%%%   终态未提交的 DOWN 或超 deadline → 账户域 degraded（不自动恢复）。
-%%% - 容量：账户域条目上限、每 scope 条目上限、Key 字节上限；账户 failure
-%%%   建行容量满 → 原子 degraded + {error, capacity_lost}；admit 新 Key 满
-%%%   → {error, capacity}（不降级）。
-%%% - cleanup：60s 定时 + 分批，仅删逻辑过期行（删除前复核，迟到批次
-%%%   不删新行）。
-%%% - ETS 由本 owner 唯一写（protected 表）；owner 死亡即表失，新 owner
-%%%   为新空态（AC-13 合同）。
-%%%
-%%% 时间：统一 monotonic 毫秒，唯一来源 login_attempt_clock:now_ms/0
-%%% （测试注入 seam；D/存储本体不可 mock）。纯状态逻辑（行结构、窗口
-%%% 规则、配置）在 login_attempt_state。
-%%%
-%%% 兼容层：旧导出（record_failure/2、is_locked/2 等）薄转发到新实现，
-%%% 单一权威；旧 (Identifier, Ip) 键映射为 {unknown, account, Identifier}
-%%% 过渡语义（A2/A3 重写调用者后移除）。
-%%%===================================================================
+%%% @doc Limiter V1 唯一权威 owner，合同见计划附录 C.14。
+%%% 账户按身份跨 IP 累计；HTTP scope 对齐固定窗，OIDC 按 Key 固定窗。
+%%% 认证终态串行确认；未交付的 DOWN/deadline 令账户域 degraded。
+%%% owner 唯一写 protected ETS；重启默认关闭，空态批准绑定具体 PID。
+%%% 时间统一经 login_attempt_clock；纯规则在 login_attempt_state。
 
 -behaviour(gen_server).
 
-%% Dialyzer 抑制先例：handle_call 大分支的布尔比较误报
 -dialyzer({nowarn_function, [handle_call/3]}).
 
 -include("error_code.hrl").
 -include("log.hrl").
 -include("common.hrl").
 
-%% ---- 新权威 API（附录 C.3 冻结签名） ----
+%% ---- 权威 API ----
 -export([
     check/1,
     failure/1,
@@ -47,7 +23,8 @@
     admit/2,
     begin_attempt/3,
     end_attempt/2,
-    ready/0
+    ready/0,
+    activate_empty/1
 ]).
 %% ---- 配置登记辅助（C.4 HTTP scope pending；A3 装配用） ----
 -export([set_ip_rates/1]).
@@ -76,12 +53,11 @@
     code_change/3
 ]).
 
-%% ETS 表与行键前缀
 -define(ETS, login_attempt_ets).
+-define(DEADLINES, login_attempt_deadlines).
 -define(K_ADMIT(Scope, Key), {limiter_admit, Scope, Key}).
 -define(K_ATTEMPT(Ref), {limiter_attempt, Ref}).
 
-%% 固定常量
 -define(CLEANUP_INTERVAL_MS, 60000).
 -define(DEADLINE_CHECK_INTERVAL_MS, 1000).
 -define(CALL_TIMEOUT, 5000).
@@ -92,10 +68,6 @@
 -type attempt_outcome() :: failure | reset | no_count.
 -type snapshot() :: login_attempt_state:snapshot().
 -type state() :: login_attempt_state:state().
-
-%%%===================================================================
-%%% 权威 API（C.3）
-%%%===================================================================
 
 %% @doc 认证准入检查：不计数、不预扣；degraded/未 ready/owner 缺失 → unavailable。
 -spec check(identity()) -> {ok, snapshot()} | {error, unavailable}.
@@ -155,18 +127,15 @@ begin_attempt(_, _, _) ->
     {error, unavailable}.
 
 %% @doc 认证终态提交并释放 monitor：failure/reset 附带记账，no_count 仅释放
-%% （不计数错误、主动取消）。未知 Ref 幂等返回 ok（DOWN/deadline 已清理）。
--spec end_attempt(attempt_ref(), attempt_outcome()) -> ok.
+%% （不计数错误、主动取消）。记账错误必须回传，未知 Ref 一律拒绝。
+-spec end_attempt(attempt_ref(), attempt_outcome()) ->
+    ok | {error, unavailable | capacity_lost}.
 end_attempt(Ref, Outcome) when Outcome =:= failure; Outcome =:= reset; Outcome =:= no_count ->
-    try gen_server:call(?MODULE, {end_attempt, Ref, Outcome}, ?CALL_TIMEOUT) of
-        ok -> ok
-    catch
-        _:_ -> ok
-    end;
+    safe_call({end_attempt, Ref, Outcome});
 end_attempt(_, _) ->
-    ok.
+    {error, unavailable}.
 
-%% @doc owner init 成功即 true；owner 死亡/未起 → false（不抛异常）。
+%% @doc 未经受控空态批准、owner 死亡/未起均 false。
 -spec ready() -> boolean().
 ready() ->
     try gen_server:call(?MODULE, ready, ?CALL_TIMEOUT) of
@@ -174,6 +143,18 @@ ready() ->
     catch
         _:_ -> false
     end.
+
+%% @doc 仅供可信节点运维：批准指定空 owner 开放。PID 绑定防止迟到批准
+%% 落到自动重启的新 owner；不得用于清除在役状态或 degraded。
+-spec activate_empty(pid()) -> ok | {error, unavailable}.
+activate_empty(Owner) when is_pid(Owner) ->
+    try
+        gen_server:call(Owner, activate_empty, ?CALL_TIMEOUT)
+    catch
+        _:_ -> {error, unavailable}
+    end;
+activate_empty(_) ->
+    {error, unavailable}.
 
 %% @doc 登记新的 IP 限流规则（C.4 配置变更合同）：
 %% - passport_per_ip / api_per_ip：登记 pending，在本 scope 下一窗口边界统一
@@ -190,22 +171,13 @@ set_ip_rates(Rates) when is_map(Rates) ->
 set_ip_rates(_) ->
     {error, invalid_rates}.
 
-%%%===================================================================
-%%% 生命周期
-%%%===================================================================
-
 %% @doc 启动权威 owner（imboy_sup permanent child）。
 -spec start_link() -> {ok, pid()} | {error, term()}.
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
-%%%===================================================================
-%%% 兼容层（deprecated：单一权威的薄转发，A2/A3 重写调用者后移除）
-%%%===================================================================
-
 %% deprecated: 旧 (Identifier, Ip) 键映射为 {unknown, account, Identifier}
 %% 过渡语义（跨 IP，符合 C.1 账户域合同）。返回 {ok, Count} | 新错误 tuple。
-%% @private 兼容转发，勿新增调用。
 record_failure(Identifier, _Ip) when is_binary(Identifier), byte_size(Identifier) > 0 ->
     case failure({unknown, account, Identifier}) of
         {ok, Snap} -> {ok, maps:get(count, Snap)};
@@ -217,7 +189,6 @@ record_failure(Identifier, Ip) ->
 
 %% deprecated: 兼容转发 check/1。任何 unavailable（含 degraded/owner 缺失）
 %% 保守返回 true（拒绝认证方向），不得把故障放行为 false。
-%% @private 兼容转发，勿新增调用。
 is_locked(<<>>, _Ip) ->
     false;
 is_locked(Identifier, _Ip) when is_binary(Identifier) ->
@@ -229,7 +200,6 @@ is_locked(_, _) ->
     false.
 
 %% deprecated: 兼容转发 snapshot/1 的 count。
-%% @private 兼容转发，勿新增调用。
 get_attempts(Identifier, _Ip) ->
     case snapshot(login_attempt_state:mk_compat_identity(Identifier)) of
         {ok, Snap} -> {ok, maps:get(count, Snap)};
@@ -237,28 +207,23 @@ get_attempts(Identifier, _Ip) ->
     end.
 
 %% deprecated: 兼容转发 reset/1（清新身份域，跨 IP）。
-%% @private 兼容转发，勿新增调用。
 reset(Identifier, _Ip) ->
     reset(login_attempt_state:mk_compat_identity(Identifier)).
 
 %% deprecated: 兼容转发 snapshot/1 的 remaining。
-%% @private 兼容转发，勿新增调用。
 get_remaining_attempts(Identifier, _Ip) ->
     case snapshot(login_attempt_state:mk_compat_identity(Identifier)) of
         {ok, Snap} -> {ok, maps:get(remaining, Snap)};
         {error, R} -> {error, R}
     end.
 
-%% deprecated: 旧键构造器，仅 login_security_logic:build_lock_info 读 Cache
-%% locked_until 的历史残留消费（新实现不写 Cache，该分支恒缺省）。
-%% @private 兼容转发，勿新增调用。
+%% deprecated: 旧键构造器；新权威不写 Cache。
 cache_key(Identifier, Ip) ->
     {login_attempt, Identifier, Ip}.
 
 %% deprecated: 转发 admit(oidc_request, Ip)（C.5 默认 {100, 3600000}）。
 %% 空/非法 IP 保留旧 invalid_ip 语义；{ok, Snap} → {ok, Count}，错误 tag
 %% 原样透传（rate_limited | capacity | unavailable），不伪装成放行。
-%% @private 兼容转发，勿新增调用。
 check_ip_rate_limit(Ip) when is_binary(Ip), byte_size(Ip) > 0 ->
     case admit(oidc_request, Ip) of
         {ok, Snap} -> {ok, maps:get(count, Snap)};
@@ -269,7 +234,6 @@ check_ip_rate_limit(Ip) ->
     {error, invalid_ip}.
 
 %% deprecated: A3 将迁移至 elib_req:get_client_ip/1（含可信代理）。
-%% @private 兼容转发，勿新增调用。
 extract_real_ip(Headers) when is_map(Headers) ->
     CfConnectingIp = maps:get(<<"cf-connecting-ip">>, Headers, <<>>),
     XRealIp = maps:get(<<"x-real-ip">>, Headers, <<>>),
@@ -292,7 +256,6 @@ extract_real_ip(_) ->
     {ok, <<"0.0.0.0">>}.
 
 %% deprecated: A3 将迁移至 elib_req 统一规范化。
-%% @private 兼容转发，勿新增调用。
 validate_ip(Ip) when is_binary(Ip), byte_size(Ip) > 0 ->
     TrimmedIp = string:trim(Ip),
     case inet:parse_ipv4strict_address(binary_to_list(TrimmedIp)) of
@@ -317,24 +280,27 @@ is_admin(Uid) when is_integer(Uid) ->
 is_admin(_) ->
     false.
 
-%%%===================================================================
-%%% gen_server 回调
-%%%===================================================================
-
-%% @private
 -spec init([]) -> {ok, state()}.
 init([]) ->
     _ = ets:new(?ETS, [
         named_table, set, protected, {read_concurrency, true}
     ]),
+    _ = ets:new(?DEADLINES, [named_table, ordered_set, protected]),
     {ok, _} = timer:send_interval(?CLEANUP_INTERVAL_MS, self(), cleanup_expired),
     {ok, _} = timer:send_interval(?DEADLINE_CHECK_INTERVAL_MS, self(), deadline_check),
-    {ok, (login_attempt_state:initial_state())#{ready => true}}.
+    {ok, login_attempt_state:initial_state()}.
 
-%% @private
 -spec handle_call(term(), {pid(), term()}, state()) -> {reply, term(), state()}.
 handle_call(ready, _From, State) ->
     {reply, maps:get(ready, State), State};
+handle_call(activate_empty, _From, State) ->
+    case
+        not maps:get(ready, State) andalso not maps:get(degraded, State) andalso
+            ets:info(?ETS, size) =:= 0
+    of
+        true -> {reply, ok, State#{ready => true}};
+        false -> {reply, {error, unavailable}, State}
+    end;
 handle_call({check, I}, _From, State) ->
     {R, S2} = do_read(I, State),
     {reply, R, S2};
@@ -364,11 +330,9 @@ handle_call({set_ip_rates, Rates}, _From, State) ->
 handle_call(_Request, _From, State) ->
     {reply, {error, unknown_request}, State}.
 
-%% @private
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
-%% @private
 handle_info(cleanup_expired, State) ->
     {noreply, do_cleanup(State)};
 handle_info(deadline_check, State) ->
@@ -378,17 +342,11 @@ handle_info({'DOWN', Mref, process, _Pid, _Reason}, State) ->
 handle_info(_Info, State) ->
     {noreply, State}.
 
-%% @private
 terminate(_Reason, _State) ->
     ok.
 
-%% @private
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
-
-%%%===================================================================
-%%% 状态转换：账户域
-%%%===================================================================
 
 %% check/snapshot 共用只读转换；逻辑过期视 0，不删行（cleanup 负责）。
 -spec do_read(identity(), state()) -> {{ok, snapshot()} | {error, unavailable}, state()}.
@@ -452,15 +410,20 @@ failure_apply(I, State) ->
 -spec insert_new_account_row(identity(), state()) ->
     {{ok, snapshot()} | {error, capacity_lost}, state()}.
 insert_new_account_row(I, State) ->
+    S1 = reclaim_if_full(
+        maps:get(account_count, State),
+        maps:get(account_max_entries, State),
+        State
+    ),
     Rule = login_attempt_state:current_account_rule(),
     Now = login_attempt_clock:now_ms(),
-    case maps:get(account_count, State) >= maps:get(account_max_entries, State) of
+    case maps:get(account_count, S1) >= maps:get(account_max_entries, S1) of
         true ->
             ok = ?ERROR_LOG([login_attempt, account_domain_degraded, capacity_full]),
-            {{error, capacity_lost}, State#{degraded => true}};
+            {{error, capacity_lost}, S1#{degraded => true}};
         false ->
             ets:insert(?ETS, {row_key(I), login_attempt_state:new_account_row(Rule, Now)}),
-            S2 = State#{account_count => maps:get(account_count, State) + 1},
+            S2 = S1#{account_count => maps:get(account_count, S1) + 1},
             Exp = Now + element(2, Rule),
             {{ok, login_attempt_state:account_snap(1, Rule, Exp)}, S2}
     end.
@@ -511,10 +474,6 @@ delete_account_row(I, State) ->
 
 row_key(I) ->
     {limiter_account, I}.
-
-%%%===================================================================
-%%% 状态转换：admit 域
-%%%===================================================================
 
 %% admit：先判断并占请求额度；HTTP scope 统一换窗（含 pending 生效），
 %% OIDC/HTTP 新 Key 容量满 → capacity（不降级）。
@@ -584,10 +543,22 @@ admit_bump(RowKey, Row, State) ->
     {{ok, snapshot()} | {error, rate_limited | capacity}, state()}.
 admit_new_row(RowKey, Meta, Now, Scope, State) ->
     {N, P} = maps:get(rule, Meta),
-    Used = maps:get(Scope, maps:get(admit_counts, State), 0),
-    case Used >= maps:get(admit_max_entries, State) of
+    Existing = ets:member(?ETS, RowKey),
+    S1 =
+        case Existing of
+            true ->
+                State;
+            false ->
+                reclaim_if_full(
+                    maps:get(Scope, maps:get(admit_counts, State), 0),
+                    maps:get(admit_max_entries, State),
+                    State
+                )
+        end,
+    Used = maps:get(Scope, maps:get(admit_counts, S1), 0),
+    case not Existing andalso Used >= maps:get(admit_max_entries, S1) of
         true ->
-            {{error, capacity}, State};
+            {{error, capacity}, S1};
         false ->
             WS =
                 case maps:get(anchor_mode, Meta) of
@@ -601,13 +572,14 @@ admit_new_row(RowKey, Meta, Now, Scope, State) ->
                 rule_version => {N, P}
             },
             ets:insert(?ETS, {RowKey, Row}),
-            Counts = (maps:get(admit_counts, State))#{Scope => Used + 1},
-            {{ok, login_attempt_state:admit_snap(1, Meta, WS + P)}, State#{admit_counts => Counts}}
+            Added =
+                case Existing of
+                    true -> 0;
+                    false -> 1
+                end,
+            Counts = (maps:get(admit_counts, S1))#{Scope => Used + Added},
+            {{ok, login_attempt_state:admit_snap(1, Meta, WS + P)}, S1#{admit_counts => Counts}}
     end.
-
-%%%===================================================================
-%%% 状态转换：认证生命周期（§7.3 最小接线）
-%%%===================================================================
 
 -spec do_begin_attempt(identity(), pid(), pos_integer() | default, state()) ->
     {{ok, attempt_ref()} | {error, unavailable}, state()}.
@@ -616,7 +588,10 @@ do_begin_attempt(I, Pid, DeadlineMs, State) ->
         blocked ->
             {{error, unavailable}, State};
         ok ->
-            case login_attempt_state:valid_identity(I) of
+            case
+                login_attempt_state:valid_identity(I) andalso
+                    ets:info(?DEADLINES, size) < maps:get(account_max_entries, State)
+            of
                 false ->
                     {{error, unavailable}, State};
                 true ->
@@ -630,33 +605,46 @@ do_begin_attempt(I, Pid, DeadlineMs, State) ->
                     Mref = erlang:monitor(process, Pid),
                     Now = login_attempt_clock:now_ms(),
                     ets:insert(?ETS, {?K_ATTEMPT(Ref), {Mref, Pid, I, Now + Dl}}),
+                    ets:insert(?DEADLINES, {{Now + Dl, Ref}, true}),
                     {{ok, Ref}, State}
             end
     end.
 
-%% 终态：failure/reset 附带记账，全部释放 monitor。degraded 域的记账结果
-%% 不回传（冻结签名 ok），后续 check 以 unavailable 拒绝表达。
--spec do_end_attempt(attempt_ref(), attempt_outcome(), state()) -> {ok, state()}.
+%% 终态记账与生命周期释放在同一次 owner 调用内完成。
+-spec do_end_attempt(attempt_ref(), attempt_outcome(), state()) ->
+    {ok | {error, unavailable | capacity_lost}, state()}.
 do_end_attempt(Ref, Outcome, State) ->
     case ets:lookup(?ETS, ?K_ATTEMPT(Ref)) of
         [] ->
-            {ok, State};
-        [{_, {Mref, _Pid, I, _Dl}}] ->
-            erlang:demonitor(Mref, [flush]),
-            ets:delete(?ETS, ?K_ATTEMPT(Ref)),
-            S2 = apply_outcome(Outcome, I, State),
-            {ok, S2}
+            {{error, unavailable}, State};
+        [{_, {_Mref, _Pid, I, _Dl}}] ->
+            remove_attempt(Ref),
+            apply_outcome(Outcome, I, State)
     end.
 
--spec apply_outcome(attempt_outcome(), identity(), state()) -> state().
+-spec apply_outcome(attempt_outcome(), identity(), state()) ->
+    {ok | {error, unavailable | capacity_lost}, state()}.
 apply_outcome(no_count, _I, State) ->
-    State;
+    case gate(State) of
+        ok -> {ok, State};
+        blocked -> {{error, unavailable}, State}
+    end;
 apply_outcome(reset, I, State) ->
-    {_R, S2} = do_reset(I, State),
-    S2;
+    do_reset(I, State);
 apply_outcome(failure, I, State) ->
-    {_R, S2} = do_failure(I, State),
-    S2.
+    case do_failure(I, State) of
+        {{ok, _}, S2} -> {ok, S2};
+        {Error, S2} -> {Error, S2}
+    end.
+
+remove_attempt(Ref) ->
+    case ets:take(?ETS, ?K_ATTEMPT(Ref)) of
+        [{_, {Mref, _Pid, _I, Dl}}] ->
+            erlang:demonitor(Mref, [flush]),
+            ets:delete(?DEADLINES, {Dl, Ref});
+        [] ->
+            ok
+    end.
 
 %% DOWN：按 monitor ref 核对本 run 的 attempt；终态未提交的进程死亡
 %% （含 normal 但漏交终态）→ 账户域 degraded。旧消息（已 end_attempt）
@@ -667,55 +655,35 @@ handle_attempt_down(Mref, State) ->
         none ->
             State;
         {Ref, _Entry} ->
-            ets:delete(?ETS, ?K_ATTEMPT(Ref)),
+            remove_attempt(Ref),
             login_attempt_state:mark_degraded(State)
     end.
 
-%% deadline 有界批次检查：固定周期（DEADLINE_CHECK_INTERVAL_MS）扫至
-%% cleanup_batch 条；超 deadline 的在途 attempt（按 ref 核对仍在表）→
-%% 账户域 degraded。不逐 attempt timer。
+%% 周期性按最早 deadline 处理最多 cleanup_batch 个认证，超时置 degraded。
 -spec do_deadline_check(state()) -> state().
 do_deadline_check(State) ->
     Now = login_attempt_clock:now_ms(),
     Batch = maps:get(cleanup_batch, State),
-    TimedOut = take_timed_out_attempts(ets:first(?ETS), Now, Batch, []),
-    case TimedOut of
-        [] ->
-            State;
-        _ ->
-            [ets:delete(?ETS, ?K_ATTEMPT(R)) || R <- TimedOut],
-            login_attempt_state:mark_degraded(State)
+    case expire_attempts(Now, Batch, false) of
+        false -> State;
+        true -> login_attempt_state:mark_degraded(State)
     end.
 
--spec take_timed_out_attempts(term(), integer(), non_neg_integer(), [attempt_ref()]) ->
-    [attempt_ref()].
-take_timed_out_attempts('$end_of_table', _Now, _Budget, Acc) ->
-    Acc;
-take_timed_out_attempts(_Key, _Now, 0, Acc) ->
-    Acc;
-take_timed_out_attempts(Key, Now, Budget, Acc) ->
-    Next = ets:next(?ETS, Key),
-    Acc2 =
-        case Key of
-            {limiter_attempt, Ref} ->
-                case ets:lookup(?ETS, Key) of
-                    [{_, {_Mref, _P, _I, DeadlineAt}}] when DeadlineAt =< Now ->
-                        [Ref | Acc];
-                    _ ->
-                        Acc
-                end;
-            _ ->
-                Acc
-        end,
-    take_timed_out_attempts(Next, Now, Budget - 1, Acc2).
-
-%%%===================================================================
-%%% cleanup（60s 定时 + 分批；仅删逻辑过期行，删除前复核）
-%%%===================================================================
+%% 按 deadline 排序，仅处理已到期认证，不受账户/IP 大表遮挡。
+expire_attempts(_Now, 0, Expired) ->
+    Expired;
+expire_attempts(Now, Budget, Expired) ->
+    case ets:first(?DEADLINES) of
+        {Dl, Ref} when Dl =< Now ->
+            remove_attempt(Ref),
+            expire_attempts(Now, Budget - 1, true);
+        _ ->
+            Expired
+    end.
 
 %% 分批游标扫描。ets:next/2（OTP 28+）对已消失的键 badarg，故：
 %% - 扫描期间持 safe_fixtable 且 owner 单写者不删行（收集后统一删）；
-%% - 跨轮断点键可能已被删除/覆盖，restart_point 存在性检查后取 next，
+%% - 跨轮游标是尚未处理的键，存在则从它继续，
 %%   断点消失则回头重扫（删除前复核保证重扫不误删任何有效行）。
 -spec do_cleanup(state()) -> state().
 do_cleanup(State) ->
@@ -737,9 +705,13 @@ restart_point('$end_of_table') ->
     ets:first(?ETS);
 restart_point(Cursor) ->
     case ets:member(?ETS, Cursor) of
-        true -> ets:next(?ETS, Cursor);
+        true -> Cursor;
         false -> ets:first(?ETS)
     end.
+
+%% 满额先做一批过期回收；不扫描全表，不淘汰有效锁。
+reclaim_if_full(Used, Max, State) when Used >= Max -> do_cleanup(State);
+reclaim_if_full(_Used, _Max, State) -> State.
 
 -spec scan_expired(term(), non_neg_integer(), [term()]) -> {[term()], term()}.
 scan_expired('$end_of_table', _Budget, Acc) ->
@@ -786,12 +758,7 @@ adjust_capacity_count({limiter_admit, Scope, _}, State) ->
 adjust_capacity_count(_, State) ->
     State.
 
-%%%===================================================================
-%%% 内部辅助
-%%%===================================================================
-
-%% safe_call：owner 不存在/超时/异常统一 unavailable（AC-12：缺表不作 0、
-%% 不放行）。end_attempt/ready 有各自的 catch 语义，不经过此函数。
+%% owner 不存在/超时/异常统一 unavailable，不重试未知结果。
 -spec safe_call(term()) -> term().
 safe_call(Msg) ->
     try gen_server:call(?MODULE, Msg, ?CALL_TIMEOUT) of
