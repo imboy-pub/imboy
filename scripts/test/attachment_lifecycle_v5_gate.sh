@@ -552,6 +552,46 @@ w303_case() { # $1 cdir — 与 w302_case 同一直连 erl 模式（投影+绑�
   return $RC
 }
 
+# ---------------- W4-01 executor ----------------
+# 六 case 共用一组真库套件（行为矩阵/静态门/故障注入/治理拦截）+ 竞态
+# 屏障套件在 W4-01 代码头重跑（confirm-gc/reference-gc/hold-gc 的协议
+# 在 fn 层，W4-01 实现即入口统一走 fn；静态门证明无绕过）。
+w401_case() { # $1 cdir
+  local cdir="$1" RC=0
+  mkdir -p "$cdir"
+  local PZ="" d
+  for d in deps/*/ebin; do [ -d "$d" ] && PZ="$PZ -pz $PWD/$d"; done
+  ln -sfn . imboy
+  sed -e "s/{http_port, 9800}/{http_port, ${EUNIT_HTTP_PORT:-19980}}/" \
+      -e "s/{http_port_adm, 9706}/{http_port_adm, ${EUNIT_HTTP_ADM_PORT:-19970}}/" \
+      "${EUNIT_CONFIG:-config/sys.local}.config" > "$cdir/w401-direct.config"
+  EUNIT_USE_RELAY=0 erl -noinput -boot no_dot_erlang +P 1048576 +Q 1024 \
+    -config "$cdir/w401-direct.config" -pa imboy/ebin -pa ebin -pa test $PZ \
+    -eval 'CoverSetup = fun() -> ok end, CoverExport = fun(_) -> ok end, CoverSetup(),
+      Mods = [attachment_lifecycle_v5_pg_tests,
+              attachment_lifecycle_v5_hold_protocol_tests,
+              attachment_lifecycle_v5_w401_entrypoints_tests,
+              attachment_lifecycle_v5_w401_hold_entrypoints_tests,
+              attachment_lifecycle_v5_w401_rollback_tests],
+      case eunit:test(Mods, [verbose]) of
+        ok -> io:format("W401_DIRECT_OK~n");
+        error -> halt(2)
+      end,
+      halt()' > "$cdir/eunit-w401.log" 2>&1
+  local rc=$?
+  rm -f imboy
+  if [ $rc -eq 0 ] && grep -q "W401_DIRECT_OK" "$cdir/eunit-w401.log"; then
+    W401_PG_OK=1
+  else
+    W401_PG_OK=0
+  fi
+  export W401_PG_OK V5_RUN_DIR="$RUN_DIR"
+  bash "$ROOT/scripts/test/attachment_lifecycle_v5_w401_seal.sh" "$ROOT" "$CUR_CASE" "$cdir" \
+    "bash scripts/test/attachment_lifecycle_v5_gate.sh --task W4-01 --case $CUR_CASE" \
+    >> "$cdir/raw.log" 2>&1 || RC=30
+  return $RC
+}
+
 w203_case() { # $1 cdir
   local cdir="$1" RC=0
   mkdir -p "$cdir"
@@ -685,6 +725,10 @@ PYC
     W3-03/enterprise-bind|W3-03/cs-bind)
       CUR_CASE="$cid"
       w303_case "$cdir" ;;
+    W4-01/delete-entrypoints|W4-01/intent-rollback|W4-01/hold-entrypoints|\
+W4-01/confirm-gc-race|W4-01/reference-gc-race|W4-01/hold-gc-race)
+      CUR_CASE="$cid"
+      w401_case "$cdir" ;;
     W0-01/baseline)
       bash scripts/check_migrations.sh > "$cdir/raw.log" 2>&1
       seal_leafs "$cid" "$cdir" "$?" "bash scripts/check_migrations.sh (bootstrap retroactive)" ;;
