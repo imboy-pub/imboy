@@ -2185,7 +2185,8 @@ bnd_spec_align_test() ->
             {<<"INT-39">>, workspace},
             {<<"INT-40">>, workspace},
             {<<"INT-41">>, workspace},
-            {<<"INT-42">>, workspace}
+            {<<"INT-42">>, workspace},
+            {<<"INT-43">>, org}
         ],
         lists:foreach(
             fun({Id, Kind}) ->
