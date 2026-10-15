@@ -15,7 +15,7 @@
 
 -behaviour(gen_server).
 
--export([start_link/0, run_batch/1, run_batch/2, reconcile/0, reconcile/1]).
+-export([start_link/0, run_batch/0, run_batch/1, run_batch/2, reconcile/0, reconcile/1]).
 -export([
     init/1,
     handle_call/3,
@@ -37,7 +37,7 @@ start_link() ->
 init(_Opts) ->
     case application:get_env(imboy, attachment_delete_worker_enabled, false) of
         true ->
-            ok = reconcile(),
+            {ok,_} = reconcile(),
             erlang:send_after(?TICK_MS, self(), tick),
             {ok, #{enabled => true, fails => 0}};
         false ->
@@ -76,6 +76,8 @@ code_change(_OldVsn, State, _Extra) ->
 
 %% 批处理：池连接上循环 claim→删除→ack（≤BATCH_LIMIT）；claim 错误即止
 %% （fn 已退避；DB 故障由 tick 退避承载）。
+run_batch() -> run_batch(fun default_delete/4).
+
 run_batch(DeleteFun) when is_function(DeleteFun, 4) ->
     elib_pg:with_conn(
         fun(Conn) ->
@@ -97,8 +99,8 @@ batch_loop(Conn, Del, N, Done) ->
             case delete_job(Conn, Del, Row, Token) of
                 ok ->
                     batch_loop(Conn, Del, N - 1, Done + 1);
-                {error, _} ->
-                    {ok, Done}
+                retry_scheduled -> batch_loop(Conn,Del,N-1,Done);
+                {error,R} -> {error,{batch_failed,R,Done}}
             end;
         {error, empty} ->
             {ok, Done};
@@ -108,34 +110,23 @@ batch_loop(Conn, Del, N, Done) ->
     end.
 
 delete_job(Conn, Del, Row, Token) ->
-    Path = maps:get(<<"out_path">>, Row),
-    Bucket = maps:get(<<"out_bucket">>, Row, <<"b">>),
-    Ns = maps:get(<<"out_storage_namespace">>, Row, <<>>),
-    Container = maps:get(<<"out_storage_container">>, Row, <<>>),
-    case Del(Ns, Container, Path, Bucket) of
-        ok ->
-            attachment_gc_repo:v5_ack(Conn, Path, Token, true);
-        {error, not_found} ->
-            %% 精确位置 not_found 视为成功（02 §6：at-least-once）
-            attachment_gc_repo:v5_ack(Conn, Path, Token, true);
-        {error, R} ->
-            ?ERROR_LOG(["attachment_delete_worker delete failed: ", Path, R]),
-            attachment_gc_repo:v5_ack(Conn, Path, Token, false)
+    Path=maps:get(<<"out_path">>,Row),
+    Frozen=maps:from_list([{K,maps:get(<<"out_",K/binary>>,Row,null)} || K <-
+        [<<"storage_driver">>,<<"storage_namespace">>,<<"storage_container">>,<<"storage_locator_sha256">>]]),
+    Result=case attachment_storage:frozen_location(Path,Frozen) of
+        {ok,I} when is_map(I)->Del(maps:get(namespace,I),maps:get(container,I),Path,I);
+        _->{error,location_unverified}
+    end,
+    AckOk=Result=:=ok orelse Result=:={error,not_found},
+    case attachment_gc_repo:v5_ack(Conn,Path,Token,AckOk) of
+        ok when AckOk -> ok;
+        ok -> retry_scheduled;
+        {error,R}->{error,{ack_failed,R}}
     end.
 
-%% 生产删除副作用：按 registry driver 派发（W4-03 storage boundary）。
-default_delete(Ns, Container, Key, _Bucket) ->
-    case attachment_storage:identity(Ns, Container, Key) of
-        {ok, #{driver := Driver, namespace := CanonNs, container := CanonC}} ->
-            Mod = attachment_storage:driver_module(
-                atom_to_binary(Driver, utf8)
-            ),
-            Mod:delete(CanonNs, CanonC, Key);
-        {error, unknown} ->
-            {error, unknown_namespace};
-        {error, R} ->
-            {error, R}
-    end.
+
+%% 生产副作用只消费前一步已校验的 immutable snapshot。
+default_delete(_Ns,_Container,_Key,I) -> attachment_storage:delete_snapshot(I).
 
 %% 启动/周期调和：reaper 过期租约（零删除——02 §6 禁全桶扫陌生对象）。
 reconcile() ->

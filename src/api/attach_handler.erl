@@ -66,7 +66,9 @@ presign_operation(<<"status">>, Uid, Qs, Req0, _State) ->
                     reauthorize_status(Uid, Row, Req0);
                 {error, not_found} ->
                     %% 跨主体不泄露存在性：404
-                    elib_response:error(Req0, <<"not found"/utf8>>, ?ERR_NOT_FOUND)
+                    elib_response:error(Req0, <<"not found"/utf8>>, ?ERR_NOT_FOUND);
+                {error, _} ->
+                    elib_response:error(Req0, <<"service unavailable">>, ?ERR_SERVICE_UNAVAILABLE)
             end
     end;
 %% V5：renew —— 仅 registered 且未过绝对 deadline；同 key 重签，
@@ -91,7 +93,7 @@ presign_operation(<<"renew">>, Uid, Qs, Req0, _State) ->
                     Scope = maps:get(<<"scope">>, Row),
                     %% 能力过期而 session 未过期才可同 key 重签
                     reauthorize_renew(Key, Bucket, Scope, Uid, Row, Req0);
-                {ok, #{<<"creator_user_id">> := _Other}} ->
+                {ok, #{<<"creator_user_id">> := Other}} when Other =/= Uid ->
                     elib_response:error(Req0, <<"not found"/utf8>>, ?ERR_NOT_FOUND);
                 {ok, #{<<"session_state">> := Terminal}} when
                     Terminal =:= <<"confirmed">>;
@@ -106,7 +108,9 @@ presign_operation(<<"renew">>, Uid, Qs, Req0, _State) ->
                         ?ERR_CONFLICT
                     );
                 {error, not_found} ->
-                    elib_response:error(Req0, <<"not found"/utf8>>, ?ERR_NOT_FOUND)
+                    elib_response:error(Req0, <<"not found"/utf8>>, ?ERR_NOT_FOUND);
+                {error, _} ->
+                    elib_response:error(Req0, <<"service unavailable">>, ?ERR_SERVICE_UNAVAILABLE)
             end
     end;
 %% 缺省 register：登记先行、失败关闭（AC01）
@@ -134,6 +138,14 @@ do_presign_register(Uid, Qs, Req0) ->
             elib_response:error(Req0, <<"该资源类型暂不支持上传"/utf8>>, ?ERR_BAD_REQUEST);
         {error, forbidden} ->
             elib_response:error(Req0, <<"无权向该范围上传"/utf8>>, ?ERR_FORBIDDEN);
+        {error, historical_location_unverified} ->
+            reupload_required(Req0);
+        {error, session_not_renewable} ->
+            reupload_required(Req0);
+        {error, session_expired} ->
+            elib_response:error_with_status(Req0,410,<<"session expired, reupload_new_session">>,?ERR_GONE);
+        {error, upload_base_url_required} ->
+            elib_response:error(Req0, <<"upload base URL unavailable">>, ?ERR_SERVICE_UNAVAILABLE);
         {error, registration_failed} ->
             %% AC01：登记失败/提交未知——503，无 URL；同 ID 重试可恢复
             elib_response:error(
@@ -144,7 +156,13 @@ do_presign_register(Uid, Qs, Req0) ->
     end.
 
 %% status 回查授权：仅登记主体本人可读；他主体 404（不泄露存在性）
-reauthorize_status(Uid, #{<<"creator_user_id">> := Uid} = Row, Req0) ->
+reauthorize_status(Uid, Row, Req0) ->
+    case attach_logic:reauthorize_upload_session(Uid,Row) of
+        ok -> status_response(Uid,Row,Req0);
+        {error,_} -> elib_response:error(Req0, <<"not found">>, ?ERR_NOT_FOUND)
+    end.
+
+status_response(Uid, #{<<"creator_user_id">> := Uid} = Row, Req0) ->
     Expires = maps:get(<<"upload_expires_at">>, Row, undefined),
     Deadline = maps:get(<<"session_deadline">>, Row, undefined),
     State = maps:get(<<"session_state">>, Row, <<"registered">>),
@@ -156,21 +174,38 @@ reauthorize_status(Uid, #{<<"creator_user_id">> := Uid} = Row, Req0) ->
             _ ->
                 State
         end,
+    LocationKnown = lists:all(fun(K) -> is_binary(maps:get(K,Row,null)) end,
+        [<<"storage_driver">>,<<"storage_namespace">>,<<"storage_container">>,<<"storage_locator_sha256">>]),
+    CanResume = State =:= <<"registered">> andalso LocationKnown,
     Data = #{
         <<"client_upload_id">> => maps:get(<<"client_upload_id">>, Row, undefined),
         <<"object_key">> => maps:get(<<"object_key">>, Row),
         <<"session_state">> => SessionState,
         <<"session_deadline">> => Deadline,
         <<"upload_expires_at">> => Expires,
-        <<"can_resume">> => State =:= <<"registered">>,
-        <<"retry_action">> => retry_action(State)
+        <<"can_resume">> => CanResume,
+        <<"retry_action">> => case State =:= <<"registered">> andalso not LocationKnown of
+            true -> <<"reupload_new_session">>; false -> retry_action(State) end
     },
     Req1 = cowboy_req:set_resp_header(<<"cache-control">>, <<"no-store">>, Req0),
     elib_response:success(Req1, Data, "success.");
-reauthorize_status(_Uid, _Row, Req0) ->
+status_response(_Uid, _Row, Req0) ->
     elib_response:error(Req0, <<"not found"/utf8>>, ?ERR_NOT_FOUND).
 
-reauthorize_renew(Key, _Bucket, _Scope, Uid, Row, Req0) ->
+reauthorize_renew(Key, Bucket, Scope, Uid, Row, Req0) ->
+    case attach_logic:reauthorize_upload_session(Uid,Row) of
+        ok ->
+            case attachment_storage:session_location(Key) of
+                {ok,I} when is_map(I) -> renew_authorized(Key,Bucket,Scope,Uid,Row,Req0);
+                _ -> reupload_required(Req0)
+            end;
+        {error,_} -> elib_response:error(Req0, <<"not found">>, ?ERR_NOT_FOUND)
+    end.
+
+reupload_required(Req0) ->
+    elib_response:error_with_status(Req0,409,<<"historical_location_unverified: reupload_new_session">>,?ERR_CONFLICT).
+
+renew_authorized(Key, _Bucket, _Scope, Uid, Row, Req0) ->
     %% V5 renew（02 §143）：min(now+TTL, deadline) 为新到期，
     %% 单调持久提交后按已提交绝对值签发受控网关能力；
     %% 直传 URL 不再签发（新地址不能绕过网关，upload-content-pin）。
@@ -293,6 +328,8 @@ confirm(<<"POST">>, Req0, State) ->
             elib_response:success(Req0, Data, "success.");
         {error, forbidden_key} ->
             elib_response:error(Req0, <<"非法对象归属"/utf8>>, ?ERR_BAD_REQUEST);
+        {error, historical_location_unverified} ->
+            reupload_required(Req0);
         {error, forbidden} ->
             elib_response:error(Req0, <<"无权向该范围上传"/utf8>>, ?ERR_FORBIDDEN);
         {error, upload_not_supported} ->

@@ -26,7 +26,7 @@ enqueue_in(Conn, Org, Ws, MessageIds, AssetIds) ->
     end.
 
 drain(Org, Ws, Limit) ->
-    drain(Org, Ws, Limit, erlang:make_ref()).
+    drain(Org, Ws, Limit, elib_uuid:gen_v7()).
 
 %% 消费至多 Limit 个 job（租约 CAS；删除成功 ack done、失败 ack 退避/终止）。
 drain(Org, Ws, Limit, Token) when Limit > 0 ->
@@ -35,9 +35,8 @@ drain(Org, Ws, Limit, Token) when Limit > 0 ->
             case process_job(Org, Ws, Row, Token) of
                 ok ->
                     drain(Org, Ws, Limit - 1, Token);
-                {error, _Reason} ->
-                    %% 失败已 ack（退避/max_attempts 由 fn 裁决）；本批结束
-                    {ok, []}
+                {error,delete_failed} -> {ok,[]};
+                {error,_}=Error -> Error
             end;
         {error, empty} ->
             {ok, []};
@@ -47,18 +46,21 @@ drain(Org, Ws, Limit, Token) when Limit > 0 ->
 drain(_Org, _Ws, _Limit, _Token) ->
     {ok, []}.
 
-process_job(Org, Ws, Row, Token) ->
-    AssetId = maps:get(<<"out_asset_id">>, Row),
-    Key = maps:get(<<"out_object_key">>, Row),
-    DeleteResult =
-        try
-            eb_asset_store:delete_queued_object(Org, Ws, Key)
-        catch
-            _C:_R -> {error, worker_crash}
-        end,
-    AckOk = DeleteResult =:= ok orelse DeleteResult =:= {error, not_found},
-    _ = ack(Org, Ws, AssetId, Token, AckOk),
-    AckOk.
+process_job(_RequestedOrg, _RequestedWs, Row, Token) ->
+    Org=maps:get(<<"out_organization_id">>,Row),Ws=maps:get(<<"out_workspace_id">>,Row),
+    AssetId=maps:get(<<"out_asset_id">>,Row),Key=maps:get(<<"out_object_key">>,Row),
+    Frozen=maps:from_list([{K,maps:get(<<"out_",K/binary>>,Row,null)} || K <-
+        [<<"storage_driver">>,<<"storage_namespace">>,<<"storage_container">>,<<"storage_locator_sha256">>]]),
+    Result=try case attachment_storage:frozen_location(Key,Frozen) of
+        {ok,I} when is_map(I)->attachment_storage:delete_snapshot(I);
+        _->{error,location_unverified}
+    end catch _:_->{error,worker_crash} end,
+    AckOk=Result=:=ok orelse Result=:={error,not_found},
+    case ack(Org,Ws,AssetId,Token,AckOk) of
+        ok when AckOk->ok;
+        ok->{error,delete_failed};
+        {error,R}->{error,{ack_failed,R}}
+    end.
 
 %% 企业队列 claim（租约 CAS；fn 返回单 job 或空集）。
 claim(Token) ->
@@ -85,7 +87,10 @@ ack(Org, Ws, AssetId, Token, Ok) ->
             [Org, Ws, AssetId, Token, Ok]
         )
     of
-        {ok, _} -> ok;
+        {ok,[#{<<"fn_v5_ack_eb">>:=<<"done">>}]} when Ok=:=true -> ok;
+        {ok,[#{<<"fn_v5_ack_eb">>:=State}]} when Ok=:=false, (State=:=<<"retry_wait">> orelse State=:=<<"blocked">>) -> ok;
+        {ok,[#{<<"fn_v5_ack_eb">>:=State}]} -> {error,{ack_rejected,State}};
+        {ok,Rows} -> {error,{invalid_ack_result,Rows}};
         {error, R} -> {error, R}
     end.
 

@@ -74,6 +74,16 @@
         {ws_url, <<"wss://dev.imboy.pub/ws">>},
         {upload_url, <<>>},
 
+        %% 新上传必须冻结已登记的位置；空 registry 拒绝签发上传能力。
+        %% New uploads require a registered immutable storage location.
+        %% roots: RootId => #{driver => <<"garage">> | <<"disk">>,
+        %%   namespace => <<"never-reused-location-id">>, aliases => [],
+        %%   endpoint => <<"http://garage:3900">> | <<"file:///srv/attachments">>,
+        %%   container => <<"bucket-or-logical-container">>}
+        %% upload_namespaces: scope => canonical namespace (Disk requires it).
+        %% Existing roots cannot be remapped; add a new namespace for a new location.
+        {attachment_storage_registry, #{version => 1, roots => #{}, upload_namespaces => #{}}},
+
         %% Garage S3 兼容对象存储配置（占位符，实际值放 sys.local.config）
         {garage, #{
             endpoint => <<"http://127.0.0.1:3900">>,

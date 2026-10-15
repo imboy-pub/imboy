@@ -8,7 +8,7 @@
 %%%
 
 -export([presign_put/5, presign_get/4, presign_delete/4, authorization_header/7]).
--export([presign_put_ctx/6]).
+-export([presign_put_ctx/6, presign_url_at/8]).
 -export([format_date/1, format_amz_date/1]).
 -export([uri_encode_path/1]).
 
@@ -46,9 +46,12 @@ presign_url(Method, Endpoint, Bucket, ObjectKey, MimeType, Expires) ->
     ).
 
 presign_url_at(Method, Endpoint, Bucket, ObjectKey, MimeType, Now, Expires) ->
+    presign_url_at(Method,Endpoint,Bucket,ObjectKey,MimeType,Now,Expires,garage_config()).
+
+%% 已校验位置快照的签名不再读取可变全局配置。
+presign_url_at(Method, Endpoint, Bucket, ObjectKey, MimeType, Now, Expires, Cfg) ->
     DateStr = format_date(Now),
     AmzDate = format_amz_date(Now),
-    Cfg = garage_config(),
     Region = maps:get(region, Cfg, <<"garage">>),
     AccessKey = maps:get(access_key, Cfg, <<>>),
     SecretKey = maps:get(secret_key, Cfg, <<>>),

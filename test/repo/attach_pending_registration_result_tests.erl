@@ -4,10 +4,12 @@
 registration_result_test_() ->
     {foreach, fun setup/0, fun cleanup/1,
         [fun original_identity/0, fun original_window/0,
-         fun transaction_identity/0, fun missing_readback/0]}.
+         fun transaction_identity/0, fun missing_readback/0,
+         fun new_registration_freezes_location/0, fun missing_registry_refuses_registration/0]}.
 
 setup() ->
     meck:new(elib_pg, [non_strict, no_link]),
+    meck:new(attachment_storage, [non_strict, no_link]),
     Row = #{<<"object_key">> => <<"original-key">>, <<"bucket">> => <<"original-bucket">>,
             <<"scope">> => <<"private">>, <<"session_state">> => <<"registered">>,
             <<"client_upload_id">> => cid(), <<"confirmed_attachment_id">> => null,
@@ -15,7 +17,7 @@ setup() ->
     meck:expect(elib_pg, query, fun(Sql, Args) -> query(Sql, Args, Row) end),
     meck:expect(elib_pg, query, fun(_Conn, Sql, Args) -> query(Sql, Args, Row) end).
 
-cleanup(_) -> meck:unload(elib_pg).
+cleanup(_) -> meck:unload(elib_pg), meck:unload(attachment_storage).
 
 cid() -> <<"12345678-1111-4222-8333-123456789012">>.
 
@@ -53,5 +55,34 @@ transaction_identity() ->
     ?assertEqual(1799999000, maps:get(expires_at, Session)).
 
 missing_readback() ->
-    meck:expect(elib_pg, query, fun(Sql, Args) -> query(Sql, Args, missing) end),
+    meck:expect(elib_pg, query, fun(Sql, Args) ->
+        case binary:match(iolist_to_binary(Sql), <<"WHERE client_upload_id=$1::uuid">>) of
+            nomatch -> query(Sql, Args, missing);
+            _ -> {ok,[#{<<"bucket">> => <<"bucket">>}]}
+        end
+    end),
     ?assertEqual({error, registration_not_returned}, register()).
+
+new_registration_freezes_location() ->
+    meck:expect(attachment_storage, registration_location, fun(<<"private">>,<<"bucket">>,<<"new-random-key">>) ->
+        {ok,#{driver => <<"disk">>,namespace => <<"fixture-ns">>,container => <<"default">>,
+              locator_digest => <<"fixture-digest">>}}
+    end),
+    meck:expect(elib_pg,query,fun(Sql,Args) ->
+        case binary:match(iolist_to_binary(Sql),<<"fn_v5_register_pending">>) of
+            nomatch -> {ok,[]};
+            _ ->
+                ?assertEqual([<<"disk">>,<<"fixture-ns">>,<<"default">>,<<"fixture-digest">>],
+                    lists:nthtail(8,Args)),
+                {ok,[]}
+        end
+    end),
+    ?assertEqual({error,registration_not_returned},register()).
+
+missing_registry_refuses_registration() ->
+    meck:expect(attachment_storage,registration_location,fun(_,_,_) -> {error,storage_registry_required} end),
+    meck:expect(elib_pg,query,fun(Sql,_) ->
+        ?assertEqual(nomatch,binary:match(iolist_to_binary(Sql),<<"fn_v5_register_pending">>)),
+        {ok,[]}
+    end),
+    ?assertEqual({error,storage_registry_required},register()).

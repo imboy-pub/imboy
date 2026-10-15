@@ -15,7 +15,8 @@ serve(Req) ->
     Query = cowboy_req:parse_qs(Req),
     Ticket = proplists:get_value(<<"ticket">>, Query, <<>>),
     case attach_logic:download(Ticket) of
-        {ok, Url} -> proxy(Req, Url, Ticket);
+        {ok,{disk,I}} -> disk_response(Req,I,Ticket);
+        {ok, Url} when is_binary(Url) -> proxy(Req, Url, Ticket);
         _ -> cowboy_req:reply(403, private_headers(), Req)
     end.
 
@@ -112,3 +113,41 @@ private_headers() ->
         <<"x-content-type-options">> => <<"nosniff">>,
         <<"content-security-policy">> => <<"sandbox">>
     }.
+
+
+%% 所有 Disk 读取都经过 ticket 与当前 ACL，Range 仅允许单区间。
+disk_response(Req,I,Ticket) ->
+    case attachment_storage_disk:read_snapshot(I) of
+        {ok,Bytes}->
+            case disk_range(cowboy_req:header(<<"range">>,Req),byte_size(Bytes)) of
+                {ok,Start,Count,Code,Extra}->
+                    case attach_logic:download(Ticket) of
+                        {ok,{disk,_}}->
+                            Headers=maps:merge(private_headers(),Extra#{<<"accept-ranges">>=><<"bytes">>,
+                                <<"content-type">>=>maps:get(mime,I,<<"application/octet-stream">>),
+                                <<"content-length">>=>integer_to_binary(Count)}),
+                            %% Cowboy 按 HEAD 自动省略响应体；传真实 body 计算正确 Content-Length。
+                            Body=binary:part(Bytes,Start,Count),
+                            cowboy_req:reply(Code,Headers,Body,Req);
+                        _->cowboy_req:reply(403,private_headers(),Req)
+                    end;
+                error->cowboy_req:reply(416,(private_headers())#{<<"content-range">>=><<"bytes */",(integer_to_binary(byte_size(Bytes)))/binary>>},Req)
+            end;
+        {error,not_found}->cowboy_req:reply(404,private_headers(),Req);
+        _->cowboy_req:reply(502,private_headers(),Req)
+    end.
+disk_range(undefined,Size)->{ok,0,Size,200,#{}};
+disk_range(Range,Size) when is_binary(Range),byte_size(Range)=<100 ->
+    try
+        <<"bytes=",Spec/binary>>=Range,
+        [A,B]=binary:split(Spec,<<"-">>),
+        {Start,End}=case {A,B} of
+            {<<>>,Tail}->N=binary_to_integer(Tail),true=N>0,{max(0,Size-N),Size-1};
+            {Head,<<>>}->{binary_to_integer(Head),Size-1};
+            {Head,Tail}->{binary_to_integer(Head),min(Size-1,binary_to_integer(Tail))}
+        end,
+        true=Start>=0 andalso Start<Size andalso End>=Start,
+        ContentRange=iolist_to_binary(["bytes ",integer_to_list(Start),"-",integer_to_list(End),"/",integer_to_list(Size)]),
+        {ok,Start,End-Start+1,206,#{<<"content-range">>=>ContentRange}}
+    catch _:_ -> error end;
+disk_range(_,_) -> error.

@@ -1,47 +1,60 @@
-%%% @doc V5 Garage driver（W4-03）：包装 elib_oss 既有 Garage/S3 调用面
-%%%（复制现有行为，逐调用替换；行为等价 = storage-garage 验收）。
-%%% Namespace 语义 = registry canonical container（与 elib_oss:get_bucket/1
-%%% 的 bucket 同层——Garage root 一个 bucket；namespace 归一后即 bucket 名）。
+%%% Garage I/O 使用已校验位置与凭据快照，不在派发时重读 registry/global endpoint。
 -module(attachment_storage_garage).
 -behaviour(attachment_storage_driver).
-
--export([put/4, head/3, delete/3, presign_put/4, presign_get/4, read/3]).
-
-%% Garage（S3 兼容）不支持本地整读——read 走 GET 全量（对象均为附件级小
-%%% 文件，max_file_size 上限保护）。
-read(Namespace, _Container, Key) ->
-    elib_oss:object_sha256(bucket(Namespace), Key),
-    case elib_oss:head_object(bucket(Namespace), Key) of
-        {ok, _} -> {error, not_supported};
-        E -> E
+-export([put/4,head/3,delete/3,presign_put/4,presign_get/4,read/3,put_snapshot/4,read_snapshot/1,delete_snapshot/1,presign_snapshot/2]).
+read(Ns,C,K) -> with_snapshot(Ns,C,K,fun read_snapshot/1).
+read_snapshot(I) ->
+    Url=signed(I,<<"GET">>,<<>>,calendar:universal_time(),60),
+    case httpc:request(get,{binary_to_list(Url),[]},[{timeout,30000}],[{body_format,binary}]) of
+        {ok,{{_,200,_},_,Bytes}}->{ok,Bytes};
+        {ok,{{_,404,_},_,_}}->{error,not_found};
+        {ok,{{_,Status,_},_,_}}->{error,{storage_status,Status}};
+        {error,R}->{error,R}
+    end.
+put(Ns,C,K,Body) ->
+    Now=calendar:universal_time(),
+    Exp=calendar:gregorian_seconds_to_datetime(calendar:datetime_to_gregorian_seconds(Now)+300),
+    with_snapshot(Ns,C,K,fun(I)->put_snapshot(I,Body,<<"application/octet-stream">>,#{issued_at=>Now,expires_at=>Exp}) end).
+put_snapshot(I,{file,Path},Mime,Ctx) ->
+    case file:read_file(Path) of {ok,B}->put_snapshot(I,B,Mime,Ctx);E->E end;
+put_snapshot(I,Bytes,Mime,#{issued_at:=Issued,expires_at:=Expiry}) when is_binary(Bytes) ->
+    Diff=calendar:datetime_to_gregorian_seconds(Expiry)-calendar:datetime_to_gregorian_seconds(Issued),
+    case Diff>0 andalso Diff=<604800 andalso calendar:datetime_to_gregorian_seconds(Expiry)>calendar:datetime_to_gregorian_seconds(calendar:universal_time()) of
+        true->
+            Url=signed(I,<<"PUT">>,Mime,Issued,Diff),
+            case httpc:request(put,{binary_to_list(Url),[],binary_to_list(Mime),Bytes},[{timeout,30000}],[]) of
+                {ok,{{_,Status,_},_,_}} when Status>=200,Status<300->ok;
+                {ok,{{_,Status,_},_,_}}->{error,{storage_status,Status}};
+                {error,R}->{error,R}
+            end;
+        false->{error,invalid_signature_context}
+    end;
+put_snapshot(_,_,_,_)->{error,invalid_signature_context}.
+head(Ns,C,K) ->
+    case read(Ns,C,K) of {ok,B}->{ok,#{size=>byte_size(B),content_type=><<"application/octet-stream">>}};E->E end.
+delete(Ns,C,K) -> with_snapshot(Ns,C,K,fun delete_snapshot/1).
+delete_snapshot(I) ->
+    Url=signed(I,<<"DELETE">>,<<>>,calendar:universal_time(),60),
+    case httpc:request(delete,{binary_to_list(Url),[]},[{timeout,30000}],[]) of
+        {ok,{{_,Status,_},_,_}} when Status>=200,Status<300->ok;
+        {ok,{{_,404,_},_,_}}->{error,not_found};
+        {ok,{{_,Status,_},_,_}}->{error,{storage_status,Status}};
+        {error,R}->{error,R}
     end.
 
-put(Namespace, _Container, Key, Body) when is_binary(Body) ->
-    elib_oss:put_object(bucket(Namespace), Key, Body, default_mime());
-put(Namespace, _Container, Key, {file, File}) ->
-    elib_oss:put_object_from_file(bucket(Namespace), Key, File, default_mime()).
+presign_put(Ns,C,K,T)->with_snapshot(Ns,C,K,fun(I)->{ok,signed(I,<<"PUT">>,<<"application/octet-stream">>,calendar:universal_time(),T)} end).
+presign_get(Ns,C,K,T)->with_snapshot(Ns,C,K,fun(I)->{ok,signed(I,<<"GET">>,<<>>,calendar:universal_time(),T)} end).
+presign_snapshot(I,Expiry) -> {ok,signed(I,<<"GET">>,<<>>,calendar:universal_time(),Expiry)}.
 
-head(Namespace, _Container, Key) ->
-    elib_oss:head_object(bucket(Namespace), Key).
-
-delete(Namespace, _Container, Key) ->
-    elib_oss:delete_object(bucket(Namespace), Key).
-
-presign_put(Namespace, _Container, Key, Expires) ->
-    {ok, elib_oss:presign_put_for_key(bucket(Namespace), Key, default_mime(), Expires)}.
-
-presign_get(Namespace, _Container, Key, Expires) ->
-    {ok, elib_oss:presign_get_for_key(bucket(Namespace), Key, Expires)}.
-
-%% registry canonical namespace ↔ elib_oss bucket：Garage root 的
-%% container 即 bucket 名（V5 registry 显式列出；未配置 registry 时回退
-%% elib_oss:get_bucket（既有行为零变化——storage-switch 验收切换面）。
-bucket(Namespace) ->
-    case attachment_storage:resolve(Namespace) of
-        {ok, #{container := Bucket}} when is_binary(Bucket), Bucket =/= <<>> ->
-            Bucket;
-        _ ->
-            elib_oss:get_bucket(Namespace)
+signed(#{endpoint:=EP,container:=C,key:=K,garage_config:=Cfg},Method,Mime,Now,Ttl)->
+    elib_s3_sign:presign_url_at(Method,EP,C,K,Mime,Now,Ttl,Cfg).
+with_snapshot(Ns,C,K,Fun) ->
+    case attachment_storage:resolve(Ns) of
+        {ok,#{driver:=<<"garage">>,endpoint:=EP,container:=C}} ->
+            Cfg=application:get_env(imboy,garage,#{}),
+            case maps:get(endpoint,Cfg,undefined)=:=EP of
+                true->Fun(#{endpoint=>EP,container=>C,key=>K,garage_config=>Cfg});
+                false->{error,location_changed}
+            end;
+        _->{error,location_unverified}
     end.
-
-default_mime() -> <<"application/octet-stream">>.

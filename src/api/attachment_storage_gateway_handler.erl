@@ -174,6 +174,9 @@ serve_pinned(Req0, Key, DeclMime, CapabilityExp, Tmp, Size) ->
                                 }),
                                 Req0
                             );
+                        {error,historical_location_unverified}->
+                            cowboy_req:reply(409,#{<<"content-type">>=><<"application/json">>},
+                                jsone:encode(#{error=><<"historical_location_unverified">>,retry_action=><<"reupload_new_session">>}),Req0);
                         {error, invalid_signature_context} ->
                             %% capability 过短/异常：不 PUT，pin 保留供同 receipt 重试
                             cowboy_req:reply(
@@ -203,14 +206,17 @@ serve_pinned(Req0, Key, DeclMime, CapabilityExp, Tmp, Size) ->
 %% invalid_signature_context 透传给上层区分 410。
 provider_put_ctx(Key, Tmp, DeclMime, Ctx) ->
     try
-        Bucket = elib_oss:get_bucket(<<"private">>),
-        case elib_oss:put_object_from_file_ctx(Bucket, Key, Tmp, DeclMime, Ctx) of
-            ok -> ok;
-            {error, Reason} -> {error, Reason}
+        case attachment_storage:session_location(Key) of
+            {ok,legacy_unknown} -> {error,historical_location_unverified};
+            {ok,#{driver := garage}=I} ->
+                attachment_storage_garage:put_snapshot(I,{file,Tmp},DeclMime,Ctx);
+            {ok,#{driver := disk}=I} ->
+                Expiry=calendar:datetime_to_gregorian_seconds(maps:get(expires_at,Ctx))-62167219200,
+                attachment_storage_disk:put_snapshot(I,{file,Tmp},Expiry);
+            {error,_}=E -> E;
+            _ -> {error,unsupported_driver}
         end
-    catch
-        _:_ -> {error, put_failed}
-    end.
+    catch _:_ -> {error,put_failed} end.
 
 unix_to_datetime(UnixSec) ->
     calendar:gregorian_seconds_to_datetime(UnixSec + 62167219200).

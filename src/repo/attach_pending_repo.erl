@@ -156,6 +156,9 @@ register_v5(ObjectKey, Bucket, Scope, Uid, _ClientUploadId, undefined) ->
         ok -> {ok, #{session_state => <<"registered">>, client_upload_id => undefined}};
         {error, R} -> {error, R}
     end;
+%% Old clients still use key-based confirm; new writes always get a controlled session.
+register_v5(ObjectKey, Bucket, Scope, Uid, undefined, Registration) when is_map(Registration) ->
+    register_v5(ObjectKey, Bucket, Scope, Uid, elib_uuid:gen_v7(), Registration);
 register_v5(ObjectKey, Bucket, Scope, Uid, ClientUploadId, Registration) when
     is_map(Registration), map_size(Registration) > 0
 ->
@@ -184,41 +187,7 @@ register_v5(ObjectKey, Bucket, Scope, Uid, ClientUploadId, Registration) when
         null,
         null
     ],
-    Sql = [
-        <<
-            "SELECT out_object_key, out_session_state, out_client_upload_id"
-            " FROM fn_v5_register_pending($1,$2,$3,$4,"
-        >>,
-        case ClientUploadId of
-            undefined -> <<"NULL::uuid">>;
-            _ -> <<"$5::uuid">>
-        end,
-        <<
-            ",$6::jsonb,$7::timestamptz,$8::timestamptz,"
-            "NULL,NULL,NULL,NULL)"
-        >>
-    ],
-    %% 无 UUID 的旧客户端走 legacy add（保留旧行为）
-    case ClientUploadId of
-        undefined ->
-            case add(ObjectKey, Bucket, Scope, Uid) of
-                ok -> {ok, #{session_state => <<"registered">>, client_upload_id => undefined}};
-                {error, R} -> {error, R}
-            end;
-        _ ->
-            %% $1..$8 依序取 Args 前 8 个（$5=uuid 占位与 Args 第 5 项对位；
-            %% 尾部 4 个 NULL 是 SQL 字面量）。W2-02 修正：原先错误过滤
-            %% 第 5 项导致 11 参数对 8 占位符，真实 DB 上必然绑定失败。
-            Params = lists:sublist(Args, 8),
-            case elib_pg:query(Sql, Params) of
-                {ok, [Row | _]} ->
-                    persisted_registration(fun elib_pg:query/2, Row);
-                {ok, []} ->
-                    {error, registration_not_returned};
-                {error, R} ->
-                    {error, R}
-            end
-    end.
+    execute_registration(fun elib_pg:query/2, Args).
 
 register_v5(ObjectKey, Bucket, Scope, Uid, ClientUploadId) ->
     register_v5(ObjectKey, Bucket, Scope, Uid, ClientUploadId, undefined).
@@ -258,21 +227,39 @@ register_v5_tx(Conn, ObjectKey, Bucket, Scope, UidOrPrincipal, ClientUploadId, R
         null,
         null
     ],
-    Sql =
-        <<
-            "SELECT out_object_key, out_session_state, out_client_upload_id"
-            " FROM fn_v5_register_pending($1,$2,$3,$4,$5::uuid,"
-            "$6::jsonb,$7::timestamptz,$8::timestamptz,NULL,NULL,NULL,NULL)"
-        >>,
-    %% $1..$8 依序取 Args 前 8 个（$5=uuid 对位；尾部 4 个 NULL 是字面量）。
-    Params = lists:sublist(Args, 8),
-    case elib_pg:query(Conn, Sql, Params) of
-        {ok, [Row | _]} ->
-            persisted_registration(fun(Sql0, Params0) -> elib_pg:query(Conn, Sql0, Params0) end, Row);
+    execute_registration(fun(Sql, Params) -> elib_pg:query(Conn, Sql, Params) end, Args).
+
+execute_registration(Query, Args) ->
+    case registration_params(Query, Args) of
+        {ok, Params} ->
+            Sql = <<"SELECT out_object_key, out_session_state, out_client_upload_id "
+                    "FROM fn_v5_register_pending($1,$2,$3,$4,$5::uuid,$6::jsonb,"
+                    "$7::timestamptz,$8::timestamptz,$9::text,$10::text,$11::text,$12::text)">>,
+            case Query(Sql, Params) of
+                {ok, [Row]} -> persisted_registration(Query, Row);
+                {ok, []} -> {error, registration_not_returned};
+                {error, _} = E -> E
+            end;
+        {error, _} = E -> E
+    end.
+
+registration_params(Query, [Key,Bucket,Scope,Uid,Cid,Snapshot,Deadline,Expiry|_]) ->
+    %% Replays retain even unknown legacy locations; never backfill from current defaults.
+    case Query(<<"SELECT bucket, storage_driver, storage_namespace, storage_container, "
+                 "storage_locator_sha256 FROM attach_pending WHERE client_upload_id=$1::uuid">>, [Cid]) of
+        {ok, [Row]} ->
+            Location = [maps:get(K,Row,null) || K <- [<<"storage_driver">>,<<"storage_namespace">>,
+                <<"storage_container">>,<<"storage_locator_sha256">>]],
+            {ok, [Key,maps:get(<<"bucket">>,Row),Scope,Uid,Cid,Snapshot,Deadline,Expiry] ++ Location};
         {ok, []} ->
-            {error, registration_not_returned};
-        {error, R} ->
-            {error, R}
+            case attachment_storage:registration_location(Scope,Bucket,Key) of
+                {ok, #{driver := Driver,namespace := Ns,container := Container,locator_digest := Digest}} ->
+                    FrozenBucket = case Driver of <<"garage">> -> Container; _ -> Bucket end,
+                    {ok, [Key,FrozenBucket,Scope,Uid,Cid,Snapshot,Deadline,Expiry,
+                          Driver,Ns,Container,Digest]};
+                {error, _} = E -> E
+            end;
+        {error, _} = E -> E
     end.
 
 %% A UUID replay returns the original key and committed window, never this attempt's random key/time.
@@ -280,6 +267,7 @@ persisted_registration(Query, Row) ->
     Key = maps:get(<<"out_object_key">>, Row),
     Sql = [
         <<"SELECT object_key, bucket, scope, session_state, client_upload_id, confirmed_attachment_id, ">>,
+        <<"storage_driver, storage_namespace, storage_container, storage_locator_sha256, ">>,
         <<"extract(epoch from session_deadline)::bigint AS deadline, ">>,
         <<"extract(epoch from upload_expires_at)::bigint AS expires_at FROM ">>,
         tablename(), <<" WHERE object_key=$1">>
@@ -292,6 +280,10 @@ persisted_registration(Query, Row) ->
                    session_state => maps:get(<<"session_state">>, Session),
                    client_upload_id => maps:get(<<"client_upload_id">>, Session),
                    confirmed_attachment_id => maps:get(<<"confirmed_attachment_id">>, Session),
+                   storage_driver => maps:get(<<"storage_driver">>, Session, null),
+                   storage_namespace => maps:get(<<"storage_namespace">>, Session, null),
+                   storage_container => maps:get(<<"storage_container">>, Session, null),
+                   storage_locator_sha256 => maps:get(<<"storage_locator_sha256">>, Session, null),
                    deadline => maps:get(<<"deadline">>, Session),
                    expires_at => maps:get(<<"expires_at">>, Session)}};
         {ok, []} -> {error, registration_not_returned};
@@ -360,7 +352,7 @@ lock_session_tx(Conn, ObjectKey) ->
         elib_pg:query(
             Conn,
             <<
-                "SELECT object_key, session_state, upload_content, creator_user_id, scope,"
+                "SELECT object_key, session_state, upload_content, upload_registration, creator_user_id, scope,"
                 " storage_driver, storage_namespace, storage_container,"
                 " storage_locator_sha256"
                 " FROM attach_pending WHERE object_key=$1 FOR UPDATE"
@@ -368,9 +360,15 @@ lock_session_tx(Conn, ObjectKey) ->
             [ObjectKey]
         )
     of
-        {ok, [Row]} -> {ok, decode_content(Row)};
+        {ok, [Row]} -> {ok, decode_content(decode_registration(Row))};
         {ok, []} -> {ok, not_found};
         {error, _} = Error -> Error
+    end.
+
+decode_registration(Row) ->
+    case maps:get(<<"upload_registration">>,Row,undefined) of
+        B when is_binary(B) -> Row#{<<"upload_registration">> => jsone:decode(B)};
+        _ -> Row
     end.
 
 %% jsonb 列形态归一：epgsql 依连接配置可能回已解码 map 或原始 binary，
@@ -431,7 +429,8 @@ status_lookup(IdOrKey) ->
     Tb = tablename(),
     Sql = [
         <<"SELECT object_key, bucket, scope, creator_user_id, session_state,">>,
-        <<" client_upload_id, upload_expires_at, session_deadline, upload_registration">>,
+        <<" client_upload_id, upload_expires_at, session_deadline, upload_registration, ">>,
+        <<"storage_driver, storage_namespace, storage_container, storage_locator_sha256">>,
         <<" FROM ">>,
         Tb,
         <<" WHERE (client_upload_id::text = $1 OR object_key = $1) LIMIT 1">>

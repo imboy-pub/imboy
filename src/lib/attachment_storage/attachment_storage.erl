@@ -17,6 +17,10 @@
 
 -export([
     registry/0,
+    session_location/1,
+    frozen_location/2,
+    delete_snapshot/1,
+    registration_location/3,
     resolve/1,
     canonical_namespace/1,
     locator_digest/2,
@@ -121,3 +125,74 @@ identity(Namespace, Container, Key) ->
 driver_module(<<"garage">>) -> attachment_storage_garage;
 driver_module(<<"disk">>) -> attachment_storage_disk;
 driver_module(_) -> {error, unsupported_driver}.
+
+
+%% NULL 历史定位只能走兼容读取，不能据此取得可清理身份。
+session_location(Key) ->
+    Result = elib_pg:with_tx(fun(Conn) -> attach_pending_repo:lock_session_tx(Conn,Key) end),
+    case Result of
+        {ok,Row} when is_map(Row) -> location_row(Key,Row);
+        {ok,not_found} -> {error,not_found};
+        {error,_}=E -> E;
+        _ -> {error,location_unavailable}
+    end.
+
+location_row(Key,Row) ->
+    Values=[maps:get(K,Row,null)||K<-[<<"storage_driver">>,<<"storage_namespace">>,<<"storage_container">>,<<"storage_locator_sha256">>]],
+    case Values of
+        [null,null,null,null] -> {ok,legacy_unknown};
+        [Driver,Ns,Container,Digest] when is_binary(Driver),is_binary(Ns),is_binary(Container),is_binary(Digest) ->
+            case resolve(Ns) of
+                {ok,#{driver:=Driver}=Rec} ->
+                    case locator_digest(Ns,Rec)=:=Digest of
+                        true -> snapshot(Key,Container,Rec,Row);
+                        false -> {error,location_changed}
+                    end;
+                _ -> {error,location_changed}
+            end;
+        _ -> {error,location_unverified}
+    end.
+snapshot(Key,Container,Rec,Row) ->
+    Pin=maps:get(<<"upload_content">>,Row,#{}),
+    Mime=case Pin of P when is_map(P)->maps:get(<<"mime">>,P,maps:get(<<"mime_type">>,Row,<<"application/octet-stream">>));_-><<"application/octet-stream">> end,
+    Base=#{driver=>binary_to_atom(maps:get(driver,Rec),utf8),namespace=>maps:get(namespace,Rec),
+        container=>Container,key=>Key,endpoint=>maps:get(endpoint,Rec),root_id=>maps:get(root_id,Rec),mime=>Mime},
+    case maps:get(driver,Base) of
+        disk -> {ok,Base};
+        garage ->
+            Cfg=application:get_env(imboy,garage,#{}),
+            case maps:get(endpoint,Cfg,undefined)=:=maps:get(endpoint,Rec) andalso maps:get(container,Rec)=:=Container of
+                true -> {ok,Base#{garage_config=>Cfg}};
+                false -> {error,location_changed}
+            end;
+        _ -> {error,unsupported_driver}
+    end.
+
+
+%% 仅新会话选根；同 UUID/历史位置必须由仓储复用原行。
+registration_location(Scope,Bucket,Key) ->
+    Registry=registry(), Roots=maps:get(roots,Registry,#{}),
+    Mapping=maps:get(upload_namespaces,Registry,#{}),
+    Matches=case maps:get(Scope,Mapping,undefined) of
+        Ns when is_binary(Ns)->[{Id,R}||{Id,R}<-maps:to_list(Roots),namespace_matches(R,Ns)];
+        undefined->
+            EP=elib_oss:endpoint(),
+            [{Id,R}||{Id,R}<-maps:to_list(Roots),maps:get(driver,R,undefined)=:=<<"garage">>,
+                maps:get(endpoint,R,undefined)=:=EP,maps:get(container,R,undefined)=:=Bucket]
+    end,
+    case Matches of
+        [{RootId,#{driver:=Driver,namespace:=Ns0,container:=C,endpoint:=_}=Rec}] when (Driver=:=<<"garage">> orelse Driver=:=<<"disk">>),is_binary(C),byte_size(C)>0 ->
+            case Driver=:=<<"disk">> orelse (C=:=Bucket andalso maps:get(endpoint,Rec)=:=elib_oss:endpoint()) of
+                true->{ok,#{driver=>Driver,namespace=>Ns0,container=>C,key=>Key,
+                    locator_digest=>locator_digest(Ns0,Rec#{root_id=>RootId})}};
+                false->{error,location_changed}
+            end;
+        _->{error,upload_root_unavailable}
+    end.
+
+
+%% 队列/metadata 必须提交完整冻结身份；不能从当前默认根补齐未知值。
+frozen_location(Key,Row) -> location_row(Key,Row).
+delete_snapshot(#{driver:=disk}=I) -> attachment_storage_disk:delete_snapshot(I);
+delete_snapshot(#{driver:=garage}=I) -> attachment_storage_garage:delete_snapshot(I);
+delete_snapshot(_) -> {error,location_unverified}.
