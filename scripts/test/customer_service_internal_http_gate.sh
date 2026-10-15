@@ -54,6 +54,7 @@ files += ['test/common/eunit_runner.erl', 'test/common/meck_helper.erl', 'test/a
           'test/api/enterprise_identity_contract_http_checks.erl',
           'test/api/workspace_channel_limit_http_checks.erl',
           'test/api/customer_service_seat_http_checks.erl',
+          'test/api/customer_service_auth_domains_http_checks.erl',
           'test/api/customer_service_browser_fixture.erl',
           'test/features/customer_service/interfaces/cs_route_contract_tests.erl',
           'test/api/enterprise_asset_garage_pg_checks.erl',

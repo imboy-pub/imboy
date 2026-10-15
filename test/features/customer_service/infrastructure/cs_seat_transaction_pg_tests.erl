@@ -3,15 +3,15 @@
 -include_lib("eunit/include/eunit.hrl").
 -export([run/1]).
 
-run(Socket) ->
-    Connect = fun() ->
-        epgsql:connect(#{
-            host => {local, Socket},
-            port => 0,
-            username => "departure_test",
-            database => "postgres"
-        })
-    end,
+run(Socket) when not is_map(Socket) ->
+    run(#{
+        host => {local, Socket},
+        port => 0,
+        username => "departure_test",
+        database => "postgres"
+    });
+run(ConnectOptions) ->
+    Connect = fun() -> epgsql:connect(ConnectOptions) end,
     {ok, C} = Connect(),
     try
         sql(C, <<
