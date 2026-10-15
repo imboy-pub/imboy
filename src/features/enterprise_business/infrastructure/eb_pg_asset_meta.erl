@@ -25,6 +25,8 @@
     finish_pending_cleanup_tx/4,
     object_key/3,
     register_v5/9,
+    register_session_v5/6,
+    reserve_registered_put/3,
     v5_session/3,
     v5_session_by_cid/3,
     renew_v5/4,
@@ -35,7 +37,7 @@
     "a.id, a.organization_id, a.workspace_id, a.conversation_id, a.message_id,"
     " a.business_identity_id, a.uploaded_by_user_id, a.object_key, a.object_hash, a.mime,"
     " a.size_bytes, a.status, a.key_version, a.file_name, a.retain_until, a.version,"
-    " a.created_at, a.deleted_at, a.pending_object_delete"
+    " a.created_at, a.deleted_at, a.pending_object_delete, a.upload_registration, a.lifecycle_state"
 ).
 
 %% 登记：status 恒为 pending_confirm（确认只能走 confirm_asset/3）。
@@ -206,7 +208,9 @@ asset_fields() ->
         {version, <<"version">>, int},
         {created_at, <<"created_at">>, ts},
         {deleted_at, <<"deleted_at">>, ts},
-        {pending_object_delete, <<"pending_object_delete">>, raw}
+        {pending_object_delete, <<"pending_object_delete">>, raw},
+        {upload_registration, <<"upload_registration">>, raw},
+        {lifecycle_state, <<"lifecycle_state">>, bin}
     ].
 
 %%%===================================================================
@@ -218,6 +222,90 @@ asset_fields() ->
 %%% 墓碑拒绝 + 快照等值）。稳定身份在事务内保存；能力签发（upload_ref
 %%% token）由调用方在 COMMIT 后完成（与普通链 F19 同口径）。
 %%%===================================================================
+
+%% 复用已登记 pending 行；绝不把任意主键冲突解释为允许覆写。
+reserve_registered_put(Org, Ws, D) ->
+    Result = elib_pg:with_tx(fun(Conn) ->
+        tx_query(Conn, <<"SELECT id FROM workspace WHERE organization_id=$1 AND id=$2 FOR UPDATE">>,[Org,Ws]),
+        Id = maps:get(id,D),
+        case tx_query(Conn, <<"SELECT " ?ASSET_COLUMNS ","
+                "extract(epoch from a.upload_expires_at)::bigint AS expiry "
+                "FROM enterprise_asset a WHERE a.organization_id=$1 AND a.workspace_id=$2 AND a.id=$3 "
+                "AND a.status='pending_confirm' AND a.lifecycle_state='live' "
+                "AND a.client_upload_id IS NOT NULL AND a.upload_expires_at>now() "
+                "AND a.session_deadline>now() FOR UPDATE">>,[Org,Ws,Id]) of
+            [Row] -> validate_registered_put(Conn,Org,Ws,D,Row);
+            [] -> {error,session_not_renewable}
+        end
+    end),
+    case Result of {rollback,Error} -> Error; Other -> Other end.
+
+validate_registered_put(Conn,Org,Ws,D,Row) ->
+    Reg0 = maps:get(<<"upload_registration">>,Row),
+    Reg = case Reg0 of B when is_binary(B) -> jsone:decode(B); M -> M end,
+    Ctx = maps:get(signature_context,D),
+    Expiry = calendar:datetime_to_gregorian_seconds(maps:get(expires_at,Ctx))-62167219200,
+    Equal = maps:get(<<"subject">>,Reg) =:= maps:get(upload_subject,D) andalso
+        maps:get(<<"object_hash">>,Row) =:= maps:get(object_hash,D) andalso
+        maps:get(<<"size_bytes">>,Row) =:= byte_size(maps:get(payload,D)) andalso
+        maps:get(<<"mime">>,Row) =:= maps:get(mime,D) andalso
+        maps:get(<<"conversation_id">>,Row) =:= maps:get(conversation_id,D) andalso
+        maps:get(<<"object_hash">>,Row) =:= eb_asset_content:sha256_hex(maps:get(payload,D)) andalso
+        Expiry =< maps:get(<<"expiry">>,Row),
+    case {Equal,tx_query(Conn,<<"SELECT asset_id FROM enterprise_asset_delete_queue WHERE organization_id=$1 AND workspace_id=$2 AND asset_id=$3">>,[Org,Ws,maps:get(id,D)])} of
+        {true,[]} -> {ok,eb_pg_store_sql:normalize(Row,asset_fields())};
+        _ -> {error,conflict}
+    end.
+
+%% UUID 查重、pending 创建与登记必须在同一事务，失败不能留下孤儿主行。
+register_session_v5(Org, Ws, Descriptor, Cid, Registration, {Deadline, Expiry}) ->
+    Result = elib_pg:with_tx(fun(Conn) ->
+        tx_query(Conn, <<"SELECT id FROM workspace WHERE organization_id=$1 AND id=$2 FOR UPDATE">>, [Org, Ws]),
+        tx_query(Conn, <<"SELECT pg_advisory_xact_lock(hashtextextended('v5-eb-upload:' || $1::uuid::text,169))">>, [Cid]),
+        case tx_query(Conn, <<"SELECT asset_id FROM enterprise_asset_delete_queue WHERE client_upload_id=$1::uuid">>, [Cid]) of
+            [] -> register_session_live(Conn, Org, Ws, Descriptor, Cid, Registration, Deadline, Expiry);
+            _ -> {error, not_found}
+        end
+    end),
+    case Result of {rollback, Error} -> Error; Other -> Other end.
+
+register_session_live(Conn, Org, Ws, D, Cid, Registration, Deadline, Expiry) ->
+    case tx_query(Conn, <<"SELECT id,organization_id,workspace_id,upload_registration FROM enterprise_asset WHERE client_upload_id=$1::uuid FOR UPDATE">>, [Cid]) of
+        [#{<<"id">> := Id, <<"organization_id">> := Org, <<"workspace_id">> := Ws, <<"upload_registration">> := Stored}] ->
+            Original = case Stored of B when is_binary(B) -> jsone:decode(B); M -> M end,
+            case Original of
+                Registration -> {ok, Id};
+                _ ->
+                    case maps:get(<<"subject">>, Original, undefined) =:= maps:get(<<"subject">>, Registration) of
+                        true -> {error, conflict};
+                        false -> {error, not_found}
+                    end
+            end;
+        [_] -> {error, not_found};
+        [] ->
+            Id = maps:get(id, D),
+            Params = [Org, Ws, Id, maps:get(conversation_id,D),
+                eb_pg_store_sql:nullify(maps:get(message_id,D,undefined)),
+                eb_pg_store_sql:nullify(maps:get(business_identity_id,D,undefined)),
+                eb_pg_store_sql:nullify(maps:get(uploaded_by_user_id,D,undefined)),
+                object_key(Org,Ws,Id), maps:get(object_hash,D), maps:get(mime,D), maps:get(size_bytes,D),
+                null, eb_pg_store_sql:nullify(maps:get(file_name,D,undefined)),
+                eb_pg_store_sql:nullify(maps:get(retain_until,D,undefined))],
+            case tx_query(Conn, ?SQL_INSERT_ASSET, Params) of
+                [] -> throw({rollback, {error, conflict}});
+                [_] ->
+                    Kind = maps:get(<<"kind">>, maps:get(<<"subject">>, Registration)),
+                    tx_query(Conn, <<"SELECT * FROM fn_v5_register_eb($1,$2,$3,$4,$5::uuid,$6::jsonb,$7,$8::timestamptz,$9::timestamptz)">>,
+                        [Org,Ws,Id,object_key(Org,Ws,Id),Cid,jsone:encode(Registration),Kind,iso8601_utc(Deadline),iso8601_utc(Expiry)]),
+                    {ok, Id}
+            end
+    end.
+
+tx_query(Conn, Sql, Params) ->
+    case elib_pg:query(Conn, Sql, Params) of
+        {ok, Rows} -> Rows;
+        {error, Reason} -> throw({rollback, {error, eb_pg_store_sql:normalize_error(Reason)}})
+    end.
 
 %% @doc V5 登记（幂等：同 UUID 同快照返回原会话；重指派/快照漂移/
 %% 墓碑命中由 fn_v5_register_eb 以 SQLSTATE 拒绝）。单语句自动提交原子；
@@ -280,7 +368,7 @@ v5_session(OrgId, WsId, AssetId) ->
         case
             elib_pg:query(
                 <<
-                    "SELECT id, object_key, object_hash, mime, size_bytes, status,"
+                    "SELECT id, organization_id, workspace_id, conversation_id, message_id, file_name, uploaded_by_user_id, retain_until, lifecycle_state, object_key, object_hash, mime, size_bytes, status,"
                     " client_upload_id, session_deadline, upload_expires_at,"
                     " upload_registration FROM enterprise_asset"
                     " WHERE organization_id = $1 AND workspace_id = $2 AND id = $3"
@@ -324,13 +412,13 @@ renew_v5(OrgId, WsId, AssetId, NewExpirySec) ->
             elib_pg:query(
                 <<
                     "UPDATE enterprise_asset SET upload_expires_at ="
-                    " GREATEST(COALESCE(upload_expires_at, to_timestamp($4)), to_timestamp($4))"
+                    " LEAST(session_deadline,GREATEST(COALESCE(upload_expires_at, to_timestamp($4::double precision)), to_timestamp($4::double precision)))"
                     " WHERE organization_id = $1 AND workspace_id = $2 AND id = $3"
-                    " AND status = 'pending_confirm' AND client_upload_id IS NOT NULL"
+                    " AND status = 'pending_confirm' AND lifecycle_state = 'live' AND client_upload_id IS NOT NULL"
                     " AND session_deadline IS NOT NULL AND session_deadline > now()"
                     " RETURNING extract(epoch from upload_expires_at)::bigint AS committed_expiry"
                 >>,
-                [OrgId, WsId, AssetId, iso8601_utc(NewExpirySec)]
+                [OrgId, WsId, AssetId, NewExpirySec]
             )
         of
             {ok, [Row | _]} ->

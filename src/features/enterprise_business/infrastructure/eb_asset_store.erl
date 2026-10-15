@@ -82,7 +82,12 @@ reserve_and_put(OrgId, WorkspaceId, Descriptor, Payload, ObjectStore) ->
             N when is_integer(N) -> N;
             _ -> byte_size(Payload)
         end,
-    case eb_pg_asset_meta:insert_asset(OrgId, WorkspaceId, Descriptor#{size_bytes => Size}) of
+    D = Descriptor#{size_bytes => Size},
+    Reservation = case maps:get(upload_subject,D,undefined) of
+        Subject when is_map(Subject) -> eb_pg_asset_meta:reserve_registered_put(OrgId,WorkspaceId,D);
+        _ -> eb_pg_asset_meta:insert_asset(OrgId,WorkspaceId,D)
+    end,
+    case Reservation of
         {ok, Row} ->
             %% V5.5（02 §15）：Descriptor 可携带冻结签名 Context
             %% （绝对 issued_at/expires_at），经 Meta 端到端传到对象适配器；
