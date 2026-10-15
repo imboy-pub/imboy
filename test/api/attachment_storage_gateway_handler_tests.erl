@@ -50,7 +50,7 @@ run_chain(Result) ->
         ?assertEqual(
             [],
             filelib:wildcard(
-                os:getenv("IMBOY_V5_GATEWAY_TMP") ++ "/" ++
+                gateway_tmp_dir() ++ "/" ++
                     binary_to_list(get(gateway_key)) ++ ".*"
             )
         )
@@ -128,7 +128,7 @@ gateway_put_test_() ->
 pinned_success_test() ->
     Modules = [cowboy_req, imboy_jwt, attach_pending_repo, elib_oss],
     lists:foreach(fun(Module) -> meck:new(Module, [non_strict]) end, Modules),
-    Tmp = os:getenv("IMBOY_V5_GATEWAY_TMP") ++ "/pinned-success",
+    Tmp = gateway_tmp_dir() ++ "/pinned-success",
     try
         ok = file:write_file(Tmp, <<"payload">>),
         setup_mocks(ok),
@@ -226,3 +226,15 @@ assert_response(Result, Status, _, Body) ->
     ?assertEqual(ExpectedStatus, Status),
     ?assertEqual(ExpectedBody, Body),
     ?assertEqual(Calls, meck:num_calls(elib_oss, put_object_from_file, '_')).
+
+%% CI 环境合同：nightly full-eunit 不注入 IMBOY_V5_GATEWAY_TMP，裸拼接
+%% os:getenv 结果（未设置时为原子 false）会 badarg。与生产
+%% attachment_storage_gateway_handler:tmp_dir/0 同款回退，并确保目录存在。
+gateway_tmp_dir() ->
+    D =
+        case os:getenv("IMBOY_V5_GATEWAY_TMP") of
+            false -> "/tmp/imboy-v5-gateway";
+            P -> P
+        end,
+    ok = filelib:ensure_dir(filename:join(D, "keep")),
+    D.
