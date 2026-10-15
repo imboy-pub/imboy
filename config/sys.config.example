@@ -36,10 +36,11 @@
         % {throttle, rates}：旧 throttle worker 与新 owner 双权威混跑会被
         % 启动校验拒绝。环境变量 IMBOY_THROTTLE_API_PER_IP /
         % IMBOY_THROTTLE_PASSPORT_PER_IP 改写本表对应项（变量名与默认值不变）。
-        % 默认关闭：受控排空、规则/回退验证后，在可信节点控制台绑定实际 PID
-        % 调用 login_attempt_ds:activate_empty(Pid)。仅已批准应用启动清空时设 true；
-        % true 是每次完整应用启动均生效的持久策略；owner 自动重启始终关闭。
-        {limiter_allow_empty_start, false},
+        % 未配置 = 默认 true：每次完整应用启动均空态批准（缺此键不得拖垮认证）。
+        % 显式 false 仅供受控关闭/切换演练（关闭期认证 fail-closed 返回 503）；
+        % owner 自动重启始终关闭，须在可信节点控制台绑定实际 PID 调用
+        % login_attempt_ds:activate_empty(Pid)。
+        {limiter_allow_empty_start, true},
         {limiter_ip_rates, #{
             passport_per_ip => {10, 60000},
             api_per_ip => {60, 60000},

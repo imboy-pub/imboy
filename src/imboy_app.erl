@@ -142,7 +142,8 @@ start(_Type, _Args) ->
     ok = ensure_listener_started(ListenerResult, StartMode),
     case imboy_sup:start_link() of
         {ok, Sup} ->
-            %% 显式启动空态策略仅在完整应用 start 时开放；child 重启不走此处。
+            %% 启动空态批准（默认开，显式 false 关闭）仅在完整应用 start 时
+            %% 执行；child 重启不走此处。
             ok = maybe_activate_limiter(),
             %% T2.0h: 总线就绪后挂载群组领域事件订阅者（通知桥接）。
             %% 容错：挂载失败不阻断 app 启动（总线为 sup child，通常已就绪）。
@@ -157,8 +158,10 @@ start(_Type, _Args) ->
             Other
     end.
 
+%% 缺配置时默认空态批准：限流器未激活会让认证链路 fail-closed 全量 503，
+%% 缺一个可选键不得拖垮登录。显式 false 仅供受控关闭/切换演练；非法值 fail-fast。
 maybe_activate_limiter() ->
-    case application:get_env(imboy, limiter_allow_empty_start, false) of
+    case application:get_env(imboy, limiter_allow_empty_start, true) of
         true -> login_attempt_ds:activate_empty(whereis(login_attempt_ds));
         false -> ok;
         Other -> erlang:error({invalid_config, limiter_allow_empty_start, Other})
