@@ -19,16 +19,17 @@ asset_store_test_() ->
 
 setup() ->
     Previous = eb_pg_test_fixture:select_asset_stub(),
-    {asset_stub, Previous, setup_db()}.
+    {asset_stub, Previous, application:get_env(imboy, attachment_storage_registry), setup_db()}.
 
 setup_db() ->
     eunit_runner:eunit_setup_with_db().
 
-cleanup_db({asset_stub, Previous, Result}) ->
+cleanup_db({asset_stub, Previous, Registry, Result}) ->
     try
         cleanup_db(Result)
     after
-        eb_pg_test_fixture:restore_asset_store(Previous)
+        eb_pg_test_fixture:restore_asset_store(Previous),
+        restore_registry(Registry)
     end;
 cleanup_db({ok, Conn}) ->
     _ = eb_asset_object_stub:reset(),
@@ -36,9 +37,10 @@ cleanup_db({ok, Conn}) ->
 cleanup_db(_Other) ->
     ok.
 
-cases({asset_stub, _Previous, Result}) ->
+cases({asset_stub, _Previous, _Registry, Result}) ->
     cases(Result);
 cases({ok, _Conn}) ->
+    fixture_registry(),
     [
         {timeout, 60, fun a11a_asset_port_is_assembled/0},
         {timeout, 60, fun a11b_put_then_stream_round_trips_within_scope/0},
@@ -68,7 +70,7 @@ a11b_put_then_stream_round_trips_within_scope() ->
         {Org, Ws} = tenant(Scope),
         AssetId = eb_pg_test_fixture:id(),
         Bytes = <<"eb03r-object-bytes">>,
-        {ok, Summary} = eb_asset_store:put_private(Org, Ws, #{
+        {ok, Summary} = put_fixture(Org, Ws, #{
             id => AssetId,
             object_hash => sha256_hex(Bytes),
             mime => <<"text/plain">>,
@@ -96,7 +98,7 @@ a11b_cross_org_stream_and_delete_fail() ->
         OtherOrg = maps:get(other_org_id, Scope),
         OtherWs = maps:get(other_workspace_id, Scope),
         AssetId = eb_pg_test_fixture:id(),
-        {ok, _} = eb_asset_store:put_private(Org, Ws, #{
+        {ok, _} = put_fixture(Org, Ws, #{
             id => AssetId,
             object_hash => sha256_hex(<<"scope">>),
             payload => <<"scoped-bytes">>
@@ -122,7 +124,7 @@ a11c_bottom_failures_are_propagated() ->
         %% (a) payload 非法（非 binary）⇒ 底层 {error, invalid_payload} 冒成契约错误
         ?assertEqual(
             {error, {object_store, invalid_payload}},
-            eb_asset_store:put_private(Org, Ws, #{
+            put_fixture(Org, Ws, #{
                 id => eb_pg_test_fixture:id(),
                 object_hash => sha256_hex(<<"x">>),
                 payload => 12345
@@ -131,7 +133,7 @@ a11c_bottom_failures_are_propagated() ->
         %% (b) payload 为空 ⇒ empty_payload
         ?assertEqual(
             {error, {object_store, empty_payload}},
-            eb_asset_store:put_private(Org, Ws, #{
+            put_fixture(Org, Ws, #{
                 id => eb_pg_test_fixture:id(),
                 object_hash => sha256_hex(<<"x">>),
                 payload => <<>>
@@ -140,11 +142,11 @@ a11c_bottom_failures_are_propagated() ->
         %% (c) descriptor 缺 id ⇒ 契约级错误（不触库）
         ?assertEqual(
             {error, invalid_descriptor},
-            eb_asset_store:put_private(Org, Ws, #{payload => <<"x">>})
+            put_fixture(Org, Ws, #{payload => <<"x">>})
         ),
         %% (d) 对象被绕过清除后 stream 必须报底层错误，不得返回空流
         AssetId = eb_pg_test_fixture:id(),
-        {ok, Summary} = eb_asset_store:put_private(Org, Ws, #{
+        {ok, Summary} = put_fixture(Org, Ws, #{
             id => AssetId,
             object_hash => sha256_hex(<<"gone">>),
             payload => <<"gone-bytes">>
@@ -169,7 +171,7 @@ delete_private_removes_the_object_only() ->
     try
         {Org, Ws} = tenant(Scope),
         AssetId = eb_pg_test_fixture:id(),
-        {ok, _} = eb_asset_store:put_private(Org, Ws, #{
+        {ok, _} = put_fixture(Org, Ws, #{
             id => AssetId,
             object_hash => sha256_hex(<<"del">>),
             payload => <<"to-be-deleted">>
@@ -218,3 +220,28 @@ tenant(Scope) ->
 
 sha256_hex(Bin) ->
     binary:encode_hex(crypto:hash(sha256, Bin), lowercase).
+
+%% Explicit fixture root: the stub performs no physical I/O, but metadata must
+%% still carry a valid frozen identity. This never changes production defaults.
+fixture_registry() ->
+    application:set_env(imboy, attachment_storage_registry, #{
+        version => 1,
+        upload_namespaces => #{<<"enterprise">> => <<"eb-unit-fixture">>},
+        roots => #{
+            <<"eb-unit-fixture">> => #{
+                driver => <<"disk">>,
+                namespace => <<"eb-unit-fixture">>,
+                endpoint => <<"file:///private/tmp/imboy-eb-unit-fixture">>,
+                container => <<"fixture">>
+            }
+        }
+    }).
+restore_registry({ok, R}) -> application:set_env(imboy, attachment_storage_registry, R);
+restore_registry(undefined) -> application:unset_env(imboy, attachment_storage_registry).
+put_fixture(Org, Ws, D) ->
+    Now = erlang:system_time(second),
+    Ctx = #{
+        issued_at => calendar:system_time_to_universal_time(Now, second),
+        expires_at => calendar:system_time_to_universal_time(Now + 300, second)
+    },
+    eb_asset_store:put_private(Org, Ws, D#{signature_context => Ctx}).

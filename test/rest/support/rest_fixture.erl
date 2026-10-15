@@ -24,36 +24,44 @@
 %% Must run first in init_per_suite. The alias subtree
 %% .ct/appalias/imboy/{ebin,priv} (built by the runner as VM startup -pa)
 %% makes code:priv_dir(imboy) resolvable in a differently named worktree;
-%% this helper now only forces the test/common build of eunit_runner
+%% this helper freezes synthetic limiter budgets before boot and forces
+%% the test/common build of eunit_runner
 %% (the app's ebin carries an unrelated src/lib eunit_runner that would
 %% otherwise shadow it and lack ct_suite_setup/1).
 -spec ensure_ct_priv_alias() -> ok.
 ensure_ct_priv_alias() ->
-    case os:getenv("REST_PROJECT_ROOT") of
-        false ->
-            ok;
-        Root ->
-            TestBeam = filename:join([Root, "test", "eunit_runner"]),
-            code:purge(eunit_runner),
-            code:delete(eunit_runner),
-            {module, eunit_runner} = code:load_abs(TestBeam, eunit_runner),
-            %% test/common ships STUB copies of product modules (a 35-line
-            %% config_ds whose get/2 always returns the default). CT can put
-            %% the test dir ahead of the alias subtree regardless of -pa
-            %% ordering, so path order alone is not trustworthy: load the
-            %% real ebin build by absolute path. cowboy_req_h is test-only
-            %% and has no ebin build; skip it.
-            lists:foreach(
-                fun(M) ->
-                    code:purge(M),
-                    code:delete(M),
-                    Beam = filename:join([Root, "ebin", atom_to_list(M)]),
-                    {module, M} = code:load_abs(Beam, M)
-                end,
-                [config_ds]
-            ),
-            ok
-    end.
+    ok =
+        case os:getenv("REST_PROJECT_ROOT") of
+            false ->
+                ok;
+            Root ->
+                TestBeam = filename:join([Root, "test", "eunit_runner"]),
+                code:purge(eunit_runner),
+                code:delete(eunit_runner),
+                {module, eunit_runner} = code:load_abs(TestBeam, eunit_runner),
+                %% test/common ships STUB copies of product modules (a 35-line
+                %% config_ds whose get/2 always returns the default). CT can put
+                %% the test dir ahead of the alias subtree regardless of -pa
+                %% ordering, so path order alone is not trustworthy: load the
+                %% real ebin build by absolute path. cowboy_req_h is test-only
+                %% and has no ebin build; skip it.
+                lists:foreach(
+                    fun(M) ->
+                        code:purge(M),
+                        code:delete(M),
+                        Beam = filename:join([Root, "ebin", atom_to_list(M)]),
+                        {module, M} = code:load_abs(Beam, M)
+                    end,
+                    [config_ds]
+                ),
+                ok
+        end,
+    %% 先加载应用，避免后续 application:load 覆盖首窗测试额度。
+    case application:load(imboy) of
+        ok -> ok;
+        {error, {already_loaded, imboy}} -> ok
+    end,
+    application:set_env(imboy, limiter_ip_rates, amplified_ip_rates()).
 
 -spec create_user(map()) -> map().
 create_user(Overrides) ->
@@ -290,17 +298,10 @@ await_device_active(Uid, Did, Attempts) ->
 %% which is why the old "raise the ceiling via throttle:setup" fixture
 %% hook must not come back.
 %%
-%% Authority-safe capacity raise, two layers:
-%%   1) application:set_env — records the amplified rules so any later
-%%      owner init (and the evidence of intent) carries them;
-%%   2) login_attempt_ds:set_ip_rates/1 — registers the amplified rule on
-%%      the live owner. HTTP scopes switch at the NEXT scope window
-%%      boundary (anchor-aligned; <= 60 s away) — the CURRENT window keeps
-%%      the boot-time rules, which sys.local.config already amplifies for
-%%      local/e2e (passport_per_ip 120/min, api_per_ip 3000/min). Suite
-%%      login volume (a handful of fixture users per suite) stays far
-%%      below that, and every window after the first boundary uses the
-%%      amplified rules registered here.
+%% ensure_ct_priv_alias freezes the amplified rules before application boot,
+%% independent of private sys.local.config. This live hook also records the
+%% rules for later owner init and registers a pending update on the current
+%% owner; HTTP rules still change only at the NEXT window boundary.
 %% Domain suites call this from init_per_suite. Rate-limit semantics are
 %% not under test here; per-request throttling behaviour is owned by
 %% throttle_middleware_tests (AC-14).

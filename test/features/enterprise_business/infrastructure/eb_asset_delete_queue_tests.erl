@@ -26,16 +26,14 @@ stale_ack_is_not_success_test_() ->
     drain_case(
         ok,
         <<"stale_token">>,
-        {error,
-            {object_queue_ack_failed,
-                {unexpected_ack_result, [#{<<"fn_v5_ack_eb">> => <<"stale_token">>}]}}}
+        {error, {ack_failed, {ack_rejected, <<"stale_token">>}}}
     ).
 
 ack_error_is_not_success_test_() ->
     drain_case(
         ok,
         {error, disconnected},
-        {error, {object_queue_ack_failed, disconnected}}
+        {error, {ack_failed, disconnected}}
     ).
 
 purge_reports_only_its_own_scope_failures_test_() ->
@@ -64,12 +62,22 @@ purge_reports_only_its_own_scope_failures_test_() ->
 
 drain_case(DeleteResult, AckResult, Expected) ->
     Calls = atomics:new(1, []),
-    Row = #{
-        <<"out_organization_id">> => 11,
-        <<"out_workspace_id">> => 22,
-        <<"out_asset_id">> => 33,
-        <<"out_object_key">> => <<"claimed-key">>
+    Frozen = #{
+        <<"storage_driver">> => <<"disk">>,
+        <<"storage_namespace">> => <<"test">>,
+        <<"storage_container">> => <<"assets">>,
+        <<"storage_locator_sha256">> => <<"digest">>
     },
+    Identity = #{driver => disk, key => <<"claimed-key">>},
+    Row = maps:merge(
+        maps:from_list([{<<"out_", Key/binary>>, Value} || {Key, Value} <- maps:to_list(Frozen)]),
+        #{
+            <<"out_organization_id">> => 11,
+            <<"out_workspace_id">> => 22,
+            <<"out_asset_id">> => 33,
+            <<"out_object_key">> => <<"claimed-key">>
+        }
+    ),
     ?WITH_MECKS(
         [
             {elib_pg, [
@@ -91,13 +99,22 @@ drain_case(DeleteResult, AckResult, Expected) ->
                         end
                 end}
             ]},
-            {eb_asset_store, [
-                {'delete_queued_object', 3, fun(11, 22, <<"claimed-key">>) -> DeleteResult end}
+            {attachment_storage, [
+                {'frozen_location', 2, fun(Key, ActualFrozen) ->
+                    ?assertEqual(<<"claimed-key">>, Key),
+                    ?assertEqual(Frozen, ActualFrozen),
+                    {ok, Identity}
+                end},
+                {'delete_snapshot', 1, fun(ActualIdentity) ->
+                    ?assertEqual(Identity, ActualIdentity),
+                    DeleteResult
+                end}
             ]}
         ],
         fun() ->
             ?assertEqual(Expected, eb_pg_asset_delete_queue:drain(99, 88, 2)),
-            ?assertEqual(1, meck:num_calls(eb_asset_store, delete_queued_object, '_')),
+            ?assertEqual(1, meck:num_calls(attachment_storage, frozen_location, '_')),
+            ?assertEqual(1, meck:num_calls(attachment_storage, delete_snapshot, '_')),
             ?assertEqual(
                 1,
                 meck:num_calls(

@@ -222,7 +222,8 @@ limiter_inflight_results_test_() ->
             ),
             RelFail(),
             FailResults = ColFail(),
-            ?assertEqual([5, 6, 7], [C || {ok, #{count := C}} <- FailResults]),
+            %% 并发 worker 的结果收集顺序不代表 owner 的提交顺序。
+            ?assertEqual([5, 6, 7], lists:sort([C || {ok, #{count := C}} <- FailResults])),
             {ok, _} = login_attempt_ds:check(I),
             %% 下一 check 锁定
             {ok, LockedSnap} = login_attempt_ds:check(I),

@@ -142,6 +142,8 @@ start(_Type, _Args) ->
     ok = ensure_listener_started(ListenerResult, StartMode),
     case imboy_sup:start_link() of
         {ok, Sup} ->
+            %% 显式启动空态策略仅在完整应用 start 时开放；child 重启不走此处。
+            ok = maybe_activate_limiter(),
             %% T2.0h: 总线就绪后挂载群组领域事件订阅者（通知桥接）。
             %% 容错：挂载失败不阻断 app 启动（总线为 sup child，通常已就绪）。
             _ = group_event_handler:attach(),
@@ -153,6 +155,13 @@ start(_Type, _Args) ->
             {ok, Sup};
         Other ->
             Other
+    end.
+
+maybe_activate_limiter() ->
+    case application:get_env(imboy, limiter_allow_empty_start, false) of
+        true -> login_attempt_ds:activate_empty(whereis(login_attempt_ds));
+        false -> ok;
+        Other -> erlang:error({invalid_config, limiter_allow_empty_start, Other})
     end.
 
 %% @doc 按启动配置决定是否自动迁移。

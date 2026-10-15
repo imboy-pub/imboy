@@ -17,6 +17,18 @@ run() ->
             secret_key => env("IMBOY_TEST_SECRET")
         },
         application:set_env(imboy, garage, Config),
+        application:set_env(imboy, attachment_storage_registry, #{
+            version => 1,
+            upload_namespaces => #{<<"enterprise">> => <<"eb-garage-fixture">>},
+            roots => #{
+                <<"eb-garage-fixture">> => #{
+                    driver => <<"garage">>,
+                    namespace => <<"eb-garage-fixture">>,
+                    endpoint => maps:get(endpoint, Config),
+                    container => maps:get(bucket, Config)
+                }
+            }
+        }),
         human_group_journey(H),
         S = cs_pg_test_fixture:new_scope(),
         ok = cs_pg_test_fixture:exec(
@@ -35,16 +47,16 @@ run() ->
         Ws = maps:get(workspace_id, S),
         FailedId = cs_pg_test_fixture:id(),
         ?assertEqual(
-            {error, {object_store, storage_not_configured}},
-            eb_asset_store:put_private(Org, Ws, #{
+            {error, location_changed},
+            put_fixture(Org, Ws, #{
                 id => FailedId,
                 payload => <<"x">>,
                 object_hash => eb_asset_content:sha256_hex(<<"x">>)
             })
         ),
-        {ok, #{status := pending_confirm}} = eb_asset_store:fetch_asset(Org, Ws, FailedId),
+        {error, not_found} = eb_asset_store:fetch_asset(Org, Ws, FailedId),
         application:set_env(imboy, eb_asset_object_store, invalid),
-        ?assertEqual({error, invalid_object_store}, eb_asset_store:put_private(Org, Ws, #{})),
+        ?assertEqual({error, invalid_object_store}, put_fixture(Org, Ws, #{})),
         io:format(
             "PASS: default Garage assembly; real PG presign/PUT/confirm/content, ACL, duplicate/concurrent PUT safety, metadata reservation, missing and invalid config~n"
         )
@@ -189,7 +201,7 @@ rollback_object(S) ->
     Id = cs_pg_test_fixture:id(),
     ?assertEqual(
         {error, invalid_asset_descriptor},
-        eb_asset_store:put_private(
+        put_fixture(
             Org, Ws, #{id => Id, payload => <<"synthetic rollback">>, mime => <<"text/plain">>}
         )
     ),
@@ -204,11 +216,16 @@ env(Name) -> list_to_binary(os:getenv(Name)).
 
 stub_regression() ->
     Previous = eb_pg_test_fixture:select_asset_stub(),
+    Registry = application:get_env(imboy, attachment_storage_registry),
     try
         ok = eunit:test(eb_asset_store_tests:cases({ok, synthetic}), [verbose])
     after
         eb_asset_object_stub:reset(),
-        eb_pg_test_fixture:restore_asset_store(Previous)
+        eb_pg_test_fixture:restore_asset_store(Previous),
+        case Registry of
+            {ok, R} -> application:set_env(imboy, attachment_storage_registry, R);
+            undefined -> application:unset_env(imboy, attachment_storage_registry)
+        end
     end,
     ?assertEqual(undefined, application:get_env(imboy, eb_asset_object_store)).
 
@@ -239,7 +256,7 @@ cleanup_recovery(S, Config) ->
     Ws = maps:get(workspace_id, S),
     Id = cs_pg_test_fixture:id(),
     Bytes = <<"synthetic expired pending cleanup">>,
-    {ok, _} = eb_asset_store:put_private(Org, Ws, #{
+    {ok, _} = put_fixture(Org, Ws, #{
         id => Id, payload => Bytes, object_hash => eb_asset_content:sha256_hex(Bytes)
     }),
     ok = cs_pg_test_fixture:exec(
@@ -331,7 +348,7 @@ cleanup_concurrency(S) ->
 expired_pending(Org, Ws) ->
     Id = cs_pg_test_fixture:id(),
     Bytes = <<"synthetic concurrent pending cleanup">>,
-    {ok, _} = eb_asset_store:put_private(Org, Ws, #{
+    {ok, _} = put_fixture(Org, Ws, #{
         id => Id, payload => Bytes, object_hash => eb_asset_content:sha256_hex(Bytes)
     }),
     ok = cs_pg_test_fixture:exec(
@@ -473,7 +490,7 @@ purge_confirm_after_commit() ->
         ?assertEqual(1, queue_count(Org, Ws)),
         ?assertEqual(
             {error, cleanup_pending},
-            eb_asset_store:put_private(Org, Ws, #{
+            put_fixture(Org, Ws, #{
                 id => Id, payload => Bytes, object_hash => eb_asset_content:sha256_hex(Bytes)
             })
         ),
@@ -597,3 +614,13 @@ run_contract_regressions() ->
     ok = eb_ports_tests:ports_have_explicit_frozen_contracts_test(),
     ok = eb_ports_tests:asset_port_callback_names_cannot_leak_storage_handle_test(),
     ok = eunit:test(eb_message_app_tests:cases({ok, undefined}), [verbose]).
+
+put_fixture(Org, Ws, D) ->
+    Now = erlang:system_time(second),
+    Ctx = #{
+        issued_at => calendar:system_time_to_universal_time(Now, second),
+        expires_at => calendar:system_time_to_universal_time(Now + 300, second)
+    },
+    eb_asset_store:put_private(
+        Org, Ws, maps:merge(#{mime => <<"application/octet-stream">>}, D#{signature_context => Ctx})
+    ).

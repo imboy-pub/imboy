@@ -460,7 +460,8 @@ do_login_by_code(Type, Account, Code, DType, Did) ->
                 %% 认证主体任何未预期异常：终态必达（no_count 兜底），
                 %% 否则 DOWN 会把账户域打成 degraded（保守但过重）。
                 Class:Reason:Stack ->
-                    login_attempt_ds:end_attempt(Ref, no_count),
+                    %% 已向上抛出原始异常，清理失败不覆盖该错误。
+                    _ = login_attempt_ds:end_attempt(Ref, no_count),
                     erlang:raise(Class, Reason, Stack)
             end
     end.
@@ -481,12 +482,10 @@ do_code_auth(Ref, Identity, Account, Code, User, DType, Did) ->
             do_code_consume(Ref, Identity, Account, Code, User, DType, Did);
         {error, locked, LockInfo} ->
             %% 锁定拒绝：不触碰验证码存储（consume 是观测点，AC-02）
-            login_attempt_ds:end_attempt(Ref, no_count),
-            {error, lock_error_msg(LockInfo)};
+            finish_login_error(Ref, no_count, lock_error_msg(LockInfo));
         {error, _Unavailable} ->
             %% 不得默认放行（F2 的另一半）：转服务不可用
-            login_attempt_ds:end_attempt(Ref, no_count),
-            {error, service_unavailable}
+            finish_login_error(Ref, no_count, service_unavailable)
     end.
 
 %% @private 过锁后消费验证码；consume 失败 = 凭据失败（C.2，含未知账户）。
@@ -504,11 +503,7 @@ do_code_consume(Ref, Identity, Account, Code, User, DType, Did) ->
         {ok, _} ->
             do_code_finish(Ref, Identity, User, DType, Did);
         {error, Msg} ->
-            %% 关键：验证码错误必须计数，否则 6 位码等于可无限尝试。
-            %% failure 先提交（可观测 locked），no_count 仅释放生命周期。
-            _ = login_security_logic:record_login_failure(Identity),
-            login_attempt_ds:end_attempt(Ref, no_count),
-            {error, Msg}
+            finish_login_error(Ref, failure, Msg)
     end.
 
 %% @private 验证码已消费（不可回滚），按账户状态收尾。
@@ -520,33 +515,24 @@ do_code_consume(Ref, Identity, Account, Code, User, DType, Did) ->
     DType :: binary(),
     Did :: binary()
 ) -> {ok, map()} | {{error, conflict}, map()} | {error, binary() | service_unavailable}.
-do_code_finish(Ref, Identity, User, DType, Did) ->
+do_code_finish(Ref, _Identity, User, DType, Did) ->
     Status = maps:get(<<"status">>, User, -2),
     case Status of
         -2 ->
-            login_attempt_ds:end_attempt(Ref, no_count),
-            {error, <<"账号不存在"/utf8>>};
+            finish_login_error(Ref, no_count, <<"账号不存在"/utf8>>);
         -1 ->
-            login_attempt_ds:end_attempt(Ref, no_count),
-            {error, <<"账号不存在或者已删除"/utf8>>};
+            finish_login_error(Ref, no_count, <<"账号不存在或者已删除"/utf8>>);
         0 ->
-            login_attempt_ds:end_attempt(Ref, no_count),
-            {error, <<"账号被禁用"/utf8>>};
+            finish_login_error(Ref, no_count, <<"账号被禁用"/utf8>>);
         _ when Status == 1; Status == 2 ->
             %% 成功点：reset 确认成功才签发（AC-17）；此前 reset 早于
             %% status 检查，禁用账户也会被清掉失败历史（F3b）。
-            case login_security_logic:record_login_success(Identity) of
-                ok ->
-                    login_attempt_ds:end_attempt(Ref, no_count),
-                    code_login_success(User, DType, Did);
-                {error, _Unavailable} ->
-                    %% code 已消费不可回滚 → 本次不给凭据，需重新取得有效码
-                    login_attempt_ds:end_attempt(Ref, no_count),
-                    {error, service_unavailable}
+            case login_attempt_ds:end_attempt(Ref, reset) of
+                ok -> code_login_success(User, DType, Did);
+                {error, _} -> {error, service_unavailable}
             end;
         _ ->
-            login_attempt_ds:end_attempt(Ref, no_count),
-            {error, <<"账号不存在"/utf8>>}
+            finish_login_error(Ref, no_count, <<"账号不存在"/utf8>>)
     end.
 
 %% @doc 验证码登录成功链：签发 + 审计 + 设备冲突检查。
@@ -602,7 +588,8 @@ do_login_verify(Type, Account, User, Pwd, DType, Did) ->
                     Result
             catch
                 Class:Reason:Stack ->
-                    login_attempt_ds:end_attempt(Ref, no_count),
+                    %% 已向上抛出原始异常，清理失败不覆盖该错误。
+                    _ = login_attempt_ds:end_attempt(Ref, no_count),
                     erlang:raise(Class, Reason, Stack)
             end
     end.
@@ -625,12 +612,10 @@ do_login_auth(Ref, Identity, User, Pwd, DType, Did) ->
         {ok, true} ->
             do_login_credential(Ref, Identity, User, Pwd, DType, Did);
         {error, locked, LockInfo} ->
-            login_attempt_ds:end_attempt(Ref, no_count),
-            {error, lock_error_msg(LockInfo)};
+            finish_login_error(Ref, no_count, lock_error_msg(LockInfo));
         {error, _Unavailable} ->
             %% 不得默认放行（F2 同款）：转服务不可用
-            login_attempt_ds:end_attempt(Ref, no_count),
-            {error, service_unavailable}
+            finish_login_error(Ref, no_count, service_unavailable)
     end.
 
 %% @private 已过锁定门，凭据校验与分类收尾。
@@ -645,31 +630,28 @@ do_login_auth(Ref, Identity, User, Pwd, DType, Did) ->
     {ok, map()}
     | {{error, conflict}, map()}
     | {error, binary() | service_unavailable}.
-do_login_credential(Ref, Identity, User, Pwd, DType, Did) ->
+do_login_credential(Ref, _Identity, User, Pwd, DType, Did) ->
     case verify_credential(Pwd, User) of
         {ok, User2} ->
             %% 成功点：reset 确认成功才签发（AC-17）。签发（login_resp/
             %% token）此前发生在 reset 之前，reset 失败时凭据已生成——
             %% 现在丢弃的是"尚未生成"的状态。
-            case login_security_logic:record_login_success(Identity) of
-                ok ->
-                    login_attempt_ds:end_attempt(Ref, no_count),
-                    password_login_success(User2, DType, Did);
-                {error, _Unavailable} ->
-                    login_attempt_ds:end_attempt(Ref, no_count),
-                    {error, service_unavailable}
+            case login_attempt_ds:end_attempt(Ref, reset) of
+                ok -> password_login_success(User2, DType, Did);
+                {error, _} -> {error, service_unavailable}
             end;
         {reject, Msg} ->
             %% 密码正确但 status 禁用/删除：不 reset、不计失败（C.2）
-            login_attempt_ds:end_attempt(Ref, no_count),
-            {error, Msg};
+            finish_login_error(Ref, no_count, Msg);
         {fail, Msg} ->
-            %% 凭据失败（密码错/查无用户，含未知账户）：failure 记账一次，
-            %% end_attempt(no_count) 仅释放生命周期（若用 end_attempt(failure)
-            %% 会再记一次——apply_outcome(failure) 自带记账，单次提交语义）。
-            _ = login_security_logic:record_login_failure(Identity),
-            login_attempt_ds:end_attempt(Ref, no_count),
-            {error, Msg}
+            finish_login_error(Ref, failure, Msg)
+    end.
+
+%% owner 确认终态后才返回业务拒绝；未知结果一律服务不可用。
+finish_login_error(Ref, Outcome, Msg) ->
+    case login_attempt_ds:end_attempt(Ref, Outcome) of
+        ok -> {error, Msg};
+        {error, _} -> {error, service_unavailable}
     end.
 
 %% @private 密码登录成功链：签发 + 审计 + 设备类型/冲突检查。

@@ -53,6 +53,10 @@ execute_authorized(Req, Env) ->
     %% 并把前缀命中折叠进 InOpenLi —— 这样既跳过 verify_sign，又能让下游
     %% auth_ds:condition/5 以「开放路由」放行（否则 condition 仍会因无 token 而 stop）。
     IsPaymentCallback = is_single_segment_route(Path, <<"/api/v1/payment/callback/">>),
+    %% Upload capability is verified by the gateway; direct PUT clients carry no login headers.
+    IsUploadGateway =
+        is_single_segment_route(Path, <<"/api/v1/attachment/gateway/">>) andalso
+            maps:get(handler, Env, undefined) =:= attachment_storage_gateway_handler,
     %% 频道 incoming webhook 同款范式：token 即凭证（:token 变量段无法在 open/0
     %% 精确枚举），限流/token 校验在 channel_webhook_logic:incoming/2 完成。
     IsChannelWebhook = is_single_segment_route(Path, <<"/api/v1/webhook/channel/">>),
@@ -89,7 +93,7 @@ execute_authorized(Req, Env) ->
     IsWebSeatPath = IsSeatConsoleRoute orelse is_web_seat_path(Path),
     InOpenLi =
         (not IsSeatConsoleRoute) andalso (not IsEnterpriseTenantPath) andalso
-            (IsPaymentCallback orelse IsChannelWebhook orelse IsMcpPath orelse
+            (IsPaymentCallback orelse IsUploadGateway orelse IsChannelWebhook orelse IsMcpPath orelse
                 lists:member(Path, OpenLi)),
     InOptionLi = (not IsSeatConsoleRoute) andalso lists:member(Path, OptionLi),
     Switch = ec_cnv:to_binary(config_ds:env(api_auth_switch, <<"on">>)),

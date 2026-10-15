@@ -94,6 +94,9 @@ session_renew(OrgId, Params) ->
                                 Base = v5_status_view(AssetId, Row),
                                 {ok, Base#{
                                     upload_ref => Token,
+                                    upload => #{
+                                        method => <<"PUT">>, token => Token, expires_at => Committed
+                                    },
                                     expires_at => Committed,
                                     renewed => true,
                                     can_resume => true,
@@ -112,24 +115,54 @@ session_renew(OrgId, Params) ->
 
 %% 会话定位 + 授权门（复用 presign 同一 scope 门），然后执行回调。
 with_authorized_session(OrgId, Params, Fun) ->
-    Ws = maps:get(workspace_id, Params, undefined),
-    Auth = port(Params, auth),
-    Store = port(Params, store),
-    case presign_args_actor(Params) of
+    case actor_scope(Params) of
         {error, _} = Err ->
             Err;
-        {ok, Args0} ->
-            Args = Args0#{ws => Ws},
-            case presign_scope_check(Auth, Store, OrgId, Args) of
-                ok -> locate_session(OrgId, Params, Fun);
-                {error, _} = Err -> Err
-            end
+        {ok, Actor} ->
+            locate_session(OrgId, Params, fun(Org, Ws, AssetId, Row, Cid) ->
+                Registration = registration_map(Row),
+                Expected = registration_subject(Org, Actor, Params),
+                case
+                    maps:get(<<"subject">>, Registration, undefined) =:= Expected andalso
+                        maps:get(client_upload_id, Params, maps:get(<<"client_upload_id">>, Row)) =:=
+                            maps:get(<<"client_upload_id">>, Row)
+                of
+                    false ->
+                        {error, not_found};
+                    true ->
+                        Args = #{
+                            actor => Actor, ws => Ws, conv => maps:get(<<"conversation_id">>, Row)
+                        },
+                        case
+                            presign_scope_check(port(Params, auth), port(Params, store), Org, Args)
+                        of
+                            ok -> Fun(Org, Ws, AssetId, Row, Cid);
+                            {error, _} = Err -> Err
+                        end
+                end
+            end)
     end.
 
-presign_args_actor(Params) ->
-    case actor_scope(Params) of
-        {error, _} = Err -> Err;
-        {ok, Actor} -> {ok, #{actor => Actor}}
+registration_map(Row) ->
+    case maps:get(<<"upload_registration">>, Row, undefined) of
+        B when is_binary(B) -> jsone:decode(B);
+        M when is_map(M) -> M;
+        _ -> #{}
+    end.
+
+registration_subject(Org, Actor, Params) ->
+    Base = #{
+        <<"kind">> =>
+            case maps:get(kind, Actor) of
+                contact -> <<"visitor_session">>;
+                member -> <<"seat">>
+            end,
+        <<"principal">> => integer_to_binary(maps:get(id, Actor)),
+        <<"org_id">> => integer_to_binary(Org)
+    },
+    case maps:get(kind, Actor) of
+        contact -> Base#{<<"session_id">> => maps:get(visitor_session_id, Params, undefined)};
+        member -> Base
     end.
 
 locate_session(OrgId, Params, Fun) ->
@@ -141,7 +174,7 @@ locate_session(OrgId, Params, Fun) ->
             run_session_fun(OrgId, Ws, AssetId, Fun);
         {false, Cid} when is_binary(Cid), byte_size(Cid) =:= 36 ->
             case lookup_asset_by_cid(OrgId, Ws, Cid) of
-                {ok, AssetId} -> run_session_fun(OrgId, Ws, AssetId, Fun);
+                {ok, RecoveredId} -> run_session_fun(OrgId, Ws, RecoveredId, Fun);
                 {error, _} = Err -> Err
             end;
         _ ->
@@ -163,7 +196,6 @@ v5_status_view(AssetId, Row) ->
     #{
         asset_id => AssetId,
         client_upload_id => maps:get(<<"client_upload_id">>, Row, undefined),
-        object_key => maps:get(<<"object_key">>, Row),
         session_state => State,
         session_deadline => eb_deadline_sec(Row),
         upload_expires_at => eb_expiry_sec(Row),
@@ -176,10 +208,19 @@ v5_status_view(AssetId, Row) ->
     }.
 
 session_state_of(Row) ->
+    case maps:get(<<"lifecycle_state">>, Row, <<"live">>) of
+        <<"live">> -> session_status_of(Row);
+        _ -> <<"deleted">>
+    end.
+
+session_status_of(Row) ->
     case maps:get(<<"status">>, Row) of
         pending_confirm -> <<"registered">>;
+        <<"pending_confirm">> -> <<"registered">>;
         active -> <<"confirmed">>;
+        <<"active">> -> <<"confirmed">>;
         deleted -> <<"deleted">>;
+        <<"deleted">> -> <<"deleted">>;
         Other -> Other
     end.
 
@@ -189,10 +230,13 @@ eb_deadline_sec(Row) ->
 eb_expiry_sec(Row) ->
     ts_to_sec(maps:get(<<"upload_expires_at">>, Row)).
 
+ts_to_sec(N) when is_integer(N) -> N;
+ts_to_sec(null) ->
+    undefined;
 ts_to_sec(undefined) ->
     undefined;
-ts_to_sec({{_, _, _}, {_, _, _}} = Dt) ->
-    calendar:datetime_to_gregorian_seconds(Dt) - 62167219200;
+ts_to_sec({Date, {H, M, Seconds}}) when is_number(Seconds) ->
+    calendar:datetime_to_gregorian_seconds({Date, {H, M, trunc(Seconds)}}) - 62167219200;
 ts_to_sec(Bin) when is_binary(Bin) ->
     case
         try
@@ -228,16 +272,17 @@ v5_session_mint(Org, Params, AssetId, Row, Now, ExpiresAt) ->
             M when is_integer(M) -> M;
             _ -> undefined
         end,
-    Actor = actor_from_row(Row),
+    {ok, Actor} = actor_scope(Params),
     Aad = eb_asset_upload_ref:aad(Org, maps:get(<<"workspace_id">>, Row), Conv, Msg),
     Claims = maps:merge(
         #{
             asset_id => AssetId,
+            upload_subject => maps:get(<<"subject">>, registration_map(Row)),
             object_hash => maps:get(<<"object_hash">>, Row),
             mime => maps:get(<<"mime">>, Row),
             size_bytes => maps:get(<<"size_bytes">>, Row),
             file_name => maps:get(<<"file_name">>, Row),
-            retain_until => undefined,
+            retain_until => ts_to_sec(maps:get(<<"retain_until">>, Row, undefined)),
             conversation_id => Conv,
             message_id => Msg,
             issued_at => Now,
@@ -246,14 +291,6 @@ v5_session_mint(Org, Params, AssetId, Row, Now, ExpiresAt) ->
         actor_claim(Actor)
     ),
     eb_asset_upload_ref:mint(Aad, Claims, Crypto, KeyRef).
-
-%% 主行审计字段可能为 NULL（uploaded_by_user_id SET NULL）：续期签发按
-%% 已撤销语义 fail-closed，仅 actor 仍可解析时才 mint。
-actor_from_row(Row) ->
-    case maps:get(<<"uploaded_by_user_id">>, Row) of
-        Id when is_integer(Id) -> #{kind => member, id => Id};
-        _ -> {error, actor_revoked}
-    end.
 
 %% ===================================================================
 %% 1. presign：签发不透明上传凭证
@@ -436,10 +473,16 @@ presign_mint(OrgId, Args, Retain, Params) ->
             %% V5（02 §137/§143 + F20）：带 client_upload_id 的会话先登记
             %% （预建 pending 主行 + fn_v5_register_eb 填会话列），登记失败
             %% 不 mint 任何能力（失败关闭）；旧客户端（无 UUID）行为不变。
-            case maybe_v5_register(OrgId, Args, Params, AssetId, Now, ExpiresAt) of
+            case
+                maybe_v5_register(
+                    OrgId, Args, Params#{retain_until => Retain}, AssetId, Now, ExpiresAt
+                )
+            of
                 {error, _} = Err ->
                     Err;
-                ok ->
+                {ok, Row} when is_map(Row) ->
+                    resume_registered(OrgId, Params, Row, Now);
+                {ok, undefined} ->
                     Aad = eb_asset_upload_ref:aad(
                         OrgId, maps:get(ws, Args), maps:get(conv, Args), msg_or_undefined(Params)
                     ),
@@ -474,30 +517,19 @@ presign_mint(OrgId, Args, Retain, Params) ->
 maybe_v5_register(OrgId, Args, Params, AssetId, Now, ExpiresAt) ->
     case maps:get(client_upload_id, Params, undefined) of
         undefined ->
-            ok;
+            {ok, undefined};
         Cid when is_binary(Cid), byte_size(Cid) =:= 36 ->
-            Ws = maps:get(ws, Args),
-            ObjectKey = eb_pg_asset_meta:object_key(OrgId, Ws, AssetId),
             Actor = maps:get(actor, Args),
-            SubjectKind =
-                case maps:get(kind, Actor, member) of
-                    contact -> <<"visitor_session">>;
-                    _ -> <<"seat">>
-                end,
             Registration = #{
-                <<"subject">> => #{
-                    <<"kind">> => SubjectKind,
-                    <<"principal">> => integer_to_binary(maps:get(id, Actor)),
-                    <<"org_id">> => integer_to_binary(OrgId)
-                },
+                <<"subject">> => registration_subject(OrgId, Actor, Params),
                 <<"declaration">> => #{
                     <<"mime">> => maps:get(mime, Args),
                     <<"object_hash">> => maps:get(hash, Args),
                     <<"size_bytes">> => maps:get(size, Args),
-                    <<"file_name">> => maps:get(file_name, Args, undefined),
+                    <<"file_name">> => json_nullable(maps:get(file_name, Args, undefined)),
                     <<"conversation_id">> => maps:get(conv, Args),
-                    <<"message_id">> => msg_or_undefined(Params),
-                    <<"retain_until">> => maps:get(retain_until, Args, undefined)
+                    <<"message_id">> => json_nullable(msg_or_undefined(Params)),
+                    <<"retain_until">> => json_nullable(maps:get(retain_until, Params, undefined))
                 }
             },
             Descriptor = #{
@@ -507,36 +539,68 @@ maybe_v5_register(OrgId, Args, Params, AssetId, Now, ExpiresAt) ->
                 size_bytes => maps:get(size, Args),
                 file_name => maps:get(file_name, Args, undefined),
                 conversation_id => maps:get(conv, Args),
-                message_id => msg_or_undefined(Params)
+                message_id => msg_or_undefined(Params),
+                business_identity_id => maps:get(business_identity_id, Params, undefined),
+                retain_until =>
+                    case maps:get(retain_until, Params, undefined) of
+                        R when is_integer(R) -> R * 1000;
+                        _ -> undefined
+                    end,
+                uploaded_by_user_id =>
+                    case maps:get(kind, Actor) of
+                        member -> maps:get(id, Actor);
+                        contact -> undefined
+                    end
             },
-            case eb_pg_asset_meta:insert_asset(OrgId, Ws, Descriptor) of
-                {ok, _Row} ->
-                    Deadline = Now + ?V5_EB_SESSION_DEADLINE_SEC,
-                    case
-                        eb_pg_asset_meta:register_v5(
-                            OrgId,
-                            Ws,
-                            AssetId,
-                            ObjectKey,
-                            Cid,
-                            Registration,
-                            SubjectKind,
-                            Deadline,
-                            ExpiresAt
-                        )
-                    of
-                        {ok, _} -> ok;
-                        {error, Reason} -> {error, {v5_registration_failed, Reason}}
-                    end;
-                {error, Reason} ->
-                    {error, {v5_registration_failed, Reason}}
+            Ws = maps:get(ws, Args),
+            case
+                eb_pg_asset_meta:register_session_v5(
+                    OrgId,
+                    Ws,
+                    Descriptor,
+                    Cid,
+                    Registration,
+                    {Now + ?V5_EB_SESSION_DEADLINE_SEC, ExpiresAt}
+                )
+            of
+                {ok, Id} -> eb_pg_asset_meta:v5_session(OrgId, Ws, Id);
+                {error, _} = Err -> Err
             end;
-        Other ->
-            {error, {invalid_client_upload_id, Other}}
+        _ ->
+            {error, {invalid_argument, client_upload_id}}
     end.
 
-%% 凭证 actor claim：按主体种类二选一落 claims（D6；与 upload_ref 的
-%% actor 互斥校验配套）。
+json_nullable(undefined) -> null;
+json_nullable(Value) -> Value.
+
+resume_registered(Org, Params, Row, Now) ->
+    Id = maps:get(<<"id">>, Row),
+    case session_state_of(Row) of
+        <<"confirmed">> ->
+            {ok, v5_status_view(Id, Row)};
+        <<"registered">> ->
+            case Now < eb_deadline_sec(Row) andalso Now < eb_expiry_sec(Row) of
+                true ->
+                    Expiry = eb_expiry_sec(Row),
+                    case v5_session_mint(Org, Params, Id, Row, Now, Expiry) of
+                        {ok, Token} ->
+                            {ok, (v5_status_view(Id, Row))#{
+                                upload_ref => Token,
+                                expires_at => Expiry,
+                                upload => #{
+                                    method => <<"PUT">>, token => Token, expires_at => Expiry
+                                }
+                            }};
+                        {error, _} = Err ->
+                            Err
+                    end;
+                false ->
+                    {error, session_expired}
+            end;
+        _ ->
+            {error, session_not_renewable}
+    end.
+
 actor_claim(#{kind := member, id := Id}) -> #{actor_user_id => Id};
 actor_claim(#{kind := contact, id := Id}) -> #{actor_contact_id => Id}.
 
@@ -564,6 +628,7 @@ upload_ttl(Params) ->
 presign_view(AssetId, Args, Retain, ExpiresAt, Token) ->
     #{
         asset_id => AssetId,
+        session_state => <<"registered">>,
         upload_ref => Token,
         object_hash => maps:get(hash, Args),
         mime => maps:get(mime, Args),
@@ -696,6 +761,15 @@ asset_put_private(OrgId, Ws, Payload, Claims, Params) ->
                 size_bytes => maps:get(size_bytes, Claims),
                 file_name => maps:get(file_name, Claims, undefined),
                 payload => Payload,
+                upload_subject => maps:get(upload_subject, Claims, undefined),
+                signature_context => #{
+                    issued_at => calendar:system_time_to_universal_time(
+                        maps:get(issued_at, Claims), second
+                    ),
+                    expires_at => calendar:system_time_to_universal_time(
+                        maps:get(expires_at, Claims), second
+                    )
+                },
                 conversation_id => maps:get(conversation_id, Claims, undefined),
                 message_id => maps:get(message_id, Claims, undefined),
                 business_identity_id => IdentityId,
@@ -781,7 +855,7 @@ confirm_by_asset_id(OrgId, Ws, AssetId, Actor, Params) ->
     Asset = port(Params, asset),
     case Asset:fetch_asset(OrgId, Ws, AssetId) of
         {ok, Row} ->
-            case row_actor_authorized(Row, Actor) of
+            case row_actor_authorized(Row, Actor, Params, OrgId) of
                 {error, _} = Err ->
                     Err;
                 ok ->
@@ -803,6 +877,26 @@ confirm_by_asset_id(OrgId, Ws, AssetId, Actor, Params) ->
 %% 行审计 actor 比对（open_ref 的 actor_claim_value=:=actor_value 同口径）：
 %% 成员主体必须与行 uploaded_by_user_id 逐字相等；访客主体（contact）无
 %% 行字段可比，交由 scope_check_by_claims 的会话归属门裁决。
+row_actor_authorized(Row, Actor, Params, Org) ->
+    case maps:get(upload_registration, Row, undefined) of
+        undefined ->
+            row_actor_authorized(Row, Actor);
+        null ->
+            row_actor_authorized(Row, Actor);
+        Value ->
+            Reg =
+                case Value of
+                    B when is_binary(B) -> jsone:decode(B);
+                    M -> M
+                end,
+            case
+                maps:get(<<"subject">>, Reg, undefined) =:= registration_subject(Org, Actor, Params)
+            of
+                true -> ok;
+                false -> {error, not_found}
+            end
+    end.
+
 row_actor_authorized(Row, Actor) ->
     case {actor_value(Actor), maps:get(uploaded_by_user_id, Row, undefined)} of
         {{member, Id}, RowId} when is_integer(RowId) ->
@@ -832,10 +926,10 @@ claims_from_row(Row, Actor) ->
 %% 状态分派：pending_confirm → 校验链；active → 幂等回读（重放返回同一
 %% asset 视图与 hold_count，审计/跃迁只在首确认发生一次）；其余 conflict。
 confirm_dispatch_status(OrgId, Ws, Row, Claims, Params) ->
-    case maps:get(status, Row, undefined) of
-        pending_confirm ->
+    case {maps:get(lifecycle_state, Row, <<"live">>), maps:get(status, Row, undefined)} of
+        {<<"live">>, pending_confirm} ->
             confirm_checks(OrgId, Ws, Row, Claims, Params);
-        active ->
+        {<<"live">>, active} ->
             replay_view(OrgId, Ws, Row, Params);
         _Other ->
             {error, conflict}

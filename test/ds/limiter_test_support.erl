@@ -81,6 +81,7 @@ restart_owner() ->
             end
     end,
     await_owner(Old, 300),
+    ok = login_attempt_ds:activate_empty(whereis(login_attempt_ds)),
     true = login_attempt_ds:ready(),
     ok.
 
@@ -109,6 +110,7 @@ attach_owner() ->
         undefined ->
             {ok, _} = supervisor:restart_child(imboy_sup, login_attempt_ds),
             await_owner(undefined, 300),
+            ok = login_attempt_ds:activate_empty(whereis(login_attempt_ds)),
             true = login_attempt_ds:ready();
         _ ->
             ok
@@ -121,13 +123,9 @@ await_owner(OldPid, 0) ->
 await_owner(OldPid, N) ->
     case whereis(login_attempt_ds) of
         P when is_pid(P), P =/= OldPid ->
-            case login_attempt_ds:ready() of
-                true ->
-                    P;
-                false ->
-                    timer:sleep(10),
-                    await_owner(OldPid, N - 1)
-            end;
+            %% 同步确认 init 完成；就绪批准由显式测试装配完成。
+            _ = sys:get_state(P),
+            P;
         _ ->
             timer:sleep(10),
             await_owner(OldPid, N - 1)

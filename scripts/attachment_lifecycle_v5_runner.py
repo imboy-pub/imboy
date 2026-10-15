@@ -10,6 +10,7 @@ This is the plan's state/test tooling only; it never edits the frozen plan.
 """
 import argparse
 import copy
+import datetime
 import fcntl
 import hashlib
 import json
@@ -196,6 +197,8 @@ def _fields(receipt):
 
 def v_leaf_set(expected_ids, actual_ids):
     e, a = set(expected_ids), set(actual_ids)
+    if len(expected_ids) != len(e) or len(actual_ids) != len(a):
+        return False, "duplicate leaf identity"
     if e == a:
         return True, "exact"
     missing = e - a
@@ -237,7 +240,7 @@ V["phase"] = v_phase
 def v_raw_output(receipt):
     r = _fields(receipt)
     path = r.get("raw_output_path")
-    if not path or not os.path.exists(path):
+    if not isinstance(path, str) or not path or not os.path.isfile(path):
         return False, "raw output missing"
     if sha256_file(path) != r.get("raw_output_sha256"):
         return False, "raw output sha mismatch"
@@ -252,6 +255,8 @@ def v_execution_counts(receipt):
     exit_code = r.get("exit_code")
     ex, pa, fa, sk = (r.get("executed", 0), r.get("passed", 0),
                       r.get("failed", 0), r.get("skipped", 0))
+    if any(type(value) is not int or value < 0 for value in (exit_code, ex, pa, fa, sk)):
+        return False, "execution counts must be nonnegative integers"
     if exit_code != 0:
         return False, "exit %r != 0" % exit_code
     if ex < 1:
@@ -654,11 +659,16 @@ def cmd_admit(args):
 
 
 def _compute_ready(state, contract):
+    candidate = state.get("verification_candidate")
+    if candidate and candidate_errors(candidate):
+        return []
     ready = []
     tasks = {t["task_id"]: t for t in contract["tasks"]}
     gates = contract["wave_gates"]
     for tid, t in tasks.items():
         st = state["tasks"].get(tid, {})
+        if not candidate and t.get("wave") != "W0":
+            continue
         if st.get("state") != "NOT_STARTED":
             continue
         deps_ok = all(state["tasks"].get(d, {}).get("state") == "PASS" for d in t.get("dependencies", []))
@@ -670,7 +680,10 @@ def _compute_ready(state, contract):
                 break
         gate_ok = True
         if prev_gate:
-            gate_ok = state["gates"].get(prev_gate) == "PASS"
+            gate_ok = (state["gates"].get(prev_gate) == "PASS"
+                       and state.get("gate_candidates", {}).get(prev_gate)
+                       == state.get("verification_candidate")
+                       and bool(state.get("verification_candidate")))
         wave_ok = wave == "W0" or gate_ok
         if deps_ok and wave_ok:
             claims = {"files": t.get("files", []), "case_ids": t.get("case_ids", []),
@@ -685,6 +698,9 @@ def cmd_next(args):
     run_dir = _run_dir_from(args)
     state = _require_state(run_dir)
     contract = load_contract(state["plan_dir"])
+    candidate = state.get("verification_candidate")
+    if candidate and candidate_errors(candidate):
+        die(EXIT_CONTRACT, "candidate drift; no tasks ready")
     ready = _compute_ready(state, contract)
     print(json.dumps({"ready": ready, "count": len(ready)}, ensure_ascii=False, indent=1))
     return EXIT_OK
@@ -729,6 +745,9 @@ def cmd_resume(args):
         ok, manifest_sha = verify_plan_manifest(state["plan_dir"])
         if not ok or manifest_sha != state["plan_manifest_sha256"]:
             die(20, "plan manifest changed since admission")
+        candidate = state.get("verification_candidate")
+        if candidate and candidate_errors(candidate):
+            die(EXIT_CONTRACT, "candidate drift; resume cannot release tasks")
         events = store.load_events()
         committed = {tid: s for tid, s in state["tasks"].items() if s.get("state") == "PASS"}
         report = {
@@ -751,59 +770,285 @@ def cmd_resume(args):
         lock.release()
 
 
-def cmd_verify(args):
+LEAF_FIELDS = ("ac_id", "domain", "driver", "entrypoint", "ordering_or_fault", "schema_phase")
+REPO_NAMES = ("imboy", "imboyapp", "imboyadmin")
+
+
+def _valid_digest(value, length=64):
+    return (isinstance(value, str) and len(value) == length
+            and all(c in "0123456789abcdef" for c in value))
+
+
+def candidate_errors(candidate):
+    """Compare the frozen verification input with the actual worktree bytes."""
+    errors = []
+    if not isinstance(candidate, dict):
+        return ["candidate must be an object"]
+    roots = candidate.get("repository_paths", {})
+    heads = candidate.get("heads", {})
+    if (not isinstance(roots, dict) or not isinstance(heads, dict)
+            or set(roots) != set(REPO_NAMES) or set(heads) != set(REPO_NAMES)
+            or any(not isinstance(v, str) for v in roots.values())):
+        return ["candidate requires three repository paths and full heads"]
+    actual_files = {}
+    for repo in REPO_NAMES:
+        root = os.path.realpath(roots[repo])
+        try:
+            head = subprocess.check_output(
+                ["git", "-C", root, "rev-parse", "HEAD"], text=True,
+                stderr=subprocess.DEVNULL, timeout=5).strip()
+            if not _valid_digest(heads[repo], 40) or head != heads[repo]:
+                errors.append("candidate HEAD drift: " + repo)
+        except (OSError, subprocess.SubprocessError):
+            errors.append("candidate repository unavailable: " + repo)
+    files = candidate.get("owned_paths_sha256", {})
+    if not isinstance(files, dict) or not files:
+        return errors + ["candidate owned file manifest missing"]
+    for repo in REPO_NAMES:
+        try:
+            changes = subprocess.check_output(["git", "-C", roots[repo], "status",
+                "--porcelain", "--untracked-files=all"], text=True, timeout=5)
+            if changes:
+                errors.append("candidate worktree must be clean: " + repo)
+        except (OSError, subprocess.SubprocessError):
+            errors.append("cannot inspect candidate status: " + repo)
+    for name, digest in files.items():
+        if not isinstance(name, str):
+            errors.append("candidate file path must be string")
+            continue
+        try:
+            repo, rel = name.split("/", 1)
+            path = os.path.realpath(os.path.join(roots[repo], rel))
+            root = os.path.realpath(roots[repo])
+            if os.path.commonpath([root, path]) != root or not _valid_digest(digest):
+                raise ValueError("invalid path or digest")
+            actual_files[name] = sha256_file(path)
+            if actual_files[name] != digest:
+                errors.append("candidate file drift: " + name)
+        except (KeyError, ValueError, OSError):
+            errors.append("candidate file unavailable: " + name)
+    if sha256_bytes(canonical_json(actual_files).encode()) != candidate.get("owned_tree_digest"):
+        errors.append("candidate owned tree digest mismatch")
+    migration_dir = os.path.join(roots["imboy"], "priv", "migrations")
+    migrations = {}
+    try:
+        for name in sorted(os.listdir(migration_dir)):
+            if name.endswith((".up.sql", ".down.sql")):
+                migrations[name] = sha256_file(os.path.join(migration_dir, name))
+        if not migrations or sha256_bytes(canonical_json(migrations).encode()) != candidate.get("migration_digest"):
+            errors.append("candidate migration digest mismatch")
+    except OSError:
+        errors.append("candidate migrations unavailable")
+    return errors
+
+
+def receipt_errors(leaf, expected_leaf, task_id, case_id, candidate, run_dir, allowlist,
+                   contract=None):
+    errors = []
+    if not isinstance(leaf, dict):
+        return ["leaf receipt must be an object"]
+    if leaf.get("required") is not True:
+        errors.append("required must be boolean true")
+    if leaf.get("task_id") != task_id or leaf.get("case_id") != case_id:
+        errors.append("task/case identity mismatch")
+    for field in LEAF_FIELDS:
+        if leaf.get(field) != expected_leaf.get(field):
+            errors.append("leaf identity mismatch: " + field)
+    for validator, values in ((v_execution_counts, (leaf,)),
+                              (v_binding, (leaf, candidate)),
+                              (v_raw_output, (leaf,))):
+        ok, why = validator(*values)
+        if not ok:
+            errors.append(why)
+    for field in ("owned_tree_digest", "migration_digest", "plan_manifest_sha256"):
+        if not _valid_digest(leaf.get(field)):
+            errors.append("missing/invalid binding: " + field)
+    raw = leaf.get("raw_output_path", "")
+    if not isinstance(raw, str) or os.path.commonpath([
+            os.path.realpath(run_dir), os.path.realpath(raw or ".")]) != os.path.realpath(run_dir):
+        errors.append("raw output outside run directory")
+    for field in ("command", "cwd", "request_ids", "resource_ids"):
+        if not leaf.get(field):
+            errors.append("missing execution field: " + field)
+    try:
+        start = datetime.datetime.fromisoformat(leaf["started_at"].replace("Z", "+00:00"))
+        end = datetime.datetime.fromisoformat(leaf["finished_at"].replace("Z", "+00:00"))
+        deadline = expected_leaf.get("observation_deadline_seconds", 1800)
+        if not start.tzinfo or not end.tzinfo or not 0 <= (end - start).total_seconds() <= deadline:
+            raise ValueError("invalid observation interval")
+    except (KeyError, TypeError, ValueError, AttributeError):
+        errors.append("invalid measured observation timestamps")
+    observations = leaf.get("oracle_observations", {})
+    for field in ("pre_db_state", "pre_object_hash", "action", "expected_http_semantics",
+                  "expected_db_delta", "expected_object_state", "proof_actor"):
+        if not isinstance(observations, dict) or not observations.get(field):
+            errors.append("missing scenario observation: " + field)
+    if leaf.get("oracle_result") != "PASS":
+        errors.append("scenario oracle did not measure PASS")
+    actor = leaf.get("actor_provenance", {})
+    if not isinstance(actor, dict) or actor.get("kind") not in ("real", "targeted-contract"):
+        errors.append("missing/invalid actor provenance")
+    elif leaf.get("driver") in ("garage", "disk"):
+        if actor.get("kind") != "real" or actor.get("driver") != leaf["driver"]:
+            errors.append("real driver provenance mismatch")
+    if not isinstance(allowlist, dict):
+        allowlist = {}
+    resource_ids = leaf.get("resource_ids")
+    if (not isinstance(resource_ids, list)
+            or any(not isinstance(value, str) for value in resource_ids)):
+        errors.append("invalid resource_ids")
+        resource_ids = []
+    resources = {value for values in allowlist.values() if isinstance(values, list)
+                 for value in values if isinstance(value, str)}
+    resource_kind = actor.get("resource_kind") if isinstance(actor, dict) else None
+    resource_id = actor.get("resource_id") if isinstance(actor, dict) else None
+    ok, why = v_resource({"kind": resource_kind, "id": resource_id or ""}, allowlist)
+    if not ok or resource_id not in resource_ids:
+        errors.append("actor resource category mismatch: " + why)
+    if resource_kind == "disk_root" and isinstance(resource_id, str):
+        prefix = allowlist.get("disk_root")
+        if (not isinstance(prefix, str) or os.path.commonpath([
+                os.path.realpath(prefix), os.path.realpath(resource_id)]) != os.path.realpath(prefix)):
+            errors.append("disk resource outside registered root")
+    if any(value not in resources and value != resource_id for value in resource_ids):
+        errors.append("unregistered resource provenance")
+    source_kind = (contract or {}).get("case_registry", {}).get(case_id, {}).get("source_kind")
+    if source_kind == "real-required" and expected_leaf.get("domain") != "plan":
+        if not isinstance(actor, dict) or actor.get("kind") != "real":
+            errors.append("required real execution cannot use a targeted-contract actor")
+    need_device = case_id in ("W6-02/flutter-recovery-real", "W6-02/e2e-compat", "W6-02/ac08")
+    need_browser = case_id in ("W6-02/admin-recovery-real", "W6-02/e2e-compat", "W6-02/ac08")
+    for needed, field, kind in ((need_device, "device_provenance", "physical"),
+                                (need_browser, "browser_provenance", "real-browser")):
+        if needed:
+            proof = leaf.get(field, {})
+            if (not isinstance(proof, dict) or proof.get("kind") != kind
+                    or proof.get("resource_id") not in allowlist.get(field, [])
+                    or type(proof.get("process_id")) is not int or proof["process_id"] <= 0):
+                errors.append("missing registered live " + field)
+    try:
+        with open(raw) as stream:
+            observation = json.load(stream)
+        identity_fields = ("task_id", "case_id") + LEAF_FIELDS
+        if (not isinstance(observation, dict)
+                or any(observation.get(k) != leaf.get(k) for k in identity_fields)
+                or observation.get("oracle_observations") != observations
+                or observation.get("candidate_heads") != candidate.get("heads")
+                or not isinstance(observation.get("assertions"), list)
+                or not observation["assertions"]
+                or any(not isinstance(v, dict) or not isinstance(v.get("id"), str)
+                       or not v["id"] or v.get("passed") is not True
+                       for v in observation["assertions"])):
+            errors.append("raw structured observations/assertions mismatch")
+    except (OSError, TypeError, ValueError):
+        errors.append("raw output is not structured scenario observation")
+    surface_cases = (contract or {}).get("upload_surface_contract", {}).get("cases", [])
+    source_case = expected_leaf.get("source_case_ref", case_id)
+    if source_case in surface_cases:
+        proof = leaf.get("entrypoint_provenance", {})
+        if (not isinstance(proof, dict) or proof.get("entrypoint") != leaf.get("entrypoint")
+                or any(not proof.get(k) for k in ("route", "method", "handler", "request_id"))
+                or proof.get("request_id") not in leaf.get("request_ids", [])):
+            errors.append("missing matching real upload entrypoint provenance")
+    return errors
+
+
+def cmd_verify(args, held_lock=False):
+    """Read-only verification; a suite flag alone never seals a scenario PASS."""
     run_dir = _run_dir_from(args)
-    state = _require_state(run_dir)
-    contract = load_contract(state["plan_dir"])
-    gate = args.gate
-    if gate not in contract["wave_gates"]:
-        die(2, "unknown gate %r (G0..G6)" % gate)
-    gi = contract["wave_gates"][gate]
-    fails = []
-    for tid in gi["requires_tasks"]:
-        if state["tasks"].get(tid, {}).get("state") != "PASS":
-            fails.append("%s not PASS" % tid)
-    prev = gi.get("previous_gate")
-    if prev and state["gates"].get(prev) != "PASS":
-        fails.append("previous gate %s not PASS" % prev)
-    # exact leaf coverage from sealed evidence
-    ev_root = os.path.join(run_dir, "evidence")
-    for tid in gi["requires_tasks"]:
-        for cid in task_case_ids(contract, tid) or []:
-            expected = leaf_ids_for_case(contract, cid)
-            case_dir = os.path.join(ev_root, tid, cid.split("/", 1)[-1])
-            actual = []
-            if os.path.isdir(case_dir):
-                for fn in os.listdir(case_dir):
-                    if fn.endswith(".json"):
-                        with open(os.path.join(case_dir, fn)) as fh:
-                            leaf = json.load(fh)
-                        actual.append("|".join(str(leaf.get(k)) for k in
-                                       ("ac_id", "domain", "driver", "entrypoint",
-                                        "ordering_or_fault", "schema_phase")))
-                        okv, why = V["execution_counts"](leaf)
-                        if not okv:
-                            fails.append("%s leaf %s: %s" % (cid, fn[:18], why))
-            okv, why = V["leaf_set"](expected, actual)
-            if not okv:
-                fails.append("%s: %s" % (cid, why))
-    if fails:
-        print(json.dumps({"gate": gate, "result": "FAIL", "fails": fails}, indent=1))
-        return EXIT_NOGO if all("not PASS" in f for f in fails) else EXIT_CONTRACT
-    # mark gate pass (holder-only mutation)
     lock = RunLock(run_dir)
-    if not lock.acquire_nb():
-        die(75, "BLOCKED_EXTERNAL: cannot mutate gate state without lock")
+    if not held_lock and not lock.acquire_nb():
+        die(EXIT_BLOCKED, "BLOCKED_EXTERNAL: verifier cannot acquire run lock")
     try:
         state = _require_state(run_dir)
-        state["gates"][gate] = "PASS"
-        st = StateStore(run_dir)
-        st.append_event("gate_pass", {"gate": gate})
-        st.write_snapshot(state)
+        contract = load_contract(state["plan_dir"])
+        gate = args.gate
+        if gate not in contract["wave_gates"]:
+            die(EXIT_USAGE, "unknown gate %r (G0..G6)" % gate)
+        fails = []
+        manifest_ok, manifest_hash = verify_plan_manifest(state["plan_dir"])
+        if not manifest_ok or manifest_hash != state.get("plan_manifest_sha256"):
+            fails.append("frozen plan manifest mismatch")
+        candidate = state.get("verification_candidate", {})
+        if not candidate:
+            fails.append("current frozen verification candidate missing; historical receipts cannot be rebound")
+        else:
+            fails.extend(candidate_errors(candidate))
+            if candidate.get("plan_manifest_sha256") != manifest_hash:
+                fails.append("candidate plan binding mismatch")
+        auth_path = state.get("authorization_path", "")
+        if not os.path.isfile(auth_path) or sha256_file(auth_path) != state.get("authorization_sha256"):
+            fails.append("authorization original missing or hash mismatch; recovery admission required")
+        gates = []
+        current = gate
+        while current:
+            if current in gates:
+                fails.append("cyclic gate dependency")
+                break
+            gates.append(current)
+            current = contract["wave_gates"][current].get("previous_gate")
+        for gate_id in reversed(gates):
+            for tid in contract["wave_gates"][gate_id]["requires_tasks"]:
+                if state["tasks"].get(tid, {}).get("state") != "PASS":
+                    fails.append(tid + " not PASS")
+                for cid in task_case_ids(contract, tid) or []:
+                    expected = contract["expected_leaf_matrix"][cid]
+                    by_id = {tuple(leaf.get(k) for k in LEAF_FIELDS): leaf for leaf in expected}
+                    case_dir = os.path.join(run_dir, "evidence", tid, cid.split("/", 1)[1])
+                    actual = []
+                    if os.path.isdir(case_dir):
+                        for fn in sorted(os.listdir(case_dir)):
+                            if not (fn.startswith("leaf-") and fn.endswith(".json")):
+                                continue
+                            try:
+                                with open(os.path.join(case_dir, fn)) as fh:
+                                    leaf = json.load(fh)
+                                identity = tuple(leaf.get(k) for k in LEAF_FIELDS)
+                                actual.append("|".join(map(str, identity)))
+                                if identity not in by_id:
+                                    fails.append(cid + ": unexpected leaf " + fn)
+                                    continue
+                                issues = receipt_errors(leaf, by_id[identity], tid, cid, candidate,
+                                                        run_dir, state.get("resource_allowlist", {}), contract)
+                                fails.extend(cid + " " + fn + ": " + why for why in issues)
+                            except (OSError, ValueError, TypeError, AttributeError) as exc:
+                                fails.append(cid + " " + fn + ": malformed receipt " + type(exc).__name__)
+                    ok, why = v_leaf_set(leaf_ids_for_case(contract, cid), actual)
+                    if not ok:
+                        fails.append(cid + ": " + why)
+        if candidate:
+            fails.extend(candidate_errors(candidate))
+        print(json.dumps({"gate": gate, "result": "FAIL" if fails else "PASS",
+                          "fail_count": len(fails), "fails": fails[:50],
+                          "state_updated": False}, indent=1))
+        return EXIT_CONTRACT if fails else EXIT_OK
+    finally:
+        if not held_lock:
+            lock.release()
+
+
+def cmd_accept_gate(args):
+    run_dir = _run_dir_from(args)
+    lock = RunLock(run_dir)
+    if not lock.acquire_nb():
+        die(EXIT_BLOCKED, "accept-gate cannot acquire run lock")
+    try:
+        result = cmd_verify(args, held_lock=True)
+        if result != EXIT_OK:
+            return result
+        state = _require_state(run_dir)
+        errors = candidate_errors(state.get("verification_candidate", {}))
+        if errors:
+            return EXIT_CONTRACT
+        state["gates"][args.gate] = "PASS"
+        state.setdefault("gate_candidates", {})[args.gate] = copy.deepcopy(state["verification_candidate"])
+        store = StateStore(run_dir)
+        store.append_event("gate_artifacts_accepted", {"gate": args.gate,
+            "candidate": state["verification_candidate"]})
+        store.write_snapshot(state)
+        return EXIT_OK
     finally:
         lock.release()
-    print(json.dumps({"gate": gate, "result": "PASS"}))
-    return EXIT_OK
 
 
 # ---------------------------------------------------------------- self-test
@@ -1050,10 +1295,31 @@ def cmd_task(args):
             die(2, "unknown state %r" % to)
         if to not in TRANSITIONS[cur["state"]]:
             die(20, "illegal transition %s -> %s" % (cur["state"], to))
+        now = time.time()
+        if to == "RUNNING":
+            limit = contract.get("retry_policy", {}).get("task_attempts_total_max", 5)
+            if cur.get("attempt", 0) >= limit:
+                die(EXIT_NOGO, "task attempt budget exhausted")
+            started = cur.get("task_started_at", now)
+            timeouts = contract.get("timeouts", {})
+            seconds = timeouts.get("task_overrides", {}).get(
+                args.task_id, timeouts.get("task_seconds", 28800))
+            deadline = cur.get("task_deadline", started + seconds)
+            if now >= deadline:
+                die(EXIT_NOGO, "persisted task deadline exhausted")
+            cur["task_started_at"] = started
+            cur["task_deadline"] = deadline
+        if to == "PASS":
+            # PASS cannot be supplied as an operator assertion while proofs are absent.
+            candidate = state.get("verification_candidate", {})
+            if not candidate or candidate_errors(candidate):
+                die(EXIT_CONTRACT, "task PASS needs the current verified candidate")
+            if not cur.get("case_results") or not cur.get("commit_vector"):
+                die(EXIT_CONTRACT, "task PASS needs measured case results and commit vector")
+            die(EXIT_CONTRACT, "task PASS requires sealed artifact acceptance; manual PASS is disabled")
         cur["state"] = to
         if to in ("RUNNING",):
             cur["attempt"] = cur.get("attempt", 0) + 1
-            cur["task_started_at"] = time.time()
         if args.case_results:
             with open(args.case_results) as fh:
                 cur["case_results"] = json.load(fh)
@@ -1067,6 +1333,122 @@ def cmd_task(args):
                                        "attempt": cur.get("attempt", 0)})
         st.write_snapshot(state)
         print(json.dumps({"task": args.task_id, "state": to, "attempt": cur.get("attempt", 0)}))
+        return EXIT_OK
+    finally:
+        lock.release()
+
+
+def _task_artifacts(state, contract, task_id, run_dir):
+    candidate = state.get("verification_candidate", {})
+    errors = candidate_errors(candidate) if candidate else ["current candidate missing"]
+    counts = {}
+    for cid in task_case_ids(contract, task_id) or []:
+        expected = contract["expected_leaf_matrix"][cid]
+        index = {tuple(v[k] for k in LEAF_FIELDS): v for v in expected}
+        case_dir = os.path.join(run_dir, "evidence", task_id, cid.split("/", 1)[1])
+        actual = []
+        total = dict(executed=0, passed=0, failed=0, skipped=0, exit_code=0)
+        for name in sorted(os.listdir(case_dir)) if os.path.isdir(case_dir) else []:
+            if not (name.startswith("leaf-") and name.endswith(".json")):
+                continue
+            try:
+                with open(os.path.join(case_dir, name)) as fh:
+                    row = json.load(fh)
+                identity = tuple(row.get(k) for k in LEAF_FIELDS)
+                actual.append("|".join(map(str, identity)))
+                if identity not in index:
+                    errors.append(cid + ": unexpected leaf")
+                    continue
+                errors.extend(receipt_errors(row, index[identity], task_id, cid,
+                                             candidate, run_dir, state.get("resource_allowlist", {}), contract))
+                for field in ("executed", "passed", "failed", "skipped"):
+                    if type(row.get(field)) is int:
+                        total[field] += row[field]
+            except (OSError, ValueError, TypeError, AttributeError):
+                errors.append(cid + ": malformed leaf")
+        ok, why = v_leaf_set(leaf_ids_for_case(contract, cid), actual)
+        if not ok:
+            errors.append(cid + ": " + why)
+        counts[cid] = total
+    return errors, counts
+
+
+def _accepted_vector_errors(vector, candidate):
+    errors = []
+    if not isinstance(vector, dict) or set(vector) != set(REPO_NAMES):
+        return ["commit vector must contain all three repositories"]
+    for repo in REPO_NAMES:
+        entry = vector[repo]
+        if not isinstance(entry, dict):
+            errors.append("commit vector entry must be object: " + repo)
+            continue
+        commit, parent = entry.get("commit"), entry.get("parent")
+        if not _valid_digest(commit, 40) or not _valid_digest(parent, 40):
+            errors.append("full commit/parent SHA required: " + repo)
+            continue
+        if commit != candidate.get("heads", {}).get(repo):
+            errors.append("commit vector not final candidate: " + repo)
+            continue
+        if entry.get("unchanged") is True and commit == parent:
+            continue
+        try:
+            parents = subprocess.check_output([
+                "git", "-C", candidate["repository_paths"][repo], "show", "-s",
+                "--format=%P", commit], text=True, timeout=5).strip().split()
+            if parent not in parents:
+                errors.append("commit parent mismatch: " + repo)
+        except (KeyError, OSError, subprocess.SubprocessError):
+            errors.append("cannot inspect commit: " + repo)
+    return errors
+
+
+def cmd_accept_task(args):
+    """Accept measured artifacts after the serialized commit vector is complete."""
+    run_dir = _run_dir_from(args)
+    lock = RunLock(run_dir)
+    if not lock.acquire_nb():
+        die(EXIT_BLOCKED, "accept-task cannot acquire run lock")
+    try:
+        state = _require_state(run_dir)
+        cur = state["tasks"].get(args.task_id, {})
+        if cur.get("state") != "COMMITTING":
+            die(EXIT_CONTRACT, "accept-task requires COMMITTING")
+        contract = load_contract(state["plan_dir"])
+        deadline = cur.get("task_deadline")
+        attempt = cur.get("attempt")
+        limit = contract.get("retry_policy", {}).get("task_attempts_total_max", 5)
+        if (type(deadline) not in (int, float) or not 0 < deadline < float("inf")
+                or time.time() >= deadline):
+            die(EXIT_NOGO, "persisted task deadline missing or exhausted")
+        if type(attempt) is not int or not 1 <= attempt <= limit:
+            die(EXIT_NOGO, "invalid or exhausted task attempt budget")
+        errors, counts = _task_artifacts(state, contract, args.task_id, run_dir)
+        ok, plan_hash = verify_plan_manifest(state["plan_dir"])
+        if not ok or plan_hash != state.get("plan_manifest_sha256"):
+            errors.append("plan manifest mismatch")
+        auth = state.get("authorization_path", "")
+        if not os.path.isfile(auth) or sha256_file(auth) != state.get("authorization_sha256"):
+            errors.append("authorization original unavailable")
+        with open(args.commit_vector) as fh:
+            vector = json.load(fh)
+        candidate = state.get("verification_candidate", {})
+        errors.extend(_accepted_vector_errors(vector, candidate))
+        errors.extend(candidate_errors(candidate))
+        final_ok, final_hash = verify_plan_manifest(state["plan_dir"])
+        if (not final_ok or final_hash != plan_hash
+                or candidate.get("plan_manifest_sha256") != final_hash):
+            errors.append("candidate/current plan binding mismatch")
+        if time.time() >= deadline:
+            errors.append("persisted task deadline exhausted during acceptance")
+        if errors:
+            print(json.dumps({"result": "FAIL", "fails": errors[:30], "fail_count": len(errors)}))
+            return EXIT_CONTRACT
+        cur.update(state="PASS", case_results=counts, commit_vector=vector)
+        store = StateStore(run_dir)
+        store.append_event("task_artifacts_accepted", {"task": args.task_id,
+                           "candidate": state["verification_candidate"], "commit_vector": vector})
+        store.write_snapshot(state)
+        print(json.dumps({"task": args.task_id, "state": "PASS"}))
         return EXIT_OK
     finally:
         lock.release()
@@ -1092,6 +1474,10 @@ def main(argv):
     vf.add_argument("--run-dir")
     vf.add_argument("--gate", required=True)
     vf.set_defaults(func=cmd_verify)
+    ag = sub.add_parser("accept-gate")
+    ag.add_argument("--run-dir", required=True)
+    ag.add_argument("--gate", required=True)
+    ag.set_defaults(func=cmd_accept_gate)
     tk = sub.add_parser("task")
     tk.add_argument("--run-dir")
     tk.add_argument("--task-id", required=True)
@@ -1100,6 +1486,11 @@ def main(argv):
     tk.add_argument("--commit-vector")
     tk.add_argument("--blocked-reason")
     tk.set_defaults(func=cmd_task)
+    accept = sub.add_parser("accept-task")
+    accept.add_argument("--run-dir", required=True)
+    accept.add_argument("--task-id", required=True)
+    accept.add_argument("--commit-vector", required=True)
+    accept.set_defaults(func=cmd_accept_task)
     hl = sub.add_parser("_hold-lock")
     hl.add_argument("--run-dir")
     hl.set_defaults(func=cmd_hold_lock)
@@ -1107,7 +1498,12 @@ def main(argv):
     if not getattr(args, "func", None):
         ap.print_usage()
         return EXIT_USAGE
-    return args.func(args)
+    try:
+        return args.func(args)
+    except (OSError, ValueError, TypeError, AttributeError, KeyError) as exc:
+        print(json.dumps({"result": "CONTRACT_CONFLICT",
+                          "error": type(exc).__name__}), file=sys.stderr)
+        return EXIT_CONTRACT
 
 
 if __name__ == "__main__":

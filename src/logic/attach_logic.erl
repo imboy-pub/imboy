@@ -15,6 +15,7 @@
 %%%
 
 -export([presign/5, presign/6, confirm/5, view_url/2, download/1]).
+-export([reauthorize_upload_session/2]).
 -export([authorize/2]).
 
 -ifdef(TEST).
@@ -88,7 +89,12 @@ presign_authorized(Uid, FileName, MimeType, Scope, ScopeRef, ClientUploadId) ->
             Registration = #{
                 <<"filename">> => FileName,
                 <<"mime">> => MimeType,
-                <<"scope">> => Scope
+                <<"scope">> => Scope,
+                <<"scope_ref">> =>
+                    case ScopeRef of
+                        undefined -> null;
+                        _ -> ScopeRef
+                    end
             },
             RegResult =
                 try
@@ -110,36 +116,10 @@ presign_authorized(Uid, FileName, MimeType, Scope, ScopeRef, ClientUploadId) ->
                 end,
             case RegResult of
                 {ok, Session} ->
-                    %% V5 新会话（有 client_upload_id）不发可变内容直传 URL：
-                    %% put 能力是绑定 key/mime、以登记冻结 expires_at 为界的
-                    %% 受控网关 token（02 §14）。legacy 会话（无 UUID 旧客户端）
-                    %% 保留直传 URL 兼容。
-                    Base =
-                        case maps:get(client_upload_id, Session, undefined) of
-                            undefined ->
-                                PutUrl = elib_oss:presign_put_for_key(
-                                    Bucket, ObjectKey, MimeType, ?PUT_EXPIRES
-                                ),
-                                #{
-                                    <<"put_url">> => PutUrl,
-                                    <<"object_key">> => ObjectKey,
-                                    <<"expires_at">> => erlang:system_time(second) + ?PUT_EXPIRES
-                                };
-                            Cid ->
-                                FrozenExpiry = maps:get(expires_at, Session),
-                                {ok, Capability} = imboy_jwt:issue_upload_capability(
-                                    ObjectKey, MimeType, FrozenExpiry
-                                ),
-                                #{
-                                    <<"put_url">> => gateway_put_url(Cid, Capability),
-                                    <<"object_key">> => ObjectKey,
-                                    <<"expires_at">> => FrozenExpiry,
-                                    <<"upload_capability">> => Capability,
-                                    <<"gateway">> => true,
-                                    <<"client_upload_id">> => Cid
-                                }
-                        end,
-                    {ok, maybe_public_url(Scope, ObjectKey, Base)};
+                    legacy_upload_url(
+                        ClientUploadId,
+                        presign_session(Session, ObjectKey, Bucket, MimeType, Scope)
+                    );
                 {error, RegReason2} ->
                     %% fail-closed：无登记对象、无 URL；客户端同 ID 重试恢复。
                     ?ERROR_LOG([
@@ -153,9 +133,117 @@ presign_authorized(Uid, FileName, MimeType, Scope, ScopeRef, ClientUploadId) ->
             E
     end.
 
+%% Old clients expect an absolute PUT URL and need no knowledge of session UUIDs.
+legacy_upload_url(undefined, {ok, #{<<"gateway">> := true, <<"put_url">> := Path} = Data}) ->
+    Base = config_ds:env(base_url, <<>>),
+    case uri_string:parse(Base) of
+        #{scheme := Scheme, host := Host} when
+            (Scheme =:= <<"http">> orelse Scheme =:= <<"https">>), Host =/= <<>>
+        ->
+            Origin = string:trim(Base, trailing, "/"),
+            {ok, Data#{<<"put_url">> => <<Origin/binary, Path/binary>>}};
+        _ ->
+            {error, upload_base_url_required}
+    end;
+legacy_upload_url(_, Result) ->
+    Result.
+
+presign_session(#{client_upload_id := undefined}, ObjectKey, Bucket, MimeType, Scope) ->
+    PutUrl = elib_oss:presign_put_for_key(Bucket, ObjectKey, MimeType, ?PUT_EXPIRES),
+    Base = #{
+        <<"put_url">> => PutUrl,
+        <<"object_key">> => ObjectKey,
+        <<"expires_at">> => erlang:system_time(second) + ?PUT_EXPIRES
+    },
+    {ok, maybe_public_url(Scope, ObjectKey, Base)};
+presign_session(Session, _ProposedKey, _Bucket, MimeType, Scope) ->
+    Key = maps:get(object_key, Session),
+    State = maps:get(session_state, Session),
+    case State of
+        <<"confirmed">> ->
+            {ok, #{
+                <<"object_key">> => Key,
+                <<"session_state">> => State,
+                <<"client_upload_id">> => maps:get(client_upload_id, Session),
+                <<"can_resume">> => false,
+                <<"retry_action">> => <<"none">>
+            }};
+        <<"registered">> ->
+            presign_registered(Session, Key, MimeType, Scope);
+        _ ->
+            {error, session_not_renewable}
+    end.
+
+presign_registered(
+    #{
+        storage_driver := Driver,
+        storage_namespace := Ns,
+        storage_container := Container,
+        storage_locator_sha256 := Digest
+    } = Session,
+    Key,
+    MimeType,
+    Scope
+) when
+    is_binary(Driver),
+    is_binary(Ns),
+    is_binary(Container),
+    is_binary(Digest),
+    byte_size(Ns) > 0,
+    byte_size(Container) > 0,
+    byte_size(Digest) =:= 64
+->
+    Expiry = maps:get(expires_at, Session),
+    Deadline = maps:get(deadline, Session),
+    Now = erlang:system_time(second),
+    case
+        is_integer(Expiry) andalso is_integer(Deadline) andalso Now < Expiry andalso Now < Deadline
+    of
+        false ->
+            {error, session_expired};
+        true ->
+            Cid = maps:get(client_upload_id, Session),
+            {ok, Capability} = imboy_jwt:issue_upload_capability(Key, MimeType, Expiry),
+            Base = #{
+                <<"put_url">> => gateway_put_url(Cid, Capability),
+                <<"object_key">> => Key,
+                <<"expires_at">> => Expiry,
+                <<"upload_capability">> => Capability,
+                <<"gateway">> => true,
+                <<"client_upload_id">> => Cid,
+                <<"session_state">> => <<"registered">>
+            },
+            {ok, maybe_public_url(Scope, Key, Base)}
+    end;
+presign_registered(_, _, _, _) ->
+    {error, historical_location_unverified}.
+
 %% ===================================================================
 %% confirm：写归属守卫 + 上传权校验 + HEAD 核实 + 落库
 %% ===================================================================
+
+%% Recovery uses the original declaration, never a caller-supplied replacement scope.
+reauthorize_upload_session(Uid, #{
+    <<"creator_user_id">> := Uid,
+    <<"scope">> := Scope,
+    <<"upload_registration">> := #{<<"subject">> := Subject, <<"declaration">> := Declaration}
+}) when
+    is_integer(Uid), Uid > 0, is_map(Subject), is_map(Declaration)
+->
+    Expected = #{<<"kind">> => <<"user">>, <<"principal">> => integer_to_binary(Uid)},
+    case Subject =:= Expected andalso maps:get(<<"scope">>, Declaration, undefined) =:= Scope of
+        true ->
+            Ref =
+                case maps:get(<<"scope_ref">>, Declaration, undefined) of
+                    null -> undefined;
+                    V -> V
+                end,
+            can_upload(Uid, Scope, Ref);
+        false ->
+            {error, forbidden}
+    end;
+reauthorize_upload_session(_, _) ->
+    {error, forbidden}.
 
 -spec confirm(integer(), binary(), binary(), binary() | undefined, map()) ->
     {ok, map()}
@@ -177,7 +265,7 @@ confirm(Uid, ObjectKey, Scope, ScopeRef, Meta) ->
                     %% fn_v5_register_pending 固定）走字节校验 + 原子会话确认；
                     %% 旧客户端 pending（无 V5 列）与无 pending 行保持 legacy。
                     case v5_session(ObjectKey) of
-                        {ok, true} -> verify_and_save_v5(Uid, ObjectKey, Scope, ScopeRef, Meta);
+                        {ok, true} -> confirm_registered(Uid, ObjectKey, Scope, ScopeRef, Meta);
                         {ok, false} -> verify_and_save(Uid, ObjectKey, Scope, ScopeRef, Meta);
                         {error, _} = E -> E
                     end;
@@ -189,6 +277,35 @@ confirm(Uid, ObjectKey, Scope, ScopeRef, Meta) ->
         {error, R} ->
             {error, R}
     end.
+
+confirm_registered(Uid, Key, Scope, Ref, Meta) ->
+    case attach_pending_repo:status_lookup(Key) of
+        {ok, Row} ->
+            case session_request_matches(Uid, Scope, Ref, Row) of
+                true ->
+                    case reauthorize_upload_session(Uid, Row) of
+                        ok -> verify_and_save_v5(Uid, Key, Scope, Ref, Meta);
+                        {error, _} = E -> E
+                    end;
+                false ->
+                    {error, scope_conflict}
+            end;
+        {error, _} = E ->
+            E
+    end.
+
+session_request_matches(Uid, Scope, Ref, #{
+    <<"creator_user_id">> := Uid,
+    <<"scope">> := Scope,
+    <<"upload_registration">> := #{<<"subject">> := Subject, <<"declaration">> := Declaration}
+}) when
+    is_map(Declaration)
+->
+    Subject =:= #{<<"kind">> => <<"user">>, <<"principal">> => integer_to_binary(Uid)} andalso
+        maps:get(<<"scope">>, Declaration, undefined) =:= Scope andalso
+        normalize_ref(maps:get(<<"scope_ref">>, Declaration, undefined)) =:= normalize_ref(Ref);
+session_request_matches(_, _, _, _) ->
+    false.
 
 %% V5 会话判别：仅 client_upload_id 非空的登记行（迁移 178 列集）；
 %% 旧 add/4 写入的 pending 行各 V5 列为 NULL，继续 legacy 链。
@@ -213,32 +330,42 @@ v5_session(ObjectKey) ->
 -spec verify_and_save_v5(integer(), binary(), binary(), binary() | undefined, map()) ->
     {ok, map()} | {error, term()}.
 verify_and_save_v5(Uid, ObjectKey, Scope, ScopeRef, Meta) ->
-    Bucket = elib_oss:get_bucket(Scope),
-    case elib_oss:head_object(Bucket, ObjectKey) of
+    case v5_object_bytes(ObjectKey, Scope) of
+        {ok, Sha256, RealSize, RealType} ->
+            case v5_meta_guard(Scope, RealType, RealSize, Meta) of
+                ok -> do_save_v5(Uid, ObjectKey, Scope, ScopeRef, Meta, RealSize, RealType, Sha256);
+                {error, _} = E -> E
+            end;
         {error, not_found} ->
             {error, object_not_found};
-        {error, R} ->
-            ?ERROR_LOG(["attach_logic v5 confirm head_object failed: ", Bucket, ObjectKey, R]),
-            {error, R};
-        {ok, #{content_type := RealType}} ->
-            case elib_oss:object_sha256(Bucket, ObjectKey) of
-                {error, not_found} ->
-                    {error, object_not_found};
-                {error, R2} ->
-                    ?ERROR_LOG([
-                        "attach_logic v5 confirm read_bytes failed: ", Bucket, ObjectKey, R2
-                    ]),
-                    {error, R2};
-                {ok, Sha256, RealSize} ->
-                    case v5_meta_guard(Scope, RealType, RealSize, Meta) of
-                        ok ->
-                            do_save_v5(
-                                Uid, ObjectKey, Scope, ScopeRef, Meta, RealSize, RealType, Sha256
-                            );
-                        {error, Reason} ->
-                            {error, Reason}
-                    end
-            end
+        {error, _} = E ->
+            E
+    end.
+
+v5_object_bytes(Key, _Scope) ->
+    case attachment_storage:session_location(Key) of
+        {ok, legacy_unknown} ->
+            {error, historical_location_unverified};
+        {ok, #{driver := garage, mime := Mime} = I} ->
+            case attachment_storage_garage:read_snapshot(I) of
+                {ok, Bytes} ->
+                    {ok, binary:encode_hex(crypto:hash(sha256, Bytes), lowercase), byte_size(Bytes),
+                        Mime};
+                {error, _} = E ->
+                    E
+            end;
+        {ok, #{driver := disk, mime := Mime} = I} ->
+            case attachment_storage_disk:read_snapshot(I) of
+                {ok, Bytes} ->
+                    {ok, binary:encode_hex(crypto:hash(sha256, Bytes), lowercase), byte_size(Bytes),
+                        Mime};
+                {error, _} = E ->
+                    E
+            end;
+        {error, _} = E ->
+            E;
+        _ ->
+            {error, unsupported_driver}
     end.
 
 %% 与 legacy verify_and_save 同口径的白名单/上限/教学复核；V5 失败不删对象。
@@ -346,6 +473,14 @@ confirm_v5_tx(Conn, ObjectKey, Scope, _Cipher, Now, Uid, Attach) ->
         {ok, not_found} ->
             throw({abort_tx, session_vanished});
         {ok, Session} ->
+            case
+                session_request_matches(
+                    Uid, Scope, maps:get(<<"scope_ref">>, Attach, undefined), Session
+                )
+            of
+                true -> ok;
+                false -> throw({abort_tx, scope_conflict})
+            end,
             %% 持锁重查 pin（锁前哈希结果只用于事务外 GET，此处为裁决基准）
             case pin_of(Session) of
                 #{<<"sha256">> := PinSha, <<"size_bytes">> := PinSize} ->
@@ -368,7 +503,16 @@ confirm_v5_tx(Conn, ObjectKey, Scope, _Cipher, Now, Uid, Attach) ->
             end,
             %% metadata insert-if-absent + scope/cipher 冲突复核 + 首审计一次
             %% （save_confirmed_tx 复用：重放不递增 referer，审计只在首行）
-            ok = attachment_ds:save_confirmed_tx(Conn, Now, Uid, [Attach]),
+            Location = maps:with(
+                [
+                    <<"storage_driver">>,
+                    <<"storage_namespace">>,
+                    <<"storage_container">>,
+                    <<"storage_locator_sha256">>
+                ],
+                Session
+            ),
+            ok = attachment_ds:save_confirmed_tx(Conn, Now, Uid, [maps:merge(Attach, Location)]),
             case attachment_repo:confirmation_row_tx(Conn, ObjectKey) of
                 {ok, #{<<"id">> := Id}} ->
                     case attach_pending_repo:confirm_session_tx(Conn, ObjectKey, Id) of
@@ -720,9 +864,16 @@ view_url(Uid, ObjectKey) ->
     end.
 
 %% Group/channel/moment URLs are checked again on every HTTP read.
+authorized_view(Uid, #{<<"storage_driver">> := <<"disk">>}, ObjectKey) ->
+    ticket_view(Uid, ObjectKey);
 authorized_view(Uid, #{<<"scope">> := Scope}, ObjectKey) when
     Scope =:= <<"group">>; Scope =:= <<"channel">>; Scope =:= <<"moment">>
 ->
+    ticket_view(Uid, ObjectKey);
+authorized_view(_, Rec, ObjectKey) ->
+    sign_view(Rec, ObjectKey).
+
+ticket_view(Uid, ObjectKey) ->
     case attachment_download_ticket:issue(Uid, ObjectKey, config_ds:env(jwt_key, <<>>)) of
         {ok, Ticket} ->
             Base = config_ds:env(base_url, <<>>),
@@ -741,9 +892,7 @@ authorized_view(Uid, #{<<"scope">> := Scope}, ObjectKey) when
             end;
         _ ->
             {error, forbidden}
-    end;
-authorized_view(_, Rec, ObjectKey) ->
-    sign_view(Rec, ObjectKey).
+    end.
 
 download(Ticket) ->
     case attachment_download_ticket:verify(Ticket, config_ds:env(jwt_key, <<>>)) of
@@ -753,19 +902,29 @@ download(Ticket) ->
 
 download_authorized(Uid, ObjectKey) ->
     case attachment_ds:find_by_path(ObjectKey) of
-        {ok, #{<<"scope">> := Scope} = Rec} when
-            Scope =:= <<"group">>; Scope =:= <<"channel">>; Scope =:= <<"moment">>
-        ->
+        {ok, Rec} ->
             case authorize(Uid, Rec) of
-                true -> sign_view(Rec, ObjectKey);
+                true -> download_target(Rec, ObjectKey);
                 false -> {error, forbidden}
             end;
         _ ->
             {error, forbidden}
     end.
+download_target(#{<<"storage_driver">> := <<"disk">>} = Rec, Key) ->
+    case attachment_storage:frozen_location(Key, Rec) of
+        {ok, I} when is_map(I) -> {ok, {disk, I}};
+        _ -> {error, forbidden}
+    end;
+download_target(Rec, Key) ->
+    sign_view(Rec, Key).
 
 %% @doc 鉴权通过后出 URL：public 直读公开 URL（不签名），受限资源签短时 GET。
 -spec sign_view(map(), binary()) -> {ok, binary()}.
+sign_view(#{<<"storage_driver">> := <<"garage">>} = Rec, Key) ->
+    case attachment_storage:frozen_location(Key, Rec) of
+        {ok, I} when is_map(I) -> attachment_storage_garage:presign_snapshot(I, ?GET_EXPIRES);
+        _ -> {error, forbidden}
+    end;
 sign_view(#{<<"scope">> := <<"public">>}, <<"u", _/binary>> = ObjectKey) ->
     {ok, elib_oss:public_url_for_key(ObjectKey)};
 sign_view(Rec, <<"/", _/binary>> = ObjectKey) ->

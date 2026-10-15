@@ -1,0 +1,45 @@
+get:
+  tags: [msg]
+  summary: 回查本人原消息的持久提交结果 / Query original message acceptance
+  description: |
+    仅确切匹配原发送者、会话、消息ID及当前群历史授权边界的持久行返回 committed。
+    未找到、清理或尚未归档只能返回 unknown；unknown 不授权自动重发。
+    Only positive archive evidence proves commitment. Missing rows never prove non-acceptance.
+  operationId: getMsgResult
+  parameters:
+    - in: query
+      name: chat_type
+      required: true
+      schema: {type: string, enum: [c2c, c2g]}
+    - in: query
+      name: peer_id
+      required: true
+      description: 对端或群ID的十进制字符串 / Decimal peer or group ID
+      schema: {type: string, pattern: '^[1-9][0-9]{0,18}$'}
+    - in: query
+      name: message_id
+      required: true
+      schema: {type: string, pattern: '^[A-Za-z0-9_-]{1,50}$'}
+  responses:
+    '200':
+      description: 提交已证实或未知，不返回消息内容 / Committed or unknown without message contents
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    required: [message_id, chat_type, peer_id, state]
+                    properties:
+                      message_id: {type: string}
+                      chat_type: {type: string, enum: [c2c, c2g]}
+                      peer_id: {type: integer, format: int64}
+                      state: {type: string, enum: [committed, unknown]}
+                      conv_seq: {type: integer, format: int64, minimum: 1}
+    '4XX':
+      description: 未认证、参数非法或已撤权 / Unauthorized, invalid or revoked
+    '500':
+      description: 持久存储不可用，禁止推断未提交 / Persistence unavailable; never infer non-acceptance

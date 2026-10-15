@@ -513,6 +513,9 @@ auth_chain_organization_archived(C) ->
         C, maps:get(prefix, F), maps:get(secret, F)
     ),
     ?assertEqual(Before, After),
+    ?assertEqual(maps:get(app_id, F), maps:get(application_id, After)),
+    ?assertEqual(maps:get(credential_id, F), maps:get(credential_id, After)),
+    ?assertEqual(lists:sort(?WRITE_SCOPES), lists:sort(maps:get(allowed_scopes, After))),
     ?assertEqual(?ORG_A, maps:get(application_organization_id, After)),
     ?assertEqual([], maps:get(granted_scopes, After)).
 

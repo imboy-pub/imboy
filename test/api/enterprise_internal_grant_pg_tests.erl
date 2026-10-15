@@ -18,8 +18,8 @@
 %%   ⑥ scope downgrade ⇒ 下一请求即失败，且未降级的 scope 仍然放行
 %%   ⑦ 有效期窗口（未生效 / 已过期）不产生授权
 %%   ⑧ 与广州期既有认证链组合：credential 错/撤销、application disabled、
-%%      organization archived 仍先于 Grant 判定失败（不建第二套 middleware）
-%%   ⑨ 治理接口输入校验与 CAS：幂等键、固定枚举、跨 Org、版本冲突、状态机
+%%      organization archived 仍认证成功，权限继续按 Grant 精确求值
+%%   ⑨ 治理接口输入校验与 CAS：幂等键、固定枚举、独立目标 Org、版本冲突、状态机
 %% marker 库供给失败（环境/配置/迁移任一不可用）显式 FAIL，无静默 skip。
 %%
 %% ID 段：997xxx（本 run 独立 marker 库，跨套件不共享数据）。
@@ -274,7 +274,7 @@ same_grant_oracle(C) ->
     ?assertEqual(
         {error, insufficient_scope}, require_workspace(C, Ctx, ?WS_A1, <<"identities:read">>)
     ),
-    %% 跨 Org workspace 不可能被本 Application 的 Grant 覆盖
+    %% 现有 Grant 只授权 Org A，未授权的 Org B workspace 仍拒绝
     ?assertEqual(
         {error, organization_boundary_violation},
         require_workspace(C, Ctx, ?WS_B1, <<"files:write">>)
@@ -366,7 +366,7 @@ idor_matrix_oracle(C) ->
             C, ?ORG_A, AppA, ?WS_B1, <<"files:write">>
         )
     ),
-    %% 跨 Org 读同一 AppId 不串号（Org 边界进 SQL）
+    %% 没有 Org B 目标 Grant 时，相同 AppId 不获得 Org B 资源权限
     ?assertEqual(
         {ok, false},
         enterprise_application_grant_repo:workspace_covered_tx(
@@ -593,7 +593,7 @@ chain_composition_oracle(C) ->
     %% credential 撤销：仍是 invalid_credential（Grant 完好也不放行）
     ok = enterprise_internal_ops:revoke_credential_tx(C, ?ORG_A, CredA),
     ?assertEqual({error, invalid_credential}, Body()),
-    {ok, #{credential := NewFull}} =
+    {ok, #{credential_id := NewCred, credential := NewFull}} =
         enterprise_internal_ops:issue_credential_tx(C, ?ORG_A, AppA, ?SECRET_A, undefined),
     Fx2 = Fx#{prefix_a => prefix_of(NewFull)},
     ?assertMatch({ok, _}, decide(C, Fx2, a, <<"POST">>, <<"/api/internal/v1/groups">>, [?IDEM])),
@@ -607,19 +607,22 @@ chain_composition_oracle(C) ->
     ok = enterprise_internal_ops:set_application_status_tx(C, ?ORG_A, AppA, <<"active">>),
     ?assertMatch({ok, _}, decide(C, Fx2, a, <<"POST">>, <<"/api/internal/v1/groups">>, [?IDEM])),
 
+    %% Organization 归档不撤销实例级应用身份；现有 Grant/scopes 仍精确求值。
     ok = exec(C, [
         <<"UPDATE organization SET status = 'archived' WHERE id = ">>,
         integer_to_binary(?ORG_A)
     ]),
-    ?assertMatch(
-        {ok, _},
-        decide(C, Fx2, a, <<"POST">>, <<"/api/internal/v1/groups">>, [?IDEM])
-    ),
+    {ok, ArchivedCtx} = decide(C, Fx2, a, <<"POST">>, <<"/api/internal/v1/groups">>, [?IDEM]),
+    ?assertEqual(AppA, maps:get(application_id, ArchivedCtx)),
+    ?assertEqual(NewCred, maps:get(credential_id, ArchivedCtx)),
+    ?assertEqual(?ORG_A, maps:get(application_organization_id, ArchivedCtx)),
+    ?assertEqual(?SCOPES_A, maps:get(allowed_scopes, ArchivedCtx)),
+    ?assertEqual([<<"groups:write">>], maps:get(granted_scopes, ArchivedCtx)),
     ok = exec(C, [
         <<"UPDATE organization SET status = 'active' WHERE id = ">>,
         integer_to_binary(?ORG_A)
     ]),
-    %% 恢复后同一请求再次放行（证明前面几次失败来自各前置门，而非 Grant 被破坏）
+    %% 恢复业务对象后应用身份与同一请求仍有效。
     ?assertMatch({ok, _}, decide(C, Fx2, a, <<"POST">>, <<"/api/internal/v1/groups">>, [?IDEM])).
 
 %%%===================================================================
@@ -647,12 +650,29 @@ governance_ops_oracle(C) ->
         {error, invalid_scope},
         in_savepoint(C, fun() -> issue(C, ?ORG_A, AppA, <<"k-invalid">>, [<<"*">>]) end)
     ),
-    ?assertMatch(
-        {ok, #{<<"organization_id">> := ?ORG_B, <<"application_id">> := AppA}},
-        in_savepoint(C, fun() ->
-            issue(C, ?ORG_B, AppA, <<"k-cross-app">>, [<<"groups:write">>])
-        end)
+    %% migration 173：Grant 目标 Org B 与 App A 的业务归属 Org A 独立。
+    {ok, CrossGrant} = issue_ws(
+        C, ?ORG_B, AppA, <<"k-cross-app">>, [<<"groups:write">>], [?WS_B1]
     ),
+    ?assertEqual(AppA, maps:get(<<"application_id">>, CrossGrant)),
+    ?assertEqual(?ORG_B, maps:get(<<"organization_id">>, CrossGrant)),
+    ?assertEqual([<<"groups:write">>], maps:get(<<"scopes">>, CrossGrant)),
+    ?assertEqual([?WS_B1], maps:get(<<"workspace_ids">>, CrossGrant)),
+    {ok, OwnedApp} = enterprise_application_repo:find_by_id_tx(C, AppA),
+    ?assertEqual(?ORG_A, maps:get(<<"organization_id">>, OwnedApp)),
+    ?assertEqual(
+        {ok, true},
+        enterprise_application_grant_repo:workspace_covered_tx(
+            C, ?ORG_B, AppA, ?WS_B1, <<"groups:write">>
+        )
+    ),
+    ?assertEqual(
+        {ok, false},
+        enterprise_application_grant_repo:workspace_covered_tx(
+            C, ?ORG_A, AppA, ?WS_B1, <<"groups:write">>
+        )
+    ),
+    %% 不存在的 App 与不属于目标 Org 的 workspace 仍拒绝。
     ?assertEqual(
         {error, application_not_found},
         in_savepoint(C, fun() ->

@@ -160,8 +160,20 @@ register_pending(Conn, Key, N) ->
     {ok, _, _} = epgsql:equery(
         Conn,
         "SELECT * FROM fn_v5_register_pending($1,'b','private',101,"
-        "gen_random_uuid(),$2::jsonb,now()+interval '2 hours',"
-        "now()+interval '1 hour','garage','ns1','c1',$3)",
+        "gen_random_uuid(),$2::jsonb,now(),"
+        "now() - interval '2 hours','garage','ns1','c1',$3)",
+        [Key, ?REG_JSON, loc(N)]
+    ).
+
+%% 能力窗未过形态（deadline/expiry 均未来且 expiry <= deadline）。
+%% M3 守卫禁 UPDATE 扩窗（deadline immutable），未过窗只能注册时定死。
+register_pending_open(Conn, Key, N) ->
+    {ok, _, _} = epgsql:equery(
+        Conn,
+        "SELECT * FROM fn_v5_register_pending($1,'b','private',101,"
+        "gen_random_uuid(),$2::jsonb,"
+        "now() + interval '2 hours',"
+        "now() + interval '1 hour','garage','ns1','c1',$3)",
         [Key, ?REG_JSON, loc(N)]
     ).
 
@@ -221,7 +233,7 @@ w401_pending_reject(Conn) ->
 %% 能力窗未耗尽时 sweep 拒绝（23510）
 w401_capability_window(Conn) ->
     Key = <<"v5e2e/w401/live1">>,
-    register_pending(Conn, Key, 3),
+    register_pending_open(Conn, Key, 3),
     {error, #error{code = <<"23510">>}} = epgsql:equery(
         Conn, "SELECT fn_v5_intent_pending_delete($1,'w401 live','sweep')", [Key]
     ),

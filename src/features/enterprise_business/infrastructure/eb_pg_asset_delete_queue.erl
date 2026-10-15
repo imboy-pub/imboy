@@ -35,8 +35,8 @@ drain(Org, Ws, Limit, Token) when Limit > 0 ->
             case process_job(Row, Token) of
                 ok ->
                     drain(Org, Ws, Limit - 1, Token);
-                {error, {ack_failed, Reason}} ->
-                    {error, {object_queue_ack_failed, Reason}};
+                {error, {ack_failed, _}} = Error ->
+                    Error;
                 {error, Reason} ->
                     {ok, [
                         #{
@@ -60,17 +60,30 @@ process_job(Row, Token) ->
     Ws = maps:get(<<"out_workspace_id">>, Row),
     AssetId = maps:get(<<"out_asset_id">>, Row),
     Key = maps:get(<<"out_object_key">>, Row),
-    DeleteResult =
+    Frozen = maps:from_list([
+        {K, maps:get(<<"out_", K/binary>>, Row, null)}
+     || K <-
+            [
+                <<"storage_driver">>,
+                <<"storage_namespace">>,
+                <<"storage_container">>,
+                <<"storage_locator_sha256">>
+            ]
+    ]),
+    Result =
         try
-            eb_asset_store:delete_queued_object(Org, Ws, Key)
+            case attachment_storage:frozen_location(Key, Frozen) of
+                {ok, I} when is_map(I) -> attachment_storage:delete_snapshot(I);
+                _ -> {error, location_unverified}
+            end
         catch
-            _C:_R -> {error, worker_crash}
+            _:_ -> {error, worker_crash}
         end,
-    AckOk = DeleteResult =:= ok orelse DeleteResult =:= {error, not_found},
+    AckOk = Result =:= ok orelse Result =:= {error, not_found},
     case ack(Org, Ws, AssetId, Token, AckOk) of
         ok when AckOk -> ok;
-        ok -> DeleteResult;
-        {error, Reason} -> {error, {ack_failed, Reason}}
+        ok -> Result;
+        {error, R} -> {error, {ack_failed, R}}
     end.
 
 %% 企业队列 claim（租约 CAS；fn 返回单 job 或空集）。
@@ -98,14 +111,15 @@ ack(Org, Ws, AssetId, Token, Ok) ->
             [Org, Ws, AssetId, Token, Ok]
         )
     of
+        {ok, [#{<<"fn_v5_ack_eb">> := <<"done">>}]} when Ok =:= true -> ok;
         {ok, [#{<<"fn_v5_ack_eb">> := State}]} when
-            Ok =:= true, State =:= <<"done">>;
-            Ok =:= false, State =:= <<"retry_wait">>;
-            Ok =:= false, State =:= <<"blocked">>
+            Ok =:= false, (State =:= <<"retry_wait">> orelse State =:= <<"blocked">>)
         ->
             ok;
-        {ok, Other} ->
-            {error, {unexpected_ack_result, Other}};
+        {ok, [#{<<"fn_v5_ack_eb">> := State}]} ->
+            {error, {ack_rejected, State}};
+        {ok, Rows} ->
+            {error, {invalid_ack_result, Rows}};
         {error, R} ->
             {error, R}
     end.

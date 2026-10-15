@@ -16,7 +16,8 @@ oa_login_http_test_() ->
             machine_scope(State),
             exchange_pending(State),
             register_account(State),
-            link_account(State)
+            link_account(State),
+            disabled_account(State)
         after
             case CacheOwner of
                 undefined -> ok;
@@ -184,6 +185,31 @@ link_account(State) ->
     assert_session(LoggedIn, User, Device),
     ?assertNot(maps:is_key(<<"pending_token">>, LoggedIn)),
     ?assertEqual(Before, user_count(State)).
+
+%% ADR 8.3「停用账号拒绝登录」：注册建号后停用（status=0），再走 login
+%% exchange 必须拿到明确 403 account_not_active（claim 的 source-person CHECK
+%% 23514 → invalid_person），不得落 500 兜底。
+disabled_account(State) ->
+    ok = account_ds:init(),
+    Owned = start_allocator(),
+    try
+        Params = pending(State, <<"http-disabled">>, <<"login">>, <<"http-disabled-device">>),
+        Session = success(post(State, register, Params#{<<"confirm_create">> => true}, #{})),
+        User = maps:get(<<"user_id">>, Session),
+        ok = intbe02_http_support:sql_exec(
+            maps:get(conn, State),
+            <<"UPDATE \"user\" SET status=0 WHERE id=$1">>,
+            [User]
+        ),
+        Login = ticket(State, <<"http-disabled">>, <<"login">>, <<"http-disabled-device">>),
+        error_reply(post(State, exchange, Login, #{}), 403, <<"account_not_active">>),
+        assert_binding(State, <<"http-disabled">>, User)
+    after
+        case Owned of
+            undefined -> ok;
+            Pid -> gen_server:stop(Pid)
+        end
+    end.
 
 human_auth(User, Device) ->
     {ok, Epoch} = elib_pg:with_tx(fun(Connection) ->

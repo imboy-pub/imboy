@@ -296,6 +296,7 @@ ensure_limiter_owner() ->
             }),
             try
                 {ok, Owner} = login_attempt_ds:start_link(),
+                ok = login_attempt_ds:activate_empty(Owner),
                 unlink(Owner),
                 Owner
             after

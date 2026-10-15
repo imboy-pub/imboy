@@ -3,10 +3,15 @@
 -include_lib("epgsql/include/epgsql.hrl").
 
 r20_test_() ->
-    {timeout, 900, fun run/0}.
+    {timeout, 900, fun() -> isolated_pg_fixture:run(fun run/0) end}.
 
 metadata_down_test_() ->
-    [{timeout, 900, fun() -> metadata_down(Restore) end} || Restore <- [false, true]].
+    [
+        {timeout, 900, fun() ->
+            isolated_pg_fixture:run(fun() -> metadata_down(Restore) end)
+        end}
+     || Restore <- [false, true]
+    ].
 
 metadata_down(Restore) ->
     elib_tsid:init(#{dc_id => 1, node_id => 1, dc_bits => 3}),

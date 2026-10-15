@@ -1033,6 +1033,11 @@ presign_v5_session_issues_gateway_capability_test_() ->
                 {'register_v5', 6, fun(_K, _B, _S, _U, _C, _R) ->
                     {ok, #{
                         session_state => <<"registered">>,
+                        object_key => <<"u789/file/original.png">>,
+                        storage_driver => <<"garage">>,
+                        storage_namespace => <<"fixture-ns">>,
+                        storage_container => <<"fixture">>,
+                        storage_locator_sha256 => binary:copy(<<"a">>, 64),
                         client_upload_id => <<"0f0e0d0c-1111-2222-3333-444455556666">>,
                         deadline => 1893460000,
                         expires_at => 1893456000
@@ -1054,6 +1059,7 @@ presign_v5_gateway_body() ->
         <<"/api/v1/attachment/gateway/", _/binary>>, maps:get(<<"put_url">>, Data)
     ),
     ?assertEqual(Cid, maps:get(<<"client_upload_id">>, Data)),
+    ?assertEqual(<<"u789/file/original.png">>, maps:get(<<"object_key">>, Data)),
     ?assertEqual(true, maps:get(<<"gateway">>, Data)),
     %% expires_at 是登记冻结值，不是底层重新计时
     ?assertEqual(1893456000, maps:get(<<"expires_at">>, Data)),

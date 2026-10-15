@@ -2,7 +2,7 @@
 -include_lib("eunit/include/eunit.hrl").
 
 default_preflight_executor_test_() ->
-    {timeout, 900, fun run/0}.
+    {timeout, 900, fun() -> isolated_pg_fixture:run(fun run/0) end}.
 
 run() ->
     ?assertEqual(undefined, whereis(pgsql)),
