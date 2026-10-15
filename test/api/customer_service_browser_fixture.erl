@@ -242,7 +242,12 @@ asset_proof(Org) ->
             Expected = [
                 eb_asset_content:sha256_hex(Bytes)
              || Bytes <-
-                    [<<"synthetic visitor attachment\n">>, <<"synthetic seat attachment\n">>]
+                    [
+                        <<"synthetic visitor attachment\n">>,
+                        base64:decode(
+                            <<"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aX1kAAAAASUVORK5CYII=">>
+                        )
+                    ]
             ],
             ?assertEqual(
                 lists:sort(Expected), lists:sort([maps:get(<<"object_hash">>, A) || A <- Assets])
