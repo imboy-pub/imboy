@@ -9,7 +9,7 @@
 %%
 %% oracle 覆盖（plan-gz §5 约束逐条 + EPGZ-01R 修订）：
 %%   ⓪ 空库全量 up 至版本 136
-%%   ① enterprise_application：CRUD、(org,application_key) 唯一拒绝、跨 Org 同 key 放行
+%%   ① enterprise_application：CRUD、实例内 application_key 唯一拒绝、旧 Org 路径按业务归属过滤
 %%   ①b redirect URI allowlist（EPGZ-01R / EPGZ-05 硬需求）：写读往返、整体
 %%      替换/清空、默认空、非法元素（http/非 https scheme/无 host/空串/
 %%      fragment/重复/超 20 个）触发器 23514 拒绝、exact match 语义
@@ -201,7 +201,7 @@ application_oracle(C) ->
     ),
     {ok, Found} = enterprise_application_repo:find_tx(C, ?ORG_A, AppAId),
     ?assertEqual(<<"gz_customer_oa"/utf8>>, maps:get(<<"name">>, Found)),
-    %% Org 边界在 SQL 内强制：跨 Org 查询同一 id → not_found
+    %% 旧 Org 路径兼容查询按业务归属过滤：不同归属同一 id → not_found
     ?assertEqual({error, not_found}, enterprise_application_repo:find_tx(C, ?ORG_B, AppAId)),
     %% 按 key 查找
     {ok, _} = enterprise_application_repo:find_by_key_tx(C, ?ORG_A, <<"oa-gz-a">>),
@@ -215,11 +215,25 @@ application_oracle(C) ->
             enterprise_application_repo:create_tx(C, ?ORG_A, <<"oa-gz-a">>, <<"dup_key"/utf8>>)
         end)
     ),
-    %% 跨 Org 同 key 放行（唯一约束是 (org, key)）
+    %% migration 171：application_key 在实例内唯一，业务归属不分割命名空间。
+    ?assertEqual(
+        {error, key_conflict},
+        in_savepoint(C, fun() ->
+            enterprise_application_repo:create_tx(
+                C, ?ORG_B, <<"oa-gz-a">>, <<"dup_cross_org"/utf8>>
+            )
+        end)
+    ),
     {ok, AppB} = enterprise_application_repo:create_tx(
-        C, ?ORG_B, <<"oa-gz-a">>, <<"org_b_same_key"/utf8>>
+        C, ?ORG_B, <<"oa-gz-b">>, <<"org_b_distinct_key"/utf8>>
     ),
     ?assertEqual(?ORG_B, maps:get(<<"organization_id">>, AppB)),
+    ?assertEqual(<<"oa-gz-b">>, maps:get(<<"application_key">>, AppB)),
+    {ok, FoundB} = enterprise_application_repo:find_by_key_tx(C, ?ORG_B, <<"oa-gz-b">>),
+    ?assertEqual(maps:get(<<"id">>, AppB), maps:get(<<"id">>, FoundB)),
+    ?assertEqual(
+        {error, not_found}, enterprise_application_repo:find_by_key_tx(C, ?ORG_A, <<"oa-gz-b">>)
+    ),
     %% 更新：status / name / scopes
     ok = enterprise_application_repo:update_status_tx(C, ?ORG_A, AppAId, <<"disabled">>),
     {ok, Disabled} = enterprise_application_repo:find_tx(C, ?ORG_A, AppAId),

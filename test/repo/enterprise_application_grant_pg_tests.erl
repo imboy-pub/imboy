@@ -237,6 +237,10 @@ grant_row_oracle(C) ->
     in_savepoint(C, fun() ->
         {ok, CrossGrant} = issue(C, ?ORG_B, AppA, <<"k-cross">>, [<<"groups:write">>]),
         CrossId = maps:get(<<"id">>, CrossGrant),
+        ?assertEqual(<<"none">>, maps:get(<<"workspace_scope_kind">>, CrossGrant)),
+        ?assertEqual([], maps:get(<<"workspace_ids">>, CrossGrant)),
+        {ok, OwnedApp} = enterprise_application_repo:find_by_id_tx(C, AppA),
+        ?assertEqual(?ORG_A, maps:get(<<"organization_id">>, OwnedApp)),
         ?assertEqual(?ORG_B, maps:get(<<"organization_id">>, CrossGrant)),
         ?assertEqual(AppA, maps:get(<<"application_id">>, CrossGrant)),
         ?assertEqual([<<"groups:write">>], maps:get(<<"scopes">>, CrossGrant)),
@@ -253,6 +257,14 @@ grant_row_oracle(C) ->
             enterprise_application_grant_repo:find_tx(C, ?ORG_B, AppB, CrossId)
         )
     end),
+
+    %% 独立 App FK 仍拒绝不存在的应用。
+    ?assertEqual(
+        {error, application_not_found},
+        in_savepoint(C, fun() ->
+            issue(C, ?ORG_B, 999999999, <<"k-missing">>, [<<"groups:write">>])
+        end)
+    ),
 
     %% 未登记 scope：ops 治理面先拦（invalid_scope），DB CHECK 兜底
     ?assertEqual(
