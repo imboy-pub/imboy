@@ -37,7 +37,7 @@
     "a.id, a.organization_id, a.workspace_id, a.conversation_id, a.message_id,"
     " a.business_identity_id, a.uploaded_by_user_id, a.object_key, a.object_hash, a.mime,"
     " a.size_bytes, a.status, a.key_version, a.file_name, a.retain_until, a.version,"
-    " a.created_at, a.deleted_at, a.pending_object_delete, a.upload_registration, a.lifecycle_state"
+    " a.created_at, a.deleted_at, a.pending_object_delete, a.upload_registration, a.lifecycle_state, a.storage_driver, a.storage_namespace, a.storage_container, a.storage_locator_sha256"
 ).
 
 %% 登记：status 恒为 pending_confirm（确认只能走 confirm_asset/3）。
@@ -46,9 +46,9 @@
     "INSERT INTO enterprise_asset"
     " (id, organization_id, workspace_id, conversation_id, message_id, business_identity_id,"
     "  uploaded_by_user_id, object_key, object_hash, mime, size_bytes, status, key_version,"
-    "  file_name, retain_until, version)"
+    "  file_name, retain_until, version, storage_driver, storage_namespace, storage_container, storage_locator_sha256)"
     " SELECT $3, $1, $2, $4, $5, $6, $7, $8, $9, $10, $11, 'pending_confirm', $12, $13,"
-    "        CASE WHEN $14::bigint IS NULL THEN NULL ELSE to_timestamp($14::bigint/1000) END, 1"
+    "        CASE WHEN $14::bigint IS NULL THEN NULL ELSE to_timestamp($14::bigint/1000) END, 1, $15, $16, $17, $18"
     "   FROM workspace w"
     "  WHERE w.organization_id = $1 AND w.id = $2"
     " ON CONFLICT DO NOTHING"
@@ -210,7 +210,11 @@ asset_fields() ->
         {deleted_at, <<"deleted_at">>, ts},
         {pending_object_delete, <<"pending_object_delete">>, raw},
         {upload_registration, <<"upload_registration">>, raw},
-        {lifecycle_state, <<"lifecycle_state">>, bin}
+        {lifecycle_state, <<"lifecycle_state">>, bin},
+        {storage_driver, <<"storage_driver">>, bin},
+        {storage_namespace, <<"storage_namespace">>, bin},
+        {storage_container, <<"storage_container">>, bin},
+        {storage_locator_sha256, <<"storage_locator_sha256">>, bin}
     ].
 
 %%%===================================================================
@@ -291,7 +295,8 @@ register_session_live(Conn, Org, Ws, D, Cid, Registration, Deadline, Expiry) ->
                 object_key(Org,Ws,Id), maps:get(object_hash,D), maps:get(mime,D), maps:get(size_bytes,D),
                 null, eb_pg_store_sql:nullify(maps:get(file_name,D,undefined)),
                 eb_pg_store_sql:nullify(maps:get(retain_until,D,undefined))],
-            case tx_query(Conn, ?SQL_INSERT_ASSET, Params) of
+            Location = registration_location(Org,Ws,Id),
+            case tx_query(Conn, ?SQL_INSERT_ASSET, Params ++ Location) of
                 [] -> throw({rollback, {error, conflict}});
                 [_] ->
                     Kind = maps:get(<<"kind">>, maps:get(<<"subject">>, Registration)),
@@ -299,6 +304,13 @@ register_session_live(Conn, Org, Ws, D, Cid, Registration, Deadline, Expiry) ->
                         [Org,Ws,Id,object_key(Org,Ws,Id),Cid,jsone:encode(Registration),Kind,iso8601_utc(Deadline),iso8601_utc(Expiry)]),
                     {ok, Id}
             end
+    end.
+
+registration_location(Org,Ws,Id) ->
+    Key=object_key(Org,Ws,Id),
+    case attachment_storage:registration_location(<<"enterprise">>,elib_oss:get_bucket(<<"private">>),Key) of
+        {ok,I}->[maps:get(K,I)||K<-[driver,namespace,container,locator_digest]];
+        {error,R}->throw({rollback,{error,R}})
     end.
 
 tx_query(Conn, Sql, Params) ->
@@ -370,7 +382,7 @@ v5_session(OrgId, WsId, AssetId) ->
                 <<
                     "SELECT id, organization_id, workspace_id, conversation_id, message_id, file_name, uploaded_by_user_id, retain_until, lifecycle_state, object_key, object_hash, mime, size_bytes, status,"
                     " client_upload_id, session_deadline, upload_expires_at,"
-                    " upload_registration FROM enterprise_asset"
+                    " upload_registration, storage_driver, storage_namespace, storage_container, storage_locator_sha256 FROM enterprise_asset"
                     " WHERE organization_id = $1 AND workspace_id = $2 AND id = $3"
                 >>,
                 [OrgId, WsId, AssetId]
@@ -520,7 +532,7 @@ guarded_insert(Org, Ws, Id, Params) ->
                 [Org, Ws]
             )
         of
-            {ok, [_]} -> insert_without_pending_delete(Conn, Org, Ws, Id, Params);
+            {ok, [_]} -> insert_without_pending_delete(Conn, Org, Ws, Id, Params ++ registration_location(Org,Ws,Id));
             {ok, []} -> {error, no_row};
             {error, Reason} -> throw({rollback, {error, eb_pg_store_sql:normalize_error(Reason)}})
         end

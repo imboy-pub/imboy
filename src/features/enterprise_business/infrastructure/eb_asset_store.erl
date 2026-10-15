@@ -103,7 +103,7 @@ reserve_and_put(OrgId, WorkspaceId, Descriptor, Payload, ObjectStore) ->
     end.
 
 write_reserved(Row, Payload, Meta, ObjectStore) ->
-    case ObjectStore:put(maps:get(object_key, Row), Payload, Meta) of
+    case put_reserved(ObjectStore, Row, Payload, Meta) of
         ok ->
             {ok, #{
                 asset_id => maps:get(id, Row),
@@ -138,15 +138,48 @@ stream_content(OrgId, WorkspaceId, AssetId) ->
     end).
 
 read_object(OrgId, WorkspaceId, _AssetId, Row) ->
-    Key = maps:get(object_key, Row),
     with_object_store(fun(ObjectStore) ->
-        case ObjectStore:get(Key, eb_pg_asset_meta:key_prefix(OrgId, WorkspaceId)) of
-            {ok, #{bytes := Bytes}} ->
-                {ok, {content_stream, Bytes}};
-            {error, Reason} ->
-                {error, {object_store, Reason}}
+        Result = case ObjectStore of
+            eb_asset_object_stub -> ObjectStore:get(maps:get(object_key,Row), eb_pg_asset_meta:key_prefix(OrgId,WorkspaceId));
+            _ -> read_frozen(Row)
+        end,
+        case Result of
+            {ok, #{bytes := Bytes}} -> {ok, {content_stream, Bytes}};
+            {error, Reason} -> {error, {object_store, Reason}}
         end
     end).
+
+put_reserved(eb_asset_object_stub=Store,Row,Payload,Meta) ->
+    Store:put(maps:get(object_key,Row),Payload,Meta);
+put_reserved(_,Row,Payload,Meta) ->
+    case location(Row) of
+        {ok,#{driver:=disk}=I} ->
+            case maps:get(signature_context,Meta,undefined) of
+                #{expires_at:=Expiry}->attachment_storage_disk:put_snapshot(I,Payload,calendar:datetime_to_gregorian_seconds(Expiry)-62167219200);
+                _->{error,invalid_signature_context}
+            end;
+        {ok,#{driver:=garage}=I}->attachment_storage_garage:put_snapshot(I,Payload,maps:get(mime,Meta),maps:get(signature_context,Meta,#{}));
+        {ok,legacy_unknown}->{error,historical_location_unverified};
+        {error,_}=Error->Error
+    end.
+
+read_frozen(Row) ->
+    case location(Row) of
+        {ok,#{driver:=Driver}=I}->
+            Mod=attachment_storage:driver_module(atom_to_binary(Driver)),
+            case Mod:read_snapshot(I) of {ok,B}->{ok,#{bytes=>B}};Error->Error end;
+        {ok,legacy_unknown}->
+            case maps:get(status,Row) of
+                active->eb_asset_object_garage:get(maps:get(object_key,Row),eb_pg_asset_meta:key_prefix(maps:get(organization_id,Row),maps:get(workspace_id,Row)));
+                _->{error,historical_location_unverified}
+            end;
+        {error,_}=Error->Error
+    end.
+
+location(Row) ->
+    Frozen=maps:from_list([{atom_to_binary(K),case maps:get(K,Row,undefined) of undefined->null;V->V end}
+        ||K<-[storage_driver,storage_namespace,storage_container,storage_locator_sha256]]),
+    attachment_storage:frozen_location(maps:get(object_key,Row),Frozen#{<<"mime_type">>=>maps:get(mime,Row,<<"application/octet-stream">>)}).
 
 %% @doc 仅由 Org policy 触发；不是 uploader 可自主决定的动作。
 %% W4-01 入口收口（02 §4）：不再直接删对象——发企业域删除意图
