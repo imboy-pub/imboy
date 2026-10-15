@@ -42,14 +42,15 @@ run() ->
             workspace_id => integer_to_binary(maps:get(workspace_id, S)),
             public_widget_id => integer_to_binary(Installation),
             seat_a => seat(S),
-            seat_b => seat(Next)
+            seat_b => seat(Next),
+            history_session_ids => seed_history(S)
         }),
         ok = await_done(
             S,
             [maps:get(service_identity_id, S), maps:get(service_identity_id, Next)],
             erlang:monotonic_time(millisecond) + 180000
         ),
-        save_proof(Org)
+        save_proof(Org, maps:get(conversation_id, S))
     after
         intbe02_http_support:teardown_all(H),
         inttest_marker_db:release(H)
@@ -114,10 +115,41 @@ process_control(S, Identities) ->
             })
     end.
 
-save_proof(Org) ->
+seed_history(S) ->
+    [
+        begin
+            Id = ?FIX:id(),
+            ok = ?FIX:exec(
+                <<
+                    "INSERT INTO customer_service_session"
+                    " (id,organization_id,workspace_id,contact_id,conversation_id,business_identity_id,status,closed_at)"
+                    " VALUES ($1,$2,$3,$4,$5,$6,'closed',CURRENT_TIMESTAMP)"
+                >>,
+                [
+                    Id,
+                    maps:get(org_id, S),
+                    maps:get(workspace_id, S),
+                    maps:get(contact_id, S),
+                    maps:get(conversation_id, S),
+                    maps:get(service_identity_id, S)
+                ]
+            ),
+            integer_to_binary(Id)
+        end
+     || _Index <- lists:seq(1, 101)
+    ].
+
+save_proof(Org, SeedConversation) ->
     {ok, Sessions} = elib_pg:query(
-        <<"SELECT id::text,status,version,rating,conversations.conversation_id::text FROM customer_service_session conversations WHERE organization_id=$1">>,
-        [Org]
+        <<"SELECT id::text,status,version,rating,conversations.conversation_id::text FROM customer_service_session conversations WHERE organization_id=$1 AND conversation_id<>$2">>,
+        [Org, SeedConversation]
+    ),
+    ?assertEqual(
+        101,
+        ?FIX:scalar(
+            <<"SELECT count(*) FROM customer_service_session WHERE organization_id=$1 AND conversation_id=$2 AND status='closed'">>,
+            [Org, SeedConversation]
+        )
     ),
     {ok, Messages} = elib_pg:query(
         <<"SELECT id::text,sender_type,client_msg_id FROM enterprise_message WHERE organization_id=$1 ORDER BY id">>,
