@@ -279,7 +279,11 @@ v5_session_mint(Org, Params, AssetId, Row, Now, ExpiresAt) ->
             object_hash => maps:get(<<"object_hash">>, Row),
             mime => maps:get(<<"mime">>, Row),
             size_bytes => maps:get(<<"size_bytes">>, Row),
-            file_name => maps:get(<<"file_name">>, Row),
+            file_name =>
+                case maps:get(<<"file_name">>, Row, undefined) of
+                    null -> undefined;
+                    FileName -> FileName
+                end,
             retain_until => ts_to_sec(maps:get(<<"retain_until">>, Row, undefined)),
             conversation_id => Conv,
             message_id => Msg,

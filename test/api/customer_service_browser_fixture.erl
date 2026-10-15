@@ -219,6 +219,18 @@ setup_storage() ->
                 region => <<"garage">>,
                 access_key => list_to_binary(os:getenv("IMBOY_TEST_ACCESS")),
                 secret_key => list_to_binary(os:getenv("IMBOY_TEST_SECRET"))
+            }),
+            application:set_env(imboy, attachment_storage_registry, #{
+                version => 1,
+                roots => #{
+                    <<"synthetic-browser-garage">> => #{
+                        driver => <<"garage">>,
+                        namespace => <<"synthetic-browser">>,
+                        endpoint => list_to_binary(os:getenv("IMBOY_TEST_ENDPOINT")),
+                        container => <<"synthetic-enterprise-assets">>
+                    }
+                },
+                upload_namespaces => #{<<"enterprise">> => <<"synthetic-browser">>}
             })
     end.
 

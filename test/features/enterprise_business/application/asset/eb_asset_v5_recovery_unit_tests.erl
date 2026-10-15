@@ -13,6 +13,7 @@ recovery_test_() ->
         fun tombstone_precedes_insert/0,
         fun registration_reuses_original_identity/0,
         fun register_projects_real_session_view/0,
+        fun nullable_file_name_is_absent_in_upload_claims/0,
         fun widget_bridge_preserves_recovery_identity/0
     ]}.
 
@@ -201,6 +202,33 @@ register_projects_real_session_view() ->
         V
     ),
     ?assertNot(maps:is_key(object_key, V)).
+
+nullable_file_name_is_absent_in_upload_claims() ->
+    R = row(),
+    lists:foreach(
+        fun(FileName) ->
+            meck:expect(eb_pg_asset_meta, v5_session, fun(1, 2, 3) ->
+                {ok, R#{<<"file_name">> => FileName}}
+            end),
+            meck:expect(eb_pg_asset_meta, renew_v5, fun(1, 2, 3, 1000) ->
+                {ok, #{committed_expires_at => 950}}
+            end),
+            meck:expect(eb_asset_upload_ref, mint, fun(_, Claims, _, _) ->
+                Expected =
+                    case FileName of
+                        null -> undefined;
+                        Value -> Value
+                    end,
+                ?assertEqual(Expected, maps:get(file_name, Claims)),
+                {ok, <<"opaque">>}
+            end),
+            ?assertMatch(
+                {ok, #{upload_ref := <<"opaque">>}},
+                eb_asset_app:session_renew(1, (params())#{crypto => ignored})
+            )
+        end,
+        [null, undefined, <<"a.txt">>]
+    ).
 
 widget_bridge_preserves_recovery_identity() ->
     meck:expect(cs_widget_support, verify_bootstrap_token, fun(1, _) -> {ok, #{contact_id => 7}} end),
