@@ -57,14 +57,23 @@ discover(State) ->
     discover_peers(State).
 -spec discover_peers(#state{}) -> {noreply, #state{}}.
 discover_peers(State) ->
-    Members = [P || P <- imboy_cache_sync:syn_scope_members(), node(P) =/= node()],
-    case length(Members) > imboy_cache_policy:peer_max() of
+    {AllPeers, V2Peers} = imboy_cache_sync:scope_members_by_capability(),
+    case length(AllPeers) > imboy_cache_policy:peer_max() of
         true -> reject_membership(State);
-        false -> discover_members(Members, State)
+        false -> discover_members(V2Peers, AllPeers, State)
     end.
 reject_membership(State) ->
     imboy_cache_sync:incr(reject_total),
     enter_degraded(start_cold_recovery(State)).
+%% 混合期发现屏障只含声明 cache_protocol=2 的成员：V1 对端（join 元数据
+%% 无 V2 声明）没有 version_request 应答义务，把无声明成员留在屏障里
+%% 会使混合集群恢复回合永不可闭合（C10 M3/M5 根因）。
+discover_members([], AllPeers, State) when AllPeers =/= [] ->
+    %% 存在对端但全部为 legacy：自身数据不可信，不得按单节点空缓存 READY；
+    %% 空成员恢复轮循环至 Dmax → DEGRADED（fail-closed，C10 M4 oracle）。
+    wait_for_authority([], State);
+discover_members(V2Peers, _AllPeers, State) ->
+    discover_members(V2Peers, State).
 discover_members(Members, State) ->
     case Members of
         [] when State#state.retries < 3 ->
@@ -325,7 +334,17 @@ handle_recovery_source(FromNode, BootId, Epoch, ReadyFlag, FromPid, Changed, Has
             maybe_complete_round(State1#state{snapshot_round = RoundSt2});
         {false, false} ->
             %% 非权威应答完成发现分类，但不提供快照。全体均非权威仍不可闭合。
-            RoundSt1 = imboy_cache_sync_snapshot:exclude_peer(RoundSt0, FromNode),
+            %% 记录对端自身声明：非 READY 的非空对端（升级恢复中）按合同
+            %% "非 READY 对端不提供快照"合法排除，不得卡死回合闭合。
+            RoundSt1a = imboy_cache_sync_snapshot:exclude_peer(RoundSt0, FromNode),
+            Peers1 = maps:get(peers, RoundSt1a),
+            ExPeer = maps:get(FromNode, Peers1),
+            RoundSt1 =
+                RoundSt1a#{
+                    peers := Peers1#{
+                        FromNode := ExPeer#{reported_ready => (ReadyFlag =:= true)}
+                    }
+                },
             maybe_complete_round(State1#state{snapshot_round = RoundSt1})
     end.
 -spec current_or_new_round(#state{}) -> map().
@@ -504,11 +523,15 @@ validate_source_cut(F, Boot, Seq, Origin, P, R) ->
 %% 最后一个来源完成时，重新核对所有已确认来源；前一来源的确认可能已经失效。
 sources_current(#{peers := Peers} = R) ->
     CohortEpoch = maps:get(cohort_epoch, R, undefined),
-    Members = imboy_cache_sync:syn_scope_members(),
+    %% 成员一致性检查只覆盖 V2 应答义务成员：V1 对端不进入发现回合
+    %% （discover_members），其在 syn 视图中的存在不构成回合中止条件。
+    {MembersAll, V2Peers} = imboy_cache_sync:scope_members_by_capability(),
     erlang:system_time(millisecond) < maps:get(deadline_ms, R) andalso
         lists:all(
-            fun(Pid) -> node(Pid) =:= node() orelse maps:is_key(node(Pid), Peers) end, Members
-        ) andalso
+            fun(Pid) -> node(Pid) =:= node() orelse maps:is_key(node(Pid), Peers) end,
+            V2Peers
+        )
+        andalso
         lists:all(
             fun({Origin, P}) ->
                 case maps:get(authority, P) of
@@ -517,8 +540,13 @@ sources_current(#{peers := Peers} = R) ->
                             is_integer(CohortEpoch) andalso
                                 is_integer(maps:get(reported_epoch, P, unknown)) andalso
                                 maps:get(reported_epoch, P) < CohortEpoch,
-                        (StaleEpoch orelse maps:get(reported_empty, P, false)) andalso
-                            lists:member(maps:get(reported_pid, P, undefined), Members) andalso
+                        %% 合法排除：数据旧 / 自报为空 / 对端未 READY（不能供快照）。
+                        %% 对端未 READY 时其内容完整性不在本回合证明（announce_ready
+                        %% 后由其自身回合闭合）；reported_ready 未记录时默认已
+                        %% READY，保持 fail-closed 严格性。
+                        (StaleEpoch orelse maps:get(reported_empty, P, false) orelse
+                            not maps:get(reported_ready, P, true)) andalso
+                            lists:member(maps:get(reported_pid, P, undefined), MembersAll) andalso
                             maps:get(reported_epoch, P, unknown) =:=
                                 imboy_cache_sync_proto:peer_epoch(Origin) andalso
                             ets:lookup(?META_TABLE, {peer_incarnation, Origin}) =:=
