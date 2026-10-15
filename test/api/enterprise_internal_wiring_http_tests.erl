@@ -5,9 +5,8 @@
 % 真中间件链，不 mock 认证结论）。
 %
 % 覆盖（plan §6 白名单 / §10 门禁 / A0 control/internal-api-manifest.yaml；
-% V2.1 §6.1 扩到 31 条）：
-%   ① 冻结路由表 31 条（INT-01..31）；Router（共享路径）已接线 23 条 →
-%      19 个 cowboy path（同 path 多方法：INT-02/15、INT-05/06、INT-18/19/21）；
+% 当前全集 INT-01..44）：
+%   ① 冻结路由表 44 条，对应 30 个 cowboy path（同 path 多方法）；
 %      INT-24..31 的 handler 由 A2 实现后经 A0 接线，此处对这 8 条断言注册
 %      形态（method/path/scope/idempotency=none/rate_bucket）与 match/2 可达；
 %      已接线 handler 模块可加载（无 undef 悬挂）；
@@ -18,9 +17,8 @@
 %   ⑤ 表外 method+path fail-closed → 404 resource_not_found；
 %   ⑥ 路径绑定（:group_id / :delivery_id）经中间件收敛为整数进入 handler_opts。
 %
-% 本套件**不起 imboy app、不连 PG**：④⑤ 只走到认证链的失败分支（无需池化
-% 连接），因此可在 eunit 内以真 transport 跑；带业务 oracle 的真库 E2E 归
-% EPGZ-09（真节点 + run-owned scratch PG）。
+% 静态路由及未认证 transport 用例不起 imboy app、不连 PG；下方 conformance
+% 使用真节点、独占 scratch PG 和真实 HTTP 验证业务行为。
 %%%
 
 -include_lib("eunit/include/eunit.hrl").
@@ -50,32 +48,25 @@ route_table() ->
     Paths = [P || {P, _H, _O} <- Routes],
 
     %% ①② 冻结表逐条登记 + 零 open 面
-    %% 32 条 INT（GZ 14 + FULL-02 新增 8 + FULL-03 新增 1 + V2.1 新增 8 + v1.1.1 新增 1）。
-    %% Router（共享路径，A0 接线）当前登记的是已实现 handler 的 23 条——
-    %% INT-24..31 的 handler（enterprise_workspace/project/channel_handler、
-    %% enterprise_group_handler 扩展）由 A2 实现后经 A0 接线进 imboy_router，
-    %% 故此处只断言「已接线面」的登记与形态；注册表全量形态另行断言（下方
-    %% manifest_v21_entries）。
+    %% 当前 44 条 operation 全部接线；注册形态另由 manifest_v21_entries 断言。
     Manifest = enterprise_internal_routes:routes(),
-    ?assertEqual(43, length(Manifest)),
-    %% Router（共享路径，A0 已于集成接线）：INT-24..31 的 8 条全部进
-    %% imboy_router；其中 INT-26/27 复用既有 cowboy path（GET 方法分派在
-    %% handler 内），故 31 端点对应 25 条唯一 path（19 既有 + 6 新增）。
+    ?assertEqual(44, length(Manifest)),
+    %% 多方法共享 cowboy path，44 条 operation 对应 30 条唯一 path。
     Wired = Manifest,
-    ?assertEqual(43, length(Wired)),
+    ?assertEqual(44, length(Wired)),
     %% 冻结表用 {name} 占位符语法，cowboy 路由用 :name —— 归一后逐条比对。
     WiredPaths = lists:usort([
         cowboy_path(binary_to_list(maps:get(path, R)))
      || R <- Wired
     ]),
-    ?assertEqual(29, length(WiredPaths)),
+    ?assertEqual(30, length(WiredPaths)),
     lists:foreach(
         fun(P) ->
             ?assert(lists:member(P, Paths))
         end,
         WiredPaths
     ),
-    ?assertEqual(29, length([P || P <- Paths, lists:prefix("/api/internal/v1/", P)])),
+    ?assertEqual(30, length([P || P <- Paths, lists:prefix("/api/internal/v1/", P)])),
 
     %% ③ internal 前缀不在匿名白名单；零 open 面
     Open = imboy_router:open(),
@@ -97,19 +88,23 @@ route_table() ->
     ).
 
 %% V2.1 §6.1/§6.2 冻结的 INT-24..31 注册形态 + INT-18 scope 修正
-%% （CON-01 的 A1 侧前置断言：31 unique method+path、scope 全在 14 值枚举、
+%% （CON-01 的 A1 侧前置断言：44 unique method+path、scope 全在 19 值枚举、
 %%  新增 8 条全为 GET + idempotency=none + internal_read）。
 manifest_v21_entries_test_() ->
     {timeout, 15, fun manifest_v21_entries/0}.
 
 manifest_v21_entries() ->
     Manifest = enterprise_internal_routes:routes(),
-    %% 31 unique id + 31 unique method+path
+    %% 44 unique id + 44 unique method+path
     Ids = [maps:get(id, R) || R <- Manifest],
-    ?assertEqual(43, length(lists:usort(Ids))),
+    ?assertEqual(44, length(lists:usort(Ids))),
+    ?assertEqual(
+        [iolist_to_binary(io_lib:format("INT-~2..0B", [Number])) || Number <- lists:seq(1, 44)],
+        lists:sort(Ids)
+    ),
     MethodPaths = [{maps:get(method, R), maps:get(path, R)} || R <- Manifest],
-    ?assertEqual(43, length(lists:usort(MethodPaths))),
-    %% 所有注册 scope 都是固定 14 值枚举成员（动态 scope 除外）
+    ?assertEqual(44, length(lists:usort(MethodPaths))),
+    %% 所有注册 scope 都是固定 19 值枚举成员（动态 scope 除外）
     All = enterprise_internal_scope:all(),
     lists:foreach(
         fun(R) ->
@@ -122,6 +117,26 @@ manifest_v21_entries() ->
     ),
     %% INT-18 scope 修正：读操作降为 groups:read（§6.2/§7）
     ById = #{maps:get(id, R) => R || R <- Manifest},
+    LoginRoute = #{
+        id => <<"INT-44">>,
+        method => <<"POST">>,
+        path => <<"/api/internal/v1/oa/login/tickets">>,
+        scope => <<"oa:login:issue">>,
+        rate_bucket => internal_sso,
+        idempotency => not_required,
+        sender_mode => none
+    },
+    ?assertEqual(LoginRoute, maps:get(<<"INT-44">>, ById)),
+    ?assertEqual(
+        {ok, LoginRoute},
+        enterprise_internal_routes:match(
+            <<"POST">>, <<"/api/internal/v1/oa/login/tickets">>
+        )
+    ),
+    ?assertEqual(required_audit, enterprise_internal_audit_policy:verdict(<<"INT-44">>)),
+    ?assertEqual(
+        <<"oa.login_ticket_issued">>, enterprise_internal_audit_policy:audit_action(<<"INT-44">>)
+    ),
     ?assertEqual(
         <<"groups:read">>, maps:get(scope, maps:get(<<"INT-18">>, ById))
     ),
@@ -349,12 +364,12 @@ normalize_code() ->
 %%%===================================================================
 
 %%%===================================================================
-%%% INT-BE-02 —— 31-operation 真实 HTTP conformance
+%%% INT-BE-02 —— 44-operation 真实 HTTP conformance
 %%%（disposable PG + 真 Cowboy + synthetic Application credential/Grant；
 %%%  harness 细节见 test/api/intbe02_http_support.erl 模块头）
 %%%
 %%% INT-API-02A 验收口径：
-%%%   ① covered_operation_ids 精确等于冻结表 31 个 runtime operation ID
+%%%   ① covered_operation_ids 精确等于冻结表 44 个 runtime operation ID
 %%%      （本节末 assert_coverage 用 ETS 登记集合 ↔ routes()/0 全量比对）；
 %%%   ② 每个 method+path 至少一个预期成功或业务可达响应（本节正例链全部
 %%%      走 200/业务语义；禁止裸 404 计入覆盖）；
@@ -362,7 +377,7 @@ normalize_code() ->
 %%%      重放（同 key 同 body → 同 status + 逐字节同 body；同 key 异 body →
 %%%      409）；INT-14 为合同声明的 single_use_code 豁免项，改为验证 code
 %%%      一次性（重放已消费 code → 404 resource_not_found）；
-%%%   ④ negative 三件套：无 credential=401（31 条逐一）、缺 scope=403
+%%%   ④ negative 三件套：无 credential=401（44 条逐一）、缺 scope=403
 %%%      （RO 应用全 mutation 面 + 零 Grant 应用）、跨 Org / 未覆盖
 %%%      Workspace 同体拒绝（404 同体 / 403 organization_boundary_violation）；
 %%%   ⑤ envelope 对齐：错误响应状态码与信封 code 按
@@ -395,7 +410,8 @@ run_conformance(S) ->
     enterprise_channel_write_http_checks:run(S),
     enterprise_workspace_write_http_checks:run(S),
     enterprise_directory_admin_http_pg_tests:exercise(S),
-    cover(<<"INT-43">>),
+    ok = enterprise_internal_audit_http_checks:directory_sync(S),
+    ok = enterprise_internal_audit_http_checks:oa_login(S),
     enterprise_internal_audit_http_checks:assert_complete(),
     assert_coverage(),
     ok.
@@ -433,7 +449,7 @@ seed_delivery_row(C, S) ->
     ok.
 
 %% ------------------------------------------------------------------
-%% ① 正例链（依赖顺序）：31 条各一个预期成功/业务可达响应
+%% ① 正例链（依赖顺序；扩展端点由 run_conformance 中的专属检查覆盖）
 %% ------------------------------------------------------------------
 
 positive_chain(S) ->
@@ -1260,7 +1276,7 @@ grp_id_from(Specs) ->
 
 negative_matrix(S) ->
     Port = maps:get(port, S),
-    %% (a) 无 credential：31 条逐一 → 401 invalid_credential（认证链第一关，
+    %% (a) 无 credential：44 条逐一 → 401 invalid_credential（认证链第一关，
     %%     不触碰 PG；路径绑定段用整数 1 保证路由命中）
     lists:foreach(
         fun(R) ->
@@ -1486,14 +1502,14 @@ negative_matrix(S) ->
     ok.
 
 %% ------------------------------------------------------------------
-%% ④ covered_operation_ids：登记集合 ↔ 冻结表 32 ID 精确相等
+%% ④ covered_operation_ids：登记集合 ↔ 冻结表 44 ID 精确相等
 %% ------------------------------------------------------------------
 
 assert_coverage() ->
     Expected =
         lists:sort([maps:get(id, R) || R <- enterprise_internal_routes:routes()]),
     Actual = intbe02_http_support:covered_ids(),
-    ?assertEqual(43, length(Expected)),
+    ?assertEqual(44, length(Expected)),
     ?assertEqual(Expected, Actual, {coverage_gap, Expected -- Actual, Actual -- Expected}),
     write_coverage(Actual).
 
@@ -1562,7 +1578,7 @@ integration_readme_scope_contract_test() ->
     {ok, Readme} = file:read_file("api/internal/v1/README.md"),
     {match, Captures} = re:run(
         Readme,
-        <<"\\| `([a-z_]+:[a-z_]+)` \\|">>,
+        <<"\\| `([a-z_]+(?::[a-z_]+)+)` \\|">>,
         [global, {capture, [1], binary}]
     ),
     ?assertEqual(

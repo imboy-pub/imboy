@@ -16,6 +16,8 @@
     "/api/v1/bot/send_message",
     "/api/v1/init",
     "/api/v1/metrics",
+    "/api/v1/oa/login/exchange",
+    "/api/v1/oa/login/register",
     "/api/v1/passport/alipay_authinfo",
     "/api/v1/passport/alipay_login",
     "/api/v1/passport/bind_mail",
@@ -2033,6 +2035,12 @@
         "action": "direct",
         "handler": "enterprise_message_handler",
         "path": "/api/internal/v1/messages/direct",
+        "static": false
+      },
+      {
+        "action": "issue",
+        "handler": "enterprise_oa_login_handler",
+        "path": "/api/internal/v1/oa/login/tickets",
         "static": false
       },
       {
@@ -4249,6 +4257,24 @@
         "action": "read_stats",
         "handler": "msg_handler",
         "path": "/api/v1/msg/read_stats",
+        "static": false
+      },
+      {
+        "action": "exchange",
+        "handler": "enterprise_oa_login_handler",
+        "path": "/api/v1/oa/login/exchange",
+        "static": false
+      },
+      {
+        "action": "link",
+        "handler": "enterprise_oa_login_handler",
+        "path": "/api/v1/oa/login/link",
+        "static": false
+      },
+      {
+        "action": "register",
+        "handler": "enterprise_oa_login_handler",
+        "path": "/api/v1/oa/login/register",
         "static": false
       },
       {

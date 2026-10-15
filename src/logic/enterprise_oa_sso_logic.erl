@@ -56,6 +56,7 @@
     issue_code_tx/3,
     entries/1,
     entries_tx/2,
+    login_start_fields/2,
     exchange/2,
     exchange_tx/3,
     validate_issue_params/1,
@@ -100,19 +101,48 @@ entry(#{<<"allowed_redirect_uris">> := [Redirect | _], <<"application_key">> := 
     case valid_redirect_uri(Redirect) andalso valid_application_key(Key) of
         true ->
             Name = unicode:characters_to_list(maps:get(<<"name">>, Row, <<>>)),
-            {true, #{
-                <<"kind">> => <<"oa">>,
-                <<"organization_id">> => maps:get(<<"organization_id">>, Row),
-                <<"application_id">> => maps:get(<<"application_id">>, Row),
-                <<"application_key">> => Key,
-                <<"label">> => unicode:characters_to_binary(lists:sublist(Name, 64)),
-                <<"redirect_uri">> => Redirect
-            }};
+            {true,
+                maps:merge(login_start_fields(Key, Redirect), #{
+                    <<"kind">> => <<"oa">>,
+                    <<"organization_id">> => maps:get(<<"organization_id">>, Row),
+                    <<"application_id">> => maps:get(<<"application_id">>, Row),
+                    <<"application_key">> => Key,
+                    <<"label">> => unicode:characters_to_binary(lists:sublist(Name, 64)),
+                    <<"redirect_uri">> => Redirect
+                })};
         false ->
             false
     end;
 entry(_) ->
     false.
+
+%% Optional deployment-owned URL per application; never derive an OA endpoint.
+login_start_fields(Key, Redirect) ->
+    Config = application:get_env(imboy, oa_login_start_uris, #{}),
+    Uri =
+        case Config of
+            M when is_map(M) -> maps:get(Key, M, undefined);
+            _ -> undefined
+        end,
+    case {https_origin(Uri), https_origin(Redirect)} of
+        {{ok, Origin}, {ok, Origin}} -> #{<<"login_start_uri">> => Uri};
+        _ -> #{}
+    end.
+
+https_origin(Uri) when is_binary(Uri), byte_size(Uri) > 0, byte_size(Uri) =< 2048 ->
+    try uri_string:parse(Uri) of
+        #{scheme := <<"https">>, host := Host} = Parts when Host =/= <<>> ->
+            case maps:is_key(userinfo, Parts) orelse maps:is_key(fragment, Parts) of
+                true -> error;
+                false -> {ok, {string:lowercase(Host), maps:get(port, Parts, 443)}}
+            end;
+        _ ->
+            error
+    catch
+        _:_ -> error
+    end;
+https_origin(_) ->
+    error.
 
 %% @doc HUMAN-SSO-01 池化签发入口（handler 用）。
 %% Uid 为 Human JWT 身份（auth_ds:current_uid/1）；非正整数按未认证拒绝。
@@ -253,7 +283,10 @@ credential_current_tx(Conn, CredId) ->
 exchange_tx(Conn, Ctx, Params) ->
     OrgId = maps:get(organization_id, Ctx, undefined),
     AppId = maps:get(application_id, Ctx, undefined),
-    case is_integer(OrgId) andalso OrgId > 0 andalso is_integer(AppId) andalso AppId > 0 of
+    case
+        ((is_integer(OrgId) andalso OrgId > 0) orelse OrgId =:= null) andalso
+            is_integer(AppId) andalso AppId > 0
+    of
         false ->
             %% 认证产物缺失属程序错误（中间件未注入 ctx）：fail-closed
             ?ERROR_LOG([enterprise_oa_sso_exchange_ctx_invalid, #{}]),
@@ -377,7 +410,7 @@ issue_with_allowlist(Conn, Uid, App, RedirectUri, Nonce) ->
             {error, {?ERR_INVALID_PARAM, <<"redirect_uri 未注册"/utf8>>}}
     end.
 
--spec issue_persist(any(), integer(), integer(), integer(), binary(), binary()) ->
+-spec issue_persist(any(), integer(), integer() | null, integer(), binary(), binary()) ->
     {ok, map()} | {error, {integer(), binary()}}.
 issue_persist(Conn, Uid, OrgId, AppId, RedirectUri, Nonce) ->
     Code = generate_code(),

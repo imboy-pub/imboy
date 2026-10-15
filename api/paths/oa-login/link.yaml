@@ -1,0 +1,327 @@
+post:
+  tags:
+  - oa-login
+  summary: OA 入站登录 link
+  description: 同时证明 OA 身份和当前 active Human 身份；UID/DID/epoch 来自当前设备 JWT，请求 did 必须一致；冲突不能自动换绑。
+  operationId: oaLoginLink
+  security:
+  - bearerAuth: []
+  parameters:
+  - in: header
+    name: cos
+    required: true
+    description: 客户端平台，与 vsn（或 sk）及 pkg 一起定位签名密钥；参与签名明文。
+    schema:
+      type: string
+  - in: header
+    name: vsn
+    required: true
+    description: 客户端版本；参与签名明文，缺省时服务端使用 0.1.1。
+    schema:
+      type: string
+      default: 0.1.1
+  - in: header
+    name: pkg
+    required: true
+    description: 客户端包名；参与签名明文，缺省时服务端使用 pub.imboy.apk。
+    schema:
+      type: string
+      default: pub.imboy.apk
+  - in: header
+    name: did
+    required: true
+    description: 发起设备标识，参与签名明文；与 Human JWT 和请求体 did 保持一致。
+    schema:
+      type: string
+  - in: header
+    name: method
+    required: true
+    description: 客户端签名的 HMAC 算法。
+    schema:
+      type: string
+      enum:
+      - sha256
+      - sha512
+  - in: header
+    name: sign
+    required: true
+    description: 使用客户端签名密钥计算 did|vsn|cos|pkg 的 HMAC，输出标准 Base64；缺失、错误或密钥不可用时返回 HTTP 200、code 902。
+    schema:
+      type: string
+  - in: header
+    name: sk
+    required: false
+    description: 签名密钥版本，缺省使用 vsn；只影响密钥查找，不替换签名明文中的 vsn。
+    schema:
+      type: string
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required:
+          - application_key
+          - code_verifier
+          - did
+          - pending_token
+          properties:
+            application_key:
+              type: string
+              description: 发起端本地保存的预期应用键，不得从回调替换
+            code_verifier:
+              type: string
+              minLength: 43
+              maxLength: 128
+              pattern: ^[A-Za-z0-9_-]+$
+            did:
+              type: string
+              minLength: 1
+              maxLength: 40
+              description: UTF-8 最多 40 字节；pending 与 Human JWT 必须同一 DID
+            pending_token:
+              type: string
+              minLength: 43
+              maxLength: 43
+              pattern: ^[A-Za-z0-9_-]+$
+            cos:
+              type: string
+            dname:
+              type: string
+            dvsn:
+              type: string
+  responses:
+    '200':
+      description: 成功 code 0；客户端签名校验失败仍为 HTTP 200，业务 code 902。
+      content:
+        application/json:
+          schema:
+            oneOf:
+            - type: object
+              required:
+              - code
+              - msg
+              - sv_ts
+              - payload
+              properties:
+                code:
+                  type: integer
+                  enum:
+                  - 902
+                msg:
+                  type: string
+                  enum:
+                  - 签名验证失败，请更新客户端
+                sv_ts:
+                  type: integer
+                  format: int64
+                payload:
+                  type: object
+                  maxProperties: 0
+            - type: object
+              required:
+              - code
+              - msg
+              - sv_ts
+              - payload
+              properties:
+                code:
+                  type: integer
+                  enum:
+                  - 0
+                msg:
+                  type: string
+                sv_ts:
+                  type: integer
+                  format: int64
+                payload:
+                  type: object
+                  required:
+                  - id
+                  - uid
+                  - user_id
+                  - projection_pending
+                  - token
+                  - refreshtoken
+                  properties:
+                    id:
+                      type: integer
+                      format: int64
+                    uid:
+                      type: integer
+                      format: int64
+                    user_id:
+                      type: integer
+                      format: int64
+                    projection_pending:
+                      type: boolean
+                    token:
+                      type: string
+                    refreshtoken:
+                      type: string
+    '400':
+      description: 响应
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+            - code
+            - msg
+            - sv_ts
+            - payload
+            properties:
+              code:
+                type: integer
+                enum:
+                - 400
+              msg:
+                type: string
+                enum:
+                - invalid_request
+              sv_ts:
+                type: integer
+                format: int64
+              payload: {}
+    '401':
+      description: 签名校验通过后，JWT 缺失、过期、无效或会话不可用；亦包含 handler 的票据和待完成凭据错误。
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+            - code
+            - msg
+            - sv_ts
+            - payload
+            properties:
+              code:
+                type: integer
+                enum:
+                - 401
+                - 705
+                - 706
+              msg:
+                type: string
+              sv_ts:
+                type: integer
+                format: int64
+              payload: {}
+            oneOf:
+            - properties:
+                code:
+                  const: 401
+                msg:
+                  enum:
+                  - invalid_ticket
+                  - invalid_session
+                  - 未登录，请先登录
+                  - TOKEN PURPOSE NOT ALLOWED
+                  - 会话已吊销，请重新登录
+                  - 设备已被移除，请重新登录
+            - properties:
+                code:
+                  const: 705
+                msg:
+                  const: Please refresh token
+            - properties:
+                code:
+                  const: 706
+                msg:
+                  enum:
+                  - Invalid token
+                  - Invalid token.
+          examples:
+            missingJwt:
+              summary: 有效签名头，缺少 Authorization
+              value:
+                code: 401
+                msg: 未登录，请先登录
+                sv_ts: 1792022400000
+                payload: {}
+            expiredJwt:
+              summary: 有效签名头，JWT 已过期
+              value:
+                code: 705
+                msg: Please refresh token
+                sv_ts: 1792022400000
+                payload: {}
+            malformedJwt:
+              summary: 有效签名头，JWT 无效
+              value:
+                code: 706
+                msg: Invalid token
+                sv_ts: 1792022400000
+                payload: {}
+    '403':
+      description: 响应
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+            - code
+            - msg
+            - sv_ts
+            - payload
+            properties:
+              code:
+                type: integer
+                enum:
+                - 403
+              msg:
+                type: string
+                enum:
+                - insufficient_scope
+              sv_ts:
+                type: integer
+                format: int64
+              payload: {}
+    '409':
+      description: 响应
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+            - code
+            - msg
+            - sv_ts
+            - payload
+            properties:
+              code:
+                type: integer
+                enum:
+                - 409
+              msg:
+                type: string
+                enum:
+                - identity_conflict
+              sv_ts:
+                type: integer
+                format: int64
+              payload: {}
+    '500':
+      description: 响应
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+            - code
+            - msg
+            - sv_ts
+            - payload
+            properties:
+              code:
+                type: integer
+                enum:
+                - 500
+              msg:
+                type: string
+                enum:
+                - internal_error
+              sv_ts:
+                type: integer
+                format: int64
+              payload: {}

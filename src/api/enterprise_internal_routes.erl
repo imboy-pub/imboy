@@ -38,6 +38,15 @@ prefix() ->
 routes() ->
     [
         #{
+            id => <<"INT-44">>,
+            method => <<"POST">>,
+            path => <<"/api/internal/v1/oa/login/tickets">>,
+            scope => <<"oa:login:issue">>,
+            rate_bucket => internal_sso,
+            idempotency => not_required,
+            sender_mode => none
+        },
+        #{
             id => <<"INT-01">>,
             method => <<"GET">>,
             path => <<"/api/internal/v1/application">>,

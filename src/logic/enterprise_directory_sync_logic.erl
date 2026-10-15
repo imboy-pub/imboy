@@ -1,6 +1,37 @@
 -module(enterprise_directory_sync_logic).
 -moduledoc "Directory-only incremental sync. Source organization rows are provisioned by trusted configuration; clients cannot nominate an Owner or UID. sync/3 owns the transaction; sync_tx/4 requires its caller to rollback abort_tx and run elib_pg commit actions. Explicit higher source versions may restore removed personnel under R20; retired account bindings cannot be restored. Organization membership removal is recoverable.".
--export([sync/3, sync_tx/4, claim_and_project_tx/4, validate/1, version/2]).
+-export([sync/3, sync_tx/4, claim_and_project_tx/4, claim_login_tx/4, validate/1, version/2]).
+
+%% Login proves an identity, not directory write authority. Keep unauthorized
+%% memberships pending; never elevate the issuer's scopes to project them.
+claim_login_tx(Conn, Ctx, ExternalId, UserId) ->
+    AppId = maps:get(application_id, Ctx),
+    _ = must(enterprise_oa_login_repo:authority_tx(Conn, AppId, maps:get(credential_id, Ctx))),
+    Person = must(enterprise_source_person_repo:claim_tx(Conn, AppId, ExternalId, UserId)),
+    Sources = must(enterprise_directory_source_repo:login_projections_tx(Conn, AppId, ExternalId)),
+    Pending = lists:foldl(
+        fun(Source, Count) ->
+            case maps:get(<<"source_current">>, Source) of
+                true -> ok;
+                false -> fail(source_unavailable)
+            end,
+            TxCtx = Ctx#{organization_id => maps:get(<<"organization_id">>, Source)},
+            case enterprise_directory_source_repo:authorize_tx(Conn, TxCtx) of
+                {ok, _} ->
+                    project_claim(Conn, Ctx, ExternalId, Person, Source),
+                    Count;
+                {error, insufficient_scope} ->
+                    Count + 1;
+                {error, organization_boundary_violation} ->
+                    Count + 1;
+                {error, Reason} ->
+                    fail(Reason)
+            end
+        end,
+        0,
+        Sources
+    ),
+    {ok, Person#{<<"projection_pending">> => Pending > 0}}.
 
 claim_and_project_tx(Conn, Ctx, ExternalId, UserId) ->
     _ = must(enterprise_directory_source_repo:lock_source_tx(Conn, Ctx)),

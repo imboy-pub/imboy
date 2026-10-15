@@ -109,6 +109,18 @@ create_tx1(Conn, OrgId, AppId, CredentialPrefix, Digest, ExpiresAt) ->
     end.
 
 %% 已认证上下文的事务内事实；锁序为组织、应用、凭证，锁持有到提交。
+authority_for_share_tx(Conn, null, AppId, CredId) ->
+    Sql = <<
+        "SELECT a.status AS application_status, c.status AS credential_status "
+        "FROM enterprise_application a JOIN enterprise_application_credential c "
+        "ON c.application_id=a.id WHERE a.organization_id IS NULL "
+        "AND c.organization_id IS NULL AND a.id=$1 AND c.id=$2 FOR SHARE OF a,c"
+    >>,
+    case elib_pg:query(Conn, Sql, [AppId, CredId]) of
+        {ok, [Row]} -> {ok, Row};
+        {ok, []} -> {error, not_found};
+        {error, Reason} -> {error, Reason}
+    end;
 authority_for_share_tx(Conn, OrgId, AppId, CredId) ->
     Sql = <<
         "SELECT o.status AS organization_status, a.status AS application_status,"

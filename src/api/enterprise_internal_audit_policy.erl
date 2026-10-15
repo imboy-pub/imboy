@@ -5,9 +5,8 @@
 % enterprise_internal_audit_policy 是 /api/internal/v1/* 写操作（mutation）
 % 的**逐项审计政策冻结表**（INT-BE-03 / 验收 INT-API-02B）。
 %
-% 覆盖口径：enterprise_internal_routes:routes() 中全部非 GET 操作（20 条 =
-% 16 条 idempotency=required mutation + INT-14 single_use_code + 3 条只读
-% 语义 POST）。GET 只读操作天然无审计需求，不进本表；本表与路由表的一致性
+% 覆盖口径：enterprise_internal_routes:routes() 中全部非 GET 操作（31 条 =
+% 27 条必审 + 4 条登记豁免）。GET 只读操作天然无审计需求，不进本表；本表与路由表的一致性
 % （非 GET 全覆盖、无表外条目）由测试机械比对，任一侧漏登记即红灯。
 %
 % verdict 两值：
@@ -26,7 +25,7 @@
 % 幂等重放政策（冻结条款）：§11 幂等重放命中缓存时**不重执行业务**，因而
 % 不产生重复审计行——这是 REQUIRED_AUDIT 条目的通用条款，由幂等矩阵测试
 % 逐条证明；INT-14 的重放由 code CAS 一次性消费保证（重放 → resource_not_found
-% 拒绝 → 无业务变更 → 无审计行）。
+% 拒绝 → 无业务变更 → 无审计行）。INT-44 无幂等重放，每次成功签发新票并新增审计。
 %%%
 
 -export([policies/0, verdict/1, required_ids/0, deviation_ids/0, audit_action/1]).
@@ -36,13 +35,31 @@
 -export_type([verdict/0]).
 
 %%%===================================================================
-%%% 冻结政策表（INT-02..17, 19..22, 35..42 —— 路由表全部非 GET）
+%%% 冻结政策表（路由表全部 31 条非 GET，含 INT-43/44）
 %%%===================================================================
 
-%% @doc 逐项审计政策（29 条；顺序无关，测试按 id 比对）。
+%% @doc 逐项审计政策（31 条；顺序无关，测试按 id 比对）。
 -spec policies() -> [map(), ...].
 policies() ->
     [
+        #{
+            id => <<"INT-43">>,
+            method => <<"POST">>,
+            path => <<"/api/internal/v1/directory/sync">>,
+            verdict => required_audit,
+            audit_action => <<"directory.synced">>,
+            audit_resource_type => <<"directory_sync">>,
+            reason => <<"Directory synchronization changes organization projections">>
+        },
+        #{
+            id => <<"INT-44">>,
+            method => <<"POST">>,
+            path => <<"/api/internal/v1/oa/login/tickets">>,
+            verdict => required_audit,
+            audit_action => <<"oa.login_ticket_issued">>,
+            audit_resource_type => <<"enterprise_application">>,
+            reason => <<"Inbound login proof issuance">>
+        },
         %% ---- REQUIRED_AUDIT（基线 16 条）----
         #{
             id => <<"INT-02">>,
@@ -352,7 +369,7 @@ verdict(Id) ->
         false -> erlang:error({audit_policy_missing, Id})
     end.
 
-%% @doc REQUIRED 条目的 operation id 集合（25 条：基线 17 + 内部写扩展 8）。
+%% @doc REQUIRED 条目的 operation id 集合（27 条：原 25 条 + INT-43/44）。
 -spec required_ids() -> [binary()].
 required_ids() ->
     [maps:get(id, P) || P <- policies(), maps:get(verdict, P) =:= required_audit].

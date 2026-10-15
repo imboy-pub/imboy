@@ -3,15 +3,15 @@
 %%
 %% 一次性 marker 库（inttest_marker_db 配方，env 前缀 FULL01_MIG_INTTEST）：
 %%   空库全量迁移 up（erlang_migrate strict，含 00000139）→ schema oracle
-%%   → 广州候选数据升级兼容（goto 136 → GZ 五表 fixture → up 139）
-%%   → down 139 → 再次 up 139。
+%%   历史升级另建 fresh 136 库 → GZ 五表 fixture → up head；
+%%   历史回环另建 fresh 139 库 → down 136 → up 139 → up head。
 %% 业务用例每条 BEGIN ... ROLLBACK，不留数据；迁移版本变更（goto/down/up）
 %% 用独立连接并排在最后（erlang_migrate 需要事务自治连接）。
 %%
 %% oracle 覆盖（plan-full §5 数据扩展 / §3.1 授权语义 / §7 安全硬门）：
 %%   ⓪ 空库全量 up 至版本 139（3 表 + 2 只读视图 + 删除守卫函数就位）
 %%   ① enterprise_application_grant：合法签发、幂等键唯一、validity / status
-%%      一致性 CHECK、跨 Org application 引用 23503、未登记 scope 双层拒绝
+%%      一致性 CHECK、实例级 application 引用与 Grant 业务归属、未登记 scope 双层拒绝
 %%   ② enterprise_application_grant_scope：固定 scope 枚举（wildcard /
 %%      未登记值 / 大小写变体 / 空串一律 23514）、PK 去重
 %%   ③ enterprise_application_grant_workspace：显式 workspace 行、
@@ -67,35 +67,28 @@
 %%%===================================================================
 
 setup_conn() ->
+    setup_conn(#{}).
+
+setup_conn(Options) ->
     %% 直连模式未起 imboy 应用：本测试仅需 default TSID 生成器
     try
         elib_tsid:init(#{dc_id => 1, node_id => 1, dc_bits => 3})
     catch
         _:_ -> ok
     end,
-    inttest_marker_db:provision(#{
-        env_prefix => <<"FULL01_MIG_INTTEST">>,
-        connect_extra => #{codecs => [{epgsql_codec_rfc3339_bin, []}]}
-    }).
+    inttest_marker_db:provision(
+        maps:merge(
+            #{
+                env_prefix => <<"FULL01_MIG_INTTEST">>,
+                connect_extra => #{codecs => [{epgsql_codec_rfc3339_bin, []}]}
+            },
+            Options
+        )
+    ).
 
 close_conn(State) ->
     inttest_marker_db:release(State),
     ok.
-
-%% 迁移版本变更（goto/down/up）用独立连接（erlang_migrate 需事务自治）。
-connect_marker(State) ->
-    #{host := Host, port := Port, username := User, password := Pass} = maps:get(server, State),
-    {ok, Conn} =
-        inttest_marker_db:safe_connect(#{
-            host => Host,
-            port => Port,
-            username => User,
-            password => Pass,
-            database => maps:get(db, State),
-            timeout => 10000,
-            codecs => [{epgsql_codec_rfc3339_bin, []}]
-        }),
-    Conn.
 
 with_tx(C, TestFun) ->
     ?_test(begin
@@ -125,21 +118,37 @@ exec(C, IoData) ->
         {error, Reason} -> erlang:error({sql_error, Reason, Sql})
     end.
 
+migration_target_validation_test_() ->
+    [
+        [
+            ?_assertError(
+                {marker_db_invalid_migration_target, Target},
+                inttest_marker_db:provision(#{migration_target => Target})
+            )
+         || Target <- [0, -1, 139.0, <<"139">>, undefined]
+        ],
+        ?_assertError(
+            marker_db_migration_target_cannot_reuse,
+            inttest_marker_db:provision(#{migration_target => 139, reuse => true})
+        )
+    ].
+
 foundation_pg_test_() ->
     {timeout, 900,
         {setup, fun setup_conn/0, fun close_conn/1, fun(State) ->
             C = maps:get(conn, State),
             [
                 {"empty_db_full_up_reaches_139", empty_db_full_up_test(C)},
-                {"grant_row_constraints_and_cross_org_fk", with_tx(C, fun grant_row_oracle/1)},
+                {"grant_row_constraints_and_business_attribution",
+                    with_tx(C, fun grant_row_oracle/1)},
                 {"grant_scope_fixed_enum_and_pk", with_tx(C, fun grant_scope_oracle/1)},
                 {"grant_workspace_kind_gate_and_org_boundary",
                     with_tx(C, fun grant_workspace_oracle/1)},
                 {"grant_delete_guard_blocks_physical_delete",
                     with_tx(C, fun grant_delete_guard_oracle/1)},
                 {"effective_views_read_time_evaluation", with_tx(C, fun effective_view_oracle/1)},
-                {"gz_fixture_upgrade_compat_to_139", {timeout, 300, gz_upgrade_compat_test(State)}},
-                {"migration_139_down_then_up_cycle", {timeout, 300, migration_cycle_test(State)}}
+                {"gz_fixture_upgrade_compat_to_139", {timeout, 300, gz_upgrade_compat_test()}},
+                {"migration_139_down_then_up_cycle", {timeout, 300, migration_cycle_test()}}
             ]
         end}}.
 
@@ -224,12 +233,26 @@ grant_row_oracle(C) ->
         end)
     ),
 
-    %% 跨 Org 的 application 引用被复合 FK 拒绝（Org B 引用 Org A 的 Application）；
-    %% ops 层把 FK 归一为 application_not_found（不给存在性 oracle）
-    ?assertEqual(
-        {error, application_not_found},
-        in_savepoint(C, fun() -> issue(C, ?ORG_B, AppA, <<"k-cross">>, [<<"groups:write">>]) end)
-    ),
+    %% ADR 与迁移 173：应用为实例级实体；Grant 按自身业务归属与应用精确查询。
+    in_savepoint(C, fun() ->
+        {ok, CrossGrant} = issue(C, ?ORG_B, AppA, <<"k-cross">>, [<<"groups:write">>]),
+        CrossId = maps:get(<<"id">>, CrossGrant),
+        ?assertEqual(?ORG_B, maps:get(<<"organization_id">>, CrossGrant)),
+        ?assertEqual(AppA, maps:get(<<"application_id">>, CrossGrant)),
+        ?assertEqual([<<"groups:write">>], maps:get(<<"scopes">>, CrossGrant)),
+        ?assertEqual(
+            {ok, CrossGrant},
+            enterprise_application_grant_repo:find_tx(C, ?ORG_B, AppA, CrossId)
+        ),
+        ?assertEqual(
+            {error, not_found},
+            enterprise_application_grant_repo:find_tx(C, ?ORG_A, AppA, CrossId)
+        ),
+        ?assertEqual(
+            {error, not_found},
+            enterprise_application_grant_repo:find_tx(C, ?ORG_B, AppB, CrossId)
+        )
+    end),
 
     %% 未登记 scope：ops 治理面先拦（invalid_scope），DB CHECK 兜底
     ?assertEqual(
@@ -252,7 +275,7 @@ grant_row_oracle(C) ->
     %% 受管判定基于「是否存在任何 Grant 行」（含 revoked/过期），另一 Application 不受影响
     ?assertEqual({ok, true}, grant_governed(C, ?ORG_A, AppA)),
     ?assertEqual({ok, false}, grant_governed(C, ?ORG_A, AppB)),
-    %% 跨 Org 查询同一 AppId 不串号（Org 边界在 SQL 内强制）
+    %% 上述 savepoint 已回退 Org B 的 Grant；业务归属筛选不返回 Org A 的行。
     ?assertEqual({ok, false}, grant_governed(C, ?ORG_B, AppA)).
 
 %%%===================================================================
@@ -286,7 +309,8 @@ grant_scope_oracle(C) ->
             <<"customer_service:read">>,
             <<"customer_service:write">>,
             <<"workspaces:write">>,
-            <<"channels:write">>
+            <<"channels:write">>,
+            <<"oa:login:issue">>
         ]),
         lists:sort(Fixed)
     ),
@@ -462,21 +486,21 @@ effective_view_oracle(C) ->
 %%% ⑥ 广州候选（GZ）数据升级兼容
 %%%===================================================================
 
-gz_upgrade_compat_test(State) ->
-    ?_test(gz_upgrade_compat(State)).
+gz_upgrade_compat_test() ->
+    ?_test(gz_upgrade_compat()).
 
-gz_upgrade_compat(State) ->
+gz_upgrade_compat() ->
     _ = code:add_patha("deps/erlang_migrate/ebin"),
-    Conn = connect_marker(State),
+    State = setup_conn(#{migration_target => 136}),
+    Conn = maps:get(conn, State),
     try
         MigConfig = #{conn => Conn, dir => "priv/migrations", strict => true},
-        %% 1) 回到 GZ 候选 head（136）：空库全量 up 至 136
-        ok = erlang_migrate:goto(MigConfig, 136),
+        %% 1) 独立空库正向迁移至 GZ 候选 head（136）。
         ?assertMatch({ok, 136, false}, erlang_migrate:version(MigConfig)),
         lists:foreach(fun(T) -> ?assertNot(table_missing(Conn, T)) end, ?GZ_TABLES),
         ?assert(table_missing(Conn, <<"enterprise_application_grant">>)),
 
-        %% 2) 写入 GZ 期形态数据（模拟广州候选已有数据；提交，供后续用例复用）。
+        %% 2) 写入 GZ 期形态数据（模拟广州候选已有数据；提交供升级验证）。
         %%    夹具按 GZ 期（136）schema 形态写入：head 期 repo 的 ?COLUMNS 自
         %%    迁移 00000143 起含 enterprise_application.version，136 形态下
         %%    RETURNING/SELECT version 会 42703（era 漂移）。真实 GZ 候选库本就
@@ -542,29 +566,30 @@ gz_upgrade_compat(State) ->
         ),
         ok = exec(Conn, <<"ROLLBACK">>)
     after
-        epgsql:close(Conn)
+        close_conn(State)
     end.
 
 %%%===================================================================
 %%% ⑦ migration 139 down/up 循环
 %%%===================================================================
 
-migration_cycle_test(State) ->
-    ?_test(migration_cycle(State)).
+migration_cycle_test() ->
+    ?_test(migration_cycle()).
 
-migration_cycle(State) ->
+migration_cycle() ->
     _ = code:add_patha("deps/erlang_migrate/ebin"),
-    Conn = connect_marker(State),
+    State = setup_conn(#{migration_target => 139}),
+    Conn = maps:get(conn, State),
     try
         MigConfig = #{conn => Conn, dir => "priv/migrations", strict => true},
-        {ok, AppA} = enterprise_application_repo:find_by_key_tx(Conn, ?ORG_A, <<"t996-app-a">>),
-        AppAId = maps:get(<<"id">>, AppA),
+        ?assertMatch({ok, 139, false}, erlang_migrate:version(MigConfig)),
+        ok = exec(Conn, <<"BEGIN">>),
+        ok = seed_env(Conn),
+        AppAId = create_app_gz_era(Conn, ?ORG_A, <<"t996-app-a">>, <<"a"/utf8>>),
+        ok = exec(Conn, <<"COMMIT">>),
 
         %% 回滚 139：三表 + 两视图 + 守卫函数全部消失，版本回到 136，
         %% 广州期数据（五表 + organization + workspace）不受影响。
-        %% FULL-02：从 `down 1` 改为 `goto 136`（意图是「退到 139 之前」；
-        %% 140 入库后 `down 1` 只回滚 140，断言会错位——与 FULL-01 对
-        %% foundation 套件 migration_cycle 的同款修法一致）
         ok = erlang_migrate:goto(MigConfig, 136),
         ?assertMatch({ok, 136, false}, erlang_migrate:version(MigConfig)),
         lists:foreach(fun(T) -> ?assert(table_missing(Conn, T)) end, ?TABLES),
@@ -575,7 +600,12 @@ migration_cycle(State) ->
             Conn, <<"SELECT id FROM organization WHERE id = $1">>, [?ORG_A]
         ),
 
-        %% 再次全量 up：三表与视图重建，版本回到当前 head
+        %% 先重建 139，验证历史回环，再正向升级到 head 运行当前 repo oracle。
+        ok = erlang_migrate:goto(MigConfig, 139),
+        ?assertMatch({ok, 139, false}, erlang_migrate:version(MigConfig)),
+        lists:foreach(fun(T) -> ?assertNot(table_missing(Conn, T)) end, ?TABLES),
+        lists:foreach(fun(V) -> ?assertNot(view_missing(Conn, V)) end, ?VIEWS),
+        ?assertNot(function_missing(Conn, <<"fn_enterprise_application_grant_no_delete">>)),
         ok = erlang_migrate:up(MigConfig),
         Head2 = migration_head(),
         ?assertMatch({ok, Head2, false}, erlang_migrate:version(MigConfig)),
@@ -609,7 +639,7 @@ migration_cycle(State) ->
         ),
         ok = exec(Conn, <<"ROLLBACK">>)
     after
-        epgsql:close(Conn)
+        close_conn(State)
     end.
 
 %%%===================================================================

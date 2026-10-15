@@ -85,7 +85,7 @@ Authorization: Bearer <credential_prefix>.<secret>
 
 `credential_prefix` 是服务端签发的完整 `ib_int_...` 前缀，不是 application_id；也不要用返回的 credential_id 自行重建。签发／轮换响应的 `secret` 字段实际给出可直接使用的完整凭证，原样作为 Bearer 值保存。
 
-## 4. 授权（Scope，固定 18 枚举，无通配）
+## 4. 授权（Scope，固定 19 枚举，无通配）
 
 | Scope | 解锁能力 |
 |---|---|
@@ -107,6 +107,7 @@ Authorization: Bearer <credential_prefix>.<secret>
 | `sso:exchange` | OA SSO 一次性 code 交换 |
 | `customer_service:read` | 企业坐席列表与详情（企业全域 Grant） |
 | `customer_service:write` | 创建、修改、停用坐席（企业全域 Grant） |
+| `oa:login:issue` | OA 入站登录签票（INT-44；仅显式授予，不默认授予目录连接；`sso:exchange` 不隐含此权限） |
 
 Scope 由管理员签发时授予，集成方**不可自选**、不存在 `*` 通配；
 两个消息域端点（INT-09/10）按请求里的 `sender_mode` 动态要求

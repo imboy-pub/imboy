@@ -27,6 +27,7 @@
 %%             connect_extra => #{codecs => [{epgsql_codec_rfc3339_bin, []}]}}).
 %%   close_conn(State) -> inttest_marker_db:release(State).
 %%   %% State 内 conn 字段为已连接 epgsql pid；测试体自行 BEGIN/ROLLBACK。
+%%   %% 可选 migration_target => 正整数：fresh 库 goto 指定版本；不得与 reuse 联用。
 
 -export([provision/1, release/1, safe_connect/1, migration_head/0]).
 
@@ -48,9 +49,15 @@
 -spec provision(map()) ->
     #{conn := pid(), maint_conn := pid(), db := binary(), server := map()}.
 provision(Opts) when is_map(Opts) ->
-    case maps:get(reuse, Opts, false) of
-        true -> provision_shared(Opts);
-        false -> provision_fresh(Opts)
+    case {maps:get(reuse, Opts, false), maps:find(migration_target, Opts)} of
+        {true, {ok, _}} ->
+            erlang:error(marker_db_migration_target_cannot_reuse);
+        {_, {ok, Target}} when not is_integer(Target); Target =< 0 ->
+            erlang:error({marker_db_invalid_migration_target, Target});
+        {true, error} ->
+            provision_shared(Opts);
+        {false, _} ->
+            provision_fresh(Opts)
     end.
 
 provision_fresh(Opts) when is_map(Opts) ->
@@ -64,7 +71,7 @@ provision_fresh(Opts) when is_map(Opts) ->
     try
         ok = create_db_retry(MaintConn, DbName),
         ok = ensure_extensions(Server, DbName),
-        ok = migrate_result(migrate_fresh_db(Server, DbName)),
+        ok = migrate_result(migrate_fresh_db(Server, DbName, Opts)),
         %% A1c：marker 库自身连接同样走重试（原先裸 safe_connect 一次失败即
         %% 整个 provision 报废），与 connect_server 同预算。
         Conn = connect_retry(Server, DbName),
@@ -440,10 +447,14 @@ ensure_extensions(Server, DbName) ->
         close_quiet(Conn)
     end.
 
-migrate_fresh_db(Server, DbName) ->
+migrate_fresh_db(Server, DbName, Opts) ->
     MigConn = connect_server(Server, DbName),
     try
-        erlang_migrate:up(#{conn => MigConn, dir => "priv/migrations", strict => true})
+        Config = #{conn => MigConn, dir => "priv/migrations", strict => true},
+        case maps:find(migration_target, Opts) of
+            error -> erlang_migrate:up(Config);
+            {ok, Target} -> erlang_migrate:goto(Config, Target)
+        end
     after
         close_quiet(MigConn)
     end.

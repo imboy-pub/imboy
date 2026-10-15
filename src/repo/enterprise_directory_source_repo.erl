@@ -2,6 +2,7 @@
 -export([
     bootstrap_tx/4,
     pending_projections_tx/3,
+    login_projections_tx/3,
     lock_source_tx/2,
     authorize_tx/2,
     organization_tx/3,
@@ -359,6 +360,20 @@ membership_tx(Conn, AppId, OrgId, ExternalId) ->
             [AppId, OrgId, ExternalId]
         ),
         not_found
+    ).
+
+%% Login must distinguish an unavailable configured source from missing write scope.
+login_projections_tx(Conn, AppId, ExternalId) ->
+    elib_pg:query(
+        Conn,
+        <<
+            "SELECT m.*, (o.enabled AND o.authorization_expires_at>clock_timestamp()) "
+            "AS source_current FROM enterprise_directory_membership_source m "
+            "JOIN enterprise_directory_organization_source o USING(application_id,organization_id) "
+            "WHERE m.application_id=$1 AND m.external_user_id=$2 AND m.status='active' "
+            "AND m.projected_user_id IS NULL ORDER BY m.organization_id FOR UPDATE OF o,m"
+        >>,
+        [AppId, ExternalId]
     ).
 
 pending_projections_tx(Conn, AppId, ExternalId) ->

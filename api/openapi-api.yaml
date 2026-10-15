@@ -48,6 +48,8 @@ servers:
         description: 本地 HTTP 端口；可通过 HTTP_PORT 环境变量覆盖
 
 tags:
+  - name: oa-login
+    description: OA 入站登录、明确关联已有账号或新建账号
   - name: auth
     description: 登录、注册、token 刷新
   - name: user
@@ -78,6 +80,12 @@ tags:
 # 对应子目录后在此 paths 段追加 $ref 桥接。
 # ----------------------------------------------------------------------------
 paths:
+  /api/v1/oa/login/exchange:
+    $ref: './paths/oa-login/exchange.yaml'
+  /api/v1/oa/login/link:
+    $ref: './paths/oa-login/link.yaml'
+  /api/v1/oa/login/register:
+    $ref: './paths/oa-login/register.yaml'
   # --------------------------------------------------------------------------
   # 系统级 / 基础端点（D-extras phase 26, 2026-05-17）
   # 包含：根欢迎页、初始化探针、Prometheus 指标、auth-gated assets、WebSocket

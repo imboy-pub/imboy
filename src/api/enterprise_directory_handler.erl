@@ -51,8 +51,14 @@ sync(<<"POST">>, Req0, State) ->
     Ctx = maps:get(enterprise_internal, State, #{}),
     Key = cowboy_req:header(<<"idempotency-key">>, Req0, <<>>),
     case enterprise_directory_sync_logic:sync(Ctx, Key, elib_param:post(Req0)) of
-        {ok, _, #{response_code := Code, response_body := Body}} ->
-            cowboy_req:reply(Code, #{<<"content-type">> => <<"application/json">>}, Body, Req0);
+        {ok, Kind, #{response_code := Code, response_body := Body}} ->
+            Headers = #{<<"content-type">> => <<"application/json">>},
+            ReplyHeaders =
+                case Kind of
+                    replay -> maps:from_list([enterprise_internal_idempotency:replay_header()]);
+                    applied -> #{}
+                end,
+            cowboy_req:reply(Code, maps:merge(Headers, ReplyHeaders), Body, Req0);
         {error, Reason} ->
             enterprise_internal_error:reply(Req0, sync_error(Reason));
         _ ->

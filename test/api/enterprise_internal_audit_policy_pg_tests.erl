@@ -8,7 +8,7 @@
 %
 % 覆盖（冻结表 enterprise_internal_audit_policy）：
 %   ① 政策覆盖完整性：policies() 精确覆盖路由表全部非 GET operation
-%      （REQUIRED 17 + DEVIATION 4 = 21，无遗漏无表外）；
+%      （REQUIRED 27 + DEVIATION 4 = 31，无遗漏无表外）；
 %   ② REQUIRED_AUDIT 逐条：真 HTTP mutation 成功 → 对应 action 审计计数
 %      +1，且审计行含七字段口径（organization_id / resource_type +
 %      resource_id / action / actor_role+actor_user_id /
@@ -17,7 +17,8 @@
 %      与审计行**都不落库**；业务失败（invalid_request）→ 同样两者皆无；
 %   ④ 幂等重放：同 key 同 body 精确重放 → 200 + Idempotent-Replayed 头，
 %      审计计数不变（重放不重执行业务/audit）；INT-14 重放已消费 code →
-%      统一 404 拒绝，无重复审计（single_use_code 冻结条款）；
+%      统一 404 拒绝，无重复审计（single_use_code 冻结条款）；INT-44 每次签发
+%      新票并新增审计，由共享 HTTP 审计助手验证；
 %   ⑤ REGISTERED_DEVIATION：INT-03/16/17/07 执行后不产生任何审计行
 %      （豁免条款冻结；最终全表 action 分布与期望分布精确相等）。
 %
@@ -55,10 +56,31 @@ policy_coverage() ->
         length(lists:usort(Required ++ Deviation)),
         overlapping_verdicts
     ),
-    %% 17 基线 + 8（448b9551/95115377 内部写扩展 INT-35..42，合同
-    %% endpoints.md「版本并发保护及应用审计」）= 25
-    ?assertEqual(25, length(Required)),
+    ?assertEqual(44, length(enterprise_internal_routes:routes())),
+    ?assertEqual(31, length(NonGet)),
+    ?assertEqual(27, length(Required)),
     ?assertEqual(4, length(Deviation)),
+    lists:foreach(
+        fun(Policy) ->
+            Id = maps:get(id, Policy),
+            [Route] = [R || R <- enterprise_internal_routes:routes(), maps:get(id, R) =:= Id],
+            ?assertEqual(maps:get(method, Route), maps:get(method, Policy), {policy_method, Id}),
+            ?assertEqual(maps:get(path, Route), maps:get(path, Policy), {policy_path, Id})
+        end,
+        enterprise_internal_audit_policy:policies()
+    ),
+    lists:foreach(
+        fun({Id, Action, Resource}) ->
+            Policy = policy_of(Id),
+            ?assertEqual(required_audit, maps:get(verdict, Policy)),
+            ?assertEqual(Action, maps:get(audit_action, Policy)),
+            ?assertEqual(Resource, maps:get(audit_resource_type, Policy))
+        end,
+        [
+            {<<"INT-43">>, <<"directory.synced">>, <<"directory_sync">>},
+            {<<"INT-44">>, <<"oa.login_ticket_issued">>, <<"enterprise_application">>}
+        ]
+    ),
     %% DEVIATION 冻结集合（豁免不得静默扩散）
     ?assertEqual(
         lists:sort([<<"INT-03">>, <<"INT-07">>, <<"INT-16">>, <<"INT-17">>]),
@@ -110,10 +132,17 @@ audit_policy_http_test_() ->
 
 run_audit(S) ->
     #{conn := C} = S,
+    enterprise_internal_audit_http_checks:reset(),
     seed_delivery_row(C, S),
     Ctx = positive_with_audit(S),
     atomicity(S, Ctx),
     replay_no_dup(S, Ctx),
+    ok = enterprise_internal_audit_http_checks:seats(S),
+    enterprise_channel_write_http_checks:run(S),
+    enterprise_workspace_write_http_checks:run(S),
+    ok = enterprise_internal_audit_http_checks:directory_sync(S),
+    ok = enterprise_internal_audit_http_checks:oa_login(S),
+    enterprise_internal_audit_http_checks:assert_complete(),
     [].
 
 %% ------------------------------------------------------------------
@@ -135,6 +164,7 @@ positive_with_audit(S) ->
     %% ---- INT-02 绑定（seed 的 bind 走 repo 直调、不经 logic、无审计，
     %%      本条是第一笔 identity.mapping.bound）----
     http_ok(
+        C,
         Port,
         <<"PUT">>,
         <<"/api/internal/v1/identity-mappings">>,
@@ -151,7 +181,7 @@ positive_with_audit(S) ->
         <<"members">> => [H1, H2]
     },
     #{<<"group_id">> := Gid} = http_ok(
-        Port, <<"POST">>, <<"/api/internal/v1/groups">>, Body04, A, <<"intbe03-idem-04">>
+        C, Port, <<"POST">>, <<"/api/internal/v1/groups">>, Body04, A, <<"intbe03-idem-04">>
     ),
     assert_audit_increment(C, <<"group.created">>, 0, 1),
     %% 七字段：org / action / actor_role / application / correlation + resource
@@ -169,6 +199,7 @@ positive_with_audit(S) ->
     GrpPath = <<"/api/internal/v1/groups/", (integer_to_binary(Gid))/binary>>,
     GrpMembersPath = <<GrpPath/binary, "/members">>,
     http_ok(
+        C,
         Port,
         <<"PUT">>,
         GrpMembersPath,
@@ -180,6 +211,7 @@ positive_with_audit(S) ->
 
     %% ---- INT-20 角色 ----
     http_ok(
+        C,
         Port,
         <<"PUT">>,
         <<GrpMembersPath/binary, "/roles">>,
@@ -191,6 +223,7 @@ positive_with_audit(S) ->
 
     %% ---- INT-19 改名 ----
     http_ok(
+        C,
         Port,
         <<"PATCH">>,
         GrpPath,
@@ -202,6 +235,7 @@ positive_with_audit(S) ->
 
     %% ---- INT-06 移成员 ----
     http_ok(
+        C,
         Port,
         <<"DELETE">>,
         GrpMembersPath,
@@ -213,6 +247,7 @@ positive_with_audit(S) ->
 
     %% ---- INT-07 presign（DEVIATION：无审计行）----
     #{<<"object_key">> := ObjectKey} = http_ok(
+        C,
         Port,
         <<"POST">>,
         <<"/api/internal/v1/files/presign">>,
@@ -226,7 +261,8 @@ positive_with_audit(S) ->
 
     %% ---- INT-08 confirm（REQUIRED；HEAD 替身窗口包住整个请求）----
     Resp08 = intbe02_http_support:with_oss_head(2048, fun() ->
-        intbe02_http_support:http(
+        enterprise_internal_audit_http_checks:http(
+            C,
             Port,
             <<"POST">>,
             <<"/api/internal/v1/files/confirm">>,
@@ -249,6 +285,7 @@ positive_with_audit(S) ->
 
     %% ---- INT-22 governance（REQUIRED；DEVIATION 不含本条）----
     http_ok(
+        C,
         Port,
         <<"POST">>,
         <<"/api/internal/v1/files/governance">>,
@@ -267,6 +304,7 @@ positive_with_audit(S) ->
     %% ---- INT-09 direct（REQUIRED；已有审计行）----
     with_dns(fun() ->
         http_ok(
+            C,
             Port,
             <<"POST">>,
             <<"/api/internal/v1/messages/direct">>,
@@ -286,6 +324,7 @@ positive_with_audit(S) ->
     %% ---- INT-10 群发（REQUIRED；同 action 第二行）----
     with_dns(fun() ->
         http_ok(
+            C,
             Port,
             <<"POST">>,
             <<GrpPath/binary, "/messages">>,
@@ -303,6 +342,7 @@ positive_with_audit(S) ->
 
     %% ---- INT-11 好友申请（REQUIRED）----
     http_ok(
+        C,
         Port,
         <<"POST">>,
         <<"/api/internal/v1/friend-requests">>,
@@ -315,6 +355,7 @@ positive_with_audit(S) ->
     %% ---- INT-12 webhook 配置（REQUIRED）----
     with_dns(fun() ->
         http_ok(
+            C,
             Port,
             <<"PUT">>,
             <<"/api/internal/v1/webhook">>,
@@ -331,6 +372,7 @@ positive_with_audit(S) ->
     %% ---- INT-13 replay（REQUIRED）----
     with_dns(fun() ->
         http_ok(
+            C,
             Port,
             <<"POST">>,
             <<"/api/internal/v1/webhook/deliveries/intbe03-dlv-0001/replay">>,
@@ -346,6 +388,7 @@ positive_with_audit(S) ->
     %% ---- INT-32 测试投递（REQUIRED；v1.1.1 追加，端点已由 INT-12 配置）----
     with_dns(fun() ->
         http_ok(
+            C,
             Port,
             <<"POST">>,
             <<"/api/internal/v1/webhook/test-delivery">>,
@@ -364,7 +407,7 @@ positive_with_audit(S) ->
             <<"nonce">> => Nonce
         }),
     Body14 = #{<<"code">> => SsoCode, <<"redirect_uri">> => Redirect, <<"nonce">> => Nonce},
-    http_ok_no_idem(Port, <<"POST">>, <<"/api/internal/v1/oa/sso/exchange">>, Body14, SSO),
+    http_ok_no_idem(C, Port, <<"POST">>, <<"/api/internal/v1/oa/sso/exchange">>, Body14, SSO),
     assert_audit_increment(C, <<"oa.sso.exchanged">>, 0, 1),
     assert_audit_row(C, #{
         <<"action">> => <<"oa.sso.exchanged">>,
@@ -376,6 +419,7 @@ positive_with_audit(S) ->
 
     %% ---- INT-15 撤销映射（REQUIRED）----
     http_ok(
+        C,
         Port,
         <<"DELETE">>,
         <<"/api/internal/v1/identity-mappings">>,
@@ -387,6 +431,7 @@ positive_with_audit(S) ->
 
     %% ---- INT-03/16/17（DEVIATION 只读 POST：执行后无任何审计行）----
     http_ok_no_idem(
+        C,
         Port,
         <<"POST">>,
         <<"/api/internal/v1/identity-mappings/resolve">>,
@@ -394,6 +439,7 @@ positive_with_audit(S) ->
         A
     ),
     http_ok_no_idem(
+        C,
         Port,
         <<"POST">>,
         <<"/api/internal/v1/identity-mappings/directory">>,
@@ -401,6 +447,7 @@ positive_with_audit(S) ->
         A
     ),
     http_ok_no_idem(
+        C,
         Port,
         <<"POST">>,
         <<"/api/internal/v1/directory/users">>,
@@ -411,7 +458,7 @@ positive_with_audit(S) ->
     ?assertEqual(16, TotalBefore),
 
     %% ---- INT-21 归档（REQUIRED；最后执行）----
-    http_ok(Port, <<"DELETE">>, GrpPath, #{}, A, <<"intbe03-idem-21">>),
+    http_ok(C, Port, <<"DELETE">>, GrpPath, #{}, A, <<"intbe03-idem-21">>),
     assert_audit_increment(C, <<"group.archived">>, 0, 1),
 
     %% 全表 action 分布与冻结政策期望**精确**相等（DEVIATION 零行的机械证明）
@@ -568,9 +615,10 @@ seed_delivery_row(C, S) ->
     ),
     ok.
 
-http_ok(Port, Method, Path, Body, Headers, IdemKey) ->
+http_ok(C, Port, Method, Path, Body, Headers, IdemKey) ->
     Resp =
-        intbe02_http_support:http(
+        enterprise_internal_audit_http_checks:http(
+            C,
             Port,
             Method,
             Path,
@@ -582,8 +630,8 @@ http_ok(Port, Method, Path, Body, Headers, IdemKey) ->
     ),
     jsone:decode(maps:get(body, Resp)).
 
-http_ok_no_idem(Port, Method, Path, Body, Headers) ->
-    Resp = intbe02_http_support:http(Port, Method, Path, Body, Headers),
+http_ok_no_idem(C, Port, Method, Path, Body, Headers) ->
+    Resp = enterprise_internal_audit_http_checks:http(C, Port, Method, Path, Body, Headers),
     ?assertEqual(
         200, maps:get(status, Resp), {unexpected_status, Method, Path, maps:get(body, Resp)}
     ),

@@ -8,6 +8,7 @@
 -export([encrypt_token/1, encrypt_token/2, encrypt_seat_token/2]).
 -export([encrypt_refreshtoken/1, encrypt_refreshtoken/2]).
 -export([decrypt_token/1]).
+-export([issue_device_session/3]).
 
 % -export ([get_uid/1]).
 
@@ -148,3 +149,24 @@ to_did(_) -> <<>>.
 to_epoch_claim(E) when is_integer(E), E >= 1 -> E;
 to_epoch_claim(undefined) -> undefined;
 to_epoch_claim(_) -> malformed.
+
+%% Caller has locked and read the current epoch and persisted the active device.
+issue_device_session(Uid, Did, Epoch) when
+    is_integer(Uid),
+    Uid > 0,
+    is_binary(Did),
+    byte_size(Did) > 0,
+    is_integer(Epoch),
+    Epoch > 0
+->
+    Key = config_ds:env(jwt_key, <<>>),
+    Claims = #{<<"uid">> => Uid, <<"did">> => Did, <<"ep">> => Epoch},
+    Now = erlang:system_time(second),
+    #{
+        <<"token">> => imboy_jwt:sign(
+            Claims#{<<"sub">> => <<"tk">>, <<"exp">> => Now + ?TOKEN_VALID}, Key
+        ),
+        <<"refreshtoken">> => imboy_jwt:sign(
+            Claims#{<<"sub">> => <<"rtk">>, <<"exp">> => Now + ?REFRESHTOKEN_VALID}, Key
+        )
+    }.

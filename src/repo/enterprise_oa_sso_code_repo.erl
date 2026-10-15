@@ -55,10 +55,12 @@ digest_hex(Value) when is_binary(Value) ->
 %% 求值；VM 领先 DB（毫秒级）时「签发→立即消费」以 23514 崩溃。改为
 %% CURRENT_TIMESTAMP 后，事务开始时刻在数学上必然 <= 后续任何
 %% clock_timestamp()，CHECK 恒可满足。
--spec issue_tx(any(), integer(), integer(), integer(), binary(), binary(), binary(), binary()) ->
+-spec issue_tx(
+    any(), integer() | null, integer(), integer(), binary(), binary(), binary(), binary()
+) ->
     {ok, map()} | {error, term()}.
 issue_tx(Conn, OrgId, AppId, UserId, CodeDigest, RedirectUri, NonceDigest, ExpiresAt) when
-    is_integer(OrgId),
+    (is_integer(OrgId) andalso OrgId > 0) orelse OrgId =:= null,
     is_integer(AppId),
     is_integer(UserId),
     is_binary(CodeDigest),

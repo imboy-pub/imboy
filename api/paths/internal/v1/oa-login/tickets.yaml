@@ -1,0 +1,87 @@
+post:
+  tags:
+  - internal
+  summary: OA 入站登录 tickets
+  description: INT-44。OA 后端先认证员工，需显式 oa:login:issue，目录同步与 sso:exchange 不隐含此权限。发起端安全随机生成并保留
+    verifier，OA 只接收 S256 challenge。票据绑定应用、发行凭据、外部身份、意图与 challenge；60 秒单次消费，禁止日志及普通客户端存储。成功使用标准业务信封，错误沿用
+    Internal error 信封。
+  operationId: internalOaLoginIssue
+  security:
+  - ibIntBearer: []
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required:
+          - external_user_id
+          - intent
+          - code_challenge_method
+          - code_challenge
+          properties:
+            external_user_id:
+              type: string
+              minLength: 1
+              maxLength: 256
+              description: 来源人员标识，UTF-8 最多 256 字节
+            intent:
+              type: string
+              enum:
+              - login
+              - link
+            code_challenge_method:
+              type: string
+              enum:
+              - S256
+            code_challenge: &id001
+              type: string
+              minLength: 43
+              maxLength: 43
+              pattern: ^[A-Za-z0-9_-]+$
+  responses:
+    '200':
+      description: 响应
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+            - code
+            - msg
+            - sv_ts
+            - payload
+            properties:
+              code:
+                type: integer
+                enum:
+                - 0
+              msg:
+                type: string
+              sv_ts:
+                type: integer
+                format: int64
+              payload:
+                type: object
+                required:
+                - ticket
+                - expires_in
+                properties:
+                  ticket: *id001
+                  expires_in:
+                    type: integer
+                    enum:
+                    - 60
+    '400':
+      $ref: ../../../../components/responses/internal/invalid_request.yaml
+    '401':
+      $ref: ../../../../components/responses/internal/invalid_credential.yaml
+    '403':
+      $ref: ../../../../components/responses/internal/insufficient_scope.yaml
+    '429':
+      $ref: ../../../../components/responses/internal/rate_limited.yaml
+    '500':
+      $ref: ../../../../components/responses/internal/internal_error.yaml
+  x-imboy-scope: oa:login:issue
+  x-imboy-rate-bucket: internal_sso
+  x-imboy-idempotency: not_required

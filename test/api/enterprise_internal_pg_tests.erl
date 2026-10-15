@@ -11,7 +11,7 @@
 %%   ② 错误信封：13 个 stable 码 → HTTP 状态映射 + 信封形态
 %%   ③ credential 解析：合法/畸形各形态
 %%   ④ 认证链负例矩阵：unknown prefix / 错 secret / revoked / expired /
-%%      application disabled / organization archived / 成功 context 形态
+%%      application disabled / organization archived 不影响认证 / 成功 context 形态
 %%      （V2.1：零 Grant ⇒ granted_scopes 空集，授权后交集生效）
 %%   ⑤ 中间件 decide：路由匹配、scope、rate（含 fail-closed）、
 %%      mutation 缺/畸形 Idempotency-Key 拒绝（INV-7 + §11 形态）、INT-14 豁免
@@ -204,7 +204,7 @@ enterprise_internal_pg_test_() ->
 
 %%%===================================================================
 %%% ① 固定 scope 枚举（V2.1 §7 基线 16 值 + 448b9551/95115377 内部写授权
-%%%    追加 workspaces:write / channels:write → 恰 18 个）
+%%%    追加 workspaces:write / channels:write / oa:login:issue → 恰 19 个）
 %%%===================================================================
 
 -define(V21_SCOPES, [
@@ -225,15 +225,25 @@ enterprise_internal_pg_test_() ->
     <<"customer_service:read">>,
     <<"customer_service:write">>,
     <<"workspaces:write">>,
-    <<"channels:write">>
+    <<"channels:write">>,
+    <<"oa:login:issue">>
 ]).
 
 scope_fixed_enum_test() ->
     ?_test(begin
-        %% all() 返回固定顺序（不做 sort：顺序也是契约），恰好 18 个——
+        %% all() 返回固定顺序（不做 sort：顺序也是契约），恰好 19 个——
         %% 多一个/少一个都判失败（CON-02 口径）。
         ?assertEqual(?V21_SCOPES, enterprise_internal_scope:all()),
-        ?assertEqual(18, length(enterprise_internal_scope:all())),
+        ?assertEqual(19, length(enterprise_internal_scope:all())),
+        ?assertEqual(
+            ok, enterprise_internal_scope:authorize(<<"oa:login:issue">>, [<<"oa:login:issue">>])
+        ),
+        ?assertEqual(
+            {error, insufficient_scope},
+            enterprise_internal_scope:authorize(<<"oa:login:issue">>, [
+                <<"sso:exchange">>, <<"identities:write">>
+            ])
+        ),
         %% 显式授予才可用；未授予即拒
         ?assertEqual(
             ok,
@@ -492,14 +502,19 @@ auth_chain_application_disabled(C) ->
 
 auth_chain_organization_archived(C) ->
     F = seed_app_fixture(C),
+    {ok, Before} = enterprise_internal_auth:authenticate_tx(
+        C, maps:get(prefix, F), maps:get(secret, F)
+    ),
     exec(C, [
         <<"UPDATE organization SET status = 'archived' WHERE id = ">>,
         integer_to_binary(?ORG_A)
     ]),
-    ?assertEqual(
-        {error, organization_disabled},
-        enterprise_internal_auth:authenticate_tx(C, maps:get(prefix, F), maps:get(secret, F))
-    ).
+    {ok, After} = enterprise_internal_auth:authenticate_tx(
+        C, maps:get(prefix, F), maps:get(secret, F)
+    ),
+    ?assertEqual(Before, After),
+    ?assertEqual(?ORG_A, maps:get(application_organization_id, After)),
+    ?assertEqual([], maps:get(granted_scopes, After)).
 
 auth_chain_touches_last_used(C) ->
     F = seed_app_fixture(C),

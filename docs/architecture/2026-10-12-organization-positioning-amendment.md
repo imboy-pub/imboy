@@ -279,3 +279,53 @@ IMBoy 账号与 OA 身份，不能凭客户端提交 `external_user_id` 就绑�
 组织权限按既有规则失效且其他组织不受影响。当前这些是待实施要求，尚未验收。
 双入口另须覆盖三种首次使用顺序、并发首次关联、重复登录、关联冲突、OA 身份
 伪造/过期/重放、停用账号拒绝登录及设备会话吊销，不能只验证跳转成功。
+
+#### 8.3.1 OA 后端签发登录票据（owner 选择的接入协议）
+
+OA→IMBoy 使用经认证的 Internal API 一次性登录票据，不要求 OA 实现 OIDC。
+`POST /api/internal/v1/oa/login/tickets` 需要独立、显式授予的 `oa:login:issue`；
+目录同步权限和 `sso:exchange` 都不隐含该权限。OA 后端须先认证员工，提交
+`external_user_id`、`intent=login|link`、`code_challenge_method=S256` 与
+`code_challenge`。外部人员标识必须与该 Application 的同步标识一致。
+
+PKCE verifier 必须由 IMBoy 登录发起客户端以安全随机数生成并留在发起端；
+OA 只接收 challenge。客户端不能接受跳转方提供的 verifier，不能自动兑换非本端
+发起流程的票据。票据只存 SHA-256 摘要，绑定 Application、发行凭据、外部身份、
+意图和 challenge，60 秒有效且单次消费。返回值禁止写日志或持久化到普通客户端存储。
+
+公开 `POST /api/v1/oa/login/exchange` 接收 `ticket/code_verifier/did`。
+已关联的 login 流程复用原账号；未关联或 link 流程只返回 `pending_token`，不签会话。
+该待完成凭据仍须同一 verifier/DID，在首次成功兑换时获得 5 分钟完成窗口；
+issued 票据始终只有 60 秒，过期不能兑换；pending 重试不续期。
+三个公开入口都须携带发起端保存的 `application_key`，与实际票据发行应用逐字节一致；
+回调参数不得替换该本地预期值。另一有效应用即使用相同 challenge 签票，也不能完成
+本来源的流程。签票、待完成凭据和最终会话各自返回前都再次按墙钟复核发行权限。
+Human JWT 保护的 `POST /api/v1/oa/login/link` 以当前 token 的 UID/DID/epoch
+确认关联；公开 `POST /api/v1/oa/login/register` 要求显式 `confirm_create=true`，
+仅 login 意图可新建。两者都携带 pending_token/code_verifier/did。
+
+账号关联复用来源人员表，创建用户、关联、目录投影、审计与凭据消费同事务；失败
+不得留下孤儿用户。首次关联本身只需独立签票权限和双重身份证明；目录投影仍复核发行凭据的目录能力
+及每个目标组织的权限。缺目录权限时保留待投影关系，返回 projection_pending=true，
+账号关联及登录成功；不得自动追加目录权限，也不能以登录权限替代目录写权限。最终完成再次核验发行应用/凭据/Grant有效性、
+active Human 和账号关联，登记非空 DID 并读取持久化 epoch 后签发会话。
+客户端接线、真实 OA 联调与设备旅程尚须单独验收，不能以本协议或后端代码代签。
+
+客户端 exchange/link/register 成功使用 `{code:0,msg,payload}` 标准信封，失败使用
+numeric code/msg 且 HTTP 状态一致。Internal issue 成功使用同一成功信封，失败
+沿用 Internal API 的 `error.code/error.message`。pending 响应含 `expires_in:300`。
+
+可选部署配置 `application:set_env(imboy, oa_login_start_uris,
+#{<<"application-key">> => <<"https://oa.example/login/start">>})` 按应用键指定入口。
+工作台仅在入口为 HTTPS 且与该应用现有 redirect_uri 同源（含端口）、无用户信息
+或 fragment 时附加 `login_start_uri`；未配置或无效时隐藏登录关联入口，不推测地址。
+登录前客户端使用部署指定的同源 `IMBOY_WL_OA_LOGIN_START_URI`，不接受外部跳转提供
+的任意登录入口或 verifier。上述 example 只是占位配置，不代表可用客户地址。
+
+#### 8.3.2 既有出站免登响应兼容
+
+`/api/internal/v1/oa/sso/exchange` 成功响应保留全部既有字段。
+`organization_id` 始终存在：有业务归属时为 JSON int64，应用无归属时为 JSON null。
+该值只表达业务归属，不作为调用方或用户的授权范围。旧有归属应用仍须保持大整数
+精确传输；新增无归属场景分别验证 null、认证及实际权限，不把原 int64 用例改记为
+已经覆盖 null。OpenAPI、Postman 和真实 HTTP 回归采用同一字段存在性与类型约定。

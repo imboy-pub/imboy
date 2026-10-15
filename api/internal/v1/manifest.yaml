@@ -16,7 +16,7 @@
 #   INV-4  No wildcard scopes; messages:send_as_human / friend_requests:create / webhooks:manage never implied by messages:send
 #   INV-5  sender contract field is exactly sender_user_id; actor_user_id / as_user_id MUST be rejected
 #   INV-6  OA-origin messages are enterprise-hosted and permanently NON-E2EE; Human-Human E2EE paths untouched
-#   INV-7  All mutations require Idempotency-Key header; same key+same body -> replay original result; same key+different body -> 409 idempotency_conflict
+#   INV-7  Mutations require Idempotency-Key except INT-44 single-use login tickets; same key+same body -> replay original result; same key+different body -> 409 idempotency_conflict
 #   INV-8  TSID int64 in JSON; OA JS consumers must use lossless parser (BigInt), never Number
 #   INV-9  Missing internal rate-limit config => fail-closed (reject request or refuse boot), never fail-open
 
@@ -36,6 +36,17 @@ rate_buckets:  # numeric limits configured by A2 at implementation; bucket keys 
   internal_sso:       {methods: [POST], fail_closed: true}
 
 routes:
+  - id: INT-44
+    method: POST
+    path: /api/internal/v1/oa/login/tickets
+    scope: oa:login:issue
+    grant: application self, explicitly provisioned
+    resource: inbound login proof, PKCE S256, single use, 60 second TTL
+    actor: application
+    idempotency: not_required
+    rate: internal_sso
+    sender_mode: none
+
   - id: INT-01
     method: GET
     path: /api/internal/v1/application

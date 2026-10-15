@@ -94,6 +94,9 @@ get_routes() ->
             % code，只存 digest，绑定 org/app/user/redirect_uri/nonce；
             % 客户 OA backend 再用 Application Credential 调 INT-14 原子消费。
             % Flutter WebView 只拿 code，不注入 IMBoy JWT / Application secret。
+            {"/api/v1/oa/login/exchange", enterprise_oa_login_handler, #{action => exchange}},
+            {"/api/v1/oa/login/link", enterprise_oa_login_handler, #{action => link}},
+            {"/api/v1/oa/login/register", enterprise_oa_login_handler, #{action => register}},
             {"/api/v1/oa/sso/code", enterprise_oa_sso_handler, #{action => code}},
             {"/api/v1/workbench/entries", enterprise_oa_sso_handler, #{action => entries}},
 
@@ -1601,6 +1604,8 @@ open() ->
         %% PR-3β: SSE 端点免登录（EventSource 在握手完成前没有 token）
         <<"/api/v1/passport/qr_login/subscribe">>,
         %% P0-C: OIDC 登录流——callback 是浏览器重定向，无 sign/did 头，必须免 902 签名门
+        <<"/api/v1/oa/login/exchange">>,
+        <<"/api/v1/oa/login/register">>,
         <<"/api/v1/auth/oidc/authorize">>,
         <<"/api/v1/auth/oidc/callback">>,
         <<"/api/v1/auth/oidc/exchange">>,
@@ -2579,6 +2584,7 @@ enterprise_internal_routes() ->
             action => replay
         }},
         %% INT-14 OA SSO 一次性 code 原子交换
+        {"/api/internal/v1/oa/login/tickets", enterprise_oa_login_handler, #{action => issue}},
         {"/api/internal/v1/oa/sso/exchange", enterprise_oa_sso_exchange_handler, #{
             action => exchange
         }},

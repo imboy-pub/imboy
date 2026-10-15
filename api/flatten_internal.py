@@ -30,8 +30,8 @@ BUNDLE = API_DIR / 'openapi-internal.bundle.yaml'
 METHODS = {'get', 'post', 'put', 'patch', 'delete', 'head', 'options', 'trace'}
 
 # 自校验冻结口径（计划 §15.1 修正后）
-EXPECT_PATHS = 28
-EXPECT_OPS = 42
+EXPECT_PATHS = 30
+EXPECT_OPS = 44
 
 
 def load_yaml(path):
@@ -103,7 +103,7 @@ def count_refs(node):
 
 def selfcheck(bundle):
     desc = bundle['info'].get('description', '')
-    for token in ('28 条', '42 个操作', '18 枚举'):
+    for token in (f'{EXPECT_PATHS} 条', f'{EXPECT_OPS} 个操作', '19 枚举'):
         if token not in desc:
             sys.exit('selfcheck: info.description missing frozen count token %r' % token)
     paths = bundle['paths']
@@ -116,15 +116,27 @@ def selfcheck(bundle):
     if nref != 0:
         sys.exit('selfcheck: %d unresolved $ref left' % nref)
 
-    # INT-07 files/presign：三字段 required、无 file_id、expires_at 为 integer
+    # INT-07 V5 status 不签上传能力；固定现有响应及操作形状，防止合同漂移。
     presign = paths['/api/internal/v1/files/presign']['post']
     schema = presign['responses']['200']['content']['application/json']['schema']
     if 'file_id' in schema.get('properties', {}):
         sys.exit('selfcheck: INT-07 200 schema still declares file_id')
-    if schema.get('required') != ['object_key', 'put_url', 'expires_at']:
+    if schema.get('required') != ['object_key', 'expires_at']:
         sys.exit('selfcheck: INT-07 required=%r' % schema.get('required'))
+    if schema.get('additionalProperties') is not False:
+        sys.exit('selfcheck: INT-07 response must reject unknown fields')
+    for name, kind in (('object_key', 'string'), ('put_url', 'string'),
+                       ('upload_capability', 'string'), ('gateway', 'boolean'),
+                       ('client_upload_id', 'string'), ('session_state', 'string'),
+                       ('session_deadline', 'integer'), ('can_resume', 'boolean'),
+                       ('retry_action', 'string')):
+        if schema['properties'].get(name, {}).get('type') != kind:
+            sys.exit('selfcheck: INT-07 %s must be %s' % (name, kind))
     if schema['properties']['expires_at'].get('type') != 'integer':
         sys.exit('selfcheck: INT-07 expires_at not integer')
+    request = presign['requestBody']['content']['application/json']['schema']
+    if request['properties']['operation'].get('enum') != ['register', 'status', 'renew']:
+        sys.exit('selfcheck: INT-07 V5 operation enum drift')
 
     # INT-12 webhook configure：endpoint_generation required 且 integer
     configure = paths['/api/internal/v1/webhook']['put']

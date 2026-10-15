@@ -126,6 +126,8 @@ spec(<<"INT-13">>) ->
 %% 无 org/workspace 资源边界，故 kind=none，仅 scope 门）
 spec(<<"INT-23">>) ->
     {ok, #{kind => none, scope => <<"webhooks:manage">>}};
+spec(<<"INT-44">>) ->
+    {ok, #{kind => none, scope => <<"oa:login:issue">>}};
 spec(<<"INT-14">>) ->
     {ok, #{kind => none, scope => <<"sso:exchange">>}};
 %% ---- FULL-02 新增路由（待 A0 追加 manifest + Router 注册；见 checkpoint
@@ -335,7 +337,8 @@ candidate_ids() ->
                 <<"INT-40">>,
                 <<"INT-41">>,
                 <<"INT-42">>,
-                <<"INT-43">>
+                <<"INT-43">>,
+                <<"INT-44">>
             ]
     ].
 

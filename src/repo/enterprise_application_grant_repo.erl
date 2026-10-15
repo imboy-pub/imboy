@@ -106,7 +106,7 @@ scope_tx(Conn, OrgId, AppId, Scope) ->
     case
         elib_pg:query(
             Conn,
-            <<"SELECT id FROM enterprise_application_grant WHERE organization_id=$1 AND application_id=$2 ORDER BY id FOR SHARE">>,
+            <<"SELECT id FROM enterprise_application_grant WHERE organization_id IS NOT DISTINCT FROM $1 AND application_id=$2 ORDER BY id FOR SHARE">>,
             [OrgId, AppId]
         )
     of
@@ -122,8 +122,8 @@ locked_scope_tx(Conn, OrgId, AppId, Scope, GrantIds) ->
     Sql = <<
         "SELECT EXISTS (SELECT 1 FROM enterprise_application_grant g"
         " JOIN enterprise_application_grant_scope s ON s.grant_id=g.id"
-        " JOIN enterprise_application a ON a.organization_id=g.organization_id AND a.id=g.application_id"
-        " WHERE g.organization_id=$1 AND g.application_id=$2 AND s.scope=$3"
+        " JOIN enterprise_application a ON a.organization_id IS NOT DISTINCT FROM g.organization_id AND a.id=g.application_id"
+        " WHERE g.organization_id IS NOT DISTINCT FROM $1 AND g.application_id=$2 AND s.scope=$3"
         " AND g.id=ANY($4::bigint[])"
         " AND a.allowed_scopes ? $3 AND g.status='active'"
         " AND g.valid_from<=clock_timestamp() AND g.expires_at>clock_timestamp()) AS allowed"

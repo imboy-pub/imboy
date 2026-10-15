@@ -7,6 +7,46 @@
   },
   "variable": [
     {
+      "key": "oa_login_intent",
+      "value": "login",
+      "type": "string"
+    },
+    {
+      "key": "oa_application_key",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "oa_code_verifier",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "oa_code_challenge",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "oa_did",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "oa_ticket",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "oa_pending_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "oa_human_token",
+      "value": "",
+      "type": "string"
+    },
+    {
       "key": "base_url",
       "value": "http://127.0.0.1:9800",
       "description": "由平台部署方提供（示例为本地联调值）"
@@ -83,6 +123,233 @@
     }
   ],
   "item": [
+    {
+      "name": "OA 入站登录",
+      "description": "仅手动发送。发起端安全随机生成并保留 verifier，计算 BASE64URL(SHA256(verifier)) challenge，OA 仅收 challenge。先填本地预期 application_key、verifier、challenge 和 did。ticket 60 秒，pending 300 秒且重试不续期；同一 verifier/DID。未关联时选择正常登录已有账号后 link（Human token 与 did 相同），或明确新建 register（仅 login 意图）。票据与 verifier 用完清除，不导出真实凭据。",
+      "item": [
+        {
+          "name": "INT-44 签发入站票据",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{credential}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/internal/v1/oa/login/tickets",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "internal",
+                "v1",
+                "oa",
+                "login",
+                "tickets"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"external_user_id\": \"oa-1001\",\n  \"intent\": \"{{oa_login_intent}}\",\n  \"code_challenge_method\": \"S256\",\n  \"code_challenge\": \"{{oa_code_challenge}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP success\", () => pm.response.to.have.status(200));",
+                  "if (pm.response.code === 200) {",
+                  "  const body = pm.response.json();",
+                  "  pm.test(\"Success envelope\", () => { pm.expect(body.code).to.eql(0); pm.expect(body).to.have.property(\"payload\"); });",
+                  "  if (body.code === 0) {",
+                  "    if (body.payload.ticket) pm.variables.set(\"oa_ticket\", body.payload.ticket);",
+                  "    if (body.payload.pending_token) pm.variables.set(\"oa_pending_token\", body.payload.pending_token);",
+                  "  }",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "OA login exchange",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/oa/login/exchange",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "oa",
+                "login",
+                "exchange"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"application_key\": \"{{oa_application_key}}\",\n  \"ticket\": \"{{oa_ticket}}\",\n  \"code_verifier\": \"{{oa_code_verifier}}\",\n  \"did\": \"{{oa_did}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP success\", () => pm.response.to.have.status(200));",
+                  "if (pm.response.code === 200) {",
+                  "  const body = pm.response.json();",
+                  "  pm.test(\"Success envelope\", () => { pm.expect(body.code).to.eql(0); pm.expect(body).to.have.property(\"payload\"); });",
+                  "  if (body.code === 0) {",
+                  "    if (body.payload.ticket) pm.variables.set(\"oa_ticket\", body.payload.ticket);",
+                  "    if (body.payload.pending_token) pm.variables.set(\"oa_pending_token\", body.payload.pending_token);",
+                  "  }",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "OA login link",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{oa_human_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/oa/login/link",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "oa",
+                "login",
+                "link"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"application_key\": \"{{oa_application_key}}\",\n  \"pending_token\": \"{{oa_pending_token}}\",\n  \"code_verifier\": \"{{oa_code_verifier}}\",\n  \"did\": \"{{oa_did}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP success\", () => pm.response.to.have.status(200));",
+                  "if (pm.response.code === 200) {",
+                  "  const body = pm.response.json();",
+                  "  pm.test(\"Success envelope\", () => { pm.expect(body.code).to.eql(0); pm.expect(body).to.have.property(\"payload\"); });",
+                  "  if (body.code === 0) {",
+                  "    if (body.payload.ticket) pm.variables.set(\"oa_ticket\", body.payload.ticket);",
+                  "    if (body.payload.pending_token) pm.variables.set(\"oa_pending_token\", body.payload.pending_token);",
+                  "  }",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "OA login register",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/oa/login/register",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "oa",
+                "login",
+                "register"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"application_key\": \"{{oa_application_key}}\",\n  \"pending_token\": \"{{oa_pending_token}}\",\n  \"code_verifier\": \"{{oa_code_verifier}}\",\n  \"did\": \"{{oa_did}}\",\n  \"confirm_create\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP success\", () => pm.response.to.have.status(200));",
+                  "if (pm.response.code === 200) {",
+                  "  const body = pm.response.json();",
+                  "  pm.test(\"Success envelope\", () => { pm.expect(body.code).to.eql(0); pm.expect(body).to.have.property(\"payload\"); });",
+                  "  if (body.code === 0) {",
+                  "    if (body.payload.ticket) pm.variables.set(\"oa_ticket\", body.payload.ticket);",
+                  "    if (body.payload.pending_token) pm.variables.set(\"oa_pending_token\", body.payload.pending_token);",
+                  "  }",
+                  "}"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
     {
       "name": "应用与凭证",
       "description": "读取本应用自身（健康检查与联调首选）。",
@@ -1367,7 +1634,28 @@
                 }
               }
             }
-          }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  pm.test(\"SSO retains nullable business attribution\", function () {",
+                  "    const raw = pm.response.text();",
+                  "    const body = pm.response.json();",
+                  "    pm.expect(body).to.have.property(\"organization_id\");",
+                  "    pm.expect(raw).to.match(/\"organization_id\"\\s*:\\s*(?:null|[1-9][0-9]*)(?=\\s*[,}])/);",
+                  "    [\"application_id\", \"user_id\", \"external_user_id\", \"consumed_at\"].forEach(function (key) {",
+                  "      pm.expect(body).to.have.property(key);",
+                  "    });",
+                  "  });",
+                  "}"
+                ]
+              }
+            }
+          ]
         }
       ]
     },

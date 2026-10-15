@@ -14,7 +14,11 @@ run() ->
 
 run(#{conn := C} = S) ->
     Routes = enterprise_internal_routes:routes(),
-    ?assertEqual(43, length(Routes)),
+    ?assertEqual(44, length(Routes)),
+    ?assertEqual(
+        [iolist_to_binary(io_lib:format("INT-~2..0B", [Number])) || Number <- lists:seq(1, 44)],
+        lists:sort([maps:get(id, Route) || Route <- Routes])
+    ),
     {AppId, Credential} = create_application(C),
     check_all(S, Routes, zero_grant, fun(_) -> Credential end),
     {ok, Grant} = enterprise_internal_ops:issue_grant_tx(C, 995101, AppId, #{
@@ -92,6 +96,7 @@ check(S, Route, Kind, Credential) ->
     end.
 
 check(S, Route, Kind, Credential, Body, Mode) ->
+    Before = business_snapshot(maps:get(conn, S)),
     Id = maps:get(id, Route),
     Path =
         case Id of
@@ -113,6 +118,9 @@ check(S, Route, Kind, Credential, Body, Mode) ->
     Json = jsone:decode(maps:get(body, R)),
     ?assertEqual(
         <<"insufficient_scope">>, maps:get(<<"code">>, maps:get(<<"error">>, Json)), {Kind, Id}
+    ),
+    ?assertEqual(
+        Before, business_snapshot(maps:get(conn, S)), {denied_request_wrote, Kind, Id, Mode}
     ),
     record(Id, Kind, Mode).
 
@@ -139,8 +147,20 @@ body(<<"INT-43">>) ->
         <<"departments">> => [],
         <<"persons">> => []
     };
+body(<<"INT-44">>) ->
+    #{
+        <<"external_user_id">> => <<"auth-matrix-oa-login">>,
+        <<"intent">> => <<"login">>,
+        <<"code_challenge_method">> => <<"S256">>,
+        <<"code_challenge">> => enterprise_oa_login_logic:pkce(
+            <<"dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk">>
+        )
+    };
 body(_) ->
     #{}.
+
+oa_login_body_test() ->
+    ?assertEqual(ok, enterprise_oa_login_logic:validate_issue(body(<<"INT-44">>))).
 
 business_snapshot(C) ->
     Tables = [
@@ -165,6 +185,7 @@ business_snapshot(C) ->
         <<"enterprise_message_origin">>,
         <<"user_friend">>,
         <<"enterprise_oa_sso_code">>,
+        <<"enterprise_oa_login_ticket">>,
         <<"customer_service_seat">>,
         <<"customer_service_event">>,
         <<"attach_pending">>,
