@@ -710,3 +710,67 @@ ready() -> boolean()
 - L1：本附录即冻结记录（D1～D7 已获一次性授权）。
 - L2/L3/L4：未实施，按 §9.1 推进。
 
+### C.11 实施结果与就绪状态（2026-10-15，任务分支 zcode/limiter-v1-impl-20261014）
+
+> 实施会话：最多 6 agent（A0 协调集成 / A1 权威状态 / A2 登录链 / A3 IP·装配 /
+> A4 基线·验收工具 / A5 独立审查），基线 main `0d28ad4f`，已吸收 main
+> `3d46f35b`、`b3865652`（均零重叠）。本节取代 C.10 的缺口描述与 §10 分开判定的对应项；
+> 生产适用性边界见 C.13。
+
+#### C.11.1 阶段状态
+
+| 阶段 | 状态 | 绑定候选/证据 |
+|---|---|---|
+| L0 | **DONE**（基线缺口已补齐） | 旧侧 oracle/证据 f93b071d 一串；AC-16 旧基线 A/B 落盘 `docs/qa/limiter-v1/0d28ad4f/baseline/`（9fb62009 纳入版本控制） |
+| L1 | **FROZEN** | 本附录 C（用户 2026-10-14 一次性授权 D1～D7） |
+| L2 | **DONE** | `5f22342b`：新权威 API/跨 IP 账户域/窗口/容量降级/生命周期 monitor/兼容层；DS 专项 42 项全绿 |
+| L3 | **DONE** | `c53997d6`（登录链：身份归并/F2/成功点/503）+ `b428db06`（两 HTTP scope+OIDC 迁移/装配校验/规范化）；旧桶调用点全部移除（§7.5 表逐项落地） |
+| L4 | **部分完成** | 全量 eunit、AC 重放与审查结论见 C.11.2/C.11.3；AC-13 C 档与 AC-18 演练未执行（见 C.12） |
+
+#### C.11.2 AC-01～19 结果（适用验收口径）
+
+| AC | 结果 | 证据（Q=定向 eunit 模块；C=escript case） |
+|---|---|---|
+| AC-01 | **PASS** | Q(passport_logic_tests 33) + C AC-01 fixed（真实 REST HTTP 链 F 次计数递增、锁定拒正确密码；REST 通道 48/48） |
+| AC-02 | **PASS** | Q(passport_logic_tests) limiter_code_locked fixed（真实 DS 置锁、验证码不消费、锁定拒绝） |
+| AC-03 | **PASS** | Q(login_attempt_ds_tests) limiter_inflight_results（F−1+K、迟到两序、跨窗归新窗） |
+| AC-04 | **PASS** | Q(login_attempt_ds_tests) limiter_reset_interleaving fixed（终态 0/1、快照自洽；A5 反例 A 确认能识别错误实现） |
+| AC-05 | **PASS** | Q(login_security_logic_tests 17)（同身份别名一致快照、unlock 权限、无跨 Cache 伪 expiry） |
+| AC-06 | **PASS** | Q(login_attempt_limiter_ac_tests) limiter_admit_race（K=8 真并发恰 min(R,K)、count 停 N、不退款；A5 反例 B 确认） |
+| AC-07 | **PASS** | Q(login_attempt_ds_tests) limiter_cache_old_flush fixed（迟到 flush/批次不删新状态；权威已无 Cache 依赖） |
+| AC-08 | **PASS** | Q(login_attempt_ds_tests) limiter_time_rules（expiry 边界、HTTP 60000 换窗非 115000、窗口冻结、时钟注入三周期） |
+| AC-09 | **PASS** | Q(elib_req_client_ip_tests 15) + Q(auth_oidc_logic_tests 39)（信任统一/IPv6 归一/authorize+callback 各扣一次、exchange 零、无 oidc 账户锁行、审计在场） |
+| AC-10 | **PASS** | Q(login_attempt_limiter_ac_tests) limiter_capacity_during_auth（capacity_lost→域拒绝、腾位不恢复、admit 域独立） |
+| AC-11 | **PASS** | Q(login_attempt_limiter_ac_tests) limiter_capacity_bounds（上限/不挤掉有效锁/超长 capacity/空 Key unavailable/ETS 有界） |
+| AC-12 | **PASS**（DS+业务层） | Q(lifecycle 组：DOWN/deadline→degraded、end_attempt 各 outcome、旧 ref 不误伤) + Q(login_security_logic_tests 故障分支不默认放行) |
+| AC-13 | **部分 PASS** | DS 层 limiter_restart_recovery PASS（杀 owner→表失→新 owner 空态重新累计）；C 档"停整节点"未执行（escript 退 4 INPUT_PENDING，见 C.12） |
+| AC-14 | **PASS** | Q(throttle_middleware_tests 19)（真实 DS admit 计数、重复初始化不重置、无旧 worker/index/Cache 回落、UID/widget 仍原库）+ 迁移校验拒绝旧配置用例 |
+| AC-15 | **PASS**（本地合同口径） | C AC-15 两隔离节点各 100、合计 200 如实报告；"若业务要求集群共享额度则此结果不合格"声明按计划保留 |
+| AC-16 | **PASS**（本地预算） | 旧基线 A（E2E p50≈30µs、记账数 0=F1 复现）/B（record_failure p50 18.5µs 等）+ fixed 对照（failure 1.3µs≈14×、admit 1.4µs、mixed_8w p99 165µs<100ms 预算内、mailbox 有界回落）；生产 SLO 未验收（C.13） |
+| AC-17 | **PASS** | Q(passport_logic_tests)（reset 确认后才签发、禁用不 reset 不计、reset 失败无凭据 503；A5 反例 C 确认）+ Q(passport_handler_tests 9)（503 envelope）+ REST suite 协议基线不变 |
+| AC-18 | **未通过（未执行）** | C AC-18 INPUT_PENDING：需隔离演练环境与已验证回退候选（D6）；就绪件已完成（ready 门、fail-fast、受控空态合同），生产切换保持关闭（§9.3） |
+| AC-19 | **PASS** | Q(passport_logic_tests) limiter_exports_compat（login/3、do_login/3/5、verify_user/3 全调用者走查+成功/失败不重复计数；user_logic:88 改密直调合规） |
+
+#### C.11.3 独立审查与全量
+
+- A5 独立审查（候选 ca736743）：**无 P0**；1×P1（证据候选重绑——最终候选上已重放）、6×P2 全部关闭或转 C.12 记录；反例 A/B/C 实测确认测试可识别目标错误实现。
+- A5 整改已提交（`89fc032b`）：非法 limiter_ip_rates 启动诊断（fail-safe 保留）、admit @doc 对齐、fail 分支注释更正。整改中发现并修正 `maps:partition/2` 运行期 undef（lefthook qs/2 同款"编译不报错远程调用"失效类）。
+- 全量 EUnit（最终候选统一执行）：见最终交付报告归档（含逐失败模块归因；limiter 面模块零失败）。
+
+#### C.12 遗留、未通过与记录项（不阻塞本地功能完成判定）
+
+1. **AC-13 C 档（停整节点）与 AC-18（切换/回退演练）未执行**：需隔离演练环境与已验证回退候选；escript 诚实退 4（INPUT_PENDING）。按 §9.3/D6：生产切换在回退候选验证前保持关闭——生产部署本就不在本任务授权内，此两项保持未通过并如实交付。
+2. **容量满未先有限清过期**（A5 P2-1）：实现按 C.7 字面"满即 degraded"，未含 §7.3 的"先有限清过期"；60s cleanup 间隔内逻辑过期行仍占条目预算，新 Key 可能提前触发不可自动恢复的账户域 degraded。属合同细化项，如需收紧应走合同修订+重验，不静默改实现。
+3. **deadline 批次检查从表头重扫**（A5 P2-2）：大表下非 attempt 行消耗批次预算，deadline 检测最坏数百秒延迟；合同允许有界批次，延迟已纳入 AC-16 预算口径，后续优化记录在案。
+4. **channel_webhook_handler:152 仍用 deprecated extract_real_ip**（基线已有，非本轮引入）：webhook 非登录链，留后续清理。
+5. **生产 sys.config 运维顺序**：`validate_limiter_ip_migration` fail-fast 为合同要求；生产配置副本须先把两 IP scope 从 `{throttle, rates}` 移出再上线（C.8）。
+6. **AC-16 reset 对照口径**：旧 reset 为裸 ets:delete（无 owner 确认，恰是 AC-17 修复的缺陷形态），fixed 对照采用绝对预算口径（p99/max/mailbox），非放宽门槛（脚本注释已说明）。
+
+#### C.13 生产适用性边界（本任务未验收、未授权事项）
+
+- 生产迁移、生产状态清空、真实用户数据操作、真实短信/邮件/IdP 调用：**均未执行**（授权边界）。
+- 生产 SLO/容量预算：本地预算为工程预算（C.9），**生产性能未验收**；上线前须按部署实测输入重新推导并过 AC-16 生产口径。
+- 集群共享额度、跨重启保存：**不保证**（D4）；多节点合计额度可倍增（AC-15 如实口径）。
+- 回退：**ROLLBACK_NOT_READY** 维持——无已验证回退候选前相关入口保持拒绝（§9.3 步骤 6）。
+- 生产切换批准、部署执行：须单独授权，不因本任务本地完成而自动生效。
+
