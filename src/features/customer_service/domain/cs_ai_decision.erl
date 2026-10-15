@@ -125,7 +125,10 @@ reason_codes() ->
     ].
 
 %% @doc 该裁决是否意味着「会话应交给人」。
--spec is_handoff(decision() | action()) -> boolean().
+%% contract 用 map()（实现只消费 action 键）：dialyzer 对调用方
+%% decide/1 输出的推断窄于 decision()，2026-10-15 拆分后推断路径
+%% 变化暴露了原 contract 过窄（cs_ai_app:167 假阳性连锁）。
+-spec is_handoff(map() | action()) -> boolean().
 is_handoff(#{action := Action}) -> is_handoff(Action);
 is_handoff(handoff) -> true;
 is_handoff(no_match) -> true;

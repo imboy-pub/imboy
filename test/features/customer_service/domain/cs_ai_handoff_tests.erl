@@ -51,13 +51,13 @@ e2_claim_latch_is_sticky_and_bumps_epoch() ->
     try
         Org = maps:get(org_id, Scope),
         Ws = maps:get(workspace_id, Scope),
-        ok = cs_ai_app:on_human_takeover(Org, Ws, SessionId, <<"human_claim">>),
+        ok = cs_ai_delivery_app:on_human_takeover(Org, Ws, SessionId, <<"human_claim">>),
         {ok, S1} = cs_pg_ai:fetch_session_state(Org, Ws, SessionId),
         ?assertEqual(true, maps:get(handoff, S1)),
         ?assertEqual(2, maps:get(generation_epoch, S1)),
         ?assertEqual(<<"human_claim">>, maps:get(handoff_reason, S1)),
         %% 重复触发（transfer 再来一次）：epoch 继续自增，reason 保持首次。
-        ok = cs_ai_app:on_human_takeover(Org, Ws, SessionId, <<"human_transfer">>),
+        ok = cs_ai_delivery_app:on_human_takeover(Org, Ws, SessionId, <<"human_transfer">>),
         {ok, S2} = cs_pg_ai:fetch_session_state(Org, Ws, SessionId),
         ?assertEqual(3, maps:get(generation_epoch, S2)),
         ?assertEqual(<<"human_claim">>, maps:get(handoff_reason, S2)),
@@ -87,7 +87,7 @@ e2_config_revoked_latches_all_pending() ->
             >>,
             [Org, Ws, SessionId]
         ),
-        cs_ai_app:on_config_revoked(Org, <<"config_revoked">>),
+        cs_ai_delivery_app:on_config_revoked(Org, <<"config_revoked">>),
         {ok, S1} = cs_pg_ai:fetch_session_state(Org, Ws, SessionId),
         ?assertEqual(true, maps:get(handoff, S1)),
         ?assertEqual(<<"config_revoked">>, maps:get(handoff_reason, S1)),
@@ -107,10 +107,10 @@ c3_i6_latched_session_gets_zero_delivery() ->
         #{org_id := Org, workspace_id := Ws, job_id := JobId} = Scene,
         {ok, _} = cs_pg_ai:claim_job(Org, JobId, <<"worker-a">>, 60),
         %% 人工接管（E2）后投递。
-        ok = cs_ai_app:on_human_takeover(
+        ok = cs_ai_delivery_app:on_human_takeover(
             Org, Ws, maps:get(session_id, Scene), <<"human_claim">>
         ),
-        Result = cs_ai_app:deliver(Org, Ws, #{
+        Result = cs_ai_delivery_app:deliver(Org, Ws, #{
             job_id => JobId,
             worker_id => <<"worker-a">>,
             seat_identity_id => maps:get(seat_identity_id, Scene),
@@ -134,7 +134,7 @@ c4_latch_has_no_unset_path() ->
     try
         Org = maps:get(org_id, Scope),
         Ws = maps:get(workspace_id, Scope),
-        ok = cs_ai_app:on_human_takeover(Org, Ws, SessionId, <<"human_claim">>),
+        ok = cs_ai_delivery_app:on_human_takeover(Org, Ws, SessionId, <<"human_claim">>),
         %% 静态面：应用/数据两层均无清除入口（E3 清除仅发生在 closed 后
         %% 新会话 = 新 ai_session 行；无任何 unset/clear 导出）。
         Exports = ?MOD:module_info(exports),
@@ -162,11 +162,11 @@ c4_latch_has_no_unset_path() ->
 
 on_human_takeover_never_raises() ->
     %% 畸形入参（非整数）⇒ ok（参数卫卫返回）。
-    ok = cs_ai_app:on_human_takeover(<<"bad">>, 1, 2, <<"x">>),
+    ok = cs_ai_delivery_app:on_human_takeover(<<"bad">>, 1, 2, <<"x">>),
     %% 正常形状但 org 不存在（DB 错误路径）⇒ ok（内部吞错）。
-    ok = cs_ai_app:on_human_takeover(1, 1, 1, <<"human_claim">>),
-    ok = cs_ai_app:on_config_revoked(<<"bad">>, <<"x">>),
-    ok = cs_ai_app:on_config_revoked(1, <<"config_revoked">>).
+    ok = cs_ai_delivery_app:on_human_takeover(1, 1, 1, <<"human_claim">>),
+    ok = cs_ai_delivery_app:on_config_revoked(<<"bad">>, <<"x">>),
+    ok = cs_ai_delivery_app:on_config_revoked(1, <<"config_revoked">>).
 
 %% ===================================================================
 %% 种子与断言辅助

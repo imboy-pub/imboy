@@ -80,11 +80,11 @@ d2_i9_no_citation_no_delivery() ->
         seed_config(Org, #{auto_reply_mode => enabled, faq_require_hit => true}),
         {ok, _} = cs_pg_ai:claim_job(Org, JobId, <<"worker-a">>, 60),
         %% 无引用 + answerable（模型说能答）⇒ gate_3 拒。
-        Gate = cs_ai_app:grounding_gate(Org, #{
+        Gate = cs_ai_gate_app:grounding_gate(Org, #{
             cited_faq_ids => [], cited_faq_versions => [], answerable => true
         }),
         Result =
-            cs_ai_app:deliver(Org, Ws, #{
+            cs_ai_delivery_app:deliver(Org, Ws, #{
                 job_id => JobId,
                 worker_id => <<"worker-a">>,
                 seat_identity_id => maps:get(seat_identity_id, Scene),
@@ -110,13 +110,13 @@ d3_i10_stale_citation_no_delivery() ->
         {FaqId, Version} = seed_faq(Org, maps:get(workspace_id, Scene)),
         {ok, _} = cs_pg_ai:claim_job(Org, JobId, <<"worker-a">>, 60),
         %% 引用有效 ⇒ 通过 gate（delivery=1）。
-        Gate = cs_ai_app:grounding_gate(Org, #{
+        Gate = cs_ai_gate_app:grounding_gate(Org, #{
             cited_faq_ids => [FaqId],
             cited_faq_versions => [Version],
             answerable => true
         }),
         Result =
-            cs_ai_app:deliver(Org, Ws, #{
+            cs_ai_delivery_app:deliver(Org, Ws, #{
                 job_id => JobId,
                 worker_id => <<"worker-a">>,
                 seat_identity_id => maps:get(seat_identity_id, Scene),
@@ -136,13 +136,13 @@ d3_i10_stale_citation_no_delivery() ->
             [Org, FaqId]
         ),
         Result2 =
-            cs_ai_app:deliver(Org, Ws, #{
+            cs_ai_delivery_app:deliver(Org, Ws, #{
                 job_id => JobId2,
                 worker_id => <<"worker-b">>,
                 seat_identity_id => maps:get(seat_identity_id, Scene),
                 reply => <<"stale">>,
                 gate_fun =>
-                    cs_ai_app:grounding_gate(Org, #{
+                    cs_ai_gate_app:grounding_gate(Org, #{
                         cited_faq_ids => [FaqId],
                         cited_faq_versions => [Version],
                         answerable => true
@@ -165,14 +165,14 @@ d5_confidence_not_a_gate() ->
         seed_config(Org, #{auto_reply_mode => enabled, faq_require_hit => true}),
         {ok, _} = cs_pg_ai:claim_job(Org, JobId, <<"worker-a">>, 60),
         %% 高自报置信度 + 无据（answerable=false）⇒ 仍不投递。
-        Gate = cs_ai_app:grounding_gate(Org, #{
+        Gate = cs_ai_gate_app:grounding_gate(Org, #{
             cited_faq_ids => [],
             cited_faq_versions => [],
             answerable => false,
             model_reported_confidence => 0.99
         }),
         Result =
-            cs_ai_app:deliver(Org, Ws, #{
+            cs_ai_delivery_app:deliver(Org, Ws, #{
                 job_id => JobId,
                 worker_id => <<"worker-a">>,
                 seat_identity_id => maps:get(seat_identity_id, Scene),
@@ -181,8 +181,9 @@ d5_confidence_not_a_gate() ->
             }),
         ?assertEqual({skipped, no_grounding}, Result),
         ?assertEqual(0, delivery_count(Org)),
-        %% 静态面：gate 代码路径不含 model_reported_confidence。
-        {ok, Bin} = file:read_file(src_path("cs_ai_app.erl")),
+        %% 静态面：gate 代码路径不含 model_reported_confidence（2026-10-15
+        %% 拆分后 gate 真源为 cs_ai_gate_app.erl，锚点随段迁移）。
+        {ok, Bin} = file:read_file(src_path("cs_ai_gate_app.erl")),
         GateSeg = gate_segment(Bin),
         ?assert(binary:match(GateSeg, <<"model_reported_confidence">>) =:= nomatch)
     after
@@ -266,12 +267,12 @@ gate7_session_open() ->
 %% ===================================================================
 
 deliver_with(Org, Ws, Scene, JobId, Evidence) ->
-    cs_ai_app:deliver(Org, Ws, #{
+    cs_ai_delivery_app:deliver(Org, Ws, #{
         job_id => JobId,
         worker_id => <<"worker-a">>,
         seat_identity_id => maps:get(seat_identity_id, Scene),
         reply => <<"x">>,
-        gate_fun => cs_ai_app:grounding_gate(Org, Evidence)
+        gate_fun => cs_ai_gate_app:grounding_gate(Org, Evidence)
     }).
 
 seed_scene() ->
@@ -429,8 +430,8 @@ ai_message_count(Org) ->
 
 %% 从模块源码截取 gate 代码段（%% D 组 标题到下一节标题）。
 gate_segment(Bin) ->
-    Start = binary:match(Bin, <<"D 组（v4 02-D）：七道放行 gate"/utf8>>),
-    End = binary:match(Bin, <<"历史（多轮上下文）"/utf8>>),
+    Start = binary:match(Bin, <<"七道放行 gate（合取式）"/utf8>>),
+    End = binary:match(Bin, <<"离线指标（D.4.2）"/utf8>>),
     case {Start, End} of
         {{S, _}, {E, _}} when S < E -> binary:part(Bin, S, E - S);
         _ -> Bin

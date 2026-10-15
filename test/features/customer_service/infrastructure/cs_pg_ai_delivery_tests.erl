@@ -68,7 +68,7 @@ b1_stale_version_commits_zero_rows() ->
             )
         ),
         %% A 以旧栅栏投递 ⇒ 无任何副作用（delivery = 0，消息 = 0）。
-        Result = cs_ai_app:deliver(Org, maps:get(workspace_id, Scene), #{
+        Result = cs_ai_delivery_app:deliver(Org, maps:get(workspace_id, Scene), #{
             job_id => JobId,
             worker_id => <<"worker-a">>,
             seat_identity_id => maps:get(seat_identity_id, Scene),
@@ -140,7 +140,7 @@ b3_concurrent_delivery_single_row() ->
         lists:foreach(
             fun(I) ->
                 _ = spawn(fun() ->
-                    Parent ! {I, (catch cs_ai_app:deliver(Org, Ws, Params))}
+                    Parent ! {I, (catch cs_ai_delivery_app:deliver(Org, Ws, Params))}
                 end)
             end,
             [1, 2]
@@ -161,7 +161,7 @@ b3_concurrent_delivery_single_row() ->
         %% 再投（陈旧）⇒ 冲突而非重复 delivery。
         ?assertMatch(
             {error, {conflict, completed}},
-            cs_ai_app:deliver(Org, Ws, Params)
+            cs_ai_delivery_app:deliver(Org, Ws, Params)
         ),
         ?assertEqual(1, delivery_count(Org))
     after
@@ -180,7 +180,7 @@ b4_new_input_supersedes_delivery() ->
         %% 新 contact 消息超越 job 的 context_watermark。
         Later = seed_contact_message(Scene),
         _ = Later,
-        Result = cs_ai_app:deliver(Org, Ws, #{
+        Result = cs_ai_delivery_app:deliver(Org, Ws, #{
             job_id => JobId,
             worker_id => <<"worker-a">>,
             seat_identity_id => maps:get(seat_identity_id, Scene),
@@ -251,7 +251,7 @@ b6_mixed_concurrency_no_deadlock() ->
                 (takeover) ->
                     cs_pg_ai:takeover_job(Org, JobId, <<"worker-b">>, 2, 60);
                 (deliver) ->
-                    cs_ai_app:deliver(Org, Ws, #{
+                    cs_ai_delivery_app:deliver(Org, Ws, #{
                         job_id => JobId,
                         worker_id => <<"worker-a">>,
                         seat_identity_id => maps:get(seat_identity_id, Scene),

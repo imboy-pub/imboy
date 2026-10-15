@@ -11,7 +11,7 @@
 %%%   * A-5 sweep 修复人为漏行：手工删一条 seen，sweep 补回且 job 不重复；
 %%%   * A-6 窗口不匹配 fast-fail：BACKSCAN_WINDOW > RETENTION ⇒ 拒启。
 %%%
-%%% 副作用载体：`cs_ai_app:apply_event/5`（visitor `message.appended` →
+%%% 副作用载体：`cs_ai_consume_app:apply_event/5`（visitor `message.appended` →
 %%% 幂等建 `customer_service_ai_job`，DB 幂等键 `uq_csaij_org_inbound`）。
 %%%
 %%% 隔离：`cs_pg_test_fixture:new_scope/0` 随机 TSID scope；交错用例持
@@ -76,7 +76,7 @@ a1_a2_late_commit_not_skipped() ->
         %% 活跃 xid）。E1 未提交不可见；E2 虽已提交但其 xid 更大，
         %% `xmin < horizon` 同样不越过——两行都等（A-2「不越过飞行事务」；
         %% 这是闸门不漏的代价：宁可延迟，不可越过后永久跳过）。
-        {ok, S1} = cs_ai_app:consume_batch(org(Scope), ws(Scope), #{}),
+        {ok, S1} = cs_ai_consume_app:consume_batch(org(Scope), ws(Scope), #{}),
         ?assertEqual(0, maps:get(applied, S1)),
         ?assertEqual(0, maps:get(seen, S1)),
         ?assertEqual(false, maps:get(regressed, S1)),
@@ -84,7 +84,7 @@ a1_a2_late_commit_not_skipped() ->
         %% 「先消费 E2 再提交 E1」下会永久跳过 E1；xmin 闸门下水位从未
         %% 越过 E1 的 xid ⇒ E1 提交后必被选中。
         ok = sql(C1, <<"COMMIT">>),
-        {ok, S2} = cs_ai_app:consume_batch(org(Scope), ws(Scope), #{}),
+        {ok, S2} = cs_ai_consume_app:consume_batch(org(Scope), ws(Scope), #{}),
         ?assertEqual(2, maps:get(applied, S2)),
         %% 两事件齐全（eligible=2 语义，A-2）：seen 全覆盖 + 各恰一条 job。
         ?assertEqual(
@@ -113,10 +113,10 @@ a3_rescan_is_idempotent() ->
     try
         Seed = seed_session(Scope),
         [_Ev] = seed_visitor_event(Scope, Seed),
-        {ok, S1} = cs_ai_app:consume_batch(org(Scope), ws(Scope), #{}),
+        {ok, S1} = cs_ai_consume_app:consume_batch(org(Scope), ws(Scope), #{}),
         ?assertEqual(1, maps:get(applied, S1)),
-        {ok, S2} = cs_ai_app:consume_batch(org(Scope), ws(Scope), #{}),
-        {ok, S3} = cs_ai_app:consume_batch(org(Scope), ws(Scope), #{}),
+        {ok, S2} = cs_ai_consume_app:consume_batch(org(Scope), ws(Scope), #{}),
+        {ok, S3} = cs_ai_consume_app:consume_batch(org(Scope), ws(Scope), #{}),
         ?assertEqual(0, maps:get(applied, S2)),
         ?assertEqual(0, maps:get(applied, S3)),
         %% 副作用不随重复扫描增长（seen=1、job=1）。
@@ -164,7 +164,7 @@ a5_sweep_repairs_manual_seen_hole() ->
     try
         Seed = seed_session(Scope),
         [_Ev] = seed_visitor_event(Scope, Seed),
-        {ok, _} = cs_ai_app:consume_batch(org(Scope), ws(Scope), #{}),
+        {ok, _} = cs_ai_consume_app:consume_batch(org(Scope), ws(Scope), #{}),
         ?assertEqual(1, seen_count(Scope)),
         %% 人为挖洞：seen 表无 append-only 守卫，直接 DELETE。
         ok = ?FIX:exec(
@@ -176,7 +176,7 @@ a5_sweep_repairs_manual_seen_hole() ->
         ),
         ?assertEqual(0, seen_count(Scope)),
         {ok, [#{result := {ok, Sweep}}]} =
-            cs_ai_app:reconcile_sweep(#{consumer => ?CONSUMER}),
+            cs_ai_consume_app:reconcile_sweep(#{consumer => ?CONSUMER}),
         ?assertEqual(1, maps:get(missing, Sweep)),
         ?assertEqual(1, maps:get(repaired, Sweep)),
         ?assertEqual(0, maps:get(remaining, Sweep)),
@@ -192,15 +192,15 @@ a5_sweep_repairs_manual_seen_hole() ->
 %% ===================================================================
 
 a6_window_mismatch_fails_fast() ->
-    ok = cs_ai_app:validate_consume_config(),
+    ok = cs_ai_consume_app:validate_consume_config(),
     try
         application:set_env(imboy, cs_ai_backscan_window_seconds, 604801),
-        ?assertError({consume_window_mismatch, _}, cs_ai_app:validate_consume_config())
+        ?assertError({consume_window_mismatch, _}, cs_ai_consume_app:validate_consume_config())
     after
         application:unset_env(imboy, cs_ai_backscan_window_seconds)
     end,
     %% 恢复后放行。
-    ok = cs_ai_app:validate_consume_config().
+    ok = cs_ai_consume_app:validate_consume_config().
 
 %% ===================================================================
 %% I1 + I2：全事件覆盖、副作用唯一（含非消息事件与坐席消息）
@@ -214,13 +214,13 @@ i1_i2_full_coverage_and_unique_effects() ->
         seed_visitor_events(Scope, Seed, 3),
         seed_seat_message_event(Scope, Seed),
         seed_opened_event(Scope, Seed),
-        {ok, S1} = cs_ai_app:consume_batch(org(Scope), ws(Scope), #{}),
+        {ok, S1} = cs_ai_consume_app:consume_batch(org(Scope), ws(Scope), #{}),
         %% 全部 5 条都被消费（I1：seen 是消费证明），其中 3 条产生 job。
         ?assertEqual(5, maps:get(applied, S1)),
         ?assertEqual(5, seen_count(Scope)),
         ?assertEqual(3, job_count(Scope)),
         %% I2：重扫不重。
-        {ok, _} = cs_ai_app:consume_batch(org(Scope), ws(Scope), #{}),
+        {ok, _} = cs_ai_consume_app:consume_batch(org(Scope), ws(Scope), #{}),
         ?assertEqual(3, job_count(Scope))
     after
         cleanup_scope(Scope)
@@ -238,7 +238,7 @@ apply_event_filters_non_visitor_and_bad_shapes() ->
         %% 跳过建 job（ok），seen 仍记录。
         Ev = ev_id(),
         insert_event(?FIX, Scope, Seed, Ev, <<"visitor">>, <<"message.appended">>, #{}),
-        {ok, S1} = cs_ai_app:consume_batch(org(Scope), ws(Scope), #{}),
+        {ok, S1} = cs_ai_consume_app:consume_batch(org(Scope), ws(Scope), #{}),
         ?assertEqual(1, maps:get(applied, S1)),
         ?assertEqual(1, seen_count(Scope)),
         ?assertEqual(0, job_count(Scope))

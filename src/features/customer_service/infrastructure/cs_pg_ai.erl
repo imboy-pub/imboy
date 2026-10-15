@@ -1,6 +1,12 @@
 %%% @doc `cs_ai_port` 的 PG 实现（铁律 6：首参恒为 `OrganizationId`，SQL 同语句带
 %%% `organization_id`；铁律 7：单调状态推进在 SQL 内完成，不做检查-使用序列）。
 %%%
+%%% 行数豁免（编码规范"文件 < 800 行"）：本文件是 `cs_ai_port:impl/1` 的
+%%% **注入面聚合体**——A/B/C/D/E 组数据面虽非冻结 callback，但经 `impl/1`
+%%% 动态派发且"测试注入面同构"（mock 实现整个函数集），按域拆模块会迫使
+%%% 注入 mock 同步拆散、破坏该契约。故不拆文件；超长函数已提 SQL 常量子
+%%% 函数收口（2026-10-15 技术债清理）。
+%%%
 %%% 设计要点（都是踩过的坑）：
 %%%
 %%%   * **中文全文检索必须自己组 tsquery**：`plainto_tsquery('jiebacfg', '我想退款')`
@@ -486,7 +492,24 @@ list_sessions(OrgId, Params) ->
     Intent = opt(Params, intent, <<>>),
     Limit = pos(maps:get(limit, Params, 50), 50),
     Offset = max(0, int(maps:get(offset, Params, 0), 0)),
-    Sql = <<
+    Filters = [OrgId, WsFilter, Status, Intent],
+    case
+        cs_pg_common:fetch_many(
+            list_sessions_sql(), Filters ++ [Limit, Offset], list_sessions_keys()
+        )
+    of
+        {error, _} = Err ->
+            Err;
+        {ok, Rows} ->
+            case cs_pg_common:fetch_one(list_sessions_count_sql(), Filters, [total]) of
+                {ok, #{total := Total}} -> {ok, #{sessions => Rows, total => Total}};
+                {error, not_found} -> {ok, #{sessions => Rows, total => length(Rows)}};
+                {error, _} = Err2 -> Err2
+            end
+    end.
+
+list_sessions_sql() ->
+    <<
         "SELECT s.id,s.workspace_id,s.contact_id,s.status,s.rating,"
         "extract(epoch from s.queued_at)::bigint AS queued_at,"
         "extract(epoch from s.claimed_at)::bigint AS claimed_at,"
@@ -507,8 +530,21 @@ list_sessions(OrgId, Params) ->
         "  AND ($3 = '' OR s.status = $3) "
         "  AND ($4 = '' OR coalesce(a.current_intent,'') = $4) "
         "ORDER BY s.id DESC LIMIT $5 OFFSET $6"
-    >>,
-    Keys = [
+    >>.
+
+list_sessions_count_sql() ->
+    <<
+        "SELECT count(*)::bigint AS total FROM customer_service_session s "
+        "LEFT JOIN customer_service_ai_session a "
+        "  ON a.organization_id=s.organization_id AND a.workspace_id=s.workspace_id AND a.session_id=s.id "
+        "WHERE s.organization_id=$1 "
+        "  AND ($2::bigint = 0 OR s.workspace_id = $2) "
+        "  AND ($3 = '' OR s.status = $3) "
+        "  AND ($4 = '' OR coalesce(a.current_intent,'') = $4)"
+    >>.
+
+list_sessions_keys() ->
+    [
         id,
         workspace_id,
         contact_id,
@@ -524,80 +560,23 @@ list_sessions(OrgId, Params) ->
         handoff,
         handoff_reason,
         turn_count
-    ],
-    CountSql = <<
-        "SELECT count(*)::bigint AS total FROM customer_service_session s "
-        "LEFT JOIN customer_service_ai_session a "
-        "  ON a.organization_id=s.organization_id AND a.workspace_id=s.workspace_id AND a.session_id=s.id "
-        "WHERE s.organization_id=$1 "
-        "  AND ($2::bigint = 0 OR s.workspace_id = $2) "
-        "  AND ($3 = '' OR s.status = $3) "
-        "  AND ($4 = '' OR coalesce(a.current_intent,'') = $4)"
-    >>,
-    Filters = [OrgId, WsFilter, Status, Intent],
-    case cs_pg_common:fetch_many(Sql, Filters ++ [Limit, Offset], Keys) of
-        {error, _} = Err ->
-            Err;
-        {ok, Rows} ->
-            case cs_pg_common:fetch_one(CountSql, Filters, [total]) of
-                {ok, #{total := Total}} -> {ok, #{sessions => Rows, total => Total}};
-                {error, not_found} -> {ok, #{sessions => Rows, total => length(Rows)}};
-                {error, _} = Err2 -> Err2
-            end
-    end.
+    ].
 
 %% 满意度统计：评级真源是 `customer_service_session.rating`（**不新建副本**）。
 stats(OrgId, Params) ->
     WsFilter = int(maps:get(workspace_id, Params, 0), 0),
-    SessionSql = <<
-        "SELECT count(*)::bigint AS sessions, count(rating)::bigint AS rated,"
-        "coalesce(avg(rating),0)::float8 AS avg_rating,"
-        "count(*) FILTER (WHERE rating = 5)::bigint AS rating_5,"
-        "count(*) FILTER (WHERE rating = 4)::bigint AS rating_4,"
-        "count(*) FILTER (WHERE rating = 3)::bigint AS rating_3,"
-        "count(*) FILTER (WHERE rating = 2)::bigint AS rating_2,"
-        "count(*) FILTER (WHERE rating = 1)::bigint AS rating_1,"
-        "count(*) FILTER (WHERE status = 'closed')::bigint AS closed "
-        "FROM customer_service_session WHERE organization_id=$1 AND ($2::bigint = 0 OR workspace_id = $2)"
-    >>,
-    IntentSql = <<
-        "SELECT coalesce(current_intent,'') AS intent, count(*)::bigint AS n,"
-        "count(*) FILTER (WHERE handoff)::bigint AS handoff_n "
-        "FROM customer_service_ai_session WHERE organization_id=$1 AND ($2::bigint = 0 OR workspace_id = $2) "
-        "GROUP BY 1 ORDER BY n DESC, 1 ASC"
-    >>,
-    ActionSql = <<
-        "SELECT action, count(*)::bigint AS n FROM customer_service_ai_turn "
-        "WHERE organization_id=$1 AND ($2::bigint = 0 OR workspace_id = $2) GROUP BY 1 ORDER BY n DESC, 1 ASC"
-    >>,
-    TurnSql = <<
-        "SELECT count(*)::bigint AS turns,"
-        "count(*) FILTER (WHERE action = 'handoff')::bigint AS handoff_turns,"
-        "coalesce(avg(latency_ms),0)::float8 AS avg_latency_ms "
-        "FROM customer_service_ai_turn WHERE organization_id=$1 AND ($2::bigint = 0 OR workspace_id = $2)"
-    >>,
-    SessionKeys = [
-        sessions,
-        rated,
-        avg_rating,
-        rating_5,
-        rating_4,
-        rating_3,
-        rating_2,
-        rating_1,
-        closed
-    ],
+    Args = [OrgId, WsFilter],
     with_ok(
-        cs_pg_common:fetch_one(SessionSql, [OrgId, WsFilter], SessionKeys),
+        cs_pg_common:fetch_one(stats_session_sql(), Args, stats_session_keys()),
         fun(Session) ->
             with_ok(
-                cs_pg_common:fetch_many(IntentSql, [OrgId, WsFilter], [intent, n, handoff_n]),
+                cs_pg_common:fetch_many(stats_intent_sql(), Args, [intent, n, handoff_n]),
                 fun(Intents) ->
                     with_ok(
-                        cs_pg_common:fetch_many(ActionSql, [OrgId, WsFilter], [action, n]),
+                        cs_pg_common:fetch_many(stats_action_sql(), Args, [action, n]),
                         fun(Actions) ->
                             with_ok(
-                                cs_pg_common:fetch_one(TurnSql, [OrgId, WsFilter], [
+                                cs_pg_common:fetch_one(stats_turn_sql(), Args, [
                                     turns, handoff_turns, avg_latency_ms
                                 ]),
                                 fun(Turns) ->
@@ -615,6 +594,54 @@ stats(OrgId, Params) ->
             )
         end
     ).
+
+stats_session_sql() ->
+    <<
+        "SELECT count(*)::bigint AS sessions, count(rating)::bigint AS rated,"
+        "coalesce(avg(rating),0)::float8 AS avg_rating,"
+        "count(*) FILTER (WHERE rating = 5)::bigint AS rating_5,"
+        "count(*) FILTER (WHERE rating = 4)::bigint AS rating_4,"
+        "count(*) FILTER (WHERE rating = 3)::bigint AS rating_3,"
+        "count(*) FILTER (WHERE rating = 2)::bigint AS rating_2,"
+        "count(*) FILTER (WHERE rating = 1)::bigint AS rating_1,"
+        "count(*) FILTER (WHERE status = 'closed')::bigint AS closed "
+        "FROM customer_service_session WHERE organization_id=$1 AND ($2::bigint = 0 OR workspace_id = $2)"
+    >>.
+
+stats_session_keys() ->
+    [
+        sessions,
+        rated,
+        avg_rating,
+        rating_5,
+        rating_4,
+        rating_3,
+        rating_2,
+        rating_1,
+        closed
+    ].
+
+stats_intent_sql() ->
+    <<
+        "SELECT coalesce(current_intent,'') AS intent, count(*)::bigint AS n,"
+        "count(*) FILTER (WHERE handoff)::bigint AS handoff_n "
+        "FROM customer_service_ai_session WHERE organization_id=$1 AND ($2::bigint = 0 OR workspace_id = $2) "
+        "GROUP BY 1 ORDER BY n DESC, 1 ASC"
+    >>.
+
+stats_action_sql() ->
+    <<
+        "SELECT action, count(*)::bigint AS n FROM customer_service_ai_turn "
+        "WHERE organization_id=$1 AND ($2::bigint = 0 OR workspace_id = $2) GROUP BY 1 ORDER BY n DESC, 1 ASC"
+    >>.
+
+stats_turn_sql() ->
+    <<
+        "SELECT count(*)::bigint AS turns,"
+        "count(*) FILTER (WHERE action = 'handoff')::bigint AS handoff_turns,"
+        "coalesce(avg(latency_ms),0)::float8 AS avg_latency_ms "
+        "FROM customer_service_ai_turn WHERE organization_id=$1 AND ($2::bigint = 0 OR workspace_id = $2)"
+    >>.
 
 %% 有评分的会话中 4~5 星占比（无样本时为 `undefined`，**不显示 0%**——
 %% 把"没有样本"渲染成"0% 满意"是统计口径事故）。
@@ -1345,58 +1372,7 @@ budget_reserved_transition(OrgId, AttemptId, Target, ActualOrKeep) ->
     Fun = fun(Conn) ->
         case budget_attempt_for_update(Conn, OrgId, AttemptId) of
             {ok, Att} ->
-                case maps:get(<<"state">>, Att) of
-                    <<"reserved">> ->
-                        Version = maps:get(<<"version">>, Att),
-                        Reserved = maps:get(<<"reserved_tokens">>, Att),
-                        TargetBin = atom_to_binary(Target),
-                        Settled =
-                            case ActualOrKeep of
-                                keep -> maps:get(<<"settled_tokens">>, Att);
-                                N when is_integer(N) -> N
-                            end,
-                        case
-                            elib_pg:execute(
-                                Conn,
-                                <<
-                                    "UPDATE customer_service_ai_budget_attempt"
-                                    "   SET state = $2, settled_tokens = $3,"
-                                    "       version = version + 1, updated_at = now()"
-                                    " WHERE attempt_id = $1 AND state = 'reserved'"
-                                    "   AND version = $4"
-                                >>,
-                                [AttemptId, TargetBin, Settled, Version]
-                            )
-                        of
-                            {ok, 1} ->
-                                Apply =
-                                    case Target of
-                                        settled ->
-                                            {ok, settled};
-                                        released ->
-                                            _ = budget_apply(Conn, Att, -Reserved, 0),
-                                            {ok, released};
-                                        %% uncertain：budget 不动（E.3 保守语义）
-                                        uncertain ->
-                                            {ok, uncertain}
-                                    end,
-                                case Apply of
-                                    {ok, settled} ->
-                                        _ = budget_apply(Conn, Att, -Reserved, Settled),
-                                        {ok, settled};
-                                    Other ->
-                                        Other
-                                end;
-                            {ok, 0} ->
-                                {skipped, already_migrated};
-                            {error, Reason} ->
-                                {error, Reason}
-                        end;
-                    <<"settled">> when Target =:= settled ->
-                        {skipped, already_settled};
-                    OtherState ->
-                        {skipped, {not_reserved, OtherState}}
-                end;
+                reserved_transition_locked(Conn, Att, AttemptId, Target, ActualOrKeep);
             {error, Reason} ->
                 {error, Reason}
         end
@@ -1405,6 +1381,69 @@ budget_reserved_transition(OrgId, AttemptId, Target, ActualOrKeep) ->
         {rollback, Reason} -> {error, Reason};
         Other -> Other
     end.
+
+%% 行锁下分派：仅 reserved 态可 CAS；settled 幂等重入、其余终态拒绝。
+reserved_transition_locked(Conn, Att, AttemptId, Target, ActualOrKeep) ->
+    case maps:get(<<"state">>, Att) of
+        <<"reserved">> ->
+            cas_reserved(Conn, Att, AttemptId, Target, ActualOrKeep);
+        <<"settled">> when Target =:= settled ->
+            {skipped, already_settled};
+        OtherState ->
+            {skipped, {not_reserved, OtherState}}
+    end.
+
+%% reserved → target 的 CAS UPDATE + per-target 副作用
+%% （settled 补累计、released 退回、uncertain budget 不动——E.3 保守语义）。
+cas_reserved(Conn, Att, AttemptId, Target, ActualOrKeep) ->
+    Version = maps:get(<<"version">>, Att),
+    Reserved = maps:get(<<"reserved_tokens">>, Att),
+    Settled = settled_of(ActualOrKeep, Att),
+    case
+        elib_pg:execute(
+            Conn,
+            cas_state_sql(<<"reserved">>),
+            [AttemptId, atom_to_binary(Target), Settled, Version]
+        )
+    of
+        {ok, 1} ->
+            Apply =
+                case Target of
+                    settled ->
+                        {ok, settled};
+                    released ->
+                        _ = budget_apply(Conn, Att, -Reserved, 0),
+                        {ok, released};
+                    uncertain ->
+                        {ok, uncertain}
+                end,
+            case Apply of
+                {ok, settled} ->
+                    _ = budget_apply(Conn, Att, -Reserved, Settled),
+                    {ok, settled};
+                Other ->
+                    Other
+            end;
+        {ok, 0} ->
+            {skipped, already_migrated};
+        {error, Reason} ->
+            {error, Reason}
+    end.
+
+%% CAS UPDATE 共形：state/target/settled_tokens/version 四参，仅期望态不同。
+cas_state_sql(ExpectState) ->
+    <<
+        "UPDATE customer_service_ai_budget_attempt"
+        "   SET state = $2, settled_tokens = $3,"
+        "       version = version + 1, updated_at = now()"
+        " WHERE attempt_id = $1 AND state = '",
+        ExpectState/binary,
+        "'"
+        "   AND version = $4"
+    >>.
+
+settled_of(keep, Att) -> maps:get(<<"settled_tokens">>, Att);
+settled_of(N, _Att) when is_integer(N) -> N.
 
 budget_attempt_for_update(Conn, OrgId, AttemptId) ->
     case
@@ -1495,44 +1534,7 @@ budget_uncertain_transition(Att, Target, ActualOrKeep) ->
     Fun = fun(Conn) ->
         case budget_attempt_for_update(Conn, OrgId, AttemptId) of
             {ok, Att1} ->
-                case maps:get(<<"state">>, Att1) of
-                    <<"uncertain">> ->
-                        Version = maps:get(<<"version">>, Att1),
-                        Reserved = maps:get(<<"reserved_tokens">>, Att1),
-                        TargetBin = atom_to_binary(Target),
-                        Settled =
-                            case ActualOrKeep of
-                                keep -> maps:get(<<"settled_tokens">>, Att1);
-                                N when is_integer(N) -> N
-                            end,
-                        case
-                            elib_pg:execute(
-                                Conn,
-                                <<
-                                    "UPDATE customer_service_ai_budget_attempt"
-                                    "   SET state = $2, settled_tokens = $3,"
-                                    "       version = version + 1, updated_at = now()"
-                                    " WHERE attempt_id = $1 AND state = 'uncertain'"
-                                    "   AND version = $4"
-                                >>,
-                                [AttemptId, TargetBin, Settled, Version]
-                            )
-                        of
-                            {ok, 1} ->
-                                _ =
-                                    case Target of
-                                        settled -> budget_apply(Conn, Att1, -Reserved, Settled);
-                                        released -> budget_apply(Conn, Att1, -Reserved, 0)
-                                    end,
-                                {ok, Target};
-                            {ok, 0} ->
-                                {skipped, already_migrated};
-                            {error, Reason} ->
-                                {error, Reason}
-                        end;
-                    OtherState ->
-                        {skipped, {not_uncertain, OtherState}}
-                end;
+                uncertain_transition_locked(Conn, Att1, AttemptId, Target, ActualOrKeep);
             {error, Reason} ->
                 {error, Reason}
         end
@@ -1540,6 +1542,40 @@ budget_uncertain_transition(Att, Target, ActualOrKeep) ->
     case elib_pg:with_tx(Fun, [{reraise, false}]) of
         {rollback, Reason} -> {error, Reason};
         Other -> Other
+    end.
+
+%% 行锁下分派：仅 uncertain 态可 CAS。
+uncertain_transition_locked(Conn, Att, AttemptId, Target, ActualOrKeep) ->
+    case maps:get(<<"state">>, Att) of
+        <<"uncertain">> ->
+            cas_uncertain(Conn, Att, AttemptId, Target, ActualOrKeep);
+        OtherState ->
+            {skipped, {not_uncertain, OtherState}}
+    end.
+
+%% uncertain → target 的 CAS UPDATE + 累计表对账（结算前快照版本）。
+cas_uncertain(Conn, Att, AttemptId, Target, ActualOrKeep) ->
+    Version = maps:get(<<"version">>, Att),
+    Reserved = maps:get(<<"reserved_tokens">>, Att),
+    Settled = settled_of(ActualOrKeep, Att),
+    case
+        elib_pg:execute(
+            Conn,
+            cas_state_sql(<<"uncertain">>),
+            [AttemptId, atom_to_binary(Target), Settled, Version]
+        )
+    of
+        {ok, 1} ->
+            _ =
+                case Target of
+                    settled -> budget_apply(Conn, Att, -Reserved, Settled);
+                    released -> budget_apply(Conn, Att, -Reserved, 0)
+                end,
+            {ok, Target};
+        {ok, 0} ->
+            {skipped, already_migrated};
+        {error, Reason} ->
+            {error, Reason}
     end.
 
 %% ===================================================================

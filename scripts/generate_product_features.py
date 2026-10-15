@@ -108,10 +108,15 @@ FEATURE_BACKEND_MODULES = {
         # （customer_service 无 enterprise 生成即失败）。
         "cs_access_app",
         "cs_actions",
-        # v4 AI 管理面/运行时（P0-9 冻结名单 8 模块 + P0-7 purge worker）：
-        # application/ai 三件 + domain 三件 + infrastructure/cs_pg_ai。
+        # v4 AI 管理面/运行时（P0-9 冻结名单 8 模块 + P0-7 purge worker；
+        # 2026-10-15 技术债拆分：cs_ai_app 编排按域分出 consume/budget/gate/
+        # delivery 四个 *_app，cs_pg_ai 为 impl/1 注入面聚合体不拆）。
         "cs_ai_admin_app",
         "cs_ai_app",
+        "cs_ai_budget_app",
+        "cs_ai_consume_app",
+        "cs_ai_delivery_app",
+        "cs_ai_gate_app",
         "cs_ai_port",
         "cs_ai_prompt",
         "cs_ai_purge_worker",

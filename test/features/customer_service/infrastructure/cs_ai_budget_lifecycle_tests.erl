@@ -50,7 +50,7 @@ e1_single_reserve() ->
     try
         #{org := Org, session := S, job := J} = Scene,
         ok = seed_budget(Scene, 1000),
-        {ok, reserved} = cs_ai_app:admit(Org, #{
+        {ok, reserved} = cs_ai_budget_app:admit(Org, #{
             session_id => S, job_id => J, attempt => 1, est_tokens => 500
         }),
         %% 三层各一条 attempt（冻结 attempt_id 规则 '<job>:<attempt>:<layer>'），
@@ -79,7 +79,7 @@ e2_concurrent_penetration_refused() ->
             fun(N) ->
                 spawn_link(fun() ->
                     R =
-                        cs_ai_app:admit(Org, #{
+                        cs_ai_budget_app:admit(Org, #{
                             session_id => S, job_id => J + N, attempt => 1, est_tokens => 800
                         }),
                     Self ! {done, N, R}
@@ -113,13 +113,13 @@ e3_settle_semantics() ->
     try
         #{org := Org, session := S, job := J} = Scene,
         ok = seed_budget(Scene, 1000),
-        {ok, reserved} = cs_ai_app:admit(Org, #{
+        {ok, reserved} = cs_ai_budget_app:admit(Org, #{
             session_id => S, job_id => J, attempt => 1, est_tokens => 520
         }),
         %% 每层各自结算（账本每层一条）：各层 reserved=0、used=520。
-        {ok, settled} = cs_ai_app:settle(Org, attempt_id(J, 1, session), 520),
-        {ok, settled} = cs_ai_app:settle(Org, attempt_id(J, 1, org), 520),
-        {ok, settled} = cs_ai_app:settle(Org, attempt_id(J, 1, global), 520),
+        {ok, settled} = cs_ai_budget_app:settle(Org, attempt_id(J, 1, session), 520),
+        {ok, settled} = cs_ai_budget_app:settle(Org, attempt_id(J, 1, org), 520),
+        {ok, settled} = cs_ai_budget_app:settle(Org, attempt_id(J, 1, global), 520),
         0 = budget_tokens(Org, session, S, reserved),
         520 = budget_tokens(Org, session, S, used)
     after
@@ -135,12 +135,12 @@ e4_double_settle_idempotent() ->
     try
         #{org := Org, session := S, job := J} = Scene,
         ok = seed_budget(Scene, 1000),
-        {ok, reserved} = cs_ai_app:admit(Org, #{
+        {ok, reserved} = cs_ai_budget_app:admit(Org, #{
             session_id => S, job_id => J, attempt => 1, est_tokens => 520
         }),
-        {ok, settled} = cs_ai_app:settle(Org, attempt_id(J, 1, session), 520),
+        {ok, settled} = cs_ai_budget_app:settle(Org, attempt_id(J, 1, session), 520),
         520 = budget_tokens(Org, session, S, used),
-        {skipped, already_settled} = cs_ai_app:settle(Org, attempt_id(J, 1, session), 520),
+        {skipped, already_settled} = cs_ai_budget_app:settle(Org, attempt_id(J, 1, session), 520),
         520 = budget_tokens(Org, session, S, used),
         0 = budget_tokens(Org, session, S, reserved),
         ok
@@ -157,10 +157,10 @@ e5_over_reserve_rejected() ->
     try
         #{org := Org, session := S, job := J} = Scene,
         ok = seed_budget(Scene, 1000),
-        {ok, reserved} = cs_ai_app:admit(Org, #{
+        {ok, reserved} = cs_ai_budget_app:admit(Org, #{
             session_id => S, job_id => J, attempt => 1, est_tokens => 100
         }),
-        Result = cs_ai_app:settle(Org, attempt_id(J, 1, session), 200),
+        Result = cs_ai_budget_app:settle(Org, attempt_id(J, 1, session), 200),
         %% ck_csaiba_settled（23514）拦截 actual > reserved，整事务回滚。
         ?assert(string:find(io_lib:format("~p", [Result]), "23514") =/= nomatch),
         100 = budget_tokens(Org, session, S, reserved),
@@ -186,7 +186,7 @@ e6_three_layer_compensation_atomic() ->
             >>,
             [Org]
         ),
-        {error, {budget_exceeded, global}} = cs_ai_app:admit(Org, #{
+        {error, {budget_exceeded, global}} = cs_ai_budget_app:admit(Org, #{
             session_id => S, job_id => J, attempt => 1, est_tokens => 300
         }),
         0 = budget_tokens(Org, session, S, reserved),
@@ -210,10 +210,10 @@ e7_uncertain_keeps_quota() ->
     try
         #{org := Org, session := S, job := J} = Scene,
         ok = seed_budget(Scene, 1000),
-        {ok, reserved} = cs_ai_app:admit(Org, #{
+        {ok, reserved} = cs_ai_budget_app:admit(Org, #{
             session_id => S, job_id => J, attempt => 1, est_tokens => 400
         }),
-        {ok, uncertain} = cs_ai_app:to_uncertain(Org, attempt_id(J, 1, session)),
+        {ok, uncertain} = cs_ai_budget_app:to_uncertain(Org, attempt_id(J, 1, session)),
         400 = budget_tokens(Org, session, S, reserved),
         0 = budget_tokens(Org, session, S, used),
         %% I7 不变量在 uncertain 期间继续成立。
@@ -231,12 +231,12 @@ reconcile_known_and_unknown() ->
     try
         #{org := Org, session := S, job := J} = Scene,
         ok = seed_budget(Scene, 1000),
-        {ok, reserved} = cs_ai_app:admit(Org, #{
+        {ok, reserved} = cs_ai_budget_app:admit(Org, #{
             session_id => S, job_id => J, attempt => 1, est_tokens => 400
         }),
-        {ok, uncertain} = cs_ai_app:to_uncertain(Org, attempt_id(J, 1, session)),
-        {ok, uncertain} = cs_ai_app:to_uncertain(Org, attempt_id(J, 1, org)),
-        {ok, uncertain} = cs_ai_app:to_uncertain(Org, attempt_id(J, 1, global)),
+        {ok, uncertain} = cs_ai_budget_app:to_uncertain(Org, attempt_id(J, 1, session)),
+        {ok, uncertain} = cs_ai_budget_app:to_uncertain(Org, attempt_id(J, 1, org)),
+        {ok, uncertain} = cs_ai_budget_app:to_uncertain(Org, attempt_id(J, 1, global)),
         %% E.6 冻结只收 10 分钟前的到期行 ⇒ 测试把行回拨到期。
         ok = backdate_attempts(Org),
         Lookup = fun(Att) ->

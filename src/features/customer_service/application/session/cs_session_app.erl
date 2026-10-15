@@ -294,7 +294,7 @@ do_claim(OrgId, WorkspaceId, Session, IdentityId, ExpectedVersion, At, Params) -
                     %% v4 P0-4（02-C.3 E2）：人工 claim ⇒ AI 接管闩锁置位
                     %% （粘性 + generation_epoch+1）。永不影响 claim 自身结果
                     %% （AI 侧故障不拖垮人工坐席路径，on_human_takeover 内吞错）。
-                    cs_ai_app:on_human_takeover(
+                    cs_ai_delivery_app:on_human_takeover(
                         OrgId, WorkspaceId, maps:get(id, Session), <<"human_claim">>
                     ),
                     Ok;
@@ -391,7 +391,7 @@ do_transfer(OrgId, WorkspaceId, SessionId, ToIdentityId, ExpectedVersion, At, Pa
                     },
                     %% v4 P0-4（02-C.3 E2）：transfer 至 human seat 同为接管，
                     %% 闩锁置位语义与 claim 相同（吞错，不改变 transfer 结果）。
-                    _ = cs_ai_app:on_human_takeover(
+                    _ = cs_ai_delivery_app:on_human_takeover(
                         OrgId, WorkspaceId, SessionId, <<"human_transfer">>
                     ),
                     cas_write(

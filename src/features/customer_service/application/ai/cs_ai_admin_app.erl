@@ -71,7 +71,7 @@ config_set(OrgId, Params) when is_integer(OrgId), OrgId > 0, is_map(Params) ->
                         maps:get(auto_reply_mode, Params, undefined) =:= <<"disabled">> orelse
                             maps:get(auto_reply_mode, Params, undefined) =:= disabled,
                     case Revoked of
-                        true -> cs_ai_app:on_config_revoked(OrgId, <<"config_revoked">>);
+                        true -> cs_ai_delivery_app:on_config_revoked(OrgId, <<"config_revoked">>);
                         false -> ok
                     end,
                     Ok;

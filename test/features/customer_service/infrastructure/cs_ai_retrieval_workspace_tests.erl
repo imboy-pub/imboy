@@ -142,7 +142,7 @@ d6_false_confidence_buckets_structure() ->
         %% 低于 MIN_SAMPLES=3 的桶。
         #{intent => <<"other">>, faq_hit => true, confidence => 0.5, support => false}
     ],
-    Buckets = cs_ai_app:false_confidence_buckets(Samples, 3),
+    Buckets = cs_ai_gate_app:false_confidence_buckets(Samples, 3),
     %% D.4.2：n < MIN_SAMPLES 的桶**不输出**——refund/true(3) 之外的
     %% shipping/false(1) 与 other/true(1) 全部被滤掉，只出 1 个桶。
     ?assertEqual(1, length(Buckets)),
