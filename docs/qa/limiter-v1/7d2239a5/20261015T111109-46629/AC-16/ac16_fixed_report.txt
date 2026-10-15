@@ -1,0 +1,6 @@
+failure: p50_best=1.2 us (old_min=18.4 us, x1.5 budget=27.6 us) -> OK; p99_worst=2.0 us (budget 100000) -> OK; max_worst=541.8 us (budget 500000) -> OK
+admit: p50_best=1.5 us (old_min=3.3 us, x1.5 budget=4.9 us) -> OK; p99_worst=3.2 us (budget 100000) -> OK; max_worst=3146.9 us (budget 500000) -> OK
+reset: p50_best=1.0 us (absolute cost mode: old counterpart is bare ets:delete without owner confirm, the AC-17 defect shape; absolute budgets apply) -> cost n/a by design; p99_worst=1.8 us (budget 100000) -> OK; max_worst=350.8 us (budget 500000) -> OK
+mixed_1w: p50_best=1.4 us (old_min=3.4 us, x1.5 budget=5.1 us) -> OK; p99_worst=2.0 us (budget 100000) -> OK; max_worst=440.2 us (budget 500000) -> OK
+mixed_8w: p50_best=7.7 us (old_min=35.0 us, x1.5 budget=52.5 us) -> OK; p99_worst=23.5 us (budget 100000) -> OK; max_worst=583.2 us (budget 500000) -> OK
+mailbox: peak=2 (budget 10000) after=0 (budget 100) -> OK

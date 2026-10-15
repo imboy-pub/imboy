@@ -95,16 +95,14 @@ authorize(Client) ->
 
 %% @doc IdP 回调：换 token、校验 claims、映射/建号、签发
 %% 返回 {ok, LoginPayload}（client=test）| {redirect, DeepLink}（client=app）
+%% limiter-v1 L3：IP 请求桶（oidc_request admit）已上移 auth_oidc_handler
+%% （authorize/callback 各一次，exchange 不占）；本函数不再限流、不再写
+%% 任何失败锁状态（D7：无消费者的 oidc 失败 ETS 写已移除，fail/2 仅保留
+%% 有界审计日志）。
 -spec callback(map(), binary()) ->
     {ok, map()} | {redirect, binary()} | {error, binary()} | {error, binary(), integer()}.
 callback(Params, Ip) ->
-    case login_attempt_ds:check_ip_rate_limit(Ip) of
-        {error, rate_limited} ->
-            ?LOG_WARNING("auth_oidc callback rate limited ip=~ts", [Ip]),
-            {error, ?FAIL_MSG};
-        _ ->
-            do_callback(Params, Ip)
-    end.
+    do_callback(Params, Ip).
 
 %% @doc App 深链一次性码换登录 payload（一次性消费）
 -spec exchange(binary()) -> {ok, map()} | {error, binary()}.
@@ -627,10 +625,12 @@ scopes(Cfg) ->
 %% Internal: 小工具
 %% ===================================================================
 
-%% @doc 统一失败出口：细节只进日志 + 失败计数，对外统一消息
+%% @doc 统一失败出口：细节只进日志，对外统一消息。
+%% D7（limiter-v1 L3）：不再写 {login_attempt, <<"oidc">>, Ip} 失败锁——
+%% 该 ETS 写没有任何准入消费者（Admin/OIDC 无账户锁合同），保留有界审计
+%% 日志（Detail + Ip，不新增字段）供运维排查。
 fail(Ip, Detail) ->
     ?LOG_WARNING("auth_oidc callback failed: ~p ip=~ts", [Detail, Ip]),
-    _ = login_attempt_ds:record_failure(<<"oidc">>, Ip),
     {error, ?FAIL_MSG}.
 
 rand_token() ->

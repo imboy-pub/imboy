@@ -68,12 +68,12 @@ handle_request(Req0, State) ->
 
 %% @doc GET /api/v1/auth/oidc/authorize?client=app|test
 handle_authorize(Req) ->
-    Ip = client_ip(Req),
-    %% P2：authorize 也限流，防高频调用膨胀 state 缓存（内存 DoS）
-    case login_attempt_ds:check_ip_rate_limit(Ip) of
-        {error, rate_limited} ->
-            elib_response:error(Req, <<"请求过于频繁，请稍后重试"/utf8>>, ?ERR_BAD_REQUEST);
-        _ ->
+    Ip = elib_req:get_client_ip(Req),
+    %% P2：authorize 也限流，防高频调用膨胀 state 缓存（内存 DoS）。
+    %% limiter-v1 L3：scope=oidc_request，权威 owner login_attempt_ds；
+    %% 503 仅用于 owner 故障（capacity/unavailable），不伪装成业务错误。
+    case login_attempt_ds:admit(oidc_request, Ip) of
+        {ok, _Snap} ->
             Qs = cowboy_req:parse_qs(Req),
             Client = resolve_client(proplists:get_value(<<"client">>, Qs, <<"app">>)),
             case auth_oidc_logic:authorize(Client) of
@@ -81,7 +81,14 @@ handle_authorize(Req) ->
                     redirect(Req, Url);
                 {error, Msg} ->
                     elib_response:error(Req, Msg, ?ERR_BAD_REQUEST)
-            end
+            end;
+        {error, rate_limited} ->
+            elib_response:error(Req, <<"请求过于频繁，请稍后重试"/utf8>>, ?ERR_BAD_REQUEST);
+        {error, Reason} ->
+            ?ERROR_LOG([oidc_limiter_unavailable, #{phase => authorize, reason => Reason}]),
+            elib_response:error_with_status(
+                Req, 503, <<"服务暂不可用，请稍后重试"/utf8>>, 503
+            )
     end.
 
 %% @doc client=test 让登录 payload 直出响应体（E2E 用），仅非生产环境允许；
@@ -98,16 +105,29 @@ resolve_client(_) ->
 %% @doc GET /api/v1/auth/oidc/callback?code=xxx&state=xxx
 handle_callback(Req) ->
     Params = maps:from_list(cowboy_req:parse_qs(Req)),
-    Ip = client_ip(Req),
-    case auth_oidc_logic:callback(Params, Ip) of
-        {ok, Payload} ->
-            elib_response:success(Req, Payload);
-        {redirect, Url} ->
-            redirect(Req, Url);
-        {error, Msg, Code} ->
-            elib_response:error(Req, Msg, Code);
-        {error, Msg} ->
-            elib_response:error(Req, Msg, ?ERR_BAD_REQUEST)
+    Ip = elib_req:get_client_ip(Req),
+    %% limiter-v1 L3：callback 与 authorize 各 admit 一次（exchange 不占）。
+    case login_attempt_ds:admit(oidc_request, Ip) of
+        {ok, _Snap} ->
+            case auth_oidc_logic:callback(Params, Ip) of
+                {ok, Payload} ->
+                    elib_response:success(Req, Payload);
+                {redirect, Url} ->
+                    redirect(Req, Url);
+                {error, Msg, Code} ->
+                    elib_response:error(Req, Msg, Code);
+                {error, Msg} ->
+                    elib_response:error(Req, Msg, ?ERR_BAD_REQUEST)
+            end;
+        {error, rate_limited} ->
+            ?WARN_LOG([oidc_rate_limited, #{phase => callback, key_type => ip, key => Ip}]),
+            %% 沿用 callback 现有业务错误形态（统一失败消息，不泄限流细节）
+            elib_response:error(Req, <<"SSO 登录失败"/utf8>>, ?ERR_BAD_REQUEST);
+        {error, Reason} ->
+            ?ERROR_LOG([oidc_limiter_unavailable, #{phase => callback, reason => Reason}]),
+            elib_response:error_with_status(
+                Req, 503, <<"服务暂不可用，请稍后重试"/utf8>>, 503
+            )
     end.
 
 %% @doc POST /api/v1/auth/oidc/exchange  Body: {"otc": "xxx"}
@@ -138,17 +158,3 @@ decode_otc(Body) ->
 -spec redirect(cowboy_req:req(), binary()) -> cowboy_req:req().
 redirect(Req, Url) ->
     cowboy_req:reply(302, #{<<"location">> => Url}, <<>>, Req).
-
-%% @doc 提取客户端真实 IP（代理头优先，回退 peer）
--spec client_ip(cowboy_req:req()) -> binary().
-client_ip(Req) ->
-    case login_attempt_ds:extract_real_ip(cowboy_req:headers(Req)) of
-        {ok, <<"0.0.0.0">>} ->
-            peer_ip(Req);
-        {ok, Ip} ->
-            Ip
-    end.
-
-peer_ip(Req) ->
-    {PeerIp, _Port} = cowboy_req:peer(Req),
-    list_to_binary(inet:ntoa(PeerIp)).

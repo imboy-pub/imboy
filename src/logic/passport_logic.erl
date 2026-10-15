@@ -2,7 +2,7 @@
 %% Stable identity passport domain boundary.
 %% API adapters should call this module instead of reaching auth/user internals directly.
 -compile([nowarn_deprecated_catch]).
--dialyzer({nowarn_function, [{send_email_code, 1}, {send_sms_code, 1}, {do_login_verify, 4}]}).
+-dialyzer({nowarn_function, [{send_email_code, 1}, {send_sms_code, 1}, {do_login_verify, 6}]}).
 %%%
 % passport_logic 是 passport application logic 缩写
 %%%
@@ -375,6 +375,9 @@ login(Account, Pwd, PostVals) when is_binary(Account), is_binary(Pwd), is_map(Po
             {ok, Data};
         {{error, conflict}, ConflictInfo} ->
             {error, compat_error_message(ConflictInfo), 5100};
+        {error, service_unavailable} ->
+            %% 服务不可用不冒充普通口令错误（C.6：503 映射）
+            {error, <<"服务暂不可用，请稍后重试"/utf8>>, 503};
         {error, Msg} ->
             {error, compat_error_message(Msg), 400}
     end.
@@ -386,18 +389,20 @@ do_login(Type, Account, Pwd) ->
 %% @doc 账号密码登录（带设备信息）
 %% 检查设备冲突，如果同类型设备已登录则返回冲突信息
 -spec do_login(binary(), binary(), binary(), binary(), binary()) ->
-    {ok, map()} | {{error, conflict}, map()} | {error, binary() | map()}.
+    {ok, map()} | {{error, conflict}, map()} | {error, binary() | map() | service_unavailable}.
 do_login(_Type, _Email, <<>>, _DType, _Did) ->
+    %% 空密码属格式非法提前返回（C.2）：不进入校验、不计数
     {error, <<"密码有误"/utf8>>};
 do_login(Type, Mobile, Pwd, DType, Did) when Type == <<"mobile">> ->
     User = user_ds:find_by_mobile(Mobile, ?LOGIN_COLUMN),
-    do_login_verify(Pwd, User, DType, Did);
+    do_login_verify(Type, Mobile, User, Pwd, DType, Did);
 do_login(Type, Email, Pwd, DType, Did) when Type == <<"email">> ->
     case elib_type:is_email(Email) of
         true ->
             User = user_ds:find_by_email(Email, ?LOGIN_COLUMN),
-            do_login_verify(Pwd, User, DType, Did);
+            do_login_verify(Type, Email, User, Pwd, DType, Did);
         false ->
+            %% Email 格式非法提前返回（C.2）：不产生身份、不计数
             {error, <<"Email格式有误."/utf8>>}
     end;
 do_login(Type, Account, Pwd, DType, Did) when Type == <<"account">> ->
@@ -421,77 +426,140 @@ do_login(Type, Account, Pwd, DType, Did) when Type == <<"account">> ->
                         end
                 end
         end,
-    do_login_verify(Pwd, User, DType, Did).
+    do_login_verify(Type, Account, User, Pwd, DType, Did).
 
 %% @doc 验证码登录（mobile/email）
 %% 客户端发送 code 字段代替 pwd
--spec do_login_by_code(binary(), binary(), binary(), binary(), binary()) ->
-    {ok, map()} | {{error, conflict}, map()} | {error, binary()}.
-%% 与密码登录路径（do_login_verify/4，:286 起）对齐三件事，缺一不可：
-%%   1) 前置 check_login_allowed —— 此前验证码路径完全没有锁定门；
-%%   2) 失败时 record_login_failure —— 此前失败不计数，等于给 6 位码
-%%      开了无限次尝试；
-%%   3) 用 consume/2 而不是 verify_code/2 —— 验证成功后立即失效，
-%%      杜绝同一个码被反复使用。
-%% 三者叠加才关得住爆破：只做 (3) 的话攻击者仍可无限猜；只做 (1)(2)
-%% 的话正确的码被撞出来后仍可复用。
 %%
-%% Ip 用 <<>> 与密码路径保持一致（见 do_login_by_code_verify/3 注释）。
+%% Limiter V1 L3 编排（计划附录 C.1/C.2/C.6）：
+%%   begin_attempt(Identity) → check_login_allowed → consume_code → status
+%%   → reset 确认成功才 login_resp。三条 F 修复均在此链闭合：
+%%   - F2：check 的 {error, locked, _} 三元组与 {error, unavailable} 显式
+%%     分支，不再落入默认放行；锁定时验证码**不被消费**；
+%%   - F3：失败计数与成功 reset 用同一 identity_of 键（已知用户
+%%     {user, Uid}，与输入别名无关），不再按输入/User.account 分叉；
+%%   - AC-17 成功点：reset 在 status 检查**之后**、签发之前，且必须确认
+%%     ok 才 login_resp；reset 失败 → 丢弃凭据，返回服务不可用。
+-spec do_login_by_code(binary(), binary(), binary(), binary(), binary()) ->
+    {ok, map()}
+    | {{error, conflict}, map()}
+    | {error, binary() | map() | service_unavailable}.
 do_login_by_code(Type, Account, Code, DType, Did) ->
-    Ip = <<>>,
-    case login_security_logic:check_login_allowed(Account, Ip) of
-        {error, LockMsg} ->
-            {error, LockMsg};
-        _ ->
-            do_login_by_code_checked(Type, Account, Code, DType, Did, Ip)
+    %% 身份先于锁定门解析：已知用户用稳定 {user, Uid}，未知输入用
+    %% 有界 {unknown, Kind, Norm}（C.1），consume 失败按同一键记账。
+    User = find_user_by_type(Type, Account),
+    Identity = identity_of(Type, Account, User),
+    case login_attempt_ds:begin_attempt(Identity, self(), default) of
+        {error, _Unavailable} ->
+            {error, service_unavailable};
+        {ok, Ref} ->
+            try do_code_auth(Ref, Identity, Account, Code, User, DType, Did) of
+                Result ->
+                    Result
+            catch
+                %% 认证主体任何未预期异常：终态必达（no_count 兜底），
+                %% 否则 DOWN 会把账户域打成 degraded（保守但过重）。
+                Class:Reason:Stack ->
+                    login_attempt_ds:end_attempt(Ref, no_count),
+                    erlang:raise(Class, Reason, Stack)
+            end
     end.
 
-%% @private 已过锁定门，开始消费验证码
--spec do_login_by_code_checked(binary(), binary(), binary(), binary(), binary(), binary()) ->
-    {ok, map()} | {{error, conflict}, map()} | {error, binary()}.
-do_login_by_code_checked(Type, Account, Code, DType, Did, Ip) ->
+%% @private 已登记生命周期，过账户锁定门。
+-spec do_code_auth(
+    Ref :: term(),
+    Identity :: login_attempt_state:identity(),
+    Account :: binary(),
+    Code :: binary(),
+    User :: map(),
+    DType :: binary(),
+    Did :: binary()
+) -> {ok, map()} | {{error, conflict}, map()} | {error, binary() | service_unavailable}.
+do_code_auth(Ref, Identity, Account, Code, User, DType, Did) ->
+    case login_security_logic:check_login_allowed(Identity) of
+        {ok, true} ->
+            do_code_consume(Ref, Identity, Account, Code, User, DType, Did);
+        {error, locked, LockInfo} ->
+            %% 锁定拒绝：不触碰验证码存储（consume 是观测点，AC-02）
+            login_attempt_ds:end_attempt(Ref, no_count),
+            {error, lock_error_msg(LockInfo)};
+        {error, _Unavailable} ->
+            %% 不得默认放行（F2 的另一半）：转服务不可用
+            login_attempt_ds:end_attempt(Ref, no_count),
+            {error, service_unavailable}
+    end.
+
+%% @private 过锁后消费验证码；consume 失败 = 凭据失败（C.2，含未知账户）。
+-spec do_code_consume(
+    Ref :: term(),
+    Identity :: login_attempt_state:identity(),
+    Account :: binary(),
+    Code :: binary(),
+    User :: map(),
+    DType :: binary(),
+    Did :: binary()
+) -> {ok, map()} | {{error, conflict}, map()} | {error, binary() | service_unavailable}.
+do_code_consume(Ref, Identity, Account, Code, User, DType, Did) ->
     case consume_code(Account, Code) of
         {ok, _} ->
-            User =
-                case Type of
-                    <<"mobile">> -> user_ds:find_by_mobile(Account, ?LOGIN_COLUMN);
-                    <<"email">> -> user_ds:find_by_email(Account, ?LOGIN_COLUMN);
-                    <<"account">> -> user_ds:find_by_account(Account, ?LOGIN_COLUMN);
-                    _ -> #{}
-                end,
-            do_login_by_code_verify(User, DType, Did);
+            do_code_finish(Ref, Identity, User, DType, Did);
         {error, Msg} ->
-            %% 关键：验证码错误必须计数，否则 6 位码等于可无限尝试
-            _ = login_security_logic:record_login_failure(Account, Ip),
+            %% 关键：验证码错误必须计数，否则 6 位码等于可无限尝试。
+            %% failure 先提交（可观测 locked），no_count 仅释放生命周期。
+            _ = login_security_logic:record_login_failure(Identity),
+            login_attempt_ds:end_attempt(Ref, no_count),
             {error, Msg}
     end.
 
-%% @doc 验证码登录后的用户验证
--spec do_login_by_code_verify(map(), binary(), binary()) ->
-    {ok, map()} | {{error, conflict}, map()} | {error, binary()}.
-do_login_by_code_verify(User, _DType, _Did) when map_size(User) =:= 0 ->
-    {error, <<"账号不存在"/utf8>>};
-do_login_by_code_verify(User, DType, Did) ->
-    Account = maps:get(
-        <<"account">>, User, maps:get(<<"mobile">>, User, maps:get(<<"email">>, User, <<>>))
-    ),
-    %% Ip 用 <<>>，与密码登录路径（do_login_verify/4）一致。
-    %% 此前这里是 Ip = Did —— Did 来自客户端自报的请求头，攻击者每次换一个
-    %% did 就换一个锁定计数 key，account 级锁定形同虚设；而且同一账号在
-    %% 密码路径（Ip=<<>>）与验证码路径（Ip=Did）落在两个不同的键空间里，
-    %% 两条路径的失败次数互不累加。
-    Ip = <<>>,
-    % 验证码登录：验证通过后即视为成功，重置失败计数
-    _ = login_security_logic:record_login_success(Account, Ip),
+%% @private 验证码已消费（不可回滚），按账户状态收尾。
+%% consume 成功但用户查无/禁用 → no_count（C.2：非凭据失败）。
+-spec do_code_finish(
+    Ref :: term(),
+    Identity :: login_attempt_state:identity(),
+    User :: map(),
+    DType :: binary(),
+    Did :: binary()
+) -> {ok, map()} | {{error, conflict}, map()} | {error, binary() | service_unavailable}.
+do_code_finish(Ref, Identity, User, DType, Did) ->
     Status = maps:get(<<"status">>, User, -2),
     case Status of
         -2 ->
+            login_attempt_ds:end_attempt(Ref, no_count),
             {error, <<"账号不存在"/utf8>>};
         -1 ->
+            login_attempt_ds:end_attempt(Ref, no_count),
             {error, <<"账号不存在或者已删除"/utf8>>};
         0 ->
+            login_attempt_ds:end_attempt(Ref, no_count),
             {error, <<"账号被禁用"/utf8>>};
-        1 ->
+        _ when Status == 1; Status == 2 ->
+            %% 成功点：reset 确认成功才签发（AC-17）；此前 reset 早于
+            %% status 检查，禁用账户也会被清掉失败历史（F3b）。
+            case login_security_logic:record_login_success(Identity) of
+                ok ->
+                    login_attempt_ds:end_attempt(Ref, no_count),
+                    code_login_success(User, DType, Did);
+                {error, _Unavailable} ->
+                    %% code 已消费不可回滚 → 本次不给凭据，需重新取得有效码
+                    login_attempt_ds:end_attempt(Ref, no_count),
+                    {error, service_unavailable}
+            end;
+        _ ->
+            login_attempt_ds:end_attempt(Ref, no_count),
+            {error, <<"账号不存在"/utf8>>}
+    end.
+
+%% @doc 验证码登录成功链：签发 + 审计 + 设备冲突检查。
+-spec code_login_success(map(), binary(), binary()) ->
+    {ok, map()} | {{error, conflict}, map()}.
+code_login_success(User, DType, Did) ->
+    Account = maps:get(
+        <<"account">>, User, maps:get(<<"mobile">>, User, maps:get(<<"email">>, User, <<>>))
+    ),
+    case maps:get(<<"status">>, User, -2) of
+        2 ->
+            {ok, login_resp(User, Did, #{})};
+        _ ->
             Data = login_resp(User, Did, #{}),
             UidHashed = maps:get(<<"uid">>, Data),
             Uid = ec_cnv:to_integer(UidHashed),
@@ -507,87 +575,147 @@ do_login_by_code_verify(User, DType, Did) ->
                 ),
                 _ = user_log_ds:add_internal(undefined, 100, Uid, LogBody, elib_dt:now())
             end),
-            case user_device_logic:check_login_conflict(Uid, DType) of
-                {ok, no_conflict} ->
-                    {ok, Data};
-                {ok, conflict, ConflictInfo} ->
-                    ConflictDID = maps:get(<<"device_id">>, ConflictInfo),
-                    _ = user_device_logic:kick_device(Uid, DType, ConflictDID),
-                    {ok, Data};
-                {error, _} ->
-                    {ok, Data}
-            end;
-        2 ->
-            {ok, login_resp(User, Did, #{})}
+            login_conflict_result(Uid, DType, Data)
     end.
 
 %% @doc 登录验证（带设备冲突检查）
-%% 先认证用户，成功后检查设备冲突
--spec do_login_verify(binary(), map(), binary(), binary()) ->
-    {ok, map()} | {{error, conflict}, map()} | {error, term()}.
-do_login_verify(Pwd, User, DType, Did) ->
-    % 提取账户标识符用于暴力破解保护
-    Account = maps:get(
-        <<"account">>,
-        User,
-        maps:get(
-            <<"mobile">>,
-            User,
-            maps:get(<<"email">>, User, <<>>)
-        )
-    ),
-    % IP 在此层不可用，使用空字符串（账户维度保护仍有效）
-    Ip = <<>>,
-    % 登录前检查是否被锁定
-    case login_security_logic:check_login_allowed(Account, Ip) of
-        {error, locked, LockInfo} ->
-            {error, LockInfo};
-        {ok, true} ->
-            case verify_user(Pwd, User, Did) of
-                {ok, Data} ->
-                    % 登录成功，重置失败计数
-                    _ = login_security_logic:record_login_success(Account, Ip),
-                    % 从 uid (字符串格式) 转换为整数 ID
-                    UidHashed = maps:get(<<"uid">>, Data),
-                    Uid = ec_cnv:to_integer(UidHashed),
-                    % GAP-01: 异步写登录成功审计日志（type=100），fire-and-forget 不阻塞登录
-                    _ = elib_async:async(fun() ->
-                        {ok, LogBody} = jsone_encode:encode(
-                            #{
-                                <<"account">> => Account,
-                                <<"dtype">> => DType,
-                                <<"ip">> => Ip
-                            },
-                            [native_utf8]
-                        ),
-                        _ = user_log_ds:add_internal(undefined, 100, Uid, LogBody, elib_dt:now())
-                    end),
-                    % 检查设备类型是否有效
-                    case user_device_logic:validate_device_type(DType) of
-                        false when DType =/= <<>> ->
-                            % 无效的设备类型，但允许登录（兼容旧客户端）
-                            {ok, Data};
-                        _ ->
-                            % 检查登录冲突
-                            case user_device_logic:check_login_conflict(Uid, DType) of
-                                {ok, no_conflict} ->
-                                    % 无冲突，正常登录
-                                    {ok, Data};
-                                {ok, conflict, ConflictInfo} ->
-                                    % 有冲突，自动将老会话踢下线，允许新设备登录
-                                    ConflictDID = maps:get(<<"device_id">>, ConflictInfo),
-                                    _ = user_device_logic:kick_device(Uid, DType, ConflictDID),
-                                    {ok, Data};
-                                {error, _Reason} ->
-                                    % 检查失败，允许登录
-                                    {ok, Data}
-                            end
-                    end;
-                {error, Reason} ->
-                    % 登录失败，记录失败次数
-                    _ = login_security_logic:record_login_failure(Account, Ip),
-                    {error, Reason}
+%% Limiter V1 L3 编排（C.2 事件表 / AC-17 成功点）：
+%%   begin_attempt → 锁定门（F 后拒绝且不继续认证）→
+%%   verify_credential 三态分类 →
+%%   - 凭据失败（密码错/查无用户）：failure 记账 + 终态收尾；
+%%   - 密码正确但 status 拒绝：no_count（不 reset 不计失败）；
+%%   - 凭据正确且 status 允许：reset 确认成功才 login_resp 签发；
+%%     reset 失败 → 丢弃响应 Data、不返回凭据，服务不可用。
+%% Ip 在此层不可用也无需伪造：账户域跨 IP（C.1）。
+-spec do_login_verify(binary(), binary(), map(), binary(), binary(), binary()) ->
+    {ok, map()}
+    | {{error, conflict}, map()}
+    | {error, binary() | map() | service_unavailable}.
+do_login_verify(Type, Account, User, Pwd, DType, Did) ->
+    Identity = identity_of(Type, Account, User),
+    case login_attempt_ds:begin_attempt(Identity, self(), default) of
+        {error, _Unavailable} ->
+            {error, service_unavailable};
+        {ok, Ref} ->
+            try do_login_auth(Ref, Identity, User, Pwd, DType, Did) of
+                Result ->
+                    Result
+            catch
+                Class:Reason:Stack ->
+                    login_attempt_ds:end_attempt(Ref, no_count),
+                    erlang:raise(Class, Reason, Stack)
             end
+    end.
+
+%% @private 密码认证主体：锁定门 → verify_credential 三态 → 记账/签发。
+-spec do_login_auth(
+    Ref :: term(),
+    Identity :: login_attempt_state:identity(),
+    User :: map(),
+    Pwd :: binary(),
+    DType :: binary(),
+    Did :: binary()
+) ->
+    {ok, map()}
+    | {{error, conflict}, map()}
+    | {error, binary() | service_unavailable}.
+do_login_auth(Ref, Identity, User, Pwd, DType, Did) ->
+    %% 锁定门（AC-01：F 后拒绝且不继续认证——锁定时不再触碰凭据校验）
+    case login_security_logic:check_login_allowed(Identity) of
+        {ok, true} ->
+            do_login_credential(Ref, Identity, User, Pwd, DType, Did);
+        {error, locked, LockInfo} ->
+            login_attempt_ds:end_attempt(Ref, no_count),
+            {error, lock_error_msg(LockInfo)};
+        {error, _Unavailable} ->
+            %% 不得默认放行（F2 同款）：转服务不可用
+            login_attempt_ds:end_attempt(Ref, no_count),
+            {error, service_unavailable}
+    end.
+
+%% @private 已过锁定门，凭据校验与分类收尾。
+-spec do_login_credential(
+    Ref :: term(),
+    Identity :: login_attempt_state:identity(),
+    User :: map(),
+    Pwd :: binary(),
+    DType :: binary(),
+    Did :: binary()
+) ->
+    {ok, map()}
+    | {{error, conflict}, map()}
+    | {error, binary() | service_unavailable}.
+do_login_credential(Ref, Identity, User, Pwd, DType, Did) ->
+    case verify_credential(Pwd, User) of
+        {ok, User2} ->
+            %% 成功点：reset 确认成功才签发（AC-17）。签发（login_resp/
+            %% token）此前发生在 reset 之前，reset 失败时凭据已生成——
+            %% 现在丢弃的是"尚未生成"的状态。
+            case login_security_logic:record_login_success(Identity) of
+                ok ->
+                    login_attempt_ds:end_attempt(Ref, no_count),
+                    password_login_success(User2, DType, Did);
+                {error, _Unavailable} ->
+                    login_attempt_ds:end_attempt(Ref, no_count),
+                    {error, service_unavailable}
+            end;
+        {reject, Msg} ->
+            %% 密码正确但 status 禁用/删除：不 reset、不计失败（C.2）
+            login_attempt_ds:end_attempt(Ref, no_count),
+            {error, Msg};
+        {fail, Msg} ->
+            %% 凭据失败（密码错/查无用户，含未知账户）：failure 记账一次，
+            %% end_attempt(no_count) 仅释放生命周期（若用 end_attempt(failure)
+            %% 会再记一次——apply_outcome(failure) 自带记账，单次提交语义）。
+            _ = login_security_logic:record_login_failure(Identity),
+            login_attempt_ds:end_attempt(Ref, no_count),
+            {error, Msg}
+    end.
+
+%% @private 密码登录成功链：签发 + 审计 + 设备类型/冲突检查。
+-spec password_login_success(map(), binary(), binary()) ->
+    {ok, map()} | {{error, conflict}, map()}.
+password_login_success(User, DType, Did) ->
+    Account = maps:get(
+        <<"account">>, User, maps:get(<<"mobile">>, User, maps:get(<<"email">>, User, <<>>))
+    ),
+    Data = login_resp(User, Did, #{}),
+    UidHashed = maps:get(<<"uid">>, Data),
+    Uid = ec_cnv:to_integer(UidHashed),
+    % GAP-01: 异步写登录成功审计日志（type=100），fire-and-forget 不阻塞登录
+    _ = elib_async:async(fun() ->
+        {ok, LogBody} = jsone_encode:encode(
+            #{
+                <<"account">> => Account,
+                <<"dtype">> => DType,
+                <<"ip">> => <<>>
+            },
+            [native_utf8]
+        ),
+        _ = user_log_ds:add_internal(undefined, 100, Uid, LogBody, elib_dt:now())
+    end),
+    % 检查设备类型是否有效
+    case user_device_logic:validate_device_type(DType) of
+        false when DType =/= <<>> ->
+            % 无效的设备类型，但允许登录（兼容旧客户端）
+            {ok, Data};
+        _ ->
+            login_conflict_result(Uid, DType, Data)
+    end.
+
+%% @private 设备冲突检查收口（成功链共用）。
+-spec login_conflict_result(integer(), binary(), map()) ->
+    {ok, map()} | {{error, conflict}, map()}.
+login_conflict_result(Uid, DType, Data) ->
+    case user_device_logic:check_login_conflict(Uid, DType) of
+        {ok, no_conflict} ->
+            {ok, Data};
+        {ok, conflict, ConflictInfo} ->
+            ConflictDID = maps:get(<<"device_id">>, ConflictInfo),
+            _ = user_device_logic:kick_device(Uid, DType, ConflictDID),
+            {ok, Data};
+        {error, _Reason} ->
+            {ok, Data}
     end.
 
 -spec do_signup(
@@ -946,31 +1074,106 @@ find_password_by_mobile(Mobile, Pwd, _PostVals) ->
             end
     end.
 
--spec verify_user(binary(), map(), binary()) -> {ok, map()} | {error, any()}.
-verify_user(<<>>, _, _Did) ->
-    {error, <<"账号不存在"/utf8>>};
-verify_user(_Pwd, User, _Did) when map_size(User) =:= 0 ->
-    {error, <<"账号不存在"/utf8>>};
-verify_user(Pwd, User, Did) ->
+%% @doc 验证凭据并分类（C.2 事件表的分类点：不靠事后 status 覆盖）。
+%% 三态：
+%%   {ok, User}      凭据正确且 status 允许（1/2），已顺手完成 KDF 升级；
+%%   {reject, Msg}   密码正确但 status 禁用/删除 → 不计失败（非凭据失败）；
+%%   {fail, Msg}     密码错误或查无用户（含未知账户）→ 计账户失败。
+%% 导出的 verify_user/3 与 do_login_auth/6 共用本分类，避免两条链
+%% 分叉（AC-19：verify_user 直调不计数，计数只发生在 do_login_verify 层）。
+-spec verify_credential(binary(), map()) ->
+    {ok, map()} | {reject, binary()} | {fail, binary()}.
+verify_credential(<<>>, _User) ->
+    {fail, <<"账号不存在"/utf8>>};
+verify_credential(_Pwd, User) when map_size(User) =:= 0 ->
+    {fail, <<"账号不存在"/utf8>>};
+verify_credential(Pwd, User) ->
     Pwd2 = maps:get(<<"password">>, User, <<>>),
     % 状态: -1 删除  0 禁用  1 启用  2 申请注销中
     Status = maps:get(<<"status">>, User, -2),
     case elib_password:verify(Pwd, Pwd2) of
         {ok, _} when Status == -2 ->
-            {error, <<"账号不存在"/utf8>>};
+            {reject, <<"账号不存在"/utf8>>};
         {ok, _} when Status == -1 ->
-            {error, <<"账号不存在或者已删除"/utf8>>};
+            {reject, <<"账号不存在或者已删除"/utf8>>};
         {ok, _} when Status == 0 ->
-            {error, <<"账号被禁用"/utf8>>};
+            {reject, <<"账号被禁用"/utf8>>};
         {ok, _} when Status == 1; Status == 2 ->
             % Task 11 / LT-05：登录成功后按计划升级 legacy 口令到 v2 KDF
             % （激活配置存在才生效；失败不阻断登录、不锁死账号）
             maybe_upgrade_password_kdf(User, Pwd),
-            % E2EE-013：绑定登录设备 DID 进 token。
-            {ok, login_resp(User, Did, #{})};
+            {ok, User};
         {error, Msg} ->
+            {fail, Msg}
+    end.
+
+%% @doc 兼容导出：凭据校验（改密流程 user_logic:change_password 复用）。
+%% 返回形状保持 {ok, Data} | {error, Msg}；本函数**不计数**（AC-19：
+%% 不给低层另加重复计数，计数只发生在 do_login_verify 层）。
+-spec verify_user(binary(), map(), binary()) -> {ok, map()} | {error, any()}.
+verify_user(Pwd, User, Did) ->
+    case verify_credential(Pwd, User) of
+        {ok, User2} ->
+            % E2EE-013：绑定登录设备 DID 进 token。
+            {ok, login_resp(User2, Did, #{})};
+        {reject, Msg} ->
+            {error, Msg};
+        {fail, Msg} ->
             {error, Msg}
     end.
+
+%%%===================================================================
+%%% Limiter V1：账户域身份解析（C.1 冻结）与锁定消息
+%%%===================================================================
+
+%% @doc 登录身份解析：任何 find_by_* 查到用户 → {user, 主键 Uid}
+%% （与输入别名无关，email/account/mobile 失败历史合并到同一稳定键，
+%% F3 修复）；查不到 → {unknown, Kind, Norm}（Kind 按登录 Type 分支，
+%% Norm 为 trim 后原输入截断 320 字节，不把未知身份折成空键）。
+-spec identity_of(binary(), binary(), map()) -> login_attempt_state:identity().
+identity_of(_Type, _Account, User) when map_size(User) > 0 ->
+    {user, maps:get(<<"id">>, User)};
+identity_of(Type, Account, _) ->
+    {unknown, compat_kind(Type), trim_norm(Account)}.
+
+%% @private Type → 身份 Kind（account 及未知类型一律归 account 域）。
+-spec compat_kind(binary()) -> email | mobile | account.
+compat_kind(<<"email">>) ->
+    email;
+compat_kind(<<"mobile">>) ->
+    mobile;
+compat_kind(_) ->
+    account.
+
+%% @private 未知身份规范化：trim 后截断 320 字节（C.1 有界键）。
+-spec trim_norm(binary()) -> binary().
+trim_norm(Account) when is_binary(Account) ->
+    Trimmed = string:trim(Account),
+    case byte_size(Trimmed) > 320 of
+        true ->
+            binary:part(Trimmed, 0, 320);
+        false ->
+            Trimmed
+    end;
+trim_norm(_) ->
+    <<>>.
+
+%% @private 验证码路径的用户查询（先于锁定门，仅只读；供 identity_of 用）。
+-spec find_user_by_type(binary(), binary()) -> map().
+find_user_by_type(<<"mobile">>, Account) ->
+    user_ds:find_by_mobile(Account, ?LOGIN_COLUMN);
+find_user_by_type(<<"email">>, Account) ->
+    user_ds:find_by_email(Account, ?LOGIN_COLUMN);
+find_user_by_type(<<"account">>, Account) ->
+    user_ds:find_by_account(Account, ?LOGIN_COLUMN);
+find_user_by_type(_, _) ->
+    #{}.
+
+%% @doc 锁定错误对外消息：保持现有 HTTP200 + code1 envelope，锁定详情
+%% 不以内部 map 结构外泄（C.6：LockInfo 字符串化为 msg）。
+-spec lock_error_msg(map()) -> binary().
+lock_error_msg(_LockInfo) ->
+    <<"失败次数过多，账户已临时锁定，请稍后再试"/utf8>>.
 
 %% @doc Task 11 / LT-05：rehash-on-login。
 %% legacy 验证成功 ⇒ 按命中变体的候选值计算 v2（需 v2 已激活），CAS 原子写

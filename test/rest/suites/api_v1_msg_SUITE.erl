@@ -477,14 +477,26 @@ conv_key(UidA, UidB) ->
     Max = integer_to_binary(erlang:max(UidA, UidB)),
     <<"c2c:", Min/binary, ":", Max/binary>>.
 
-%% Seed N archive rows into public.msg_store through the production repo
-%% (conv_seq is assigned by msg_store_seq exactly like the store worker).
+%% Seed N archive rows into public.msg_store through the production repo.
+%% Since aa9e4c6d (2026-10-09) the c2c archive's conv_seq must resolve from
+%% the authoritative personal_message_order row (accepted_sequence), so each
+%% seeded message first goes through the real msg_c2c write path; the direct
+%% archive call alone now fails with c2c_sequence_missing.
 %% Plain text payloads, no e2ee envelope: no real encrypted traffic.
 seed_archive_msgs(FromUid, ToUid, N) ->
     [
         begin
             MsgId = rest_fixture:unique_id(<<"amsg">>),
-            CreatedAt = elib_dt:to_rfc3339(erlang:system_time(millisecond)),
+            CreatedAtMs = erlang:system_time(millisecond),
+            CreatedAt = elib_dt:to_rfc3339(CreatedAtMs),
+            PayloadMap = #{
+                <<"msg_type">> => <<"text">>,
+                <<"content">> => <<"rest-history-seed ", MsgId/binary>>
+            },
+            %% 权威序号来源：先走真实 msg_c2c 写路径建 order 行
+            ok = msg_c2c_ds:write_msg(
+                CreatedAtMs, MsgId, PayloadMap, Sender, Receiver, CreatedAtMs
+            ),
             Row = #{
                 <<"type">> => <<"c2c">>,
                 <<"from_id">> => Sender,
@@ -493,14 +505,7 @@ seed_archive_msgs(FromUid, ToUid, N) ->
                 <<"msg_type">> => <<"text">>,
                 <<"e2ee">> => null,
                 <<"sender_did">> => null,
-                <<"payload">> =>
-                    jsone:encode(
-                        #{
-                            <<"msg_type">> => <<"text">>,
-                            <<"content">> => <<"rest-history-seed ", MsgId/binary>>
-                        },
-                        [native_utf8]
-                    ),
+                <<"payload">> => jsone:encode(PayloadMap, [native_utf8]),
                 <<"created_at">> => CreatedAt,
                 <<"server_ts">> => CreatedAt
             },

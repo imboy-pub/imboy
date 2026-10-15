@@ -1,0 +1,9 @@
+{
+  "oracle": "fixed",
+  "case_id": "AC-16",
+  "candidate": "997aedfb",
+  "mailbox_peak": "3",
+  "budget": "cost<=oldx1.5; p99<=100ms; max<=500ms; mailbox<=10000/after<=100",
+  "mailbox_after": "0",
+  "failures": "0"
+}

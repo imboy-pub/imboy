@@ -1,0 +1,7 @@
+{
+  "oracle": "fixed",
+  "manifest": "/tmp/mf3.txt",
+  "case_id": "AC-01",
+  "candidate": "7d2239a5",
+  "rest_run_id": "limiter-l0-20261015T111110-48871"
+}
