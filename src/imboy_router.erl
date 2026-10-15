@@ -146,6 +146,7 @@ get_routes() ->
                 {"/api/v1/msg/reaction/remove", msg_handler, #{action => reaction_remove}},
                 {"/api/v1/msg/reaction/list", msg_handler, #{action => reaction_list}},
                 {"/api/v1/msg/history", msg_handler, #{action => history}},
+                {"/api/v1/msg/result", msg_handler, #{action => message_result}},
 
                 %% AI 助手发现：供客户端列出可发起 C2S 会话的助手（JWT 认证，owner 无关）
                 {"/api/v1/agent/list", ai_agent_handler, #{action => list}},

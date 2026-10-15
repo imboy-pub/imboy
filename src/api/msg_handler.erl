@@ -17,6 +17,7 @@
     offline_ack/2,
     read_stats/2,
     history/2,
+    message_result/2,
     pin/2,
     forward/2,
     reaction_add/2,
@@ -68,6 +69,8 @@ dispatch_rest_action(reaction_list, Req0, State) ->
     reaction_list(Req0, State);
 dispatch_rest_action(history, Req0, State) ->
     history(Req0, State);
+dispatch_rest_action(message_result, Req0, State) ->
+    message_result(Req0, State);
 dispatch_rest_action(false, Req0, _State) ->
     Req0.
 
@@ -192,6 +195,21 @@ history(Req0, State) ->
                     elib_response:success(Req0, Payload);
                 {error, Reason, Code} ->
                     elib_response:error(Req0, Reason, Code)
+            end
+    end.
+
+%% Read only an original sender's persisted acceptance result.
+message_result(Req0, State) ->
+    case maps:get(current_uid, State, undefined) of
+        undefined -> elib_response:error(Req0, <<"未授权"/utf8>>, ?ERR_UNAUTHORIZED);
+        Uid ->
+            Qs = cowboy_req:parse_qs(Req0),
+            Type = proplists:get_value(<<"chat_type">>, Qs, <<>>),
+            Peer = proplists:get_value(<<"peer_id">>, Qs, <<>>),
+            Id = proplists:get_value(<<"message_id">>, Qs, <<>>),
+            case messaging_logic:message_result(Uid, Type, Peer, Id) of
+                {ok, Payload} -> elib_response:success(Req0, Payload);
+                {error, Reason, Code} -> elib_response:error(Req0, Reason, Code)
             end
     end.
 

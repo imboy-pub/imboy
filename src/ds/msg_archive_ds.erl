@@ -21,7 +21,11 @@
 
 -export([history/3, history/4]).
 -export([history_batch/2]).
+-export([message_result/4]).
 -export([conv_key_c2c/2, conv_key_c2g/1]).
+
+message_result(ConvKey, MsgId, Sender, MinSeq) ->
+    msg_archive_repo:message_result(ConvKey, MsgId, Sender, MinSeq).
 
 %%-------------------------------------------------------------------
 %% @doc  游标拉取历史消息（正序，增量同步）
