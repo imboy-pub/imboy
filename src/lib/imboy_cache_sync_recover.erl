@@ -525,7 +525,10 @@ sources_current(#{peers := Peers} = R) ->
     CohortEpoch = maps:get(cohort_epoch, R, undefined),
     %% 成员一致性检查只覆盖 V2 应答义务成员：V1 对端不进入发现回合
     %% （discover_members），其在 syn 视图中的存在不构成回合中止条件。
-    {MembersAll, V2Peers} = imboy_cache_sync:scope_members_by_capability(),
+    %% reported/source pid 的资格检查沿用 syn 视图全体（含本节点进程，
+    %% fixture/本地来源的 pid 语义不变）。
+    MembersAll = imboy_cache_sync:syn_scope_members(),
+    {_AllPeers, V2Peers} = imboy_cache_sync:scope_members_by_capability(),
     erlang:system_time(millisecond) < maps:get(deadline_ms, R) andalso
         lists:all(
             fun(Pid) -> node(Pid) =:= node() orelse maps:is_key(node(Pid), Peers) end,
