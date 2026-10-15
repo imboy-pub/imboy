@@ -1,9 +1,10 @@
 # CACHE_V221_BACKEND_CLOSEOUT_V1 最终收口报告 V1
 
 > task_id：CACHE_V221_BACKEND_CLOSEOUT_V1
-> 报告版本：closeout-report-v1（DRAFT_SKELETON）
+> 报告版本：closeout-report-v1（ROUND3_STOPPED_NO_GO，历史段保留）
 > 起草时间：2026-10-12（Asia/Shanghai）
-> 当前工作树状态：**PARTIAL——旧候选结论不适用于后续未冻结的实现变更**。
+> 当前工作树状态：**PARTIAL / NO_GO——v3 已冻结，C10 与最终全量失败**。
+> 2026-10-15 本次接续状态：**C09 双轮通过；最终全量 9761 过 / 121 失败、有超时及取消、exit=2**；当前判定及精确未闭合集合见文末“第 3 轮终判”，旧候选结论不适用于本候选。
 > 以下 f1aa1ce0 / git 2873dbfd 及其签发数据作为历史候选记录保留。
 > 绑定：收口计划 `backend-closeout-plan-v1.md`（SHA-256 见 baseline.json）；
 > 原计划 `w0/plan-v2.2.1.md` SHA-256 `a5523ee7...c713`；
@@ -633,3 +634,198 @@ candidate-manifest-v3.json）。C09×2/C10/QR 绑定 b0f62c81（efc92a3c 仅改
 3. 迁移 apply/rollback 往返：环境阻塞（共享 PG 4323 外部占用）。
 4. 性能七臂：未产出。
 5. PRODUCTION_ACCEPTANCE：NOT_ISSUED（不变）。
+
+## 本次接续核验（2026-10-15，用户第 3 轮指令）
+
+执行基线为 main `4c48e666e97217a6966455d986b20362a3070dcc`，已包含上节第 4 轮
+修复；不重复实施已经合入的 epoch 修复。指定分支
+`zcode/cache-closeout-v3-20261014` 的新隔离 worktree 位于
+`/Users/leeyi/.codex-runs/cache-closeout-round3-20261015/worktree`。
+两份计划 SHA-256 与交接锚完全一致。main 的两项外来未跟踪资料保持原位。
+
+旧运行根 `~/.codex/cache-closeout-runs/zcode-closeout-20261014/` 当前不存在，
+其 manifest、C09/C10/QR 原件不能复核；上节结果保留为历史记载，不改写为本次
+已验证结果。新运行根为 `/Users/leeyi/.codex-runs/cache-closeout-round3-20261015/`。
+`source-inputs-provisional.json` 仅为编译前输入盘点（7143 文件），状态
+`PROVISIONAL_NOT_FROZEN`，不是 `candidate-manifest-v3.json` 或门禁候选。
+
+初始等待期间观察到其他会话的编译、运行实例和附件 EUnit，先完成静态项。
+外部 EUnit 退出后的串行窗口内，GNU Make 4 编译 exit=0（`compile-gnu.log`）；
+首次系统 make 因版本不符 exit=2（`compile.log`），两次原始结果均保留。
+启动 15 套件前再次发现其他会话 `make eunit`，先返回 `WAITING_MUTEX`，其退出后
+仅 AGENT-1 串行执行全部 15 套件，每项原始命令、UTC、exit 和日志保存在
+`targeted/results.json`。首轮 12 套件 exit=0，capability、journal_component、
+metadata_component 三项 exit=2。专属库只读预检确认目标为 loopback:4323 的
+`imboy_cache_closeout_v1`、其他连接数 0；未停止其他进程或修改共享数据库。
+fixture 预算不重开。联合修复和预验证全绿后才冻结；最终验收针对冻结候选执行，
+冻结前结果只作预验证。后续输入改变仍须重冻并复验，不继承旧 SHA 的绿轮。
+
+metadata_component 本次原始结果为 **Passed=9、Failed=0、Skipped=0、9 个超时、
+有测试取消、exit=2**；不能用 Failed=0 当通过，也不能沿用历史“10 过/8 超时”。
+该开放项按预算不修、不重试，联合预验“全绿后冻结”的前置条件未满足，故本次
+不生成 `candidate-manifest-v3.json`。C09×2、C10×2、QR、迁移往返、C11 实际消费、
+最终全量及性能七臂未形成新候选证据，保持 NOT_EXECUTED，不挪用历史绿轮。
+
+capability（2 过/13 失败）和 journal_component（0 过、有取消）的首轮日志均出现
+`limiter_migration_incomplete,[passport_per_ip,api_per_ip]`。隔离 local 配置仍使用
+旧 throttle owner；仅在隔离副本按同 HEAD 的配置示例迁移至 `limiter_ip_rates`，
+保留产品启动校验。该配置含凭据、不入提交；不修改共享配置或 fixture。
+这两项配置适配后定向复验，另存 `targeted-config-recheck/`，不覆盖首轮失败。
+复验结果：capability **15/15、exit=0**；journal_component **Test passed、exit=0**。
+其余 12 项首轮通过；这不是配置修改后同一冻结候选的 14 项联合签收。
+metadata_component 仍阻断冻结，后续不得把其超时重分类为外部配置阻塞。
+
+本次静态验证：C14 IDs/两份计划检查 exit=0；verifier self-test 53/53、exit=0；
+promtool check rules 63 条、test rules 均 exit=0；C11 仓外探针离线 7 检查 exit=0。
+探针终审后补齐 2 个 mock 阶段结论自检，局部成功固定输出 `PARTIAL_UNBOUND`，
+明确运行 BEAM/实际告警配置等绑定缺口；这些 mock 不计为真实消费链证据。
+这些结果不证明产品运行门禁通过。W0 r7/r8 的 baseline/performance/sha256 六份
+原始锚文件已复制至新运行根 `raw/w0_anchor/`，复制前后内容摘要一致。
+
+C14 复算为 96 项无缺失或重复，分类 73 REVERIFY、9 REVERIFY_HIST_INHERIT、
+3 GAP_IMPLEMENTATION、7 GAP_EVIDENCE、1 NOT_RUN_CARRIED、3 BLOCKED_EXTERNAL。
+分类不是 PASS 计数。最终回执未形成前，93 项待验、3 项外部阻塞；C00–C14 的
+结构化任务状态不以历史自由文字的 pass 代替。严格 receipts 检查仍须拒绝签发。
+最终 IDs/计划摘要 2/2、exit=0；candidate/exits/utc/receipts 严格检查 0/4、exit=1，
+原始输出见 `c14/final-verifier-results.json` 与同目录日志。
+
+本次提交范围仅报告、索引与台账三个文件；独立审查只覆盖本次文档/台账，
+不计 C12 产品终审回执。运行时自动审批禁止跳过 Git hooks；若正常提交入口
+重现已知 darwin hook 崩溃，则保留暂存改动并如实登记，不规避审批限制。
+
+当前三段判定：**BACKEND_LOCAL_CLOSEOUT=PARTIAL**，未闭合集合为 metadata_component
+既有超时、C10 M5/M8/M9/M10、专属库迁移往返、联合复验与新候选冻结，以及新候选
+C09×2/C10×2/QR/C11/最终全量/性能七臂/独立终审/C14 有效回执。
+**LOCAL_CANDIDATE=BLOCKED**（另缺 W0-09/AC-26/AC-27 的生产输入）；
+**PRODUCTION_ACCEPTANCE=NOT_ISSUED**。本节是预算停止点，不是运行门禁完成声明。
+
+### 预算扩展后的接续（2026-10-15）
+
+用户随后授权增加一倍修复预算，metadata fixture 新增两轮已全部使用。根因为
+setup 内默认 5 秒测试描述符不足以容纳恢复清理，以及清理时先重启 sync、后恢复
+recovery_window 配置导致新进程冻结错误期限。提交 `0452b6d9` 仅修测试生命周期：
+setup 内描述符为 30 秒，配置恢复受 after 保证且先于重启，等待超时必须返回失败。
+产品期限、来源内容、增量义务及 READY 正负断言保持。第一轮 metadata 18/18、exit=0；
+第二轮完整 15 套件联合预验 15/15、各 exit=0，metadata 再次 18/18。原失败日志保留；
+证据分别为新运行根 `metadata-budget2-r1/` 和 `union-budget2-r2/`。这些是冻结前预验。
+
+提交 `32d4ee56` 补齐 C14 物理输入覆盖，保留原来源集合并集及路径防护，按用户算法
+排除 *.dump；清单仍要求完整同序相等、逐文件摘要一致。新增遗漏、篡改、乱序、重复、
+外逃反例和原 53/53 自测均通过，独立审查 APPROVE。新旧运行树编译 exit=0；driver
+首次编译缺 `src/lib` 头文件搜索路径 exit=1，补齐执行参数后 exit=0，未改产品源码。
+
+`candidate-manifest-v3.json` 位于新运行根，冻结 UTC 为
+`2026-10-15T06:12:36.917217+00:00`，HEAD 为
+`32d4ee5611aa5fc84a7baff7c2206a7878510288`，共 9150 个文件；候选摘要：
+`397b08ae35fb4e1e69f4d75f7bdf50c078fc13b2e8b7967df5ba1cede4153263`。
+独立物理 allowlist 与 C14 枚举逐项相等。含凭据配置仅绑定摘要，不入提交。
+本轮正常 Git hooks 已通过，无需跳过 hooks。
+
+C09/C10/QR 串行队列在外部 EUnit 结束后启动，命令、起止 UTC、raw exit、日志摘要
+保存在 `frozen-gates/results.json`，完整矩阵结果在 `raw/`。C09 完整两轮各
+**38/38、exit=0**，耗时 898583/897579 ms；自然 W=720 秒，未设 DCHECK_ONLY。
+两个旧 epoch 失败场景均在两轮通过；不再沿用旧候选的 C09 缺口。
+`evidence-v3/receipts/c09_v3_r{1,2}.json` 同时保留原生结果/日志摘要；规范日志
+逐字节保留原始前缀，只追加唯一计数 footer，未替换原生断言。C09 仅签本地
+loopback 矩阵，不替代 96 个原计划叶子、真实三机或生产资格。
+
+C10 第一次两次启动均 exit=2：变量虽名 LEGACY_EBIN/NEW_EBIN，当前 driver 实际
+在其值后追加 ebin，传 ebin 路径造成重复 ebin/ebin。原失败记录保留；只修仓外
+执行参数为旧/新树根，未改 driver 或 oracle。实际 r3/r4 均为 **12/16、exit=2**：
+M8 在 line365 读到 undefined，M9 初始复制 converge_timeout，M10 旧二元请求后
+化身登记断言 false（三元帧构造已过），M5 的 B 保持 recovering 超时。两轮耗时
+757102/758521 ms，不以 U1/L1/L2
+替代原 M5。命令与日志在 `remaining-gates/`，原始矩阵在 `raw/c10_v3_r{3,4}.json`。
+静态复核确认 M8 的 epoch 读屏障前置与 fixture 预期冲突，异常又跳过清理；
+M9/M10 可能级联，未执行到其完整目标 oracle。M5 使用独立尾部集群，无 READY
+新版来源时 B 持续 recovering；当前不能单方面归为纯 fixture 或纯产品缺陷。
+缺口与最小后续验证清单见仓外 `agent2/c10-v3-failure-review.md`，未套用修复求绿。
+第二轮结束时发现外部 gmake eunit（PID 16153/16235、BEAM 19220），后续门禁
+等待其退出；未停止外部会话，不能宣称第二轮获得整段资源独占。
+
+QR 冻结后真实 PG 三种竞争 **3/3、exit=0**，每种仅一个消费者取得凭据、合成行
+剩余 0（`raw/qr_v3_r1.json`）。Cowboy 仍是 callback observer；不能扩大为完整
+HTTP 登录链或迁移回滚证明。
+
+迁移 170 已在新空专属库 `imboy_cache_closeout_r3_m170_20261015`（loopback:4323）
+用真实 erlang_migrate 完成两次 `undefined→170→undefined`，三项原生场景全过、
+exit=0（`raw/migration170_v3.json`）；验证版本、dirty/history、表/索引及合成 token
+清理，新库保留审计。原专属库只读预检、未改 schema；未克隆共享库、未补空函数或
+手写迁移 history。此证据仅覆盖 170 单迁移往返，**不是 169→170→169 全历史升级**。
+历史 166 失败缺原始 SQLSTATE/CONTEXT；当前 SQL 不直接调用 app 函数，故旧报告的
+函数依赖概括不能当已定位根因。完整路径仍缺来源可核验的 169 clean 专属基座。
+执行参数、UTC、exit 与日志摘要在 `remaining-gates/results.json`；规范回执在
+`evidence-v3/receipts/migration170_v3.json`。
+
+C11 仓外探针经独立静态审查及10项 mock 自检后，冻结后实际执行 exit=0：
+缺 peer 的原生 actor 使用 Dmax=90秒；首次 timeout 在原生 deadline 后9ms、首次
+degraded 在其后614ms（10ms轮询观察值），均未提前；独立10秒调度预算未越界。
+HTTP `/metrics` 被真实 Prometheus 以15秒周期抓取，原告警规则仍按60秒周期求值、
+for=0m，`ImBoyCacheSyncRecoveryTimedOut` 与 `ImBoyCacheSyncDegraded` 均 firing。
+11个模块按同一文件字节 `code:load_binary` 装载并摘要核对；全候选集合/字节前后
+相同。证据在 `c11/actual-v3-r1/`，规范回执是 `evidence-v3/receipts/c11_core_v3_r1.json`。
+该运行仅证明隔离VM的两条核心告警链；未验证完整应用/DB、多节点、其余拒绝/过载/
+缺口信号及全部面板查询，故 **C11=PARTIAL**，不能由HTTP 200或规则自测签完整PASS。
+执行期间外部编译可能再次进入，不宣称资源独占；性能窗口另行判定。
+
+最终全量使用仓外唯一 relay 配置副本，入口硬复位与15432端口保持；白名单环境
+清除 make/测试筛选，显式 `t=`，归档实际消费的配置字节（0600，仅本地不提交）。
+包装器经独立审查及4项 mock 控制检查，传递原始 gmake exit，候选漂移/配置证据
+缺失也必须非零。第一次入口因外部编译拒绝启动，等待窗口后于
+`2026-10-15T07:26:50.387947+00:00` 正式执行，最终结果见下节。
+本节取代上一节“metadata 超时仍阻断冻结”的当前状态；其余未执行门禁与生产输入
+缺口继续开放，三段最终判定仍须由本候选实际回执复算。
+
+### 第 3 轮终判（2026-10-15，预算扩展后）
+
+最终全量于 `2026-10-15T07:57:14.446058+00:00` 结束，耗时 1824058 ms。
+原始命令为 `EUNIT_CONFIG=config/sys.closeout-local gmake eunit-local t=`，另传仓外
+唯一 `EUNIT_RELAY_CONF`，原始 exit=2；EUnit 终行 **Failed=121、Skipped=0、Passed=9761**，
+另有一处 `*timed out*` 和 `One or more tests were cancelled.`。原生未给精确取消数，
+规范回执保留 `cancelled=null`，不造 0 或 1。`final-eunit-v3/result.json` 保存原始
+命令与退出，`eunit.log` SHA-256 为
+`357f576aae0b524f6b71eb9da25efe13885a72e54f4b18fa51a1603dfc47a788`。
+规范失败回执 `evidence-v3/receipts/full_eunit_v3.json` 的 SHA-256 为
+`7f0b0a293cb71f2d0a1cb0cccb585d831ceaee6d4548fa23d05202f19841ab72`；原件不变。
+
+完整 9150 项候选集合/字节前后相同，实际消费的 relay 配置也已观测并匹配。
+但外部会话在运行中进入，`final-eunit-v3/concurrent-session-observation.json` 保留
+重叠进程取证；未停止外部资源，不能宣称全程独占或用此轮作为性能证据。失败包括
+DB/mock 生命周期、对象存储/附件、授权/契约断言及客服原子用例；不能统一归为环境。
+其中缓存直接调用方 `group_ds_fenced_cache_tests` 的异常查询 shape 用例报
+`case_clause {ok,invalid_rows}`，`group_ds_member_uids_strict_tests` 报
+`case_clause undefined`，都来自 `group_ds:load_member_uids/1`。因此全量失败也包含
+缓存调用方缺口，不能把阶段性“未见缓存失败”当最终结论。未继续自动改历史 fixture，
+未用隔离绿轮替代全量；C12 按窗口计划 §6.1 记 **FAIL** 并停止其后步骤。
+
+结束后 load(1/5/15min)=26.35/34.24/29.47，仍有外部 EUnit。静默阈值保持
+1min≤6、15min≤8、无并行重负载，七臂全部 **NOT_EXECUTED / WAITING_QUIET_WINDOW**，
+缺 7 份正式性能回执（`performance-window-status.json`）。W0 r7/r8 六份原锚和
+30/30 同字节环境构件已恢复；这不等于环境锚已运行，未调阈值或替换旧 runner。
+
+C14 使用显式本轮 source-root、ledger、manifest、evidence-dir 执行 `--all`，
+原始 **exit=1、4/6**：IDs、两计划摘要、candidate、UTC 通过，exits、receipts 拒绝。
+8 个规范结果、6 个系列均绑定同一 v3；exits 保留 C10 两轮共8个失败场景及全量/
+独占性2个失败场景。严格 receipts 仍拒绝 required 非 PASS、C12 完整门禁与性能缺失。
+结果和日志在 `c14/final-v3-verifier.json/.log`。verifier 自测、局部回执适配与本次
+文档只读复审均不替代产品独立终审。96 个原计划叶子仍 **93 PENDING + 3 BLOCKED_EXTERNAL**；
+不得把 C09 的 38×2 或局部消费链摊成逐叶签收。
+
+本轮并列判定：
+
+- **BACKEND_LOCAL_CLOSEOUT=PARTIAL / NO_GO**。精确开放集合：C10 的 M5/M8/M9/M10；
+  全量121失败、超时及取消（包括上述两个缓存调用方）；C08 完整 HTTP/权限链与
+  来源可核验169 clean基座上的169→170→169；C11 其余信号及完整面板消费；
+  独立 `three_node_c12` / `mixed_c12` 系列、QR四套件及完整定向签收、性能七臂、
+  产品独立终审和 C14 严格签发；C00–C08/C10–C14 本轮完整签收及93个待验叶子。
+  C09 本地双轮通过和 metadata 追加两轮预验成功不再列作旧失败。
+- **LOCAL_CANDIDATE=BLOCKED**。除本地缺口，W0-09/AC-26/AC-27 的业务峰值、目标
+  硬件/拓扑、绝对 SLO/headroom 仍缺权威生产输入，独立于本地判定。
+- **PRODUCTION_ACCEPTANCE=NOT_ISSUED**。
+
+接续所有权与解锁：缓存维护者先定性/处理 C10 和 group_ds 两个调用方根因，
+其他模块维护者处理全量各自失败；若更改冻结输入，重冻并复验受影响门禁，不能
+重绑本轮旧回执。C12 由唯一门禁执行者在串行窗口取得整轮通过后继续独立系列；
+性能执行者等待安静窗口，业务负责人补三项外部输入，独立审查者最终复核后再签 C14。
+本轮代码提交为 `0452b6d9` 和 `32d4ee56`；最终报告/台账独立本地提交。
+正常 hooks 已可用，未采用旧 `--no-verify` 模式；本轮不合并 main、不 push、不部署。

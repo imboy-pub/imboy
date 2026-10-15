@@ -21,8 +21,11 @@ Makefile、erlang.mk、VERSION、rebar.lock；被 Git 忽略但可被构建/迁�
 另绑定实际存在的本地测试配置 `config/sys.closeout-local.config`（仅摘要，不输出内容）；
 并绑定 Prometheus/Grafana 运行链路：`deploy/docker-compose.prod.yml`、抓取配置、cache-sync
 规则及规则测试、专板、Grafana dashboard 与 datasource provisioning（文件存在时）；
-另绑定 `deps/` 下所有文件字节（包括无扩展名运行工具及平台构建源码/配置），
-排除 `.git/_build`；依赖锁文件无法覆盖本地依赖树中的修改。`deps/` 根和依赖目录符号链接拒绝冻结，
+另绑定 `deps/` 下所有文件字节（包括无扩展名运行工具及平台构建源码/配置）。
+2026-10-15 v3 按用户指定算法补入顶层 `src/test/priv/scripts/include/config/deploy/deps`
+的全部物理文件，以及根 `Makefile/VERSION/erlang.mk/rebar.lock`，与原来源集合取并集，
+全局排除 `*.dump`；根级 dotfile 不纳入，子目录隐藏文件、`.git/_build` 不额外排除。
+依赖锁文件无法覆盖本地依赖树中的修改。`deps/` 根和依赖目录符号链接拒绝冻结，
 依赖文件链接仅允许解析到仓库内，防止循环遍历或将仓外文件混入候选。
 源码、配置、测试驱动、依赖或运行依赖字节改变后必须重新冻结；新加输入也拒绝。
 此清单不证明用于执行的主应用 BEAM 等价，执行命令仍须从冻结源码隔离编译，

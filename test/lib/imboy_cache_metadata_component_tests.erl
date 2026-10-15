@@ -3,15 +3,8 @@
 -include_lib("eunit/include/eunit.hrl").
 -include("eunit_setup.hrl").
 -include("imboy_cache_sync_state.hrl").
-
-%% 每个用例包含发现重试及恢复重启，默认五秒会中断清理并污染后续用例。
--define(COMPONENT_TEST(Fun),
-    {setup, fun eunit_runner:eunit_setup/0, fun eunit_runner:eunit_cleanup/1, fun(_) ->
-        {timeout, 35, ?_test((Fun)())}
-    end}
-).
 recovery_completion_rejects_loader_started_during_recovery_test_() ->
-    ?COMPONENT_TEST(fun() ->
+    metadata_test(fun() ->
         with_budget(#{}, fun() ->
             OldFenced = application:get_env(imboy, cache_fenced_namespaces),
             application:set_env(imboy, cache_fenced_namespaces, [group]),
@@ -25,7 +18,7 @@ recovery_completion_rejects_loader_started_during_recovery_test_() ->
         end)
     end).
 expired_floor_pages_converge_in_both_orders_in_real_receiver_test_() ->
-    ?COMPONENT_TEST(fun() ->
+    metadata_test(fun() ->
         lists:foreach(
             fun(Order) ->
                 with_budget(#{}, fun() ->
@@ -91,7 +84,7 @@ finish_floor_sources(Sources, Round) ->
     ],
     ok.
 expired_remote_set_retains_floor_in_real_receiver_test_() ->
-    ?COMPONENT_TEST(fun() ->
+    metadata_test(fun() ->
         with_budget(#{}, fun() ->
             lists:foreach(fun assert_expired_remote_set/1, [past, skew])
         end)
@@ -137,7 +130,7 @@ assert_expired_remote_set(Kind) ->
     ?assertEqual({C + 20, Peer}, imboy_cache_sync:current_rev(K)),
     ?assertEqual(undefined, depcache:get(K, imboy_cache)).
 over_window_remote_set_cannot_mutate_real_cache_test_() ->
-    ?COMPONENT_TEST(fun() ->
+    metadata_test(fun() ->
         with_budget(#{}, fun() ->
             K = {cache_v2_test_rep, over_window_delta},
             ok = imboy_cache:put(K, current, 60, replicate),
@@ -162,7 +155,7 @@ over_window_remote_set_cannot_mutate_real_cache_test_() ->
         end)
     end).
 expired_live_floor_rejects_old_write_with_real_cache_and_sync_test_() ->
-    ?COMPONENT_TEST(fun() ->
+    metadata_test(fun() ->
         with_budget(#{}, fun() ->
             K = {cache_v2_test_rep, expired_revision_floor},
             ?assertEqual(ok, imboy_cache:put(K, newest, 1, replicate)),
@@ -214,7 +207,7 @@ begin_completion_round(Peer) ->
     ets:insert(imboy_cache_meta, {status, recovering}),
     {Peer, R}.
 missing_unknown_or_gapped_cut_cannot_complete_real_actor_test_() ->
-    ?COMPONENT_TEST(fun() ->
+    metadata_test(fun() ->
         lists:foreach(
             fun(Kind) ->
                 with_budget(#{}, fun() ->
@@ -272,7 +265,7 @@ completion_loader(Parent, Key) ->
     Parent ! {loader_result, imboy_cache:memo(Loader, Key, 60, [])}.
 
 incarnation_grace_overflow_enters_cold_recovery_test_() ->
-    ?COMPONENT_TEST(fun() ->
+    metadata_test(fun() ->
         lists:foreach(
             fun(Kind) ->
                 with_budget(#{grace_max => 1}, fun() -> assert_grace_overflow(Kind) end)
@@ -348,7 +341,7 @@ deliver_grace_overflow(report, _Key, Peer, S, Epoch) ->
         )
     end).
 third_party_gap_after_cut_cannot_complete_real_actor_test_() ->
-    ?COMPONENT_TEST(fun() ->
+    metadata_test(fun() ->
         with_budget(#{}, fun() ->
             {Peer, R} = begin_completion_round('source_cut_gap@synthetic'),
             Round = maps:get(round, R),
@@ -392,7 +385,7 @@ third_party_gap_after_cut_cannot_complete_real_actor_test_() ->
     end).
 
 source_restart_after_cut_cannot_complete_real_actor_test_() ->
-    ?COMPONENT_TEST(fun() ->
+    metadata_test(fun() ->
         with_budget(#{}, fun() ->
             {Peer, R} = begin_completion_round('source_restart_cut@synthetic'),
             Round = maps:get(round, R),
@@ -453,7 +446,7 @@ assert_completion_loader(Key, Peer, R) ->
     end.
 
 journal_capture_read_failure_keeps_public_put_successful_and_actor_alive_test_() ->
-    ?COMPONENT_TEST(fun() ->
+    metadata_test(fun() ->
         with_budget(#{}, fun() ->
             Round = <<8:96>>,
             ets:insert(imboy_cache_meta, {{snapshot_sender, self()}, #{round => Round}}),
@@ -478,7 +471,7 @@ journal_capture_read_failure_keeps_public_put_successful_and_actor_alive_test_()
     end).
 
 local_metadata_overflow_preserves_value_and_clock_test_() ->
-    ?COMPONENT_TEST(fun() ->
+    metadata_test(fun() ->
         with_budget(#{n_max_bytes => 500}, fun() ->
             Key = {cache_v2_test_rep, retained},
             ?assertEqual(ok, imboy_cache:put(Key, <<"live">>, 60, replicate)),
@@ -496,7 +489,7 @@ local_metadata_overflow_preserves_value_and_clock_test_() ->
     end).
 
 tombstone_byte_overflow_clears_real_values_test_() ->
-    ?COMPONENT_TEST(fun() ->
+    metadata_test(fun() ->
         with_budget(#{t_max_bytes => 1, recovery_window_sec => 1}, fun() ->
             Key = {cache_v2_test_rep, cold},
             ?assertEqual(ok, imboy_cache:put(Key, <<"live">>, 60, replicate)),
@@ -516,7 +509,7 @@ tombstone_byte_overflow_clears_real_values_test_() ->
     end).
 
 remote_tombstone_overflow_preserves_recovery_state_test_() ->
-    ?COMPONENT_TEST(fun() ->
+    metadata_test(fun() ->
         with_budget(#{t_max_bytes => 1}, fun() ->
             Key = {cache_v2_test_rep, remote_cold},
             ?assertEqual(ok, imboy_cache:put(Key, <<"live">>, 60, replicate)),
@@ -543,7 +536,7 @@ remote_tombstone_overflow_preserves_recovery_state_test_() ->
     end).
 
 remote_metadata_capacity_rejection_cold_quarantines_old_sources_test_() ->
-    ?COMPONENT_TEST(fun() ->
+    metadata_test(fun() ->
         lists:foreach(
             fun(Operation) ->
                 with_budget(#{recovery_window_sec => 1}, fun() ->
@@ -627,7 +620,7 @@ assert_old_epoch_source_is_excluded(Epoch, Counter) ->
     ).
 
 lost_tail_watermark_hides_replicas_and_does_not_extend_deadline_test_() ->
-    ?COMPONENT_TEST(fun() ->
+    metadata_test(fun() ->
         with_budget(#{recovery_window_sec => 1}, fun() ->
             K = {cache_v2_test_rep, missing_tail},
             ?assertEqual(ok, imboy_cache:put(K, old, 60, replicate)),
@@ -659,7 +652,7 @@ lost_tail_watermark_hides_replicas_and_does_not_extend_deadline_test_() ->
     end).
 
 rejected_later_event_still_preserves_gap_recovery_state_test_() ->
-    ?COMPONENT_TEST(fun() ->
+    metadata_test(fun() ->
         with_budget(#{}, fun() ->
             K = {cache_v2_test_rep, stale_after_gap},
             ?assertEqual(ok, imboy_cache:put(K, old, 60, replicate)),
@@ -692,7 +685,7 @@ rejected_later_event_still_preserves_gap_recovery_state_test_() ->
     end).
 
 receipt_alone_executes_invalidation_before_acknowledging_sequence_test_() ->
-    ?COMPONENT_TEST(fun() ->
+    metadata_test(fun() ->
         with_budget(#{}, fun() ->
             K = {cache_v2_test_rep, missed_legacy_flush},
             ?assertEqual(ok, imboy_cache:put(K, old, 60, replicate)),
@@ -722,7 +715,7 @@ receipt_alone_executes_invalidation_before_acknowledging_sequence_test_() ->
     end).
 
 accepted_snapshot_page_advances_clock_even_if_later_page_aborts_test_() ->
-    ?COMPONENT_TEST(fun() ->
+    metadata_test(fun() ->
         with_budget(#{}, fun() ->
             Peer = 'snapshot_clock_peer@synthetic',
             Initial = sys:get_state(imboy_cache_sync),
@@ -766,6 +759,11 @@ source_fixture_certificate(Peer) ->
     {ok, Rows} = imboy_cache_policy:final_snapshot_manifest(P),
     imboy_cache_sync_coverage:manifest_certificate(Rows).
 
+metadata_test(TestFun) ->
+    {setup, fun eunit_runner:eunit_setup/0, fun eunit_runner:eunit_cleanup/1, fun(_State) ->
+        {timeout, 30, ?_test(TestFun())}
+    end}.
+
 wait_sync_ready(0) ->
     timeout;
 wait_sync_ready(WaitMs) ->
@@ -785,7 +783,7 @@ with_budget(Limits, Fun) ->
     try
         %% 启动后 sync 需经历有界发现重试（3×500ms）才单节点转 READY；
         %% 测试体先等待就绪，避免对 discovering 瞬态的时序竞态。
-        wait_sync_ready(5000),
+        ok = wait_sync_ready(5000),
         ?assertEqual(ready, imboy_cache_sync:status()),
         ok = imboy_cache_sync_apply:controlled_cold_recovery(),
         application:set_env(imboy, cache_replication, Limits#{whitelist => [cache_v2_test_rep]}),
@@ -794,30 +792,33 @@ with_budget(Limits, Fun) ->
         }),
         Fun()
     after
-        ok = imboy_cache_sync_apply:controlled_cold_recovery(),
-        CurrentState = sys:get_state(imboy_cache_sync),
-        Ref = CurrentState#state.recovery_timer,
-        case is_reference(Ref) of
-            true -> erlang:cancel_timer(Ref);
-            false -> ok
+        try
+            ok = imboy_cache_sync_apply:controlled_cold_recovery(),
+            CurrentState = sys:get_state(imboy_cache_sync),
+            Ref = CurrentState#state.recovery_timer,
+            case is_reference(Ref) of
+                true -> erlang:cancel_timer(Ref);
+                false -> ok
+            end
+        after
+            restore(cache_replication, OldCfg),
+            restore(cache_registry_overrides, OldRegistry)
         end,
         %% 合成回合注入会与产品恢复自动机（member_loss/冷恢复/回合超时）
         %% 交互，仅回放快照状态会留下不一致定时器与恢复循环；结束后重启
         %% sync 进程取干净初态，等待其单节点就绪后再交还下一用例。
-        restore(cache_replication, OldCfg),
-        restore(cache_registry_overrides, OldRegistry),
         OldPid = whereis(imboy_cache_sync),
         case is_pid(OldPid) of
             true ->
                 exit(OldPid, kill),
-                wait_sync_restart(OldPid, 100);
+                ok = wait_sync_restart(OldPid, 100);
             false ->
                 ok
         end,
-        ?assertEqual(ok, wait_sync_ready(5000))
+        ok = wait_sync_ready(5000)
     end.
 wait_sync_restart(_OldPid, 0) ->
-    ok;
+    timeout;
 wait_sync_restart(OldPid, N) ->
     case whereis(imboy_cache_sync) of
         P when is_pid(P), P =/= OldPid ->
