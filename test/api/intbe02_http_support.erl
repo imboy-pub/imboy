@@ -152,6 +152,16 @@
 
 -spec setup_all() -> map().
 setup_all() ->
+    LimiterOwner = ensure_limiter_owner(),
+    try
+        setup_all(LimiterOwner)
+    catch
+        Class:Reason:Stack ->
+            stop_limiter_owner(LimiterOwner),
+            erlang:raise(Class, Reason, Stack)
+    end.
+
+setup_all(LimiterOwner) ->
     try
         elib_tsid:init(#{dc_id => 1, node_id => 1, dc_bits => 3})
     catch
@@ -181,15 +191,12 @@ setup_all() ->
             attachment
         ]
     ),
-    %% throttle rates 必须在 ensure_all_started 之前注入（throttle_app:start
-    %% 读 env 初始化桶）；成功路径会穿过 throttle_middleware 的 api_per_ip。
+    %% throttle rates 必须在 ensure_all_started 之前注入（throttle_app:start 读 env 初始化桶）。
     application:set_env(throttle, rates, [
         {api_per_user, 100000, per_minute},
-        {api_per_user_burst, 100000, per_second},
-        {api_per_ip, 100000, per_minute}
+        {api_per_user_burst, 100000, per_second}
     ]),
     {ok, _} = application:ensure_all_started(throttle),
-    catch throttle:setup(api_per_ip, 100000, per_minute),
     catch throttle:setup(api_per_user, 100000, per_minute),
     catch throttle:setup(api_per_user_burst, 100000, per_second),
     %% WH-05：本链不起 imboy app，config_ds:set/get 依赖的 imboy_cache
@@ -246,6 +253,7 @@ setup_all() ->
     end,
     Port = ranch:get_port(?LISTENER),
     State#{
+        limiter_owner => LimiterOwner,
         conn => C,
         port => Port,
         app_a => app_id(C, ?APP_KEY_A),
@@ -263,18 +271,52 @@ setup_all() ->
     }.
 
 -spec teardown_all(map()) -> ok.
-teardown_all(_State) ->
+teardown_all(State) ->
     try
         ok = cowboy:stop_listener(?LISTENER)
     catch
         _:_ -> ok
     end,
     catch ets:delete(?COVERED_TAB),
+    stop_limiter_owner(maps:get(limiter_owner, State, undefined)),
     application:unset_env(imboy, enterprise_internal_cursor_signing_key),
     application:unset_env(imboy, enterprise_internal_rate_limits),
     release_pool(),
     %% 释放前关 marker 连接由 release/1 承担
     ok.
+
+ensure_limiter_owner() ->
+    case whereis(login_attempt_ds) of
+        undefined ->
+            PreviousRates = application:get_env(imboy, limiter_ip_rates),
+            application:set_env(imboy, limiter_ip_rates, #{
+                passport_per_ip => {100000, 60000},
+                api_per_ip => {100000, 60000},
+                oidc_request => {1000000, 3600000}
+            }),
+            try
+                {ok, Owner} = login_attempt_ds:start_link(),
+                unlink(Owner),
+                Owner
+            after
+                case PreviousRates of
+                    undefined -> application:unset_env(imboy, limiter_ip_rates);
+                    {ok, Rates} -> application:set_env(imboy, limiter_ip_rates, Rates)
+                end
+            end;
+        _ ->
+            true = login_attempt_ds:ready(),
+            undefined
+    end.
+
+stop_limiter_owner(undefined) ->
+    ok;
+stop_limiter_owner(Owner) ->
+    try
+        gen_server:stop(Owner)
+    catch
+        exit:noproc -> ok
+    end.
 
 %%%===================================================================
 %%% 夹具常量访问（用例侧按 key 取，避免 magic number 扩散）
