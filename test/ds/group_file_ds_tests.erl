@@ -589,35 +589,57 @@ get_file_categories_empty_test_() ->
         ?assertEqual({ok, []}, Result)
     end).
 
+with_scope_cleans_failure_test() ->
+    Test = with_scope(fun() ->
+        meck:new(group_file_repo, [passthrough]),
+        error(injected_failure)
+    end),
+    ?assertError(injected_failure, Test()),
+    lists:foreach(
+        fun(Module) ->
+            ?assertNot(lists:member(Module, meck:mocked()))
+        end,
+        [group_file_repo, attachment_ds, enterprise_audit_event_repo]
+    ).
+
 with_scope(Test) ->
     fun() ->
-        meck:new(enterprise_audit_event_repo, [passthrough]),
-        meck:expect(enterprise_audit_event_repo, append_scope_file_tx, fun(_, _, _, _) -> ok end),
-        meck:new(attachment_ds, [passthrough]),
-        meck:expect(attachment_ds, authorize_group_scope, fun(_, _) -> true end),
-        meck:expect(attachment_ds, find_path_by_group_file, fun(_, _) ->
-            {ok, <<"http://example.com/file.pdf">>}
-        end),
-        meck:expect(attachment_ds, ensure_upload_scope_tx, fun(_, _, _) -> ok end),
+        Existing = meck:mocked(),
+        Modules = [
+            attachment_ds,
+            attachment_repo,
+            enterprise_audit_event_repo,
+            group_ds,
+            elib_oss,
+            elib_dt,
+            group_file_repo,
+            workspace_resolver,
+            elib_pg,
+            group_member_repo,
+            workspace_guard
+        ],
         try
+            meck:new(enterprise_audit_event_repo, [passthrough]),
+            meck:expect(enterprise_audit_event_repo, append_scope_file_tx, fun(_, _, _, _) -> ok end),
+            meck:new(attachment_ds, [passthrough]),
+            meck:expect(attachment_ds, authorize_group_scope, fun(_, _) -> true end),
+            meck:expect(attachment_ds, find_path_by_group_file, fun(_, _) ->
+                {ok, <<"http://example.com/file.pdf">>}
+            end),
+            meck:expect(attachment_ds, ensure_upload_scope_tx, fun(_, _, _) -> ok end),
             Test()
         after
-            %% 断言失败也必须卸载本用例创建的 mock，避免污染后续套件。
             lists:foreach(
-                fun(Module) -> catch meck:unload(Module) end,
-                [
-                    attachment_ds,
-                    attachment_repo,
-                    enterprise_audit_event_repo,
-                    group_ds,
-                    elib_oss,
-                    elib_dt,
-                    group_file_repo,
-                    workspace_resolver,
-                    elib_pg,
-                    workspace_guard,
-                    group_member_repo
-                ]
+                fun(Module) ->
+                    case
+                        lists:member(Module, Existing) orelse
+                            not lists:member(Module, meck:mocked())
+                    of
+                        true -> ok;
+                        false -> meck:unload(Module)
+                    end
+                end,
+                Modules
             )
         end
     end.

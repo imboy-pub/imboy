@@ -11,14 +11,29 @@ missing_or_foreign_media_aborts_post_test_() ->
 all_media_bind_on_same_connection_before_timeline_test_() ->
     binding_case({ok, 2}, {ok, 555}, 1).
 
+reference_tombstone_aborts_post_test_() ->
+    binding_case(
+        {error, tombstone},
+        {ok, 2},
+        {error, {reference_bind, <<"cover">>, tombstone}},
+        0
+    ).
+
 binding_case(BindResult, Expected, Writes) ->
+    binding_case(ok, BindResult, Expected, Writes).
+
+binding_case(LockResult, BindResult, Expected, Writes) ->
     ?WITH_MECKS(
         [
             {elib_pg, [
-                {'query', 3, fun(owned_conn, Sql, [Key]) ->
+                {'query', 3, fun(owned_conn, <<"SELECT pg_advisory_xact_lock", _/binary>>, [Key]) ->
                     ?assert(lists:member(Key, [<<"cover">>, <<"image">>])),
-                    ?assertNotEqual(nomatch, binary:match(Sql, <<"pg_advisory_xact_lock">>)),
-                    {ok, [#{<<"lifecycle_state">> => <<"live">>}]}
+                    case LockResult of
+                        ok ->
+                            {ok, [#{<<"lifecycle_state">> => <<"live">>}]};
+                        {error, tombstone} ->
+                            {ok, [#{<<"lifecycle_state">> => <<"delete_intent">>}]}
+                    end
                 end},
                 {'after_commit', 3, fun(owned_conn, {moment_acl, 555}, _Action) -> ok end},
                 {'with_tx', 1, fun(F) ->
@@ -52,6 +67,35 @@ binding_case(BindResult, Expected, Writes) ->
             ],
             ?assertEqual(
                 Expected, moment_ds:create_post(1001, #{content => <<"post">>, media => Media})
+            ),
+            ExpectedLocks =
+                case LockResult of
+                    ok -> 2;
+                    _ -> 1
+                end,
+            ?assertEqual(ExpectedLocks, meck:num_calls(elib_pg, query, '_')),
+            ?assertEqual(
+                1,
+                meck:num_calls(
+                    elib_pg,
+                    query,
+                    [owned_conn, '_', [<<"cover">>]]
+                )
+            ),
+            ?assertEqual(
+                ExpectedLocks - 1,
+                meck:num_calls(
+                    elib_pg,
+                    query,
+                    [owned_conn, '_', [<<"image">>]]
+                )
+            ),
+            ?assertEqual(
+                case LockResult of
+                    ok -> 1;
+                    _ -> 0
+                end,
+                meck:num_calls(elib_pg, execute, '_')
             ),
             ?assertEqual(Writes, meck:num_calls(moment_post_acl_repo, replace_for_post, '_')),
             ?assertEqual(Writes, meck:num_calls(moment_timeline_repo, upsert_batch, '_'))

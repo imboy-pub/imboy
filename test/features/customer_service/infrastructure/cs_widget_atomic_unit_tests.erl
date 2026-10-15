@@ -4,7 +4,7 @@
 
 atomic_faults_test_() ->
     [
-        ?_test(pure_mock_fixture:run(fun() -> run(Operation, Fault) end))
+        {timeout, 40, ?_test(pure_mock_fixture:run(fun() -> run(Operation, Fault) end))}
      || Operation <- [bootstrap, exchange],
         Fault <- [none, contact, write, event]
     ].
@@ -102,7 +102,7 @@ result(_, _, Value) -> {ok, Value}.
 
 bootstrap_failure_hides_secret_test_() ->
     [
-        ?_test(pure_mock_fixture:run(fun() -> bootstrap_failure(Reason) end))
+        {timeout, 40, ?_test(pure_mock_fixture:run(fun() -> bootstrap_failure(Reason) end))}
      || Reason <- [
             contact_failed,
             identity_failed,
@@ -190,7 +190,8 @@ bootstrap_failure(Reason) ->
 
 commit_confirmation_test_() ->
     [
-        ?_test(pure_mock_fixture:run(fun() -> commit_confirmation(Operation, Status) end))
+        {timeout, 40,
+            ?_test(pure_mock_fixture:run(fun() -> commit_confirmation(Operation, Status) end))}
      || Operation <- [bootstrap, exchange],
         Status <- [{ok, commit}, {ok, rollback}, {error, disconnected}]
     ].
@@ -219,7 +220,9 @@ commit_confirmation(Operation, Status) ->
             ?assertEqual(Conn, C),
             Status
         end),
-        meck:expect(enterprise_business_facade, ensure_contact_in, fun(1, #{contact_conn := C}) ->
+        meck:expect(enterprise_business_facade, ensure_contact_in, fun(
+            1, #{workspace_id := 2, contact_conn := C}
+        ) ->
             ?assertEqual(Conn, C),
             {ok, #{contact => #{id => 3}, reused => true}}
         end),

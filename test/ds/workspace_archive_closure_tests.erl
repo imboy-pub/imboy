@@ -137,6 +137,11 @@ personal_mocks() ->
 %% 本组验证归档守卫；父级有效成员事实由独立真实 PG 场景覆盖。
 attachment_parent_member_mock() ->
     {attachment_repo, [
+        {'bind_reference_lock_tx', 2, fun(fake_conn, <<"key">>) -> ok end},
+        {'refresh_gc_verified_tx', 2, fun(fake_conn, <<"key">>) -> {ok, false} end},
+        {'confirm_if_absent_tx', 4, fun(fake_conn, _, ?UID, #{<<"path">> := <<"k">>}) ->
+            {ok, 1, true}
+        end},
         {'lock_upload_organization_tx', 3, fun(_, _, _) -> ok end},
         {'authorize_upload_scope_tx', 4, fun(_, _, _, _) -> true end},
         {'authorize_channel_scope', 2, fun(_, _) -> true end},
@@ -1011,7 +1016,9 @@ attachment_save_closure_test_() ->
                 ]},
             SaveOk =
                 {attachment_ds, [
-                    {'save', 4, fun(_, _, _, _) -> ok end},
+                    {'save_confirmed_tx', 4, fun(fake_conn, _, ?UID, [#{<<"path">> := <<"k">>}]) ->
+                        ok
+                    end},
                     {'pending_remove', 1, fun(_) -> ok end}
                 ]},
             PublicMock =

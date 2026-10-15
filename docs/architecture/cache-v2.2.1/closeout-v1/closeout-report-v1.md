@@ -829,3 +829,44 @@ C14 使用显式本轮 source-root、ledger、manifest、evidence-dir 执行 `--
 性能执行者等待安静窗口，业务负责人补三项外部输入，独立审查者最终复核后再签 C14。
 本轮代码提交为 `0452b6d9` 和 `32d4ee56`；最终报告/台账独立本地提交。
 正常 hooks 已可用，未采用旧 `--no-verify` 模式；本轮不合并 main、不 push、不部署。
+
+### 全量失败修复与本地交付（2026-10-15）
+
+用户随后要求优先处理全量 121 个失败、超时及取消，并明确要求将当前任务提交
+合入 main 后清理任务 worktree 和分支。本节记录此次交付边界，不修改以上原始回执。
+
+本次修复 group_ds 对异常仓储结果的错误传播、企业删除队列 UUID 编码和 ACK 状态
+判断、全局领取任务的真实 Org/Workspace 归属及 purge 失败回执隔离。测试夹具同步
+补齐附件锁/GC/删除意图接口、异常后的 mock 清理、客服事务接口、合成加密 keyring、
+独立 purge 角色连接和组织定位裁决；新增队列及墓碑拒绝回归断言。
+
+证据保存在仓外 `~/.codex-runs/full-eunit-repair-20261015/`：
+
+- `targeted-r1/result.json` 和 `eunit.log`：15 模块联合定向，原始 exit=2，
+  **Passed=276 / Failed=12 / Skipped=0**，日志无超时或取消标记。剩余失败定位到
+  两个附件拒绝例的旧同步删除断言、四个 moment 锁查询 fixture 和六个客服事务
+  fixture；上述三组随后已修正，但此轮结果不能作为修正后的通过证据。
+- `targeted-r2/result.json` 和 `eunit.log`：计划复验 17 模块，启动后检测到外部
+  会话重新占用测试资源，且固定 15432 被其遗留中继占用。本任务主动终止自己的
+  测试进程树，原始 exit=-15；输入摘要未变化。本轮无效，不用于通过判定。
+- 最终改动经过只读代码审查；pre-commit 的 erlfmt、编译、gitleaks、架构门通过。
+  `.imboy.plt` 缺失，增量 Dialyzer 按既有 hook 规则降级，不能记为类型检查通过。
+
+本次提交是部分根因修复的本地交付，不是全量失败闭环。最终修正后的有效定向
+复验和全量 EUnit 尚未完成，旧 121 失败不能直接减去定向用例数量推算剩余数。
+HTTP 限流 fixture 污染、SSE 保活失败、异步对象删除的旧测试断言、19 张表的
+数据处置策略覆盖、四个客服 AI 菜单的一期开放依据及其他未复验项继续开放。
+集成时保留最新 main 已有的冻结存储定位核验、按 Org/Workspace 领取及
+object_ack_failed/object_delete_failed 错误契约；独立 worker 身份装配及完整门禁仍未闭合。
+
+源码输入已变化，旧 v3 SHA 的缓存门禁与回执不得重新绑定到本次交付候选。
+**BACKEND_LOCAL_CLOSEOUT=PARTIAL / NO_GO；LOCAL_CANDIDATE=BLOCKED；
+PRODUCTION_ACCEPTANCE=NOT_ISSUED**。后续生产验收仍需完成原门禁和外部输入。
+本地提交及合并保留正常 hooks；不 push、不部署。具体提交号和清理结果以最终
+Git 历史及对话交付记录为准。
+
+合并补充：与最新 main 的重叠修复优先保留较强的仓储结果校验、共享 keyring
+fixture、附件锁顺序与墓碑拒绝断言。集成候选编译通过；删除队列和 ACK 共 13 项
+补充单元检查通过，应用启动/清理边界使用 mock，未连接数据库，不替代
+eunit-local、真实 PG 授权用例或最终全量门禁。固定 15432 仍由其他会话的中继
+占用，本次未借用或终止该中继，完整复验继续开放。
