@@ -241,6 +241,8 @@ paths:
     $ref: './paths/api/v1/friend-category/rename.yaml'
   /api/v1/msg/history:
     $ref: './paths/api/v1/msg/history.yaml'
+  /api/v1/msg/result:
+    $ref: './paths/api/v1/msg/result.yaml'
   /api/v1/msg/offline:
     $ref: './paths/api/v1/msg/offline.yaml'
   /api/v1/msg/offline_ack:

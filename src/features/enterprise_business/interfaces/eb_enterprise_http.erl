@@ -517,7 +517,7 @@ with_seat_upload_url(Req, WorkspaceId, {ok, View} = Ok) when is_map(View) ->
             Ok;
         Url ->
             Upload = maps:get(upload, View, #{}),
-            {ok, View#{upload := Upload#{url => Url, method => <<"PUT">>}}}
+            {ok, View#{upload => Upload#{url => Url, method => <<"PUT">>}}}
     end;
 with_seat_upload_url(_Req, _WorkspaceId, Other) ->
     Other.
@@ -706,6 +706,10 @@ classify({case_not_found, _}) ->
 classify({workspace_not_in_org, _}) ->
     ?ERR_NOT_FOUND;
 %% --- 409：并发/状态竞争（CAS、重复占用、幂等冲突） ---
+classify(session_expired) ->
+    ?ERR_GONE;
+classify(session_not_renewable) ->
+    ?ERR_CONFLICT;
 classify(conflict) ->
     ?ERR_CONFLICT;
 classify(duplicate_occupation) ->

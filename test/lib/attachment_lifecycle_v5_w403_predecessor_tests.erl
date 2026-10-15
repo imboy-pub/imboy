@@ -229,8 +229,8 @@ p_entrypoint_intents_disk_env(Conn) ->
     q(
         Conn,
         "SELECT * FROM fn_v5_register_pending($1,'b','private',101,"
-        "gen_random_uuid(),$2::jsonb,now()+interval '2 hours',"
-        "now()+interval '1 hour','disk','" ++ binary_to_list(?NS) ++ "','c',$3)",
+        "gen_random_uuid(),$2::jsonb,now(),"
+        "now() - interval '2 hours','disk','" ++ binary_to_list(?NS) ++ "','c',$3)",
         [
             PKey,
             <<

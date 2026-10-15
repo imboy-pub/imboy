@@ -124,7 +124,7 @@ w402p_confirmed_purge_tombstone(Conn) ->
     {error, #error{code = <<"23505">>}} = e(
         Conn,
         "SELECT * FROM fn_v5_register_pending($1,'b','private',101,$2::uuid,"
-        "$3::jsonb,now()+interval '2 hours',now()+interval '1 hour',"
+        "$3::jsonb,now(),now() - interval '2 hours',"
         "'garage','ns1','c1',$4)",
         [
             <<"v5e2e/w402p/replay-1">>,
@@ -160,7 +160,7 @@ w402p_done_job_same_uuid(Conn) ->
     {error, #error{code = <<"23505">>}} = e(
         Conn,
         "SELECT * FROM fn_v5_register_pending($1,'b','private',101,$2::uuid,"
-        "$3::jsonb,now()+interval '2 hours',now()+interval '1 hour',"
+        "$3::jsonb,now(),now() - interval '2 hours',"
         "'garage','ns1','c1',$4)",
         [
             <<"v5e2e/w402p/replay-2">>,
@@ -219,7 +219,7 @@ w402p_foreign_actor_no_disclosure(Conn) ->
     {ok, _, [{KeyOut, <<"registered">>, Cid}]} = e(
         Conn,
         "SELECT * FROM fn_v5_register_pending($1,'b','private',202,$2::uuid,"
-        "$3::jsonb,now()+interval '2 hours',now()+interval '1 hour',"
+        "$3::jsonb,now(),now() - interval '2 hours',"
         "'garage','ns1','c1',$4)",
         [
             <<"v5e2e/w402p/foreign-1">>,
@@ -247,7 +247,7 @@ w402p_pending_register_replay(Conn) ->
     {ok, _, [{K1, <<"registered">>, Uuid}]} = e(
         Conn,
         "SELECT * FROM fn_v5_register_pending($1,'b','private',101,$2::uuid,"
-        "$3::jsonb,now()+interval '2 hours',now()+interval '1 hour',"
+        "$3::jsonb,now(),now() - interval '2 hours',"
         "'garage','ns1','c1',$4)",
         [Key, Uuid, Reg, hex64(crypto:hash(sha256, <<"lost-1">>))]
     ),
@@ -255,7 +255,7 @@ w402p_pending_register_replay(Conn) ->
     {ok, _, [{K1, <<"registered">>, Uuid}]} = e(
         Conn,
         "SELECT * FROM fn_v5_register_pending($1,'b','private',101,$2::uuid,"
-        "$3::jsonb,now()+interval '2 hours',now()+interval '1 hour',"
+        "$3::jsonb,now(),now() - interval '2 hours',"
         "'garage','ns1','c1',$4)",
         [Key, Uuid, Reg, hex64(crypto:hash(sha256, <<"lost-1">>))]
     ),

@@ -122,8 +122,8 @@ seed_scoped_asset(Conn, Key, N, ScopeAtom, ScopeRefVal) ->
     {ok, _, _} = epgsql:equery(
         Conn,
         "SELECT * FROM fn_v5_register_pending($1,'b',$2,101,"
-        "gen_random_uuid(),$3::jsonb,now()+interval '2 hours',"
-        "now()+interval '1 hour','garage','ns1','c1',$4)",
+        "gen_random_uuid(),$3::jsonb,now(),"
+        "now() - interval '2 hours','garage','ns1','c1',$4)",
         [Key, atom_to_binary(ScopeAtom), ?REG_JSON, loc(N)]
     ),
     {ok, _, _} = epgsql:equery(
@@ -386,8 +386,8 @@ run_matrix(Conn, Fixture) ->
     {ok, _, _} = epgsql:equery(
         Conn,
         "SELECT * FROM fn_v5_register_pending($1,'b','private',101,"
-        "gen_random_uuid(),$2::jsonb,now()+interval '2 hours',"
-        "now()+interval '1 hour','garage','ns1','c1',$3)",
+        "gen_random_uuid(),$2::jsonb,now(),"
+        "now() - interval '2 hours','garage','ns1','c1',$3)",
         [PendKey, ?REG_JSON, loc(Base + 20)]
     ),
     {ok, 1} = epgsql:equery(

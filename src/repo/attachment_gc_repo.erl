@@ -114,8 +114,17 @@ v5_ack(Conn, Path, Token, Ok) ->
             [Path, Token, Ok]
         )
     of
-        {ok, _} -> ok;
-        {error, R} -> {error, R}
+        {ok, [#{<<"fn_v5_ack_ordinary">> := <<"done">>}]} when Ok =:= true -> ok;
+        {ok, [#{<<"fn_v5_ack_ordinary">> := State}]} when
+            Ok =:= false, (State =:= <<"retry_wait">> orelse State =:= <<"blocked">>)
+        ->
+            ok;
+        {ok, [#{<<"fn_v5_ack_ordinary">> := State}]} ->
+            {error, {ack_rejected, State}};
+        {ok, Rows} ->
+            {error, {invalid_ack_result, Rows}};
+        {error, R} ->
+            {error, R}
     end.
 
 %% 过期租约回收（返回回收行数）。

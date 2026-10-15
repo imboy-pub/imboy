@@ -323,10 +323,10 @@ table(tenant) ->
                 [
                     {<<"POST">>, request_presign,
                         [
-                            {conversation_id, tsid, required},
-                            {mime, binary, required},
-                            {size_bytes, int, required},
-                            {object_hash, binary, required},
+                            {conversation_id, tsid, optional},
+                            {mime, binary, optional},
+                            {size_bytes, int, optional},
+                            {object_hash, binary, optional},
                             {message_id, tsid, optional},
                             {business_identity_id, tsid, optional},
                             {retain_until, int, optional},
@@ -351,7 +351,10 @@ table(tenant) ->
         {confirm_asset,
             entry(
                 tenant,
-                [{<<"POST">>, confirm_asset, [{upload_ref, binary, required}], []}],
+                [
+                    {<<"POST">>, confirm_asset,
+                        [{upload_ref, binary, optional}, {asset_id, tsid, optional}], []}
+                ],
                 member_auth(<<"asset.write">>, [<<"sales">>, <<"customer_service">>]),
                 false,
                 false

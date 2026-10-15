@@ -830,6 +830,10 @@ classify(seat_console_unavailable) ->
 classify({identity_not_found, _}) ->
     ?ERR_NOT_FOUND;
 %% --- 409：并发/状态竞争 + offboarding 降级（双通道：状态码 + envelope 标签）---
+classify(session_expired) ->
+    ?ERR_GONE;
+classify(session_not_renewable) ->
+    ?ERR_CONFLICT;
 classify(conflict) ->
     ?ERR_CONFLICT;
 classify(duplicate_occupation) ->

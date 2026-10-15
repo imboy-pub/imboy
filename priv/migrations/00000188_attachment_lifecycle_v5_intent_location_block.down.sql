@@ -11,8 +11,8 @@ BEGIN
 END;
 $$;
 
--- 恢复各 fn 为本迁移前的版本（184 pending / 185 purged / 179 eb 原文）。
--- pending：见 00000184（无身份分支版）。
+-- 恢复各 fn 为本迁移前的版本（186 pending / 187 purged / 179 eb 原文）。
+-- pending：见 00000186（无身份分支版）。
 CREATE OR REPLACE FUNCTION fn_v5_intent_pending_delete(p_object_key text,
                                                        p_reason text, p_mode text)
 RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
@@ -96,7 +96,7 @@ BEGIN
 END;
 $$;
 
--- purged：恢复 185 原文（ready 直插）。
+-- purged：恢复 187 原文（ready 直插）。
 CREATE OR REPLACE FUNCTION fn_v5_intent_purged_delete(p_path text, p_reason text)
 RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 DECLARE v_a attachment%ROWTYPE;

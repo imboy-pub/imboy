@@ -38,6 +38,16 @@
 -export([archive/1, archive_tx/2]).
 -export([get_history/3, get_history/4]).
 -export([get_history_batch/2]).
+-export([message_result/4]).
+
+message_result(ConvKey, MsgId, Sender, MinSeq) ->
+    elib_pg:query(
+        <<
+            "SELECT conv_seq FROM public.msg_store WHERE conv_key=$1 "
+            "AND msg_id=$2 AND from_id=$3 AND conv_seq >= $4 LIMIT 1"
+        >>,
+        [ConvKey, MsgId, Sender, MinSeq]
+    ).
 
 %% ==================== API Functions ====================
 

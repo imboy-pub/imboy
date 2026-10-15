@@ -358,6 +358,9 @@ asset_presign(OrgId, Params) when is_map(Params) ->
                 Params,
                 #{
                     workspace_id => WorkspaceId,
+                    operation => maps:get(operation, Params, <<"register">>),
+                    client_upload_id => maps:get(client_upload_id, Params, undefined),
+                    asset_id => maps:get(asset_id, Params, undefined),
                     conversation_id => maps:get(conversation_id, Session),
                     mime => maps:get(mime, Params, undefined),
                     size_bytes => maps:get(size_bytes, Params, undefined),
@@ -368,7 +371,8 @@ asset_presign(OrgId, Params) when is_map(Params) ->
                     file_name => maps:get(file_name, Params, undefined),
                     %% CSB-02S D6：访客主体（令牌 contact，服务端派生）进企业
                     %% 面的访客作用域分支——企业面 member 校验照旧不放宽。
-                    actor_contact_id => ContactId
+                    actor_contact_id => ContactId,
+                    visitor_session_id => maps:get(id, Session)
                 }
             ),
             case cs_widget_support:eb_request_presign(OrgId, EbParams) of
@@ -392,7 +396,7 @@ with_upload_url(OrgId, Params, Session, View) ->
             View;
         Url ->
             Upload = maps:get(upload, View, #{}),
-            View#{upload := Upload#{url => Url, method => <<"PUT">>}}
+            View#{upload => Upload#{url => Url, method => <<"PUT">>}}
     end.
 
 upload_proxy_url(OrgId, Params, Session, View) ->
@@ -440,15 +444,17 @@ is_https_base(_) ->
 %% enterprise confirm 面）。
 -spec asset_confirm(integer(), map()) -> {ok, map()} | {error, term()}.
 asset_confirm(OrgId, Params) when is_map(Params) ->
-    case visitor_scope(OrgId, Params) of
+    case visitor_session_scope(OrgId, Params) of
         {error, _} = Err ->
             Err;
-        {ok, #{workspace_id := WorkspaceId, contact_id := ContactId}} ->
+        {ok, #{workspace_id := WorkspaceId, contact_id := ContactId, session := Session}} ->
             EbParams = cs_widget_support:eb_params(
                 Params,
                 #{
                     workspace_id => WorkspaceId,
                     upload_ref => maps:get(upload_ref, Params, undefined),
+                    asset_id => maps:get(asset_id, Params, undefined),
+                    visitor_session_id => maps:get(id, Session),
                     %% CSB-02S D6：confirm 重新鉴权同样走访客分支。
                     actor_contact_id => ContactId
                 }
@@ -542,7 +548,8 @@ asset_content(OrgId, Params) when is_map(Params) ->
                     %% 比对 asset 行的 conversation——跨会话 not_found，不枚举。
                     conversation_id => maps:get(conversation_id, Session),
                     %% CSB-02S D6：访客主体走企业面 contact 分支（会话归属门）。
-                    actor_contact_id => ContactId
+                    actor_contact_id => ContactId,
+                    visitor_session_id => maps:get(id, Session)
                 }
             ),
             cs_widget_support:eb_content_stream(OrgId, EbParams)

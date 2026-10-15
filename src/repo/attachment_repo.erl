@@ -160,7 +160,7 @@ save(Conn, CreatedAt, Uid, [Attach | Tail]) ->
 
     % 预生成 TSID
     AttId = elib_tsid:generate(attachment),
-    NewAttach2 = NewAttach#{<<"id">> => AttId},
+    NewAttach2 = maps:merge(NewAttach#{<<"id">> => AttId}, storage_columns(Attach)),
     % 构建带ON CONFLICT的INSERT SQL
     {Sql, Params} = elib_pg_sql:insert(tablename(), NewAttach2),
     FullSql = [Sql, <<" ">>, OnConflictUpdate],
@@ -288,29 +288,44 @@ build_confirm_row(CreatedAt, Uid, Attach, Md5) ->
     MimeType = maps:get(<<"mime_type">>, Attach),
     Path = maps:get(<<"path">>, Attach),
     Ext2 = ec_cnv:to_binary(filename:extension(Path)),
-    #{
-        <<"file_hash256">> => Md5,
-        <<"mime_type">> => normalize_image_mime(MimeType),
-        <<"ext">> => Ext2,
-        <<"name">> => maps:get(<<"name">>, Attach),
-        <<"path">> => Path,
-        <<"url">> => maps:get(<<"url">>, Attach),
-        <<"size">> => ec_cnv:to_integer(maps:get(<<"size">>, Attach)),
-        <<"info">> => jsone:encode(Attach),
-        <<"referer_time">> => 1,
-        <<"last_referer_user_id">> => Uid,
-        <<"last_referer_at">> => CreatedAt,
-        <<"creator_user_id">> => Uid,
-        <<"scope">> => maps:get(<<"scope">>, Attach, <<"private">>),
-        <<"scope_ref">> => maps:get(<<"scope_ref">>, Attach, null),
-        <<"cipher">> => maps:get(<<"cipher">>, Attach, null),
-        <<"anchor_msg_id">> => maps:get(<<"anchor_msg_id">>, Attach, null),
-        <<"group_file_id">> => maps:get(<<"group_file_id">>, Attach, null),
-        <<"updated_at">> => CreatedAt,
-        <<"created_at">> => CreatedAt,
-        <<"status">> => 1,
-        <<"id">> => elib_tsid:generate(attachment)
-    }.
+    maps:merge(
+        #{
+            <<"file_hash256">> => Md5,
+            <<"mime_type">> => normalize_image_mime(MimeType),
+            <<"ext">> => Ext2,
+            <<"name">> => maps:get(<<"name">>, Attach),
+            <<"path">> => Path,
+            <<"url">> => maps:get(<<"url">>, Attach),
+            <<"size">> => ec_cnv:to_integer(maps:get(<<"size">>, Attach)),
+            <<"info">> => jsone:encode(Attach),
+            <<"referer_time">> => 1,
+            <<"last_referer_user_id">> => Uid,
+            <<"last_referer_at">> => CreatedAt,
+            <<"creator_user_id">> => Uid,
+            <<"scope">> => maps:get(<<"scope">>, Attach, <<"private">>),
+            <<"scope_ref">> => maps:get(<<"scope_ref">>, Attach, null),
+            <<"cipher">> => maps:get(<<"cipher">>, Attach, null),
+            <<"anchor_msg_id">> => maps:get(<<"anchor_msg_id">>, Attach, null),
+            <<"group_file_id">> => maps:get(<<"group_file_id">>, Attach, null),
+            <<"updated_at">> => CreatedAt,
+            <<"created_at">> => CreatedAt,
+            <<"status">> => 1,
+            <<"id">> => elib_tsid:generate(attachment)
+        },
+        storage_columns(Attach)
+    ).
+
+%% 仅复制调用方已冻结的位置；历史调用缺失时保留 NULL，绝不推断默认桶。
+storage_columns(Attach) ->
+    maps:from_list([
+        {K, maps:get(K, Attach, null)}
+     || K <- [
+            <<"storage_driver">>,
+            <<"storage_namespace">>,
+            <<"storage_container">>,
+            <<"storage_locator_sha256">>
+        ]
+    ]).
 
 %% ===================================================================
 %% Admin Query Functions
@@ -372,8 +387,15 @@ page(Page, Size, Opts) ->
     OffsetRef = <<"$", (integer_to_binary(OffsetN))/binary>>,
 
     DataSql = [
-        <<"SELECT id, file_hash256, mime_type, name, path, url, size, referer_time, status, created_at FROM ">>,
+        <<"SELECT id, file_hash256, mime_type, name, path, url, size, referer_time, status, created_at, lifecycle_state, ">>,
+        <<"COALESCE((SELECT q.job_state FROM attachment_object_deletion q WHERE q.path=a.path ">>,
+        <<"AND q.storage_driver=a.storage_driver AND q.storage_namespace=a.storage_namespace ">>,
+        <<"AND q.storage_container=a.storage_container AND q.storage_locator_sha256=a.storage_locator_sha256), 'unknown') AS physical_state, ">>,
+        <<"(SELECT q.last_error_code FROM attachment_object_deletion q WHERE q.path=a.path ">>,
+        <<"AND q.storage_driver=a.storage_driver AND q.storage_namespace=a.storage_namespace ">>,
+        <<"AND q.storage_container=a.storage_container AND q.storage_locator_sha256=a.storage_locator_sha256) AS deletion_block_reason FROM ">>,
         Tb,
+        <<" a">>,
         BaseWhere,
         <<" ORDER BY created_at DESC LIMIT ">>,
         LimitRef,
@@ -636,8 +658,8 @@ find_by_path_and_uid(ObjectKey, Uid) ->
 find_by_path(ObjectKey) ->
     Tb = tablename(),
     Sql =
-        <<"SELECT id, path, url, creator_user_id, scope, scope_ref FROM ", Tb/binary,
-            " WHERE path = $1 AND status >= 0 LIMIT 1">>,
+        <<"SELECT id, path, url, creator_user_id, scope, scope_ref, status, mime_type, storage_driver, storage_namespace, storage_container, storage_locator_sha256 FROM ",
+            Tb/binary, " WHERE path = $1 AND status >= 0 LIMIT 1">>,
     case elib_pg:query(Sql, [ObjectKey]) of
         {ok, [Row]} -> {ok, Row};
         {ok, []} -> {error, not_found};

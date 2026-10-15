@@ -13,7 +13,7 @@
 %
 % 与 attach_pending_repo/attachment_repo 的关系：不改动它们（个人域共享
 % 模块）；本模块提供 tx 版企业行操作，SQL 语义对齐 attach_logic 确认链
-% （pending 登记失败不阻断签发；转正后销账）。
+% （V5 登记失败关闭，确认保留会话身份；历史行按兼容规则销账）。
 %%%
 
 -export([
@@ -95,11 +95,12 @@ pending_find_tx(Conn, ObjectKey) ->
     Sql =
         <<
             "SELECT object_key, bucket, scope, creator_user_id, created_at,"
-            " client_upload_id, upload_content, session_state"
-            " FROM attach_pending WHERE object_key = $1"
+            " client_upload_id, upload_content, upload_registration, session_state, storage_driver,"
+            " storage_namespace, storage_container, storage_locator_sha256"
+            " FROM attach_pending WHERE object_key = $1 FOR UPDATE"
         >>,
     case elib_pg:query(Conn, Sql, [ObjectKey]) of
-        {ok, [Row | _]} -> {ok, Row};
+        {ok, [Row | _]} -> {ok, decode_pending(Row)};
         {ok, []} -> {error, not_found};
         {error, Reason} -> {error, Reason}
     end.
@@ -137,9 +138,10 @@ confirm_save_tx(Conn, ObjectKey, RealType, RealSize, InfoMap) ->
         <<
             "INSERT INTO attachment (id, file_hash256, mime_type, ext, name, path, url,"
             " size, info, referer_time, last_referer_user_id, last_referer_at,"
-            " creator_user_id, scope, scope_ref, cipher, status, created_at, updated_at)"
+            " creator_user_id, scope, scope_ref, cipher, status, created_at, updated_at,"
+            " storage_driver, storage_namespace, storage_container, storage_locator_sha256)"
             " VALUES ($1,$2,$3,$4,$5,$6,$6,$7,$8::jsonb,1,0,NOW(),0,'enterprise',$9,"
-            " null,1,NOW(),NOW())"
+            " null,1,NOW(),NOW(),$10,$11,$12,$13)"
             " ON CONFLICT (path) DO NOTHING RETURNING id"
         >>,
     Params = [
@@ -151,7 +153,11 @@ confirm_save_tx(Conn, ObjectKey, RealType, RealSize, InfoMap) ->
         ObjectKey,
         RealSize,
         jsone:encode(InfoMap),
-        maps:get(scope_ref, InfoMap, <<>>)
+        maps:get(scope_ref, InfoMap, <<>>),
+        maps:get(storage_driver, InfoMap, null),
+        maps:get(storage_namespace, InfoMap, null),
+        maps:get(storage_container, InfoMap, null),
+        maps:get(storage_locator_sha256, InfoMap, null)
     ],
     case elib_pg:query(Conn, Sql, Params) of
         {ok, [#{<<"id">> := Id} | _]} ->
@@ -222,3 +228,16 @@ ymd() ->
         {incomplete, B, _} -> B;
         _ -> <<>>
     end.
+
+%% PostgreSQL JSON codecs may return either decoded maps or JSON bytes.
+decode_pending(Row) ->
+    lists:foldl(
+        fun(K, Acc) ->
+            case maps:get(K, Acc, null) of
+                B when is_binary(B) -> Acc#{K => jsone:decode(B)};
+                _ -> Acc
+            end
+        end,
+        Row,
+        [<<"upload_content">>, <<"upload_registration">>]
+    ).

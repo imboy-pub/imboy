@@ -106,8 +106,8 @@ seed(Conn, Key, ScopeVal, Cipher, N) ->
     {ok, _, _} = epgsql:equery(
         Conn,
         "SELECT * FROM fn_v5_register_pending($1,'b',$2,101,"
-        "gen_random_uuid(),$3::jsonb,now()+interval '2 hours',"
-        "now()+interval '1 hour','garage','ns1','c1',$4)",
+        "gen_random_uuid(),$3::jsonb,now(),"
+        "now() - interval '2 hours','garage','ns1','c1',$4)",
         [Key, ScopeVal, registration_fixture(), locator_fixture(N)]
     ),
     {ok, _, _} = epgsql:equery(

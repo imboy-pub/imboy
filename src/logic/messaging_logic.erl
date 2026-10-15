@@ -8,6 +8,7 @@
     read_stats/2,
     history/5,
     history/6,
+    message_result/4,
     reaction_add/4,
     reaction_remove/4,
     reaction_list/2,
@@ -177,6 +178,51 @@ history(CurrentUid, ChatType, PeerIdEnc, AfterSeq, Limit, DID) ->
                     {error, <<"消息历史暂不可用，请确认服务已开启 msg_archive_enabled"/utf8>>,
                         ?ERR_INTERNAL_SERVER_ERROR}
             end
+    end.
+
+%% Positive archive evidence only: a missing/purged row never proves non-acceptance.
+message_result(Uid, Type, Peer, Id) ->
+    case valid_result_params(Type, Peer, Id) of
+        false ->
+            {error, <<"消息结果查询参数无效"/utf8>>, ?ERR_BAD_REQUEST};
+        true ->
+            case validate_history_params(Type, Peer, Uid) of
+                {ok, ConvKey, MinSeq} ->
+                    read_message_result(Uid, Type, Peer, Id, ConvKey, MinSeq);
+                {error, permission_denied} ->
+                    {error, <<"无权限访问该群消息"/utf8>>, ?ERR_ACCESS_DENIED};
+                {error, Reason} ->
+                    {error, Reason, ?ERR_BAD_REQUEST}
+            end
+    end.
+
+valid_result_params(Type, Peer, Id) when is_binary(Peer), is_binary(Id) ->
+    try binary_to_integer(Peer) of
+        N when N > 0, N =< 9223372036854775807 ->
+            integer_to_binary(N) =:= Peer andalso
+                (Type =:= <<"c2c">> orelse Type =:= <<"c2g">>) andalso
+                re:run(Id, <<"\\A[A-Za-z0-9_-]{1,50}\\z">>, [{capture, none}]) =:= match;
+        _ ->
+            false
+    catch
+        error:badarg -> false
+    end;
+valid_result_params(_, _, _) ->
+    false.
+
+read_message_result(Uid, Type, Peer, Id, ConvKey, MinSeq) ->
+    Base = #{
+        <<"message_id">> => Id,
+        <<"chat_type">> => Type,
+        <<"peer_id">> => binary_to_integer(Peer)
+    },
+    case msg_archive_ds:message_result(ConvKey, Id, Uid, MinSeq) of
+        {ok, [#{<<"conv_seq">> := Seq}]} when is_integer(Seq), Seq > 0 ->
+            {ok, Base#{<<"state">> => <<"committed">>, <<"conv_seq">> => Seq}};
+        {ok, _} ->
+            {ok, Base#{<<"state">> => <<"unknown">>}};
+        {error, _} ->
+            {error, <<"消息结果暂不可用"/utf8>>, ?ERR_INTERNAL_SERVER_ERROR}
     end.
 
 %% @private 验证参数并生成 conv_key

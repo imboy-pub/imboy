@@ -44,7 +44,6 @@
     confirm_asset/3,
     cleanup_asset/3,
     cleanup_pending_private/5,
-    delete_queued_object/3,
     scope_key/3
 ]).
 
@@ -82,7 +81,15 @@ reserve_and_put(OrgId, WorkspaceId, Descriptor, Payload, ObjectStore) ->
             N when is_integer(N) -> N;
             _ -> byte_size(Payload)
         end,
-    case eb_pg_asset_meta:insert_asset(OrgId, WorkspaceId, Descriptor#{size_bytes => Size}) of
+    D = Descriptor#{size_bytes => Size},
+    Reservation =
+        case maps:get(upload_subject, D, undefined) of
+            Subject when is_map(Subject) ->
+                eb_pg_asset_meta:reserve_registered_put(OrgId, WorkspaceId, D);
+            _ ->
+                eb_pg_asset_meta:insert_asset(OrgId, WorkspaceId, D)
+        end,
+    case Reservation of
         {ok, Row} ->
             %% V5.5（02 §15）：Descriptor 可携带冻结签名 Context
             %% （绝对 issued_at/expires_at），经 Meta 端到端传到对象适配器；
@@ -224,7 +231,7 @@ cleanup_pending_private(_, _, _, _, _) ->
 %% W4-01 入口收口（02 §4）：pending 字节回收不再直接删对象——发企业域
 %% 删除意图（fn_v5_intent_eb_delete：lifecycle→delete_intent + queue job
 %% + 审计；资格 claim CAS 已预检，fn 锁内再复核；身份缺失 → blocked job
-%% 明示，迁移 186），字节由队列 Worker 删（delete_queued_object/3）。
+%% 明示，迁移 186），字节仅由携带冻结位置快照的队列 Worker 删除。
 %% finish 与 fn 同事务同连接：fn 已持该行锁，跨连接 finish 会自等锁超时。
 delete_pending_object(Org, Ws, Id, _Key) ->
     elib_pg:with_tx(fun(Conn) ->
@@ -244,10 +251,4 @@ delete_pending_object(Org, Ws, Id, _Key) ->
             {error, Reason} ->
                 {error, {intent_failed, Reason}}
         end
-    end).
-
-%% Internal durable purge task; caller supplies the committed key after metadata is gone.
-delete_queued_object(Org, Ws, Key) ->
-    with_object_store(fun(ObjectStore) ->
-        ObjectStore:delete(Key, eb_pg_asset_meta:key_prefix(Org, Ws))
     end).
