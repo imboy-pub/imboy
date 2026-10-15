@@ -183,7 +183,11 @@ save(Key, Data) ->
                 end,
             case Result of
                 {ok, Count1} when is_integer(Count1), Count1 > 0 ->
-                    imboy_cache:invalidate(cache_key(Key));
+                    %% DB 写入成功即成功；缓存同步失效尽力而为——
+                    %% sync 进程不可用时 invalidate 返回 {error, sync_unavailable}，
+                    %% 不得反转为写失败（f93a842a 引入的回归）。
+                    _ = imboy_cache:invalidate(cache_key(Key)),
+                    ok;
                 {ok, 0} ->
                     {error, config_not_written};
                 {error, _} = Error1 ->

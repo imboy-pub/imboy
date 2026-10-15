@@ -577,8 +577,11 @@ flush_subscription_cache(Cid) ->
     end.
 
 %% 仅真实 COMMIT 后失效，连接归还后动作不得使用事务 Conn。
+%% 缓存失效尽力而为：sync 不可用时 invalidate 返回 {error,_}，
+%% 不得判为提交后失败（否则订阅写入成功却向调用方报错）。
 defer_subscription_cache(Conn, Cid) ->
     elib_pg:after_commit(Conn, {channel_subscribers, Cid}, fun() ->
-        ok = imboy_cache:invalidate(?CHANNEL_SUBS_KEY(Cid)),
-        imboy_cache:invalidate(?CHANNEL_CACHE_KEY(Cid))
+        _ = imboy_cache:invalidate(?CHANNEL_SUBS_KEY(Cid)),
+        _ = imboy_cache:invalidate(?CHANNEL_CACHE_KEY(Cid)),
+        ok
     end).
