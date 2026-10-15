@@ -524,9 +524,21 @@ a05(Scope) ->
 
 cleanup_effects(Scope, Expired, Fresh, Active, Foreign) ->
     {Org, Ws} = ?L:tenant(Scope),
+    %% W4-01 入口收口（02 §4）：cleanup_pending 只发删除意图（身份缺失 →
+    %% blocked job 明示，迁移 186），字节由队列 Worker 删——对象仍在；
+    %% metadata 终态（deleted + flag 清）照常收口。
     Checks = [
-        {expired_object_removed, ?L:object_present(Org, Ws, Expired) =:= false},
+        {expired_object_queued_not_removed, ?L:object_present(Org, Ws, Expired) =:= true},
         {expired_metadata_deleted, ?L:asset_status(Org, Ws, Expired) =:= deleted},
+        {expired_job_enqueued,
+            eb_pg_test_fixture:scalar(
+                <<
+                    "SELECT COUNT(*) FROM enterprise_asset_delete_queue"
+                    " WHERE organization_id=$1 AND workspace_id=$2 AND asset_id=$3"
+                    " AND job_state='blocked'"
+                >>,
+                [Org, Ws, Expired]
+            ) =:= 1},
         {fresh_object_alive, ?L:object_present(Org, Ws, Fresh) =:= true},
         {active_object_alive, ?L:object_present(Org, Ws, Active) =:= true},
         {foreign_object_alive,

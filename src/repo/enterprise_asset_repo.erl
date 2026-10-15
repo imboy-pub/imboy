@@ -94,7 +94,8 @@ pending_add_tx(Conn, ObjectKey, Bucket, Scope) ->
 pending_find_tx(Conn, ObjectKey) ->
     Sql =
         <<
-            "SELECT object_key, bucket, scope, creator_user_id, created_at"
+            "SELECT object_key, bucket, scope, creator_user_id, created_at,"
+            " client_upload_id, upload_content, session_state"
             " FROM attach_pending WHERE object_key = $1"
         >>,
     case elib_pg:query(Conn, Sql, [ObjectKey]) of
@@ -128,7 +129,7 @@ pending_remove_tx(Conn, ObjectKey) ->
     non_neg_integer(),
     map()
 ) ->
-    {ok, pos_integer()} | {error, term()}.
+    {ok, pos_integer(), First :: boolean()} | {error, term()}.
 confirm_save_tx(Conn, ObjectKey, RealType, RealSize, InfoMap) ->
     AttId = next_attachment_id(),
     Ext = filename:extension(ObjectKey),
@@ -139,8 +140,7 @@ confirm_save_tx(Conn, ObjectKey, RealType, RealSize, InfoMap) ->
             " creator_user_id, scope, scope_ref, cipher, status, created_at, updated_at)"
             " VALUES ($1,$2,$3,$4,$5,$6,$6,$7,$8::jsonb,1,0,NOW(),0,'enterprise',$9,"
             " null,1,NOW(),NOW())"
-            " ON CONFLICT (path) DO UPDATE SET referer_time = attachment.referer_time + 1,"
-            " updated_at = NOW() RETURNING id"
+            " ON CONFLICT (path) DO NOTHING RETURNING id"
         >>,
     Params = [
         AttId,
@@ -154,9 +154,16 @@ confirm_save_tx(Conn, ObjectKey, RealType, RealSize, InfoMap) ->
         maps:get(scope_ref, InfoMap, <<>>)
     ],
     case elib_pg:query(Conn, Sql, Params) of
-        {ok, [#{<<"id">> := Id} | _]} -> {ok, Id};
-        {ok, _} -> {ok, AttId};
-        {error, Reason} -> {error, Reason}
+        {ok, [#{<<"id">> := Id} | _]} ->
+            {ok, Id, true};
+        {ok, []} ->
+            %% W2-02 confirm 幂等：重放复用既有行（不递增 referer），返回原 id
+            case find_by_object_key_tx(Conn, ObjectKey) of
+                {ok, #{<<"id">> := Id2}} -> {ok, Id2, false};
+                _ -> {error, confirm_row_vanished}
+            end;
+        {error, Reason} ->
+            {error, Reason}
     end.
 
 %% @doc 校验 object_key 已被本 (org, app) confirm（status=1 且 scope='enterprise'
@@ -167,7 +174,8 @@ find_confirmed_tx(Conn, OrgId, AppId, ObjectKey) ->
     ScopeRef = scope_ref(OrgId, AppId),
     Sql =
         <<
-            "SELECT id, path, name, mime_type, size, scope, scope_ref, info"
+            "SELECT id, path, name, mime_type, size, scope, scope_ref, info,"
+            " lifecycle_state"
             " FROM attachment WHERE path = $1 AND status = 1 AND scope = 'enterprise'"
             " AND scope_ref = $2"
         >>,

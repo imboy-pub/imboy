@@ -237,15 +237,15 @@ claim_loop(RetentionDays, ClaimedBy, Budget, Done) ->
             {ok, Done}
     end.
 
-%% 单任务执行：钱包门 → 转移 + 主事务 → Garage 入队 → 终态
+%% 单任务执行：钱包门 → 转移 + 主事务（同事务发删除意图）→ 终态。
+%% W4-01：字节删除全部由删除队列 Worker 执行，本入口不触存储。
 execute_job(Job) ->
     #{<<"id">> := JobId, <<"user_id">> := Uid} = Job,
     MaxAttempts = application:get_env(imboy, user_deletion_max_attempts, 5),
     case balance_gate(Uid) of
         ok ->
             case execute_deletion(Uid) of
-                {ok, Keys} ->
-                    enqueue_garage_deletes(Keys),
+                {ok, _QueuedKeys} ->
                     _ = user_deletion_job_repo:mark_completed(JobId),
                     ok;
                 {error, Reason} ->
@@ -283,26 +283,27 @@ balance_gate(Uid) ->
             {error, Reason}
     end.
 
-%% 执行删除：附件收集 → 转移 + 主事务（同一事务），返回待删对象键
+%% 执行删除：附件收集 → 同事务发删除意图 → 转移 + 主事务，返回已发意图键。
+%% W4-01 入口收口（02 §4/§5）：不再 DELETE 行/事务后直接删字节——个人可证明
+%% 附件在同事务发 metadata 域删除意图（fn 锁后复核资格），字节由 Worker 删；
+%% 资格不满足（intent_conflict）= 保守保留（行在=隔离记录），不阻塞注销。
 execute_deletion(Uid) ->
     elib_pg:with_tx(fun(Conn) ->
         {ok, Keys} = user_deletion_executor:collect_attachment_keys_tx(Conn, Uid),
+        Queued = lists:filter(
+            fun(Key) ->
+                case attachment_repo:intent_ordinary_delete_tx(Conn, Key, <<"account deletion">>) of
+                    ok -> true;
+                    %% 资格不满足/已在队列/无行：保守保留
+                    {error, intent_conflict} -> false;
+                    {error, tombstone} -> false;
+                    {error, not_found} -> false;
+                    {error, R} -> erlang:throw({abort_tx, R})
+                end
+            end,
+            Keys
+        ),
         ok = user_deletion_executor:transfer_ownerships_tx(Conn, Uid),
         ok = user_deletion_executor:execute_main_tx(Conn, Uid),
-        {ok, Keys}
+        {ok, Queued}
     end).
-
-%% Garage S3 对象删除（外部资源，事务后 best-effort；
-%% 失败仅记日志——DB 引用已清，重跑由对象键幂等兜底）
-enqueue_garage_deletes(Keys) ->
-    lists:foreach(
-        fun(Key) ->
-            try
-                ok = elib_oss:delete_object(Key)
-            catch
-                _:Err ->
-                    ?ERROR_LOG([user_deletion_garage_delete_failed, Key, Err])
-            end
-        end,
-        Keys
-    ).

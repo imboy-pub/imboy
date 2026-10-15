@@ -22,6 +22,7 @@
     cleanup_asset/3,
     claim_pending_cleanup/5,
     finish_pending_cleanup/3,
+    finish_pending_cleanup_tx/4,
     object_key/3,
     register_v5/9,
     v5_session/3,
@@ -390,6 +391,24 @@ claim_pending_in(Conn, Org, Ws, Id, Now, Ttl) ->
 finish_pending_cleanup(Org, Ws, Id) ->
     case
         elib_pg:execute(
+            <<
+                "UPDATE enterprise_asset SET pending_object_delete=false,"
+                "updated_at=now(),version=version+1 WHERE organization_id=$1 AND workspace_id=$2"
+                " AND id=$3 AND status='deleted' AND pending_object_delete"
+            >>,
+            [Org, Ws, Id]
+        )
+    of
+        {ok, _} -> ok;
+        {error, Reason} -> {error, Reason}
+    end.
+
+%% W4-01：调用方事务内收口 metadata 终态（与意图 fn 同连接——fn 已持该行
+%% 锁，跨连接 finish 会自等锁超时）。0 行（flag 已清）按成功裁决（幂等）。
+finish_pending_cleanup_tx(Conn, Org, Ws, Id) ->
+    case
+        elib_pg:execute(
+            Conn,
             <<
                 "UPDATE enterprise_asset SET pending_object_delete=false,"
                 "updated_at=now(),version=version+1 WHERE organization_id=$1 AND workspace_id=$2"

@@ -40,7 +40,10 @@ cases({ok, _Conn}) ->
         {timeout, 90, fun cross_tenant_assets_never_leak/0},
         {timeout, 90, fun post_append_echoes_bound_assets/0},
         {timeout, 90, fun post_replay_echoes_same_assets/0},
-        {timeout, 90, fun query_count_is_constant_per_page/0},
+        {timeout, 90, fun one_invalid_asset_all_rollback/0},
+        {timeout, 90, fun cross_org_and_workspace_bind_rejected/0},
+        {timeout, 90, fun wrong_owner_bind_rejected/0},
+        {timeout, 60, fun query_count_is_constant_per_page/0},
         {timeout, 60, fun frozen_sql_shape_gates/0}
     ];
 cases(Other) ->
@@ -235,6 +238,147 @@ post_replay_echoes_same_assets() ->
     end.
 
 %% ===================================================================
+%% 5b. W3-03 绑定资格与全回滚（02 §4/§5：墓碑拒新增引用；无效资产全回滚；
+%%     跨组织/跨 Workspace/非上传人拒绝——错误形状与「不存在」不区分）
+%% ===================================================================
+
+one_invalid_asset_all_rollback() ->
+    Scope = ?FIX:new_scope(),
+    try
+        {Org, Ws} = tenant(Scope),
+        Conv = maps:get(conversation_id, Scope),
+        Base = ?FIX:id(),
+        U1 = Base,
+        U2 = Base + 1,
+        ok = seed_unbound_asset(Org, Ws, Conv, U1, <<"好资产.png"/utf8>>),
+        ok = seed_unbound_asset(Org, Ws, Conv, U2, <<"墓碑资产.png"/utf8>>),
+        %% U2 已进删除意图：02 §5「删除意图先提交 → 不再允许新增引用」
+        ok =
+            ?FIX:exec(
+                <<
+                    "UPDATE enterprise_asset SET lifecycle_state='delete_intent'"
+                    " WHERE organization_id=$1 AND workspace_id=$2 AND id=$3"
+                    " AND lifecycle_state='live'"
+                >>,
+                [Org, Ws, U2]
+            ),
+        {error, _} = append_with_assets(Scope, <<"csbe03-rollback-1">>, [U1, U2]),
+        %% canonical 单事务整体回滚：消息不存在、两个资产均未绑定
+        ?assertEqual(
+            false,
+            ?FIX:scalar(
+                <<
+                    "SELECT EXISTS (SELECT 1 FROM enterprise_message"
+                    " WHERE organization_id=$1 AND workspace_id=$2"
+                    " AND conversation_id=$3 AND client_msg_id=$4)"
+                >>,
+                [Org, Ws, Conv, <<"csbe03-rollback-1">>]
+            )
+        ),
+        ?assertEqual(1, unbound_count(Org, Ws, U1)),
+        ?assertEqual(1, unbound_count(Org, Ws, U2)),
+        %% 墓碑资产单独也不可绑；好资产可正常绑定（资格只挡墓碑）
+        {error, _} = append_with_assets(Scope, <<"csbe03-rollback-2">>, [U2]),
+        {ok, _} = append_with_assets(Scope, <<"csbe03-rollback-3">>, [U1])
+    after
+        ?FIX:cleanup(Scope)
+    end.
+
+cross_org_and_workspace_bind_rejected() ->
+    Scope = ?FIX:new_scope(),
+    try
+        Org = maps:get(org_id, Scope),
+        Conv = maps:get(conversation_id, Scope),
+        OtherOrg = maps:get(other_org_id, Scope),
+        OtherWs = maps:get(other_workspace_id, Scope),
+        Foreign1 = ?FIX:id(),
+        %% 他 org 资产（conversation 属其自身租户：FK 复合键 org/ws/conv）
+        ok = seed_asset_row(
+            OtherOrg,
+            OtherWs,
+            null,
+            null,
+            Foreign1,
+            null,
+            #{file_name => <<"他org.png"/utf8>>}
+        ),
+        {error, _} = append_with_assets(Scope, <<"csbe03-xorg-1">>, [Foreign1]),
+        %% 零副作用：消息不存在、外部资产仍 unbound
+        ?assertEqual(1, unbound_count(OtherOrg, OtherWs, Foreign1)),
+        %% wrong_workspace：请求 workspace 与 org 不一致（workspace 属另一 org）
+        %% ——tenant 归属门在触库前拒绝
+        {error, _} =
+            eb_message_app:append_message(Org, #{
+                workspace_id => OtherWs,
+                conversation_id => Conv,
+                client_msg_id => <<"csbe03-xws-1">>,
+                body => <<>>,
+                sender_type => contact,
+                contact_id => maps:get(contact_id, Scope),
+                asset_ids => [Foreign1],
+                key_ref => ?FIX:key_ref(1),
+                accepted_at => now_secs()
+            }),
+        ?assertEqual(0, message_count(Org, OtherWs, <<"csbe03-xws-1">>))
+    after
+        ?FIX:cleanup(Scope)
+    end.
+
+message_count(Org, Ws, ClientMsgId) ->
+    ?FIX:scalar(
+        <<
+            "SELECT COUNT(*) FROM enterprise_message"
+            " WHERE organization_id=$1 AND workspace_id=$2 AND client_msg_id=$3"
+        >>,
+        [Org, Ws, ClientMsgId]
+    ).
+
+wrong_owner_bind_rejected() ->
+    Scope = ?FIX:new_scope(),
+    try
+        Org = maps:get(org_id, Scope),
+        Conv = maps:get(conversation_id, Scope),
+        Actor = maps:get(actor_user_id, Scope),
+        Peer = maps:get(peer_user_id, Scope),
+        U1 = ?FIX:id(),
+        %% 他人上传的资产（member 消息只可绑本人上传）
+        ok = seed_unbound_asset(
+            Org,
+            maps:get(workspace_id, Scope),
+            Conv,
+            U1,
+            <<"他人上传.png"/utf8>>,
+            #{uploader => Peer}
+        ),
+        {error, _} =
+            eb_message_app:append_message(Org, #{
+                workspace_id => maps:get(workspace_id, Scope),
+                conversation_id => Conv,
+                client_msg_id => <<"csbe03-owner-1">>,
+                body => <<>>,
+                sender_type => business_identity,
+                identity_id => maps:get(sales_identity_id, Scope),
+                actor_user_id => Actor,
+                asset_ids => [U1],
+                key_ref => ?FIX:key_ref(1),
+                accepted_at => now_secs()
+            }),
+        ?assertEqual(1, unbound_count(Org, maps:get(workspace_id, Scope), U1))
+    after
+        ?FIX:cleanup(Scope)
+    end.
+
+unbound_count(Org, Ws, AssetId) ->
+    ?FIX:scalar(
+        <<
+            "SELECT COUNT(*) FROM enterprise_asset"
+            " WHERE organization_id=$1 AND workspace_id=$2 AND id=$3"
+            " AND message_id IS NULL"
+        >>,
+        [Org, Ws, AssetId]
+    ).
+
+%% ===================================================================
 %% 6. 查询数不随消息数线性增加（meck passthrough 计数）
 %% ===================================================================
 
@@ -405,6 +549,18 @@ seed_bound_asset(Org, Ws, Conv, MsgId, AssetId, Opts) ->
 seed_unbound_asset(Org, Ws, Conv, AssetId, FileName) ->
     seed_asset_row(Org, Ws, Conv, null, AssetId, null, #{file_name => FileName}).
 
+%% 未绑定 + 指定上传人（W3-03 wrong_owner 负例：member 消息只绑本人上传）。
+seed_unbound_asset(Org, Ws, Conv, AssetId, FileName, Opts) ->
+    seed_asset_row(
+        Org,
+        Ws,
+        Conv,
+        null,
+        AssetId,
+        null,
+        maps:merge(#{file_name => FileName}, Opts)
+    ).
+
 seed_asset_row(Org, Ws, Conv, MsgId, AssetId, RetainMs, Opts) ->
     Status = maps:get(status, Opts, <<"active">>),
     FileName = maps:get(file_name, Opts, null),
@@ -422,7 +578,7 @@ seed_asset_row(Org, Ws, Conv, MsgId, AssetId, RetainMs, Opts) ->
             " (id, organization_id, workspace_id, conversation_id, message_id,"
             "  uploaded_by_user_id, object_key, object_hash, mime, size_bytes, status,"
             "  file_name, retain_until, version)"
-            " VALUES ($1,$2,$3,$4,$5,NULL,$6,$7,$8,$9,$10,$11,"
+            " VALUES ($1,$2,$3,$4,$5,$13,$6,$7,$8,$9,$10,$11,"
             "         CASE WHEN $12::bigint IS NULL THEN NULL"
             "              ELSE to_timestamp($12::bigint/1000) END,"
             "         1)"
@@ -439,7 +595,8 @@ seed_asset_row(Org, Ws, Conv, MsgId, AssetId, RetainMs, Opts) ->
             2048,
             Status,
             FileName,
-            RetainMs
+            RetainMs,
+            maps:get(uploader, Opts, null)
         ]
     ).
 

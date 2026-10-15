@@ -15,7 +15,8 @@
 %% @param Uid 用户ID
 %% @param Attach 附件信息列表
 %% @returns ok
--export([save/4, confirmation_row_tx/2]).
+-export([save/4, confirmation_row_tx/2, confirm_if_absent_tx/4]).
+-export([bind_reference_lock_tx/2, refresh_gc_verified_tx/2]).
 
 %% @doc 查询附件统计信息（管理后台用）
 -export([stats/0]).
@@ -39,6 +40,9 @@
 
 %% @doc 获取孤儿附件列表（供物理删除）
 -export([orphan_list_for_delete/1, delete_orphan_tx/3]).
+%% W4-01 入口收口：metadata 域删除意图（fn_v5_intent_ordinary_delete 包装）
+-export([intent_ordinary_delete_tx/3, intent_ordinary_delete/2, orphan_path_tx/3]).
+-export([intent_purged_delete_tx/3]).
 
 %% @doc 物理删除数据库行（S3 删除成功后调用）
 -export([hard_delete_by_ids/1]).
@@ -63,6 +67,7 @@
 -include_lib("eunit/include/eunit.hrl").
 -include("log.hrl").
 -include_lib("kernel/include/logger.hrl").
+-include_lib("epgsql/include/epgsql.hrl").
 
 %% image mime 归一为标准子类型（eunit 验收；修复前 image/jpeg 被扩展名
 %% 重写成 image/jpg），定义见文件尾 normalize_image_mime/1
@@ -170,7 +175,7 @@ confirmation_row_tx(Conn, ObjectKey) ->
     case
         elib_pg:query(
             Conn,
-            <<"SELECT id, scope, scope_ref, creator_user_id FROM public.attachment WHERE path=$1 FOR UPDATE">>,
+            <<"SELECT id, scope, scope_ref, creator_user_id, cipher FROM public.attachment WHERE path=$1 FOR UPDATE">>,
             [ObjectKey]
         )
     of
@@ -178,6 +183,134 @@ confirmation_row_tx(Conn, ObjectKey) ->
         {ok, []} -> {ok, not_found};
         {error, _} = Error -> Error
     end.
+
+%% W3-01 引用首绑/释放同锁（02 §4）：业务关系写入口先取与 intent/GC 相同的
+%% 对象事务锁（迁移 168 的 hashtextextended(path,168)），锁内复核 lifecycle——
+%% delete_intent/deleted（墓碑）拒绝新增引用，绑定事务改变零业务行。
+-spec bind_reference_lock_tx(any(), binary()) -> ok | {error, tombstone | term()}.
+bind_reference_lock_tx(Conn, Path) ->
+    case
+        elib_pg:query(
+            Conn,
+            <<
+                "SELECT pg_advisory_xact_lock(hashtextextended($1,168)),"
+                " lifecycle_state FROM public.attachment WHERE path=$1"
+                " FOR UPDATE"
+            >>,
+            [Path]
+        )
+    of
+        {ok, [#{<<"lifecycle_state">> := <<"live">>}]} ->
+            ok;
+        {ok, [#{<<"lifecycle_state">> := _}]} ->
+            {error, tombstone};
+        {ok, []} ->
+            %% 尚无元数据行（上传绑定前）：仅取对象锁，与 intent 锁域对齐
+            case
+                elib_pg:query(
+                    Conn,
+                    <<"SELECT pg_advisory_xact_lock(hashtextextended($1,168))">>,
+                    [Path]
+                )
+            of
+                {ok, _} -> ok;
+                {error, R} -> {error, R}
+            end;
+        {error, R} ->
+            {error, R}
+    end.
+
+%% W3-01 gc_verified 覆盖证明（02 §5）：gc_verified = 「引用零」的可证明态。
+%% W3-02 两域统一资格（02 §5 统一判据 + 企业应用附件行）：proven 与 intent
+%% 函数锁后复核同一引用集（group_file 绑定 / 收藏 hash / moment 媒体 /
+%% WAR 行 / EAR hold 或未 purged）+ 明文 + 完整位置；绑定活跃/密文/位置
+%% 缺失/治理 hold 一律 false。资格标志陈旧 true 不破坏安全——intent 在
+%% 对象锁内重查全部引用。
+-spec refresh_gc_verified_tx(any(), binary()) -> {ok, boolean()} | {error, term()}.
+refresh_gc_verified_tx(Conn, Path) ->
+    Sql =
+        <<
+            "UPDATE public.attachment a SET gc_verified = c.proven"
+            " FROM (SELECT a2.path,"
+            "   (a2.cipher IS NULL"
+            "    AND a2.storage_driver IS NOT NULL AND a2.storage_namespace IS NOT NULL"
+            "    AND a2.storage_container IS NOT NULL AND a2.storage_locator_sha256 IS NOT NULL"
+            "    AND (a2.group_file_id IS NULL OR NOT EXISTS"
+            "      (SELECT 1 FROM public.group_file gf WHERE gf.id = a2.group_file_id))"
+            "    AND NOT EXISTS (SELECT 1 FROM public.user_collect uc"
+            "      WHERE uc.attach_file_hash256 <> '' AND uc.attach_file_hash256 = a2.file_hash256"
+            "        AND uc.status = 1)"
+            "    AND NOT EXISTS (SELECT 1 FROM public.moment_post mp"
+            "      WHERE position(a2.path in mp.media::text) > 0)"
+            "    AND NOT EXISTS (SELECT 1 FROM public.workspace_attachment_retention war"
+            "      WHERE war.attachment_id = a2.id)"
+            "    AND NOT EXISTS (SELECT 1 FROM public.enterprise_attachment_retention ear"
+            "      WHERE ear.attachment_id = a2.id"
+            "        AND (ear.hold_state = 'held'"
+            "             OR ear.purge_state IS DISTINCT FROM 'purged'))"
+            "   ) AS proven"
+            "  FROM public.attachment a2 WHERE a2.path = $1) c"
+            " WHERE a.path = c.path RETURNING a.gc_verified"
+        >>,
+    case elib_pg:query(Conn, Sql, [Path]) of
+        {ok, [#{<<"gc_verified">> := V}]} -> {ok, V};
+        {ok, []} -> {error, not_found};
+        {error, R} -> {error, R}
+    end.
+
+%% W2-02 confirm 幂等（04-tasks 实现边界）：metadata insert-if-absent 与真实
+%% 引用新增拆开——confirm 重放不再递增 referer（收藏/转发等真实引用仍走
+%% save/4 递增）。命中既有行时复用原 id 返回 First=false，由调用方对照
+%% confirmation_row_tx 的行做 scope/cipher 冲突复核。
+-spec confirm_if_absent_tx(any(), binary(), integer() | binary(), map()) ->
+    {ok, Id :: integer() | binary(), First :: boolean()} | {error, term()}.
+confirm_if_absent_tx(Conn, CreatedAt, Uid, Attach) ->
+    Md5 = maps:get(<<"file_hash256">>, Attach, maps:get(<<"md5">>, Attach, <<>>)),
+    Path2 = ec_cnv:to_binary(maps:get(<<"path">>, Attach)),
+    Attach2 = build_confirm_row(CreatedAt, Uid, Attach, Md5),
+    {Sql, Params} = elib_pg_sql:insert(tablename(), Attach2),
+    case elib_pg:query(Conn, [Sql, <<" ON CONFLICT (path) DO NOTHING RETURNING id">>], Params) of
+        {ok, [#{<<"id">> := Id}]} ->
+            {ok, Id, true};
+        {ok, []} ->
+            case confirmation_row_tx(Conn, Path2) of
+                {ok, #{<<"id">> := Id2}} -> {ok, Id2, false};
+                {ok, not_found} -> {error, confirm_row_vanished};
+                {error, _} = Error -> Error
+            end;
+        {error, _} = Error ->
+            Error
+    end.
+
+%% confirm 行构造：与 save/4 同列集（confirm 重放与首确认写同一形状），
+%% mime 归一化/双读兼容/TSID 预生成语义一致，仅 ON CONFLICT 行为不同。
+build_confirm_row(CreatedAt, Uid, Attach, Md5) ->
+    MimeType = maps:get(<<"mime_type">>, Attach),
+    Path = maps:get(<<"path">>, Attach),
+    Ext2 = ec_cnv:to_binary(filename:extension(Path)),
+    #{
+        <<"file_hash256">> => Md5,
+        <<"mime_type">> => normalize_image_mime(MimeType),
+        <<"ext">> => Ext2,
+        <<"name">> => maps:get(<<"name">>, Attach),
+        <<"path">> => Path,
+        <<"url">> => maps:get(<<"url">>, Attach),
+        <<"size">> => ec_cnv:to_integer(maps:get(<<"size">>, Attach)),
+        <<"info">> => jsone:encode(Attach),
+        <<"referer_time">> => 1,
+        <<"last_referer_user_id">> => Uid,
+        <<"last_referer_at">> => CreatedAt,
+        <<"creator_user_id">> => Uid,
+        <<"scope">> => maps:get(<<"scope">>, Attach, <<"private">>),
+        <<"scope_ref">> => maps:get(<<"scope_ref">>, Attach, null),
+        <<"cipher">> => maps:get(<<"cipher">>, Attach, null),
+        <<"anchor_msg_id">> => maps:get(<<"anchor_msg_id">>, Attach, null),
+        <<"group_file_id">> => maps:get(<<"group_file_id">>, Attach, null),
+        <<"updated_at">> => CreatedAt,
+        <<"created_at">> => CreatedAt,
+        <<"status">> => 1,
+        <<"id">> => elib_tsid:generate(attachment)
+    }.
 
 %% ===================================================================
 %% Admin Query Functions
@@ -325,10 +458,21 @@ bind_moment_scope_ref(Conn, Uid, ObjectKeys, MomentId) when is_integer(Uid), Uid
         _ ->
             Tb = tablename(),
             %% Client-supplied object paths do not prove ownership.
+            %% W3-01：首绑与 intent/GC 同对象锁（bind_reference_lock_tx）；
+            %% 墓碑（delete_intent/deleted）拒绝新增引用——绑定事务改变零业务行。
             Sql =
                 <<"UPDATE ", Tb/binary, " SET scope_ref = $1, updated_at = $2 ",
                     "WHERE scope = 'moment' AND status = 1 AND scope_ref IS NULL AND path = ANY($3) ",
-                    "AND creator_user_id = $4">>,
+                    "AND creator_user_id = $4 AND lifecycle_state = 'live'">>,
+            lists:foreach(
+                fun(Key) ->
+                    case bind_reference_lock_tx(Conn, Key) of
+                        ok -> ok;
+                        {error, Reason} -> throw({abort_tx, {reference_bind, Key, Reason}})
+                    end
+                end,
+                ObjectKeys
+            ),
             case
                 elib_pg:execute(Conn, Sql, [
                     ec_cnv:to_binary(MomentId),
@@ -395,6 +539,55 @@ delete_orphan_tx(Conn, Id, Opts) ->
             <<" a WHERE a.id = $2 AND ">>,
             orphan_predicate(),
             <<" RETURNING a.path,a.scope">>
+        ],
+        [maps:get(age_days, Opts, 30), Id]
+    ).
+
+%% W4-01 入口收口（02 §4/§5）：metadata 域删除意图（迁移 179 fn）。
+%% 资格全部在 fn 内锁后复核：gc_verified=true + 无治理行/绑定/收藏/moment
+%% + 能力窗耗尽。23510=资格不满足（保守保留，调用方按 skipped 裁决）；
+%% 23505=tombstone（job 已在队列）；P0002=无 metadata 行。
+-spec intent_ordinary_delete_tx(pid() | any(), binary(), binary()) ->
+    ok | {error, intent_conflict | tombstone | not_found | term()}.
+intent_ordinary_delete_tx(Conn, Path, Reason) ->
+    case elib_pg:query(Conn, <<"SELECT fn_v5_intent_ordinary_delete($1, $2)">>, [Path, Reason]) of
+        {ok, _} -> ok;
+        {error, #error{code = <<"23510">>}} -> {error, intent_conflict};
+        {error, #error{code = <<"23505">>}} -> {error, tombstone};
+        {error, #error{code = <<"P0002">>}} -> {error, not_found};
+        {error, R} -> {error, R}
+    end.
+
+%% W4-01：EAR purge 专用意图（迁移 185）——EAR 治理终态（purged）即资格
+%% 权威（密文企业附件的统一资格谓词恒 false）。仅同事务已置 purged 的
+%% 行可发；23510=非 purged/非 live。
+-spec intent_purged_delete_tx(pid() | any(), binary(), binary()) ->
+    ok | {error, intent_conflict | tombstone | not_found | term()}.
+intent_purged_delete_tx(Conn, Path, Reason) ->
+    case elib_pg:query(Conn, <<"SELECT fn_v5_intent_purged_delete($1, $2)">>, [Path, Reason]) of
+        {ok, _} -> ok;
+        {error, #error{code = <<"23510">>}} -> {error, intent_conflict};
+        {error, #error{code = <<"23505">>}} -> {error, tombstone};
+        {error, #error{code = <<"P0002">>}} -> {error, not_found};
+        {error, R} -> {error, R}
+    end.
+
+-spec intent_ordinary_delete(binary(), binary()) ->
+    ok | {error, intent_conflict | tombstone | not_found | term()}.
+intent_ordinary_delete(Path, Reason) ->
+    elib_pg:with_tx(fun(Conn) -> intent_ordinary_delete_tx(Conn, Path, Reason) end).
+
+%% 孤儿意图的只读定位（收口后行删除由队列 ack 协议负责，意图阶段不删行）。
+-spec orphan_path_tx(pid() | any(), integer(), map()) -> {ok, [map()]} | {error, term()}.
+orphan_path_tx(Conn, Id, Opts) ->
+    elib_pg:query(
+        Conn,
+        [
+            <<"SELECT a.path, a.scope FROM ">>,
+            tablename(),
+            <<" a WHERE a.id = $2 AND ">>,
+            orphan_predicate(),
+            <<" LIMIT 1">>
         ],
         [maps:get(age_days, Opts, 30), Id]
     ).
