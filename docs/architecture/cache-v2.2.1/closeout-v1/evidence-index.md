@@ -1,5 +1,23 @@
 # C14 证据索引与复算盘点 — evidence-index.md
 
+> 2026-10-15 接续核验：以下 2026-10-12 盘点保留历史。
+> 当前源码观察点为 `4c48e666`；新运行根
+> `/Users/leeyi/.codex-runs/cache-closeout-round3-20261015/`。
+> 第 4 轮 `zcode-closeout-20261014` 原运行根当前不存在，旧 manifest 和矩阵回执
+> 不能复核，不继承为新候选 PASS。15 套件首轮串行预验完成：12 项 exit=0、
+> 3 项 exit=2；metadata_component 为 9 过/9 超时/有取消，冻结前置不满足。
+> `preflight.json` 记录活动进程；`source-inputs-provisional.json` 仅为编译前盘点；
+> `c14/` 含 96 项语义复算及 verifier 原始命令/exit/log 摘要；`c11/` 含消费链
+> 探针草案和离线检查；`raw/w0_anchor/` 与 `w0-anchor-copy-receipt.json` 保存
+> r7/r8 原生文件及复制摘要。verifier 合成 fixture 不计入产品回执。
+> 本次静态通过：IDs/计划摘要、53/53 verifier 自测、63 条告警规则检查及规则测试。
+> `targeted/results.json` 与各模块日志保存首轮真实结果；
+> `targeted-config-recheck/` 保存配置适配后 capability 15/15、journal Test passed，
+> 两项均 exit=0；原始失败保留。`prevalidation-evidence-index.json` 保存日志摘要。
+> 所有这些结果均为冻结前预验，不是最终候选回执；metadata 不再重试。
+> 本次 C09/C10/QR/迁移/全量/性能和实际 C11 消费均未运行。当前判定与未闭合集合
+> 以 closeout-report-v1.md 文末“本次接续核验”为准。
+
 > 任务：CACHE_V221_BACKEND_CLOSEOUT_V1 / C14 证据复算前置盘点
 > 本文性质：只读取证产出的证据清单（EVIDENCE_INDEX / NOT_EXECUTED）。
 > 盘点快照时点：2026-10-12T01:33:11Z（本地 2026-10-12 09:33:11 +0800）

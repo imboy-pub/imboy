@@ -4,6 +4,7 @@
 > 报告版本：closeout-report-v1（DRAFT_SKELETON）
 > 起草时间：2026-10-12（Asia/Shanghai）
 > 当前工作树状态：**PARTIAL——旧候选结论不适用于后续未冻结的实现变更**。
+> 2026-10-15 本次接续状态：**预验证未全绿 / v3 未冻结**；当前判定见文末接续核验。
 > 以下 f1aa1ce0 / git 2873dbfd 及其签发数据作为历史候选记录保留。
 > 绑定：收口计划 `backend-closeout-plan-v1.md`（SHA-256 见 baseline.json）；
 > 原计划 `w0/plan-v2.2.1.md` SHA-256 `a5523ee7...c713`；
@@ -633,3 +634,67 @@ candidate-manifest-v3.json）。C09×2/C10/QR 绑定 b0f62c81（efc92a3c 仅改
 3. 迁移 apply/rollback 往返：环境阻塞（共享 PG 4323 外部占用）。
 4. 性能七臂：未产出。
 5. PRODUCTION_ACCEPTANCE：NOT_ISSUED（不变）。
+
+## 本次接续核验（2026-10-15，用户第 3 轮指令）
+
+执行基线为 main `4c48e666e97217a6966455d986b20362a3070dcc`，已包含上节第 4 轮
+修复；不重复实施已经合入的 epoch 修复。指定分支
+`zcode/cache-closeout-v3-20261014` 的新隔离 worktree 位于
+`/Users/leeyi/.codex-runs/cache-closeout-round3-20261015/worktree`。
+两份计划 SHA-256 与交接锚完全一致。main 的两项外来未跟踪资料保持原位。
+
+旧运行根 `~/.codex/cache-closeout-runs/zcode-closeout-20261014/` 当前不存在，
+其 manifest、C09/C10/QR 原件不能复核；上节结果保留为历史记载，不改写为本次
+已验证结果。新运行根为 `/Users/leeyi/.codex-runs/cache-closeout-round3-20261015/`。
+`source-inputs-provisional.json` 仅为编译前输入盘点（7143 文件），状态
+`PROVISIONAL_NOT_FROZEN`，不是 `candidate-manifest-v3.json` 或门禁候选。
+
+初始等待期间观察到其他会话的编译、运行实例和附件 EUnit，先完成静态项。
+外部 EUnit 退出后的串行窗口内，GNU Make 4 编译 exit=0（`compile-gnu.log`）；
+首次系统 make 因版本不符 exit=2（`compile.log`），两次原始结果均保留。
+启动 15 套件前再次发现其他会话 `make eunit`，先返回 `WAITING_MUTEX`，其退出后
+仅 AGENT-1 串行执行全部 15 套件，每项原始命令、UTC、exit 和日志保存在
+`targeted/results.json`。首轮 12 套件 exit=0，capability、journal_component、
+metadata_component 三项 exit=2。专属库只读预检确认目标为 loopback:4323 的
+`imboy_cache_closeout_v1`、其他连接数 0；未停止其他进程或修改共享数据库。
+fixture 预算不重开。联合修复和预验证全绿后才冻结；最终验收针对冻结候选执行，
+冻结前结果只作预验证。后续输入改变仍须重冻并复验，不继承旧 SHA 的绿轮。
+
+metadata_component 本次原始结果为 **Passed=9、Failed=0、Skipped=0、9 个超时、
+有测试取消、exit=2**；不能用 Failed=0 当通过，也不能沿用历史“10 过/8 超时”。
+该开放项按预算不修、不重试，联合预验“全绿后冻结”的前置条件未满足，故本次
+不生成 `candidate-manifest-v3.json`。C09×2、C10×2、QR、迁移往返、C11 实际消费、
+最终全量及性能七臂未形成新候选证据，保持 NOT_EXECUTED，不挪用历史绿轮。
+
+capability（2 过/13 失败）和 journal_component（0 过、有取消）的首轮日志均出现
+`limiter_migration_incomplete,[passport_per_ip,api_per_ip]`。隔离 local 配置仍使用
+旧 throttle owner；仅在隔离副本按同 HEAD 的配置示例迁移至 `limiter_ip_rates`，
+保留产品启动校验。该配置含凭据、不入提交；不修改共享配置或 fixture。
+这两项配置适配后定向复验，另存 `targeted-config-recheck/`，不覆盖首轮失败。
+复验结果：capability **15/15、exit=0**；journal_component **Test passed、exit=0**。
+其余 12 项首轮通过；这不是配置修改后同一冻结候选的 14 项联合签收。
+metadata_component 仍阻断冻结，后续不得把其超时重分类为外部配置阻塞。
+
+本次静态验证：C14 IDs/两份计划检查 exit=0；verifier self-test 53/53、exit=0；
+promtool check rules 63 条、test rules 均 exit=0；C11 仓外探针离线 7 检查 exit=0。
+探针终审后补齐 2 个 mock 阶段结论自检，局部成功固定输出 `PARTIAL_UNBOUND`，
+明确运行 BEAM/实际告警配置等绑定缺口；这些 mock 不计为真实消费链证据。
+这些结果不证明产品运行门禁通过。W0 r7/r8 的 baseline/performance/sha256 六份
+原始锚文件已复制至新运行根 `raw/w0_anchor/`，复制前后内容摘要一致。
+
+C14 复算为 96 项无缺失或重复，分类 73 REVERIFY、9 REVERIFY_HIST_INHERIT、
+3 GAP_IMPLEMENTATION、7 GAP_EVIDENCE、1 NOT_RUN_CARRIED、3 BLOCKED_EXTERNAL。
+分类不是 PASS 计数。最终回执未形成前，93 项待验、3 项外部阻塞；C00–C14 的
+结构化任务状态不以历史自由文字的 pass 代替。严格 receipts 检查仍须拒绝签发。
+最终 IDs/计划摘要 2/2、exit=0；candidate/exits/utc/receipts 严格检查 0/4、exit=1，
+原始输出见 `c14/final-verifier-results.json` 与同目录日志。
+
+本次提交范围仅报告、索引与台账三个文件；独立审查只覆盖本次文档/台账，
+不计 C12 产品终审回执。运行时自动审批禁止跳过 Git hooks；若正常提交入口
+重现已知 darwin hook 崩溃，则保留暂存改动并如实登记，不规避审批限制。
+
+当前三段判定：**BACKEND_LOCAL_CLOSEOUT=PARTIAL**，未闭合集合为 metadata_component
+既有超时、C10 M5/M8/M9/M10、专属库迁移往返、联合复验与新候选冻结，以及新候选
+C09×2/C10×2/QR/C11/最终全量/性能七臂/独立终审/C14 有效回执。
+**LOCAL_CANDIDATE=BLOCKED**（另缺 W0-09/AC-26/AC-27 的生产输入）；
+**PRODUCTION_ACCEPTANCE=NOT_ISSUED**。本节是预算停止点，不是运行门禁完成声明。
