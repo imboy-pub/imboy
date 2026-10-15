@@ -643,7 +643,9 @@ note_applied_sequence(Origin, Boot, Seq, Epoch) ->
 reset_sequence_coverage() ->
     ok = imboy_cache_sync_apply:abort_application_coverage(coverage_reset),
     ets:match_delete(?META_TABLE, {{covered_seq, '_'}, '_'}),
-    ok.
+    %% 清空的是覆盖证据，不是登记；重建零下限行维持"已登记来源必有
+    %% 当前代行"不变量，缺项只允许测试表手术构造，产品路径不可产生。
+    ok = rebase_sequence_coverage().
 %% 冻结合同（covered_seq 节）：每个已登记来源必有无缺的当前代下限行。
 %% 高代切换重置前缀为零、不继承旧代计数；缺席不等于零，缺项由候选整份拒绝。
 ensure_sequence_floor(Origin, Boot) ->

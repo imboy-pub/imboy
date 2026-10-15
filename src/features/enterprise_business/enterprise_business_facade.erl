@@ -341,9 +341,14 @@ request_session_renew(OrgId, _Params) ->
     {error, {invalid_argument, {organization_id, OrgId}}}.
 
 %% @doc confirm 必须重新鉴权：presign 后被 suspend 的 actor 在此 fail-closed。
+%% W2-02：upload_ref（常规）与 asset_id（响应丢失恢复，02 §137）二选一。
 -spec confirm_asset(integer(), map()) -> term().
 confirm_asset(OrgId, #{workspace_id := WorkspaceId, upload_ref := UploadRef} = Params) when
     is_integer(OrgId), is_integer(WorkspaceId), is_binary(UploadRef), is_map(Params)
+->
+    eb_asset_app:confirm_asset(OrgId, Params);
+confirm_asset(OrgId, #{workspace_id := WorkspaceId, asset_id := AssetId} = Params) when
+    is_integer(OrgId), is_integer(WorkspaceId), is_integer(AssetId), is_map(Params)
 ->
     eb_asset_app:confirm_asset(OrgId, Params);
 confirm_asset(OrgId, Params) when is_integer(OrgId), is_map(Params) ->

@@ -24,7 +24,7 @@
 %%%   0  PASS（该 case 在所选 oracle 下成立）
 %%%   2  用法/环境错误（参数缺失、manifest 不可读、证据缺失/损坏等）
 %%%   3  场景执行失败（断言/子命令非零退出；AC-16 fixed 超预算）
-%%%   4  INPUT_PENDING / NOT_IMPLEMENTED（AC-13/18 需隔离演练环境）
+%%%   4  INPUT_PENDING / NOT_IMPLEMENTED（AC-18 需隔离演练环境）
 %%%   5  未知 case
 %%%
 
@@ -102,7 +102,7 @@ dispatch(#{action := {run_case, Case}} = Opts) ->
 list_cases() ->
     io:format("~ts~n", [<<"C 承载（本工具）:"/utf8>>]),
     io:format("  AC-01  真实 REST 登录链失败计数（--oracle baseline|fixed；需 --manifest）~n"),
-    io:format("  AC-13  重启/停节点恢复（INPUT_PENDING：需隔离演练环境，退出码 4）~n"),
+    io:format("  AC-13  独立 VM 停启恢复：初始关闭、显式空态批准、账户/IP 重新累计~n"),
     io:format("  AC-15  两节点同机隔离 admit（各 -noshell 节点独立 epmd 端口，合计 2N 如实报告）~n"),
     io:format("  AC-16  性能预算（--oracle baseline=校验 0d28ad4f 基线证据并输出摘要；~n"),
     io:format("                 --oracle fixed=本仓新实现同款微基准并按 C.9 预算比较）~n"),
@@ -121,7 +121,7 @@ run_case(CaseBin, Opts) ->
         {Case, c_ac15_node_boundary} ->
             run_ac15(Opts);
         {Case, c_ac13_restart_recovery} ->
-            pending(Case, <<"AC-13: 重启/停节点恢复需隔离演练环境（独立 VM/端口/DB），L0 本地不可脚本化（INPUT_PENDING）"/utf8>>);
+            run_ac13(Opts);
         {Case, c_ac18_cutover_rollback} ->
             pending(Case, <<"AC-18: 切换/回退演练需隔离演练环境与已验证回退候选，见计划 §9.3（INPUT_PENDING）"/utf8>>);
         false ->
@@ -157,6 +157,63 @@ ensure_manifest(Path, Fun) ->
 pending(Case, Reason) ->
     io:format("~ts INPUT_PENDING/NOT_IMPLEMENTED: ~ts~n", [Case, Reason]),
     halt(4).
+
+%% 独立 OS 进程实际停止/重启 VM；不接触数据库、端口或在役节点。
+run_ac13(Opts) ->
+    Root = project_root(),
+    Common =
+        "application:set_env(imboy, login_max_attempts, 2), "
+        "application:set_env(imboy, limiter_max_account_entries, 1), "
+        "application:set_env(imboy, limiter_ip_rates, #{passport_per_ip=>{2,60000}}), "
+        "{ok,Owner}=login_attempt_ds:start_link(), false=login_attempt_ds:ready(), "
+        "{error,unavailable}=login_attempt_ds:check({user,1}), "
+        "{error,unavailable}=login_attempt_ds:admit(passport_per_ip,<<\"synthetic\">>), "
+        "ok=login_attempt_ds:activate_empty(Owner), "
+        "{ok,#{count:=1}}=login_attempt_ds:failure({user,1}), "
+        "{ok,#{locked:=true}}=login_attempt_ds:failure({user,1}), "
+        "{ok,_}=login_attempt_ds:admit(passport_per_ip,<<\"synthetic\">>), "
+        "{ok,_}=login_attempt_ds:admit(passport_per_ip,<<\"synthetic\">>), "
+        "{error,rate_limited}=login_attempt_ds:admit(passport_per_ip,<<\"synthetic\">>), "
+        "{error,capacity_lost}=login_attempt_ds:failure({user,2}), "
+        "{error,unavailable}=login_attempt_ds:check({user,1}), "
+        "io:format(\"AC13_VM_OK~n\"), halt(0).",
+    Results = [isolated_vm(Root, Common) || _ <- [before_stop, after_restart]],
+    EvDir = abs_evidence_dir(Root, evidence_dir(Opts, <<"AC-13">>)),
+    ok = filelib:ensure_dir(<<EvDir/binary, "/x">>),
+    ok = file:write_file(<<EvDir/binary, "/output.log">>,
+        iolist_to_binary([Output || {_Rc, Output} <- Results])),
+    Passed = lists:all(fun({Rc, Output}) ->
+        Rc =:= 0 andalso binary:match(Output, <<"AC13_VM_OK">>) =/= nomatch
+    end, Results),
+    Rc = case Passed of true -> 0; false -> 3 end,
+    ok = file:write_file(<<EvDir/binary, "/exit_code">>, integer_to_binary(Rc)),
+    write_input_json(EvDir, #{case_id => <<"AC-13">>, candidate => candidate_id(),
+        isolated_vm_runs => 2, passed => Passed}),
+    io:format("AC-13 independent VM stop/restart: ~p (evidence ~ts)~n", [Passed, EvDir]),
+    halt(Rc).
+
+isolated_vm(Root, Eval) ->
+    isolated_vm(Root, Eval, [], []).
+
+isolated_vm(Root, Eval, ExtraArgs, ExtraEnv) ->
+    Erl = os:find_executable("erl"),
+    Paths = [Root ++ "/ebin" | filelib:wildcard(Root ++ "/deps/*/ebin")],
+    Args = ["-noshell", "-noinput", "-boot", "no_dot_erlang"] ++
+        lists:append([["-pa", P] || P <- Paths]) ++ ExtraArgs ++ ["-eval", Eval],
+    Port = open_port({spawn_executable, Erl}, [binary, exit_status, stderr_to_stdout,
+        {args, Args}, {env, ExtraEnv}, {cd, Root}]),
+    Deadline = erlang:monotonic_time(millisecond) + 30000,
+    collect_isolated_vm(Port, Deadline, []).
+
+collect_isolated_vm(Port, Deadline, Acc) ->
+    Wait = max(0, Deadline - erlang:monotonic_time(millisecond)),
+    receive
+        {Port, {data, Data}} -> collect_isolated_vm(Port, Deadline, [Data | Acc]);
+        {Port, {exit_status, Rc}} -> {Rc, iolist_to_binary(lists:reverse(Acc))}
+    after Wait ->
+        port_close(Port),
+        {124, iolist_to_binary(lists:reverse([<<"VM timeout">> | Acc]))}
+    end.
 
 %% -------------------------------------------------------------------------
 %% AC-01：真实 REST 登录链失败计数（L0 baseline oracle）
@@ -202,7 +259,9 @@ run_ac01_runner(Opts) ->
         )
     ),
     io:format("AC-01 (~s): ~s~n", [atom_to_list(Oracle), Cmd]),
-    Rc = run_shell(Cmd),
+    Rc = try run_shell(Cmd)
+    after file:delete(RestConfig)
+    end,
     ok = file:write_file(<<EvDir/binary, "/exit_code">>, integer_to_binary(Rc)),
     ManifestVal =
         case maps:find(manifest, Opts) of
@@ -242,8 +301,13 @@ ensure_rest_ct_config(Root) ->
     Bin =
         case file:read_file(SrcPath) of
             {ok, B} -> B;
-            {error, _} -> <<"">>
+            {error, enoent} ->
+                {ok, Example} = file:read_file(filename:join(Root, "config/sys.config.example")),
+                Example;
+            {error, Reason} -> erlang:error({rest_config_unreadable, Reason})
         end,
+    ok = file:write_file(TmpPath, <<>>, [exclusive]),
+    ok = file:change_mode(TmpPath, 8#600),
     Flipped = binary:replace(Bin, <<"{auto_migrate, false}">>, <<"{auto_migrate, true}">>, [global]),
     ok = file:write_file(TmpPath, Flipped),
     TmpPath.
@@ -414,21 +478,22 @@ run_ac16_fixed(Opts) ->
         oidc_request => {1000000, 3600000}
     }),
     application:set_env(imboy, login_max_attempts, 5),
-    {ok, _} = login_attempt_ds:start_link(),
+    {ok, LimiterOwner} = login_attempt_ds:start_link(),
+    ok = login_attempt_ds:activate_empty(LimiterOwner),
     true = login_attempt_ds:ready(),
 
-    warmup_fixed(),
     R1 = [bench_fixed(op_failure) || _ <- lists:seq(1, ?AC16_REPEATS)],
     R2 = [bench_fixed(op_admit) || _ <- lists:seq(1, ?AC16_REPEATS)],
     R3 = [bench_fixed(op_reset) || _ <- lists:seq(1, ?AC16_REPEATS)],
     R4 = [bench_fixed({op_mixed, 1}) || _ <- lists:seq(1, ?AC16_REPEATS)],
     R5 = [bench_fixed({op_mixed, ?AC16_WORKERS}) || _ <- lists:seq(1, ?AC16_REPEATS)],
-    MailboxPeak = lists:max(
-        [maps:get(mailbox_peak, R, 0) || R <- R1 ++ R2 ++ R3 ++ R4 ++ R5] ++ [0]
-    ),
-    MailboxAfter = mailbox_len(),
+    %% 额外压力档不与旧 8-worker 成本直接比较，仍遵守既有绝对等待预算。
+    Pressure = bench_fixed({op_pressure, 128}),
+    Runs = R1 ++ R2 ++ R3 ++ R4 ++ R5 ++ [Pressure],
+    MailboxPeak = lists:max([maps:get(mailbox_peak, R) || R <- Runs]),
+    MailboxAfter = await_mailbox(erlang:monotonic_time(millisecond) + 5000),
 
-    %% C.9 预算比较（旧基线 p50 区间下限为对照口径——对候选最宽松、防假 FAIL）
+    %% C.9 预算比较（固定使用旧基线最小 p50，不选慢基线放宽门槛）
     BaselineDir = filename:join(Root, ?AC16_BASELINE_DIR),
     B = read_json_or_die(<<BaselineDir/binary, "/baseline_b.json">>),
     OldP50 = #{
@@ -448,9 +513,21 @@ run_ac16_fixed(Opts) ->
         {admit, R2, maps:get(admit, OldP50), relative},
         {reset, R3, maps:get(reset, OldP50), absolute},
         {mixed_1w, R4, maps:get(mixed_1w, OldP50), relative},
-        {mixed_8w, R5, maps:get(mixed_8w, OldP50), relative}
+        {mixed_8w, R5, maps:get(mixed_8w, OldP50), relative},
+        {pressure_128w, [Pressure], 0, absolute}
     ],
-    {Failures, ReportLines} = judge_budgets(Budgets),
+    {CostFailures, CostLines} = judge_budgets(Budgets),
+    AccountRuns = R4 ++ R5 ++ [Pressure],
+    AccountOk = lists:all(fun(R) ->
+        maps:get(account_p99_us, R) =< ?AC16_BUDGET_P99_US andalso
+        maps:get(account_max_us, R) =< ?AC16_BUDGET_MAX_US
+    end, AccountRuns),
+    Failures = CostFailures ++ [account_starvation || not AccountOk],
+    AccountLine = lists:flatten(io_lib:format(
+        "account-only: p99_worst=~p us max_worst=~p us -> ~p",
+        [lists:max([maps:get(account_p99_us, R) || R <- AccountRuns]),
+         lists:max([maps:get(account_max_us, R) || R <- AccountRuns]), AccountOk])),
+    ReportLines = CostLines ++ [AccountLine],
     MailboxOk = MailboxPeak =< ?AC16_BUDGET_MAILBOX_PEAK andalso MailboxAfter =< ?AC16_BUDGET_MAILBOX_AFTER,
     MailboxLine =
         io_lib:format(
@@ -465,6 +542,9 @@ run_ac16_fixed(Opts) ->
 
     EvDir = abs_evidence_dir(Root, evidence_dir(Opts, <<"AC-16">>)),
     ok = filelib:ensure_dir(<<EvDir/binary, "/x">>),
+    RunSummaries = [R#{op => list_to_binary(io_lib:format("~0p", [maps:get(op, R)]))}
+        || R0 <- Runs, R <- [maps:remove(times_ns, R0)]],
+    ok = file:write_file(<<EvDir/binary, "/ac16_runs.json">>, json:encode(RunSummaries)),
     write_input_json(EvDir, #{
         case_id => <<"AC-16">>,
         oracle => fixed,
@@ -472,6 +552,12 @@ run_ac16_fixed(Opts) ->
         budget => <<"cost<=oldx1.5; p99<=100ms; max<=500ms; mailbox<=10000/after<=100">>,
         mailbox_peak => MailboxPeak,
         mailbox_after => MailboxAfter,
+        sampling_interval_ms => 1,
+        pressure_workers => 128,
+        pressure_events => maps:get(allowed, Pressure) + maps:get(denied, Pressure),
+        pressure_duration_ms => maps:get(wall_ns, Pressure) div 1000000,
+        owner_memory_peak => lists:max([maps:get(owner_memory_peak, R) || R <- Runs]),
+        account_only_budget_pass => AccountOk,
         failures => length(Failures)
     }),
     ok = file:write_file(
@@ -522,8 +608,8 @@ judge_budgets(Budgets) ->
                         {
                             true,
                             io_lib:format(
-                                "p50_best=~s us (absolute cost mode: old counterpart is bare ets:delete "
-                                "without owner confirm, the AC-17 defect shape; absolute budgets apply) "
+                                "p50_best=~s us (absolute cost mode: no equivalent safe legacy operation "
+                                "or pressure workload; absolute budgets apply) "
                                 "-> cost n/a by design",
                                 [us_str(P50Best)]
                             )
@@ -559,19 +645,61 @@ judge_budgets(Budgets) ->
 
 bench_fixed(Op) ->
     reset_fixed_state(),
-    Owner = self(),
-    {Pid, Mref} = spawn_monitor(fun() -> Owner ! {self(), run_bench_fixed(Op)} end),
-    Res =
-        receive
-            {Pid, R} -> erlang:demonitor(Mref, [flush]), R;
-            {'DOWN', Mref, process, _, Reason} -> erlang:error({worker_down, Op, Reason})
+    Parent = self(),
+    Owner = whereis(login_attempt_ds),
+    {reductions, RedBefore} = process_info(Owner, reductions),
+    {CpuBefore, _} = erlang:statistics(runtime),
+    EtsBefore = total_ets_memory(),
+    {Sampler, SRef} = spawn_monitor(fun() -> sample_owner(Parent, Owner, 0, 0, 0, 0) end),
+    {Pid, Mref} = spawn_monitor(fun() -> Parent ! {self(), run_bench_fixed(Op)} end),
+    try
+        Res = receive
+            {Pid, R} ->
+                receive {'DOWN', Mref, process, Pid, normal} -> R end;
+            {'DOWN', Mref, process, Pid, Reason} -> erlang:error({worker_down, Op, Reason})
         after 300000 -> erlang:error({worker_timeout, Op})
         end,
-    Res#{
-        op => op_name(Op),
-        mailbox_peak => maps:get(mailbox_peak, Res, mailbox_len()),
-        ds_mailbox_after => mailbox_len()
-    }.
+        Sampler ! stop,
+        Peaks = receive
+            {Sampler, P} -> P;
+            {'DOWN', SRef, process, Sampler, Reason2} -> erlang:error({sampler_down, Reason2})
+        after 5000 -> erlang:error(sampler_timeout)
+        end,
+        receive {'DOWN', SRef, process, Sampler, normal} -> ok end,
+        {reductions, RedAfter} = process_info(Owner, reductions),
+        {memory, MemoryAfter} = process_info(Owner, memory),
+        {CpuAfter, _} = erlang:statistics(runtime),
+        Observed = Peaks#{mailbox_peak => max(maps:get(mailbox_peak, Res, 0), maps:get(mailbox_peak, Peaks))},
+        maps:merge(Res#{op => op_name(Op), ds_mailbox_after => mailbox_len(),
+            mem_before => EtsBefore, mem_after => total_ets_memory(),
+            owner_memory_after => MemoryAfter, owner_reductions_delta => RedAfter - RedBefore,
+            cpu_runtime_ms => CpuAfter - CpuBefore}, Observed)
+    after
+        exit(Pid, kill),
+        exit(Sampler, kill),
+        erlang:demonitor(Mref, [flush]),
+        erlang:demonitor(SRef, [flush])
+    end.
+
+sample_owner(Parent, Owner, Peak, Mem, EtsPeak, Tick) ->
+    {message_queue_len, Q} = process_info(Owner, message_queue_len),
+    {memory, M} = process_info(Owner, memory),
+    %% 与负载重叠触发有界清理，观察实际排队；不是事后快照冒充峰值。
+    case Tick rem 20 of 0 -> Owner ! cleanup_expired; _ -> ok end,
+    P1 = max(Peak, Q),
+    M1 = max(Mem, M),
+    E1 = max(EtsPeak, total_ets_memory()),
+    receive
+        stop -> Parent ! {self(), #{mailbox_peak => P1, owner_memory_peak => M1, ets_memory_peak => E1}}
+    after 1 -> sample_owner(Parent, Owner, P1, M1, E1, Tick + 1)
+    end.
+
+await_mailbox(Deadline) ->
+    Len = mailbox_len(),
+    case Len =< ?AC16_BUDGET_MAILBOX_AFTER orelse erlang:monotonic_time(millisecond) >= Deadline of
+        true -> Len;
+        false -> receive after 10 -> await_mailbox(Deadline) end
+    end.
 
 run_bench_fixed(op_failure) ->
     AcctTuple = list_to_tuple(fixed_account_keys()),
@@ -581,7 +709,7 @@ run_bench_fixed(op_failure) ->
         fun(I) -> login_attempt_ds:failure({unknown, account, element(((I - 1) rem N) + 1, AcctTuple)}) end,
         fun
             ({ok, _}) -> ok;
-            (_) -> denied
+            (Other) -> erlang:error({unexpected_failure_result, Other})
         end
     );
 run_bench_fixed(op_admit) ->
@@ -592,7 +720,8 @@ run_bench_fixed(op_admit) ->
         fun(I) -> login_attempt_ds:admit(passport_per_ip, element(((I - 1) rem N) + 1, IpTuple)) end,
         fun
             ({ok, _}) -> ok;
-            ({error, _}) -> denied
+            ({error, rate_limited}) -> denied;
+            (Other) -> erlang:error({unexpected_admit_result, Other})
         end
     );
 run_bench_fixed(op_reset) ->
@@ -623,6 +752,10 @@ run_bench_fixed(op_reset) ->
         mem_before => MemBefore,
         mem_after => total_ets_memory()
     };
+run_bench_fixed({op_pressure, Workers}) ->
+    Start = erlang:monotonic_time(nanosecond),
+    Result = pressure_rounds(Workers, Start + 5000000000, undefined),
+    Result#{wall_ns => erlang:monotonic_time(nanosecond) - Start};
 run_bench_fixed({op_mixed, Workers}) ->
     PerW = ?AC16_EVENTS div Workers,
     Owner = self(),
@@ -631,38 +764,70 @@ run_bench_fixed({op_mixed, Workers}) ->
             begin
                 WorkerId = W,
                 {Pid, Mref} =
-                    spawn_monitor(fun() -> Owner ! {self(), run_mixed_fixed(WorkerId, PerW, Workers)} end),
+                    spawn_opt(fun() ->
+                        Owner ! {ready, self()},
+                        receive go -> Owner ! {self(), run_mixed_fixed(WorkerId, PerW, Workers)} end
+                    end, [link, monitor]),
                 {Pid, Mref}
             end
          || W <- lists:seq(1, Workers)
         ],
-    T0 = erlang:monotonic_time(nanosecond),
-    All =
-        lists:map(
-            fun({Pid, Mref}) ->
-                receive
-                    {Pid, R} -> erlang:demonitor(Mref, [flush]), R;
-                    {'DOWN', Mref, process, _, Reason} -> erlang:error({mixed_worker_down, Reason})
-                after 300000 -> erlang:error(mixed_worker_timeout)
-                end
-            end,
-            Refs
-        ),
-    T1 = erlang:monotonic_time(nanosecond),
-    Times = lists:append([maps:get(times_ns, R) || R <- All]),
-    Sorted = lists:sort(Times),
-    #{
-        times_ns => Times,
-        wall_ns => T1 - T0,
-        p50_us => ns_to_us(percentile(Sorted, 0.50)),
-        p99_us => ns_to_us(percentile(Sorted, 0.99)),
-        max_us => ns_to_us(lists:last(Sorted)),
-        reductions_delta => lists:sum([maps:get(reductions_delta, R) || R <- All]),
-        allowed => lists:sum([maps:get(allowed, R) || R <- All]),
-        denied => lists:sum([maps:get(denied, R) || R <- All]),
-        mailbox_peak => lists:max([maps:get(mailbox_peak, R) || R <- All]),
-        mem_after => total_ets_memory()
-    }.
+    try
+        [receive {ready, P} -> ok after 5000 -> erlang:error(worker_not_ready) end || {P, _} <- Refs],
+        T0 = erlang:monotonic_time(nanosecond),
+        [P ! go || {P, _} <- Refs],
+        All =
+            lists:map(
+                fun({Pid, Mref}) ->
+                    receive
+                        {Pid, R} -> receive {'DOWN', Mref, process, Pid, normal} -> R end;
+                        {'DOWN', Mref, process, _, Reason} -> erlang:error({mixed_worker_down, Reason})
+                    after 300000 -> erlang:error(mixed_worker_timeout)
+                    end
+                end,
+                Refs
+            ),
+        T1 = erlang:monotonic_time(nanosecond),
+        Times = lists:append([maps:get(times_ns, R) || R <- All]),
+        Sorted = lists:sort(Times),
+        AccountTimes = lists:sort(lists:append([maps:get(account_times_ns, R) || R <- All])),
+        #{
+            account_p99_us => ns_to_us(percentile(AccountTimes, 0.99)),
+            account_max_us => ns_to_us(lists:last(AccountTimes)),
+            times_ns => Times,
+            wall_ns => T1 - T0,
+            p50_us => ns_to_us(percentile(Sorted, 0.50)),
+            p99_us => ns_to_us(percentile(Sorted, 0.99)),
+            max_us => ns_to_us(lists:last(Sorted)),
+            reductions_delta => lists:sum([maps:get(reductions_delta, R) || R <- All]),
+            allowed => lists:sum([maps:get(allowed, R) || R <- All]),
+            denied => lists:sum([maps:get(denied, R) || R <- All]),
+            mailbox_peak => lists:max([maps:get(mailbox_peak, R) || R <- All]),
+            mem_after => total_ets_memory()
+         }
+    after
+        [begin exit(P, kill), erlang:demonitor(M, [flush]) end || {P, M} <- Refs]
+    end.
+
+pressure_rounds(Workers, Deadline, Acc) ->
+    R = maps:remove(times_ns, run_bench_fixed({op_mixed, Workers})),
+    Merged = case Acc of
+        undefined -> R;
+        _ -> maps:map(fun(K, V) ->
+            Previous = maps:get(K, Acc),
+            case K of
+                allowed -> V + Previous;
+                denied -> V + Previous;
+                wall_ns -> V + Previous;
+                reductions_delta -> V + Previous;
+                _ -> max(V, Previous)
+            end
+        end, R)
+    end,
+    case erlang:monotonic_time(nanosecond) >= Deadline of
+        true -> Merged;
+        false -> pressure_rounds(Workers, Deadline, Merged)
+    end.
 
 bench_events_fixed(Idxs, Op, Verdict) ->
     {_, Red0} = worker_reductions(),
@@ -696,69 +861,31 @@ bench_events_fixed(Idxs, Op, Verdict) ->
     }.
 
 run_mixed_fixed(WorkerId, Total, Workers) ->
-    NCheck = Total * 80 div 100,
-    NRecord = Total * 15 div 100,
-    NReset = Total * 5 div 100,
-    IpTuple = list_to_tuple(slice_for(fixed_ip_keys(), WorkerId, Workers)),
-    AcctTuple = list_to_tuple(slice_for(fixed_account_keys(), WorkerId, Workers)),
-    NIp = tuple_size(IpTuple),
-    NAcct = tuple_size(AcctTuple),
+    Ips = list_to_tuple(slice_for(fixed_ip_keys(), WorkerId, Workers)),
+    Accounts = list_to_tuple(slice_for(fixed_account_keys(), WorkerId, Workers)),
+    %% 每 20 次交错 16 admit / 3 failure / 1 reset；每个 worker 拥有独立身份。
+    Count = (Total div 20) * 20,
     {_, Red0} = worker_reductions(),
-    T0 = erlang:monotonic_time(nanosecond),
-    {Times1, OkC, BadC, Recorded} = phase_check_fixed(NCheck, IpTuple, NIp),
-    {Times2, OkR, BadR, Recorded2} = phase_record_fixed(NRecord, AcctTuple, NAcct, Recorded),
-    RecTuple = list_to_tuple(lists:reverse(Recorded2)),
-    NRec = tuple_size(RecTuple),
-    {Times3, OkX, BadX} = phase_reset_fixed(NReset, RecTuple, NRec),
-    T1 = erlang:monotonic_time(nanosecond),
+    {Times, AccountTimes} = lists:foldl(fun(I, {Ts, As}) ->
+        Slot = (I - 1) rem 20,
+        Identity = {unknown, account, element((((I - 1) div 20) rem tuple_size(Accounts)) + 1, Accounts)},
+        T0 = erlang:monotonic_time(nanosecond),
+        case Slot of
+            S when S < 16 ->
+                {ok, _} = login_attempt_ds:admit(passport_per_ip,
+                    element(((I - 1) rem tuple_size(Ips)) + 1, Ips));
+            S when S < 19 ->
+                {ok, #{count := C}} = login_attempt_ds:failure(Identity),
+                C = S - 15;
+            _ -> ok = login_attempt_ds:reset(Identity)
+        end,
+        Dt = erlang:monotonic_time(nanosecond) - T0,
+        {[Dt | Ts], case Slot < 16 of true -> As; false -> [Dt | As] end}
+    end, {[], []}, lists:seq(1, Count)),
     {_, Red1} = worker_reductions(),
-    Sorted = lists:sort(Times3 ++ Times2 ++ Times1),
-    #{
-        times_ns => lists:reverse(Sorted),
-        wall_ns => T1 - T0,
-        p50_us => ns_to_us(percentile(Sorted, 0.50)),
-        p99_us => ns_to_us(percentile(Sorted, 0.99)),
-        max_us => ns_to_us(lists:last(Sorted)),
-        reductions_delta => Red1 - Red0,
-        allowed => OkC + OkR + OkX,
-        denied => BadC + BadR + BadX,
-        mailbox_peak => mailbox_len()
-    }.
-
-phase_check_fixed(0, _Tuple, _N) -> {[], 0, 0, []};
-phase_check_fixed(N, Tuple, NIp) -> phase_check_fixed(N, Tuple, NIp, [], 0, 0).
-phase_check_fixed(0, _Tuple, _N, Acc, O, B) -> {Acc, O, B, []};
-phase_check_fixed(I, Tuple, N, Acc, O, B) ->
-    T0 = erlang:monotonic_time(nanosecond),
-    R = login_attempt_ds:admit(passport_per_ip, element(((I - 1) rem N) + 1, Tuple)),
-    T1 = erlang:monotonic_time(nanosecond),
-    case R of
-        {ok, _} -> phase_check_fixed(I - 1, Tuple, N, [T1 - T0 | Acc], O + 1, B);
-        _ -> phase_check_fixed(I - 1, Tuple, N, [T1 - T0 | Acc], O, B + 1)
-    end.
-
-phase_record_fixed(0, _Tuple, _N, Recorded0) -> {[], 0, 0, Recorded0};
-phase_record_fixed(N, Tuple, NAcct, Recorded0) -> phase_record_fixed(N, Tuple, NAcct, Recorded0, [], 0, 0).
-phase_record_fixed(0, _Tuple, _N, Recorded0, Acc, O, B) -> {Acc, O, B, Recorded0};
-phase_record_fixed(I, Tuple, N, Recorded0, Acc, O, B) ->
-    K = element(((I - 1) rem N) + 1, Tuple),
-    T0 = erlang:monotonic_time(nanosecond),
-    R = login_attempt_ds:failure({unknown, account, K}),
-    T1 = erlang:monotonic_time(nanosecond),
-    case R of
-        {ok, _} -> phase_record_fixed(I - 1, Tuple, N, [K | Recorded0], [T1 - T0 | Acc], O + 1, B);
-        _ -> phase_record_fixed(I - 1, Tuple, N, Recorded0, [T1 - T0 | Acc], O, B + 1)
-    end.
-
-phase_reset_fixed(0, _RecTuple, _NRec) -> {[], 0, 0};
-phase_reset_fixed(N, RecTuple, NRec) -> phase_reset_fixed(N, RecTuple, NRec, [], 0, 0).
-phase_reset_fixed(0, _RecTuple, _NRec, Acc, O, B) -> {Acc, O, B};
-phase_reset_fixed(I, RecTuple, NRec, Acc, O, B) ->
-    K = element(((I - 1) rem NRec) + 1, RecTuple),
-    T0 = erlang:monotonic_time(nanosecond),
-    ok = login_attempt_ds:reset({unknown, account, K}),
-    T1 = erlang:monotonic_time(nanosecond),
-    phase_reset_fixed(I - 1, RecTuple, NRec, [T1 - T0 | Acc], O + 1, B).
+    #{times_ns => Times, account_times_ns => AccountTimes,
+      reductions_delta => Red1 - Red0, allowed => Count, denied => 0,
+      mailbox_peak => mailbox_len()}.
 
 fixed_account_keys() ->
     [pad_key("acct_ac16_", I, 6) || I <- lists:seq(1, ?AC16_KEYS_ACCOUNT)].
@@ -785,15 +912,14 @@ slice_for(Keys, WorkerId, Workers) ->
     [lists:nth(I, Keys) || I <- lists:seq(Start, End)].
 
 reset_fixed_state() ->
-    DPid = whereis(login_attempt_ds),
-    %% 新实现无公开清态 API：用独立 Key 空间 per repeat（run 序号前缀）替代
-    case DPid of
+    %% 本 escript 独立 VM 内拥有的 owner，每轮真实重建，防止上一轮计数污染。
+    case whereis(login_attempt_ds) of
         undefined -> ok;
-        _ ->
-            {message_queue_len, L} = process_info(DPid, message_queue_len),
-            0 = L
+        Pid -> ok = gen_server:stop(Pid)
     end,
-    ok.
+    {ok, Owner} = login_attempt_ds:start_link(),
+    ok = login_attempt_ds:activate_empty(Owner),
+    warmup_fixed().
 
 warmup_fixed() ->
     [
@@ -831,10 +957,8 @@ mailbox_len() ->
 
 run_ac15(Opts) ->
     Root = project_root(),
-    NodeSpecs = [
-        {ac15_alpha, 16985},
-        {ac15_beta, 16986}
-    ],
+    {PortA, PortB} = isolated_epmd_ports(),
+    NodeSpecs = [{ac15_alpha, PortA}, {ac15_beta, PortB}],
     io:format("AC-15: 启动两个隔离 -noshell 节点（独立 epmd 端口），各 admit ~p 次（同规则同 IP）…~n", [?AC15_N]),
     Results = [
         begin
@@ -888,33 +1012,37 @@ run_ac15_node(Root, NodeName, EpmdPort, N) ->
     %% 字面转义，经 format 会破坏控制序列）。
     Eval =
         "application:set_env(imboy, limiter_ip_rates, #{passport_per_ip => {" ++
-            integer_to_list(N * 10) ++
+            integer_to_list(N) ++
             ", 60000}, api_per_ip => {1000000, 60000}, oidc_request => {1000000, 3600000}}), " ++
-            "{ok,_} = login_attempt_ds:start_link(), true = login_attempt_ds:ready(), " ++
+            "{ok,Owner} = login_attempt_ds:start_link(), ok = login_attempt_ds:activate_empty(Owner), true = login_attempt_ds:ready(), " ++
             "Allowed = length([ok || _ <- lists:seq(1, " ++ integer_to_list(N) ++
             "), element(1, login_attempt_ds:admit(passport_per_ip, <<\"10.0.15.15\">>)) =:= ok]), " ++
+            "{error,rate_limited}=login_attempt_ds:admit(passport_per_ip,<<\"10.0.15.15\">>), " ++
             "io:format(\"AC15RESULT:~w\n\", [Allowed]), halt(0)",
-    Cmd =
-        "cd " ++ Root ++
-            " && ERL_EPMD_PORT=" ++ integer_to_list(EpmdPort) ++
-            " erl -pa " ++ Root ++ "/ebin -noshell -sname ac15_" ++ Tag ++ "_" ++ os:getpid() ++
-            " -eval '" ++ Eval ++ "'",
-    Out = os:cmd(Cmd ++ " ; printf '\n__AC15_EXIT__%s' \"$?\""),
-    case string:split(Out, "\n__AC15_EXIT__", trailing) of
-        [Body, RcStr] ->
-            case list_to_integer(string:trim(RcStr)) of
-                0 ->
-                    case re:run(Body, "RESULT:(\\d+)", [{capture, [1], list}]) of
-                        {match, [NStr]} -> {ok, list_to_integer(NStr)};
-                        _ -> {error, no_result_marker}
-                    end;
-                Rc -> {error, {node_exit, Rc}}
-            end;
-        _ ->
-            {error, no_exit_marker}
+    try
+        NodeArg = "ac15_" ++ Tag ++ "_" ++ os:getpid(),
+        {Rc, Out} = isolated_vm(Root, Eval, ["-sname", NodeArg],
+            [{"ERL_EPMD_PORT", integer_to_list(EpmdPort)}, {"ERL_EPMD_ADDRESS", "127.0.0.1"}]),
+        case {Rc, re:run(Out, "AC15RESULT:(\\d+)", [{capture, [1], list}])} of
+            {0, {match, [NStr]}} -> {ok, list_to_integer(NStr)};
+            _ -> {error, {node_failed, Rc, Out}}
+        end
+    after
+        %% 端口由本 run 分配，只停止本任务启动的临时 epmd。
+        Epmd = open_port({spawn_executable, os:find_executable("epmd")},
+            [binary, exit_status, stderr_to_stdout,
+             {args, ["-port", integer_to_list(EpmdPort), "-kill"]}]),
+        _ = collect_isolated_vm(Epmd, erlang:monotonic_time(millisecond) + 5000, [])
     end.
 
-
+isolated_epmd_ports() ->
+    {ok, A} = gen_tcp:listen(0, [{ip, {127,0,0,1}}]),
+    {ok, B} = gen_tcp:listen(0, [{ip, {127,0,0,1}}]),
+    {ok, PA} = inet:port(A),
+    {ok, PB} = inet:port(B),
+    gen_tcp:close(A),
+    gen_tcp:close(B),
+    {PA, PB}.
 
 %% -------------------------------------------------------------------------
 %% AC-16/15 辅助：JSON、格式化、git、采集
@@ -972,7 +1100,10 @@ worker_reductions() ->
     {ok, R}.
 
 total_ets_memory() ->
-    lists:sum([ets:info(T, memory) || T <- ets:all(), is_atom(T)]).
+    lists:sum([case ets:info(T, memory) of
+        undefined -> 0;
+        Words -> Words * erlang:system_info(wordsize)
+    end || T <- [login_attempt_ets, login_attempt_deadlines]]).
 
 percentile(Sorted, Q) ->
     N = length(Sorted),
@@ -985,7 +1116,8 @@ ns_to_us(V) -> V.
 op_name(op_failure) -> failure;
 op_name(op_admit) -> admit;
 op_name(op_reset) -> reset;
-op_name({op_mixed, W}) -> {mixed, W}.
+op_name({op_mixed, W}) -> {mixed, W};
+op_name({op_pressure, W}) -> {pressure_5s, W}.
 
 %% -------------------------------------------------------------------------
 %% manifest / 证据 / 杂项
@@ -993,15 +1125,7 @@ op_name({op_mixed, W}) -> {mixed, W}.
 
 emit_manifest(Path) ->
     Root = project_root(),
-    Files = [
-        "src/ds/login_attempt_ds.erl",
-        "src/logic/login_security_logic.erl",
-        "src/logic/passport_logic.erl",
-        "src/api/passport_handler.erl",
-        "src/api/throttle_middleware.erl",
-        "src/api/auth_oidc_handler.erl",
-        "src/imboy_app.erl"
-    ],
+    Files = candidate_files(),
     {ok, Head} = run_capture(Root, "git rev-parse HEAD"),
     {ok, Sums} = run_capture(Root, "shasum -a 256 " ++ string:join(Files, " ")),
     Entries =
@@ -1032,12 +1156,29 @@ collect_port(Port, Acc) ->
     after 30000 -> {error, timeout}
     end.
 
+candidate_files() ->
+    ["src/ds/login_attempt_ds.erl", "src/ds/login_attempt_state.erl",
+     "src/ds/login_attempt_clock.erl", "src/logic/login_security_logic.erl",
+     "src/logic/passport_logic.erl", "src/api/passport_handler.erl",
+     "src/api/throttle_middleware.erl", "src/api/auth_oidc_handler.erl",
+     "src/logic/auth_oidc_logic.erl", "src/imboy_app.erl", "config/sys.config.example",
+     "scripts/limiter_v1_acceptance.escript", "test/ds/login_attempt_correctness_tests.erl",
+     "test/ds/login_attempt_limiter_ac_tests.erl", "test/ds/login_attempt_ds_tests.erl",
+     "test/ds/limiter_test_support.erl", "test/logic/passport_logic_tests.erl",
+     "test/common/eunit_runner.erl", "test/api/intbe02_http_support.erl",
+     "test/integration/micro_community_android_fixture.erl", "test/rest/support/rest_fixture.erl",
+     "docs/plans/2026-10-13-limiter-v1-local-evidence-and-plan.md"].
+
 candidate_id() ->
     Root = project_root(),
-    case run_capture(Root, "git rev-parse --short HEAD") of
-        {ok, Out} -> list_to_binary(string:trim(Out));
-        _ -> <<"unknown">>
-    end.
+    {ok, Head} = run_capture(Root, "git rev-parse --short HEAD"),
+    %% 未提交 worktree 必须绑定实际文件，不能把基线 main SHA 冒充修复候选。
+    Content = [begin
+        {ok, Bin} = file:read_file(filename:join(Root, P)),
+        [P, 0, Bin]
+    end || P <- candidate_files()],
+    Hex = string:lowercase(binary:encode_hex(crypto:hash(sha256, Content))),
+    iolist_to_binary([string:trim(Head), "-src-", binary:part(Hex, 0, 12)]).
 
 project_root() ->
     %% escript 脚本位于 <root>/scripts/，向上取仓根（absname 防相对调用）
@@ -1068,7 +1209,16 @@ strftime_run_ref() ->
     ).
 
 write_input_json(EvDir, Map) ->
-    Json = lines_json(maps:to_list(Map)),
+    %% 同时记录实际构建字节，避免源码摘要替代被测 BEAM 的身份。
+    BeamFiles = [project_root() ++ "/ebin/" ++ atom_to_list(M) ++ ".beam" ||
+        M <- [login_attempt_ds, login_attempt_state, login_attempt_clock, passport_logic,
+            login_security_logic, imboy_app, passport_handler, throttle_middleware,
+            auth_oidc_logic, auth_oidc_handler]],
+    Digests = [begin {ok, B} = file:read_file(P),
+        {filename:basename(P), binary:encode_hex(crypto:hash(sha256, B))}
+    end || P <- BeamFiles],
+    WithRuntime = Map#{candidate => candidate_id(), beam_sha256 => list_to_binary(io_lib:format("~0p", [Digests]))},
+    Json = lines_json(maps:to_list(WithRuntime)),
     ok = file:write_file(<<EvDir/binary, "/input.json">>, Json).
 
 lines_json(Kvs) ->
@@ -1079,7 +1229,7 @@ lines_json(Kvs) ->
     <<"{\n", (list_to_binary(Inner))/binary, "\n}\n">>.
 
 json_kv(K, V) ->
-    list_to_binary(io_lib:format("  \"~s\": \"~s\"", [to_bin(K), value_to_binary(V)])).
+    iolist_to_binary(["  ", json:encode(to_bin(K)), ": ", json:encode(value_to_binary(V))]).
 
 value_to_binary(V) when is_binary(V) -> V;
 value_to_binary(V) when is_atom(V) -> atom_to_binary(V);

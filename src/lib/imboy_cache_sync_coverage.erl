@@ -487,7 +487,11 @@ verify_target(Node, P, Sources, Epoch) ->
         is_integer(maps:get(reported_epoch, P, unknown)) andalso
             maps:get(reported_epoch, P) < Epoch,
     EmptyTarget = empty_target(Node, P, Epoch),
-    case maps:get(authority, P) orelse EmptyTarget orelse StaleEpoch of
+    %% 对端自身声明未 READY（升级/恢复中）时其内容完整性不在本回合证明；
+    %% 与"非 READY 对端不提供快照"同源（C10 M7 链）。未记录该声明时默认
+    %% 已 READY，保持 fail-closed 严格性。
+    NotReady = not maps:get(reported_ready, P, true),
+    case maps:get(authority, P) orelse EmptyTarget orelse StaleEpoch orelse NotReady of
         true -> ok;
         false -> error(peer_content_unproven)
     end,

@@ -30,6 +30,7 @@
 -export([endpoint/0, public_endpoint/0]).
 -export([garage_config/0, key_prefix/0]).
 -export([delete_object/1, delete_object/2, head_object/1, head_object/2, parse_head_response/1]).
+-export([object_sha256/2]).
 -export([max_file_size/0]).
 -export([generate_file_id/0]).
 -export([validate_file_id/1]).
@@ -329,6 +330,30 @@ max_file_size() ->
 -spec head_object(binary()) -> {ok, map()} | {error, not_found | term()}.
 head_object(ObjectKey) ->
     head_object(default_bucket(), ObjectKey).
+
+%% @doc 真实字节校验（02 §4 Confirm 合同：HEAD 本身不充分）：GET 完整对象
+%% 字节并计算 SHA256 与大小，作为 confirm 的字节级依据。HEAD 只证明元数据，
+%% ETag 在 multipart/加密形态也不等于内容 hash。
+-spec object_sha256(binary(), binary()) ->
+    {ok, Sha256 :: binary(), Size :: non_neg_integer()} | {error, term()}.
+object_sha256(Bucket, ObjectKey) ->
+    ok = assert_garage_configured(),
+    Endpoint = endpoint(),
+    Url = elib_s3_sign:presign_get(Endpoint, Bucket, ObjectKey, 60),
+    case
+        httpc:request(get, {binary_to_list(Url), []}, [{timeout, 60000}], [{body_format, binary}])
+    of
+        {ok, {{_, 200, _}, _Headers, Body}} when is_binary(Body) ->
+            Digest = crypto:hash(sha256, Body),
+            Sha = iolist_to_binary([io_lib:format("~2.16.0b", [B]) || B <- binary_to_list(Digest)]),
+            {ok, Sha, byte_size(Body)};
+        {ok, {{_, 404, _}, _, _}} ->
+            {error, not_found};
+        {ok, {{_, Code, _}, _, _}} ->
+            {error, {http_error, Code}};
+        {error, Reason} ->
+            {error, Reason}
+    end.
 
 %% @doc 指定桶向 Garage 发 HEAD 核实对象（多桶 confirm 链路用）
 -spec head_object(binary(), binary()) -> {ok, map()} | {error, not_found | term()}.

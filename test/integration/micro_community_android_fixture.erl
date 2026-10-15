@@ -242,6 +242,7 @@ transport_lease(Ctx, Config) ->
         %% AT-UP（批次168）白名单放开了 /api/v1/passport/login：
         %% login_security_logic 依赖 login_attempt_ets（login_attempt_ds 持有）
         {ok, LoginAttemptSrv} = login_attempt_ds:start_link(),
+        ok = login_attempt_ds:activate_empty(LoginAttemptSrv),
         put(android_login_attempt_server, LoginAttemptSrv),
         Ctx1 = start_negative(Ctx, Config),
         Dispatch = cowboy_router:compile([{'_', mode_routes(Ctx1)}]),

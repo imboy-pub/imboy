@@ -1083,8 +1083,11 @@ limiter_password_reset_fail_no_token_test_() ->
             try
                 %% 故障注入（AC-12 许可）：meck DS 单函数模拟 degraded reset
                 ok = meck:new(login_attempt_ds, [passthrough]),
-                ok = meck:expect(login_attempt_ds, reset, fun(_Identity) ->
-                    {error, unavailable}
+                ok = meck:expect(login_attempt_ds, end_attempt, fun(Ref, Outcome) ->
+                    case Outcome of
+                        reset -> {error, unavailable};
+                        _ -> meck:passthrough([Ref, Outcome])
+                    end
                 end),
                 persistent_term:put({?MODULE, l3_tokens}, 0),
                 try

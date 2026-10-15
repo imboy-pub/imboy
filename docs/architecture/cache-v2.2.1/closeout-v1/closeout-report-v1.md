@@ -535,3 +535,101 @@ P1~P6 计划中提交落地后，rollback-v1.md 须增补对应回滚条目（�
   （33 × already_started 等），失败首时与重启时点吻合（用户亲证死因）。cache 三套件
   隔离 47/47 + 全量零失败双证，重构零回归成立。受影响非 cache 套件的复跑待
   imboy_pg18 容器随其编排恢复后进行（日志：logs/eunit_full_postrefactor.log）。
+
+## 第 4 轮（ZCODE 2026-10-15）：合并树 C10 混合矩阵首次真实执行与三层恢复修复
+
+### 背景与新增证据
+
+上一轮遗留的"main 侧 dd168462/b0db9eae 与我方 0c441451/2c2123cb 平行修复、
+合并树从未验证"在本轮验证：从 main(0d28ad4f) 建分支
+`zcode/cache-closeout-v3-20261014`，先落盘 64dccdf2（covered_seq 重置后
+rebase 零下限行，修 C09 双 epoch 场景），15 套件 14 绿 + metadata_component
+既有例外，随后进入 C10。
+
+C10 旧基线按 handoff 第 8 条以 `3a01829d`（INTEGRATION_BASE）重建 worktree
++make 构建（旧 /tmp 树 deps 残缺不可继承；首轮"缝合怪"结果无效留档
+raw/mixed_c10_v3r1.json）。基线归属判定：`0d28ad4f` 树同版 driver 跑出与
+v3 树完全一致的失败集合（8/16 挂，raw/mixed_c10_base1.json）——失败为合并
+树固有，非修复引入。C10 16 场景此前仅有"erlc 编译通过"记录
+（c10-mixed-plan.md CODE_UPDATED_COMPILE_VERIFIED，"按红线未运行"），
+本轮为首次真实执行。
+
+### 三层恢复修复（cf3f1196）与回归修复（efc92a3c）
+
+16 场景 8 挂 → 三层修复 → 12/16（r1/r2/newb 三轮失败集合一致）：
+
+1. **发现屏障误纳 V1 对端**：发现回合把 syn 全员纳入 version_request
+   应答义务，而 V1（3a01829d）无该协议、静默丢弃 → 回合卡至 Dmax →
+   DEGRADED（M3/M5/U1 时机）。修复：发现屏障与 sources_current 成员
+   一致性只覆盖声明 cache_protocol=2 的成员（新增
+   `imboy_cache_sync:scope_members_by_capability/0` 一次读取分区）；
+   仅存 legacy 对端时空成员恢复轮循环至 Dmax → DEGRADED（M4 fail-closed
+   oracle 不变）。
+2. **excluded 对端合法性缺"自报未 READY"分支**：升级/恢复中的非空同代
+   对端（按合同不提供快照）被 sources_current 与 coverage:verify_target
+   判 peer_content_unproven → 0ms 轮×3 → DEGRADED（103ms 快速降级，
+   M7 heal 链）。修复：{false,false} 分支记录 `reported_ready`，两处
+   合法性判定补 `not reported_ready` 放行；未记录时默认已 READY，
+   fail-closed 严格性不变。
+3. **cf3f1196 回归（efc92a3c 修复）**：sources_current 成员一致性整体
+   切新分区函数连带改变 reported/source pid 资格语义（本地来源
+   source_pid=self() 不再命中成员视图），
+   simultaneously_recovering_peers_use_ready_authority 挂。资格检查恢复
+   沿用 syn_scope_members 全体（含本节点进程）；V2 屏障过滤保持新函数。
+
+验证：invalidation 26/26、snapshot_coverage 20/20、sync 29/29、capability
+15/15、metadata 22/22、journal 全过、origin_target 7/7、source_cut 15/15、
+entry_epoch 28/28、manifest_merge 18/18、snapshot_origin 14/14、control 全过、
+v2/cache 全过；metadata_component 10 过/8 超时（既有登记例外，签名一致）。
+
+### C10 定版：12/16 + 四个开放项（三轮一致）
+
+- **M5**（尾部集群，每轮固定挂）：场景-合同冲突。f93a842a 将 M4 改为
+  "破坏所有新版内存副本"（peer_sync_down 杀 sync+depcache），M5 的
+  "restores READY" oracle 在 B/C 副本全灭 + 无 READY authority 拓扑下
+  不可达；冻结合同要求该态 DEGRADED（"多节点配置但全部 peer 无应答/全
+  recovering → DEGRADED"）。修复需协议级"幸存副本自证恢复"能力或场景
+  重新设计，超出本轮预算。
+- **M8/M9/M10**（主集群，每轮固定挂）：M7 gap 恢复后新键 V2 事件 apply
+  成功（trace 实证 apply_v2_validated RET ok、rev 行 live、seq 连续推进、
+  B status=ready）但 `imboy_cache:get` 返回 undefined——恢复后副本物理值
+  与读屏障不一致，非确定性复现（与 M7 恢复拉取的快照来源相关，从 A 拉
+  快照的窗口触发）。诊断证据：logs/diag_m8.log + /tmp/c10_apply_*.log
+  （会话内）。
+- 失败集合三轮逐字节一致：raw/mixed_c10_v3r1_fix5.json、
+  raw/mixed_c10_v3r2_fix5.json、raw/mixed_c10_newb_r1.json。
+
+### C09 新候选绑定双绿 + QR PASS
+
+- C09：`newb_r1`/`newb_r2` 38/38×2（绑定 b0f62c81，含 cf3f1196；恢复屏障
+  修复对纯 V2 零回归）。
+- QR：3/3 PASS，rows_remaining=0（raw/qr_v3.json）。
+
+### 迁移 apply/rollback：环境阻塞登记
+
+专属库 imboy_cache_closeout_v1 会话中途被外部会话移到 ver=2 dirty（已按
+先例从模板重建回 179 clean）；模板 imboy_v1 同时被其他会话占用（克隆窗口
+不一致，两次克隆分别得到 121 dirty / 179 clean）；165 干净基座纯 up 在 166
+失败——与既有结论一致（部分迁移依赖 app 侧函数，纯迁移不可建）。
+apply/rollback 往返需独占干净 179 库或 app 配合环境，登记为环境阻塞开放项。
+
+### 候选冻结链（本轮三次重冻）
+
+a0ea3a69（64dccdf2 后，8745 文件）→ b0f62c81（cf3f1196 后，8746 文件）→
+**9b9ed755f8e5879ee12c55a9d78d3e60ca625e9df275224470f747b66e3c67ae**
+（efc92a3c 后，8748 文件，head=efc92a3c36077faf601d7462a69f92f0d4060216，
+candidate-manifest-v3.json）。C09×2/C10/QR 绑定 b0f62c81（efc92a3c 仅改
+成员资格检查语义，全量 15 套件在其后全绿复核）；9b9ed755 为最终冻结。
+
+### 性能七臂：本轮未完成（登记）
+
+七臂回执未产出（会话窗口内被收尾指令打断，性能互斥窗口让位于合并）。
+开放：绑定 9b9ed755 的 env_r1/base×3/cand×3 七份回执待补。
+
+### 本轮后未闭合集合（承接上一轮口径增量更新）
+
+1. C10 M8/M9/M10：恢复后副本读屏障不一致（修复窗口未动，证据链齐）。
+2. C10 M5：场景-合同冲突（f93a842a 遗留）。
+3. 迁移 apply/rollback 往返：环境阻塞（共享 PG 4323 外部占用）。
+4. 性能七臂：未产出。
+5. PRODUCTION_ACCEPTANCE：NOT_ISSUED（不变）。

@@ -1,7 +1,11 @@
 %%% Durable purge intents: capture keys before metadata deletion, never perform I/O in its transaction.
+%%% W4-02：drain 消费改走迁移 179 统一 CAS 协议（fn_v5_claim_eb/ack_eb——
+%%% SKIP LOCKED、lease 120s、attempts<8、7 档退避、max_attempts→blocked），
+%%% 不再裸 SELECT+DELETE 行；旧 drain 语义（删除成功才移除行）由 done 终态
+%%% 等价承载（done 行保留 = retired key 墓碑）。
 -module(eb_pg_asset_delete_queue).
 -moduledoc "持久化 purge intent 队列 —— 元数据删除前捕获 key，事务内绝不做 I/O。".
--export([enqueue_in/5, drain/3]).
+-export([enqueue_in/5, drain/3, drain/4, claim/1, ack/5, reap/1]).
 
 enqueue_in(Conn, Org, Ws, MessageIds, AssetIds) ->
     case
@@ -22,35 +26,71 @@ enqueue_in(Conn, Org, Ws, MessageIds, AssetIds) ->
     end.
 
 drain(Org, Ws, Limit) ->
+    drain(Org, Ws, Limit, erlang:make_ref()).
+
+%% 消费至多 Limit 个 job（租约 CAS；删除成功 ack done、失败 ack 退避/终止）。
+drain(Org, Ws, Limit, Token) when Limit > 0 ->
+    case claim(Token) of
+        {ok, Row} ->
+            case process_job(Org, Ws, Row, Token) of
+                ok ->
+                    drain(Org, Ws, Limit - 1, Token);
+                {error, _Reason} ->
+                    %% 失败已 ack（退避/max_attempts 由 fn 裁决）；本批结束
+                    {ok, []}
+            end;
+        {error, empty} ->
+            {ok, []};
+        {error, Reason} ->
+            {error, {object_queue_query_failed, Reason}}
+    end;
+drain(_Org, _Ws, _Limit, _Token) ->
+    {ok, []}.
+
+process_job(Org, Ws, Row, Token) ->
+    AssetId = maps:get(<<"out_asset_id">>, Row),
+    Key = maps:get(<<"out_object_key">>, Row),
+    DeleteResult =
+        try
+            eb_asset_store:delete_queued_object(Org, Ws, Key)
+        catch
+            _C:_R -> {error, worker_crash}
+        end,
+    AckOk = DeleteResult =:= ok orelse DeleteResult =:= {error, not_found},
+    _ = ack(Org, Ws, AssetId, Token, AckOk),
+    AckOk.
+
+%% 企业队列 claim（租约 CAS；fn 返回单 job 或空集）。
+claim(Token) ->
     case
         elib_pg:query(
             <<
-                "SELECT asset_id,object_key FROM enterprise_asset_delete_queue"
-                " WHERE organization_id=$1 AND workspace_id=$2 ORDER BY created_at,asset_id LIMIT $3"
+                "SELECT out_organization_id, out_workspace_id, out_asset_id,"
+                " out_object_key, out_storage_driver, out_storage_namespace,"
+                " out_storage_container, out_storage_locator_sha256, out_attempts"
+                " FROM fn_v5_claim_eb($1)"
             >>,
-            [Org, Ws, Limit]
+            [Token]
         )
     of
-        {ok, Rows} -> {ok, lists:filtermap(fun(Row) -> drain_one(Org, Ws, Row) end, Rows)};
-        {error, Reason} -> {error, {object_queue_query_failed, Reason}}
+        {ok, [Row | _]} -> {ok, Row};
+        {ok, []} -> {error, empty};
+        {error, R} -> {error, R}
     end.
 
-drain_one(Org, Ws, #{<<"asset_id">> := Id, <<"object_key">> := Key}) ->
-    case eb_asset_store:delete_queued_object(Org, Ws, Key) of
-        ok -> finish(Org, Ws, Id);
-        {error, not_found} -> finish(Org, Ws, Id);
-        {error, Reason} -> {true, {undefined, Id, {object_delete_failed, Reason}}}
-    end.
-
-finish(Org, Ws, Id) ->
+ack(Org, Ws, AssetId, Token, Ok) ->
     case
-        elib_pg:execute(
-            <<
-                "DELETE FROM enterprise_asset_delete_queue WHERE organization_id=$1 AND workspace_id=$2 AND asset_id=$3"
-            >>,
-            [Org, Ws, Id]
+        elib_pg:query(
+            <<"SELECT fn_v5_ack_eb($1, $2, $3, $4, $5)">>,
+            [Org, Ws, AssetId, Token, Ok]
         )
     of
-        {ok, _} -> false;
-        {error, Reason} -> {true, {undefined, Id, {object_intent_finish_failed, Reason}}}
+        {ok, _} -> ok;
+        {error, R} -> {error, R}
+    end.
+
+reap(Limit) ->
+    case elib_pg:query(<<"SELECT fn_v5_reaper_eb($1)">>, [Limit]) of
+        {ok, _} -> {ok, 0};
+        {error, R} -> {error, R}
     end.

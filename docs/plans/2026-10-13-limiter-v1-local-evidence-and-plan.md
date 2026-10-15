@@ -643,7 +643,9 @@ admin_unlock(AdminUid, Identity) -> {ok, unlocked} | {error, unauthorized | inva
 admit(Scope, Key)      -> {ok, Snap} | {error, rate_limited | capacity | unavailable}
 %% 生命周期（认证准入专用）
 begin_attempt(Identity, Pid, DeadlineMs) -> {ok, AttemptRef} | {error, unavailable}
-end_attempt(AttemptRef, Outcome) -> ok    %% Outcome ∈ failure | reset | no_count
+end_attempt(AttemptRef, Outcome) -> ok | {error, unavailable | capacity_lost}
+%% Outcome ∈ failure | reset | no_count；未知 Ref 一律拒绝
+activate_empty(OwnerPid) -> ok | {error, unavailable}
 ready() -> boolean()
 ```
 
@@ -764,7 +766,7 @@ ready() -> boolean()
 - AC-01/15/16 在最终 HEAD 重放 PASS（证据 `docs/qa/limiter-v1/7d2239a5/`，
   review 整改补齐 AC-15 output/exit_code 落盘与 manifest 副本）。
 
-#### C.12 遗留、未通过与记录项（不阻塞本地功能完成判定）
+#### C.12 历史交付遗留（完成判定以 C.14 修订为准）
 
 1. **AC-13 C 档（停整节点）与 AC-18（切换/回退演练）未执行**：需隔离演练环境与已验证回退候选；escript 诚实退 4（INPUT_PENDING）。按 §9.3/D6：生产切换在回退候选验证前保持关闭——生产部署本就不在本任务授权内，此两项保持未通过并如实交付。
 2. **容量满未先有限清过期**（A5 P2-1）：实现按 C.7 字面"满即 degraded"，未含 §7.3 的"先有限清过期"；60s cleanup 间隔内逻辑过期行仍占条目预算，新 Key 可能提前触发不可自动恢复的账户域 degraded。属合同细化项，如需收紧应走合同修订+重验，不静默改实现。
@@ -781,3 +783,42 @@ ready() -> boolean()
 - 回退：**ROLLBACK_NOT_READY** 维持——无已验证回退候选前相关入口保持拒绝（§9.3 步骤 6）。
 - 生产切换批准、部署执行：须单独授权，不因本任务本地完成而自动生效。
 
+
+
+#### C.14 合入后正确性整改（2026-10-15）
+
+本节覆盖 C.11/C.12 中与下述事实冲突的实现和完成表述。当前修复来自
+`main@4c48e666` 的独立 `codex/limiter-v1-correctness` worktree，尚未授权提交或合并。
+历史专项 PASS 不能替代本节反例及完整计划验收。
+
+- **容量**：admit 过期行原地换窗不增加物理条目计数；满额新 Key 先有界回收过期行。
+  账户域回收后仍满才置 degraded，不淘汰有效锁。
+- **deadline**：独立、按截止时间排序的 owner ETS 索引，单轮最多处理 cleanup_batch
+  个已到期认证；账户/IP 大表不能遮挡认证。终态、DOWN 和到期同步移除索引/monitor；
+  在途条目数受账户域容量上限约束。原“最坏数百秒”判断不成立：旧表头重扫可能持续漏检。
+- **恢复**：owner init 一律 ready=false，包括 supervisor 自动重启。可信节点操作
+  `activate_empty(OwnerPid)` 只批准该 PID 的未就绪空态，旧 PID 批准不能开放新 owner，
+  在役或 degraded 状态不能用此 API 清除。默认配置 `limiter_allow_empty_start=false`；
+  显式设 true 是每次完整应用启动均生效的持久空态策略，不是一次性令牌，child 重启不走该策略。
+  未完成排空/验证的部署应保持默认关闭，由既有受限运维通道绑定 PID 批准；不新增公网恢复接口。
+- **认证终态**：密码/验证码凭据失败由 end_attempt(failure) 原子确认记账与释放生命周期，
+  capacity_lost/unavailable 返回 service_unavailable；不重试未知结果。成功路径以 end_attempt(reset) 原子核验 Ref、清零及释放；旧 Ref 不能清除新 owner 状态或授权签发。
+  AC-12 的 end_attempt 错误不得再吞成 ok；未知 Ref 的所有 outcome 均拒绝，不补记、不伪报成功。
+- **时间**：HTTP 窗口使用整数 floor 对齐，支持实际 Erlang VM 常见的负数 monotonic 基准；pending 新 period
+  的首个请求即使迟到多个窗口，也按新 period 定位，不返回已经过期的窗口。
+- **验证工具**：AC-13 实际运行两个顺序独立 VM，检验未批准拒绝、批准后账户/IP 累计和 degraded；
+  证据仅代表 DS/VM 恢复边界。AC-16 交错 80/15/5 操作，运行期间 1ms 取样并与 cleanup 重叠，
+  账户等待单独判定；128-worker 压力档持续至少 5 秒，报告实际事件数/时长与降载后队列，
+  不将统计取样最大值称为无遗漏的瞬时峰值，不由有限本地负载推导任意生产流量保证。
+  REST 夹具在 owner 启动前冻结测试额度，不依赖私有 sys.local.config 或等下一窗口碰巧通过。
+  来源标识绑定 HEAD 和本任务文件集合摘要，另记录 BEAM 摘要；未提交实现不冒称原 main 候选。
+
+`login_attempt_correctness_tests` 的前六个反例在修复前均失败（原始退出 1），
+修复后新增的 18 项定向回归已通过；正式 eunit 定向入口同样通过。
+集成专项已执行，最终结果和脚本重放以仓外原始回执为准，不沿用旧候选的全量结果。
+本轮全量 EUnit 在 600 秒上限退出 124，过程中已出现群文件 mock 冲突等失败；
+全量门禁未通过。原始 Dialyzer 非零，亦不由专项通过替代。
+
+**整份任务仍须按完整验收判定**：AC-18 真实入口关闭/排空/切换/安全候选回退演练
+未执行时保持未通过，不能以“生产未授权”豁免隔离演练；全量 EUnit 失败也不能由专项绿灯覆盖。
+部署、生产清空、合并与发布均不在本轮修复授权内。

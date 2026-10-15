@@ -355,11 +355,16 @@ fetch_message(OrgId, WorkspaceId, MessageId) ->
     {message_id, <<"message_id">>, int},
     {status, <<"status">>, atom},
     {uploaded_by_user_id, <<"uploaded_by_user_id">>, int},
-    {retain_until, <<"retain_until">>, ts}
+    {retain_until, <<"retain_until">>, ts},
+    {lifecycle_state, <<"lifecycle_state">>, bin}
 ]).
 
 %% @doc 在调用方事务内按 id 批量锁定资产行（FOR UPDATE），供 canonical 事务做
 %% 绑定前逐行校验（attachment-state-machine：锁定 active+unbound asset）。
+%% W3-03 锁序（02 §4）：先按完整 identity 字节序逐个取跨域对象 advisory 锁
+%% （与 fn_v5_lock_identity 同键同 seed 1685），再按 id 升序 FOR UPDATE——
+%% 绑定入口与 intent/confirm/enqueue 参与同一锁域；身份三主体+object_key
+%% 首次写入后不可变，锁前无锁读无漂移窗口。
 %% 不在列表内的 id 不返回——缺失（含跨租户/不存在）由调用方按 not_found 裁决。
 -spec lock_assets_in(term(), integer(), integer(), [integer()]) ->
     {ok, [map()]} | {error, term()}.
@@ -367,20 +372,50 @@ lock_assets_in(Conn, OrgId, WorkspaceId, AssetIds) when is_list(AssetIds) ->
     case tenant_error(OrgId, WorkspaceId) of
         ok ->
             case
-                elib_pg:query(Conn, eb_pg_store_sql:sql(lock_assets_by_ids), [
+                elib_pg:query(Conn, eb_pg_store_sql:sql(lock_assets_identity), [
                     OrgId, WorkspaceId, AssetIds
                 ])
             of
-                {ok, Rows} ->
-                    {ok, [eb_pg_store_sql:normalize(Row, ?ASSET_LOCK_FIELDS) || Row <- Rows]};
-                {error, Reason} ->
-                    {error, eb_pg_store_sql:normalize_error(Reason)}
+                {error, _} = Err ->
+                    Err;
+                {ok, IdRows} ->
+                    case lock_identities(Conn, IdRows) of
+                        ok -> lock_assets_rows(Conn, OrgId, WorkspaceId, AssetIds);
+                        {error, _} = Err -> Err
+                    end
             end;
         {error, _} = Err ->
             Err
     end;
 lock_assets_in(_Conn, _OrgId, _WorkspaceId, _AssetIds) ->
     {error, invalid_asset_ids}.
+
+lock_identities(_Conn, []) ->
+    ok;
+lock_identities(Conn, [Row | Rest]) ->
+    case
+        elib_pg:query(Conn, eb_pg_store_sql:sql(lock_asset_identity), [
+            maps:get(<<"storage_driver">>, Row),
+            maps:get(<<"storage_namespace">>, Row),
+            maps:get(<<"storage_container">>, Row),
+            maps:get(<<"object_key">>, Row)
+        ])
+    of
+        {ok, _} -> lock_identities(Conn, Rest);
+        {error, Reason} -> {error, Reason}
+    end.
+
+lock_assets_rows(Conn, OrgId, WorkspaceId, AssetIds) ->
+    case
+        elib_pg:query(Conn, eb_pg_store_sql:sql(lock_assets_by_ids), [
+            OrgId, WorkspaceId, AssetIds
+        ])
+    of
+        {ok, Rows} ->
+            {ok, [eb_pg_store_sql:normalize(Row, ?ASSET_LOCK_FIELDS) || Row <- Rows]};
+        {error, Reason} ->
+            {error, eb_pg_store_sql:normalize_error(Reason)}
+    end.
 
 %% @doc 在调用方事务内把一条 active+unbound 资产绑定到消息（写 message_id）。
 %% retain_until 取「资产现值与消息保留期的较大者」（只能后移；NULL 继承消息值

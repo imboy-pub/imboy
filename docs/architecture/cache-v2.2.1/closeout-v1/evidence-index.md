@@ -291,3 +291,27 @@ SUMMARY: 4/4 checks passed
 `f1aa1ce016eaa6e4db18e52e6ee6fba51cdb745303c057aaeff650c9b990020c`，与
 `candidate_freeze.json` 及 4 个绿灯轮记录值逐字节一致。校验器脚本
 `scripts/check_cache_closeout_v1.py` 已于同日入库（此前仅存于证据根，未受 git 跟踪）。
+
+## 归档注记三（第 4 轮 ZCODE 2026-10-15：合并树 C10 首执行 + 三层恢复修复）
+
+本轮证据根：`~/.codex/cache-closeout-runs/zcode-closeout-20261014/`。
+候选冻结链：a0ea3a69…（8745 文件）→ b0f62c81…（8746 文件）→
+9b9ed755f8e5879ee12c55a9d78d3e60ca625e9df275224470f747b66e3c67ae
+（最终，8748 文件，head=efc92a3c）。关键回执（raw/ 顶层）：
+
+- `three_node_c09_newb_r1.json` / `three_node_c09_newb_r2.json`：
+  C09 38/38 ×2，绑定 b0f62c81（含 cf3f1196）。
+- `mixed_c10_v3r1_fix5.json` / `mixed_c10_v3r2_fix5.json` /
+  `mixed_c10_newb_r1.json`：C10 三轮 12/16，失败集合逐轮一致
+  （M5/M8/M9/M10，开放项）。
+- `mixed_c10_base1.json`：0d28ad4f 基线归属判定（与 v3 同 8 挂，
+  证明失败为合并树固有）。
+- `qr_v3.json`：QR 3/3 PASS，rows_remaining=0。
+- `mixed_c10_v3r1.json`（缝合怪无效轮留档）、`mixed_c10_v3r1_rebuilt.json`、
+  `mixed_c10_v3r1_fix1/fix2/fix3.json`（修复过程轮）。
+- `agent-out/ledger-closeout-tasks.json`：C09/C10/QR/C11/MIGRATION/
+  FULL_EUNIT 终态回执。
+- legacy 树重建：3a01829d worktree（`~/.codex/tmp/cache-closeout-legacy-3a01829d`，
+  handoff 第 8 条执行；本轮收尾后按用户指令清理）。
+- 迁移环境阻塞：v1 库被外部移至 ver=2 dirty（已恢复 179 clean）、
+  模板占用克隆不一致、165 基座纯 up 166 失败（app 侧函数依赖）。

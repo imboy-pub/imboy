@@ -120,18 +120,26 @@ governance_tx(Conn, Ctx, Input) when is_map(Input) ->
     Op = maps:get(op, Input, undefined),
     case resolve_attachment(Conn, Ctx, maps:get(object_key, Input, undefined)) of
         {ok, Att} ->
-            %% INT-BE-03 冻结政策 INT-22=REQUIRED_AUDIT：治理审计（audit_action
-            %% 冻结为 file.governance.op，具体 op 落 detail.op）与治理写同事务
-            %% ——审计失败 → error → 调用方整体回滚（purge 不可逆动作尤其要求
-            %% 留痕原子）。
-            case apply_op(Conn, Ctx, Op, Att, Input) of
-                {ok, Ok} ->
-                    case audit_mutation(Conn, Ctx, Op, maps:get(<<"id">>, Att, null)) of
-                        ok -> {ok, Ok};
-                        {error, Reason} -> {error, {<<"internal_error">>, {audit, Reason}}}
+            %% W3-02 Hold 竞争协议（02 §4）：intent 先提交（delete_intent/
+            %% deleted）时治理操作返回 already_deleting——Hold/留存延长不得
+            %% 追认已进删除流程的对象。
+            case maps:get(<<"lifecycle_state">>, Att, <<"live">>) of
+                <<"live">> ->
+                    %% INT-BE-03 冻结政策 INT-22=REQUIRED_AUDIT：治理审计（audit_action
+                    %% 冻结为 file.governance.op，具体 op 落 detail.op）与治理写同事务
+                    %% ——审计失败 → error → 调用方整体回滚（purge 不可逆动作尤其要求
+                    %% 留痕原子）。
+                    case apply_op(Conn, Ctx, Op, Att, Input) of
+                        {ok, Ok} ->
+                            case audit_mutation(Conn, Ctx, Op, maps:get(<<"id">>, Att, null)) of
+                                ok -> {ok, Ok};
+                                {error, Reason} -> {error, {<<"internal_error">>, {audit, Reason}}}
+                            end;
+                        {error, _} = Err ->
+                            Err
                     end;
-                {error, _} = Err ->
-                    Err
+                _ ->
+                    {error, {<<"invalid_request">>, already_deleting}}
             end;
         {error, _} = Err ->
             Err
@@ -245,9 +253,11 @@ do_release_hold(Conn, AttId, Att) ->
             {error, {<<"internal_error">>, Reason}}
     end.
 
-%% @doc purge：DB 守卫先行（hold/留存/终态在 DB 触发器判定），随后删存储对象。
-%% 顺序刻意如此：对象删除失败会让整个事务回滚，绝不出现「对象已删但治理行未
-%% 记录」或「治理行 purged 但对象仍在」的半成品状态。
+%% @doc purge：DB 守卫先行（hold/留存/终态在 DB 触发器判定），同事务置
+%% 治理终态（purge_state=purged）后发删除意图（迁移 185：EAR purged 终态
+%% 即资格权威，密文企业附件覆盖），字节由 Worker 删——不在 DB 事务中网络
+%% DELETE（02 §4，W4-01 入口收口）。整事务原子：任一步失败全部回滚，绝不
+%% 出现「治理行 purged 但无删除意图」的半成品状态。
 -spec do_purge(any(), map(), pos_integer(), map()) -> {ok, map()} | {error, {binary(), term()}}.
 do_purge(Conn, Ctx, AttId, Att) ->
     case enterprise_attachment_retention_repo:is_purgeable_tx(Conn, AttId) of
@@ -256,7 +266,11 @@ do_purge(Conn, Ctx, AttId, Att) ->
         {ok, true} ->
             case enterprise_attachment_retention_repo:purge_tx(Conn, AttId) of
                 {ok, PurgedAt} ->
-                    case delete_object(maps:get(<<"path">>, Att)) of
+                    case
+                        attachment_repo:intent_purged_delete_tx(
+                            Conn, maps:get(<<"path">>, Att), <<"ear purge">>
+                        )
+                    of
                         ok ->
                             _ = enterprise_application_usage_repo:bump_tx(
                                 Conn,
@@ -267,7 +281,7 @@ do_purge(Conn, Ctx, AttId, Att) ->
                             Base = base_reply(AttId, Att, PurgedAt),
                             {ok, Base#{<<"purged">> => true, <<"held">> => false}};
                         {error, Reason} ->
-                            {error, {<<"internal_error">>, {object_delete_failed, Reason}}}
+                            {error, {<<"internal_error">>, {purge_intent_failed, Reason}}}
                     end;
                 {error, already_purged} ->
                     {error, {<<"invalid_request">>, already_purged}};
@@ -282,21 +296,8 @@ do_purge(Conn, Ctx, AttId, Att) ->
             {error, {<<"internal_error">>, Reason}}
     end.
 
--spec delete_object(binary()) -> ok | {error, term()}.
-delete_object(ObjectKey) ->
-    Bucket = elib_oss:get_bucket(<<"enterprise">>),
-    try elib_oss:delete_object(Bucket, ObjectKey) of
-        ok -> ok;
-        {error, not_found} -> ok;
-        {error, Reason} -> {error, Reason}
-    catch
-        Class:Reason ->
-            ?ERROR_LOG([
-                enterprise_asset_retention_object_delete_failed,
-                #{class => Class, reason => Reason}
-            ]),
-            {error, {Class, Reason}}
-    end.
+%% W4-01 入口收口：purge 不再直接删字节（原 delete_object/elib_oss 直调
+%% 已移除）——字节由删除队列 Worker 执行（02 §4）。
 
 %% @doc 治理操作回执：把治理行当前状态一并回读（单一形状，便于调用方/审计）。
 -spec row_reply(any(), pos_integer(), map(), map(), undefined | binary()) ->

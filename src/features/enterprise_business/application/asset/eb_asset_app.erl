@@ -734,19 +734,24 @@ identity_of(Store, OrgId, Ws, ConversationId) when is_integer(ConversationId) ->
 %% 3. confirm：重新鉴权 + 完整性 + 保留期继承
 %% ===================================================================
 
-%% @doc `Params`：`workspace_id` / `upload_ref` / `actor_user_id` 必填。
+%% @doc `Params`：`workspace_id` / `upload_ref` / `actor_user_id` 必填；
+%% W2-02 恢复：`upload_ref` 可由 `asset_id` 替代（响应丢失后客户端按授权
+%% asset_id 恢复 confirm，不要求持久化 upload_ref；授权以行派生 claims +
+%% scope 复核为准）。
 -spec confirm_asset(integer(), map()) -> {ok, map()} | {error, term()}.
 confirm_asset(OrgId, Params) when is_integer(OrgId), is_map(Params) ->
     case confirm_args(Params) of
         {error, _} = Err ->
             Err;
-        {ok, Ws, Token, Actor} ->
+        {ok, Ws, {ref, Token}, Actor} ->
             case open_ref(OrgId, Ws, Token, Actor, Params) of
                 {error, _} = Err ->
                     Err;
                 {ok, Claims} ->
                     confirm_authorized(OrgId, Ws, Claims, Params)
-            end
+            end;
+        {ok, Ws, {asset_id, AssetId}, Actor} ->
+            confirm_by_asset_id(OrgId, Ws, AssetId, Actor, Params)
     end;
 confirm_asset(_OrgId, _Params) ->
     {error, {invalid_argument, confirm_asset}}.
@@ -754,14 +759,86 @@ confirm_asset(_OrgId, _Params) ->
 confirm_args(Params) ->
     Ws = maps:get(workspace_id, Params, undefined),
     Token = maps:get(upload_ref, Params, undefined),
+    AssetId = maps:get(asset_id, Params, undefined),
     case actor_scope(Params) of
         {error, _} = Err ->
             Err;
         {ok, Actor} ->
-            case {is_integer(Ws), is_binary(Token)} of
-                {true, true} -> {ok, Ws, Token, Actor};
-                _ -> {error, {invalid_argument, {confirm_asset, [Ws, Token]}}}
-            end
+            cond_ref_or_id(Ws, Token, AssetId, Actor)
+    end.
+
+cond_ref_or_id(Ws, Token, _AssetId, Actor) when is_integer(Ws), is_binary(Token) ->
+    {ok, Ws, {ref, Token}, Actor};
+cond_ref_or_id(Ws, _Token, AssetId, Actor) when is_integer(Ws), is_integer(AssetId) ->
+    {ok, Ws, {asset_id, AssetId}, Actor};
+cond_ref_or_id(Ws, Token, AssetId, _Actor) ->
+    {error, {invalid_argument, {confirm_asset, [Ws, Token, AssetId]}}}.
+
+%% W2-02 asset_id 恢复路径：不依赖 upload_ref JWT——claims 自资产行派生
+%% （object_hash/size 以服务端行为准），授权重走 scope 复核门（成员比对
+%% 行审计字段，访客走会话归属门）；已 active 的资产幂等回读同一视图。
+confirm_by_asset_id(OrgId, Ws, AssetId, Actor, Params) ->
+    Asset = port(Params, asset),
+    case Asset:fetch_asset(OrgId, Ws, AssetId) of
+        {ok, Row} ->
+            case row_actor_authorized(Row, Actor) of
+                {error, _} = Err ->
+                    Err;
+                ok ->
+                    Auth = port(Params, auth),
+                    Store = port(Params, store),
+                    Claims = claims_from_row(Row, Actor),
+                    Conv = maps:get(conversation_id, Claims, undefined),
+                    case scope_check_by_claims(Auth, Store, OrgId, Ws, Conv, Claims) of
+                        {error, _} = Err ->
+                            Err;
+                        ok ->
+                            confirm_dispatch_status(OrgId, Ws, Row, Claims, Params)
+                    end
+            end;
+        {error, _} = Err ->
+            Err
+    end.
+
+%% 行审计 actor 比对（open_ref 的 actor_claim_value=:=actor_value 同口径）：
+%% 成员主体必须与行 uploaded_by_user_id 逐字相等；访客主体（contact）无
+%% 行字段可比，交由 scope_check_by_claims 的会话归属门裁决。
+row_actor_authorized(Row, Actor) ->
+    case {actor_value(Actor), maps:get(uploaded_by_user_id, Row, undefined)} of
+        {{member, Id}, RowId} when is_integer(RowId) ->
+            case Id =:= RowId of
+                true -> ok;
+                false -> {error, {forbidden, not_uploader}}
+            end;
+        {{contact, _}, _} ->
+            ok;
+        {{member, _}, _} ->
+            ok
+    end.
+
+claims_from_row(Row, Actor) ->
+    Base = #{
+        asset_id => maps:get(id, Row),
+        object_hash => maps:get(object_hash, Row, undefined),
+        size_bytes => maps:get(size_bytes, Row, undefined),
+        mime => maps:get(mime_type, Row, maps:get(mime, Row, undefined)),
+        conversation_id => maps:get(conversation_id, Row, undefined)
+    },
+    case actor_value(Actor) of
+        {member, Id} -> Base#{actor_user_id => Id};
+        {contact, Id} -> Base#{actor_contact_id => Id}
+    end.
+
+%% 状态分派：pending_confirm → 校验链；active → 幂等回读（重放返回同一
+%% asset 视图与 hold_count，审计/跃迁只在首确认发生一次）；其余 conflict。
+confirm_dispatch_status(OrgId, Ws, Row, Claims, Params) ->
+    case maps:get(status, Row, undefined) of
+        pending_confirm ->
+            confirm_checks(OrgId, Ws, Row, Claims, Params);
+        active ->
+            replay_view(OrgId, Ws, Row, Params);
+        _Other ->
+            {error, conflict}
     end.
 
 %% A02 的落点：confirm 必须**重新**鉴权（presign 后被 suspend 的 actor 在此失败；
@@ -783,13 +860,7 @@ confirm_pending(OrgId, Ws, Claims, Params) ->
     AssetId = maps:get(asset_id, Claims),
     case Asset:fetch_asset(OrgId, Ws, AssetId) of
         {ok, Row} ->
-            case maps:get(status, Row, undefined) of
-                pending_confirm ->
-                    confirm_checks(OrgId, Ws, Row, Claims, Params);
-                _Other ->
-                    %% 非 pending 一律 conflict（状态机每次跃迁都要可审计，重放不算成功）
-                    {error, conflict}
-            end;
+            confirm_dispatch_status(OrgId, Ws, Row, Claims, Params);
         {error, _} = Err ->
             Err
     end.
@@ -871,22 +942,33 @@ retention_compare(Row, Message, MsgId) ->
 
 confirm_commit(OrgId, Ws, Row, Params) ->
     Asset = port(Params, asset),
-    Store = port(Params, store),
     AssetId = maps:get(id, Row),
     case Asset:confirm_asset(OrgId, Ws, AssetId) of
         {ok, Confirmed} ->
-            View = eb_asset_content:public_asset_view(Confirmed),
             %% hold_count 只是**可观测面**（真守护在 DB 触发器 + cleanup 的 hold 门），
             %% 故此处查询失败按 0 记录，不影响 confirm 的成败。
             Count =
-                case hold_count(Store, OrgId, Ws, Row) of
+                case hold_count(port(Params, store), OrgId, Ws, Row) of
                     {ok, N} -> N;
                     {error, _} -> 0
                 end,
-            {ok, eb_asset_content:with_hold_count(View, Count)};
+            {ok,
+                eb_asset_content:with_hold_count(
+                    eb_asset_content:public_asset_view(Confirmed), Count
+                )};
         {error, _} = Err ->
             Err
     end.
+
+%% W2-02 幂等重放：已 active 资产返回与首确认相同的视图（同一 asset id、
+%% 同一 hold_count 口径），不重复跃迁/审计。
+replay_view(OrgId, Ws, Row, Params) ->
+    Count =
+        case hold_count(port(Params, store), OrgId, Ws, Row) of
+            {ok, N} -> N;
+            {error, _} -> 0
+        end,
+    {ok, eb_asset_content:with_hold_count(eb_asset_content:public_asset_view(Row), Count)}.
 
 %% ===================================================================
 %% 4. content：鉴权代理取流

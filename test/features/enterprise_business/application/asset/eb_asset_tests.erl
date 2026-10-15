@@ -58,7 +58,10 @@ cases({ok, _Conn}) ->
         {timeout, 60, fun csb02s_d6_visitor_scope_negatives/0},
         %% BE-S01b：访客 content proxy 的 contact 分支 + 绑定作用域门
         {timeout, 60, fun bes01b_visitor_content_linked_positive/0},
-        {timeout, 60, fun bes01b_visitor_content_binding_negatives/0}
+        {timeout, 60, fun bes01b_visitor_content_binding_negatives/0},
+        %% W2-02：confirm 幂等重放 + asset_id 恢复（不要求持久化 upload_ref）
+        {timeout, 60, fun w202_confirm_replay_idempotent_active/0},
+        {timeout, 60, fun w202_confirm_by_asset_id_recovery/0}
     ];
 cases(_Skipped) ->
     %% 裸 {skip,_} 从 instantiator 返回是非法 descriptor（eunit 报
@@ -500,3 +503,111 @@ tamper(Bin) when byte_size(Bin) > 4 ->
             _ -> $A
         end,
     <<Head/binary, Flip, Tail/binary>>.
+
+%% ===================================================================
+%% W2-02：confirm 幂等重放 + asset_id 恢复（不要求持久化 upload_ref）
+%% ===================================================================
+
+%% @doc 重放：已 active 资产的 confirm 返回与首确认相同的视图（同一
+%% asset id、status=active），不再视为 conflict；跃迁/审计只在首确认一次。
+w202_confirm_replay_idempotent_active() ->
+    Scope = eb_asset_it_lib:new_scope(),
+    try
+        {Org, Ws} = eb_asset_it_lib:tenant(Scope),
+        Conv = maps:get(conversation_id, Scope),
+        Contact = maps:get(contact_id, Scope),
+        Payload = <<"w202-replay-", (integer_to_binary(eb_pg_test_fixture:id()))/binary>>,
+        Base = #{
+            workspace_id => Ws,
+            conversation_id => Conv,
+            mime => <<"text/plain">>,
+            size_bytes => byte_size(Payload),
+            object_hash => eb_asset_it_lib:sha256_hex(Payload),
+            key_ref => eb_asset_it_lib:key_ref(Scope),
+            upload_ttl_seconds => 900
+        },
+        {ok, Presign} = enterprise_business_facade:request_presign(
+            Org, Base#{actor_contact_id => Contact}
+        ),
+        Ref = maps:get(upload_ref, Presign),
+        AssetId = maps:get(asset_id, Presign),
+        {ok, _} = eb_asset_app:put_object(Org, #{
+            workspace_id => Ws,
+            conversation_id => Conv,
+            upload_ref => Ref,
+            payload => Payload,
+            actor_contact_id => Contact,
+            key_ref => eb_asset_it_lib:key_ref(Scope)
+        }),
+        ConfirmParams = #{
+            workspace_id => Ws,
+            upload_ref => Ref,
+            actor_contact_id => Contact,
+            key_ref => eb_asset_it_lib:key_ref(Scope)
+        },
+        {ok, First} = enterprise_business_facade:confirm_asset(Org, ConfirmParams),
+        ?assertEqual(active, maps:get(status, First)),
+        %% 100 次重放：同一 asset 视图（幂等成功，非 conflict）
+        lists:foreach(
+            fun(_) ->
+                {ok, Replay} = enterprise_business_facade:confirm_asset(Org, ConfirmParams),
+                ?assertEqual(
+                    maps:get(asset_id, First), maps:get(asset_id, Replay)
+                )
+            end,
+            lists:seq(1, 100)
+        )
+    after
+        _ = eb_asset_object_stub:reset()
+    end.
+
+%% @doc 恢复：响应丢失后仅凭授权 asset_id（无 upload_ref）confirm 成功；
+%% 字节完整性仍以行派生 claims + 真实内容校验为准。
+w202_confirm_by_asset_id_recovery() ->
+    Scope = eb_asset_it_lib:new_scope(),
+    try
+        {Org, Ws} = eb_asset_it_lib:tenant(Scope),
+        Conv = maps:get(conversation_id, Scope),
+        Contact = maps:get(contact_id, Scope),
+        Payload = <<"w202-recover-", (integer_to_binary(eb_pg_test_fixture:id()))/binary>>,
+        Base = #{
+            workspace_id => Ws,
+            conversation_id => Conv,
+            mime => <<"text/plain">>,
+            size_bytes => byte_size(Payload),
+            object_hash => eb_asset_it_lib:sha256_hex(Payload),
+            key_ref => eb_asset_it_lib:key_ref(Scope),
+            upload_ttl_seconds => 900
+        },
+        {ok, Presign} = enterprise_business_facade:request_presign(
+            Org, Base#{actor_contact_id => Contact}
+        ),
+        Ref = maps:get(upload_ref, Presign),
+        AssetId = maps:get(asset_id, Presign),
+        {ok, _} = eb_asset_app:put_object(Org, #{
+            workspace_id => Ws,
+            conversation_id => Conv,
+            upload_ref => Ref,
+            payload => Payload,
+            actor_contact_id => Contact,
+            key_ref => eb_asset_it_lib:key_ref(Scope)
+        }),
+        %% 不带 upload_ref：仅 workspace_id + asset_id + 主体
+        {ok, Recovered} = enterprise_business_facade:confirm_asset(Org, #{
+            workspace_id => Ws,
+            asset_id => AssetId,
+            actor_contact_id => Contact,
+            key_ref => eb_asset_it_lib:key_ref(Scope)
+        }),
+        ?assertEqual(active, maps:get(status, Recovered)),
+        %% 恢复后再以原 ref 重放：同一视图（同 id 幂等）
+        {ok, Replay} = enterprise_business_facade:confirm_asset(Org, #{
+            workspace_id => Ws,
+            upload_ref => Ref,
+            actor_contact_id => Contact,
+            key_ref => eb_asset_it_lib:key_ref(Scope)
+        }),
+        ?assertEqual(maps:get(asset_id, Recovered), maps:get(asset_id, Replay))
+    after
+        _ = eb_asset_object_stub:reset()
+    end.
