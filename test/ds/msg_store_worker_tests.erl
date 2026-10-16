@@ -429,6 +429,13 @@ do_write_c2g_missing_conv_seq_is_conv_seq_missing_test_() ->
 terminal_write_reason_classification_test() ->
     Terminal = [
         no_recipients,
+        c2c_sequence_missing,
+        c2c_sequence_conflict,
+        msg_id_conflict,
+        {archive_failed, c2c_sequence_conflict},
+        {error, error, <<"23514">>, check_violation, <<"conflict">>, [
+            {constraint_name, <<"c2c_order_conflict">>}
+        ]},
         c2g_conv_seq_missing,
         c2g_gid_missing,
         {unknown_msg_type, c2c, <<"m-x">>}
@@ -437,6 +444,9 @@ terminal_write_reason_classification_test() ->
     Retryable = [
         {db_exception, error, timeout},
         closed,
+        {error, error, <<"23514">>, check_violation, <<"other">>, [
+            {constraint_name, <<"unrelated_check">>}
+        ]},
         {rollback, forbidden},
         {msg_c2g_insert_failed, unique_violation}
     ],
@@ -514,5 +524,41 @@ process_row_poison_does_not_block_next_message_test_() ->
             ?assertEqual(1, meck:num_calls(msg_c2g_repo, write_accepted_msg, 11)),
             ?assertEqual(1, meck:num_calls(msg_store_ds, unstage, [<<"m-after-poison">>])),
             ?assertEqual(0, meck:num_calls(msg_store_repo, mark_failed, 4))
+        end
+    ).
+
+process_row_missing_c2c_sequence_preserves_message_test_() ->
+    ?WITH_MECKS(
+        [
+            {msg_c2c_ds, [
+                {'write_msg', 9, fun(_, _, _, _, _, _, _, _, _) ->
+                    {error, c2c_sequence_missing}
+                end}
+            ]},
+            {msg_operation_ds, [{'maybe_clean_delivered', 3, fun(_, _, _) -> ok end}]},
+            {msg_store_ds, [{'unstage', 1, fun(_) -> ok end}]},
+            {msg_store_repo, [
+                {'mark_terminal', 3, fun(_, _, _) -> {ok, 1} end},
+                {'mark_failed', 4, fun(_, _, _, _) -> {ok, 1} end}
+            ]}
+        ],
+        fun() ->
+            Row = c2g_guard_row(#{
+                <<"type">> => <<"c2c">>,
+                <<"to_id">> => 9,
+                <<"conv_seq">> => null
+            }),
+            msg_store_worker:process_row(Row),
+            ?assertEqual(
+                1,
+                meck:num_calls(
+                    msg_store_repo,
+                    mark_terminal,
+                    [<<"c2c">>, <<"m-guard-1">>, <<"c2c_sequence_missing">>]
+                )
+            ),
+            ?assertEqual(0, meck:num_calls(msg_store_repo, mark_failed, 4)),
+            ?assertEqual(0, meck:num_calls(msg_operation_ds, maybe_clean_delivered, 3)),
+            ?assertEqual(0, meck:num_calls(msg_store_ds, unstage, 1))
         end
     ).

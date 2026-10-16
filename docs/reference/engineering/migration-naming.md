@@ -42,13 +42,14 @@ ls priv/migrations/*.up.sql | sed -E 's|.*/([0-9]+)_.*|\1|' | sort -n | tail -1
 
 ## 4. 乱序保护（strict 模式）
 
-`imboy_migrate:migrate/0` 已启用 `strict => true`：
+`imboy_migrate:migrate/0` 已启用 `strict => true, strict_bootstrap => fail`：
 
 - 已应用迁移记录在 `schema_migrations_history` 表（每版本一行）。
 - 若存在"版本号小于等于当前版本、但从未应用"的文件，启动时报
   `{error, {out_of_order, Versions}}`，**不会**被静默跳过。
-- 处理方式：给迟到文件重命名为当前最大编号 +1（推荐）；或手动应用后执行
-  `erlang_migrate:force/2` 重建历史。
+- 有当前版本、但历史为空时，返回 `strict_bootstrap_needed`；不能推测低版本迁移均已执行。
+- 已进入其他环境的迁移保持不可变。迟到文件须核对实际结构及数据后，在事务中补执行并记录对应历史；未发布的新文件可重新分配编号。不得仅修改版本或调用 `force/2` 将未执行的迁移标为完成。
+- 迁移 194 后，应用还会核对三张 C2C 消息表的保护触发器均启用；只有迁移记录、缺少实际保护的恢复库不能启动。
 
 ## 5. 提交前自检
 

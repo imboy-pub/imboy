@@ -75,7 +75,7 @@ migrate_to_msg_v2() ->
 %% @example
 %% imboy_migrate:migrate().
 %% @note 迁移文件用 8 位零填充顺序编号命名（00000001–99999999，取当前最大值 +1），
-%%       strict 模式按 schema_migrations_history 检测乱序，见 docs/standards/migration_naming.md
+%%       strict 模式按 schema_migrations_history 检测乱序，见 docs/reference/engineering/migration-naming.md
 -spec migrate() -> ok.
 migrate() ->
     migrate(get_scripts_path()).
@@ -89,21 +89,37 @@ migrate(Path) ->
     {ok, Conn} = epgsql:connect(Conf),
     %% strict: 顺序编号下检测乱序迁移（后合并的低编号文件会报
     %% {out_of_order, Versions} 而非被静默跳过），需 erlang_migrate >= 0.3.0
-    Config = #{conn => Conn, dir => Path, strict => true},
+    Config = #{conn => Conn, dir => Path, strict => true, strict_bootstrap => fail},
     try
         case erlang_migrate:up(Config) of
             ok ->
+                ok = verify_c2c_order_guards(Conn),
                 ?LOG_INFO("[imboy_migrate] all migrations applied"),
                 ok;
             {error, {dirty_state, Hint}} ->
                 ?LOG_ERROR("[imboy_migrate] dirty state — run force/2 to recover: ~s", [Hint]),
                 erlang:error({migration_dirty, Hint});
             {error, Reason} ->
-                ?LOG_ERROR("[imboy_migrate] migration failed: ~p", [Reason]),
+                ?LOG_ERROR("[imboy_migrate] migration failed: ~w", [Reason]),
                 erlang:error({migration_failed, Reason})
         end
     after
         epgsql:close(Conn)
+    end.
+
+%% A restored ledger is not proof that its protective triggers were restored.
+verify_c2c_order_guards(Conn) ->
+    Sql = <<
+        "SELECT count(*) FROM pg_trigger WHERE NOT tgisinternal "
+        "AND tgname='trg_00_c2c_order_guard' AND tgenabled IN ('O','A') "
+        "AND tgrelid IN ('public.msg_store_staging'::regclass, "
+        "'public.msg_c2c'::regclass,'public.msg_store'::regclass) "
+        "AND tgfoid=to_regprocedure('public.fn_c2c_order_write_guard()')"
+    >>,
+    case epgsql:squery(Conn, Sql) of
+        {ok, _, [{<<"3">>}]} -> ok;
+        {ok, _, [{Count}]} -> erlang:error({c2c_order_guards_missing, binary_to_integer(Count)});
+        {error, Reason} -> erlang:error({c2c_order_guards_check_failed, Reason})
     end.
 
 migrate_msg_payload_plaintext() ->

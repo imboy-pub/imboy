@@ -265,6 +265,21 @@ terminal_write_reason({invalid_staging_payload, _}) ->
     true;
 terminal_write_reason(no_recipients) ->
     true;
+terminal_write_reason(c2c_sequence_missing) ->
+    true;
+terminal_write_reason(c2c_sequence_conflict) ->
+    true;
+terminal_write_reason(msg_id_conflict) ->
+    true;
+terminal_write_reason({archive_failed, Reason}) ->
+    terminal_write_reason(Reason);
+terminal_write_reason({error, _, <<"23514">>, check_violation, _, Extra}) ->
+    lists:member(proplists:get_value(constraint_name, Extra), [
+        <<"c2c_sequence_required">>,
+        <<"c2c_order_conflict">>,
+        <<"c2c_order_immutable">>,
+        <<"c2c_conversation_mismatch">>
+    ]);
 terminal_write_reason(c2g_conv_seq_missing) ->
     true;
 terminal_write_reason(c2g_gid_missing) ->
@@ -332,7 +347,12 @@ do_write(c2c, Row) ->
         CreatedAt, MsgId, PayloadBin, FromId, ToId, ServerTs, MsgType, E2EE, SenderDid
     ),
     %% 【P0-1】ACK 先于落库竞态：落库后若该消息已被全部活跃设备确认则立即清理
-    ok = msg_operation_ds:maybe_clean_delivered(c2c, MsgId, ToId),
+    case Res of
+        Written when Written =:= ok; Written =:= {error, conflict_no_insert} ->
+            ok = msg_operation_ds:maybe_clean_delivered(c2c, MsgId, ToId);
+        _ ->
+            ok
+    end,
     Res;
 do_write(c2g, Row) ->
     PayloadBin = unwrap_staging_payload(maps:get(<<"payload">>, Row)),

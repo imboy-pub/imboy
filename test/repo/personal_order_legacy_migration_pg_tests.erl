@@ -27,6 +27,7 @@ legacy_migration_test_() ->
 setup() ->
     S = inttest_marker_db:provision(#{
         env_prefix => <<"PERSONAL_ORDER169">>,
+        migration_target => 168,
         connect_extra => #{codecs => [{epgsql_codec_rfc3339_bin, []}]}
     }),
     C = maps:get(conn, S),
@@ -161,7 +162,7 @@ roundtrip(S) ->
     formal(C, 101, <<"formal-only">>, <<"2026-09-15T01:00:00Z">>),
     ok = up(C),
     ?assertEqual(
-        {ok, inttest_marker_db:migration_head(), false}, erlang_migrate:version(config(C))
+        {ok, 169, false}, erlang_migrate:version(config(C))
     ),
     Before = snapshot(C),
     ok = erlang_migrate:goto(config(C), 168),
@@ -315,7 +316,8 @@ wait_blocker(C, Pid, N) ->
     end.
 
 config(C) -> #{conn => C, dir => "priv/migrations", strict => true}.
-up(C) -> erlang_migrate:up(config(C)).
+%% This fixture exercises only 168 -> 169; later forward-only domains are unrelated.
+up(C) -> erlang_migrate:goto(config(C), 169).
 raw_up(C) ->
     {ok, SQL} = file:read_file("priv/migrations/00000169_personal_message_acceptance_order.up.sql"),
     erlang_migrate_pg:exec_sql(C, SQL).

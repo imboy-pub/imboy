@@ -1205,12 +1205,12 @@ get_unstaged(Limit) ->
     >>,
     elib_pg:query(Sql, [Limit]).
 
-%% @doc 清理已处理的备份消息（定时任务调用）
+%% @doc 仅清理成功的备份消息；终态失败保留原文与错误，等待显式修复。
 -spec delete_processed(integer()) -> {ok, integer()} | {error, any()}.
 delete_processed(Seconds) ->
     Tb = tablename(),
     Sql =
-        <<"DELETE FROM ", Tb/binary, " WHERE processed_at IS NOT NULL ",
+        <<"DELETE FROM ", Tb/binary, " WHERE processed_at IS NOT NULL AND error_msg IS NULL ",
             " AND processed_at < NOW() - INTERVAL '1 second' * $1">>,
     elib_pg:execute(Sql, [Seconds]).
 
