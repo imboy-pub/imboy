@@ -164,9 +164,9 @@ mark_as_read(CurrentUid, NoticeId) ->
             {error, Reason}
     end.
 
-%% @doc 发布公告后向群内所有成员广播 S2C `group_notice_published`
-%%
-%% W1.1：对齐客户端 `lib/service/group_notice_s2c.dart` 的解析契约：
+%% @doc 公告发布成功后的两路通知：
+%% 1) S2C `group_notice_published` 广播——对齐客户端
+%%    `lib/service/group_notice_s2c.dart` 的解析契约（公告页/角标刷新用）：
 %%   Payload = #{
 %%     <<"gid">>                => Gid,           % int
 %%     <<"notice_id">>          => NoticeId,      % int
@@ -177,13 +177,14 @@ mark_as_read(CurrentUid, NoticeId) ->
 %%     <<"expired_at">>         => ExpiredAtMs,   % int ms or 0
 %%     <<"published_at">>       => Now            % int ms
 %%   }
-%%
+%% 2) C2G `groupNotice` 群消息——聊天流卡片，与 groupVote/groupSchedule/
+%%    groupTask 同走 group_collab_message_logic 通道（持久化、去重、禁言
+%%    及加密策略统一；同公告重复发布经确定性 MsgId 幂等去重）。
 %% 客户端侧：
 %%   - expired_at = 0 / 缺失 → null（永不过期语义）
 %%   - published_at 缺失 → 0（"未知"标记）
-%%
-%% 本函数**仅做广播**，不负责持久化（持久化由 `group_notice_handler:publish/3`
-%% 调用 `group_notice_ds:update/2` 完成）。
+%% 公告持久化由 `group_notice_handler:publish/3` 调用 `group_notice_ds:update/2`
+%% 在本函数之前完成。
 -spec publish_notice(integer(), integer(), integer()) -> ok.
 publish_notice(Uid, Gid, NoticeId) ->
     ToUidLi = group_ds:member_uids(Gid),
@@ -211,7 +212,37 @@ publish_notice(Uid, Gid, NoticeId) ->
     },
     Action = <<"group_notice_published">>,
     _ = msg_s2c_ds:send(Uid, ToUidLi, Action, <<>>, null, Payload, save),
+    publish_chat_message(Gid, Uid, NoticeId, Title, Body),
     ok.
+
+%% @doc 公告落一条 C2G `groupNotice` 群消息（聊天流卡片）。
+%% 标题正文均空（公告行读取失败/已删除）时不落空卡片；落库失败只记日志，
+%% 不阻断公告发布主流程（与 group_task_creation_logic 同口径）。
+-spec publish_chat_message(integer(), integer(), integer(), binary(), binary()) ->
+    ok | skipped.
+publish_chat_message(_Gid, _Uid, _NoticeId, <<>>, <<>>) ->
+    skipped;
+publish_chat_message(Gid, Uid, NoticeId, Title, Body) ->
+    C2gPayload = #{
+        <<"id">> => integer_to_binary(NoticeId),
+        <<"group_id">> => integer_to_binary(Gid),
+        <<"title">> => Title,
+        <<"content">> => Body
+    },
+    case
+        group_collab_message_logic:publish(
+            Gid, Uid, <<"groupNotice">>, integer_to_binary(NoticeId), C2gPayload
+        )
+    of
+        {ok, _Message} ->
+            ok;
+        {error, Reason} ->
+            logger:warning(
+                "Group notice chat message publish failed: gid=~p notice=~p reason=~p",
+                [Gid, NoticeId, Reason]
+            ),
+            ok
+    end.
 
 %% @doc 插入新群公告（仅群主和管理员），委托 DS 层持久化
 %% @param CurrentUid 当前用户ID

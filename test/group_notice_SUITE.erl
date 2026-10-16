@@ -382,6 +382,16 @@ publish_notice_triggers_broadcast(_Config) ->
         Self ! {broadcast_called, FromUid, ToUids, Action, Payload},
         {ok, 1}
     end),
+    % 同时拦截群消息通道，验证 C2G groupNotice 卡片消息被发布
+    meck:new(group_collab_message_logic, [passthrough]),
+    meck:expect(
+        group_collab_message_logic,
+        publish,
+        fun(G, U, <<"groupNotice">>, RID, P) ->
+            Self ! {c2g_called, G, U, RID, P},
+            meck:passthrough([G, U, <<"groupNotice">>, RID, P])
+        end
+    ),
 
     BroadcastResult = group_notice_logic:publish_notice(OwnerUid, Gid, NoticeId),
     ?assertEqual(ok, BroadcastResult),
@@ -396,7 +406,19 @@ publish_notice_triggers_broadcast(_Config) ->
         ct:fail("广播事件未在 3s 内触发")
     end,
 
+    % 验证 C2G groupNotice 群消息已发布（payload 对齐客户端卡片契约）
+    receive
+        {c2g_called, Gid, OwnerUid, NoticeIdBin, C2gPayload} ->
+            ?assertEqual(integer_to_binary(NoticeId), NoticeIdBin),
+            ?assertEqual(integer_to_binary(Gid), maps:get(<<"group_id">>, C2gPayload)),
+            ?assertEqual(<<"广播测试公告"/utf8>>, maps:get(<<"title">>, C2gPayload)),
+            ?assertEqual(<<"公告内容"/utf8>>, maps:get(<<"content">>, C2gPayload))
+    after 3000 ->
+        ct:fail("groupNotice 群消息未在 3s 内发布")
+    end,
+
     meck:unload(msg_s2c_ds),
+    meck:unload(group_collab_message_logic),
     cleanup_users([OwnerUid, MemberUid]),
     {comment, "发布公告触发广播事件验证成功"}.
 
