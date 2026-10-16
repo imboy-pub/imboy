@@ -20,7 +20,7 @@ delivery_order_test_() ->
                     {"live_and_duplicate_ack_use_server_sequence", fun live_ack/1},
                     {"offline_db_and_envelope_keep_sequence_and_ciphertext", fun offline/1},
                     {"enterprise_direct_shared_c2c_origin_is_preserved", fun enterprise_direct/1},
-                    {"legacy_unlocked_writer_collision_rolls_back_new_counter",
+                    {"legacy_direct_writer_collision_rolls_back_new_counter",
                         fun legacy_collision/1},
                     {"archive_false_23505_keeps_staging_then_retry", fun archive_unique_retry/1},
                     {"archive_replay_rejects_different_identity_and_content",
@@ -460,84 +460,62 @@ offline(S) ->
 
 legacy_collision(S) ->
     A = maps:get(a, S),
-    B = maps:get(b, S),
     C = maps:get(c, S),
     M = msg(A, 95),
-    Gate = A rem 2147483647,
     {ok, Opts} = application:get_env(imboy, super_account),
     {ok, Lock} = inttest_marker_db:safe_connect(Opts),
     Parent = self(),
     Ref = make_ref(),
     try
-        execute(
-            iolist_to_binary([
-                "CREATE FUNCTION public.personal_order_legacy_gate() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN PERFORM pg_advisory_xact_lock(169,",
-                integer_to_binary(Gate),
-                "); RETURN NEW; END $$"
-            ]),
+        {ok, _} = elib_pg:execute(Lock, <<"BEGIN">>, []),
+        {ok, 1} = elib_pg:execute(
+            Lock,
+            <<
+                "INSERT INTO public.msg_store_staging "
+                "(id,type,msg_id,msg_type,payload,from_id,to_id,conv_seq) "
+                "VALUES ($1,'c2c',$2,'text','{}',$3,$4,1)"
+            >>,
+            [elib_tsid:generate(msg_store), M, A, C]
+        ),
+        {ok, [#{<<"pid">> := Backend}]} = elib_pg:query(
+            Lock,
+            <<"SELECT pg_backend_pid() AS pid">>,
             []
         ),
-        execute(
-            iolist_to_binary([
-                "CREATE TRIGGER personal_order_legacy_gate BEFORE INSERT ON public.msg_store_staging FOR EACH ROW WHEN (NEW.to_id=",
-                integer_to_binary(B),
-                ") EXECUTE FUNCTION public.personal_order_legacy_gate()"
-            ]),
-            []
-        ),
-        {ok, _} = elib_pg:query(Lock, <<"SELECT pg_advisory_lock(169,$1)">>, [Gate]),
-        {Pid, Monitor} = spawn_monitor(fun() ->
-            Parent !
-                {Ref,
-                    try
-                        stage_ordered(S, M)
-                    catch
-                        Class:Reason -> {Class, Reason}
-                    end}
-        end),
-        try
-            wait(
-                fun() ->
-                    scalar(
-                        <<"SELECT count(*) FROM pg_locks WHERE locktype='advisory' AND classid=169 AND objid=$1::oid AND NOT granted AND database=(SELECT oid FROM pg_database WHERE datname=current_database())">>,
-                        [Gate]
-                    ) =:= 1
-                end,
-                150
-            ),
-            execute(
-                <<"INSERT INTO public.msg_store_staging (id,type,msg_id,msg_type,payload,from_id,to_id,conv_seq) VALUES ($1,'c2c',$2,'text','{}',$3,$4,1)">>,
-                [elib_tsid:generate(msg_store), M, A, C]
-            ),
-            execute(<<"INSERT INTO public.msg_store_seq(conv_key,seq) VALUES ($1,1)">>, [
-                msg_archive_repo:conv_key(<<"c2c">>, A, C)
-            ]),
-            {ok, _} = elib_pg:query(Lock, <<"SELECT pg_advisory_unlock(169,$1)">>, [Gate]),
-            receive
-                {Ref, Result} -> ?assertEqual({error, msg_id_conflict}, Result)
-            after 5000 -> error(legacy_collision_timeout)
+        {Pid, Monitor} = spawn_monitor(fun() -> Parent ! {Ref, stage_ordered(S, M)} end),
+        wait(
+            fun() ->
+                scalar(
+                    <<
+                        "SELECT count(*) FROM pg_stat_activity WHERE datname=current_database() "
+                        "AND $1::integer=ANY(pg_blocking_pids(pid))"
+                    >>,
+                    [Backend]
+                ) > 0
             end,
-            ?assertEqual(
-                [],
-                query(<<"SELECT seq FROM public.msg_store_seq WHERE conv_key=$1">>, [
-                    maps:get(key, S)
-                ])
-            ),
-            ?assertEqual(1, length(staged(M))),
-            ?assertEqual(C, maps:get(<<"to_id">>, hd(staged(M))))
-        after
-            elib_pg:query(Lock, <<"SELECT pg_advisory_unlock(169,$1)">>, [Gate]),
-            receive
-                {'DOWN', Monitor, process, Pid, _} -> ok
-            after 5000 -> error(legacy_worker_timeout)
-            end
-        end
-    after
-        epgsql:close(Lock),
-        execute(
-            <<"DROP TRIGGER IF EXISTS personal_order_legacy_gate ON public.msg_store_staging">>, []
+            150
         ),
-        execute(<<"DROP FUNCTION IF EXISTS public.personal_order_legacy_gate()">>, [])
+        {ok, _} = elib_pg:execute(Lock, <<"COMMIT">>, []),
+        receive
+            {Ref, Result} -> ?assertEqual({error, msg_id_conflict}, Result)
+        after 5000 -> error(legacy_collision_timeout)
+        end,
+        receive
+            {'DOWN', Monitor, process, Pid, normal} -> ok
+        after 5000 -> error(legacy_worker_timeout)
+        end,
+        ?assertEqual(
+            [],
+            query(
+                <<"SELECT seq FROM public.msg_store_seq WHERE conv_key=$1">>,
+                [maps:get(key, S)]
+            )
+        ),
+        ?assertEqual(1, length(staged(M))),
+        ?assertEqual(C, maps:get(<<"to_id">>, hd(staged(M))))
+    after
+        epgsql:squery(Lock, <<"ROLLBACK">>),
+        epgsql:close(Lock)
     end.
 
 %% OA direct transport shares msg_c2c; it is not evidence of personal scope.

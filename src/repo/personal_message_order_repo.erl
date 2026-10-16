@@ -30,7 +30,7 @@ stage_c2c_ordered(Table, Data) ->
 
 stage_tx(Conn, Table, Key, Data) ->
     MsgId = maps:get(msg_id, Data),
-    Previous = lock_order(Conn, Key, MsgId),
+    Previous = lock_order(Conn, Key, Data),
     case query(Conn, identity_sql(), [MsgId]) of
         [] ->
             Seq = Previous + 1,
@@ -43,9 +43,12 @@ stage_tx(Conn, Table, Key, Data) ->
             throw({rollback, {accepted_duplicate, Seq}})
     end.
 
-%% Counter -> msg_id matches the formal dedup trigger's existing namespace.
+%% Conversation -> counter -> msg_id matches the formal dedup trigger's existing namespace.
 %% Each transaction accepts one conversation/message; no unordered batch locks.
-lock_order(Conn, Key, MsgId) ->
+lock_order(Conn, Key, Data) ->
+    _ = query(Conn, <<"SELECT pg_advisory_xact_lock(hashtextextended('c2c_order:' || $1, 0))">>, [
+        Key
+    ]),
     execute(
         Conn,
         <<
@@ -60,9 +63,30 @@ lock_order(Conn, Key, MsgId) ->
         [Key]
     ),
     _ = query(
-        Conn, <<"SELECT pg_advisory_xact_lock(hashtextextended('msg_c2c:' || $1, 0))">>, [MsgId]
+        Conn,
+        <<"SELECT pg_advisory_xact_lock(hashtextextended('msg_c2c:' || $1, 0))">>,
+        [maps:get(msg_id, Data)]
     ),
-    Previous.
+    observed_head(Conn, Key, Data, Previous).
+
+%% A restore or legacy writer may leave the counter behind accepted copies.
+%% Read their maximum under the counter lock; never infer order from IDs/times.
+observed_head(Conn, Key, Data, Previous) ->
+    From = maps:get(from_id, Data),
+    To = maps:get(to_id, Data),
+    [#{<<"seq">> := Seq}] = query(
+        Conn,
+        <<
+            "SELECT greatest($2::bigint, coalesce((SELECT max(conv_seq) FROM public.msg_store "
+            "WHERE chat_type='c2c' AND conv_key=$1),0), "
+            "coalesce((SELECT max(conv_seq) FROM public.msg_store_staging WHERE type='c2c' "
+            "AND least(from_id,to_id)=$3 AND greatest(from_id,to_id)=$4),0), "
+            "coalesce((SELECT max(conv_seq) FROM public.msg_c2c "
+            "WHERE least(from_id,to_id)=$3 AND greatest(from_id,to_id)=$4),0)) AS seq"
+        >>,
+        [Key, Previous, min(From, To), max(From, To)]
+    ),
+    Seq.
 
 set_counter(Conn, Key, Seq) ->
     execute(Conn, <<"UPDATE public.msg_store_seq SET seq = $2 WHERE conv_key = $1">>, [Key, Seq]).
@@ -84,7 +108,7 @@ execute_formal_tx(Conn, From, To, MsgId, Sql, Params) ->
     formal_tx(Conn, Key, #{from_id => From, to_id => To, msg_id => MsgId}, Sql, Params).
 
 formal_tx(Conn, Key, Data, Sql, Params) ->
-    Previous = lock_order(Conn, Key, maps:get(msg_id, Data)),
+    Previous = lock_order(Conn, Key, Data),
     Seq =
         case query(Conn, identity_sql(), [maps:get(msg_id, Data)]) of
             [] -> Previous + 1;
