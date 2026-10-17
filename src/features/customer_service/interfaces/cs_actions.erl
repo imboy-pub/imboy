@@ -201,7 +201,23 @@ platform_auth(Permission) ->
 
 %% 服务端派生键的公共集：操作人与时钟永远不来自客户端。
 server_common() ->
-    [actor_user_id, at].
+    [
+        actor_user_id,
+        at,
+        origin,
+        response_origin,
+        response_fact,
+        response_measurement_version,
+        first_visitor_message_id,
+        first_visitor_message_at,
+        first_human_reply_id,
+        first_human_reply_at,
+        first_ai_reply_id,
+        first_ai_reply_at,
+        first_reply,
+        first_response_at,
+        accepted_at
+    ].
 
 %% CSB-03：widget 面的服务端派生/注入键全集。除公共时钟外：contact 与
 %% workspace 由令牌行与默认 Workspace 事实服务端解析；`origin` 只来自

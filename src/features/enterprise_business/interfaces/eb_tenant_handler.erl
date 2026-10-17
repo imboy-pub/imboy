@@ -107,7 +107,7 @@ invoke_json(Entry, Case, Req0, OrgId, AuthContext) ->
                             eb_enterprise_http:reply_error(Req0, Reason);
                         {ok, Params} ->
                             Result = eb_enterprise_facade_call:call(
-                                maps:get(facade, Case), OrgId, Params
+                                maps:get(facade, Case), OrgId, Params, AuthContext
                             ),
                             %% CS-BE-01B：presign（POST）成功视图补 upload.url
                             %% （指向本 API 的 PUT 用例；非 presign 原样透传）。

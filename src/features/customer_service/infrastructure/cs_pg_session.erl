@@ -16,6 +16,7 @@
     insert_session/3,
     insert_session/4,
     append_message_event_in/3,
+    observe_response_in/5,
     fetch_session/3,
     fetch_conversation_session/3,
     claim_session/7,
@@ -59,8 +60,8 @@
 -define(SQL_INSERT_SESSION, <<
     "INSERT INTO customer_service_session"
     " (id, organization_id, workspace_id, contact_id, conversation_id, visit_token_id,"
-    "  queued_at, created_by_user_id)"
-    " VALUES ($1, $2, $3, $4, $5, $6, COALESCE(to_timestamp($7), CURRENT_TIMESTAMP), $8)"
+    "  queued_at, created_by_user_id, response_measurement_version)"
+    " VALUES ($1, $2, $3, $4, $5, $6, COALESCE(to_timestamp($7), CURRENT_TIMESTAMP), $8, 1)"
 >>).
 
 -define(SQL_FETCH_SESSION, <<
@@ -70,7 +71,8 @@
     "       extract(epoch from s.queued_at)::bigint AS queued_at,"
     "       extract(epoch from s.claimed_at)::bigint AS claimed_at,"
     "       extract(epoch from s.closed_at)::bigint AS closed_at,"
-    "       s.close_reason, s.version,"
+    "       s.close_reason, s.version, s.response_measurement_version,"
+    "       extract(epoch from s.first_visitor_message_at)::bigint AS first_visitor_message_at,"
     "       extract(epoch from s.updated_at)::bigint AS updated_at"
     "  FROM customer_service_session s"
     "  JOIN workspace w ON w.organization_id = $1 AND w.id = $2"
@@ -240,7 +242,14 @@
 -define(SQL_STATS_NEW_SESSIONS, <<
     "SELECT count(*) AS new_sessions,"
     "       count(claimed_at) AS claimed_in_window,"
-    "       AVG(extract(epoch from (claimed_at - queued_at)))::float8 AS first_response_avg_seconds"
+    "       AVG(extract(epoch from (claimed_at - queued_at)))::float8 AS first_response_avg_seconds,"
+    "       count(*) FILTER (WHERE response_measurement_version=0) AS response_unknown_count,"
+    "       count(first_human_reply_at) FILTER (WHERE response_measurement_version=1) AS first_human_response_count,"
+    "       AVG(extract(epoch from (first_human_reply_at-first_visitor_message_at)))"
+    "         FILTER (WHERE response_measurement_version=1)::float8 AS first_human_response_avg_seconds,"
+    "       count(first_ai_reply_at) FILTER (WHERE response_measurement_version=1) AS first_ai_response_count,"
+    "       AVG(extract(epoch from (first_ai_reply_at-first_visitor_message_at)))"
+    "         FILTER (WHERE response_measurement_version=1)::float8 AS first_ai_response_avg_seconds"
     "  FROM customer_service_session s"
     " WHERE s.organization_id = $1"
     "   AND ($2::bigint = 0 OR s.workspace_id = $2)"
@@ -536,7 +545,16 @@ session_stats(OrgId, WorkspaceId, Start, End) ->
         cs_pg_common:fetch_one(
             ?SQL_STATS_NEW_SESSIONS,
             [OrgId, WorkspaceId, Start, End],
-            [new_sessions, claimed_in_window, first_response_avg_seconds]
+            [
+                new_sessions,
+                claimed_in_window,
+                first_response_avg_seconds,
+                response_unknown_count,
+                first_human_response_count,
+                first_human_response_avg_seconds,
+                first_ai_response_count,
+                first_ai_response_avg_seconds
+            ]
         )
     of
         {error, _} = Err ->
@@ -1058,8 +1076,13 @@ append_authorized_message_event_in(Conn, OrgId, Event) ->
                     case
                         cs_pg_common:nullify(Identity) =:= maps:get(<<"business_identity_id">>, Row)
                     of
-                        true -> insert_authorized_widget_event_in(Conn, OrgId, Event);
-                        false -> {error, conflict}
+                        true ->
+                            case record_response_fact(Conn, OrgId, Event, Row) of
+                                ok -> insert_authorized_widget_event_in(Conn, OrgId, Event);
+                                {error, _} = Error -> Error
+                            end;
+                        false ->
+                            {error, conflict}
                     end;
                 {ok, []} ->
                     {error, not_found};
@@ -1068,6 +1091,82 @@ append_authorized_message_event_in(Conn, OrgId, Event) ->
             end;
         {error, _} = Err ->
             Err
+    end.
+
+%% The session lock serializes first facts with message/event acceptance.
+record_response_fact(Conn, Org, Event, Row) ->
+    case maps:get(response_fact, Event, {unknown, undefined, undefined}) of
+        {unknown, _, _} ->
+            response_update(
+                Conn,
+                Org,
+                Event,
+                <<"response_measurement_version=0">>,
+                []
+            );
+        {Origin, Id, At} when is_integer(Id), Id > 0, is_integer(At), At >= 0 ->
+            record_known_response(Conn, Org, Event, Row, Origin, Id, At);
+        _ ->
+            {error, invalid_response_fact}
+    end.
+
+record_known_response(Conn, Org, Event, Row, Origin, Id, At) ->
+    VisitorAt = maps:get(<<"first_visitor_message_at">>, Row, null),
+    case {maps:get(<<"response_measurement_version">>, Row), Origin, VisitorAt} of
+        {0, _, _} ->
+            ok;
+        {1, visitor, _} ->
+            response_update(
+                Conn,
+                Org,
+                Event,
+                <<
+                    "first_visitor_message_id=COALESCE(first_visitor_message_id,$4),"
+                    "first_visitor_message_at=COALESCE(first_visitor_message_at,to_timestamp($5))"
+                >>,
+                [Id, At]
+            );
+        {1, Reply, Start} when
+            (Reply =:= human orelse Reply =:= ai), is_integer(Start), At < Start
+        ->
+            {error, negative_response_elapsed};
+        {1, human, Start} when is_integer(Start) ->
+            response_update(
+                Conn,
+                Org,
+                Event,
+                <<
+                    "first_human_reply_id=COALESCE(first_human_reply_id,$4),"
+                    "first_human_reply_at=COALESCE(first_human_reply_at,to_timestamp($5))"
+                >>,
+                [Id, At]
+            );
+        {1, ai, Start} when is_integer(Start) ->
+            response_update(
+                Conn,
+                Org,
+                Event,
+                <<
+                    "first_ai_reply_id=COALESCE(first_ai_reply_id,$4),"
+                    "first_ai_reply_at=COALESCE(first_ai_reply_at,to_timestamp($5))"
+                >>,
+                [Id, At]
+            );
+        {1, Reply, null} when Reply =:= human; Reply =:= ai -> ok;
+        _ ->
+            {error, invalid_response_fact}
+    end.
+
+response_update(Conn, Org, Event, Assignment, Extra) ->
+    %% Assignment is an internal literal, never request SQL.
+    Sql =
+        <<"UPDATE customer_service_session SET ", Assignment/binary,
+            " WHERE organization_id=$1 AND workspace_id=$2 AND id=$3">>,
+    Params = [Org, maps:get(workspace_id, Event), maps:get(session_id, Event)] ++ Extra,
+    case elib_pg:execute(Conn, Sql, Params) of
+        {ok, 1} -> ok;
+        {ok, _} -> {error, not_found};
+        {error, Reason} -> {error, cs_pg_common:normalize_error(Reason)}
     end.
 
 %% Private verified binding, never public request fields. Locks survive to commit.
@@ -1156,4 +1255,27 @@ fetch_conversation_session(Org, Ws, Conv) ->
     case cs_pg_common:fetch_one(?SQL_CONVERSATION_SESSION, [Org, Ws, Conv], [id]) of
         {ok, #{id := Id}} -> fetch_session(Org, Ws, Id);
         {error, _} = Err -> Err
+    end.
+
+observe_response_in(Conn, Org, Workspace, Conversation, Session) when
+    is_integer(Session), Session > 0
+->
+    Sql = <<
+        "SELECT id FROM customer_service_session WHERE organization_id=$1"
+        " AND workspace_id=$2 AND conversation_id=$3 AND id=$4 FOR UPDATE"
+    >>,
+    case elib_pg:query(Conn, Sql, [Org, Workspace, Conversation, Session]) of
+        {ok, [#{<<"id">> := Session}]} -> ok;
+        {ok, _} -> {error, invalid_response_observation};
+        {error, Reason} -> {error, cs_pg_common:normalize_error(Reason)}
+    end;
+observe_response_in(Conn, Org, Workspace, Conversation, unknown) ->
+    Sql = <<
+        "UPDATE customer_service_session SET response_measurement_version=0"
+        " WHERE organization_id=$1 AND workspace_id=$2 AND conversation_id=$3"
+        " AND response_measurement_version<>0"
+    >>,
+    case elib_pg:execute(Conn, Sql, [Org, Workspace, Conversation]) of
+        {ok, _} -> ok;
+        {error, Reason} -> {error, cs_pg_common:normalize_error(Reason)}
     end.

@@ -9,6 +9,7 @@
 -behaviour(cs_store_port).
 
 -export([
+    observe_response_in/5,
     fetch_identity_function/2,
     %% seat
     insert_seat/2,
@@ -395,3 +396,6 @@ widget_event_in(Conn, OrgId, ContactId, Event) ->
 widget_tx_result({ok, Result}) -> Result;
 widget_tx_result(ok) -> ok;
 widget_tx_result({error, Reason}) -> throw({abort_tx, Reason}).
+
+observe_response_in(Conn, Org, Workspace, Conversation, Observation) ->
+    cs_pg_session:observe_response_in(Conn, Org, Workspace, Conversation, Observation).

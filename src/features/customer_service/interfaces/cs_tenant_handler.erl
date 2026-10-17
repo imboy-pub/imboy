@@ -126,7 +126,9 @@ invoke(Entry, Case, Req0, Body, OrgId, AuthContext) ->
                 {error, Reason} ->
                     cs_http:reply_error(Req0, Reason);
                 {ok, Params} ->
-                    Result = cs_facade_call:call(maps:get(facade, Case), OrgId, Params),
+                    Result = cs_facade_call:call(
+                        maps:get(facade, Case), OrgId, Params, AuthContext
+                    ),
                     cs_http:respond(Entry, Req0, Result)
             end
     end.

@@ -41,6 +41,9 @@
     window_end,
     new_sessions,
     first_response,
+    first_human_response,
+    first_ai_response,
+    response_unknown_count,
     closed_sessions,
     rating,
     current

@@ -11,6 +11,9 @@
 -module(cs_fake_store).
 
 -export([
+    latch_handoff/4,
+    handoff_state/3,
+    set_handoff_failure/1,
     init/0,
     destroy/0,
     seed_identity_function/3,
@@ -133,10 +136,16 @@
 %% ===================================================================
 
 init() ->
-    catch ets:delete(?TAB),
+    try
+        ets:delete(?TAB)
+    catch
+        _:_ -> ok
+    end,
     ets:new(?TAB, [named_table, public, set]),
     ets:insert(?TAB, [
         {counter, 0},
+        {ai_handoffs, #{}},
+        {ai_handoff_failure, none},
         {seats, #{}},
         {orgs, #{}},
         {sessions, #{}},
@@ -163,8 +172,39 @@ init() ->
     ok.
 
 destroy() ->
-    catch ets:delete(?TAB),
+    try
+        ets:delete(?TAB)
+    catch
+        _:_ -> ok
+    end,
     ok.
+
+set_handoff_failure(Mode) when Mode =:= none; Mode =:= error; Mode =:= exception ->
+    true = ets:insert(?TAB, {ai_handoff_failure, Mode}),
+    ok.
+
+handoff_state(OrgId, WsId, SessionId) ->
+    [{ai_handoffs, States}] = ets:lookup(?TAB, ai_handoffs),
+    maps:find({OrgId, WsId, SessionId}, States).
+
+latch_handoff(OrgId, WsId, SessionId, Reason) ->
+    case ets:lookup(?TAB, ai_handoff_failure) of
+        [{ai_handoff_failure, error}] ->
+            {error, injected_ai_failure};
+        [{ai_handoff_failure, exception}] ->
+            erlang:error(injected_ai_failure);
+        [{ai_handoff_failure, none}] ->
+            Key = {OrgId, WsId, SessionId},
+            [{ai_handoffs, States}] = ets:lookup(?TAB, ai_handoffs),
+            Previous = maps:get(Key, States, #{generation_epoch => 1}),
+            State = Previous#{
+                handoff => true,
+                handoff_reason => maps:get(handoff_reason, Previous, Reason),
+                generation_epoch => maps:get(generation_epoch, Previous) + 1
+            },
+            true = ets:insert(?TAB, {ai_handoffs, States#{Key => State}}),
+            {ok, State}
+    end.
 
 seed_identity_function(OrgId, IdentityId, FunctionKey) ->
     update(identity_functions, fun(M) -> M#{{OrgId, IdentityId} => FunctionKey} end).

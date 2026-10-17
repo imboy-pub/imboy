@@ -507,7 +507,8 @@ check_forbidden(Body, Qs, Keys) when is_map(Body), is_list(Qs) ->
         [
             K
          || K <- Keys,
-            is_map_key(K, Body) orelse proplists:is_defined(key_bin(K), Qs)
+            is_map_key(K, Body) orelse is_map_key(key_bin(K), Body) orelse
+                proplists:is_defined(key_bin(K), Qs)
         ]
     of
         [] ->

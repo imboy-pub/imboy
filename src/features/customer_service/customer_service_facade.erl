@@ -32,8 +32,11 @@
     transfer/2,
     close/2,
     rate/2,
+    observe_response_in/5,
     append_session_message/2,
+    append_session_message/3,
     append_conversation_message/2,
+    append_conversation_message/3,
     conversation_assignee/2,
     list_contact_sessions/2,
     list_sessions/2,
@@ -1215,3 +1218,13 @@ ai_preview(OrgId, Params) when is_integer(OrgId), OrgId > 0, is_map(Params) ->
     cs_ai_admin_app:preview(OrgId, Params);
 ai_preview(OrgId, _Params) ->
     {error, {invalid_argument, {organization_id, OrgId}}}.
+
+%% Only authenticated interfaces and explicit internal AI/visitor callers use this arity.
+append_session_message(OrgId, Params, Context) ->
+    cs_session_app:append_session_message(OrgId, Params, Context).
+
+append_conversation_message(OrgId, Params, Context) ->
+    cs_session_app:append_conversation_message(OrgId, Params, Context).
+
+observe_response_in(Conn, Org, Workspace, Conversation, Observation) ->
+    cs_session_app:observe_response_in(Conn, Org, Workspace, Conversation, Observation).

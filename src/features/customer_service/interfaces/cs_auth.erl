@@ -307,7 +307,10 @@ seat_identity(Route, OrgId, Credential, State, _Member, Facts) ->
     ],
     case Assignments of
         [Assignment] ->
-            seat_enabled_gate(OrgId, maps:get(business_identity_id, Assignment), State);
+            case seat_enabled_gate(OrgId, maps:get(business_identity_id, Assignment), State) of
+                {ok, Context} -> {ok, Context#{user_id => UserId}};
+                {error, _} = Error -> Error
+            end;
         [] ->
             {error, identity_assignment_missing};
         _Multiple ->

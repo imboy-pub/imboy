@@ -152,7 +152,23 @@ a02_double_claim_second_conflicts() ->
     %% 会话仍保持第一次 claim 的形状（未被第二次写坏）
     {ok, Session} = ?FAKE:fetch_session(?ORG, ?WS, SessionId),
     ?assertEqual(?SEAT_A, maps:get(business_identity_id, Session)),
-    ?assertEqual(ActiveVersion, maps:get(version, Session)).
+    ?assertEqual(ActiveVersion, maps:get(version, Session)),
+    ?assertEqual(
+        {ok, #{handoff => true, handoff_reason => <<"human_claim">>, generation_epoch => 2}},
+        ?FAKE:handoff_state(?ORG, ?WS, SessionId)
+    ),
+    ?assertEqual(error, ?FAKE:handoff_state(?ORG, ?WS + 1, SessionId)),
+    lists:foreach(
+        fun(Mode) ->
+            reset_all(),
+            ok = ?FAKE:set_handoff_failure(Mode),
+            Claimed = claimed_session(?SEAT_A),
+            {ok, Active} = ?FAKE:fetch_session(?ORG, ?WS, maps:get(session_id, Claimed)),
+            ?assertEqual(active, maps:get(status, Active)),
+            ?assertEqual(error, ?FAKE:handoff_state(?ORG, ?WS, maps:get(id, Active)))
+        end,
+        [error, exception]
+    ).
 
 a02_max_concurrent_cap_and_dispatch() ->
     reset_all(),
@@ -443,7 +459,37 @@ a04_rebind_keeps_session_and_history_continuous() ->
     ?assertEqual(SessionId, maps:get(id, Transferred)),
     ?assertEqual(?ORG, maps:get(organization_id, Transferred)),
     ?assertEqual(?CONTACT, maps:get(contact_id, Transferred)),
-    ?assertEqual(Conv, maps:get(conversation_id, Transferred)).
+    ?assertEqual(Conv, maps:get(conversation_id, Transferred)),
+    ?assertEqual(
+        {ok, #{handoff => true, handoff_reason => <<"human_claim">>, generation_epoch => 3}},
+        ?FAKE:handoff_state(?ORG, ?WS, SessionId)
+    ),
+    lists:foreach(
+        fun(Mode) ->
+            ok = ?FAKE:set_handoff_failure(Mode),
+            {ok, Current} = ?FAKE:fetch_session(?ORG, ?WS, SessionId),
+            Target =
+                case maps:get(business_identity_id, Current) of
+                    ?SEAT_A -> ?SEAT_B;
+                    ?SEAT_B -> ?SEAT_A
+                end,
+            {ok, Moved} = cs_session_app:transfer(
+                ?ORG,
+                params(#{
+                    session_id => SessionId,
+                    to_identity_id => Target,
+                    expected_version => maps:get(version, Current),
+                    at => ?T0 + 24
+                })
+            ),
+            ?assertEqual(Target, maps:get(business_identity_id, Moved)),
+            ?assertEqual(
+                {ok, #{handoff => true, handoff_reason => <<"human_claim">>, generation_epoch => 3}},
+                ?FAKE:handoff_state(?ORG, ?WS, SessionId)
+            )
+        end,
+        [error, exception]
+    ).
 
 %% ===================================================================
 %% A05：visit token 权限边界
@@ -750,6 +796,7 @@ params(Extra) ->
         #{
             workspace_id => ?WS,
             store => ?FAKE,
+            ai_store => ?FAKE,
             id => cs_fake_id,
             %% ORG-08：archived Org 门（C16）在纯单元套件用恒 active 替身，
             %% archived 分支的真库行为见 cs_org_compat_tests A04。

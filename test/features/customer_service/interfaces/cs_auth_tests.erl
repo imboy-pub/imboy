@@ -69,6 +69,7 @@ seat_tests(_) ->
                 Metadata, req([]), state(?ORG, jwt_state())
             ),
             ?assertEqual(cs_seat, maps:get(auth_context, Ctx)),
+            ?assertEqual(?UID, maps:get(user_id, Ctx)),
             ?assertEqual(?IDENTITY, maps:get(business_identity_id, Ctx)),
             ?assertEqual(?ORG, maps:get(organization_id, Ctx)),
             ?assert(meck:called(customer_service_facade, fetch_seat, '_'))

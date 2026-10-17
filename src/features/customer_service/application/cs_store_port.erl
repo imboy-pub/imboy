@@ -607,3 +607,8 @@
 
 -callback insert_widget_bootstrap_audited(integer(), map()) -> {ok, map()} | {error, term()}.
 -callback exchange_widget_identity_audited(integer(), map()) -> {ok, map()} | {error, term()}.
+
+%% Only the canonical fallback uses this new optional port capability.
+-callback observe_response_in(term(), integer(), integer(), integer(), unknown | pos_integer()) ->
+    ok | {error, term()}.
+-optional_callbacks([observe_response_in/5]).

@@ -19,7 +19,7 @@
 -moduledoc "动作 → facade 的唯一调用点表（EB-09）。".
 -include("generated/imboy_product_features.hrl").
 
--export([call/3, actions/0]).
+-export([call/3, call/4, actions/0]).
 
 %% @doc 执行一次用例调用。`FacadeAction` 来自冻结的动作表（`eb_enterprise_actions`）。
 -spec call(atom(), integer(), map()) -> {ok, term()} | {error, term()}.
@@ -119,4 +119,31 @@ actions() ->
 seat_message(OrgId, Params) -> customer_service_facade:append_conversation_message(OrgId, Params).
 -else.
 seat_message(_OrgId, _Params) -> {error, customer_service_feature_not_selected}.
+-endif.
+
+call(
+    append_message,
+    Org,
+    #{
+        caller_function_key := <<"customer_service">>,
+        actor_user_id := Uid,
+        caller_identity_id := Bid
+    } = Params,
+    #{
+        auth_context := enterprise_member,
+        organization_id := Org,
+        function_key := <<"customer_service">>,
+        user_id := Uid,
+        business_identity_id := Bid
+    }
+) when is_integer(Uid), Uid > 0, is_integer(Bid), Bid > 0 ->
+    trusted_seat_message(Org, Params, {authenticated_human, Uid, Bid});
+call(Action, Org, Params, _Context) ->
+    call(Action, Org, Params).
+
+-ifdef(IMBOY_FEATURE_CUSTOMER_SERVICE).
+trusted_seat_message(Org, Params, Context) ->
+    customer_service_facade:append_conversation_message(Org, Params, Context).
+-else.
+trusted_seat_message(_Org, _Params, _Context) -> {error, customer_service_feature_not_selected}.
 -endif.
