@@ -1,22 +1,16 @@
 {
   "schema_version": 1,
   "product_id": "imboy",
-  "profile": "full-selected",
+  "profile": "phase1_delivery",
   "base_ref": "imboy-feature-inventory-v1",
   "selected_features": [
-    "e2ee",
     "channel",
-    "location",
     "moment",
-    "channel_discover",
-    "channel_invitation",
-    "channel_order",
+    "location",
     "group_vote",
     "group_schedule",
     "group_task",
-    "bot_webhook",
     "enterprise_business",
-    "customer_service",
-    "project"
+    "customer_service"
   ]
 }
