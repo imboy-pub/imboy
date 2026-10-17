@@ -37,7 +37,14 @@ services:
       POSTGRES_PASSWORD: ${IMBOY_PG_PASSWORD:?IMBOY_PG_PASSWORD required (see .env.example)}
       POSTGRES_DB: ${IMBOY_PG_DATABASE:-imboy_v1}
     volumes:
-      - "./docker/imboy_pg18:/var/lib/postgresql"
+      # PG 数据必须放 Docker named volume，不能用 macOS bind mount：
+      # Docker Desktop 的 Virtualization 服务会为 bind mount 下每个被打开的
+      # PG 数据文件泄露一个 fd（全量 eunit 约 1.2 万用例的 DDL/迁移打开数万
+      # 文件 → macOS 系统级 fd 耗尽（kern.maxfiles 65536）→ 服务崩溃 → PG
+      # 非干净关闭 → 恢复 fsync 全目录重开文件再泄露 → 死循环）。
+      # volume 在 linuxkit ext4 内，不经 virtiofs，无此泄露。
+      # 2026-10 从 ./docker/imboy_pg18 迁移（原目录保留，可手工回退）。
+      - "imboy_pg18_data:/var/lib/postgresql"
     ports:
       - "${IMBOY_PG_HOST_PORT:-4323}:5432"
     deploy:
@@ -88,3 +95,6 @@ networks:
   default:
     external: true
     name: imboy-network
+
+volumes:
+  imboy_pg18_data:
