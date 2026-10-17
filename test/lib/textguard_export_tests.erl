@@ -208,6 +208,10 @@ t_golden_bytes() ->
     ?assertEqual(3, maps:get(word_count, Export)),
     ?assertEqual(64, byte_size(maps:get(base_digest, Export))),
     ?assertEqual(
+        <<"43e9e4d73fc778c997be01f119d540377ff9bdcb067ad87882f986e514b31553">>,
+        maps:get(base_digest, Export)
+    ),
+    ?assertEqual(
         textguard_export:canonical_word_sha256(<<"nonexistent">>),
         textguard_export:canonical_word_sha256(<<"nonexistent">>)
     ),
@@ -264,6 +268,10 @@ t_byte_stability() ->
     {ok, E3} = textguard_export:export_package(export_golden_opts()),
     ?assertEqual(maps:get(package, E1), maps:get(package, E3)),
     ?assertEqual(maps:get(base_digest, E1), maps:get(base_digest, E3)),
+    {ok, 3} = elib_pg:execute_count(<<"UPDATE public.sensitive_word SET id = id - 100">>, []),
+    {ok, ChangedIds} = textguard_export:export_package(export_golden_opts()),
+    ?assertEqual(maps:get(base_digest, E1), maps:get(base_digest, ChangedIds)),
+    ?assertNotEqual(maps:get(package_sha256, E1), maps:get(package_sha256, ChangedIds)),
     %% 增强文件缺失 = 空增强（文档化行为）：包仍产出且确定性
     {ok, E4} = textguard_export:export_package(#{
         t2s_table_id => <<"test-t2s-v1">>,
