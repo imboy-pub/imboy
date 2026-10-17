@@ -36,11 +36,11 @@ init(Req0, State0) ->
     Req1 =
         case imboy_plugin_registry:required_feature(admin, adm_channel_handler, Action) of
             undefined ->
-                dispatch(Action, Method, Req0, State);
+                dispatch_with_read_acl(Action, Method, Req0, State);
             Feature ->
                 case imboy_feature:ensure_enabled(Req0, Feature) of
                     ok ->
-                        dispatch(Action, Method, Req0, State);
+                        dispatch_with_read_acl(Action, Method, Req0, State);
                     {error, RespReq} ->
                         RespReq
                 end
@@ -50,6 +50,30 @@ init(Req0, State0) ->
 %% ===================================================================
 %% Internal Function Definitions
 %% ===================================================================
+
+%% @doc 9 个 GET 读动作统一要求 channels:read；写动作保持原有细粒度权限。
+%%      feature gate 已在上游完成，本守卫只补读能力 RBAC；
+%%      权限并集/override 由 adm_acl 按管理员全部角色解析，此处不硬编码角色号。
+-spec dispatch_with_read_acl(atom() | false, binary(), cowboy_req:req(), map()) -> cowboy_req:req().
+dispatch_with_read_acl(Action, <<"GET">> = Method, Req0, State) when
+    Action =:= list;
+    Action =:= detail;
+    Action =:= messages;
+    Action =:= subscribers;
+    Action =:= admins;
+    Action =:= invitations;
+    Action =:= orders;
+    Action =:= stats;
+    Action =:= search
+->
+    case adm_acl:ensure_permission(State, <<"channels:read">>, Req0) of
+        ok ->
+            dispatch(Action, Method, Req0, State);
+        {error, RespReq} ->
+            RespReq
+    end;
+dispatch_with_read_acl(Action, Method, Req0, State) ->
+    dispatch(Action, Method, Req0, State).
 
 -spec dispatch(atom() | false, binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 dispatch(list, Method, Req0, _State) -> list(Method, Req0);
