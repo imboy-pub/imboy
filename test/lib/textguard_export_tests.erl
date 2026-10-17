@@ -183,6 +183,7 @@ textguard_export_test_() ->
             {"AC-075: canonical text change makes pinned extension inert", fun t_pin_mismatch/0},
             {"enhancement hard-fail: unknown key / bad json / bad enum / duplicate ids",
                 fun t_enhancement_hard_fail/0},
+            {"valid regex metadata survives JSON key normalization", fun t_regex_roundtrip/0},
             {"empty table exports explicit empty package with warning", fun t_empty_table/0},
             {"AC-072: consistent snapshot under concurrent writes", fun t_concurrent_snapshot/0},
             {"fail-closed: unreachable DB never exports empty package", fun t_db_unreachable/0}
@@ -197,6 +198,33 @@ t_fail_closed_no_t2s() ->
     trunc(),
     ?assertEqual({error, not_ready}, textguard_export:export_package(#{})),
     ?assertEqual({error, not_ready}, textguard_export:export_package(#{t2s_table_id => <<>>})).
+
+t_regex_roundtrip() ->
+    trunc(),
+    seed_fixed(),
+    Rule = #{
+        <<"id">> => <<"re:digits">>,
+        <<"expression">> => <<"x[0-9]{2}">>,
+        <<"display_word">> => <<"numeric-code">>,
+        <<"category">> => <<"test">>,
+        <<"severity">> => <<"low">>,
+        <<"action">> => <<"review">>,
+        <<"scenes">> => [<<"channel_message">>]
+    },
+    {ok, Export} = textguard_export:export_package(#{
+        t2s_table_id => <<"test-t2s-v1">>, enhancement => #{<<"regex_rules">> => [Rule]}
+    }),
+    Package = jsone:decode(maps:get(package, Export)),
+    ?assertEqual([Rule], maps:get(<<"regex_rules">>, Package)),
+    lists:foreach(
+        fun(Literal) ->
+            ?assertEqual(
+                #{<<"enabled">> => false, <<"action">> => <<"review">>},
+                maps:get(<<"gap">>, Literal)
+            )
+        end,
+        maps:get(<<"literals">>, Package)
+    ).
 
 t_golden_bytes() ->
     trunc(),
@@ -288,7 +316,9 @@ t_byte_stability() ->
     lists:foreach(
         fun(L) ->
             ?assertEqual([], maps:get(<<"aliases">>, L)),
-            ?assertEqual(false, maps:is_key(<<"gap">>, L))
+            ?assertEqual(
+                #{<<"enabled">> => false, <<"action">> => <<"review">>}, maps:get(<<"gap">>, L)
+            )
         end,
         Literals
     ),
@@ -367,7 +397,9 @@ t_dangling_dependents() ->
     ?assertEqual([], [R || R <- ExceptionRuleIds, not lists:member(R, Ids)]),
     lists:foreach(
         fun(L) ->
-            ?assertEqual(false, maps:is_key(<<"gap">>, L)),
+            ?assertEqual(
+                #{<<"enabled">> => false, <<"action">> => <<"review">>}, maps:get(<<"gap">>, L)
+            ),
             ?assertEqual([], maps:get(<<"aliases">>, L))
         end,
         Literals

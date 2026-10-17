@@ -522,9 +522,20 @@ grpc_error_status_pairing_test_() ->
         {<<"PROTOCOL_ERROR">>, [13, 15], protocol_error},
         {<<"NORMALIZER_INCOMPATIBLE">>, [13, 15], normalizer_incompatible},
         {<<"INTERNAL_ERROR">>, [13, 15], internal},
-        {<<"UNSUPPORTED_RULESET">>, [5], unsupported_ruleset}
+        {<<"UNSUPPORTED_RULESET">>, [9], unsupported_ruleset}
     ],
     [grpc_error_status_pairing_case(Code, Statuses, Reason) || {Code, Statuses, Reason} <- Cases].
+
+grpc_default_transport_missing_credential_test() ->
+    application:set_env(imboy, moderation_detector, [
+        {grpc_host, <<"127.0.0.1">>}, {grpc_port, 8788}
+    ]),
+    try
+        ?assertEqual({error, not_ready}, moderation_detector_grpc:check(detection(), #{})),
+        ?assertEqual({error, not_ready}, moderation_detector_grpc:info(#{}))
+    after
+        application:unset_env(imboy, moderation_detector)
+    end.
 
 grpc_error_status_pairing_case(Code, Statuses, Reason) ->
     {"grpc status/code " ++ binary_to_list(Code), fun() ->
@@ -536,7 +547,11 @@ grpc_error_status_pairing_case(Code, Statuses, Reason) ->
                     {error, #{
                         grpc_status => atomics:get(StatusCell, 1),
                         metadata => #{
-                            <<"x-textguard-error-code">> => Code,
+                            <<"x-textguard-error-code">> =>
+                                case is_list(RequestId) of
+                                    true -> [Code, Code];
+                                    false -> Code
+                                end,
                             <<"x-textguard-request-id">> => RequestId
                         }
                     }}
@@ -566,9 +581,9 @@ grpc_error_status_pairing_case(Code, Statuses, Reason) ->
                     application:unset_env(imboy, moderation_detector)
                 end
             end,
-            [<<"req-t15-0001">>, <<>>]
+            [<<"req-t15-0001">>, <<>>, [<<"req-t15-0001">>, <<"req-t15-0001">>], [<<>>, <<>>]]
         ),
-        ?assertEqual(34, atomics:get(StatusCell, 2))
+        ?assertEqual(68, atomics:get(StatusCell, 2))
     end}.
 
 grpc_error_metadata_test_() ->
@@ -582,6 +597,7 @@ grpc_error_metadata_test_() ->
         Good#{<<"x-textguard-request-id">> => <<"wrong">>},
         Good#{<<"x-textguard-error-code">> => <<"NEW_UNKNOWN_ERROR">>},
         Good#{<<"x-textguard-error-code">> => [<<"OVERLOADED">>, <<"TEXT_TOO_LARGE">>]},
+        Good#{<<"x-textguard-request-id">> => [<<"req-t15-0001">>, <<"wrong">>]},
         #{<<"textguard-error-code">> => <<"OVERLOADED">>}
     ],
     [

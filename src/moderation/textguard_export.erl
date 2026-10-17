@@ -50,8 +50,8 @@
 %%% == 包形状（plan 附录 B.1）==
 %%%
 %%% 每条 literal：`id`（字符串）/`word`/`category`/`severity`/`scenes`
-%%% （缺省三场景全开）+ `aliases`（可为空数组，恒出现）+ `gap`（仅当增强
-%%% 显式 enabled=true 才出现）。`schema_version=1`、`allow_empty=false`
+%%% （缺省三场景全开）+ `aliases`（可为空数组，恒出现）+ `gap`（默认显式
+%%% enabled=false/action=review）。`schema_version=1`、`allow_empty=false`
 %%% 固定；`normalization_id`（默认 imboy-base-v1）/`limit_profile_id`
 %%% （默认 mvp-default-v1）/`semantics_by_scene`（默认
 %%% channel_message=enhanced-v1、moment_post=enhanced-v1、
@@ -460,7 +460,7 @@ validate_regex_entries([E | Rest], Acc) ->
         ok ->
             Id = maps:get(<<"id">>, E, undefined),
             Fields = [
-                maps:get(K, E, undefined)
+                maps:get(to_bin(K), E, undefined)
              || K <- [expression, display_word, category, severity]
             ],
             Action = maps:get(<<"action">>, E, undefined),
@@ -698,8 +698,6 @@ dropped_warning(#{kind := Kind, canonical_id := CanonId, reason := Reason}) ->
         atom_to_binary(Reason, utf8)
     ]).
 
-%% literal 构造：aliases 恒出现（可为空数组）；gap 仅在增强显式
-%% enabled=true 时出现（字段存在性即配置明确性，plan B.1）。
 -spec build_literals([canonical_word()], map(), [map()], [map()]) -> {[map()], [map()]}.
 build_literals(Words, ShaById, Aliases, Gaps) ->
     AliasesById = group_by_canonical(Aliases),
@@ -734,7 +732,9 @@ build_literals(Words, ShaById, Aliases, Gaps) ->
                                 }
                             };
                         [] ->
-                            Literal0
+                            Literal0#{
+                                <<"gap">> => #{<<"enabled">> => false, <<"action">> => <<"review">>}
+                            }
                     end,
                 {[Literal | OutAcc], Drops2}
             end,
