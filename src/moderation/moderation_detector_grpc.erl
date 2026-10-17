@@ -1,4 +1,4 @@
-%%% @doc TextGuard gRPC 薄适配：传输注入与真实 channel 接线由 T19 负责。
+%%% @doc TextGuard gRPC 薄适配，共用受监督的 grpcbox channel。
 %%% 成功响应按 optional presence 和白名单校验；服务错误必须携带 x-textguard 元数据。
 -module(moderation_detector_grpc).
 
@@ -95,6 +95,8 @@ resolve_transport(Conf) ->
             {ok, Fun};
         {M, F} when is_atom(M), is_atom(F) ->
             {ok, fun M:F/4};
+        undefined ->
+            {ok, fun moderation_detector_grpcbox:call/4};
         _ ->
             error
     end.
@@ -199,6 +201,10 @@ map_grpc_error(connection_failed, _) ->
     connection_failed;
 map_grpc_error(timeout, _) ->
     timeout;
+map_grpc_error(not_ready, _) ->
+    not_ready;
+map_grpc_error(text_too_large, _) ->
+    text_too_large;
 map_grpc_error(#{grpc_status := Status, metadata := Metadata}, ExpectedRequestId) ->
     try
         Code = metadata_value(maps:get(?ERROR_CODE_METADATA_KEY, Metadata)),
@@ -214,7 +220,9 @@ map_grpc_error(_, _) ->
     protocol_error.
 
 metadata_value(Value) when is_binary(Value) -> Value;
-metadata_value([Value]) when is_binary(Value) -> Value.
+metadata_value([Value | Rest]) when is_binary(Value) ->
+    true = lists:all(fun(Other) -> Other =:= Value end, Rest),
+    Value.
 
 error_statuses(<<"INVALID_ARGUMENT">>) -> [3];
 error_statuses(<<"INVALID_UTF8">>) -> [3];
@@ -230,4 +238,4 @@ error_statuses(<<"CONNECTION_FAILED">>) -> [14];
 error_statuses(<<"CHECK_DEADLINE">>) -> [4];
 error_statuses(<<"INTERNAL_ERROR">>) -> [13, 15];
 error_statuses(<<"NORMALIZER_INCOMPATIBLE">>) -> [13, 15];
-error_statuses(<<"UNSUPPORTED_RULESET">>) -> [5].
+error_statuses(<<"UNSUPPORTED_RULESET">>) -> [9].

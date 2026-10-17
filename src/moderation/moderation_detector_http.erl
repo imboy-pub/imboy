@@ -138,7 +138,9 @@ with_publish_config(Fun) ->
     Conf = config_ds:env(moderation_detector, []),
     case
         {
-            proplists:get_value(http_base_url, Conf),
+            proplists:get_value(
+                publish_http_base_url, Conf, proplists:get_value(http_base_url, Conf)
+            ),
             proplists:get_value(publish_token, Conf)
         }
     of
