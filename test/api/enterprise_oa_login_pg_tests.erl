@@ -630,3 +630,42 @@ source_mixup(S, CtxA) ->
             }
         )
     ).
+
+%% Focused gap coverage only: no migration roundtrip or account allocator path.
+oa_login_three_gap_test_() ->
+    {timeout, 900,
+        {setup, fun enterprise_oa_login_three_gap_pg_checks:setup/0,
+            fun enterprise_oa_login_three_gap_pg_checks:teardown/1, fun(S) ->
+                Ctx = maps:get(oa_gap_context, S),
+                Ticket = fun(Ext, Intent, Did) -> ticket(Ctx, Ext, Intent, Did) end,
+                Issue = fun() ->
+                    enterprise_oa_login_logic:issue(
+                        Ctx, params(<<"three-gap-issue-person">>, <<"login">>)
+                    )
+                end,
+                {inorder, [
+                    {"link wrong application key rejects without effects",
+                        {timeout, 900, fun() ->
+                            enterprise_oa_login_three_gap_pg_checks:link_wrong_key(S, Ticket)
+                        end}},
+                    {"issue authority expires before ticket return",
+                        {timeout, 900, fun() ->
+                            enterprise_oa_login_three_gap_pg_checks:issue_deadline(S, Issue)
+                        end}},
+                    {"authority expires before final session return",
+                        {timeout, 900, fun() ->
+                            enterprise_oa_login_three_gap_pg_checks:session_deadline(S, Ticket)
+                        end}}
+                ]}
+            end}}.
+
+%% Explicit source removal is distinct from organization exit/account tombstones.
+source_retirement_test_() ->
+    {timeout, 900,
+        {setup, fun enterprise_oa_login_source_retirement_pg_checks:setup/0,
+            fun enterprise_oa_login_source_retirement_pg_checks:cleanup/1, fun(H) ->
+                Ticket = fun(Ctx, Ext, Did) -> ticket(Ctx, Ext, <<"login">>, Did) end,
+                {timeout, 900, fun() ->
+                    enterprise_oa_login_source_retirement_pg_checks:run(H, Ticket)
+                end}
+            end}}.

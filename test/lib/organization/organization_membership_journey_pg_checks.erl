@@ -103,3 +103,15 @@ assert_generations(C, G, Total, Open) ->
     ),
     ?assertEqual(Total, ActualTotal),
     ?assertEqual(Open, ActualOpen).
+
+%% A distinct coverage case; original run/1 is never invoked by this generator.
+preserve_b_personal_http_test_() ->
+    {timeout, 900,
+        {setup, fun organization_preserve_b_personal_http_checks:setup/0,
+            fun organization_preserve_b_personal_http_checks:cleanup/1, fun(H) ->
+                Seed = fun(C, Id) -> seed_invitation(C, Id) end,
+                Accept = fun accept/0,
+                {timeout, 900, fun() ->
+                    organization_preserve_b_personal_http_checks:run(H, Seed, Accept)
+                end}
+            end}}.
