@@ -23,6 +23,7 @@
 -export([list_by_ids/2]).
 
 -export([update_friends_last_seen_at/2]).
+-export([update_moderated_field/4]).
 -export([may_exist/1]).
 
 %% ===================================================================
@@ -37,6 +38,39 @@
 %% 静默跳过用户主行删除（2026-09-05 D-03 编排器联调实证）。
 tablename() ->
     <<"public.\"user\"">>.
+
+update_moderated_field(Uid, Field, Value, Expected) when
+    Field =:= <<"nickname">>;
+    Field =:= <<"sign">>;
+    Field =:= <<"profession">>;
+    Field =:= <<"school">>;
+    Field =:= <<"interests">>
+->
+    Version = maps:get(
+        next_version, Expected, binary:encode_hex(crypto:strong_rand_bytes(16), lowercase)
+    ),
+    {Where, Values} =
+        case Expected of
+            #{content := Old, version := Previous} ->
+                {
+                    <<" AND ", Field/binary,
+                        " IS NOT DISTINCT FROM $5 "
+                        "AND COALESCE(moderation_versions->>$2, '') = $6">>,
+                    [Old, Previous]
+                };
+            #{content := Old} ->
+                {<<" AND ", Field/binary, " IS NOT DISTINCT FROM $5">>, [Old]};
+            _ ->
+                {<<>>, []}
+        end,
+    Sql =
+        <<"UPDATE ", (tablename())/binary, " SET ", Field/binary,
+            " = $3, "
+            "moderation_versions = jsonb_set(moderation_versions, ARRAY[$2::text], to_jsonb($4::text), true) "
+            "WHERE id = $1", Where/binary>>,
+    elib_pg:execute_count(Sql, [Uid, Field, Value, Version | Values]);
+update_moderated_field(_, _, _, _) ->
+    {error, unsupported_field}.
 
 %% @doc 统计用户总数（License 规模 gate 用）。查询失败返回 0（由上层 fail-open）。
 -spec count() -> integer().

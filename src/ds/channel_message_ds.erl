@@ -11,6 +11,7 @@
 -export([find_by_id/1]).
 -export([list_by_channel/3]).
 -export([update/2]).
+-export([update_checked/3, delete_checked/2]).
 -export([delete/1]).
 -export([revoke/3]).
 -export([get_stats/1]).
@@ -30,6 +31,16 @@ update(MessageId, Data) ->
     %% （{channel_message, Id} → channel → workspace 行锁）。
     workspace_guard:write_tx({channel_message, MessageId}, fun(Conn) ->
         channel_message_repo:update_tx(Conn, MessageId, Data)
+    end).
+
+update_checked(MessageId, Data, Expected) ->
+    workspace_guard:write_tx({channel_message, MessageId}, fun(Conn) ->
+        channel_message_repo:update_checked_tx(Conn, MessageId, Data, Expected)
+    end).
+
+delete_checked(MessageId, Content) ->
+    workspace_guard:write_tx({channel_message, MessageId}, fun(Conn) ->
+        channel_message_repo:delete_checked_tx(Conn, MessageId, Content)
     end).
 
 -spec delete(integer()) -> {ok, integer()} | {error, any()}.

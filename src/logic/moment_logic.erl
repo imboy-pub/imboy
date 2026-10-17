@@ -57,9 +57,11 @@ create_post(Uid, PostVals) ->
             },
             %% R-03 审核门：high 命中词落库前拦截；medium/low 命中先发后审
             %% （入队复核），入队失败 fail-open 不阻断发帖。
-            case moderation_policy:inspect(moment_post, Content) of
+            case moderation_business:inspect_moment(Visibility, Content) of
                 {blocked, _Hits} ->
                     {error, <<"内容包含违规词汇，发布失败"/utf8>>};
+                {error, Reason} ->
+                    {error, Reason};
                 Verdict ->
                     create_post_with_verdict(
                         Uid, Data, Content, AtUids, Verdict

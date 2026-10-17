@@ -390,27 +390,62 @@ def run_type(base):
                               "suite": self.summaries.get(SUITE), "declared_equals_executed": declared == executed}
 
         def cleanup(self):
-            receipt = {"server_stopped": self.server is None, "server_exit": None, "signals": []}
+            receipt = {"server_stopped": self.server is None, "server_exit": None, "signals": [], "errors": []}
             if self.server:
-                if self.server.poll() is None:
-                    os.killpg(self.server.pid, signal.SIGTERM)
-                    receipt["signals"].append("SIGTERM")
-                    try:
+                try:
+                    if self.server.poll() is None:
+                        os.killpg(self.server.pid, signal.SIGTERM)
+                        receipt["signals"].append("SIGTERM")
                         self.server.wait(timeout=5)
-                    except subprocess.TimeoutExpired:
+                except subprocess.TimeoutExpired:
+                    try:
                         os.killpg(self.server.pid, signal.SIGKILL)
                         receipt["signals"].append("SIGKILL")
                         self.server.wait(timeout=5)
+                    except Exception as failure:
+                        receipt["errors"].append("server-kill: " + type(failure).__name__)
+                except Exception as failure:
+                    receipt["errors"].append("server-stop: " + type(failure).__name__)
                 receipt.update(server_stopped=self.server.poll() is not None, server_exit=self.server.returncode)
             if self.server_log:
-                self.server_log.close()
-                path = self.out / "server.log"
-                raw = path.read_bytes()
-                for secret in self.redactions:
-                    raw = raw.replace(secret.encode(), b"<REDACTED>")
-                path.write_bytes(raw)
+                try:
+                    self.server_log.close()
+                    path = self.out / "server.log"
+                    raw = path.read_bytes()
+                    for secret in self.redactions:
+                        raw = raw.replace(secret.encode(), b"<REDACTED>")
+                    path.write_bytes(raw)
+                except Exception as failure:
+                    receipt["errors"].append("server-log: " + type(failure).__name__)
+            try:
+                parent_ok = super().cleanup()
+            except Exception as failure:
+                parent_ok = False
+                receipt["errors"].append("base-cleanup: " + type(failure).__name__)
+                if self.credentials:
+                    try:
+                        shutil.rmtree(self.credentials, ignore_errors=False)
+                    except FileNotFoundError:
+                        pass
+                    except Exception as recovery:
+                        receipt["errors"].append("credentials: " + type(recovery).__name__)
+                try:
+                    if self.tmp_reserved:
+                        path = base.TMP_FIXTURE
+                        if path.is_symlink() or (path.exists() and file_sha(path) != base.KNOWN_TMP_SHA):
+                            raise RuntimeError("foreign temporary fixture preserved")
+                        if self.tmp_prior is None:
+                            path.unlink(missing_ok=True)
+                        else:
+                            path.write_bytes(self.tmp_prior["bytes"])
+                            os.chmod(path, self.tmp_prior["mode"])
+                            os.utime(path, ns=(self.tmp_prior["atime_ns"], self.tmp_prior["mtime_ns"]))
+                    if self.tmp_lock_acquired:
+                        self.tmp_lock.rmdir()
+                except Exception as recovery:
+                    receipt["errors"].append("temporary-fixture: " + type(recovery).__name__)
             base.save(self.out / "server-cleanup.json", receipt)
-            return super().cleanup() and receipt["server_stopped"]
+            return parent_ok and receipt["server_stopped"] and not receipt["errors"]
 
         def finish(self, error, cleanup_ok):
             after = self.identity()
@@ -483,7 +518,11 @@ def main():
         error = type(failure).__name__ + ": " + str(failure)
         print(error, file=sys.stderr)
     finally:
-        cleanup_ok = run.cleanup()
+        try:
+            cleanup_ok = run.cleanup()
+        except Exception as failure:
+            cleanup_ok = False
+            error = (error or "") + "; cleanup: " + type(failure).__name__
     return run.finish(error, cleanup_ok)
 
 

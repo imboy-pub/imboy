@@ -54,6 +54,18 @@ inspect(_Surface, Text) ->
     surface(), integer(), integer(), integer(), binary(), binary(), [hit()]
 ) -> ok | {error, term()}.
 enqueue(Surface, MsgId, ToId, FromId, FromAccount, Content, Hits) ->
+    try enqueue_row(Surface, MsgId, ToId, FromId, FromAccount, Content, Hits) of
+        {ok, _} -> ok;
+        _ -> enqueue_failed()
+    catch
+        _:_ -> enqueue_failed()
+    end.
+
+enqueue_failed() ->
+    ?ERROR_LOG(["review_enqueue_failed"]),
+    {error, review_enqueue_failed}.
+
+enqueue_row(Surface, MsgId, ToId, FromId, FromAccount, Content, Hits) ->
     Id = elib_tsid:generate(review_queue),
     HitWords = iolist_to_binary(lists:join(<<",">>, [hit_word(H) || H <- Hits])),
     {MsgType, ToType} = surface_types(Surface),
@@ -61,19 +73,22 @@ enqueue(Surface, MsgId, ToId, FromId, FromAccount, Content, Hits) ->
     Sql =
         <<"INSERT INTO ", Tb/binary,
             " (id, msg_id, msg_type, content, from_id, from_account, to_id, to_type,"
-            " hit_words, review_status)"
-            " VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'pending')">>,
-    case
-        elib_pg:query(Sql, [
-            Id, MsgId, MsgType, Content, FromId, FromAccount, ToId, ToType, HitWords
-        ])
-    of
-        {ok, _} ->
-            ok;
-        {error, Reason} = Err ->
-            ?ERROR_LOG(["moderation_policy enqueue error: ", Reason]),
-            Err
-    end.
+            " hit_words, review_status, metadata)"
+            " VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'pending', $10::jsonb)">>,
+    Metadata = jsone:encode(#{
+        schema_version => 1,
+        hits => Hits,
+        hit_words => [hit_word(H) || H <- Hits],
+        content_version =>
+            case Hits of
+                [First | _] -> maps:get(content_version, First, null);
+                [] -> null
+            end,
+        content_sha256 => binary:encode_hex(crypto:hash(sha256, Content), lowercase)
+    }),
+    elib_pg:query(Sql, [
+        Id, MsgId, MsgType, Content, FromId, FromAccount, ToId, ToType, HitWords, Metadata
+    ]).
 
 %% @doc 文本归一化：小写 + 全角 ASCII 变体（U+FF01..FF5E）转半角 + 去零宽字符。
 -spec normalize_text(binary()) -> binary().

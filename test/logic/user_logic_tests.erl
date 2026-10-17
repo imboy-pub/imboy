@@ -693,7 +693,7 @@ profile_nickname_blocked_by_high_hit_test_() ->
     ?WITH_MECKS(
         [
             {user_ds, [
-                {'update_field', 3, fun(_Uid, _Key, _Val) -> {ok, 1} end}
+                {'update_field_checked', 4, fun(_Uid, _Key, _Val, _Version) -> {ok, 1} end}
             ]},
             {moderation_policy, [
                 {'inspect', 2, fun(_Surface, _Text) ->
@@ -706,7 +706,7 @@ profile_nickname_blocked_by_high_hit_test_() ->
             ?assertMatch({error, _}, Result),
             {error, {_, _, Msg}} = Result,
             ?assertNotEqual(nomatch, binary:match(Msg, <<"违规词汇"/utf8>>)),
-            ?assertEqual(0, meck:num_calls(user_ds, update_field, 3))
+            ?assertEqual(0, meck:num_calls(user_ds, update_field_checked, 4))
         end
     ).
 
@@ -715,7 +715,7 @@ profile_sign_queued_saves_and_enqueues_test_() ->
     ?WITH_MECKS(
         [
             {user_ds, [
-                {'update_field', 3, fun(_Uid, _Key, _Val) -> {ok, 1} end}
+                {'update_field_checked', 4, fun(_Uid, _Key, _Val, _Version) -> {ok, 1} end}
             ]},
             {moderation_policy, [
                 {'inspect', 2, fun(_Surface, _Text) ->
@@ -732,7 +732,7 @@ profile_sign_queued_saves_and_enqueues_test_() ->
         fun() ->
             Result = user_logic:update(7, <<"sign">>, <<"签名内容"/utf8>>),
             ?assertMatch({ok, _}, Result),
-            ?assertEqual(1, meck:num_calls(user_ds, update_field, 3)),
+            ?assertEqual(1, meck:num_calls(user_ds, update_field_checked, 4)),
             ?assertEqual(1, meck:num_calls(moderation_policy, enqueue, 7))
         end
     ).
@@ -742,7 +742,7 @@ profile_allow_saves_without_enqueue_test_() ->
     ?WITH_MECKS(
         [
             {user_ds, [
-                {'update_field', 3, fun(_Uid, _Key, _Val) -> {ok, 1} end}
+                {'update_field_checked', 4, fun(_Uid, _Key, _Val, _Version) -> {ok, 1} end}
             ]},
             {moderation_policy, [
                 {'inspect', 2, fun(_Surface, _Text) -> allow end}
@@ -780,7 +780,7 @@ profile_enqueue_failure_fail_open_test_() ->
     ?WITH_MECKS(
         [
             {user_ds, [
-                {'update_field', 3, fun(_Uid, _Key, _Val) -> {ok, 1} end}
+                {'update_field_checked', 4, fun(_Uid, _Key, _Val, _Version) -> {ok, 1} end}
             ]},
             {moderation_policy, [
                 {'inspect', 2, fun(_Surface, _Text) ->
@@ -794,6 +794,6 @@ profile_enqueue_failure_fail_open_test_() ->
         fun() ->
             Result = user_logic:update(1, <<"school">>, <<"某大学"/utf8>>),
             ?assertMatch({ok, _}, Result),
-            ?assertEqual(1, meck:num_calls(user_ds, update_field, 3))
+            ?assertEqual(1, meck:num_calls(user_ds, update_field_checked, 4))
         end
     ).

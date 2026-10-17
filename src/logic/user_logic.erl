@@ -402,12 +402,7 @@ update(Uid, Field, Val) ->
             %% allow_search 字段在 fts_user 表中，需要特殊处理
             user_ds:update_allow_search(Uid, N);
         {ok, {set_field, F, V}} ->
-            case profile_review_gate(Uid, F, V) of
-                ok ->
-                    user_ds:update_field(Uid, F, V);
-                {error, Msg} ->
-                    {error, {1, <<"">>, Msg}}
-            end;
+            update_profile(Uid, F, V);
         %% 隐私布尔开关（QA #19）：落 user_setting.setting JSONB
         {ok, {set_setting, Key, Bool}} ->
             ok = user_setting_ds:save(Uid, Key, Bool),
@@ -460,25 +455,88 @@ update(Uid, Field, Val) ->
     <<"interests">>
 ]).
 
--spec profile_review_gate(integer(), binary(), term()) -> ok | {error, binary()}.
-profile_review_gate(Uid, Field, Val) when is_binary(Val) ->
+update_profile(Uid, Field, Value) ->
+    Conf = config_ds:env(moderation_detector, []),
+    Bind =
+        proplists:get_value(mode, Conf, legacy) =:= rust andalso
+            lists:member(Field, ?PROFILE_REVIEW_FIELDS),
+    Expected =
+        case Bind of
+            true -> user_ds:find_by_id(Uid, <<Field/binary, ",moderation_versions">>);
+            false -> legacy
+        end,
+    case Expected of
+        legacy ->
+            save_profile(Uid, Field, Value, legacy);
+        Row when is_map(Row), is_map_key(Field, Row) ->
+            Versions0 = maps:get(<<"moderation_versions">>, Row, #{}),
+            Versions =
+                case Versions0 of
+                    Binary when is_binary(Binary) -> jsone:decode(Binary);
+                    Map when is_map(Map) -> Map
+                end,
+            save_profile(Uid, Field, Value, #{
+                content => maps:get(Field, Row),
+                version => maps:get(Field, Versions, <<>>)
+            });
+        _ ->
+            {error, {1, <<"">>, <<"无法读取当前资料，请稍后重试"/utf8>>}}
+    end.
+
+save_profile(Uid, Field, Value, Expected) ->
+    case profile_review_gate(Uid, Field, Value) of
+        {error, Msg} ->
+            {error, {1, <<"">>, Msg}};
+        Verdict ->
+            Version = moderation_business:new_version(),
+            Result =
+                case Expected of
+                    legacy ->
+                        case lists:member(Field, ?PROFILE_REVIEW_FIELDS) of
+                            true ->
+                                user_ds:update_field_checked(Uid, Field, Value, #{
+                                    next_version => Version
+                                });
+                            false ->
+                                user_ds:update_field(Uid, Field, Value)
+                        end;
+                    Map ->
+                        user_ds:update_field_checked(Uid, Field, Value, Map#{
+                            next_version => Version
+                        })
+                end,
+            case Result of
+                {ok, Count} = Saved when Count > 0 ->
+                    case Verdict of
+                        {queued, Hits} ->
+                            {queued, BoundHits} = moderation_business:bind_version(
+                                {queued, Hits}, Version
+                            ),
+                            _ = moderation_policy:enqueue(
+                                {profile_field, Field}, Uid, 0, Uid, <<>>, Value, BoundHits
+                            );
+                        _ ->
+                            ok
+                    end,
+                    Saved;
+                {ok, 0} when Expected =/= legacy ->
+                    {error, {1, <<"">>, <<"资料已变化，请重新提交"/utf8>>}};
+                Other ->
+                    Other
+            end
+    end.
+
+-spec profile_review_gate(integer(), binary(), term()) -> term().
+profile_review_gate(_Uid, Field, Val) when is_binary(Val) ->
     case lists:member(Field, ?PROFILE_REVIEW_FIELDS) of
         false ->
             ok;
         true ->
-            case moderation_policy:inspect(profile_field, Val) of
+            case moderation_business:inspect_profile(Field, Val) of
                 {blocked, _Hits} ->
                     {error, <<"内容包含违规词汇，保存失败"/utf8>>};
-                {queued, Hits} ->
-                    %% msg_id 复用 uid（profile 无独立内容 ID），字段名经
-                    %% {profile_field, Field} 编码进 review_queue.msg_type；
-                    %% 入队失败 fail-open，不阻断资料保存。
-                    _ = moderation_policy:enqueue(
-                        {profile_field, Field}, Uid, 0, Uid, <<>>, Val, Hits
-                    ),
-                    ok;
-                allow ->
-                    ok
+                Other ->
+                    Other
             end
     end;
 profile_review_gate(_Uid, _Field, _Val) ->
