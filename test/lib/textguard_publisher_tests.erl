@@ -1,30 +1,5 @@
 -module(textguard_publisher_tests).
 
-%%%
-%%% T16 — TextGuard 指定发布者定向测试（AC-073 + 故障族）。
-%%%
-%%% 运行前置：同 textguard_export_tests（TG16_PG_* 环境变量注入的隔离
-%%% 一次性 PG；缺失显式 FAIL，禁止静默 skip/pass）。
-%%%
-%%% 发布传输注入：本模块自身实现 mock 传输（get_active_ruleset/1 +
-%%% publish_package/2，状态放命名 ETS `tg_pub_mock`）；另有一组用例用
-%%% 真实 `moderation_detector_http` 适配器 + ewh_http_fixture 真 socket
-%%% 走完整发布栈（PUT 精确字节 / If-Match / Bearer publish_token / 409
-%%% 映射 / GET not_found / 缺 publish_token fail-closed）。
-%%%
-%%% 覆盖：
-%%%   * 初始发布与 status 区分（published/pending/last_published）；
-%%%   * AC-073 丢通知：DB 变更不发通知 → 无发布；manual reconcile() 补上；
-%%%   * AC-073 mark_dirty 触发即时发布（不等满周期）；
-%%%   * AC-073 发布者崩溃重启：状态从零恢复，收敛到最新包；
-%%%   * CAS：409 后从全新导出重试一次（If-Match 换新）；耗尽 → failed
-%%%     可见且有界（恰好 1+1 次 PUT）；
-%%%   * 网络错误 → state_unknown（不盲回滚），下一 tick GET 对账恢复；
-%%%   * AC-075 发布门：携带悬空引用的包绝不发出（mock 收包即校验）。
-%%%
-%%% 运行：TG16_PG_* 注入后 `make eunit t=textguard_publisher_tests`。
-%%%
-
 -include_lib("eunit/include/eunit.hrl").
 
 -define(PUB, textguard_publisher).
@@ -44,17 +19,14 @@ get_active_ruleset(_Ctx) ->
     case mock_get(get_error, undefined) of
         undefined ->
             case mock_get(active, undefined) of
-                undefined ->
-                    {error, not_found};
-                #{revision := Rev, generation := Gen, digest := Dig} ->
-                    {ok, #{revision => Rev, generation => Gen, digest => Dig}}
+                undefined -> {ok, publication_state(0, <<>>, <<"uninitialized">>)};
+                Active -> {ok, Active}
             end;
         Reason ->
             {error, Reason}
     end.
 
 publish_package(Body, Opts) ->
-    %% 全部 PUT 尝试先记账（含将被 409 拒绝的），供 CAS 断言
     mock_append(put_attempts, #{
         body => Body,
         if_match => maps:get(if_match, Opts, none),
@@ -62,7 +34,11 @@ publish_package(Body, Opts) ->
     }),
     case no_dangling(Body) of
         ok ->
-            do_publish(Body);
+            {ok, Active} = get_active_ruleset(#{}),
+            case maps:get(if_match, Opts) =:= maps:get(state_etag, Active) of
+                true -> do_publish(Body);
+                false -> {error, cas_conflict}
+            end;
         dangling ->
             %% AC-075 发布门：Rust 侧对悬空引用整包拒绝——mock 同款语义，
             %% 绝不让悬空包通过（违规另有 ets 标记可断言）
@@ -89,21 +65,42 @@ do_publish(Body) ->
 
 accept_package(Body) ->
     Gen = mock_get(generation, 0) + 1,
-    Rev = <<"rev-", (integer_to_binary(Gen))/binary>>,
     mock_set(generation, Gen),
-    mock_set(active, #{revision => Rev, generation => Gen, digest => sha_hex(Body)}),
-    {ok, #{revision => Rev, generation => Gen}}.
+    State = publication_state(Gen, sha_hex(Body), <<"active">>),
+    mock_set(active, State),
+    {ok, State#{status => <<"committed">>}}.
 
-%% CAS 冲突语义：远端被「另一写者」覆盖 —— revision/generation 前进，
-%%% 活跃包 digest 变成别人的（迫使发布者重导出重比对）
 advance_revision() ->
     Gen = mock_get(generation, 0) + 1,
     mock_set(generation, Gen),
-    mock_set(active, #{
-        revision => <<"rev-", (integer_to_binary(Gen))/binary>>,
-        generation => Gen,
-        digest => <<"remote-advanced-digest">>
-    }).
+    mock_set(active, publication_state(Gen, sha_hex(integer_to_binary(Gen)), <<"active">>)),
+    case mock_get(mutate_on_conflict, false) of
+        true ->
+            textguard_export_tests:insert_word(
+                99000999, <<"fresh-on-conflict">>, <<"pub">>, <<"high">>
+            );
+        false ->
+            ok
+    end.
+
+publication_state(Gen, Revision, Status) ->
+    Generation = integer_to_binary(Gen),
+    Instance = <<"persistent-publisher-fixture">>,
+    ETag = sha_hex(<<Instance/binary, "\n", Generation/binary, "\n", Revision/binary>>),
+    Count =
+        case Gen of
+            0 -> 0;
+            _ -> 2
+        end,
+    #{
+        instance_id => Instance,
+        ready => Gen > 0,
+        generation => Generation,
+        ruleset_revision => Revision,
+        state_etag => ETag,
+        status => Status,
+        scene_counts => #{channel_message => Count, moment_post => Count, profile_field => Count}
+    }.
 
 %% AC-075 发布门：悬空引用包整包拒绝（Rust 侧行为的 mock 形态）
 -spec no_dangling(binary()) -> ok | dangling.
@@ -177,13 +174,14 @@ textguard_publisher_test_() ->
                 fun t_crash_restart/0
             ),
             with_case(
-                "CAS: 409 retries once from fresh export with new If-Match",
+                "CAS: 412 retries once from fresh export with new If-Match",
                 fun t_cas_retry_once/0
             ),
             with_case(
                 "CAS: exhausted retries leave failed state visible (bounded puts)",
                 fun t_cas_exhausted/0
             ),
+            with_case("busy does not consume CAS retries", fun t_publish_busy/0),
             with_case(
                 "network error -> state_unknown, reconcile recovers (no rollback)",
                 fun t_state_unknown_recovery/0
@@ -281,7 +279,7 @@ fresh_export_digest() ->
 mock_active_digest() ->
     case mock_get(active, undefined) of
         undefined -> undefined;
-        #{digest := D} -> D
+        #{ruleset_revision := D} -> D
     end.
 
 -spec wait_published() -> ok.
@@ -307,7 +305,8 @@ t_initial_publish() ->
     {ok, Status} = ?PUB:status(),
     ?assertEqual(false, maps:get(pending, Status)),
     ?assertMatch(
-        #{revision := <<"rev-1">>, generation := 1, digest := _}, maps:get(last_published, Status)
+        #{ruleset_revision := _, generation := <<"1">>, state_etag := _, digest := _},
+        maps:get(last_published, Status)
     ),
     ?assertEqual(fresh_export_digest(), maps:get(digest, maps:get(last_published, Status))),
     ?assertEqual(fresh_export_digest(), mock_active_digest()),
@@ -367,16 +366,21 @@ t_crash_restart() ->
 
 t_cas_retry_once() ->
     mock_set(put_conflicts_left, 1),
+    mock_set(mutate_on_conflict, true),
     {ok, _} = start_short(),
     wait_published(),
     Attempts = mock_attempts(),
     ?assertEqual(2, length(Attempts)),
-    %% 初始无活跃包：第一次 PUT 无 If-Match，被 409（远端前进到 rev-1）；
-    %% 重试的全新导出 GET 到 rev-1 → If-Match=rev-1 成功
     [First, Second] = Attempts,
-    ?assertEqual(none, maps:get(if_match, First)),
-    ?assertEqual(<<"rev-1">>, maps:get(if_match, Second)),
-    ?assertEqual(maps:get(body, First), maps:get(body, Second)),
+    ?assertEqual(
+        maps:get(state_etag, publication_state(0, <<>>, <<"uninitialized">>)),
+        maps:get(if_match, First)
+    ),
+    ?assertEqual(
+        maps:get(state_etag, publication_state(1, sha_hex(<<"1">>), <<"active">>)),
+        maps:get(if_match, Second)
+    ),
+    ?assertNotEqual(maps:get(body, First), maps:get(body, Second)),
     {ok, Status} = ?PUB:status(),
     ?assertMatch(#{state := published}, Status),
     ?assertEqual(fresh_export_digest(), mock_active_digest()).
@@ -447,175 +451,98 @@ t_state_unknown_recovery() ->
     ),
     ?assertEqual(fresh_export_digest(), mock_active_digest()).
 
+t_publish_busy() ->
+    {ok, _} = start_long(),
+    wait_published(),
+    Before = length(mock_attempts()),
+    mock_set(put_error, publish_busy),
+    textguard_export_tests:insert_word(99000998, <<"pending-busy">>, <<"pub">>, <<"low">>),
+    {ok, Status} = ?PUB:reconcile(),
+    ?assertMatch(
+        #{state := failed, pending := true, last_error := {publish, publish_busy}}, Status
+    ),
+    ?assertEqual(Before + 1, length(mock_attempts())),
+    mock_set(put_error, undefined),
+    {ok, #{state := published, pending := false}} = ?PUB:reconcile().
+
 %% -------------------------------------------------------------------
 %% 真实 HTTP 适配器发布面（ewh_http_fixture 真 socket）
 %% -------------------------------------------------------------------
 
 t_http_adapter_publish() ->
     {ok, _} = application:ensure_all_started(gun),
-    Self = self(),
-    %% 远端由本测试进程驱动：GET/PUT 到达后经消息握手决定响应。
-    Remote = fun
-        (#{method := <<"GET">>, path := <<"/internal/v1/rulesets/active">>}) ->
-            Self ! {http_get, self()},
-            receive
-                {remote, not_found} ->
-                    {reply, 404, [], <<>>};
-                {remote, #{revision := R, generation := G, digest := D}} ->
-                    {reply, 200, [],
-                        jsone:encode(#{
-                            <<"revision">> => R, <<"generation">> => G, <<"digest">> => D
-                        })}
-            after 3000 -> {reply, 500, [], <<>>}
-            end;
-        (#{method := <<"PUT">>, path := <<"/internal/v1/rulesets/active">>} = Req) ->
-            Self ! {http_put, self(), Req},
-            receive
-                {put_reply, ok} ->
-                    {reply, 200, [], <<"{\"revision\":\"srv-1\",\"generation\":7}">>};
-                {put_reply, conflict} ->
-                    {reply, 409, [],
-                        <<"{\"error\":{\"code\":\"CAS_CONFLICT\",\"message\":\"stale\"}}">>}
-            after 3000 -> {reply, 500, [], <<>>}
-            end;
-        (_) ->
-            {reply, 404, [], <<>>}
-    end,
-    H = ewh_http_fixture:start(Remote),
+    {ok, Export} = textguard_export:export_package(),
+    Package = maps:get(package, Export),
+    Initial = publication_state(0, <<>>, <<"uninitialized">>),
+    Published = publication_state(1, sha_hex(Package), <<"committed">>),
+    mock_set(http_reply, {200, jsone:encode(Initial)}),
+    H = ewh_http_fixture:start(fun(_) ->
+        {Code, Body} = mock_get(http_reply, undefined),
+        {reply, Code, [], Body}
+    end),
     try
-        Port = integer_to_binary(ewh_http_fixture:port(H)),
-        BaseUrl = <<"http://127.0.0.1:", Port/binary>>,
-        ok = application:set_env(imboy, moderation_detector, [
-            {http_base_url, BaseUrl},
-            {publish_token, <<"publish-token-placeholder">>}
-        ]),
-        clean_gun_cache(),
-        %% GET：无活跃包 → not_found
-        ?assertEqual(
-            {error, not_found},
-            run_adapter(
-                fun() ->
-                    moderation_detector_http:get_active_ruleset(#{deadline_ms => 2000})
-                end,
-                fun remote_not_found/0
-            )
+        BaseUrl = <<"http://127.0.0.1:", (integer_to_binary(ewh_http_fixture:port(H)))/binary>>,
+        application:set_env(
+            imboy,
+            moderation_detector,
+            [{http_base_url, BaseUrl}, {publish_token, <<"publish-token-placeholder">>}]
         ),
-        %% GET：200 严格解析 revision/generation/digest
+        Ctx = #{deadline_ms => 2000, request_id => <<"publish-001">>},
+        ?assertEqual({ok, Initial}, moderation_detector_http:get_active_ruleset(Ctx)),
         ?assertEqual(
-            {ok, #{revision => <<"srv-0">>, generation => 6, digest => <<"d0">>}},
-            run_adapter(
-                fun() ->
-                    moderation_detector_http:get_active_ruleset(#{deadline_ms => 2000})
-                end,
-                fun remote_active/0
-            )
+            {error, protocol_error}, moderation_detector_http:publish_package(Package, #{})
         ),
-        %% PUT：精确字节 + If-Match + Bearer publish_token；200 严格解析。
-        %% 请求线细节取自 fixture 的请求账本（确定性，避免消息时序竞争）
-        {ok, E} = textguard_export:export_package(),
-        Pkg = maps:get(package, E),
-        PutResult = run_adapter(
-            fun() ->
-                moderation_detector_http:publish_package(Pkg, #{
-                    if_match => <<"rev-old">>, ctx => #{deadline_ms => 2000}
-                })
+        ?assertEqual(1, ewh_http_fixture:request_count(H)),
+        Opts = #{if_match => maps:get(state_etag, Initial), ctx => Ctx, confirm_empty => true},
+        mock_set(http_reply, {200, jsone:encode(Published)}),
+        ?assertEqual({ok, Published}, moderation_detector_http:publish_package(Package, Opts)),
+        Request = lists:last(ewh_http_fixture:requests(H)),
+        ?assertEqual(Package, maps:get(body, Request)),
+        Raw = maps:get(raw, Request),
+        lists:foreach(
+            fun(Header) -> ?assertNotEqual(nomatch, binary:match(Raw, Header)) end,
+            [
+                <<"if-match: ", (maps:get(state_etag, Initial))/binary, "\r\n">>,
+                <<"authorization: Bearer publish-token-placeholder\r\n">>,
+                <<"x-textguard-confirm-empty: true\r\n">>,
+                <<"x-textguard-request-id: publish-001\r\n">>
+            ]
+        ),
+        Already = Published#{status => <<"already_active">>},
+        mock_set(http_reply, {200, jsone:encode(Already)}),
+        ?assertEqual({ok, Already}, moderation_detector_http:publish_package(Package, Opts)),
+        lists:foreach(
+            fun({Status, Code, Reason}) ->
+                mock_set(
+                    http_reply,
+                    {Status,
+                        jsone:encode(#{
+                            error => #{
+                                code => Code,
+                                request_id => <<"publish-001">>,
+                                retryable => true
+                            }
+                        })}
+                ),
+                ?assertEqual(
+                    {error, Reason}, moderation_detector_http:publish_package(Package, Opts)
+                )
             end,
-            fun remote_put_ok/0
+            [
+                {412, <<"CAS_CONFLICT">>, cas_conflict},
+                {409, <<"PUBLISH_BUSY">>, publish_busy},
+                {409, <<"RETIRED_SNAPSHOT_BUSY">>, retired_snapshot_busy},
+                {409, <<"CAS_CONFLICT">>, protocol_error},
+                {500, <<"PUBLISH_STATE_UNKNOWN">>, publish_state_unknown}
+            ]
         ),
-        ?assertEqual({ok, #{revision => <<"srv-1">>, generation => 7}}, PutResult),
-        ReqPut = lists:last([
-            R
-         || R <- ewh_http_fixture:requests(H),
-            maps:get(method, R) =:= <<"PUT">>,
-            maps:get(path, R) =:= <<"/internal/v1/rulesets/active">>
-        ]),
-        ?assertEqual(Pkg, maps:get(body, ReqPut)),
-        %% 请求头断言走 raw：ewh_http_fixture 的 headers 解析有既有缺陷
-        %% （split_once 返回 list 而生成器模式是 {K,V} 元组，恒空），不在
-        %% 本任务修共享夹具；raw 线格式断言等价且更直接
-        Raw = maps:get(raw, ReqPut),
-        case binary:match(Raw, <<"if-match: rev-old\r\n">>) of
-            nomatch -> erlang:error({if_match_header_missing, Raw});
-            _Found -> ok
-        end,
-        case binary:match(Raw, <<"authorization: Bearer publish-token-placeholder\r\n">>) of
-            nomatch -> erlang:error({authorization_header_missing, Raw});
-            _Found2 -> ok
-        end,
-        case binary:match(Raw, <<"content-type: application/json\r\n">>) of
-            nomatch -> erlang:error({content_type_header_missing, Raw});
-            _Found3 -> ok
-        end,
-        %% PUT 409（信封 CAS_CONFLICT）→ cas_conflict
-        ?assertEqual(
-            {error, cas_conflict},
-            run_adapter(
-                fun() ->
-                    moderation_detector_http:publish_package(Pkg, #{ctx => #{deadline_ms => 2000}})
-                end,
-                fun remote_conflict/0
-            )
-        ),
-        %% 缺 publish_token → fail-closed not_ready（不出网）
-        ok = application:set_env(imboy, moderation_detector, [{http_base_url, BaseUrl}]),
-        clean_gun_cache(),
-        ?assertEqual(
-            {error, not_ready},
-            moderation_detector_http:publish_package(Pkg, #{ctx => #{deadline_ms => 500}})
-        )
+        application:set_env(imboy, moderation_detector, [{http_base_url, BaseUrl}]),
+        ?assertEqual({error, not_ready}, moderation_detector_http:publish_package(Package, Opts))
     after
         ewh_http_fixture:stop(H),
         clean_gun_cache(),
         application:unset_env(imboy, moderation_detector)
-    end,
-    ok.
-
-%% 在独立进程中跑适配器调用（同步阻塞），先喂远端响应再收结果。
--spec run_adapter(fun(), fun(() -> ok)) -> term().
-run_adapter(Call, Feed) ->
-    Self = self(),
-    {Pid, Mon} = spawn_monitor(fun() -> Self ! {adapter_result, Call()} end),
-    ok = Feed(),
-    Result =
-        receive
-            {adapter_result, R} -> R
-        after 5000 -> timeout
-        end,
-    receive
-        {'DOWN', Mon, process, Pid, normal} -> ok
-    after 5000 -> ok
-    end,
-    Result.
-
-%% 喂远端的钩子（与 fixture handler 进程握手决定响应）
-remote_not_found() ->
-    receive
-        {http_get, Fx} -> Fx ! {remote, not_found}
-    after 2000 -> error(no_get)
-    end,
-    ok.
-
-remote_active() ->
-    receive
-        {http_get, Fx} ->
-            Fx ! {remote, #{revision => <<"srv-0">>, generation => 6, digest => <<"d0">>}}
-    after 2000 -> error(no_get_active)
-    end,
-    ok.
-
-remote_put_ok() ->
-    receive
-        {http_put, Fx, _Req} -> Fx ! {put_reply, ok}
-    after 2000 -> error(no_put)
-    end,
-    ok.
-
-remote_conflict() ->
-    receive
-        {http_put, Fx, _Req} -> Fx ! {put_reply, conflict}
-    after 2000 -> error(no_put_conflict)
-    end,
-    ok.
+    end.
 
 %% 进程字典 gun 连接缓存清理（T15 测试同款惯例）
 -spec clean_gun_cache() -> ok.

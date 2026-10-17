@@ -1,32 +1,9 @@
 -module(moderation_detector_transport_tests).
 
-%%%
-%%% T15 — TextGuard 检测器传输适配定向测试（AC-060/061 的 imboy 侧切片）。
-%%%
-%%% 覆盖面（定向，不跑全量）：
-%%%   * HTTP 适配（moderation_detector_http）：真 socket 对端夹具
-%%%     ewh_http_fixture（test/common，零网络 mock）——happy path、
-%%%     请求线格式、全故障族（缺键/多余键/未知枚举/截断/垃圾字节/
-%%%     非 UTF-8/超限体）、错误信封与状态码映射、deadline 强制与
-%%%     **零重试**（服务端恰被命中 1 次）、连接拒绝、配置缺失
-%%%     fail-closed、远端原子注入不变量（atom_count 不变）。
-%%%   * gRPC 适配（moderation_detector_grpc）：按 T15 依赖决策以注入
-%%%     transport fun 驱动（grpcbox 仅编译期在位，证据见该模块头）——
-%%%     proto 字段名契约、deadline 透传、scan_complete 缺失 = 协议违约、
-%%%     tonic 风格状态码/元数据映射（RESOURCE_EXHAUSTED 的
-%%%     OVERLOADED/TEXT_TOO_LARGE 区分、OUT_OF_RANGE、DEADLINE_EXCEEDED…）、
-%%%     传输崩溃/坏形状 fail-closed、{M, F} 间接注入。
-%%%   * behaviour（moderation_detector_transport）：select 默认 legacy、
-%%%     legacy 标记零远程调用、白名单闭集。
-%%%
-%%% 运行：make eunit t=moderation_detector_transport_tests
-%%%（纯函数 + 本地真 socket，无 DB / imboy app 启动依赖）
-%%%
-
 -include_lib("eunit/include/eunit.hrl").
 
-%% MFA 注入形态的桩（动态 M:F 调用要求导出）
 -export([grpc_mfa_stub/4]).
+-import(textguard_contract_tests, [check_response/1, expected_check/1, info_response/0]).
 
 -define(BEHAVIOUR, moderation_detector_transport).
 -define(HTTP_ADAPTER, moderation_detector_http).
@@ -34,9 +11,7 @@
 -define(TOKEN, <<"tg-token-placeholder">>).
 -define(REQ_ID, <<"req-t15-0001">>).
 
-%% ===================================================================
 %% 公共构造
-%% ===================================================================
 
 -spec det() -> moderation_detector_transport:detection().
 det() ->
@@ -64,7 +39,7 @@ reply(Path, Code, Body) ->
 
 -spec check_ok_body() -> binary().
 check_ok_body() ->
-    <<"{\"decision\":\"block\",\"scan_complete\":true}">>.
+    jsone:encode(check_response(<<"block">>)).
 
 %% 进程字典清理：适配器按 {scheme,host,port} 缓存 gun 连接。
 -spec clean_gun_cache() -> ok.
@@ -76,9 +51,7 @@ clean_gun_cache() ->
     ],
     ok.
 
-%% HTTP 夹具 + 配置注入（每用例独立端口 → 互不串连接缓存）。
-%% Instantiator 返回 fun/0（eunit 语义：arity-1 instantiator 的返回值
-%% 必须是 test，不能是断言结果 ok）。
+%% HTTP 夹具每用例独立端口；instantiator 返回 fun/0。
 -spec with_http([{term(), term()}], fun(), fun((term()) -> term())) -> term().
 with_http(ExtraConf, Responder, TestFun) ->
     {setup,
@@ -102,7 +75,6 @@ with_http(ExtraConf, Responder, TestFun) ->
         end,
         fun(H) -> fun() -> TestFun(H) end end}.
 
-%% gRPC 注入夹具：transport fun 捕获调用参数并返回预设 Outcome。
 -spec with_grpc([{term(), term()}], term(), fun(() -> term())) -> term().
 with_grpc(Conf, Outcome, TestFun) ->
     {setup,
@@ -186,6 +158,7 @@ moderation_detector_transport_test_() ->
         http_oversized_shape_valid_body(),
         %% -- HTTP：非 200 错误面映射 ------------------------------------
         http_error_envelope_table(),
+        http_error_contract_table(),
         http_error_status_only_table(),
         http_error_envelope_malformed_falls_back_to_status(),
         %% -- HTTP：deadline / 零重试 / 连接失败 -------------------------
@@ -221,7 +194,7 @@ moderation_detector_transport_test_() ->
 http_check_happy_path_block() ->
     with_http([], reply(<<"/v1/check">>, 200, check_ok_body()), fun(_H) ->
         ?assertEqual(
-            {ok, #{decision => block, scan_complete => true}},
+            expected_check(<<"block">>),
             check()
         )
     end).
@@ -232,17 +205,17 @@ http_check_happy_path_allow_review() ->
         reply(
             <<"/v1/check">>,
             200,
-            <<"{\"decision\":\"review\",\"scan_complete\":false}">>
+            jsone:encode(check_response(<<"review">>))
         ),
         fun(_H) ->
             D = maps:put(scene, moment_post, det()),
             ?assertEqual(
-                {ok, #{decision => review, scan_complete => false}},
+                expected_check(<<"review">>),
                 ?HTTP_ADAPTER:check(D, #{})
             ),
             D2 = maps:put(scene, profile_field, det()),
             ?assertEqual(
-                {ok, #{decision => review, scan_complete => false}},
+                expected_check(<<"review">>),
                 ?HTTP_ADAPTER:check(D2, #{})
             )
         end
@@ -250,7 +223,7 @@ http_check_happy_path_allow_review() ->
 
 http_check_request_shape() ->
     with_http([], reply(<<"/v1/check">>, 200, check_ok_body()), fun(H) ->
-        ?assertEqual({ok, #{decision => block, scan_complete => true}}, check()),
+        ?assertEqual(expected_check(<<"block">>), check()),
         Req = first_request(H),
         ?assertEqual(<<"POST">>, maps:get(method, Req)),
         ?assertEqual(<<"/v1/check">>, maps:get(path, Req)),
@@ -322,69 +295,78 @@ http_oversized_shape_valid_body() ->
         ?assertEqual({error, protocol_error}, check())
     end).
 
-%% ===================================================================
-%% HTTP：非 200 错误面映射（信封优先，其次状态码表）
-%% ===================================================================
+%% HTTP：非 200 错误信封校验
 
 http_error_envelope_table() ->
     Cases = [
         {401, <<"UNAUTHENTICATED">>, unauthenticated},
         {403, <<"PERMISSION_DENIED">>, permission_denied},
         {413, <<"TEXT_TOO_LARGE">>, text_too_large},
-        {503, <<"OVERLOADED">>, overloaded},
-        {500, <<"NOT_READY">>, not_ready},
-        %% 信封未知 code：白名单查表回落 internal（不按状态码改判）
-        {503, <<"TOTALLY_UNKNOWN_CODE">>, internal},
-        {401, <<"SOME_EVIL_ATOM">>, internal}
+        {429, <<"OVERLOADED">>, overloaded},
+        {503, <<"NOT_READY">>, not_ready},
+        %% 信封未知 code 是协议错误，不按状态码猜测。
+        {503, <<"TOTALLY_UNKNOWN_CODE">>, protocol_error},
+        {401, <<"SOME_EVIL_ATOM">>, protocol_error}
     ],
     [
         {
             lists:flatten(io_lib:format("http_envelope_~p_~s", [Status, Code])),
-            with_http([], envelope_reply(<<"/v1/check">>, Status, Code), fun(_H) ->
+            with_http([], envelope_reply(<<"/v1/check">>, Status, Code, RequestId), fun(_H) ->
                 ?assertEqual({error, Reason}, check())
             end)
         }
-     || {Status, Code, Reason} <- Cases
+     || {Status, Code, Reason} <- Cases, RequestId <- [?REQ_ID, <<>>]
     ].
 
 http_error_status_only_table() ->
-    Cases = [
-        {401, unauthenticated},
-        {403, permission_denied},
-        {413, text_too_large},
-        {429, overloaded},
-        {503, overloaded},
-        {504, timeout},
-        {500, internal},
-        {404, internal}
-    ],
     [
-        {
-            lists:flatten(io_lib:format("http_status_~p", [Status])),
-            with_http([], reply(<<"/v1/check">>, Status, <<>>), fun(_H) ->
-                ?assertEqual({error, Reason}, check())
-            end)
-        }
-     || {Status, Reason} <- Cases
+        with_http([], reply(<<"/v1/check">>, Status, <<>>), fun(_) ->
+            ?assertEqual({error, protocol_error}, check())
+        end)
+     || Status <- [401, 403, 413, 429, 503, 504, 500, 404]
     ].
 
-%% 信封体损坏（非 JSON）→ 视为无信封，回落状态码表。
+http_error_contract_table() ->
+    Good = #{code => <<"OVERLOADED">>, request_id => ?REQ_ID, retryable => true},
+    Bad =
+        [maps:remove(Key, Good) || Key <- maps:keys(Good)] ++
+            [
+                Good#{message => <<"legacy-error">>},
+                Good#{request_id => <<"wrong-request">>},
+                Good#{retryable => <<"true">>}
+            ],
+    Bodies =
+        [jsone:encode(#{error => Error}) || Error <- Bad] ++
+            [
+                jsone:encode(Good),
+                <<"{\"error\":{\"code\":\"OVERLOADED\",\"code\":\"NOT_READY\",",
+                    "\"request_id\":\"req-t15-0001\",\"retryable\":true}}">>
+            ],
+    [
+        with_http([], reply(<<"/v1/check">>, 429, Body), fun(_) ->
+            ?assertEqual({error, protocol_error}, check())
+        end)
+     || Body <- Bodies
+    ].
+
 http_error_envelope_malformed_falls_back_to_status() ->
-    with_http([], reply(<<"/v1/check">>, 503, <<"not json at all">>), fun(_H) ->
-        ?assertEqual({error, overloaded}, check())
+    with_http([], reply(<<"/v1/check">>, 503, <<"not json">>), fun(_) ->
+        ?assertEqual({error, protocol_error}, check())
     end).
 
--spec envelope_reply(binary(), integer(), binary()) -> fun().
-envelope_reply(Path, Status, Code) ->
-    Body = <<"{\"error\":{\"code\":\"", Code/binary, "\",\"message\":\"m\"}}">>,
-    reply(Path, Status, Body).
+envelope_reply(Path, Status, Code, RequestId) ->
+    reply(
+        Path,
+        Status,
+        jsone:encode(#{
+            error => #{
+                code => Code,
+                request_id => RequestId,
+                retryable => false
+            }
+        })
+    ).
 
-%% ===================================================================
-%% HTTP：deadline / 零重试 / 连接失败
-%% ===================================================================
-
-%% 真挂死对端（夹具 responder 永不返回 → socket 保持打开）：总预算封顶
-%% 等待 → timeout；且**零重试**——服务端恰被命中 1 次。
 http_deadline_timeout_zero_retry() ->
     BlockForever = fun(_Req) ->
         receive
@@ -423,7 +405,7 @@ http_ctx_deadline_overrides_config() ->
         end),
         with_http([{timeout_ms, 30}], Slow, fun(_H) ->
             ?assertEqual(
-                {ok, #{decision => block, scan_complete => true}},
+                expected_check(<<"block">>),
                 ?HTTP_ADAPTER:check(det(), #{deadline_ms => 900})
             )
         end)
@@ -511,11 +493,11 @@ http_atom_injection_never_creates_atoms() ->
     EnvelopeCase = with_http([], Responder, fun(_H) ->
         %% 预热（枪/解码器惰性原子落位）
         persistent_term:put({?MODULE, evil_code}, <<"warmup-code-1">>),
-        ?assertEqual({error, internal}, check()),
-        %% 正式测量：未知 code 串 → internal，且不创建任何新原子
+        ?assertEqual({error, protocol_error}, check()),
+        %% 正式测量：未知 code 串不创建任何新原子。
         persistent_term:put({?MODULE, evil_code}, <<"evil_atom_probe_t15_code">>),
         Count0 = erlang:system_info(atom_count),
-        ?assertEqual({error, internal}, check()),
+        ?assertEqual({error, protocol_error}, check()),
         Count1 = erlang:system_info(atom_count),
         ?assertEqual(Count0, Count1)
     end),
@@ -542,7 +524,7 @@ http_atom_injection_never_creates_atoms() ->
 http_info_happy_path() ->
     Paths = [
         {<<"/v1/check">>, 200, check_ok_body()},
-        {<<"/v1/info">>, 200, <<"{\"version\":\"0.2.1\",\"ready\":true}">>}
+        {<<"/v1/info">>, 200, jsone:encode(info_response())}
     ],
     Responder = fun(Req) ->
         Path = maps:get(path, Req),
@@ -553,7 +535,7 @@ http_info_happy_path() ->
     end,
     with_http([], Responder, fun(H) ->
         ?assertEqual(
-            {ok, #{version => <<"0.2.1">>, ready => true}},
+            {ok, info_response()},
             ?HTTP_ADAPTER:info(#{})
         ),
         Req = first_request(H),
@@ -584,10 +566,10 @@ http_info_bad_body_table() ->
 %% ===================================================================
 
 grpc_check_success_and_contract() ->
-    Outcome = {ok, #{decision => <<"allow">>, scan_complete => true}},
+    Outcome = {ok, check_response(<<"allow">>)},
     with_grpc([], Outcome, fun() ->
         ?assertEqual(
-            {ok, #{decision => allow, scan_complete => true}},
+            expected_check(<<"allow">>),
             ?GRPC_ADAPTER:check(det(), #{})
         ),
         {Endpoint, Method, Request, Deadline} = recv_grpc_call(),
@@ -612,7 +594,7 @@ grpc_check_success_and_contract() ->
     end).
 
 grpc_ctx_deadline_passthrough() ->
-    Outcome = {ok, #{decision => <<"block">>, scan_complete => true}},
+    Outcome = {ok, check_response(<<"block">>)},
     with_grpc([{timeout_ms, 250}], Outcome, fun() ->
         ?assertMatch(
             {ok, _},
@@ -636,7 +618,7 @@ grpc_mfa_transport_resolution() ->
         end,
         fun(_) -> application:unset_env(imboy, moderation_detector) end, fun() ->
             ?assertEqual(
-                {ok, #{decision => block, scan_complete => true}},
+                expected_check(<<"block">>),
                 ?GRPC_ADAPTER:check(det(), #{})
             )
         end}.
@@ -644,9 +626,9 @@ grpc_mfa_transport_resolution() ->
 -spec grpc_mfa_stub(map(), check_text | get_info, map(), pos_integer()) ->
     {ok, map()}.
 grpc_mfa_stub(_Endpoint, check_text, _Request, _Deadline) ->
-    {ok, #{decision => <<"block">>, scan_complete => true}};
+    {ok, check_response(<<"block">>)};
 grpc_mfa_stub(_Endpoint, get_info, _Request, _Deadline) ->
-    {ok, #{version => <<"0.2.1">>, ready => true}}.
+    {ok, info_response()}.
 
 grpc_bad_response_table() ->
     Cases = [
@@ -654,7 +636,7 @@ grpc_bad_response_table() ->
         {unknown_decision, {ok, #{decision => <<"bogus">>, scan_complete => true}}, protocol_error},
         {scan_complete_wrong_type, {ok, #{decision => <<"allow">>, scan_complete => 1}},
             protocol_error},
-        {decision_wrong_type, {ok, #{decision => allow, scan_complete => true}}, protocol_error}
+        {decision_wrong_type, expected_check(<<"allow">>), protocol_error}
     ],
     [
         {
@@ -668,33 +650,36 @@ grpc_bad_response_table() ->
 
 grpc_status_code_table() ->
     Cases = [
-        {4, #{}, timeout},
-        {8, #{}, overloaded},
-        {8, #{<<"textguard-error-code">> => <<"OVERLOADED">>}, overloaded},
-        {8, #{<<"textguard-error-code">> => <<"TEXT_TOO_LARGE">>}, text_too_large},
-        {8, #{<<"textguard-error-code">> => [<<"TEXT_TOO_LARGE">>]}, text_too_large},
-        {8, #{<<"textguard-error-code">> => <<"WHATEVER_ELSE">>}, overloaded},
-        {11, #{}, text_too_large},
-        {16, #{}, unauthenticated},
-        {7, #{}, permission_denied},
-        {14, #{}, connection_failed},
-        {13, #{}, internal},
-        {2, #{}, internal},
-        {1, #{}, internal}
+        {4, <<"CHECK_DEADLINE">>, timeout},
+        {8, <<"OVERLOADED">>, overloaded},
+        {8, <<"TEXT_TOO_LARGE">>, text_too_large},
+        {16, <<"UNAUTHENTICATED">>, unauthenticated},
+        {7, <<"PERMISSION_DENIED">>, permission_denied},
+        {14, <<"NOT_READY">>, not_ready},
+        {14, <<"CONNECTION_FAILED">>, connection_failed},
+        {13, <<"INTERNAL_ERROR">>, internal}
     ],
     [
-        {
-            lists:flatten(io_lib:format("grpc_status_~p_meta_~p", [Status, maps:size(Meta)])),
-            with_grpc(
-                [],
-                {error, #{grpc_status => Status, message => <<"m">>, metadata => Meta}},
-                fun() ->
-                    ?assertEqual({error, Reason}, ?GRPC_ADAPTER:check(det(), #{}))
-                end
-            )
-        }
-     || {Status, Meta, Reason} <- Cases
-    ].
+        with_grpc(
+            [],
+            {error, #{
+                grpc_status => Status,
+                metadata => #{
+                    <<"x-textguard-error-code">> => Code, <<"x-textguard-request-id">> => RequestId
+                }
+            }},
+            fun() ->
+                ?assertEqual({error, Reason}, ?GRPC_ADAPTER:check(det(), #{}))
+            end
+        )
+     || {Status, Code, Reason} <- Cases, RequestId <- [?REQ_ID, <<>>]
+    ] ++
+        [
+            with_grpc([], {error, #{grpc_status => Status}}, fun() ->
+                ?assertEqual({error, protocol_error}, ?GRPC_ADAPTER:check(det(), #{}))
+            end)
+         || Status <- [4, 8, 11, 16, 7, 14, 13, 2, 1]
+        ].
 
 grpc_transport_bad_shape_or_crash() ->
     %% 成功分支的坏载荷走响应校验 → protocol_error；错误分支的坏形状/崩溃
@@ -702,8 +687,8 @@ grpc_transport_bad_shape_or_crash() ->
     Cases = [
         {ok_return_not_a_map, {ok, <<"junk">>}, protocol_error},
         {bare_ok, ok, internal},
-        {error_not_a_map, {error, <<"grpc-ish">>}, internal},
-        {error_map_without_status, {error, #{message => <<"m">>}}, internal}
+        {error_not_a_map, {error, <<"grpc-ish">>}, protocol_error},
+        {error_map_without_status, {error, #{message => <<"m">>}}, protocol_error}
     ],
     ShapeCases = [
         {
@@ -722,9 +707,9 @@ grpc_transport_bad_shape_or_crash() ->
 
 grpc_info_face() ->
     [
-        with_grpc([], {ok, #{version => <<"0.2.1">>, ready => true}}, fun() ->
+        with_grpc([], {ok, info_response()}, fun() ->
             ?assertEqual(
-                {ok, #{version => <<"0.2.1">>, ready => true}},
+                {ok, info_response()},
                 ?GRPC_ADAPTER:info(#{})
             ),
             {_, Method, Request, _Deadline} = recv_grpc_call(),
@@ -734,7 +719,7 @@ grpc_info_face() ->
         with_grpc([], {ok, #{version => <<"0.2.1">>}}, fun() ->
             ?assertEqual({error, protocol_error}, ?GRPC_ADAPTER:info(#{}))
         end),
-        with_grpc([], {error, #{grpc_status => 14}}, fun() ->
+        with_grpc([], {error, connection_failed}, fun() ->
             ?assertEqual({error, connection_failed}, ?GRPC_ADAPTER:info(#{}))
         end)
     ].

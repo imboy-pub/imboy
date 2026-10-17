@@ -1,77 +1,4 @@
-%%% @doc TextGuard 规则包指定发布者（T16，AC-073 的发布侧切片）。
-%%%
-%%% 单例 gen_server（本地注册名 `textguard_publisher`）：**唯一**有权把
-%%% IMBoy 词表 + 增强文件合并出的规则包发布到 Rust TextGuard 服务的
-%%% OTP 进程（plan §8.1：Rust 不自行拉库，只接收指定发布者的完整包）。
-%%%
-%%% == 触发与对账（AC-073）==
-%%%
-%%% * `mark_dirty/0`（cast）——词表/增强变更后的脏通知；丢失不丢正确性：
-%%%   周期对账兜底；
-%%% * 周期对账——默认 60s（`reconcile_interval_ms`），每个 tick 跑一次
-%%%   完整对账循环（导出 + GET 比对 + 必要时 PUT），发布者重启后同样由
-%%%   下一个 tick 收敛（无持久状态，收敛性来自幂等的 CAS 发布）；
-%%% * `reconcile/0`（call）——手动对账（运维/测试）。
-%%%
-%%% == 发布循环（单槽串行：gen_server 天然单飞）==
-%%%
-%%% 每次循环（`reconcile cycle`）按序执行，期间不存在并发的第二次发布：
-%%%
-%%%   1. GET 当前活跃包（CAS 前置读）→ `{ok, Active}` | `{error, not_found}`
-%%%      | `{error, Reason}`；
-%%%   2. **在取得发布槽之后**重新导出（fresh export）：GET 先行让包尽量
-%%%      新、缩小导出→PUT 窗口；PUT 期间**绝无**DB 读（导出先完成，发布
-%%%      后开始，两个阶段不重叠）；
-%%%   3. `Active.digest == 新包 package_sha256` → 已收敛，免 PUT（时间戳/
-%%%      无语义变化不制造新版本，AC-074 精神），直接记 published；
-%%%   4. 否则 PUT，`If-Match = Active.revision`（无活跃包则不带 If-Match），
-%%%      体 = 导出的精确字节；
-%%%   5. 409 cas_conflict → 退避后**从全新导出重试**（有限次，默认 1 次
-%%%      重试；耗尽 → failed 可见）；网络/未知错误 → `state_unknown`，
-%%%      绝不盲目回滚，靠下一 tick 的 GET 对账恢复。
-%%%
-%%% == 状态区分（status/0 可观察）==
-%%%
-%%%   `state`：
-%%%     `idle`          干净待命；
-%%%     `exporting`     导出中（瞬态）；
-%%%     `publishing`    PUT 在途（瞬态）；
-%%%     `published`     最近一次发布成功；
-%%%     `failed`        重试耗尽（DB 读失败 / CAS 冲突耗尽）；
-%%%     `state_unknown` 远端实际状态未知（网络类错误），待对账恢复；
-%%%   `pending`（= 内部 dirty 标记）：有待发布的变更（saved/pending 与
-%%%     published 的区分即 `pending=true` + `last_published` 组合）；
-%%%   `last_published`：`{revision, generation, digest, base_digest,
-%%%     published_at}` 或 `undefined`。
-%%%
-%%% == 发布传输（可注入）==
-%%%
-%%% 配置 `{transport, Module}`（默认 `moderation_detector_http`）须实现：
-%%%
-%%%   `Module:get_active_ruleset(Ctx) ->
-%%%       {ok, #{revision := binary(), generation := integer(),
-%%%              digest := binary()}} | {error, not_found | Reason}`
-%%%
-%%%   `Module:publish_package(PackageBytes, #{if_match := binary() | none,
-%%%                                            ctx := Ctx}) ->
-%%%       {ok, #{revision := binary(), generation := integer()}}
-%%%       | {error, cas_conflict | Reason}`
-%%%
-%%%（HTTP 适配已实现，见 `moderation_detector_http` 头注释；测试用注入
-%%% mock 模块驱动故障族。）
-%%%
-%%% == 配置（application env `{imboy, textguard_publisher}`）==
-%%%
-%%%   `{transport, module()}`              默认 moderation_detector_http
-%%%   `{reconcile_interval_ms, pos_integer()}` 默认 60000（plan §提交后60s对账）
-%%%   `{cas_max_retries, non_neg_integer()}`  默认 1（409 后从新导出重试次数）
-%%%   `{cas_retry_backoff_ms, non_neg_integer()}` 默认 200
-%%%   `{publish_timeout_ms, pos_integer()}`   发布传输预算，默认 10000
-%%%
-%%% 导出侧配置（`{imboy, textguard_export}`）由 `textguard_export` 自读。
-%%%
-%%% **未接入 imboy_sup**（plan G3 门：不启用自动规则发布生产功能）——
-%%% 部署接线归 T19/T20；当前由测试/运维显式 `start_link/0,1`。
+%%% @doc TextGuard 指定发布者：完整 state_etag CAS，冲突重读真源，有界重试。
 -module(textguard_publisher).
 
 -behaviour(gen_server).
@@ -109,8 +36,10 @@
     last_published =>
         undefined
         | #{
-            revision := binary(),
-            generation := integer(),
+            ruleset_revision := binary(),
+            generation := binary(),
+            state_etag := binary(),
+            instance_id := binary(),
             digest := binary(),
             base_digest := binary(),
             published_at := integer()
@@ -286,7 +215,7 @@ run_cycle(State0) ->
 
 -spec run_cycle(#state{}, non_neg_integer()) -> #state{}.
 run_cycle(State0, CasRetriesLeft) ->
-    State1 = State0#state{state_name = exporting},
+    State1 = State0#state{state_name = exporting, dirty = true},
     case textguard_export:export_package() of
         {ok, Export} ->
             State2 = State1#state{state_name = publishing},
@@ -297,7 +226,7 @@ run_cycle(State0, CasRetriesLeft) ->
             State1#state{state_name = failed, last_error = {export, Reason}}
     end.
 
-%% 单次尝试：GET → digest 比对 → （需要时）PUT If-Match。
+%% 单次尝试：GET → ruleset_revision 比对 → （需要时）PUT If-Match。
 %% 冲突重试从**全新导出**重来（run_cycle 重跑），有限次后退 failed。
 -spec attempt_publish(#state{}, map(), non_neg_integer()) -> #state{}.
 attempt_publish(State, Export, RetriesLeft) ->
@@ -306,35 +235,29 @@ attempt_publish(State, Export, RetriesLeft) ->
     case safe_call(Transport, get_active_ruleset, [Ctx]) of
         {ok, Active} ->
             maybe_put(State, Export, RetriesLeft, Active);
-        {error, not_found} ->
-            maybe_put(State, Export, RetriesLeft, undefined);
         {error, Reason} ->
             %% GET 失败：远端状态未知，绝不盲目回滚/重发旧包
             State#state{state_name = state_unknown, last_error = {get_active, Reason}}
     end.
 
--spec maybe_put(#state{}, map(), non_neg_integer(), map() | undefined) -> #state{}.
+-spec maybe_put(#state{}, map(), non_neg_integer(), map()) -> #state{}.
 maybe_put(State, Export, RetriesLeft, Active) ->
     PackageSha = maps:get(package_sha256, Export),
     case Active of
-        #{digest := PackageSha} = Conv ->
+        #{ready := true, ruleset_revision := PackageSha} = Conv ->
             %% 已收敛：免 PUT（digest 相同 = 同一字节包），吸收远端
-            %% revision/generation 作为本地发布事实
+            %% ruleset_revision/generation 作为本地发布事实
             record_published(State, Conv, Export, converged);
         _ ->
             put_package(State, Export, RetriesLeft, Active)
     end.
 
--spec put_package(#state{}, map(), non_neg_integer(), map() | undefined) -> #state{}.
+-spec put_package(#state{}, map(), non_neg_integer(), map()) -> #state{}.
 put_package(State, Export, RetriesLeft, Active) ->
     Transport = State#state.transport,
     Ctx = State#state.ctx,
     Package = maps:get(package, Export),
-    IfMatch =
-        case Active of
-            #{revision := Rev} -> Rev;
-            _ -> none
-        end,
+    IfMatch = maps:get(state_etag, Active),
     case safe_call(Transport, publish_package, [Package, #{if_match => IfMatch, ctx => Ctx}]) of
         {ok, Published} ->
             record_published(State, Published, Export, put);
@@ -345,24 +268,35 @@ put_package(State, Export, RetriesLeft, Active) ->
             run_cycle(State#state{state_name = idle}, RetriesLeft - 1);
         {error, cas_conflict} ->
             State#state{state_name = failed, last_error = {cas_conflict, exhausted}};
+        {error, Reason} when
+            Reason =:= publish_busy;
+            Reason =:= retired_snapshot_busy;
+            Reason =:= invalid_ruleset;
+            Reason =:= unsupported_ruleset
+        ->
+            State#state{state_name = failed, last_error = {publish, Reason}};
         {error, Reason} ->
             State#state{state_name = state_unknown, last_error = {publish, Reason}}
     end.
 
 -spec record_published(#state{}, map(), map(), converged | put) -> #state{}.
 record_published(State, Remote, Export, _Via) ->
-    #{revision := Rev, generation := Gen} = Remote,
-    Published =
-        #{
-            revision => Rev,
-            generation => Gen,
-            digest => maps:get(package_sha256, Export),
-            base_digest => maps:get(base_digest, Export),
-            published_at => os:system_time(millisecond)
-        },
-    State#state{
-        state_name = published, dirty = false, last_published = Published, last_error = undefined
-    }.
+    case maps:get(ruleset_revision, Remote) =:= maps:get(package_sha256, Export) of
+        true ->
+            Published = Remote#{
+                digest => maps:get(package_sha256, Export),
+                base_digest => maps:get(base_digest, Export),
+                published_at => os:system_time(millisecond)
+            },
+            State#state{
+                state_name = published,
+                dirty = false,
+                last_published = Published,
+                last_error = undefined
+            };
+        false ->
+            State#state{state_name = state_unknown, last_error = {publish, protocol_error}}
+    end.
 
 %% 传输调用防崩溃包装：mock/适配器异常不带走发布者进程。
 -spec safe_call(module(), atom(), [term()]) -> term().

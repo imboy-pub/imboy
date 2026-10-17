@@ -620,16 +620,20 @@ merge_validated(Opts, T2sId, Words, Enh) ->
                     <<"exceptions">> => sort_by_id(ExceptionMaps)
                 },
             Package = jsone:encode(Pkg, [native_utf8, canonical_form]),
-            Core = [
-                #{
-                    <<"id">> => integer_to_binary(Id),
-                    <<"word">> => Word,
-                    <<"category">> => Category,
-                    <<"severity">> => Severity
-                }
-             || #{id := Id, word := Word, category := Category, severity := Severity} <- Words
+            Core = lists:sort([
+                {Word, Category, Severity}
+             || #{word := Word, category := Category, severity := Severity} <- Words
+            ]),
+            CoreBytes = [
+                <<"TGBASEv1", 0, (length(Core)):32/big-unsigned>>,
+                [
+                    [
+                        <<(byte_size(Column)):32/big-unsigned, Column/binary>>
+                     || Column <- tuple_to_list(Row)
+                    ]
+                 || Row <- Core
+                ]
             ],
-            CoreBytes = jsone:encode(Core, [native_utf8, canonical_form]),
             Dropped = DanglingExtras ++ Dropped1 ++ Dropped2,
             Warnings =
                 [dropped_warning(D) || D <- Dropped] ++
