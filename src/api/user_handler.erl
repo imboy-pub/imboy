@@ -293,7 +293,6 @@ update(Req0, State) ->
     Value = maps:get(<<"value">>, PostVals, <<>>),
     Code = maps:get(<<"code">>, PostVals, <<>>),
 
-    ok = ?DEBUG_LOG(["update ", Field, Value, Code]),
     case user_logic:update(CurrentUid, Field, ec_cnv:to_binary(Value), Code) of
         {error, {_, _, ErrorMsg}} ->
             elib_response:error(Req0, ErrorMsg);

@@ -15,7 +15,7 @@
 
 -define(COLUMNS, <<
     "id, msg_id, msg_type, content, from_id, from_account, to_id, to_type,"
-    " hit_words, review_status, reviewer_id, reason, reviewed_at, created_at"
+    " hit_words, review_status, reviewer_id, reason, reviewed_at, created_at, metadata"
 >>).
 
 -spec tablename() -> binary().

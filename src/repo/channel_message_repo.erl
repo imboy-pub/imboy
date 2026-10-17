@@ -1,4 +1,5 @@
 -module(channel_message_repo).
+-export([update_checked_tx/4, delete_checked_tx/3]).
 %%%
 % channel_message_repo 是 channel_message repository 缩写
 % 频道消息数据仓库层
@@ -207,16 +208,65 @@ list_pinned(ChannelId) ->
 -spec update(integer(), map()) -> {ok, non_neg_integer()} | {error, any()}.
 update(MessageId, Data) ->
     Tb = tablename(),
-    UpdateData = maps:without([<<"id">>], Data),
+    UpdateData = versioned_update(maps:without([<<"id">>], Data)),
     elib_pg:update(Tb, UpdateData, <<"id = $1">>, [MessageId]).
 
 %% @doc 事务内更新频道消息（置顶/编辑；归档写守卫同事务，DS 层 write_tx 调用）
 -spec update_tx(any(), integer(), map()) -> {ok, non_neg_integer()} | {error, any()}.
 update_tx(Conn, MessageId, Data) ->
     Tb = tablename(),
-    UpdateData = maps:without([<<"id">>], Data),
+    UpdateData = versioned_update(maps:without([<<"id">>], Data)),
     {Sql, Params} = elib_pg_sql:update(Tb, UpdateData, <<"id = $1">>, [MessageId]),
     elib_pg:execute_count(Conn, Sql, Params).
+
+update_checked_tx(Conn, MessageId, Data, Expected) ->
+    Where = <<
+        "id = $1 AND content = $2 AND updated_at IS NOT DISTINCT FROM $3 "
+        "AND moderation_version = $4 "
+        "AND status = 1 AND revoked = false"
+    >>,
+    Values = [
+        MessageId,
+        maps:get(<<"content">>, Expected),
+        maps:get(<<"updated_at">>, Expected, null),
+        maps:get(<<"moderation_version">>, Expected, <<>>)
+    ],
+    {Sql, Params} = elib_pg_sql:update(tablename(), versioned_update(Data), Where, Values),
+    elib_pg:execute_count(Conn, Sql, Params).
+
+delete_checked_tx(Conn, MessageId, #{content := Content, version := Version}) ->
+    {Sql, Params} = elib_pg_sql:update(
+        tablename(),
+        #{status => -1},
+        <<"id = $1 AND content = $2 AND moderation_version = $3 AND status = 1">>,
+        [MessageId, Content, Version]
+    ),
+    elib_pg:execute_count(Conn, Sql, Params);
+delete_checked_tx(Conn, MessageId, Content) ->
+    {Sql, Params} = elib_pg_sql:update(
+        tablename(),
+        #{status => -1},
+        <<"id = $1 AND content = $2 AND status = 1">>,
+        [MessageId, Content]
+    ),
+    elib_pg:execute_count(Conn, Sql, Params).
+
+versioned_update(Data) ->
+    case maps:is_key(content, Data) orelse maps:is_key(<<"content">>, Data) of
+        true ->
+            Version = maps:get(
+                moderation_version,
+                Data,
+                maps:get(
+                    <<"moderation_version">>,
+                    Data,
+                    binary:encode_hex(crypto:strong_rand_bytes(16), lowercase)
+                )
+            ),
+            (maps:remove(<<"moderation_version">>, Data))#{moderation_version => Version};
+        false ->
+            Data
+    end.
 
 %% @doc 删除消息（软删除）
 -spec delete(integer()) -> {ok, non_neg_integer()} | {error, any()}.

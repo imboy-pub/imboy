@@ -72,12 +72,30 @@ review_moderate(Id, Status, Reason, ReviewerId) ->
 %% Internal helpers
 %% ===================================================================
 
-%% @doc hit_words 存储为逗号分隔文本，向前端返回字符串数组
-%% ponytail: 逗号分隔存储，敏感词本身不含逗号；若将来需支持含逗号词，改 jsonb 列
 -spec shape_row(map()) -> map().
 shape_row(Row) ->
     Raw = maps:get(<<"hit_words">>, Row, <<>>),
-    maps:put(<<"hit_words">>, split_words(Raw), Row).
+    Metadata = maps:get(<<"metadata">>, Row, #{}),
+    Words =
+        case metadata_words(Metadata) of
+            {ok, Structured} -> Structured;
+            error -> split_words(Raw)
+        end,
+    maps:put(<<"hit_words">>, Words, Row).
+
+metadata_words(Bin) when is_binary(Bin) ->
+    try
+        metadata_words(jsone:decode(Bin))
+    catch
+        _:_ -> error
+    end;
+metadata_words(#{<<"hit_words">> := Words}) when is_list(Words) ->
+    case lists:all(fun is_binary/1, Words) of
+        true -> {ok, Words};
+        false -> error
+    end;
+metadata_words(_) ->
+    error.
 
 -spec split_words(term()) -> [binary()].
 split_words(Bin) when is_binary(Bin), byte_size(Bin) > 0 ->

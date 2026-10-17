@@ -160,12 +160,13 @@ moderate_reject_channel_removes_content_test_() ->
                     {ok, #{
                         <<"msg_type">> => <<"channel_message">>,
                         <<"msg_id">> => 501,
+                        <<"content">> => <<"reviewed content">>,
                         <<"to_id">> => 11
                     }}
                 end}
             ]},
             {channel_message_ds, [
-                {'delete', 1, fun(501) -> {ok, 1} end}
+                {'delete_checked', 2, fun(501, <<"reviewed content">>) -> {ok, 1} end}
             ]},
             {channel_logic_notify, [
                 {'notify_message_deleted', 2, fun(11, 501) -> ok end}
@@ -176,7 +177,7 @@ moderate_reject_channel_removes_content_test_() ->
         ],
         fun() ->
             ok = adm_moderation_logic:moderate(9, <<"reject">>, <<"违规确认"/utf8>>, 1001),
-            ?assertEqual(1, meck:num_calls(channel_message_ds, delete, 1))
+            ?assertEqual(1, meck:num_calls(channel_message_ds, delete_checked, 2))
         end
     ).
 
@@ -284,17 +285,20 @@ moderate_reject_profile_clears_field_test_() ->
                     {ok, #{
                         <<"msg_type">> => <<"profile_field:sign">>,
                         <<"msg_id">> => 77,
+                        <<"content">> => <<"reviewed sign">>,
                         <<"to_id">> => 0
                     }}
                 end}
             ]},
             {user_ds, [
-                {'update_field', 3, fun(77, <<"sign">>, <<>>) -> {ok, 1} end}
+                {'update_field_checked', 4, fun(77, <<"sign">>, <<>>, <<"reviewed sign">>) ->
+                    {ok, 1}
+                end}
             ]}
         ],
         fun() ->
             ok = adm_moderation_logic:moderate(10, <<"reject">>, <<"违规确认"/utf8>>, 1001),
-            ?assertEqual(1, meck:num_calls(user_ds, update_field, 3))
+            ?assertEqual(1, meck:num_calls(user_ds, update_field_checked, 4))
         end
     ).
 
@@ -314,7 +318,9 @@ moderate_reject_profile_clear_failure_still_ok_test_() ->
                 end}
             ]},
             {user_ds, [
-                {'update_field', 3, fun(_Uid, _Field, _Val) -> {error, db_down} end}
+                {'update_field_checked', 4, fun(_Uid, _Field, _Val, _Expected) ->
+                    {error, db_down}
+                end}
             ]}
         ],
         fun() ->

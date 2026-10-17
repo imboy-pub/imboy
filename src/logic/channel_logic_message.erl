@@ -447,9 +447,13 @@ do_publish_message(Uid, ChannelIdBin, Content, MsgType, Payload, StoreMode) ->
                 false ->
                     %% R-03 审核门：high 命中词在落库前直接拦截；
                     %% medium/low 命中先发后审（入队复核），入队失败 fail-open。
-                    case moderation_policy:inspect(channel_message, Content) of
+                    case
+                        moderation_business:inspect_channel(ChannelId, MsgType, Content, Payload)
+                    of
                         {blocked, _Hits} ->
                             {error, <<"内容包含违规词汇，发布失败"/utf8>>};
+                        {error, Reason} ->
+                            {error, Reason};
                         Verdict ->
                             case
                                 channel_message_store:publish(
@@ -457,9 +461,18 @@ do_publish_message(Uid, ChannelIdBin, Content, MsgType, Payload, StoreMode) ->
                                 )
                             of
                                 {ok, MessageId, Status} ->
-                                    maybe_enqueue_review(
-                                        Verdict, MessageId, ChannelId, Uid, Content
-                                    ),
+                                    case Status of
+                                        inserted ->
+                                            maybe_enqueue_review(
+                                                moderation_business:bind_version(Verdict, <<>>),
+                                                MessageId,
+                                                ChannelId,
+                                                Uid,
+                                                Content
+                                            );
+                                        duplicate ->
+                                            ok
+                                    end,
                                     case channel_message_ds:find_by_id(MessageId) of
                                         {error, Reason} ->
                                             {error, elib_cnv:safe_to_binary(Reason)};
@@ -868,24 +881,45 @@ do_edit_message(Uid, ChannelId, MessageId, NewContent, Message) ->
                 false ->
                     {error, <<"编辑时间已超出限制"/utf8>>};
                 true ->
-                    EditedAt = elib_dt:now(),
-                    UpdateData = #{
-                        content => NewContent,
-                        edited_at => EditedAt,
-                        updated_at => EditedAt
-                    },
-                    case channel_message_ds:update(MessageId, UpdateData) of
-                        {ok, _} ->
-                            channel_logic_notify:notify_message_edited(
-                                ChannelId, MessageId, NewContent, EditedAt
-                            ),
-                            ok;
-                        %% T7 收口：归档守卫（980）等稳定错误码透传
-                        {error, {Code, Msg}} when is_integer(Code) ->
-                            {error, {Code, Msg}};
-                        {error, Reason} ->
-                            {error, elib_cnv:safe_to_binary(Reason)}
-                    end
+                    inspect_edit(Uid, ChannelId, MessageId, NewContent, Message)
+            end
+    end.
+
+inspect_edit(Uid, ChannelId, MessageId, NewContent, Message) ->
+    MsgType = maps:get(<<"msg_type">>, Message, <<"text">>),
+    Payload = maps:get(<<"payload">>, Message, #{}),
+    case moderation_business:inspect_channel(ChannelId, MsgType, NewContent, Payload) of
+        {blocked, _} ->
+            {error, <<"内容包含违规词汇，保存失败"/utf8>>};
+        {error, Reason} ->
+            {error, Reason};
+        Verdict ->
+            EditedAt = elib_dt:now(),
+            Version = moderation_business:new_version(),
+            Data = #{
+                content => NewContent,
+                edited_at => EditedAt,
+                updated_at => EditedAt,
+                moderation_version => Version
+            },
+            case channel_message_ds:update_checked(MessageId, Data, Message) of
+                {ok, 1} ->
+                    maybe_enqueue_review(
+                        moderation_business:bind_version(Verdict, Version),
+                        MessageId,
+                        ChannelId,
+                        Uid,
+                        NewContent
+                    ),
+                    channel_logic_notify:notify_message_edited(
+                        ChannelId, MessageId, NewContent, EditedAt
+                    ),
+                    ok;
+                {ok, 0} ->
+                    {error, <<"内容已变化，请重新编辑"/utf8>>};
+                {error, {Code, Msg}} when is_integer(Code) -> {error, {Code, Msg}};
+                {error, Reason} ->
+                    {error, elib_cnv:safe_to_binary(Reason)}
             end
     end.
 

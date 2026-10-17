@@ -5676,13 +5676,20 @@ edit_message_author_success_within_window_writes_edited_at_test_() ->
                     <<"id">> => 991,
                     <<"channel_id">> => 11,
                     <<"author_id">> => 1001,
+                    <<"content">> => <<"old content">>,
+                    <<"updated_at">> => <<"2026-02-22T10:00:00Z">>,
+                    <<"moderation_version">> => <<"previous-version">>,
                     <<"created_at">> => <<"2026-02-22T10:00:00Z">>,
                     <<"revoked">> => false
                 }
             end},
-            {'update', 2, fun(991, Data) ->
+            {'update_checked', 3, fun(991, Data, Expected) ->
                 ?assertEqual(<<"new content"/utf8>>, maps:get(content, Data)),
                 ?assertEqual(<<"2026-02-22T10:01:00Z">>, maps:get(edited_at, Data)),
+                ?assertEqual(<<"old content">>, maps:get(<<"content">>, Expected)),
+                ?assertEqual(<<"2026-02-22T10:00:00Z">>, maps:get(<<"updated_at">>, Expected)),
+                ?assertEqual(<<"previous-version">>, maps:get(<<"moderation_version">>, Expected)),
+                ?assertEqual(32, byte_size(maps:get(moderation_version, Data))),
                 {ok, 1}
             end}
         ]},
@@ -5720,7 +5727,7 @@ edit_message_author_success_within_window_writes_edited_at_test_() ->
                 1001, <<"11">>, <<"991">>, <<"new content"/utf8>>
             ),
             ?assertEqual(ok, Result),
-            ?assertEqual(1, meck:num_calls(channel_message_ds, update, 2)),
+            ?assertEqual(1, meck:num_calls(channel_message_ds, update_checked, 3)),
             ?assertEqual(1, meck:num_calls(msg_s2c_ds, send, 7))
         end)
     end}.
@@ -5737,14 +5744,16 @@ edit_message_returns_permission_denied_for_non_author_test_() ->
                     <<"revoked">> => false
                 }
             end},
-            {'update', 2, fun(_, _) -> erlang:error(should_not_update_without_permission) end}
+            {'update_checked', 3, fun(_, _, _) ->
+                erlang:error(should_not_update_without_permission)
+            end}
         ]}
     ],
     {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
         ?_test(begin
             Result = channel_logic_message:edit_message(1001, <<"11">>, <<"991">>, <<"x">>),
             ?assertEqual({error, <<"无权限编辑此消息"/utf8>>}, Result),
-            ?assertEqual(0, meck:num_calls(channel_message_ds, update, 2))
+            ?assertEqual(0, meck:num_calls(channel_message_ds, update_checked, 3))
         end)
     end}.
 
@@ -5760,7 +5769,7 @@ edit_message_returns_timeout_error_when_window_expired_test_() ->
                     <<"revoked">> => false
                 }
             end},
-            {'update', 2, fun(_, _) -> erlang:error(should_not_update_when_expired) end}
+            {'update_checked', 3, fun(_, _, _) -> erlang:error(should_not_update_when_expired) end}
         ]},
         {application, [
             {'get_env', 2, fun(App, Key) ->
@@ -5779,7 +5788,7 @@ edit_message_returns_timeout_error_when_window_expired_test_() ->
         ?_test(begin
             Result = channel_logic_message:edit_message(1001, <<"11">>, <<"991">>, <<"x">>),
             ?assertEqual({error, <<"编辑时间已超出限制"/utf8>>}, Result),
-            ?assertEqual(0, meck:num_calls(channel_message_ds, update, 2))
+            ?assertEqual(0, meck:num_calls(channel_message_ds, update_checked, 3))
         end)
     end}.
 
@@ -5802,7 +5811,7 @@ edit_message_rejects_revoked_message_test_() ->
         ?_test(begin
             Result = channel_logic_message:edit_message(1001, <<"11">>, <<"991">>, <<"x">>),
             ?assertEqual({error, <<"消息已撤回，无法编辑"/utf8>>}, Result),
-            ?assertEqual(0, meck:num_calls(channel_message_ds, update, 2))
+            ?assertEqual(0, meck:num_calls(channel_message_ds, update_checked, 3))
         end)
     end}.
 
