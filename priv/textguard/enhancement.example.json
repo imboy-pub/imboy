@@ -1,0 +1,43 @@
+{
+  "version": 1,
+  "semantics_by_scene": {
+    "channel_message": "enhanced-v1",
+    "moment_post": "enhanced-v1",
+    "profile_field": "compat-v1"
+  },
+  "aliases": [
+    {
+      "canonical_id": "1001",
+      "canonical_word_sha256": "ba2a2c3be49ab3d362b63917b98b5e12c1a604c1eecf0171c9b7b5bdfd10e0ac",
+      "variants": [
+        {
+          "variant_id": "pinyin-01",
+          "type": "pinyin",
+          "pattern": "ceshici",
+          "action": "review",
+          "boundary": "ascii_word"
+        }
+      ]
+    }
+  ],
+  "gap": [
+    {
+      "canonical_id": "1001",
+      "canonical_word_sha256": "ba2a2c3be49ab3d362b63917b98b5e12c1a604c1eecf0171c9b7b5bdfd10e0ac",
+      "enabled": true,
+      "action": "review"
+    }
+  ],
+  "regex_rules": [],
+  "exceptions": [
+    {
+      "id": "exc-demo-01",
+      "canonical_id": "1002",
+      "canonical_word_sha256": "c8f65fc6ef3c0b25ce19cd0f9b3b35f8bf98efe0a63cdcff97fd3436f26befb2",
+      "phrase": "演示词报告",
+      "scenes": ["channel_message"],
+      "variant_ids": ["canonical"],
+      "views": ["B"]
+    }
+  ]
+}

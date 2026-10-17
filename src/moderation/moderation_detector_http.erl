@@ -36,16 +36,46 @@
 %%% `token` 缺失/非法 → `{error, not_ready}`（fail-closed）。
 %%% 响应体超过 `max_response_bytes`（默认 65536）→ protocol_error，
 %%% 且该上限在形状校验**之前**生效（超大的「形状合法」体同样拒绝）。
+%%%
+%%% == 管理面：规则包发布（T16 扩展，真闭合在 T19）==
+%%%
+%%% 在同一适配器上追加了 TextGuard **发布**端点（管理面，与检测面
+%%% `/v1/*` 分离；线上契约与 Rust 侧 `/internal` 面对齐，T19 闭合）：
+%%%
+%%%   GET {http_base_url}/internal/v1/rulesets/active
+%%%     头：authorization: Bearer <publish_token>
+%%%     200 体（严格键集 revision/generation/digest）：
+%%%          {"revision":"…","generation":N,"digest":"<包字节 sha256 hex>"}
+%%%     404 → `{error, not_found}`（当前无活跃规则包）
+%%%
+%%%   PUT {http_base_url}/internal/v1/rulesets/active
+%%%     头：authorization: Bearer <publish_token>、content-type: application/json
+%%%         、可选 if-match: <revision>（无活跃包时省略）
+%%%     体：**逐字节精确**的规则包（调用方产出的确定性序列化字节，
+%%%         适配器不重编码/不改写字节）
+%%%     200 体（严格键集）：{"revision":"…","generation":N}
+%%%     409 → `{error, cas_conflict}`（If-Match 的 revision 已被他人覆盖）
+%%%
+%%% 错误闭集在 T15 检测面闭集之上，发布面额外两个固定原子：
+%%% `cas_conflict | not_found`（同样绝不动态成原子）。发布令牌独立于检测
+%%% 令牌：配置键 `{publish_token, binary()}`（占位符部署，检测 `token`
+%%% 与发布 `publish_token` 分开轮换）。发布缺 `publish_token` →
+%%% `{error, not_ready}`（fail-closed）。复用检测面的总预算/连接复用/
+%%% 响应上限机制；`textguard_publisher` 通过 Ctx `deadline_ms` 给发布
+%%% 更大的预算（检测 150ms 不适合整包上传）。
 -module(moderation_detector_http).
 
 -behaviour(moderation_detector_transport).
 
 -export([check/2, info/1]).
+%% T16 发布面（管理端点；不属于 behaviour 检测契约）
+-export([get_active_ruleset/1, publish_package/2]).
 
 -define(DEFAULT_TIMEOUT_MS, 150).
 -define(DEFAULT_MAX_RESPONSE_BYTES, 65536).
 -define(CHECK_PATH, <<"/v1/check">>).
 -define(INFO_PATH, <<"/v1/info">>).
+-define(ACTIVE_RULESET_PATH, <<"/internal/v1/rulesets/active">>).
 
 %% ===================================================================
 %% behaviour 实现
@@ -100,6 +130,88 @@ info(Ctx) ->
             )
         end
     ).
+
+%% ===================================================================
+%% T16 发布面（管理端点；复用检测面请求管线，fail-closed 同款）
+%% ===================================================================
+
+%% @doc 读当前活跃规则包元信息（CAS 前置 GET）：无活跃包 → not_found。
+-spec get_active_ruleset(moderation_detector_transport:ctx()) ->
+    {ok, #{revision := binary(), generation := integer(), digest := binary()}}
+    | {error, not_found | moderation_detector_transport:error_reason()}.
+get_active_ruleset(Ctx) ->
+    with_publish_config(
+        fun(BaseUrl, Token, Conf) ->
+            Deadline = deadline_ms(Ctx, Conf),
+            request(
+                <<"GET">>,
+                ?ACTIVE_RULESET_PATH,
+                <<>>,
+                BaseUrl,
+                Token,
+                Deadline,
+                Conf,
+                fun validate_active_ruleset_body/1,
+                #{non200 => #{404 => not_found}}
+            )
+        end
+    ).
+
+%% @doc 发布规则包（PUT，体 = 调用方给出的精确包字节，不重编码）。
+%%%
+%%% Opts：
+%%%   `if_match` → 二进制 revision（CAS 前置 GET 的结果）或 `none`
+%%%   （无活跃包时省略 If-Match 头）；缺省 none；
+%%%   `ctx` → 检测面同款 Ctx（`deadline_ms` 给发布更大预算）。
+%%%
+%%% 200 → `{ok, #{revision, generation}}`；409 → `{error, cas_conflict}`；
+%%% 其余错误与检测面闭集一致（信封 code 优先，CAS_CONFLICT 信封同样映射）。
+-spec publish_package(binary(), map()) ->
+    {ok, #{revision := binary(), generation := integer()}}
+    | {error, cas_conflict | moderation_detector_transport:error_reason()}.
+publish_package(Package, Opts) when is_binary(Package), is_map(Opts) ->
+    with_publish_config(
+        fun(BaseUrl, Token, Conf) ->
+            Ctx = maps:get(ctx, Opts, #{}),
+            Deadline = deadline_ms(Ctx, Conf),
+            Extra =
+                case maps:get(if_match, Opts, none) of
+                    Rev when is_binary(Rev), Rev =/= <<>> ->
+                        [{<<"if-match">>, Rev}];
+                    _ ->
+                        []
+                end,
+            request(
+                <<"PUT">>,
+                ?ACTIVE_RULESET_PATH,
+                Package,
+                BaseUrl,
+                Token,
+                Deadline,
+                Conf,
+                fun validate_publish_body/1,
+                #{extra_headers => Extra, non200 => #{409 => cas_conflict}}
+            )
+        end
+    ).
+
+%% 发布面配置：http_base_url + publish_token（独立于检测 token）。
+-spec with_publish_config(fun((binary(), binary(), proplists:proplist()) -> R)) -> R.
+with_publish_config(Fun) ->
+    Conf = config_ds:env(moderation_detector, []),
+    case
+        {
+            proplists:get_value(http_base_url, Conf),
+            proplists:get_value(publish_token, Conf)
+        }
+    of
+        {BaseUrl, Token} when
+            is_binary(BaseUrl), BaseUrl =/= <<>>, is_binary(Token), Token =/= <<>>
+        ->
+            Fun(BaseUrl, Token, Conf);
+        _ ->
+            {error, not_ready}
+    end.
 
 %% ===================================================================
 %% 配置装载（fail-closed：缺配置 = not_ready）
@@ -210,15 +322,33 @@ normalize_fields(_, _Acc) ->
     fun((binary()) -> R)
 ) -> R.
 request(Method, Path, Body, BaseUrl, Token, Deadline, Conf, Validator) ->
+    request(Method, Path, Body, BaseUrl, Token, Deadline, Conf, Validator, #{}).
+
+%% T16 泛化形态：Opts 支持
+%%   `extra_headers` → 追加请求头（发布面 if-match）；
+%%   `non200` → 非 200 状态码直映射表（发布面 404→not_found、409→cas_conflict，
+%%     仅在无信封/信封未命中时兜底，不影响检测面行为）。
+-spec request(
+    binary(),
+    binary(),
+    binary(),
+    binary(),
+    binary(),
+    pos_integer(),
+    proplists:proplist(),
+    fun((binary()) -> R),
+    map()
+) -> R.
+request(Method, Path, Body, BaseUrl, Token, Deadline, Conf, Validator, Opts) ->
     case parse_base_url(BaseUrl) of
         {ok, #{scheme := Scheme, host := Host, port := Port, base_path := BasePath}} ->
             T0 = erlang:monotonic_time(millisecond),
             case get_or_open_conn(Scheme, Host, Port, remaining(Deadline, T0)) of
                 {ok, ConnPid} ->
-                    Headers = request_headers(Method, Token),
+                    Headers = request_headers(Method, Token, maps:get(extra_headers, Opts, [])),
                     FullPath = join_path(BasePath, Path),
                     StreamRef = gun:request(ConnPid, Method, FullPath, Headers, Body),
-                    await_response(ConnPid, StreamRef, Deadline, T0, Validator, Conf);
+                    await_response(ConnPid, StreamRef, Deadline, T0, Validator, Conf, Opts);
                 {error, Reason} ->
                     {error, Reason}
             end;
@@ -226,18 +356,28 @@ request(Method, Path, Body, BaseUrl, Token, Deadline, Conf, Validator) ->
             NotReady
     end.
 
--spec request_headers(binary(), binary()) -> [{binary(), binary()}].
-request_headers(<<"POST">>, Token) ->
-    [
-        {<<"authorization">>, bearer(Token)},
-        {<<"content-type">>, <<"application/json">>},
-        {<<"accept">>, <<"application/json">>}
-    ];
-request_headers(_Method, Token) ->
-    [
-        {<<"authorization">>, bearer(Token)},
-        {<<"accept">>, <<"application/json">>}
-    ].
+-spec request_headers(binary(), binary(), [{binary(), binary()}]) -> [{binary(), binary()}].
+request_headers(Method, Token, ExtraHeaders) ->
+    Base =
+        case has_body(Method) of
+            true ->
+                [
+                    {<<"authorization">>, bearer(Token)},
+                    {<<"content-type">>, <<"application/json">>},
+                    {<<"accept">>, <<"application/json">>}
+                ];
+            false ->
+                [
+                    {<<"authorization">>, bearer(Token)},
+                    {<<"accept">>, <<"application/json">>}
+                ]
+        end,
+    Base ++ ExtraHeaders.
+
+-spec has_body(binary()) -> boolean().
+has_body(<<"POST">>) -> true;
+has_body(<<"PUT">>) -> true;
+has_body(_) -> false.
 
 -spec bearer(binary()) -> binary().
 bearer(Token) ->
@@ -254,16 +394,17 @@ remaining(Deadline, T0) ->
     pos_integer(),
     integer(),
     fun((binary()) -> R),
-    proplists:proplist()
+    proplists:proplist(),
+    map()
 ) -> R.
-await_response(ConnPid, StreamRef, Deadline, T0, Validator, Conf) ->
+await_response(ConnPid, StreamRef, Deadline, T0, Validator, Conf, Opts) ->
     case gun:await(ConnPid, StreamRef, remaining(Deadline, T0)) of
         {response, fin, Status, _RespHeaders} ->
-            handle_response(Status, <<>>, Validator, Conf);
+            handle_response(Status, <<>>, Validator, Conf, Opts);
         {response, nofin, Status, _RespHeaders} ->
             case gun:await_body(ConnPid, StreamRef, remaining(Deadline, T0)) of
                 {ok, Body} ->
-                    handle_response(Status, Body, Validator, Conf);
+                    handle_response(Status, Body, Validator, Conf, Opts);
                 {error, timeout} ->
                     drop_conn(ConnPid),
                     {error, timeout};
@@ -285,9 +426,9 @@ await_response(ConnPid, StreamRef, Deadline, T0, Validator, Conf) ->
 %% ===================================================================
 
 -spec handle_response(
-    integer(), binary(), fun((binary()) -> R), proplists:proplist()
+    integer(), binary(), fun((binary()) -> R), proplists:proplist(), map()
 ) -> R.
-handle_response(200, Body, Validator, Conf) ->
+handle_response(200, Body, Validator, Conf, _Opts) ->
     MaxBytes = max_response_bytes(Conf),
     case byte_size(Body) of
         N when N > MaxBytes ->
@@ -296,11 +437,18 @@ handle_response(200, Body, Validator, Conf) ->
         _ ->
             Validator(Body)
     end;
-handle_response(Status, Body, _Validator, Conf) ->
-    %% 非 200：信封 code 优先，无信封走状态码表
+handle_response(Status, Body, _Validator, Conf, Opts) ->
+    %% 非 200：信封 code 优先；信封未命中走 non200 直映射（发布面）；
+    %% 最后回落状态码表（检测面语义不变）
     case envelope_error_code(Body, max_response_bytes(Conf)) of
-        {ok, Code} -> {error, error_code_to_reason(Code)};
-        envelope_absent -> {error, status_to_reason(Status)}
+        {ok, Code} ->
+            {error, error_code_to_reason(Code)};
+        envelope_absent ->
+            Non200 = maps:get(non200, Opts, #{}),
+            case maps:find(Status, Non200) of
+                {ok, Reason} -> {error, Reason};
+                error -> {error, status_to_reason(Status)}
+            end
     end.
 
 %% 错误信封 code 白名单 → 闭集原子；未知串回落 internal（绝不动态成原子）。
@@ -310,15 +458,19 @@ handle_response(Status, Body, _Validator, Conf) ->
     | unauthenticated
     | permission_denied
     | not_ready
+    | cas_conflict
+    | not_found
     | internal.
 error_code_to_reason(<<"OVERLOADED">>) -> overloaded;
 error_code_to_reason(<<"TEXT_TOO_LARGE">>) -> text_too_large;
 error_code_to_reason(<<"UNAUTHENTICATED">>) -> unauthenticated;
 error_code_to_reason(<<"PERMISSION_DENIED">>) -> permission_denied;
 error_code_to_reason(<<"NOT_READY">>) -> not_ready;
+error_code_to_reason(<<"CAS_CONFLICT">>) -> cas_conflict;
+error_code_to_reason(<<"NOT_FOUND">>) -> not_found;
 error_code_to_reason(_UnknownCode) -> internal.
 
-%% 无信封时的状态码表。
+%% 无信封时的状态码表（检测面语义原样；发布面特例走 non200 直映射）。
 -spec status_to_reason(integer()) ->
     unauthenticated
     | permission_denied
@@ -404,6 +556,55 @@ validate_info_body(Body) ->
                 ->
                     case extra_keys(M, [<<"version">>, <<"ready">>]) of
                         [] -> {ok, #{version => Version, ready => Ready}};
+                        _ -> {error, protocol_error}
+                    end;
+                _ ->
+                    {error, protocol_error}
+            catch
+                _:_ -> {error, protocol_error}
+            end
+    end.
+
+%% T16：GET active 200 严格校验：键恰为 revision+generation+digest
+%%（generation 整数；revision/digest 非空二进制；UTF-8 门禁同款）。
+-spec validate_active_ruleset_body(binary()) ->
+    {ok, #{revision := binary(), generation := integer(), digest := binary()}}
+    | {error, protocol_error}.
+validate_active_ruleset_body(Body) ->
+    case strict_decode(Body, [<<"revision">>, <<"generation">>, <<"digest">>]) of
+        {ok, #{<<"revision">> := Rev, <<"generation">> := Gen, <<"digest">> := Digest}} when
+            is_binary(Rev), Rev =/= <<>>, is_integer(Gen), is_binary(Digest), Digest =/= <<>>
+        ->
+            {ok, #{revision => Rev, generation => Gen, digest => Digest}};
+        _ ->
+            {error, protocol_error}
+    end.
+
+%% T16：PUT publish 200 严格校验：键恰为 revision+generation。
+-spec validate_publish_body(binary()) ->
+    {ok, #{revision := binary(), generation := integer()}}
+    | {error, protocol_error}.
+validate_publish_body(Body) ->
+    case strict_decode(Body, [<<"revision">>, <<"generation">>]) of
+        {ok, #{<<"revision">> := Rev, <<"generation">> := Gen}} when
+            is_binary(Rev), Rev =/= <<>>, is_integer(Gen)
+        ->
+            {ok, #{revision => Rev, generation => Gen}};
+        _ ->
+            {error, protocol_error}
+    end.
+
+%% 严格解码共享：UTF-8 门禁 + 精确键集（缺键/多余键 = protocol_error）。
+-spec strict_decode(binary(), [binary()]) -> {ok, map()} | {error, protocol_error}.
+strict_decode(Body, Allowed) ->
+    case is_utf8(Body) of
+        false ->
+            {error, protocol_error};
+        true ->
+            try jsone:decode(Body) of
+                M when is_map(M) ->
+                    case extra_keys(M, Allowed) of
+                        [] -> {ok, M};
                         _ -> {error, protocol_error}
                     end;
                 _ ->

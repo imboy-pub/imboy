@@ -218,6 +218,40 @@
             %% , {grpc_transport, {some_module, some_fun}}   %% T19 装配注入
             %% , {token, <<"textguard-token-placeholder">>}  %% 占位符，部署时替换
             %% , {max_response_bytes, 65536}
+            %% 发布面（T16 textguard_publisher → moderation_detector_http
+            %% 管理端点 /internal/v1/rulesets/active）：发布令牌独立于
+            %% 检测 token，缺失即 fail-closed not_ready（不出网）。
+            %% 占位符部署，不落真实 secret。
+            %% , {publish_token, <<"textguard-publish-token-placeholder">>}
+        ]},
+
+        %% TextGuard 规则包导出（T16，textguard_export）：
+        %% 从 sensitive_word 表（canonical 真源）+ 版本化增强文件产出
+        %% RuleSet v1 确定性字节包。t2s_table_id 必填（fail-closed）：
+        %% 生产必须换成 T07 生成且被二进制支持的真实表 ID，
+        %% 不拿 fixture 的 test-t2s-v1 冒充。
+        {textguard_export, [
+            {t2s_table_id, <<"REPLACE_WITH_T07_T2S_TABLE_ID">>}
+            %% 增强文件路径；文件不存在 = 空增强导出（文档化行为）
+            %% , {enhancement_file, <<"priv/textguard/enhancement.example.json">>}
+            %% , {normalization_id, <<"imboy-base-v1">>}
+            %% , {limit_profile_id, <<"mvp-default-v1">>}
+            %% , {semantics_by_scene, #{
+            %%     <<"channel_message">> => <<"enhanced-v1">>,
+            %%     <<"moment_post">> => <<"enhanced-v1">>,
+            %%     <<"profile_field">> => <<"compat-v1">>}}
+        ]},
+
+        %% TextGuard 指定发布者（T16，textguard_publisher，单例 gen_server）：
+        %% dirty 通知 + 周期对账把导出包 CAS 发布到 Rust TextGuard 服务。
+        %% 未接入 imboy_sup（G3 门：不启用自动规则发布生产功能），
+        %% 部署接线归 T19/T20。
+        {textguard_publisher, [
+            {transport, moderation_detector_http}
+            %% , {reconcile_interval_ms, 60000}     %% 周期对账（plan 默认 60s）
+            %% , {cas_max_retries, 1}               %% 409 后从全新导出重试次数
+            %% , {cas_retry_backoff_ms, 200}
+            %% , {publish_timeout_ms, 10000}        %% 发布预算（检测 150ms 不适用）
         ]},
 
         %% verification_master_code: 万能验证码（开发/测试环境使用，生产环境留空禁用）
