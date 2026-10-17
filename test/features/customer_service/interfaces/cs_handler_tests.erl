@@ -478,7 +478,7 @@ seat_flow_tests(_) ->
             meck:expect(customer_service_facade, fetch_seat, fun(_O, _P) ->
                 {ok, #{enabled => true}}
             end),
-            meck:expect(enterprise_business_facade, list_messages, fun(Org, Params) ->
+            meck:expect(customer_service_facade, list_messages, fun(Org, Params) ->
                 ?assertEqual(?ORG, Org),
                 ?assertEqual(?CONVERSATION, maps:get(conversation_id, Params)),
                 {ok, [#{id => 42, body => <<"m1">>}]}
@@ -504,7 +504,7 @@ seat_flow_tests(_) ->
             meck:expect(customer_service_facade, fetch_seat, fun(_O, _P) ->
                 {ok, #{enabled => true}}
             end),
-            meck:expect(enterprise_business_facade, list_messages, fun(_O, _P) ->
+            meck:expect(customer_service_facade, list_messages, fun(_O, _P) ->
                 {error, {assignee_change_requires_offboarding, ?IDENTITY}}
             end),
             ?S:with_listener(tenant, conversation_messages, seat_inject(), fun(Port) ->
