@@ -203,6 +203,23 @@
         %% login_pwd_rsa_encrypt: 客户端是否对密码做 RSA 加密（<<"on">> | <<"off">>）
         {login_pwd_rsa_encrypt, <<"off">>},
 
+        %% TextGuard 内容安全检测器传输适配（T15，moderation_detector_*）。
+        %% transport 默认 legacy：走既有敏感词链路，不发起任何远程调用；
+        %% 切 http / grpc 前 base_url 或 host+port+transport 必须齐备，
+        %% 否则适配器 fail-closed 返回 not_ready（绝不静默放行）。
+        %% timeout_ms = 单次检测总预算（连接+请求，plan §5 默认 150ms），
+        %% 失败立即上抛、零自动重试；熔断/重试由调用方装配（T19）。
+        {moderation_detector, [
+            {transport, legacy}
+            , {timeout_ms, 150}
+            %% , {http_base_url, <<"http://127.0.0.1:7463">>}
+            %% , {grpc_host, <<"127.0.0.1">>}
+            %% , {grpc_port, 7464}
+            %% , {grpc_transport, {some_module, some_fun}}   %% T19 装配注入
+            %% , {token, <<"textguard-token-placeholder">>}  %% 占位符，部署时替换
+            %% , {max_response_bytes, 65536}
+        ]},
+
         %% verification_master_code: 万能验证码（开发/测试环境使用，生产环境留空禁用）
         %% 可通过环境变量 IMBOY_VERIFICATION_MASTER_CODE 覆盖
         {verification_master_code, <<>>},
