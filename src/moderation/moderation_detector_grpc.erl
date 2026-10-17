@@ -199,6 +199,8 @@ call(Transport, Endpoint, Method, Request, Deadline, Validator) ->
 
 map_grpc_error(connection_failed, _) ->
     connection_failed;
+map_grpc_error(overloaded, _) ->
+    overloaded;
 map_grpc_error(timeout, _) ->
     timeout;
 map_grpc_error(not_ready, _) ->

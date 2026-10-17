@@ -36,7 +36,7 @@ request(Method, Request, Budget, Token, Channel) ->
         unmarshal_fun = fun(Bytes) -> decode(Bytes, Output) end
     },
     try
-        grpcbox_client:unary(Context, Path, proto_request(Request), Definition, #{
+        textguard_grpc_call:call(Context, Path, proto_request(Request), Definition, #{
             channel => Channel
         })
     catch
@@ -87,7 +87,11 @@ normalize({error, {Status, _Message}, Metadata}) when is_binary(Status), is_map(
         _:_ -> {error, malformed_transport_response}
     end;
 normalize({error, Reason}) when
-    Reason =:= timeout; Reason =:= not_ready; Reason =:= text_too_large
+    Reason =:= timeout;
+    Reason =:= not_ready;
+    Reason =:= text_too_large;
+    Reason =:= connection_failed;
+    Reason =:= overloaded
 ->
     {error, Reason};
 normalize({error, Reason}) when

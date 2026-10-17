@@ -149,6 +149,15 @@ init([]) ->
         modules => [moderation_sweep_logic]
     },
 
+    ModerationShadowWorker = #{
+        id => moderation_shadow,
+        start => {moderation_shadow, start_link, []},
+        restart => permanent,
+        shutdown => 5000,
+        type => worker,
+        modules => [moderation_shadow]
+    },
+
     % 账号注销自动清理工作进程
     UserDeletionWorker = #{
         id => user_deletion_logic,
@@ -329,6 +338,7 @@ init([]) ->
             MsgWriteQueueSup,
             MsgBurnWorker,
             ModerationSweepWorker,
+            ModerationShadowWorker,
             UserDeletionWorker,
             LicenseNoticeWorker,
             BillingInvoiceWorker,

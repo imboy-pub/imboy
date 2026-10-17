@@ -12,7 +12,7 @@
 %%%   密文，举报面走 R-01 的客户端明文证据模型。
 %%%
 
--export([inspect/2]).
+-export([inspect/2, inspect_snapshot/2]).
 -export([enqueue/7]).
 -export([normalize_text/1]).
 
@@ -47,6 +47,52 @@ inspect(_Surface, Text) ->
                     ?ERROR_LOG(["moderation_policy wordlist unavailable, fail-open: ", Reason]),
                     allow
             end
+    end.
+
+inspect_snapshot(_Surface, Fields) ->
+    case cached_words() of
+        {ok, Words} ->
+            Results = [
+                decide(match_hits(normalize_text(Text), Words, []))
+             || {_, Text} <- Fields, is_binary(Text)
+            ],
+            Blocked = lists:append([Hits || {blocked, Hits} <- Results]),
+            Reviewed = lists:append([Hits || {queued, Hits} <- Results]),
+            Verdict =
+                case {Blocked, Reviewed} of
+                    {[], []} -> allow;
+                    {[], Hits} -> {queued, Hits};
+                    {Hits, _} -> {blocked, Hits ++ Reviewed}
+                end,
+            {Verdict, snapshot(Words, Verdict)};
+        {error, _} ->
+            {allow, unavailable}
+    end.
+
+snapshot(Words, Verdict) ->
+    Rows = [
+        {Word, Category, Severity}
+     || #{<<"word">> := Word, <<"category">> := Category, <<"severity">> := Severity} <- Words,
+        is_binary(Word),
+        is_binary(Category),
+        is_binary(Severity)
+    ],
+    case length(Rows) =:= length(Words) of
+        true ->
+            Decision =
+                case Verdict of
+                    allow -> allow;
+                    {blocked, _} -> block;
+                    {queued, _} -> review
+                end,
+            #{
+                decision => Decision,
+                base_rules_digest => textguard_base_digest:digest(Rows),
+                normalization_id => <<"imboy-base-v1">>,
+                semantics_id => <<"compat-v1">>
+            };
+        false ->
+            unavailable
     end.
 
 %% @doc 命中入队（先发后审复核行）。入队失败由调用方决定策略（发布面 fail-open）。
