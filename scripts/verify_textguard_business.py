@@ -14,6 +14,8 @@ import sys
 
 sys.dont_write_bytecode = True
 SUITE = "textguard_business_tests"
+TASK = "T20"
+STANDALONE_CONSUMERS = set()
 ACCEPTANCE = [f"AC-{value:03d}" for value in range(78, 84)]
 BUSINESS_SOURCES = ["test/lib/textguard_business_tests.erl",
                     "test/support/textguard_business_fixture.erl"]
@@ -165,6 +167,16 @@ def main():
 
         def compile_tests(self):
             env = dict(self.env, ERL_LIBS=str(self.snapshot / "deps"))
+            if TASK == "T21":
+                output, _ = self.command("runner-privacy-selftest", [sys.executable, "-m", "unittest",
+                    "discover", "-s", str(self.snapshot / "test/scripts"),
+                    "-p", "test_textguard_privacy.py", "-v"], env=env)
+                count = re.search(r"Ran (\d+) tests?", output)
+                if not count or int(count.group(1)) < 1 or not output.rstrip().endswith("OK"):
+                    raise RuntimeError("privacy oracle selftest discovered no successful tests")
+                base.save(self.out / "runner-privacy-selftest-counts.json", {
+                    "discovered": int(count.group(1)), "executed": int(count.group(1)),
+                    "failed": 0, "passed": True})
             sources = [self.snapshot / "test/lib/textguard_export_tests.erl",
                 self.snapshot / "test/common/ewh_http_fixture.erl",
                 self.snapshot / "test/common/eunit_runner.erl",
@@ -218,8 +230,8 @@ def main():
                 path = migrations / ("00000195_textguard_review_metadata." + direction + ".sql")
                 self.test_env["TG20_MIGRATION_" + direction.upper()] = str(path)
 
-        def consumer_config(self):
-            path = self.credentials / "consumer.config"
+        def consumer_config(self, suite="affected"):
+            path = self.credentials / ("consumer-" + suite + ".config")
             quoted = json.dumps
             options = ("#{host=>\"127.0.0.1\",username=>" + quoted(self.test_env["TG16_PG_USER"]) +
                 ",password=>" + quoted(self.test_env["TG16_PG_PASSWORD"]) +
@@ -239,7 +251,7 @@ def main():
                    if not key.startswith("IMBOY") and key not in ["HTTP_PORT", "TEST_HTTP_PORT", "IMBOY_TEST_CONFIG"]}
             env.update(IMBOYENV="test", IMBOY_ENV="test", HTTP_PORT="0", TEST_HTTP_PORT="0",
                        IMBOY_TEST_CONFIG=str(path))
-            base.save(self.out / "consumer-environment-policy.json", {
+            base.save(self.out / ("consumer-" + suite + "-environment-policy.json"), {
                 "config_file": str(path), "mode": "0600", "credential_values_recorded": False,
                 "db": "same task-owned PG only", "auto_migrate": False,
                 "cwd": str(self.snapshot), "runner": "test/common/eunit_runner.erl",
@@ -257,13 +269,22 @@ def main():
             application_root.symlink_to(self.snapshot, target_is_directory=True)
             for source in CONSUMER_SOURCES:
                 suite = Path(source).stem
+                if suite in STANDALONE_CONSUMERS:
+                    database = "tg_" + suite
+                    self.command("consumer-db-" + suite, ["docker", "exec", self.container,
+                        "createdb", "-U", self.test_env["TG16_PG_USER"], database])
+                    self.test_env = dict(self.test_env, TG16_PG_DB=database)
+                    config, env = self.consumer_config(suite)
                 events = self.out / (suite + "-events.jsonl")
+                bootstrap = ("ok=textguard_business_fixture:consumer_bootstrap(),"
+                    "Boot=eunit_runner:eunit_setup(),"
+                    "true=lists:member(Boot,[{app_started,imboy},{app_already_started,imboy}]),")
+                if suite in STANDALONE_CONSUMERS:
+                    bootstrap = ""
                 expression = ("ok=file:set_cwd(" + module.erlang_string(self.snapshot) + "),"
                     "Expected=" + module.erlang_string(self.build / "eunit_runner.beam") +
                     ",Expected=code:which(eunit_runner),"
-                    "ok=textguard_business_fixture:consumer_bootstrap(),"
-                    "Boot=eunit_runner:eunit_setup(),"
-                    "true=lists:member(Boot,[{app_started,imboy},{app_already_started,imboy}]),"
+                    + bootstrap +
                     "Result=eunit:test(" + suite + ",[verbose,{report,{tg_leaf_listener,[{path," +
                     module.erlang_string(events) + "},{suite,<<\"" + suite + "\">>}]}}]),"
                     "application:stop(imboy),case Result of ok->halt(0);_->halt(1) end.")
@@ -301,9 +322,23 @@ def main():
             consumers = getattr(self, "consumer_summaries", {})
             consumers_ok = len(consumers) == len(CONSUMER_SOURCES) and all(
                 item["passed"] for item in consumers.values())
-            final_code = code if unchanged and consumers_ok else 1
+            markers = [value.encode() for value in self.redactions]
+            markers.append(b"TG20-CANARY-NO-LOG")
+            logs = sorted(set(self.out.rglob("*.log")) | set(self.out.rglob("*.dump")))
+            findings = []
+            for path in logs:
+                content = path.read_bytes()
+                path.chmod(0o600)
+                matches = sum(content.count(marker) for marker in markers if marker)
+                if matches:
+                    findings.append({"path": str(path.relative_to(self.out)), "matches": matches,
+                                     "sha256": hashlib.sha256(content).hexdigest()})
+            privacy = {"scanned_files": len(logs), "findings": findings,
+                       "passed": bool(logs) and not findings, "secret_values_recorded": False}
+            base.save(self.out / "operational-log-privacy.json", privacy)
+            final_code = code if unchanged and consumers_ok and privacy["passed"] else 1
             base.save(self.out / "verification-final.json", {
-                "status": "PASS_T20_SCOPED" if final_code == 0 else "FAILED_OR_BLOCKED", "exit_code": final_code,
+                "status": "PASS_" + TASK + "_SCOPED" if final_code == 0 else "FAILED_OR_BLOCKED", "exit_code": final_code,
                 "backend_sha": args.expected_sha, "backend_tree": args.expected_tree,
                 "rust_sha": args.rust_sha, "rust_tree": args.rust_tree,
                 "freeze_unchanged": after == files, "formal_tests_unchanged": unchanged,
@@ -316,7 +351,8 @@ def main():
                 "dependency_proof": inherited["dependency_proof"],
                 "commands": inherited["commands"],
                 "consumer_summaries": consumers,
-                "automated_T20_AC078_083_passed": final_code == 0,
+                "operational_log_privacy": privacy,
+                "task": TASK, "automated_task_acceptance_passed": final_code == 0,
                 "full_product_acceptance": False,
                 "not_certified": ["full EUnit", "external push delivery", "full migration chain",
                                   "T22 and later", "wire receive memory bound"]})

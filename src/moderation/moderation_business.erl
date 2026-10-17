@@ -6,14 +6,19 @@
 -include("log.hrl").
 
 inspect_channel(ChannelId, MsgType, Content, Payload) ->
-    case remote_enabled() of
-        false ->
+    case mode() of
+        legacy ->
             moderation_policy:inspect(channel_message, Content);
-        true ->
+        Mode ->
             case plaintext(MsgType, Payload) of
-                false -> moderation_policy:inspect(channel_message, Content);
-                {error, _} -> {error, <<"消息载荷或加密标记无效"/utf8>>};
-                true -> inspect_public_channel(ChannelId, Content)
+                false ->
+                    moderation_policy:inspect(channel_message, Content);
+                {error, _} when Mode =:= shadow ->
+                    moderation_policy:inspect(channel_message, Content);
+                {error, _} ->
+                    {error, <<"消息载荷或加密标记无效"/utf8>>};
+                true ->
+                    inspect_public_channel(ChannelId, Content)
             end
     end.
 
@@ -25,7 +30,10 @@ inspect_public_channel(ChannelId, Content) ->
         Channel when is_map(Channel) ->
             inspect(channel_message, [{<<"content">>, Content}], false);
         _ ->
-            {error, <<"无法确认内容可见性"/utf8>>}
+            case mode() of
+                shadow -> moderation_policy:inspect(channel_message, Content);
+                _ -> {error, <<"无法确认内容可见性"/utf8>>}
+            end
     end.
 
 inspect_moment(Visibility, Content) ->
@@ -35,49 +43,60 @@ inspect_profile(Field, Value) ->
     inspect(profile_field, [{Field, Value}], true).
 
 inspect(Surface, Fields, Public) ->
-    case Public andalso remote_enabled() of
-        false ->
-            legacy(Surface, Fields);
-        true ->
-            RequestId = binary:encode_hex(crypto:strong_rand_bytes(16), lowercase),
-            Detection = #{request_id => RequestId, scene => Surface, fields => Fields},
-            Transport = moderation_detector_transport:select(),
-            Result =
-                case Transport of
-                    moderation_detector_transport -> {error, not_ready};
-                    _ -> Transport:check(Detection, #{request_id => RequestId})
-                end,
-            case Result of
-                {ok, #{decision := allow}} ->
-                    allow;
-                {ok, #{decision := Decision, hits := Hits} = Response} ->
-                    Trace = maps:with(
-                        [
-                            build_id,
-                            ruleset_revision,
-                            generation,
-                            semantics_id,
-                            base_rules_digest,
-                            normalization_id,
-                            hits_truncated,
-                            scan_complete,
-                            fields_checked
-                        ],
-                        Response
-                    ),
-                    CheckedHits = [Hit#{trace => Trace} || Hit <- Hits],
-                    case Decision of
-                        block -> {blocked, CheckedHits};
-                        review -> {queued, CheckedHits}
-                    end;
-                {error, Reason} ->
-                    failure(Reason)
-            end
+    case {Public, mode()} of
+        {true, shadow} ->
+            {Verdict, Snapshot} = moderation_policy:inspect_snapshot(Surface, Fields),
+            moderation_shadow:submit(Surface, Fields, Snapshot),
+            Verdict;
+        {true, rust} ->
+            remote_inspect(Surface, Fields);
+        _ ->
+            legacy(Surface, Fields)
     end.
 
-remote_enabled() ->
+remote_inspect(Surface, Fields) ->
+    RequestId = binary:encode_hex(crypto:strong_rand_bytes(16), lowercase),
+    Detection = #{request_id => RequestId, scene => Surface, fields => Fields},
+    Transport = moderation_detector_transport:select(),
+    Result =
+        case Transport of
+            moderation_detector_transport -> {error, not_ready};
+            _ -> Transport:check(Detection, #{request_id => RequestId})
+        end,
+    case Result of
+        {ok, #{decision := allow}} ->
+            allow;
+        {ok, #{decision := Decision, hits := Hits} = Response} ->
+            Trace = maps:with(
+                [
+                    build_id,
+                    ruleset_revision,
+                    generation,
+                    semantics_id,
+                    base_rules_digest,
+                    normalization_id,
+                    hits_truncated,
+                    scan_complete,
+                    fields_checked
+                ],
+                Response
+            ),
+            CheckedHits = [Hit#{trace => Trace} || Hit <- Hits],
+            case Decision of
+                block -> {blocked, CheckedHits};
+                review -> {queued, CheckedHits}
+            end;
+        {error, Reason} ->
+            failure(Reason)
+    end.
+
+mode() ->
     Conf = config_ds:env(moderation_detector, []),
-    proplists:get_value(mode, Conf, legacy) =:= rust.
+    case proplists:get_value(mode, Conf, legacy) of
+        shadow -> shadow;
+        rust -> rust;
+        _ -> legacy
+    end.
 
 plaintext(<<"text">>, Payload) when is_map(Payload) ->
     case

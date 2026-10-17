@@ -7,6 +7,7 @@ before the production 256 KiB decode check. That remains a T23 risk.
 """
 
 import argparse
+import datetime
 import hashlib
 import importlib.util
 import json
@@ -79,10 +80,56 @@ def run_type(base):
             self.clearance = args.resource_clearance
             self.liveness = None
             self.proto_proof = None
+            self.raw_privacy = []
             base.save(self.out / "launcher-invocation.json", {
                 "argv": [sys.executable, *sys.argv], "cwd": str(Path.cwd()),
                 "launcher_sha256": file_sha(Path(__file__).resolve()),
             })
+
+        def private_output(self, name, raw):
+            markers = [value.encode() for value in self.redactions]
+            markers.append(b"TG20-CANARY-NO-LOG")
+            matches = sum(raw.count(marker) for marker in markers if marker)
+            self.raw_privacy.append({"source": name, "bytes": len(raw), "matches": matches,
+                                     "raw_sha256": hashlib.sha256(raw).hexdigest()})
+            for secret in self.redactions:
+                raw = raw.replace(secret.encode(), b"<REDACTED>")
+            return raw
+
+        def private_log(self, name, path):
+            path.write_bytes(self.private_output(name, path.read_bytes()))
+            path.chmod(0o600)
+
+        def command(self, name, argv, *, env=None, timeout=900, require=True):
+            print(name, flush=True)
+            record = {"argv": list(map(str, argv)), "cwd": str(self.root),
+                      "started_at": datetime.datetime.now(datetime.timezone.utc).isoformat()}
+            process = subprocess.Popen(record["argv"], cwd=self.root, env=env or self.env,
+                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, start_new_session=True)
+            try:
+                raw, _ = process.communicate(timeout=timeout)
+                record["exit_code"] = process.returncode
+            except subprocess.TimeoutExpired:
+                os.killpg(process.pid, signal.SIGKILL)
+                raw, _ = process.communicate()
+                record.update(exit_code=None, timed_out=True, timeout_seconds=timeout)
+            except BaseException:
+                os.killpg(process.pid, signal.SIGKILL)
+                raw, _ = process.communicate()
+                self.private_output(name, raw)
+                raise
+            raw = self.private_output(name, raw)
+            log = self.out / (name + ".log")
+            descriptor = os.open(log, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            with os.fdopen(descriptor, "wb") as target:
+                target.write(raw)
+            record.update(finished_at=datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                          log=str(log), log_sha256=file_sha(log))
+            self.commands.append(record)
+            base.save(self.out / (name + ".json"), record)
+            if require and record["exit_code"] != 0:
+                raise RuntimeError(name + " failed: " + str(record["exit_code"]))
+            return raw.decode("utf-8", errors="replace").strip(), record["exit_code"]
 
         def identity(self):
             return {
@@ -411,10 +458,7 @@ def run_type(base):
                 try:
                     self.server_log.close()
                     path = self.out / "server.log"
-                    raw = path.read_bytes()
-                    for secret in self.redactions:
-                        raw = raw.replace(secret.encode(), b"<REDACTED>")
-                    path.write_bytes(raw)
+                    self.private_log("rust-server", path)
                 except Exception as failure:
                     receipt["errors"].append("server-log: " + type(failure).__name__)
             try:
@@ -467,9 +511,13 @@ def run_type(base):
                     ok = bool(self.execution and self.execution["passed"] and self.dependency_proof and self.dependency_proof["registry_proven"])
                 components[ac] = {"status": "PASS" if ok else "NOT_EXECUTED" if not self.execution else "FAILED_OR_BLOCKED",
                                   "executed_leaves": len(rows), "case_ids": [row["id"] for row in rows]}
-            prepared = self.args.prepare_only and error is None and cleanup_ok and unchanged and shared_unchanged and rust_unchanged
+            privacy_ok = bool(self.raw_privacy) and all(row["matches"] == 0 for row in self.raw_privacy)
+            base.save(self.out / "raw-output-privacy.json", {"checks": self.raw_privacy,
+                "passed": privacy_ok, "checked_before_redaction": True,
+                "secret_values_recorded": False})
+            prepared = self.args.prepare_only and error is None and cleanup_ok and unchanged and shared_unchanged and rust_unchanged and privacy_ok
             passed = bool(not self.args.prepare_only and self.execution and self.execution["passed"] and error is None
-                          and cleanup_ok and unchanged and shared_unchanged and rust_unchanged
+                          and cleanup_ok and unchanged and shared_unchanged and rust_unchanged and privacy_ok
                           and all(value["status"] == "PASS" for value in components.values()))
             status = "PASS" if passed else "PREPARED_NOT_EXECUTED" if prepared else "FAILED_OR_BLOCKED"
             base.save(self.out / "dual-protocol.json", {
@@ -479,6 +527,7 @@ def run_type(base):
                 "source_unchanged": unchanged, "rust_source_unchanged": rust_unchanged,
                 "shared_caches_unchanged": shared_unchanged, "cleanup_ok": cleanup_ok,
                 "dependency_proof": self.dependency_proof, "commands": self.commands,
+                "raw_output_privacy_passed": privacy_ok,
                 "startup_probe": self.liveness,
                 "production_protobuf": self.proto_proof,
                 "remaining_risks": ["T23: grpcbox wire receive buffer has no proven pre-buffer size limit; "

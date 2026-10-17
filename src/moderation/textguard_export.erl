@@ -624,16 +624,6 @@ merge_validated(Opts, T2sId, Words, Enh) ->
                 {Word, Category, Severity}
              || #{word := Word, category := Category, severity := Severity} <- Words
             ]),
-            CoreBytes = [
-                <<"TGBASEv1", 0, (length(Core)):32/big-unsigned>>,
-                [
-                    [
-                        <<(byte_size(Column)):32/big-unsigned, Column/binary>>
-                     || Column <- tuple_to_list(Row)
-                    ]
-                 || Row <- Core
-                ]
-            ],
             Dropped = DanglingExtras ++ Dropped1 ++ Dropped2,
             Warnings =
                 [dropped_warning(D) || D <- Dropped] ++
@@ -648,7 +638,7 @@ merge_validated(Opts, T2sId, Words, Enh) ->
             lists:foreach(fun(W) -> ?LOG_WARNING("~ts", [W]) end, Warnings),
             {ok, #{
                 package => Package,
-                base_digest => hex_lower(crypto:hash(sha256, CoreBytes)),
+                base_digest => textguard_base_digest:digest(Core),
                 package_sha256 => hex_lower(crypto:hash(sha256, Package)),
                 word_count => length(Words),
                 dropped => Dropped,

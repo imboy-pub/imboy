@@ -523,6 +523,7 @@ private_message(Type) ->
             }
         }
     },
+    BeforeStage = count(private_stage),
     try
         ?assert(imboy_policy:message_encryption_required()),
         Module =
@@ -532,7 +533,7 @@ private_message(Type) ->
             end,
         Function = Type,
         {ok, []} = observe(fun() -> Module:Function(Id, owner(), Data) end),
-        ?assertEqual(1, count(private_stage)),
+        ?assertEqual(BeforeStage + 1, count(private_stage)),
         AckType =
             case Type of
                 c2c -> <<"C2C_SERVER_ACK">>;
