@@ -8,6 +8,7 @@
 -export([
     deliver/3,
     on_human_takeover/4,
+    on_human_takeover/5,
     on_config_revoked/2,
     ai_delivery_allowed/4
 ]).
@@ -151,7 +152,7 @@ deliver_message(
         body => maps:get(reply, Params, <<>>),
         ai_delivery_hook => Hook
     },
-    case cs_session_app:append_conversation_message(OrgId, MsgParams) of
+    case cs_session_app:append_conversation_message(OrgId, MsgParams, ai) of
         {ok, _} ->
             {ok, delivered};
         %% B.4 冻结映射：expired/superseded/stale_citation ⇒ job 终态
@@ -184,10 +185,14 @@ reply_key(JobId) ->
 %% generation_epoch+1。**永不抛错**——人工坐席路径绝不被 AI 侧故障拖垮
 %% （与 respond/2 的失败哲学同构），失败只留 error 日志。
 -spec on_human_takeover(integer(), integer(), integer(), binary()) -> ok.
-on_human_takeover(OrgId, WsId, SessionId, Reason) when
+on_human_takeover(OrgId, WsId, SessionId, Reason) ->
+    on_human_takeover(OrgId, WsId, SessionId, Reason, #{}).
+
+-spec on_human_takeover(integer(), integer(), integer(), binary(), map()) -> ok.
+on_human_takeover(OrgId, WsId, SessionId, Reason, Params) when
     is_integer(OrgId), is_integer(WsId), is_integer(SessionId)
 ->
-    Impl = cs_ai_port:impl(#{}),
+    Impl = cs_ai_port:impl(Params),
     try
         case Impl:latch_handoff(OrgId, WsId, SessionId, Reason) of
             {ok, _} ->
@@ -202,7 +207,7 @@ on_human_takeover(OrgId, WsId, SessionId, Reason) when
     catch
         _Class:_Reason -> ok
     end;
-on_human_takeover(_OrgId, _WsId, _SessionId, _Reason) ->
+on_human_takeover(_OrgId, _WsId, _SessionId, _Reason, _Params) ->
     ok.
 
 %% @doc E2 触发二（auto_reply_mode / canary 撤销）：org 内全部未闩锁的

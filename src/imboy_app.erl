@@ -13,6 +13,10 @@
 %% 等不起 imboy app 的 marker DB 套件需显式准备 RSA env）；幂等，纯 env/文件操作
 -export([ensure_rsa_keys/0]).
 
+-ifdef(TEST).
+-export([start_clear/2, start_tls/2]).
+-endif.
+
 % -include("log.hrl").
 -include_lib("public_key/include/public_key.hrl").
 %% BE-W01：特性裁剪宏（eb_keyring_file 跨裁剪调用的 -ifdef 保护，F-EB10-1 同款）
@@ -247,12 +251,12 @@ start_tls(ProtoOpts, Port) ->
     PrivDir = priv_dir(),
     cowboy:start_tls(
         imboy_listener_tls,
-        [
-            {port, Port},
-            {cacertfile, PrivDir ++ config_ds:env(cacertfile)},
-            {certfile, PrivDir ++ config_ds:env(certfile)},
-            {keyfile, PrivDir ++ config_ds:env(keyfile)}
-        ],
+        listener_socket_opts(Port) ++
+            [
+                {cacertfile, PrivDir ++ config_ds:env(cacertfile)},
+                {certfile, PrivDir ++ config_ds:env(certfile)},
+                {keyfile, PrivDir ++ config_ds:env(keyfile)}
+            ],
         ProtoOpts
     ).
 
@@ -260,9 +264,21 @@ start_tls(ProtoOpts, Port) ->
 start_clear(ProtoOpts, Port) ->
     cowboy:start_clear(
         imboy_listener,
-        [{port, Port}],
+        listener_socket_opts(Port),
         ProtoOpts
     ).
+
+-spec listener_socket_opts(integer()) -> list().
+listener_socket_opts(Port) ->
+    case config_ds:env(listen_ip, undefined) of
+        undefined ->
+            [{port, Port}];
+        Ip ->
+            case inet:is_ip_address(Ip) of
+                true -> [{ip, Ip}, {port, Port}];
+                false -> erlang:error({invalid_config, listen_ip, Ip})
+            end
+    end.
 
 %% @doc 校验 HTTP/HTTPS 监听器启动结果；失败即崩溃阻断 app 启动。
 %% application master 会把崩溃转为 start/2 的 {error, {'EXIT', ...}}，

@@ -24,6 +24,8 @@
 
         % HTTP 服务端口（蓝绿切换可用 9800/9801）
         {http_port, 9800},
+        % 可选 HTTP/TLS 绑定地址；不配置保持所有网卡，本机联调可设 {127,0,0,1}。
+        % {listen_ip, {127, 0, 0, 1}},
         %, {host, <<"local.imboy.pub">>}
         {host, '_'},
         % start_mode 包含的值 quic | tls | http

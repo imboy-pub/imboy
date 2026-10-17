@@ -41,6 +41,66 @@ invalid_config_fails_fast() ->
         imboy_app:maybe_migrate()
     ).
 
+listener_bind_test_() ->
+    {setup,
+        fun() ->
+            Saved = [
+                {K, application:get_env(imboy, K)}
+             || K <-
+                    [listen_ip, cacertfile, certfile, keyfile]
+            ],
+            [
+                application:set_env(imboy, K, "/synthetic.pem")
+             || K <-
+                    [cacertfile, certfile, keyfile]
+            ],
+            meck:new(cowboy, [passthrough, no_link]),
+            meck:expect(cowboy, start_clear, fun(_, Opts, _) -> {ok, Opts} end),
+            meck:expect(cowboy, start_tls, fun(_, Opts, _) -> {ok, Opts} end),
+            Saved
+        end,
+        fun(Saved) ->
+            meck:unload(cowboy),
+            [
+                case Previous of
+                    undefined -> application:unset_env(imboy, K);
+                    {ok, Value} -> application:set_env(imboy, K, Value)
+                end
+             || {K, Previous} <- Saved
+            ]
+        end,
+        fun(_) ->
+            [
+                {"default listener options remain unchanged", fun() ->
+                    application:unset_env(imboy, listen_ip),
+                    ?assertEqual({ok, [{port, 19841}]}, imboy_app:start_clear(#{}, 19841))
+                end},
+                {"HTTP and TLS both bind the configured loopback address", fun() ->
+                    application:set_env(imboy, listen_ip, {127, 0, 0, 1}),
+                    {ok, Clear} = imboy_app:start_clear(#{}, 19841),
+                    {ok, Tls} = imboy_app:start_tls(#{}, 19842),
+                    ?assertEqual({127, 0, 0, 1}, proplists:get_value(ip, Clear)),
+                    ?assertEqual({127, 0, 0, 1}, proplists:get_value(ip, Tls)),
+                    ?assertEqual(19842, proplists:get_value(port, Tls)),
+                    ?assert(proplists:is_defined(certfile, Tls))
+                end},
+                {"invalid address fails before either listener is created", fun() ->
+                    application:set_env(imboy, listen_ip, {127, 0, 0, 999}),
+                    meck:reset(cowboy),
+                    ?assertError(
+                        {invalid_config, listen_ip, {127, 0, 0, 999}},
+                        imboy_app:start_clear(#{}, 19841)
+                    ),
+                    ?assertError(
+                        {invalid_config, listen_ip, {127, 0, 0, 999}},
+                        imboy_app:start_tls(#{}, 19842)
+                    ),
+                    ?assertEqual(0, meck:num_calls(cowboy, start_clear, '_')),
+                    ?assertEqual(0, meck:num_calls(cowboy, start_tls, '_'))
+                end}
+            ]
+        end}.
+
 %% ------------------------------------------------------------------
 %% N-5 回归：jverification_rsa_priv_key_file 是**可选能力**（仅极光一键登录
 %% 手机号解密使用，运行期本就 try/catch 降级），绝不能在 boot 期因文件缺失

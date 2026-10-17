@@ -19,6 +19,7 @@
 -module(eb_pg_canonical_tx).
 
 -export([accept_message/3, audit_detail_keys/0]).
+-include("generated/imboy_product_features.hrl").
 
 -define(DEFAULT_AUDIT_ACTION, <<"message.accept">>).
 -define(DATA_CLASS, <<"enterprise_message">>).
@@ -40,10 +41,11 @@
 %%   enforce_consent   可选；默认 true（无合成 consent 一律 fail-closed，§2.1 #9）
 %%   persist_hook      可选；REVIEW-3 F-2 事务内旁路写钩子（如客服
 %%                     `message.appended` 事件行并轨写）。`fun((Conn, Stored) ->
-%%                     ok | {error, Reason})`：非重放路径在消息+附件+审计写毕、
+%%                     ok | {error, Reason} | CSObservedReceipt)`：非重放路径在消息+附件+审计写毕、
 %%                     事务仍开放时调用；返回 `{error, Reason}` ⇒ 整体回滚，
 %%                     调用方拿到 `{error, Reason}`（Reason 原样上浮）。缺省
-%%                     undefined = 无钩子。
+%%                     undefined = 无钩子。Stored 仅在 hook 内补本次 Unix 秒 accepted_at；
+%%                     CS 完成凭据须绑定当前消息及实际会话，否则走未知观察或回滚。
 %%
 %% 返回 `{ok, #{message, audit_id, replayed, sealed}}` 或 `{error, Reason}`。
 -spec accept_message(integer(), integer(), map()) -> {ok, map()} | {error, term()}.
@@ -313,7 +315,9 @@ do_append_accept_audit(Conn, OrgId, WorkspaceId, Stored, Params, AcceptedAt, Sea
     case eb_pg_audit:append_in(Conn, OrgId, Event) of
         {ok, AuditId} ->
             %% run_persist_hook 以 throw 裁决回滚，成功只返回 ok。
-            ok = run_persist_hook(Conn, OrgId, WorkspaceId, Stored, Params),
+            ok = run_persist_hook(
+                Conn, OrgId, WorkspaceId, Stored#{accepted_at => AcceptedAt}, Params
+            ),
             accept_result(Conn, OrgId, WorkspaceId, Stored, AuditId, Sealed);
         {error, _} = Err ->
             Err
@@ -330,18 +334,44 @@ do_append_accept_audit(Conn, OrgId, WorkspaceId, Stored, Params, AcceptedAt, Sea
 %% epgsql 会把抛出的 Reason 再包一层 `{rollback, _}`（对 `{rollback, X}` 形
 %% throw 实测得 `{rollback, {rollback, X}}`）；用专用标签让 accept_message
 %% 单点解包回原始 HookReason。
-run_persist_hook(Conn, _OrgId, _WorkspaceId, Stored, Params) ->
-    case maps:get(persist_hook, Params, undefined) of
-        undefined ->
-            ok;
-        Hook when is_function(Hook, 2) ->
-            case Hook(Conn, Stored) of
-                ok ->
-                    ok;
-                {error, HookReason} ->
-                    throw({persist_hook_failed, HookReason})
-            end
+run_persist_hook(Conn, OrgId, WorkspaceId, Stored, Params) ->
+    Result =
+        case maps:get(persist_hook, Params, undefined) of
+            undefined -> ok;
+            Hook when is_function(Hook, 2) -> Hook(Conn, Stored)
+        end,
+    case response_observation(Conn, OrgId, WorkspaceId, Stored, Result) of
+        ok -> ok;
+        {error, HookReason} -> throw({persist_hook_failed, HookReason})
     end.
+
+response_observation(Conn, Org, Workspace, Stored, ok) ->
+    observe_unknown_response(Conn, Org, Workspace, maps:get(conversation_id, Stored));
+response_observation(
+    Conn,
+    Org,
+    Workspace,
+    #{id := Message, conversation_id := Conversation},
+    {cs_response_observed, Org, Workspace, Conversation, Session, Message}
+) when
+    is_integer(Session), Session > 0
+->
+    observe_known_response(Conn, Org, Workspace, Conversation, Session);
+response_observation(_Conn, _Org, _Workspace, _Stored, {error, _} = Error) ->
+    Error;
+response_observation(_Conn, _Org, _Workspace, _Stored, _) ->
+    {error, invalid_response_observation}.
+
+-ifdef(IMBOY_FEATURE_CUSTOMER_SERVICE).
+observe_unknown_response(Conn, Org, Workspace, Conversation) ->
+    customer_service_facade:observe_response_in(Conn, Org, Workspace, Conversation, unknown).
+observe_known_response(Conn, Org, Workspace, Conversation, Session) ->
+    customer_service_facade:observe_response_in(Conn, Org, Workspace, Conversation, Session).
+-else.
+observe_unknown_response(_Conn, _Org, _Workspace, _Conversation) -> ok.
+observe_known_response(_Conn, _Org, _Workspace, _Conversation, _Session) ->
+    {error, customer_service_feature_not_selected}.
+-endif.
 
 %% CS-BE-01：POST 回显补资产白名单投影——发送后立即读回绑定资产，与消息写入/
 %% 绑定/审计**同一事务**（本读不走独立连接，回滚即整体回滚）。读失败 = 事务

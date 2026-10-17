@@ -17,7 +17,7 @@
 -module(cs_facade_call).
 
 -moduledoc "客服动作 → facade 的唯一调用点表（CS-02）。".
--export([call/3, actions/0]).
+-export([call/3, call/4, actions/0]).
 
 %% @doc 执行一次用例调用。`FacadeAction` 来自冻结的动作表（`cs_actions`）。
 -spec call(atom(), integer(), map()) -> {ok, term()} | {error, term()}.
@@ -272,3 +272,29 @@ actions() ->
         transfer_targets,
         seat_events
     ].
+
+%% Context is passed separately by the authenticated handler, never projected from HTTP.
+call(
+    append_session_message,
+    Org,
+    #{actor_user_id := Uid, business_identity_id := Bid} = Params,
+    #{
+        auth_context := cs_seat,
+        organization_id := Org,
+        user_id := Uid,
+        business_identity_id := Bid
+    }
+) when is_integer(Uid), Uid > 0, is_integer(Bid), Bid > 0 ->
+    customer_service_facade:append_session_message(Org, Params, {authenticated_human, Uid, Bid});
+call(
+    append_session_message,
+    Org,
+    Params,
+    #{auth_context := cs_visit, organization_id := Org, contact_id := Contact}
+) ->
+    case maps:get(contact_id, Params, undefined) of
+        Contact -> customer_service_facade:append_session_message(Org, Params, visitor);
+        _ -> {error, invalid_response_origin}
+    end;
+call(Action, Org, Params, _Context) ->
+    call(Action, Org, Params).

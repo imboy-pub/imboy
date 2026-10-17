@@ -326,3 +326,39 @@ error_reply(Reply, Status, Message) ->
     ?assertEqual(Status, Code),
     ?assertEqual(Message, Actual),
     ?assertEqual(#{}, Payload).
+
+%% Same original HTTP helpers and real Human device token; no Admin substitution.
+oa_login_link_wrong_key_test_() ->
+    {timeout, 900,
+        {setup, fun enterprise_oa_login_three_gap_pg_checks:setup/0,
+            fun enterprise_oa_login_three_gap_pg_checks:teardown/1, fun(S) ->
+                {timeout, 900, fun() -> focused_link_wrong_key(S) end}
+            end}}.
+
+focused_link_wrong_key(S) ->
+    ok = app_version_ds:set_sign_key(
+        <<"synthetic">>,
+        <<"oa-http-test">>,
+        <<"synthetic.oa">>,
+        <<"synthetic-oa-device-sign-key">>
+    ),
+    User = intbe02_http_support:fixture(h_a1, S),
+    Device = <<"http-link-device">>,
+    Auth = human_auth(User, Device),
+    Params = pending(S, <<"three-gap-http-link">>, <<"link">>, Device),
+    #{<<"application_key">> := Wrong} = intbe02_http_support:one(
+        maps:get(conn, S),
+        <<"SELECT application_key FROM enterprise_application WHERE id=$1 AND status='active'">>,
+        [maps:get(app_a, S)]
+    ),
+    ?assertNotEqual(maps:get(<<"application_key">>, Params), Wrong),
+    Before = enterprise_oa_login_three_gap_pg_checks:snapshot(S),
+    error_reply(
+        post(S, link, Params#{<<"application_key">> => Wrong}, Auth),
+        400,
+        <<"invalid_request">>
+    ),
+    ?assertEqual(Before, enterprise_oa_login_three_gap_pg_checks:snapshot(S)),
+    Session = success(post(S, link, Params, Auth)),
+    assert_session(Session, User, Device),
+    assert_binding(S, <<"three-gap-http-link">>, User).

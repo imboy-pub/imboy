@@ -292,7 +292,7 @@ deliver(Ctx, Reply) ->
                 client_msg_id => msg_id(Params, Ctx),
                 body => Reply
             },
-            case cs_session_app:append_conversation_message(maps:get(org_id, Ctx), Args) of
+            case cs_session_app:append_conversation_message(maps:get(org_id, Ctx), Args, ai) of
                 {ok, _} -> true;
                 {error, _} -> false
             end;

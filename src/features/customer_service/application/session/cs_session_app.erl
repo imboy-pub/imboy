@@ -29,12 +29,15 @@
     close/2,
     rate/2,
     append_session_message/2,
+    append_session_message/3,
     append_conversation_message/2,
+    append_conversation_message/3,
     conversation_assignee/2,
     list_contact_sessions/2,
     list_sessions/2,
     seat_session_page/2,
     %% CS-BE-07：按需统计
+    observe_response_in/5,
     session_stats/2
 ]).
 
@@ -295,7 +298,7 @@ do_claim(OrgId, WorkspaceId, Session, IdentityId, ExpectedVersion, At, Params) -
                     %% （粘性 + generation_epoch+1）。永不影响 claim 自身结果
                     %% （AI 侧故障不拖垮人工坐席路径，on_human_takeover 内吞错）。
                     cs_ai_delivery_app:on_human_takeover(
-                        OrgId, WorkspaceId, maps:get(id, Session), <<"human_claim">>
+                        OrgId, WorkspaceId, maps:get(id, Session), <<"human_claim">>, Params
                     ),
                     Ok;
                 {error, ClaimErr} ->
@@ -392,7 +395,7 @@ do_transfer(OrgId, WorkspaceId, SessionId, ToIdentityId, ExpectedVersion, At, Pa
                     %% v4 P0-4（02-C.3 E2）：transfer 至 human seat 同为接管，
                     %% 闩锁置位语义与 claim 相同（吞错，不改变 transfer 结果）。
                     _ = cs_ai_delivery_app:on_human_takeover(
-                        OrgId, WorkspaceId, SessionId, <<"human_transfer">>
+                        OrgId, WorkspaceId, SessionId, <<"human_transfer">>, Params
                     ),
                     cas_write(
                         Params,
@@ -571,17 +574,21 @@ do_rate(OrgId, WorkspaceId, SessionId, Rating, ExpectedVersion, At, Params) ->
 %% `canonical_tx` / `store` / `clock` / `id` / `notify` / `accepted_at` 等键
 %% 原样透传给 facade（测试注入面）。
 -spec append_session_message(integer(), map()) -> {ok, map()} | {error, term()}.
-append_session_message(OrgId, Params) when is_map(Params) ->
+append_session_message(OrgId, Params) ->
+    append_session_message(OrgId, Params, unknown).
+
+%% Provenance is a separate server-only argument, never a public Params marker.
+append_session_message(OrgId, Params, Context) when is_map(Params) ->
     case cs_app_support:tenant(OrgId, Params) of
         {error, _} = Err ->
             Err;
         {ok, WorkspaceId} ->
-            append_message_in(OrgId, WorkspaceId, Params)
+            append_message_in(OrgId, WorkspaceId, Params, Context)
     end;
-append_session_message(_OrgId, _Params) ->
+append_session_message(_OrgId, _Params, _Context) ->
     {error, {invalid_argument, append_session_message}}.
 
-append_message_in(OrgId, WorkspaceId, Params) ->
+append_message_in(OrgId, WorkspaceId, Params, Context) ->
     SessionId = maps:get(session_id, Params, undefined),
     case fetch_session_for(Params, OrgId, WorkspaceId, SessionId) of
         {error, _} = Err ->
@@ -591,7 +598,15 @@ append_message_in(OrgId, WorkspaceId, Params) ->
                 {error, _} = Err ->
                     Err;
                 {ok, SenderType} ->
-                    case message_event_hook(Params, OrgId, WorkspaceId, Session) of
+                    case
+                        message_event_hook(
+                            Params,
+                            OrgId,
+                            WorkspaceId,
+                            Session,
+                            response_origin(Context, SenderType, Params)
+                        )
+                    of
                         {error, _} = HookErr ->
                             HookErr;
                         {ok, Hook} ->
@@ -638,7 +653,9 @@ compose_ai_hook(_Params, EventHook) ->
 %% 消息+审计+附件绑定写毕、事务仍开放时以 `(Conn, StoredMessage)` 调用本闭包；
 %% 闭包用与外层同源的 store 端口（注入面一致）在**同一事务**内写事件行。
 %% 返回 `{error, {audit_append_failed, _}}` 由 canonical tx 裁决整体回滚。
-message_event_hook(Params, OrgId, WorkspaceId, Session) ->
+message_event_hook(_Params, _OrgId, _WorkspaceId, _Session, invalid) ->
+    {error, invalid_response_origin};
+message_event_hook(Params, OrgId, WorkspaceId, Session, Origin) ->
     case cs_app_support:store_port(Params) of
         {error, _} = Err ->
             Err;
@@ -655,21 +672,52 @@ message_event_hook(Params, OrgId, WorkspaceId, Session) ->
             {ok, fun(Conn, StoredMessage) ->
                 %% 事件只带资源 ID（payload_limits 合同：零正文/零附件引用细节）。
                 Event = Base#{
-                    detail => #{<<"message_id">> => message_id_of(StoredMessage)}
+                    detail => #{<<"message_id">> => message_id_of(StoredMessage)},
+                    response_fact =>
+                        {Origin, message_id_of(StoredMessage),
+                            maps:get(accepted_at, StoredMessage, undefined)}
                 },
                 case Store:append_event_in(Conn, OrgId, Event) of
-                    {ok, _EventId} -> ok;
-                    {error, session_already_closed} = Err -> Err;
-                    {error, conflict} = Err -> Err;
-                    {error, seat_disabled} = Err -> Err;
-                    {error, installation_revoked} = Err -> Err;
-                    {error, token_revoked} = Err -> Err;
-                    {error, token_expired} = Err -> Err;
-                    {error, visit_token_invalid} = Err -> Err;
-                    {error, Reason} -> {error, {audit_append_failed, Reason}}
+                    {ok, _EventId} ->
+                        {cs_response_observed, OrgId, WorkspaceId,
+                            maps:get(conversation_id, Session), maps:get(id, Session),
+                            message_id_of(StoredMessage)};
+                    {error, session_already_closed} = Err ->
+                        Err;
+                    {error, conflict} = Err ->
+                        Err;
+                    {error, seat_disabled} = Err ->
+                        Err;
+                    {error, installation_revoked} = Err ->
+                        Err;
+                    {error, token_revoked} = Err ->
+                        Err;
+                    {error, token_expired} = Err ->
+                        Err;
+                    {error, visit_token_invalid} = Err ->
+                        Err;
+                    {error, Reason} ->
+                        {error, {audit_append_failed, Reason}}
                 end
             end}
     end.
+
+response_origin(
+    {authenticated_human, Uid, Bid},
+    business_identity,
+    #{actor_user_id := Uid, business_identity_id := Bid}
+) when
+    is_integer(Uid), Uid > 0, is_integer(Bid), Bid > 0
+->
+    human;
+response_origin(visitor, contact, _Params) ->
+    visitor;
+response_origin(ai, business_identity, _Params) ->
+    ai;
+response_origin(unknown, _Sender, _Params) ->
+    unknown;
+response_origin(_, _, _) ->
+    invalid.
 
 message_id_of(#{message_id := Id}) when is_integer(Id) -> Id;
 message_id_of(#{message := #{id := Id}}) when is_integer(Id) -> Id;
@@ -1256,6 +1304,17 @@ stats_view(OrgId, WorkspaceId, DateBin, Tz, Start, End, Params) ->
                         Claimed, maps:get(first_response_avg_seconds, Facts, undefined)
                     )
                 },
+                first_human_response => response_metric(
+                    first_human_response_count,
+                    first_human_response_avg_seconds,
+                    Facts
+                ),
+                first_ai_response => response_metric(
+                    first_ai_response_count,
+                    first_ai_response_avg_seconds,
+                    Facts
+                ),
+                response_unknown_count => maps:get(response_unknown_count, Facts, undefined),
                 closed_sessions => maps:get(closed_sessions, Facts, 0),
                 rating => #{
                     count => Rated,
@@ -1267,6 +1326,16 @@ stats_view(OrgId, WorkspaceId, DateBin, Tz, Start, End, Params) ->
                 }
             }}
     end.
+
+response_metric(CountKey, AvgKey, Facts) ->
+    Count = maps:get(CountKey, Facts, undefined),
+    #{
+        count => Count,
+        avg_seconds => zero_means_no_samples(
+            Count,
+            maps:get(AvgKey, Facts, undefined)
+        )
+    }.
 
 zero_means_no_samples(0, _Avg) -> undefined;
 zero_means_no_samples(_N, Avg) -> Avg.
@@ -1291,23 +1360,30 @@ presence_annotated(OrgId, Seats, Params) ->
     end.
 
 %% Server-derived CS identity uses the same lifecycle/audit path as visitor writes.
-append_conversation_message(OrgId, #{sender_type := <<"business_identity">>} = Params) ->
+append_conversation_message(OrgId, Params) ->
+    append_conversation_message(OrgId, Params, unknown).
+
+append_conversation_message(OrgId, #{sender_type := <<"business_identity">>} = Params, Context) ->
     case cs_app_support:store_port(Params) of
         {ok, Store} ->
             Ws = maps:get(workspace_id, Params),
             case Store:fetch_conversation_session(OrgId, Ws, maps:get(conversation_id, Params)) of
                 {ok, Session} ->
-                    append_session_message(OrgId, Params#{
-                        session_id => maps:get(id, Session),
-                        business_identity_id => maps:get(identity_id, Params)
-                    });
+                    append_session_message(
+                        OrgId,
+                        Params#{
+                            session_id => maps:get(id, Session),
+                            business_identity_id => maps:get(identity_id, Params)
+                        },
+                        Context
+                    );
                 {error, _} = Err ->
                     Err
             end;
         {error, _} = Err ->
             Err
     end;
-append_conversation_message(_, _) ->
+append_conversation_message(_, _, _) ->
     {error, {invalid_argument, sender_type}}.
 
 %% Seat principal must be current handler. Governance callers have no seat identity.
@@ -1343,4 +1419,10 @@ conversation_assignee(Org, #{workspace_id := Ws, conversation_id := Conv} = Para
             {error, _} = Err ->
                 Err
         end
+    end).
+
+%% Canonical fallback covers all production message entry points without guessing sender.
+observe_response_in(Conn, Org, Workspace, Conversation, Observation) ->
+    cs_app_support:with_store(#{}, fun(Store) ->
+        Store:observe_response_in(Conn, Org, Workspace, Conversation, Observation)
     end).

@@ -1,6 +1,7 @@
 -module(adm_channel_handler_tests).
 -include_lib("eunit/include/eunit.hrl").
 -include("eunit_setup.hrl").
+-include("error_code.hrl").
 
 %%%===================================================================
 %%% @doc
@@ -1252,6 +1253,9 @@ enterprise_list_forces_workspace_scope_and_active_status_test_() ->
     %% 禁用频道零可见）；客户端 scope/status 查询参数不被信任。
     ?WITH_MECKS(
         [
+            {adm_acl, [
+                {'ensure_permission', 3, fun(_State, <<"channels:read">>, _Req) -> ok end}
+            ]},
             {cowboy_req, [
                 {'method', 1, fun(_Req) -> <<"GET">> end},
                 {'parse_qs', 1, fun(_Req) -> [{<<"status">>, <<"0">>}] end}
@@ -1281,7 +1285,8 @@ enterprise_list_forces_workspace_scope_and_active_status_test_() ->
             ]}
         ],
         fun() ->
-            {ok, RespReq, _State} = adm_channel_handler:init(#{}, #{action => list}),
+            {ok, RespReq, _State} =
+                adm_channel_handler:init(#{}, #{action => list, adm_user_id => 1}),
             ?assertEqual(200, maps:get(response_status, RespReq)),
             ?assertEqual(0, maps:get(total, maps:get(payload, RespReq)))
         end
@@ -1291,6 +1296,9 @@ non_enterprise_list_keeps_global_semantics_test_() ->
     %% 运营中心入口（无 preset）：status=0 过滤保留，不注入 scope 谓词。
     ?WITH_MECKS(
         [
+            {adm_acl, [
+                {'ensure_permission', 3, fun(_State, <<"channels:read">>, _Req) -> ok end}
+            ]},
             {cowboy_req, [
                 {'method', 1, fun(_Req) -> <<"GET">> end},
                 {'parse_qs', 1, fun(_Req) -> [{<<"status">>, <<"0">>}] end}
@@ -1319,7 +1327,8 @@ non_enterprise_list_keeps_global_semantics_test_() ->
             ]}
         ],
         fun() ->
-            {ok, RespReq, _State} = adm_channel_handler:init(#{}, #{action => list}),
+            {ok, RespReq, _State} =
+                adm_channel_handler:init(#{}, #{action => list, adm_user_id => 1}),
             ?assertEqual(200, maps:get(response_status, RespReq))
         end
     ).
@@ -1328,6 +1337,9 @@ enterprise_list_with_org_uses_resolved_workspace_ids_test_() ->
     %% O/W 过滤由服务端解析 workspace id 集合后以 IN 谓词下推（跨 O 不可见）。
     ?WITH_MECKS(
         [
+            {adm_acl, [
+                {'ensure_permission', 3, fun(_State, <<"channels:read">>, _Req) -> ok end}
+            ]},
             {cowboy_req, [
                 {'method', 1, fun(_Req) -> <<"GET">> end},
                 {'parse_qs', 1, fun(_Req) -> [] end}
@@ -1366,7 +1378,236 @@ enterprise_list_with_org_uses_resolved_workspace_ids_test_() ->
             ]}
         ],
         fun() ->
-            {ok, RespReq, _State} = adm_channel_handler:init(#{}, #{action => list}),
+            {ok, RespReq, _State} =
+                adm_channel_handler:init(#{}, #{action => list, adm_user_id => 1}),
             ?assertEqual(200, maps:get(response_status, RespReq))
+        end
+    ).
+
+%%%===================================================================
+%%% channels:read 读能力 RBAC（C12 HIGH 缺口回归）
+%%% 9 个 GET 动作统一经 adm_acl:ensure_permission(State, channels:read)；
+%%% deny 后不进入任何 dispatch/参数解析/DB 查询；feature gate 仍优先。
+%%%===================================================================
+
+channel_read_get_actions() ->
+    [list, detail, messages, subscribers, admins, invitations, orders, stats, search].
+
+channel_read_query_sentinel(Name, Arity) ->
+    {Name, Arity, fun(_) -> erlang:error(unexpected_query_layer_call) end}.
+
+channel_read_deny_mocks() ->
+    [
+        {imboy_feature, [
+            {'ensure_enabled', 2, fun(_Req, _Feature) -> ok end}
+        ]},
+        {adm_acl, [
+            {'ensure_permission', 3, fun(State, Permission, _Req) ->
+                erlang:put(
+                    channel_read_acl_seen,
+                    {maps:get(adm_user_id, State, missing), Permission}
+                ),
+                {error, #{denied_permission => Permission}}
+            end}
+        ]},
+        {cowboy_req, [
+            {'method', 1, fun(_Req) -> <<"GET">> end}
+        ]},
+        %% deny 必须发生在 dispatch 之前：任何查询层入口被触达即失败。
+        {elib_param, [channel_read_query_sentinel('page', 1)]},
+        {channel_ds, [channel_read_query_sentinel('find_by_id_with_price', 1)]},
+        {channel_logic, [channel_read_query_sentinel('get_channel_stats_admin', 1)]}
+    ].
+
+channel_read_get_requires_channels_read_deny_matrix_test_() ->
+    [
+        {
+            lists:concat([Action, "_get_denied_without_channels_read"]),
+            ?WITH_MECKS(
+                channel_read_deny_mocks(),
+                fun() ->
+                    {ok, RespReq, _State} =
+                        adm_channel_handler:init(#{}, #{action => Action, adm_user_id => 77}),
+                    ?assertEqual(#{denied_permission => <<"channels:read">>}, RespReq),
+                    ?assertEqual(
+                        {77, <<"channels:read">>},
+                        erlang:get(channel_read_acl_seen)
+                    ),
+                    erlang:erase(channel_read_acl_seen)
+                end
+            )
+        }
+     || Action <- channel_read_get_actions()
+    ].
+
+channel_read_allows_principal_with_channels_read_test_() ->
+    %% 集成正例：真 adm_acl 链路（find -> role_acl 并集）放行有读权限主体并进入查询。
+    ?WITH_MECKS(
+        [
+            {imboy_feature, [
+                {'ensure_enabled', 2, fun(_Req, _Feature) -> ok end}
+            ]},
+            {adm_user_logic, [
+                {'find', 3, fun(77, <<"id,role_id">>, _CacheKey) ->
+                    #{<<"id">> => 77, <<"role_id">> => 4}
+                end}
+            ]},
+            {adm_index_handler, [
+                {'role_acl', 1, fun(4) ->
+                    {<<"moderator">>, [<<"channels:read">>], []}
+                end}
+            ]},
+            {cowboy_req, [
+                {'method', 1, fun(_Req) -> <<"GET">> end},
+                {'binding', 2, fun(channel_id, _Req) -> <<"11">> end}
+            ]},
+            {elib_param, [
+                {'page', 1, fun(_Req) -> {1, 10} end}
+            ]},
+            {channel_message_repo, [
+                {'tablename', 0, fun() -> <<"public.channel_message">> end}
+            ]},
+            {elib_pg, [
+                {'page_with_total', 6, fun(_Tb, _Col, _Where, _Order, _Page, _Size) ->
+                    {ok, #{list => [], page => 1, size => 10, total => 0, total_pages => 0}}
+                end}
+            ]},
+            {elib_response, [
+                {'success', 2, fun(Req, Payload) ->
+                    Req#{response_status => 200, payload => Payload}
+                end}
+            ]}
+        ],
+        fun() ->
+            {ok, RespReq, _State} =
+                adm_channel_handler:init(#{}, #{action => messages, adm_user_id => 77}),
+            ?assertEqual(200, maps:get(response_status, RespReq)),
+            ?assertEqual(0, maps:get(total, maps:get(payload, RespReq)))
+        end
+    ).
+
+channel_read_denies_missing_principal_test_() ->
+    %% 缺 adm_user_id：真 adm_acl 按 0/非正整数 fail-closed 拒绝，不触查询层。
+    ?WITH_MECKS(
+        [
+            {imboy_feature, [
+                {'ensure_enabled', 2, fun(_Req, _Feature) -> ok end}
+            ]},
+            {cowboy_req, [
+                {'method', 1, fun(_Req) -> <<"GET">> end}
+            ]},
+            {elib_param, [channel_read_query_sentinel('page', 1)]},
+            {elib_response, [
+                {'error', 3, fun(Req, _Msg, Code) ->
+                    erlang:put(channel_read_error_code, Code),
+                    Req#{response_status => 403}
+                end}
+            ]}
+        ],
+        fun() ->
+            {ok, RespReq, _State} = adm_channel_handler:init(#{}, #{action => list}),
+            ?assertEqual(403, maps:get(response_status, RespReq)),
+            ?assertEqual(?ERR_FORBIDDEN, erlang:get(channel_read_error_code)),
+            erlang:erase(channel_read_error_code)
+        end
+    ).
+
+channel_read_write_only_permission_is_not_read_test_() ->
+    %% channels:update 不隐含 channels:read：仅写权限主体 GET 仍 403。
+    ?WITH_MECKS(
+        [
+            {imboy_feature, [
+                {'ensure_enabled', 2, fun(_Req, _Feature) -> ok end}
+            ]},
+            {adm_user_logic, [
+                {'find', 3, fun(88, <<"id,role_id">>, _CacheKey) ->
+                    #{<<"id">> => 88, <<"role_id">> => 9}
+                end}
+            ]},
+            {adm_index_handler, [
+                {'role_acl', 1, fun(9) ->
+                    {<<"custom_writer">>, [<<"channels:update">>], []}
+                end}
+            ]},
+            {cowboy_req, [
+                {'method', 1, fun(_Req) -> <<"GET">> end}
+            ]},
+            {elib_param, [channel_read_query_sentinel('page', 1)]},
+            {elib_response, [
+                {'error', 3, fun(Req, _Msg, Code) ->
+                    erlang:put(channel_read_error_code, Code),
+                    Req#{response_status => 403}
+                end}
+            ]}
+        ],
+        fun() ->
+            {ok, RespReq, _State} =
+                adm_channel_handler:init(#{}, #{action => list, adm_user_id => 88}),
+            ?assertEqual(403, maps:get(response_status, RespReq)),
+            ?assertEqual(?ERR_FORBIDDEN, erlang:get(channel_read_error_code)),
+            erlang:erase(channel_read_error_code)
+        end
+    ).
+
+channel_read_permission_lookup_fails_closed_test_() ->
+    %% 权限解析失败（lookup 异常）按无权限处理，不放行、不触查询层。
+    ?WITH_MECKS(
+        [
+            {imboy_feature, [
+                {'ensure_enabled', 2, fun(_Req, _Feature) -> ok end}
+            ]},
+            {adm_user_logic, [
+                {'find', 3, fun(_Id, _Col, _CacheKey) ->
+                    exit(permission_lookup_boom)
+                end}
+            ]},
+            {elib_log, [
+                {'internal_log', 4, fun(_Level, _Msg, _Module, _Line) -> ok end}
+            ]},
+            {cowboy_req, [
+                {'method', 1, fun(_Req) -> <<"GET">> end}
+            ]},
+            {elib_param, [channel_read_query_sentinel('page', 1)]},
+            {elib_response, [
+                {'error', 3, fun(Req, _Msg, Code) ->
+                    erlang:put(channel_read_error_code, Code),
+                    Req#{response_status => 403}
+                end}
+            ]}
+        ],
+        fun() ->
+            {ok, RespReq, _State} =
+                adm_channel_handler:init(#{}, #{action => search, adm_user_id => 99}),
+            ?assertEqual(403, maps:get(response_status, RespReq)),
+            ?assertEqual(?ERR_FORBIDDEN, erlang:get(channel_read_error_code)),
+            erlang:erase(channel_read_error_code)
+        end
+    ).
+
+channel_feature_disabled_precedes_read_acl_test_() ->
+    %% feature 禁用优先于读权限检查：不咨询 adm_acl 即拒绝。
+    ?WITH_MECKS(
+        [
+            {imboy_feature, [
+                {'ensure_enabled', 2, fun
+                    (_Req, channel_invitation) ->
+                        {error, #{feature_disabled => channel_invitation}};
+                    (_Req, _Feature) ->
+                        ok
+                end}
+            ]},
+            {adm_acl, [
+                {'ensure_permission', 3, fun(_State, _Permission, _Req) ->
+                    erlang:error(acl_must_not_be_consulted_when_feature_disabled)
+                end}
+            ]},
+            {cowboy_req, [
+                {'method', 1, fun(_Req) -> <<"GET">> end}
+            ]}
+        ],
+        fun() ->
+            {ok, RespReq, _State} =
+                adm_channel_handler:init(#{}, #{action => invitations, adm_user_id => 5}),
+            ?assertEqual(#{feature_disabled => channel_invitation}, RespReq)
         end
     ).

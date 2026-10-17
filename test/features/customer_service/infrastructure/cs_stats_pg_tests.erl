@@ -43,7 +43,8 @@ cleanup(Other) ->
 cases({ok, _Conn}) ->
     [
         {timeout, 60, fun metrics_hand_computed_over_real_writes/0},
-        {timeout, 60, fun cross_org_isolation_and_empty_semantics/0}
+        {timeout, 60, fun cross_org_isolation_and_empty_semantics/0},
+        {timeout, 60, fun rating_windows_sql_reconciliation/0}
     ];
 cases({error, Reason}) ->
     erlang:error({csbe07_pg_suite_db_unavailable, Reason}).
@@ -187,6 +188,106 @@ cross_org_isolation_and_empty_semantics() ->
     after
         ?FIX:cleanup(Scope)
     end.
+
+%% 独立日历常量与原始 SQL 对拍，不从被测窗口或聚合响应反推期望。
+rating_windows_sql_reconciliation() ->
+    lists:foreach(fun rating_window/1, [
+        {0, 1699920000, <<"+00:00">>},
+        {480, 1699891200, <<"+08:00">>},
+        {-480, 1699948800, <<"-08:00">>}
+    ]).
+
+rating_window({Tz, Start, Offset}) ->
+    Scope = ?FIX:new_scope(),
+    try
+        End = Start + 86400,
+        Rated = [
+            rate_at(Scope, Start, At, Score)
+         || {At, Score} <- [
+                {Start - 1, 1}, {Start, 2}, {End - 1, 4}, {End, 5}
+            ]
+        ],
+        Unrated = closed_for_rating(Scope, Start),
+        {ok, Detail} = customer_service_facade:seat_session_detail(org(Scope), #{
+            workspace_id => ws(Scope),
+            session_id => maps:get(id, Unrated),
+            business_identity_id => maps:get(service_identity_id, Scope)
+        }),
+        Wire = cs_http:encode_entity(Detail),
+        ?assertEqual(null, maps:get(rating, Wire)),
+        ?assertEqual(null, maps:get(rating_at, Wire)),
+        Params = #{workspace_id => ws(Scope), date => ?DAY, tz_offset => Tz},
+        assert_rating_stats(Scope, Params, Start, 2, 3.0),
+        assert_rating_stats(Scope, Params#{date => <<"2023-11-13">>}, Start - 86400, 1, 1.0),
+        assert_rating_stats(Scope, Params#{date => <<"2023-11-15">>}, End, 1, 5.0),
+        assert_rating_sql(Scope, Offset, Rated, maps:get(id, Unrated))
+    after
+        ?FIX:cleanup(Scope)
+    end.
+
+closed_for_rating(Scope, Start) ->
+    Session = open_session(Scope, conv(Scope), Start - 5),
+    {ok, Active} = claim(Scope, Session, Start - 4),
+    {ok, Closed} = close(Scope, Session, maps:get(version, Active), Start - 3),
+    Closed.
+
+rate_at(Scope, Start, At, Score) ->
+    Closed = closed_for_rating(Scope, Start),
+    {ok, _} = rate(Scope, Closed, maps:get(version, Closed), Score, At),
+    {maps:get(id, Closed), Score, At}.
+
+assert_rating_stats(Scope, Params, Start, Count, Average) ->
+    {ok, Stats} = cs_session_app:session_stats(org(Scope), Params),
+    ?assertEqual(Start, maps:get(window_start, Stats)),
+    ?assertEqual(Start + 86400, maps:get(window_end, Stats)),
+    ?assertEqual(maps:get(tz_offset, Params), maps:get(tz_offset, Stats)),
+    ?assertEqual(maps:get(date, Params), maps:get(date, Stats)),
+    Rating = maps:get(rating, Stats),
+    ?assertEqual(Count, maps:get(count, Rating)),
+    ?assert(avg_close_to(Average, maps:get(avg, Rating))).
+
+assert_rating_sql(Scope, Offset, Rated, UnratedId) ->
+    Params = [
+        org(Scope),
+        ws(Scope),
+        <<"2023-11-14T00:00:00", Offset/binary>>,
+        <<"2023-11-15T00:00:00", Offset/binary>>
+    ],
+    {ok, Rows} = elib_pg:query(
+        <<
+            "SELECT id, rating, extract(epoch from rating_at)::bigint AS rated_at"
+            " FROM customer_service_session WHERE organization_id=$1 AND workspace_id=$2"
+            " AND rating_at >= $3::text::timestamptz AND rating_at < $4::text::timestamptz"
+            " ORDER BY rating_at, id"
+        >>,
+        Params
+    ),
+    Actual = [
+        {maps:get(<<"id">>, R), maps:get(<<"rating">>, R), maps:get(<<"rated_at">>, R)}
+     || R <- Rows
+    ],
+    ?assertEqual([lists:nth(2, Rated), lists:nth(3, Rated)], Actual),
+    {ok, [Aggregate]} = elib_pg:query(
+        <<
+            "SELECT count(*)::bigint AS rated_count, avg(rating)::float8 AS average"
+            " FROM customer_service_session WHERE organization_id=$1 AND workspace_id=$2"
+            " AND rating_at >= $3::text::timestamptz AND rating_at < $4::text::timestamptz"
+        >>,
+        Params
+    ),
+    ?assertEqual(2, maps:get(<<"rated_count">>, Aggregate)),
+    ?assert(avg_close_to(3.0, maps:get(<<"average">>, Aggregate))),
+    {ok, AllRows} = elib_pg:query(
+        <<
+            "SELECT id FROM customer_service_session"
+            " WHERE organization_id=$1 AND workspace_id=$2 ORDER BY id"
+        >>,
+        [org(Scope), ws(Scope)]
+    ),
+    ?assertEqual(
+        lists:sort([UnratedId | [Id || {Id, _, _} <- Rated]]),
+        [maps:get(<<"id">>, R) || R <- AllRows]
+    ).
 
 %% ===================================================================
 %% 夹具辅助

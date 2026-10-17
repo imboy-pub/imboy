@@ -381,9 +381,26 @@ check_forbidden_crypto_keys(Req, Body) ->
     case
         [
             K
-         || K <- forbidden_crypto_keys(),
+         || K <-
+                forbidden_crypto_keys() ++
+                    [
+                        origin,
+                        at,
+                        response_origin,
+                        response_fact,
+                        response_measurement_version,
+                        first_visitor_message_id,
+                        first_visitor_message_at,
+                        first_human_reply_id,
+                        first_human_reply_at,
+                        first_ai_reply_id,
+                        first_ai_reply_at,
+                        first_reply,
+                        first_response_at,
+                        accepted_at
+                    ],
             Bin <- [key_bin(K)],
-            is_map_key(Bin, Body) orelse proplists:is_defined(Bin, Qs)
+            is_map_key(K, Body) orelse is_map_key(Bin, Body) orelse proplists:is_defined(Bin, Qs)
         ]
     of
         [] -> ok;

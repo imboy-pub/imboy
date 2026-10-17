@@ -222,7 +222,7 @@ visitor_flow_tests(_) ->
             meck:expect(customer_service_facade, verify_visit_token, fun(_O, _P) ->
                 {ok, #{organization_id => ?ORG, contact_id => ?CONTACT, scope => visit}}
             end),
-            meck:expect(customer_service_facade, append_session_message, fun(_O, _P) ->
+            meck:expect(customer_service_facade, append_session_message, fun(_O, _P, visitor) ->
                 erlang:error(key_ref_leaked_to_application)
             end),
             ?S:with_listener(tenant, session_messages, #{auth_facts => cs_fake_facts}, fun(Port) ->
@@ -252,7 +252,9 @@ visitor_flow_tests(_) ->
                 meck:expect(customer_service_facade, verify_visit_token, fun(_O, _P) ->
                     {ok, #{organization_id => ?ORG, contact_id => ?CONTACT, scope => visit}}
                 end),
-                meck:expect(customer_service_facade, append_session_message, fun(Org, Params) ->
+                meck:expect(customer_service_facade, append_session_message, fun(
+                    Org, Params, visitor
+                ) ->
                     %% HTTP 面不再承载 key_ref：facade 收到的 Params 里没有它。
                     ?assertNot(is_map_key(key_ref, Params)),
                     {ok, #{id => 88, organization_id => Org}}
@@ -323,7 +325,7 @@ visitor_flow_tests(_) ->
             %% 正例对照：不带 contact_id 时由 token 作用域派生。
             %% （组内共享同一 meck 实例：替换前面负例安装的错误桩。）
             persistent_term:erase({cs02_test, captured_contact}),
-            meck:expect(customer_service_facade, append_session_message, fun(Org, Params) ->
+            meck:expect(customer_service_facade, append_session_message, fun(Org, Params, visitor) ->
                 persistent_term:put(
                     {cs02_test, captured_contact},
                     maps:get(contact_id, Params, undefined)
@@ -426,7 +428,7 @@ seat_flow_tests(_) ->
             meck:expect(customer_service_facade, fetch_seat, fun(_O, _P) ->
                 {ok, #{business_identity_id => ?IDENTITY, enabled => true}}
             end),
-            meck:expect(customer_service_facade, claim, fun(Org, Params) ->
+            meck:expect(customer_service_facade, claim, fun(_Org, Params) ->
                 ?assertEqual(?IDENTITY, maps:get(business_identity_id, Params)),
                 {ok, #{
                     id => ?SESSION,
@@ -476,7 +478,7 @@ seat_flow_tests(_) ->
             meck:expect(customer_service_facade, fetch_seat, fun(_O, _P) ->
                 {ok, #{enabled => true}}
             end),
-            meck:expect(enterprise_business_facade, list_messages, fun(Org, Params) ->
+            meck:expect(customer_service_facade, list_messages, fun(Org, Params) ->
                 ?assertEqual(?ORG, Org),
                 ?assertEqual(?CONVERSATION, maps:get(conversation_id, Params)),
                 {ok, [#{id => 42, body => <<"m1">>}]}
@@ -502,7 +504,7 @@ seat_flow_tests(_) ->
             meck:expect(customer_service_facade, fetch_seat, fun(_O, _P) ->
                 {ok, #{enabled => true}}
             end),
-            meck:expect(enterprise_business_facade, list_messages, fun(_O, _P) ->
+            meck:expect(customer_service_facade, list_messages, fun(_O, _P) ->
                 {error, {assignee_change_requires_offboarding, ?IDENTITY}}
             end),
             ?S:with_listener(tenant, conversation_messages, seat_inject(), fun(Port) ->
@@ -674,7 +676,7 @@ governance_flow_tests(_) ->
         {"governance suspends a seat (200, TSID string in response)", fun() ->
             cs_fake_facts:set(owner_facts()),
             AdminInject = #{auth_facts => cs_fake_facts, current_uid => ?UID},
-            meck:expect(customer_service_facade, suspend_seat, fun(Org, Params) ->
+            meck:expect(customer_service_facade, suspend_seat, fun(_Org, Params) ->
                 ?assertEqual(?IDENTITY, maps:get(business_identity_id, Params)),
                 {ok, #{business_identity_id => ?IDENTITY, enabled => false}}
             end),

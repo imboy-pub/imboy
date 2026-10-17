@@ -173,6 +173,7 @@ contracts() ->
             {append_event, 2},
             %% R3-F2：canonical tx 内追加同一条审计（c049a285 契约补登记）
             {append_event_in, 3},
+            {observe_response_in, 5},
             {fetch_event_scope, 2},
             {list_events_page, 4},
             {event_watermark, 2},

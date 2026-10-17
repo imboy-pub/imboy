@@ -270,7 +270,7 @@ session_list_contact(OrgId, Params) ->
 session_fetch(OrgId, Params) ->
     cs_session_app:fetch_session(OrgId, Params).
 session_append_message(OrgId, Params) ->
-    cs_session_app:append_session_message(OrgId, Params).
+    cs_session_app:append_session_message(OrgId, Params, visitor).
 session_rate(OrgId, Params) ->
     cs_session_app:rate(OrgId, Params).
 -else.
