@@ -437,7 +437,7 @@ create_post_transaction_failure_never_notifies_test_() ->
     ?WITH_MECKS(
         [
             {moment_ds, [{'create_post', 2, fun(1001, _) -> {error, invalid_media_attachment} end}]},
-            {moderation_policy, [{'inspect', 2, fun(moment_post, _) -> clean end}]},
+            {moderation_policy, [{'inspect', 2, fun(moment_post, _) -> allow end}]},
             {moment_logic_notify, [
                 {'notify_post_created', 2, fun(_, _) -> error(unexpected_notification) end}
             ]}

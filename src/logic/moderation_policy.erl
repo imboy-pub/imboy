@@ -12,7 +12,7 @@
 %%%   密文，举报面走 R-01 的客户端明文证据模型。
 %%%
 
--export([inspect/2]).
+-export([inspect/2, inspect_snapshot/2]).
 -export([enqueue/7]).
 -export([normalize_text/1]).
 
@@ -49,11 +49,69 @@ inspect(_Surface, Text) ->
             end
     end.
 
+inspect_snapshot(_Surface, Fields) ->
+    case cached_words() of
+        {ok, Words} ->
+            Results = [
+                decide(match_hits(normalize_text(Text), Words, []))
+             || {_, Text} <- Fields, is_binary(Text)
+            ],
+            Blocked = lists:append([Hits || {blocked, Hits} <- Results]),
+            Reviewed = lists:append([Hits || {queued, Hits} <- Results]),
+            Verdict =
+                case {Blocked, Reviewed} of
+                    {[], []} -> allow;
+                    {[], Hits} -> {queued, Hits};
+                    {Hits, _} -> {blocked, Hits ++ Reviewed}
+                end,
+            {Verdict, snapshot(Words, Verdict)};
+        {error, _} ->
+            {allow, unavailable}
+    end.
+
+snapshot(Words, Verdict) ->
+    Rows = [
+        {Word, Category, Severity}
+     || #{<<"word">> := Word, <<"category">> := Category, <<"severity">> := Severity} <- Words,
+        is_binary(Word),
+        is_binary(Category),
+        is_binary(Severity)
+    ],
+    case length(Rows) =:= length(Words) of
+        true ->
+            Decision =
+                case Verdict of
+                    allow -> allow;
+                    {blocked, _} -> block;
+                    {queued, _} -> review
+                end,
+            #{
+                decision => Decision,
+                base_rules_digest => textguard_base_digest:digest(Rows),
+                normalization_id => <<"imboy-base-v1">>,
+                semantics_id => <<"compat-v1">>
+            };
+        false ->
+            unavailable
+    end.
+
 %% @doc 命中入队（先发后审复核行）。入队失败由调用方决定策略（发布面 fail-open）。
 -spec enqueue(
     surface(), integer(), integer(), integer(), binary(), binary(), [hit()]
 ) -> ok | {error, term()}.
 enqueue(Surface, MsgId, ToId, FromId, FromAccount, Content, Hits) ->
+    try enqueue_row(Surface, MsgId, ToId, FromId, FromAccount, Content, Hits) of
+        {ok, _} -> ok;
+        _ -> enqueue_failed()
+    catch
+        _:_ -> enqueue_failed()
+    end.
+
+enqueue_failed() ->
+    ?ERROR_LOG(["review_enqueue_failed"]),
+    {error, review_enqueue_failed}.
+
+enqueue_row(Surface, MsgId, ToId, FromId, FromAccount, Content, Hits) ->
     Id = elib_tsid:generate(review_queue),
     HitWords = iolist_to_binary(lists:join(<<",">>, [hit_word(H) || H <- Hits])),
     {MsgType, ToType} = surface_types(Surface),
@@ -61,19 +119,22 @@ enqueue(Surface, MsgId, ToId, FromId, FromAccount, Content, Hits) ->
     Sql =
         <<"INSERT INTO ", Tb/binary,
             " (id, msg_id, msg_type, content, from_id, from_account, to_id, to_type,"
-            " hit_words, review_status)"
-            " VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'pending')">>,
-    case
-        elib_pg:query(Sql, [
-            Id, MsgId, MsgType, Content, FromId, FromAccount, ToId, ToType, HitWords
-        ])
-    of
-        {ok, _} ->
-            ok;
-        {error, Reason} = Err ->
-            ?ERROR_LOG(["moderation_policy enqueue error: ", Reason]),
-            Err
-    end.
+            " hit_words, review_status, metadata)"
+            " VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'pending', $10::jsonb)">>,
+    Metadata = jsone:encode(#{
+        schema_version => 1,
+        hits => Hits,
+        hit_words => [hit_word(H) || H <- Hits],
+        content_version =>
+            case Hits of
+                [First | _] -> maps:get(content_version, First, null);
+                [] -> null
+            end,
+        content_sha256 => binary:encode_hex(crypto:hash(sha256, Content), lowercase)
+    }),
+    elib_pg:query(Sql, [
+        Id, MsgId, MsgType, Content, FromId, FromAccount, ToId, ToType, HitWords, Metadata
+    ]).
 
 %% @doc 文本归一化：小写 + 全角 ASCII 变体（U+FF01..FF5E）转半角 + 去零宽字符。
 -spec normalize_text(binary()) -> binary().

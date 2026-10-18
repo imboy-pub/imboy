@@ -1,0 +1,106 @@
+syntax = "proto3";
+package imboy.textguard.v1;
+
+service TextGuard {
+  rpc CheckText(CheckTextRequest) returns (CheckTextResponse);
+  rpc GetInfo(GetInfoRequest) returns (GetInfoResponse);
+}
+
+enum Scene {
+  SCENE_UNSPECIFIED = 0;
+  CHANNEL_MESSAGE = 1;
+  MOMENT_POST = 2;
+  PROFILE_FIELD = 3;
+}
+
+enum Decision {
+  DECISION_UNSPECIFIED = 0;
+  ALLOW = 1;
+  REVIEW = 2;
+  BLOCK = 3;
+}
+
+enum Severity {
+  SEVERITY_UNSPECIFIED = 0;
+  LOW = 1;
+  MEDIUM = 2;
+  HIGH = 3;
+}
+
+enum MatchMethod {
+  METHOD_UNSPECIFIED = 0;
+  LITERAL = 1;
+  T2S = 2;
+  GAP = 3;
+  ALIAS = 4;
+  REGEX = 5;
+}
+
+enum VariantType {
+  VARIANT_UNSPECIFIED = 0;
+  CANONICAL = 1;
+  PINYIN = 2;
+  HOMOPHONE = 3;
+  LOOKALIKE = 4;
+  DECOMPOSED = 5;
+  REGEX_RULE = 6;
+}
+
+message TextField {
+  optional string field_id = 1;
+  optional string text = 2;
+}
+
+message CheckTextRequest {
+  optional string request_id = 1;
+  optional Scene scene = 2;
+  repeated TextField fields = 3;
+}
+
+message Hit {
+  optional string field_id = 1;
+  optional string rule_id = 2;
+  optional string variant_id = 3;
+  optional VariantType variant_type = 4;
+  optional string word = 5;
+  optional string category = 6;
+  optional Severity severity = 7;
+  optional Decision effective_action = 8;
+  optional uint32 start_byte = 9;
+  optional uint32 end_byte = 10;
+  repeated MatchMethod match_methods = 11;
+}
+
+message CheckTextResponse {
+  optional string request_id = 1;
+  optional string ruleset_revision = 2;
+  optional string generation = 3;
+  optional string normalization_id = 4;
+  optional string t2s_table_id = 5;
+  optional string semantics_id = 6;
+  optional string base_rules_digest = 7;
+  optional Decision decision = 8;
+  optional bool scan_complete = 9;
+  optional bool hits_truncated = 10;
+  repeated Hit hits = 11;
+  optional uint32 fields_checked = 12;
+  optional string hit_semantics = 13;
+  optional string build_id = 14;
+}
+
+message GetInfoRequest {}
+
+message GetInfoResponse {
+  optional string instance_id = 1;
+  optional bool ready = 2;
+  optional string build_id = 3;
+  optional string ruleset_revision = 4;
+  optional string generation = 5;
+  optional string normalization_id = 6;
+  optional string t2s_table_id = 7;
+  optional string base_rules_digest = 8;
+  optional uint32 canonical_count = 9;
+  optional uint32 alias_count = 10;
+  optional uint32 regex_count = 11;
+  repeated string supported_semantics = 12;
+}

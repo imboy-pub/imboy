@@ -44,3 +44,30 @@ review_page_propagates_error_test_() ->
             ?assertEqual({error, db_down}, moderation_ds:review_page(1, 10, #{}))
         end
     ).
+
+review_page_uses_structured_comma_word_test_() ->
+    ?WITH_MECKS(
+        [
+            {review_queue_repo, [
+                {'page', 3, fun(_, _, _) ->
+                    Metadata = #{<<"hit_words">> => [<<"one,two">>]},
+                    {ok, #{
+                        list => [
+                            #{<<"hit_words">> => <<"one,two">>, <<"metadata">> => Metadata},
+                            #{
+                                <<"hit_words">> => <<"one,two">>,
+                                <<"metadata">> => jsone:encode(Metadata)
+                            }
+                        ]
+                    }}
+                end}
+            ]}
+        ],
+        fun() ->
+            {ok, #{list := Rows}} = moderation_ds:review_page(1, 10, #{}),
+            ?assertEqual(
+                [[<<"one,two">>], [<<"one,two">>]],
+                [maps:get(<<"hit_words">>, Row) || Row <- Rows]
+            )
+        end
+    ).

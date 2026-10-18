@@ -146,14 +146,25 @@ maybe_remove_rejected_content(_Action, _Id) ->
 %% 不因撤下失败回滚）。profile 清空而非恢复原值：reject 时原值语义已不可信，
 %% 交由用户重新设置。
 remove_surface_content(Row) ->
+    case reviewed_content(Row) of
+        {error, invalid_review_binding} ->
+            ?ERROR_LOG(["review_binding_invalid"]),
+            ok;
+        Expected ->
+            remove_surface_content(Row, Expected)
+    end.
+
+remove_surface_content(Row, Expected) ->
     MsgType = get_bin(Row, <<"msg_type">>),
     MsgId = row_positive_int(Row, <<"msg_id">>),
     case {MsgType, MsgId > 0} of
         {<<"channel_message">>, true} ->
             ChannelId = row_positive_int(Row, <<"to_id">>),
-            case catch channel_message_ds:delete(MsgId) of
-                {ok, _} ->
+            case catch channel_message_ds:delete_checked(MsgId, Expected) of
+                {ok, Count} when Count > 0 ->
                     _ = catch channel_logic_notify:notify_message_deleted(ChannelId, MsgId),
+                    ok;
+                {ok, 0} ->
                     ok;
                 {error, Reason} ->
                     ?ERROR_LOG(["moderation reject channel remove failed: ", MsgId, Reason]),
@@ -174,7 +185,7 @@ remove_surface_content(Row) ->
                     ok
             end;
         _ ->
-            case remove_profile_field(MsgType, MsgId) of
+            case remove_profile_field(MsgType, MsgId, Expected) of
                 ok ->
                     ok;
                 {error, Reason} ->
@@ -184,11 +195,11 @@ remove_surface_content(Row) ->
     end.
 
 %% R-03.1：拆 msg_type 后缀定位资料字段，清空该字段（msg_id=uid）。
--spec remove_profile_field(binary(), integer()) -> ok | {error, term()}.
-remove_profile_field(MsgType, Uid) ->
+-spec remove_profile_field(binary(), integer(), binary() | map()) -> ok | {error, term()}.
+remove_profile_field(MsgType, Uid, Content) ->
     case binary:split(MsgType, <<":">>) of
         [<<"profile_field">>, Field] when Field =/= <<>>, Uid > 0 ->
-            case catch user_ds:update_field(Uid, Field, <<>>) of
+            case catch user_ds:update_field_checked(Uid, Field, <<>>, Content) of
                 {ok, _} ->
                     ok;
                 Other ->
@@ -196,6 +207,34 @@ remove_profile_field(MsgType, Uid) ->
             end;
         _ ->
             ok
+    end.
+
+reviewed_content(Row) ->
+    Content = get_bin(Row, <<"content">>),
+    case get_bin(Row, <<"msg_type">>) of
+        <<"moment_post">> ->
+            Content;
+        Type ->
+            try
+                Metadata0 = maps:get(<<"metadata">>, Row, #{}),
+                Metadata =
+                    case Metadata0 of
+                        Binary when is_binary(Binary) -> jsone:decode(Binary);
+                        Map when is_map(Map) -> Map
+                    end,
+                case Metadata of
+                    Empty when map_size(Empty) =:= 0 -> Content;
+                    #{<<"schema_version">> := 1, <<"content_version">> := Version} when
+                        is_binary(Version), byte_size(Version) =:= 32;
+                        Version =:= <<>>, Type =:= <<"channel_message">>
+                    ->
+                        #{content => Content, version => Version};
+                    _ ->
+                        {error, invalid_review_binding}
+                end
+            catch
+                _:_ -> {error, invalid_review_binding}
+            end
     end.
 
 %% SLA：pending 且创建超过 24h → overdue=true

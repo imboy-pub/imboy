@@ -261,7 +261,7 @@ beam-cache-restore-test:
 
 define compile_proto.erl
 	[begin
-		gpb_compile:file(F, [
+		gpb_compile:file(F, case filename:basename(F) of "textguard.proto" -> [use_packages]; _ -> [] end ++ [
 			{i, "src"},
 			{include_as_lib, true},
 			{module_name_suffix, "_pb"},

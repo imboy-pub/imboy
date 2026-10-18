@@ -149,8 +149,12 @@ enqueue_writes_pending_row_test_() ->
                             <<"channel">>,
                             <<"badword">>
                         ],
-                        Params
+                        lists:sublist(Params, 9)
                     ),
+                    ?assertEqual(10, length(Params)),
+                    Metadata = jsone:decode(lists:nth(10, Params)),
+                    ?assertEqual([<<"badword">>], maps:get(<<"hit_words">>, Metadata)),
+                    ?assertEqual(64, byte_size(maps:get(<<"content_sha256">>, Metadata))),
                     {ok, [#{<<"id">> => 9001}]}
                 end}
             ]}
@@ -179,7 +183,7 @@ enqueue_failure_returned_fail_open_by_caller_test_() ->
         fun() ->
             Hits = [#{word => <<"badword">>, severity => <<"medium">>}],
             ?assertEqual(
-                {error, pg_down},
+                {error, review_enqueue_failed},
                 moderation_policy:enqueue(moment_post, 601, 0, 1001, <<>>, <<"c">>, Hits)
             )
         end
@@ -214,8 +218,11 @@ enqueue_profile_field_encodes_field_in_msg_type_test_() ->
                             <<"profile">>,
                             <<"mild">>
                         ],
-                        Params
+                        lists:sublist(Params, 9)
                     ),
+                    ?assertEqual(10, length(Params)),
+                    Metadata = jsone:decode(lists:nth(10, Params)),
+                    ?assertEqual([<<"mild">>], maps:get(<<"hit_words">>, Metadata)),
                     {ok, [#{<<"id">> => 9003}]}
                 end}
             ]}
