@@ -27,7 +27,9 @@ cleanup() {
   python3 - "$PRIVATE" "$NATIVE_CI_ARTIFACTS" <<'PY_CLEAN'
 import os,pathlib,sys
 private,out=map(pathlib.Path,sys.argv[1:])
-secrets=[os.environ.get(n,'') for n in ('W202_GARAGE_ACCESS_KEY','W202_GARAGE_SECRET_KEY','NATIVE_GARAGE_RPC_SECRET')]
+secrets=[os.environ.get(n,'') for n in ('W202_GARAGE_ACCESS_KEY',
+                                    'W202_GARAGE_SECRET_KEY',
+                                    'NATIVE_GARAGE_RPC_SECRET')]
 for pattern in ('postgres.log','garage-server.log','migrate-*.log'):
  for source in private.glob(pattern):
   text=source.read_text(errors='replace')
