@@ -36,7 +36,6 @@ scenario(S, Driver, Kind) ->
         [Ws, Org, Uid]
     ),
     Subject = #{<<"kind">> => Kind, <<"principal">> => integer_to_binary(Uid)},
-    Registration = #{<<"subject">> => Subject, <<"declaration">> => #{<<"fixture">> => true}},
     Hash = eb_asset_content:sha256_hex(Bytes),
     Now = erlang:system_time(second),
     Cid = elib_uuid:gen_v7(),
@@ -47,6 +46,19 @@ scenario(S, Driver, Kind) ->
         object_hash => Hash,
         mime => <<"text/plain">>,
         size_bytes => byte_size(Bytes)
+    },
+    %% Admission validates actual bytes against the frozen presign declaration.
+    Registration = #{
+        <<"subject">> => Subject,
+        <<"declaration">> => #{
+            <<"mime">> => maps:get(mime, D),
+            <<"object_hash">> => Hash,
+            <<"size_bytes">> => byte_size(Bytes),
+            <<"conversation_id">> => null,
+            <<"file_name">> => null,
+            <<"message_id">> => null,
+            <<"retain_until">> => null
+        }
     },
     {ok, Id} = eb_pg_asset_meta:register_session_v5(Org, Ws, D, Cid, Registration, {
         Now + 3600, Now + 300
@@ -71,6 +83,13 @@ scenario(S, Driver, Kind) ->
     },
     Put = D#{payload => Bytes, upload_subject => Subject, signature_context => Ctx},
     ?assertMatch({ok, _}, eb_asset_store:put_private(Org, Ws, Put)),
+    ?assertEqual({ok, {content_stream, Bytes}}, eb_asset_store:stream_content(Org, Ws, Id)),
+    %% Binary compatibility and the HTTP sealed-source path pin the same receipt.
+    attachment_upload_spool:with_source(Bytes, fun(Source) ->
+        ?assertEqual(byte_size(Bytes), attachment_upload_spool:size(Source)),
+        ?assertEqual(Hash, attachment_upload_spool:sha256(Source)),
+        ?assertMatch({ok, _}, eb_asset_store:put_private(Org, Ws, Put#{payload => Source}))
+    end),
     ?assertEqual({ok, {content_stream, Bytes}}, eb_asset_store:stream_content(Org, Ws, Id)),
     ?assertMatch({error, _}, eb_asset_store:put_private(Org, Ws, Put#{payload => <<"different">>})),
     Roots = maps:map(

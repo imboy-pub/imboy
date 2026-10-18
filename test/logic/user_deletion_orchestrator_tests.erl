@@ -117,12 +117,13 @@ multi_domain_e2e_test_() ->
                 [new_uid(), GroupId, Member]
             ),
             %% 个人消息/朋友圈/附件/E2EE 密钥
-            {ok, _} = elib_pg:query(
+            MsgKey = <<"m1-", (integer_to_binary(MsgId))/binary>>,
+            {ok, 1} = personal_message_order_repo:execute_formal(Uid, Member, MsgKey,
                 <<
-                    "INSERT INTO public.msg_c2c (id, from_id, to_id, msg_id, msg_type, payload)"
-                    " VALUES ($1, $2, $3, 'm1', 't', 'p')"
+                    "INSERT INTO public.msg_c2c (id, from_id, to_id, msg_id, msg_type, payload, conv_seq)"
+                    " VALUES ($1, $2, $3, $4, 't', 'p', $5)"
                 >>,
-                [MsgId, Uid, Member]
+                [MsgId, Uid, Member, MsgKey]
             ),
             {ok, _} = elib_pg:query(
                 <<
@@ -186,6 +187,10 @@ multi_domain_e2e_test_() ->
             reset_preflight_stub(),
             cleanup_user(Uid),
             cleanup_user(Member),
+            {ok, _} = elib_pg:execute(
+                <<"DELETE FROM public.msg_store_seq WHERE conv_key=$1">>,
+                [msg_archive_repo:conv_key(<<"c2c">>, Uid, Member)]
+            ),
             _ = elib_pg:query(<<"DELETE FROM public.\"group\" WHERE id = $1">>, [GroupId])
         end
     end).

@@ -208,20 +208,9 @@ decode(Raw) ->
 -define(UPLOAD_MAX_BYTES, 25 * 1024 * 1024).
 
 -spec read_upload_body(cowboy_req:req()) ->
-    {ok, binary(), cowboy_req:req()} | {error, term()}.
+    {ok, term(), cowboy_req:req()} | {error, term()}.
 read_upload_body(Req) ->
-    read_upload_body(Req, []).
-
-read_upload_body(Req, Acc) ->
-    case cowboy_req:read_body(Req, #{length => 4 * 1024 * 1024, period => 10000}) of
-        {ok, Data, Req1} ->
-            {ok, iolist_to_binary(lists:reverse([Data | Acc])), Req1};
-        {more, Data, Req1} ->
-            case iolist_size(Acc) + byte_size(Data) > ?UPLOAD_MAX_BYTES of
-                true -> {error, {invalid_param, payload}};
-                false -> read_upload_body(Req1, [Data | Acc])
-            end
-    end.
+    attachment_upload_body:read(Req, ?UPLOAD_MAX_BYTES).
 
 normalize_body(Map) ->
     Known = known_keys(),

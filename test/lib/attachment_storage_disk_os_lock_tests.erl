@@ -3,9 +3,9 @@
 
 kernel_lock_test_() -> {timeout, 30, fun kernel_lock/0}.
 kernel_lock() ->
-    Root =
-        "/private/tmp/attv5-oslock-" ++
-            binary_to_list(binary:encode_hex(crypto:strong_rand_bytes(12), lowercase)),
+    Root = filename:join(temp_dir(), "attv5-oslock-" ++
+        binary_to_list(binary:encode_hex(crypto:strong_rand_bytes(12), lowercase))),
+    ok = file:make_dir(Root),
     Prior = application:get_env(imboy, attachment_storage_registry),
     Registry = #{
         version => 1,
@@ -19,8 +19,9 @@ kernel_lock() ->
             }
         }
     },
-    application:set_env(imboy, attachment_storage_registry, Registry),
     try
+        ok = file:change_mode(Root, 8#700),
+        application:set_env(imboy, attachment_storage_registry, Registry),
         ok = attachment_storage_disk:put(<<"n">>, <<"c">>, <<"owned">>, <<"before">>),
         Holder = start_holder(Root),
         try
@@ -50,7 +51,7 @@ kernel_lock() ->
         ?assertEqual(
             {error, not_found}, attachment_storage_disk:read(<<"n">>, <<"c">>, <<"owned">>)
         ),
-        ok = file:make_symlink("/private/tmp", filename:join([Root, "c", "escape"])),
+        ok = file:make_symlink("/tmp", filename:join([Root, "c", "escape"])),
         ?assertEqual(
             {error, path_escape},
             attachment_storage_disk:put(<<"n">>, <<"c">>, <<"escape/not-owned">>, <<"never">>)
@@ -59,45 +60,70 @@ kernel_lock() ->
         case Prior of
             {ok, V} -> application:set_env(imboy, attachment_storage_registry, V);
             undefined -> application:unset_env(imboy, attachment_storage_registry)
-        end
+        end,
+        %% del_dir_r removes symlinks themselves, never their outside targets.
+        ok = file:del_dir_r(Root)
     end.
 locked_symlink_race(Root) ->
     Holder = start_holder(Root),
     Parent = self(),
-    Worker = spawn(fun() ->
+    Ref = make_ref(),
+    {Worker, Monitor} = spawn_monitor(fun() ->
         receive
             start ->
                 Parent !
-                    {write_result,
+                    {Ref, write_result,
                         attachment_storage_disk:put(
                             <<"n">>, <<"c">>, <<"owned">>, <<"must-not-escape">>
                         )}
         end
     end),
-    erlang:trace_pattern({attachment_storage_disk, hold_lock, 3}, true, [local]),
-    erlang:trace(Worker, true, [call, {tracer, Parent}]),
-    Worker ! start,
     Dir = filename:join(Root, "c"),
     Old = Dir ++ "-original",
-    Outside = Root ++ "-outside-owned",
+    Outside = filename:join(Root, "outside-owned"),
     try
+        erlang:trace_pattern({attachment_storage_disk, hold_lock, 3}, true, [local]),
+        erlang:trace(Worker, true, [call, {tracer, Parent}]),
+        Worker ! start,
         receive
             {trace, Worker, call, {attachment_storage_disk, hold_lock, _}} -> ok
         after 2000 -> erlang:error(lock_barrier_missing)
         end,
         ok = file:make_dir(Outside),
+        ok = file:change_mode(Outside, 8#700),
         ok = file:rename(Dir, Old),
         ok = file:make_symlink(Outside, Dir),
         kill_holder(Holder),
         receive
-            {write_result, Result} -> ?assertEqual({error, path_escape}, Result)
+            {Ref, write_result, Result} -> ?assertEqual({error, path_escape}, Result)
         after 7000 -> erlang:error(race_worker_timeout)
         end,
         ?assertNot(filelib:is_file(filename:join(Outside, "owned"))),
         ok = file:delete(Dir),
         ok = file:rename(Old, Dir)
     after
-        erlang:trace_pattern({attachment_storage_disk, hold_lock, 3}, false, [local])
+        %% A failed barrier/assertion must not leave a writer or lock owner alive.
+        try stop_worker(Worker, Monitor)
+        after
+            try kill_holder(Holder)
+            after
+                erlang:trace_pattern({attachment_storage_disk, hold_lock, 3}, false, [local])
+            end
+        end
+    end.
+
+temp_dir() ->
+    %% Linux has /tmp; macOS aliases it to /private/tmp. Never seed a symlink root.
+    case file:read_link_all("/tmp") of
+        {ok, Target} -> filename:absname(Target, "/");
+        {error, einval} -> "/tmp"
+    end.
+
+stop_worker(Worker, Monitor) ->
+    exit(Worker, kill),
+    receive
+        {'DOWN', Monitor, process, Worker, _} -> ok
+    after 2000 -> erlang:error(race_worker_not_dead)
     end.
 
 start_holder(Root) ->
@@ -117,16 +143,25 @@ start_holder(Root) ->
         {line, 1024},
         {args, ["+S", "1:1", "-noshell", "-pa", filename:absname("ebin"), "-eval", Eval]}
     ]),
-    receive
-        {Port, {data, {eol, <<"LOCK_HELD">>}}} -> Port;
-        {Port, {data, Other}} -> erlang:error({holder_failed, Other});
-        {Port, {exit_status, Status}} -> erlang:error({holder_exited, Status})
-    after 10000 ->
-        kill_holder(Port),
-        erlang:error(holder_timeout)
+    try
+        receive
+            {Port, {data, {eol, <<"LOCK_HELD">>}}} -> Port;
+            {Port, {data, Other}} -> erlang:error({holder_failed, Other});
+            {Port, {exit_status, Status}} -> erlang:error({holder_exited, Status})
+        after 10000 -> erlang:error(holder_timeout)
+        end
+    catch
+        Class:Reason:Stack ->
+            kill_holder(Port),
+            erlang:raise(Class, Reason, Stack)
     end.
 kill_holder(Port) ->
-    {os_pid, Pid} = erlang:port_info(Port, os_pid),
+    case erlang:port_info(Port, os_pid) of
+        undefined -> ok;
+        {os_pid, Pid} -> kill_holder(Port, Pid)
+    end.
+
+kill_holder(Port, Pid) ->
     Kill = open_port({spawn_executable, "/bin/kill"}, [
         exit_status, {args, ["-KILL", integer_to_list(Pid)]}
     ]),

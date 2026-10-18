@@ -15,7 +15,7 @@
 % 不触个人附件加密链（attachment_cipher 00000052 的客户端加密语义）。
 %%%
 
--export([presign_tx/3, confirm_tx/3]).
+-export([presign_tx/3, presign_recovery_tx/3, confirm_tx/3]).
 
 -include("log.hrl").
 
@@ -199,6 +199,102 @@ presign_renew_tx(Conn, Ctx, Input) ->
                 {error, Reason} ->
                     {error, {<<"service_unavailable">>, Reason}}
             end
+    end.
+
+%% The idempotency body identifies a committed registration, never its current state.
+%% 幂等缓存仅提供原登记身份；当前主体、终态和冻结位置必须在同一锁域重读。
+-spec presign_recovery_tx(any(), map(), map()) -> {ok, map()} | {error, {binary(), term()}}.
+presign_recovery_tx(Conn, Ctx, Cached) ->
+    Key = maps:get(<<"object_key">>, Cached, undefined),
+    OrgId = maps:get(organization_id, Ctx),
+    AppId = maps:get(application_id, Ctx),
+    case is_binary(Key) andalso enterprise_asset_repo:owned_key(Key, OrgId, AppId) of
+        false -> {error, {<<"resource_not_found">>, session_not_found}};
+        true ->
+            case enterprise_asset_repo:recovery_session_tx(Conn, Key) of
+                {ok, Row} -> recover_session(Ctx, Cached, Row);
+                {error, not_found} -> {error, {<<"resource_not_found">>, session_not_found}};
+                {error, _} -> {error, {<<"security_gate_closed">>, recovery_unavailable}}
+            end
+    end.
+
+recover_session(Ctx, Cached, Row) ->
+    OrgId = maps:get(organization_id, Ctx),
+    AppId = maps:get(application_id, Ctx),
+    ExpectedSubject = #{<<"kind">> => <<"application">>,
+        <<"principal">> => integer_to_binary(AppId), <<"org_id">> => integer_to_binary(OrgId)},
+    Registration = maps:get(<<"upload_registration">>, Row, #{}),
+    Subject = case Registration of
+        #{<<"subject">> := S} -> S;
+        _ -> undefined
+    end,
+    case Subject =:= ExpectedSubject andalso maps:get(<<"scope">>, Row, undefined) =:= <<"enterprise">>
+        andalso maps:get(<<"client_upload_id">>, Row, undefined) =:= maps:get(<<"client_upload_id">>, Cached)
+    of
+        false -> {error, {<<"resource_not_found">>, session_not_found}};
+        true -> recover_session_state(Ctx, Cached, Row)
+    end.
+
+recover_session_state(Ctx, Cached, #{<<"session_state">> := <<"confirmed">>} = Row) ->
+    %% Match the established confirm fields and ordinary recovery flags. A GC'd
+    %% asset retains its original ID and reports actual life, without a capability.
+    %% 复用确认结果及普通恢复字段；已回收 metadata 保留原 ID，并返回真实生命周期。
+    Id = maps:get(<<"confirmed_attachment_id">>, Row, null),
+    Life = maps:get(<<"asset_lifecycle_state">>, Row, null),
+    ScopeRef = enterprise_asset_repo:scope_ref(maps:get(organization_id, Ctx), maps:get(application_id, Ctx)),
+    case is_integer(Id) andalso Id =:= maps:get(<<"asset_id">>, Row, null)
+        andalso maps:get(<<"asset_scope">>, Row, null) =:= <<"enterprise">>
+        andalso maps:get(<<"asset_scope_ref">>, Row, null) =:= ScopeRef
+        andalso lists:member(Life, [<<"live">>, <<"delete_intent">>, <<"deleted">>])
+    of
+        true -> {ok, #{
+            <<"file_id">> => Id, <<"object_key">> => maps:get(<<"object_key">>, Cached),
+            <<"size">> => maps:get(<<"asset_size">>, Row),
+            <<"mime_type">> => maps:get(<<"asset_mime_type">>, Row),
+            <<"client_upload_id">> => maps:get(<<"client_upload_id">>, Row),
+            <<"session_state">> => <<"confirmed">>, <<"lifecycle_state">> => Life,
+            <<"session_deadline">> => maps:get(<<"deadline">>, Row),
+            <<"upload_expires_at">> => maps:get(<<"expires_at">>, Row),
+            <<"can_resume">> => false, <<"retry_action">> => <<"none">>
+        }};
+        false -> {error, {<<"security_gate_closed">>, confirmation_unavailable}}
+    end;
+recover_session_state(_Ctx, Cached, #{<<"session_state">> := <<"registered">>} = Row) ->
+    Expiry = maps:get(<<"expires_at">>, Row, null),
+    Deadline = maps:get(<<"deadline">>, Row, null),
+    Now = erlang:system_time(second),
+    case maps:get(<<"deletion_pending">>, Row, true) of
+        true -> {error, {<<"resource_conflict">>, session_not_renewable}};
+        false when is_integer(Expiry), is_integer(Deadline), Expiry > Now, Deadline > Now ->
+            recover_registered(Cached, Row, Expiry, Deadline);
+        false when is_integer(Expiry), is_integer(Deadline) ->
+            {error, {<<"gone">>, session_expired}};
+        _ -> {error, {<<"security_gate_closed">>, recovery_unavailable}}
+    end;
+recover_session_state(_Ctx, _Cached, #{<<"session_state">> := State}) when
+    State =:= <<"rejected">>; State =:= <<"delete_intent">>; State =:= <<"deleted">>
+-> {error, {<<"resource_conflict">>, session_not_renewable}};
+recover_session_state(_Ctx, _Cached, #{<<"session_state">> := <<"expired">>}) ->
+    {error, {<<"gone">>, session_expired}};
+recover_session_state(_Ctx, _Cached, _Row) ->
+    {error, {<<"security_gate_closed">>, recovery_unavailable}}.
+
+recover_registered(Cached, Row, Expiry, Deadline) ->
+    Key = maps:get(<<"object_key">>, Row),
+    case attachment_storage:frozen_location(Key, Row) of
+        {ok, Snapshot} when is_map(Snapshot) ->
+            Stable = #{
+                <<"object_key">> => Key, <<"bucket">> => maps:get(<<"bucket">>, Row),
+                <<"mime_type">> => declared_mime(Row), <<"session_state">> => <<"registered">>,
+                <<"client_upload_id">> => maps:get(<<"client_upload_id">>, Row),
+                <<"session_deadline">> => Deadline, <<"expires_at">> => Expiry
+            },
+            case maps:get(<<"renew">>, Cached, false) of
+                true -> {ok, Stable#{<<"renew">> => true, <<"deadline">> => Deadline}};
+                false -> {ok, Stable}
+            end;
+        {ok, legacy_unknown} -> {error, {<<"resource_conflict">>, recovery_unverified}};
+        {error, _} -> {error, {<<"security_gate_closed">>, recovery_unavailable}}
     end.
 
 id_or_key(Input) ->

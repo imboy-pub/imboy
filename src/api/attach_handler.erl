@@ -607,6 +607,20 @@ upload_error(Req0, invalid_file_type) ->
     elib_response:error(Req0, <<"不支持的文件类型"/utf8>>, ?ERR_BAD_REQUEST);
 upload_error(Req0, file_too_large) ->
     elib_response:error(Req0, <<"文件超过大小限制"/utf8>>, ?ERR_PAYLOAD_TOO_LARGE);
+upload_error(Req0, historical_location_unverified) ->
+    elib_response:error_with_status(
+        Req0, ?ERR_CONFLICT, <<"historical_location_unverified">>,
+        #{<<"retry_action">> => <<"reupload_new_session">>}, ?ERR_CONFLICT
+    );
+upload_error(Req0, Reason) when
+    Reason =:= content_mismatch; Reason =:= tombstone; Reason =:= session_not_renewable;
+    Reason =:= location_changed; Reason =:= location_unverified; Reason =:= scope_conflict
+->
+    elib_response:error_with_status(Req0, ?ERR_CONFLICT, atom_to_binary(Reason), ?ERR_CONFLICT);
+upload_error(Req0, invalid_signature_context) ->
+    elib_response:error_with_status(
+        Req0, ?ERR_GONE, <<"capability window invalid">>, ?ERR_GONE
+    );
 upload_error(Req0, {db_error, _Reason}) ->
     elib_response:error(Req0, <<"附件服务暂不可用，请稍后重试"/utf8>>, ?ERR_INTERNAL_SERVER_ERROR);
 upload_error(Req0, {storage_error, _Reason}) ->

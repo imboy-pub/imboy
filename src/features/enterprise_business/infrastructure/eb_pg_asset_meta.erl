@@ -27,6 +27,7 @@
     register_v5/9,
     register_session_v5/6,
     reserve_registered_put/3,
+    recheck_registered_put/4,
     v5_session/3,
     v5_session_by_cid/3,
     renew_v5/4,
@@ -37,7 +38,7 @@
     "a.id, a.organization_id, a.workspace_id, a.conversation_id, a.message_id,"
     " a.business_identity_id, a.uploaded_by_user_id, a.object_key, a.object_hash, a.mime,"
     " a.size_bytes, a.status, a.key_version, a.file_name, a.retain_until, a.version,"
-    " a.created_at, a.deleted_at, a.pending_object_delete, a.upload_registration, a.lifecycle_state, a.storage_driver, a.storage_namespace, a.storage_container, a.storage_locator_sha256"
+    " a.created_at, a.deleted_at, a.pending_object_delete, a.upload_registration, a.upload_content, a.lifecycle_state, a.storage_driver, a.storage_namespace, a.storage_container, a.storage_locator_sha256"
 ).
 
 %% 登记：status 恒为 pending_confirm（确认只能走 confirm_asset/3）。
@@ -210,6 +211,7 @@ asset_fields() ->
         {deleted_at, <<"deleted_at">>, ts},
         {pending_object_delete, <<"pending_object_delete">>, raw},
         {upload_registration, <<"upload_registration">>, raw},
+        {upload_content, <<"upload_content">>, raw},
         {lifecycle_state, <<"lifecycle_state">>, bin},
         {storage_driver, <<"storage_driver">>, bin},
         {storage_namespace, <<"storage_namespace">>, bin},
@@ -229,66 +231,97 @@ asset_fields() ->
 
 %% 复用已登记 pending 行；绝不把任意主键冲突解释为允许覆写。
 reserve_registered_put(Org, Ws, D) ->
-    Result = elib_pg:with_tx(fun(Conn) ->
-        tx_query(
-            Conn, <<"SELECT id FROM workspace WHERE organization_id=$1 AND id=$2 FOR UPDATE">>, [
-                Org, Ws
-            ]
-        ),
-        Id = maps:get(id, D),
-        case
-            tx_query(
-                Conn,
-                <<
-                    "SELECT "
-                    ?ASSET_COLUMNS
-                    ","
-                    "extract(epoch from a.upload_expires_at)::bigint AS expiry "
-                    "FROM enterprise_asset a WHERE a.organization_id=$1 AND a.workspace_id=$2 AND a.id=$3 "
-                    "AND a.status='pending_confirm' AND a.lifecycle_state='live' "
-                    "AND a.client_upload_id IS NOT NULL AND a.upload_expires_at>now() "
-                    "AND a.session_deadline>now() FOR UPDATE"
-                >>,
-                [Org, Ws, Id]
-            )
-        of
-            [Row] -> validate_registered_put(Conn, Org, Ws, D, Row);
-            [] -> {error, session_not_renewable}
-        end
-    end),
-    case Result of
-        {rollback, Error} -> Error;
-        Other -> Other
+    registered_put(Org, Ws, D, admission).
+
+%% The Disk caller already owns the stable I OS lock. Never hold the short
+%% transaction across storage I/O or rebuild Identity from the current registry.
+recheck_registered_put(Org, Ws, D, Identity) ->
+    case frozen_put_identity(Identity) of
+        {ok, Frozen} -> registered_put(Org, Ws, D, {recheck, Frozen});
+        {error, _} = Error -> Error
     end.
 
-validate_registered_put(Conn, Org, Ws, D, Row) ->
-    Reg0 = maps:get(<<"upload_registration">>, Row),
-    Reg =
-        case Reg0 of
-            B when is_binary(B) -> jsone:decode(B);
-            M -> M
-        end,
-    Ctx = maps:get(signature_context, D),
-    Expiry = calendar:datetime_to_gregorian_seconds(maps:get(expires_at, Ctx)) - 62167219200,
-    Equal =
-        maps:get(<<"subject">>, Reg) =:= maps:get(upload_subject, D) andalso
-            maps:get(<<"object_hash">>, Row) =:= maps:get(object_hash, D) andalso
-            maps:get(<<"size_bytes">>, Row) =:= byte_size(maps:get(payload, D)) andalso
-            maps:get(<<"mime">>, Row) =:= maps:get(mime, D) andalso
-            maps:get(<<"conversation_id">>, Row) =:= maps:get(conversation_id, D) andalso
-            maps:get(<<"object_hash">>, Row) =:= eb_asset_content:sha256_hex(maps:get(payload, D)) andalso
-            Expiry =< maps:get(<<"expiry">>, Row),
-    case
-        {Equal,
-            tx_query(
-                Conn,
-                <<"SELECT asset_id FROM enterprise_asset_delete_queue WHERE organization_id=$1 AND workspace_id=$2 AND asset_id=$3">>,
-                [Org, Ws, maps:get(id, D)]
-            )}
-    of
-        {true, []} -> {ok, eb_pg_store_sql:normalize(Row, asset_fields())};
-        _ -> {error, conflict}
+registered_put(Org, Ws, D, Mode) ->
+    case registered_put_receipt(D) of
+        {ok, Receipt, Expiry} ->
+            Result = elib_pg:with_tx(fun(Conn) ->
+                Id = maps:get(id, D),
+                Args = [Org, Ws, Id, jsone:encode(Receipt),
+                        jsone:encode(maps:get(upload_subject, D)), iso8601_utc(Expiry)],
+                {Sql, Params} = case Mode of
+                    admission ->
+                        {<<"SELECT fn_v5_pin_eb_content($1,$2,$3,$4::jsonb,$5::jsonb,"
+                           "$6::timestamptz) AS admitted">>, Args};
+                    {recheck, Frozen} ->
+                        {<<"SELECT fn_v5_recheck_eb_content($1,$2,$3,$4::jsonb,$5::jsonb,"
+                           "$6::timestamptz,$7::jsonb) AS admitted">>,
+                         Args ++ [jsone:encode(Frozen)]}
+                end,
+                case tx_query(Conn, Sql, Params) of
+                    [#{<<"admitted">> := true}] ->
+                        [Row] = tx_query(Conn, ?SQL_FETCH_ASSET, [Org, Ws, Id]),
+                        ExpectedConv = eb_pg_store_sql:nullify(maps:get(conversation_id, D)),
+                        case maps:get(<<"conversation_id">>, Row) =:= ExpectedConv of
+                            true ->
+                                case Mode of
+                                    admission -> {ok, eb_pg_store_sql:normalize(Row, asset_fields())};
+                                    {recheck, _} -> ok
+                                end;
+                            false -> throw({rollback, {error, content_mismatch}})
+                        end;
+                    _ -> throw({rollback, {error, invalid_pin_result}})
+                end
+            end),
+            registered_put_result(Result);
+        {error, _} = Error -> Error
     end.
+
+registered_put_receipt(D) when is_map(D) ->
+    try
+        Id = maps:get(id, D),
+        Subject = maps:get(upload_subject, D),
+        Mime = maps:get(mime, D),
+        _ = maps:get(conversation_id, D),
+        true = is_integer(Id) andalso is_map(Subject) andalso is_binary(Mime),
+        {Size, Sha} = payload_receipt(maps:get(payload, D)),
+        Expiry = calendar:datetime_to_gregorian_seconds(
+            maps:get(expires_at, maps:get(signature_context, D))) - 62167219200,
+        case maps:get(object_hash, D) =:= Sha andalso
+             maps:get(size_bytes, D, Size) =:= Size of
+            true -> {ok, #{<<"version">> => 1, <<"sha256">> => Sha,
+                           <<"size_bytes">> => integer_to_binary(Size),
+                           <<"mime">> => Mime}, Expiry};
+            false -> {error, content_mismatch}
+        end
+    catch
+        _:_ -> {error, invalid_descriptor}
+    end;
+registered_put_receipt(_) ->
+    {error, invalid_descriptor}.
+
+payload_receipt(Bytes) when is_binary(Bytes) ->
+    {byte_size(Bytes), eb_asset_content:sha256_hex(Bytes)};
+payload_receipt({upload_spool, _, Size, Sha} = Source) when
+    is_integer(Size), Size >= 0, is_binary(Sha), byte_size(Sha) =:= 64
+->
+    {attachment_upload_spool:size(Source), attachment_upload_spool:sha256(Source)}.
+
+frozen_put_identity(#{driver := Driver, namespace := Ns, container := Container,
+                      key := Key, locator_digest := Digest}) ->
+    {ok, #{driver => Driver, namespace => Ns, container => Container,
+           key => Key, locator_digest => Digest}};
+frozen_put_identity(_) ->
+    {error, location_changed}.
+
+%% tx_query throws on every SQL error, including known admission conflicts.
+%% Returning a mapped error inside the callback would COMMIT an aborted tx.
+registered_put_result({rollback, {error, {sql, <<"23510">>, _}}}) -> {error, content_mismatch};
+registered_put_result({rollback, {error, {sql, <<"55000">>, _}}}) -> {error, session_not_renewable};
+registered_put_result({rollback, {error, {sql, <<"23505">>, _}}}) -> {error, tombstone};
+registered_put_result({rollback, {error, {sql, <<"22023">>, _}}}) -> {error, location_changed};
+registered_put_result({rollback, {error, {sql, <<"P0002">>, _}}}) -> {error, not_found};
+registered_put_result({rollback, Error}) -> Error;
+registered_put_result(Result) -> Result.
 
 %% UUID 查重、pending 创建与登记必须在同一事务，失败不能留下孤儿主行。
 register_session_v5(Org, Ws, Descriptor, Cid, Registration, {Deadline, Expiry}) ->
@@ -481,7 +514,7 @@ v5_session(OrgId, WsId, AssetId) ->
                 <<
                     "SELECT id, organization_id, workspace_id, conversation_id, message_id, file_name, uploaded_by_user_id, retain_until, lifecycle_state, object_key, object_hash, mime, size_bytes, status,"
                     " client_upload_id, session_deadline, upload_expires_at,"
-                    " upload_registration, storage_driver, storage_namespace, storage_container, storage_locator_sha256 FROM enterprise_asset"
+                    " upload_registration, upload_content, storage_driver, storage_namespace, storage_container, storage_locator_sha256 FROM enterprise_asset"
                     " WHERE organization_id = $1 AND workspace_id = $2 AND id = $3"
                 >>,
                 [OrgId, WsId, AssetId]

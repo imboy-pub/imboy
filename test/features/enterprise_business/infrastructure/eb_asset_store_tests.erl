@@ -18,8 +18,23 @@ asset_store_test_() ->
     {setup, fun setup/0, fun cleanup_db/1, fun cases/1}.
 
 setup() ->
-    Previous = eb_pg_test_fixture:select_asset_stub(),
-    {asset_stub, Previous, application:get_env(imboy, attachment_storage_registry), setup_db()}.
+    Result = setup_db(),
+    case Result of
+        {ok, _} ->
+            Previous = eb_pg_test_fixture:select_asset_stub(),
+            try
+                Registry = eb_pg_test_fixture:install_asset_registry(),
+                {asset_stub, Previous, Registry, Result}
+            catch Class:Reason:Stack ->
+                try
+                    cleanup_db(Result)
+                after
+                    eb_pg_test_fixture:restore_asset_store(Previous)
+                end,
+                erlang:raise(Class, Reason, Stack)
+            end;
+        _ -> Result
+    end.
 
 setup_db() ->
     eunit_runner:eunit_setup_with_db().
@@ -28,8 +43,11 @@ cleanup_db({asset_stub, Previous, Registry, Result}) ->
     try
         cleanup_db(Result)
     after
-        eb_pg_test_fixture:restore_asset_store(Previous),
-        restore_registry(Registry)
+        try
+            eb_pg_test_fixture:restore_asset_registry(Registry)
+        after
+            eb_pg_test_fixture:restore_asset_store(Previous)
+        end
     end;
 cleanup_db({ok, Conn}) ->
     _ = eb_asset_object_stub:reset(),
@@ -40,13 +58,12 @@ cleanup_db(_Other) ->
 cases({asset_stub, _Previous, _Registry, Result}) ->
     cases(Result);
 cases({ok, _Conn}) ->
-    fixture_registry(),
     [
         {timeout, 60, fun a11a_asset_port_is_assembled/0},
         {timeout, 60, fun a11b_put_then_stream_round_trips_within_scope/0},
         {timeout, 60, fun a11b_cross_org_stream_and_delete_fail/0},
         {timeout, 60, fun a11c_bottom_failures_are_propagated/0},
-        {timeout, 60, fun delete_private_removes_the_object_only/0},
+        {timeout, 60, fun delete_private_commits_frozen_job_before_worker/0},
         {timeout, 60, fun metadata_lifecycle_is_reachable_through_the_port/0}
     ];
 cases(_Skipped) ->
@@ -146,45 +163,53 @@ a11c_bottom_failures_are_propagated() ->
         ),
         %% (d) 对象被绕过清除后 stream 必须报底层错误，不得返回空流
         AssetId = eb_pg_test_fixture:id(),
-        {ok, Summary} = put_fixture(Org, Ws, #{
+        {ok, _} = put_fixture(Org, Ws, #{
             id => AssetId,
             object_hash => sha256_hex(<<"gone">>),
             payload => <<"gone-bytes">>
         }),
+        {ok, Before} = eb_asset_store:fetch_asset(Org, Ws, AssetId),
         ok = eb_asset_object_stub:reset(),
         ?assertEqual(
             {error, {object_store, not_found}},
             eb_asset_store:stream_content(Org, Ws, AssetId)
         ),
-        ?assertEqual(
-            {error, {object_store, not_found}},
-            eb_asset_store:delete_private(Org, Ws, AssetId)
-        ),
-        _ = Summary,
+        %% Deletion commits intent without consulting the provider. The worker
+        %% later handles an already-missing object idempotently.
+        ok = eb_asset_store:delete_private(Org, Ws, AssetId),
+        assert_frozen_delete_job(Org, Ws, AssetId, Before),
+        ?assertEqual({error, {object_store, not_found}},
+            eb_asset_store:stream_content(Org, Ws, AssetId)),
         ok
     after
         eb_pg_test_fixture:cleanup(Scope)
     end.
 
-delete_private_removes_the_object_only() ->
+delete_private_commits_frozen_job_before_worker() ->
     Scope = eb_pg_test_fixture:new_scope(),
     try
         {Org, Ws} = tenant(Scope),
         AssetId = eb_pg_test_fixture:id(),
+        Bytes = <<"to-be-deleted">>,
         {ok, _} = put_fixture(Org, Ws, #{
             id => AssetId,
-            object_hash => sha256_hex(<<"del">>),
-            payload => <<"to-be-deleted">>
+            object_hash => sha256_hex(Bytes),
+            payload => Bytes
         }),
+        {ok, Before} = eb_asset_store:fetch_asset(Org, Ws, AssetId),
         ok = eb_asset_store:delete_private(Org, Ws, AssetId),
-        %% 对象没了，但元数据仍在（对象回收与元数据状态是两件事）
+        assert_frozen_delete_job(Org, Ws, AssetId, Before),
+        %% Only the real queue worker may remove provider bytes. This local
+        %% adapter suite proves the committed handoff and unchanged bytes.
         ?assertEqual(
-            {error, {object_store, not_found}},
+            {ok, {content_stream, Bytes}},
             eb_asset_store:stream_content(Org, Ws, AssetId)
         ),
+        {ok, After} = eb_asset_store:fetch_asset(Org, Ws, AssetId),
+        ?assertEqual(<<"delete_intent">>, maps:get(lifecycle_state, After)),
         ?assertEqual(
             pending_confirm,
-            maps:get(status, element(2, eb_asset_store:fetch_asset(Org, Ws, AssetId)))
+            maps:get(status, After)
         )
     after
         eb_pg_test_fixture:cleanup(Scope)
@@ -221,23 +246,16 @@ tenant(Scope) ->
 sha256_hex(Bin) ->
     binary:encode_hex(crypto:hash(sha256, Bin), lowercase).
 
-%% Explicit fixture root: the stub performs no physical I/O, but metadata must
-%% still carry a valid frozen identity. This never changes production defaults.
-fixture_registry() ->
-    application:set_env(imboy, attachment_storage_registry, #{
-        version => 1,
-        upload_namespaces => #{<<"enterprise">> => <<"eb-unit-fixture">>},
-        roots => #{
-            <<"eb-unit-fixture">> => #{
-                driver => <<"disk">>,
-                namespace => <<"eb-unit-fixture">>,
-                endpoint => <<"file:///private/tmp/imboy-eb-unit-fixture">>,
-                container => <<"fixture">>
-            }
-        }
-    }).
-restore_registry({ok, R}) -> application:set_env(imboy, attachment_storage_registry, R);
-restore_registry(undefined) -> application:unset_env(imboy, attachment_storage_registry).
+assert_frozen_delete_job(Org, Ws, AssetId, Before) ->
+    Frozen = maps:from_list([{atom_to_binary(K), maps:get(K, Before)}
+        || K <- [storage_driver, storage_namespace, storage_container, storage_locator_sha256]]),
+    Key = maps:get(object_key, Before),
+    ?assertMatch({ok, #{driver := disk}}, attachment_storage:frozen_location(Key, Frozen)),
+    Expected = Frozen#{<<"organization_id">> => Org, <<"workspace_id">> => Ws,
+        <<"asset_id">> => AssetId, <<"object_key">> => Key, <<"job_state">> => <<"ready">>,
+        <<"attempts">> => 0, <<"last_error_code">> => null},
+    ?assertEqual({ok, [Expected]}, eb_pg_test_fixture:asset_delete_job(Org, Ws, AssetId)).
+
 put_fixture(Org, Ws, D) ->
     Now = erlang:system_time(second),
     Ctx = #{

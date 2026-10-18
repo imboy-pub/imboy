@@ -17,6 +17,9 @@ metadata_down(Restore) ->
     elib_tsid:init(#{dc_id => 1, node_id => 1, dc_bits => 3}),
     State = inttest_marker_db:provision(#{
         env_prefix => <<"R20_INTTEST">>,
+        %% 只回滚 176；177 起的依赖通过后续 forward-up 验证。
+        %% Test 176 in its own era, then verify later dependencies forward.
+        migration_target => 176,
         connect_extra => #{codecs => [{epgsql_codec_rfc3339_bin, []}]}
     }),
     Conn = maps:get(conn, State),
@@ -50,7 +53,14 @@ metadata_down(Restore) ->
             false ->
                 ok
         end,
-        check_metadata_down(Conn, Restore)
+        check_metadata_down(Conn, Restore),
+        BeforeUpgrade = metadata_snapshot(Conn),
+        MigConfig = #{conn => Conn, dir => "priv/migrations", strict => true},
+        ?assertEqual({ok, 176, false}, erlang_migrate:version(MigConfig)),
+        ok = erlang_migrate:up(MigConfig),
+        ?assertEqual({ok, inttest_marker_db:migration_head(), false},
+            erlang_migrate:version(MigConfig)),
+        ?assertEqual(BeforeUpgrade, metadata_snapshot(Conn))
     after
         inttest_marker_db:release(State)
     end.

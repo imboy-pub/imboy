@@ -1,0 +1,115 @@
+{
+  "provenance": "Audited source-manifest.json, installed-manifest.json, garage/garage-manifest.json and rust/manifest.json from the 2026-10-17/18 native rebuild. Archive hashes pin HTTPS-fetched bytes; only PostgreSQL additionally matched the publisher checksum. Ubuntu prerequisite libraries are supplied by signed Ubuntu apt repositories, not claimed source-built or byte-identical to Debian13.",
+  "sources": [
+    {
+      "kind": "archive",
+      "file": "postgresql-18.6.tar.bz2",
+      "url": "https://ftp.postgresql.org/pub/source/v18.6/postgresql-18.6.tar.bz2",
+      "version": "18.6",
+      "sha256": "555610c24d53e4316da5b7d3fc25c279d96856d5e0e23ee308c328c5fa881d9f"
+    },
+    {
+      "kind": "archive",
+      "file": "otp_src_29.1.2.tar.gz",
+      "url": "https://github.com/erlang/otp/releases/download/OTP-29.1.2/otp_src_29.1.2.tar.gz",
+      "version": "29.1.2",
+      "sha256": "c79966661e35fe4aff8ec003db63682e3b33b10b672220d51bf93c0a9244b049"
+    },
+    {
+      "kind": "archive",
+      "file": "postgis-3.6.4.tar.gz",
+      "url": "https://download.osgeo.org/postgis/source/postgis-3.6.4.tar.gz",
+      "version": "3.6.4",
+      "sha256": "ed8dc6679f1e06f7b113592b04cde2a7e00f1b1e681294c8ca2204058990cec6"
+    },
+    {
+      "kind": "git",
+      "directory": "rebar3-3.27.3",
+      "url": "https://github.com/erlang/rebar3.git",
+      "commit": "8723cb44fddb7ed66809d4dfbfc1da1ba6841456",
+      "submodules": ""
+    },
+    {
+      "kind": "git",
+      "directory": "pgvector-0.8.7",
+      "url": "https://github.com/pgvector/pgvector.git",
+      "commit": "f37c13f68b57d2c3472b2214fbcff699d6d34876",
+      "submodules": ""
+    },
+    {
+      "kind": "git",
+      "directory": "timescaledb-2.23.1",
+      "url": "https://github.com/timescale/timescaledb.git",
+      "commit": "9cec3ac3211e340097ae3605b62cfd73130bb6b7",
+      "submodules": ""
+    },
+    {
+      "kind": "git",
+      "directory": "pg_jieba",
+      "url": "https://github.com/jaiminpan/pg_jieba.git",
+      "commit": "d0ffac8028328b2566a889ff4db3d74ba63d1b42",
+      "submodules": "391121d5db0f31dd5ce9795d4d34812f20eeb25c libjieba (v3.2.1-208-g391121d)\n a269e34dc4948d5a9209e21a7887b52daa0d3e78 libjieba/deps/limonp (v0.6.5-3-ga269e34)",
+      "submodule_commits": {
+        "libjieba": "391121d5db0f31dd5ce9795d4d34812f20eeb25c",
+        "libjieba/deps/limonp": "a269e34dc4948d5a9209e21a7887b52daa0d3e78"
+      }
+    }
+  ],
+  "rust": [
+    {
+      "file": "cargo-1.97.1-x86_64-unknown-linux-gnu.tar.xz",
+      "url": "https://static.rust-lang.org/dist/cargo-1.97.1-x86_64-unknown-linux-gnu.tar.xz",
+      "sha256": "e1be5f5ff7f7f80ca506fb65770b759edbdc6d303781ed71c5de8ec8a8394779"
+    },
+    {
+      "file": "rust-std-1.97.1-x86_64-unknown-linux-gnu.tar.xz",
+      "url": "https://static.rust-lang.org/dist/rust-std-1.97.1-x86_64-unknown-linux-gnu.tar.xz",
+      "sha256": "1c1e704ae80126b7de34f72ea2825f7fd01736dec20732faed47374b95282fba"
+    },
+    {
+      "file": "rustc-1.97.1-x86_64-unknown-linux-gnu.tar.xz",
+      "url": "https://static.rust-lang.org/dist/rustc-1.97.1-x86_64-unknown-linux-gnu.tar.xz",
+      "sha256": "9819d0a32d56bd339585319c80260e332779f5541fd66838ab7e016d6c814819"
+    }
+  ],
+  "garage": {
+    "url": "https://garagehq.deuxfleurs.fr/_releases/v2.4.1/x86_64-unknown-linux-musl/garage",
+    "sha256": "ae49f8de4aaee6b5ca305f7cbdccc8cd8a29b2804aac074649f18bfb83d0a2b6",
+    "version": "2.4.1"
+  },
+  "dictionary": {
+    "repository": "https://github.com/imboy-pub/imboy.git",
+    "commit": "75b7c38249fd33dc7f5ea6e57d04fd0b271f8ada",
+    "path": "docker/pg_jieba_userdict.txt.big",
+    "sha256": "b16011275c42955ccd81fc1adecc93a59dbb7926af69d93fc95d4943d40f6aad"
+  },
+  "hird": {
+    "commit": "2bb12f35a8209915849b5e103b44349c5c2a5595",
+    "cargo_lock_sha256": "67bdc63113362be75f8603c7130f13482c046b11dadc40c5e81e60f28408d3fc"
+  },
+  "extensions": [
+    "pgcrypto",
+    "pg_jieba",
+    "timescaledb",
+    "vector",
+    "postgis",
+    "pg_trgm",
+    "btree_gin",
+    "btree_gist",
+    "citext",
+    "unaccent",
+    "intarray",
+    "pg_stat_statements"
+  ],
+  "excluded_module_entries": [
+    "elib_tsid",
+    "agent_grant_pg",
+    "agent_run_pg",
+    "agent_grant_pg_tests",
+    "agent_recovery_pg_tests",
+    "agent_run_pg_tests",
+    "agent_tool_authorizer_pg_tests",
+    "cs_pg_widget",
+    "cs_seat_console_pg_tests"
+  ]
+}

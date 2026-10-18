@@ -10,6 +10,7 @@
     presign_get/4,
     read/3,
     put_snapshot/3,
+    put_snapshot/4,
     read_snapshot/1,
     delete_snapshot/1
 ]).
@@ -18,28 +19,56 @@
 put(Ns, Container, Key, Body) ->
     put_ctx(Ns, Container, Key, Body, infinity).
 put_ctx(Ns, Container, Key, Body, Expiry) ->
-    with_path(Ns, Container, Key, fun(Root, Path) ->
-        with_os_lock(Root, Container, Key, fun() ->
-            locked_action(Root, Path, fun() ->
-                case Expiry =:= infinity orelse erlang:system_time(second) < Expiry of
-                    false -> {error, invalid_signature_context};
-                    true -> atomic_write(Path, Body)
-                end
+    Deadline = erlang:monotonic_time(millisecond) + 30000,
+    attachment_upload_spool:with_source(Body, fun(Source) ->
+        with_path(Ns, Container, Key, fun(Root, Path) ->
+            with_os_lock(Root, Container, Key, fun() ->
+                locked_action(Root, Path, fun() ->
+                    atomic_write(Path, Source, fun() -> write_window(Expiry, Deadline) end)
+                end)
             end)
         end)
     end).
 
-put_snapshot(#{container := C, key := K} = I, Body, Expiry) ->
-    with_snapshot_path(I, fun(Root, Path) ->
-        with_os_lock(Root, C, K, fun() ->
-            locked_action(Root, Path, fun() ->
-                case erlang:system_time(second) < Expiry of
-                    true -> atomic_write(Path, Body);
-                    false -> {error, invalid_signature_context}
-                end
+put_snapshot(I, Body, Expiry) ->
+    put_snapshot(I, Body, Expiry, fun() -> ok end).
+
+%% Acquire the physical-object lock before the short live DB recheck. The callback
+%% must finish its transaction before returning; no DB lock spans filesystem I/O.
+%% 先取物理对象 OS 锁，再短事务复核；回调返回前必须结束事务。
+put_snapshot(#{container := C, key := K} = I, Body, Expiry, Recheck) when
+    is_function(Recheck, 0)
+->
+    Deadline = erlang:monotonic_time(millisecond) + 30000,
+    attachment_upload_spool:with_source(Body, fun(Source) ->
+        with_snapshot_path(I, fun(Root, Path) ->
+            with_os_lock(Root, C, K, fun() ->
+                locked_action(Root, Path, fun() ->
+                    case write_window(Expiry, Deadline) of
+                        ok ->
+                            case Recheck() of
+                                ok ->
+                                    atomic_write(Path, Source,
+                                        fun() -> write_window(Expiry, Deadline) end);
+                                Error -> Error
+                            end;
+                        Error -> Error
+                    end
+                end)
             end)
         end)
     end).
+
+write_window(Expiry, Deadline) ->
+    case Expiry =:= infinity orelse erlang:system_time(second) < Expiry of
+        false -> {error, invalid_signature_context};
+        true ->
+            case erlang:monotonic_time(millisecond) < Deadline of
+                true -> ok;
+                false -> {error, timeout}
+            end
+    end.
+
 delete_snapshot(#{container := C, key := K} = I) ->
     with_snapshot_path(I, fun(Root, Path) ->
         with_os_lock(Root, C, K, fun() ->
@@ -101,33 +130,40 @@ check_directory_permissions(Root, Path) ->
             {error, insecure_directory}
     end.
 
-atomic_write(Path, {file, Source}) ->
-    case file:read_file(Source) of
-        {ok, Bytes} -> atomic_write(Path, Bytes);
-        E -> E
-    end;
-atomic_write(Path, Bytes) when is_binary(Bytes) ->
+atomic_write(Path, Source, Check) ->
+    case Check() of
+        ok -> atomic_write_open(Path, Source, Check);
+        Error -> Error
+    end.
+
+atomic_write_open(Path, Source, Check) ->
     ok = filelib:ensure_dir(Path),
     Tmp = Path ++ ".v5tmp." ++ binary_to_list(binary:encode_hex(crypto:strong_rand_bytes(12))),
-    try
-        case file:open(Tmp, [write, exclusive, raw, binary]) of
-            {ok, Fh} ->
-                try
+    case file:open(Tmp, [write, exclusive, raw, binary]) of
+        {ok, Fh} ->
+            try
+                Result = try
                     ok = file:change_mode(Tmp, 8#600),
-                    ok = file:write(Fh, Bytes),
-                    ok = file:sync(Fh)
+                    case attachment_upload_spool:copy_to(Source, Fh, Check) of
+                        ok -> file:sync(Fh);
+                        Error -> Error
+                    end
                 after
                     file:close(Fh)
                 end,
-                file:rename(Tmp, Path);
-            E ->
-                E
-        end
-    after
-        file:delete(Tmp)
-    end;
-atomic_write(_, _) ->
-    {error, invalid_payload}.
+                case Result of
+                    ok ->
+                        case Check() of
+                            ok -> file:rename(Tmp, Path);
+                            Error2 -> Error2
+                        end;
+                    Error2 -> Error2
+                end
+            after
+                file:delete(Tmp)
+            end;
+        Error -> Error
+    end.
 
 head(Ns, Container, Key) ->
     with_path(Ns, Container, Key, fun(_, Path) ->

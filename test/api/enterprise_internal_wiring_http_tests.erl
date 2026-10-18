@@ -606,25 +606,37 @@ positive_chain(S) ->
             Body07,
             maps:merge(A, intbe02_http_support:idem(<<"intbe02-idem-07">>))
         ),
-    #{<<"object_key">> := ObjectKey} = assert_ok_json(R07),
+    #{<<"object_key">> := ObjectKey} = Registration = assert_ok_json(R07),
     ?assert(is_binary(ObjectKey), ObjectKey),
     ?assertNotEqual(nomatch, binary:match(ObjectKey, <<"eoa/">>)),
     cover(<<"INT-07">>),
+    %% V5 caches stable registration only; capability signing is post-COMMIT.
+    %% Exercise this equivalence while the session is still registered.
+    RegistrationIdentity = presign_session_identity(C, ObjectKey),
+    R07Replay = intbe02_http_support:http(Port, <<"POST">>,
+        <<"/api/internal/v1/files/presign">>, Body07,
+        maps:merge(A, intbe02_http_support:idem(<<"intbe02-idem-07">>))),
+    assert_registered_presign_replay(C, R07, R07Replay),
+    ?assertEqual(RegistrationIdentity, presign_session_identity(C, ObjectKey)),
 
-    %% ---- INT-08 POST files/confirm（HEAD 替身；server 真值覆盖自报值）----
+    %% ---- INT-08 POST files/confirm（真实上传；server 真值覆盖自报值）----
+    Bytes = binary:copy(<<"x">>, 1024),
+    ok = intbe02_http_support:upload_file(Port, Registration, Bytes),
     Body08 = #{<<"object_key">> => ObjectKey, <<"file_hash256">> => hash256(<<"x">>)},
     R08 =
-        intbe02_http_support:with_oss_head(1024, fun() ->
-            enterprise_internal_audit_http_checks:http(
-                C,
-                Port,
-                <<"POST">>,
-                <<"/api/internal/v1/files/confirm">>,
-                Body08,
-                maps:merge(A, intbe02_http_support:idem(<<"intbe02-idem-08">>))
-            )
-        end),
-    #{<<"file_id">> := _} = assert_ok_json(R08),
+        enterprise_internal_audit_http_checks:http(
+            C,
+            Port,
+            <<"POST">>,
+            <<"/api/internal/v1/files/confirm">>,
+            Body08,
+            maps:merge(A, intbe02_http_support:idem(<<"intbe02-idem-08">>))
+        ),
+    #{<<"file_id">> := _, <<"size">> := 1024, <<"mime_type">> := <<"text/plain">>} =
+        assert_ok_json(R08),
+    Confirmed = intbe02_http_support:one(C,
+        <<"SELECT file_hash256 FROM attachment WHERE path=$1">>, [ObjectKey]),
+    ?assertEqual(hash256(Bytes), maps:get(<<"file_hash256">>, Confirmed)),
     cover(<<"INT-08">>),
 
     %% ---- INT-22 POST files/governance（延长留存至上限=合法延长）----
@@ -977,7 +989,7 @@ positive_chain(S) ->
         {<<"INT-19">>, <<"PATCH">>, GrpPath, Body19, <<"intbe02-idem-19">>, R19},
         {<<"INT-06">>, <<"DELETE">>, GrpMembersPath, Body06, <<"intbe02-idem-06">>, R06},
         {<<"INT-07">>, <<"POST">>, <<"/api/internal/v1/files/presign">>, Body07,
-            <<"intbe02-idem-07">>, R07},
+            <<"intbe02-idem-07">>, R07#{test_storage_identity => RegistrationIdentity}},
         {<<"INT-08">>, <<"POST">>, <<"/api/internal/v1/files/confirm">>, Body08,
             <<"intbe02-idem-08">>, R08},
         {<<"INT-22">>, <<"POST">>, <<"/api/internal/v1/files/governance">>, Body22,
@@ -1002,6 +1014,80 @@ positive_chain(S) ->
             <<"intbe02-idem-35">>, R35},
         {<<"INT-36">>, <<"PATCH">>, SeatPath, Body36, <<"intbe02-idem-36">>, R36}
     ].
+
+%% Only the registered presign response has regenerated capability material.
+%% Compare every stable response field, and every verified claim except iat.
+assert_registered_presign_replay(C, First, Replay) ->
+    A = assert_ok_json(First),
+    B = assert_ok_json(Replay),
+    ?assertEqual(<<"registered">>, maps:get(<<"session_state">>, B)),
+    ?assertEqual(maps:without([<<"put_url">>, <<"upload_capability">>], A),
+        maps:without([<<"put_url">>, <<"upload_capability">>], B)),
+    {ok, ClaimsA} = imboy_jwt:verify_upload_capability(maps:get(<<"upload_capability">>, A)),
+    {ok, ClaimsB} = imboy_jwt:verify_upload_capability(maps:get(<<"upload_capability">>, B)),
+    ?assertEqual(maps:remove(<<"iat">>, ClaimsA), maps:remove(<<"iat">>, ClaimsB)),
+    ?assert(maps:get(<<"iat">>, ClaimsB) >= maps:get(<<"iat">>, ClaimsA)),
+    ?assert(maps:get(<<"iat">>, ClaimsB) =< erlang:system_time(second)),
+    lists:foreach(fun({Response, View, Claims}) ->
+        ?assertEqual(<<"no-store">>, intbe02_http_support:json_header_val(Response, <<"cache-control">>)),
+        ?assertEqual(<<"upload">>, maps:get(<<"aud">>, Claims)),
+        ?assertEqual(<<"upload">>, maps:get(<<"sub">>, Claims)),
+        ?assertEqual(maps:get(<<"object_key">>, View), maps:get(<<"key">>, Claims)),
+        ?assertEqual(maps:get(<<"mime_type">>, View), maps:get(<<"mime">>, Claims)),
+        ?assertEqual(maps:get(<<"expires_at">>, View), maps:get(<<"exp">>, Claims)),
+        Prefix = <<"http://intbe02.invalid/api/v1/attachment/gateway/",
+            (maps:get(<<"client_upload_id">>, View))/binary, "?capability=">>,
+        %% Boolean assertion avoids printing a signed URL if this check fails.
+        ?assert(maps:get(<<"put_url">>, View) =:=
+            <<Prefix/binary, (maps:get(<<"upload_capability">>, View))/binary>>)
+    end, [{First, A, ClaimsA}, {Replay, B, ClaimsB}]),
+    ?assertEqual(<<"true">>, intbe02_http_support:json_header_val(Replay, <<"idempotent-replayed">>)),
+    assert_presign_window(C, A),
+    ok.
+
+%% A delayed replay must use current terminal state, never cached registered
+%% state. This regression intentionally fails the current stale-capability path.
+assert_confirmed_presign_replay(C, First, Replay, ConfirmedId) ->
+    A = jsone:decode(maps:get(body, First)),
+    B = assert_ok_json(Replay),
+    ?assertEqual(<<"confirmed">>, maps:get(<<"session_state">>, B)),
+    ?assertEqual(ConfirmedId, maps:get(<<"file_id">>, B)),
+    ?assertEqual(maps:get(<<"object_key">>, A), maps:get(<<"object_key">>, B)),
+    ?assertEqual(maps:get(<<"client_upload_id">>, A), maps:get(<<"client_upload_id">>, B)),
+    ?assertEqual(false, maps:get(<<"can_resume">>, B)),
+    ?assertEqual(<<"none">>, maps:get(<<"retry_action">>, B)),
+    ?assertEqual(<<"live">>, maps:get(<<"lifecycle_state">>, B)),
+    ?assertNot(maps:is_key(<<"put_url">>, B)),
+    ?assertNot(maps:is_key(<<"upload_capability">>, B)),
+    ?assertEqual(<<"no-store">>, intbe02_http_support:json_header_val(Replay, <<"cache-control">>)),
+    Row = intbe02_http_support:one(C,
+        <<"SELECT confirmed_attachment_id FROM attach_pending WHERE object_key=$1">>,
+        [maps:get(<<"object_key">>, A)]),
+    ?assertEqual(ConfirmedId, maps:get(<<"confirmed_attachment_id">>, Row)),
+    assert_presign_window(C, A),
+    Key = maps:get(<<"object_key">>, A),
+    ?assertEqual(maps:get(test_storage_identity, First), presign_session_identity(C, Key)),
+    {ok, #{driver := disk} = Frozen} = attachment_storage:session_location(Key),
+    {ok, Bytes} = attachment_storage_disk:read_snapshot(Frozen),
+    ?assertEqual(binary:copy(<<"x">>, 1024), Bytes),
+    Metadata = intbe02_http_support:one(C,
+        <<"SELECT file_hash256, lifecycle_state FROM attachment WHERE id=$1">>, [ConfirmedId]),
+    ?assertEqual(hash256(Bytes), maps:get(<<"file_hash256">>, Metadata)),
+    ?assertEqual(maps:get(<<"lifecycle_state">>, Metadata), maps:get(<<"lifecycle_state">>, B)).
+
+presign_session_identity(C, Key) ->
+    intbe02_http_support:one(C,
+        <<"SELECT object_key,client_upload_id,storage_driver,storage_namespace,storage_container,"
+          " storage_locator_sha256,upload_registration FROM attach_pending WHERE object_key=$1">>, [Key]).
+
+assert_presign_window(C, Registration) ->
+    Row = intbe02_http_support:one(C,
+        <<"SELECT extract(epoch from upload_expires_at)::bigint AS expires_at,"
+          " extract(epoch from session_deadline)::bigint AS deadline"
+          " FROM attach_pending WHERE object_key=$1">>,
+        [maps:get(<<"object_key">>, Registration)]),
+    ?assertEqual(maps:get(<<"expires_at">>, Registration), maps:get(<<"expires_at">>, Row)),
+    ?assertEqual(maps:get(<<"session_deadline">>, Registration), maps:get(<<"deadline">>, Row)).
 
 seat_concurrent_update(S) ->
     Port = maps:get(port, S),
@@ -1175,10 +1261,13 @@ seat_negative_matrix(S) ->
 idempotency_matrix(S, Specs) ->
     Port = maps:get(port, S),
     A = intbe02_http_support:auth(maps:get(cred_a, S)),
+    [{<<"INT-08">>, _, _, _, _, Confirmed}] = [D || D <- Specs, element(1, D) =:= <<"INT-08">>],
+    ConfirmedId = maps:get(<<"file_id">>, jsone:decode(maps:get(body, Confirmed))),
     lists:foreach(
-        fun({_Id, Method, Path, Body, Key, First}) ->
-            %% 重放命中幂等缓存：不重执行业务（无 HEAD/DNS/副作用），逐字节
-            %% 同 body + 同 status（§11 幂等 response 快照语义）
+        fun({Id, Method, Path, Body, Key, First}) ->
+            %% Other routes retain byte-identical cached responses. V5 presign
+            %% re-reads current state; confirmed recovery cannot mint another PUT.
+            %% 其他接口逐字节重放；V5 presign 回读真实终态，确认后不再签发。
             Replay =
                 intbe02_http_support:http(
                     Port,
@@ -1188,7 +1277,12 @@ idempotency_matrix(S, Specs) ->
                     maps:merge(A, intbe02_http_support:idem(Key))
                 ),
             ?assertEqual(200, maps:get(status, Replay), {replay_status, Key}),
-            ?assertEqual(maps:get(body, First), maps:get(body, Replay), {replay_body, Key}),
+            case Id of
+                <<"INT-07">> ->
+                    assert_confirmed_presign_replay(maps:get(conn, S), First, Replay, ConfirmedId);
+                _ ->
+                    ?assertEqual(maps:get(body, First), maps:get(body, Replay), {replay_body, Key})
+            end,
             ?assertEqual(
                 <<"true">>, intbe02_http_support:json_header_val(Replay, <<"idempotent-replayed">>)
             )

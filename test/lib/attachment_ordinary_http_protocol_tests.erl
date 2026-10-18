@@ -12,7 +12,17 @@ http_protocol_test_() ->
 
 setup() ->
     S = attachment_lifecycle_v5_w403_gateway_protocol_tests:setup(),
-    {ok, _} = imboy_cache:start_link([]),
+    erlang:put(w403_ordinary_setup, S),
+    try
+        Owned = setup_owned(S),
+        erlang:erase(w403_ordinary_setup),
+        Owned
+    catch Class:Reason:Stack ->
+        cleanup(erlang:erase(w403_ordinary_setup)),
+        erlang:raise(Class, Reason, Stack)
+    end.
+
+setup_owned(S) ->
     application:set_env(imboy, api_auth_switch, <<"on">>),
     application:set_env(imboy, postgre_aes_key, crypto:strong_rand_bytes(32)),
     SignKey = binary:encode_hex(crypto:strong_rand_bytes(32), lowercase),
@@ -25,6 +35,8 @@ setup() ->
         >>,
         [ConfigKey, jsone:encode(SignKey), config_ds:env(postgre_aes_key)]
     ),
+    S1 = S#{owned_cache_keys => [{config5, ConfigKey}, {config5, ConfigKey, uncached_v1}]},
+    erlang:put(w403_ordinary_setup, S1),
     Dispatch = cowboy_router:compile([
         {'_', [
             {"/api/v1/attachment/presign", attach_handler, #{action => presign}},
@@ -34,7 +46,7 @@ setup() ->
             }}
         ]}
     ]),
-    {ok, _} = cowboy:start_clear(
+    {ok, Listener} = cowboy:start_clear(
         attv5_ordinary_http,
         [{ip, {127, 0, 0, 1}}, {port, 0}],
         #{
@@ -42,6 +54,8 @@ setup() ->
             middlewares => [cowboy_router, auth_middleware, cowboy_handler]
         }
     ),
+    S2 = S1#{ordinary_listener_owned => Listener},
+    erlang:put(w403_ordinary_setup, S2),
     Base = "http://127.0.0.1:" ++ integer_to_list(ranch:get_port(attv5_ordinary_http)),
     application:set_env(imboy, base_url, list_to_binary(Base)),
     Plain = <<"fixture-device|", Vsn/binary, "|android|pub.imboy.fixture">>,
@@ -56,14 +70,24 @@ setup() ->
     ],
     %% Exercise the production legacy-token compatibility branch, never a forged UID route option.
     Token = token_ds:encrypt_token(maps:get(uid, S)),
-    S#{
+    S2#{
         base => Base,
         headers => [{"authorization", "Bearer " ++ binary_to_list(Token)} | Headers],
         sign_headers => Headers
     }.
 
 cleanup(S) ->
-    cowboy:stop_listener(attv5_ordinary_http),
+    case maps:get(ordinary_listener_owned, S, undefined) of
+        Listener when is_pid(Listener) ->
+            try
+                case ranch:info(attv5_ordinary_http) of
+                    #{pid := Listener} -> cowboy:stop_listener(attv5_ordinary_http);
+                    _ -> ok
+                end
+            catch _:_ -> ok
+            end;
+        _ -> ok
+    end,
     attachment_lifecycle_v5_w403_gateway_protocol_tests:cleanup(S).
 
 roundtrip(S, D) ->

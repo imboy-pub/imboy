@@ -23,6 +23,7 @@
     scope_ref/2,
     pending_add_tx/4,
     pending_find_tx/2,
+    recovery_session_tx/2,
     pending_remove_tx/2,
     confirm_save_tx/5,
     find_confirmed_tx/4,
@@ -92,6 +93,14 @@ pending_add_tx(Conn, ObjectKey, Bucket, Scope) ->
 
 -spec pending_find_tx(any(), binary()) -> {ok, map()} | {error, not_found | term()}.
 pending_find_tx(Conn, ObjectKey) ->
+    %% The application confirm path must enter I/path before taking pending.
+    %% 应用确认入口先取统一对象锁；禁止 pending 行锁后再等待身份锁。
+    case elib_pg:query(Conn, <<"SELECT fn_v5_lock_ordinary_upload($1)">>, [ObjectKey]) of
+        {ok, _} -> pending_find_locked_tx(Conn, ObjectKey);
+        {error, Reason} -> {error, Reason}
+    end.
+
+pending_find_locked_tx(Conn, ObjectKey) ->
     Sql =
         <<
             "SELECT object_key, bucket, scope, creator_user_id, created_at,"
@@ -102,6 +111,37 @@ pending_find_tx(Conn, ObjectKey) ->
     case elib_pg:query(Conn, Sql, [ObjectKey]) of
         {ok, [Row | _]} -> {ok, decode_pending(Row)};
         {ok, []} -> {error, not_found};
+        {error, Reason} -> {error, Reason}
+    end.
+
+%% Recovery uses the same I/path/session/metadata lock order as confirm/intent.
+%% 恢复与确认/删除共用锁序，保留真实 SQL 错误，不把未知结果伪装为不存在。
+-spec recovery_session_tx(any(), binary()) -> {ok, map()} | {error, term()}.
+recovery_session_tx(Conn, Key) ->
+    case elib_pg:query(Conn, <<"SELECT fn_v5_lock_ordinary_upload($1)">>, [Key]) of
+        {ok, _} ->
+            Sql = <<
+                "SELECT p.object_key,p.bucket,p.scope,p.client_upload_id,p.upload_registration,"
+                " p.session_state,p.confirmed_attachment_id,p.storage_driver,p.storage_namespace,"
+                " p.storage_container,p.storage_locator_sha256,p.upload_content,"
+                " extract(epoch from p.session_deadline)::bigint AS deadline,"
+                " extract(epoch from p.upload_expires_at)::bigint AS expires_at,"
+                " a.id AS asset_id, a.scope AS asset_scope, a.scope_ref AS asset_scope_ref,"
+                " a.size AS asset_size, a.mime_type AS asset_mime_type,"
+                " a.lifecycle_state AS asset_lifecycle_state,"
+                " (EXISTS (SELECT 1 FROM attachment_object_deletion d WHERE d.path=p.object_key)"
+                " OR EXISTS (SELECT 1 FROM enterprise_asset_delete_queue q"
+                " WHERE q.client_upload_id=p.client_upload_id OR (q.storage_driver=p.storage_driver"
+                " AND q.storage_namespace=p.storage_namespace AND q.storage_container=p.storage_container"
+                " AND q.object_key=p.object_key))) AS deletion_pending"
+                " FROM attach_pending p LEFT JOIN attachment a ON a.path=p.object_key"
+                " WHERE p.object_key=$1"
+            >>,
+            case elib_pg:query(Conn, Sql, [Key]) of
+                {ok, [Row]} -> {ok, decode_pending(Row)};
+                {ok, []} -> {error, not_found};
+                {error, Reason} -> {error, Reason}
+            end;
         {error, Reason} -> {error, Reason}
     end.
 

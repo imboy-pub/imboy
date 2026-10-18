@@ -101,14 +101,15 @@ hex64(Base) ->
 
 %% 单入口 fixture：confirmed 资产（绑定释放形态 => 引用零可证明）+ 能力窗已过
 seed(Conn, Key, ScopeVal, Cipher, N) ->
+    ScopeRef = scope_ref_fixture(ScopeVal),
     q(Conn, "DELETE FROM attach_pending WHERE object_key=$1", [Key]),
     q(Conn, "DELETE FROM attachment WHERE path=$1", [Key]),
     {ok, _, _} = epgsql:equery(
         Conn,
         "SELECT * FROM fn_v5_register_pending($1,'b',$2,101,"
-        "gen_random_uuid(),$3::jsonb,now(),"
-        "now() - interval '2 hours','garage','ns1','c1',$4)",
-        [Key, ScopeVal, registration_fixture(), locator_fixture(N)]
+        "gen_random_uuid(),$3::jsonb,now() + interval '2 hours',"
+        "now() + interval '3 seconds','garage','ns1','c1',$4)",
+        [Key, ScopeVal, registration_fixture(ScopeVal, ScopeRef), locator_fixture(N)]
     ),
     {ok, _, _} = epgsql:equery(
         Conn,
@@ -117,35 +118,37 @@ seed(Conn, Key, ScopeVal, Cipher, N) ->
     ),
     q(
         Conn,
-        "INSERT INTO attachment(id,path,scope,creator_user_id,"
+        "INSERT INTO attachment(id,path,scope,scope_ref,creator_user_id,"
         "storage_driver,storage_namespace,storage_container,"
         "storage_locator_sha256,gc_verified,cipher,group_file_id,file_hash256)"
-        " VALUES ($1,$2,$3,101,'garage','ns1','c1',$4,false,$5,NULL,$6)",
+        " VALUES ($1,$2,$3,$7,101,'garage','ns1','c1',$4,false,$5,NULL,$6)",
         [
             ?ASSET_BASE + N,
             Key,
             ScopeVal,
             locator_fixture(N),
             Cipher,
-            hex64(crypto:hash(sha256, integer_to_binary(N)))
+            hex64(crypto:hash(sha256, integer_to_binary(N))),
+            ScopeRef
         ]
     ),
     {ok, _, _} = epgsql:equery(
         Conn, "SELECT fn_v5_confirm_pending($1,$2)", [Key, ?ASSET_BASE + N]
     ),
-    q(
-        Conn,
-        "UPDATE attach_pending SET upload_expires_at = now() - interval '2 hours'"
-        " WHERE object_key=$1",
-        [Key]
-    ),
+    await_upload_expiry(Conn, Key),
     ok.
 
-registration_fixture() ->
-    <<
-        "{\"subject\":{\"kind\":\"user\",\"principal\":\"101\"},"
-        "\"declaration\":{\"mime\":\"image/png\"}}"
-    >>.
+registration_fixture(Scope, ScopeRef) ->
+    jsone:encode(#{
+        <<"subject">> => #{<<"kind">> => <<"user">>, <<"principal">> => <<"101">>},
+        <<"declaration">> => #{<<"mime">> => <<"image/png">>,
+            <<"scope">> => Scope, <<"scope_ref">> => ScopeRef}
+    }).
+
+scope_ref_fixture(<<"group">>) -> <<"66">>;
+scope_ref_fixture(<<"c2c">>) -> <<"c2c:101:202">>;
+scope_ref_fixture(<<"enterprise">>) -> <<"org:9101/app:9103">>;
+scope_ref_fixture(_) -> null.
 
 receipt_fixture(N) ->
     Hex = hex64(crypto:hash(sha256, integer_to_binary(N))),
@@ -269,6 +272,10 @@ w302_entrypoint_matrix(Conn, Ep, ScopeVal, Cipher, N) ->
             N2 = N * 10 + Idx,
             seed(Conn, Key, ScopeVal, Cipher, N2),
             AttId = ?ASSET_BASE + N2,
+            %% 明文先证明可清理，避免 gc_verified=false 掩盖真正的 hold 拒绝。
+            %% Make plaintext otherwise eligible before installing its hold.
+            ?assertEqual({ok, Cipher =:= null},
+                attachment_repo:refresh_gc_verified_tx(Conn, iolist_to_binary(Key))),
             install_governance(Conn, AttId, Scope),
             R = e(
                 Conn,
@@ -293,6 +300,7 @@ w302_entrypoint_matrix(Conn, Ep, ScopeVal, Cipher, N) ->
 w302_hold_gc_race(Conn) ->
     Key = <<"v5e2e/w302/race/hold-first">>,
     seed(Conn, Key, <<"group">>, null, 40),
+    ?assertEqual({ok, true}, attachment_repo:refresh_gc_verified_tx(Conn, Key)),
     AttId = ?ASSET_BASE + 40,
     Cleanup = install_governance(Conn, AttId, hold_message),
     {error, #error{code = <<"23510">>}} =
@@ -305,11 +313,10 @@ w302_hold_gc_race(Conn) ->
     %% intent 先提交 => 治理操作 already_deleting（企业域 resolve→lifecycle 守卫）
     Key2 = <<"v5e2e/w302/race/intent-first">>,
     seed(Conn, Key2, <<"enterprise">>, null, 41),
-    %% 企业资产归属治理主体（resolve_attachment 按 scope_ref 解析）
-    q(
-        Conn,
-        "UPDATE attachment SET scope_ref='org:9101/app:9103' WHERE path=$1",
-        [Key2]
+    %% 治理归属在登记/确认时冻结，不在确认后补写 scope_ref。
+    %% Governance identity is frozen in registration and confirmed metadata.
+    {ok, _, [{<<"org:9101/app:9103">>}]} = e(
+        Conn, "SELECT scope_ref FROM attachment WHERE path=$1", [Key2]
     ),
     %% 统一资格证明走生产 repo（W3-02 两域统一：无绑定+明文+完整位置
     %% +无收藏/moment/治理行 => true）
@@ -333,4 +340,20 @@ w302_hold_gc_race(Conn) ->
     }),
     {ok, _, _} = epgsql:equery(Conn, "ROLLBACK", []),
     {error, {<<"invalid_request">>, already_deleting}} = R,
+    ok.
+
+%% Pin/confirm must finish inside the real capability window. Never shrink it.
+%% Wait on the database clock, capped at five seconds; a missed window fails.
+await_upload_expiry(Conn, Key) ->
+    {ok, _, [{true}]} = epgsql:equery(Conn,
+        "SELECT session_state='confirmed' AND upload_content IS NOT NULL"
+        " AND upload_expires_at > clock_timestamp()"
+        " FROM attach_pending WHERE object_key=$1", [Key]),
+    {ok, _, [_]} = epgsql:equery(Conn,
+        "SELECT pg_sleep(LEAST(5.0, GREATEST(0.0,"
+        " EXTRACT(EPOCH FROM (upload_expires_at - clock_timestamp())))))"
+        " FROM attach_pending WHERE object_key=$1", [Key]),
+    {ok, _, [{true}]} = epgsql:equery(Conn,
+        "SELECT upload_expires_at <= clock_timestamp()"
+        " FROM attach_pending WHERE object_key=$1", [Key]),
     ok.

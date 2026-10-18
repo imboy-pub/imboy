@@ -218,13 +218,12 @@ mpeg_frame_sync(<<16#FF, X, _/binary>>) when
 mpeg_frame_sync(_Bytes) ->
     false.
 
-no_control_noise(Bytes) ->
-    %% 只允许 TAB/LF/CR 三个控制字符
-    Allowed = [9, 10, 13],
-    lists:all(
-        fun(B) -> B >= 32 orelse lists:member(B, Allowed) end,
-        binary_to_list(Bytes)
-    ).
+%% 同一字节规则，直接遍历 binary，避免最大文本体膨胀为逐字节 cons 列表。
+%% Preserve the byte predicate without expanding large bodies into cons lists.
+no_control_noise(<<>>) -> true;
+no_control_noise(<<B, Rest/binary>>) when B >= 32; B =:= 9; B =:= 10; B =:= 13 ->
+    no_control_noise(Rest);
+no_control_noise(_) -> false.
 
 prefix(Prefix, Bytes) when byte_size(Bytes) >= byte_size(Prefix) ->
     binary:part(Bytes, 0, byte_size(Prefix)) =:= Prefix;

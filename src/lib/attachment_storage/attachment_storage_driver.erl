@@ -9,6 +9,7 @@
     Container :: binary(),
     Key :: binary(),
     Body :: binary() | {file, file:filename_all()}
+        | {upload_spool, pid(), non_neg_integer(), binary()}
 ) ->
     ok | {error, term()}.
 

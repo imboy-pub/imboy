@@ -41,10 +41,10 @@ cleanup_user(Uid) ->
 
 insert_c2c(Id, FromId, ToId, E2EE) ->
     {ok, _} =
-        elib_pg:query(
+        personal_message_order_repo:execute_formal(FromId, ToId, c2c_msg_key(Id),
             <<
-                "INSERT INTO public.msg_c2c (id, from_id, to_id, msg_id, msg_type, e2ee, payload)"
-                " VALUES ($1, $2, $3, $4, 'text', $5::jsonb, $6)"
+                "INSERT INTO public.msg_c2c (id, from_id, to_id, msg_id, msg_type, e2ee, payload, conv_seq)"
+                " VALUES ($1, $2, $3, $4, 'text', $5::jsonb, $6, $7)"
             >>,
             [
                 Id,
@@ -193,6 +193,10 @@ cleanup_world(W) ->
     cleanup_msg(maps:get(c2c_id, W)),
     cleanup_msg(maps:get(c2c_e2ee_id, W)),
     cleanup_msg(maps:get(c2g_id, W)),
+    {ok, _} = elib_pg:execute(
+        <<"DELETE FROM public.msg_store_seq WHERE conv_key=$1">>,
+        [msg_archive_repo:conv_key(<<"c2c">>, maps:get(author, W), maps:get(recipient, W))]
+    ),
     cleanup_channel(maps:get(channel_id, W)),
     cleanup_group(maps:get(gid, W)),
     [

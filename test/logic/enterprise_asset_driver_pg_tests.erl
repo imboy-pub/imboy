@@ -3,6 +3,9 @@
 -include_lib("eunit/include/eunit.hrl").
 
 internal_driver_test_() ->
+    isolated_pg_fixture:test(fun internal_driver_fixture/0).
+
+internal_driver_fixture() ->
     {setup, fun setup/0, fun cleanup/1, fun(S) ->
         [
             {atom_to_list(D) ++ "/" ++ atom_to_list(F), {timeout, 90, fun() -> run(S, D, F) end}}
@@ -17,6 +20,22 @@ internal_driver_test_() ->
         ]
     end}.
 setup() ->
+    Base = case file:read_link("/tmp") of
+        {ok, Target} -> filename:absname(Target, "/");
+        {error, einval} -> "/tmp";
+        {error, Reason} -> error({temporary_root_unavailable, Reason})
+    end,
+    Root = filename:join(Base, "attv5-internal-" ++ binary_to_list(elib_uuid:gen_v7())),
+    ok = file:make_dir(Root),
+    try
+        ok = file:change_mode(Root, 8#700),
+        (setup_owned(Root))#{root => Root}
+    catch Class:Reason0:Stack ->
+        cleanup(#{root => Root}),
+        erlang:raise(Class, Reason0, Stack)
+    end.
+
+setup_owned(RootPath) ->
     {ok, B} = file:read_file(os:getenv("W403_RESOURCE_MANIFEST")),
     #{<<"database">> := Db} = jsone:decode(B),
     <<"attv5_chain_", _/binary>> = Db,
@@ -37,7 +56,7 @@ setup() ->
         access_key => list_to_binary(os:getenv("W202_GARAGE_ACCESS_KEY")),
         secret_key => list_to_binary(os:getenv("W202_GARAGE_SECRET_KEY"))
     }),
-    Root = <<"file:///private/tmp/attv5-internal-", (elib_uuid:gen_v7())/binary>>,
+    Root = list_to_binary("file://" ++ RootPath),
     Registry = #{
         version => 1,
         roots => #{
@@ -79,10 +98,10 @@ setup() ->
         env => #{dispatch => Dispatch}
     }),
     #{registry => Registry, bucket => Bucket, port => ranch:get_port(internal_driver_fixture)}.
-cleanup(_) ->
-    cowboy:stop_listener(internal_driver_fixture),
+cleanup(#{root := Root}) ->
+    try cowboy:stop_listener(internal_driver_fixture) catch _:_ -> ok end,
     [
-        meck:unload(M)
+        try meck:unload(M) catch _:_ -> ok end
      || M <- [
             enterprise_asset_retention_logic,
             enterprise_audit_event_repo,
@@ -90,7 +109,12 @@ cleanup(_) ->
             enterprise_application_usage_repo
         ]
     ],
-    pooler:rm_pool(pgsql).
+    try pooler:rm_pool(pgsql) catch _:_ -> ok end,
+    case file:del_dir_r(Root) of
+        ok -> ok;
+        {error, enoent} -> ok;
+        {error, Reason} -> error({temporary_root_cleanup_failed, Reason})
+    end.
 run(S, D, Fault) when Fault =:= no_uuid_registration; Fault =:= registration_unavailable ->
     Registry = maps:get(registry, S),
     Ns = <<"internal-", (atom_to_binary(D))/binary>>,

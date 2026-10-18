@@ -26,6 +26,8 @@
 -ifdef(TEST).
 -export([
     ensure_env/0,
+    setup_with_owned_env/2,
+    cleanup_with_owned_env/2,
     ensure_tsid/0,
     ensure_built/0,
     given_full_fixture/1,
@@ -149,6 +151,9 @@ p1_test_() ->
 %%%===================================================================
 
 setup() ->
+    setup_with_owned_env(fun setup_fixture/0, fun cleanup_fixture/0).
+
+setup_fixture() ->
     ensure_env(),
     ensure_tsid(),
     ensure_built(),
@@ -156,6 +161,8 @@ setup() ->
         env_prefix => <<"HIRDPOC">>,
         reuse => true
     }),
+    %% Own the provisioned resource before any later setup step can fail.
+    persistent_term:put(?STATE_KEY, State),
     ok = imboy_hird_poc_membership:install(maps:get(conn, State)),
     ok = install_poc_env(),
     Counters = #{
@@ -174,18 +181,130 @@ setup() ->
 state() ->
     persistent_term:get(?STATE_KEY).
 
-cleanup(_) ->
+cleanup(SavedEnv) ->
+    cleanup_with_owned_env(SavedEnv, fun cleanup_fixture/0).
+
+cleanup_fixture() ->
     State = persistent_term:get(?STATE_KEY, undefined),
-    imboy_hird_poc_membership:teardown(),
-    imboy_hird_poc_registry:teardown(),
-    uninstall_poc_env(),
-    stop_supervisor(),
-    stop_audit(),
-    persistent_term:erase(?STATE_KEY),
-    %% reuse 共享：release 走引用计数（State 含 reuse_key，原样传递）。
-    case State of
-        undefined -> ok;
-        _ -> inttest_marker_db:release(State)
+    try
+        imboy_hird_poc_membership:teardown(),
+        imboy_hird_poc_registry:teardown(),
+        stop_supervisor(),
+        stop_audit()
+    after
+        persistent_term:erase(?STATE_KEY),
+        %% reuse 共享：release 走引用计数（State 含 reuse_key，原样传递）。
+        case State of
+            undefined -> ok;
+            _ -> inttest_marker_db:release(State)
+        end
+    end.
+
+%% The Hird suites own only these temporary application settings. Keep the
+%% complete pg_conf value, including pool metadata, and distinguish absent
+%% settings from settings whose value is explicitly undefined.
+setup_with_owned_env(Setup, Cleanup) ->
+    %% -config values are materialized by load, not by get_env. Snapshot them
+    %% before ensure_env or marker provisioning can replace the pool settings.
+    ok = load_poc_application_env(),
+    SavedEnv = capture_poc_env(),
+    try
+        ok = Setup(),
+        SavedEnv
+    catch
+        Class:Reason:Stack ->
+            cleanup_with_owned_env(SavedEnv, Cleanup),
+            erlang:raise(Class, Reason, Stack)
+    end.
+
+cleanup_with_owned_env(SavedEnv, Cleanup) ->
+    try
+        Cleanup()
+    after
+        restore_poc_env(SavedEnv)
+    end.
+
+load_poc_application_env() ->
+    case application:load(imboy) of
+        ok -> ok;
+        {error, {already_loaded, imboy}} -> ok;
+        {error, Reason} -> erlang:error({poc_application_load_failed, Reason})
+    end.
+
+capture_poc_env() ->
+    [{Key, application:get_env(imboy, Key)} || Key <- poc_env_keys()].
+
+restore_poc_env(SavedEnv) ->
+    lists:foreach(
+        fun
+            ({Key, {ok, Value}}) -> ok = application:set_env(imboy, Key, Value);
+            ({Key, undefined}) -> ok = application:unset_env(imboy, Key)
+        end,
+        SavedEnv
+    ).
+
+poc_env_keys() ->
+    [
+        pg_conf,
+        agent_capability_catalog_module,
+        agent_resource_policy_module,
+        agent_native_tool_registry_module,
+        agent_membership_module
+    ].
+
+poc_env_ownership_test_() ->
+    [
+        {atom_to_list(Mode) ++ " env restored after " ++ atom_to_list(Phase),
+            fun() -> check_poc_env_ownership(Mode, Phase) end}
+     || Mode <- [present, absent],
+        Phase <- [cleanup, setup_failure, cleanup_failure]
+    ].
+
+check_poc_env_ownership(Mode, Phase) ->
+    ok = load_poc_application_env(),
+    Original = capture_poc_env(),
+    try
+        case Mode of
+            present ->
+                lists:foreach(
+                    fun(Key) -> application:set_env(imboy, Key, {previous, Key}) end,
+                    poc_env_keys()
+                ),
+                ok = application:set_env(imboy, pg_conf, #{
+                    name => original_pool,
+                    init_count => 2,
+                    max_count => 7,
+                    start_mfa => {epgsql, connect, [#{database => "original"}]}
+                }),
+                ok = application:set_env(imboy, agent_membership_module, undefined);
+            absent ->
+                lists:foreach(fun(Key) -> application:unset_env(imboy, Key) end, poc_env_keys())
+        end,
+        Expected = capture_poc_env(),
+        Setup = fun() ->
+            ok = application:set_env(imboy, pg_conf, #{start_mfa => temporary}),
+            install_poc_env()
+        end,
+        case Phase of
+            cleanup ->
+                SavedEnv = setup_with_owned_env(Setup, fun uninstall_poc_env/0),
+                ?assertNotEqual(Expected, capture_poc_env()),
+                ok = cleanup_with_owned_env(SavedEnv, fun uninstall_poc_env/0);
+            setup_failure ->
+                ?assertError(poc_setup_failed, setup_with_owned_env(
+                    fun() -> ok = Setup(), erlang:error(poc_setup_failed) end,
+                    fun uninstall_poc_env/0
+                ));
+            cleanup_failure ->
+                SavedEnv = setup_with_owned_env(Setup, fun uninstall_poc_env/0),
+                ?assertError(poc_cleanup_failed, cleanup_with_owned_env(
+                    SavedEnv,
+                    fun() -> ok = uninstall_poc_env(), erlang:error(poc_cleanup_failed) end
+                ))
+        end,
+        ?assertEqual(Expected, capture_poc_env())
+    after
+        restore_poc_env(Original)
     end.
 
 install_poc_env() ->
@@ -862,7 +981,10 @@ t_provider_variant() ->
     State = state(),
     Conn = maps:get(conn, State),
     given_full_fixture(Conn),
+    ProviderCounter = maps:get(provider, maps:get(counters, State)),
     PlainReply = fun(#{prompt := P}, _Hs) ->
+        %% This replaces model_handler/2, so it owns the invocation count too.
+        _ = atomics:add_get(ProviderCounter, 1, 1),
         <<"plain-answer-no-tool:", P/binary>>
     end,
     {ok, File} = run_program(State, run_ctx(Conn, ?RUN_A, ?ORG_A), #{}, PlainReply),

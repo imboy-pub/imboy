@@ -85,45 +85,34 @@ token_check(Token) ->
 %% exp（签发时自登记冻结值），issued_at 为本请求转存时刻——由本层显式
 %% 构造传入，elib_oss/elib_s3_sign 不读取当前时钟重新计时。
 receive_body(Req0, Key, DeclMime, CapabilityExp) ->
-    TmpDir = tmp_dir(),
-    ok = filelib:ensure_dir(TmpDir ++ "/"),
-    %% Tmp 是平坦目录下的独立文件：ObjectKey 的 '/' 不构成子目录结构
-    SafeKey = lists:map(
-        fun
-            ($/) -> $_;
-            (C) -> C
-        end,
-        binary_to_list(Key)
-    ),
-    Tmp = TmpDir ++ "/" ++ SafeKey ++ "." ++ integer_to_list(erlang:unique_integer([positive])),
     try
-        receive_to_file(Req0, Key, DeclMime, CapabilityExp, Tmp)
+        case attachment_upload_spool:new(tmp_dir()) of
+            {ok, Writer} ->
+                try
+                    case read_loop(Req0, Writer, 0, max_bytes()) of
+                        {ok, Size} ->
+                            case attachment_upload_spool:seal(Writer) of
+                                {ok, Source} ->
+                                    serve_pinned(Req0, Key, DeclMime, CapabilityExp, Source, Size);
+                                {error, _} ->
+                                    cowboy_req:reply(500, #{}, <<"hash failed">>, Req0)
+                            end;
+                        {error, too_large} ->
+                            cowboy_req:reply(413, #{}, <<"payload exceeds limit">>, Req0);
+                        {error, _} ->
+                            cowboy_req:reply(500, #{}, <<"body receive failed">>, Req0)
+                    end
+                after
+                    attachment_upload_spool:close(Writer)
+                end;
+            {error, _} ->
+                cowboy_req:reply(500, #{}, <<"body receive failed">>, Req0)
+        end
     catch
         _:_ -> cowboy_req:reply(500, #{}, <<"body receive failed">>, Req0)
-    after
-        _ = file:delete(Tmp)
     end.
 
-receive_to_file(Req0, Key, DeclMime, CapabilityExp, Tmp) ->
-    case read_body_to_file(Req0, Tmp, 0) of
-        {ok, Size} ->
-            serve_pinned(Req0, Key, DeclMime, CapabilityExp, Tmp, Size);
-        {error, too_large} ->
-            cowboy_req:reply(413, #{}, <<"payload exceeds limit">>, Req0);
-        {error, _} ->
-            cowboy_req:reply(500, #{}, <<"body receive failed">>, Req0)
-    end.
-
-read_body_to_file(Req0, Tmp, Size) ->
-    Max = max_bytes(),
-    {ok, Fh} = file:open(Tmp, [write, exclusive, raw, binary]),
-    try
-        read_loop(Req0, Fh, Size, Max)
-    after
-        file:close(Fh)
-    end.
-
-read_loop(Req0, Fh, Size, Max) ->
+read_loop(Req0, Writer, Size, Max) ->
     case cowboy_req:read_body(Req0, #{length => ?CHUNK, period => 5000}) of
         %% {ok, _, _}：body 收完；{more, _, _}：还有分片，继续累计
         {Fin, Data, Req1} when Fin =:= ok; Fin =:= more ->
@@ -132,19 +121,28 @@ read_loop(Req0, Fh, Size, Max) ->
                 true ->
                     {error, too_large};
                 false ->
-                    ok = file:write(Fh, Data),
+                    {ok, Writer} = attachment_upload_spool:append(Writer, Data),
                     case Fin of
                         ok -> {ok, N};
-                        more -> read_loop(Req1, Fh, N, Max)
+                        more -> read_loop(Req1, Writer, N, Max)
                     end
             end;
         {error, _} = E ->
             E
     end.
 
-serve_pinned(Req0, Key, DeclMime, CapabilityExp, Tmp, Size) ->
-    case file_sha256(Tmp) of
-        {ok, Sha256} ->
+%% The legacy exported entry also snapshots once; production passes an owned sealed source.
+%% 兼容入口仅打开源路径一次；生产入口直接传已校验的私有句柄。
+serve_pinned(Req0, Key, DeclMime, CapabilityExp, Path, Size) when
+    is_list(Path); is_binary(Path)
+->
+    attachment_upload_spool:with_source({file, Path}, fun(Source) ->
+        serve_pinned(Req0, Key, DeclMime, CapabilityExp, Source, Size)
+    end);
+serve_pinned(Req0, Key, DeclMime, CapabilityExp, Source, Size) ->
+    case attachment_upload_spool:size(Source) =:= Size of
+        true ->
+            Sha256 = attachment_upload_spool:sha256(Source),
             Receipt = #{
                 <<"version">> => 1,
                 <<"sha256">> => Sha256,
@@ -160,7 +158,7 @@ serve_pinned(Req0, Key, DeclMime, CapabilityExp, Tmp, Size) ->
                         issued_at => unix_to_datetime(erlang:system_time(second)),
                         expires_at => unix_to_datetime(CapabilityExp)
                     },
-                    case provider_put_ctx(Key, Tmp, DeclMime, Ctx) of
+                    case provider_put_ctx(Key, Source, DeclMime, Ctx, Receipt) of
                         ok ->
                             cowboy_req:reply(
                                 200,
@@ -189,6 +187,13 @@ serve_pinned(Req0, Key, DeclMime, CapabilityExp, Tmp, Size) ->
                             cowboy_req:reply(
                                 410, #{}, <<"capability window invalid">>, Req0
                             );
+                        {error, Reason} when Reason =:= session_not_renewable;
+                                             Reason =:= tombstone;
+                                             Reason =:= location_changed;
+                                             Reason =:= content_mismatch ->
+                            cowboy_req:reply(409, #{}, atom_to_binary(Reason, utf8), Req0);
+                        {error, not_found} ->
+                            cowboy_req:reply(404, #{}, <<"unknown session">>, Req0);
                         {error, _put_failed} ->
                             %% 对象存储 PUT 失败：pin 保留，同 receipt 重试合法
                             cowboy_req:reply(
@@ -202,26 +207,31 @@ serve_pinned(Req0, Key, DeclMime, CapabilityExp, Tmp, Size) ->
                     );
                 {error, not_found} ->
                     cowboy_req:reply(404, #{}, <<"unknown session">>, Req0);
+                {error, Reason} when Reason =:= session_not_renewable;
+                                     Reason =:= tombstone;
+                                     Reason =:= location_changed ->
+                    cowboy_req:reply(409, #{}, atom_to_binary(Reason, utf8), Req0);
                 {error, _} ->
                     cowboy_req:reply(500, #{}, <<"content pin failed">>, Req0)
             end;
-        {error, _} ->
+        false ->
             cowboy_req:reply(500, #{}, <<"hash failed">>, Req0)
     end.
 
-%% provider PUT 容错包装：elib_oss 抛出异常按 PUT 失败处理（pin 保留），
+%% provider PUT 容错包装：driver 抛出异常按 PUT 失败处理（pin 保留），
 %% invalid_signature_context 透传给上层区分 410。
-provider_put_ctx(Key, Tmp, DeclMime, Ctx) ->
+provider_put_ctx(Key, Source, DeclMime, Ctx, Receipt) ->
     try
         case attachment_storage:session_location(Key) of
             {ok, legacy_unknown} ->
                 {error, historical_location_unverified};
             {ok, #{driver := garage} = I} ->
-                attachment_storage_garage:put_snapshot(I, {file, Tmp}, DeclMime, Ctx);
+                attachment_storage_garage:put_snapshot(I, Source, DeclMime, Ctx);
             {ok, #{driver := disk} = I} ->
                 Expiry =
                     calendar:datetime_to_gregorian_seconds(maps:get(expires_at, Ctx)) - 62167219200,
-                attachment_storage_disk:put_snapshot(I, {file, Tmp}, Expiry);
+                Recheck = fun() -> attach_pending_repo:recheck_content_pin(Key, Receipt, I) end,
+                attachment_storage_disk:put_snapshot(I, Source, Expiry, Recheck);
             {error, _} = E ->
                 E;
             _ ->
@@ -233,15 +243,6 @@ provider_put_ctx(Key, Tmp, DeclMime, Ctx) ->
 
 unix_to_datetime(UnixSec) ->
     calendar:gregorian_seconds_to_datetime(UnixSec + 62167219200).
-
-file_sha256(Path) ->
-    try
-        {ok, Data} = file:read_file(Path),
-        Digest = crypto:hash(sha256, Data),
-        {ok, iolist_to_binary([io_lib:format("~2.16.0b", [B]) || B <- binary_to_list(Digest)])}
-    catch
-        _:_ -> {error, hash_failed}
-    end.
 
 tmp_dir() ->
     case os:getenv("IMBOY_V5_GATEWAY_TMP") of

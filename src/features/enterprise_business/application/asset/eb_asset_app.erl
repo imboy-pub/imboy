@@ -678,7 +678,7 @@ put_args(Params) ->
         {error, _} = Err ->
             Err;
         {ok, Actor} ->
-            case {is_integer(Ws), is_binary(Token), is_binary(Payload)} of
+            case {is_integer(Ws), is_binary(Token), upload_payload(Payload)} of
                 {true, true, true} -> {ok, Ws, Token, Payload, Actor};
                 _ -> {error, {invalid_argument, {put_object, [Ws, Token, Payload]}}}
             end
@@ -735,19 +735,55 @@ put_verify(OrgId, Ws, Payload, Claims, Params) ->
     ExpectedHash = maps:get(object_hash, Claims),
     ExpectedSize = maps:get(size_bytes, Claims),
     Mime = maps:get(mime, Claims),
-    ActualHash = eb_asset_content:sha256_hex(Payload),
-    case {ActualHash =:= ExpectedHash, byte_size(Payload) =:= ExpectedSize} of
+    ActualHash = payload_hash(Payload),
+    case {ActualHash =:= ExpectedHash, payload_size(Payload) =:= ExpectedSize} of
         {false, _} ->
             {error, {hash_mismatch, ExpectedHash, ActualHash}};
         {true, false} ->
-            {error, {size_mismatch, ExpectedSize, byte_size(Payload)}};
+            {error, {size_mismatch, ExpectedSize, payload_size(Payload)}};
         {true, true} ->
-            case eb_asset_content:sniff(Mime, Payload) of
+            case payload_sniff(Mime, Payload) of
                 {error, _} = Err ->
                     Err;
                 ok ->
                     asset_put_private(OrgId, Ws, Payload, Claims, Params)
             end
+    end.
+
+%% HTTP uploads retain one owned descriptor; existing binary callers remain compatible.
+%% HTTP 上传复用请求拥有的描述符；原 binary 调用方保持兼容。
+upload_payload(B) when is_binary(B) -> true;
+upload_payload({upload_spool, Fh, Size, Hash}) ->
+    is_pid(Fh) andalso is_integer(Size) andalso Size >= 0 andalso is_binary(Hash);
+upload_payload(_) -> false.
+
+payload_size(B) when is_binary(B) -> byte_size(B);
+payload_size(Source) -> attachment_upload_spool:size(Source).
+payload_hash(B) when is_binary(B) -> eb_asset_content:sha256_hex(B);
+payload_hash(Source) -> attachment_upload_spool:sha256(Source).
+
+payload_sniff(Mime, B) when is_binary(B) -> eb_asset_content:sniff(Mime, B);
+payload_sniff(Mime, Source) ->
+    case attachment_upload_spool:read(Source, 0) of
+        {ok, Head} ->
+            case eb_asset_content:sniff(Mime, Head) of
+                ok when Mime =:= <<"text/plain">>; Mime =:= <<"text/markdown">>;
+                        Mime =:= <<"text/csv">>; Mime =:= <<"image/svg+xml">> ->
+                    sniff_remaining_text(Source, byte_size(Head), Mime);
+                Result -> Result
+            end;
+        _ -> {error, {mime_content_mismatch, Mime}}
+    end.
+
+sniff_remaining_text(Source, Offset, Mime) ->
+    case attachment_upload_spool:read(Source, Offset) of
+        eof -> ok;
+        {ok, Bytes} ->
+            case eb_asset_content:sniff(<<"text/plain">>, Bytes) of
+                ok -> sniff_remaining_text(Source, Offset + byte_size(Bytes), Mime);
+                _ -> {error, {mime_content_mismatch, Mime}}
+            end;
+        _ -> {error, {mime_content_mismatch, Mime}}
     end.
 
 asset_put_private(OrgId, Ws, Payload, Claims, Params) ->

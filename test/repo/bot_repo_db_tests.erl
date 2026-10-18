@@ -17,8 +17,8 @@ has_exchange_no_history_test_() ->
 has_exchange_user_to_bot_test_() ->
     ?TEST_WITH_DB(fun() ->
         {BotId, UserId} = random_uid_pair(),
-        insert_c2c(UserId, BotId),
         try
+            insert_c2c(UserId, BotId),
             ?assertEqual(true, bot_repo:has_exchange(BotId, UserId))
         after
             cleanup_c2c(BotId, UserId)
@@ -28,8 +28,8 @@ has_exchange_user_to_bot_test_() ->
 has_exchange_bot_to_user_test_() ->
     ?TEST_WITH_DB(fun() ->
         {BotId, UserId} = random_uid_pair(),
-        insert_c2c(BotId, UserId),
         try
+            insert_c2c(BotId, UserId),
             ?assertEqual(true, bot_repo:has_exchange(BotId, UserId))
         after
             cleanup_c2c(BotId, UserId)
@@ -40,20 +40,21 @@ has_exchange_bot_to_user_test_() ->
 %% Internal
 %% ===================================================================
 
-%% 随机 uid 对：取当前毫秒 + 随机偏移，避开真实用户 ID 空间（测试即清理）
+%% 独立 TSID 用户对：同毫秒开始的用例也不复用会话身份。
+%% Distinct TSIDs avoid reusing a conversation within the same millisecond.
 random_uid_pair() ->
-    Base = erlang:system_time(millisecond) band 16#3FFFFFFFFF,
-    {Base * 1000 + 1, Base * 1000 + 2}.
+    {elib_tsid:generate(user), elib_tsid:generate(user)}.
 
 insert_c2c(FromId, ToId) ->
     MsgId = <<"test_hex_", (integer_to_binary(FromId))/binary>>,
     Sql =
         <<
             "INSERT INTO public.msg_c2c (id, from_id, to_id, msg_id, msg_type, payload,"
-            " server_ts, created_at)"
-            " VALUES ($1, $2, $3, $4, 'text', 'has_exchange_test', now(), now())"
+            " server_ts, created_at, conv_seq)"
+            " VALUES ($1, $2, $3, $4, 'text', 'has_exchange_test', now(), now(), $5)"
         >>,
-    {ok, _} = elib_pg:query(Sql, [FromId, FromId, ToId, MsgId]),
+    {ok, 1} = personal_message_order_repo:execute_formal(FromId, ToId, MsgId, Sql,
+        [elib_tsid:generate(msg_c2c), FromId, ToId, MsgId]),
     ok.
 
 cleanup_c2c(BotId, UserId) ->
@@ -62,4 +63,8 @@ cleanup_c2c(BotId, UserId) ->
         " OR (from_id = $2 AND to_id = $1)"
     >>,
     {ok, _} = elib_pg:query(Sql, [BotId, UserId]),
+    {ok, _} = elib_pg:execute(
+        <<"DELETE FROM public.msg_store_seq WHERE conv_key=$1">>,
+        [msg_archive_repo:conv_key(<<"c2c">>, BotId, UserId)]
+    ),
     ok.

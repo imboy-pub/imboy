@@ -11,13 +11,32 @@ asset_meta_test_() ->
     {setup, fun setup/0, fun cleanup_db/1, fun cases/1}.
 
 setup() ->
-    eunit_runner:eunit_setup_with_db().
+    Result = eunit_runner:eunit_setup_with_db(),
+    case Result of
+        {ok, _} ->
+            try
+                Registry = eb_pg_test_fixture:install_asset_registry(),
+                {asset_registry, Registry, Result}
+            catch Class:Reason:Stack ->
+                cleanup_db(Result),
+                erlang:raise(Class, Reason, Stack)
+            end;
+        _ -> Result
+    end.
 
+cleanup_db({asset_registry, Registry, Result}) ->
+    try
+        cleanup_db(Result)
+    after
+        eb_pg_test_fixture:restore_asset_registry(Registry)
+    end;
 cleanup_db({ok, Conn}) ->
     eunit_runner:eunit_cleanup_db(Conn);
 cleanup_db(_Other) ->
     ok.
 
+cases({asset_registry, _Registry, Result}) ->
+    cases(Result);
 cases({ok, _Conn}) ->
     [
         {timeout, 60, fun insert_then_fetch_round_trips_pending_metadata/0},

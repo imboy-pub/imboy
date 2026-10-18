@@ -57,6 +57,9 @@ p2_test_() ->
 %%%===================================================================
 
 setup() ->
+    ?P1:setup_with_owned_env(fun setup_fixture/0, fun cleanup_fixture/0).
+
+setup_fixture() ->
     ?P1:ensure_env(),
     ?P1:ensure_tsid(),
     ?P1:ensure_built(),
@@ -64,6 +67,8 @@ setup() ->
         env_prefix => <<"HIRDPOC">>,
         reuse => true
     }),
+    %% Own the provisioned resource before any later setup step can fail.
+    persistent_term:put(?STATE_KEY, State),
     ok = imboy_hird_poc_membership:install(maps:get(conn, State)),
     ok = ?P1:install_poc_env(),
     Counters = #{
@@ -82,21 +87,26 @@ setup() ->
 state() ->
     persistent_term:get(?STATE_KEY).
 
-cleanup(_) ->
+cleanup(SavedEnv) ->
+    ?P1:cleanup_with_owned_env(SavedEnv, fun cleanup_fixture/0).
+
+cleanup_fixture() ->
     State = persistent_term:get(?STATE_KEY, undefined),
-    %% 护栏兜底解除：用例崩溃后不得让 armed 护栏泄漏到同 VM 后续套件
-    %% （六套件同 VM 串行——泄漏会使 P3/验收的桥全部拒绝）。
-    imboy_hird_host_bridge:disarm_replay_guard(),
-    imboy_hird_poc_membership:teardown(),
-    imboy_hird_poc_registry:teardown(),
-    ?P1:uninstall_poc_env(),
-    ?P1:stop_supervisor(),
-    ?P1:stop_audit(),
-    stop_cursor(),
-    persistent_term:erase(?STATE_KEY),
-    case State of
-        undefined -> ok;
-        _ -> inttest_marker_db:release(State)
+    try
+        %% 护栏兜底解除：用例崩溃后不得让 armed 护栏泄漏到同 VM 后续套件
+        %% （六套件同 VM 串行——泄漏会使 P3/验收的桥全部拒绝）。
+        imboy_hird_host_bridge:disarm_replay_guard(),
+        imboy_hird_poc_membership:teardown(),
+        imboy_hird_poc_registry:teardown(),
+        ?P1:stop_supervisor(),
+        ?P1:stop_audit(),
+        stop_cursor()
+    after
+        persistent_term:erase(?STATE_KEY),
+        case State of
+            undefined -> ok;
+            _ -> inttest_marker_db:release(State)
+        end
     end.
 
 %%%===================================================================

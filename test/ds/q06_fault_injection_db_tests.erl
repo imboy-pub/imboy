@@ -259,31 +259,40 @@ c2g_stage_msg_id_conflict_rolls_back_real_db_test_() ->
 offline_paging_real_db_test_() ->
     ?TEST_WITH_DB_TIMEOUT(30, fun() ->
         Uid = uid(),
+        FromUid = uid(),
         MsgIds = [
             iolist_to_binary(["q06-off-", integer_to_binary(Uid), $-, integer_to_binary(I)])
          || I <- lists:seq(1, 5)
         ],
-        lists:foreach(
-            fun({I, MsgId}) ->
-                {ok, _} = elib_pg:query(
-                    <<
-                        "INSERT INTO msg_c2c (id, from_id, to_id, msg_id, msg_type, "
-                        "payload, created_at) VALUES ($1, $2, $3, $4, 'text', "
-                        "'{\"text\":\"t\"}', $5)"
-                    >>,
-                    [uid(), 601301, Uid, MsgId, ts(I + 10)]
-                )
-            end,
-            lists:zip(lists:seq(1, 5), MsgIds)
-        ),
-        %% 翻页至耗尽（最多 6 页防死循环）
-        {All, Pages} = offline_pages(Uid, 2, 0, 6, []),
-        %% 去重后集合与 DB 全集一致（客户端 msg_id 幂等入库视角）；
-        %% 服务端游标为 created_at >= next（同毫秒不丢的安全方向），
-        %% 页边界条可能重复下发，去重由客户端合同承接
-        ?assertEqual(lists:sort(MsgIds), lists:usort(All)),
-        %% 页数受控（5 条 limit=2 至多 4 页含边界重复）
-        ?assert(Pages =< 4)
+        try
+            lists:foreach(
+                fun({I, MsgId}) ->
+                    {ok, 1} = personal_message_order_repo:execute_formal(FromUid, Uid, MsgId,
+                        <<
+                            "INSERT INTO msg_c2c (id, from_id, to_id, msg_id, msg_type, "
+                            "payload, created_at, conv_seq) VALUES ($1, $2, $3, $4, 'text', "
+                            "'{\"text\":\"t\"}', $5, $6)"
+                        >>,
+                        [uid(), FromUid, Uid, MsgId, ts(I + 10)]
+                    )
+                end,
+                lists:zip(lists:seq(1, 5), MsgIds)
+            ),
+            %% 翻页至耗尽（最多 6 页防死循环）
+            {All, Pages} = offline_pages(Uid, 2, 0, 6, []),
+            %% 去重后集合与 DB 全集一致（客户端 msg_id 幂等入库视角）；
+            %% 服务端游标为 created_at >= next（同毫秒不丢的安全方向），
+            %% 页边界条可能重复下发，去重由客户端合同承接
+            ?assertEqual(lists:sort(MsgIds), lists:usort(All)),
+            %% 页数受控（5 条 limit=2 至多 4 页含边界重复）
+            ?assert(Pages =< 4)
+        after
+            {ok, _} = elib_pg:execute(<<"DELETE FROM public.msg_c2c WHERE to_id=$1">>, [Uid]),
+            {ok, _} = elib_pg:execute(
+                <<"DELETE FROM public.msg_store_seq WHERE conv_key=$1">>,
+                [msg_archive_repo:conv_key(<<"c2c">>, FromUid, Uid)]
+            )
+        end
     end).
 
 offline_pages(_Uid, _Limit, _Last, 0, Acc) ->

@@ -267,64 +267,76 @@ s7_legacy_ciphertext_not_degraded_test_() ->
         KwJson = <<"{\"text\": \"", Kw/binary, "\"}">>,
         E2EEJson = <<"{\"session_id\": \"legacy-s1\", \"ciphertext\": \"QjhFTkNSWVBU\"}">>,
         CipherMsgId = iolist_to_binary(["q06ac4e-", integer_to_binary(A)]),
-        %% 直插 E2EE 时代遗留行：msg_c2c + msg_store（payload 含关键词但
+        NewMsgId = <<CipherMsgId/binary, "-n">>,
+        %% 构造 E2EE 历史内容：msg_c2c + msg_store（payload 含关键词但
         %% e2ee 非空——若 FTS 谓词失效该行必然命中，构成强 oracle）
         ConvKey = iolist_to_binary([
             <<"c2c:">>, integer_to_binary(erlang:min(A, B)), $:, integer_to_binary(erlang:max(A, B))
         ]),
-        {ok, _} = elib_pg:query(
-            <<
-                "INSERT INTO msg_c2c (id, from_id, to_id, msg_id, msg_type, payload, ",
-                "created_at, e2ee) VALUES ($1, $2, $3, $4, 'text', $5::jsonb, $6, $7::jsonb)"
-            >>,
-            [uid(), A, B, CipherMsgId, KwJson, ts(5), E2EEJson]
-        ),
-        {ok, _} = elib_pg:query(
-            <<
-                "INSERT INTO public.msg_store (id, chat_type, conv_key, conv_seq, msg_id, ",
-                "msg_type, from_id, to_id, payload, e2ee, created_at, server_ts) ",
-                "VALUES ($1,'c2c',$2,1,$3,'text',$4,$5,$6::jsonb,$7::jsonb,now(),now())"
-            >>,
-            [uid(), ConvKey, CipherMsgId, A, B, KwJson, E2EEJson]
-        ),
-        Fingerprint = row_fingerprint(CipherMsgId),
+        try
+            {ok, 1} = personal_message_order_repo:execute_formal(A, B, CipherMsgId,
+                <<
+                    "INSERT INTO msg_c2c (id, from_id, to_id, msg_id, msg_type, payload, ",
+                    "created_at, e2ee, conv_seq) VALUES ($1, $2, $3, $4, 'text', $5::jsonb, $6, $7::jsonb, $8)"
+                >>,
+                [uid(), A, B, CipherMsgId, KwJson, ts(5), E2EEJson]
+            ),
+            {ok, 1} = personal_message_order_repo:execute_formal(A, B, CipherMsgId,
+                <<
+                    "INSERT INTO public.msg_store (id, chat_type, conv_key, conv_seq, msg_id, ",
+                    "msg_type, from_id, to_id, payload, e2ee, created_at, server_ts) ",
+                    "VALUES ($1,'c2c',$2,$8,$3,'text',$4,$5,$6::jsonb,$7::jsonb,now(),now())"
+                >>,
+                [uid(), ConvKey, CipherMsgId, A, B, KwJson, E2EEJson]
+            ),
+            Fingerprint = row_fingerprint(CipherMsgId),
 
-        %% 读取一（history）：payload/e2ee 原样返回，不静默降级为明文标记
-        {ok, #{<<"messages">> := Msgs}} = messaging_logic:history(
-            A, <<"c2c">>, integer_to_binary(B), 0, 50
-        ),
-        [CipherRow] = [M || M <- Msgs, maps:get(<<"msg_id">>, M) =:= CipherMsgId],
-        E2EE = maps:get(<<"e2ee">>, CipherRow),
-        ?assertEqual(<<"legacy-s1">>, maps:get(<<"session_id">>, E2EE)),
-        ?assertEqual(<<"QjhFTkNSWVBU">>, maps:get(<<"ciphertext">>, E2EE)),
-        ?assertEqual(Kw, maps:get(<<"text">>, maps:get(<<"payload">>, CipherRow))),
+            %% 读取一（history）：payload/e2ee 原样返回，不静默降级为明文标记
+            {ok, #{<<"messages">> := Msgs}} = messaging_logic:history(
+                A, <<"c2c">>, integer_to_binary(B), 0, 50
+            ),
+            [CipherRow] = [M || M <- Msgs, maps:get(<<"msg_id">>, M) =:= CipherMsgId],
+            E2EE = maps:get(<<"e2ee">>, CipherRow),
+            ?assertEqual(<<"legacy-s1">>, maps:get(<<"session_id">>, E2EE)),
+            ?assertEqual(<<"QjhFTkNSWVBU">>, maps:get(<<"ciphertext">>, E2EE)),
+            ?assertEqual(Kw, maps:get(<<"text">>, maps:get(<<"payload">>, CipherRow))),
 
-        %% 读取二（offline）：接收方视角拉取，密文行同样原样下发
-        OfflinePayload = messaging_logic:offline(B, 1000, 0, 0, 0, <<>>),
-        C2CList = maps:get(<<"list">>, maps:get(<<"c2c">>, OfflinePayload)),
-        ?assert(lists:member(CipherMsgId, msg_ids_of(C2CList))),
+            %% 读取二（offline）：接收方视角拉取，密文行同样原样下发
+            OfflinePayload = messaging_logic:offline(B, 1000, 0, 0, 0, <<>>),
+            C2CList = maps:get(<<"list">>, maps:get(<<"c2c">>, OfflinePayload)),
+            ?assert(lists:member(CipherMsgId, msg_ids_of(C2CList))),
 
-        %% FTS：含关键词的密文行绝不出现（e2ee IS NULL 谓词生效直接证据）
-        {ok, Hits} = fts_user_repo:search_c2c_msg(Kw, 50, 0, A),
-        ?assertNot(lists:member(CipherMsgId, msg_ids_of(Hits))),
+            %% FTS：含关键词的密文行绝不出现（e2ee IS NULL 谓词生效直接证据）
+            {ok, Hits} = fts_user_repo:search_c2c_msg(Kw, 50, 0, A),
+            ?assertNot(lists:member(CipherMsgId, msg_ids_of(Hits))),
 
-        %% 新写入（同会话明文消息）不得触碰旧行
-        NewMsgId = <<CipherMsgId/binary, "-n">>,
-        {ok, new} = msg_store_ds:stage(
-            <<"c2c">>,
-            NewMsgId,
-            <<"text">>,
-            <<>>,
-            null,
-            jsone:encode(#{<<"text">> => Kw}),
-            A,
-            B,
-            ts(9),
-            ts(9),
-            <<>>
-        ),
-        flush_staging(NewMsgId),
-        ?assertEqual(Fingerprint, row_fingerprint(CipherMsgId))
+            %% 新写入（同会话明文消息）不得触碰旧行
+            {ok, new} = msg_store_ds:stage(
+                <<"c2c">>,
+                NewMsgId,
+                <<"text">>,
+                <<>>,
+                null,
+                jsone:encode(#{<<"text">> => Kw}),
+                A,
+                B,
+                ts(9),
+                ts(9),
+                <<>>
+            ),
+            flush_staging(NewMsgId),
+            ?assertEqual(Fingerprint, row_fingerprint(CipherMsgId))
+        after
+            lists:foreach(fun(Table) ->
+                {ok, _} = elib_pg:execute(
+                    <<"DELETE FROM public.", Table/binary, " WHERE msg_id=ANY($1)">>,
+                    [[CipherMsgId, NewMsgId]]
+                )
+            end, [<<"msg_c2c">>, <<"msg_store">>, <<"msg_store_staging">>]),
+            {ok, _} = elib_pg:execute(
+                <<"DELETE FROM public.msg_store_seq WHERE conv_key=$1">>, [ConvKey]
+            )
+        end
     end).
 
 row_fingerprint(MsgId) ->

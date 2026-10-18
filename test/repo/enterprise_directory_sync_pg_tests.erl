@@ -3,7 +3,9 @@
 -include_lib("eunit/include/eunit.hrl").
 -include_lib("epgsql/include/epgsql.hrl").
 
-directory_pg_test_() -> {timeout, 900, fun run/0}.
+%% 独立 VM 拥有 TSID 初始化，避免改写其他套件正在使用的节点身份。
+%% The standalone fixture owns its TSID identity in a separate VM.
+directory_pg_test_() -> {timeout, 900, fun() -> isolated_pg_fixture:run(fun run/0) end}.
 
 run() ->
     lists:foreach(

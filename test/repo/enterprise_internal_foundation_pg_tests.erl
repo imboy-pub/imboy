@@ -68,6 +68,9 @@
 %%%===================================================================
 
 setup_conn() ->
+    setup_conn(#{}).
+
+setup_conn(MigrationOptions) ->
     %% 直连模式未起 imboy 应用：本测试仅需 default TSID 生成器
     try
         elib_tsid:init(#{dc_id => 1, node_id => 1, dc_bits => 3})
@@ -77,29 +80,14 @@ setup_conn() ->
     %% 一次性 marker 库（inttest_marker_db 配方）：env 覆盖（<= imboy.pg_conf
     %% 回退）→ 建库 → 12 扩展 → erlang_migrate:up 全链（空库全量 up 即用例 ⓪）；
     %% 任一失败显式 error。
-    inttest_marker_db:provision(#{
+    inttest_marker_db:provision(maps:merge(#{
         env_prefix => <<"EPGZ01_INTTEST">>,
         connect_extra => #{codecs => [{epgsql_codec_rfc3339_bin, []}]}
-    }).
+    }, MigrationOptions)).
 
 close_conn(State) ->
     inttest_marker_db:release(State),
     ok.
-
-%% down/up 循环用独立连接（erlang_migrate 需要事务自治连接）。
-connect_marker(State) ->
-    #{host := Host, port := Port, username := User, password := Pass} = maps:get(server, State),
-    {ok, Conn} =
-        inttest_marker_db:safe_connect(#{
-            host => Host,
-            port => Port,
-            username => User,
-            password => Pass,
-            database => maps:get(db, State),
-            timeout => 10000,
-            codecs => [{epgsql_codec_rfc3339_bin, []}]
-        }),
-    Conn.
 
 %% 每条业务 oracle 用例 BEGIN ... ROLLBACK，不留数据。
 with_tx(C, TestFun) ->
@@ -810,16 +798,19 @@ push_token_platform_oracle(C) ->
 migration_cycle_test(State) ->
     ?_test(migration_cycle(State)).
 
-migration_cycle(State) ->
+migration_cycle(_HeadState) ->
     _ = code:add_patha("deps/erlang_migrate/ebin"),
-    Conn = connect_marker(State),
+    %% 历史回滚用独立历史库，不能跨越后续不可逆迁移。
+    %% Start at the tested migration; preserve the separate head business fixture.
+    State = setup_conn(#{migration_target => 136}),
+    Conn = maps:get(conn, State),
     try
         MigConfig = #{conn => Conn, dir => "priv/migrations", strict => true},
+        ?assertEqual({ok, 136, false}, erlang_migrate:version(MigConfig)),
         %% 回滚 00000136：五表 + 两个守卫函数全部消失，push platform 值域恢复，
         %% 版本回到 135。
-        %% 用 goto(135) 而非 down(1)：本用例的语义是「把 136 回滚掉」，down 步数
-        %% 会随 head 前移而错位（FULL-01 加入 00000139 后 down 1 只回滚 139）。
-        %% 与 cs_pg_widget_tests 的 head 前移教训同款，这里以目标版本表达意图。
+        %% 只回滚 136；后续迁移通过下方 forward-up 验证。
+        %% Only 136 is rolled back; later migrations are verified forward below.
         ok = erlang_migrate:goto(MigConfig, 135),
         {ok, VerAfterDown, false} = erlang_migrate:version(MigConfig),
         ?assertEqual(135, VerAfterDown),
@@ -911,11 +902,7 @@ migration_cycle(State) ->
             exec(Conn, <<"ROLLBACK">>)
         end
     after
-        try
-            epgsql:close(Conn)
-        catch
-            _:_ -> ok
-        end
+        close_conn(State)
     end.
 
 %%%===================================================================

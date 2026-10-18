@@ -14,7 +14,7 @@
 
 -export([claim_expired_tx/3]).
 -export([add/4]).
--export([register_v5/5, register_v5/6, status_lookup/1, register_content_pin/2]).
+-export([register_v5/5, register_v5/6, status_lookup/1, register_content_pin/2, recheck_content_pin/3]).
 -export([register_v5_tx/7, renew_capability/3, renew_capability_tx/4]).
 -export([lock_session_tx/2, confirm_session_tx/3]).
 -export([intent_pending_delete_tx/4, intent_pending_delete/3]).
@@ -395,6 +395,12 @@ renew_result({error, R}) ->
 %% 字节比对基准以此为准，锁前读到的快照不构成授权。
 -spec lock_session_tx(any(), binary()) -> {ok, map() | not_found} | {error, term()}.
 lock_session_tx(Conn, ObjectKey) ->
+    case elib_pg:query(Conn, <<"SELECT fn_v5_lock_ordinary_upload($1)">>, [ObjectKey]) of
+        {ok, _} -> locked_session_row(Conn, ObjectKey);
+        {error, _} = Error -> Error
+    end.
+
+locked_session_row(Conn, ObjectKey) ->
     case
         elib_pg:query(
             Conn,
@@ -450,18 +456,39 @@ confirm_session_tx(Conn, ObjectKey, AttachmentId) ->
 -spec intent_pending_delete_tx(pid() | any(), binary(), binary(), binary()) ->
     ok | {error, term()}.
 intent_pending_delete_tx(Conn, ObjectKey, Mode, Reason) ->
-    case
-        elib_pg:query(
-            Conn,
-            <<"SELECT fn_v5_intent_pending_delete($1, $2, $3)">>,
-            [ObjectKey, Reason, Mode]
-        )
-    of
-        {ok, _} -> ok;
-        {error, #error{code = <<"23510">>}} -> {error, intent_conflict};
-        {error, #error{code = <<"23505">>}} -> {error, tombstone};
-        {error, #error{code = <<"P0002">>}} -> {error, not_found};
-        {error, R} -> {error, R}
+    Savepoint = <<"v5_pending_intent_", (integer_to_binary(erlang:unique_integer([positive])))/binary>>,
+    case elib_pg:query(Conn, [<<"SAVEPOINT ">>, Savepoint], []) of
+        {ok, _} ->
+            Result = elib_pg:query(Conn,
+                <<"SELECT fn_v5_intent_pending_delete($1, $2, $3)">>,
+                [ObjectKey, Reason, Mode]),
+            recover_pending_intent(Conn, Savepoint, Result);
+        {error, _} = Error -> Error
+    end.
+
+recover_pending_intent(Conn, Savepoint, {ok, _}) ->
+    release_pending_intent(Conn, Savepoint, ok);
+recover_pending_intent(Conn, Savepoint, {error, #error{code = Code}})
+    when Code =:= <<"23510">>; Code =:= <<"23505">>; Code =:= <<"P0002">>
+->
+    Reason = case Code of
+        <<"23510">> -> intent_conflict;
+        <<"23505">> -> tombstone;
+        <<"P0002">> -> not_found
+    end,
+    case elib_pg:query(Conn, [<<"ROLLBACK TO SAVEPOINT ">>, Savepoint], []) of
+        {ok, _} -> release_pending_intent(Conn, Savepoint, {error, Reason});
+        {error, _} = Error -> Error
+    end;
+recover_pending_intent(_, _, {error, _} = Error) ->
+    %% Unknown SQL errors leave the enclosing transaction aborted; callers
+    %% must roll it back rather than continuing on a poisoned connection.
+    Error.
+
+release_pending_intent(Conn, Savepoint, Result) ->
+    case elib_pg:query(Conn, [<<"RELEASE SAVEPOINT ">>, Savepoint], []) of
+        {ok, _} -> Result;
+        {error, _} = Error -> Error
     end.
 
 -spec intent_pending_delete(binary(), binary(), binary()) -> ok | {error, term()}.
@@ -504,21 +531,41 @@ iso8601(UnixSeconds) ->
 %% 由迁移 179 的受限函数 fn_v5_pin_pending_content 在库内裁决。
 -spec register_content_pin(binary(), map()) -> ok | {error, term()}.
 register_content_pin(ObjectKey, Receipt) ->
-    case status_lookup(ObjectKey) of
-        {ok, _} ->
-            Sql = [
-                <<"SELECT fn_v5_pin_pending_content($1, $2::jsonb)">>
-            ],
-            case elib_pg:query(Sql, [ObjectKey, jsone:encode(Receipt)]) of
-                {ok, [#{<<"fn_v5_pin_pending_content">> := true}]} -> ok;
-                {error, #error{code = <<"23510">>}} -> {error, content_mismatch};
-                {error, #error{code = <<"P0002">>}} -> {error, not_found};
-                {ok, _} -> {error, invalid_pin_result};
-                {error, R} -> {error, R}
-            end;
-        {error, Reason} ->
-            {error, Reason}
-    end.
+    content_pin_result(elib_pg:query(
+        <<"SELECT fn_v5_pin_pending_content($1,$2::jsonb) AS admitted">>,
+        [ObjectKey, jsone:encode(Receipt)]
+    )).
+
+%% OS lock is already held by the caller. This single-statement transaction
+%% finishes before byte I/O; it must never resolve the mutable registry again.
+-spec recheck_content_pin(binary(), map(), map()) -> ok | {error, term()}.
+recheck_content_pin(ObjectKey, Receipt, Identity) when is_map(Identity) ->
+    case frozen_content_identity(Identity) of
+        {ok, Frozen} ->
+            content_pin_result(elib_pg:query(
+                <<"SELECT fn_v5_recheck_pending_content($1,$2::jsonb,$3::jsonb) AS admitted">>,
+                [ObjectKey, jsone:encode(Receipt), jsone:encode(Frozen)]
+            ));
+        {error, _} = Error -> Error
+    end;
+recheck_content_pin(_, _, _) ->
+    {error, location_changed}.
+
+frozen_content_identity(#{driver := Driver, namespace := Ns, container := Container,
+                          key := Key, locator_digest := Digest}) ->
+    {ok, #{driver => Driver, namespace => Ns, container => Container,
+           key => Key, locator_digest => Digest}};
+frozen_content_identity(_) ->
+    {error, location_changed}.
+
+content_pin_result({ok, [#{<<"admitted">> := true}]}) -> ok;
+content_pin_result({error, #error{code = <<"23510">>}}) -> {error, content_mismatch};
+content_pin_result({error, #error{code = <<"55000">>}}) -> {error, session_not_renewable};
+content_pin_result({error, #error{code = <<"23505">>}}) -> {error, tombstone};
+content_pin_result({error, #error{code = <<"22023">>}}) -> {error, location_changed};
+content_pin_result({error, #error{code = <<"P0002">>}}) -> {error, not_found};
+content_pin_result({ok, _}) -> {error, invalid_pin_result};
+content_pin_result({error, Reason}) -> {error, Reason}.
 
 %% elib_pg:execute/2 的成功返回有 {ok, N} 与 {ok, N, Rows} 两种形态
 normalize({ok, _}) -> ok;

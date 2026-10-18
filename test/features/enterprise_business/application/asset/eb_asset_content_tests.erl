@@ -84,3 +84,20 @@ short_prefix_content_still_matches_test() ->
     %% 前缀规则只要求内容不短于前缀：恰好等长也要命中
     ?assertEqual(ok, eb_asset_content:sniff(<<"image/bmp">>, <<"BM">>)),
     ?assertEqual(ok, eb_asset_content:sniff(<<"application/gzip">>, <<16#1F, 16#8B>>)).
+
+text_byte_predicate_equivalence_test() ->
+    %% Keep the historical byte whitelist exactly, without allocating a list
+    %% proportional to the complete upload size.
+    lists:foreach(fun(B) ->
+        Expected = case B >= 32 orelse B =:= 9 orelse B =:= 10 orelse B =:= 13 of
+            true -> ok;
+            false -> {error, {mime_content_mismatch, <<"text/plain">>}}
+        end,
+        ?assertEqual(Expected, eb_asset_content:sniff(<<"text/plain">>, <<B>>))
+    end, lists:seq(0, 255)).
+
+text_late_control_byte_test() ->
+    Prefix = binary:copy(<<"a">>, 65536 * 3),
+    ?assertEqual(ok, eb_asset_content:sniff(<<"text/plain">>, Prefix)),
+    ?assertMatch({error, {mime_content_mismatch, _}},
+        eb_asset_content:sniff(<<"text/plain">>, <<Prefix/binary, 1>>)).

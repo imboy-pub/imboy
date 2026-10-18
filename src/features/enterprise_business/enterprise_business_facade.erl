@@ -371,7 +371,11 @@ put_object(
     is_integer(OrgId),
     is_integer(WorkspaceId),
     is_binary(UploadRef),
-    is_binary(Payload),
+    (is_binary(Payload) orelse
+        (is_tuple(Payload) andalso tuple_size(Payload) =:= 4 andalso
+            element(1, Payload) =:= upload_spool andalso is_pid(element(2, Payload)) andalso
+            is_integer(element(3, Payload)) andalso element(3, Payload) >= 0 andalso
+            is_binary(element(4, Payload)))),
     is_map(Params)
 ->
     eb_asset_app:put_object(OrgId, Params);

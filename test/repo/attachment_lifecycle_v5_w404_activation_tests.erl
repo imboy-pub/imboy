@@ -29,12 +29,17 @@ run() ->
     ),
     Conn = maps:get(conn, State),
     try
-        seed_tenants(Conn),
-        w404_reconcile(Conn),
-        w404_no_infinite_loop(Conn),
-        w404_guards_activation(Conn),
-        w404_all_writer_compat(Conn),
-        w404_activation_commit_unknown(Conn)
+        Storage = setup_storage_fixture(),
+        try
+            seed_tenants(Conn),
+            w404_reconcile(Conn, Storage),
+            w404_no_infinite_loop(Conn, Storage),
+            w404_guards_activation(Conn, Storage),
+            w404_all_writer_compat(Conn),
+            w404_activation_commit_unknown(Conn)
+        after
+            cleanup_storage_fixture(Storage)
+        end
     after
         inttest_marker_db:release(State),
         eunit_runner:eunit_cleanup(Boot)
@@ -57,6 +62,38 @@ uuid_text() ->
 
 hex64(Bin) ->
     iolist_to_binary([io_lib:format("~2.16.0b", [B]) || B <- binary_to_list(Bin)]).
+
+%% 真 registry 与规范 locator；只替换最后的删除回调，不绕过冻结位置校验。
+%% Own a registered root and canonical locator; only deletion itself is injected.
+setup_storage_fixture() ->
+    Previous = application:get_env(imboy, attachment_storage_registry),
+    Registry = attachment_storage:registry(),
+    Namespace = <<"w404-", (binary:encode_hex(crypto:strong_rand_bytes(16), lowercase))/binary>>,
+    Root = filename:join("/tmp", binary_to_list(Namespace)),
+    ok = file:make_dir(Root),
+    try
+        Record = #{driver => <<"disk">>, namespace => Namespace,
+            endpoint => list_to_binary("file://" ++ Root), container => <<"w404-fixture">>},
+        Roots = maps:get(roots, Registry, #{}),
+        ok = application:set_env(imboy, attachment_storage_registry, Registry#{
+            roots => Roots#{Namespace => Record}
+        }),
+        #{previous_registry => Previous, root => Root, namespace => Namespace,
+            locator => attachment_storage:locator_digest(Namespace, Record#{root_id => Namespace})}
+    catch Class:Reason:Stack ->
+        cleanup_storage_fixture(#{previous_registry => Previous, root => Root}),
+        erlang:raise(Class, Reason, Stack)
+    end.
+
+cleanup_storage_fixture(#{previous_registry := Previous, root := Root}) ->
+    try
+        case Previous of
+            undefined -> application:unset_env(imboy, attachment_storage_registry);
+            {ok, Registry} -> application:set_env(imboy, attachment_storage_registry, Registry)
+        end
+    after
+        ok = file:del_dir(Root)
+    end.
 
 seed_tenants(Conn) ->
     q(
@@ -85,16 +122,17 @@ seed_tenants(Conn) ->
     ),
     ok.
 
-seed_job(Conn, Key, Attempts, State) ->
+seed_job(Conn, Storage, Key, Attempts, State) ->
     q(
         Conn,
         "INSERT INTO attachment_object_deletion"
         " (path,bucket,storage_driver,storage_namespace,storage_container,"
         "  storage_locator_sha256,job_state,next_retry_at,attempts,last_error_code)"
-        " VALUES ($1,'b','garage','ns1','c1',$2,$3,now(),$4,$5)",
+        " VALUES ($1,'w404-fixture','disk',$2,'w404-fixture',$3,$4,now(),$5,$6)",
         [
             Key,
-            hex64(crypto:hash(sha256, Key)),
+            maps:get(namespace, Storage),
+            maps:get(locator, Storage),
             State,
             Attempts,
             case State of
@@ -124,10 +162,10 @@ seed_eb_asset(Conn, Id) ->
 
 %% ---------- reconcile 8 ----------
 
-w404_reconcile(Conn) ->
+w404_reconcile(Conn, Storage) ->
     %% startup_ready：过期租约 job → 启动调和（reaper）回收 → 可再消费
     K1 = <<"v5e2e/w404/rec-startup">>,
-    seed_job(Conn, K1, 0, ready),
+    seed_job(Conn, Storage, K1, 0, ready),
     T = uuid_text(),
     {ok, _} = attachment_gc_repo:v5_claim(Conn, T),
     q(
@@ -163,7 +201,7 @@ w404_reconcile(Conn) ->
     ),
     %% restart_expired_lease：重启后 reconcile 再回收另一过期租约
     K2 = <<"v5e2e/w404/rec-restart">>,
-    seed_job(Conn, K2, 0, ready),
+    seed_job(Conn, Storage, K2, 0, ready),
     T2 = uuid_text(),
     {ok, _} = attachment_gc_repo:v5_claim(Conn, T2),
     q(
@@ -180,20 +218,23 @@ w404_reconcile(Conn) ->
     {ok, _} = attachment_delete_worker:reconcile(),
     ok.
 
-default_delete_noop(_Ns, _C, _K, _B) -> ok.
+default_delete_noop(Namespace, Container, Key, Snapshot) ->
+    ?assertMatch(#{driver := disk, namespace := Namespace, container := Container,
+        key := Key, root_id := Namespace}, Snapshot),
+    ok.
 
 %% ---------- no-infinite-loop 8 ----------
 
-w404_no_infinite_loop(Conn) ->
+w404_no_infinite_loop(Conn, Storage) ->
     %% task_attempt5_restart：attempts=5 行重启后保持（不重置）
     K1 = <<"v5e2e/w404/nl-attempt5">>,
-    seed_job(Conn, K1, 5, retry_wait),
+    seed_job(Conn, Storage, K1, 5, retry_wait),
     {ok, _, [{5}]} = e(
         Conn, "SELECT attempts FROM attachment_object_deletion WHERE path=$1", [K1]
     ),
     %% claim_attempt8_restart：attempts=8 blocked 行永不被 claim（无第 9 次）
     K2 = <<"v5e2e/w404/nl-attempt8">>,
-    seed_job(Conn, K2, 8, blocked),
+    seed_job(Conn, Storage, K2, 8, blocked),
     {ok, _, [{1}]} = e(
         Conn,
         "SELECT COUNT(*) FROM attachment_object_deletion WHERE path=$1"
@@ -202,7 +243,7 @@ w404_no_infinite_loop(Conn) ->
     ),
     %% blocked_no_poll：batch 消费跳过 blocked（零触碰），只消费正常 job
     K3 = <<"v5e2e/w404/nl-normal">>,
-    seed_job(Conn, K3, 0, ready),
+    seed_job(Conn, Storage, K3, 0, ready),
     {ok, _} = attachment_delete_worker:run_batch(Conn, fun default_delete_noop/4),
     {ok, _, [{<<"blocked">>}]} = e(
         Conn, "SELECT job_state FROM attachment_object_deletion WHERE path=$1", [K2]
@@ -220,7 +261,7 @@ w404_no_infinite_loop(Conn) ->
 
 %% ---------- guards-activation 8 ----------
 
-w404_guards_activation(Conn) ->
+w404_guards_activation(Conn, Storage) ->
     %% 前置检查：函数齐备 + 触发器状态如实报告（provision 已应用 188 →
     %% 已挂=true → 重复激活被探测返回 {error,...}；未挂库返回 {ok,...}）
     Report = attachment_guards_activation_check:check(#{conn => Conn}),
@@ -251,7 +292,7 @@ w404_guards_activation(Conn) ->
     ?assert(Attached orelse TrigCount =:= 1),
     %% 激活后守卫生效：直接 DELETE queue 行被拒（job rows are permanent）
     K1 = <<"v5e2e/w404/guard-del">>,
-    seed_job(Conn, K1, 0, ready),
+    seed_job(Conn, Storage, K1, 0, ready),
     {error, #error{code = <<"23510">>}} = e(
         Conn, "DELETE FROM attachment_object_deletion WHERE path=$1", [K1]
     ),

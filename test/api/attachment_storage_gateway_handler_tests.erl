@@ -9,7 +9,7 @@
 %    exp 的绝对时间）、多段 ObjectKey 平坦化落盘、409 时 provider PUT=0、
 %    413 不触发 pin、404/502/410 状态面、403/410 能力门。
 %
-% 移植约定：provider PUT 统一为冻结 Context 版 put_object_from_file_ctx/5；
+% 移植约定：provider PUT 使用冻结 identity + Context 的 driver put_snapshot/4；
 % 回包携带请求原始 Req（网关不把 read_body 更新后的 Req 透传给 reply）。
 %%%
 
@@ -41,9 +41,11 @@ repo_chain_test_() ->
     ].
 
 run_chain(Result) ->
-    Modules = [cowboy_req, imboy_jwt, elib_oss, elib_pg, elib_pg_sql, attach_pending_repo],
-    lists:foreach(fun(Module) -> meck:new(Module, [non_strict]) end, Modules),
+    Modules = [cowboy_req, imboy_jwt, elib_oss, elib_pg, elib_pg_sql, attach_pending_repo,
+        attachment_storage, attachment_storage_garage],
+    TmpState = setup_tmp(),
     try
+        lists:foreach(fun(Module) -> meck:new(Module, [non_strict]) end, Modules),
         setup_mocks(ok),
         meck:unload(attach_pending_repo),
         setup_chain(Result),
@@ -61,7 +63,7 @@ run_chain(Result) ->
                 provider_exception -> 1;
                 _ -> 0
             end,
-        ?assertEqual(Calls, meck:num_calls(elib_oss, put_object_from_file_ctx, '_')),
+        ?assertEqual(Calls, meck:num_calls(attachment_storage_garage, put_snapshot, '_')),
         case Calls of
             1 -> ?assertMatch(#{<<"size_bytes">> := <<"7">>}, get(gateway_pin));
             _ -> ok
@@ -73,10 +75,7 @@ run_chain(Result) ->
             )
         )
     after
-        safe_unload(file),
-        lists:foreach(fun safe_unload/1, Modules),
-        erase(gateway_pin),
-        erase(gateway_key)
+        cleanup_gateway([file | Modules], TmpState)
     end.
 
 safe_unload(Module) ->
@@ -111,9 +110,9 @@ pin_result(missing) ->
 pin_result(empty) ->
     {ok, []};
 pin_result(Value) when Value =:= false; Value =:= null ->
-    {ok, [#{<<"fn_v5_pin_pending_content">> => Value}]};
+    {ok, [#{<<"admitted">> => Value}]};
 pin_result(_) ->
-    {ok, [#{<<"fn_v5_pin_pending_content">> => true}]}.
+    {ok, [#{<<"admitted">> => true}]}.
 
 setup_fault(body_exception) ->
     meck:expect(cowboy_req, read_body, fun(_, _) -> erlang:error(body_failed) end);
@@ -121,12 +120,12 @@ setup_fault(write_exception) ->
     meck:new(file, [unstick, passthrough]),
     meck:expect(file, write, fun(_, _) -> erlang:error(write_failed) end);
 setup_fault(provider_error) ->
-    meck:expect(elib_oss, put_object_from_file_ctx, fun(_, _, _, _, _) ->
+    meck:expect(attachment_storage_garage, put_snapshot, fun(_, _, _, _) ->
         ?assertMatch(#{<<"size_bytes">> := <<"7">>}, get(gateway_pin)),
         {error, timeout}
     end);
 setup_fault(provider_exception) ->
-    meck:expect(elib_oss, put_object_from_file_ctx, fun(_, _, _, _, _) ->
+    meck:expect(attachment_storage_garage, put_snapshot, fun(_, _, _, _) ->
         ?assertMatch(#{<<"size_bytes">> := <<"7">>}, get(gateway_pin)),
         erlang:error(provider_failed)
     end);
@@ -144,46 +143,61 @@ gateway_put_test_() ->
     [?_test(run_put(Result)) || Result <- [ok, content_mismatch, not_found, put_failed]].
 
 pinned_success_test() ->
-    Modules = [cowboy_req, imboy_jwt, attach_pending_repo, elib_oss],
-    lists:foreach(fun(Module) -> meck:new(Module, [non_strict]) end, Modules),
+    Modules = [cowboy_req, imboy_jwt, attach_pending_repo, elib_oss,
+        attachment_storage, attachment_storage_garage],
+    TmpState = setup_tmp(),
     Tmp = tmp_base() ++ "/pinned-success",
     try
+        lists:foreach(fun(Module) -> meck:new(Module, [non_strict]) end, Modules),
         ok = file:write_file(Tmp, <<"payload">>),
         setup_mocks(ok),
         {Status, Headers, Body} = attachment_storage_gateway_handler:serve_pinned(
             #{read => true},
             get(gateway_key),
             <<"text/plain">>,
-            erlang:system_time(second) + 600,
+            get(gateway_exp),
             Tmp,
             7
         ),
         assert_response(ok, Status, Headers, Body)
     after
-        file:delete(Tmp),
-        lists:foreach(fun(Module) -> meck:unload(Module) end, Modules),
-        erase(gateway_pin),
-        erase(gateway_key)
+        cleanup_gateway(Modules, TmpState)
     end.
 
 run_put(Result) ->
-    Modules = [cowboy_req, imboy_jwt, attach_pending_repo, elib_oss],
-    lists:foreach(fun(Module) -> meck:new(Module, [non_strict]) end, Modules),
+    Modules = [cowboy_req, imboy_jwt, attach_pending_repo, elib_oss,
+        attachment_storage, attachment_storage_garage],
+    TmpState = setup_tmp(),
     try
+        lists:foreach(fun(Module) -> meck:new(Module, [non_strict]) end, Modules),
         setup_mocks(Result),
         {Status, Headers, Body} = attachment_storage_gateway_handler:put(<<"PUT">>, #{}, #{}),
         assert_response(Result, Status, Headers, Body),
         ?assert(meck:validate(cowboy_req)),
-        ?assert(meck:validate(elib_oss))
+        ?assert(meck:validate(elib_oss)),
+        ?assert(meck:validate(attachment_storage)),
+        ?assert(meck:validate(attachment_storage_garage))
     after
-        lists:foreach(fun(Module) -> meck:unload(Module) end, Modules),
+        cleanup_gateway(Modules, TmpState)
+    end.
+
+cleanup_gateway(Modules, TmpState) ->
+    try
+        lists:foreach(fun safe_unload/1, Modules)
+    after
         erase(gateway_pin),
-        erase(gateway_key)
+        erase(gateway_key),
+        erase(gateway_exp),
+        erase(gateway_source),
+        cleanup_tmp(TmpState)
     end.
 
 setup_mocks(Result) ->
     Key = integer_to_binary(erlang:unique_integer([positive])),
     put(gateway_key, Key),
+    Expiry = erlang:system_time(second) + 60,
+    put(gateway_exp, Expiry),
+    Identity = fixture_identity(Key, <<"text/plain">>),
     meck:expect(cowboy_req, header, fun(_, _) -> <<"capability">> end),
     meck:expect(cowboy_req, read_body, fun(Req, _) -> {ok, <<"payload">>, Req#{read => true}} end),
     meck:expect(cowboy_req, reply, fun(Status, Headers, Body, _Req) -> {Status, Headers, Body} end),
@@ -191,11 +205,14 @@ setup_mocks(Result) ->
         {ok, #{
             <<"key">> => Key,
             <<"mime">> => <<"text/plain">>,
-            <<"exp">> => erlang:system_time(second) + 60
+            <<"exp">> => Expiry
         }}
     end),
     meck:expect(elib_oss, max_file_size, fun() -> 1024 end),
-    meck:expect(elib_oss, get_bucket, fun(_) -> <<"bucket">> end),
+    meck:expect(attachment_storage, session_location, fun(KeyArg) ->
+        ?assertEqual(Key, KeyArg),
+        {ok, Identity}
+    end),
     meck:expect(attach_pending_repo, register_content_pin, fun(KeyArg, Receipt) ->
         ?assertEqual(Key, KeyArg),
         put(gateway_pin, Receipt),
@@ -205,10 +222,13 @@ setup_mocks(Result) ->
             _ -> ok
         end
     end),
-    meck:expect(elib_oss, put_object_from_file_ctx, fun(_, KeyArg, Tmp, Mime, _Ctx) ->
-        ?assertEqual(Key, KeyArg),
+    meck:expect(attachment_storage_garage, put_snapshot, fun(Frozen, Source, Mime, Ctx) ->
+        ?assertEqual(Identity, Frozen),
+        ?assertEqual(calendar:system_time_to_universal_time(Expiry, second),
+            maps:get(expires_at, Ctx)),
         ?assertEqual(<<"text/plain">>, Mime),
-        ?assertEqual({ok, <<"payload">>}, file:read_file(Tmp)),
+        assert_sealed_bytes(Source, <<"payload">>),
+        put(gateway_source, Source),
         ?assertMatch(#{<<"size_bytes">> := <<"7">>}, get(gateway_pin)),
         case Result of
             put_failed -> {error, put_failed};
@@ -220,6 +240,7 @@ assert_response(ok, Status, Headers, Body) ->
     ?assertEqual(200, Status),
     ?assertEqual(<<"application/json">>, maps:get(<<"content-type">>, Headers)),
     Receipt = get(gateway_pin),
+    ?assertMatch({error, _}, attachment_upload_spool:read(get(gateway_source), 0)),
     ?assertEqual(
         <<"239f59ed55e737c77147cf55ad0c1b030b6d7ee748a7426952f9b852d5a935e5">>,
         maps:get(<<"sha256">>, Receipt)
@@ -232,7 +253,7 @@ assert_response(ok, Status, Headers, Body) ->
         },
         jsone:decode(Body)
     ),
-    ?assertEqual(1, meck:num_calls(elib_oss, put_object_from_file_ctx, '_'));
+    ?assertEqual(1, meck:num_calls(attachment_storage_garage, put_snapshot, '_'));
 assert_response(Result, Status, _, Body) ->
     {ExpectedStatus, ExpectedBody, Calls} =
         case Result of
@@ -242,13 +263,53 @@ assert_response(Result, Status, _, Body) ->
         end,
     ?assertEqual(ExpectedStatus, Status),
     ?assertEqual(ExpectedBody, Body),
-    ?assertEqual(Calls, meck:num_calls(elib_oss, put_object_from_file_ctx, '_')).
+    ?assertEqual(Calls, meck:num_calls(attachment_storage_garage, put_snapshot, '_')).
+
+%% Verify the public opaque source contract while it is alive. Dispatch receives
+%% the same sealed bytes/hash/size, with no pathname to reopen or replace.
+assert_sealed_bytes(Source, Bytes) ->
+    ?assertEqual(byte_size(Bytes), attachment_upload_spool:size(Source)),
+    ?assertEqual(binary:encode_hex(crypto:hash(sha256, Bytes), lowercase),
+        attachment_upload_spool:sha256(Source)),
+    ?assertEqual({ok, Bytes}, attachment_upload_spool:read(Source, 0)),
+    ?assertEqual(eof, attachment_upload_spool:read(Source, byte_size(Bytes))).
 
 %% 与 handler:tmp_dir/0 同口径的兜底（环境变量未设时不用 false 拼串）。
 tmp_base() ->
     case os:getenv("IMBOY_V5_GATEWAY_TMP") of
         false -> "/tmp/imboy-v5-gateway";
         D -> D
+    end.
+
+fixture_identity(Key, Mime) ->
+    #{driver => garage, key => Key, mime => Mime, namespace => <<"gateway-unit">>,
+        root_id => <<"gateway-unit-root">>, container => <<"bucket">>,
+        endpoint => <<"http://127.0.0.1:1">>,
+        garage_config => #{endpoint => <<"http://127.0.0.1:1">>, bucket => <<"bucket">>}}.
+
+setup_tmp() ->
+    Previous = os:getenv("IMBOY_V5_GATEWAY_TMP"),
+    Base = case os:getenv("TMPDIR") of false -> "/tmp"; "" -> "/tmp"; Dir -> Dir end,
+    Root = filename:join(Base, "gateway-unit-" ++
+        binary_to_list(binary:encode_hex(crypto:strong_rand_bytes(12), lowercase))),
+    ok = file:make_dir(Root),
+    try
+        ok = file:change_mode(Root, 8#700),
+        true = os:putenv("IMBOY_V5_GATEWAY_TMP", Root),
+        {Previous, Root}
+    catch Class:Reason:Stack ->
+        cleanup_tmp({Previous, Root}),
+        erlang:raise(Class, Reason, Stack)
+    end.
+
+cleanup_tmp({Previous, Root}) ->
+    try
+        case Previous of
+            false -> os:unsetenv("IMBOY_V5_GATEWAY_TMP");
+            _ -> os:putenv("IMBOY_V5_GATEWAY_TMP", Previous)
+        end
+    after
+        ok = file:del_dir_r(Root)
     end.
 
 %% ===================================================================
@@ -264,15 +325,7 @@ exp_datetime() ->
     calendar:gregorian_seconds_to_datetime(?EXP + 62167219200).
 
 ctx_setup_mocks(PinResult, PutResult, MaxBytes) ->
-    application:set_env(imboy, garage, #{
-        endpoint => <<"http://127.0.0.1:3900">>,
-        bucket => <<"imboy">>,
-        access_key => <<"GKtest">>,
-        secret_key => <<"testsecret">>
-    }),
-    erase(gw_put_args),
-    erase(gw_pin_args),
-    erase(gw_reply),
+    Identity = fixture_identity(?KEY, ?MIME),
     [
         {imboy_jwt, [
             {'verify_upload_capability', 1, fun(_Tok) ->
@@ -285,12 +338,22 @@ ctx_setup_mocks(PinResult, PutResult, MaxBytes) ->
                 PinResult
             end}
         ]},
-        {elib_oss, [
-            {'get_bucket', 1, fun(<<"private">>) -> <<"b-priv">> end},
-            {'max_file_size', 0, fun() -> MaxBytes end},
-            {'put_object_from_file_ctx', 5, fun(_Bucket, Key, Path, Mime, Ctx) ->
-                %% 真实转发路径断言：同一落盘文件内容进入 provider 调用
-                put(gw_put_args, {Key, Mime, Ctx, file:read_file(Path)}),
+        {elib_oss, [{'max_file_size', 0, fun() -> MaxBytes end}]},
+        {attachment_storage, [
+            {'session_location', 1, fun(Key) ->
+                ?assertEqual(?KEY, Key),
+                {ok, Identity}
+            end}
+        ]},
+        {attachment_storage_garage, [
+            {'put_snapshot', 4, fun(Frozen, Source, Mime, Ctx) ->
+                ?assertEqual(Identity, Frozen),
+                assert_sealed_bytes(Source, <<"DATA">>),
+                ?assertEqual({ok, []}, file:list_dir(tmp_base())),
+                %% Exact frozen destination, bytes and capability expiry survive dispatch.
+                put(gw_source, Source),
+                put(gw_put_args, {maps:get(key, Frozen), Mime, Ctx,
+                    attachment_upload_spool:read(Source, 0)}),
                 PutResult
             end}
         ]},
@@ -306,8 +369,22 @@ ctx_setup_mocks(PinResult, PutResult, MaxBytes) ->
     ].
 
 ctx_run_put() ->
-    attachment_storage_gateway_handler:put(<<"PUT">>, req, #{}),
-    get(gw_reply).
+    TmpState = setup_tmp(),
+    erase(gw_put_args),
+    erase(gw_pin_args),
+    erase(gw_reply),
+    erase(gw_source),
+    try
+        attachment_storage_gateway_handler:put(<<"PUT">>, req, #{}),
+        ?assertEqual({ok, []}, file:list_dir(tmp_base())),
+        case get(gw_source) of
+            undefined -> ok;
+            Source -> ?assertMatch({error, _}, attachment_upload_spool:read(Source, 0))
+        end,
+        get(gw_reply)
+    after
+        cleanup_tmp(TmpState)
+    end.
 
 pin_ok_returns_200_with_frozen_ctx_test_() ->
     ?WITH_MECKS(
@@ -319,6 +396,7 @@ pin_ok_returns_200_with_frozen_ctx_test_() ->
             {Key, Mime, Ctx, {ok, <<"DATA">>}} = get(gw_put_args),
             ?assertEqual(?KEY, Key),
             ?assertEqual(?MIME, Mime),
+            ?assertEqual(1, meck:num_calls(attachment_storage_garage, put_snapshot, '_')),
             %% 冻结 Context：expires_at 严格等于 capability exp 的绝对时间，
             %% issued_at 为合法 UTC datetime 且不晚于 expires_at
             ?assertEqual(exp_datetime(), maps:get(expires_at, Ctx)),
@@ -336,7 +414,8 @@ pin_mismatch_409_and_zero_provider_put_test_() ->
         fun() ->
             {409, _} = ctx_run_put(),
             %% 同 key 不同字节：provider PUT=0
-            ?assertEqual(undefined, get(gw_put_args))
+            ?assertEqual(undefined, get(gw_put_args)),
+            ?assertEqual(0, meck:num_calls(attachment_storage_garage, put_snapshot, '_'))
         end
     ).
 
@@ -346,7 +425,8 @@ oversize_413_pin_not_called_test_() ->
         fun() ->
             {413, _} = ctx_run_put(),
             ?assertEqual(undefined, get(gw_pin_args)),
-            ?assertEqual(undefined, get(gw_put_args))
+            ?assertEqual(undefined, get(gw_put_args)),
+            ?assertEqual(0, meck:num_calls(attachment_storage_garage, put_snapshot, '_'))
         end
     ).
 
@@ -355,7 +435,8 @@ pin_unknown_session_404_test_() ->
         ctx_setup_mocks({error, not_found}, ok, 1048576),
         fun() ->
             {404, _} = ctx_run_put(),
-            ?assertEqual(undefined, get(gw_put_args))
+            ?assertEqual(undefined, get(gw_put_args)),
+            ?assertEqual(0, meck:num_calls(attachment_storage_garage, put_snapshot, '_'))
         end
     ).
 

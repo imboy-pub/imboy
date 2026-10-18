@@ -51,16 +51,18 @@
 %%% Fixture
 %%%===================================================================
 
-setup_conn() ->
+setup_conn() -> setup_conn(#{}).
+
+setup_conn(Options) ->
     try
         elib_tsid:init(#{dc_id => 1, node_id => 1, dc_bits => 3})
     catch
         _:_ -> ok
     end,
-    State = inttest_marker_db:provision(#{
+    State = inttest_marker_db:provision(maps:merge(Options, #{
         env_prefix => <<"FULL08_INTTEST">>,
         connect_extra => #{codecs => [{epgsql_codec_rfc3339_bin, []}]}
-    }),
+    })),
     C = maps:get(conn, State),
     _ = code:add_patha("deps/erlang_migrate/ebin"),
     ok = exec(C, <<"BEGIN">>),
@@ -302,15 +304,23 @@ all_test_() ->
                 with_tx(C, fun grant_attribution_oracle/1)},
             {"grant_revoke_both_actors_rejected", with_tx(C, fun grant_both_actors_oracle/1)},
             {"grant_revoke_no_actor_rejected", with_tx(C, fun grant_no_actor_oracle/1)},
-            {"down_up_cycle_residue_zero_and_rebuild", {timeout, 900, down_up_cycle_test(State)}},
+            {"down_up_cycle_residue_zero_and_rebuild", historical_fixture(State, fun down_up_cycle_test/1)},
             {"down_with_adm_revoked_grant_converges",
-                {timeout, 900, down_with_adm_revoked_test(State)}}
+                historical_fixture(State, fun down_with_adm_revoked_test/1)}
         ]}
     end}.
 
 %%%===================================================================
 %%% ⓪ head schema
 %%%===================================================================
+
+%% 历史 down 只作用于历史版本新库；保留独立 head 数据库作为比较基准。
+%% Historical rollback never crosses later fail-closed production migrations.
+historical_fixture(HeadState, Test) ->
+    {setup, fun() ->
+        State = setup_conn(#{migration_target => ?THIS_MIGRATION}),
+        State#{expected_head_functions => fn_body_snapshot(maps:get(conn, HeadState))}
+    end, fun close_conn/1, fun(State) -> {timeout, 900, Test(State)} end}.
 
 head_schema_test(C) ->
     ?_test(begin
@@ -594,7 +604,7 @@ grant_no_actor_oracle(C) ->
 down_up_cycle_test(State) ->
     C = maps:get(conn, State),
     ?_test(begin
-        HeadBefore = fn_body_snapshot(C),
+        HeadBefore = maps:get(expected_head_functions, State),
         MigConn = connect_marker(State),
         MigConfig = #{conn => MigConn, dir => "priv/migrations"},
         try

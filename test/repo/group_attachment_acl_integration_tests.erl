@@ -34,14 +34,14 @@ cleanup(State) ->
 run(State) ->
     Conn = maps:get(conn, State),
     [
-        ?_test(begin
+        {timeout, 240, ?_test(begin
             c2g_boundary_migration_matrix(Conn),
             group_session_attestation_migration_matrix(Conn),
-            migration_roundtrip_and_backfill(Conn),
+            historical_migration_roundtrip(),
             authorization_matrix(Conn),
             action_recipient_matrix(Conn),
             member_public_keys_matrix(Conn)
-        end)
+        end)}
     ].
 
 group_session_attestation_migration_matrix(Conn) ->
@@ -215,17 +215,40 @@ migration_fails(Conn, Sql) ->
             false
     end.
 
-migration_roundtrip_and_backfill(Conn) ->
-    Up = read_migration("priv/migrations/00000108_group_attachment_anchor.up.sql"),
-    Down = read_migration("priv/migrations/00000108_group_attachment_anchor.down.sql"),
+historical_migration_roundtrip() ->
+    %% 108 回滚必须独立于 head 的 V5 依赖；ACL 业务仍在原 head 库验证。
+    %% Isolate 108's rollback from later V5 dependencies and the head ACL fixture.
+    State = inttest_marker_db:provision(#{
+        env_prefix => <<"MOYA_INTTEST">>, migration_target => 108
+    }),
+    Conn = maps:get(conn, State),
+    try
+        migration_roundtrip_and_backfill(Conn),
+        MigConfig = #{conn => Conn, dir => "priv/migrations", strict => true},
+        ok = erlang_migrate:up(MigConfig),
+        ?assertEqual({ok, inttest_marker_db:migration_head(), false},
+            erlang_migrate:version(MigConfig)),
+        assert_migration_objects(Conn),
+        ?assertEqual(91080401,
+            scalar(Conn, <<"SELECT group_file_id FROM attachment WHERE id = 91080501">>)),
+        ?assertEqual(1,
+            scalar(Conn, <<"SELECT anchor_conv_seq FROM attachment WHERE id = 91080502">>))
+    after
+        inttest_marker_db:release(State)
+    end.
 
-    ok = squery(Conn, Down),
+migration_roundtrip_and_backfill(Conn) ->
+    MigConfig = #{conn => Conn, dir => "priv/migrations", strict => true},
+    ?assertEqual({ok, 108, false}, erlang_migrate:version(MigConfig)),
+    ok = erlang_migrate:goto(MigConfig, 107),
+    ?assertEqual({ok, 107, false}, erlang_migrate:version(MigConfig)),
     ?assertNot(column_exists(Conn, <<"anchor_msg_id">>)),
     ?assertNot(column_exists(Conn, <<"anchor_conv_seq">>)),
     ?assertNot(column_exists(Conn, <<"group_file_id">>)),
 
     seed_legacy_backfill_rows(Conn),
-    ok = squery(Conn, Up),
+    ok = erlang_migrate:goto(MigConfig, 108),
+    ?assertEqual({ok, 108, false}, erlang_migrate:version(MigConfig)),
     assert_migration_objects(Conn),
     ?assertEqual(
         91080401,
@@ -240,9 +263,11 @@ migration_roundtrip_and_backfill(Conn) ->
         >>)
     ),
 
-    ok = squery(Conn, Down),
+    ok = erlang_migrate:goto(MigConfig, 107),
+    ?assertEqual({ok, 107, false}, erlang_migrate:version(MigConfig)),
     ?assertNot(column_exists(Conn, <<"anchor_msg_id">>)),
-    ok = squery(Conn, Up),
+    ok = erlang_migrate:goto(MigConfig, 108),
+    ?assertEqual({ok, 108, false}, erlang_migrate:version(MigConfig)),
     assert_migration_objects(Conn),
     assert_constraints_reject_invalid_rows(Conn).
 

@@ -237,10 +237,37 @@ presign_paid_channel_subscription_without_purchase_forbidden_test_() ->
     ).
 
 %% moment 上传设计上放行（scope_ref 发帖时未知，可见性在读时按帖子 ACL 卡）
-presign_moment_ok_test() ->
-    set_garage_env(),
-    {ok, Data} = attach_logic:presign(1, <<"a.png">>, <<"image/png">>, <<"moment">>, undefined),
-    ?assertMatch(<<"u1/moment/", _/binary>>, maps:get(<<"object_key">>, Data)).
+presign_moment_ok_test_() ->
+    ?WITH_MECKS(
+        [{attach_pending_repo, [
+            {register_v5, 6, fun(Key, Bucket, Scope, Uid, ClientId, Registration) ->
+                ?assertMatch(<<"u1/moment/", _/binary>>, Key),
+                ?assertEqual(<<"imboy">>, Bucket),
+                ?assertEqual(<<"moment">>, Scope),
+                ?assertEqual(1, Uid),
+                ?assertEqual(undefined, ClientId),
+                ?assertEqual(#{<<"filename">> => <<"a.png">>,
+                    <<"mime">> => <<"image/png">>, <<"scope">> => <<"moment">>,
+                    <<"scope_ref">> => null}, Registration),
+                {ok, #{session_state => <<"registered">>, client_upload_id => undefined}}
+            end}
+        ]}],
+        fun() ->
+            Prior = application:get_env(imboy, garage),
+            try
+                set_garage_env(),
+                {ok, Data} = attach_logic:presign(
+                    1, <<"a.png">>, <<"image/png">>, <<"moment">>, undefined),
+                ?assertMatch(<<"u1/moment/", _/binary>>, maps:get(<<"object_key">>, Data)),
+                ?assertEqual(1, meck:num_calls(attach_pending_repo, register_v5, 6))
+            after
+                case Prior of
+                    {ok, Value} -> application:set_env(imboy, garage, Value);
+                    undefined -> application:unset_env(imboy, garage)
+                end
+            end
+        end
+    ).
 
 %% ===================================================================
 %% confirm：越权守卫（上报他人命名空间 key 应被拒，不触达 DB/存储）
@@ -412,8 +439,10 @@ confirm_rejects_oversize_object_test_() ->
             ]},
             {elib_pg, [
                 {'with_tx', 1, fun(F) -> F(fake_conn) end},
-                {'query', 3, fun(
-                    fake_conn,
+                {'query', 3, fun
+                    (fake_conn, [<<"SAVEPOINT ">>, <<"v5_pending_intent_", _/binary>>], []) -> {ok, []};
+                    (fake_conn, [<<"RELEASE SAVEPOINT ">>, <<"v5_pending_intent_", _/binary>>], []) -> {ok, []};
+                    (fake_conn,
                     <<"SELECT fn_v5_intent_pending_delete($1, $2, $3)">>,
                     [
                         <<"u789/file/20260620/file_x/big.png">>,
@@ -434,7 +463,7 @@ confirm_rejects_oversize_object_test_() ->
                 attach_logic:confirm(789, Key, <<"private">>, undefined, Meta)
             ),
             ?assertEqual(0, meck:num_calls(elib_oss, delete_object, 2)),
-            ?assertEqual(1, meck:num_calls(elib_pg, query, 3)),
+            assert_pending_intent_queries(Key),
             ?assertEqual(0, meck:num_calls(attachment_ds, save, 4))
         end
     ).
@@ -450,8 +479,10 @@ confirm_rejects_invalid_type_object_test_() ->
             ]},
             {elib_pg, [
                 {'with_tx', 1, fun(F) -> F(fake_conn) end},
-                {'query', 3, fun(
-                    fake_conn,
+                {'query', 3, fun
+                    (fake_conn, [<<"SAVEPOINT ">>, <<"v5_pending_intent_", _/binary>>], []) -> {ok, []};
+                    (fake_conn, [<<"RELEASE SAVEPOINT ">>, <<"v5_pending_intent_", _/binary>>], []) -> {ok, []};
+                    (fake_conn,
                     <<"SELECT fn_v5_intent_pending_delete($1, $2, $3)">>,
                     [
                         <<"u789/file/20260620/file_x/evil.png">>,
@@ -472,10 +503,21 @@ confirm_rejects_invalid_type_object_test_() ->
                 attach_logic:confirm(789, Key, <<"private">>, undefined, Meta)
             ),
             ?assertEqual(0, meck:num_calls(elib_oss, delete_object, 2)),
-            ?assertEqual(1, meck:num_calls(elib_pg, query, 3)),
+            assert_pending_intent_queries(Key),
             ?assertEqual(0, meck:num_calls(attachment_ds, save, 4))
         end
     ).
+
+assert_pending_intent_queries(Key) ->
+    Calls = [Args || {_, {elib_pg, query, Args}, _} <- meck:history(elib_pg),
+                     length(Args) =:= 3],
+    [[fake_conn, [<<"SAVEPOINT ">>, Savepoint], []],
+     [fake_conn, <<"SELECT fn_v5_intent_pending_delete($1, $2, $3)">>,
+        [Key, Reason, <<"reject">>]],
+     [fake_conn, [<<"RELEASE SAVEPOINT ">>, Savepoint], []]] = Calls,
+    ?assertMatch(<<"v5_pending_intent_", _/binary>>, Savepoint),
+    ?assertMatch(<<"confirm reject ", _/binary>>, Reason),
+    ?assertEqual(3, length(Calls)).
 
 %% 校验通过：用 HEAD 真实 size/mime 落库，且写入 scope/scope_ref
 confirm_persists_real_metadata_and_scope_test_() ->
@@ -1050,22 +1092,30 @@ presign_v5_session_issues_gateway_capability_test_() ->
 
 presign_v5_gateway_body() ->
     set_garage_env(),
-    application:set_env(imboy, jwt_secret, <<"test-jwt-secret">>),
-    Cid = <<"0f0e0d0c-1111-2222-3333-444455556666">>,
-    {ok, Data} = attach_logic:presign(
-        789, <<"a.png">>, <<"image/png">>, <<"private">>, undefined, Cid
-    ),
-    ?assertMatch(
-        <<"/api/v1/attachment/gateway/", _/binary>>, maps:get(<<"put_url">>, Data)
-    ),
-    ?assertEqual(Cid, maps:get(<<"client_upload_id">>, Data)),
-    ?assertEqual(<<"u789/file/original.png">>, maps:get(<<"object_key">>, Data)),
-    ?assertEqual(true, maps:get(<<"gateway">>, Data)),
-    %% expires_at 是登记冻结值，不是底层重新计时
-    ?assertEqual(1893456000, maps:get(<<"expires_at">>, Data)),
-    %% capability 与网关验证回路（真签发 + 真验证）
-    Capability = maps:get(<<"upload_capability">>, Data),
-    {ok, Claims} = imboy_jwt:verify_upload_capability(Capability),
-    ?assertEqual(1893456000, maps:get(<<"exp">>, Claims)),
-    ?assertEqual(maps:get(<<"object_key">>, Data), maps:get(<<"key">>, Claims)),
-    ?assertEqual(<<"image/png">>, maps:get(<<"mime">>, Claims)).
+    Previous = application:get_env(imboy, jwt_key),
+    try
+        application:set_env(imboy, jwt_key, <<"synthetic-upload-signing-key-only">>),
+        Cid = <<"0f0e0d0c-1111-2222-3333-444455556666">>,
+        {ok, Data} = attach_logic:presign(
+            789, <<"a.png">>, <<"image/png">>, <<"private">>, undefined, Cid
+        ),
+        ?assertMatch(
+            <<"/api/v1/attachment/gateway/", _/binary>>, maps:get(<<"put_url">>, Data)
+        ),
+        ?assertEqual(Cid, maps:get(<<"client_upload_id">>, Data)),
+        ?assertEqual(<<"u789/file/original.png">>, maps:get(<<"object_key">>, Data)),
+        ?assertEqual(true, maps:get(<<"gateway">>, Data)),
+        %% expires_at 是登记冻结值，不是底层重新计时
+        ?assertEqual(1893456000, maps:get(<<"expires_at">>, Data)),
+        %% capability 与网关验证回路（真签发 + 真验证）
+        Capability = maps:get(<<"upload_capability">>, Data),
+        {ok, Claims} = imboy_jwt:verify_upload_capability(Capability),
+        ?assertEqual(1893456000, maps:get(<<"exp">>, Claims)),
+        ?assertEqual(maps:get(<<"object_key">>, Data), maps:get(<<"key">>, Claims)),
+        ?assertEqual(<<"image/png">>, maps:get(<<"mime">>, Claims))
+    after
+        case Previous of
+            {ok, Value} -> application:set_env(imboy, jwt_key, Value);
+            undefined -> application:unset_env(imboy, jwt_key)
+        end
+    end.

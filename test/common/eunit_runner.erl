@@ -107,6 +107,9 @@ eunit_setup() ->
     os:putenv("IMBOYENV", "test"),
     application:set_env(imboy, http_port, test_http_port()),
     application:set_env(imboy, dsync_enabled, false),
+    %% 普通 EUnit app fixture 是单节点；不得继承示例配置中不可达的集群节点。
+    %% The ordinary app fixture is single-node; cluster tests set their own topology.
+    application:set_env(imboy, cluster_nodes, []),
     %% TSID V10：无 guard/无持久化/无 seam 配置——sup init 纯内存建
     %% runtime（fixed offset + atomics 游标 + 静态 namespace 清单），
     %% 测试轨道无需任何 TSID 注入；VM 隔离语义天然成立（游标不跨 VM）。
@@ -140,6 +143,10 @@ eunit_setup() ->
         receive
             {Ref, {ok, S}} ->
                 S;
+            {Ref, {error, {cache_boot_not_ready, _} = Reason}} ->
+                %% 不把未就绪的 app 交给测试体，也不改写生产恢复状态。
+                %% Fail the fixture without forcing READY or bypassing recovery.
+                error(Reason);
             {Ref, {error, Reason}} ->
                 %% WH-04：io:format 会被 eunit 输出捕获吞掉（final5 全量实证
                 %% 342 次 boot 失败 0 条告警），改走 logger 直落原始日志。
@@ -284,6 +291,7 @@ do_ensure_cache() ->
 -define(BOOT_MAX_ATTEMPTS, 4).
 -define(BOOT_MAX_ATTEMPTS_DIRTY, 25).
 -define(BOOT_RETRY_SLEEP_MS, 3000).
+-define(CACHE_READY_TIMEOUT_MS, 5000).
 
 do_boot() ->
     case app_running(imboy) of
@@ -299,7 +307,7 @@ do_boot() ->
             %% 1/1/3）；V10 静态清单在 init 内全量注册，无 names 参数
             %% 会让按名 generate 的 ds 层（bot_ds:generate(user) 等）全灭。
             ok = ensure_tsid_runtime(),
-            {ok, {app_already_started, imboy}};
+            cache_ready_boot_state({app_already_started, imboy});
         false ->
             %% sync 禁编（主防线）：imboy.app applications 含 sync（DEPS +=
             %% sync），ensure_all_started 链式拉起 sync_scanner 后，其扫描链
@@ -369,9 +377,9 @@ boot_attempt(AttemptsLeft) ->
     case application:ensure_all_started(imboy) of
         {ok, _} ->
             quiesce_periodic_workers(),
-            {ok, {app_started, imboy}};
+            cache_ready_boot_state({app_started, imboy});
         {error, {already_started, imboy}} ->
-            {ok, {app_already_started, imboy}};
+            cache_ready_boot_state({app_already_started, imboy});
         {error, Reason} ->
             %% A1c：首次尝试若被 eunit 5s 测试超时打断（caller 被杀 → app
             %% master 中止），会留下 barrel 单例与 ranch listener 孤儿；清掉
@@ -412,6 +420,32 @@ boot_attempt(AttemptsLeft) ->
                     false -> AttemptsLeft - 1
                 end,
             boot_attempt(Next)
+    end.
+
+%% app 启动成功早于缓存异步发现完成；在安装全局 mock/失效缓存之前等真实屏障。
+%% Application start precedes async discovery. Wait before mocks or invalidations run.
+cache_ready_boot_state(State) ->
+    Deadline = erlang:monotonic_time(millisecond) + ?CACHE_READY_TIMEOUT_MS,
+    case wait_for_cache_ready(Deadline) of
+        ok -> {ok, State};
+        {error, _} = Error -> Error
+    end.
+
+wait_for_cache_ready(Deadline) ->
+    case imboy_cache_sync:status() of
+        ready ->
+            ok;
+        degraded ->
+            {error, {cache_boot_not_ready, degraded}};
+        Status ->
+            Remaining = Deadline - erlang:monotonic_time(millisecond),
+            case Remaining > 0 of
+                true ->
+                    timer:sleep(erlang:min(25, Remaining)),
+                    wait_for_cache_ready(Deadline);
+                false ->
+                    {error, {cache_boot_not_ready, Status}}
+            end
     end.
 
 %% WH-04：识别可自愈的 migration_dirty 失败（ensure_all_started 的错误
