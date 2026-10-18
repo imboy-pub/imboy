@@ -266,25 +266,66 @@ has_constraint(C, Name) ->
 has_index(C, Idx) ->
     scalar(C, <<"SELECT count(*) FROM pg_indexes WHERE indexname = $1">>, [Idx]) > 0.
 
-%% 既有 fn_% 函数体快照（本迁移不建函数，故全量比对）: name -> md5(prosrc)
+%% 既有 fn_% 函数体快照（本迁移不建函数，故全量比对）。
+%% Key by schema/name/full argument identity so overloads never overwrite each other.
 fn_body_snapshot(C) ->
     case
         elib_pg:query(
             C,
             <<
-                "SELECT p.proname AS name, md5(p.prosrc) AS body_md5 FROM pg_proc p"
+                "SELECT n.nspname AS schema, p.proname AS name,"
+                " pg_get_function_identity_arguments(p.oid) AS identity_args,"
+                " md5(p.prosrc) AS body_md5 FROM pg_proc p"
                 " JOIN pg_namespace n ON n.oid = p.pronamespace"
                 " WHERE n.nspname = 'public' AND p.proname LIKE 'fn\\_%'"
-                " ORDER BY p.proname"
+                " ORDER BY n.nspname, p.proname, identity_args"
             >>,
             []
         )
     of
         {ok, Rows} ->
-            maps:from_list([{maps:get(<<"name">>, R), maps:get(<<"body_md5">>, R)} || R <- Rows]);
+            maps:from_list([
+                {{maps:get(<<"schema">>, R), maps:get(<<"name">>, R),
+                    maps:get(<<"identity_args">>, R)}, maps:get(<<"body_md5">>, R)}
+             || R <- Rows
+            ]);
         {error, Reason} ->
             erlang:error({sql_error, Reason})
     end.
+
+%% 同名函数的每个签名都必须保留；分别改写/删除一个 overload 不可遮住另一个。
+%% Keep every overload: changing either body or removing one must change the snapshot.
+fn_snapshot_overloads_oracle(C) ->
+    Before = fn_body_snapshot(C),
+    IntegerKey = {<<"public">>, <<"fn_eal993_snapshot_overload">>, <<"p_value integer">>},
+    TextKey = {<<"public">>, <<"fn_eal993_snapshot_overload">>, <<"p_value text">>},
+    ?assertNot(maps:is_key(IntegerKey, Before)),
+    ?assertNot(maps:is_key(TextKey, Before)),
+    ok = exec(C, <<
+        "CREATE FUNCTION public.fn_eal993_snapshot_overload(p_value integer)"
+        " RETURNS integer LANGUAGE sql AS 'SELECT 1'"
+    >>),
+    ok = exec(C, <<
+        "CREATE FUNCTION public.fn_eal993_snapshot_overload(p_value text)"
+        " RETURNS integer LANGUAGE sql AS 'SELECT 2'"
+    >>),
+    Md5 = fun(Body) -> scalar(C, <<"SELECT md5($1::text)">>, [Body]) end,
+    Both = Before#{IntegerKey => Md5(<<"SELECT 1">>), TextKey => Md5(<<"SELECT 2">>)},
+    ?assertEqual(Both, fn_body_snapshot(C)),
+    ok = exec(C, <<
+        "CREATE OR REPLACE FUNCTION public.fn_eal993_snapshot_overload(p_value integer)"
+        " RETURNS integer LANGUAGE sql AS 'SELECT 3'"
+    >>),
+    ChangedInteger = Both#{IntegerKey => Md5(<<"SELECT 3">>)},
+    ?assertEqual(ChangedInteger, fn_body_snapshot(C)),
+    ok = exec(C, <<
+        "CREATE OR REPLACE FUNCTION public.fn_eal993_snapshot_overload(p_value text)"
+        " RETURNS integer LANGUAGE sql AS 'SELECT 4'"
+    >>),
+    ChangedBoth = ChangedInteger#{TextKey => Md5(<<"SELECT 4">>)},
+    ?assertEqual(ChangedBoth, fn_body_snapshot(C)),
+    ok = exec(C, <<"DROP FUNCTION public.fn_eal993_snapshot_overload(integer)">>),
+    ?assertEqual(maps:remove(IntegerKey, ChangedBoth), fn_body_snapshot(C)).
 
 %%%===================================================================
 %%% 套件入口
@@ -296,6 +337,8 @@ all_test_() ->
         %% 串行：down_up_cycle 会整库改 schema，与其余用例并发会互相踩。
         {inorder, [
             {"head_schema_and_version_column", {timeout, 900, head_schema_test(C)}},
+            {"function_snapshot_preserves_overloaded_bodies",
+                with_tx(C, fun fn_snapshot_overloads_oracle/1)},
             {"cas_status_write_single_winner", with_tx(C, fun cas_status_oracle/1)},
             {"cas_scopes_write_single_winner", with_tx(C, fun cas_scopes_oracle/1)},
             {"status_domain_four_values_only", with_tx(C, fun status_domain_oracle/1)},
