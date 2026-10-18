@@ -227,7 +227,7 @@ def main():
             self.test_env["TG20_SCHEMA_FILE"] = str(self.schema)
             migrations = self.snapshot / "priv/migrations"
             for direction in ("up", "down"):
-                path = migrations / ("00000195_textguard_review_metadata." + direction + ".sql")
+                path = migrations / ("00000197_textguard_review_metadata." + direction + ".sql")
                 self.test_env["TG20_MIGRATION_" + direction.upper()] = str(path)
 
         def consumer_config(self, suite="affected"):
