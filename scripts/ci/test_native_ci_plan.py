@@ -3,6 +3,7 @@
 import ast
 import json
 import os
+import re
 from pathlib import Path
 import subprocess
 import sys
@@ -13,6 +14,30 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent.parent
 
 class NativePlanTests(unittest.TestCase):
+    def test_job_env_context_and_runner_paths(self):
+        workflow = (ROOT / '.github/workflows/native-eunit-acceptance.yml').read_text()
+        job_env = re.search(r'^    env:\n(.*?)^    steps:', workflow, re.M | re.S).group(1)
+        # Job-level env cannot reference runner, job, steps or env contexts.
+        allowed = {'github', 'needs', 'strategy', 'matrix', 'vars', 'secrets', 'inputs'}
+        for context in re.findall(r'\$\{\{\s*([A-Za-z_]+)', job_env):
+            self.assertIn(context, allowed)
+        self.assertNotIn('NATIVE_CI_ROOT:', job_env)
+        self.assertNotIn('NATIVE_CI_ARTIFACTS:', job_env)
+        self.assertIn("if: always() && env.NATIVE_CI_ARTIFACTS != ''", workflow)
+        first_run = re.search(r'^        run: \|\n(.*?)(?=^      - name:)', workflow, re.M | re.S).group(1)
+        prefix = '\n'.join(line[10:] for line in first_run.splitlines()).split('if [[ "$NATIVE_EPHEMERAL_KEYS_APPROVED"')[0]
+        self.assertIn('export NATIVE_CI_ROOT=', prefix)
+        self.assertIn('export NATIVE_CI_ARTIFACTS=', prefix)
+        self.assertIn('>> "$GITHUB_ENV"', prefix)
+        with tempfile.TemporaryDirectory() as temp:
+            env_path = Path(temp) / 'github-env'
+            env = dict(os.environ, RUNNER_TEMP=temp+'/', GITHUB_RUN_ID='123', GITHUB_RUN_ATTEMPT='2', GITHUB_ENV=str(env_path))
+            result = subprocess.run(['bash', '-c', prefix + '\nprintf "%s\\n%s\\n" "$NATIVE_CI_ROOT" "$NATIVE_CI_ARTIFACTS"'], env=env, text=True, capture_output=True, check=True)
+            root = temp + '/imboy-native-123-2'
+            artifacts = temp + '/imboy-native-evidence-123-2'
+            self.assertEqual(result.stdout, root+'\n'+artifacts+'\n')
+            self.assertEqual(env_path.read_text(), 'NATIVE_CI_ROOT='+root+'\nNATIVE_CI_ARTIFACTS='+artifacts+'\n')
+
     def test_syntax_and_pins(self):
         for path in HERE.glob('*.py'):
             ast.parse(path.read_text(), filename=str(path))
