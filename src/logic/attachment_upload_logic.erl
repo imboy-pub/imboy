@@ -84,16 +84,19 @@ prepare_upload(Uid, Key, Mime, Path, Scope, Row) ->
         {ok, Identity} ->
             case session_context(Uid, Mime, Scope, Row) of
                 {ok, Expiry} ->
-                    case attachment_upload_spool:with_source({file, Path}, fun(Source) ->
-                        %% Tag callback results separately from local spool failures.
-                        {upload_result, pin_and_put(Key, Mime, Source, Identity, Expiry)}
-                    end) of
-                        {upload_result, Result} -> Result;
-                        {error, Reason} -> {error, {storage_error, Reason}}
-                    end;
+                    upload_from_path(Key, Mime, Path, Identity, Expiry);
                 {error, _} = Error -> Error
             end;
         {error, _} = Error -> Error
+    end.
+
+upload_from_path(Key, Mime, Path, Identity, Expiry) ->
+    case attachment_upload_spool:with_source({file, Path}, fun(Source) ->
+        %% Tag callback results separately from local spool failures.
+        {upload_result, pin_and_put(Key, Mime, Source, Identity, Expiry)}
+    end) of
+        {upload_result, Result} -> Result;
+        {error, Reason} -> {error, {storage_error, Reason}}
     end.
 
 session_context(Uid, Mime, Scope, #{

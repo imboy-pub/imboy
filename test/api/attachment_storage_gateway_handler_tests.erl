@@ -142,6 +142,65 @@ chain_status(_) -> 500.
 gateway_put_test_() ->
     [?_test(run_put(Result)) || Result <- [ok, content_mismatch, not_found, put_failed]].
 
+%% The handler passes a deferred logic callback to Disk. This unit boundary
+%% checks dispatch timing/arguments; real OS-lock coverage remains in Disk tests.
+%% 网关只传延迟逻辑回调；此处检查时序和完整参数，真实锁由 Disk 套件验收。
+disk_recheck_callback_test_() ->
+    [?_test(run_disk_recheck(Result, Status)) || {Result, Status} <- [
+        {ok, 200}, {{error, content_mismatch}, 409}, {{error, not_found}, 404},
+        {{error, invalid_signature_context}, 410}, {{error, {database, closed}}, 502},
+        {exception, 502}
+    ]].
+
+run_disk_recheck(Result, ExpectedStatus) ->
+    Modules = [cowboy_req, imboy_jwt, attach_pending_repo, elib_oss,
+        attachment_storage, attachment_storage_garage, attachment_storage_disk],
+    TmpState = setup_tmp(),
+    try
+        lists:foreach(fun(Module) -> meck:new(Module, [non_strict]) end, Modules),
+        meck:new(attach_logic, [passthrough, no_link]),
+        setup_mocks(ok),
+        Key = get(gateway_key),
+        Identity = #{driver => disk, key => Key, mime => <<"text/plain">>,
+            namespace => <<"gateway-disk-unit">>, root_id => <<"gateway-disk-unit-root">>,
+            container => <<"bucket">>, endpoint => <<"file:///fixture-only">>,
+            locator_digest => binary:copy(<<"a">>, 64)},
+        meck:expect(attachment_storage, session_location, fun(K) ->
+            ?assertEqual(Key, K),
+            {ok, Identity}
+        end),
+        meck:expect(attach_pending_repo, recheck_content_pin, fun(K, Receipt, Frozen) ->
+            ?assertEqual(Key, K),
+            ?assertEqual(get(gateway_pin), Receipt),
+            ?assertEqual(Identity, Frozen),
+            case Result of
+                exception -> erlang:error(recheck_failed);
+                _ -> Result
+            end
+        end),
+        meck:expect(attachment_storage_disk, put_snapshot, fun(Frozen, Source, Expiry, Recheck) ->
+            ?assertEqual(Identity, Frozen),
+            ?assertEqual(get(gateway_exp), Expiry),
+            assert_sealed_bytes(Source, <<"payload">>),
+            put(gateway_source, Source),
+            ?assertEqual(1, meck:num_calls(attach_pending_repo, register_content_pin, '_')),
+            ?assertEqual(0, meck:num_calls(attach_logic, recheck_content_pin, '_')),
+            ?assertEqual(0, meck:num_calls(attach_pending_repo, recheck_content_pin, '_')),
+            Recheck()
+        end),
+        {Status, _, Body} = attachment_storage_gateway_handler:put(<<"PUT">>, #{}, #{}),
+        ?assertEqual(ExpectedStatus, Status),
+        ?assert(is_binary(Body)),
+        Args = [Key, get(gateway_pin), Identity],
+        ?assertEqual(1, meck:num_calls(attach_logic, recheck_content_pin, Args)),
+        ?assertEqual(1, meck:num_calls(attach_pending_repo, recheck_content_pin, Args)),
+        ?assertEqual(1, meck:num_calls(attachment_storage_disk, put_snapshot, '_')),
+        ?assertEqual(0, meck:num_calls(attachment_storage_garage, put_snapshot, '_')),
+        ?assertMatch({error, _}, attachment_upload_spool:read(get(gateway_source), 0))
+    after
+        cleanup_gateway([attach_logic | Modules], TmpState)
+    end.
+
 pinned_success_test() ->
     Modules = [cowboy_req, imboy_jwt, attach_pending_repo, elib_oss,
         attachment_storage, attachment_storage_garage],

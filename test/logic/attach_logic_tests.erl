@@ -23,6 +23,36 @@ set_garage_env() ->
         secret_key => <<"testsecret">>
     }).
 
+%% Preserve the repository contract without another lookup, retry or exception map.
+%% 逻辑边界不增加查找、重试或异常转换，精确传递原始 receipt 和冻结身份。
+recheck_content_pin_delegates_unchanged_test() ->
+    Key = <<"u9/file/frozen.txt">>,
+    Receipt = #{<<"version">> => 1, <<"sha256">> => binary:copy(<<"a">>, 64),
+        <<"size_bytes">> => <<"7">>, <<"mime">> => <<"text/plain">>},
+    Identity = #{driver => disk, namespace => <<"frozen-ns">>, container => <<"bucket">>,
+        key => Key, locator_digest => binary:copy(<<"b">>, 64)},
+    ok = meck:new(attach_pending_repo, [no_link]),
+    try
+        lists:foreach(fun(Result) ->
+            meck:expect(attach_pending_repo, recheck_content_pin, fun(K, R, I) ->
+                ?assertEqual({Key, Receipt, Identity}, {K, R, I}),
+                Result
+            end),
+            Before = meck:num_calls(attach_pending_repo, recheck_content_pin, '_'),
+            ?assertEqual(Result, attach_logic:recheck_content_pin(Key, Receipt, Identity)),
+            ?assertEqual(Before + 1, meck:num_calls(attach_pending_repo, recheck_content_pin, '_'))
+        end, [ok, {error, content_mismatch}, {error, session_not_renewable},
+            {error, tombstone}, {error, location_changed}, {error, not_found},
+            {error, {database, closed}}]),
+        meck:expect(attach_pending_repo, recheck_content_pin, fun(_, _, _) ->
+            erlang:error(recheck_failed)
+        end),
+        ?assertException(error, recheck_failed,
+            attach_logic:recheck_content_pin(Key, Receipt, Identity))
+    after
+        meck:unload(attach_pending_repo)
+    end.
+
 %% ===================================================================
 %% presign：MIME 白名单 + can_upload 上传权
 %% ===================================================================

@@ -129,7 +129,30 @@ enterprise_admission(C) ->
     ?assertMatch({ok, [#{<<"ok">> := 1}]}, elib_pg:query(<<"SELECT 1 AS ok">>, [])),
     T = seed_enterprise(C, 981203, 3600),
     q(C, <<"SELECT fn_v5_intent_eb_delete(981010,981011,981203,'test')">>, []),
-    ?assertEqual({error, session_not_renewable}, eb_pg_asset_meta:reserve_registered_put(981010,981011,T)).
+    ?assertEqual({error, session_not_renewable}, eb_pg_asset_meta:reserve_registered_put(981010,981011,T)),
+    enterprise_admission_rollback(C).
+
+%% Both post-pin validation and unknown SQL failures must discard the receipt.
+%% pin 后校验拒绝与未知 SQL 错误均不得提交 receipt；独立连接读取最终状态。
+enterprise_admission_rollback(C) ->
+    Mismatch = seed_enterprise(C, 981204, 3600),
+    ?assertEqual({error, content_mismatch}, eb_pg_asset_meta:reserve_registered_put(
+        981010, 981011, Mismatch#{conversation_id => 981999})),
+    ?assertEqual(null, stored_pin(C, <<"enterprise_asset">>, <<"id">>, 981204)),
+    Fault = seed_enterprise(C, 981205, 3600),
+    q(C, <<"CREATE FUNCTION receipt_eb_post_pin_fault() RETURNS trigger LANGUAGE plpgsql AS $$"
+           " BEGIN RAISE EXCEPTION 'receipt fixture post-pin fault' USING ERRCODE='XX001'; END $$">>, []),
+    q(C, <<"CREATE TRIGGER receipt_eb_post_pin_fault AFTER UPDATE OF upload_content ON enterprise_asset"
+           " FOR EACH ROW WHEN (NEW.id=981205) EXECUTE FUNCTION receipt_eb_post_pin_fault()">>, []),
+    try
+        ?assertMatch({error, {sql, <<"XX001">>, _}},
+            eb_pg_asset_meta:reserve_registered_put(981010, 981011, Fault)),
+        ?assertEqual(null, stored_pin(C, <<"enterprise_asset">>, <<"id">>, 981205)),
+        ?assertMatch({ok, [#{<<"ok">> := 1}]}, elib_pg:query(<<"SELECT 1 AS ok">>, []))
+    after
+        q(C, <<"DROP TRIGGER receipt_eb_post_pin_fault ON enterprise_asset">>, []),
+        q(C, <<"DROP FUNCTION receipt_eb_post_pin_fault()">>, [])
+    end.
 
 %% The pending-intent repository owns only a savepoint, never the outer commit.
 %% 独立观察连接验证提交可见性；测试侧不包 SAVEPOINT、不替生产函数恢复错误。

@@ -27,7 +27,7 @@
 -include_lib("eunit/include/eunit.hrl").
 
 -define(P1, imboy_hird_p1_auth_tool_tests).
--define(MOD, ?P1:mod()).
+-define(MOD, (?P1:mod())).
 -define(OUT_ROOT,
     unicode:characters_to_binary(
         os:getenv("IMBOY_HIRD_OUT_ROOT", "_build/hird_poc_v1/prog")

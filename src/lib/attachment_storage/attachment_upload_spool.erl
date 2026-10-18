@@ -24,66 +24,71 @@ new(Base) ->
 
 prepare_private_directory(Base, Dir) ->
     Probe = filename:join(Dir, "probe"),
-    case file:open(Probe, [read, write, exclusive, binary]) of
-        {ok, Fh} ->
-            Prepared = try
-                {ok, #file_info{type = regular, uid = Uid} = Info} = file:read_file_info(Fh),
-                %% The empty probe supplies the actual UID. Never chmod or clean
-                %% paths before trust is established, and never put bytes in it.
-                %% 空探针仅提供真实 UID；目录链可信前不 chmod/清路径，不写入内容。
-                case trusted_path(Base, Uid, 40) of
-                    ok ->
-                        case file:read_link_info(Dir) of
-                            {ok, #file_info{type = directory, uid = Uid} = DirInfo} ->
-                                case file:change_mode(Dir, 8#700) of
-                                    ok -> {ok, Info, DirInfo};
-                                    Error -> Error
-                                end;
-                            _ -> {error, insecure_temporary_directory}
-                        end;
-                    Error -> Error
-                end
-            after
-                file:close(Fh)
-            end,
-            case Prepared of
-                {ok, ProbeInfo, PrivateInfo} ->
-                    try
-                        remove_owned_path(Probe, {ok, ProbeInfo}, fun file:delete/1),
-                        %% A reader could retain the probe FD before chmod700.
-                        %% Only a fresh inode created in the protected directory
-                        %% may receive payload bytes.
-                        %% 探针可能已被其他 UID 打开；内容必须使用权限收紧后的新 inode。
-                        open_private(Dir)
-                    after
-                        remove_owned_path(Dir, {ok, PrivateInfo}, fun file:del_dir/1)
-                    end;
-                PrepareError -> PrepareError
+    open_exclusive(Probe, fun(Fh) ->
+        Prepared = try prepare_probe(Base, Dir, Fh) after file:close(Fh) end,
+        case Prepared of
+            {ok, ProbeInfo, PrivateInfo} ->
+                try
+                    remove_owned_path(Probe, {ok, ProbeInfo}, fun file:delete/1),
+                    %% A reader could retain the probe FD before chmod700.
+                    %% Only a fresh inode in the protected directory receives payload.
+                    %% 探针可能被其他 UID 打开；内容只写权限收紧后创建的新 inode。
+                    open_private(Dir)
+                after
+                    remove_owned_path(Dir, {ok, PrivateInfo}, fun file:del_dir/1)
+                end;
+            PrepareError -> PrepareError
+        end
+    end).
+
+prepare_probe(Base, Dir, Fh) ->
+    {ok, #file_info{type = regular, uid = Uid} = Info} = file:read_file_info(Fh),
+    %% Never chmod or clean paths before trust is established; the probe stays empty.
+    %% 目录链可信前不 chmod/清路径，探针始终为空。
+    case trusted_path(Base, Uid, 40) of
+        ok ->
+            case protect_directory(Dir, Uid) of
+                {ok, DirInfo} -> {ok, Info, DirInfo};
+                Error -> Error
             end;
         Error -> Error
     end.
 
+protect_directory(Dir, Uid) ->
+    case file:read_link_info(Dir) of
+        {ok, #file_info{type = directory, uid = Uid} = DirInfo} ->
+            case file:change_mode(Dir, 8#700) of
+                ok -> {ok, DirInfo};
+                Error -> Error
+            end;
+        _ -> {error, insecure_temporary_directory}
+    end.
+
 open_private(Dir) ->
     Path = filename:join(Dir, "body"),
-    %% Non-raw is intentional: httpc reads from its own process, using pread/3.
+    open_exclusive(Path, fun(Fh) ->
+        Info = file:read_file_info(Fh),
+        try
+            ok = file:change_mode(Path, 8#600),
+            {ok, #file_info{type = regular, mode = Mode}} = file:read_file_info(Fh),
+            true = Mode band 8#777 =:= 8#600,
+            ok = file:delete(Path),
+            {ok, #file_info{links = 0}} = file:read_file_info(Fh),
+            {ok, {upload_spool_writer, Fh}}
+        catch
+            Class:Reason:Stack ->
+                file:close(Fh),
+                erlang:raise(Class, Reason, Stack)
+        after
+            remove_owned_path(Path, Info, fun file:delete/1)
+        end
+    end).
+
+open_exclusive(Path, Fun) ->
+    %% Non-raw is intentional: httpc reads from its own process using pread/3.
     %% 不使用 raw：httpc 工作进程必须能读取此 io_device。
     case file:open(Path, [read, write, exclusive, binary]) of
-        {ok, Fh} ->
-            Info = file:read_file_info(Fh),
-            try
-                ok = file:change_mode(Path, 8#600),
-                {ok, #file_info{type = regular, mode = Mode}} = file:read_file_info(Fh),
-                true = Mode band 8#777 =:= 8#600,
-                ok = file:delete(Path),
-                {ok, #file_info{links = 0}} = file:read_file_info(Fh),
-                {ok, {upload_spool_writer, Fh}}
-            catch
-                Class:Reason:Stack ->
-                    file:close(Fh),
-                    erlang:raise(Class, Reason, Stack)
-            after
-                remove_owned_path(Path, Info, fun file:delete/1)
-            end;
+        {ok, Fh} -> Fun(Fh);
         Error -> Error
     end.
 
@@ -98,12 +103,12 @@ trusted_parts([Part | Rest], Prefix, Uid, LinksLeft) ->
     Current = case Prefix of "" -> Part; _ -> filename:join(Prefix, Part) end,
     case file:read_link_info(Current) of
         {ok, #file_info{type = directory, uid = Owner, mode = Mode}} when
-            (Owner =:= Uid orelse Owner =:= 0),
+            (Owner =:= Uid orelse Owner =:= 0) andalso
             (Mode band 8#022 =:= 0 orelse Mode band 8#1000 =/= 0)
         ->
             trusted_parts(Rest, Current, Uid, LinksLeft);
         {ok, #file_info{type = symlink, uid = Owner}} when
-            (Owner =:= Uid orelse Owner =:= 0), LinksLeft > 0
+            (Owner =:= Uid orelse Owner =:= 0) andalso LinksLeft > 0
         ->
             case file:read_link(Current) of
                 {ok, Target} ->

@@ -20,12 +20,11 @@ put(Ns, Container, Key, Body) ->
     put_ctx(Ns, Container, Key, Body, infinity).
 put_ctx(Ns, Container, Key, Body, Expiry) ->
     Deadline = erlang:monotonic_time(millisecond) + 30000,
+    Check = fun() -> write_window(Expiry, Deadline) end,
     attachment_upload_spool:with_source(Body, fun(Source) ->
         with_path(Ns, Container, Key, fun(Root, Path) ->
-            with_os_lock(Root, Container, Key, fun() ->
-                locked_action(Root, Path, fun() ->
-                    atomic_write(Path, Source, fun() -> write_window(Expiry, Deadline) end)
-                end)
+            with_locked_action(Root, Container, Key, Path, fun() ->
+                atomic_write(Path, Source, Check)
             end)
         end)
     end).
@@ -40,24 +39,27 @@ put_snapshot(#{container := C, key := K} = I, Body, Expiry, Recheck) when
     is_function(Recheck, 0)
 ->
     Deadline = erlang:monotonic_time(millisecond) + 30000,
+    Check = fun() -> write_window(Expiry, Deadline) end,
     attachment_upload_spool:with_source(Body, fun(Source) ->
         with_snapshot_path(I, fun(Root, Path) ->
-            with_os_lock(Root, C, K, fun() ->
-                locked_action(Root, Path, fun() ->
-                    case write_window(Expiry, Deadline) of
-                        ok ->
-                            case Recheck() of
-                                ok ->
-                                    atomic_write(Path, Source,
-                                        fun() -> write_window(Expiry, Deadline) end);
-                                Error -> Error
-                            end;
-                        Error -> Error
-                    end
-                end)
+            with_locked_action(Root, C, K, Path, fun() ->
+                rechecked_write(Path, Source, Check, Recheck)
             end)
         end)
     end).
+
+with_locked_action(Root, Container, Key, Path, Fun) ->
+    with_os_lock(Root, Container, Key, fun() -> locked_action(Root, Path, Fun) end).
+
+rechecked_write(Path, Source, Check, Recheck) ->
+    case Check() of
+        ok ->
+            case Recheck() of
+                ok -> atomic_write(Path, Source, Check);
+                Error -> Error
+            end;
+        Error -> Error
+    end.
 
 write_window(Expiry, Deadline) ->
     case Expiry =:= infinity orelse erlang:system_time(second) < Expiry of

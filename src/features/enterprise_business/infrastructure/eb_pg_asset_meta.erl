@@ -245,35 +245,38 @@ registered_put(Org, Ws, D, Mode) ->
     case registered_put_receipt(D) of
         {ok, Receipt, Expiry} ->
             Result = elib_pg:with_tx(fun(Conn) ->
-                Id = maps:get(id, D),
-                Args = [Org, Ws, Id, jsone:encode(Receipt),
-                        jsone:encode(maps:get(upload_subject, D)), iso8601_utc(Expiry)],
-                {Sql, Params} = case Mode of
-                    admission ->
-                        {<<"SELECT fn_v5_pin_eb_content($1,$2,$3,$4::jsonb,$5::jsonb,"
-                           "$6::timestamptz) AS admitted">>, Args};
-                    {recheck, Frozen} ->
-                        {<<"SELECT fn_v5_recheck_eb_content($1,$2,$3,$4::jsonb,$5::jsonb,"
-                           "$6::timestamptz,$7::jsonb) AS admitted">>,
-                         Args ++ [jsone:encode(Frozen)]}
-                end,
-                case tx_query(Conn, Sql, Params) of
-                    [#{<<"admitted">> := true}] ->
-                        [Row] = tx_query(Conn, ?SQL_FETCH_ASSET, [Org, Ws, Id]),
-                        ExpectedConv = eb_pg_store_sql:nullify(maps:get(conversation_id, D)),
-                        case maps:get(<<"conversation_id">>, Row) =:= ExpectedConv of
-                            true ->
-                                case Mode of
-                                    admission -> {ok, eb_pg_store_sql:normalize(Row, asset_fields())};
-                                    {recheck, _} -> ok
-                                end;
-                            false -> throw({rollback, {error, content_mismatch}})
-                        end;
-                    _ -> throw({rollback, {error, invalid_pin_result}})
-                end
+                registered_put_tx(Conn, Org, Ws, D, Mode, Receipt, Expiry)
             end),
             registered_put_result(Result);
         {error, _} = Error -> Error
+    end.
+
+registered_put_tx(Conn, Org, Ws, D, Mode, Receipt, Expiry) ->
+    Id = maps:get(id, D),
+    Args = [Org, Ws, Id, jsone:encode(Receipt),
+            jsone:encode(maps:get(upload_subject, D)), iso8601_utc(Expiry)],
+    {Sql, Params} = case Mode of
+        admission ->
+            {<<"SELECT fn_v5_pin_eb_content($1,$2,$3,$4::jsonb,$5::jsonb,"
+               "$6::timestamptz) AS admitted">>, Args};
+        {recheck, Frozen} ->
+            {<<"SELECT fn_v5_recheck_eb_content($1,$2,$3,$4::jsonb,$5::jsonb,"
+               "$6::timestamptz,$7::jsonb) AS admitted">>,
+             Args ++ [jsone:encode(Frozen)]}
+    end,
+    case tx_query(Conn, Sql, Params) of
+        [#{<<"admitted">> := true}] ->
+            [Row] = tx_query(Conn, ?SQL_FETCH_ASSET, [Org, Ws, Id]),
+            ExpectedConv = eb_pg_store_sql:nullify(maps:get(conversation_id, D)),
+            case maps:get(<<"conversation_id">>, Row) =:= ExpectedConv of
+                true ->
+                    case Mode of
+                        admission -> {ok, eb_pg_store_sql:normalize(Row, asset_fields())};
+                        {recheck, _} -> ok
+                    end;
+                false -> rollback_error(content_mismatch)
+            end;
+        _ -> rollback_error(invalid_pin_result)
     end.
 
 registered_put_receipt(D) when is_map(D) ->
@@ -412,7 +415,7 @@ register_session_live(Conn, Org, Ws, D, Cid, Registration, Deadline, Expiry) ->
             Location = registration_location(Org, Ws, Id),
             case tx_query(Conn, ?SQL_INSERT_ASSET, Params ++ Location) of
                 [] ->
-                    throw({rollback, {error, conflict}});
+                    rollback_error(conflict);
                 [_] ->
                     Kind = maps:get(<<"kind">>, maps:get(<<"subject">>, Registration)),
                     tx_query(
@@ -442,13 +445,13 @@ registration_location(Org, Ws, Id) ->
         )
     of
         {ok, I} -> [maps:get(K, I) || K <- [driver, namespace, container, locator_digest]];
-        {error, R} -> throw({rollback, {error, R}})
+        {error, R} -> rollback_error(R)
     end.
 
 tx_query(Conn, Sql, Params) ->
     case elib_pg:query(Conn, Sql, Params) of
         {ok, Rows} -> Rows;
-        {error, Reason} -> throw({rollback, {error, eb_pg_store_sql:normalize_error(Reason)}})
+        {error, Reason} -> rollback_error(eb_pg_store_sql:normalize_error(Reason))
     end.
 
 %% @doc V5 登记（幂等：同 UUID 同快照返回原会话；重指派/快照漂移/
@@ -591,7 +594,7 @@ claim_pending_cleanup(Org, Ws, Id, Now, Ttl) ->
         of
             {ok, [_]} -> claim_pending_in(Conn, Org, Ws, Id, Now, Ttl);
             {ok, []} -> {error, not_found};
-            {error, Reason} -> throw({rollback, {error, Reason}})
+            {error, Reason} -> rollback_error(Reason)
         end
     end),
     case Result of
@@ -617,7 +620,7 @@ claim_pending_in(Conn, Org, Ws, Id, Now, Ttl) ->
     case elib_pg:query(Conn, Sql, [Org, Ws, Id, Now, Ttl]) of
         {ok, [#{<<"object_key">> := Key}]} -> {ok, Key};
         {ok, []} -> {error, not_eligible};
-        {error, Reason} -> throw({rollback, {error, Reason}})
+        {error, Reason} -> rollback_error(Reason)
     end.
 
 finish_pending_cleanup(Org, Ws, Id) ->
@@ -671,7 +674,7 @@ guarded_insert(Org, Ws, Id, Params) ->
             {ok, []} ->
                 {error, no_row};
             {error, Reason} ->
-                throw({rollback, {error, eb_pg_store_sql:normalize_error(Reason)}})
+                rollback_error(eb_pg_store_sql:normalize_error(Reason))
         end
     end),
     case Result of
@@ -694,10 +697,15 @@ insert_without_pending_delete(Conn, Org, Ws, Id, Params) ->
                 {ok, Rows} ->
                     {ok, Rows};
                 {error, Reason} ->
-                    throw({rollback, {error, eb_pg_store_sql:normalize_error(Reason)}})
+                    rollback_error(eb_pg_store_sql:normalize_error(Reason))
             end;
         {ok, [_]} ->
             {error, cleanup_pending};
         {error, Reason} ->
-            throw({rollback, {error, eb_pg_store_sql:normalize_error(Reason)}})
+            rollback_error(eb_pg_store_sql:normalize_error(Reason))
     end.
+
+%% Preserve the transaction abort class and reason at every repository boundary.
+%% 统一事务中止构造；保留原 throw 类别和完整 rollback/error 原因。
+rollback_error(Reason) ->
+    throw({rollback, {error, Reason}}).

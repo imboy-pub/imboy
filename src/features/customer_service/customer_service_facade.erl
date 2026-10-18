@@ -833,22 +833,22 @@ widget_asset_put(
         payload := Payload
     } = Params
 ) when
-    is_integer(OrgId),
-    is_integer(InstallationId),
-    is_integer(SessionId),
-    is_binary(UploadRef),
+    is_integer(OrgId) andalso
+    is_integer(InstallationId) andalso
+    is_integer(SessionId) andalso
+    is_binary(UploadRef) andalso
     (is_binary(Payload) orelse
         (is_tuple(Payload) andalso tuple_size(Payload) =:= 4 andalso
             element(1, Payload) =:= upload_spool andalso is_pid(element(2, Payload)) andalso
             is_integer(element(3, Payload)) andalso element(3, Payload) >= 0 andalso
-            is_binary(element(4, Payload)))),
+            is_binary(element(4, Payload)))) andalso
     is_map(Params)
 ->
     case cs_widget_env:merge_visitor(OrgId, Params) of
         {ok, Merged} -> cs_widget_session_app:asset_put(OrgId, Merged);
         {error, _} = Err -> Err
     end;
-widget_asset_put(OrgId, Params) when is_integer(OrgId), is_map(Params) ->
+widget_asset_put(OrgId, Params) when is_integer(OrgId) andalso is_map(Params) ->
     {error, {invalid_argument, widget_asset_put}};
 widget_asset_put(OrgId, _Params) ->
     {error, {invalid_argument, {organization_id, OrgId}}}.

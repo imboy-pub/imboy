@@ -56,17 +56,7 @@ put_source(I, Source, Mime, Issued, Ttl, ExpiryMs, Deadline) ->
             %% Signed times and identity are frozen; retries only rewind the same inode.
             %% 签名时间和位置不刷新；HTTP 重试从同一已校验句柄的偏移 0 开始。
             Url = signed(I, <<"PUT">>, Mime, Issued, Ttl),
-            Producer = fun(Offset) ->
-                case request_window(ExpiryMs, Deadline) of
-                    {ok, _} ->
-                        case attachment_upload_spool:read(Source, Offset) of
-                            {ok, Bytes} -> {ok, Bytes, Offset + byte_size(Bytes)};
-                            eof -> eof;
-                            {error, Reason} -> erlang:error({upload_read_failed, Reason})
-                        end;
-                    {error, Reason} -> erlang:error(Reason)
-                end
-            end,
+            Producer = fun(Offset) -> produce_chunk(Source, Offset, ExpiryMs, Deadline) end,
             Headers = [{"content-length", integer_to_list(attachment_upload_spool:size(Source))}],
             case httpc:request(put,
                 {binary_to_list(Url), Headers, binary_to_list(Mime), {Producer, 0}},
@@ -77,6 +67,17 @@ put_source(I, Source, Mime, Issued, Ttl, ExpiryMs, Deadline) ->
                 {error, R} -> {error, R}
             end;
         Error -> Error
+    end.
+
+produce_chunk(Source, Offset, ExpiryMs, Deadline) ->
+    case request_window(ExpiryMs, Deadline) of
+        {ok, _} ->
+            case attachment_upload_spool:read(Source, Offset) of
+                {ok, Bytes} -> {ok, Bytes, Offset + byte_size(Bytes)};
+                eof -> eof;
+                {error, Reason} -> erlang:error({upload_read_failed, Reason})
+            end;
+        {error, Reason} -> erlang:error(Reason)
     end.
 
 request_window(ExpiryMs, Deadline) ->

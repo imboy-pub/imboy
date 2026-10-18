@@ -28,12 +28,15 @@ receive_chunks(Req, Writer, Size, Max) ->
                         {ok, NextWriter} when Fin =:= more ->
                             receive_chunks(NextReq, NextWriter, NextSize, Max);
                         {ok, NextWriter} ->
-                            case attachment_upload_spool:seal(NextWriter) of
-                                {ok, Source} -> {ok, Source, NextReq};
-                                Error -> Error
-                            end;
+                            seal_body(NextWriter, NextReq);
                         Error -> Error
                     end
             end;
         {error, _} = Error -> Error
+    end.
+
+seal_body(Writer, Req) ->
+    case attachment_upload_spool:seal(Writer) of
+        {ok, Source} -> {ok, Source, Req};
+        Error -> Error
     end.

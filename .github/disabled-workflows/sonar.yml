@@ -1,3 +1,5 @@
+# 用户授权暂停 Sonar；恢复时移回 .github/workflows/sonar.yml。
+# Sonar paused with owner approval; restore by moving this file back to .github/workflows/sonar.yml.
 # imboy SonarCloud scan workflow
 #
 # 关联：.claude/plans/quality-loop.md v1.3 T4.3（v1.1 §302 + §332: 三独立 SonarCloud 项目）

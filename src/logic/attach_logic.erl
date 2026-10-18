@@ -15,7 +15,7 @@
 %%%
 
 -export([presign/5, presign/6, confirm/5, view_url/2, download/1]).
--export([reauthorize_upload_session/2]).
+-export([reauthorize_upload_session/2, recheck_content_pin/3]).
 -export([authorize/2]).
 
 -ifdef(TEST).
@@ -31,6 +31,12 @@
 -define(PUT_EXPIRES, 3600).
 %% 下载 URL 有效期：受限资源统一 600s（不分级，见设计文档第 8 节）
 -define(GET_EXPIRES, 600).
+
+%% Called only by the Disk driver's deferred callback while its OS lock is held.
+%% Disk 持有 OS 锁后才执行短事务复核；原 receipt、冻结身份及结果原样传递。
+-spec recheck_content_pin(binary(), map(), map()) -> ok | {error, term()}.
+recheck_content_pin(Key, Receipt, Identity) ->
+    attach_pending_repo:recheck_content_pin(Key, Receipt, Identity).
 
 %% ===================================================================
 %% presign：选桶 + 上传权校验 + 生成 PUT URL

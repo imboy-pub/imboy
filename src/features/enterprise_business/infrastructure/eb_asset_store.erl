@@ -68,16 +68,19 @@ put_private(OrgId, WorkspaceId, Descriptor) when is_map(Descriptor) ->
             case {maps:get(id, Descriptor, undefined), maps:get(payload, Descriptor, undefined)} of
                 {Id, _} when not is_integer(Id) -> {error, invalid_descriptor};
                 {_, Payload} ->
-                    case upload_size(Payload) of
-                        invalid -> {error, {object_store, invalid_payload}};
-                        0 -> {error, {object_store, empty_payload}};
-                        _ -> reserve_and_put(OrgId, WorkspaceId, Descriptor, Payload, ObjectStore)
-                    end
+                    put_payload(OrgId, WorkspaceId, Descriptor, Payload, ObjectStore)
             end
         end)
     end);
 put_private(_OrgId, _WorkspaceId, _Descriptor) ->
     {error, invalid_descriptor}.
+
+put_payload(OrgId, WorkspaceId, Descriptor, Payload, ObjectStore) ->
+    case upload_size(Payload) of
+        invalid -> {error, {object_store, invalid_payload}};
+        0 -> {error, {object_store, empty_payload}};
+        _ -> reserve_and_put(OrgId, WorkspaceId, Descriptor, Payload, ObjectStore)
+    end.
 
 upload_size(B) when is_binary(B) -> byte_size(B);
 upload_size({upload_spool, Fh, N, H}) when is_pid(Fh), is_integer(N), N >= 0, is_binary(H) -> N;

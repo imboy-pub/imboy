@@ -230,7 +230,7 @@ provider_put_ctx(Key, Source, DeclMime, Ctx, Receipt) ->
             {ok, #{driver := disk} = I} ->
                 Expiry =
                     calendar:datetime_to_gregorian_seconds(maps:get(expires_at, Ctx)) - 62167219200,
-                Recheck = fun() -> attach_pending_repo:recheck_content_pin(Key, Receipt, I) end,
+                Recheck = fun() -> attach_logic:recheck_content_pin(Key, Receipt, I) end,
                 attachment_storage_disk:put_snapshot(I, Source, Expiry, Recheck);
             {error, _} = E ->
                 E;
