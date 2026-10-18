@@ -106,6 +106,9 @@ assert_generations(C, G, Total, Open) ->
 
 %% A distinct coverage case; original run/1 is never invoked by this generator.
 preserve_b_personal_http_test_() ->
+    isolated_pg_fixture:test(fun preserve_b_personal_http_fixture/0).
+
+preserve_b_personal_http_fixture() ->
     {timeout, 900,
         {setup, fun organization_preserve_b_personal_http_checks:setup/0,
             fun organization_preserve_b_personal_http_checks:cleanup/1, fun(H) ->

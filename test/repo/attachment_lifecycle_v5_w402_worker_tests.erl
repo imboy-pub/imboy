@@ -247,8 +247,17 @@ w402_queue_adoption(Conn) ->
     %% 接管完成的 ready 行（身份完整）→ worker 可消费
     AdoptReady = <<"v5e2e/w402/adopt-ready-", (integer_to_binary(run_base()))/binary>>,
     seed_ordinary_job(Conn, AdoptReady, 0, ready),
-    {ok, #{<<"out_path">> := AdoptReady}} = attachment_gc_repo:v5_claim(Conn, token()),
-    ok = attachment_gc_repo:v5_ack(Conn, AdoptReady, token(), true),
+    AdoptToken = token(),
+    {ok, #{<<"out_path">> := AdoptReady}} = attachment_gc_repo:v5_claim(Conn, AdoptToken),
+    ?assertEqual({error, {ack_rejected, <<"stale_token">>}},
+        attachment_gc_repo:v5_ack(Conn, AdoptReady, token(), true)),
+    {ok, _, [{<<"leased">>}]} = e(
+        Conn, "SELECT job_state FROM attachment_object_deletion WHERE path=$1", [AdoptReady]
+    ),
+    ok = attachment_gc_repo:v5_ack(Conn, AdoptReady, AdoptToken, true),
+    {ok, _, [{<<"done">>}]} = e(
+        Conn, "SELECT job_state FROM attachment_object_deletion WHERE path=$1", [AdoptReady]
+    ),
     %% ② 企业 pending flag 行经意图入队（W4-01 收口链）：种 enterprise_asset
     %%    deleted+flag → fn_v5_intent_eb_delete → queue job
     EbId = 942000000000 + run_base() rem 1000000,
@@ -316,7 +325,7 @@ w402_cross_queue_identity(Conn) ->
         "INSERT INTO attachment(id,path,scope,creator_user_id,storage_driver,"
         "storage_namespace,storage_container,storage_locator_sha256,gc_verified,"
         "cipher,file_hash256)"
-        " VALUES (942100,$1,'private',101,'garage','ns1','c1',$2,false,NULL,$3)",
+        " VALUES (942100,$1,'private',101,'garage','ns1','c1',$2,true,NULL,$3)",
         [
             SameKey,
             hex64(crypto:hash(sha256, <<SameKey/binary, "-loc">>)),

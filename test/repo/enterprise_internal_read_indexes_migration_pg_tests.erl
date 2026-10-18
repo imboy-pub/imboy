@@ -36,12 +36,14 @@
 %%% Fixture
 %%%===================================================================
 
-setup_state() ->
+setup_state() -> setup_state(#{}).
+
+setup_state(Options) ->
     _ = code:add_patha("deps/erlang_migrate/ebin"),
-    inttest_marker_db:provision(#{
+    inttest_marker_db:provision(maps:merge(Options, #{
         env_prefix => <<"EOV21A2IX_INTTEST">>,
         connect_extra => #{codecs => [{epgsql_codec_rfc3339_bin, []}]}
-    }).
+    })).
 
 close_state(State) ->
     inttest_marker_db:release(State),
@@ -84,7 +86,10 @@ enterprise_internal_read_indexes_migration_test_() ->
             {inorder, [
                 {"head_schema_three_indexes_present", {timeout, 60, head_schema_test(C)}},
                 {"down_up_roundtrip_ratchet_safe",
-                    {timeout, 300, fun() -> down_up_cycle_test(State) end}}
+                    {setup, fun() -> setup_state(#{migration_target => ?THIS_MIGRATION}) end,
+                     fun close_state/1, fun(Historical) ->
+                         {timeout, 300, fun() -> down_up_cycle_test(Historical) end}
+                     end}}
             ]}
         end}}.
 

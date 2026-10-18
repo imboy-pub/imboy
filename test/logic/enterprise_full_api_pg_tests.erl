@@ -2166,7 +2166,7 @@ bnd_fail_closed(C, State) ->
     ).
 
 %% @doc 机械对齐：边界 spec 覆盖**全部**冻结路由（少一条即红）；kind 与 manifest
-%% 的 grant 语义逐条一致。当前合同包括 INT-01..42，逐项验证而非只比数量。
+%% 的 grant 语义逐条一致。当前合同包括 INT-01..44，逐项验证而非只比数量。
 bnd_spec_align_test() ->
     ?_test(begin
         FrozenIds = lists:sort([maps:get(id, R) || R <- enterprise_internal_routes:routes()]),
@@ -2219,7 +2219,10 @@ bnd_spec_align_test() ->
             {<<"INT-40">>, workspace},
             {<<"INT-41">>, workspace},
             {<<"INT-42">>, workspace},
-            {<<"INT-43">>, org}
+            {<<"INT-43">>, org},
+            %% OA 登录票据签发属于 application 自属面；仍验证完整冻结表。
+            %% OA ticket issue is application-owned, without org/workspace grant.
+            {<<"INT-44">>, none}
         ],
         lists:foreach(
             fun({Id, Kind}) ->

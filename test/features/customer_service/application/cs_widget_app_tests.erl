@@ -7,6 +7,8 @@
 %%%     A01 的「重放不重复 contact」锚是 enterprise contact 的**确定性资源键
 %%%     唯一约束**，fake 只会镜像自己的假设、没有牙齿，所以 contact /
 %%%     conversation / message 的幂等断言全部数真库行。
+%%%   * A05 的 CS 侧也用真 PG：canonical 事务的 response-observation
+%%%     receipt 必须绑定同库 session，不能由 fake event 代替首响事实。
 %%%
 %%% 覆盖对应（acceptance-matrix CSB-02）：
 %%%   * A01 → a01_*（同 installation+subject 重放不重复 contact/session）；
@@ -638,16 +640,17 @@ a04_queue_keyset_seat_detail_and_rate_state_machine() ->
 %% ===================================================================
 
 a05_messages_only_via_enterprise_source() ->
-    {Scope, InstId, PublicId} = fresh_world(<<"wgt_pub_a05">>),
+    {Scope, InstId, PublicId} = fresh_pg_widget_world(),
     try
         Org = org(Scope),
         Ws = workspace(Scope),
+        At = maps:get(widget_at, Scope),
         Service = maps:get(service_identity_id, Scope),
         S = make_visitor_session(Scope, InstId, PublicId, <<"m-1">>),
         Msgs0 = messages(Org, Ws),
         KeyRef = ?EBFIX:key_ref(1),
         %% 访客入站：真库 enterprise_message +1，sender = token contact。
-        {ok, _} =
+        {ok, VisitorMessage} =
             cs_widget_session_app:visitor_message(
                 Org,
                 wp(Scope, #{
@@ -656,7 +659,8 @@ a05_messages_only_via_enterprise_source() ->
                     session_id => maps:get(session_id, S),
                     client_msg_id => <<"cmsg-a05-1">>,
                     body => <<"visitor hello">>,
-                    key_ref => KeyRef
+                    key_ref => KeyRef,
+                    accepted_at => At
                 })
             ),
         ?assertEqual(Msgs0 + 1, messages(Org, Ws)),
@@ -670,6 +674,16 @@ a05_messages_only_via_enterprise_source() ->
                 [Org, <<"cmsg-a05-1">>]
             )
         ),
+        VisitorFacts = #{
+            <<"response_measurement_version">> => 1,
+            <<"first_visitor_message_id">> => maps:get(message_id, VisitorMessage),
+            <<"first_visitor_message_at">> => At,
+            <<"first_human_reply_id">> => null,
+            <<"first_human_reply_at">> => null,
+            <<"first_ai_reply_id">> => null,
+            <<"first_ai_reply_at">> => null
+        },
+        ?assertEqual(VisitorFacts, response_facts(Scope, S)),
         %% client_msg_id 幂等：同 id 重放不增行（enterprise 冻结口径）。
         {ok, _} =
             cs_widget_session_app:visitor_message(
@@ -680,12 +694,14 @@ a05_messages_only_via_enterprise_source() ->
                     session_id => maps:get(session_id, S),
                     client_msg_id => <<"cmsg-a05-1">>,
                     body => <<"visitor hello">>,
-                    key_ref => KeyRef
+                    key_ref => KeyRef,
+                    accepted_at => At + 1
                 })
             ),
         ?assertEqual(Msgs0 + 1, messages(Org, Ws)),
+        ?assertEqual(VisitorFacts, response_facts(Scope, S)),
         %% 坐席出站：同经 enterprise 真源（claim 后以当前经办身份发送）。
-        ok = ensure_seat(Scope),
+        %% cs_pg_test_fixture 已提供真实 enabled seat。
         {ok, Active} =
             cs_session_app:claim(
                 Org,
@@ -693,7 +709,7 @@ a05_messages_only_via_enterprise_source() ->
                     session_id => maps:get(session_id, S),
                     business_identity_id => Service,
                     expected_version => 1,
-                    at => ?T0 + 1
+                    at => At + 1
                 })
             ),
         {ok, _} =
@@ -706,7 +722,7 @@ a05_messages_only_via_enterprise_source() ->
                     client_msg_id => <<"cmsg-a05-2">>,
                     body => <<"seat reply">>,
                     key_ref => KeyRef,
-                    accepted_at => ?T0 + 2
+                    accepted_at => At + 2
                 })
             ),
         ?assertEqual(Msgs0 + 2, messages(Org, Ws)),
@@ -720,19 +736,25 @@ a05_messages_only_via_enterprise_source() ->
                 [Org, <<"cmsg-a05-2">>]
             )
         ),
+        %% 旧 /2 调用没有服务端 provenance：不得把 actor_user_id 猜成人工
+        %% 首响，也不得伪造 AI 首响；已知访客事实保留，但测量标记为 unknown。
+        ?assertEqual(
+            VisitorFacts#{<<"response_measurement_version">> := 0},
+            response_facts(Scope, S)
+        ),
         _ = Active,
         %% 阅读事实仅存归属键及 read_at；其他消息/附件副本表仍禁止。
         ?assertEqual(0, copy_table_count()),
         ok = assert_visitor_read_table_schema(),
         %% cs 侧 session 行不带任何消息体键（副本写路径不存在）。
-        {ok, Row} = ?FAKE:fetch_session(Org, Ws, maps:get(session_id, S)),
+        {ok, Row} = cs_pg_store:fetch_session(Org, Ws, maps:get(session_id, S)),
         ?assertEqual(false, maps:is_key(body, Row)),
         ?assertEqual(false, maps:is_key(body_cipher, Row)),
         %% 静态纪律：cs_widget_app 唯一跨单元引用是 enterprise facade；
         %% 全 feature 源码零副本表名。
         ok = assert_widget_source_discipline()
     after
-        teardown(Scope)
+        teardown_pg_widget_world(Scope)
     end.
 
 %% ===================================================================
@@ -1117,6 +1139,77 @@ csb02s_d2_bootstrap_token_ttl_two_directions() ->
 %% 夹具与构造辅助
 %% ===================================================================
 
+%% A05 requires the CS event/session and enterprise message to share a real
+%% transaction. The other cases retain their deterministic fake CS fixture.
+fresh_pg_widget_world() ->
+    Scope0 = cs_pg_test_fixture:new_scope(),
+    Scope = Scope0#{
+        widget_store => cs_pg_store,
+        widget_id => cs_tsid,
+        %% Keep the ordered At/At+1/At+2 observations behind the real clock.
+        widget_at => erlang:system_time(second) - 10
+    },
+    try
+        InstId = cs_tsid:new_id(cs_widget_installation),
+        PublicId = <<"wgt_pub_a05_", (integer_to_binary(InstId))/binary>>,
+        {ok, _} = cs_pg_store:insert_widget_installation(org(Scope), #{
+            id => InstId,
+            public_widget_id => PublicId,
+            display_name => <<"CSB02 Widget">>,
+            allowed_origins => [origin()],
+            branding => #{},
+            consent_version => <<"consent-v1">>
+        }),
+        {Scope, InstId, PublicId}
+    catch
+        Class:Reason:Stack ->
+            teardown_pg_widget_world(Scope),
+            erlang:raise(Class, Reason, Stack)
+    end.
+
+teardown_pg_widget_world(Scope) ->
+    try
+        %% Real claim creates a human-handoff AI row which RESTRICTs session
+        %% deletion. Remove only this fixture's row before the shared CS purge.
+        ok = cs_pg_test_fixture:exec(
+            <<"DELETE FROM customer_service_ai_session"
+              " WHERE organization_id=$1 AND workspace_id=$2">>,
+            [org(Scope), workspace(Scope)]
+        ),
+        ok = cs_pg_test_fixture:cleanup(Scope),
+        %% The shared purge is best-effort. Detect a rollback here instead of
+        %% masking it later with a token/installation foreign-key error.
+        ?assertEqual(0, cs_pg_test_fixture:count(org(Scope), sessions)),
+        lists:foreach(
+            fun(Table) ->
+                ok = cs_pg_test_fixture:exec(
+                    <<"DELETE FROM ", Table/binary, " WHERE organization_id=$1">>,
+                    [org(Scope)]
+                )
+            end,
+            [
+                <<"customer_service_widget_nonce">>,
+                <<"customer_service_visit_token">>,
+                <<"customer_service_widget_identity_key">>,
+                <<"customer_service_widget_installation">>
+            ]
+        )
+    after
+        ?EBFIX:cleanup(Scope)
+    end.
+
+response_facts(Scope, Session) ->
+    {ok, [Facts]} = elib_pg:query(
+        <<
+            "SELECT response_measurement_version, first_visitor_message_id,"
+            " extract(epoch from first_visitor_message_at)::bigint AS first_visitor_message_at,"
+            " first_human_reply_id, first_human_reply_at, first_ai_reply_id, first_ai_reply_at"
+            " FROM customer_service_session WHERE organization_id=$1 AND workspace_id=$2 AND id=$3"
+        >>,
+        [org(Scope), workspace(Scope), maps:get(session_id, Session)]
+    ),
+    Facts.
+
 fresh_world(PublicId) ->
     Scope = ?EBFIX:new_scope(),
     ok = ?FAKE:init(),
@@ -1145,9 +1238,9 @@ teardown(Scope) ->
 wp(Scope, Extra) ->
     maps:merge(
         #{
-            store => ?FAKE,
-            id => cs_fake_id,
-            at => ?T0,
+            store => maps:get(widget_store, Scope, ?FAKE),
+            id => maps:get(widget_id, Scope, cs_fake_id),
+            at => maps:get(widget_at, Scope, ?T0),
             %% workspace_id 仅供测试**直调** cs_session_app/cs_seat_app 时的
             %% 租户门使用；cs_widget_app 自身只认 default_workspace 注入事实
             %% （maps:with 收敛后该键不进 widget 用例），A02 的申报值负例照常。

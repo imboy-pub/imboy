@@ -128,7 +128,7 @@ policy_of(Id) ->
 audit_policy_http_test_() ->
     {timeout, 900,
         {setup, fun intbe02_http_support:setup_all/0, fun intbe02_http_support:teardown_all/1,
-            fun run_audit/1}}.
+            fun(S) -> {timeout, 900, fun() -> run_audit(S) end} end}}.
 
 run_audit(S) ->
     #{conn := C} = S,
@@ -246,7 +246,7 @@ positive_with_audit(S) ->
     assert_audit_increment(C, <<"group.members.removed">>, 0, 1),
 
     %% ---- INT-07 presign（DEVIATION：无审计行）----
-    #{<<"object_key">> := ObjectKey} = http_ok(
+    #{<<"object_key">> := ObjectKey} = Registration = http_ok(
         C,
         Port,
         <<"POST">>,
@@ -259,8 +259,10 @@ positive_with_audit(S) ->
     ?assertEqual(0, audit_count(C, <<"file.presigned">>), presign_deviation_zero_rows),
     ?assertEqual(0, audit_count(C, <<"file.presign">>), presign_deviation_zero_rows),
 
-    %% ---- INT-08 confirm（REQUIRED；HEAD 替身窗口包住整个请求）----
-    Resp08 = intbe02_http_support:with_oss_head(2048, fun() ->
+    %% ---- INT-08 confirm（REQUIRED；真实 capability PUT 固定内容）----
+    Bytes = binary:copy(<<"x">>, 2048),
+    ok = intbe02_http_support:upload_file(Port, Registration, Bytes),
+    Resp08 =
         enterprise_internal_audit_http_checks:http(
             C,
             Port,
@@ -271,9 +273,13 @@ positive_with_audit(S) ->
                 <<"file_hash256">> => hash256(<<"x">>)
             },
             maps:merge(A, intbe02_http_support:idem(<<"intbe03-idem-08">>))
-        )
-    end),
+        ),
     ?assertEqual(200, maps:get(status, Resp08), maps:get(body, Resp08)),
+    #{<<"size">> := 2048, <<"mime_type">> := <<"text/plain">>} =
+        jsone:decode(maps:get(body, Resp08)),
+    Confirmed = intbe02_http_support:one(C,
+        <<"SELECT file_hash256 FROM attachment WHERE path=$1">>, [ObjectKey]),
+    ?assertEqual(hash256(Bytes), maps:get(<<"file_hash256">>, Confirmed)),
     assert_audit_increment(C, <<"file.confirmed">>, 0, 1),
     assert_audit_row(C, #{
         <<"action">> => <<"file.confirmed">>,

@@ -2,6 +2,9 @@
 -include_lib("eunit/include/eunit.hrl").
 
 registration_location_pg_test_() ->
+    isolated_pg_fixture:test(fun registration_location_fixture/0).
+
+registration_location_fixture() ->
     {setup, fun setup/0, fun cleanup/1, fun(_) ->
         [{timeout, 30, fun() -> registration(Driver) end} || Driver <- [<<"disk">>, <<"garage">>]]
     end}.
@@ -54,6 +57,17 @@ registration(Driver) ->
         <<"scope">> => <<"private">>,
         <<"scope_ref">> => null
     },
+    try registration(Driver, Registry, Cid, Key, Declaration)
+    after
+        {ok, _} = elib_pg:execute(
+            <<"DELETE FROM public.attach_pending WHERE object_key=ANY($1)">>,
+            [[Key, <<Key/binary, "/new-random">>, <<Key/binary, "/old-client">>,
+                <<Key/binary, "/internal">>]]
+        )
+    end.
+
+registration(Driver, Registry, Cid, Key, Declaration) ->
+    Ns = <<"registration-", Driver/binary>>,
     {ok, Original} = attach_pending_repo:register_v5(
         Key, <<"fixture">>, <<"private">>, 99191, Cid, Declaration
     ),

@@ -464,6 +464,9 @@ a05(Scope) ->
     OtherWs = maps:get(other_workspace_id, Scope),
 
     Expired = ?L:seed_pending(Scope, Actor, <<"EB07-A05-expired">>, stale),
+    {ok, ExpiredBefore} = ?L:asset_row(Org, Ws, Expired),
+    {ok, ExpiredObject} = eb_asset_object_stub:get(
+        maps:get(object_key, ExpiredBefore), ?L:key_prefix(Org, Ws)),
     Fresh = ?L:seed_pending(Scope, Actor, <<"EB07-A05-fresh">>, fresh),
     {ok, Active, _} = ?L:upload_and_confirm(Scope, Actor, <<"EB07-A05-active">>),
     Foreign = ?L:seed_foreign_expired_pending(Scope, <<"EB07-A05-foreign-bytes">>),
@@ -487,7 +490,8 @@ a05(Scope) ->
                 Deleted = maps:get(deleted, Result, []),
                 Skipped = maps:get(skipped, Result, []),
                 case {lists:member(Expired, Deleted), lists:keyfind(Expired, 1, Skipped)} of
-                    {true, false} -> cleanup_effects(Scope, Expired, Fresh, Active, Foreign);
+                    {true, false} -> cleanup_effects(
+                        Scope, Expired, Fresh, Active, Foreign, ExpiredBefore, ExpiredObject);
                     {false, _} -> {error, {expired_pending_not_cleaned, Result}};
                     {true, Found} -> {error, {expired_asset_also_skipped, Found}}
                 end;
@@ -522,23 +526,23 @@ a05(Scope) ->
         end
     end).
 
-cleanup_effects(Scope, Expired, Fresh, Active, Foreign) ->
+cleanup_effects(Scope, Expired, Fresh, Active, Foreign, Before, BeforeObject) ->
     {Org, Ws} = ?L:tenant(Scope),
-    %% W4-01 入口收口（02 §4）：cleanup_pending 只发删除意图（身份缺失 →
-    %% blocked job 明示，迁移 186），字节由队列 Worker 删——对象仍在；
-    %% metadata 终态（deleted + flag 清）照常收口。
+    %% A configured frozen root produces a ready job. Intent commits before
+    %% provider I/O; only separate real-driver worker coverage proves deletion.
+    Frozen = maps:from_list([{atom_to_binary(K), maps:get(K, Before)}
+        || K <- [storage_driver, storage_namespace, storage_container, storage_locator_sha256]]),
+    Key = maps:get(object_key, Before),
+    {ok, #{driver := disk}} = attachment_storage:frozen_location(Key, Frozen),
+    ExpectedJob = Frozen#{<<"organization_id">> => Org, <<"workspace_id">> => Ws,
+        <<"asset_id">> => Expired, <<"object_key">> => Key, <<"job_state">> => <<"ready">>,
+        <<"attempts">> => 0, <<"last_error_code">> => null},
     Checks = [
-        {expired_object_queued_not_removed, ?L:object_present(Org, Ws, Expired) =:= true},
+        {expired_object_unchanged_before_worker,
+            eb_asset_object_stub:get(Key, ?L:key_prefix(Org, Ws)) =:= {ok, BeforeObject}},
         {expired_metadata_deleted, ?L:asset_status(Org, Ws, Expired) =:= deleted},
-        {expired_job_enqueued,
-            eb_pg_test_fixture:scalar(
-                <<
-                    "SELECT COUNT(*) FROM enterprise_asset_delete_queue"
-                    " WHERE organization_id=$1 AND workspace_id=$2 AND asset_id=$3"
-                    " AND job_state='blocked'"
-                >>,
-                [Org, Ws, Expired]
-            ) =:= 1},
+        {expired_frozen_job_committed,
+            eb_pg_test_fixture:asset_delete_job(Org, Ws, Expired) =:= {ok, [ExpectedJob]}},
         {fresh_object_alive, ?L:object_present(Org, Ws, Fresh) =:= true},
         {active_object_alive, ?L:object_present(Org, Ws, Active) =:= true},
         {foreign_object_alive,

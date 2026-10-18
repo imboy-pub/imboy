@@ -31,32 +31,53 @@ seat_send_protocol_test_() ->
     {setup, fun setup/0, fun cleanup/1, fun cases/1}.
 
 setup() ->
-    Previous = ?FIX:select_asset_stub(),
-    {asset_stub, Previous, setup_db()}.
+    %% Boot may load application env. Use the actual frozen Disk driver for
+    %% HTTP sealed-body uploads; the binary-only local stub cannot consume them.
+    Result = setup_db(),
+    case Result of
+        {ok, _} ->
+            Previous = application:get_env(imboy, eb_asset_object_store),
+            ok = application:unset_env(imboy, eb_asset_object_store),
+            try
+                Registry = ?FIX:install_asset_registry(),
+                {asset_disk, Previous, Registry, Result}
+            catch Class:Reason:Stack ->
+                try cleanup(Result)
+                after ?FIX:restore_asset_store(Previous) end,
+                erlang:raise(Class, Reason, Stack)
+            end;
+        _ -> Result
+    end.
 
 setup_db() ->
     case eunit_runner:eunit_setup_with_db() of
         {ok, Conn} ->
-            case ?FIX:ensure_purge_role() of
+            try ?FIX:ensure_purge_role() of
                 ok -> {ok, Conn};
-                {error, Reason} -> {error, Reason}
+                {error, Reason} ->
+                    eunit_runner:eunit_cleanup_db(Conn),
+                    {error, Reason}
+            catch Class:Reason:Stack ->
+                eunit_runner:eunit_cleanup_db(Conn),
+                erlang:raise(Class, Reason, Stack)
             end;
         {error, Reason} ->
             {error, Reason}
     end.
 
-cleanup({asset_stub, Previous, Result}) ->
+cleanup({asset_disk, Previous, Registry, Result}) ->
     try
         cleanup(Result)
     after
-        ?FIX:restore_asset_store(Previous)
+        try ?FIX:restore_asset_registry(Registry)
+        after ?FIX:restore_asset_store(Previous) end
     end;
 cleanup({ok, Conn}) ->
     eunit_runner:eunit_cleanup_db(Conn);
 cleanup(Other) ->
     Other.
 
-cases({asset_stub, _Previous, Result}) ->
+cases({asset_disk, _Previous, _Registry, Result}) ->
     cases(Result);
 cases({ok, _Conn}) ->
     [

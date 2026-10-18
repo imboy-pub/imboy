@@ -21,17 +21,36 @@ asset_test_() ->
     {setup, fun setup/0, fun cleanup_db/1, fun cases/1}.
 
 setup() ->
-    Previous = eb_pg_test_fixture:select_asset_stub(),
-    {asset_stub, Previous, setup_db()}.
+    Result = setup_db(),
+    case Result of
+        {ok, _} ->
+            Previous = eb_pg_test_fixture:select_asset_stub(),
+            try
+                Registry = eb_pg_test_fixture:install_asset_registry(),
+                {asset_stub, Previous, Registry, Result}
+            catch Class:Reason:Stack ->
+                try
+                    cleanup_db(Result)
+                after
+                    eb_pg_test_fixture:restore_asset_store(Previous)
+                end,
+                erlang:raise(Class, Reason, Stack)
+            end;
+        _ -> Result
+    end.
 
 setup_db() ->
     eunit_runner:eunit_setup_with_db().
 
-cleanup_db({asset_stub, Previous, Result}) ->
+cleanup_db({asset_stub, Previous, Registry, Result}) ->
     try
         cleanup_db(Result)
     after
-        eb_pg_test_fixture:restore_asset_store(Previous)
+        try
+            eb_pg_test_fixture:restore_asset_registry(Registry)
+        after
+            eb_pg_test_fixture:restore_asset_store(Previous)
+        end
     end;
 cleanup_db({ok, Conn}) ->
     _ = eb_asset_object_stub:reset(),
@@ -39,7 +58,7 @@ cleanup_db({ok, Conn}) ->
 cleanup_db(_Other) ->
     ok.
 
-cases({asset_stub, _Previous, Result}) ->
+cases({asset_stub, _Previous, _Registry, Result}) ->
     cases(Result);
 cases({ok, _Conn}) ->
     [
@@ -546,6 +565,7 @@ w202_confirm_replay_idempotent_active() ->
             key_ref => eb_asset_it_lib:key_ref(Scope)
         },
         {ok, First} = enterprise_business_facade:confirm_asset(Org, ConfirmParams),
+        ?assertEqual(AssetId, maps:get(asset_id, First)),
         ?assertEqual(active, maps:get(status, First)),
         %% 100 次重放：同一 asset 视图（幂等成功，非 conflict）
         lists:foreach(

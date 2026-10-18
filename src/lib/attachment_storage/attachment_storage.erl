@@ -182,6 +182,7 @@ snapshot(Key, Container, Rec, Row) ->
         key => Key,
         endpoint => maps:get(endpoint, Rec),
         root_id => maps:get(root_id, Rec),
+        locator_digest => maps:get(<<"storage_locator_sha256">>, Row),
         mime => Mime
     },
     case maps:get(driver, Base) of

@@ -44,12 +44,189 @@ mk_group(Gid, OwnerUid) ->
 
 %% staging → 正式表（复用 worker 的 process_row 搬运算子，与异步链路同源）
 flush_staging(MsgId) ->
-    {ok, Rows} = elib_pg:query(
+    flush_staging(MsgId, 10000).
+
+flush_staging(MsgId, TimeoutMs) ->
+    {ok, [Row]} = elib_pg:query(
         <<"SELECT * FROM public.msg_store_staging WHERE msg_id = $1">>,
         [MsgId]
     ),
-    [?assertMatch(ok, msg_store_worker:process_row(Row)) || Row <- Rows],
+    ?assertMatch(ok, msg_store_worker:process_row(Row)),
+    %% process_row 只发出 unstage cast；DS 随后另启异步 UPDATE，需等待其提交。
+    %% process_row only casts unstage; the DS starts a separate asynchronous UPDATE.
+    wait_staging_processed(maps:get(<<"type">>, Row), MsgId,
+        erlang:monotonic_time(millisecond) + TimeoutMs).
+
+%% processed_at 是另一个异步事务的提交边界；缺失行或终态失败不能假装完成。
+%% processed_at is a separate asynchronous commit; missing/terminal rows are not success.
+wait_staging_processed(Type, MsgId, Deadline) ->
+    {ok, Rows} = elib_pg:query(
+        <<"SELECT processed_at,error_msg FROM public.msg_store_staging WHERE type=$1 AND msg_id=$2">>,
+        [Type, MsgId]
+    ),
+    case Rows of
+        [#{<<"processed_at">> := Processed, <<"error_msg">> := null}] when Processed =/= null ->
+            ok;
+        [#{<<"processed_at">> := Processed}] when Processed =/= null ->
+            error({staging_terminal_failure, Type, MsgId});
+        [_] ->
+            Remaining = Deadline - erlang:monotonic_time(millisecond),
+            case Remaining > 0 of
+                true ->
+                    timer:sleep(erlang:min(25, Remaining)),
+                    wait_staging_processed(Type, MsgId, Deadline);
+                false ->
+                    error({staging_completion_timeout, Type, MsgId})
+            end;
+        _ ->
+            error({staging_completion_rows, Type, MsgId, length(Rows)})
+    end.
+
+%% 真库行锁只阻止本夹具的异步完成标记，正式表和归档仍必须先提交。
+%% A real owned-row lock delays only completion marking; formal/archive commits remain real.
+flush_waits_for_processed_commit_test_() ->
+    ?TEST_WITH_DB_TIMEOUT(30, fun() ->
+        A = uid(),
+        B = uid(),
+        MsgId = <<"q06ac4wait-", (integer_to_binary(A))/binary>>,
+        OldArchive = application:get_env(imboy, msg_archive_enabled),
+        {ok, Opts} = application:get_env(imboy, super_account),
+        {ok, Owner} = inttest_marker_db:safe_connect(Opts),
+        application:set_env(imboy, msg_archive_enabled, true),
+        try
+            stage_completion_fixture(A, B, MsgId),
+            {ok, _, _} = epgsql:squery(Owner, <<"BEGIN">>),
+            {ok, [#{<<"pid">> := OwnerPid}]} = elib_pg:query(Owner,
+                <<"SELECT pg_backend_pid() AS pid">>, []),
+            {ok, [_]} = elib_pg:query(Owner,
+                <<"SELECT id FROM public.msg_store_staging WHERE type='c2c' AND msg_id=$1 FOR UPDATE">>,
+                [MsgId]),
+            assert_flush_under_completion_lock(Owner, OwnerPid, A, B, MsgId)
+        after
+            %% 连接关闭保证失败路径也释放锁，再等真实异步写完成才清理本夹具。
+            %% Closing releases the lock even on failure; join the actual DB completion before cleanup.
+            try
+                try epgsql:squery(Owner, <<"ROLLBACK">>)
+                after epgsql:close(Owner)
+                end
+            after
+                try
+                    wait_staging_processed(<<"c2c">>, MsgId,
+                        erlang:monotonic_time(millisecond) + 10000)
+                after
+                    try cleanup_completion_fixture(A, B, MsgId)
+                    after restore_archive_env(OldArchive)
+                    end
+                end
+            end
+        end
+    end).
+
+assert_flush_under_completion_lock(Owner, OwnerPid, A, B, MsgId) ->
+    Parent = self(),
+    Ref = make_ref(),
+    {Pid, Monitor} = spawn_monitor(fun() ->
+        Result = try flush_staging(MsgId, 50) of
+            Value -> {returned, Value}
+        catch
+            Class:Reason -> {raised, Class, Reason}
+        end,
+        Parent ! {Ref, Result}
+    end),
+    try
+        %% 若写入失败，mark_failed 也会等行锁；owner 必须能独立释放并 join。
+        %% A failed write can block in mark_failed too; keep the owner free to release/join.
+        Result = receive
+            {Ref, Value} -> Value
+        after 5000 -> error(completion_flusher_timeout)
+        end,
+        ?assertEqual({raised, error, {staging_completion_timeout, <<"c2c">>, MsgId}}, Result),
+        wait_completion_update_blocked(OwnerPid, erlang:monotonic_time(millisecond) + 5000),
+        {ok, [#{<<"processed_at">> := null, <<"error_msg">> := null}]} = elib_pg:query(
+            <<"SELECT processed_at,error_msg FROM public.msg_store_staging WHERE msg_id=$1">>, [MsgId]),
+        assert_completion_copies(A, B, MsgId),
+        {ok, _, _} = epgsql:squery(Owner, <<"ROLLBACK">>),
+        ok = flush_staging(MsgId),
+        assert_completion_copies(A, B, MsgId)
+    after
+        try epgsql:squery(Owner, <<"ROLLBACK">>)
+        after join_completion_flusher(Pid, Monitor, Ref)
+        end
+    end.
+
+join_completion_flusher(Pid, Monitor, Ref) ->
+    receive
+        {'DOWN', Monitor, process, Pid, _} -> ok
+    after 5000 ->
+        exit(Pid, kill),
+        receive {'DOWN', Monitor, process, Pid, _} -> ok
+        after 5000 -> error(completion_flusher_cleanup_timeout)
+        end
+    end,
+    receive {Ref, _} -> ok after 0 -> ok end.
+
+completion_rejects_missing_and_terminal_rows_test_() ->
+    ?TEST_WITH_DB_TIMEOUT(30, fun() ->
+        A = uid(),
+        B = uid(),
+        MsgId = <<"q06ac4reject-", (integer_to_binary(A))/binary>>,
+        Deadline = erlang:monotonic_time(millisecond) + 1000,
+        ?assertError({staging_completion_rows, <<"c2c">>, MsgId, 0},
+            wait_staging_processed(<<"c2c">>, MsgId, Deadline)),
+        try
+            stage_completion_fixture(A, B, MsgId),
+            {ok, 1} = msg_store_repo:mark_terminal(<<"c2c">>, MsgId, <<"synthetic terminal failure">>),
+            ?assertError({staging_terminal_failure, <<"c2c">>, MsgId},
+                wait_staging_processed(<<"c2c">>, MsgId, Deadline))
+        after
+            cleanup_completion_fixture(A, B, MsgId)
+        end
+    end).
+
+stage_completion_fixture(A, B, MsgId) ->
+    %% 租约和接受记录同事务创建，不暂停真实 worker，也不留下抢占窗口。
+    %% The future lease commits with acceptance, without pausing the real worker.
+    Data = #{id => elib_tsid:generate(msg_store), type => <<"c2c">>, msg_id => MsgId,
+        msg_type => <<"text">>, action => <<>>, payload => jsone:encode(#{<<"text">> => ?KEYWORD}),
+        e2ee => null, from_id => A, to_id => B, created_at => ts(1), server_ts => ts(1),
+        available_at => elib_dt:to_rfc3339(elib_dt:millisecond() + 3600000)},
+    {ok, _, 1} = personal_message_order_repo:stage_c2c_ordered(msg_store_repo:tablename(), Data),
     ok.
+
+assert_completion_copies(A, B, MsgId) ->
+    lists:foreach(fun(Table) ->
+        {ok, [#{<<"from_id">> := A, <<"to_id">> := B, <<"conv_seq">> := 1,
+            <<"e2ee">> := null, <<"payload">> := Payload}]} = elib_pg:query(
+            <<"SELECT from_id,to_id,conv_seq,e2ee,payload FROM public.", Table/binary,
+                " WHERE msg_id=$1">>, [MsgId]),
+        ?assertEqual(#{<<"text">> => ?KEYWORD}, jsone:decode(Payload))
+    end, [<<"msg_c2c">>, <<"msg_store">>]).
+
+wait_completion_update_blocked(OwnerPid, Deadline) ->
+    {ok, [#{<<"n">> := N}]} = elib_pg:query(
+        <<"SELECT count(*) AS n FROM pg_stat_activity WHERE datname=current_database() ",
+            "AND wait_event_type='Lock' AND $1=ANY(pg_blocking_pids(pid)) ",
+            "AND query LIKE 'UPDATE public.msg_store_staging SET processed_at%'">>, [OwnerPid]),
+    case N > 0 of
+        true -> ok;
+        false ->
+            case erlang:monotonic_time(millisecond) < Deadline of
+                true -> timer:sleep(10), wait_completion_update_blocked(OwnerPid, Deadline);
+                false -> error(completion_update_lock_oracle_timeout)
+            end
+    end.
+
+cleanup_completion_fixture(A, B, MsgId) ->
+    lists:foreach(fun(Table) ->
+        {ok, _} = elib_pg:execute(
+            <<"DELETE FROM public.", Table/binary, " WHERE msg_id=$1">>, [MsgId])
+    end, [<<"msg_c2c">>, <<"msg_store">>, <<"msg_store_staging">>]),
+    {ok, _} = elib_pg:execute(<<"DELETE FROM public.msg_store_seq WHERE conv_key=$1">>,
+        [msg_archive_repo:conv_key(<<"c2c">>, A, B)]),
+    ok.
+
+restore_archive_env(undefined) -> application:unset_env(imboy, msg_archive_enabled);
+restore_archive_env({ok, Value}) -> application:set_env(imboy, msg_archive_enabled, Value).
 
 msg_ids_of(Messages) ->
     [maps:get(<<"msg_id">>, M) || M <- Messages].
@@ -102,7 +279,7 @@ s1_s2_plaintext_archive_and_history_test_() ->
         ),
         ?assertEqual(3, N),
         ?assertEqual(0, ENull),
-        %% worker 搬运（同步触发，等价异步批处理一批）
+        %% worker 搬运并等待异步完成标记提交 / Transfer and await the asynchronous completion commit.
         [flush_staging(MsgId) || MsgId <- MsgIds],
         {ok, [#{<<"n">> := ArchN}]} = elib_pg:query(
             <<"SELECT count(*) AS n FROM public.msg_store WHERE msg_id = ANY($1)">>,
@@ -267,64 +444,76 @@ s7_legacy_ciphertext_not_degraded_test_() ->
         KwJson = <<"{\"text\": \"", Kw/binary, "\"}">>,
         E2EEJson = <<"{\"session_id\": \"legacy-s1\", \"ciphertext\": \"QjhFTkNSWVBU\"}">>,
         CipherMsgId = iolist_to_binary(["q06ac4e-", integer_to_binary(A)]),
-        %% 直插 E2EE 时代遗留行：msg_c2c + msg_store（payload 含关键词但
+        NewMsgId = <<CipherMsgId/binary, "-n">>,
+        %% 构造 E2EE 历史内容：msg_c2c + msg_store（payload 含关键词但
         %% e2ee 非空——若 FTS 谓词失效该行必然命中，构成强 oracle）
         ConvKey = iolist_to_binary([
             <<"c2c:">>, integer_to_binary(erlang:min(A, B)), $:, integer_to_binary(erlang:max(A, B))
         ]),
-        {ok, _} = elib_pg:query(
-            <<
-                "INSERT INTO msg_c2c (id, from_id, to_id, msg_id, msg_type, payload, ",
-                "created_at, e2ee) VALUES ($1, $2, $3, $4, 'text', $5::jsonb, $6, $7::jsonb)"
-            >>,
-            [uid(), A, B, CipherMsgId, KwJson, ts(5), E2EEJson]
-        ),
-        {ok, _} = elib_pg:query(
-            <<
-                "INSERT INTO public.msg_store (id, chat_type, conv_key, conv_seq, msg_id, ",
-                "msg_type, from_id, to_id, payload, e2ee, created_at, server_ts) ",
-                "VALUES ($1,'c2c',$2,1,$3,'text',$4,$5,$6::jsonb,$7::jsonb,now(),now())"
-            >>,
-            [uid(), ConvKey, CipherMsgId, A, B, KwJson, E2EEJson]
-        ),
-        Fingerprint = row_fingerprint(CipherMsgId),
+        try
+            {ok, 1} = personal_message_order_repo:execute_formal(A, B, CipherMsgId,
+                <<
+                    "INSERT INTO msg_c2c (id, from_id, to_id, msg_id, msg_type, payload, ",
+                    "created_at, e2ee, conv_seq) VALUES ($1, $2, $3, $4, 'text', $5::jsonb, $6, $7::jsonb, $8)"
+                >>,
+                [uid(), A, B, CipherMsgId, KwJson, ts(5), E2EEJson]
+            ),
+            {ok, 1} = personal_message_order_repo:execute_formal(A, B, CipherMsgId,
+                <<
+                    "INSERT INTO public.msg_store (id, chat_type, conv_key, conv_seq, msg_id, ",
+                    "msg_type, from_id, to_id, payload, e2ee, created_at, server_ts) ",
+                    "VALUES ($1,'c2c',$2,$8,$3,'text',$4,$5,$6::jsonb,$7::jsonb,now(),now())"
+                >>,
+                [uid(), ConvKey, CipherMsgId, A, B, KwJson, E2EEJson]
+            ),
+            Fingerprint = row_fingerprint(CipherMsgId),
 
-        %% 读取一（history）：payload/e2ee 原样返回，不静默降级为明文标记
-        {ok, #{<<"messages">> := Msgs}} = messaging_logic:history(
-            A, <<"c2c">>, integer_to_binary(B), 0, 50
-        ),
-        [CipherRow] = [M || M <- Msgs, maps:get(<<"msg_id">>, M) =:= CipherMsgId],
-        E2EE = maps:get(<<"e2ee">>, CipherRow),
-        ?assertEqual(<<"legacy-s1">>, maps:get(<<"session_id">>, E2EE)),
-        ?assertEqual(<<"QjhFTkNSWVBU">>, maps:get(<<"ciphertext">>, E2EE)),
-        ?assertEqual(Kw, maps:get(<<"text">>, maps:get(<<"payload">>, CipherRow))),
+            %% 读取一（history）：payload/e2ee 原样返回，不静默降级为明文标记
+            {ok, #{<<"messages">> := Msgs}} = messaging_logic:history(
+                A, <<"c2c">>, integer_to_binary(B), 0, 50
+            ),
+            [CipherRow] = [M || M <- Msgs, maps:get(<<"msg_id">>, M) =:= CipherMsgId],
+            E2EE = maps:get(<<"e2ee">>, CipherRow),
+            ?assertEqual(<<"legacy-s1">>, maps:get(<<"session_id">>, E2EE)),
+            ?assertEqual(<<"QjhFTkNSWVBU">>, maps:get(<<"ciphertext">>, E2EE)),
+            ?assertEqual(Kw, maps:get(<<"text">>, maps:get(<<"payload">>, CipherRow))),
 
-        %% 读取二（offline）：接收方视角拉取，密文行同样原样下发
-        OfflinePayload = messaging_logic:offline(B, 1000, 0, 0, 0, <<>>),
-        C2CList = maps:get(<<"list">>, maps:get(<<"c2c">>, OfflinePayload)),
-        ?assert(lists:member(CipherMsgId, msg_ids_of(C2CList))),
+            %% 读取二（offline）：接收方视角拉取，密文行同样原样下发
+            OfflinePayload = messaging_logic:offline(B, 1000, 0, 0, 0, <<>>),
+            C2CList = maps:get(<<"list">>, maps:get(<<"c2c">>, OfflinePayload)),
+            ?assert(lists:member(CipherMsgId, msg_ids_of(C2CList))),
 
-        %% FTS：含关键词的密文行绝不出现（e2ee IS NULL 谓词生效直接证据）
-        {ok, Hits} = fts_user_repo:search_c2c_msg(Kw, 50, 0, A),
-        ?assertNot(lists:member(CipherMsgId, msg_ids_of(Hits))),
+            %% FTS：含关键词的密文行绝不出现（e2ee IS NULL 谓词生效直接证据）
+            {ok, Hits} = fts_user_repo:search_c2c_msg(Kw, 50, 0, A),
+            ?assertNot(lists:member(CipherMsgId, msg_ids_of(Hits))),
 
-        %% 新写入（同会话明文消息）不得触碰旧行
-        NewMsgId = <<CipherMsgId/binary, "-n">>,
-        {ok, new} = msg_store_ds:stage(
-            <<"c2c">>,
-            NewMsgId,
-            <<"text">>,
-            <<>>,
-            null,
-            jsone:encode(#{<<"text">> => Kw}),
-            A,
-            B,
-            ts(9),
-            ts(9),
-            <<>>
-        ),
-        flush_staging(NewMsgId),
-        ?assertEqual(Fingerprint, row_fingerprint(CipherMsgId))
+            %% 新写入（同会话明文消息）不得触碰旧行
+            {ok, new} = msg_store_ds:stage(
+                <<"c2c">>,
+                NewMsgId,
+                <<"text">>,
+                <<>>,
+                null,
+                jsone:encode(#{<<"text">> => Kw}),
+                A,
+                B,
+                ts(9),
+                ts(9),
+                <<>>
+            ),
+            flush_staging(NewMsgId),
+            ?assertEqual(Fingerprint, row_fingerprint(CipherMsgId))
+        after
+            lists:foreach(fun(Table) ->
+                {ok, _} = elib_pg:execute(
+                    <<"DELETE FROM public.", Table/binary, " WHERE msg_id=ANY($1)">>,
+                    [[CipherMsgId, NewMsgId]]
+                )
+            end, [<<"msg_c2c">>, <<"msg_store">>, <<"msg_store_staging">>]),
+            {ok, _} = elib_pg:execute(
+                <<"DELETE FROM public.msg_store_seq WHERE conv_key=$1">>, [ConvKey]
+            )
+        end
     end).
 
 row_fingerprint(MsgId) ->

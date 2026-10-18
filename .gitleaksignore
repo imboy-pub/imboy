@@ -1809,3 +1809,9 @@ docs/architecture/attachment-lifecycle-v5/evidence/current-baseline.json:generic
 docs/architecture/attachment-lifecycle-v5/evidence/current-baseline.json:generic-api-key:1494
 docs/architecture/attachment-lifecycle-v5/evidence/current-baseline.json:generic-api-key:1696
 docs/architecture/attachment-lifecycle-v5/evidence/current-baseline.json:generic-api-key:1833
+
+# Native CI redactors: these historical matches contain environment-variable names,
+# not credential values. Exact commit fingerprints keep all later findings active.
+# 原生 CI 脱敏器中的环境变量名误报；只豁免精确历史提交，不豁免后续同路径内容。
+4265b4763570d72cbf04798dd4a6becb7befad5b:scripts/ci/native-eunit-capture.py:generic-api-key:10
+4265b4763570d72cbf04798dd4a6becb7befad5b:scripts/ci/native-eunit-run.sh:generic-api-key:30

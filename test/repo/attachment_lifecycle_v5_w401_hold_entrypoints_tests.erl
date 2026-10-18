@@ -22,10 +22,6 @@
 -include_lib("epgsql/include/epgsql.hrl").
 
 -define(ASSET_BASE, 940000).
--define(REG_JSON,
-    "{\"subject\":{\"kind\":\"user\",\"principal\":\"101\"},"
-    "\"declaration\":{\"mime\":\"image/png\"}}"
-).
 
 w401_hold_entrypoints_test_() ->
     {timeout, 1200, fun run/0}.
@@ -111,10 +107,10 @@ hex64(Bin) ->
 loc(N) -> hex64(crypto:hash(sha256, integer_to_binary(N))).
 
 %% confirmed metadata 资产（明文 + 完整位置 + 无绑定；gc 资格由治理行裁决）。
-%% ScopeRef=null 表示 group 形态；企业形态传 scope='enterprise' + scope_ref
-%% （身份/scope 触发器锁首次写入——不能 confirm 后改 scope）。
+%% scope/ref 在登记与 metadata 中一致，确认后不可改写声明。
+%% Freeze matching scope/ref in both registration and confirmed metadata.
 seed_metadata_asset(Conn, Key, N) ->
-    seed_scoped_asset(Conn, Key, N, 'group', null).
+    seed_scoped_asset(Conn, Key, N, 'group', <<"66">>).
 
 seed_scoped_asset(Conn, Key, N, ScopeAtom, ScopeRefVal) ->
     q(Conn, "DELETE FROM attach_pending WHERE object_key=$1", [Key]),
@@ -122,9 +118,10 @@ seed_scoped_asset(Conn, Key, N, ScopeAtom, ScopeRefVal) ->
     {ok, _, _} = epgsql:equery(
         Conn,
         "SELECT * FROM fn_v5_register_pending($1,'b',$2,101,"
-        "gen_random_uuid(),$3::jsonb,now(),"
-        "now() - interval '2 hours','garage','ns1','c1',$4)",
-        [Key, atom_to_binary(ScopeAtom), ?REG_JSON, loc(N)]
+        "gen_random_uuid(),$3::jsonb,now() + interval '2 hours',"
+        "now() + interval '3 seconds','garage','ns1','c1',$4)",
+        [Key, atom_to_binary(ScopeAtom),
+            registration_fixture(atom_to_binary(ScopeAtom), ScopeRefVal), loc(N)]
     ),
     {ok, _, _} = epgsql:equery(
         Conn,
@@ -150,13 +147,15 @@ seed_scoped_asset(Conn, Key, N, ScopeAtom, ScopeRefVal) ->
     {ok, _, _} = epgsql:equery(Conn, "SELECT fn_v5_confirm_pending($1,$2)", [
         Key, ?ASSET_BASE + N
     ]),
-    q(
-        Conn,
-        "UPDATE attach_pending SET upload_expires_at = now() - interval '2 hours'"
-        " WHERE object_key=$1",
-        [Key]
-    ),
+    await_upload_expiry(Conn, Key),
     ok.
+
+registration_fixture(Scope, ScopeRef) ->
+    jsone:encode(#{
+        <<"subject">> => #{<<"kind">> => <<"user">>, <<"principal">> => <<"101">>},
+        <<"declaration">> => #{<<"mime">> => <<"image/png">>,
+            <<"scope">> => Scope, <<"scope_ref">> => ScopeRef}
+    }).
 
 %% 企业 asset（enterprise_asset 行 + workspace hold fixture）。
 %% id 无序列（TSID 由应用层派生）——运行时唯一（run_base 已含于 N）。
@@ -388,24 +387,21 @@ run_matrix(Conn, Fixture) ->
         "SELECT * FROM fn_v5_register_pending($1,'b','private',101,"
         "gen_random_uuid(),$2::jsonb,now(),"
         "now() - interval '2 hours','garage','ns1','c1',$3)",
-        [PendKey, ?REG_JSON, loc(Base + 20)]
+        [PendKey, registration_fixture(<<"private">>, null), loc(Base + 20)]
     ),
-    {ok, 1} = epgsql:equery(
-        Conn,
-        "UPDATE attach_pending SET upload_expires_at = now() - interval '2 hours'"
-        " WHERE object_key=$1",
-        [PendKey]
-    ),
+    %% Registered already expired; no upload occurs in this pending-only case.
     {ok, #{cleaned := _}} = attachment_ds:pending_cleanup(1),
     assert_pending_no_delete(
         Conn, PendKey, <<"pending_entries/", (atom_to_binary(Fixture, utf8))/binary>>
     ),
 
-    %% ⑪ eb_purge_drain：drain 侧=Worker（W4-02），生产入口尚不存在——
-    %% N/A 明示；断言零 ready job（治理下不可能产生可删 job）
+    %% ⑪ eb_purge_drain：治理保护的本场景资产不得产生任何状态的删除任务。
+    %% Other suites retain legitimate queue jobs; only these held assets are ours.
     {ok, _, [{0}]} = epgsql:equery(
         Conn,
-        "SELECT COUNT(*) FROM enterprise_asset_delete_queue WHERE job_state='ready'"
+        "SELECT COUNT(*) FROM enterprise_asset_delete_queue"
+        " WHERE organization_id=9101 AND workspace_id=9102 AND asset_id=ANY($1::bigint[])",
+        [[EbId, EbPending]]
     ),
 
     Cleanup,
@@ -476,3 +472,19 @@ run_base() ->
         B ->
             B
     end.
+
+%% Pin/confirm must finish inside the real capability window. Never shrink it.
+%% Wait on the database clock, capped at five seconds; a missed window fails.
+await_upload_expiry(Conn, Key) ->
+    {ok, _, [{true}]} = epgsql:equery(Conn,
+        "SELECT session_state='confirmed' AND upload_content IS NOT NULL"
+        " AND upload_expires_at > clock_timestamp()"
+        " FROM attach_pending WHERE object_key=$1", [Key]),
+    {ok, _, [_]} = epgsql:equery(Conn,
+        "SELECT pg_sleep(LEAST(5.0, GREATEST(0.0,"
+        " EXTRACT(EPOCH FROM (upload_expires_at - clock_timestamp())))))"
+        " FROM attach_pending WHERE object_key=$1", [Key]),
+    {ok, _, [{true}]} = epgsql:equery(Conn,
+        "SELECT upload_expires_at <= clock_timestamp()"
+        " FROM attach_pending WHERE object_key=$1", [Key]),
+    ok.

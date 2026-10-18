@@ -72,6 +72,32 @@
 %%%===================================================================
 
 setup_conn() ->
+    %% 先合并 -config，再捕获环境，避免 marker provisioning 的 lazy load 覆盖夹具。
+    %% Load configuration before capturing fixture-owned environment values.
+    case application:load(imboy) of
+        ok -> ok;
+        {error, {already_loaded, imboy}} -> ok;
+        {error, LoadReason} -> error({fixture_app_load_failed, LoadReason})
+    end,
+    %% 测试密钥归 fixture 所有；成功、失败和清理均恢复先前环境。
+    %% Synthetic test keys are fixture-owned and restored on every exit path.
+    Prior = [{K, application:get_env(imboy, K)} || K <- [postgre_aes_key, enterprise_internal_cursor_signing_key]],
+    try
+        State = setup_conn_with_keys(),
+        State#{fixture_key_env => Prior}
+    catch
+        Class:Reason:Stack ->
+            restore_fixture_keys(Prior),
+            erlang:raise(Class, Reason, Stack)
+    end.
+
+restore_fixture_keys(Prior) ->
+    lists:foreach(fun
+        ({K, undefined}) -> application:unset_env(imboy, K);
+        ({K, {ok, V}}) -> application:set_env(imboy, K, V)
+    end, Prior).
+
+setup_conn_with_keys() ->
     try
         elib_tsid:init(#{dc_id => 1, node_id => 1, dc_bits => 3})
     catch
@@ -94,6 +120,7 @@ setup_conn() ->
         env_prefix => <<"FULL03_INTTEST">>,
         connect_extra => #{codecs => [{epgsql_codec_rfc3339_bin, []}]}
     }),
+    ok = application:set_env(imboy, postgre_aes_key, <<"eunit-webhook-encryption-fixture-only">>),
     C = maps:get(conn, State),
     ok = exec(C, <<"BEGIN">>),
     try
@@ -110,6 +137,10 @@ setup_conn() ->
     State#{conn => C, app_a => AppA, app_b => AppB}.
 
 close_conn(State) ->
+    try close_conn_with_keys(State)
+    after restore_fixture_keys(maps:get(fixture_key_env, State)) end.
+
+close_conn_with_keys(State) ->
     application:unset_env(imboy, ?CURSOR_KEY_CFG),
     inttest_marker_db:release(State),
     ok.

@@ -572,12 +572,34 @@ delete_orphan_tx(Conn, Id, Opts) ->
 -spec intent_ordinary_delete_tx(pid() | any(), binary(), binary()) ->
     ok | {error, intent_conflict | tombstone | not_found | term()}.
 intent_ordinary_delete_tx(Conn, Path, Reason) ->
-    case elib_pg:query(Conn, <<"SELECT fn_v5_intent_ordinary_delete($1, $2)">>, [Path, Reason]) of
-        {ok, _} -> ok;
-        {error, #error{code = <<"23510">>}} -> {error, intent_conflict};
-        {error, #error{code = <<"23505">>}} -> {error, tombstone};
-        {error, #error{code = <<"P0002">>}} -> {error, not_found};
-        {error, R} -> {error, R}
+    %% 调用方会跳过已知资格拒绝并继续同一事务；必须先恢复 SQL 错误态。
+    %% Callers continue after known rejections; recover only this statement,
+    %% retaining earlier writes and leaving unknown failures to abort the outer tx.
+    case elib_pg:query(Conn, <<"SAVEPOINT attachment_ordinary_intent">>, []) of
+        {ok, _} ->
+            case elib_pg:query(Conn, <<"SELECT fn_v5_intent_ordinary_delete($1, $2)">>, [Path, Reason]) of
+                {ok, _} -> release_ordinary_intent_savepoint(Conn, ok);
+                {error, #error{code = <<"23510">>}} ->
+                    recover_ordinary_intent_error(Conn, intent_conflict);
+                {error, #error{code = <<"23505">>}} ->
+                    recover_ordinary_intent_error(Conn, tombstone);
+                {error, #error{code = <<"P0002">>}} ->
+                    recover_ordinary_intent_error(Conn, not_found);
+                {error, _} = Error -> Error
+            end;
+        {error, _} = Error -> Error
+    end.
+
+recover_ordinary_intent_error(Conn, Reason) ->
+    case elib_pg:query(Conn, <<"ROLLBACK TO SAVEPOINT attachment_ordinary_intent">>, []) of
+        {ok, _} -> release_ordinary_intent_savepoint(Conn, {error, Reason});
+        {error, _} = Error -> Error
+    end.
+
+release_ordinary_intent_savepoint(Conn, Result) ->
+    case elib_pg:query(Conn, <<"RELEASE SAVEPOINT attachment_ordinary_intent">>, []) of
+        {ok, _} -> Result;
+        {error, _} = Error -> Error
     end.
 
 %% W4-01：EAR purge 专用意图（迁移 185）——EAR 治理终态（purged）即资格

@@ -32,12 +32,7 @@ ordinary_test_() ->
     case garage_ready() of
         true ->
             {setup,
-                fun() ->
-                    Booted = eunit_runner:eunit_setup(),
-                    garage_apply(),
-                    Booted
-                end,
-                fun eunit_runner:eunit_cleanup/1, fun(_State) ->
+                fun setup/0, fun cleanup/1, fun(_State) ->
                     [
                         {timeout, 180, ?_test(t_sequential_100_replays())},
                         {timeout, 60, ?_test(t_concurrent_two_confirms())},
@@ -61,17 +56,17 @@ enterprise_test_() ->
     case garage_ready() of
         true ->
             {setup,
-                fun() ->
-                    Booted = eunit_runner:eunit_setup(),
-                    garage_apply(),
-                    Booted
-                end,
-                fun eunit_runner:eunit_cleanup/1, fun(_State) ->
+                fun setup/0, fun cleanup/1, fun(_State) ->
                     [
                         {timeout, 180, ?_test(ent_sequential_100_replays())},
                         {timeout, 60, ?_test(ent_concurrent_two_confirms())},
                         {timeout, 60, ?_test(ent_confirmed_legacy_request())},
-                        {timeout, 60, ?_test(ent_unknown_legacy_pending())}
+                        {timeout, 60, ?_test(ent_unknown_legacy_pending())},
+                        {timeout, 60, ?_test(ent_old_capability_put_b_rejected())},
+                        {timeout, 60, ?_test(ent_overwrite_between_stat_and_confirm())},
+                        {timeout, 60, ?_test(ent_inflight_same_content_after_confirm())},
+                        {timeout, 60, ?_test(ent_hash_mismatch_no_confirm())},
+                        {timeout, 60, ?_test(ent_crash_after_pin_before_put_resume())}
                     ]
                 end};
         false ->
@@ -92,18 +87,56 @@ garage_ready() ->
             false
     end.
 
-%% 必须在 eunit_setup（app boot）之后执行：boot 会按 {env, VAR, Default}
-%% 重新装配 garage 配置（默认 GKxxxx），先设会被覆盖（真 403 实证）。
+%% Apply only after boot, and restore exactly the configuration that was in
+%% effect before this suite. The provided bucket is owned by the W202 harness.
+setup() ->
+    Before = [{K, application:get_env(imboy, K)}
+        || K <- [garage, attachment_storage_registry]],
+    Booted = eunit_runner:eunit_setup(),
+    State = #{booted => Booted, before_env => Before},
+    try
+        garage_apply(),
+        State
+    catch Class:Reason:Stack ->
+        cleanup(State),
+        erlang:raise(Class, Reason, Stack)
+    end.
+
+cleanup(#{booted := Booted, before_env := Before}) ->
+    try
+        eunit_runner:eunit_cleanup(Booted)
+    after
+        [case Value of
+            undefined -> application:unset_env(imboy, K);
+            {ok, V} -> application:set_env(imboy, K, V)
+        end || {K, Value} <- Before]
+    end.
+
 garage_apply() ->
-    EP = os:getenv("W202_GARAGE_ENDPOINT"),
-    AK = os:getenv("W202_GARAGE_ACCESS_KEY"),
-    SK = os:getenv("W202_GARAGE_SECRET_KEY"),
+    EP = required("W202_GARAGE_ENDPOINT"),
+    Bucket = required("W202_GARAGE_BUCKET"),
     ok = application:set_env(imboy, garage, #{
-        endpoint => list_to_binary(EP),
-        bucket => <<"imboy">>,
-        access_key => list_to_binary(AK),
-        secret_key => list_to_binary(SK)
+        endpoint => EP, bucket => Bucket,
+        access_key => required("W202_GARAGE_ACCESS_KEY"),
+        secret_key => required("W202_GARAGE_SECRET_KEY")
+    }),
+    Registry = attachment_storage:registry(),
+    Roots = maps:get(roots, Registry, #{}),
+    Uploads = maps:get(upload_namespaces, Registry, #{}),
+    Namespace = <<"w202-", (binary:encode_hex(crypto:strong_rand_bytes(16), lowercase))/binary>>,
+    Record = #{driver => <<"garage">>, namespace => Namespace,
+        endpoint => EP, container => Bucket},
+    ok = application:set_env(imboy, attachment_storage_registry, Registry#{
+        roots => Roots#{Namespace => Record},
+        upload_namespaces => Uploads#{<<"private">> => Namespace, <<"enterprise">> => Namespace}
     }).
+
+required(Name) ->
+    case os:getenv(Name) of
+        false -> erlang:error({no_go, required_resource_missing, Name});
+        "" -> erlang:error({no_go, required_resource_missing, Name});
+        Value -> list_to_binary(Value)
+    end.
 
 %% ===================================================================
 %% ordinary（个人域：u<uid>/ key + attach_logic:confirm/5）
@@ -121,13 +154,18 @@ unique() ->
 hex_lower(Digest) ->
     iolist_to_binary([io_lib:format("~2.16.0b", [B]) || B <- binary_to_list(Digest)]).
 
+%% register_v5/6 accepts the declaration; it adds the user subject itself.
+ordinary_declaration(Mime) ->
+    #{<<"filename">> => <<"t.bin">>, <<"mime">> => Mime,
+        <<"scope">> => <<"private">>, <<"scope_ref">> => null}.
+
 %% V5 会话登记 + 内容 pin + 真 Garage PUT（A 字节）。
 seed_session(Key, Bytes) ->
     Bucket = elib_oss:get_bucket(<<"private">>),
     Cid = elib_uuid:gen_v7(),
     {ok, _} =
         attach_pending_repo:register_v5(
-            Key, Bucket, <<"private">>, ?UID, Cid, #{<<"declaration">> => #{<<"mime">> => ?MIME}}
+            Key, Bucket, <<"private">>, ?UID, Cid, ordinary_declaration(?MIME)
         ),
     ok = elib_oss:put_object(Bucket, Key, Bytes, ?MIME),
     {ok, Sha, Size} = elib_oss:object_sha256(Bucket, Key),
@@ -257,17 +295,17 @@ t_unknown_legacy_pending() ->
     ?assertEqual(0, attachment_count(Key)).
 
 t_old_capability_put_b_rejected() ->
-    %% 旧能力不能把已确认 A 改为 B：网关 pin 对不同 receipt 拒绝（409 语义
-    %% 在 W2-01 gateway eunit 已证）；此处证 DB 面——不同 receipt pin 拒绝
+    %% 旧能力不能把已确认 A 改为 B：已准入上传写前复核拒绝不同 receipt；
+    %% 此处证 DB 面（真实 HTTP 入口另由 W403 覆盖）——不同 receipt 拒绝
     %% 且已确认会话的 confirm 重放仍返回原 id、元数据 hash 不变。
     Key = new_ordinary_key(),
     BytesA = <<"w2-02 payload A">>,
     {Bucket, ShaA, _} = seed_session(Key, BytesA),
+    Admitted = admitted_upload(Key),
     {ok, First} = confirm_ordinary(Key),
     #{<<"attachment_id">> := AttId} = First,
-    %% 换字节 B 的 pin → content_mismatch（provider PUT=0 同语义）
-    {error, content_mismatch} =
-        attach_pending_repo:register_content_pin(Key, #{
+    %% A 在 registered 时已准入；confirm 后，B 的在途复核不得写存储。
+    assert_old_upload_recheck(Key, Admitted, #{
             <<"version">> => 1,
             <<"sha256">> => hex_lower(crypto:hash(sha256, <<"payload B">>)),
             <<"size_bytes">> => <<"99">>,
@@ -280,6 +318,29 @@ t_old_capability_put_b_rejected() ->
     %% 对象字节仍是 A（在途写未污染已确认对象）
     {ok, ShaNow, _} = elib_oss:object_sha256(Bucket, Key),
     ?assertEqual(ShaA, ShaNow).
+
+admitted_upload(Key) ->
+    %% The public status projection omits the receipt. Read the authoritative
+    %% session through the same locked, JSON-decoding repo path as storage.
+    {ok, #{<<"session_state">> := <<"registered">>, <<"upload_content">> := Receipt}} =
+        elib_pg:with_tx(fun(Conn) -> attach_pending_repo:lock_session_tx(Conn, Key) end),
+    ?assert(is_map(Receipt)),
+    {ok, Identity} = attachment_storage:session_location(Key),
+    {Identity, Receipt}.
+
+assert_old_upload_recheck(Key, {Identity, ReceiptA}, ReceiptB) ->
+    ok = meck:new(attachment_storage_garage, [passthrough, no_link]),
+    try
+        %% Only the previously admitted exact receipt can finish after confirm.
+        ok = attach_pending_repo:recheck_content_pin(Key, ReceiptA, Identity),
+        {error, content_mismatch} =
+            attach_pending_repo:recheck_content_pin(Key, ReceiptB, Identity),
+        %% A fresh request cannot obtain new write admission after confirmation.
+        {error, session_not_renewable} = attach_pending_repo:register_content_pin(Key, ReceiptB),
+        ?assertEqual(0, meck:num_calls(attachment_storage_garage, put_snapshot, '_'))
+    after
+        meck:unload(attachment_storage_garage)
+    end.
 
 t_overwrite_between_stat_and_confirm() ->
     %% HEAD（stat）之后、confirm 之前换字节：真实读流必须识破，拒绝确认。
@@ -298,7 +359,7 @@ t_hash_mismatch_no_confirm() ->
     Cid = elib_uuid:gen_v7(),
     {ok, _} =
         attach_pending_repo:register_v5(
-            Key, Bucket, <<"private">>, ?UID, Cid, #{<<"declaration">> => #{<<"mime">> => ?MIME}}
+            Key, Bucket, <<"private">>, ?UID, Cid, ordinary_declaration(?MIME)
         ),
     ok = elib_oss:put_object(Bucket, Key, <<"real bytes">>, ?MIME),
     %% pin 声明与真实字节不一致（脏快照/换字节）
@@ -321,7 +382,7 @@ t_crash_after_pin_before_put_resume() ->
     Bytes = <<"w2-02 crash resume payload">>,
     {ok, _} =
         attach_pending_repo:register_v5(
-            Key, Bucket, <<"private">>, ?UID, Cid, #{<<"declaration">> => #{<<"mime">> => ?MIME}}
+            Key, Bucket, <<"private">>, ?UID, Cid, ordinary_declaration(?MIME)
         ),
     ok =
         attach_pending_repo:register_content_pin(Key, #{
@@ -368,7 +429,7 @@ t_ciphertext_only_no_plaintext_hash() ->
     Cid = elib_uuid:gen_v7(),
     {ok, _} =
         attach_pending_repo:register_v5(
-            Key, Bucket, <<"private">>, ?UID, Cid, #{<<"declaration">> => #{<<"mime">> => ?MIME}}
+            Key, Bucket, <<"private">>, ?UID, Cid, ordinary_declaration(<<"application/octet-stream">>)
         ),
     ok = elib_oss:put_object(Bucket, Key, CipherBytes, <<"application/octet-stream">>),
     {ok, Sha, Size} = elib_oss:object_sha256(Bucket, Key),
@@ -425,25 +486,40 @@ ent_setup() ->
     {Ctx, Scope}.
 
 ent_confirm(Key, Ctx) ->
-    elib_pg:with_tx(fun(Conn) ->
-        enterprise_asset_logic:confirm_tx(Conn, Ctx, #{
+    %% The production handler rolls back business errors; a normal {error, _}
+    %% return from with_tx would commit the provisional attachment insertion.
+    Result = elib_pg:with_tx(fun(Conn) ->
+        case enterprise_asset_logic:confirm_tx(Conn, Ctx, #{
             object_key => Key, file_hash256 => undefined
-        })
+        }) of
+            {error, Reason} -> throw({rollback, {w202_confirm_error, Reason}});
+            Success -> Success
+        end
+    end),
+    case Result of
+        {rollback, {w202_confirm_error, Reason}} -> {error, Reason};
+        Other -> Other
+    end.
+
+%% Internal registration takes the full application snapshot in one transaction.
+register_ent_session(Key, Bucket, Ctx) ->
+    Org = maps:get(organization_id, Ctx),
+    App = maps:get(application_id, Ctx),
+    elib_pg:with_tx(fun(Conn) ->
+        attach_pending_repo:register_v5_tx(
+            Conn, Key, Bucket, <<"enterprise">>, 0, elib_uuid:gen_v7(), #{
+                <<"subject">> => #{<<"kind">> => <<"application">>,
+                    <<"principal">> => integer_to_binary(App),
+                    <<"org_id">> => integer_to_binary(Org)},
+                <<"declaration">> => #{<<"filename">> => <<"t.bin">>, <<"mime">> => ?MIME,
+                    <<"scope">> => <<"enterprise">>, <<"org_id">> => Org,
+                    <<"application_id">> => App}
+            })
     end).
 
-seed_ent_session(Key, Bytes, Principal) ->
+seed_ent_session(Key, Bytes, Ctx) ->
     Bucket = elib_oss:get_bucket(<<"enterprise">>),
-    Cid = elib_uuid:gen_v7(),
-    {ok, _} =
-        attach_pending_repo:register_v5(
-            Key, Bucket, <<"enterprise">>, 0, Cid, #{
-                <<"subject">> => #{
-                    <<"kind">> => <<"application">>,
-                    <<"principal">> => Principal
-                },
-                <<"declaration">> => #{<<"mime">> => ?MIME}
-            }
-        ),
+    {ok, _} = register_ent_session(Key, Bucket, Ctx),
     ok = elib_oss:put_object(Bucket, Key, Bytes, ?MIME),
     {ok, Sha, Size} = elib_oss:object_sha256(Bucket, Key),
     ok =
@@ -496,7 +572,7 @@ ent_sequential_100_replays() ->
         {_, _, _} = seed_ent_session(
             Key,
             <<"w2-02 ent sequential payload">>,
-            maps:get(application_id, Ctx)
+            Ctx
         ),
         {ok, First} = ent_confirm(Key, Ctx),
         AttId = maps:get(<<"file_id">>, First),
@@ -522,7 +598,7 @@ ent_concurrent_two_confirms() ->
         {_, _, _} = seed_ent_session(
             Key,
             <<"w2-02 ent concurrent payload">>,
-            maps:get(application_id, Ctx)
+            Ctx
         ),
         Parent = self(),
         Workers = [
@@ -593,11 +669,11 @@ ent_old_capability_put_b_rejected() ->
     try
         Key = new_ent_key(maps:get(organization_id, Ctx), maps:get(application_id, Ctx)),
         BytesA = <<"w2-02 ent payload A">>,
-        {Bucket, ShaA, _} = seed_ent_session(Key, BytesA, maps:get(application_id, Ctx)),
+        {Bucket, ShaA, _} = seed_ent_session(Key, BytesA, Ctx),
+        Admitted = admitted_upload(Key),
         {ok, #{<<"file_id">> := AttId}} = ent_confirm(Key, Ctx),
-        %% 换 receipt 的 pin → content_mismatch（同 key 异字节）
-        {error, content_mismatch} =
-            attach_pending_repo:register_content_pin(Key, #{
+        %% Replay the pre-confirm admission; a changed receipt is still rejected.
+        assert_old_upload_recheck(Key, Admitted, #{
                 <<"version">> => 1,
                 <<"sha256">> => hex_lower(crypto:hash(sha256, <<"ent payload B">>)),
                 <<"size_bytes">> => <<"99">>,
@@ -616,7 +692,7 @@ ent_overwrite_between_stat_and_confirm() ->
     try
         Key = new_ent_key(maps:get(organization_id, Ctx), maps:get(application_id, Ctx)),
         {Bucket, _, _} = seed_ent_session(
-            Key, <<"w2-02 ent overwrite A">>, maps:get(application_id, Ctx)
+            Key, <<"w2-02 ent overwrite A">>, Ctx
         ),
         {ok, _} = elib_oss:head_object(Bucket, Key),
         ok = elib_oss:put_object(Bucket, Key, <<"w2-02 ent overwrite B">>, ?MIME),
@@ -634,7 +710,7 @@ ent_inflight_same_content_after_confirm() ->
     try
         Key = new_ent_key(maps:get(organization_id, Ctx), maps:get(application_id, Ctx)),
         Bytes = <<"w2-02 ent inflight same">>,
-        {Bucket, _, _} = seed_ent_session(Key, Bytes, maps:get(application_id, Ctx)),
+        {Bucket, _, _} = seed_ent_session(Key, Bytes, Ctx),
         {ok, #{<<"file_id">> := AttId}} = ent_confirm(Key, Ctx),
         ok = elib_oss:put_object(Bucket, Key, Bytes, ?MIME),
         {ok, Replay} = ent_confirm(Key, Ctx),
@@ -654,16 +730,7 @@ ent_hash_mismatch_no_confirm() ->
     try
         Key = new_ent_key(maps:get(organization_id, Ctx), maps:get(application_id, Ctx)),
         Bucket = elib_oss:get_bucket(<<"enterprise">>),
-        {ok, _} =
-            attach_pending_repo:register_v5(
-                Key, Bucket, <<"enterprise">>, 0, elib_uuid:gen_v7(), #{
-                    <<"subject">> => #{
-                        <<"kind">> => <<"application">>,
-                        <<"principal">> => maps:get(application_id, Ctx)
-                    },
-                    <<"declaration">> => #{<<"mime">> => ?MIME}
-                }
-            ),
+        {ok, _} = register_ent_session(Key, Bucket, Ctx),
         ok = elib_oss:put_object(Bucket, Key, <<"ent real bytes">>, ?MIME),
         ok =
             attach_pending_repo:register_content_pin(Key, #{
@@ -686,16 +753,7 @@ ent_crash_after_pin_before_put_resume() ->
         Key = new_ent_key(maps:get(organization_id, Ctx), maps:get(application_id, Ctx)),
         Bucket = elib_oss:get_bucket(<<"enterprise">>),
         Bytes = <<"w2-02 ent crash resume">>,
-        {ok, _} =
-            attach_pending_repo:register_v5(
-                Key, Bucket, <<"enterprise">>, 0, elib_uuid:gen_v7(), #{
-                    <<"subject">> => #{
-                        <<"kind">> => <<"application">>,
-                        <<"principal">> => maps:get(application_id, Ctx)
-                    },
-                    <<"declaration">> => #{<<"mime">> => ?MIME}
-                }
-            ),
+        {ok, _} = register_ent_session(Key, Bucket, Ctx),
         ok =
             attach_pending_repo:register_content_pin(Key, #{
                 <<"version">> => 1,

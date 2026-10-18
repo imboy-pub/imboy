@@ -67,23 +67,36 @@ put_private(OrgId, WorkspaceId, Descriptor) when is_map(Descriptor) ->
         eb_pg_exec:with_tenant(OrgId, WorkspaceId, fun() ->
             case {maps:get(id, Descriptor, undefined), maps:get(payload, Descriptor, undefined)} of
                 {Id, _} when not is_integer(Id) -> {error, invalid_descriptor};
-                {_, Payload} when not is_binary(Payload) ->
-                    {error, {object_store, invalid_payload}};
-                {_, <<>>} ->
-                    {error, {object_store, empty_payload}};
                 {_, Payload} ->
-                    reserve_and_put(OrgId, WorkspaceId, Descriptor, Payload, ObjectStore)
+                    put_payload(OrgId, WorkspaceId, Descriptor, Payload, ObjectStore)
             end
         end)
     end);
 put_private(_OrgId, _WorkspaceId, _Descriptor) ->
     {error, invalid_descriptor}.
 
+put_payload(OrgId, WorkspaceId, Descriptor, Payload, ObjectStore) ->
+    case upload_size(Payload) of
+        invalid -> {error, {object_store, invalid_payload}};
+        0 -> {error, {object_store, empty_payload}};
+        _ -> reserve_and_put(OrgId, WorkspaceId, Descriptor, Payload, ObjectStore)
+    end.
+
+upload_size(B) when is_binary(B) -> byte_size(B);
+upload_size({upload_spool, Fh, N, H}) when is_pid(Fh), is_integer(N), N >= 0, is_binary(H) -> N;
+upload_size(_) -> invalid.
+
+recheck_put(Meta, Identity) ->
+    case maps:get(recheck, Meta, undefined) of
+        F when is_function(F, 1) -> F(Identity);
+        undefined -> ok
+    end.
+
 reserve_and_put(OrgId, WorkspaceId, Descriptor, Payload, ObjectStore) ->
     Size =
         case maps:get(size_bytes, Descriptor, undefined) of
             N when is_integer(N) -> N;
-            _ -> byte_size(Payload)
+            _ -> upload_size(Payload)
         end,
     D = Descriptor#{size_bytes => Size},
     Reservation =
@@ -104,7 +117,14 @@ reserve_and_put(OrgId, WorkspaceId, Descriptor, Payload, ObjectStore) ->
                     Ctx when is_map(Ctx) -> Meta0#{signature_context => Ctx};
                     _ -> Meta0
                 end,
-            write_reserved(Row, Payload, Meta, ObjectStore);
+            CheckedMeta = case maps:get(upload_subject, D, undefined) of
+                Subject0 when is_map(Subject0) ->
+                    Meta#{recheck => fun(Identity) ->
+                        eb_pg_asset_meta:recheck_registered_put(OrgId, WorkspaceId, D, Identity)
+                    end};
+                _ -> Meta
+            end,
+            write_reserved(Row, Payload, CheckedMeta, ObjectStore);
         {error, _} = Error ->
             Error
     end.
@@ -169,15 +189,19 @@ put_reserved(_, Row, Payload, Meta) ->
             case maps:get(signature_context, Meta, undefined) of
                 #{expires_at := Expiry} ->
                     attachment_storage_disk:put_snapshot(
-                        I, Payload, calendar:datetime_to_gregorian_seconds(Expiry) - 62167219200
+                        I, Payload, calendar:datetime_to_gregorian_seconds(Expiry) - 62167219200,
+                        fun() -> recheck_put(Meta, I) end
                     );
                 _ ->
                     {error, invalid_signature_context}
             end;
         {ok, #{driver := garage} = I} ->
-            attachment_storage_garage:put_snapshot(
-                I, Payload, maps:get(mime, Meta), maps:get(signature_context, Meta, #{})
-            );
+            case recheck_put(Meta, I) of
+                ok -> attachment_storage_garage:put_snapshot(
+                    I, Payload, maps:get(mime, Meta), maps:get(signature_context, Meta, #{})
+                );
+                Error -> Error
+            end;
         {ok, legacy_unknown} ->
             {error, historical_location_unverified};
         {error, _} = Error ->

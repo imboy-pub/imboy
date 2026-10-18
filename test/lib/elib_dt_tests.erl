@@ -205,8 +205,9 @@ to_rfc3339_with_zero_timestamp_test_() ->
         % Unix epoch (1970-01-01 00:00:00 UTC)
         Result = elib_dt:to_rfc3339(0, second),
         ?assertMatch(<<_/binary>>, Result),
-        % 验证返回的是 epoch 时间
-        ?assert(re:run(Result, "1970-01-01") =/= nomatch)
+        % 验证同一个 epoch 瞬间，而非主机时区下的日历日期。
+        % Validate the instant; negative UTC offsets render the previous date.
+        ?assertEqual(0, calendar:rfc3339_to_system_time(binary_to_list(Result), [{unit, second}]))
     end).
 
 to_rfc3339_with_invalid_negative_timestamp_test_() ->

@@ -5,7 +5,7 @@
 %%%     同值（不含凭据）、identity 四元组含完整 I；
 %%%   * driver-content-immutable（disk）：put → read 内容一致 → 同 key 幂等
 %%%     覆盖同内容 ok；head size 忠实；
-%%%   * disk 路径校验：.. / 绝对段 / 控制字符 → invalid_key（禁逃逸）；
+%%%   * disk 路径校验：.. / 绝对段 / 控制字符 → invalid_path（禁逃逸）；
 %%%   * storage-switch：app env 切 driver → dispatch 换模块（零代码变更）；
 %%%   * late-put（disk 形状）：put 后 head 可见（tmp+rename 原子写）。
 %%%
@@ -19,6 +19,22 @@ w403_storage_test_() ->
     {setup, fun setup/0, fun cleanup/1, fun cases/1}.
 
 setup() ->
+    Prior = application:get_env(imboy, attachment_storage_registry),
+    Root = filename:join(temp_dir(), "w403-disk-" ++
+        binary_to_list(binary:encode_hex(crypto:strong_rand_bytes(12), lowercase))),
+    ok = file:make_dir(Root),
+    try
+        ok = file:change_mode(Root, 8#700),
+        setup_registry(Root),
+        #{root => Root, prior => Prior}
+    catch
+        Class:Reason:Stack ->
+            restore_registry(Prior),
+            file:del_dir_r(Root),
+            erlang:raise(Class, Reason, Stack)
+    end.
+
+setup_registry(Root) ->
     Registry = #{
         version => 1,
         roots => #{
@@ -33,26 +49,25 @@ setup() ->
                 driver => <<"disk">>,
                 namespace => <<"disk-ns1">>,
                 aliases => [<<"disk-alias-1">>],
-                endpoint => <<"file:///tmp">>,
-                container => <<"">>
+                endpoint => list_to_binary("file://" ++ Root),
+                container => <<"c">>
             }
         }
     },
-    application:set_env(imboy, attachment_storage_registry, Registry),
-    application:set_env(
-        imboy,
-        attachment_disk_root,
-        filename:join(
-            "/tmp",
-            "w403-disk-" ++ integer_to_list(erlang:unique_integer([positive]))
-        )
-    ),
-    ok.
+    application:set_env(imboy, attachment_storage_registry, Registry).
 
-cleanup(_Ok) ->
-    application:unset_env(imboy, attachment_storage_registry),
-    application:unset_env(imboy, attachment_disk_root),
-    ok.
+cleanup(#{root := Root, prior := Prior}) ->
+    restore_registry(Prior),
+    ok = file:del_dir_r(Root).
+
+restore_registry({ok, Value}) -> application:set_env(imboy, attachment_storage_registry, Value);
+restore_registry(undefined) -> application:unset_env(imboy, attachment_storage_registry).
+
+temp_dir() ->
+    case file:read_link_all("/tmp") of
+        {ok, Target} -> filename:absname(Target, "/");
+        {error, einval} -> "/tmp"
+    end.
 
 cases(_Ok) ->
     [
@@ -91,12 +106,15 @@ driver_content_immutable_disk() ->
 
 %% 路径校验：逃逸与非法段 fail-closed
 disk_path_validation() ->
-    {error, invalid_key} =
+    %% with_path/4 rejects unsafe segments before touching the filesystem.
+    {error, invalid_path} =
         attachment_storage_disk:put(<<"disk-ns1">>, <<"c">>, <<"../escape">>, <<"x">>),
-    {error, invalid_key} =
+    {error, invalid_path} =
         attachment_storage_disk:read(<<"disk-ns1">>, <<"c">>, <<"a/../..//b">>),
-    {error, invalid_key} =
+    {error, invalid_path} =
         attachment_storage_disk:head(<<"disk-ns1">>, <<"c">>, <<"/abs/path">>),
+    {error, invalid_path} =
+        attachment_storage_disk:put(<<"disk-ns1">>, <<"c">>, <<"bad", 1, "key">>, <<"x">>),
     ok.
 
 %% storage-switch：同一入口按 registry driver 派发到不同模块（零代码变更）

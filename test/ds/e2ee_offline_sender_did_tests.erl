@@ -34,6 +34,30 @@
 
 -define(DID, <<"dev-sender-offline-01">>).
 
+-define(CONV_KEY, <<"c2c:100:200">>).
+-define(CONVERSATION_LOCK_SQL,
+    <<"SELECT pg_advisory_xact_lock(hashtextextended('c2c_order:' || $1, 0))">>).
+-define(COUNTER_INSERT_SQL,
+    <<"INSERT INTO public.msg_store_seq (conv_key, seq) VALUES ($1, 0) "
+      "ON CONFLICT (conv_key) DO NOTHING">>).
+-define(COUNTER_SELECT_SQL,
+    <<"SELECT seq FROM public.msg_store_seq WHERE conv_key = $1 FOR UPDATE">>).
+-define(MESSAGE_LOCK_SQL,
+    <<"SELECT pg_advisory_xact_lock(hashtextextended('msg_c2c:' || $1, 0))">>).
+-define(OBSERVED_HEAD_SQL,
+    <<"SELECT greatest($2::bigint, coalesce((SELECT max(conv_seq) FROM public.msg_store "
+      "WHERE chat_type='c2c' AND conv_key=$1),0), "
+      "coalesce((SELECT max(conv_seq) FROM public.msg_store_staging WHERE type='c2c' "
+      "AND least(from_id,to_id)=$3 AND greatest(from_id,to_id)=$4),0), "
+      "coalesce((SELECT max(conv_seq) FROM public.msg_c2c "
+      "WHERE least(from_id,to_id)=$3 AND greatest(from_id,to_id)=$4),0)) AS seq">>).
+-define(IDENTITY_SQL,
+    <<"SELECT from_id, to_id, conv_seq FROM public.msg_store_staging WHERE type = 'c2c' AND msg_id = $1 "
+      "UNION ALL SELECT from_id, to_id, conv_seq FROM public.msg_c2c WHERE msg_id = $1 "
+      "UNION ALL SELECT from_id, to_id, conv_seq FROM public.msg_store WHERE chat_type = 'c2c' AND msg_id = $1">>).
+-define(COUNTER_UPDATE_SQL,
+    <<"UPDATE public.msg_store_seq SET seq = $2 WHERE conv_key = $1">>).
+
 %% ===================================================================
 %% 1. 读取列集
 %% ===================================================================
@@ -159,14 +183,22 @@ capture_insert() ->
     %% C2C staging now allocates its sequence in the same transaction.
     meck:expect(elib_pg, with_tx, fun(Fun) -> Fun(sender_did_test_connection) end),
     meck:expect(elib_pg, query, fun
-        (sender_did_test_connection, <<"SELECT seq ", _/binary>>, [_Key]) ->
-            {ok, [#{<<"seq">> => 0}]};
-        (sender_did_test_connection, <<"SELECT pg_advisory_xact_lock", _/binary>>, [<<"m-1">>]) ->
+        (sender_did_test_connection, ?CONVERSATION_LOCK_SQL, [?CONV_KEY]) ->
             {ok, []};
-        (sender_did_test_connection, <<"SELECT from_id, to_id, conv_seq", _/binary>>, [<<"m-1">>]) ->
+        (sender_did_test_connection, ?COUNTER_SELECT_SQL, [?CONV_KEY]) ->
+            {ok, [#{<<"seq">> => 0}]};
+        (sender_did_test_connection, ?MESSAGE_LOCK_SQL, [<<"m-1">>]) ->
+            {ok, []};
+        (sender_did_test_connection, ?OBSERVED_HEAD_SQL, [?CONV_KEY, 0, 100, 200]) ->
+            {ok, [#{<<"seq">> => 0}]};
+        (sender_did_test_connection, ?IDENTITY_SQL, [<<"m-1">>]) ->
             {ok, []}
     end),
-    meck:expect(elib_pg, execute, fun(sender_did_test_connection, _Sql, _Params) -> {ok, 1} end).
+    meck:expect(elib_pg, execute, fun
+        (sender_did_test_connection, ?COUNTER_INSERT_SQL, [?CONV_KEY]) -> {ok, 1};
+        (sender_did_test_connection, <<"INSERT INTO t DEFAULT VALUES">>, []) -> {ok, 1};
+        (sender_did_test_connection, ?COUNTER_UPDATE_SQL, [?CONV_KEY, 1]) -> {ok, 1}
+    end).
 
 release_insert() ->
     persistent_term:erase({?MODULE, insert_data}),
@@ -201,6 +233,25 @@ stage_persists_sender_did_test() ->
             meck:called(elib_pg, execute, [
                 sender_did_test_connection, <<"INSERT INTO t DEFAULT VALUES">>, []
             ])
+        ),
+        %% Conversation lock precedes the counter lock and msg_id lock;
+        %% inspect accepted copies before writing the DID-bearing row.
+        ?assertEqual(
+            [
+                {query, ?CONVERSATION_LOCK_SQL, [?CONV_KEY]},
+                {execute, ?COUNTER_INSERT_SQL, [?CONV_KEY]},
+                {query, ?COUNTER_SELECT_SQL, [?CONV_KEY]},
+                {query, ?MESSAGE_LOCK_SQL, [<<"m-1">>]},
+                {query, ?OBSERVED_HEAD_SQL, [?CONV_KEY, 0, 100, 200]},
+                {query, ?IDENTITY_SQL, [<<"m-1">>]},
+                {execute, <<"INSERT INTO t DEFAULT VALUES">>, []},
+                {execute, ?COUNTER_UPDATE_SQL, [?CONV_KEY, 1]}
+            ],
+            [
+                {Function, Sql, Params}
+             || {_, {elib_pg, Function, [sender_did_test_connection, Sql, Params]}, _} <-
+                    meck:history(elib_pg)
+            ]
         ),
         ?assert(meck:validate(elib_pg))
     after

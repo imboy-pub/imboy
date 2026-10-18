@@ -10,8 +10,8 @@ cross_timestamp_dedup_test_() ->
     case eunit_runner:eunit_try_db() of
         {ok, _Driver, _Conn} ->
             {timeout, 60, fun verifies_cross_timestamp_dedup/0};
-        {error, _Reason} ->
-            {"Database not available", fun() -> {skip, "Database not available"} end}
+        {error, Reason} ->
+            erlang:error({database_not_available, Reason})
     end.
 
 verifies_cross_timestamp_dedup() ->
@@ -37,9 +37,15 @@ verifies_existing_duplicate_precheck() ->
         ),
         {ok, 1} = insert_message(Conn, <<"msg_c2c">>, MsgId, <<"2026-09-03T06:00:00Z">>),
         {ok, 1} = insert_message(Conn, <<"msg_c2c">>, MsgId, <<"2026-09-20T06:00:00Z">>),
-        apply_migration(Conn, "priv/migrations/00000083_message_cross_timestamp_dedup.up.sql")
+        ok = apply_migration(Conn, "priv/migrations/00000083_message_cross_timestamp_dedup.up.sql"),
+        %% A broken precheck must fail the assertion without committing fixtures.
+        throw({rollback, precheck_unexpectedly_succeeded})
     end),
-    ?assertMatch({error, _}, Result).
+    ?assertMatch(
+        {rollback, {migration_failed, {error, error, <<"23505">>, unique_violation,
+            <<"cross-timestamp duplicate msg_id exists in public.msg_c2c">>, _}}},
+        Result
+    ).
 
 verifies_table(Conn, Table) ->
     MsgId = unique_msg_id(Table),
@@ -59,16 +65,25 @@ verifies_same_timestamp_conflict(Conn) ->
 
 verifies_year_scale_chunks(Conn) ->
     MsgId = unique_msg_id(<<"year_scale">>),
-    {ok, 52} = elib_pg:execute(
-        Conn,
-        <<
-            "INSERT INTO public.msg_c2c "
-            "(id, from_id, to_id, msg_id, msg_type, payload, created_at) "
-            "SELECT $1::bigint + n, 1, 2, $2 || '_' || n, 'text', '{}', "
-            "current_timestamp - n * interval '7 days' FROM generate_series(0, 51) n"
-        >>,
-        [elib_tsid:generate(msg_c2c), MsgId]
-    ),
+    Inserted = lists:sum([
+        begin
+            RowMsgId = <<MsgId/binary, "_", (integer_to_binary(N))/binary>>,
+            {ok, Count} = execute_c2c(
+                Conn,
+                RowMsgId,
+                <<
+                    "INSERT INTO public.msg_c2c "
+                    "(id, from_id, to_id, msg_id, msg_type, payload, created_at, conv_seq) "
+                    "VALUES ($1, 1, 2, $2, 'text', '{}', "
+                    "current_timestamp - $3::integer * interval '7 days', $4)"
+                >>,
+                [elib_tsid:generate(msg_c2c), RowMsgId, N]
+            ),
+            Count
+        end
+     || N <- lists:seq(0, 51)
+    ]),
+    ?assertEqual(52, Inserted),
     {ok, [#{<<"count">> := ChunkCount}]} = elib_pg:query(
         Conn,
         <<
@@ -86,6 +101,17 @@ verifies_down_migration(Conn) ->
     {ok, 1} = insert_message(Conn, <<"msg_c2c">>, MsgId, <<"2026-09-03T06:00:00Z">>),
     {ok, 1} = insert_message(Conn, <<"msg_c2c">>, MsgId, <<"2026-09-20T06:00:00Z">>).
 
+insert_message(Conn, <<"msg_c2c">>, MsgId, Timestamp) ->
+    execute_c2c(
+        Conn,
+        MsgId,
+        <<
+            "INSERT INTO public.msg_c2c "
+            "(id, from_id, to_id, msg_id, msg_type, payload, created_at, conv_seq) "
+            "VALUES ($1, 1, 2, $2, 'text', '{}', $3, $4)"
+        >>,
+        [elib_tsid:generate(msg_c2c), MsgId, Timestamp]
+    );
 insert_message(Conn, Table, MsgId, Timestamp) ->
     Sql =
         case Table of
@@ -104,16 +130,35 @@ insert_message(Conn, Table, MsgId, Timestamp) ->
     elib_pg:execute(Conn, Sql, [elib_tsid:generate(msg_c2c), MsgId, Timestamp]).
 
 insert_message_on_conflict(Conn, MsgId, Timestamp) ->
-    elib_pg:execute(
+    execute_c2c(
         Conn,
+        MsgId,
         <<
             "INSERT INTO public.msg_c2c "
-            "(id, from_id, to_id, msg_id, msg_type, payload, created_at) "
-            "VALUES ($1, 1, 2, $2, 'text', '{}', $3) "
+            "(id, from_id, to_id, msg_id, msg_type, payload, created_at, conv_seq) "
+            "VALUES ($1, 1, 2, $2, 'text', '{}', $3, $4) "
             "ON CONFLICT (msg_id, created_at) DO NOTHING"
         >>,
         [elib_tsid:generate(msg_c2c), MsgId, Timestamp]
     ).
+
+%% Stay on the migration test's rollback-owned connection. The allocator reuses
+%% the accepted sequence on retries; the real dedup trigger still decides
+%% whether the INSERT writes a row. A no-op rolls back only its savepoint.
+execute_c2c(Conn, MsgId, Sql, Params) ->
+    {ok, _} = elib_pg:execute(Conn, <<"SAVEPOINT cross_timestamp_c2c_insert">>, []),
+    try personal_message_order_repo:execute_formal_tx(Conn, 1, 2, MsgId, Sql, Params) of
+        Result ->
+            {ok, _} = elib_pg:execute(Conn, <<"RELEASE SAVEPOINT cross_timestamp_c2c_insert">>, []),
+            Result
+    catch
+        throw:{rollback, formal_no_insert} ->
+            {ok, _} = elib_pg:execute(
+                Conn, <<"ROLLBACK TO SAVEPOINT cross_timestamp_c2c_insert">>, []
+            ),
+            {ok, _} = elib_pg:execute(Conn, <<"RELEASE SAVEPOINT cross_timestamp_c2c_insert">>, []),
+            {ok, 0}
+    end.
 
 unique_msg_id(Suffix) ->
     <<"dedup_", Suffix/binary, "_", (integer_to_binary(elib_tsid:generate(default)))/binary>>.
@@ -141,7 +186,8 @@ apply_statements(Conn, RawStatements) ->
         fun(Statement) ->
             case elib_pg:execute(Conn, Statement, []) of
                 {ok, _} -> ok;
-                {ok, _, _} -> ok
+                {ok, _, _} -> ok;
+                {error, Reason} -> throw({rollback, {migration_failed, Reason}})
             end
         end,
         Statements

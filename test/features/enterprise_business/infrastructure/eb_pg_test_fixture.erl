@@ -13,6 +13,7 @@
 %%% 引用的消息行）。这是 EB-01 冻结语义，不是本夹具的缺陷；隔离靠唯一 TSID。
 -module(eb_pg_test_fixture).
 -export([select_asset_stub/0, restore_asset_store/1]).
+-export([install_asset_registry/0, restore_asset_registry/1, asset_delete_job/3]).
 
 -export([
     id/0,
@@ -479,3 +480,59 @@ restore_asset_store(undefined) ->
     application:unset_env(imboy, eb_asset_object_store);
 restore_asset_store({ok, Value}) ->
     application:set_env(imboy, eb_asset_object_store, Value).
+
+%% Explicit opt-in after application boot. Even metadata/local-adapter tests
+%% register through the real frozen-location boundary; production stays closed
+%% when no root is configured. Never reuse a namespace for a different root.
+install_asset_registry() ->
+    Previous = application:get_env(imboy, attachment_storage_registry),
+    Registry = attachment_storage:registry(),
+    Suffix = binary:encode_hex(crypto:strong_rand_bytes(16), lowercase),
+    Namespace = <<"eb-test-", Suffix/binary>>,
+    Base = case os:getenv("TMPDIR") of
+        false -> "/tmp";
+        "" -> "/tmp";
+        Dir -> Dir
+    end,
+    Root = filename:join(Base, binary_to_list(Namespace)),
+    ok = file:make_dir(Root),
+    State = #{previous_registry => Previous, root => Root},
+    try
+        ok = file:change_mode(Root, 8#700),
+        Roots = maps:get(roots, Registry, #{}),
+        Uploads = maps:get(upload_namespaces, Registry, #{}),
+        Record = #{driver => <<"disk">>, namespace => Namespace,
+            endpoint => list_to_binary("file://" ++ Root), container => <<"fixture">>},
+        ok = application:set_env(imboy, attachment_storage_registry, Registry#{
+            roots => Roots#{Namespace => Record},
+            upload_namespaces => Uploads#{<<"enterprise">> => Namespace}
+        }),
+        State
+    catch Class:Reason:Stack ->
+        restore_asset_registry(State),
+        erlang:raise(Class, Reason, Stack)
+    end.
+
+restore_asset_registry(#{previous_registry := Previous, root := Root}) ->
+    try
+        case Previous of
+            undefined -> application:unset_env(imboy, attachment_storage_registry);
+            {ok, Registry} -> application:set_env(imboy, attachment_storage_registry, Registry)
+        end
+    after
+        case file:del_dir_r(Root) of
+            ok -> ok;
+            {error, enoent} -> ok;
+            {error, Reason} -> erlang:error({asset_fixture_cleanup_failed, Reason})
+        end
+    end.
+
+%% Read back the committed queue snapshot through a separate DB operation.
+%% These local-adapter fixtures do not claim a real driver deleted any bytes.
+asset_delete_job(Org, Workspace, Asset) ->
+    elib_pg:query(
+        <<"SELECT organization_id, workspace_id, asset_id, object_key,"
+          " storage_driver, storage_namespace, storage_container, storage_locator_sha256,"
+          " job_state, attempts, last_error_code FROM enterprise_asset_delete_queue"
+          " WHERE organization_id=$1 AND workspace_id=$2 AND asset_id=$3">>,
+        [Org, Workspace, Asset]).

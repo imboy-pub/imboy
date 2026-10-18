@@ -138,13 +138,18 @@ invoke_upload(Entry, Case, Req0, OrgId, AuthContext) ->
                     case eb_enterprise_http:read_upload_body(Req0) of
                         {error, Reason} ->
                             eb_enterprise_http:reply_error(Req0, Reason);
-                        {ok, Payload, _Req1} ->
-                            Result = eb_enterprise_facade_call:call(
-                                put_object, OrgId, Params#{payload => Payload}
-                            ),
-                            eb_enterprise_http:respond(Entry, Req0, Result)
+                        {ok, Payload, Req1} ->
+                            respond_upload(Entry, Req1, OrgId, Params, Payload)
                     end
             end
+    end.
+
+respond_upload(Entry, Req, OrgId, Params, Payload) ->
+    try
+        Result = eb_enterprise_facade_call:call(put_object, OrgId, Params#{payload => Payload}),
+        eb_enterprise_http:respond(Entry, Req, Result)
+    after
+        attachment_upload_spool:close(Payload)
     end.
 
 %% presign 动作的 POST 成功视图补 `upload.url`；其余动作/方法原样透传。

@@ -12,10 +12,10 @@
 %%%      结论、不 mock elib_pg。
 %%%   3. **真 Cowboy listener**：`imboy_router:get_routes()` 全量 dispatch +
 %%%      与 imboy_app 同序的中间件链（enterprise_internal_wiring_http_tests
-%%%      同款 ?MIDDLEWARES），HTTP 层零 mock；仅两类**外部服务替身**走 meck：
-%%%      `elib_oss:head_object`（INT-08 confirm 的对象核实——对象存储不
-%%%      在被测边界内）与 `inet:getaddrs`（INT-12 SSRF 守卫的 DNS 解析，
+%%%      同款 ?MIDDLEWARES），HTTP 层零 mock；仅**外部 DNS 服务替身**走 meck：
+%%%      `inet:getaddrs`（INT-12 SSRF 守卫的 DNS 解析，
 %%%      enterprise_msg_asset_webhook_pg_tests 同款 with_public_dns）。
+%%%      INT-07/08 使用独占 Disk 根，经真实 capability PUT 固定内容后确认。
 %%%
 %%% 合成租户（995 段 ID，与 987/988/989/991/992/993 段互不冲突）在 setup
 %%% 阶段 COMMIT 提交；HTTP 用例各自走 handler 自己的事务（真提交），marker
@@ -37,7 +37,7 @@
     sql_exec/3,
     one/2,
     one/3,
-    with_oss_head/2,
+    upload_file/3,
     with_public_dns/1,
     fixture/2
 ]).
@@ -135,6 +135,7 @@
 
 -define(LISTENER, intbe02_http_listener).
 -define(COVERED_TAB, intbe02_covered_ops).
+-define(UPLOAD_ORIGIN, <<"http://intbe02.invalid">>).
 
 -define(MIDDLEWARES, [
     cowboy_router,
@@ -152,6 +153,17 @@
 
 -spec setup_all() -> map().
 setup_all() ->
+    Storage = setup_storage(),
+    try
+        State = setup_with_limiter(),
+        State#{storage_fixture => Storage}
+    catch
+        Class:Reason:Stack ->
+            teardown_storage(Storage),
+            erlang:raise(Class, Reason, Stack)
+    end.
+
+setup_with_limiter() ->
     LimiterOwner = ensure_limiter_owner(),
     try
         setup_all(LimiterOwner)
@@ -273,6 +285,13 @@ setup_all(LimiterOwner) ->
 -spec teardown_all(map()) -> ok.
 teardown_all(State) ->
     try
+        teardown_existing(State)
+    after
+        teardown_storage(maps:get(storage_fixture, State))
+    end.
+
+teardown_existing(State) ->
+    try
         ok = cowboy:stop_listener(?LISTENER)
     catch
         _:_ -> ok
@@ -284,6 +303,63 @@ teardown_all(State) ->
     release_pool(),
     %% 释放前关 marker 连接由 release/1 承担
     ok.
+
+%% Only these new resources are owned here. Keep the prior registry and URL,
+%% including an unset value, intact across successful and failed setup.
+setup_storage() ->
+    %% The marker DB helper also loads imboy. Load first so its later call
+    %% cannot merge -config over our owned root, URL, or synthetic key.
+    case application:load(imboy) of
+        ok -> ok;
+        {error, {already_loaded, imboy}} -> ok;
+        {error, LoadReason} -> erlang:error({intbe02_app_load_failed, LoadReason})
+    end,
+    Registry = eb_pg_test_fixture:install_asset_registry(),
+    State = #{registry => Registry,
+        base_url => application:get_env(imboy, base_url),
+        webhook_key => application:get_env(imboy, postgre_aes_key),
+        jwt_key => application:get_env(imboy, jwt_key),
+        gateway_tmp => os:getenv("IMBOY_V5_GATEWAY_TMP")},
+    try
+        Tmp = filename:join(maps:get(root, Registry), "gateway-tmp"),
+        ok = file:make_dir(Tmp),
+        ok = file:change_mode(Tmp, 8#700),
+        true = os:putenv("IMBOY_V5_GATEWAY_TMP", Tmp),
+        ok = application:set_env(imboy, base_url, ?UPLOAD_ORIGIN),
+        %% This no-app-boot fixture owns disposable webhook secrets and their
+        %% encrypted idempotency responses. Do not rely on a prior suite's key.
+        ok = application:set_env(imboy, postgre_aes_key, crypto:strong_rand_bytes(32)),
+        %% Application loading does not run the boot secret policy. Upload
+        %% capabilities need a real, fixture-owned signing key as well.
+        ok = application:set_env(imboy, jwt_key, crypto:strong_rand_bytes(32)),
+        State
+    catch Class:Reason:Stack ->
+        teardown_storage(State),
+        erlang:raise(Class, Reason, Stack)
+    end.
+
+teardown_storage(#{registry := Registry, base_url := Base, webhook_key := Key,
+                   jwt_key := JwtKey, gateway_tmp := Tmp}) ->
+    try
+        case Base of
+            undefined -> application:unset_env(imboy, base_url);
+            {ok, Value} -> application:set_env(imboy, base_url, Value)
+        end,
+        case Key of
+            undefined -> application:unset_env(imboy, postgre_aes_key);
+            {ok, Value1} -> application:set_env(imboy, postgre_aes_key, Value1)
+        end,
+        case JwtKey of
+            undefined -> application:unset_env(imboy, jwt_key);
+            {ok, Value2} -> application:set_env(imboy, jwt_key, Value2)
+        end,
+        case Tmp of
+            false -> os:unsetenv("IMBOY_V5_GATEWAY_TMP");
+            Value0 -> os:putenv("IMBOY_V5_GATEWAY_TMP", Value0)
+        end
+    after
+        eb_pg_test_fixture:restore_asset_registry(Registry)
+    end.
 
 ensure_limiter_owner() ->
     case whereis(login_attempt_ds) of
@@ -754,20 +830,28 @@ covered_ids() ->
 %%% 外部服务替身（meck 窗口）
 %%%===================================================================
 
-%% INT-08 confirm 的对象核实（HEAD）：对象存储不在被测边界，替身返回
-%% 固定 size/content-type（enterprise_msg_asset_webhook_pg_tests 同款）。
-with_oss_head(Size, Fun) ->
-    ok = meck:new(elib_oss, [passthrough, no_link]),
-    ok = meck:expect(
-        elib_oss,
-        head_object,
-        fun(_Bucket, _Key) -> {ok, #{size => Size, content_type => <<"text/plain">>}} end
-    ),
-    try
-        Fun()
-    after
-        catch meck:unload(elib_oss)
-    end.
+%% The reserved origin is a fixture alias for this loopback listener. Preserve
+%% the returned raw path/query and capability; never construct an upload token
+%% or substitute a storage result. V5 confirm reads the actual frozen bytes.
+upload_file(Port, Registration, Bytes) when is_binary(Bytes) ->
+    true = maps:get(<<"gateway">>, Registration),
+    Url = maps:get(<<"put_url">>, Registration),
+    Prefix = <<?UPLOAD_ORIGIN/binary, "/api/v1/attachment/gateway/">>,
+    PrefixSize = byte_size(Prefix),
+    Path = case Url of
+        <<Prefix:PrefixSize/binary, Rest/binary>> ->
+            <<"/api/v1/attachment/gateway/", Rest/binary>>;
+        _ -> erlang:error(invalid_fixture_upload_origin)
+    end,
+    #{status := 200, body := Body} = http(Port, <<"PUT">>, Path, Bytes,
+        #{<<"content-type">> => <<"text/plain">>}),
+    Sha = binary:encode_hex(crypto:hash(sha256, Bytes), lowercase),
+    Size = byte_size(Bytes),
+    #{<<"pinned">> := true, <<"sha256">> := Sha, <<"size">> := Size} = jsone:decode(Body),
+    Key = maps:get(<<"object_key">>, Registration),
+    {ok, #{driver := disk} = Snapshot} = attachment_storage:session_location(Key),
+    {ok, Bytes} = attachment_storage_disk:read_snapshot(Snapshot),
+    ok.
 
 %% INT-12 SSRF 守卫 DNS 替身：公网假 IP（with_public_dns 同款）。
 with_public_dns(Fun) ->

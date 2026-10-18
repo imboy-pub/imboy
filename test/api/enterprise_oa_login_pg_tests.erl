@@ -633,8 +633,16 @@ source_mixup(S, CtxA) ->
 
 %% Focused gap coverage only: no migration roundtrip or account allocator path.
 oa_login_three_gap_test_() ->
+    isolated_pg_fixture:test(fun oa_login_three_gap_fixture/0).
+
+oa_login_three_gap_fixture() ->
     {timeout, 900,
-        {setup, fun enterprise_oa_login_three_gap_pg_checks:setup/0,
+        {setup, fun() ->
+            isolated_pg_fixture:setup_single_node_cache(
+                fun enterprise_oa_login_three_gap_pg_checks:setup/0,
+                fun enterprise_oa_login_three_gap_pg_checks:teardown/1
+            )
+        end,
             fun enterprise_oa_login_three_gap_pg_checks:teardown/1, fun(S) ->
                 Ctx = maps:get(oa_gap_context, S),
                 Ticket = fun(Ext, Intent, Did) -> ticket(Ctx, Ext, Intent, Did) end,
@@ -661,6 +669,9 @@ oa_login_three_gap_test_() ->
 
 %% Explicit source removal is distinct from organization exit/account tombstones.
 source_retirement_test_() ->
+    isolated_pg_fixture:test(fun source_retirement_fixture/0).
+
+source_retirement_fixture() ->
     {timeout, 900,
         {setup, fun enterprise_oa_login_source_retirement_pg_checks:setup/0,
             fun enterprise_oa_login_source_retirement_pg_checks:cleanup/1, fun(H) ->

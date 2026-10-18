@@ -19,6 +19,10 @@ w403_predecessor_test_() ->
 
 run() ->
     Boot = eunit_runner:eunit_setup(),
+    try run_with_boot()
+    after eunit_runner:eunit_cleanup(Boot) end.
+
+run_with_boot() ->
     State = inttest_marker_db:provision(
         #{
             env_prefix => <<"V5_INTTEST_W403P">>,
@@ -26,6 +30,35 @@ run() ->
         }
     ),
     Conn = maps:get(conn, State),
+    try
+        Storage = setup_storage(),
+        try
+            DiskRoot = maps:get(root, Storage),
+            seed_tenants(Conn),
+            p_intent_rollback_disk(Conn, DiskRoot),
+            p_worker_disk_delete_done(Conn, DiskRoot),
+            p_worker_crash_reap_disk(Conn, DiskRoot),
+            p_entrypoint_intents_disk_env(Conn)
+        after cleanup_storage(Storage) end
+    after inttest_marker_db:release(State) end.
+
+setup_storage() ->
+    Prior = application:get_env(imboy, attachment_storage_registry),
+    Root = filename:join(temp_dir(), "w403p-disk-" ++
+        binary_to_list(binary:encode_hex(crypto:strong_rand_bytes(12), lowercase))),
+    ok = file:make_dir(Root),
+    try
+        ok = file:change_mode(Root, 8#700),
+        setup_registry(Root),
+        #{root => Root, prior => Prior}
+    catch
+        Class:Reason:Stack ->
+            restore_registry(Prior),
+            file:del_dir_r(Root),
+            erlang:raise(Class, Reason, Stack)
+    end.
+
+setup_registry(Root) ->
     Registry = #{
         version => 1,
         roots => #{
@@ -33,28 +66,24 @@ run() ->
                 driver => <<"disk">>,
                 namespace => ?NS,
                 aliases => [],
-                endpoint => <<"file:///tmp">>,
-                container => <<>>
+                endpoint => list_to_binary("file://" ++ Root),
+                container => <<"c">>
             }
         }
     },
-    application:set_env(imboy, attachment_storage_registry, Registry),
-    DiskRoot = filename:join(
-        "/tmp",
-        "w403p-disk-" ++ integer_to_list(erlang:unique_integer([positive]))
-    ),
-    application:set_env(imboy, attachment_disk_root, DiskRoot),
-    try
-        seed_tenants(Conn),
-        p_intent_rollback_disk(Conn, DiskRoot),
-        p_worker_disk_delete_done(Conn, DiskRoot),
-        p_worker_crash_reap_disk(Conn, DiskRoot),
-        p_entrypoint_intents_disk_env(Conn)
-    after
-        application:unset_env(imboy, attachment_storage_registry),
-        application:unset_env(imboy, attachment_disk_root),
-        inttest_marker_db:release(State),
-        eunit_runner:eunit_cleanup(Boot)
+    application:set_env(imboy, attachment_storage_registry, Registry).
+
+cleanup_storage(#{root := Root, prior := Prior}) ->
+    restore_registry(Prior),
+    ok = file:del_dir_r(Root).
+
+restore_registry({ok, Value}) -> application:set_env(imboy, attachment_storage_registry, Value);
+restore_registry(undefined) -> application:unset_env(imboy, attachment_storage_registry).
+
+temp_dir() ->
+    case file:read_link_all("/tmp") of
+        {ok, Target} -> filename:absname(Target, "/");
+        {error, einval} -> "/tmp"
     end.
 
 seed_tenants(Conn) ->
@@ -90,14 +119,18 @@ e(Conn, Sql, Params) -> epgsql:equery(Conn, Sql, Params).
 hex64(Bin) ->
     iolist_to_binary([io_lib:format("~2.16.0b", [B]) || B <- binary_to_list(Bin)]).
 
-%% disk 文件路径（与 driver safe_path 同规范：key 相对 disk root）
+%% disk 文件路径与 registry endpoint + container + key 保持一致。
 disk_file(DiskRoot, Key) ->
-    filename:join(DiskRoot, binary_to_list(Key)).
+    filename:join([DiskRoot, "c", binary_to_list(Key)]).
 
 put_disk_file(DiskRoot, Key, Body) ->
-    Abs = disk_file(DiskRoot, Key),
-    filelib:ensure_dir(Abs),
-    file:write_file(Abs, Body).
+    ok = attachment_storage_disk:put(?NS, <<"c">>, Key, Body),
+    {ok, Body} = file:read_file(disk_file(DiskRoot, Key)),
+    ok.
+
+locator(Key) ->
+    {ok, #{locator_digest := Digest}} = attachment_storage:identity(?NS, <<"c">>, Key),
+    Digest.
 
 %% ① 意图失败协议（disk env）：意图失败 → disk 文件零删除
 p_intent_rollback_disk(Conn, DiskRoot) ->
@@ -130,7 +163,7 @@ p_intent_rollback_disk(Conn, DiskRoot) ->
 p_worker_disk_delete_done(Conn, DiskRoot) ->
     Key = <<"v5e2e/w403p/done">>,
     ok = put_disk_file(DiskRoot, Key, <<"done-bytes">>),
-    L = hex64(crypto:hash(sha256, Key)),
+    L = locator(Key),
     q(
         Conn,
         "INSERT INTO attachment_object_deletion"
@@ -144,6 +177,8 @@ p_worker_disk_delete_done(Conn, DiskRoot) ->
         attachment_gc_repo:v5_claim(Conn, T),
     %% worker 删除语义：disk driver 直删（同 driver 派发）
     ok = attachment_storage_disk:delete(?NS, <<"c">>, Key),
+    ?assertEqual({error, enoent}, file:read_file(disk_file(DiskRoot, Key))),
+    ?assertEqual({error, not_found}, attachment_storage_disk:read(?NS, <<"c">>, Key)),
     ok = attachment_gc_repo:v5_ack(Conn, Key, T, true),
     {ok, _, [{<<"done">>}]} = e(
         Conn,
@@ -167,7 +202,7 @@ uuid_text() ->
 p_worker_crash_reap_disk(Conn, DiskRoot) ->
     Key = <<"v5e2e/w403p/crash">>,
     ok = put_disk_file(DiskRoot, Key, <<"crash-bytes">>),
-    L = hex64(crypto:hash(sha256, Key)),
+    L = locator(Key),
     q(
         Conn,
         "INSERT INTO attachment_object_deletion"
@@ -216,7 +251,7 @@ p_entrypoint_intents_disk_env(Conn) ->
         "cipher,group_file_id,file_hash256,referer_time)"
         " VALUES (945001,$1,'private',101,'disk','" ++ binary_to_list(?NS) ++
             "','c',$2,true,NULL,NULL,$3,0)",
-        [OKey, hex64(crypto:hash(sha256, OKey)), hex64(crypto:hash(sha256, OKey))]
+        [OKey, locator(OKey), hex64(crypto:hash(sha256, OKey))]
     ),
     {ok, _, _} = e(
         Conn, "SELECT fn_v5_intent_ordinary_delete($1,'w403p orphan disk')", [OKey]
@@ -237,7 +272,7 @@ p_entrypoint_intents_disk_env(Conn) ->
                 "{\"subject\":{\"kind\":\"user\",\"principal\":\"101\"},"
                 "\"declaration\":{\"mime\":\"image/png\"}}"
             >>,
-            hex64(crypto:hash(sha256, PKey))
+            locator(PKey)
         ]
     ),
     q(

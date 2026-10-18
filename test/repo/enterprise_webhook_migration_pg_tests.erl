@@ -63,15 +63,18 @@
 %%%===================================================================
 
 setup_conn() ->
+    setup_conn(#{}).
+
+setup_conn(MigrationOptions) ->
     try
         elib_tsid:init(#{dc_id => 1, node_id => 1, dc_bits => 3})
     catch
         _:_ -> ok
     end,
-    State = inttest_marker_db:provision(#{
+    State = inttest_marker_db:provision(maps:merge(#{
         env_prefix => <<"FULL03_MIG_INTTEST">>,
         connect_extra => #{codecs => [{epgsql_codec_rfc3339_bin, []}]}
-    }),
+    }, MigrationOptions)),
     C = maps:get(conn, State),
     _ = code:add_patha("deps/erlang_migrate/ebin"),
     ok = exec(C, <<"BEGIN">>),
@@ -275,25 +278,68 @@ map_pg({error, Reason}) ->
 constraint_name(Extra) when is_list(Extra) -> proplists:get_value(constraint_name, Extra);
 constraint_name(_) -> undefined.
 
-%% 迁移前后既有 fn_% 函数体快照（排除本域 fn_ewh_%）：name -> md5(prosrc)
+%% 迁移前后既有 fn_% 函数体快照（排除本域 fn_ewh_%）。
+%% Key by schema/name/full argument identity so overloads never overwrite each other.
 fn_body_snapshot(C) ->
     case
         elib_pg:query(
             C,
             <<
-                "SELECT p.proname AS name, md5(p.prosrc) AS body_md5 FROM pg_proc p"
+                "SELECT n.nspname AS schema, p.proname AS name,"
+                " pg_get_function_identity_arguments(p.oid) AS identity_args,"
+                " md5(p.prosrc) AS body_md5 FROM pg_proc p"
                 " JOIN pg_namespace n ON n.oid = p.pronamespace"
                 " WHERE n.nspname = 'public' AND p.proname LIKE 'fn\\_%'"
-                " AND p.proname NOT LIKE 'fn\\_ewh\\_%' ORDER BY p.proname"
+                " AND p.proname NOT LIKE 'fn\\_ewh\\_%' ORDER BY n.nspname, p.proname, identity_args"
             >>,
             []
         )
     of
         {ok, Rows} ->
-            maps:from_list([{maps:get(<<"name">>, R), maps:get(<<"body_md5">>, R)} || R <- Rows]);
+            maps:from_list([
+                {{maps:get(<<"schema">>, R), maps:get(<<"name">>, R),
+                    maps:get(<<"identity_args">>, R)}, maps:get(<<"body_md5">>, R)}
+             || R <- Rows
+            ]);
         {error, Reason} ->
             erlang:error({sql_error, Reason})
     end.
+
+%% 同名函数的每个签名都必须保留；分别改写/删除一个 overload 不可遮住另一个。
+%% Keep every overload: changing either body or removing one must change the snapshot.
+fn_snapshot_overloads_oracle(C) ->
+    Before = fn_body_snapshot(C),
+    IntegerKey = {<<"public">>, <<"fn_webhook994_snapshot_overload">>, <<"p_value integer">>},
+    TextKey = {<<"public">>, <<"fn_webhook994_snapshot_overload">>, <<"p_value text">>},
+    ?assertNot(maps:is_key(IntegerKey, Before)),
+    ?assertNot(maps:is_key(TextKey, Before)),
+    ok = exec(C, <<
+        "CREATE FUNCTION public.fn_webhook994_snapshot_overload(p_value integer)"
+        " RETURNS integer LANGUAGE sql AS 'SELECT 1'"
+    >>),
+    ok = exec(C, <<
+        "CREATE FUNCTION public.fn_webhook994_snapshot_overload(p_value text)"
+        " RETURNS integer LANGUAGE sql AS 'SELECT 2'"
+    >>),
+    Md5 = fun(Body) -> scalar(C, <<"SELECT md5($1::text)">>, [Body]) end,
+    Both = Before#{IntegerKey => Md5(<<"SELECT 1">>), TextKey => Md5(<<"SELECT 2">>)},
+    Created = fn_body_snapshot(C),
+    ?assertEqual(map_size(Before) + 2, map_size(Created)),
+    ?assertEqual(Both, Created),
+    ok = exec(C, <<
+        "CREATE OR REPLACE FUNCTION public.fn_webhook994_snapshot_overload(p_value integer)"
+        " RETURNS integer LANGUAGE sql AS 'SELECT 3'"
+    >>),
+    ChangedInteger = Both#{IntegerKey => Md5(<<"SELECT 3">>)},
+    ?assertEqual(ChangedInteger, fn_body_snapshot(C)),
+    ok = exec(C, <<
+        "CREATE OR REPLACE FUNCTION public.fn_webhook994_snapshot_overload(p_value text)"
+        " RETURNS integer LANGUAGE sql AS 'SELECT 4'"
+    >>),
+    ChangedBoth = ChangedInteger#{TextKey => Md5(<<"SELECT 4">>)},
+    ?assertEqual(ChangedBoth, fn_body_snapshot(C)),
+    ok = exec(C, <<"DROP FUNCTION public.fn_webhook994_snapshot_overload(integer)">>),
+    ?assertEqual(maps:remove(IntegerKey, ChangedBoth), fn_body_snapshot(C)).
 
 %% 函数/触发器/索引/列存在性
 has_function(C, Fn) ->
@@ -353,6 +399,8 @@ enterprise_webhook_migration_pg_test_() ->
             C = maps:get(conn, State),
             {inorder, [
                 {"empty_db_full_up_reaches_head_with_ledger_schema", head_schema_test(C)},
+                {"function_snapshot_preserves_overloaded_bodies",
+                    with_tx(C, fun fn_snapshot_overloads_oracle/1)},
                 {"ledger_guard_terminal_and_snapshot", with_tx(C, fun ledger_guard_oracle/1)},
                 {"ledger_guard_ownership_and_replay_unique",
                     with_tx(C, fun ledger_ownership_oracle/1)},
@@ -999,19 +1047,21 @@ concurrent_claim_test(State) ->
 %%% ④ down 对称回滚 + 迁移自证的外部复核（fn 体 md5）
 %%%===================================================================
 
-down_up_cycle_test(State) ->
+down_up_cycle_test(HeadState) ->
     ?_test(begin
-        Conn = connect_marker(State),
+        %% 独立 141 库避免穿越后续不可逆迁移；head 业务库保持不变。
+        %% Keep historical rollback separate from the current-head business DB.
+        State = setup_conn(#{migration_target => ?EWH_MIGRATION_VERSION}),
+        Conn = maps:get(conn, State),
         try
             MigConfig = #{conn => Conn, dir => "priv/migrations", strict => true},
+            ?assertEqual({ok, ?EWH_MIGRATION_VERSION, false}, erlang_migrate:version(MigConfig)),
             Before = fn_body_snapshot(Conn),
             ?assert(length(maps:keys(Before)) > 20),
 
             %% 回滚到 141 之前（= 140）：只回滚本迁移（00000141）的对象。
-            %% FULL-06 口径更新：目标版本用 goto 显式表达，不再写死 `down 1`——
-            %% head 一变，写死的步数就会回滚到别的迁移上，本套件的字段断言随即恒红
-            %% （与 GZ 期 cs_pg_widget_tests 写死 head 的缺陷同类，同一修法；见
-            %% GZ_CANDIDATE.md §5「cs_pg_widget_tests 写死迁移 head」）。
+            %% 后续版本只向前升级，不从 head 向下跨越 V5 守卫。
+            %% Later versions are exercised forward without crossing V5 down guards.
             ?assertEqual(141, ?EWH_MIGRATION_VERSION),
             ok = erlang_migrate:goto(MigConfig, ?EWH_DOWN_TARGET),
             ?assertEqual({ok, ?EWH_DOWN_TARGET, false}, erlang_migrate:version(MigConfig)),
@@ -1039,8 +1089,8 @@ down_up_cycle_test(State) ->
             ),
 
             %% up 141：重建
-            ok = erlang_migrate:up(MigConfig),
-            ?assertEqual({ok, migration_head(), false}, erlang_migrate:version(MigConfig)),
+            ok = erlang_migrate:goto(MigConfig, ?EWH_MIGRATION_VERSION),
+            ?assertEqual({ok, ?EWH_MIGRATION_VERSION, false}, erlang_migrate:version(MigConfig)),
             lists:foreach(fun(Col) -> ?assert(has_column(Conn, Col)) end, ?NEW_COLUMNS),
             ?assert(has_function(Conn, <<"fn_ewh_delivery_guard">>)),
             ?assert(has_trigger(Conn, <<"trg_ewh_delivery_guard">>)),
@@ -1050,11 +1100,16 @@ down_up_cycle_test(State) ->
             ?assertEqual(maps:keys(Before), maps:keys(After)),
             Mismatch = [K || K <- maps:keys(Before), maps:get(K, Before) =/= maps:get(K, After)],
             ?assertEqual([], Mismatch),
+            %% 历史重建结果向前到 head，与独立全量 up 的函数集合一致。
+            %% Rebuilt history must converge with a fresh full-up head fixture.
+            ok = erlang_migrate:up(MigConfig),
+            ?assertEqual({ok, migration_head(), false}, erlang_migrate:version(MigConfig)),
+            ?assertEqual(fn_body_snapshot(maps:get(conn, HeadState)), fn_body_snapshot(Conn)),
             %% 二次 up 幂等（无 pending 迁移即 no-op）
             ok = erlang_migrate:up(MigConfig),
             ?assertEqual({ok, migration_head(), false}, erlang_migrate:version(MigConfig))
         after
-            epgsql:close(Conn)
+            close_conn(State)
         end
     end).
 
@@ -1062,11 +1117,13 @@ down_up_cycle_test(State) ->
 %%% ⑤ 广州期（140）形态数据升级兼容
 %%%===================================================================
 
-gz_upgrade_compat_test(State) ->
+gz_upgrade_compat_test(_HeadState) ->
     ?_test(begin
-        Conn = connect_marker(State),
+        State = setup_conn(#{migration_target => ?EWH_MIGRATION_VERSION}),
+        Conn = maps:get(conn, State),
         try
             MigConfig = #{conn => Conn, dir => "priv/migrations", strict => true},
+            ?assertEqual({ok, ?EWH_MIGRATION_VERSION, false}, erlang_migrate:version(MigConfig)),
             %% 退到 141 之前（140）：owner / 代际 / 版本列都不存在
             ok = erlang_migrate:goto(MigConfig, 140),
             ?assertMatch({ok, 140, false}, erlang_migrate:version(MigConfig)),
@@ -1173,6 +1230,6 @@ gz_upgrade_compat_test(State) ->
             ?assertEqual(1, maps:get(<<"ewh_ledger_version">>, Recheck))
         after
             _ = exec_quiet(Conn, <<"ROLLBACK">>),
-            epgsql:close(Conn)
+            close_conn(State)
         end
     end).

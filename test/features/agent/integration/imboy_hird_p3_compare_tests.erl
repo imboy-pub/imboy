@@ -30,6 +30,9 @@ p3_test_() ->
         ]}}.
 
 setup() ->
+    ?P1:setup_with_owned_env(fun setup_fixture/0, fun cleanup_fixture/0).
+
+setup_fixture() ->
     ?P1:ensure_env(),
     ?P1:ensure_tsid(),
     ?P1:ensure_built(),
@@ -37,6 +40,8 @@ setup() ->
         env_prefix => <<"HIRDPOC">>,
         reuse => true
     }),
+    %% Own the provisioned resource before any later setup step can fail.
+    persistent_term:put({imboy_hird_p3, state}, State),
     ok = imboy_hird_poc_membership:install(maps:get(conn, State)),
     ok = ?P1:install_poc_env(),
     Counters = #{
@@ -55,17 +60,22 @@ setup() ->
 state() ->
     persistent_term:get({imboy_hird_p3, state}).
 
-cleanup(_) ->
+cleanup(SavedEnv) ->
+    ?P1:cleanup_with_owned_env(SavedEnv, fun cleanup_fixture/0).
+
+cleanup_fixture() ->
     State = persistent_term:get({imboy_hird_p3, state}, undefined),
-    imboy_hird_poc_membership:teardown(),
-    imboy_hird_poc_registry:teardown(),
-    ?P1:uninstall_poc_env(),
-    ?P1:stop_supervisor(),
-    ?P1:stop_audit(),
-    persistent_term:erase({imboy_hird_p3, state}),
-    case State of
-        undefined -> ok;
-        _ -> inttest_marker_db:release(State)
+    try
+        imboy_hird_poc_membership:teardown(),
+        imboy_hird_poc_registry:teardown(),
+        ?P1:stop_supervisor(),
+        ?P1:stop_audit()
+    after
+        persistent_term:erase({imboy_hird_p3, state}),
+        case State of
+            undefined -> ok;
+            _ -> inttest_marker_db:release(State)
+        end
     end.
 
 biz_calls() -> imboy_hird_poc_registry:biz_calls().
@@ -86,14 +96,18 @@ path_a_invoke(RunCtx, Resource) ->
             A;
         {allow, Decision} ->
             EffectId = maps:get(effect_id, Decision, undefined),
-            imboy_hird_poc_registry:set_effect({EffectId, maps:get(run_id, RunCtx)}),
-            {ok, Handler} = imboy_hird_poc_registry:lookup(<<"tool.workspace.detail">>),
+            Cred = #{
+                organization_id => maps:get(organization_id, Resource),
+                workspace_id => maps:get(workspace_id, Resource)
+            },
+            imboy_hird_poc_registry:set_effect({EffectId, maps:get(run_id, RunCtx), Cred}),
             Raw =
-                case Handler(Resource) of
-                    {ok, Raw0} -> {ok, Raw0};
-                    {error, R} -> {error, R}
+                try
+                    {ok, Handler} = imboy_hird_poc_registry:lookup(<<"tool.workspace.detail">>),
+                    Handler(Resource)
+                after
+                    imboy_hird_poc_registry:clear_effect()
                 end,
-            imboy_hird_poc_registry:clear_effect(),
             case Raw of
                 {ok, Bin} -> {ok, #{result => Bin, effect_id => EffectId}};
                 {error, R2} -> {error, R2}
@@ -156,7 +170,7 @@ t_equivalence() ->
     RunCtxA = ?P1:run_ctx(Conn, 914001, 911001),
     Resource = (?P1:resource_of(Conn))(#{ws_id => 912001}),
     {ok, #{result := RawA}} = path_a_invoke(RunCtxA, Resource),
-    CallsA = biz_calls(),
+    ?assertEqual(1, biz_calls()),
     %% B 路径结果（重置计数后经 P1 全链跑一次；同 Run 同 fixture）。
     Counters = maps:get(counters, State),
     atomics:put(maps:get(biz, Counters), 1, 0),

@@ -64,7 +64,7 @@ matrix(Port) ->
 
     %% 合法码 → 200：契约头齐 + 正文含码与深链 payload
     {ok, {{_, 200, _}, H200, Body200}} =
-        get(Base ++ "/invite/org/AB2C3D4E"),
+        http_get(Base ++ "/invite/org/AB2C3D4E"),
     ?assertEqual("text/html; charset=utf-8", ct(H200)),
     ?assertEqual("no-store", proplists:get_value("cache-control", H200)),
     ?assert(
@@ -80,11 +80,11 @@ matrix(Port) ->
 
     %% 字符集外（0）与形状外（短码）→ 404 静态无效页
     {ok, {{_, 404, _}, _H404, Body404}} =
-        get(Base ++ "/invite/org/AB2C3D40"),
+        http_get(Base ++ "/invite/org/AB2C3D40"),
     ?assert(
         nomatch =/= binary:match(Body404, <<"邀请链接无效"/utf8>>)
     ),
-    {ok, {{_, 404, _}, _, _}} = get(Base ++ "/invite/org/SHORT"),
+    {ok, {{_, 404, _}, _, _}} = http_get(Base ++ "/invite/org/SHORT"),
 
     %% HEAD → 200（无正文由 cowboy 保证）
     {ok, {{_, 200, _}, _, _}} =
@@ -107,7 +107,7 @@ matrix(Port) ->
 
     ok.
 
-get(Url) ->
+http_get(Url) ->
     httpc:request(
         get,
         {Url, []},

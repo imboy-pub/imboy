@@ -15,55 +15,32 @@
 %% ===================================================================
 
 c2c_ack_deletes_offline_msg_test_() ->
-    ?TEST_WITH_DB(fun() ->
-        Uid = 1001,
-        Did = <<"device_ios_001">>,
-        MsgId = <<"test_c2c_msg_001">>,
-
-        % Mock elib_metric:increment（gen_server，测试环境可能未完全启动）
-        meck:new(elib_metric, [no_link]),
-        meck:expect(elib_metric, increment, 1, ok),
-
-        % 准备测试数据：插入离线消息（id 列在 TSID 迁移后为 BIGINT NOT NULL，需显式提供）
-        Sql = <<
-            "INSERT INTO msg_c2c (id, from_id, to_id, msg_id, msg_type, payload, created_at)\n"
-            "                VALUES ($1, $2, $3, $4, $5, $6, NOW())"
-        >>,
+    ack_db_test(fun(#{uid := Uid, from_uid := FromUid, did := Did, msg_id := MsgId}) ->
+        %% 走真实仓储分配服务端顺序，不能用裸 INSERT 绕过接受顺序约束。
+        %% Seed through the real allocator instead of bypassing accepted order.
+        Now = elib_dt:now(),
         Payload = <<"{\"content\":\"test message\"}">>,
-        {ok, _} = elib_pg:execute(Sql, [9001, 999, Uid, MsgId, <<"text">>, Payload]),
+        ok = msg_c2c_repo:write_msg(Now, MsgId, Payload, FromUid, Uid, Now, <<"text">>, null),
+        {ok, [#{<<"conv_seq">> := Seq}]} = elib_pg:query(
+            <<"SELECT conv_seq FROM msg_c2c WHERE msg_id=$1 AND to_id=$2">>, [MsgId, Uid]
+        ),
+        ?assert(is_integer(Seq) andalso Seq > 0),
+        ?assertEqual({ok, Seq}, personal_message_order_repo:accepted_sequence(FromUid, Uid, MsgId)),
+        ?assertEqual({error, conflict_no_insert},
+            msg_c2c_repo:write_msg(Now, MsgId, Payload, FromUid, Uid, Now, <<"text">>, null)),
+        ?assertEqual({ok, Seq}, personal_message_order_repo:accepted_sequence(FromUid, Uid, MsgId)),
+        ?assertEqual(1, message_count(<<"msg_c2c">>, MsgId)),
 
-        % Mock msg_store_ds:unstage
-        meck:expect(msg_store_ds, unstage, 1, '_'),
-
-        % 执行 ACK
         ok = msg_ack_logic:client_ack(<<"c2c">>, MsgId, Uid, Did),
-
-        % 验证消息被删除
-        Sql2 = <<"SELECT COUNT(*) FROM msg_c2c WHERE msg_id = $1 AND to_id = $2">>,
-        {ok, [#{<<"count">> := Count}]} = elib_pg:query(Sql2, [MsgId, Uid]),
-        ?assertEqual(0, Count),
-
-        % 清理测试数据
-        elib_pg:execute(<<"DELETE FROM msg_c2c WHERE msg_id = $1">>, [MsgId]),
-
-        % 清理 Mock
-        meck:unload(elib_metric)
+        ?assertEqual(0, message_count(<<"msg_c2c">>, MsgId)),
+        ?assertEqual(1, meck:num_calls(elib_metric, increment, [msg_delivered_total]))
     end).
 
 c2c_ack_with_no_msg_test_() ->
-    ?TEST_WITH_DB(fun() ->
-        Uid = 1002,
-        Did = <<"device_ios_002">>,
-        MsgId = <<"test_c2c_msg_002">>,
-
-        % Mock msg_store_ds:unstage
-        meck:expect(msg_store_ds, unstage, 1, '_'),
-
-        % 执行 ACK（消息不存在）
-        ok = msg_ack_logic:client_ack(<<"c2c">>, MsgId, Uid, Did),
-
-        % 应该正常完成，不抛出异常
-        ?assert(true)
+    ack_db_test(fun(#{uid := Uid, did := Did, msg_id := MsgId}) ->
+        ?assertEqual(0, message_count(<<"msg_c2c">>, MsgId)),
+        ?assertEqual(ok, msg_ack_logic:client_ack(<<"c2c">>, MsgId, Uid, Did)),
+        ?assertEqual(0, message_count(<<"msg_c2c">>, MsgId))
     end).
 
 %% ===================================================================
@@ -71,63 +48,39 @@ c2c_ack_with_no_msg_test_() ->
 %% ===================================================================
 
 c2g_ack_marks_timeline_test_() ->
-    ?TEST_WITH_DB(fun() ->
-        Uid = 2001,
-        Did = <<"device_android_001">>,
-        MsgId = <<"test_c2g_msg_001">>,
-
-        % Mock msg_c2g_timeline_repo:client_ack
-        meck:expect(msg_c2g_timeline_repo, client_ack, 2, fun(_, _) -> {ok, 1} end),
-
-        % Mock msg_store_ds:unstage
-        meck:expect(msg_store_ds, unstage, 1, '_'),
-
-        % 执行 ACK
-        ok = msg_ack_logic:client_ack(<<"c2g">>, MsgId, Uid, Did),
-
-        % 验证调用
-        ?assert(meck:validate(msg_c2g_timeline_repo)),
-        ?assert(meck:validate(msg_store_ds))
-    end).
+    ?WITH_MECKS(
+        [
+            {msg_c2g_timeline_repo, [{client_ack, 2, fun(_, _) -> {ok, 1} end}]},
+            {elib_metric, [{increment, 1, fun(_) -> ok end}]},
+            {msg_store_ds, [{unstage, 1, fun(_) -> ok end}]}
+        ],
+        fun() ->
+            Uid = 2001,
+            MsgId = <<"test_c2g_msg_001">>,
+            ok = msg_ack_logic:client_ack(<<"c2g">>, MsgId, Uid, <<"device_android_001">>),
+            ?assertEqual(1, meck:num_calls(msg_c2g_timeline_repo, client_ack, [Uid, MsgId])),
+            ?assertEqual(0, meck:num_calls(msg_store_ds, unstage, 1)),
+            ?assert(meck:validate(msg_c2g_timeline_repo)),
+            ?assert(meck:validate(msg_store_ds))
+        end
+    ).
 
 %% ===================================================================
 %% S2C ACK 处理测试
 %% ===================================================================
 
 s2c_ack_deletes_offline_msg_test_() ->
-    ?TEST_WITH_DB(fun() ->
-        Uid = 3001,
-        Did = <<"device_ios_003">>,
-        MsgId = <<"test_s2c_msg_001">>,
-
-        % Mock elib_metric:increment（gen_server，测试环境可能未完全启动）
-        meck:new(elib_metric, [no_link]),
-        meck:expect(elib_metric, increment, 1, ok),
-
-        % 准备测试数据：插入离线消息（id 列在 TSID 迁移后为 BIGINT NOT NULL，需显式提供）
+    ack_db_test(fun(#{uid := Uid, did := Did, msg_id := MsgId}) ->
         Sql = <<
-            "INSERT INTO msg_s2c (id, from_id, to_id, msg_id, action, msg_type, payload, created_at)\n"
-            "                VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())"
+            "INSERT INTO msg_s2c (id, from_id, to_id, msg_id, action, msg_type, payload, created_at)"
+            " VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())"
         >>,
         Payload = <<"{\"msg_type\":\"system\"}">>,
-        {ok, _} = elib_pg:execute(Sql, [9002, 0, Uid, MsgId, <<"notify">>, <<"system">>, Payload]),
-
-        % Mock msg_store_ds:unstage
-        meck:expect(msg_store_ds, unstage, 1, '_'),
-
-        % 执行 ACK
+        {ok, _} = elib_pg:execute(Sql,
+            [elib_tsid:generate(msg_s2c), 0, Uid, MsgId, <<"notify">>, <<"system">>, Payload]),
+        ?assertEqual(1, message_count(<<"msg_s2c">>, MsgId)),
         ok = msg_ack_logic:client_ack(<<"s2c">>, MsgId, Uid, Did),
-
-        % 验证消息被删除
-        Sql2 = <<"SELECT COUNT(*) FROM msg_s2c WHERE msg_id = $1 AND to_id = $2">>,
-        {ok, [#{<<"count">> := Count}]} = elib_pg:query(Sql2, [MsgId, Uid]),
-        ?assertEqual(0, Count),
-
-        % 清理测试数据
-        elib_pg:execute(<<"DELETE FROM msg_s2c WHERE msg_id = $1">>, [MsgId]),
-
-        % 清理 Mock
-        meck:unload(elib_metric)
+        ?assertEqual(0, message_count(<<"msg_s2c">>, MsgId))
     end).
 
 %% ===================================================================
@@ -135,58 +88,26 @@ s2c_ack_deletes_offline_msg_test_() ->
 %% ===================================================================
 
 c2s_ack_uses_parameterized_query_test_() ->
-    ?TEST_WITH_DB(fun() ->
-        Uid = 4001,
-        Did = <<"device_web_001">>,
-        MsgId = <<"test_c2s_msg_001">>,
-
-        % Mock elib_metric:increment（gen_server，测试环境可能未完全启动）
-        meck:new(elib_metric, [no_link]),
-        meck:expect(elib_metric, increment, 1, ok),
-
-        % 准备测试数据：插入消息（id 列在 TSID 迁移后为 BIGINT NOT NULL，需显式提供）
+    ack_db_test(fun(#{uid := Uid, did := Did, msg_id := MsgId}) ->
         Sql = <<
-            "INSERT INTO msg_c2s (id, from_id, to_id, topic_id, msg_id, msg_type, payload, created_at)\n"
-            "                VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())"
+            "INSERT INTO msg_c2s (id, from_id, to_id, topic_id, msg_id, msg_type, payload, created_at)"
+            " VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())"
         >>,
         Payload = <<"{\"text\":\"hello\"}">>,
-        {ok, _} = elib_pg:execute(Sql, [9003, Uid, 0, 123, MsgId, <<"text">>, Payload]),
-
-        % Mock msg_store_ds:unstage
-        meck:expect(msg_store_ds, unstage, 1, '_'),
-
-        % 执行 ACK（使用参数化查询）
+        %% C2S 使用共享 staging 的 msg_store 发号域；没有 msg_c2s namespace。
+        %% C2S uses the shared staging ID allocator, not a msg_c2s namespace.
+        {ok, _} = elib_pg:execute(Sql,
+            [elib_tsid:generate(msg_store), Uid, 0, 123, MsgId, <<"text">>, Payload]),
+        ?assertEqual(1, message_count(<<"msg_c2s">>, MsgId)),
         ok = msg_ack_logic:client_ack(<<"c2s">>, MsgId, Uid, Did),
-
-        % 验证消息被删除
-        Sql2 = <<"SELECT COUNT(*) FROM msg_c2s WHERE msg_id = $1 AND from_id = $2">>,
-        {ok, [#{<<"count">> := Count}]} = elib_pg:query(Sql2, [MsgId, Uid]),
-        ?assertEqual(0, Count),
-
-        % 清理测试数据
-        elib_pg:execute(<<"DELETE FROM msg_c2s WHERE msg_id = $1">>, [MsgId]),
-
-        % 清理 Mock
-        meck:unload(elib_metric)
+        ?assertEqual(0, message_count(<<"msg_c2s">>, MsgId))
     end).
 
 c2s_ack_prevents_sql_injection_test_() ->
-    ?TEST_WITH_DB(fun() ->
-        Uid = 4002,
-        Did = <<"device_web_002">>,
-
-        % 使用 SQL 注入攻击字符串
+    ack_db_test(fun(#{uid := Uid, did := Did}) ->
         MaliciousMsgId = <<"msg_123'; DROP TABLE msg_c2s; --">>,
-
-        % Mock msg_store_ds:unstage
-        meck:expect(msg_store_ds, unstage, 1, '_'),
-
-        % 执行 ACK（应该安全处理）
         ok = msg_ack_logic:client_ack(<<"c2s">>, MaliciousMsgId, Uid, Did),
-
-        % 验证表仍然存在
-        Sql = <<"SELECT COUNT(*) FROM msg_c2s">>,
-        {ok, [#{<<"count">> := Count}]} = elib_pg:query(Sql, []),
+        {ok, [#{<<"count">> := Count}]} = elib_pg:query(<<"SELECT COUNT(*) FROM msg_c2s">>, []),
         ?assert(Count >= 0)
     end).
 
@@ -195,19 +116,8 @@ c2s_ack_prevents_sql_injection_test_() ->
 %% ===================================================================
 
 unknown_msg_type_handles_gracefully_test_() ->
-    ?TEST_WITH_DB(fun() ->
-        Uid = 5001,
-        Did = <<"device_unknown">>,
-        MsgId = <<"test_unknown_msg">>,
-
-        % Mock msg_store_ds:unstage
-        meck:expect(msg_store_ds, unstage, 1, '_'),
-
-        % 执行 ACK（未知类型）
-        ok = msg_ack_logic:client_ack(<<"unknown">>, MsgId, Uid, Did),
-
-        % 应该正常完成，记录错误日志
-        ?assert(true)
+    ack_db_test(fun(#{uid := Uid, did := Did, msg_id := MsgId}) ->
+        ?assertEqual(ok, msg_ack_logic:client_ack(<<"unknown">>, MsgId, Uid, Did))
     end).
 
 %% ===================================================================
@@ -276,15 +186,54 @@ effective_ack_increments_metric_test_() ->
 %% Setup 和 Teardown
 %% ===================================================================
 
-setup_() ->
-    % 设置测试环境
-    application:set_env(imboy, env, test),
-    ok.
+ack_db_test(TestFun) ->
+    {setup, fun setup_ack_db/0, fun cleanup_ack_db/1, fun(State) ->
+        {timeout, 30, ?_test(begin
+            TestFun(State),
+            ?assert(meck:validate(elib_metric))
+        end)}
+    end}.
 
-teardown_(_) ->
-    % 清理 Mock
-    meck:unload(),
-    ok.
+setup_ack_db() ->
+    %% 缺数据库直接失败；mock 归 fixture 所有，断言失败/超时也会清理。
+    %% Missing DB fails setup; fixture cleanup also runs after failure or timeout.
+    {ok, Conn} = eunit_runner:eunit_setup_with_db(),
+    try
+        Uid = elib_tsid:generate(user),
+        FromUid = elib_tsid:generate(user),
+        {ok, elib_metric} = meck_helper:setup_mock(elib_metric, [
+            {increment, 1, fun(_) -> ok end},
+            {record, 2, fun(_, _) -> ok end}
+        ]),
+        #{conn => Conn, uid => Uid, from_uid => FromUid,
+          did => <<"ack-fixture-device">>,
+          msg_id => <<"ack-", (integer_to_binary(Uid))/binary>>,
+          conv_key => msg_archive_repo:conv_key(<<"c2c">>, FromUid, Uid)}
+    catch
+        Class:Reason:Stack ->
+            meck_helper:cleanup_mock(elib_metric),
+            eunit_runner:eunit_cleanup_db(Conn),
+            erlang:raise(Class, Reason, Stack)
+    end.
+
+cleanup_ack_db(#{conn := Conn, msg_id := MsgId, conv_key := Key}) ->
+    try
+        lists:foreach(fun(Table) ->
+            {ok, _} = elib_pg:execute(
+                <<"DELETE FROM ", Table/binary, " WHERE msg_id=$1">>, [MsgId]
+            )
+        end, [<<"msg_c2c">>, <<"msg_s2c">>, <<"msg_c2s">>, <<"msg_delivery">>]),
+        {ok, _} = elib_pg:execute(<<"DELETE FROM msg_store_seq WHERE conv_key=$1">>, [Key])
+    after
+        meck_helper:cleanup_mock(elib_metric),
+        eunit_runner:eunit_cleanup_db(Conn)
+    end.
+
+message_count(Table, MsgId) ->
+    {ok, [#{<<"count">> := Count}]} = elib_pg:query(
+        <<"SELECT COUNT(*) FROM ", Table/binary, " WHERE msg_id=$1">>, [MsgId]
+    ),
+    Count.
 
 %% ===================================================================
 %% Q04/F06（AC09）：C2G ACK 落库失败可观察——错误传播到调用方、
@@ -292,85 +241,35 @@ teardown_(_) ->
 %% ===================================================================
 
 c2g_ack_db_failure_is_observable_and_metric_not_incremented_test_() ->
-    ?TEST_SIMPLE(fun() ->
-        Uid = 1041,
-        Did = <<"device_q04_001">>,
-        MsgId = <<"test_c2g_msg_q04_001">>,
-
-        meck:new(elib_metric, [no_link]),
-        meck:expect(elib_metric, increment, 1, ok),
-        meck:expect(elib_metric, record, 2, ok),
-
-        %% repo 注入失败（模拟 DB 写失败）
-        ?WITH_MECK(
-            msg_c2g_timeline_repo,
-            [
-                {'client_ack', 2, fun(_Uid2, _MsgId2) ->
-                    {error, <<"injected_db_failure">>}
-                end}
-            ],
-            fun() ->
-                Result = msg_ack_logic:client_ack(<<"c2g">>, MsgId, Uid, Did),
-                %% 错误不得被 ok 吞掉
-                ?assertEqual({error, <<"injected_db_failure">>}, Result),
-                %% 投递成功指标不得增长
-                ?assertEqual(0, meck:num_calls(elib_metric, increment, 1))
-            end
-        ),
-
-        meck:unload(elib_metric)
-    end).
+    c2g_metric_test({error, <<"injected_db_failure">>},
+        {error, <<"injected_db_failure">>}, 0).
 
 c2g_ack_duplicate_does_not_increment_metric_test_() ->
-    ?TEST_SIMPLE(fun() ->
-        Uid = 1042,
-        Did = <<"device_q04_002">>,
-        MsgId = <<"test_c2g_msg_q04_002">>,
-
-        meck:new(elib_metric, [no_link]),
-        meck:expect(elib_metric, increment, 1, ok),
-        meck:expect(elib_metric, record, 2, ok),
-
-        %% 重复 ACK：0 行生效
-        ?WITH_MECK(
-            msg_c2g_timeline_repo,
-            [
-                {'client_ack', 2, fun(_Uid2, _MsgId2) ->
-                    {ok, 0}
-                end}
-            ],
-            fun() ->
-                ?assertEqual(ok, msg_ack_logic:client_ack(<<"c2g">>, MsgId, Uid, Did)),
-                ?assertEqual(0, meck:num_calls(elib_metric, increment, 1))
-            end
-        ),
-
-        meck:unload(elib_metric)
-    end).
+    c2g_metric_test({ok, 0}, ok, 0).
 
 c2g_ack_first_delivery_increments_metric_once_test_() ->
-    ?TEST_SIMPLE(fun() ->
-        Uid = 1043,
-        Did = <<"device_q04_003">>,
-        MsgId = <<"test_c2g_msg_q04_003">>,
+    c2g_metric_test({ok, 1}, ok, 1).
 
-        meck:new(elib_metric, [no_link]),
-        meck:expect(elib_metric, increment, 1, ok),
-        meck:expect(elib_metric, record, 2, ok),
-
-        %% 首次送达：1 行生效 → 指标恰一次
-        ?WITH_MECK(
-            msg_c2g_timeline_repo,
-            [
-                {'client_ack', 2, fun(_Uid2, _MsgId2) ->
-                    {ok, 1}
-                end}
-            ],
-            fun() ->
-                ?assertEqual(ok, msg_ack_logic:client_ack(<<"c2g">>, MsgId, Uid, Did)),
-                ?assertEqual(1, meck:num_calls(elib_metric, increment, 1))
-            end
-        ),
-
-        meck:unload(elib_metric)
-    end).
+c2g_metric_test(RepoResult, ExpectedResult, ExpectedIncrements) ->
+    %% 返回 descriptor 给 EUnit 执行，不能在测试函数内生成后丢弃。
+    %% Return the fixture descriptor so EUnit actually executes its assertions.
+    ?WITH_MECKS(
+        [
+            {msg_c2g_timeline_repo, [{client_ack, 2, fun(_, _) -> RepoResult end}]},
+            {elib_metric, [
+                {increment, 1, fun(_) -> ok end},
+                {record, 2, fun(_, _) -> ok end}
+            ]}
+        ],
+        fun() ->
+            Uid = 1041,
+            MsgId = <<"test_c2g_msg_q04">>,
+            ?assertEqual(ExpectedResult,
+                msg_ack_logic:client_ack(<<"c2g">>, MsgId, Uid, <<"device_q04">>)),
+            ?assertEqual(1, meck:num_calls(msg_c2g_timeline_repo, client_ack, [Uid, MsgId])),
+            ?assertEqual(ExpectedIncrements,
+                meck:num_calls(elib_metric, increment, [msg_delivered_total])),
+            ?assert(meck:validate(msg_c2g_timeline_repo)),
+            ?assert(meck:validate(elib_metric))
+        end
+    ).

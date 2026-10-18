@@ -73,7 +73,7 @@ presign(<<"POST">>, Req0, State) ->
                         enterprise_asset_logic:presign_tx(Conn, Ctx, params_to_input(Params))
                     end)
                 end,
-                fun post_commit_presign/3
+                fun(Req, Body, Kind) -> post_commit_presign(Req, Ctx, Body, Kind) end
             );
         {error, non_canonical} ->
             enterprise_internal_error:reply(Req0, <<"invalid_request">>)
@@ -237,49 +237,67 @@ presign_signed_reply(Req0, Status, Body, Kind, NoStore) ->
         end,
     cowboy_req:reply(Status, maps:merge(Base, Headers), Body, Req0).
 
-%% Historical NULL locations cannot obtain a fresh write capability.
-signed_session_reply(Req0, Reg, Kind) ->
+%% Registration has already committed. Reauthorize and read the current session
+%% under its normal I/path/session lock, retaining that lock through signing.
+%% 原登记已提交；重验授权并持既有身份锁签发，回读事务失败时不释放任何能力。
+recover_presign_reply(Req0, Ctx, Reg, Kind) ->
+    Result = try elib_pg:with_tx(fun(Conn) ->
+        with_boundary(Conn, Ctx, <<"INT-07">>, undefined, fun() ->
+            case enterprise_asset_logic:presign_recovery_tx(Conn, Ctx, Reg) of
+                {ok, #{<<"session_state">> := <<"registered">>} = Fresh} ->
+                    signed_session_data(Fresh);
+                Other -> Other
+            end
+        end)
+    end) catch _:_ -> {error, {<<"security_gate_closed">>, recovery_unavailable}} end,
+    case Result of
+        {ok, View} when is_map(View) ->
+            presign_signed_reply(Req0, 200, jsone:encode(View), Kind, true);
+        {error, {Code, _}} when is_binary(Code) ->
+            presign_recovery_error(Req0, Code, Kind);
+        _ -> presign_recovery_error(Req0, <<"security_gate_closed">>, Kind)
+    end.
+
+signed_session_data(Reg) ->
+    case maps:get(<<"expires_at">>, Reg) > erlang:system_time(second) of
+        true -> signed_unexpired_session_data(Reg);
+        false -> {error, {<<"gone">>, session_expired}}
+    end.
+
+signed_unexpired_session_data(Reg) ->
     Base = application:get_env(imboy, base_url, <<>>),
     case uri_string:parse(Base) of
         #{scheme := Scheme, host := Host} when
             (Scheme =:= <<"http">> orelse Scheme =:= <<"https">>), Host =/= <<>>
         ->
-            signed_session_at(Req0, Reg, Kind, Base);
-        _ ->
-            enterprise_internal_error:reply(Req0, <<"service_unavailable">>)
-    end.
-
-signed_session_at(Req0, Reg, Kind, Base) ->
-    Key = maps:get(<<"object_key">>, Reg),
-    case attachment_storage:session_location(Key) of
-        {ok, Snapshot} when is_map(Snapshot) ->
-            case
-                imboy_jwt:issue_upload_capability(
-                    Key,
-                    maps:get(<<"mime_type">>, Reg, <<"application/octet-stream">>),
-                    maps:get(<<"expires_at">>, Reg)
-                )
-            of
+            Key = maps:get(<<"object_key">>, Reg),
+            case imboy_jwt:issue_upload_capability(Key, maps:get(<<"mime_type">>, Reg),
+                    maps:get(<<"expires_at">>, Reg)) of
                 {ok, Capability} ->
                     Cid = maps:get(<<"client_upload_id">>, Reg),
                     Prefix = list_to_binary(string:trim(binary_to_list(Base), trailing, "/")),
-                    Url =
-                        <<Prefix/binary, "/api/v1/attachment/gateway/", Cid/binary, "?capability=",
-                            Capability/binary>>,
-                    Signed = Reg#{
-                        <<"put_url">> => Url,
-                        <<"upload_capability">> => Capability,
-                        <<"gateway">> => true
-                    },
-                    presign_signed_reply(Req0, 200, jsone:encode(Signed), Kind, true);
-                _ ->
-                    enterprise_internal_error:reply(Req0, <<"service_unavailable">>)
+                    Url = <<Prefix/binary, "/api/v1/attachment/gateway/", Cid/binary,
+                        "?capability=", Capability/binary>>,
+                    {ok, Reg#{<<"put_url">> => Url, <<"upload_capability">> => Capability,
+                        <<"gateway">> => true}};
+                _ -> {error, {<<"security_gate_closed">>, signing_unavailable}}
             end;
-        {ok, legacy_unknown} ->
-            enterprise_internal_error:reply(Req0, <<"conflict">>);
-        {error, _} ->
-            enterprise_internal_error:reply(Req0, <<"service_unavailable">>)
+        _ -> {error, {<<"security_gate_closed">>, signing_unavailable}}
     end.
+
+%% Keep the internal API's stable error envelope, with real lifecycle HTTP status
+%% and the recovery retry hint. No cached registration or capability is echoed.
+%% 保留内部接口稳定错误信封，以真实状态码和恢复提示失败关闭，不回显能力。
+presign_recovery_error(Req, Code, Kind) ->
+    {Status, StableCode, Retry} = case Code of
+        <<"gone">> -> {410, <<"resource_conflict">>, <<"reupload_required">>};
+        <<"resource_conflict">> -> {409, Code, <<"reupload_required">>};
+        <<"security_gate_closed">> -> {503, Code, <<"retry_same_id">>};
+        _ -> {enterprise_internal_error:http_status(Code), Code, <<"none">>}
+    end,
+    Envelope = jsone:decode(enterprise_internal_error:error_body(StableCode)),
+    Body = Envelope#{<<"can_resume">> => false, <<"retry_action">> => Retry},
+    presign_signed_reply(Req, Status, jsone:encode(Body), Kind, true).
 
 resource_id_of(Result) when is_map(Result) ->
     case maps:find(<<"file_id">>, Result) of
@@ -290,7 +308,7 @@ resource_id_of(Result) when is_map(Result) ->
 %% COMMIT（含重放）后的能力签发（02 §137：内部应用 V5 会话发受控网关
 %% 能力；重放同样走这里，以冻结 expiry 重签新 token）。status 只读视图
 %% 不产生能力；旧缓存裸 PUT URL 拒绝重放。
-post_commit_presign(Req0, Body, Kind) ->
+post_commit_presign(Req0, Ctx, Body, Kind) ->
     Decoded =
         try
             jsone:decode(Body)
@@ -298,14 +316,14 @@ post_commit_presign(Req0, Body, Kind) ->
             _:_ -> Body
         end,
     case Decoded of
-        #{<<"session_state">> := <<"registered">>, <<"client_upload_id">> := Cid} = Reg when
+        #{<<"session_state">> := _, <<"client_upload_id">> := Cid} = Reg when
             is_binary(Cid), byte_size(Cid) > 0, is_map_key(<<"bucket">>, Reg)
         ->
-            signed_session_reply(Req0, Reg, Kind);
+            recover_presign_reply(Req0, Ctx, Reg, Kind);
         #{<<"can_resume">> := _} = StatusView when is_map(StatusView) ->
             presign_signed_reply(Req0, 200, jsone:encode(StatusView), Kind, true);
         #{<<"put_url">> := _} ->
-            enterprise_internal_error:reply(Req0, <<"conflict">>);
+            presign_recovery_error(Req0, <<"resource_conflict">>, Kind);
         _ when Kind =:= replay ->
             replay_json_body(Req0, 200, Body);
         _ ->

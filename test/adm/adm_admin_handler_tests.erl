@@ -173,8 +173,7 @@ init_assign_role_success_and_flush_cache_test_() ->
             }),
             ?assertEqual(200, maps:get(response_status, RespReq)),
             ?assertEqual(1, meck:num_calls(adm_user_logic, assign_roles, 2)),
-            %% 9 = 8 既有键 + {adm_user_permission, AdminId}（撤权缓存一致性修复新增）
-            ?assertEqual(9, meck:num_calls(imboy_cache, invalidate, 1))
+            assert_admin_cache_invalidated(9)
         end
     ).
 
@@ -211,7 +210,7 @@ config_product_experience_forbidden_without_settings_view_test_() ->
     ).
 
 config_product_experience_success_payload_test_() ->
-    ?WITH_MECKS(
+    with_product_experience(workspace, ?WITH_MECKS(
         [
             {cowboy_req, [
                 {'method', 1, fun(_Req) -> <<"GET">> end}
@@ -232,9 +231,6 @@ config_product_experience_success_payload_test_() ->
             {product_experience, [
                 {'effective_binary', 0, fun() -> <<"workspace">> end},
                 {'config_version', 0, fun() -> <<"abc123def456abc1">> end}
-            ]},
-            {application, [
-                {'get_env', 3, fun(imboy, product_experience, chat) -> workspace end}
             ]}
         ],
         fun() ->
@@ -250,11 +246,11 @@ config_product_experience_success_payload_test_() ->
             ?assertEqual(<<"install_env">>, maps:get(<<"source">>, Payload)),
             ?assertEqual(<<"install">>, maps:get(<<"level">>, Payload))
         end
-    ).
+    )).
 
 config_product_experience_failsafe_visible_test_() ->
     %% 部署配置非法值 → effective fail-safe 为 chat，且 configured_raw 保留原始值可见
-    ?WITH_MECKS(
+    with_product_experience(<<"workspce-typo">>, ?WITH_MECKS(
         [
             {cowboy_req, [
                 {'method', 1, fun(_Req) -> <<"GET">> end}
@@ -275,9 +271,6 @@ config_product_experience_failsafe_visible_test_() ->
             {product_experience, [
                 {'effective_binary', 0, fun() -> <<"chat">> end},
                 {'config_version', 0, fun() -> <<"0000000000000000">> end}
-            ]},
-            {application, [
-                {'get_env', 3, fun(imboy, product_experience, chat) -> <<"workspce-typo">> end}
             ]}
         ],
         fun() ->
@@ -289,7 +282,7 @@ config_product_experience_failsafe_visible_test_() ->
             ?assertEqual(<<"workspce-typo">>, maps:get(<<"configured_raw">>, Payload)),
             ?assertEqual(<<"chat">>, maps:get(<<"configured_value">>, Payload))
         end
-    ).
+    )).
 
 %% ===================================================================
 %% A-02 防自我提权（角色分配 / 停用）
@@ -312,7 +305,7 @@ init_assign_role_self_rejected_test_() ->
                 {'post', 1, fun(_Req) -> #{<<"admin_id">> => 1001, <<"role_id">> => 4} end}
             ]},
             {imboy_cache, [
-                {'flush', 1, fun(_Key) -> ok end}
+                {'invalidate', 1, fun(_Key) -> ok end}
             ]},
             {elib_response, [
                 {'error', 3, fun(Req, Msg, Code) ->
@@ -326,7 +319,8 @@ init_assign_role_self_rejected_test_() ->
             }),
             ?assertEqual(403, maps:get(response_status, RespReq)),
             ?assertEqual(<<"不能给自己分配角色"/utf8>>, maps:get(error_msg, RespReq)),
-            ?assertEqual(0, meck:num_calls(adm_user_logic, assign_roles, 2))
+            ?assertEqual(0, meck:num_calls(adm_user_logic, assign_roles, 2)),
+            ?assertEqual(0, meck:num_calls(imboy_cache, invalidate, 1))
         end
     ).
 
@@ -355,7 +349,7 @@ init_assign_role_superset_rejected_test_() ->
                 end}
             ]},
             {imboy_cache, [
-                {'flush', 1, fun(_Key) -> ok end}
+                {'invalidate', 1, fun(_Key) -> ok end}
             ]},
             {elib_response, [
                 {'error', 3, fun(Req, Msg, Code) ->
@@ -369,7 +363,8 @@ init_assign_role_superset_rejected_test_() ->
             }),
             ?assertEqual(403, maps:get(response_status, RespReq)),
             ?assertEqual(<<"不能授予超出自身权限集的角色"/utf8>>, maps:get(error_msg, RespReq)),
-            ?assertEqual(0, meck:num_calls(adm_user_logic, assign_roles, 2))
+            ?assertEqual(0, meck:num_calls(adm_user_logic, assign_roles, 2)),
+            ?assertEqual(0, meck:num_calls(imboy_cache, invalidate, 1))
         end
     ).
 
@@ -424,7 +419,7 @@ init_disable_routes_through_logic_guard_test_() ->
                 {'post', 1, fun(_Req) -> #{<<"admin_id">> => 9} end}
             ]},
             {imboy_cache, [
-                {'flush', 1, fun(_Key) -> ok end}
+                {'invalidate', 1, fun(_Key) -> ok end}
             ]},
             {elib_response, [
                 {'success', 2, fun(Req, _Payload) -> Req#{response_status => 200} end}
@@ -436,6 +431,43 @@ init_disable_routes_through_logic_guard_test_() ->
             }),
             ?assertEqual(200, maps:get(response_status, RespReq)),
             ?assertEqual(1, meck:num_calls(adm_user_logic, update_status, 2)),
-            ?assertEqual(0, meck:num_calls(adm_user_ds, update, 2))
+            ?assertEqual(0, meck:num_calls(adm_user_ds, update, 2)),
+            assert_admin_cache_invalidated(9)
         end
+    ).
+
+%% 使用真实 env 的独立 fixture，失败/超时也恢复；不 mock VM 全局 application。
+%% Restore the real env even on failure/timeout; never mock the global application API.
+with_product_experience(Value, Test) ->
+    {setup,
+        fun() ->
+            _ = eunit_runner:eunit_setup(),
+            Previous = application:get_env(imboy, product_experience),
+            ok = application:set_env(imboy, product_experience, Value),
+            Previous
+        end,
+        fun
+            (undefined) -> application:unset_env(imboy, product_experience);
+            ({ok, Previous}) -> application:set_env(imboy, product_experience, Previous)
+        end,
+        Test}.
+
+assert_admin_cache_invalidated(AdminId) ->
+    Namespaces = [
+        adm_user_current,
+        adm_user_rbac,
+        adm_user_admin_permission,
+        adm_user_permission,
+        adm_user_group_permission,
+        adm_user_moment_permission,
+        adm_user_report_permission,
+        adm_user_feedback_permission,
+        adm_user_stats_permission
+    ],
+    ?assertEqual(length(Namespaces), meck:num_calls(imboy_cache, invalidate, 1)),
+    lists:foreach(
+        fun(Namespace) ->
+            ?assertEqual(1, meck:num_calls(imboy_cache, invalidate, [{Namespace, AdminId}]))
+        end,
+        Namespaces
     ).

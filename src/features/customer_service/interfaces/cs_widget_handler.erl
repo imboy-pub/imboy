@@ -357,6 +357,8 @@ content_bin(Bin) when is_binary(Bin) ->
 %%      合同（无凭证头/Cookie）；安装级 active 门与会话归属门在 application 用例。
 %%   2. 请求体是**原始字节**（附件内容），不经 JSON 解码——先完成零成本参数
 %%      校验（缺参 422 优先），再读原始体注入 `payload` 键进 facade。
+-define(UPLOAD_MAX_BYTES, 25 * 1024 * 1024).
+
 asset_put(Entry, Req0, _State0) ->
     case cs_actions:case_for(Entry, cowboy_req:method(Req0)) of
         {error, method_not_allowed} ->
@@ -382,14 +384,18 @@ asset_put_params(Entry, Case, Req0, OrgId) ->
         {error, Reason} ->
             cs_http:reply_error(Req0, Reason);
         {ok, Params0} ->
-            case read_upload_body(Req0, []) of
+            case attachment_upload_body:read(Req0, ?UPLOAD_MAX_BYTES) of
                 {error, Reason2} ->
                     cs_http:reply_error(Req0, Reason2);
                 {ok, Payload, Req1} ->
-                    Params = Params0#{payload => Payload},
-                    Result = cs_facade_call:call(maps:get(facade, Case), OrgId, Params),
-                    Req2 = dynamic_cors(Req1, origin_or_undefined(Req1), Result),
-                    cs_http:respond(Entry, Req2, Result)
+                    try
+                        Params = Params0#{payload => Payload},
+                        Result = cs_facade_call:call(maps:get(facade, Case), OrgId, Params),
+                        Req2 = dynamic_cors(Req1, origin_or_undefined(Req1), Result),
+                        cs_http:respond(Entry, Req2, Result)
+                    after
+                        attachment_upload_spool:close(Payload)
+                    end
             end
     end.
 
@@ -397,18 +403,7 @@ asset_put_params(Entry, Case, Req0, OrgId) ->
 %% 本地常量而非跨单元引用——接口层只依赖 core/本 feature/facade（铁律 5）；
 %% 真正的 size 语义校验（申报值=实际值、mime sniff、hash 复核）全部在企业
 %% eb_asset_app:put_object，这里是纯传输 DoS 门（超限 400 fail-closed）。
--define(UPLOAD_MAX_BYTES, 25 * 1024 * 1024).
 
-read_upload_body(Req, Acc) ->
-    case cowboy_req:read_body(Req, #{length => 4 * 1024 * 1024, period => 10000}) of
-        {ok, Data, Req1} ->
-            {ok, iolist_to_binary(lists:reverse([Data | Acc])), Req1};
-        {more, Data, Req1} ->
-            case iolist_size(Acc) + byte_size(Data) > ?UPLOAD_MAX_BYTES of
-                true -> {error, {invalid_param, payload}};
-                false -> read_upload_body(Req1, [Data | Acc])
-            end
-    end.
 
 %% ===================================================================
 %% /w/:public_widget_id 动态 frame HTML（CSD-BE-01，hosted-widget-contract S4）

@@ -63,8 +63,8 @@ protocol_roundtrip(Conn) ->
     {ok, _, _} = epgsql:equery(
         Conn,
         "SELECT * FROM fn_v5_register_pending($1,'b','private',101,"
-        "gen_random_uuid(),$2::jsonb,now(),"
-        "now() - interval '2 hours','garage','ns1','c1',$3)",
+        "gen_random_uuid(),$2::jsonb,now() + interval '2 hours',"
+        "now() + interval '3 seconds','garage','ns1','c1',$3)",
         [?REG_KEY, registration(), locator()]
     ),
     {ok, _, _} = epgsql:equery(
@@ -121,12 +121,7 @@ session_link_integrity(Conn) ->
 
 worker_claim_ack(Conn) ->
     %% enqueue via intent：引用零已证明；能力窗需先过期（fn 资格合取）
-    q(
-        Conn,
-        "UPDATE attach_pending SET upload_expires_at = now() - interval '2 hours'"
-        " WHERE object_key=$1",
-        [?REG_KEY]
-    ),
+    await_upload_expiry(Conn, ?REG_KEY),
     {ok, _, _} = epgsql:equery(
         Conn, "SELECT fn_v5_intent_ordinary_delete($1,'eunit')", [?REG_KEY]
     ),
@@ -176,8 +171,8 @@ w203_seed(Conn, Key) ->
     {ok, _, _} = epgsql:equery(
         Conn,
         "SELECT * FROM fn_v5_register_pending($1,'b','private',101,"
-        "gen_random_uuid(),$2::jsonb,now(),"
-        "now() - interval '2 hours','garage','ns1','c1',$3)",
+        "gen_random_uuid(),$2::jsonb,now() + interval '2 hours',"
+        "now() + interval '3 seconds','garage','ns1','c1',$3)",
         [Key, registration(), locator()]
     ),
     {ok, _, _} = epgsql:equery(
@@ -224,12 +219,7 @@ w203_intent_first(Conn) ->
         Conn, "SELECT fn_v5_confirm_pending($1,$2)", [Key, ?ASSET_ID + 10]
     ),
     %% 能力窗已过 + 引用零已证明：intent 合法提交
-    q(
-        Conn,
-        "UPDATE attach_pending SET upload_expires_at = now() - interval '2 hours'"
-        " WHERE object_key=$1",
-        [Key]
-    ),
+    await_upload_expiry(Conn, Key),
     {ok, _, _} = epgsql:equery(
         Conn, "SELECT fn_v5_intent_ordinary_delete($1,'w2-03 intent first')", [Key]
     ),
@@ -382,9 +372,9 @@ w301_seed_group_asset(Conn, Key, Opts) ->
     {ok, _, _} = epgsql:equery(
         Conn,
         "SELECT * FROM fn_v5_register_pending($1,'b','group',101,"
-        "gen_random_uuid(),$2::jsonb,now(),"
-        "now() - interval '2 hours','garage','ns1','c1',$3)",
-        [Key, registration(), locator()]
+        "gen_random_uuid(),$2::jsonb,now() + interval '2 hours',"
+        "now() + interval '3 seconds','garage','ns1','c1',$3)",
+        [Key, w301_group_registration(), locator()]
     ),
     {ok, _, _} = epgsql:equery(
         Conn, "SELECT fn_v5_pin_pending_content($1,$2::jsonb)", [Key, content_receipt()]
@@ -404,10 +394,10 @@ w301_seed_group_asset(Conn, Key, Opts) ->
     end,
     q(
         Conn,
-        "INSERT INTO attachment(id,path,scope,creator_user_id,"
+        "INSERT INTO attachment(id,path,scope,scope_ref,creator_user_id,"
         "storage_driver,storage_namespace,storage_container,"
         "storage_locator_sha256,gc_verified,cipher,group_file_id,file_hash256)"
-        " VALUES ($1,$2,'group',101,'garage','ns1','c1',$3,false,$4,$5,$6)",
+        " VALUES ($1,$2,'group','66',101,'garage','ns1','c1',$3,false,$4,$5,$6)",
         [
             ?ASSET_ID + maps:get(id, Opts),
             Key,
@@ -423,18 +413,20 @@ w301_seed_group_asset(Conn, Key, Opts) ->
     {ok, _, _} = epgsql:equery(
         Conn, "SELECT fn_v5_confirm_pending($1,$2)", [Key, ?ASSET_ID + maps:get(id, Opts)]
     ),
-    q(
-        Conn,
-        "UPDATE attach_pending SET upload_expires_at = now() - interval '2 hours'"
-        " WHERE object_key=$1",
-        [Key]
-    ),
+    await_upload_expiry(Conn, Key),
     %% group_file 行按场景保留/删除（绑定释放形态）
     case maps:get(bound, Opts) of
         true -> ok;
         false -> q(Conn, "DELETE FROM group_file WHERE id=$1", [GfId])
     end,
     ok.
+
+w301_group_registration() ->
+    Registration = jsone:decode(registration()),
+    Declaration = maps:get(<<"declaration">>, Registration),
+    jsone:encode(Registration#{<<"declaration">> => Declaration#{
+        <<"scope">> => <<"group">>, <<"scope_ref">> => <<"66">>
+    }}).
 
 w301_gc_verified_refresh(Conn, Key) ->
     %% 走生产 repo 语义的等价 SQL（proven = 释放绑定+明文+完整位置+无收藏）
@@ -675,4 +667,20 @@ w301_history_unknown(Conn) ->
     ),
     ?assertEqual(false, w301_gc_verified_refresh(Conn, K3)),
     q(Conn, "DELETE FROM user_collect WHERE id=992"),
+    ok.
+
+%% Pin/confirm must finish inside the real capability window. Never shrink it.
+%% Wait on the database clock, capped at five seconds; a missed window fails.
+await_upload_expiry(Conn, Key) ->
+    {ok, _, [{true}]} = epgsql:equery(Conn,
+        "SELECT session_state='confirmed' AND upload_content IS NOT NULL"
+        " AND upload_expires_at > clock_timestamp()"
+        " FROM attach_pending WHERE object_key=$1", [Key]),
+    {ok, _, [_]} = epgsql:equery(Conn,
+        "SELECT pg_sleep(LEAST(5.0, GREATEST(0.0,"
+        " EXTRACT(EPOCH FROM (upload_expires_at - clock_timestamp())))))"
+        " FROM attach_pending WHERE object_key=$1", [Key]),
+    {ok, _, [{true}]} = epgsql:equery(Conn,
+        "SELECT upload_expires_at <= clock_timestamp()"
+        " FROM attach_pending WHERE object_key=$1", [Key]),
     ok.

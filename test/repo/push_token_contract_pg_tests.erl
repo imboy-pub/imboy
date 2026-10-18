@@ -63,6 +63,9 @@
 %%%===================================================================
 
 setup_conn() ->
+    setup_conn(#{}).
+
+setup_conn(MigrationOptions) ->
     try
         elib_tsid:init(#{dc_id => 1, node_id => 1, dc_bits => 3})
     catch
@@ -72,10 +75,10 @@ setup_conn() ->
         true -> ok;
         false -> elib_tsid:register(push_token)
     end,
-    inttest_marker_db:provision(#{
+    inttest_marker_db:provision(maps:merge(#{
         env_prefix => <<"FULL06_INTTEST">>,
         connect_extra => #{codecs => [{epgsql_codec_rfc3339_bin, []}]}
-    }).
+    }, MigrationOptions)).
 
 close_conn(State) ->
     inttest_marker_db:release(State),
@@ -753,23 +756,29 @@ notify_reachability_test() ->
 %%% ⑦ 迁移 142 down/up 对称
 %%%===================================================================
 
-down_up_cycle_test(State) ->
+down_up_cycle_test(_HeadState) ->
     ?_test(begin
-        Conn = connect_marker(State),
+        %% 独立历史库只回滚 142，head 合同用例不受 schema 变化影响。
+        %% Isolate 142's rollback from the head token-contract fixture.
+        State = setup_conn(#{migration_target => 142}),
+        Conn = maps:get(conn, State),
         try
             MigConfig = #{conn => Conn, dir => "priv/migrations", strict => true},
+            ?assertEqual({ok, 142, false}, erlang_migrate:version(MigConfig)),
             ?assert(has_index(Conn, ?ACTIVE_TOKEN_INDEX)),
             %% 精确退到 141（GZ 期形态：142 的活跃 token 唯一索引尚不存在），
-            %% 步数从 head 推导，不随后续新迁移落地而漂移
-            %% （A0-REV：原 down 1 步 + 硬编码 {ok,141,_} 只在 head=142 时成立，
-            %% head=143 起断言中止并级联污染后续用例的 marker 库状态）
+            %% 后续不可逆迁移仅向前验证，不再从 head 回滚。
+            %% Later irreversible migrations are verified forward only.
             Head = migration_head(),
             ?assert(Head >= 142),
-            ok = erlang_migrate:down(MigConfig, Head - 141),
+            ok = erlang_migrate:goto(MigConfig, 141),
             ?assertMatch({ok, 141, false}, erlang_migrate:version(MigConfig)),
             ?assertNot(has_index(Conn, ?ACTIVE_TOKEN_INDEX)),
             %% 既有索引未被 down 波及
             ?assert(has_index(Conn, ?USER_DEVICE_INDEX)),
+            ok = erlang_migrate:goto(MigConfig, 142),
+            ?assertEqual({ok, 142, false}, erlang_migrate:version(MigConfig)),
+            ?assert(has_index(Conn, ?ACTIVE_TOKEN_INDEX)),
             ok = erlang_migrate:up(MigConfig),
             ?assertEqual({ok, migration_head(), false}, erlang_migrate:version(MigConfig)),
             ?assert(has_index(Conn, ?ACTIVE_TOKEN_INDEX)),
@@ -777,22 +786,9 @@ down_up_cycle_test(State) ->
             ok = erlang_migrate:up(MigConfig),
             ?assertEqual({ok, migration_head(), false}, erlang_migrate:version(MigConfig))
         after
-            epgsql:close(Conn)
+            close_conn(State)
         end
     end).
-
-connect_marker(State) ->
-    #{host := Host, port := Port, username := User, password := Pass} = maps:get(server, State),
-    {ok, Conn} = inttest_marker_db:safe_connect(#{
-        host => Host,
-        port => Port,
-        username => User,
-        password => Pass,
-        database => maps:get(db, State),
-        timeout => 10000,
-        codecs => [{epgsql_codec_rfc3339_bin, []}]
-    }),
-    Conn.
 
 %% ===================================================================
 %% ⑦ GZ 期形态（head=141，含重复活跃 token）升级到 142 的兼容性
@@ -802,12 +798,15 @@ connect_marker(State) ->
 %% 「同 token 三条活跃 + 一条非活跃历史行」——这正是修复前真实可能出现的
 %% 状态；然后 `up` 升到 head，验证 §1 的数据处置与索引同时生效。
 %% 本用例**会落数据**（不走事务回滚），故排在最后，且 ID 段 996xxx 独立。
-upgrade_compat_test(State) ->
+upgrade_compat_test(HeadState) ->
     ?_test(begin
-        Conn = connect_marker(State),
+        State = setup_conn(#{migration_target => 142}),
+        Conn = maps:get(conn, State),
         try
             MigConfig = #{conn => Conn, dir => "priv/migrations", strict => true},
-            ?assertEqual({ok, migration_head(), false}, erlang_migrate:version(MigConfig)),
+            ?assertEqual({ok, migration_head(), false}, erlang_migrate:version(
+                MigConfig#{conn => maps:get(conn, HeadState)})),
+            ?assertEqual({ok, 142, false}, erlang_migrate:version(MigConfig)),
 
             %% 退到 141：索引不存在 → 可造重复活跃行（GZ 期形态）
             ok = erlang_migrate:goto(MigConfig, 141),
@@ -821,14 +820,23 @@ upgrade_compat_test(State) ->
             ?assertEqual(4, legacy_row_count(Conn)),
 
             %% 升级到 142：数据处置（只留最新活跃）+ 部分唯一索引同时生效
-            ok = erlang_migrate:up(MigConfig),
-            ?assertEqual({ok, migration_head(), false}, erlang_migrate:version(MigConfig)),
+            ok = erlang_migrate:goto(MigConfig, 142),
+            ?assertEqual({ok, 142, false}, erlang_migrate:version(MigConfig)),
             ?assert(has_index(Conn, ?ACTIVE_TOKEN_INDEX)),
             ?assertEqual(1, active_token_count(Conn, ?T_LEGACY)),
             %% 保留的是 updated_at 最新那条（996002 / 2026-03-01）
             ?assertEqual(996002, active_token_owner(Conn, ?T_LEGACY)),
             ?assertEqual(<<"did996-b">>, active_token_device(Conn, ?T_LEGACY)),
             %% 不删行：全部 4 条仍在（3 条降级为 status=0）
+            ?assertEqual(4, legacy_row_count(Conn)),
+            %% head 仓库代码在 forward-up 后复验，历史胜者和行数不得改变。
+            %% Head repo checks follow forward-up; retain the same winner/history.
+            ok = erlang_migrate:up(MigConfig),
+            ?assertEqual({ok, migration_head(), false}, erlang_migrate:version(MigConfig)),
+            ?assert(has_index(Conn, ?ACTIVE_TOKEN_INDEX)),
+            ?assertEqual(1, active_token_count(Conn, ?T_LEGACY)),
+            ?assertEqual(996002, active_token_owner(Conn, ?T_LEGACY)),
+            ?assertEqual(<<"did996-b">>, active_token_device(Conn, ?T_LEGACY)),
             ?assertEqual(4, legacy_row_count(Conn)),
             %% 升级后重新受力：需要一个活动事务（SAVEPOINT）与池化 shim
             %% （register_token 走生产 repo 的 2 元池化入口）。
@@ -858,7 +866,7 @@ upgrade_compat_test(State) ->
                 meck:unload()
             end
         after
-            epgsql:close(Conn)
+            close_conn(State)
         end
     end).
 

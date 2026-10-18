@@ -329,8 +329,16 @@ error_reply(Reply, Status, Message) ->
 
 %% Same original HTTP helpers and real Human device token; no Admin substitution.
 oa_login_link_wrong_key_test_() ->
+    isolated_pg_fixture:test(fun oa_login_link_wrong_key_fixture/0).
+
+oa_login_link_wrong_key_fixture() ->
     {timeout, 900,
-        {setup, fun enterprise_oa_login_three_gap_pg_checks:setup/0,
+        {setup, fun() ->
+            isolated_pg_fixture:setup_single_node_cache(
+                fun enterprise_oa_login_three_gap_pg_checks:setup/0,
+                fun enterprise_oa_login_three_gap_pg_checks:teardown/1
+            )
+        end,
             fun enterprise_oa_login_three_gap_pg_checks:teardown/1, fun(S) ->
                 {timeout, 900, fun() -> focused_link_wrong_key(S) end}
             end}}.

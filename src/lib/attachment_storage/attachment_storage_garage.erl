@@ -30,39 +30,65 @@ put(Ns, C, K, Body) ->
     with_snapshot(Ns, C, K, fun(I) ->
         put_snapshot(I, Body, <<"application/octet-stream">>, #{issued_at => Now, expires_at => Exp})
     end).
-put_snapshot(I, {file, Path}, Mime, Ctx) ->
-    case file:read_file(Path) of
-        {ok, B} -> put_snapshot(I, B, Mime, Ctx);
-        E -> E
-    end;
-put_snapshot(I, Bytes, Mime, #{issued_at := Issued, expires_at := Expiry}) when is_binary(Bytes) ->
-    Diff =
-        calendar:datetime_to_gregorian_seconds(Expiry) -
+put_snapshot(I, Body, Mime, #{issued_at := Issued, expires_at := Expiry}) ->
+    Deadline = erlang:monotonic_time(millisecond) + 30000,
+    try
+        Diff = calendar:datetime_to_gregorian_seconds(Expiry) -
             calendar:datetime_to_gregorian_seconds(Issued),
-    case
-        Diff > 0 andalso Diff =< 604800 andalso
-            calendar:datetime_to_gregorian_seconds(Expiry) >
-                calendar:datetime_to_gregorian_seconds(calendar:universal_time())
-    of
-        true ->
-            Url = signed(I, <<"PUT">>, Mime, Issued, Diff),
-            case
-                httpc:request(
-                    put,
-                    {binary_to_list(Url), [], binary_to_list(Mime), Bytes},
-                    [{timeout, 30000}],
-                    []
-                )
+        ExpiryMs = (calendar:datetime_to_gregorian_seconds(Expiry) - 62167219200) * 1000,
+        case Diff > 0 andalso Diff =< 604800 andalso erlang:system_time(millisecond) < ExpiryMs of
+            true ->
+                attachment_upload_spool:with_source(Body, fun(Source) ->
+                    put_source(I, Source, Mime, Issued, Diff, ExpiryMs, Deadline)
+                end);
+            false -> {error, invalid_signature_context}
+        end
+    catch
+        error:badarg -> {error, invalid_signature_context};
+        error:function_clause -> {error, invalid_signature_context}
+    end;
+put_snapshot(_, _, _, _) ->
+    {error, invalid_signature_context}.
+
+put_source(I, Source, Mime, Issued, Ttl, ExpiryMs, Deadline) ->
+    case request_window(ExpiryMs, Deadline) of
+        {ok, Timeout} ->
+            %% Signed times and identity are frozen; retries only rewind the same inode.
+            %% 签名时间和位置不刷新；HTTP 重试从同一已校验句柄的偏移 0 开始。
+            Url = signed(I, <<"PUT">>, Mime, Issued, Ttl),
+            Producer = fun(Offset) -> produce_chunk(Source, Offset, ExpiryMs, Deadline) end,
+            Headers = [{"content-length", integer_to_list(attachment_upload_spool:size(Source))}],
+            case httpc:request(put,
+                {binary_to_list(Url), Headers, binary_to_list(Mime), {Producer, 0}},
+                [{timeout, Timeout}, {connect_timeout, Timeout}, {autoredirect, false}], [])
             of
                 {ok, {{_, Status, _}, _, _}} when Status >= 200, Status < 300 -> ok;
                 {ok, {{_, Status, _}, _, _}} -> {error, {storage_status, Status}};
                 {error, R} -> {error, R}
             end;
-        false ->
-            {error, invalid_signature_context}
-    end;
-put_snapshot(_, _, _, _) ->
-    {error, invalid_signature_context}.
+        Error -> Error
+    end.
+
+produce_chunk(Source, Offset, ExpiryMs, Deadline) ->
+    case request_window(ExpiryMs, Deadline) of
+        {ok, _} ->
+            case attachment_upload_spool:read(Source, Offset) of
+                {ok, Bytes} -> {ok, Bytes, Offset + byte_size(Bytes)};
+                eof -> eof;
+                {error, Reason} -> erlang:error({upload_read_failed, Reason})
+            end;
+        {error, Reason} -> erlang:error(Reason)
+    end.
+
+request_window(ExpiryMs, Deadline) ->
+    ExpiryLeft = ExpiryMs - erlang:system_time(millisecond),
+    BudgetLeft = Deadline - erlang:monotonic_time(millisecond),
+    case {ExpiryLeft > 0, BudgetLeft > 0} of
+        {false, _} -> {error, invalid_signature_context};
+        {_, false} -> {error, timeout};
+        {true, true} -> {ok, min(ExpiryLeft, BudgetLeft)}
+    end.
+
 head(Ns, C, K) ->
     case read(Ns, C, K) of
         {ok, B} -> {ok, #{size => byte_size(B), content_type => <<"application/octet-stream">>}};

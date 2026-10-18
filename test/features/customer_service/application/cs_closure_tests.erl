@@ -185,6 +185,10 @@ otp_lib_whitelist() ->
         filename,
         epgsql,
         cowboy_req,
+        %% Shared core request-body sealing, not a cross-feature storage bypass.
+        %% 共享核心请求体封装；不绕过跨 Feature facade。
+        attachment_upload_body,
+        attachment_upload_spool,
         elib_response,
         os,
         persistent_term,

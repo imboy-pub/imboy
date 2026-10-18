@@ -46,13 +46,7 @@ absent_table_is_zero_rows_disposed_test_() ->
                 %% 种子：真实用户 + 真实个人消息（验证「存在的表照删」）
                 ok = create_user(Uid),
                 ok = create_user(Peer),
-                {ok, _} = elib_pg:query(
-                    <<
-                        "INSERT INTO public.msg_c2c (id, from_id, to_id, msg_id, msg_type, payload)"
-                        " VALUES ($1, $2, $3, 'm-absent-probe', 't', 'p')"
-                    >>,
-                    [MsgId, Uid, Peer]
-                ),
+                ok = insert_c2c(MsgId, Uid, Peer, <<"m-absent-probe">>),
                 %% 主删除事务：清单含不存在的表（doc_draft_sections）。
                 %% 旧实现：{delete_failed,<<"doc_draft_sections">>,{error,...42P01...}}
                 %% 崩溃 → 事务整体回滚 → 消息/用户行残留（基线 3 例红的根因）。
@@ -76,7 +70,8 @@ absent_table_is_zero_rows_disposed_test_() ->
             after
                 _ = (catch meck:unload(elib_log)),
                 cleanup_user(Uid),
-                cleanup_user(Peer)
+                cleanup_user(Peer),
+                cleanup_c2c_sequence(Uid, Peer)
             end
         end)
     end).
@@ -91,13 +86,7 @@ preflight_blockers_abort_no_partial_deletion_test_() ->
             try
                 ok = create_user(Uid),
                 ok = create_user(Peer),
-                {ok, _} = elib_pg:query(
-                    <<
-                        "INSERT INTO public.msg_c2c (id, from_id, to_id, msg_id, msg_type, payload)"
-                        " VALUES ($1, $2, $3, 'm-blocker-probe', 't', 'p')"
-                    >>,
-                    [MsgId, Uid, Peer]
-                ),
+                ok = insert_c2c(MsgId, Uid, Peer, <<"m-blocker-probe">>),
                 {error, {deletion_preflight_blockers, [Blocker]}} =
                     elib_pg:with_tx(fun(Conn) ->
                         user_deletion_executor:execute_main_tx(Conn, Uid)
@@ -113,7 +102,8 @@ preflight_blockers_abort_no_partial_deletion_test_() ->
                 )
             after
                 cleanup_user(Uid),
-                cleanup_user(Peer)
+                cleanup_user(Peer),
+                cleanup_c2c_sequence(Uid, Peer)
             end
         end)
     end).
@@ -131,13 +121,7 @@ preflight_agent_blocker_abort_no_partial_deletion_test_() ->
             try
                 ok = create_user(Uid),
                 ok = create_user(Peer),
-                {ok, _} = elib_pg:query(
-                    <<
-                        "INSERT INTO public.msg_c2c (id, from_id, to_id, msg_id, msg_type, payload)"
-                        " VALUES ($1, $2, $3, 'm-agent-probe', 't', 'p')"
-                    >>,
-                    [MsgId, Uid, Peer]
-                ),
+                ok = insert_c2c(MsgId, Uid, Peer, <<"m-agent-probe">>),
                 {error, {deletion_preflight_blockers, Blockers}} =
                     elib_pg:with_tx(fun(Conn) ->
                         user_deletion_executor:execute_main_tx(Conn, Uid)
@@ -154,7 +138,8 @@ preflight_agent_blocker_abort_no_partial_deletion_test_() ->
                 )
             after
                 cleanup_user(Uid),
-                cleanup_user(Peer)
+                cleanup_user(Peer),
+                cleanup_c2c_sequence(Uid, Peer)
             end
         end)
     end).
@@ -199,13 +184,7 @@ concurrent_change_after_preflight_rejected_by_db_restrict_test_() ->
             try
                 ok = create_user(Uid),
                 ok = create_user(Peer),
-                {ok, _} = elib_pg:query(
-                    <<
-                        "INSERT INTO public.msg_c2c (id, from_id, to_id, msg_id, msg_type, payload)"
-                        " VALUES ($1, $2, $3, 'm-toctou-probe', 't', 'p')"
-                    >>,
-                    [MsgId, Uid, Peer]
-                ),
+                ok = insert_c2c(MsgId, Uid, Peer, <<"m-toctou-probe">>),
                 %% facts 全绿（stub 撒谎/竞态窗口），但并发注入的 owner
                 %% 行令用户主行删除撞 RESTRICT → 事务回滚
                 {error, _Reason} =
@@ -227,7 +206,8 @@ concurrent_change_after_preflight_rejected_by_db_restrict_test_() ->
                     <<"DELETE FROM public.organization WHERE id = $1">>, [OrgId]
                 ),
                 cleanup_user(Uid),
-                cleanup_user(Peer)
+                cleanup_user(Peer),
+                cleanup_c2c_sequence(Uid, Peer)
             end
         end)
     end).
@@ -277,6 +257,19 @@ create_user(Uid) ->
         >>,
         [Uid, <<"u", (integer_to_binary(Uid))/binary>>]
     ),
+    ok.
+
+insert_c2c(Id, FromId, ToId, Prefix) ->
+    MsgKey = <<Prefix/binary, "-", (integer_to_binary(Id))/binary>>,
+    {ok, 1} = personal_message_order_repo:execute_formal(FromId, ToId, MsgKey,
+        <<"INSERT INTO public.msg_c2c (id, from_id, to_id, msg_id, msg_type, payload, conv_seq)"
+          " VALUES ($1, $2, $3, $4, 't', 'p', $5)">>,
+        [Id, FromId, ToId, MsgKey]),
+    ok.
+
+cleanup_c2c_sequence(FromId, ToId) ->
+    Key = msg_archive_repo:conv_key(<<"c2c">>, FromId, ToId),
+    {ok, _} = elib_pg:execute(<<"DELETE FROM public.msg_store_seq WHERE conv_key=$1">>, [Key]),
     ok.
 
 cleanup_user(Uid) ->
