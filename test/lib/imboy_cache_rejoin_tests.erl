@@ -116,9 +116,14 @@ cancel(Ref) ->
     _ = erlang:cancel_timer(Ref),
     receive {timeout, Ref, reconcile_tick} -> ok after 0 -> ok end.
 
+%% The full suite has a live application-owned metadata table. Run callbacks
+%% that sweep metadata in a fresh VM; never borrow or mutate that live table.
+with_meta(Fun) ->
+    pure_mock_fixture:run(fun() -> with_isolated_meta(Fun) end).
+
 %% Empty real metadata lets the ordinary READY reconciliation run unchanged.
 %% No mock of the timer, reconciliation callback or recovery authorization.
-with_meta(Fun) ->
+with_isolated_meta(Fun) ->
     undefined = ets:whereis(imboy_cache_meta),
     Saved = application:get_env(imboy, cluster_nodes),
     application:set_env(imboy, cluster_nodes, []),
@@ -131,3 +136,16 @@ with_meta(Fun) ->
             {ok, V} -> application:set_env(imboy, cluster_nodes, V)
         end
     end.
+
+parent_metadata_and_environment_are_untouched_test() ->
+    pure_mock_fixture:run(fun() ->
+        Table = ets:new(imboy_cache_meta, [named_table, public, set]),
+        Sentinel = {fixture_parent_sentinel, make_ref()},
+        true = ets:insert(Table, Sentinel),
+        application:set_env(imboy, cluster_nodes, ['parent@synthetic']),
+        nodeup_storm_cannot_postpone_tick_test(),
+        queued_tick_is_not_replaced_test(),
+        ?assertEqual(self(), ets:info(Table, owner)),
+        ?assertEqual([Sentinel], ets:tab2list(Table)),
+        ?assertEqual({ok, ['parent@synthetic']}, application:get_env(imboy, cluster_nodes))
+    end).
