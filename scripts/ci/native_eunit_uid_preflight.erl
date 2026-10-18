@@ -16,7 +16,10 @@ run() ->
         Selected
     end},
     ReportDir = os:getenv("NATIVE_UID_XML"),
-    case eunit:test(Tests, [verbose, {report, {eunit_surefire, [{dir, ReportDir}]}}]) of
+    %% OTP's Surefire reporter requires a named top-level suite; an anonymous
+    %% setup can pass its tests but crash escape_suitename(undefined, []).
+    case eunit:test([{"native_uid_preflight", Tests}],
+                   [verbose, {report, {eunit_surefire, [{dir, ReportDir}]}}]) of
         ok -> halt(0);
         error -> halt(2)
     end.

@@ -153,18 +153,8 @@ python3 scripts/ci/native-eunit-validate.py "$PRIVATE/uid.raw.log" "$NATIVE_CI_A
 [[ "$uid_rc" == 0 ]] || exit "$uid_rc"
 # Successful EUnit output is captured by its official XML reporter. Retain only
 # exact permission-denial proof rows, never response headers or credentials.
-sudo -n python3 - "$PRIVATE/uid-xml" "$NATIVE_CI_ARTIFACTS/uid-proof.json" <<'PY'
-import json,pathlib,re,sys,xml.etree.ElementTree as ET
-proof=[]
-for path in pathlib.Path(sys.argv[1]).glob('*.xml'):
- for node in ET.parse(path).iter('system-out'):
-  for line in (node.text or '').splitlines():
-   if line.startswith('W403_PROVIDER_BYPASS '): proof.append(json.loads(line.split(' ',1)[1]))
-expected={s+'/disk/provider_bypass_writer_denied' for s in ['ordinary','enterprise_internal','enterprise_seat','cs_widget']}
-assert len(proof)==4 and {p['leaf'] for p in proof}==expected, 'Missing exact four provider bypass proof rows'
-assert all(p['owner_uid']==0 and p['writer_uid']>0 and p['unprivileged_writer_exit']!=0 for p in proof)
-pathlib.Path(sys.argv[2]).write_text(json.dumps(proof,indent=2)+'\n')
-PY
+sudo -n python3 scripts/ci/native-eunit-uid-proof.py \
+  "$PRIVATE/uid-xml" "$NATIVE_CI_ARTIFACTS/uid-proof.json"
 sudo -n chown "$(id -u):$(id -g)" "$NATIVE_CI_ARTIFACTS/uid-proof.json"
 
 # A separate freshly migrated database prevents preflight residue from changing

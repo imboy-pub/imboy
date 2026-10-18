@@ -9,11 +9,83 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import xml.etree.ElementTree as ET
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent.parent
 
 class NativePlanTests(unittest.TestCase):
+    def test_uid_proof_exact_report(self):
+        surfaces = ('ordinary', 'enterprise_internal', 'enterprise_seat', 'cs_widget')
+        leaves = [s+'/disk/provider_bypass_writer_denied' for s in surfaces]
+
+        def report():
+            root = ET.Element('testsuite', name='native_uid_preflight', tests='4', failures='0', errors='0', skipped='0')
+            for leaf in leaves:
+                case = ET.SubElement(root, 'testcase', name='fixture:1 test ('+leaf+')')
+                row = dict(leaf=leaf, owner_uid=0, writer_uid=65534, unprivileged_writer_exit=2)
+                ET.SubElement(case, 'system-out').text = 'before <&>\nW403_PROVIDER_BYPASS '+json.dumps(row)+'\nafter\n'
+            return root
+
+        def row_change(root, key, value):
+            node = root[0][0]
+            row = json.loads(node.text.splitlines()[1].split(' ', 1)[1])
+            row[key] = value
+            node.text = 'W403_PROVIDER_BYPASS '+json.dumps(row)+'\n'
+
+        mutations = [
+            ('wrong suite', lambda r: r.set('name', 'other')),
+            ('wrong count', lambda r: r.set('tests', '3')),
+            ('failed counter', lambda r: r.set('failures', '1')),
+            ('error counter', lambda r: r.set('errors', '1')),
+            ('skip counter', lambda r: r.set('skipped', '1')),
+            ('missing case', lambda r: r.remove(r[0])),
+            ('extra case', lambda r: ET.SubElement(r, 'testcase')),
+            ('failed case', lambda r: ET.SubElement(r[0], 'failure')),
+            ('error case', lambda r: ET.SubElement(r[0], 'error')),
+            ('skipped case', lambda r: ET.SubElement(r[0], 'skipped')),
+            ('missing output', lambda r: r[0].remove(r[0][0])),
+            ('missing proof', lambda r: setattr(r[0][0], 'text', 'ordinary output')),
+            ('duplicate proof', lambda r: setattr(r[0][0], 'text', r[0][0].text*2)),
+            ('malformed json', lambda r: setattr(r[0][0], 'text', 'W403_PROVIDER_BYPASS {bad')),
+            ('nonobject json', lambda r: setattr(r[0][0], 'text', 'W403_PROVIDER_BYPASS []')),
+            ('unknown leaf', lambda r: row_change(r, 'leaf', 'unexpected')),
+            ('duplicate leaf', lambda r: row_change(r, 'leaf', leaves[1])),
+            ('case mismatch', lambda r: r[0].set('name', 'wrong descriptor')),
+            ('nonroot owner', lambda r: row_change(r, 'owner_uid', 1000)),
+            ('boolean owner', lambda r: row_change(r, 'owner_uid', False)),
+            ('root writer', lambda r: row_change(r, 'writer_uid', 0)),
+            ('negative writer', lambda r: row_change(r, 'writer_uid', -1)),
+            ('boolean writer', lambda r: row_change(r, 'writer_uid', True)),
+            ('successful write', lambda r: row_change(r, 'unprivileged_writer_exit', 0)),
+            ('invalid exit', lambda r: row_change(r, 'unprivileged_writer_exit', -1)),
+            ('string exit', lambda r: row_change(r, 'unprivileged_writer_exit', '2')),
+            ('unapproved field', lambda r: row_change(r, 'secret', 'do-not-export')),
+        ]
+        with tempfile.TemporaryDirectory() as temp:
+            directory = Path(temp)/'xml'; directory.mkdir()
+            xml = directory/'TEST-native_uid_preflight.xml'
+            out = Path(temp)/'proof.json'
+
+            def check(good):
+                if out.exists(): out.unlink()
+                result = subprocess.run([sys.executable, str(HERE/'native-eunit-uid-proof.py'), str(directory), str(out)], capture_output=True)
+                self.assertEqual(result.returncode == 0, good)
+                self.assertEqual(out.exists(), good)
+                if good:
+                    self.assertEqual({p['leaf'] for p in json.loads(out.read_text())}, set(leaves))
+                self.assertNotIn(b'do-not-export', result.stdout+result.stderr)
+
+            ET.ElementTree(report()).write(xml, encoding='utf-8'); check(True)
+            for name, mutate in mutations:
+                with self.subTest(name=name):
+                    root = report(); mutate(root)
+                    ET.ElementTree(root).write(xml, encoding='utf-8'); check(False)
+            xml.write_text('<testsuite>'); check(False)
+            xml.unlink(); check(False)
+            ET.ElementTree(report()).write(xml, encoding='utf-8')
+            extra = directory/'TEST-extra.xml'; extra.write_bytes(xml.read_bytes()); check(False)
+
     def test_job_env_context_and_runner_paths(self):
         workflow = (ROOT / '.github/workflows/native-eunit-acceptance.yml').read_text()
         job_env = re.search(r'^    env:\n(.*?)^    steps:', workflow, re.M | re.S).group(1)
