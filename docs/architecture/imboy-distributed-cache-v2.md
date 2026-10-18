@@ -191,6 +191,20 @@ DEGRADED 不承诺同一补偿时限；水位只触发恢复，不替代完整�
 事件先核对配置/Registry 摘要，再核对 epoch，最后登记化身；拒绝事件不得换 Boot 或
 删除当前来源序列。旧 epoch invalidate 的保守失效例外仍须通过摘要校验。
 
+摘要计算在调用进程内复用完全相同的配置输入，减少重复读取、编码和散列；
+每次调用仍读取当前应用配置，变更后立即重新计算，不缓存授权判定。
+预算摘要由同一次捕获的 replication 配置计算，字段顺序、默认值及 wire hash 不变。
+budget 只在需要时从捕获配置纯计算；每个调用者最多保留 config/registry 两个摘要项，单项输入的外部编码不超过 4 KiB，且最多遍历 256 个结构单元；字符列表不能利用
+ETF 的紧凑编码绕过此限制，子二进制也不得引用超过 4 KiB 的底层二进制。更大的合法配置
+正常计算但不保留。此限制不是实际进程堆或节点 RSS 上限；长生命周期调用者较多时
+须同时测量内存。代码函数版本令牌变化使旧摘要失配；只保留令牌而不保留旧代码的 local fun。
+无需添加依赖或配置迁移。
+
+Fingerprint reuse is caller-local and keyed by exact current configuration plus a function code-version token.
+It preserves wire hashes and live authorization checks. Two slots (config/registry only) retain at most 4 KiB of
+serialized input each, with a 256-cell structural admission guard and a backing-binary limit.
+Larger valid inputs bypass reuse. This is not a heap/RSS guarantee.
+
 `get/1`、`get/2`、`get_subkey/2`、`get_wait/1` 统一检查复制读取：当前 Registry 的 replicate Key
 或仍有 rindex 的 Key，必须仍被授权、节点 READY、具有未过期 live revision 才可返回值。
 缺元表/版本、墓碑、撤销或恢复中均返回 miss；缺版本不因节点 READY 自动放行。

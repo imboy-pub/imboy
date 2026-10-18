@@ -5,6 +5,7 @@
 -export([
     run/0,
     app_up/0,
+    app_up/1,
     reset_resource_sample/0,
     resource_sample/0,
     applied/2,
@@ -107,27 +108,34 @@ start_distribution() ->
     end.
 
 app_up() ->
+    app_up(#{}).
+
+%% Isolated benchmark overrides are installed before joining syn or recovery;
+%% joining with default budgets first would transiently advertise a wrong hash.
+app_up(Options) ->
     ok = deps_on_path(),
     case application:load(imboy) of
         ok -> ok;
         {error, {already_loaded, imboy}} -> ok
     end,
+    RepNS = maps:get(replication_namespace, Options, ?REP_NS),
     Arm = arm(),
     {Protocol, FencedNamespaces} =
         case Arm of
             <<"base">> -> {legacy, []};
-            <<"cand">> -> {v2, [?REP_NS, ?LOC_NS]}
+            <<"cand">> -> {v2, [RepNS, ?LOC_NS]}
         end,
     application:set_env(imboy, cache_sync_protocol, Protocol),
-    application:set_env(imboy, cache_registry_overrides, #{
-        ?REP_NS => {replicate, false}, ?LOC_NS => {local, false}
-    }),
-    application:set_env(imboy, cache_replication, #{whitelist => [?REP_NS, ?LOC_NS]}),
+    application:set_env(imboy, cache_registry_overrides,
+        maps:get(registry_overrides, Options,
+            #{RepNS => {replicate, false}, ?LOC_NS => {local, false}})),
+    application:set_env(imboy, cache_replication,
+        maps:merge(#{whitelist => [RepNS, ?LOC_NS]}, maps:get(replication, Options, #{}))),
     application:set_env(imboy, cache_fenced_namespaces, FencedNamespaces),
     {ok, _} = application:ensure_all_started(crypto),
     {ok, _} = application:ensure_all_started(syn),
     ok = syn:add_node_to_scopes([imboy_cache]),
-    {ok, D} = depcache:start_link(imboy_cache, #{memory_max => 64}),
+    {ok, D} = depcache:start_link(imboy_cache, #{memory_max => maps:get(memory_max, Options, 64)}),
     true = unlink(D),
     {ok, M} = elib_metric:start_link(),
     true = unlink(M),

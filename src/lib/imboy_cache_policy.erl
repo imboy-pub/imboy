@@ -208,8 +208,9 @@ recovery_window_sec() -> rep_cfg(recovery_window_sec, ?DEFAULT_RECOVERY_WINDOW_S
 %% 墓碑保留下界按计划 6.3 公式从当前配置推导，但不低于默认 720。
 -spec tombstone_ttl_sec() -> non_neg_integer().
 tombstone_ttl_sec() ->
-    T = max_ttl_sec(),
-    R = recovery_window_sec(),
+    tombstone_ttl_sec(max_ttl_sec(), recovery_window_sec()).
+
+tombstone_ttl_sec(T, R) ->
     S = 60,
     D = 30,
     C = 5,
@@ -279,40 +280,51 @@ peer_max() -> rep_cfg(peer_max, 64).
 %% 规范化序列化后取 SHA-256 前 16 字节；任何预算值变化都会改变摘要。
 -spec budget_digest() -> binary().
 budget_digest() ->
-    Parts = [
-        {n_max, n_max()},
-        {n_max_bytes, n_max_bytes()},
-        {t_max, t_max()},
-        {t_max_bytes, t_max_bytes()},
-        {j_max, j_max()},
-        {grace_max, grace_max()},
-        {peer_max, peer_max()},
-        {j_max_bytes, j_max_bytes()},
-        {b_max, b_max()},
-        {b_max_bytes, b_max_bytes()},
-        {p_max, p_max()},
-        {gen_max_bytes, gen_max_bytes()},
-        {p_max_bytes, p_max_bytes()},
-        {r_max_rounds, r_max_rounds()},
-        {d_max_ms, d_max_ms()},
-        {max_value_bytes, max_value_bytes()},
+    budget_digest(application:get_env(imboy, cache_replication, #{})).
+
+budget_digest(Config) ->
+    digest_parts(budget_parts(Config)).
+
+%% One captured configuration supplies every budget; no mixed reads while building a digest.
+budget_parts(Config) ->
+    Get = fun(Key, Default) -> rep_cfg(Config, Key, Default) end,
+    N = Get(n_max, ?DEFAULT_N_MAX),
+    TTL = Get(max_ttl_sec, ?DEFAULT_MAX_TTL_SEC),
+    Recovery = Get(recovery_window_sec, ?DEFAULT_RECOVERY_WINDOW_SEC),
+    [
+        {n_max, N},
+        {n_max_bytes, Get(n_max_bytes, 16 * 1024 * 1024)},
+        {t_max, Get(t_max, ?DEFAULT_T_MAX)},
+        {t_max_bytes, Get(t_max_bytes, 8 * 1024 * 1024)},
+        {j_max, Get(j_max, 2048)},
+        {grace_max, Get(grace_max, 256)},
+        {peer_max, Get(peer_max, 64)},
+        {j_max_bytes, Get(j_max_bytes, 32 * 1024 * 1024)},
+        {b_max, Get(b_max, ?DEFAULT_B_MAX)},
+        {b_max_bytes, Get(b_max_bytes, 32 * 1024 * 1024)},
+        {p_max, Get(p_max, ?DEFAULT_P_MAX)},
+        {gen_max_bytes, Get(gen_max_bytes, N * 128)},
+        {p_max_bytes, Get(p_max_bytes, ?DEFAULT_P_MAX_BYTES)},
+        {r_max_rounds, Get(r_max_rounds, ?DEFAULT_R_MAX_ROUNDS)},
+        {d_max_ms, Recovery * 1000},
+        {max_value_bytes, Get(max_value_bytes, ?DEFAULT_MAX_VALUE_BYTES)},
         {protocol_meta_max_bytes, protocol_meta_max_bytes()},
-        {max_ttl_sec, max_ttl_sec()},
-        {high_watermark, high_watermark()},
-        {grace_window_ms, grace_window_ms()}
-    ],
-    <<Digest:16/binary, _/binary>> = crypto:hash(
-        sha256, term_to_binary(Parts, [{minor_version, 2}])
-    ),
-    Digest.
+        {max_ttl_sec, TTL},
+        {high_watermark, Get(high_watermark, ?DEFAULT_HIGH_WATERMARK)},
+        {grace_window_ms, tombstone_ttl_sec(TTL, Recovery) * 1000}
+    ].
 
 %% @doc 缓存同步配置摘要：预算 + 白名单 + fenced 集的规范化摘要（V2 信封 config_hash）。
 -spec config_hash() -> binary().
 config_hash() ->
-    Parts = {
-        budget_digest(),
-        whitelist(),
-        fenced_namespaces(),
+    Inputs = {application:get_env(imboy, cache_replication, #{}), fenced_namespaces()},
+    cached_digest(config, Inputs, fun config_parts/1).
+
+config_parts({Config, Fenced}) ->
+    {
+        budget_digest(Config),
+        whitelist(Config),
+        Fenced,
         {snapshot_tombstones_v1, legacy_sequence_v2, gap_recovery_v1, snapshot_pull_v1,
             tombstone_expiry_v1, snapshot_tail_watermark_v1, authority_epoch_binding_v1,
             authority_event_epoch_v1, entry_epoch_v1, snapshot_cohort_v1, public_api_boundary_v1,
@@ -336,25 +348,67 @@ config_hash() ->
             snapshot_contiguous_delta_receipts_v1, snapshot_certified_foreign_floor_v1,
             snapshot_final_commit_barrier_v1, snapshot_equal_content_evidence_v1,
             sensitive_peer_boot_health_v1, observed_peer_loss_window_cold_v2}
-    },
-    <<Digest:16/binary, _/binary>> = crypto:hash(
-        sha256, term_to_binary(Parts, [{minor_version, 2}])
-    ),
-    Digest.
+    }.
 
 %% @doc Registry 生效视图摘要（静态表 + overrides 合并后按 namespace 排序；V2 信封 registry_hash）。
 -spec registry_hash() -> binary().
 registry_hash() ->
     Overrides = application:get_env(imboy, cache_registry_overrides, #{}),
-    Merged = maps:merge(?REGISTRY, Overrides),
-    Sorted = lists:sort(maps:to_list(Merged)),
+    cached_digest(registry, Overrides, fun registry_parts/1).
+
+registry_parts(Overrides) ->
+    lists:sort(maps:to_list(maps:merge(?REGISTRY, Overrides))).
+
+%% At most two entries per caller, each retaining at most 4 KiB of serialized
+%% inputs and 256 structural cells (not a BEAM heap-size bound). Compact ETF
+%% strings and sub-binaries must not hide large retained heaps/backing binaries.
+%% Large valid inputs bypass memoization.
+%% Entries are replaced on input change. No TTL or global
+%% configuration cache: live changes are observed on the very next invocation.
+%% The local function code token prevents reuse across a code replacement,
+%% while retaining only a binary token rather than a local fun.
+cached_digest(Name, Inputs, PartsFun) ->
+    Key = {?MODULE, digest, Name},
+    {new_uniq, CodeVersion} = erlang:fun_info(PartsFun, new_uniq),
+    case erlang:get(Key) of
+        {Inputs, CodeVersion, Digest} ->
+            Digest;
+        _ ->
+            Digest = digest_parts(PartsFun(Inputs)),
+            case erlang:external_size(Inputs) =< 4096 andalso small_digest_inputs([Inputs], 256) of
+                true -> erlang:put(Key, {Inputs, CodeVersion, Digest});
+                false -> erlang:erase(Key)
+            end,
+            Digest
+    end.
+
+%% Miss-only, bounded traversal. List cons cells count separately because ETF
+%% packs byte lists much more tightly than their on-heap representation.
+small_digest_inputs([], _) -> true;
+small_digest_inputs(_, Left) when Left =< 0 -> false;
+small_digest_inputs([[] | Rest], Left) -> small_digest_inputs(Rest, Left - 1);
+small_digest_inputs([[H | T] | Rest], Left) ->
+    small_digest_inputs([H, T | Rest], Left - 1);
+small_digest_inputs([V | Rest], Left) when is_tuple(V), tuple_size(V) < Left ->
+    small_digest_inputs(tuple_to_list(V) ++ Rest, Left - 1);
+small_digest_inputs([V | Rest], Left) when is_map(V), map_size(V) * 2 < Left ->
+    small_digest_inputs(maps:to_list(V) ++ Rest, Left - 1);
+small_digest_inputs([V | Rest], Left) when is_binary(V) ->
+    binary:referenced_byte_size(V) =< 4096 andalso small_digest_inputs(Rest, Left - 1);
+small_digest_inputs([V | Rest], Left) when is_atom(V); is_number(V) ->
+    small_digest_inputs(Rest, Left - 1);
+small_digest_inputs(_, _) -> false.
+
+digest_parts(Parts) ->
     <<Digest:16/binary, _/binary>> = crypto:hash(
-        sha256, term_to_binary(Sorted, [{minor_version, 2}])
+        sha256, term_to_binary(Parts, [{minor_version, 2}])
     ),
     Digest.
 
 rep_cfg(K, Default) ->
-    Cfg = application:get_env(imboy, cache_replication, #{}),
+    rep_cfg(application:get_env(imboy, cache_replication, #{}), K, Default).
+
+rep_cfg(Cfg, K, Default) ->
     V = maps:get(K, Cfg, Default),
     case is_integer(V) andalso V > 0 of
         true -> V;
@@ -362,7 +416,9 @@ rep_cfg(K, Default) ->
     end.
 
 whitelist() ->
-    Cfg = application:get_env(imboy, cache_replication, #{}),
+    whitelist(application:get_env(imboy, cache_replication, #{})).
+
+whitelist(Cfg) ->
     WL = maps:get(whitelist, Cfg, []),
     [NS || NS <- WL, is_atom(NS)].
 

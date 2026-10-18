@@ -2411,34 +2411,75 @@ c9d_incarnation_compensation(A, B) ->
 %% C05 oracle（核心）：分区期间权威侧更新、失效丢失；重连后受影响 Key
 %% 在 deadline 内返回权威值，不依赖旧 TTL 自然到期。
 c9e_partition_reconnect(A, B, C) ->
-    ok = ensure_c9_ready(A),
-    ok = ensure_c9_ready(B),
-    ok = ensure_c9_ready(C),
+    [ok = ensure_c9_ready(N) || N <- [A, B, C]],
     FKey = {cache_v2_test_rep, c9e_part},
-    %% A 预写旧值（fenced namespace 的 invalidate 类语义：值+栅栏）
-    ok = rpc:call(A, imboy_cache_sync, invalidate, [FKey], ?RPC_MS),
-    timer:sleep(300),
-    %% 分区：A 与 B/C 断开
-    true = rpc:call(A, erlang, disconnect_node, [B], ?RPC_MS),
-    true = rpc:call(A, erlang, disconnect_node, [C], ?RPC_MS),
-    timer:sleep(500),
-    %% 权威侧（B）在分区期间推进：模拟 PG 权威变更后的缓存失效（B 侧
-    %% invalidate 广播在分区内丢失，A 不感知）
-    ok = rpc:call(B, imboy_cache_sync, invalidate, [FKey], ?RPC_MS),
-    timer:sleep(500),
-    %% 重连
-    true = rpc:call(A, net_kernel, connect_node, [B], ?RPC_MS),
-    true = rpc:call(A, net_kernel, connect_node, [C], ?RPC_MS),
-    timer:sleep(1500),
-    %% 重连后 B 发新事件（<<0:128>> 伪装化身 ≠ A 已知的 B 化身 → changed）：
-    %% A 检测并补偿 fenced key。G0 必须在事件前读——inject 的 rpc 返回时
-    %% A 可能已完成应用与补偿（r35 实证 GA==G0 假阴性）
-    G0 = rpc:call(A, imboy_cache_sync, generation, [FKey], ?RPC_MS),
-    ok = rpc:call(B, imboy_cache, put, [FKey, <<"authoritative">>, 120, replicate], ?RPC_MS),
-    GA = converge_generation(A, FKey, G0),
-    true = GA > G0,
-    %% A 在 deadline 内返回权威值：补偿 flush 旧值 + 事件 set 新值
-    %% （depcache 直读——get 拦截层对未 verified key miss 是另一层语义）
+    ok = rpc:call(A, imboy_cache, put, [FKey, <<"old">>, 120, replicate], ?RPC_MS),
+    [{ok, <<"old">>} = converge_get(N, FKey, {ok, <<"old">>}) || N <- [A, B, C]],
+    {ok, OldRev} = rpc:call(A, ?MODULE, read_rev, [FKey], ?RPC_MS),
+    GBefore = rpc:call(A, imboy_cache_sync, generation, [FKey], ?RPC_MS),
+    %% 双向 cookie 阻断自动重连；保留 driver RPC 通道，恢复每条边原 cookie。
+    %% Block both directions, retaining driver RPC and restoring each edge's cookie.
+    Edges = [{A, B}, {A, C}, {B, A}, {C, A}],
+    Cookies = [{X, Y, rpc:call(X, erlang, get_cookie, [Y], ?RPC_MS)} || {X, Y} <- Edges],
+    CutAbsent = fun() ->
+        lists:all(fun({X, Y}) ->
+            not lists:member(Y, rpc:call(X, erlang, nodes, [], ?RPC_MS))
+        end, Edges)
+    end,
+    {GCut, Rev, Expires} =
+        try
+            [true = rpc:call(X, erlang, set_cookie, [Y,
+                case X =:= A of
+                    true -> c9e_island_cookie;
+                    false -> c9e_survivor_cookie
+                end], ?RPC_MS) || {X, Y} <- Edges],
+            [rpc:call(X, erlang, disconnect_node, [Y], ?RPC_MS) || {X, Y} <- Edges],
+            true = converge_pred(CutAbsent),
+            %% 不同方向必须使用不同 cookie；主动重连失败证明阻断有效。
+            %% Distinct cookies must reject reconnect attempts in both directions.
+            [false = rpc:call(X, net_kernel, connect_node, [Y], ?RPC_MS) || {X, Y} <- Edges],
+            true = CutAbsent(),
+            %% 先区分失联即时栅栏，再观察真正丢失事件的恢复补偿。
+            %% Separate immediate loss fencing from recovery of missed events.
+            GAtCut = converge_generation(A, FKey, GBefore),
+            true = GAtCut > GBefore,
+            ok = rpc:call(B, imboy_cache, invalidate, [FKey], ?RPC_MS),
+            ok = rpc:call(B, imboy_cache, put,
+                [FKey, <<"authoritative">>, 120, replicate], ?RPC_MS),
+            pong = rpc:call(B, gen_server, call, [imboy_cache_sync, ping_ok], ?RPC_MS),
+            {ok, <<"authoritative">>} = converge_get(C, FKey, {ok, <<"authoritative">>}),
+            {ok, WrittenRev} = rpc:call(B, ?MODULE, read_rev, [FKey], ?RPC_MS),
+            {ok, WrittenExpiry} = rpc:call(B, ?MODULE, read_expires, [FKey], ?RPC_MS),
+            true = WrittenRev > OldRev,
+            true = CutAbsent(),
+            GAtCut = rpc:call(A, imboy_cache_sync, generation, [FKey], ?RPC_MS),
+            {ok, OldRev} = rpc:call(A, ?MODULE, read_rev, [FKey], ?RPC_MS),
+            %% Ordinary replicas may serve their old value during a partition.
+            %% Accept only a miss or that exact old value, never RPC errors/new data.
+            case rpc:call(A, imboy_cache, get, [FKey], ?RPC_MS) of
+                undefined -> ok;
+                {ok, <<"old">>} -> ok;
+                Unexpected -> error({c9e_partition_read, Unexpected})
+            end,
+            {GAtCut, WrittenRev, WrittenExpiry}
+        after
+            [true = rpc:call(X, erlang, set_cookie, [Y, Cookie], ?RPC_MS)
+                || {X, Y, Cookie} <- Cookies],
+            [true = rpc:call(X, net_kernel, connect_node, [Y], ?RPC_MS) || {X, Y} <- Edges]
+        end,
+    %% 不再写入/注入 tick；75秒覆盖原60秒自然校对及恢复余量。
+    %% No later write or injected tick; allow the original 60s interval plus recovery.
+    %% Missing while recovering is safe, but a permanent miss is not convergence.
+    case converge_get_quiet(A, FKey, {ok, <<"authoritative">>}, 75000) of
+        {ok, <<"authoritative">>} -> ok;
+        Other -> error({c9e_public_authority_unavailable, Other,
+            depcache_direct_get(A, FKey), tail_checkpoint_state([A, B, C])})
+    end,
+    ready = rpc:call(A, imboy_cache_sync, status, [], ?RPC_MS),
+    GA = rpc:call(A, imboy_cache_sync, generation, [FKey], ?RPC_MS),
+    true = GA > GCut,
+    {ok, Rev} = rpc:call(A, ?MODULE, read_rev, [FKey], ?RPC_MS),
+    {ok, Expires} = rpc:call(A, ?MODULE, read_expires, [FKey], ?RPC_MS),
     <<"authoritative">> = converge_value(A, FKey),
     ok.
 
