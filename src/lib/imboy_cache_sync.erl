@@ -8,6 +8,7 @@
 -include("chat.hrl").
 -include("imboy_cache_sync_state.hrl").
 -define(CACHE_GROUP_NAME, dsync_handler).
+-define(REJOIN_RECONCILE_MS, 1000).
 %% API
 -export([
     start_link/0,
@@ -332,6 +333,10 @@ handle_info({timeout, _Ref, cache_recovery}, State) ->
 %% --- 同步消息（legacy + V2）---
 handle_info({cache_sync, Msg}, State) ->
     {noreply, handle_sync_message(Msg, State)};
+%% nodeup precedes syn convergence. Coalesce a delayed check into the existing
+%% timer; keep the normal periodic fallback if the peer is not visible yet.
+handle_info({nodeup, Node}, #state{status = ready} = State) when is_atom(Node) ->
+    {noreply, expedite_reconcile(State)};
 handle_info({nodedown, Node}, State) ->
     case imboy_cache_sync_coverage:observe_node_down(Node) of
         cold -> {noreply, imboy_cache_sync_recover:start_cold_recovery(State)};
@@ -504,6 +509,22 @@ handle_info({timeout, Ref, reconcile_tick}, State) ->
     {noreply, imboy_cache_sync_recover:reconcile_tick(Ref, State)};
 handle_info(_Info, State) ->
     {noreply, State}.
+
+%% Never postpone an earlier/queued tick. Repeated nodeups share one timer;
+%% canceled timeout messages remain harmless under the existing reference guard.
+expedite_reconcile(#state{reconcile_timer = Ref} = State) ->
+    case is_reference(Ref) andalso erlang:read_timer(Ref) of
+        Remaining when is_integer(Remaining), Remaining > ?REJOIN_RECONCILE_MS ->
+            case erlang:cancel_timer(Ref) of
+                false -> State; %% Expired between read and cancel: keep queued tick.
+                Left -> State#state{reconcile_timer = erlang:start_timer(
+                    min(Left, ?REJOIN_RECONCILE_MS), self(), reconcile_tick)}
+            end;
+        false when Ref =:= undefined ->
+            State#state{reconcile_timer = erlang:start_timer(
+                ?REJOIN_RECONCILE_MS, self(), reconcile_tick)};
+        _ -> State
+    end.
 
 -spec terminate(term(), #state{}) -> ok.
 terminate(_Reason, _State) ->

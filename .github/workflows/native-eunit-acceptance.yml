@@ -1,10 +1,10 @@
 name: Native full EUnit acceptance (temporary)
 
-# Staged for review only. Enable only after approving this exact branch push.
-# No default-branch changes, dispatch, schedule, PR creation or deployment.
+# Explicitly approved isolated EUnit/cache branches only.
+# No default-branch trigger, schedule, PR creation or deployment.
 on:
   push:
-    branches: [ci/native-eunit-acceptance-20261018, ci/eunit-followup-20261018]
+    branches: [ci/native-eunit-acceptance-20261018, ci/eunit-followup-20261018, cache/simplify-set-sync]
 
 permissions:
   contents: read

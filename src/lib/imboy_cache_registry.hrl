@@ -1,5 +1,5 @@
 %% W0 Registry 投影：namespace => {Policy, Sensitive}
-%% local 9 / invalidate 36 / G-QR_BLOCKED 2，共 47 条（19.4 零静默缺漏）。
+%% local 9 / invalidate 36 / replicate 1 / G-QR_BLOCKED 2，共 48 条（19.4 零静默缺漏）。
 -define(REGISTRY, #{
     %% --- local（本地重建，禁止跨节点广播）---
     local_cache => {local, true},
@@ -49,6 +49,9 @@
     user_device_name => {invalidate, true},
     user_dnd_rule => {invalidate, true},
     user_tag_relation => {invalidate, true},
+    %% --- replicate（仅显式白名单启用的非敏感、可重建数据）---
+    %% Never use for authorization, tokens, counters, locks or atomic consumption.
+    shared_cache => {replicate, false},
     %% --- blocked（G-QR 未决：19.2 QR 两类 Key 禁止 replicate，
     %%     不因测试开关或配置绕过；修复须走独立方案与 Schema 决策）---
     qr_login => {blocked, true},
