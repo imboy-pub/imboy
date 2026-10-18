@@ -4,7 +4,7 @@ name: Native full EUnit acceptance (temporary)
 # No default-branch changes, dispatch, schedule, PR creation or deployment.
 on:
   push:
-    branches: [ci/native-eunit-acceptance-20261018]
+    branches: [ci/native-eunit-acceptance-20261018, ci/eunit-followup-20261018]
 
 permissions:
   contents: read

@@ -77,7 +77,7 @@ open_private(Dir) ->
             {ok, {upload_spool_writer, Fh}}
         catch
             Class:Reason:Stack ->
-                file:close(Fh),
+                _ = file:close(Fh),
                 erlang:raise(Class, Reason, Stack)
         after
             remove_owned_path(Path, Info, fun file:delete/1)

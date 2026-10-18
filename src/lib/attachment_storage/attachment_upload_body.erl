@@ -8,10 +8,10 @@ read(Req, Max) when is_integer(Max), Max > 0 ->
         {ok, Writer} ->
             try receive_chunks(Req, Writer, 0, Max) of
                 {ok, _, _} = Result -> Result;
-                Error -> attachment_upload_spool:close(Writer), Error
+                Error -> _ = attachment_upload_spool:close(Writer), Error
             catch
                 Class:Reason:Stack ->
-                    attachment_upload_spool:close(Writer),
+                    _ = attachment_upload_spool:close(Writer),
                     erlang:raise(Class, Reason, Stack)
             end;
         {error, _} = Error -> Error
@@ -31,8 +31,7 @@ receive_chunks(Req, Writer, Size, Max) ->
                             seal_body(NextWriter, NextReq);
                         Error -> Error
                     end
-            end;
-        {error, _} = Error -> Error
+            end
     end.
 
 seal_body(Writer, Req) ->
