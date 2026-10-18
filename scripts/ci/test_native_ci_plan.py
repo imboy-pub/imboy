@@ -124,7 +124,7 @@ class NativePlanTests(unittest.TestCase):
 
     def test_final_command_and_scope(self):
         workflow = (ROOT / '.github/workflows/native-eunit-acceptance.yml').read_text()
-        self.assertIn('branches: [ci/native-eunit-acceptance-20261018]', workflow)
+        self.assertIn('branches: [ci/native-eunit-acceptance-20261018, ci/eunit-followup-20261018]', workflow)
         self.assertIn('runs-on: ubuntu-24.04', workflow)
         self.assertIn("NATIVE_EPHEMERAL_KEYS_APPROVED: 'true'", workflow)
         self.assertNotIn('secrets.', workflow)

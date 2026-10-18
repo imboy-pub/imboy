@@ -34,6 +34,7 @@ repo_chain_test_() ->
             absent,
             db_error,
             body_exception,
+            body_timeout,
             write_exception,
             provider_error,
             provider_exception
@@ -116,6 +117,8 @@ pin_result(_) ->
 
 setup_fault(body_exception) ->
     meck:expect(cowboy_req, read_body, fun(_, _) -> erlang:error(body_failed) end);
+setup_fault(body_timeout) ->
+    meck:expect(cowboy_req, read_body, fun(_, _) -> exit(timeout) end);
 setup_fault(write_exception) ->
     meck:new(file, [unstick, passthrough]),
     meck:expect(file, write, fun(_, _) -> erlang:error(write_failed) end);

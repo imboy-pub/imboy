@@ -35,9 +35,20 @@ reader_exception_closes_descriptor_test() ->
         assert_closed()
     end).
 
-reader_error_closes_descriptor_test() ->
-    with_reader(fun(_, _) -> {error, timeout} end, fun() ->
-        ?assertEqual({error, timeout}, attachment_upload_body:read(start, 4)),
+cleanup_error_preserves_reader_exception_test() ->
+    with_reader(fun(_, _) -> error(reader_failed) end, fun() ->
+        ok = meck:expect(attachment_upload_spool, close, fun(Writer) ->
+            _ = meck:passthrough([Writer]),
+            {error, cleanup_failed}
+        end),
+        ?assertError(reader_failed, attachment_upload_body:read(start, 4)),
+        assert_closed()
+    end).
+
+reader_timeout_closes_descriptor_test() ->
+    %% Cowboy read_body/2 exits on timeout; it does not return {error, timeout}.
+    with_reader(fun(_, _) -> exit(timeout) end, fun() ->
+        ?assertExit(timeout, attachment_upload_body:read(start, 4)),
         assert_closed()
     end).
 

@@ -98,9 +98,7 @@ receive_body(Req0, Key, DeclMime, CapabilityExp) ->
                                     cowboy_req:reply(500, #{}, <<"hash failed">>, Req0)
                             end;
                         {error, too_large} ->
-                            cowboy_req:reply(413, #{}, <<"payload exceeds limit">>, Req0);
-                        {error, _} ->
-                            cowboy_req:reply(500, #{}, <<"body receive failed">>, Req0)
+                            cowboy_req:reply(413, #{}, <<"payload exceeds limit">>, Req0)
                     end
                 after
                     attachment_upload_spool:close(Writer)
