@@ -111,7 +111,6 @@ return JSON.parse(safeText)
 | `from_uid` | 消息发送方 ID（别名） | 提及接口 |
 | `key_id` | 合规密钥 ID | 合规密钥接口 |
 | `conversation_id` | 会话 ID | 会话接口 |
-| `last_msg_id` | 最后消息 ID | 会话接口 |
 | `channel_id` | 频道 ID | 频道接口 |
 | `author_id` | 作者 ID | 频道消息接口 |
 
@@ -121,6 +120,8 @@ return JSON.parse(safeText)
 |--------|------|------|
 | `device_id` | 设备标识符 | string（UUID 或自定义） |
 | `did` | 设备 ID（别名） | string |
+| `msg_id` | 消息 ID | string（客户端 Xid / 服务端 uid base64，varchar(40)） |
+| `last_msg_id` | 最后消息 ID | string（Xid，取自 msg_c2c/msg_c2g.msg_id；非 TSID，见迁移 00000198） |
 | `role_id` | 角色 ID | number（小整数） |
 
 ---
