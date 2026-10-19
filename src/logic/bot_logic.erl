@@ -174,12 +174,12 @@ has_exchange(BotId, UserId) ->
 %% @doc Bot 发送消息
 %% Bot 以自身身份向指定用户发送 C2C 消息。
 %% MsgData 键：msg_type(必填), payload(必填), created_at, e2ee
-%% 先校验 Bot 存在且启用，再生成 MsgId（fail fast，避免无效请求消耗 TSID）。
+%% 先校验 Bot 存在且启用，再生成 MsgId（fail fast，避免无效请求生成消息 ID）。
 -spec send_message(integer(), integer(), map()) -> {ok, map()} | {error, binary()}.
 send_message(BotId, ToUid, MsgData) ->
     case bot_repo:find(BotId) of
         {ok, #{<<"status">> := 1}} ->
-            MsgId = integer_to_binary(elib_tsid:generate(msg_c2c)),
+            MsgId = elib_uuid:gen_v7(),
             send_message(MsgId, BotId, ToUid, MsgData);
         {ok, _} ->
             {error, <<"Bot 已停用"/utf8>>};
@@ -223,7 +223,7 @@ send_group_message(BotId, GroupId, Text) when
 ->
     case bot_repo:find(BotId) of
         {ok, #{<<"status">> := 1}} ->
-            MsgId = integer_to_binary(elib_tsid:generate(msg_c2g)),
+            MsgId = elib_uuid:gen_v7(),
             Content = elib_str:replace_single_quote(Text),
             Data = #{
                 <<"to">> => integer_to_binary(GroupId),

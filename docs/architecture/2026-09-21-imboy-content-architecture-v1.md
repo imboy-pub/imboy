@@ -255,7 +255,7 @@ Project ↔ DocPage（V2：project_doc_rel，镜像现有 project_channel_rel �
 
 `doc_page` 单表承载（详细 DDL 见 §18）：
 
-- **标识**：`id` TSID（`elib_tsid:register(doc_page)` 独立序列）；**无 slug**（V1 深链直接用 TSID；Outline urlId / Docmost slug_id 服务的「人类可读公开 URL」在公开分享落地时才需要，V2 决策）；
+- **标识**：`id` TSID（实现时须将 `doc_page` 加入静态 inventory，使用独立游标）；**无 slug**（V1 深链直接用 TSID；Outline urlId / Docmost slug_id 服务的「人类可读公开 URL」在公开分享落地时才需要，V2 决策）；
 - **树**：`parent_id bigint NULL`（同表自引用 FK + 复合 `(id, workspace_id)` 唯一键使 FK 可强制同 workspace）+ `position varchar(64)` fractional indexing 键。**position 语义 = 同一父节点下兄弟间的全序**（与 Docmost 一致，非全局序）；子树随父移动时后代 position 无需重写。
 - **position 参数契约（v1.1，实施首日冻结）**：① 字母表 = 62 字符（`0-9A-Za-z`），具体排序在实施首日冻结于 domain 模块（建议 Figma 式交替序防退化）头注释，**一经冻结禁改**（改动=全量键重生成迁移）；② 初始兄弟键经哨兵键 `before(min)/between(a,b)/after(max)` 生成，首尾插入不退化为边界追加；③ 碰撞（并发产生同键）→ 调用方以 `between(碰撞键, 其右邻)` 确定性重试，上限 3 次；④ 重平衡触发：键长 > 48 **或** 重试 3 次仍碰撞 → 该父节点下全量兄弟均分重生成（单事务、保序、version CAS 保护）；⑤ 硬上限 varchar(64)，理论不可达（48 触发重平衡）。性质测试绑定 TREE-POS-001~005（§32）。
 - **内容**：`title varchar(500)`、`body_md text`（CommonMark 子集）。**大小契约（v1.1 双限制）**：`length(body_md) ≤ 1,000,000`（Unicode scalar values，PG `length()`）**且** `octet_length(body_md) ≤ 4,194,304`（4 MiB UTF-8 字节）——两限制任一超出即 422；客户端计数（Dart UTF-16 code units）仅作 UX 预检，服务端为权威；`plain_text text`（写入时由纯函数从 body_md 剥离语法生成，供 FTS；同样受双限制约束）；
@@ -422,7 +422,7 @@ V1 = REST CRUD + 乐观锁 CAS + 服务端 WS 变更通知（不做协同）
 
 ```sql
 CREATE TABLE doc_page (
-  id           bigint PRIMARY KEY,                       -- TSID：elib_tsid:register(doc_page)
+  id           bigint PRIMARY KEY,                       -- TSID：实现时在静态 inventory 加入 doc_page
   workspace_id bigint NOT NULL REFERENCES workspace(id),
   parent_id    bigint,                                   -- 自引用，见下
   title        varchar(500) NOT NULL DEFAULT '',

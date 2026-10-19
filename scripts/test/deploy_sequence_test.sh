@@ -27,6 +27,25 @@ for last_arg in "$@"; do :; done
 cmd="${last_arg:-}"
 
 case "$cmd" in
+  *"imboy-tsid-runtime-identity"*)
+    [ "${MOCK_FAIL_AT:-}" != tsid_runtime ] || exit 1
+    if [ -n "${MOCK_TSID_RUNTIME_IDENTITY:-}" ]; then printf '%s\n' "$MOCK_TSID_RUNTIME_IDENTITY"
+    elif [ "${MOCK_CURRENT_COLOR:-blue}" = green ] || [ "${MOCK_NGINX_COLOR:-}" = green ]; then echo '{1,2,3}'
+    else echo '{1,1,3}'; fi
+    exit 0
+    ;;
+  *"imboy-tsid-stored-identity"*)
+    [ "${MOCK_FAIL_AT:-}" != tsid_stored ] || exit 1
+    if [ -n "${MOCK_TSID_STORED_IDENTITY:-}" ]; then printf '%s\n' "$MOCK_TSID_STORED_IDENTITY"
+    else echo '{1,2,3}'; fi
+    exit 0
+    ;;
+  *"imboy-tsid-persist-identity"*)
+    [ "${MOCK_FAIL_AT:-}" != tsid_persist ] || exit 1
+    identity=$(printf '%s\n' "$cmd" | sed -n 's/^    # identity://p')
+    printf 'TSID_PERSISTED %s\n' "$identity" >>"$MOCK_LOG"
+    exit 0
+    ;;
   *"cd '/srv/imboy' && git rev-parse HEAD"*)
     printf '%s\n' "${MOCK_REMOTE_SOURCE_HEAD:-$TEST_SOURCE_HEAD}"
     exit 0
@@ -150,6 +169,9 @@ case "$cmd" in
     ;;
   *"cd '/usr/local/imboy-0.9.0-oldnode'"*"bin/imboy daemon"*)
     printf '%s\n' RECOVER_OLD >>"$MOCK_LOG"
+    case "$cmd" in
+      *"IMBOY_TSID_DC_ID='1' IMBOY_TSID_NODE_ID='2' IMBOY_TSID_DC_BITS='3'"*) printf '%s\n' RECOVER_TSID_1_2_3 >>"$MOCK_LOG" ;;
+    esac
     exit 0
     ;;
   *"IMBOY_AUTO_MIGRATE="*"bin/imboy daemon"*)
@@ -166,11 +188,11 @@ case "$cmd" in
       *"IMBOY_PLUGIN_TRUSTED_PUBLIC_KEY_FILES="*) printf '%s\n' PLUGIN_KEY_CONFIGURED >>"$MOCK_LOG" ;;
     esac
     case "$cmd" in
-      *"IMBOY_TSID_STATE_DIR="*"IMBOY_TSID_NODE_ID='1'"*) printf '%s\n' TSID_BLUE_CONFIGURED >>"$MOCK_LOG" ;;
-      *"IMBOY_TSID_STATE_DIR="*"IMBOY_TSID_NODE_ID='2'"*) printf '%s\n' TSID_GREEN_CONFIGURED >>"$MOCK_LOG" ;;
+      *"IMBOY_TSID_DC_BITS="*"IMBOY_TSID_NODE_ID='1'"*) printf '%s\n' TSID_BLUE_CONFIGURED >>"$MOCK_LOG" ;;
+      *"IMBOY_TSID_DC_BITS="*"IMBOY_TSID_NODE_ID='2'"*) printf '%s\n' TSID_GREEN_CONFIGURED >>"$MOCK_LOG" ;;
     esac
     case "$cmd" in
-      *"IMBOY_TSID_BOOTSTRAP_FLOOR_UNIX_MS='1790791200000'"*) printf '%s\n' TSID_FLOOR_RESOLVED >>"$MOCK_LOG" ;;
+      *"IMBOY_TSID_DC_BITS='2'"*"IMBOY_TSID_NODE_ID='255'"*) printf '%s\n' TSID_WIDE_NODE_CONFIGURED >>"$MOCK_LOG" ;;
     esac
     exit 0
     ;;
@@ -239,6 +261,10 @@ case "$cmd" in
 esac
 MOCK
 chmod +x "$MOCK_BIN/ssh"
+for command in scp sftp rsync docker curl; do
+  printf '#!/usr/bin/env bash\necho "UNEXPECTED_EXTERNAL_COMMAND %s" >>"$MOCK_LOG"\nexit 97\n' "$command" >"$MOCK_BIN/$command"
+  chmod +x "$MOCK_BIN/$command"
+done
 
 PASS=0
 FAIL=0
@@ -268,6 +294,9 @@ run_deploy() {
     PATH="$MOCK_BIN:$PATH" \
     MOCK_LOG="$MOCK_LOG" \
     MOCK_FAIL_AT="$fail_at" \
+    MOCK_TSID_RUNTIME_IDENTITY="${MOCK_TSID_RUNTIME_IDENTITY:-}" \
+    MOCK_TSID_STORED_IDENTITY="${MOCK_TSID_STORED_IDENTITY:-}" \
+    MOCK_NGINX_COLOR="${MOCK_NGINX_COLOR:-}" \
     MOCK_CURRENT_COLOR="$current_color" \
     MOCK_NGINX_PORT="${MOCK_NGINX_PORT:-}" \
     MOCK_BOUNDARY_READY="${MOCK_BOUNDARY_READY:-1}" \
@@ -303,12 +332,11 @@ run_deploy() {
     IMBOY_DEPLOY_SALES_RELEASE="${TEST_SALES_RELEASE:-true}" \
     IMBOY_DEPLOY_E2EE_MODE="${TEST_E2EE_MODE:-}" \
     IMBOY_DEPLOY_PLUGIN_TRUSTED_PUBLIC_KEY_FILE="$TEST_PLUGIN_KEY" \
-    IMBOY_DEPLOY_TSID_STATE_DIR="${TEST_TSID_STATE_DIR:-}" \
-    IMBOY_DEPLOY_TSID_BLUE_NODE_ID="${TEST_TSID_BLUE_NODE_ID:-}" \
-    IMBOY_DEPLOY_TSID_GREEN_NODE_ID="${TEST_TSID_GREEN_NODE_ID:-}" \
-    IMBOY_DEPLOY_TSID_BOOTSTRAP_MODE="${TEST_TSID_BOOTSTRAP_MODE:-}" \
-    IMBOY_DEPLOY_TSID_BOOTSTRAP_FLOOR_UNIX_MS="${TEST_TSID_BOOTSTRAP_FLOOR_UNIX_MS:-}" \
-    IMBOY_DEPLOY_TSID_BOOTSTRAP_LEGACY_ACK="${TEST_TSID_BOOTSTRAP_LEGACY_ACK:-}" \
+    IMBOY_DEPLOY_TSID_DC_ID="${TEST_TSID_DC_ID:-1}" \
+    IMBOY_DEPLOY_TSID_DC_BITS="${TEST_TSID_DC_BITS:-3}" \
+    IMBOY_DEPLOY_LEGACY_STOP_ACK="${TEST_LEGACY_STOP_ACK:-}" \
+    IMBOY_DEPLOY_TSID_BLUE_NODE_ID="${TEST_TSID_BLUE_NODE_ID-1}" \
+    IMBOY_DEPLOY_TSID_GREEN_NODE_ID="${TEST_TSID_GREEN_NODE_ID-2}" \
     IMBOY_DEPLOY_INTERNAL=1 \
     bash "$DEPLOY" "$@" example.invalid "$TEST_VSN" testnode \
     >"$TMP_ROOT/output.log" 2>&1
@@ -369,8 +397,110 @@ assert_success_order() {
 
 echo "== 蓝绿部署控制流（全离线 mock） =="
 
+# Execute only the identity helpers against a temporary sys.config. No SSH or
+# Erlang VM is involved; the full deployment script is never sourced here.
+if (
+  FIXTURE_DIR="$TMP_ROOT/identity-release"
+  mkdir -p "$FIXTURE_DIR/releases/1"
+  cat >"$FIXTURE_DIR/releases/1/sys.config" <<'CONFIG'
+[
+    {imboy, [
+        {tsid_dc_id, 1},
+        {tsid_node_id, 1},
+        {tsid_dc_bits, 3}
+    ]}
+].
+CONFIG
+  safe_release_dir() { [ "$1" = "$FIXTURE_DIR" ]; }
+  ssh_exec() { bash -c "$1"; }
+  ssh_capture() { bash -c "$1"; }
+  eval "$(sed -n '/^validate_tsid_identity()/,/^find_running_release_for_port()/p' "$DEPLOY" | sed '$d')"
+  persist_tsid_identity "$FIXTURE_DIR" 2 17 3 || exit 1
+  read_stopped_tsid_identity "$FIXTURE_DIR" || exit 2
+  [ "$OLD_TSID_DC_ID:$OLD_TSID_NODE_ID:$OLD_TSID_DC_BITS" = 2:17:3 ] || exit 3
+  # Duplicate/mismatched entries cannot be trusted for an unattended restart.
+  sed -i '/{tsid_node_id, 17}/a\        {tsid_node_id, 18},' "$FIXTURE_DIR/releases/1/sys.config"
+  if read_stopped_tsid_identity "$FIXTURE_DIR"; then exit 6; fi
+  sed -i '/{tsid_node_id, 18}/d' "$FIXTURE_DIR/releases/1/sys.config"
+  sed -i 's/{tsid_node_id, 17}/{tsid_node_id, 18}/' "$FIXTURE_DIR/releases/1/sys.config"
+  if read_stopped_tsid_identity "$FIXTURE_DIR"; then exit 4; fi
+  sed -i '/^%% IMBOY_TSID_DEPLOY_IDENTITY /d' "$FIXTURE_DIR/releases/1/sys.config"
+  if read_stopped_tsid_identity "$FIXTURE_DIR"; then exit 5; fi
+); then
+  ok "节点配置固化后可读完整身份，重复条目、缺失或不匹配标记拒绝恢复"
+else
+  bad "TSID release 配置真实文件读写验证失败" ""
+fi
+
+# V10 node assignment is independent of disk/bootstrap settings and validated
+# before any SSH. Invalid configurations must never reach the candidate writer.
+for spec in '3::2' '3:1:1' '3:1:128' '11:1:2' '10:0:1'; do
+  IFS=: read -r bits blue green <<<"$spec"
+  if TEST_TSID_DC_BITS="$bits" TEST_TSID_BLUE_NODE_ID="$blue" TEST_TSID_GREEN_NODE_ID="$green" run_deploy "" blue; then
+    bad "非法 TSID 节点配置应失败 $spec" ""
+  elif [ -s "$MOCK_LOG" ]; then
+    bad "非法 TSID 节点配置不得启动远端操作 $spec" "$(tr '\n' ',' <"$MOCK_LOG")"
+  else
+    ok "非法 TSID 节点配置启动前拒绝 $spec"
+  fi
+done
+if MOCK_TSID_RUNTIME_IDENTITY='{1,254,2}' TEST_TSID_DC_BITS=2 TEST_TSID_BLUE_NODE_ID=254 TEST_TSID_GREEN_NODE_ID=255 run_deploy "" blue \
+   && grep -q -x TSID_WIDE_NODE_CONFIGURED "$MOCK_LOG"; then
+  ok "dc_bits=2 使用 8-bit 节点布局并注入 255，无需持久化参数"
+else
+  bad "TSID 节点范围必须匹配 dc_bits" "$(<"$TMP_ROOT/output.log")"
+fi
+if MOCK_NGINX_PORT=9802 TEST_LEGACY_PORT=9802 run_deploy "" legacy; then
+  bad "legacy 首次割接缺停写确认必须失败" ""
+else
+  assert_absent "legacy 未确认不得停旧 writer" STOP
+  assert_absent "legacy 未确认不得启动新 writer" DAEMON
+fi
+
+if MOCK_NGINX_PORT=9802 MOCK_BOUNDARY_READY=0 MOCK_MARKER_READY=0 TEST_LEGACY_PORT=9802 run_deploy "" legacy; then
+  bad "legacy boundary路径缺停写确认必须失败" ""
+else
+  assert_absent "legacy boundary缺确认不得停旧writer" STOP
+  assert_absent "legacy boundary缺确认不得迁移" EXPAND
+  assert_absent "legacy boundary缺确认不得启动候选" DAEMON
+fi
+if MOCK_BOUNDARY_READY=0 MOCK_TSID_RUNTIME_IDENTITY='{1,2,3}' TEST_TSID_BLUE_NODE_ID=7 TEST_TSID_GREEN_NODE_ID=8 run_deploy health green; then
+  bad "候选健康失败应触发旧身份恢复" ""
+elif grep -q -x RECOVER_TSID_1_2_3 "$MOCK_LOG"; then
+  ok "本次.env节点改为7/8，恢复仍使用旧实例真实1/2/3身份"
+else
+  bad "恢复错误猜测本次.env节点身份" "$(tr '\n' ',' <"$MOCK_LOG")"
+fi
+if run_deploy tsid_runtime blue; then
+  bad "无法读取运行节点身份应阻断候选" ""
+else
+  assert_absent "未知运行节点身份不得停旧 writer" STOP
+  assert_absent "未知运行节点身份不得启动新 writer" DAEMON
+fi
+if MOCK_NGINX_COLOR=green run_deploy tsid_stored none; then
+  bad "停机旧release无可信标记应拒绝恢复" ""
+else
+  assert_absent "未知停机身份不得恢复旧 writer" RECOVER_OLD
+  assert_absent "未知停机身份不得启动新 writer" DAEMON
+fi
+if run_deploy tsid_persist blue; then
+  bad "节点配置固化失败应阻断候选" ""
+else
+  assert_absent "未固化身份不得启动候选" DAEMON
+fi
+if MOCK_TSID_RUNTIME_IDENTITY='{1,2,3}' run_deploy "" blue; then
+  bad "候选身份与实际活动实例相同应拒绝" ""
+else
+  assert_absent "相同实际身份不得启动并行 writer" DAEMON
+fi
+
 if run_deploy "" blue; then
   assert_success_order
+  if grep -q -x "TSID_PERSISTED 1 2 3" "$MOCK_LOG"; then
+    ok "新release启动前固化完整TSID身份，重启不依赖临时daemon环境"
+  else
+    bad "候选TSID身份未固化" "$(tr '\n' ',' <"$MOCK_LOG")"
+  fi
   if grep -q -x E2EE_REQUIRED "$MOCK_LOG"; then
     ok "销售版默认以 required E2EE 启动"
   else
@@ -389,12 +519,9 @@ if MOCK_NGINX_PORT=9802 \
    MOCK_FIND_RELEASE_FAIL=1 \
    TEST_LEGACY_PORT=9802 \
    TEST_LEGACY_RELEASE_DIR=/usr/local/imboy-0.9.0-oldnode \
-   TEST_TSID_STATE_DIR=/var/lib/imboy/tsid-v2 \
    TEST_TSID_BLUE_NODE_ID=1 \
    TEST_TSID_GREEN_NODE_ID=2 \
-   TEST_TSID_BOOTSTRAP_MODE=manual_floor \
-   TEST_TSID_BOOTSTRAP_FLOOR_UNIX_MS=now \
-   TEST_TSID_BOOTSTRAP_LEGACY_ACK=I-CONFIRM-OLD-WRITER-STOPPED \
+   TEST_LEGACY_STOP_ACK=I-CONFIRM-OLD-WRITER-STOPPED \
    run_deploy "" none; then
   if [ -n "$(event_line DAEMON)" ] \
      && [ -n "$(event_line SWITCH)" ] \
@@ -409,20 +536,16 @@ fi
 
 if MOCK_NGINX_PORT=9802 \
    TEST_LEGACY_PORT=9802 \
-   TEST_TSID_STATE_DIR=/var/lib/imboy/tsid-v2 \
    TEST_TSID_BLUE_NODE_ID=1 \
    TEST_TSID_GREEN_NODE_ID=2 \
-   TEST_TSID_BOOTSTRAP_MODE=manual_floor \
-   TEST_TSID_BOOTSTRAP_FLOOR_UNIX_MS=now \
-   TEST_TSID_BOOTSTRAP_LEGACY_ACK=I-CONFIRM-OLD-WRITER-STOPPED \
+   TEST_LEGACY_STOP_ACK=I-CONFIRM-OLD-WRITER-STOPPED \
    run_deploy "" legacy; then
   stop="$(event_line STOP)"
   daemon="$(event_line DAEMON)"
   switch="$(event_line SWITCH)"
   if [ -n "$stop" ] && [ -n "$daemon" ] && [ -n "$switch" ] \
      && [ "$stop" -lt "$daemon" ] && [ "$daemon" -lt "$switch" ] \
-     && grep -q -x TSID_BLUE_CONFIGURED "$MOCK_LOG" \
-     && grep -q -x TSID_FLOOR_RESOLVED "$MOCK_LOG"; then
+     && grep -q -x TSID_BLUE_CONFIGURED "$MOCK_LOG"; then
     ok "legacy 端口迁移先停旧 writer，再以 .env TSID 参数启动蓝槽并切流"
   else
     bad "legacy → 蓝绿初始化时序或 TSID 参数错误" "$(tr '\n' ',' <"$MOCK_LOG")"
@@ -433,12 +556,9 @@ fi
 
 if MOCK_NGINX_PORT=9802 \
    TEST_LEGACY_PORT=9802 \
-   TEST_TSID_STATE_DIR=/var/lib/imboy/tsid-v2 \
    TEST_TSID_BLUE_NODE_ID=1 \
    TEST_TSID_GREEN_NODE_ID=2 \
-   TEST_TSID_BOOTSTRAP_MODE=manual_floor \
-   TEST_TSID_BOOTSTRAP_FLOOR_UNIX_MS=now \
-   TEST_TSID_BOOTSTRAP_LEGACY_ACK=I-CONFIRM-OLD-WRITER-STOPPED \
+   TEST_LEGACY_STOP_ACK=I-CONFIRM-OLD-WRITER-STOPPED \
    run_deploy health legacy; then
   bad "legacy 候选健康失败时部署应退出非零" ""
 elif [ -n "$(event_line CLEAN_RELEASE_PROCESSES)" ] \
@@ -650,12 +770,9 @@ fi
 
 if MOCK_NGINX_PORT=9802 \
    TEST_LEGACY_PORT=9802 \
-   TEST_TSID_STATE_DIR=/var/lib/imboy/tsid-v2 \
    TEST_TSID_BLUE_NODE_ID=1 \
    TEST_TSID_GREEN_NODE_ID=2 \
-   TEST_TSID_BOOTSTRAP_MODE=manual_floor \
-   TEST_TSID_BOOTSTRAP_FLOOR_UNIX_MS=now \
-   TEST_TSID_BOOTSTRAP_LEGACY_ACK=I-CONFIRM-OLD-WRITER-STOPPED \
+   TEST_LEGACY_STOP_ACK=I-CONFIRM-OLD-WRITER-STOPPED \
    run_deploy stop_timeout legacy; then
   [ -n "$(event_line CLEAN_RELEASE_PROCESSES)" ] \
     && [ -n "$(event_line DAEMON)" ] \

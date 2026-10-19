@@ -391,7 +391,6 @@ personal_not_affected_test_() ->
                     ready -> ok;
                     not_initialized -> ok = elib_tsid:init(#{dc_id => 1, node_id => 1})
                 end,
-                ok = elib_tsid:register(msg_c2g),
                 ?assertEqual(
                     ok,
                     msg_c2g_repo:write_msg(

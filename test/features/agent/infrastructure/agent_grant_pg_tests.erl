@@ -537,11 +537,9 @@ placeholders(Start, N) ->
 %% eunit-local 环境无 imboy app：elib_tsid 命名生成器需要 node 标识（init/1）；
 %% 已初始化（全量 app 先行启动）则保持原状不动（镜像 agent_run_pg_tests 口径）
 ensure_tsid() ->
-    try elib_tsid:generate(default) of
+    case elib_tsid:readiness() of
+        not_initialized -> elib_tsid:init(#{dc_id => 0, node_id => 7});
         _ -> ok
-    catch
-        _:_ ->
-            ok = elib_tsid:init(#{dc_id => 0, node_id => 7})
     end.
 
 t_command_lifecycle(Conn) ->

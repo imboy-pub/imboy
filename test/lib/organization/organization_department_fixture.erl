@@ -1,9 +1,9 @@
 %%% @doc ORG-04 Department 触库套件的合成租户夹具（test-only）。
 %%%
-%%% 隔离策略（对齐 eb_pg_test_fixture 口径）：每次 new_scope 生成全新随机 TSID
-%%% 的 Org/User/Department，跨套件、跨轮次天然互不可见；不做 TRUNCATE、
+%%% 隔离策略（对齐 eb_pg_test_fixture 口径）：每次 new_scope 生成合成主键
+%%% 的 Org/User/Department，复用 eb_pg_test_fixture 的测试盐方案；不做 TRUNCATE、
 %%% 不删别人的行；清场 best-effort、按 FK 安全顺序逐条静默执行。
-%%% 合成数据只含随机 TSID 与 `org04-` 前缀合成名，无任何真实账号/联系方式。
+%%% 合成数据只含合成主键与 `org04-` 前缀合成名，无任何真实账号/联系方式。
 -module(organization_department_fixture).
 
 -export([
@@ -23,12 +23,7 @@
 
 -spec id() -> integer().
 id() ->
-    try
-        elib_tsid:generate(default)
-    catch
-        _:_ ->
-            1000000000000000 + erlang:unique_integer([positive, monotonic])
-    end.
+    eb_pg_test_fixture:id().
 
 %% ===================================================================
 %% 合成租户
@@ -131,7 +126,7 @@ new_scope(_Opts) ->
     }.
 
 %% ===================================================================
-%% 清场（best-effort，FK 安全顺序；失败静默——隔离靠唯一 TSID）
+%% 清场（best-effort，FK 安全顺序；失败静默——ID 复用 eb_pg_test_fixture 的有限盐方案，非永久唯一保证）
 %% ===================================================================
 
 -spec cleanup(map()) -> ok.

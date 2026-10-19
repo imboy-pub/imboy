@@ -209,8 +209,8 @@ override_from_env() ->
     %% 逗号分隔；消费方 cors_middleware 按 API 面精确校验。
     ok = imboy_env_overrides:override_cors_face_origins(),
 
-    %% TSID-07：durable generator 部署参数（state dir/node/lead/fence，
-    %% 全非敏感；非法值 fail-closed 拒绝启动）
+    %% TSID V10：节点布局与有界等待/时钟漂移参数；无磁盘状态或 fence。
+    %% 全非敏感；非法值 fail-closed 拒绝启动。
     ok = imboy_env_overrides:override_tsid(),
 
     ok.

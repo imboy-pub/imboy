@@ -359,12 +359,9 @@ ensure_env() ->
     ok.
 
 ensure_tsid() ->
-    try
-        _ = elib_tsid:generate(default),
-        ok
-    catch
-        _:_ ->
-            ok = elib_tsid:init(#{dc_id => 0, node_id => 11})
+    case elib_tsid:readiness() of
+        not_initialized -> elib_tsid:init(#{dc_id => 0, node_id => 11});
+        _ -> ok
     end.
 
 %%%===================================================================

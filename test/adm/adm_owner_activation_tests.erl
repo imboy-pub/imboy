@@ -123,18 +123,6 @@ adm_owner_activation_test_() ->
 
 setup_db() ->
     _ = (catch elib_tsid:init(#{dc_id => 1, node_id => 1, dc_bits => 3})),
-    ok = elib_tsid:register([
-        admin_op_log,
-        organization,
-        workspace,
-        user,
-        owner_activation_invite,
-        group_info,
-        group_member,
-        channel,
-        channel_admin,
-        channel_subscription
-    ]),
     ensure_depcache(),
     State =
         inttest_marker_db:provision(#{
@@ -937,12 +925,7 @@ account(Uid) ->
     <<"gz06t_", (integer_to_binary(Uid))/binary>>.
 
 new_id() ->
-    try elib_tsid:generate(default) of
-        Id when is_integer(Id) -> Id
-    catch
-        _:_ ->
-            1000000000000000 + erlang:unique_integer([positive, monotonic])
-    end.
+    eb_pg_test_fixture:id().
 
 conn() ->
     pooler:take_member(pgsql).

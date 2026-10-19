@@ -27,12 +27,11 @@ main(_) ->
         filename:join([RepoDir, "deps/depcache/ebin"]),
         filename:join([RepoDir, "deps/jsone/ebin"])
     ]),
-    %% TSID：init（应用默认 dc/node 位宽）+ 注册业务生成器 + 本卡新生成器
+    %% TSID：init 一次安装静态业务实体清单（无动态注册）
     ok = elib_tsid:init(#{
-        dc_id => 0, node_id => 9, dc_bits => 3,
-        names => imboy_app:tsid_generator_names()
+        dc_id => 0, node_id => 9, dc_bits => 3
     }),
-    ok = elib_tsid:register(organization_invite_code),
+
     ConnOpts = conn_opts(),
     {ok, Conn} = epgsql:connect(ConnOpts),
     Counters = counters:new(1, []),

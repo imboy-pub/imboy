@@ -30,7 +30,7 @@
 %%%    msg_store_worker 收到 kick
 %%%    → 从 staging 表抢占 100 条未处理记录（FOR UPDATE SKIP LOCKED）
 %%%    → 批量写入正式表（msg_c2c、msg_c2g 等）
-%%%    → 成功后调用 msg_store_ds:unstage(MsgId)
+%%%    → 成功后调用 msg_store_ds:unstage(Type, MsgId)
 %%%    ```
 %%%
 %%% 4. **清理阶段（定时）**：
@@ -60,7 +60,7 @@
 %%% end,
 %%%
 %%% % 2. Worker 处理完成后自动调用
-%%% msg_store_ds:unstage(MsgId)  % 标记备份表记录为已处理
+%%% msg_store_ds:unstage(Type, MsgId)  % 标记备份表记录为已处理
 %%% ```
 %%% @end
 %%%-------------------------------------------------------------------
@@ -75,7 +75,7 @@
     stage_action/13,
     stage_with_sequence/11,
     enqueue/3,
-    unstage/1,
+    unstage/2,
     find_staged/2
 ]).
 
@@ -141,7 +141,7 @@ start_link() ->
 %% - 客户端需要重新发送消息
 %%
 %% @see enqueue/3 入队触发异步处理
-%% @see unstage/1 标记消息已处理
+%% @see unstage/2 标记消息已处理
 %% @end
 %%-------------------------------------------------------------------
 -spec stage(
@@ -499,7 +499,8 @@ enqueue(Type, _MsgId, _Data) ->
 %%% - 如果记录已标记为 processed_at，重复调用不会产生副作用
 %%%
 %% <b>参数说明：</b>
-%% - MsgId: 消息唯一ID
+%% - Type: staging 消息类型（c2c/c2g/c2s/s2c）
+%% - MsgId: 原始消息唯一 ID，保持客户端/历史 ID 不变
 %%
 %% <b>返回值：</b>
 %% - ok: 立即返回（异步操作）
@@ -512,9 +513,9 @@ enqueue(Type, _MsgId, _Data) ->
 %% @see msg_store_worker:process_row/1 Worker 处理流程
 %% @end
 %%-------------------------------------------------------------------
--spec unstage(binary()) -> ok.
-unstage(MsgId) ->
-    gen_server:cast(?SERVER, {unstage, MsgId}).
+-spec unstage(binary(), binary()) -> ok.
+unstage(Type, MsgId) ->
+    gen_server:cast(?SERVER, {unstage, Type, MsgId}).
 
 %%-------------------------------------------------------------------
 %% @doc  获取待处理队列长度
@@ -594,11 +595,12 @@ handle_cast({enqueue, MsgType, MsgId, Data}, State) ->
     _ = gen_statem:cast(msg_store_worker, kick),
     _ = ?DEBUG_LOG([msg_store_ds, enqueue, MsgType, MsgId, ok]),
     {noreply, State};
-handle_cast({unstage, MsgId}, State) ->
+handle_cast({unstage, Type, MsgId}, State) ->
     % 从备份表标记为已处理（异步，不阻塞，带重试）
-    % 优化：使用 mark_processed/1 移除 type 条件，一条 SQL 更新所有类型
+    % 按 Type + MsgId 精确标记，不能误更新历史或异常的跨类型同值 ID。
+    % Scope completion to the claimed message type and ID.
     elib_async:async_retry(fun() ->
-        msg_store_repo:mark_processed(MsgId)
+        msg_store_repo:mark_processed(Type, MsgId)
     end),
     {noreply, State};
 handle_cast(_Msg, State) ->

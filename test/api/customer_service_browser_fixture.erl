@@ -57,7 +57,7 @@ run() ->
     end.
 
 setup_keys() ->
-    ok = elib_tsid:register(user_device),
+
     {ok, _} = application:ensure_all_started(syn),
     ok = syn:add_node_to_scopes([imboy_qr_login]),
     application:set_env(imboy, jwt_key, <<"synthetic-seat-http-key-only">>),

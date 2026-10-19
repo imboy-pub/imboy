@@ -179,30 +179,6 @@ setup_all(LimiterOwner) ->
     catch
         _:_ -> ok
     end,
-    lists:foreach(
-        fun(Name) ->
-            case lists:member(Name, elib_tsid:registered()) of
-                true -> ok;
-                false -> elib_tsid:register(Name)
-            end
-        end,
-        [
-            workspace,
-            channel,
-            channel_admin,
-            channel_subscription,
-            group_info,
-            group_member,
-            enterprise_message,
-            enterprise_audit_event,
-            msg_c2c,
-            msg_c2g,
-            msg_s2c,
-            enterprise_application,
-            enterprise_external_identity,
-            attachment
-        ]
-    ),
     %% throttle rates 必须在 ensure_all_started 之前注入（throttle_app:start 读 env 初始化桶）。
     application:set_env(throttle, rates, [
         {api_per_user, 100000, per_minute},

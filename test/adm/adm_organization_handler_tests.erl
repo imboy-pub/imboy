@@ -338,12 +338,9 @@ adm_org_journeys_test_() ->
         end}}.
 
 setup_db() ->
-    %% 纯套件（不启动 imboy app）：审计 insert（adm_operation_log_ds 用
-    %% elib_tsid:generate(admin_op_log)）与邀请 ID（elib_tsid:generate/0）
-    %% 都需要 TSID 生成器就绪——镜像 workspace_archive_tests 的 init+register
-    %% 幂等配方，缺了它审计行永远写不进（handler 的 audit catch 会静默吞掉）。
+    %% 纯套件初始化静态 TSID 实体清单，供审计和邀请写入。
     _ = (catch elib_tsid:init(#{dc_id => 1, node_id => 1, dc_bits => 3})),
-    ok = elib_tsid:register(admin_op_log),
+
     State =
         inttest_marker_db:provision(#{
             env_prefix => <<"ADM_ORG_INTTEST">>,
@@ -1394,12 +1391,7 @@ seed_org(Conn, Prefix) ->
     }.
 
 new_id() ->
-    try elib_tsid:generate(default) of
-        Id when is_integer(Id) -> Id
-    catch
-        _:_ ->
-            1000000000000000 + erlang:unique_integer([positive, monotonic])
-    end.
+    eb_pg_test_fixture:id().
 
 account(Uid) ->
     <<"orgadm_", (integer_to_binary(Uid))/binary>>.

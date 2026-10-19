@@ -102,5 +102,5 @@ get_context() ->
     persistent_term:get({?MODULE, test_context}, undefined).
 
 unique_msg_id() ->
-    Id = integer_to_binary(elib_tsid:generate(default)),
+    Id = integer_to_binary(eb_pg_test_fixture:id()),
     <<"integration_test_msg_", Id/binary>>.

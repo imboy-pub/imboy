@@ -54,10 +54,12 @@ client_ack(Type, MsgId, CurrentUid, DID) ->
 %% @doc B-27：记录投递延迟（秒），供 imboy_msg_deliver_duration_seconds_bucket
 %% 的 p50/p95/p99 面板消费。
 %%
-%% 时间戳直接从 MsgId 的 TSID 里取 —— 服务端生成消息 id 时就编码了毫秒时间戳，
+%% 从服务端 UUIDv7 或历史 TSID 提取毫秒时间戳，保持 ACK 的原始 ID 不变。
+%% Read UUIDv7 or legacy TSID timestamps without changing the acknowledged ID.
+%% 服务端生成消息 id 时已编码时间戳，
 %% 不需要另建一套"发送时刻"的埋点管道或查库。
 %%
-%% ponytail: 只覆盖 id 是服务端 TSID 的消息。客户端自带 id 的消息 parse 不出
+%% ponytail: 只覆盖可解析的 UUIDv7 / 历史 TSID。客户端自带 id 的消息 parse 不出
 %%   合法时间戳，直接跳过不记 —— 记一个假的比不记更糟（分位数会被污染）。
 %%   上限：跨机时钟漂移会体现在这个值里；要精确到端到端就得客户端回传收到时刻。
 -spec record_deliver_duration(binary()) -> ok.
@@ -76,6 +78,16 @@ record_deliver_duration(MsgId) ->
     end.
 
 -spec msg_created_ms(term()) -> integer().
+msg_created_ms(<<T0:8/binary, "-", T1:4/binary, "-", V:4/binary, "-", R:4/binary, "-", T2:12/binary>>) ->
+    %% Decode the entire canonical UUID, then require version 7 and RFC 9562 variant 10.
+    %% 校验所有十六进制字符及版本/variant，不能把任意 UUID 当作时间戳。
+    try
+        <<Ts:48, 7:4, _:12, 2:2, _:62>> = binary:decode_hex(<<T0/binary, T1/binary,
+            V/binary, R/binary, T2/binary>>),
+        Ts
+    catch
+        _:_ -> 0
+    end;
 msg_created_ms(MsgId) ->
     try
         Id =

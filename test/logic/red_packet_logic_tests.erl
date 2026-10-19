@@ -20,7 +20,7 @@ setup() ->
     meck:expect(wallet_ds, ensure_wallet, fun(?UID) ->
         #{<<"id">> => 8001, <<"user_id">> => ?UID, <<"balance">> => 100}
     end),
-    %% gen_ref_no/0 调 elib_tsid:generate/1，需 register；meck 规避
+    %% gen_ref_no/0 调 elib_tsid:generate/1，需初始化静态实体清单；meck 隔离
     meck:expect(elib_tsid, generate, fun(_) -> 88001 end),
     ok.
 

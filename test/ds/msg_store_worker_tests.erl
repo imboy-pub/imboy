@@ -2,6 +2,14 @@
 -include_lib("eunit/include/eunit.hrl").
 -include("eunit_setup.hrl").
 
+%% Guard undeclared DB/entity calls in a fresh peer without application startup.
+-define(PURE_MOCKS(Configs, Test),
+    {timeout, 45, fun() ->
+        pure_mock_fixture:run(fun() -> pure_mock_fixture:with_mocks(Configs, Test) end)
+    end}
+).
+
+
 %%%===================================================================
 %%% @doc
 %%%
@@ -509,7 +517,7 @@ process_row_poison_does_not_block_next_message_test_() ->
             {msg_c2g_repo, [
                 {'write_accepted_msg', 11, fun(_, _, _, _, _, _, _, _, _, _, _) -> ok end}
             ]},
-            {msg_store_ds, [{'unstage', 1, fun(_) -> ok end}]},
+            {msg_store_ds, [{'unstage', 2, fun(_, _) -> ok end}]},
             {msg_archive_repo, [{'archive', 1, fun(_) -> ok end}]},
             {msg_store_repo, [
                 {'mark_terminal', 3, fun(_, _, _) -> {ok, 1} end},
@@ -522,7 +530,7 @@ process_row_poison_does_not_block_next_message_test_() ->
             lists:foreach(fun msg_store_worker:process_row/1, [Bad, Good]),
             ?assertEqual(1, meck:num_calls(msg_store_repo, mark_terminal, 3)),
             ?assertEqual(1, meck:num_calls(msg_c2g_repo, write_accepted_msg, 11)),
-            ?assertEqual(1, meck:num_calls(msg_store_ds, unstage, [<<"m-after-poison">>])),
+            ?assertEqual(1, meck:num_calls(msg_store_ds, unstage, [<<"c2g">>, <<"m-after-poison">>])),
             ?assertEqual(0, meck:num_calls(msg_store_repo, mark_failed, 4))
         end
     ).
@@ -536,7 +544,7 @@ process_row_missing_c2c_sequence_preserves_message_test_() ->
                 end}
             ]},
             {msg_operation_ds, [{'maybe_clean_delivered', 3, fun(_, _, _) -> ok end}]},
-            {msg_store_ds, [{'unstage', 1, fun(_) -> ok end}]},
+            {msg_store_ds, [{'unstage', 2, fun(_, _) -> ok end}]},
             {msg_store_repo, [
                 {'mark_terminal', 3, fun(_, _, _) -> {ok, 1} end},
                 {'mark_failed', 4, fun(_, _, _, _) -> {ok, 1} end}
@@ -559,6 +567,43 @@ process_row_missing_c2c_sequence_preserves_message_test_() ->
             ),
             ?assertEqual(0, meck:num_calls(msg_store_repo, mark_failed, 4)),
             ?assertEqual(0, meck:num_calls(msg_operation_ds, maybe_clean_delivered, 3)),
-            ?assertEqual(0, meck:num_calls(msg_store_ds, unstage, 1))
+            ?assertEqual(0, meck:num_calls(msg_store_ds, unstage, 2))
+        end
+    ).
+
+%% 同值历史 ID 只完成正在处理的类型；正常写入和幂等冲突走同一精确清理边界。
+%% Both success branches retain the claimed domain and original message ID.
+process_row_success_is_scoped_to_claimed_type_test_() ->
+    ?PURE_MOCKS(
+        [
+            {msg_c2c_ds, [{'write_msg', 9, fun(_, _, _, _, _, _, _, _, _) -> get(write_result) end}]},
+            {msg_c2g_repo, [{'write_accepted_msg', 11,
+                fun(_, _, _, _, _, _, _, _, _, _, _) -> get(write_result) end}]},
+            {msg_c2s_ds, [{'write_msg', 2, fun(_, _) -> get(write_result) end}]},
+            {msg_s2c_ds, [{'write_msg', 8, fun(_, _, _, _, _, _, _, _) -> get(write_result) end}]},
+            {msg_operation_ds, [{'maybe_clean_delivered', 3, fun(_, _, _) -> ok end}]},
+            {msg_archive_repo, [{'archive', 1, fun(_) -> ok end}]},
+            {msg_store_ds, [{'unstage', 2, fun(_, _) -> ok end}]}
+        ],
+        fun() ->
+            MsgId = <<"historical-collision">>,
+            Types = [<<"c2c">>, <<"c2g">>, <<"c2s">>, <<"s2c">>],
+            try
+                lists:foreach(fun(Result) ->
+                    put(write_result, Result),
+                    lists:foreach(fun(Type) ->
+                        msg_store_worker:process_row(c2g_guard_row(#{
+                            <<"type">> => Type, <<"msg_id">> => MsgId, <<"to_id">> => 9,
+                            <<"created_at">> => 1700000000000, <<"server_ts">> => 1700000000000
+                        }))
+                    end, Types)
+                end, [ok, {error, conflict_no_insert}]),
+                lists:foreach(fun(Type) ->
+                    ?assertEqual(2, meck:num_calls(msg_store_ds, unstage, [Type, MsgId]))
+                end, Types),
+                ?assertEqual(8, meck:num_calls(msg_store_ds, unstage, 2))
+            after
+                erase(write_result)
+            end
         end
     ).

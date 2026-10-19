@@ -71,10 +71,6 @@ setup_conn(MigrationOptions) ->
     catch
         _:_ -> ok
     end,
-    case lists:member(push_token, elib_tsid:registered()) of
-        true -> ok;
-        false -> elib_tsid:register(push_token)
-    end,
     inttest_marker_db:provision(maps:merge(#{
         env_prefix => <<"FULL06_INTTEST">>,
         connect_extra => #{codecs => [{epgsql_codec_rfc3339_bin, []}]}

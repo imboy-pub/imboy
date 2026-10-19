@@ -27,7 +27,7 @@ retention_test_() ->
         end}}.
 setup() ->
     S = ?H:setup_all(),
-    ok = elib_tsid:register(msg_store),
+
     %% marker server 端口断言：默认沿用 phase1 的 4337 隔离容器；后续 run 经
     %% OA_CLOUD_MARKER_PORT 显式覆盖到自己的隔离 PG（如 relay 端口），防止
     %% 误连共享库的守卫语义不变。

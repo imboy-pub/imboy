@@ -555,14 +555,10 @@ run_token() ->
             Token
     end.
 
-%% @doc 合成 TSID（时间有序；未启动 imboy app 时退化为唯一整数）。
+%% @doc 合成 fixture 主键，不依赖生产实体 TSID 游标。
 -spec id() -> integer().
 id() ->
-    try
-        elib_tsid:generate(default)
-    catch
-        _:_ -> 3000000000000000000 + erlang:unique_integer([positive, monotonic])
-    end.
+    eb_pg_test_fixture:id().
 
 %% @doc 合成企业托管主密钥引用（**测试侧**注入；生产侧无提供者，见 F6）。
 -spec key_ref() -> map().

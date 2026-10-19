@@ -211,9 +211,8 @@ create_forward_message(OriginalMsg, OriginalType, OriginalMsgId, CurrentUid, ToI
     OriginalToId = resolve_original_to_id(OriginalMsg),
 
     % 先发送，成功后才落转发记录：避免"库里有记录但根本没进投递管道"。
-    % MsgId 在 send_forward_message 内按目标类型选 namespace 生成——
-    % c2c 落 msg_c2c 表、c2g 落 msg_c2g 表，V10 下两表游标独立，禁止
-    % 先生成一个 id 再两种表通用。
+    % 新转发消息使用独立 UUIDv7；原消息 ID 只作引用，不能重用为新消息 ID。
+    % A forwarded message gets a new UUIDv7; retain the source ID only as a reference.
     case send_forward_message(ToType, CurrentUid, ForwardData) of
         {ok, ForwardMsgId} ->
             ok = msg_forward_ds:save_forward_record(
@@ -251,9 +250,9 @@ send_forward_message(<<"c2c">>, CurrentUid, ForwardData) ->
 send_forward_message(<<"c2g">>, CurrentUid, ForwardData) ->
     send_forward(msg_c2g, CurrentUid, ForwardData).
 
-send_forward(Ns, CurrentUid, ForwardData) ->
-    MsgId = integer_to_binary(elib_tsid:generate(Ns)),
-    case normalize_send_result(MsgId, send_msg(Ns, MsgId, CurrentUid, ForwardData)) of
+send_forward(Type, CurrentUid, ForwardData) ->
+    MsgId = elib_uuid:gen_v7(),
+    case normalize_send_result(MsgId, send_msg(Type, MsgId, CurrentUid, ForwardData)) of
         ok -> {ok, MsgId};
         {error, _} = Err -> Err
     end.

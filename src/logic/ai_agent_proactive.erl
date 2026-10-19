@@ -53,7 +53,7 @@ send_text(_, _, _) ->
 %% @private 过门后的实际投递
 -spec do_send_text(integer(), integer(), map(), binary()) -> ok.
 do_send_text(AgentUid, ToUid, PayloadMap, PayloadJson) ->
-    MsgId = ec_cnv:to_binary(elib_tsid:generate(msg_c2c)),
+    MsgId = elib_uuid:gen_v7(),
     %% 【离线可达】持久化到 msg_c2c（离线 pull 源），与标准 c2c 同链
     %% （msg_c2c_logic:stage_and_send_c2c）：先 stage 写 staging 表（同步安全），
     %% 再 enqueue 触发 msg_store_worker claim staging → 写 msg_c2c。send_next 只推

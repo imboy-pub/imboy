@@ -4,7 +4,7 @@
 > 本文是速查契约表，不重复 API 用法（见 [websocket-api-2.md](./websocket-api-2.md)）
 > 与帧格式设计（真源 [`api/proto/`](https://github.com/imboy-pub/imboy/blob/main/api/proto/README.md)，实现 `src/lib/imboy_frame.erl`）。
 >
-> 最后更新：2026-08-20
+> 最后更新：2026-10-19（补充业务消息 ID 契约）
 
 ---
 
@@ -52,6 +52,24 @@ heartbeatPing seq=7:
 ack msgId=0x1234567890ABCDEF (默认方向 C2C):
   49 42 02 00 03 00 00 00 08 12 34 56 78 90 AB CD EF
 ```
+
+### 4.1 业务消息 ID / Business message identity
+
+- 普通 IM 信封的 `id` / 业务 `msg_id` 是不透明字符串，不能按实体 TSID 解析。
+  客户端保留既有 XID；服务端新建 Bot、Agent、MCP、转发与 OA 消息使用
+  `elib_uuid:gen_v7/0`（36 字符 UUIDv7，符合现有 40 字符上限）。
+- 重试、ACK、引用、历史 ID、指定 ID 和 E2EE 身份绑定沿用原始值；同一流式回复的
+  delta、stream_id 与最终消息复用首次生成的 ID。转发创建新消息 ID，保留原 ID 作引用。
+- 消息表行主键与客服 canonical `message_id` 仍是实体 TSID；确定性的事件/请求 ID
+  不机械替换。严格消息顺序仍由 `conv_seq` 决定，不能从消息 ID 推断。
+- staging 完成处理必须以 `Type + MsgId` 精确更新。这用于隔离历史或异常同值，
+  不代表允许不同逻辑消息共享业务 ID；本约定不放宽归档唯一约束。
+
+Ordinary IM message IDs are opaque strings: existing client XIDs are preserved, while new
+server-authored messages use UUIDv7. Retries, acknowledgments, references, historical IDs,
+explicit IDs, E2EE bindings, and stream finalization retain the original identity. Entity row
+keys and customer-service canonical message IDs remain TSIDs. Completion is scoped to the
+claimed message type and ID; archive uniqueness is unchanged, and `conv_seq` defines order.
 
 ## 5. 重试策略（两套语义，勿混淆）
 

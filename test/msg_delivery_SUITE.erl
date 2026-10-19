@@ -178,7 +178,7 @@ message_ack_cleanup(_Config) ->
 
     % Mock
     meck:new(msg_store_ds, [unstick]),
-    meck:expect(msg_store_ds, unstage, 1, ok),
+    meck:expect(msg_store_ds, unstage, 2, ok),
 
     % 执行 ACK
     ok = msg_ack_logic:client_ack(<<"c2c">>, MsgId, ToUid, <<"device_001">>),
@@ -250,7 +250,7 @@ retrieve_offline_message_on_user_online(_Config) ->
     meck:expect(imboy_syn, publish, fun(_, _, _) -> ok end),
 
     meck:new(msg_store_ds, [unstick]),
-    meck:expect(msg_store_ds, unstage, 1, ok),
+    meck:expect(msg_store_ds, unstage, 2, ok),
 
     % 模拟用户上线并 ACK
     ok = msg_ack_logic:client_ack(<<"c2c">>, MsgId, ToUid, <<"device_001">>),

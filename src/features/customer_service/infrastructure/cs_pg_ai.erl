@@ -955,9 +955,7 @@ message_facts(Conn, OrgId, MessageId) ->
 
 insert_job(Conn, OrgId, WsId, SessionId, ConversationId, InboundMessageId) ->
     Epoch = session_epoch(Conn, OrgId, WsId, SessionId),
-    %% TSID 用 default 域：cs_ai_job 未入 elib_tsid_inventory 的冻结清单
-    %% （本任务不改 inventory）；default 域全局唯一且 job 表专属，无碰撞面。
-    JobId = elib_tsid:generate(default),
+    JobId = elib_tsid:generate(cs_ai_job),
     Sql = <<
         "INSERT INTO customer_service_ai_job"
         " (id, organization_id, workspace_id, session_id, conversation_id,"

@@ -2,6 +2,14 @@
 -include_lib("eunit/include/eunit.hrl").
 -include("eunit_setup.hrl").
 
+%% Guard undeclared DB/entity calls in a fresh peer without application startup.
+-define(PURE_MOCKS(Configs, Test),
+    {timeout, 45, fun() ->
+        pure_mock_fixture:run(fun() -> pure_mock_fixture:with_mocks(Configs, Test) end)
+    end}
+).
+
+
 %% ===================================================================
 %% register
 %% ===================================================================
@@ -285,9 +293,7 @@ search_returns_public_bots_test_() ->
 send_message_sends_c2c_message_test_() ->
     ?WITH_MECKS(
         [
-            {elib_tsid, [
-                {'generate', 0, fun() -> 12345 end}, {'generate', 1, fun(_) -> 12345 end}
-            ]},
+            {elib_uuid, [{'gen_v7', 0, fun() -> <<"018f0000-0000-7000-8000-000000012345">> end}]},
             {bot_repo, [
                 {'find', 1, fun(1) ->
                     {ok, #{<<"user_id">> => 1, <<"status">> => 1}}
@@ -344,16 +350,14 @@ send_message_returns_error_when_bot_not_found_test_() ->
 send_group_message_requires_real_c2g_ack_test_() ->
     ?WITH_MECKS(
         [
-            {elib_tsid, [
-                {'generate', 0, fun() -> 67890 end}, {'generate', 1, fun(_) -> 67890 end}
-            ]},
+            {elib_uuid, [{'gen_v7', 0, fun() -> <<"018f0000-0000-7000-8000-000000067890">> end}]},
             {bot_repo, [
                 {'find', 1, fun(1) ->
                     {ok, #{<<"user_id">> => 1, <<"status">> => 1}}
                 end}
             ]},
             {msg_c2g_logic, [
-                {'c2g', 3, fun(<<"67890">> = MsgId, 1, Data) ->
+                {'c2g', 3, fun(<<"018f0000-0000-7000-8000-000000067890">> = MsgId, 1, Data) ->
                     ?assertEqual(<<"2">>, maps:get(<<"to">>, Data)),
                     ?assertEqual(
                         <<"hello">>, maps:get(<<"text">>, maps:get(<<"payload">>, Data))
@@ -369,7 +373,7 @@ send_group_message_requires_real_c2g_ack_test_() ->
         ],
         fun() ->
             ?assertEqual(
-                {ok, #{<<"msg_id">> => <<"67890">>}},
+                {ok, #{<<"msg_id">> => <<"018f0000-0000-7000-8000-000000067890">>}},
                 bot_logic:send_group_message(1, 2, <<"hello">>)
             )
         end
@@ -378,16 +382,14 @@ send_group_message_requires_real_c2g_ack_test_() ->
 send_group_message_rejects_c2g_error_test_() ->
     ?WITH_MECKS(
         [
-            {elib_tsid, [
-                {'generate', 0, fun() -> 67891 end}, {'generate', 1, fun(_) -> 67891 end}
-            ]},
+            {elib_uuid, [{'gen_v7', 0, fun() -> <<"018f0000-0000-7000-8000-000000067891">> end}]},
             {bot_repo, [
                 {'find', 1, fun(1) ->
                     {ok, #{<<"user_id">> => 1, <<"status">> => 1}}
                 end}
             ]},
             {msg_c2g_logic, [
-                {'c2g', 3, fun(<<"67891">> = MsgId, 1, _Data) ->
+                {'c2g', 3, fun(<<"018f0000-0000-7000-8000-000000067891">> = MsgId, 1, _Data) ->
                     self() !
                         {reply, #{
                             <<"id">> => MsgId,
@@ -402,5 +404,63 @@ send_group_message_rejects_c2g_error_test_() ->
                 {error, <<"消息发送失败"/utf8>>},
                 bot_logic:send_group_message(1, 2, <<"hello">>)
             )
+        end
+    ).
+
+%% 普通 IM 业务 ID 不借用实体 TSID 游标，C2C/C2G 共用同一唯一性空间。
+%% Business message IDs remain distinct even when entity cursors return the same value.
+server_generated_message_ids_are_uuid_v7_across_types_test_() ->
+    ?PURE_MOCKS(
+        [
+            {elib_tsid, [{'generate', 1, fun(_) -> 42 end}]},
+            {bot_repo, [{'find', 1, fun(_) -> {ok, #{<<"status">> => 1}} end}]},
+            {msg_c2c_logic, [{'c2c', 3, fun(_, _, _) -> ok end}]},
+            {msg_c2g_logic, [{'c2g', 3, fun(MsgId, _, _) ->
+                self() ! {reply, #{<<"id">> => MsgId, <<"type">> => <<"C2G_SERVER_ACK">>}},
+                ok
+            end}]}
+        ],
+        fun() ->
+            Ids = lists:flatmap(fun(_) ->
+                {ok, #{<<"msg_id">> := C2C}} = bot_logic:send_message(1, 2, #{}),
+                {ok, #{<<"msg_id">> := C2G}} = bot_logic:send_group_message(1, 3, <<"hello">>),
+                [C2C, C2G]
+            end, lists:seq(1, 32)),
+            ?assertEqual(64, length(lists:usort(Ids))),
+            lists:foreach(fun(Id) ->
+                ?assertEqual(36, byte_size(Id)),
+                ?assertMatch({match, _}, re:run(Id,
+                    <<"^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$">>))
+            end, Ids),
+            ?assertEqual(0, meck:num_calls(elib_tsid, generate, 1))
+        end
+    ).
+
+specified_message_ids_and_e2ee_bindings_are_preserved_test_() ->
+    ?PURE_MOCKS(
+        [
+            {elib_uuid, [{'gen_v7', 0, fun() -> error(unexpected_message_id_replacement) end}]},
+            {bot_repo, [{'find', 1, fun(_) -> {ok, #{<<"status">> => 1}} end}]},
+            {msg_c2c_logic, [{'c2c', 3, fun(_, _, _) -> ok end}]}
+        ],
+        fun() ->
+            E2EE = #{<<"sender_did">> => <<"test-device">>, <<"e2ee">> => true},
+            Data = #{<<"msg_type">> => <<"e2ee">>,
+                <<"payload">> => <<"opaque-ciphertext">>, <<"e2ee">> => E2EE},
+            Ids = [<<"63825930240000000">>, <<"d2q9i6rvp1dc73i5hhvg">>,
+                <<"018f0000-0000-7000-8000-000000000001">>],
+            lists:foreach(fun(Id) ->
+                %% Repeating the same request must preserve its original identity.
+                lists:foreach(fun(_) ->
+                    ?assertEqual({ok, #{<<"msg_id">> => Id}},
+                        bot_logic:send_message(Id, 1, 2, Data))
+                end, [first, retry]),
+                ?assertEqual(2, meck:num_calls(msg_c2c_logic, c2c, [Id, 1, '_']))
+            end, Ids),
+            lists:foreach(fun({_, {_, c2c, [_, 1, Sent]}, _}) ->
+                ?assertEqual(E2EE, maps:get(<<"e2ee">>, Sent)),
+                ?assertEqual(<<"opaque-ciphertext">>, maps:get(<<"payload">>, Sent))
+            end, meck:history(msg_c2c_logic)),
+            ?assertEqual(0, meck:num_calls(elib_uuid, gen_v7, 0))
         end
     ).

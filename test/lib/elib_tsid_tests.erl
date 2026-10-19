@@ -386,58 +386,53 @@ namespace_inventory_complete_test() ->
         elib_tsid:namespaces()
     ).
 
-registered_includes_namespaces_and_aliases_test() ->
+runtime_contains_only_entity_cursors_test() ->
     ?SETUP(),
-    Registered = elib_tsid:registered(),
-    ?assert(lists:member(default, Registered)),
+    #{lookup := Lookup, cursors := Cursors, reservations := Stats, cursor_stride := Stride} =
+        persistent_term:get(elib_tsid_runtime),
+    Names = elib_tsid:namespaces(),
+    Aliases = elib_tsid:aliases(),
+    ?assertEqual(lists:sort(Names ++ maps:keys(Aliases)), lists:sort(maps:keys(Lookup))),
+    ?assertEqual(length(Names), length(lists:usort(maps:values(Lookup)))),
+    ?assertEqual(length(Names) * Stride, maps:get(size, atomics:info(Cursors))),
+    ?assertEqual(length(Names) * Stride, maps:get(size, atomics:info(Stats))),
+    ?assertNot(maps:is_key(default, Lookup)).
+
+removed_compatibility_api_test() ->
+    ?SETUP(),
     lists:foreach(
-        fun(N) -> ?assert(lists:member(N, Registered), {missing, N}) end,
-        elib_tsid:namespaces()
+        fun({Function, Arity}) ->
+            ?assertNot(erlang:function_exported(elib_tsid, Function, Arity))
+        end,
+        [{register, 1}, {registered, 0}, {generate, 0}, {generate_n, 1}]
     ),
-    lists:foreach(
-        fun(A) -> ?assert(lists:member(A, Registered), {missing_alias, A}) end,
-        maps:keys(elib_tsid:aliases())
-    ).
-
-registered_no_duplicate_default_test() ->
-    %% 审计修复（V10-A5）：lookup 在 publish_runtime 已合并 default 键，
-    %% registered/0 不得重复追加（修复前 149 项、去重 148 项）
-    ?SETUP(),
-    Registered = elib_tsid:registered(),
-    ?assertEqual(lists:usort(Registered), Registered),
-    ?assertEqual(
-        length(elib_tsid:namespaces()) + map_size(elib_tsid:aliases()) + 1,
-        length(Registered)
-    ).
-
-%% register/1 是静态清单的幂等断言：已知名恒 ok，未知名 error
-register_idempotent_check_test() ->
-    ?SETUP(),
-    ok = elib_tsid:register(user),
-    ok = elib_tsid:register([group, audit, enterprise_audit]),
     ?assertMatch(
         {elib_tsid_generator_not_registered, _},
-        catch_typed(fun() -> elib_tsid:register(not_in_inventory) end)
+        catch_typed(fun() -> elib_tsid:generate(default) end)
+    ),
+    ?assertMatch(
+        {elib_tsid_generator_not_registered, _},
+        catch_typed(fun() -> elib_tsid:generate_n(default, 3) end)
     ).
 
-default_generator_available_test() ->
-    %% default 仅供测试/脚手架，但必须可用（W7 全量轨道 192 失败的根因即
-    %% lookup 漏建 default 槽位）
+customer_service_ai_entities_have_independent_cursors_test() ->
     ?SETUP(),
-    ?assert(lists:member(default, elib_tsid:registered())),
-    ?assert(elib_tsid:generate(default) > 0),
-    ?assertEqual(3, length(elib_tsid:generate_n(default, 3))),
-    ok = elib_tsid:register(default).
+    Names = [ai_cs_config, ai_cs_faq, cs_ai_job],
+    with_fixed_clock(?EPOCH_MS + 310000, fun() ->
+        First = [elib_tsid:generate(Name) || Name <- Names],
+        Second = [elib_tsid:generate(Name) || Name <- Names],
+        %% 每个真实实体独立从 seq=0 起步；跨域同值合法。
+        ?assertEqual(1, length(lists:usort(First))),
+        ?assertEqual(1, length(lists:usort(Second))),
+        ?assertEqual(hd(First) + 1, hd(Second))
+    end).
 
-register_before_init_rejected_test() ->
+generate_before_init_rejected_test() ->
     elib_tsid:reset_for_test(),
     ?assertMatch(
         {elib_tsid_not_initialized, _},
-        catch_typed(fun() -> elib_tsid:register(user) end)
+        catch_typed(fun() -> elib_tsid:generate(user) end)
     ),
-    %% 无 runtime 即无任何可用生成器（default 也依赖 init；V10-A5 起
-    %% registered/0 不再对空 lookup 硬造 [default]）
-    ?assertEqual([], elib_tsid:registered()),
     %% 不留空 runtime（后台 worker 保护，见 imboy_env_tsid_tests 同款注释）
     ok = elib_tsid:init(#{dc_id => 1, node_id => 1, dc_bits => 3}).
 
@@ -923,37 +918,6 @@ namespace_cursor_and_stats_isolation_test() ->
     ?assertEqual(1, atomics:get(Stats, Device)),
     ?assertEqual(C0 + 2, elib_tsid:reservation_count()).
 
-legacy_runtime_cursor_and_counter_compatibility_test() ->
-    ?SETUP(),
-    Original = persistent_term:get(elib_tsid_runtime),
-    #{lookup := PaddedLookup} = Original,
-    LegacyLookup = maps:map(fun(_Name, I) -> ((I - 1) div 8) + 1 end, PaddedLookup),
-    Count = length(elib_tsid:namespaces()) + 1,
-    LegacyCursors = atomics:new(Count, [{signed, true}]),
-    LegacyStats = atomics:new(1, [{signed, true}]),
-    atomics:put(LegacyStats, 1, 42),
-    Base = ?EPOCH_MS + 890000,
-    OldSlot = ((Base - ?EPOCH_MS) bsl 11) + 100,
-    atomics:put(LegacyCursors, maps:get(user, LegacyLookup), OldSlot),
-    Legacy = maps:remove(cursor_stride, Original#{
-        cursors := LegacyCursors, lookup := LegacyLookup, reservations := LegacyStats
-    }),
-    persistent_term:put(elib_tsid_runtime, Legacy),
-    try
-        ?assertEqual(42, elib_tsid:reservation_count()),
-        Ids = with_fixed_clock(Base, fun() -> elib_tsid:generate_n(user, 5) end),
-        ?assertEqual(
-            lists:seq(OldSlot + 1, OldSlot + 5),
-            [elib_tsid:id_to_slot(I) || I <- Ids]
-        ),
-        ?assertEqual(43, elib_tsid:reservation_count()),
-        ?assertEqual(ok, elib_tsid:init(#{dc_id => 1, node_id => 1})),
-        #{cursors := Kept} = persistent_term:get(elib_tsid_runtime),
-        ?assertEqual(LegacyCursors, Kept)
-    after
-        persistent_term:put(elib_tsid_runtime, Original)
-    end.
-
 absolute_capacity_wait_mailbox_and_expiry_test() ->
     Fake = make_ref(),
     self() ! {timeout, Fake, elib_tsid_capacity_wait},
@@ -1016,6 +980,158 @@ batch_sizes_bounded_cas_test() ->
     C0 = elib_tsid:reservation_count(),
     _ = elib_tsid:generate_n(user, 100),
     ?assertEqual(C0 + 2, elib_tsid:reservation_count()).
+
+full_chunk_yield_boundaries_test_() ->
+    [
+        {"full-chunk yield boundary N=" ++ integer_to_list(N), fun() ->
+            ?SETUP(),
+            Base = ?EPOCH_MS + 850000,
+            %% With an aligned, empty cursor, the final reservation has this
+            %% size. Predicate checks are structural, not scheduler counters.
+            FinalUsed = ((N - 1) rem 64) + 1,
+            ?assertEqual(ExpectedFinalYield, full_chunk_yield_enabled(FinalUsed, FinalUsed)),
+            Ids = with_fixed_clock(Base, fun() -> elib_tsid:generate_n(user, N) end),
+            ?assertEqual(N, length(Ids)),
+            ?assertEqual(Ids, lists:usort(Ids)),
+            ?assertEqual(lists:seq(0, N - 1), [I band 2047 || I <- Ids]),
+            ?assertEqual([Base], lists:usort([elib_tsid:timestamp(I) || I <- Ids])),
+            ?assertEqual((N + 63) div 64, elib_tsid:reservation_count())
+        end}
+     || {N, ExpectedFinalYield} <-
+            [{1, false}, {2, false}, {63, false}, {64, true},
+             {65, false}, {128, true}, {2048, true}]
+    ].
+
+full_chunk_yield_partial_tail_predicate_test() ->
+    lists:foreach(fun({Remaining, Used, Expected}) ->
+        ?assertEqual(Expected, full_chunk_yield_enabled(Remaining, Used))
+    end, [{1, 1, false}, {2, 2, false}, {63, 63, false}, {64, 64, true},
+          {65, 64, true}, {65, 1, true}, {32, 32, false}]).
+
+full_chunk_yield_cross_millisecond_tail_test_() ->
+    [
+        {"cross-millisecond tail N=" ++ integer_to_list(N), fun() ->
+            ?SETUP(),
+            Base = ?EPOCH_MS + 850001,
+            #{cursors := Cursors, lookup := Lookup} = persistent_term:get(elib_tsid_runtime),
+            Idx = maps:get(user, Lookup),
+            %% Leave one slot in the old millisecond. The injected clock
+            %% advances only once that real cursor slot has been consumed.
+            LastSlot = ((Base - ?EPOCH_MS) bsl 11) + 2047,
+            ok = atomics:put(Cursors, Idx, LastSlot - 1),
+            Clock = fun() ->
+                Base + case atomics:get(Cursors, Idx) >= LastSlot of true -> 1; false -> 0 end
+            end,
+            Ids = with_fixed_clock(Clock, fun() -> elib_tsid:generate_n(user, N) end),
+            ?assertEqual(lists:seq(LastSlot, LastSlot + N - 1),
+                         [elib_tsid:id_to_slot(I) || I <- Ids]),
+            ?assertEqual(2, elib_tsid:reservation_count()),
+            ?assertEqual(ExpectedFinalYield, full_chunk_yield_enabled(N - 1, N - 1)),
+            ?assertEqual([Base, Base + 1], lists:usort([elib_tsid:timestamp(I) || I <- Ids]))
+        end}
+     || {N, ExpectedFinalYield} <- [{64, false}, {65, true}]
+    ].
+
+single_generate_full_chunk_yield_control_test() ->
+    ?SETUP(),
+    Id = with_fixed_clock(?EPOCH_MS + 850002, fun() -> elib_tsid:generate(user) end),
+    ?assertEqual(0, Id band 2047),
+    ?assertEqual(1, elib_tsid:reservation_count()).
+
+full_chunk_partial_reservation_failure_test() ->
+    ?SETUP(),
+    Base = ?EPOCH_MS + 850003,
+    #{cursors := Cursors, lookup := Lookup} = persistent_term:get(elib_tsid_runtime),
+    Idx = maps:get(user, Lookup),
+    LastSlot = ((Base - ?EPOCH_MS) bsl 11) + 2047,
+    ok = atomics:put(Cursors, Idx, LastSlot - 1),
+    Outcome = with_fixed_clock(Base, fun() ->
+        catch_typed(fun() -> elib_tsid:generate_n(user, 2) end)
+    end),
+    %% Reserve the one remaining legal slot, then fail without a partial list
+    %% or a future reservation. The full-chunk change does not run on failure.
+    ?assertMatch({elib_tsid_capacity_exhausted, #{phase := clock_wait}}, Outcome),
+    ?assertEqual(1, elib_tsid:reservation_count()),
+    ?assertEqual(LastSlot, atomics:get(Cursors, Idx)).
+
+full_chunk_group_alias_concurrent_test_() ->
+    {timeout, 30, fun full_chunk_group_alias_concurrent_body/0}.
+
+full_chunk_group_alias_concurrent_body() ->
+    ?SETUP(),
+    Parent = self(),
+    Tag = make_ref(),
+    Workers = [spawn_monitor(fun() ->
+        Name = case I rem 2 of 0 -> group; 1 -> group_info end,
+        receive {go, Tag} -> ok end,
+        Chunks = lists:foldl(fun(_, Acc) ->
+            [elib_tsid:generate_n(Name, 64) | Acc]
+        end, [], lists:seq(1, 100)),
+        Parent ! {full_chunk_ids, Tag, self(), lists:append(lists:reverse(Chunks))}
+    end) || I <- lists:seq(1, 16)],
+    try
+        [Pid ! {go, Tag} || {Pid, _} <- Workers],
+        ByWorker = collect_full_chunk_ids(Workers, Tag, []),
+        lists:foreach(fun(Ids) ->
+            ?assertEqual(6400, length(Ids)),
+            ?assertEqual(Ids, lists:usort(Ids))
+        end, ByWorker),
+        AllIds = lists:append(ByWorker),
+        ?assertEqual(102400, length(AllIds)),
+        ?assertEqual(102400, length(lists:usort(AllIds)))
+    after
+        lists:foreach(fun({Pid, Monitor}) ->
+            exit(Pid, kill), erlang:demonitor(Monitor, [flush])
+        end, Workers)
+    end.
+
+collect_full_chunk_ids([], _Tag, Acc) -> Acc;
+collect_full_chunk_ids(Workers, Tag, Acc) ->
+    receive
+        {full_chunk_ids, Tag, Pid, Ids} ->
+            {Pid, Monitor} = lists:keyfind(Pid, 1, Workers),
+            erlang:demonitor(Monitor, [flush]),
+            collect_full_chunk_ids(lists:keydelete(Pid, 1, Workers), Tag, [Ids | Acc]);
+        {'DOWN', Monitor, process, Pid, Reason} ->
+            case lists:member({Pid, Monitor}, Workers) of
+                true -> error({full_chunk_worker_failed, Pid, Reason});
+                false -> collect_full_chunk_ids(Workers, Tag, Acc)
+            end
+    after 5000 -> error(full_chunk_workers_timeout)
+    end.
+
+%% Use the actual loaded candidate BEAM's abstract code. Compiled yield calls
+%% are not reliably observable through BIF call tracing on OTP29. These checks
+%% establish control-flow placement and range only, not scheduling fairness.
+full_chunk_yield_enabled(Remaining, Used) ->
+    {ok, {elib_tsid, [{abstract_code, {raw_abstract_v1, Forms}}]}} =
+        beam_lib:chunks(code:which(elib_tsid), [abstract_code]),
+    [{function, _, generate_n, 2, [{clause, _, _, _, GenerateBody}]}] =
+        [F || F = {function, _, generate_n, 2, _} <- Forms],
+    %% No B1 completion-yield case remains at the public entry point.
+    [Materialize, ReserveRanges | _] = lists:reverse(GenerateBody),
+    ?assertMatch({call, _, {atom, _, materialize_ranges}, _}, Materialize),
+    ?assertMatch({match, _, {var, _, 'Ranges'},
+                  {call, _, {atom, _, reserve_batch_ranges}, _}}, ReserveRanges),
+    [{function, _, reserve_batch_ranges, 5, [_, {clause, _, _, _, Body}]}] =
+        [F || F = {function, _, reserve_batch_ranges, 5, _} <- Forms],
+    [Reservation, UsedAssignment, YieldCase, Recurse] = Body,
+    ?assertMatch({match, _, _, {call, _, {atom, _, reserve}, _}}, Reservation),
+    ?assertMatch({match, _, {var, _, 'Used'}, _}, UsedAssignment),
+    ?assertMatch({call, _, {atom, _, reserve_batch_ranges}, _}, Recurse),
+    {'case', _, Predicate, [
+        {clause, _, [{atom, _, true}], [], [
+            {call, _, {remote, _, {atom, _, erlang}, {atom, _, yield}}, []}
+        ]},
+        {clause, _, [{atom, _, false}], [], [{atom, _, ok}]}
+    ]} = YieldCase,
+    ?assertMatch({op, _, 'orelse',
+        {op, _, '>', {var, _, 'Remaining'}, {var, _, 'Used'}},
+        {op, _, '=:=', {var, _, 'Used'}, {integer, _, 64}}}, Predicate),
+    Bindings = erl_eval:add_binding('Used', Used,
+        erl_eval:add_binding('Remaining', Remaining, erl_eval:new_bindings())),
+    {value, Enabled, _} = erl_eval:expr(Predicate, Bindings),
+    Enabled.
 
 batch_oversized_chunks_test() ->
     ?SETUP(),
