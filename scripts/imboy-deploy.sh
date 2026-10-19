@@ -68,9 +68,10 @@ while [[ $# -gt 0 ]]; do
 done
 
 # CS 组件部署 helper（CSD-CLI-01）：纯函数在 SSH 前 allowlist 校验即用，
-# deploy_cs 在主分派处调用。仅 cs/all 组件加载（其他组件零依赖、零行为变化）。
+# deploy_cs 在主分派处调用。cs/all 组件与 api 组件（收尾自动同步 CS 面）加载，
+# 其余组件零依赖、零行为变化。
 # 此处在日志函数定义之前 source，其独立 source 的兜底日志函数会被下方正式定义覆盖。
-if [[ "$COMPONENT" == cs || "$COMPONENT" == all ]]; then
+if [[ "$COMPONENT" == cs || "$COMPONENT" == all || "$COMPONENT" == api ]]; then
   # shellcheck source=lib/cs_deploy.sh
   source "$SCRIPT_DIR/lib/cs_deploy.sh"
 fi
@@ -676,6 +677,23 @@ case "$COMPONENT" in
     if [[ "$remote_admin_head" != "$ADMIN_SOURCE_HEAD" ]]; then
       log "Admin 前端落后于本地源码（${remote_admin_head:-missing} → $ADMIN_SOURCE_HEAD），自动同步 ..."
       deploy_admin
+    fi
+    # CS 面构建源同为 Admin 仓，readiness 要求线上 CS manifest 的 source_head
+    # == ADMIN_SOURCE_HEAD（否则 exit 55 恒败）。对称 admin 逻辑：该环境已
+    # 上线过 CS（CS_NGINX_CONF 已配置且远端存在，与 deploy_readiness 的 CS
+    # 检查条件一致）且落后时自动补发；未上线 CS 的环境不受影响。
+    # cs_validate_config 前置：CS_* 输入须 allowlist 校验通过（I6）后才能
+    # 进入任何 SSH 命令拼接。
+    if [[ -n "${CS_NGINX_CONF:-}" ]]; then
+      cs_validate_config
+      if [[ "$(ssh_cap "[ -f '$CS_NGINX_CONF' ] && echo 1 || echo 0" 2>/dev/null || true)" == 1 ]]; then
+        remote_cs_head="$(ssh_cap "curl -fsS --max-time 10 'https://$CS_WIDGET_DOMAIN/manifest.json' | sed -n 's/.*\"source_head\"[[:space:]]*:[[:space:]]*\"\([0-9a-f]*\)\".*/\1/p' | head -1" 2>/dev/null || true)"
+        if [[ "$remote_cs_head" != "$ADMIN_SOURCE_HEAD" ]]; then
+          log "CS 面落后于本地源码（${remote_cs_head:-missing} → $ADMIN_SOURCE_HEAD），自动同步 ..."
+          cs_resolve_build_paths
+          deploy_cs skip-backend
+        fi
+      fi
     fi
     deploy_readiness
     ;;
