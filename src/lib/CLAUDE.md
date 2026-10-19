@@ -122,7 +122,7 @@
 | 节点数 | 1024（DC×Node 任意分配） |
 | 每节点每毫秒每 Namespace | 2048 个 ID（硬上限，无借支） |
 | 默认 dc_bits | 3（8 DC × 128 节点） |
-| Namespace | 144 canonical + 3 别名（`namespaces/0` 为准） |
+| Namespace | 152 canonical + 3 别名（`namespaces/0` 为准） |
 
 **关键 API**（V10：多 Namespace 独立游标、无持久化）：
 
@@ -136,13 +136,13 @@ elib_tsid:aliases().                   % 别名 → canonical（group/audit 等�
 elib_tsid:readiness().                 % ready | clock_unsafe | not_initialized
 ```
 
-> `generate/0`（无参）仅供测试/脚手架：`elib_tsid_registration_guard_tests` 扫描
-> `src/` 强制生产代码不得使用。未知名 namespace 一律 typed error，无静默兜底。
+> 仅保留显式实体入口 `generate/1`、`generate_n/2`；无 default 槽位、
+> `generate/0`、`generate_n/1` 或 register/registered 兼容接口。未知名一律 typed error。
 
 **约束**：
 - 同 Namespace 内、单次 BEAM 生命周期内严格唯一（含任意时钟回拨/前跳）
 - **跨 Namespace 数值允许重复**：跨域引用必须 `Domain + ID`，禁止裸数值等值比较/全局去重
-- **无持久化**：跨重启仅当时钟未回拨跨重启点时不重复（NTP 回拨/快照恢复/同 NodeId 双实例允许重叠，如实声明，勿写"绝不重复"）
+- **无持久化**：跨重启要求新时间戳严格大于旧发号水位；同毫秒重启、NTP 回拨/快照恢复/同 NodeId 双实例均可能重叠，不能仅凭“没有回拨”保证唯一
 - **禁止借未来毫秒**：Sequence 耗尽时有界等待真实时间推进（`capacity_wait_timeout_ms`，默认 100ms），超时 typed error
 - 固定 Offset 时钟（monotonic + init 采集 Offset）：与系统钟偏差 > `max_clock_drift_ms` 时 `readiness/0` 翻闸阻断发号；无内置周期探针，暴露窗口 = 外部就绪探测轮询间隔
 - `(dc_id, node_id)` 全集群唯一是**部署层责任**（V10 无互斥锁，代码层不可证）

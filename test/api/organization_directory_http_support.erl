@@ -57,15 +57,6 @@ setup_all() ->
     catch
         _:_ -> ok
     end,
-    lists:foreach(
-        fun(Name) ->
-            case lists:member(Name, elib_tsid:registered()) of
-                true -> ok;
-                false -> elib_tsid:register(Name)
-            end
-        end,
-        [group_info, group_member, enterprise_message, enterprise_audit_event, attachment]
-    ),
     %% throttle rates 在 ensure_all_started 之前注入（成功路径会穿过
     %% throttle_middleware 的 api_per_ip；放大上限避免套件被限流误伤）。
     application:set_env(throttle, rates, [

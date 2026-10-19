@@ -52,14 +52,14 @@ c2g_ack_marks_timeline_test_() ->
         [
             {msg_c2g_timeline_repo, [{client_ack, 2, fun(_, _) -> {ok, 1} end}]},
             {elib_metric, [{increment, 1, fun(_) -> ok end}]},
-            {msg_store_ds, [{unstage, 1, fun(_) -> ok end}]}
+            {msg_store_ds, [{unstage, 2, fun(_, _) -> ok end}]}
         ],
         fun() ->
             Uid = 2001,
             MsgId = <<"test_c2g_msg_001">>,
             ok = msg_ack_logic:client_ack(<<"c2g">>, MsgId, Uid, <<"device_android_001">>),
             ?assertEqual(1, meck:num_calls(msg_c2g_timeline_repo, client_ack, [Uid, MsgId])),
-            ?assertEqual(0, meck:num_calls(msg_store_ds, unstage, 1)),
+            ?assertEqual(0, meck:num_calls(msg_store_ds, unstage, 2)),
             ?assert(meck:validate(msg_c2g_timeline_repo)),
             ?assert(meck:validate(msg_store_ds))
         end
@@ -135,13 +135,13 @@ client_ack_does_not_unstage_test_() ->
                 {'increment', 1, fun(_) -> ok end}
             ]},
             {msg_store_ds, [
-                {'unstage', 1, fun(_MsgId) -> ok end}
+                {'unstage', 2, fun(_Type, _MsgId) -> ok end}
             ]}
         ],
         fun() ->
             ok = msg_ack_logic:client_ack(<<"c2c">>, <<"msg_p0_2">>, 1001, <<"did-1">>),
             %% ACK 只标记送达，不得触碰 staging 生命周期
-            ?assertEqual(0, meck:num_calls(msg_store_ds, unstage, 1))
+            ?assertEqual(0, meck:num_calls(msg_store_ds, unstage, 2))
         end
     ).
 

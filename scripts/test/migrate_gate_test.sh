@@ -39,6 +39,15 @@ cat >"$TEST_SCRIPT_DIR/lib/blue_green_deploy.sh" <<'MOCK'
 printf '%s\n' "$*" >"$BLUE_GREEN_LOG"
 printf 'internal=%s\n' "${IMBOY_DEPLOY_INTERNAL:-}" >>"$BLUE_GREEN_LOG"
 MOCK
+# api 组件收尾自动同步 CS 面（baseline-drift 机械同步，同 check_prod_config.sh
+# 模式）：deploy_api 换桩验证主分派序列，deploy_cs 事务内部由
+# customer_service_deploy_test.sh 专门覆盖，此处同构换桩只记录调用链。
+cat >"$TEST_SCRIPT_DIR/lib/cs_deploy.sh" <<'MOCK'
+#!/usr/bin/env bash
+cs_validate_config() { printf 'cs_validate_config\n' >>"$CS_FAKE_LOG"; }
+cs_resolve_build_paths() { printf 'cs_resolve_build_paths\n' >>"$CS_FAKE_LOG"; }
+deploy_cs() { printf 'deploy_cs %s\n' "$*" >>"$CS_FAKE_LOG"; }
+MOCK
 
 write_env() {
   local nginx_conf="${1:-/etc/nginx/imboy.conf}"
@@ -88,6 +97,20 @@ case "$cmd" in
     # check_prod_config 远端守卫执行（1b2ca499）：离线桩回 OK，保证 api 流
     # 事务时序不被新预检阻断（守卫逻辑属生产路径，另有其卡负责）。
     printf 'CONFIG_KEYS_OK\n'
+    ;;
+  *"deploy-meta.json"*)
+    # api 收尾 admin 落后检测：远端 sed 提取后的净 head 值（mock 不执行管道，
+    # 须直接回提取结果）。回当前本地 HEAD → admin 已同步、跳过重建（admin
+    # 重建触发路径需 bun/realpath/smoke 全套桩，不属本卡序列职责）。
+    printf '%s\n' "$TEST_SOURCE_HEAD"
+    ;;
+  *"manifest.json"*)
+    # api 收尾 CS 落后检测：MOCK_CS_HEAD 控制「已同步/落后」两态
+    printf '%s\n' "${MOCK_CS_HEAD:-}"
+    ;;
+  *"] && echo 1"*)
+    # api 收尾 CS vhost 存在性探测：MOCK_CS_VHOST 控制「已上线/未上线」两态
+    printf '%s\n' "${MOCK_CS_VHOST:-1}"
     ;;
   *"make ctl ARGS='db migrate'"*)
     printf '%s\n' "$cmd" >>"$MOCK_LOG"
@@ -170,10 +193,12 @@ else
 fi
 
 BLUE_GREEN_LOG="$TMP_ROOT/blue-green.log"
+CS_FAKE_LOG="$TMP_ROOT/cs-fake.log"
 : >"$MOCK_CALLS"
+: >"$CS_FAKE_LOG"
 if env PATH="$MOCK_BIN:$PATH" MOCK_CALLS="$MOCK_CALLS" MOCK_LOG="$MOCK_LOG" \
    TEST_SOURCE_HEAD="$TEST_SOURCE_HEAD" \
-   BLUE_GREEN_LOG="$BLUE_GREEN_LOG" \
+   BLUE_GREEN_LOG="$BLUE_GREEN_LOG" CS_FAKE_LOG="$CS_FAKE_LOG" \
    bash "$TEST_DEPLOY" api -v -l --env-file "$CUSTOM_ENV" \
    >"$TMP_ROOT/output.log" 2>&1 \
    && grep -Fxq -- '-v -l example.invalid 1.0.0 prod-test123' "$BLUE_GREEN_LOG" \
@@ -181,7 +206,8 @@ if env PATH="$MOCK_BIN:$PATH" MOCK_CALLS="$MOCK_CALLS" MOCK_LOG="$MOCK_LOG" \
    && grep -Fxq '1.0.0' "$TMP_ROOT/VERSION" \
    && grep -Fq '{release, {imboy, "1.0.0"}, [' "$TMP_ROOT/relx.config" \
    && grep -Fq '{release, {imboy, "1.0.0"}, [' "$TMP_ROOT/relxpro.config" \
-   && grep -q 'source=local-rsync' "$TMP_ROOT/output.log"; then
+   && grep -q 'source=local-rsync' "$TMP_ROOT/output.log" \
+   && [ ! -s "$CS_FAKE_LOG" ]; then
   ok "api -v -l 自动同步版本并透传本地模式与显式节点名"
 else
   bad "api -v -l 未正确透传" "$(tr '\n' ',' <"$TMP_ROOT/output.log")"
@@ -227,6 +253,64 @@ else
   bad "-l 本地发布未按警告模式继续" "$(tr '\n' ',' <"$TMP_ROOT/output.log")"
 fi
 printf '%s\n' '## [1.0.0] - 2026-09-14' >"$TMP_ROOT/CHANGELOG.md"
+
+# ---- api 收尾 CS 面自动同步（对称 admin 自动同步；exit 55 回归）----
+CS_ENV="$TMP_ROOT/customers/cs.env"
+write_env
+cat >>"$TEST_ENV" <<'EOF'
+CS_WIDGET_DOMAIN=cs.example.invalid
+CS_NGINX_CONF=/etc/nginx/cs.conf
+CS_BUILD_DIR=../imboyadmin/cs-widget-dist
+CS_REMOTE_ROOT=/www/wwwroot/cs.example.invalid
+CS_CERT_FULLCHAIN=/etc/letsencrypt/live/cs.example.invalid/fullchain.pem
+CS_CERT_KEY=/etc/letsencrypt/live/cs.example.invalid/privkey.pem
+CS_SMOKE_SHOP_ORIGIN=https://shop.example.invalid
+EOF
+cp "$TEST_ENV" "$CS_ENV"
+
+STALE_HEAD=0000000000000000000000000000000000000000
+: >"$CS_FAKE_LOG"
+if env PATH="$MOCK_BIN:$PATH" MOCK_CALLS="$MOCK_CALLS" MOCK_LOG="$MOCK_LOG" \
+   TEST_SOURCE_HEAD="$TEST_SOURCE_HEAD" MOCK_CS_HEAD="$STALE_HEAD" \
+   BLUE_GREEN_LOG="$BLUE_GREEN_LOG" CS_FAKE_LOG="$CS_FAKE_LOG" \
+   bash "$TEST_DEPLOY" api -l --env-file "$CS_ENV" \
+   >"$TMP_ROOT/output.log" 2>&1 \
+   && grep -q 'CS 面落后于本地源码' "$TMP_ROOT/output.log" \
+   && grep -qx 'cs_validate_config' "$CS_FAKE_LOG" \
+   && grep -qx 'cs_resolve_build_paths' "$CS_FAKE_LOG" \
+   && grep -Fxq 'deploy_cs skip-backend' "$CS_FAKE_LOG"; then
+  ok "api 收尾时 CS 面落后自动补发（skip-backend）"
+else
+  bad "api 收尾未自动补发落后 CS 面" "$(tr '\n' ',' <"$TMP_ROOT/output.log")"
+fi
+
+: >"$CS_FAKE_LOG"
+if env PATH="$MOCK_BIN:$PATH" MOCK_CALLS="$MOCK_CALLS" MOCK_LOG="$MOCK_LOG" \
+   TEST_SOURCE_HEAD="$TEST_SOURCE_HEAD" MOCK_CS_HEAD="$TEST_SOURCE_HEAD" \
+   BLUE_GREEN_LOG="$BLUE_GREEN_LOG" CS_FAKE_LOG="$CS_FAKE_LOG" \
+   bash "$TEST_DEPLOY" api -l --env-file "$CS_ENV" \
+   >"$TMP_ROOT/output.log" 2>&1 \
+   && grep -qx 'cs_validate_config' "$CS_FAKE_LOG" \
+   && ! grep -qx 'cs_resolve_build_paths' "$CS_FAKE_LOG" \
+   && ! grep -q 'deploy_cs' "$CS_FAKE_LOG"; then
+  ok "api 收尾时 CS 面已同步则跳过"
+else
+  bad "api 收尾对已同步 CS 面仍重复发布" "$(tr '\n' ',' <"$TMP_ROOT/output.log")"
+fi
+
+: >"$CS_FAKE_LOG"
+if env PATH="$MOCK_BIN:$PATH" MOCK_CALLS="$MOCK_CALLS" MOCK_LOG="$MOCK_LOG" \
+   TEST_SOURCE_HEAD="$TEST_SOURCE_HEAD" MOCK_CS_HEAD="$STALE_HEAD" MOCK_CS_VHOST=0 \
+   BLUE_GREEN_LOG="$BLUE_GREEN_LOG" CS_FAKE_LOG="$CS_FAKE_LOG" \
+   bash "$TEST_DEPLOY" api -l --env-file "$CS_ENV" \
+   >"$TMP_ROOT/output.log" 2>&1 \
+   && grep -qx 'cs_validate_config' "$CS_FAKE_LOG" \
+   && ! grep -qx 'cs_resolve_build_paths' "$CS_FAKE_LOG" \
+   && ! grep -q 'deploy_cs' "$CS_FAKE_LOG"; then
+  ok "CS vhost 未上线时 api 不自动安装 CS（首装仍走显式 cs 组件）"
+else
+  bad "api 对未上线 CS 环境意外触发自动安装" "$(tr '\n' ',' <"$TMP_ROOT/output.log")"
+fi
 
 write_env
 printf '%s\n' 'DEPLOY_PLUGIN_TRUSTED_PUBLIC_KEY_FILE=/definitely/missing/plugin.raw' >>"$TEST_ENV"

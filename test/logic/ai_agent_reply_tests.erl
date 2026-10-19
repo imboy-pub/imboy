@@ -50,7 +50,7 @@ agent_dm_triggers_llm_and_delivers_reply_test_() ->
         [
             ?SYNC_ASYNC,
             ?ALLOW_RL,
-            {elib_tsid, [{'generate', 0, fun() -> 8888 end}, {'generate', 1, fun(_) -> 8888 end}]},
+            {elib_uuid, [{'gen_v7', 0, fun() -> <<"018f0000-0000-7000-8000-000000008888">> end}]},
             {ai_agent_ds, [
                 {'is_agent', 1, fun(42) ->
                     {true, #{
@@ -231,7 +231,7 @@ agent_dm_streams_deltas_then_finalizes_test_() ->
         [
             ?SYNC_ASYNC,
             ?ALLOW_RL,
-            {elib_tsid, [{'generate', 0, fun() -> 12345 end}, {'generate', 1, fun(_) -> 12345 end}]},
+            {elib_uuid, [{'gen_v7', 0, fun() -> <<"018f0000-0000-7000-8000-000000012345">> end}]},
             {ai_agent_ds, [
                 {'is_agent', 1, fun(42) -> {true, #{<<"provider">> => <<"openai">>}} end}
             ]},
@@ -271,13 +271,14 @@ agent_dm_streams_deltas_then_finalizes_test_() ->
                 [{_, {_, publish, [7, Json0]}, _} | _] = Pubs,
                 D0 = jsone:decode(Json0),
                 ?assertEqual(<<"stream_delta">>, maps:get(<<"msg_type">>, D0)),
-                ?assertEqual(<<"12345">>, maps:get(<<"id">>, D0)),
+                ?assertEqual(<<"018f0000-0000-7000-8000-000000012345">>, maps:get(<<"id">>, D0)),
                 P0 = maps:get(<<"payload">>, D0),
                 ?assertEqual(<<"你好世界"/utf8>>, maps:get(<<"delta">>, P0)),
                 ?assertEqual(0, maps:get(<<"index">>, P0)),
-                ?assertEqual(<<"12345">>, maps:get(<<"stream_id">>, P0)),
+                ?assertEqual(<<"018f0000-0000-7000-8000-000000012345">>, maps:get(<<"stream_id">>, P0)),
+                ?assertEqual(1, meck:num_calls(elib_uuid, gen_v7, 0)),
                 %% 定稿走 send_next，复用同一 StreamId（前端主键去重替换气泡）
-                ?assert(meck:called(message_ds, send_next, [7, <<"12345">>, '_', '_']))
+                ?assert(meck:called(message_ds, send_next, [7, <<"018f0000-0000-7000-8000-000000012345">>, '_', '_']))
             after
                 application:unset_env(imboy, llm_stream_enabled)
             end
@@ -290,7 +291,7 @@ stream_error_finalizes_partial_test_() ->
         [
             ?SYNC_ASYNC,
             ?ALLOW_RL,
-            {elib_tsid, [{'generate', 0, fun() -> 999 end}, {'generate', 1, fun(_) -> 999 end}]},
+            {elib_uuid, [{'gen_v7', 0, fun() -> <<"018f0000-0000-7000-8000-000000000999">> end}]},
             {ai_agent_ds, [
                 {'is_agent', 1, fun(42) -> {true, #{<<"provider">> => <<"openai">>}} end}
             ]},
@@ -324,7 +325,7 @@ stream_error_finalizes_partial_test_() ->
                 },
                 ?assertEqual(ok, ai_agent_reply:maybe_dispatch(7, 42, Data)),
                 %% 兜底定稿：已累积 "部分回复" 走 send_next，同一 id
-                ?assert(meck:called(message_ds, send_next, [7, <<"999">>, '_', '_']))
+                ?assert(meck:called(message_ds, send_next, [7, <<"018f0000-0000-7000-8000-000000000999">>, '_', '_']))
             after
                 application:unset_env(imboy, llm_stream_enabled)
             end
@@ -345,7 +346,7 @@ reply_is_persisted_before_push_test_() ->
         [
             ?SYNC_ASYNC,
             ?ALLOW_RL,
-            {elib_tsid, [{'generate', 0, fun() -> 8888 end}, {'generate', 1, fun(_) -> 8888 end}]},
+            {elib_uuid, [{'gen_v7', 0, fun() -> <<"018f0000-0000-7000-8000-000000008888">> end}]},
             {ai_agent_ds, [
                 {'is_agent', 1, fun(42) ->
                     {true, #{<<"provider">> => <<"openai">>, <<"model">> => <<"m">>}}
@@ -398,7 +399,7 @@ reply_delivered_when_encryption_required_test_() ->
         [
             ?SYNC_ASYNC,
             ?ALLOW_RL,
-            {elib_tsid, [{'generate', 0, fun() -> 8888 end}, {'generate', 1, fun(_) -> 8888 end}]},
+            {elib_uuid, [{'gen_v7', 0, fun() -> <<"018f0000-0000-7000-8000-000000008888">> end}]},
             {ai_agent_ds, [
                 {'is_agent', 1, fun(42) ->
                     {true, #{<<"provider">> => <<"openai">>, <<"model">> => <<"m">>}}

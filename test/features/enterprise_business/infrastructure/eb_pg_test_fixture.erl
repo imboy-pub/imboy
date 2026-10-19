@@ -1,16 +1,13 @@
 %%% @doc EB-03 触库套件的合成租户夹具（test-only，无任何真实账号/数据）。
 %%%
-%%% 隔离策略（作业书 §1.2）：每次 `new_scope/1` 都生成**全新随机 TSID** 的
-%%% Org/Workspace/User，因此不同套件、不同轮次的合成行天然互不可见；
-%%% **不做 TRUNCATE、不写共享 imboy_v1**，也从不删别人的行。
+%%% 测试主键是合成整数，使用本 VM 首次调用的时间盐与有限单调计数；
+%%% 不是 TSID，也不用于验证生产发号器。测试必须使用专用 marker 数据库，
+%%% 不做 TRUNCATE、不写共享 imboy_v1，也不删别人的行。
 %%%
-%%% 合成数据只含：随机 TSID、`eb03-...` 前缀的合成 account/display_name、
-%%% 合成 consent 主体与 reason code。不含真实联系方式、客户资料或生产资源。
-%%%
-%%% 清场是 best-effort：`enterprise_retention_hold` / `enterprise_audit_event` /
-%%% `enterprise_retention_policy` 在 schema 上是 append-only 或不可变事实，
-%%% 其行按设计不可 DELETE，因此清场后仍会保留少量合成行（连同被 RESTRICT FK
-%%% 引用的消息行）。这是 EB-01 冻结语义，不是本夹具的缺陷；隔离靠唯一 TSID。
+%%% 合成数据仅含测试整数、eb03 前缀文本、合成 consent/reason code，
+%%% 无真实联系方式、客户资料或生产资源。部分 append-only/FK 引用行
+%%% 清场后仍会保留。盐约 2.2 小时回绕、计数 rem 1e6；并非数学意义上的
+%%% 跨 VM 永久唯一，重复运行仍须使用隔离数据库并检查残留数据冲突。
 -module(eb_pg_test_fixture).
 -export([select_asset_stub/0, restore_asset_store/1]).
 -export([install_asset_registry/0, restore_asset_registry/1, asset_delete_job/3]).
@@ -43,27 +40,14 @@
 %% 合成 ID / 夹具常量
 %% ===================================================================
 
-%% @doc 生成一个新的合成 TSID（时间有序、跨进程唯一）。
+%% @doc 合成 fixture 主键，不占用生产实体 TSID 游标。
+%% 沿用 VM 盐与单调计数降低测试轮次间碰撞风险；边界见模块头。
 -spec id() -> integer().
 id() ->
-    try
-        elib_tsid:generate(default)
-    catch
-        _:_ ->
-            %% 纯套件（未启动 imboy app）下的兜底：仍在 TSID 量级之下。
-            %% EWS-T1：兜底 id 必须跨 VM/跨轮唯一。旧实现
-            %% `1e15 + unique_integer(monotonic)` 的计数器随节点重启重置，
-            %% eb_/cs_ 域共享同一测试库跨轮跑时必撞 user_pkey（23505），
-            %% 把一次 boot 失败放大成成片假失败。改为「本 VM 启动微秒盐
-            %% （persistent_term 缓存一次，隔离不同轮次的 VM）× VM 内单调
-            %% 计数器（生命周期内调用量远小于 1e6，不回绕）」。
-            %% 值域 [2e15, 1e16)：高于旧兜底历史行（< 1.01e15），
-            %% 仍低于 TSID 主值域（~1e18）。
-            2000000000000000 + fallback_offset()
-    end.
+    2000000000000000 + fallback_offset().
 
-%% EWS-T1 兜底偏移：高位为 VM 启动盐（rem 8e9 μs ≈ 2.2 小时回绕周期），
-%% 低位为 VM 内单调计数（rem 1e6）。同 VM 内唯一；跨 VM 由启动盐隔离。
+%% EWS-T1 合成偏移：首次调用时间盐 rem 8e9 μs（约 2.2 小时回绕），
+%% 低位计数 rem 1e6；不能当作跨 VM 永久唯一的生产 ID。
 -spec fallback_offset() -> integer().
 fallback_offset() ->
     Salt =

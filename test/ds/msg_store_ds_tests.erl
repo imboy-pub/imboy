@@ -2,6 +2,14 @@
 -include_lib("eunit/include/eunit.hrl").
 -include("eunit_setup.hrl").
 
+%% Guard undeclared DB/entity calls in a fresh peer without application startup.
+-define(PURE_MOCKS(Configs, Test),
+    {timeout, 45, fun() ->
+        pure_mock_fixture:run(fun() -> pure_mock_fixture:with_mocks(Configs, Test) end)
+    end}
+).
+
+
 %%%===================================================================
 %%% @doc
 %%% msg_store_ds public contract tests
@@ -317,7 +325,7 @@ enqueue_returns_ok_test_() ->
 
 unstage_returns_ok_test_() ->
     ?TEST_SIMPLE(fun() ->
-        Result = msg_store_ds:unstage(<<"msg_123">>),
+        Result = msg_store_ds:unstage(<<"c2c">>, <<"msg_123">>),
         ?assertEqual(ok, Result)
     end).
 
@@ -394,3 +402,43 @@ status_returns_zero_queue_on_error_test_() ->
             ?assertMatch(#{queue_len := 0, staging_stats := {error, database_error}}, Result)
         end
     ).
+
+unstage_keeps_type_through_async_retry_test_() ->
+    ?PURE_MOCKS(
+        [
+            {elib_async, [{'async_retry', 1, fun(F) -> F(), ok end}]},
+            {msg_store_repo, [{'mark_processed', 2, fun(_, _) -> {ok, 1} end}]}
+        ],
+        fun() ->
+            MsgId = <<"legacy-shared-id">>,
+            State = test_state,
+            ?assertEqual({noreply, State},
+                msg_store_ds:handle_cast({unstage, <<"c2g">>, MsgId}, State)),
+            ?assertEqual(1, meck:num_calls(msg_store_repo, mark_processed,
+                [<<"c2g">>, MsgId])),
+            ?assertEqual(0, meck:num_calls(msg_store_repo, mark_processed,
+                [<<"c2c">>, MsgId]))
+        end
+    ).
+
+completion_requires_a_message_type_test() ->
+    ?assertNot(lists:member({unstage, 1}, msg_store_ds:module_info(exports))),
+    ?assertNot(lists:member({mark_processed, 1}, msg_store_repo:module_info(exports))).
+
+unstage_public_api_preserves_type_and_id_test_() ->
+    {timeout, 30, fun() ->
+        pure_mock_fixture:run(fun() ->
+            true = register(msg_store_ds, self()),
+            try
+                ok = msg_store_ds:unstage(<<"s2c">>, <<"legacy-id">>),
+                receive
+                    {'$gen_cast', Message} ->
+                        ?assertEqual({unstage, <<"s2c">>, <<"legacy-id">>}, Message)
+                after 1000 ->
+                    error(unstage_cast_missing)
+                end
+            after
+                unregister(msg_store_ds)
+            end
+        end)
+    end}.

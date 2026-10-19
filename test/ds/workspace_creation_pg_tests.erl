@@ -11,7 +11,6 @@ creation_test_() ->
         end}}.
 
 creation(S) ->
-    [elib_tsid:register(T) || T <- [workspace, channel, channel_admin, channel_subscription]],
     C = maps:get(conn, S),
     organization_invite_race_pg_checks:run(C),
     channel_creation_tx_pg_checks:run(C),

@@ -1,12 +1,12 @@
 %%% @doc CS-01 触库套件的合成租户夹具（test-only；镜像 `eb_pg_test_fixture` 的
-%%% 随机 TSID scope 模式）。
+%%% 带 VM 盐的合成主键 scope 模式）。
 %%%
-%%% 隔离策略：每次 `new_scope/1` 都生成全新随机 TSID 的 Org/Workspace/User，
-%%% 套件间互不可见；不做 TRUNCATE、不写共享库、不删别人的行。合成数据只含
-%%% 随机 TSID 与 `cs01-` 前缀合成文本，无真实联系方式/客户资料/生产资源。
+%%% 隔离策略：每次 `new_scope/1` 都生成合成主键的 Org/Workspace/User，
+%%% 须使用隔离 marker 数据库；不做 TRUNCATE、不写共享库、不删别人的行。合成数据只含
+%%% 合成主键与 `cs01-` 前缀合成文本，无真实联系方式/客户资料/生产资源。
 %%%
 %%% 清场：customer_service 表先删（事件 → 会话 → token/key → seat），再清
-%%% enterprise 侧被引用行；清场是 best-effort，隔离靠唯一 TSID。
+%%% enterprise 侧被引用行；清场是 best-effort，ID 复用 eb_pg_test_fixture 的有限盐方案，非永久唯一保证。
 -module(cs_pg_test_fixture).
 
 -export([
@@ -28,15 +28,10 @@
 -define(ACCOUNT_PREFIX, <<"cs01-account-">>).
 -define(NAME_PREFIX, <<"cs01-name-">>).
 
-%% @doc 生成一个新的合成 TSID。
+%% @doc 生成合成 fixture 主键，不依赖生产实体 TSID 游标。
 -spec id() -> integer().
 id() ->
-    try
-        elib_tsid:generate(default)
-    catch
-        _:_ ->
-            1000000000000000 + erlang:unique_integer([positive, monotonic])
-    end.
+    eb_pg_test_fixture:id().
 
 %% @doc 合成主密钥引用（32 字节随机 + 声明版本）。测试专用，非生产密钥。
 -spec key_ref() -> map().

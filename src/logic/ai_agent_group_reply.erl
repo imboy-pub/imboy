@@ -124,7 +124,7 @@ run_sync(Mod, Opts, ToGID, AgentUid, Messages) ->
     end.
 
 run_stream(Mod, Opts, ToGID, AgentUid, Messages, MemberUids) ->
-    StreamId = ec_cnv:to_binary(elib_tsid:generate(msg_c2g)),
+    StreamId = elib_uuid:gen_v7(),
     %% 流式 delta 是 ephemeral（离线成员本就收不到），只扇出给在线成员——避免大群逐帧
     %% 对全体（含离线）做 imboy_syn:publish 查找的放大（定稿仍经 c2g 投递全体/离线可补拉）。
     Observers = [U || U <- MemberUids, user_logic:is_online(U)],
@@ -258,7 +258,7 @@ yuan(Fen) ->
 %% ===================================================================
 
 deliver_group_reply(ToGID, AgentUid, Result) ->
-    deliver_group_reply(ToGID, AgentUid, ec_cnv:to_binary(elib_tsid:generate(msg_c2g)), Result).
+    deliver_group_reply(ToGID, AgentUid, elib_uuid:gen_v7(), Result).
 
 deliver_group_reply(_ToGID, _AgentUid, _MsgId, <<>>) ->
     ok;

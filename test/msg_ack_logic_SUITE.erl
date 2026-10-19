@@ -80,7 +80,7 @@ c2c_ack_deletes_offline_msg(_Config) ->
 
     % Mock msg_store_ds:unstage
     meck:new(msg_store_ds, [unstick]),
-    meck:expect(msg_store_ds, unstage, 1, '_'),
+    meck:expect(msg_store_ds, unstage, 2, '_'),
 
     % 执行 ACK
     ok = msg_ack_logic:client_ack(<<"c2c">>, MsgId, Uid, Did),
@@ -103,7 +103,7 @@ c2c_ack_with_no_msg(_Config) ->
 
     % Mock msg_store_ds:unstage
     meck:new(msg_store_ds, [unstick]),
-    meck:expect(msg_store_ds, unstage, 1, '_'),
+    meck:expect(msg_store_ds, unstage, 2, '_'),
 
     % 执行 ACK（消息不存在）
     ok = msg_ack_logic:client_ack(<<"c2c">>, MsgId, Uid, Did),
@@ -127,7 +127,7 @@ c2g_ack_marks_timeline(_Config) ->
 
     % Mock msg_store_ds:unstage
     meck:new(msg_store_ds, [unstick]),
-    meck:expect(msg_store_ds, unstage, 1, '_'),
+    meck:expect(msg_store_ds, unstage, 2, '_'),
 
     % 执行 ACK
     ok = msg_ack_logic:client_ack(<<"c2g">>, MsgId, Uid, Did),
@@ -159,7 +159,7 @@ s2c_ack_deletes_offline_msg(_Config) ->
 
     % Mock msg_store_ds:unstage
     meck:new(msg_store_ds, [unstick]),
-    meck:expect(msg_store_ds, unstage, 1, '_'),
+    meck:expect(msg_store_ds, unstage, 2, '_'),
 
     % 执行 ACK
     ok = msg_ack_logic:client_ack(<<"s2c">>, MsgId, Uid, Did),
@@ -196,7 +196,7 @@ c2s_ack_uses_parameterized_query(_Config) ->
 
     % Mock msg_store_ds:unstage
     meck:new(msg_store_ds, [unstick]),
-    meck:expect(msg_store_ds, unstage, 1, '_'),
+    meck:expect(msg_store_ds, unstage, 2, '_'),
 
     % 执行 ACK
     ok = msg_ack_logic:client_ack(<<"c2s">>, MsgId, Uid, Did),
@@ -223,7 +223,7 @@ unknown_msg_type_handles_gracefully(_Config) ->
 
     % Mock msg_store_ds:unstage
     meck:new(msg_store_ds, [unstick]),
-    meck:expect(msg_store_ds, unstage, 1, '_'),
+    meck:expect(msg_store_ds, unstage, 2, '_'),
 
     % 执行 ACK（未知类型）
     ok = msg_ack_logic:client_ack(<<"unknown">>, MsgId, Uid, Did),

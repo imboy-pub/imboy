@@ -102,7 +102,7 @@ f3a_call_without_principal(Scope) ->
     #{org := Org} = Scope,
     {ok, C} = probe_conn(),
     R = epgsql:equery(C, call_sql(), [
-        Org, now_ts(), <<"probe">>, <<"req-f3a">>, elib_tsid:generate()
+        Org, now_ts(), <<"probe">>, <<"req-f3a">>, elib_tsid:generate(enterprise_audit_event)
     ]),
     epgsql:close(C),
     ?assertMatch({error, {error, _, <<"42501">>, _, <<"purge_not_authorized">>, _}}, R).
@@ -117,7 +117,7 @@ f3b_set_role_not_forgery(Scope) ->
     {ok, C} = probe_conn(),
     {ok, [], []} = epgsql:squery(C, <<"SET ROLE cs_ai_purge">>),
     R = epgsql:equery(C, call_sql(), [
-        Org, now_ts(), <<"probe">>, <<"req-f3b">>, elib_tsid:generate()
+        Org, now_ts(), <<"probe">>, <<"req-f3b">>, elib_tsid:generate(enterprise_audit_event)
     ]),
     {ok, [], []} = epgsql:squery(C, <<"RESET ROLE">>),
     epgsql:close(C),

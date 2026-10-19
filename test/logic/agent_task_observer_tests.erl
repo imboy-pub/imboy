@@ -64,7 +64,7 @@ working_ephemeral_online_only_test_() ->
 completed_durable_test_() ->
     ?TEST_WITH_DB(fun() ->
         Mecks = [
-            {elib_tsid, [{'generate', 0, fun() -> 1 end}, {'generate', 1, fun(_) -> 1 end}]},
+            {elib_uuid, [{'gen_v7', 0, fun() -> <<"018f0000-0000-7000-8000-000000000001">> end}]},
             {imboy_syn, [
                 {'publish', 2, fun(_, _) ->
                     put(pub, true),
@@ -104,7 +104,7 @@ completed_durable_test_() ->
             ?assertEqual(<<"completed">>, maps:get(<<"status">>, Meta)),
             ?assertEqual(T, maps:get(<<"task_id">>, Meta))
         after
-            cleanup_mecks([elib_tsid, imboy_syn, ok, msg_c2g_logic])
+            cleanup_mecks([elib_uuid, imboy_syn, ok, msg_c2g_logic])
         end
     end).
 
@@ -258,7 +258,7 @@ unknown_status_no_atom_no_emit_test_() ->
 awaiting_registers_and_cards_test_() ->
     ?TEST_WITH_DB(fun() ->
         Mecks = [
-            {elib_tsid, [{'generate', 0, fun() -> 1 end}, {'generate', 1, fun(_) -> 1 end}]},
+            {elib_uuid, [{'gen_v7', 0, fun() -> <<"018f0000-0000-7000-8000-000000000001">> end}]},
             {msg_c2g_logic, [
                 {'c2g', 3, fun(_, _, Data) ->
                     put(c2g, Data),
@@ -299,7 +299,7 @@ awaiting_registers_and_cards_test_() ->
             }),
             ?assertMatch({pending, 5, 100}, agent_task_observer:lookup(T))
         after
-            cleanup_mecks([elib_tsid, msg_c2g_logic])
+            cleanup_mecks([elib_uuid, msg_c2g_logic])
         end
     end).
 
@@ -307,7 +307,7 @@ awaiting_registers_and_cards_test_() ->
 approve_first_wins_dedup_test_() ->
     ?TEST_WITH_DB(fun() ->
         Mecks = [
-            {elib_tsid, [{'generate', 0, fun() -> 1 end}, {'generate', 1, fun(_) -> 1 end}]},
+            {elib_uuid, [{'gen_v7', 0, fun() -> <<"018f0000-0000-7000-8000-000000000001">> end}]},
             {msg_c2g_logic, [{'c2g', 3, fun(_, _, _) -> ok end}]},
             {group_ds, [{'member_uids', 1, fun(_) -> [10, 11, 12] end}]}
         ],
@@ -335,7 +335,7 @@ approve_first_wins_dedup_test_() ->
             %% c2g：卡片1 + 通过定稿1 = 2（后到审批不再投递）
             ?assertEqual(2, meck:num_calls(msg_c2g_logic, c2g, '_'))
         after
-            cleanup_mecks([elib_tsid, msg_c2g_logic, group_ds])
+            cleanup_mecks([elib_uuid, msg_c2g_logic, group_ds])
         end
     end).
 
@@ -343,7 +343,7 @@ approve_first_wins_dedup_test_() ->
 approve_unauthorized_test_() ->
     ?TEST_WITH_DB(fun() ->
         Mecks = [
-            {elib_tsid, [{'generate', 0, fun() -> 1 end}, {'generate', 1, fun(_) -> 1 end}]},
+            {elib_uuid, [{'gen_v7', 0, fun() -> <<"018f0000-0000-7000-8000-000000000001">> end}]},
             {msg_c2g_logic, [{'c2g', 3, fun(_, _, _) -> ok end}]},
             {group_ds, [{'member_uids', 1, fun(_) -> [10, 11] end}]}
         ],
@@ -367,7 +367,7 @@ approve_unauthorized_test_() ->
             ?assertEqual({error, not_authorized}, agent_task_observer:approve(T, 99)),
             ?assertMatch({pending, _, _}, agent_task_observer:lookup(T))
         after
-            cleanup_mecks([elib_tsid, msg_c2g_logic, group_ds])
+            cleanup_mecks([elib_uuid, msg_c2g_logic, group_ds])
         end
     end).
 
@@ -375,7 +375,7 @@ approve_unauthorized_test_() ->
 agent_self_approve_rejected_test_() ->
     ?TEST_WITH_DB(fun() ->
         Mecks = [
-            {elib_tsid, [{'generate', 0, fun() -> 1 end}, {'generate', 1, fun(_) -> 1 end}]},
+            {elib_uuid, [{'gen_v7', 0, fun() -> <<"018f0000-0000-7000-8000-000000000001">> end}]},
             {msg_c2g_logic, [{'c2g', 3, fun(_, _, _) -> ok end}]},
             %% agent 100 也在成员列表里
             {group_ds, [{'member_uids', 1, fun(_) -> [100, 10] end}]}
@@ -401,7 +401,7 @@ agent_self_approve_rejected_test_() ->
             ?assertEqual({error, not_authorized}, agent_task_observer:approve(T, 100)),
             ?assertMatch({pending, _, _}, agent_task_observer:lookup(T))
         after
-            cleanup_mecks([elib_tsid, msg_c2g_logic, group_ds])
+            cleanup_mecks([elib_uuid, msg_c2g_logic, group_ds])
         end
     end).
 
@@ -409,7 +409,7 @@ agent_self_approve_rejected_test_() ->
 reject_test_() ->
     ?TEST_WITH_DB(fun() ->
         Mecks = [
-            {elib_tsid, [{'generate', 0, fun() -> 1 end}, {'generate', 1, fun(_) -> 1 end}]},
+            {elib_uuid, [{'gen_v7', 0, fun() -> <<"018f0000-0000-7000-8000-000000000001">> end}]},
             {msg_c2g_logic, [{'c2g', 3, fun(_, _, _) -> ok end}]},
             {group_ds, [{'member_uids', 1, fun(_) -> [10] end}]}
         ],
@@ -433,7 +433,7 @@ reject_test_() ->
             ?assertEqual({ok, rejected}, agent_task_observer:reject(T, 10)),
             ?assertEqual({rejected, 10}, agent_task_observer:lookup(T))
         after
-            cleanup_mecks([elib_tsid, msg_c2g_logic, group_ds])
+            cleanup_mecks([elib_uuid, msg_c2g_logic, group_ds])
         end
     end).
 
@@ -458,7 +458,7 @@ decide_not_found_test_() ->
 decide_error_contained_test_() ->
     ?TEST_WITH_DB(fun() ->
         Mecks = [
-            {elib_tsid, [{'generate', 0, fun() -> 1 end}, {'generate', 1, fun(_) -> 1 end}]},
+            {elib_uuid, [{'gen_v7', 0, fun() -> <<"018f0000-0000-7000-8000-000000000001">> end}]},
             {msg_c2g_logic, [{'c2g', 3, fun(_, _, _) -> ok end}]},
             {group_ds, [{'member_uids', 1, fun(_) -> erlang:error(db_down) end}]}
         ],
@@ -481,7 +481,7 @@ decide_error_contained_test_() ->
             }),
             ?assertEqual({error, internal_error}, agent_task_observer:approve(T, 10))
         after
-            cleanup_mecks([elib_tsid, msg_c2g_logic, group_ds])
+            cleanup_mecks([elib_uuid, msg_c2g_logic, group_ds])
         end
     end).
 

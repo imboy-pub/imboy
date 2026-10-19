@@ -35,17 +35,22 @@
 send_text_delivers_c2c_test_() ->
     ?WITH_MECKS(
         [
-            {elib_tsid, [{'generate', 0, fun() -> 8888 end}, {'generate', 1, fun(_) -> 8888 end}]},
+            {elib_uuid, [{'gen_v7', 0, fun() -> <<"018f0000-0000-7000-8000-000000008888">> end}]},
             {elib_retry_config, [{'intervals', 1, fun(<<"c2c">>) -> [0, 3000] end}]},
             {message_ds, [{'send_next', 4, fun(_ToUid, _MsgId, _Json, _MsLi) -> ok end}]},
             ?MSG_STORE_MECK
         ],
         fun() ->
             ?assertEqual(ok, ai_agent_proactive:send_text(42, 7, <<"你好"/utf8>>)),
-            %% 投递给 human(7)，MsgId 为 tsid 字符串，重试节奏取 c2c 档
-            ?assert(meck:called(message_ds, send_next, [7, <<"8888">>, '_', [0, 3000]])),
+            %% 投递给 human(7)，MsgId 为 UUIDv7 字符串，重试节奏取 c2c 档
+            ?assert(meck:called(message_ds, send_next, [7, <<"018f0000-0000-7000-8000-000000008888">>, '_', [0, 3000]])),
             [{_, {_, send_next, [7, _, Json, _]}, _} | _] = meck:history(message_ds),
             Msg = jsone:decode(Json),
+            Id = maps:get(<<"id">>, Msg),
+            ?assertEqual(1, meck:num_calls(elib_uuid, gen_v7, 0)),
+            ?assert(meck:called(msg_store_ds, stage,
+                [<<"c2c">>, Id, '_', '_', '_', '_', 42, 7, '_', '_'])),
+            ?assert(meck:called(msg_store_ds, enqueue, [<<"c2c">>, Id, '_'])),
             %% C2C 帧：agent(42) → human(7)
             ?assertEqual(<<"C2C">>, maps:get(<<"type">>, Msg)),
             ?assertEqual(<<"42">>, maps:get(<<"from">>, Msg)),
@@ -80,7 +85,7 @@ send_welcome_template_path_test_() ->
             {ai_agent_ds, [{'is_agent', 1, fun(42) -> {true, #{}} end}]},
             {ai_agent_policy, [{'allows', 2, fun(_, _) -> true end}]},
             {imboy_policy, [{'validate_message_write', 5, fun(_, _, _, _, _) -> ok end}]},
-            {elib_tsid, [{'generate', 0, fun() -> 8888 end}, {'generate', 1, fun(_) -> 8888 end}]},
+            {elib_uuid, [{'gen_v7', 0, fun() -> <<"018f0000-0000-7000-8000-000000008888">> end}]},
             {elib_retry_config, [{'intervals', 1, fun(_) -> [0] end}]},
             {message_ds, [{'send_next', 4, fun(_, _, _, _) -> ok end}]},
             {imboy_llm_registry, [{'lookup', 1, fun(_) -> {ok, #{module => x, opts => #{}}} end}]},
@@ -115,7 +120,7 @@ send_welcome_template_default_when_missing_test_() ->
             {ai_agent_ds, [{'is_agent', 1, fun(42) -> {true, #{}} end}]},
             {ai_agent_policy, [{'allows', 2, fun(_, _) -> true end}]},
             {imboy_policy, [{'validate_message_write', 5, fun(_, _, _, _, _) -> ok end}]},
-            {elib_tsid, [{'generate', 0, fun() -> 8888 end}, {'generate', 1, fun(_) -> 8888 end}]},
+            {elib_uuid, [{'gen_v7', 0, fun() -> <<"018f0000-0000-7000-8000-000000008888">> end}]},
             {elib_retry_config, [{'intervals', 1, fun(_) -> [0] end}]},
             {message_ds, [{'send_next', 4, fun(_, _, _, _) -> ok end}]},
             ?MSG_STORE_MECK,
@@ -144,7 +149,7 @@ send_welcome_disabled_agent_does_not_deliver_test_() ->
             {ai_agent_ds, [
                 {'is_agent', 1, fun(42) -> false end}
             ]},
-            {elib_tsid, [{'generate', 0, fun() -> 8888 end}, {'generate', 1, fun(_) -> 8888 end}]},
+            {elib_uuid, [{'gen_v7', 0, fun() -> <<"018f0000-0000-7000-8000-000000008888">> end}]},
             {elib_retry_config, [{'intervals', 1, fun(_) -> [0] end}]},
             {message_ds, [{'send_next', 4, fun(_, _, _, _) -> ok end}]},
             ?MSG_STORE_MECK
@@ -181,7 +186,7 @@ send_welcome_llm_path_test_() ->
                     {ok, #{<<"result">> => <<"欢迎新朋友！"/utf8>>}}
                 end}
             ]},
-            {elib_tsid, [{'generate', 0, fun() -> 8888 end}, {'generate', 1, fun(_) -> 8888 end}]},
+            {elib_uuid, [{'gen_v7', 0, fun() -> <<"018f0000-0000-7000-8000-000000008888">> end}]},
             {elib_retry_config, [{'intervals', 1, fun(_) -> [0] end}]},
             {message_ds, [{'send_next', 4, fun(_, _, _, _) -> ok end}]},
             ?MSG_STORE_MECK
@@ -211,7 +216,7 @@ send_welcome_llm_error_falls_back_to_template_test_() ->
             ]},
             {imboy_llm_openai, [{'chat', 3, fun(_, _, _) -> {error, timeout} end}]},
             {elib_log, [{'internal_log', 5, fun(_, _, _, _, _) -> ok end}]},
-            {elib_tsid, [{'generate', 0, fun() -> 8888 end}, {'generate', 1, fun(_) -> 8888 end}]},
+            {elib_uuid, [{'gen_v7', 0, fun() -> <<"018f0000-0000-7000-8000-000000008888">> end}]},
             {elib_retry_config, [{'intervals', 1, fun(_) -> [0] end}]},
             {message_ds, [{'send_next', 4, fun(_, _, _, _) -> ok end}]},
             ?MSG_STORE_MECK
@@ -240,7 +245,7 @@ send_welcome_rate_limited_falls_back_to_template_test_() ->
             {ai_agent_ds, [{'is_agent', 1, fun(42) -> {true, #{}} end}]},
             {ai_agent_policy, [{'allows', 2, fun(_, _) -> true end}]},
             {imboy_policy, [{'validate_message_write', 5, fun(_, _, _, _, _) -> ok end}]},
-            {elib_tsid, [{'generate', 0, fun() -> 8888 end}, {'generate', 1, fun(_) -> 8888 end}]},
+            {elib_uuid, [{'gen_v7', 0, fun() -> <<"018f0000-0000-7000-8000-000000008888">> end}]},
             {elib_retry_config, [{'intervals', 1, fun(_) -> [0] end}]},
             {message_ds, [{'send_next', 4, fun(_, _, _, _) -> ok end}]},
             ?MSG_STORE_MECK,
@@ -279,7 +284,7 @@ policy_config_meck(Caps) ->
 send_text_gate_mecks(Caps) ->
     [
         policy_config_meck(Caps),
-        {elib_tsid, [{'generate', 0, fun() -> 8888 end}, {'generate', 1, fun(_) -> 8888 end}]},
+        {elib_uuid, [{'gen_v7', 0, fun() -> <<"018f0000-0000-7000-8000-000000008888">> end}]},
         {elib_retry_config, [{'intervals', 1, fun(<<"c2c">>) -> [0, 3000] end}]},
         {message_ds, [{'send_next', 4, fun(_, _, _, _) -> ok end}]},
         ?MSG_STORE_MECK

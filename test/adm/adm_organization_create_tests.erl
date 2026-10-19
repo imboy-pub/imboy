@@ -116,30 +116,8 @@ adm_org_create_test_() ->
         end}}.
 
 setup_db() ->
-    %% 纯套件（不启动 imboy app）：TSID 生成器 init+register 幂等配方。
-    %% admin_op_log / organization / workspace 供本套件直写 org/ws ID 与审计行；
-    %% group_info / group_member / channel / channel_admin /
-    %% channel_subscription 供 workspace_ds:do_create_template/5 —— 平台默认
-    %% workspace 模板同事务还要建默认 Group（group_info + group_member）与
-    %% 默认 Channel（channel + channel_admin + channel_subscription）
-    %% （workspace_ds.erl:194/:222 及 group_member_repo:upsert_active、
-    %% channel_admin_repo:add、channel_subscription_repo:upsert_active）。
-    %% 缺注册时 generate 崩 {elib_tsid_generator_not_registered, ...} →
-    %% 整事务回滚 → handler 500，且 ERROR_LOG 经 lager 被吞，日志无痕迹。
-    %% 全量跑时其他套件已注册同名生成器（persistent_term VM 全局）会掩盖此
-    %% 缺口，单跑本套件必须自足注册。
+    %% 纯套件初始化完整静态实体清单；不再逐域注册。
     _ = (catch elib_tsid:init(#{dc_id => 1, node_id => 1, dc_bits => 3})),
-    ok =
-        elib_tsid:register([
-            admin_op_log,
-            organization,
-            workspace,
-            group_info,
-            group_member,
-            channel,
-            channel_admin,
-            channel_subscription
-        ]),
     ensure_depcache(),
     State =
         inttest_marker_db:provision(#{
@@ -768,12 +746,7 @@ org_count(Owner, Name) ->
     Cnt.
 
 new_id() ->
-    try elib_tsid:generate(default) of
-        Id when is_integer(Id) -> Id
-    catch
-        _:_ ->
-            1000000000000000 + erlang:unique_integer([positive, monotonic])
-    end.
+    eb_pg_test_fixture:id().
 
 uid_bin(Uid) ->
     integer_to_binary(Uid).

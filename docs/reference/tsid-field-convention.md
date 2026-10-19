@@ -1,6 +1,6 @@
 # TSID 字段约定
 
-> Last Updated: 2026-10-11（TSID V10 风险边界与验收后同步）
+> Last Updated: 2026-10-19（TSID V10 与业务消息身份边界同步）
 > Status: 长期协议契约文档  
 > Scope: 所有 REST API 与 WebSocket API 中 TSID 字段的传输格式约定
 
@@ -111,7 +111,6 @@ return JSON.parse(safeText)
 | `from_uid` | 消息发送方 ID（别名） | 提及接口 |
 | `key_id` | 合规密钥 ID | 合规密钥接口 |
 | `conversation_id` | 会话 ID | 会话接口 |
-| `last_msg_id` | 最后消息 ID | 会话接口 |
 | `channel_id` | 频道 ID | 频道接口 |
 | `author_id` | 作者 ID | 频道消息接口 |
 
@@ -121,7 +120,24 @@ return JSON.parse(safeText)
 |--------|------|------|
 | `device_id` | 设备标识符 | string（UUID 或自定义） |
 | `did` | 设备 ID（别名） | string |
+| `msg_id` | 普通 IM 业务消息标识 | opaque string（客户端 XID；新服务端普通 IM 使用 UUIDv7；历史/传入值原样保留，varchar(40)） |
+| `last_msg_id` | 最后消息标识 | opaque string（原样取自 msg_c2c/msg_c2g.msg_id；不按 TSID 数字解析，见迁移 00000198） |
 | `role_id` | 角色 ID | number（小整数） |
+
+普通 IM 的 `msg_id` 是跨消息类型的业务身份，不是消息表行主键；新的服务端消息
+使用现有 `elib_uuid:gen_v7/0` 生成36字符UUIDv7。客户端XID、历史uid/base64或
+TSID十进制字符串等既有身份不重编号；重试、流式定稿、ACK、引用和E2EE绑定
+必须继续使用首次确定的原值。处理或完成更新仍用 `Type + MsgId` 精确定位，
+防御历史或异常同值误伤，不把不同逻辑消息同ID视为合法并存，也不放松归档唯一约束。
+客服canonical `message_id` 是独立实体主键，仍使用该实体的TSID；不能仅凭字段名
+将它机械替换成普通IM业务msgId。消息严格顺序由既有 `conv_seq` 等业务游标承担，
+不按XID/UUIDv7/历史TSID的混合字符串排序。
+
+Ordinary IM message IDs are opaque business identities, distinct from entity row
+keys. Clients retain XID; newly created server messages use UUIDv7. Preserve existing
+IDs across retries, finalization, acknowledgements, references and E2EE bindings.
+Use Type + MsgId for defensive completion targeting without relaxing archive
+uniqueness. Canonical customer-service message entity keys remain domain TSIDs.
 
 ---
 

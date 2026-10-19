@@ -45,15 +45,6 @@ setup_conn() ->
     catch
         _:_ -> ok
     end,
-    lists:foreach(
-        fun(Name) ->
-            case lists:member(Name, elib_tsid:registered()) of
-                true -> ok;
-                false -> elib_tsid:register(Name)
-            end
-        end,
-        [group_info, enterprise_message, enterprise_audit_event]
-    ),
     {ok, _} = application:ensure_all_started(throttle),
     State = inttest_marker_db:provision(#{
         env_prefix => <<"FULL07RC_INTTEST">>,

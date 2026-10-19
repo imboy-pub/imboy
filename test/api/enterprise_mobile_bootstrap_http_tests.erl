@@ -490,7 +490,8 @@ record_auth_failure(#{status := 401, body := Body}) ->
             device_active_after_100ms => After,
             device_active_after_1s => Later,
             user_server_running => is_pid(whereis(user_server)),
-            device_tsid_registered => lists:member(user_device, elib_tsid:registered())
+            device_tsid_available => elib_tsid:readiness() =:= ready andalso
+                lists:member(user_device, elib_tsid:namespaces())
         })
     );
 record_auth_failure(_) ->

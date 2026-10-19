@@ -513,7 +513,7 @@ finish_audit(
 %% 常量单点给出，本模块**不传** msg_type/正文/payload（没有入参通道）。
 -type push_table() :: binary().
 
-%% @doc 消息提交后离线推送（Table 为 msg_c2c | msg_c2g，MsgId 为 TSID binary）。
+%% @doc 消息提交后离线推送（Table 为 msg_c2c | msg_c2g，MsgId 为不透明业务消息 ID binary）。
 %% 恒返回 ok：推送故障不影响已提交的消息（fail-safe，与 C2C/C2G 推送同口径）。
 -spec push_after_commit(push_table(), binary()) -> ok.
 push_after_commit(Table, MsgId) when is_binary(MsgId) ->
@@ -561,4 +561,4 @@ push_after_commit_tx(_Conn, _Table, _MsgId) ->
 %%%===================================================================
 
 next_msg_id() ->
-    integer_to_binary(elib_tsid:generate(enterprise_message)).
+    elib_uuid:gen_v7().

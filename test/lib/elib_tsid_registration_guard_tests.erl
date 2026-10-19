@@ -2,7 +2,7 @@
 
 %%%
 % 守护测试：扫描 src/ 全部 elib_tsid:generate(<Name>) 调用点，
-% 断言每个命名生成器都已注册进 imboy_app:tsid_generator_names()。
+% 断言每个命名生成器都在 elib_tsid_inventory 静态实体清单中。
 %
 % 背景：此 bug 类已两次进入生产（a93aa998 补 ai_agent_role_version /
 % agent_payment_compensation；2026-08-22 bot_ds 用未注册的 bot 生成器，
@@ -71,12 +71,11 @@ all_generate_call_sites_registered_test() ->
         lists:uniq([
             Name
          || {_File, _Line, Name} <- CallSites,
-            Name =/= default,
             not lists:member(Name, Registered)
         ]),
     ?assertEqual([], Unregistered).
 
-%% V10：生产代码禁止无参 generate()（default 仅供测试/脚手架）——
+%% V10：无参/default 发号入口已删除；禁止再次引入调用。
 %% 无显式 namespace 的发号在多游标语义下无法归属实体，禁止回归。
 no_argumentless_generate_in_src_test() ->
     Offenders = scan_argumentless_generate(),
@@ -119,7 +118,8 @@ id_port_callsite_scanner_test() ->
             {"agent_grant_pg", "next_id"},
             {"agent_run_pg", "next_id"},
             {"eb_tsid", "new_id"},
-            {"cs_tsid", "new_id"}
+            {"cs_tsid", "new_id"},
+            {"cs_app_support", "new_id"}
         ]
     ).
 
@@ -141,10 +141,10 @@ line_of(Bin, Pos) ->
     Head = binary:part(Bin, 0, Pos),
     1 + length(binary:matches(Head, <<10>>)).
 
-%% @doc 返回注册清单（含 default + 别名；V10 静态清单，init 前可直读）
+%% @doc 返回静态实体清单（含别名，init 前可直读）
 -spec registered_names() -> [atom()].
 registered_names() ->
-    [default | elib_tsid:namespaces()] ++ maps:keys(elib_tsid:aliases()).
+    elib_tsid:namespaces() ++ maps:keys(elib_tsid:aliases()).
 
 %% @doc 扫描 src/**/*.erl 中的 elib_tsid:generate(<atom>) 调用
 %% 返回 [{File, Line, GeneratorName}]
@@ -193,7 +193,7 @@ scan_file(Path) ->
 parse_line(Path, N, Line) ->
     Re =
         "(?:elib_tsid:generate(?:_n)?|(?:agent_grant_pg|agent_run_pg):next_id|"
-        "(?:eb_tsid|cs_tsid):new_id)\\((\\w+)",
+        "(?:eb_tsid|cs_tsid|cs_app_support):new_id)\\s*\\(\\s*(\\w+)",
     case re:run(Line, Re, [{capture, all_but_first, list}]) of
         {match, [Name]} ->
             case is_generator_name(Name) of

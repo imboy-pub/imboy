@@ -1,8 +1,8 @@
 # TSID V10静态Namespace清单
 
-> 更新：2026-10-11。从src/lib/elib_tsid_inventory.erl的namespaces/0与aliases/0核对；源码是运行时真源。本表不推断物理表结构，不替代迁移审核。
+> 更新：2026-10-19。从src/lib/elib_tsid_inventory.erl的namespaces/0与aliases/0核对；源码是运行时真源。本表不推断物理表结构，不替代迁移审核。
 
-149个canonical各一个游标，3个alias复用既有游标；default测试/脚手架尾槽使总游标数150。下表顺序是当前源码顺序，槽号不是外部API，也不编码入ID。生产实体写入须明确标签，未知报错；新增实体同步源码及专项守护。
+152个canonical各一个游标，3个alias复用既有游标；没有default尾槽。物理atomics按stride=8分隔，总计1216槽。下表顺序是当前源码顺序，槽号不是外部API，也不编码入ID。生产实体写入须明确标签，未知报错；新增实体同步源码及专项守护。
 
 | Canonical Namespace |
 |---|
@@ -155,6 +155,9 @@
 | `agent_run` |
 | `agent_run_event` |
 | `agent_effect` |
+| `ai_cs_config` |
+| `ai_cs_faq` |
+| `cs_ai_job` |
 
 ## 别名（不增加游标）
 

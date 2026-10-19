@@ -68,9 +68,10 @@ while [[ $# -gt 0 ]]; do
 done
 
 # CS 组件部署 helper（CSD-CLI-01）：纯函数在 SSH 前 allowlist 校验即用，
-# deploy_cs 在主分派处调用。仅 cs/all 组件加载（其他组件零依赖、零行为变化）。
+# deploy_cs 在主分派处调用。cs/all 组件与 api 组件（收尾自动同步 CS 面）加载，
+# 其余组件零依赖、零行为变化。
 # 此处在日志函数定义之前 source，其独立 source 的兜底日志函数会被下方正式定义覆盖。
-if [[ "$COMPONENT" == cs || "$COMPONENT" == all ]]; then
+if [[ "$COMPONENT" == cs || "$COMPONENT" == all || "$COMPONENT" == api ]]; then
   # shellcheck source=lib/cs_deploy.sh
   source "$SCRIPT_DIR/lib/cs_deploy.sh"
 fi
@@ -220,34 +221,25 @@ if [[ -n "${DEPLOY_LEGACY_RELEASE_DIR:-}" ]]; then
   [[ -n "${DEPLOY_LEGACY_PORT:-}" ]] \
     || fail "配置 DEPLOY_LEGACY_RELEASE_DIR 时必须同时配置 DEPLOY_LEGACY_PORT"
 fi
-if [[ -n "${DEPLOY_TSID_STATE_DIR:-}" ]]; then
-  [[ "$DEPLOY_TSID_STATE_DIR" =~ ^/[a-zA-Z0-9._/-]+$ \
-     && "$DEPLOY_TSID_STATE_DIR" != "/" \
-     && "$DEPLOY_TSID_STATE_DIR" != *..* ]] \
-    || fail "DEPLOY_TSID_STATE_DIR 必须是无 .. 的安全绝对路径"
-  [[ "${DEPLOY_TSID_BLUE_NODE_ID:-}" =~ ^[0-9]+$ \
-     && "${DEPLOY_TSID_GREEN_NODE_ID:-}" =~ ^[0-9]+$ \
-     && "$DEPLOY_TSID_BLUE_NODE_ID" -le 127 \
-     && "$DEPLOY_TSID_GREEN_NODE_ID" -le 127 \
-     && "$DEPLOY_TSID_BLUE_NODE_ID" != "$DEPLOY_TSID_GREEN_NODE_ID" ]] \
-    || fail "启用 DEPLOY_TSID_STATE_DIR 时必须配置不同的蓝/绿 TSID node_id（0..127）"
+# Only backend startup needs a new node identity; admin/migrate/rollback keep
+# their existing configuration and must not be blocked by unused TSID fields.
+DEPLOY_TSID_DC_ID="${DEPLOY_TSID_DC_ID:-1}"
+DEPLOY_TSID_DC_BITS="${DEPLOY_TSID_DC_BITS:-3}"
+if [[ "$COMPONENT" == api || "$COMPONENT" == all || ("$COMPONENT" == cs && "$CS_SKIP_BACKEND" -eq 0) ]]; then
+  [[ "$DEPLOY_TSID_DC_BITS" =~ ^(0|[1-9][0-9]?)$ ]] && [ "$DEPLOY_TSID_DC_BITS" -le 10 ] \
+    || fail "DEPLOY_TSID_DC_BITS 必须位于 0..10"
+  [[ "$DEPLOY_TSID_DC_ID" =~ ^(0|[1-9][0-9]{0,3})$ ]] && [ "$DEPLOY_TSID_DC_ID" -lt "$((1 << DEPLOY_TSID_DC_BITS))" ] \
+    || fail "DEPLOY_TSID_DC_ID 超出 dc_bits 布局"
+  TSID_MAX_NODE_ID=$(( (1 << (10 - DEPLOY_TSID_DC_BITS)) - 1 ))
+  [[ "${DEPLOY_TSID_BLUE_NODE_ID:-}" =~ ^(0|[1-9][0-9]{0,3})$ \
+     && "${DEPLOY_TSID_GREEN_NODE_ID:-}" =~ ^(0|[1-9][0-9]{0,3})$ ]] \
+    && [ "$DEPLOY_TSID_BLUE_NODE_ID" -le "$TSID_MAX_NODE_ID" ] \
+    && [ "$DEPLOY_TSID_GREEN_NODE_ID" -le "$TSID_MAX_NODE_ID" ] \
+    && [ "$DEPLOY_TSID_BLUE_NODE_ID" -ne "$DEPLOY_TSID_GREEN_NODE_ID" ] \
+    || fail "必须明确配置不同的蓝/绿 TSID node_id（0..$TSID_MAX_NODE_ID）"
 fi
-case "${DEPLOY_TSID_BOOTSTRAP_MODE:-}" in
-  ""|auto_scan|manual_floor) ;;
-  *) fail "DEPLOY_TSID_BOOTSTRAP_MODE 只能为 auto_scan/manual_floor" ;;
-esac
-if [[ "${DEPLOY_TSID_BOOTSTRAP_MODE:-}" == manual_floor ]]; then
-  [[ "${DEPLOY_TSID_BOOTSTRAP_FLOOR_UNIX_MS:-}" == now \
-     || "${DEPLOY_TSID_BOOTSTRAP_FLOOR_UNIX_MS:-}" =~ ^[0-9]{13}$ ]] \
-    || fail "manual_floor 要求 DEPLOY_TSID_BOOTSTRAP_FLOOR_UNIX_MS=now 或 13 位 unix 毫秒"
-fi
-if [[ -n "${DEPLOY_TSID_BOOTSTRAP_LEGACY_ACK:-}" \
-   && "${DEPLOY_TSID_BOOTSTRAP_LEGACY_ACK}" != "I-CONFIRM-OLD-WRITER-STOPPED" ]]; then
-  fail "DEPLOY_TSID_BOOTSTRAP_LEGACY_ACK 非法"
-fi
-if [[ -n "${DEPLOY_TSID_BOOTSTRAP_REBIND_ACK:-}" \
-   && ! "${DEPLOY_TSID_BOOTSTRAP_REBIND_ACK}" =~ ^I-CONFIRM-OLD-WRITER-STOPPED-AND-REBIND:[0-9A-Fa-f]{64}:[0-9A-Fa-f]{64}$ ]]; then
-  fail "DEPLOY_TSID_BOOTSTRAP_REBIND_ACK 非法"
+if [[ -n "${DEPLOY_LEGACY_STOP_ACK:-}" && "${DEPLOY_LEGACY_STOP_ACK}" != "I-CONFIRM-OLD-WRITER-STOPPED" ]]; then
+  fail "DEPLOY_LEGACY_STOP_ACK 非法"
 fi
 [[ "$DEPLOY_PROJECT_DIR" =~ ^/[a-zA-Z0-9._/-]+$ && "$DEPLOY_PROJECT_DIR" != "/" \
    && "$DEPLOY_PROJECT_DIR" != *..* ]] \
@@ -404,13 +396,11 @@ deploy_api() {
     "IMBOY_DEPLOY_SALES_RELEASE=${DEPLOY_SALES_RELEASE:-true}"
     "IMBOY_DEPLOY_E2EE_MODE=${DEPLOY_E2EE_MODE:-}"
     "IMBOY_DEPLOY_PLUGIN_TRUSTED_PUBLIC_KEY_FILE=${DEPLOY_PLUGIN_TRUSTED_PUBLIC_KEY_FILE:-}"
-    "IMBOY_DEPLOY_TSID_STATE_DIR=${DEPLOY_TSID_STATE_DIR:-}"
+    "IMBOY_DEPLOY_TSID_DC_ID=$DEPLOY_TSID_DC_ID"
+    "IMBOY_DEPLOY_TSID_DC_BITS=$DEPLOY_TSID_DC_BITS"
+    "IMBOY_DEPLOY_LEGACY_STOP_ACK=${DEPLOY_LEGACY_STOP_ACK:-}"
     "IMBOY_DEPLOY_TSID_BLUE_NODE_ID=${DEPLOY_TSID_BLUE_NODE_ID:-}"
     "IMBOY_DEPLOY_TSID_GREEN_NODE_ID=${DEPLOY_TSID_GREEN_NODE_ID:-}"
-    "IMBOY_DEPLOY_TSID_BOOTSTRAP_MODE=${DEPLOY_TSID_BOOTSTRAP_MODE:-}"
-    "IMBOY_DEPLOY_TSID_BOOTSTRAP_FLOOR_UNIX_MS=${DEPLOY_TSID_BOOTSTRAP_FLOOR_UNIX_MS:-}"
-    "IMBOY_DEPLOY_TSID_BOOTSTRAP_LEGACY_ACK=${DEPLOY_TSID_BOOTSTRAP_LEGACY_ACK:-}"
-    "IMBOY_DEPLOY_TSID_BOOTSTRAP_REBIND_ACK=${DEPLOY_TSID_BOOTSTRAP_REBIND_ACK:-}"
     "IMBOY_DEPLOY_INTERNAL=1"
   )
   if ! env "${bg_env[@]}" \
@@ -687,6 +677,23 @@ case "$COMPONENT" in
     if [[ "$remote_admin_head" != "$ADMIN_SOURCE_HEAD" ]]; then
       log "Admin 前端落后于本地源码（${remote_admin_head:-missing} → $ADMIN_SOURCE_HEAD），自动同步 ..."
       deploy_admin
+    fi
+    # CS 面构建源同为 Admin 仓，readiness 要求线上 CS manifest 的 source_head
+    # == ADMIN_SOURCE_HEAD（否则 exit 55 恒败）。对称 admin 逻辑：该环境已
+    # 上线过 CS（CS_NGINX_CONF 已配置且远端存在，与 deploy_readiness 的 CS
+    # 检查条件一致）且落后时自动补发；未上线 CS 的环境不受影响。
+    # cs_validate_config 前置：CS_* 输入须 allowlist 校验通过（I6）后才能
+    # 进入任何 SSH 命令拼接。
+    if [[ -n "${CS_NGINX_CONF:-}" ]]; then
+      cs_validate_config
+      if [[ "$(ssh_cap "[ -f '$CS_NGINX_CONF' ] && echo 1 || echo 0" 2>/dev/null || true)" == 1 ]]; then
+        remote_cs_head="$(ssh_cap "curl -fsS --max-time 10 'https://$CS_WIDGET_DOMAIN/manifest.json' | sed -n 's/.*\"source_head\"[[:space:]]*:[[:space:]]*\"\([0-9a-f]*\)\".*/\1/p' | head -1" 2>/dev/null || true)"
+        if [[ "$remote_cs_head" != "$ADMIN_SOURCE_HEAD" ]]; then
+          log "CS 面落后于本地源码（${remote_cs_head:-missing} → $ADMIN_SOURCE_HEAD），自动同步 ..."
+          cs_resolve_build_paths
+          deploy_cs skip-backend
+        fi
+      fi
     fi
     deploy_readiness
     ;;

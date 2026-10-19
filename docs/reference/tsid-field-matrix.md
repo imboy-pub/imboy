@@ -8,7 +8,7 @@
 
 ## V10当前合同与矩阵使用边界
 
-正式清单以elib_tsid_inventory为准：149 canonical、3 aliases，加default共150槽。group → group_info，audit/enterprise_audit → enterprise_audit_event。同表入口共用游标；新增实体先更新静态清单与专项守护，禁止动态register。
+正式清单以elib_tsid_inventory为准：152 canonical、3 aliases，无default槽；按stride=8分隔共1216个atomics物理槽位。group → group_info，audit/enterprise_audit → enterprise_audit_event。同表入口共用游标；新增实体先更新静态清单与专项守护，禁止动态register。
 
 下表是历史字段取证，不是最终Namespace清单或当前数据库全量验收。旧冲突与API描述不能直接当作当前缺陷。业务API保持JSON integer，显式string端点按自身合同。见[字段与风险规范](./tsid-field-convention.md)及[V10设计](../explanation/tsid-v10.md)。
 

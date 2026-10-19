@@ -161,7 +161,7 @@ execute_c2c(Conn, MsgId, Sql, Params) ->
     end.
 
 unique_msg_id(Suffix) ->
-    <<"dedup_", Suffix/binary, "_", (integer_to_binary(elib_tsid:generate(default)))/binary>>.
+    <<"dedup_", Suffix/binary, "_", (integer_to_binary(eb_pg_test_fixture:id()))/binary>>.
 
 apply_runtime_statements(Conn) ->
     {ok, Sql} = file:read_file("priv/migrations/00000083_message_cross_timestamp_dedup.up.sql"),
