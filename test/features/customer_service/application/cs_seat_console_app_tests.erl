@@ -74,6 +74,7 @@ invalid_origin_classes_are_rejected() ->
         %% path/query/fragment
         <<"https://shop.example.com/path">>,
         <<"https://shop.example.com?q=1">>,
+        <<"https://shop.example.com#fragment">>,
         %% 空白 / 控制字符（含无冒号 CRLF 形态）
         <<"https://shop.example.com\r\nEvil: 1">>,
         <<"https://shop.example.com X">>,

@@ -15,7 +15,11 @@ new_id(_Kind) ->
     900000000000000 + N.
 
 reset() ->
-    catch ets:delete(?TAB),
+    try
+        ets:delete(?TAB)
+    catch
+        _:_ -> ok
+    end,
     ets:new(?TAB, [named_table, public]),
     ets:insert(?TAB, {n, 1}),
     ok.

@@ -63,9 +63,23 @@ listener_for(Surface, Action, Inject) ->
     Dispatch = cowboy_router:compile([
         {'_', [{binary_to_list(PatternBin), Handler, maps:merge(Opts, Inject)}]}
     ]),
-    case cowboy:start_clear(Name, [{port, 0}], #{env => #{dispatch => Dispatch}}) of
-        {ok, _Pid} -> {ok, Name, ranch:get_port(Name)};
-        {error, Reason} -> erlang:error({listener_failed, Reason})
+    case
+        cowboy:start_clear(Name, [{ip, {127, 0, 0, 1}}, {port, 0}], #{
+            env => #{dispatch => Dispatch}
+        })
+    of
+        {ok, _Pid} ->
+            try
+                {{127, 0, 0, 1}, Port} = ranch:get_addr(Name),
+                true = is_integer(Port) andalso Port > 0,
+                {ok, Name, Port}
+            catch
+                Class:Reason:Stack ->
+                    _ = cowboy:stop_listener(Name),
+                    erlang:raise(Class, Reason, Stack)
+            end;
+        {error, Reason} ->
+            erlang:error({listener_failed, Reason})
     end.
 
 %% @doc 起监听器 → 执行 → 必定停掉（端口不泄漏）。
