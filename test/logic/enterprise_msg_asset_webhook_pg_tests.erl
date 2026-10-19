@@ -122,15 +122,6 @@ setup_conn_with_keys() ->
     catch
         _:_ -> ok
     end,
-    lists:foreach(
-        fun(Name) ->
-            case lists:member(Name, elib_tsid:registered()) of
-                true -> ok;
-                false -> elib_tsid:register(Name)
-            end
-        end,
-        [group_info, group_member, enterprise_message, enterprise_audit_event, msg_c2c, msg_c2g]
-    ),
     {ok, _} = application:ensure_all_started(throttle),
     State = attachment_fixture_database(fun() ->
         inttest_marker_db:provision(#{

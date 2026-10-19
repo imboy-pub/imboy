@@ -117,8 +117,8 @@ setup_owned() ->
     Port = ranch:get_port(w403_owned_gateway),
     application:set_env(imboy, base_url,
         list_to_binary("http://127.0.0.1:" ++ integer_to_list(Port))),
-    case elib_tsid:registered() of
-        [] ->
+    case elib_tsid:readiness() of
+        not_initialized ->
             ok = elib_tsid:init(#{dc_id => 1, node_id => 1, dc_bits => 3}),
             own_resource(owned_tsid, true);
         _ -> ok

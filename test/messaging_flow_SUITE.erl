@@ -391,7 +391,7 @@ message_ack_clears_retry_timer(_Config) ->
 
     %% staging 卸载为异步旁路，mock 掉避免真实依赖
     meck:new(msg_store_ds, [unstick, passthrough]),
-    meck:expect(msg_store_ds, unstage, 1, ok),
+    meck:expect(msg_store_ds, unstage, 2, ok),
 
     ok = msg_ack_logic:client_ack(<<"c2c">>, MsgId, ?U_TO, <<"device_001">>),
 

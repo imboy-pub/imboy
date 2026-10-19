@@ -220,34 +220,25 @@ if [[ -n "${DEPLOY_LEGACY_RELEASE_DIR:-}" ]]; then
   [[ -n "${DEPLOY_LEGACY_PORT:-}" ]] \
     || fail "配置 DEPLOY_LEGACY_RELEASE_DIR 时必须同时配置 DEPLOY_LEGACY_PORT"
 fi
-if [[ -n "${DEPLOY_TSID_STATE_DIR:-}" ]]; then
-  [[ "$DEPLOY_TSID_STATE_DIR" =~ ^/[a-zA-Z0-9._/-]+$ \
-     && "$DEPLOY_TSID_STATE_DIR" != "/" \
-     && "$DEPLOY_TSID_STATE_DIR" != *..* ]] \
-    || fail "DEPLOY_TSID_STATE_DIR 必须是无 .. 的安全绝对路径"
-  [[ "${DEPLOY_TSID_BLUE_NODE_ID:-}" =~ ^[0-9]+$ \
-     && "${DEPLOY_TSID_GREEN_NODE_ID:-}" =~ ^[0-9]+$ \
-     && "$DEPLOY_TSID_BLUE_NODE_ID" -le 127 \
-     && "$DEPLOY_TSID_GREEN_NODE_ID" -le 127 \
-     && "$DEPLOY_TSID_BLUE_NODE_ID" != "$DEPLOY_TSID_GREEN_NODE_ID" ]] \
-    || fail "启用 DEPLOY_TSID_STATE_DIR 时必须配置不同的蓝/绿 TSID node_id（0..127）"
+# Only backend startup needs a new node identity; admin/migrate/rollback keep
+# their existing configuration and must not be blocked by unused TSID fields.
+DEPLOY_TSID_DC_ID="${DEPLOY_TSID_DC_ID:-1}"
+DEPLOY_TSID_DC_BITS="${DEPLOY_TSID_DC_BITS:-3}"
+if [[ "$COMPONENT" == api || "$COMPONENT" == all || ("$COMPONENT" == cs && "$CS_SKIP_BACKEND" -eq 0) ]]; then
+  [[ "$DEPLOY_TSID_DC_BITS" =~ ^(0|[1-9][0-9]?)$ ]] && [ "$DEPLOY_TSID_DC_BITS" -le 10 ] \
+    || fail "DEPLOY_TSID_DC_BITS 必须位于 0..10"
+  [[ "$DEPLOY_TSID_DC_ID" =~ ^(0|[1-9][0-9]{0,3})$ ]] && [ "$DEPLOY_TSID_DC_ID" -lt "$((1 << DEPLOY_TSID_DC_BITS))" ] \
+    || fail "DEPLOY_TSID_DC_ID 超出 dc_bits 布局"
+  TSID_MAX_NODE_ID=$(( (1 << (10 - DEPLOY_TSID_DC_BITS)) - 1 ))
+  [[ "${DEPLOY_TSID_BLUE_NODE_ID:-}" =~ ^(0|[1-9][0-9]{0,3})$ \
+     && "${DEPLOY_TSID_GREEN_NODE_ID:-}" =~ ^(0|[1-9][0-9]{0,3})$ ]] \
+    && [ "$DEPLOY_TSID_BLUE_NODE_ID" -le "$TSID_MAX_NODE_ID" ] \
+    && [ "$DEPLOY_TSID_GREEN_NODE_ID" -le "$TSID_MAX_NODE_ID" ] \
+    && [ "$DEPLOY_TSID_BLUE_NODE_ID" -ne "$DEPLOY_TSID_GREEN_NODE_ID" ] \
+    || fail "必须明确配置不同的蓝/绿 TSID node_id（0..$TSID_MAX_NODE_ID）"
 fi
-case "${DEPLOY_TSID_BOOTSTRAP_MODE:-}" in
-  ""|auto_scan|manual_floor) ;;
-  *) fail "DEPLOY_TSID_BOOTSTRAP_MODE 只能为 auto_scan/manual_floor" ;;
-esac
-if [[ "${DEPLOY_TSID_BOOTSTRAP_MODE:-}" == manual_floor ]]; then
-  [[ "${DEPLOY_TSID_BOOTSTRAP_FLOOR_UNIX_MS:-}" == now \
-     || "${DEPLOY_TSID_BOOTSTRAP_FLOOR_UNIX_MS:-}" =~ ^[0-9]{13}$ ]] \
-    || fail "manual_floor 要求 DEPLOY_TSID_BOOTSTRAP_FLOOR_UNIX_MS=now 或 13 位 unix 毫秒"
-fi
-if [[ -n "${DEPLOY_TSID_BOOTSTRAP_LEGACY_ACK:-}" \
-   && "${DEPLOY_TSID_BOOTSTRAP_LEGACY_ACK}" != "I-CONFIRM-OLD-WRITER-STOPPED" ]]; then
-  fail "DEPLOY_TSID_BOOTSTRAP_LEGACY_ACK 非法"
-fi
-if [[ -n "${DEPLOY_TSID_BOOTSTRAP_REBIND_ACK:-}" \
-   && ! "${DEPLOY_TSID_BOOTSTRAP_REBIND_ACK}" =~ ^I-CONFIRM-OLD-WRITER-STOPPED-AND-REBIND:[0-9A-Fa-f]{64}:[0-9A-Fa-f]{64}$ ]]; then
-  fail "DEPLOY_TSID_BOOTSTRAP_REBIND_ACK 非法"
+if [[ -n "${DEPLOY_LEGACY_STOP_ACK:-}" && "${DEPLOY_LEGACY_STOP_ACK}" != "I-CONFIRM-OLD-WRITER-STOPPED" ]]; then
+  fail "DEPLOY_LEGACY_STOP_ACK 非法"
 fi
 [[ "$DEPLOY_PROJECT_DIR" =~ ^/[a-zA-Z0-9._/-]+$ && "$DEPLOY_PROJECT_DIR" != "/" \
    && "$DEPLOY_PROJECT_DIR" != *..* ]] \
@@ -404,13 +395,11 @@ deploy_api() {
     "IMBOY_DEPLOY_SALES_RELEASE=${DEPLOY_SALES_RELEASE:-true}"
     "IMBOY_DEPLOY_E2EE_MODE=${DEPLOY_E2EE_MODE:-}"
     "IMBOY_DEPLOY_PLUGIN_TRUSTED_PUBLIC_KEY_FILE=${DEPLOY_PLUGIN_TRUSTED_PUBLIC_KEY_FILE:-}"
-    "IMBOY_DEPLOY_TSID_STATE_DIR=${DEPLOY_TSID_STATE_DIR:-}"
+    "IMBOY_DEPLOY_TSID_DC_ID=$DEPLOY_TSID_DC_ID"
+    "IMBOY_DEPLOY_TSID_DC_BITS=$DEPLOY_TSID_DC_BITS"
+    "IMBOY_DEPLOY_LEGACY_STOP_ACK=${DEPLOY_LEGACY_STOP_ACK:-}"
     "IMBOY_DEPLOY_TSID_BLUE_NODE_ID=${DEPLOY_TSID_BLUE_NODE_ID:-}"
     "IMBOY_DEPLOY_TSID_GREEN_NODE_ID=${DEPLOY_TSID_GREEN_NODE_ID:-}"
-    "IMBOY_DEPLOY_TSID_BOOTSTRAP_MODE=${DEPLOY_TSID_BOOTSTRAP_MODE:-}"
-    "IMBOY_DEPLOY_TSID_BOOTSTRAP_FLOOR_UNIX_MS=${DEPLOY_TSID_BOOTSTRAP_FLOOR_UNIX_MS:-}"
-    "IMBOY_DEPLOY_TSID_BOOTSTRAP_LEGACY_ACK=${DEPLOY_TSID_BOOTSTRAP_LEGACY_ACK:-}"
-    "IMBOY_DEPLOY_TSID_BOOTSTRAP_REBIND_ACK=${DEPLOY_TSID_BOOTSTRAP_REBIND_ACK:-}"
     "IMBOY_DEPLOY_INTERNAL=1"
   )
   if ! env "${bg_env[@]}" \

@@ -45,12 +45,7 @@ setup_conn() ->
     catch
         _:_ -> ok
     end,
-    %% 命名生成器必须显式注册：生产由应用启动流程统一注册（并有
-    %% elib_tsid_registration_guard_tests 兜底），而单跑本套件的 VM 不带那一步，
-    %% 否则 user_repo:create_tx（generate(user)）与 sso_identity_repo:upsert_tx
-    %% （generate(sso_identity)）会抛 elib_tsid_generator_not_registered。
-    %% register/1 幂等，重复调用安全。
-    ok = elib_tsid:register([user, sso_identity]),
+    %% init 已安装完整静态实体清单，user/sso_identity 无需动态注册。
     %% ⚠ marker 库夹具默认**不**装 rfc3339 codec，而本套件要验证的写路径会绑定
     %% elib_dt:now() 的产物（RFC3339 字符串，如 2026-09-21T17:41:47.976250+08:00）。
     %% 缺 codec 时 epgsql 会拿默认 datetime 编解码去处理该字符串，

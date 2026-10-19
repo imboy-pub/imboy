@@ -100,11 +100,9 @@ connect_required() ->
 
 %% eunit-local 环境无 imboy app 时 elib_tsid 需要节点标识（04B 同口径）。
 ensure_tsid() ->
-    try elib_tsid:generate(default) of
+    case elib_tsid:readiness() of
+        not_initialized -> elib_tsid:init(#{dc_id => 0, node_id => 7});
         _ -> ok
-    catch
-        _:_ ->
-            ok = elib_tsid:init(#{dc_id => 0, node_id => 7})
     end.
 
 %% env seam 注入（与生产默认零接触；teardown 统一卸载）。

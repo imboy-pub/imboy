@@ -72,10 +72,9 @@ disconnect([C1, C2]) ->
     ok.
 
 ensure_tsid() ->
-    try elib_tsid:generate(default) of
+    case elib_tsid:readiness() of
+        not_initialized -> elib_tsid:init(#{dc_id => 0, node_id => 9});
         _ -> ok
-    catch
-        _:_ -> ok = elib_tsid:init(#{dc_id => 0, node_id => 9})
     end.
 
 %% ===================================================================

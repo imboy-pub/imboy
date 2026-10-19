@@ -51,6 +51,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 #   IMBOY_DEPLOY_SALES_RELEASE 销售版门禁（default: true）
 #   IMBOY_DEPLOY_E2EE_MODE     节点 E2EE 模式（销售版 default: required；其他: disabled）
 #   IMBOY_DEPLOY_PLUGIN_TRUSTED_PUBLIC_KEY_FILE 本地 32 字节 Ed25519 公钥
+#   IMBOY_DEPLOY_TSID_DC_ID 数据中心 ID（default: 1）
+#   IMBOY_DEPLOY_TSID_DC_BITS DC 位宽，全集群一致（default: 3）
+#   IMBOY_DEPLOY_TSID_BLUE_NODE_ID / GREEN_NODE_ID 明确且不同的两色节点 ID
+#   IMBOY_DEPLOY_LEGACY_STOP_ACK 首次 legacy 割接的停写确认
 # =============================================================================
 
 # ---------- 静默控制 / Verbosity control ----------
@@ -119,13 +123,11 @@ DB_NAME="${IMBOY_DEPLOY_DB_NAME:-}"
 DB_USER="${IMBOY_DEPLOY_DB_USER:-}"
 EXPAND_MIGRATIONS="${IMBOY_DEPLOY_EXPAND_MIGRATIONS:-}"
 PLUGIN_TRUSTED_PUBLIC_KEY_FILE="${IMBOY_DEPLOY_PLUGIN_TRUSTED_PUBLIC_KEY_FILE:-}"
-TSID_STATE_DIR="${IMBOY_DEPLOY_TSID_STATE_DIR:-}"
+TSID_DC_ID="${IMBOY_DEPLOY_TSID_DC_ID:-1}"
+TSID_DC_BITS="${IMBOY_DEPLOY_TSID_DC_BITS:-3}"
 TSID_BLUE_NODE_ID="${IMBOY_DEPLOY_TSID_BLUE_NODE_ID:-}"
 TSID_GREEN_NODE_ID="${IMBOY_DEPLOY_TSID_GREEN_NODE_ID:-}"
-TSID_BOOTSTRAP_MODE="${IMBOY_DEPLOY_TSID_BOOTSTRAP_MODE:-}"
-TSID_BOOTSTRAP_FLOOR_UNIX_MS="${IMBOY_DEPLOY_TSID_BOOTSTRAP_FLOOR_UNIX_MS:-}"
-TSID_BOOTSTRAP_LEGACY_ACK="${IMBOY_DEPLOY_TSID_BOOTSTRAP_LEGACY_ACK:-}"
-TSID_BOOTSTRAP_REBIND_ACK="${IMBOY_DEPLOY_TSID_BOOTSTRAP_REBIND_ACK:-}"
+LEGACY_STOP_ACK="${IMBOY_DEPLOY_LEGACY_STOP_ACK:-}"
 BOUNDARY_CUTOVER_MARKER="$PROJECT_DIR/.deploy-c2g-boundary-v109-ready"
 E2EE_ATTESTATION_SCHEMA_PREDICATE="to_regclass('public.e2ee_group_session_attestation') IS NOT NULL AND to_regclass('public.e2ee_group_session_member') IS NOT NULL AND (SELECT count(*) FROM information_schema.columns WHERE table_schema='public' AND table_name='e2ee_group_session_attestation' AND is_nullable='NO' AND (ordinal_position || ':' || column_name || ':' || udt_name) IN ('1:group_id:int8','2:session_id:varchar','3:sender_uid:int8','4:sender_did:varchar','5:room_key_msg_id:varchar','6:recipient_uids:_int8','7:start_seq:int8','8:end_seq:int8','9:created_at:timestamptz','10:updated_at:timestamptz')) = 10 AND (SELECT count(*) FROM information_schema.columns WHERE table_schema='public' AND table_name='e2ee_group_session_attestation' AND (column_name, character_maximum_length) IN (('session_id',256),('sender_did',128),('room_key_msg_id',40))) = 3 AND (SELECT count(*) FROM information_schema.columns WHERE table_schema='public' AND table_name='e2ee_group_session_member' AND is_nullable='NO' AND (ordinal_position || ':' || column_name || ':' || udt_name) IN ('1:group_id:int8','2:session_id:varchar','3:user_id:int8','4:generation_no:int4','5:generation_start_seq:int8')) = 5 AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='e2ee_group_session_member' AND column_name='session_id' AND character_maximum_length=256) AND (SELECT count(*) FROM pg_constraint WHERE conrelid=to_regclass('public.e2ee_group_session_attestation') AND convalidated AND ((conname='e2ee_group_session_attestation_pkey' AND contype='p' AND conkey=ARRAY[1,2]::smallint[]) OR (conname='e2ee_group_session_attestation_session_id_key' AND contype='u' AND conkey=ARRAY[2]::smallint[]) OR (conname='e2ee_group_session_attestation_room_key_msg_id_key' AND contype='u' AND conkey=ARRAY[5]::smallint[]) OR (conname='chk_e2ee_group_session_ids' AND contype='c' AND conkey=ARRAY[1,3,2,4,5]::smallint[] AND pg_get_constraintdef(oid,true)='CHECK (group_id > 0 AND sender_uid > 0 AND octet_length(session_id::text) >= 1 AND octet_length(session_id::text) <= 256 AND octet_length(sender_did::text) >= 1 AND octet_length(sender_did::text) <= 128 AND octet_length(room_key_msg_id::text) >= 1 AND octet_length(room_key_msg_id::text) <= 40)') OR (conname='chk_e2ee_group_session_range' AND contype='c' AND conkey=ARRAY[7,8]::smallint[] AND pg_get_constraintdef(oid,true)='CHECK (start_seq >= 1 AND end_seq >= start_seq)') OR (conname='chk_e2ee_group_session_recipients' AND contype='c' AND conkey=ARRAY[6]::smallint[] AND pg_get_constraintdef(oid,true)='CHECK (array_ndims(recipient_uids) = 1 AND cardinality(recipient_uids) >= 1 AND cardinality(recipient_uids) <= 5000 AND array_position(recipient_uids, NULL::bigint) IS NULL AND (0 < ALL (recipient_uids)))'))) = 6 AND (SELECT count(*) FROM pg_constraint WHERE conrelid=to_regclass('public.e2ee_group_session_member') AND convalidated AND ((conname='e2ee_group_session_member_pkey' AND contype='p' AND conkey=ARRAY[1,2,3]::smallint[]) OR (conname='fk_e2ee_group_session_member_session' AND contype='f' AND conkey=ARRAY[1,2]::smallint[] AND confrelid=to_regclass('public.e2ee_group_session_attestation') AND confkey=ARRAY[1,2]::smallint[] AND confupdtype='a' AND confdeltype='a' AND confmatchtype='s') OR (conname='chk_e2ee_group_session_member_values' AND contype='c' AND conkey=ARRAY[1,3,4,5]::smallint[] AND pg_get_constraintdef(oid,true)='CHECK (group_id > 0 AND user_id > 0 AND generation_no > 0 AND generation_start_seq >= 1)'))) = 3 AND EXISTS (SELECT 1 FROM pg_indexes WHERE schemaname='public' AND tablename='e2ee_group_session_member' AND indexname='idx_e2ee_group_session_member_grant' AND indexdef LIKE '%(group_id, user_id, generation_no, session_id)%')"
 SALES_RELEASE="${IMBOY_DEPLOY_SALES_RELEASE:-true}"
@@ -138,6 +140,9 @@ fi
 # --local mode: rsync local source to remote, skip git pull
 LOCAL_SRC_DIR="${IMBOY_LOCAL_SRC_DIR:-$(cd "$SCRIPT_DIR/.." && pwd)}"
 OLD_NODE_STOPPED=0
+OLD_TSID_DC_ID=""
+OLD_TSID_NODE_ID=""
+OLD_TSID_DC_BITS=""
 OLD_DIR=""
 TRAFFIC_SWITCHED=0
 FAIL_RECOVERY_ATTEMPTED=0
@@ -179,28 +184,22 @@ if [ -n "$LEGACY_RELEASE_DIR" ]; then
   [ -n "$LEGACY_PORT" ] \
     || { echo "LEGACY_RELEASE_DIR 要求同时配置 LEGACY_PORT" >&2; exit 1; }
 fi
-if [ -n "$TSID_STATE_DIR" ]; then
-  [[ "$TSID_STATE_DIR" =~ ^/[a-zA-Z0-9._/-]+$ && "$TSID_STATE_DIR" != "/" \
-     && "$TSID_STATE_DIR" != *..* ]] \
-    || { echo "无效 TSID_STATE_DIR / invalid TSID state dir" >&2; exit 1; }
-  [[ "$TSID_BLUE_NODE_ID" =~ ^[0-9]+$ && "$TSID_GREEN_NODE_ID" =~ ^[0-9]+$ ]] \
-    && [ "$TSID_BLUE_NODE_ID" -le 127 ] && [ "$TSID_GREEN_NODE_ID" -le 127 ] \
-    && [ "$TSID_BLUE_NODE_ID" != "$TSID_GREEN_NODE_ID" ] \
-    || { echo "蓝绿 TSID node_id 必须不同且位于 0..127" >&2; exit 1; }
+# V10 has no state directory/bootstrap fence. Both live colors need explicit,
+# distinct node IDs under the same, explicitly injected DC layout.
+if [ "$ROLLBACK" -eq 0 ]; then
+  [[ "$TSID_DC_BITS" =~ ^(0|[1-9][0-9]?)$ ]] && [ "$TSID_DC_BITS" -le 10 ] \
+    || { echo "TSID dc_bits 必须位于 0..10" >&2; exit 1; }
+  [[ "$TSID_DC_ID" =~ ^(0|[1-9][0-9]{0,3})$ ]] && [ "$TSID_DC_ID" -lt "$((1 << TSID_DC_BITS))" ] \
+    || { echo "TSID dc_id 超出 dc_bits 布局" >&2; exit 1; }
+  TSID_MAX_NODE_ID=$(( (1 << (10 - TSID_DC_BITS)) - 1 ))
+  [[ "$TSID_BLUE_NODE_ID" =~ ^(0|[1-9][0-9]{0,3})$ && "$TSID_GREEN_NODE_ID" =~ ^(0|[1-9][0-9]{0,3})$ ]] \
+    && [ "$TSID_BLUE_NODE_ID" -le "$TSID_MAX_NODE_ID" ] \
+    && [ "$TSID_GREEN_NODE_ID" -le "$TSID_MAX_NODE_ID" ] \
+    && [ "$TSID_BLUE_NODE_ID" -ne "$TSID_GREEN_NODE_ID" ] \
+    || { echo "蓝绿 TSID node_id 必须明确、不同且位于 0..$TSID_MAX_NODE_ID" >&2; exit 1; }
 fi
-case "$TSID_BOOTSTRAP_MODE" in ""|auto_scan|manual_floor) ;; *) echo "无效 TSID bootstrap mode" >&2; exit 1 ;; esac
-if [ "$TSID_BOOTSTRAP_MODE" = manual_floor ]; then
-  [[ "$TSID_BOOTSTRAP_FLOOR_UNIX_MS" = now || "$TSID_BOOTSTRAP_FLOOR_UNIX_MS" =~ ^[0-9]{13}$ ]] \
-    || { echo "manual_floor 需要 now 或 13 位 unix 毫秒" >&2; exit 1; }
-fi
-if [ -n "$TSID_BOOTSTRAP_LEGACY_ACK" ] \
-   && [ "$TSID_BOOTSTRAP_LEGACY_ACK" != "I-CONFIRM-OLD-WRITER-STOPPED" ]; then
-  echo "无效 TSID legacy ACK" >&2
-  exit 1
-fi
-if [ -n "$TSID_BOOTSTRAP_REBIND_ACK" ] \
-   && [[ ! "$TSID_BOOTSTRAP_REBIND_ACK" =~ ^I-CONFIRM-OLD-WRITER-STOPPED-AND-REBIND:[0-9A-Fa-f]{64}:[0-9A-Fa-f]{64}$ ]]; then
-  echo "无效 TSID rebind ACK" >&2
+if [ -n "$LEGACY_STOP_ACK" ] && [ "$LEGACY_STOP_ACK" != "I-CONFIRM-OLD-WRITER-STOPPED" ]; then
+  echo "无效 legacy 停写确认 / invalid legacy stop acknowledgement" >&2
   exit 1
 fi
 [[ "$PROJECT_DIR" =~ ^/[a-zA-Z0-9._/-]+$ && "$PROJECT_DIR" != *..* ]] \
@@ -321,6 +320,86 @@ safe_release_dir() {
   local dir=$1
   [[ "$dir" =~ ^/usr/local/imboy-[a-zA-Z0-9._-]+-[a-zA-Z0-9_-]+$ \
      || "$dir" = "$PROJECT_DIR/_rel/imboy" ]]
+}
+
+# Only non-sensitive node configuration is retained; never persist cursors/fences.
+# The marker is trusted only when all three concrete config entries agree.
+validate_tsid_identity() {
+  local dc=$1 node_id=$2 bits=$3
+  [[ "$dc" =~ ^(0|[1-9][0-9]{0,3})$ && "$node_id" =~ ^(0|[1-9][0-9]{0,3})$ \
+     && "$bits" =~ ^(0|[1-9][0-9]?)$ ]] \
+    && [ "$bits" -le 10 ] && [ "$dc" -lt "$((1 << bits))" ] \
+    && [ "$node_id" -lt "$((1 << (10 - bits)))" ]
+}
+
+remember_tsid_identity() {
+  local raw=$1
+  raw=${raw//[[:space:]]/}
+  [[ "$raw" =~ ^\{([0-9]+),([0-9]+),([0-9]+)\}$ ]] || return 1
+  validate_tsid_identity "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}" "${BASH_REMATCH[3]}" || return 1
+  # validate_tsid_identity uses its own regex and changes BASH_REMATCH.
+  raw=${raw#\{}; raw=${raw%\}}
+  IFS=, read -r OLD_TSID_DC_ID OLD_TSID_NODE_ID OLD_TSID_DC_BITS <<<"$raw"
+}
+
+capture_running_tsid_identity() {
+  local dir=$1 raw
+  safe_release_dir "$dir" || return 1
+  raw=$(ssh_capture ": imboy-tsid-runtime-identity
+    '$dir/bin/imboy' eval 'H=persistent_term:get(elib_tsid_runtime), N=maps:get(combined_node,H), B=maps:get(dc_bits,H), {N bsr (10-B), N band ((1 bsl (10-B))-1), B}.'") || return 1
+  remember_tsid_identity "$raw"
+}
+
+read_stopped_tsid_identity() {
+  local dir=$1 raw
+  safe_release_dir "$dir" || return 1
+  raw=$(ssh_capture "
+    : imboy-tsid-stored-identity
+    set -eu
+    SYS=\$(find '$dir/releases' -maxdepth 2 -name sys.config | sort -V | tail -1)
+    [ -f \"\$SYS\" ]
+    ID=\$(sed -n 's/^%% IMBOY_TSID_DEPLOY_IDENTITY \([0-9][0-9]* [0-9][0-9]* [0-9][0-9]*\)$/\1/p' \"\$SYS\")
+    set -- \$ID
+    [ \"\$#\" -eq 3 ]
+    for pair in tsid_dc_id:\$1 tsid_node_id:\$2 tsid_dc_bits:\$3; do
+      key=\${pair%:*}; value=\${pair#*:}
+      [ \"\$(grep -cE \"^[[:space:]]*\\{\$key,\" \"\$SYS\")\" -eq 1 ]
+      [ \"\$(grep -cE \"^[[:space:]]*\\{\$key,[[:space:]]*\$value\\},?[[:space:]]*$\" \"\$SYS\")\" -eq 1 ]
+    done
+    printf '{%s,%s,%s}\\n' \"\$1\" \"\$2\" \"\$3\"
+  ") || return 1
+  remember_tsid_identity "$raw"
+}
+
+persist_tsid_identity() {
+  local dir=$1 dc=$2 node_id=$3 bits=$4
+  safe_release_dir "$dir" && validate_tsid_identity "$dc" "$node_id" "$bits" || return 1
+  ssh_exec "
+    : imboy-tsid-persist-identity
+    # identity:$dc $node_id $bits
+    set -eu
+    SYS=\$(find '$dir/releases' -maxdepth 2 -name sys.config | sort -V | tail -1)
+    [ -f \"\$SYS\" ]
+    TARGET=\$SYS
+    TMP=\$(mktemp \"\$SYS.tsid.XXXXXX\")
+    trap 'rm -f \"\$TMP\"' EXIT
+    cp -p \"\$SYS\" \"\$TMP\"
+    SYS=\$TMP
+    for pair in tsid_dc_id:$dc tsid_node_id:$node_id tsid_dc_bits:$bits; do
+      key=\${pair%:*}; value=\${pair#*:}
+      if grep -qE \"^[[:space:]]*\\{\$key,\" \"\$SYS\"; then
+        sed -i -E \"s/^([[:space:]]*\\{\$key,[[:space:]]*)[0-9]+(\\}.*)$/\\1\$value\\2/\" \"\$SYS\"
+      else
+        sed -i \"/{imboy,[[:space:]]*\\[/a\\        {\$key, \$value},\" \"\$SYS\"
+      fi
+      [ \"\$(grep -cE \"^[[:space:]]*\\{\$key,\" \"\$SYS\")\" -eq 1 ]
+      [ \"\$(grep -cE \"^[[:space:]]*\\{\$key,[[:space:]]*\$value\\},?[[:space:]]*$\" \"\$SYS\")\" -eq 1 ]
+    done
+    sed -i '/^%% IMBOY_TSID_DEPLOY_IDENTITY /d' \"\$SYS\"
+    printf '\\n%%%% IMBOY_TSID_DEPLOY_IDENTITY $dc $node_id $bits\\n' >>\"\$SYS\"
+    mv -f \"\$TMP\" \"\$TARGET\"
+    trap - EXIT
+  "
 }
 
 find_running_release_for_port() {
@@ -541,6 +620,10 @@ stop_old_node() {
   [ -n "$OLD_DIR" ] || fail "无法定位旧节点 release 目录，拒绝在旧连接仍存活时迁移"
   safe_release_dir "$OLD_DIR" \
     || fail "旧节点 release 目录不符合安全模板，拒绝拼入远端命令: $OLD_DIR"
+  capture_running_tsid_identity "$OLD_DIR" \
+    || fail "无法确认旧运行实例 TSID 身份，拒绝停写或猜测恢复配置"
+  persist_tsid_identity "$OLD_DIR" "$OLD_TSID_DC_ID" "$OLD_TSID_NODE_ID" "$OLD_TSID_DC_BITS" \
+    || fail "无法固化旧实例已验证的 TSID 节点配置，拒绝停写"
   # 从这里开始的任意失败都必须尝试恢复原节点，包括 stop 部分成功的情况。
   OLD_NODE_STOPPED=1
   if ! ssh_exec "command -v timeout >/dev/null 2>&1 && timeout 20s '$OLD_DIR/bin/imboy' stop"; then
@@ -559,6 +642,8 @@ recover_old_node_before_cutover() {
   [ "$FAIL_RECOVERY_ATTEMPTED" -eq 0 ] || return 0
   [ -n "$OLD_PORT" ] && [ -n "$OLD_DIR" ] || return 0
   FAIL_RECOVERY_ATTEMPTED=1
+  validate_tsid_identity "$OLD_TSID_DC_ID" "$OLD_TSID_NODE_ID" "$OLD_TSID_DC_BITS" \
+    || { echo "缺少可信旧 TSID 身份，拒绝自动恢复" >&2; return 1; }
 
   log "自动恢复 Nginx 当前指向的原节点 (port=$OLD_PORT)..."
   ssh_exec "
@@ -570,7 +655,7 @@ recover_old_node_before_cutover() {
        && find '$OLD_DIR/etc/plugin_trusted_ed25519.pub' -prune -size 32c | grep -q .; then
       export IMBOY_PLUGIN_TRUSTED_PUBLIC_KEY_FILES='$OLD_DIR/etc/plugin_trusted_ed25519.pub'
     fi
-    IMBOYENV=pro IMBOY_AUTO_MIGRATE=false HTTP_PORT='$OLD_PORT' IMBOY_HTTP_PORT='$OLD_PORT' ./bin/imboy daemon || true
+    IMBOY_TSID_DC_ID='$OLD_TSID_DC_ID' IMBOY_TSID_NODE_ID='$OLD_TSID_NODE_ID' IMBOY_TSID_DC_BITS='$OLD_TSID_DC_BITS' IMBOYENV=pro IMBOY_AUTO_MIGRATE=false HTTP_PORT='$OLD_PORT' IMBOY_HTTP_PORT='$OLD_PORT' ./bin/imboy daemon || true
   " || true
   if wait_for_health_status "$OLD_PORT"; then
     OLD_NODE_STOPPED=0
@@ -855,9 +940,17 @@ case "$NGINX_PORT" in
     ;;
 esac
 
+# Legacy stop approval applies before any expand/boundary branch can stop a writer.
+if [ "$CURRENT_COLOR" = legacy ]; then
+  [ "$LEGACY_STOP_ACK" = "I-CONFIRM-OLD-WRITER-STOPPED" ] \
+    || fail "legacy 首次割接要求在 .env.deploy 配置 DEPLOY_LEGACY_STOP_ACK"
+fi
+
 if ! ssh_exec "ss -tlnH \"sport = :$OLD_PORT\" 2>/dev/null | grep -q ."; then
   if OLD_DIR="$(find_stopped_release_for_port "$OLD_PORT")"; then
     safe_release_dir "$OLD_DIR" || fail "历史 release 目录不安全: $OLD_DIR"
+    read_stopped_tsid_identity "$OLD_DIR" \
+      || fail "停机旧 release 无可信 TSID 身份标记，拒绝猜测恢复；须人工核对原运行身份"
     OLD_NODE_STOPPED=1
     if [ "$CURRENT_COLOR" = legacy ]; then
       log "检测到 legacy 已停机，保留 $OLD_DIR 作为恢复点并继续割接"
@@ -885,6 +978,10 @@ if [ "$CURRENT_COLOR" != none ]; then
   fi
   safe_release_dir "$ACTIVE_DIR" \
     || fail "活动 release 目录不符合安全模板: $ACTIVE_DIR"
+  if [ "$OLD_NODE_STOPPED" -eq 0 ]; then
+    capture_running_tsid_identity "$ACTIVE_DIR" \
+      || fail "无法读取活动实例 TSID 身份，拒绝启动并行 writer"
+  fi
 fi
 
 if [ "$CURRENT_COLOR" = "none" ] && [ "$SKIP_MIGRATE" -eq 1 ]; then
@@ -905,9 +1002,21 @@ case "$CURRENT_COLOR" in
     START_AUTO_MIGRATE=true
     ;;
 esac
+case "$TARGET_COLOR" in
+  blue) TSID_NODE_ID=$TSID_BLUE_NODE_ID ;;
+  green) TSID_NODE_ID=$TSID_GREEN_NODE_ID ;;
+  *) fail "未知目标颜色，拒绝选择 TSID node_id" ;;
+esac
+TSID_NODE_ENV="IMBOY_TSID_DC_ID='$TSID_DC_ID' IMBOY_TSID_DC_BITS='$TSID_DC_BITS' IMBOY_TSID_NODE_ID='$TSID_NODE_ID'"
+if [ -n "$OLD_TSID_DC_ID" ] && [ "$CURRENT_COLOR" != legacy ]; then
+  [ "$OLD_TSID_DC_BITS" -eq "$TSID_DC_BITS" ] \
+    || fail "活动实例与候选 dc_bits 不同，必须安排全量停写后人工更换布局"
+  [ "$OLD_TSID_DC_ID" -ne "$TSID_DC_ID" ] || [ "$OLD_TSID_NODE_ID" -ne "$TSID_NODE_ID" ] \
+    || fail "候选 TSID 身份与活动实例相同，拒绝并行 writer"
+fi
 # 显式 opt-in：让新节点 boot migration（imboy_app:maybe_migrate/0 在 sup 树之前）
-# 原子应用未登记迁移并写台账。用于 additive 迁移（如 TSID catalog v4 所需的
-# 00000164）必须先于 rebind 全量扫描存在时；切流后的 db migrate 将无事可做。
+# 原子应用未登记迁移并写台账。仅用于明确批准的 additive 迁移，
+# 不涉及 TSID 游标/fence/bootstrap；切流后的 db migrate 按台账继续。
 if [ "${IMBOY_DEPLOY_START_AUTO_MIGRATE:-false}" = true ]; then
   START_AUTO_MIGRATE=true
 fi
@@ -1085,6 +1194,8 @@ ssh_exec "
 +zdbbl 81920
 VMARGS
 "
+persist_tsid_identity "$RELEASE_DIR" "$TSID_DC_ID" "$TSID_NODE_ID" "$TSID_DC_BITS" \
+  || fail "无法固化候选 TSID 节点配置，拒绝启动"
 if [ -n "$PLUGIN_TRUSTED_PUBLIC_KEY_FILE" ]; then
   ssh_exec "install -d -m 0755 '$RELEASE_DIR/etc'"
   ssh_upload "$PLUGIN_TRUSTED_PUBLIC_KEY_FILE" "$PLUGIN_TRUSTED_PUBLIC_KEY_REMOTE"
@@ -1123,36 +1234,14 @@ fi
 # =============================================================================
 # legacy → 蓝绿首次割接必须先停旧 writer；失败时 fail() 会恢复旧节点。
 if [ "$CURRENT_COLOR" = legacy ]; then
-  [ "$TSID_BOOTSTRAP_LEGACY_ACK" = "I-CONFIRM-OLD-WRITER-STOPPED" ] \
-    || fail "legacy 首次割接要求在 .env.deploy 配置 DEPLOY_TSID_BOOTSTRAP_LEGACY_ACK"
+  [ "$LEGACY_STOP_ACK" = "I-CONFIRM-OLD-WRITER-STOPPED" ] \
+    || fail "legacy 首次割接要求在 .env.deploy 配置 DEPLOY_LEGACY_STOP_ACK"
   stop_old_node
 fi
 
-TSID_BOOTSTRAP_ENV=""
-if [ -n "$TSID_STATE_DIR" ]; then
-  case "$TARGET_COLOR" in
-    blue) TSID_NODE_ID=$TSID_BLUE_NODE_ID ;;
-    green) TSID_NODE_ID=$TSID_GREEN_NODE_ID ;;
-  esac
-  if [ "$TSID_BOOTSTRAP_FLOOR_UNIX_MS" = now ]; then
-    TSID_BOOTSTRAP_FLOOR_UNIX_MS="$(ssh_capture "date +%s%3N")" \
-      || fail "无法从服务器读取 TSID manual floor 时钟"
-    [[ "$TSID_BOOTSTRAP_FLOOR_UNIX_MS" =~ ^[0-9]{13}$ ]] \
-      || fail "服务器返回的 TSID manual floor 时钟非法"
-  fi
-  TSID_BOOTSTRAP_ENV="IMBOY_TSID_STATE_DIR='$TSID_STATE_DIR' IMBOY_TSID_NODE_ID='$TSID_NODE_ID'"
-  [ -z "$TSID_BOOTSTRAP_MODE" ] \
-    || TSID_BOOTSTRAP_ENV="$TSID_BOOTSTRAP_ENV IMBOY_TSID_BOOTSTRAP_MODE='$TSID_BOOTSTRAP_MODE'"
-  [ -z "$TSID_BOOTSTRAP_FLOOR_UNIX_MS" ] \
-    || TSID_BOOTSTRAP_ENV="$TSID_BOOTSTRAP_ENV IMBOY_TSID_BOOTSTRAP_FLOOR_UNIX_MS='$TSID_BOOTSTRAP_FLOOR_UNIX_MS'"
-  [ -z "$TSID_BOOTSTRAP_LEGACY_ACK" ] \
-    || TSID_BOOTSTRAP_ENV="$TSID_BOOTSTRAP_ENV IMBOY_TSID_BOOTSTRAP_LEGACY_ACK='$TSID_BOOTSTRAP_LEGACY_ACK'"
-  [ -z "$TSID_BOOTSTRAP_REBIND_ACK" ] \
-    || TSID_BOOTSTRAP_ENV="$TSID_BOOTSTRAP_ENV IMBOY_TSID_BOOTSTRAP_REBIND_ACK='$TSID_BOOTSTRAP_REBIND_ACK'"
-fi
 log "启动新节点 (port=$APP_PORT)... / Starting new node..."
 CANDIDATE_STARTED=1
-ssh_exec "cd '$RELEASE_DIR' && IMBOYENV=pro IMBOY_AUTO_MIGRATE='$START_AUTO_MIGRATE' HTTP_PORT='$APP_PORT' IMBOY_HTTP_PORT='$APP_PORT' IMBOY_E2EE_MODE='$E2EE_MODE' IMBOY_PLUGIN_TRUSTED_PUBLIC_KEY_FILES='$PLUGIN_TRUSTED_PUBLIC_KEY_REMOTE' $TSID_BOOTSTRAP_ENV ./bin/imboy daemon"
+ssh_exec "cd '$RELEASE_DIR' && IMBOYENV=pro IMBOY_AUTO_MIGRATE='$START_AUTO_MIGRATE' HTTP_PORT='$APP_PORT' IMBOY_HTTP_PORT='$APP_PORT' IMBOY_E2EE_MODE='$E2EE_MODE' IMBOY_PLUGIN_TRUSTED_PUBLIC_KEY_FILES='$PLUGIN_TRUSTED_PUBLIC_KEY_REMOTE' $TSID_NODE_ENV ./bin/imboy daemon"
 
 # 轮询取代原来的固定 sleep 5，在慢服务器上不会误报失败
 # Polling replaces fixed sleep 5; won't false-fail on slow servers

@@ -26,7 +26,6 @@ setup_marker() ->
     H = ?H:setup_all(),
     try
         {ok, Bus} = imboy_domain_event:start_link(),
-        ensure_archive_id(),
         Cache = whereis(imboy_cache),
         ?assert(is_pid(Cache)),
         ?assertEqual([], imboy_domain_event:which_subscribers()),
@@ -52,13 +51,6 @@ cleanup(H) ->
     io:format("C08_PRESERVE_CLEANUP ~p~n", [Results]),
     ?assertEqual([true, true, true, true], Results),
     quiet().
-
-%% Same source registration recipe as the original cloud archive checks.
-ensure_archive_id() ->
-    case lists:member(msg_store, elib_tsid:registered()) of
-        true -> ok;
-        false -> ok = elib_tsid:register(msg_store)
-    end.
 
 cleanup_step(F) ->
     try

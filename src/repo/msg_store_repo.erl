@@ -32,7 +32,7 @@
 %% 删除操作
 -export([unstage/2]).
 -export([claim_pending/2]).
--export([mark_processed/1]).
+-export([mark_processed/2]).
 -export([mark_failed/4]).
 -export([mark_terminal/3]).
 -export([delete_processed/1]).
@@ -1105,17 +1105,18 @@ claim_pending(Limit, LeaseSeconds) ->
         end
     end).
 
-%% @doc 标记消息已处理（不区分类型，一条 SQL 更新所有类型）
-%% 优化版本：移除 type 条件，避免对每种类型都执行一次 UPDATE
+%% @doc 仅标记同类型、同 ID 的待处理消息，保留终态错误供审计。
+%% Complete only the claimed type and ID; preserve terminal failure evidence.
+%% @param Type staging 消息类型
 %% @param MsgId 消息唯一ID
 %% @return {ok, Count} | {error, any()}
--spec mark_processed(binary()) -> {ok, integer()} | {error, any()}.
-mark_processed(MsgId) ->
+-spec mark_processed(binary(), binary()) -> {ok, integer()} | {error, any()}.
+mark_processed(Type, MsgId) ->
     Tb = tablename(),
     Sql =
         <<"UPDATE ", Tb/binary, " SET processed_at = NOW(), error_msg = NULL ",
-            " WHERE msg_id = $1">>,
-    elib_pg:execute(Sql, [MsgId]).
+            " WHERE type = $1 AND msg_id = $2 AND processed_at IS NULL">>,
+    elib_pg:execute(Sql, [Type, MsgId]).
 
 %% @doc 标记失败并设置下次重试时间
 -spec mark_failed(binary(), binary(), binary(), pos_integer()) -> {ok, integer()} | {error, any()}.

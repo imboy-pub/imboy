@@ -50,7 +50,7 @@ namespaces() ->
         group_file,
         group_task,
         group_task_assignment,
-        %% ── 消息（msg_id 标识用，不做排序）──
+        %% ── 消息（消息行实体主键，不做排序）──
         msg_c2c,
         msg_c2g,
         msg_s2c,
@@ -196,7 +196,11 @@ namespaces() ->
         agent_grant_event,
         agent_run,
         agent_run_event,
-        agent_effect
+        agent_effect,
+        %% ── 客服 AI：customer_service_ai_agent / customer_service_faq / customer_service_ai_job ──
+        ai_cs_config,
+        ai_cs_faq,
+        cs_ai_job
     ].
 
 %% @doc 别名 → canonical 映射：写同一张表的旧标签静态归并到同一游标。

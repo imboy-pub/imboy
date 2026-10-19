@@ -18,9 +18,9 @@
 % 唯一性保证（V10 保障边界，不得夸大）:
 %   - 同一 Namespace 内、单次 BEAM 生命周期内：严格唯一（含时钟任意回拨/前跳）。
 %   - 跨 Namespace：数值允许重复；跨业务引用必须 Domain + ID。
-%   - 跨重启：仅当时钟未回拨跨重启点时不重复；系统时钟在两次运行之间被
-%     回拨（NTP 修正/手动改时/快照恢复）可能产生与历史 ID 的数值重叠——
-%     这是无持久化设计的固有边界，不是缺陷。
+%   - 跨重启：新时间戳必须严格大于旧发号水位。同毫秒重启、跨重启回拨
+%     （NTP 修正/手动改时/快照恢复）或同 NodeId 双实例均可能重叠；
+%     “没有回拨”不足以保证安全，这是无持久化设计的固有边界。
 %
 % 时钟（V10 冻结，见 .Codex/tsid_v10/W2-time-algorithm-report.md）:
 %   Monotonic Clock + Fixed Offset：init 采集 Offset = system - monotonic，
@@ -42,14 +42,13 @@
 %   Id = elib_tsid:generate(user).
 %   Info = elib_tsid:parse(Id).
 %
-% default 生成器仅供测试/脚手架生成唯一整数；生产代码必须使用显式
-% namespace（elib_tsid_registration_guard_tests 扫描 src 强制）。
+% 所有发号调用必须使用显式实体 namespace；不提供 default 槽位或无参入口
+% （elib_tsid_registration_guard_tests 扫描 src 强制）。
 %%%
 
--export([init/1, register/1]).
--export([generate/0, generate/1, generate_n/1, generate_n/2]).
+-export([init/1]).
+-export([generate/1, generate_n/2]).
 -export([parse/1, timestamp/1, node_id/1, from_binary/1]).
--export([registered/0]).
 -export([namespaces/0, aliases/0]).
 -export([readiness/0]).
 
@@ -227,7 +226,7 @@ init_runtime(CombinedNode, DcBits, CapWait, MaxDrift) ->
 publish_runtime(CombinedNode, DcBits, CapWait, MaxDrift) ->
     Names = namespaces(),
     AliasMap = aliases(),
-    %% canonical 槽位按 inventory 顺序隔开；default 追加尾部，alias 仍共享同槽。
+    %% canonical 槽位按 inventory 顺序隔开；alias 共享同一实体的槽位。
     CanonicalSlots =
         #{
             Name => (I - 1) * ?CURSOR_STRIDE + 1
@@ -238,11 +237,9 @@ publish_runtime(CombinedNode, DcBits, CapWait, MaxDrift) ->
             Alias => maps:get(Canonical, CanonicalSlots)
          || Alias := Canonical <- AliasMap
         },
-    %% default 占尾槽（仅供测试/脚手架；生产由 registration_guard 禁用）
-    SlotCount = length(Names) + 1,
-    DefaultSlot = (SlotCount - 1) * ?CURSOR_STRIDE + 1,
+    SlotCount = length(Names),
     Cursors = atomics:new(SlotCount * ?CURSOR_STRIDE, [{signed, true}]),
-    Lookup = maps:merge(maps:merge(CanonicalSlots, AliasSlots), #{default => DefaultSlot}),
+    Lookup = maps:merge(CanonicalSlots, AliasSlots),
     Stats = atomics:new(SlotCount * ?CURSOR_STRIDE, [{signed, true}]),
     %% 时钟安全闸（W4）：1=时钟可用，0=readiness 检出偏差超限（阻断发号）。
     %% readiness/0 低频评估并翻转此闸，生成热路径一次 atomic load 消费——
@@ -296,43 +293,6 @@ combine_node(DcId, NodeId, DcBits) ->
         }}
     ).
 
-%% @doc 校验名称已在静态清单中（幂等；未知名 error）。
-%%
-%% V10 无动态注册：本函数只做清单断言，供历史 ensure-registered 调用点
-%% （cs_tsid / eb_tsid / enterprise_message_repo 等）与测试平滑过渡。
-%% 对已知名恒 ok，不产生任何状态变更。
--spec register(atom() | [atom()]) -> ok.
-register(Names) when is_list(Names) ->
-    lists:foreach(fun register/1, Names),
-    ok;
-register(Name) when is_atom(Name) ->
-    case persistent_term:get(?PT_RUNTIME, undefined) of
-        #{lookup := Lookup} ->
-            case maps:is_key(Name, Lookup) of
-                true ->
-                    ok;
-                false ->
-                    error(
-                        {elib_tsid_generator_not_registered,
-                            {Name, 'not in elib_tsid:namespaces/0 or aliases/0'}}
-                    )
-            end;
-        undefined ->
-            error({elib_tsid_not_initialized, 'call elib_tsid:init/1 before register/1'})
-    end.
-
-%% @private 列出全部可用生成器名称（canonical + 别名 + default，排序）。
-%% lookup 在 publish_runtime 已合并 default 键，这里不得再前置追加。
--spec registered() -> [atom()].
-registered() ->
-    lists:sort(maps:keys(lookup_or_empty())).
-
-lookup_or_empty() ->
-    case persistent_term:get(?PT_RUNTIME, undefined) of
-        #{lookup := Lookup} -> Lookup;
-        undefined -> #{}
-    end.
-
 %% @doc 就绪状态（/readyz 消费）。
 %%
 %% 低频时钟安全检查：固定 Offset 时钟（mono+offset）与真实系统钟的当前
@@ -376,11 +336,6 @@ readiness() ->
 %% ID 生成
 %% ===================================================================
 
-%% @doc default 生成器（过渡期保留；业务代码应使用显式 namespace）
--spec generate() -> pos_integer().
-generate() ->
-    generate(default).
-
 %% @doc 使用指定 Namespace 生成一个 TSID
 %%
 %% 同 Namespace 内严格唯一（单次运行内）；跨 Namespace 允许数值重复。
@@ -391,11 +346,6 @@ generate(Name) when is_atom(Name) ->
     Budget = maps:get(capacity_wait_timeout_ms, Handle),
     First = reserve(Handle, Idx, 1, Budget),
     slot_to_id(First, NodeId).
-
-%% @doc default 批量生成 N 个 TSID (有序)
--spec generate_n(pos_integer()) -> [pos_integer()].
-generate_n(N) when N > 0 ->
-    generate_n(default, N).
 
 %% @doc 指定 Namespace 批量生成 N 个 TSID (有序)
 %%
@@ -435,8 +385,10 @@ reserve_batch_ranges(_Handle, _Idx, 0, _Budget, Acc) ->
 reserve_batch_ranges(Handle, Idx, Remaining, Budget, Acc) ->
     {First, Last} = reserve(Handle, Idx, {up_to, Remaining}, Budget),
     Used = Last - First + 1,
-    %% 多块 batch 主动让出 scheduler；不重置 deadline，不引入等待队列。
-    case Remaining > Used of
+    %% Yield between chunks and after a full 64-ID reservation quantum, even
+    %% for the final chunk. A smaller final chunk keeps the original fast path.
+    %% The shared deadline and allocation itself remain unchanged.
+    case Remaining > Used orelse Used =:= 64 of
         true -> erlang:yield();
         false -> ok
     end,
@@ -531,12 +483,7 @@ commit_cas(
     ?BEFORE_TSID_CAS,
     case atomics:compare_exchange(Cursors, Idx, Old, Last) of
         ok ->
-            StatsIdx =
-                case Handle of
-                    #{cursor_stride := ?CURSOR_STRIDE} -> Idx;
-                    _ -> 1
-                end,
-            _ = atomics:add(Stats, StatsIdx, 1),
+            _ = atomics:add(Stats, Idx, 1),
             case Request of
                 1 -> First;
                 _ -> {First, Last}
@@ -670,8 +617,6 @@ reservation_count() ->
             #{size := Size} = atomics:info(Stats),
             %% Exact once producers quiesce; no single atomic cross-slot snapshot.
             lists:sum([atomics:get(Stats, I) || I <- lists:seq(1, Size, ?CURSOR_STRIDE)]);
-        #{reservations := LegacyStats} ->
-            atomics:get(LegacyStats, 1);
         undefined ->
             0
     end.

@@ -2,6 +2,14 @@
 -include_lib("eunit/include/eunit.hrl").
 -include("eunit_setup.hrl").
 
+%% Guard undeclared DB/entity calls in a fresh peer without application startup.
+-define(PURE_MOCKS(Configs, Test),
+    {timeout, 45, fun() ->
+        pure_mock_fixture:run(fun() -> pure_mock_fixture:with_mocks(Configs, Test) end)
+    end}
+).
+
+
 %%%
 % Phase 4 T4.2 群触发：ai_agent_group_reply 触发决策核心 单测。
 % 覆盖：@agent 门控放行 → LLM → 回群；E2EE 跳过；agent 发送者防环；限流拦截；
@@ -33,7 +41,7 @@ mention_agent_triggers_and_delivers_test_() ->
         [
             ?SYNC_ASYNC,
             ?ALLOW_RL,
-            {elib_tsid, [{'generate', 0, fun() -> 7777 end}, {'generate', 1, fun(_) -> 7777 end}]},
+            {elib_uuid, [{'gen_v7', 0, fun() -> <<"018f0000-0000-7000-8000-000000007777">> end}]},
             {ai_agent_ds, [
                 {'is_agent', 1, fun
                     (42) -> {true, #{<<"provider">> => <<"openai">>, <<"trigger_policy">> => #{}}};
@@ -70,7 +78,7 @@ tool_capability_does_not_enter_internal_mcp_test_() ->
                 {'chat', 3, fun(42, _Msgs, _Opts) -> {ok, #{<<"result">> => <<"plain">>}} end}
             ]},
             {msg_c2g_logic, [{'c2g', 3, fun(_, _, _) -> ok end}]},
-            {elib_tsid, [{'generate', 0, fun() -> 7788 end}, {'generate', 1, fun(_) -> 7788 end}]}
+            {elib_uuid, [{'gen_v7', 0, fun() -> <<"018f0000-0000-7000-8000-000000007788">> end}]}
         ],
         fun() ->
             Agent = #{<<"tools">> => [<<"get_contacts">>]},
@@ -157,7 +165,7 @@ duplicate_mentions_trigger_once_test_() ->
         [
             ?SYNC_ASYNC,
             ?ALLOW_RL,
-            {elib_tsid, [{'generate', 0, fun() -> 7777 end}, {'generate', 1, fun(_) -> 7777 end}]},
+            {elib_uuid, [{'gen_v7', 0, fun() -> <<"018f0000-0000-7000-8000-000000007777">> end}]},
             {ai_agent_ds, [
                 {'is_agent', 1, fun
                     (42) -> {true, #{<<"provider">> => <<"openai">>, <<"trigger_policy">> => #{}}};
@@ -305,7 +313,7 @@ pay_command_authorizes_test_() ->
             ]},
             {agent_rate_limiter, [{'allow', 2, fun(_, _) -> allow end}]},
             {msg_c2g_logic, [{'c2g', 3, fun(_, _, _) -> ok end}]},
-            {elib_tsid, [{'generate', 0, fun() -> 1 end}, {'generate', 1, fun(_) -> 1 end}]}
+            {elib_uuid, [{'gen_v7', 0, fun() -> <<"018f0000-0000-7000-8000-000000000001">> end}]}
         ],
         fun() ->
             erase(paid),
@@ -334,3 +342,38 @@ pay_command_multi_agent_ignore_test_() ->
             )
         )
     end).
+
+%% 群流式 delta 与定稿只能分配一次业务 ID。
+%% A streamed group reply allocates one ID for every delta and the durable final message.
+group_stream_reuses_uuid_for_final_message_test_() ->
+    ?PURE_MOCKS(
+        [
+            {elib_uuid, [{'gen_v7', 0,
+                fun() -> <<"018f0000-0000-7000-8000-000000000042">> end}]},
+            {llm_stream, [
+                {'stream_capable', 1, fun(_) -> true end},
+                {'push', 2, fun(_, _) -> ok end},
+                {'flush_tail', 1, fun(_) -> ok end}
+            ]},
+            {user_logic, [{'is_online', 1, fun(_) -> true end}]},
+            {imboy_llm_openai, [{'chat_stream', 4, fun(_, _, _, Push) ->
+                Push(<<"hello ">>),
+                Push(<<"group">>),
+                {ok, #{<<"result">> => <<"hello group">>}}
+            end}]},
+            {msg_c2g_logic, [{'c2g', 3, fun(_, _, _) -> ok end}]}
+        ],
+        fun() ->
+            Id = <<"018f0000-0000-7000-8000-000000000042">>,
+            ok = ai_agent_group_reply:run_and_reply(imboy_llm_openai, #{}, 100,
+                {42, #{}}, {[], [7, 42]}),
+            ?assertEqual(1, meck:num_calls(elib_uuid, gen_v7, 0)),
+            Contexts = [Ctx || {_, {_, push, [Ctx, _]}, _} <- meck:history(llm_stream)],
+            ?assertEqual(2, length(Contexts)),
+            lists:foreach(fun(Ctx) ->
+                ?assertEqual(Id, maps:get(stream_id, Ctx)),
+                ?assertEqual(<<"C2G">>, maps:get(type, Ctx))
+            end, Contexts),
+            ?assertEqual(1, meck:num_calls(msg_c2g_logic, c2g, [Id, 42, '_']))
+        end
+    ).

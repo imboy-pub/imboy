@@ -373,7 +373,6 @@ mocks(C) ->
     meck:new(workspace_guard, [passthrough, no_link]),
     meck:expect(workspace_guard, write_tx_or_skip, fun(_, _) -> ok end),
     meck:new(elib_tsid, [non_strict, no_link]),
-    meck:expect(elib_tsid, registered, fun() -> [enterprise_audit_event] end),
     meck:expect(elib_tsid, generate, fun
         (group_file) -> 101;
         (attachment) -> erlang:unique_integer([positive, monotonic]);

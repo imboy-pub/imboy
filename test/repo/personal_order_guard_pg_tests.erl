@@ -144,7 +144,7 @@ allocator(#{conn := C, server := Server, db := Db}) ->
     end.
 
 retention(C) ->
-    {ok, 1} = msg_store_repo:mark_processed(<<"new-acceptance">>),
+    {ok, 1} = msg_store_repo:mark_processed(<<"c2c">>, <<"new-acceptance">>),
     {ok, 1} = msg_store_repo:mark_terminal(
         <<"c2c">>, <<"next-acceptance">>, <<"c2c_sequence_conflict">>
     ),

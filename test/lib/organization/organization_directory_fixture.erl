@@ -1,9 +1,9 @@
 %%% @doc Human Organization Directory 触库套件的合成租户夹具（test-only）。
 %%%
 %%% 隔离策略（对齐 organization_department_fixture 口径）：new_scope 生成
-%%% 全新随机 TSID 的 Org/User/Department，跨套件、跨轮次天然互不可见；
+%%% 合成主键的 Org/User/Department，复用 eb_pg_test_fixture 的测试盐方案；
 %%% 不做 TRUNCATE、不删别人的行；清场 best-effort、按 FK 安全顺序静默执行。
-%%% 合成数据只含随机 TSID 与 `orgdir-` 前缀合成名 + 随机 token，无任何
+%%% 合成数据只含合成主键与 `orgdir-` 前缀合成名 + 随机 token，无任何
 %%% 真实账号/联系方式。
 %%%
 %%% 场景矩阵（§14.2 行为合同的负例/正例原料）：
@@ -37,12 +37,7 @@
 
 -spec id() -> integer().
 id() ->
-    try
-        elib_tsid:generate(default)
-    catch
-        _:_ ->
-            2000000000000000 + erlang:unique_integer([positive, monotonic])
-    end.
+    eb_pg_test_fixture:id().
 
 %% 检索断言专用随机 token（只命中本 scope 的行）。
 -spec token() -> binary().
@@ -250,7 +245,7 @@ insert_dept(Id, OrgId, ParentId, Name, Status, CreatorId) ->
     ).
 
 %% ===================================================================
-%% 清场（best-effort，FK 安全顺序；失败静默——隔离靠唯一 TSID）
+%% 清场（best-effort，FK 安全顺序；失败静默——ID 复用 eb_pg_test_fixture 的有限盐方案，非永久唯一保证）
 %% ===================================================================
 
 -spec cleanup(map()) -> ok.

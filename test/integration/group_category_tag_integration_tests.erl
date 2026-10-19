@@ -291,7 +291,7 @@ get_context() ->
 %% @doc 生成每次运行唯一的标签名：group_tag.search 是全库过滤，
 %% 固定标签名会与本机历史 run 遗留的标签串扰（断言计数膨胀）。
 unique_tag(Base) ->
-    Suffix = integer_to_binary(erlang:phash2(elib_tsid:generate(default), 1000000000)),
+    Suffix = integer_to_binary(erlang:phash2(eb_pg_test_fixture:id(), 1000000000)),
     <<Base/binary, "-", Suffix/binary>>.
 
 custom_category_ids(Categories) ->

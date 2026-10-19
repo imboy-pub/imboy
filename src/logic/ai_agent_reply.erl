@@ -112,7 +112,7 @@ run_and_reply_sync(Mod, Opts, FromUid, ToId, Messages) ->
 %% （不落库/不 ACK/不重试），流结束用同一 id 走 deliver_reply 定稿落库。
 -spec run_and_reply_stream(module(), map(), integer(), integer(), [map()]) -> ok.
 run_and_reply_stream(Mod, Opts, FromUid, ToId, Messages) ->
-    StreamId = ec_cnv:to_binary(elib_tsid:generate(msg_c2c)),
+    StreamId = elib_uuid:gen_v7(),
     Ctx = #{
         stream_id => StreamId,
         target_uid => FromUid,
@@ -137,7 +137,7 @@ run_and_reply_stream(Mod, Opts, FromUid, ToId, Messages) ->
 %% 构建 C2C 回复消息（agent→human）并经既有投递骨架发送（一次性路径：新生成 id）
 -spec deliver_reply(integer(), integer(), binary()) -> ok.
 deliver_reply(FromUid, ToId, Result) ->
-    ReplyMsgId = ec_cnv:to_binary(elib_tsid:generate(msg_c2c)),
+    ReplyMsgId = elib_uuid:gen_v7(),
     deliver_reply(FromUid, ToId, ReplyMsgId, Result).
 
 %% 用指定 MsgId 定稿：流式路径复用 StreamId，令 stream_delta 与定稿共享 id

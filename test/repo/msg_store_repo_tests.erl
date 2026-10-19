@@ -2,6 +2,14 @@
 -include_lib("eunit/include/eunit.hrl").
 -include("eunit_setup.hrl").
 
+%% Guard undeclared calls without starting the application or database.
+-define(PURE_MOCKS(Configs, Test),
+    {timeout, 45, fun() ->
+        pure_mock_fixture:run(fun() -> pure_mock_fixture:with_mocks(Configs, Test) end)
+    end}
+).
+
+
 %%%===================================================================
 %%% @doc  msg_store_repo 高质量测试套件
 %%%
@@ -1837,24 +1845,25 @@ claim_pending_with_zero_limit_test_() ->
     ).
 
 %% ===================================================================
-%% mark_processed/1 测试（实现已从 /2 收敛为按 msg_id 单参）
+%% mark_processed/2 测试（类型 + ID，且仅处理 pending 行）
 %% ===================================================================
 
 mark_processed_validates_sql_structure_test_() ->
-    ?WITH_MECKS(
+    ?PURE_MOCKS(
         [
             {elib_pg_sql, [
                 {'public_tablename', 1, fun(_) -> <<"msg_store_staging">> end}
             ]},
             {elib_pg, [
-                {'execute', 2, fun(Sql, [MsgId]) ->
+                {'execute', 2, fun(Sql, [Type, MsgId]) ->
                     % 验证 SQL 结构
                     ?assertNotEqual(nomatch, binary:match(Sql, <<"UPDATE ">>)),
                     ?assertNotEqual(nomatch, binary:match(Sql, <<"SET processed_at = NOW()">>)),
                     ?assertNotEqual(nomatch, binary:match(Sql, <<"error_msg = NULL">>)),
-                    ?assertNotEqual(nomatch, binary:match(Sql, <<"WHERE msg_id = $1">>)),
+                    ?assertNotEqual(nomatch, binary:match(Sql, <<"WHERE type = $1 AND msg_id = $2 AND processed_at IS NULL">>)),
 
                     % 验证参数
+                    ?assertEqual(<<"c2c">>, Type),
                     ?assertEqual(<<"msg123">>, MsgId),
 
                     {ok, 1}
@@ -1862,7 +1871,7 @@ mark_processed_validates_sql_structure_test_() ->
             ]}
         ],
         fun() ->
-            Result = msg_store_repo:mark_processed(<<"msg123">>),
+            Result = msg_store_repo:mark_processed(<<"c2c">>, <<"msg123">>),
             ?assertEqual({ok, 1}, Result)
         end
     ).

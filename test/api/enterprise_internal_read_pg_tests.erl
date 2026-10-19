@@ -78,15 +78,6 @@ setup_conn() ->
     catch
         _:_ -> ok
     end,
-    lists:foreach(
-        fun(Name) ->
-            case lists:member(Name, elib_tsid:registered()) of
-                true -> ok;
-                false -> elib_tsid:register(Name)
-            end
-        end,
-        [group_info, group_member, enterprise_application, enterprise_external_identity]
-    ),
     {ok, _} = application:ensure_all_started(throttle),
     ok = application:set_env(imboy, ?CURSOR_KEY_CFG, ?CURSOR_SECRET),
     State =
