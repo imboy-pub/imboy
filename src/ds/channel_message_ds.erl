@@ -68,13 +68,30 @@ get_stats(ChannelId) ->
         " WHERE channel_id = $1 AND status = 1"
     >>,
     case elib_pg:one(Sql, [ChannelId]) of
-        {ok, Row} when is_map(Row) ->
-            TotalMsgs = maps:get(<<"total_messages">>, Row, 0),
-            TotalViews = maps:get(<<"total_views">>, Row, 0),
-            {ok, TotalMsgs, TotalViews};
+        {ok, #{<<"total_messages">> := TotalMsgs0, <<"total_views">> := TotalViews0}} ->
+            case {stats_count(TotalMsgs0), stats_count(TotalViews0)} of
+                {{ok, TotalMsgs}, {ok, TotalViews}} -> {ok, TotalMsgs, TotalViews};
+                _ -> {error, invalid_channel_message_stats}
+            end;
+        {error, _} = Error ->
+            Error;
         _ ->
-            {ok, 0, 0}
+            {error, invalid_channel_message_stats}
     end.
+
+%% SUM(bigint) is PostgreSQL numeric, returned as exact integer text by epgsql.
+%% Keep arbitrary precision; malformed counts must not look like empty statistics.
+stats_count(Value) when is_integer(Value), Value >= 0 ->
+    {ok, Value};
+stats_count(Value) when is_binary(Value) ->
+    try binary_to_integer(Value) of
+        Count when Count >= 0 -> {ok, Count};
+        _ -> {error, invalid_count}
+    catch
+        error:badarg -> {error, invalid_count}
+    end;
+stats_count(_) ->
+    {error, invalid_count}.
 
 -spec page(binary(), map(), binary(), pos_integer(), pos_integer()) ->
     {ok, map()} | {error, term()}.
