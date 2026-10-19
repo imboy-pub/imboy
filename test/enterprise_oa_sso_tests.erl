@@ -286,6 +286,7 @@ enterprise_oa_sso_test_() ->
                     with_tx(C, fun neg_h05_redirect_not_allowlisted/1)},
                 {"NEG-H06 签发 nonce/body 格式非法 400", neg_h06_malformed_params_test()},
                 {"NEG-H07 重复签发 code 相互独立且 TTL 恒 60", with_tx(C, fun neg_h07_independent_codes/1)},
+                {"NEG-H08 当前非 active Human 拒绝签发且无残留", with_tx(C, fun neg_h08_inactive_issue/1)},
                 %% 双向隔离（manifest INV-2/INV-3）
                 {"NEG-X01 Application Credential 不能调签发端点",
                     with_tx(C, fun neg_x01_credential_cannot_issue/1)},
@@ -1041,6 +1042,53 @@ neg_h07_independent_codes(C) ->
         {error, <<"resource_not_found">>},
         do_exchange(C, F, C2, ?REDIRECT, ?NONCE)
     ).
+
+%% 当前账号停用/非 Human：正 Uid 不能代替当前账号事实；恢复活性后仍可签发。
+neg_h08_inactive_issue(C) ->
+    _F = seed_sso_fixture(C),
+    Before = issue_side_effect_snapshot(C),
+    lists:foreach(
+        fun({Status, Type}) ->
+            ok = exec(
+                C,
+                <<"UPDATE \"user\" SET status=$1, account_type=$2 WHERE id=$3">>,
+                [Status, Type, ?ALICE]
+            ),
+            ?assertMatch(
+                {error, {403, _}},
+                enterprise_oa_sso_logic:issue_code_tx(C, ?ALICE, valid_params())
+            ),
+            ?assertEqual(Before, issue_side_effect_snapshot(C))
+        end,
+        [{0, 0}, {1, 1}]
+    ),
+    ok = exec(C, <<"UPDATE \"user\" SET status=1, account_type=0 WHERE id=$1">>, [?ALICE]),
+    ?assertMatch({ok, _}, enterprise_oa_sso_logic:issue_code_tx(C, ?ALICE, valid_params())).
+
+%% 只比较数量/摘要，不把 code、mapping 或设备凭证明文输出到失败日志。
+issue_side_effect_snapshot(C) ->
+    Tables = [
+        <<"enterprise_oa_sso_code">>,
+        <<"enterprise_external_identity">>,
+        <<"user_device">>,
+        <<"user_auth_epoch">>
+    ],
+    [
+        begin
+            {ok, Rows} = elib_pg:query(
+                C,
+                <<
+                    "SELECT count(*) AS n, md5(COALESCE(jsonb_agg(to_jsonb(t) "
+                    "ORDER BY to_jsonb(t)::text)::text,'[]')) AS digest FROM ",
+                    Table/binary,
+                    " t"
+                >>,
+                []
+            ),
+            {Table, Rows}
+        end
+     || Table <- Tables
+    ].
 
 %%%===================================================================
 %%% 双向隔离（manifest INV-2/INV-3）

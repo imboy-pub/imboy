@@ -16,6 +16,7 @@
 %        迁移 00000171 uq_ea_key_global）
 %     -> redirect_uri 对 allowed_redirect_uris 逐字节 exact match
 %       （lists:member/2，EPGZ-01R；空 allowlist 一律拒绝）
+%     -> 同事务复核 active Human 并持有账号 FOR SHARE 到提交
 %     -> 签发：oa_sso_ + 32B CSPRNG base64url（≥256bit），60s 固定 TTL
 %   identity mapping 不再是签发前置（mapping 可选化：exchange 缺映射时
 %   回退 external_user_id = user_id 字符串形态，ADR §4.4）。
@@ -413,6 +414,17 @@ issue_with_allowlist(Conn, Uid, App, RedirectUri, Nonce) ->
 -spec issue_persist(any(), integer(), integer() | null, integer(), binary(), binary()) ->
     {ok, map()} | {error, {integer(), binary()}}.
 issue_persist(Conn, Uid, OrgId, AppId, RedirectUri, Nonce) ->
+    %% 与兑换复用同一 active Human 行锁，持有到签发事务提交；不恢复 org 门。
+    case active_human_tx(Conn, Uid) of
+        {ok, [_ | _]} ->
+            issue_active_persist(Conn, Uid, OrgId, AppId, RedirectUri, Nonce);
+        {ok, _} ->
+            {error, {?ERR_FORBIDDEN, <<"账号不可用"/utf8>>}};
+        {error, _} ->
+            {error, {?ERR_INTERNAL_SERVER_ERROR, <<"签发失败"/utf8>>}}
+    end.
+
+issue_active_persist(Conn, Uid, OrgId, AppId, RedirectUri, Nonce) ->
     Code = generate_code(),
     CodeDigest = enterprise_oa_sso_code_repo:digest_hex(Code),
     NonceDigest = enterprise_oa_sso_code_repo:digest_hex(Nonce),
@@ -591,11 +603,7 @@ resolve_identity(Conn, ConsumedRow) ->
 %% 字符串处理即可与登记形态统一）。
 -spec fallback_identity(any(), map(), integer()) -> {ok, map()} | {error, binary()}.
 fallback_identity(Conn, ConsumedRow, UserId) ->
-    AccountSql = <<
-        "SELECT 1 FROM \"user\" u WHERE u.id = $1"
-        " AND u.account_type = 0 AND u.status = 1 LIMIT 1 FOR SHARE OF u"
-    >>,
-    case elib_pg:query(Conn, AccountSql, [UserId]) of
+    case active_human_tx(Conn, UserId) of
         {ok, [_ | _]} ->
             {ok, exchange_payload(ConsumedRow, integer_to_binary(UserId))};
         {ok, _} ->
@@ -606,6 +614,15 @@ fallback_identity(Conn, ConsumedRow, UserId) ->
             ]),
             {error, <<"internal_error">>}
     end.
+
+%% 仅复用原 fallback 身份查询；FOR SHARE 与停用 UPDATE 互斥到同事务提交。
+-spec active_human_tx(any(), integer()) -> {ok, [map()]} | {error, term()}.
+active_human_tx(Conn, UserId) ->
+    AccountSql = <<
+        "SELECT 1 FROM \"user\" u WHERE u.id = $1"
+        " AND u.account_type = 0 AND u.status = 1 LIMIT 1 FOR SHARE OF u"
+    >>,
+    elib_pg:query(Conn, AccountSql, [UserId]).
 
 %% 成功 payload（合同 §4.3）：五个字段、永不含 IMBoy 凭证（R-6/NEG-14）；
 %% TSID int64 以 JSON integer 输出（INV-8）；consumed_at 归一 ISO-8601

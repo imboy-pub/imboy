@@ -35,6 +35,15 @@ context_binding_test() ->
         %% ④ disabled → 404
         mock_query([disabled_app()]),
         ?assertMatch({error, {404, _}}, issue(Params)),
+        %% 已认证正 Uid 仍须查询当前账号；停用/非 Human/缺失均无 INSERT。
+        Inserts = code_insert_calls(),
+        mock_query([active_app()], {ok, []}),
+        ?assertMatch({error, {403, _}}, issue(Params)),
+        ?assertEqual(Inserts, code_insert_calls()),
+        %% 当前账号事实不可确认时 fail-closed，不返回 code 或新增映射/会话。
+        mock_query([active_app()], {error, synthetic_account_db_error}),
+        ?assertMatch({error, {500, _}}, issue(Params)),
+        ?assertEqual(Inserts, code_insert_calls()),
         ?assert(meck:validate(elib_pg))
     after
         meck:unload(elib_pg)
@@ -43,14 +52,23 @@ context_binding_test() ->
 issue(Params) -> enterprise_oa_sso_logic:issue_code_tx(conn, 301, Params).
 
 mock_query(AppRows) ->
+    mock_query(AppRows, {ok, [#{<<"active">> => 1}]}).
+
+mock_query(AppRows, AccountResult) ->
     meck:expect(elib_pg, query, fun(conn, Sql, _Args) ->
         IsCodeInsert =
             binary:match(Sql, <<"INSERT INTO">>) =/= nomatch andalso
                 binary:match(Sql, <<"enterprise_oa_sso_code">>) =/= nomatch,
-        case IsCodeInsert of
-            true ->
+        IsAccountCheck = binary:match(Sql, <<"SELECT 1 FROM \"user\"">>) =/= nomatch,
+        case {IsCodeInsert, IsAccountCheck} of
+            {true, false} ->
                 {ok, [#{<<"id">> => 1}]};
-            false ->
+            {false, true} ->
+                ?assertNotEqual(nomatch, binary:match(Sql, <<"account_type = 0">>)),
+                ?assertNotEqual(nomatch, binary:match(Sql, <<"status = 1">>)),
+                ?assertNotEqual(nomatch, binary:match(Sql, <<"FOR SHARE OF u">>)),
+                AccountResult;
+            {false, false} ->
                 {ok, AppRows}
         end
     end).
@@ -65,3 +83,11 @@ active_app() ->
 
 disabled_app() ->
     (active_app())#{<<"status">> => <<"disabled">>}.
+
+code_insert_calls() ->
+    length([
+        ok
+     || {_, {elib_pg, query, [conn, Sql, _]}, _} <- meck:history(elib_pg),
+        binary:match(Sql, <<"INSERT INTO">>) =/= nomatch,
+        binary:match(Sql, <<"enterprise_oa_sso_code">>) =/= nomatch
+    ]).
