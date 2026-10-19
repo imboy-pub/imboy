@@ -20,7 +20,8 @@ channel_admin_feature_enabled_mocks() ->
             end}
         ]},
         {adm_acl, [
-            {'ensure_permission', 3, fun(_State, _Permission, _Req) -> ok end}
+            {'ensure_permission', 3, fun(_State, _Permission, _Req) -> ok end},
+            {'ensure_permission', 4, fun(_State, _Permission, _Req, 403) -> ok end}
         ]}
     ].
 
@@ -1254,7 +1255,7 @@ enterprise_list_forces_workspace_scope_and_active_status_test_() ->
     ?WITH_MECKS(
         [
             {adm_acl, [
-                {'ensure_permission', 3, fun(_State, <<"channels:read">>, _Req) -> ok end}
+                {'ensure_permission', 4, fun(_State, <<"channels:read">>, _Req, 403) -> ok end}
             ]},
             {cowboy_req, [
                 {'method', 1, fun(_Req) -> <<"GET">> end},
@@ -1297,7 +1298,7 @@ non_enterprise_list_keeps_global_semantics_test_() ->
     ?WITH_MECKS(
         [
             {adm_acl, [
-                {'ensure_permission', 3, fun(_State, <<"channels:read">>, _Req) -> ok end}
+                {'ensure_permission', 4, fun(_State, <<"channels:read">>, _Req, 403) -> ok end}
             ]},
             {cowboy_req, [
                 {'method', 1, fun(_Req) -> <<"GET">> end},
@@ -1338,7 +1339,7 @@ enterprise_list_with_org_uses_resolved_workspace_ids_test_() ->
     ?WITH_MECKS(
         [
             {adm_acl, [
-                {'ensure_permission', 3, fun(_State, <<"channels:read">>, _Req) -> ok end}
+                {'ensure_permission', 4, fun(_State, <<"channels:read">>, _Req, 403) -> ok end}
             ]},
             {cowboy_req, [
                 {'method', 1, fun(_Req) -> <<"GET">> end},
@@ -1402,7 +1403,7 @@ channel_read_deny_mocks() ->
             {'ensure_enabled', 2, fun(_Req, _Feature) -> ok end}
         ]},
         {adm_acl, [
-            {'ensure_permission', 3, fun(State, Permission, _Req) ->
+            {'ensure_permission', 4, fun(State, Permission, _Req, 403) ->
                 erlang:put(
                     channel_read_acl_seen,
                     {maps:get(adm_user_id, State, missing), Permission}
@@ -1498,9 +1499,10 @@ channel_read_denies_missing_principal_test_() ->
             ]},
             {elib_param, [channel_read_query_sentinel('page', 1)]},
             {elib_response, [
-                {'error', 3, fun(Req, _Msg, Code) ->
+                {'error_with_status', 4, fun(Req, HttpStatus, _Msg, Code) ->
+                    ?assertEqual(403, HttpStatus),
                     erlang:put(channel_read_error_code, Code),
-                    Req#{response_status => 403}
+                    Req#{response_status => HttpStatus, response_code => Code, payload => #{}}
                 end}
             ]}
         ],
@@ -1534,9 +1536,10 @@ channel_read_write_only_permission_is_not_read_test_() ->
             ]},
             {elib_param, [channel_read_query_sentinel('page', 1)]},
             {elib_response, [
-                {'error', 3, fun(Req, _Msg, Code) ->
+                {'error_with_status', 4, fun(Req, HttpStatus, _Msg, Code) ->
+                    ?assertEqual(403, HttpStatus),
                     erlang:put(channel_read_error_code, Code),
-                    Req#{response_status => 403}
+                    Req#{response_status => HttpStatus, response_code => Code, payload => #{}}
                 end}
             ]}
         ],
@@ -1569,9 +1572,10 @@ channel_read_permission_lookup_fails_closed_test_() ->
             ]},
             {elib_param, [channel_read_query_sentinel('page', 1)]},
             {elib_response, [
-                {'error', 3, fun(Req, _Msg, Code) ->
+                {'error_with_status', 4, fun(Req, HttpStatus, _Msg, Code) ->
+                    ?assertEqual(403, HttpStatus),
                     erlang:put(channel_read_error_code, Code),
-                    Req#{response_status => 403}
+                    Req#{response_status => HttpStatus, response_code => Code, payload => #{}}
                 end}
             ]}
         ],
@@ -1597,7 +1601,7 @@ channel_feature_disabled_precedes_read_acl_test_() ->
                 end}
             ]},
             {adm_acl, [
-                {'ensure_permission', 3, fun(_State, _Permission, _Req) ->
+                {'ensure_permission', 4, fun(_State, _Permission, _Req, 403) ->
                     erlang:error(acl_must_not_be_consulted_when_feature_disabled)
                 end}
             ]},

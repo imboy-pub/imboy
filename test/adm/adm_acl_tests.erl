@@ -13,7 +13,10 @@
 %% mock elib_response:error/3 返回标记元组，便于断言透传的 Req
 -define(MOCK_RESP,
     {elib_response, [
-        {'error', 3, fun(Req, _Msg, _Code) -> {replied, Req} end}
+        {'error', 3, fun(Req, _Msg, _Code) -> {replied, Req} end},
+        {'error_with_status', 4, fun(Req, HttpStatus, _Msg, Code) ->
+            {replied_with_status, Req, HttpStatus, Code, #{}}
+        end}
     ]}
 ).
 
@@ -50,6 +53,21 @@ ensure_permission_denied_test_() ->
         ?assertEqual(
             {error, {replied, req0}},
             adm_acl:ensure_permission(State, <<"stats:view">>, req0)
+        )
+    end).
+
+ensure_permission_http_forbidden_test_() ->
+    ?WITH_MECKS([mock_find(1), ?MOCK_ROLE_ACL, ?MOCK_RESP], fun() ->
+        ?assertEqual(
+            {error, {replied_with_status, req0, 403, 403, #{}}},
+            adm_acl:ensure_permission(#{adm_user_id => 100}, <<"stats:view">>, req0, 403)
+        )
+    end).
+
+ensure_permission_http_granted_test_() ->
+    ?WITH_MECKS([mock_find(1), ?MOCK_ROLE_ACL, ?MOCK_RESP], fun() ->
+        ?assertEqual(
+            ok, adm_acl:ensure_permission(#{adm_user_id => 100}, <<"user:view">>, req0, 403)
         )
     end).
 

@@ -66,7 +66,7 @@ dispatch_with_read_acl(Action, <<"GET">> = Method, Req0, State) when
     Action =:= stats;
     Action =:= search
 ->
-    case adm_acl:ensure_permission(State, <<"channels:read">>, Req0) of
+    case adm_acl:ensure_permission(State, <<"channels:read">>, Req0, 403) of
         ok ->
             dispatch(Action, Method, Req0, State);
         {error, RespReq} ->

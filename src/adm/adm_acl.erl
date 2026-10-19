@@ -17,6 +17,7 @@
 
 -export([
     ensure_permission/3,
+    ensure_permission/4,
     ensure_any_permission/3,
     permissions/1,
     role_permissions/1,
@@ -33,12 +34,27 @@
 %% @doc 要求当前管理员必须拥有指定单个权限
 -spec ensure_permission(map(), binary(), cowboy_req:req()) -> ok | {error, cowboy_req:req()}.
 ensure_permission(State, Permission, Req0) ->
+    ensure_permission(State, Permission, Req0, 200).
+
+%% @doc 端点合同要求真实 HTTP 403 时显式选择；默认入口保留原信封语义。
+-spec ensure_permission(map(), binary(), cowboy_req:req(), 200 | 403) ->
+    ok | {error, cowboy_req:req()}.
+ensure_permission(State, Permission, Req0, HttpStatus) when
+    HttpStatus =:= 200; HttpStatus =:= 403
+->
     AdmUserId = maps:get(adm_user_id, State, 0),
     case has_permission(AdmUserId, Permission) of
         true ->
             ok;
         false ->
-            {error, elib_response:error(Req0, <<"无权限操作"/utf8>>, ?ERR_FORBIDDEN)}
+            RespReq =
+                case HttpStatus of
+                    200 ->
+                        elib_response:error(Req0, <<"无权限操作"/utf8>>, ?ERR_FORBIDDEN);
+                    403 ->
+                        elib_response:error_with_status(Req0, 403, <<"无权限操作"/utf8>>, ?ERR_FORBIDDEN)
+                end,
+            {error, RespReq}
     end.
 
 %% @doc 要求当前管理员拥有给定权限列表中的任意一个
