@@ -3,13 +3,13 @@
 %%%
 %%% T16 — TextGuard 一致性导出定向测试（AC-072/074/075 导出侧切片）。
 %%%
-%%% 运行前置（隔离一次性 PG，非共享库、非生产；连接参数只经环境变量注入）：
+%%% 运行前置：fresh peer + 自有一次性 marker PG；连接参数由配置或环境注入：
 %%%
-%%%   TG16_PG_HOST / TG16_PG_PORT / TG16_PG_DB / TG16_PG_USER / TG16_PG_PASSWORD
+%%%   TG16_PG_HOST / TG16_PG_PORT / TG16_PG_USER / TG16_PG_PASSWORD / TG16_MAINT_DB
 %%%
-%%% 铁律：环境变量缺失或连不上库 → 显式 FAIL（erlang:error），禁止静默
-%%% skip/pass（AG31 同款惯例）。表 `public.sensitive_word`（迁移 00000022
-%%% 同构）由套件自建自清（每用例 TRUNCATE）。
+%%% 铁律：连接配置缺失或连不上库 → 显式 FAIL（erlang:error），禁止静默
+%%% skip/pass（AG31 同款惯例）。marker 库走完整迁移；TG16_PG_DB 不作为
+%%% 写入目标。每用例 TRUNCATE 仅作用于自有 marker 库，结束后释放并删库。
 %%%
 %%% 覆盖：
 %%%   * fail-closed：缺 t2s_table_id 不导出；DB 不可达不导出空库；
@@ -36,14 +36,81 @@
 -define(ENH_FILE, "priv/textguard/enhancement.example.json").
 
 %% 共享导出（textguard_publisher_tests 复用本套件的 PG 夹具）
--export([pg_setup/0, pg_teardown/1, seed_fixed/0, trunc/0, insert_word/4, delete_word/1]).
+-export([pg_setup/0, pg_teardown/1, owned_pg_setup/0, owned_pg_setup/1, owned_pg_teardown/1,
+    seed_fixed/0, trunc/0, insert_word/4, delete_word/1]).
 
 %% ===================================================================
 %% PG 夹具
 %% ===================================================================
 
+%% Only the fresh peer may own the registered pool and fixture connection options.
 -spec conn_opts() -> map().
 conn_opts() ->
+    {ok, Opts} = application:get_env(imboy, tg16_fixture_conn_opts),
+    Opts.
+
+-spec owned_pg_setup() -> map().
+owned_pg_setup() ->
+    owned_pg_setup(#{}).
+
+owned_pg_setup(FixtureOpts) ->
+    false = lists:keymember(imboy, 1, application:which_applications()),
+    {ok, _} = application:ensure_all_started(pooler),
+    %% Fail before provisioning or changing any existing pool.
+    false = pool_exists(),
+    State = inttest_marker_db:provision(FixtureOpts#{env_prefix => <<"TG16">>}),
+    Opts = (maps:merge(maps:with([host, port, username, password], maps:get(server, State)),
+        maps:get(connect_extra, FixtureOpts, #{})))#{database => maps:get(db, State)},
+    try
+        ok = application:set_env(imboy, sql_driver, pgsql),
+        ok = application:set_env(imboy, tg16_fixture_conn_opts, Opts),
+        {ok, _PoolSup} = pooler:new_pool(#{
+            name => ?POOL,
+            init_count => 2,
+            max_count => 8,
+            queue_max => 100,
+            start_mfa => {epgsql, connect, [Opts]}
+        }),
+        PoolPid = whereis(?POOL),
+        true = is_pid(PoolPid),
+        ok = application:set_env(imboy, tg16_fixture_pool_owner,
+            #{pid => PoolPid, db => maps:get(db, State)}),
+        State
+    catch
+        Class:Reason:Stack ->
+            owned_pg_teardown(State),
+            erlang:raise(Class, Reason, Stack)
+    end.
+
+-spec owned_pg_teardown(map()) -> ok.
+owned_pg_teardown(State) ->
+    try remove_pool()
+    after
+        try clear_fixture_env()
+        after inttest_marker_db:release(State)
+        end
+    end.
+
+clear_fixture_env() ->
+    application:unset_env(imboy, tg16_fixture_pool_owner),
+    application:unset_env(imboy, tg16_fixture_conn_opts),
+    application:unset_env(imboy, sql_driver),
+    ok.
+
+remove_pool() ->
+    case pool_exists() of
+        true -> pooler:rm_pool(?POOL), ok;
+        false -> ok
+    end.
+
+-spec pool_exists() -> boolean().
+pool_exists() ->
+    whereis(?POOL) =/= undefined.
+
+%% Explicit external-service suites retain their existing fixture API and target.
+%% The ordinary EUnit groups below exclusively use the owned fixture above.
+-spec legacy_conn_opts() -> map().
+legacy_conn_opts() ->
     Missing = [
         K
      || K <- ["TG16_PG_HOST", "TG16_PG_PORT", "TG16_PG_DB", "TG16_PG_USER"],
@@ -75,7 +142,7 @@ pg_setup() ->
                 init_count => 2,
                 max_count => 8,
                 queue_max => 100,
-                start_mfa => {epgsql, connect, [conn_opts()]}
+                start_mfa => {epgsql, connect, [legacy_conn_opts()]}
             }),
             ok
     end,
@@ -94,13 +161,6 @@ pg_teardown(ok) ->
     application:unset_env(imboy, sql_driver),
     ok.
 
--spec pool_exists() -> boolean().
-pool_exists() ->
-    try
-        pooler:pool_utilization(?POOL) =/= undefined
-    catch
-        _:_ -> false
-    end.
 
 -spec ensure_table() -> ok.
 ensure_table() ->
@@ -172,7 +232,10 @@ export_golden_opts() ->
 %% ===================================================================
 
 textguard_export_test_() ->
-    {setup, fun pg_setup/0, fun pg_teardown/1, fun(_) ->
+    isolated_pg_fixture:test(fun export_fixture/0).
+
+export_fixture() ->
+    {setup, fun owned_pg_setup/0, fun owned_pg_teardown/1, fun(_) ->
         [
             {"fail-closed: missing t2s_table_id refuses export", fun t_fail_closed_no_t2s/0},
             {"AC-074: golden fixture bytes + shape + id string precision", fun t_golden_bytes/0},
@@ -612,21 +675,24 @@ t_concurrent_snapshot() ->
      || {W, Pairs} <- Owners
     ],
     %% 并发写期间反复导出：每个包做完整一致性校验
-    Packages = [
-        begin
-            {ok, E} = textguard_export:export_package(#{t2s_table_id => <<"test-t2s-v1">>}),
-            maps:get(package, E)
-        end
-     || _ <- lists:seq(1, 20)
-    ],
-    [W ! stop || W <- Writers],
-    [
-        receive
-            {writer_done, _} -> ok
-        after 5000 -> error(writer_not_done)
-        end
-     || _ <- Writers
-    ],
+    Packages = try
+        [
+            begin
+                {ok, E} = textguard_export:export_package(#{t2s_table_id => <<"test-t2s-v1">>}),
+                maps:get(package, E)
+            end
+         || _ <- lists:seq(1, 20)
+        ]
+    after
+        [W ! stop || W <- Writers],
+        [
+            receive
+                {writer_done, _} -> ok
+            after 5000 -> error(writer_not_done)
+            end
+         || _ <- Writers
+        ]
+    end,
     ?assertEqual(20, length(Packages)),
     lists:foreach(
         fun(Pkg) ->
@@ -684,13 +750,14 @@ assert_static_rows(Pkg) ->
 
 -spec writer_loop(non_neg_integer(), [{integer(), integer()}], map()) -> ok.
 writer_loop(W, Pairs, ConnOpts) ->
-    {ok, Conn} = epgsql:connect(ConnOpts),
-    writer_loop(Conn, W, Pairs, 0).
+    {ok, Conn} = inttest_marker_db:safe_connect(ConnOpts),
+    try writer_loop(Conn, W, Pairs, 0)
+    after epgsql:close(Conn)
+    end.
 
 writer_loop(Conn, W, Pairs, Gen) ->
     receive
         stop ->
-            epgsql:close(Conn),
             ok
     after 0 ->
         {A, B} = lists:nth((Gen rem length(Pairs)) + 1, Pairs),
@@ -729,10 +796,7 @@ writer_loop(Conn, W, Pairs, Gen) ->
 %% DB 完全不可达（无可用连接）：绝不导出（更不导出空包）
 t_db_unreachable() ->
     %% 先移除池（本用例是该 {setup} 组最后一个；teardown 的 rm_pool 幂等）
-    case pooler:pool_utilization(?POOL) of
-        undefined -> ok;
-        _ -> pooler:rm_pool(?POOL)
-    end,
+    ok = remove_pool(),
     ?assertMatch(
         {error, {db_read_failed, _}},
         textguard_export:export_package(#{t2s_table_id => <<"test-t2s-v1">>})

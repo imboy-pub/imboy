@@ -7,6 +7,9 @@
 manifest() -> textguard_business_cases:manifest().
 
 business_test_() ->
+    textguard_suite_fixture:test(business, fun business_fixture/0).
+
+business_fixture() ->
     {timeout, 600,
         {setup, fun ?F:setup/0, fun ?F:cleanup/1, fun(State) ->
             [

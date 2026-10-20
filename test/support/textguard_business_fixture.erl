@@ -35,12 +35,18 @@ outsider() -> 9007199254741012.
 channel() -> 9007199254741021.
 
 setup() ->
+    isolated_pg_fixture:setup_single_node_cache(fun setup_owned/0, fun cleanup/1).
+
+setup_owned() ->
+    ok = textguard_suite_fixture:preflight(business),
+    ok = textguard_suite_fixture:require_owned_pool(),
     {ok, _} = application:ensure_all_started(gun),
-    ok = business_pool(),
     ok = textguard_export_tests:pg_setup(),
     ok = apply_schema(),
     ok = elib_tsid:init(#{dc_id => 1, node_id => 27}),
     {ok, Cache} = imboy_cache:start_link([]),
+    undefined = whereis(imboy_cache_sync),
+    {ok, CacheSync} = imboy_cache_sync:start_link(),
     Table = ets:new(tg20_observations, [public, named_table, set]),
     start_sinks(),
     ok = application:load(grpcbox),
@@ -57,7 +63,7 @@ setup() ->
     FaultPort = list_to_integer(os:getenv("TG19_FAULT_GRPC_PORT")),
     {ok, Fault} = textguard_fault_service:start(FaultPort),
     {ok, _} = textguard_grpcbox_transport:start(tg20_fault, <<"127.0.0.1">>, FaultPort),
-    State = #{cache => Cache, table => Table, fault => Fault},
+    State = #{cache => Cache, cache_sync => CacheSync, table => Table, fault => Fault},
     config([{transport, http}]),
     seed_words(),
     Path = os:getenv("TG19_ENH_FILE"),
@@ -81,25 +87,6 @@ setup() ->
     ets:insert(Table, {active_revision, maps:get(package_sha256, Export)}),
     State.
 
-business_pool() ->
-    {ok, _} = application:ensure_all_started(epgsql),
-    {ok, _} = application:ensure_all_started(pooler),
-    Options = #{
-        host => os:getenv("TG16_PG_HOST"),
-        port => list_to_integer(os:getenv("TG16_PG_PORT")),
-        username => os:getenv("TG16_PG_USER"),
-        password => os:getenv("TG16_PG_PASSWORD"),
-        database => os:getenv("TG16_PG_DB"),
-        codecs => [{epgsql_codec_rfc3339_bin, []}]
-    },
-    {ok, _} = pooler:new_pool(#{
-        name => pgsql,
-        init_count => 2,
-        max_count => 8,
-        start_mfa => {epgsql, connect, [Options]}
-    }),
-    ok.
-
 cleanup(State) ->
     catch textguard_publisher:stop(),
     textguard_grpcbox_transport:stop(tg20_fault),
@@ -111,6 +98,7 @@ cleanup(State) ->
         fun(Module) -> catch meck:unload(Module) end,
         [channel_logic_notify, moment_logic_notify, elib_log, elib_tsid, elib_pg]
     ),
+    gen_server:stop(maps:get(cache_sync, State)),
     gen_server:stop(maps:get(cache, State)),
     ets:delete(maps:get(table, State)),
     textguard_export_tests:pg_teardown(ok),

@@ -1,6 +1,14 @@
 -module(group_file_logic_object_key_tests).
 -include_lib("eunit/include/eunit.hrl").
--include("eunit_setup.hrl").
+%% Pure URL/row projections never boot the app or borrow a suite-wide pool.
+-define(WITH_GARAGE_MOCKS(Configs, TestFun),
+    {timeout, 30, fun() -> pure_mock_fixture:run(fun() ->
+        with_garage(fun() -> pure_mock_fixture:with_mocks(Configs, TestFun) end)
+    end) end}).
+-define(GARAGE_ASSERT_EQUAL(Expected, Expression),
+    {timeout, 30, fun() -> pure_mock_fixture:run(fun() ->
+        with_garage(fun() -> ?assertEqual(Expected, Expression) end)
+    end) end}).
 
 %% 回归背景（EO-20261006 GROUP_FILE 段 r2）：群文件 list/search 出站行缺
 %% object_key，客户端 GroupFilePage._resolveFileUrl 回退 file_url 完整 URL →
@@ -12,7 +20,7 @@
 
 object_key_outbound_test_() ->
     S3Url = <<
-        "http://192.168.2.120:3900/imboy/u116523137566509056/g995301/20261006/"
+        "http://127.0.0.1:3900/object-key-fixture/u116523137566509056/g995301/20261006/"
         "file_1791292334319_DC0C6CB7A45F906E/native-enterprise-file.txt"
     >>,
     ForeignUrl = <<"https://other.example.com/bucket2/some/key.txt">>,
@@ -25,7 +33,7 @@ object_key_outbound_test_() ->
             <<"object_key">> => null
         }
     end,
-    ?WITH_MECKS(
+    ?WITH_GARAGE_MOCKS(
         [
             {group_file_ds, [
                 {'list_files', 5, fun(_G, _U, _P, _S, _O) ->
@@ -65,9 +73,9 @@ object_key_outbound_test_() ->
 %% SQL 已带非空 binary object_key（attachment.path）的行原样保留，不得被
 %% file_url 派生结果覆写（覆盖=legacy 外域行上可用 attachment.path 被降级）。
 object_key_preserve_sql_test_() ->
-    S3Url = <<"http://192.168.2.120:3900/imboy/u1/g1/dir/derived.txt">>,
+    S3Url = <<"http://127.0.0.1:3900/object-key-fixture/u1/g1/dir/derived.txt">>,
     ForeignUrl = <<"https://legacy.example.com/dfs/old/file.txt">>,
-    ?WITH_MECKS(
+    ?WITH_GARAGE_MOCKS(
         [
             {group_file_ds, [
                 {'list_files', 5, fun(_G, _U, _P, _S, _O) ->
@@ -128,35 +136,50 @@ object_key_preserve_sql_test_() ->
 %% 独立审查 P0-1 实证），query/fragment 必须剥除。
 object_key_from_url_direct_test_() ->
     [
-        ?_assertEqual(
+        ?GARAGE_ASSERT_EQUAL(
             <<"u1/g1/20261006/季度报告.txt"/utf8>>,
             elib_oss:object_key_from_url(
-                <<"http://192.168.2.120:3900/imboy/u1/g1/20261006/季度报告.txt"/utf8>>
+                <<"http://127.0.0.1:3900/object-key-fixture/u1/g1/20261006/季度报告.txt"/utf8>>
             )
         ),
-        ?_assertEqual(
+        ?GARAGE_ASSERT_EQUAL(
             <<"u1/g1/文件 名 with space.txt"/utf8>>,
             elib_oss:object_key_from_url(
-                <<"http://192.168.2.120:3900/imboy/u1/g1/文件 名 with space.txt"/utf8>>
+                <<"http://127.0.0.1:3900/object-key-fixture/u1/g1/文件 名 with space.txt"/utf8>>
             )
         ),
-        ?_assertEqual(
+        ?GARAGE_ASSERT_EQUAL(
             <<"u1/g1/a.txt">>,
             elib_oss:object_key_from_url(
-                <<"http://192.168.2.120:3900/imboy/u1/g1/a.txt?x=1&y=%202#frag">>
+                <<"http://127.0.0.1:3900/object-key-fixture/u1/g1/a.txt?x=1&y=%202#frag">>
             )
         ),
-        ?_assertEqual(undefined, elib_oss:object_key_from_url(<<>>)),
-        ?_assertEqual(
+        ?GARAGE_ASSERT_EQUAL(undefined, elib_oss:object_key_from_url(<<>>)),
+        ?GARAGE_ASSERT_EQUAL(
             undefined,
             elib_oss:object_key_from_url(
-                <<"http://192.168.2.120:3900/imboy">>
+                <<"http://127.0.0.1:3900/object-key-fixture">>
             )
         ),
-        ?_assertEqual(
+        ?GARAGE_ASSERT_EQUAL(
             undefined,
             elib_oss:object_key_from_url(
                 <<"https://other.example.com/bucket2/some/key.txt">>
             )
         )
     ].
+
+with_garage(Fun) ->
+    Before = application:get_env(imboy, garage),
+    ok = application:set_env(imboy, garage, #{
+        endpoint => <<"http://127.0.0.1:3900">>,
+        bucket => <<"object-key-fixture">>,
+        public_bucket => <<"object-key-fixture-public">>
+    }),
+    try Fun()
+    after
+        case Before of
+            undefined -> application:unset_env(imboy, garage);
+            {ok, Value} -> application:set_env(imboy, garage, Value)
+        end
+    end.

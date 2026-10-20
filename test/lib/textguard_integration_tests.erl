@@ -121,6 +121,9 @@ fault_manifest(Protocol) ->
     ].
 
 textguard_integration_test_() ->
+    textguard_suite_fixture:test(integration, fun integration_fixture/0).
+
+integration_fixture() ->
     {timeout, 180,
         {setup, fun setup/0, fun cleanup/1, fun(State) ->
             [
@@ -133,6 +136,8 @@ textguard_integration_test_() ->
         end}}.
 
 setup() ->
+    ok = textguard_suite_fixture:preflight(integration),
+    ok = textguard_suite_fixture:require_owned_pool(),
     logger:set_primary_config(level, emergency),
     {ok, _} = application:ensure_all_started(gun),
     ok = textguard_export_tests:pg_setup(),

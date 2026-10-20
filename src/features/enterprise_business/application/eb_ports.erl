@@ -227,7 +227,8 @@ contracts() ->
             {fetch_session, 3},
             {session_by_client_id, 3},
             {renew_session, 4},
-            {register_session, 6}
+            {register_session, 6},
+            {direct_session_row, 1}
         ],
         auth() => [
             {load_request_facts, 1}
