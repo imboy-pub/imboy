@@ -3,7 +3,67 @@
 -include_lib("eunit/include/eunit.hrl").
 -include("imboy_cache_sync_state.hrl").
 
-invalidation_aborts_prepared_snapshot_sessions_test() ->
+%% Peer startup and mock compilation are integration work; retain a finite
+%% 30-second budget instead of EUnit's 5-second unit-test default.
+invalidation_test_() ->
+    [
+        {Name, {timeout, 30, Test}}
+     || {Name, Test} <- [
+            {"invalidation_aborts_prepared_snapshot_sessions",
+                fun invalidation_aborts_prepared_snapshot_sessions_case/0},
+            {"invalidation_uses_shared_origin_sequence",
+                fun invalidation_uses_shared_origin_sequence_case/0},
+            {"legacy_flush_targets_only_compatible_peers",
+                fun legacy_flush_targets_only_compatible_peers_case/0},
+            {"missing_invalidation_advances_fence", fun missing_invalidation_advances_fence_case/0},
+            {"gap_invalidates_other_keys_and_inflight_generation",
+                fun gap_invalidates_other_keys_and_inflight_generation_case/0},
+            {"restarted_origin_does_not_inherit_old_sequence",
+                fun restarted_origin_does_not_inherit_old_sequence_case/0},
+            {"sync_restart_isolates_cached_and_inflight_values",
+                fun sync_restart_isolates_cached_and_inflight_values_case/0},
+            {"last_lost_event_is_compensated_by_periodic_watermark",
+                fun last_lost_event_is_compensated_by_periodic_watermark_case/0},
+            {"version_reply_includes_origin_sequence_and_checkpoint",
+                fun version_reply_includes_origin_sequence_and_checkpoint_case/0},
+            {"legacy_invalidation_also_advances_checkpoint",
+                fun legacy_invalidation_also_advances_checkpoint_case/0},
+            {"malformed_replication_envelopes_are_rejected_without_application",
+                fun malformed_replication_envelopes_are_rejected_without_application_case/0},
+            {"generation_capacity_rollover_never_reuses_old_values",
+                fun generation_capacity_rollover_never_reuses_old_values_case/0},
+            {"oversized_generation_key_uses_constant_space_fallback",
+                fun oversized_generation_key_uses_constant_space_fallback_case/0},
+            {"snapshot_pages_reject_before_any_entry_is_applied",
+                fun snapshot_pages_reject_before_any_entry_is_applied_case/0},
+            {"snapshot_buffer_budget_is_released_between_applied_pages",
+                fun snapshot_buffer_budget_is_released_between_applied_pages_case/0},
+            {"snapshot_shape_deadline_and_watermark_are_checked",
+                fun snapshot_shape_deadline_and_watermark_are_checked_case/0},
+            {"oversized_snapshot_entry_aborts_sender_without_sending_a_page",
+                fun oversized_snapshot_entry_aborts_sender_without_sending_a_page_case/0},
+            {"filtered_snapshot_tail_without_certificate_aborts_round",
+                fun filtered_snapshot_tail_without_certificate_aborts_round_case/0},
+            {"snapshot_done_requires_page_total_and_authority",
+                fun snapshot_done_requires_page_total_and_authority_case/0},
+            {"recovering_peer_is_not_a_snapshot_authority",
+                fun recovering_peer_is_not_a_snapshot_authority_case/0},
+            {"multi_peer_round_waits_for_every_discovered_peer",
+                fun multi_peer_round_waits_for_every_discovered_peer_case/0},
+            {"simultaneously_recovering_peers_use_ready_authority",
+                fun simultaneously_recovering_peers_use_ready_authority_case/0},
+            {"authority_change_aborts_partial_snapshot_and_preserves_versions",
+                fun authority_change_aborts_partial_snapshot_and_preserves_versions_case/0},
+            {"recovery_abort_rearms_timer_and_deadline_enters_degraded",
+                fun recovery_abort_rearms_timer_and_deadline_enters_degraded_case/0},
+            {"partial_snapshot_timeout_cannot_expose_value_after_empty_recovery",
+                fun partial_snapshot_timeout_cannot_expose_value_after_empty_recovery_case/0},
+            {"isolated_configured_cluster_never_becomes_single_node_ready",
+                fun isolated_configured_cluster_never_becomes_single_node_ready_case/0}
+        ]
+    ].
+
+invalidation_aborts_prepared_snapshot_sessions_case() ->
     lists:foreach(
         fun(Message) ->
             with_sync_fixture(fun() ->
@@ -61,7 +121,7 @@ invalidate_sender(Kind, State) ->
     {noreply, _} = imboy_cache_sync:handle_info({cache_sync, Message}, State),
     ok.
 
-invalidation_uses_shared_origin_sequence_test() ->
+invalidation_uses_shared_origin_sequence_case() ->
     with_sync_fixture(fun() ->
         Controller = self(),
         meck:expect(syn, publish, 3, fun(_, _, {cache_sync, Event}) ->
@@ -82,7 +142,7 @@ invalidation_uses_shared_origin_sequence_test() ->
         ?assertEqual(2, meck:num_calls(syn, publish, 3))
     end).
 
-legacy_flush_targets_only_compatible_peers_test() ->
+legacy_flush_targets_only_compatible_peers_case() ->
     with_sync_fixture(fun() ->
         Parent = self(),
         LegacyPeer = spawn(fun() -> invalidation_test_peer(Parent) end),
@@ -139,7 +199,7 @@ fence_clock() ->
         [] -> 0
     end.
 
-missing_invalidation_advances_fence_test() ->
+missing_invalidation_advances_fence_case() ->
     with_sync_fixture(fun() ->
         Origin = 'invalidation_peer@synthetic',
         Boot = <<1:128>>,
@@ -156,7 +216,7 @@ missing_invalidation_advances_fence_test() ->
         ?assertEqual([{{seq, {Origin, Boot}}, 3}], ets:lookup(?META_TABLE, {seq, {Origin, Boot}}))
     end).
 
-gap_invalidates_other_keys_and_inflight_generation_test() ->
+gap_invalidates_other_keys_and_inflight_generation_case() ->
     with_sync_fixture(fun() ->
         {ok, Cache} = depcache:start_link(imboy_cache, #{}),
         try
@@ -179,7 +239,7 @@ gap_invalidates_other_keys_and_inflight_generation_test() ->
         end
     end).
 
-restarted_origin_does_not_inherit_old_sequence_test() ->
+restarted_origin_does_not_inherit_old_sequence_case() ->
     with_sync_fixture(fun() ->
         Node = 'restarted_peer@synthetic',
         OldBoot = <<3:128>>,
@@ -203,7 +263,7 @@ restarted_origin_does_not_inherit_old_sequence_test() ->
         ?assertEqual(G1 + 3, imboy_cache_sync:generation(Key))
     end).
 
-sync_restart_isolates_cached_and_inflight_values_test() ->
+sync_restart_isolates_cached_and_inflight_values_case() ->
     with_sync_fixture(fun() ->
         {ok, Cache} = depcache:start_link(imboy_cache, #{}),
         Controller = self(),
@@ -251,7 +311,7 @@ receive_event() ->
     after 1000 -> error(missing_invalidation_event)
     end.
 
-last_lost_event_is_compensated_by_periodic_watermark_test() ->
+last_lost_event_is_compensated_by_periodic_watermark_case() ->
     with_sync_fixture(fun() ->
         Origin = 'tail_peer@synthetic',
         Boot = <<5:128>>,
@@ -276,7 +336,7 @@ last_lost_event_is_compensated_by_periodic_watermark_test() ->
         ?assertEqual(G0 + 1, imboy_cache_sync:generation(Key))
     end).
 
-version_reply_includes_origin_sequence_and_checkpoint_test() ->
+version_reply_includes_origin_sequence_and_checkpoint_case() ->
     with_sync_fixture(fun() ->
         State = #state{boot_id = <<7:128>>, counter = 99, origin_seq = 3, status = ready},
         {noreply, State} = imboy_cache_sync:handle_info(
@@ -292,7 +352,7 @@ version_reply_includes_origin_sequence_and_checkpoint_test() ->
         end
     end).
 
-legacy_invalidation_also_advances_checkpoint_test() ->
+legacy_invalidation_also_advances_checkpoint_case() ->
     with_sync_fixture(fun() ->
         application:set_env(imboy, cache_sync_protocol, legacy),
         Controller = self(),
@@ -372,7 +432,7 @@ with_sync_fixture_local(Test) ->
         )
     end.
 
-malformed_replication_envelopes_are_rejected_without_application_test() ->
+malformed_replication_envelopes_are_rejected_without_application_case() ->
     with_sync_fixture(fun() ->
         application:set_env(imboy, cache_registry_overrides, #{protocol_test => {replicate, false}}),
         application:set_env(imboy, cache_replication, #{whitelist => [protocol_test]}),
@@ -443,7 +503,7 @@ malformed_replication_envelopes_are_rejected_without_application_test() ->
         ?assertEqual([], ets:match_object(?META_TABLE, {{peer_incarnation, '_'}, '_'}))
     end).
 
-generation_capacity_rollover_never_reuses_old_values_test() ->
+generation_capacity_rollover_never_reuses_old_values_case() ->
     with_sync_fixture(fun() ->
         application:set_env(imboy, cache_replication, #{n_max => 2, gen_max_bytes => 128}),
         {ok, Cache} = depcache:start_link(imboy_cache, #{}),
@@ -467,7 +527,7 @@ generation_capacity_rollover_never_reuses_old_values_test() ->
         end
     end).
 
-oversized_generation_key_uses_constant_space_fallback_test() ->
+oversized_generation_key_uses_constant_space_fallback_case() ->
     with_sync_fixture(fun() ->
         application:set_env(imboy, cache_replication, #{gen_max_bytes => 64}),
         Key = {cache_invalidation_test, binary:copy(<<0>>, 1024)},
@@ -477,7 +537,7 @@ oversized_generation_key_uses_constant_space_fallback_test() ->
         ?assertEqual([], ets:match_object(?META_TABLE, {{gen, '_'}, '_'}))
     end).
 
-snapshot_pages_reject_before_any_entry_is_applied_test() ->
+snapshot_pages_reject_before_any_entry_is_applied_case() ->
     with_sync_fixture(fun() ->
         meck:expect(depcache, set, 5, fun(_, _, _, _, _) -> ok end),
         Valid = snapshot_entry(first),
@@ -514,7 +574,7 @@ snapshot_pages_reject_before_any_entry_is_applied_test() ->
         ?assertEqual(0, meck:num_calls(depcache, set, 5))
     end).
 
-snapshot_buffer_budget_is_released_between_applied_pages_test() ->
+snapshot_buffer_budget_is_released_between_applied_pages_case() ->
     with_sync_fixture(fun() ->
         snapshot_policy(#{b_max => 1}),
         meck:expect(depcache, set, 5, fun(_, _, _, _, _) -> ok end),
@@ -540,7 +600,7 @@ snapshot_buffer_budget_is_released_between_applied_pages_test() ->
         ?assertEqual(2, meck:num_calls(depcache, set, 5))
     end).
 
-snapshot_shape_deadline_and_watermark_are_checked_test() ->
+snapshot_shape_deadline_and_watermark_are_checked_case() ->
     with_sync_fixture(fun() ->
         snapshot_policy(#{}),
         Peer = 'snapshot_peer@synthetic',
@@ -568,7 +628,7 @@ snapshot_shape_deadline_and_watermark_are_checked_test() ->
         )
     end).
 
-oversized_snapshot_entry_aborts_sender_without_sending_a_page_test() ->
+oversized_snapshot_entry_aborts_sender_without_sending_a_page_case() ->
     with_sync_fixture(fun() ->
         snapshot_policy(#{p_max_bytes => 64}),
         {Key, _Value, ExpiresAt, Rev} = snapshot_entry(large),
@@ -586,7 +646,7 @@ oversized_snapshot_entry_aborts_sender_without_sending_a_page_test() ->
         end
     end).
 
-filtered_snapshot_tail_without_certificate_aborts_round_test() ->
+filtered_snapshot_tail_without_certificate_aborts_round_case() ->
     with_sync_fixture(fun() ->
         snapshot_policy(#{p_max => 2}),
         meck:expect(depcache, set, 5, fun(_, _, _, _, _) -> ok end),
@@ -630,7 +690,7 @@ filtered_snapshot_tail_without_certificate_aborts_round_test() ->
         end
     end).
 
-snapshot_done_requires_page_total_and_authority_test() ->
+snapshot_done_requires_page_total_and_authority_case() ->
     with_sync_fixture(fun() ->
         snapshot_policy(#{}),
         meck:expect(depcache, set, 5, fun(_, _, _, _, _) -> ok end),
@@ -670,7 +730,7 @@ snapshot_done_requires_page_total_and_authority_test() ->
         )
     end).
 
-recovering_peer_is_not_a_snapshot_authority_test() ->
+recovering_peer_is_not_a_snapshot_authority_case() ->
     with_sync_fixture(fun() ->
         Peer = 'recovering_peer@synthetic',
         RoundSt = imboy_cache_sync_snapshot:expect_peer(
@@ -710,7 +770,7 @@ recovering_peer_is_not_a_snapshot_authority_test() ->
         end
     end).
 
-multi_peer_round_waits_for_every_discovered_peer_test() ->
+multi_peer_round_waits_for_every_discovered_peer_case() ->
     with_sync_fixture(fun() ->
         A = 'authority_a@synthetic',
         B = 'authority_b@synthetic',
@@ -722,7 +782,7 @@ multi_peer_round_waits_for_every_discovered_peer_test() ->
         ?assertEqual(S0, imboy_cache_sync_recover:maybe_complete_round(S0))
     end).
 
-simultaneously_recovering_peers_use_ready_authority_test() ->
+simultaneously_recovering_peers_use_ready_authority_case() ->
     with_sync_fixture(fun() ->
         A = 'ready_authority@synthetic',
         B = 'recovering_b@synthetic',
@@ -767,7 +827,7 @@ simultaneously_recovering_peers_use_ready_authority_test() ->
         ?assertNot(imboy_cache_sync_snapshot:round_complete(ExcludedRound))
     end).
 
-authority_change_aborts_partial_snapshot_and_preserves_versions_test() ->
+authority_change_aborts_partial_snapshot_and_preserves_versions_case() ->
     lists:foreach(
         fun(Change) ->
             with_sync_fixture(fun() ->
@@ -843,7 +903,7 @@ authority_change_aborts_partial_snapshot_and_preserves_versions_test() ->
         [not_ready, new_boot, new_boot_already_registered]
     ).
 
-recovery_abort_rearms_timer_and_deadline_enters_degraded_test() ->
+recovery_abort_rearms_timer_and_deadline_enters_degraded_case() ->
     with_sync_fixture(fun() ->
         S0 = #state{
             status = recovering,
@@ -867,7 +927,7 @@ recovery_abort_rearms_timer_and_deadline_enters_degraded_test() ->
         ?assertEqual(false, erlang:read_timer(S1#state.recovery_timer))
     end).
 
-partial_snapshot_timeout_cannot_expose_value_after_empty_recovery_test() ->
+partial_snapshot_timeout_cannot_expose_value_after_empty_recovery_case() ->
     with_sync_fixture(fun() ->
         snapshot_policy(#{}),
         Values = ets:new(snapshot_values, [public, set]),
@@ -936,7 +996,7 @@ mock_snapshot_values(Values) ->
         ok
     end).
 
-isolated_configured_cluster_never_becomes_single_node_ready_test() ->
+isolated_configured_cluster_never_becomes_single_node_ready_case() ->
     with_sync_fixture(fun() ->
         application:set_env(imboy, cluster_nodes, ['another_node@synthetic']),
         meck:expect(syn, members, 2, fun(_, _) -> [] end),

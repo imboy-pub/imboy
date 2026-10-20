@@ -16,7 +16,7 @@ sudo -n apt-get install -y --no-install-recommends \
   build-essential make pkg-config curl ca-certificates git perl python3 \
   bison flex m4 autoconf automake libtool cmake libncurses-dev libreadline-dev \
   libssl-dev zlib1g-dev libicu-dev libxml2-dev uuid-dev libgeos-dev libproj-dev \
-  libjson-c-dev libprotobuf-c-dev protobuf-c-compiler libpcre2-dev liblz4-dev \
+  libjson-c-dev libprotobuf-c-dev protobuf-c-compiler protobuf-compiler libpcre2-dev liblz4-dev \
   libzstd-dev libedit-dev xsltproc unzip xz-utils
 python3 scripts/ci/native-eunit-fetch.py
 PREFIX="$NATIVE_CI_ROOT/prefix"
@@ -78,8 +78,18 @@ assert hashlib.file_digest((hird/'Cargo.lock').open('rb'),'sha256').hexdigest()=
 PY
 # Use the exact native cargo/rustc, bypassing any runner rustup override.
 RUSTC="$PREFIX/rust/bin/rustc" "$PREFIX/rust/bin/cargo" build --locked --release --manifest-path deps/hird_runtime/Cargo.toml -p hird-cli
+TEXTGUARD_SOURCE="$NATIVE_CI_ROOT/sources/imboy-textguard"
+python3 - "$REPO" "$TEXTGUARD_SOURCE" <<'PY'
+import hashlib,json,pathlib,subprocess,sys
+repo,source=map(pathlib.Path,sys.argv[1:]); pin=json.loads((repo/'scripts/ci/native-eunit-pins.json').read_text())['textguard']
+assert subprocess.check_output(['git','-C',str(source),'rev-parse','HEAD'],text=True).strip()==pin['commit']
+assert hashlib.file_digest((source/'Cargo.lock').open('rb'),'sha256').hexdigest()==pin['cargo_lock_sha256']
+PY
+RUSTC="$PREFIX/rust/bin/rustc" "$PREFIX/rust/bin/cargo" build --locked --release \
+  --manifest-path "$TEXTGUARD_SOURCE/Cargo.toml" --target-dir "$NATIVE_CI_ROOT/build/textguard"
 {
   printf 'export PATH=%q\n' "$REPO/deps/hird_runtime/target/release:$PATH"
+  printf 'export TEXTGUARD_TEST_BINARY=%q\n' "$NATIVE_CI_ROOT/build/textguard/release/imboy-textguard"
   printf 'export LD_LIBRARY_PATH=%q\n' "$LD_LIBRARY_PATH"
   printf 'export PG_CONFIG=%q\n' "$PG_CONFIG"
   printf 'export ERL_FLAGS=%q\n' "$ERL_FLAGS"

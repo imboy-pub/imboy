@@ -10,6 +10,9 @@ secrets = [os.environ.get(name, '') for name in
            ('W202_GARAGE_ACCESS_KEY',
             'W202_GARAGE_SECRET_KEY',
             'NATIVE_GARAGE_RPC_SECRET')]
+for name in ('TEXTGUARD_CHECK_SECRET_FILE', 'TEXTGUARD_PUBLISH_SECRET_FILE'):
+    if os.environ.get(name):
+        secrets.append(Path(os.environ[name]).read_text().strip())
 secrets = sorted((value for value in secrets if value), key=len, reverse=True)
 with open(raw_path, 'wb') as raw, open(public_path, 'wb') as public:
     child = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)

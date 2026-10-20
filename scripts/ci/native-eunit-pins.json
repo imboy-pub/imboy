@@ -53,6 +53,13 @@
         "libjieba": "391121d5db0f31dd5ce9795d4d34812f20eeb25c",
         "libjieba/deps/limonp": "a269e34dc4948d5a9209e21a7887b52daa0d3e78"
       }
+    },
+    {
+      "kind": "git",
+      "directory": "imboy-textguard",
+      "url": "https://gitee.com/imboy-pub/imboy-textguard.git",
+      "commit": "ed61625be235cd207dba4bc12539944e7c0139ab",
+      "submodules": ""
     }
   ],
   "rust": [
@@ -111,5 +118,9 @@
     "agent_tool_authorizer_pg_tests",
     "cs_pg_widget",
     "cs_seat_console_pg_tests"
-  ]
+  ],
+  "textguard": {
+    "commit": "ed61625be235cd207dba4bc12539944e7c0139ab",
+    "cargo_lock_sha256": "c6e048ce7d5b81f0259b1bf0bb4277bcf19ea868ffb8a0c359672e0b3474652d"
+  }
 }
