@@ -8,8 +8,10 @@
 -behavior(cowboy_rest).
 
 -export([init/2]).
+-export([insert_logged/1]).
 
 -include("common.hrl").
+-include("log.hrl").
 
 %% ===================================================================
 %% API
@@ -61,7 +63,6 @@ report(<<"POST">>, Req0, _State) ->
         {_, <<>>} ->
             elib_response:error(Req0, <<"missing client_vsn">>, 400);
         _ ->
-            %% 异步写入，不阻塞客户端
             Data = #{
                 <<"did">> => DID,
                 <<"uid">> => ec_cnv:to_integer(
@@ -77,11 +78,43 @@ report(<<"POST">>, Req0, _State) ->
                     [native_utf8, {float_format, [{decimals, 4}, compact]}]
                 )
             },
-            elib_async:async(fun() -> app_upgrade_log_logic:insert(Data) end),
-            elib_response:success(Req0, #{<<"ok">> => true})
+            case app_upgrade_log_logic:validate(Data) of
+                ok ->
+                    %% 异步写入，不阻塞客户端
+                    elib_async:async(fun() -> insert_logged(Data) end),
+                    elib_response:success(Req0, #{<<"ok">> => true});
+                {error, Reason} ->
+                    elib_response:error(Req0, Reason, 400)
+            end
     end;
 report(_, Req0, _State) ->
     elib_response:error(Req0, <<"Method Not Allowed">>, 405).
+
+%% @doc 入库并把 {error, _} 写入错误日志。elib_async:async/1 只是裸 spawn，
+%% 返回值无人消费——此前 CHECK 违约在这里静默消失，升级漏斗自 prompted 之后
+%% 全部丢失。导出仅为 EUnit 直接驱动。
+-spec insert_logged(map()) -> ok.
+insert_logged(Data) ->
+    case app_upgrade_log_logic:insert(Data) of
+        {ok, _} ->
+            ok;
+        {error, Reason} ->
+            ?ERROR_LOG([
+                app_upgrade_log_insert_failed,
+                Reason,
+                maps:with(
+                    [
+                        <<"event">>,
+                        <<"upgrade_type">>,
+                        <<"cos">>,
+                        <<"client_vsn">>,
+                        <<"target_vsn">>
+                    ],
+                    Data
+                )
+            ]),
+            ok
+    end.
 
 %% ===================================================================
 %% EUnit tests.
