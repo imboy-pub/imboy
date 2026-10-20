@@ -127,7 +127,7 @@ policy_of(Id) ->
 
 audit_policy_http_test_() ->
     {timeout, 900,
-        {setup, fun intbe02_http_support:setup_all/0, fun intbe02_http_support:teardown_all/1,
+        {setup, fun intbe02_http_support:setup_all/0, fun teardown_marker/1,
             fun(S) -> {timeout, 900, fun() -> run_audit(S) end} end}}.
 
 run_audit(S) ->
@@ -752,3 +752,11 @@ hash256(S) ->
 
 hex_digit(N) when N < 10 -> $0 + N;
 hex_digit(N) -> $a + N - 10.
+
+%% This fixture owns its disposable marker; release it even if HTTP cleanup fails.
+teardown_marker(State) ->
+    try
+        intbe02_http_support:teardown_all(State)
+    after
+        inttest_marker_db:release(State)
+    end.
