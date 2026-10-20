@@ -124,7 +124,7 @@ member_uids_reads_repo_and_populates_cache_on_miss_test_() ->
                 end}
             ]},
             {group_member_repo, [
-                {'list_by_gid', 2, fun(1, <<"user_id">>) ->
+                {'list_active_relation_uids', 1, fun(1) ->
                     {ok, [
                         #{<<"user_id">> => 11},
                         #{<<"user_id">> => 12}
@@ -155,7 +155,7 @@ member_uids_returns_empty_list_on_repo_error_test_() ->
                 {'get', 1, fun({group, 3}) -> undefined end}
             ]},
             {group_member_repo, [
-                {'list_by_gid', 2, fun(3, <<"user_id">>) ->
+                {'list_active_relation_uids', 1, fun(3) ->
                     {error, db_error}
                 end}
             ]}

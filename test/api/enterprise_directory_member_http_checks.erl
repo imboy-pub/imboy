@@ -56,17 +56,21 @@ run(#{conn := C, app_a := App} = S) ->
         read(S, <<"?external_organization_id=foreign&external_user_id=audit-member">>),
         <<"resource_not_found">>
     ),
+    Access = enterprise_directory_member_access_http_checks:setup(S, Org, User),
+    enterprise_directory_member_access_http_checks:check(Access, true),
     V = maps:get(<<"member_version">>, First),
     Pause = write(S, <<"suspended">>, V, <<"audit-member-pause">>),
     ?assertEqual(200, maps:get(status, Pause)),
     intbe02_http_support:cover(<<"INT-49">>, ok),
+    enterprise_directory_member_access_http_checks:check(Access, false),
     Paused = get(S, query()),
     ?assertEqual(true, maps:get(<<"can_restore">>, Paused)),
     error_reply(write(S, <<"active">>, V, <<"audit-member-stale">>), <<"version_conflict">>),
     Restore = write(
         S, <<"active">>, maps:get(<<"member_version">>, Paused), <<"audit-member-restore">>
     ),
-    ?assertEqual(200, maps:get(status, Restore)).
+    ?assertEqual(200, maps:get(status, Restore)),
+    enterprise_directory_member_access_http_checks:check(Access, true).
 
 query() -> <<"?external_organization_id=audit-directory-org&external_user_id=audit-member">>.
 read(#{port := Port, cred_a := Cred}, Q) ->

@@ -63,7 +63,7 @@ upsert_active_tx(Conn, WsId, Uid, Role, InvitedBy) ->
     Tb = tablename(),
     Now = elib_dt:now(),
     %% 先取现行行：active+同角色 → unchanged；active+不同角色 → role_conflict
-    case find_tx(Conn, WsId, Uid, <<"role,status">>) of
+    case find_raw_tx(Conn, WsId, Uid, <<"role,status">>) of
         #{<<"status">> := <<"active">>, <<"role">> := Role} ->
             {ok, unchanged, #{}};
         #{<<"status">> := <<"active">>} ->
@@ -82,13 +82,26 @@ upsert_active_tx(Conn, WsId, Uid, Role, InvitedBy) ->
             end
     end.
 
+%% Mutations must inspect stored roles, including suspended parents. Filtering
+%% them out would make ON CONFLICT overwrite an existing owner's role.
+find_raw_tx(Conn, WsId, Uid, Column) ->
+    Sql =
+        <<"SELECT ", Column/binary, " FROM ", (tablename())/binary,
+            " WHERE workspace_id=$1 AND user_id=$2 FOR UPDATE">>,
+    case elib_pg:query(Conn, Sql, [WsId, Uid]) of
+        {ok, [Row | _]} -> Row;
+        {ok, []} -> #{};
+        {error, Reason} -> throw({abort_tx, Reason})
+    end.
+
 %% @doc 查询工作区成员行（自动提交连接；空 map = 无记录）
 -spec find(integer(), integer(), binary()) -> map().
 find(WsId, Uid, Column) ->
     Tb = tablename(),
+    Access = organization_resource_access_repo:workspace_predicate_sql(<<"$1">>, <<"$2">>),
     Sql =
         <<"SELECT ", Column/binary, " FROM ", Tb/binary,
-            " WHERE workspace_id = $1 AND user_id = $2">>,
+            " WHERE workspace_id = $1 AND user_id = $2 AND ", Access/binary>>,
     case elib_pg:one(Sql, [WsId, Uid]) of
         {ok, Row} -> Row;
         _ -> #{}
@@ -98,9 +111,10 @@ find(WsId, Uid, Column) ->
 -spec find_tx(any(), integer(), integer(), binary()) -> map().
 find_tx(Conn, WsId, Uid, Column) ->
     Tb = tablename(),
+    Access = organization_resource_access_repo:workspace_predicate_sql(<<"$1">>, <<"$2">>),
     Sql =
         <<"SELECT ", Column/binary, " FROM ", Tb/binary,
-            " WHERE workspace_id = $1 AND user_id = $2">>,
+            " WHERE workspace_id = $1 AND user_id = $2 AND ", Access/binary>>,
     case elib_pg:query(Conn, Sql, [WsId, Uid]) of
         {ok, [Row | _]} -> Row;
         _ -> #{}

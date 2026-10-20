@@ -388,12 +388,16 @@ join_valid_code(Uid, WsId, CreatedBy) ->
         {error, NotFound} ->
             {error, NotFound};
         {ok, WS} ->
-            case ensure_member(WsId, Uid) of
-                {ok, _Role} ->
-                    {ok, unchanged, WS};
-                {error, _} ->
-                    join_as_member(Uid, WsId, CreatedBy, WS)
+            case organization_resource_access_repo:workspace_parent_allowed(WsId, Uid) of
+                false -> {error, {403, <<"组织成员资格无效，无法加入工作区"/utf8>>}};
+                true -> join_eligible_member(Uid, WsId, CreatedBy, WS)
             end
+    end.
+
+join_eligible_member(Uid, WsId, CreatedBy, WS) ->
+    case ensure_member(WsId, Uid) of
+        {ok, _Role} -> {ok, unchanged, WS};
+        {error, _} -> join_as_member(Uid, WsId, CreatedBy, WS)
     end.
 
 %% 入会写入：workspace_guard:write_tx 归档守卫（980）+ upsert member（幂等）

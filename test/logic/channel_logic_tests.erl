@@ -5092,7 +5092,7 @@ sync_channels_returns_empty_when_user_has_no_subscriptions_test_() ->
             {'list_by_uid', 1, fun(1001) -> {ok, []} end}
         ]},
         {channel_ds, [
-            {'list_by_ids_since', 2, fun(_, _) ->
+            {'list_by_ids_since', 3, fun(_, _, 1001) ->
                 erlang:error(should_not_query_channels_when_no_subscriptions)
             end}
         ]}
@@ -5104,7 +5104,7 @@ sync_channels_returns_empty_when_user_has_no_subscriptions_test_() ->
             {ok, Payload} = Result,
             ?assertEqual([], maps:get(channels, Payload)),
             ?assert(is_integer(maps:get(server_time, Payload))),
-            ?assertEqual(0, meck:num_calls(channel_ds, list_by_ids_since, 2))
+            ?assertEqual(0, meck:num_calls(channel_ds, list_by_ids_since, 3))
         end)
     end}.
 
@@ -5127,7 +5127,7 @@ sync_channels_returns_error_when_subscription_payload_not_list_test_() ->
             {'list_by_uid', 1, fun(1001) -> {ok, invalid_payload} end}
         ]},
         {channel_ds, [
-            {'list_by_ids_since', 2, fun(_, _) ->
+            {'list_by_ids_since', 3, fun(_, _, 1001) ->
                 erlang:error(should_not_query_channels_when_subscription_payload_invalid)
             end}
         ]}
@@ -5136,7 +5136,7 @@ sync_channels_returns_error_when_subscription_payload_not_list_test_() ->
         ?_test(begin
             Result = channel_logic_sync:sync_channels(1001, 1700000000000),
             ?assertEqual({error, <<"invalid_payload">>}, Result),
-            ?assertEqual(0, meck:num_calls(channel_ds, list_by_ids_since, 2))
+            ?assertEqual(0, meck:num_calls(channel_ds, list_by_ids_since, 3))
         end)
     end}.
 
@@ -5154,7 +5154,7 @@ sync_channels_filters_invalid_subscription_entries_test_() ->
             end}
         ]},
         {channel_ds, [
-            {'list_by_ids_since', 2, fun([11], 1700000000000) ->
+            {'list_by_ids_since', 3, fun([11], 1700000000000, 1001) ->
                 {ok, [#{<<"id">> => 11, <<"name">> => <<"ch11">>}]}
             end}
         ]},
@@ -5182,7 +5182,7 @@ sync_channels_returns_error_when_delta_query_fails_test_() ->
             {'list_by_uid', 1, fun(1001) -> {ok, [#{<<"channel_id">> => 11}]} end}
         ]},
         {channel_ds, [
-            {'list_by_ids_since', 2, fun([11], 1700000000000) -> {error, timeout} end}
+            {'list_by_ids_since', 3, fun([11], 1700000000000, 1001) -> {error, timeout} end}
         ]}
     ],
     {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
@@ -5198,7 +5198,9 @@ sync_channels_returns_error_when_delta_payload_not_list_test_() ->
             {'list_by_uid', 1, fun(1001) -> {ok, [#{<<"channel_id">> => 11}]} end}
         ]},
         {channel_ds, [
-            {'list_by_ids_since', 2, fun([11], 1700000000000) -> {ok, invalid_delta_payload} end}
+            {'list_by_ids_since', 3, fun([11], 1700000000000, 1001) ->
+                {ok, invalid_delta_payload}
+            end}
         ]},
         {channel_logic_common, [
             {'channel_transfer', 1, fun(_) ->
@@ -5220,7 +5222,7 @@ sync_channels_filters_non_map_delta_entries_test_() ->
             {'list_by_uid', 1, fun(1001) -> {ok, [#{<<"channel_id">> => 11}]} end}
         ]},
         {channel_ds, [
-            {'list_by_ids_since', 2, fun([11], 1700000000000) ->
+            {'list_by_ids_since', 3, fun([11], 1700000000000, 1001) ->
                 {ok, [
                     #{<<"id">> => 11, <<"name">> => <<"ch11">>},
                     invalid,
@@ -5262,7 +5264,7 @@ sync_channels_success_transfers_channels_test_() ->
             end}
         ]},
         {channel_ds, [
-            {'list_by_ids_since', 2, fun([11, 12], 1700000000000) ->
+            {'list_by_ids_since', 3, fun([11, 12], 1700000000000, 1001) ->
                 {ok, [
                     #{<<"id">> => 11, <<"name">> => <<"ch11">>},
                     #{<<"id">> => 12, <<"name">> => <<"ch12">>}

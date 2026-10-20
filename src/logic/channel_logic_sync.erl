@@ -13,7 +13,7 @@ sync_channels(Uid, Since) ->
                 [] ->
                     {ok, #{channels => [], server_time => Now}};
                 _ ->
-                    case channel_ds:list_by_ids_since(ChannelIds, Since) of
+                    case channel_ds:list_by_ids_since(ChannelIds, Since, Uid) of
                         {ok, Channels} when is_list(Channels) ->
                             Transferred =
                                 [

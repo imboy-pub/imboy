@@ -88,9 +88,11 @@ find(ChannelId, Uid) ->
 -spec list_by_uid(integer()) -> {ok, list(map())} | {error, any()}.
 list_by_uid(Uid) ->
     Tb = tablename(),
+    Access = organization_resource_access_repo:channel_predicate_sql(<<"cs.channel_id">>, <<"$1">>),
     Sql =
-        <<"SELECT * FROM ", Tb/binary,
-            " WHERE user_id = $1 AND status = 1 "
+        <<"SELECT cs.* FROM ", Tb/binary, " cs WHERE cs.user_id = $1 AND cs.status = 1 AND ",
+            Access/binary,
+            " "
             "ORDER BY is_pinned DESC, subscribed_at DESC">>,
     elib_pg:query(Sql, [Uid]).
 
@@ -98,6 +100,7 @@ list_by_uid(Uid) ->
 -spec list_by_channel(integer()) -> {ok, list(map())} | {error, any()}.
 list_by_channel(ChannelId) ->
     Tb = tablename(),
+    %% Cache retained subscription facts; delivery checks current parent access.
     Sql = <<"SELECT user_id FROM ", Tb/binary, " WHERE channel_id = $1 AND status = 1">>,
     elib_pg:query(Sql, [ChannelId]).
 
@@ -195,9 +198,10 @@ clear_unread_tx(Conn, ChannelId, Uid) ->
 -spec count_unread(integer()) -> non_neg_integer().
 count_unread(Uid) ->
     Tb = tablename(),
+    Access = organization_resource_access_repo:channel_predicate_sql(<<"cs.channel_id">>, <<"$1">>),
     Sql =
         <<"SELECT COALESCE(SUM(unread_count), 0) as total FROM ", Tb/binary,
-            " WHERE user_id = $1 AND status = 1">>,
+            " cs WHERE cs.user_id = $1 AND cs.status = 1 AND ", Access/binary>>,
     case elib_pg:one(Sql, [Uid]) of
         {ok, #{<<"total">> := Total}} -> Total;
         _ -> 0
@@ -207,9 +211,11 @@ count_unread(Uid) ->
 -spec get_unread_count(integer(), integer()) -> non_neg_integer().
 get_unread_count(ChannelId, Uid) ->
     Tb = tablename(),
+    Access = organization_resource_access_repo:channel_predicate_sql(<<"cs.channel_id">>, <<"$2">>),
     Sql =
         <<"SELECT unread_count FROM ", Tb/binary,
-            " WHERE channel_id = $1 AND user_id = $2 AND status = 1 LIMIT 1">>,
+            " cs WHERE cs.channel_id = $1 AND cs.user_id = $2 AND cs.status = 1 AND ",
+            Access/binary, " LIMIT 1">>,
     case elib_pg:one(Sql, [ChannelId, Uid]) of
         {ok, #{<<"unread_count">> := Count}} when is_integer(Count), Count >= 0 ->
             Count;
@@ -221,9 +227,11 @@ get_unread_count(ChannelId, Uid) ->
 -spec count_unread_channels(integer()) -> non_neg_integer().
 count_unread_channels(Uid) ->
     Tb = tablename(),
+    Access = organization_resource_access_repo:channel_predicate_sql(<<"cs.channel_id">>, <<"$1">>),
     Sql =
         <<"SELECT COUNT(*) as count FROM ", Tb/binary,
-            " WHERE user_id = $1 AND status = 1 AND unread_count > 0">>,
+            " cs WHERE cs.user_id = $1 AND cs.status = 1 AND unread_count > 0 AND ",
+            Access/binary>>,
     case elib_pg:one(Sql, [Uid]) of
         {ok, #{<<"count">> := Count}} -> Count;
         _ -> 0
@@ -233,19 +241,24 @@ count_unread_channels(Uid) ->
 -spec list_unread_by_uid(integer()) -> {ok, list(map())} | {error, any()}.
 list_unread_by_uid(Uid) ->
     Tb = tablename(),
+    Access = organization_resource_access_repo:channel_predicate_sql(<<"cs.channel_id">>, <<"$1">>),
     Sql =
         <<"SELECT channel_id, unread_count FROM ", Tb/binary,
-            " WHERE user_id = $1 AND status = 1 AND unread_count > 0 ",
-            "ORDER BY unread_count DESC, channel_id ASC">>,
+            " cs WHERE cs.user_id = $1 AND cs.status = 1 AND unread_count > 0 AND ", Access/binary,
+            " ", "ORDER BY unread_count DESC, channel_id ASC">>,
     elib_pg:query(Sql, [Uid]).
 
 %% @doc 获取频道内所有订阅者的未读计数（包含 0）
 -spec list_unread_counts_by_channel(integer()) -> {ok, list(map())} | {error, any()}.
 list_unread_counts_by_channel(ChannelId) ->
     Tb = tablename(),
+    Access = organization_resource_access_repo:channel_predicate_sql(
+        <<"cs.channel_id">>, <<"cs.user_id">>
+    ),
     Sql =
         <<"SELECT user_id, unread_count FROM ", Tb/binary,
-            " WHERE channel_id = $1 AND status = 1 ORDER BY user_id ASC">>,
+            " cs WHERE cs.channel_id = $1 AND cs.status = 1 AND ", Access/binary,
+            " ORDER BY cs.user_id ASC">>,
     elib_pg:query(Sql, [ChannelId]).
 
 %% @doc 检查用户是否订阅了频道

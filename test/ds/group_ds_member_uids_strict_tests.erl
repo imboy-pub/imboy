@@ -55,7 +55,7 @@ member_uids_strict_test_() ->
 
 %% repo 返回 {error,_} 时必须原样透出，不得折成 []
 repo_error_is_propagated() ->
-    meck:expect(group_member_repo, list_by_gid, fun(?GID, _Col) ->
+    meck:expect(group_member_repo, list_active_relation_uids, fun(?GID) ->
         {error, connection_closed}
     end),
     ?assertEqual(
@@ -65,28 +65,28 @@ repo_error_is_propagated() ->
 
 %% 关键不变量：失败与空群的返回值必须可区分
 repo_error_is_not_confused_with_empty_group() ->
-    meck:expect(group_member_repo, list_by_gid, fun(?GID, _Col) ->
+    meck:expect(group_member_repo, list_active_relation_uids, fun(?GID) ->
         {error, timeout}
     end),
     Failed = group_ds:member_uids_strict(?GID),
-    meck:expect(group_member_repo, list_by_gid, fun(?GID, _Col) -> {ok, []} end),
+    meck:expect(group_member_repo, list_active_relation_uids, fun(?GID) -> {ok, []} end),
     Empty = group_ds:member_uids_strict(?GID),
     ?assertNotEqual(Failed, Empty),
     ?assertMatch({error, _}, Failed),
     ?assertEqual({ok, []}, Empty).
 
 empty_group_returns_ok_empty() ->
-    meck:expect(group_member_repo, list_by_gid, fun(?GID, _Col) -> {ok, []} end),
+    meck:expect(group_member_repo, list_active_relation_uids, fun(?GID) -> {ok, []} end),
     ?assertEqual({ok, []}, group_ds:member_uids_strict(?GID)).
 
 %% 空群不写缓存：避免把"刚建群还没加人"的瞬时空态缓存 1 小时
 empty_group_is_not_cached() ->
-    meck:expect(group_member_repo, list_by_gid, fun(?GID, _Col) -> {ok, []} end),
+    meck:expect(group_member_repo, list_active_relation_uids, fun(?GID) -> {ok, []} end),
     _ = group_ds:member_uids_strict(?GID),
     ?assertEqual(0, length(meck_calls(imboy_cache, set))).
 
 normal_group_returns_uids_and_caches() ->
-    meck:expect(group_member_repo, list_by_gid, fun(?GID, _Col) ->
+    meck:expect(group_member_repo, list_active_relation_uids, fun(?GID) ->
         {ok, [
             #{<<"user_id">> => 11},
             #{<<"user_id">> => 22},
@@ -99,7 +99,7 @@ normal_group_returns_uids_and_caches() ->
 %% 缓存命中时不应触达 repo
 cache_hit_short_circuits_repo() ->
     meck:expect(imboy_cache, get, fun(_Key) -> {ok, [5, 6]} end),
-    meck:expect(group_member_repo, list_by_gid, fun(?GID, _Col) ->
+    meck:expect(group_member_repo, list_active_relation_uids, fun(?GID) ->
         erlang:error(repo_should_not_be_called)
     end),
     ?assertEqual({ok, [5, 6]}, group_ds:member_uids_strict(?GID)).
@@ -191,7 +191,7 @@ authoritative_key_snapshot_propagates_repo_error() ->
 
 %% 非 {ok,_}/{error,_} 的第三种形态当作失败，而不是当作空群
 unexpected_repo_shape_is_treated_as_error() ->
-    meck:expect(group_member_repo, list_by_gid, fun(?GID, _Col) -> undefined end),
+    meck:expect(group_member_repo, list_active_relation_uids, fun(?GID) -> undefined end),
     ?assertMatch(
         {error, {unexpected_repo_result, undefined}},
         group_ds:member_uids_strict(?GID)
@@ -201,7 +201,7 @@ malformed_rows_cannot_be_silently_dropped() ->
     lists:foreach(
         fun(Bad) ->
             Items = [#{<<"user_id">> => 11}, Bad],
-            meck:expect(group_member_repo, list_by_gid, fun(?GID, _) -> {ok, Items} end),
+            meck:expect(group_member_repo, list_active_relation_uids, fun(?GID) -> {ok, Items} end),
             ?assertEqual(
                 {error, {unexpected_repo_result, {ok, Items}}}, group_ds:member_uids_strict(?GID)
             )
@@ -212,7 +212,7 @@ malformed_rows_cannot_be_silently_dropped() ->
 
 %% 宽松版仍返回 []（30 个既有调用点依赖此签名），但必须计数，不得静默
 lenient_version_degrades_but_reports() ->
-    meck:expect(group_member_repo, list_by_gid, fun(?GID, _Col) ->
+    meck:expect(group_member_repo, list_active_relation_uids, fun(?GID) ->
         {error, connection_closed}
     end),
     ?assertEqual([], group_ds:member_uids(?GID)),

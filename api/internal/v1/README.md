@@ -342,7 +342,7 @@ membership projections are distinct. Cursors are signed and filter-bound; pages 
 3. 未关联人员进入待关联状态；通过既有可信身份关联/注册流程关联 Human 账号后投影成员及部门关系。OA 不能凭任意用户 ID 接管账号。使用 INT-45..47 核对来源与实际投影状态。
 4. `GET /api/internal/v1/directory/memberships?external_organization_id=...&external_user_id=...`（INT-48，`identities:read`）返回当前成员状态、`member_version`、离职阻塞数量及业务资格。必须具备目标组织全域 Grant。检查是建议，实际变更会重新验证。
 5. 离职先用 `PATCH /api/internal/v1/directory/memberships`（INT-49）发送外部组织/人员 ID、`status=suspended`、检查返回的 `expected_member_version`，并携带 `Idempotency-Key`。`members:write` 须单独显式加入应用和全域 Grant，初始化不会自动授予。只支持本来源托管、已关联投影的普通成员；Owner/Admin 交由人工治理。
-6. 停用保留账号、历史及其他组织关系。先交接工作区/项目/群组/频道所有权、未完成任务，解除业务身份分配，再以 INT-43 显式移除任职。实际移除仍受交接检查保护。仅离开一个组织时保持 `source_status=active`，避免退役跨组织关联。
+6. 停用保留账号、历史及其他组织关系。旧 JWT 和现有连接访问所属 Workspace、项目、群组及频道时仍即时复核资格；恢复后复用原成员与订阅关系，个人域及其他组织不受影响。先交接工作区/项目/群组/频道所有权、未完成任务，解除业务身份分配，再以 INT-43 显式移除任职。实际移除仍受交接检查保护。仅离开一个组织时保持 `source_status=active`，避免退役跨组织关联。
 7. 取消离职时重新检查，以新版本和新幂等键 PATCH `status=active`。只能恢复本来源暂停且未被人工再次修改的成员；人工暂停、角色提升、旧版本或来源不匹配均拒绝。409 后重新读取并处理冲突，不能盲重试覆盖。
 
 成员状态修改、暂停来源标记、审计及幂等结果同事务；撤权后旧请求重放也重新鉴权。读取和修改响应禁止缓存。64 位 `member_version` 必须按 int64 无损处理。

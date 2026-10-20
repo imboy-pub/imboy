@@ -12,7 +12,7 @@
 -export([unsubscribe/2, lock_discussion_tx/2, revoke_discussion_tx/3, flush_subscription_cache/1]).
 -export([publish_message/5]).
 -export([publish_message/6]).
--export([list_by_ids_since/2]).
+-export([list_by_ids_since/2, list_by_ids_since/3]).
 %% G3 thin wrappers for channel_logic_*
 -export([find_by_id/2]).
 -export([find_by_id_with_price/1]).
@@ -376,6 +376,7 @@ normalize_error(Reason) ->
 -spec list_by_ids_since(list(integer()), integer() | binary()) ->
     {ok, list(map())} | {error, any()}.
 list_by_ids_since(ChannelIds, Since) -> channel_repo:list_by_ids_since(ChannelIds, Since).
+list_by_ids_since(ChannelIds, Since, Uid) -> channel_repo:list_by_ids_since(ChannelIds, Since, Uid).
 
 %% G3 thin wrappers: channel_logic_* 不应直调 channel_repo
 -spec find_by_id(integer(), binary()) -> map() | {error, any()}.

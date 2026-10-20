@@ -1335,6 +1335,9 @@ join_by_code_invalid_or_expired_test_() ->
 join_by_code_happy_and_idempotent_test_() ->
     ?WITH_MECKS(
         [
+            {organization_resource_access_repo, [
+                {workspace_parent_allowed, 2, fun(_, _) -> true end}
+            ]},
             {elib_pg, [
                 {'with_tx', 1, fun(Fun) -> Fun(fake_conn) end}
             ]},
@@ -1429,6 +1432,9 @@ join_by_code_workspace_not_found_test_() ->
 join_by_code_guard_passthrough_test_() ->
     ?WITH_MECKS(
         [
+            {organization_resource_access_repo, [
+                {workspace_parent_allowed, 2, fun(_, _) -> true end}
+            ]},
             {elib_pg, [
                 {'with_tx', 1, fun(Fun) -> Fun(fake_conn) end}
             ]},

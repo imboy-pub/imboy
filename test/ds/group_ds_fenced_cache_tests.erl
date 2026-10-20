@@ -9,7 +9,7 @@ stale_query_and_waiter_return_current_members_test_() ->
             Key = {group, Gid},
             Parent = self(),
             Calls = atomics:new(1, []),
-            meck:expect(group_member_repo, list_by_gid, fun(G, <<"user_id">>) when G =:= Gid ->
+            meck:expect(group_member_repo, list_active_relation_uids, fun(G) when G =:= Gid ->
                 case atomics:add_get(Calls, 1, 1) of
                     1 ->
                         Parent ! {old_query, self()},
@@ -58,7 +58,7 @@ empty_members_are_not_cached_test_() ->
             Gid = 9912102,
             Key = {group, Gid},
             Calls = atomics:new(1, []),
-            meck:expect(group_member_repo, list_by_gid, fun(G, <<"user_id">>) when G =:= Gid ->
+            meck:expect(group_member_repo, list_active_relation_uids, fun(G) when G =:= Gid ->
                 case atomics:add_get(Calls, 1, 1) of
                     1 -> rows([]);
                     _ -> rows([8])
@@ -77,7 +77,7 @@ query_errors_are_not_cached_test_() ->
             Gid = 9912103,
             Key = {group, Gid},
             Calls = atomics:new(1, []),
-            meck:expect(group_member_repo, list_by_gid, fun(G, <<"user_id">>) when G =:= Gid ->
+            meck:expect(group_member_repo, list_active_relation_uids, fun(G) when G =:= Gid ->
                 case atomics:add_get(Calls, 1, 1) of
                     1 -> {error, db_down};
                     _ -> rows([8])
@@ -96,7 +96,7 @@ continuous_invalidation_unwraps_uncached_error_test_() ->
             Gid = 9912104,
             Key = {group, Gid},
             Calls = atomics:new(1, []),
-            meck:expect(group_member_repo, list_by_gid, fun(G, <<"user_id">>) when G =:= Gid ->
+            meck:expect(group_member_repo, list_active_relation_uids, fun(G) when G =:= Gid ->
                 atomics:add_get(Calls, 1, 1),
                 ok = imboy_cache:invalidate(Key),
                 {error, db_down}
@@ -112,7 +112,7 @@ unexpected_query_shape_is_not_cached_test_() ->
         with_fenced_group(fun() ->
             Gid = 9912105,
             Key = {group, Gid},
-            meck:expect(group_member_repo, list_by_gid, fun(G, <<"user_id">>) when G =:= Gid ->
+            meck:expect(group_member_repo, list_active_relation_uids, fun(G) when G =:= Gid ->
                 {ok, invalid_rows}
             end),
             ?assertEqual(

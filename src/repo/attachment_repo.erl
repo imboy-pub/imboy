@@ -840,18 +840,10 @@ authorize_upload_scope_tx(Conn, Kind, Id, Uid) ->
 %% 固定 grp 别名供群、频道共用；只拼接内部 SQL，参数仍使用 $1/$2。
 -spec resource_scope_access_sql() -> binary().
 resource_scope_access_sql() ->
-    %% 企业暂停不删除下级关系；下载必须在同一 statement 重验父级资格。
-    %% 个人工作区保留原会员模型；归档工作区只读，归档企业不再授权。
-    <<"AND ((grp.scope = 'personal' AND grp.workspace_id IS NULL) OR ",
-        " (grp.scope = 'workspace' AND EXISTS (SELECT 1 FROM public.workspace ws ",
-        "  LEFT JOIN public.organization org ON org.id = ws.organization_id ",
-        "  LEFT JOIN public.organization_member om ON om.organization_id = org.id ",
-        "   AND om.user_id = $2 AND om.status = 'active' ",
-        "  WHERE ws.id = grp.workspace_id AND ws.status IN ('active','archived') ",
-        "   AND (ws.organization_id IS NULL OR (org.status = 'active' AND om.user_id = $2)) ",
-        "   AND (EXISTS (SELECT 1 FROM public.workspace_member wm ",
-        "    WHERE wm.workspace_id = ws.id AND wm.user_id = $2 AND wm.status = 'active') ",
-        "    OR om.role IN ('owner','admin'))))) ">>.
+    Scope = organization_resource_access_repo:resource_predicate_sql(
+        <<"grp.scope">>, <<"grp.workspace_id">>, <<"$2">>
+    ),
+    <<"AND ", Scope/binary, " ">>.
 
 %% @doc 按 id 查询附件 path（ObjectKey），供 admin 下载端点签发 presign GET
 %% 仅返回未软删除（status >= 0）的记录

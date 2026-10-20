@@ -13,7 +13,7 @@
 -export([find_by_id_with_price/1]).
 -export([find_by_custom_id/1]).
 -export([list_by_ids/2]).
--export([list_by_ids_since/2]).
+-export([list_by_ids_since/2, list_by_ids_since/3]).
 -export([list_subscribed/2]).
 -export([list_managed/1, count_managed_tx/2]).
 -export([update/2]).
@@ -201,6 +201,22 @@ list_by_ids_since(Ids, Since) when length(Ids) > 0 ->
 list_by_ids_since([], _Since) ->
     {ok, []}.
 
+%% User sync rechecks both subscription and parent in its final read statement.
+list_by_ids_since([], _Since, _Uid) ->
+    {ok, []};
+list_by_ids_since(Ids, Since, Uid) when is_integer(Uid), Uid > 0 ->
+    Access = organization_resource_access_repo:resource_predicate_sql(
+        <<"c.scope">>, <<"c.workspace_id">>, <<"$3">>
+    ),
+    Sql =
+        <<"SELECT c.* FROM ", (tablename())/binary, " c JOIN ",
+            (channel_subscription_repo:tablename())/binary,
+            " s ON s.channel_id=c.id "
+            "WHERE c.id=ANY($1::bigint[]) AND c.updated_at>$2::timestamptz "
+            "AND c.status=1 AND s.user_id=$3 AND s.status=1 AND ", Access/binary,
+            " ORDER BY c.updated_at DESC,c.id DESC">>,
+    elib_pg:query(Sql, [Ids, normalize_since_param(Since), Uid]).
+
 %% @doc 查询用户订阅的频道列表
 %% @param Uid 用户ID
 %% @param Column 要查询的列名（channel 表列，逗号分隔、不含空格；逐列自动补 c. 前缀）
@@ -218,6 +234,9 @@ list_subscribed(Uid, Column) ->
          || C <- binary:split(Column, <<",">>, [global])
         ])
     ),
+    Access = organization_resource_access_repo:resource_predicate_sql(
+        <<"c.scope">>, <<"c.workspace_id">>, <<"$1">>
+    ),
     Sql =
         % BUG#123: 三表 join 下裸 * 会展开为 c.*+s.*+a.* 全部列，
         % epgsql 重复键覆盖导致返回行 id 非频道 id；必须限定 c. 前缀
@@ -231,11 +250,12 @@ list_subscribed(Uid, Column) ->
             " s ON c.id = s.channel_id "
             "LEFT JOIN ", AdminTb/binary,
             " a ON c.id = a.channel_id AND a.user_id = s.user_id "
-            "WHERE s.user_id = $1 AND s.status = 1 AND c.status = 1 "
+            "WHERE s.user_id = $1 AND s.status = 1 AND c.status = 1 AND ", Access/binary,
+            " "
             "ORDER BY s.is_pinned DESC, s.subscribed_at DESC">>,
     elib_pg:query(Sql, [Uid]).
 
-%% Count the same active managed-channel set as list_managed/1, on the caller connection.
+%% Quota usage counts retained managed channels, including temporarily hidden parents.
 -spec count_managed_tx(any(), integer()) -> {ok, non_neg_integer()} | {error, term()}.
 count_managed_tx(Conn, Uid) ->
     Sql =
@@ -255,6 +275,9 @@ count_managed_tx(Conn, Uid) ->
 list_managed(Uid) ->
     Tb = tablename(),
     AdminTb = channel_admin_repo:tablename(),
+    Access = organization_resource_access_repo:resource_predicate_sql(
+        <<"c.scope">>, <<"c.workspace_id">>, <<"$1">>
+    ),
     Sql = <<
         "SELECT c.*, a.role as user_role, true as is_subscribed "
         "FROM ",
@@ -263,7 +286,9 @@ list_managed(Uid) ->
         "INNER JOIN ",
         AdminTb/binary,
         " a ON c.id = a.channel_id "
-        "WHERE a.user_id = $1 AND c.status = 1 "
+        "WHERE a.user_id = $1 AND c.status = 1 AND ",
+        Access/binary,
+        " "
         "ORDER BY a.role DESC, c.created_at DESC"
     >>,
     elib_pg:query(Sql, [Uid]).

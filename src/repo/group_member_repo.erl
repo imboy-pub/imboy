@@ -12,6 +12,7 @@
 -export([list_same_group/2]).
 % -export ([list_same_group/2]).
 -export([list_by_gid/2, list_by_gid/3]).
+-export([list_active_relation_uids/1]).
 %% Q05/F07：解散接收者快照须与删除同事务同快照（不走 member_uids 缓存）。
 -export([list_by_gid_tx/4]).
 -export([list_authorized_public_keys/3]).
@@ -108,6 +109,16 @@ find(Gid, Uid, Column) ->
         {ok, Row} -> Row;
         _ -> #{}
     end.
+
+%% Cache relation facts only; group_ds rechecks live ACL on every use.
+-spec list_active_relation_uids(integer()) -> {ok, [map()]} | {error, term()}.
+list_active_relation_uids(Gid) ->
+    Tb = tablename(),
+    elib_pg:query(
+        <<"SELECT user_id FROM ", Tb/binary, " WHERE group_id = $1 AND status = 1 LIMIT 10000">>, [
+            Gid
+        ]
+    ).
 
 %% @doc 查询群组成员列表（使用默认限制10000）
 %% @param Gid 群组ID

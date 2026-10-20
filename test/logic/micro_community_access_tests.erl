@@ -20,9 +20,14 @@ enabled_predicate_preserves_permanent_paid_and_wall_clock_test() ->
 
 disabled_predicate_denies_bound_but_retains_unbound_test() ->
     Sql = micro_community_access_repo:predicate_sql(<<"$1">>, <<"$2">>, false),
-    ?assertEqual(
-        <<"NOT EXISTS (SELECT 1 FROM public.channel mc WHERE mc.discussion_group_id = $1)">>, Sql
-    ).
+    ?assertNotEqual(
+        nomatch,
+        binary:match(
+            Sql,
+            <<"NOT EXISTS (SELECT 1 FROM public.channel mc WHERE mc.discussion_group_id = $1)">>
+        )
+    ),
+    ?assertNotEqual(nomatch, binary:match(Sql, <<"ra_om.status='active'">>)).
 
 delivery_formats_test_() ->
     Formats = [

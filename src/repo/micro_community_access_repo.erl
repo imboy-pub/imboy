@@ -22,10 +22,15 @@ predicate_sql(GroupExpr, UidExpr) ->
         end,
     predicate_sql(GroupExpr, UidExpr, Enabled).
 
-predicate_sql(GroupExpr, _UidExpr, false) ->
+predicate_sql(GroupExpr, UidExpr, Enabled) ->
+    Parent = organization_resource_access_repo:group_predicate_sql(GroupExpr, UidExpr),
+    Discussion = discussion_predicate_sql(GroupExpr, UidExpr, Enabled),
+    <<"(", Parent/binary, " AND (", Discussion/binary, "))">>.
+
+discussion_predicate_sql(GroupExpr, _UidExpr, false) ->
     <<"NOT EXISTS (SELECT 1 FROM public.channel mc WHERE mc.discussion_group_id = ",
         GroupExpr/binary, ")">>;
-predicate_sql(GroupExpr, UidExpr, true) ->
+discussion_predicate_sql(GroupExpr, UidExpr, true) ->
     Manager = manager_sql(UidExpr),
     <<"(NOT EXISTS (SELECT 1 FROM public.channel mc WHERE mc.discussion_group_id = ",
         GroupExpr/binary, ") OR EXISTS (SELECT 1 FROM public.channel mc ",
@@ -113,16 +118,19 @@ checked(Conn, Sql, Params) ->
     end.
 
 %% Delivery needs current membership in addition to channel entitlement. Unbound
-%% traffic retains its established delivery rules and does not get a new ACL.
+%% traffic retains its group rules, with live parent eligibility for workspace resources.
 delivery_allowed(Gid, Uid) ->
     Predicate = predicate_sql(<<"$1">>, <<"$2">>),
+    Parent = organization_resource_access_repo:group_predicate_sql(<<"$1">>, <<"$2">>),
     Sql = <<
-        "SELECT (NOT EXISTS(SELECT 1 FROM public.channel WHERE discussion_group_id=$1) "
+        "SELECT (",
+        Parent/binary,
+        " AND (NOT EXISTS(SELECT 1 FROM public.channel WHERE discussion_group_id=$1) "
         "OR ((",
         Predicate/binary,
         ") AND EXISTS(SELECT 1 FROM public.group_member gm "
         "JOIN public.\"group\" g ON g.id=gm.group_id WHERE gm.group_id=$1 "
-        "AND gm.user_id=$2 AND gm.status=1 AND g.status=1))) AS allowed"
+        "AND gm.user_id=$2 AND gm.status=1 AND g.status=1)))) AS allowed"
     >>,
     case elib_pg:one(Sql, [Gid, Uid]) of
         {ok, #{<<"allowed">> := true}} -> true;

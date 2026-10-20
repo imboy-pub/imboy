@@ -164,7 +164,7 @@ member_uids_legacy(Gid, Key) ->
 
 load_member_uids(Gid) ->
     try
-        case group_member_repo:list_by_gid(Gid, <<"user_id">>) of
+        case group_member_repo:list_active_relation_uids(Gid) of
             {ok, Items} when is_list(Items) ->
                 Uids = [Uid || #{<<"user_id">> := Uid} <- Items, is_integer(Uid), Uid > 0],
                 case length(Uids) =:= length(Items) of

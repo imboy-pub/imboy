@@ -160,10 +160,11 @@ archive_tx(Conn, WsId, ActorUid, Now) ->
 page_by_member(Uid, Page, Size, Column) ->
     Tb = tablename(),
     Offset = (Page - 1) * Size,
+    Access = organization_resource_access_repo:workspace_predicate_sql(<<"w.id">>, <<"$1">>),
     CountSql =
         <<"SELECT COUNT(*) AS count FROM ", Tb/binary,
             " w JOIN workspace_member wm ON wm.workspace_id = w.id",
-            " WHERE wm.user_id = $1 AND wm.status = 'active'">>,
+            " WHERE wm.user_id = $1 AND wm.status = 'active' AND ", Access/binary>>,
     Total =
         case elib_pg:one(CountSql, [Uid]) of
             {ok, #{<<"count">> := C}} -> C;
@@ -172,7 +173,7 @@ page_by_member(Uid, Page, Size, Column) ->
     DataSql =
         <<"SELECT ", Column/binary, " FROM ", Tb/binary,
             " w JOIN workspace_member wm ON wm.workspace_id = w.id",
-            " WHERE wm.user_id = $1 AND wm.status = 'active'",
+            " WHERE wm.user_id = $1 AND wm.status = 'active' AND ", Access/binary,
             " ORDER BY w.created_at DESC, w.id DESC LIMIT $2 OFFSET $3">>,
     case elib_pg:query(DataSql, [Uid, Size, Offset]) of
         {ok, Items} ->

@@ -64,7 +64,7 @@ delivery_allowed(Uid, #{<<"type">> := <<"S2C">>} = Msg) ->
         {ok, Payload} ->
             case maps:get(<<"gid">>, Payload, maps:get(<<"group_id">>, Payload, undefined)) of
                 undefined ->
-                    true;
+                    channel_delivery_allowed(Uid, Payload);
                 Gid ->
                     try
                         micro_community_access_repo:delivery_allowed(
@@ -85,6 +85,20 @@ delivery_allowed(Uid, Messages) when is_list(Messages) ->
 delivery_allowed(_Uid, Msg) when is_map(Msg) -> true;
 delivery_allowed(_, _) ->
     false.
+
+channel_delivery_allowed(Uid, Payload) ->
+    case maps:get(<<"channel_id">>, Payload, undefined) of
+        undefined ->
+            true;
+        ChannelId ->
+            try
+                organization_resource_access_repo:channel_allowed(
+                    ec_cnv:to_integer(ChannelId), ec_cnv:to_integer(Uid)
+                )
+            catch
+                _:_ -> false
+            end
+    end.
 
 %% Binary-key objects only; duplicate keys cannot override a group id/type.
 normalize_delivery_object(Map) when is_map(Map) ->
