@@ -45,67 +45,32 @@ exercise(State) ->
     Conflict = request(State, <<Path/binary, "/sources">>, Configuration, Headers),
     ?assertEqual(409, maps:get(<<"code">>, Conflict)),
     Credential = payload(request(State, <<Path/binary, "/credentials">>, #{}, Headers)),
+    ok = intbe02_http_support:sql_exec(
+        Conn,
+        <<"UPDATE enterprise_application SET allowed_scopes='[]'::jsonb WHERE id=$1">>,
+        [binary_to_integer(AppId)]
+    ),
     Machine = #{
-        <<"authorization">> => <<"Bearer ", (maps:get(<<"secret">>, Credential))/binary>>,
+        signed_credential => maps:get(<<"secret">>, Credential),
         <<"idempotency-key">> => <<"directory-http-sync-1">>
     },
     sync_and_verify(State, Conn, AppId, Machine, Owner),
-    invalid_grant_times_rejected(State, Conn, AppId, Path, Configuration, Headers),
-    RenewalRejected = request(
-        State,
-        <<Path/binary, "/sources">>,
-        Configuration#{
-            <<"expected_version">> => 1,
-            <<"authorization_expires_at">> => <<"2031-01-01T00:00:00Z">>
-        },
-        Headers
+    Renewed = payload(
+        request(
+            State,
+            <<Path/binary, "/sources">>,
+            Configuration#{
+                <<"expected_version">> => 1,
+                <<"authorization_expires_at">> => <<"2031-01-01T00:00:00Z">>
+            },
+            Headers
+        )
     ),
-    ?assertEqual(409, maps:get(<<"code">>, RenewalRejected)),
-    {ok, [#{<<"configuration_version">> := 1}]} = elib_pg:query(
-        Conn,
-        <<"SELECT configuration_version FROM enterprise_directory_organization_source WHERE application_id=$1">>,
-        [binary_to_integer(AppId)]
-    ),
+    ?assertEqual(2, maps:get(<<"configuration_version">>, Renewed)),
     SourceDenied = request(State, <<Path/binary, "/sources">>, Configuration, Machine),
     ?assertNotEqual(0, maps:get(<<"code">>, SourceDenied, -1)),
-    revoke_and_verify(State, Conn, Path, Configuration, Headers, Machine, AppId).
-
-invalid_grant_times_rejected(State, Conn, AppId, Path, Configuration, Headers) ->
-    lists:foreach(
-        fun({From, Until}) ->
-            {ok, _} = elib_pg:query(
-                Conn,
-                <<
-                    "UPDATE enterprise_application_grant SET valid_from=$2::timestamptz,expires_at=$3::timestamptz"
-                    " WHERE application_id=$1 AND provisioning_source='directory_bootstrap'"
-                >>,
-                [binary_to_integer(AppId), From, Until]
-            ),
-            Rejected = request(
-                State,
-                <<Path/binary, "/sources">>,
-                Configuration#{<<"expected_version">> => 1},
-                Headers
-            ),
-            ?assertEqual(409, maps:get(<<"code">>, Rejected)),
-            {ok, [#{<<"configuration_version">> := 1}]} = elib_pg:query(
-                Conn,
-                <<"SELECT configuration_version FROM enterprise_directory_organization_source WHERE application_id=$1">>,
-                [binary_to_integer(AppId)]
-            )
-        end,
-        [
-            {<<"1999-01-01T00:00:00Z">>, <<"2000-01-01T00:00:00Z">>},
-            {<<"2029-01-01T00:00:00Z">>, <<"2030-01-01T00:00:00Z">>}
-        ]
-    ),
-    {ok, _} = elib_pg:query(
-        Conn,
-        <<
-            "UPDATE enterprise_application_grant SET valid_from=clock_timestamp()-interval '1 day',expires_at='2030-01-01T00:00:00Z'"
-            " WHERE application_id=$1 AND provisioning_source='directory_bootstrap'"
-        >>,
-        [binary_to_integer(AppId)]
+    revoke_and_verify(
+        State, Conn, Path, Configuration#{<<"expected_version">> => 2}, Headers, Machine, AppId
     ).
 
 pending_owner_blocked(Conn, Owner, AppId) ->
@@ -168,7 +133,7 @@ revoke_and_verify(State, Conn, Path, Configuration, Headers, Machine, AppId) ->
             <<Path/binary, "/sources">>,
             Configuration#{
                 <<"enabled">> => false,
-                <<"expected_version">> => 1,
+                <<"expected_version">> => maps:get(<<"expected_version">>, Configuration),
                 <<"authorization_expires_at">> => <<"2000-01-01T00:00:00Z">>
             },
             Headers
@@ -176,14 +141,6 @@ revoke_and_verify(State, Conn, Path, Configuration, Headers, Machine, AppId) ->
     ),
     ?assertEqual(false, maps:get(<<"enabled">>, Disabled)),
     ?assertEqual(946684800000, maps:get(<<"authorization_expires_at">>, Disabled)),
-    {ok, [#{<<"status">> := <<"revoked">>}]} = elib_pg:query(
-        Conn,
-        <<
-            "SELECT status FROM enterprise_application_grant WHERE application_id=$1"
-            " AND provisioning_source='directory_bootstrap'"
-        >>,
-        [binary_to_integer(AppId)]
-    ),
     Rejected = request(
         State,
         <<"/api/internal/v1/directory/sync">>,
@@ -198,21 +155,26 @@ revoke_and_verify(State, Conn, Path, Configuration, Headers, Machine, AppId) ->
         },
         Machine
     ),
-    ?assertMatch(#{<<"error">> := #{<<"code">> := <<"insufficient_scope">>}}, Rejected),
-    EnableRejected = request(
-        State,
-        <<Path/binary, "/sources">>,
-        Configuration#{<<"expected_version">> => 2},
-        Headers
+    ?assertMatch(
+        #{<<"error">> := #{<<"code">> := <<"organization_boundary_violation">>}}, Rejected
     ),
-    ?assertEqual(409, maps:get(<<"code">>, EnableRejected)),
-    {ok, [#{<<"enabled">> := false, <<"configuration_version">> := 2}]} = elib_pg:query(
-        Conn,
-        <<
-            "SELECT enabled,configuration_version FROM enterprise_directory_organization_source"
-            " WHERE application_id=$1"
-        >>,
-        [binary_to_integer(AppId)]
+    Enabled = payload(
+        request(
+            State,
+            <<Path/binary, "/sources">>,
+            Configuration#{<<"expected_version">> => 3},
+            Headers
+        )
+    ),
+    ?assertEqual(true, maps:get(<<"enabled">>, Enabled)),
+    ?assertEqual(4, maps:get(<<"configuration_version">>, Enabled)),
+    ?assertMatch(
+        {ok, [#{<<"n">> := 0}]},
+        elib_pg:query(
+            Conn,
+            <<"SELECT count(*) AS n FROM enterprise_application_grant WHERE application_id=$1">>,
+            [binary_to_integer(AppId)]
+        )
     ).
 
 sync_and_verify(State, Conn, AppId, Headers, Owner) ->
@@ -236,16 +198,15 @@ sync_and_verify(State, Conn, AppId, Headers, Owner) ->
         >>,
         [binary_to_integer(AppId)]
     ),
-    {ok, [#{<<"scopes">> := Scopes}]} = elib_pg:query(
-        Conn,
-        <<
-            "SELECT array_agg(s.scope ORDER BY s.scope) AS scopes FROM enterprise_application_grant g"
-            " JOIN enterprise_application_grant_scope s ON s.grant_id=g.id"
-            " WHERE g.application_id=$1 AND g.organization_id=$2"
-        >>,
-        [binary_to_integer(AppId), OrgId]
-    ),
-    ?assertEqual([<<"identities:read">>, <<"identities:write">>], Scopes).
+    ?assert(is_integer(OrgId)),
+    ?assertMatch(
+        {ok, [#{<<"n">> := 0}]},
+        elib_pg:query(
+            Conn,
+            <<"SELECT count(*) AS n FROM enterprise_application_grant WHERE application_id=$1">>,
+            [binary_to_integer(AppId)]
+        )
+    ).
 
 admin_headers(Conn) ->
     AdminId = 976811,
@@ -265,7 +226,22 @@ admin_headers(Conn) ->
     }.
 
 request(State, Path, Body, Headers) ->
-    Response = intbe02_http_support:http(maps:get(port, State), <<"POST">>, Path, Body, Headers),
+    Raw = jsone:encode(Body),
+    WireHeaders =
+        case maps:take(signed_credential, Headers) of
+            {Credential, PublicHeaders} ->
+                intbe02_http_support:signed_headers(
+                    Credential,
+                    <<"POST">>,
+                    Path,
+                    Raw,
+                    PublicHeaders#{<<"content-type">> => <<"application/json">>},
+                    sha256
+                );
+            error ->
+                Headers
+        end,
+    Response = intbe02_http_support:http(maps:get(port, State), <<"POST">>, Path, Raw, WireHeaders),
     jsone:decode(maps:get(body, Response)).
 
 payload(#{<<"code">> := 0, <<"payload">> := Value}) -> Value.

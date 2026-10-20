@@ -3,12 +3,12 @@ get:
   - internal
   summary: 企业客服坐席详情
   operationId: internalCustomerServiceSeatDetail
-  security:
-  - ibIntBearer: []
+  x-imboy-authentication: hmac
+  x-imboy-legacy-scope-only: true
   x-imboy-scope: customer_service:read
   x-imboy-rate-bucket: internal_read
   x-imboy-idempotency: not_required
-  description: 需要企业全域 Grant。坐席属于企业；workspace_id 仅指定同企业内的活跃审计位置，不改变坐席归属。
+  description: HMAC 复核应用的组织业务归属；旧 Bearer 仍需组织全域 Grant。坐席属于企业；workspace_id 仅指定同企业内的活跃审计位置，不改变坐席归属。
   parameters:
   - name: business_identity_id
     in: path
@@ -45,12 +45,12 @@ patch:
   - internal
   summary: 修改或停用企业客服坐席
   operationId: internalCustomerServiceSeatUpdate
-  security:
-  - ibIntBearer: []
+  x-imboy-authentication: hmac
+  x-imboy-legacy-scope-only: true
   x-imboy-scope: customer_service:write
   x-imboy-rate-bucket: internal_write
   x-imboy-idempotency: required
-  description: 需要企业全域 Grant。坐席属于企业；workspace_id 仅指定同企业内的活跃审计位置，不改变坐席归属。
+  description: HMAC 复核应用的组织业务归属；旧 Bearer 仍需组织全域 Grant。坐席属于企业；workspace_id 仅指定同企业内的活跃审计位置，不改变坐席归属。
   parameters:
   - name: business_identity_id
     in: path

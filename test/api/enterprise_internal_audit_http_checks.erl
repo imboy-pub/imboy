@@ -258,7 +258,9 @@ reject_audits(C, false) ->
 snapshot(C) ->
     {ok, Tables} = elib_pg:query(
         C,
-        <<"SELECT tablename FROM pg_tables WHERE schemaname='public' ORDER BY tablename">>,
+        %% Successful HMAC authentication consumes its nonce even if the later
+        %% business transaction rolls back. Only auth metadata is excluded.
+        <<"SELECT tablename FROM pg_tables WHERE schemaname='public' AND tablename<>'enterprise_internal_request_nonce' ORDER BY tablename">>,
         []
     ),
     [

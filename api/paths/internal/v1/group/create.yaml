@@ -15,12 +15,10 @@ get:
   description: |
     本 Application origin 建立（enterprise_group_origin active）的企业群
     keyset 列表（created_at DESC, id DESC）。行集收窄为 active workspace 内
-    scope=workspace 且被生效 Grant 覆盖的 W（收窄谓词在服务端列表 SQL 内）。
+    scope=workspace 且组织归属匹配的 W（旧 Bearer 另校验 Grant）（收窄谓词在服务端列表 SQL 内）。
     人类自建群/他应用建群/已归档群不可见。分页为 CURSOR-V2 签名游标
     （非法/过期/foreign 一律 400 invalid_request，客户端从首页重启）。
   operationId: internalGroupList
-  security:
-    - ibIntBearer: []
   parameters:
     - name: limit
       in: query
@@ -34,6 +32,8 @@ get:
       in: query
       description: 上一页返回的 next_cursor（opaque）
       schema: { type: string }
+  x-imboy-authentication: hmac
+  x-imboy-legacy-scope-only: true
   x-imboy-scope: groups:read
   x-imboy-rate-bucket: internal_read
   x-imboy-idempotency: not_required
@@ -75,14 +75,14 @@ post:
     成员用 OA 侧 external_user_id 列表（1..200 项，自动去重）；owner 缺省取
     首个成员且必须在 members 内。
   operationId: internalGroupCreate
-  security:
-    - ibIntBearer: []
   parameters:
     - name: Idempotency-Key
       in: header
       required: true
       description: 幂等键
       schema: { type: string, minLength: 1 }
+  x-imboy-authentication: hmac
+  x-imboy-legacy-scope-only: true
   x-imboy-scope: groups:write
   x-imboy-rate-bucket: internal_write
   x-imboy-idempotency: required

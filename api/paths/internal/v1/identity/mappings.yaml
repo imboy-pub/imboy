@@ -5,8 +5,6 @@ put:
   description: '绑定本组织有效 Human 成员的外部标识。首次执行返回 external_user_id、user_id、status=active；幂等重放保留首次响应原字节，用
     Idempotent-Replayed: true 响应头标识，不添加 replayed 正文字段。重放是历史提交快照；查询当前映射应调用 resolve。'
   operationId: internalIdentityBind
-  security:
-  - ibIntBearer: []
   parameters:
   - name: Idempotency-Key
     in: header
@@ -16,6 +14,8 @@ put:
       type: string
       minLength: 1
       maxLength: 128
+  x-imboy-authentication: hmac
+  x-imboy-legacy-scope-only: true
   x-imboy-scope: identities:write
   x-imboy-rate-bucket: internal_write
   x-imboy-idempotency: required
@@ -96,8 +96,6 @@ delete:
 
     '
   operationId: internalIdentityRevoke
-  security:
-  - ibIntBearer: []
   parameters:
   - name: Idempotency-Key
     in: header
@@ -107,6 +105,8 @@ delete:
       type: string
       minLength: 1
       maxLength: 128
+  x-imboy-authentication: hmac
+  x-imboy-legacy-scope-only: true
   x-imboy-scope: identities:write
   x-imboy-rate-bucket: internal_write
   x-imboy-idempotency: required

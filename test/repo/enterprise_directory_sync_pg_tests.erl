@@ -14,6 +14,8 @@ run() ->
         env_prefix => <<"DIRECTORY_SYNC_INTTEST">>,
         connect_extra => #{codecs => [{epgsql_codec_rfc3339_bin, []}]}
     }),
+    %% Provisioning loads application env; install the peer-owned AEAD key after it.
+    application:set_env(imboy, postgre_aes_key, crypto:strong_rand_bytes(32)),
     Conn = maps:get(conn, State),
     try
         schema(Conn),

@@ -2,11 +2,11 @@ get:
   tags:
   - internal
   summary: 来源部门核对列表
-  description: 只读核对本来源数据。需有效 identities:read 与目标组织全域 Grant，并逐语句复核应用、凭据、来源启用及有效期。尚未建立组织的配置不在列表中，由可信
-    Admin 入口查看。零授权不放行。按外部 ID 的 UTF-8 字节序升序，page_size 1..100，未知或重复参数拒绝。
+  description: 只读核对本来源数据。HMAC 无需 Scope/Grant，并逐语句复核应用、凭据、来源启用及有效期。尚未建立组织的配置不在列表中，由可信
+    Admin 入口查看。来源无效或归属不符不放行。按外部 ID 的 UTF-8 字节序升序，page_size 1..100，未知或重复参数拒绝。
   operationId: internalSourceDepartments
-  security:
-  - ibIntBearer: []
+  x-imboy-authentication: hmac
+  x-imboy-legacy-scope-only: true
   x-imboy-scope: identities:read
   x-imboy-rate-bucket: internal_read
   x-imboy-idempotency: not_required
@@ -29,7 +29,7 @@ get:
   - name: external_organization_id
     in: query
     required: true
-    description: 必须为本应用已同步且当前有组织全域 identities:read 授权的来源组织。
+    description: 必须为本应用已同步且当前启用、未过期的可信来源组织。
     schema: &id001
       type: string
       minLength: 1

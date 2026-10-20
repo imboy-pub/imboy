@@ -62,7 +62,7 @@ create(<<"GET">>, Req0, State) ->
     list_groups(Req0, State);
 create(<<"POST">>, Req0, State) ->
     Ctx = maps:get(enterprise_internal, State, #{}),
-    Params = elib_param:post(Req0),
+    Params = enterprise_internal_request:params(Req0),
     IdemKey = idempotency_key(Req0),
     case enterprise_internal_idempotency:request_digest(<<"POST">>, ?GROUP_CREATE_PATH, Params) of
         {ok, Digest} ->
@@ -108,7 +108,7 @@ members(_, Req0, _State) ->
 members_op(Op, Method, Req0, State) ->
     Ctx = maps:get(enterprise_internal, State, #{}),
     GroupId = maps:get(group_id, State, 0),
-    Params = elib_param:post(Req0),
+    Params = enterprise_internal_request:params(Req0),
     IdemKey = idempotency_key(Req0),
     case enterprise_internal_idempotency:request_digest(Method, members_path(GroupId), Params) of
         {ok, Digest} ->
@@ -268,7 +268,7 @@ read_group(read_detail, Req0, State) ->
 write_group(Op, RouteId, Method, Req0, State) ->
     Ctx = maps:get(enterprise_internal, State, #{}),
     GroupId = maps:get(group_id, State, 0),
-    Params = elib_param:post(Req0),
+    Params = enterprise_internal_request:params(Req0),
     IdemKey = idempotency_key(Req0),
     ResourceType = resource_type_of(Op),
     case enterprise_internal_idempotency:request_digest(Method, group_path(Op, GroupId), Params) of

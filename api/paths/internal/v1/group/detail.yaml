@@ -12,17 +12,17 @@ get:
   description: |
     最小字段 + 成员硬上限（超限返回 invalid_request，绝不静默截断）。
     跨组织/个人群/已归档一律 resource_not_found（不泄露存在性）。
-    V2.1 §6.2/§7 FIX：读操作 scope 修正为 groups:read（与 routes registry/
+    旧 Bearer 兼容：读操作 scope 为 groups:read（与 routes registry/
     boundary spec 一致；原 groups:write 是 drift）。
   operationId: internalGroupDetail
-  security:
-    - ibIntBearer: []
   parameters:
     - name: group_id
       in: path
       required: true
       description: 企业群 TSID
       schema: { type: integer, format: int64 }
+  x-imboy-authentication: hmac
+  x-imboy-legacy-scope-only: true
   x-imboy-scope: groups:read
   x-imboy-rate-bucket: internal_read
   x-imboy-idempotency: not_required
@@ -70,8 +70,6 @@ patch:
     （members 为成员覆盖语义）。响应实证自 logic update：`{group_id, title,
     introduction, updated: true}`。
   operationId: internalGroupUpdate
-  security:
-    - ibIntBearer: []
   parameters:
     - name: group_id
       in: path
@@ -83,6 +81,8 @@ patch:
       required: true
       description: 幂等键
       schema: { type: string, minLength: 1 }
+  x-imboy-authentication: hmac
+  x-imboy-legacy-scope-only: true
   x-imboy-scope: groups:write
   x-imboy-rate-bucket: internal_write
   x-imboy-idempotency: required
@@ -127,8 +127,6 @@ delete:
   description: |
     归档式解散；重复解散返回 `{group_id, archived: true, already: true}`。
   operationId: internalGroupArchive
-  security:
-    - ibIntBearer: []
   parameters:
     - name: group_id
       in: path
@@ -140,6 +138,8 @@ delete:
       required: true
       description: 幂等键
       schema: { type: string, minLength: 1 }
+  x-imboy-authentication: hmac
+  x-imboy-legacy-scope-only: true
   x-imboy-scope: groups:write
   x-imboy-rate-bucket: internal_write
   x-imboy-idempotency: required

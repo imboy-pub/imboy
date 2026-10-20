@@ -89,6 +89,8 @@ context_tx(_Conn, _OrgId, _AppId, _AppScopes) ->
         insufficient_scope
         | organization_boundary_violation
         | security_gate_closed}.
+require_workspace_tx(Conn, #{authentication := hmac} = Ctx, WorkspaceId, _RequiredScope) ->
+    enterprise_internal_access_repo:workspace_tx(Conn, Ctx, WorkspaceId);
 require_workspace_tx(Conn, Ctx, WorkspaceId, RequiredScope) when
     is_map(Ctx), is_integer(WorkspaceId), is_binary(RequiredScope)
 ->
@@ -133,6 +135,8 @@ require_workspace_tx(_Conn, _Ctx, _WorkspaceId, _RequiredScope) ->
         insufficient_scope
         | organization_boundary_violation
         | security_gate_closed}.
+require_org_tx(Conn, #{authentication := hmac} = Ctx, _RequiredScope) ->
+    enterprise_internal_access_repo:organization_tx(Conn, Ctx);
 require_org_tx(Conn, Ctx, RequiredScope) when is_map(Ctx), is_binary(RequiredScope) ->
     case ctx_effective_scopes(Ctx) of
         {ok, Effective} ->

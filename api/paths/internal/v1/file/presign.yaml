@@ -17,14 +17,14 @@ post:
     直传文件，再调 /files/confirm 确认入库。mime 白名单与大小上限取
     min(全局, 应用策略)；confirm 以 HEAD 真实值复核。
   operationId: internalFilePresign
-  security:
-    - ibIntBearer: []
   parameters:
     - name: Idempotency-Key
       in: header
       required: true
       description: 幂等键
       schema: { type: string, minLength: 1 }
+  x-imboy-authentication: hmac
+  x-imboy-legacy-scope-only: true
   x-imboy-scope: files:write
   x-imboy-rate-bucket: internal_write
   x-imboy-idempotency: required

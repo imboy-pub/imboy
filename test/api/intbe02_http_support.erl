@@ -28,6 +28,7 @@
     http/3,
     http/4,
     http/5,
+    signed_headers/6,
     auth/1,
     idem/1,
     json_header_val/2,
@@ -291,11 +292,13 @@ setup_storage() ->
         {error, LoadReason} -> erlang:error({intbe02_app_load_failed, LoadReason})
     end,
     Registry = eb_pg_test_fixture:install_asset_registry(),
-    State = #{registry => Registry,
+    State = #{
+        registry => Registry,
         base_url => application:get_env(imboy, base_url),
         webhook_key => application:get_env(imboy, postgre_aes_key),
         jwt_key => application:get_env(imboy, jwt_key),
-        gateway_tmp => os:getenv("IMBOY_V5_GATEWAY_TMP")},
+        gateway_tmp => os:getenv("IMBOY_V5_GATEWAY_TMP")
+    },
     try
         Tmp = filename:join(maps:get(root, Registry), "gateway-tmp"),
         ok = file:make_dir(Tmp),
@@ -309,13 +312,19 @@ setup_storage() ->
         %% capabilities need a real, fixture-owned signing key as well.
         ok = application:set_env(imboy, jwt_key, crypto:strong_rand_bytes(32)),
         State
-    catch Class:Reason:Stack ->
-        teardown_storage(State),
-        erlang:raise(Class, Reason, Stack)
+    catch
+        Class:Reason:Stack ->
+            teardown_storage(State),
+            erlang:raise(Class, Reason, Stack)
     end.
 
-teardown_storage(#{registry := Registry, base_url := Base, webhook_key := Key,
-                   jwt_key := JwtKey, gateway_tmp := Tmp}) ->
+teardown_storage(#{
+    registry := Registry,
+    base_url := Base,
+    webhook_key := Key,
+    jwt_key := JwtKey,
+    gateway_tmp := Tmp
+}) ->
     try
         case Base of
             undefined -> application:unset_env(imboy, base_url);
@@ -703,7 +712,7 @@ http(Port, Method, Path, Body0, Headers0) ->
             M when is_map(M) -> jsone:encode(M);
             _ -> <<>>
         end,
-    Headers = maps:merge(
+    Headers1 = maps:merge(
         #{
             <<"host">> => request_host(),
             %% 协议矩阵模拟独立客户端；IP 限流用例须显式传入稳定 XFF。
@@ -716,6 +725,27 @@ http(Port, Method, Path, Body0, Headers0) ->
         },
         Headers0
     ),
+    Headers =
+        case
+            {
+                application:get_env(imboy, internal_test_hmac_client, false),
+                Path,
+                maps:get(<<"authorization">>, Headers1, <<>>)
+            }
+        of
+            {true, <<"/api/internal/v1/", _/binary>>, <<"Bearer ib_int_", _/binary>> = Auth} ->
+                <<"Bearer ", Credential/binary>> = Auth,
+                signed_headers(
+                    Credential,
+                    Method,
+                    Path,
+                    Body,
+                    maps:remove(<<"authorization">>, Headers1),
+                    sha256
+                );
+            _ ->
+                Headers1
+        end,
     HeaderBin = iolist_to_binary([[K, <<": ">>, V, <<"\r\n">>] || {K, V} <- maps:to_list(Headers)]),
     Req = iolist_to_binary([
         Method, <<" ">>, Path, <<" HTTP/1.1\r\n">>, HeaderBin, <<"\r\n">>, Body
@@ -814,13 +844,20 @@ upload_file(Port, Registration, Bytes) when is_binary(Bytes) ->
     Url = maps:get(<<"put_url">>, Registration),
     Prefix = <<?UPLOAD_ORIGIN/binary, "/api/v1/attachment/gateway/">>,
     PrefixSize = byte_size(Prefix),
-    Path = case Url of
-        <<Prefix:PrefixSize/binary, Rest/binary>> ->
-            <<"/api/v1/attachment/gateway/", Rest/binary>>;
-        _ -> erlang:error(invalid_fixture_upload_origin)
-    end,
-    #{status := 200, body := Body} = http(Port, <<"PUT">>, Path, Bytes,
-        #{<<"content-type">> => <<"text/plain">>}),
+    Path =
+        case Url of
+            <<Prefix:PrefixSize/binary, Rest/binary>> ->
+                <<"/api/v1/attachment/gateway/", Rest/binary>>;
+            _ ->
+                erlang:error(invalid_fixture_upload_origin)
+        end,
+    #{status := 200, body := Body} = http(
+        Port,
+        <<"PUT">>,
+        Path,
+        Bytes,
+        #{<<"content-type">> => <<"text/plain">>}
+    ),
     Sha = binary:encode_hex(crypto:hash(sha256, Bytes), lowercase),
     Size = byte_size(Bytes),
     #{<<"pinned">> := true, <<"sha256">> := Sha, <<"size">> := Size} = jsone:decode(Body),
@@ -876,3 +913,37 @@ one(C, Sql) ->
 sql_exec_quiet(C, IoData) ->
     _ = elib_pg:query(C, iolist_to_binary(IoData), []),
     ok.
+
+%% A real test client. It signs the wire bytes and never changes server ACLs.
+signed_headers(Credential, Method, Target, Body, Headers, Algorithm) ->
+    [Prefix, Secret] = binary:split(Credential, <<".">>),
+    {Path, Query} =
+        case binary:split(Target, <<"?">>) of
+            [P, Q] -> {P, Q};
+            [P] -> {P, <<>>}
+        end,
+    Timestamp = integer_to_binary(erlang:system_time(second)),
+    Nonce = binary:encode_hex(crypto:strong_rand_bytes(24), lowercase),
+    Canonical = iolist_to_binary(
+        lists:join(<<"\n">>, [
+            <<"IMBOY-INTERNAL-V1">>,
+            atom_to_binary(Algorithm),
+            Prefix,
+            maps:get(<<"x-imboy-organization">>, Headers, <<>>),
+            Method,
+            Path,
+            Query,
+            maps:get(<<"content-type">>, Headers, <<>>),
+            maps:get(<<"idempotency-key">>, Headers, <<>>),
+            binary:encode_hex(crypto:hash(sha256, Body), lowercase),
+            Timestamp,
+            Nonce
+        ])
+    ),
+    Hex = binary:encode_hex(crypto:mac(hmac, Algorithm, Secret, Canonical), lowercase),
+    Headers#{
+        <<"x-imboy-credential">> => Prefix,
+        <<"x-imboy-timestamp">> => Timestamp,
+        <<"x-imboy-nonce">> => Nonce,
+        <<"x-imboy-signature">> => <<(atom_to_binary(Algorithm))/binary, "=", Hex/binary>>
+    }.

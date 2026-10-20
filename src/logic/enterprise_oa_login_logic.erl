@@ -8,7 +8,7 @@ issue(Ctx, P) ->
             transaction(fun(C) ->
                 App = maps:get(application_id, Ctx),
                 Cred = maps:get(credential_id, Ctx),
-                _ = must(enterprise_oa_login_repo:authority_tx(C, App, Cred)),
+                _ = must(authority(C, Ctx)),
                 Ticket = random_token(),
                 _ = must(
                     enterprise_oa_login_repo:issue_tx(
@@ -17,11 +17,12 @@ issue(Ctx, P) ->
                         App,
                         Cred,
                         maps:get(<<"external_user_id">>, P),
-                        {maps:get(<<"intent">>, P), maps:get(<<"code_challenge">>, P)}
+                        {maps:get(<<"intent">>, P), maps:get(<<"code_challenge">>, P)},
+                        atom_to_binary(maps:get(authentication, Ctx, bearer))
                     )
                 ),
                 audit(C, App, <<"oa.login_ticket_issued">>, #{}),
-                _ = must(enterprise_oa_login_repo:authority_tx(C, App, Cred)),
+                _ = must(authority(C, Ctx)),
                 {ok, #{<<"ticket">> => Ticket, <<"expires_in">> => 60}}
             end);
         Error ->
@@ -155,17 +156,23 @@ claim(C, Row, Uid) ->
 
 lock_source(C, Row) ->
     must(
-        enterprise_oa_login_repo:authority_tx(
-            C,
-            maps:get(<<"application_id">>, Row),
-            maps:get(<<"credential_id">>, Row)
-        )
+        authority(C, context(Row))
     ).
 context(Row) ->
     #{
         application_id => maps:get(<<"application_id">>, Row),
-        credential_id => maps:get(<<"credential_id">>, Row)
+        credential_id => maps:get(<<"credential_id">>, Row),
+        authentication =>
+            case maps:get(<<"issuer_authentication">>, Row, <<"bearer">>) of
+                <<"hmac">> -> hmac;
+                _ -> bearer
+            end
     }.
+
+authority(C, #{application_id := App, credential_id := Cred, authentication := hmac}) ->
+    enterprise_oa_login_repo:authority_signed_tx(C, App, Cred);
+authority(C, #{application_id := App, credential_id := Cred}) ->
+    enterprise_oa_login_repo:authority_tx(C, App, Cred).
 
 pending(C, Row, Digest, Did) ->
     Token = random_token(),
@@ -189,11 +196,7 @@ verified_ticket(C, P, Stage, Field) ->
     require(pkce(Verifier) =:= maps:get(<<"challenge">>, Row)),
     require(Stage =:= <<"issued">> orelse Did =:= maps:get(<<"device_id">>, Row)),
     Authority = must(
-        enterprise_oa_login_repo:authority_tx(
-            C,
-            maps:get(<<"application_id">>, Row),
-            maps:get(<<"credential_id">>, Row)
-        )
+        authority(C, context(Row))
     ),
     require(
         maps:get(<<"application_key">>, P, undefined) =:=
@@ -207,11 +210,7 @@ complete(C, Row, Digest, Uid, Did, P) ->
     #{<<"epoch">> := Epoch} = must(enterprise_oa_login_repo:epoch_tx(C, Uid)),
     audit(C, maps:get(<<"application_id">>, Row), <<"oa.login_completed">>, #{<<"user_id">> => Uid}),
     _ = must(
-        enterprise_oa_login_repo:authority_tx(
-            C,
-            maps:get(<<"application_id">>, Row),
-            maps:get(<<"credential_id">>, Row)
-        )
+        authority(C, context(Row))
     ),
     _ = must(enterprise_oa_login_repo:consume_tx(C, Digest)),
     %% The payload is returned only after the encompassing transaction commits.

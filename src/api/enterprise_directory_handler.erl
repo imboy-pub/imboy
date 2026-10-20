@@ -94,7 +94,7 @@ source_query(Req) ->
 sync(<<"POST">>, Req0, State) ->
     Ctx = maps:get(enterprise_internal, State, #{}),
     Key = cowboy_req:header(<<"idempotency-key">>, Req0, <<>>),
-    case enterprise_directory_sync_logic:sync(Ctx, Key, elib_param:post(Req0)) of
+    case enterprise_directory_sync_logic:sync(Ctx, Key, enterprise_internal_request:params(Req0)) of
         {ok, Kind, #{response_code := Code, response_body := Body}} ->
             Headers = #{<<"content-type">> => <<"application/json">>},
             ReplyHeaders =
@@ -104,12 +104,20 @@ sync(<<"POST">>, Req0, State) ->
                 end,
             cowboy_req:reply(Code, maps:merge(Headers, ReplyHeaders), Body, Req0);
         {error, Reason} ->
-            enterprise_internal_error:reply(Req0, sync_error(Reason));
+            enterprise_internal_error:reply(Req0, sync_error(Reason, Ctx));
         _ ->
             enterprise_internal_error:reply(Req0, <<"internal_error">>)
     end;
 sync(_, Req0, _) ->
     cowboy_req:reply(405, #{}, <<"Method Not Allowed">>, Req0).
+
+sync_error(Reason, #{authentication := hmac}) ->
+    case sync_error(Reason) of
+        <<"insufficient_scope">> -> <<"organization_boundary_violation">>;
+        Code -> Code
+    end;
+sync_error(Reason, _) ->
+    sync_error(Reason).
 
 sync_error(invalid_request) -> <<"invalid_request">>;
 sync_error(invalid_idempotency_key) -> <<"invalid_request">>;
@@ -152,7 +160,7 @@ sync_error(_) -> <<"internal_error">>.
 -spec mappings(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 mappings(<<"POST">>, Req0, State) ->
     Ctx = maps:get(enterprise_internal, State, #{}),
-    Params = elib_param:post(Req0),
+    Params = enterprise_internal_request:params(Req0),
     run(Req0, Ctx, <<"INT-16">>, fun(Conn) ->
         enterprise_directory_logic:page_mappings_tx(Conn, Ctx, page_opts(Params))
     end);
@@ -163,7 +171,7 @@ mappings(_, Req0, _State) ->
 -spec users(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 users(<<"POST">>, Req0, State) ->
     Ctx = maps:get(enterprise_internal, State, #{}),
-    Params = elib_param:post(Req0),
+    Params = enterprise_internal_request:params(Req0),
     run(Req0, Ctx, <<"INT-17">>, fun(Conn) ->
         enterprise_directory_logic:page_users_tx(Conn, Ctx, page_opts(Params))
     end);
@@ -174,7 +182,7 @@ users(_, Req0, _State) ->
 %% 在同一事务内追加判定），再执行分页查询。
 -spec run(cowboy_req:req(), map(), binary(), fun((any()) -> term())) -> cowboy_req:req().
 run(Req0, Ctx, RouteId, Fun) ->
-    Opts = page_opts(elib_param:post(Req0)),
+    Opts = page_opts(enterprise_internal_request:params(Req0)),
     Result =
         elib_pg:with_tx(fun(Conn) ->
             case

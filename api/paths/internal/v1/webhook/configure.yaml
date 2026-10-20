@@ -14,14 +14,14 @@ put:
     解析私网/保留段拒）；events 须在事件白名单内（空列表 = 只停用订阅）。
     rotate=true 轮换 secret，响应返回新明文一次。
   operationId: internalWebhookConfigure
-  security:
-    - ibIntBearer: []
   parameters:
     - name: Idempotency-Key
       in: header
       required: true
       description: 幂等键
       schema: { type: string, minLength: 1 }
+  x-imboy-authentication: hmac
+  x-imboy-legacy-scope-only: true
   x-imboy-scope: webhooks:manage
   x-imboy-rate-bucket: internal_write
   x-imboy-idempotency: required

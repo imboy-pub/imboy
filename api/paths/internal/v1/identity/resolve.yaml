@@ -13,8 +13,8 @@ post:
     `maps:get(<<"external_user_ids">>, ...)`（**数组**，非单数）；
     响应实证自 `enterprise_identity_logic:rows_to_pairs/1`。
   operationId: internalIdentityResolve
-  security:
-    - ibIntBearer: []
+  x-imboy-authentication: hmac
+  x-imboy-legacy-scope-only: true
   x-imboy-scope: identities:read
   x-imboy-rate-bucket: internal_read
   x-imboy-idempotency: not_required

@@ -13,14 +13,14 @@ post:
     仅可对**同组织已映射用户**发起；发送者形态固定为 human（代 OA 用户）。
     平台没有自动通过/确认、删除好友、批量加好友的 API。
   operationId: internalFriendRequestCreate
-  security:
-    - ibIntBearer: []
   parameters:
     - name: Idempotency-Key
       in: header
       required: true
       description: 幂等键
       schema: { type: string, minLength: 1 }
+  x-imboy-authentication: hmac
+  x-imboy-legacy-scope-only: true
   x-imboy-scope: friend_requests:create
   x-imboy-rate-bucket: internal_write
   x-imboy-idempotency: required

@@ -48,7 +48,7 @@ init(Req0, State0) ->
 -spec exchange(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 exchange(<<"POST">>, Req0, State) ->
     Ctx = maps:get(enterprise_internal, State, #{}),
-    Params = elib_param:post(Req0),
+    Params = enterprise_internal_request:params(Req0),
     case enterprise_oa_sso_logic:exchange(Ctx, Params) of
         {ok, Payload} ->
             Body = jsone:encode(Payload),

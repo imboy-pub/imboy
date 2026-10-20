@@ -6,7 +6,16 @@
 %% memberships pending; never elevate the issuer's scopes to project them.
 claim_login_tx(Conn, Ctx, ExternalId, UserId) ->
     AppId = maps:get(application_id, Ctx),
-    _ = must(enterprise_oa_login_repo:authority_tx(Conn, AppId, maps:get(credential_id, Ctx))),
+    Authority =
+        case maps:get(authentication, Ctx, legacy) of
+            hmac ->
+                enterprise_oa_login_repo:authority_signed_tx(
+                    Conn, AppId, maps:get(credential_id, Ctx)
+                );
+            _ ->
+                enterprise_oa_login_repo:authority_tx(Conn, AppId, maps:get(credential_id, Ctx))
+        end,
+    _ = must(Authority),
     Person = must(enterprise_source_person_repo:claim_tx(Conn, AppId, ExternalId, UserId)),
     Sources = must(enterprise_directory_source_repo:login_projections_tx(Conn, AppId, ExternalId)),
     Pending = lists:foldl(

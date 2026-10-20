@@ -25,6 +25,23 @@
 lock_source_tx(Conn, Ctx) ->
     lock_source_tx(Conn, Ctx, <<"identities:write">>).
 
+lock_source_tx(
+    Conn, #{authentication := hmac, application_id := AppId, credential_id := CredId}, _Scope
+) ->
+    one(
+        elib_pg:query(
+            Conn,
+            <<
+                "SELECT a.id,a.allowed_scopes FROM enterprise_application a "
+                "JOIN enterprise_application_credential c ON c.application_id=a.id "
+                "WHERE a.id=$1 AND c.id=$2 AND a.status='active' AND c.status='active' "
+                "AND (c.expires_at IS NULL OR c.expires_at>clock_timestamp()) "
+                "FOR UPDATE OF a FOR SHARE OF c"
+            >>,
+            [AppId, CredId]
+        ),
+        invalid_credential
+    );
 lock_source_tx(Conn, #{application_id := AppId, credential_id := CredId}, Scope) when
     is_integer(AppId),
     AppId > 0,
@@ -49,6 +66,16 @@ lock_source_tx(Conn, #{application_id := AppId, credential_id := CredId}, Scope)
 lock_source_tx(_, _, _) ->
     {error, invalid_source_context}.
 
+authorize_tx(Conn, #{authentication := hmac, organization_id := OrgId} = Ctx) ->
+    case lock_source_tx(Conn, Ctx) of
+        {ok, _} ->
+            case enterprise_internal_access_repo:organization_tx(Conn, Ctx) of
+                ok -> {ok, #{organization_id => OrgId}};
+                Error -> Error
+            end;
+        Error ->
+            Error
+    end;
 authorize_tx(Conn, #{application_id := AppId, organization_id := OrgId} = Ctx) when
     is_integer(OrgId), OrgId > 0
 ->
@@ -141,6 +168,11 @@ confirmed_owner_tx(Conn, Owner) ->
         confirmed_human_owner_required
     ).
 
+bootstrap_tx(Conn, #{authentication := hmac} = Ctx, Source, Spec) ->
+    case lock_source_tx(Conn, Ctx) of
+        {ok, _} -> bootstrap_authorized_tx(Conn, Ctx, Source, Spec, []);
+        Error -> Error
+    end;
 bootstrap_tx(Conn, Ctx, Source, Spec) ->
     App =
         case lock_source_tx(Conn, Ctx) of
@@ -217,22 +249,29 @@ bootstrap_create_tx(Conn, Ctx, AppId, ExternalId, Owner, Spec, Scopes, Until) ->
         {error, Reason} -> throw({abort_tx, Reason});
         _ -> throw({abort_tx, owner_membership_not_created})
     end,
-    Grant = Bootstrap(
-        enterprise_application_grant_repo:create_tx(
-            Conn,
-            OrgId,
-            AppId,
-            #{
-                scopes => Scopes,
-                workspace_scope_kind => none,
-                workspace_ids => [],
-                expires_at => Until,
-                provisioning_source => <<"directory_bootstrap">>,
-                idempotency_key =>
-                    <<"directory-bootstrap-", (digest(#{<<"external_id">> => ExternalId}))/binary>>
-            }
-        )
-    ),
+    Grant =
+        case maps:get(authentication, Ctx, legacy) of
+            hmac ->
+                #{<<"id">> => null};
+            _ ->
+                Bootstrap(
+                    enterprise_application_grant_repo:create_tx(
+                        Conn,
+                        OrgId,
+                        AppId,
+                        #{
+                            scopes => Scopes,
+                            workspace_scope_kind => none,
+                            workspace_ids => [],
+                            expires_at => Until,
+                            provisioning_source => <<"directory_bootstrap">>,
+                            idempotency_key =>
+                                <<"directory-bootstrap-",
+                                    (digest(#{<<"external_id">> => ExternalId}))/binary>>
+                        }
+                    )
+                )
+        end,
     case
         write(
             elib_pg:execute(

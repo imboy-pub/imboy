@@ -71,7 +71,7 @@ tags:
   - name: admin-setup
     description: 首启初始化向导（免鉴权，仅允许执行一次）
   - name: internal
-    description: 企业集成 Internal API（ib_int 凭证；scope/限流/幂等见各端点扩展字段）
+    description: 企业集成 Internal API（HMAC 签名；限流/幂等见端点扩展，scope 字段仅供旧 Bearer 兼容）
 
 paths:
   # ---- surface api — 业务 v1 端点（编辑真源 openapi-api.yaml） ----
@@ -1249,15 +1249,31 @@ components:
         JWT 载荷 `sub` 为 TSID integer 字符串；过期后前端需调用 `/passport/refresh`
         而非直接重连（此前反转逻辑已于 1.0.0-rc.1 修复）。
 
+    ibIntHmacCredential:
+      type: apiKey
+      in: header
+      name: X-Imboy-Credential
+      description: 服务端签发的 ib_int_ 定位符；不发送 secret，不要求 Scope/Grant。
+    ibIntHmacTimestamp:
+      type: apiKey
+      in: header
+      name: X-Imboy-Timestamp
+      description: Unix 秒；300 秒时间窗口。
+    ibIntHmacNonce:
+      type: apiKey
+      in: header
+      name: X-Imboy-Nonce
+      description: 每请求随机单次 nonce，16..128 字符。
+    ibIntHmacSignature:
+      type: apiKey
+      in: header
+      name: X-Imboy-Signature
+      description: sha256=<64位小写hex> 或 sha512=<128位小写hex>；原文见 README §3。
     ibIntBearer:
       type: http
       scheme: bearer
       bearerFormat: <credential_prefix>.<secret>
-      description: |
-        每份凭证只属于一个企业应用，同一应用可有多份凭证。有效权限为
-        allowed_scopes 与当前生效 Grant scopes 的交集（固定 20 枚举、无通配）；
-        零 Grant 或全部撤销/过期时没有权限。secret 平台侧只存不可逆摘要，
-        泄露即轮换；应用停用/归档后所有请求返回 application_disabled（403）。
+      description: 旧客户端迁移兼容；仍执行历史 Scope/Grant 策略。新 OA 使用 HMAC 请求签名。
 
   schemas:
     MicroCommunityEntityId:

@@ -80,13 +80,25 @@ setup_conn(MigrationOptions) ->
     %% 一次性 marker 库（inttest_marker_db 配方）：env 覆盖（<= imboy.pg_conf
     %% 回退）→ 建库 → 12 扩展 → erlang_migrate:up 全链（空库全量 up 即用例 ⓪）；
     %% 任一失败显式 error。
-    inttest_marker_db:provision(maps:merge(#{
-        env_prefix => <<"EPGZ01_INTTEST">>,
-        connect_extra => #{codecs => [{epgsql_codec_rfc3339_bin, []}]}
-    }, MigrationOptions)).
+    State = inttest_marker_db:provision(
+        maps:merge(
+            #{
+                env_prefix => <<"EPGZ01_INTTEST">>,
+                connect_extra => #{codecs => [{epgsql_codec_rfc3339_bin, []}]}
+            },
+            MigrationOptions
+        )
+    ),
+    PreviousSigningKey = application:get_env(imboy, postgre_aes_key),
+    application:set_env(imboy, postgre_aes_key, crypto:strong_rand_bytes(32)),
+    State#{previous_internal_signing_key => PreviousSigningKey}.
 
 close_conn(State) ->
     inttest_marker_db:release(State),
+    case maps:get(previous_internal_signing_key, State) of
+        {ok, PreviousSigningKey} -> application:set_env(imboy, postgre_aes_key, PreviousSigningKey);
+        undefined -> application:unset_env(imboy, postgre_aes_key)
+    end,
     ok.
 
 %% 每条业务 oracle 用例 BEGIN ... ROLLBACK，不留数据。

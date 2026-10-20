@@ -46,15 +46,24 @@ list_workspaces_tx(Conn, Ctx, Opts) when is_map(Opts) ->
     case enterprise_internal_read_page:resolve(Cursor, Ctx, ?FAMILY, Filter) of
         {ok, Pivot} ->
             case
-                workspace_repo:internal_covered_page_tx(
-                    Conn, OrgId, AppId, Pivot, Limit + 1
-                )
+                case maps:get(authentication, Ctx, legacy) of
+                    hmac ->
+                        workspace_repo:internal_signature_page_tx(Conn, Ctx, Pivot, Limit + 1);
+                    _ ->
+                        workspace_repo:internal_covered_page_tx(
+                            Conn, OrgId, AppId, Pivot, Limit + 1
+                        )
+                end
             of
                 {ok, Rows0} when length(Rows0) > Limit ->
                     Rows = lists:sublist(Rows0, Limit),
                     page_reply(Conn, Ctx, Rows, Limit, true, ?FAMILY, Filter);
                 {ok, Rows} ->
                     page_reply(Conn, Ctx, Rows, Limit, false, ?FAMILY, Filter);
+                {error, Code} when
+                    Code =:= organization_boundary_violation; Code =:= security_gate_closed
+                ->
+                    {error, {atom_to_binary(Code), resource_attribution}};
                 {error, Reason} ->
                     {error, {<<"internal_error">>, Reason}}
             end;

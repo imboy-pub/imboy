@@ -1,7 +1,9 @@
 -module(enterprise_oa_login_repo).
 -moduledoc "Inbound OA login ticket persistence; all operations use the caller's transaction.".
 -export([
+    authority_signed_tx/3,
     issue_tx/6,
+    issue_tx/7,
     lock_tx/3,
     pending_tx/4,
     consume_tx/2,
@@ -12,16 +14,19 @@
     epoch_tx/2
 ]).
 
-issue_tx(C, Digest, App, Cred, External, {Intent, Challenge}) ->
+issue_tx(C, Digest, App, Cred, External, Spec) ->
+    issue_tx(C, Digest, App, Cred, External, Spec, <<"bearer">>).
+
+issue_tx(C, Digest, App, Cred, External, {Intent, Challenge}, Authentication) ->
     one(
         elib_pg:query(
             C,
             <<
                 "INSERT INTO enterprise_oa_login_ticket "
-                "(digest,application_id,credential_id,external_user_id,intent,challenge) "
-                "VALUES($1,$2,$3,$4,$5,$6) RETURNING expires_at"
+                "(digest,application_id,credential_id,external_user_id,intent,challenge,issuer_authentication) "
+                "VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING expires_at"
             >>,
-            [Digest, App, Cred, External, Intent, Challenge]
+            [Digest, App, Cred, External, Intent, Challenge, Authentication]
         )
     ).
 
@@ -170,3 +175,19 @@ epoch_tx(C, Uid) ->
 one({ok, [Row]}) -> {ok, Row};
 one({ok, []}) -> {error, invalid_ticket};
 one({error, Reason}) -> {error, Reason}.
+
+%% Same issuer lifecycle and locking as the legacy flow, without Scope/Grant.
+authority_signed_tx(C, App, Cred) ->
+    one(
+        elib_pg:query(
+            C,
+            <<
+                "SELECT a.organization_id,a.application_key FROM enterprise_application a "
+                "JOIN enterprise_application_credential c ON c.application_id=a.id "
+                "WHERE a.id=$1 AND c.id=$2 AND a.status='active' AND c.status='active' "
+                "AND (c.expires_at IS NULL OR c.expires_at>clock_timestamp()) "
+                "FOR UPDATE OF a FOR SHARE OF c"
+            >>,
+            [App, Cred]
+        )
+    ).

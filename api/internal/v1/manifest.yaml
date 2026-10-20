@@ -1,12 +1,13 @@
-# Versioned current manifest: INT-01..47. Historical run manifest remains untouched.
+# Current manifest: INT-01..49; HMAC is the default integration protocol.
 # IMBoy Enterprise Internal API Manifest — frozen by A0 at BASE-00
 # RUN_ID: enterprise-internal-20260921T043945Z
 # Stage coverage: STAGE_GZ (INT-01..INT-14 + human-side SSO code issuance)
 # FULL stage extends this manifest ONLY at FULL-00 re-baseline (plan-full §4),
 # appending new rows; existing GZ rows' method/path/scope contract is frozen.
 # Every route: method / path / scope / grant / resource / actor / idempotency / rate bucket / sender_mode
-# Auth order (plan-gz §4.1): TLS -> credential format/digest -> credential active/expiry
-#   -> application active -> effective Grant scopes -> required scope
+# HMAC: TLS -> HMAC + credential/application lifecycle -> trusted business target
+#   -> atomic nonce -> rate/idempotency -> resource attribution -> operation/audit.
+# route scope/grant fields below describe legacy Bearer clients only.
 # Organization lifecycle is not a credential auth gate (ADR 2026-10-12); resource governance remains.
 #   -> organization/workspace/resource boundary -> rate limit -> operation -> audit
 # Hard invariants:
@@ -23,7 +24,15 @@
 auth_contexts:
   application_credential:
     format: "ib_int_<credential_id>.<secret>"
-    verification: sha256_digest + constant_time_compare
+    verification: hmac_sha256_or_sha512 + constant_time_compare + single_use_nonce
+    scopes_required: false
+    grants_required: false
+    timestamp_window_seconds: 300
+    required_headers: [X-Imboy-Credential, X-Imboy-Timestamp, X-Imboy-Nonce, X-Imboy-Signature]
+    optional_signed_headers: [X-Imboy-Organization]
+    legacy_bearer:
+      verification: sha256_digest + constant_time_compare
+      scopes_and_grants_required: true
     allowed_prefix: "/api/internal/v1/"
     forbidden_prefixes: ["/api/adm/", "/api/v1/"]
   human_jwt:

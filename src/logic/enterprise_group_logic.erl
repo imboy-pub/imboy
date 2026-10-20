@@ -1000,9 +1000,16 @@ list_groups_tx(Conn, Ctx, Opts) when is_map(Opts) ->
     case enterprise_internal_read_page:resolve(Cursor, Ctx, <<"groups">>, Filter) of
         {ok, Pivot} ->
             case
-                enterprise_group_repo:internal_origin_page_tx(
-                    Conn, OrgId, AppId, Pivot, Limit + 1
-                )
+                case maps:get(authentication, Ctx, legacy) of
+                    hmac ->
+                        enterprise_group_repo:internal_signature_page_tx(
+                            Conn, Ctx, Pivot, Limit + 1
+                        );
+                    _ ->
+                        enterprise_group_repo:internal_origin_page_tx(
+                            Conn, OrgId, AppId, Pivot, Limit + 1
+                        )
+                end
             of
                 {ok, Rows0} when length(Rows0) > Limit ->
                     group_page_reply(
@@ -1010,6 +1017,10 @@ list_groups_tx(Conn, Ctx, Opts) when is_map(Opts) ->
                     );
                 {ok, Rows} ->
                     group_page_reply(Conn, Ctx, Rows, Limit, false);
+                {error, Code} when
+                    Code =:= organization_boundary_violation; Code =:= security_gate_closed
+                ->
+                    {error, {atom_to_binary(Code), resource_attribution}};
                 {error, Reason} ->
                     {error, {<<"internal_error">>, Reason}}
             end;

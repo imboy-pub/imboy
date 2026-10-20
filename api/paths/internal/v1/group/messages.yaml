@@ -10,12 +10,10 @@ post:
   tags: [internal]
   summary: 企业托管群聊消息（发到企业群）
   description: |
-    发送到企业群。scope 由 sender_mode 动态决定（同 INT-09）。
+    发送到企业群。HMAC 无需 Scope；旧 Bearer 的 scope 由 sender_mode 动态决定（同 INT-09）。
     human 发送者必须是该群 active 成员；企业托管消息固定非端到端加密。
     **as_user_id / actor_user_id 别名参数出现即拒**（INV-5）。
   operationId: internalMessageGroup
-  security:
-    - ibIntBearer: []
   parameters:
     - name: group_id
       in: path
@@ -27,6 +25,8 @@ post:
       required: true
       description: 幂等键
       schema: { type: string, minLength: 1 }
+  x-imboy-authentication: hmac
+  x-imboy-legacy-scope-only: true
   x-imboy-scope: dynamic:messages_send
   x-imboy-scope-note: application → messages:send；human → messages:send_as_human
   x-imboy-rate-bucket: internal_write

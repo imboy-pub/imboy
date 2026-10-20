@@ -4,8 +4,8 @@
 %%%
 % enterprise_application_credential_repo 是 Application 凭证仓储层（迁移
 % 00000136，EPGZ-01 / plan-gz §4.1）。凭证形态 ib_int_<credential_id>.<secret>：
-% DB 只存 secret 的 SHA-256 hex digest 与全局唯一 credential_prefix（定位键），
-% 明文不落库；constant-time 比对在认证层（EPGZ-02），本层只提供数据访问。
+% DB 保存 legacy Bearer SHA-256 摘要、AES-GCM 加密签名密钥与 credential_prefix，
+% 明文不落库；旧摘要不能用于验签，存量凭证须轮换。常时比较在认证层。
 %
 % 表结构：enterprise_application_credential(id TSID PK, organization_id,
 %   application_id, credential_prefix 全局唯一, secret_digest 64hex,
@@ -16,6 +16,7 @@
     tablename/0,
     next_id/0,
     digest_hex/1,
+    signing_secret/1,
     create_tx/5,
     create_tx/6,
     find_by_prefix/1,
@@ -35,7 +36,7 @@
 
 -define(COLUMNS, <<
     "id, organization_id, application_id, credential_prefix, secret_digest, "
-    "status, expires_at, last_used_at, created_at, revoked_at"
+    "status, expires_at, last_used_at, created_at, revoked_at, signing_secret_enc"
 >>).
 
 %% ===================================================================
@@ -70,17 +71,19 @@ create_tx(Conn, OrgId, AppId, CredentialPrefix, Secret) ->
 -spec create_tx(any(), integer() | null, integer(), binary(), binary(), undefined | binary()) ->
     {ok, map()} | {error, prefix_conflict | invalid_secret | term()}.
 create_tx(Conn, OrgId, AppId, CredentialPrefix, Secret, ExpiresAt) when Secret =/= <<>> ->
-    case digest_hex(Secret) of
-        Digest when byte_size(Digest) =:= 64 ->
-            create_tx1(Conn, OrgId, AppId, CredentialPrefix, Digest, ExpiresAt);
-        _ ->
-            {error, invalid_secret}
+    case encrypt_signing_secret(Secret) of
+        {ok, Encrypted} ->
+            create_tx1(
+                Conn, OrgId, AppId, CredentialPrefix, digest_hex(Secret), Encrypted, ExpiresAt
+            );
+        {error, _} = Error ->
+            Error
     end;
 create_tx(_Conn, _OrgId, _AppId, _CredentialPrefix, _Secret, _ExpiresAt) ->
     %% 空 secret 不做 digest（空串的 SHA-256 仍是 64 字符，长度守卫拦不住）
     {error, invalid_secret}.
 
-create_tx1(Conn, OrgId, AppId, CredentialPrefix, Digest, ExpiresAt) ->
+create_tx1(Conn, OrgId, AppId, CredentialPrefix, Digest, Encrypted, ExpiresAt) ->
     Tb = tablename(),
     Id = next_id(),
     Now = elib_dt:now(),
@@ -92,11 +95,13 @@ create_tx1(Conn, OrgId, AppId, CredentialPrefix, Digest, ExpiresAt) ->
     Sql =
         <<"INSERT INTO ", Tb/binary,
             " (id, organization_id, application_id, credential_prefix, secret_digest,",
-            " status, expires_at, created_at)",
-            " VALUES ($1, $2, $3, $4, $5, 'active', $6::timestamptz, $7)", " RETURNING ",
+            " status, expires_at, created_at, signing_secret_enc)",
+            " VALUES ($1, $2, $3, $4, $5, 'active', $6::timestamptz, $7, $8)", " RETURNING ",
             ?COLUMNS/binary>>,
     case
-        elib_pg:query(Conn, Sql, [Id, OrgId, AppId, CredentialPrefix, Digest, ExpiresParam, Now])
+        elib_pg:query(Conn, Sql, [
+            Id, OrgId, AppId, CredentialPrefix, Digest, ExpiresParam, Now, Encrypted
+        ])
     of
         {ok, [Row | _]} ->
             {ok, Row};
@@ -294,3 +299,37 @@ find_tx(Conn, OrgId, Id) when
     end;
 find_tx(_Conn, OrgId, _Arg3) when not is_integer(OrgId), OrgId =/= null ->
     {error, {invalid_organization_id, OrgId}}.
+
+%% Shared signing keys use the existing database AEAD master key. A digest-only
+%% credential cannot sign: rotate it through the normal issuance path first.
+signing_secret(#{<<"signing_secret_enc">> := Encrypted}) when is_binary(Encrypted) ->
+    case signing_key(postgre_aes_key) of
+        {ok, Key} ->
+            case elib_cipher:aes_gcm_decrypt(Encrypted, Key) of
+                {ok, _} = Ok -> Ok;
+                {error, _} -> decrypt_previous(Encrypted)
+            end;
+        Error ->
+            Error
+    end;
+signing_secret(_) ->
+    {error, signing_key_unavailable}.
+
+encrypt_signing_secret(Secret) ->
+    case signing_key(postgre_aes_key) of
+        {ok, Key} -> elib_cipher:aes_gcm_encrypt(Secret, Key);
+        Error -> Error
+    end.
+
+decrypt_previous(Encrypted) ->
+    case signing_key(postgre_aes_key_old) of
+        {ok, Key} -> elib_cipher:aes_gcm_decrypt(Encrypted, Key);
+        Error -> Error
+    end.
+
+signing_key(Name) ->
+    case config_ds:env(Name, <<>>) of
+        Key when is_binary(Key), Key =/= <<>> -> {ok, crypto:hash(sha256, Key)};
+        Key when is_list(Key), Key =/= [] -> {ok, crypto:hash(sha256, Key)};
+        _ -> {error, signing_key_unavailable}
+    end.

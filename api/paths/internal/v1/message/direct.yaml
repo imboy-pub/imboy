@@ -11,18 +11,18 @@ post:
   summary: 企业托管单聊消息（OA 直发 / 代发）
   description: |
     以应用身份或代本组织已映射人类用户发送单聊。企业托管消息**固定非端到端
-    加密**，审计事实永久保留。scope 由 sender_mode 动态决定：
+    加密**，审计事实永久保留。HMAC 无需 Scope；旧 Bearer 的 scope 由 sender_mode 动态决定：
     application → messages:send；human → messages:send_as_human。
     **as_user_id / actor_user_id 别名参数出现即拒**（INV-5）。
   operationId: internalMessageDirect
-  security:
-    - ibIntBearer: []
   parameters:
     - name: Idempotency-Key
       in: header
       required: true
       description: 幂等键（重复提交返回首次结果）
       schema: { type: string, minLength: 1 }
+  x-imboy-authentication: hmac
+  x-imboy-legacy-scope-only: true
   x-imboy-scope: dynamic:messages_send
   x-imboy-scope-note: application → messages:send；human → messages:send_as_human
   x-imboy-rate-bucket: internal_write

@@ -22,7 +22,7 @@
 -export([ids_by_organization/1]).
 %% V2.1 Internal 只读面（INT-24/25 adapter；plan §6.1 "workspace_repo adapter"）
 -export([internal_find_tx/3]).
--export([internal_covered_page_tx/5]).
+-export([internal_covered_page_tx/5, internal_signature_page_tx/4]).
 
 -ifdef(EUNIT).
 -include_lib("eunit/include/eunit.hrl").
@@ -305,4 +305,24 @@ update_profile_tx(Conn, WsId, Name, Logo, Branding) ->
         {ok, [#{<<"id">> := WsId}]} -> ok;
         {ok, []} -> {error, not_found};
         {error, R} -> {error, R}
+    end.
+
+internal_signature_page_tx(Conn, #{authentication := hmac} = Ctx, Pivot, Limit) ->
+    case enterprise_internal_access_repo:organization_tx(Conn, Ctx) of
+        ok ->
+            {Keyset, Params} =
+                case Pivot of
+                    undefined -> {<<>>, []};
+                    {Created, Id} -> {<<" AND (w.created_at,w.id)<($2,$3)">>, [Created, Id]}
+                end,
+            Sql = <<
+                "SELECT w.id,w.name,w.owner_id,w.version,w.created_at FROM workspace w "
+                "WHERE w.organization_id=$1 AND w.status='active'",
+                Keyset/binary,
+                " ORDER BY w.created_at DESC,w.id DESC LIMIT $",
+                (integer_to_binary(2 + length(Params)))/binary
+            >>,
+            elib_pg:query(Conn, Sql, [maps:get(organization_id, Ctx)] ++ Params ++ [Limit]);
+        Error ->
+            Error
     end.

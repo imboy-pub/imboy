@@ -60,14 +60,21 @@ setup_conn() ->
     end,
     {ok, _} = application:ensure_all_started(throttle),
     application:set_env(imboy, enterprise_internal_rate_limits, ?RATE_CFG),
-    inttest_marker_db:provision(#{
+    State = inttest_marker_db:provision(#{
         env_prefix => <<"EPGZ05_INTTEST">>,
         connect_extra => #{codecs => [{epgsql_codec_rfc3339_bin, []}]}
-    }).
+    }),
+    PreviousSigningKey = application:get_env(imboy, postgre_aes_key),
+    application:set_env(imboy, postgre_aes_key, crypto:strong_rand_bytes(32)),
+    State#{previous_internal_signing_key => PreviousSigningKey}.
 
 close_conn(State) ->
     application:unset_env(imboy, enterprise_internal_rate_limits),
     inttest_marker_db:release(State),
+    case maps:get(previous_internal_signing_key, State) of
+        {ok, PreviousSigningKey} -> application:set_env(imboy, postgre_aes_key, PreviousSigningKey);
+        undefined -> application:unset_env(imboy, postgre_aes_key)
+    end,
     ok.
 
 %% 每条业务用例 BEGIN ... ROLLBACK，不留数据。

@@ -16,14 +16,14 @@ post:
     invalid_request（detail 区分 purge_blocked_by_hold / retention_not_elapsed /
     already_purged 等，不新增错误码）。
   operationId: internalFileGovernance
-  security:
-    - ibIntBearer: []
   parameters:
     - name: Idempotency-Key
       in: header
       required: true
       description: 幂等键
       schema: { type: string, minLength: 1 }
+  x-imboy-authentication: hmac
+  x-imboy-legacy-scope-only: true
   x-imboy-scope: files:write
   x-imboy-rate-bucket: internal_write
   x-imboy-idempotency: required

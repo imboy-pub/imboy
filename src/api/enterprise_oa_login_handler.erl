@@ -10,7 +10,7 @@ init(Req, State) ->
     {ok, Reply, State}.
 
 handle(Action, Req, State) ->
-    Params = elib_param:post(Req),
+    Params = enterprise_internal_request:params(Req),
     Result =
         case Action of
             issue ->

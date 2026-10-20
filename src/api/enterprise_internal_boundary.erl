@@ -1,6 +1,6 @@
 -module(enterprise_internal_boundary).
 
--moduledoc "internal 面资源边界接线表（FULL-02）—— 授权求值委托 enterprise_application_grant_logic。".
+-moduledoc "Internal 资源归属接线：HMAC 只查业务归属与状态；旧 Bearer 才查 Scope/Grant。".
 %%%
 % enterprise_internal_boundary 是 internal 面的**资源边界接线表**
 % （FULL-02）。FULL-01 交付了授权求值面
@@ -249,6 +249,8 @@ enforce(Conn, Ctx, RouteId, WorkspaceId) ->
     case spec(RouteId) of
         {ok, #{kind := none}} ->
             ok;
+        {ok, #{kind := list}} when map_get(authentication, Ctx) =:= hmac ->
+            enterprise_internal_access_repo:organization_tx(Conn, Ctx);
         {ok, #{kind := list, scope := Scope}} when is_binary(Scope) ->
             %% 覆盖 W 集合列表（INT-24/26）：scope 必须在生效集（ctx 内判定，
             %% 无额外 DB 读——中间件 scope gate 已判过，此处是边界层的

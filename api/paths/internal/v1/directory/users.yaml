@@ -16,8 +16,8 @@ post:
     响应 items 字段实证自 `enterprise_directory_logic`：user_id /
     external_user_id（本应用未映射则 null）/ member_role 等。
   operationId: internalDirectoryUsers
-  security:
-    - ibIntBearer: []
+  x-imboy-authentication: hmac
+  x-imboy-legacy-scope-only: true
   x-imboy-scope: identities:read
   x-imboy-rate-bucket: internal_read
   x-imboy-idempotency: not_required
@@ -48,7 +48,7 @@ post:
               format: int64
               description: >-
                 按 workspace 过滤（要求 identities:read 的 Workspace
-                Grant 覆盖；参与游标绑定）。
+                业务归属匹配，旧 Bearer 另校验 Grant；参与游标绑定）。
   responses:
     '200':
       description: 可映射用户目录页

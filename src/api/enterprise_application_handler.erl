@@ -48,9 +48,13 @@ self_info(<<"GET">>, Req0, State) ->
     Ctx = maps:get(enterprise_internal, State, #{}),
     OrgId = maps:get(organization_id, Ctx, undefined),
     AppId = maps:get(application_id, Ctx, undefined),
-    case {is_integer(OrgId), is_integer(AppId)} of
+    case {is_integer(OrgId) orelse OrgId =:= null, is_integer(AppId)} of
         {true, true} ->
-            case enterprise_internal_ops:application_status(OrgId, AppId) of
+            case
+                enterprise_internal_ops:application_status(
+                    maps:get(application_organization_id, Ctx, OrgId), AppId
+                )
+            of
                 {ok, Status} ->
                     reply_json(Req0, 200, self_payload(Status, Ctx));
                 {error, Reason} ->
@@ -68,7 +72,7 @@ self_info(_, Req0, _State) ->
 -spec self_payload(map(), map()) -> map().
 self_payload(Status, Ctx) ->
     App = maps:get(application, Status, #{}),
-    #{
+    Payload = #{
         <<"organization_id">> => maps:get(organization_id, Ctx),
         <<"application_id">> => maps:get(application_id, Ctx),
         <<"credential_id">> => maps:get(credential_id, Ctx, null),
@@ -76,7 +80,16 @@ self_payload(Status, Ctx) ->
         <<"application">> => atom_map_to_bin(App),
         <<"granted_scopes">> => maps:get(granted_scopes, Ctx, maps:get(granted_scopes, Status, [])),
         <<"credentials">> => [atom_map_to_bin(C) || C <- maps:get(credentials, Status, [])]
-    }.
+    },
+    case maps:get(authentication, Ctx, legacy) of
+        hmac ->
+            (maps:remove(<<"granted_scopes">>, Payload))#{
+                <<"authentication">> => <<"hmac">>,
+                <<"application">> => maps:remove(<<"scopes">>, maps:get(<<"application">>, Payload))
+            };
+        _ ->
+            Payload
+    end.
 
 %% @doc ops 返回 atom 键 map（repo 行），internal 面响应统一 binary 键 JSON。
 -spec atom_map_to_bin(map()) -> map().

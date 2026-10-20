@@ -6,12 +6,10 @@ get:
 
     删除 / 不存在一律 resource_not_found（IDOR 同不存在同体）；同 Organization
 
-    但无生效 Grant 覆盖频道所属 W → organization_boundary_violation（403）。
+    但频道所属工作空间不符合当前业务归属（旧 Bearer 另校验 Grant） → organization_boundary_violation（403）。
 
     '
   operationId: internalChannelDetail
-  security:
-  - ibIntBearer: []
   parameters:
   - name: channel_id
     in: path
@@ -20,6 +18,8 @@ get:
     schema:
       type: integer
       format: int64
+  x-imboy-authentication: hmac
+  x-imboy-legacy-scope-only: true
   x-imboy-scope: channels:read
   x-imboy-rate-bucket: internal_read
   x-imboy-idempotency: not_required
@@ -78,12 +78,12 @@ patch:
   - internal
   summary: 修改企业频道资料
   operationId: internalChannelUpdate
-  description: INT-41。独立 channels:write 与目标工作空间 Grant；不自动授予。创建者须为有效企业成员（企业 Owner 包含）且是工作空间
+  description: INT-41。HMAC 无需 Scope/Grant；旧 Bearer 仍需 channels:write 与目标工作空间 Grant。创建者须为有效企业成员（企业 Owner 包含）且是工作空间
     Owner/Member，Guest 禁止。企业频道固定非公开 visibility=1、access_type=0、join_policy=1。归属和创建者不可修改。修改/归档必须
-    expected_version，旧版本 409；治理版本包含旧入口更新，订阅人数等派生更新不增加版本。应用审计、资源、幂等响应同事务；重放仍验证当前 Grant。409
+    expected_version，旧版本 409；治理版本包含旧入口更新，订阅人数等派生更新不增加版本。应用审计、资源、幂等响应同事务；重放仍验证当前业务归属及生命周期（旧 Bearer 另验证 Grant）。409
     可能为版本、配额/归档状态或幂等冲突，以 error.code 区分。
-  security:
-  - ibIntBearer: []
+  x-imboy-authentication: hmac
+  x-imboy-legacy-scope-only: true
   x-imboy-scope: channels:write
   x-imboy-rate-bucket: internal_write
   x-imboy-idempotency: required
@@ -166,12 +166,12 @@ delete:
   - internal
   summary: 归档企业频道
   operationId: internalChannelArchive
-  description: INT-42。独立 channels:write 与目标工作空间 Grant；不自动授予。创建者须为有效企业成员（企业 Owner 包含）且是工作空间
+  description: INT-42。HMAC 无需 Scope/Grant；旧 Bearer 仍需 channels:write 与目标工作空间 Grant。创建者须为有效企业成员（企业 Owner 包含）且是工作空间
     Owner/Member，Guest 禁止。企业频道固定非公开 visibility=1、access_type=0、join_policy=1。归属和创建者不可修改。修改/归档必须
-    expected_version，旧版本 409；治理版本包含旧入口更新，订阅人数等派生更新不增加版本。应用审计、资源、幂等响应同事务；重放仍验证当前 Grant。409
+    expected_version，旧版本 409；治理版本包含旧入口更新，订阅人数等派生更新不增加版本。应用审计、资源、幂等响应同事务；重放仍验证当前业务归属及生命周期（旧 Bearer 另验证 Grant）。409
     可能为版本、配额/归档状态或幂等冲突，以 error.code 区分。
-  security:
-  - ibIntBearer: []
+  x-imboy-authentication: hmac
+  x-imboy-legacy-scope-only: true
   x-imboy-scope: channels:write
   x-imboy-rate-bucket: internal_write
   x-imboy-idempotency: required

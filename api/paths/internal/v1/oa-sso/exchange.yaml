@@ -14,8 +14,8 @@ post:
     「二次成功」。code TTL 60 秒。成功 payload 永不含 IMBoy 凭证（R-6）；
     TSID 以 JSON integer 输出（INV-8）。独立限流桶 internal_sso。
   operationId: internalOaSsoExchange
-  security:
-    - ibIntBearer: []
+  x-imboy-authentication: hmac
+  x-imboy-legacy-scope-only: true
   x-imboy-scope: sso:exchange
   x-imboy-rate-bucket: internal_sso
   x-imboy-idempotency: single_use_code

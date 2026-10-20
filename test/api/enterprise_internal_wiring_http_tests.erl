@@ -1,4 +1,5 @@
 -module(enterprise_internal_wiring_http_tests).
+-export([signature_positive_chain/1]).
 
 %%%
 % EPGZ-08 W4 —— 企业 internal 面**路由接线**黑盒测试（真 cowboy listener +
@@ -1703,24 +1704,21 @@ error_envelope_requires_exact_code_test() ->
         assert_error_json(Forged, <<"invalid_credential">>)
     ).
 
-integration_readme_scope_contract_test() ->
+integration_readme_auth_contract_test() ->
     {ok, Readme} = file:read_file("api/internal/v1/README.md"),
-    {match, Captures} = re:run(
-        Readme,
-        <<"\\| `([a-z_]+(?::[a-z_]+)+)` \\|">>,
-        [global, {capture, [1], binary}]
-    ),
-    ?assertEqual(
-        lists:sort(enterprise_internal_scope:all()),
-        lists:usort([Scope || [Scope] <- Captures])
-    ),
-    ?assertNotEqual(
-        nomatch,
-        binary:match(
-            Readme,
-            <<"Authorization: Bearer <credential_prefix>.<secret>">>
-        )
-    ).
+    [
+        ?assertNotEqual(nomatch, binary:match(Readme, Token))
+     || Token <- [
+            <<"HMAC-SHA256">>,
+            <<"HMAC-SHA512">>,
+            <<"X-Imboy-Credential">>,
+            <<"X-Imboy-Timestamp">>,
+            <<"X-Imboy-Nonce">>,
+            <<"X-Imboy-Signature">>,
+            <<"不需要选择 Scope，也不需要签发 Grant"/utf8>>
+        ]
+    ],
+    ?assertEqual(nomatch, binary:match(Readme, <<"## 4. 授权（Scope"/utf8>>)).
 
 assert_error_json(Body, Code) ->
     #{<<"error">> := Error} = Json = jsone:decode(Body),
@@ -1832,3 +1830,9 @@ teardown_marker(State) ->
     after
         inttest_marker_db:release(State)
     end.
+
+%% Reuse the existing real business journey with a signing HTTP client and no
+%% active Grants. Negative legacy permission cases stay in their original suite.
+signature_positive_chain(#{conn := C} = S) ->
+    seed_delivery_row(C, S),
+    positive_chain(S).

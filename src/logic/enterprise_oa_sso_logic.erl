@@ -219,11 +219,16 @@ exchange_authorized_tx(Conn, Ctx, Params) ->
             Error
     end.
 
-lock_authority_tx(Conn, #{
-    organization_id := OrgId, application_id := AppId, credential_id := CredId
-}) ->
+lock_authority_tx(
+    Conn,
+    #{
+        organization_id := OrgId, application_id := AppId, credential_id := CredId
+    } = Ctx
+) ->
     case
-        enterprise_application_credential_repo:authority_for_share_tx(Conn, OrgId, AppId, CredId)
+        enterprise_application_credential_repo:authority_for_share_tx(
+            Conn, maps:get(application_organization_id, Ctx, OrgId), AppId, CredId
+        )
     of
         {ok, #{<<"credential_status">> := Status}} when Status =/= <<"active">> ->
             {error, <<"invalid_credential">>};
@@ -232,11 +237,7 @@ lock_authority_tx(Conn, #{
                 ok ->
                     case authority_status(Row) of
                         ok ->
-                            scope_result(
-                                enterprise_application_grant_repo:scope_tx(
-                                    Conn, OrgId, AppId, <<"sso:exchange">>
-                                )
-                            );
+                            scope_current_tx(Conn, Ctx);
                         StatusError ->
                             StatusError
                     end;
@@ -258,6 +259,8 @@ authority_status(_) ->
     %% 非授权边界）；authority_for_share_tx 的 org JOIN 仅作寻址。
     ok.
 
+scope_current_tx(_Conn, #{authentication := hmac}) ->
+    ok;
 scope_current_tx(Conn, Ctx) ->
     scope_result(
         enterprise_application_grant_repo:scope_tx(

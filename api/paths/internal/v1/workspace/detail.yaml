@@ -6,12 +6,10 @@ get:
 
     resource_not_found（IDOR 同不存在同体，不泄露存在性）；同 Organization 但
 
-    无生效 Grant 覆盖该 W → organization_boundary_violation（403）。
+    目标工作空间不符合当前业务归属（旧 Bearer 另校验 Grant） → organization_boundary_violation（403）。
 
     '
   operationId: internalWorkspaceDetail
-  security:
-  - ibIntBearer: []
   parameters:
   - name: workspace_id
     in: path
@@ -20,6 +18,8 @@ get:
     schema:
       type: integer
       format: int64
+  x-imboy-authentication: hmac
+  x-imboy-legacy-scope-only: true
   x-imboy-scope: workspaces:read
   x-imboy-rate-bucket: internal_read
   x-imboy-idempotency: not_required
@@ -71,13 +71,13 @@ patch:
   - internal
   summary: 修改企业工作空间
   operationId: internalWorkspaceUpdate
-  security:
-  - ibIntBearer: []
+  x-imboy-authentication: hmac
+  x-imboy-legacy-scope-only: true
   x-imboy-scope: workspaces:write
   x-imboy-rate-bucket: internal_write
   x-imboy-idempotency: required
-  description: 创建需要企业全域 Grant；owner_user_id 必须是本企业活跃 Owner/Admin。修改与归档需要目标工作空间 Grant。expected_version
-    为当前版本，过期返回 version_conflict。默认空间归档须显式指定同企业且有授权的活跃替代项。应用审计与资源、幂等响应同事务。归档保留历史资料；新建不会自动
+  description: HMAC 创建须匹配组织业务归属；旧 Bearer 另需组织全域 Grant；owner_user_id 必须是本企业活跃 Owner/Admin。修改与归档须匹配目标工作空间归属（旧 Bearer 另需目标 Grant）。expected_version
+    为当前版本，过期返回 version_conflict。默认空间归档须显式指定同组织且符合当前业务归属的活跃替代项。应用审计与资源、幂等响应同事务。归档保留历史资料；新建不会自动
     Grant。未知字段拒绝。
   parameters:
   - name: workspace_id
@@ -175,13 +175,13 @@ delete:
   - internal
   summary: 归档企业工作空间
   operationId: internalWorkspaceArchive
-  security:
-  - ibIntBearer: []
+  x-imboy-authentication: hmac
+  x-imboy-legacy-scope-only: true
   x-imboy-scope: workspaces:write
   x-imboy-rate-bucket: internal_write
   x-imboy-idempotency: required
-  description: 创建需要企业全域 Grant；owner_user_id 必须是本企业活跃 Owner/Admin。修改与归档需要目标工作空间 Grant。expected_version
-    为当前版本，过期返回 version_conflict。默认空间归档须显式指定同企业且有授权的活跃替代项。应用审计与资源、幂等响应同事务。归档保留历史资料；新建不会自动
+  description: HMAC 创建须匹配组织业务归属；旧 Bearer 另需组织全域 Grant；owner_user_id 必须是本企业活跃 Owner/Admin。修改与归档须匹配目标工作空间归属（旧 Bearer 另需目标 Grant）。expected_version
+    为当前版本，过期返回 version_conflict。默认空间归档须显式指定同组织且符合当前业务归属的活跃替代项。应用审计与资源、幂等响应同事务。归档保留历史资料；新建不会自动
     Grant。未知字段拒绝。
   parameters:
   - name: workspace_id

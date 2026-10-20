@@ -14,14 +14,14 @@ post:
     被删除），登记 attachment 行并建立治理行。object_key 必须是本 org/app 域
     且已 presign 登记的对象。
   operationId: internalFileConfirm
-  security:
-    - ibIntBearer: []
   parameters:
     - name: Idempotency-Key
       in: header
       required: true
       description: 幂等键
       schema: { type: string, minLength: 1 }
+  x-imboy-authentication: hmac
+  x-imboy-legacy-scope-only: true
   x-imboy-scope: files:write
   x-imboy-rate-bucket: internal_write
   x-imboy-idempotency: required

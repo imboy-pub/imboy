@@ -8,8 +8,8 @@ post:
     为显式移除，组织离职保留实例用户及其他组织关系，Owner 须先交接。source_status=removed 的账号关联退休不可自动恢复；membership=removed
     可通过更高版本显式恢复。
   operationId: internalDirectorySync
-  security:
-  - ibIntBearer: []
+  x-imboy-authentication: hmac
+  x-imboy-legacy-scope-only: true
   x-imboy-scope: identities:write
   x-imboy-rate-bucket: internal_write
   x-imboy-idempotency: required

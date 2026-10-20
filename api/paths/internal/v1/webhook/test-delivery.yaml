@@ -21,14 +21,14 @@ post:
     - 成功仅代表**已入箱**（`enqueued:true`），不代表对方已接收——投递结果
       请以 INT-23 的 `status`（pending/retry/success/dead）为准。
   operationId: internalWebhookTestDelivery
-  security:
-    - ibIntBearer: []
   parameters:
     - name: Idempotency-Key
       in: header
       required: true
       description: 幂等键（同 key 重放返回首次结果，不重复入箱）
       schema: { type: string, minLength: 1 }
+  x-imboy-authentication: hmac
+  x-imboy-legacy-scope-only: true
   x-imboy-scope: webhooks:manage
   x-imboy-rate-bucket: internal_write
   x-imboy-idempotency: required

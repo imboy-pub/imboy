@@ -13,8 +13,6 @@ post:
     按 delivery_id 重放（失败投递可重放；重放产生新 delivery 行，幂等键由
     平台侧派生，在途重放由唯一索引仲裁为 idempotency_conflict）。
   operationId: internalWebhookReplay
-  security:
-    - ibIntBearer: []
   parameters:
     - name: delivery_id
       in: path
@@ -26,6 +24,8 @@ post:
       required: true
       description: 幂等键（1..128 可打印 ASCII；同 key 同 payload 精确重放原响应）
       schema: { type: string, minLength: 1, maxLength: 128 }
+  x-imboy-authentication: hmac
+  x-imboy-legacy-scope-only: true
   x-imboy-scope: webhooks:manage
   x-imboy-rate-bucket: internal_write
   x-imboy-idempotency: required

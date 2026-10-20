@@ -24,8 +24,6 @@ get:
     （versioned 迁移错误，DEC-INT23-COMPAT；不存在「带着 page 用游标」的
     过渡形态）。
   operationId: internalWebhookDeliveries
-  security:
-    - ibIntBearer: []
   parameters:
     - name: cursor
       in: query
@@ -47,6 +45,8 @@ get:
       required: false
       description: 按投递状态过滤（pending/retry/success/dead；参与游标绑定——换 status 的旧游标 400；success/dead 为终结态，仅终结态可 INT-13 重放）
       schema: { type: string, enum: [pending, retry, success, dead] }
+  x-imboy-authentication: hmac
+  x-imboy-legacy-scope-only: true
   x-imboy-scope: webhooks:manage
   x-imboy-rate-bucket: internal_read
   x-imboy-idempotency: not_required

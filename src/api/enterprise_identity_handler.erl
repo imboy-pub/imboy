@@ -70,7 +70,7 @@ mappings(_, Req0, _State) ->
 -spec bind(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 bind(<<"PUT">>, Req0, State) ->
     Ctx = maps:get(enterprise_internal, State, #{}),
-    Params = elib_param:post(Req0),
+    Params = enterprise_internal_request:params(Req0),
     IdemKey = idempotency_key(Req0),
     case enterprise_internal_idempotency:request_digest(<<"PUT">>, ?BIND_PATH, Params) of
         {ok, Digest} ->
@@ -144,7 +144,7 @@ bind_tx(Req0, Ctx, IdemKey, Digest, Params) ->
 -spec resolve(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 resolve(<<"POST">>, Req0, State) ->
     Ctx = maps:get(enterprise_internal, State, #{}),
-    Params = elib_param:post(Req0),
+    Params = enterprise_internal_request:params(Req0),
     ExternalIds = maps:get(<<"external_user_ids">>, Params, undefined),
     Resolved =
         elib_pg:with_tx(fun(Conn) ->
@@ -173,7 +173,7 @@ resolve(_, Req0, _State) ->
 -spec revoke(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 revoke(<<"DELETE">>, Req0, State) ->
     Ctx = maps:get(enterprise_internal, State, #{}),
-    Params = elib_param:post(Req0),
+    Params = enterprise_internal_request:params(Req0),
     IdemKey = idempotency_key(Req0),
     case enterprise_internal_idempotency:request_digest(<<"DELETE">>, ?BIND_PATH, Params) of
         {ok, Digest} -> revoke_tx(Req0, Ctx, IdemKey, Digest, Params);
@@ -244,7 +244,7 @@ revoke_tx(Req0, Ctx, IdemKey, Digest, Params) ->
 -spec directory(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 directory(<<"POST">>, Req0, State) ->
     Ctx = maps:get(enterprise_internal, State, #{}),
-    Params = elib_param:post(Req0),
+    Params = enterprise_internal_request:params(Req0),
     Result =
         elib_pg:with_tx(fun(Conn) ->
             with_boundary(Conn, Ctx, <<"INT-16">>, undefined, fun() ->

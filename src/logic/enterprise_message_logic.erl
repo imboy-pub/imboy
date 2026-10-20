@@ -205,6 +205,8 @@ resolve_sender_scoped(Conn, Ctx, Input, <<"human">>, Scope) ->
             {error, {<<"invalid_request">>, sender_user_id_required}}
     end.
 
+scope_gate(#{authentication := hmac}, _RequiredScope, Next) ->
+    Next();
 scope_gate(Ctx, RequiredScope, Next) ->
     Granted = maps:get(granted_scopes, Ctx, []),
     case enterprise_internal_scope:authorize(RequiredScope, Granted) of

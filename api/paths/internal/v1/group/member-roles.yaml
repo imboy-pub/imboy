@@ -13,8 +13,6 @@ put:
     按成员逐个设置角色（role 取值由群域定义，如 member / admin）。
     **请求形态以 handler 为准**：roles 为 `[{external_user_id, role}]` 对象数组。
   operationId: internalGroupSetMemberRoles
-  security:
-    - ibIntBearer: []
   parameters:
     - name: group_id
       in: path
@@ -26,6 +24,8 @@ put:
       required: true
       description: 幂等键
       schema: { type: string, minLength: 1 }
+  x-imboy-authentication: hmac
+  x-imboy-legacy-scope-only: true
   x-imboy-scope: groups:write
   x-imboy-rate-bucket: internal_write
   x-imboy-idempotency: required

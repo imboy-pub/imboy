@@ -17,6 +17,7 @@
 %     （镜像 group_member_ds:ensure_workspace_membership 的读法）。
 %%%
 
+-export([internal_signature_page_tx/4]).
 -export([
     next_group_id/0,
     create_workspace_group_tx/7,
@@ -514,4 +515,31 @@ internal_member_page_tx(Conn, Gid, Pivot, Limit) when
     case elib_pg:query(Conn, Sql, [Gid] ++ Params0 ++ [Limit]) of
         {ok, Rows} -> {ok, Rows};
         {error, Reason} -> {error, Reason}
+    end.
+
+internal_signature_page_tx(Conn, #{authentication := hmac} = Ctx, Pivot, Limit) ->
+    case enterprise_internal_access_repo:organization_tx(Conn, Ctx) of
+        ok ->
+            {Keyset, Params} =
+                case Pivot of
+                    undefined -> {<<>>, []};
+                    {Created, Id} -> {<<" AND (g.created_at,g.id)<($3,$4)">>, [Created, Id]}
+                end,
+            Sql = <<
+                "SELECT g.id,g.workspace_id,g.title,g.member_count,g.created_at "
+                "FROM public.\"group\" g JOIN enterprise_group_origin o ON o.group_id=g.id "
+                "AND o.organization_id=$1 AND o.application_id=$2 AND o.status='active' "
+                "JOIN workspace w ON w.id=g.workspace_id AND w.organization_id=$1 AND w.status='active' "
+                "WHERE g.scope='workspace' AND g.status=1",
+                Keyset/binary,
+                " ORDER BY g.created_at DESC,g.id DESC LIMIT $",
+                (integer_to_binary(3 + length(Params)))/binary
+            >>,
+            elib_pg:query(
+                Conn,
+                Sql,
+                [maps:get(organization_id, Ctx), maps:get(application_id, Ctx)] ++ Params ++ [Limit]
+            );
+        Error ->
+            Error
     end.
