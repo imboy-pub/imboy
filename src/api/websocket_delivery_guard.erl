@@ -1,7 +1,33 @@
 -module(websocket_delivery_guard).
 -moduledoc "Fresh discussion authorization and reference-fenced transport retries.".
--export([run/3, retry/6, cancel_ack/5]).
+-export([run/3, run/4, retry/6, cancel_ack/5]).
 -include("log.hrl").
+
+%% Keep the binary entry point and fresh authorization on every delivery. The
+%% decoded value lives only for this callback; retries still carry the original
+%% binary, so a later retry must authorize again.
+run(Info, State, Continue, ContinueBinary) ->
+    case delivery_binary(Info) of
+        {ok, Bin} ->
+            Uid = auth_ds:current_uid(State),
+            Decoded = try jsone:decode(Bin, [{object_format, map}])
+                      catch _:_ -> invalid_json end,
+            Allowed = try micro_community_access_logic:delivery_allowed(
+                Uid, Decoded
+            ) catch _:_ -> false end,
+            case Allowed of
+                true -> ContinueBinary(Info, State, Decoded);
+                false ->
+                    cleanup_denied_delivery(Info),
+                    {ok, State, hibernate}
+            end;
+        none -> run(Info, State, Continue)
+    end.
+
+delivery_binary({reply, Bin}) when is_binary(Bin) -> {ok, Bin};
+delivery_binary({timeout, _, {_, {_, _, _}, Bin}}) when is_binary(Bin) -> {ok, Bin};
+delivery_binary({timeout, _, Bin}) when is_binary(Bin) -> {ok, Bin};
+delivery_binary(_) -> none.
 
 run(Info, State, Continue) ->
     case discussion_delivery_allowed(Info, State) of

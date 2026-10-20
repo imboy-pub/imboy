@@ -587,7 +587,20 @@ handle_json_message(Msg, State) ->
         hibernate}
     | {stop, map()}.
 websocket_info(Info, State) ->
-    websocket_delivery_guard:run(Info, State, fun websocket_info_authorized/2).
+    websocket_delivery_guard:run(
+        Info, State, fun websocket_info_authorized/2, fun websocket_info_binary/3
+    ).
+
+websocket_info_binary({reply, Msg}, State, Decoded) ->
+    {reply, encode_delivery_frame(Msg, State, Decoded), State, hibernate};
+websocket_info_binary({timeout, Ref, {MsLi, TimerKey, Msg}}, State, Decoded) ->
+    websocket_delivery_guard:retry(
+        Ref, MsLi, TimerKey, Msg, State,
+        fun(Bin, S) -> encode_delivery_frame(Bin, S, Decoded) end
+    );
+websocket_info_binary({timeout, _Ref, Msg}, State, Decoded) ->
+    ok = ?DEBUG_LOG({timeout, Msg}),
+    {reply, encode_delivery_frame(Msg, State, Decoded), State, hibernate}.
 
 websocket_info_authorized({reply, Msg}, State) when is_map(Msg) ->
     Protocol = maps:get(protocol, State, json),
@@ -883,10 +896,28 @@ encode_delivery_frame(Msg, State) when is_binary(Msg) ->
             encode_delivery_frame_protobuf(Msg)
     end.
 
+%% Reuse the guard's parse without re-encoding the JSON payload. In particular,
+%% PFv3 ciphertext and noncanonical JSON bytes stay untouched in JSON/v2 frames.
+encode_delivery_frame(Msg, State, Decoded) ->
+    case {maps:get(protocol, State, json), maps:get(framing, State, none)} of
+        {_, v2} -> encode_delivery_frame_v2(Msg, Decoded);
+        {json, _} -> {text, Msg};
+        {protobuf, _} -> encode_delivery_frame_protobuf(Msg, Decoded)
+    end.
+
 -spec encode_delivery_frame_protobuf(binary()) -> {text, binary()} | {binary, binary()}.
 encode_delivery_frame_protobuf(Msg) ->
     try
         Map = jsone:decode(Msg, [{object_format, map}]),
+        encode_delivery_frame_protobuf(Msg, Map)
+    catch
+        Class:Reason ->
+            ok = ?WARN_LOG({encode_delivery_frame_fallback, Class, Reason, byte_size(Msg)}),
+            {text, Msg}
+    end.
+
+encode_delivery_frame_protobuf(Msg, Map) ->
+    try
         case imboy_codec:encode(protobuf, Map) of
             <<>> ->
                 ok = ?WARN_LOG({encode_delivery_frame_pb_empty, maps:get(<<"id">>, Map, unknown)}),
@@ -912,6 +943,15 @@ encode_delivery_frame_v2(Msg) ->
     %% 这里保留 v2 frame wrap，把 payload 永远填为 JSON 原文。
     try
         Map = jsone:decode(Msg, [{object_format, map}]),
+        encode_delivery_frame_v2(Msg, Map)
+    catch
+        Class:Reason ->
+            ok = ?WARN_LOG({encode_delivery_frame_v2_fallback, Class, Reason, byte_size(Msg)}),
+            {binary, imboy_codec:wrap_v2_frame(?FRAME_TYPE_MSG_S2C, 0, Msg)}
+    end.
+
+encode_delivery_frame_v2(Msg, Map) ->
+    try
         FrameType = msg_to_v2_frame_type(Map),
         {binary, imboy_codec:wrap_v2_frame(FrameType, 0, Msg)}
     catch
