@@ -37,6 +37,7 @@ start(_Type, _Args) ->
     %% prime IMBOYENV 缓存：所有运行时模块统一走 imboy_env:current/0
     _ = imboy_env:current(),
     ok = validate_runtime_config(),
+    ok = warn_if_attachment_registry_empty(),
     %% OTP 28 原生 json 在启动期一次性校验术语映射；请求期从
     %% persistent_term 只读，业务权限、路由和状态机不依赖这些展示词。
     ok = product_terminology:init(),
@@ -384,6 +385,23 @@ maybe_load_keyring_env_file() ->
 maybe_load_keyring_env_file() ->
     ok.
 -endif.
+
+%% 附件存储注册表为空时只告警不拒启：没有附件需求的部署仍可运行，但运维必须
+%% 能在启动日志里直接看到「上传会被 503 拒绝」的原因与修法（F13）。
+-spec warn_if_attachment_registry_empty() -> ok.
+warn_if_attachment_registry_empty() ->
+    case attachment_storage:validate_registry() of
+        ok ->
+            ok;
+        {error, empty_roots} ->
+            logger:error(
+                "[imboy] attachment_storage_registry has no roots: every new upload will be "
+                "rejected with 503 upload_root_unavailable. Register roots in sys.config "
+                "(see config/sys.config.example) or set IMBOY_ATTACHMENT_REGISTRY_FROM_GARAGE=true "
+                "for the single-Garage container deployment."
+            ),
+            ok
+    end.
 
 -spec validate_runtime_config() -> ok.
 validate_runtime_config() ->

@@ -558,6 +558,13 @@ else
     ok "Garage S3 已配置（单机内置服务）"
 fi
 
+# 附件存储注册表 fail-closed：镜像内 sys.config 空根，不派生就意味着所有上传 503。
+REGISTRY_FROM_GARAGE=$(echo "${IMBOY_ATTACHMENT_REGISTRY_FROM_GARAGE:-true}" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')
+case "$REGISTRY_FROM_GARAGE" in
+    true|1) ok "附件存储注册表按 IMBOY_GARAGE_* 派生（IMBOY_ATTACHMENT_REGISTRY_FROM_GARAGE=true）" ;;
+    *) warn "IMBOY_ATTACHMENT_REGISTRY_FROM_GARAGE 已关闭：除非镜像内 sys.config 显式登记了 attachment_storage_registry 根，否则附件上传将返回 503 upload_root_unavailable" ;;
+esac
+
 # SENTRY_DSN 是可选的，但警告
 if [[ -z "${SENTRY_DSN:-}" ]]; then
     warn "SENTRY_DSN 未设置（可选，但建议生产环境配置以获取错误追踪）"

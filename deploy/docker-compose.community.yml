@@ -183,6 +183,9 @@ services:
       IMBOY_GARAGE_BUCKET: ${IMBOY_GARAGE_BUCKET:-imboy}
       IMBOY_GARAGE_ACCESS_KEY: ${IMBOY_GARAGE_ACCESS_KEY:?IMBOY_GARAGE_ACCESS_KEY is required - see deploy/.env.example}
       IMBOY_GARAGE_SECRET_KEY: ${IMBOY_GARAGE_SECRET_KEY:?IMBOY_GARAGE_SECRET_KEY is required - see deploy/.env.example}
+      # 附件存储注册表：镜像内 sys.config 的 roots 为空（fail-closed），按运行时
+      #   IMBOY_GARAGE_* 登记 garage-primary-private/public 两个根，否则 presign 503。
+      IMBOY_ATTACHMENT_REGISTRY_FROM_GARAGE: ${IMBOY_ATTACHMENT_REGISTRY_FROM_GARAGE:-true}
       # ── LiveKit SFU（群通话/屏幕共享）/ LiveKit SFU ─────────────────────────
       # LK-01 域名收敛：信令默认走独立 RTC 域 WSS（wss://<RTC_DOMAIN>，由 nginx
       # 反代 7880），不再经 ${API_DOMAIN}/livekit 子路径。显式设置

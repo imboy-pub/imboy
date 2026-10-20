@@ -41,6 +41,9 @@
 %   IMBOY_GARAGE_BUCKET    -> garage.bucket
 %   IMBOY_GARAGE_ACCESS_KEY -> garage.access_key
 %   IMBOY_GARAGE_SECRET_KEY -> garage.secret_key
+%   IMBOY_ATTACHMENT_REGISTRY_FROM_GARAGE -> {imboy, attachment_storage_registry}
+%                              (true 且 registry 无根时，按覆盖后的 garage 配置登记
+%                               garage-primary-private / garage-primary-public 两个根)
 %   IMBOY_WECHAT_MCH_ID / IMBOY_WECHAT_APP_ID / IMBOY_WECHAT_API_V3_KEY
 %   IMBOY_WECHAT_CERT_SERIAL / IMBOY_WECHAT_PRIVATE_KEY / IMBOY_WECHAT_PLATFORM_PUBLIC_KEY
 %   IMBOY_ALIPAY_APP_ID / IMBOY_ALIPAY_PRIVATE_KEY / IMBOY_ALIPAY_PUBLIC_KEY
@@ -68,6 +71,8 @@
 %%%
 
 -export([override_from_env/0]).
+%% 单独导出便于 EUnit 在不触发整套 override 的前提下驱动注册表派生。
+-export([override_attachment_storage_registry/0]).
 -export([current/0]).
 -export([edition/0]).
 
@@ -182,6 +187,9 @@ override_from_env() ->
 
     %% Garage S3 对象存储凭证
     ok = override_garage(),
+
+    %% 附件存储注册表：容器部署无 sys.config 可写，按已覆盖的 garage 配置显式登记根
+    ok = override_attachment_storage_registry(),
 
     %% LiveKit SFU 凭证与信令地址
     ok = override_livekit(),
@@ -506,6 +514,80 @@ override_garage() ->
         _ ->
             ok
     end.
+
+%% @doc 附件存储注册表的 env 显式登记（单 Garage 部署形态）。
+%% registry 是 fail-closed：roots 为空则拒绝签发上传能力（presign 503
+%% upload_root_unavailable）。容器镜像的 sys.config 来自 sys.config.example
+%% （roots => #{}），garage 又被 IMBOY_GARAGE_* 覆盖，静态样例根无法匹配运行时
+%% endpoint——因此允许运维用 IMBOY_ATTACHMENT_REGISTRY_FROM_GARAGE=true 声明
+%% 「以覆盖后的 garage 配置登记两个确定性根」：
+%%   garage-primary-private -> garage.bucket
+%%   garage-primary-public  -> garage.public_bucket（配置了且不同于 bucket 才登记）
+%% 仅在 registry 缺失或 roots 为空时生效，显式写好的 registry 永不被覆盖。
+%% namespace 是“曾使用即永不复用”的位置标识：日后更换 Garage endpoint/bucket
+%% 必须改为显式 registry（新增根/别名），不能继续依赖派生。
+-spec override_attachment_storage_registry() -> ok.
+override_attachment_storage_registry() ->
+    EnvVar = "IMBOY_ATTACHMENT_REGISTRY_FROM_GARAGE",
+    case os:getenv(EnvVar) of
+        Value when is_list(Value), length(Value) > 0 ->
+            case parse_feature_boolean(EnvVar, Value) of
+                true -> derive_attachment_registry_from_garage();
+                false -> ok
+            end;
+        _ ->
+            ok
+    end.
+
+-spec derive_attachment_registry_from_garage() -> ok.
+derive_attachment_registry_from_garage() ->
+    Registry = application:get_env(imboy, attachment_storage_registry, #{}),
+    Garage = application:get_env(imboy, garage, #{}),
+    Endpoint = maps:get(endpoint, Garage, <<>>),
+    Bucket = maps:get(bucket, Garage, <<>>),
+    PublicBucket = maps:get(public_bucket, Garage, <<>>),
+    HasRoots = maps:size(maps:get(roots, Registry, #{})) > 0,
+    %% 三个值必须已是 binary：选根时与 elib_oss:endpoint/0 比对的是 binary，
+    %% `{env, Var}` 占位等未解析形态若被派生成根，会永远匹配不上却让 roots 非空、
+    %% 把启动告警吞掉——那正是 F13 要消灭的“无提示失败”。
+    Usable =
+        is_binary(Endpoint) andalso Endpoint =/= <<>> andalso
+            is_binary(Bucket) andalso Bucket =/= <<>> andalso
+            is_binary(PublicBucket),
+    case HasRoots orelse not Usable of
+        true ->
+            ok;
+        false ->
+            Roots0 = #{
+                <<"garage-primary-private">> =>
+                    garage_root(Endpoint, <<"garage-primary-private">>, Bucket)
+            },
+            Roots =
+                case PublicBucket =/= <<>> andalso PublicBucket =/= Bucket of
+                    true ->
+                        Roots0#{
+                            <<"garage-primary-public">> =>
+                                garage_root(Endpoint, <<"garage-primary-public">>, PublicBucket)
+                        };
+                    false ->
+                        ?LOG_WARNING(
+                            "[imboy] attachment registry derived with the private root only: "
+                            "garage.public_bucket is missing or equals bucket (~p); "
+                            "scope=public uploads will be rejected with 503 upload_root_unavailable",
+                            [PublicBucket]
+                        ),
+                        Roots0
+                end,
+            application:set_env(imboy, attachment_storage_registry, Registry#{
+                version => 1,
+                roots => Roots,
+                upload_namespaces => maps:get(upload_namespaces, Registry, #{})
+            }),
+            ok
+    end.
+
+garage_root(Endpoint, Namespace, Container) ->
+    #{driver => <<"garage">>, namespace => Namespace, endpoint => Endpoint, container => Container}.
 
 %% @doc 覆盖 LiveKit SFU 配置
 %% Override LiveKit SFU config (ws_url / api_key / api_secret)

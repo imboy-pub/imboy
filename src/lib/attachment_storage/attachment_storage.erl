@@ -17,6 +17,7 @@
 
 -export([
     registry/0,
+    validate_registry/0,
     session_location/1,
     frozen_location/2,
     delete_snapshot/1,
@@ -38,6 +39,16 @@ registry() ->
     case maps:get(version, R, undefined) of
         ?REGISTRY_VERSION -> R;
         _ -> #{version => ?REGISTRY_VERSION, roots => #{}}
+    end.
+
+%% @doc 启动期校验：roots 为空意味着所有新上传都会被拒绝（presign 503
+%% upload_root_unavailable）。fail-closed 本身是设计，但原因必须在启动日志里
+%% 一眼可见，而不是等用户上传失败才发现（F13：全新部署的默认形态就是空根）。
+-spec validate_registry() -> ok | {error, empty_roots}.
+validate_registry() ->
+    case maps:size(maps:get(roots, registry(), #{})) of
+        0 -> {error, empty_roots};
+        _ -> ok
     end.
 
 %% @doc namespace（storage_namespace）→ root 记录。别名一律归 canonical

@@ -81,7 +81,8 @@
         {ws_url, <<"wss://dev.imboy.pub/ws">>},
         {upload_url, <<>>},
 
-        %% 新上传必须冻结已登记的位置；空 registry 拒绝签发上传能力。
+        %% 新上传必须冻结已登记的位置；空 registry 拒绝签发上传能力（presign 503
+        %% upload_root_unavailable，启动日志会打 ERROR 提示）。
         %% New uploads require a registered immutable storage location.
         %% roots: RootId => #{driver => <<"garage">> | <<"disk">>,
         %%   namespace => <<"never-reused-location-id">>, aliases => [],
@@ -89,6 +90,18 @@
         %%   container => <<"bucket-or-logical-container">>}
         %% upload_namespaces: scope => canonical namespace (Disk requires it).
         %% Existing roots cannot be remapped; add a new namespace for a new location.
+        %%
+        %% 单 Garage 形态可直接抄下面这份（endpoint/container 必须与下方 garage 配置
+        %% 的 endpoint/bucket/public_bucket 完全一致，否则 presign 找不到根）：
+        %% {attachment_storage_registry, #{version => 1, upload_namespaces => #{}, roots => #{
+        %%     <<"garage-primary-private">> => #{driver => <<"garage">>,
+        %%         namespace => <<"garage-primary-private">>,
+        %%         endpoint => <<"http://127.0.0.1:3900">>, container => <<"imboy">>},
+        %%     <<"garage-primary-public">> => #{driver => <<"garage">>,
+        %%         namespace => <<"garage-primary-public">>,
+        %%         endpoint => <<"http://127.0.0.1:3900">>, container => <<"imboy-public">>}}}},
+        %% 容器部署（garage 由 IMBOY_GARAGE_* 覆盖，无法预写静态 endpoint）改用
+        %% IMBOY_ATTACHMENT_REGISTRY_FROM_GARAGE=true 按运行时 garage 配置登记同名两根。
         {attachment_storage_registry, #{version => 1, roots => #{}, upload_namespaces => #{}}},
 
         %% Garage S3 兼容对象存储配置（占位符，实际值放 sys.local.config）
