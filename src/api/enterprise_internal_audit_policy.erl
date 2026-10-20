@@ -43,6 +43,15 @@
 policies() ->
     [
         #{
+            id => <<"INT-49">>,
+            method => <<"PATCH">>,
+            path => <<"/api/internal/v1/directory/memberships">>,
+            verdict => required_audit,
+            audit_action => <<"directory.member_status_changed">>,
+            audit_resource_type => <<"organization_member">>,
+            reason => <<"Source-owned membership suspension and restore change access">>
+        },
+        #{
             id => <<"INT-43">>,
             method => <<"POST">>,
             path => <<"/api/internal/v1/directory/sync">>,

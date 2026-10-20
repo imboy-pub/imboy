@@ -1960,6 +1960,12 @@
         "static": false
       },
       {
+        "action": null,
+        "handler": "enterprise_directory_member_handler",
+        "path": "/api/internal/v1/directory/memberships",
+        "static": false
+      },
+      {
         "action": "organizations",
         "handler": "enterprise_directory_handler",
         "path": "/api/internal/v1/directory/organizations",

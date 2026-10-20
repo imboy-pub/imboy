@@ -4,6 +4,7 @@
     pending_projections_tx/3,
     login_projections_tx/3,
     lock_source_tx/2,
+    lock_source_tx/3,
     authorize_tx/2,
     organization_tx/3,
     save_organization_tx/5,
@@ -21,8 +22,15 @@
     restore_department_tx/5
 ]).
 
-lock_source_tx(Conn, #{application_id := AppId, credential_id := CredId}) when
-    is_integer(AppId), AppId > 0, is_integer(CredId), CredId > 0
+lock_source_tx(Conn, Ctx) ->
+    lock_source_tx(Conn, Ctx, <<"identities:write">>).
+
+lock_source_tx(Conn, #{application_id := AppId, credential_id := CredId}, Scope) when
+    is_integer(AppId),
+    AppId > 0,
+    is_integer(CredId),
+    CredId > 0,
+    (Scope =:= <<"identities:write">> orelse Scope =:= <<"members:write">>)
 ->
     one(
         elib_pg:query(
@@ -32,13 +40,13 @@ lock_source_tx(Conn, #{application_id := AppId, credential_id := CredId}) when
                 " JOIN enterprise_application_credential c ON c.application_id=a.id"
                 " WHERE a.id=$1 AND c.id=$2 AND a.status='active' AND c.status='active'"
                 " AND (c.expires_at IS NULL OR c.expires_at>clock_timestamp())"
-                " AND a.allowed_scopes ? 'identities:write' FOR UPDATE OF a FOR SHARE OF c"
+                " AND a.allowed_scopes ? $3 FOR UPDATE OF a FOR SHARE OF c"
             >>,
-            [AppId, CredId]
+            [AppId, CredId, Scope]
         ),
         insufficient_scope
     );
-lock_source_tx(_, _) ->
+lock_source_tx(_, _, _) ->
     {error, invalid_source_context}.
 
 authorize_tx(Conn, #{application_id := AppId, organization_id := OrgId} = Ctx) when
@@ -404,6 +412,8 @@ save_membership_tx(Conn, AppId, OrgId, ExternalId, Managed, UserId, Spec) ->
                 " (application_id,organization_id,external_user_id,managed,source_version,payload_digest,status,projected_user_id,department_external_ids)"
                 " VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb) ON CONFLICT (application_id,organization_id,external_user_id)"
                 " DO UPDATE SET managed=EXCLUDED.managed,source_version=EXCLUDED.source_version,"
+                " suspension_member_version=CASE WHEN EXCLUDED.status='removed' THEN NULL"
+                " ELSE enterprise_directory_membership_source.suspension_member_version END,"
                 " offboarding_member_updated_at=CASE WHEN EXCLUDED.status='removed'"
                 " THEN enterprise_directory_membership_source.offboarding_member_updated_at ELSE NULL END,"
                 " payload_digest=EXCLUDED.payload_digest,status=EXCLUDED.status,projected_user_id=EXCLUDED.projected_user_id,"
@@ -475,7 +485,23 @@ save_offboarding_tx(Conn, AppId, OrgId, ExternalId, RemovedAt) ->
 project_member_tx(Conn, OrgId, UserId, Status, Managed, PreviousSource) ->
     PreviousSourceStatus = maps:get(<<"status">>, PreviousSource, undefined),
     RemovedAt = maps:get(<<"offboarding_member_updated_at">>, PreviousSource, null),
-    case organization_member_repo:find_for_update_tx(Conn, OrgId, UserId, <<"role,status">>) of
+    case
+        organization_member_repo:find_for_update_tx(
+            Conn,
+            OrgId,
+            UserId,
+            <<"role,status,(extract(epoch FROM updated_at)*1000000)::bigint AS member_version">>
+        )
+    of
+        {ok, #{
+            <<"status">> := <<"suspended">>,
+            <<"role">> := <<"member">>,
+            <<"member_version">> := MemberVersion
+        }} when Status =:= <<"removed">>, Managed ->
+            case maps:get(<<"suspension_member_version">>, PreviousSource, null) of
+                MemberVersion -> {ok, remove};
+                _ -> {error, local_membership_conflict}
+            end;
         {ok, #{<<"status">> := <<"suspended">>}} ->
             {error, local_membership_conflict};
         {error, not_found} when Status =:= <<"active">> ->

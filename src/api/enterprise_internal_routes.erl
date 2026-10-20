@@ -491,6 +491,24 @@ routes() ->
             rate_bucket => internal_read,
             idempotency => not_required,
             sender_mode => none
+        },
+        #{
+            id => <<"INT-48">>,
+            method => <<"GET">>,
+            path => <<"/api/internal/v1/directory/memberships">>,
+            scope => <<"identities:read">>,
+            rate_bucket => internal_read,
+            idempotency => not_required,
+            sender_mode => none
+        },
+        #{
+            id => <<"INT-49">>,
+            method => <<"PATCH">>,
+            path => <<"/api/internal/v1/directory/memberships">>,
+            scope => <<"members:write">>,
+            rate_bucket => internal_write,
+            idempotency => required,
+            sender_mode => none
         }
     ].
 

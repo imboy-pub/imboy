@@ -14,9 +14,9 @@ run() ->
 
 run(#{conn := C} = S) ->
     Routes = enterprise_internal_routes:routes(),
-    ?assertEqual(47, length(Routes)),
+    ?assertEqual(49, length(Routes)),
     ?assertEqual(
-        [iolist_to_binary(io_lib:format("INT-~2..0B", [Number])) || Number <- lists:seq(1, 47)],
+        [iolist_to_binary(io_lib:format("INT-~2..0B", [Number])) || Number <- lists:seq(1, 49)],
         lists:sort([maps:get(id, Route) || Route <- Routes])
     ),
     {AppId, Credential} = create_application(C),

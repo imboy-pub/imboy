@@ -3,7 +3,9 @@
 
 explicit_oa_capabilities_test() ->
     Directory = [<<"identities:read">>, <<"identities:write">>],
-    Combined = Directory ++ [<<"oa:login:issue">>, <<"sso:exchange">>, <<"application:read">>],
+    Combined =
+        Directory ++
+            [<<"oa:login:issue">>, <<"sso:exchange">>, <<"application:read">>, <<"members:write">>],
     ?assert(enterprise_directory_source_policy:allowed(Directory)),
     ?assert(enterprise_directory_source_policy:allowed(Combined)),
     ?assertEqual(Directory, enterprise_directory_source_policy:directory_scopes(Combined)),

@@ -578,6 +578,28 @@ routes:
     idempotency: not_required
     rate: internal_read
     sender_mode: none
+  - id: INT-48
+    method: GET
+    path: /api/internal/v1/directory/memberships
+    scope: identities:read
+    grant: source application and live organization-wide grant
+    resource: source managed organization member
+    actor: application
+    idempotency: not_required
+    rate: internal_read
+    sender_mode: none
+
+  - id: INT-49
+    method: PATCH
+    path: /api/internal/v1/directory/memberships
+    scope: members:write
+    grant: source application and live organization-wide grant
+    resource: source managed organization member
+    actor: application
+    idempotency: required
+    rate: internal_write
+    sender_mode: none
+
 stable_error_codes: [invalid_credential, credential_expired, application_disabled,
   organization_disabled, insufficient_scope, resource_not_found, identity_not_mapped,
   organization_boundary_violation, idempotency_conflict, rate_limited,

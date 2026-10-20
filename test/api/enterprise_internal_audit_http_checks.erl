@@ -9,7 +9,7 @@ reset() ->
 
 assert_complete() ->
     Required = enterprise_internal_audit_policy:required_ids(),
-    ?assertEqual(27, length(Required)),
+    ?assertEqual(28, length(Required)),
     ?assertEqual(
         lists:sort(Required),
         lists:sort(seen())

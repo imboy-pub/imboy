@@ -122,6 +122,7 @@ sync_error(organization_not_active) -> <<"organization_boundary_violation">>;
 sync_error(organization_boundary_violation) -> <<"organization_boundary_violation">>;
 sync_error(security_gate_closed) -> <<"security_gate_closed">>;
 sync_error(local_membership_conflict) -> <<"resource_conflict">>;
+sync_error({membership_conflict, _}) -> <<"resource_conflict">>;
 sync_error(confirmed_human_owner_required) -> <<"resource_conflict">>;
 sync_error(initial_owner_conflict) -> <<"resource_conflict">>;
 sync_error(not_found) -> <<"resource_not_found">>;

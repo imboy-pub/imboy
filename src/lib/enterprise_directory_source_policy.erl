@@ -8,6 +8,7 @@ allowed(Scopes) when is_list(Scopes) ->
             [
                 <<"identities:read">>,
                 <<"identities:write">>,
+                <<"members:write">>,
                 <<"application:read">>,
                 <<"oa:login:issue">>,
                 <<"sso:exchange">>

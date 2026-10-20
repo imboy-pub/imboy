@@ -2,7 +2,7 @@
 
 > **版本**：v1.0（冻结）｜ **受众**：企业 OA / 第三方集成系统开发者
 > **Base Path**：`/api/internal/v1`
-> **机器契约**：`api/openapi-internal.yaml`（编辑真源，33 path / 47 端点，
+> **机器契约**：`api/openapi-internal.yaml`（编辑真源，34 path / 49 端点，
 > 字段级 schema 逐端点实证自 handler）；`api/openapi-internal.bundle.yaml`
 > （bundle 单文件，可直接导入 Postman / Apifox / openapi-generator）。
 > 本目录是面向集成方的交付文档。路由与合同由 12 项机械断言
@@ -86,13 +86,14 @@ Authorization: Bearer <credential_prefix>.<secret>
 
 `credential_prefix` 是服务端签发的完整 `ib_int_...` 前缀，不是 application_id；也不要用返回的 credential_id 自行重建。签发／轮换响应的 `secret` 字段实际给出可直接使用的完整凭证，原样作为 Bearer 值保存。
 
-## 4. 授权（Scope，固定 19 枚举，无通配）
+## 4. 授权（Scope，固定 20 枚举，无通配）
 
 | Scope | 解锁能力 |
 |---|---|
 | `application:read` | 读本应用信息 |
 | `identities:read` | 身份解析、目录查询 |
-| `identities:write` | 身份绑定 / 解绑 |
+| `identities:write` | 身份绑定 / 解绑、来源目录同步 |
+| `members:write` | 来源托管普通成员停用/恢复（INT-49；独立全域 Grant） |
 | `groups:write` | 群组与成员管理 |
 | `groups:read` | 群组/成员只读（INT-18/26/27） |
 | `workspaces:read` | Workspace 列表与详情（INT-24/25） |
@@ -274,7 +275,7 @@ application and device binding, short expiration and one-time consumption. Never
 
 ## 10. 端点参考与 Postman 集合
 
-- 人类阅读：[endpoints.md](./endpoints.md)（47 个 Internal 操作，按域分组）。
+- 人类阅读：[endpoints.md](./endpoints.md)（49 个 Internal 操作，按域分组）。
 - **机器契约**：`../../openapi-internal.yaml`（编辑真源）与
   `../../openapi-internal.bundle.yaml`（bundle 单文件）——字段级请求/响应
   schema 逐端点从 handler 实证（`src/api/enterprise_*_handler.erl`），
@@ -282,7 +283,7 @@ application and device binding, short expiration and one-time consumption. Never
   `x-imboy-scope` / `x-imboy-rate-bucket` / `x-imboy-idempotency` 扩展字段
   标注。工具导入用 bundle 单文件。
 - **动手联调**：[IMBoy-Internal-API-v1.postman_collection.json](./IMBoy-Internal-API-v1.postman_collection.json)
-  —— Postman / Apifox 直接导入（Collection v2.1），已含全部 47 个 Internal 操作、按域分文件夹、
+  —— Postman / Apifox 直接导入（Collection v2.1），已含全部 49 个 Internal 操作、按域分文件夹、
   示例请求体与 base_url / credential 等变量；另含 3 个 Human 入站伴随请求，其认证分别配置。目录外部组织标识须对应可信来源配置，不能只替换域名即全量运行。
   集合只收录当前冻结路由表中**已实现、可调用**的端点；CRUD 覆盖审计中标为
   `待实现` 的路径不会作为假请求提前塞入集合。
@@ -332,3 +333,18 @@ projection_status=unlinked|pending|projected|removed|retired；后者同时核�
 English: Directory sync is bounded, incremental and atomic per batch. Reconciliation GETs require only
 read scope plus current source and organization-wide authorization. Pending account associations and
 membership projections are distinct. Cursors are signed and filter-bound; pages are live, not snapshots.
+
+
+## OA 企业与成员生命周期
+
+1. 平台管理员先创建应用、签发凭据并配置可信目录来源：绑定外部组织 ID、Owner、到期时间及是否准许首次建组织。OA 不能自行指定任意 Owner 或越过可信配置。
+2. `POST /api/internal/v1/directory/sync`（INT-43，`identities:write`）首次初始化组织，再按各自递增版本同步部门、人员和任职。全量中遗漏的记录不会自动删除；离职须显式发送 `membership.status=removed`。来源人员与组织任职版本独立。
+3. 未关联人员进入待关联状态；通过既有可信身份关联/注册流程关联 Human 账号后投影成员及部门关系。OA 不能凭任意用户 ID 接管账号。使用 INT-45..47 核对来源与实际投影状态。
+4. `GET /api/internal/v1/directory/memberships?external_organization_id=...&external_user_id=...`（INT-48，`identities:read`）返回当前成员状态、`member_version`、离职阻塞数量及业务资格。必须具备目标组织全域 Grant。检查是建议，实际变更会重新验证。
+5. 离职先用 `PATCH /api/internal/v1/directory/memberships`（INT-49）发送外部组织/人员 ID、`status=suspended`、检查返回的 `expected_member_version`，并携带 `Idempotency-Key`。`members:write` 须单独显式加入应用和全域 Grant，初始化不会自动授予。只支持本来源托管、已关联投影的普通成员；Owner/Admin 交由人工治理。
+6. 停用保留账号、历史及其他组织关系。先交接工作区/项目/群组/频道所有权、未完成任务，解除业务身份分配，再以 INT-43 显式移除任职。实际移除仍受交接检查保护。仅离开一个组织时保持 `source_status=active`，避免退役跨组织关联。
+7. 取消离职时重新检查，以新版本和新幂等键 PATCH `status=active`。只能恢复本来源暂停且未被人工再次修改的成员；人工暂停、角色提升、旧版本或来源不匹配均拒绝。409 后重新读取并处理冲突，不能盲重试覆盖。
+
+成员状态修改、暂停来源标记、审计及幂等结果同事务；撤权后旧请求重放也重新鉴权。读取和修改响应禁止缓存。64 位 `member_version` 必须按 int64 无损处理。
+
+当前部门契约不包含负责人、主部门、岗位和排序；这些字段需按广州 OA 的真实字段及治理规则确认后另行扩展。

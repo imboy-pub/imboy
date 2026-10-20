@@ -2613,6 +2613,7 @@ enterprise_internal_routes() ->
         }},
         %% INT-17 成员受限游标目录
         {"/api/internal/v1/directory/sync", enterprise_directory_handler, #{action => sync}},
+        {"/api/internal/v1/directory/memberships", enterprise_directory_member_handler, #{}},
         {"/api/internal/v1/directory/organizations", enterprise_directory_handler, #{
             action => organizations
         }},

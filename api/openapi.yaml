@@ -1183,6 +1183,8 @@ paths:
     $ref: './paths/internal/v1/directory/organizations.yaml'
   /api/internal/v1/directory/departments:
     $ref: './paths/internal/v1/directory/departments.yaml'
+  /api/internal/v1/directory/memberships:
+    $ref: './paths/internal/v1/directory/memberships.yaml'
   /api/internal/v1/directory/persons:
     $ref: './paths/internal/v1/directory/persons.yaml'
   /api/internal/v1/directory/sync:
@@ -1253,7 +1255,7 @@ components:
       bearerFormat: <credential_prefix>.<secret>
       description: |
         每份凭证只属于一个企业应用，同一应用可有多份凭证。有效权限为
-        allowed_scopes 与当前生效 Grant scopes 的交集（固定 19 枚举、无通配）；
+        allowed_scopes 与当前生效 Grant scopes 的交集（固定 20 枚举、无通配）；
         零 Grant 或全部撤销/过期时没有权限。secret 平台侧只存不可逆摘要，
         泄露即轮换；应用停用/归档后所有请求返回 application_disabled（403）。
 

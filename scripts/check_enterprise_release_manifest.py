@@ -42,8 +42,8 @@ DEFAULT_MANIFEST = os.environ.get("IMBOY_INTERNAL_MANIFEST", str(Path(__file__).
 
 PREFIX = "/api/internal/v1/"
 # V2.1 只读扩面（INT-24..31）：路由 23→31、cowboy path 19→25（2026-09-24）
-MANIFEST_ROUTE_COUNT = 47
-ROUTER_PATH_COUNT = 33
+MANIFEST_ROUTE_COUNT = 49
+ROUTER_PATH_COUNT = 34
 # 代码类扫描根（§8「含 alias / handler / migration / OpenAPI 全谱」）
 CODE_ROOTS = ("src", "config", "priv")
 CODE_SUFFIXES = {".erl", ".hrl", ".config", ".example", ".json", ".yaml", ".sql"}

@@ -215,6 +215,10 @@ spec(<<"INT-46">>) ->
     {ok, #{kind => list, scope => <<"identities:read">>}};
 spec(<<"INT-47">>) ->
     {ok, #{kind => list, scope => <<"identities:read">>}};
+spec(<<"INT-48">>) ->
+    {ok, #{kind => list, scope => <<"identities:read">>}};
+spec(<<"INT-49">>) ->
+    {ok, #{kind => list, scope => <<"members:write">>}};
 spec(_RouteId) ->
     error.
 
@@ -348,7 +352,9 @@ candidate_ids() ->
                 <<"INT-44">>,
                 <<"INT-45">>,
                 <<"INT-46">>,
-                <<"INT-47">>
+                <<"INT-47">>,
+                <<"INT-48">>,
+                <<"INT-49">>
             ]
     ].
 

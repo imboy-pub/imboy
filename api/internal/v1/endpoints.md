@@ -1,4 +1,4 @@
-# Internal API v1 — 端点参考（47 个 Internal 操作）
+# Internal API v1 — 端点参考（49 个 Internal 操作）
 
 > 与代码冻结表（`src/api/enterprise_internal_routes.erl`）逐条一致；
 > 字段级机器契约见 `../../openapi-internal.yaml`（编辑真源，
@@ -15,7 +15,7 @@
 - **企业集成**：Application Credential + `/api/internal/v1/*`，资源按显式目标 Organization、来源配置与已授予 Workspace 校验，应用归属不是授权边界，不得复用 Admin 权限。
 
 因此，管理后台出现一个菜单，并不表示同名资源应自动暴露完整 Internal CRUD。
-当前冻结合同（INT-01..INT-47）的实际覆盖如下：
+当前冻结合同（INT-01..INT-49）的实际覆盖如下：
 
 | 企业数据 | 分页查看 | 新增 | 详情 | 修改 | 删除/归档 | 当前结论 |
 |---|---|---|---|---|---|---|
@@ -54,7 +54,7 @@ Grant/Scope、OpenAPI、审计和自动化测试，再作为 v1 只追加端点�
 - 组织创建、组织删除、Application/Credential 生命周期、Grant 签发/撤销仍只属于
   `/api/adm/*`，不会下放给 Application Credential；
 - 上述待补合同正式实现前，当前可导入 Postman 的权威集合仍是本目录的
-  `IMBoy-Internal-API-v1.postman_collection.json`（47 个 Internal 操作及 3 个 Human 伴随请求）。
+  `IMBoy-Internal-API-v1.postman_collection.json`（49 个 Internal 操作及 3 个 Human 伴随请求）。
 
 ## 应用与凭证
 
@@ -247,3 +247,13 @@ membership_status、projection_status 精确过滤。未知或重复参数拒绝
 
 English: INT-43/44 are implemented source-sync and login-ticket operations. INT-45..47 add read-only
 source reconciliation. Human login exchange/link/register remain outside the Internal credential surface.
+
+
+| ID | 方法与路径 | Scope | 限流桶 | 幂等 |
+|---|---|---|---|---|
+| INT-48 | GET /directory/memberships | identities:read + 本来源目标全域 Grant | internal_read | — |
+| INT-49 | PATCH /directory/memberships | members:write + 本来源目标全域 Grant | internal_write | K |
+
+INT-48 必传 external_organization_id、external_user_id，返回成员版本及离职阻塞计数。
+INT-49 使用相同外部标识、status=active/suspended、expected_member_version；仅来源托管普通成员，
+恢复必须匹配来源暂停标记。离职先暂停、人工交接，再由 INT-43 显式移除任职。详见 README 的 OA 企业与成员生命周期。

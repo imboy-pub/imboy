@@ -24,6 +24,7 @@ run() ->
         rejected_atomicity(Conn, Ctx),
         pending_claim_projection(Conn, Ctx),
         enterprise_directory_source_read_pg_checks:exercise(Conn, Ctx),
+        enterprise_directory_member_pg_checks:exercise(Conn, Ctx),
         local_membership_governance(Conn, Ctx),
         enterprise_directory_user_delete_pg_checks:exercise(State, Ctx),
         concurrent_revocations(State, Ctx),
@@ -38,33 +39,53 @@ run() ->
 %% missing server coordinates remain distinct errors. Authentication is performed
 %% by the real PG connection, never by this presence check.
 require_server_env(Getenv) ->
-    Names = ["DIRECTORY_SYNC_INTTEST_PG_HOST", "DIRECTORY_SYNC_INTTEST_PG_PORT",
-        "DIRECTORY_SYNC_INTTEST_PG_USER", "DIRECTORY_SYNC_INTTEST_PG_PASSWORD"],
-    lists:foreach(fun(Name) ->
-        case Getenv(Name) of
-            false -> error({directory_fixture_requires_explicit_server, Name});
-            "" when Name =/= "DIRECTORY_SYNC_INTTEST_PG_PASSWORD" ->
-                error({directory_fixture_requires_explicit_server, Name});
-            _ -> ok
-        end
-    end, Names).
+    Names = [
+        "DIRECTORY_SYNC_INTTEST_PG_HOST",
+        "DIRECTORY_SYNC_INTTEST_PG_PORT",
+        "DIRECTORY_SYNC_INTTEST_PG_USER",
+        "DIRECTORY_SYNC_INTTEST_PG_PASSWORD"
+    ],
+    lists:foreach(
+        fun(Name) ->
+            case Getenv(Name) of
+                false ->
+                    error({directory_fixture_requires_explicit_server, Name});
+                "" when Name =/= "DIRECTORY_SYNC_INTTEST_PG_PASSWORD" ->
+                    error({directory_fixture_requires_explicit_server, Name});
+                _ ->
+                    ok
+            end
+        end,
+        Names
+    ).
 
 directory_server_env_contract_test() ->
     Password = "DIRECTORY_SYNC_INTTEST_PG_PASSWORD",
-    Base = #{"DIRECTORY_SYNC_INTTEST_PG_HOST" => "127.0.0.1",
+    Base = #{
+        "DIRECTORY_SYNC_INTTEST_PG_HOST" => "127.0.0.1",
         "DIRECTORY_SYNC_INTTEST_PG_PORT" => "55432",
-        "DIRECTORY_SYNC_INTTEST_PG_USER" => "fixture"},
+        "DIRECTORY_SYNC_INTTEST_PG_USER" => "fixture"
+    },
     Read = fun(Map) -> fun(Name) -> maps:get(Name, Map, false) end end,
     ?assertEqual(ok, require_server_env(Read(Base#{Password => ""}))),
     ?assertEqual(ok, require_server_env(Read(Base#{Password => "synthetic-nonempty"}))),
-    ?assertError({directory_fixture_requires_explicit_server, Password},
-        require_server_env(Read(Base))),
-    [begin
-        ?assertError({directory_fixture_requires_explicit_server, Name},
-            require_server_env(Read((Base#{Password => ""})#{Name => ""}))),
-        ?assertError({directory_fixture_requires_explicit_server, Name},
-            require_server_env(Read(maps:remove(Name, Base#{Password => ""}))))
-     end || Name <- maps:keys(Base)],
+    ?assertError(
+        {directory_fixture_requires_explicit_server, Password},
+        require_server_env(Read(Base))
+    ),
+    [
+        begin
+            ?assertError(
+                {directory_fixture_requires_explicit_server, Name},
+                require_server_env(Read((Base#{Password => ""})#{Name => ""}))
+            ),
+            ?assertError(
+                {directory_fixture_requires_explicit_server, Name},
+                require_server_env(Read(maps:remove(Name, Base#{Password => ""})))
+            )
+        end
+     || Name <- maps:keys(Base)
+    ],
     ok.
 
 schema(Conn) ->
@@ -147,7 +168,13 @@ migration_sql(Direction) ->
     Path =
         "priv/migrations/00000177_enterprise_directory_sync." ++ atom_to_list(Direction) ++ ".sql",
     {ok, Sql} = file:read_file(Path),
-    Sql.
+    {ok, Suspension} = file:read_file(
+        "priv/migrations/00000208_directory_member_suspension." ++ atom_to_list(Direction) ++ ".sql"
+    ),
+    case Direction of
+        down -> <<Suspension/binary, "\n", Sql/binary>>;
+        up -> <<Sql/binary, "\n", Suspension/binary>>
+    end.
 
 sql_results(Results) when is_list(Results) -> Results;
 sql_results(Result) -> [Result].

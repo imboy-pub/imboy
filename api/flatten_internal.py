@@ -30,8 +30,8 @@ BUNDLE = API_DIR / 'openapi-internal.bundle.yaml'
 METHODS = {'get', 'post', 'put', 'patch', 'delete', 'head', 'options', 'trace'}
 
 # 自校验冻结口径（计划 §15.1 修正后）
-EXPECT_PATHS = 33
-EXPECT_OPS = 47
+EXPECT_PATHS = 34
+EXPECT_OPS = 49
 
 
 def load_yaml(path):
@@ -103,7 +103,7 @@ def count_refs(node):
 
 def selfcheck(bundle):
     desc = bundle['info'].get('description', '')
-    for token in (f'{EXPECT_PATHS} 条', f'{EXPECT_OPS} 个操作', '19 枚举'):
+    for token in (f'{EXPECT_PATHS} 条', f'{EXPECT_OPS} 个操作', '20 枚举'):
         if token not in desc:
             sys.exit('selfcheck: info.description missing frozen count token %r' % token)
     paths = bundle['paths']

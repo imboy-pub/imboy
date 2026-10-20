@@ -2,7 +2,7 @@
   "info": {
     "name": "IMBoy Internal API v1",
     "_postman_id": "74b0c0be-ae23-5011-b04e-a7776770f4bd",
-    "description": "IMBoy 企业集成 API：47 个 Internal 操作、33 条路径；另含 3 个独立认证的 Human OA 登录伴随请求。设置部署方提供的 base_url、应用 credential、可信来源外部组织标识；写请求使用稳定业务幂等键，修改/归档填写当前版本。所有示例为合成数据；请勿直接对生产环境运行整个集合。",
+    "description": "IMBoy 企业集成 API：49 个 Internal 操作、34 条路径；另含 3 个独立认证的 Human OA 登录伴随请求。设置部署方提供的 base_url、应用 credential、可信来源外部组织标识；写请求使用稳定业务幂等键，修改/归档填写当前版本。所有示例为合成数据；请勿直接对生产环境运行整个集合。",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -130,6 +130,14 @@
       "key": "directory_idempotency_key",
       "value": "synthetic-directory-batch-1",
       "type": "string"
+    },
+    {
+      "key": "directory_external_user_id",
+      "value": "oa-user-001"
+    },
+    {
+      "key": "directory_member_version",
+      "value": "replace-with-preflight-member-version"
     }
   ],
   "item": [
@@ -2064,6 +2072,49 @@
               }
             }
           ]
+        },
+        {
+          "name": "INT-48 来源成员离职检查",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{credential}}"
+              }
+            ],
+            "url": "{{base_url}}/api/internal/v1/directory/memberships?external_organization_id={{directory_external_organization_id}}&external_user_id={{directory_external_user_id}}"
+          }
+        },
+        {
+          "name": "INT-49 来源成员停用或恢复",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{credential}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idempotency_key}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/internal/v1/directory/memberships",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"external_organization_id\": \"{{directory_external_organization_id}}\",\n  \"external_user_id\": \"{{directory_external_user_id}}\",\n  \"status\": \"suspended\",\n  \"expected_member_version\": {{directory_member_version}}\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
         }
       ]
     }

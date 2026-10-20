@@ -8,7 +8,7 @@
 %
 % 覆盖（冻结表 enterprise_internal_audit_policy）：
 %   ① 政策覆盖完整性：policies() 精确覆盖路由表全部非 GET operation
-%      （REQUIRED 27 + DEVIATION 4 = 31，无遗漏无表外）；
+%      （REQUIRED 28 + DEVIATION 4 = 32，无遗漏无表外）；
 %   ② REQUIRED_AUDIT 逐条：真 HTTP mutation 成功 → 对应 action 审计计数
 %      +1，且审计行含七字段口径（organization_id / resource_type +
 %      resource_id / action / actor_role+actor_user_id /
@@ -56,9 +56,9 @@ policy_coverage() ->
         length(lists:usort(Required ++ Deviation)),
         overlapping_verdicts
     ),
-    ?assertEqual(47, length(enterprise_internal_routes:routes())),
-    ?assertEqual(31, length(NonGet)),
-    ?assertEqual(27, length(Required)),
+    ?assertEqual(49, length(enterprise_internal_routes:routes())),
+    ?assertEqual(32, length(NonGet)),
+    ?assertEqual(28, length(Required)),
     ?assertEqual(4, length(Deviation)),
     lists:foreach(
         fun(Policy) ->
@@ -78,7 +78,8 @@ policy_coverage() ->
         end,
         [
             {<<"INT-43">>, <<"directory.synced">>, <<"directory_sync">>},
-            {<<"INT-44">>, <<"oa.login_ticket_issued">>, <<"enterprise_application">>}
+            {<<"INT-44">>, <<"oa.login_ticket_issued">>, <<"enterprise_application">>},
+            {<<"INT-49">>, <<"directory.member_status_changed">>, <<"organization_member">>}
         ]
     ),
     %% DEVIATION 冻结集合（豁免不得静默扩散）
@@ -142,6 +143,7 @@ run_audit(S) ->
     enterprise_channel_write_http_checks:run(S),
     enterprise_workspace_write_http_checks:run(S),
     ok = enterprise_internal_audit_http_checks:directory_sync(S),
+    enterprise_directory_member_http_checks:run(S),
     ok = enterprise_internal_audit_http_checks:oa_login(S),
     enterprise_internal_audit_http_checks:assert_complete(),
     [].

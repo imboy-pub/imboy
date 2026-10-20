@@ -204,7 +204,7 @@ enterprise_internal_pg_test_() ->
 
 %%%===================================================================
 %%% ① 固定 scope 枚举（V2.1 §7 基线 16 值 + 448b9551/95115377 内部写授权
-%%%    追加 workspaces:write / channels:write / oa:login:issue → 恰 19 个）
+%%%    追加 workspaces:write / channels:write / oa:login:issue / members:write → 恰 20 个）
 %%%===================================================================
 
 -define(V21_SCOPES, [
@@ -226,15 +226,16 @@ enterprise_internal_pg_test_() ->
     <<"customer_service:write">>,
     <<"workspaces:write">>,
     <<"channels:write">>,
-    <<"oa:login:issue">>
+    <<"oa:login:issue">>,
+    <<"members:write">>
 ]).
 
 scope_fixed_enum_test() ->
     ?_test(begin
-        %% all() 返回固定顺序（不做 sort：顺序也是契约），恰好 19 个——
+        %% all() 返回固定顺序（不做 sort：顺序也是契约），恰好 20 个——
         %% 多一个/少一个都判失败（CON-02 口径）。
         ?assertEqual(?V21_SCOPES, enterprise_internal_scope:all()),
-        ?assertEqual(19, length(enterprise_internal_scope:all())),
+        ?assertEqual(20, length(enterprise_internal_scope:all())),
         ?assertEqual(
             ok, enterprise_internal_scope:authorize(<<"oa:login:issue">>, [<<"oa:login:issue">>])
         ),

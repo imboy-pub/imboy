@@ -30,6 +30,7 @@ sync_handler_test() ->
                 {organization_boundary_violation, <<"organization_boundary_violation">>},
                 {security_gate_closed, <<"security_gate_closed">>},
                 {local_membership_conflict, <<"resource_conflict">>},
+                {{membership_conflict, #{owned_projects => [1]}}, <<"resource_conflict">>},
                 {digest_conflict, <<"idempotency_conflict">>},
                 {stale_source_version, <<"version_conflict">>},
                 {identity_conflict, <<"resource_conflict">>},
