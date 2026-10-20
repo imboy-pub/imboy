@@ -1,20 +1,6 @@
 -module(enterprise_oa_sso_handler).
 
 -moduledoc "OA 一次性 SSO code 签发端点壳（EPGZ-05 HUMAN-SSO-01）。".
-%%%
-% HUMAN-SSO-01 OA 一次性 SSO code 签发端点壳（EPGZ-05，合同 §3）。
-%
-% 路由（A0 W4 经 Router lease 串行登记，本模块不接线 Router）：
-%   POST /api/v1/oa/sso/code -> {"/api/v1/oa/sso/code",
-%                                enterprise_oa_sso_handler, #{action => code}}
-%   —— 必须挂在 /api/v1 认证块（Human JWT：auth_middleware_api_v1），
-%      不得进入 imboy_router:open()/0（NEG-X01：Application Credential
-%      只携带 Bearer ib_int_*，不会是人类 JWT，认证链 401 拒绝）。
-%
-% 壳职责（仓内惯例）：参数解析 + 调 logic + 信封；全部判定在
-% enterprise_oa_sso_logic。错误映射（合同 §3.5，整数信封）：
-%   401 真实 HTTP 401 | 404/403/400/500 HTTP 200 + envelope code。
-%%%
 
 -behavior(cowboy_rest).
 

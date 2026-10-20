@@ -19,16 +19,13 @@ exercise(State) ->
     Headers = admin_headers(Conn),
     Input = #{
         <<"application_key">> => <<"directory-http-oa">>,
-        <<"name">> => <<"OA Directory">>,
-        <<"allowed_scopes">> => enterprise_internal_scope:all()
+        <<"name">> => <<"OA Directory">>
     },
     CreatePath = <<"/api/adm/enterprise/directory/connections">>,
     Denied = request(State, CreatePath, Input, #{}),
     ?assertNotEqual(0, maps:get(<<"code">>, Denied, -1)),
     Created = payload(request(State, CreatePath, Input, Headers)),
-    ?assertEqual(
-        [<<"identities:write">>, <<"identities:read">>], maps:get(<<"allowed_scopes">>, Created)
-    ),
+    ?assertNot(maps:is_key(<<"allowed_scopes">>, Created)),
     AppId = maps:get(<<"application_id">>, Created),
     Path = <<"/api/adm/enterprise/directory/applications/", AppId/binary>>,
     Owner = intbe02_http_support:fixture(h_a1, State),
@@ -45,11 +42,6 @@ exercise(State) ->
     Conflict = request(State, <<Path/binary, "/sources">>, Configuration, Headers),
     ?assertEqual(409, maps:get(<<"code">>, Conflict)),
     Credential = payload(request(State, <<Path/binary, "/credentials">>, #{}, Headers)),
-    ok = intbe02_http_support:sql_exec(
-        Conn,
-        <<"UPDATE enterprise_application SET allowed_scopes='[]'::jsonb WHERE id=$1">>,
-        [binary_to_integer(AppId)]
-    ),
     Machine = #{
         signed_credential => maps:get(<<"secret">>, Credential),
         <<"idempotency-key">> => <<"directory-http-sync-1">>

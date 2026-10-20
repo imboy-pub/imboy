@@ -1,22 +1,6 @@
 -module(enterprise_project_handler).
 
 -moduledoc "V2.1 Internal 资源只读面 INT-28/29 的 HTTP 壳 —— Cowboy 路由由 A0 接线，不进 imboy_router。".
-%%%
-% enterprise_project_handler 是 V2.1 Internal 资源只读面 INT-28/29 的
-% HTTP 壳（plan §6.1 冻结名 planned -> 落地；Cowboy 路由由 A0 接线，本
-% 模块不进 imboy_router——见 SHARED_PATH_PROPOSAL）。
-%
-% 路由（A0 接线形态）：
-%   GET /api/internal/v1/projects               -> #{action => projects}
-%   GET /api/internal/v1/projects/:project_id   -> #{action => project}
-% —— 必须经 enterprise_internal_middleware（scope projects:read →
-%    rate internal_read fail-closed）。只读：无幂等键、无写入。
-%
-% INT-28 边界（kind=workspace，W 取自 query）：workspace_id **必填**——
-% 缺失/非整数 400 invalid_request（fail-closed，不用缺省 W 放大可见域）；
-% W 的 Grant 覆盖判定在参数校验之后、列表执行之前（enforce INT-28）。
-% INT-29：project 行 Org 定位（404 同体）→ Grant 覆盖 project 所属 W（403）。
-%%%
 
 -behavior(cowboy_rest).
 
@@ -130,7 +114,7 @@ with_boundary(Conn, Ctx, RouteId, WorkspaceId, Fun) ->
         ok ->
             Fun();
         {error, Code} ->
-            {error, {enterprise_internal_boundary:error_code(Code), grant_boundary}}
+            {error, {enterprise_internal_boundary:error_code(Code), resource_attribution}}
     end.
 
 -spec binding_tsid(map(), atom()) -> integer().

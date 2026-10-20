@@ -28,8 +28,6 @@ post:
       description: 幂等键（同 key 重放返回首次结果，不重复入箱）
       schema: { type: string, minLength: 1 }
   x-imboy-authentication: hmac
-  x-imboy-legacy-scope-only: true
-  x-imboy-scope: webhooks:manage
   x-imboy-rate-bucket: internal_write
   x-imboy-idempotency: required
   responses:
@@ -48,7 +46,7 @@ post:
               endpoint_generation: { type: integer, description: 投递绑定的端点配置代际 }
     '400': { $ref: '../../../../components/responses/internal/invalid_request.yaml' }
     '401': { $ref: '../../../../components/responses/internal/invalid_credential.yaml' }
-    '403': { $ref: '../../../../components/responses/internal/insufficient_scope.yaml' }
+    '403': { $ref: '../../../../components/responses/internal/organization_boundary_violation.yaml' }
     '409': { $ref: '../../../../components/responses/internal/idempotency_conflict.yaml' }
     '429': { $ref: '../../../../components/responses/internal/rate_limited.yaml' }
     '500': { $ref: '../../../../components/responses/internal/internal_error.yaml' }

@@ -1,5 +1,5 @@
 -module(enterprise_directory_source_config_logic).
--moduledoc "Trusted instance Admin configuration. Handler must verify the Admin session and enterprise_business:write ACL before passing its server-derived adm_user_id. Machine credential requests must never invoke this surface. Public wrappers use elib_pg:with_tx; configure_source_tx callers must rollback abort_tx. Connection input uses the existing Admin application_key, name and redirect_uris atom keys and validation limits; legacy directory scope defaults are server fixed and are not used by HMAC authentication.".
+-moduledoc "Trusted instance Admin configuration. Handler must verify the Admin session and enterprise_business:write ACL before passing its server-derived adm_user_id. Machine credential requests must never invoke this surface. Public wrappers use elib_pg:with_tx; configure_source_tx callers must rollback abort_tx. Connection input uses the existing Admin application_key, name and redirect_uris atom keys and validation limits.".
 -export([configure_source/4, configure_source_tx/5, create_connection/2]).
 
 configure_source(Actor, AppId, ExternalId, Spec) ->
@@ -23,7 +23,7 @@ create_connection(Input, #{adm_user_id := AdminId}) when is_integer(AdminId), Ad
                         null,
                         Key,
                         Name,
-                        {null, [<<"identities:write">>, <<"identities:read">>]},
+                        null,
                         Uris
                     )
                 ),
@@ -102,7 +102,7 @@ configure_source_tx(Conn, #{adm_user_id := AdminId}, AppId, ExternalId, Spec) wh
         elib_pg:query(
             Conn,
             <<
-                "SELECT id,allowed_scopes FROM enterprise_application"
+                "SELECT id FROM enterprise_application"
                 " WHERE id=$1 AND status='active' FOR UPDATE"
             >>,
             [AppId]
@@ -224,43 +224,10 @@ configure(Conn, AdminId, AppId, ExternalId, Spec, [Previous]) ->
         ),
         configuration_conflict
     ),
-    _ = disable_grant(Conn, AdminId, AppId, Spec, Row),
     _ = audit(Conn, AdminId, AppId, Row),
     {ok, Row};
 configure(_, _, _, _, _, _) ->
     throw({abort_tx, configuration_conflict}).
-
-disable_grant(
-    Conn, AdminId, AppId, #{enabled := false}, #{<<"bootstrap_grant_id">> := GrantId} = Row
-) when
-    is_integer(GrantId)
-->
-    OrgId = maps:get(<<"organization_id">>, Row),
-    Grants = must(
-        elib_pg:query(
-            Conn,
-            <<
-                "SELECT version,status FROM enterprise_application_grant"
-                " WHERE id=$1 AND application_id=$2 AND organization_id=$3"
-                " AND provisioning_source='directory_bootstrap' FOR UPDATE"
-            >>,
-            [GrantId, AppId, OrgId]
-        )
-    ),
-    case Grants of
-        [#{<<"status">> := <<"active">>, <<"version">> := Version}] ->
-            must(
-                enterprise_application_grant_repo:revoke_admin_tx(
-                    Conn, OrgId, AppId, GrantId, Version, AdminId
-                )
-            );
-        [#{<<"status">> := <<"revoked">>}] ->
-            ok;
-        _ ->
-            throw({abort_tx, bootstrap_grant_conflict})
-    end;
-disable_grant(_, _, _, _, _) ->
-    ok.
 
 params(AdminId, AppId, ExternalId, Spec) ->
     [

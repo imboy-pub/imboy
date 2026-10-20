@@ -16,21 +16,6 @@ run(#{conn := C, app_a := App} = S) ->
         <<"INSERT INTO organization_member(organization_id,user_id,role,status) VALUES($1,$2,'member','active')">>,
         [Org, User]
     ),
-    case application:get_env(imboy, internal_test_hmac_client, false) of
-        true ->
-            ok;
-        false ->
-            ok = exec(
-                C,
-                <<"UPDATE enterprise_application SET allowed_scopes=allowed_scopes || '[\"members:write\"]'::jsonb WHERE id=$1">>,
-                [App]
-            ),
-            ok = exec(
-                C,
-                <<"INSERT INTO enterprise_application_grant_scope(grant_id,scope) SELECT id,'members:write' FROM enterprise_application_grant WHERE application_id=$1 AND organization_id=$2 AND workspace_scope_kind='none' AND status='active' ON CONFLICT DO NOTHING">>,
-                [App, Org]
-            )
-    end,
     {ok, _} = enterprise_source_person_repo:sync_tx(
         C, App, <<"audit-member">>, <<"Synthetic OA member">>, <<"active">>, 1
     ),

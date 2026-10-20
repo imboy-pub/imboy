@@ -1,21 +1,10 @@
 -module(enterprise_application_credential_repo).
 
 -moduledoc "企业 Application 凭证仓储层。".
-%%%
-% enterprise_application_credential_repo 是 Application 凭证仓储层（迁移
-% 00000136，EPGZ-01 / plan-gz §4.1）。凭证形态 ib_int_<credential_id>.<secret>：
-% DB 保存 legacy Bearer SHA-256 摘要、AES-GCM 加密签名密钥与 credential_prefix，
-% 明文不落库；旧摘要不能用于验签，存量凭证须轮换。常时比较在认证层。
-%
-% 表结构：enterprise_application_credential(id TSID PK, organization_id,
-%   application_id, credential_prefix 全局唯一, secret_digest 64hex,
-%   status active|revoked, expires_at 可空, last_used_at, revoked_at, timestamps)。
-%%%
 
 -export([
     tablename/0,
     next_id/0,
-    digest_hex/1,
     signing_secret/1,
     create_tx/5,
     create_tx/6,
@@ -35,7 +24,7 @@
 -include_lib("epgsql/include/epgsql.hrl").
 
 -define(COLUMNS, <<
-    "id, organization_id, application_id, credential_prefix, secret_digest, "
+    "id, organization_id, application_id, credential_prefix, "
     "status, expires_at, last_used_at, created_at, revoked_at, signing_secret_enc"
 >>).
 
@@ -47,16 +36,12 @@
 tablename() ->
     elib_pg_sql:public_tablename(<<"enterprise_application_credential">>).
 
-%% @doc credential 命名空间 TSID（固定映射，镜像 agent_grant_pg 口径）。
 -spec next_id() -> pos_integer().
 next_id() ->
     elib_tsid:generate(enterprise_application_credential).
 
 %% @doc secret 的 SHA-256 小写 hex（64 字符；镜像 bot_repo:digest_hex/1）。
 %% 入参是凭证的 secret 部分（不含 ib_int_ 前缀与 credential_id）。
--spec digest_hex(binary()) -> binary().
-digest_hex(Secret) when is_binary(Secret) ->
-    binary:encode_hex(crypto:hash(sha256, Secret), lowercase).
 
 %% @doc 事务内创建凭证（无过期时间）。CredentialPrefix 是认证定位键
 %% （如 <<"ib_int_", Id/binary>>），Secret 明文只在此前的生成阶段出现一次。
@@ -74,7 +59,7 @@ create_tx(Conn, OrgId, AppId, CredentialPrefix, Secret, ExpiresAt) when Secret =
     case encrypt_signing_secret(Secret) of
         {ok, Encrypted} ->
             create_tx1(
-                Conn, OrgId, AppId, CredentialPrefix, digest_hex(Secret), Encrypted, ExpiresAt
+                Conn, OrgId, AppId, CredentialPrefix, Encrypted, ExpiresAt
             );
         {error, _} = Error ->
             Error
@@ -83,7 +68,7 @@ create_tx(_Conn, _OrgId, _AppId, _CredentialPrefix, _Secret, _ExpiresAt) ->
     %% 空 secret 不做 digest（空串的 SHA-256 仍是 64 字符，长度守卫拦不住）
     {error, invalid_secret}.
 
-create_tx1(Conn, OrgId, AppId, CredentialPrefix, Digest, Encrypted, ExpiresAt) ->
+create_tx1(Conn, OrgId, AppId, CredentialPrefix, Encrypted, ExpiresAt) ->
     Tb = tablename(),
     Id = next_id(),
     Now = elib_dt:now(),
@@ -93,14 +78,13 @@ create_tx1(Conn, OrgId, AppId, CredentialPrefix, Digest, Encrypted, ExpiresAt) -
             Bin when is_binary(Bin) -> Bin
         end,
     Sql =
-        <<"INSERT INTO ", Tb/binary,
-            " (id, organization_id, application_id, credential_prefix, secret_digest,",
+        <<"INSERT INTO ", Tb/binary, " (id, organization_id, application_id, credential_prefix,",
             " status, expires_at, created_at, signing_secret_enc)",
-            " VALUES ($1, $2, $3, $4, $5, 'active', $6::timestamptz, $7, $8)", " RETURNING ",
+            " VALUES ($1, $2, $3, $4, 'active', $5::timestamptz, $6, $7)", " RETURNING ",
             ?COLUMNS/binary>>,
     case
         elib_pg:query(Conn, Sql, [
-            Id, OrgId, AppId, CredentialPrefix, Digest, ExpiresParam, Now, Encrypted
+            Id, OrgId, AppId, CredentialPrefix, ExpiresParam, Now, Encrypted
         ])
     of
         {ok, [Row | _]} ->

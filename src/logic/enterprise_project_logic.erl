@@ -83,9 +83,6 @@ list_page(Conn, Ctx, WsId, Status, Limit, Cursor, Filter) ->
 %%% INT-29 详情
 %%%===================================================================
 
-%% @doc 详情定位（project W 须归属 credential O 且 workspace active）。
-%% handler 先调本函数 → 404 同体拒绝 → 同一事务 enforce INT-29（Grant 覆盖
-%% project 所属 W）→ detail_tx/3 投影。
 -spec locate_tx(any(), map(), integer()) ->
     {ok, map()} | {error, {binary(), term()}}.
 locate_tx(Conn, Ctx, ProjectId) when is_integer(ProjectId), ProjectId > 0 ->

@@ -17,8 +17,7 @@ issue(Ctx, P) ->
                         App,
                         Cred,
                         maps:get(<<"external_user_id">>, P),
-                        {maps:get(<<"intent">>, P), maps:get(<<"code_challenge">>, P)},
-                        atom_to_binary(maps:get(authentication, Ctx, bearer))
+                        {maps:get(<<"intent">>, P), maps:get(<<"code_challenge">>, P)}
                     )
                 ),
                 audit(C, App, <<"oa.login_ticket_issued">>, #{}),
@@ -162,15 +161,9 @@ context(Row) ->
     #{
         application_id => maps:get(<<"application_id">>, Row),
         credential_id => maps:get(<<"credential_id">>, Row),
-        authentication =>
-            case maps:get(<<"issuer_authentication">>, Row, <<"bearer">>) of
-                <<"hmac">> -> hmac;
-                _ -> bearer
-            end
+        authentication => hmac
     }.
 
-authority(C, #{application_id := App, credential_id := Cred, authentication := hmac}) ->
-    enterprise_oa_login_repo:authority_signed_tx(C, App, Cred);
 authority(C, #{application_id := App, credential_id := Cred}) ->
     enterprise_oa_login_repo:authority_tx(C, App, Cred).
 

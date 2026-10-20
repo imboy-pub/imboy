@@ -14,8 +14,6 @@ post:
     响应实证自 `enterprise_identity_logic:rows_to_pairs/1`。
   operationId: internalIdentityResolve
   x-imboy-authentication: hmac
-  x-imboy-legacy-scope-only: true
-  x-imboy-scope: identities:read
   x-imboy-rate-bucket: internal_read
   x-imboy-idempotency: not_required
   requestBody:
@@ -48,6 +46,6 @@ post:
                     user_id: { type: integer, format: int64 }
     '400': { $ref: '../../../../components/responses/internal/invalid_request.yaml' }
     '401': { $ref: '../../../../components/responses/internal/invalid_credential.yaml' }
-    '403': { $ref: '../../../../components/responses/internal/insufficient_scope.yaml' }
+    '403': { $ref: '../../../../components/responses/internal/organization_boundary_violation.yaml' }
     '429': { $ref: '../../../../components/responses/internal/rate_limited.yaml' }
     '500': { $ref: '../../../../components/responses/internal/internal_error.yaml' }

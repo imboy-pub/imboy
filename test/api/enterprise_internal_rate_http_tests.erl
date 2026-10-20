@@ -33,20 +33,9 @@ rate_http_test_() ->
 run(#{conn := C} = S) ->
     %% 独立 application + 全 scope grant + 凭证（995 段夹具外新造，计数零污染）。
     {ok, App} = enterprise_application_repo:create_tx(
-        C,
-        995101,
-        <<"q08-rate-http">>,
-        <<"Q08 rate http probe">>,
-        {995014, [<<"application:read">>]}
+        C, 995101, <<"q08-rate-http">>, <<"Q08 rate http probe">>, 995014
     ),
     AppId = maps:get(<<"id">>, App),
-    {ok, _} = enterprise_internal_ops:issue_grant_tx(C, 995101, AppId, #{
-        scopes => [<<"application:read">>],
-        workspace_scope_kind => none,
-        workspace_ids => [],
-        idempotency_key => <<"q08-rate-http-grant">>,
-        expires_at => <<"2099-01-01T00:00:00Z">>
-    }),
     {ok, #{credential := Credential}} = enterprise_internal_ops:issue_credential_tx(
         C, 995101, AppId, <<"q08_rate_http_secret_0123456789">>, undefined
     ),

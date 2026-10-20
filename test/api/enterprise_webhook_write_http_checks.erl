@@ -89,8 +89,8 @@ snapshot_faults(S, Input, Key, Stored) ->
         jsone:encode(#{
             tampered_cipher => 500,
             copied_key => 500,
-            missing_key => 500,
-            wrong_key => 500,
+            missing_key => 401,
+            wrong_key => 401,
             previous_key_replay => 200,
             business_state_unchanged => true,
             audit_delta => 0
@@ -102,14 +102,14 @@ snapshot_key_fault(S, Input, Key) ->
     Original = request(S, Input, Key),
     try
         application:set_env(imboy, postgre_aes_key, <<>>),
-        assert_snapshot_failure(request(S, Input, Key)),
+        assert_key_rejection(request(S, Input, Key)),
         Update = Input#{
             <<"rotate">> => false,
             <<"url">> => <<"https://oa.customer.example.com/intbe02/missing-key">>
         },
-        assert_snapshot_failure(request(S, Update, <<Key/binary, "-missing-key-write">>)),
+        assert_key_rejection(request(S, Update, <<Key/binary, "-missing-key-write">>)),
         application:set_env(imboy, postgre_aes_key, <<"SYNTHETIC-WRONG-KEY">>),
-        assert_snapshot_failure(request(S, Input, Key)),
+        assert_key_rejection(request(S, Input, Key)),
         application:set_env(imboy, postgre_aes_key_old, Master),
         Previous = request(S, Input, Key),
         ?assertEqual(200, maps:get(status, Previous)),
@@ -250,3 +250,9 @@ audit_count(S) ->
         [maps:get(app_a, S)],
         -1
     ).
+
+%% Credential decryption uses the same master key, so rejection precedes snapshot replay.
+assert_key_rejection(R) ->
+    ?assertEqual(401, maps:get(status, R)),
+    #{<<"error">> := #{<<"code">> := <<"invalid_credential">>}} = jsone:decode(maps:get(body, R)),
+    ok.

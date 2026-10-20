@@ -1,33 +1,6 @@
 -module(enterprise_message_logic).
 
 -moduledoc "企业 OA 代发消息业务逻辑（EPGZ-04 INT-09/10）—— 企业托管非 E2EE：direct / Workspace 企业群。".
-%%%
-% EPGZ-04 INT-09/10 OA 代发消息（企业托管非 E2EE：direct / Workspace 企业群）。
-%
-% 合同（plan-gz §4.3 / manifest INV-5/6）：
-%   * sender 唯一合同字段 sender_user_id（external_user_id 语义，与 A3
-%     INT-11 一致）；actor_user_id / as_user_id 别名在触库前拒绝（负例钉死）。
-%   * sender_mode=application：以 Application 名义发（from = principal user），
-%     scope messages:send；sender_mode=human：以指定 Human 名义发，
-%     scope messages:send_as_human。两种模式都固定企业托管非 E2EE。
-%   * sender/recipient 解析必须满足：同 org（mapping 按 org+app 过滤）+
-%     已映射（resolve active 行）+ active Human（运行时实时校验 member/
-%     user/account_type——bind 触发器只保证绑定时点）。任一不满足按
-%     stable 码拒绝：identity_not_mapped / organization_boundary_violation。
-%   * 落库：msg_c2c / msg_c2g 服务端明文行（e2ee 恒 NULL——bot 域同款
-%     先例；不走 msg_c2c_logic human 链或 msg_store_staging；direct 同
-%     原事务归档 msg_store 保留正文）；payload 顶层 origin 结构（kind/sender_kind/
-%     sender_user_id/application_id——A6 Flutter 渲染代发标记的数据源）；
-%     enterprise_audit_event append-only 审计行（actor_role=
-%     'enterprise_application'，detail 列级持久化 origin_application_id——
-%     审计 actor 是 Application，不伪造成 Human 发起了 HTTP 请求）。
-%   * direct：收件人必须是同 org 已映射 active Human；group：群必须是
-%     granted Workspace 企业群（enterprise_group_repo:find_group_in_org_tx
-%     边界判定），human sender 还必须是群 active 成员。
-%   * 消息与附件原子绑定：file 消息只能引用本 (org, app) 已 confirm 的
-%     attachment 行（confirm 后的 file 才能引用——同一事务内完成绑定校验
-%     与消息落库，文件状态在消息事务提交前已确认）。
-%%%
 
 -export([direct_tx/3, group_tx/4]).
 -export([push_after_commit/2]).
@@ -176,44 +149,22 @@ resolve_sender(Conn, Ctx, Input) ->
 forbidden_alias(Input) ->
     maps:is_key(as_user_id, Input) orelse maps:is_key(actor_user_id, Input).
 
-%% @doc sender_mode 分派：scope 由
-%% enterprise_internal_boundary:required_scope_for_sender_mode/1 单点给出
-%% （handler 的 Grant 资源边界判定读同一处，避免两份映射漂移）。
 resolve_sender_mode(Conn, Ctx, Input) ->
-    Mode = maps:get(sender_mode, Input, undefined),
-    case enterprise_internal_boundary:required_scope_for_sender_mode(Mode) of
-        {ok, Scope} ->
-            resolve_sender_scoped(Conn, Ctx, Input, Mode, Scope);
-        error ->
-            {error, {<<"invalid_request">>, invalid_sender_mode}}
-    end.
-
--spec resolve_sender_scoped(any(), map(), map(), binary(), binary()) ->
-    {ok, binary(), integer()} | {error, {binary(), term()}}.
-resolve_sender_scoped(Conn, Ctx, _Input, <<"application">>, Scope) ->
-    scope_gate(Ctx, Scope, fun() -> application_sender(Conn, Ctx) end);
-resolve_sender_scoped(Conn, Ctx, Input, <<"human">>, Scope) ->
-    case maps:get(sender_user_id, Input, undefined) of
-        SenderExt when is_binary(SenderExt), SenderExt =/= <<>> ->
-            scope_gate(Ctx, Scope, fun() ->
-                case resolve_active_human(Conn, Ctx, SenderExt) of
-                    {ok, Uid} -> {ok, <<"human">>, Uid};
-                    {error, _} = E -> E
-                end
-            end);
+    case maps:get(sender_mode, Input, undefined) of
+        <<"application">> ->
+            application_sender(Conn, Ctx);
+        <<"human">> ->
+            case maps:get(sender_user_id, Input, undefined) of
+                SenderExt when is_binary(SenderExt), SenderExt =/= <<>> ->
+                    case resolve_active_human(Conn, Ctx, SenderExt) of
+                        {ok, Uid} -> {ok, <<"human">>, Uid};
+                        {error, _} = Error -> Error
+                    end;
+                _ ->
+                    {error, {<<"invalid_request">>, sender_user_id_required}}
+            end;
         _ ->
-            {error, {<<"invalid_request">>, sender_user_id_required}}
-    end.
-
-scope_gate(#{authentication := hmac}, _RequiredScope, Next) ->
-    Next();
-scope_gate(Ctx, RequiredScope, Next) ->
-    Granted = maps:get(granted_scopes, Ctx, []),
-    case enterprise_internal_scope:authorize(RequiredScope, Granted) of
-        ok ->
-            Next();
-        {error, _} ->
-            {error, {<<"insufficient_scope">>, RequiredScope}}
+            {error, {<<"invalid_request">>, invalid_sender_mode}}
     end.
 
 %% application 模式：principal 由 handler 预取放入 Ctx（无绑定时

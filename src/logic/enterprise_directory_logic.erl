@@ -1,39 +1,5 @@
 -module(enterprise_directory_logic).
 
-%%%
-% enterprise_directory_logic 是**受限 cursor directory** use case
-% （FULL-02 / plan-full §3.1「外部身份 … 受限 cursor directory，不允许无界导出」、
-% §4 `/identity-mappings` cursor list 与 `/directory/users`「最小字段、cursor、
-% Workspace Grant 过滤，无全量导出」；CP-CON-01 游标迁移 CURSOR-V2）。
-%
-% 硬边界（本模块的对外契约）：
-%   * **分页有上限**：page_size ∈ [1, 100]，缺省 50。超出上限**拒绝**
-%     （invalid_request），不静默截断——静默截断会把「想要全量」变成一个永远
-%     成功的循环，掩盖无界导出意图。page_size 非整数/0/负数同样拒绝。
-%   * **无全量导出形态**：本模块只导出 page_mappings_tx/3 与 page_users_tx/3
-%     两个**分页**入口；仓储每次查询恒带 ORDER BY + LIMIT（keyset pagination），
-%     没有 OFFSET、没有无 LIMIT 读、没有 COUNT 导出。真库套件以导出面 + 超大
-%     page_size 负例 + 逐页遍历终止性三重证据钉死（用例名见 checkpoint）。
-%   * **游标是 CURSOR-V2 签名形态**（§10.1 冻结合同；签名/验签本体在
-%     src/lib/enterprise_cursor_v2.erl，本模块不重复实现编码与 HMAC）：
-%     - 族标签冻结：identity_mappings（INT-16）/ directory_users（INT-17）
-%       （§10.2 白名单内）；sort_tuple：mappings=[external_user_id binary]、
-%       users=[user_id integer]；
-%     - 验签 + **逐字段绑定比对**（family / organization_id / application_id /
-%       filter 整 map）：malformed / tampered / foreign-family / foreign 绑定 /
-%       expired（>24h）一律 invalid_request（400，不回显原因）；换 filter 的
-%       旧游标不得翻新 filter 行集；
-%     - **旧 unsigned 形态**（base64("<tag>:<keyset>")，无 HMAC 段）没有
-%       合法签名——verify 必拒 → 400；
-%     - 签名密钥缺失/非法（{imboy, enterprise_internal_cursor_signing_key}
-%       < 32 bytes）→ security_gate_closed（503，fail-closed；has_more 页
-%       签不出下一页同样 503，绝不伪装成末页）；
-%     - 游标只含**键**，不含任何 PII。
-%   * **只返回最小字段**（见模块内 items 构造）；不返回姓名/手机号/邮箱等。
-%   * 跨 Org / 跨 App 的键在 SQL 内不可见（repo 复合过滤），游标重放不构成越权。
-%   * 计量：每次成功分页记 `directory.page`（聚合计数，不含任何内容）。
-%%%
-
 -export([
     page_mappings_tx/3,
     page_users_tx/3,
@@ -60,13 +26,6 @@ max_page() ->
 default_page() ->
     ?DEFAULT_PAGE.
 
-%% @doc 映射目录一页（active external identity，最小字段）。
-%% Opts（atom 键）：
-%%   cursor      :: binary() | undefined（上一页 next_cursor）
-%%   page_size   :: integer() | undefined（缺省 ?DEFAULT_PAGE）
-%%   workspace_id :: integer() | undefined（参与 Grant 边界与游标 filter 绑定）
-%% 返回 {ok, #{items, page_size, has_more, next_cursor}}；
-%% 入参非法 → {error, {<<"invalid_request">>, Detail}}。
 -spec page_mappings_tx(any(), map(), map()) -> {ok, map()} | {error, {binary(), term()}}.
 page_mappings_tx(Conn, Ctx, Opts) when is_map(Opts) ->
     case parse_workspace_id(maps:get(workspace_id, Opts, undefined)) of
@@ -95,16 +54,6 @@ page_mappings_tx(Conn, Ctx, Opts) when is_map(Opts) ->
 page_mappings_tx(_Conn, _Ctx, _Opts) ->
     {error, {<<"invalid_request">>, opts_not_map}}.
 
-%% @doc 成员目录一页（本 Org active Human，可选 Workspace 过滤）。
-%% Opts（atom 键）：
-%%   cursor       :: binary() | undefined
-%%   page_size    :: integer() | undefined
-%%   workspace_id :: integer() | undefined（给出时要求 identities:read 的
-%%                   Workspace Grant 覆盖该 workspace——受管应用若只有别的
-%%                   workspace 的授权，本请求即 organization_boundary_violation）
-%% 返回同 page_mappings_tx/3；items 为最小字段
-%% （user_id / external_user_id（本 app 未映射则 null）/ member_role /
-%%  member_status）。
 -spec page_users_tx(any(), map(), map()) -> {ok, map()} | {error, {binary(), term()}}.
 page_users_tx(Conn, Ctx, Opts) when is_map(Opts) ->
     case parse_workspace_id(maps:get(workspace_id, Opts, undefined)) of
@@ -341,21 +290,14 @@ parse_workspace_id(WsId) when is_integer(WsId), WsId > 0 ->
 parse_workspace_id(_) ->
     {error, invalid_workspace_id}.
 
-%% @doc Workspace Grant 过滤（仅给出 workspace_id 时）：显式 Workspace Grant
-%% 必须由**同一个**生效 Grant 覆盖 identities:read 与该 workspace；未受管应用
-%% 是 no-op（沿用广州期口径）。
 -spec workspace_boundary(any(), map(), undefined | integer()) ->
     ok | {error, {binary(), term()}}.
 workspace_boundary(_Conn, _Ctx, undefined) ->
     ok;
 workspace_boundary(Conn, Ctx, WsId) ->
-    case
-        enterprise_application_grant_logic:require_workspace_tx(
-            Conn, Ctx, WsId, <<"identities:read">>
-        )
-    of
+    case enterprise_internal_access_repo:workspace_tx(Conn, Ctx, WsId, read) of
         ok -> ok;
-        {error, Code} -> {error, {atom_to_binary(Code, utf8), grant_boundary}}
+        {error, Code} -> {error, {atom_to_binary(Code, utf8), resource_attribution}}
     end.
 
 -spec org_id(map()) -> integer().

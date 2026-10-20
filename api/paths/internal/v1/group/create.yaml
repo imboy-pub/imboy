@@ -15,7 +15,7 @@ get:
   description: |
     本 Application origin 建立（enterprise_group_origin active）的企业群
     keyset 列表（created_at DESC, id DESC）。行集收窄为 active workspace 内
-    scope=workspace 且组织归属匹配的 W（旧 Bearer 另校验 Grant）（收窄谓词在服务端列表 SQL 内）。
+    scope=workspace 且组织归属匹配的 W（收窄谓词在服务端列表 SQL 内）。
     人类自建群/他应用建群/已归档群不可见。分页为 CURSOR-V2 签名游标
     （非法/过期/foreign 一律 400 invalid_request，客户端从首页重启）。
   operationId: internalGroupList
@@ -33,8 +33,6 @@ get:
       description: 上一页返回的 next_cursor（opaque）
       schema: { type: string }
   x-imboy-authentication: hmac
-  x-imboy-legacy-scope-only: true
-  x-imboy-scope: groups:read
   x-imboy-rate-bucket: internal_read
   x-imboy-idempotency: not_required
   responses:
@@ -64,7 +62,7 @@ get:
               next_cursor: { type: [string, 'null'] }
     '400': { $ref: '../../../../components/responses/internal/invalid_request.yaml' }
     '401': { $ref: '../../../../components/responses/internal/invalid_credential.yaml' }
-    '403': { $ref: '../../../../components/responses/internal/insufficient_scope.yaml' }
+    '403': { $ref: '../../../../components/responses/internal/organization_boundary_violation.yaml' }
     '429': { $ref: '../../../../components/responses/internal/rate_limited.yaml' }
     '500': { $ref: '../../../../components/responses/internal/internal_error.yaml' }
     '503': { $ref: '../../../../components/responses/internal/security_gate_closed.yaml' }
@@ -82,8 +80,6 @@ post:
       description: 幂等键
       schema: { type: string, minLength: 1 }
   x-imboy-authentication: hmac
-  x-imboy-legacy-scope-only: true
-  x-imboy-scope: groups:write
   x-imboy-rate-bucket: internal_write
   x-imboy-idempotency: required
   requestBody:
@@ -129,7 +125,7 @@ post:
               member_count: { type: integer }
     '400': { $ref: '../../../../components/responses/internal/invalid_request.yaml' }
     '401': { $ref: '../../../../components/responses/internal/invalid_credential.yaml' }
-    '403': { $ref: '../../../../components/responses/internal/insufficient_scope.yaml' }
+    '403': { $ref: '../../../../components/responses/internal/organization_boundary_violation.yaml' }
     '404': { $ref: '../../../../components/responses/internal/resource_not_found.yaml' }
     '409': { $ref: '../../../../components/responses/internal/idempotency_conflict.yaml' }
     '422': { $ref: '../../../../components/responses/internal/identity_not_mapped.yaml' }

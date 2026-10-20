@@ -47,16 +47,6 @@
 -define(EXT_A1, <<"ext993-a1">>).
 -define(EXT_A2, <<"ext993-a2">>).
 -define(EXT_B1, <<"ext993-b1">>).
--define(SCOPES_FULL, [
-    <<"application:read">>,
-    <<"identities:read">>,
-    <<"identities:write">>,
-    <<"groups:write">>,
-    <<"files:write">>,
-    <<"messages:send">>,
-    <<"messages:send_as_human">>,
-    <<"webhooks:manage">>
-]).
 -define(URL1, <<"https://oa993.example.com/hook">>).
 -define(URL2, <<"https://oa993-new.example.com/hook">>).
 -define(HOST1, <<"oa993.example.com">>).
@@ -81,7 +71,10 @@ setup_conn() ->
     end,
     %% 测试密钥归 fixture 所有；成功、失败和清理均恢复先前环境。
     %% Synthetic test keys are fixture-owned and restored on every exit path.
-    Prior = [{K, application:get_env(imboy, K)} || K <- [postgre_aes_key, enterprise_internal_cursor_signing_key]],
+    Prior = [
+        {K, application:get_env(imboy, K)}
+     || K <- [postgre_aes_key, enterprise_internal_cursor_signing_key]
+    ],
     try
         State = setup_conn_with_keys(),
         State#{fixture_key_env => Prior}
@@ -92,10 +85,13 @@ setup_conn() ->
     end.
 
 restore_fixture_keys(Prior) ->
-    lists:foreach(fun
-        ({K, undefined}) -> application:unset_env(imboy, K);
-        ({K, {ok, V}}) -> application:set_env(imboy, K, V)
-    end, Prior).
+    lists:foreach(
+        fun
+            ({K, undefined}) -> application:unset_env(imboy, K);
+            ({K, {ok, V}}) -> application:set_env(imboy, K, V)
+        end,
+        Prior
+    ).
 
 setup_conn_with_keys() ->
     try
@@ -128,8 +124,11 @@ setup_conn_with_keys() ->
     State#{conn => C, app_a => AppA, app_b => AppB}.
 
 close_conn(State) ->
-    try close_conn_with_keys(State)
-    after restore_fixture_keys(maps:get(fixture_key_env, State)) end.
+    try
+        close_conn_with_keys(State)
+    after
+        restore_fixture_keys(maps:get(fixture_key_env, State))
+    end.
 
 close_conn_with_keys(State) ->
     application:unset_env(imboy, ?CURSOR_KEY_CFG),
@@ -212,10 +211,10 @@ seed_matrix(C) ->
     seed_workspace(C, ?WS_A1, ?ORG_A, ?OWNER_A),
     seed_workspace(C, ?WS_B1, ?ORG_B, ?OWNER_B),
     {ok, AppA} = enterprise_application_repo:create_tx(
-        C, ?ORG_A, <<"ewh993-oa-a">>, <<"ewh993 org A oa"/utf8>>, {?PRIN_A, ?SCOPES_FULL}
+        C, ?ORG_A, <<"ewh993-oa-a">>, <<"ewh993 org A oa"/utf8>>, ?PRIN_A
     ),
     {ok, AppB} = enterprise_application_repo:create_tx(
-        C, ?ORG_B, <<"ewh993-oa-b">>, <<"ewh993 org B oa"/utf8>>, {?PRIN_B, ?SCOPES_FULL}
+        C, ?ORG_B, <<"ewh993-oa-b">>, <<"ewh993 org B oa"/utf8>>, ?PRIN_B
     ),
     ok = seed_mapping(C, ?ORG_A, maps:get(<<"id">>, AppA), ?EXT_A1, ?H_A1),
     ok = seed_mapping(C, ?ORG_A, maps:get(<<"id">>, AppA), ?EXT_A2, ?H_A2),
@@ -286,20 +285,10 @@ app_ids(C) ->
     {maps:get(<<"id">>, A), maps:get(<<"id">>, B)}.
 
 ctx_a(State) ->
-    #{
-        organization_id => ?ORG_A,
-        application_id => maps:get(app_a, State),
-        granted_scopes => ?SCOPES_FULL,
-        principal_user_id => ?PRIN_A
-    }.
+    enterprise_hmac_test_support:context_tx(maps:get(conn, State), ?ORG_A, maps:get(app_a, State)).
 
 ctx_b(State) ->
-    #{
-        organization_id => ?ORG_B,
-        application_id => maps:get(app_b, State),
-        granted_scopes => ?SCOPES_FULL,
-        principal_user_id => ?PRIN_B
-    }.
+    enterprise_hmac_test_support:context_tx(maps:get(conn, State), ?ORG_B, maps:get(app_b, State)).
 
 %%%===================================================================
 %%% 通用桩/助手

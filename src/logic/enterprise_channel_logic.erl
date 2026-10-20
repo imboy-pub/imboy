@@ -73,9 +73,6 @@ list_page(Conn, Ctx, WsId, Limit, Cursor, Filter) ->
 %%% INT-31 详情
 %%%===================================================================
 
-%% @doc 详情定位（channel W 须归属 credential O；scope=workspace AND status=1）。
-%% handler 先调本函数 → 404 同体拒绝 → 同一事务 enforce INT-31（Grant 覆盖
-%% channel 所属 W）→ detail_tx/3 投影。
 -spec locate_tx(any(), map(), integer()) ->
     {ok, map()} | {error, {binary(), term()}}.
 locate_tx(Conn, Ctx, ChannelId) when is_integer(ChannelId), ChannelId > 0 ->

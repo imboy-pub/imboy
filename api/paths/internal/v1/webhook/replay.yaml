@@ -25,8 +25,6 @@ post:
       description: 幂等键（1..128 可打印 ASCII；同 key 同 payload 精确重放原响应）
       schema: { type: string, minLength: 1, maxLength: 128 }
   x-imboy-authentication: hmac
-  x-imboy-legacy-scope-only: true
-  x-imboy-scope: webhooks:manage
   x-imboy-rate-bucket: internal_write
   x-imboy-idempotency: required
   responses:
@@ -48,7 +46,7 @@ post:
                 enum: [true]
     '400': { $ref: '../../../../components/responses/internal/invalid_request.yaml' }
     '401': { $ref: '../../../../components/responses/internal/invalid_credential.yaml' }
-    '403': { $ref: '../../../../components/responses/internal/insufficient_scope.yaml' }
+    '403': { $ref: '../../../../components/responses/internal/organization_boundary_violation.yaml' }
     '404': { $ref: '../../../../components/responses/internal/resource_not_found.yaml' }
     '409': { $ref: '../../../../components/responses/internal/idempotency_conflict.yaml' }
     '429': { $ref: '../../../../components/responses/internal/rate_limited.yaml' }

@@ -20,8 +20,15 @@ postcommit_test_() ->
 setup() ->
     _ = application:load(imboy),
     Prior = application:get_env(imboy, base_url),
-    Modules = [cowboy_req, elib_param, elib_pg, enterprise_internal_idempotency,
-        enterprise_internal_boundary, enterprise_asset_logic, imboy_jwt],
+    Modules = [
+        cowboy_req,
+        elib_param,
+        elib_pg,
+        enterprise_internal_idempotency,
+        enterprise_internal_boundary,
+        enterprise_asset_logic,
+        imboy_jwt
+    ],
     try
         [meck:new(M, [no_link]) || M <- Modules],
         meck:expect(cowboy_req, method, fun(_) -> <<"POST">> end),
@@ -38,15 +45,20 @@ setup() ->
         meck:expect(enterprise_internal_idempotency, replay_header, fun() ->
             {<<"replayed">>, <<"true">>}
         end),
-        meck:expect(enterprise_internal_boundary, enforce, fun(_, _, <<"INT-07">>, undefined) -> ok end),
-        meck:expect(enterprise_internal_boundary, error_code, fun(insufficient_scope) -> <<"insufficient_scope">> end),
+        meck:expect(enterprise_internal_boundary, enforce, fun(_, _, <<"INT-07">>, undefined) ->
+            ok
+        end),
+        meck:expect(enterprise_internal_boundary, error_code, fun(organization_boundary_violation) ->
+            <<"organization_boundary_violation">>
+        end),
         meck:expect(enterprise_asset_logic, presign_recovery_tx, fun(_, _, _) -> {ok, reg()} end),
         meck:expect(imboy_jwt, issue_upload_capability, fun(_, _, _) -> {ok, <<"cap">>} end),
         application:set_env(imboy, base_url, <<"https://files.example.invalid/">>),
         {Modules, Prior}
-    catch Class:Reason:Stack ->
-        cleanup({Modules, Prior}),
-        erlang:raise(Class, Reason, Stack)
+    catch
+        Class:Reason:Stack ->
+            cleanup({Modules, Prior}),
+            erlang:raise(Class, Reason, Stack)
     end.
 cleanup({Modules, Prior}) ->
     [catch meck:unload(M) || M <- Modules],
@@ -57,10 +69,14 @@ cleanup({Modules, Prior}) ->
     erase(recovery_tx_seen),
     ok.
 reg() ->
-    #{<<"session_state">> => <<"registered">>,
+    #{
+        <<"session_state">> => <<"registered">>,
         <<"client_upload_id">> => <<"00000000-0000-7000-8000-000000000001">>,
-        <<"bucket">> => <<"fixture">>, <<"object_key">> => <<"fixture/key">>,
-        <<"mime_type">> => <<"text/plain">>, <<"expires_at">> => 9999999999}.
+        <<"bucket">> => <<"fixture">>,
+        <<"object_key">> => <<"fixture/key">>,
+        <<"mime_type">> => <<"text/plain">>,
+        <<"expires_at">> => 9999999999
+    }.
 replay(Body) ->
     meck:expect(enterprise_internal_idempotency, begin_tx, fun(_, _, _, _, _) ->
         {ok, replay, #{response_code => 200, response_body => jsone:encode(Body)}}
@@ -89,10 +105,13 @@ missing_base() ->
     assert_error(503, <<"security_gate_closed">>, replay(reg())),
     ?assertEqual(0, meck:num_calls(imboy_jwt, issue_upload_capability, '_')).
 invalid_base() ->
-    lists:foreach(fun(Base) ->
-        application:set_env(imboy, base_url, Base),
-        assert_error(503, <<"security_gate_closed">>, replay(reg()))
-    end, [<<"files.internal">>, <<"/files">>, <<"ftp://files.invalid">>]),
+    lists:foreach(
+        fun(Base) ->
+            application:set_env(imboy, base_url, Base),
+            assert_error(503, <<"security_gate_closed">>, replay(reg()))
+        end,
+        [<<"files.internal">>, <<"/files">>, <<"ftp://files.invalid">>]
+    ),
     ?assertEqual(0, meck:num_calls(imboy_jwt, issue_upload_capability, '_')).
 unknown_location() ->
     meck:expect(enterprise_asset_logic, presign_recovery_tx, fun(_, _, _) ->
@@ -101,16 +120,23 @@ unknown_location() ->
     assert_error(409, <<"resource_conflict">>, replay(reg())),
     ?assertEqual(0, meck:num_calls(imboy_jwt, issue_upload_capability, '_')).
 legacy_cached_url() ->
-    assert_error(409, <<"resource_conflict">>, replay(#{<<"put_url">> => <<"https://old.invalid/unsafe">>})),
+    assert_error(
+        409, <<"resource_conflict">>, replay(#{<<"put_url">> => <<"https://old.invalid/unsafe">>})
+    ),
     ?assertEqual(0, meck:num_calls(imboy_jwt, issue_upload_capability, '_')).
 transaction_failure() ->
     meck:expect(elib_pg, with_tx, fun(_) -> {rollback, fixture_failure} end),
     assert_error(500, <<"internal_error">>, invoke()),
     ?assertEqual(0, meck:num_calls(imboy_jwt, issue_upload_capability, '_')).
 confirmed_no_capability() ->
-    Confirmed = #{<<"file_id">> => 42, <<"object_key">> => <<"fixture/key">>,
-        <<"session_state">> => <<"confirmed">>, <<"can_resume">> => false,
-        <<"retry_action">> => <<"none">>, <<"lifecycle_state">> => <<"deleted">>},
+    Confirmed = #{
+        <<"file_id">> => 42,
+        <<"object_key">> => <<"fixture/key">>,
+        <<"session_state">> => <<"confirmed">>,
+        <<"can_resume">> => false,
+        <<"retry_action">> => <<"none">>,
+        <<"lifecycle_state">> => <<"deleted">>
+    },
     meck:expect(enterprise_asset_logic, presign_recovery_tx, fun(_, _, _) -> {ok, Confirmed} end),
     application:unset_env(imboy, base_url),
     R = replay(reg()),
@@ -142,15 +168,21 @@ recovery_unavailable() ->
     ?assertEqual(<<"retry_same_id">>, maps:get(<<"retry_action">>, B)),
     ?assertEqual(0, meck:num_calls(imboy_jwt, issue_upload_capability, '_')).
 authorization_revoked() ->
-    meck:expect(enterprise_internal_boundary, enforce, fun(_, _, _, _) -> {error, insufficient_scope} end),
-    assert_error(403, <<"insufficient_scope">>, replay(reg())),
+    meck:expect(enterprise_internal_boundary, enforce, fun(_, _, _, _) ->
+        {error, organization_boundary_violation}
+    end),
+    assert_error(403, <<"organization_boundary_violation">>, replay(reg())),
     ?assertEqual(0, meck:num_calls(enterprise_asset_logic, presign_recovery_tx, '_')),
     ?assertEqual(0, meck:num_calls(imboy_jwt, issue_upload_capability, '_')).
 recovery_commit_unknown() ->
     meck:expect(elib_pg, with_tx, fun(F) ->
         case get(recovery_tx_seen) of
-            undefined -> put(recovery_tx_seen, true), F(fixture_conn);
-            true -> _ = F(fixture_conn), {rollback, recovery_commit_unknown}
+            undefined ->
+                put(recovery_tx_seen, true),
+                F(fixture_conn);
+            true ->
+                _ = F(fixture_conn),
+                {rollback, recovery_commit_unknown}
         end
     end),
     assert_error(503, <<"security_gate_closed">>, replay(reg())),

@@ -17,11 +17,10 @@ info:
     本文件是 IMBoy **surface internal**（企业集成）的编辑真源，桥接 34 条
     path（49 个操作）。受众为企业 OA / 第三方集成系统开发者。
 
-    **认证**：默认使用 HMAC-SHA256 / HMAC-SHA512 请求签名，无需配置 Scope 或 Grant。
+    **认证**：仅使用 HMAC-SHA256 / HMAC-SHA512 请求签名。
     签名头为 X-Imboy-Credential、X-Imboy-Timestamp、X-Imboy-Nonce、X-Imboy-Signature；
     可选的 X-Imboy-Organization 选择经平台校验的业务组织，并参与签名。
     算法、12 行签名原文、300 秒窗口及升级轮换要求见 api/internal/v1/README.md §3。
-    旧 Bearer 客户端仅作迁移兼容；x-imboy-scope 仅描述其旧权限要求，不限制 HMAC 请求。
 
     **响应模型**：除 OA login tickets 使用 `{code,msg,sv_ts,payload}` 成功信封外，
     成功响应为**裸 payload**（无 `{code,msg,payload}` 业务信封）；
@@ -57,13 +56,12 @@ servers:
       description: 本地 HTTP 端口；可通过 HTTP_PORT 环境变量覆盖
 tags:
 - name: internal
-  description: 企业集成 Internal API（HMAC 签名；限流/幂等见端点扩展，scope 字段仅供旧 Bearer 兼容）
+  description: 企业集成 Internal API（HMAC 签名；限流/幂等见端点扩展）
 security:
 - ibIntHmacCredential: []
   ibIntHmacTimestamp: []
   ibIntHmacNonce: []
   ibIntHmacSignature: []
-- ibIntBearer: []
 paths:
   /api/internal/v1/application:
     get:
@@ -76,8 +74,6 @@ paths:
         为平台行数据的 binary 键透出（最小字段集，不含 secret）。
       operationId: internalApplicationSelf
       x-imboy-authentication: hmac
-      x-imboy-legacy-scope-only: true
-      x-imboy-scope: application:read
       x-imboy-rate-bucket: internal_read
       x-imboy-idempotency: not_required
       responses:
@@ -115,18 +111,13 @@ paths:
                   authentication:
                     type: string
                     const: hmac
-                    description: HMAC 请求的认证方式；无需配置 Scope/Grant
-                  granted_scopes:
-                    deprecated: true
-                    type: array
-                    items:
-                      type: string
-                    description: 仅旧 Bearer 兼容响应存在；HMAC 响应不含此字段
+                    description: HMAC 请求的认证方式
                   credentials:
                     type: array
                     items:
                       type: object
                     description: 凭证清单（不含 secret）
+                required: []
         '401':
           description: 凭证缺失/格式错/不存在的 locator
           content:
@@ -377,8 +368,6 @@ paths:
           minLength: 1
           maxLength: 128
       x-imboy-authentication: hmac
-      x-imboy-legacy-scope-only: true
-      x-imboy-scope: identities:write
       x-imboy-rate-bucket: internal_write
       x-imboy-idempotency: required
       requestBody:
@@ -522,7 +511,7 @@ paths:
                         enum:
                         - invalid_credential
         '403':
-          description: 凭证未被授予所需 scope
+          description: 跨组织访问（IDOR 防线）
           content:
             application/json:
               schema:
@@ -565,7 +554,7 @@ paths:
                     properties:
                       code:
                         enum:
-                        - insufficient_scope
+                        - organization_boundary_violation
         '409':
           description: Idempotency-Key 与既有请求冲突
           content:
@@ -772,8 +761,6 @@ paths:
           minLength: 1
           maxLength: 128
       x-imboy-authentication: hmac
-      x-imboy-legacy-scope-only: true
-      x-imboy-scope: identities:write
       x-imboy-rate-bucket: internal_write
       x-imboy-idempotency: required
       requestBody:
@@ -909,7 +896,7 @@ paths:
                         enum:
                         - invalid_credential
         '403':
-          description: 凭证未被授予所需 scope
+          description: 跨组织访问（IDOR 防线）
           content:
             application/json:
               schema:
@@ -952,7 +939,7 @@ paths:
                     properties:
                       code:
                         enum:
-                        - insufficient_scope
+                        - organization_boundary_violation
         '404':
           description: 资源不存在或不属于本组织（不区分「不存在」与「不归你」）
           content:
@@ -1152,8 +1139,6 @@ paths:
         响应实证自 `enterprise_identity_logic:rows_to_pairs/1`。
       operationId: internalIdentityResolve
       x-imboy-authentication: hmac
-      x-imboy-legacy-scope-only: true
-      x-imboy-scope: identities:read
       x-imboy-rate-bucket: internal_read
       x-imboy-idempotency: not_required
       requestBody:
@@ -1280,7 +1265,7 @@ paths:
                         enum:
                         - invalid_credential
         '403':
-          description: 凭证未被授予所需 scope
+          description: 跨组织访问（IDOR 防线）
           content:
             application/json:
               schema:
@@ -1323,7 +1308,7 @@ paths:
                     properties:
                       code:
                         enum:
-                        - insufficient_scope
+                        - organization_boundary_violation
         '429':
           description: 触发限流（fail-closed）
           headers:
@@ -1438,8 +1423,6 @@ paths:
         `enterprise_directory_logic`（`{items, page_size, has_more, next_cursor}`）。
       operationId: internalIdentityDirectory
       x-imboy-authentication: hmac
-      x-imboy-legacy-scope-only: true
-      x-imboy-scope: identities:read
       x-imboy-rate-bucket: internal_read
       x-imboy-idempotency: not_required
       requestBody:
@@ -1579,7 +1562,7 @@ paths:
                         enum:
                         - invalid_credential
         '403':
-          description: 凭证未被授予所需 scope
+          description: 跨组织访问（IDOR 防线）
           content:
             application/json:
               schema:
@@ -1622,7 +1605,7 @@ paths:
                     properties:
                       code:
                         enum:
-                        - insufficient_scope
+                        - organization_boundary_violation
         '429':
           description: 触发限流（fail-closed）
           headers:
@@ -1725,12 +1708,10 @@ paths:
       tags:
       - internal
       summary: 来源组织核对列表
-      description: 只读核对本来源数据。HMAC 无需 Scope/Grant，并逐语句复核应用、凭据、来源启用及有效期。尚未建立组织的配置不在列表中，由可信 Admin 入口查看。来源无效或归属不符不放行。按外部 ID 的
-        UTF-8 字节序升序，page_size 1..100，未知或重复参数拒绝。
+      description: 只读核对本来源数据。采用 HMAC 签名，并逐语句复核应用、凭据、来源启用及有效期。尚未建立组织的配置不在列表中，由可信 Admin 入口查看。来源无效或归属不符不放行。按外部 ID 的 UTF-8 字节序升序，page_size
+        1..100，未知或重复参数拒绝。
       operationId: internalSourceOrganizations
       x-imboy-authentication: hmac
-      x-imboy-legacy-scope-only: true
-      x-imboy-scope: identities:read
       x-imboy-rate-bucket: internal_read
       x-imboy-idempotency: not_required
       parameters:
@@ -1900,7 +1881,7 @@ paths:
                         - invalid_credential
                         - credential_expired
         '403':
-          description: application_disabled / insufficient_scope
+          description: application_disabled / organization_boundary_violation
           content:
             application/json:
               schema:
@@ -1944,7 +1925,7 @@ paths:
                       code:
                         enum:
                         - application_disabled
-                        - insufficient_scope
+                        - organization_boundary_violation
         '404':
           description: resource_not_found
           content:
@@ -2136,12 +2117,10 @@ paths:
       tags:
       - internal
       summary: 来源部门核对列表
-      description: 只读核对本来源数据。HMAC 无需 Scope/Grant，并逐语句复核应用、凭据、来源启用及有效期。尚未建立组织的配置不在列表中，由可信 Admin 入口查看。来源无效或归属不符不放行。按外部 ID 的
-        UTF-8 字节序升序，page_size 1..100，未知或重复参数拒绝。
+      description: 只读核对本来源数据。采用 HMAC 签名，并逐语句复核应用、凭据、来源启用及有效期。尚未建立组织的配置不在列表中，由可信 Admin 入口查看。来源无效或归属不符不放行。按外部 ID 的 UTF-8 字节序升序，page_size
+        1..100，未知或重复参数拒绝。
       operationId: internalSourceDepartments
       x-imboy-authentication: hmac
-      x-imboy-legacy-scope-only: true
-      x-imboy-scope: identities:read
       x-imboy-rate-bucket: internal_read
       x-imboy-idempotency: not_required
       parameters:
@@ -2349,7 +2328,7 @@ paths:
                         - invalid_credential
                         - credential_expired
         '403':
-          description: application_disabled / insufficient_scope
+          description: application_disabled / organization_boundary_violation
           content:
             application/json:
               schema:
@@ -2393,7 +2372,7 @@ paths:
                       code:
                         enum:
                         - application_disabled
-                        - insufficient_scope
+                        - organization_boundary_violation
         '404':
           description: resource_not_found
           content:
@@ -2585,11 +2564,9 @@ paths:
       tags:
       - internal
       summary: 来源成员状态与离职前检查
-      description: 只读检查本来源任职，不枚举用户。HMAC 无需 Scope/Grant，仍复核应用和可信来源。仅返回阻塞数量和代码；资格是当前业务状态的建议，实际变更仍需相应权限并在事务内复核。停用不删除个人账号、历史或其他组织关系。未知或重复查询参数拒绝。
+      description: 只读检查本来源任职，不枚举用户。采用 HMAC 签名，仍复核应用和可信来源。仅返回阻塞数量和代码；资格是当前业务状态的建议，实际变更仍需相应权限并在事务内复核。停用不删除个人账号、历史或其他组织关系。未知或重复查询参数拒绝。
       operationId: internalDirectoryMemberPreflight
       x-imboy-authentication: hmac
-      x-imboy-legacy-scope-only: true
-      x-imboy-scope: identities:read
       x-imboy-rate-bucket: internal_read
       x-imboy-idempotency: not_required
       parameters:
@@ -2796,7 +2773,7 @@ paths:
                         - invalid_credential
                         - credential_expired
         '403':
-          description: application_disabled / insufficient_scope
+          description: application_disabled / organization_boundary_violation
           content:
             application/json:
               schema:
@@ -2840,7 +2817,7 @@ paths:
                       code:
                         enum:
                         - application_disabled
-                        - insufficient_scope
+                        - organization_boundary_violation
         '404':
           description: resource_not_found
           content:
@@ -3031,12 +3008,10 @@ paths:
       tags:
       - internal
       summary: 来源托管普通成员停用或恢复
-      description: HMAC 无需 Scope/Grant；仍逐事务复核可信来源、组织归属和成员状态。只允许操作本来源已绑定且已投影的普通成员，Owner/Admin 拒绝。恢复只允许本来源暂停且版本未被人工改变的成员。必须提供
-        GET 返回的 expected_member_version。状态、来源标记、审计及幂等快照同事务。重放重新鉴权；同键不同请求冲突。
+      description: 采用 HMAC 签名；逐事务复核可信来源、组织归属和成员状态。只允许操作本来源已绑定且已投影的普通成员，Owner/Admin 拒绝。恢复只允许本来源暂停且版本未被人工改变的成员。必须提供 GET 返回的
+        expected_member_version。状态、来源标记、审计及幂等快照同事务。重放重新鉴权；同键不同请求冲突。
       operationId: internalDirectoryMemberStatus
       x-imboy-authentication: hmac
-      x-imboy-legacy-scope-only: true
-      x-imboy-scope: members:write
       x-imboy-rate-bucket: internal_write
       x-imboy-idempotency: required
       parameters:
@@ -3174,7 +3149,7 @@ paths:
                         - invalid_credential
                         - credential_expired
         '403':
-          description: application_disabled / insufficient_scope
+          description: application_disabled / organization_boundary_violation
           content:
             application/json:
               schema:
@@ -3218,7 +3193,7 @@ paths:
                       code:
                         enum:
                         - application_disabled
-                        - insufficient_scope
+                        - organization_boundary_violation
         '404':
           description: resource_not_found
           content:
@@ -3481,13 +3456,11 @@ paths:
       tags:
       - internal
       summary: 来源人员核对列表
-      description: 只读核对本来源数据。HMAC 无需 Scope/Grant，并逐语句复核应用、凭据、来源启用及有效期。尚未建立组织的配置不在列表中，由可信 Admin 入口查看。来源无效或归属不符不放行。按外部 ID 的
-        UTF-8 字节序升序，page_size 1..100，未知或重复参数拒绝。 projection_status 结合来源退役、任职状态、账号状态、实际组织成员及部门关系计算；linked 不表示已投影。只返回本来源在目标组织有任职来源记录的人员，不枚举全实例用户；user_id
+      description: 只读核对本来源数据。采用 HMAC 签名，并逐语句复核应用、凭据、来源启用及有效期。尚未建立组织的配置不在列表中，由可信 Admin 入口查看。来源无效或归属不符不放行。按外部 ID 的 UTF-8 字节序升序，page_size
+        1..100，未知或重复参数拒绝。 projection_status 结合来源退役、任职状态、账号状态、实际组织成员及部门关系计算；linked 不表示已投影。只返回本来源在目标组织有任职来源记录的人员，不枚举全实例用户；user_id
         对退役或停用账号返回 null。
       operationId: internalSourcePersons
       x-imboy-authentication: hmac
-      x-imboy-legacy-scope-only: true
-      x-imboy-scope: identities:read
       x-imboy-rate-bucket: internal_read
       x-imboy-idempotency: not_required
       parameters:
@@ -3741,7 +3714,7 @@ paths:
                         - invalid_credential
                         - credential_expired
         '403':
-          description: application_disabled / insufficient_scope
+          description: application_disabled / organization_boundary_violation
           content:
             application/json:
               schema:
@@ -3785,7 +3758,7 @@ paths:
                       code:
                         enum:
                         - application_disabled
-                        - insufficient_scope
+                        - organization_boundary_violation
         '404':
           description: resource_not_found
           content:
@@ -3977,13 +3950,11 @@ paths:
       tags:
       - internal
       summary: INT-43 来源目录显式增量同步
-      description: 来源由当前 Application 及可信配置识别，须启用目录来源，并对目标组织具备 identities:write。客户端不能指定 user_id、Owner 或接入授权；组织首次建立仅使用可信配置中已确认的
-        Human Owner。来源关联、组织/部门/人员变更、目录投影及审计同事务提交。首次同步只建来源档案，不凭姓名等字段创建或绑定 IMBoy 账号；后续经 OA 双重身份证明关联。组织、部门、人员和成员关系各按对应版本及内容摘要校验：低版本或同版本不同内容冲突，同版本同内容可重放。未包含记录不代表删除；removed
+      description: 来源由当前 Application 及可信配置识别，须启用目录来源，且目标组织由当前应用的可信来源映射覆盖。客户端不能指定 user_id、Owner 或接入授权；组织首次建立仅使用可信配置中已确认的 Human
+        Owner。来源关联、组织/部门/人员变更、目录投影及审计同事务提交。首次同步只建来源档案，不凭姓名等字段创建或绑定 IMBoy 账号；后续经 OA 双重身份证明关联。组织、部门、人员和成员关系各按对应版本及内容摘要校验：低版本或同版本不同内容冲突，同版本同内容可重放。未包含记录不代表删除；removed
         为显式移除，组织离职保留实例用户及其他组织关系，Owner 须先交接。source_status=removed 的账号关联退休不可自动恢复；membership=removed 可通过更高版本显式恢复。
       operationId: internalDirectorySync
       x-imboy-authentication: hmac
-      x-imboy-legacy-scope-only: true
-      x-imboy-scope: identities:write
       x-imboy-rate-bucket: internal_write
       x-imboy-idempotency: required
       parameters:
@@ -4263,7 +4234,7 @@ paths:
                         - invalid_credential
                         - credential_expired
         '403':
-          description: application_disabled / organization_disabled / insufficient_scope / organization_boundary_violation
+          description: application_disabled / organization_disabled / organization_boundary_violation / organization_boundary_violation
           content:
             application/json:
               schema:
@@ -4308,7 +4279,7 @@ paths:
                         enum:
                         - application_disabled
                         - organization_disabled
-                        - insufficient_scope
+                        - organization_boundary_violation
                         - organization_boundary_violation
         '404':
           description: resource_not_found
@@ -4552,8 +4523,6 @@ paths:
         external_user_id（本应用未映射则 null）/ member_role 等。
       operationId: internalDirectoryUsers
       x-imboy-authentication: hmac
-      x-imboy-legacy-scope-only: true
-      x-imboy-scope: identities:read
       x-imboy-rate-bucket: internal_read
       x-imboy-idempotency: not_required
       requestBody:
@@ -4574,7 +4543,7 @@ paths:
                 workspace_id:
                   type: integer
                   format: int64
-                  description: 按 workspace 过滤（要求 identities:read 的 Workspace 业务归属匹配，旧 Bearer 另校验 Grant；参与游标绑定）。
+                  description: 按 workspace 过滤（要求 Workspace 业务归属匹配；参与游标绑定）。
       responses:
         '200':
           description: 可映射用户目录页
@@ -4699,7 +4668,7 @@ paths:
                         enum:
                         - invalid_credential
         '403':
-          description: 凭证未被授予所需 scope
+          description: 跨组织访问（IDOR 防线）
           content:
             application/json:
               schema:
@@ -4742,7 +4711,7 @@ paths:
                     properties:
                       code:
                         enum:
-                        - insufficient_scope
+                        - organization_boundary_violation
         '429':
           description: 触发限流（fail-closed）
           headers:
@@ -4848,7 +4817,7 @@ paths:
       description: |
         本 Application origin 建立（enterprise_group_origin active）的企业群
         keyset 列表（created_at DESC, id DESC）。行集收窄为 active workspace 内
-        scope=workspace 且组织归属匹配的 W（旧 Bearer 另校验 Grant）（收窄谓词在服务端列表 SQL 内）。
+        scope=workspace 且组织归属匹配的 W（收窄谓词在服务端列表 SQL 内）。
         人类自建群/他应用建群/已归档群不可见。分页为 CURSOR-V2 签名游标
         （非法/过期/foreign 一律 400 invalid_request，客户端从首页重启）。
       operationId: internalGroupList
@@ -4867,8 +4836,6 @@ paths:
         schema:
           type: string
       x-imboy-authentication: hmac
-      x-imboy-legacy-scope-only: true
-      x-imboy-scope: groups:read
       x-imboy-rate-bucket: internal_read
       x-imboy-idempotency: not_required
       responses:
@@ -5011,7 +4978,7 @@ paths:
                         enum:
                         - invalid_credential
         '403':
-          description: 凭证未被授予所需 scope
+          description: 跨组织访问（IDOR 防线）
           content:
             application/json:
               schema:
@@ -5054,7 +5021,7 @@ paths:
                     properties:
                       code:
                         enum:
-                        - insufficient_scope
+                        - organization_boundary_violation
         '429':
           description: 触发限流（fail-closed）
           headers:
@@ -5214,8 +5181,6 @@ paths:
           type: string
           minLength: 1
       x-imboy-authentication: hmac
-      x-imboy-legacy-scope-only: true
-      x-imboy-scope: groups:write
       x-imboy-rate-bucket: internal_write
       x-imboy-idempotency: required
       requestBody:
@@ -5361,7 +5326,7 @@ paths:
                         enum:
                         - invalid_credential
         '403':
-          description: 凭证未被授予所需 scope
+          description: 跨组织访问（IDOR 防线）
           content:
             application/json:
               schema:
@@ -5404,7 +5369,7 @@ paths:
                     properties:
                       code:
                         enum:
-                        - insufficient_scope
+                        - organization_boundary_violation
         '404':
           description: 资源不存在或不属于本组织（不区分「不存在」与「不归你」）
           content:
@@ -5642,11 +5607,7 @@ paths:
       tags:
       - internal
       summary: 读取企业群详情
-      description: |
-        最小字段 + 成员硬上限（超限返回 invalid_request，绝不静默截断）。
-        跨组织/个人群/已归档一律 resource_not_found（不泄露存在性）。
-        旧 Bearer 兼容：读操作 scope 为 groups:read（与 routes registry/
-        boundary spec 一致；原 groups:write 是 drift）。
+      description: 读取本组织工作空间内的群资料，跨组织或不存在均返回 resource_not_found；执行当前资源归属检查。
       operationId: internalGroupDetail
       parameters:
       - name: group_id
@@ -5657,8 +5618,6 @@ paths:
           type: integer
           format: int64
       x-imboy-authentication: hmac
-      x-imboy-legacy-scope-only: true
-      x-imboy-scope: groups:read
       x-imboy-rate-bucket: internal_read
       x-imboy-idempotency: not_required
       responses:
@@ -5804,7 +5763,7 @@ paths:
                         enum:
                         - invalid_credential
         '403':
-          description: 凭证未被授予所需 scope
+          description: 跨组织访问（IDOR 防线）
           content:
             application/json:
               schema:
@@ -5847,7 +5806,7 @@ paths:
                     properties:
                       code:
                         enum:
-                        - insufficient_scope
+                        - organization_boundary_violation
         '404':
           description: 资源不存在或不属于本组织（不区分「不存在」与「不归你」）
           content:
@@ -6015,8 +5974,6 @@ paths:
           type: string
           minLength: 1
       x-imboy-authentication: hmac
-      x-imboy-legacy-scope-only: true
-      x-imboy-scope: groups:write
       x-imboy-rate-bucket: internal_write
       x-imboy-idempotency: required
       requestBody:
@@ -6149,7 +6106,7 @@ paths:
                         enum:
                         - invalid_credential
         '403':
-          description: 凭证未被授予所需 scope
+          description: 跨组织访问（IDOR 防线）
           content:
             application/json:
               schema:
@@ -6192,7 +6149,7 @@ paths:
                     properties:
                       code:
                         enum:
-                        - insufficient_scope
+                        - organization_boundary_violation
         '404':
           description: 资源不存在或不属于本组织（不区分「不存在」与「不归你」）
           content:
@@ -6403,8 +6360,6 @@ paths:
           type: string
           minLength: 1
       x-imboy-authentication: hmac
-      x-imboy-legacy-scope-only: true
-      x-imboy-scope: groups:write
       x-imboy-rate-bucket: internal_write
       x-imboy-idempotency: required
       responses:
@@ -6516,7 +6471,7 @@ paths:
                         enum:
                         - invalid_credential
         '403':
-          description: 凭证未被授予所需 scope
+          description: 跨组织访问（IDOR 防线）
           content:
             application/json:
               schema:
@@ -6559,7 +6514,7 @@ paths:
                     properties:
                       code:
                         enum:
-                        - insufficient_scope
+                        - organization_boundary_violation
         '404':
           description: 资源不存在或不属于本组织（不区分「不存在」与「不归你」）
           content:
@@ -6755,7 +6710,7 @@ paths:
       description: |
         群 active（status=1）成员 keyset 列表——§10.2 唯一升序 family
         （created_at ASC, id ASC）。群定位跨 Org/个人群/已归档一律
-        resource_not_found（不泄露存在性）；同 Org 但群所属工作空间不符合业务归属（旧 Bearer 另校验 Grant）
+        resource_not_found（不泄露存在性）；同 Org 但群所属工作空间不符合业务归属
         → organization_boundary_violation（403）。分页为 CURSOR-V2 签名游标
         （非法/过期/跨群游标一律 400 invalid_request）。
       operationId: internalGroupMemberList
@@ -6781,8 +6736,6 @@ paths:
         schema:
           type: string
       x-imboy-authentication: hmac
-      x-imboy-legacy-scope-only: true
-      x-imboy-scope: groups:read
       x-imboy-rate-bucket: internal_read
       x-imboy-idempotency: not_required
       responses:
@@ -6919,7 +6872,7 @@ paths:
                         enum:
                         - invalid_credential
         '403':
-          description: 凭证未被授予所需 scope
+          description: 跨组织访问（IDOR 防线）
           content:
             application/json:
               schema:
@@ -6962,7 +6915,7 @@ paths:
                     properties:
                       code:
                         enum:
-                        - insufficient_scope
+                        - organization_boundary_violation
         '404':
           description: 资源不存在或不属于本组织（不区分「不存在」与「不归你」）
           content:
@@ -7174,8 +7127,6 @@ paths:
           type: string
           minLength: 1
       x-imboy-authentication: hmac
-      x-imboy-legacy-scope-only: true
-      x-imboy-scope: groups:write
       x-imboy-rate-bucket: internal_write
       x-imboy-idempotency: required
       requestBody:
@@ -7302,7 +7253,7 @@ paths:
                         enum:
                         - invalid_credential
         '403':
-          description: 凭证未被授予所需 scope
+          description: 跨组织访问（IDOR 防线）
           content:
             application/json:
               schema:
@@ -7345,7 +7296,7 @@ paths:
                     properties:
                       code:
                         enum:
-                        - insufficient_scope
+                        - organization_boundary_violation
         '404':
           description: 资源不存在或不属于本组织（不区分「不存在」与「不归你」）
           content:
@@ -7602,8 +7553,6 @@ paths:
           type: string
           minLength: 1
       x-imboy-authentication: hmac
-      x-imboy-legacy-scope-only: true
-      x-imboy-scope: groups:write
       x-imboy-rate-bucket: internal_write
       x-imboy-idempotency: required
       requestBody:
@@ -7728,7 +7677,7 @@ paths:
                         enum:
                         - invalid_credential
         '403':
-          description: 凭证未被授予所需 scope
+          description: 跨组织访问（IDOR 防线）
           content:
             application/json:
               schema:
@@ -7771,7 +7720,7 @@ paths:
                     properties:
                       code:
                         enum:
-                        - insufficient_scope
+                        - organization_boundary_violation
         '404':
           description: 资源不存在或不属于本组织（不区分「不存在」与「不归你」）
           content:
@@ -8029,8 +7978,6 @@ paths:
           type: string
           minLength: 1
       x-imboy-authentication: hmac
-      x-imboy-legacy-scope-only: true
-      x-imboy-scope: groups:write
       x-imboy-rate-bucket: internal_write
       x-imboy-idempotency: required
       requestBody:
@@ -8174,7 +8121,7 @@ paths:
                         enum:
                         - invalid_credential
         '403':
-          description: 凭证未被授予所需 scope
+          description: 跨组织访问（IDOR 防线）
           content:
             application/json:
               schema:
@@ -8217,7 +8164,7 @@ paths:
                     properties:
                       code:
                         enum:
-                        - insufficient_scope
+                        - organization_boundary_violation
         '404':
           description: 资源不存在或不属于本组织（不区分「不存在」与「不归你」）
           content:
@@ -8456,7 +8403,7 @@ paths:
       - internal
       summary: 企业托管群聊消息（发到企业群）
       description: |
-        发送到企业群。HMAC 无需 Scope；旧 Bearer 的 scope 由 sender_mode 动态决定（同 INT-09）。
+        发送到企业群。HMAC 无需 Scope。
         human 发送者必须是该群 active 成员；企业托管消息固定非端到端加密。
         **as_user_id / actor_user_id 别名参数出现即拒**（INV-5）。
       operationId: internalMessageGroup
@@ -8476,9 +8423,6 @@ paths:
           type: string
           minLength: 1
       x-imboy-authentication: hmac
-      x-imboy-legacy-scope-only: true
-      x-imboy-scope: dynamic:messages_send
-      x-imboy-scope-note: application → messages:send；human → messages:send_as_human
       x-imboy-rate-bucket: internal_write
       x-imboy-idempotency: required
       requestBody:
@@ -8638,7 +8582,7 @@ paths:
                         enum:
                         - invalid_credential
         '403':
-          description: 凭证未被授予所需 scope
+          description: 跨组织访问（IDOR 防线）
           content:
             application/json:
               schema:
@@ -8681,7 +8625,7 @@ paths:
                     properties:
                       code:
                         enum:
-                        - insufficient_scope
+                        - organization_boundary_violation
         '404':
           description: 资源不存在或不属于本组织（不区分「不存在」与「不归你」）
           content:
@@ -8921,8 +8865,7 @@ paths:
       summary: 企业托管单聊消息（OA 直发 / 代发）
       description: |
         以应用身份或代本组织已映射人类用户发送单聊。企业托管消息**固定非端到端
-        加密**，审计事实永久保留。HMAC 无需 Scope；旧 Bearer 的 scope 由 sender_mode 动态决定：
-        application → messages:send；human → messages:send_as_human。
+        加密**，审计事实永久保留。sender_mode 区分应用身份与已映射的 Human 身份；两者均以 HMAC 签名调用。
         **as_user_id / actor_user_id 别名参数出现即拒**（INV-5）。
       operationId: internalMessageDirect
       parameters:
@@ -8934,9 +8877,6 @@ paths:
           type: string
           minLength: 1
       x-imboy-authentication: hmac
-      x-imboy-legacy-scope-only: true
-      x-imboy-scope: dynamic:messages_send
-      x-imboy-scope-note: application → messages:send；human → messages:send_as_human
       x-imboy-rate-bucket: internal_write
       x-imboy-idempotency: required
       requestBody:
@@ -9102,7 +9042,7 @@ paths:
                         enum:
                         - invalid_credential
         '403':
-          description: 凭证未被授予所需 scope
+          description: 跨组织访问（IDOR 防线）
           content:
             application/json:
               schema:
@@ -9145,7 +9085,7 @@ paths:
                     properties:
                       code:
                         enum:
-                        - insufficient_scope
+                        - organization_boundary_violation
         '404':
           description: 资源不存在或不属于本组织（不区分「不存在」与「不归你」）
           content:
@@ -9397,8 +9337,6 @@ paths:
           type: string
           minLength: 1
       x-imboy-authentication: hmac
-      x-imboy-legacy-scope-only: true
-      x-imboy-scope: files:write
       x-imboy-rate-bucket: internal_write
       x-imboy-idempotency: required
       requestBody:
@@ -9680,7 +9618,7 @@ paths:
                         enum:
                         - invalid_credential
         '403':
-          description: 凭证未被授予所需 scope
+          description: 跨组织访问（IDOR 防线）
           content:
             application/json:
               schema:
@@ -9723,7 +9661,7 @@ paths:
                     properties:
                       code:
                         enum:
-                        - insufficient_scope
+                        - organization_boundary_violation
         '409':
           description: Idempotency-Key 与既有请求冲突
           content:
@@ -9885,8 +9823,6 @@ paths:
           type: string
           minLength: 1
       x-imboy-authentication: hmac
-      x-imboy-legacy-scope-only: true
-      x-imboy-scope: files:write
       x-imboy-rate-bucket: internal_write
       x-imboy-idempotency: required
       requestBody:
@@ -10016,7 +9952,7 @@ paths:
                         enum:
                         - invalid_credential
         '403':
-          description: 凭证未被授予所需 scope
+          description: 跨组织访问（IDOR 防线）
           content:
             application/json:
               schema:
@@ -10059,7 +9995,7 @@ paths:
                     properties:
                       code:
                         enum:
-                        - insufficient_scope
+                        - organization_boundary_violation
         '404':
           description: 资源不存在或不属于本组织（不区分「不存在」与「不归你」）
           content:
@@ -10268,8 +10204,6 @@ paths:
           type: string
           minLength: 1
       x-imboy-authentication: hmac
-      x-imboy-legacy-scope-only: true
-      x-imboy-scope: files:write
       x-imboy-rate-bucket: internal_write
       x-imboy-idempotency: required
       requestBody:
@@ -10434,7 +10368,7 @@ paths:
                         enum:
                         - invalid_credential
         '403':
-          description: 凭证未被授予所需 scope
+          description: 跨组织访问（IDOR 防线）
           content:
             application/json:
               schema:
@@ -10477,7 +10411,7 @@ paths:
                     properties:
                       code:
                         enum:
-                        - insufficient_scope
+                        - organization_boundary_violation
         '404':
           description: 资源不存在或不属于本组织（不区分「不存在」与「不归你」）
           content:
@@ -10683,8 +10617,6 @@ paths:
           type: string
           minLength: 1
       x-imboy-authentication: hmac
-      x-imboy-legacy-scope-only: true
-      x-imboy-scope: friend_requests:create
       x-imboy-rate-bucket: internal_write
       x-imboy-idempotency: required
       requestBody:
@@ -10816,7 +10748,7 @@ paths:
                         enum:
                         - invalid_credential
         '403':
-          description: 凭证未被授予所需 scope
+          description: 跨组织访问（IDOR 防线）
           content:
             application/json:
               schema:
@@ -10859,7 +10791,7 @@ paths:
                     properties:
                       code:
                         enum:
-                        - insufficient_scope
+                        - organization_boundary_violation
         '404':
           description: 资源不存在或不属于本组织（不区分「不存在」与「不归你」）
           content:
@@ -11111,8 +11043,6 @@ paths:
           type: string
           minLength: 1
       x-imboy-authentication: hmac
-      x-imboy-legacy-scope-only: true
-      x-imboy-scope: webhooks:manage
       x-imboy-rate-bucket: internal_write
       x-imboy-idempotency: required
       requestBody:
@@ -11287,7 +11217,7 @@ paths:
                         enum:
                         - invalid_credential
         '403':
-          description: 凭证未被授予所需 scope
+          description: 跨组织访问（IDOR 防线）
           content:
             application/json:
               schema:
@@ -11330,7 +11260,7 @@ paths:
                     properties:
                       code:
                         enum:
-                        - insufficient_scope
+                        - organization_boundary_violation
         '409':
           description: Idempotency-Key 与既有请求冲突
           content:
@@ -11522,8 +11452,6 @@ paths:
           - success
           - dead
       x-imboy-authentication: hmac
-      x-imboy-legacy-scope-only: true
-      x-imboy-scope: webhooks:manage
       x-imboy-rate-bucket: internal_read
       x-imboy-idempotency: not_required
       responses:
@@ -11654,7 +11582,7 @@ paths:
                         enum:
                         - invalid_credential
         '403':
-          description: 凭证未被授予所需 scope
+          description: 跨组织访问（IDOR 防线）
           content:
             application/json:
               schema:
@@ -11697,7 +11625,7 @@ paths:
                     properties:
                       code:
                         enum:
-                        - insufficient_scope
+                        - organization_boundary_violation
         '429':
           description: 触发限流（fail-closed）
           headers:
@@ -11866,8 +11794,6 @@ paths:
           minLength: 1
           maxLength: 128
       x-imboy-authentication: hmac
-      x-imboy-legacy-scope-only: true
-      x-imboy-scope: webhooks:manage
       x-imboy-rate-bucket: internal_write
       x-imboy-idempotency: required
       responses:
@@ -11983,7 +11909,7 @@ paths:
                         enum:
                         - invalid_credential
         '403':
-          description: 凭证未被授予所需 scope
+          description: 跨组织访问（IDOR 防线）
           content:
             application/json:
               schema:
@@ -12026,7 +11952,7 @@ paths:
                     properties:
                       code:
                         enum:
-                        - insufficient_scope
+                        - organization_boundary_violation
         '404':
           description: 资源不存在或不属于本组织（不区分「不存在」与「不归你」）
           content:
@@ -12242,8 +12168,6 @@ paths:
           type: string
           minLength: 1
       x-imboy-authentication: hmac
-      x-imboy-legacy-scope-only: true
-      x-imboy-scope: webhooks:manage
       x-imboy-rate-bucket: internal_write
       x-imboy-idempotency: required
       responses:
@@ -12364,7 +12288,7 @@ paths:
                         enum:
                         - invalid_credential
         '403':
-          description: 凭证未被授予所需 scope
+          description: 跨组织访问（IDOR 防线）
           content:
             application/json:
               schema:
@@ -12407,7 +12331,7 @@ paths:
                     properties:
                       code:
                         enum:
-                        - insufficient_scope
+                        - organization_boundary_violation
         '409':
           description: Idempotency-Key 与既有请求冲突
           content:
@@ -12762,7 +12686,7 @@ paths:
                         enum:
                         - invalid_credential
         '403':
-          description: 凭证未被授予所需 scope
+          description: 跨组织访问（IDOR 防线）
           content:
             application/json:
               schema:
@@ -12805,7 +12729,7 @@ paths:
                     properties:
                       code:
                         enum:
-                        - insufficient_scope
+                        - organization_boundary_violation
         '429':
           description: 触发限流（fail-closed）
           headers:
@@ -12904,8 +12828,6 @@ paths:
                         enum:
                         - internal_error
       x-imboy-authentication: hmac
-      x-imboy-legacy-scope-only: true
-      x-imboy-scope: oa:login:issue
       x-imboy-rate-bucket: internal_sso
       x-imboy-idempotency: not_required
   /api/internal/v1/oa/sso/exchange:
@@ -12919,8 +12841,6 @@ paths:
         TSID 以 JSON integer 输出（INV-8）。独立限流桶 internal_sso。
       operationId: internalOaSsoExchange
       x-imboy-authentication: hmac
-      x-imboy-legacy-scope-only: true
-      x-imboy-scope: sso:exchange
       x-imboy-rate-bucket: internal_sso
       x-imboy-idempotency: single_use_code
       requestBody:
@@ -13067,7 +12987,7 @@ paths:
                         enum:
                         - invalid_credential
         '403':
-          description: 凭证未被授予所需 scope
+          description: 跨组织访问（IDOR 防线）
           content:
             application/json:
               schema:
@@ -13110,7 +13030,7 @@ paths:
                     properties:
                       code:
                         enum:
-                        - insufficient_scope
+                        - organization_boundary_violation
         '404':
           description: 资源不存在或不属于本组织（不区分「不存在」与「不归你」）
           content:
@@ -13303,13 +13223,7 @@ paths:
       tags:
       - internal
       summary: Workspace 列表（业务组织归属）
-      description: |
-        active Workspace keyset 列表；HMAC 返回当前组织业务归属内的 W，无需 Scope/Grant。旧 Bearer 返回生效 Grant 覆盖的 W
-        （org 全域 Grant = Org 内全部 W，显式 Grant = 列出的 W）——收窄谓词在
-        服务端列表 SQL 内实现。已归档 Workspace 不可见。
-        分页为 CURSOR-V2 签名游标：cursor 透传 next_cursor 值；非法/过期/跨
-        family/O/App/filter 的游标一律 400 invalid_request（不回显原因），客户端
-        只能从首页重启。
+      description: 当前组织业务归属内的活跃工作空间列表。分页使用签名游标，游标绑定组织、应用及筛选条件。
       operationId: internalWorkspaceList
       parameters:
       - name: limit
@@ -13326,8 +13240,6 @@ paths:
         schema:
           type: string
       x-imboy-authentication: hmac
-      x-imboy-legacy-scope-only: true
-      x-imboy-scope: workspaces:read
       x-imboy-rate-bucket: internal_read
       x-imboy-idempotency: not_required
       responses:
@@ -13474,7 +13386,7 @@ paths:
                         enum:
                         - invalid_credential
         '403':
-          description: 凭证未被授予所需 scope
+          description: 跨组织访问（IDOR 防线）
           content:
             application/json:
               schema:
@@ -13517,7 +13429,7 @@ paths:
                     properties:
                       code:
                         enum:
-                        - insufficient_scope
+                        - organization_boundary_violation
         '429':
           description: 触发限流（fail-closed）
           headers:
@@ -13666,13 +13578,9 @@ paths:
       summary: 创建企业工作空间
       operationId: internalWorkspaceCreate
       x-imboy-authentication: hmac
-      x-imboy-legacy-scope-only: true
-      x-imboy-scope: workspaces:write
       x-imboy-rate-bucket: internal_write
       x-imboy-idempotency: required
-      description: HMAC 创建须匹配组织业务归属；旧 Bearer 另需组织全域 Grant；owner_user_id 必须是本企业活跃 Owner/Admin。修改与归档须匹配目标工作空间归属（旧 Bearer 另需目标
-        Grant）。expected_version 为当前版本，过期返回 version_conflict。默认空间归档须显式指定同组织且符合当前业务归属的活跃替代项。应用审计与资源、幂等响应同事务。归档保留历史资料；新建不会自动
-        Grant。未知字段拒绝。
+      description: 创建工作空间；owner_user_id 必须是当前组织活跃 Owner/Admin。资源、审计和幂等响应同事务提交。
       parameters:
       - name: Idempotency-Key
         in: header
@@ -13883,7 +13791,7 @@ paths:
                         enum:
                         - invalid_credential
         '403':
-          description: 凭证未被授予所需 scope
+          description: 跨组织访问（IDOR 防线）
           content:
             application/json:
               schema:
@@ -13926,7 +13834,7 @@ paths:
                     properties:
                       code:
                         enum:
-                        - insufficient_scope
+                        - organization_boundary_violation
         '404':
           description: 资源不存在或不属于本组织（不区分「不存在」与「不归你」）
           content:
@@ -14139,10 +14047,7 @@ paths:
       tags:
       - internal
       summary: Workspace 详情
-      description: |
-        单个 active Workspace 详情。跨 Organization / 不存在 / 已归档一律
-        resource_not_found（IDOR 同不存在同体，不泄露存在性）；同 Organization 但
-        目标工作空间不符合当前业务归属（旧 Bearer 另校验 Grant） → organization_boundary_violation（403）。
+      description: 读取当前组织内的活跃工作空间。跨组织、不存在和已归档资源均返回 resource_not_found。
       operationId: internalWorkspaceDetail
       parameters:
       - name: workspace_id
@@ -14153,8 +14058,6 @@ paths:
           type: integer
           format: int64
       x-imboy-authentication: hmac
-      x-imboy-legacy-scope-only: true
-      x-imboy-scope: workspaces:read
       x-imboy-rate-bucket: internal_read
       x-imboy-idempotency: not_required
       responses:
@@ -14279,7 +14182,7 @@ paths:
                         enum:
                         - invalid_credential
         '403':
-          description: 凭证未被授予所需 scope
+          description: 跨组织访问（IDOR 防线）
           content:
             application/json:
               schema:
@@ -14322,7 +14225,7 @@ paths:
                     properties:
                       code:
                         enum:
-                        - insufficient_scope
+                        - organization_boundary_violation
         '404':
           description: 资源不存在或不属于本组织（不区分「不存在」与「不归你」）
           content:
@@ -14471,13 +14374,9 @@ paths:
       summary: 修改企业工作空间
       operationId: internalWorkspaceUpdate
       x-imboy-authentication: hmac
-      x-imboy-legacy-scope-only: true
-      x-imboy-scope: workspaces:write
       x-imboy-rate-bucket: internal_write
       x-imboy-idempotency: required
-      description: HMAC 创建须匹配组织业务归属；旧 Bearer 另需组织全域 Grant；owner_user_id 必须是本企业活跃 Owner/Admin。修改与归档须匹配目标工作空间归属（旧 Bearer 另需目标
-        Grant）。expected_version 为当前版本，过期返回 version_conflict。默认空间归档须显式指定同组织且符合当前业务归属的活跃替代项。应用审计与资源、幂等响应同事务。归档保留历史资料；新建不会自动
-        Grant。未知字段拒绝。
+      description: 修改当前组织工作空间，必须提供 expected_version；旧版本返回 version_conflict。
       parameters:
       - name: workspace_id
         in: path
@@ -14697,7 +14596,7 @@ paths:
                         enum:
                         - invalid_credential
         '403':
-          description: 凭证未被授予所需 scope
+          description: 跨组织访问（IDOR 防线）
           content:
             application/json:
               schema:
@@ -14740,7 +14639,7 @@ paths:
                     properties:
                       code:
                         enum:
-                        - insufficient_scope
+                        - organization_boundary_violation
         '404':
           description: 资源不存在或不属于本组织（不区分「不存在」与「不归你」）
           content:
@@ -14972,13 +14871,9 @@ paths:
       summary: 归档企业工作空间
       operationId: internalWorkspaceArchive
       x-imboy-authentication: hmac
-      x-imboy-legacy-scope-only: true
-      x-imboy-scope: workspaces:write
       x-imboy-rate-bucket: internal_write
       x-imboy-idempotency: required
-      description: HMAC 创建须匹配组织业务归属；旧 Bearer 另需组织全域 Grant；owner_user_id 必须是本企业活跃 Owner/Admin。修改与归档须匹配目标工作空间归属（旧 Bearer 另需目标
-        Grant）。expected_version 为当前版本，过期返回 version_conflict。默认空间归档须显式指定同组织且符合当前业务归属的活跃替代项。应用审计与资源、幂等响应同事务。归档保留历史资料；新建不会自动
-        Grant。未知字段拒绝。
+      description: 软归档当前组织工作空间，保留历史资料；必须提供 expected_version。默认空间归档须指定有效替代项。
       parameters:
       - name: workspace_id
         in: path
@@ -15198,7 +15093,7 @@ paths:
                         enum:
                         - invalid_credential
         '403':
-          description: 凭证未被授予所需 scope
+          description: 跨组织访问（IDOR 防线）
           content:
             application/json:
               schema:
@@ -15241,7 +15136,7 @@ paths:
                     properties:
                       code:
                         enum:
-                        - insufficient_scope
+                        - organization_boundary_violation
         '404':
           description: 资源不存在或不属于本组织（不区分「不存在」与「不归你」）
           content:
@@ -15493,8 +15388,6 @@ paths:
         schema:
           type: string
       x-imboy-authentication: hmac
-      x-imboy-legacy-scope-only: true
-      x-imboy-scope: projects:read
       x-imboy-rate-bucket: internal_read
       x-imboy-idempotency: not_required
       responses:
@@ -15640,7 +15533,7 @@ paths:
                         enum:
                         - invalid_credential
         '403':
-          description: 凭证未被授予所需 scope
+          description: 跨组织访问（IDOR 防线）
           content:
             application/json:
               schema:
@@ -15683,7 +15576,7 @@ paths:
                     properties:
                       code:
                         enum:
-                        - insufficient_scope
+                        - organization_boundary_violation
         '429':
           description: 触发限流（fail-closed）
           headers:
@@ -15833,7 +15726,7 @@ paths:
       summary: 项目详情
       description: |
         单个项目详情。跨 Organization / 不存在 / 所属 Workspace 已归档一律
-        resource_not_found（IDOR 同不存在同体）；同 Organization 但不符合业务归属（旧 Bearer 另校验生效 Grant）
+        resource_not_found（IDOR 同不存在同体）；同 Organization 但不符合业务归属
         覆盖项目所属 W → organization_boundary_violation（403）。
       operationId: internalProjectDetail
       parameters:
@@ -15845,8 +15738,6 @@ paths:
           type: integer
           format: int64
       x-imboy-authentication: hmac
-      x-imboy-legacy-scope-only: true
-      x-imboy-scope: projects:read
       x-imboy-rate-bucket: internal_read
       x-imboy-idempotency: not_required
       responses:
@@ -15978,7 +15869,7 @@ paths:
                         enum:
                         - invalid_credential
         '403':
-          description: 凭证未被授予所需 scope
+          description: 跨组织访问（IDOR 防线）
           content:
             application/json:
               schema:
@@ -16021,7 +15912,7 @@ paths:
                     properties:
                       code:
                         enum:
-                        - insufficient_scope
+                        - organization_boundary_violation
         '404':
           description: 资源不存在或不属于本组织（不区分「不存在」与「不归你」）
           content:
@@ -16197,8 +16088,6 @@ paths:
         schema:
           type: string
       x-imboy-authentication: hmac
-      x-imboy-legacy-scope-only: true
-      x-imboy-scope: channels:read
       x-imboy-rate-bucket: internal_read
       x-imboy-idempotency: not_required
       responses:
@@ -16348,7 +16237,7 @@ paths:
                         enum:
                         - invalid_credential
         '403':
-          description: 凭证未被授予所需 scope
+          description: 跨组织访问（IDOR 防线）
           content:
             application/json:
               schema:
@@ -16391,7 +16280,7 @@ paths:
                     properties:
                       code:
                         enum:
-                        - insufficient_scope
+                        - organization_boundary_violation
         '429':
           description: 触发限流（fail-closed）
           headers:
@@ -16539,12 +16428,10 @@ paths:
       - internal
       summary: 创建企业频道
       operationId: internalChannelCreate
-      description: INT-40。HMAC 无需 Scope/Grant；旧 Bearer 仍需 channels:write 与目标工作空间 Grant。创建者须为有效企业成员（企业 Owner 包含）且是工作空间 Owner/Member，Guest
-        禁止。企业频道固定非公开 visibility=1、access_type=0、join_policy=1。归属和创建者不可修改。修改/归档必须 expected_version，旧版本 409；治理版本包含旧入口更新，订阅人数等派生更新不增加版本。应用审计、资源、幂等响应同事务；重放仍验证当前业务归属及生命周期（旧
-        Bearer 另验证 Grant）。409 可能为版本、配额/归档状态或幂等冲突，以 error.code 区分。
+      description: INT-40。采用 HMAC 签名。创建者须为有效企业成员（企业 Owner 包含）且是工作空间 Owner/Member，Guest 禁止。企业频道固定非公开 visibility=1、access_type=0、join_policy=1。归属和创建者不可修改。修改/归档必须
+        expected_version，旧版本 409；治理版本包含旧入口更新，订阅人数等派生更新不增加版本。应用审计、资源、幂等响应同事务；重放仍验证当前业务归属及生命周期。409 可能为版本、配额/归档状态或幂等冲突，以 error.code
+        区分。
       x-imboy-authentication: hmac
-      x-imboy-legacy-scope-only: true
-      x-imboy-scope: channels:write
       x-imboy-rate-bucket: internal_write
       x-imboy-idempotency: required
       parameters:
@@ -16680,7 +16567,7 @@ paths:
                         enum:
                         - invalid_credential
         '403':
-          description: 凭证未被授予所需 scope
+          description: 跨组织访问（IDOR 防线）
           content:
             application/json:
               schema:
@@ -16723,7 +16610,7 @@ paths:
                     properties:
                       code:
                         enum:
-                        - insufficient_scope
+                        - organization_boundary_violation
         '404':
           description: 资源不存在或不属于本组织（不区分「不存在」与「不归你」）
           content:
@@ -17040,7 +16927,7 @@ paths:
       description: |
         单个工作区频道详情。跨 Organization / 个人频道 / 已停用（status≠1）/ 已
         删除 / 不存在一律 resource_not_found（IDOR 同不存在同体）；同 Organization
-        但频道所属工作空间不符合当前业务归属（旧 Bearer 另校验 Grant） → organization_boundary_violation（403）。
+        但频道所属工作空间不符合当前业务归属 → organization_boundary_violation（403）。
       operationId: internalChannelDetail
       parameters:
       - name: channel_id
@@ -17051,8 +16938,6 @@ paths:
           type: integer
           format: int64
       x-imboy-authentication: hmac
-      x-imboy-legacy-scope-only: true
-      x-imboy-scope: channels:read
       x-imboy-rate-bucket: internal_read
       x-imboy-idempotency: not_required
       responses:
@@ -17184,7 +17069,7 @@ paths:
                         enum:
                         - invalid_credential
         '403':
-          description: 凭证未被授予所需 scope
+          description: 跨组织访问（IDOR 防线）
           content:
             application/json:
               schema:
@@ -17227,7 +17112,7 @@ paths:
                     properties:
                       code:
                         enum:
-                        - insufficient_scope
+                        - organization_boundary_violation
         '404':
           description: 资源不存在或不属于本组织（不区分「不存在」与「不归你」）
           content:
@@ -17375,12 +17260,10 @@ paths:
       - internal
       summary: 修改企业频道资料
       operationId: internalChannelUpdate
-      description: INT-41。HMAC 无需 Scope/Grant；旧 Bearer 仍需 channels:write 与目标工作空间 Grant。创建者须为有效企业成员（企业 Owner 包含）且是工作空间 Owner/Member，Guest
-        禁止。企业频道固定非公开 visibility=1、access_type=0、join_policy=1。归属和创建者不可修改。修改/归档必须 expected_version，旧版本 409；治理版本包含旧入口更新，订阅人数等派生更新不增加版本。应用审计、资源、幂等响应同事务；重放仍验证当前业务归属及生命周期（旧
-        Bearer 另验证 Grant）。409 可能为版本、配额/归档状态或幂等冲突，以 error.code 区分。
+      description: INT-41。采用 HMAC 签名。创建者须为有效企业成员（企业 Owner 包含）且是工作空间 Owner/Member，Guest 禁止。企业频道固定非公开 visibility=1、access_type=0、join_policy=1。归属和创建者不可修改。修改/归档必须
+        expected_version，旧版本 409；治理版本包含旧入口更新，订阅人数等派生更新不增加版本。应用审计、资源、幂等响应同事务；重放仍验证当前业务归属及生命周期。409 可能为版本、配额/归档状态或幂等冲突，以 error.code
+        区分。
       x-imboy-authentication: hmac
-      x-imboy-legacy-scope-only: true
-      x-imboy-scope: channels:write
       x-imboy-rate-bucket: internal_write
       x-imboy-idempotency: required
       parameters:
@@ -17519,7 +17402,7 @@ paths:
                         enum:
                         - invalid_credential
         '403':
-          description: 凭证未被授予所需 scope
+          description: 跨组织访问（IDOR 防线）
           content:
             application/json:
               schema:
@@ -17562,7 +17445,7 @@ paths:
                     properties:
                       code:
                         enum:
-                        - insufficient_scope
+                        - organization_boundary_violation
         '404':
           description: 资源不存在或不属于本组织（不区分「不存在」与「不归你」）
           content:
@@ -17876,12 +17759,10 @@ paths:
       - internal
       summary: 归档企业频道
       operationId: internalChannelArchive
-      description: INT-42。HMAC 无需 Scope/Grant；旧 Bearer 仍需 channels:write 与目标工作空间 Grant。创建者须为有效企业成员（企业 Owner 包含）且是工作空间 Owner/Member，Guest
-        禁止。企业频道固定非公开 visibility=1、access_type=0、join_policy=1。归属和创建者不可修改。修改/归档必须 expected_version，旧版本 409；治理版本包含旧入口更新，订阅人数等派生更新不增加版本。应用审计、资源、幂等响应同事务；重放仍验证当前业务归属及生命周期（旧
-        Bearer 另验证 Grant）。409 可能为版本、配额/归档状态或幂等冲突，以 error.code 区分。
+      description: INT-42。采用 HMAC 签名。创建者须为有效企业成员（企业 Owner 包含）且是工作空间 Owner/Member，Guest 禁止。企业频道固定非公开 visibility=1、access_type=0、join_policy=1。归属和创建者不可修改。修改/归档必须
+        expected_version，旧版本 409；治理版本包含旧入口更新，订阅人数等派生更新不增加版本。应用审计、资源、幂等响应同事务；重放仍验证当前业务归属及生命周期。409 可能为版本、配额/归档状态或幂等冲突，以 error.code
+        区分。
       x-imboy-authentication: hmac
-      x-imboy-legacy-scope-only: true
-      x-imboy-scope: channels:write
       x-imboy-rate-bucket: internal_write
       x-imboy-idempotency: required
       parameters:
@@ -18009,7 +17890,7 @@ paths:
                         enum:
                         - invalid_credential
         '403':
-          description: 凭证未被授予所需 scope
+          description: 跨组织访问（IDOR 防线）
           content:
             application/json:
               schema:
@@ -18052,7 +17933,7 @@ paths:
                     properties:
                       code:
                         enum:
-                        - insufficient_scope
+                        - organization_boundary_violation
         '404':
           description: 资源不存在或不属于本组织（不区分「不存在」与「不归你」）
           content:
@@ -18368,12 +18249,9 @@ paths:
       summary: 企业客服坐席列表
       operationId: internalCustomerServiceSeatList
       x-imboy-authentication: hmac
-      x-imboy-legacy-scope-only: true
-      x-imboy-scope: customer_service:read
       x-imboy-rate-bucket: internal_read
       x-imboy-idempotency: not_required
-      description: HMAC 复核应用的组织业务归属；旧 Bearer 仍需组织全域 Grant。坐席属于企业；workspace_id 仅指定同企业内的活跃审计位置，不改变坐席归属。 包括停用坐席；按 business_identity_id
-        升序。签名游标绑定企业、应用及列表类型；不接受企业或工作空间过滤参数。
+      description: HMAC 复核应用的组织业务归属。坐席属于企业；workspace_id 仅指定同企业内的活跃审计位置，不改变坐席归属。 包括停用坐席；按 business_identity_id 升序。签名游标绑定企业、应用及列表类型；不接受企业或工作空间过滤参数。
       parameters:
       - name: limit
         in: query
@@ -18534,7 +18412,7 @@ paths:
                         enum:
                         - invalid_credential
         '403':
-          description: 凭证未被授予所需 scope
+          description: 跨组织访问（IDOR 防线）
           content:
             application/json:
               schema:
@@ -18577,7 +18455,7 @@ paths:
                     properties:
                       code:
                         enum:
-                        - insufficient_scope
+                        - organization_boundary_violation
         '404':
           description: 资源不存在或不属于本组织（不区分「不存在」与「不归你」）
           content:
@@ -18771,11 +18649,9 @@ paths:
       summary: 创建企业客服坐席
       operationId: internalCustomerServiceSeatCreate
       x-imboy-authentication: hmac
-      x-imboy-legacy-scope-only: true
-      x-imboy-scope: customer_service:write
       x-imboy-rate-bucket: internal_write
       x-imboy-idempotency: required
-      description: HMAC 复核应用的组织业务归属；旧 Bearer 仍需组织全域 Grant。坐席属于企业；workspace_id 仅指定同企业内的活跃审计位置，不改变坐席归属。
+      description: HMAC 复核应用的组织业务归属。坐席属于企业；workspace_id 仅指定同企业内的活跃审计位置，不改变坐席归属。
       parameters:
       - name: Idempotency-Key
         in: header
@@ -18956,7 +18832,7 @@ paths:
                         enum:
                         - invalid_credential
         '403':
-          description: 凭证未被授予所需 scope
+          description: 跨组织访问（IDOR 防线）
           content:
             application/json:
               schema:
@@ -18999,7 +18875,7 @@ paths:
                     properties:
                       code:
                         enum:
-                        - insufficient_scope
+                        - organization_boundary_violation
         '404':
           description: 资源不存在或不属于本组织（不区分「不存在」与「不归你」）
           content:
@@ -19224,11 +19100,9 @@ paths:
       summary: 企业客服坐席详情
       operationId: internalCustomerServiceSeatDetail
       x-imboy-authentication: hmac
-      x-imboy-legacy-scope-only: true
-      x-imboy-scope: customer_service:read
       x-imboy-rate-bucket: internal_read
       x-imboy-idempotency: not_required
-      description: HMAC 复核应用的组织业务归属；旧 Bearer 仍需组织全域 Grant。坐席属于企业；workspace_id 仅指定同企业内的活跃审计位置，不改变坐席归属。
+      description: HMAC 复核应用的组织业务归属。坐席属于企业；workspace_id 仅指定同企业内的活跃审计位置，不改变坐席归属。
       parameters:
       - name: business_identity_id
         in: path
@@ -19364,7 +19238,7 @@ paths:
                         enum:
                         - invalid_credential
         '403':
-          description: 凭证未被授予所需 scope
+          description: 跨组织访问（IDOR 防线）
           content:
             application/json:
               schema:
@@ -19407,7 +19281,7 @@ paths:
                     properties:
                       code:
                         enum:
-                        - insufficient_scope
+                        - organization_boundary_violation
         '404':
           description: 资源不存在或不属于本组织（不区分「不存在」与「不归你」）
           content:
@@ -19601,11 +19475,9 @@ paths:
       summary: 修改或停用企业客服坐席
       operationId: internalCustomerServiceSeatUpdate
       x-imboy-authentication: hmac
-      x-imboy-legacy-scope-only: true
-      x-imboy-scope: customer_service:write
       x-imboy-rate-bucket: internal_write
       x-imboy-idempotency: required
-      description: HMAC 复核应用的组织业务归属；旧 Bearer 仍需组织全域 Grant。坐席属于企业；workspace_id 仅指定同企业内的活跃审计位置，不改变坐席归属。
+      description: HMAC 复核应用的组织业务归属。坐席属于企业；workspace_id 仅指定同企业内的活跃审计位置，不改变坐席归属。
       parameters:
       - name: business_identity_id
         in: path
@@ -19795,7 +19667,7 @@ paths:
                         enum:
                         - invalid_credential
         '403':
-          description: 凭证未被授予所需 scope
+          description: 跨组织访问（IDOR 防线）
           content:
             application/json:
               schema:
@@ -19838,7 +19710,7 @@ paths:
                     properties:
                       code:
                         enum:
-                        - insufficient_scope
+                        - organization_boundary_violation
         '404':
           description: 资源不存在或不属于本组织（不区分「不存在」与「不归你」）
           content:
@@ -20068,7 +19940,7 @@ components:
       type: apiKey
       in: header
       name: X-Imboy-Credential
-      description: 服务端签发的 ib_int_ 定位符；不发送 secret，不要求 Scope/Grant。
+      description: 服务端签发的 ib_int_ 定位符；不发送 secret。
     ibIntHmacTimestamp:
       type: apiKey
       in: header
@@ -20084,8 +19956,3 @@ components:
       in: header
       name: X-Imboy-Signature
       description: sha256=<64位小写hex> 或 sha512=<128位小写hex>；原文见 README §3。
-    ibIntBearer:
-      type: http
-      scheme: bearer
-      bearerFormat: <credential_prefix>.<secret>
-      description: 旧客户端迁移兼容；仍执行历史 Scope/Grant 策略。新 OA 使用 HMAC 请求签名。

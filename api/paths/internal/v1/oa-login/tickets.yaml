@@ -75,13 +75,11 @@ post:
     '401':
       $ref: ../../../../components/responses/internal/invalid_credential.yaml
     '403':
-      $ref: ../../../../components/responses/internal/insufficient_scope.yaml
+      $ref: ../../../../components/responses/internal/organization_boundary_violation.yaml
     '429':
       $ref: ../../../../components/responses/internal/rate_limited.yaml
     '500':
       $ref: ../../../../components/responses/internal/internal_error.yaml
   x-imboy-authentication: hmac
-  x-imboy-legacy-scope-only: true
-  x-imboy-scope: oa:login:issue
   x-imboy-rate-bucket: internal_sso
   x-imboy-idempotency: not_required

@@ -3,18 +3,14 @@
 # RUN_ID: enterprise-internal-20260921T043945Z
 # Stage coverage: STAGE_GZ (INT-01..INT-14 + human-side SSO code issuance)
 # FULL stage extends this manifest ONLY at FULL-00 re-baseline (plan-full §4),
-# appending new rows; existing GZ rows' method/path/scope contract is frozen.
-# Every route: method / path / scope / grant / resource / actor / idempotency / rate bucket / sender_mode
 # HMAC: TLS -> HMAC + credential/application lifecycle -> trusted business target
 #   -> atomic nonce -> rate/idempotency -> resource attribution -> operation/audit.
-# route scope/grant fields below describe legacy Bearer clients only.
 # Organization lifecycle is not a credential auth gate (ADR 2026-10-12); resource governance remains.
 #   -> organization/workspace/resource boundary -> rate limit -> operation -> audit
 # Hard invariants:
 #   INV-1  /api/open/v1/* production routes, aliases, handlers, migrations == 0 (verified at BASE-00: grep=0)
 #   INV-2  Application Credential may ONLY call /api/internal/v1/*; against /api/adm/* and Human /api/v1/* it MUST get 401/403
 #   INV-3  Human JWT may NOT call /api/internal/v1/* application routes (Human discovery, code issuance and confirmed account linking use /api/v1)
-#   INV-4  No wildcard scopes; messages:send_as_human / friend_requests:create / webhooks:manage never implied by messages:send
 #   INV-5  sender contract field is exactly sender_user_id; actor_user_id / as_user_id MUST be rejected
 #   INV-6  OA-origin messages are enterprise-hosted and permanently NON-E2EE; Human-Human E2EE paths untouched
 #   INV-7  Mutations require Idempotency-Key except INT-44 single-use login tickets; same key+same body -> replay original result; same key+different body -> 409 idempotency_conflict
@@ -25,14 +21,9 @@ auth_contexts:
   application_credential:
     format: "ib_int_<credential_id>.<secret>"
     verification: hmac_sha256_or_sha512 + constant_time_compare + single_use_nonce
-    scopes_required: false
-    grants_required: false
     timestamp_window_seconds: 300
     required_headers: [X-Imboy-Credential, X-Imboy-Timestamp, X-Imboy-Nonce, X-Imboy-Signature]
     optional_signed_headers: [X-Imboy-Organization]
-    legacy_bearer:
-      verification: sha256_digest + constant_time_compare
-      scopes_and_grants_required: true
     allowed_prefix: "/api/internal/v1/"
     forbidden_prefixes: ["/api/adm/", "/api/v1/"]
   human_jwt:
@@ -48,8 +39,6 @@ routes:
   - id: INT-44
     method: POST
     path: /api/internal/v1/oa/login/tickets
-    scope: oa:login:issue
-    grant: application self, explicitly provisioned
     resource: inbound login proof, PKCE S256, single use, 60 second TTL
     actor: application
     idempotency: not_required
@@ -59,8 +48,6 @@ routes:
   - id: INT-01
     method: GET
     path: /api/internal/v1/application
-    scope: application:read
-    grant: none-self  # self context of authenticated application
     resource: application self (org/app/status/scopes)
     actor: application
     idempotency: not_required
@@ -70,8 +57,6 @@ routes:
   - id: INT-02
     method: PUT
     path: /api/internal/v1/identity-mappings
-    scope: identities:write
-    grant: org scoped
     resource: enterprise_external_identity (bind external_user_id <-> active member)
     actor: application
     idempotency: required
@@ -81,8 +66,6 @@ routes:
   - id: INT-03
     method: POST
     path: /api/internal/v1/identity-mappings/resolve
-    scope: identities:read
-    grant: org scoped
     resource: mapping lookup by external_user_id batch; NO full export
     actor: application
     idempotency: not_required  # pure query over POST body
@@ -92,8 +75,6 @@ routes:
   - id: INT-04
     method: POST
     path: /api/internal/v1/groups
-    scope: groups:write
-    grant: workspace scoped
     resource: workspace enterprise group; members via external_user_id
     actor: application
     idempotency: required
@@ -103,8 +84,6 @@ routes:
   - id: INT-05
     method: PUT
     path: /api/internal/v1/groups/{group_id}/members
-    scope: groups:write
-    grant: workspace scoped + group in workspace
     resource: idempotent add of mapped members
     actor: application
     idempotency: required
@@ -114,8 +93,6 @@ routes:
   - id: INT-06
     method: DELETE
     path: /api/internal/v1/groups/{group_id}/members
-    scope: groups:write
-    grant: workspace scoped + group in workspace
     resource: idempotent remove; must not break owner invariant
     actor: application
     idempotency: required
@@ -125,8 +102,6 @@ routes:
   - id: INT-07
     method: POST
     path: /api/internal/v1/files/presign
-    scope: files:write
-    grant: org scoped
     resource: enterprise asset short-lived upload URL
     actor: application
     idempotency: required
@@ -136,8 +111,6 @@ routes:
   - id: INT-08
     method: POST
     path: /api/internal/v1/files/confirm
-    scope: files:write
-    grant: org scoped
     resource: HEAD/size/hash/scope verified confirm
     actor: application
     idempotency: required
@@ -147,11 +120,6 @@ routes:
   - id: INT-09
     method: POST
     path: /api/internal/v1/messages/direct
-    scope: dynamic messages:send*
-    scope_rules:
-      sender_mode=application: messages:send
-      sender_mode=human: messages:send_as_human + required sender_user_id
-    grant: org scoped; recipient must be same-org mapped active Human
     resource: enterprise hosted direct message/file; NON-E2EE
     actor: application (audit actor even in human sender_mode)
     idempotency: required
@@ -163,11 +131,6 @@ routes:
   - id: INT-10
     method: POST
     path: /api/internal/v1/groups/{group_id}/messages
-    scope: dynamic messages:send*
-    scope_rules:
-      sender_mode=application: messages:send
-      sender_mode=human: messages:send_as_human + required sender_user_id
-    grant: workspace scoped + group granted
     resource: enterprise hosted group message/file; NON-E2EE
     actor: application
     idempotency: required
@@ -178,8 +141,6 @@ routes:
   - id: INT-11
     method: POST
     path: /api/internal/v1/friend-requests
-    scope: friend_requests:create
-    grant: org scoped; sender+target same-org mapped active Human
     resource: friend request creation ONLY; accept/reject done by receiving Human in existing flow
     actor: application
     idempotency: required
@@ -190,8 +151,6 @@ routes:
   - id: INT-12
     method: PUT
     path: /api/internal/v1/webhook
-    scope: webhooks:manage
-    grant: application self
     resource: configure/rotate/disable own endpoint + subscriptions
     actor: application
     idempotency: required
@@ -202,8 +161,6 @@ routes:
   - id: INT-13
     method: POST
     path: /api/internal/v1/webhook/deliveries/{delivery_id}/replay
-    scope: webhooks:manage
-    grant: application self delivery only
     resource: replay own delivery; new delivery id, original event id preserved
     actor: application
     idempotency: required
@@ -213,8 +170,6 @@ routes:
   - id: INT-14
     method: POST
     path: /api/internal/v1/oa/sso/exchange
-    scope: sso:exchange
-    grant: org+app bound to the code
     resource: atomic single-use consumption of one-time code (CAS)
     actor: application
     idempotency: single_use_code  # replay of consumed code => reject, not replay-response
@@ -225,8 +180,6 @@ routes:
   - id: HUMAN-SSO-01  # human-side counterpart, NOT application credential
     method: POST
     path: /api/v1/oa/sso/code
-    scope: human JWT (no application scope)
-    grant: none
     resource: 60s opaque one-time code issuance for OA SSO
     actor: human_user
     idempotency: not_required
@@ -238,8 +191,6 @@ routes:
   - id: INT-15
     method: DELETE
     path: /api/internal/v1/identity-mappings
-    scope: identities:write
-    grant: org scoped
     resource: revoke external identity mapping (soft revoke; no physical delete)
     actor: application
     idempotency: required
@@ -249,8 +200,6 @@ routes:
   - id: INT-16
     method: POST
     path: /api/internal/v1/identity-mappings/directory
-    scope: identities:read
-    grant: org scoped
     resource: bounded cursor directory over mappings; NO unbounded export
     actor: application
     idempotency: not_required
@@ -260,8 +209,6 @@ routes:
   - id: INT-17
     method: POST
     path: /api/internal/v1/directory/users
-    scope: identities:read
-    grant: org scoped (+ workspace boundary when workspace_id given)
     resource: bounded cursor directory over member identities; NO unbounded export
     actor: application
     idempotency: not_required
@@ -271,8 +218,6 @@ routes:
   - id: INT-18
     method: GET
     path: /api/internal/v1/groups/{group_id}
-    scope: groups:read
-    grant: workspace scoped + group in workspace
     resource: enterprise group detail
     actor: application
     idempotency: not_required
@@ -282,8 +227,6 @@ routes:
   - id: INT-19
     method: PATCH
     path: /api/internal/v1/groups/{group_id}
-    scope: groups:write
-    grant: workspace scoped + group in workspace
     resource: enterprise group update
     actor: application
     idempotency: required
@@ -293,8 +236,6 @@ routes:
   - id: INT-20
     method: PUT
     path: /api/internal/v1/groups/{group_id}/members/roles
-    scope: groups:write
-    grant: workspace scoped + group in workspace
     resource: enterprise group member roles
     actor: application
     idempotency: required
@@ -304,8 +245,6 @@ routes:
   - id: INT-21
     method: DELETE
     path: /api/internal/v1/groups/{group_id}
-    scope: groups:write
-    grant: workspace scoped + group in workspace + owning application must be self
     resource: enterprise group archive
     actor: application
     idempotency: required
@@ -315,8 +254,6 @@ routes:
   - id: INT-22
     method: POST
     path: /api/internal/v1/files/governance
-    scope: files:write
-    grant: org scoped
     resource: enterprise asset retention/hold/purge governance
     actor: application
     idempotency: required
@@ -325,8 +262,6 @@ routes:
   - id: INT-23
     method: GET
     path: /api/internal/v1/webhook/deliveries
-    scope: webhooks:manage
-    grant: none-self  # application self surface (same as INT-12/13); deliveries of this app only
     resource: delivery list + health summary; NO payload / NO secret in response
     actor: application
     idempotency: not_required
@@ -334,13 +269,10 @@ routes:
     sender_mode: none
 
   # ---- V2.1 只读扩面（2026-09-24，run ent-org-internal-v21-20260923T110542Z-929b7d41）。
-  #      id/method/path/scope 逐字取自 src/api/enterprise_internal_routes.erl 冻结表
   #      INT-24..31；全部 GET 只读、Idempotency-Key 不要求、限流桶 internal_read。----
   - id: INT-24
     method: GET
     path: /api/internal/v1/workspaces
-    scope: workspaces:read
-    grant: org scoped; rows narrowed to Grant-covered workspaces
     resource: workspace keyset list (archived invisible)
     actor: application
     idempotency: not_required
@@ -350,8 +282,6 @@ routes:
   - id: INT-25
     method: GET
     path: /api/internal/v1/workspaces/{workspace_id}
-    scope: workspaces:read
-    grant: workspace in Grant-covered set
     resource: workspace detail (path W boundary)
     actor: application
     idempotency: not_required
@@ -361,8 +291,6 @@ routes:
   - id: INT-26
     method: GET
     path: /api/internal/v1/groups
-    scope: groups:read
-    grant: org scoped; origin app + Grant-covered workspace filter
     resource: enterprise group keyset list
     actor: application
     idempotency: not_required
@@ -372,8 +300,6 @@ routes:
   - id: INT-27
     method: GET
     path: /api/internal/v1/groups/{group_id}/members
-    scope: groups:read
-    grant: workspace scoped + group in workspace
     resource: enterprise group member keyset list (group W boundary)
     actor: application
     idempotency: not_required
@@ -383,8 +309,6 @@ routes:
   - id: INT-28
     method: GET
     path: /api/internal/v1/projects
-    scope: projects:read
-    grant: workspace filter required (Grant-covered)
     resource: enterprise project keyset list
     actor: application
     idempotency: not_required
@@ -394,8 +318,6 @@ routes:
   - id: INT-29
     method: GET
     path: /api/internal/v1/projects/{project_id}
-    scope: projects:read
-    grant: project W boundary
     resource: enterprise project detail
     actor: application
     idempotency: not_required
@@ -405,8 +327,6 @@ routes:
   - id: INT-30
     method: GET
     path: /api/internal/v1/channels
-    scope: channels:read
-    grant: workspace filter required; scope=workspace AND status=1 only (personal channels excluded)
     resource: workspace channel keyset list
     actor: application
     idempotency: not_required
@@ -416,8 +336,6 @@ routes:
   - id: INT-31
     method: GET
     path: /api/internal/v1/channels/{channel_id}
-    scope: channels:read
-    grant: channel W boundary; status=1 only
     resource: workspace channel detail
     actor: application
     idempotency: not_required
@@ -427,8 +345,6 @@ routes:
   - id: INT-32
     method: POST
     path: /api/internal/v1/webhook/test-delivery
-    scope: webhooks:manage
-    grant: none-self  # application self surface (same as INT-12/13/23)
     resource: synthetic webhook.ping delivery to current endpoint (connectivity test)
     actor: application
     idempotency: required
@@ -438,8 +354,6 @@ routes:
   - id: INT-33
     method: GET
     path: /api/internal/v1/customer-service/seats
-    scope: customer_service:read
-    grant: org scoped
     resource: org seat list
     actor: application
     idempotency: not_required
@@ -449,8 +363,6 @@ routes:
   - id: INT-34
     method: GET
     path: /api/internal/v1/customer-service/seats/{business_identity_id}
-    scope: customer_service:read
-    grant: org scoped
     resource: org seat detail
     actor: application
     idempotency: not_required
@@ -460,8 +372,6 @@ routes:
   - id: INT-35
     method: POST
     path: /api/internal/v1/customer-service/seats
-    scope: customer_service:write
-    grant: org scoped
     resource: org seat create
     actor: application
     idempotency: required
@@ -471,8 +381,6 @@ routes:
   - id: INT-36
     method: PATCH
     path: /api/internal/v1/customer-service/seats/{business_identity_id}
-    scope: customer_service:write
-    grant: org scoped
     resource: org seat update
     actor: application
     idempotency: required
@@ -482,8 +390,6 @@ routes:
   - id: INT-37
     method: POST
     path: /api/internal/v1/workspaces
-    scope: workspaces:write
-    grant: org scoped
     resource: workspace
     actor: application
     idempotency: required
@@ -492,8 +398,6 @@ routes:
   - id: INT-38
     method: PATCH
     path: /api/internal/v1/workspaces/{workspace_id}
-    scope: workspaces:write
-    grant: workspace scoped
     resource: workspace
     actor: application
     idempotency: required
@@ -502,8 +406,6 @@ routes:
   - id: INT-39
     method: DELETE
     path: /api/internal/v1/workspaces/{workspace_id}
-    scope: workspaces:write
-    grant: workspace scoped
     resource: workspace
     actor: application
     idempotency: required
@@ -513,8 +415,6 @@ routes:
   - id: INT-40
     method: POST
     path: /api/internal/v1/channels
-    scope: channels:write
-    grant: workspace scoped
     resource: channel
     actor: application
     idempotency: required
@@ -524,8 +424,6 @@ routes:
   - id: INT-41
     method: PATCH
     path: /api/internal/v1/channels/{channel_id}
-    scope: channels:write
-    grant: workspace scoped
     resource: channel
     actor: application
     idempotency: required
@@ -535,8 +433,6 @@ routes:
   - id: INT-42
     method: DELETE
     path: /api/internal/v1/channels/{channel_id}
-    scope: channels:write
-    grant: workspace scoped
     resource: channel
     actor: application
     idempotency: required
@@ -546,8 +442,6 @@ routes:
   - id: INT-43
     method: POST
     path: /api/internal/v1/directory/sync
-    scope: identities:write
-    grant: source-scoped enabled directory mapping
     resource: directory
     actor: application
     idempotency: required
@@ -558,8 +452,6 @@ routes:
   - id: INT-45
     method: GET
     path: /api/internal/v1/directory/organizations
-    scope: identities:read
-    grant: source application and live organization-wide read grant
     resource: source organizations reconciliation
     actor: application
     idempotency: not_required
@@ -569,8 +461,6 @@ routes:
   - id: INT-46
     method: GET
     path: /api/internal/v1/directory/departments
-    scope: identities:read
-    grant: source application and live organization-wide read grant
     resource: source departments reconciliation
     actor: application
     idempotency: not_required
@@ -580,8 +470,6 @@ routes:
   - id: INT-47
     method: GET
     path: /api/internal/v1/directory/persons
-    scope: identities:read
-    grant: source application and live organization-wide read grant
     resource: source persons reconciliation
     actor: application
     idempotency: not_required
@@ -590,8 +478,6 @@ routes:
   - id: INT-48
     method: GET
     path: /api/internal/v1/directory/memberships
-    scope: identities:read
-    grant: source application and live organization-wide grant
     resource: source managed organization member
     actor: application
     idempotency: not_required
@@ -601,8 +487,6 @@ routes:
   - id: INT-49
     method: PATCH
     path: /api/internal/v1/directory/memberships
-    scope: members:write
-    grant: source application and live organization-wide grant
     resource: source managed organization member
     actor: application
     idempotency: required
@@ -610,7 +494,6 @@ routes:
     sender_mode: none
 
 stable_error_codes: [invalid_credential, credential_expired, application_disabled,
-  organization_disabled, insufficient_scope, resource_not_found, identity_not_mapped,
   organization_boundary_violation, idempotency_conflict, rate_limited,
   security_gate_closed, invalid_request, internal_error, version_conflict, resource_conflict, seat_limit_exceeded]
 

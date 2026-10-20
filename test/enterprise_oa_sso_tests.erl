@@ -12,7 +12,7 @@
 %%     seed-commit-race 全序，保留已提交事实，最后释放专用 marker 库。
 %%   * 覆盖合同 §6 负例矩阵 26 条（NEG-01..15 / NEG-H01..H07 /
 %%     NEG-X01..02 / STORAGE-01..02）+ 1 条实现在场哨兵（W1 哨兵翻转）。
-%%   * 认证链产物（A2）经 enterprise_internal_auth:authenticate_tx 真链获取；
+%%   * 认证链产物（A2）经 enterprise_internal_auth:authenticate_signed_tx 真链获取；
 %%     handler 面信封由壳层薄映射，HTTP 形态断言经 logic 错误码 +
 %%     enterprise_internal_error 信封联合钉住（Router 接线归 A0 W4）。
 
@@ -150,7 +150,7 @@ seed_sso_fixture(C) ->
     ok = seed_member(C, ?ORG_A, ?NOMAP_H),
     ok = seed_user(C, ?FOREIGN),
     {ok, AppA} = enterprise_application_repo:create_tx(
-        C, ?ORG_A, ?APP_KEY, <<"epgz05 oa a"/utf8>>, {null, [<<"sso:exchange">>]}, [
+        C, ?ORG_A, ?APP_KEY, <<"epgz05 oa a"/utf8>>, null, [
             ?REDIRECT
         ]
     ),
@@ -162,7 +162,7 @@ seed_sso_fixture(C) ->
     ),
     %% app B 同 org（NEG-06 跨 app）
     {ok, AppB} = enterprise_application_repo:create_tx(
-        C, ?ORG_A, ?APP_KEY_B, <<"epgz05 oa b"/utf8>>, {null, [<<"sso:exchange">>]}, [
+        C, ?ORG_A, ?APP_KEY_B, <<"epgz05 oa b"/utf8>>, null, [
             ?REDIRECT
         ]
     ),
@@ -171,23 +171,11 @@ seed_sso_fixture(C) ->
         enterprise_internal_ops:issue_credential_tx(C, ?ORG_A, AppBId, ?SECRET_B, undefined),
     %% 空 allowlist app（NEG-H05：空 allowlist fail-closed）
     {ok, AppEmpty} = enterprise_application_repo:create_tx(
-        C,
-        ?ORG_A,
-        ?APP_KEY_EMPTY,
-        <<"epgz05 oa empty"/utf8>>,
-        {null, [
-            <<"sso:exchange">>
-        ]}
+        C, ?ORG_A, ?APP_KEY_EMPTY, <<"epgz05 oa empty"/utf8>>, null
     ),
     %% 只读 scope app（NEG-09：缺 sso:exchange）
     {ok, AppRO} = enterprise_application_repo:create_tx(
-        C,
-        ?ORG_A,
-        ?APP_KEY_RO,
-        <<"epgz05 oa ro"/utf8>>,
-        {null, [
-            <<"application:read">>
-        ]}
+        C, ?ORG_A, ?APP_KEY_RO, <<"epgz05 oa ro"/utf8>>, null
     ),
     AppROId = maps:get(<<"id">>, AppRO),
     {ok, #{credential := FullRO}} =
@@ -201,7 +189,7 @@ seed_sso_fixture(C) ->
     %% 豁免后仍拒绝非本应用 code」的对照夹具）
     ok = seed_org(C, ?ORG_B, ?OWNER_B),
     {ok, AppBB} = enterprise_application_repo:create_tx(
-        C, ?ORG_B, ?APP_KEY_BB, <<"epgz05 oa b-org"/utf8>>, {null, [<<"sso:exchange">>]}, [
+        C, ?ORG_B, ?APP_KEY_BB, <<"epgz05 oa b-org"/utf8>>, null, [
             ?REDIRECT
         ]
     ),
@@ -245,7 +233,7 @@ issue_ok(C, Uid, Params) ->
 
 %% 交换：app A credential 真链认证后走 logic
 do_exchange(C, F, Code, RedirectUri, Nonce) ->
-    {ok, Ctx} = enterprise_internal_auth:authenticate_tx(
+    {ok, Ctx} = enterprise_hmac_test_support:signed_context_tx(
         C, prefix_of(maps:get(credential, F)), ?SECRET_A
     ),
     enterprise_oa_sso_logic:exchange_tx(C, Ctx, #{
@@ -273,8 +261,6 @@ enterprise_oa_sso_test_() ->
                 {"NEG-06 exchange 跨 app（同 org）被拒", with_tx(C, fun neg06_cross_app/1)},
                 {"NEG-07 exchange redirect_uri 不匹配被拒", with_tx(C, fun neg07_redirect_mismatch/1)},
                 {"NEG-08 exchange nonce 不匹配被拒", with_tx(C, fun neg08_nonce_mismatch/1)},
-                {"NEG-09 exchange 缺 sso:exchange scope 被拒",
-                    with_tx(C, fun neg09_insufficient_scope/1)},
                 {"NEG-10 凭证/应用拒绝与组织归档无关性", with_tx(C, fun neg10_credential_chain/1)},
                 {"NEG-11 identity_not_mapped 且 code 不被消费",
                     with_tx(C, fun neg11_identity_not_mapped/1)},
@@ -364,7 +350,7 @@ neg04_concurrent_cas_test(State) ->
         F = seed_sso_fixture(C),
         R = issue_ok(C, ?ALICE),
         Code = maps:get(<<"code">>, R),
-        {ok, Ctx} = enterprise_internal_auth:authenticate_tx(
+        {ok, Ctx} = enterprise_hmac_test_support:signed_context_tx(
             C, prefix_of(maps:get(credential, F)), ?SECRET_A
         ),
         ok = exec(C, <<"COMMIT">>),
@@ -459,7 +445,7 @@ neg05_cross_org(C) ->
     F = seed_sso_fixture(C),
     R = issue_ok(C, ?ALICE),
     Code = maps:get(<<"code">>, R),
-    {ok, CtxB} = enterprise_internal_auth:authenticate_tx(
+    {ok, CtxB} = enterprise_hmac_test_support:signed_context_tx(
         C, prefix_of(maps:get(credential_bb, F)), maps:get(secret_bb, F)
     ),
     ?assertEqual(
@@ -474,7 +460,7 @@ neg06_cross_app(C) ->
     F = seed_sso_fixture(C),
     R = issue_ok(C, ?ALICE),
     Code = maps:get(<<"code">>, R),
-    {ok, CtxB} = enterprise_internal_auth:authenticate_tx(
+    {ok, CtxB} = enterprise_hmac_test_support:signed_context_tx(
         C, prefix_of(maps:get(credential_b, F)), ?SECRET_B
     ),
     ?assertEqual(
@@ -518,26 +504,6 @@ neg08_nonce_mismatch(C) ->
 
 %% NEG-09：credential 缺 sso:exchange scope → decide 编排 insufficient_scope
 %%（A2 链在 exchange 端点的 scope 门）。
-neg09_insufficient_scope(C) ->
-    F = seed_sso_fixture(C),
-    FullRO = maps:get(credential_ro, F),
-    %% 认证链本体通过（credential/org/app 全活），仅 scope 门拒绝
-    {ok, _CtxRO} = enterprise_internal_auth:authenticate_tx(
-        C, prefix_of(FullRO), ?SECRET_RO
-    ),
-    ?assertEqual(
-        {error, insufficient_scope},
-        enterprise_internal_auth:decide(
-            <<"POST">>,
-            ?EXCHANGE_PATH,
-            #{<<"authorization">> => <<"Bearer ", FullRO/binary>>},
-            fun() ->
-                enterprise_internal_auth:authenticate_tx(
-                    C, prefix_of(FullRO), ?SECRET_RO
-                )
-            end
-        )
-    ).
 
 %% NEG-10：凭证/应用授权仍拒绝失效状态；组织归档不关闭应用认证。
 neg10_credential_chain(C) ->
@@ -546,12 +512,14 @@ neg10_credential_chain(C) ->
     %% ① 错 secret → invalid_credential
     ?assertEqual(
         {error, invalid_credential},
-        enterprise_internal_auth:authenticate_tx(C, prefix_of(FullA), <<"WRONG_secret_value">>)
+        enterprise_hmac_test_support:signed_context_tx(
+            C, prefix_of(FullA), <<"WRONG_secret_value">>
+        )
     ),
     %% ② 过期 credential → credential_expired
     ?assertEqual(
         {error, credential_expired},
-        enterprise_internal_auth:authenticate_tx(
+        enterprise_hmac_test_support:signed_context_tx(
             C, prefix_of(maps:get(credential_expired, F)), ?SECRET_E
         )
     ),
@@ -563,7 +531,7 @@ neg10_credential_chain(C) ->
     ),
     ?assertEqual(
         {error, application_disabled},
-        enterprise_internal_auth:authenticate_tx(C, prefix_of(FullA), ?SECRET_A)
+        enterprise_hmac_test_support:signed_context_tx(C, prefix_of(FullA), ?SECRET_A)
     ),
     ok = exec(C, <<"UPDATE enterprise_application SET status = 'active' WHERE id = $1">>, [
         maps:get(app_id, F)
@@ -574,28 +542,20 @@ neg10_credential_chain(C) ->
     ),
     %% scope 门前置：零 Grant 时生效 scope 为空集会先拒 insufficient_scope
     %%（V2.1 §5.2/F-09，同 NEG-13 处理），先给 app A 种生效 Grant。
-    {ok, _} = enterprise_application_grant_repo:create_tx(
-        C,
-        ?ORG_A,
-        maps:get(app_id, F),
-        #{
-            scopes => [<<"sso:exchange">>],
-            expires_at => <<"2099-12-31T23:59:59Z">>,
-            idempotency_key => <<"epgz05-neg10-grant-a">>
-        }
-    ),
     ?assertMatch(
         {ok, _},
         enterprise_internal_auth:decide(
             <<"POST">>,
             ?EXCHANGE_PATH,
-            #{<<"authorization">> => <<"Bearer ", FullA/binary>>},
+            enterprise_hmac_test_support:headers(FullA, <<"POST">>, ?EXCHANGE_PATH),
             fun() ->
-                enterprise_internal_auth:authenticate_tx(C, prefix_of(FullA), ?SECRET_A)
+                enterprise_hmac_test_support:signed_context_tx(C, prefix_of(FullA), ?SECRET_A)
             end
         )
     ),
-    {ok, ArchivedCtx} = enterprise_internal_auth:authenticate_tx(C, prefix_of(FullA), ?SECRET_A),
+    {ok, ArchivedCtx} = enterprise_hmac_test_support:signed_context_tx(
+        C, prefix_of(FullA), ?SECRET_A
+    ),
     ?assertEqual(maps:get(app_id, F), maps:get(application_id, ArchivedCtx)),
     ok = exec(
         C, <<"UPDATE organization SET status = 'active' WHERE id = $1">>, [?ORG_A]
@@ -742,16 +702,6 @@ neg13_rate_fail_closed(C) ->
     %% V2.1 §5.2/F-09 零 Grant 拒绝：不种 Grant 时生效 scope 为空集，
     %% scope 门先拒 insufficient_scope，到不了本用例的目标（限流门 fail-closed）。
     %% 先给 AppA 种生效 Grant（生效 scope = allowed ∩ grant = sso:exchange）。
-    {ok, _} = enterprise_application_grant_repo:create_tx(
-        C,
-        ?ORG_A,
-        maps:get(app_id, F),
-        #{
-            scopes => [<<"sso:exchange">>],
-            expires_at => <<"2099-12-31T23:59:59Z">>,
-            idempotency_key => <<"epgz05-neg13-grant-a">>
-        }
-    ),
     application:unset_env(imboy, enterprise_internal_rate_limits),
     try
         ?assertEqual(
@@ -759,9 +709,9 @@ neg13_rate_fail_closed(C) ->
             enterprise_internal_auth:decide(
                 <<"POST">>,
                 ?EXCHANGE_PATH,
-                #{<<"authorization">> => <<"Bearer ", FullA/binary>>},
+                enterprise_hmac_test_support:headers(FullA, <<"POST">>, ?EXCHANGE_PATH),
                 fun() ->
-                    enterprise_internal_auth:authenticate_tx(C, prefix_of(FullA), ?SECRET_A)
+                    enterprise_hmac_test_support:signed_context_tx(C, prefix_of(FullA), ?SECRET_A)
                 end
             )
         )
@@ -772,9 +722,9 @@ neg13_rate_fail_closed(C) ->
     {ok, Ctx} = enterprise_internal_auth:decide(
         <<"POST">>,
         ?EXCHANGE_PATH,
-        #{<<"authorization">> => <<"Bearer ", FullA/binary>>},
+        enterprise_hmac_test_support:headers(FullA, <<"POST">>, ?EXCHANGE_PATH),
         fun() ->
-            enterprise_internal_auth:authenticate_tx(C, prefix_of(FullA), ?SECRET_A)
+            enterprise_hmac_test_support:signed_context_tx(C, prefix_of(FullA), ?SECRET_A)
         end
     ),
     ?assertEqual(<<"INT-14">>, maps:get(route_id, Ctx)),

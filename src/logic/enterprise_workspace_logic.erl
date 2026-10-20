@@ -1,25 +1,5 @@
 -module(enterprise_workspace_logic).
 
-%%%
-% enterprise_workspace_logic 是 V2.1 Internal 资源只读面 INT-24/25 的
-% workspace adapter logic（plan §6.1 冻结名 planned -> 落地；§6.2 行为矩阵：
-% credential O 内、仅 Grant 覆盖的 W、active only、A-R read、CURSOR-V2）。
-%
-% 只做三件事（不复制 Human workspace_logic 的任何治理面）：
-%   * INT-24 列表：cursor family=workspaces（filter 冻结为空 map）；
-%     行集收窄谓词（仅 Grant 覆盖 W）在 workspace_repo:internal_covered_page_tx/5
-%     的 SQL 内实现（kind=list 的行级收窄是 SQL 义务，禁止整表回读后内存过滤）；
-%   * INT-25 详情：Org 边界 active 定位（跨 Org/不存在/已归档同体 404，
-%     IDOR 不泄露存在性）——Grant 覆盖判定由 handler 经
-%     enterprise_internal_boundary:enforce/4（INT-25，workspace kind）承担；
-%   * A-R read usage：workspace.read 聚合计数（§12：usage counter，无逐项
-%     PII、无响应体）。
-%
-% 投影冻结（V2.1 §15.1 封闭投影，实现前登记 RESULT.json）：
-%   列表项/详情：workspace_id(int64), name(string), owner_id(int64),
-%   created_at(RFC3339 string)。
-%%%
-
 -export([
     list_workspaces_tx/3,
     locate_active_tx/3,
@@ -32,29 +12,15 @@
 %%% INT-24 列表
 %%%===================================================================
 
-%% @doc INT-24：Grant 覆盖 W 集合的 active workspace keyset 列表。
-%% Opts（atom 键）：limit（1..100，已由 handler 校验）、cursor（binary|undefined）。
-%% 返回信封 {ok, #{items, limit, has_more, next_cursor}}（§10.1 冻结形态）。
 -spec list_workspaces_tx(any(), map(), map()) ->
     {ok, map()} | {error, {binary(), term()}}.
 list_workspaces_tx(Conn, Ctx, Opts) when is_map(Opts) ->
-    OrgId = maps:get(organization_id, Ctx),
-    AppId = maps:get(application_id, Ctx),
     Limit = maps:get(limit, Opts, 50),
     Cursor = maps:get(cursor, Opts, undefined),
     Filter = #{},
     case enterprise_internal_read_page:resolve(Cursor, Ctx, ?FAMILY, Filter) of
         {ok, Pivot} ->
-            case
-                case maps:get(authentication, Ctx, legacy) of
-                    hmac ->
-                        workspace_repo:internal_signature_page_tx(Conn, Ctx, Pivot, Limit + 1);
-                    _ ->
-                        workspace_repo:internal_covered_page_tx(
-                            Conn, OrgId, AppId, Pivot, Limit + 1
-                        )
-                end
-            of
+            case workspace_repo:internal_signature_page_tx(Conn, Ctx, Pivot, Limit + 1) of
                 {ok, Rows0} when length(Rows0) > Limit ->
                     Rows = lists:sublist(Rows0, Limit),
                     page_reply(Conn, Ctx, Rows, Limit, true, ?FAMILY, Filter);
@@ -79,8 +45,6 @@ list_workspaces_tx(_Conn, _Ctx, _Opts) ->
 %%% INT-25 详情
 %%%===================================================================
 
-%% @doc Org 边界 active 定位（handler 先调本函数拿行 → 404 同体拒绝 →
-%% 同一事务内 enforce INT-25（Grant 覆盖判定）→ 再调 detail_tx/3 投影）。
 -spec locate_active_tx(any(), map(), integer()) ->
     {ok, map()} | {error, {binary(), term()}}.
 locate_active_tx(Conn, Ctx, WsId) when is_integer(WsId), WsId > 0 ->

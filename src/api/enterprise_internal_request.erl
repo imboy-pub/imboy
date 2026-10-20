@@ -1,5 +1,5 @@
 -module(enterprise_internal_request).
--moduledoc "Reuse the exact body read by HMAC middleware; legacy handlers keep their parser.".
+-moduledoc "HMAC authenticated OA integration with live business attribution checks.".
 -export([read_body/2, params/1]).
 
 read_body(#{enterprise_internal_body := Body} = Req, _Options) ->

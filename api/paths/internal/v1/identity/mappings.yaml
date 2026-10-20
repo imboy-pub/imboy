@@ -15,8 +15,6 @@ put:
       minLength: 1
       maxLength: 128
   x-imboy-authentication: hmac
-  x-imboy-legacy-scope-only: true
-  x-imboy-scope: identities:write
   x-imboy-rate-bucket: internal_write
   x-imboy-idempotency: required
   requestBody:
@@ -74,7 +72,7 @@ put:
     '401':
       $ref: ../../../../components/responses/internal/invalid_credential.yaml
     '403':
-      $ref: ../../../../components/responses/internal/insufficient_scope.yaml
+      $ref: ../../../../components/responses/internal/organization_boundary_violation.yaml
     '409':
       $ref: ../../../../components/responses/internal/idempotency_conflict.yaml
     '422':
@@ -106,8 +104,6 @@ delete:
       minLength: 1
       maxLength: 128
   x-imboy-authentication: hmac
-  x-imboy-legacy-scope-only: true
-  x-imboy-scope: identities:write
   x-imboy-rate-bucket: internal_write
   x-imboy-idempotency: required
   requestBody:
@@ -157,7 +153,7 @@ delete:
     '401':
       $ref: ../../../../components/responses/internal/invalid_credential.yaml
     '403':
-      $ref: ../../../../components/responses/internal/insufficient_scope.yaml
+      $ref: ../../../../components/responses/internal/organization_boundary_violation.yaml
     '404':
       $ref: ../../../../components/responses/internal/resource_not_found.yaml
     '409':

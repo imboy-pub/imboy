@@ -23,6 +23,7 @@ run() ->
         Ctx = seed(Conn),
         trusted_bootstrap(Conn, Ctx),
         applied_and_replay(Conn, Ctx),
+        request_lock_precedes_source_lock(State, Ctx),
         rejected_atomicity(Conn, Ctx),
         pending_claim_projection(Conn, Ctx),
         enterprise_directory_source_read_pg_checks:exercise(Conn, Ctx),
@@ -112,6 +113,12 @@ empty_down_up(Conn) ->
         end,
         source_tables()
     ),
+    %% Recreate the historical prerequisite only while checking migration 177.
+    {ok, _} = elib_pg:query(
+        Conn,
+        <<"ALTER TABLE enterprise_application ADD COLUMN allowed_scopes jsonb NOT NULL DEFAULT '[]'">>,
+        []
+    ),
     migration_tx(Conn, down),
     ?assertEqual(
         null,
@@ -121,6 +128,9 @@ empty_down_up(Conn) ->
         )
     ),
     migration_tx(Conn, up),
+    {ok, _} = elib_pg:query(
+        Conn, <<"ALTER TABLE enterprise_application DROP COLUMN allowed_scopes">>, []
+    ),
     schema(Conn),
     ?assertEqual(Before, schema_snapshot(Conn)),
     ?assertEqual(BeforeRows, all_rows_snapshot(Conn)).
@@ -132,16 +142,22 @@ populated_down_rejected(Conn) ->
         end,
         source_tables()
     ),
-    ?assert(
-        scalar(Conn, <<
-            "SELECT count(*) AS value FROM enterprise_application_grant"
-            " WHERE provisioning_source='directory_bootstrap'"
-        >>) > 0
+    ?assertEqual(
+        0,
+        scalar(
+            Conn,
+            <<"SELECT count(*) AS value FROM enterprise_application_grant WHERE provisioning_source='directory_bootstrap'">>
+        )
     ),
     BeforeSchema = schema_snapshot(Conn),
     BeforeRows = all_rows_snapshot(Conn),
     {ok, _, _} = epgsql:squery(Conn, "BEGIN"),
     try
+        {ok, _} = elib_pg:query(
+            Conn,
+            <<"ALTER TABLE enterprise_application ADD COLUMN allowed_scopes jsonb NOT NULL DEFAULT '[]'">>,
+            []
+        ),
         Results = sql_results(epgsql:squery(Conn, migration_sql(down))),
         Errors = [Code || {error, #error{code = Code}} <- Results],
         ?assertEqual([<<"23514">>], Errors)
@@ -259,11 +275,7 @@ seed(Conn) ->
         [977100, 977101]
     ),
     {ok, App} = enterprise_application_repo:create_tx(
-        Conn,
-        977100,
-        <<"directory-fixture">>,
-        <<"Directory">>,
-        {null, [<<"identities:write">>]}
+        Conn, 977100, <<"directory-fixture">>, <<"Directory">>, null
     ),
     AppId = maps:get(<<"id">>, App),
     {ok, Credential} = enterprise_application_credential_repo:create_tx(
@@ -272,24 +284,6 @@ seed(Conn) ->
         AppId,
         <<"directory-fixture">>,
         <<"synthetic-fixture-secret">>
-    ),
-    {ok, _} = elib_pg:query(
-        Conn,
-        <<
-            "INSERT INTO enterprise_application_grant"
-            " (id,organization_id,application_id,workspace_scope_kind,status,valid_from,expires_at,idempotency_key)"
-            " VALUES (977200,977101,$1,'none','active',clock_timestamp()-interval '1 day',"
-            " clock_timestamp()+interval '1 day','directory-fixture')"
-        >>,
-        [AppId]
-    ),
-    {ok, _} = elib_pg:query(
-        Conn,
-        <<
-            "INSERT INTO enterprise_application_grant_scope"
-            " (grant_id,scope) VALUES (977200,'identities:write')"
-        >>,
-        []
     ),
     {ok, _} = elib_pg:query(
         Conn,
@@ -304,7 +298,8 @@ seed(Conn) ->
         application_id => AppId,
         credential_id => maps:get(<<"id">>, Credential),
         organization_id => 977100,
-        granted_scopes => [<<"identities:write">>]
+        authentication => hmac,
+        application_organization_id => 977100
     }.
 
 applied_and_replay(Conn, Ctx) ->
@@ -337,10 +332,9 @@ actual_target_and_revocation(Conn, Ctx) ->
     {ok, _} = elib_pg:query(
         Conn,
         <<
-            "UPDATE enterprise_application_grant SET"
-            " status='revoked',revoked_at=clock_timestamp(),revoked_by_user_id=977001 WHERE id=977200"
+            "UPDATE enterprise_application_credential SET status='revoked',revoked_at=clock_timestamp() WHERE id=$1"
         >>,
-        []
+        [maps:get(credential_id, Ctx)]
     ),
     ?assertMatch({error, _}, tx(Conn, Ctx, <<"fixture-revoked">>, body(2))),
     ?assertEqual(Before, snapshot(Conn)),
@@ -626,15 +620,6 @@ body(Version) ->
 
 trusted_bootstrap(Conn, Ctx) ->
     AppId = maps:get(application_id, Ctx),
-    %% A combined OA source is allowed, but bootstrap must not grant OA powers.
-    {ok, _} = elib_pg:query(
-        Conn,
-        <<"UPDATE enterprise_application SET allowed_scopes=$2::jsonb WHERE id=$1">>,
-        [
-            AppId,
-            <<"[\"identities:write\",\"identities:read\",\"oa:login:issue\",\"sso:exchange\"]">>
-        ]
-    ),
     {ok, _} = elib_pg:query(
         Conn,
         <<
@@ -687,17 +672,7 @@ trusted_bootstrap(Conn, Ctx) ->
         scalar(Conn, <<
             "SELECT count(*) AS value FROM enterprise_directory_organization_source s"
             " JOIN organization_member m ON m.organization_id=s.organization_id"
-            " JOIN enterprise_application_grant g ON g.id=s.bootstrap_grant_id"
             " WHERE s.external_organization_id='bootstrap' AND m.user_id=977001 AND m.role='owner'"
-            " AND g.provisioning_source='directory_bootstrap' AND g.workspace_scope_kind='none'"
-        >>)
-    ),
-    ?assertEqual(
-        1,
-        scalar(Conn, <<
-            "SELECT count(*) AS value FROM enterprise_application_grant_scope gs"
-            " JOIN enterprise_directory_organization_source s ON gs.grant_id=s.bootstrap_grant_id"
-            " WHERE s.external_organization_id='bootstrap' AND gs.scope='identities:write'"
         >>)
     ),
     ?assertEqual(UserCount, scalar(Conn, <<"SELECT count(*) AS value FROM \"user\"">>)),
@@ -711,25 +686,10 @@ trusted_bootstrap(Conn, Ctx) ->
         >>)
     ),
     ?assertEqual(WorkspaceCount, scalar(Conn, <<"SELECT count(*) AS value FROM workspace">>)),
-    combined_login_permission(Conn, Ctx),
+    ?assertMatch(
+        {ok, _}, enterprise_oa_login_repo:authority_tx(Conn, AppId, maps:get(credential_id, Ctx))
+    ),
     disable_bootstrap(Conn, Ctx, AppId, Until, Body).
-
-combined_login_permission(Conn, #{application_id := App, credential_id := Cred}) ->
-    ?assertMatch({error, _}, enterprise_oa_login_repo:authority_tx(Conn, App, Cred)),
-    {ok, _, _} = epgsql:squery(Conn, "BEGIN"),
-    try
-        {ok, _} = enterprise_application_grant_repo:create_tx(Conn, 977100, App, #{
-            scopes => [<<"oa:login:issue">>],
-            workspace_scope_kind => none,
-            workspace_ids => [],
-            expires_at => <<"2099-01-01T00:00:00Z">>,
-            idempotency_key => <<"explicit-oa-source-login">>
-        }),
-        ?assertMatch({ok, _}, enterprise_oa_login_repo:authority_tx(Conn, App, Cred))
-    after
-        {ok, _, _} = epgsql:squery(Conn, "ROLLBACK")
-    end,
-    ?assertMatch({error, _}, enterprise_oa_login_repo:authority_tx(Conn, App, Cred)).
 
 disable_bootstrap(Conn, Ctx, AppId, Until, Body) ->
     {ok, _, _} = epgsql:squery(Conn, "BEGIN"),
@@ -760,8 +720,7 @@ disable_bootstrap(Conn, Ctx, AppId, Until, Body) ->
         1,
         scalar(Conn, <<
             "SELECT count(*) AS value FROM enterprise_directory_organization_source s"
-            " JOIN enterprise_application_grant g ON g.id=s.bootstrap_grant_id"
-            " WHERE s.external_organization_id='bootstrap' AND NOT s.enabled AND g.status='revoked'"
+            " WHERE s.external_organization_id='bootstrap' AND NOT s.enabled"
         >>)
     ).
 
@@ -774,10 +733,7 @@ concurrent_revocations(State, Ctx) ->
             [CredId]},
         {<<"UPDATE enterprise_directory_organization_source SET enabled=false WHERE application_id=$1 AND external_organization_id='fixture'">>,
             <<"UPDATE enterprise_directory_organization_source SET enabled=true WHERE application_id=$1 AND external_organization_id='fixture'">>,
-            [AppId]},
-        {<<"UPDATE enterprise_application_grant SET status='revoked',revoked_at=clock_timestamp(),revoked_by_user_id=977001 WHERE id=$1">>,
-            <<"UPDATE enterprise_application_grant SET status='active',revoked_at=NULL,revoked_by_user_id=NULL WHERE id=$1">>,
-            [977200]}
+            [AppId]}
     ],
     lists:foreach(
         fun({Revoke, Restore, Params}) ->
@@ -840,4 +796,65 @@ await_blocked(Conn, BackendPid, Attempts) ->
         false -> receive
             after 20 -> await_blocked(Conn, BackendPid, Attempts - 1)
             end
+    end.
+
+%% Hold another resource's request arbitration: sync must wait without taking App locks.
+request_lock_precedes_source_lock(State, Ctx) ->
+    C = maps:get(conn, State),
+    Server = maps:get(server, State),
+    Options = maps:merge(
+        maps:with([host, port, username, password], Server),
+        maps:get(connect_extra, Server, #{})
+    ),
+    {ok, Other} = inttest_marker_db:safe_connect(Options#{database => maps:get(db, State)}),
+    Key = <<"cross-resource-source-order">>,
+    Parent = self(),
+    Ref = make_ref(),
+    try
+        {ok, _, _} = epgsql:squery(C, "BEGIN"),
+        ok = enterprise_internal_idempotency:serialize_tx(C, Ctx, Key),
+        {ok, [#{<<"pid">> := Backend}]} = elib_pg:query(
+            Other, <<"SELECT pg_backend_pid() AS pid">>, []
+        ),
+        Worker = spawn(fun() ->
+            {ok, _, _} = epgsql:squery(Other, "BEGIN"),
+            Result =
+                try
+                    tx_body(Other, Ctx, Key)
+                catch
+                    throw:{abort_tx, Reason} -> {error, Reason}
+                end,
+            _ = epgsql:squery(Other, "ROLLBACK"),
+            Parent ! {Ref, Result}
+        end),
+        await_request_lock(C, Backend, 100),
+        {ok, [_]} = elib_pg:query(
+            C,
+            <<"SELECT id FROM enterprise_application WHERE id=$1 FOR UPDATE NOWAIT">>,
+            [maps:get(application_id, Ctx)]
+        ),
+        {ok, _, _} = epgsql:squery(C, "ROLLBACK"),
+        receive
+            {Ref, Result} -> ?assertMatch({ok, _, _}, Result)
+        after 10000 ->
+            exit(Worker, kill),
+            error(source_request_lock_timeout)
+        end
+    after
+        _ = epgsql:squery(C, "ROLLBACK"),
+        epgsql:close(Other)
+    end.
+
+tx_body(C, Ctx, Key) -> enterprise_directory_sync_logic:sync_tx(C, Ctx, Key, body(1)).
+
+await_request_lock(_C, _Pid, 0) ->
+    error(source_request_did_not_wait_on_advisory);
+await_request_lock(C, Pid, Left) ->
+    {ok, _} = elib_pg:query(C, <<"SELECT pg_stat_clear_snapshot()">>, []),
+    case elib_pg:query(C, <<"SELECT wait_event FROM pg_stat_activity WHERE pid=$1">>, [Pid]) of
+        {ok, [#{<<"wait_event">> := <<"advisory">>}]} ->
+            ok;
+        _ ->
+            timer:sleep(10),
+            await_request_lock(C, Pid, Left - 1)
     end.

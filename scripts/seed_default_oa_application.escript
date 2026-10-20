@@ -114,7 +114,6 @@ seed(RedirectUri) ->
 seed_tx(Conn, ApplicationKey, Name, RedirectUri) ->
     OrgId = resolve_org(Conn),
     AppId = ensure_application(Conn, OrgId, ApplicationKey, Name, RedirectUri),
-    ensure_grant(Conn, OrgId, AppId),
     ensure_credential(Conn, OrgId, AppId),
     #{org_id => OrgId, application_id => AppId, application_key => ApplicationKey}.
 
@@ -139,9 +138,7 @@ ensure_application(Conn, OrgId, ApplicationKey, Name, RedirectUri) ->
         {ok, App} ->
             adopt_application(Conn, OrgId, App, RedirectUri);
         {error, not_found} ->
-            case enterprise_application_repo:create_tx(
-                Conn, OrgId, ApplicationKey, Name, {null, ?SCOPES}, [RedirectUri]
-            ) of
+            case enterprise_application_repo:create_tx(Conn, OrgId, ApplicationKey, Name, null, [RedirectUri]) of
                 {ok, App} ->
                     AppId = maps:get(<<"id">>, App),
                     io:format("APP: 创建 ~ts (org=~p, key=~s)~n", [Name, OrgId, ApplicationKey]),
@@ -178,29 +175,6 @@ adopt_application(Conn, OrgId, App, RedirectUri) ->
 %% Grant 幂等按**生效 scope**判定（与 enterprise_oa_bootstrap 同语义）：
 %% sso:exchange 已生效即跳过；被撤销/过期/未授予才新建（幂等键带时间
 %% 后缀，绕开 (org, app, key) 唯一约束——revoked 行不可复用键）。
-ensure_grant(Conn, OrgId, AppId) ->
-    case enterprise_application_grant_repo:effective_scopes_tx(Conn, OrgId, AppId) of
-        {ok, Scopes} ->
-            case lists:member(<<"sso:exchange">>, Scopes) of
-                true ->
-                    io:format("GRANT: sso:exchange 已生效（跳过）~n");
-                false ->
-                    IdemKey =
-                        <<"seed-default-oa-grant-",
-                            (integer_to_binary(os:system_time(millisecond)))/binary>>,
-                    {ok, _} = enterprise_application_grant_repo:create_tx(
-                        Conn, OrgId, AppId, #{
-                            scopes => ?SCOPES,
-                            workspace_scope_kind => none,
-                            expires_at => <<"2099-12-31T23:59:59Z">>,
-                            idempotency_key => IdemKey
-                        }
-                    ),
-                    io:format("GRANT: 已授予 sso:exchange（幂等键 ~s）~n", [IdemKey])
-            end;
-        {error, R} ->
-            throw({seed_error, {grant_lookup, R}})
-    end.
 
 %% credential 幂等：已有未过期 active credential 则复用（明文不可再取，
 %% 提示运维用既有凭证）；无则新签发并打印明文（仅此一次）。

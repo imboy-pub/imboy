@@ -173,10 +173,10 @@ claim_projection_requires_current_target_grant_test() ->
         meck:expect(
             enterprise_directory_source_repo,
             authorize_tx,
-            fun(conn, #{organization_id := 10}) -> {error, insufficient_scope} end
+            fun(conn, #{organization_id := 10}) -> {error, organization_boundary_violation} end
         ),
         ?assertThrow(
-            {abort_tx, insufficient_scope},
+            {abort_tx, organization_boundary_violation},
             enterprise_directory_sync_logic:claim_and_project_tx(conn, ctx(), <<"person">>, 42)
         ),
         ?assertEqual(0, meck:num_calls(enterprise_directory_source_repo, project_member_tx, '_'))
@@ -222,7 +222,7 @@ authorization_expiry_prevents_completion_test() ->
             enterprise_directory_source_repo,
             authorize_tx,
             2,
-            meck:seq([{ok, #{}}, {error, insufficient_scope}])
+            meck:seq([{ok, #{}}, {error, organization_boundary_violation}])
         ),
         meck:expect(enterprise_internal_idempotency, begin_tx, fun(conn, _, _, _, _) ->
             {ok, inserted}
@@ -233,7 +233,7 @@ authorization_expiry_prevents_completion_test() ->
         end),
         meck:expect(enterprise_audit_event_repo, append_tx, fun(conn, 10, _) -> {ok, #{}} end),
         ?assertThrow(
-            {abort_tx, insufficient_scope},
+            {abort_tx, organization_boundary_violation},
             enterprise_directory_sync_logic:sync_tx(conn, ctx(), <<"key">>, body())
         ),
         ?assertEqual(0, meck:num_calls(enterprise_internal_idempotency, complete_tx, '_'))
@@ -242,10 +242,10 @@ authorization_expiry_prevents_completion_test() ->
 source_authorization_failure_test() ->
     with_sync_mocks(fun() ->
         meck:expect(enterprise_directory_source_repo, lock_source_tx, fun(conn, _) ->
-            {error, insufficient_scope}
+            {error, organization_boundary_violation}
         end),
         ?assertThrow(
-            {abort_tx, insufficient_scope},
+            {abort_tx, organization_boundary_violation},
             enterprise_directory_sync_logic:sync_tx(conn, ctx(), <<"key">>, body())
         ),
         ?assertEqual(0, meck:num_calls(enterprise_directory_source_repo, organization_tx, '_'))
@@ -720,6 +720,7 @@ with_sync_mocks(Fun) ->
             organization_member_logic
         ],
         fun() ->
+            meck:expect(enterprise_internal_idempotency, serialize_tx, fun(_, _, _) -> ok end),
             meck:expect(enterprise_internal_idempotency, valid_key, fun(_) -> true end),
             meck:expect(enterprise_internal_idempotency, request_digest, fun(_, _, _) ->
                 {ok, <<"digest">>}
@@ -759,7 +760,7 @@ with_mocks(Modules, Fun) ->
         lists:foreach(fun meck:unload/1, Modules)
     end.
 
-ctx() -> #{application_id => 1, credential_id => 2, granted_scopes => [<<"identities:write">>]}.
+ctx() -> #{application_id => 1, credential_id => 2, authentication => hmac}.
 body() ->
     #{
         <<"organization">> => #{

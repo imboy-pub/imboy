@@ -44,35 +44,10 @@ authorize(S) ->
         <<"SELECT id FROM enterprise_application_credential WHERE application_id=$1 AND status='active'">>,
         [App]
     ),
-    [#{<<"id">> := App}] = rows(
-        C,
-        <<"UPDATE enterprise_application SET allowed_scopes=allowed_scopes || '[\"oa:login:issue\"]'::jsonb WHERE id=$1 RETURNING id">>,
-        [App]
-    ),
-    exec(
-        C,
-        <<
-            "INSERT INTO enterprise_application_grant_scope(grant_id,scope) "
-            "SELECT id,'oa:login:issue' FROM enterprise_application_grant WHERE application_id=$1 "
-            "ON CONFLICT DO NOTHING"
-        >>,
-        [App]
-    ),
     [#{<<"id">> := Cred}] = rows(
         C,
         <<"UPDATE enterprise_application_credential SET organization_id=NULL WHERE id=$1 RETURNING id">>,
         [Cred]
-    ),
-    ?assertMatch(
-        [_ | _],
-        rows(
-            C,
-            <<
-                "SELECT s.grant_id FROM enterprise_application_grant_scope s "
-                "JOIN enterprise_application_grant g ON g.id=s.grant_id WHERE g.application_id=$1 AND s.scope='oa:login:issue'"
-            >>,
-            [App]
-        )
     ),
     #{application_id => App, credential_id => Cred}.
 

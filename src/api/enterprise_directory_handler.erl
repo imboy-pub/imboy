@@ -1,24 +1,5 @@
 -module(enterprise_directory_handler).
 
-%%%
-% enterprise_directory_handler 是**受限 cursor directory** 端点壳
-% （FULL-02；待 A0 接线 Router/manifest）。
-%
-%% 路由（建议形态，见 checkpoint「A0 需要接线的路由清单」）：
-%   POST /api/internal/v1/identity-mappings/directory -> #{action => mappings}
-%   POST /api/internal/v1/directory/users             -> #{action => users}
-%% —— 必须经 enterprise_internal_middleware（A2 认证链：credential →
-%%    active/expiry → application active → organization active →
-%%    scope identities:read → rate internal_read fail-closed）；
-%%    ctx 注入 handler_opts.enterprise_internal（atom 键 map）。
-%
-%% 两条路由都是**只读**（manifest 口径 idempotency=not_required）：
-%   无幂等键、无写入、无事务副作用（除聚合计量 directory.page）。
-%   分页上限由 enterprise_directory_logic 强制（page_size ∈ [1,100]，缺省 50；
-%%  超出即 invalid_request，绝不静默截断）；cursor 不透明、按页族校验。
-%%  **不存在** list-all / export 形态：调用方只能按 cursor 逐页取。
-%%%
-
 -behavior(cowboy_rest).
 
 -export([init/2]).
@@ -104,30 +85,21 @@ sync(<<"POST">>, Req0, State) ->
                 end,
             cowboy_req:reply(Code, maps:merge(Headers, ReplyHeaders), Body, Req0);
         {error, Reason} ->
-            enterprise_internal_error:reply(Req0, sync_error(Reason, Ctx));
+            enterprise_internal_error:reply(Req0, sync_error(Reason));
         _ ->
             enterprise_internal_error:reply(Req0, <<"internal_error">>)
     end;
 sync(_, Req0, _) ->
     cowboy_req:reply(405, #{}, <<"Method Not Allowed">>, Req0).
 
-sync_error(Reason, #{authentication := hmac}) ->
-    case sync_error(Reason) of
-        <<"insufficient_scope">> -> <<"organization_boundary_violation">>;
-        Code -> Code
-    end;
-sync_error(Reason, _) ->
-    sync_error(Reason).
-
 sync_error(invalid_request) -> <<"invalid_request">>;
 sync_error(invalid_idempotency_key) -> <<"invalid_request">>;
-sync_error(insufficient_scope) -> <<"insufficient_scope">>;
-sync_error(invalid_source_context) -> <<"invalid_credential">>;
-sync_error(source_not_enabled) -> <<"insufficient_scope">>;
-sync_error(directory_source_not_configured) -> <<"insufficient_scope">>;
-sync_error(directory_bootstrap_not_authorized) -> <<"insufficient_scope">>;
-sync_error(organization_not_active) -> <<"organization_boundary_violation">>;
 sync_error(organization_boundary_violation) -> <<"organization_boundary_violation">>;
+sync_error(invalid_source_context) -> <<"invalid_credential">>;
+sync_error(source_not_enabled) -> <<"organization_boundary_violation">>;
+sync_error(directory_source_not_configured) -> <<"organization_boundary_violation">>;
+sync_error(directory_bootstrap_not_authorized) -> <<"organization_boundary_violation">>;
+sync_error(organization_not_active) -> <<"organization_boundary_violation">>;
 sync_error(security_gate_closed) -> <<"security_gate_closed">>;
 sync_error(local_membership_conflict) -> <<"resource_conflict">>;
 sync_error({membership_conflict, _}) -> <<"resource_conflict">>;
@@ -149,7 +121,7 @@ sync_error(local_department_admin_conflict) -> <<"resource_conflict">>;
 sync_error(department_not_found) -> <<"resource_not_found">>;
 sync_error(parent_not_found) -> <<"resource_not_found">>;
 sync_error(active_source_memberships) -> <<"resource_conflict">>;
-sync_error(directory_only_application_required) -> <<"insufficient_scope">>;
+sync_error(directory_only_application_required) -> <<"organization_boundary_violation">>;
 sync_error({400, _}) -> <<"invalid_request">>;
 sync_error({403, _}) -> <<"organization_boundary_violation">>;
 sync_error({409, _}) -> <<"resource_conflict">>;
@@ -178,8 +150,6 @@ users(<<"POST">>, Req0, State) ->
 users(_, Req0, _State) ->
     cowboy_req:reply(405, #{}, <<"Method Not Allowed">>, Req0).
 
-%% @doc 只读路径：单事务；先做 Grant 资源边界（org 级；workspace 过滤由 logic
-%% 在同一事务内追加判定），再执行分页查询。
 -spec run(cowboy_req:req(), map(), binary(), fun((any()) -> term())) -> cowboy_req:req().
 run(Req0, Ctx, RouteId, Fun) ->
     Opts = page_opts(enterprise_internal_request:params(Req0)),
@@ -193,7 +163,7 @@ run(Req0, Ctx, RouteId, Fun) ->
                 ok ->
                     Fun(Conn);
                 {error, Code} ->
-                    {error, {enterprise_internal_boundary:error_code(Code), grant_boundary}}
+                    {error, {enterprise_internal_boundary:error_code(Code), resource_attribution}}
             end
         end),
     case Result of

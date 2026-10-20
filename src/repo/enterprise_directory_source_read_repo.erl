@@ -1,59 +1,24 @@
 -module(enterprise_directory_source_read_repo).
--moduledoc "Parameterized source reconciliation queries. Every statement checks live read grants, source, application and credential authority; no write permission is required.".
--export([organization_tx/3, organization_tx/4, page_tx/6]).
+-moduledoc "Parameterized source reconciliation queries. Every statement checks live source, application and credential authority; no write permission is required.".
+-export([organization_tx/3, page_tx/6]).
 
 %% This fragment has only static SQL. $1/$2 always come from authenticated context.
-authority(Ctx) -> authority(Ctx, <<"'identities:read'">>).
-
-authority(#{authentication := hmac}, _ScopeSql) ->
+authority(_Ctx) ->
     <<
         " o.application_id=$1 AND o.enabled AND o.authorization_expires_at>clock_timestamp()"
         " AND EXISTS(SELECT 1 FROM organization org WHERE org.id=o.organization_id AND org.status='active')"
         " AND EXISTS(SELECT 1 FROM enterprise_application a JOIN enterprise_application_credential c "
         "ON c.application_id=a.id WHERE a.id=o.application_id AND c.id=$2 AND a.status='active' "
         "AND c.status='active' AND (c.expires_at IS NULL OR c.expires_at>clock_timestamp()))"
-    >>;
-authority(_Ctx, ScopeSql) ->
-    legacy_authority(ScopeSql).
-
-legacy_authority(ScopeSql) ->
-    <<
-        " o.application_id=$1 AND o.enabled AND o.authorization_expires_at>clock_timestamp()"
-        " AND EXISTS (SELECT 1 FROM organization org WHERE org.id=o.organization_id AND org.status='active')"
-        " AND EXISTS (SELECT 1 FROM enterprise_application a"
-        " JOIN enterprise_application_credential c ON c.application_id=a.id"
-        " WHERE a.id=o.application_id AND c.id=$2 AND a.status='active' AND c.status='active'"
-        " AND (c.expires_at IS NULL OR c.expires_at>clock_timestamp())"
-        " AND a.allowed_scopes ? ",
-        ScopeSql/binary,
-        ")"
-        " AND EXISTS (SELECT 1 FROM enterprise_application_grant g"
-        " JOIN enterprise_application_grant_scope gs ON gs.grant_id=g.id"
-        " WHERE g.application_id=o.application_id AND g.organization_id=o.organization_id"
-        " AND g.workspace_scope_kind='none' AND g.status='active'"
-        " AND g.valid_from<=clock_timestamp() AND g.expires_at>clock_timestamp()"
-        " AND gs.scope=",
-        ScopeSql/binary,
-        ")"
     >>.
 
 organization_tx(Conn, Ctx, External) ->
-    organization_tx(Conn, Ctx, External, <<"identities:read">>).
-
-organization_tx(Conn, Ctx, External, Scope) when
-    Scope =:= <<"identities:read">>; Scope =:= <<"members:write">>
-->
-    Params =
-        case maps:get(authentication, Ctx, legacy) of
-            hmac -> identity(Ctx) ++ [External];
-            _ -> identity(Ctx) ++ [External, Scope]
-        end,
     case
         elib_pg:query(
             Conn,
             <<"SELECT o.organization_id FROM enterprise_directory_organization_source o WHERE ",
-                (authority(Ctx, <<"$4">>))/binary, " AND o.external_organization_id=$3">>,
-            Params
+                (authority(Ctx))/binary, " AND o.external_organization_id=$3">>,
+            identity(Ctx) ++ [External]
         )
     of
         {ok, [Row]} -> {ok, Row};

@@ -1,27 +1,5 @@
 -module(enterprise_identity_handler).
 
-%%%
-% EPGZ-08 W4 INT-02/03 企业身份映射端点壳（handler 壳需求见 A3 EPGZ-03
-% 冻结合同「给 A0 W4 的 handler 壳需求清单」，本模块严格照此编排）。
-%
-% 路由（A0 W4 经 Router lease 登记）：
-%   PUT  /api/internal/v1/identity-mappings         -> #{action => bind}
-%   POST /api/internal/v1/identity-mappings/resolve -> #{action => resolve}
-% —— 必须经 enterprise_internal_middleware（A2 认证链：credential →
-%    active/expiry → application active → organization active → scope
-%    identities:write|read → rate internal_read|internal_write fail-closed）。
-%    ctx 注入 handler_opts.enterprise_internal（atom 键 map）。
-%
-% INT-02 幂等（A2 模式，INV-7）：Idempotency-Key 已由 decide 强制存在；
-% 单事务 begin_tx -> logic -> complete_tx；业务 {error} 经
-% throw({rollback, ...}) 整体回滚（幂等行一并消失，同 key 重试可过）。
-% 资源：identity_mapping。
-%
-% INT-03 只读（manifest idempotency=not_required）：无幂等键、无事务写入，
-% 直接池化读；**无 list-all/全量导出形态**（只按入参 external_user_id 批量
-% 解析，缺席=未映射不报错）。
-%%%
-
 -behavior(cowboy_rest).
 
 -export([init/2]).
@@ -167,9 +145,6 @@ resolve(<<"POST">>, Req0, State) ->
 resolve(_, Req0, _State) ->
     cowboy_req:reply(405, #{}, <<"Method Not Allowed">>, Req0).
 
-%% @doc INT-15（FULL-02 新增，待 A0 接线）：撤销 external identity 映射（软删）。
-%% 路由：DELETE /api/internal/v1/identity-mappings -> #{action => revoke}
-%% scope identities:write（internal_write，幂等 required）。
 -spec revoke(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 revoke(<<"DELETE">>, Req0, State) ->
     Ctx = maps:get(enterprise_internal, State, #{}),
@@ -238,9 +213,6 @@ revoke_tx(Req0, Ctx, IdemKey, Digest, Params) ->
             enterprise_internal_error:reply(Req0, <<"internal_error">>)
     end.
 
-%% @doc INT-16（FULL-02 新增，待 A0 接线）：映射 cursor directory（受限分页）。
-%% 路由：POST /api/internal/v1/identity-mappings/directory -> #{action => directory}
-%% scope identities:read（internal_read，幂等 not_required——纯查询）。
 -spec directory(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 directory(<<"POST">>, Req0, State) ->
     Ctx = maps:get(enterprise_internal, State, #{}),
@@ -287,9 +259,6 @@ reply_page_result(Req0, Result) ->
             enterprise_internal_error:reply(Req0, <<"internal_error">>)
     end.
 
-%% @doc FULL-02 授权边界接线（唯一接线点
-%% enterprise_internal_boundary:enforce/4）：org 级资源要求覆盖 Org 全域的
-%% 同一生效 Grant 同时覆盖该 scope；未受管应用 no-op。
 -spec with_boundary(any(), map(), binary(), undefined | integer(), fun()) ->
     {ok, map()} | {error, {binary(), term()}}.
 with_boundary(Conn, Ctx, RouteId, WorkspaceId, Fun) ->
@@ -297,7 +266,7 @@ with_boundary(Conn, Ctx, RouteId, WorkspaceId, Fun) ->
         ok ->
             Fun();
         {error, Code} ->
-            {error, {enterprise_internal_boundary:error_code(Code), grant_boundary}}
+            {error, {enterprise_internal_boundary:error_code(Code), resource_attribution}}
     end.
 
 ok_code(Code) when is_integer(Code), Code >= 200, Code < 300 -> Code;

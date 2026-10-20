@@ -15,8 +15,6 @@ post:
     TSID 以 JSON integer 输出（INV-8）。独立限流桶 internal_sso。
   operationId: internalOaSsoExchange
   x-imboy-authentication: hmac
-  x-imboy-legacy-scope-only: true
-  x-imboy-scope: sso:exchange
   x-imboy-rate-bucket: internal_sso
   x-imboy-idempotency: single_use_code
   requestBody:
@@ -57,7 +55,7 @@ post:
                 description: 消费时间（ISO-8601 UTC 毫秒）
     '400': { $ref: '../../../../components/responses/internal/invalid_request.yaml' }
     '401': { $ref: '../../../../components/responses/internal/invalid_credential.yaml' }
-    '403': { $ref: '../../../../components/responses/internal/insufficient_scope.yaml' }
+    '403': { $ref: '../../../../components/responses/internal/organization_boundary_violation.yaml' }
     '404': { $ref: '../../../../components/responses/internal/resource_not_found.yaml' }
     '422': { $ref: '../../../../components/responses/internal/identity_not_mapped.yaml' }
     '429': { $ref: '../../../../components/responses/internal/rate_limited.yaml' }

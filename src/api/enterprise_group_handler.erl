@@ -1,27 +1,5 @@
 -module(enterprise_group_handler).
 
-%%%
-% EPGZ-08 W4 INT-04/05/06 Workspace 企业群端点壳（handler 壳需求见 A3
-% EPGZ-03 冻结合同「给 A0 W4 的 handler 壳需求清单」，本模块严格照此编排）。
-%
-% 路由（A0 W4 经 Router lease 登记）：
-%   POST   /api/internal/v1/groups                       -> #{action => create}
-%   PUT    /api/internal/v1/groups/:group_id/members     -> #{action => add_members}
-%   DELETE /api/internal/v1/groups/:group_id/members     -> #{action => remove_members}
-% —— 必须经 enterprise_internal_middleware（A2 认证链：credential →
-%    active/expiry → application active → organization active → scope
-%    groups:write → rate internal_write fail-closed）。
-%    ctx 注入 handler_opts.enterprise_internal（atom 键 map）。
-%
-% 幂等（A2 模式，INV-7）：Idempotency-Key 已由 decide 强制存在；单事务
-% begin_tx -> logic -> complete_tx；业务 {error} 经 throw({rollback,...})
-% 整体回滚（幂等行一并消失，同 key 重试可过）。
-% 资源：create -> group（resource_id=group_id）；add/remove -> group_members。
-%
-% path 绑定：group_id 由 cowboy_router 注入 bindings，A2 middleware 合并进
-% handler_opts；非法/缺失绑定 → 0（logic 侧 invalid_request fail-closed）。
-%%%
-
 -behavior(cowboy_rest).
 
 -export([init/2]).
@@ -89,9 +67,6 @@ create(<<"POST">>, Req0, State) ->
 create(_, Req0, _State) ->
     cowboy_req:reply(405, #{}, <<"Method Not Allowed">>, Req0).
 
-%% @doc INT-05/06 共用一个 cowboy 路由（同一 path，方法区分）：PUT=添加、
-%% DELETE=移除。A2 decide 已按 method+path 在冻结表里判到 INT-05 / INT-06
-%% （scope 同为 groups:write），本壳只做方法分派与 405。
 -spec members(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 members(<<"GET">>, Req0, State) ->
     %% INT-27（V2.1 新增）：群成员只读 keyset 列表——与 INT-05/06 共用本
@@ -167,8 +142,6 @@ member_roles(_, Req0, _State) ->
 %% V2.1 只读列表（INT-26/27）
 %% ===================================================================
 
-%% @doc INT-26：本 Application origin 建立的企业群 keyset 列表（kind=list：
-%% 行级「Grant 覆盖 W」收窄在列表 SQL 内）。
 -spec list_groups(cowboy_req:req(), map()) -> cowboy_req:req().
 list_groups(Req0, State) ->
     Ctx = maps:get(enterprise_internal, State, #{}),
@@ -190,8 +163,6 @@ list_groups(Req0, State) ->
             enterprise_internal_error:reply(Req0, <<"invalid_request">>)
     end.
 
-%% @doc INT-27：群 active 成员 keyset 列表（群定位 → Grant 覆盖群所属 W →
-%% 成员分页；created_at ASC 唯一升序 family）。
 -spec list_members(cowboy_req:req(), map()) -> cowboy_req:req().
 list_members(Req0, State) ->
     Ctx = maps:get(enterprise_internal, State, #{}),
@@ -316,9 +287,6 @@ resource_type_of(set_roles) -> <<"group_member_roles">>.
 route_id_of(add) -> <<"INT-05">>;
 route_id_of(remove) -> <<"INT-06">>.
 
-%% @doc 群类路由的边界接线：先按 Org 边界定位群（跨 Org/个人群/已归档一律
-%% resource_not_found，不泄露存在性），再用其 workspace_id 做 Grant workspace
-%% 边界判定（同一事务，逐请求读）。
 -spec with_group_boundary(any(), map(), binary(), term(), fun()) ->
     {ok, map()} | {error, {binary(), term()}}.
 with_group_boundary(Conn, Ctx, RouteId, GroupId, Fun) ->
@@ -329,9 +297,6 @@ with_group_boundary(Conn, Ctx, RouteId, GroupId, Fun) ->
             Err
     end.
 
-%% @doc FULL-01/FULL-02 授权边界接线（唯一接线点
-%% enterprise_internal_boundary:enforce/4）：未受管应用 no-op；受管应用要求
-%% 同一生效 Grant 同时覆盖 scope 与 workspace，撤权/降权下一请求即失败。
 -spec with_boundary(any(), map(), binary(), undefined | integer(), fun()) ->
     {ok, map()} | {error, {binary(), term()}}.
 with_boundary(Conn, Ctx, RouteId, WorkspaceId, Fun) ->
@@ -339,7 +304,7 @@ with_boundary(Conn, Ctx, RouteId, WorkspaceId, Fun) ->
         ok ->
             Fun();
         {error, Code} ->
-            {error, {enterprise_internal_boundary:error_code(Code), grant_boundary}}
+            {error, {enterprise_internal_boundary:error_code(Code), resource_attribution}}
     end.
 
 %% @doc 幂等 digest 用**具体路径**（非模板）：同 key 换 group_id 必须是

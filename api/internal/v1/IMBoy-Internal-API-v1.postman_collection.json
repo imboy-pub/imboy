@@ -2,7 +2,7 @@
   "info": {
     "name": "IMBoy Internal API v1",
     "_postman_id": "74b0c0be-ae23-5011-b04e-a7776770f4bd",
-    "description": "IMBoy 企业集成 API：49 个 Internal 操作、34 条路径；另含 3 个独立认证的 Human OA 登录伴随请求。设置部署方提供的 base_url、应用 credential、可信来源外部组织标识；写请求使用稳定业务幂等键，修改/归档填写当前版本。所有示例为合成数据；请勿直接对生产环境运行整个集合。 Internal 请求使用 HMAC-SHA256/SHA512，自动按请求字节签名，无需 Scope/Grant；Human 伴随请求保留自己的认证。",
+    "description": "内部接口使用 HMAC 签名，并校验应用、凭证和资源的实际归属。",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -914,7 +914,7 @@
                 "value": "application/json"
               }
             ],
-            "description": "分页查询本组织可映射用户。cursor 为上一页返回的 next_cursor（CURSOR-V2 签名游标：HMAC-SHA256、24h 有效、绑定页族 directory_users 与 organization/application/workspace 过滤）；篡改/垃圾串/跨页族/换过滤/过期(>24h)/旧版未签名形态一律 400 invalid_request。page_size 1..100（缺省 50），越界拒绝（不截断）；workspace_id 过滤要求 identities:read 的 Workspace 业务归属匹配。",
+            "description": "内部接口使用 HMAC 签名，并校验应用、凭证和资源的实际归属。",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"page_size\": 20,\n  \"cursor\": \"<上一页 next_cursor>\"\n}",
@@ -1835,7 +1835,7 @@
     },
     {
       "name": "Workspace（只读）",
-      "description": "分页查看与详情（INT-24/25，scope=workspaces:read）；行集收窄为当前 Grant 覆盖的工作区。",
+      "description": "内部接口使用 HMAC 签名，并校验应用、凭证和资源的实际归属。",
       "item": [
         {
           "name": "INT-24 Workspace 列表（只读分页）",
@@ -2002,7 +2002,7 @@
     },
     {
       "name": "企业项目（只读）",
-      "description": "分页查看与详情（INT-28/29，scope=projects:read）；受 Workspace Grant 约束。",
+      "description": "内部接口使用 HMAC 签名，并校验应用、凭证和资源的实际归属。",
       "item": [
         {
           "name": "INT-28 项目列表（只读分页）",
@@ -2105,7 +2105,7 @@
               ]
             },
             "header": [],
-            "description": "读取单个企业项目详情（project Grant 边界）。无请求体。",
+            "description": "内部请求使用 HMAC 签名，服务端校验应用、凭证和资源归属。",
             "auth": {
               "type": "noauth"
             }
@@ -2169,7 +2169,7 @@
     },
     {
       "name": "企业频道（只读）",
-      "description": "分页查看与详情（INT-30/31，scope=channels:read）；仅 scope=workspace 且启用中的企业频道，个人频道永久排除。",
+      "description": "内部接口使用 HMAC 签名，并校验应用、凭证和资源的实际归属。",
       "item": [
         {
           "name": "INT-30 频道列表（只读分页）",
@@ -2272,7 +2272,7 @@
               ]
             },
             "header": [],
-            "description": "读取单个企业频道详情（channel Grant 边界；status=1 only）。无请求体。",
+            "description": "内部请求使用 HMAC 签名，服务端校验应用、凭证和资源归属。",
             "auth": {
               "type": "noauth"
             }
@@ -3428,7 +3428,7 @@
     },
     {
       "name": "企业客服坐席",
-      "description": "需要企业全域 Grant 与独立读写 scope；workspace_id 仅用于审计，坐席不签发登录凭证。",
+      "description": "内部接口使用 HMAC 签名，并校验应用、凭证和资源的实际归属。",
       "item": [
         {
           "name": "坐席列表",
@@ -3755,7 +3755,7 @@
                 }
               }
             },
-            "description": "须显式 workspaces:write Grant。填写 Owner/Admin Uid 与目标版本；归档为软归档，默认空间必须显式交接。",
+            "description": "内部请求使用 HMAC 签名，服务端校验应用、凭证和资源归属。",
             "auth": {
               "type": "noauth"
             }
@@ -3839,7 +3839,7 @@
                 }
               }
             },
-            "description": "须显式 workspaces:write Grant。填写 Owner/Admin Uid 与目标版本；归档为软归档，默认空间必须显式交接。",
+            "description": "内部请求使用 HMAC 签名，服务端校验应用、凭证和资源归属。",
             "auth": {
               "type": "noauth"
             }
@@ -3923,7 +3923,7 @@
                 }
               }
             },
-            "description": "须显式 workspaces:write Grant。填写 Owner/Admin Uid 与目标版本；归档为软归档，默认空间必须显式交接。",
+            "description": "内部请求使用 HMAC 签名，服务端校验应用、凭证和资源归属。",
             "auth": {
               "type": "noauth"
             }

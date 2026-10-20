@@ -13,7 +13,7 @@ oa_login_http_test_() ->
                     undefined
             end,
         try
-            machine_scope(State),
+            machine_signature(State),
             exchange_pending(State),
             register_account(State),
             link_account(State),
@@ -28,36 +28,13 @@ oa_login_http_test_() ->
         end
     end}.
 
-machine_scope(State) ->
+machine_signature(State) ->
     Params = issue_params(<<"http-scope">>, <<"login">>),
     Missing = post(State, issue, Params, #{}),
     ?assertEqual(401, maps:get(status, Missing)),
     ?assert(is_binary(maps:get(<<"code">>, maps:get(<<"error">>, maps:get(json, Missing))))),
-    Denied = post(State, issue, Params, machine_auth(State)),
-    ?assertEqual(403, maps:get(status, Denied)),
-    ?assertEqual(
-        <<"insufficient_scope">>,
-        maps:get(<<"code">>, maps:get(<<"error">>, maps:get(json, Denied)))
-    ),
     Connection = maps:get(conn, State),
     Application = maps:get(app_sso, State),
-    ok = intbe02_http_support:sql_exec(
-        Connection,
-        <<
-            "UPDATE enterprise_application SET allowed_scopes=allowed_scopes || "
-            "'[\"oa:login:issue\"]'::jsonb WHERE id=$1"
-        >>,
-        [Application]
-    ),
-    ok = intbe02_http_support:sql_exec(
-        Connection,
-        <<
-            "INSERT INTO enterprise_application_grant_scope(grant_id,scope) "
-            "SELECT id,'oa:login:issue' FROM enterprise_application_grant "
-            "WHERE application_id=$1"
-        >>,
-        [Application]
-    ),
     ok = intbe02_http_support:sql_exec(
         Connection,
         <<
@@ -333,12 +310,13 @@ oa_login_link_wrong_key_test_() ->
 
 oa_login_link_wrong_key_fixture() ->
     {timeout, 900,
-        {setup, fun() ->
-            isolated_pg_fixture:setup_single_node_cache(
-                fun enterprise_oa_login_three_gap_pg_checks:setup/0,
-                fun enterprise_oa_login_three_gap_pg_checks:teardown/1
-            )
-        end,
+        {setup,
+            fun() ->
+                isolated_pg_fixture:setup_single_node_cache(
+                    fun enterprise_oa_login_three_gap_pg_checks:setup/0,
+                    fun enterprise_oa_login_three_gap_pg_checks:teardown/1
+                )
+            end,
             fun enterprise_oa_login_three_gap_pg_checks:teardown/1, fun(S) ->
                 {timeout, 900, fun() -> focused_link_wrong_key(S) end}
             end}}.

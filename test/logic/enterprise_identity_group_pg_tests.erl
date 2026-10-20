@@ -60,14 +60,6 @@
 -define(EXT_B1, <<"ext-b1">>).
 -define(EXT_B2, <<"ext-b2">>).
 
--define(SCOPES, [
-    <<"application:read">>,
-    <<"identities:read">>,
-    <<"identities:write">>,
-    <<"groups:write">>,
-    <<"friend_requests:create">>
-]).
-
 %%%===================================================================
 %%% Fixture
 %%%===================================================================
@@ -174,10 +166,10 @@ seed_matrix(C) ->
     seed_ws_member(C, ?WS_A2, ?H_A3, <<"member">>),
     seed_ws_member(C, ?WS_B1, ?H_B1, <<"member">>),
     {ok, AppA} = enterprise_internal_ops:create_application_tx(
-        C, ?ORG_A, <<"epgz03-oa-a">>, <<"epgz03 org A oa"/utf8>>, ?SCOPES
+        C, ?ORG_A, <<"epgz03-oa-a">>, <<"epgz03 org A oa"/utf8>>
     ),
     {ok, AppB} = enterprise_internal_ops:create_application_tx(
-        C, ?ORG_B, <<"epgz03-oa-b">>, <<"epgz03 org B oa"/utf8>>, ?SCOPES
+        C, ?ORG_B, <<"epgz03-oa-b">>, <<"epgz03 org B oa"/utf8>>
     ),
     AppAId = maps:get(<<"id">>, AppA),
     AppBId = maps:get(<<"id">>, AppB),

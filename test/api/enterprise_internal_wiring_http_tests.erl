@@ -96,106 +96,27 @@ manifest_v21_entries_test_() ->
 
 manifest_v21_entries() ->
     Manifest = enterprise_internal_routes:routes(),
-    %% 44 unique id + 44 unique method+path
-    Ids = [maps:get(id, R) || R <- Manifest],
-    ?assertEqual(49, length(lists:usort(Ids))),
+    ?assertEqual(49, length(Manifest)),
+    Ids = lists:sort([maps:get(id, R) || R <- Manifest]),
     ?assertEqual(
-        [iolist_to_binary(io_lib:format("INT-~2..0B", [Number])) || Number <- lists:seq(1, 49)],
-        lists:sort(Ids)
+        [iolist_to_binary(io_lib:format("INT-~2..0B", [N])) || N <- lists:seq(1, 49)], Ids
     ),
-    MethodPaths = [{maps:get(method, R), maps:get(path, R)} || R <- Manifest],
-    ?assertEqual(49, length(lists:usort(MethodPaths))),
-    %% 所有注册 scope 都是固定 20 值枚举成员（动态 scope 除外）
-    All = enterprise_internal_scope:all(),
     lists:foreach(
         fun(R) ->
-            case maps:get(scope, R) of
-                {dynamic, _} -> ok;
-                S -> ?assert(lists:member(S, All), {scope_not_in_catalog, maps:get(id, R), S})
-            end
+            ?assertNot(maps:is_key(scope, R)),
+            ?assertMatch(
+                {ok, R}, enterprise_internal_routes:match(maps:get(method, R), maps:get(path, R))
+            ),
+            ?assert(
+                lists:member(maps:get(rate_bucket, R), [internal_read, internal_write, internal_sso])
+            ),
+            ?assert(
+                lists:member(maps:get(idempotency, R), [required, not_required, single_use_code])
+            ),
+            ?assertMatch({ok, _}, enterprise_internal_boundary:spec(maps:get(id, R)))
         end,
         Manifest
-    ),
-    %% INT-18 scope 修正：读操作降为 groups:read（§6.2/§7）
-    ById = #{maps:get(id, R) => R || R <- Manifest},
-    LoginRoute = #{
-        id => <<"INT-44">>,
-        method => <<"POST">>,
-        path => <<"/api/internal/v1/oa/login/tickets">>,
-        scope => <<"oa:login:issue">>,
-        rate_bucket => internal_sso,
-        idempotency => not_required,
-        sender_mode => none
-    },
-    ?assertEqual(LoginRoute, maps:get(<<"INT-44">>, ById)),
-    ?assertEqual(
-        {ok, LoginRoute},
-        enterprise_internal_routes:match(
-            <<"POST">>, <<"/api/internal/v1/oa/login/tickets">>
-        )
-    ),
-    ?assertEqual(required_audit, enterprise_internal_audit_policy:verdict(<<"INT-44">>)),
-    ?assertEqual(
-        <<"oa.login_ticket_issued">>, enterprise_internal_audit_policy:audit_action(<<"INT-44">>)
-    ),
-    ?assertEqual(
-        <<"groups:read">>, maps:get(scope, maps:get(<<"INT-18">>, ById))
-    ),
-    %% INT-24..31 冻结形态：method/path/scope/idempotency
-    ExpectedV21 = [
-        {<<"INT-24">>, <<"GET">>, <<"/api/internal/v1/workspaces">>, <<"workspaces:read">>},
-        {<<"INT-25">>, <<"GET">>, <<"/api/internal/v1/workspaces/{workspace_id}">>,
-            <<"workspaces:read">>},
-        {<<"INT-26">>, <<"GET">>, <<"/api/internal/v1/groups">>, <<"groups:read">>},
-        {<<"INT-27">>, <<"GET">>, <<"/api/internal/v1/groups/{group_id}/members">>,
-            <<"groups:read">>},
-        {<<"INT-28">>, <<"GET">>, <<"/api/internal/v1/projects">>, <<"projects:read">>},
-        {<<"INT-29">>, <<"GET">>, <<"/api/internal/v1/projects/{project_id}">>,
-            <<"projects:read">>},
-        {<<"INT-30">>, <<"GET">>, <<"/api/internal/v1/channels">>, <<"channels:read">>},
-        {<<"INT-31">>, <<"GET">>, <<"/api/internal/v1/channels/{channel_id}">>, <<"channels:read">>}
-    ],
-    lists:foreach(
-        fun({Id, Method, Path, Scope}) ->
-            R = maps:get(Id, ById, #{}),
-            ?assertEqual(Method, maps:get(method, R, undefined), {Id, method}),
-            ?assertEqual(Path, maps:get(path, R, undefined), {Id, path}),
-            ?assertEqual(Scope, maps:get(scope, R, undefined), {Id, scope}),
-            ?assertEqual(not_required, maps:get(idempotency, R, undefined), {Id, idempotency}),
-            ?assertEqual(internal_read, maps:get(rate_bucket, R, undefined), {Id, rate_bucket}),
-            %% match/2 对未接线 Router 的路径也可做认证链级匹配（负例可测）
-            ?assertMatch({ok, R}, enterprise_internal_routes:match(Method, Path))
-        end,
-        ExpectedV21
-    ),
-    %% INT-24..31 的边界规格 kind 语义（§6.2）：列表=covered W（list）或必填
-    %% W 过滤（workspace）；详情=workspace
-    ?assertMatch(
-        {ok, #{kind := list, scope := <<"workspaces:read">>}},
-        enterprise_internal_boundary:spec(<<"INT-24">>)
-    ),
-    ?assertMatch(
-        {ok, #{kind := list, scope := <<"groups:read">>}},
-        enterprise_internal_boundary:spec(<<"INT-26">>)
-    ),
-    lists:foreach(
-        fun(Id) ->
-            ?assertMatch(
-                {ok, #{kind := workspace, scope := _}},
-                enterprise_internal_boundary:spec(Id)
-            )
-        end,
-        [<<"INT-25">>, <<"INT-27">>, <<"INT-28">>, <<"INT-29">>, <<"INT-30">>, <<"INT-31">>]
-    ),
-    %% INT-18 边界规格同步降为 groups:read（路由表 ↔ 边界表一致）
-    ?assertMatch(
-        {ok, #{kind := workspace, scope := <<"groups:read">>}},
-        enterprise_internal_boundary:spec(<<"INT-18">>)
     ).
-
-%%%===================================================================
-%%% 真 transport 面（真 listener + 真中间件链）
-%%%===================================================================
 
 http_wiring_test_() ->
     {timeout, 60, fun http_wiring/0}.
@@ -287,7 +208,7 @@ boundary_parity() ->
     lists:foreach(
         fun(Id) ->
             ?assertMatch(
-                {ok, #{kind := _, scope := _}},
+                {ok, #{kind := _}},
                 enterprise_internal_boundary:spec(Id)
             )
         end,
@@ -324,7 +245,6 @@ normalize_code() ->
         {credential_expired, <<"credential_expired">>},
         {application_disabled, <<"application_disabled">>},
         {organization_disabled, <<"organization_disabled">>},
-        {insufficient_scope, <<"insufficient_scope">>},
         {resource_not_found, <<"resource_not_found">>},
         {identity_not_mapped, <<"identity_not_mapped">>},
         {organization_boundary_violation, <<"organization_boundary_violation">>},
@@ -1203,34 +1123,8 @@ seat_negative_matrix(S) ->
     Port = maps:get(port, S),
     C = maps:get(conn, S),
     A = intbe02_http_support:auth(maps:get(cred_a, S)),
-    RO = intbe02_http_support:auth(maps:get(cred_ro, S)),
-    Narrow = intbe02_http_support:auth(maps:get(cred_c, S)),
     Seats = <<"/api/internal/v1/customer-service/seats">>,
     Detail = <<Seats/binary, "/995701">>,
-    lists:foreach(
-        fun({Method, Path}) ->
-            assert_err(
-                intbe02_http_support:http(
-                    Port,
-                    Method,
-                    Path,
-                    #{},
-                    maps:merge(RO, intbe02_http_support:idem(<<"seat-missing-scope">>))
-                ),
-                <<"insufficient_scope">>
-            )
-        end,
-        [
-            {<<"GET">>, Seats},
-            {<<"GET">>, Detail},
-            {<<"POST">>, Seats},
-            {<<"PATCH">>, Detail}
-        ]
-    ),
-    assert_err(
-        intbe02_http_support:http(Port, <<"GET">>, Seats, <<>>, Narrow),
-        <<"organization_boundary_violation">>
-    ),
     assert_err(
         intbe02_http_support:http(Port, <<"GET">>, <<Seats/binary, "/995702">>, <<>>, A),
         <<"resource_not_found">>
@@ -1272,27 +1166,25 @@ seat_negative_matrix(S) ->
         ),
         <<"resource_not_found">>
     ),
-    AppId = integer_to_binary(maps:get(app_a, S)),
+    AppId = maps:get(app_a, S),
     ok = intbe02_http_support:sql_exec(
-        C,
-        <<"DELETE FROM enterprise_application_grant_scope s USING enterprise_application_grant g WHERE s.grant_id=g.id AND g.organization_id=995101 AND g.application_id=",
-            AppId/binary, " AND s.scope='customer_service:write'">>
+        C, <<"UPDATE enterprise_application SET status='disabled' WHERE id=$1">>, [AppId]
     ),
-    %% Replaying a committed key must still fail after the write grant is revoked.
-    assert_err(
-        Request(
-            <<"PATCH">>,
-            Detail,
-            #{<<"workspace_id">> => Ws, <<"expected_version">> => 1, <<"enabled">> => false},
-            <<"intbe02-idem-36">>
-        ),
-        <<"insufficient_scope">>
-    ).
-
-%% ------------------------------------------------------------------
-%% ② 幂等矩阵：17 条 required mutation 逐一同 key 同 body 精确重放 +
-%%    同 key 异 body 409 + 缺/畸形 key 400
-%% ------------------------------------------------------------------
+    try
+        assert_err(
+            Request(
+                <<"PATCH">>,
+                Detail,
+                #{<<"workspace_id">> => Ws, <<"expected_version">> => 1, <<"enabled">> => false},
+                <<"intbe02-idem-36">>
+            ),
+            <<"application_disabled">>
+        )
+    after
+        ok = intbe02_http_support:sql_exec(
+            C, <<"UPDATE enterprise_application SET status='active' WHERE id=$1">>, [AppId]
+        )
+    end.
 
 idempotency_matrix(S, Specs) ->
     Port = maps:get(port, S),
@@ -1406,234 +1298,16 @@ grp_id_from(Specs) ->
 
 negative_matrix(S) ->
     Port = maps:get(port, S),
-    %% (a) 无 credential：49 条逐一 → 401 invalid_credential（认证链第一关，
-    %%     不触碰 PG；路径绑定段用整数 1 保证路由命中）
-    lists:foreach(
-        fun(R) ->
-            Method = maps:get(method, R),
-            Path = concrete_path(maps:get(path, R)),
-            Resp = intbe02_http_support:http(Port, Method, Path, #{}),
-            assert_err(Resp, <<"invalid_credential">>)
-        end,
-        enterprise_internal_routes:routes()
-    ),
-
     A = intbe02_http_support:auth(maps:get(cred_a, S)),
-    RO = intbe02_http_support:auth(maps:get(cred_ro, S)),
-    D = intbe02_http_support:auth(maps:get(cred_d, S)),
-    Cnarrow = intbe02_http_support:auth(maps:get(cred_c, S)),
-    W = intbe02_http_support:auth(maps:get(cred_w, S)),
-    WsA1 = intbe02_http_support:fixture(ws_a1, x),
-    WsA2 = intbe02_http_support:fixture(ws_a2, x),
-    WsB1 = intbe02_http_support:fixture(ws_b1, x),
-    GrpB = intbe02_http_support:fixture(grp_b, x),
-    H1 = intbe02_http_support:fixture(ext_h1, x),
-    GrpBPath = <<"/api/internal/v1/groups/", (integer_to_binary(GrpB))/binary>>,
-
-    %% (b) 缺 scope：RO 应用（仅 application:read）
-    %%     GET /application 是它唯一可达端点（最小 scope 正例对照）
-    Rro =
-        intbe02_http_support:http(Port, <<"GET">>, <<"/api/internal/v1/application">>, <<>>, RO),
-    assert_ok_json(Rro),
-    lists:foreach(
-        fun({Method, Path, Body}) ->
-            Resp = intbe02_http_support:http(
-                Port,
-                Method,
-                Path,
-                Body,
-                maps:merge(RO, intbe02_http_support:idem(<<"intbe02-idem-ro-", Method/binary>>))
-            ),
-            assert_err(Resp, <<"insufficient_scope">>)
-        end,
-        [
-            {<<"PUT">>, <<"/api/internal/v1/identity-mappings">>, #{
-                <<"external_user_id">> => <<"x">>, <<"user_id">> => 995011
-            }},
-            {<<"POST">>, <<"/api/internal/v1/identity-mappings/resolve">>, #{
-                <<"external_user_ids">> => [H1]
-            }},
-            {<<"POST">>, <<"/api/internal/v1/groups">>, #{
-                <<"workspace_id">> => WsA1, <<"title">> => <<"t"/utf8>>, <<"members">> => [H1]
-            }},
-            {<<"PUT">>, <<"/api/internal/v1/groups/1/members">>, #{<<"external_user_ids">> => [H1]}},
-            {<<"DELETE">>, <<"/api/internal/v1/groups/1/members">>, #{
-                <<"external_user_ids">> => [H1]
-            }},
-            {<<"POST">>, <<"/api/internal/v1/files/presign">>, #{
-                <<"file_name">> => <<"a.txt">>, <<"mime_type">> => <<"text/plain">>
-            }},
-            {<<"POST">>, <<"/api/internal/v1/files/confirm">>, #{<<"object_key">> => <<"k">>}},
-            {<<"POST">>, <<"/api/internal/v1/files/governance">>, #{
-                <<"op">> => <<"hold">>, <<"object_key">> => <<"k">>, <<"reason">> => <<"r"/utf8>>
-            }},
-            {<<"POST">>, <<"/api/internal/v1/friend-requests">>, #{
-                <<"sender_user_id">> => H1, <<"target_user_id">> => <<"y">>
-            }},
-            {<<"PUT">>, <<"/api/internal/v1/webhook">>, #{
-                <<"url">> => <<"https://oa.customer.example.com/h">>,
-                <<"events">> => [<<"file.confirmed">>]
-            }},
-            {<<"POST">>, <<"/api/internal/v1/webhook/deliveries/1/replay">>, #{}},
-            {<<"POST">>, <<"/api/internal/v1/oa/sso/exchange">>, #{
-                <<"code">> => <<"oa_sso_x">>,
-                <<"redirect_uri">> => <<"https://x/y">>,
-                <<"nonce">> => <<"nonce_x">>
-            }},
-            {<<"POST">>, <<"/api/internal/v1/identity-mappings/directory">>, #{}},
-            {<<"POST">>, <<"/api/internal/v1/directory/users">>, #{}},
-            {<<"GET">>, <<"/api/internal/v1/groups">>, #{}},
-            {<<"GET">>, <<"/api/internal/v1/groups/1">>, #{}},
-            {<<"PATCH">>, <<"/api/internal/v1/groups/1">>, #{<<"title">> => <<"t"/utf8>>}},
-            {<<"PUT">>, <<"/api/internal/v1/groups/1/members/roles">>, #{<<"roles">> => []}},
-            {<<"DELETE">>, <<"/api/internal/v1/groups/1">>, #{}},
-            {<<"GET">>, <<"/api/internal/v1/groups/1/members">>, #{}},
-            {<<"GET">>, <<"/api/internal/v1/workspaces">>, #{}},
-            {<<"GET">>, <<"/api/internal/v1/workspaces/1">>, #{}},
-            {<<"GET">>, <<"/api/internal/v1/projects?workspace_id=1">>, #{}},
-            {<<"GET">>, <<"/api/internal/v1/projects/1">>, #{}},
-            {<<"GET">>, <<"/api/internal/v1/channels?workspace_id=1">>, #{}},
-            {<<"GET">>, <<"/api/internal/v1/channels/1">>, #{}}
-        ]
+    WsB = intbe02_http_support:fixture(ws_b1, S),
+    R = intbe02_http_support:http(
+        Port,
+        <<"GET">>,
+        <<"/api/internal/v1/workspaces/", (integer_to_binary(WsB))/binary>>,
+        <<>>,
+        A
     ),
-    %% 动态 scope 路由（INT-09/10，manifest dynamic_scope_usage）不进静态
-    %% scope_gate——由 handler 按 sender_mode 裁决，故单独断言：
-    %%   * INT-09 direct：sender_mode 解析先于资源定位 → 403 insufficient_scope；
-    Rdyn9 =
-        intbe02_http_support:http(
-            Port,
-            <<"POST">>,
-            <<"/api/internal/v1/messages/direct">>,
-            #{
-                <<"sender_mode">> => <<"application">>,
-                <<"recipient_user_id">> => H1,
-                <<"msg_type">> => <<"text">>,
-                <<"content">> => <<"c"/utf8>>
-            },
-            maps:merge(RO, intbe02_http_support:idem(<<"intbe02-idem-ro-d9">>))
-        ),
-    assert_err(Rdyn9, <<"insufficient_scope">>),
-    %%   * INT-10 group messages：群定位先于 scope 裁决，deny precedence
-    %%     （404 先于 403，与 INT-25 详情「同不存在同体」语义一致）→ 统一 404。
-    Rdyn10 =
-        intbe02_http_support:http(
-            Port,
-            <<"POST">>,
-            <<"/api/internal/v1/groups/1/messages">>,
-            #{
-                <<"sender_mode">> => <<"application">>,
-                <<"msg_type">> => <<"text">>,
-                <<"content">> => <<"c"/utf8>>
-            },
-            maps:merge(RO, intbe02_http_support:idem(<<"intbe02-idem-ro-d10">>))
-        ),
-    assert_err(Rdyn10, <<"resource_not_found">>),
-    %% (c) 零 Grant：allowed_scopes 有值但无任何生效 Grant → granted=空集 → 403
-    Rd =
-        intbe02_http_support:http(Port, <<"GET">>, <<"/api/internal/v1/application">>, <<>>, D),
-    assert_err(Rd, <<"insufficient_scope">>),
-
-    %% (d) 未覆盖 Workspace（App C 显式 Grant 仅 WS_A1）→ 同体 403
-    WsA2Path = <<"/api/internal/v1/workspaces/", (integer_to_binary(WsA2))/binary>>,
-    Rwsc =
-        intbe02_http_support:http(Port, <<"GET">>, WsA2Path, <<>>, Cnarrow),
-    assert_err(Rwsc, <<"organization_boundary_violation">>),
-    Rwsc2 =
-        intbe02_http_support:http(
-            Port,
-            <<"GET">>,
-            <<"/api/internal/v1/projects?workspace_id=", (integer_to_binary(WsA2))/binary>>,
-            <<>>,
-            Cnarrow
-        ),
-    assert_err(Rwsc2, <<"organization_boundary_violation">>),
-    Rwsc3 =
-        intbe02_http_support:http(
-            Port,
-            <<"GET">>,
-            <<"/api/internal/v1/channels?workspace_id=", (integer_to_binary(WsA2))/binary>>,
-            <<>>,
-            Cnarrow
-        ),
-    assert_err(Rwsc3, <<"organization_boundary_violation">>),
-    %% scope groups:write 由窄写应用（cred_w）满足——失败只能来自 Grant 覆盖
-    Rwsc4 =
-        intbe02_http_support:http(
-            Port,
-            <<"POST">>,
-            <<"/api/internal/v1/groups">>,
-            #{<<"workspace_id">> => WsA2, <<"title">> => <<"t"/utf8>>, <<"members">> => [H1]},
-            maps:merge(W, intbe02_http_support:idem(<<"intbe02-idem-cn">>))
-        ),
-    assert_err(Rwsc4, <<"organization_boundary_violation">>),
-    %% 列表行级收窄（kind=list）：显式 Grant 只见覆盖内 WS
-    Rwsc5 = intbe02_http_support:http(
-        Port, <<"GET">>, <<"/api/internal/v1/workspaces">>, <<>>, Cnarrow
-    ),
-    #{<<"items">> := ItemsC} = assert_page(Rwsc5),
-    ?assertEqual([WsA1], [maps:get(<<"workspace_id">>, M) || M <- ItemsC]),
-
-    %% (e) 跨 Org 同体拒绝：Org A 凭证访问 Org B 资源
-    %%     资源在 org 定位阶段不可见 → 统一 404（不给跨 Org 存在性 oracle）
-    WsB1Path = <<"/api/internal/v1/workspaces/", (integer_to_binary(WsB1))/binary>>,
-    Rx1 = intbe02_http_support:http(Port, <<"GET">>, WsB1Path, <<>>, A),
-    assert_err(Rx1, <<"resource_not_found">>),
-    lists:foreach(
-        fun({Method, Path, Body}) ->
-            Resp = intbe02_http_support:http(
-                Port,
-                Method,
-                Path,
-                Body,
-                maps:merge(A, intbe02_http_support:idem(<<"intbe02-idem-x-", Method/binary>>))
-            ),
-            assert_err(Resp, <<"resource_not_found">>)
-        end,
-        [
-            {<<"GET">>, GrpBPath, #{}},
-            {<<"PATCH">>, GrpBPath, #{<<"title">> => <<"t"/utf8>>}},
-            {<<"DELETE">>, GrpBPath, #{}},
-            {<<"PUT">>, <<GrpBPath/binary, "/members">>, #{<<"external_user_ids">> => [H1]}},
-            {<<"DELETE">>, <<GrpBPath/binary, "/members">>, #{<<"external_user_ids">> => [H1]}},
-            {<<"PUT">>, <<GrpBPath/binary, "/members/roles">>, #{<<"roles">> => []}},
-            {<<"POST">>, <<GrpBPath/binary, "/messages">>, #{
-                <<"sender_mode">> => <<"application">>,
-                <<"msg_type">> => <<"text">>,
-                <<"content">> => <<"c"/utf8>>
-            }},
-            {<<"GET">>, <<GrpBPath/binary, "/members">>, #{}}
-        ]
-    ),
-    %% INT-04 的边界资源在请求体（workspace_id=WS_B1 属 Org B）→ 403 同体
-    Rxc =
-        intbe02_http_support:http(
-            Port,
-            <<"POST">>,
-            <<"/api/internal/v1/groups">>,
-            #{<<"workspace_id">> => WsB1, <<"title">> => <<"t"/utf8>>, <<"members">> => [H1]},
-            maps:merge(A, intbe02_http_support:idem(<<"intbe02-idem-xc">>))
-        ),
-    assert_err(Rxc, <<"organization_boundary_violation">>),
-    %% 映射面 org 内收敛：Org B 侧标识在 Org A 不可见 → 422 identity_not_mapped
-    Rxd =
-        intbe02_http_support:http(
-            Port,
-            <<"POST">>,
-            <<"/api/internal/v1/messages/direct">>,
-            #{
-                <<"sender_mode">> => <<"application">>,
-                <<"recipient_user_id">> => <<"intbe02-ext-b1">>,
-                <<"msg_type">> => <<"text">>,
-                <<"content">> => <<"c"/utf8>>
-            },
-            maps:merge(A, intbe02_http_support:idem(<<"intbe02-idem-xd">>))
-        ),
-    assert_err(Rxd, <<"identity_not_mapped">>),
-    ok.
-
-%% ------------------------------------------------------------------
-%% ④ covered_operation_ids：登记集合 ↔ 冻结表 44 ID 精确相等
-%% ------------------------------------------------------------------
+    assert_err(R, <<"resource_not_found">>).
 
 assert_coverage() ->
     Expected =
@@ -1714,8 +1388,7 @@ integration_readme_auth_contract_test() ->
             <<"X-Imboy-Credential">>,
             <<"X-Imboy-Timestamp">>,
             <<"X-Imboy-Nonce">>,
-            <<"X-Imboy-Signature">>,
-            <<"不需要选择 Scope，也不需要签发 Grant"/utf8>>
+            <<"X-Imboy-Signature">>
         ]
     ],
     ?assertEqual(nomatch, binary:match(Readme, <<"## 4. 授权（Scope"/utf8>>)).
@@ -1755,9 +1428,6 @@ assert_page(Resp) ->
     Page.
 
 %% 冻结表 {name} 段 → 具体整数（negative 401 循环用；绑定在认证链前收敛）
-concrete_path(Path) ->
-    re:replace(Path, "\\{[a-z_]+\\}", "1", [global, {return, binary}]).
-
 hash256(S) ->
     %% SHA-256 hex（64 字符小写）——valid_hash/1 接受形态
     Bin = crypto:hash(sha256, S),

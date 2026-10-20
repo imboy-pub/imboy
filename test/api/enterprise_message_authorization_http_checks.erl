@@ -181,11 +181,7 @@ send(S, Path, Body) ->
 %% Confirmed metadata fixtures: object bytes are outside the sending ACL boundary.
 files(C, S) ->
     {ok, Foreign} = enterprise_application_repo:create_tx(
-        C,
-        995102,
-        <<"sender-boundary-foreign">>,
-        <<"synthetic foreign application">>,
-        {995021, [<<"files:upload">>]}
+        C, 995102, <<"sender-boundary-foreign">>, <<"synthetic foreign application">>, 995021
     ),
     [
         confirmed(C, Org, App)

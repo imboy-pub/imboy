@@ -1,25 +1,5 @@
 -module(enterprise_asset_handler).
 
-%%%
-% EPGZ-04 INT-07/08 企业附件端点壳（不接线 Router——A0 W4 做）。
-%
-% 路由（A0 W4 经 Router lease 串行登记）：
-%   POST /api/internal/v1/files/presign -> {Path, enterprise_asset_handler,
-%       #{action => presign}}
-%   POST /api/internal/v1/files/confirm -> {Path, enterprise_asset_handler,
-%       #{action => confirm}}
-% —— 必须经 enterprise_internal_middleware（A2 认证链：credential →
-%    active/expiry → application active → organization active →
-%    scope files:write → rate internal_write fail-closed）。ctx 注入
-%    handler_opts.enterprise_internal（atom 键 map）。
-%
-% 幂等（A2 模式，INV-7）：Idempotency-Key 已由 decide 强制存在；单事务
-% begin_tx -> logic -> complete_tx；业务 {error} 经 throw({rollback,...})
-% 整体回滚（幂等行一并消失，同 key 重试可过），回滚后补发
-% message.enterprise.failed 旁路事件（独立小事务）。
-% 资源：presign -> enterprise_asset_presign；confirm -> attachment。
-%%%
-
 -behavior(cowboy_rest).
 
 -export([init/2]).
@@ -103,9 +83,6 @@ confirm(<<"POST">>, Req0, State) ->
 confirm(_, Req0, _State) ->
     cowboy_req:reply(405, #{}, <<"Method Not Allowed">>, Req0).
 
-%% @doc INT-22（FULL-02 新增，待 A0 接线）：附件留存/法务 hold/purge 治理。
-%% scope files:write（rate internal_write，幂等 required）。
-%% 路由：POST /api/internal/v1/files/governance -> #{action => governance}
 -spec governance(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 governance(<<"POST">>, Req0, State) ->
     Ctx = maps:get(enterprise_internal, State, #{}),
@@ -132,10 +109,6 @@ governance(<<"POST">>, Req0, State) ->
 governance(_, Req0, _State) ->
     cowboy_req:reply(405, #{}, <<"Method Not Allowed">>, Req0).
 
-%% @doc FULL-01/FULL-02 授权边界接线（唯一接线点
-%% enterprise_internal_boundary:enforce/4）：在**同一事务内**、业务执行前判定
-%% Grant 的 org/workspace 资源边界。未受管应用是 no-op（广州期语义不变）；
-%% 受管应用撤权/降权在下一请求即失败（fail-closed）。
 -spec with_boundary(any(), map(), binary(), undefined | integer(), fun()) ->
     {ok, map()} | {error, {binary(), term()}}.
 with_boundary(Conn, Ctx, RouteId, WorkspaceId, Fun) ->
@@ -143,7 +116,7 @@ with_boundary(Conn, Ctx, RouteId, WorkspaceId, Fun) ->
         ok ->
             Fun();
         {error, Code} ->
-            {error, {enterprise_internal_boundary:error_code(Code), grant_boundary}}
+            {error, {enterprise_internal_boundary:error_code(Code), resource_attribution}}
     end.
 
 %% @doc A2 幂等模式（单事务）。返回值契约见 enterprise_internal_idempotency。

@@ -71,7 +71,7 @@ tags:
   - name: admin-setup
     description: 首启初始化向导（免鉴权，仅允许执行一次）
   - name: internal
-    description: 企业集成 Internal API（HMAC 签名；限流/幂等见端点扩展，scope 字段仅供旧 Bearer 兼容）
+    description: 企业集成 Internal API（HMAC 签名；限流/幂等见端点扩展）
 
 paths:
   # ---- surface api — 业务 v1 端点（编辑真源 openapi-api.yaml） ----
@@ -1253,7 +1253,7 @@ components:
       type: apiKey
       in: header
       name: X-Imboy-Credential
-      description: 服务端签发的 ib_int_ 定位符；不发送 secret，不要求 Scope/Grant。
+      description: 服务端签发的 ib_int_ 定位符；不发送 secret。
     ibIntHmacTimestamp:
       type: apiKey
       in: header
@@ -1269,11 +1269,6 @@ components:
       in: header
       name: X-Imboy-Signature
       description: sha256=<64位小写hex> 或 sha512=<128位小写hex>；原文见 README §3。
-    ibIntBearer:
-      type: http
-      scheme: bearer
-      bearerFormat: <credential_prefix>.<secret>
-      description: 旧客户端迁移兼容；仍执行历史 Scope/Grant 策略。新 OA 使用 HMAC 请求签名。
 
   schemas:
     MicroCommunityEntityId:

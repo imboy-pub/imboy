@@ -19,8 +19,6 @@ post:
     `enterprise_directory_logic`（`{items, page_size, has_more, next_cursor}`）。
   operationId: internalIdentityDirectory
   x-imboy-authentication: hmac
-  x-imboy-legacy-scope-only: true
-  x-imboy-scope: identities:read
   x-imboy-rate-bucket: internal_read
   x-imboy-idempotency: not_required
   requestBody:
@@ -71,6 +69,6 @@ post:
                 description: 下页游标（CURSOR-V2 签名形态；has_more=false 时 null）
     '400': { $ref: '../../../../components/responses/internal/invalid_request.yaml' }
     '401': { $ref: '../../../../components/responses/internal/invalid_credential.yaml' }
-    '403': { $ref: '../../../../components/responses/internal/insufficient_scope.yaml' }
+    '403': { $ref: '../../../../components/responses/internal/organization_boundary_violation.yaml' }
     '429': { $ref: '../../../../components/responses/internal/rate_limited.yaml' }
     '500': { $ref: '../../../../components/responses/internal/internal_error.yaml' }

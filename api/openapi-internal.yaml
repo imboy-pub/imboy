@@ -5,7 +5,6 @@
 # （34 条 cowboy path / 49 端点（含 INT-43 directory/sync 与 INT-44 OA login），与
 # src/api/enterprise_internal_routes.erl 冻结路由表逐条对应）。端点文件位于
 # paths/internal/v1/；认证方案
-# HMAC-SHA256/SHA512（默认，无 Scope/Grant）；ibIntBearer 为旧客户端兼容。
 # 人类集成文档：api/internal/v1/（README / endpoints / Postman）。
 # 汇总入口 api/openapi.yaml 由 gen_aggregate.py 生成，请勿手改。
 # ----------------------------------------------------------------------------
@@ -19,11 +18,10 @@ info:
     本文件是 IMBoy **surface internal**（企业集成）的编辑真源，桥接 34 条
     path（49 个操作）。受众为企业 OA / 第三方集成系统开发者。
 
-    **认证**：默认使用 HMAC-SHA256 / HMAC-SHA512 请求签名，无需配置 Scope 或 Grant。
+    **认证**：仅使用 HMAC-SHA256 / HMAC-SHA512 请求签名。
     签名头为 X-Imboy-Credential、X-Imboy-Timestamp、X-Imboy-Nonce、X-Imboy-Signature；
     可选的 X-Imboy-Organization 选择经平台校验的业务组织，并参与签名。
     算法、12 行签名原文、300 秒窗口及升级轮换要求见 api/internal/v1/README.md §3。
-    旧 Bearer 客户端仅作迁移兼容；x-imboy-scope 仅描述其旧权限要求，不限制 HMAC 请求。
 
     **响应模型**：除 OA login tickets 使用 `{code,msg,sv_ts,payload}` 成功信封外，
     成功响应为**裸 payload**（无 `{code,msg,payload}` 业务信封）；
@@ -61,7 +59,7 @@ servers:
 
 tags:
   - name: internal
-    description: 企业集成 Internal API（HMAC 签名；限流/幂等见端点扩展，scope 字段仅供旧 Bearer 兼容）
+    description: 企业集成 Internal API（HMAC 签名；限流/幂等见端点扩展）
 
 paths:
   /api/internal/v1/application:
@@ -140,7 +138,7 @@ components:
       type: apiKey
       in: header
       name: X-Imboy-Credential
-      description: 服务端签发的 ib_int_ 定位符；不发送 secret，不要求 Scope/Grant。
+      description: 服务端签发的 ib_int_ 定位符；不发送 secret。
     ibIntHmacTimestamp:
       type: apiKey
       in: header
@@ -156,15 +154,9 @@ components:
       in: header
       name: X-Imboy-Signature
       description: sha256=<64位小写hex> 或 sha512=<128位小写hex>；原文见 README §3。
-    ibIntBearer:
-      type: http
-      scheme: bearer
-      bearerFormat: <credential_prefix>.<secret>
-      description: 旧客户端迁移兼容；仍执行历史 Scope/Grant 策略。新 OA 使用 HMAC 请求签名。
 
 security:
   - ibIntHmacCredential: []
     ibIntHmacTimestamp: []
     ibIntHmacNonce: []
     ibIntHmacSignature: []
-  - ibIntBearer: []

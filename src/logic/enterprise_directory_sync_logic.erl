@@ -3,19 +3,10 @@
 -export([sync/3, sync_tx/4, claim_and_project_tx/4, claim_login_tx/4, validate/1, version/2]).
 
 %% Login proves an identity, not directory write authority. Keep unauthorized
-%% memberships pending; never elevate the issuer's scopes to project them.
+%% memberships pending; only project memberships from a current trusted source.
 claim_login_tx(Conn, Ctx, ExternalId, UserId) ->
     AppId = maps:get(application_id, Ctx),
-    Authority =
-        case maps:get(authentication, Ctx, legacy) of
-            hmac ->
-                enterprise_oa_login_repo:authority_signed_tx(
-                    Conn, AppId, maps:get(credential_id, Ctx)
-                );
-            _ ->
-                enterprise_oa_login_repo:authority_tx(Conn, AppId, maps:get(credential_id, Ctx))
-        end,
-    _ = must(Authority),
+    _ = must(enterprise_oa_login_repo:authority_tx(Conn, AppId, maps:get(credential_id, Ctx))),
     Person = must(enterprise_source_person_repo:claim_tx(Conn, AppId, ExternalId, UserId)),
     Sources = must(enterprise_directory_source_repo:login_projections_tx(Conn, AppId, ExternalId)),
     Pending = lists:foldl(
@@ -29,8 +20,6 @@ claim_login_tx(Conn, Ctx, ExternalId, UserId) ->
                 {ok, _} ->
                     project_claim(Conn, Ctx, ExternalId, Person, Source),
                     Count;
-                {error, insufficient_scope} ->
-                    Count + 1;
                 {error, organization_boundary_violation} ->
                     Count + 1;
                 {error, Reason} ->
@@ -101,6 +90,7 @@ sync(Ctx, Key, Body) ->
     end.
 
 sync_tx(Conn, Ctx, Key, Body) ->
+    ok = enterprise_internal_idempotency:serialize_tx(Conn, Ctx, Key),
     must(validate(Body)),
     case enterprise_internal_idempotency:valid_key(Key) of
         true -> ok;

@@ -66,7 +66,7 @@ positive(application, Json, H, _S, _AdminId) ->
     ),
     ?assert(ec_cnv:to_integer(maps:get(<<"organization_id">>, Json), strict) > 0),
     ?assert(ec_cnv:to_integer(maps:get(<<"credential_id">>, Json), strict) > 0),
-    ?assert(maps:get(<<"granted_scopes">>, Json) =/= []);
+    ?assertEqual(<<"hmac">>, maps:get(<<"authentication">>, Json));
 positive(admin, Json, _H, _S, AdminId) ->
     ?assertEqual(0, maps:get(<<"code">>, Json)),
     ?assertEqual(

@@ -60,21 +60,6 @@ validation_test() ->
         ]
     ].
 
-explicit_scope_test() ->
-    ?assertEqual(
-        {error, insufficient_scope},
-        enterprise_internal_scope:authorize(
-            <<"members:write">>, [<<"identities:write">>]
-        )
-    ),
-    Scopes = [<<"identities:read">>, <<"identities:write">>, <<"members:write">>],
-    ?assert(enterprise_directory_source_policy:allowed(Scopes)),
-    ?assertNot(
-        lists:member(
-            <<"members:write">>, enterprise_directory_source_policy:directory_scopes(Scopes)
-        )
-    ).
-
 transition(R, S, V) -> enterprise_directory_member_logic:transition(R, S, V).
 row() ->
     #{

@@ -52,17 +52,6 @@
 -define(EXT_R1, <<"ext997-r1">>).
 -define(EXT_R2, <<"ext997-r2">>).
 
--define(SCOPES_FULL, [
-    <<"application:read">>,
-    <<"identities:read">>,
-    <<"identities:write">>,
-    <<"groups:write">>,
-    <<"files:write">>,
-    <<"messages:send">>,
-    <<"messages:send_as_human">>,
-    <<"webhooks:manage">>
-]).
-
 %% 推送 token 夹具（每个 device 一个 token）
 -define(D_R1A, <<"did997-r1a">>).
 -define(D_R1B, <<"did997-r1b">>).
@@ -140,6 +129,13 @@ install_pool_shim(Conn) ->
     %% 提交后推送读的是「独立事务」；这里把它绑到测试连接上（同一连接可见
     %% 已落库的行），语义等价于生产里 with_tx 拿一条池化连接。
     meck:expect(elib_pg, with_tx, 1, fun(F) -> F(Conn) end),
+    meck:expect(elib_pg, one, 2, fun(Sql, Params) ->
+        case elib_pg:query(Conn, Sql, Params) of
+            {ok, [Row | _]} -> {ok, Row};
+            {ok, []} -> {ok, #{}};
+            Error -> Error
+        end
+    end),
     meck:expect(elib_pg, execute, 2, fun(Sql, Params) ->
         elib_pg:execute(Conn, Sql, Params)
     end),
@@ -332,7 +328,7 @@ seed_matrix(C) ->
     seed_group_member(C, ?GM_BASE + 2, ?GRP, ?PRIN, 1),
     seed_group_member(C, ?GM_BASE + 3, ?GRP, ?OWNER, 4),
     {ok, AppA} = enterprise_application_repo:create_tx(
-        C, ?ORG_A, <<"full07-oa-a">>, <<"full07 org A oa"/utf8>>, {?PRIN, ?SCOPES_FULL}
+        C, ?ORG_A, <<"full07-oa-a">>, <<"full07 org A oa"/utf8>>, ?PRIN
     ),
     ok = seed_mapping(C, ?ORG_A, maps:get(<<"id">>, AppA), ?EXT_SEND, ?H_SEND),
     ok = seed_mapping(C, ?ORG_A, maps:get(<<"id">>, AppA), ?EXT_R1, ?H_R1),
@@ -462,12 +458,7 @@ app_ids(C) ->
     {maps:get(<<"id">>, A), null}.
 
 ctx_a(State) ->
-    #{
-        organization_id => ?ORG_A,
-        application_id => maps:get(app_a, State),
-        granted_scopes => ?SCOPES_FULL,
-        principal_user_id => ?PRIN
-    }.
+    enterprise_hmac_test_support:context_tx(maps:get(conn, State), ?ORG_A, maps:get(app_a, State)).
 
 %% 离线/在线控制：count_user 桩按 uid 给答案（在 OnlineUids 里 = 1，其余 = 0；
 %% 0 才是「完全离线」——与生产判定 `imboy_syn:count_user(Uid) =:= 0` 同口径）。

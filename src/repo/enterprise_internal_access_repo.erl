@@ -1,6 +1,6 @@
 -module(enterprise_internal_access_repo).
--moduledoc "HMAC application resource attribution and live lifecycle checks; no Scope/Grant lookup.".
--export([organization_tx/2, workspace_tx/3, resolve_organization_tx/3]).
+-moduledoc "HMAC authenticated OA integration with live business attribution checks.".
+-export([organization_tx/2, workspace_tx/4, resolve_organization_tx/3]).
 
 organization_tx(Conn, #{
     authentication := hmac,
@@ -23,18 +23,27 @@ organization_tx(Conn, #{
 organization_tx(_, _) ->
     {error, organization_boundary_violation}.
 
-workspace_tx(Conn, Ctx, WorkspaceId) when is_integer(WorkspaceId), WorkspaceId > 0 ->
+workspace_tx(Conn, Ctx, WorkspaceId, LockMode) when is_integer(WorkspaceId), WorkspaceId > 0 ->
     case organization_tx(Conn, Ctx) of
         ok ->
+            %% Channel mutations later update-lock this row; take that lock before
+            %% waiting on idempotency, avoiding concurrent SHARE-to-UPDATE upgrades.
+            Lock =
+                case LockMode of
+                    write -> <<" FOR UPDATE">>;
+                    read -> <<" FOR SHARE">>;
+                    unlocked -> <<>>
+                end,
             Sql = <<
                 "SELECT id FROM workspace WHERE id=$1 AND organization_id=$2 "
-                "AND status IN ('active','archived') FOR SHARE"
+                "AND status IN ('active','archived')",
+                Lock/binary
             >>,
             allowed(elib_pg:query(Conn, Sql, [WorkspaceId, maps:get(organization_id, Ctx)]));
         Error ->
             Error
     end;
-workspace_tx(_, _, _) ->
+workspace_tx(_, _, _, _) ->
     {error, organization_boundary_violation}.
 
 allowed({ok, [_]}) -> ok;

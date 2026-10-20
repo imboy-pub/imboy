@@ -1,28 +1,6 @@
 -module(enterprise_workspace_handler).
 
 -moduledoc "V2.1 Internal 资源只读面 INT-24/25 的 HTTP 壳 —— Cowboy 路由由 A0 接线，不进 imboy_router。".
-%%%
-% enterprise_workspace_handler 是 V2.1 Internal 资源只读面 INT-24/25 的
-% HTTP 壳（plan §6.1 冻结名 planned -> 落地； Cowboy 路由由 A0 接线，本
-% 模块不进 imboy_router——见 SHARED_PATH_PROPOSAL）。
-%
-% 路由（A0 接线形态）：
-%   GET /api/internal/v1/workspaces               -> #{action => workspaces}
-%   GET /api/internal/v1/workspaces/:workspace_id -> #{action => workspace}
-% —— 必须经 enterprise_internal_middleware（认证链：credential → active
-%    → application active → organization active → scope workspaces:read →
-%    rate internal_read fail-closed）。只读：无幂等键、无写入。
-%
-% 边界（§5.2/§6.2）：
-%   * INT-24 kind=list：enforce 复验 scope 在生效集；行级「仅 Grant 覆盖 W」
-%     收窄在 workspace_repo 的列表 SQL 内（SQL 义务，非内存过滤）；
-%   * INT-25 kind=workspace：先 Org 边界定位（跨 O/不存在/归档同体 404，
-%     不泄露存在性），再 Grant 覆盖判定（403 organization_boundary_violation）
-%     ——deny precedence 第 5/6 步顺序不可倒置。
-%
-% path 绑定：{workspace_id} 段 cowboy 恒给 binary，本壳按 TSID 数字段
-% 中间件统一校验 BIGINT 范围；本壳复用 TSID 解析器保护直接调用。
-%%%
 
 -behavior(cowboy_rest).
 
@@ -78,8 +56,6 @@ init(Req0, State0) ->
 %% Internal
 %% ===================================================================
 
-%% @doc INT-24：Grant 覆盖 W 集合的 active workspace keyset 列表。
-%% query：limit（缺省 50，1..100，越界 400 不截断）、cursor（CURSOR-V2）。
 -spec workspaces(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 workspaces(<<"GET">>, Req0, State) ->
     Ctx = maps:get(enterprise_internal, State, #{}),
@@ -127,8 +103,6 @@ workspace(_, Req0, _State) ->
 %% Helpers
 %% ===================================================================
 
-%% @doc Grant 资源边界接线（唯一接线点 enterprise_internal_boundary:enforce/4；
-%% INT-24 是 kind=list（无 W 上下文），INT-25 是 kind=workspace（path W））。
 -spec with_boundary(any(), map(), binary(), undefined | integer(), fun()) ->
     {ok, map()} | {error, {binary(), term()}}.
 with_boundary(Conn, Ctx, RouteId, WorkspaceId, Fun) ->
@@ -136,7 +110,7 @@ with_boundary(Conn, Ctx, RouteId, WorkspaceId, Fun) ->
         ok ->
             Fun();
         {error, Code} ->
-            {error, {enterprise_internal_boundary:error_code(Code), grant_boundary}}
+            {error, {enterprise_internal_boundary:error_code(Code), resource_attribution}}
     end.
 
 %% @doc TSID path 绑定段收敛（binary 数字串 → integer；非法 → 0 →

@@ -57,7 +57,7 @@ Base URL（协议/域名/端口）由部署方提供，本文档只约定路径�
 
 ## 2. 快速开始
 
-1. 平台管理员创建 OA 连接并签发集成凭证。**不需要选择 Scope，也不需要签发 Grant**。
+1. 平台管理员创建 OA 连接并签发集成凭证。
    完整凭证形如 `ib_int_...<定位符>.<secret>`，secret 仅在签发/轮换时返回一次。
 2. 设置部署方提供的 `BASE_URL` 和环境变量 `IMBOY_CREDENTIAL`，按下列标准库示例读取应用自身。
    正式环境使用 HTTPS；secret 留在 OA 服务端，不放进浏览器或移动端。
@@ -97,7 +97,7 @@ with urllib.request.build_opener(NoRedirect()).open(request, timeout=30) as resp
 
 ## 3. 请求签名认证
 
-每次请求发送以下四个头，**不发送 Authorization Bearer**：
+每次请求发送以下四个签名头：
 
 | 头 | 内容 |
 |---|---|
@@ -132,14 +132,10 @@ X-Imboy-Nonce
 - 平台检查凭证有效期、撤销状态与应用状态；应用停用/归档仍返回 `application_disabled`（403）。
 - secret 使用已有数据库主密钥 AES-GCM 加密保存，不返回、不写日志；不可逆摘要不作为 HMAC key。
   主密钥未配置时不能签发新的签名凭证；配置沿用 `postgre_aes_key`，轮换兼容 `postgre_aes_key_old`。
-- 历史凭证只有不可逆摘要，无法恢复 secret。升级并应用迁移后，管理员须正常轮换一次，
-  用返回的新完整凭证签名；旧凭证在轮换事务中撤销。平台不会改写或自动扩大历史 Grant。
-- 旧 Bearer 客户端暂保留其原 Scope/Grant 行为供迁移；**新 OA 签名流程不读取这些配置**。
-  签名请求停用凭证/应用即收回连接权限，调整或撤销旧 Grant 不改变签名请求能力。
 
 English: HMAC requests authenticate the integration using a shared secret, timestamp and single-use
-nonce. They require no Scope or Grant configuration. Raw method, path, query, content type,
-idempotency key and body are signed. Legacy Bearer clients retain their original restricted policy.
+nonce. Raw method, path, query, content type,
+idempotency key and body are signed.
 
 ## 4. 业务数据校验
 
@@ -153,7 +149,7 @@ idempotency key and body are signed. Legacy Bearer clients retain their original
 个人域资源不会因此变成企业资源，应用不能冒充未映射或已停用的成员。
 
 首次同步组织仍使用管理员配置的可信来源、外部组织标识与确认的 Human Owner；
-这是创建业务对象的来源事实，不要求额外配置 Scope 或 Grant。来源停用或到期后，
+这是创建业务对象的来源事实。来源停用或到期后，
 其目录同步、核对和成员状态变更立即拒绝；组织/群组/频道的既有归属检查继续执行。
 
 ## 5. 限流与幂等
@@ -203,7 +199,6 @@ v1.1.1 起提供）；具体阈值由部署配置，
 | `credential_expired` | 401 | 凭证已过期 |
 | `application_disabled` | 403 | 应用被停用/归档 |
 | `organization_disabled` | 403 | 所属组织被停用 |
-| `insufficient_scope` | 403 | 仅旧 Bearer 兼容路径使用；签名流程不要求 Scope |
 | `organization_boundary_violation` | 403 | 跨组织访问（IDOR 防线） |
 | `resource_not_found` | 404 | 资源不存在或不属于本组织 |
 | `identity_not_mapped` | 422 | 目标用户未做身份映射 |
@@ -337,16 +332,16 @@ application and device binding, short expiration and one-time consumption. Never
 
 ## 客服坐席集成 / Customer service seats
 
-INT-33..36 管理企业坐席配置，不签发 Seat JWT。坐席主键为 business_identity_id，必须对应本企业 customer_service 业务身份；workspace_id 只是审计位置。签名请求无需读写 Scope 或 Grant，按目标企业与有效业务身份校验。PATCH 必须带 expected_version 以及 enabled/max_concurrent 至少一个；停用用 enabled=false，不删除历史。列表默认 limit=50，最大100，按 ID 升序，包含停用项。应用、凭证或企业停用后，包括幂等重放在内的下一请求仍须通过授权检查。
+INT-33..36 管理企业坐席配置，不签发 Seat JWT。坐席主键为 business_identity_id，必须对应本企业 customer_service 业务身份；workspace_id 只是审计位置。签名请求按目标企业与有效业务身份校验。PATCH 必须带 expected_version 以及 enabled/max_concurrent 至少一个；停用用 enabled=false，不删除历史。列表默认 limit=50，最大100，按 ID 升序，包含停用项。应用、凭证或企业停用后，包括幂等重放在内的下一请求仍须通过授权检查。
 
-English: Seats belong to the organization. Workspace IDs select audit locations only. HMAC reads and writes need no scopes or grants. Updates require optimistic versions; disabling retains history. Signed cursors bind organization, application and seat-list family.
+English: Seats belong to the organization. Workspace IDs select audit locations only. Updates require optimistic versions; disabling retains history. Signed cursors bind organization, application and seat-list family.
 
 工作空间写管理：INT-37..39，签名验签后按业务归属校验。创建指定本企业 Owner/Admin；修改与软归档使用 expected_version；默认归档须显式同企业替代项及其业务归属。GET 工作空间追加 version。应用审计、资源及幂等响应同事务；归档后的同 key 重放仍需当前有效凭证与业务归属。
 
 
 企业频道写管理：INT-40 POST /channels（workspace_id、creator_user_id、name；可选 description/avatar）、INT-41 PATCH /channels/{channel_id}（expected_version 及至少一个资料字段）、INT-42 DELETE /channels/{channel_id}（expected_version）。创建者须为有效企业成员（企业 Owner 包含）及工作空间 Owner/Member，Guest 不可创建；复用现有 20 个有效管理频道配额。创建固定非公开、免费且邀请制（visibility=1/access_type=0/join_policy=1）；归属、创建者及策略不允许在此接口修改。GET 增加 version；资料或治理状态更新增加版本，订阅计数等派生更新不增加版本。归档 status=0，消息、订阅及管理员关系保留。当前凭证与业务归属在重放前验证，停用后的同 key 重试拒绝；应用 actor 与幂等记录同事务。
 
-English summary: HMAC channel writes require no Scope/Grant configuration; the target Workspace must match the application business attribution. Creation checks current Organization and Workspace membership, preserves the existing channel quota, and creates a non-public channel. Profile changes and soft archive require an optimistic governance version. Audit and byte-exact authorized replay are atomic; archive retains history and identities.
+English summary: HMAC channel writes validate attribution; the target Workspace must match the application business attribution. Creation checks current Organization and Workspace membership, preserves the existing channel quota, and creates a non-public channel. Profile changes and soft archive require an optimistic governance version. Audit and byte-exact authorized replay are atomic; archive retains history and identities.
 
 ## 来源目录同步与核对 / Source directory reconciliation
 
@@ -380,7 +375,7 @@ membership projections are distinct. Cursors are signed and filter-bound; pages 
 2. `POST /api/internal/v1/directory/sync`（INT-43，`identities:write`）首次初始化组织，再按各自递增版本同步部门、人员和任职。全量中遗漏的记录不会自动删除；离职须显式发送 `membership.status=removed`。来源人员与组织任职版本独立。
 3. 未关联人员进入待关联状态；通过既有可信身份关联/注册流程关联 Human 账号后投影成员及部门关系。OA 不能凭任意用户 ID 接管账号。使用 INT-45..47 核对来源与实际投影状态。
 4. `GET /api/internal/v1/directory/memberships?external_organization_id=...&external_user_id=...`（INT-48）返回当前成员状态、`member_version`、离职阻塞数量及业务资格。目标组织必须属于当前有效的可信来源。检查是建议，实际变更会重新验证。
-5. 离职先用 `PATCH /api/internal/v1/directory/memberships`（INT-49）发送外部组织/人员 ID、`status=suspended`、检查返回的 `expected_member_version`，并携带 `Idempotency-Key`。签名请求无需再配置 `members:write` 或 Grant。只支持本来源托管、已关联投影的普通成员；Owner/Admin 交由人工治理。
+5. 离职先用 `PATCH /api/internal/v1/directory/memberships`（INT-49）发送外部组织/人员 ID、`status=suspended`、检查返回的 `expected_member_version`，并携带 `Idempotency-Key`。只支持本来源托管、已关联投影的普通成员；Owner/Admin 交由人工治理。
 6. 停用保留账号、历史及其他组织关系。旧 JWT 和现有连接访问所属 Workspace、项目、群组及频道时仍即时复核资格；恢复后复用原成员与订阅关系，个人域及其他组织不受影响。先交接工作区/项目/群组/频道所有权、未完成任务，解除业务身份分配，再以 INT-43 显式移除任职。实际移除仍受交接检查保护。仅离开一个组织时保持 `source_status=active`，避免退役跨组织关联。
 7. 取消离职时重新检查，以新版本和新幂等键 PATCH `status=active`。只能恢复本来源暂停且未被人工再次修改的成员；人工暂停、角色提升、旧版本或来源不匹配均拒绝。409 后重新读取并处理冲突，不能盲重试覆盖。
 

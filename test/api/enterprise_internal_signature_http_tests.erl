@@ -6,15 +6,8 @@ signature_http_test_() ->
 
 run() ->
     S = intbe02_http_support:setup_all(),
-    application:set_env(imboy, internal_test_hmac_client, true),
     try
         C = maps:get(conn, S),
-        exec(C, <<"UPDATE enterprise_application SET allowed_scopes='[]'::jsonb">>, []),
-        exec(
-            C,
-            <<"UPDATE enterprise_application_grant SET status='revoked',revoked_at=clock_timestamp(),revoked_by_adm_user_id=995999,version=version+1 WHERE status='active'">>,
-            []
-        ),
         enterprise_internal_audit_http_checks:reset(),
         transport(S),
         credential_lock_order(S),
@@ -30,7 +23,7 @@ run() ->
             {ok, [#{<<"n">> := 0}]},
             elib_pg:query(
                 C,
-                <<"SELECT count(*) AS n FROM enterprise_application WHERE allowed_scopes<>'[]'::jsonb">>,
+                <<"SELECT count(*) AS n FROM information_schema.columns WHERE table_name='enterprise_application' AND column_name='allowed_scopes'">>,
                 []
             )
         ),
@@ -43,7 +36,6 @@ run() ->
             )
         )
     after
-        application:unset_env(imboy, internal_test_hmac_client),
         intbe02_http_support:teardown_all(S),
         inttest_marker_db:release(S)
     end.
@@ -126,6 +118,14 @@ webhook_application_boundary(#{conn := C, port := Port, cred_c := Credential, ap
 transport(#{port := Port, cred_a := Credential} = S) ->
     Path = <<"/api/internal/v1/application">>,
     H = signed(Credential, <<"GET">>, Path, <<>>, #{}, sha512),
+    Missing = intbe02_http_support:http(Port, <<"GET">>, Path, <<>>, #{}),
+    err(Missing, <<"invalid_credential">>),
+    Bearer = #{<<"authorization">> => <<"Bearer ", Credential/binary>>},
+    err(intbe02_http_support:http(Port, <<"GET">>, Path, <<>>, Bearer), <<"invalid_credential">>),
+    err(
+        intbe02_http_support:http(Port, <<"GET">>, Path, <<>>, maps:merge(H, Bearer)),
+        <<"invalid_credential">>
+    ),
     First = intbe02_http_support:http(Port, <<"GET">>, Path, <<>>, H),
     ?assertEqual(200, maps:get(status, First)),
     Payload = jsone:decode(maps:get(body, First)),
@@ -220,7 +220,7 @@ directory_reads(#{port := Port, cred_a := Credential}) ->
 bootstrap(#{conn := C, port := Port}) ->
     {ok, AppRow} = elib_pg:with_tx(fun(Conn) ->
         enterprise_internal_ops:create_application_tx(
-            Conn, null, <<"synthetic-signature-connection">>, <<"Synthetic OA signature">>, []
+            Conn, null, <<"synthetic-signature-connection">>, <<"Synthetic OA signature">>
         )
     end),
     App = maps:get(<<"id">>, AppRow),

@@ -38,8 +38,6 @@
 -define(APP_B_ID, 995202).
 -define(CRED_A1, 995301).
 -define(CRED_A2, 995302).
--define(GRANT_A1, 995401).
--define(GRANT_A2, 995402).
 
 %% 前端熔断键（contracts.ts:SECRET_FORBIDDEN_KEYS / SENSITIVE_KEY_PATTERN 同口径）
 -define(FORBIDDEN_KEYS, [
@@ -98,8 +96,6 @@ seed_fixture(C) ->
     seed_app(C, ?APP_B_ID, ?ORG_B, ?PRIN_B, <<"eag995-app-b">>),
     seed_credential(C, ?CRED_A1, ?ORG_A, ?APP_A_ID, <<"eag995-prefix-a1">>, <<"active">>),
     seed_credential(C, ?CRED_A2, ?ORG_A, ?APP_A_ID, <<"eag995-prefix-a2">>, <<"revoked">>),
-    seed_grant(C, ?GRANT_A1, ?ORG_A, ?APP_A_ID, <<"eag995-idem-1">>),
-    seed_grant(C, ?GRANT_A2, ?ORG_A, ?APP_A_ID, <<"eag995-idem-2">>),
     ok.
 
 seed_user(C, Uid) ->
@@ -164,20 +160,6 @@ seed_credential(C, CredId, OrgId, AppId, Prefix, Status) ->
         <<")">>
     ]).
 
-seed_grant(C, GrantId, OrgId, AppId, Idem) ->
-    ok = exec(C, [
-        <<"INSERT INTO enterprise_application_grant (id, organization_id, application_id,">>,
-        <<" workspace_scope_kind, status, valid_from, expires_at, idempotency_key) VALUES (">>,
-        integer_to_binary(GrantId),
-        <<", ">>,
-        integer_to_binary(OrgId),
-        <<", ">>,
-        integer_to_binary(AppId),
-        <<", 'none', 'active', NOW(), NOW() + interval '30 days', '">>,
-        Idem,
-        <<"')">>
-    ]).
-
 with_tx(C, TestFun) ->
     ?_test(begin
         ok = exec(C, <<"BEGIN">>),
@@ -190,15 +172,6 @@ with_tx(C, TestFun) ->
     end).
 
 %% 负例包装：预期 SQL 错误会 abort 事务，在 SAVEPOINT 内执行并回退。
-in_savepoint(C, Fun) ->
-    ok = exec(C, <<"SAVEPOINT eag995_sp">>),
-    try
-        Fun()
-    after
-        exec(C, <<"ROLLBACK TO SAVEPOINT eag995_sp">>),
-        exec(C, <<"RELEASE SAVEPOINT eag995_sp">>)
-    end.
-
 exec(C, IoData) ->
     Sql = iolist_to_binary(IoData),
     case elib_pg:query(C, Sql, []) of
@@ -236,11 +209,6 @@ all_test_() ->
                 with_tx(C, fun credential_metadata_oracle/1)},
             {"application_status_cas_and_cross_org",
                 with_tx(C, fun application_status_cas_oracle/1)},
-            {"application_scopes_cas_and_illegal_status",
-                with_tx(C, fun application_scopes_cas_oracle/1)},
-            {"grant_revoke_admin_attribution", with_tx(C, fun grant_revoke_admin_oracle/1)},
-            {"grant_revoke_idempotent_and_stale_version",
-                with_tx(C, fun grant_revoke_repeat_oracle/1)},
             {"audit_write_and_read_platform_admin", with_tx(C, fun audit_oracle/1)}
         ]}
     end}.
@@ -311,126 +279,6 @@ application_status_cas_oracle(C) ->
 %%% ③ scope CAS + 非法状态
 %%%===================================================================
 
-application_scopes_cas_oracle(C) ->
-    ?assertEqual(
-        ok,
-        enterprise_application_repo:update_scopes_cas_tx(C, ?ORG_A, ?APP_A_ID, 1, [
-            <<"messages:send">>
-        ])
-    ),
-    ?assertEqual(2, app_version(C, ?APP_A_ID)),
-    ?assertEqual(
-        <<"messages:send">>,
-        scalar(
-            C,
-            <<"SELECT allowed_scopes ->> 0 FROM enterprise_application WHERE id = $1">>,
-            [?APP_A_ID]
-        )
-    ),
-    %% 旧版本重复提交 → version_conflict（不是静默覆盖）
-    ?assertEqual(
-        {error, version_conflict},
-        enterprise_application_repo:update_scopes_cas_tx(C, ?ORG_A, ?APP_A_ID, 1, [
-            <<"identities:write">>
-        ])
-    ),
-    ?assertEqual(
-        <<"messages:send">>,
-        scalar(
-            C,
-            <<"SELECT allowed_scopes ->> 0 FROM enterprise_application WHERE id = $1">>,
-            [?APP_A_ID]
-        )
-    ),
-    %% 非法生命周期值：DB CHECK 拦截。该语句会 abort 当前事务，故必须在
-    %% SAVEPOINT 内执行并回退，否则后续断言全部变成 25P02 假红。
-    Res =
-        in_savepoint(C, fun() ->
-            enterprise_application_repo:update_status_cas_tx(
-                C, ?ORG_A, ?APP_A_ID, 2, <<"deleted">>
-            )
-        end),
-    ?assertMatch({error, _}, Res),
-    ?assertNotEqual(<<"deleted">>, app_status(C, ?APP_A_ID)),
-    ?assertEqual(2, app_version(C, ?APP_A_ID)).
-
-%%%===================================================================
-%%% ④ Grant 撤销归因：平台管理员通道
-%%%===================================================================
-
-grant_revoke_admin_oracle(C) ->
-    ?assertEqual(
-        ok,
-        enterprise_application_grant_repo:revoke_admin_tx(
-            C, ?ORG_A, ?APP_A_ID, ?GRANT_A1, 1, ?ADM_USER
-        )
-    ),
-    Row = one(
-        C,
-        <<
-            "SELECT status, revoked_by_user_id, revoked_by_adm_user_id, version"
-            " FROM enterprise_application_grant WHERE id = $1"
-        >>,
-        [?GRANT_A1]
-    ),
-    ?assertEqual(<<"revoked">>, maps:get(<<"status">>, Row)),
-    ?assertEqual(?ADM_USER, maps:get(<<"revoked_by_adm_user_id">>, Row)),
-    ?assertEqual(null, maps:get(<<"revoked_by_user_id">>, Row)),
-    ?assertEqual(2, maps:get(<<"version">>, Row)),
-    %% 无效 adm id（0 / 负 / 非整数）被守卫拒绝，不落库
-    ?assertError(
-        function_clause,
-        enterprise_application_grant_repo:revoke_admin_tx(
-            C, ?ORG_A, ?APP_A_ID, ?GRANT_A2, 1, 0
-        )
-    ),
-    ?assertEqual(<<"active">>, grant_status(C, ?GRANT_A2)),
-    %% 撤权后列表仍可见该行（授权行不可物理删除），归因逐字正确
-    {ok, Grants} = enterprise_application_grant_repo:list_tx(C, ?ORG_A, ?APP_A_ID),
-    ?assertEqual(2, length(Grants)),
-    Revoked = [G || G <- Grants, maps:get(<<"id">>, G) =:= ?GRANT_A1],
-    ?assertEqual(1, length(Revoked)).
-
-grant_revoke_repeat_oracle(C) ->
-    ok = enterprise_application_grant_repo:revoke_admin_tx(
-        C, ?ORG_A, ?APP_A_ID, ?GRANT_A1, 1, ?ADM_USER
-    ),
-    %% 重复撤销（同版本）→ already_revoked（不是静默成功）
-    ?assertEqual(
-        {error, already_revoked},
-        enterprise_application_grant_repo:revoke_admin_tx(
-            C, ?ORG_A, ?APP_A_ID, ?GRANT_A1, 1, ?ADM_USER
-        )
-    ),
-    %% 用新版本号撤销已撤销行 → 同样 already_revoked
-    ?assertEqual(
-        {error, already_revoked},
-        enterprise_application_grant_repo:revoke_admin_tx(
-            C, ?ORG_A, ?APP_A_ID, ?GRANT_A1, 2, ?ADM_USER
-        )
-    ),
-    %% 另一个 grant：旧版本号 → version_conflict（并发输家）
-    ok = enterprise_application_grant_repo:replace_scopes_tx(
-        C, ?ORG_A, ?APP_A_ID, ?GRANT_A2, 1, [<<"messages:send">>]
-    ),
-    ?assertEqual(
-        {error, version_conflict},
-        enterprise_application_grant_repo:revoke_admin_tx(
-            C, ?ORG_A, ?APP_A_ID, ?GRANT_A2, 1, ?ADM_USER
-        )
-    ),
-    %% 跨 Org IDOR：以 A 的 org_id 撤 B 的行 → not_found
-    ?assertEqual(
-        {error, not_found},
-        enterprise_application_grant_repo:revoke_admin_tx(
-            C, ?ORG_A, ?APP_B_ID, ?GRANT_A2, 2, ?ADM_USER
-        )
-    ).
-
-%%%===================================================================
-%%% ⑥ 审计：Admin 写入留痕（platform_admin，无 secret）
-%%%===================================================================
-
 audit_oracle(C) ->
     ok = enterprise_application_repo:update_status_cas_tx(C, ?ORG_A, ?APP_A_ID, 1, <<"disabled">>),
     Detail = #{
@@ -486,6 +334,3 @@ app_status(C, Id) ->
 
 app_version(C, Id) ->
     scalar(C, <<"SELECT version FROM enterprise_application WHERE id = $1">>, [Id]).
-
-grant_status(C, Id) ->
-    scalar(C, <<"SELECT status FROM enterprise_application_grant WHERE id = $1">>, [Id]).

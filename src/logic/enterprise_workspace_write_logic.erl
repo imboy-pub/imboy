@@ -1,11 +1,16 @@
-%%% Application writes: Grant, resource, audit and idempotency share one transaction.
 -module(enterprise_workspace_write_logic).
--moduledoc "企业 Application 写入编排 —— Grant、资源、审计与幂等同事务提交。".
+-moduledoc "企业 Application 写入编排 —— 资源、审计与幂等同事务提交。".
 -export([write_tx/7]).
 
 write_tx(Conn, Ctx, Op, Key, Digest, WsId, Body) ->
+    ok = enterprise_internal_idempotency:serialize_tx(Conn, Ctx, Key),
     validate(Op, Body),
     {Route, Type} = route(Op),
+    case enterprise_internal_access_repo:organization_tx(Conn, Ctx) of
+        ok -> ok;
+        {error, R0} -> fail(enterprise_internal_boundary:error_code(R0))
+    end,
+    Admission = enterprise_internal_idempotency:begin_tx(Conn, Ctx, Type, Key, Digest),
     Row =
         case Op of
             create -> undefined;
@@ -25,7 +30,7 @@ write_tx(Conn, Ctx, Op, Key, Digest, WsId, Body) ->
         ok -> ok;
         {error, R} -> fail(enterprise_internal_boundary:error_code(R))
     end,
-    case enterprise_internal_idempotency:begin_tx(Conn, Ctx, Type, Key, Digest) of
+    case Admission of
         {ok, inserted} ->
             Id = mutate(Conn, Ctx, Op, Row, Body, Key),
             Current = lock(Conn, Ctx, Id),

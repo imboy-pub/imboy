@@ -71,19 +71,6 @@
 -define(EXT_A3, <<"ext-a3">>).
 -define(EXT_B1, <<"ext-b1">>).
 
--define(SCOPES_FULL, [
-    <<"application:read">>,
-    <<"identities:read">>,
-    <<"identities:write">>,
-    <<"groups:write">>,
-    <<"files:write">>,
-    <<"messages:send">>,
-    <<"messages:send_as_human">>,
-    <<"webhooks:manage">>
-]).
--define(SCOPES_APP_SEND_ONLY, [<<"messages:send">>]).
--define(SCOPES_HUMAN_SEND_ONLY, [<<"messages:send_as_human">>]).
-
 -define(PUBLIC_IP, {93, 184, 216, 34}).
 
 %%%===================================================================
@@ -111,10 +98,13 @@ setup_conn() ->
     end.
 
 restore_fixture_keys(Prior) ->
-    lists:foreach(fun
-        ({K, undefined}) -> application:unset_env(imboy, K);
-        ({K, {ok, V}}) -> application:set_env(imboy, K, V)
-    end, Prior).
+    lists:foreach(
+        fun
+            ({K, undefined}) -> application:unset_env(imboy, K);
+            ({K, {ok, V}}) -> application:set_env(imboy, K, V)
+        end,
+        Prior
+    ).
 
 setup_conn_with_keys() ->
     try
@@ -162,8 +152,11 @@ setup_conn_with_keys() ->
     }.
 
 close_conn(State) ->
-    try close_conn_with_keys(State)
-    after restore_fixture_keys(maps:get(fixture_key_env, State)) end.
+    try
+        close_conn_with_keys(State)
+    after
+        restore_fixture_keys(maps:get(fixture_key_env, State))
+    end.
 
 close_conn_with_keys(State) ->
     attachment_fixture_release(State),
@@ -234,27 +227,19 @@ seed_matrix(C) ->
     seed_group_member(C, ?GM_ID_BASE + 1, ?GRP_A1, ?OWNER_A, 4),
     seed_group_member(C, ?GM_ID_BASE + 2, ?GRP_PERSONAL, ?OWNER_A, 4),
     {ok, AppA} = enterprise_application_repo:create_tx(
-        C, ?ORG_A, <<"epgz04-oa-a">>, <<"epgz04 org A oa"/utf8>>, {?PRIN_A, ?SCOPES_FULL}
+        C, ?ORG_A, <<"epgz04-oa-a">>, <<"epgz04 org A oa"/utf8>>, ?PRIN_A
     ),
     {ok, AppB} = enterprise_application_repo:create_tx(
-        C, ?ORG_B, <<"epgz04-oa-b">>, <<"epgz04 org B oa"/utf8>>, {?H_B1, ?SCOPES_FULL}
+        C, ?ORG_B, <<"epgz04-oa-b">>, <<"epgz04 org B oa"/utf8>>, ?H_B1
     ),
     {ok, _AppNoPin} = enterprise_application_repo:create_tx(
-        C, ?ORG_A, <<"epgz04-oa-nopin">>, <<"epgz04 no principal"/utf8>>, {null, ?SCOPES_FULL}
+        C, ?ORG_A, <<"epgz04-oa-nopin">>, <<"epgz04 no principal"/utf8>>, null
     ),
     {ok, AppSendOnly} = enterprise_application_repo:create_tx(
-        C,
-        ?ORG_A,
-        <<"epgz04-oa-send">>,
-        <<"epgz04 send only"/utf8>>,
-        {?PRIN_A, ?SCOPES_APP_SEND_ONLY}
+        C, ?ORG_A, <<"epgz04-oa-send">>, <<"epgz04 send only"/utf8>>, ?PRIN_A
     ),
     {ok, AppHumanOnly} = enterprise_application_repo:create_tx(
-        C,
-        ?ORG_A,
-        <<"epgz04-oa-human">>,
-        <<"epgz04 human only"/utf8>>,
-        {?PRIN_A, ?SCOPES_HUMAN_SEND_ONLY}
+        C, ?ORG_A, <<"epgz04-oa-human">>, <<"epgz04 human only"/utf8>>, ?PRIN_A
     ),
     ok = seed_mapping(C, ?ORG_A, maps:get(<<"id">>, AppA), ?EXT_A1, ?H_A1),
     ok = seed_mapping(C, ?ORG_A, maps:get(<<"id">>, AppA), ?EXT_A2, ?H_A2),
@@ -395,43 +380,15 @@ app_ids(C) ->
 %%%===================================================================
 
 ctx_a(State) ->
-    #{
-        organization_id => ?ORG_A,
-        application_id => maps:get(app_a, State),
-        granted_scopes => ?SCOPES_FULL,
-        principal_user_id => ?PRIN_A
-    }.
+    enterprise_hmac_test_support:context_tx(maps:get(conn, State), ?ORG_A, maps:get(app_a, State)).
 
 ctx_a_nopin(State) ->
-    #{
-        organization_id => ?ORG_A,
-        application_id => maps:get(app_nopin, State),
-        granted_scopes => ?SCOPES_FULL
-    }.
-
-ctx_a_send_only(State) ->
-    #{
-        organization_id => ?ORG_A,
-        application_id => maps:get(app_send_only, State),
-        granted_scopes => ?SCOPES_APP_SEND_ONLY,
-        principal_user_id => ?PRIN_A
-    }.
-
-ctx_a_human_only(State) ->
-    #{
-        organization_id => ?ORG_A,
-        application_id => maps:get(app_human_only, State),
-        granted_scopes => ?SCOPES_HUMAN_SEND_ONLY,
-        principal_user_id => ?PRIN_A
-    }.
+    enterprise_hmac_test_support:context_tx(
+        maps:get(conn, State), ?ORG_A, maps:get(app_nopin, State)
+    ).
 
 ctx_b(State) ->
-    #{
-        organization_id => ?ORG_B,
-        application_id => maps:get(app_b, State),
-        granted_scopes => ?SCOPES_FULL,
-        principal_user_id => ?H_B1
-    }.
+    enterprise_hmac_test_support:context_tx(maps:get(conn, State), ?ORG_B, maps:get(app_b, State)).
 
 direct_input_human() ->
     #{
@@ -493,8 +450,6 @@ enterprise_msg_asset_webhook_pg_test_() ->
                     with_tx(C, fun(C1) -> direct_alias_rejected(C1, State) end)},
                 {"direct_missing_sender_user_id",
                     with_tx(C, fun(C1) -> direct_missing_sender(C1, State) end)},
-                {"direct_scope_no_implicit_grant",
-                    with_tx(C, fun(C1) -> direct_scope_negative(C1, State) end)},
                 {"direct_application_without_principal",
                     with_tx(C, fun(C1) -> direct_no_principal(C1, State) end)},
                 {"direct_invalid_msg_params",
@@ -865,18 +820,6 @@ direct_missing_sender(C, State) ->
         enterprise_message_logic:direct_tx(C, ctx_a(State), Input)
     ).
 
-direct_scope_negative(C, State) ->
-    %% human 模式但只有 messages:send -> insufficient_scope（无隐含包含）
-    ?assertMatch(
-        {error, {<<"insufficient_scope">>, _}},
-        enterprise_message_logic:direct_tx(C, ctx_a_send_only(State), direct_input_human())
-    ),
-    %% application 模式但只有 messages:send_as_human -> insufficient_scope
-    ?assertMatch(
-        {error, {<<"insufficient_scope">>, _}},
-        enterprise_message_logic:direct_tx(C, ctx_a_human_only(State), direct_input_app())
-    ).
-
 direct_no_principal(C, State) ->
     ?assertMatch(
         {error, {<<"invalid_request">>, application_principal_required}},
@@ -1138,7 +1081,7 @@ non_e2ee(C, State) ->
 %% 零改动 msg_c2c_logic / msg_c2g_logic / imboy_policy（diff 证明），此处
 %% 重钉一次证明门行为未被放宽。
 human_e2ee_regression_test_() ->
-    ?WITH_MECKS(
+    unit_mecks(
         [
             {friend_ds, [
                 {'check_relationship', 2, fun(456, 123) -> {true, false} end}
@@ -1789,27 +1732,7 @@ with_public_dns(Fun) ->
 %%% 直调 handler:init/2 走真实壳代码（幂等 begin/complete、boundary、
 %%% principal 预取、logic、回包形状），断言非 5xx 且形状正确。
 
-repair_seed_grant(C, State) ->
-    {ok, _} =
-        enterprise_internal_ops:issue_grant_tx(C, ?ORG_A, maps:get(app_a, State), #{
-            scopes => [<<"messages:send">>, <<"webhooks:manage">>],
-            idempotency_key => <<"repair-f2-high-grant">>,
-            expires_at => <<"2099-01-01T00:00:00Z">>
-        }),
-    ok.
-
 %% 与认证链同形状的 ctx（context_tx 真链路求值；full api 套件 ctx_managed 同款）。
-repair_ctx(C, State) ->
-    AppA = maps:get(app_a, State),
-    {ok, #{grant_governed := Governed, effective_scopes := Effective}} =
-        enterprise_application_grant_logic:context_tx(C, ?ORG_A, AppA, ?SCOPES_FULL),
-    #{
-        organization_id => ?ORG_A,
-        application_id => AppA,
-        granted_scopes => Effective,
-        grant_governed => Governed,
-        principal_user_id => ?PRIN_A
-    }.
 
 %% handler 壳跑在 elib_pg:with_tx 里——池化入口 shim 到 marker 连接；
 %% 事务由外层用例 BEGIN/ROLLBACK 包住（幂等行等随用例回滚）。
@@ -1867,7 +1790,6 @@ reply_captured_raw() ->
 %% INT-09 POST /api/internal/v1/messages/direct（application 代发）：
 %% 修前在 with_principal/2 → find_tx(Conn, AppId) 处 undef → 500。
 repair_int09_handler(C, State) ->
-    repair_seed_grant(C, State),
     Ctx = repair_ctx(C, State),
     Body =
         jsone:encode(#{
@@ -1894,7 +1816,6 @@ repair_int09_handler(C, State) ->
 %% INT-12 PUT /api/internal/v1/webhook（configure）：
 %% 修前在 with_principal/2 → find_tx(Conn, AppId) 处 undef → 500。
 repair_int12_handler(C, State) ->
-    repair_seed_grant(C, State),
     Ctx = repair_ctx(C, State),
     Body =
         jsone:encode(#{
@@ -1925,7 +1846,6 @@ repair_int12_handler(C, State) ->
 %% {items, page_size, has_more, next_cursor, summary}；旧 page/size query
 %% 出现即 versioned 400 cursor_required_v1（进事务前拒绝）。
 repair_int23_handler(C, State) ->
-    repair_seed_grant(C, State),
     Ctx = repair_ctx(C, State),
     with_pool_shim(C, fun() ->
         mock_cowboy(<<"GET">>, #{qs => []}),
@@ -2024,3 +1944,17 @@ attachment_contract_cases() ->
                 ]
             ]
         end}}.
+
+repair_ctx(C, State) -> enterprise_hmac_test_support:context_tx(C, ?ORG_A, maps:get(app_a, State)).
+
+%% This policy-only case owns its mocks; it must not boot/stop the PG fixture's application.
+unit_mecks(Configs, Test) ->
+    {setup,
+        fun() ->
+            lists:foreach(fun({M, Es}) -> {ok, _} = meck_helper:setup_mock(M, Es) end, Configs)
+        end,
+        fun(_) -> lists:foreach(fun({M, _}) -> meck_helper:cleanup_mock(M) end, Configs) end, fun(
+            _
+        ) ->
+            ?_test(Test())
+        end}.

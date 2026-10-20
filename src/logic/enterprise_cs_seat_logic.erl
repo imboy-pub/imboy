@@ -1,4 +1,3 @@
-%%% Internal adapter; all writes share Grant, seat, audit and idempotency transaction.
 -module(enterprise_cs_seat_logic).
 -export([read_tx/4, write_tx/7]).
 -include("generated/imboy_product_features.hrl").
@@ -53,6 +52,7 @@ read_tx(Conn, Ctx, detail, Opts) ->
     {ok, view(Row)}.
 
 write_tx(Conn, Ctx, Operation, Key, Digest, IdentityId, Body) ->
+    ok = enterprise_internal_idempotency:serialize_tx(Conn, Ctx, Key),
     Route =
         case Operation of
             create -> <<"INT-35">>;

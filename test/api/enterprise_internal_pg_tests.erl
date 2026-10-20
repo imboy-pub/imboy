@@ -36,10 +36,8 @@
 -define(ORG_A, 988101).
 -define(ORG_B, 988102).
 
--define(READ_SCOPES, [<<"application:read">>, <<"identities:read">>]).
 %% 刻意不含 application:read：供 middleware_route_and_flow 的
 %% insufficient_scope 负例使用（GET /application 需要 application:read）。
--define(WRITE_SCOPES, [<<"identities:read">>, <<"identities:write">>, <<"groups:write">>]).
 
 -define(RATE_CFG, #{internal_read => 1000, internal_write => 1000, internal_sso => 1000}).
 
@@ -85,15 +83,6 @@ with_tx(C, TestFun) ->
     end).
 
 %% 负例包装（A1 同款）：预期 SQL 错误会 abort 事务，在 SAVEPOINT 内执行。
-in_savepoint(C, Fun) ->
-    ok = exec(C, <<"SAVEPOINT epgz02_sp">>),
-    try
-        Fun()
-    after
-        exec(C, <<"ROLLBACK TO SAVEPOINT epgz02_sp">>),
-        exec(C, <<"RELEASE SAVEPOINT epgz02_sp">>)
-    end.
-
 exec(C, IoData) ->
     Sql = iolist_to_binary(IoData),
     case elib_pg:query(C, Sql, []) of
@@ -122,7 +111,7 @@ seed_org(C, OrgId, OwnerUid) ->
 seed_app_fixture(C) ->
     seed_org(C, ?ORG_A, ?OWNER_A),
     {ok, App} = enterprise_internal_ops:create_application_tx(
-        C, ?ORG_A, <<"epgz02-oa">>, <<"epgz02 test oa"/utf8>>, ?WRITE_SCOPES
+        C, ?ORG_A, <<"epgz02-oa">>, <<"epgz02 test oa"/utf8>>
     ),
     AppId = maps:get(<<"id">>, App),
     Secret = <<"epgz02_high_entropy_secret_0123456789">>,
@@ -146,13 +135,6 @@ prefix_of(Full) ->
     Prefix.
 
 %% V2.1 §5.2：零 Grant 即零授权——fixture 必须显式建 Grant（org 全域生效）。
-seed_org_grant(C, OrgId, AppId, Scopes, Key) ->
-    {ok, Grant} = enterprise_internal_ops:issue_grant_tx(C, OrgId, AppId, #{
-        scopes => Scopes,
-        idempotency_key => Key,
-        expires_at => <<"2099-12-31T00:00:00+00:00">>
-    }),
-    Grant.
 
 %%%===================================================================
 %%% Suite
@@ -164,13 +146,10 @@ enterprise_internal_pg_test_() ->
             C = maps:get(conn, State),
             [
                 %% ① 固定 scope（纯）
-                {"scope_fixed_enum_no_wildcard", scope_fixed_enum_test()},
-                {"scope_no_implicit_inclusion", scope_no_implicit_inclusion_test()},
                 %% ② 错误信封（纯）
                 {"error_envelope_status_map", error_envelope_status_test()},
                 {"error_envelope_body_shape", error_envelope_body_shape_test()},
                 %% ③ credential 解析（纯）
-                {"credential_parse_forms", credential_parse_forms_test()},
                 %% ④ 认证链（真库）
                 {"auth_chain_success_context", with_tx(C, fun auth_chain_success/1)},
                 {"auth_chain_unknown_prefix", with_tx(C, fun auth_chain_unknown_prefix/1)},
@@ -214,116 +193,6 @@ enterprise_internal_pg_test_() ->
 %%%    追加 workspaces:write / channels:write / oa:login:issue / members:write → 恰 20 个）
 %%%===================================================================
 
--define(V21_SCOPES, [
-    <<"application:read">>,
-    <<"identities:read">>,
-    <<"identities:write">>,
-    <<"groups:read">>,
-    <<"groups:write">>,
-    <<"workspaces:read">>,
-    <<"projects:read">>,
-    <<"channels:read">>,
-    <<"files:write">>,
-    <<"messages:send">>,
-    <<"messages:send_as_human">>,
-    <<"friend_requests:create">>,
-    <<"webhooks:manage">>,
-    <<"sso:exchange">>,
-    <<"customer_service:read">>,
-    <<"customer_service:write">>,
-    <<"workspaces:write">>,
-    <<"channels:write">>,
-    <<"oa:login:issue">>,
-    <<"members:write">>
-]).
-
-scope_fixed_enum_test() ->
-    ?_test(begin
-        %% all() 返回固定顺序（不做 sort：顺序也是契约），恰好 20 个——
-        %% 多一个/少一个都判失败（CON-02 口径）。
-        ?assertEqual(?V21_SCOPES, enterprise_internal_scope:all()),
-        ?assertEqual(20, length(enterprise_internal_scope:all())),
-        ?assertEqual(
-            ok, enterprise_internal_scope:authorize(<<"oa:login:issue">>, [<<"oa:login:issue">>])
-        ),
-        ?assertEqual(
-            {error, insufficient_scope},
-            enterprise_internal_scope:authorize(<<"oa:login:issue">>, [
-                <<"sso:exchange">>, <<"identities:write">>
-            ])
-        ),
-        %% 显式授予才可用；未授予即拒
-        ?assertEqual(
-            ok,
-            enterprise_internal_scope:authorize(
-                <<"groups:write">>, [<<"application:read">>, <<"groups:write">>]
-            )
-        ),
-        ?assertEqual(
-            {error, insufficient_scope},
-            enterprise_internal_scope:authorize(<<"groups:write">>, [<<"application:read">>])
-        ),
-        %% wildcard 不存在也不被接受
-        ?assertEqual(
-            {error, insufficient_scope},
-            enterprise_internal_scope:authorize(<<"groups:write">>, [<<"*">>])
-        ),
-        ?assertEqual(
-            {error, insufficient_scope},
-            enterprise_internal_scope:authorize(<<"*">>, [<<"*">>])
-        ),
-        %% 非法 scope 字符串不能被 authorize 接受为 required
-        ?assertEqual(
-            {error, invalid_scope},
-            enterprise_internal_scope:authorize(<<"messages:send:*">>, [<<"messages:send:*">>])
-        ),
-        %% V2.1 新增 4 个只读 scope 均可显式授予/未授予即拒
-        lists:foreach(
-            fun(S) ->
-                ?assertEqual(ok, enterprise_internal_scope:authorize(S, [S])),
-                ?assertEqual(
-                    {error, insufficient_scope},
-                    enterprise_internal_scope:authorize(S, [<<"application:read">>])
-                )
-            end,
-            [<<"groups:read">>, <<"workspaces:read">>, <<"projects:read">>, <<"channels:read">>]
-        ),
-        %% read 不隐含 write、write 不隐含 read（§7 无 read implies write，双向）
-        ?assertEqual(
-            {error, insufficient_scope},
-            enterprise_internal_scope:authorize(<<"groups:write">>, [<<"groups:read">>])
-        ),
-        ?assertEqual(
-            {error, insufficient_scope},
-            enterprise_internal_scope:authorize(<<"workspaces:read">>, [<<"groups:read">>])
-        )
-    end).
-
-scope_no_implicit_inclusion_test() ->
-    ?_test(begin
-        %% INV-4：三个高危 scope 不被 messages:send 隐含包含
-        Granted = [<<"application:read">>, <<"messages:send">>],
-        ?assertEqual(
-            {error, insufficient_scope},
-            enterprise_internal_scope:authorize(<<"messages:send_as_human">>, Granted)
-        ),
-        ?assertEqual(
-            {error, insufficient_scope},
-            enterprise_internal_scope:authorize(<<"friend_requests:create">>, Granted)
-        ),
-        ?assertEqual(
-            {error, insufficient_scope},
-            enterprise_internal_scope:authorize(<<"webhooks:manage">>, Granted)
-        ),
-        %% 显式授予后可用（对照组）
-        ?assertEqual(
-            ok,
-            enterprise_internal_scope:authorize(
-                <<"messages:send_as_human">>, [<<"messages:send_as_human">>]
-            )
-        )
-    end).
-
 %%%===================================================================
 %%% ② 错误信封（manifest stable_error_codes）
 %%%===================================================================
@@ -335,7 +204,6 @@ error_envelope_status_test() ->
             <<"credential_expired">> => 401,
             <<"application_disabled">> => 403,
             <<"organization_disabled">> => 403,
-            <<"insufficient_scope">> => 403,
             <<"resource_not_found">> => 404,
             <<"identity_not_mapped">> => 422,
             <<"organization_boundary_violation">> => 403,
@@ -377,103 +245,22 @@ error_envelope_body_shape_test() ->
 %%% ③ credential 解析（格式 ib_int_<credential_id>.<secret>）
 %%%===================================================================
 
-credential_parse_forms_test() ->
-    ?_test(begin
-        ?assertEqual(
-            {ok, <<"ib_int_1234567890">>, <<"s3cr3t-value">>},
-            enterprise_internal_auth:parse_bearer(<<"Bearer ib_int_1234567890.s3cr3t-value">>)
-        ),
-        ?assertEqual({error, credential_missing}, enterprise_internal_auth:parse_bearer(<<>>)),
-        ?assertEqual(
-            {error, credential_missing}, enterprise_internal_auth:parse_bearer(undefined)
-        ),
-        ?assertEqual(
-            {error, invalid_credential},
-            enterprise_internal_auth:parse_bearer(<<"ib_int_1234567890.s3cr3t-value">>)
-        ),
-        ?assertEqual(
-            {error, invalid_credential},
-            enterprise_internal_auth:parse_bearer(<<"Bearer ib_ext_1234567890.s3cr3t-value">>)
-        ),
-        ?assertEqual(
-            {error, invalid_credential},
-            enterprise_internal_auth:parse_bearer(<<"Bearer 1234567890.s3cr3t-value">>)
-        ),
-        %% 无点分隔 / 空 secret / 非数字 credential_id
-        ?assertEqual(
-            {error, invalid_credential},
-            enterprise_internal_auth:parse_bearer(<<"Bearer ib_int_1234567890">>)
-        ),
-        ?assertEqual(
-            {error, invalid_credential},
-            enterprise_internal_auth:parse_bearer(<<"Bearer ib_int_1234567890.">>)
-        ),
-        ?assertEqual(
-            {error, invalid_credential},
-            enterprise_internal_auth:parse_bearer(<<"Bearer ib_int_notdigits.s3cr3t-value">>)
-        )
-    end).
-
 %%%===================================================================
 %%% ④ 认证链（真库）
 %%%===================================================================
-
-auth_chain_success(C) ->
-    F = seed_app_fixture(C),
-    %% V2.1 §5.2/F-09：零 Grant ⇒ granted_scopes 恒为空集——即使
-    %% allowed_scopes（?WRITE_SCOPES）包含所需 scope 也绝不回退放行。
-    ?assertMatch(
-        {ok, #{
-            organization_id := ?ORG_A,
-            application_id := _,
-            credential_id := _,
-            granted_scopes := []
-        }},
-        enterprise_internal_auth:authenticate_tx(C, maps:get(prefix, F), maps:get(secret, F))
-    ),
-    %% 零 Grant + allowed_scopes 含所需 scope → 中间件 scope gate 恒 403
-    ?assertEqual(
-        {error, insufficient_scope},
-        enterprise_internal_auth:decide(
-            <<"PUT">>,
-            <<"/api/internal/v1/identity-mappings">>,
-            maps:put(<<"idempotency-key">>, <<"epgz02-zg">>, headers(F)),
-            auth_fun(C, F)
-        )
-    ),
-    %% 显式建 Grant（org 全域）后：生效 scope = allowed_scopes ∩ Grant scopes
-    _Grant = seed_org_grant(
-        C, ?ORG_A, maps:get(app_id, F), ?WRITE_SCOPES, <<"epgz02-grant-auth-ok">>
-    ),
-    {ok, Ctx} = enterprise_internal_auth:authenticate_tx(
-        C, maps:get(prefix, F), maps:get(secret, F)
-    ),
-    ?assertEqual(lists:sort(?WRITE_SCOPES), lists:sort(maps:get(granted_scopes, Ctx))),
-    ?assertEqual(maps:get(app_id, F), maps:get(application_id, Ctx)),
-    ?assertEqual(maps:get(credential_id, F), maps:get(credential_id, Ctx)),
-    %% 零 Grant 的 decide 负例此时翻绿（同 key 同路由）
-    ?assertMatch(
-        {ok, #{route_id := <<"INT-02">>}},
-        enterprise_internal_auth:decide(
-            <<"PUT">>,
-            <<"/api/internal/v1/identity-mappings">>,
-            maps:put(<<"idempotency-key">>, <<"epgz02-zg">>, headers(F)),
-            auth_fun(C, F)
-        )
-    ).
 
 auth_chain_unknown_prefix(C) ->
     _F = seed_app_fixture(C),
     ?assertEqual(
         {error, invalid_credential},
-        enterprise_internal_auth:authenticate_tx(C, <<"ib_int_111111111">>, <<"whatever-secret">>)
+        authenticate(C, <<"ib_int_111111111">>, <<"whatever-secret">>)
     ).
 
 auth_chain_wrong_secret(C) ->
     F = seed_app_fixture(C),
     ?assertEqual(
         {error, invalid_credential},
-        enterprise_internal_auth:authenticate_tx(C, maps:get(prefix, F), <<"wrong-secret">>)
+        authenticate(C, maps:get(prefix, F), <<"wrong-secret">>)
     ).
 
 auth_chain_revoked(C) ->
@@ -481,13 +268,13 @@ auth_chain_revoked(C) ->
     ok = enterprise_internal_ops:revoke_credential_tx(C, ?ORG_A, maps:get(credential_id, F)),
     ?assertEqual(
         {error, invalid_credential},
-        enterprise_internal_auth:authenticate_tx(C, maps:get(prefix, F), maps:get(secret, F))
+        authenticate(C, maps:get(prefix, F), maps:get(secret, F))
     ).
 
 auth_chain_expired(C) ->
     seed_org(C, ?ORG_A, ?OWNER_A),
     {ok, App} = enterprise_internal_ops:create_application_tx(
-        C, ?ORG_A, <<"epgz02-oa-exp">>, <<"expired cred app"/utf8>>, ?READ_SCOPES
+        C, ?ORG_A, <<"epgz02-oa-exp">>, <<"expired cred app"/utf8>>
     ),
     AppId = maps:get(<<"id">>, App),
     Past = <<"2020-01-01T00:00:00+00:00">>,
@@ -495,7 +282,7 @@ auth_chain_expired(C) ->
         enterprise_internal_ops:issue_credential_tx(C, ?ORG_A, AppId, <<"secret-expired">>, Past),
     ?assertEqual(
         {error, credential_expired},
-        enterprise_internal_auth:authenticate_tx(C, prefix_of(ExpiredFull), <<"secret-expired">>)
+        authenticate(C, prefix_of(ExpiredFull), <<"secret-expired">>)
     ).
 
 auth_chain_application_disabled(C) ->
@@ -505,31 +292,30 @@ auth_chain_application_disabled(C) ->
     ),
     ?assertEqual(
         {error, application_disabled},
-        enterprise_internal_auth:authenticate_tx(C, maps:get(prefix, F), maps:get(secret, F))
+        authenticate(C, maps:get(prefix, F), maps:get(secret, F))
     ).
 
 auth_chain_organization_archived(C) ->
     F = seed_app_fixture(C),
-    {ok, Before} = enterprise_internal_auth:authenticate_tx(
+    {ok, Before} = authenticate(
         C, maps:get(prefix, F), maps:get(secret, F)
     ),
     exec(C, [
         <<"UPDATE organization SET status = 'archived' WHERE id = ">>,
         integer_to_binary(?ORG_A)
     ]),
-    {ok, After} = enterprise_internal_auth:authenticate_tx(
+    {ok, After} = authenticate(
         C, maps:get(prefix, F), maps:get(secret, F)
     ),
     ?assertEqual(Before, After),
     ?assertEqual(maps:get(app_id, F), maps:get(application_id, After)),
     ?assertEqual(maps:get(credential_id, F), maps:get(credential_id, After)),
-    ?assertEqual(lists:sort(?WRITE_SCOPES), lists:sort(maps:get(allowed_scopes, After))),
     ?assertEqual(?ORG_A, maps:get(application_organization_id, After)),
-    ?assertEqual([], maps:get(granted_scopes, After)).
+    ?assertNot(maps:is_key(granted_scopes, After)).
 
 auth_chain_touches_last_used(C) ->
     F = seed_app_fixture(C),
-    {ok, _} = enterprise_internal_auth:authenticate_tx(
+    {ok, _} = authenticate(
         C, maps:get(prefix, F), maps:get(secret, F)
     ),
     {ok, [Row | _]} = elib_pg:query(
@@ -549,82 +335,8 @@ auth_chain_touches_last_used(C) ->
 
 auth_fun(C, F) ->
     fun() ->
-        enterprise_internal_auth:authenticate_tx(C, maps:get(prefix, F), maps:get(secret, F))
+        authenticate(C, maps:get(prefix, F), maps:get(secret, F))
     end.
-
-headers(F) ->
-    Full = <<(maps:get(prefix, F))/binary, ".", (maps:get(secret, F))/binary>>,
-    #{<<"authorization">> => <<"Bearer ", Full/binary>>}.
-
-middleware_route_and_flow(C) ->
-    F = seed_app_fixture(C),
-    %% INT-01：零 Grant（V2.1：无回退旁路）→ 403 码
-    ?assertEqual(
-        {error, insufficient_scope},
-        enterprise_internal_auth:decide(
-            <<"GET">>, <<"/api/internal/v1/application">>, headers(F), auth_fun(C, F)
-        )
-    ),
-    %% 授予 allowed_scopes 后仍需 Grant（只加 allowed 不建 Grant 依旧 403）
-    ok = enterprise_internal_ops:update_scopes_tx(
-        C, ?ORG_A, maps:get(app_id, F), [<<"application:read">> | ?WRITE_SCOPES]
-    ),
-    ?assertEqual(
-        {error, insufficient_scope},
-        enterprise_internal_auth:decide(
-            <<"GET">>, <<"/api/internal/v1/application">>, headers(F), auth_fun(C, F)
-        ),
-        "V2.1：allowed_scopes 含所需 scope 但零 Grant 依旧恒 403"
-    ),
-    %% 建 Grant 后通过，context 含 route 元数据
-    _Grant = seed_org_grant(
-        C,
-        ?ORG_A,
-        maps:get(app_id, F),
-        lists:usort([<<"application:read">> | ?WRITE_SCOPES]),
-        <<"epgz02-grant-route">>
-    ),
-    ?assertMatch(
-        {ok, #{route_id := <<"INT-01">>, rate_bucket := internal_read}},
-        enterprise_internal_auth:decide(
-            <<"GET">>, <<"/api/internal/v1/application">>, headers(F), auth_fun(C, F)
-        )
-    ),
-    %% INT-09/INT-10 动态 scope：中间件放行（handler 按 sender_mode 裁决），
-    %% context 标注 dynamic_scope（mutation 带 Idempotency-Key）
-    HIdem = maps:put(<<"idempotency-key">>, <<"epgz02-key-dyn">>, headers(F)),
-    ?assertMatch(
-        {ok, #{dynamic_scope := messages_send}},
-        enterprise_internal_auth:decide(
-            <<"POST">>, <<"/api/internal/v1/messages/direct">>, HIdem, auth_fun(C, F)
-        )
-    ),
-    %% 未知路由 → resource_not_found（fail-closed，不落人类 API）
-    ?assertEqual(
-        {error, resource_not_found},
-        enterprise_internal_auth:decide(
-            <<"GET">>, <<"/api/internal/v1/nope">>, headers(F), auth_fun(C, F)
-        )
-    ),
-    %% 方法不匹配 → resource_not_found
-    ?assertEqual(
-        {error, resource_not_found},
-        enterprise_internal_auth:decide(
-            <<"DELETE">>, <<"/api/internal/v1/application">>, headers(F), auth_fun(C, F)
-        )
-    ),
-    %% 认证失败透传 stable 码（AuthFun 认证头里的真实凭证：未知 prefix）
-    ?assertEqual(
-        {error, invalid_credential},
-        enterprise_internal_auth:decide(
-            <<"GET">>,
-            <<"/api/internal/v1/application">>,
-            #{<<"authorization">> => <<"Bearer ib_int_1.bad">>},
-            fun() ->
-                enterprise_internal_auth:authenticate_tx(C, <<"ib_int_1">>, <<"bad">>)
-            end
-        )
-    ).
 
 middleware_rate_fail_closed_test() ->
     ?_test(begin
@@ -632,14 +344,14 @@ middleware_rate_fail_closed_test() ->
         try
             AuthFun =
                 fun() ->
-                    {ok, #{application_id => 988777001, granted_scopes => [<<"application:read">>]}}
+                    {ok, #{application_id => 988777001, authentication => hmac}}
                 end,
             ?assertEqual(
                 {error, security_gate_closed},
                 enterprise_internal_auth:decide(
                     <<"GET">>,
                     <<"/api/internal/v1/application">>,
-                    #{<<"authorization">> => <<"Bearer ib_int_1.x">>},
+                    headers(#{prefix => <<"ib_int_1">>, secret => <<"synthetic">>}),
                     AuthFun
                 ),
                 "限流配置缺失必须 fail-closed（INV-9），不得 fail-open"
@@ -658,9 +370,9 @@ middleware_rate_limited_test() ->
             #{internal_read => 2, internal_write => 2, internal_sso => 2}
         ),
         try
-            H = #{<<"authorization">> => <<"Bearer ib_int_1.x">>},
+            H = headers(#{prefix => <<"ib_int_1">>, secret => <<"synthetic">>}),
             AuthFun = fun() ->
-                {ok, #{application_id => AppId, granted_scopes => [<<"application:read">>]}}
+                {ok, #{application_id => AppId, authentication => hmac}}
             end,
             ?assertMatch(
                 {ok, _},
@@ -698,9 +410,9 @@ middleware_retry_after_test() ->
             #{internal_read => 1, internal_write => 1, internal_sso => 1}
         ),
         try
-            H = #{<<"authorization">> => <<"Bearer ib_int_1.x">>},
+            H = headers(#{prefix => <<"ib_int_1">>, secret => <<"synthetic">>}),
             AuthFun = fun() ->
-                {ok, #{application_id => AppId, granted_scopes => [<<"application:read">>]}}
+                {ok, #{application_id => AppId, authentication => hmac}}
             end,
             %% 同进程前序用例（如 middleware_rate_limited_test）直调 decide
             %% 触发 put 而不经 middleware 的 take——生产路径 put/take 恒配对
@@ -736,17 +448,6 @@ middleware_retry_after_test() ->
 
 middleware_idem_key_required(C) ->
     F = seed_app_fixture(C),
-    ok = enterprise_internal_ops:update_scopes_tx(
-        C, ?ORG_A, maps:get(app_id, F), [<<"identities:write">>, <<"groups:write">> | ?WRITE_SCOPES]
-    ),
-    _Grant = seed_org_grant(
-        C,
-        ?ORG_A,
-        maps:get(app_id, F),
-        lists:usort([<<"identities:write">>, <<"groups:write">> | ?WRITE_SCOPES]),
-        <<"epgz02-grant-idem">>
-    ),
-    %% INT-02 mutation：无 Idempotency-Key → invalid_request（INV-7）
     ?assertEqual(
         {error, invalid_request},
         enterprise_internal_auth:decide(
@@ -801,14 +502,14 @@ middleware_int14_exempt_test() ->
         AppId = 988777003,
         try
             application:set_env(imboy, enterprise_internal_rate_limits, ?RATE_CFG),
-            H = #{<<"authorization">> => <<"Bearer ib_int_1.x">>},
+            H = headers(#{prefix => <<"ib_int_1">>, secret => <<"synthetic">>}),
             AuthFun =
                 fun() ->
                     {ok, #{
                         application_id => AppId,
                         organization_id => ?ORG_A,
                         credential_id => 1,
-                        granted_scopes => [<<"sso:exchange">>, <<"application:read">>]
+                        authentication => hmac
                     }}
                 end,
             ?assertMatch(
@@ -1011,39 +712,6 @@ idempotency_digest_canonical_test() ->
 %%% ⑦ 运维命令（最小运维面，非 Admin UI）
 %%%===================================================================
 
-ops_application_lifecycle(C) ->
-    seed_org(C, ?ORG_A, ?OWNER_A),
-    {ok, App} = enterprise_internal_ops:create_application_tx(
-        C, ?ORG_A, <<"epgz02-ops-app">>, <<"ops app"/utf8>>, [<<"application:read">>]
-    ),
-    AppId = maps:get(<<"id">>, App),
-    ?assertEqual(?ORG_A, maps:get(<<"organization_id">>, App)),
-    ?assertEqual(<<"active">>, maps:get(<<"status">>, App)),
-    %% 同 org 同 key 唯一（SAVEPOINT：23505 会 abort 事务）
-    ?assertEqual(
-        {error, key_conflict},
-        in_savepoint(C, fun() ->
-            enterprise_internal_ops:create_application_tx(
-                C, ?ORG_A, <<"epgz02-ops-app">>, <<"dup"/utf8>>, []
-            )
-        end)
-    ),
-    %% 非法 scope 拒绝
-    ?assertEqual(
-        {error, invalid_scope},
-        enterprise_internal_ops:create_application_tx(
-            C, ?ORG_A, <<"epgz02-ops-bad">>, <<"bad"/utf8>>, [<<"not:a:scope">>]
-        )
-    ),
-    %% scopes 更新 / 状态切换
-    ok = enterprise_internal_ops:update_scopes_tx(C, ?ORG_A, AppId, [<<"sso:exchange">>]),
-    {ok, St1} = enterprise_internal_ops:application_status_tx(C, ?ORG_A, AppId),
-    ?assertEqual([<<"sso:exchange">>], maps:get(granted_scopes, St1)),
-    ok = enterprise_internal_ops:set_application_status_tx(C, ?ORG_A, AppId, <<"disabled">>),
-    {ok, St2} = enterprise_internal_ops:application_status_tx(C, ?ORG_A, AppId),
-    ?assertEqual(<<"disabled">>, maps:get(status, maps:get(application, St2))),
-    ok = enterprise_internal_ops:set_application_status_tx(C, ?ORG_A, AppId, <<"active">>).
-
 ops_credential_plaintext_once(C) ->
     F = seed_app_fixture(C),
     Full = maps:get(credential, F),
@@ -1054,18 +722,18 @@ ops_credential_plaintext_once(C) ->
     {ok, [Row | _]} = elib_pg:query(
         C,
         [
-            <<"SELECT secret_digest FROM enterprise_application_credential WHERE id = ">>,
+            <<"SELECT signing_secret_enc FROM enterprise_application_credential WHERE id = ">>,
             integer_to_binary(maps:get(credential_id, F))
         ],
         []
     ),
-    Digest = maps:get(<<"secret_digest">>, Row),
-    ?assertEqual(64, byte_size(Digest)),
+    Digest = maps:get(<<"signing_secret_enc">>, Row),
+    ?assert(byte_size(Digest) > 32),
     ?assertEqual(false, binary:match(Digest, maps:get(secret, F)) =/= nomatch),
     %% 凭证可用（端到端）
     ?assertMatch(
         {ok, _},
-        enterprise_internal_auth:authenticate_tx(C, maps:get(prefix, F), maps:get(secret, F))
+        authenticate(C, maps:get(prefix, F), maps:get(secret, F))
     ).
 
 ops_rotate(C) ->
@@ -1078,11 +746,11 @@ ops_rotate(C) ->
     NewSecret = binary:part(
         NewFull, byte_size(NewPrefix) + 1, byte_size(NewFull) - byte_size(NewPrefix) - 1
     ),
-    ?assertMatch({ok, _}, enterprise_internal_auth:authenticate_tx(C, NewPrefix, NewSecret)),
+    ?assertMatch({ok, _}, authenticate(C, NewPrefix, NewSecret)),
     %% 旧凭证立即失效
     ?assertEqual(
         {error, invalid_credential},
-        enterprise_internal_auth:authenticate_tx(C, maps:get(prefix, F), maps:get(secret, F))
+        authenticate(C, maps:get(prefix, F), maps:get(secret, F))
     ).
 
 ops_revoke(C) ->
@@ -1090,7 +758,7 @@ ops_revoke(C) ->
     ok = enterprise_internal_ops:revoke_credential_tx(C, ?ORG_A, maps:get(credential_id, F)),
     ?assertEqual(
         {error, invalid_credential},
-        enterprise_internal_auth:authenticate_tx(C, maps:get(prefix, F), maps:get(secret, F))
+        authenticate(C, maps:get(prefix, F), maps:get(secret, F))
     ),
     %% 幂等吊销
     ?assertEqual(
@@ -1122,7 +790,7 @@ redaction_log_and_envelope(C) ->
     Events = capture_events(fun() ->
         %% 错 secret 的认证失败（会打日志）
         {error, invalid_credential} =
-            enterprise_internal_auth:authenticate_tx(C, maps:get(prefix, F), WrongSecret)
+            authenticate(C, maps:get(prefix, F), WrongSecret)
     end),
     %% 所有捕获的日志事件（含格式化后的串）都不得包含 secret / 完整 Authorization 值
     lists:foreach(
@@ -1181,3 +849,64 @@ event_text(#{msg := Msg}) ->
     iolist_to_binary(io_lib:format("~0p", [Msg]));
 event_text(_) ->
     <<>>.
+
+auth_chain_success(C) ->
+    F = seed_app_fixture(C),
+    {ok, Ctx} = authenticate(C, maps:get(prefix, F), maps:get(secret, F)),
+    ?assertEqual(hmac, maps:get(authentication, Ctx)),
+    ?assertNot(maps:is_key(granted_scopes, Ctx)),
+    ?assertNot(maps:is_key(allowed_scopes, Ctx)),
+    ?assertEqual(maps:get(app_id, F), maps:get(application_id, Ctx)).
+
+headers(F) ->
+    Full = <<(maps:get(prefix, F))/binary, ".", (maps:get(secret, F))/binary>>,
+    intbe02_http_support:signed_headers(
+        Full, <<"GET">>, <<"/api/internal/v1/application">>, <<>>, #{}, sha256
+    ).
+
+authenticate(C, Prefix, Secret) ->
+    H = headers(#{prefix => Prefix, secret => Secret}),
+    case enterprise_internal_signature:parse(H, erlang:system_time(second)) of
+        {ok, Signed} ->
+            enterprise_internal_auth:authenticate_signed_tx(
+                C, <<"GET">>, <<"/api/internal/v1/application">>, <<>>, <<>>, Signed#{headers => H}
+            );
+        Error ->
+            Error
+    end.
+
+middleware_route_and_flow(C) ->
+    F = seed_app_fixture(C),
+    ?assertMatch(
+        {ok, #{route_id := <<"INT-01">>, rate_bucket := internal_read}},
+        enterprise_internal_auth:decide(
+            <<"GET">>, <<"/api/internal/v1/application">>, headers(F), auth_fun(C, F)
+        )
+    ),
+    ?assertEqual(
+        {error, resource_not_found},
+        enterprise_internal_auth:decide(
+            <<"GET">>, <<"/api/internal/v1/nope">>, headers(F), auth_fun(C, F)
+        )
+    ),
+    ?assertEqual(
+        {error, invalid_credential},
+        enterprise_internal_auth:decide(
+            <<"GET">>,
+            <<"/api/internal/v1/application">>,
+            #{<<"authorization">> => <<"Bearer ", (maps:get(credential, F))/binary>>},
+            auth_fun(C, F)
+        )
+    ).
+
+ops_application_lifecycle(C) ->
+    seed_org(C, ?ORG_A, ?OWNER_A),
+    {ok, App} = enterprise_internal_ops:create_application_tx(
+        C, ?ORG_A, <<"ops-lifecycle">>, <<"Synthetic OA">>
+    ),
+    Id = maps:get(<<"id">>, App),
+    ok = enterprise_internal_ops:set_application_status_tx(C, ?ORG_A, Id, <<"disabled">>),
+    {ok, #{application := #{status := <<"disabled">>}}} = enterprise_internal_ops:application_status_tx(
+        C, ?ORG_A, Id
+    ),
+    ok = enterprise_internal_ops:set_application_status_tx(C, ?ORG_A, Id, <<"active">>).

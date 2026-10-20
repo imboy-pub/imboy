@@ -1,24 +1,5 @@
 -module(enterprise_message_handler).
 
-%%%
-% EPGZ-04 INT-09/10 OA 代发消息端点壳（不接线 Router——A0 W4 做）。
-%
-% 路由（A0 W4 经 Router lease 串行登记）：
-%   POST /api/internal/v1/messages/direct ->
-%       {Path, enterprise_message_handler, #{action => direct}}
-%   POST /api/internal/v1/groups/{group_id}/messages ->
-%       {Path, enterprise_message_handler, #{action => group,
-%         group_id_binding => path}}（group_id 从 path 提取后以 atom 键
-%         group_id 进入 Input——本壳从 handler_opts.group_id 读）
-% —— 必须经 enterprise_internal_middleware（A2 认证链；INT-09/10 动态
-%    scope：中间件放行并标 dynamic_scope=messages_send，本壳不重复判
-%    scope——sender_mode 的 scope 选择在 logic 内完成（messages:send /
-%    messages:send_as_human 精确判定，无隐含包含））。
-%
-% ctx 增强：本壳在调 logic 前把 principal_user_id 预取进 ctx（application
-% 发送主体；查询失败不阻断 human 模式——缺省键即 invalid_request）。
-%%%
-
 -behavior(cowboy_rest).
 
 -export([init/2]).
@@ -113,31 +94,13 @@ group(<<"POST">>, Req0, State) ->
 group(_, Req0, _State) ->
     cowboy_req:reply(405, #{}, <<"Method Not Allowed">>, Req0).
 
-%% @doc INT-09/10 资源边界接线（FULL-02）：scope 由 sender_mode 单点决定
-%% （enterprise_internal_boundary:required_scope_for_sender_mode/1，与
-%% enterprise_message_logic 的静态 scope gate 同源），边界按 org/workspace 判定。
-%% sender_mode 非法时返回错误（业务层会再拒一次 invalid_sender_mode，语义一致）。
--spec enforce_dynamic(any(), map(), binary(), undefined | integer(), map()) ->
-    ok | {error, {binary(), term()}}.
-enforce_dynamic(Conn, Ctx, RouteId, WorkspaceId, Params) ->
-    case
-        enterprise_internal_boundary:required_scope_for_sender_mode(
-            maps:get(<<"sender_mode">>, Params, undefined)
-        )
-    of
-        {ok, Scope} ->
-            case
-                enterprise_internal_boundary:enforce_dynamic(
-                    Conn, Ctx, RouteId, WorkspaceId, Scope
-                )
-            of
-                ok ->
-                    ok;
-                {error, Code} ->
-                    {error, {enterprise_internal_boundary:error_code(Code), grant_boundary}}
-            end;
-        error ->
-            ok
+%% The message logic validates sender_mode and resolves its current identity.
+enforce_dynamic(Conn, Ctx, RouteId, WorkspaceId, _Params) ->
+    case enterprise_internal_boundary:enforce(Conn, Ctx, RouteId, WorkspaceId) of
+        ok ->
+            ok;
+        {error, Code} ->
+            {error, {enterprise_internal_boundary:error_code(Code), resource_attribution}}
     end.
 
 group_path(GroupId) when is_integer(GroupId) ->
@@ -145,8 +108,6 @@ group_path(GroupId) when is_integer(GroupId) ->
 group_path(_) ->
     <<"/api/internal/v1/groups/{group_id}/messages">>.
 
-%% @doc A2 幂等模式（单事务）+ ctx principal 预取 + FULL-02 Grant 资源边界
-%% （BoundaryFun 在业务执行前、同一事务内运行；未受管应用 no-op）。
 -spec with_idempotency(
     cowboy_req:req(), map(), binary(), binary() | undefined, binary(), binary(), fun(), fun()
 ) ->
@@ -223,7 +184,6 @@ with_principal(Conn, Ctx) ->
             Ctx
     end.
 
-%% @doc Grant 资源边界（FULL-02）→ 业务执行 + 幂等回填的公共体。
 -spec run_logic(any(), map(), map(), binary(), binary(), binary(), fun()) -> term().
 run_logic(Conn, Ctx0, Ctx, ResourceType, IdemKey, MsgTable, LogicFun) ->
     case LogicFun(Ctx, Conn) of

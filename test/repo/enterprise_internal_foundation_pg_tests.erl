@@ -134,7 +134,8 @@ foundation_pg_test_() ->
                     with_tx(C, fun application_oracle/1)},
                 {"application_redirect_uri_allowlist_domain",
                     with_tx(C, fun application_redirect_oracle/1)},
-                {"credential_digest_prefix_and_org_boundary", with_tx(C, fun credential_oracle/1)},
+                {"credential_encrypted_key_prefix_and_org_boundary",
+                    with_tx(C, fun credential_oracle/1)},
                 {"identity_mapping_bind_resolve_guards", with_tx(C, fun identity_oracle/1)},
                 {"idempotency_record_claim_expiry", with_tx(C, fun idempotency_oracle/1)},
                 {"sso_code_issue_consume_single_use", with_tx(C, fun sso_code_oracle/1)},
@@ -185,20 +186,12 @@ application_oracle(C) ->
     ok = seed_org(C, ?ORG_B, ?OWNER_B),
     %% 创建 + 查询
     {ok, AppA} = enterprise_application_repo:create_tx(
-        C,
-        ?ORG_A,
-        <<"oa-gz-a">>,
-        <<"gz_customer_oa"/utf8>>,
-        {?OWNER_A, [<<"application:read">>, <<"messages:send">>]}
+        C, ?ORG_A, <<"oa-gz-a">>, <<"gz_customer_oa"/utf8>>, ?OWNER_A
     ),
     AppAId = maps:get(<<"id">>, AppA),
     ?assertEqual(?ORG_A, maps:get(<<"organization_id">>, AppA)),
     ?assertEqual(<<"active">>, maps:get(<<"status">>, AppA)),
     ?assertEqual(?OWNER_A, maps:get(<<"principal_user_id">>, AppA)),
-    ?assertEqual(
-        [<<"application:read">>, <<"messages:send">>],
-        jsone:decode(maps:get(<<"allowed_scopes">>, AppA))
-    ),
     {ok, Found} = enterprise_application_repo:find_tx(C, ?ORG_A, AppAId),
     ?assertEqual(<<"gz_customer_oa"/utf8>>, maps:get(<<"name">>, Found)),
     %% 旧 Org 路径兼容查询按业务归属过滤：不同归属同一 id → not_found
@@ -240,24 +233,9 @@ application_oracle(C) ->
     ?assertEqual(<<"disabled">>, maps:get(<<"status">>, Disabled)),
     ok = enterprise_application_repo:update_status_tx(C, ?ORG_A, AppAId, <<"active">>),
     ok = enterprise_application_repo:update_name_tx(C, ?ORG_A, AppAId, <<"renamed"/utf8>>),
-    ok = enterprise_application_repo:update_scopes_tx(
-        C, ?ORG_A, AppAId, [<<"application:read">>, <<"sso:exchange">>]
-    ),
     {ok, Updated} = enterprise_application_repo:find_tx(C, ?ORG_A, AppAId),
-    ?assertEqual(
-        [<<"application:read">>, <<"sso:exchange">>],
-        jsone:decode(maps:get(<<"allowed_scopes">>, Updated))
-    ),
     ?assertEqual(<<"renamed"/utf8>>, maps:get(<<"name">>, Updated)),
-    %% 非法 scopes（非数组 jsonb）被 DB CHECK 拒绝
-    ?assertMatch(
-        {error, #error{code = <<"23514">>}},
-        in_savepoint(C, fun() ->
-            enterprise_application_repo:update_scopes_tx(
-                C, ?ORG_A, AppAId, <<"{\"not\":\"array\"}">>
-            )
-        end)
-    ).
+    ?assertNot(maps:is_key(<<"allowed_scopes">>, Updated)).
 
 %%%===================================================================
 %%% ①b redirect URI allowlist（EPGZ-01R / EPGZ-05 硬需求）
@@ -271,7 +249,7 @@ application_redirect_oracle(C) ->
     ],
     %% 创建带 allowlist + 写读往返（RETURNING / find / find_by_key 三口径一致）
     {ok, App} = enterprise_application_repo:create_tx(
-        C, ?ORG_A, <<"oa-gz-redir">>, <<"redir_app"/utf8>>, {?OWNER_A, []}, Uris
+        C, ?ORG_A, <<"oa-gz-redir">>, <<"redir_app"/utf8>>, ?OWNER_A, Uris
     ),
     AppId = maps:get(<<"id">>, App),
     ?assertEqual(Uris, maps:get(<<"allowed_redirect_uris">>, App)),
@@ -391,12 +369,9 @@ credential_oracle(C) ->
         C, ?ORG_A, AppAId, Prefix, Secret
     ),
     CredId = maps:get(<<"id">>, Cred),
-    ?assertEqual(64, byte_size(maps:get(<<"secret_digest">>, Cred))),
-    ?assertEqual(
-        enterprise_application_credential_repo:digest_hex(Secret),
-        maps:get(<<"secret_digest">>, Cred)
-    ),
-    ?assertNotEqual(Secret, maps:get(<<"secret_digest">>, Cred)),
+    ?assertEqual({ok, Secret}, enterprise_application_credential_repo:signing_secret(Cred)),
+    ?assertNotEqual(Secret, maps:get(<<"signing_secret_enc">>, Cred)),
+    ?assertNot(maps:is_key(<<"secret_digest">>, Cred)),
     ?assertEqual(<<"active">>, maps:get(<<"status">>, Cred)),
     %% 按 prefix 查找（全局定位键；marker 库直连模式只用 _tx 变体）
     {ok, Found} = enterprise_application_credential_repo:find_by_prefix_tx(C, Prefix),
@@ -887,23 +862,17 @@ migration_cycle(_HeadState) ->
                 {error, #error{code = <<"23514">>}},
                 in_savepoint(Conn, fun() ->
                     enterprise_application_repo:create_tx(
-                        Conn,
-                        ?ORG_A,
-                        <<"oa-gz-redir-rebuilt">>,
-                        <<"rb"/utf8>>,
-                        undefined,
-                        [<<"http://oa.customer.example.com/cb">>]
+                        Conn, ?ORG_A, <<"oa-gz-redir-rebuilt">>, <<"rb"/utf8>>, null, [
+                            <<"http://oa.customer.example.com/cb">>
+                        ]
                     )
                 end)
             ),
             %% 合法 allowlist 重建后可写
             {ok, Rb} = enterprise_application_repo:create_tx(
-                Conn,
-                ?ORG_A,
-                <<"oa-gz-redir-rebuilt2">>,
-                <<"rb2"/utf8>>,
-                undefined,
-                [<<"https://oa.customer.example.com/sso/cb">>]
+                Conn, ?ORG_A, <<"oa-gz-redir-rebuilt2">>, <<"rb2"/utf8>>, null, [
+                    <<"https://oa.customer.example.com/sso/cb">>
+                ]
             ),
             ?assertEqual(
                 [<<"https://oa.customer.example.com/sso/cb">>],

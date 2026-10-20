@@ -1,18 +1,8 @@
 -module(enterprise_internal_auth).
 
-%% Default OA authentication: HMAC-SHA256/SHA512 over the canonical request,
-%% live credential/application checks, trusted business organization addressing,
-%% and atomic PostgreSQL nonce consumption. HMAC contexts carry authentication=hmac
-%% and have no granted_scopes field. Rate limits and idempotency still apply.
-%% Legacy Bearer clients retain their original digest + Scope/Grant policy.
-%% TLS is enforced by deployment; secrets, signatures and bodies are not logged.
-
 -export([
-    parse_bearer/1,
     authenticate_signed/5,
     authenticate_signed_tx/6,
-    authenticate_tx/3,
-    authenticate/2,
     decide/4,
     take_retry_after_seconds/0
 ]).
@@ -28,59 +18,6 @@
 %%% API
 %%%===================================================================
 
-%% @doc 解析 Authorization 头（Bearer ib_int_<id>.<secret>）。
-%% 缺头 → credential_missing；格式非法 → invalid_credential。
--spec parse_bearer(undefined | binary()) ->
-    {ok, Prefix :: binary(), Secret :: binary()} | {error, atom()}.
-parse_bearer(undefined) ->
-    {error, credential_missing};
-parse_bearer(<<>>) ->
-    {error, credential_missing};
-parse_bearer(<<"Bearer ", Rest/binary>>) when Rest =/= <<>> ->
-    parse_credential(Rest);
-parse_bearer(_) ->
-    {error, invalid_credential}.
-
-%% @doc 事务内执行完整认证链（prefix 定位 → digest 常数时间比对 →
-%% credential active/expiry → application active → Grant scopes →
-%% touch last_used）。成功返回认证产物 context。
--spec authenticate_tx(any(), binary(), binary()) ->
-    {ok, map()}
-    | {error,
-        invalid_credential
-        | credential_expired
-        | application_disabled
-        | security_gate_closed
-        | internal_error}.
-authenticate_tx(Conn, Prefix, Secret) when
-    is_binary(Prefix), is_binary(Secret), Secret =/= <<>>
-->
-    case enterprise_application_credential_repo:find_by_prefix_tx(Conn, Prefix) of
-        {error, not_found} ->
-            log_reject(credential_locate, invalid_credential),
-            {error, invalid_credential};
-        {ok, Row} ->
-            StoredDigest = maps:get(<<"secret_digest">>, Row),
-            Computed = enterprise_application_credential_repo:digest_hex(Secret),
-            case constant_time_eq(Computed, StoredDigest) of
-                false ->
-                    log_reject(credential_digest, invalid_credential),
-                    {error, invalid_credential};
-                true ->
-                    check_credential_status(Conn, Row)
-            end;
-        {error, Reason} ->
-            ?ERROR_LOG([
-                enterprise_internal_auth_db_error, #{stage => credential_locate, reason => Reason}
-            ]),
-            {error, invalid_credential}
-    end;
-authenticate_tx(_Conn, _Prefix, _Secret) ->
-    log_reject(credential_format, invalid_credential),
-    {error, invalid_credential}.
-
-%% HMAC requests authenticate the application, not a Scope/Grant permission set.
-%% The caller passes wire bytes, including the unmodified query and JSON body.
 authenticate_signed(Method, Path, Query, Body, Headers) ->
     case enterprise_internal_signature:parse(Headers, erlang:system_time(second)) of
         {ok, Signed} ->
@@ -121,7 +58,7 @@ authenticate_signed_tx(Conn, Method, Path, Query, Body, Signed) ->
     end.
 
 signed_status_tx(Conn, Row, Signed) ->
-    case check_credential_status(Conn, Row#{authentication => hmac}) of
+    case check_credential_status(Conn, Row) of
         {ok, Ctx} ->
             Target = maps:get(<<"x-imboy-organization">>, maps:get(headers, Signed), undefined),
             case enterprise_internal_access_repo:resolve_organization_tx(Conn, Ctx, Target) of
@@ -152,27 +89,11 @@ reserve_signed_nonce_tx(Conn, Ctx, Signed) ->
             Error
     end.
 
-%% @doc 池化运行时入口（中间件用）：单事务执行认证链。
--spec authenticate(binary(), binary()) ->
-    {ok, map()} | {error, atom()}.
-authenticate(Prefix, Secret) ->
-    case elib_pg:with_tx(fun(Conn) -> authenticate_tx(Conn, Prefix, Secret) end) of
-        {rollback, Reason} ->
-            ?ERROR_LOG([
-                enterprise_internal_auth_db_error, #{stage => tx, reason => Reason}
-            ]),
-            {error, invalid_credential};
-        Result ->
-            Result
-    end.
-
-%% @doc 中间件编排决策（认证链之上的路由/scope/限流/幂等键编排）。
+%% @doc 中间件编排决策（认证链之上的路由/限流/幂等键编排）。
 %% AuthFun/0 返回认证链结果（{ok, Ctx} | {error, StableCode}）——运行时
 %% 由 enterprise_internal_middleware 注入池化认证；测试可注入直连事务闭包。
 %% 返回 {ok, Ctx}（含路由元数据）或 {error, Code}，Code 为本模块内部
-%% **atom** 约定（与 parse_bearer/1、authenticate_tx/* 一致：invalid_credential /
-%% resource_not_found / insufficient_scope / rate_limited / security_gate_closed /
-%% invalid_request 等）。manifest 的 snake_case **二进制**码由 HTTP 适配器
+%% 内部错误码使用 atom，由 HTTP 适配器统一转换。manifest 的 snake_case **二进制**码由 HTTP 适配器
 %% enterprise_internal_middleware:normalize_code/1 归一（见该函数注释）。
 -spec decide(binary(), binary(), map(), fun()) -> {ok, map()} | {error, atom()}.
 decide(Method, Path, Headers, AuthFun) when is_map(Headers) ->
@@ -192,15 +113,8 @@ decide(Method, Path, Headers, AuthFun) when is_map(Headers) ->
                         _ -> {error, invalid_credential}
                     end;
                 false ->
-                    legacy_decide(Route, Headers, AuthFun)
+                    {error, invalid_credential}
             end
-    end.
-
-%% Legacy Bearer clients keep their original restricted authorization model.
-legacy_decide(Route, Headers, AuthFun) ->
-    case parse_bearer(maps:get(<<"authorization">>, Headers, undefined)) of
-        {ok, _, _} -> chain(Route, Headers, AuthFun);
-        _ -> {error, invalid_credential}
     end.
 
 %% @doc 取出本请求限流拒绝的 Retry-After 秒数（一次性：取后即清）。
@@ -222,36 +136,7 @@ chain(Route, Headers, AuthFun) ->
         {error, Code} ->
             {error, Code};
         {ok, Ctx} ->
-            case scope_gate(Route, Ctx) of
-                {ok, Ctx1} -> rate_gate(Route, Headers, Ctx1);
-                {error, Code} -> {error, Code}
-            end
-    end.
-
-%% 静态 scope 在中间件判定；动态 scope（INT-09/10）由 handler 裁决
-%% （ctx 标注 dynamic_scope 后原样放行）。
--spec scope_gate(map(), map()) -> {ok, map()} | {error, atom()}.
-scope_gate(#{scope := {dynamic, Kind}}, Ctx) ->
-    {ok, Ctx#{dynamic_scope => Kind}};
-scope_gate(_Route, #{authentication := hmac} = Ctx) ->
-    {ok, Ctx};
-scope_gate(#{id := <<"INT-43">>} = Route, Ctx) ->
-    Admission = Ctx#{granted_scopes => maps:get(allowed_scopes, Ctx, [])},
-    case scope_gate(maps:remove(id, Route), Admission) of
-        {ok, _} -> {ok, Ctx};
-        Error -> Error
-    end;
-scope_gate(#{scope := Required}, Ctx) ->
-    case enterprise_internal_scope:authorize(Required, maps:get(granted_scopes, Ctx, [])) of
-        ok ->
-            {ok, Ctx};
-        {error, insufficient_scope} ->
-            log_reject(scope, insufficient_scope),
-            {error, insufficient_scope};
-        {error, invalid_scope} ->
-            %% 注册表 scope 不在固定枚举内属程序错误：fail-closed 拒绝
-            log_reject(scope, insufficient_scope),
-            {error, insufficient_scope}
+            rate_gate(Route, Headers, Ctx)
     end.
 
 -spec rate_gate(map(), map(), map()) -> {ok, map()} | {error, atom()}.
@@ -363,7 +248,7 @@ check_application(Conn, Row) ->
     end.
 
 -spec finalize_auth(any(), map(), map()) -> {ok, map()} | {error, atom()}.
-finalize_auth(_Conn, #{authentication := hmac} = Row, App) ->
+finalize_auth(_Conn, Row, App) ->
     CredId = maps:get(<<"id">>, Row),
     OrgId = maps:get(<<"organization_id">>, App),
     {ok, #{
@@ -374,91 +259,8 @@ finalize_auth(_Conn, #{authentication := hmac} = Row, App) ->
         credential_id => CredId,
         application_key => maps:get(<<"application_key">>, App, undefined),
         principal_user_id => maps:get(<<"principal_user_id">>, App, null)
-    }};
-finalize_auth(Conn, Row, App) ->
-    CredId = maps:get(<<"id">>, Row),
-    %% last_used 记录失败不影响认证结果
-    _ = enterprise_application_credential_repo:touch_last_used_tx(Conn, CredId),
-    Scopes = decode_scopes(App),
-    OrgId = maps:get(<<"organization_id">>, App),
-    AppId = maps:get(<<"application_id">>, Row),
-    %% FULL-01 Grant 求值（V2.1 §5.2 收紧）：同一事务、逐请求真库读（无缓存）。
-    %% 生效 scope 恒为 allowed_scopes ∩ 生效 Grant scopes——零 Grant（从未授予/
-    %% 全部撤销/全部过期）即空集，本请求的 scope gate 必然 403 insufficient_scope；
-    %% grant_governed 只是诊断标记，不再触发「回退 allowed_scopes」旁路。
-    case enterprise_application_grant_logic:context_tx(Conn, OrgId, AppId, Scopes) of
-        {ok, #{grant_governed := Governed, effective_scopes := Effective}} ->
-            {ok, #{
-                organization_id => OrgId,
-                application_organization_id => OrgId,
-                application_id => AppId,
-                credential_id => CredId,
-                application_key => maps:get(<<"application_key">>, App, undefined),
-                %% INT-BE-03：principal 随认证产物下传（Application 的锚定
-                %% 用户，可空），供审计行 actor_user_id 统一口径——原先只有
-                %% message/webhook 壳在 handler 层自行预取，其余 mutation 的
-                %% 审计 actor 只能落 null。
-                principal_user_id => maps:get(<<"principal_user_id">>, App, null),
-                allowed_scopes => Scopes,
-                granted_scopes => Effective,
-                grant_governed => Governed
-            }};
-        {error, security_gate_closed} ->
-            %% 授权读取失败：fail-closed，绝不放行（也不给 oracle）
-            log_reject(grant_read_failed, security_gate_closed),
-            {error, security_gate_closed}
-    end.
+    }}.
 
-%% allowed_scopes（jsonb 数组）→ 固定 scope 二进制列表；形态异常一律空集
-%% （空集 fail-closed：任何 required scope 都不会被满足）。
--spec decode_scopes(map()) -> [binary()].
-decode_scopes(App) ->
-    case jsone:decode(maps:get(<<"allowed_scopes">>, App, <<"[]">>)) of
-        L when is_list(L) -> [S || S <- L, is_binary(S)];
-        _ -> []
-    end.
-
-%%%===================================================================
-%%% 内部
-%%%===================================================================
-
--spec parse_credential(binary()) -> {ok, binary(), binary()} | {error, invalid_credential}.
-parse_credential(Rest) ->
-    case binary:split(Rest, <<".">>) of
-        [Prefix, Secret] when Secret =/= <<>> ->
-            case is_ib_int_prefix(Prefix) of
-                true -> {ok, Prefix, Secret};
-                false -> {error, invalid_credential}
-            end;
-        _ ->
-            {error, invalid_credential}
-    end.
-
--spec is_ib_int_prefix(binary()) -> boolean().
-is_ib_int_prefix(<<"ib_int_", Digits/binary>>) when Digits =/= <<>> ->
-    is_digits(Digits);
-is_ib_int_prefix(_) ->
-    false.
-
--spec is_digits(binary()) -> boolean().
-is_digits(<<>>) ->
-    true;
-is_digits(<<C, Rest/binary>>) when C >= $0, C =< $9 ->
-    is_digits(Rest);
-is_digits(_) ->
-    false.
-
-%% 等长常数时间摘要比较（镜像 eb_managed_crypto:constant_time_eq/2 先例）。
--spec constant_time_eq(binary(), binary()) -> boolean().
-constant_time_eq(A, B) when byte_size(A) =:= byte_size(B) ->
-    crypto:hash_equals(A, B);
-constant_time_eq(_A, _B) ->
-    false.
-
-%% 认证失败日志：只含 stage 与 stable 码——不含 prefix/secret/Authorization
-%% 值/请求体（redaction 红线，测试断言日志行零 secret）。Code 是模块内
-%% stable 原子码（invalid_request/invalid_credential/…，见上方各拒绝点；
-%% snake_case 二进制码由 HTTP 适配器映射，不在此层）。
 -spec log_reject(atom(), atom()) -> ok.
 log_reject(Stage, Code) ->
     ?WARN_LOG([

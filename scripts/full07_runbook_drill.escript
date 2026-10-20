@@ -177,63 +177,19 @@ secret_cipher(Conn, Principal) ->
 %% D3 credential emergency revoke（一次事务内撤全部 active Grant）
 %% ------------------------------------------------------------------
 d3_emergency_revoke(Conn) ->
-    {OrgId, AppId, Principal} = seed_org_app(Conn, <<"full07drill-revoke">>),
-    Saved0 = [begin
-         {ok, G} = enterprise_application_grant_repo:create_tx(Conn, OrgId, AppId, #{
-             scopes => [S],
-             workspace_scope_kind => none,
-             expires_at => <<"2099-12-31T00:00:00+00:00">>,
-             idempotency_key => Key
-         }),
-         #{
-             id => maps:get(<<"id">>, G),
-             version => maps:get(<<"version">>, G, 1)
-         }
-     end
-     || {S, Key} <- [
-            {<<"messages:send">>, <<"drill-k1">>},
-            {<<"messages:send_as_human">>, <<"drill-k2">>},
-            {<<"webhooks:manage">>, <<"drill-k3">>}
-        ]],
-    {ok, Before} = enterprise_application_grant_repo:effective_scopes_tx(Conn, OrgId, AppId),
-    Saved = Saved0,
-    Revoked = lists:foldl(
-        fun(#{id := GId, version := Ver}, Acc) ->
-            case
-                %% revoked_by 必须是真实 user 行（fk_eag_revoked_by RESTRICT）——
-                %% 紧急撤销的"执行人"是本 Org 的 owner/principal，不是 0。
-                enterprise_application_grant_repo:revoke_tx(
-                    Conn, OrgId, AppId, GId, Ver, Principal
-                )
-            of
-                ok -> Acc + 1;
-                _ -> Acc
-            end
-        end,
-        0,
-        Saved
-    ),
-    {ok, After} = enterprise_application_grant_repo:effective_scopes_tx(Conn, OrgId, AppId),
-    Governed = enterprise_application_grant_repo:grant_governed_tx(Conn, OrgId, AppId),
-    {ok, Rows} = enterprise_application_grant_repo:list_tx(Conn, OrgId, AppId),
-    StillThere = length([R || R <- Rows, maps:get(<<"status">>, R) =:= <<"revoked">>]),
-    report("D3 credential emergency revoke", [
-        {"effective_scopes_before", length(Before)},
-        {"grants_revoked", Revoked},
-        {"effective_scopes_after", After},
-        {"still_governed", Governed},
-        {"revoked_rows_kept", StillThere}
-    ], [
-        length(Before) =:= 3,
-        Revoked =:= 3,
-        After =:= [],
-        Governed =:= {ok, true},
-        StillThere =:= 3
-    ]).
+    {OrgId, AppId, _Principal} = seed_org_app(Conn, <<"full07drill-revoke">>),
+    Saved = [begin
+        {ok, #{credential_id := Id}} = enterprise_internal_ops:issue_credential_tx(Conn, OrgId, AppId, undefined),
+        Id
+    end || _ <- lists:seq(1, 3)],
+    {ok, []} = elib_pg:query(Conn, <<"BEGIN">>, []),
+    [ok = enterprise_application_credential_repo:revoke_tx(Conn, OrgId, Id) || Id <- Saved],
+    {ok, []} = elib_pg:query(Conn, <<"COMMIT">>, []),
+    {ok, Rows} = elib_pg:query(Conn,
+        <<"SELECT id,status FROM enterprise_application_credential WHERE application_id=$1">>, [AppId]),
+    Revoked = length([R || R <- Rows, maps:get(<<"status">>, R) =:= <<"revoked">>]),
+    report("D3 credential emergency revoke", [{"credentials_revoked", Revoked}], [Revoked =:= 3]).
 
-%% ------------------------------------------------------------------
-%% D4 worker restart（认领租约的崩溃/提交两种语义）
-%% ------------------------------------------------------------------
 d4_worker_restart(Conn) ->
     {OrgId, AppId, Principal} = seed_org_app(Conn, <<"full07drill-worker">>),
     {ok, _} = enterprise_webhook_repo:upsert_config_tx(
@@ -318,7 +274,7 @@ seed_org_app(Conn, NameSuffix) ->
         <<" ON CONFLICT (id) DO NOTHING">>
     ]),
     {ok, App} = enterprise_application_repo:create_tx(
-        Conn, OrgId, AppKey, <<"full07 drill app"/utf8>>, {UserId, [<<"messages:send">>]}
+        Conn, OrgId, AppKey, <<"full07 drill app"/utf8>>, UserId
     ),
     {OrgId, maps:get(<<"id">>, App), UserId}.
 

@@ -36,14 +36,8 @@ OA_PORT=28444
 ORG=996101
 OWNER=996001
 HUMAN=996011
-APP_HW=996201          # webhooks:manage 应用（W1-W3）
-APP_SSO=996202         # sso:exchange 应用（OA 替身链）
-CRED_HW_ID=996501
-CRED_SSO_ID=996502
-GRANT_HW=996901
-GRANT_SSO=996902
-SECRET_HW="q08_w14_secret_hw_fixture01" # gitleaks:allow 合成夹具非真实凭据
-SECRET_SSO="q08_w14_secret_sso_fixture01" # gitleaks:allow 合成夹具非真实凭据
+APP_HW=996201          # Webhook 应用（W1-W3）
+APP_SSO=996202         # OA 替身应用
 EXT_USER="q08-ext-human"
 
 psql_q() { PGPASSWORD="$PG_PASS" psql -h "$PG_HOST" -p "$PG_PORT" -U "$PG_USER" -d "$PG_DB" -v ON_ERROR_STOP=1 -tAc "$1"; }
@@ -65,8 +59,6 @@ cleanup() {
   lsof -nP -iTCP:$HTTP_PORT -sTCP:LISTEN >/dev/null 2>&1 && echo "ERROR: port $HTTP_PORT NOT released"
   [[ -n "${RECV_PID:-}" ]] && kill "$RECV_PID" 2>/dev/null || true
   [[ -n "${OA_PID:-}" ]] && kill "$OA_PID" 2>/dev/null || true
-  # 撤销种子授权（grant 行禁物理删除——触发器 23514；状态置 revoked 即失效）
-  psql_q "UPDATE enterprise_application_grant SET status='revoked', revoked_at=CURRENT_TIMESTAMP, revoked_by_user_id=$OWNER WHERE id IN ($GRANT_HW,$GRANT_SSO) AND status='active'" >/dev/null 2>&1 || true
   psql_q "UPDATE enterprise_external_identity SET status='removed' WHERE organization_id=$ORG AND status='active'" >/dev/null 2>&1 || true
   psql_q "UPDATE enterprise_application_credential SET status='revoked', revoked_at=CURRENT_TIMESTAMP WHERE organization_id=$ORG AND status='active'" >/dev/null 2>&1 || true
   rmdir "$NODE_LOCK" 2>/dev/null || true
@@ -111,20 +103,13 @@ RECV_PID=$!
 for _ in $(seq 1 20); do curl -sf "http://127.0.0.1:$RECV_PORT/healthz" >/dev/null && break; sleep 0.5; done
 curl -sf "http://127.0.0.1:$RECV_PORT/healthz" >/dev/null || die "receiver not ready"
 
-# ---- 种子数据（996 段；sha256 摘要 + psql 直插；重复执行幂等）----
-DIG_HW=$(printf '%s' "$SECRET_HW" | shasum -a 256 | cut -d' ' -f1)
-DIG_SSO=$(printf '%s' "$SECRET_SSO" | shasum -a 256 | cut -d' ' -f1)
+# ---- 种子数据（996 段；业务数据 psql 直插；重复执行幂等）----
 psql_q "INSERT INTO \"user\" (id, password, account, account_type, status, reg_ip, reg_cosv) VALUES ($OWNER,'x','t996_owner',0,1,'127.0.0.1','x'),($HUMAN,'x','t996_human',0,1,'127.0.0.1','x') ON CONFLICT (id) DO NOTHING"
 psql_q "INSERT INTO organization (id, name, owner_id, status, branding, settings, created_at, updated_at) VALUES ($ORG,'q08-w14-org',$OWNER,'active','{}'::jsonb,'{}'::jsonb,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP) ON CONFLICT (id) DO NOTHING"
 psql_q "INSERT INTO organization_member (organization_id, user_id, role, status, joined_at, created_at, updated_at) VALUES ($ORG,$OWNER,'owner','active',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP),($ORG,$HUMAN,'member','active',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP) ON CONFLICT DO NOTHING"
-psql_q "INSERT INTO enterprise_application (id, organization_id, principal_user_id, application_key, name, status, allowed_scopes, allowed_redirect_uris) VALUES ($APP_HW,$ORG,$OWNER,'q08-w14-webhook','Q08 W14 webhook app','active','[\"webhooks:manage\"]'::jsonb,'{}') ON CONFLICT (id) DO NOTHING"
-psql_q "INSERT INTO enterprise_application (id, organization_id, principal_user_id, application_key, name, status, allowed_scopes, allowed_redirect_uris) VALUES ($APP_SSO,$ORG,NULL,'q08-w14-sso','Q08 W14 sso app','active','[\"sso:exchange\"]'::jsonb,ARRAY['https://127.0.0.1:$OA_PORT/cb']) ON CONFLICT (id) DO NOTHING"
-psql_q "INSERT INTO enterprise_application_credential (id, organization_id, application_id, credential_prefix, secret_digest, status, revoked_at) VALUES ($CRED_HW_ID,$ORG,$APP_HW,'ib_int_$CRED_HW_ID','$DIG_HW','active',NULL),($CRED_SSO_ID,$ORG,$APP_SSO,'ib_int_$CRED_SSO_ID','$DIG_SSO','active',NULL) ON CONFLICT (id) DO UPDATE SET secret_digest=EXCLUDED.secret_digest, status='active', revoked_at=NULL"
-psql_q "INSERT INTO enterprise_application_grant (id, organization_id, application_id, workspace_scope_kind, status, valid_from, expires_at, idempotency_key, revoked_at, revoked_by_user_id) VALUES ($GRANT_HW,$ORG,$APP_HW,'none','active',CURRENT_TIMESTAMP - INTERVAL '1 day','2099-01-01T00:00:00Z','q08-grant-hw',NULL,NULL),($GRANT_SSO,$ORG,$APP_SSO,'none','active',CURRENT_TIMESTAMP - INTERVAL '1 day','2099-01-01T00:00:00Z','q08-grant-sso',NULL,NULL) ON CONFLICT (id) DO UPDATE SET status='active', revoked_at=NULL, revoked_by_user_id=NULL"
-psql_q "INSERT INTO enterprise_application_grant_scope (grant_id, scope) VALUES ($GRANT_HW,'webhooks:manage'),($GRANT_SSO,'sso:exchange') ON CONFLICT DO NOTHING"
+psql_q "INSERT INTO enterprise_application (id, organization_id, principal_user_id, application_key, name, status, allowed_redirect_uris) VALUES ($APP_HW,$ORG,$OWNER,'q08-w14-webhook','Q08 W14 webhook app','active','{}') ON CONFLICT (id) DO NOTHING"
+psql_q "INSERT INTO enterprise_application (id, organization_id, principal_user_id, application_key, name, status, allowed_redirect_uris) VALUES ($APP_SSO,$ORG,NULL,'q08-w14-sso','Q08 W14 sso app','active',ARRAY['https://127.0.0.1:$OA_PORT/cb']) ON CONFLICT (id) DO NOTHING"
 psql_q "INSERT INTO enterprise_external_identity (id, organization_id, application_id, external_user_id, user_id, status) VALUES (996801,$ORG,$APP_SSO,'$EXT_USER',$HUMAN,'active') ON CONFLICT (id) DO UPDATE SET status='active'"
-CRED_HW_FULL="ib_int_${CRED_HW_ID}.${SECRET_HW}"
-CRED_SSO_FULL="ib_int_${CRED_SSO_ID}.${SECRET_SSO}"
 
 # ---- boot phase1_delivery 节点（IMBOYENV=local：SSRF 守卫开放 loopback http）----
 # daemon 模式：console 模式下 stdin EOF 会让 Eshell 立即 init:stop（2026-10-07
@@ -145,6 +130,10 @@ rpc_eval() {
     -eval "$1" -s init stop 2>/dev/null
 }
 
+# 使用生产签发接口生成加密签名密钥；凭据只保留在当前 shell 变量中。
+CRED_HW_FULL=$(rpc_eval "{ok,C}=rpc:call('$NODE',enterprise_internal_ops,issue_credential,[$ORG,$APP_HW,undefined]), io:format(\"~s\",[maps:get(credential,C)])")
+[[ "$CRED_HW_FULL" == ib_int_*.* ]] || die "HMAC credential issue failed"
+
 WORKER=$(rpc_eval "io:format(\"~p\", [rpc:call('$NODE', erlang, whereis, [bot_webhook_delivery_worker])])")
 echo "W14_WORKER_WHEREIS=$WORKER"
 [[ "$WORKER" == *"<"* ]] || die "bot_webhook_delivery_worker 未运行（F08 oracle 失败）"
@@ -156,12 +145,31 @@ JWT=$(rpc_eval "io:format(\"~s\", [rpc:call('$NODE', token_ds, encrypt_token, [$
 [[ -n "$JWT" && "$JWT" != *error* ]] || die "JWT 生成失败"
 
 RESP="$RUN_DIR/resp.json"
-post() { # path cred [idemkey] [body] → prints http status；body 落 $RESP
-  local path="$1" cred="$2" idem="${3:-}" body="${4:-\{\}}"
-  local hdrs=(-H "Authorization: Bearer $cred" -H 'Content-Type: application/json')
+request() { # method path credential idem body; Internal uses exact-wire HMAC.
+  local method="$1" path="$2" cred="$3" idem="$4" body="$5"
+  local hdrs=(-H 'Content-Type: application/json')
   [[ -n "$idem" ]] && hdrs+=(-H "Idempotency-Key: $idem")
-  curl -sS -o "$RESP" -w '%{http_code}' -X POST "http://127.0.0.1:$HTTP_PORT$path" "${hdrs[@]}" --data "$body"
+  if [[ "$path" == /api/internal/v1/* ]]; then
+    local signed=()
+    while IFS= read -r value; do signed+=("$value"); done < <(
+      IMBOY_TEST_CREDENTIAL="$cred" python3 - "$method" "$path" "$idem" "$body" <<'PY_SIGN'
+import hashlib, hmac, os, secrets, sys, time
+method,path,idem,body=sys.argv[1:]
+locator,secret=os.environ['IMBOY_TEST_CREDENTIAL'].split('.',1)
+ts=str(int(time.time()));nonce=secrets.token_hex(16)
+canonical='\n'.join(['IMBOY-INTERNAL-V1','sha256',locator,'',method,path,'','application/json',idem,hashlib.sha256(body.encode()).hexdigest(),ts,nonce])
+for name,value in [('Credential',locator),('Timestamp',ts),('Nonce',nonce),('Signature','sha256='+hmac.new(secret.encode(),canonical.encode(),hashlib.sha256).hexdigest())]:
+ print('X-Imboy-'+name+': '+value)
+PY_SIGN
+    )
+    [[ ${#signed[@]} == 4 ]] || die "HMAC signing failed"
+    for value in "${signed[@]}"; do hdrs+=(-H "$value"); done
+  else
+    hdrs+=(-H "Authorization: Bearer $cred")
+  fi
+  curl -sS -o "$RESP" -w '%{http_code}' -X "$method" "http://127.0.0.1:$HTTP_PORT$path" "${hdrs[@]}" --data "$body"
 }
+post() { request POST "$1" "$2" "${3:-}" "${4:-\{\}}"; }
 code_of() { python3 -c "import json;d=json.load(open('$RESP'));e=d.get('error');print(e.get('code') if isinstance(e,dict) else d.get('code',''))" 2>/dev/null || echo parse-fail; }
 jget() { python3 -c "import json;d=json.load(open('$RESP'));print(d$1)" 2>/dev/null || echo parse-fail; }
 
@@ -186,9 +194,7 @@ wait_delivery_status() { # delivery_id expected timeout_s
 run_scenario() { # name mode → DID（全局变量）
   local name="$1" mode="$2" s
   echo "$mode" > "$RUN_DIR/receiver_mode"
-  s=$(curl -sS -o "$RESP" -w '%{http_code}' -X PUT "http://127.0.0.1:$HTTP_PORT/api/internal/v1/webhook" \
-    -H "Authorization: Bearer $CRED_HW_FULL" -H 'Content-Type: application/json' -H "Idempotency-Key: q08-w14-$name-config" \
-    --data "{\"url\":\"http://127.0.0.1:$RECV_PORT/hook\",\"events\":[\"file.confirmed\"]}")
+  s=$(request PUT /api/internal/v1/webhook "$CRED_HW_FULL" "q08-w14-$name-config" "{\"url\":\"http://127.0.0.1:$RECV_PORT/hook\",\"events\":[\"file.confirmed\"]}")
   [[ "$s" == 200 ]] || die "$name: INT-12 config 失败 status=$s $(cat "$RESP")"
   jget "['secret']" > "$RUN_DIR/receiver_secret"
   [[ -s "$RUN_DIR/receiver_secret" ]] || die "$name: INT-12 未返回 secret"

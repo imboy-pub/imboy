@@ -12,7 +12,6 @@
 运营后台与企业集成是两个独立安全面：
 
 - **运营后台**：Admin Cookie + `/api/adm/*`，供平台运营人员跨企业治理数据；
-- **企业集成**：Application Credential + `/api/internal/v1/*`，签名验签后按业务目标 Organization、可信来源配置和资源归属校验，无需 Scope/Grant，应用归属不是授权边界，不得复用 Admin 权限。
 
 因此，管理后台出现一个菜单，并不表示同名资源应自动暴露完整 Internal CRUD。
 当前冻结合同（INT-01..INT-49）的实际覆盖如下：
@@ -51,12 +50,10 @@
 - 所有列表使用 `cursor + limit`，不提供无界导出；默认 `limit=50`，最大 `100`；
 - `DELETE` 是可审计的软归档/停用，不做物理删除；
 - 所有 P1 写请求要求 `Idempotency-Key`，并记录真实应用来源（资源既有 origin_application_id 或同事务审计的 application_id）；
-- 组织创建、组织删除、Application/Credential 生命周期、Grant 签发/撤销仍只属于
-  `/api/adm/*`，不会下放给 Application Credential；
+- 应用生命周期和凭证治理由 `/api/adm/*` 管理；
 - 上述待补合同正式实现前，当前可导入 Postman 的权威集合仍是本目录的
   `IMBoy-Internal-API-v1.postman_collection.json`（49 个 Internal 操作及 3 个 Human 伴随请求）。
 
-所有下列 Internal 操作均支持 HMAC 签名，无需配置 Scope 或 Grant。
 `scope=workspace` 是资源业务归属字段，不是授权枚举。
 
 ## 应用与凭证
@@ -209,9 +206,7 @@ INT-23 分页为 CURSOR-V2 签名游标（`cursor` / `page_size`，缺省 20 上
 | INT-38 | `PATCH /api/internal/v1/workspaces/{workspace_id}` | write | K |
 | INT-39 | `DELETE /api/internal/v1/workspaces/{workspace_id}` | write | K |
 
-签名请求无需 Scope 或 Grant；workspace_id 是审计位置，坐席不归工作空间。创建必须给出 workspace_id/business_identity_id；修改必须给出 workspace_id/expected_version，以及 enabled/max_concurrent 至少一个。未知请求字段拒绝。停用使用 PATCH enabled=false，保留配置和历史。业务身份必须为本企业 customer_service；仅显式停用允许处理失效身份。
 
-English: Org-owned seat configuration. HMAC requests require no Scope/Grant configuration. Updates use optimistic versions and disabling retains history. Workspace/channel writes are implemented; project writes remain deferred.
 
 
 ## 企业频道写管理（INT-40..42）

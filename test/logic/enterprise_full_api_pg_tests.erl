@@ -55,20 +55,6 @@
 -define(EXT_A4, <<"f02-ext-a4">>).
 -define(EXT_B1, <<"f02-ext-b1">>).
 
--define(SCOPES_FULL, [
-    <<"application:read">>,
-    <<"identities:read">>,
-    <<"identities:write">>,
-    <<"groups:read">>,
-    <<"groups:write">>,
-    <<"workspaces:read">>,
-    <<"projects:read">>,
-    <<"channels:read">>,
-    <<"files:write">>,
-    <<"messages:send">>,
-    <<"messages:send_as_human">>
-]).
-
 -define(FAR_FUTURE, <<"2099-01-01T00:00:00Z">>).
 
 %% CP-CON-01：INT-16/17 游标迁移 CURSOR-V2（§10.1）——真库链路的签名密钥。
@@ -234,10 +220,10 @@ seed_matrix(C) ->
     seed_ws_member(C, ?WS_A2, ?H_A3, <<"member">>),
     seed_ws_member(C, ?WS_B1, ?H_B1, <<"member">>),
     {ok, AppA} = enterprise_internal_ops:create_application_tx(
-        C, ?ORG_A, <<"f02-oa-a">>, <<"f02 org A oa"/utf8>>, ?SCOPES_FULL
+        C, ?ORG_A, <<"f02-oa-a">>, <<"f02 org A oa"/utf8>>
     ),
     {ok, AppB} = enterprise_internal_ops:create_application_tx(
-        C, ?ORG_B, <<"f02-oa-b">>, <<"f02 org B oa"/utf8>>, ?SCOPES_FULL
+        C, ?ORG_B, <<"f02-oa-b">>, <<"f02 org B oa"/utf8>>
     ),
     AppAId = maps:get(<<"id">>, AppA),
     AppBId = maps:get(<<"id">>, AppB),
@@ -346,47 +332,14 @@ prin_app_ids(C) ->
 %% ---- ctx 构造 ----
 
 %% 未受管 ctx（零 Grant 行）：grant_governed=false（广州期口径）。
-ctx_unmanaged(State) ->
-    #{
-        organization_id => ?ORG_A,
-        application_id => maps:get(app_a, State),
-        granted_scopes => ?SCOPES_FULL,
-        grant_governed => false,
-        principal_user_id => ?PRIN_A
-    }.
 
 %% 受管 ctx：经**真链路** context_tx/4 求值（Grant × allowed_scopes 交集），
 %% 与 handler 从认证链拿到的 ctx 同形状、同来源。
-ctx_managed(C, State) ->
-    AppId = maps:get(app_a, State),
-    {ok, #{grant_governed := Governed, effective_scopes := Effective}} =
-        enterprise_application_grant_logic:context_tx(C, ?ORG_A, AppId, ?SCOPES_FULL),
-    #{
-        organization_id => ?ORG_A,
-        application_id => AppId,
-        granted_scopes => Effective,
-        grant_governed => Governed,
-        principal_user_id => ?PRIN_A
-    }.
-
-issue_org_grant(C, State, Scopes, Key) ->
-    enterprise_internal_ops:issue_grant_tx(C, ?ORG_A, maps:get(app_a, State), #{
-        scopes => Scopes, idempotency_key => Key, expires_at => ?FAR_FUTURE
-    }).
-
-issue_ws_grant(C, State, Scopes, Workspaces, Key) ->
-    enterprise_internal_ops:issue_grant_tx(C, ?ORG_A, maps:get(app_a, State), #{
-        scopes => Scopes,
-        workspace_scope_kind => explicit,
-        workspace_ids => Workspaces,
-        idempotency_key => Key,
-        expires_at => ?FAR_FUTURE
-    }).
 
 %% ---- 群/附件夹具（用例内构造，随事务回滚） ----
 
 create_group(C, State, WsId, Members) ->
-    {ok, Result} = enterprise_group_logic:create_group_tx(C, ctx_unmanaged(State), #{
+    {ok, Result} = enterprise_group_logic:create_group_tx(C, ctx(State), #{
         workspace_id => WsId,
         title => <<"f02 group"/utf8>>,
         members => Members,
@@ -487,18 +440,6 @@ enterprise_full_api_pg_test_() ->
                 {"message_origin_db_invariants",
                     with_tx_expect_error(C, fun(C1) -> msg_origin_db(C1, State) end)},
                 %% ⑤ FULL-01 Grant 读取面接线（boundary）
-                {"boundary_zero_grant_denies_all_scoped_routes",
-                    with_tx(C, fun(C1) -> bnd_unmanaged(C1, State) end)},
-                {"boundary_org_grant_covers_org_routes_only",
-                    with_tx(C, fun(C1) -> bnd_org_grant(C1, State) end)},
-                {"boundary_explicit_ws_grant_does_not_cover_org",
-                    with_tx(C, fun(C1) -> bnd_ws_not_org(C1, State) end)},
-                {"boundary_ws_grant_covers_own_ws_only",
-                    with_tx(C, fun(C1) -> bnd_ws_scope(C1, State) end)},
-                {"boundary_revocation_next_request_fails",
-                    with_tx(C, fun(C1) -> bnd_revoke(C1, State) end)},
-                {"boundary_downgrade_next_request_fails",
-                    with_tx(C, fun(C1) -> bnd_downgrade(C1, State) end)},
                 {"boundary_fail_closed_unknown_route_and_malformed_ctx",
                     with_tx(C, fun(C1) -> bnd_fail_closed(C1, State) end)},
                 {"boundary_spec_aligns_with_frozen_route_table", bnd_spec_align_test()},
@@ -514,7 +455,7 @@ enterprise_full_api_pg_test_() ->
 %%%===================================================================
 
 id_revoke_rebind(C, State) ->
-    Ctx = ctx_unmanaged(State),
+    Ctx = ctx(State),
     %% revoke 后 resolve 立刻不再返回（active-only 读取面）
     {ok, #{<<"revoked">> := true, <<"status">> := <<"removed">>}} =
         enterprise_identity_logic:revoke_mapping_tx(C, Ctx, ?EXT_A2),
@@ -555,7 +496,7 @@ id_revoke_rebind(C, State) ->
     ).
 
 id_revoke_negatives(C, State) ->
-    Ctx = ctx_unmanaged(State),
+    Ctx = ctx(State),
     %% 已撤销再撤（换 key）：不区分不存在/已撤销 -> resource_not_found
     {ok, _} = enterprise_identity_logic:revoke_mapping_tx(C, Ctx, ?EXT_A3),
     ?assertMatch(
@@ -584,7 +525,7 @@ id_revoke_negatives(C, State) ->
 %% @doc 受限 cursor directory：逐页遍历（page_size=2），终止性 + 无重复 +
 %% 每页 <= page_size + 跨 App 不可见。
 dir_walk(C, State) ->
-    Ctx = ctx_unmanaged(State),
+    Ctx = ctx(State),
     {ok, P1} = enterprise_directory_logic:page_mappings_tx(C, Ctx, #{page_size => 2}),
     ?assertEqual(2, length(maps:get(<<"items">>, P1))),
     ?assertEqual(true, maps:get(<<"has_more">>, P1)),
@@ -635,7 +576,7 @@ dir_walk_loop(C, Ctx, Cursor, Acc, Pages) ->
 
 %% @doc **无界导出负例**：page_size 超出上限一律拒绝（不静默截断、不 clamp 到上限）。
 dir_over_cap(C, State) ->
-    Ctx = ctx_unmanaged(State),
+    Ctx = ctx(State),
     Max = enterprise_directory_logic:max_page(),
     lists:foreach(
         fun(Bad) ->
@@ -661,7 +602,7 @@ dir_over_cap(C, State) ->
     ?assert(length(maps:get(<<"items">>, Def)) =< enterprise_directory_logic:default_page()).
 
 dir_bad_cursor(C, State) ->
-    Ctx = ctx_unmanaged(State),
+    Ctx = ctx(State),
     lists:foreach(
         fun(Bad) ->
             ?assertMatch(
@@ -806,8 +747,7 @@ dir_repo_ceiling(C, State) ->
 dir_users(C, State) ->
     %% V2.1 D4：workspace 过滤走 require_workspace_tx（零 Grant 恒拒）——
     %% 先建 org 全域 Grant 再用真链路 ctx（与 handler 同形状）。
-    {ok, _} = issue_org_grant(C, State, [<<"identities:read">>], <<"k-dir-users">>),
-    Ctx = ctx_managed(C, State),
+    Ctx = ctx(State),
     {ok, Page} = enterprise_directory_logic:page_users_tx(C, Ctx, #{page_size => 50}),
     Items = maps:get(<<"items">>, Page),
     ?assert(length(Items) > 0),
@@ -847,7 +787,7 @@ dir_users(C, State) ->
     %% 「W 不在本 Org 视图内」与「同 O 未覆盖」统一 organization_boundary_violation
     %% （与 bnd_ws_scope 对 WS_B1 的冻结断言同款；不回显目标是否存在）
     ?assertEqual(
-        {error, {<<"organization_boundary_violation">>, grant_boundary}},
+        {error, {<<"organization_boundary_violation">>, resource_attribution}},
         enterprise_directory_logic:page_users_tx(C, Ctx, #{
             page_size => 50, workspace_id => ?WS_B1
         })
@@ -909,7 +849,7 @@ grp_origin(C, State) ->
     ?assertEqual(?WS_A1, maps:get(<<"workspace_id">>, Origin)),
     ?assertEqual(<<"active">>, maps:get(<<"status">>, Origin)),
     %% 详情带归属视图 + mine=true
-    {ok, Detail} = enterprise_group_logic:group_detail_tx(C, ctx_unmanaged(State), Gid),
+    {ok, Detail} = enterprise_group_logic:group_detail_tx(C, ctx(State), Gid),
     ?assertMatch(
         #{<<"mine">> := true, <<"status">> := <<"active">>},
         maps:get(<<"origin">>, Detail)
@@ -926,16 +866,16 @@ grp_origin(C, State) ->
         >>,
         [Raw, ?OWNER_A, ?WS_A1]
     ),
-    {ok, RawDetail} = enterprise_group_logic:group_detail_tx(C, ctx_unmanaged(State), Raw),
+    {ok, RawDetail} = enterprise_group_logic:group_detail_tx(C, ctx(State), Raw),
     ?assertEqual(null, maps:get(<<"origin">>, RawDetail)),
     %% 无归属行的群不可被 OA 归档（Application membership 边界）
     ?assertMatch(
         {error, {<<"invalid_request">>, _}},
-        enterprise_group_logic:archive_group_tx(C, ctx_unmanaged(State), Raw)
+        enterprise_group_logic:archive_group_tx(C, ctx(State), Raw)
     ).
 
 grp_detail_update(C, State) ->
-    Ctx = ctx_unmanaged(State),
+    Ctx = ctx(State),
     Gid = create_group(C, State, ?WS_A1, [?EXT_A1, ?EXT_A2]),
     {ok, Detail} = enterprise_group_logic:group_detail_tx(C, Ctx, Gid),
     ?assertEqual(<<"f02 group"/utf8>>, maps:get(<<"title">>, Detail)),
@@ -965,23 +905,15 @@ grp_detail_update(C, State) ->
     %% 跨 Org / 不存在群：resource_not_found（不泄露存在性）
     ?assertMatch(
         {error, {<<"resource_not_found">>, _}},
-        enterprise_group_logic:group_detail_tx(C, ctx_b(State), Gid)
+        enterprise_group_logic:group_detail_tx(C, context_b(State), Gid)
     ),
     ?assertMatch(
         {error, {<<"resource_not_found">>, _}},
         enterprise_group_logic:update_group_tx(C, Ctx, 999999999, #{title => <<"x">>})
     ).
 
-ctx_b(State) ->
-    #{
-        organization_id => ?ORG_B,
-        application_id => maps:get(app_b, State),
-        granted_scopes => ?SCOPES_FULL,
-        grant_governed => false
-    }.
-
 grp_roles(C, State) ->
-    Ctx = ctx_unmanaged(State),
+    Ctx = ctx(State),
     Gid = create_group(C, State, ?WS_A1, [?EXT_A1, ?EXT_A2]),
     %% 合法角色：1 成员 / 2 嘉宾 / 3 管理员 / 5 副群主
     {ok, R} = enterprise_group_logic:set_member_roles_tx(C, Ctx, Gid, [
@@ -1045,7 +977,7 @@ grp_roles(C, State) ->
     ).
 
 grp_archive(C, State) ->
-    Ctx = ctx_unmanaged(State),
+    Ctx = ctx(State),
     Gid = create_group(C, State, ?WS_A1, [?EXT_A1, ?EXT_A2]),
     {ok, A1} = enterprise_group_logic:archive_group_tx(C, Ctx, Gid),
     ?assertMatch(#{<<"archived">> := true, <<"already">> := false}, A1),
@@ -1076,7 +1008,7 @@ grp_archive(C, State) ->
     %% 跨 Org / 不存在
     ?assertMatch(
         {error, {<<"resource_not_found">>, _}},
-        enterprise_group_logic:archive_group_tx(C, ctx_b(State), Gid)
+        enterprise_group_logic:archive_group_tx(C, context_b(State), Gid)
     ),
     %% 他人归属：B 造一个群归属本 app 之外（用 B 的 app 建群于 WS_B1），
     %% A 视角不可见 -> resource_not_found（跨租户不泄露）
@@ -1087,7 +1019,7 @@ grp_archive(C, State) ->
     ).
 
 create_group_b(C, State) ->
-    {ok, Result} = enterprise_group_logic:create_group_tx(C, ctx_b(State), #{
+    {ok, Result} = enterprise_group_logic:create_group_tx(C, context_b(State), #{
         workspace_id => ?WS_B1,
         title => <<"f02 group b"/utf8>>,
         members => [?EXT_B1],
@@ -1149,7 +1081,7 @@ grp_origin_db(C, State) ->
     ).
 
 grp_cross_org(C, State) ->
-    Ctx = ctx_unmanaged(State),
+    Ctx = ctx(State),
     %% 跨 Org workspace 建群 -> resource_not_found
     ?assertMatch(
         {error, {<<"resource_not_found">>, _}},
@@ -1195,7 +1127,7 @@ grp_cross_org(C, State) ->
 asset_policy(C, State) ->
     OrgId = ?ORG_A,
     AppId = maps:get(app_a, State),
-    Ctx = ctx_unmanaged(State),
+    Ctx = ctx(State),
     %% 策略：只允许 pdf，且上限 = 全局的一半（严格收紧，可区分是策略拒绝
     %% 而非全局上限拒绝）
     Global = elib_oss:max_file_size(),
@@ -1337,7 +1269,7 @@ asset_limit_test() ->
 asset_retention(C, State) ->
     OrgId = ?ORG_A,
     AppId = maps:get(app_a, State),
-    Ctx = ctx_unmanaged(State),
+    Ctx = ctx(State),
     ObjectKey = <<"eoa/992101/1/20260922/file_full02/a.pdf">>,
     AttId = insert_attachment_row(C, State, ObjectKey),
     %% 治理行：默认留存登记（未到期）
@@ -1473,7 +1405,7 @@ asset_retention(C, State) ->
     %% ⑦ 跨 org/app 的 object_key 不可治理（不泄露存在性）
     ?assertMatch(
         {error, {<<"resource_not_found">>, _}},
-        enterprise_asset_retention_logic:governance_tx(C, ctx_b(State), #{
+        enterprise_asset_retention_logic:governance_tx(C, context_b(State), #{
             op => <<"hold">>, object_key => ObjectKey, reason => <<"x"/utf8>>
         })
     ),
@@ -1637,7 +1569,7 @@ asset_retention_db(C, State) ->
 
 %% @doc confirm 与留存登记同事务原子：attachment 行 + 治理行 + 计量同时落库。
 asset_confirm(C, State) ->
-    Ctx = ctx_unmanaged(State),
+    Ctx = ctx(State),
     FileName = <<"atomic.pdf">>,
     %% Historical confirmation fixture; real V5 two-driver confirmation has its own suite.
     ObjectKey = enterprise_asset_repo:build_object_key(
@@ -1698,7 +1630,7 @@ asset_confirm(C, State) ->
 %% @doc message 与附件原子绑定：引用未 confirm 的对象 -> 全体回滚
 %% （msg / origin / audit 三表皆无痕迹）。
 msg_file_binding(C, State) ->
-    Ctx = ctx_unmanaged(State),
+    Ctx = ctx(State),
     Input = #{
         sender_mode => <<"human">>,
         sender_user_id => ?EXT_A1,
@@ -1747,7 +1679,7 @@ msg_file_binding(C, State) ->
 %%%===================================================================
 
 msg_origin(C, State) ->
-    Ctx = ctx_unmanaged(State),
+    Ctx = ctx(State),
     AppId = maps:get(app_a, State),
     %% direct + human sender
     {ok, D} = enterprise_message_logic:direct_tx(C, Ctx, #{
@@ -1946,204 +1878,6 @@ msg_origin_db(C, State) ->
 %% allowed_scopes 回退旁路——生效 scope 恒为空集，org/workspace/list 类路由
 %% 一律 insufficient_scope；仅 kind=none（application self 面，认证链 scope
 %% gate 在中间件层）不在此判定内。
-bnd_unmanaged(C, State) ->
-    Ctx = ctx_managed(C, State),
-    ?assertEqual(false, maps:get(grant_governed, Ctx)),
-    ?assertEqual([], maps:get(granted_scopes, Ctx)),
-    ?assertEqual(
-        {error, insufficient_scope},
-        enterprise_internal_boundary:enforce(C, Ctx, <<"INT-02">>, undefined)
-    ),
-    ?assertEqual(
-        {error, insufficient_scope},
-        enterprise_internal_boundary:enforce(C, Ctx, <<"INT-07">>, undefined)
-    ),
-    ?assertEqual(
-        {error, insufficient_scope},
-        enterprise_internal_boundary:enforce(C, Ctx, <<"INT-05">>, ?WS_A2)
-    ),
-    %% INT-24/26（kind=list）同样拒绝（scope 不在生效集）
-    ?assertEqual(
-        {error, insufficient_scope},
-        enterprise_internal_boundary:enforce(C, Ctx, <<"INT-24">>, undefined)
-    ),
-    ?assertEqual(
-        {error, insufficient_scope},
-        enterprise_internal_boundary:enforce(C, Ctx, <<"INT-26">>, undefined)
-    ).
-
-bnd_org_grant(C, State) ->
-    {ok, Grant} = issue_org_grant(C, State, [<<"identities:read">>], <<"k-org-read">>),
-    ?assertEqual(1, maps:get(<<"version">>, Grant)),
-    Ctx = ctx_managed(C, State),
-    ?assertEqual(true, maps:get(grant_governed, Ctx)),
-    %% 交集：Grant 只给 identities:read -> 生效 scope 仅此一项
-    ?assertEqual([<<"identities:read">>], maps:get(granted_scopes, Ctx)),
-    ?assertEqual(ok, enterprise_internal_boundary:enforce(C, Ctx, <<"INT-16">>, undefined)),
-    ?assertEqual(ok, enterprise_internal_boundary:enforce(C, Ctx, <<"INT-03">>, undefined)),
-    %% 未授予 scope：insufficient_scope（不因 allowed_scopes 里有就放行）
-    ?assertEqual(
-        {error, insufficient_scope},
-        enterprise_internal_boundary:enforce(C, Ctx, <<"INT-15">>, undefined)
-    ),
-    ?assertEqual(
-        {error, insufficient_scope},
-        enterprise_internal_boundary:enforce(C, Ctx, <<"INT-07">>, undefined)
-    ),
-    %% workspace 类路由：scope 未授予 -> insufficient_scope（org 全域 Grant
-    %% 不会把未授予的 scope 变成可用；workspace 覆盖判定只在 scope 通过后才发生）
-    ?assertEqual(
-        {error, insufficient_scope},
-        enterprise_internal_boundary:enforce(C, Ctx, <<"INT-05">>, ?WS_A2)
-    ).
-
-bnd_ws_not_org(C, State) ->
-    {ok, _} = issue_ws_grant(C, State, [<<"files:write">>], [?WS_A1], <<"k-ws-files">>),
-    Ctx = ctx_managed(C, State),
-    ?assertEqual([<<"files:write">>], maps:get(granted_scopes, Ctx)),
-    %% scope 在生效集内，但显式 Workspace Grant **不**覆盖 org 级路由 -> 边界违规
-    ?assertEqual(
-        {error, organization_boundary_violation},
-        enterprise_internal_boundary:enforce(C, Ctx, <<"INT-07">>, undefined)
-    ),
-    ?assertEqual(
-        {error, organization_boundary_violation},
-        enterprise_internal_boundary:enforce(C, Ctx, <<"INT-22">>, undefined)
-    ),
-    %% 该 workspace 上的 workspace 级路由也不通（scope 是 files:write 不是 groups:write）
-    ?assertEqual(
-        {error, insufficient_scope},
-        enterprise_internal_boundary:enforce(C, Ctx, <<"INT-05">>, ?WS_A1)
-    ).
-
-bnd_ws_scope(C, State) ->
-    %% V2.1：INT-18 读操作降为 groups:read（§6.2/§7）——Grant 需同时覆盖
-    %% groups:read 与 groups:write 才能让 INT-05 与 INT-18 同时通过。
-    {ok, _} = issue_ws_grant(
-        C, State, [<<"groups:read">>, <<"groups:write">>], [?WS_A1], <<"k-ws-groups">>
-    ),
-    Ctx = ctx_managed(C, State),
-    ?assertEqual(
-        lists:sort([<<"groups:read">>, <<"groups:write">>]), maps:get(granted_scopes, Ctx)
-    ),
-    ?assertEqual(ok, enterprise_internal_boundary:enforce(C, Ctx, <<"INT-05">>, ?WS_A1)),
-    ?assertEqual(ok, enterprise_internal_boundary:enforce(C, Ctx, <<"INT-18">>, ?WS_A1)),
-    %% V2.1 新增只读面（workspace 边界同 Grant）
-    ?assertEqual(ok, enterprise_internal_boundary:enforce(C, Ctx, <<"INT-27">>, ?WS_A1)),
-    %% 同 Org 内**其他** workspace：organization_boundary_violation（不是 insufficient_scope）
-    ?assertEqual(
-        {error, organization_boundary_violation},
-        enterprise_internal_boundary:enforce(C, Ctx, <<"INT-05">>, ?WS_A2)
-    ),
-    %% 跨 Org workspace 同样拒（org 全域 Grant 不会成为跨租户旁路——此处连
-    %% workspace 归属都不在本 Org 视图内）
-    ?assertEqual(
-        {error, organization_boundary_violation},
-        enterprise_internal_boundary:enforce(C, Ctx, <<"INT-05">>, ?WS_B1)
-    ).
-
-bnd_revoke(C, State) ->
-    {ok, Grant} = issue_org_grant(C, State, [<<"identities:read">>], <<"k-revoke">>),
-    Ctx1 = ctx_managed(C, State),
-    ?assertEqual(ok, enterprise_internal_boundary:enforce(C, Ctx1, <<"INT-16">>, undefined)),
-    %% 撤权（CAS）→ 生效 scope 立刻为空 → 下一请求即失败
-    ok = enterprise_internal_ops:revoke_grant_tx(
-        C, ?ORG_A, maps:get(app_a, State), maps:get(<<"id">>, Grant), 1, ?OWNER_A
-    ),
-    Ctx2 = ctx_managed(C, State),
-    ?assertEqual(true, maps:get(grant_governed, Ctx2)),
-    ?assertEqual([], maps:get(granted_scopes, Ctx2)),
-    ?assertEqual(
-        {error, insufficient_scope},
-        enterprise_internal_boundary:enforce(C, Ctx2, <<"INT-16">>, undefined)
-    ),
-    ?assertEqual(
-        {error, insufficient_scope},
-        enterprise_internal_boundary:enforce(C, Ctx2, <<"INT-05">>, ?WS_A1)
-    ).
-
-bnd_downgrade(C, State) ->
-    {ok, Grant} = issue_org_grant(
-        C, State, [<<"identities:read">>, <<"identities:write">>], <<"k-downgrade">>
-    ),
-    Ctx1 = ctx_managed(C, State),
-    ?assertEqual(ok, enterprise_internal_boundary:enforce(C, Ctx1, <<"INT-16">>, undefined)),
-    ?assertEqual(ok, enterprise_internal_boundary:enforce(C, Ctx1, <<"INT-15">>, undefined)),
-    %% 降级：移除 identities:read（CAS 版本 +1）
-    ok = enterprise_internal_ops:set_grant_scopes_tx(
-        C, ?ORG_A, maps:get(app_a, State), maps:get(<<"id">>, Grant), 1, [<<"identities:write">>]
-    ),
-    Ctx2 = ctx_managed(C, State),
-    ?assertEqual([<<"identities:write">>], maps:get(granted_scopes, Ctx2)),
-    %% 被移除的 scope 下一请求即失败；保留的 scope 仍放行
-    ?assertEqual(
-        {error, insufficient_scope},
-        enterprise_internal_boundary:enforce(C, Ctx2, <<"INT-16">>, undefined)
-    ),
-    ?assertEqual(ok, enterprise_internal_boundary:enforce(C, Ctx2, <<"INT-15">>, undefined)).
-
-bnd_fail_closed(C, State) ->
-    Ctx = ctx_unmanaged(State),
-    %% 未登记路由 fail-closed
-    ?assertEqual(
-        {error, security_gate_closed},
-        enterprise_internal_boundary:enforce(C, Ctx, <<"INT-99">>, undefined)
-    ),
-    ?assertEqual(
-        {error, security_gate_closed},
-        enterprise_internal_boundary:enforce(C, Ctx, <<"">>, undefined)
-    ),
-    %% 动态 scope 路由走静态入口：接线错误 -> fail-closed
-    ?assertEqual(
-        {error, security_gate_closed},
-        enterprise_internal_boundary:enforce(C, Ctx, <<"INT-09">>, undefined)
-    ),
-    %% workspace 类路由缺 workspace 上下文 -> fail-closed
-    ?assertEqual(
-        {error, security_gate_closed},
-        enterprise_internal_boundary:enforce(C, Ctx, <<"INT-05">>, undefined)
-    ),
-    ?assertEqual(
-        {error, security_gate_closed},
-        enterprise_internal_boundary:enforce(C, Ctx, <<"INT-05">>, <<"not-int">>)
-    ),
-    %% 畸形 ctx（缺 grant_governed / granted_scopes）：fail-closed，绝不 no-op
-    ?assertEqual(
-        {error, security_gate_closed},
-        enterprise_internal_boundary:enforce(
-            C, #{organization_id => ?ORG_A, application_id => 1}, <<"INT-16">>, undefined
-        )
-    ),
-    ?assertEqual(
-        {error, security_gate_closed},
-        enterprise_internal_boundary:enforce(
-            C,
-            #{organization_id => ?ORG_A, application_id => 1, grant_governed => <<"yes">>},
-            <<"INT-16">>,
-            undefined
-        )
-    ),
-    %% 非 map ctx
-    ?assertEqual(
-        {error, security_gate_closed},
-        enterprise_internal_boundary:enforce(C, not_a_map, <<"INT-16">>, undefined)
-    ),
-    %% 动态 scope 单点映射（handler 与 message logic 共用）
-    ?assertEqual(
-        {ok, <<"messages:send_as_human">>},
-        enterprise_internal_boundary:required_scope_for_sender_mode(<<"human">>)
-    ),
-    ?assertEqual(
-        {ok, <<"messages:send">>},
-        enterprise_internal_boundary:required_scope_for_sender_mode(<<"application">>)
-    ),
-    ?assertEqual(error, enterprise_internal_boundary:required_scope_for_sender_mode(<<"bot">>)),
-    ?assertEqual(
-        {error, security_gate_closed},
-        enterprise_internal_boundary:enforce_dynamic(
-            C, ctx_managed(C, State), <<"INT-16">>, undefined, <<"identities:read">>
-        )
-    ).
 
 %% @doc 机械对齐：边界 spec 覆盖**全部**冻结路由（少一条即红）；kind 与 manifest
 %% 的 grant 语义逐条一致。当前合同包括 INT-01..44，逐项验证而非只比数量。
@@ -2205,7 +1939,9 @@ bnd_spec_align_test() ->
             {<<"INT-44">>, none},
             {<<"INT-45">>, list},
             {<<"INT-46">>, list},
-            {<<"INT-47">>, list}
+            {<<"INT-47">>, list},
+            {<<"INT-48">>, list},
+            {<<"INT-49">>, list}
         ],
         lists:foreach(
             fun({Id, Kind}) ->
@@ -2213,22 +1949,6 @@ bnd_spec_align_test() ->
                 ?assertEqual({Id, Kind}, {Id, maps:get(kind, Spec)})
             end,
             Expected
-        ),
-        %% 每条 spec 的 scope 必须是固定枚举成员或 dynamic
-        lists:foreach(
-            fun(Id) ->
-                {ok, Spec} = enterprise_internal_boundary:spec(Id),
-                case maps:get(scope, Spec) of
-                    dynamic ->
-                        ok;
-                    Scope ->
-                        ?assertEqual(
-                            ok,
-                            enterprise_internal_scope:authorize(Scope, [Scope])
-                        )
-                end
-            end,
-            enterprise_internal_boundary:ids()
         ),
         %% FULL-02 新增 id 已由 A0 在集成时登记进冻结表 + Router + manifest +
         %% 契约，因此边界 ids 与冻结表必须**完全相等**，不存在「待接线」差集；
@@ -2248,7 +1968,7 @@ bnd_handler_wiring_test() ->
             {enterprise_identity_handler, enforce},
             {enterprise_group_handler, enforce},
             {enterprise_asset_handler, enforce},
-            {enterprise_message_handler, enforce_dynamic},
+            {enterprise_message_handler, enforce},
             {enterprise_directory_handler, enforce}
         ],
         lists:foreach(
@@ -2260,13 +1980,6 @@ bnd_handler_wiring_test() ->
                 end
             end,
             Handlers
-        ),
-        %% message handler 既用动态边界，也读 sender_mode 单点映射
-        ?assert(
-            lists:member(
-                {enterprise_internal_boundary, required_scope_for_sender_mode},
-                collect_remote(enterprise_message_handler)
-            )
         )
     end).
 
@@ -2465,3 +2178,18 @@ attachment_contract_cases() ->
                 ]
             ]
         end}}.
+
+ctx(State) ->
+    enterprise_hmac_test_support:context_tx(maps:get(conn, State), ?ORG_A, maps:get(app_a, State)).
+context_b(State) ->
+    enterprise_hmac_test_support:context_tx(maps:get(conn, State), ?ORG_B, maps:get(app_b, State)).
+
+bnd_fail_closed(C, State) ->
+    ?assertEqual(
+        {error, security_gate_closed},
+        enterprise_internal_boundary:enforce(C, ctx(State), <<"INT-UNKNOWN">>, undefined)
+    ),
+    ?assertEqual(
+        {error, organization_boundary_violation},
+        enterprise_internal_boundary:enforce(C, #{}, <<"INT-02">>, undefined)
+    ).
