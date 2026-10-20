@@ -23,6 +23,8 @@ get_routes() ->
     MainRoutes =
         [
             {"/", index_handler, #{action => help}},
+            {"/channel/:channel_id", channel_link_landing_handler, #{}},
+            {"/channel/:channel_id/article/:message_id", channel_link_landing_handler, #{}},
             {"/help", index_handler, #{action => help}},
 
             % 品牌配置（运行时白标，公开，客户端启动拉取，见 open/0）

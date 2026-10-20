@@ -71,6 +71,9 @@ execute(Req, Env) ->
         %% 与 /w/、/seat/ 同款直通；内容由 :code 派生、零 DB 查询，
         %% 形状门外（valid_code/1）一律 404 静态文案。`/invite` 根段全站唯一
         %% （不与 /api/*、/adm/*、/w/*、/seat/*、/static/* 冲突）。
+        %% 频道公开落地页仅展示静态打开提示；API 内容仍走认证链。
+        <<"/channel/", _/binary>> ->
+            {ok, Req, Env};
         <<"/invite/", _Tail/binary>> ->
             {ok, Req, Env};
         _ ->
