@@ -50,6 +50,20 @@ tables:
     mechanism: delete rows by user ownership column
     review: self-evident
     retention: n/a
+  attach_direct_attempt:
+    action: delete
+    owner: payments
+    reason: 直传 V1 attempt 台账（session/staging 元数据与状态机），无消息正文；随 attach_pending 直传会话生命周期清理（expired/GC），用户注销经附件归属链处置
+    mechanism: delete rows by direct session ownership (expired rows GC via fn_dv1_gc_claim)
+    review: self-evident
+    retention: n/a
+  attach_direct_cleanup:
+    action: delete
+    owner: payments
+    reason: 直传 V1 GC 台账（物理对象 key + 时间戳 + claim 状态，无 PII）；行在 cleanup ack 后即清除
+    mechanism: delete rows after GC ack (unique physical_key, short-lived ledger)
+    review: self-evident
+    retention: n/a
   attach_pending:
     action: delete
     owner: payments

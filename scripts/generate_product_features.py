@@ -31,6 +31,7 @@ FEATURE_BACKEND_MODULES = {
         # test_enterprise_backend_modules_cover_feature_directory 机械核对。
         "eb_asset_app",
         "eb_asset_content",
+        "eb_asset_direct",
         "eb_asset_object_garage",
         "eb_asset_object_stub",
         "eb_asset_port",

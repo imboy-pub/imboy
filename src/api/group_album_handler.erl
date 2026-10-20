@@ -40,6 +40,8 @@ handle_action(rename_album, Req, State) -> rename_album(Req, State);
 handle_action(delete_album, Req, State) -> delete_album(Req, State);
 handle_action(upload_photo, Req, State) -> upload_photo(Req, State);
 handle_action(batch_upload, Req, State) -> batch_upload(Req, State);
+handle_action(bind_photo, Req, State) -> bind_photo(Req, State);
+handle_action(bind_batch, Req, State) -> bind_batch(Req, State);
 handle_action(list_photos, Req, State) -> list_photos(Req, State);
 handle_action(photo_detail, Req, State) -> photo_detail(Req, State);
 handle_action(delete_photo, Req, State) -> delete_photo(Req, State);
@@ -199,6 +201,61 @@ delete_album(Req0, State) ->
 %% @param Req0 Cowboy请求对象
 %% @param State 状态映射
 %% @return 处理后的请求对象
+%% direct-v1 确认引用绑定（step-11）：单张/批量 bind，正文不再经本入口。
+-spec bind_photo(cowboy_req:req(), map()) -> cowboy_req:req().
+bind_photo(Req0, State) ->
+    CurrentUid = maps:get(current_uid, State),
+    {ok, Body, Req1} = elib_req:body(Req0, []),
+    Gid = elib_cnv:safe_to_integer(maps:get(<<"gid">>, Body, 0)),
+    AlbumId = elib_cnv:safe_to_integer(maps:get(<<"album_id">>, Body, 0)),
+    ObjectKey = maps:get(<<"object_key">>, Body, <<>>),
+    case {Gid, AlbumId, ObjectKey} of
+        {0, _, _} ->
+            elib_response:error(Req1, <<"群组ID不能为空"/utf8>>, ?ERR_BAD_REQUEST);
+        {_, 0, _} ->
+            elib_response:error(Req1, <<"相册ID不能为空"/utf8>>, ?ERR_BAD_REQUEST);
+        {_, _, <<>>} ->
+            elib_response:error(Req1, <<"object_key不能为空"/utf8>>, ?ERR_BAD_REQUEST);
+        _ ->
+            case
+                group_album_ds:bind_photo(
+                    Gid,
+                    CurrentUid,
+                    AlbumId,
+                    maps:get(<<"photo_name">>, Body, <<"photo.jpg">>),
+                    ObjectKey,
+                    elib_cnv:safe_to_integer(maps:get(<<"photo_size">>, Body, 0)),
+                    maps:get(<<"mime_type">>, Body, <<"image/jpeg">>),
+                    maps:get(<<"sha256">>, Body, <<>>)
+                )
+            of
+                {ok, Data} -> elib_response:success(Req1, Data);
+                {error, Reason} -> fmt_reason(bind_photo, Reason, <<"绑定失败"/utf8>>, Req1)
+            end
+    end.
+
+-spec bind_batch(cowboy_req:req(), map()) -> cowboy_req:req().
+bind_batch(Req0, State) ->
+    CurrentUid = maps:get(current_uid, State),
+    {ok, Body, Req1} = elib_req:body(Req0, []),
+    Gid = elib_cnv:safe_to_integer(maps:get(<<"gid">>, Body, 0)),
+    Items = maps:get(<<"items">>, Body, []),
+    case {Gid, Items} of
+        {0, _} ->
+            elib_response:error(Req1, <<"群组ID不能为空"/utf8>>, ?ERR_BAD_REQUEST);
+        {_, []} ->
+            elib_response:error(Req1, <<"items不能为空"/utf8>>, ?ERR_BAD_REQUEST);
+        _ when is_list(Items), length(Items) > 50 ->
+            elib_response:error(Req1, <<"批量上限 50"/utf8>>, ?ERR_BAD_REQUEST);
+        _ ->
+            {ok, Results} = group_album_ds:bind_photos(Gid, CurrentUid, Items, 50),
+            elib_response:success(Req1, #{<<"results">> => Results})
+    end.
+
+fmt_reason(F, Reason, Default, Req) ->
+    ?ERROR_LOG(["group_album ", F, " failed: ", Reason]),
+    elib_response:error(Req, Default, ?ERR_BAD_REQUEST).
+
 -spec upload_photo(cowboy_req:req(), map()) -> cowboy_req:req().
 upload_photo(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),

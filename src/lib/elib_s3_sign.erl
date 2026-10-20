@@ -9,6 +9,7 @@
 
 -export([presign_put/5, presign_get/4, presign_delete/4, authorization_header/7]).
 -export([presign_put_ctx/6, presign_url_at/8]).
+-export([presign_signed_url_at/8, authorization_header_extra/8]).
 -export([format_date/1, format_amz_date/1]).
 -export([uri_encode_path/1]).
 
@@ -49,6 +50,9 @@ presign_url_at(Method, Endpoint, Bucket, ObjectKey, MimeType, Now, Expires) ->
     presign_url_at(Method, Endpoint, Bucket, ObjectKey, MimeType, Now, Expires, garage_config()).
 
 %% 已校验位置快照的签名不再读取可变全局配置。
+%% V5 旧语义原样保留（I14）：SignedHeaders=host，Content-Type 仅作 query
+%% 参数不参与签名。direct-v1 的签名头绑定走 presign_signed_url_at/8，
+%% 不得混用。
 presign_url_at(Method, Endpoint, Bucket, ObjectKey, MimeType, Now, Expires, Cfg) ->
     DateStr = format_date(Now),
     AmzDate = format_amz_date(Now),
@@ -82,6 +86,71 @@ presign_url_at(Method, Endpoint, Bucket, ObjectKey, MimeType, Now, Expires, Cfg)
     CanonicalUri = <<"/", Bucket/binary, "/", EncObjectKey/binary>>,
     CanonicalHeaders = <<"host:", Host/binary, "\n">>,
 
+    CanonicalRequest = iolist_to_binary([
+        Method,
+        "\n",
+        CanonicalUri,
+        "\n",
+        QueryBin,
+        "\n",
+        CanonicalHeaders,
+        "\n",
+        SignedHeaders,
+        "\n",
+        "UNSIGNED-PAYLOAD"
+    ]),
+
+    StringToSign = string_to_sign(AmzDate, DateStr, Region, CanonicalRequest),
+    SignKey = signing_key(SecretKey, DateStr, Region, <<"s3">>),
+    Sig = binary_to_hex(hmac_sha256(SignKey, StringToSign)),
+
+    <<Endpoint/binary, "/", Bucket/binary, "/", EncObjectKey/binary, "?", QueryBin/binary,
+        "&X-Amz-Signature=", Sig/binary>>.
+
+%% @doc direct-v1（step-5 / 协议 §3）：通用 signed-headers presign。
+%%
+%% ExtraSignedHeaders 为除 host 外要绑定的请求头列表（[{小写名, 值}]），
+%% 典型：content-type 与 x-amz-checksum-sha256（原始 32 字节摘要的 Base64，
+%% I04——不是 hex 文本）。这些头的值进入 Canonical Headers 参与签名，
+%% 客户端 PUT 时必须携带完全一致的头；缺失/换值/换正文都会 Signature 或
+%% checksum 校验失败（T05/T06/T07）。payload 恒 UNSIGNED-PAYLOAD。
+-spec presign_signed_url_at(
+    binary(),
+    binary(),
+    binary(),
+    binary(),
+    [{binary(), binary()}],
+    calendar:datetime(),
+    pos_integer(),
+    map()
+) -> binary().
+presign_signed_url_at(Method, Endpoint, Bucket, ObjectKey, ExtraSignedHeaders, Now, Expires, Cfg) ->
+    DateStr = format_date(Now),
+    AmzDate = format_amz_date(Now),
+    Region = maps:get(region, Cfg, <<"garage">>),
+    AccessKey = maps:get(access_key, Cfg, <<>>),
+    SecretKey = maps:get(secret_key, Cfg, <<>>),
+    Host = host_from_endpoint(Endpoint),
+
+    SignedList = lists:sort([{<<"host">>, Host} | ExtraSignedHeaders]),
+    SignedHeaders = lists:join(<<";">>, [Name || {Name, _} <- SignedList]),
+    CanonicalHeaders = iolist_to_binary([
+        [Name, ":", trim_ws(Value), "\n"]
+     || {Name, Value} <- SignedList
+    ]),
+
+    Credential = <<AccessKey/binary, "/", DateStr/binary, "/", Region/binary, "/s3/aws4_request">>,
+    RawParts = [
+        <<"X-Amz-Algorithm=AWS4-HMAC-SHA256">>,
+        <<"X-Amz-Credential=", (uri_encode(Credential))/binary>>,
+        <<"X-Amz-Date=", AmzDate/binary>>,
+        <<"X-Amz-Expires=", (integer_to_binary(Expires))/binary>>,
+        <<"X-Amz-SignedHeaders=", (uri_encode(iolist_to_binary(SignedHeaders)))/binary>>
+    ],
+    QueryBin = iolist_to_binary(lists:join(<<"&">>, lists:sort(RawParts))),
+
+    EncObjectKey = uri_encode_path(ObjectKey),
+    CanonicalUri = <<"/", Bucket/binary, "/", EncObjectKey/binary>>,
     CanonicalRequest = iolist_to_binary([
         Method,
         "\n",
@@ -165,6 +234,78 @@ authorization_header(Method, Bucket, ObjectKey, ContentType, AmzDate, AccessKey,
     Credential = <<AccessKey/binary, "/", DateStr/binary, "/", Region/binary, "/s3/aws4_request">>,
     <<"AWS4-HMAC-SHA256 Credential=", Credential/binary, ", SignedHeaders=", SignedHeaders/binary,
         ", Signature=", Sig/binary>>.
+
+%% @doc direct-v1（step-5）：带扩展签名头的 Authorization header（服务端
+%% 控制请求用，如 CopyObject 的 x-amz-copy-source）。ExtraHeaders 为
+%% [{小写名, 值}]；canonical 集合恒含 host/x-amz-content-sha256/x-amz-date，
+%% 有 ContentType 时含 content-type。payload 恒 UNSIGNED-PAYLOAD（Copy
+%% 无正文；checksum 语义由 grant 的 staging PUT 承担，Copy 依赖
+%% copy-source 与 target 的服务端逐字节复制）。
+-spec authorization_header_extra(
+    binary(),
+    binary(),
+    binary(),
+    binary() | undefined,
+    binary(),
+    binary(),
+    binary(),
+    [{binary(), binary()}]
+) -> binary().
+authorization_header_extra(
+    Method,
+    Bucket,
+    ObjectKey,
+    ContentType,
+    AmzDate,
+    AccessKey,
+    SecretKey,
+    ExtraHeaders
+) ->
+    Cfg = garage_config(),
+    Region = maps:get(region, Cfg, <<"garage">>),
+    DateStr = binary:part(AmzDate, 0, 8),
+    Endpoint = maps:get(endpoint, Cfg, <<"http://127.0.0.1:3900">>),
+    Host = host_from_endpoint(Endpoint),
+
+    Base =
+        case ContentType of
+            undefined -> [];
+            <<>> -> [];
+            CT -> [{<<"content-type">>, CT}]
+        end,
+    SignedList = lists:sort(
+        [
+            {<<"host">>, Host},
+            {<<"x-amz-content-sha256">>, <<"UNSIGNED-PAYLOAD">>},
+            {<<"x-amz-date">>, AmzDate}
+        ] ++
+            Base ++ ExtraHeaders
+    ),
+    SignedHeaders = iolist_to_binary(lists:join(<<";">>, [N || {N, _} <- SignedList])),
+    CanonicalHeaders = iolist_to_binary([[N, ":", trim_ws(V), "\n"] || {N, V} <- SignedList]),
+
+    CanonicalUri = <<"/", Bucket/binary, "/", (uri_encode_path(ObjectKey))/binary>>,
+    CanonicalRequest = iolist_to_binary([
+        Method,
+        "\n",
+        CanonicalUri,
+        "\n",
+        "\n",
+        CanonicalHeaders,
+        "\n",
+        SignedHeaders,
+        "\n",
+        "UNSIGNED-PAYLOAD"
+    ]),
+    StringToSign = string_to_sign(AmzDate, DateStr, Region, CanonicalRequest),
+    SignKey = signing_key(SecretKey, DateStr, Region, <<"s3">>),
+    Sig = binary_to_hex(hmac_sha256(SignKey, StringToSign)),
+    Credential = <<AccessKey/binary, "/", DateStr/binary, "/", Region/binary, "/s3/aws4_request">>,
+    <<"AWS4-HMAC-SHA256 Credential=", Credential/binary, ", SignedHeaders=", SignedHeaders/binary,
+        ", Signature=", Sig/binary>>.
+
+trim_ws(B) when is_binary(B) ->
+    string:trim(B, both, " \t").
 
 %% ===== 内部函数 =====
 

@@ -8,7 +8,9 @@
     Namespace :: binary(),
     Container :: binary(),
     Key :: binary(),
-    Body :: binary() | {file, file:filename_all()}
+    Body ::
+        binary()
+        | {file, file:filename_all()}
         | {upload_spool, pid(), non_neg_integer(), binary()}
 ) ->
     ok | {error, term()}.
@@ -16,6 +18,21 @@
 -callback head(Namespace :: binary(), Container :: binary(), Key :: binary()) ->
     {ok, #{size := non_neg_integer(), content_type := binary()}}
     | {error, not_found | term()}.
+
+%% direct-v1（step-5）：真 HEAD 控制接口——只读元数据，禁止整对象读取。
+-callback head_bounded(Namespace :: binary(), Container :: binary(), Key :: binary()) ->
+    {ok, #{size := non_neg_integer(), content_type := binary()}}
+    | {error, not_found | term()}.
+
+%% direct-v1（step-5）：单次 Copy dispatch——source → target 服务端逐字节
+%% 复制；一次授权恰一次请求，结果未知由上层按 UNKNOWN_QUARANTINED 隔离。
+-callback copy_dispatch(
+    Namespace :: binary(),
+    Container :: binary(),
+    SourceKey :: binary(),
+    TargetKey :: binary()
+) ->
+    {ok, map()} | {error, not_found | term()}.
 
 -callback delete(
     Namespace :: binary(),

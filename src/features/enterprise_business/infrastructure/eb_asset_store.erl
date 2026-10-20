@@ -38,6 +38,7 @@
 -export([
     put_private/3,
     stream_content/3,
+    stream_content_chunked/3,
     delete_private/3,
     insert_asset/3,
     fetch_asset/3,
@@ -67,8 +68,7 @@ put_private(OrgId, WorkspaceId, Descriptor) when is_map(Descriptor) ->
         eb_pg_exec:with_tenant(OrgId, WorkspaceId, fun() ->
             case {maps:get(id, Descriptor, undefined), maps:get(payload, Descriptor, undefined)} of
                 {Id, _} when not is_integer(Id) -> {error, invalid_descriptor};
-                {_, Payload} ->
-                    put_payload(OrgId, WorkspaceId, Descriptor, Payload, ObjectStore)
+                {_, Payload} -> put_payload(OrgId, WorkspaceId, Descriptor, Payload, ObjectStore)
             end
         end)
     end);
@@ -117,13 +117,19 @@ reserve_and_put(OrgId, WorkspaceId, Descriptor, Payload, ObjectStore) ->
                     Ctx when is_map(Ctx) -> Meta0#{signature_context => Ctx};
                     _ -> Meta0
                 end,
-            CheckedMeta = case maps:get(upload_subject, D, undefined) of
-                Subject0 when is_map(Subject0) ->
-                    Meta#{recheck => fun(Identity) ->
-                        eb_pg_asset_meta:recheck_registered_put(OrgId, WorkspaceId, D, Identity)
-                    end};
-                _ -> Meta
-            end,
+            CheckedMeta =
+                case maps:get(upload_subject, D, undefined) of
+                    Subject0 when is_map(Subject0) ->
+                        Meta#{
+                            recheck => fun(Identity) ->
+                                eb_pg_asset_meta:recheck_registered_put(
+                                    OrgId, WorkspaceId, D, Identity
+                                )
+                            end
+                        };
+                    _ ->
+                        Meta
+                end,
             write_reserved(Row, Payload, CheckedMeta, ObjectStore);
         {error, _} = Error ->
             Error
@@ -181,6 +187,61 @@ read_object(OrgId, WorkspaceId, _AssetId, Row) ->
         end
     end).
 
+%% direct-v1（step-15，协议 §7）：企业 content 受控流式读——正文不整读进
+%% BEAM；物理 winner 键解析沿 step-4 reader 兼容（frozen_location）；Range
+%% 分块经受控读注入器（416→eof 合同），HEAD 语义由调用方以 size 呈现。
+%% 历史行（legacy_unknown/无物理键）回退既有全量 read_frozen（兼容不变）。
+-spec stream_content_chunked(integer(), integer(), integer()) ->
+    {ok, #{
+        read_fun := fun((non_neg_integer(), non_neg_integer()) -> {ok, binary()} | eof),
+        size := non_neg_integer(),
+        mime => binary()
+    }}
+    | {error, term()}
+    | {fallback_full, term()}.
+stream_content_chunked(OrgId, WorkspaceId, AssetId) ->
+    eb_pg_exec:with_tenant(OrgId, WorkspaceId, fun() ->
+        case eb_pg_asset_meta:fetch_asset(OrgId, WorkspaceId, AssetId) of
+            {ok, Row} ->
+                case maps:get(status, Row, undefined) of
+                    deleted ->
+                        {error, not_found};
+                    _Other ->
+                        case location(Row) of
+                            {ok,
+                                #{
+                                    driver := garage,
+                                    namespace := Ns,
+                                    container := Container,
+                                    key := Key
+                                } = I} ->
+                                case attachment_storage_garage:head_bounded(Ns, Container, Key) of
+                                    {ok, #{size := Size}} ->
+                                        {ok, #{
+                                            read_fun =>
+                                                eb_asset_direct:read_fun_from_snapshot(I),
+                                            size => Size,
+                                            mime => maps:get(
+                                                mime,
+                                                Row,
+                                                <<"application/octet-stream">>
+                                            )
+                                        }};
+                                    {error, not_found} ->
+                                        {error, not_found};
+                                    {error, R} ->
+                                        {error, {object_store, R}}
+                                end;
+                            _ ->
+                                %% 历史位置/非 garage：回退全量（兼容不变）
+                                {fallback_full, read_object(OrgId, WorkspaceId, AssetId, Row)}
+                        end
+                end;
+            {error, _} = Err ->
+                Err
+        end
+    end).
+
 put_reserved(eb_asset_object_stub = Store, Row, Payload, Meta) ->
     Store:put(maps:get(object_key, Row), Payload, Meta);
 put_reserved(_, Row, Payload, Meta) ->
@@ -189,7 +250,9 @@ put_reserved(_, Row, Payload, Meta) ->
             case maps:get(signature_context, Meta, undefined) of
                 #{expires_at := Expiry} ->
                     attachment_storage_disk:put_snapshot(
-                        I, Payload, calendar:datetime_to_gregorian_seconds(Expiry) - 62167219200,
+                        I,
+                        Payload,
+                        calendar:datetime_to_gregorian_seconds(Expiry) - 62167219200,
                         fun() -> recheck_put(Meta, I) end
                     );
                 _ ->
@@ -197,10 +260,12 @@ put_reserved(_, Row, Payload, Meta) ->
             end;
         {ok, #{driver := garage} = I} ->
             case recheck_put(Meta, I) of
-                ok -> attachment_storage_garage:put_snapshot(
-                    I, Payload, maps:get(mime, Meta), maps:get(signature_context, Meta, #{})
-                );
-                Error -> Error
+                ok ->
+                    attachment_storage_garage:put_snapshot(
+                        I, Payload, maps:get(mime, Meta), maps:get(signature_context, Meta, #{})
+                    );
+                Error ->
+                    Error
             end;
         {ok, legacy_unknown} ->
             {error, historical_location_unverified};

@@ -473,11 +473,13 @@ install_asset_registry() ->
     Registry = attachment_storage:registry(),
     Suffix = binary:encode_hex(crypto:strong_rand_bytes(16), lowercase),
     Namespace = <<"eb-test-", Suffix/binary>>,
-    Base = case os:getenv("TMPDIR") of
-        false -> "/tmp";
-        "" -> "/tmp";
-        Dir -> Dir
-    end,
+    Base = real_path(
+        case os:getenv("TMPDIR") of
+            false -> "/tmp";
+            "" -> "/tmp";
+            Dir -> Dir
+        end
+    ),
     Root = filename:join(Base, binary_to_list(Namespace)),
     ok = file:make_dir(Root),
     State = #{previous_registry => Previous, root => Root},
@@ -485,16 +487,42 @@ install_asset_registry() ->
         ok = file:change_mode(Root, 8#700),
         Roots = maps:get(roots, Registry, #{}),
         Uploads = maps:get(upload_namespaces, Registry, #{}),
-        Record = #{driver => <<"disk">>, namespace => Namespace,
-            endpoint => list_to_binary("file://" ++ Root), container => <<"fixture">>},
+        Record = #{
+            driver => <<"disk">>,
+            namespace => Namespace,
+            endpoint => list_to_binary("file://" ++ Root),
+            container => <<"fixture">>
+        },
         ok = application:set_env(imboy, attachment_storage_registry, Registry#{
             roots => Roots#{Namespace => Record},
             upload_namespaces => Uploads#{<<"enterprise">> => Namespace}
         }),
         State
-    catch Class:Reason:Stack ->
-        restore_asset_registry(State),
-        erlang:raise(Class, Reason, Stack)
+    catch
+        Class:Reason:Stack ->
+            restore_asset_registry(State),
+            erlang:raise(Class, Reason, Stack)
+    end.
+
+%% 解析路径中全部符号链接段（file:read_link_all 只解析末段；macOS 将 /tmp、
+%% /var 软链到 /private/*，no_symlinks 安全校验要求真实路径）。
+real_path(P) ->
+    real_path_segments(filename:split(filename:absname(P)), ["/"]).
+real_path_segments([], Acc) ->
+    filename:join(lists:reverse(Acc));
+real_path_segments([Seg | Rest], Acc) ->
+    Cur = filename:join(lists:reverse([Seg | Acc])),
+    case file:read_link(Cur) of
+        {ok, Target} ->
+            TSegs = filename:split(
+                case filename:pathtype(Target) of
+                    absolute -> Target;
+                    relative -> filename:absname(Target, filename:dirname(Cur))
+                end
+            ),
+            real_path_segments(TSegs ++ Rest, Acc);
+        {error, _} ->
+            real_path_segments(Rest, [Seg | Acc])
     end.
 
 restore_asset_registry(#{previous_registry := Previous, root := Root}) ->
@@ -515,8 +543,11 @@ restore_asset_registry(#{previous_registry := Previous, root := Root}) ->
 %% These local-adapter fixtures do not claim a real driver deleted any bytes.
 asset_delete_job(Org, Workspace, Asset) ->
     elib_pg:query(
-        <<"SELECT organization_id, workspace_id, asset_id, object_key,"
-          " storage_driver, storage_namespace, storage_container, storage_locator_sha256,"
-          " job_state, attempts, last_error_code FROM enterprise_asset_delete_queue"
-          " WHERE organization_id=$1 AND workspace_id=$2 AND asset_id=$3">>,
-        [Org, Workspace, Asset]).
+        <<
+            "SELECT organization_id, workspace_id, asset_id, object_key,"
+            " storage_driver, storage_namespace, storage_container, storage_locator_sha256,"
+            " job_state, attempts, last_error_code FROM enterprise_asset_delete_queue"
+            " WHERE organization_id=$1 AND workspace_id=$2 AND asset_id=$3"
+        >>,
+        [Org, Workspace, Asset]
+    ).

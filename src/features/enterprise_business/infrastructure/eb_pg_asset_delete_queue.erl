@@ -58,7 +58,8 @@ process_job(Org, Ws, Row, Token) ->
                 <<"storage_driver">>,
                 <<"storage_namespace">>,
                 <<"storage_container">>,
-                <<"storage_locator_sha256">>
+                <<"storage_locator_sha256">>,
+                <<"storage_physical_key">>
             ]
     ]),
     Result =

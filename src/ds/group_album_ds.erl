@@ -13,6 +13,8 @@
 
 -export([create_album/4]).
 -export([upload_photo/5]).
+-export([bind_photo/8]).
+-export([bind_photos/4]).
 -export([batch_upload_photos/2]).
 -export([delete_photo/2]).
 -export([like_photo/2]).
@@ -148,6 +150,23 @@ upload_photo(Gid, UploaderId, AlbumId, PhotoBinary, PhotoName) ->
 ) ->
     {ok, map()} | {error, term()}.
 do_upload_photo(Gid, UploaderId, AlbumId, PhotoBinary, PhotoName, PhotoSize, MimeType) ->
+    % 相册归属校验（与 bind_photo 同款；修复既有跨群相册写入缺口）
+    case ensure_album_belongs(Gid, AlbumId) of
+        {error, _} = AlbumErr ->
+            AlbumErr;
+        ok ->
+            do_upload_photo_(
+                Gid,
+                UploaderId,
+                AlbumId,
+                PhotoBinary,
+                PhotoName,
+                PhotoSize,
+                MimeType
+            )
+    end.
+
+do_upload_photo_(Gid, UploaderId, AlbumId, PhotoBinary, PhotoName, PhotoSize, MimeType) ->
     % 上传到OSS
     case elib_oss:upload(PhotoBinary, PhotoName, #{mime_type => MimeType}) of
         {error, Reason} ->
@@ -219,6 +238,213 @@ do_upload_photo(Gid, UploaderId, AlbumId, PhotoBinary, PhotoName, PhotoSize, Mim
 %% @return {ok, Results} | {error, Reason}
 -spec batch_upload_photos(list({integer(), binary(), binary(), binary()}), integer()) ->
     {ok, list({ok, map()} | {error, term()})} | {error, term()}.
+%% ===================================================================
+%% direct-v1 确认引用绑定（step-11）：相册单张/批量 bind——正文已 confirm
+%% 落位，只收逻辑引用；逐项结果，部分失败继续（T27）。
+%% ===================================================================
+
+%% 资格硬校验：与 group_file_ds:ensure_bindable_reference 同合同。
+ensure_bindable_photo(ObjectKey, UploaderId, Gid) ->
+    case
+        elib_pg:query(
+            <<
+                "SELECT creator_user_id, scope, scope_ref, lifecycle_state FROM attachment"
+                " WHERE path = $1 AND status >= 0 LIMIT 1"
+            >>,
+            [ObjectKey]
+        )
+    of
+        {ok, [Row]} ->
+            case maps:get(<<"lifecycle_state">>, Row, <<"live">>) of
+                <<"live">> ->
+                    case
+                        maps:get(<<"creator_user_id">>, Row) =:= UploaderId andalso
+                            maps:get(<<"scope">>, Row) =:= <<"group">> andalso
+                            maps:get(<<"scope_ref">>, Row) =:= integer_to_binary(Gid)
+                    of
+                        true -> ok;
+                        false -> {error, cross_subject}
+                    end;
+                _ ->
+                    {error, not_confirmed}
+            end;
+        {ok, []} ->
+            {error, not_confirmed};
+        {error, R} ->
+            %% DB 故障原样上抛（不吞成业务态 not_confirmed）
+            {error, R}
+    end.
+
+%% @doc 把已 confirmed 的 direct 附件绑定为相册照片。
+-spec bind_photo(
+    integer(),
+    integer(),
+    integer(),
+    binary(),
+    binary(),
+    non_neg_integer(),
+    binary(),
+    binary()
+) ->
+    {ok, map()} | {error, term()}.
+bind_photo(Gid, UploaderId, AlbumId, PhotoName, ObjectKey, PhotoSize, MimeType, Sha256Hex) ->
+    case group_ds:is_member(UploaderId, Gid) of
+        false ->
+            {error, <<"非群组成员"/utf8>>};
+        true ->
+            case lists:member(MimeType, ?ALLOWED_IMAGE_TYPES) of
+                false ->
+                    {error, <<"图片类型无效"/utf8>>};
+                true ->
+                    case ensure_album_belongs(Gid, AlbumId) of
+                        {error, _} = AlbumErr ->
+                            AlbumErr;
+                        ok ->
+                            case workspace_guard:ensure_writable({group, Gid}) of
+                                {error, Reason} ->
+                                    {error, Reason};
+                                ok ->
+                                    case ensure_bindable_photo(ObjectKey, UploaderId, Gid) of
+                                        ok ->
+                                            do_bind_photo(
+                                                Gid,
+                                                UploaderId,
+                                                AlbumId,
+                                                PhotoName,
+                                                ObjectKey,
+                                                PhotoSize,
+                                                MimeType,
+                                                Sha256Hex
+                                            );
+                                        {error, _} = E ->
+                                            E
+                                    end
+                            end
+                    end
+            end
+    end.
+
+%% 相册归属校验（review P2 修复）：AlbumId 必须属于 Gid——否则可把照片
+%% 塞进其他群的相册（list 按 album_id 过滤会跨群展示）。老 upload_photo
+%% 同款缺失，do_upload_photo 已一并接入本校验。
+%% Gid 入参兼容 integer/binary（logic 层批量链传 binary gid）。
+ensure_album_belongs(Gid, AlbumId) ->
+    case group_album_repo:find_album_by_album_id(AlbumId) of
+        #{<<"group_id">> := RowGid} ->
+            case ec_cnv:to_integer(RowGid) =:= ec_cnv:to_integer(Gid) of
+                true -> ok;
+                false -> {error, album_not_in_group}
+            end;
+        _ ->
+            {error, album_not_found}
+    end.
+
+do_bind_photo(Gid, UploaderId, AlbumId, PhotoName, ObjectKey, PhotoSize, _MimeType, _Sha256Hex) ->
+    %% 幂等：同 album+object 已绑定 → 返回既有 photo（不重复引用）
+    case
+        elib_pg:one(
+            <<
+                "SELECT id FROM group_album_photo WHERE group_id=$1 AND album_id=$2"
+                " AND photo_url=$3 LIMIT 1"
+            >>,
+            [Gid, AlbumId, ObjectKey]
+        )
+    of
+        {ok, #{<<"id">> := ExistingId}} ->
+            {ok, #{
+                <<"id">> => ExistingId,
+                <<"photo_id">> => ExistingId,
+                <<"duplicate">> => true
+            }};
+        _ ->
+            PhotoData = #{
+                group_id => Gid,
+                album_id => AlbumId,
+                photo_id => elib_oss:generate_file_id(),
+                photo_name => PhotoName,
+                photo_url => ObjectKey,
+                thumbnail_url => generate_thumbnail_url(ObjectKey),
+                photo_size => PhotoSize,
+                width => 0,
+                height => 0,
+                uploader_id => UploaderId
+            },
+            case
+                workspace_guard:write_tx({group, Gid}, fun(Conn) ->
+                    case group_album_repo:insert_photo_tx(Conn, PhotoData) of
+                        {ok, InsertId} ->
+                            case group_album_repo:find_album_by_album_id(AlbumId) of
+                                #{<<"id">> := AlbumRecordId} ->
+                                    _ = group_album_repo:increment_photo_count_tx(
+                                        Conn, AlbumRecordId
+                                    ),
+                                    {ok, InsertId};
+                                _ ->
+                                    {ok, InsertId}
+                            end;
+                        {error, Reason} ->
+                            {error, Reason}
+                    end
+                end)
+            of
+                {ok, InsertId} ->
+                    {ok, #{
+                        <<"id">> => InsertId,
+                        <<"photo_id">> => maps:get(photo_id, PhotoData),
+                        <<"photo_url">> => ObjectKey,
+                        <<"thumbnail_url">> => maps:get(thumbnail_url, PhotoData)
+                    }};
+                {error, Reason} ->
+                    {error, Reason}
+            end
+    end.
+
+%% @doc 批量 bind：逐项结果 [{status:=ok|error, ...}]，部分失败继续（T27）。
+-spec bind_photos(integer(), integer(), [map()], integer()) ->
+    {ok, [map()]}.
+bind_photos(Gid, UploaderId, Items, _BatchLimit) ->
+    Results = lists:map(
+        fun(Item) ->
+            ObjectKey = maps:get(<<"object_key">>, Item, <<>>),
+            try
+                case
+                    bind_photo(
+                        Gid,
+                        UploaderId,
+                        elib_cnv:safe_to_integer(maps:get(<<"album_id">>, Item, 0)),
+                        maps:get(<<"photo_name">>, Item, <<"photo.jpg">>),
+                        ObjectKey,
+                        elib_cnv:safe_to_integer(maps:get(<<"photo_size">>, Item, 0)),
+                        maps:get(<<"mime_type">>, Item, <<"image/jpeg">>),
+                        maps:get(<<"sha256">>, Item, <<>>)
+                    )
+                of
+                    {ok, Data} ->
+                        #{
+                            <<"object_key">> => ObjectKey,
+                            <<"status">> => <<"ok">>,
+                            <<"photo">> => Data
+                        };
+                    {error, Reason} ->
+                        #{
+                            <<"object_key">> => ObjectKey,
+                            <<"status">> => <<"error">>,
+                            <<"reason">> => Reason
+                        }
+                end
+            catch
+                _C:_E ->
+                    #{
+                        <<"object_key">> => ObjectKey,
+                        <<"status">> => <<"error">>,
+                        <<"reason">> => <<"exception">>
+                    }
+            end
+        end,
+        Items
+    ),
+    {ok, Results}.
+
 batch_upload_photos(Photos, UploaderId) ->
     % 逐个上传图片
     Results = lists:map(

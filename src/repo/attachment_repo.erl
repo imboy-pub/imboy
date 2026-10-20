@@ -316,6 +316,7 @@ build_confirm_row(CreatedAt, Uid, Attach, Md5) ->
     ).
 
 %% 仅复制调用方已冻结的位置；历史调用缺失时保留 NULL，绝不推断默认桶。
+%% direct-v1（迁移 00000200）追加 storage_physical_key：NULL = 物理键与 path 相同。
 storage_columns(Attach) ->
     maps:from_list([
         {K, maps:get(K, Attach, null)}
@@ -323,7 +324,8 @@ storage_columns(Attach) ->
             <<"storage_driver">>,
             <<"storage_namespace">>,
             <<"storage_container">>,
-            <<"storage_locator_sha256">>
+            <<"storage_locator_sha256">>,
+            <<"storage_physical_key">>
         ]
     ]).
 
@@ -577,17 +579,24 @@ intent_ordinary_delete_tx(Conn, Path, Reason) ->
     %% retaining earlier writes and leaving unknown failures to abort the outer tx.
     case elib_pg:query(Conn, <<"SAVEPOINT attachment_ordinary_intent">>, []) of
         {ok, _} ->
-            case elib_pg:query(Conn, <<"SELECT fn_v5_intent_ordinary_delete($1, $2)">>, [Path, Reason]) of
-                {ok, _} -> release_ordinary_intent_savepoint(Conn, ok);
+            case
+                elib_pg:query(Conn, <<"SELECT fn_v5_intent_ordinary_delete($1, $2)">>, [
+                    Path, Reason
+                ])
+            of
+                {ok, _} ->
+                    release_ordinary_intent_savepoint(Conn, ok);
                 {error, #error{code = <<"23510">>}} ->
                     recover_ordinary_intent_error(Conn, intent_conflict);
                 {error, #error{code = <<"23505">>}} ->
                     recover_ordinary_intent_error(Conn, tombstone);
                 {error, #error{code = <<"P0002">>}} ->
                     recover_ordinary_intent_error(Conn, not_found);
-                {error, _} = Error -> Error
+                {error, _} = Error ->
+                    Error
             end;
-        {error, _} = Error -> Error
+        {error, _} = Error ->
+            Error
     end.
 
 recover_ordinary_intent_error(Conn, Reason) ->
@@ -680,7 +689,7 @@ find_by_path_and_uid(ObjectKey, Uid) ->
 find_by_path(ObjectKey) ->
     Tb = tablename(),
     Sql =
-        <<"SELECT id, path, url, creator_user_id, scope, scope_ref, status, mime_type, storage_driver, storage_namespace, storage_container, storage_locator_sha256 FROM ",
+        <<"SELECT id, path, url, creator_user_id, scope, scope_ref, status, mime_type, storage_driver, storage_namespace, storage_container, storage_locator_sha256, storage_physical_key FROM ",
             Tb/binary, " WHERE path = $1 AND status >= 0 LIMIT 1">>,
     case elib_pg:query(Sql, [ObjectKey]) of
         {ok, [Row]} -> {ok, Row};

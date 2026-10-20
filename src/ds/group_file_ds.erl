@@ -13,6 +13,7 @@
 %%%
 
 -export([upload_file/5]).
+-export([bind_file/7]).
 -export([download_file/2]).
 -export([delete_file/2]).
 -export([list_files/4]).
@@ -142,6 +143,157 @@ finish_upload({ok, _} = Result, ObjectKey) ->
     Result;
 finish_upload(Result, _ObjectKey) ->
     Result.
+
+%% ===================================================================
+%% direct-v1 确认引用绑定（step-11，协议 §2/§6）：正文经 direct-v1 已
+%% confirm 落位，本入口只收逻辑引用——不再接收正文、无 pending/put/pending。
+%% ===================================================================
+
+%% @doc 把已 confirmed 的 direct 附件绑定为群文件。
+%% 资格硬校验（T27）：attachment 行必须存在（已 confirm）、creator=上传者、
+%% scope=group 且 scope_ref=Gid——未 confirm 或跨主体一律拒绝。
+%% 幂等：同 ObjectKey 已绑定时返回既有 file_id（不重复引用）。
+-spec bind_file(
+    integer(),
+    integer(),
+    binary(),
+    binary(),
+    binary(),
+    non_neg_integer(),
+    binary()
+) ->
+    {ok, binary()}
+    | {error,
+        not_confirmed
+        | cross_subject
+        | not_member
+        | invalid_file_type
+        | file_too_large
+        | term()}.
+bind_file(Gid, UploaderId, FileName, FileType, ObjectKey, FileSize, FileHashHex) ->
+    case has_file_access(Gid, UploaderId) of
+        false ->
+            {error, not_member};
+        true ->
+            case elib_oss:validate_file_type(FileType) of
+                false ->
+                    {error, invalid_file_type};
+                true ->
+                    case workspace_guard:ensure_writable({group, Gid}) of
+                        {error, Reason} ->
+                            {error, Reason};
+                        ok ->
+                            case ensure_bindable_reference(ObjectKey, UploaderId, Gid) of
+                                ok ->
+                                    do_bind_file(
+                                        Gid,
+                                        UploaderId,
+                                        FileName,
+                                        FileType,
+                                        ObjectKey,
+                                        FileSize,
+                                        FileHashHex
+                                    );
+                                {error, _} = BindErr ->
+                                    BindErr
+                            end
+                    end
+            end
+    end.
+
+%% 资格硬校验：direct confirm 后的 attachment 行是唯一资格来源。
+ensure_bindable_reference(ObjectKey, UploaderId, Gid) ->
+    case
+        elib_pg:query(
+            <<
+                "SELECT creator_user_id, scope, scope_ref, lifecycle_state FROM attachment"
+                " WHERE path = $1 AND status >= 0 LIMIT 1"
+            >>,
+            [ObjectKey]
+        )
+    of
+        {ok, [Row]} ->
+            Creator = maps:get(<<"creator_user_id">>, Row),
+            case maps:get(<<"lifecycle_state">>, Row, <<"live">>) of
+                <<"live">> ->
+                    case
+                        Creator =:= UploaderId andalso
+                            maps:get(<<"scope">>, Row) =:= <<"group">> andalso
+                            maps:get(<<"scope_ref">>, Row) =:= integer_to_binary(Gid)
+                    of
+                        true -> ok;
+                        false -> {error, cross_subject}
+                    end;
+                _ ->
+                    {error, not_confirmed}
+            end;
+        {ok, []} ->
+            %% 未 confirm：attachment 无行 → 无可绑定对象（T27）
+            {error, not_confirmed};
+        {error, R} ->
+            %% DB 故障原样上抛（吞成 not_confirmed 会把基础设施故障伪装
+            %% 成业务态，误导排障与客户端重试）
+            {error, R}
+    end.
+
+do_bind_file(Gid, UploaderId, FileName, FileType, ObjectKey, FileSize, FileHashHex) ->
+    %% 幂等：同 ObjectKey 已绑定 → 返回既有业务 file_id（重复调用不重复
+    %% 引用；返回形态必须与首绑一致——调用方拿到的是 group_file.file_id）
+    case
+        elib_pg:one(
+            <<
+                "SELECT gf.file_id FROM attachment a"
+                " JOIN group_file gf ON gf.id = a.group_file_id"
+                " WHERE a.path=$1 AND a.group_file_id IS NOT NULL LIMIT 1"
+            >>,
+            [ObjectKey]
+        )
+    of
+        {ok, #{<<"file_id">> := ExistingBizId}} ->
+            {ok, ExistingBizId};
+        _ ->
+            Data = #{
+                group_id => Gid,
+                file_id => elib_oss:generate_file_id(),
+                file_name => FileName,
+                file_size => FileSize,
+                file_type => FileType,
+                file_category => atom_to_binary(elib_oss:get_file_category(FileType), utf8),
+                file_url => ObjectKey,
+                file_hash => FileHashHex,
+                uploader_id => UploaderId,
+                download_count => 0,
+                status => 1,
+                created_at => elib_dt:now(),
+                updated_at => elib_dt:now()
+            },
+            Result = elib_pg:with_tx(fun(Conn) ->
+                ok = workspace_guard:abort_on_error(
+                    attachment_ds:ensure_upload_scope_tx(Conn, {group, Gid}, UploaderId)
+                ),
+                case group_file_repo:insert_tx(Conn, Data) of
+                    {ok, GroupFileId} ->
+                        ok = write_attachment_tx(Conn, Data, GroupFileId, ObjectKey),
+                        %% direct 行在 confirm 时已存在：save 的 ON CONFLICT
+                        %% 刻意不覆盖既有列（收藏幂等语义）——bind 的本质是
+                        %% 引用回填，这里显式补 group_file_id（幂等：仅 NULL 时）。
+                        {ok, _} = elib_pg:query(
+                            Conn,
+                            <<
+                                "UPDATE attachment SET group_file_id = $2"
+                                " WHERE path = $1 AND group_file_id IS NULL"
+                            >>,
+                            [ObjectKey, GroupFileId]
+                        ),
+                        ok = audit_file_tx(Conn, Gid, UploaderId, GroupFileId, <<"file.uploaded">>),
+                        {ok, maps:get(file_id, Data)};
+                    {error, Reason} ->
+                        throw({abort_tx, Reason})
+                end
+            end),
+            %% bind 路径无 pending 销账（对象已 confirm 落位）
+            Result
+    end.
 
 %% @doc 下载文件
 %% @param FileId 文件ID（主键）

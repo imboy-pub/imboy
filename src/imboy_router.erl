@@ -362,6 +362,10 @@ get_routes() ->
                 {"/api/v1/group_album/delete", group_album_handler, #{action => delete_album}},
                 {"/api/v1/group_album/photo/upload", group_album_handler, #{action => upload_photo}},
                 {"/api/v1/group_album/photo/batch", group_album_handler, #{action => batch_upload}},
+                {"/api/v1/group_album/photo/bind", group_album_handler, #{action => bind_photo}},
+                {"/api/v1/group_album/photo/bind_batch", group_album_handler, #{
+                    action => bind_batch
+                }},
                 {"/api/v1/group_album/photo/list", group_album_handler, #{action => list_photos}},
                 {"/api/v1/group_album/photo/detail", group_album_handler, #{action => photo_detail}},
                 {"/api/v1/group_album/photo/delete", group_album_handler, #{action => delete_photo}},
@@ -538,6 +542,7 @@ get_routes() ->
 
                 % 群文件管理 API
                 {"/api/v1/group/file/upload", group_file_handler, #{action => upload}},
+                {"/api/v1/group/file/bind", group_file_handler, #{action => bind}},
                 {"/api/v1/group/file/download", group_file_handler, #{action => download}},
                 {"/api/v1/group/file/list", group_file_handler, #{action => list}},
                 {"/api/v1/group/file/delete", group_file_handler, #{action => delete}},
@@ -699,6 +704,7 @@ get_routes() ->
 
                 % 附件 presign API（需 JWT 认证）
                 {"/api/v1/attachment/presign", attach_handler, #{action => presign}},
+                {"/api/v1/attachment/direct/:action", attach_direct_handler, #{}},
                 % 附件直传成功回调落库（需 JWT 认证）
                 {"/api/v1/attachment/confirm", attach_handler, #{action => confirm}},
                 % 附件下载短时签发 URL，替代 bucket 公开读（需 JWT 认证）
@@ -1091,6 +1097,7 @@ get_routes() ->
             {"/api/adm/ai_agent/roles", adm_ai_agent_handler, #{action => roles}},
             % 头像上传（multipart → Garage）：POST（users:update）
             {"/api/adm/ai_agent/upload_avatar", adm_ai_agent_handler, #{action => upload_avatar}},
+            {"/api/adm/ai_agent/avatar_direct", adm_ai_agent_handler, #{action => avatar_direct}},
             % 新手引导配置（AI 冷启动）：GET 读 / POST 半量保存（users:read|update）
             {"/api/adm/ai_agent/onboarding_config", adm_ai_agent_handler, #{
                 action => onboarding_config
