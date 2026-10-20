@@ -45,10 +45,11 @@ mkdir incoming remote
 printf old > incoming/one.erl
 rsync -ac --no-times incoming/ remote/
 touch -t 200001010000 incoming/one.erl
-[[ -z "$(rsync -aci --no-times incoming/ remote/)" ]]
+# 某些 rsync 会报告仅 mtime 的 .f..T 元数据操作，不代表重传内容。
+[[ ! "$(rsync -aci --no-times incoming/ remote/)" =~ [\<\>]f ]]
 printf new > incoming/one.erl
 touch -t 200001010000 incoming/one.erl
-[[ -n "$(rsync -aci --no-times incoming/ remote/)" ]]
+[[ "$(rsync -aci --no-times incoming/ remote/)" =~ [\<\>]f ]]
 cmp incoming/one.erl remote/one.erl
 [[ remote/one.erl -nt incoming/one.erl ]]
 echo 'PASS: 同内容跳过上传、旧时间戳变更使用远端新时间'

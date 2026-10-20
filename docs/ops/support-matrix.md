@@ -61,4 +61,6 @@
 - 迁移由 `erlang_migrate` 驱动，序号为时间戳式递增；每个 `*.up.sql` 必须配套 `*.down.sql`
   （由 `scripts/check_release_consistency.sh` 校验）。
 - 蓝绿升级统一使用 `bash scripts/imboy-deploy.sh api -v`；内部脚本会按 expand → 启动 → 切流 → 停旧节点 → 完整迁移编排。
+- API 部署要求远端提供 `flock`，从状态检查前至迁移结束持有项目锁；锁忙即退出，勿并行手工运行同仓库的 `make rel`。/ API deployments require remote `flock`; a project lock covers inspection through migration. Busy locks fail immediately; do not run manual release builds concurrently in the same checkout.
+- 每次在 `_rel/deploy.XXXXXX` 独立组装，以 `RELX_TAR=0` 直接复制到非活动 release，安装成功后删除本次构建目录；构建/复制失败保留现场，输出各阶段及总耗时。/ Each deployment assembles in `_rel/deploy.XXXXXX`, skips tar creation and copies to the inactive release. Successful installation removes its build directory; build/copy failures retain it. Logs report phase and total durations.
 - 破坏性 API 变更通过 `/v2` 路径前缀发布，`1.0.x` 期间路径签名向后兼容。

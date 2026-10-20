@@ -12,6 +12,10 @@ MOCK_BIN="$TMP_ROOT/bin"
 MOCK_LOG="$TMP_ROOT/events.log"
 TEST_PLUGIN_KEY="$TMP_ROOT/plugin-signing-public.raw"
 mkdir -p "$MOCK_BIN"
+mkdir -p "$TMP_ROOT/remote-project"
+export MOCK_PROJECT_DIR="$TMP_ROOT/remote-project"
+mkdir -p "$MOCK_PROJECT_DIR/_rel/imboy/log"
+echo foreign >"$MOCK_PROJECT_DIR/_rel/imboy/log/historical.log"
 printf '0123456789abcdef0123456789abcdef' >"$TEST_PLUGIN_KEY"
 
 cleanup() {
@@ -27,6 +31,52 @@ for last_arg in "$@"; do :; done
 cmd="${last_arg:-}"
 
 case "$cmd" in
+  *": imboy-deploy-lock"*)
+    cmd="${cmd//\/srv\/imboy/$MOCK_PROJECT_DIR}"
+    cmd="${cmd//\/www\/wwwroot\/imboy-api/$MOCK_PROJECT_DIR}"
+    printf() {
+      if [ "$1" = 'LOCKED\n' ]; then echo LOCK_ACQUIRED >>"$MOCK_LOG"; fi
+      builtin printf "$@"
+      if [ "${MOCK_FAIL_AT:-}" = lock_drop ]; then exit 0; fi
+    }
+    export -f printf
+    # 真实执行锁协议；只有路径和 SSH 被替换，flock 使用内核锁。
+    bash -c "trap 'echo LOCK_RELEASED >>\"\$MOCK_LOG\"' EXIT; $cmd"
+    exit
+    ;;
+  *"mktemp -d '/srv/imboy/_rel/deploy."*)
+    if [ "${MOCK_FAIL_AT:-}" = build_dir ]; then echo /etc/foreign; exit 0; fi
+    echo /srv/imboy/_rel/deploy.fixture
+    exit 0
+    ;;
+  *"make rel RELX_TAR=0 RELX_OUTPUT_DIR="*)
+    echo BUILD >>"$MOCK_LOG"
+    if [ "${MOCK_FAIL_AT:-}" = hold_build ]; then
+      echo "$PPID" >"$MOCK_LOG.deploy-pid"
+      for ((i=0; i<100; i++)); do
+        [ ! -f "$MOCK_LOG.unblock" ] || break
+        sleep 0.05
+      done
+    fi
+    [ "${MOCK_FAIL_AT:-}" != build ] || exit 1
+    release="$MOCK_PROJECT_DIR/_rel/deploy.fixture/imboy"
+    mkdir -p "$release/bin" "$release/releases/$TEST_VSN" "$release/erts-fixture/bin"
+    printf '#!/bin/sh\nexit 0\n' >"$release/bin/imboy"
+    chmod +x "$release/bin/imboy"
+    echo runtime >"$release/erts-fixture/bin/beam.smp"
+    echo '[{imboy, [{http_port, 9800}]}].' >"$release/releases/$TEST_VSN/sys.config"
+    exit 0
+    ;;
+  *"cp -a '/srv/imboy/_rel/deploy.fixture/imboy/.'"*)
+    echo INSTALL >>"$MOCK_LOG"
+    [ "${MOCK_FAIL_AT:-}" != install ] || exit 1
+    # 真正执行安装前置校验与复制，只截去随后的 Linux 配置命令。
+    cmd="${cmd%%REL_VSN_DIR=*}"
+    cmd="${cmd//\/srv\/imboy/$MOCK_PROJECT_DIR}"
+    cmd="${cmd//\/usr\/local\/imboy-/$MOCK_PROJECT_DIR/install-}"
+    bash -c "$cmd"
+    exit
+    ;;
   *"imboy-tsid-runtime-identity"*)
     [ "${MOCK_FAIL_AT:-}" != tsid_runtime ] || exit 1
     if [ -n "${MOCK_TSID_RUNTIME_IDENTITY:-}" ]; then printf '%s\n' "$MOCK_TSID_RUNTIME_IDENTITY"
@@ -261,6 +311,17 @@ case "$cmd" in
 esac
 MOCK
 chmod +x "$MOCK_BIN/ssh"
+# macOS 无 flock CLI：fcntl 使用继承的同一 fd，锁随父 shell 关闭 fd 释放。
+cat >"$MOCK_BIN/flock" <<'MOCK'
+#!/usr/bin/env python3
+import fcntl
+import sys
+try:
+    fcntl.flock(int(sys.argv[-1]), fcntl.LOCK_EX | fcntl.LOCK_NB)
+except BlockingIOError:
+    sys.exit(75)
+MOCK
+chmod +x "$MOCK_BIN/flock"
 for command in scp sftp rsync docker curl; do
   printf '#!/usr/bin/env bash\necho "UNEXPECTED_EXTERNAL_COMMAND %s" >>"$MOCK_LOG"\nexit 97\n' "$command" >"$MOCK_BIN/$command"
   chmod +x "$MOCK_BIN/$command"
@@ -906,6 +967,111 @@ else
   else
     bad "release 残留枚举失败返回明确错误" "$(cat "$TMP_ROOT/output.log")"
   fi
+fi
+if run_deploy "" blue; then
+  if [ "$(event_line LOCK_ACQUIRED)" -lt "$(event_line BUILD)" ] \
+    && [ "$(event_line BUILD)" -lt "$(event_line INSTALL)" ] \
+    && [ "$(event_line INSTALL)" -lt "$(event_line DAEMON)" ] \
+    && [ "$(event_line MIGRATE)" -lt "$(event_line LOCK_RELEASED)" ]; then
+    ok "锁覆盖构建、直接复制安装、启动、切流和迁移，结束后释放"
+  else
+    bad "隔离构建与部署锁时序错误" "$(cat "$MOCK_LOG")"
+  fi
+  if grep -q '阶段耗时: 编译与 release 组装=' "$TMP_ROOT/output.log" \
+    && grep -q '总耗时=.*exit=0' "$TMP_ROOT/output.log"; then
+    ok "成功路径输出阶段计时和总耗时"
+  else
+    bad "成功路径缺少耗时" "$(cat "$TMP_ROOT/output.log")"
+  fi
+  installed="$MOCK_PROJECT_DIR/install-$TEST_VSN-testnode"
+  if [ -x "$installed/bin/imboy" ] && grep -qx runtime "$installed/erts-fixture/bin/beam.smp"; then
+    ok "直接安装保留启动脚本权限和自包含 ERTS"
+  else
+    bad "直接安装遗漏运行时或启动脚本权限" "$installed"
+  fi
+  if [ ! -e "$installed/log/historical.log" ] \
+    && grep -qx foreign "$MOCK_PROJECT_DIR/_rel/imboy/log/historical.log"; then
+    ok "独立构建不携带或删除旧输出目录的历史日志"
+  else
+    bad "独立构建污染产物或删除历史日志" ""
+  fi
+else
+  bad "隔离构建成功路径失败" "$(cat "$TMP_ROOT/output.log")"
+fi
+
+exec 8>"$MOCK_PROJECT_DIR/.imboy-deploy.lock"
+"$MOCK_BIN/flock" -n 8 || exit 1
+if run_deploy "" blue; then
+  bad "锁冲突必须拒绝第二次部署" ""
+else
+  assert_absent "锁冲突不构建" BUILD
+  assert_absent "锁冲突不切流" SWITCH
+fi
+if [ -f "$MOCK_PROJECT_DIR/.imboy-deploy.lock" ]; then
+  ok "锁冲突不移除其他部署的锁"
+else
+  bad "锁冲突移除了其他部署的锁" ""
+fi
+exec 8>&-
+
+for failure in build install build_dir lock_drop; do
+  if run_deploy "$failure" blue; then
+    bad "$failure 失败必须拒绝发布" ""
+  else
+    assert_absent "$failure 失败不启动新节点" DAEMON
+    assert_absent "$failure 失败不切流" SWITCH
+    exec 8>"$MOCK_PROJECT_DIR/.imboy-deploy.lock"
+    if "$MOCK_BIN/flock" -n 8 && grep -qx LOCK_RELEASED "$MOCK_LOG" \
+      && grep -q '总耗时=.*exit=1' "$TMP_ROOT/output.log"; then
+      ok "$failure 失败释放锁且记录失败耗时"
+    else
+      bad "$failure 失败未释放锁或缺少失败耗时" "$(cat "$TMP_ROOT/output.log")"
+    fi
+    exec 8>&-
+  fi
+done
+
+run_deploy hold_build blue &
+test_deploy_job=$!
+for ((i=0; i<100; i++)); do
+  [ ! -f "$MOCK_LOG.deploy-pid" ] || break
+  sleep 0.05
+done
+if [ -f "$MOCK_LOG.deploy-pid" ]; then
+  kill -TERM "$(cat "$MOCK_LOG.deploy-pid")"
+  touch "$MOCK_LOG.unblock"
+  wait "$test_deploy_job"
+  interrupted_status=$?
+  exec 8>"$MOCK_PROJECT_DIR/.imboy-deploy.lock"
+  if [ "$interrupted_status" -eq 143 ] && "$MOCK_BIN/flock" -n 8; then
+    ok "中断部署保留退出码143并释放内核锁"
+  else
+    bad "中断部署未释放锁或退出码错误" "exit=$interrupted_status; $(cat "$TMP_ROOT/output.log")"
+  fi
+  exec 8>&-
+  assert_absent "中断部署不启动候选" DAEMON
+else
+  wait "$test_deploy_job" || true
+  bad "中断测试未进入构建阶段" "$(cat "$TMP_ROOT/output.log")"
+fi
+
+# 用真实 Makefile 配方检查 RELX_OUTPUT_DIR，无 Erlang/依赖/共享目录副作用。
+if (
+  mkdir -p "$TMP_ROOT/prune/ebin" "$TMP_ROOT/prune/_rel/imboy/lib/imboy-fixture" \
+    "$TMP_ROOT/prune/output/imboy/lib/imboy-fixture"
+  awk '/^imboy-prune-excluded-beams:/{p=1} p{print} /^\.PHONY: imboy-prune-excluded-beams/{exit}' \
+    Makefile >"$TMP_ROOT/prune/Makefile"
+  cd "$TMP_ROOT/prune" || exit 1
+  touch ebin/disabled.beam _rel/imboy/lib/imboy-fixture/preserve \
+    output/imboy/lib/imboy-fixture/stale
+  make -s imboy-prune-excluded-beams PROJECT=imboy PROJECT_VERSION=fixture \
+    PROJECT_BEAM_CACHE_DIR=cache ERLC_EXCLUDE=disabled RELX_OUTPUT_DIR=output >/dev/null || exit 1
+  [ ! -e ebin/disabled.beam ] && [ ! -d output/imboy/lib/imboy-fixture ] \
+    && [ -f _rel/imboy/lib/imboy-fixture/preserve ]
+); then
+  ok "feature 裁剪遵循独立输出目录，保留默认输出中的其他产物"
+else
+  bad "feature 裁剪未遵循 RELX_OUTPUT_DIR" ""
 fi
 echo "总计: PASS=$PASS FAIL=$FAIL"
 [ "$FAIL" -eq 0 ]

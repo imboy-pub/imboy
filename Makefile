@@ -240,7 +240,7 @@ imboy-prune-excluded-beams:
 	@rm -f $(addprefix ebin/,$(addsuffix .beam,$(ERLC_EXCLUDE)))
 	@rm -f $(addprefix $(PROJECT_BEAM_CACHE_DIR)/ebin-app/,$(addsuffix .beam,$(ERLC_EXCLUDE)))
 	@rm -f $(addprefix $(PROJECT_BEAM_CACHE_DIR)/ebin-test/,$(addsuffix .beam,$(ERLC_EXCLUDE)))
-	@if [ -n "$(strip $(ERLC_EXCLUDE))" ]; then rm -rf "_rel/$(PROJECT)/lib/$(PROJECT)-$(PROJECT_VERSION)"; fi
+	@if [ -n "$(strip $(ERLC_EXCLUDE))" ]; then rm -rf "$(RELX_OUTPUT_DIR)/$(PROJECT)/lib/$(PROJECT)-$(PROJECT_VERSION)"; fi
 	@echo " PRUNE  excluded=$$(echo $(ERLC_EXCLUDE) | wc -w | tr -d ' ') ebin_moment_left=$$(ls ebin/*moment*.beam 2>/dev/null | wc -l | tr -d ' ')"
 
 .PHONY: imboy-prune-excluded-beams

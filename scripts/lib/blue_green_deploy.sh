@@ -152,7 +152,7 @@ BOUNDARY_CUTOVER_PENDING=0
 BOUNDARY_SCHEMA_REQUIRED=0
 
 RELEASE_DIR="/usr/local/imboy-${VSN}-${NODE_NAME}"
-RELEASE_TARBALL="${PROJECT_DIR}/_rel/imboy/imboy-${VSN}.tar.gz"
+BUILD_OUTPUT_DIR=""
 PLUGIN_TRUSTED_PUBLIC_KEY_REMOTE="$RELEASE_DIR/etc/plugin_trusted_ed25519.pub"
 
 # 校验参数格式，防止注入 vm.args 或 rm -rf 路径
@@ -282,13 +282,37 @@ trap 'fail "脚本意外终止，使用 -v 查看详情 / Aborted — rerun with
 # SSH ControlMaster: one persistent TCP connection reused by all ssh_exec calls
 # =============================================================================
 SSH_CTRL="/tmp/imboy-deploy-$$"
-SSH_OPTS=(-p "$SERVER_PORT" -o ControlPath="$SSH_CTRL" -o StrictHostKeyChecking=accept-new)
+SSH_OPTS=(-p "$SERVER_PORT" -o ControlPath="$SSH_CTRL" -o StrictHostKeyChecking=accept-new
+  -o ConnectTimeout=10 -o ServerAliveInterval=5 -o ServerAliveCountMax=2)
+DEPLOY_LOCK_PID=""
+DEPLOY_LOCK_DIR=""
+PHASE_NAME="连接与预检"
+PHASE_STARTED=$SECONDS
+DEPLOY_STARTED=$SECONDS
+
+phase() {
+  log "阶段耗时: $PHASE_NAME=$((SECONDS - PHASE_STARTED))s"
+  PHASE_NAME="$1"
+  PHASE_STARTED=$SECONDS
+}
 
 _cleanup() {
+  local status=$?
+  trap - ERR
+  log "阶段耗时: $PHASE_NAME=$((SECONDS - PHASE_STARTED))s | 总耗时=$((SECONDS - DEPLOY_STARTED))s | exit=$status"
+  if [[ -n "$DEPLOY_LOCK_PID" ]]; then
+    exec 9>&-
+    kill "$DEPLOY_LOCK_PID" 2>/dev/null || true
+    wait "$DEPLOY_LOCK_PID" 2>/dev/null || true
+  fi
+  [[ -z "$DEPLOY_LOCK_DIR" ]] || rm -rf -- "$DEPLOY_LOCK_DIR"
   ssh "${SSH_OPTS[@]}" -O exit "$SERVER_USER@$SERVER_HOST" 2>/dev/null || true
   rm -f "$SSH_CTRL"
+  return 0
 }
 trap '_cleanup' EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 log "连接服务器 $SERVER_USER@$SERVER_HOST:$SERVER_PORT / Connecting to server..."
 ssh -fNM -o ControlMaster=yes "${SSH_OPTS[@]}" "$SERVER_USER@$SERVER_HOST"
@@ -296,7 +320,15 @@ ok "SSH 连接就绪 / SSH connection ready"
 
 # 执行远端命令；静默模式丢弃输出，详细模式透传
 # Run remote command; discard output in silent, pass through in verbose
+check_deploy_lock() {
+  [[ -z "$DEPLOY_LOCK_PID" ]] || kill -0 "$DEPLOY_LOCK_PID" 2>/dev/null || {
+    echo "部署锁 SSH 通道已断开，拒绝继续远端操作" >&2
+    return 1
+  }
+}
+
 ssh_exec() {
+  check_deploy_lock || return 1
   if [ "$SILENT" -eq 1 ]; then
     ssh -n "${SSH_OPTS[@]}" "$SERVER_USER@$SERVER_HOST" "$1" >/dev/null 2>&1
   else
@@ -307,13 +339,40 @@ ssh_exec() {
 # 捕获远端 stdout（不走 ssh_exec，避免静默模式将输出丢入 /dev/null）
 # Capture remote stdout — bypass ssh_exec to avoid silent-mode discard
 ssh_capture() {
+  check_deploy_lock || return 1
   ssh -n "${SSH_OPTS[@]}" "$SERVER_USER@$SERVER_HOST" "$1" | tr -d '\r'
 }
 
 ssh_upload() {
   local source_file=$1 target_file=$2
+  check_deploy_lock || return 1
   ssh "${SSH_OPTS[@]}" "$SERVER_USER@$SERVER_HOST" \
     "umask 022; cat > '$target_file'" <"$source_file"
+}
+
+acquire_deploy_lock() {
+  DEPLOY_LOCK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/imboy-deploy-lock.XXXXXX")"
+  mkfifo "$DEPLOY_LOCK_DIR/input" "$DEPLOY_LOCK_DIR/ready"
+  # 独立 SSH channel 持有 flock；关闭 stdin 或断连即由内核释放，不删锁文件。
+  # shellcheck disable=SC2029 # PROJECT_DIR 已经过 allowlist 校验，须在本地展开。
+  ssh "${SSH_OPTS[@]}" "$SERVER_USER@$SERVER_HOST" "
+    : imboy-deploy-lock
+    set -e
+    cd '$PROJECT_DIR'
+    command -v flock >/dev/null
+    exec 9>.imboy-deploy.lock
+    flock -n 9 || { echo '已有部署占用项目锁，请稍后重试' >&2; exit 75; }
+    printf 'LOCKED\\n'
+    cat >/dev/null
+  " <"$DEPLOY_LOCK_DIR/input" >"$DEPLOY_LOCK_DIR/ready" 2>"$DEPLOY_LOCK_DIR/error" &
+  DEPLOY_LOCK_PID=$!
+  exec 9>"$DEPLOY_LOCK_DIR/input"
+  local ready=""
+  if ! IFS= read -r -t 15 ready <"$DEPLOY_LOCK_DIR/ready" || [[ "$ready" != LOCKED ]]; then
+    cat "$DEPLOY_LOCK_DIR/error" >&2
+    fail "获取部署互斥锁失败，未修改远端部署状态"
+  fi
+  ok "部署互斥锁已取得（持有至部署结束）"
 }
 
 safe_release_dir() {
@@ -862,6 +921,10 @@ run_expand_migrations() {
 #   只有 --no-migrate 的外层编排会保留旧节点；正常完整迁移为避免既有 WebSocket
 #   继续运行旧代码，会在迁移前停止旧节点，此时回滚需先人工确认 schema 兼容性。
 # =============================================================================
+phase "部署互斥"
+acquire_deploy_lock
+phase "状态检查与旧槽清理"
+
 if [ "$ROLLBACK" -eq 1 ]; then
   log "回滚模式 / Rollback mode"
   if ! CUR="$(probe_nginx_color)"; then
@@ -1055,12 +1118,14 @@ fi
 # RELX_DEV_MODE=false 确保产物不含符号链接，RELX_INCLUDE_ERTS=true 内嵌运行时
 # RELX_DEV_MODE=false: no symlinks in tarball; RELX_INCLUDE_ERTS=true: embed ERTS
 # =============================================================================
+phase "源码与迁移同步"
 if [ "$LOCAL_MODE" -eq 1 ]; then
   log "[--local] 同步本地源码到远端 $PROJECT_DIR ... / Syncing local source to remote..."
   # 内容比较避免本地生成器 touch 造成重复上传；改变的源码使用远端当前时间，
   # 避免旧时间戳（恢复文件/切换分支）让 make 漏编。
   rsync -az --checksum --no-times --delete \
     --exclude='.git' \
+    --exclude='/.imboy-deploy.lock' \
     --exclude='/ebin/' \
     --exclude='/test/' \
     --exclude='/.Codex/' \
@@ -1119,7 +1184,13 @@ REMOTE_VSN="$(ssh_capture "head -n1 '$PROJECT_DIR/VERSION' 2>/dev/null | tr -d '
 [ "$REMOTE_VSN" = "$VSN" ] \
   || fail "远端仓库 VERSION ($REMOTE_VSN) 与目标版本 ($VSN) 不一致：本地提交是否已 push？(-l 模式请检查 rsync 排除项)"
 
-log "编译 release... / Building release..."
+phase "编译与 release 组装"
+BUILD_OUTPUT_DIR="$(ssh_capture "mkdir -p '$PROJECT_DIR/_rel' && mktemp -d '$PROJECT_DIR/_rel/deploy.XXXXXX'")" \
+  || fail "创建隔离构建目录失败"
+[[ "$BUILD_OUTPUT_DIR" == "$PROJECT_DIR/_rel/deploy."* \
+   && "${BUILD_OUTPUT_DIR#"$PROJECT_DIR/_rel/deploy."}" =~ ^[a-zA-Z0-9]+$ ]] \
+  || fail "隔离构建目录不符合安全模板"
+log "编译 release（独立输出: $BUILD_OUTPUT_DIR）... / Building release..."
 ssh_exec "
   set -e
   cd '$PROJECT_DIR'
@@ -1140,10 +1211,10 @@ ssh_exec "
   IMBOYENV=pro \
     RELX_DEV_MODE=false \
     RELX_INCLUDE_ERTS=true \
-    make rel
+    make rel RELX_TAR=0 RELX_OUTPUT_DIR='$BUILD_OUTPUT_DIR'
   # 用服务器实际 sys.pro.config（含生产凭证）覆盖编译产物里的占位符 sys.config
   # Overlay generated sys.config with server's authoritative pro config (real credentials)
-  REL_SYS_CONFIG='$PROJECT_DIR/_rel/imboy/releases/$VSN/sys.config'
+  REL_SYS_CONFIG='$BUILD_OUTPUT_DIR/imboy/releases/$VSN/sys.config'
   if [ -f '$PROJECT_DIR/config/sys.pro.config' ] && [ -f \"\$REL_SYS_CONFIG\" ]; then
     cp '$PROJECT_DIR/config/sys.pro.config' \"\$REL_SYS_CONFIG\"
     sed -i \"s/{http_port,[ ]*[0-9]\\+}/{http_port, $APP_PORT}/\" \"\$REL_SYS_CONFIG\"
@@ -1152,16 +1223,19 @@ ssh_exec "
 ok "release 编译完成 / Release built"
 
 # =============================================================================
-# 4️⃣ 解包 + 生成 vm.args（节点身份 + BEAM 调优参数）
-# Extract tarball + write vm.args (node identity + BEAM tuning flags)
+# 4️⃣ 安装 release + 生成 vm.args（节点身份 + BEAM 调优参数）
+# Install release + write vm.args (node identity + BEAM tuning flags)
 # =============================================================================
-log "解包 release + 写入 vm.args... / Extracting release and writing vm.args..."
+phase "安装 release 与节点配置"
+log "复制 release + 写入 vm.args... / Installing release and writing vm.args..."
 # <<'VMARGS' 防止远端 shell 对内容二次展开；本地变量在外层双引号中已展开
 # <<'VMARGS' prevents remote re-expansion; local vars are expanded by outer double-quotes
 ssh_exec "
   set -e
+  test -x '$BUILD_OUTPUT_DIR/imboy/bin/imboy'
+  test -f '$BUILD_OUTPUT_DIR/imboy/releases/$VSN/sys.config'
   mkdir -p '$RELEASE_DIR'
-  cd '$RELEASE_DIR' && tar -xzf '$RELEASE_TARBALL'
+  cp -a '$BUILD_OUTPUT_DIR/imboy/.' '$RELEASE_DIR/'
   REL_VSN_DIR=\$(find '$RELEASE_DIR/releases' -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)
   # 解包后覆盖 http_port（tarball 内含旧值，必须在这里改）
   sed -i \"s/{http_port,[ ]*[0-9]\\+}/{http_port, $APP_PORT}/\" \"\$REL_VSN_DIR/sys.config\"
@@ -1215,7 +1289,8 @@ ssh_exec "
     exit 1
   fi
 " || fail "非 community 档位缺少插件可信公钥，拒绝启动新节点；请配置 DEPLOY_PLUGIN_TRUSTED_PUBLIC_KEY_FILE"
-ok "release 已解包，vm.args 已写入 / Release extracted, vm.args written"
+ok "release 已安装，vm.args 已写入 / Release installed, vm.args written"
+ssh_exec "rm -rf -- '$BUILD_OUTPUT_DIR'" || log "警告：本次构建目录清理失败: $BUILD_OUTPUT_DIR"
 
 # =============================================================================
 # 4.5️⃣ 启动前 Expand schema / Apply additive schema before node startup
@@ -1223,6 +1298,7 @@ ok "release 已解包，vm.args 已写入 / Release extracted, vm.args written"
 # 新代码可能在启动或健康检查阶段就引用新增字段，因此 expand 必须早于新节点启动。
 # 完整迁移仍由切流后的显式 db migrate 执行。
 # =============================================================================
+phase "迁移预检与新节点启动"
 if [ "$CURRENT_COLOR" = "none" ]; then
   log "首次安装由 application boot 执行完整迁移，跳过针对既有 schema 的 expand"
 else
@@ -1263,6 +1339,7 @@ fi
 # 6️⃣ 切换 Nginx upstream / Switch Nginx upstream
 # 首次部署必须预置蓝/绿 upstream。无法证明切流完成时 fail-closed，禁止成功后再要求手工补配置。
 # =============================================================================
+phase "切流与旧节点停止"
 if [ -n "$OLD_PORT" ]; then
   log "切换 Nginx: $OLD_PORT → $APP_PORT..."
   ssh_exec "
@@ -1332,6 +1409,7 @@ fi
 # IMBOY_AUTO_MIGRATE=false；否则 imboy_app:start/2 会在健康检查前先跑完整迁移，
 # 使本节的切流后时序沦为重复执行而非真实门禁。
 # =============================================================================
+phase "完整迁移与最终检查"
 if [ "$SKIP_MIGRATE" -eq 1 ]; then
   log "跳过数据库迁移（--no-migrate）/ Skipping DB migrations"
 elif [ "$CURRENT_COLOR" = "none" ]; then
