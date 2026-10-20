@@ -59,7 +59,9 @@ drain_case(DeleteResult, AckResult, Expected) ->
         <<"storage_driver">> => <<"disk">>,
         <<"storage_namespace">> => <<"test">>,
         <<"storage_container">> => <<"assets">>,
-        <<"storage_locator_sha256">> => <<"digest">>
+        <<"storage_locator_sha256">> => <<"digest">>,
+        %% 迁移 00000200 起历史行物理键与 path 相同（NULL 回落）
+        <<"storage_physical_key">> => null
     },
     Identity = #{driver => disk, key => <<"claimed-key">>},
     Row = maps:merge(

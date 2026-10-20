@@ -28,7 +28,8 @@ batch_upload_results_case(Mode) ->
             {ok, 42}
         end),
         meck:expect(group_album_repo, find_album_by_album_id, fun(<<"album">>) ->
-            #{<<"id">> => 11}
+            %% review P2 相册归属校验读取 group_id（gid=20 本群）
+            #{<<"id">> => 11, <<"group_id">> => 20}
         end),
         meck:expect(group_album_repo, increment_photo_count_tx, fun(conn, 11) -> {ok, 1} end),
         meck:expect(elib_dt, timestamp, fun() -> 123 end),

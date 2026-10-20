@@ -97,6 +97,58 @@ upload(Req0, State) ->
             end
     end.
 
+%% direct-v1 确认引用绑定（step-11）：JSON 引用 bind，不收正文。
+%% POST /v1/group/file/bind {gid, file_name, file_type, object_key, file_size, file_md5}
+-spec bind(cowboy_req:req(), map()) -> cowboy_req:req().
+bind(Req0, State) ->
+    CurrentUid = maps:get(current_uid, State),
+    {ok, Body, Req1} = elib_req:body(Req0, []),
+    Gid = elib_cnv:safe_to_integer(maps:get(<<"gid">>, Body, 0)),
+    ObjectKey = maps:get(<<"object_key">>, Body, <<>>),
+    FileName = maps:get(<<"file_name">>, Body, <<>>),
+    FileType = maps:get(<<"file_type">>, Body, <<>>),
+    FileSize = elib_cnv:safe_to_integer(maps:get(<<"file_size">>, Body, 0)),
+    FileMd5 = maps:get(<<"file_md5">>, Body, <<>>),
+    case {Gid, FileName, ObjectKey} of
+        {0, _, _} ->
+            elib_response:error(Req1, <<"缺少必填参数"/utf8>>, ?ERR_MISSING_PARAM);
+        {_, <<>>, _} ->
+            elib_response:error(Req1, <<"缺少必填参数"/utf8>>, ?ERR_MISSING_PARAM);
+        {_, _, <<>>} ->
+            elib_response:error(Req1, <<"缺少必填参数"/utf8>>, ?ERR_MISSING_PARAM);
+        _ ->
+            case
+                group_file_ds:bind_file(
+                    Gid,
+                    CurrentUid,
+                    FileName,
+                    FileType,
+                    ObjectKey,
+                    FileSize,
+                    FileMd5
+                )
+            of
+                {ok, FileId} ->
+                    elib_response:success(Req1, #{<<"file_id">> => FileId});
+                {error, not_member} ->
+                    elib_response:error(Req1, <<"非群组成员"/utf8>>, ?ERR_NOT_GROUP_MEMBER);
+                {error, not_confirmed} ->
+                    elib_response:error(Req1, <<"附件未确认"/utf8>>, ?ERR_BAD_REQUEST);
+                {error, cross_subject} ->
+                    elib_response:error(Req1, <<"附件归属不匹配"/utf8>>, ?ERR_FORBIDDEN);
+                {error, invalid_file_type} ->
+                    elib_response:error(Req1, <<"不允许的文件类型"/utf8>>, ?ERR_FILE_TYPE_NOT_ALLOWED);
+                {error, ?ERR_WORKSPACE_ARCHIVED} ->
+                    elib_response:error(
+                        Req1,
+                        imboy_error:error_msg(?ERR_WORKSPACE_ARCHIVED),
+                        ?ERR_WORKSPACE_ARCHIVED
+                    );
+                {error, _Reason} ->
+                    elib_response:error(Req1, <<"绑定失败"/utf8>>, ?ERR_FILE_UPLOAD_FAILED)
+            end
+    end.
+
 %% @doc 下载文件
 %% GET /v1/group/file/download?file_id=xxx
 -spec download(cowboy_req:req(), map()) -> cowboy_req:req().

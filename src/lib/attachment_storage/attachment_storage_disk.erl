@@ -5,6 +5,8 @@
     put/4,
     put_ctx/5,
     head/3,
+    head_bounded/3,
+    copy_dispatch/4,
     delete/3,
     presign_put/4,
     presign_get/4,
@@ -58,12 +60,14 @@ rechecked_write(Path, Source, Check, Recheck) ->
                 ok -> atomic_write(Path, Source, Check);
                 Error -> Error
             end;
-        Error -> Error
+        Error ->
+            Error
     end.
 
 write_window(Expiry, Deadline) ->
     case Expiry =:= infinity orelse erlang:system_time(second) < Expiry of
-        false -> {error, invalid_signature_context};
+        false ->
+            {error, invalid_signature_context};
         true ->
             case erlang:monotonic_time(millisecond) < Deadline of
                 true -> ok;
@@ -144,27 +148,30 @@ atomic_write_open(Path, Source, Check) ->
     case file:open(Tmp, [write, exclusive, raw, binary]) of
         {ok, Fh} ->
             try
-                Result = try
-                    ok = file:change_mode(Tmp, 8#600),
-                    case attachment_upload_spool:copy_to(Source, Fh, Check) of
-                        ok -> file:sync(Fh);
-                        Error -> Error
-                    end
-                after
-                    file:close(Fh)
-                end,
+                Result =
+                    try
+                        ok = file:change_mode(Tmp, 8#600),
+                        case attachment_upload_spool:copy_to(Source, Fh, Check) of
+                            ok -> file:sync(Fh);
+                            Error -> Error
+                        end
+                    after
+                        file:close(Fh)
+                    end,
                 case Result of
                     ok ->
                         case Check() of
                             ok -> file:rename(Tmp, Path);
                             Error2 -> Error2
                         end;
-                    Error2 -> Error2
+                    Error2 ->
+                        Error2
                 end
             after
                 file:delete(Tmp)
             end;
-        Error -> Error
+        Error ->
+            Error
     end.
 
 head(Ns, Container, Key) ->
@@ -180,6 +187,38 @@ head(Ns, Container, Key) ->
                 {error, path_escape}
         end
     end).
+%% direct-v1 控制面：disk 是历史兼容 driver（新 Disk 数据面已移除），
+%% 真 HEAD 复用既有元数据语义；copy 一次 file copy，无重试。
+head_bounded(Ns, Container, Key) ->
+    head(Ns, Container, Key).
+
+copy_dispatch(Ns, Container, SourceKey, TargetKey) ->
+    with_path(Ns, Container, TargetKey, fun(Root, TargetPath) ->
+        with_path(Ns, Container, SourceKey, fun(_, SourcePath) ->
+            with_os_lock(Root, Container, TargetKey, fun() ->
+                case file:read_file_info(SourcePath) of
+                    {ok, #file_info{type = regular}} ->
+                        case filelib:ensure_dir(TargetPath) of
+                            ok ->
+                                %% 返回形态对齐 driver callback（{ok, map()}）
+                                case file:copy(SourcePath, TargetPath) of
+                                    {ok, N} -> {ok, #{bytes_copied => N}};
+                                    {error, R} -> {error, R}
+                                end;
+                            {error, R} ->
+                                {error, R}
+                        end;
+                    {error, enoent} ->
+                        {error, not_found};
+                    {error, R} ->
+                        {error, R};
+                    _ ->
+                        {error, path_escape}
+                end
+            end)
+        end)
+    end).
+
 read(Ns, Container, Key) ->
     with_path(Ns, Container, Key, fun(_, Path) ->
         case file:read_file(Path) of

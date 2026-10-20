@@ -59,6 +59,7 @@ init(Req0, State0) ->
             role_set_status -> role_set_status(Method, Req0, State);
             roles -> roles(Method, Req0, State);
             upload_avatar -> upload_avatar(Method, Req0, State);
+            avatar_direct -> avatar_direct(Method, Req0, State);
             mandate_create -> mandate_create(Method, Req0, State);
             _ -> Req0
         end,
@@ -310,6 +311,98 @@ roles(<<"POST">>, Req0, State) ->
     end);
 roles(_, Req0, _State) ->
     method_not_allowed(Req0).
+
+%% ===================================================================
+%% direct-v1 AI 头像（step-13，协议 §5 Admin 身份域）：
+%%   POST /api/adm/ai_agent/avatar_direct  {op: register|declare|grant|
+%%     finalize|publish, ...} —— application 主体（org/app），不借 Human
+%%     凭据；正文不经本入口（FormData 旧入口保留至前端切换后退役）。
+%% ===================================================================
+-spec avatar_direct(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
+avatar_direct(<<"POST">>, Req0, State) ->
+    with_perm(?PERM_UPDATE, State, Req0, fun() ->
+        {ok, Body, Req1} = elib_req:body(Req0, []),
+        Op = maps:get(<<"op">>, Body, <<>>),
+        case avatar_direct_op(Op, Body) of
+            {ok, Data} ->
+                elib_response:success(Req1, Data);
+            {error, not_confirmed} ->
+                elib_response:error(Req1, <<"会话未确认"/utf8>>, ?ERR_BAD_REQUEST);
+            {error, not_application_session} ->
+                elib_response:error(Req1, <<"会话主体不符（仅 application 会话）"/utf8>>, ?ERR_FORBIDDEN);
+            {error, session_not_found} ->
+                elib_response:error(Req1, <<"会话不存在"/utf8>>, ?ERR_NOT_FOUND);
+            {error, declaration_conflict} ->
+                elib_response:error(Req1, <<"声明冲突"/utf8>>, ?ERR_CONFLICT);
+            {error, quota_exceeded} ->
+                elib_response:error(Req1, <<"上传会话配额已满"/utf8>>, ?ERR_CONFLICT);
+            {error, {publish_failed, _R}} ->
+                %% 公开复制失败可恢复：winner 未动，前端可直接重试 publish
+                elib_response:error(Req1, <<"头像发布失败，可重试"/utf8>>, ?ERR_FILE_UPLOAD_FAILED);
+            {error, _Reason} ->
+                elib_response:error(Req1, <<"头像会话处理失败"/utf8>>, ?ERR_FILE_UPLOAD_FAILED)
+        end
+    end);
+avatar_direct(_, Req0, _State) ->
+    method_not_allowed(Req0).
+
+avatar_direct_op(<<"register">>, Body) ->
+    AppId = maps:get(<<"application_id">>, Body, <<>>),
+    OrgId = maps:get(<<"org_id">>, Body, <<>>),
+    FileName = maps:get(<<"filename">>, Body, <<"avatar.png">>),
+    case {AppId, OrgId} of
+        {<<>>, _} ->
+            {error, missing_app};
+        {_, <<>>} ->
+            {error, missing_org};
+        _ ->
+            Scope = <<"public">>,
+            attach_direct_logic:register_application(
+                AppId,
+                OrgId,
+                Scope,
+                maps:get(<<"client_upload_id">>, Body, undefined),
+                FileName
+            )
+    end;
+%% declare/grant/finalize/publish 前置主体断言（review P1 修复）：
+%% 仅 application 会话可经 Admin 面推进/发布——Human 用户会话的 key 不受
+%% 本入口操作（通用 logic 函数按 key 寻址不校验主体，防线在入口）。
+avatar_direct_op(<<"declare">>, Body) ->
+    with_app_session(Body, fun(Key) ->
+        attach_direct_logic:declare(
+            Key,
+            maps:get(<<"sha256">>, Body, <<>>),
+            elib_cnv:safe_to_integer(maps:get(<<"size_bytes">>, Body, 0)),
+            maps:get(<<"mime">>, Body, <<"image/png">>)
+        )
+    end);
+avatar_direct_op(<<"grant">>, Body) ->
+    with_app_session(Body, fun(Key) ->
+        attach_direct_logic:grant(Key, maps:get(<<"sha256">>, Body, <<>>))
+    end);
+avatar_direct_op(<<"finalize">>, Body) ->
+    with_app_session(Body, fun(Key) ->
+        attach_direct_logic:finalize(
+            Key, elib_cnv:safe_to_integer(maps:get(<<"attempt_id">>, Body, 0))
+        )
+    end);
+avatar_direct_op(<<"publish">>, Body) ->
+    with_app_session(Body, fun(Key) ->
+        attach_direct_logic:publish_avatar(
+            Key, maps:get(<<"agent_id">>, Body, <<>>), <<>>
+        )
+    end);
+avatar_direct_op(_, _) ->
+    {error, unknown_op}.
+
+with_app_session(Body, Fun) ->
+    Key = maps:get(<<"object_key">>, Body, <<>>),
+    case attach_direct_logic:require_application_session(Key) of
+        ok -> Fun(Key);
+        {error, not_found} -> {error, session_not_found};
+        {error, R} -> {error, R}
+    end.
 
 %% @doc multipart 上传头像到 Garage，返回 URL（前端存入表单随 update 提交，
 %% 由 ai_agent_ds:update 同步写 user.avatar）。

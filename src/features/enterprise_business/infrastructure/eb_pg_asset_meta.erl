@@ -31,6 +31,7 @@
     v5_session/3,
     v5_session_by_cid/3,
     renew_v5/4,
+    direct_session_row/1,
     sql_statements/0
 ]).
 
@@ -248,22 +249,39 @@ registered_put(Org, Ws, D, Mode) ->
                 registered_put_tx(Conn, Org, Ws, D, Mode, Receipt, Expiry)
             end),
             registered_put_result(Result);
-        {error, _} = Error -> Error
+        {error, _} = Error ->
+            Error
     end.
 
 registered_put_tx(Conn, Org, Ws, D, Mode, Receipt, Expiry) ->
     Id = maps:get(id, D),
-    Args = [Org, Ws, Id, jsone:encode(Receipt),
-            jsone:encode(maps:get(upload_subject, D)), iso8601_utc(Expiry)],
-    {Sql, Params} = case Mode of
-        admission ->
-            {<<"SELECT fn_v5_pin_eb_content($1,$2,$3,$4::jsonb,$5::jsonb,"
-               "$6::timestamptz) AS admitted">>, Args};
-        {recheck, Frozen} ->
-            {<<"SELECT fn_v5_recheck_eb_content($1,$2,$3,$4::jsonb,$5::jsonb,"
-               "$6::timestamptz,$7::jsonb) AS admitted">>,
-             Args ++ [jsone:encode(Frozen)]}
-    end,
+    Args = [
+        Org,
+        Ws,
+        Id,
+        jsone:encode(Receipt),
+        jsone:encode(maps:get(upload_subject, D)),
+        iso8601_utc(Expiry)
+    ],
+    {Sql, Params} =
+        case Mode of
+            admission ->
+                {
+                    <<
+                        "SELECT fn_v5_pin_eb_content($1,$2,$3,$4::jsonb,$5::jsonb,"
+                        "$6::timestamptz) AS admitted"
+                    >>,
+                    Args
+                };
+            {recheck, Frozen} ->
+                {
+                    <<
+                        "SELECT fn_v5_recheck_eb_content($1,$2,$3,$4::jsonb,$5::jsonb,"
+                        "$6::timestamptz,$7::jsonb) AS admitted"
+                    >>,
+                    Args ++ [jsone:encode(Frozen)]
+                }
+        end,
     case tx_query(Conn, Sql, Params) of
         [#{<<"admitted">> := true}] ->
             [Row] = tx_query(Conn, ?SQL_FETCH_ASSET, [Org, Ws, Id]),
@@ -274,9 +292,11 @@ registered_put_tx(Conn, Org, Ws, D, Mode, Receipt, Expiry) ->
                         admission -> {ok, eb_pg_store_sql:normalize(Row, asset_fields())};
                         {recheck, _} -> ok
                     end;
-                false -> rollback_error(content_mismatch)
+                false ->
+                    rollback_error(content_mismatch)
             end;
-        _ -> rollback_error(invalid_pin_result)
+        _ ->
+            rollback_error(invalid_pin_result)
     end.
 
 registered_put_receipt(D) when is_map(D) ->
@@ -287,14 +307,25 @@ registered_put_receipt(D) when is_map(D) ->
         _ = maps:get(conversation_id, D),
         true = is_integer(Id) andalso is_map(Subject) andalso is_binary(Mime),
         {Size, Sha} = payload_receipt(maps:get(payload, D)),
-        Expiry = calendar:datetime_to_gregorian_seconds(
-            maps:get(expires_at, maps:get(signature_context, D))) - 62167219200,
-        case maps:get(object_hash, D) =:= Sha andalso
-             maps:get(size_bytes, D, Size) =:= Size of
-            true -> {ok, #{<<"version">> => 1, <<"sha256">> => Sha,
-                           <<"size_bytes">> => integer_to_binary(Size),
-                           <<"mime">> => Mime}, Expiry};
-            false -> {error, content_mismatch}
+        Expiry =
+            calendar:datetime_to_gregorian_seconds(
+                maps:get(expires_at, maps:get(signature_context, D))
+            ) - 62167219200,
+        case
+            maps:get(object_hash, D) =:= Sha andalso
+                maps:get(size_bytes, D, Size) =:= Size
+        of
+            true ->
+                {ok,
+                    #{
+                        <<"version">> => 1,
+                        <<"sha256">> => Sha,
+                        <<"size_bytes">> => integer_to_binary(Size),
+                        <<"mime">> => Mime
+                    },
+                    Expiry};
+            false ->
+                {error, content_mismatch}
         end
     catch
         _:_ -> {error, invalid_descriptor}
@@ -309,22 +340,39 @@ payload_receipt({upload_spool, _, Size, Sha} = Source) when
 ->
     {attachment_upload_spool:size(Source), attachment_upload_spool:sha256(Source)}.
 
-frozen_put_identity(#{driver := Driver, namespace := Ns, container := Container,
-                      key := Key, locator_digest := Digest}) ->
-    {ok, #{driver => Driver, namespace => Ns, container => Container,
-           key => Key, locator_digest => Digest}};
+frozen_put_identity(#{
+    driver := Driver,
+    namespace := Ns,
+    container := Container,
+    key := Key,
+    locator_digest := Digest
+}) ->
+    {ok, #{
+        driver => Driver,
+        namespace => Ns,
+        container => Container,
+        key => Key,
+        locator_digest => Digest
+    }};
 frozen_put_identity(_) ->
     {error, location_changed}.
 
 %% tx_query throws on every SQL error, including known admission conflicts.
 %% Returning a mapped error inside the callback would COMMIT an aborted tx.
-registered_put_result({rollback, {error, {sql, <<"23510">>, _}}}) -> {error, content_mismatch};
-registered_put_result({rollback, {error, {sql, <<"55000">>, _}}}) -> {error, session_not_renewable};
-registered_put_result({rollback, {error, {sql, <<"23505">>, _}}}) -> {error, tombstone};
-registered_put_result({rollback, {error, {sql, <<"22023">>, _}}}) -> {error, location_changed};
-registered_put_result({rollback, {error, {sql, <<"P0002">>, _}}}) -> {error, not_found};
-registered_put_result({rollback, Error}) -> Error;
-registered_put_result(Result) -> Result.
+registered_put_result({rollback, {error, {sql, <<"23510">>, _}}}) ->
+    {error, content_mismatch};
+registered_put_result({rollback, {error, {sql, <<"55000">>, _}}}) ->
+    {error, session_not_renewable};
+registered_put_result({rollback, {error, {sql, <<"23505">>, _}}}) ->
+    {error, tombstone};
+registered_put_result({rollback, {error, {sql, <<"22023">>, _}}}) ->
+    {error, location_changed};
+registered_put_result({rollback, {error, {sql, <<"P0002">>, _}}}) ->
+    {error, not_found};
+registered_put_result({rollback, Error}) ->
+    Error;
+registered_put_result(Result) ->
+    Result.
 
 %% UUID 查重、pending 创建与登记必须在同一事务，失败不能留下孤儿主行。
 register_session_v5(Org, Ws, Descriptor, Cid, Registration, {Deadline, Expiry}) ->
@@ -709,3 +757,29 @@ insert_without_pending_delete(Conn, Org, Ws, Id, Params) ->
 %% 统一事务中止构造；保留原 throw 类别和完整 rollback/error 原因。
 rollback_error(Reason) ->
     throw({rollback, {error, Reason}}).
+
+%% @doc direct-v1 会话行读取（EB 域 Port：application 层经此访问，
+%% 铁律5）。attach_pending 为平台级表（非租户隔离模型），不做 tenant 包裹。
+%% upload_registration JSONB 一并解码为 map。
+-spec direct_session_row(binary()) -> {ok, map()} | {error, not_found | term()}.
+direct_session_row(ObjectKey) ->
+    case
+        elib_pg:query(
+            <<
+                "SELECT object_key, bucket, scope, creator_user_id, session_state, direct_state,"
+                " upload_registration, storage_driver, storage_namespace, storage_container,"
+                " storage_locator_sha256 FROM attach_pending WHERE object_key=$1"
+            >>,
+            [ObjectKey]
+        )
+    of
+        {ok, [Row]} -> {ok, direct_decode_reg(Row)};
+        {ok, []} -> {error, not_found};
+        {error, R} -> {error, R}
+    end.
+
+direct_decode_reg(Row) ->
+    case maps:get(<<"upload_registration">>, Row, undefined) of
+        B when is_binary(B) -> Row#{<<"upload_registration">> => jsone:decode(B)};
+        _ -> Row
+    end.

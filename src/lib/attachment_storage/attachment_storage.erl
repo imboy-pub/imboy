@@ -152,17 +152,30 @@ location_row(Key, Row) ->
         [Driver, Ns, Container, Digest] when
             is_binary(Driver), is_binary(Ns), is_binary(Container), is_binary(Digest)
         ->
-            case resolve(Ns) of
-                {ok, #{driver := Driver} = Rec} ->
-                    case locator_digest(Ns, Rec) =:= Digest of
-                        true -> snapshot(Key, Container, Rec, Row);
-                        false -> {error, location_changed}
-                    end;
+            %% direct-v1（迁移 00000200）：storage_physical_key 非 NULL 时物理键
+            %% 与逻辑 path 分离；历史行 NULL = 物理键与 path 相同（兼容回落）。
+            %% 空串等残缺值在迁移 CHECK 已挡，这里仍失败关闭。
+            case maps:get(<<"storage_physical_key">>, Row, null) of
+                null ->
+                    resolve_frozen(Key, Ns, Container, Digest, Driver, Row);
+                PKey when is_binary(PKey), byte_size(PKey) > 0 ->
+                    resolve_frozen(PKey, Ns, Container, Digest, Driver, Row);
                 _ ->
-                    {error, location_changed}
+                    {error, location_unverified}
             end;
         _ ->
             {error, location_unverified}
+    end.
+
+resolve_frozen(PhysKey, Ns, Container, Digest, Driver, Row) ->
+    case resolve(Ns) of
+        {ok, #{driver := Driver} = Rec} ->
+            case locator_digest(Ns, Rec) =:= Digest of
+                true -> snapshot(PhysKey, Container, Rec, Row);
+                false -> {error, location_changed}
+            end;
+        _ ->
+            {error, location_changed}
     end.
 snapshot(Key, Container, Rec, Row) ->
     Pin = maps:get(<<"upload_content">>, Row, #{}),
