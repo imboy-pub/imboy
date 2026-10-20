@@ -172,8 +172,14 @@ eunit_setup() ->
     %% 崩溃重启后 paused 复位的尾部窗口）；不在依赖链上，stop 不影响
     %% imboy 生命周期。
     case State of
-        {app_started, _} -> catch application:stop(sync);
-        _ -> ok
+        {app_started, _} ->
+            try
+                application:stop(sync)
+            catch
+                _:_ -> ok
+            end;
+        _ ->
+            ok
     end,
     %% WH-01 让位：imboy_sup 的 bot_webhook_delivery_worker 每 1s poll
     %% claim_due，会抢在用例断言前认领测试刚插入的 pending 投递并真实
@@ -183,7 +189,12 @@ eunit_setup() ->
     %% 专属单测走 execute/1 直调、不经 sup 实例，不受影响。
     case State of
         {app_started, _} ->
-            _ = catch supervisor:terminate_child(imboy_sup, bot_webhook_delivery_worker),
+            _ =
+                try
+                    supervisor:terminate_child(imboy_sup, bot_webhook_delivery_worker)
+                catch
+                    _:_ -> ok
+                end,
             ok;
         _ ->
             ok
@@ -267,8 +278,14 @@ do_ensure_cache() ->
             %% 命名表 'm:imboy_cache' 永久消失 → 所有缓存调用 badarg。
             %% 此处由长驻协调进程重建一个挂在自身上的实例恢复命名表。
             case whereis(imboy_cache) of
-                undefined -> ok;
-                StalePid -> catch gen_server:stop(StalePid, normal, 300)
+                undefined ->
+                    ok;
+                StalePid ->
+                    try
+                        gen_server:stop(StalePid, normal, 300)
+                    catch
+                        _:_ -> ok
+                    end
             end,
             timer:sleep(30),
             _ = imboy_cache:start_link([{depcache_memory_max, 100}]),
@@ -324,7 +341,11 @@ do_boot() ->
             _ =
                 (case application:ensure_all_started(sync) of
                     {ok, _} ->
-                        catch gen_server:cast(sync_scanner, pause);
+                        try
+                            gen_server:cast(sync_scanner, pause)
+                        catch
+                            _:_ -> ok
+                        end;
                     _ ->
                         ok
                 end),
@@ -628,7 +649,12 @@ cleanup_start_orphans() ->
 quiesce_periodic_workers() ->
     lists:foreach(
         fun({Sup, Id}) ->
-            _ = catch supervisor:terminate_child(Sup, Id),
+            _ =
+                try
+                    supervisor:terminate_child(Sup, Id)
+                catch
+                    _:_ -> ok
+                end,
             ok
         end,
         ?PERIODIC_WORKER_STOP_SPECS
@@ -729,7 +755,12 @@ eunit_cleanup_db(ConnPid) when is_pid(ConnPid) ->
     case persistent_term:get(Key, undefined) of
         {Driver, SetupState} ->
             persistent_term:erase(Key),
-            _ = catch pooler:return_member(Driver, ConnPid, ok),
+            _ =
+                try
+                    pooler:return_member(Driver, ConnPid, ok)
+                catch
+                    _:_ -> ok
+                end,
             eunit_cleanup(SetupState);
         undefined ->
             ok
@@ -840,7 +871,11 @@ enforce_pool_capacity() ->
 %% pg_conf 缺位或建池失败返回 error，由调用方决定降级语义。
 ensure_default_pool() ->
     _ = application:ensure_all_started(pooler),
-    catch pooler:rm_pool(pgsql),
+    try
+        pooler:rm_pool(pgsql)
+    catch
+        _:_ -> ok
+    end,
     case application:get_env(imboy, pg_conf) of
         {ok, #{start_mfa := _MFA} = Conf} when is_map(Conf) ->
             case pooler:new_pool(Conf#{name => pgsql}) of
