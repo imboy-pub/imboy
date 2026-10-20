@@ -114,3 +114,31 @@ frame_type(#{<<"type">> := <<"C2C">>}) -> ?FRAME_TYPE_MSG_C2C;
 frame_type(#{<<"type">> := <<"C2G">>}) -> ?FRAME_TYPE_MSG_C2G;
 frame_type(#{<<"type">> := <<"C2S">>}) -> ?FRAME_TYPE_MSG_C2S;
 frame_type(_) -> ?FRAME_TYPE_MSG_S2C.
+
+encoder_exception_fallback_bytes_test_() ->
+    [{atom_to_list(Protocol) ++ "/" ++ atom_to_list(Class), fun() ->
+        Bin = hd(messages()),
+        State = #{current_uid => 7, protocol => Protocol,
+            framing => case Protocol of json -> v2; protobuf -> none end},
+        Expected = case Protocol of
+            json -> {binary, imboy_codec:wrap_v2_frame(?FRAME_TYPE_MSG_S2C, 0, Bin)};
+            protobuf -> {text, Bin}
+        end,
+        ok = meck:new(imboy_codec, [passthrough, no_link]),
+        try
+            case Protocol of
+                protobuf -> meck:expect(imboy_codec, encode, fun(_, _) ->
+                    meck:exception(Class, synthetic_codec_failure) end);
+                json -> meck:expect(imboy_codec, wrap_v2_frame, fun
+                    (?FRAME_TYPE_MSG_S2C, Flags, Payload) ->
+                        meck:passthrough([?FRAME_TYPE_MSG_S2C, Flags, Payload]);
+                    (_, _, _) -> meck:exception(Class, synthetic_codec_failure)
+                end)
+            end,
+            ?assertEqual({reply, Expected, State, hibernate},
+                websocket_handler:websocket_info({reply, Bin}, State)),
+            ?assert(meck:validate(imboy_codec))
+        after
+            meck:unload(imboy_codec)
+        end
+    end} || Protocol <- [json, protobuf], Class <- [error, throw, exit]].
