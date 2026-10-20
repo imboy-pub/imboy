@@ -185,10 +185,7 @@ scope_gate(Value) ->
             Json when is_binary(Json) -> jsone:decode(Json);
             List -> List
         end,
-    case
-        is_list(Scopes) andalso lists:member(<<"identities:write">>, Scopes) andalso
-            Scopes -- [<<"identities:write">>, <<"identities:read">>] =:= []
-    of
+    case enterprise_directory_source_policy:allowed(Scopes) of
         true -> ok;
         false -> throw({abort_tx, directory_only_application_required})
     end.

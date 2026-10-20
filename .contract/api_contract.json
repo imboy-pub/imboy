@@ -200,6 +200,12 @@
         "static": false
       },
       {
+        "action": "avatar_direct",
+        "handler": "adm_ai_agent_handler",
+        "path": "/api/adm/ai_agent/avatar_direct",
+        "static": false
+      },
+      {
         "action": "create",
         "handler": "adm_ai_agent_handler",
         "path": "/api/adm/ai_agent/create",
@@ -1948,6 +1954,24 @@
         "static": false
       },
       {
+        "action": "departments",
+        "handler": "enterprise_directory_handler",
+        "path": "/api/internal/v1/directory/departments",
+        "static": false
+      },
+      {
+        "action": "organizations",
+        "handler": "enterprise_directory_handler",
+        "path": "/api/internal/v1/directory/organizations",
+        "static": false
+      },
+      {
+        "action": "persons",
+        "handler": "enterprise_directory_handler",
+        "path": "/api/internal/v1/directory/persons",
+        "static": false
+      },
+      {
         "action": "sync",
         "handler": "enterprise_directory_handler",
         "path": "/api/internal/v1/directory/sync",
@@ -2232,6 +2256,12 @@
         "static": false
       },
       {
+        "action": null,
+        "handler": "attach_direct_handler",
+        "path": "/api/v1/attachment/direct/:action",
+        "static": false
+      },
+      {
         "action": "put",
         "handler": "attachment_storage_gateway_handler",
         "path": "/api/v1/attachment/gateway/:session_key",
@@ -2475,6 +2505,12 @@
         "action": "publish_message",
         "handler": "channel_handler",
         "path": "/api/v1/channel/:channel_id/message",
+        "static": false
+      },
+      {
+        "action": "show_message",
+        "handler": "channel_handler_message",
+        "path": "/api/v1/channel/:channel_id/message/:message_id",
         "static": false
       },
       {
@@ -3498,6 +3534,12 @@
         "static": false
       },
       {
+        "action": "bind",
+        "handler": "group_file_handler",
+        "path": "/api/v1/group/file/bind",
+        "static": false
+      },
+      {
         "action": "categories",
         "handler": "group_file_handler",
         "path": "/api/v1/group/file/categories",
@@ -3777,6 +3819,18 @@
         "action": "batch_upload",
         "handler": "group_album_handler",
         "path": "/api/v1/group_album/photo/batch",
+        "static": false
+      },
+      {
+        "action": "bind_photo",
+        "handler": "group_album_handler",
+        "path": "/api/v1/group_album/photo/bind",
+        "static": false
+      },
+      {
+        "action": "bind_batch",
+        "handler": "group_album_handler",
+        "path": "/api/v1/group_album/photo/bind_batch",
         "static": false
       },
       {
@@ -4257,6 +4311,12 @@
         "action": "read_stats",
         "handler": "msg_handler",
         "path": "/api/v1/msg/read_stats",
+        "static": false
+      },
+      {
+        "action": "message_result",
+        "handler": "msg_handler",
+        "path": "/api/v1/msg/result",
         "static": false
       },
       {
@@ -5177,6 +5237,18 @@
         "action": "info",
         "handler": "brand_handler",
         "path": "/brand",
+        "static": false
+      },
+      {
+        "action": null,
+        "handler": "channel_link_landing_handler",
+        "path": "/channel/:channel_id",
+        "static": false
+      },
+      {
+        "action": null,
+        "handler": "channel_link_landing_handler",
+        "path": "/channel/:channel_id/article/:message_id",
         "static": false
       },
       {

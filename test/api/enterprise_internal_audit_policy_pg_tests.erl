@@ -56,7 +56,7 @@ policy_coverage() ->
         length(lists:usort(Required ++ Deviation)),
         overlapping_verdicts
     ),
-    ?assertEqual(44, length(enterprise_internal_routes:routes())),
+    ?assertEqual(47, length(enterprise_internal_routes:routes())),
     ?assertEqual(31, length(NonGet)),
     ?assertEqual(27, length(Required)),
     ?assertEqual(4, length(Deviation)),
@@ -127,8 +127,9 @@ policy_of(Id) ->
 
 audit_policy_http_test_() ->
     {timeout, 900,
-        {setup, fun intbe02_http_support:setup_all/0, fun teardown_marker/1,
-            fun(S) -> {timeout, 900, fun() -> run_audit(S) end} end}}.
+        {setup, fun intbe02_http_support:setup_all/0, fun teardown_marker/1, fun(S) ->
+            {timeout, 900, fun() -> run_audit(S) end}
+        end}}.
 
 run_audit(S) ->
     #{conn := C} = S,
@@ -246,15 +247,16 @@ positive_with_audit(S) ->
     assert_audit_increment(C, <<"group.members.removed">>, 0, 1),
 
     %% ---- INT-07 presign（DEVIATION：无审计行）----
-    #{<<"object_key">> := ObjectKey} = Registration = http_ok(
-        C,
-        Port,
-        <<"POST">>,
-        <<"/api/internal/v1/files/presign">>,
-        #{<<"file_name">> => <<"intbe03-report.txt">>, <<"mime_type">> => <<"text/plain">>},
-        A,
-        <<"intbe03-idem-07">>
-    ),
+    #{<<"object_key">> := ObjectKey} =
+        Registration = http_ok(
+            C,
+            Port,
+            <<"POST">>,
+            <<"/api/internal/v1/files/presign">>,
+            #{<<"file_name">> => <<"intbe03-report.txt">>, <<"mime_type">> => <<"text/plain">>},
+            A,
+            <<"intbe03-idem-07">>
+        ),
     assert_audit_increment(C, <<"group.updated">>, 1, 1),
     ?assertEqual(0, audit_count(C, <<"file.presigned">>), presign_deviation_zero_rows),
     ?assertEqual(0, audit_count(C, <<"file.presign">>), presign_deviation_zero_rows),
@@ -277,8 +279,11 @@ positive_with_audit(S) ->
     ?assertEqual(200, maps:get(status, Resp08), maps:get(body, Resp08)),
     #{<<"size">> := 2048, <<"mime_type">> := <<"text/plain">>} =
         jsone:decode(maps:get(body, Resp08)),
-    Confirmed = intbe02_http_support:one(C,
-        <<"SELECT file_hash256 FROM attachment WHERE path=$1">>, [ObjectKey]),
+    Confirmed = intbe02_http_support:one(
+        C,
+        <<"SELECT file_hash256 FROM attachment WHERE path=$1">>,
+        [ObjectKey]
+    ),
     ?assertEqual(hash256(Bytes), maps:get(<<"file_hash256">>, Confirmed)),
     assert_audit_increment(C, <<"file.confirmed">>, 0, 1),
     assert_audit_row(C, #{

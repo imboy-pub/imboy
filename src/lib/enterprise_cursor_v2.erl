@@ -2,7 +2,7 @@
 
 %%%
 % enterprise_cursor_v2 是 CURSOR-V2 签名游标（plan §10.1 冻结合同）的唯一
-% 实现，供 8 个 internal list family（INT-16/17/23/24/26/27/28/30）与
+% 实现，供 11 个 internal list family（含 INT-45..47 来源核对）与
 % A4 的 Human Directory（family=human_directory，绑定 Human uid/O/filter）
 % 复用。A2/A4 只依赖本模块的导出面，不重复实现编码/验签。
 %
@@ -42,7 +42,7 @@
     ttl_seconds/0
 ]).
 
-%% 8 个 internal list family（§10.2 冻结；INT-16/17/23/24/26/27/28/30）
+%% 原 8 个 internal list family，加 3 个来源核对 family（INT-45..47）。
 -define(INTERNAL_FAMILIES, [
     <<"identity_mappings">>,
     <<"directory_users">>,
@@ -51,7 +51,10 @@
     <<"groups">>,
     <<"group_members">>,
     <<"projects">>,
-    <<"channels">>
+    <<"channels">>,
+    <<"source_organizations">>,
+    <<"source_departments">>,
+    <<"source_persons">>
 ]).
 
 %% A4 Human Directory 复用同一算法，但 payload 域不同（绑定 Human uid，
@@ -158,7 +161,7 @@ build_payload(Family, OrgId, AppId, Filter, SortTuple, IssuedAt) when
         <<"issued_at">> => IssuedAt
     }.
 
-%% @doc 8 个 internal list family 全集（§10.2 冻结）。验签白名单另含
+%% @doc 11 个 internal list family 全集。验签白名单另含
 %% human_directory（A4 Human Directory 复用本算法，payload 域不同）。
 -spec families() -> [binary(), ...].
 families() ->

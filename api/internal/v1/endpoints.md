@@ -1,8 +1,8 @@
-# Internal API v1 — 端点参考（42 端点）
+# Internal API v1 — 端点参考（47 个 Internal 操作）
 
 > 与代码冻结表（`src/api/enterprise_internal_routes.erl`）逐条一致；
-> 字段级机器契约见 `../openapi-internal.yaml`（编辑真源，
-> `../paths/internal/v1/`）与 `../openapi-internal.bundle.yaml`（bundle 单文件）。
+> 字段级机器契约见 `../../openapi-internal.yaml`（编辑真源，
+> `../../paths/internal/v1/`）与 `../../openapi-internal.bundle.yaml`（bundle 单文件）。
 > 认证、限流桶、幂等、`sender_mode` 语义见 [README.md](./README.md)。
 
 图例：幂等 `—`=不需要 / `K`=必须带 `Idempotency-Key` / `code`=一次性 code。
@@ -12,15 +12,14 @@
 运营后台与企业集成是两个独立安全面：
 
 - **运营后台**：Admin Cookie + `/api/adm/*`，供平台运营人员跨企业治理数据；
-- **企业集成**：Application Credential + `/api/internal/v1/*`，只能访问凭证所属
-  Organization 与已授予 Workspace，不得复用 Admin 权限。
+- **企业集成**：Application Credential + `/api/internal/v1/*`，资源按显式目标 Organization、来源配置与已授予 Workspace 校验，应用归属不是授权边界，不得复用 Admin 权限。
 
 因此，管理后台出现一个菜单，并不表示同名资源应自动暴露完整 Internal CRUD。
-当前冻结合同（INT-01..INT-42）的实际覆盖如下：
+当前冻结合同（INT-01..INT-47）的实际覆盖如下：
 
 | 企业数据 | 分页查看 | 新增 | 详情 | 修改 | 删除/归档 | 当前结论 |
 |---|---|---|---|---|---|---|
-| 组织治理 | — | — | INT-01 仅返回凭证所属组织上下文 | — | — | **不开放组织增删**；Application 不能创建或删除自己的授权父域 |
+| 组织与来源目录 | INT-45..47 | INT-43 可信来源引导 | INT-45..47 | INT-43 显式增量 | 显式移除部门/任职 | 不开放任意组织治理；首次组织使用可信配置中确认的 Human Owner |
 | Workspace | INT-24 | INT-37 | INT-25 | INT-38 | INT-39 | 创建、修改及软归档已实现；独立 workspaces:write，版本并发保护及应用审计 |
 | 客服坐席 | INT-33 | INT-35 | INT-34 | INT-36 | INT-36 enabled=false | 企业级配置接口；保留历史，不签发 Seat JWT |
 | 企业频道 | INT-30 | INT-40 | INT-31 | INT-41 | INT-42 | 创建、修改、软归档已实现；仅 workspace，版本与应用审计保护 |
@@ -43,9 +42,9 @@ Grant/Scope、OpenAPI、审计和自动化测试，再作为 v1 只追加端点�
 | P0 | 企业频道 | `GET /channels`、`GET /channels/{channel_id}` | `channels:read` | ✅ 已实现（INT-30/31）；仅 `scope=workspace`，排除个人频道 |
 | P0 | 客服坐席 | `GET /customer-service/seats`、`GET /customer-service/seats/{business_identity_id}` | `customer_service:read` | INT-33/34：企业全域 Grant，ID 升序 cursor 分页与详情 |
 | 已实现 | Workspace | `POST /workspaces`、`PATCH /workspaces/{workspace_id}`、`DELETE /workspaces/{workspace_id}` | `workspaces:write` | 新建、修改、软归档；写请求必须幂等 |
-| P1 | 企业项目 | `POST /projects`、`PATCH /projects/{project_id}`、`DELETE /projects/{project_id}` | `projects:write` | 新建、修改、软归档；项目必须属于已授权 Workspace |
+| 后续可选，非广州一期必需 | 企业项目 | `POST /projects`、`PATCH /projects/{project_id}`、`DELETE /projects/{project_id}` | `projects:write` | 新建、修改、软归档；项目必须属于已授权 Workspace |
 | 已实现 INT-40..42 | 企业频道 | `POST /channels`、`PATCH /channels/{channel_id}`、`DELETE /channels/{channel_id}` | `channels:write` | 新建、修改、软归档；`scope/workspace_id` 创建后不可变 |
-| P1 | 客服坐席 | `POST /customer-service/seats`、`PATCH /customer-service/seats/{business_identity_id}` | `customer_service:write` | INT-35/36：开通、版本校验调整并发/状态、PATCH 停用；不签发 Admin 或 Seat 身份 |
+| 已实现 INT-35/36 | 客服坐席 | `POST /customer-service/seats`、`PATCH /customer-service/seats/{business_identity_id}` | `customer_service:write` | INT-35/36：开通、版本校验调整并发/状态、PATCH 停用；不签发 Admin 或 Seat 身份 |
 
 约束：
 
@@ -55,7 +54,7 @@ Grant/Scope、OpenAPI、审计和自动化测试，再作为 v1 只追加端点�
 - 组织创建、组织删除、Application/Credential 生命周期、Grant 签发/撤销仍只属于
   `/api/adm/*`，不会下放给 Application Credential；
 - 上述待补合同正式实现前，当前可导入 Postman 的权威集合仍是本目录的
-  `IMBoy-Internal-API-v1.postman_collection.json`（42 个已实现操作）。
+  `IMBoy-Internal-API-v1.postman_collection.json`（47 个 Internal 操作及 3 个 Human 伴随请求）。
 
 ## 应用与凭证
 
@@ -104,7 +103,7 @@ Grant/Scope、OpenAPI、审计和自动化测试，再作为 v1 只追加端点�
 V2.1 FIX：群详情（INT-18）与群/成员只读分页（INT-26/27）scope 均为
 `groups:read`（此前文档误标 `groups:write`）。
 
-## Workspace（只读）
+## Workspace
 
 | ID | 方法与路径 | Scope | 限流桶 | 幂等 |
 |---|---|---|---|---|
@@ -229,3 +228,22 @@ PATCH 必需 expected_version，并至少修改 name/description/avatar 一项�
 资源变更、带 application_id/correlation_id 且 actor_user_id=NULL 的应用审计，以及幂等结果共用事务。资源实际归属仍为工作空间所在企业；审计记录应用来源。重试必须复用同业务 key、方法、路径及相同规范化 JSON 内容；重放前验证当前生效 Grant，撤权后拒绝。幂等键为 1..128 ASCII，详情见机器契约。
 
 English summary: Three channel write operations are implemented with explicit Workspace-scoped channels:write, eligible Human creator membership, non-public visibility, quota, optimistic governance versions, atomic application audit and authorized idempotent replay. Soft archive preserves channel history and identity relations.
+
+## 来源目录与 OA 入站 / Source directory and inbound login
+
+| ID | 方法与路径（前缀 /api/internal/v1） | Scope | 限流 | 幂等 |
+|---|---|---|---|---|
+| INT-43 | POST /directory/sync | identities:write + 可信来源/目标授权 | internal_write | K |
+| INT-44 | POST /oa/login/tickets | oa:login:issue（独立显式授予） | internal_sso | 不要求；票据单次消费 |
+| INT-45 | GET /directory/organizations | identities:read + 本来源各目标全域 Grant | internal_read | — |
+| INT-46 | GET /directory/departments | identities:read + 本来源目标全域 Grant | internal_read | — |
+| INT-47 | GET /directory/persons | identities:read + 本来源目标全域 Grant | internal_read | — |
+
+INT-46/47 必传 external_organization_id；分页 page_size=1..100（默认 50）、cursor。
+INT-46 可按 external_department_id/status 过滤；INT-47 可按 external_user_id、source_status、
+membership_status、projection_status 精确过滤。未知或重复参数拒绝，游标绑定完整过滤条件。
+读取只返回有效授权覆盖的已建立组织，不显示未引导配置，亦不要求目录写权限。
+字段、状态与双方向 OA 流程以 README 和 ../../paths/internal/v1/directory/ 的 schema 为准。
+
+English: INT-43/44 are implemented source-sync and login-ticket operations. INT-45..47 add read-only
+source reconciliation. Human login exchange/link/register remain outside the Internal credential surface.

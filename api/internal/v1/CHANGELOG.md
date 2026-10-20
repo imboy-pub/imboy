@@ -3,6 +3,16 @@
 本 API 遵循「冻结 + 只追加」纪律：v1 内不做破坏性变更（不改既有路径语义、
 不删字段、不收紧既有错误码）；破坏性演进将另开 v2 目录并行。
 
+## Unreleased — OA 来源核对与契约修正
+
+- 新增 INT-45..47 来源组织、部门、人员 GET 核对；当前 33 paths / 47 Internal operations。
+- 只读身份权限、来源及目标全域 Grant、实时签名游标、精确过滤与 no-store；不要求 identities:write。
+- 目录来源兼容显式 OA 登录/SSO 能力，bootstrap 仍只授予目录权限，不自动授予签票或交换权限。
+- 修正同步领域错误映射、manifest INT-18 读取权限与 OAS 3.1 int64/null；保持既有成功形状及状态。
+- Postman 补 INT-43 及三条读取，保留 3 条认证独立的 Human 伴随请求；契约门禁新增语义漂移检查。
+- English: Additive source reconciliation, explicit OA capability composition and contract corrections.
+  Implementation and automated checks do not imply customer OA UAT or production release.
+
 ## Unreleased — Workspace writes
 
 - 新增 INT-37..39 创建、修改及软归档；独立 workspaces:write，GET 投影追加 version。

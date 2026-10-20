@@ -1,0 +1,186 @@
+get:
+  tags:
+  - internal
+  summary: 来源组织核对列表
+  description: 只读核对本来源数据。需有效 identities:read 与目标组织全域 Grant，并逐语句复核应用、凭据、来源启用及有效期。尚未建立组织的配置不在列表中，由可信
+    Admin 入口查看。零授权不放行。按外部 ID 的 UTF-8 字节序升序，page_size 1..100，未知或重复参数拒绝。
+  operationId: internalSourceOrganizations
+  security:
+  - ibIntBearer: []
+  x-imboy-scope: identities:read
+  x-imboy-rate-bucket: internal_read
+  x-imboy-idempotency: not_required
+  parameters:
+  - name: page_size
+    in: query
+    description: 默认 50，最大 100；拒绝重复或未知参数。
+    schema:
+      type: integer
+      default: 50
+      minimum: 1
+      maximum: 100
+  - name: cursor
+    in: query
+    description: 签名游标，绑定来源应用、组织、页族和所有过滤条件，24 小时有效。
+    schema:
+      type: string
+      minLength: 1
+      maxLength: 8192
+  responses:
+    '200':
+      description: 来源目录实时分页；无业务写副作用；不是快照。
+      headers:
+        Cache-Control:
+          schema:
+            type: string
+            const: no-store
+          description: 禁止缓存人员目录。
+      content:
+        application/json:
+          schema:
+            type: object
+            additionalProperties: false
+            required:
+            - items
+            - page_size
+            - has_more
+            - next_cursor
+            properties:
+              items:
+                type: array
+                items:
+                  type: object
+                  additionalProperties: false
+                  required:
+                  - external_organization_id
+                  - organization_id
+                  - source_version
+                  - enabled
+                  properties:
+                    external_organization_id:
+                      type: string
+                      minLength: 1
+                      maxLength: 256
+                      description: 不透明 UTF-8 外部标识；服务端按 UTF-8 字节限制 1..256。
+                    organization_id:
+                      type: integer
+                      format: int64
+                      minimum: 1
+                      maximum: 9223372036854775807
+                    source_version:
+                      type: integer
+                      format: int64
+                      minimum: 0
+                      maximum: 9223372036854775807
+                    enabled:
+                      type: boolean
+                      const: true
+              page_size:
+                type: integer
+                minimum: 1
+                maximum: 100
+              has_more:
+                type: boolean
+              next_cursor:
+                type:
+                - string
+                - 'null'
+    '400':
+      description: invalid_request
+      content:
+        application/json:
+          schema:
+            allOf:
+            - $ref: ../../../../components/schemas/internal/ErrorEnvelope.yaml
+            properties:
+              error:
+                properties:
+                  code:
+                    enum:
+                    - invalid_request
+    '401':
+      description: invalid_credential / credential_expired
+      content:
+        application/json:
+          schema:
+            allOf:
+            - $ref: ../../../../components/schemas/internal/ErrorEnvelope.yaml
+            properties:
+              error:
+                properties:
+                  code:
+                    enum:
+                    - invalid_credential
+                    - credential_expired
+    '403':
+      description: application_disabled / insufficient_scope
+      content:
+        application/json:
+          schema:
+            allOf:
+            - $ref: ../../../../components/schemas/internal/ErrorEnvelope.yaml
+            properties:
+              error:
+                properties:
+                  code:
+                    enum:
+                    - application_disabled
+                    - insufficient_scope
+    '404':
+      description: resource_not_found
+      content:
+        application/json:
+          schema:
+            allOf:
+            - $ref: ../../../../components/schemas/internal/ErrorEnvelope.yaml
+            properties:
+              error:
+                properties:
+                  code:
+                    enum:
+                    - resource_not_found
+    '429':
+      description: rate_limited
+      content:
+        application/json:
+          schema:
+            allOf:
+            - $ref: ../../../../components/schemas/internal/ErrorEnvelope.yaml
+            properties:
+              error:
+                properties:
+                  code:
+                    enum:
+                    - rate_limited
+      headers:
+        Retry-After:
+          description: 重试等待秒数。
+          schema:
+            type: integer
+            minimum: 1
+    '500':
+      description: internal_error
+      content:
+        application/json:
+          schema:
+            allOf:
+            - $ref: ../../../../components/schemas/internal/ErrorEnvelope.yaml
+            properties:
+              error:
+                properties:
+                  code:
+                    enum:
+                    - internal_error
+    '503':
+      description: security_gate_closed
+      content:
+        application/json:
+          schema:
+            allOf:
+            - $ref: ../../../../components/schemas/internal/ErrorEnvelope.yaml
+            properties:
+              error:
+                properties:
+                  code:
+                    enum:
+                    - security_gate_closed

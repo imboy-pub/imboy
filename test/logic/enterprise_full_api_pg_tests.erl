@@ -2202,7 +2202,10 @@ bnd_spec_align_test() ->
             {<<"INT-43">>, org},
             %% OA 登录票据签发属于 application 自属面；仍验证完整冻结表。
             %% OA ticket issue is application-owned, without org/workspace grant.
-            {<<"INT-44">>, none}
+            {<<"INT-44">>, none},
+            {<<"INT-45">>, list},
+            {<<"INT-46">>, list},
+            {<<"INT-47">>, list}
         ],
         lists:foreach(
             fun({Id, Kind}) ->

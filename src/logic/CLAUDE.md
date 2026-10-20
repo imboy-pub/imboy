@@ -17,6 +17,7 @@
 | `user_denylist_logic` | 黑名单管理 |
 | `user_tag_logic` | 用户标签 |
 | `user_tag_relation_logic` | 标签关系 |
+| `enterprise_directory_source_read_logic` | 来源组织/部门/人员核对；只读授权、过滤与签名游标，复用 source read repo |
 
 ### 认证
 

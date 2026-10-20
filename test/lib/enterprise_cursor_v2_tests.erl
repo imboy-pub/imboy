@@ -88,7 +88,7 @@ roundtrip_test() ->
     ?assertEqual(202, maps:get(<<"application_id">>, Verified)),
     ?assertEqual([1700, 42], maps:get(<<"sort_tuple">>, Verified)),
     ?assertEqual(Now, maps:get(<<"issued_at">>, Verified)),
-    %% 8 个 internal family 全部可签可验
+    %% 11 个 internal family 全部可签可验
     lists:foreach(
         fun(F) ->
             {ok, C} = enterprise_cursor_v2:sign(base_payload(F, Now), ?SECRET),
@@ -96,7 +96,7 @@ roundtrip_test() ->
         end,
         enterprise_cursor_v2:families()
     ),
-    ?assertEqual(8, length(enterprise_cursor_v2:families())).
+    ?assertEqual(11, length(enterprise_cursor_v2:families())).
 
 %%%===================================================================
 %%% ③ 负例五类（tampered / malformed / foreign family / 结构非法 / expired）

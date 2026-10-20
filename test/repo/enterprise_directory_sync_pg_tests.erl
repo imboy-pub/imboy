@@ -23,6 +23,7 @@ run() ->
         applied_and_replay(Conn, Ctx),
         rejected_atomicity(Conn, Ctx),
         pending_claim_projection(Conn, Ctx),
+        enterprise_directory_source_read_pg_checks:exercise(Conn, Ctx),
         local_membership_governance(Conn, Ctx),
         enterprise_directory_user_delete_pg_checks:exercise(State, Ctx),
         concurrent_revocations(State, Ctx),
@@ -596,6 +597,15 @@ body(Version) ->
 
 trusted_bootstrap(Conn, Ctx) ->
     AppId = maps:get(application_id, Ctx),
+    %% A combined OA source is allowed, but bootstrap must not grant OA powers.
+    {ok, _} = elib_pg:query(
+        Conn,
+        <<"UPDATE enterprise_application SET allowed_scopes=$2::jsonb WHERE id=$1">>,
+        [
+            AppId,
+            <<"[\"identities:write\",\"identities:read\",\"oa:login:issue\",\"sso:exchange\"]">>
+        ]
+    ),
     {ok, _} = elib_pg:query(
         Conn,
         <<
@@ -662,8 +672,35 @@ trusted_bootstrap(Conn, Ctx) ->
         >>)
     ),
     ?assertEqual(UserCount, scalar(Conn, <<"SELECT count(*) AS value FROM \"user\"">>)),
+    ?assertEqual(
+        0,
+        scalar(Conn, <<
+            "SELECT count(*) AS value FROM enterprise_application_grant_scope gs"
+            " JOIN enterprise_directory_organization_source s ON gs.grant_id=s.bootstrap_grant_id"
+            " WHERE s.external_organization_id='bootstrap'"
+            " AND gs.scope IN ('oa:login:issue','sso:exchange')"
+        >>)
+    ),
     ?assertEqual(WorkspaceCount, scalar(Conn, <<"SELECT count(*) AS value FROM workspace">>)),
+    combined_login_permission(Conn, Ctx),
     disable_bootstrap(Conn, Ctx, AppId, Until, Body).
+
+combined_login_permission(Conn, #{application_id := App, credential_id := Cred}) ->
+    ?assertMatch({error, _}, enterprise_oa_login_repo:authority_tx(Conn, App, Cred)),
+    {ok, _, _} = epgsql:squery(Conn, "BEGIN"),
+    try
+        {ok, _} = enterprise_application_grant_repo:create_tx(Conn, 977100, App, #{
+            scopes => [<<"oa:login:issue">>],
+            workspace_scope_kind => none,
+            workspace_ids => [],
+            expires_at => <<"2099-01-01T00:00:00Z">>,
+            idempotency_key => <<"explicit-oa-source-login">>
+        }),
+        ?assertMatch({ok, _}, enterprise_oa_login_repo:authority_tx(Conn, App, Cred))
+    after
+        {ok, _, _} = epgsql:squery(Conn, "ROLLBACK")
+    end,
+    ?assertMatch({error, _}, enterprise_oa_login_repo:authority_tx(Conn, App, Cred)).
 
 disable_bootstrap(Conn, Ctx, AppId, Until, Body) ->
     {ok, _, _} = epgsql:squery(Conn, "BEGIN"),

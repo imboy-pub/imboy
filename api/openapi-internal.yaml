@@ -2,7 +2,7 @@
 # imboy/api/openapi-internal.yaml — IMBoy Internal API 编辑真源（surface internal）
 #
 # 三受众布局（2026-09-22 api-surface-reorg）：企业集成 internal v1 端点
-# （30 条 cowboy path / 44 端点（含 INT-43 directory/sync 与 INT-44 OA login），与
+# （33 条 cowboy path / 47 端点（含 INT-43 directory/sync 与 INT-44 OA login），与
 # src/api/enterprise_internal_routes.erl 冻结路由表逐条对应）。端点文件位于
 # paths/internal/v1/；认证方案
 # ibIntBearer（Bearer <credential_prefix>.<secret>）。
@@ -16,8 +16,8 @@ info:
   x-stability: stable
   summary: IMBoy 企业内部集成 API（Internal API v1，冻结）
   description: |
-    本文件是 IMBoy **surface internal**（企业集成）的编辑真源，桥接 30 条
-    path（44 个操作）。受众为企业 OA / 第三方集成系统开发者。
+    本文件是 IMBoy **surface internal**（企业集成）的编辑真源，桥接 33 条
+    path（47 个操作）。受众为企业 OA / 第三方集成系统开发者。
 
     **认证**：所有请求携带 `Authorization: Bearer <credential_prefix>.<secret>`；
     credential_prefix is the server-issued ib_int_ prefix; use the full returned credential unchanged, without rebuilding it from application_id or credential_id.
@@ -70,6 +70,12 @@ paths:
     $ref: './paths/internal/v1/identity/resolve.yaml'
   /api/internal/v1/identity-mappings/directory:
     $ref: './paths/internal/v1/identity/directory.yaml'
+  /api/internal/v1/directory/organizations:
+    $ref: './paths/internal/v1/directory/organizations.yaml'
+  /api/internal/v1/directory/departments:
+    $ref: './paths/internal/v1/directory/departments.yaml'
+  /api/internal/v1/directory/persons:
+    $ref: './paths/internal/v1/directory/persons.yaml'
   /api/internal/v1/directory/sync:
     $ref: './paths/internal/v1/directory/sync.yaml'
   /api/internal/v1/directory/users:

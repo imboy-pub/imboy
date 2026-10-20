@@ -464,6 +464,33 @@ routes() ->
             rate_bucket => internal_write,
             idempotency => required,
             sender_mode => none
+        },
+        #{
+            id => <<"INT-45">>,
+            method => <<"GET">>,
+            path => <<"/api/internal/v1/directory/organizations">>,
+            scope => <<"identities:read">>,
+            rate_bucket => internal_read,
+            idempotency => not_required,
+            sender_mode => none
+        },
+        #{
+            id => <<"INT-46">>,
+            method => <<"GET">>,
+            path => <<"/api/internal/v1/directory/departments">>,
+            scope => <<"identities:read">>,
+            rate_bucket => internal_read,
+            idempotency => not_required,
+            sender_mode => none
+        },
+        #{
+            id => <<"INT-47">>,
+            method => <<"GET">>,
+            path => <<"/api/internal/v1/directory/persons">>,
+            scope => <<"identities:read">>,
+            rate_bucket => internal_read,
+            idempotency => not_required,
+            sender_mode => none
         }
     ].
 

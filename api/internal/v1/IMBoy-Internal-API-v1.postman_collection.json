@@ -2,7 +2,7 @@
   "info": {
     "name": "IMBoy Internal API v1",
     "_postman_id": "74b0c0be-ae23-5011-b04e-a7776770f4bd",
-    "description": "IMBoy 企业集成 API，42 个已实现操作、28 条路由路径。配套 README.md 和 endpoints.md。设置部署方提供的 base_url、管理员签发的 credential；写请求使用固定业务幂等键，修改/归档填写当前版本。所有示例均为合成数据。",
+    "description": "IMBoy 企业集成 API：47 个 Internal 操作、33 条路径；另含 3 个独立认证的 Human OA 登录伴随请求。设置部署方提供的 base_url、应用 credential、可信来源外部组织标识；写请求使用稳定业务幂等键，修改/归档填写当前版本。所有示例为合成数据；请勿直接对生产环境运行整个集合。",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -120,6 +120,16 @@
       "key": "channel_version",
       "value": "1",
       "description": "填写当前实际版本"
+    },
+    {
+      "key": "directory_external_organization_id",
+      "value": "synthetic-oa-org",
+      "type": "string"
+    },
+    {
+      "key": "directory_idempotency_key",
+      "value": "synthetic-directory-batch-1",
+      "type": "string"
     }
   ],
   "item": [
@@ -1938,6 +1948,124 @@
           }
         }
       }
+    },
+    {
+      "name": "来源目录同步与核对 / Source directory",
+      "item": [
+        {
+          "name": "INT-43 来源目录显式增量同步",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{credential}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{directory_idempotency_key}}"
+              }
+            ],
+            "url": "{{base_url}}/api/internal/v1/directory/sync",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"organization\": {\n    \"external_id\": \"{{directory_external_organization_id}}\",\n    \"name\": \"Synthetic OA Organization\",\n    \"version\": 1\n  },\n  \"departments\": [\n    {\n      \"external_id\": \"synthetic-dept\",\n      \"parent_external_id\": null,\n      \"name\": \"Synthetic Department\",\n      \"version\": 1,\n      \"status\": \"active\"\n    }\n  ],\n  \"persons\": [\n    {\n      \"external_user_id\": \"synthetic-person\",\n      \"display_name\": \"Synthetic Person\",\n      \"source_status\": \"active\",\n      \"source_version\": 1,\n      \"membership\": {\n        \"version\": 1,\n        \"status\": \"active\",\n        \"department_external_ids\": [\n          \"synthetic-dept\"\n        ]\n      }\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"directory committed\", function () { pm.response.to.have.status(200); pm.expect(pm.response.json().synced).to.eql(true); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "INT-45 来源organizations核对",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{credential}}"
+              }
+            ],
+            "url": "{{base_url}}/api/internal/v1/directory/organizations"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"source page\", function () { pm.response.to.have.status(200); pm.expect(pm.response.json().items).to.be.an(\"array\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "INT-46 来源departments核对",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{credential}}"
+              }
+            ],
+            "url": "{{base_url}}/api/internal/v1/directory/departments?external_organization_id={{directory_external_organization_id}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"source page\", function () { pm.response.to.have.status(200); pm.expect(pm.response.json().items).to.be.an(\"array\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "INT-47 来源persons核对",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{credential}}"
+              }
+            ],
+            "url": "{{base_url}}/api/internal/v1/directory/persons?external_organization_id={{directory_external_organization_id}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"source page\", function () { pm.response.to.have.status(200); pm.expect(pm.response.json().items).to.be.an(\"array\"); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
     }
   ]
 }

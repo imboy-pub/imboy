@@ -208,6 +208,13 @@ spec(<<"INT-42">>) ->
     {ok, #{kind => workspace, scope => <<"channels:write">>}};
 spec(<<"INT-43">>) ->
     {ok, #{kind => org, scope => <<"identities:write">>}};
+%% Source reconciliation filters live source/target grants inside its SQL reads.
+spec(<<"INT-45">>) ->
+    {ok, #{kind => list, scope => <<"identities:read">>}};
+spec(<<"INT-46">>) ->
+    {ok, #{kind => list, scope => <<"identities:read">>}};
+spec(<<"INT-47">>) ->
+    {ok, #{kind => list, scope => <<"identities:read">>}};
 spec(_RouteId) ->
     error.
 
@@ -338,7 +345,10 @@ candidate_ids() ->
                 <<"INT-41">>,
                 <<"INT-42">>,
                 <<"INT-43">>,
-                <<"INT-44">>
+                <<"INT-44">>,
+                <<"INT-45">>,
+                <<"INT-46">>,
+                <<"INT-47">>
             ]
     ].
 

@@ -1,4 +1,4 @@
-# Versioned current manifest: INT-01..42. Historical run manifest remains untouched.
+# Versioned current manifest: INT-01..47. Historical run manifest remains untouched.
 # IMBoy Enterprise Internal API Manifest — frozen by A0 at BASE-00
 # RUN_ID: enterprise-internal-20260921T043945Z
 # Stage coverage: STAGE_GZ (INT-01..INT-14 + human-side SSO code issuance)
@@ -12,7 +12,7 @@
 # Hard invariants:
 #   INV-1  /api/open/v1/* production routes, aliases, handlers, migrations == 0 (verified at BASE-00: grep=0)
 #   INV-2  Application Credential may ONLY call /api/internal/v1/*; against /api/adm/* and Human /api/v1/* it MUST get 401/403
-#   INV-3  Human JWT may NOT call /api/internal/v1/* application routes (only /api/v1/oa/sso/code)
+#   INV-3  Human JWT may NOT call /api/internal/v1/* application routes (Human discovery, code issuance and confirmed account linking use /api/v1)
 #   INV-4  No wildcard scopes; messages:send_as_human / friend_requests:create / webhooks:manage never implied by messages:send
 #   INV-5  sender contract field is exactly sender_user_id; actor_user_id / as_user_id MUST be rejected
 #   INV-6  OA-origin messages are enterprise-hosted and permanently NON-E2EE; Human-Human E2EE paths untouched
@@ -27,7 +27,7 @@ auth_contexts:
     allowed_prefix: "/api/internal/v1/"
     forbidden_prefixes: ["/api/adm/", "/api/v1/"]
   human_jwt:
-    allowed: ["/api/v1/oa/sso/code"]
+    allowed: ["/api/v1/oa/sso/code", "/api/v1/workbench/entries", "/api/v1/oa/login/link"]
     forbidden_prefix: "/api/internal/v1/"
 
 rate_buckets:  # numeric limits configured by A2 at implementation; bucket keys are frozen here
@@ -262,7 +262,7 @@ routes:
   - id: INT-18
     method: GET
     path: /api/internal/v1/groups/{group_id}
-    scope: groups:write
+    scope: groups:read
     grant: workspace scoped + group in workspace
     resource: enterprise group detail
     actor: application
@@ -545,6 +545,39 @@ routes:
     rate: internal_write
     sender_mode: none
 
+
+  - id: INT-45
+    method: GET
+    path: /api/internal/v1/directory/organizations
+    scope: identities:read
+    grant: source application and live organization-wide read grant
+    resource: source organizations reconciliation
+    actor: application
+    idempotency: not_required
+    rate: internal_read
+    sender_mode: none
+
+  - id: INT-46
+    method: GET
+    path: /api/internal/v1/directory/departments
+    scope: identities:read
+    grant: source application and live organization-wide read grant
+    resource: source departments reconciliation
+    actor: application
+    idempotency: not_required
+    rate: internal_read
+    sender_mode: none
+
+  - id: INT-47
+    method: GET
+    path: /api/internal/v1/directory/persons
+    scope: identities:read
+    grant: source application and live organization-wide read grant
+    resource: source persons reconciliation
+    actor: application
+    idempotency: not_required
+    rate: internal_read
+    sender_mode: none
 stable_error_codes: [invalid_credential, credential_expired, application_disabled,
   organization_disabled, insufficient_scope, resource_not_found, identity_not_mapped,
   organization_boundary_violation, idempotency_conflict, rate_limited,

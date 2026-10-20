@@ -2,7 +2,7 @@
 
 > **版本**：v1.0（冻结）｜ **受众**：企业 OA / 第三方集成系统开发者
 > **Base Path**：`/api/internal/v1`
-> **机器契约**：`api/openapi-internal.yaml`（编辑真源，28 path / 42 端点，
+> **机器契约**：`api/openapi-internal.yaml`（编辑真源，33 path / 47 端点，
 > 字段级 schema 逐端点实证自 handler）；`api/openapi-internal.bundle.yaml`
 > （bundle 单文件，可直接导入 Postman / Apifox / openapi-generator）。
 > 本目录是面向集成方的交付文档。路由与合同由 12 项机械断言
@@ -27,12 +27,13 @@ Base URL（协议/域名/端口）由部署方提供，本文档只约定路径�
 | 应用与凭证 | 读取本应用信息（INT-01） |
 | 外部身份映射 | OA 用户 ↔ IMBoy 用户的绑定 / 解析 / 解绑 / 目录查询（INT-02/03/15/16/17） |
 | 企业群组 | 建群、增删成员、改群、成员角色；详情/列表/成员只读（INT-04/05/06/18/19/20/21/26/27） |
-| Workspace 只读 | 列表与详情（INT-24/25） |
+| Workspace | 列表/详情（INT-24/25），创建/修改/软归档（INT-37..39） |
 | 企业文件 | 直传预签名 / 确认入库 / 治理（INT-07/08/22） |
 | 消息 | 应用身份直发、以人类身份代发；单聊与群聊（INT-09/10） |
 | 好友申请 | 代 OA 用户发起（只发起、不自动通过，见 §6）（INT-11） |
 | Webhook | 登记出站回调、查询/重放投递、连通性测试（INT-12/13/23/32） |
-| OA SSO | 一次性 code 原子交换登录态（INT-14） |
+| OA SSO | 一次性 code 原子交换登录态（INT-14）；入站登录签票（INT-44） |
+| 来源目录 | 显式增量同步（INT-43），组织/部门/人员版本与投影核对（INT-45..47） |
 | 企业项目只读 | 列表与详情（INT-28/29） |
 | 企业频道 | 列表与详情（INT-30/31）；创建、修改、软归档（INT-40..42） |
 
@@ -65,8 +66,8 @@ curl -sS "$BASE_URL/api/internal/v1/application" \
   -H "Authorization: Bearer ib_int_9100000000000000003.YOUR-SECRET" | jq
 ```
 
-3. 之后按 [endpoints.md](./endpoints.md) 的端点表与 `../openapi-internal.yaml`
-   （编辑真源；工具导入用 `../openapi-internal.bundle.yaml`）的字段 schema 开发。
+3. 之后按 [endpoints.md](./endpoints.md) 的端点表与 `../../openapi-internal.yaml`
+   （编辑真源；工具导入用 `../../openapi-internal.bundle.yaml`）的字段 schema 开发。
 
 ---
 
@@ -78,7 +79,7 @@ curl -sS "$BASE_URL/api/internal/v1/application" \
 Authorization: Bearer <credential_prefix>.<secret>
 ```
 
-- 每份凭证只属于一个企业应用，同一应用可以有多份凭证。有效权限为应用 allowed_scopes 与当前生效 Grant scopes 的交集；没有 Grant、全部撤销或全部过期时不回退为应用默认权限。
+- 每份凭证只属于一个应用，同一应用可以有多份凭证。organization 是业务对象，应用归属可空；实际资源访问逐目标校验来源与有效 Grant。有效权限为应用 allowed_scopes 与当前生效 Grant scopes 的交集；没有 Grant、全部撤销或全部过期时不回退为应用默认权限。
 - 凭证可由平台管理员**轮换**（旧凭证立即失效）与**撤销**；应用被停用/归档后
   所有请求返回 `application_disabled`（403）。
 - secret 在平台侧只保存不可逆摘要；**泄露即轮换**，无需担心「改不回来」。
@@ -110,13 +111,15 @@ Authorization: Bearer <credential_prefix>.<secret>
 | `oa:login:issue` | OA 入站登录签票（INT-44；仅显式授予，不默认授予目录连接；`sso:exchange` 不隐含此权限） |
 
 Scope 由管理员签发时授予，集成方**不可自选**、不存在 `*` 通配；
+目录同步 INT-43 的初始准入检查应用目录能力，随后在事务内检查可信来源配置、目标授权与有效期；这不是零 Grant 自动放行。目录来源允许显式启用 application:read、oa:login:issue、sso:exchange，但 bootstrap 只授予 identities:read/write。登录与 SSO 权限须独立显式授予。
+
 两个消息域端点（INT-09/10）按请求里的 `sender_mode` 动态要求
 `messages:send` 或 `messages:send_as_human`。
 
 ## 5. 限流与幂等
 
 **限流**：三只独立桶 —— `internal_read`（读）/ `internal_write`（写）/
-`internal_sso`（SSO 交换）。超限返回 `rate_limited`（429），并携带
+`internal_sso`（SSO 交换与入站签票）。超限返回 `rate_limited`（429），并携带
 `Retry-After` 响应头（delta-seconds＝窗口剩余时间向上取整，最小 1s；
 v1.1.1 起提供）；具体阈值由部署配置，
 **认证失败也计读桶**（fail-closed：挡不住时宁可错杀）。
@@ -227,39 +230,60 @@ v1.1.1 起提供）；具体阈值由部署配置，
 联调期验证 URL、签名验证逻辑与防火墙放行；成功仅代表已入箱，投递结果以
 INT-23 的 `status` 为准。端点未配置/disabled 时返回 `invalid_request`（400）。
 
-## 9. OA SSO（一次性 code 交换）
+## 9. OA 双方向登录与账号关联
 
-客户端先以 Human JWT 调用 `GET /api/v1/workbench/entries?organization_id=<当前企业ID>`。
-`payload.entries` 返回该企业授权 OA 条目（最多 20，按应用 ID 升序）：`kind`、`organization_id`、`application_id`、`application_key`、`label`、`redirect_uri`。没有授权配置返回空数组；省略 / 非法企业 ID 返回 400。该配置发现接口属于 Human 认证面，不能使用 Application Credential。客户端必须匹配当前企业，不从其他企业取第一项；有多个应用时需要明确选择。
+### IMBoy → OA：已登录 IMBoy 用户免登 OA
 
-流程：用户已登录 IMBoy → IMBoy 客户端以 Human JWT 调用
-`POST /api/v1/oa/sso/code`，提交 `application_key`、预注册的 `redirect_uri`
-与随机 `nonce` → 浏览器 / WebView 携带一次性 `code` 和 `state=nonce` 到
-OA 回调地址 → **OA 服务端**使用本应用 Credential 调 INT-14，提交
-`code`、同一 `redirect_uri` 与 `nonce` → 取得企业、应用、平台用户及
-OA 外部用户标识 → **OA 建立自己的登录会话**。
+Human 客户端使用 JWT 调用 `GET /api/v1/workbench/entries` 发现实例内 OA 应用；
+旧客户端携带的 organization_id 查询参数会被忽略，发现不依赖组织成员关系。
+多应用时明确选择 application_key；没有可用应用时返回空列表。
 
-多企业客户端签发时还必须提交当前选定的 `organization_id`（JSON 正整数 int64）。服务端只从该企业匹配应用并校验有效成员关系；不会退回另一企业。为兼容旧客户端，省略该字段仍按成员关系收敛，多义拒绝。该字段属于 Human 签发请求，INT-14 的应用凭证及交换字段不变。
+Human JWT 调用 `POST /api/v1/oa/sso/code`，提交 application_key、预注册 redirect_uri
+与随机 nonce，取得 60 秒一次性 code。支持按需取码的 App 容器也可经 getAuthCode 获取。
+OA 服务端以该应用 Credential 调 INT-14，提交 code、相同 redirect_uri、nonce。
+code 绑定应用、用户、redirect 和 nonce，单次消费；不强制组织或外部映射。
 
-- code 固定 60 秒有效，绑定企业、应用、redirect 与 nonce；只能成功交换
-  一次，过期 / 重放 / 绑定不符均拒绝。身份映射及用户有效状态由 IMBoy 验证。
-- INT-14 返回身份事实，不返回 IMBoy JWT、应用 secret 或 OA 会话 Cookie；
-  OA 负责验证回调 state、设置自己的会话并处理登录失败。
-- Application Credential 只放在 OA 服务端；不能交给浏览器 / WebView。
-  本协议是 **IMBoy → OA** 单点登录，不提供 OA 反向登录 IMBoy 的会话接口。
+INT-14 成功返回裸身份事实，保留 organization_id 字段：有业务归属时为精确 JSON int64，
+无归属为 null；此字段不表示授权范围。外部映射可选，缺省回退平台 user_id 的十进制字符串。
+响应不含 IMBoy JWT 或 OA Cookie。OA 校验 state 并建立自己的会话，应用凭据只留 OA 服务端。
+
+### OA → IMBoy：登录原账号、确认关联或显式新建
+
+OA 后端先认证员工，然后以独立显式 oa:login:issue 权限调用
+`POST /api/internal/v1/oa/login/tickets`（INT-44），提交 external_user_id、intent=login|link、
+S256 code_challenge。verifier 由 IMBoy 发起客户端生成并保留，OA 只接收 challenge。
+票据绑定应用、发行凭据、外部人员、意图和 challenge，60 秒单次消费。
+
+发起客户端携带本地预期 application_key、ticket、code_verifier、非空 did 调用公开
+`POST /api/v1/oa/login/exchange`。已关联身份登录原账号；未关联或 link 意图返回
+pending_token，完成窗口 5 分钟且重试不续期。后续二选一：
+
+- 已登录 Human 用自身 JWT 调 `POST /api/v1/oa/login/link`，证明当前账号和 OA 身份；
+- 用户明确选择新建后调公开 `POST /api/v1/oa/login/register`，要求 confirm_create=true。
+
+两个完成入口均须携带 application_key、pending_token、code_verifier、did。不按姓名、
+手机或邮箱自动合并；旧关联不能被普通同步或登录换绑。目录同步本身不签发会话。
+只有签票权而缺目录写权限时，可以关联/登录并返回 projection_pending=true，不能因此扩权。
+
+Internal 签票成功使用 `{code:0,msg,sv_ts,payload}` 信封；错误使用 Internal error 信封。
+三个 Human 入口使用客户端业务信封及各自认证要求，不能向它们传 Application Credential。
+
+English: Outbound SSO and inbound OA login are separate protocols. Organization ownership is optional;
+source-directory access still requires live resource grants. Tickets use client-generated PKCE S256,
+application and device binding, short expiration and one-time consumption. Never expose credentials in H5.
 
 ## 10. 端点参考与 Postman 集合
 
-- 人类阅读：[endpoints.md](./endpoints.md)（42 个端点，按域分组）。
-- **机器契约**：`../openapi-internal.yaml`（编辑真源）与
-  `../openapi-internal.bundle.yaml`（bundle 单文件）——字段级请求/响应
+- 人类阅读：[endpoints.md](./endpoints.md)（47 个 Internal 操作，按域分组）。
+- **机器契约**：`../../openapi-internal.yaml`（编辑真源）与
+  `../../openapi-internal.bundle.yaml`（bundle 单文件）——字段级请求/响应
   schema 逐端点从 handler 实证（`src/api/enterprise_*_handler.erl`），
   16 个稳定错误码为可复用 response 组件；scope / 限流桶 / 幂等要求以
   `x-imboy-scope` / `x-imboy-rate-bucket` / `x-imboy-idempotency` 扩展字段
   标注。工具导入用 bundle 单文件。
 - **动手联调**：[IMBoy-Internal-API-v1.postman_collection.json](./IMBoy-Internal-API-v1.postman_collection.json)
-  —— Postman / Apifox 直接导入（Collection v2.1），已含全部 42 个端点、按域分文件夹、
-  示例请求体与 `{{base_url}}` / `{{credential}}` 变量；导入后填好两个变量即可发请求。
+  —— Postman / Apifox 直接导入（Collection v2.1），已含全部 47 个 Internal 操作、按域分文件夹、
+  示例请求体与 base_url / credential 等变量；另含 3 个 Human 入站伴随请求，其认证分别配置。目录外部组织标识须对应可信来源配置，不能只替换域名即全量运行。
   集合只收录当前冻结路由表中**已实现、可调用**的端点；CRUD 覆盖审计中标为
   `待实现` 的路径不会作为假请求提前塞入集合。
   注意：示例体为合成数据（ID / 域名 / object_key 均为占位值，替换后使用）；
@@ -283,3 +307,28 @@ English: Seats belong to the organization. Workspace IDs select audit locations 
 企业频道写管理：INT-40 POST /channels（workspace_id、creator_user_id、name；可选 description/avatar）、INT-41 PATCH /channels/{channel_id}（expected_version 及至少一个资料字段）、INT-42 DELETE /channels/{channel_id}（expected_version）。创建者须为有效企业成员（企业 Owner 包含）及工作空间 Owner/Member，Guest 不可创建；复用现有 20 个有效管理频道配额。创建固定非公开、免费且邀请制（visibility=1/access_type=0/join_policy=1）；归属、创建者及策略不允许在此接口修改。GET 增加 version；资料或治理状态更新增加版本，订阅计数等派生更新不增加版本。归档 status=0，消息、订阅及管理员关系保留。当前 Grant 在重放前验证，撤权后的同 key 重试拒绝；应用 actor 与幂等记录同事务。
 
 English summary: Internal channel writes require an explicit channels:write grant scoped to the target Workspace. Creation checks current Organization and Workspace membership, preserves the existing channel quota, and creates a non-public channel. Profile changes and soft archive require an optimistic governance version. Audit and byte-exact authorized replay are atomic; archive retains history and identities.
+
+## 来源目录同步与核对 / Source directory reconciliation
+
+INT-43 同步一次最多 100 个部门和 100 个人员，整批同事务；未包含的记录不删除。
+按外部稳定 ID 和各资源 source_version 处理，不按名称匹配。幂等重试须保留同 key 和同正文；
+业务版本/状态冲突先核对，不盲目重试或增加版本覆盖。部门循环为 400，归档父部门、非空部门、
+Owner/任职状态冲突为对应 403/409；数据库未知故障仍为 500。跨批不具有整体原子性。
+
+INT-45..47 为 GET，只需 identities:read，不要求写权限：
+organizations 返回已建立组织且有当前全域读取 Grant 的本来源组织；
+departments/persons 必传 external_organization_id。尚未 bootstrap 的来源配置仅在可信 Admin 查看。
+逐请求及 SQL 读取时复核应用、凭据、来源、授权有效期与目标组织状态，撤权后的旧 cursor 也重验。
+
+分页使用 page_size（默认 50、最大 100）和不透明 cursor，按外部 ID 的 UTF-8 字节序升序。
+返回 items/page_size/has_more/next_cursor；游标绑定来源应用、组织、页族与完整过滤，24 小时有效。
+禁止重复/未知参数；实时分页不是一致性快照。响应 Cache-Control: no-store，不提供无界导出。
+
+persons 区分 binding_status=unlinked|linked|retired 和
+projection_status=unlinked|pending|projected|removed|retired；后者同时核对当前账号、组织成员与部门关系。
+只返回该来源在目标组织有任职记录的人员，包含待关联/待投影/移除记录，不枚举全实例用户。
+来源人员 status 与组织任职 status 各自版本独立；只离职一个组织不得退休整个来源账号关联。
+
+English: Directory sync is bounded, incremental and atomic per batch. Reconciliation GETs require only
+read scope plus current source and organization-wide authorization. Pending account associations and
+membership projections are distinct. Cursors are signed and filter-bound; pages are live, not snapshots.

@@ -39,6 +39,9 @@ init(Req0, State0) ->
             mappings -> mappings(Method, Req0, State);
             users -> users(Method, Req0, State);
             sync -> sync(Method, Req0, State);
+            organizations -> source_page(organizations, Method, Req0, State);
+            departments -> source_page(departments, Method, Req0, State);
+            persons -> source_page(persons, Method, Req0, State);
             _ -> Req0
         end,
     {ok, Req1, State}.
@@ -46,6 +49,47 @@ init(Req0, State0) ->
 %% ===================================================================
 %% Internal
 %% ===================================================================
+
+source_page(Kind, <<"GET">>, Req, State) ->
+    Result =
+        case source_query(Req) of
+            {ok, Query} ->
+                enterprise_directory_source_read_logic:page(
+                    maps:get(enterprise_internal, State, #{}), Kind, Query
+                );
+            Error ->
+                Error
+        end,
+    case Result of
+        {ok, Page} ->
+            cowboy_req:reply(
+                200,
+                #{
+                    <<"content-type">> => <<"application/json">>,
+                    <<"cache-control">> => <<"no-store">>
+                },
+                jsone:encode(Page),
+                Req
+            );
+        {error, Code} when is_atom(Code) ->
+            enterprise_internal_error:reply(Req, atom_to_binary(Code, utf8));
+        _ ->
+            enterprise_internal_error:reply(Req, <<"internal_error">>)
+    end;
+source_page(_, _, Req, _) ->
+    cowboy_req:reply(405, #{<<"allow">> => <<"GET">>}, <<>>, Req).
+
+source_query(Req) ->
+    try cowboy_req:parse_qs(Req) of
+        Pairs ->
+            Query = maps:from_list(Pairs),
+            case map_size(Query) =:= length(Pairs) of
+                true -> {ok, Query};
+                false -> {error, invalid_request}
+            end
+    catch
+        exit:{request_error, qs, _} -> {error, invalid_request}
+    end.
 
 sync(<<"POST">>, Req0, State) ->
     Ctx = maps:get(enterprise_internal, State, #{}),
@@ -86,6 +130,20 @@ sync_error(idempotency_pending) -> <<"idempotency_conflict">>;
 sync_error(stale_source_version) -> <<"version_conflict">>;
 sync_error(source_version_conflict) -> <<"version_conflict">>;
 sync_error(identity_conflict) -> <<"resource_conflict">>;
+sync_error(cycle) -> <<"invalid_request">>;
+sync_error(invalid_source_membership_status) -> <<"invalid_request">>;
+sync_error(department_archived) -> <<"resource_conflict">>;
+sync_error(department_not_empty) -> <<"resource_conflict">>;
+sync_error(name_conflict) -> <<"resource_conflict">>;
+sync_error(conflict) -> <<"resource_conflict">>;
+sync_error(local_department_admin_conflict) -> <<"resource_conflict">>;
+sync_error(department_not_found) -> <<"resource_not_found">>;
+sync_error(parent_not_found) -> <<"resource_not_found">>;
+sync_error(active_source_memberships) -> <<"resource_conflict">>;
+sync_error(directory_only_application_required) -> <<"insufficient_scope">>;
+sync_error({400, _}) -> <<"invalid_request">>;
+sync_error({403, _}) -> <<"organization_boundary_violation">>;
+sync_error({409, _}) -> <<"resource_conflict">>;
 sync_error(_) -> <<"internal_error">>.
 
 %% @doc INT-16 映射目录（等价于 enterprise_identity_handler 的 directory action；

@@ -42,8 +42,8 @@ DEFAULT_MANIFEST = os.environ.get("IMBOY_INTERNAL_MANIFEST", str(Path(__file__).
 
 PREFIX = "/api/internal/v1/"
 # V2.1 只读扩面（INT-24..31）：路由 23→31、cowboy path 19→25（2026-09-24）
-MANIFEST_ROUTE_COUNT = 44
-ROUTER_PATH_COUNT = 30
+MANIFEST_ROUTE_COUNT = 47
+ROUTER_PATH_COUNT = 33
 # 代码类扫描根（§8「含 alias / handler / migration / OpenAPI 全谱」）
 CODE_ROOTS = ("src", "config", "priv")
 CODE_SUFFIXES = {".erl", ".hrl", ".config", ".example", ".json", ".yaml", ".sql"}
@@ -119,6 +119,81 @@ def manifest_operations(path: Path) -> list[tuple[str, str, str]]:
             raise ValueError("unknown route id: " + ident)
         operations.append((ident, route["method"], route["path"]))
     return operations
+
+
+def contract_metadata(repo: Path, manifest: Path) -> tuple[dict, dict, dict, set, dict]:
+    """Read semantic metadata in addition to the legacy route-count assertions."""
+    registry = {}
+    source = (repo / FROZEN_TABLE).read_text(encoding="utf-8")
+    for ident, block in re.findall(r'#\{\s*id\s*=>\s*<<"(INT-\d+)">>(.*?)\n\s*}', source, re.S):
+        def value(key, binary=True):
+            pattern = key + (r'\s*=>\s*<<"([^"]+)"' if binary else r'\s*=>\s*([a-z_]+)')
+            found = re.search(pattern, block)
+            return found[1] if found else None
+        scope = value("scope") or "dynamic:messages_send"
+        registry[ident] = (value("method"), value("path"), scope,
+                           value("rate_bucket", False), value("idempotency", False))
+    document = yaml.load(manifest.read_text(encoding="utf-8"), Loader=UniqueKeyLoader)
+    declared = {}
+    for row in document["routes"]:
+        if row["id"].startswith("INT-"):
+            scope = row["scope"]
+            if scope.startswith("dynamic "):
+                scope = "dynamic:messages_send"
+            declared[row["id"]] = (row["method"], row["path"], scope, row["rate"], row["idempotency"])
+    root = yaml.load((repo / "api/openapi-internal.yaml").read_text(), Loader=UniqueKeyLoader)
+    operations = {}
+    schemas = {}
+    for path, ref in root["paths"].items():
+        leaf = yaml.load((repo / "api" / ref["$ref"]).read_text(), Loader=UniqueKeyLoader)
+        for method, operation in leaf.items():
+            if method.upper() in {"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"}:
+                pair = (method.upper(), path)
+                operations[pair] = (operation.get("x-imboy-scope"),
+                    operation.get("x-imboy-rate-bucket"), operation.get("x-imboy-idempotency"))
+                if pair == ("POST", PREFIX + "oa/sso/exchange"):
+                    schemas["sso"] = operation["responses"]["200"]["content"]["application/json"]["schema"]
+    collection = json.loads((repo / "api/internal/v1/IMBoy-Internal-API-v1.postman_collection.json").read_text())
+    requests = set()
+    def visit(items):
+        for item in items:
+            if "item" in item:
+                visit(item["item"])
+            elif "request" in item:
+                request = item["request"]
+                url = request["url"]
+                raw = url["raw"] if isinstance(url, dict) else url
+                path = raw.replace("{{base_url}}", "").split("?")[0]
+                path = re.sub(r'\{\{([^}]+)}}', r'{\1}', path)
+                requests.add((request["method"], path))
+    visit(collection["item"])
+    return registry, declared, operations, requests, schemas
+
+
+def metadata_errors(registry: dict, declared: dict, operations: dict,
+                    requests: set, schemas: dict) -> list[str]:
+    errors = []
+    if registry != declared:
+        errors.append("manifest scope/rate/idempotency differs from registry")
+    expected = {(row[0], row[1]) for row in registry.values()}
+    if expected != set(operations):
+        errors.append("OpenAPI operation set differs from registry")
+    for ident, (method, path, scope, rate, idem) in registry.items():
+        if operations.get((method, path)) != (scope, rate, idem):
+            errors.append(ident + " OpenAPI scope/rate/idempotency mismatch")
+    internal = {(m, p) for m, p in requests if p.startswith(PREFIX)}
+    if internal != expected:
+        errors.append("Postman Internal operation set differs from registry")
+    human = {(m, p) for m, p in requests if not p.startswith(PREFIX)}
+    if human != {("POST", "/api/v1/oa/login/" + action) for action in ("exchange", "link", "register")}:
+        errors.append("unexpected/missing Human OA companion requests")
+    sso = schemas.get("sso", {})
+    org = sso.get("properties", {}).get("organization_id", {})
+    if ("organization_id" not in sso.get("required", [])
+            or set(org.get("type", [])) != {"integer", "null"}
+            or org.get("format") != "int64" or "nullable" in org):
+        errors.append("SSO organization_id must remain required int64-or-null under OAS 3.1")
+    return errors
 
 
 def main() -> int:
@@ -286,11 +361,17 @@ def main() -> int:
         f"unpinned={unpinned}",
     )
 
+    try:
+        drift = metadata_errors(*contract_metadata(repo, mf))
+        check(not drift, "13) semantic metadata + Postman + OAS 3.1 nullable", "; ".join(drift))
+    except (KeyError, ValueError, TypeError, OSError, yaml.YAMLError) as error:
+        check(False, "13) semantic contract readable", str(error))
+
     print()
     if failures:
         print(f"RC MANIFEST ASSERT FAILED: {len(failures)}/{checks} 项 -> {failures}")
         return 1
-    print(f"RC MANIFEST ASSERT PASS ({checks}/12 项全过)")
+    print(f"RC MANIFEST ASSERT PASS ({checks}/{checks} 项全过)")
     return 0
 
 

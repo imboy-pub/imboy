@@ -46,9 +46,8 @@ post:
             required: [organization_id, application_id, user_id, external_user_id, consumed_at]
             properties:
               organization_id:
-                type: integer
+                type: [integer, 'null']
                 format: int64
-                nullable: true
                 description: 应用的可空业务归属；不作为调用方或用户的授权范围
               application_id: { type: integer, format: int64 }
               user_id: { type: integer, format: int64, description: 平台用户 TSID }

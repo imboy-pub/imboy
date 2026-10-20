@@ -140,12 +140,17 @@ bootstrap_tx(Conn, Ctx, Source, Spec) ->
             {error, Reason} -> throw({abort_tx, Reason})
         end,
     Scopes = app_scopes(maps:get(<<"allowed_scopes">>, App)),
-    case
-        lists:member(<<"identities:write">>, Scopes) andalso
-            Scopes -- [<<"identities:write">>, <<"identities:read">>] =:= []
-    of
-        true -> bootstrap_authorized_tx(Conn, Ctx, Source, Spec, Scopes);
-        false -> {error, directory_only_application_required}
+    case enterprise_directory_source_policy:allowed(Scopes) of
+        true ->
+            bootstrap_authorized_tx(
+                Conn,
+                Ctx,
+                Source,
+                Spec,
+                enterprise_directory_source_policy:directory_scopes(Scopes)
+            );
+        false ->
+            {error, directory_only_application_required}
     end.
 
 bootstrap_authorized_tx(Conn, Ctx, _Source, Spec, Scopes) ->

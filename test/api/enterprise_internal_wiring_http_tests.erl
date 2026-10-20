@@ -5,8 +5,8 @@
 % 真中间件链，不 mock 认证结论）。
 %
 % 覆盖（plan §6 白名单 / §10 门禁 / A0 control/internal-api-manifest.yaml；
-% 当前全集 INT-01..44）：
-%   ① 冻结路由表 44 条，对应 30 个 cowboy path（同 path 多方法）；
+% 当前全集 INT-01..47）：
+%   ① 冻结路由表 47 条，对应 30 个 cowboy path（同 path 多方法）；
 %      INT-24..31 的 handler 由 A2 实现后经 A0 接线，此处对这 8 条断言注册
 %      形态（method/path/scope/idempotency=none/rate_bucket）与 match/2 可达；
 %      已接线 handler 模块可加载（无 undef 悬挂）；
@@ -48,25 +48,25 @@ route_table() ->
     Paths = [P || {P, _H, _O} <- Routes],
 
     %% ①② 冻结表逐条登记 + 零 open 面
-    %% 当前 44 条 operation 全部接线；注册形态另由 manifest_v21_entries 断言。
+    %% 当前 47 条 operation 全部接线；注册形态另由 manifest_v21_entries 断言。
     Manifest = enterprise_internal_routes:routes(),
-    ?assertEqual(44, length(Manifest)),
-    %% 多方法共享 cowboy path，44 条 operation 对应 30 条唯一 path。
+    ?assertEqual(47, length(Manifest)),
+    %% 多方法共享 cowboy path，47 条 operation 对应 33 条唯一 path。
     Wired = Manifest,
-    ?assertEqual(44, length(Wired)),
+    ?assertEqual(47, length(Wired)),
     %% 冻结表用 {name} 占位符语法，cowboy 路由用 :name —— 归一后逐条比对。
     WiredPaths = lists:usort([
         cowboy_path(binary_to_list(maps:get(path, R)))
      || R <- Wired
     ]),
-    ?assertEqual(30, length(WiredPaths)),
+    ?assertEqual(33, length(WiredPaths)),
     lists:foreach(
         fun(P) ->
             ?assert(lists:member(P, Paths))
         end,
         WiredPaths
     ),
-    ?assertEqual(30, length([P || P <- Paths, lists:prefix("/api/internal/v1/", P)])),
+    ?assertEqual(33, length([P || P <- Paths, lists:prefix("/api/internal/v1/", P)])),
 
     %% ③ internal 前缀不在匿名白名单；零 open 面
     Open = imboy_router:open(),
@@ -97,13 +97,13 @@ manifest_v21_entries() ->
     Manifest = enterprise_internal_routes:routes(),
     %% 44 unique id + 44 unique method+path
     Ids = [maps:get(id, R) || R <- Manifest],
-    ?assertEqual(44, length(lists:usort(Ids))),
+    ?assertEqual(47, length(lists:usort(Ids))),
     ?assertEqual(
-        [iolist_to_binary(io_lib:format("INT-~2..0B", [Number])) || Number <- lists:seq(1, 44)],
+        [iolist_to_binary(io_lib:format("INT-~2..0B", [Number])) || Number <- lists:seq(1, 47)],
         lists:sort(Ids)
     ),
     MethodPaths = [{maps:get(method, R), maps:get(path, R)} || R <- Manifest],
-    ?assertEqual(44, length(lists:usort(MethodPaths))),
+    ?assertEqual(47, length(lists:usort(MethodPaths))),
     %% 所有注册 scope 都是固定 19 值枚举成员（动态 scope 除外）
     All = enterprise_internal_scope:all(),
     lists:foreach(
@@ -364,12 +364,12 @@ normalize_code() ->
 %%%===================================================================
 
 %%%===================================================================
-%%% INT-BE-02 —— 44-operation 真实 HTTP conformance
+%%% INT-BE-02 —— 47-operation 真实 HTTP conformance
 %%%（disposable PG + 真 Cowboy + synthetic Application credential/Grant；
 %%%  harness 细节见 test/api/intbe02_http_support.erl 模块头）
 %%%
 %%% INT-API-02A 验收口径：
-%%%   ① covered_operation_ids 精确等于冻结表 44 个 runtime operation ID
+%%%   ① covered_operation_ids 精确等于冻结表 47 个 runtime operation ID
 %%%      （本节末 assert_coverage 用 ETS 登记集合 ↔ routes()/0 全量比对）；
 %%%   ② 每个 method+path 至少一个预期成功或业务可达响应（本节正例链全部
 %%%      走 200/业务语义；禁止裸 404 计入覆盖）；
@@ -377,7 +377,7 @@ normalize_code() ->
 %%%      重放（同 key 同 body → 同 status + 逐字节同 body；同 key 异 body →
 %%%      409）；INT-14 为合同声明的 single_use_code 豁免项，改为验证 code
 %%%      一次性（重放已消费 code → 404 resource_not_found）；
-%%%   ④ negative 三件套：无 credential=401（44 条逐一）、缺 scope=403
+%%%   ④ negative 三件套：无 credential=401（47 条逐一）、缺 scope=403
 %%%      （RO 应用全 mutation 面 + 零 Grant 应用）、跨 Org / 未覆盖
 %%%      Workspace 同体拒绝（404 同体 / 403 organization_boundary_violation）；
 %%%   ⑤ envelope 对齐：错误响应状态码与信封 code 按
@@ -411,6 +411,7 @@ run_conformance(S) ->
     enterprise_workspace_write_http_checks:run(S),
     enterprise_directory_admin_http_pg_tests:exercise(S),
     ok = enterprise_internal_audit_http_checks:directory_sync(S),
+    enterprise_directory_source_read_http_checks:run(S),
     ok = enterprise_internal_audit_http_checks:oa_login(S),
     enterprise_internal_audit_http_checks:assert_complete(),
     assert_coverage(),
@@ -613,9 +614,13 @@ positive_chain(S) ->
     %% V5 caches stable registration only; capability signing is post-COMMIT.
     %% Exercise this equivalence while the session is still registered.
     RegistrationIdentity = presign_session_identity(C, ObjectKey),
-    R07Replay = intbe02_http_support:http(Port, <<"POST">>,
-        <<"/api/internal/v1/files/presign">>, Body07,
-        maps:merge(A, intbe02_http_support:idem(<<"intbe02-idem-07">>))),
+    R07Replay = intbe02_http_support:http(
+        Port,
+        <<"POST">>,
+        <<"/api/internal/v1/files/presign">>,
+        Body07,
+        maps:merge(A, intbe02_http_support:idem(<<"intbe02-idem-07">>))
+    ),
     assert_registered_presign_replay(C, R07, R07Replay),
     ?assertEqual(RegistrationIdentity, presign_session_identity(C, ObjectKey)),
 
@@ -634,8 +639,11 @@ positive_chain(S) ->
         ),
     #{<<"file_id">> := _, <<"size">> := 1024, <<"mime_type">> := <<"text/plain">>} =
         assert_ok_json(R08),
-    Confirmed = intbe02_http_support:one(C,
-        <<"SELECT file_hash256 FROM attachment WHERE path=$1">>, [ObjectKey]),
+    Confirmed = intbe02_http_support:one(
+        C,
+        <<"SELECT file_hash256 FROM attachment WHERE path=$1">>,
+        [ObjectKey]
+    ),
     ?assertEqual(hash256(Bytes), maps:get(<<"file_hash256">>, Confirmed)),
     cover(<<"INT-08">>),
 
@@ -1021,27 +1029,39 @@ assert_registered_presign_replay(C, First, Replay) ->
     A = assert_ok_json(First),
     B = assert_ok_json(Replay),
     ?assertEqual(<<"registered">>, maps:get(<<"session_state">>, B)),
-    ?assertEqual(maps:without([<<"put_url">>, <<"upload_capability">>], A),
-        maps:without([<<"put_url">>, <<"upload_capability">>], B)),
+    ?assertEqual(
+        maps:without([<<"put_url">>, <<"upload_capability">>], A),
+        maps:without([<<"put_url">>, <<"upload_capability">>], B)
+    ),
     {ok, ClaimsA} = imboy_jwt:verify_upload_capability(maps:get(<<"upload_capability">>, A)),
     {ok, ClaimsB} = imboy_jwt:verify_upload_capability(maps:get(<<"upload_capability">>, B)),
     ?assertEqual(maps:remove(<<"iat">>, ClaimsA), maps:remove(<<"iat">>, ClaimsB)),
     ?assert(maps:get(<<"iat">>, ClaimsB) >= maps:get(<<"iat">>, ClaimsA)),
     ?assert(maps:get(<<"iat">>, ClaimsB) =< erlang:system_time(second)),
-    lists:foreach(fun({Response, View, Claims}) ->
-        ?assertEqual(<<"no-store">>, intbe02_http_support:json_header_val(Response, <<"cache-control">>)),
-        ?assertEqual(<<"upload">>, maps:get(<<"aud">>, Claims)),
-        ?assertEqual(<<"upload">>, maps:get(<<"sub">>, Claims)),
-        ?assertEqual(maps:get(<<"object_key">>, View), maps:get(<<"key">>, Claims)),
-        ?assertEqual(maps:get(<<"mime_type">>, View), maps:get(<<"mime">>, Claims)),
-        ?assertEqual(maps:get(<<"expires_at">>, View), maps:get(<<"exp">>, Claims)),
-        Prefix = <<"http://intbe02.invalid/api/v1/attachment/gateway/",
-            (maps:get(<<"client_upload_id">>, View))/binary, "?capability=">>,
-        %% Boolean assertion avoids printing a signed URL if this check fails.
-        ?assert(maps:get(<<"put_url">>, View) =:=
-            <<Prefix/binary, (maps:get(<<"upload_capability">>, View))/binary>>)
-    end, [{First, A, ClaimsA}, {Replay, B, ClaimsB}]),
-    ?assertEqual(<<"true">>, intbe02_http_support:json_header_val(Replay, <<"idempotent-replayed">>)),
+    lists:foreach(
+        fun({Response, View, Claims}) ->
+            ?assertEqual(
+                <<"no-store">>, intbe02_http_support:json_header_val(Response, <<"cache-control">>)
+            ),
+            ?assertEqual(<<"upload">>, maps:get(<<"aud">>, Claims)),
+            ?assertEqual(<<"upload">>, maps:get(<<"sub">>, Claims)),
+            ?assertEqual(maps:get(<<"object_key">>, View), maps:get(<<"key">>, Claims)),
+            ?assertEqual(maps:get(<<"mime_type">>, View), maps:get(<<"mime">>, Claims)),
+            ?assertEqual(maps:get(<<"expires_at">>, View), maps:get(<<"exp">>, Claims)),
+            Prefix =
+                <<"http://intbe02.invalid/api/v1/attachment/gateway/",
+                    (maps:get(<<"client_upload_id">>, View))/binary, "?capability=">>,
+            %% Boolean assertion avoids printing a signed URL if this check fails.
+            ?assert(
+                maps:get(<<"put_url">>, View) =:=
+                    <<Prefix/binary, (maps:get(<<"upload_capability">>, View))/binary>>
+            )
+        end,
+        [{First, A, ClaimsA}, {Replay, B, ClaimsB}]
+    ),
+    ?assertEqual(
+        <<"true">>, intbe02_http_support:json_header_val(Replay, <<"idempotent-replayed">>)
+    ),
     assert_presign_window(C, A),
     ok.
 
@@ -1060,9 +1080,11 @@ assert_confirmed_presign_replay(C, First, Replay, ConfirmedId) ->
     ?assertNot(maps:is_key(<<"put_url">>, B)),
     ?assertNot(maps:is_key(<<"upload_capability">>, B)),
     ?assertEqual(<<"no-store">>, intbe02_http_support:json_header_val(Replay, <<"cache-control">>)),
-    Row = intbe02_http_support:one(C,
+    Row = intbe02_http_support:one(
+        C,
         <<"SELECT confirmed_attachment_id FROM attach_pending WHERE object_key=$1">>,
-        [maps:get(<<"object_key">>, A)]),
+        [maps:get(<<"object_key">>, A)]
+    ),
     ?assertEqual(ConfirmedId, maps:get(<<"confirmed_attachment_id">>, Row)),
     assert_presign_window(C, A),
     Key = maps:get(<<"object_key">>, A),
@@ -1070,22 +1092,34 @@ assert_confirmed_presign_replay(C, First, Replay, ConfirmedId) ->
     {ok, #{driver := disk} = Frozen} = attachment_storage:session_location(Key),
     {ok, Bytes} = attachment_storage_disk:read_snapshot(Frozen),
     ?assertEqual(binary:copy(<<"x">>, 1024), Bytes),
-    Metadata = intbe02_http_support:one(C,
-        <<"SELECT file_hash256, lifecycle_state FROM attachment WHERE id=$1">>, [ConfirmedId]),
+    Metadata = intbe02_http_support:one(
+        C,
+        <<"SELECT file_hash256, lifecycle_state FROM attachment WHERE id=$1">>,
+        [ConfirmedId]
+    ),
     ?assertEqual(hash256(Bytes), maps:get(<<"file_hash256">>, Metadata)),
     ?assertEqual(maps:get(<<"lifecycle_state">>, Metadata), maps:get(<<"lifecycle_state">>, B)).
 
 presign_session_identity(C, Key) ->
-    intbe02_http_support:one(C,
-        <<"SELECT object_key,client_upload_id,storage_driver,storage_namespace,storage_container,"
-          " storage_locator_sha256,upload_registration FROM attach_pending WHERE object_key=$1">>, [Key]).
+    intbe02_http_support:one(
+        C,
+        <<
+            "SELECT object_key,client_upload_id,storage_driver,storage_namespace,storage_container,"
+            " storage_locator_sha256,upload_registration FROM attach_pending WHERE object_key=$1"
+        >>,
+        [Key]
+    ).
 
 assert_presign_window(C, Registration) ->
-    Row = intbe02_http_support:one(C,
-        <<"SELECT extract(epoch from upload_expires_at)::bigint AS expires_at,"
-          " extract(epoch from session_deadline)::bigint AS deadline"
-          " FROM attach_pending WHERE object_key=$1">>,
-        [maps:get(<<"object_key">>, Registration)]),
+    Row = intbe02_http_support:one(
+        C,
+        <<
+            "SELECT extract(epoch from upload_expires_at)::bigint AS expires_at,"
+            " extract(epoch from session_deadline)::bigint AS deadline"
+            " FROM attach_pending WHERE object_key=$1"
+        >>,
+        [maps:get(<<"object_key">>, Registration)]
+    ),
     ?assertEqual(maps:get(<<"expires_at">>, Registration), maps:get(<<"expires_at">>, Row)),
     ?assertEqual(maps:get(<<"session_deadline">>, Registration), maps:get(<<"deadline">>, Row)).
 
@@ -1370,7 +1404,7 @@ grp_id_from(Specs) ->
 
 negative_matrix(S) ->
     Port = maps:get(port, S),
-    %% (a) 无 credential：44 条逐一 → 401 invalid_credential（认证链第一关，
+    %% (a) 无 credential：47 条逐一 → 401 invalid_credential（认证链第一关，
     %%     不触碰 PG；路径绑定段用整数 1 保证路由命中）
     lists:foreach(
         fun(R) ->
@@ -1603,7 +1637,7 @@ assert_coverage() ->
     Expected =
         lists:sort([maps:get(id, R) || R <- enterprise_internal_routes:routes()]),
     Actual = intbe02_http_support:covered_ids(),
-    ?assertEqual(44, length(Expected)),
+    ?assertEqual(47, length(Expected)),
     ?assertEqual(Expected, Actual, {coverage_gap, Expected -- Actual, Actual -- Expected}),
     write_coverage(Actual).
 
