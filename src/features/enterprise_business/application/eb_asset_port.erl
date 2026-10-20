@@ -98,3 +98,6 @@
     integer(), integer()
 }) ->
     {ok, asset_id()} | {error, term()}.
+
+%% Internal direct-v1 scan snapshot lookup; no descriptor or client response.
+-callback direct_session_row(binary()) -> {ok, map()} | {error, term()}.

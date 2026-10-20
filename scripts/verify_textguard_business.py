@@ -67,7 +67,7 @@ def schema_subset(snapshot, output, save):
                                          r"\s+ADD CONSTRAINT [^;]+;", text))
             statements.extend(re.findall(r"CREATE (?:UNIQUE )?INDEX [^;]+ ON public\." +
                                          escaped + r"\s+[^;]+;", text))
-    for number in [22, 34, 39, 59, 63, 72, 195]:
+    for number in [22, 34, 39, 59, 63, 72, 197]:
         paths = sorted(migrations.glob(f"{number:08d}_*.up.sql"))
         if len(paths) != 1:
             raise RuntimeError("ambiguous required migration " + str(number))
@@ -179,6 +179,8 @@ def main():
                     "failed": 0, "passed": True})
             sources = [self.snapshot / "test/lib/textguard_export_tests.erl",
                 self.snapshot / "test/common/ewh_http_fixture.erl",
+                self.snapshot / "test/common/isolated_pg_fixture.erl",
+                self.snapshot / "test/common/inttest_marker_db.erl",
                 self.snapshot / "test/common/eunit_runner.erl",
                 self.snapshot / "test/common/test_helper.erl",
                 self.snapshot / "test/common/meck_helper.erl",

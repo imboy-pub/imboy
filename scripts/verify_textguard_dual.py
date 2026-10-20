@@ -322,7 +322,10 @@ def run_type(base):
             env = dict(self.env, ERL_LIBS=str(self.snapshot / "deps"))
             proto = self.snapshot / "src/textguard.proto"
             sources = [self.root / "test/lib/textguard_integration_tests.erl", self.root / "test/lib/textguard_export_tests.erl",
-                       self.root / "test/common/ewh_http_fixture.erl", self.args.base_launcher.resolve().parent / "tg_leaf_listener.erl"]
+                       self.root / "test/common/ewh_http_fixture.erl",
+                       self.root / "test/common/isolated_pg_fixture.erl",
+                       self.root / "test/common/inttest_marker_db.erl",
+                       self.args.base_launcher.resolve().parent / "tg_leaf_listener.erl"]
             sources += sorted((self.root / "test/support").glob("textguard_*.erl"))
             self.command("compile-t19", ["erlc", "+debug_info", "-DTEST=1", "-I", str(self.root / "include"),
                 "-pa", str(self.snapshot / "ebin"), "-o", str(self.build), *map(str, sources)], env=env)
@@ -384,7 +387,7 @@ def run_type(base):
                 "rust_sha": self.args.rust_sha, "binary_sha256": file_sha(Path(argv[0]))})
             url = "http://127.0.0.1:" + str(ports[0])
             self.wait_for_liveness(url)
-            self.test_env.update(runtime, TG19_HTTP_URL=url, TG19_MANAGE_URL="http://127.0.0.1:" + str(ports[2]),
+            self.test_env.update(runtime, TEXTGUARD_TEST_OWN_VM="1", TG19_HTTP_URL=url, TG19_MANAGE_URL="http://127.0.0.1:" + str(ports[2]),
                 TG19_GRPC_PORT=str(ports[1]), TG19_FAULT_GRPC_PORT=str(ports[3]), TG19_EVIDENCE=str(self.out),
                 TG19_ENH_FILE=str(self.out / "enhancement.json"))
 

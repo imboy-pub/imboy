@@ -8,6 +8,9 @@
 manifest() -> ?C:manifest().
 
 shadow_test_() ->
+    textguard_suite_fixture:test(shadow, fun shadow_fixture/0).
+
+shadow_fixture() ->
     {timeout, 600,
         {setup, fun ?C:setup/0, fun ?C:cleanup/1, fun(State) ->
             [

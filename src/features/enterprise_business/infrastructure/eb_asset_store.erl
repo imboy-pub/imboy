@@ -49,7 +49,8 @@
     fetch_session/3,
     session_by_client_id/3,
     renew_session/4,
-    register_session/6
+    register_session/6,
+    direct_session_row/1
 ]).
 
 %% @doc 由作用域派生对象 key（与元数据 `object_key` 同源，单一真源）。
@@ -419,3 +420,8 @@ session_by_client_id(Org, Ws, Cid) -> eb_pg_asset_meta:v5_session_by_cid(Org, Ws
 renew_session(Org, Ws, Id, Expiry) -> eb_pg_asset_meta:renew_v5(Org, Ws, Id, Expiry).
 register_session(Org, Ws, Descriptor, Cid, Registration, Window) ->
     eb_pg_asset_meta:register_session_v5(Org, Ws, Descriptor, Cid, Registration, Window).
+
+%% Preserve the direct-v1 query and decoding behind the assembled asset port.
+-spec direct_session_row(binary()) -> {ok, map()} | {error, term()}.
+direct_session_row(ObjectKey) ->
+    eb_pg_asset_meta:direct_session_row(ObjectKey).

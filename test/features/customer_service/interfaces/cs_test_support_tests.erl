@@ -2,7 +2,10 @@
 -module(cs_test_support_tests).
 -include_lib("eunit/include/eunit.hrl").
 
-loopback_callback_and_cleanup_test() ->
+loopback_callback_and_cleanup_test_() ->
+    {timeout, 30, fun loopback_callback_and_cleanup/0}.
+
+loopback_callback_and_cleanup() ->
     with_cowboy(fun() ->
         Ref = make_ref(),
         Key = {?MODULE, Ref},
@@ -38,7 +41,10 @@ loopback_callback_and_cleanup_test() ->
         end
     end).
 
-wrong_reported_address_rethrows_and_cleans_up_test() ->
+wrong_reported_address_rethrows_and_cleans_up_test_() ->
+    {timeout, 30, fun wrong_reported_address_rethrows_and_cleans_up/0}.
+
+wrong_reported_address_rethrows_and_cleans_up() ->
     with_cowboy(fun() ->
         Ref = make_ref(),
         Key = {?MODULE, Ref},
@@ -88,13 +94,24 @@ stop_captured(Key) ->
         Name -> cs_test_support:stop(Name)
     end.
 
+%% Keep the no-boot contract meaningful even when the full suite already has
+%% imboy/DB pools running. All listener applications and Ranch mocks live only
+%% in the fresh peer; never stop or mock the suite's shared processes.
 with_cowboy(Fun) ->
+    pure_mock_fixture:run(fun() ->
+        assert_no_database_or_app(),
+        {ok, Started} = application:ensure_all_started(cowboy),
+        try
+            Result = Fun(),
+            assert_no_database_or_app(),
+            Result
+        after
+            lists:foreach(fun application:stop/1, lists:reverse(Started)),
+            assert_no_database_or_app()
+        end
+    end).
+
+assert_no_database_or_app() ->
     ?assertEqual(undefined, whereis(pgsql)),
     ?assertEqual(undefined, whereis(pooler_sup)),
-    ?assertNot(lists:keymember(imboy, 1, application:which_applications())),
-    {ok, Started} = application:ensure_all_started(cowboy),
-    try
-        Fun()
-    after
-        lists:foreach(fun application:stop/1, lists:reverse(Started))
-    end.
+    ?assertNot(lists:keymember(imboy, 1, application:which_applications())).

@@ -152,6 +152,9 @@ hex_digit(N) -> $a + N - 10.
 %% ===================================================================
 
 textguard_publisher_test_() ->
+    isolated_pg_fixture:test(fun publisher_fixture/0).
+
+publisher_fixture() ->
     %% 外层：PG 池只建一次；内层：每个用例独立快照（词表重置 + mock ets
     %% 重建 + 发布者让位），杜绝用例间状态串扰（mock active/digest 与
     %% 词表残留会让 CAS/收敛断言互相污染）
@@ -197,15 +200,13 @@ textguard_publisher_test_() ->
 with_case(Desc, TestFun) ->
     {setup, fun case_setup/0, fun case_cleanup/1, fun(_) -> {Desc, TestFun} end}.
 
--spec pg_only_setup() -> ok.
+-spec pg_only_setup() -> map().
 pg_only_setup() ->
-    ok = textguard_export_tests:pg_setup(),
-    ok.
+    textguard_export_tests:owned_pg_setup().
 
--spec pg_only_cleanup(ok) -> ok.
-pg_only_cleanup(ok) ->
-    ok = textguard_export_tests:pg_teardown(ok),
-    ok.
+-spec pg_only_cleanup(map()) -> ok.
+pg_only_cleanup(State) ->
+    textguard_export_tests:owned_pg_teardown(State).
 
 -spec case_setup() -> ok.
 case_setup() ->

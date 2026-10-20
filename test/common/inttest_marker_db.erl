@@ -29,7 +29,7 @@
 %%   %% State 内 conn 字段为已连接 epgsql pid；测试体自行 BEGIN/ROLLBACK。
 %%   %% 可选 migration_target => 正整数：fresh 库 goto 指定版本；不得与 reuse 联用。
 
--export([provision/1, release/1, safe_connect/1, migration_head/0]).
+-export([provision/1, release/1, safe_connect/1, migration_head/0, schema_mode/1]).
 
 -define(EXTENSIONS, [
     <<"pgcrypto">>,
@@ -49,6 +49,7 @@
 -spec provision(map()) ->
     #{conn := pid(), maint_conn := pid(), db := binary(), server := map()}.
 provision(Opts) when is_map(Opts) ->
+    _ = schema_mode(Opts),
     case {maps:get(reuse, Opts, false), maps:find(migration_target, Opts)} of
         {true, {ok, _}} ->
             erlang:error(marker_db_migration_target_cannot_reuse);
@@ -58,6 +59,20 @@ provision(Opts) when is_map(Opts) ->
             provision_shared(Opts);
         {false, _} ->
             provision_fresh(Opts)
+    end.
+
+%% Explicit empty schema is only for fixtures applying their own reviewed DDL.
+%% Normal callers retain the strict complete migration chain. Empty still installs
+%% the standard extensions, but the caller must apply its own schema explicitly.
+schema_mode(Opts) ->
+    case maps:get(schema_mode, Opts, full) of
+        full -> full;
+        empty ->
+            case {maps:get(reuse, Opts, false), maps:is_key(migration_target, Opts)} of
+                {false, false} -> empty;
+                _ -> error(marker_db_empty_schema_cannot_reuse_or_target)
+            end;
+        Other -> error({marker_db_invalid_schema_mode, Other})
     end.
 
 provision_fresh(Opts) when is_map(Opts) ->
@@ -71,7 +86,10 @@ provision_fresh(Opts) when is_map(Opts) ->
     try
         ok = create_db_retry(MaintConn, DbName),
         ok = ensure_extensions(Server, DbName),
-        ok = migrate_result(migrate_fresh_db(Server, DbName, Opts)),
+        case schema_mode(Opts) of
+            full -> ok = migrate_result(migrate_fresh_db(Server, DbName, Opts));
+            empty -> ok
+        end,
         %% A1c：marker 库自身连接同样走重试（原先裸 safe_connect 一次失败即
         %% 整个 provision 报废），与 connect_server 同预算。
         Conn = connect_retry(Server, DbName),

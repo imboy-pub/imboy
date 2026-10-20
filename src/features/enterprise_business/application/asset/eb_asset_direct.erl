@@ -151,10 +151,10 @@ read_fun_from_snapshot(_) ->
 
 %% ===== 内部 =====
 
-%% direct 会话行读取经 infrastructure Port（铁律5：application 不直连
-%% elib_pg），实现见 eb_pg_asset_meta:direct_session_row/1。
+%% direct 会话读取经已装配的 asset 端口；application 不依赖 PG 实现。
 direct_session_row(ObjectKey) ->
-    eb_pg_asset_meta:direct_session_row(ObjectKey).
+    {ok, Asset} = eb_infra_ports:resolve(asset),
+    Asset:direct_session_row(ObjectKey).
 
 attempt_key_of(Row, ObjectKey) ->
     Reg = maps:get(<<"upload_registration">>, Row, #{}),
