@@ -415,6 +415,9 @@ get_routes() ->
                 {"/api/v1/channel/:channel_id/message", channel_handler, #{
                     action => publish_message
                 }},
+                {"/api/v1/channel/:channel_id/message/:message_id", channel_handler_message, #{
+                    action => show_message
+                }},
                 {"/api/v1/channel/:channel_id/messages", channel_handler, #{action => messages}},
                 {"/api/v1/channel/:channel_id/read", channel_handler, #{action => mark_read}},
                 {"/api/v1/channels/search", channel_discovery_handler, #{action => search}},

@@ -14,7 +14,7 @@
 -export([restore_channel/2]).
 -export([publish_message/5]).
 -export([publish_message/6]).
--export([get_messages/4]).
+-export([get_messages/4, get_message/3]).
 -export([mark_as_read/3]).
 -export([search_channels/2]).
 -export([get_discover_channels/1]).
@@ -504,6 +504,34 @@ maybe_notify_new_message(ChannelId, Message, inserted) ->
     push_unread_updates(ChannelId);
 maybe_notify_new_message(_ChannelId, _Message, duplicate) ->
     ok.
+
+%% 单篇读取仍先检查频道内容权益，再验证消息属于同一频道。
+-spec get_message(integer(), binary(), binary()) -> {ok, map()} | {error, term()}.
+get_message(Uid, ChannelIdBin, MessageIdBin) ->
+    ChannelId = channel_logic_common:resolve_channel_id(ChannelIdBin),
+    MessageId = channel_logic_common:decode_positive_id(MessageIdBin),
+    case ChannelId > 0 andalso MessageId > 0 of
+        false ->
+            {error, <<"内容不可用"/utf8>>};
+        true ->
+            case channel_logic_common:ensure_channel_content_access(Uid, ChannelId) of
+                ok -> read_message(Uid, ChannelId, MessageId);
+                Error -> Error
+            end
+    end.
+
+read_message(Uid, ChannelId, MessageId) ->
+    case channel_message_ds:find_by_id(MessageId) of
+        #{<<"channel_id">> := ChannelId, <<"revoked">> := true} ->
+            {error, <<"内容不可用"/utf8>>};
+        #{<<"channel_id">> := ChannelId} = Message ->
+            [Result] = attach_my_reactions(Uid, [message_transfer(Message)]),
+            {ok, Result};
+        {error, _} = Error ->
+            Error;
+        _ ->
+            {error, <<"内容不可用"/utf8>>}
+    end.
 
 -spec get_messages(integer(), binary(), integer(), integer()) ->
     {ok, list(map())} | {error, binary()}.

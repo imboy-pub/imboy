@@ -2,6 +2,7 @@
 -behavior(cowboy_rest).
 -export([init/2, handle_action/3]).
 -export([
+    show_message/2,
     pin_message/2,
     unpin_message/2,
     pinned_messages/2,
@@ -49,6 +50,7 @@ resolve_action(add_reaction, Req) ->
 resolve_action(Action, _Req) ->
     Action.
 
+handle_action(show_message, Req, State) -> show_message(Req, State);
 handle_action(pin_message, Req, State) -> pin_message(Req, State);
 handle_action(unpin_message, Req, State) -> unpin_message(Req, State);
 handle_action(pinned_messages, Req, State) -> pinned_messages(Req, State);
@@ -68,6 +70,21 @@ handle_action(false, Req, _State) -> Req.
 %% ===================================================================
 %% 消息管理 API
 %% ===================================================================
+
+show_message(Req, State) ->
+    case cowboy_req:method(Req) of
+        <<"GET">> ->
+            Uid = maps:get(current_uid, State),
+            ChannelId = cowboy_req:binding(channel_id, Req),
+            MessageId = cowboy_req:binding(message_id, Req),
+            case channel_logic_message:get_message(Uid, ChannelId, MessageId) of
+                {ok, Message} -> elib_response:success(Req, Message);
+                {error, {Code, Msg}} -> elib_response:error(Req, Msg, Code);
+                {error, _} -> elib_response:error(Req, <<"内容不可用"/utf8>>)
+            end;
+        _ ->
+            cowboy_req:reply(405, #{<<"allow">> => <<"GET">>}, Req)
+    end.
 
 -spec pin_message(cowboy_req:req(), map()) -> cowboy_req:req().
 pin_message(Req0, State) ->
