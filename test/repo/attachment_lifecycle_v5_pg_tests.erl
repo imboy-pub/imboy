@@ -265,22 +265,33 @@ w203_confirm_first(Conn, Server, State) ->
                                 maps:get(connect_extra, Server, #{})
                             )
                         ),
-                    %% BEGIN/ROLLBACK 是命令标签（epgsql 回 {ok, Tag} 二元组），
-                    %% 不做形状断言
-                    _ = epgsql:equery(HConn, "BEGIN", []),
-                    {ok, _, _} =
-                        epgsql:equery(
-                            HConn,
-                            "SELECT path FROM attachment WHERE path=$1 FOR UPDATE",
-                            [Key]
-                        ),
-                    Parent ! {w203_held, self()},
-                    receive
-                        release -> ok
-                    after 8000 -> ok
-                    end,
-                    _ = epgsql:equery(HConn, "ROLLBACK", []),
-                    released
+                    try
+                        %% BEGIN/ROLLBACK 是命令标签（epgsql 回 {ok, Tag} 二元组），
+                        %% 不做形状断言
+                        _ = epgsql:equery(HConn, "BEGIN", []),
+                        {ok, _, _} =
+                            epgsql:equery(
+                                HConn,
+                                "SELECT path FROM attachment WHERE path=$1 FOR UPDATE",
+                                [Key]
+                            ),
+                        Parent ! {w203_held, self()},
+                        receive
+                            release -> ok
+                        after 8000 -> ok
+                        end,
+                        _ = epgsql:equery(HConn, "ROLLBACK", []),
+                        released
+                    after
+                        CloseMonitor = erlang:monitor(process, HConn),
+                        epgsql:close(HConn),
+                        receive
+                            {'DOWN', CloseMonitor, process, HConn, _} -> ok
+                        after 5000 ->
+                            erlang:demonitor(CloseMonitor, [flush]),
+                            error(w203_holder_connection_close_timeout)
+                        end
+                    end
                 catch
                     C:E -> {C, E}
                 end,

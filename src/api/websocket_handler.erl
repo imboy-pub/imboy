@@ -912,8 +912,7 @@ encode_delivery_frame_protobuf(Msg) ->
         encode_delivery_frame_protobuf(Msg, Map)
     catch
         Class:Reason ->
-            ok = ?WARN_LOG({encode_delivery_frame_fallback, Class, Reason, byte_size(Msg)}),
-            {text, Msg}
+            delivery_frame_fallback(protobuf, Msg, Class, Reason)
     end.
 
 encode_delivery_frame_protobuf(Msg, Map) ->
@@ -927,8 +926,7 @@ encode_delivery_frame_protobuf(Msg, Map) ->
         end
     catch
         Class:Reason ->
-            ok = ?WARN_LOG({encode_delivery_frame_fallback, Class, Reason, byte_size(Msg)}),
-            {text, Msg}
+            delivery_frame_fallback(protobuf, Msg, Class, Reason)
     end.
 
 -spec encode_delivery_frame_v2(binary()) -> {binary, binary()}.
@@ -946,8 +944,7 @@ encode_delivery_frame_v2(Msg) ->
         encode_delivery_frame_v2(Msg, Map)
     catch
         Class:Reason ->
-            ok = ?WARN_LOG({encode_delivery_frame_v2_fallback, Class, Reason, byte_size(Msg)}),
-            {binary, imboy_codec:wrap_v2_frame(?FRAME_TYPE_MSG_S2C, 0, Msg)}
+            delivery_frame_fallback(v2, Msg, Class, Reason)
     end.
 
 encode_delivery_frame_v2(Msg, Map) ->
@@ -956,9 +953,16 @@ encode_delivery_frame_v2(Msg, Map) ->
         {binary, imboy_codec:wrap_v2_frame(FrameType, 0, Msg)}
     catch
         Class:Reason ->
-            ok = ?WARN_LOG({encode_delivery_frame_v2_fallback, Class, Reason, byte_size(Msg)}),
-            {binary, imboy_codec:wrap_v2_frame(?FRAME_TYPE_MSG_S2C, 0, Msg)}
+            delivery_frame_fallback(v2, Msg, Class, Reason)
     end.
+
+%% Keep fallback logging and wire bytes shared by decode and encode failures.
+delivery_frame_fallback(protobuf, Msg, Class, Reason) ->
+    ok = ?WARN_LOG({encode_delivery_frame_fallback, Class, Reason, byte_size(Msg)}),
+    {text, Msg};
+delivery_frame_fallback(v2, Msg, Class, Reason) ->
+    ok = ?WARN_LOG({encode_delivery_frame_v2_fallback, Class, Reason, byte_size(Msg)}),
+    {binary, imboy_codec:wrap_v2_frame(?FRAME_TYPE_MSG_S2C, 0, Msg)}.
 
 %% @doc 将 protobuf 解码后的 from/to integer ID 转为 binary
 %% 仅处理 from 和 to 字段，其他 ID 字段由各 Logic 模块按需处理

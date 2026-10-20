@@ -388,7 +388,7 @@ normalize_code() ->
 
 conformance_test_() ->
     {timeout, 900,
-        {setup, fun intbe02_http_support:setup_all/0, fun intbe02_http_support:teardown_all/1, fun(
+        {setup, fun intbe02_http_support:setup_all/0, fun teardown_marker/1, fun(
             S
         ) ->
             {timeout, 900, fun() -> run_conformance(S) end}
@@ -1788,4 +1788,12 @@ receive_all(Socket, Acc) ->
             iolist_to_binary(lists:reverse(Acc));
         {error, Reason} ->
             error({recv_failed, Reason, iolist_to_binary(lists:reverse(Acc))})
+    end.
+
+%% This fixture owns its disposable marker; release it even if HTTP cleanup fails.
+teardown_marker(State) ->
+    try
+        intbe02_http_support:teardown_all(State)
+    after
+        inttest_marker_db:release(State)
     end.

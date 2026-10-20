@@ -27,7 +27,7 @@ msg_performance_test_() ->
         {"批量消息发送性能", fun test_batch_send_performance/0},
         %% 50 条消息的落库轮询最多 sleep 50s；性能断言仍为每次平均 <= 200ms。
         {"消息查询性能", {timeout, 90, fun test_query_performance/0}},
-        {"并发发送性能", fun test_concurrent_send_performance/0}
+        {"并发发送性能", {timeout, 30, fun test_concurrent_send_performance/0}}
     ]}.
 
 setup() ->
@@ -258,39 +258,17 @@ test_concurrent_send_performance() ->
 
     % 并发发送消息
     ConcurrentCount = 50,
-    Parent = self(),
-
     StartTime = erlang:monotonic_time(millisecond),
-
-    Pids = lists:map(
-        fun(N) ->
-            spawn(fun() ->
-                MsgId = integer_to_binary(elib_tsid:generate(msg_c2c)),
-                MsgData = #{
-                    <<"payload">> => <<N/integer, "并发测试"/utf8>>,
-                    <<"msg_type">> => <<"text">>,
-                    <<"action">> => <<"send">>,
-                    <<"created_at">> => elib_dt:millisecond()
-                },
-                Result = msg_c2c_logic:c2c(MsgId, User1, MsgData#{
-                    <<"to">> => integer_to_binary(User2)
-                }),
-                Parent ! {done, self(), Result}
-            end)
-        end,
-        lists:seq(1, ConcurrentCount)
-    ),
-
-    % 等待所有进程完成
-    Results = lists:map(
-        fun(Pid) ->
-            receive
-                {done, Pid, Result} -> Result
-            after 10000 -> timeout
-            end
-        end,
-        Pids
-    ),
+    Results = concurrent_results(ConcurrentCount, fun(N) ->
+        MsgId = integer_to_binary(elib_tsid:generate(msg_c2c)),
+        MsgData = #{
+            <<"payload">> => <<N/integer, "并发测试"/utf8>>,
+            <<"msg_type">> => <<"text">>,
+            <<"action">> => <<"send">>,
+            <<"created_at">> => elib_dt:millisecond()
+        },
+        msg_c2c_logic:c2c(MsgId, User1, MsgData#{<<"to">> => integer_to_binary(User2)})
+    end, 10000),
 
     EndTime = erlang:monotonic_time(millisecond),
     TotalTime = EndTime - StartTime,
@@ -309,6 +287,165 @@ test_concurrent_send_performance() ->
     ?assert(SuccessCount >= ConcurrentCount * 0.95, "并发发送成功率低于95%"),
 
     ok.
+
+%% One bounded owner monitors the caller and every worker. Cleanup completes
+%% before results/errors return; caller death also reaps workers before owner exit.
+%% The outer EUnit budget includes cleanup; business assertions above are unchanged.
+concurrent_results(Count, Task, TimeoutMs) ->
+    concurrent_results(Count, Task, TimeoutMs, fun erlang:spawn_monitor/1).
+
+concurrent_results(Count, Task, TimeoutMs, Spawn) ->
+    Caller = self(),
+    Ref = make_ref(),
+    {Owner, Monitor} = spawn_monitor(fun() ->
+        concurrent_owner(Caller, Ref, Count, Task, TimeoutMs, Spawn)
+    end),
+    receive
+        {Ref, Result} ->
+            receive
+                {'DOWN', Monitor, process, Owner, normal} -> ok;
+                {'DOWN', Monitor, process, Owner, Reason} -> error({worker_owner_failed, Reason})
+            after 5000 -> error(worker_owner_cleanup_timeout)
+            end,
+            case Result of
+                {ok, Values} -> Values;
+                {raised, Class, Reason0, Stack} -> erlang:raise(Class, Reason0, Stack)
+            end;
+        {'DOWN', Monitor, process, Owner, Reason} -> error({worker_owner_failed, Reason})
+    end.
+
+concurrent_owner(Caller, Ref, Count, Task, TimeoutMs, Spawn) ->
+    CallerMonitor = erlang:monitor(process, Caller),
+    Owner = self(),
+    WorkerKey = {Ref, owned_workers},
+    put(WorkerKey, []),
+    Result = try
+        Workers = [begin
+            {Pid, Monitor} = Spawn(fun() -> Owner ! {Ref, result, self(), Task(N)} end),
+            put(WorkerKey, [{Pid, Monitor, N} | get(WorkerKey)]),
+            {Pid, Monitor, N}
+        end || N <- lists:seq(1, Count)],
+        Pending = maps:from_list([{Pid, N} || {Pid, _, N} <- Workers]),
+        Deadline = erlang:monotonic_time(millisecond) + TimeoutMs,
+        Values = collect_concurrent(Ref, CallerMonitor, Pending, #{}, Deadline),
+        {ok, [maps:get(N, Values) || N <- lists:seq(1, Count)]}
+    catch
+        Class:Reason:Stack -> {raised, Class, Reason, Stack}
+    after
+        try stop_concurrent_workers(erase(WorkerKey))
+        after erlang:demonitor(CallerMonitor, [flush])
+        end
+    end,
+    Caller ! {Ref, Result}.
+
+collect_concurrent(_, _, Pending, Values, _) when map_size(Pending) =:= 0 -> Values;
+collect_concurrent(Ref, CallerMonitor, Pending, Values, Deadline) ->
+    Remaining = max(0, Deadline - erlang:monotonic_time(millisecond)),
+    receive
+        {Ref, result, Pid, Value} ->
+            {N, Rest} = maps:take(Pid, Pending),
+            collect_concurrent(Ref, CallerMonitor, Rest, Values#{N => Value}, Deadline);
+        {'DOWN', CallerMonitor, process, _, _} -> error(concurrent_caller_exited);
+        {'DOWN', _, process, Pid, Reason} ->
+            case maps:find(Pid, Pending) of
+                {ok, N} -> error({concurrent_worker_failed, N, Reason});
+                error -> collect_concurrent(Ref, CallerMonitor, Pending, Values, Deadline)
+            end
+    after Remaining -> error(concurrent_workers_timeout)
+    end.
+
+stop_concurrent_workers(Workers) ->
+    Live = [{Pid, Monitor} || {Pid, Monitor, _} <- Workers, is_process_alive(Pid)],
+    [exit(Pid, kill) || {Pid, _} <- Live],
+    Deadline = erlang:monotonic_time(millisecond) + 5000,
+    Missing = lists:foldl(fun({Pid, Monitor}, Acc) ->
+        Remaining = max(0, Deadline - erlang:monotonic_time(millisecond)),
+        receive {'DOWN', Monitor, process, Pid, _} -> Acc
+        after Remaining -> [Pid | Acc]
+        end
+    end, [], Live),
+    [erlang:demonitor(Monitor, [flush]) || {_, Monitor, _} <- Workers],
+    case Missing of [] -> ok; _ -> error({worker_cleanup_timeout, Missing}) end.
+
+concurrent_workers_normal_test() ->
+    ?assertEqual(lists:seq(1, 50), concurrent_results(50, fun(N) -> N end, 1000)).
+
+concurrent_workers_timeout_cleanup_test() ->
+    Observer = self(), Ref = make_ref(),
+    Task = fun(_) -> receive stop -> ok end end,
+    ?assertError(concurrent_workers_timeout,
+        concurrent_results(3, Task, 25, observed_spawner(Observer, Ref))),
+    assert_workers_dead(collect_test_workers(Ref, 3)).
+
+concurrent_workers_exception_cleanup_test() ->
+    Observer = self(), Ref = make_ref(),
+    Task = fun(N) ->
+        case N of 1 -> exit(worker_boom); _ -> receive stop -> ok end end
+    end,
+    ?assertError({concurrent_worker_failed, 1, worker_boom},
+        concurrent_results(3, Task, 1000, observed_spawner(Observer, Ref))),
+    assert_workers_dead(collect_test_workers(Ref, 3)).
+
+concurrent_workers_spawn_failure_cleanup_test() ->
+    Observer = self(), Ref = make_ref(),
+    Spawn0 = observed_spawner(Observer, Ref),
+    Spawn = fun(Fun) ->
+        case get({Ref, spawn_count}) of
+            2 -> error(system_limit);
+            Old ->
+                put({Ref, spawn_count}, case Old of undefined -> 1; N -> N + 1 end),
+                Spawn0(Fun)
+        end
+    end,
+    ?assertError(system_limit,
+        concurrent_results(3, fun(_) -> receive stop -> ok end end, 1000, Spawn)),
+    assert_workers_dead(collect_test_workers(Ref, 2)).
+
+concurrent_workers_caller_exit_cleanup_test() ->
+    Observer = self(), Ref = make_ref(),
+    Task = fun(_) -> receive stop -> ok end end,
+    {Caller, CallerMonitor} = spawn_monitor(fun() ->
+        concurrent_results(3, Task, 10000, observed_spawner(Observer, Ref))
+    end),
+    Workers = collect_test_workers(Ref, 3),
+    [Owner] = lists:usort(lists:append([begin
+        {monitored_by, Pids} = process_info(Pid, monitored_by), Pids
+    end || Pid <- Workers])),
+    OwnerMonitor = erlang:monitor(process, Owner),
+    WorkerMonitors = [{Pid, erlang:monitor(process, Pid)} || Pid <- Workers],
+    exit(Caller, kill),
+    receive {'DOWN', CallerMonitor, process, Caller, killed} -> ok after 1000 -> error(caller_not_stopped) end,
+    [receive {'DOWN', M, process, Pid, _} -> ok after 5000 -> error(worker_leaked) end || {Pid, M} <- WorkerMonitors],
+    receive {'DOWN', OwnerMonitor, process, Owner, normal} -> ok after 5000 -> error(worker_owner_leaked) end,
+    assert_workers_dead(Workers).
+
+%% Deterministic readiness handshake: tests know every spawned process exists
+%% before measuring timeout/exception cleanup, without scheduler-dependent sleep.
+observed_spawner(Observer, Ref) ->
+    fun(Fun) ->
+        Owner = self(),
+        {Pid, Monitor} = spawn_monitor(fun() ->
+            Owner ! {Ref, ready, self()},
+            receive {Ref, run} -> Fun() end
+        end),
+        receive {Ref, ready, Pid} -> ok
+        after 5000 ->
+            exit(Pid, kill),
+            receive {'DOWN', Monitor, process, Pid, _} -> ok end,
+            error(worker_readiness_timeout)
+        end,
+        Observer ! {Ref, Pid},
+        Pid ! {Ref, run},
+        {Pid, Monitor}
+    end.
+
+collect_test_workers(_, 0) -> [];
+collect_test_workers(Ref, N) ->
+    receive {Ref, Pid} -> [Pid | collect_test_workers(Ref, N - 1)]
+    after 1000 -> error(worker_start_missing)
+    end.
+assert_workers_dead(Workers) ->
+    [?assertNot(is_process_alive(Pid)) || Pid <- Workers], ok.
 
 %% ===================================================================
 %% 辅助函数
