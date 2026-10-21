@@ -30,6 +30,11 @@
 
 -include("log.hrl").
 
+-ifdef(TEST).
+%% 帖子图片归属校验直测（发布链 mock 面大，校验逻辑独立直测）。
+-export([validate_post_images/2]).
+-endif.
+
 %% 用户侧出站安全列白名单（P1-7b 宽列治理）：替代 <<"*">>，
 %% 防止 channel 表未来新增敏感列随行自动泄漏进 payload / WS 通知。
 %% 内部状态列 status（审核/软删，查询恒过滤 status=1）不下发；
@@ -445,52 +450,126 @@ do_publish_message(Uid, ChannelIdBin, Content, MsgType, Payload, StoreMode) ->
                 true ->
                     {error, <<"只有管理员可以发布消息"/utf8>>};
                 false ->
-                    %% R-03 审核门：high 命中词在落库前直接拦截；
-                    %% medium/low 命中先发后审（入队复核），入队失败 fail-open。
-                    case
-                        moderation_business:inspect_channel(ChannelId, MsgType, Content, Payload)
-                    of
-                        {blocked, _Hits} ->
-                            {error, <<"内容包含违规词汇，发布失败"/utf8>>};
-                        {error, Reason} ->
-                            {error, Reason};
-                        Verdict ->
-                            case
-                                channel_message_store:publish(
-                                    StoreMode, ChannelId, Uid, Content, MsgType, Payload
-                                )
-                            of
-                                {ok, MessageId, Status} ->
-                                    case Status of
-                                        inserted ->
-                                            maybe_enqueue_review(
-                                                moderation_business:bind_version(Verdict, <<>>),
-                                                MessageId,
-                                                ChannelId,
-                                                Uid,
-                                                Content
-                                            );
-                                        duplicate ->
-                                            ok
-                                    end,
-                                    case channel_message_ds:find_by_id(MessageId) of
-                                        {error, Reason} ->
-                                            {error, elib_cnv:safe_to_binary(Reason)};
-                                        Message when is_map(Message) ->
-                                            Message2 = message_transfer(Message),
-                                            maybe_notify_new_message(ChannelId, Message2, Status),
-                                            {ok, Message2}
-                                    end;
-                                %% T7 归档写守卫稳定错误码（980）：元组形态透传给
-                                %% handler 映射 envelope code，不做 binary 折叠
-                                {error, {Code, Msg}} when is_integer(Code) ->
-                                    {error, {Code, Msg}};
-                                {error, Reason} ->
-                                    {error, elib_cnv:safe_to_binary(Reason)}
-                            end
+                    %% 帖子图片归属硬校验（prod 2026-10-20 事故二加固）：
+                    %% 图片只允许引用本频道的 channel 附件或 public 资源；
+                    %% private/跨频道附件在发布时拒绝——否则发布成功但订阅者
+                    %% 渲染 view_url 400「无权访问该附件」，失败被推迟到
+                    %% 每个订阅者的渲染期才暴露。
+                    case validate_post_images(ChannelId, Payload) of
+                        ok ->
+                            do_publish_after_images(
+                                Uid, ChannelId, Content, MsgType, Payload, StoreMode
+                            );
+                        {error, _} = ImgErr ->
+                            ImgErr
                     end
             end
     end.
+
+do_publish_after_images(Uid, ChannelId, Content, MsgType, Payload, StoreMode) ->
+    %% R-03 审核门：high 命中词在落库前直接拦截；
+    %% medium/low 命中先发后审（入队复核），入队失败 fail-open。
+    case moderation_business:inspect_channel(ChannelId, MsgType, Content, Payload) of
+        {blocked, _Hits} ->
+            {error, <<"内容包含违规词汇，发布失败"/utf8>>};
+        {error, Reason} ->
+            {error, Reason};
+        Verdict ->
+            case
+                channel_message_store:publish(StoreMode, ChannelId, Uid, Content, MsgType, Payload)
+            of
+                {ok, MessageId, Status} ->
+                    case Status of
+                        inserted ->
+                            maybe_enqueue_review(
+                                moderation_business:bind_version(Verdict, <<>>),
+                                MessageId,
+                                ChannelId,
+                                Uid,
+                                Content
+                            );
+                        duplicate ->
+                            ok
+                    end,
+                    case channel_message_ds:find_by_id(MessageId) of
+                        {error, Reason} ->
+                            {error, elib_cnv:safe_to_binary(Reason)};
+                        Message when is_map(Message) ->
+                            Message2 = message_transfer(Message),
+                            maybe_notify_new_message(ChannelId, Message2, Status),
+                            {ok, Message2}
+                    end;
+                %% T7 归档写守卫稳定错误码（980）：元组形态透传给
+                %% handler 映射 envelope code，不做 binary 折叠
+                {error, {Code, Msg}} when is_integer(Code) ->
+                    {error, {Code, Msg}};
+                {error, Reason} ->
+                    {error, elib_cnv:safe_to_binary(Reason)}
+            end
+    end.
+
+%% @doc 帖子图片归属校验：images 中的附件 key 必须是本频道的 channel 附件
+%% 或 public 资源。非附件形态（外链/presigned URL）与无 uri 的旧形态跳过；
+%% 附件归属查询失败 fail-closed（不发布归属不确定的图片）。
+validate_post_images(ChannelId, Payload) ->
+    case maps:get(<<"images">>, Payload, undefined) of
+        Images when is_list(Images) ->
+            validate_post_images_list(Images, ChannelId, 1);
+        _ ->
+            ok
+    end.
+
+validate_post_images_list([], _ChannelId, _Index) ->
+    ok;
+validate_post_images_list([#{<<"uri">> := Uri} | Rest], ChannelId, Index) when
+    is_binary(Uri), Uri =/= <<>>
+->
+    case elib_oss:owner_of_key(Uri) of
+        {ok, _OwnerUid} ->
+            case validate_post_image_scope(Uri, ChannelId) of
+                ok -> validate_post_images_list(Rest, ChannelId, Index + 1);
+                {error, Reason} -> {error, image_error_message(Index, Reason)}
+            end;
+        {error, invalid_key} ->
+            %% 外链/presigned URL 等非本系统附件 key：不校验归属
+            validate_post_images_list(Rest, ChannelId, Index + 1)
+    end;
+validate_post_images_list([_Other | Rest], ChannelId, Index) ->
+    %% 无 uri 字段的旧形态项：交由既有渲染兼容处理
+    validate_post_images_list(Rest, ChannelId, Index).
+
+validate_post_image_scope(ObjectKey, ChannelId) ->
+    case attachment_ds:find_by_path(ObjectKey) of
+        {ok, Rec} ->
+            case maps:get(<<"scope">>, Rec, undefined) of
+                <<"public">> ->
+                    ok;
+                <<"channel">> ->
+                    case elib_cnv:safe_to_integer(maps:get(<<"scope_ref">>, Rec, undefined)) of
+                        ChannelId -> ok;
+                        _ -> {error, scope_mismatch}
+                    end;
+                _ ->
+                    {error, scope_mismatch}
+            end;
+        {error, not_found} ->
+            {error, not_found};
+        {error, _Other} ->
+            %% fail-closed：归属查询故障时不放行发布
+            {error, lookup_failed}
+    end.
+
+image_error_message(Index, Reason) ->
+    Hint =
+        case Reason of
+            scope_mismatch ->
+                <<"不是本频道的附件或公开资源，请在本频道重新上传后再发布"/utf8>>;
+            not_found ->
+                <<"附件不存在，请重新上传后再发布"/utf8>>;
+            lookup_failed ->
+                <<"归属校验暂不可用，请稍后重试"/utf8>>
+        end,
+    <<"第"/utf8, (integer_to_binary(Index))/binary, "张图片"/utf8, Hint/binary>>.
 
 %% R-03：queued 命中写人工复核队列；入队失败仅记日志不阻断发布（fail-open）。
 maybe_enqueue_review({queued, Hits}, MessageId, ChannelId, Uid, Content) ->
