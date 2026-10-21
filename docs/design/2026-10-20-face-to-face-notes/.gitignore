@@ -1,0 +1,5 @@
+# Runtime state belongs in RUN_ROOT; fixture-execution-state.json is tracked.
+/execution-state.json
+/execution-state.*.tmp
+/__pycache__/
+/*.pyc
