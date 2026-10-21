@@ -8,16 +8,6 @@ exercise(C, Ctx0) ->
     try
         App = maps:get(application_id, Ctx0),
         Ctx = Ctx0#{correlation_id => <<"synthetic-member-lifecycle">>},
-        exec(
-            C,
-            <<"UPDATE enterprise_application SET allowed_scopes=allowed_scopes || '[\"members:write\",\"identities:read\"]'::jsonb WHERE id=$1">>,
-            [App]
-        ),
-        exec(
-            C,
-            <<"INSERT INTO enterprise_application_grant_scope(grant_id,scope) VALUES(977200,'members:write'),(977200,'identities:read') ON CONFLICT DO NOTHING">>,
-            []
-        ),
         pending(C, Ctx),
         read_only(C, Ctx),
         lifecycle(C, Ctx),
@@ -129,28 +119,22 @@ audit_rollback(C, Ctx) ->
     end.
 
 authority(C, Ctx) ->
-    App = maps:get(application_id, Ctx),
     {ok, _, _} = epgsql:squery(C, "SAVEPOINT auth"),
     try
-        %% No identities:write required for this separately granted operation.
-        exec(
-            C,
-            <<"UPDATE enterprise_application SET allowed_scopes='[\"members:write\",\"identities:read\"]' WHERE id=$1">>,
-            [App]
-        ),
+        %% Live credential revocation also rejects an idempotent replay.
         V = maps:get(<<"member_version">>, view(C, Ctx)),
         ?assertMatch(
             {ok, 200, _, []}, write(C, Ctx, <<"independent-write">>, body(<<"suspended">>, V))
         ),
         exec(
             C,
-            <<"DELETE FROM enterprise_application_grant_scope WHERE grant_id=977200 AND scope='members:write'">>,
-            []
+            <<"UPDATE enterprise_application_credential SET status='revoked',revoked_at=clock_timestamp() WHERE id=$1">>,
+            [maps:get(credential_id, Ctx)]
         ),
         error_unchanged(
             C,
             fun() -> write(C, Ctx, <<"independent-write">>, body(<<"suspended">>, V)) end,
-            <<"resource_not_found">>
+            <<"invalid_credential">>
         )
     after
         {ok, _, _} = epgsql:squery(C, "ROLLBACK TO SAVEPOINT auth")

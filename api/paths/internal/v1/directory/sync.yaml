@@ -2,15 +2,13 @@ post:
   tags:
   - internal
   summary: INT-43 来源目录显式增量同步
-  description: 来源由当前 Application 及可信配置识别，须启用目录来源，并对目标组织具备 identities:write。客户端不能指定
+  description: 来源由当前 Application 及可信配置识别，须启用目录来源，且目标组织由当前应用的可信来源映射覆盖。客户端不能指定
     user_id、Owner 或接入授权；组织首次建立仅使用可信配置中已确认的 Human Owner。来源关联、组织/部门/人员变更、目录投影及审计同事务提交。首次同步只建来源档案，不凭姓名等字段创建或绑定
     IMBoy 账号；后续经 OA 双重身份证明关联。组织、部门、人员和成员关系各按对应版本及内容摘要校验：低版本或同版本不同内容冲突，同版本同内容可重放。未包含记录不代表删除；removed
     为显式移除，组织离职保留实例用户及其他组织关系，Owner 须先交接。source_status=removed 的账号关联退休不可自动恢复；membership=removed
     可通过更高版本显式恢复。
   operationId: internalDirectorySync
-  security:
-  - ibIntBearer: []
-  x-imboy-scope: identities:write
+  x-imboy-authentication: hmac
   x-imboy-rate-bucket: internal_write
   x-imboy-idempotency: required
   parameters:
@@ -226,7 +224,7 @@ post:
                     - invalid_credential
                     - credential_expired
     '403':
-      description: application_disabled / organization_disabled / insufficient_scope
+      description: application_disabled / organization_disabled / organization_boundary_violation
         / organization_boundary_violation
       content:
         application/json:
@@ -240,7 +238,7 @@ post:
                     enum:
                     - application_disabled
                     - organization_disabled
-                    - insufficient_scope
+                    - organization_boundary_violation
                     - organization_boundary_violation
     '404':
       description: resource_not_found

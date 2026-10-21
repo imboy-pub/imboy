@@ -1,26 +1,4 @@
-%% enterprise_rc_concurrency_pg_tests
-%% FULL-07 §8 —— 发布候选的**真 PG 并发**与**查询计划**证据（不是 mock 断言）。
-%%
-%% §8 原文：「真 PG 并发授权撤销、idempotency、outbox claim、retention query plan」。
-%% 本套件覆盖其中三项 + 撤销的**下一请求失效**闭环；outbox claim 由 FULL-03 已落地
-%% 的真库用例 `enterprise_webhook_migration_pg_tests:concurrent_claim_single_winner`
-%% 覆盖（本套件不重写副本，见 checkpoint 的交叉引用）。
-%%
-%% ① 并发授权撤销：N 条**独立连接**同时对同一 Grant 做 CAS 撤销 → 恰一个赢家
-%%    （其余 version_conflict），DB 版本只 +1，revoked_by 是赢家。
-%% ② 撤销对下一请求立即生效：生产读面 effective_scopes_tx（请求链取
-%%    granted_scopes 的同源函数）在撤销后看不到该 scope —— 不是"下次登录才生效"。
-%% ③ 并发 idempotency：同 key 同 digest 的 N 条并发 begin → 恰一个 inserted，
-%%    其余 pending；库内只有一行。
-%% ④ retention 查询计划：可 purge 视图查询必须走部分索引 i_ear_purgeable，
-%%    严禁 Seq Scan —— 用 2000 行真数据 + ANALYZE 后的 EXPLAIN(JSON) 断言。
-%%
-%% 一次性 marker 库（inttest_marker_db 配方，env 前缀 FULL07RC_INTTEST）：空库
-%% 全量 up（erlang_migrate strict）→ 合同 oracle。并发用例自带独立连接（真并发，
-%% 不是同一连接上的顺序调用）。ID 段 998xxx。
-%%
-%% 运行：make eunit-local t=enterprise_rc_concurrency_pg_tests
-
+%% 真 PG 并发幂等及 retention 查询计划回归。
 -module(enterprise_rc_concurrency_pg_tests).
 
 -include_lib("eunit/include/eunit.hrl").
@@ -31,7 +9,6 @@
 -define(OWNER, 998001).
 -define(PRIN, 998014).
 -define(APP_A, 998201).
--define(GRANT_ID_BASE, 998301).
 %% retention 压量：2000 行足够让规划器在"无索引可用"时选 Seq Scan
 -define(PLAN_ROWS, 2000).
 
@@ -107,11 +84,7 @@ seed_matrix(C) ->
     seed_org(C, ?ORG_A, ?OWNER),
     seed_org_member(C, ?ORG_A, ?PRIN, <<"active">>),
     {ok, App} = enterprise_application_repo:create_tx(
-        C,
-        ?ORG_A,
-        <<"full07rc-oa-a">>,
-        <<"full07rc org A oa"/utf8>>,
-        {?PRIN, [<<"messages:send">>, <<"application:read">>]}
+        C, ?ORG_A, <<"full07rc-oa-a">>, <<"full07rc org A oa"/utf8>>, ?PRIN
     ),
     #{app_a => maps:get(<<"id">>, App)}.
 
@@ -152,24 +125,6 @@ app_a(State) ->
     maps:get(app_a, State).
 
 %% 新建一条 active Grant，返回 #{id, version}
-new_grant(State, C, IdemKey) ->
-    {ok, G} = enterprise_application_grant_repo:create_tx(C, ?ORG_A, app_a(State), #{
-        scopes => [<<"messages:send">>],
-        workspace_scope_kind => none,
-        expires_at => future_rfc3339(),
-        idempotency_key => IdemKey
-    }),
-    #{id => maps:get(<<"id">>, G), version => maps:get(<<"version">>, G)}.
-
-future_rfc3339() ->
-    Secs = calendar:datetime_to_gregorian_seconds(calendar:universal_time()) + 86400,
-    {{Y, Mo, D}, {H, Mi, S}} = calendar:gregorian_seconds_to_datetime(Secs),
-    iolist_to_binary(
-        io_lib:format("~4..0B-~2..0B-~2..0BT~2..0B:~2..0B:~2..0BZ", [Y, Mo, D, H, Mi, S])
-    ).
-
-%% 事务型用例统一走这里：先清掉上一个用例可能残留的失败事务
-%% （PG 一旦 25P02，后续语句全被忽略——不清理会把一个失败放大成一片假红）。
 begin_tx(C) ->
     ok = exec_quiet_rollback(C),
     ok = exec(C, <<"BEGIN">>),
@@ -226,10 +181,6 @@ enterprise_rc_concurrency_pg_test_() ->
         {setup, fun setup_conn/0, fun close_conn/1, fun(State) ->
             C = maps:get(conn, State),
             {inorder, [
-                {"grant_revoke_concurrent_cas_single_winner",
-                    {timeout, 200, fun() -> grant_revoke_concurrent(State) end}},
-                {"revoke_effective_on_next_request",
-                    {timeout, 200, fun() -> revoke_effective_next_request(State) end}},
                 {"idempotency_concurrent_single_effect",
                     {timeout, 200, fun() -> idempotency_concurrent(State) end}},
                 {"retention_query_plan_uses_partial_index",
@@ -239,123 +190,6 @@ enterprise_rc_concurrency_pg_test_() ->
 
 %% 8 条独立连接同时用同一个 expected_version 撤销 → 恰 1 个 ok，7 个 version_conflict；
 %% 库内 version 只 +1（没有"撤销被写了 8 次"这类丢失更新）。
-grant_revoke_concurrent(State) ->
-    C = maps:get(conn, State),
-    ok = begin_tx(C),
-    G = new_grant(State, C, <<"full07rc-idem-revoke">>),
-    ok = exec(C, <<"COMMIT">>),
-    N = 8,
-    Refs = [
-        in_own_tx(State, fun(Cc) ->
-            enterprise_application_grant_repo:revoke_tx(
-                Cc, ?ORG_A, app_a(State), maps:get(id, G), maps:get(version, G), ?OWNER
-            )
-        end)
-     || _ <- lists:seq(1, N)
-    ],
-    Results = await_all(Refs),
-    %% 每条分支自己的事务必须成功提交（不是连接/事务层面的失败）
-    ?assert(
-        lists:all(
-            fun(R) -> element(1, R) =:= ok end,
-            Results
-        )
-    ),
-    Outcomes = [R || {ok, R} <- Results],
-    Winners = [R || R <- Outcomes, R =:= ok],
-    Losers = [R || R <- Outcomes, R =/= ok],
-    ?assertEqual(1, length(Winners)),
-    ?assertEqual(N - 1, length(Losers)),
-    %% 输家必须全部是 **CAS 语义拒绝**：与赢家并发（先看到 active+version=1）者
-    %% version_conflict；在赢家提交后才读到行者为 already_revoked。两者都是
-    %% 「没有写成功」的合法语义；绝不允许出现 DB 异常或 internal_error ——
-    %% 那意味着撤销路径在并发下崩了，而不是被正确拒绝。
-    LoserReasons = [
-        case R of
-            {error, X} -> X;
-            Other -> Other
-        end
-     || R <- Losers
-    ],
-    ?assertEqual([], [R || R <- LoserReasons, R =/= version_conflict, R =/= already_revoked]),
-    %% CAS 闸门本身（确定性，不依赖调度）：stale version → version_conflict；
-    %% 正确 version → ok；再撤一次 → already_revoked。上面 8 路并发的输家究竟
-    %% 停在哪个分支由调度决定（两者都是「没写成功」），所以闸门语义在这里用
-    %% 确定性路径单独钉死，不把 flaky 的「至少一个 version_conflict」当断言。
-    G2 = new_grant(State, C, <<"full07rc-idem-casgate">>),
-    ?assertEqual(
-        {error, version_conflict},
-        enterprise_application_grant_repo:revoke_tx(
-            C, ?ORG_A, app_a(State), maps:get(id, G2), maps:get(version, G2) + 41, ?OWNER
-        )
-    ),
-    ?assertEqual(
-        ok,
-        enterprise_application_grant_repo:revoke_tx(
-            C, ?ORG_A, app_a(State), maps:get(id, G2), maps:get(version, G2), ?OWNER
-        )
-    ),
-    ?assertEqual(
-        {error, already_revoked},
-        enterprise_application_grant_repo:revoke_tx(
-            C, ?ORG_A, app_a(State), maps:get(id, G2), maps:get(version, G2), ?OWNER
-        )
-    ),
-    Row = one(
-        C,
-        <<
-            "SELECT status, version, revoked_by_user_id, revoked_at IS NOT NULL AS has_ts"
-            " FROM enterprise_application_grant WHERE organization_id = $1"
-            " AND application_id = $2 AND id = $3"
-        >>,
-        [?ORG_A, app_a(State), maps:get(id, G)]
-    ),
-    ?assertEqual(<<"revoked">>, maps:get(<<"status">>, Row)),
-    ?assertEqual(maps:get(version, G) + 1, maps:get(<<"version">>, Row)),
-    ?assertEqual(?OWNER, maps:get(<<"revoked_by_user_id">>, Row)),
-    ?assertEqual(true, maps:get(<<"has_ts">>, Row)),
-    ok.
-
-%% 撤销对**下一请求**立即生效：生产读面 effective_scopes_tx 立刻看不到该 scope
-%% （不是"下次登录才生效"，也不是缓存过期才生效）。
-revoke_effective_next_request(State) ->
-    C = maps:get(conn, State),
-    ok = begin_tx(C),
-    G = new_grant(State, C, <<"full07rc-idem-effective">>),
-    %% 撤销前：生产读面看得到 messages:send
-    {ok, Before} = enterprise_application_grant_repo:effective_scopes_tx(C, ?ORG_A, app_a(State)),
-    ?assert(lists:member(<<"messages:send">>, Before)),
-    ?assertEqual(
-        {ok, true}, enterprise_application_grant_repo:grant_governed_tx(C, ?ORG_A, app_a(State))
-    ),
-    ok = enterprise_application_grant_repo:revoke_tx(
-        C, ?ORG_A, app_a(State), maps:get(id, G), maps:get(version, G), ?OWNER
-    ),
-    %% 撤销后同一连接的下一次读取（= 下一个请求）立刻失效
-    {ok, After} = enterprise_application_grant_repo:effective_scopes_tx(C, ?ORG_A, app_a(State)),
-    ?assertNot(lists:member(<<"messages:send">>, After)),
-    ?assertEqual([], After),
-    %% 受治理标记仍为真（撤销不解除治理，只清空有效 scope）—— 防止"撤销后
-    %% 退回无治理自由通过"的降级路径
-    ?assertEqual(
-        {ok, true}, enterprise_application_grant_repo:grant_governed_tx(C, ?ORG_A, app_a(State))
-    ),
-    %% 治理读面仍能看到 revoked 行（审计可见）
-    {ok, Rows} = enterprise_application_grant_repo:list_tx(C, ?ORG_A, app_a(State)),
-    ?assert(
-        lists:any(
-            fun(R) ->
-                maps:get(<<"id">>, R) =:= maps:get(id, G) andalso
-                    maps:get(<<"status">>, R) =:= <<"revoked">>
-            end,
-            Rows
-        )
-    ),
-    ok = end_tx(C),
-    ok.
-
-%% N 条独立连接并发对同一 (key, digest) 做 begin_tx → 恰一个 inserted，其余 pending；
-%% 库里只有一行（幂等键的唯一性由 DB 唯一约束兜底）。
 idempotency_concurrent(State) ->
     C = maps:get(conn, State),
     Key = <<"full07rc-idem-key">>,

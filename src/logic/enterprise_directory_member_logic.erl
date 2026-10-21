@@ -4,12 +4,13 @@
 
 read_tx(C, Ctx, Query) ->
     must(validate(read, Query)),
-    {Bound, Row} = target(C, Ctx, Query, <<"identities:read">>, read),
+    {Bound, Row} = target(C, Ctx, Query, read),
     {ok, view(C, Bound, Row)}.
 
 write_tx(C, Ctx, update, Key, Digest, _Id, Body) ->
+    ok = enterprise_internal_idempotency:serialize_tx(C, Ctx, Key),
     must(validate(write, Body)),
-    {Bound, Row} = target(C, Ctx, Body, <<"members:write">>, write),
+    {Bound, Row} = target(C, Ctx, Body, write),
     case managed(Row) of
         true -> ok;
         false -> fail(resource_conflict)
@@ -28,16 +29,16 @@ write_tx(C, Ctx, update, Key, Digest, _Id, Body) ->
             fail(internal_error)
     end.
 
-target(C, Ctx, Input, Scope, Mode) ->
+target(C, Ctx, Input, Mode) ->
     App = maps:get(application_id, Ctx),
     ExtOrg = maps:get(<<"external_organization_id">>, Input),
     ExtUser = maps:get(<<"external_user_id">>, Input),
     case Mode of
-        write -> _ = must(enterprise_directory_source_repo:lock_source_tx(C, Ctx, Scope));
+        write -> _ = must(enterprise_directory_source_repo:lock_source_tx(C, Ctx));
         read -> ok
     end,
     #{<<"organization_id">> := Org} = must(
-        enterprise_directory_source_read_repo:organization_tx(C, Ctx, ExtOrg, Scope)
+        enterprise_directory_source_read_repo:organization_tx(C, Ctx, ExtOrg)
     ),
     Bound = Ctx#{organization_id => Org},
     case Mode of
@@ -85,8 +86,7 @@ change(C, Ctx, Row, Key, Body) ->
         enterprise_directory_source_read_repo:organization_tx(
             C,
             Ctx,
-            maps:get(<<"external_organization_id">>, Body),
-            <<"members:write">>
+            maps:get(<<"external_organization_id">>, Body)
         )
     ),
     complete(C, Ctx, Key, User, External, To, New).

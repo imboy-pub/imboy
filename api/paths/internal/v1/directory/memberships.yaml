@@ -2,11 +2,9 @@ get:
   tags:
   - internal
   summary: 来源成员状态与离职前检查
-  description: 只读检查本来源任职，不枚举用户。需 identities:read 与目标组织全域 Grant。仅返回阻塞数量和代码；资格是当前业务状态的建议，实际变更仍需相应权限并在事务内复核。停用不删除个人账号、历史或其他组织关系。未知或重复查询参数拒绝。
+  description: 只读检查本来源任职，不枚举用户。采用 HMAC 签名，仍复核应用和可信来源。仅返回阻塞数量和代码；资格是当前业务状态的建议，实际变更仍需相应权限并在事务内复核。停用不删除个人账号、历史或其他组织关系。未知或重复查询参数拒绝。
   operationId: internalDirectoryMemberPreflight
-  security:
-  - ibIntBearer: []
-  x-imboy-scope: identities:read
+  x-imboy-authentication: hmac
   x-imboy-rate-bucket: internal_read
   x-imboy-idempotency: not_required
   parameters:
@@ -18,7 +16,7 @@ get:
       minLength: 1
       maxLength: 256
       description: 不透明 UTF-8 外部标识；按 UTF-8 字节限制 1..256。
-    description: 本应用可信来源的外部组织 ID；须有目标组织全域读取授权。
+    description: 本应用启用且未过期的可信来源外部组织 ID。
   - name: external_user_id
     in: query
     required: true
@@ -141,7 +139,7 @@ get:
                     - invalid_credential
                     - credential_expired
     '403':
-      description: application_disabled / insufficient_scope
+      description: application_disabled / organization_boundary_violation
       content:
         application/json:
           schema:
@@ -153,7 +151,7 @@ get:
                   code:
                     enum:
                     - application_disabled
-                    - insufficient_scope
+                    - organization_boundary_violation
     '404':
       description: resource_not_found
       content:
@@ -216,12 +214,10 @@ patch:
   tags:
   - internal
   summary: 来源托管普通成员停用或恢复
-  description: 需显式 members:write 与目标组织全域 Grant；bootstrap 不授予此权限。只允许操作本来源已绑定且已投影的普通成员，Owner/Admin
+  description: 采用 HMAC 签名；逐事务复核可信来源、组织归属和成员状态。只允许操作本来源已绑定且已投影的普通成员，Owner/Admin
     拒绝。恢复只允许本来源暂停且版本未被人工改变的成员。必须提供 GET 返回的 expected_member_version。状态、来源标记、审计及幂等快照同事务。重放重新鉴权；同键不同请求冲突。
   operationId: internalDirectoryMemberStatus
-  security:
-  - ibIntBearer: []
-  x-imboy-scope: members:write
+  x-imboy-authentication: hmac
   x-imboy-rate-bucket: internal_write
   x-imboy-idempotency: required
   parameters:
@@ -291,7 +287,7 @@ patch:
                     - invalid_credential
                     - credential_expired
     '403':
-      description: application_disabled / insufficient_scope
+      description: application_disabled / organization_boundary_violation
       content:
         application/json:
           schema:
@@ -303,7 +299,7 @@ patch:
                   code:
                     enum:
                     - application_disabled
-                    - insufficient_scope
+                    - organization_boundary_violation
     '404':
       description: resource_not_found
       content:

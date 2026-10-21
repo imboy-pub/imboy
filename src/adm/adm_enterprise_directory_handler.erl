@@ -34,9 +34,7 @@ dispatch(Req, create_connection, Actor) ->
         {ok, Row} ->
             elib_response:success(Req, #{
                 <<"application_id">> =>
-                    integer_to_binary(maps:get(<<"id">>, Row)),
-                <<"allowed_scopes">> =>
-                    [<<"identities:write">>, <<"identities:read">>]
+                    integer_to_binary(maps:get(<<"id">>, Row))
             });
         Error ->
             reply(Req, Error)

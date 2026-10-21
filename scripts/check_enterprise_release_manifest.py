@@ -130,17 +130,13 @@ def contract_metadata(repo: Path, manifest: Path) -> tuple[dict, dict, dict, set
             pattern = key + (r'\s*=>\s*<<"([^"]+)"' if binary else r'\s*=>\s*([a-z_]+)')
             found = re.search(pattern, block)
             return found[1] if found else None
-        scope = value("scope") or "dynamic:messages_send"
-        registry[ident] = (value("method"), value("path"), scope,
+        registry[ident] = (value("method"), value("path"),
                            value("rate_bucket", False), value("idempotency", False))
     document = yaml.load(manifest.read_text(encoding="utf-8"), Loader=UniqueKeyLoader)
     declared = {}
     for row in document["routes"]:
         if row["id"].startswith("INT-"):
-            scope = row["scope"]
-            if scope.startswith("dynamic "):
-                scope = "dynamic:messages_send"
-            declared[row["id"]] = (row["method"], row["path"], scope, row["rate"], row["idempotency"])
+            declared[row["id"]] = (row["method"], row["path"], row["rate"], row["idempotency"])
     root = yaml.load((repo / "api/openapi-internal.yaml").read_text(), Loader=UniqueKeyLoader)
     operations = {}
     schemas = {}
@@ -149,8 +145,7 @@ def contract_metadata(repo: Path, manifest: Path) -> tuple[dict, dict, dict, set
         for method, operation in leaf.items():
             if method.upper() in {"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"}:
                 pair = (method.upper(), path)
-                operations[pair] = (operation.get("x-imboy-scope"),
-                    operation.get("x-imboy-rate-bucket"), operation.get("x-imboy-idempotency"))
+                operations[pair] = (operation.get("x-imboy-rate-bucket"), operation.get("x-imboy-idempotency"))
                 if pair == ("POST", PREFIX + "oa/sso/exchange"):
                     schemas["sso"] = operation["responses"]["200"]["content"]["application/json"]["schema"]
     collection = json.loads((repo / "api/internal/v1/IMBoy-Internal-API-v1.postman_collection.json").read_text())
@@ -174,13 +169,13 @@ def metadata_errors(registry: dict, declared: dict, operations: dict,
                     requests: set, schemas: dict) -> list[str]:
     errors = []
     if registry != declared:
-        errors.append("manifest scope/rate/idempotency differs from registry")
+        errors.append("manifest rate/idempotency differs from registry")
     expected = {(row[0], row[1]) for row in registry.values()}
     if expected != set(operations):
         errors.append("OpenAPI operation set differs from registry")
-    for ident, (method, path, scope, rate, idem) in registry.items():
-        if operations.get((method, path)) != (scope, rate, idem):
-            errors.append(ident + " OpenAPI scope/rate/idempotency mismatch")
+    for ident, (method, path, rate, idem) in registry.items():
+        if operations.get((method, path)) != (rate, idem):
+            errors.append(ident + " OpenAPI rate/idempotency mismatch")
     internal = {(m, p) for m, p in requests if p.startswith(PREFIX)}
     if internal != expected:
         errors.append("Postman Internal operation set differs from registry")
@@ -309,19 +304,11 @@ def main() -> int:
         "" if b_ids == t_ids else f"boundary={len(b_ids)} table={len(t_ids)}",
     )
 
-    # ---------------- ⑩ 动态 scope 只允许 INT-09/10 ----------------
-    fsrc = (repo / FROZEN_TABLE).read_text(encoding="utf-8")
-    dyn = re.findall(
-        r'id\s*=>\s*<<"(INT-\d+)">>\s*,\s*method\s*=>\s*<<"[A-Z]+">>\s*,'
-        r'\s*path\s*=>\s*<<"[^"]+">>\s*,\s*scope\s*=>\s*\{dynamic,',
-        fsrc,
-        re.S,
-    )
-    check(
-        sorted(dyn) == ["INT-09", "INT-10"],
-        "10) dynamic_scope_only_INT09_INT10",
-        f"got={dyn}",
-    )
+    # Internal requests have exactly one authentication protocol.
+    root = yaml.safe_load((repo / "api/openapi-internal.yaml").read_text())
+    expected_auth = {"ibIntHmacCredential", "ibIntHmacTimestamp", "ibIntHmacNonce", "ibIntHmacSignature"}
+    check(len(root.get("security", [])) == 1 and set(root["security"][0]) == expected_auth,
+          "10) HMAC-only authentication", "unexpected authentication alternative")
 
     # ---------------- ⑪ OpenAPI 合同的 internal 路径集 == 冻结表路径集 ----------------
     contract = json.loads((repo / CONTRACT).read_text(encoding="utf-8"))

@@ -13,8 +13,6 @@
 %   id            :: <<"INT-XX">>（manifest 路由 ID）
 %   method        :: HTTP 方法二进制
 %   path          :: 模式二进制（{seg} 为单段占位符，如 {group_id}）
-%   scope         :: 固定 scope 二进制 | {dynamic, messages_send}
-%                    （INT-09/INT-10 按 sender_mode 在 handler 侧裁决）
 %   rate_bucket   :: internal_read | internal_write | internal_sso
 %   idempotency   :: required | not_required | single_use_code（INT-14 豁免）
 %   sender_mode   :: none | application | human | application_human
@@ -41,7 +39,6 @@ routes() ->
             id => <<"INT-44">>,
             method => <<"POST">>,
             path => <<"/api/internal/v1/oa/login/tickets">>,
-            scope => <<"oa:login:issue">>,
             rate_bucket => internal_sso,
             idempotency => not_required,
             sender_mode => none
@@ -50,7 +47,6 @@ routes() ->
             id => <<"INT-01">>,
             method => <<"GET">>,
             path => <<"/api/internal/v1/application">>,
-            scope => <<"application:read">>,
             rate_bucket => internal_read,
             idempotency => not_required,
             sender_mode => none
@@ -59,7 +55,6 @@ routes() ->
             id => <<"INT-02">>,
             method => <<"PUT">>,
             path => <<"/api/internal/v1/identity-mappings">>,
-            scope => <<"identities:write">>,
             rate_bucket => internal_write,
             idempotency => required,
             sender_mode => none
@@ -68,7 +63,6 @@ routes() ->
             id => <<"INT-03">>,
             method => <<"POST">>,
             path => <<"/api/internal/v1/identity-mappings/resolve">>,
-            scope => <<"identities:read">>,
             rate_bucket => internal_read,
             idempotency => not_required,
             sender_mode => none
@@ -77,7 +71,6 @@ routes() ->
             id => <<"INT-04">>,
             method => <<"POST">>,
             path => <<"/api/internal/v1/groups">>,
-            scope => <<"groups:write">>,
             rate_bucket => internal_write,
             idempotency => required,
             sender_mode => none
@@ -86,7 +79,6 @@ routes() ->
             id => <<"INT-05">>,
             method => <<"PUT">>,
             path => <<"/api/internal/v1/groups/{group_id}/members">>,
-            scope => <<"groups:write">>,
             rate_bucket => internal_write,
             idempotency => required,
             sender_mode => none
@@ -95,7 +87,6 @@ routes() ->
             id => <<"INT-06">>,
             method => <<"DELETE">>,
             path => <<"/api/internal/v1/groups/{group_id}/members">>,
-            scope => <<"groups:write">>,
             rate_bucket => internal_write,
             idempotency => required,
             sender_mode => none
@@ -104,7 +95,6 @@ routes() ->
             id => <<"INT-07">>,
             method => <<"POST">>,
             path => <<"/api/internal/v1/files/presign">>,
-            scope => <<"files:write">>,
             rate_bucket => internal_write,
             idempotency => required,
             sender_mode => none
@@ -113,7 +103,6 @@ routes() ->
             id => <<"INT-08">>,
             method => <<"POST">>,
             path => <<"/api/internal/v1/files/confirm">>,
-            scope => <<"files:write">>,
             rate_bucket => internal_write,
             idempotency => required,
             sender_mode => none
@@ -122,7 +111,6 @@ routes() ->
             id => <<"INT-09">>,
             method => <<"POST">>,
             path => <<"/api/internal/v1/messages/direct">>,
-            scope => {dynamic, messages_send},
             rate_bucket => internal_write,
             idempotency => required,
             sender_mode => application_human
@@ -131,7 +119,6 @@ routes() ->
             id => <<"INT-10">>,
             method => <<"POST">>,
             path => <<"/api/internal/v1/groups/{group_id}/messages">>,
-            scope => {dynamic, messages_send},
             rate_bucket => internal_write,
             idempotency => required,
             sender_mode => application_human
@@ -140,7 +127,6 @@ routes() ->
             id => <<"INT-11">>,
             method => <<"POST">>,
             path => <<"/api/internal/v1/friend-requests">>,
-            scope => <<"friend_requests:create">>,
             rate_bucket => internal_write,
             idempotency => required,
             sender_mode => human
@@ -149,7 +135,6 @@ routes() ->
             id => <<"INT-12">>,
             method => <<"PUT">>,
             path => <<"/api/internal/v1/webhook">>,
-            scope => <<"webhooks:manage">>,
             rate_bucket => internal_write,
             idempotency => required,
             sender_mode => none
@@ -158,7 +143,6 @@ routes() ->
             id => <<"INT-13">>,
             method => <<"POST">>,
             path => <<"/api/internal/v1/webhook/deliveries/{delivery_id}/replay">>,
-            scope => <<"webhooks:manage">>,
             rate_bucket => internal_write,
             idempotency => required,
             sender_mode => none
@@ -167,7 +151,6 @@ routes() ->
             id => <<"INT-14">>,
             method => <<"POST">>,
             path => <<"/api/internal/v1/oa/sso/exchange">>,
-            scope => <<"sso:exchange">>,
             rate_bucket => internal_sso,
             idempotency => single_use_code,
             sender_mode => none
@@ -181,7 +164,6 @@ routes() ->
             id => <<"INT-15">>,
             method => <<"DELETE">>,
             path => <<"/api/internal/v1/identity-mappings">>,
-            scope => <<"identities:write">>,
             rate_bucket => internal_write,
             idempotency => required,
             sender_mode => none
@@ -191,7 +173,6 @@ routes() ->
             id => <<"INT-16">>,
             method => <<"POST">>,
             path => <<"/api/internal/v1/identity-mappings/directory">>,
-            scope => <<"identities:read">>,
             rate_bucket => internal_read,
             idempotency => not_required,
             sender_mode => none
@@ -201,7 +182,6 @@ routes() ->
             id => <<"INT-17">>,
             method => <<"POST">>,
             path => <<"/api/internal/v1/directory/users">>,
-            scope => <<"identities:read">>,
             rate_bucket => internal_read,
             idempotency => not_required,
             sender_mode => none
@@ -212,7 +192,6 @@ routes() ->
             id => <<"INT-18">>,
             method => <<"GET">>,
             path => <<"/api/internal/v1/groups/{group_id}">>,
-            scope => <<"groups:read">>,
             rate_bucket => internal_read,
             idempotency => not_required,
             sender_mode => none
@@ -222,7 +201,6 @@ routes() ->
             id => <<"INT-19">>,
             method => <<"PATCH">>,
             path => <<"/api/internal/v1/groups/{group_id}">>,
-            scope => <<"groups:write">>,
             rate_bucket => internal_write,
             idempotency => required,
             sender_mode => none
@@ -232,7 +210,6 @@ routes() ->
             id => <<"INT-20">>,
             method => <<"PUT">>,
             path => <<"/api/internal/v1/groups/{group_id}/members/roles">>,
-            scope => <<"groups:write">>,
             rate_bucket => internal_write,
             idempotency => required,
             sender_mode => none
@@ -242,7 +219,6 @@ routes() ->
             id => <<"INT-21">>,
             method => <<"DELETE">>,
             path => <<"/api/internal/v1/groups/{group_id}">>,
-            scope => <<"groups:write">>,
             rate_bucket => internal_write,
             idempotency => required,
             sender_mode => none
@@ -252,7 +228,6 @@ routes() ->
             id => <<"INT-22">>,
             method => <<"POST">>,
             path => <<"/api/internal/v1/files/governance">>,
-            scope => <<"files:write">>,
             rate_bucket => internal_write,
             idempotency => required,
             sender_mode => none
@@ -263,7 +238,6 @@ routes() ->
             id => <<"INT-23">>,
             method => <<"GET">>,
             path => <<"/api/internal/v1/webhook/deliveries">>,
-            scope => <<"webhooks:manage">>,
             rate_bucket => internal_read,
             idempotency => not_required,
             sender_mode => none
@@ -280,7 +254,6 @@ routes() ->
             id => <<"INT-24">>,
             method => <<"GET">>,
             path => <<"/api/internal/v1/workspaces">>,
-            scope => <<"workspaces:read">>,
             rate_bucket => internal_read,
             idempotency => not_required,
             sender_mode => none
@@ -290,7 +263,6 @@ routes() ->
             id => <<"INT-25">>,
             method => <<"GET">>,
             path => <<"/api/internal/v1/workspaces/{workspace_id}">>,
-            scope => <<"workspaces:read">>,
             rate_bucket => internal_read,
             idempotency => not_required,
             sender_mode => none
@@ -300,7 +272,6 @@ routes() ->
             id => <<"INT-26">>,
             method => <<"GET">>,
             path => <<"/api/internal/v1/groups">>,
-            scope => <<"groups:read">>,
             rate_bucket => internal_read,
             idempotency => not_required,
             sender_mode => none
@@ -310,7 +281,6 @@ routes() ->
             id => <<"INT-27">>,
             method => <<"GET">>,
             path => <<"/api/internal/v1/groups/{group_id}/members">>,
-            scope => <<"groups:read">>,
             rate_bucket => internal_read,
             idempotency => not_required,
             sender_mode => none
@@ -320,7 +290,6 @@ routes() ->
             id => <<"INT-28">>,
             method => <<"GET">>,
             path => <<"/api/internal/v1/projects">>,
-            scope => <<"projects:read">>,
             rate_bucket => internal_read,
             idempotency => not_required,
             sender_mode => none
@@ -330,7 +299,6 @@ routes() ->
             id => <<"INT-29">>,
             method => <<"GET">>,
             path => <<"/api/internal/v1/projects/{project_id}">>,
-            scope => <<"projects:read">>,
             rate_bucket => internal_read,
             idempotency => not_required,
             sender_mode => none
@@ -340,7 +308,6 @@ routes() ->
             id => <<"INT-30">>,
             method => <<"GET">>,
             path => <<"/api/internal/v1/channels">>,
-            scope => <<"channels:read">>,
             rate_bucket => internal_read,
             idempotency => not_required,
             sender_mode => none
@@ -350,7 +317,6 @@ routes() ->
             id => <<"INT-31">>,
             method => <<"GET">>,
             path => <<"/api/internal/v1/channels/{channel_id}">>,
-            scope => <<"channels:read">>,
             rate_bucket => internal_read,
             idempotency => not_required,
             sender_mode => none
@@ -361,7 +327,6 @@ routes() ->
             id => <<"INT-32">>,
             method => <<"POST">>,
             path => <<"/api/internal/v1/webhook/test-delivery">>,
-            scope => <<"webhooks:manage">>,
             rate_bucket => internal_write,
             idempotency => required,
             sender_mode => none
@@ -370,7 +335,6 @@ routes() ->
             id => <<"INT-33">>,
             method => <<"GET">>,
             path => <<"/api/internal/v1/customer-service/seats">>,
-            scope => <<"customer_service:read">>,
             rate_bucket => internal_read,
             idempotency => not_required,
             sender_mode => none
@@ -379,7 +343,6 @@ routes() ->
             id => <<"INT-34">>,
             method => <<"GET">>,
             path => <<"/api/internal/v1/customer-service/seats/{business_identity_id}">>,
-            scope => <<"customer_service:read">>,
             rate_bucket => internal_read,
             idempotency => not_required,
             sender_mode => none
@@ -388,7 +351,6 @@ routes() ->
             id => <<"INT-35">>,
             method => <<"POST">>,
             path => <<"/api/internal/v1/customer-service/seats">>,
-            scope => <<"customer_service:write">>,
             rate_bucket => internal_write,
             idempotency => required,
             sender_mode => none
@@ -397,7 +359,6 @@ routes() ->
             id => <<"INT-36">>,
             method => <<"PATCH">>,
             path => <<"/api/internal/v1/customer-service/seats/{business_identity_id}">>,
-            scope => <<"customer_service:write">>,
             rate_bucket => internal_write,
             idempotency => required,
             sender_mode => none
@@ -406,7 +367,6 @@ routes() ->
             id => <<"INT-37">>,
             method => <<"POST">>,
             path => <<"/api/internal/v1/workspaces">>,
-            scope => <<"workspaces:write">>,
             rate_bucket => internal_write,
             idempotency => required,
             sender_mode => none
@@ -415,7 +375,6 @@ routes() ->
             id => <<"INT-38">>,
             method => <<"PATCH">>,
             path => <<"/api/internal/v1/workspaces/{workspace_id}">>,
-            scope => <<"workspaces:write">>,
             rate_bucket => internal_write,
             idempotency => required,
             sender_mode => none
@@ -424,7 +383,6 @@ routes() ->
             id => <<"INT-39">>,
             method => <<"DELETE">>,
             path => <<"/api/internal/v1/workspaces/{workspace_id}">>,
-            scope => <<"workspaces:write">>,
             rate_bucket => internal_write,
             idempotency => required,
             sender_mode => none
@@ -433,7 +391,6 @@ routes() ->
             id => <<"INT-40">>,
             method => <<"POST">>,
             path => <<"/api/internal/v1/channels">>,
-            scope => <<"channels:write">>,
             rate_bucket => internal_write,
             idempotency => required,
             sender_mode => none
@@ -442,7 +399,6 @@ routes() ->
             id => <<"INT-41">>,
             method => <<"PATCH">>,
             path => <<"/api/internal/v1/channels/{channel_id}">>,
-            scope => <<"channels:write">>,
             rate_bucket => internal_write,
             idempotency => required,
             sender_mode => none
@@ -451,7 +407,6 @@ routes() ->
             id => <<"INT-42">>,
             method => <<"DELETE">>,
             path => <<"/api/internal/v1/channels/{channel_id}">>,
-            scope => <<"channels:write">>,
             rate_bucket => internal_write,
             idempotency => required,
             sender_mode => none
@@ -460,7 +415,6 @@ routes() ->
             id => <<"INT-43">>,
             method => <<"POST">>,
             path => <<"/api/internal/v1/directory/sync">>,
-            scope => <<"identities:write">>,
             rate_bucket => internal_write,
             idempotency => required,
             sender_mode => none
@@ -469,7 +423,6 @@ routes() ->
             id => <<"INT-45">>,
             method => <<"GET">>,
             path => <<"/api/internal/v1/directory/organizations">>,
-            scope => <<"identities:read">>,
             rate_bucket => internal_read,
             idempotency => not_required,
             sender_mode => none
@@ -478,7 +431,6 @@ routes() ->
             id => <<"INT-46">>,
             method => <<"GET">>,
             path => <<"/api/internal/v1/directory/departments">>,
-            scope => <<"identities:read">>,
             rate_bucket => internal_read,
             idempotency => not_required,
             sender_mode => none
@@ -487,7 +439,6 @@ routes() ->
             id => <<"INT-47">>,
             method => <<"GET">>,
             path => <<"/api/internal/v1/directory/persons">>,
-            scope => <<"identities:read">>,
             rate_bucket => internal_read,
             idempotency => not_required,
             sender_mode => none
@@ -496,7 +447,6 @@ routes() ->
             id => <<"INT-48">>,
             method => <<"GET">>,
             path => <<"/api/internal/v1/directory/memberships">>,
-            scope => <<"identities:read">>,
             rate_bucket => internal_read,
             idempotency => not_required,
             sender_mode => none
@@ -505,7 +455,6 @@ routes() ->
             id => <<"INT-49">>,
             method => <<"PATCH">>,
             path => <<"/api/internal/v1/directory/memberships">>,
-            scope => <<"members:write">>,
             rate_bucket => internal_write,
             idempotency => required,
             sender_mode => none

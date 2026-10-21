@@ -46,17 +46,6 @@
 -define(WS_A_PERSONAL, 993204).
 -define(WS_B1, 993211).
 
--define(GRANT_KEY, <<"eov21a2-org-full">>).
--define(GRANT_KEY_C, <<"eov21a2-ws-narrow">>).
-
--define(SCOPES_READ, [
-    <<"workspaces:read">>,
-    <<"groups:read">>,
-    <<"projects:read">>,
-    <<"channels:read">>
-]).
--define(SCOPES_GROUP_WRITE, [<<"groups:read">>, <<"groups:write">>]).
-
 -define(FAR_FUTURE, <<"2099-01-01T00:00:00Z">>).
 -define(CURSOR_KEY_CFG, enterprise_internal_cursor_signing_key).
 -define(CURSOR_SECRET, <<"eov21a2_cursor_signing_key_0123456789abcdef">>).
@@ -125,12 +114,6 @@ exec(C, IoData) ->
         {error, Reason} -> erlang:error({sql_error, Reason, Sql})
     end.
 
-exec_params(C, Sql, Params) ->
-    case elib_pg:query(C, Sql, Params) of
-        {ok, _} -> ok;
-        {error, Reason} -> erlang:error({sql_error, Reason, Sql})
-    end.
-
 one(C, Sql, Params) ->
     case elib_pg:query(C, Sql, Params) of
         {ok, [Row | _]} -> Row;
@@ -174,20 +157,15 @@ seed_matrix(C) ->
     seed_ws_member(C, ?WS_A1, ?OWNER_A),
     seed_ws_member(C, ?WS_A1, ?OWNER_B),
     %% app A：org 全域 Grant（四 read scope 全覆盖）
-    {ok, AppA} = enterprise_internal_ops:create_application_tx(
-        C, ?ORG_A, <<"eov21a2-oa-a">>, <<"eov21a2 org A oa"/utf8>>, ?SCOPES_READ
-    ),
-    ok = issue_grant(C, ?ORG_A, maps:get(<<"id">>, AppA), ?SCOPES_READ, ?GRANT_KEY, none, []),
-    %% app C：显式 Workspace Grant（仅 WS_A1）——收窄正例/未覆盖负例
-    {ok, AppC} = enterprise_internal_ops:create_application_tx(
-        C, ?ORG_A, <<"eov21a2-oa-c">>, <<"eov21a2 org A oa c"/utf8>>, ?SCOPES_READ
-    ),
-    ok = issue_grant(
-        C, ?ORG_A, maps:get(<<"id">>, AppC), ?SCOPES_READ, ?GRANT_KEY_C, explicit, [?WS_A1]
+    {ok, _AppA} = enterprise_internal_ops:create_application_tx(
+        C, ?ORG_A, <<"eov21a2-oa-a">>, <<"eov21a2 org A oa"/utf8>>
     ),
     %% app D：零 Grant（allowed_scopes 有 workspaces:read 但无 Grant 行）
     {ok, _AppD} = enterprise_internal_ops:create_application_tx(
-        C, ?ORG_A, <<"eov21a2-oa-d">>, <<"eov21a2 org A oa d"/utf8>>, ?SCOPES_READ
+        C, ?ORG_A, <<"eov21a2-oa-d">>, <<"eov21a2 org A oa d"/utf8>>
+    ),
+    {ok, _} = enterprise_internal_ops:create_application_tx(
+        C, ?ORG_A, <<"eov21a2-oa-c">>, <<"App C">>
     ),
     %% 项目：WS_A1 三行（active×2 + done×1，created_at 递增）、WS_A2 一行
     seed_project(C, 993301, ?WS_A1, <<"p-1">>, <<"active">>, 100),
@@ -252,20 +230,6 @@ app_ids(C) ->
         ])
     ),
     {A, CC}.
-
-issue_grant(C, OrgId, AppId, Scopes, Key, Kind, WsIds) ->
-    case
-        enterprise_internal_ops:issue_grant_tx(C, OrgId, AppId, #{
-            scopes => Scopes,
-            workspace_scope_kind => Kind,
-            workspace_ids => WsIds,
-            idempotency_key => Key,
-            expires_at => ?FAR_FUTURE
-        })
-    of
-        {ok, _} -> ok;
-        {error, Reason} -> erlang:error({grant_seed_failed, Key, Reason})
-    end.
 
 seed_user(C, Uid) ->
     exec(C, [
@@ -445,15 +409,7 @@ seed_group_member(C, MId, Gid, Uid, Role, Status, CreatedOffsetSec) ->
 %% ---- ctx 构造（真链路 context_tx 求值；与 handler 从认证链拿到的同形状） ----
 
 ctx_of(C, State, AppKey) ->
-    AppId = maps:get(AppKey, State),
-    {ok, #{grant_governed := Governed, effective_scopes := Effective}} =
-        enterprise_application_grant_logic:context_tx(C, ?ORG_A, AppId, ?SCOPES_READ),
-    #{
-        organization_id => ?ORG_A,
-        application_id => AppId,
-        granted_scopes => Effective,
-        grant_governed => Governed
-    }.
+    enterprise_hmac_test_support:context_tx(C, ?ORG_A, maps:get(AppKey, State)).
 
 %%%===================================================================
 %%% Tests
@@ -469,11 +425,10 @@ read_page_test_() ->
 tests(C, State) ->
     [
         %% ① INT-24
-        {"int24_org_wide_grant_lists_all_active_workspaces",
-            with_tx(C, fun(C1) -> int24_full(C1, State) end)},
-        {"int24_explicit_grant_narrows_rows", with_tx(C, fun(C1) -> int24_narrow(C1, State) end)},
+        {"int24_lists_all_active_workspaces", with_tx(C, fun(C1) -> int24_full(C1, State) end)},
+        {"int24_same_organization_application_lists_all_workspaces",
+            with_tx(C, fun(C1) -> int24_narrow(C1, State) end)},
         {"int24_paging_oracle_no_dup_no_loss", with_tx(C, fun(C1) -> int24_paging(C1, State) end)},
-        {"int24_zero_grant_denied", with_tx(C, fun(C1) -> int24_zero_grant(C1, State) end)},
         {"int24_cursor_negatives",
             with_tx(C, fun(C1) -> cursor_negatives(C1, State, <<"workspaces">>, workspaces) end)},
         %% ② INT-25
@@ -513,13 +468,6 @@ int24_full(C, State) ->
     ?assertEqual(false, maps:get(<<"has_more">>, Page)),
     ?assertEqual(null, maps:get(<<"next_cursor">>, Page)),
     ?assertEqual(50, maps:get(<<"limit">>, Page)).
-
-int24_narrow(C, State) ->
-    Ctx = ctx_of(C, State, app_c),
-    {ok, Page} = enterprise_workspace_logic:list_workspaces_tx(C, Ctx, #{limit => 50}),
-    Ids = [maps:get(<<"workspace_id">>, I) || I <- maps:get(<<"items">>, Page)],
-    %% 显式 Grant 只覆盖 WS_A1
-    ?assertEqual([?WS_A1], Ids).
 
 int24_paging(C, State) ->
     Ctx = ctx_of(C, State, app_a),
@@ -588,31 +536,6 @@ list_call(C, Ctx, projects, Opts) ->
 list_call(C, Ctx, channels, Opts) ->
     enterprise_channel_logic:list_channels_tx(
         C, Ctx, maps:merge(#{workspace_id => ?WS_A1}, Opts)
-    ).
-
-int24_zero_grant(C, _State) ->
-    %% app D：零 Grant → enforce（kind=list）insufficient_scope（零 Grant 恒 403）
-    AppD = maps:get(
-        <<"id">>,
-        one(C, <<"SELECT id FROM enterprise_application WHERE application_key = $1">>, [
-            <<"eov21a2-oa-d">>
-        ])
-    ),
-    {ok, #{effective_scopes := Effective}} =
-        enterprise_application_grant_logic:context_tx(C, ?ORG_A, AppD, ?SCOPES_READ),
-    ?assertEqual([], Effective),
-    Ctx = #{
-        organization_id => ?ORG_A,
-        application_id => AppD,
-        granted_scopes => Effective
-    },
-    ?assertEqual(
-        {error, insufficient_scope},
-        enterprise_internal_boundary:enforce(C, Ctx, <<"INT-24">>, undefined)
-    ),
-    ?assertEqual(
-        {error, insufficient_scope},
-        enterprise_internal_boundary:enforce(C, Ctx, <<"INT-25">>, ?WS_A1)
     ).
 
 %%%===================================================================
@@ -734,7 +657,7 @@ int25(C, State) ->
     CtxC = ctx_of(C, State, app_c),
     {ok, _Ws2} = enterprise_workspace_logic:locate_active_tx(C, CtxC, ?WS_A2),
     ?assertEqual(
-        {error, organization_boundary_violation},
+        ok,
         enterprise_internal_boundary:enforce(C, CtxC, <<"INT-25">>, ?WS_A2)
     ).
 
@@ -755,7 +678,7 @@ int26(C, State) ->
     CtxC = ctx_of(C, State, app_c),
     {ok, PageC} = enterprise_group_logic:list_groups_tx(C, CtxC, #{limit => 50}),
     ?assertEqual(
-        [993506],
+        [993506, 993507],
         [maps:get(<<"group_id">>, I) || I <- maps:get(<<"items">>, PageC)]
     ).
 
@@ -909,7 +832,7 @@ int29(C, State) ->
     CtxC = ctx_of(C, State, app_c),
     {ok, _} = enterprise_project_logic:locate_tx(C, CtxC, 993304),
     ?assertEqual(
-        {error, organization_boundary_violation},
+        ok,
         enterprise_internal_boundary:enforce(C, CtxC, <<"INT-29">>, ?WS_A2)
     ).
 
@@ -1094,3 +1017,12 @@ limit_parsing_test() ->
         ),
         ?assertEqual(undefined, enterprise_internal_read_page:parse_cursor(#{<<"cursor">> => true}))
     end).
+
+int24_narrow(C, State) ->
+    {ok, Page} = enterprise_workspace_logic:list_workspaces_tx(C, ctx_of(C, State, app_c), #{
+        limit => 100
+    }),
+    ?assertEqual(
+        lists:sort([?WS_A1, ?WS_A2]),
+        lists:sort([maps:get(<<"workspace_id">>, X) || X <- maps:get(<<"items">>, Page)])
+    ).

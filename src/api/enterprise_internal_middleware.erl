@@ -45,10 +45,37 @@ is_internal_path(_Path) ->
 -spec execute(cowboy_req:req(), map()) ->
     {ok, cowboy_req:req(), map()} | {stop, cowboy_req:req()}.
 execute(Req, Env) ->
+    Headers = cowboy_req:headers(Req),
+    case enterprise_internal_routes:match(cowboy_req:method(Req), cowboy_req:path(Req)) of
+        {ok, _} -> signed_execute(Req, Env, Headers);
+        {error, not_found} -> {stop, enterprise_internal_error:reply(Req, <<"resource_not_found">>)}
+    end.
+
+signed_execute(Req, Env, Headers) ->
+    case enterprise_internal_signature:parse(Headers, erlang:system_time(second)) of
+        {ok, _} ->
+            case cowboy_req:read_body(Req, #{length => 1048576, period => 15000}) of
+                {ok, Body, Req1} when byte_size(Body) =< 1048576 ->
+                    Method = cowboy_req:method(Req1),
+                    Path = cowboy_req:path(Req1),
+                    Query = cowboy_req:qs(Req1),
+                    Auth = fun() ->
+                        enterprise_internal_auth:authenticate_signed(
+                            Method, Path, Query, Body, Headers
+                        )
+                    end,
+                    execute_authenticated(Req1#{enterprise_internal_body => Body}, Env, Auth);
+                {_, _, Req1} ->
+                    {stop, enterprise_internal_error:reply(Req1, <<"invalid_request">>)}
+            end;
+        {error, _} ->
+            {stop, enterprise_internal_error:reply(Req, <<"invalid_credential">>)}
+    end.
+
+execute_authenticated(Req, Env, AuthFun) ->
     Method = cowboy_req:method(Req),
     Path = cowboy_req:path(Req),
     Headers = cowboy_req:headers(Req),
-    AuthFun = pool_auth_fun(Headers),
     case enterprise_internal_auth:decide(Method, Path, Headers, AuthFun) of
         {ok, Ctx} ->
             Bindings = bindings(Req),
@@ -79,28 +106,10 @@ extra_headers(<<"rate_limited">>) ->
 extra_headers(_Code) ->
     [].
 
-%% 池化认证闭包：parse + 单事务认证链（格式错误在此归一 invalid_credential）。
-%% 返回码沿用 enterprise_internal_auth 的内部 **atom** 约定，由本模块的
-%% normalize_code/1 在出信封前统一转 manifest 二进制码。
--spec pool_auth_fun(map()) -> fun(() -> {ok, map()} | {error, atom()}).
-pool_auth_fun(Headers) ->
-    fun() ->
-        case
-            enterprise_internal_auth:parse_bearer(
-                maps:get(<<"authorization">>, Headers, undefined)
-            )
-        of
-            {error, _Code} ->
-                {error, invalid_credential};
-            {ok, Prefix, Secret} ->
-                enterprise_internal_auth:authenticate(Prefix, Secret)
-        end
-    end.
-
 %% 出信封前的码归一（本模块是 internal 面的 HTTP 适配器，归一必须**恰好一次**）。
 %%
 %% enterprise_internal_auth 的 decide/4 与其 gate 按内部 atom 约定返回错误码
-%% （parse_bearer/1、authenticate_tx/* 同款，A2 冻结测试按 atom 断言），而
+%% （签名认证返回 atom），而
 %% enterprise_internal_error:reply/2 只认 manifest 的 13 个 snake_case 二进制码，
 %% 未知码一律 fail-safe 成 internal_error + HTTP 500。两者直接相接会把**所有**
 %% 业务拒绝码（401/403/404/409/422/429/503）压成 500，且响应体不含真实码——

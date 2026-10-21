@@ -1,21 +1,5 @@
 -module(enterprise_asset_repo).
 
-%%%
-% EPGZ-04 INT-07/08 企业附件仓储（Application 域 Garage 直传链）。
-%
-% 零新表复用既有存储（本卡禁建 migration）：
-%   * attach_pending（迁移 54）——presign 登记待确认对象；scope 固定
-%     'enterprise'，creator_user_id=0（Application 非 user，归属经 object_key
-%     前缀 eoa/<org>/<app>/ 表达，与个人 u<Uid>/ 前缀物理隔离）。
-%   * attachment（迁移 1/13/26）——confirm 转正行：scope='enterprise'
-%     （varchar(16) 无 CHECK，10 字符），scope_ref='org:<org>/app:<app>'
-%     编码 ownership，info jsonb 只存 origin 元数据（无 URL、无密钥）。
-%
-% 与 attach_pending_repo/attachment_repo 的关系：不改动它们（个人域共享
-% 模块）；本模块提供 tx 版企业行操作，SQL 语义对齐 attach_logic 确认链
-% （V5 登记失败关闭，确认保留会话身份；历史行按兼容规则销账）。
-%%%
-
 -export([
     object_key_prefix/2,
     build_object_key/3,
@@ -142,7 +126,8 @@ recovery_session_tx(Conn, Key) ->
                 {ok, []} -> {error, not_found};
                 {error, Reason} -> {error, Reason}
             end;
-        {error, Reason} -> {error, Reason}
+        {error, Reason} ->
+            {error, Reason}
     end.
 
 %% @doc confirm 转正后销账（迁移 54 语义：放在 attachment 落库同事务之后；

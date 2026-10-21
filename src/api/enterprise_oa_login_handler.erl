@@ -10,7 +10,7 @@ init(Req, State) ->
     {ok, Reply, State}.
 
 handle(Action, Req, State) ->
-    Params = elib_param:post(Req),
+    Params = enterprise_internal_request:params(Req),
     Result =
         case Action of
             issue ->
@@ -33,7 +33,7 @@ handle(Action, Req, State) ->
             elib_response:error_with_status(Req, Status, Code, Status)
     end.
 
-machine_error(insufficient_scope) -> <<"insufficient_scope">>;
+machine_error(organization_boundary_violation) -> <<"organization_boundary_violation">>;
 machine_error(invalid_request) -> <<"invalid_request">>;
 machine_error(invalid_ticket) -> <<"invalid_credential">>;
 machine_error(_) -> <<"internal_error">>.
@@ -59,7 +59,7 @@ link(Req, State, P) ->
 
 error_code(identity_conflict) -> {409, <<"identity_conflict">>};
 error_code(user_already_mapped) -> {409, <<"identity_conflict">>};
-error_code(insufficient_scope) -> {403, <<"insufficient_scope">>};
+error_code(organization_boundary_violation) -> {403, <<"organization_boundary_violation">>};
 error_code(invalid_session) -> {401, <<"invalid_session">>};
 error_code(invalid_ticket) -> {401, <<"invalid_ticket">>};
 error_code(invalid_request) -> {400, <<"invalid_request">>};

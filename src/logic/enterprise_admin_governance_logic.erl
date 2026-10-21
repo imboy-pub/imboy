@@ -34,17 +34,13 @@
     bind_identity/5,
     unbind_identity/4,
     list_credentials/2,
-    list_grants/2,
     delivery_stats/2,
     list_deliveries/5,
     list_audit/4,
     set_status/5,
-    set_scopes/5,
     issue_credential/4,
     rotate_credential/4,
-    revoke_credential/4,
-    issue_grant/5,
-    patch_grant/6
+    revoke_credential/4
 ]).
 
 %% 审计资源类型：Admin 治理面统一按 application 维度留痕。
@@ -52,12 +48,6 @@
 -define(ACTOR_ROLE, <<"platform_admin">>).
 
 %% Admin 未指定授权有效期时的默认窗口（天）。
-%% ⚠ 这是**显式决策**，不是静默缺省：enterprise_application_grant.expires_at 是
-%% NOT NULL（授权天然有界，不允许签发无限期授权），而冻结的 Admin 契约里
-%% valid_from/valid_to 是可选字段、且 FULL-04 的 UI 根本没有有效期输入。
-%% ⇒ 后端必须给一个默认值。取 365 天并在签发响应与审计里回显，
-%% 让「实际有效期」对运维可见（不是悄悄挂在暗处）。
--define(DEFAULT_GRANT_VALID_DAYS, 365).
 
 %% ===================================================================
 %% 读面
@@ -116,16 +106,6 @@ application_detail(OrgId, AppId) ->
 -spec list_credentials(integer(), integer()) -> {ok, [map()]}.
 list_credentials(OrgId, AppId) ->
     {ok, [credential_meta(R) || R <- enterprise_internal_ops:list_credentials(OrgId, AppId)]}.
-
-%% @doc A-09 Grant 列表（含 scopes / workspace_ids / version）。
--spec list_grants(integer(), integer()) -> {ok, [map()]} | {error, term()}.
-list_grants(OrgId, AppId) ->
-    tx(fun(Conn) ->
-        case enterprise_application_grant_repo:list_tx(Conn, OrgId, AppId) of
-            {ok, Rows} -> {ok, [grant_view(R) || R <- Rows]};
-            {error, Reason} -> throw({rollback, Reason})
-        end
-    end).
 
 %% @doc A-12 投递健康度（聚合数字；**无 payload**）。
 -spec delivery_stats(integer(), integer()) -> {ok, map()} | {error, term()}.
@@ -189,13 +169,6 @@ set_status(OrgId, AppId, Version, Status, Actor) ->
         {<<"application_status_changed">>, app_diff(App), app_diff(After), ok}
     end).
 
-set_scopes(OrgId, AppId, Version, Scopes, Actor) ->
-    audited(OrgId, AppId, Actor, fun(C, App) ->
-        _ = must(enterprise_internal_ops:update_scopes_cas_tx(C, OrgId, AppId, Version, Scopes)),
-        After = must(enterprise_application_repo:find_tx(C, OrgId, AppId)),
-        {<<"application_scopes_changed">>, app_diff(App), app_diff(After), {ok, Scopes}}
-    end).
-
 issue_credential(OrgId, AppId, ExpiresAt, Actor) ->
     audited(OrgId, AppId, Actor, fun(C, _App) ->
         Issued = must(enterprise_internal_ops:issue_credential_tx(C, OrgId, AppId, ExpiresAt)),
@@ -223,88 +196,6 @@ revoke_credential(OrgId, AppId, CredId, Actor) ->
         {<<"credential_revoked">>, #{credential_prefix => prefix_of(Old)},
             #{credential_status => <<"revoked">>}, ok}
     end).
-
-issue_grant(OrgId, AppId, Input, Version, Actor) ->
-    audited(OrgId, AppId, Actor, fun(C, App) ->
-        case maps:get(<<"version">>, App) of
-            Version -> ok;
-            _ -> throw({rollback, version_conflict})
-        end,
-        {ValidFrom, ValidTo} = validity_window(Input),
-        Spec = #{
-            scopes => maps:get(scopes, Input, []),
-            workspace_scope_kind => maps:get(workspace_scope_kind, Input, none),
-            workspace_ids => maps:get(workspace_ids, Input, []),
-            valid_from => ValidFrom,
-            expires_at => ValidTo,
-            idempotency_key => maps:get(idempotency_key, Input, grant_idem(Input, ValidTo))
-        },
-        Grant = must(enterprise_internal_ops:issue_grant_tx(C, OrgId, AppId, Spec)),
-        {<<"grant_issued">>, #{}, grant_diff(Grant), {ok, grant_view(Grant)}}
-    end).
-
-patch_grant(OrgId, AppId, GrantId, Version, Patch, Actor) ->
-    audited(OrgId, AppId, Actor, fun(C, _App) ->
-        Before = must(enterprise_application_grant_repo:find_tx(C, OrgId, AppId, GrantId)),
-        Action = patch_grant_in(C, OrgId, AppId, GrantId, Version, Patch, Actor),
-        After = must(enterprise_application_grant_repo:find_tx(C, OrgId, AppId, GrantId)),
-        {Action, grant_diff(Before), grant_diff(After), ok}
-    end).
-
-patch_grant_in(C, OrgId, AppId, GrantId, Version, Patch, Actor) ->
-    Revoke = maps:get(revoke, Patch, false) =:= true,
-    Scopes = maps:is_key(scopes, Patch),
-    Workspaces = maps:is_key(workspace_scope_kind, Patch) orelse maps:is_key(workspace_ids, Patch),
-    case {Revoke, Scopes, Workspaces} of
-        {true, _, _} ->
-            _ =
-                must(
-                    enterprise_application_grant_repo:revoke_admin_tx(
-                        C, OrgId, AppId, GrantId, Version, maps:get(adm_user_id, Actor, 0)
-                    )
-                ),
-            <<"grant_revoked">>;
-        {false, false, false} ->
-            throw({rollback, invalid_request});
-        {false, _, _} ->
-            patch_grant_fields(C, OrgId, AppId, GrantId, Version, Patch, Scopes, Workspaces)
-    end.
-
-patch_grant_fields(C, OrgId, AppId, GrantId, Version, Patch, Scopes, Workspaces) ->
-    _ =
-        case Scopes of
-            true ->
-                must(
-                    enterprise_internal_ops:set_grant_scopes_tx(
-                        C, OrgId, AppId, GrantId, Version, maps:get(scopes, Patch)
-                    )
-                );
-            false ->
-                ok
-        end,
-    case Workspaces of
-        true ->
-            NextVersion =
-                case Scopes of
-                    true -> Version + 1;
-                    false -> Version
-                end,
-            _ =
-                must(
-                    enterprise_internal_ops:set_grant_workspaces_tx(
-                        C,
-                        OrgId,
-                        AppId,
-                        GrantId,
-                        NextVersion,
-                        maps:get(workspace_scope_kind, Patch, undefined),
-                        maps:get(workspace_ids, Patch, undefined)
-                    )
-                ),
-            <<"grant_workspaces_changed">>;
-        false ->
-            <<"grant_scopes_changed">>
-    end.
 
 %% ===================================================================
 %% OA 按需免登治理（A-15 应用创建 / A-16..A-18 身份映射）
@@ -353,7 +244,7 @@ create_application(_OrgId, _Input, _Actor) ->
 
 create_application_tx(OrgId, Key, Name, Uris, Actor) ->
     tx(fun(C) ->
-        case enterprise_application_repo:create_tx(C, OrgId, Key, Name, undefined, Uris) of
+        case enterprise_application_repo:create_tx(C, OrgId, Key, Name, null, Uris) of
             {ok, Row} ->
                 AppId = maps:get(<<"id">>, Row),
                 append_audit(
@@ -603,7 +494,6 @@ application_summary(Row) ->
         <<"organization_id">> => id_bin(maps:get(<<"organization_id">>, Row, 0)),
         <<"name">> => maps:get(<<"name">>, Row, <<>>),
         <<"status">> => maps:get(<<"status">>, Row, <<>>),
-        <<"scopes">> => decode_scopes(maps:get(<<"allowed_scopes">>, Row, <<"[]">>)),
         <<"version">> => maps:get(<<"version">>, Row, 1),
         <<"created_at">> => maps:get(<<"created_at">>, Row, null),
         <<"updated_at">> => maps:get(<<"updated_at">>, Row, null)
@@ -619,22 +509,6 @@ credential_meta(Row) ->
         <<"expires_at">> => maps:get(<<"expires_at">>, Row, null),
         <<"last_used_at">> => maps:get(<<"last_used_at">>, Row, null),
         <<"revoked_at">> => maps:get(<<"revoked_at">>, Row, null)
-    }.
-
--spec grant_view(map()) -> map().
-grant_view(Row) ->
-    #{
-        <<"id">> => id_bin(maps:get(<<"id">>, Row, 0)),
-        <<"workspace_scope_kind">> => maps:get(<<"workspace_scope_kind">>, Row, <<"none">>),
-        <<"workspace_ids">> => [
-            id_bin(W)
-         || W <- normalize_ids(maps:get(<<"workspace_ids">>, Row, []))
-        ],
-        <<"scopes">> => normalize_binaries(maps:get(<<"scopes">>, Row, [])),
-        <<"status">> => maps:get(<<"status">>, Row, <<>>),
-        <<"version">> => maps:get(<<"version">>, Row, 1),
-        <<"valid_from">> => maps:get(<<"valid_from">>, Row, null),
-        <<"valid_to">> => maps:get(<<"expires_at">>, Row, null)
     }.
 
 -spec delivery_row(map()) -> map().
@@ -704,24 +578,12 @@ audit_entry(Row) ->
 app_diff(Row) ->
     #{
         status => maps:get(<<"status">>, Row),
-        scopes => decode_scopes(maps:get(<<"allowed_scopes">>, Row)),
         version => maps:get(<<"version">>, Row)
     }.
 
 -spec prefix_of(map()) -> binary().
 prefix_of(Meta) ->
     maps:get(<<"credential_prefix">>, Meta, <<>>).
-
--spec grant_diff(map()) -> map().
-grant_diff(Row) ->
-    #{
-        status => maps:get(<<"status">>, Row, <<>>),
-        scopes => normalize_binaries(maps:get(<<"scopes">>, Row, [])),
-        workspace_scope_kind => maps:get(<<"workspace_scope_kind">>, Row, <<"none">>),
-        workspace_ids => [id_bin(W) || W <- normalize_ids(maps:get(<<"workspace_ids">>, Row, []))],
-        valid_from => maps:get(<<"valid_from">>, Row, null),
-        valid_to => maps:get(<<"expires_at">>, Row, null)
-    }.
 
 %% ===================================================================
 %% 内部：值归一化 / 事务
@@ -748,26 +610,6 @@ replay_of(null) -> null;
 replay_of(V) when is_binary(V), V =/= <<>> -> V;
 replay_of(_) -> null.
 
--spec decode_scopes(term()) -> [binary()].
-decode_scopes(L) when is_list(L) -> [S || S <- L, is_binary(S)];
-decode_scopes(B) when is_binary(B) ->
-    try jsone:decode(B) of
-        L when is_list(L) -> [S || S <- L, is_binary(S)];
-        _ -> []
-    catch
-        _:_ -> []
-    end;
-decode_scopes(_) ->
-    [].
-
--spec normalize_binaries(term()) -> [binary()].
-normalize_binaries(L) when is_list(L) -> [stringify_value(X) || X <- L];
-normalize_binaries(_) -> [].
-
--spec normalize_ids(term()) -> [integer()].
-normalize_ids(L) when is_list(L) -> [I || I <- L, is_integer(I)];
-normalize_ids(_) -> [].
-
 -spec decode_map(term()) -> map().
 decode_map(M) when is_map(M) -> M;
 decode_map(B) when is_binary(B) ->
@@ -782,62 +624,7 @@ decode_map(_) ->
 
 %% @doc 授权有效期窗口。未指定时给 ?DEFAULT_GRANT_VALID_DAYS 天（见常量注释：
 %% 这是显式决策，且会在审计的 after 里回显真实 valid_to）。
--spec validity_window(map()) -> {binary(), binary()}.
-validity_window(Input) ->
-    From =
-        case maps:get(valid_from, Input, undefined) of
-            F when is_binary(F), F =/= <<>> -> F;
-            _ -> elib_dt:now()
-        end,
-    To =
-        case maps:get(valid_to, Input, undefined) of
-            T when is_binary(T), T =/= <<>> -> T;
-            _ -> shift_days(From, ?DEFAULT_GRANT_VALID_DAYS)
-        end,
-    {From, To}.
 
 %% 起始时间 + N 天。elib_dt:now/0 与 elib_dt:add/2 都走 RFC3339 binary，
 %% 无效输入时 elib_dt 返回 {error, invalid_datetime} —— 此时回落到「当前时间 + N 天」
 %% 而不是接受一个非法窗口（授权窗口非法等于静默放宽/收紧授权面）。
--spec shift_days(binary() | term(), pos_integer()) -> binary().
-shift_days(From, Days) when is_binary(From) ->
-    case elib_dt:add(From, {Days * 86400, second}) of
-        T when is_binary(T) -> T;
-        _ -> elib_dt:add(elib_dt:now(), {Days * 86400, second})
-    end.
-
-%% @doc Grant 幂等键：调用方未给时按请求内容生成确定性指纹。
-%% 同内容重复提交会命中 (org, app, idempotency_key) 唯一约束 → key_conflict，
-%% 而不是静默再发一份（FULL-01 纪律：静默再发会以并集形式扩大授权面）。
--spec grant_idem(map(), binary() | term()) -> binary().
-grant_idem(Input, ValidTo) ->
-    Scopes = lists:sort(decode_scopes(maps:get(scopes, Input, []))),
-    Ws = lists:sort(normalize_ids(maps:get(workspace_ids, Input, []))),
-    %% INT-BE-05 缺陷修复：kind 经 handler 归一后是 atom（none/explicit），
-    %% 原实现把 atom 直接放进 iolist —— iolist_to_binary badarg，admin 面
-    %% 签发 Grant 必 500。统一转 binary（兼容 binary 直传形态）。
-    KindBin =
-        case maps:get(workspace_scope_kind, Input, none) of
-            K when is_atom(K) -> atom_to_binary(K, utf8);
-            K when is_binary(K) -> K;
-            _ -> <<"none">>
-        end,
-    Payload = iolist_to_binary([
-        KindBin,
-        "|",
-        lists:join(<<",">>, Scopes),
-        "|",
-        lists:join(<<",">>, [integer_to_binary(W) || W <- Ws]),
-        "|",
-        stringify_value(ValidTo)
-    ]),
-    <<"admin-grant-", (bin_b64url(crypto:hash(sha256, Payload)))/binary>>.
-
-bin_b64url(Bin) ->
-    B64 = base64:encode(Bin),
-    NoPad = binary:part(B64, 0, byte_size(B64) - 2),
-    <<<<(urlsafe(C))/binary>> || <<C>> <= NoPad>>.
-
-urlsafe($+) -> <<"-">>;
-urlsafe($/) -> <<"_">>;
-urlsafe(C) -> <<C>>.

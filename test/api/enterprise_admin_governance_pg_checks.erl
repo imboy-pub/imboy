@@ -11,20 +11,8 @@ run() ->
         concurrent_rotation(admin, maps:get(conn, H)),
         concurrent_rotation(ops, maps:get(conn, H)),
         failed_old_revoke(),
-        Cases = [
-            status,
-            scopes,
-            issue_credential,
-            rotate_credential,
-            revoke_credential,
-            issue_grant,
-            grant_scopes,
-            grant_workspaces,
-            grant_combined,
-            revoke_grant
-        ],
+        Cases = [status, issue_credential, rotate_credential, revoke_credential],
         Evidence = [audit_failure(K, Mode) || K <- Cases, Mode <- [drop, raise]],
-        combined_failure(),
         concurrent_cas(),
         tenant_denial(),
         enterprise_webhook_write_http_checks:run(H),
@@ -63,16 +51,9 @@ fixture() ->
         [App, Org, maps:get(actor_user_id, S), integer_to_binary(App)]
     ),
     {ok, Cred} = enterprise_internal_ops:issue_credential(Org, App, undefined),
-    {ok, Grant} = enterprise_internal_ops:issue_grant(Org, App, #{
-        scopes => [<<"application:read">>],
-        workspace_scope_kind => none,
-        expires_at => <<"2099-01-01T00:00:00Z">>,
-        idempotency_key => <<"fixture">>
-    }),
     S#{
         app_id => App,
-        credential_id => maps:get(credential_id, Cred),
-        grant_id => maps:get(<<"id">>, Grant)
+        credential_id => maps:get(credential_id, Cred)
     }.
 
 actor() -> #{account => <<"synthetic-platform-admin">>, adm_user_id => 12345}.
@@ -81,51 +62,21 @@ operation(status, S) ->
     enterprise_admin_governance_logic:set_status(
         maps:get(org_id, S), maps:get(app_id, S), 1, <<"disabled">>, actor()
     );
-operation(scopes, S) ->
-    enterprise_admin_governance_logic:set_scopes(
-        maps:get(org_id, S), maps:get(app_id, S), 1, [<<"application:read">>], actor()
-    );
 operation(Kind, S) ->
-    credential_or_grant_operation(Kind, S).
+    credential_operation(Kind, S).
 
-credential_or_grant_operation(issue_credential, S) ->
+credential_operation(issue_credential, S) ->
     enterprise_admin_governance_logic:issue_credential(
         maps:get(org_id, S), maps:get(app_id, S), undefined, actor()
     );
-credential_or_grant_operation(rotate_credential, S) ->
+credential_operation(rotate_credential, S) ->
     enterprise_admin_governance_logic:rotate_credential(
         maps:get(org_id, S), maps:get(app_id, S), maps:get(credential_id, S), actor()
     );
-credential_or_grant_operation(revoke_credential, S) ->
+credential_operation(revoke_credential, S) ->
     enterprise_admin_governance_logic:revoke_credential(
         maps:get(org_id, S), maps:get(app_id, S), maps:get(credential_id, S), actor()
-    );
-credential_or_grant_operation(issue_grant, S) ->
-    enterprise_admin_governance_logic:issue_grant(
-        maps:get(org_id, S),
-        maps:get(app_id, S),
-        #{scopes => [<<"application:read">>], idempotency_key => <<"governance">>},
-        1,
-        actor()
-    );
-credential_or_grant_operation(Kind, S) ->
-    enterprise_admin_governance_logic:patch_grant(
-        maps:get(org_id, S),
-        maps:get(app_id, S),
-        maps:get(grant_id, S),
-        1,
-        patch(Kind, S),
-        actor()
     ).
-
-patch(grant_scopes, _) ->
-    #{scopes => [<<"identities:read">>]};
-patch(grant_workspaces, S) ->
-    #{workspace_scope_kind => explicit, workspace_ids => [maps:get(workspace_id, S)]};
-patch(grant_combined, S) ->
-    maps:merge(patch(grant_scopes, S), patch(grant_workspaces, S));
-patch(revoke_grant, _) ->
-    #{revoke => true}.
 
 success(ok) -> true;
 success({ok, _}) -> true;
@@ -215,18 +166,6 @@ assert_safe_audit(S) ->
      || Key <-
             [<<"secret">>, <<"digest">>]
     ].
-
-combined_failure() ->
-    S = fixture(),
-    Before = snapshot(S),
-    Bad = (patch(grant_combined, S))#{workspace_ids => [maps:get(other_workspace_id, S)]},
-    Result = enterprise_admin_governance_logic:patch_grant(
-        maps:get(org_id, S), maps:get(app_id, S), maps:get(grant_id, S), 1, Bad, actor()
-    ),
-    ?assertMatch({error, _}, Result),
-    ?assertEqual(Before, snapshot(S)),
-    ?assertEqual(0, audit_count(S)),
-    ?assertEqual(ok, operation(grant_combined, S)).
 
 concurrent_cas() ->
     S = fixture(),

@@ -35,6 +35,7 @@
 -export([
     request_digest/3,
     begin_tx/5,
+    serialize_tx/3,
     complete_tx/7,
     must_complete_tx/7,
     required/1,
@@ -89,6 +90,7 @@ request_digest(Method, Path, Body) when
 begin_tx(Conn, Ctx, ResourceType, Key, Digest) when
     is_binary(ResourceType), is_binary(Key), Key =/= <<>>, is_binary(Digest)
 ->
+    ok = serialize_tx(Conn, Ctx, Key),
     OrgId = maps:get(organization_id, Ctx),
     AppId = maps:get(application_id, Ctx),
     ExpiresAt = elib_dt:add(elib_dt:now(), {ttl_seconds(), second}),
@@ -279,3 +281,7 @@ is_printable_ascii(<<>>) ->
     true;
 is_printable_ascii(_) ->
     false.
+
+%% Call before business qualification locks when a writer resolves its org first.
+serialize_tx(Conn, Ctx, Key) ->
+    enterprise_internal_idempotency_repo:serialize_tx(Conn, maps:get(application_id, Ctx), Key).

@@ -57,65 +57,100 @@ Base URL（协议/域名/端口）由部署方提供，本文档只约定路径�
 
 ## 2. 快速开始
 
-1. 由平台管理员在 **Admin 管理台 → 企业应用治理** 为你的应用签发凭证；
-   **secret 明文只在签发/轮换响应中出现一次**，请立即妥善保存（平台侧只存不可逆摘要）。
-2. 用凭证调用第一个接口（读取应用自身）：
+1. 平台管理员创建 OA 连接并签发集成凭证。
+   完整凭证形如 `ib_int_...<定位符>.<secret>`，secret 仅在签发/轮换时返回一次。
+2. 设置部署方提供的 `BASE_URL` 和环境变量 `IMBOY_CREDENTIAL`，按下列标准库示例读取应用自身。
+   正式环境使用 HTTPS；secret 留在 OA 服务端，不放进浏览器或移动端。
+3. 之后按 [endpoints.md](./endpoints.md) 与 `../../openapi-internal.yaml` 开发。
+   随附 Postman 集合自动生成签名，每次发送均使用新 nonce。
 
-```bash
-curl -sS "$BASE_URL/api/internal/v1/application" \
-  -H "Authorization: Bearer ib_int_9100000000000000003.YOUR-SECRET" | jq
+```python
+import hashlib, hmac, os, secrets, time, urllib.request
+
+credential, secret = os.environ["IMBOY_CREDENTIAL"].split(".", 1)
+algorithm = "sha256"  # 也支持 "sha512"；其余协议完全相同
+method, path, query = "GET", "/api/internal/v1/application", ""
+body, content_type, idempotency_key = b"", "application/json", ""
+timestamp, nonce = str(int(time.time())), secrets.token_urlsafe(24)
+canonical = "\n".join([
+    "IMBOY-INTERNAL-V1", algorithm, credential, "", method, path, query,
+    content_type, idempotency_key, hashlib.sha256(body).hexdigest(), timestamp, nonce,
+]).encode("utf-8")
+signature = hmac.new(secret.encode("utf-8"), canonical, algorithm).hexdigest()
+headers = {
+    "Content-Type": content_type, "X-Imboy-Credential": credential,
+    "X-Imboy-Timestamp": timestamp, "X-Imboy-Nonce": nonce,
+    "X-Imboy-Signature": algorithm + "=" + signature,
+}
+if idempotency_key:
+    headers["Idempotency-Key"] = idempotency_key
+url = os.environ["BASE_URL"].rstrip("/") + path + ("?" + query if query else "")
+request = urllib.request.Request(url, data=body if body else None, headers=headers, method=method)
+class NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, *args): return None
+with urllib.request.build_opener(NoRedirect()).open(request, timeout=30) as response:
+    print(response.read().decode("utf-8"))
 ```
 
-3. 之后按 [endpoints.md](./endpoints.md) 的端点表与 `../../openapi-internal.yaml`
-   （编辑真源；工具导入用 `../../openapi-internal.bundle.yaml`）的字段 schema 开发。
+写请求把 `method/path/query/body` 换成实际值，正文编码一次后原样发送；
+按端点要求填写稳定的 `idempotency_key`。重试时复用幂等键、重新生成时间戳、nonce 和签名。
 
----
+## 3. 请求签名认证
 
-## 3. 认证
+每次请求发送以下四个签名头：
 
-所有请求必须携带：
-
-```
-Authorization: Bearer <credential_prefix>.<secret>
-```
-
-- 每份凭证只属于一个应用，同一应用可以有多份凭证。organization 是业务对象，应用归属可空；实际资源访问逐目标校验来源与有效 Grant。有效权限为应用 allowed_scopes 与当前生效 Grant scopes 的交集；没有 Grant、全部撤销或全部过期时不回退为应用默认权限。
-- 凭证可由平台管理员**轮换**（旧凭证立即失效）与**撤销**；应用被停用/归档后
-  所有请求返回 `application_disabled`（403）。
-- secret 在平台侧只保存不可逆摘要；**泄露即轮换**，无需担心「改不回来」。
-
-`credential_prefix` 是服务端签发的完整 `ib_int_...` 前缀，不是 application_id；也不要用返回的 credential_id 自行重建。签发／轮换响应的 `secret` 字段实际给出可直接使用的完整凭证，原样作为 Bearer 值保存。
-
-## 4. 授权（Scope，固定 20 枚举，无通配）
-
-| Scope | 解锁能力 |
+| 头 | 内容 |
 |---|---|
-| `application:read` | 读本应用信息 |
-| `identities:read` | 身份解析、目录查询 |
-| `identities:write` | 身份绑定 / 解绑、来源目录同步 |
-| `members:write` | 来源托管普通成员停用/恢复（INT-49；独立全域 Grant） |
-| `groups:write` | 群组与成员管理 |
-| `groups:read` | 群组/成员只读（INT-18/26/27） |
-| `workspaces:read` | Workspace 列表与详情（INT-24/25） |
-| `workspaces:write` | Workspace 创建、修改与软归档（INT-37..39；不自动授予） |
-| `projects:read` | 项目列表与详情（INT-28/29） |
-| `channels:read` | 频道列表与详情（INT-30/31） |
-| `channels:write` | 企业频道创建、修改和软归档（INT-40..42；工作空间 Grant） |
-| `files:write` | 文件直传与治理 |
-| `messages:send` | 以**应用身份**发消息 |
-| `messages:send_as_human` | 以**人类身份**代发消息（见 §6） |
-| `friend_requests:create` | 发起好友申请 |
-| `webhooks:manage` | Webhook 登记与投递管理 |
-| `sso:exchange` | OA SSO 一次性 code 交换 |
-| `customer_service:read` | 企业坐席列表与详情（企业全域 Grant） |
-| `customer_service:write` | 创建、修改、停用坐席（企业全域 Grant） |
-| `oa:login:issue` | OA 入站登录签票（INT-44；仅显式授予，不默认授予目录连接；`sso:exchange` 不隐含此权限） |
+| `X-Imboy-Credential` | 签发返回的完整 `ib_int_...` 定位符，即完整凭证第一个 `.` 之前的部分 |
+| `X-Imboy-Timestamp` | Unix 秒，十进制、无前导零；与服务端时间相差不超过 300 秒 |
+| `X-Imboy-Nonce` | 每请求随机生成，16..128 字符，仅 `A-Z a-z 0-9 _ -` |
+| `X-Imboy-Signature` | `sha256=<64位小写hex>` 或 `sha512=<128位小写hex>` |
 
-Scope 由管理员签发时授予，集成方**不可自选**、不存在 `*` 通配；
-目录同步 INT-43 的初始准入检查应用目录能力，随后在事务内检查可信来源配置、目标授权与有效期；这不是零 Grant 自动放行。目录来源允许显式启用 application:read、oa:login:issue、sso:exchange，但 bootstrap 只授予 identities:read/write。登录与 SSO 权限须独立显式授予。
+签名采用 **HMAC-SHA256 / HMAC-SHA512**，不是不带密钥的普通 hash。
+HMAC key 是完整凭证第一个 `.` 后的 secret 原文；定位符不是 application_id，不能自行重建。
 
-两个消息域端点（INT-09/10）按请求里的 `sender_mode` 动态要求
-`messages:send` 或 `messages:send_as_human`。
+签名原文为以下 12 行 UTF-8 字节，以单个 LF（`\n`）分隔，末尾无换行：
+
+```text
+IMBOY-INTERNAL-V1
+sha256 或 sha512
+credential 定位符
+X-Imboy-Organization 原值（未指定时空行）
+大写 HTTP 方法
+原始路径（不含 ?）
+原始 query（不含 ?，无 query 时空行）
+Content-Type 头的原值（无此头时空行）
+Idempotency-Key 头的原值（无此头时空行）
+正文原始字节的 SHA256 小写 hex（即使用 sha512 签名，这一行仍为 SHA256）
+X-Imboy-Timestamp
+X-Imboy-Nonce
+```
+
+- query 不排序、不解码，正文不重新格式化；空正文使用 `SHA256(b"")`。
+- 同一凭证与 nonce 只接受一次，去重由 PostgreSQL 原子执行，跨进程、跨节点有效。
+  过期、未来超过窗口、重放、签名错误均返回 `invalid_credential`（401）。
+- 平台检查凭证有效期、撤销状态与应用状态；应用停用/归档仍返回 `application_disabled`（403）。
+- secret 使用已有数据库主密钥 AES-GCM 加密保存，不返回、不写日志；不可逆摘要不作为 HMAC key。
+  主密钥未配置时不能签发新的签名凭证；配置沿用 `postgre_aes_key`，轮换兼容 `postgre_aes_key_old`。
+
+English: HMAC requests authenticate the integration using a shared secret, timestamp and single-use
+nonce. Raw method, path, query, content type,
+idempotency key and body are signed.
+
+## 4. 业务数据校验
+
+`X-Imboy-Organization` 可选，填写目标业务组织的十进制 ID，并参与签名。
+未指定时使用应用的业务归属；无归属的来源连接在仅有一个有效已建立组织时自动定位该组织。
+多个来源组织时须显式选择。平台只接受应用原归属或管理员已配置且当前有效的来源组织，
+不会因请求头指定其他 ID 就放开访问。来源目录接口仍以正文/query 的外部组织标识寻址。
+
+签名验证通过后即可调用本集成的 Internal API，无逐接口权限表、无通配权限配置。
+平台继续校验资源所属组织/工作区、应用创建来源、成员有效状态、版本和幂等关系。
+个人域资源不会因此变成企业资源，应用不能冒充未映射或已停用的成员。
+
+首次同步组织仍使用管理员配置的可信来源、外部组织标识与确认的 Human Owner；
+这是创建业务对象的来源事实。来源停用或到期后，
+其目录同步、核对和成员状态变更立即拒绝；组织/群组/频道的既有归属检查继续执行。
 
 ## 5. 限流与幂等
 
@@ -131,12 +166,12 @@ v1.1.1 起提供）；具体阈值由部署配置，
 
 ## 6. 消息发送者语义（`sender_mode`）— 重要
 
-企业托管消息支持两种发送者形态，**请求里显式声明，权限随形态收紧**：
+企业托管消息支持两种发送者形态，**请求里显式声明，平台分别校验发送者身份**：
 
-| sender_mode | 语义 | 要求 scope |
+| sender_mode | 语义 | 身份校验 |
 |---|---|---|
-| `application` | 以应用身份发出（展示为应用/机器人） | `messages:send` |
-| `human` | 应用**代**某企业用户发出（该用户须为本组织已映射、已启用用户） | `messages:send_as_human` |
+| `application` | 以应用身份发出（展示为应用/机器人） | 本应用的有效 principal |
+| `human` | 应用**代**某企业用户发出（该用户须为本组织已映射、已启用用户） | 本来源映射且当前有效的 Human |
 
 硬性约束：
 
@@ -152,7 +187,7 @@ v1.1.1 起提供）；具体阈值由部署配置，
 错误响应 = HTTP 状态码 + 稳定错误码信封（字段级 schema 见 OpenAPI）：
 
 ```json
-{ "error": { "code": "insufficient_scope", "message": "..." } }
+{ "error": { "code": "invalid_credential", "message": "..." } }
 ```
 
 16 个稳定错误码（`code` 为机器可读、snake_case、**长期稳定**，勿按 message 文案做逻辑）：
@@ -164,7 +199,6 @@ v1.1.1 起提供）；具体阈值由部署配置，
 | `credential_expired` | 401 | 凭证已过期 |
 | `application_disabled` | 403 | 应用被停用/归档 |
 | `organization_disabled` | 403 | 所属组织被停用 |
-| `insufficient_scope` | 403 | 凭证未被授予所需 scope |
 | `organization_boundary_violation` | 403 | 跨组织访问（IDOR 防线） |
 | `resource_not_found` | 404 | 资源不存在或不属于本组织 |
 | `identity_not_mapped` | 422 | 目标用户未做身份映射 |
@@ -178,7 +212,7 @@ v1.1.1 起提供）；具体阈值由部署配置，
 
 ## 8. Webhook 出站（你方系统将收到的回调）
 
-出站投递使用独立的 Webhook HMAC secret，与 Internal API 的 Bearer 凭证不同。通过 INT-12（`PUT /webhook`）设置 `rotate: true` 轮换签名密钥，响应只返回新 secret 一次；轮换 API 凭证不会轮换此密钥。接收方更新为新签名密钥后，旧密钥生成的签名不能通过验证。
+出站投递使用独立的 Webhook HMAC secret，与 Internal API 的入站签名凭证不同。通过 INT-12（`PUT /webhook`）设置 `rotate: true` 轮换签名密钥，响应只返回新 secret 一次；轮换 API 凭证不会轮换此密钥。接收方更新为新签名密钥后，旧密钥生成的签名不能通过验证。
 
 出站投递包含以下签名头：
 
@@ -270,7 +304,7 @@ Internal 签票成功使用 `{code:0,msg,sv_ts,payload}` 信封；错误使用 I
 三个 Human 入口使用客户端业务信封及各自认证要求，不能向它们传 Application Credential。
 
 English: Outbound SSO and inbound OA login are separate protocols. Organization ownership is optional;
-source-directory access still requires live resource grants. Tickets use client-generated PKCE S256,
+source-directory access still requires a current, trusted source configuration. Tickets use client-generated PKCE S256,
 application and device binding, short expiration and one-time consumption. Never expose credentials in H5.
 
 ## 10. 端点参考与 Postman 集合
@@ -279,8 +313,8 @@ application and device binding, short expiration and one-time consumption. Never
 - **机器契约**：`../../openapi-internal.yaml`（编辑真源）与
   `../../openapi-internal.bundle.yaml`（bundle 单文件）——字段级请求/响应
   schema 逐端点从 handler 实证（`src/api/enterprise_*_handler.erl`），
-  16 个稳定错误码为可复用 response 组件；scope / 限流桶 / 幂等要求以
-  `x-imboy-scope` / `x-imboy-rate-bucket` / `x-imboy-idempotency` 扩展字段
+  16 个稳定错误码为可复用 response 组件；限流桶 / 幂等要求以
+  `x-imboy-rate-bucket` / `x-imboy-idempotency` 扩展字段
   标注。工具导入用 bundle 单文件。
 - **动手联调**：[IMBoy-Internal-API-v1.postman_collection.json](./IMBoy-Internal-API-v1.postman_collection.json)
   —— Postman / Apifox 直接导入（Collection v2.1），已含全部 49 个 Internal 操作、按域分文件夹、
@@ -298,16 +332,16 @@ application and device binding, short expiration and one-time consumption. Never
 
 ## 客服坐席集成 / Customer service seats
 
-INT-33..36 管理企业坐席配置，不签发 Seat JWT。坐席主键为 business_identity_id，必须对应本企业 customer_service 业务身份；workspace_id 只是审计位置。读写权限分别授予，必须有覆盖对应 scope 的企业全域 Grant，仅 Workspace Grant 不足。PATCH 必须带 expected_version 以及 enabled/max_concurrent 至少一个；停用用 enabled=false，不删除历史。列表默认 limit=50，最大100，按 ID 升序，包含停用项。应用、企业或 Grant 撤销后，包括幂等重放在内的下一请求仍须通过授权检查。
+INT-33..36 管理企业坐席配置，不签发 Seat JWT。坐席主键为 business_identity_id，必须对应本企业 customer_service 业务身份；workspace_id 只是审计位置。签名请求按目标企业与有效业务身份校验。PATCH 必须带 expected_version 以及 enabled/max_concurrent 至少一个；停用用 enabled=false，不删除历史。列表默认 limit=50，最大100，按 ID 升序，包含停用项。应用、凭证或企业停用后，包括幂等重放在内的下一请求仍须通过授权检查。
 
-English: Seats belong to the organization. Workspace IDs select audit locations only. Reads and writes need separate scopes and organization-wide grants. Updates require optimistic versions; disabling retains history. Signed cursors bind organization, application and seat-list family.
+English: Seats belong to the organization. Workspace IDs select audit locations only. Updates require optimistic versions; disabling retains history. Signed cursors bind organization, application and seat-list family.
 
-工作空间写管理：INT-37..39，独立 workspaces:write（不自动授予）。创建指定本企业 Owner/Admin；修改与软归档使用 expected_version；默认归档须显式同企业替代项及其 Grant。GET 工作空间追加 version。应用审计、资源及幂等响应同事务；归档后的同 key 重放仍需当前有效 Grant。
+工作空间写管理：INT-37..39，签名验签后按业务归属校验。创建指定本企业 Owner/Admin；修改与软归档使用 expected_version；默认归档须显式同企业替代项及其业务归属。GET 工作空间追加 version。应用审计、资源及幂等响应同事务；归档后的同 key 重放仍需当前有效凭证与业务归属。
 
 
-企业频道写管理：INT-40 POST /channels（workspace_id、creator_user_id、name；可选 description/avatar）、INT-41 PATCH /channels/{channel_id}（expected_version 及至少一个资料字段）、INT-42 DELETE /channels/{channel_id}（expected_version）。创建者须为有效企业成员（企业 Owner 包含）及工作空间 Owner/Member，Guest 不可创建；复用现有 20 个有效管理频道配额。创建固定非公开、免费且邀请制（visibility=1/access_type=0/join_policy=1）；归属、创建者及策略不允许在此接口修改。GET 增加 version；资料或治理状态更新增加版本，订阅计数等派生更新不增加版本。归档 status=0，消息、订阅及管理员关系保留。当前 Grant 在重放前验证，撤权后的同 key 重试拒绝；应用 actor 与幂等记录同事务。
+企业频道写管理：INT-40 POST /channels（workspace_id、creator_user_id、name；可选 description/avatar）、INT-41 PATCH /channels/{channel_id}（expected_version 及至少一个资料字段）、INT-42 DELETE /channels/{channel_id}（expected_version）。创建者须为有效企业成员（企业 Owner 包含）及工作空间 Owner/Member，Guest 不可创建；复用现有 20 个有效管理频道配额。创建固定非公开、免费且邀请制（visibility=1/access_type=0/join_policy=1）；归属、创建者及策略不允许在此接口修改。GET 增加 version；资料或治理状态更新增加版本，订阅计数等派生更新不增加版本。归档 status=0，消息、订阅及管理员关系保留。当前凭证与业务归属在重放前验证，停用后的同 key 重试拒绝；应用 actor 与幂等记录同事务。
 
-English summary: Internal channel writes require an explicit channels:write grant scoped to the target Workspace. Creation checks current Organization and Workspace membership, preserves the existing channel quota, and creates a non-public channel. Profile changes and soft archive require an optimistic governance version. Audit and byte-exact authorized replay are atomic; archive retains history and identities.
+English summary: HMAC channel writes validate attribution; the target Workspace must match the application business attribution. Creation checks current Organization and Workspace membership, preserves the existing channel quota, and creates a non-public channel. Profile changes and soft archive require an optimistic governance version. Audit and byte-exact authorized replay are atomic; archive retains history and identities.
 
 ## 来源目录同步与核对 / Source directory reconciliation
 
@@ -317,7 +351,7 @@ INT-43 同步一次最多 100 个部门和 100 个人员，整批同事务；未
 Owner/任职状态冲突为对应 403/409；数据库未知故障仍为 500。跨批不具有整体原子性。
 
 INT-45..47 为 GET，只需 identities:read，不要求写权限：
-organizations 返回已建立组织且有当前全域读取 Grant 的本来源组织；
+organizations 返回已建立组织且来源配置当前有效 的本来源组织；
 departments/persons 必传 external_organization_id。尚未 bootstrap 的来源配置仅在可信 Admin 查看。
 逐请求及 SQL 读取时复核应用、凭据、来源、授权有效期与目标组织状态，撤权后的旧 cursor 也重验。
 
@@ -331,7 +365,7 @@ projection_status=unlinked|pending|projected|removed|retired；后者同时核�
 来源人员 status 与组织任职 status 各自版本独立；只离职一个组织不得退休整个来源账号关联。
 
 English: Directory sync is bounded, incremental and atomic per batch. Reconciliation GETs require only
-read scope plus current source and organization-wide authorization. Pending account associations and
+a current source configuration and live application/credential status. Pending account associations and
 membership projections are distinct. Cursors are signed and filter-bound; pages are live, not snapshots.
 
 
@@ -340,8 +374,8 @@ membership projections are distinct. Cursors are signed and filter-bound; pages 
 1. 平台管理员先创建应用、签发凭据并配置可信目录来源：绑定外部组织 ID、Owner、到期时间及是否准许首次建组织。OA 不能自行指定任意 Owner 或越过可信配置。
 2. `POST /api/internal/v1/directory/sync`（INT-43，`identities:write`）首次初始化组织，再按各自递增版本同步部门、人员和任职。全量中遗漏的记录不会自动删除；离职须显式发送 `membership.status=removed`。来源人员与组织任职版本独立。
 3. 未关联人员进入待关联状态；通过既有可信身份关联/注册流程关联 Human 账号后投影成员及部门关系。OA 不能凭任意用户 ID 接管账号。使用 INT-45..47 核对来源与实际投影状态。
-4. `GET /api/internal/v1/directory/memberships?external_organization_id=...&external_user_id=...`（INT-48，`identities:read`）返回当前成员状态、`member_version`、离职阻塞数量及业务资格。必须具备目标组织全域 Grant。检查是建议，实际变更会重新验证。
-5. 离职先用 `PATCH /api/internal/v1/directory/memberships`（INT-49）发送外部组织/人员 ID、`status=suspended`、检查返回的 `expected_member_version`，并携带 `Idempotency-Key`。`members:write` 须单独显式加入应用和全域 Grant，初始化不会自动授予。只支持本来源托管、已关联投影的普通成员；Owner/Admin 交由人工治理。
+4. `GET /api/internal/v1/directory/memberships?external_organization_id=...&external_user_id=...`（INT-48）返回当前成员状态、`member_version`、离职阻塞数量及业务资格。目标组织必须属于当前有效的可信来源。检查是建议，实际变更会重新验证。
+5. 离职先用 `PATCH /api/internal/v1/directory/memberships`（INT-49）发送外部组织/人员 ID、`status=suspended`、检查返回的 `expected_member_version`，并携带 `Idempotency-Key`。只支持本来源托管、已关联投影的普通成员；Owner/Admin 交由人工治理。
 6. 停用保留账号、历史及其他组织关系。旧 JWT 和现有连接访问所属 Workspace、项目、群组及频道时仍即时复核资格；恢复后复用原成员与订阅关系，个人域及其他组织不受影响。先交接工作区/项目/群组/频道所有权、未完成任务，解除业务身份分配，再以 INT-43 显式移除任职。实际移除仍受交接检查保护。仅离开一个组织时保持 `source_status=active`，避免退役跨组织关联。
 7. 取消离职时重新检查，以新版本和新幂等键 PATCH `status=active`。只能恢复本来源暂停且未被人工再次修改的成员；人工暂停、角色提升、旧版本或来源不匹配均拒绝。409 后重新读取并处理冲突，不能盲重试覆盖。
 

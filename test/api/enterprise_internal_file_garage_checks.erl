@@ -90,11 +90,7 @@ real_upload(Presign, Key, Bytes) ->
 
 foreign_object(C, Bytes) ->
     {ok, ForeignApp} = enterprise_application_repo:create_tx(
-        C,
-        995102,
-        <<"real-file-foreign-app">>,
-        <<"synthetic foreign storage app">>,
-        {null, [<<"files:write">>]}
+        C, 995102, <<"real-file-foreign-app">>, <<"synthetic foreign storage app">>, null
     ),
     Foreign = enterprise_asset_repo:build_object_key(
         995102, maps:get(<<"id">>, ForeignApp), <<"foreign.txt">>
@@ -144,10 +140,10 @@ check_foreign(S, C, Auth, Key, Bytes, Before) ->
             S,
             <<"/api/internal/v1/files/confirm">>,
             Body,
-            intbe02_http_support:auth(maps:get(cred_ro, S)),
+            intbe02_http_support:auth(maps:get(cred_b, S)),
             <<"real-file-scope">>
         ),
-        <<"insufficient_scope">>
+        <<"resource_not_found">>
     ),
     ?assertEqual(0, attachment_count(C, Key)),
     io:format("INTERNAL_FILE_FOREIGN_KEY_SCOPE_DENIED=PASS~n").

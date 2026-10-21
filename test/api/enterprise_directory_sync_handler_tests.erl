@@ -24,8 +24,8 @@ sync_handler_test() ->
                 ?assertMatch(#{error := Code}, invoke({error, Reason}))
             end,
             [
-                {directory_source_not_configured, <<"insufficient_scope">>},
-                {directory_bootstrap_not_authorized, <<"insufficient_scope">>},
+                {directory_source_not_configured, <<"organization_boundary_violation">>},
+                {directory_bootstrap_not_authorized, <<"organization_boundary_violation">>},
                 {organization_not_active, <<"organization_boundary_violation">>},
                 {organization_boundary_violation, <<"organization_boundary_violation">>},
                 {security_gate_closed, <<"security_gate_closed">>},
@@ -44,7 +44,7 @@ sync_handler_test() ->
                 {department_not_found, <<"resource_not_found">>},
                 {parent_not_found, <<"resource_not_found">>},
                 {active_source_memberships, <<"resource_conflict">>},
-                {directory_only_application_required, <<"insufficient_scope">>},
+                {directory_only_application_required, <<"organization_boundary_violation">>},
                 {{403, <<"owner guard">>}, <<"organization_boundary_violation">>},
                 {{409, <<"role guard">>}, <<"resource_conflict">>},
                 {invalid_request, <<"invalid_request">>},

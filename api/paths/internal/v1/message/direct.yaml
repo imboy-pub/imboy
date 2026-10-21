@@ -11,20 +11,16 @@ post:
   summary: 企业托管单聊消息（OA 直发 / 代发）
   description: |
     以应用身份或代本组织已映射人类用户发送单聊。企业托管消息**固定非端到端
-    加密**，审计事实永久保留。scope 由 sender_mode 动态决定：
-    application → messages:send；human → messages:send_as_human。
+    加密**，审计事实永久保留。sender_mode 区分应用身份与已映射的 Human 身份；两者均以 HMAC 签名调用。
     **as_user_id / actor_user_id 别名参数出现即拒**（INV-5）。
   operationId: internalMessageDirect
-  security:
-    - ibIntBearer: []
   parameters:
     - name: Idempotency-Key
       in: header
       required: true
       description: 幂等键（重复提交返回首次结果）
       schema: { type: string, minLength: 1 }
-  x-imboy-scope: dynamic:messages_send
-  x-imboy-scope-note: application → messages:send；human → messages:send_as_human
+  x-imboy-authentication: hmac
   x-imboy-rate-bucket: internal_write
   x-imboy-idempotency: required
   requestBody:
@@ -83,7 +79,7 @@ post:
               accepted_at: { type: string, description: 受理时间（ISO-8601） }
     '400': { $ref: '../../../../components/responses/internal/invalid_request.yaml' }
     '401': { $ref: '../../../../components/responses/internal/invalid_credential.yaml' }
-    '403': { $ref: '../../../../components/responses/internal/insufficient_scope.yaml' }
+    '403': { $ref: '../../../../components/responses/internal/organization_boundary_violation.yaml' }
     '404': { $ref: '../../../../components/responses/internal/resource_not_found.yaml' }
     '409': { $ref: '../../../../components/responses/internal/idempotency_conflict.yaml' }
     '422': { $ref: '../../../../components/responses/internal/identity_not_mapped.yaml' }

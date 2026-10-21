@@ -3,6 +3,7 @@
 -export([write_tx/7]).
 
 write_tx(Conn, Ctx, Op, Key, Digest, Id, Body) ->
+    ok = enterprise_internal_idempotency:serialize_tx(Conn, Ctx, Key),
     validate(Op, Body),
     Initial =
         case Op of
@@ -19,7 +20,14 @@ write_tx(Conn, Ctx, Op, Key, Digest, Id, Body) ->
         ok -> ok;
         {error, R} -> fail(enterprise_internal_boundary:error_code(R))
     end,
-    case enterprise_internal_idempotency:begin_tx(Conn, Ctx, Type, Key, Digest) of
+    Admission = enterprise_internal_idempotency:begin_tx(Conn, Ctx, Type, Key, Digest),
+    %% All resource locks follow the shared application idempotency key, including replay.
+    case Admission of
+        {ok, inserted} -> lock_workspace(Conn, Ctx, Ws);
+        {ok, replay, _} -> lock_workspace(Conn, Ctx, Ws);
+        _ -> ok
+    end,
+    case Admission of
         {ok, inserted} ->
             finish_tx(Conn, Ctx, Op, Id, Ws, Body, Type, Key);
         {ok, replay, #{response_code := Status, response_body := Encoded}} when
@@ -236,3 +244,9 @@ text(_, _, _) ->
 -spec fail(atom() | binary()) -> no_return().
 fail(C) when is_atom(C) -> fail(atom_to_binary(C, utf8));
 fail(C) -> throw({rollback, {internal_error_code, C}}).
+
+lock_workspace(Conn, Ctx, Ws) ->
+    case enterprise_internal_access_repo:workspace_tx(Conn, Ctx, Ws, write) of
+        ok -> ok;
+        {error, R} -> fail(enterprise_internal_boundary:error_code(R))
+    end.

@@ -29,6 +29,7 @@
 %%%
 
 -export([
+    serialize_tx/3,
     tablename/0,
     record_tx/7,
     find_tx/4,
@@ -200,4 +201,19 @@ reset_expired_tx(Conn, OrgId, AppId, IdempotencyKey, ResourceType, RequestDigest
             {error, not_found};
         {error, Reason} ->
             {error, Reason}
+    end.
+
+%% Transaction-scoped request arbitration precedes FK, App, Org and resource locks.
+%% App/key deliberately precedes organization resolution for directory bootstrap.
+serialize_tx(Conn, App, Key) when is_integer(App), App > 0, is_binary(Key) ->
+    LockKey = <<"imboy:internal:", (integer_to_binary(App))/binary, ":", Key/binary>>,
+    case
+        elib_pg:query(
+            Conn,
+            <<"SELECT pg_advisory_xact_lock(hashtextextended($1, 4096))">>,
+            [LockKey]
+        )
+    of
+        {ok, _} -> ok;
+        {error, Reason} -> {error, Reason}
     end.

@@ -38,7 +38,6 @@
 tablename() ->
     elib_pg_sql:public_tablename(<<"enterprise_external_identity">>).
 
-%% @doc mapping 命名空间 TSID（固定映射，镜像 agent_grant_pg 口径）。
 -spec next_id() -> pos_integer().
 next_id() ->
     elib_tsid:generate(enterprise_external_identity).

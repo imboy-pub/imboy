@@ -2,14 +2,12 @@ get:
   tags:
   - internal
   summary: 来源人员核对列表
-  description: 只读核对本来源数据。需有效 identities:read 与目标组织全域 Grant，并逐语句复核应用、凭据、来源启用及有效期。尚未建立组织的配置不在列表中，由可信
-    Admin 入口查看。零授权不放行。按外部 ID 的 UTF-8 字节序升序，page_size 1..100，未知或重复参数拒绝。 projection_status
+  description: 只读核对本来源数据。采用 HMAC 签名，并逐语句复核应用、凭据、来源启用及有效期。尚未建立组织的配置不在列表中，由可信
+    Admin 入口查看。来源无效或归属不符不放行。按外部 ID 的 UTF-8 字节序升序，page_size 1..100，未知或重复参数拒绝。 projection_status
     结合来源退役、任职状态、账号状态、实际组织成员及部门关系计算；linked 不表示已投影。只返回本来源在目标组织有任职来源记录的人员，不枚举全实例用户；user_id
     对退役或停用账号返回 null。
   operationId: internalSourcePersons
-  security:
-  - ibIntBearer: []
-  x-imboy-scope: identities:read
+  x-imboy-authentication: hmac
   x-imboy-rate-bucket: internal_read
   x-imboy-idempotency: not_required
   parameters:
@@ -31,7 +29,7 @@ get:
   - name: external_organization_id
     in: query
     required: true
-    description: 必须为本应用已同步且当前有组织全域 identities:read 授权的来源组织。
+    description: 必须为本应用已同步且当前启用、未过期的可信来源组织。
     schema: &id001
       type: string
       minLength: 1
@@ -168,7 +166,7 @@ get:
                     - invalid_credential
                     - credential_expired
     '403':
-      description: application_disabled / insufficient_scope
+      description: application_disabled / organization_boundary_violation
       content:
         application/json:
           schema:
@@ -180,7 +178,7 @@ get:
                   code:
                     enum:
                     - application_disabled
-                    - insufficient_scope
+                    - organization_boundary_violation
     '404':
       description: resource_not_found
       content:

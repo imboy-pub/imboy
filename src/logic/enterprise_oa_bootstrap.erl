@@ -1,31 +1,6 @@
 -module(enterprise_oa_bootstrap).
 
 -moduledoc "默认 OA 应用部署引导（M0，ADR 2026-10-12 定位修订 §4.4/§5）。".
-%%%
-% enterprise_oa_bootstrap 是 OA 免登「开箱即用」的部署引导（M0）：
-% 配置 oa_redirect_uri（sys.config 主通道，见下方配置段）后，启动期自动登记
-% 实例级默认 OA 应用（application_key 实例内全局唯一；organization_id 仅为
-% 业务归属）+ 生效 Grant（sso:exchange，按生效 scope 判定；幂等键带时间
-% 后缀以支持撤销后重授）。幂等：重复启动零副作用，只补缺口。
-%
-% 边界（与 scripts/seed_default_oa_application.escript 的分工）：
-%   - 本模块只做应用登记（app + allowlist + grant）——getAuthCode（App 侧
-%     签发）由此开箱即用；
-%   - credential 不在此签发：明文凭证不得进日志（EPGZ-05 §0 redaction
-%     红线），OA 侧 exchange 凭证统一走 escript 运维通道（ stdout 打印
-%     一次，由运维转交 OA 团队；脚本幂等，会对已登记应用补发凭证）。
-%
-% 失败语义：任何异常自吞 + error 日志，绝不阻断节点启动（OA 免登不可用
-% 由工作台入口静默隐藏兜底，比启动失败安全得多）。
-%
-% 配置通道（两层，app env 优先）：
-%   1. sys.config（config/sys.pro.config 的 {imboy, [...]}，权威配置面）：
-%      {oa_redirect_uri,    "https://oa.example.com/sso/imboy/callback"}  必填才触发
-%      {oa_application_key, <<"default-oa">>}                            可选
-%      {oa_name,            <<"办公">>}                                   可选
-%   2. OS env 兜底（部署 .env 注入的旧通道，兼容保留）：
-%      IMBOY_OA_REDIRECT_URI / IMBOY_OA_APPLICATION_KEY / IMBOY_OA_NAME
-%%%
 
 -export([maybe_seed/0]).
 
@@ -90,7 +65,6 @@ maybe_seed() ->
 seed_tx(Conn, Key, Name, RedirectUri) ->
     OrgId = resolve_org(Conn),
     AppId = ensure_application(Conn, OrgId, Key, Name, RedirectUri),
-    ensure_grant(Conn, OrgId, AppId),
     #{org_id => OrgId, application_id => AppId}.
 
 %% redirect_uri 未配置（两通道都无/空）⇒ undefined ⇒ 零动作。
@@ -155,43 +129,14 @@ ensure_application(Conn, OrgId, Key, Name, RedirectUri) ->
             end;
         {error, not_found} ->
             {ok, App} = enterprise_application_repo:create_tx(
-                Conn, OrgId, Key, Name, {null, [<<"sso:exchange">>]}, [RedirectUri]
+                Conn, OrgId, Key, Name, null, [RedirectUri]
             ),
             maps:get(<<"id">>, App);
         {error, Reason} ->
             erlang:error({application_lookup, Reason})
     end.
 
-%% Grant 幂等按**生效 scope**判定（V2.1 §5.2 语义）：sso:exchange 已生效即
-%% 跳过；生效集缺失（从未授予/被撤销/过期）才创建——幂等键只能防同刻重复，
-%% 不能把 revoked 行误当有效授权（否则撤销后引导永远跳过，exchange 403）。
--spec ensure_grant(any(), integer(), integer()) -> ok.
-ensure_grant(Conn, OrgId, AppId) ->
-    case enterprise_application_grant_repo:effective_scopes_tx(Conn, OrgId, AppId) of
-        {ok, Scopes} ->
-            case lists:member(<<"sso:exchange">>, Scopes) of
-                true ->
-                    ok;
-                false ->
-                    IdemKey = grant_idem_key(),
-                    {ok, _} = enterprise_application_grant_repo:create_tx(
-                        Conn, OrgId, AppId, #{
-                            scopes => [<<"sso:exchange">>],
-                            workspace_scope_kind => none,
-                            expires_at => <<"2099-12-31T23:59:59Z">>,
-                            idempotency_key => IdemKey
-                        }
-                    ),
-                    ok
-            end;
-        {error, Reason} ->
-            erlang:error({grant_lookup, Reason})
-    end.
-
 %% 幂等键带时间后缀：同 (org, app, key) 唯一约束下，撤销后重授需要新键。
--spec grant_idem_key() -> binary().
-grant_idem_key() ->
-    <<"bootstrap-default-oa-grant-", (integer_to_binary(os:system_time(millisecond)))/binary>>.
 
 %%%===================================================================
 %%% Env helpers

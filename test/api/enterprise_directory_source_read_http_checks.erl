@@ -3,27 +3,9 @@
 -include_lib("eunit/include/eunit.hrl").
 
 %% Uses the same migrated marker DB and real authenticated Cowboy as all 47 operations.
-run(#{conn := C, app_a := App} = S) ->
-    {ok, [#{<<"allowed_scopes">> := Original}]} = elib_pg:query(
-        C,
-        <<"SELECT allowed_scopes FROM enterprise_application WHERE id=$1">>,
-        [App]
-    ),
-    {ok, _} = elib_pg:query(
-        C,
-        <<"UPDATE enterprise_application SET allowed_scopes='[\"identities:read\"]' WHERE id=$1">>,
-        [App]
-    ),
-    try
-        read_only_success(S),
-        negatives(S)
-    after
-        {ok, _} = elib_pg:query(
-            C,
-            <<"UPDATE enterprise_application SET allowed_scopes=$2::jsonb WHERE id=$1">>,
-            [App, Original]
-        )
-    end.
+run(S) ->
+    read_only_success(S),
+    negatives(S).
 
 read_only_success(#{port := Port, cred_a := Credential}) ->
     Auth = intbe02_http_support:auth(Credential),
@@ -51,7 +33,7 @@ read_only_success(#{port := Port, cred_a := Credential}) ->
         ]
     ).
 
-negatives(#{port := Port, cred_a := Cred, cred_ro := ReadOnly}) ->
+negatives(#{port := Port, cred_a := Cred}) ->
     Auth = intbe02_http_support:auth(Cred),
     Base = <<"/api/internal/v1/directory/">>,
     Bad = [
@@ -67,12 +49,7 @@ negatives(#{port := Port, cred_a := Cred, cred_ro := ReadOnly}) ->
             Auth,
             <<"resource_not_found">>
         },
-        {<<Base/binary, "organizations?unknown=1">>, Auth, <<"invalid_request">>},
-        {
-            <<Base/binary, "organizations">>,
-            intbe02_http_support:auth(ReadOnly),
-            <<"insufficient_scope">>
-        }
+        {<<Base/binary, "organizations?unknown=1">>, Auth, <<"invalid_request">>}
     ],
     lists:foreach(
         fun({Path, Headers, Code}) ->

@@ -1,7 +1,7 @@
 -module(enterprise_directory_source_repo_tests).
 -include_lib("eunit/include/eunit.hrl").
 
-bootstrap_creates_only_org_owner_and_minimal_grant_test() ->
+bootstrap_creates_only_org_and_owner_test() ->
     bootstrap_mocks(fun() ->
         bootstrap_rows(<<"[\"identities:write\",\"identities:read\"]">>, true),
         meck:expect(organization_repo, create_tx, fun(conn, 99, <<"Org">>, <<"active">>) ->
@@ -11,25 +11,6 @@ bootstrap_creates_only_org_owner_and_minimal_grant_test() ->
             organization_member_repo,
             upsert_active_tx,
             fun(conn, 10, 99, <<"owner">>, null) -> {ok, changed, #{<<"role">> => <<"owner">>}} end
-        ),
-        meck:expect(
-            enterprise_application_grant_repo,
-            create_tx,
-            fun(
-                conn,
-                10,
-                1,
-                #{
-                    scopes := Scopes,
-                    workspace_scope_kind := none,
-                    workspace_ids := [],
-                    provisioning_source := <<"directory_bootstrap">>,
-                    expires_at := <<"2099-01-01T00:00:00Z">>
-                }
-            ) ->
-                ?assertEqual([<<"identities:write">>, <<"identities:read">>], Scopes),
-                {ok, #{<<"id">> => 30}}
-            end
         ),
         ?assertMatch({ok, #{<<"id">> := 10}}, bootstrap()),
         ?assertEqual(1, meck:num_calls(elib_pg, execute, '_')),
@@ -45,9 +26,6 @@ bootstrap_requires_precreation_capability_test() ->
     bootstrap_mocks(fun() ->
         bootstrap_rows(<<"[\"identities:write\"]">>, false),
         ?assertEqual({error, directory_bootstrap_not_authorized}, bootstrap()),
-        ?assertEqual(0, meck:num_calls(organization_repo, create_tx, '_')),
-        bootstrap_rows(<<"[\"identities:write\",\"messages:send\"]">>, true),
-        ?assertEqual({error, directory_only_application_required}, bootstrap()),
         ?assertEqual(0, meck:num_calls(organization_repo, create_tx, '_'))
     end).
 
@@ -61,7 +39,7 @@ bootstrap_owner_failure_aborts_before_grant_test() ->
             fun(conn, 10, 99, <<"owner">>, null) -> {error, owner_failed} end
         ),
         ?assertThrow({abort_tx, owner_failed}, bootstrap()),
-        ?assertEqual(0, meck:num_calls(enterprise_application_grant_repo, create_tx, '_'))
+        ?assertEqual(0, meck:num_calls(elib_pg, execute, '_'))
     end).
 
 bootstrap() ->
@@ -72,11 +50,11 @@ bootstrap() ->
         #{<<"external_id">> => <<"org">>, <<"name">> => <<"Org">>}
     ).
 
-bootstrap_rows(Scopes, Authorized) ->
+bootstrap_rows(_Scopes, Authorized) ->
     meck:expect(elib_pg, query, fun(conn, Sql, Params) ->
         case Params of
             [1, 2] ->
-                {ok, [#{<<"allowed_scopes">> => Scopes}]};
+                {ok, [#{<<"id">> => 1}]};
             [1, <<"org">>] ->
                 ?assertNotEqual(
                     nomatch, binary:match(Sql, <<"authorization_expires_at>clock_timestamp()">>)
@@ -100,14 +78,13 @@ bootstrap_rows(Scopes, Authorized) ->
     meck:expect(enterprise_internal_idempotency, request_digest, fun(_, _, _) ->
         {ok, <<"digest">>}
     end),
-    meck:expect(elib_pg, execute, fun(conn, _, [1, <<"org">>, 10, 30]) -> {ok, 1} end).
+    meck:expect(elib_pg, execute, fun(conn, _, [1, <<"org">>, 10]) -> {ok, 1} end).
 
 bootstrap_mocks(Fun) ->
     Modules = [
         elib_pg,
         organization_repo,
         organization_member_repo,
-        enterprise_application_grant_repo,
         enterprise_internal_idempotency
     ],
     lists:foreach(fun(Module) -> meck:new(Module, [non_strict, no_link]) end, Modules),
@@ -126,111 +103,53 @@ revoked_credential_and_source_lock_test() ->
             {ok, []}
         end),
         ?assertEqual(
-            {error, insufficient_scope},
+            {error, invalid_credential},
             enterprise_directory_source_repo:authorize_tx(
                 conn,
                 #{
                     application_id => 1,
                     credential_id => 2,
-                    organization_id => 10,
-                    granted_scopes => [<<"identities:write">>]
+                    organization_id => 10
                 }
             )
         ),
         ?assertEqual(
-            {error, insufficient_scope},
+            {error, invalid_credential},
             enterprise_directory_source_repo:authorize_tx(
                 conn,
                 #{
                     application_id => 1,
                     credential_id => 2,
-                    organization_id => 10,
-                    granted_scopes => [<<"messages:send">>]
+                    organization_id => 10
                 }
             )
         ),
         ?assertEqual(2, meck:num_calls(elib_pg, query, '_'))
     end).
 
-stale_middleware_grant_is_recomputed_test() ->
-    with_pg(fun() ->
-        meck:new(enterprise_application_grant_logic, [non_strict, no_link]),
-        try
-            authority_rows(),
-            meck:expect(
-                enterprise_application_grant_logic,
-                context_tx,
-                fun(conn, 10, 1, [<<"identities:write">>]) ->
-                    {ok, #{effective_scopes => []}}
-                end
-            ),
-            meck:expect(
-                enterprise_application_grant_logic,
-                require_org_tx,
-                fun(conn, #{organization_id := 10, granted_scopes := []}, <<"identities:write">>) ->
-                    {error, insufficient_scope}
-                end
-            ),
-            ?assertEqual(
-                {error, insufficient_scope},
-                enterprise_directory_source_repo:authorize_tx(
-                    conn,
-                    #{
-                        application_id => 1,
-                        credential_id => 2,
-                        organization_id => 10,
-                        granted_scopes => [<<"identities:write">>]
-                    }
-                )
-            )
-        after
-            meck:unload(enterprise_application_grant_logic)
-        end
-    end).
-
 target_org_and_locked_expiry_test() ->
     with_pg(fun() ->
-        meck:new(enterprise_application_grant_logic, [non_strict, no_link]),
-        try
-            authority_rows(),
-            meck:expect(
-                enterprise_application_grant_logic,
-                context_tx,
-                fun(conn, 10, 1, _) -> {ok, #{effective_scopes => [<<"identities:write">>]}} end
-            ),
-            meck:expect(
-                enterprise_application_grant_logic,
-                require_org_tx,
-                fun(conn, #{organization_id := 10}, <<"identities:write">>) -> ok end
-            ),
-            ?assertEqual(
-                {error, organization_boundary_violation},
-                enterprise_directory_source_repo:authorize_tx(
-                    conn,
-                    #{
-                        application_id => 1,
-                        credential_id => 2,
-                        organization_id => 10,
-                        granted_scopes => []
-                    }
-                )
+        meck:expect(elib_pg, query, fun
+            (conn, _, [1, 2]) ->
+                {ok, [#{<<"id">> => 1}]};
+            (conn, Sql, [10, 1, 2]) ->
+                ?assertNotEqual(
+                    nomatch, binary:match(Sql, <<"authorization_expires_at>clock_timestamp()">>)
+                ),
+                {ok, []}
+        end),
+        ?assertEqual(
+            {error, organization_boundary_violation},
+            enterprise_directory_source_repo:authorize_tx(
+                conn,
+                #{
+                    application_id => 1,
+                    credential_id => 2,
+                    organization_id => 10,
+                    authentication => hmac
+                }
             )
-        after
-            meck:unload(enterprise_application_grant_logic)
-        end
-    end).
-
-authority_rows() ->
-    meck:expect(elib_pg, query, fun
-        (conn, _, [1, 2]) ->
-            {ok, [#{<<"id">> => 1, <<"allowed_scopes">> => <<"[\"identities:write\"]">>}]};
-        (conn, Sql, [1, 10]) ->
-            ?assertNotEqual(nomatch, binary:match(Sql, <<"ORDER BY id FOR SHARE">>)),
-            {ok, [#{<<"id">> => 3}]};
-        (conn, Sql, [1, 10, [3]]) ->
-            ?assertNotEqual(nomatch, binary:match(Sql, <<"g.id=ANY($3::bigint[])">>)),
-            ?assertNotEqual(nomatch, binary:match(Sql, <<"g.expires_at>clock_timestamp()">>)),
-            {ok, [#{<<"allowed">> => false}]}
+        )
     end).
 
 source_cannot_claim_local_member_test() ->

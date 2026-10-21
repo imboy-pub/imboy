@@ -1,5 +1,5 @@
 -module(enterprise_directory_source_config_logic).
--moduledoc "Trusted instance Admin configuration. Handler must verify the Admin session and enterprise_business:write ACL before passing its server-derived adm_user_id. Machine credential requests must never invoke this surface. Public wrappers use elib_pg:with_tx; configure_source_tx callers must rollback abort_tx. Connection input uses the existing Admin application_key, name and redirect_uris atom keys and validation limits; directory scopes are server fixed.".
+-moduledoc "Trusted instance Admin configuration. Handler must verify the Admin session and enterprise_business:write ACL before passing its server-derived adm_user_id. Machine credential requests must never invoke this surface. Public wrappers use elib_pg:with_tx; configure_source_tx callers must rollback abort_tx. Connection input uses the existing Admin application_key, name and redirect_uris atom keys and validation limits.".
 -export([configure_source/4, configure_source_tx/5, create_connection/2]).
 
 configure_source(Actor, AppId, ExternalId, Spec) ->
@@ -23,7 +23,7 @@ create_connection(Input, #{adm_user_id := AdminId}) when is_integer(AdminId), Ad
                         null,
                         Key,
                         Name,
-                        {null, [<<"identities:write">>, <<"identities:read">>]},
+                        null,
                         Uris
                     )
                 ),
@@ -98,11 +98,11 @@ configure_source_tx(Conn, #{adm_user_id := AdminId}, AppId, ExternalId, Spec) wh
         ]),
         invalid_admin
     ),
-    App = one(
+    _App = one(
         elib_pg:query(
             Conn,
             <<
-                "SELECT id,allowed_scopes FROM enterprise_application"
+                "SELECT id FROM enterprise_application"
                 " WHERE id=$1 AND status='active' FOR UPDATE"
             >>,
             [AppId]
@@ -113,7 +113,6 @@ configure_source_tx(Conn, #{adm_user_id := AdminId}, AppId, ExternalId, Spec) wh
     _ =
         case maps:get(enabled, Spec) of
             true ->
-                scope_gate(maps:get(<<"allowed_scopes">>, App)),
                 must(enterprise_directory_source_repo:confirmed_owner_tx(Conn, Owner));
             false ->
                 ok
@@ -179,17 +178,6 @@ validate(
 validate(_) ->
     throw({abort_tx, invalid_source_configuration}).
 
-scope_gate(Value) ->
-    Scopes =
-        case Value of
-            Json when is_binary(Json) -> jsone:decode(Json);
-            List -> List
-        end,
-    case enterprise_directory_source_policy:allowed(Scopes) of
-        true -> ok;
-        false -> throw({abort_tx, directory_only_application_required})
-    end.
-
 configure(Conn, AdminId, AppId, ExternalId, #{expected_version := 0} = Spec, []) ->
     Row = one(
         elib_pg:query(
@@ -223,7 +211,6 @@ configure(Conn, AdminId, AppId, ExternalId, Spec, [Previous]) ->
         _ ->
             throw({abort_tx, configuration_conflict})
     end,
-    ensure_bootstrap_authorization(Conn, AppId, Spec, Previous),
     Row = one(
         elib_pg:query(
             Conn,
@@ -237,69 +224,10 @@ configure(Conn, AdminId, AppId, ExternalId, Spec, [Previous]) ->
         ),
         configuration_conflict
     ),
-    _ = disable_grant(Conn, AdminId, AppId, Spec, Row),
     _ = audit(Conn, AdminId, AppId, Row),
     {ok, Row};
 configure(_, _, _, _, _, _) ->
     throw({abort_tx, configuration_conflict}).
-
-ensure_bootstrap_authorization(
-    Conn,
-    AppId,
-    #{enabled := true, authorization_expires_at := Until},
-    #{<<"bootstrap_grant_id">> := GrantId, <<"organization_id">> := OrgId}
-) when is_integer(GrantId) ->
-    Row = one(
-        elib_pg:query(
-            Conn,
-            <<
-                "SELECT (status='active' AND valid_from<=clock_timestamp()"
-                " AND expires_at>clock_timestamp() AND expires_at >= $4::timestamptz) AS allowed"
-                " FROM enterprise_application_grant WHERE id=$1 AND application_id=$2"
-                " AND organization_id=$3 AND provisioning_source='directory_bootstrap' FOR UPDATE"
-            >>,
-            [GrantId, AppId, OrgId, Until]
-        ),
-        bootstrap_grant_conflict
-    ),
-    case Row of
-        #{<<"allowed">> := true} -> ok;
-        _ -> throw({abort_tx, bootstrap_grant_conflict})
-    end;
-ensure_bootstrap_authorization(_, _, _, _) ->
-    ok.
-
-disable_grant(
-    Conn, AdminId, AppId, #{enabled := false}, #{<<"bootstrap_grant_id">> := GrantId} = Row
-) when
-    is_integer(GrantId)
-->
-    OrgId = maps:get(<<"organization_id">>, Row),
-    Grants = must(
-        elib_pg:query(
-            Conn,
-            <<
-                "SELECT version,status FROM enterprise_application_grant"
-                " WHERE id=$1 AND application_id=$2 AND organization_id=$3"
-                " AND provisioning_source='directory_bootstrap' FOR UPDATE"
-            >>,
-            [GrantId, AppId, OrgId]
-        )
-    ),
-    case Grants of
-        [#{<<"status">> := <<"active">>, <<"version">> := Version}] ->
-            must(
-                enterprise_application_grant_repo:revoke_admin_tx(
-                    Conn, OrgId, AppId, GrantId, Version, AdminId
-                )
-            );
-        [#{<<"status">> := <<"revoked">>}] ->
-            ok;
-        _ ->
-            throw({abort_tx, bootstrap_grant_conflict})
-    end;
-disable_grant(_, _, _, _, _) ->
-    ok.
 
 params(AdminId, AppId, ExternalId, Spec) ->
     [

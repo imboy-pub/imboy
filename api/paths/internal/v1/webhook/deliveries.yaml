@@ -24,8 +24,6 @@ get:
     （versioned 迁移错误，DEC-INT23-COMPAT；不存在「带着 page 用游标」的
     过渡形态）。
   operationId: internalWebhookDeliveries
-  security:
-    - ibIntBearer: []
   parameters:
     - name: cursor
       in: query
@@ -47,7 +45,7 @@ get:
       required: false
       description: 按投递状态过滤（pending/retry/success/dead；参与游标绑定——换 status 的旧游标 400；success/dead 为终结态，仅终结态可 INT-13 重放）
       schema: { type: string, enum: [pending, retry, success, dead] }
-  x-imboy-scope: webhooks:manage
+  x-imboy-authentication: hmac
   x-imboy-rate-bucket: internal_read
   x-imboy-idempotency: not_required
   responses:
@@ -111,7 +109,7 @@ get:
                     enum: [invalid_request, cursor_required_v1]
                   message: { type: string }
     '401': { $ref: '../../../../components/responses/internal/invalid_credential.yaml' }
-    '403': { $ref: '../../../../components/responses/internal/insufficient_scope.yaml' }
+    '403': { $ref: '../../../../components/responses/internal/organization_boundary_violation.yaml' }
     '429': { $ref: '../../../../components/responses/internal/rate_limited.yaml' }
     '500': { $ref: '../../../../components/responses/internal/internal_error.yaml' }
     '503': { $ref: '../../../../components/responses/internal/security_gate_closed.yaml' }

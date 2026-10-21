@@ -75,7 +75,7 @@ directory_sync(#{conn := C, app_a := App} = S) ->
     ),
     intbe02_http_support:cover(<<"INT-43">>, ok).
 
-oa_login(#{conn := C, port := Port, app_sso := App, cred_sso := Credential}) ->
+oa_login(#{conn := C, port := Port, cred_sso := Credential}) ->
     Path = <<"/api/internal/v1/oa/login/tickets">>,
     Auth = intbe02_http_support:auth(Credential),
     Params = #{
@@ -90,24 +90,6 @@ oa_login(#{conn := C, port := Port, app_sso := App, cred_sso := Credential}) ->
         intbe02_http_support:http(Port, <<"POST">>, Path, Body, Headers)
     end,
     assert_error(Post(Params, #{}), <<"invalid_credential">>),
-    assert_error(Post(Params, Auth), <<"insufficient_scope">>),
-    ok = intbe02_http_support:sql_exec(
-        C,
-        <<
-            "UPDATE enterprise_application SET allowed_scopes=allowed_scopes || "
-            "'[\"oa:login:issue\"]'::jsonb WHERE id=$1"
-        >>,
-        [App]
-    ),
-    assert_error(Post(Params, Auth), <<"insufficient_scope">>),
-    ok = intbe02_http_support:sql_exec(
-        C,
-        <<
-            "INSERT INTO enterprise_application_grant_scope(grant_id,scope) "
-            "SELECT id,'oa:login:issue' FROM enterprise_application_grant WHERE application_id=$1"
-        >>,
-        [App]
-    ),
     Before = snapshot(C),
     assert_error(Post(Params#{<<"intent">> => <<"invalid">>}, Auth), <<"invalid_request">>),
     ?assertEqual(Before, snapshot(C)),
@@ -258,7 +240,9 @@ reject_audits(C, false) ->
 snapshot(C) ->
     {ok, Tables} = elib_pg:query(
         C,
-        <<"SELECT tablename FROM pg_tables WHERE schemaname='public' ORDER BY tablename">>,
+        %% Successful HMAC authentication consumes its nonce even if the later
+        %% business transaction rolls back. Only auth metadata is excluded.
+        <<"SELECT tablename FROM pg_tables WHERE schemaname='public' AND tablename<>'enterprise_internal_request_nonce' ORDER BY tablename">>,
         []
     ),
     [

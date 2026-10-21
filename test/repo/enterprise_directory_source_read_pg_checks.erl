@@ -8,7 +8,6 @@ exercise(Conn, Ctx) ->
     try
         setup(Conn, Ctx),
         query_checks(Conn, Ctx),
-        read_without_write(Conn, Ctx),
         actual_projection(Conn, Ctx),
         revocations(Conn, Ctx)
     after
@@ -17,14 +16,6 @@ exercise(Conn, Ctx) ->
 
 setup(Conn, Ctx) ->
     App = maps:get(application_id, Ctx),
-    exec(
-        Conn,
-        <<
-            "INSERT INTO enterprise_application_grant_scope(grant_id,scope)"
-            " VALUES (977200,'identities:read')"
-        >>,
-        []
-    ),
     {ok, _} = enterprise_source_person_repo:sync_tx(
         Conn,
         App,
@@ -106,31 +97,6 @@ query_checks(Conn, Ctx) ->
     ),
     ?assertEqual(Before, enterprise_directory_sync_pg_tests:all_rows_snapshot(Conn)).
 
-read_without_write(Conn, Ctx) ->
-    App = maps:get(application_id, Ctx),
-    {ok, [#{<<"allowed_scopes">> := Original}]} = elib_pg:query(
-        Conn,
-        <<"SELECT allowed_scopes FROM enterprise_application WHERE id=$1">>,
-        [App]
-    ),
-    exec(
-        Conn,
-        <<"UPDATE enterprise_application SET allowed_scopes='[\"identities:read\"]' WHERE id=$1">>,
-        [App]
-    ),
-    ?assertMatch(
-        {ok, _},
-        page(
-            Conn,
-            Ctx,
-            persons,
-            #{<<"external_organization_id">> => <<"fixture">>}
-        )
-    ),
-    exec(Conn, <<"UPDATE enterprise_application SET allowed_scopes=$2::jsonb WHERE id=$1">>, [
-        App, Original
-    ]).
-
 actual_projection(Conn, Ctx) ->
     Q = #{<<"external_organization_id">> => <<"fixture">>, <<"external_user_id">> => <<"pending">>},
     exec(Conn, <<"UPDATE \"user\" SET status=0 WHERE id=977002">>, []),
@@ -155,23 +121,6 @@ actual_projection(Conn, Ctx) ->
 
 revocations(Conn, Ctx) ->
     Query = #{<<"external_organization_id">> => <<"fixture">>},
-    exec(
-        Conn,
-        <<
-            "DELETE FROM enterprise_application_grant_scope"
-            " WHERE grant_id=977200 AND scope='identities:read'"
-        >>,
-        []
-    ),
-    ?assertEqual({error, resource_not_found}, page(Conn, Ctx, persons, Query)),
-    exec(
-        Conn,
-        <<
-            "INSERT INTO enterprise_application_grant_scope(grant_id,scope)"
-            " VALUES (977200,'identities:read')"
-        >>,
-        []
-    ),
     exec(
         Conn,
         <<

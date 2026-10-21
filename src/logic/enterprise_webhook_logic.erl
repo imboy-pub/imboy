@@ -566,10 +566,9 @@ ping_emit(Conn, Ctx, Principal, Url) ->
 %% **同时最多一条在途重放**——并发重放第二次命中 23505 → idempotency_conflict。
 -spec replay_tx(any(), map(), binary()) -> {ok, map()} | {error, {binary(), term()}}.
 replay_tx(Conn, Ctx, DeliveryId) when is_binary(DeliveryId), DeliveryId =/= <<>> ->
-    OrgId = maps:get(organization_id, Ctx),
     case enterprise_webhook_repo:find_delivery_tx(Conn, DeliveryId) of
         {ok, Delivery = #{<<"bot_id">> := BotId}} ->
-            case replay_owner_ok(Conn, OrgId, Delivery) of
+            case replay_owner_ok(Conn, Ctx, Delivery) of
                 true ->
                     replay_finalize(Conn, Ctx, Delivery, BotId);
                 false ->
@@ -588,41 +587,25 @@ replay_tx(Conn, Ctx, DeliveryId) when is_binary(DeliveryId), DeliveryId =/= <<>>
 replay_tx(_Conn, _Ctx, _DeliveryId) ->
     {error, {<<"invalid_request">>, invalid_delivery_id}}.
 
-%% ownership 双证：① 行的 ownership 列必须与本 ctx 的 org 一致（FULL-03 显式
-%% 归属，fallback 到 bot_id 前缀反查以兼容迁移 141 之前写入的既有行——backfill
-%% 已补齐，此处 fallback 只是防御）；② bot_id 前缀反查的 Application 必须属于
-%% 本 Org 且 active。
-replay_owner_ok(Conn, OrgId, Delivery) ->
-    case maps:get(<<"ewh_owner_organization_id">>, Delivery, undefined) of
-        RowOrg when is_integer(RowOrg), RowOrg =/= OrgId ->
-            false;
+%% Match both ledger attribution and the authenticated application. Shared bot
+%% principals never authorize another application's delivery.
+replay_owner_ok(Conn, #{organization_id := OrgId, application_id := AppId}, Delivery) ->
+    %% A principal may be shared by multiple applications. Never resolve the
+    %% caller from that principal: match the authenticated app and delivery ledger.
+    case
+        {
+            maps:get(<<"ewh_owner_organization_id">>, Delivery, undefined),
+            maps:get(<<"ewh_owner_application_id">>, Delivery, undefined),
+            enterprise_webhook_repo:principal_of_delivery(maps:get(<<"bot_id">>, Delivery))
+        }
+    of
+        {OrgId, AppId, {ok, Principal}} ->
+            case enterprise_application_repo:find_by_id_tx(Conn, AppId) of
+                {ok, #{<<"principal_user_id">> := Principal, <<"status">> := <<"active">>}} -> true;
+                _ -> false
+            end;
         _ ->
-            case
-                enterprise_webhook_repo:principal_of_delivery(
-                    maps:get(<<"bot_id">>, Delivery)
-                )
-            of
-                {ok, Principal} ->
-                    case
-                        enterprise_webhook_repo:find_application_by_principal_tx(
-                            Conn, OrgId, Principal
-                        )
-                    of
-                        {ok, App} -> replay_owner_app_ok(Delivery, App);
-                        _ -> false
-                    end;
-                error ->
-                    false
-            end
-    end.
-
-%% 行的 Application 归属必须与反查结果一致（防一行被写成「A 的 bot 前缀 + B 的
-%% ownership」——DB 守卫也拦，这里是读侧的第二道）。
-replay_owner_app_ok(Delivery, App) ->
-    case maps:get(<<"ewh_owner_application_id">>, Delivery, undefined) of
-        undefined -> true;
-        null -> true;
-        AppId -> AppId =:= maps:get(<<"id">>, App)
+            false
     end.
 
 replay_finalize(Conn, Ctx, Delivery, BotId) ->

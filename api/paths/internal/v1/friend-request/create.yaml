@@ -13,15 +13,13 @@ post:
     仅可对**同组织已映射用户**发起；发送者形态固定为 human（代 OA 用户）。
     平台没有自动通过/确认、删除好友、批量加好友的 API。
   operationId: internalFriendRequestCreate
-  security:
-    - ibIntBearer: []
   parameters:
     - name: Idempotency-Key
       in: header
       required: true
       description: 幂等键
       schema: { type: string, minLength: 1 }
-  x-imboy-scope: friend_requests:create
+  x-imboy-authentication: hmac
   x-imboy-rate-bucket: internal_write
   x-imboy-idempotency: required
   requestBody:
@@ -59,7 +57,7 @@ post:
                 description: 幂等重放时为 true
     '400': { $ref: '../../../../components/responses/internal/invalid_request.yaml' }
     '401': { $ref: '../../../../components/responses/internal/invalid_credential.yaml' }
-    '403': { $ref: '../../../../components/responses/internal/insufficient_scope.yaml' }
+    '403': { $ref: '../../../../components/responses/internal/organization_boundary_violation.yaml' }
     '404': { $ref: '../../../../components/responses/internal/resource_not_found.yaml' }
     '409': { $ref: '../../../../components/responses/internal/idempotency_conflict.yaml' }
     '422': { $ref: '../../../../components/responses/internal/identity_not_mapped.yaml' }

@@ -1,44 +1,24 @@
 -module(enterprise_directory_source_read_repo).
--moduledoc "Parameterized source reconciliation queries. Every statement checks live read grants, source, application and credential authority; no write permission is required.".
--export([organization_tx/3, organization_tx/4, page_tx/6]).
+-moduledoc "Parameterized source reconciliation queries. Every statement checks live source, application and credential authority; no write permission is required.".
+-export([organization_tx/3, page_tx/6]).
 
 %% This fragment has only static SQL. $1/$2 always come from authenticated context.
-authority() ->
-    authority(<<"'identities:read'">>).
-
-authority(ScopeSql) ->
+authority(_Ctx) ->
     <<
         " o.application_id=$1 AND o.enabled AND o.authorization_expires_at>clock_timestamp()"
-        " AND EXISTS (SELECT 1 FROM organization org WHERE org.id=o.organization_id AND org.status='active')"
-        " AND EXISTS (SELECT 1 FROM enterprise_application a"
-        " JOIN enterprise_application_credential c ON c.application_id=a.id"
-        " WHERE a.id=o.application_id AND c.id=$2 AND a.status='active' AND c.status='active'"
-        " AND (c.expires_at IS NULL OR c.expires_at>clock_timestamp())"
-        " AND a.allowed_scopes ? ",
-        ScopeSql/binary,
-        ")"
-        " AND EXISTS (SELECT 1 FROM enterprise_application_grant g"
-        " JOIN enterprise_application_grant_scope gs ON gs.grant_id=g.id"
-        " WHERE g.application_id=o.application_id AND g.organization_id=o.organization_id"
-        " AND g.workspace_scope_kind='none' AND g.status='active'"
-        " AND g.valid_from<=clock_timestamp() AND g.expires_at>clock_timestamp()"
-        " AND gs.scope=",
-        ScopeSql/binary,
-        ")"
+        " AND EXISTS(SELECT 1 FROM organization org WHERE org.id=o.organization_id AND org.status='active')"
+        " AND EXISTS(SELECT 1 FROM enterprise_application a JOIN enterprise_application_credential c "
+        "ON c.application_id=a.id WHERE a.id=o.application_id AND c.id=$2 AND a.status='active' "
+        "AND c.status='active' AND (c.expires_at IS NULL OR c.expires_at>clock_timestamp()))"
     >>.
 
 organization_tx(Conn, Ctx, External) ->
-    organization_tx(Conn, Ctx, External, <<"identities:read">>).
-
-organization_tx(Conn, Ctx, External, Scope) when
-    Scope =:= <<"identities:read">>; Scope =:= <<"members:write">>
-->
     case
         elib_pg:query(
             Conn,
             <<"SELECT o.organization_id FROM enterprise_directory_organization_source o WHERE ",
-                (authority(<<"$4">>))/binary, " AND o.external_organization_id=$3">>,
-            identity(Ctx) ++ [External, Scope]
+                (authority(Ctx))/binary, " AND o.external_organization_id=$3">>,
+            identity(Ctx) ++ [External]
         )
     of
         {ok, [Row]} -> {ok, Row};
@@ -52,7 +32,7 @@ page_tx(Conn, organizations, Ctx, _, After, Limit) ->
         <<
             "SELECT o.external_organization_id,o.organization_id,o.source_version,o.enabled"
             " FROM enterprise_directory_organization_source o WHERE ",
-            (authority())/binary,
+            (authority(Ctx))/binary,
             " AND ($3::text IS NULL OR o.external_organization_id COLLATE \"C\">$3 COLLATE \"C\")"
             " ORDER BY o.external_organization_id COLLATE \"C\" LIMIT $4"
         >>,
@@ -70,7 +50,7 @@ page_tx(Conn, departments, Ctx, Filter, After, Limit) ->
             " JOIN organization_department n ON n.organization_id=d.organization_id AND n.id=d.department_id"
             " LEFT JOIN enterprise_directory_department_source p ON p.application_id=d.application_id"
             " AND p.organization_id=d.organization_id AND p.department_id=n.parent_id WHERE ",
-            (authority())/binary,
+            (authority(Ctx))/binary,
             " AND o.external_organization_id=$3) rows"
             " WHERE ($4::text IS NULL OR external_department_id COLLATE \"C\">$4 COLLATE \"C\")"
             " AND ($6::text IS NULL OR external_department_id=$6) AND ($7::text IS NULL OR status=$7)"
@@ -82,7 +62,7 @@ page_tx(Conn, departments, Ctx, Filter, After, Limit) ->
 page_tx(Conn, persons, Ctx, Filter, After, Limit) ->
     elib_pg:query(
         Conn,
-        person_query(),
+        person_query(Ctx),
         query_params(Ctx, Filter, After, Limit) ++
             [
                 value(<<"external_user_id">>, Filter),
@@ -92,7 +72,7 @@ page_tx(Conn, persons, Ctx, Filter, After, Limit) ->
             ]
     ).
 
-person_query() ->
+person_query(Ctx) ->
     <<
         "SELECT * FROM (SELECT p.external_user_id,p.source_version,p.status AS source_status,"
         " CASE WHEN p.binding_retired THEN 'retired' WHEN p.user_id IS NULL THEN 'unlinked'"
@@ -106,7 +86,7 @@ person_query() ->
         " JOIN enterprise_directory_membership_source m USING(application_id,organization_id)"
         " JOIN enterprise_source_person p USING(application_id,external_user_id)"
         " LEFT JOIN \"user\" u ON u.id=p.user_id WHERE ",
-        (authority())/binary,
+        (authority(Ctx))/binary,
         " AND o.external_organization_id=$3) rows"
         " WHERE ($4::text IS NULL OR external_user_id COLLATE \"C\">$4 COLLATE \"C\")"
         " AND ($6::text IS NULL OR external_user_id=$6) AND ($7::text IS NULL OR source_status=$7)"

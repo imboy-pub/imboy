@@ -16,8 +16,6 @@ get:
     active 与 done 均可读。分页为 CURSOR-V2 签名游标（非法/过期/foreign 一律
     400，客户端从首页重启）。
   operationId: internalProjectList
-  security:
-    - ibIntBearer: []
   parameters:
     - name: workspace_id
       in: query
@@ -43,7 +41,7 @@ get:
       in: query
       description: 上一页返回的 next_cursor（opaque）
       schema: { type: string }
-  x-imboy-scope: projects:read
+  x-imboy-authentication: hmac
   x-imboy-rate-bucket: internal_read
   x-imboy-idempotency: not_required
   responses:
@@ -73,7 +71,7 @@ get:
               next_cursor: { type: [string, 'null'] }
     '400': { $ref: '../../../../components/responses/internal/invalid_request.yaml' }
     '401': { $ref: '../../../../components/responses/internal/invalid_credential.yaml' }
-    '403': { $ref: '../../../../components/responses/internal/insufficient_scope.yaml' }
+    '403': { $ref: '../../../../components/responses/internal/organization_boundary_violation.yaml' }
     '429': { $ref: '../../../../components/responses/internal/rate_limited.yaml' }
     '500': { $ref: '../../../../components/responses/internal/internal_error.yaml' }
     '503': { $ref: '../../../../components/responses/internal/security_gate_closed.yaml' }

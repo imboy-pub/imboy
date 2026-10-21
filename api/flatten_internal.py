@@ -103,7 +103,7 @@ def count_refs(node):
 
 def selfcheck(bundle):
     desc = bundle['info'].get('description', '')
-    for token in (f'{EXPECT_PATHS} 条', f'{EXPECT_OPS} 个操作', '20 枚举'):
+    for token in (f'{EXPECT_PATHS} 条', f'{EXPECT_OPS} 个操作', 'HMAC-SHA256', '仅使用 HMAC-SHA256 / HMAC-SHA512 请求签名'):
         if token not in desc:
             sys.exit('selfcheck: info.description missing frozen count token %r' % token)
     paths = bundle['paths']

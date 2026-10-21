@@ -107,10 +107,6 @@ page_members_tx(Conn, OrgId, AppId, AfterUid, Limit0) when is_integer(Limit0), L
         {error, Reason} -> {error, Reason}
     end.
 
-%% @doc 同 page_members_tx/5，但限定为该 Org 内某 Workspace 的 active 成员
-%% （Workspace Grant 过滤：workspace 必须属于本 Org，在 SQL 内以
-%% w.organization_id = $1 复合条件强制——跨 Org workspace 一行都不返回）。
-%% 同样用两条静态 SQL（见 page_members_tx/5 的 42P18 说明）。
 -spec page_members_in_workspace_tx(
     any(), integer(), integer(), integer(), undefined | integer(), pos_integer()
 ) ->

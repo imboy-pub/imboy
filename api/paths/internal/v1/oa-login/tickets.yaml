@@ -6,8 +6,6 @@ post:
     verifier，OA 只接收 S256 challenge。票据绑定应用、发行凭据、外部身份、意图与 challenge；60 秒单次消费，禁止日志及普通客户端存储。成功使用标准业务信封，错误沿用
     Internal error 信封。
   operationId: internalOaLoginIssue
-  security:
-  - ibIntBearer: []
   requestBody:
     required: true
     content:
@@ -77,11 +75,11 @@ post:
     '401':
       $ref: ../../../../components/responses/internal/invalid_credential.yaml
     '403':
-      $ref: ../../../../components/responses/internal/insufficient_scope.yaml
+      $ref: ../../../../components/responses/internal/organization_boundary_violation.yaml
     '429':
       $ref: ../../../../components/responses/internal/rate_limited.yaml
     '500':
       $ref: ../../../../components/responses/internal/internal_error.yaml
-  x-imboy-scope: oa:login:issue
+  x-imboy-authentication: hmac
   x-imboy-rate-bucket: internal_sso
   x-imboy-idempotency: not_required

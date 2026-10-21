@@ -54,7 +54,7 @@ init(Req0, State0) ->
 -spec create(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 create(<<"POST">>, Req0, State) ->
     Ctx = maps:get(enterprise_internal, State, #{}),
-    Params = elib_param:post(Req0),
+    Params = enterprise_internal_request:params(Req0),
     IdemKey = idempotency_key(Req0),
     case enterprise_internal_idempotency:request_digest(<<"POST">>, ?CREATE_PATH, Params) of
         {ok, Digest} -> create_tx(Req0, Ctx, IdemKey, Digest, Params);

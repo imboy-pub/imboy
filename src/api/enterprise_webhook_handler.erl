@@ -55,7 +55,7 @@ init(Req0, State0) ->
 -spec configure(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 configure(<<"PUT">>, Req0, State) ->
     Ctx0 = maps:get(enterprise_internal, State, #{}),
-    Params = elib_param:post(Req0),
+    Params = enterprise_internal_request:params(Req0),
     IdemKey = idempotency_key(Req0),
     case
         enterprise_internal_idempotency:request_digest(

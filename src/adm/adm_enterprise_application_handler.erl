@@ -1,28 +1,6 @@
 -module(adm_enterprise_application_handler).
 -compile([nowarn_deprecated_catch]).
 
-%%%
-% adm_enterprise_application_handler 是 **Admin（Human/Admin 会话）** 企业应用
-% 治理面（FULL-08 / plan-full §3.1、§3.2、§7）。
-%
-% 端点族 A-01..A-14 与 imboyadmin 分支 run/full-candidate-admin-20260921T101806Z
-% 的 src/modules/enterprise_apps/api/contracts.ts:ENDPOINTS 逐字对应（前端字符串
-% 被单测钉死，后端不得漂移）。
-%
-% 硬边界（plan 产品硬边界 §2、§6，本模块逐条落实）：
-%   * 鉴权**只**认 Admin Cookie 会话（adm_auth_middleware）+ adm_acl 权限门
-%     （读 enterprise_business:read / 写 enterprise_business:write）。
-%     **绝不接受** Application Credential —— OA 凭据走 /api/internal/v1/* 的
-%     独立鉴权链，两者不可互换。本模块不读、不解析、不签发任何 credential 请求头。
-%   * 只做平台鉴权、参数转换、错误分类；业务一律下沉
-%     enterprise_admin_governance_logic（handler → logic 单向依赖）。
-%   * 写面一律 CAS（expected_version）+ 审计留痕（logic 内完成）。
-%   * 读面**永不**回显 secret / digest / payload（logic 侧已投影，本模块不再加键）。
-%
-% TSID 传输：路径/查询里的 64-bit ID 按 string 接收；出站 ID 一律 string
-% （logic 已投影为 binary 数字串），防 JS 精度丢失。
-%%%
-
 -behavior(cowboy_rest).
 
 -export([init/2]).
@@ -57,20 +35,14 @@ dispatch(application_detail, Method, Req0, State) ->
     application_detail_action(Method, Req0, State);
 dispatch(application_status, Method, Req0, State) ->
     application_status_action(Method, Req0, State);
-dispatch(application_scopes, Method, Req0, State) ->
-    application_scopes_action(Method, Req0, State);
 dispatch(credentials, Method, Req0, State) ->
     credentials_action(Method, Req0, State);
 dispatch(credential_rotate, Method, Req0, State) ->
     credential_rotate_action(Method, Req0, State);
 dispatch(credential_revoke, Method, Req0, State) ->
     credential_revoke_action(Method, Req0, State);
-dispatch(grants, Method, Req0, State) ->
-    grants_action(Method, Req0, State);
 dispatch(identities, Method, Req0, State) ->
     identities_action(Method, Req0, State);
-dispatch(grant, Method, Req0, State) ->
-    grant_action(Method, Req0, State);
 dispatch(delivery_stats, Method, Req0, State) ->
     delivery_stats_action(Method, Req0, State);
 dispatch(deliveries, Method, Req0, State) ->
@@ -148,7 +120,7 @@ application_detail_action(_, Req0, _State) ->
     method_not_allowed(Req0).
 
 %% ===================================================================
-%% A-03 生命周期 / A-04 scopes（写，CAS）
+%% 应用生命周期（写，CAS）
 %% ===================================================================
 
 -spec application_status_action(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
@@ -185,41 +157,6 @@ application_status_action(<<"POST">>, Req0, State) ->
         end
     end);
 application_status_action(_, Req0, _State) ->
-    method_not_allowed(Req0).
-
--spec application_scopes_action(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
-application_scopes_action(<<"PUT">>, Req0, State) ->
-    with_write(Req0, State, fun(Req1) ->
-        case both_ids(Req1) of
-            error ->
-                bad_id(Req1);
-            {ok, OrgId, AppId} ->
-                case read_body_map(Req1) of
-                    {error, Msg} ->
-                        elib_response:error(Req1, Msg, ?ERR_BAD_REQUEST);
-                    {ok, Body} ->
-                        Scopes = bin_list(Body, <<"scopes">>),
-                        case int_field(Body, <<"expected_version">>) of
-                            undefined ->
-                                elib_response:error(
-                                    Req1, <<"缺少 expected_version"/utf8>>, ?ERR_BAD_REQUEST
-                                );
-                            Version ->
-                                case
-                                    enterprise_admin_governance_logic:set_scopes(
-                                        OrgId, AppId, Version, Scopes, actor(State)
-                                    )
-                                of
-                                    {ok, Applied} ->
-                                        elib_response:success(Req1, #{<<"scopes">> => Applied});
-                                    {error, Reason} ->
-                                        reply_error(Req1, Reason)
-                                end
-                        end
-                end
-        end
-    end);
-application_scopes_action(_, Req0, _State) ->
     method_not_allowed(Req0).
 
 %% ===================================================================
@@ -313,84 +250,6 @@ credential_revoke_action(_, Req0, _State) ->
 %% ===================================================================
 %% A-09 列表 / A-10 签发 / A-11 CAS 增删
 %% ===================================================================
-
--spec grants_action(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
-grants_action(<<"GET">>, Req0, State) ->
-    with_read(Req0, State, fun(Req1) ->
-        case both_ids(Req1) of
-            error ->
-                bad_id(Req1);
-            {ok, OrgId, AppId} ->
-                case enterprise_admin_governance_logic:list_grants(OrgId, AppId) of
-                    {ok, Rows} -> elib_response:success(Req1, Rows);
-                    {error, Reason} -> reply_error(Req1, Reason)
-                end
-        end
-    end);
-grants_action(<<"POST">>, Req0, State) ->
-    with_write(Req0, State, fun(Req1) ->
-        case both_ids(Req1) of
-            error ->
-                bad_id(Req1);
-            {ok, OrgId, AppId} ->
-                case read_body_map(Req1) of
-                    {error, Msg} ->
-                        elib_response:error(Req1, Msg, ?ERR_BAD_REQUEST);
-                    {ok, Body} ->
-                        case int_field(Body, <<"expected_version">>) of
-                            undefined ->
-                                elib_response:error(
-                                    Req1, <<"缺少 expected_version"/utf8>>, ?ERR_BAD_REQUEST
-                                );
-                            Version ->
-                                Input = grant_input(Body),
-                                case
-                                    enterprise_admin_governance_logic:issue_grant(
-                                        OrgId, AppId, Input, Version, actor(State)
-                                    )
-                                of
-                                    {ok, Grant} -> elib_response:success(Req1, Grant);
-                                    {error, Reason} -> reply_error(Req1, Reason)
-                                end
-                        end
-                end
-        end
-    end);
-grants_action(_, Req0, _State) ->
-    method_not_allowed(Req0).
-
--spec grant_action(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
-grant_action(<<"PATCH">>, Req0, State) ->
-    with_write(Req0, State, fun(Req1) ->
-        case grant_ids(Req1) of
-            error ->
-                bad_id(Req1);
-            {ok, OrgId, AppId, GrantId} ->
-                case read_body_map(Req1) of
-                    {error, Msg} ->
-                        elib_response:error(Req1, Msg, ?ERR_BAD_REQUEST);
-                    {ok, Body} ->
-                        case int_field(Body, <<"expected_version">>) of
-                            undefined ->
-                                elib_response:error(
-                                    Req1, <<"缺少 expected_version"/utf8>>, ?ERR_BAD_REQUEST
-                                );
-                            Version ->
-                                Patch = grant_patch(Body),
-                                case
-                                    enterprise_admin_governance_logic:patch_grant(
-                                        OrgId, AppId, GrantId, Version, Patch, actor(State)
-                                    )
-                                of
-                                    ok -> elib_response:success(Req1, #{<<"ok">> => true});
-                                    {error, Reason} -> reply_error(Req1, Reason)
-                                end
-                        end
-                end
-        end
-    end);
-grant_action(_, Req0, _State) ->
-    method_not_allowed(Req0).
 
 %% ===================================================================
 %% A-16 身份映射列表 / A-17 绑定 / A-18 解绑
@@ -577,13 +436,6 @@ credential_ids(Req) ->
         _ -> error
     end.
 
--spec grant_ids(cowboy_req:req()) -> {ok, integer(), integer(), integer()} | error.
-grant_ids(Req) ->
-    case {both_ids(Req), parse_id(Req, grant_id)} of
-        {{ok, OrgId, AppId}, {ok, GrantId}} -> {ok, OrgId, AppId, GrantId};
-        _ -> error
-    end.
-
 %% @doc 读 JSON body（空 body = #{}）；非 JSON 对象 → 400。
 -spec read_body_map(cowboy_req:req()) -> {ok, map()} | {error, binary()}.
 read_body_map(Req0) ->
@@ -632,61 +484,6 @@ int_field(Body, Key) ->
 -spec compact_opts([{atom(), binary()}]) -> map().
 compact_opts(Pairs) ->
     maps:from_list([{K, V} || {K, V} <- Pairs, is_binary(V), V =/= <<>>]).
-
--spec grant_input(map()) -> map().
-grant_input(Body) ->
-    Input0 = #{
-        scopes => bin_list(Body, <<"scopes">>),
-        workspace_ids => [I || I <- [to_int(W) || W <- bin_list(Body, <<"workspace_ids">>)], I > 0]
-    },
-    Input1 =
-        case bin_field(Body, <<"workspace_scope_kind">>) of
-            <<"explicit">> -> Input0#{workspace_scope_kind => explicit};
-            <<"none">> -> Input0#{workspace_scope_kind => none};
-            _ -> Input0#{workspace_scope_kind => none}
-        end,
-    Input2 =
-        case bin_field(Body, <<"valid_from">>) of
-            <<>> -> Input1;
-            VF -> Input1#{valid_from => VF}
-        end,
-    case bin_field(Body, <<"valid_to">>) of
-        <<>> -> Input2;
-        VT -> Input2#{valid_to => VT}
-    end.
-
--spec grant_patch(map()) -> map().
-grant_patch(Body) ->
-    P0 = #{},
-    P1 =
-        case maps:get(<<"revoke">>, Body, undefined) of
-            true -> P0#{revoke => true};
-            _ -> P0
-        end,
-    P2 =
-        case maps:get(<<"scopes">>, Body, undefined) of
-            L when is_list(L) -> P1#{scopes => [S || S <- L, is_binary(S)]};
-            _ -> P1
-        end,
-    P3 =
-        case bin_field(Body, <<"workspace_scope_kind">>) of
-            <<"none">> -> P2#{workspace_scope_kind => none};
-            <<"explicit">> -> P2#{workspace_scope_kind => explicit};
-            _ -> P2
-        end,
-    case maps:get(<<"workspace_ids">>, Body, undefined) of
-        L2 when is_list(L2) ->
-            P3#{workspace_ids => [I || I <- [to_int(W) || W <- L2, is_binary(W)], I > 0]};
-        _ ->
-            P3
-    end.
-
--spec to_int(binary()) -> integer().
-to_int(V) ->
-    case catch binary_to_integer(string:trim(V)) of
-        I when is_integer(I) -> I;
-        _ -> 0
-    end.
 
 %% ===================================================================
 %% 内部：执行者 / 错误
@@ -743,10 +540,6 @@ error_map(key_conflict) ->
     {?ERR_CONFLICT, <<"同内容的授权已存在（幂等键冲突）"/utf8>>};
 error_map(invalid_status) ->
     {?ERR_BAD_REQUEST, <<"非法生命周期状态"/utf8>>};
-error_map(invalid_scope) ->
-    {?ERR_BAD_REQUEST, <<"未登记的 scope"/utf8>>};
-error_map(empty_scopes) ->
-    {?ERR_BAD_REQUEST, <<"scope 不能为空"/utf8>>};
 error_map(invalid_workspaces) ->
     {?ERR_BAD_REQUEST, <<"非法的 workspace 授权组合"/utf8>>};
 error_map(workspace_not_found) ->

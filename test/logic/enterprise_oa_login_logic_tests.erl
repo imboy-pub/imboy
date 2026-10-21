@@ -27,16 +27,6 @@ issue_input_test() ->
             P#{<<"code_challenge">> => <<"x">>}
         ]
     ).
-no_implicit_scope_test() ->
-    ?assertEqual(
-        {error, insufficient_scope},
-        enterprise_internal_scope:authorize(
-            <<"oa:login:issue">>, [<<"identities:write">>, <<"sso:exchange">>]
-        )
-    ),
-    ?assertEqual(
-        ok, enterprise_internal_scope:authorize(<<"oa:login:issue">>, [<<"oa:login:issue">>])
-    ).
 
 login_start_origin_test() ->
     Old = application:get_env(imboy, oa_login_start_uris),

@@ -17,15 +17,13 @@ post:
     直传文件，再调 /files/confirm 确认入库。mime 白名单与大小上限取
     min(全局, 应用策略)；confirm 以 HEAD 真实值复核。
   operationId: internalFilePresign
-  security:
-    - ibIntBearer: []
   parameters:
     - name: Idempotency-Key
       in: header
       required: true
       description: 幂等键
       schema: { type: string, minLength: 1 }
-  x-imboy-scope: files:write
+  x-imboy-authentication: hmac
   x-imboy-rate-bucket: internal_write
   x-imboy-idempotency: required
   requestBody:
@@ -122,7 +120,7 @@ post:
           schema: { $ref: '../../../../components/schemas/Envelope.yaml' }
     '400': { $ref: '../../../../components/responses/internal/invalid_request.yaml' }
     '401': { $ref: '../../../../components/responses/internal/invalid_credential.yaml' }
-    '403': { $ref: '../../../../components/responses/internal/insufficient_scope.yaml' }
+    '403': { $ref: '../../../../components/responses/internal/organization_boundary_violation.yaml' }
     '409': { $ref: '../../../../components/responses/internal/idempotency_conflict.yaml' }
     '429': { $ref: '../../../../components/responses/internal/rate_limited.yaml' }
     '500': { $ref: '../../../../components/responses/internal/internal_error.yaml' }

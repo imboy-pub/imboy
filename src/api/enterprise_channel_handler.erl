@@ -1,22 +1,6 @@
 -module(enterprise_channel_handler).
 
 -moduledoc "V2.1 Internal 资源只读面 INT-30/31 的 HTTP 壳 —— Cowboy 路由由 A0 接线，不进 imboy_router。".
-%%%
-% enterprise_channel_handler 是 V2.1 Internal 资源只读面 INT-30/31 的
-% HTTP 壳（plan §6.1 冻结名 planned -> 落地；Cowboy 路由由 A0 接线，本
-% 模块不进 imboy_router——见 SHARED_PATH_PROPOSAL）。
-%
-% 路由（A0 接线形态）：
-%   GET /api/internal/v1/channels               -> #{action => channels}
-%   GET /api/internal/v1/channels/:channel_id   -> #{action => channel}
-% —— 必须经 enterprise_internal_middleware（scope channels:read →
-%    rate internal_read fail-closed）。写面 INT-40..42 使用 channels:write、必需幂等键及同事务应用审计。
-%
-% INT-30 边界（kind=workspace，W 取自 query）：workspace_id **必填**；
-% scope=workspace AND status=1 过滤在 repo SQL 内强制。
-% INT-31：channel 行 Org 定位（404 同体，个人频道/已停用频道同不可见）
-% → Grant 覆盖 channel 所属 W（403）。
-%%%
 
 -behavior(cowboy_rest).
 
@@ -145,7 +129,7 @@ with_boundary(Conn, Ctx, RouteId, WorkspaceId, Fun) ->
         ok ->
             Fun();
         {error, Code} ->
-            {error, {enterprise_internal_boundary:error_code(Code), grant_boundary}}
+            {error, {enterprise_internal_boundary:error_code(Code), resource_attribution}}
     end.
 
 -spec binding_tsid(map(), atom()) -> integer().

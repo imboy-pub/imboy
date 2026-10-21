@@ -1,21 +1,6 @@
 -module(enterprise_application_handler).
 
 -moduledoc "企业 Application 自检端点壳（EPGZ-08 W4 INT-01）—— 路由经 Router lease 登记。".
-%%%
-% EPGZ-08 W4 INT-01 企业 Application 自检端点壳。
-%
-% 路由（A0 W4 经 Router lease 登记）：
-%   GET /api/internal/v1/application -> {Path, enterprise_application_handler,
-%       #{action => self_info}}
-% —— 必须经 enterprise_internal_middleware（A2 认证链：credential →
-%    active/expiry → application active → organization active →
-%    scope application:read → rate internal_read fail-closed）。
-%
-% 语义：返回本凭证所属 application 的 org/app/status/granted_scopes 与
-% 凭证清单（prefix 级，**不含 digest/secret**——A2 list_credentials 只选
-% id/credential_prefix/status/expires_at/last_used_at/revoked_at）。只读，
-% 无幂等键要求（manifest INT-01 idempotency=not_required）。
-%%%
 
 -behavior(cowboy_rest).
 
@@ -48,9 +33,13 @@ self_info(<<"GET">>, Req0, State) ->
     Ctx = maps:get(enterprise_internal, State, #{}),
     OrgId = maps:get(organization_id, Ctx, undefined),
     AppId = maps:get(application_id, Ctx, undefined),
-    case {is_integer(OrgId), is_integer(AppId)} of
+    case {is_integer(OrgId) orelse OrgId =:= null, is_integer(AppId)} of
         {true, true} ->
-            case enterprise_internal_ops:application_status(OrgId, AppId) of
+            case
+                enterprise_internal_ops:application_status(
+                    maps:get(application_organization_id, Ctx, OrgId), AppId
+                )
+            of
                 {ok, Status} ->
                     reply_json(Req0, 200, self_payload(Status, Ctx));
                 {error, Reason} ->
@@ -73,8 +62,8 @@ self_payload(Status, Ctx) ->
         <<"application_id">> => maps:get(application_id, Ctx),
         <<"credential_id">> => maps:get(credential_id, Ctx, null),
         <<"application_key">> => maps:get(application_key, Ctx, null),
+        <<"authentication">> => <<"hmac">>,
         <<"application">> => atom_map_to_bin(App),
-        <<"granted_scopes">> => maps:get(granted_scopes, Ctx, maps:get(granted_scopes, Status, [])),
         <<"credentials">> => [atom_map_to_bin(C) || C <- maps:get(credentials, Status, [])]
     }.
 

@@ -1,57 +1,5 @@
 -module(enterprise_oa_sso_logic).
 
-%%%
-% enterprise_oa_sso_logic 是 OA 一次性 SSO code 的签发（HUMAN-SSO-01）与
-% 原子交换（INT-14）logic 层（EPGZ-05）。
-%
-% 权威合同：docs/architecture/2026-09-21-epgz05-oa-sso-contract.md（W1 冻结）
-% + 2026-10-12 定位修订 ADR（organization 是业务对象，非租户；授权边界 =
-% 部署实例）：docs/architecture/2026-10-12-organization-positioning-amendment.md。
-%
-% HUMAN-SSO-01 POST /api/v1/oa/sso/code（Human JWT，handler=enterprise_oa_sso_handler）
-%   判定顺序（定位修订后，fail-closed）：
-%     JWT 身份 -> 请求字段语法（application_key/redirect_uri/nonce；
-%       organization_id 容忍并忽略——兼容旧客户端）
-%     -> application_key 实例内全局解析且 application active（key 全局唯一，
-%        迁移 00000171 uq_ea_key_global）
-%     -> redirect_uri 对 allowed_redirect_uris 逐字节 exact match
-%       （lists:member/2，EPGZ-01R；空 allowlist 一律拒绝）
-%     -> 同事务复核 active Human 并持有账号 FOR SHARE 到提交
-%     -> 签发：oa_sso_ + 32B CSPRNG base64url（≥256bit），60s 固定 TTL
-%   identity mapping 不再是签发前置（mapping 可选化：exchange 缺映射时
-%   回退 external_user_id = user_id 字符串形态，ADR §4.4）。
-%   重复签发不幂等不互斥：每个 code 独立 TTL、独立单次消费（NEG-H07）。
-%
-% INT-14 POST /api/internal/v1/oa/sso/exchange（Application Credential，
-% A2 认证链前置，handler=enterprise_oa_sso_exchange_handler）
-%   判定顺序（定位修订后，fail-closed）：
-%     A2 认证链（credential/app/scope=sso:exchange/rate=internal_sso；
-%       organization 不再是拒绝条件——ctx.organization_id 只是 credential
-%       所属 application 的业务归属，供 grant 寻址与审计）
-%     -> 请求字段语法（code 前缀/长度/字符集；redirect_uri https/禁 fragment；
-%        nonce 长度/字符集）                      => invalid_request
-%     -> code_digest 等值查找                      => 未命中 resource_not_found
-%     -> expires_at > now（find_by_digest_tx 的 expired 派生列）
-%     -> consumed_at IS NULL                       => 重放 resource_not_found
-%     -> 绑定校验（app/redirect exact/nonce digest 常时比较）
-%                                                  => 任一不符 resource_not_found
-%       （统一不透明拒绝：不给猜测 code 的对端提供存在性/生命周期/绑定 oracle）
-%     -> CAS 单次消费（enterprise_oa_sso_code_repo:consume_tx/2）
-%     -> 同事务解析 identity mapping（可选；缺失回退 user_id 字符串；
-%        账号须仍为 active Human——非 active → identity_not_mapped，
-%        账号级 kill-switch，账号级事实而非 org 成员事实）
-%   错误形态：stable 二进制码（enterprise_internal_error 信封承载）；
-%   human 面错误形态：{error, {Code :: integer(), Msg :: binary()}}（整数信封）。
-%
-% 交换失败回滚契约（合同 §5 / REQUIRED_AUDIT）：CAS、identity 与审计同事务；
-% 任一步失败时调用方必须使事务回滚（code 停留 issued，TTL 内修复后可重试）。
-% 池化入口 exchange/2 以 throw({rollback, ...}) 强制回滚；直接使用
-% exchange_tx/3 的调用方（测试）须以 SAVEPOINT 回滚到消费前。
-%
-% redaction 红线（合同 §0/§2）：code/nonce 明文零落库、零日志——日志只含
-% stage 与错误码，不含 code/nonce/Authorization 值。
-%%%
-
 -export([
     issue_code/2,
     issue_code_tx/3,
@@ -205,10 +153,7 @@ exchange_authorized_tx(Conn, Ctx, Params) ->
                     %% code/identity 等锁可以跨凭证截止时间，成功前再次复核。
                     case credential_current_tx(Conn, maps:get(credential_id, Ctx)) of
                         ok ->
-                            case scope_current_tx(Conn, Ctx) of
-                                ok -> {ok, Payload};
-                                ScopeError -> ScopeError
-                            end;
+                            {ok, Payload};
                         Error ->
                             Error
                     end;
@@ -219,11 +164,16 @@ exchange_authorized_tx(Conn, Ctx, Params) ->
             Error
     end.
 
-lock_authority_tx(Conn, #{
-    organization_id := OrgId, application_id := AppId, credential_id := CredId
-}) ->
+lock_authority_tx(
+    Conn,
+    #{
+        organization_id := OrgId, application_id := AppId, credential_id := CredId
+    } = Ctx
+) ->
     case
-        enterprise_application_credential_repo:authority_for_share_tx(Conn, OrgId, AppId, CredId)
+        enterprise_application_credential_repo:authority_for_share_tx(
+            Conn, maps:get(application_organization_id, Ctx, OrgId), AppId, CredId
+        )
     of
         {ok, #{<<"credential_status">> := Status}} when Status =/= <<"active">> ->
             {error, <<"invalid_credential">>};
@@ -232,11 +182,7 @@ lock_authority_tx(Conn, #{
                 ok ->
                     case authority_status(Row) of
                         ok ->
-                            scope_result(
-                                enterprise_application_grant_repo:scope_tx(
-                                    Conn, OrgId, AppId, <<"sso:exchange">>
-                                )
-                            );
+                            ok;
                         StatusError ->
                             StatusError
                     end;
@@ -257,20 +203,6 @@ authority_status(_) ->
     %% organization_status 不再是拒绝条件（定位修订：org 是业务对象，
     %% 非授权边界）；authority_for_share_tx 的 org JOIN 仅作寻址。
     ok.
-
-scope_current_tx(Conn, Ctx) ->
-    scope_result(
-        enterprise_application_grant_repo:scope_tx(
-            Conn,
-            maps:get(organization_id, Ctx),
-            maps:get(application_id, Ctx),
-            <<"sso:exchange">>
-        )
-    ).
-
-scope_result({ok, true}) -> ok;
-scope_result({ok, false}) -> {error, <<"insufficient_scope">>};
-scope_result({error, _}) -> {error, <<"security_gate_closed">>}.
 
 credential_current_tx(Conn, CredId) ->
     case enterprise_application_credential_repo:expired_tx(Conn, CredId) of
@@ -475,7 +407,7 @@ resolve_application_tx(Conn, ApplicationKey) ->
 applications_by_key_tx(Conn, ApplicationKey) ->
     Sql = <<
         "SELECT id, organization_id, principal_user_id, application_key, name, status,"
-        " allowed_scopes, allowed_redirect_uris, created_at, updated_at"
+        " allowed_redirect_uris, created_at, updated_at"
         " FROM enterprise_application WHERE application_key = $1"
     >>,
     case elib_pg:query(Conn, Sql, [ApplicationKey]) of

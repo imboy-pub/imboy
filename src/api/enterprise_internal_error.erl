@@ -9,7 +9,7 @@
 %   * 错误码只取 manifest stable_error_codes 的 16 个 snake_case 二进制，
 %     不新造码；未知码按 internal_error 处理（fail-safe）。
 %   * HTTP 状态映射固定：401 invalid_credential/credential_expired；
-%     403 application_disabled/organization_disabled/insufficient_scope/
+%     403 application_disabled/organization_disabled/organization_boundary_violation/
 %     organization_boundary_violation；404 resource_not_found；
 %     409 idempotency_conflict；422 identity_not_mapped；429 rate_limited；
 %     503 security_gate_closed（限流配置缺失等 fail-closed 门）；
@@ -36,7 +36,6 @@
     <<"credential_expired">>,
     <<"application_disabled">>,
     <<"organization_disabled">>,
-    <<"insufficient_scope">>,
     <<"resource_not_found">>,
     <<"identity_not_mapped">>,
     <<"organization_boundary_violation">>,
@@ -55,7 +54,6 @@
     <<"credential_expired">> => 401,
     <<"application_disabled">> => 403,
     <<"organization_disabled">> => 403,
-    <<"insufficient_scope">> => 403,
     <<"resource_not_found">> => 404,
     <<"identity_not_mapped">> => 422,
     <<"organization_boundary_violation">> => 403,
@@ -74,7 +72,6 @@
     <<"credential_expired">> => <<"credential expired">>,
     <<"application_disabled">> => <<"application disabled">>,
     <<"organization_disabled">> => <<"organization disabled">>,
-    <<"insufficient_scope">> => <<"insufficient scope">>,
     <<"resource_not_found">> => <<"resource not found">>,
     <<"identity_not_mapped">> => <<"identity not mapped">>,
     <<"organization_boundary_violation">> => <<"organization boundary violation">>,

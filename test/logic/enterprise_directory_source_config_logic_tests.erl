@@ -32,8 +32,7 @@ connection_is_instance_directory_only_test() ->
             )
         ),
         ?assertEqual(1, meck:num_calls(enterprise_application_repo, create_tx, '_')),
-        ?assertEqual(1, meck:num_calls(enterprise_audit_event_repo, append_tx, '_')),
-        ?assertEqual(0, meck:num_calls(enterprise_application_grant_repo, '_', '_'))
+        ?assertEqual(1, meck:num_calls(enterprise_audit_event_repo, append_tx, '_'))
     end).
 
 connection_rejects_untrusted_fields_test() ->
@@ -126,7 +125,7 @@ connection_mocks() ->
             null,
             <<"directory-app">>,
             <<"Directory">>,
-            {null, [<<"identities:write">>, <<"identities:read">>]},
+            null,
             [<<"https://example.test/callback">>]
         ) ->
             {ok, #{<<"id">> => 1, <<"organization_id">> => null}}
@@ -182,22 +181,6 @@ trusted_configuration_is_audited_test() ->
         ?assertEqual(1, meck:num_calls(enterprise_audit_event_repo, append_tx, '_'))
     end).
 
-wide_application_cannot_enable_source_test() ->
-    mocks(fun() ->
-        rows([], row(), <<"[\"identities:write\",\"messages:send\"]">>),
-        ?assertThrow(
-            {abort_tx, directory_only_application_required},
-            enterprise_directory_source_config_logic:configure_source_tx(
-                conn,
-                #{adm_user_id => 7},
-                1,
-                <<"org">>,
-                spec()
-            )
-        ),
-        ?assertEqual(0, meck:num_calls(enterprise_audit_event_repo, append_tx, '_'))
-    end).
-
 configuration_cas_failure_test() ->
     mocks(fun() ->
         rows([row()], row(), <<"[\"identities:write\"]">>),
@@ -227,59 +210,6 @@ configuration_audit_failure_aborts_test() ->
         )
     end).
 
-disable_revokes_only_linked_bootstrap_grant_test() ->
-    mocks(fun() ->
-        Previous = (row())#{<<"organization_id">> => 10, <<"bootstrap_grant_id">> => 30},
-        rows([Previous], Previous#{<<"enabled">> => false}, <<"[\"identities:write\"]">>),
-        meck:expect(
-            enterprise_application_grant_repo,
-            revoke_admin_tx,
-            fun(conn, 10, 1, 30, 2, 7) -> ok end
-        ),
-        ?assertMatch(
-            {ok, _},
-            enterprise_directory_source_config_logic:configure_source_tx(
-                conn,
-                #{adm_user_id => 7},
-                1,
-                <<"org">>,
-                (spec())#{expected_version => 1, enabled => false}
-            )
-        ),
-        ?assertEqual(1, meck:num_calls(enterprise_application_grant_repo, revoke_admin_tx, '_'))
-    end).
-
-enable_requires_existing_bootstrap_authorization_test() ->
-    mocks(fun() ->
-        Previous = (row())#{<<"organization_id">> => 10, <<"bootstrap_grant_id">> => 30},
-        lists:foreach(
-            fun(Allowed) ->
-                rows([Previous], Previous, <<"[\"identities:write\"]">>, Allowed),
-                case Allowed of
-                    true ->
-                        ?assertMatch(
-                            {ok, _},
-                            enterprise_directory_source_config_logic:configure_source_tx(
-                                conn, #{adm_user_id => 7}, 1, <<"org">>, (spec())#{
-                                    expected_version => 1
-                                }
-                            )
-                        );
-                    false ->
-                        ?assertThrow(
-                            {abort_tx, bootstrap_grant_conflict},
-                            enterprise_directory_source_config_logic:configure_source_tx(
-                                conn, #{adm_user_id => 7}, 1, <<"org">>, (spec())#{
-                                    expected_version => 1
-                                }
-                            )
-                        )
-                end
-            end,
-            [true, false]
-        )
-    end).
-
 bound_source_cannot_change_initial_owner_test() ->
     mocks(fun() ->
         Previous = (row())#{<<"organization_id">> => 10, <<"confirmed_owner_user_id">> => 98},
@@ -300,19 +230,19 @@ bound_source_cannot_change_initial_owner_test() ->
 rows(Previous, Updated, Scopes) ->
     rows(Previous, Updated, Scopes, true).
 
-rows(Previous, Updated, Scopes, Allowed) ->
+rows(Previous, Updated, _Scopes, _Allowed) ->
     meck:expect(elib_pg, query, fun(conn, Sql, Params) ->
         case Params of
             [7] ->
                 {ok, [#{<<"id">> => 7}]};
             [1] ->
-                {ok, [#{<<"id">> => 1, <<"allowed_scopes">> => Scopes}]};
+                {ok, [#{<<"id">> => 1}]};
             [<<"2099-01-01T00:00:00Z">>] ->
                 {ok, [#{<<"expires_at">> => <<"2099-01-01T00:00:00Z">>}]};
             [1, <<"org">>] ->
                 {ok, Previous};
             [30, 1, 10, _] ->
-                {ok, [#{<<"allowed">> => Allowed}]};
+                {ok, [#{<<"allowed">> => _Allowed}]};
             [30, 1, 10] ->
                 ?assertNotEqual(
                     nomatch, binary:match(Sql, <<"provisioning_source='directory_bootstrap'">>)
@@ -352,7 +282,6 @@ mocks(Fun) ->
         elib_pg,
         enterprise_directory_source_repo,
         enterprise_audit_event_repo,
-        enterprise_application_grant_repo,
         enterprise_application_repo
     ],
     lists:foreach(fun(Module) -> meck:new(Module, [non_strict, no_link]) end, Modules),

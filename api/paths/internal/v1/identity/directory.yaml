@@ -18,9 +18,7 @@ post:
     `page_opts/1`（cursor / page_size / workspace_id）；响应实证自
     `enterprise_directory_logic`（`{items, page_size, has_more, next_cursor}`）。
   operationId: internalIdentityDirectory
-  security:
-    - ibIntBearer: []
-  x-imboy-scope: identities:read
+  x-imboy-authentication: hmac
   x-imboy-rate-bucket: internal_read
   x-imboy-idempotency: not_required
   requestBody:
@@ -48,7 +46,7 @@ post:
             workspace_id:
               type: integer
               format: int64
-              description: 按 workspace 过滤（参与 Grant 边界与游标绑定）
+              description: 按 workspace 过滤（参与业务归属校验与游标绑定）
   responses:
     '200':
       description: 已映射目录页
@@ -71,6 +69,6 @@ post:
                 description: 下页游标（CURSOR-V2 签名形态；has_more=false 时 null）
     '400': { $ref: '../../../../components/responses/internal/invalid_request.yaml' }
     '401': { $ref: '../../../../components/responses/internal/invalid_credential.yaml' }
-    '403': { $ref: '../../../../components/responses/internal/insufficient_scope.yaml' }
+    '403': { $ref: '../../../../components/responses/internal/organization_boundary_violation.yaml' }
     '429': { $ref: '../../../../components/responses/internal/rate_limited.yaml' }
     '500': { $ref: '../../../../components/responses/internal/internal_error.yaml' }

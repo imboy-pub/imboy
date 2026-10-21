@@ -8,7 +8,7 @@ write(Req, Ctx, Operation, IdentityId, Logic) ->
         false ->
             enterprise_internal_error:reply(Req, <<"invalid_request">>);
         true ->
-            case cowboy_req:read_body(Req, #{length => 65536}) of
+            case enterprise_internal_request:read_body(Req, #{length => 65536}) of
                 {ok, Raw, Req1} when byte_size(Raw) =< 65536 ->
                     Body =
                         try

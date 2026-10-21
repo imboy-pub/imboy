@@ -61,46 +61,21 @@ consume_tx(C, Digest) ->
         )
     ).
 
-%% Lock issuer and relevant grants; re-run before returning to check wall-clock expiry.
+%% Recheck issuer lifecycle under transaction locks.
 authority_tx(C, App, Cred) ->
-    case
-        one(
-            elib_pg:query(
-                C,
-                <<
-                    "SELECT a.organization_id,a.application_key FROM enterprise_application a "
-                    "JOIN enterprise_application_credential c ON c.application_id=a.id "
-                    "WHERE a.id=$1 AND c.id=$2 AND a.status='active' AND c.status='active' "
-                    "AND (c.expires_at IS NULL OR c.expires_at>clock_timestamp()) "
-                    "AND a.allowed_scopes ? 'oa:login:issue' FOR UPDATE OF a FOR SHARE OF c"
-                >>,
-                [App, Cred]
-            )
+    one(
+        elib_pg:query(
+            C,
+            <<
+                "SELECT a.organization_id,a.application_key FROM enterprise_application a "
+                "JOIN enterprise_application_credential c ON c.application_id=a.id "
+                "WHERE a.id=$1 AND c.id=$2 AND a.status='active' AND c.status='active' "
+                "AND (c.expires_at IS NULL OR c.expires_at>clock_timestamp()) "
+                "FOR UPDATE OF a FOR SHARE OF c"
+            >>,
+            [App, Cred]
         )
-    of
-        {ok, Row} ->
-            Grants = elib_pg:query(
-                C,
-                <<
-                    "SELECT g.id FROM enterprise_application_grant g "
-                    "JOIN enterprise_application_credential c ON c.application_id=g.application_id "
-                    "JOIN enterprise_application a ON a.id=g.application_id "
-                    "JOIN enterprise_application_grant_scope s ON s.grant_id=g.id "
-                    "WHERE g.application_id=$1 AND c.id=$2 "
-                    "AND g.organization_id IS NOT DISTINCT FROM a.organization_id "
-                    "AND g.status='active' AND g.valid_from<=clock_timestamp() AND g.expires_at>clock_timestamp() "
-                    "AND s.scope='oa:login:issue' FOR SHARE OF g,s"
-                >>,
-                [App, Cred]
-            ),
-            case Grants of
-                {ok, [_ | _]} -> {ok, Row};
-                {ok, []} -> {error, insufficient_scope};
-                Error -> Error
-            end;
-        Error ->
-            Error
-    end.
+    ).
 
 person_tx(C, App, External) ->
     elib_pg:query(

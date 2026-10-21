@@ -28,6 +28,7 @@
     http/3,
     http/4,
     http/5,
+    signed_headers/6,
     auth/1,
     idem/1,
     json_header_val/2,
@@ -84,42 +85,12 @@
 -define(SECRET_RO, <<"intbe02_secret_ro_0123456789abcdef">>).
 -define(SECRET_SSO, <<"intbe02_secret_sso_0123456789abcdef">>).
 
--define(SCOPES_READ4, [
-    <<"workspaces:read">>,
-    <<"groups:read">>,
-    <<"projects:read">>,
-    <<"channels:read">>,
-    <<"customer_service:read">>
-]).
-
 %% 窄写应用 scope：groups:write（+ groups:read 便于分组判别）——供「未覆盖
 %% Workspace 写拒绝」负例使用（scope 必须满足、Grant 覆盖必须失败，二者
 %% 才能把 403 归因到边界而不是 scope）。
--define(SCOPES_W_NARROW, [
-    <<"groups:read">>, <<"groups:write">>, <<"workspaces:write">>, <<"channels:write">>
-]).
 
 %% App A：17 个固定 scope（除 sso:exchange——该 scope 走独立 SSO 应用），
 %% org 全域 Grant；主链全部正例/幂等用例都用它。
--define(SCOPES_APP_A, [
-    <<"application:read">>,
-    <<"identities:read">>,
-    <<"identities:write">>,
-    <<"groups:read">>,
-    <<"groups:write">>,
-    <<"workspaces:read">>,
-    <<"projects:read">>,
-    <<"channels:read">>,
-    <<"files:write">>,
-    <<"messages:send">>,
-    <<"messages:send_as_human">>,
-    <<"friend_requests:create">>,
-    <<"webhooks:manage">>,
-    <<"customer_service:read">>,
-    <<"customer_service:write">>,
-    <<"workspaces:write">>,
-    <<"channels:write">>
-]).
 
 -define(EXT_H1, <<"intbe02-ext-h1">>).
 -define(EXT_H2, <<"intbe02-ext-h2">>).
@@ -291,11 +262,13 @@ setup_storage() ->
         {error, LoadReason} -> erlang:error({intbe02_app_load_failed, LoadReason})
     end,
     Registry = eb_pg_test_fixture:install_asset_registry(),
-    State = #{registry => Registry,
+    State = #{
+        registry => Registry,
         base_url => application:get_env(imboy, base_url),
         webhook_key => application:get_env(imboy, postgre_aes_key),
         jwt_key => application:get_env(imboy, jwt_key),
-        gateway_tmp => os:getenv("IMBOY_V5_GATEWAY_TMP")},
+        gateway_tmp => os:getenv("IMBOY_V5_GATEWAY_TMP")
+    },
     try
         Tmp = filename:join(maps:get(root, Registry), "gateway-tmp"),
         ok = file:make_dir(Tmp),
@@ -309,13 +282,19 @@ setup_storage() ->
         %% capabilities need a real, fixture-owned signing key as well.
         ok = application:set_env(imboy, jwt_key, crypto:strong_rand_bytes(32)),
         State
-    catch Class:Reason:Stack ->
-        teardown_storage(State),
-        erlang:raise(Class, Reason, Stack)
+    catch
+        Class:Reason:Stack ->
+            teardown_storage(State),
+            erlang:raise(Class, Reason, Stack)
     end.
 
-teardown_storage(#{registry := Registry, base_url := Base, webhook_key := Key,
-                   jwt_key := JwtKey, gateway_tmp := Tmp}) ->
+teardown_storage(#{
+    registry := Registry,
+    base_url := Base,
+    webhook_key := Key,
+    jwt_key := JwtKey,
+    gateway_tmp := Tmp
+}) ->
     try
         case Base of
             undefined -> application:unset_env(imboy, base_url);
@@ -440,60 +419,39 @@ seed_matrix(C) ->
     seed_group(C, ?GRP_B, ?WS_B1, ?H_B1, 1),
     %% App A：principal=PRIN_A（INT-12/23 webhook 面依赖）+ org 全域 Grant
     {ok, AppA} = enterprise_application_repo:create_tx(
-        C, ?ORG_A, ?APP_KEY_A, <<"intbe02 org A oa"/utf8>>, {?PRIN_A, ?SCOPES_APP_A}
+        C, ?ORG_A, ?APP_KEY_A, <<"intbe02 org A oa"/utf8>>, ?PRIN_A
     ),
     CredA = issue_credential(C, ?ORG_A, maps:get(<<"id">>, AppA), ?SECRET_A),
-    ok = issue_grant(
-        C, ?ORG_A, maps:get(<<"id">>, AppA), ?SCOPES_APP_A, <<"intbe02-g-a">>, none, []
-    ),
     ok = seed_mapping(C, ?ORG_A, maps:get(<<"id">>, AppA), ?EXT_H1, ?H_A1),
     ok = seed_mapping(C, ?ORG_A, maps:get(<<"id">>, AppA), ?EXT_H2, ?H_A2),
     ok = seed_mapping(C, ?ORG_A, maps:get(<<"id">>, AppA), ?EXT_H3, ?H_A3),
     %% App C：显式 Workspace Grant（仅 WS_A1）——未覆盖 W 负例
     {ok, AppC} = enterprise_application_repo:create_tx(
-        C, ?ORG_A, ?APP_KEY_C, <<"intbe02 ws narrow oa"/utf8>>, {?PRIN_A, ?SCOPES_READ4}
+        C, ?ORG_A, ?APP_KEY_C, <<"intbe02 ws narrow oa"/utf8>>, ?PRIN_A
     ),
     CredC = issue_credential(C, ?ORG_A, maps:get(<<"id">>, AppC), ?SECRET_C),
-    ok = issue_grant(
-        C, ?ORG_A, maps:get(<<"id">>, AppC), ?SCOPES_READ4, <<"intbe02-g-c">>, explicit, [?WS_A1]
-    ),
     %% App W：窄写 Grant（groups:write 显式 WS_A1）——「未覆盖 W 写拒绝」负例
     {ok, AppW} = enterprise_application_repo:create_tx(
-        C, ?ORG_A, ?APP_KEY_W, <<"intbe02 ws narrow write oa"/utf8>>, {?PRIN_A, ?SCOPES_W_NARROW}
+        C, ?ORG_A, ?APP_KEY_W, <<"intbe02 ws narrow write oa"/utf8>>, ?PRIN_A
     ),
     CredW = issue_credential(C, ?ORG_A, maps:get(<<"id">>, AppW), ?SECRET_W),
-    ok = issue_grant(
-        C,
-        ?ORG_A,
-        maps:get(<<"id">>, AppW),
-        ?SCOPES_W_NARROW,
-        <<"intbe02-g-w">>,
-        explicit,
-        [?WS_A1]
-    ),
     %% App D：零 Grant（allowed_scopes 有 read4）——零 Grant deny 负例
     {ok, AppD} = enterprise_application_repo:create_tx(
-        C, ?ORG_A, ?APP_KEY_D, <<"intbe02 zero grant oa"/utf8>>, {?PRIN_A, ?SCOPES_READ4}
+        C, ?ORG_A, ?APP_KEY_D, <<"intbe02 zero grant oa"/utf8>>, ?PRIN_A
     ),
     CredD = issue_credential(C, ?ORG_A, maps:get(<<"id">>, AppD), ?SECRET_D),
     %% App RO：仅 application:read——缺 scope 负例（访问 groups:write）
     {ok, AppRO} = enterprise_application_repo:create_tx(
-        C, ?ORG_A, ?APP_KEY_RO, <<"intbe02 ro oa"/utf8>>, {?PRIN_A, [<<"application:read">>]}
+        C, ?ORG_A, ?APP_KEY_RO, <<"intbe02 ro oa"/utf8>>, ?PRIN_A
     ),
     CredRO = issue_credential(C, ?ORG_A, maps:get(<<"id">>, AppRO), ?SECRET_RO),
-    ok = issue_grant(
-        C, ?ORG_A, maps:get(<<"id">>, AppRO), [<<"application:read">>], <<"intbe02-g-ro">>, none, []
-    ),
     %% App SSO：INT-14 用（redirect allowlist + ALICE 映射）
     {ok, AppSso} = enterprise_application_repo:create_tx(
-        C, ?ORG_A, ?APP_KEY_SSO, <<"intbe02 sso oa"/utf8>>, {null, [<<"sso:exchange">>]}, [
+        C, ?ORG_A, ?APP_KEY_SSO, <<"intbe02 sso oa"/utf8>>, null, [
             ?REDIRECT
         ]
     ),
     CredSso = issue_credential(C, ?ORG_A, maps:get(<<"id">>, AppSso), ?SECRET_SSO),
-    ok = issue_grant(
-        C, ?ORG_A, maps:get(<<"id">>, AppSso), [<<"sso:exchange">>], <<"intbe02-g-sso">>, none, []
-    ),
     ok = seed_mapping(C, ?ORG_A, maps:get(<<"id">>, AppSso), ?EXT_ALICE, ?ALICE),
     #{
         cred_a => CredA,
@@ -622,20 +580,6 @@ issue_credential(C, OrgId, AppId, Secret) ->
         enterprise_internal_ops:issue_credential_tx(C, OrgId, AppId, Secret, undefined),
     Full.
 
-issue_grant(C, OrgId, AppId, Scopes, Key, Kind, WsIds) ->
-    case
-        enterprise_internal_ops:issue_grant_tx(C, OrgId, AppId, #{
-            scopes => Scopes,
-            workspace_scope_kind => Kind,
-            workspace_ids => WsIds,
-            idempotency_key => Key,
-            expires_at => <<"2099-01-01T00:00:00Z">>
-        })
-    of
-        {ok, _} -> ok;
-        {error, Reason} -> erlang:error({intbe02_grant_seed_failed, Key, Reason})
-    end.
-
 app_id(C, Key) ->
     maps:get(
         <<"id">>,
@@ -684,6 +628,8 @@ release_pool() ->
 %%%===================================================================
 
 %% FullCredential 是 issue_credential_tx 返回的完整凭证（ib_int_<id>.<secret>）。
+auth(<<"ib_int_", _/binary>> = FullCredential) ->
+    #{signed_credential => FullCredential};
 auth(FullCredential) when is_binary(FullCredential) ->
     #{<<"authorization">> => <<"Bearer ", FullCredential/binary>>}.
 
@@ -703,7 +649,7 @@ http(Port, Method, Path, Body0, Headers0) ->
             M when is_map(M) -> jsone:encode(M);
             _ -> <<>>
         end,
-    Headers = maps:merge(
+    Headers1 = maps:merge(
         #{
             <<"host">> => request_host(),
             %% 协议矩阵模拟独立客户端；IP 限流用例须显式传入稳定 XFF。
@@ -716,6 +662,15 @@ http(Port, Method, Path, Body0, Headers0) ->
         },
         Headers0
     ),
+    Headers =
+        case {Path, maps:take(signed_credential, Headers1)} of
+            {<<"/api/internal/v1/", _/binary>>, {Credential, Unsigned}} ->
+                signed_headers(Credential, Method, Path, Body, Unsigned, sha256);
+            {_, error} ->
+                Headers1;
+            {_, {_Credential, HumanHeaders}} ->
+                HumanHeaders
+        end,
     HeaderBin = iolist_to_binary([[K, <<": ">>, V, <<"\r\n">>] || {K, V} <- maps:to_list(Headers)]),
     Req = iolist_to_binary([
         Method, <<" ">>, Path, <<" HTTP/1.1\r\n">>, HeaderBin, <<"\r\n">>, Body
@@ -814,13 +769,20 @@ upload_file(Port, Registration, Bytes) when is_binary(Bytes) ->
     Url = maps:get(<<"put_url">>, Registration),
     Prefix = <<?UPLOAD_ORIGIN/binary, "/api/v1/attachment/gateway/">>,
     PrefixSize = byte_size(Prefix),
-    Path = case Url of
-        <<Prefix:PrefixSize/binary, Rest/binary>> ->
-            <<"/api/v1/attachment/gateway/", Rest/binary>>;
-        _ -> erlang:error(invalid_fixture_upload_origin)
-    end,
-    #{status := 200, body := Body} = http(Port, <<"PUT">>, Path, Bytes,
-        #{<<"content-type">> => <<"text/plain">>}),
+    Path =
+        case Url of
+            <<Prefix:PrefixSize/binary, Rest/binary>> ->
+                <<"/api/v1/attachment/gateway/", Rest/binary>>;
+            _ ->
+                erlang:error(invalid_fixture_upload_origin)
+        end,
+    #{status := 200, body := Body} = http(
+        Port,
+        <<"PUT">>,
+        Path,
+        Bytes,
+        #{<<"content-type">> => <<"text/plain">>}
+    ),
     Sha = binary:encode_hex(crypto:hash(sha256, Bytes), lowercase),
     Size = byte_size(Bytes),
     #{<<"pinned">> := true, <<"sha256">> := Sha, <<"size">> := Size} = jsone:decode(Body),
@@ -876,3 +838,37 @@ one(C, Sql) ->
 sql_exec_quiet(C, IoData) ->
     _ = elib_pg:query(C, iolist_to_binary(IoData), []),
     ok.
+
+%% A real test client. It signs the wire bytes and never changes server ACLs.
+signed_headers(Credential, Method, Target, Body, Headers, Algorithm) ->
+    [Prefix, Secret] = binary:split(Credential, <<".">>),
+    {Path, Query} =
+        case binary:split(Target, <<"?">>) of
+            [P, Q] -> {P, Q};
+            [P] -> {P, <<>>}
+        end,
+    Timestamp = integer_to_binary(erlang:system_time(second)),
+    Nonce = binary:encode_hex(crypto:strong_rand_bytes(24), lowercase),
+    Canonical = iolist_to_binary(
+        lists:join(<<"\n">>, [
+            <<"IMBOY-INTERNAL-V1">>,
+            atom_to_binary(Algorithm),
+            Prefix,
+            maps:get(<<"x-imboy-organization">>, Headers, <<>>),
+            Method,
+            Path,
+            Query,
+            maps:get(<<"content-type">>, Headers, <<>>),
+            maps:get(<<"idempotency-key">>, Headers, <<>>),
+            binary:encode_hex(crypto:hash(sha256, Body), lowercase),
+            Timestamp,
+            Nonce
+        ])
+    ),
+    Hex = binary:encode_hex(crypto:mac(hmac, Algorithm, Secret, Canonical), lowercase),
+    Headers#{
+        <<"x-imboy-credential">> => Prefix,
+        <<"x-imboy-timestamp">> => Timestamp,
+        <<"x-imboy-nonce">> => Nonce,
+        <<"x-imboy-signature">> => <<(atom_to_binary(Algorithm))/binary, "=", Hex/binary>>
+    }.

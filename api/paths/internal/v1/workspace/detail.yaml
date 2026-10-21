@@ -2,16 +2,8 @@ get:
   tags:
   - internal
   summary: Workspace 详情
-  description: '单个 active Workspace 详情。跨 Organization / 不存在 / 已归档一律
-
-    resource_not_found（IDOR 同不存在同体，不泄露存在性）；同 Organization 但
-
-    无生效 Grant 覆盖该 W → organization_boundary_violation（403）。
-
-    '
+  description: 读取当前组织内的活跃工作空间。跨组织、不存在和已归档资源均返回 resource_not_found。
   operationId: internalWorkspaceDetail
-  security:
-  - ibIntBearer: []
   parameters:
   - name: workspace_id
     in: path
@@ -20,7 +12,7 @@ get:
     schema:
       type: integer
       format: int64
-  x-imboy-scope: workspaces:read
+  x-imboy-authentication: hmac
   x-imboy-rate-bucket: internal_read
   x-imboy-idempotency: not_required
   responses:
@@ -59,7 +51,7 @@ get:
     '401':
       $ref: ../../../../components/responses/internal/invalid_credential.yaml
     '403':
-      $ref: ../../../../components/responses/internal/insufficient_scope.yaml
+      $ref: ../../../../components/responses/internal/organization_boundary_violation.yaml
     '404':
       $ref: ../../../../components/responses/internal/resource_not_found.yaml
     '429':
@@ -71,14 +63,10 @@ patch:
   - internal
   summary: 修改企业工作空间
   operationId: internalWorkspaceUpdate
-  security:
-  - ibIntBearer: []
-  x-imboy-scope: workspaces:write
+  x-imboy-authentication: hmac
   x-imboy-rate-bucket: internal_write
   x-imboy-idempotency: required
-  description: 创建需要企业全域 Grant；owner_user_id 必须是本企业活跃 Owner/Admin。修改与归档需要目标工作空间 Grant。expected_version
-    为当前版本，过期返回 version_conflict。默认空间归档须显式指定同企业且有授权的活跃替代项。应用审计与资源、幂等响应同事务。归档保留历史资料；新建不会自动
-    Grant。未知字段拒绝。
+  description: 修改当前组织工作空间，必须提供 expected_version；旧版本返回 version_conflict。
   parameters:
   - name: workspace_id
     in: path
@@ -123,7 +111,7 @@ patch:
     '401':
       $ref: ../../../../components/responses/internal/invalid_credential.yaml
     '403':
-      $ref: ../../../../components/responses/internal/insufficient_scope.yaml
+      $ref: ../../../../components/responses/internal/organization_boundary_violation.yaml
     '404':
       $ref: ../../../../components/responses/internal/resource_not_found.yaml
     '429':
@@ -175,14 +163,10 @@ delete:
   - internal
   summary: 归档企业工作空间
   operationId: internalWorkspaceArchive
-  security:
-  - ibIntBearer: []
-  x-imboy-scope: workspaces:write
+  x-imboy-authentication: hmac
   x-imboy-rate-bucket: internal_write
   x-imboy-idempotency: required
-  description: 创建需要企业全域 Grant；owner_user_id 必须是本企业活跃 Owner/Admin。修改与归档需要目标工作空间 Grant。expected_version
-    为当前版本，过期返回 version_conflict。默认空间归档须显式指定同企业且有授权的活跃替代项。应用审计与资源、幂等响应同事务。归档保留历史资料；新建不会自动
-    Grant。未知字段拒绝。
+  description: 软归档当前组织工作空间，保留历史资料；必须提供 expected_version。默认空间归档须指定有效替代项。
   parameters:
   - name: workspace_id
     in: path
@@ -227,7 +211,7 @@ delete:
     '401':
       $ref: ../../../../components/responses/internal/invalid_credential.yaml
     '403':
-      $ref: ../../../../components/responses/internal/insufficient_scope.yaml
+      $ref: ../../../../components/responses/internal/organization_boundary_violation.yaml
     '404':
       $ref: ../../../../components/responses/internal/resource_not_found.yaml
     '429':

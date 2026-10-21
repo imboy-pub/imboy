@@ -2005,25 +2005,6 @@ enterprise_platform_routes() ->
     [].
 -endif.
 
-%% ===================================================================
-%% FULL-08：Admin 企业应用治理面（A-01..A-14）
-%% ===================================================================
-%% 路径集合与 imboyadmin（分支 run/full-candidate-admin-20260921T101806Z）
-%% src/modules/enterprise_apps/api/contracts.ts:ENDPOINTS **逐字对应**；前端
-%% 字符串被单测钉死，后端不得漂移。前缀 `/api/adm/enterprise/` 与
-%% - `/api/adm/enterprise-business/*`（enterprise_business 租户/运营面）
-%% - `/api/internal/v1/*`（OA Application Credential 面）
-%% 三者互不相交 —— 这是产品硬边界 §2 的机械保证（OA 凭据不能换 Admin 权限）。
-%%
-%% 权限：**按方法**在 handler 内强制（adm_acl:ensure_permission/3）——
-%%   * GET（A-01/A-02/A-05/A-09/A-12/A-13/A-14）→ `enterprise_business:read`
-%%   * POST/PUT/PATCH/DELETE（A-03/A-04/A-06/A-07/A-08/A-10/A-11）→
-%%     `enterprise_business:write`
-%% A-05/A-06、A-09/A-10 **同路径不同方法**，因此权限不能挂在路由条目上（挂在
-%% 路由上只会得到「读权限可签发 credential」这类放宽）；逐方法判定放在
-%% handler 的 with_read/with_write 里，与其余 `/api/adm/*` 路由的形态一致
-%% （本仓 adm 面统一由 `/api/adm` 前缀的 adm_auth_middleware 做会话鉴权）。
-%% 本模块**不注册、不接受**任何 Application Credential 请求头。
 -spec enterprise_application_governance_routes() -> list().
 enterprise_application_governance_routes() ->
     [
@@ -2044,8 +2025,6 @@ enterprise_application_governance_routes() ->
         {"/api/adm/enterprise/organizations/:org_id/applications/:application_id/status",
             adm_enterprise_application_handler, #{action => application_status}},
         %% A-04 scope 授予/降级（PUT，CAS）
-        {"/api/adm/enterprise/organizations/:org_id/applications/:application_id/scopes",
-            adm_enterprise_application_handler, #{action => application_scopes}},
         %% A-05 列表（GET）/ A-06 签发（POST，唯一回显 secret 的响应）
         {"/api/adm/enterprise/organizations/:org_id/applications/:application_id/credentials",
             adm_enterprise_application_handler, #{action => credentials}},
@@ -2056,11 +2035,7 @@ enterprise_application_governance_routes() ->
         {"/api/adm/enterprise/organizations/:org_id/applications/:application_id/credentials/:credential_id",
             adm_enterprise_application_handler, #{action => credential_revoke}},
         %% A-09 列表（GET）/ A-10 新增（POST）
-        {"/api/adm/enterprise/organizations/:org_id/applications/:application_id/grants",
-            adm_enterprise_application_handler, #{action => grants}},
         %% A-11 Grant CAS 增删（PATCH）
-        {"/api/adm/enterprise/organizations/:org_id/applications/:application_id/grants/:grant_id",
-            adm_enterprise_application_handler, #{action => grant}},
         %% A-16 身份映射列表（GET）/ A-17 绑定（POST）/ A-18 解绑（DELETE，
         %% query external_user_id）——OA 按需免登的工作台可见性与签发前提
         {"/api/adm/enterprise/organizations/:org_id/applications/:application_id/identities",

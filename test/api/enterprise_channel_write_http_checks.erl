@@ -25,6 +25,7 @@ run(S) ->
     resource_negatives(S, Path, B40),
     quota_limit(S, B40),
     concurrent_create(S, B40),
+    cross_resource_key(S, B40),
     audit_failure(S, Path, W),
     concurrent(S, Path),
     archive_and_replay(S, W, Path, B40, R40, B41, R41).
@@ -66,8 +67,10 @@ archive_and_replay(S, W, Path, B40, R40, B41, R41) ->
 negatives(S, Path, B40, B41) ->
     lists:foreach(
         fun({M, P, B, K}) ->
-            Missing = request(S, cred_ro, M, P, B, K),
-            err(Missing, <<"insufficient_scope">>),
+            Missing = intbe02_http_support:http(
+                maps:get(port, S), M, P, B, intbe02_http_support:idem(K)
+            ),
+            err(Missing, <<"invalid_credential">>),
             err(req(S, M, P, B, undefined), <<"invalid_request">>),
             err(req(S, M, P, B, binary:copy(<<"x">>, 129)), <<"invalid_request">>),
             err(req(S, M, P, B#{<<"unknown">> => 1}, K), <<"invalid_request">>)
@@ -79,11 +82,11 @@ negatives(S, Path, B40, B41) ->
         ]
     ),
     err(
-        request(S, cred_w, <<"POST">>, ?BASE, B40, <<"narrow-create">>),
+        foreign_request(S, <<"POST">>, ?BASE, B40, <<"narrow-create">>),
         <<"organization_boundary_violation">>
     ),
     err(
-        request(S, cred_w, <<"PATCH">>, Path, B41, <<"narrow-update">>),
+        foreign_request(S, <<"PATCH">>, Path, B41, <<"narrow-update">>),
         <<"organization_boundary_violation">>
     ),
     err(req(S, <<"PATCH">>, Path, B41, <<"stale-version">>), <<"version_conflict">>),
@@ -192,11 +195,17 @@ assert_audits(S, W) ->
 
 revoked_replay(S, Path, Body) ->
     C = maps:get(conn, S),
+    App = maps:get(app_a, S),
     ok = intbe02_http_support:sql_exec(
-        C,
-        <<"DELETE FROM enterprise_application_grant_scope WHERE scope='channels:write'">>
+        C, <<"UPDATE enterprise_application SET status='disabled' WHERE id=$1">>, [App]
     ),
-    err(req(S, <<"DELETE">>, Path, Body, <<"ch-42">>), <<"insufficient_scope">>).
+    try
+        err(req(S, <<"DELETE">>, Path, Body, <<"ch-42">>), <<"application_disabled">>)
+    after
+        ok = intbe02_http_support:sql_exec(
+            C, <<"UPDATE enterprise_application SET status='active' WHERE id=$1">>, [App]
+        )
+    end.
 
 path(W) -> <<?BASE/binary, "/", (integer_to_binary(W))/binary>>.
 audited_req(S, M, P, B, K) ->
@@ -291,8 +300,8 @@ resource_negatives(S, Path, Body) ->
         [9959503, 9959504]
     ),
     err(
-        request(
-            S, cred_w, <<"DELETE">>, Path, #{<<"expected_version">> => 2}, <<"narrow-archive">>
+        foreign_request(
+            S, <<"DELETE">>, Path, #{<<"expected_version">> => 2}, <<"foreign-archive">>
         ),
         <<"organization_boundary_violation">>
     ),
@@ -386,3 +395,41 @@ concurrent_create(S, Body) ->
         <<"SELECT count(*) AS n FROM enterprise_audit_event WHERE resource_type='channel' AND resource_id=$1">>,
         [Id]
     ).
+
+foreign_request(S, Method, Path, Body, Key) ->
+    Headers = maps:merge(
+        intbe02_http_support:auth(maps:get(cred_a, S)),
+        #{<<"idempotency-key">> => Key, <<"x-imboy-organization">> => <<"995102">>}
+    ),
+    intbe02_http_support:http(maps:get(port, S), Method, Path, Body, Headers).
+
+%% Different mutation routes share one application idempotency namespace.
+cross_resource_key(S, ChannelBody) ->
+    Parent = self(),
+    Key = <<"channel-group-shared-key">>,
+    Group = #{
+        <<"workspace_id">> => 995202,
+        <<"title">> => <<"Cross resource lock test">>,
+        <<"members">> => [intbe02_http_support:fixture(ext_h2, S)]
+    },
+    Jobs = [{?BASE, ChannelBody}, {<<"/api/internal/v1/groups">>, Group}],
+    Workers = [
+        spawn(fun() ->
+            receive
+                go ->
+                    Parent ! {self(), req(S, <<"POST">>, P, B, Key)}
+            end
+        end)
+     || {P, B} <- Jobs
+    ],
+    [P ! go || P <- Workers],
+    Results = [
+        receive
+            {P, R} -> R
+        after 10000 -> error(cross_resource_timeout)
+        end
+     || P <- Workers
+    ],
+    ?assertEqual([200, 409], lists:sort([maps:get(status, R) || R <- Results])),
+    [Conflict] = [R || R <- Results, maps:get(status, R) =:= 409],
+    err(Conflict, <<"idempotency_conflict">>).

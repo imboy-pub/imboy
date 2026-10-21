@@ -13,8 +13,6 @@ put:
     按成员逐个设置角色（role 取值由群域定义，如 member / admin）。
     **请求形态以 handler 为准**：roles 为 `[{external_user_id, role}]` 对象数组。
   operationId: internalGroupSetMemberRoles
-  security:
-    - ibIntBearer: []
   parameters:
     - name: group_id
       in: path
@@ -26,7 +24,7 @@ put:
       required: true
       description: 幂等键
       schema: { type: string, minLength: 1 }
-  x-imboy-scope: groups:write
+  x-imboy-authentication: hmac
   x-imboy-rate-bucket: internal_write
   x-imboy-idempotency: required
   requestBody:
@@ -67,7 +65,7 @@ put:
                     role: { type: string }
     '400': { $ref: '../../../../components/responses/internal/invalid_request.yaml' }
     '401': { $ref: '../../../../components/responses/internal/invalid_credential.yaml' }
-    '403': { $ref: '../../../../components/responses/internal/insufficient_scope.yaml' }
+    '403': { $ref: '../../../../components/responses/internal/organization_boundary_violation.yaml' }
     '404': { $ref: '../../../../components/responses/internal/resource_not_found.yaml' }
     '409': { $ref: '../../../../components/responses/internal/idempotency_conflict.yaml' }
     '422': { $ref: '../../../../components/responses/internal/identity_not_mapped.yaml' }

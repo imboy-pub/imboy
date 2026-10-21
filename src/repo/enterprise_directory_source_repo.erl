@@ -4,7 +4,6 @@
     pending_projections_tx/3,
     login_projections_tx/3,
     lock_source_tx/2,
-    lock_source_tx/3,
     authorize_tx/2,
     organization_tx/3,
     save_organization_tx/5,
@@ -22,111 +21,38 @@
     restore_department_tx/5
 ]).
 
-lock_source_tx(Conn, Ctx) ->
-    lock_source_tx(Conn, Ctx, <<"identities:write">>).
-
-lock_source_tx(Conn, #{application_id := AppId, credential_id := CredId}, Scope) when
-    is_integer(AppId),
-    AppId > 0,
-    is_integer(CredId),
-    CredId > 0,
-    (Scope =:= <<"identities:write">> orelse Scope =:= <<"members:write">>)
+lock_source_tx(Conn, #{application_id := AppId, credential_id := CredId}) when
+    is_integer(AppId), AppId > 0, is_integer(CredId), CredId > 0
 ->
     one(
         elib_pg:query(
             Conn,
             <<
-                "SELECT a.id,a.allowed_scopes FROM enterprise_application a"
-                " JOIN enterprise_application_credential c ON c.application_id=a.id"
-                " WHERE a.id=$1 AND c.id=$2 AND a.status='active' AND c.status='active'"
-                " AND (c.expires_at IS NULL OR c.expires_at>clock_timestamp())"
-                " AND a.allowed_scopes ? $3 FOR UPDATE OF a FOR SHARE OF c"
+                "SELECT a.id FROM enterprise_application a "
+                "JOIN enterprise_application_credential c ON c.application_id=a.id "
+                "WHERE a.id=$1 AND c.id=$2 AND a.status='active' AND c.status='active' "
+                "AND (c.expires_at IS NULL OR c.expires_at>clock_timestamp()) "
+                "FOR UPDATE OF a FOR SHARE OF c"
             >>,
-            [AppId, CredId, Scope]
+            [AppId, CredId]
         ),
-        insufficient_scope
+        invalid_credential
     );
-lock_source_tx(_, _, _) ->
+lock_source_tx(_, _) ->
     {error, invalid_source_context}.
 
-authorize_tx(Conn, #{application_id := AppId, organization_id := OrgId} = Ctx) when
-    is_integer(OrgId), OrgId > 0
-->
+authorize_tx(Conn, #{organization_id := OrgId} = Ctx) ->
     case lock_source_tx(Conn, Ctx) of
-        {ok, App} -> authorize_grants_tx(Conn, AppId, OrgId, App, Ctx);
-        Error -> Error
-    end;
-authorize_tx(_, _) ->
-    {error, invalid_source_context}.
-
-authorize_grants_tx(Conn, AppId, OrgId, App, Ctx) ->
-    case
-        elib_pg:query(
-            Conn,
-            <<
-                "SELECT id FROM enterprise_application_grant"
-                " WHERE application_id=$1 AND organization_id=$2 ORDER BY id FOR SHARE"
-            >>,
-            [AppId, OrgId]
-        )
-    of
-        {ok, Rows} ->
-            GrantIds = [maps:get(<<"id">>, Row) || Row <- Rows],
-            Scopes = app_scopes(maps:get(<<"allowed_scopes">>, App)),
-            case enterprise_application_grant_logic:context_tx(Conn, OrgId, AppId, Scopes) of
-                {ok, #{effective_scopes := Effective}} ->
-                    case
-                        enterprise_application_grant_logic:require_org_tx(
-                            Conn,
-                            Ctx#{organization_id => OrgId, granted_scopes => Effective},
-                            <<"identities:write">>
-                        )
-                    of
-                        ok -> current_grant_tx(Conn, AppId, OrgId, GrantIds);
-                        Error -> Error
-                    end;
-                Error ->
-                    Error
+        {ok, _} ->
+            case enterprise_internal_access_repo:organization_tx(Conn, Ctx) of
+                ok -> {ok, #{organization_id => OrgId}};
+                Error -> Error
             end;
         Error ->
             Error
-    end.
-
-app_scopes(Value) ->
-    try
-        case Value of
-            Json when is_binary(Json) -> jsone:decode(Json);
-            List when is_list(List) -> List
-        end
-    of
-        Scopes when is_list(Scopes) -> [Scope || Scope <- Scopes, is_binary(Scope)];
-        _ -> []
-    catch
-        _:_ -> []
-    end.
-
-current_grant_tx(Conn, AppId, OrgId, GrantIds) ->
-    case
-        elib_pg:query(
-            Conn,
-            <<
-                "SELECT EXISTS (SELECT 1 FROM enterprise_application_grant g"
-                " JOIN enterprise_application_grant_scope s ON s.grant_id=g.id"
-                " WHERE g.application_id=$1 AND g.organization_id=$2 AND g.id=ANY($3::bigint[])"
-                " AND g.workspace_scope_kind='none' AND g.status='active' AND s.scope='identities:write'"
-                " AND g.valid_from<=clock_timestamp() AND g.expires_at>clock_timestamp()"
-                " AND EXISTS (SELECT 1 FROM enterprise_directory_organization_source o"
-                " WHERE o.application_id=$1 AND o.organization_id=$2 AND o.enabled"
-                " AND o.authorization_expires_at>clock_timestamp())) AS allowed"
-            >>,
-            [AppId, OrgId, GrantIds]
-        )
-    of
-        {ok, [#{<<"allowed">> := true}]} -> {ok, #{organization_id => OrgId}};
-        {ok, [#{<<"allowed">> := false}]} -> {error, organization_boundary_violation};
-        {error, Reason} -> {error, Reason};
-        _ -> {error, security_gate_closed}
-    end.
+    end;
+authorize_tx(_, _) ->
+    {error, invalid_source_context}.
 
 confirmed_owner_tx(Conn, Owner) ->
     one(
@@ -142,26 +68,12 @@ confirmed_owner_tx(Conn, Owner) ->
     ).
 
 bootstrap_tx(Conn, Ctx, Source, Spec) ->
-    App =
-        case lock_source_tx(Conn, Ctx) of
-            {ok, Row} -> Row;
-            {error, Reason} -> throw({abort_tx, Reason})
-        end,
-    Scopes = app_scopes(maps:get(<<"allowed_scopes">>, App)),
-    case enterprise_directory_source_policy:allowed(Scopes) of
-        true ->
-            bootstrap_authorized_tx(
-                Conn,
-                Ctx,
-                Source,
-                Spec,
-                enterprise_directory_source_policy:directory_scopes(Scopes)
-            );
-        false ->
-            {error, directory_only_application_required}
+    case lock_source_tx(Conn, Ctx) of
+        {ok, _} -> bootstrap_authorized_tx(Conn, Ctx, Source, Spec);
+        Error -> Error
     end.
 
-bootstrap_authorized_tx(Conn, Ctx, _Source, Spec, Scopes) ->
+bootstrap_authorized_tx(Conn, Ctx, _Source, Spec) ->
     AppId = maps:get(application_id, Ctx),
     ExternalId = maps:get(<<"external_id">>, Spec),
     case
@@ -175,15 +87,15 @@ bootstrap_authorized_tx(Conn, Ctx, _Source, Spec, Scopes) ->
             [AppId, ExternalId]
         )
     of
-        {ok, [#{<<"authorization_expires_at">> := Until, <<"confirmed_owner_user_id">> := Owner}]} ->
-            bootstrap_create_tx(Conn, Ctx, AppId, ExternalId, Owner, Spec, Scopes, Until);
+        {ok, [#{<<"confirmed_owner_user_id">> := Owner}]} ->
+            bootstrap_create_tx(Conn, Ctx, AppId, ExternalId, Owner, Spec);
         {ok, []} ->
             {error, directory_bootstrap_not_authorized};
         Error ->
             Error
     end.
 
-bootstrap_create_tx(Conn, Ctx, AppId, ExternalId, Owner, Spec, Scopes, Until) ->
+bootstrap_create_tx(Conn, Ctx, AppId, ExternalId, Owner, Spec) ->
     Bootstrap = fun
         ({ok, Value}) -> Value;
         ({error, Reason}) -> throw({abort_tx, Reason})
@@ -217,32 +129,16 @@ bootstrap_create_tx(Conn, Ctx, AppId, ExternalId, Owner, Spec, Scopes, Until) ->
         {error, Reason} -> throw({abort_tx, Reason});
         _ -> throw({abort_tx, owner_membership_not_created})
     end,
-    Grant = Bootstrap(
-        enterprise_application_grant_repo:create_tx(
-            Conn,
-            OrgId,
-            AppId,
-            #{
-                scopes => Scopes,
-                workspace_scope_kind => none,
-                workspace_ids => [],
-                expires_at => Until,
-                provisioning_source => <<"directory_bootstrap">>,
-                idempotency_key =>
-                    <<"directory-bootstrap-", (digest(#{<<"external_id">> => ExternalId}))/binary>>
-            }
-        )
-    ),
     case
         write(
             elib_pg:execute(
                 Conn,
                 <<
                     "UPDATE enterprise_directory_organization_source"
-                    " SET organization_id=$3,bootstrap_grant_id=$4 WHERE application_id=$1 AND external_organization_id=$2"
+                    " SET organization_id=$3 WHERE application_id=$1 AND external_organization_id=$2"
                     " AND organization_id IS NULL"
                 >>,
-                [AppId, ExternalId, OrgId, maps:get(<<"id">>, Grant)]
+                [AppId, ExternalId, OrgId]
             )
         )
     of

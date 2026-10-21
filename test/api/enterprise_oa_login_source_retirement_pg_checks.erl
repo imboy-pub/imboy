@@ -107,25 +107,6 @@ authorize(C, App) ->
         >>,
         [App]
     ),
-    [#{<<"id">> := App}] = rows(
-        C,
-        <<
-            "UPDATE enterprise_application "
-            "SET allowed_scopes=allowed_scopes || '[\"oa:login:issue\"]'::jsonb "
-            "WHERE id=$1 RETURNING id"
-        >>,
-        [App]
-    ),
-    exec(
-        C,
-        <<
-            "INSERT INTO enterprise_application_grant_scope(grant_id,scope) "
-            "SELECT g.id,'oa:login:issue' FROM enterprise_application_grant g "
-            "JOIN enterprise_application a ON a.id=g.application_id "
-            "WHERE a.id=$1 AND g.organization_id=a.organization_id ON CONFLICT DO NOTHING"
-        >>,
-        [App]
-    ),
     [#{<<"id">> := Cred}] = rows(
         C,
         <<
@@ -134,7 +115,7 @@ authorize(C, App) ->
         >>,
         [Cred]
     ),
-    Ctx = #{application_id => App, credential_id => Cred},
+    Ctx = #{application_id => App, credential_id => Cred, authentication => hmac},
     {ok, _} = elib_pg:with_tx(fun(Tx) -> enterprise_oa_login_repo:authority_tx(Tx, App, Cred) end),
     Ctx.
 
@@ -144,24 +125,6 @@ prepare_directory(C, #{application_id := App}) ->
         <<
             "INSERT INTO organization(id,name,owner_id,status) "
             "VALUES(995903,'Synthetic source target',995021,'active')"
-        >>,
-        []
-    ),
-    exec(
-        C,
-        <<
-            "INSERT INTO enterprise_application_grant "
-            "(id,organization_id,application_id,workspace_scope_kind,status,valid_from,expires_at,idempotency_key) "
-            "VALUES(995908,995903,$1,'none','active',clock_timestamp()-interval '1 day',"
-            "clock_timestamp()+interval '1 day','c09-retire-directory')"
-        >>,
-        [App]
-    ),
-    exec(
-        C,
-        <<
-            "INSERT INTO enterprise_application_grant_scope(grant_id,scope) "
-            "VALUES(995908,'identities:write')"
         >>,
         []
     ),

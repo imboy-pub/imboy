@@ -27,12 +27,7 @@ application(State, Organization, Key) ->
     Connection = maps:get(conn, State),
     Redirect = <<"https://oa.customer.example.com/sso/cb">>,
     {ok, Application} = enterprise_application_repo:create_tx(
-        Connection,
-        Organization,
-        Key,
-        Key,
-        {null, [<<"sso:exchange">>]},
-        [Redirect]
+        Connection, Organization, Key, Key, null, [Redirect]
     ),
     ApplicationId = maps:get(<<"id">>, Application),
     {ok, #{credential := Credential}} = enterprise_internal_ops:issue_credential_tx(
@@ -41,18 +36,6 @@ application(State, Organization, Key) ->
         ApplicationId,
         <<"synthetic_compat_secret_0123456789abcdef">>,
         undefined
-    ),
-    {ok, _} = enterprise_internal_ops:issue_grant_tx(
-        Connection,
-        Organization,
-        ApplicationId,
-        #{
-            scopes => [<<"sso:exchange">>],
-            workspace_scope_kind => none,
-            workspace_ids => [],
-            idempotency_key => Key,
-            expires_at => <<"2099-01-01T00:00:00Z">>
-        }
     ),
     {ApplicationId, Credential}.
 
@@ -87,9 +70,9 @@ attribution(State, Organization, Key) ->
     ?assertEqual(5, map_size(Payload)),
     Replay = intbe02_http_support:http(Port, <<"POST">>, Path, Params, Headers),
     ?assertEqual(404, maps:get(status, Replay)),
-    revoked_scope(State, Key, ApplicationId, Headers, Params).
+    disabled_application(State, Key, ApplicationId, Headers, Params).
 
-revoked_scope(State, Key, ApplicationId, Headers, Params) ->
+disabled_application(State, Key, ApplicationId, Headers, Params) ->
     Connection = maps:get(conn, State),
     Port = maps:get(port, State),
     Path = <<"/api/internal/v1/oa/sso/exchange">>,
@@ -107,8 +90,7 @@ revoked_scope(State, Key, ApplicationId, Headers, Params) ->
     ok = intbe02_http_support:sql_exec(
         Connection,
         <<
-            "DELETE FROM enterprise_application_grant_scope WHERE scope='sso:exchange' "
-            "AND grant_id IN (SELECT id FROM enterprise_application_grant WHERE application_id=$1)"
+            "UPDATE enterprise_application SET status='disabled' WHERE id=$1"
         >>,
         [ApplicationId]
     ),
@@ -120,7 +102,7 @@ revoked_scope(State, Key, ApplicationId, Headers, Params) ->
         Headers
     ),
     ?assertEqual(403, maps:get(status, Denied)),
-    #{<<"error">> := #{<<"code">> := <<"insufficient_scope">>}} =
+    #{<<"error">> := #{<<"code">> := <<"application_disabled">>}} =
         jsone:decode(maps:get(body, Denied)),
     #{<<"consumed_at">> := null} = intbe02_http_support:one(
         Connection,

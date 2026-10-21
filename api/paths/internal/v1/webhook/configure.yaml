@@ -14,15 +14,13 @@ put:
     解析私网/保留段拒）；events 须在事件白名单内（空列表 = 只停用订阅）。
     rotate=true 轮换 secret，响应返回新明文一次。
   operationId: internalWebhookConfigure
-  security:
-    - ibIntBearer: []
   parameters:
     - name: Idempotency-Key
       in: header
       required: true
       description: 幂等键
       schema: { type: string, minLength: 1 }
-  x-imboy-scope: webhooks:manage
+  x-imboy-authentication: hmac
   x-imboy-rate-bucket: internal_write
   x-imboy-idempotency: required
   requestBody:
@@ -90,7 +88,7 @@ put:
                   generation 持久化失败时整个配置事务失败，不以 2xx 缺字段返回。
     '400': { $ref: '../../../../components/responses/internal/invalid_request.yaml' }
     '401': { $ref: '../../../../components/responses/internal/invalid_credential.yaml' }
-    '403': { $ref: '../../../../components/responses/internal/insufficient_scope.yaml' }
+    '403': { $ref: '../../../../components/responses/internal/organization_boundary_violation.yaml' }
     '409': { $ref: '../../../../components/responses/internal/idempotency_conflict.yaml' }
     '429': { $ref: '../../../../components/responses/internal/rate_limited.yaml' }
     '500': { $ref: '../../../../components/responses/internal/internal_error.yaml' }

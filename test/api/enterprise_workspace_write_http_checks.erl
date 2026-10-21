@@ -41,8 +41,10 @@ run(S) ->
 negatives(S, Path, B37, B38) ->
     lists:foreach(
         fun({M, P, B, K}) ->
-            Missing = request(S, cred_ro, M, P, B, K),
-            err(Missing, <<"insufficient_scope">>),
+            Missing = intbe02_http_support:http(
+                maps:get(port, S), M, P, B, intbe02_http_support:idem(K)
+            ),
+            err(Missing, <<"invalid_credential">>),
             err(req(S, M, P, B, undefined), <<"invalid_request">>),
             err(req(S, M, P, B, binary:copy(<<"x">>, 129)), <<"invalid_request">>),
             err(req(S, M, P, B#{<<"unknown">> => 1}, K), <<"invalid_request">>)
@@ -54,11 +56,11 @@ negatives(S, Path, B37, B38) ->
         ]
     ),
     err(
-        request(S, cred_w, <<"POST">>, ?BASE, B37, <<"narrow-create">>),
+        foreign_request(S, <<"POST">>, ?BASE, B37, <<"narrow-create">>),
         <<"organization_boundary_violation">>
     ),
     err(
-        request(S, cred_w, <<"PATCH">>, Path, B38, <<"narrow-update">>),
+        foreign_request(S, <<"PATCH">>, Path, B38, <<"narrow-update">>),
         <<"organization_boundary_violation">>
     ),
     err(req(S, <<"PATCH">>, Path, B38, <<"stale-version">>), <<"version_conflict">>),
@@ -162,11 +164,17 @@ assert_audits(S, W) ->
 
 revoked_replay(S, Path, Body) ->
     C = maps:get(conn, S),
+    App = maps:get(app_a, S),
     ok = intbe02_http_support:sql_exec(
-        C,
-        <<"DELETE FROM enterprise_application_grant_scope WHERE scope='workspaces:write'">>
+        C, <<"UPDATE enterprise_application SET status='disabled' WHERE id=$1">>, [App]
     ),
-    err(req(S, <<"DELETE">>, Path, Body, <<"ws-39">>), <<"insufficient_scope">>).
+    try
+        err(req(S, <<"DELETE">>, Path, Body, <<"ws-39">>), <<"application_disabled">>)
+    after
+        ok = intbe02_http_support:sql_exec(
+            C, <<"UPDATE enterprise_application SET status='active' WHERE id=$1">>, [App]
+        )
+    end.
 
 path(W) -> <<?BASE/binary, "/", (integer_to_binary(W))/binary>>.
 audited_req(S, M, P, B, K) ->
@@ -191,3 +199,10 @@ err(R, Code) ->
         Code, maps:get(<<"code">>, maps:get(<<"error">>, jsone:decode(maps:get(body, R))))
     ).
 cover(N) -> intbe02_http_support:cover(<<"INT-", (integer_to_binary(N))/binary>>, ok).
+
+foreign_request(S, Method, Path, Body, Key) ->
+    Headers = maps:merge(
+        intbe02_http_support:auth(maps:get(cred_a, S)),
+        #{<<"idempotency-key">> => Key, <<"x-imboy-organization">> => <<"995102">>}
+    ),
+    intbe02_http_support:http(maps:get(port, S), Method, Path, Body, Headers).

@@ -14,15 +14,13 @@ post:
     被删除），登记 attachment 行并建立治理行。object_key 必须是本 org/app 域
     且已 presign 登记的对象。
   operationId: internalFileConfirm
-  security:
-    - ibIntBearer: []
   parameters:
     - name: Idempotency-Key
       in: header
       required: true
       description: 幂等键
       schema: { type: string, minLength: 1 }
-  x-imboy-scope: files:write
+  x-imboy-authentication: hmac
   x-imboy-rate-bucket: internal_write
   x-imboy-idempotency: required
   requestBody:
@@ -54,7 +52,7 @@ post:
               mime_type: { type: string, description: HEAD 实测类型 }
     '400': { $ref: '../../../../components/responses/internal/invalid_request.yaml' }
     '401': { $ref: '../../../../components/responses/internal/invalid_credential.yaml' }
-    '403': { $ref: '../../../../components/responses/internal/insufficient_scope.yaml' }
+    '403': { $ref: '../../../../components/responses/internal/organization_boundary_violation.yaml' }
     '404': { $ref: '../../../../components/responses/internal/resource_not_found.yaml' }
     '409': { $ref: '../../../../components/responses/internal/idempotency_conflict.yaml' }
     '429': { $ref: '../../../../components/responses/internal/rate_limited.yaml' }

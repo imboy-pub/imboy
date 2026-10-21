@@ -15,12 +15,10 @@ get:
   description: |
     群 active（status=1）成员 keyset 列表——§10.2 唯一升序 family
     （created_at ASC, id ASC）。群定位跨 Org/个人群/已归档一律
-    resource_not_found（不泄露存在性）；同 Org 但无生效 Grant 覆盖群所属 W
+    resource_not_found（不泄露存在性）；同 Org 但群所属工作空间不符合业务归属
     → organization_boundary_violation（403）。分页为 CURSOR-V2 签名游标
     （非法/过期/跨群游标一律 400 invalid_request）。
   operationId: internalGroupMemberList
-  security:
-    - ibIntBearer: []
   parameters:
     - name: group_id
       in: path
@@ -39,7 +37,7 @@ get:
       in: query
       description: 上一页返回的 next_cursor（opaque；绑定 group_id，跨群即拒）
       schema: { type: string }
-  x-imboy-scope: groups:read
+  x-imboy-authentication: hmac
   x-imboy-rate-bucket: internal_read
   x-imboy-idempotency: not_required
   responses:
@@ -69,7 +67,7 @@ get:
               next_cursor: { type: [string, 'null'] }
     '400': { $ref: '../../../../components/responses/internal/invalid_request.yaml' }
     '401': { $ref: '../../../../components/responses/internal/invalid_credential.yaml' }
-    '403': { $ref: '../../../../components/responses/internal/insufficient_scope.yaml' }
+    '403': { $ref: '../../../../components/responses/internal/organization_boundary_violation.yaml' }
     '404': { $ref: '../../../../components/responses/internal/resource_not_found.yaml' }
     '429': { $ref: '../../../../components/responses/internal/rate_limited.yaml' }
     '500': { $ref: '../../../../components/responses/internal/internal_error.yaml' }
@@ -81,8 +79,6 @@ put:
     成员须为本组织已映射用户；已在群（active）计入 already_member，不重复开世代。
     群 owner 不可被移除（owner invariant 由 INT-06 强制）。
   operationId: internalGroupAddMembers
-  security:
-    - ibIntBearer: []
   parameters:
     - name: group_id
       in: path
@@ -94,7 +90,7 @@ put:
       required: true
       description: 幂等键（同 key 换 group_id 会得到 idempotency_conflict）
       schema: { type: string, minLength: 1 }
-  x-imboy-scope: groups:write
+  x-imboy-authentication: hmac
   x-imboy-rate-bucket: internal_write
   x-imboy-idempotency: required
   requestBody:
@@ -123,7 +119,7 @@ put:
               already_member: { type: integer, description: 已在群的数量 }
     '400': { $ref: '../../../../components/responses/internal/invalid_request.yaml' }
     '401': { $ref: '../../../../components/responses/internal/invalid_credential.yaml' }
-    '403': { $ref: '../../../../components/responses/internal/insufficient_scope.yaml' }
+    '403': { $ref: '../../../../components/responses/internal/organization_boundary_violation.yaml' }
     '404': { $ref: '../../../../components/responses/internal/resource_not_found.yaml' }
     '409': { $ref: '../../../../components/responses/internal/idempotency_conflict.yaml' }
     '422': { $ref: '../../../../components/responses/internal/identity_not_mapped.yaml' }
@@ -136,8 +132,6 @@ delete:
     群 owner 不可被 OA 移除（移除后必须仍剩 active 群主）；已不在群计入
     already_absent，重复调用同结果。
   operationId: internalGroupRemoveMembers
-  security:
-    - ibIntBearer: []
   parameters:
     - name: group_id
       in: path
@@ -149,7 +143,7 @@ delete:
       required: true
       description: 幂等键
       schema: { type: string, minLength: 1 }
-  x-imboy-scope: groups:write
+  x-imboy-authentication: hmac
   x-imboy-rate-bucket: internal_write
   x-imboy-idempotency: required
   requestBody:
@@ -178,7 +172,7 @@ delete:
               already_absent: { type: integer }
     '400': { $ref: '../../../../components/responses/internal/invalid_request.yaml' }
     '401': { $ref: '../../../../components/responses/internal/invalid_credential.yaml' }
-    '403': { $ref: '../../../../components/responses/internal/insufficient_scope.yaml' }
+    '403': { $ref: '../../../../components/responses/internal/organization_boundary_violation.yaml' }
     '404': { $ref: '../../../../components/responses/internal/resource_not_found.yaml' }
     '409': { $ref: '../../../../components/responses/internal/idempotency_conflict.yaml' }
     '422': { $ref: '../../../../components/responses/internal/identity_not_mapped.yaml' }

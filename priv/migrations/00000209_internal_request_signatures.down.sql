@@ -1,0 +1,3 @@
+ALTER TABLE public.enterprise_oa_login_ticket DROP COLUMN issuer_authentication;
+DROP TABLE public.enterprise_internal_request_nonce;
+ALTER TABLE public.enterprise_application_credential DROP COLUMN signing_secret_enc;

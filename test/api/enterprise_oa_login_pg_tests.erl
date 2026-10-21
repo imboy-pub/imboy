@@ -71,25 +71,6 @@ run_checks(S) ->
         [App]
     ),
     Ctx = #{application_id => App, credential_id => Cred},
-    ?assertMatch(
-        {error, _}, enterprise_oa_login_logic:issue(Ctx, params(<<"alice">>, <<"login">>))
-    ),
-    exec(
-        C,
-        <<
-            "UPDATE enterprise_application SET allowed_scopes=allowed_scopes || "
-            "'[\"oa:login:issue\"]'::jsonb WHERE id=$1"
-        >>,
-        [App]
-    ),
-    exec(
-        C,
-        <<
-            "INSERT INTO enterprise_application_grant_scope(grant_id,scope) "
-            "SELECT id,'oa:login:issue' FROM enterprise_application_grant WHERE application_id=$1"
-        >>,
-        [App]
-    ),
     exec(C, <<"UPDATE enterprise_application_credential SET organization_id=NULL WHERE id=$1">>, [
         Cred
     ]),
@@ -109,8 +90,14 @@ migration_roundtrip() ->
     {ok, Down} = file:read_file("priv/migrations/00000181_enterprise_oa_login.down.sql"),
     {ok, Up} = file:read_file("priv/migrations/00000181_enterprise_oa_login.up.sql"),
     ok = elib_pg:with_tx(fun(C) ->
+        exec(
+            C,
+            <<"ALTER TABLE enterprise_application ADD COLUMN allowed_scopes jsonb NOT NULL DEFAULT '[]'">>,
+            []
+        ),
         [?assertEqual(ok, element(1, Result)) || Result <- epgsql:squery(C, Down)],
         [?assertEqual(ok, element(1, Result)) || Result <- epgsql:squery(C, Up)],
+        exec(C, <<"ALTER TABLE enterprise_application DROP COLUMN allowed_scopes">>, []),
         ok
     end).
 
@@ -122,6 +109,11 @@ migration_preserves_data(S) ->
     {ok, Down} = file:read_file("priv/migrations/00000181_enterprise_oa_login.down.sql"),
     exec(C, <<"BEGIN">>, []),
     try
+        exec(
+            C,
+            <<"ALTER TABLE enterprise_application ADD COLUMN allowed_scopes jsonb NOT NULL DEFAULT '[]'">>,
+            []
+        ),
         Results = epgsql:squery(C, Down),
         Errors = [Error || {error, Error} <- Results],
         ?assert(lists:any(fun(Error) -> eb_pg_exec:error_of(Error) =:= <<"23514">> end, Errors))
@@ -263,15 +255,13 @@ explicit_link(S, Ctx) ->
         Uid, <<"oa-link-device">>, {Epoch, erlang:system_time(second) + 60}, Complete
     ),
     ?assertEqual(Uid, maps:get(<<"user_id">>, Session)),
-    ?assertEqual(true, maps:get(<<"projection_pending">>, Session)),
-    ?assertEqual(
-        Members,
-        rows(
-            C,
-            <<"SELECT to_jsonb(m) AS row FROM organization_member m ORDER BY organization_id,user_id">>,
-            []
-        )
+    ?assertEqual(false, maps:get(<<"projection_pending">>, Session)),
+    AfterMembers = rows(
+        C,
+        <<"SELECT to_jsonb(m) AS row FROM organization_member m ORDER BY organization_id,user_id">>,
+        []
     ),
+    ?assertEqual([], Members -- AfterMembers),
     [#{<<"user_id">> := Uid}] = rows(
         C,
         <<
@@ -363,20 +353,12 @@ issuer_revocation(S, Ctx) ->
     exec(
         C,
         <<
-            "DELETE FROM enterprise_application_grant_scope WHERE scope='oa:login:issue' "
-            "AND grant_id IN (SELECT id FROM enterprise_application_grant WHERE application_id=$1)"
+            "UPDATE enterprise_application SET status='disabled' WHERE id=$1"
         >>,
         [App]
     ),
     ?assertMatch({error, _}, enterprise_oa_login_logic:exchange(P)),
-    exec(
-        C,
-        <<
-            "INSERT INTO enterprise_application_grant_scope(grant_id,scope) "
-            "SELECT id,'oa:login:issue' FROM enterprise_application_grant WHERE application_id=$1"
-        >>,
-        [App]
-    ),
+    exec(C, <<"UPDATE enterprise_application SET status='active' WHERE id=$1">>, [App]),
     Expired = ticket(
         Ctx, intbe02_http_support:fixture(ext_alice, S), <<"login">>, <<"oa-expired-device">>
     ),
@@ -468,23 +450,10 @@ projected_after_authorization(S, Ctx) ->
     C = maps:get(conn, S),
     App = maps:get(application_id, Ctx),
     Before = user_count(C),
-    exec(
-        C,
-        <<"UPDATE enterprise_application SET allowed_scopes=allowed_scopes || '[\"identities:write\"]'::jsonb WHERE id=$1">>,
-        [App]
-    ),
-    exec(
-        C,
-        <<
-            "INSERT INTO enterprise_application_grant_scope(grant_id,scope) SELECT id,'identities:write' "
-            "FROM enterprise_application_grant WHERE application_id=$1"
-        >>,
-        [App]
-    ),
     {ok, Session} = enterprise_oa_login_logic:exchange(
         ticket(Ctx, <<"new-link">>, <<"login">>, <<"oa-link-device">>)
     ),
-    ?assertEqual(true, maps:get(<<"projection_pending">>, Session)),
+    ?assertEqual(false, maps:get(<<"projection_pending">>, Session)),
     ?assertEqual(Before, user_count(C)),
     [A, B] = rows(
         C,
@@ -495,7 +464,7 @@ projected_after_authorization(S, Ctx) ->
         [App]
     ),
     ?assertEqual(intbe02_http_support:fixture(h_a1, S), maps:get(<<"projected_user_id">>, A)),
-    ?assertEqual(null, maps:get(<<"projected_user_id">>, B)).
+    ?assertEqual(intbe02_http_support:fixture(h_a1, S), maps:get(<<"projected_user_id">>, B)).
 
 concurrent_register(S, Ctx) ->
     C = maps:get(conn, S),
@@ -585,22 +554,6 @@ deadlines(S, Ctx) ->
 source_mixup(S, CtxA) ->
     C = maps:get(conn, S),
     AppB = maps:get(app_ro, S),
-    exec(
-        C,
-        <<
-            "UPDATE enterprise_application SET allowed_scopes=allowed_scopes || "
-            "'[\"oa:login:issue\"]'::jsonb WHERE id=$1"
-        >>,
-        [AppB]
-    ),
-    exec(
-        C,
-        <<
-            "INSERT INTO enterprise_application_grant_scope(grant_id,scope) "
-            "SELECT id,'oa:login:issue' FROM enterprise_application_grant WHERE application_id=$1"
-        >>,
-        [AppB]
-    ),
     [#{<<"id">> := CredB}] = rows(
         C,
         <<"SELECT id FROM enterprise_application_credential WHERE application_id=$1 AND status='active'">>,
@@ -637,12 +590,13 @@ oa_login_three_gap_test_() ->
 
 oa_login_three_gap_fixture() ->
     {timeout, 900,
-        {setup, fun() ->
-            isolated_pg_fixture:setup_single_node_cache(
-                fun enterprise_oa_login_three_gap_pg_checks:setup/0,
-                fun enterprise_oa_login_three_gap_pg_checks:teardown/1
-            )
-        end,
+        {setup,
+            fun() ->
+                isolated_pg_fixture:setup_single_node_cache(
+                    fun enterprise_oa_login_three_gap_pg_checks:setup/0,
+                    fun enterprise_oa_login_three_gap_pg_checks:teardown/1
+                )
+            end,
             fun enterprise_oa_login_three_gap_pg_checks:teardown/1, fun(S) ->
                 Ctx = maps:get(oa_gap_context, S),
                 Ticket = fun(Ext, Intent, Did) -> ticket(Ctx, Ext, Intent, Did) end,
