@@ -9,14 +9,47 @@
 
 -define(REC(N), <<"31000000-0000-0000-0000-0000000000", (integer_to_binary(N))/binary>>).
 
-setup() ->
-    State = talk_record_t20_support:setup_all(),
-    talk_record_t20_support:seed(State),
-    _HandlerState = setup_mocks(),
-    State.
+setup(Case) ->
+    undefined = get({?MODULE, setup_mock_owners}),
+    lists:foreach(
+        fun(M) -> undefined = whereis(mock_name(M)) end,
+        [elib_response, elib_param, cowboy_req]
+    ),
+    State = talk_record_t20_support:setup_all({?MODULE, Case}),
+    put({?MODULE, setup_mock_owners}, #{}),
+    try
+        talk_record_t20_support:seed(State),
+        ok = setup_mocks(),
+        State#{handler_mock_owners => get({?MODULE, setup_mock_owners})}
+    catch
+        Class:Reason:Stack ->
+            FailedState = State#{handler_mock_owners => get({?MODULE, setup_mock_owners})},
+            try
+                cleanup(FailedState)
+            catch
+                CleanupClass:CleanupReason ->
+                    error(
+                        {setup_failed_and_cleanup_failed, {Class, Reason},
+                            {CleanupClass, CleanupReason}}
+                    )
+            end,
+            erlang:raise(Class, Reason, Stack)
+    after
+        erase({?MODULE, setup_mock_owners})
+    end.
+
+new_owned_mock(Module) ->
+    ok = meck:new(Module, [passthrough, unstick, no_link]),
+    Pid = whereis(mock_name(Module)),
+    true = is_pid(Pid),
+    Owners = get({?MODULE, setup_mock_owners}),
+    put({?MODULE, setup_mock_owners}, Owners#{Module => Pid}),
+    ok.
+
+mock_name(Module) -> list_to_atom(atom_to_list(Module) ++ "_meck").
 
 setup_mocks() ->
-    ok = meck:new(elib_response, [passthrough, unstick, no_link]),
+    ok = new_owned_mock(elib_response),
     ok = meck:expect(elib_response, success, fun(Req, Data) ->
         Req#{response_status => 200, response_body => Data}
     end),
@@ -26,8 +59,8 @@ setup_mocks() ->
             response_body => #{<<"msg">> => Msg, <<"code">> => Code}
         }
     end),
-    ok = meck:new(elib_param, [passthrough, unstick, no_link]),
-    ok = meck:new(cowboy_req, [passthrough, unstick, no_link]),
+    ok = new_owned_mock(elib_param),
+    ok = new_owned_mock(cowboy_req),
     ok = meck:expect(cowboy_req, reply, fun(Status, Headers, Body, Req) ->
         Req#{
             response_status => Status,
@@ -38,17 +71,27 @@ setup_mocks() ->
     ok.
 
 cleanup(State) ->
-    catch meck:unload(cowboy_req),
-    catch meck:unload(elib_param),
-    catch meck:unload(elib_response),
-    talk_record_t20_support:teardown_all(State).
+    try
+        maps:foreach(
+            fun(Module, Pid) ->
+                case whereis(mock_name(Module)) of
+                    Pid -> ok = meck:unload(Module);
+                    undefined -> ok;
+                    _ -> error({handler_mock_ownership_lost, Module})
+                end
+            end,
+            maps:get(handler_mock_owners, State, #{})
+        )
+    after
+        talk_record_t20_support:teardown_all(State)
+    end.
 
 req(Opts) ->
     cowboy_req_h:new(Opts).
 
-with_db(TestFun) ->
+with_db(Case, TestFun) ->
     {timeout, 120,
-        {setup, fun setup/0, fun cleanup/1, fun(State) ->
+        {setup, fun() -> setup(Case) end, fun cleanup/1, fun(State) ->
             ?_test(TestFun(State))
         end}}.
 
@@ -99,7 +142,7 @@ payload_of(R) ->
 %%%===================================================================
 
 delete_handler_202_test_() ->
-    with_db(fun(State) ->
+    with_db(delete_handler_202_test_, fun(State) ->
         {Rid, U1} = ready(State, 61),
         R1 = talk_record_handler:handle_action(
             item,
@@ -116,7 +159,7 @@ delete_handler_202_test_() ->
     end).
 
 delete_handler_error_codes_test_() ->
-    with_db(fun(State) ->
+    with_db(delete_handler_error_codes_test_, fun(State) ->
         C = talk_record_t20_support:conn_of(State),
         Ids = talk_record_t20_support:ids(),
         U1 = maps:get(u1, Ids),
@@ -177,7 +220,7 @@ delete_handler_error_codes_test_() ->
 %%%===================================================================
 
 get_after_delete_whitelist_test_() ->
-    with_db(fun(State) ->
+    with_db(get_after_delete_whitelist_test_, fun(State) ->
         Ids = talk_record_t20_support:ids(),
         U1 = maps:get(u1, Ids),
         U2 = maps:get(u2, Ids),
@@ -247,7 +290,7 @@ get_after_delete_whitelist_test_() ->
 %%%===================================================================
 
 item_method_not_allowed_test_() ->
-    with_db(fun(_State) ->
+    with_db(item_method_not_allowed_test_, fun(_State) ->
         R = talk_record_handler:handle_action(
             item,
             req(#{

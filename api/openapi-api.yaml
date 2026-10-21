@@ -892,6 +892,8 @@ paths:
     $ref: './paths/api/v1/talk-records/export_download.yaml'
   /api/v1/talk-records/{id}/ownership-transfers:
     $ref: './paths/api/v1/talk-records/ownership_transfers.yaml'
+  /api/v1/talk-records/{id}/cleanup/retry:
+    $ref: './paths/api/v1/talk-records/cleanup_retry.yaml'
   /api/v1/talk-records/{id}/complete:
     $ref: './paths/api/v1/talk-records/complete.yaml'
   /api/v1/talk-records/{id}/jobs:

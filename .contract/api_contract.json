@@ -4836,6 +4836,12 @@
         "static": false
       },
       {
+        "action": null,
+        "handler": "talk_record_cleanup_retry_handler",
+        "path": "/api/v1/talk-records/:id/cleanup/retry",
+        "static": false
+      },
+      {
         "action": "complete",
         "handler": "talk_record_handler",
         "path": "/api/v1/talk-records/:id/complete",

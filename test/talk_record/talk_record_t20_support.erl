@@ -1,21 +1,12 @@
-%%% @doc T20 talk_record 删除/清理/注销预检 eunit 支撑（test-only，不进 release）.
-%%%
-%%% 复用 talk_record_t12_support（→t07→t05）的池/环境/tsid meck/录音夹具，
-%%% 叠加：
-%%%   * 池指向 T20 隔离库 127.0.0.1:55436/talk_record_t20（env T20_PG_*
-%%%     可覆写；经 os:setenv 注入 t05_support 读取的 T05_PG_* 变量）；
-%%%   * jwt_key 注入（playback 票据撤权即时性测试；用后恢复）；
-%%%   * 附件世界（T06 fixture 形态）：talk_record 附件资产/confirmed 会话/
-%%%     bound 引用/收藏引用（retained_by_other_reference 场景）/EAR hold 行
-%%%     的构造与清库（attachment/attach_pending/队列/EAR/user_collect）；
-%%%   * 删除域直查（cleanup_status/引用状态/队列进度）。
-%%%
-%%% schema 基底：runners/T06/t06_fixture_base.sql + runners/T20/t20_base_extra.sql
-%%% + 迁移 00000211..00000215（runners/T20/reset_db.sh）。
+%%% @doc Case-isolated T20 support. Controller preclones an empty formal schema.
+%%% No setup/seed reset, database DDL, default target or shared Disk fallback.
+%%% Asset shortcut helpers below remain legacy component fixtures; they do not
+%%% prove V5 upload, lawful queue exhaustion or physical deletion acceptance.
 -module(talk_record_t20_support).
 
 -export([
     setup_all/0,
+    setup_all/1,
     teardown_all/1,
     seed/1,
     ids/0,
@@ -49,38 +40,209 @@
 %%% Setup / Teardown
 %%%===================================================================
 
--spec setup_all() -> map().
-setup_all() ->
-    %% 不经 t12_support（其 setup 会把 T05_PG_* 覆写回 T12 库默认值）——
-    %% 直链 t07_support（→t05：池/tsid meck），T20 库 55436 注入在此一次完成。
-    os:putenv("T05_PG_HOST", os:getenv("T20_PG_HOST", "127.0.0.1")),
-    os:putenv("T05_PG_PORT", os:getenv("T20_PG_PORT", "55436")),
-    os:putenv("T05_PG_USER", os:getenv("T20_PG_USER", "t20admin")),
-    os:putenv("T05_PG_PASSWORD", os:getenv("T20_PG_PASSWORD", "")),
-    os:putenv("T05_PG_DB", os:getenv("T20_PG_DB", "talk_record_t20")),
-    State0 = talk_record_t07_support:setup_all(),
-    Prev = #{jwt_key => application:get_env(imboy, jwt_key)},
-    ok = application:set_env(imboy, jwt_key, ?JWT_KEY),
+-spec setup_all() -> no_return().
+setup_all() -> error(t20_explicit_case_key_required).
+
+-spec setup_all(binary() | {atom(), atom()}) -> map().
+setup_all(Key) ->
+    undefined = whereis(pgsql),
+    undefined = whereis(pooler_pgsql_pool_sup),
+    undefined = whereis(elib_tsid_meck),
+    Context = talk_record_t20_case_registry:activate(Key),
+    Ref = make_ref(),
+    put({?MODULE, Ref}, #{environment => []}),
     try
-        State0#{
-            t20_prev_env => Prev,
-            audio_fixture => talk_record_t12_support:setup_audio_fixture()
-        }
+        capture_environment(Ref, fun() -> configure_connection(Context) end, [], os_names()),
+        setup_case(Ref, Context)
     catch
         Class:Reason:Stack ->
-            restore_env(jwt_key, maps:get(jwt_key, Prev)),
-            talk_record_t07_support:teardown_all(State0),
+            try
+                cleanup_resources(get({?MODULE, Ref}))
+            after
+                talk_record_t20_case_registry:clear()
+            end,
             erlang:raise(Class, Reason, Stack)
+    after
+        erase({?MODULE, Ref})
     end.
 
+setup_case(Ref, Context) ->
+    _ = application:load(imboy),
+    capture_environment(
+        Ref,
+        fun() ->
+            application:set_env(imboy, sql_driver, pgsql),
+            application:set_env(
+                imboy,
+                talk_record_cursor_signing_key,
+                <<"t20_cursor_signing_key_0123456789abcdef">>
+            )
+        end,
+        [sql_driver, talk_record_cursor_signing_key],
+        []
+    ),
+    Conn = acquire_connections(Ref),
+    ok = talk_record_t20_case_registry:verify_empty(Conn),
+    capture_environment(
+        Ref,
+        fun() -> talk_record_t20_case_registry:configure_storage() end,
+        [attachment_storage_registry],
+        ["TALK_UPLOAD_DISK_ROOT"]
+    ),
+    capture_environment(
+        Ref,
+        fun() -> talk_record_t12_support:setup_audio_fixture() end,
+        [talk_record_t12_audio_bytes, talk_record_render_tmp_dir],
+        ["TMPDIR"]
+    ),
+    capture_environment(
+        Ref,
+        fun() -> application:set_env(imboy, jwt_key, ?JWT_KEY) end,
+        [jwt_key],
+        []
+    ),
+    #{conn => Conn, t20_context => Context, t20_resources => get({?MODULE, Ref})}.
+
+acquire_connections(Ref) ->
+    {ok, _} = application:ensure_all_started(epgsql),
+    {ok, _} = application:ensure_all_started(pooler),
+    undefined = whereis(pgsql),
+    undefined = whereis(pooler_pgsql_pool_sup),
+    {ok, PoolSupervisor} = pooler:new_pool(#{
+        name => pgsql,
+        max_count => 4,
+        init_count => 1,
+        start_mfa => {epgsql, connect, [talk_record_t20_case_registry:connection_options()]}
+    }),
+    PoolPid = whereis(pgsql),
+    track(Ref, pool, #{supervisor => PoolSupervisor, process => PoolPid}),
+    true = is_pid(PoolPid),
+    ok = meck:new(elib_tsid, [passthrough, unstick, no_link]),
+    track(Ref, mock, whereis(elib_tsid_meck)),
+    ok = meck:expect(elib_tsid, generate, fun(_) ->
+        9000000000000 + erlang:unique_integer([positive, monotonic])
+    end),
+    {ok, Conn} = epgsql:connect(talk_record_t20_case_registry:connection_options()),
+    track(Ref, conn, Conn),
+    Conn.
+
+configure_connection(#{entry := Case}) ->
+    Opts = talk_record_t20_case_registry:connection_options(),
+    Db = binary_to_list(maps:get(<<"database">>, Case)),
+    true = os:putenv("T20_PG_DB", Db),
+    lists:foreach(
+        fun({Name, Value}) -> true = os:putenv(Name, Value) end,
+        [
+            {"T05_PG_HOST", maps:get(host, Opts)},
+            {"T05_PG_PORT", integer_to_list(maps:get(port, Opts))},
+            {"T05_PG_USER", binary_to_list(maps:get(username, Opts))},
+            {"T05_PG_PASSWORD", maps:get(password, Opts)},
+            {"T05_PG_DB", Db}
+        ]
+    ),
+    ok.
+
 -spec teardown_all(map()) -> ok.
-teardown_all(#{t20_prev_env := Prev} = State) ->
-    restore_env(jwt_key, maps:get(jwt_key, Prev)),
+teardown_all(#{t20_resources := Resources}) ->
     try
-        talk_record_t12_support:cleanup_audio_fixture(maps:get(audio_fixture, State))
+        talk_record_t20_case_registry:recheck()
     after
-        talk_record_t07_support:teardown_all(State)
+        try
+            cleanup_resources(Resources)
+        after
+            talk_record_t20_case_registry:clear()
+        end
     end.
+
+track(Ref, Name, Value) ->
+    Ledger = get({?MODULE, Ref}),
+    put({?MODULE, Ref}, Ledger#{Name => Value}),
+    ok.
+
+capture_environment(Ref, Fun, Keys, Names) ->
+    Before =
+        [{app, K, application:get_env(imboy, K)} || K <- Keys] ++
+            [{os, N, os:getenv(N)} || N <- Names],
+    try
+        Fun()
+    after
+        Changed = [
+            {Kind, Name, Previous, current_environment(Kind, Name)}
+         || {Kind, Name, Previous} <- Before, Previous =/= current_environment(Kind, Name)
+        ],
+        Ledger = get({?MODULE, Ref}),
+        track(Ref, environment, lists:reverse(Changed) ++ maps:get(environment, Ledger))
+    end.
+
+cleanup_resources(Resources) ->
+    Results =
+        [
+            cleanup_connection(maps:get(conn, Resources, undefined)),
+            cleanup_process(mock, maps:get(mock, Resources, undefined)),
+            cleanup_process(pool, maps:get(pool, Resources, undefined))
+        ] ++
+            [restore_owned_environment(E) || E <- maps:get(environment, Resources)],
+    case [E || E <- Results, E =/= ok] of
+        [] -> ok;
+        Errors -> error({t20_cleanup_ownership_changed, Errors})
+    end.
+
+cleanup_connection(undefined) ->
+    ok;
+cleanup_connection(Pid) ->
+    try
+        epgsql:close(Pid),
+        ok
+    catch
+        _:Reason -> {connection_cleanup_failed, Reason}
+    end.
+cleanup_process(_, undefined) ->
+    ok;
+cleanup_process(pool, #{supervisor := Supervisor, process := Pid}) ->
+    try
+        case {whereis(pooler_pgsql_pool_sup), whereis(pgsql)} of
+            {Supervisor, Pid} -> pooler:rm_pool(pgsql);
+            {Supervisor, undefined} -> pooler:rm_pool(pgsql);
+            {undefined, undefined} -> ok;
+            Other -> {foreign_pool_preserved, Other}
+        end
+    catch
+        _:Reason -> {cleanup_failed, pool, Reason}
+    end;
+cleanup_process(mock, Pid) when is_pid(Pid) ->
+    case whereis(elib_tsid_meck) of
+        Pid ->
+            try
+                meck:unload(elib_tsid)
+            catch
+                _:Reason -> {cleanup_failed, mock, Reason}
+            end;
+        undefined ->
+            ok;
+        Other ->
+            {foreign_process_preserved, elib_tsid_meck, Other}
+    end.
+
+restore_owned_environment({Kind, Name, Previous, Owned}) ->
+    case current_environment(Kind, Name) of
+        Owned ->
+            case {Kind, Previous} of
+                {app, _} ->
+                    restore_env(Name, Previous);
+                {os, false} ->
+                    os:unsetenv(Name),
+                    ok;
+                {os, Value} ->
+                    os:putenv(Name, Value),
+                    ok
+            end;
+        _ ->
+            {foreign_environment_preserved, Kind, Name}
+    end.
+current_environment(app, Name) -> application:get_env(imboy, Name);
+current_environment(os, Name) -> os:getenv(Name).
+os_names() ->
+    ["T05_PG_HOST", "T05_PG_PORT", "T05_PG_USER", "T05_PG_PASSWORD", "T05_PG_DB", "T20_PG_DB"].
 
 restore_env(Key, undefined) ->
     application:unset_env(imboy, Key);
@@ -101,16 +263,54 @@ with_env(Key, Value, Fun) ->
 -spec seed(map()) -> ok.
 seed(State) ->
     Conn = maps:get(conn, State),
-    %% 引用方先清（EAR/队列/收藏对 attachment 的 FK/hash 引用），
-    %% 再跑 t12 seed（其内部 DELETE FROM attachment）
-    [
-        sql(Conn, "DELETE FROM enterprise_attachment_retention"),
-        sql(Conn, "DELETE FROM attachment_object_deletion"),
-        sql(Conn, "DELETE FROM attach_pending"),
-        sql(Conn, "DELETE FROM user_collect"),
-        sql(Conn, "DELETE FROM enterprise_application")
-    ],
-    ok = talk_record_t12_support:seed(State),
+    ok = talk_record_t20_case_registry:verify_empty(Conn),
+    raw_tx(Conn, fun(C) -> seed_parents(C) end).
+
+seed_parents(C) ->
+    lists:foreach(
+        fun(Uid) -> talk_record_parent_fixture:user(C, Uid, #{}) end,
+        [700001, 700002, 700003, 700004, 700006, 700007, 700008]
+    ),
+    ok = talk_record_parent_fixture:organization(C, 710001, <<"t20-org-a">>, 700001, <<"active">>),
+    ok = talk_record_parent_fixture:organization(C, 710002, <<"t20-org-b">>, 700004, <<"active">>),
+    lists:foreach(
+        fun({Org, User, Role}) -> seed_member(C, Org, User, Role) end,
+        [
+            {710001, 700001, <<"owner">>},
+            {710001, 700002, <<"member">>},
+            {710001, 700003, <<"member">>},
+            {710002, 700004, <<"owner">>}
+        ]
+    ),
+    lists:foreach(
+        fun({Ws, Org, Owner}) ->
+            talk_record_parent_fixture:workspace(C, Ws, Org, <<"t20-workspace">>, Owner)
+        end,
+        [{720001, 710001, 700001}, {720002, 710001, 700001}, {720011, 710002, 700004}]
+    ),
+    {ok, _} = elib_pg:query(
+        C,
+        <<"INSERT INTO workspace_member(workspace_id,user_id,role,status) VALUES($1,$2,'member','active')">>,
+        [720001, 700001]
+    ),
+    lists:foreach(
+        fun(N) ->
+            Org = 711000 + N,
+            ok = talk_record_parent_fixture:organization(
+                C, Org, <<"t20-page-org">>, 700008, <<"active">>
+            ),
+            seed_member(C, Org, 700006, <<"member">>)
+        end,
+        lists:seq(1, 21)
+    ),
+    ok.
+
+seed_member(C, Org, User, Role) ->
+    {ok, _} = elib_pg:query(
+        C,
+        <<"INSERT INTO organization_member(organization_id,user_id,role,status) VALUES($1,$2,$3,'active')">>,
+        [Org, User, Role]
+    ),
     ok.
 
 -spec ids() -> map().
@@ -119,6 +319,7 @@ ids() ->
 
 -spec sql(pid() | map(), iolist()) -> ok.
 sql(Conn, Sql) ->
+    ok = talk_record_t20_case_registry:verify_connected(Conn),
     talk_record_t12_support:sql(Conn, Sql).
 
 -spec one(pid() | map(), iolist()) -> map().
@@ -141,6 +342,7 @@ conn_of(State) ->
 %% disk 驱动用例须与 registry 解析结果一致，T06 I 组同款）。
 -spec insert_attachment(pid() | map(), integer(), map()) -> binary().
 insert_attachment(Conn, Id, Opts) ->
+    ok = talk_record_t20_case_registry:verify_connected(Conn),
     RecordId = maps:get(record_id, Opts),
     Path = maps:get(path, Opts, path_of(Id)),
     Hash = maps:get(hash, Opts, binary:copy(<<"b">>, 64)),
@@ -169,6 +371,7 @@ path_of(Id) ->
 %% @doc 直接落一条 bound 业务引用（绕开首绑六条件——测试数据装配）。
 -spec bind_ref(pid() | map(), integer(), integer(), binary()) -> ok.
 bind_ref(Conn, RecordId, AttachmentId, BusinessKey) ->
+    ok = talk_record_t20_case_registry:verify_connected(Conn),
     {ok, []} =
         elib_pg:query(
             Conn,
@@ -183,6 +386,7 @@ bind_ref(Conn, RecordId, AttachmentId, BusinessKey) ->
 %% @doc 收藏引用（同 hash → intent 23510 → retained_by_other_reference）。
 -spec collect_hash(pid() | map(), integer(), binary()) -> ok.
 collect_hash(Conn, CollectId, Hash) ->
+    ok = talk_record_t20_case_registry:verify_connected(Conn),
     {ok, []} =
         elib_pg:query(
             Conn,
@@ -199,6 +403,7 @@ collect_hash(Conn, CollectId, Hash) ->
 %% hold_reason + hold_set_at。
 -spec hold_row(pid() | map(), integer()) -> ok.
 hold_row(Conn, AttachmentId) ->
+    ok = talk_record_t20_case_registry:verify_connected(Conn),
     {ok, []} =
         elib_pg:query(
             Conn,
@@ -224,6 +429,7 @@ hold_row(Conn, AttachmentId) ->
 %% intent 已入队时转 UPDATE（模拟 worker 8 次重试耗尽）；无行时 INSERT。
 -spec queue_exhaust_row(pid() | map(), binary()) -> ok.
 queue_exhaust_row(Conn, Path) ->
+    ok = talk_record_t20_case_registry:verify_connected(Conn),
     {ok, _} =
         elib_pg:query(
             Conn,
@@ -240,6 +446,7 @@ queue_exhaust_row(Conn, Path) ->
 %% @doc 队列完成行（done → refresh 投影 complete）。
 -spec queue_done_row(pid() | map(), binary()) -> ok.
 queue_done_row(Conn, Path) ->
+    ok = talk_record_t20_case_registry:verify_connected(Conn),
     {ok, []} =
         elib_pg:query(
             Conn,
@@ -292,25 +499,24 @@ purge_jobs(RecordId) ->
 %% @doc 新池外连接（并发互斥用例的第二视角）。
 -spec fresh_conn() -> pid().
 fresh_conn() ->
-    Opts = [
-        {host, os:getenv("T20_PG_HOST", "127.0.0.1")},
-        {port, list_to_integer(os:getenv("T20_PG_PORT", "55436"))},
-        {username, os:getenv("T20_PG_USER", "t20admin")},
-        {password, ""},
-        {database, os:getenv("T20_PG_DB", "talk_record_t20")},
-        {ssl, false},
-        {timeout, 15000},
-        {codecs, [{epgsql_codec_rfc3339_bin, []}]}
-    ],
-    {ok, Conn} = epgsql:connect(Opts),
-    Conn.
+    {ok, Conn} = epgsql:connect(talk_record_t20_case_registry:connection_options()),
+    try
+        ok = talk_record_t20_case_registry:verify_connected(Conn),
+        Conn
+    catch
+        Class:Reason:Stack ->
+            epgsql:close(Conn),
+            erlang:raise(Class, Reason, Stack)
+    end.
 
 %% @doc 独立连接上的显式事务（并发用例精确控制 COMMIT 时点）。
 -spec raw_tx(pid(), fun()) -> term().
 raw_tx(Conn, Fun) ->
+    ok = talk_record_t20_case_registry:verify_connected(Conn),
     {ok, [], []} = epgsql:squery(Conn, "BEGIN"),
     try
         R = Fun(Conn),
+        ok = talk_record_t20_case_registry:recheck(),
         {ok, [], []} = epgsql:squery(Conn, "COMMIT"),
         R
     catch
@@ -324,29 +530,19 @@ raw_tx(Conn, Fun) ->
 %%%===================================================================
 
 disk_root(_Tag) ->
-    Base = os:getenv(
-        "T20_RUN_ROOT",
-        "/Users/leeyi/.codex/task-runs/talk-record-v1/20261020-193000-talkv1-193415"
-    ),
-    Dir = Base ++ "/pg-t20/diskroot-" ++ os:getpid(),
-    ok = filelib:ensure_dir(filename:join(Dir, "x")),
-    Dir.
+    ok = talk_record_t20_case_registry:recheck(),
+    #{entry := #{<<"disk_root">> := Root}} = talk_record_t20_case_registry:current(),
+    binary_to_list(Root).
 
 disk_registry_apply(Dir) ->
-    Endpoint = <<"file://", (list_to_binary(Dir))/binary>>,
-    Registry = #{
-        version => 1,
-        roots => #{
-            t20_root => #{
-                driver => <<"disk">>,
-                namespace => <<"t20-ns">>,
-                endpoint => Endpoint
-            }
-        }
-    },
-    ok = application:set_env(imboy, attachment_storage_registry, Registry),
-    #{namespace => <<"t20-ns">>, container => <<"t20c">>}.
+    Expected = disk_root(current),
+    true = filename:absname(Dir) =:= Expected,
+    ok = talk_record_t20_case_registry:configure_storage(),
+    #{entry := #{<<"namespace">> := Namespace}} = talk_record_t20_case_registry:current(),
+    #{namespace => Namespace, container => <<"capture">>}.
 
 disk_locator_digest() ->
-    {ok, Rec} = attachment_storage:resolve(<<"t20-ns">>),
-    attachment_storage:locator_digest(<<"t20-ns">>, Rec).
+    ok = talk_record_t20_case_registry:recheck(),
+    #{entry := #{<<"namespace">> := Namespace}} = talk_record_t20_case_registry:current(),
+    {ok, Rec} = attachment_storage:resolve(Namespace),
+    attachment_storage:locator_digest(Namespace, Rec).

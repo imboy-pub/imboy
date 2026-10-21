@@ -29,6 +29,7 @@ routes() ->
         {"/api/v1/talk-records", talk_record_handler, #{action => collection}},
         %% item：GET → detail；PATCH → update
         {"/api/v1/talk-records/:id", talk_record_handler, #{action => item}},
+        {"/api/v1/talk-records/:id/cleanup/retry", talk_record_cleanup_retry_handler, #{}},
         %% ---- T07 采集域（§4 采集五端点 + §11.1 恢复/放弃）----
         {"/api/v1/talk-records/:id/captures", talk_record_handler, #{
             action => captures_collection

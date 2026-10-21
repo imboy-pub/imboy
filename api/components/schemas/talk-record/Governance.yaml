@@ -53,3 +53,10 @@ properties:
     type: boolean
   enterprise_governance_integrated:
     const: true
+  cleanup_generation:
+    type: integer
+    format: int64
+    minimum: 0
+    description: Readonly generation for record-scoped cleanup retry CAS.
+  cleanup_retry:
+    $ref: ./CleanupRetryCapability.yaml

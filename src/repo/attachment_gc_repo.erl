@@ -1,7 +1,7 @@
 -module(attachment_gc_repo).
 -moduledoc "Durable object deletion jobs; completed rows reserve retired object keys.".
 -export([enqueue_tx/3, pending/0, lock_tx/2, complete_tx/2, defer/1]).
--export([v5_claim/2, v5_ack/4, v5_reap/2]).
+-export([v5_claim/2, v5_ack/4, v5_reap/2, retry_talk_record_tx/9]).
 
 enqueue_tx(Conn, Path, Bucket) ->
     case
@@ -92,7 +92,7 @@ v5_claim(Conn, Token) ->
             <<
                 "SELECT out_path, out_bucket, out_storage_driver,"
                 " out_storage_namespace, out_storage_container,"
-                " out_storage_locator_sha256, out_attempts"
+                " out_storage_locator_sha256, out_storage_physical_key, out_attempts"
                 " FROM fn_v5_claim_ordinary($1)"
             >>,
             [Token]
@@ -135,3 +135,11 @@ v5_reap(Conn, Limit) ->
         {ok, _} -> {ok, 0};
         {error, R} -> {error, R}
     end.
+
+%% Narrow function rechecks authenticated actor relationship and frozen ownership.
+retry_talk_record_tx(C, Uid, Rid, Rev, Generation, Key, Digest, Reason, JobId) ->
+    elib_pg:query(
+        C,
+        <<"SELECT fn_talk_record_cleanup_retry($1,$2,$3,$4,$5,$6,$7,$8) AS result">>,
+        [Uid, Rid, Rev, Generation, Key, Digest, Reason, JobId]
+    ).

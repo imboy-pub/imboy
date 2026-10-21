@@ -13,7 +13,8 @@ from contract_route_sources import uncomment
 def routes():
     source = uncomment((ROOT / 'src/api/talk_record_routes.erl').read_text())
     handler = (ROOT / 'src/api/talk_record_handler.erl').read_text()
-    dedicated = {'talk_record_recovery_handler': 'recovery',
+    dedicated = {'talk_record_cleanup_retry_handler': 'cleanup_retry',
+                 'talk_record_recovery_handler': 'recovery',
                  'talk_record_participant_handler': 'participants',
                  'talk_record_governance_handler': 'governance',
                  'talk_record_playback_handler': 'stream'}
@@ -31,7 +32,7 @@ def routes():
 
 
 class TalkRecordContractTests(unittest.TestCase):
-    def test_all_37_paths_48_real_methods_are_registered_and_documented(self):
+    def test_all_38_paths_49_real_methods_are_registered_and_documented(self):
         root = (ROOT / 'api/openapi-api.yaml').read_text()
         exported = extract_routes((ROOT / 'src/imboy_router.erl').read_text())
         registered = {e['path'] for e in exported['api_v1']}
@@ -45,8 +46,8 @@ class TalkRecordContractTests(unittest.TestCase):
                 actual = set(re.findall(r'^(get|post|put|patch|delete|head):', document.read_text(), re.M))
                 self.assertEqual({m.lower() for m in methods}, actual)
                 total += len(methods)
-        self.assertEqual(len(list(routes())), 37)
-        self.assertEqual(total, 48)
+        self.assertEqual(len(list(routes())), 38)
+        self.assertEqual(total, 49)
 
     def test_all_new_local_schema_refs_resolve(self):
         files = list((ROOT / 'api/paths/api/v1/talk-records').glob('*.yaml'))

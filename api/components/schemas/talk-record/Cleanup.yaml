@@ -35,3 +35,10 @@ properties:
     maximum: 9223372036854775807
   protected:
     type: boolean
+  cleanup_generation:
+    type: integer
+    format: int64
+    minimum: 0
+    description: Current scoped cleanup recovery CAS generation, not lifetime attempt count.
+  cleanup_retry:
+    $ref: ./CleanupRetryCapability.yaml

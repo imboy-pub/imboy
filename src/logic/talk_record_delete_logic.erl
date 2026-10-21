@@ -152,6 +152,7 @@ delete_replay_payload(Row) ->
         <<"id">> => maps:get(<<"id">>, Row),
         <<"logical_deleted">> => true,
         <<"cleanup_status">> => maps:get(<<"cleanup_status">>, Row, <<"pending">>),
+        <<"cleanup_generation">> => maps:get(<<"cleanup_generation">>, Row, 0),
         <<"physical_delete_state">> => <<"unknown">>,
         <<"revision">> => maps:get(<<"revision">>, Row),
         <<"acl_revision">> => maps:get(<<"acl_revision">>, Row),
@@ -167,6 +168,7 @@ delete_payload(Conn, Row) ->
         <<"id">> => RecordId,
         <<"logical_deleted">> => true,
         <<"cleanup_status">> => maps:get(<<"cleanup_status">>, Row, <<"pending">>),
+        <<"cleanup_generation">> => maps:get(<<"cleanup_generation">>, Row, 0),
         <<"physical_delete_state">> =>
             talk_record_cleanup_logic:physical_delete_state_tx(Conn, RecordId),
         <<"cleanup_reason">> => talk_record_cleanup_logic:cleanup_reason_tx(Conn, RecordId),
@@ -187,27 +189,34 @@ delete_payload(Conn, Row) ->
 deleted_detail(Uid, RecordId) ->
     case talk_record_delete_repo:find_deleted_for_owner(Uid, RecordId) of
         {ok, Row} ->
-            deleted_status_payload(Row, RecordId);
+            deleted_status_payload(Row, RecordId, Uid);
         {error, Reason} ->
             {error, Reason}
     end.
 
-deleted_status_payload(Row, Rid) ->
+deleted_status_payload(Row, Rid, Uid) ->
     Result = elib_pg:with_conn(fun(C) ->
         {
             talk_record_cleanup_logic:physical_delete_state_tx(C, Rid),
-            talk_record_cleanup_logic:cleanup_reason_tx(C, Rid)
+            talk_record_cleanup_logic:cleanup_reason_tx(C, Rid),
+            talk_record_cleanup_retry_repo:capability_tx(C, Uid, Rid)
         }
     end),
     case Result of
-        {Physical, Reason} when is_binary(Physical), (is_binary(Reason) orelse Reason =:= null) ->
+        {Physical, Reason, Retry} when
+            is_binary(Physical), (is_binary(Reason) orelse Reason =:= null)
+        ->
             P = whitelist_payload(Row, Physical),
             Status =
                 case {maps:get(<<"cleanup_status">>, P), Reason} of
                     {<<"complete">>, R} when R =/= null -> <<"pending">>;
                     {S, _} -> S
                 end,
-            {ok, P#{<<"cleanup_reason">> => Reason, <<"cleanup_status">> => Status}};
+            {ok, P#{
+                <<"cleanup_reason">> => Reason,
+                <<"cleanup_status">> => Status,
+                <<"cleanup_retry">> => Retry
+            }};
         _ ->
             {error, db_error}
     end.
@@ -218,6 +227,7 @@ whitelist_payload(Row, Physical) ->
         <<"id">> => maps:get(<<"id">>, Row),
         <<"logical_deleted">> => true,
         <<"cleanup_status">> => Status,
+        <<"cleanup_generation">> => maps:get(<<"cleanup_generation">>, Row, null),
         <<"physical_delete_state">> => Physical,
         <<"revision">> => maps:get(<<"revision">>, Row),
         <<"deleted_at">> => maps:get(<<"deleted_at">>, Row),
@@ -254,31 +264,11 @@ maybe_flag(Key, Status, Values, Map) ->
 %% cleanup-retry，需实例管理员能力门禁 + 审计）为集成项——本卡只提供
 %% 此内部函数，不暴露普通用户端点（handler/路由无条目）。
 -spec retry_purge(integer()) -> {ok, map()} | {error, term()}.
-retry_purge(RecordId) ->
-    elib_pg:with_tx(
-        fun(Conn) -> retry_purge_tx(Conn, RecordId) end,
-        [{reraise, false}]
-    ).
+retry_purge(_RecordId) -> {error, cleanup_actor_required}.
 
--spec retry_purge_tx(any(), integer()) -> {ok, map()} | {error, term()}.
-retry_purge_tx(Conn, RecordId) ->
-    case talk_record_delete_repo:cleanup_status_tx(Conn, RecordId) of
-        {ok, Status} when Status =:= <<"failed">>; Status =:= <<"pending">> ->
-            {ok, _} = talk_record_delete_repo:update_cleanup_status_tx(
-                Conn, RecordId, <<"pending">>
-            ),
-            {ok, N} = talk_record_delete_repo:count_purge_jobs_tx(Conn, RecordId),
-            {ok, _Mark, JobId} = talk_record_delete_repo:enqueue_purge_tx(Conn, RecordId, N),
-            {ok, Refreshed} = talk_record_cleanup_logic:refresh_cleanup_state_tx(Conn, RecordId),
-            _ = talk_record_repo:insert_audit_tx(
-                Conn, RecordId, null, <<"purge_retry">>, JobId, #{<<"attempt">> => N}
-            ),
-            {ok, #{<<"job_id">> => JobId, <<"cleanup_status">> => Refreshed}};
-        {ok, _Protected} ->
-            {error, cleanup_not_retryable};
-        {error, Reason} ->
-            {error, Reason}
-    end.
+%% Legacy callers cannot create an unauthenticated retry or bypass generation CAS.
+-spec retry_purge_tx(any(), integer()) -> {error, cleanup_actor_required}.
+retry_purge_tx(_Conn, _RecordId) -> {error, cleanup_actor_required}.
 
 %% ===================================================================
 %% 注销/离企投影（§9 custody；注销执行器接线点）

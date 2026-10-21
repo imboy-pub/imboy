@@ -21,17 +21,31 @@
 %%% 支撑
 %%%===================================================================
 
-setup() ->
-    State = talk_record_t20_support:setup_all(),
-    talk_record_t20_support:seed(State),
-    State.
+setup(Case) ->
+    State = talk_record_t20_support:setup_all({?MODULE, Case}),
+    try
+        talk_record_t20_support:seed(State),
+        State
+    catch
+        Class:Reason:Stack ->
+            try
+                cleanup(State)
+            catch
+                CleanupClass:CleanupReason ->
+                    error(
+                        {setup_failed_and_cleanup_failed, {Class, Reason},
+                            {CleanupClass, CleanupReason}}
+                    )
+            end,
+            erlang:raise(Class, Reason, Stack)
+    end.
 
 cleanup(State) ->
     talk_record_t20_support:teardown_all(State).
 
-with_db(TestFun) ->
+with_db(Case, TestFun) ->
     {timeout, 120,
-        {setup, fun setup/0, fun cleanup/1, fun(State) ->
+        {setup, fun() -> setup(Case) end, fun cleanup/1, fun(State) ->
             ?_test(TestFun(State))
         end}}.
 
@@ -91,7 +105,7 @@ row(Conn, Sql) ->
 %%%===================================================================
 
 delete_owner_202_pending_test_() ->
-    with_db(fun(State) ->
+    with_db(delete_owner_202_pending_test_, fun(State) ->
         C = talk_record_t20_support:conn_of(State),
         {Rid, _Cid, U1} = ready(State, 81),
         {ok, deleted, Payload} = talk_record_delete_logic:delete(U1, Rid, <<"1">>),
@@ -112,7 +126,7 @@ delete_owner_202_pending_test_() ->
     end).
 
 delete_preconditions_test_() ->
-    with_db(fun(State) ->
+    with_db(delete_preconditions_test_, fun(State) ->
         C = talk_record_t20_support:conn_of(State),
         Ids = talk_record_t20_support:ids(),
         U1 = maps:get(u1, Ids),
@@ -148,7 +162,7 @@ delete_preconditions_test_() ->
     end).
 
 delete_idempotent_replay_test_() ->
-    with_db(fun(State) ->
+    with_db(delete_idempotent_replay_test_, fun(State) ->
         {Rid, _, U1} = ready(State, 83),
         {ok, deleted, _} = talk_record_delete_logic:delete(U1, Rid, <<"1">>),
         %% 重放（任意旧版本号——重放先返回首次结果再校验版本，§3）
@@ -164,7 +178,7 @@ delete_idempotent_replay_test_() ->
     end).
 
 delete_fences_active_capture_test_() ->
-    with_db(fun(State) ->
+    with_db(delete_fences_active_capture_test_, fun(State) ->
         C = talk_record_t20_support:conn_of(State),
         Ids = talk_record_t20_support:ids(),
         U1 = maps:get(u1, Ids),
@@ -238,7 +252,7 @@ seg_put_bytes(C, Rid, Ns, Container, Digest) ->
 %%%===================================================================
 
 revocation_immediate_test_() ->
-    with_db(fun(State) ->
+    with_db(revocation_immediate_test_, fun(State) ->
         C = talk_record_t20_support:conn_of(State),
         Ids = talk_record_t20_support:ids(),
         U1 = maps:get(u1, Ids),
@@ -273,7 +287,7 @@ revocation_immediate_test_() ->
     end).
 
 playback_ticket_revoked_on_delete_test_() ->
-    with_db(fun(State) ->
+    with_db(playback_ticket_revoked_on_delete_test_, fun(State) ->
         C = talk_record_t20_support:conn_of(State),
         Ids = talk_record_t20_support:ids(),
         U1 = maps:get(u1, Ids),
@@ -305,7 +319,7 @@ playback_ticket_revoked_on_delete_test_() ->
 %%%===================================================================
 
 whitelist_shape_test_() ->
-    with_db(fun(State) ->
+    with_db(whitelist_shape_test_, fun(State) ->
         Ids = talk_record_t20_support:ids(),
         U1 = maps:get(u1, Ids),
         {Rid, _, _} = ready(State, 87),
@@ -336,7 +350,7 @@ whitelist_shape_test_() ->
     end).
 
 whitelist_flags_test_() ->
-    with_db(fun(State) ->
+    with_db(whitelist_flags_test_, fun(State) ->
         C = talk_record_t20_support:conn_of(State),
         Ids = talk_record_t20_support:ids(),
         U1 = maps:get(u1, Ids),
@@ -430,7 +444,7 @@ project_outcomes_pure_functions_test_() ->
 
 %% pending → complete（无附件记录：协调即完成）
 purge_complete_no_attachments_test_() ->
-    with_db(fun(State) ->
+    with_db(purge_complete_no_attachments_test_, fun(State) ->
         C = talk_record_t20_support:conn_of(State),
         {Rid, _, U1} = ready(State, 90),
         %% 装配"无附件记录"：清除分段附件引用行（未上传任何字节的草稿形态）
@@ -451,7 +465,7 @@ purge_complete_no_attachments_test_() ->
 
 %% pending →（协调 intended）→ 真 disk 队列消费 → complete
 purge_complete_disk_queue_test_() ->
-    with_db(fun(State) ->
+    with_db(purge_complete_disk_queue_test_, fun(State) ->
         C = talk_record_t20_support:conn_of(State),
         {Rid, _, U1} = ready(State, 91),
         Root = talk_record_t20_support:disk_root(disk1),
@@ -502,7 +516,7 @@ purge_complete_disk_queue_test_() ->
 
 %% retention_until 未到期 → blocked_retention（引用保持 bound，GC 谓词继续挡）
 purge_blocked_retention_test_() ->
-    with_db(fun(State) ->
+    with_db(purge_blocked_retention_test_, fun(State) ->
         C = talk_record_t20_support:conn_of(State),
         {Rid, _, U1} = ready(State, 92),
         Path = talk_record_t20_support:insert_attachment(C, 8201, #{record_id => Rid}),
@@ -521,16 +535,35 @@ purge_blocked_retention_test_() ->
         %% blocked 不被回读改写（refresh 幂等跳过）
         {ok, _} = talk_record_job_worker:refresh_cleanup_pending(),
         ?assertEqual(<<"blocked_retention">>, talk_record_t20_support:cleanup_status(Rid)),
-        %% blocked 不可 retry（治理保护需先解除留存）
+        %% 无 actor 的旧入口拒绝；已鉴权入口仍不得越过留存保护。
+        ?assertEqual({error, cleanup_actor_required}, talk_record_delete_logic:retry_purge(Rid)),
+        #{<<"revision">> := Revision, <<"cleanup_generation">> := Generation} = row(
+            C,
+            [
+                "SELECT revision,cleanup_generation FROM talk_record WHERE id=",
+                integer_to_binary(Rid)
+            ]
+        ),
+        Cap = talk_record_cleanup_retry_repo:capability_tx(C, U1, Rid),
+        ?assertEqual(false, maps:get(<<"allowed">>, Cap)),
+        ?assertEqual(<<"protected">>, maps:get(<<"reason">>, Cap)),
         ?assertEqual(
-            {error, cleanup_not_retryable},
-            talk_record_delete_logic:retry_purge(Rid)
-        )
+            {error, cleanup_protected},
+            talk_record_cleanup_retry_logic:retry(
+                U1,
+                Rid,
+                integer_to_binary(Revision),
+                <<"t20-retention-retry">>,
+                #{<<"cleanup_generation">> => Generation}
+            )
+        ),
+        ?assertEqual(<<"bound">>, element(1, talk_record_t20_support:ref_state(C, Rid))),
+        ?assertEqual(<<"live">>, talk_record_t20_support:attachment_state(C, Path))
     end).
 
 %% EAR hold 行 → blocked_hold（defense-in-depth）
 purge_blocked_hold_test_() ->
-    with_db(fun(State) ->
+    with_db(purge_blocked_hold_test_, fun(State) ->
         C = talk_record_t20_support:conn_of(State),
         {Rid, _, U1} = ready(State, 93),
         Path = talk_record_t20_support:insert_attachment(C, 8301, #{record_id => Rid}),
@@ -545,7 +578,7 @@ purge_blocked_hold_test_() ->
 
 %% 收藏引用（同 hash）→ retained_by_other_reference（字节保留）
 purge_retained_by_other_reference_test_() ->
-    with_db(fun(State) ->
+    with_db(purge_retained_by_other_reference_test_, fun(State) ->
         C = talk_record_t20_support:conn_of(State),
         {Rid, _, U1} = ready(State, 94),
         CollectHash = binary:copy(<<"e">>, 64),
@@ -568,58 +601,17 @@ purge_retained_by_other_reference_test_() ->
         ?assertEqual(true, maps:get(protected, WL))
     end).
 
-%% 队列终态失败（attempts 耗尽 blocked）→ failed；retry 恢复
+%% Controller prepares eight actual lease expiries in this case's exclusive DB.
+%% Never replace this journey with manufactured attempts/done rows or a skip.
 purge_failed_then_retry_test_() ->
-    with_db(fun(State) ->
-        C = talk_record_t20_support:conn_of(State),
-        {Rid, _, U1} = ready(State, 95),
-        Path = talk_record_t20_support:insert_attachment(C, 8501, #{
-            record_id => Rid,
-            storage_driver => <<"disk">>,
-            storage_namespace => <<"t20-ns">>,
-            storage_container => <<"t20c">>,
-            storage_locator => binary:copy(<<"c">>, 64)
-        }),
-        ok = talk_record_t20_support:bind_ref(C, Rid, 8501, <<"audio_part:1">>),
-        {ok, deleted, _} = talk_record_delete_logic:delete(U1, Rid, <<"1">>),
-        {ok, #{outcome := succeeded, kind := <<"purge">>}} = talk_record_job_worker:run_once(),
-        %% 模拟队列 8 次重试耗尽（blocked 终态）
-        talk_record_t20_support:queue_exhaust_row(C, Path),
-        {ok, _} = talk_record_job_worker:refresh_cleanup_pending(),
-        ?assertEqual(<<"failed">>, talk_record_t20_support:cleanup_status(Rid)),
-        {ok, WL} = talk_record_logic:detail(U1, Rid),
-        ?assertEqual(true, maps:get(retryable, WL)),
-        %% 运维 retry：failed → pending + 新 purge job（attempt 1）
-        {ok, RetryPayload} = talk_record_delete_logic:retry_purge(Rid),
-        ?assert(is_integer(maps:get(<<"job_id">>, RetryPayload))),
-        Jobs = talk_record_t20_support:purge_jobs(Rid),
-        ?assertEqual(2, length(Jobs)),
-        %% 队列修复（done；含分段附件的队列行）→ retry purge 协调 + 回读 complete
-        talk_record_t20_support:sql(C, [
-            "UPDATE attachment_object_deletion SET job_state='done', completed_at=now() WHERE path = '",
-            Path,
-            "' OR path LIKE 'talk_record/",
-            integer_to_binary(Rid),
-            "/%'"
-        ]),
-        talk_record_t20_support:sql(C, [
-            "UPDATE attachment SET lifecycle_state='deleted' WHERE path = '",
-            Path,
-            "' OR path LIKE 'talk_record/",
-            integer_to_binary(Rid),
-            "/%'"
-        ]),
-        {ok, #{outcome := succeeded, kind := <<"purge">>}} = talk_record_job_worker:run_once(),
-        {ok, _} = talk_record_job_worker:refresh_cleanup_pending(),
-        ?assertEqual(<<"complete">>, talk_record_t20_support:cleanup_status(Rid))
-    end).
+    {timeout, 120, fun talk_record_cleanup_retry_pg_checks:run_registered/0}.
 
 %%%===================================================================
 %%% E. 迟到模型结果不发布
 %%%===================================================================
 
 late_results_not_published_test_() ->
-    with_db(fun(State) ->
+    with_db(late_results_not_published_test_, fun(State) ->
         C = talk_record_t20_support:conn_of(State),
         Ids = talk_record_t20_support:ids(),
         U1 = maps:get(u1, Ids),
@@ -686,7 +678,7 @@ late_results_not_published_test_() ->
 %%%===================================================================
 
 delete_grants_mutual_exclusion_test_() ->
-    with_db(fun(State) ->
+    with_db(delete_grants_mutual_exclusion_test_, fun(State) ->
         C = talk_record_t20_support:conn_of(State),
         Ids = talk_record_t20_support:ids(),
         {Rid, _, _} = ready(State, 97),
@@ -741,7 +733,7 @@ delete_grants_mutual_exclusion_test_() ->
     end).
 
 grants_first_then_delete_consistent_test_() ->
-    with_db(fun(State) ->
+    with_db(grants_first_then_delete_consistent_test_, fun(State) ->
         C = talk_record_t20_support:conn_of(State),
         Ids = talk_record_t20_support:ids(),
         U1 = maps:get(u1, Ids),
@@ -785,7 +777,7 @@ grants_first_then_delete_consistent_test_() ->
 %%%===================================================================
 
 preflight_facts_personal_vs_organization_test_() ->
-    with_db(fun(State) ->
+    with_db(preflight_facts_personal_vs_organization_test_, fun(State) ->
         C = talk_record_t20_support:conn_of(State),
         Ids = talk_record_t20_support:ids(),
         U1 = maps:get(u1, Ids),
@@ -819,7 +811,7 @@ preflight_facts_personal_vs_organization_test_() ->
     end).
 
 preflight_run_integration_test_() ->
-    with_db(fun(State) ->
+    with_db(preflight_run_integration_test_, fun(State) ->
         Ids = talk_record_t20_support:ids(),
         U1 = maps:get(u1, Ids),
         {Rid, _, _} = ready(State, 52),
@@ -883,7 +875,7 @@ preflight_run_integration_test_() ->
     end).
 
 departure_custody_projection_test_() ->
-    with_db(fun(State) ->
+    with_db(departure_custody_projection_test_, fun(State) ->
         C = talk_record_t20_support:conn_of(State),
         Ids = talk_record_t20_support:ids(),
         U1 = maps:get(u1, Ids),
@@ -929,7 +921,7 @@ departure_custody_projection_test_() ->
 %%%===================================================================
 
 scan_organization_l2_regression_test_() ->
-    with_db(fun(State) ->
+    with_db(scan_organization_l2_regression_test_, fun(State) ->
         C = talk_record_t20_support:conn_of(State),
         Ids = talk_record_t20_support:ids(),
         U1 = maps:get(u1, Ids),

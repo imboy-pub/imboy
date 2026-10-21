@@ -1679,6 +1679,14 @@ tables:
     review: self-evident
     retention: existing record governance
 
+  talk_record_cleanup_retry:
+    action: retain
+    owner: talk_record
+    reason: 永久清理恢复责任审计与幂等，包含actor身份和原对象定位事实，不含正文或秘密
+    mechanism: restricted record-scoped recovery function; no user FK preventing identity deletion; no user-facing audit content read
+    review: self-evident
+    retention: permanent deletion tombstone audit; retained historical actor identity remains personal data
+
 exclusions:
   adm_role:
     reason: 管理端 RBAC 角色配置，非终端用户数据
