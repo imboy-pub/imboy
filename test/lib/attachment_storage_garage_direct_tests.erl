@@ -139,12 +139,19 @@ setup_ctrl() ->
 http_mocks(Script) ->
     %% Script: fun(Method, Url, Headers, Receiver, ReqId) -> spawn sender
     {httpc, [
-        {request, 4, fun(Method, {_Url, _Headers} = Req, Opts, ClientOpts) ->
+        {request, 4, fun(Method, Req, Opts, ClientOpts) ->
             Receiver = self(),
-            {Url, Headers} = Req,
+            {Url, Headers} =
+                case {Method, Req} of
+                    {head, {RequestUrl, RequestHeaders}} ->
+                        {RequestUrl, RequestHeaders};
+                    {put, {RequestUrl, RequestHeaders, "application/octet-stream", <<>>}} ->
+                        {RequestUrl, RequestHeaders}
+                end,
             AutoRedirect = lists:keyfind(autoredirect, 1, Opts),
             ?assertEqual({autoredirect, false}, AutoRedirect),
-            ?assert(lists:keymember(stream_to, 1, ClientOpts)),
+            ?assertEqual({stream, {self, once}}, lists:keyfind(stream, 1, ClientOpts)),
+            ?assertEqual({body_format, binary}, lists:keyfind(body_format, 1, ClientOpts)),
             ReqId = erlang:unique_integer([positive]),
             spawn(fun() ->
                 timer:sleep(1),
@@ -311,6 +318,126 @@ head_bounded_no_full_read() ->
             attachment_storage_garage:head_bounded(<<"g">>, <<"bucket">>, <<"big.bin">>)
         )
     end).
+
+real_http_control_test_() ->
+    [
+        {timeout, 35, ?_test(pure_mock_fixture:run(fun() -> real_http_control(Kind) end))}
+     || Kind <- [head_ok, head_missing, copy_ok, copy_error_xml, copy_missing, copy_oversized]
+    ].
+
+real_http_control(Kind) ->
+    {ok, _} = application:ensure_all_started(inets),
+    {ok, Listener} = gen_tcp:listen(0, [binary, {active, false}, {ip, {127, 0, 0, 1}}]),
+    {ok, {_, Port}} = inet:sockname(Listener),
+    Endpoint = iolist_to_binary(["http://127.0.0.1:", integer_to_list(Port)]),
+    Owner = self(),
+    Ref = make_ref(),
+    {Server, Monitor} = spawn_monitor(fun() -> serve_control(Listener, Kind, Owner, Ref) end),
+    application:set_env(imboy, garage, maps:put(endpoint, Endpoint, ?CFG)),
+    try
+        pure_mock_fixture:with_mocks(
+            [
+                {attachment_storage, [
+                    {resolve, 1, fun(<<"g">>) ->
+                        {ok, #{
+                            driver => <<"garage">>, container => <<"bucket">>, endpoint => Endpoint
+                        }}
+                    end}
+                ]}
+            ],
+            fun() ->
+                Result =
+                    case Kind of
+                        head_ok ->
+                            attachment_storage_garage:head_bounded(
+                                <<"g">>, <<"bucket">>, <<"key">>
+                            );
+                        head_missing ->
+                            attachment_storage_garage:head_bounded(
+                                <<"g">>, <<"bucket">>, <<"key">>
+                            );
+                        _ ->
+                            attachment_storage_garage:copy_dispatch(
+                                <<"g">>, <<"bucket">>, <<"source">>, <<"key">>
+                            )
+                    end,
+                assert_control_result(Kind, Result)
+            end
+        ),
+        receive
+            {Ref, Method} ->
+                Expected =
+                    case Kind of
+                        head_ok -> <<"HEAD">>;
+                        head_missing -> <<"HEAD">>;
+                        _ -> <<"PUT">>
+                    end,
+                ?assertEqual(Expected, Method)
+        after 5000 -> error(control_request_missing)
+        end,
+        receive
+            {'DOWN', Monitor, process, Server, normal} -> ok
+        after 5000 -> error(control_server_not_closed)
+        end
+    after
+        gen_tcp:close(Listener),
+        exit(Server, kill),
+        erlang:demonitor(Monitor, [flush])
+    end.
+
+serve_control(Listener, Kind, Owner, Ref) ->
+    {ok, Socket} = gen_tcp:accept(Listener, 5000),
+    try
+        Request = read_control_request(Socket, <<>>),
+        [Method | _] = binary:split(Request, <<" ">>, [global]),
+        Owner ! {Ref, Method},
+        {Status, Body} =
+            case Kind of
+                head_ok ->
+                    {"200 OK", <<>>};
+                head_missing ->
+                    {"404 Not Found", <<>>};
+                copy_ok ->
+                    {"200 OK", <<"<CopyObjectResult><ETag>owned-etag</ETag></CopyObjectResult>">>};
+                copy_error_xml ->
+                    {"200 OK", <<"<Error><Code>AccessDenied</Code></Error>">>};
+                copy_missing ->
+                    {"404 Not Found", <<"missing">>};
+                copy_oversized ->
+                    {"200 OK", binary:copy(<<"x">>, 65537)}
+            end,
+        Length =
+            case Kind of
+                head_ok -> 123;
+                _ -> byte_size(Body)
+            end,
+        ok = gen_tcp:send(Socket, [
+            "HTTP/1.1 ",
+            Status,
+            "\r\nContent-Length: ",
+            integer_to_list(Length),
+            "\r\nContent-Type: application/xml\r\nConnection: close\r\n\r\n",
+            Body
+        ])
+    after
+        gen_tcp:close(Socket)
+    end.
+
+read_control_request(Socket, Bytes) when byte_size(Bytes) < 65536 ->
+    case binary:match(Bytes, <<"\r\n\r\n">>) of
+        nomatch ->
+            {ok, Chunk} = gen_tcp:recv(Socket, 0, 5000),
+            read_control_request(Socket, <<Bytes/binary, Chunk/binary>>);
+        _ ->
+            Bytes
+    end.
+
+assert_control_result(head_ok, Result) -> ?assertMatch({ok, #{size := 123}}, Result);
+assert_control_result(head_missing, Result) -> ?assertEqual({error, not_found}, Result);
+assert_control_result(copy_ok, Result) -> ?assertEqual({ok, #{etag => <<"owned-etag">>}}, Result);
+assert_control_result(copy_error_xml, Result) -> ?assertEqual({error, copy_xml_error}, Result);
+assert_control_result(copy_missing, Result) -> ?assertEqual({error, not_found}, Result);
+assert_control_result(copy_oversized, Result) -> ?assertEqual({error, body_too_large}, Result).
 
 %% ---------------------------------------------------------------- helpers
 

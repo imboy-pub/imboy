@@ -210,6 +210,8 @@ update_admin_role(Req0, State) ->
                                     of
                                         ok ->
                                             elib_response:success(Req0, #{});
+                                        {error, {Code, Msg}} when is_integer(Code) ->
+                                            elib_response:error(Req0, Msg, Code);
                                         {error, Msg} ->
                                             elib_response:error(Req0, Msg)
                                     end
@@ -311,6 +313,8 @@ remove_admin(Req0, State) ->
                     case channel_logic:remove_admin(Uid, ChannelId, AdminUid) of
                         ok ->
                             elib_response:success(Req0, #{});
+                        {error, {Code, Msg}} when is_integer(Code) ->
+                            elib_response:error(Req0, Msg, Code);
                         {error, Msg} ->
                             elib_response:error(Req0, Msg)
                     end

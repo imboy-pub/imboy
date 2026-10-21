@@ -33,7 +33,7 @@
 ]).
 
 -type action() :: auto_reply | handoff | no_match.
--type decision() :: #{action := action(), reason := binary()}.
+-type decision() :: #{action := action(), reason := binary(), intent := term()}.
 -export_type([action/0, decision/0]).
 
 %% ===================================================================

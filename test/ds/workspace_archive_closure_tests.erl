@@ -225,7 +225,9 @@ channel_closure_test_() ->
             run_with_mocks(archived_mocks() ++ MustNot, fun() ->
                 ?assertMatch(
                     {error, {980, _}},
-                    channel_ds:insert_reaction(?CID, ?MID, ?UID, <<"like">>, 1)
+                    channel_ds:insert_reaction(
+                        ?CID, ?MID, ?UID, <<"like">>, <<"2026-10-21T00:00:00Z">>
+                    )
                 ),
                 ?assertMatch(
                     {error, {980, _}},
@@ -369,7 +371,10 @@ channel_closure_test_() ->
             ],
             run_with_mocks(archived_mocks() ++ MustNot, fun() ->
                 ?assertEqual(
-                    {ok, 0}, channel_ds:insert_message_view(?CID, ?MID, ?UID, 1)
+                    {ok, 0},
+                    channel_ds:insert_message_view(
+                        ?CID, ?MID, ?UID, <<"2026-10-21T00:00:00Z">>
+                    )
                 )
             end)
         end},
@@ -387,7 +392,10 @@ channel_closure_test_() ->
                     {ok, 1}, channel_comment_ds:add(#{<<"channel_id">> => ?CID})
                 ),
                 ?assertMatch(
-                    {ok, 1}, channel_ds:insert_reaction(?CID, ?MID, ?UID, <<"like">>, 1)
+                    {ok, 1},
+                    channel_ds:insert_reaction(
+                        ?CID, ?MID, ?UID, <<"like">>, <<"2026-10-21T00:00:00Z">>
+                    )
                 )
             end)
         end}

@@ -111,7 +111,8 @@ status_of(Item) ->
 %% 判据来自两处**独立**事实（项行 vs case 行）：任一侧被改写都会让它们对不上；
 %% 配合 `recomputed_key_matches/1`（identity_id ↔ 幂等键）与
 %% `snapshot_hash/1`（整集合指纹），快照的防篡改是三重且各自独立的。
--spec item_reasons(item(), integer(), integer()) -> [{atom(), term()}].
+-spec item_reasons(item(), integer(), integer()) ->
+    [{leaver_mismatch | successor_mismatch, term(), term()}].
 item_reasons(Item, Leaver, Successor) ->
     From = maps:get(from_user_id, Item, undefined),
     To = maps:get(to_user_id, Item, undefined),

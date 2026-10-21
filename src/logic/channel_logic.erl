@@ -10,35 +10,41 @@
 
 %% channel_logic_message delegates
 -spec create_channel(integer(), binary(), map(), integer()) -> {ok, map()} | {error, binary()}.
--spec get_channel(binary(), integer()) -> {ok, map()} | {error, binary()}.
--spec get_channel_by_custom_id(binary(), integer()) -> {ok, map()} | {error, binary()}.
--spec update_channel(integer(), binary(), map()) -> {ok, map()} | {error, binary()}.
--spec delete_channel(integer(), binary()) -> ok | {error, binary()}.
+-spec get_channel(binary(), integer()) -> {ok, map()} | {error, binary() | {integer(), binary()}}.
+-spec get_channel_by_custom_id(binary(), integer()) ->
+    {ok, map()} | {error, binary() | {integer(), binary()}}.
+-spec update_channel(integer(), binary(), map()) ->
+    {ok, map()} | {error, binary() | {integer(), binary()}}.
+-spec delete_channel(integer(), binary()) -> ok | {error, binary() | {integer(), binary()}}.
 -spec archive_channel(integer(), binary()) ->
     {ok, map()} | {error, binary()} | {error, {integer(), binary()}}.
 -spec restore_channel(integer(), binary()) ->
     {ok, map()} | {error, binary()} | {error, {integer(), binary()}}.
 -spec publish_message(integer(), binary(), binary(), binary(), map()) ->
-    {ok, map()} | {error, binary()}.
+    {ok, map()} | {error, binary() | {integer(), binary()}}.
 -spec publish_message(integer(), binary(), binary(), binary(), map(), binary()) ->
-    {ok, map()} | {error, binary()}.
+    {ok, map()} | {error, binary() | {integer(), binary()}}.
 -spec get_messages(integer(), binary(), integer(), integer()) ->
     {ok, list(map())} | {error, binary()}.
 -spec mark_as_read(integer(), binary(), binary()) -> ok | {error, binary()}.
--spec pin_message(integer(), binary(), boolean()) -> {ok, map()} | {error, binary()}.
--spec delete_message(integer(), binary()) -> ok | {error, binary()}.
--spec revoke_message(integer(), binary(), binary()) -> ok | {error, binary()}.
+-spec pin_message(integer(), binary(), boolean()) ->
+    {ok, map()} | {error, binary() | {integer(), binary()}}.
+-spec delete_message(integer(), binary()) -> ok | {error, binary() | {integer(), binary()}}.
+-spec revoke_message(integer(), binary(), binary()) ->
+    ok | {error, binary() | {integer(), binary()}}.
 -spec search_channels(binary(), integer()) -> {ok, list(map())} | {error, binary()}.
 -spec get_discover_channels(integer()) -> {ok, list(map())} | {error, binary()}.
--spec add_admin(integer(), binary(), integer(), integer()) -> ok | {error, binary()}.
--spec remove_admin(integer(), binary(), integer()) -> ok | {error, binary()}.
+-spec add_admin(integer(), binary(), integer(), integer()) ->
+    ok | {error, binary() | {integer(), binary()}}.
+-spec remove_admin(integer(), binary(), integer()) ->
+    ok | {error, binary() | {integer(), binary()}}.
 -spec get_admins(integer() | binary()) -> {ok, list(map())} | {error, binary()}.
 -spec update_admin_role(integer(), integer() | binary(), integer(), integer()) ->
-    ok | {error, binary()}.
+    ok | {error, binary() | {integer(), binary()}}.
 
 %% channel_logic_subscription delegates
--spec subscribe(integer(), binary()) -> ok | {error, binary()}.
--spec unsubscribe(integer(), binary()) -> ok | {error, binary()}.
+-spec subscribe(integer(), binary()) -> ok | {error, binary() | {integer(), binary()}}.
+-spec unsubscribe(integer(), binary()) -> ok | {error, binary() | {integer(), binary()}}.
 -spec get_subscribed_channels(integer()) -> {ok, list(map())} | {error, binary()}.
 -spec get_managed_channels(integer()) -> {ok, list(map())} | {error, binary()}.
 -spec get_unread_summary(integer()) -> {ok, map()} | {error, binary()}.
@@ -47,9 +53,12 @@
 
 %% channel_logic_stats delegates
 -spec get_channel_stats(integer(), binary()) -> {ok, map()} | {error, binary()}.
--spec record_message_view(integer(), binary(), binary()) -> ok | {error, binary()}.
--spec add_reaction(integer(), binary(), binary(), binary()) -> ok | {error, binary()}.
--spec remove_reaction(integer(), binary(), binary(), binary()) -> ok | {error, binary()}.
+-spec record_message_view(integer(), binary(), binary()) ->
+    ok | {error, binary() | {integer(), binary()}}.
+-spec add_reaction(integer(), binary(), binary(), binary()) ->
+    ok | {error, binary() | {integer(), binary()}}.
+-spec remove_reaction(integer(), binary(), binary(), binary()) ->
+    ok | {error, binary() | {integer(), binary()}}.
 -spec get_daily_stats(integer(), binary(), integer()) -> {ok, list(map())} | {error, binary()}.
 
 %% channel_logic_invitation delegates
@@ -374,7 +383,7 @@ create_channel(Uid, Name, Opts, MaxChannels, {Scope, WorkspaceId}) ->
 %% @doc 更新入口守卫：scope 与 workspace_id 创建后不可变（§1.4.2 规则 9）。
 %% 提交了这两个字段之一即拒绝（不静默忽略，防止客户端误以为已改归属）。
 -spec update_channel_checked(integer(), binary(), map()) ->
-    {ok, map()} | {error, binary()} | {error, {400, binary()}}.
+    {ok, map()} | {error, binary() | {integer(), binary()}}.
 update_channel_checked(Uid, ChannelIdBin, Data) ->
     case maps:is_key(<<"scope">>, Data) orelse maps:is_key(<<"workspace_id">>, Data) of
         true ->

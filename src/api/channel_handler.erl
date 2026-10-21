@@ -204,6 +204,8 @@ update(Req0, State) ->
                     case channel_logic:update_channel(Uid, ChannelId, Data) of
                         {ok, Channel} ->
                             elib_response:success(Req0, Channel);
+                        {error, {Code, Msg}} when is_integer(Code) ->
+                            elib_response:error(Req0, Msg, Code);
                         {error, Msg} ->
                             elib_response:error(Req0, Msg)
                     end

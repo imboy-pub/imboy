@@ -498,7 +498,7 @@ insert_message_view(ChannelId, MessageId, UserId, ViewedAt) ->
     end.
 
 %% @doc 事务内插入消息阅读记录（派生读写：archived 时由守卫 skip，不落库）
--spec insert_message_view_tx(any(), integer(), integer(), integer(), integer()) ->
+-spec insert_message_view_tx(any(), integer(), integer(), integer(), binary()) ->
     {ok, integer()} | {error, term()}.
 insert_message_view_tx(Conn, ChannelId, MessageId, UserId, ViewedAt) ->
     Id = elib_tsid:generate(channel_message_view),
@@ -528,7 +528,7 @@ insert_reaction(ChannelId, MessageId, UserId, ReactionType, CreatedAt) ->
     end.
 
 %% @doc 事务内插入消息反应（归档写守卫同事务）
--spec insert_reaction_tx(any(), integer(), integer(), integer(), binary(), integer()) ->
+-spec insert_reaction_tx(any(), integer(), integer(), integer(), binary(), binary()) ->
     {ok, integer()} | {error, term()}.
 insert_reaction_tx(Conn, ChannelId, MessageId, UserId, ReactionType, CreatedAt) ->
     Id = elib_tsid:generate(channel),

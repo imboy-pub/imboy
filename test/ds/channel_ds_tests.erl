@@ -539,14 +539,19 @@ insert_reaction_retries_once_after_dead_connection_test_() ->
                 end}
             ]},
             {channel_repo, [
-                {'insert_reaction_tx', 6, fun(fake_conn, 1, 2, 3, <<"like">>, 4) ->
+                {'insert_reaction_tx', 6, fun(
+                    fake_conn, 1, 2, 3, <<"like">>, <<"2026-10-21T00:00:00Z">>
+                ) ->
                     {ok, 5}
                 end}
             ]}
         ],
         fun() ->
             erase(reaction_write_attempt),
-            ?assertEqual({ok, 5}, channel_ds:insert_reaction(1, 2, 3, <<"like">>, 4)),
+            ?assertEqual(
+                {ok, 5},
+                channel_ds:insert_reaction(1, 2, 3, <<"like">>, <<"2026-10-21T00:00:00Z">>)
+            ),
             ?assertEqual(2, get(reaction_write_attempt))
         end
     ).

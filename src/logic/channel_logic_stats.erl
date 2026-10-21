@@ -74,7 +74,8 @@ fetch_channel_stats(ChannelId, ChannelIdBin) ->
 get_message_stats(ChannelId) ->
     channel_message_ds:get_stats(ChannelId).
 
--spec record_message_view(integer(), binary(), binary()) -> ok | {error, binary()}.
+-spec record_message_view(integer(), binary(), binary()) ->
+    ok | {error, binary() | {integer(), binary()}}.
 record_message_view(Uid, ChannelIdBin, MessageIdBin) ->
     ChannelId = channel_logic_common:resolve_channel_id(ChannelIdBin),
     MessageId = decode_positive_id(MessageIdBin),
@@ -121,7 +122,8 @@ record_message_view(Uid, ChannelIdBin, MessageIdBin) ->
             end
     end.
 
--spec add_reaction(integer(), binary(), binary(), binary()) -> ok | {error, binary()}.
+-spec add_reaction(integer(), binary(), binary(), binary()) ->
+    ok | {error, binary() | {integer(), binary()}}.
 add_reaction(Uid, ChannelIdBin, MessageIdBin, ReactionType) ->
     ChannelId = channel_logic_common:resolve_channel_id(ChannelIdBin),
     MessageId = decode_positive_id(MessageIdBin),
@@ -160,7 +162,8 @@ do_add_reaction(ChannelId, MessageId, Uid, ReactionType) ->
             end
     end.
 
--spec remove_reaction(integer(), binary(), binary(), binary()) -> ok | {error, binary()}.
+-spec remove_reaction(integer(), binary(), binary(), binary()) ->
+    ok | {error, binary() | {integer(), binary()}}.
 remove_reaction(Uid, ChannelIdBin, MessageIdBin, ReactionType) ->
     ChannelId = channel_logic_common:resolve_channel_id(ChannelIdBin),
     MessageId = decode_positive_id(MessageIdBin),

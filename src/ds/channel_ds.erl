@@ -504,7 +504,7 @@ get_reaction_count(ChannelId) -> channel_repo:get_reaction_count(ChannelId).
 -spec has_viewed_message(integer(), integer()) -> boolean().
 has_viewed_message(MessageId, UserId) -> channel_repo:has_viewed_message(MessageId, UserId).
 
--spec insert_message_view(integer(), integer(), integer(), integer()) ->
+-spec insert_message_view(integer(), integer(), integer(), binary()) ->
     {ok, integer()} | {error, term()}.
 insert_message_view(ChannelId, MessageId, UserId, ViewedAt) ->
     %% T7 派生读写（R3 #12 同族）：浏览计数归档时跳过（读取不受影响），
@@ -518,7 +518,7 @@ insert_message_view(ChannelId, MessageId, UserId, ViewedAt) ->
         skipped -> {ok, 0}
     end.
 
--spec insert_reaction(integer(), integer(), integer(), binary(), integer()) ->
+-spec insert_reaction(integer(), integer(), integer(), binary(), binary()) ->
     {ok, integer()} | {error, term()}.
 insert_reaction(ChannelId, MessageId, UserId, ReactionType, CreatedAt) ->
     %% T7 归档写守卫（R3 #10 收口）：反应插入与守卫同事务（原自动提交写）。
