@@ -51,7 +51,7 @@ error_code_maps_to_real_status_test_() ->
     with_handler_mocks(
         fun() ->
             Cases = [
-                {<<"insufficient_scope">>, 403},
+                {<<"organization_boundary_violation">>, 403},
                 {<<"organization_disabled">>, 403},
                 {<<"resource_not_found">>, 404},
                 {<<"invalid_request">>, 400},

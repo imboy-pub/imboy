@@ -99,7 +99,7 @@ gate_nonmember_removed_suspended_all_403_test_() ->
                         }}
                     end),
                     ?assertEqual(
-                        {error, <<"insufficient_scope">>},
+                        {error, <<"organization_boundary_violation">>},
                         deps(#{})
                     )
                 end,

@@ -92,16 +92,16 @@ d01_gate_matrix() ->
         ),
         %% 跨 Org 非成员 → 403。
         ?assertEqual(
-            {error, <<"insufficient_scope">>},
+            {error, <<"organization_boundary_violation">>},
             deps(maps:get(other_org_id, Scope), maps:get(owner_user_id, Scope), #{})
         ),
         %% removed / suspended → 403。
         ?assertEqual(
-            {error, <<"insufficient_scope">>},
+            {error, <<"organization_boundary_violation">>},
             deps(Org, maps:get(m_removed, Scope), #{})
         ),
         ?assertEqual(
-            {error, <<"insufficient_scope">>},
+            {error, <<"organization_boundary_violation">>},
             deps(Org, maps:get(m_suspended, Scope), #{})
         ),
         %% active 成员放行。
@@ -266,7 +266,7 @@ d06_my_departments() ->
         {ok, #{list := []}} = me(Org, maps:get(m_root, Scope)),
         %% 非成员 → 403。
         ?assertEqual(
-            {error, <<"insufficient_scope">>},
+            {error, <<"organization_boundary_violation">>},
             me(maps:get(other_org_id, Scope), maps:get(m_root, Scope))
         )
     after
