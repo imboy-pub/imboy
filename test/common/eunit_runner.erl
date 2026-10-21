@@ -17,6 +17,10 @@
     ensure_cache/0
 ]).
 
+-ifdef(TEST).
+-export([boot_retry_remaining/3]).
+-endif.
+
 %%%===================================================================
 %%% @doc
 %%% 简化的 EUnit 运行器
@@ -83,7 +87,7 @@ ct_suite_cleanup(Config) ->
 %% ===================================================================
 
 %% @doc 启动所有必要的应用（测试环境）
-%% @return {app_started, imboy} | {app_not_started, test_continues}
+%% @return A started app state; startup failure raises before test execution.
 %% 为测试环境设置必要的配置并启动应用
 eunit_setup() ->
     % 设置测试环境变量
@@ -153,13 +157,13 @@ eunit_setup() ->
                 logger:error("[eunit_setup] boot failed, app-dependent tests will error: ~120p", [
                     Reason
                 ]),
-                {app_not_started, test_continues}
+                error({eunit_app_boot_failed, Reason})
         after 120000 ->
             %% WH-04：60s→120s——migration_dirty 长预算重试（见 do_boot
             %% 的 ?BOOT_MAX_ATTEMPTS_DIRTY）最坏 75s+启动耗时，原 60s
             %% 会在重试中途先行超时使长预算失效。
             logger:error("[eunit_setup] boot coordinator timeout"),
-            {app_not_started, test_continues}
+            error(eunit_app_boot_timeout)
         end,
     %% 禁用 sync 热重载器（IMBOYENV=local 时它随 DEPS 进 VM）。实证
     %% （2026-09-29 probe3/probe4）：sync 重编任一模块（如 config_ds）后
@@ -392,9 +396,12 @@ do_boot() ->
 
 %% WH-04：有界退避重试。Reason 含 migration_dirty 时升级为长预算
 %%（?BOOT_MAX_ATTEMPTS_DIRTY），其余按 ?BOOT_MAX_ATTEMPTS 短预算。
-boot_attempt(AttemptsLeft) when AttemptsLeft =< 0 ->
-    {error, max_boot_attempts};
 boot_attempt(AttemptsLeft) ->
+    boot_attempt(AttemptsLeft, 0).
+
+boot_attempt(AttemptsLeft, _AttemptsDone) when AttemptsLeft =< 0 ->
+    {error, max_boot_attempts};
+boot_attempt(AttemptsLeft, AttemptsDone) ->
     case application:ensure_all_started(imboy) of
         {ok, _} ->
             quiesce_periodic_workers(),
@@ -435,12 +442,16 @@ boot_attempt(AttemptsLeft) ->
                     _:_ -> ok
                 end),
             timer:sleep(?BOOT_RETRY_SLEEP_MS),
-            Next =
-                case is_migration_dirty(Reason) of
-                    true -> erlang:max(AttemptsLeft - 1, ?BOOT_MAX_ATTEMPTS_DIRTY);
-                    false -> AttemptsLeft - 1
-                end,
-            boot_attempt(Next)
+            Next = boot_retry_remaining(AttemptsLeft, AttemptsDone, Reason),
+            boot_attempt(Next, AttemptsDone + 1)
+    end.
+
+%% Count all attempted starts, including those before the first dirty response.
+%% Repeated dirty responses must not replenish the extended retry allowance.
+boot_retry_remaining(AttemptsLeft, AttemptsDone, Reason) ->
+    case is_migration_dirty(Reason) of
+        true -> erlang:max(0, ?BOOT_MAX_ATTEMPTS_DIRTY - AttemptsDone - 1);
+        false -> AttemptsLeft - 1
     end.
 
 %% app 启动成功早于缓存异步发现完成；在安装全局 mock/失效缓存之前等真实屏障。

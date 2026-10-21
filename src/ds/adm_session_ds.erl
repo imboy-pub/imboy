@@ -240,12 +240,12 @@ safe_query_epoch(AdmId) ->
     end.
 
 %% @private bump 后失效本节点缓存并跨节点广播
--spec evict(integer()) -> ok.
+-spec evict(integer()) -> ok | {error, term()}.
 evict(AdmId) ->
     %% W1-05：统一失效入口，替代 delete+手动 broadcast 的重复广播
     %%（flush/1 内部已广播时手动再广播一次形成双份失效消息）
-    imboy_cache:invalidate({adm_session_epoch, AdmId}),
-    ok.
+    %% Preserve failure so with_tx reports an unsuccessful post-commit action.
+    imboy_cache:invalidate({adm_session_epoch, AdmId}).
 
 -spec uid_int(binary()) -> integer().
 uid_int(UidBin) ->

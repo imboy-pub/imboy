@@ -59,6 +59,40 @@ init_returns_error_when_metric_fetch_fails_test_() ->
 %% AC-028 暴露贯通：cache_sync 经 incr/1 写入 elib_metric 的计数器
 %% 必须经真实 init/2 → fetch_metrics 载荷可达（/metrics 端点），
 %% 监控管道端到端（elib_metric 不 mock，走真实读取）。
+%% WITH_MECKS 的软 boot 只补 env/pooler，不保证 imboy sup 树在跑：
+%% 全量顺序里 app 常被前置 DB 套件 teardown 停掉，elib_metric gen_server
+%% 缺席会让 get_all_metrics 直接 noproc；只回收本夹具创建的进程。
+with_elib_metric(Fun) ->
+    Owned =
+        case whereis(elib_metric) of
+            undefined ->
+                {ok, Pid} = elib_metric:start_link(),
+                unlink(Pid),
+                Pid;
+            _ ->
+                undefined
+        end,
+    try
+        Fun()
+    after
+        stop_owned_metric(Owned)
+    end.
+
+stop_owned_metric(undefined) ->
+    ok;
+stop_owned_metric(Pid) ->
+    Ref = monitor(process, Pid),
+    ok = gen_server:stop(Pid, normal, 1000),
+    receive
+        {'DOWN', Ref, process, Pid, _} -> ok
+    after 1000 -> error(metric_fixture_cleanup_timeout)
+    end.
+
+metric_fixture_failure_preserves_worker_ownership_test() ->
+    Before = whereis(elib_metric),
+    ?assertThrow(fixture_failure, with_elib_metric(fun() -> throw(fixture_failure) end)),
+    ?assertEqual(Before, whereis(elib_metric)).
+
 fetch_metrics_exposes_cache_sync_counters_test_() ->
     ?WITH_MECKS(
         [
@@ -73,14 +107,16 @@ fetch_metrics_exposes_cache_sync_counters_test_() ->
             ]}
         ],
         fun() ->
-            ok = elib_metric:increment(publish_total),
-            ok = elib_metric:increment(publish_total, 2),
-            {ok, RespReq, _State} = metrics_handler:init(#{}, #{}),
-            ?assertEqual(200, maps:get(response_status, RespReq)),
-            Payload = maps:get(payload, RespReq),
-            Counters = maps:get(counters, Payload),
-            ?assert(maps:is_key(publish_total, Counters)),
-            ?assert(maps:get(publish_total, Counters) >= 3)
+            with_elib_metric(fun() ->
+                ok = elib_metric:increment(publish_total),
+                ok = elib_metric:increment(publish_total, 2),
+                {ok, RespReq, _State} = metrics_handler:init(#{}, #{}),
+                ?assertEqual(200, maps:get(response_status, RespReq)),
+                Payload = maps:get(payload, RespReq),
+                Counters = maps:get(counters, Payload),
+                ?assert(maps:is_key(publish_total, Counters)),
+                ?assert(maps:get(publish_total, Counters) >= 3)
+            end)
         end
     ).
 
@@ -194,23 +230,25 @@ fetch_metrics_exposes_cache_sync_gauges_test_() ->
             ]}
         ],
         fun() ->
-            {ok, RespReq, _State} = metrics_handler:init(#{}, #{}),
-            ?assertEqual(200, maps:get(response_status, RespReq)),
-            Counters = maps:get(counters, maps:get(payload, RespReq)),
-            %% sync 进程不在该测试环境：fail-safe 哨兵值也必须可达（-1/0）
-            GaugeKeys = [
-                imboy_cache_sync_status,
-                imboy_cache_sync_epoch,
-                imboy_cache_sync_queue_depth,
-                imboy_cache_sync_peers,
-                imboy_cache_sync_counter
-            ],
-            [
-                begin
-                    ?assert(maps:is_key(K, Counters), {missing_gauge, K}),
-                    ?assert(is_integer(maps:get(K, Counters)), {non_integer, K})
-                end
-             || K <- GaugeKeys
-            ]
+            with_elib_metric(fun() ->
+                {ok, RespReq, _State} = metrics_handler:init(#{}, #{}),
+                ?assertEqual(200, maps:get(response_status, RespReq)),
+                Counters = maps:get(counters, maps:get(payload, RespReq)),
+                %% sync 进程不在该测试环境：fail-safe 哨兵值也必须可达（-1/0）
+                GaugeKeys = [
+                    imboy_cache_sync_status,
+                    imboy_cache_sync_epoch,
+                    imboy_cache_sync_queue_depth,
+                    imboy_cache_sync_peers,
+                    imboy_cache_sync_counter
+                ],
+                [
+                    begin
+                        ?assert(maps:is_key(K, Counters), {missing_gauge, K}),
+                        ?assert(is_integer(maps:get(K, Counters)), {non_integer, K})
+                    end
+                 || K <- GaugeKeys
+                ]
+            end)
         end
     ).

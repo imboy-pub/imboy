@@ -67,7 +67,7 @@ start_in_sup() ->
         shutdown => 1000,
         type => worker
     },
-    case supervisor:start_child(imboy_sup, ChildSpec) of
+    case supervisor_start_child(ChildSpec) of
         {ok, Pid} ->
             {ok, Pid};
         {ok, Pid, _} ->
@@ -77,13 +77,47 @@ start_in_sup() ->
         {error, already_present} ->
             %% spec 残留但进程死：先删 spec 再重启
             _ = supervisor:delete_child(imboy_sup, ?MODULE),
-            supervisor:start_child(imboy_sup, ChildSpec);
+            start_after_spec_delete(ChildSpec);
+        {'EXIT', _} ->
+            %% sup 本体不在（全量 eunit 顺序里 app 被前置套件停掉、
+            %% 极早期启动窗口）：gen_server:call 对不存在的 supervisor
+            %% 直接 exit(noproc)，走不进函数子句兜底——catch 后退化
+            %% 为独立进程，注册成功即服务，与注释承诺一致。
+            fallback_standalone();
         {error, _} = Err ->
             case start_link() of
                 {ok, Pid} -> {ok, Pid};
                 {error, {already_started, Pid}} -> {ok, Pid};
                 _ -> Err
             end
+    end.
+
+start_after_spec_delete(ChildSpec) ->
+    case supervisor_start_child(ChildSpec) of
+        {ok, Pid} -> {ok, Pid};
+        {ok, Pid, _} -> {ok, Pid};
+        {error, {already_started, Pid}} -> {ok, Pid};
+        {'EXIT', _} -> fallback_standalone();
+        {error, _} = Err -> Err
+    end.
+
+supervisor_start_child(ChildSpec) ->
+    try supervisor:start_child(imboy_sup, ChildSpec) of
+        Result -> Result
+    catch
+        throw:Reason -> Reason;
+        exit:Reason -> {'EXIT', Reason};
+        error:Reason:Stack -> {'EXIT', {Reason, Stack}}
+    end.
+
+fallback_standalone() ->
+    %% 不与调用方 link：sup 缺席时调用方通常是测试进程/请求进程，
+    %% link 会让 allocator 的正常销毁（如测试 kill_allocator）连带
+    %% 杀死调用方。gen_server:start 无 link，注册名仍保证唯一服务。
+    case gen_server:start({local, ?MODULE}, ?MODULE, [], []) of
+        {ok, Pid} -> {ok, Pid};
+        {error, {already_started, Pid}} -> {ok, Pid};
+        {error, _} = Err -> Err
     end.
 
 %% ===================================================================

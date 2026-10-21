@@ -145,10 +145,17 @@ EDOC_OPTS = {doclet, edown_doclet}
 # cs_pg_widget 有同名 src 模块 → 按 F-12 惯例写 src 名（eunit 以 {module,
 # cs_pg_widget} 入口自动伴随 *_tests）；cs_seat_console_pg_tests 无同名
 # src 模块 → 直接写测试模块名。
+# 2026-10-21 广州 V2.2 r3（zcode）：hird 独占验收组排除。imboy_hird_acceptance
+# / imboy_hird_replay_offline / agent_hird_mini_spike 按文件头「运行前置」要求
+# IMBOY_HIRD_BIN（Rust 编译的 hird 编译器，scripts/ci/native-eunit-run.sh 由 CI
+# 专属准备）与 HIRDPOC_PG_* 隔离库——与 AG31 同款口径：全量轨道无该环境必然红
+# （r3c1b 实证 9 例 command not found / missing_env）。Agent/RTC 属一期延期专项
+# （plan-v2 范围与执行合同），覆盖由专项运行环境承载（t= 单跑直通不受过滤影响；
+# 导出 IMBOY_HIRD_BIN 后可单跑）。
 ifdef t
 EUNIT_TEST_SPEC = (fun() -> lists:append([$1]) end)()
 else
-EUNIT_TEST_SPEC = (fun() -> Excl = [elib_tsid, agent_grant_pg, agent_run_pg, agent_grant_pg_tests, agent_recovery_pg_tests, agent_run_pg_tests, agent_tool_authorizer_pg_tests, cs_pg_widget, cs_seat_console_pg_tests], Mods = lists:append([$1]), [M || M <- Mods, not lists:member(M, Excl)] end)()
+EUNIT_TEST_SPEC = (fun() -> Excl = [elib_tsid, agent_grant_pg, agent_run_pg, agent_grant_pg_tests, agent_recovery_pg_tests, agent_run_pg_tests, agent_tool_authorizer_pg_tests, cs_pg_widget, cs_seat_console_pg_tests, imboy_hird_acceptance_tests, imboy_hird_replay_offline_tests, agent_hird_mini_spike_tests], Mods = lists:append([$1]), [M || M <- Mods, not lists:member(M, Excl)] end)()
 endif
 
 # BUILD-00R 后端物理裁剪接线：生成器按 manifest 产出未被选中 feature 的专属

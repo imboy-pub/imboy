@@ -58,6 +58,33 @@ cross_account_isolation_test_() ->
         ?assertMatch({ok, _}, adm_session_ds:verify(ec_cnv:to_binary(B), SigB))
     end).
 
+%% The epoch write commits even when invalidation fails; bump must report that failure.
+bump_reports_committed_invalidation_failure_test_() ->
+    ?TEST_WITH_DB_TIMEOUT(20, fun() ->
+        AdmId = uid(),
+        Sql = <<"SELECT epoch FROM public.adm_auth_epoch WHERE admin_id = $1">>,
+        ?assertEqual({ok, []}, elib_pg:query(Sql, [AdmId])),
+        Key = {adm_session_epoch, AdmId},
+        ok = meck:new(imboy_cache, [no_link, passthrough]),
+        try
+            meck:expect(imboy_cache, invalidate, fun
+                (K) when K =:= Key -> {error, sync_unavailable};
+                (Other) -> meck:passthrough([Other])
+            end),
+            ?assertEqual(
+                {error,
+                    {after_commit_failed, ok, [
+                        {Key, {unexpected_result, {error, sync_unavailable}}}
+                    ]}},
+                adm_session_ds:bump(AdmId)
+            ),
+            ?assertEqual({ok, [#{<<"epoch">> => 2}]}, elib_pg:query(Sql, [AdmId])),
+            ?assertEqual(1, meck:num_calls(imboy_cache, invalidate, [Key]))
+        after
+            ok = meck:unload(imboy_cache)
+        end
+    end).
+
 %% store 不可用 fail-closed：epoch 现势无法确认 ⇒ 签名一律拒绝
 fail_closed_when_store_unavailable_test_() ->
     ?TEST_WITH_DB_TIMEOUT(20, fun() ->

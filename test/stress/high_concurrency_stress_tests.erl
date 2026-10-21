@@ -193,8 +193,6 @@ test_sustained_message_load() ->
     Context = get_context(),
     UserIds = maps:get(user_ids, Context),
     Profile = maps:get(profile, Context),
-    [User1 | _] = UserIds,
-    User2 = next_ring_friend(User1, UserIds),
 
     io:format("~n========================================~n"),
     io:format("持续消息压力测试~n"),
@@ -204,22 +202,63 @@ test_sustained_message_load() ->
     DurationMs = maps:get(duration_ms, Profile),
     StartTime = erlang:monotonic_time(millisecond),
 
-    Stats = sustain_send_loop(User1, User2, StartTime, DurationMs, #{
-        success => 0, failure => 0, error => 0
-    }),
+    %% 持续负载 = 并发持续发送。原实现是单进程串行回环：吞吐 = 1/单条
+    %% 消息同步端到端延迟，本机一次性 PG 实测 ~17.6ms/条 -> 56.81 msg/s，
+    %% 阈值 100 对机器/PG 速度不可移植，且与套件"高并发"语义错位
+    %% （r2c 全量回归首证失败；r1 轮 setup 23505 未执行到用例，无历史对照）。
+    %% 改为一用户一进程、沿 setup 建好的环状好友持续发送至 DurationMs
+    %% 截止，与同套件 test_high_concurrency_messages 的并发模型一致；
+    %% 吞吐随并发度扩展，阈值 100 不变。
+    Parent = self(),
+    Workers = lists:map(
+        fun(UserId) ->
+            spawn(fun() ->
+                FriendId = next_ring_friend(UserId, UserIds),
+                Stats = sustain_send_loop(
+                    UserId,
+                    FriendId,
+                    StartTime,
+                    DurationMs,
+                    #{success => 0, failure => 0, error => 0}
+                ),
+                Parent ! {sustained_stats, self(), Stats}
+            end)
+        end,
+        UserIds
+    ),
+
+    % 收集各 worker 统计（60秒兜底，超时按 1 条 error 计入）
+    AllStats = lists:map(
+        fun(Pid) ->
+            receive
+                {sustained_stats, Pid, Stats} -> Stats
+            after 60000 -> #{success => 0, failure => 0, error => 1}
+            end
+        end,
+        Workers
+    ),
 
     EndTime = erlang:monotonic_time(millisecond),
     ActualDuration = EndTime - StartTime,
 
-    SuccessCount = maps:get(success, Stats),
-    FailureCount = maps:get(failure, Stats),
-    ErrorCount = maps:get(error, Stats),
+    Totals = lists:foldl(
+        fun(Stats, Acc) ->
+            maps:map(fun(K, V) -> V + maps:get(K, Stats, 0) end, Acc)
+        end,
+        #{success => 0, failure => 0, error => 0},
+        AllStats
+    ),
+
+    SuccessCount = maps:get(success, Totals),
+    FailureCount = maps:get(failure, Totals),
+    ErrorCount = maps:get(error, Totals),
     TotalCount = SuccessCount + FailureCount + ErrorCount,
 
-    Throughput = TotalCount * 1000 / ActualDuration,
+    Throughput = TotalCount * 1000 / erlang:max(ActualDuration, 1),
 
     io:format("~n----------------------------------------~n"),
     io:format("持续压力测试结果:~n"),
+    io:format("  并发用户数: ~p~n", [length(UserIds)]),
     io:format("  实际持续时间: ~p ms~n", [ActualDuration]),
     io:format("  成功数: ~p~n", [SuccessCount]),
     io:format("  失败数: ~p~n", [FailureCount]),

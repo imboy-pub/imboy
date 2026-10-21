@@ -24,40 +24,55 @@ read_manifest() ->
 
 s5_readback_after_restart_test_() ->
     ?TEST_WITH_DB_TIMEOUT(60, fun() ->
-        case filelib:is_file(?S5_MANIFEST) of
-            false ->
-                io:format(
-                    "manifest missing (~s): run ac04_e2ee_off_archive_db_tests first~n",
-                    [?S5_MANIFEST]
-                ),
-                ?assert(filelib:is_file(?S5_MANIFEST));
-            true ->
-                {A, B, Kw, MsgIds} = read_manifest(),
-                %% 回读一：history 分页（新 VM，无任何进程内缓存）
-                {ok, #{<<"messages">> := Msgs, <<"has_more">> := More}} =
-                    messaging_logic:history(A, <<"c2c">>, integer_to_binary(B), 0, 50),
-                ?assertEqual(false, More),
-                ReadBackIds = [maps:get(<<"msg_id">>, M) || M <- Msgs],
-                %% 集合包含写入侧全集（会话内可能有其他套件行，用包含断言）
-                ?assertEqual(
-                    lists:sort(MsgIds),
-                    lists:sort(lists:filter(fun(Id) -> lists:member(Id, MsgIds) end, ReadBackIds))
-                ),
-                %% 回读二：FTS 命中同一集合
-                {ok, Hits} = fts_user_repo:search_c2c_msg(Kw, 50, 0, A),
-                HitIds = [maps:get(<<"msg_id">>, M) || M <- Hits],
-                lists:foreach(
-                    fun(Id) -> ?assert(lists:member(Id, HitIds)) end,
-                    MsgIds
-                ),
-                %% 回读三：staging 无 pending 残留
-                {ok, [#{<<"n">> := PendN}]} = elib_pg:query(
-                    <<
-                        "SELECT count(*) AS n FROM public.msg_store_staging ",
-                        "WHERE msg_id = ANY($1) AND processed_at IS NULL"
-                    >>,
-                    [MsgIds]
-                ),
-                ?assertEqual(0, PendN)
+        %% history 依赖 msg_archive_enabled=true 读归档表（msg_store）；
+        %% 写入侧（ac04_e2ee_off_archive_db_tests:s5_manifest_write）已在该
+        %% env 下归档，本 VM 自备同值再回读，结束后恢复。
+        PreviousArchive = application:get_env(imboy, msg_archive_enabled),
+        application:set_env(imboy, msg_archive_enabled, true),
+        try
+            s5_readback_body()
+        after
+            case PreviousArchive of
+                undefined -> application:unset_env(imboy, msg_archive_enabled);
+                {ok, Value} -> application:set_env(imboy, msg_archive_enabled, Value)
+            end
         end
     end).
+
+s5_readback_body() ->
+    case filelib:is_file(?S5_MANIFEST) of
+        false ->
+            io:format(
+                "manifest missing (~s): run ac04_e2ee_off_archive_db_tests first~n",
+                [?S5_MANIFEST]
+            ),
+            ?assert(filelib:is_file(?S5_MANIFEST));
+        true ->
+            {A, B, Kw, MsgIds} = read_manifest(),
+            %% 回读一：history 分页（新 VM，无任何进程内缓存）
+            {ok, #{<<"messages">> := Msgs, <<"has_more">> := More}} =
+                messaging_logic:history(A, <<"c2c">>, integer_to_binary(B), 0, 50),
+            ?assertEqual(false, More),
+            ReadBackIds = [maps:get(<<"msg_id">>, M) || M <- Msgs],
+            %% 集合包含写入侧全集（会话内可能有其他套件行，用包含断言）
+            ?assertEqual(
+                lists:sort(MsgIds),
+                lists:sort(lists:filter(fun(Id) -> lists:member(Id, MsgIds) end, ReadBackIds))
+            ),
+            %% 回读二：FTS 命中同一集合
+            {ok, Hits} = fts_user_repo:search_c2c_msg(Kw, 50, 0, A),
+            HitIds = [maps:get(<<"msg_id">>, M) || M <- Hits],
+            lists:foreach(
+                fun(Id) -> ?assert(lists:member(Id, HitIds)) end,
+                MsgIds
+            ),
+            %% 回读三：staging 无 pending 残留
+            {ok, [#{<<"n">> := PendN}]} = elib_pg:query(
+                <<
+                    "SELECT count(*) AS n FROM public.msg_store_staging ",
+                    "WHERE msg_id = ANY($1) AND processed_at IS NULL"
+                >>,
+                [MsgIds]
+            ),
+            ?assertEqual(0, PendN)
+    end.

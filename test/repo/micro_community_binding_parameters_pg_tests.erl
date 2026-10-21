@@ -55,8 +55,8 @@ setup_rows(S) ->
     ),
     execute(
         C,
-        <<"INSERT INTO public.\"group\"(id,owner_uid,creator_uid,title,type,join_limit,status,scope,e2ee_mode) VALUES ($1,$2,$2,'binding parameter fixture',2,3,1,'personal',0)">>,
-        [99001011, 99001001]
+        <<"INSERT INTO public.\"group\"(id,owner_uid,creator_uid,title,type,join_limit,status,scope,e2ee_mode) VALUES ($1,$2,$2,'binding parameter fixture',2,3,1,'personal',0),($3,$4,$4,'binding parameter fixture unbound',2,3,1,'personal',0)">>,
+        [99001011, 99001001, 99001012, 99001003]
     ),
     execute(
         C,
