@@ -4,11 +4,11 @@
 %% 为什么需要这一层（不是冗余）：治理面的路径字符串在前端被单测钉死
 %% （imboyadmin 分支 run/full-candidate-admin-20260921T101806Z 的
 %% src/modules/enterprise_apps/api/contracts.ts:ENDPOINTS），后端一旦漂移，
-%% 前端会静默退化为「404 → notFound」而不是报错。本套件把 14 条路径、handler、
+%% 前端会静默退化为「404 → notFound」而不是报错。本套件把 10 条路径、handler、
 %% action 与硬边界钉在后端 beam 上，漂移即红灯。
 %%
 %% 硬边界断言（plan 产品硬边界 §1、§2）：
-%%   ① 14 条路径各注册**恰好一次**（重复注册会让 cowboy 首次匹配胜出，
+%%   ① 10 条路径各注册**恰好一次**（重复注册会让 cowboy 首次匹配胜出，
 %%      第二条永远不生效，属静默死路由）
 %%   ② handler 恒为 adm_enterprise_application_handler（不接受其他 handler）
 %%   ③ 公开开放平台面 /api/open/v1/* 的生产路由数恒为 0
@@ -31,9 +31,6 @@
     %% A-03 POST 生命周期（CAS）
     {<<"/api/adm/enterprise/organizations/:org_id/applications/:application_id/status">>,
         application_status},
-    %% A-04 PUT scope（CAS）
-    {<<"/api/adm/enterprise/organizations/:org_id/applications/:application_id/scopes">>,
-        application_scopes},
     %% A-05 GET 列表 / A-06 POST 签发（同路径不同方法）
     {<<"/api/adm/enterprise/organizations/:org_id/applications/:application_id/credentials">>,
         credentials},
@@ -43,11 +40,6 @@
     %% A-08 DELETE 撤销
     {<<"/api/adm/enterprise/organizations/:org_id/applications/:application_id/credentials/:credential_id">>,
         credential_revoke},
-    %% A-09 GET 列表 / A-10 POST 新增（同路径不同方法）
-    {<<"/api/adm/enterprise/organizations/:org_id/applications/:application_id/grants">>, grants},
-    %% A-11 PATCH CAS 增删
-    {<<"/api/adm/enterprise/organizations/:org_id/applications/:application_id/grants/:grant_id">>,
-        grant},
     %% A-16 GET 身份映射列表 / A-17 POST 绑定 / A-18 DELETE 解绑（同路径不同方法）
     {<<"/api/adm/enterprise/organizations/:org_id/applications/:application_id/identities">>,
         identities},
@@ -143,9 +135,10 @@ prefix_disjoint() ->
     Gov = [P || P <- Paths, is_governance(P)],
     Eb = [P || P <- Paths, is_eb_platform(P)],
     Internal = [P || P <- Paths, is_internal(P)],
-    %% A-01..A-18 共 13 条唯一路径（credentials/grants/identities 各为
-    %% 同路径多方法收敛成一条）；与 imboy_router 治理面注册逐条对账
-    ?assertEqual(13, length(Gov)),
+    %% A-01..A-18 共 10 条唯一路径（credentials/identities 各为同路径多方法
+    %% 收敛成一条；A-04 scopes / A-09 grants / A-11 grant 已随 HMAC-only
+    %% 迁移 210_internal_hmac_only 删除）；与 imboy_router 治理面注册逐条对账
+    ?assertEqual(10, length(Gov)),
     %% 治理面路径不落在 enterprise-business 运营面或 OA internal 面之下
     ?assertEqual([], [P || P <- Gov, is_eb_platform(P)]),
     ?assertEqual([], [P || P <- Gov, is_internal(P)]),

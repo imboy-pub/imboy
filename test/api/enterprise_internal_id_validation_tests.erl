@@ -16,7 +16,7 @@ id_validation_test_() ->
 setup() ->
     lists:foreach(
         fun(M) -> meck:new(M, [non_strict, no_link]) end,
-        [cowboy_req, enterprise_internal_auth, elib_pg, elib_log]
+        [cowboy_req, enterprise_internal_auth, enterprise_internal_signature, elib_pg, elib_log]
     ),
     meck:expect(cowboy_req, method, fun(Req) -> maps:get(method, Req) end),
     meck:expect(cowboy_req, path, fun(Req) -> maps:get(path, Req) end),
@@ -25,11 +25,22 @@ setup() ->
         maps:get(Key, maps:get(headers, Req), undefined)
     end),
     meck:expect(cowboy_req, parse_qs, fun(Req) -> maps:to_list(maps:get(qs, Req, #{})) end),
+    meck:expect(cowboy_req, qs, fun(_Req) -> <<>> end),
+    meck:expect(cowboy_req, read_body, fun(Req, _Opts) -> {ok, <<>>, Req} end),
     meck:expect(cowboy_req, reply, fun(Status, _Headers, Body, Req) ->
         Req#{status => Status, body => Body}
     end),
     meck:expect(elib_log, internal_log, fun(_, _, _, _) -> ok end),
     meck:expect(elib_pg, with_tx, fun(_) -> error(unexpected_database_access) end),
+    %% HMAC-only 模型：中间件签名门先于 decide/4（signed_execute 先 parse，
+    %% 失败即 401 invalid_credential，到不了 binding 校验），本套件聚焦
+    %% id 校验顺序，签名产物用桩放行。
+    meck:expect(enterprise_internal_signature, parse, fun(_Headers, _Now) ->
+        {ok, #{}}
+    end),
+    meck:expect(enterprise_internal_auth, authenticate_signed, fun(_, _, _, _, _) ->
+        {ok, #{}}
+    end),
     meck:expect(enterprise_internal_auth, decide, fun(_, _, _, _) ->
         {ok, #{organization_id => 10, application_id => 20}}
     end).
@@ -37,7 +48,7 @@ setup() ->
 cleanup(_) ->
     lists:foreach(
         fun meck:unload/1,
-        [cowboy_req, enterprise_internal_auth, elib_pg, elib_log]
+        [cowboy_req, enterprise_internal_auth, enterprise_internal_signature, elib_pg, elib_log]
     ).
 
 request(Bindings) ->
@@ -93,9 +104,12 @@ valid_bindings() ->
                         opaque => <<"not-a-number">>,
                         delivery_id => <<"intbe02-dlv-0001">>
                     }),
-                    {ok, Req, Env} = enterprise_internal_middleware:execute(Req, #{
+                    %% HMAC-only 中间件会把读到的请求体写入 Req
+                    %% （enterprise_internal_body），返回 Req ≠ 传入 Req。
+                    {ok, Req1, Env} = enterprise_internal_middleware:execute(Req, #{
                         handler_opts => #{action => detail}
                     }),
+                    ?assertEqual(<<>>, maps:get(enterprise_internal_body, Req1)),
                     Opts = maps:get(handler_opts, Env),
                     ?assertEqual(Expected, maps:get(Key, Opts)),
                     ?assertEqual(<<"not-a-number">>, maps:get(opaque, Opts)),
@@ -111,7 +125,8 @@ valid_bindings() ->
     lists:foreach(
         fun(DeliveryId) ->
             Req = request(#{delivery_id => DeliveryId}),
-            {ok, Req, Env} = enterprise_internal_middleware:execute(Req, #{handler_opts => #{}}),
+            {ok, Req1, Env} = enterprise_internal_middleware:execute(Req, #{handler_opts => #{}}),
+            ?assertEqual(<<>>, maps:get(enterprise_internal_body, Req1)),
             ?assertEqual(DeliveryId, maps:get(delivery_id, maps:get(handler_opts, Env)))
         end,
         [<<"0001">>, <<"9223372036854775808">>, <<"intbe02-dlv-0001">>]

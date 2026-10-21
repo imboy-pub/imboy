@@ -59,10 +59,12 @@ setup_conn(Options) ->
     catch
         _:_ -> ok
     end,
-    State = inttest_marker_db:provision(maps:merge(Options, #{
-        env_prefix => <<"FULL08_INTTEST">>,
-        connect_extra => #{codecs => [{epgsql_codec_rfc3339_bin, []}]}
-    })),
+    State = inttest_marker_db:provision(
+        maps:merge(Options, #{
+            env_prefix => <<"FULL08_INTTEST">>,
+            connect_extra => #{codecs => [{epgsql_codec_rfc3339_bin, []}]}
+        })
+    ),
     C = maps:get(conn, State),
     _ = code:add_patha("deps/erlang_migrate/ebin"),
     ok = exec(C, <<"BEGIN">>),
@@ -285,8 +287,14 @@ fn_body_snapshot(C) ->
     of
         {ok, Rows} ->
             maps:from_list([
-                {{maps:get(<<"schema">>, R), maps:get(<<"name">>, R),
-                    maps:get(<<"identity_args">>, R)}, maps:get(<<"body_md5">>, R)}
+                {
+                    {
+                        maps:get(<<"schema">>, R),
+                        maps:get(<<"name">>, R),
+                        maps:get(<<"identity_args">>, R)
+                    },
+                    maps:get(<<"body_md5">>, R)
+                }
              || R <- Rows
             ]);
         {error, Reason} ->
@@ -340,14 +348,17 @@ all_test_() ->
             {"function_snapshot_preserves_overloaded_bodies",
                 with_tx(C, fun fn_snapshot_overloads_oracle/1)},
             {"cas_status_write_single_winner", with_tx(C, fun cas_status_oracle/1)},
-            {"cas_scopes_write_single_winner", with_tx(C, fun cas_scopes_oracle/1)},
+            %% cas_scopes_write_single_winner 已删除：scope CAS 概念随
+            %% HMAC-only 模型整体移除（迁移 210_internal_hmac_only DROP 了
+            %% enterprise_application.allowed_scopes 列，无替代断言可写）。
             {"status_domain_four_values_only", with_tx(C, fun status_domain_oracle/1)},
             {"cross_org_update_is_zero_rows", with_tx(C, fun cross_org_oracle/1)},
             {"grant_revoke_attribution_exactly_one_actor",
                 with_tx(C, fun grant_attribution_oracle/1)},
             {"grant_revoke_both_actors_rejected", with_tx(C, fun grant_both_actors_oracle/1)},
             {"grant_revoke_no_actor_rejected", with_tx(C, fun grant_no_actor_oracle/1)},
-            {"down_up_cycle_residue_zero_and_rebuild", historical_fixture(State, fun down_up_cycle_test/1)},
+            {"down_up_cycle_residue_zero_and_rebuild",
+                historical_fixture(State, fun down_up_cycle_test/1)},
             {"down_with_adm_revoked_grant_converges",
                 historical_fixture(State, fun down_with_adm_revoked_test/1)}
         ]}
@@ -360,10 +371,12 @@ all_test_() ->
 %% 历史 down 只作用于历史版本新库；保留独立 head 数据库作为比较基准。
 %% Historical rollback never crosses later fail-closed production migrations.
 historical_fixture(HeadState, Test) ->
-    {setup, fun() ->
-        State = setup_conn(#{migration_target => ?THIS_MIGRATION}),
-        State#{expected_head_functions => fn_body_snapshot(maps:get(conn, HeadState))}
-    end, fun close_conn/1, fun(State) -> {timeout, 900, Test(State)} end}.
+    {setup,
+        fun() ->
+            State = setup_conn(#{migration_target => ?THIS_MIGRATION}),
+            State#{expected_head_functions => fn_body_snapshot(maps:get(conn, HeadState))}
+        end,
+        fun close_conn/1, fun(State) -> {timeout, 900, Test(State)} end}.
 
 head_schema_test(C) ->
     ?_test(begin
@@ -447,46 +460,6 @@ cas_status_oracle(C) ->
         )
     ),
     ?assertEqual(3, app_version(C, ?APP_A_ID)).
-
-cas_scopes_oracle(C) ->
-    ?assertEqual(
-        1,
-        affected(
-            C,
-            <<
-                "UPDATE enterprise_application SET allowed_scopes = $3::jsonb,"
-                " version = version + 1, updated_at = NOW()"
-                " WHERE organization_id = $1 AND id = $2 AND version = $4"
-            >>,
-            [?ORG_A, ?APP_A_ID, <<"[\"messages:send\"]">>, 1]
-        )
-    ),
-    ?assertEqual(
-        2,
-        app_version(C, ?APP_A_ID)
-    ),
-    %% 重复提交（同 expected_version）：0 行，scope 不被二次写入
-    ?assertEqual(
-        0,
-        affected(
-            C,
-            <<
-                "UPDATE enterprise_application SET allowed_scopes = $3::jsonb,"
-                " version = version + 1, updated_at = NOW()"
-                " WHERE organization_id = $1 AND id = $2 AND version = $4"
-            >>,
-            [?ORG_A, ?APP_A_ID, <<"[\"identities:write\"]">>, 1]
-        )
-    ),
-    %% jsonb 在 epgsql 侧是原文 text；用 ->>0 取首元素做等价断言
-    ?assertEqual(
-        <<"messages:send">>,
-        scalar(
-            C,
-            <<"SELECT allowed_scopes ->> 0 FROM enterprise_application WHERE id = $1">>,
-            [?APP_A_ID]
-        )
-    ).
 
 %%%===================================================================
 %%% ② 状态值域：四值合法，第五值非法

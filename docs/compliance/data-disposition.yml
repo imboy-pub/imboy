@@ -1515,6 +1515,13 @@ tables:
     mechanism: 迁移 181 与 enterprise_oa_login_repo 只按 expires_at 失效；物理清理未实现
     review: pending-owner
     retention: unknown
+  enterprise_internal_request_nonce:
+    action: delete
+    owner: enterprise-auth
+    reason: HMAC 请求防重放 nonce（credential_id + 随机 nonce + expires_at），不含用户身份或消息内容
+    mechanism: 迁移 209 建表；nonce 仅在 expires_at 窗口内防重放，过期即无意义，随所属凭证行删除
+    review: self-evident
+    retention: unknown
   enterprise_source_person:
     action: anonymize
     owner: enterprise-directory

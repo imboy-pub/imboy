@@ -308,7 +308,9 @@ list_unread_counts_by_channel_includes_zero_rows_test_() ->
             {elib_pg, [
                 {'query', 2, fun(Sql, [11]) ->
                     SqlBin = iolist_to_binary(Sql),
-                    ?assert(re:run(SqlBin, <<"ORDER BY user_id ASC">>) =/= nomatch),
+                    %% 产品 SQL 自 70a839f6 起表别名为 cs（FROM ... cs），
+                    %% 排序列带别名限定：ORDER BY cs.user_id ASC
+                    ?assert(re:run(SqlBin, <<"ORDER BY cs\.user_id ASC">>) =/= nomatch),
                     {ok, [
                         #{<<"user_id">> => 1001, <<"unread_count">> => 0},
                         #{<<"user_id">> => 1002, <<"unread_count">> => 5}

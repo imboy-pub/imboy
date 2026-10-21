@@ -37,6 +37,12 @@ group_detail_boundary_test_() ->
             {imboy_error, [
                 {'validate_id', 2, fun(_, Gid) -> {ok, elib_cnv:safe_to_integer(Gid)} end}
             ]},
+            %% fc88418f 起 detail 链新增 micro_community 真实 DB 守卫
+            %% （guard_group_detail/2 → group_detail_allowed/2）；本套件
+            %% 无群 777001 种子，mock 放行，边界语义仍由 workspace guard 覆盖。
+            {micro_community_access_logic, [
+                {'guard_group_detail', 2, fun(_Uid, _Gid) -> ok end}
+            ]},
             {group_logic, [
                 {'find_by_id', 2, fun(Gid, _) ->
                     put(t_detail_allowed, Gid),
