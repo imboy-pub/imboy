@@ -2,7 +2,7 @@ get:
   tags:
   - internal
   summary: 读取本应用信息（健康检查与联调首选）
-  description: '返回本应用元数据、认证方式与凭证清单。HMAC 签名请求不返回 Scope。字段实证自
+  description: '返回本应用元数据、认证方式与凭证清单。使用 HMAC-SHA256 请求签名。字段实证自
 
     `enterprise_application_handler:self_payload/2`：application/credentials
 

@@ -2,7 +2,7 @@ post:
   tags:
   - internal
   summary: OA 入站登录 tickets
-  description: INT-44。OA 后端先认证员工，需显式 oa:login:issue，目录同步与 sso:exchange 不隐含此权限。发起端安全随机生成并保留
+  description: INT-44。OA 后端先认证员工，使用 HMAC-SHA256 请求签名。发起端安全随机生成并保留
     verifier，OA 只接收 S256 challenge。票据绑定应用、发行凭据、外部身份、意图与 challenge；60 秒单次消费，禁止日志及普通客户端存储。成功使用标准业务信封，错误沿用
     Internal error 信封。
   operationId: internalOaLoginIssue

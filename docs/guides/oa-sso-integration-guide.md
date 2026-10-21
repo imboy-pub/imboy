@@ -373,9 +373,14 @@ OA 后端向 IMBoy 发一个服务器对服务器的请求（员工浏览器和�
 
 ### 9.1 请求
 
+服务器间请求统一采用 HMAC-SHA256。以下占位头不能直接发送，必须按实际方法、路径、原始正文和请求头生成签名；12 行 canonical 与 Python 示例以 [Internal API README §3](../../api/internal/v1/README.md#3-请求签名认证) 为准。Secret 仅保存在 OA 服务端，不发送到请求头或客户端。
+
 ```http
 POST /api/internal/v1/oa/sso/exchange
-Authorization: Bearer ib_int_<你的凭证>
+X-Imboy-Credential: ib_int_<credential_id>
+X-Imboy-Timestamp: <Unix秒>
+X-Imboy-Nonce: <16到128位随机字符串>
+X-Imboy-Signature: sha256=<64位小写hex>
 Content-Type: application/json
 ```
 
@@ -476,7 +481,7 @@ exchange 接口对每个 OA 应用限流：**600 次/分钟**（以 IMBoy 侧环
 | 400 | `invalid_request` | OA 发的数据格式不正确 | 检查程序和配置（多半是 redirect_uri/字段问题） |
 | 401 | `invalid_credential` | OA 的服务端凭证错误 | 联系 IMBoy 管理员 |
 | 401 | `credential_expired` | OA 的服务端凭证过期 | 联系 IMBoy 管理员 |
-| 403 | `insufficient_scope` | OA 没有调用权限 | 联系 IMBoy 管理员 |
+| 403 | `organization_boundary_violation` | 请求与应用业务归属不匹配 | 核对目标组织与可信来源配置 |
 | 403 | `application_disabled` | OA 应用被停用 | 联系 IMBoy 管理员 |
 | 429 | `rate_limited` | 调用太频繁 | 按 `Retry-After` 头稍后重试 |
 | 503 | `security_gate_closed` | IMBoy 安全配置暂时关闭 | 联系 IMBoy |
@@ -786,7 +791,10 @@ OA 后端收到 `code=oa_sso_AAAA`、`state=XYZ123`，服务端调用 IMBoy：
 
 ```http
 POST /api/internal/v1/oa/sso/exchange
-Authorization: Bearer ib_int_123456.secret_xxxxxxxxx
+X-Imboy-Credential: ib_int_<credential_id>
+X-Imboy-Timestamp: <Unix秒>
+X-Imboy-Nonce: <16到128位随机字符串>
+X-Imboy-Signature: sha256=<64位小写hex>
 Content-Type: application/json
 
 {

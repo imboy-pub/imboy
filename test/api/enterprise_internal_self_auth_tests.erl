@@ -57,7 +57,7 @@ hmac_only_admission_test_() ->
                         <<"/api/internal/v1/groups">>,
                         <<>>,
                         #{},
-                        sha512
+                        sha256
                     ),
                     Auth = fun() -> {ok, #{authentication => hmac, application_id => 1}} end,
                     ?assertEqual(

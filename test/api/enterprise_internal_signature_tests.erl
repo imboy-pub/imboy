@@ -1,8 +1,8 @@
 -module(enterprise_internal_signature_tests).
 -include_lib("eunit/include/eunit.hrl").
 
-both_algorithms_test() ->
-    [round_trip(A) || A <- [sha256, sha512]].
+sha256_round_trip_test() ->
+    round_trip(sha256).
 
 round_trip(Algorithm) ->
     Signed = fixture(Algorithm),
@@ -106,8 +106,26 @@ known_wire_vectors_test() ->
             )
         )
      || {Algorithm, Expected} <- [
-            {sha256, <<"c82fc3eaf85886142fb3543e2076f30ed1549b075bd6230bdbc5fd467da27389">>},
-            {sha512,
-                <<"c66f3cda7d80c5151a27d194bc1e8cc7e2f4ea51aec6f006ee3f35e941e2760a89b83f88223e71b91127b72f982015ecb4a9b49a86f81822907dc8ad5e01f55a">>}
+            {sha256, <<"c82fc3eaf85886142fb3543e2076f30ed1549b075bd6230bdbc5fd467da27389">>}
         ]
     ].
+
+sha512_rejected_test() ->
+    Signed = fixture(sha256),
+    Canonical = enterprise_internal_signature:canonical(
+        <<"GET">>, <<"/api/internal/v1/application">>, <<>>, <<>>, Signed
+    ),
+    LegacyCanonical = binary:replace(Canonical, <<"\nsha256\n">>, <<"\nsha512\n">>),
+    Hex = binary:encode_hex(
+        crypto:mac(hmac, sha512, <<"synthetic-key">>, LegacyCanonical), lowercase
+    ),
+    Headers = (maps:get(headers, Signed))#{<<"x-imboy-signature">> => <<"sha512=", Hex/binary>>},
+    ?assertEqual(
+        {error, invalid_credential}, enterprise_internal_signature:parse(Headers, 1800000000)
+    ),
+    ?assertError(
+        function_clause,
+        enterprise_internal_signature:sign(
+            <<"synthetic-key">>, <<"GET">>, <<"/">>, <<>>, <<>>, Signed#{algorithm => sha512}
+        )
+    ).

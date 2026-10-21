@@ -1,6 +1,6 @@
 # Internal API v1 — 变更记录
 
-当前 Internal v1 使用 HMAC-SHA256/SHA512 签名认证，49 个操作、34 条路径。
+当前 Internal v1 使用 HMAC-SHA256 签名认证，49 个操作、34 条路径。
 
 ## Unreleased — 统一 OA 请求签名
 

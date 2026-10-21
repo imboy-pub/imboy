@@ -46,11 +46,11 @@ parse(_, _) ->
 
 %% Each field occupies one line. Path and query are the exact wire bytes;
 %% the query is neither sorted nor decoded, and an empty query stays empty.
-canonical(Method, Path, Query, Body, #{headers := Headers} = Signed) ->
+canonical(Method, Path, Query, Body, #{headers := Headers, algorithm := sha256} = Signed) ->
     iolist_to_binary(
         lists:join(<<"\n">>, [
             <<"IMBOY-INTERNAL-V1">>,
-            atom_to_binary(maps:get(algorithm, Signed)),
+            <<"sha256">>,
             maps:get(prefix, Signed),
             maps:get(<<"x-imboy-organization">>, Headers, <<>>),
             Method,
@@ -65,11 +65,11 @@ canonical(Method, Path, Query, Body, #{headers := Headers} = Signed) ->
     ).
 
 %% Secret is the secret component, excluding the ib_int_ locator.
-sign(Secret, Method, Path, Query, Body, Signed) ->
+sign(Secret, Method, Path, Query, Body, #{algorithm := sha256} = Signed) ->
     binary:encode_hex(
         crypto:mac(
             hmac,
-            maps:get(algorithm, Signed),
+            sha256,
             Secret,
             canonical(Method, Path, Query, Body, Signed)
         ),
@@ -83,10 +83,7 @@ verify(Secret, Method, Path, Query, Body, Signed) ->
 
 algorithm(<<"sha256=", Hex:64/binary>>) ->
     true = ascii(Hex, 64, 64, fun hex/1),
-    {sha256, Hex};
-algorithm(<<"sha512=", Hex:128/binary>>) ->
-    true = ascii(Hex, 128, 128, fun hex/1),
-    {sha512, Hex}.
+    {sha256, Hex}.
 
 ascii(Value, Min, Max, Predicate) when is_binary(Value) ->
     byte_size(Value) >= Min andalso byte_size(Value) =< Max andalso

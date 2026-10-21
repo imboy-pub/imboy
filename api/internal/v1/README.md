@@ -68,7 +68,7 @@ Base URL（协议/域名/端口）由部署方提供，本文档只约定路径�
 import hashlib, hmac, os, secrets, time, urllib.request
 
 credential, secret = os.environ["IMBOY_CREDENTIAL"].split(".", 1)
-algorithm = "sha256"  # 也支持 "sha512"；其余协议完全相同
+algorithm = "sha256"
 method, path, query = "GET", "/api/internal/v1/application", ""
 body, content_type, idempotency_key = b"", "application/json", ""
 timestamp, nonce = str(int(time.time())), secrets.token_urlsafe(24)
@@ -104,16 +104,16 @@ with urllib.request.build_opener(NoRedirect()).open(request, timeout=30) as resp
 | `X-Imboy-Credential` | 签发返回的完整 `ib_int_...` 定位符，即完整凭证第一个 `.` 之前的部分 |
 | `X-Imboy-Timestamp` | Unix 秒，十进制、无前导零；与服务端时间相差不超过 300 秒 |
 | `X-Imboy-Nonce` | 每请求随机生成，16..128 字符，仅 `A-Z a-z 0-9 _ -` |
-| `X-Imboy-Signature` | `sha256=<64位小写hex>` 或 `sha512=<128位小写hex>` |
+| `X-Imboy-Signature` | `sha256=<64位小写hex>` |
 
-签名采用 **HMAC-SHA256 / HMAC-SHA512**，不是不带密钥的普通 hash。
+签名采用 **HMAC-SHA256**，不是不带密钥的普通 hash。
 HMAC key 是完整凭证第一个 `.` 后的 secret 原文；定位符不是 application_id，不能自行重建。
 
 签名原文为以下 12 行 UTF-8 字节，以单个 LF（`\n`）分隔，末尾无换行：
 
 ```text
 IMBOY-INTERNAL-V1
-sha256 或 sha512
+sha256
 credential 定位符
 X-Imboy-Organization 原值（未指定时空行）
 大写 HTTP 方法
@@ -121,7 +121,7 @@ X-Imboy-Organization 原值（未指定时空行）
 原始 query（不含 ?，无 query 时空行）
 Content-Type 头的原值（无此头时空行）
 Idempotency-Key 头的原值（无此头时空行）
-正文原始字节的 SHA256 小写 hex（即使用 sha512 签名，这一行仍为 SHA256）
+正文原始字节的 SHA256 小写 hex
 X-Imboy-Timestamp
 X-Imboy-Nonce
 ```
@@ -284,7 +284,7 @@ INT-14 成功返回裸身份事实，保留 organization_id 字段：有业务�
 
 ### OA → IMBoy：登录原账号、确认关联或显式新建
 
-OA 后端先认证员工，然后以独立显式 oa:login:issue 权限调用
+OA 后端先认证员工，然后通过 HMAC-SHA256 签名调用
 `POST /api/internal/v1/oa/login/tickets`（INT-44），提交 external_user_id、intent=login|link、
 S256 code_challenge。verifier 由 IMBoy 发起客户端生成并保留，OA 只接收 challenge。
 票据绑定应用、发行凭据、外部人员、意图和 challenge，60 秒单次消费。
@@ -298,7 +298,7 @@ pending_token，完成窗口 5 分钟且重试不续期。后续二选一：
 
 两个完成入口均须携带 application_key、pending_token、code_verifier、did。不按姓名、
 手机或邮箱自动合并；旧关联不能被普通同步或登录换绑。目录同步本身不签发会话。
-只有签票权而缺目录写权限时，可以关联/登录并返回 projection_pending=true，不能因此扩权。
+目录投影依据可信来源与当前人员状态；来源尚未就绪时，返回 projection_pending=true。
 
 Internal 签票成功使用 `{code:0,msg,sv_ts,payload}` 信封；错误使用 Internal error 信封。
 三个 Human 入口使用客户端业务信封及各自认证要求，不能向它们传 Application Credential。
@@ -372,7 +372,7 @@ membership projections are distinct. Cursors are signed and filter-bound; pages 
 ## OA 企业与成员生命周期
 
 1. 平台管理员先创建应用、签发凭据并配置可信目录来源：绑定外部组织 ID、Owner、到期时间及是否准许首次建组织。OA 不能自行指定任意 Owner 或越过可信配置。
-2. `POST /api/internal/v1/directory/sync`（INT-43，`identities:write`）首次初始化组织，再按各自递增版本同步部门、人员和任职。全量中遗漏的记录不会自动删除；离职须显式发送 `membership.status=removed`。来源人员与组织任职版本独立。
+2. `POST /api/internal/v1/directory/sync`（INT-43）首次初始化组织，再按各自递增版本同步部门、人员和任职。全量中遗漏的记录不会自动删除；离职须显式发送 `membership.status=removed`。来源人员与组织任职版本独立。
 3. 未关联人员进入待关联状态；通过既有可信身份关联/注册流程关联 Human 账号后投影成员及部门关系。OA 不能凭任意用户 ID 接管账号。使用 INT-45..47 核对来源与实际投影状态。
 4. `GET /api/internal/v1/directory/memberships?external_organization_id=...&external_user_id=...`（INT-48）返回当前成员状态、`member_version`、离职阻塞数量及业务资格。目标组织必须属于当前有效的可信来源。检查是建议，实际变更会重新验证。
 5. 离职先用 `PATCH /api/internal/v1/directory/memberships`（INT-49）发送外部组织/人员 ID、`status=suspended`、检查返回的 `expected_member_version`，并携带 `Idempotency-Key`。只支持本来源托管、已关联投影的普通成员；Owner/Admin 交由人工治理。

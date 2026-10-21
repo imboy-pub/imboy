@@ -20,7 +20,7 @@
 auth_contexts:
   application_credential:
     format: "ib_int_<credential_id>.<secret>"
-    verification: hmac_sha256_or_sha512 + constant_time_compare + single_use_nonce
+    verification: hmac_sha256 + constant_time_compare + single_use_nonce
     timestamp_window_seconds: 300
     required_headers: [X-Imboy-Credential, X-Imboy-Timestamp, X-Imboy-Nonce, X-Imboy-Signature]
     optional_signed_headers: [X-Imboy-Organization]

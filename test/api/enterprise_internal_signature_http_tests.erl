@@ -117,7 +117,21 @@ webhook_application_boundary(#{conn := C, port := Port, cred_c := Credential, ap
 
 transport(#{port := Port, cred_a := Credential} = S) ->
     Path = <<"/api/internal/v1/application">>,
-    H = signed(Credential, <<"GET">>, Path, <<>>, #{}, sha512),
+    H = signed(Credential, <<"GET">>, Path, <<>>, #{}, sha256),
+    [_, Secret] = binary:split(Credential, <<".">>),
+    {ok, Parsed} = enterprise_internal_signature:parse(H, erlang:system_time(second)),
+    Canonical = enterprise_internal_signature:canonical(<<"GET">>, Path, <<>>, <<>>, Parsed#{
+        headers => H
+    }),
+    UnsupportedCanonical = binary:replace(Canonical, <<"\nsha256\n">>, <<"\nsha512\n">>),
+    UnsupportedHex = binary:encode_hex(
+        crypto:mac(hmac, sha512, Secret, UnsupportedCanonical), lowercase
+    ),
+    Unsupported = H#{<<"x-imboy-signature">> => <<"sha512=", UnsupportedHex/binary>>},
+    err(
+        intbe02_http_support:http(Port, <<"GET">>, Path, <<>>, Unsupported),
+        <<"invalid_credential">>
+    ),
     Missing = intbe02_http_support:http(Port, <<"GET">>, Path, <<>>, #{}),
     err(Missing, <<"invalid_credential">>),
     Bearer = #{<<"authorization">> => <<"Bearer ", Credential/binary>>},

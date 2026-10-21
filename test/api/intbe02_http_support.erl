@@ -840,7 +840,7 @@ sql_exec_quiet(C, IoData) ->
     ok.
 
 %% A real test client. It signs the wire bytes and never changes server ACLs.
-signed_headers(Credential, Method, Target, Body, Headers, Algorithm) ->
+signed_headers(Credential, Method, Target, Body, Headers, sha256 = Algorithm) ->
     [Prefix, Secret] = binary:split(Credential, <<".">>),
     {Path, Query} =
         case binary:split(Target, <<"?">>) of

@@ -1384,13 +1384,13 @@ integration_readme_auth_contract_test() ->
         ?assertNotEqual(nomatch, binary:match(Readme, Token))
      || Token <- [
             <<"HMAC-SHA256">>,
-            <<"HMAC-SHA512">>,
             <<"X-Imboy-Credential">>,
             <<"X-Imboy-Timestamp">>,
             <<"X-Imboy-Nonce">>,
             <<"X-Imboy-Signature">>
         ]
     ],
+    ?assertEqual(nomatch, binary:match(Readme, <<"HMAC-SHA512">>)),
     ?assertEqual(nomatch, binary:match(Readme, <<"## 4. 授权（Scope"/utf8>>)).
 
 assert_error_json(Body, Code) ->

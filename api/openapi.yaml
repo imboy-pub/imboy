@@ -1268,7 +1268,7 @@ components:
       type: apiKey
       in: header
       name: X-Imboy-Signature
-      description: sha256=<64位小写hex> 或 sha512=<128位小写hex>；原文见 README §3。
+      description: sha256=<64位小写hex>；原文见 README §3。
 
   schemas:
     MicroCommunityEntityId:

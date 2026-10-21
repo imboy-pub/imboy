@@ -18,7 +18,7 @@ info:
     本文件是 IMBoy **surface internal**（企业集成）的编辑真源，桥接 34 条
     path（49 个操作）。受众为企业 OA / 第三方集成系统开发者。
 
-    **认证**：仅使用 HMAC-SHA256 / HMAC-SHA512 请求签名。
+    **认证**：仅使用 HMAC-SHA256 请求签名。
     签名头为 X-Imboy-Credential、X-Imboy-Timestamp、X-Imboy-Nonce、X-Imboy-Signature；
     可选的 X-Imboy-Organization 选择经平台校验的业务组织，并参与签名。
     算法、12 行签名原文、300 秒窗口及升级轮换要求见 api/internal/v1/README.md §3。
@@ -153,7 +153,7 @@ components:
       type: apiKey
       in: header
       name: X-Imboy-Signature
-      description: sha256=<64位小写hex> 或 sha512=<128位小写hex>；原文见 README §3。
+      description: sha256=<64位小写hex>；原文见 README §3。
 
 security:
   - ibIntHmacCredential: []

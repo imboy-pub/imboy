@@ -17,7 +17,7 @@ info:
     本文件是 IMBoy **surface internal**（企业集成）的编辑真源，桥接 34 条
     path（49 个操作）。受众为企业 OA / 第三方集成系统开发者。
 
-    **认证**：仅使用 HMAC-SHA256 / HMAC-SHA512 请求签名。
+    **认证**：仅使用 HMAC-SHA256 请求签名。
     签名头为 X-Imboy-Credential、X-Imboy-Timestamp、X-Imboy-Nonce、X-Imboy-Signature；
     可选的 X-Imboy-Organization 选择经平台校验的业务组织，并参与签名。
     算法、12 行签名原文、300 秒窗口及升级轮换要求见 api/internal/v1/README.md §3。
@@ -69,7 +69,7 @@ paths:
       - internal
       summary: 读取本应用信息（健康检查与联调首选）
       description: |
-        返回本应用元数据、认证方式与凭证清单。HMAC 签名请求不返回 Scope。字段实证自
+        返回本应用元数据、认证方式与凭证清单。使用 HMAC-SHA256 请求签名。字段实证自
         `enterprise_application_handler:self_payload/2`：application/credentials
         为平台行数据的 binary 键透出（最小字段集，不含 secret）。
       operationId: internalApplicationSelf
@@ -12524,7 +12524,7 @@ paths:
       tags:
       - internal
       summary: OA 入站登录 tickets
-      description: INT-44。OA 后端先认证员工，需显式 oa:login:issue，目录同步与 sso:exchange 不隐含此权限。发起端安全随机生成并保留 verifier，OA 只接收 S256 challenge。票据绑定应用、发行凭据、外部身份、意图与
+      description: INT-44。OA 后端先认证员工，使用 HMAC-SHA256 请求签名。发起端安全随机生成并保留 verifier，OA 只接收 S256 challenge。票据绑定应用、发行凭据、外部身份、意图与
         challenge；60 秒单次消费，禁止日志及普通客户端存储。成功使用标准业务信封，错误沿用 Internal error 信封。
       operationId: internalOaLoginIssue
       requestBody:
@@ -19955,4 +19955,4 @@ components:
       type: apiKey
       in: header
       name: X-Imboy-Signature
-      description: sha256=<64位小写hex> 或 sha512=<128位小写hex>；原文见 README §3。
+      description: sha256=<64位小写hex>；原文见 README §3。
