@@ -1289,6 +1289,49 @@ update_prefers_path_channel_id_over_body_test_() ->
         end
     ).
 
+update_preserves_coded_error_test_() ->
+    [
+        {
+            integer_to_list(Code),
+            ?WITH_MECKS(
+                [
+                    {elib_param, [
+                        {'post', 1, fun(_Req) -> #{<<"name">> => <<"new_name">>} end}
+                    ]},
+                    {cowboy_req, [
+                        {'binding', 2, fun(channel_id, _Req) -> <<"ch_hash_path">> end}
+                    ]},
+                    {channel_logic, [
+                        {'update_channel', 3, fun(
+                            1001, <<"ch_hash_path">>, #{<<"name">> := <<"new_name">>}
+                        ) ->
+                            {error, {Code, Msg}}
+                        end}
+                    ]},
+                    {elib_response, [
+                        {'error', 2, fun(_Req, _ErrorMsg) ->
+                            erlang:error(unexpected_uncoded_error)
+                        end},
+                        {'error', 3, fun(_Req, ErrorMsg, ErrorCode) ->
+                            {error_resp, ErrorCode, ErrorMsg}
+                        end}
+                    ]}
+                ],
+                fun() ->
+                    Result = channel_handler:handle_action(
+                        update, req_mock(), #{current_uid => 1001}
+                    ),
+                    ?assertEqual({error_resp, Code, Msg}, Result),
+                    ?assertEqual(0, meck:num_calls(elib_response, error, ['_', '_']))
+                end
+            )
+        }
+     || {Code, Msg} <- [
+            {980, <<"工作区已归档，写操作被拒绝"/utf8>>},
+            {503, <<"服务暂时不可用，请稍后重试"/utf8>>}
+        ]
+    ].
+
 delete_prefers_path_channel_id_over_body_test_() ->
     ?WITH_MECKS(
         [
@@ -2407,6 +2450,85 @@ restore_action_dispatches_to_logic_test_() ->
             ?assertMatch({ok_resp, #{status := <<"active">>}}, Result)
         end
     ).
+
+channel_admin_and_comment_preserve_error_contract_test_() ->
+    [
+        {
+            atom_to_list(Case),
+            channel_write_error_contract_case(
+                Handler, Action, Method, LogicModule, Expectation, Reason
+            )
+        }
+     || Reason <- [
+            {980, <<"工作区已归档，写操作被拒绝"/utf8>>},
+            {503, <<"服务暂时不可用，请稍后重试"/utf8>>},
+            <<"无权限操作"/utf8>>
+        ],
+        {Case, Handler, Action, Method, LogicModule, Expectation} <- [
+            {update_role, channel_handler_admin, update_admin_role, <<"PUT">>, channel_logic,
+                {update_admin_role, 4, fun(1001, <<"ch_hash_path">>, 2002, 2) ->
+                    {error, Reason}
+                end}},
+            {update_role_via_put, channel_handler_admin, remove_admin, <<"PUT">>, channel_logic,
+                {update_admin_role, 4, fun(1001, <<"ch_hash_path">>, 2002, 2) ->
+                    {error, Reason}
+                end}},
+            {remove_admin, channel_handler_admin, remove_admin, <<"DELETE">>, channel_logic,
+                {remove_admin, 3, fun(1001, <<"ch_hash_path">>, 2002) ->
+                    {error, Reason}
+                end}},
+            {create_comment, channel_handler_comment, create_comment, <<"POST">>,
+                channel_comment_logic,
+                {create, 5, fun(1001, <<"ch_hash_path">>, <<"99">>, <<"comment">>, 0) ->
+                    {error, Reason}
+                end}}
+        ]
+    ].
+
+channel_write_error_contract_case(Handler, Action, Method, LogicModule, Expectation, Reason) ->
+    ?WITH_MECKS(
+        [
+            {elib_param, [
+                {'post', 1, fun(_Req) -> #{<<"role">> => 2, <<"content">> => <<"comment">>} end}
+            ]},
+            {cowboy_req, [
+                {'method', 1, fun(_Req) -> Method end},
+                {'binding', 2, fun
+                    (channel_id, _Req) -> <<"ch_hash_path">>;
+                    (user_id, _Req) -> <<"2002">>;
+                    (message_id, _Req) -> <<"99">>
+                end}
+            ]},
+            {LogicModule, channel_write_error_expectations(LogicModule, Expectation)},
+            {elib_response, meck_helper:full_elib_response_mock(ok_resp)}
+        ],
+        fun() ->
+            Req = req_mock(),
+            Result = Handler:handle_action(Action, Req, #{current_uid => 1001}),
+            case Reason of
+                {Code, Msg} ->
+                    ?assertEqual({ok_resp, error, Msg}, Result),
+                    ?assertEqual(1, meck:num_calls(elib_response, error, [Req, Msg, Code])),
+                    ?assertEqual(0, meck:num_calls(elib_response, error, 2));
+                Msg ->
+                    ?assertEqual({ok_resp, error, Msg}, Result),
+                    ?assertEqual(1, meck:num_calls(elib_response, error, [Req, Msg])),
+                    ?assertEqual(0, meck:num_calls(elib_response, error, 3))
+            end,
+            {Function, Arity, _Mock} = Expectation,
+            ?assertEqual(1, meck:num_calls(LogicModule, Function, Arity))
+        end
+    ).
+
+channel_write_error_expectations(channel_logic, {update_admin_role, 4, _Mock} = Expectation) ->
+    [Expectation, {remove_admin, 3, fun(_, _, _) -> erlang:error(unexpected_remove_admin) end}];
+channel_write_error_expectations(channel_logic, {remove_admin, 3, _Mock} = Expectation) ->
+    [
+        Expectation,
+        {update_admin_role, 4, fun(_, _, _, _) -> erlang:error(unexpected_role_update) end}
+    ];
+channel_write_error_expectations(channel_comment_logic, Expectation) ->
+    [Expectation].
 
 req_mock() ->
     #{mock_req => true}.

@@ -97,7 +97,7 @@ list(Uid, ChannelIdBin) ->
 %% 换 token 枚举时每个候选都是新 key，约束不到"遍历 token 打库"；故第一道
 %% 按来源 IP 限流且前置于一切分支（含空 text 短路），覆盖全部入站路径。
 -spec incoming(binary(), binary(), binary()) ->
-    ok | {error, rate_limited | not_found | binary()}.
+    ok | {error, rate_limited | not_found | workspace_archived | binary() | {integer(), binary()}}.
 incoming(Token, Text, Ip) ->
     case agent_rate_limiter:allow(<<"webhook_ip:", Ip/binary>>, 0) of
         {deny, _} ->
@@ -132,7 +132,8 @@ incoming_checked(Token, Text) ->
 
 %% 以 bot_uid 走标准频道发布链（channel locking：ChannelId 只来自 webhook 表行；
 %% 频道存在性与 bot 的编辑权限由 publish_message 内的角色检查兜底）
--spec publish(integer(), integer(), binary()) -> ok | {error, binary()}.
+-spec publish(integer(), integer(), binary()) ->
+    ok | {error, binary() | workspace_archived | {integer(), binary()}}.
 publish(BotUid, ChannelId, Text) ->
     Payload = #{<<"is_bot">> => true},
     case

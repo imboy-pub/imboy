@@ -32,6 +32,21 @@
 -define(V5_SESSION_DEADLINE_SECONDS, 7200).
 -define(V5_PUT_EXPIRY_SECONDS, 3600).
 
+-type persisted_registration() :: #{
+    object_key := binary(),
+    bucket := binary(),
+    scope := binary(),
+    session_state := binary(),
+    client_upload_id := binary(),
+    confirmed_attachment_id := null | integer(),
+    storage_driver := null | binary(),
+    storage_namespace := null | binary(),
+    storage_container := null | binary(),
+    storage_locator_sha256 := null | binary(),
+    deadline := integer(),
+    expires_at := integer()
+}.
+
 tablename() ->
     elib_pg_sql:public_tablename(<<"attach_pending">>).
 
@@ -144,12 +159,7 @@ delete_by_keys(Keys) ->
     undefined | binary(),
     map() | undefined
 ) ->
-    {ok, #{
-        session_state => binary(),
-        client_upload_id => binary() | undefined,
-        deadline => integer(),
-        expires_at => integer()
-    }}
+    {ok, persisted_registration() | #{session_state := binary(), client_upload_id := undefined}}
     | {error, term()}.
 %% legacy：无登记快照（renew 同 key 重签、无 UUID 旧客户端）走 add，
 %% 保留 V5 之前的行为；不写入 fn_v5 快照与 deadline。
@@ -202,12 +212,7 @@ register_v5(ObjectKey, Bucket, Scope, Uid, ClientUploadId) ->
 -spec register_v5_tx(
     any(), binary(), binary(), binary(), integer() | binary(), binary() | undefined, map()
 ) ->
-    {ok, #{
-        session_state => binary(),
-        client_upload_id => binary(),
-        deadline => integer(),
-        expires_at => integer()
-    }}
+    {ok, persisted_registration()}
     | {error, term()}.
 register_v5_tx(Conn, ObjectKey, Bucket, Scope, UidOrPrincipal, ClientUploadId, Registration) when
     is_map(Registration), map_size(Registration) > 0, ClientUploadId =/= undefined

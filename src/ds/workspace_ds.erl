@@ -568,7 +568,8 @@ group_count(Tb, ExtraWhere, IdsSql) ->
     end.
 
 %% @doc 工作区归属资源清单（详情页展示；每类前 Limit 行）
--spec admin_resource_list(binary(), integer(), integer()) -> {ok, [map()]} | {error, term()}.
+-spec admin_resource_list(project | group | channel, integer(), integer()) ->
+    {ok, [map()]} | {error, term()}.
 admin_resource_list(project, WsId, Limit) ->
     Tb = project_repo:tablename(),
     elib_pg:query(

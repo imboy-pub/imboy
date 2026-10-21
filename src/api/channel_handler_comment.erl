@@ -92,6 +92,8 @@ create_comment(Req0, State) ->
                     of
                         {ok, Comment} ->
                             elib_response:success(Req0, Comment);
+                        {error, {Code, Msg}} when is_integer(Code) ->
+                            elib_response:error(Req0, Msg, Code);
                         {error, Msg} ->
                             elib_response:error(Req0, Msg)
                     end

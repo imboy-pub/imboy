@@ -59,7 +59,7 @@ fetch_many(Sql, Params, Fields) ->
 
 %% @doc `INSERT/UPDATE ... RETURNING`：返回原始行列表（调用方自行决定归一化）。
 %% 0 行 → `{ok, []}`（交由调用方翻译语义）。
--spec execute_returning(binary(), [term()]) -> {ok, [map()]} | {error, term()}.
+-spec execute_returning(binary(), [term()]) -> {ok, [tuple()]} | {error, term()}.
 execute_returning(Sql, Params) ->
     case elib_pg:execute(Sql, Params) of
         {ok, 1, Rows} when is_list(Rows) -> {ok, Rows};
@@ -72,7 +72,7 @@ execute_returning(Sql, Params) ->
     end.
 
 %% @doc 写入必须落行：0 行 → `{error, no_row}`，交由调用方按语义翻译。
--spec insert_returning(binary(), [term()]) -> {ok, [map()]} | {error, term()}.
+-spec insert_returning(binary(), [term()]) -> {ok, [tuple()]} | {error, term()}.
 insert_returning(Sql, Params) ->
     case execute_returning(Sql, Params) of
         {ok, []} -> {error, no_row};

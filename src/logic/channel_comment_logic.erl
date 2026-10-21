@@ -26,7 +26,7 @@
 
 %% @doc 创建评论
 -spec create(integer(), binary(), binary(), binary(), integer()) ->
-    {ok, map()} | {error, binary()}.
+    {ok, map()} | {error, binary() | {integer(), binary()}}.
 create(Uid, ChannelIdBin, MessageIdBin, Content, ParentId) ->
     ChannelId = channel_logic_common:resolve_channel_id(ChannelIdBin),
     case ChannelId of
@@ -75,7 +75,7 @@ list_by_message(Uid, ChannelIdBin, MessageIdBin, Cursor, Limit) ->
     end.
 
 %% @doc 删除评论（仅作者或管理者）
--spec delete(integer(), integer()) -> ok | {error, binary()}.
+-spec delete(integer(), integer()) -> ok | {error, binary() | {integer(), binary()}}.
 delete(Uid, CommentId) ->
     case channel_comment_ds:find_by_id(CommentId) of
         #{<<"user_id">> := Uid, <<"channel_id">> := _OwnChannelId} ->
@@ -95,7 +95,7 @@ delete(Uid, CommentId) ->
     end.
 
 %% @doc 点赞评论
--spec like(integer(), integer()) -> ok | {error, binary()}.
+-spec like(integer(), integer()) -> ok | {error, binary() | {integer(), binary()}}.
 like(Uid, CommentId) ->
     case ensure_comment_access(Uid, CommentId) of
         {ok, _ChannelId} ->
@@ -111,7 +111,7 @@ like(Uid, CommentId) ->
     end.
 
 %% @doc 取消点赞
--spec unlike(integer(), integer()) -> ok | {error, binary()}.
+-spec unlike(integer(), integer()) -> ok | {error, binary() | {integer(), binary()}}.
 unlike(Uid, CommentId) ->
     case ensure_comment_access(Uid, CommentId) of
         {ok, _ChannelId} ->

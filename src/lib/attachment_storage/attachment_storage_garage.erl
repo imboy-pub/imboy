@@ -254,12 +254,17 @@ garage_creds(Cfg) ->
 %% 做上限复核；对恶意存储端的收前硬上限依赖受信存储假设，A0/5a 实测登记）。
 %% 不做自动重定向、不在本层重试（上层按状态机裁决）。
 bounded_control_request(Method, Url, Headers, MaxBody) ->
+    Request =
+        case Method of
+            put -> {binary_to_list(Url), Headers, "application/octet-stream", <<>>};
+            head -> {binary_to_list(Url), Headers}
+        end,
     case
         httpc:request(
             Method,
-            {binary_to_list(Url), Headers},
+            Request,
             [{connect_timeout, 10000}, {autoredirect, false}],
-            [{sync, false}, {stream_to, self()}]
+            [{sync, false}, {stream, {self, once}}, {body_format, binary}]
         )
     of
         {ok, ReqId} -> collect_control(ReqId, MaxBody, ?CONTROL_TIMEOUT_MS);

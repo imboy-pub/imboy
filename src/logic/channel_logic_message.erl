@@ -83,7 +83,7 @@ do_create_channel(Uid, Name, Opts) ->
             {error, elib_cnv:safe_to_binary(Reason)}
     end.
 
--spec get_channel(binary(), integer()) -> {ok, map()} | {error, binary()}.
+-spec get_channel(binary(), integer()) -> {ok, map()} | {error, binary() | {integer(), binary()}}.
 get_channel(ChannelIdBin, Uid) ->
     ChannelId = decode_positive_id(ChannelIdBin),
     case ChannelId of
@@ -101,7 +101,8 @@ get_channel(ChannelIdBin, Uid) ->
             end
     end.
 
--spec get_channel_by_custom_id(binary(), integer()) -> {ok, map()} | {error, binary()}.
+-spec get_channel_by_custom_id(binary(), integer()) ->
+    {ok, map()} | {error, binary() | {integer(), binary()}}.
 get_channel_by_custom_id(CustomId, Uid) ->
     case channel_ds:find_by_custom_id(CustomId) of
         {error, _} ->
@@ -185,7 +186,8 @@ channel_with_price_for_custom_id(Channel, ChannelId) ->
             Channel
     end.
 
--spec update_channel(integer(), binary(), map()) -> {ok, map()} | {error, binary()}.
+-spec update_channel(integer(), binary(), map()) ->
+    {ok, map()} | {error, binary() | {integer(), binary()}}.
 update_channel(Uid, ChannelIdBin, Data) ->
     ChannelId = decode_positive_id(ChannelIdBin),
     case ChannelId of
@@ -248,7 +250,8 @@ resolve_custom_id_update(ChannelId, Data) ->
             {error, <<"自定义ID格式无效"/utf8>>}
     end.
 
--spec do_update_channel(integer(), map()) -> {ok, map()} | {error, binary()}.
+-spec do_update_channel(integer(), map()) ->
+    {ok, map()} | {error, binary() | {integer(), binary()}}.
 do_update_channel(ChannelId, Data) ->
     case channel_ds:update(ChannelId, Data#{updated_at => elib_dt:now()}) of
         {ok, _} ->
@@ -268,7 +271,7 @@ do_update_channel(ChannelId, Data) ->
             {error, elib_cnv:safe_to_binary(Reason)}
     end.
 
--spec delete_channel(integer(), binary()) -> ok | {error, binary()}.
+-spec delete_channel(integer(), binary()) -> ok | {error, binary() | {integer(), binary()}}.
 delete_channel(Uid, ChannelIdBin) ->
     ChannelId = decode_positive_id(ChannelIdBin),
     case ChannelId of
@@ -419,12 +422,12 @@ notify_channel_status_changed(ChannelId) ->
     end.
 
 -spec publish_message(integer(), binary(), binary(), binary(), map()) ->
-    {ok, map()} | {error, binary()}.
+    {ok, map()} | {error, binary() | {integer(), binary()}}.
 publish_message(Uid, ChannelIdBin, Content, MsgType, Payload) ->
     publish_with_tags(Uid, ChannelIdBin, Content, MsgType, Payload, legacy).
 
 -spec publish_message(integer(), binary(), binary(), binary(), map(), binary()) ->
-    {ok, map()} | {error, binary()}.
+    {ok, map()} | {error, binary() | {integer(), binary()}}.
 publish_message(Uid, ChannelIdBin, Content, MsgType, Payload, RequestId) ->
     publish_with_tags(
         Uid, ChannelIdBin, Content, MsgType, Payload, {request_id, RequestId}
@@ -692,7 +695,8 @@ get_discover_channels(Limit) ->
             {error, elib_cnv:safe_to_binary(Unexpected)}
     end.
 
--spec add_admin(integer(), binary(), integer(), integer()) -> ok | {error, binary()}.
+-spec add_admin(integer(), binary(), integer(), integer()) ->
+    ok | {error, binary() | {integer(), binary()}}.
 add_admin(Uid, ChannelIdBin, NewAdminUid, Role) ->
     ChannelId = decode_positive_id(ChannelIdBin),
     case ChannelId of
@@ -729,7 +733,8 @@ do_add_admin(ChannelId, NewAdminUid, Role) ->
             {error, elib_cnv:safe_to_binary(Reason)}
     end.
 
--spec remove_admin(integer(), binary(), integer()) -> ok | {error, binary()}.
+-spec remove_admin(integer(), binary(), integer()) ->
+    ok | {error, binary() | {integer(), binary()}}.
 remove_admin(Uid, ChannelIdBin, AdminUid) ->
     ChannelId = decode_positive_id(ChannelIdBin),
     case ChannelId of
@@ -754,7 +759,8 @@ remove_admin(Uid, ChannelIdBin, AdminUid) ->
             end
     end.
 
--spec pin_message(integer(), binary(), boolean()) -> {ok, map()} | {error, binary()}.
+-spec pin_message(integer(), binary(), boolean()) ->
+    {ok, map()} | {error, binary() | {integer(), binary()}}.
 pin_message(Uid, MessageIdBin, IsPinned) ->
     MessageId = decode_positive_id(MessageIdBin),
     case MessageId of
@@ -802,7 +808,7 @@ pin_message(Uid, MessageIdBin, IsPinned) ->
             end
     end.
 
--spec delete_message(integer(), binary()) -> ok | {error, binary()}.
+-spec delete_message(integer(), binary()) -> ok | {error, binary() | {integer(), binary()}}.
 delete_message(Uid, MessageIdBin) ->
     MessageId = decode_positive_id(MessageIdBin),
     case MessageId of
@@ -848,7 +854,8 @@ delete_message(Uid, MessageIdBin) ->
             end
     end.
 
--spec revoke_message(integer(), binary(), binary()) -> ok | {error, binary()}.
+-spec revoke_message(integer(), binary(), binary()) ->
+    ok | {error, binary() | {integer(), binary()}}.
 revoke_message(Uid, ChannelIdBin, MessageIdBin) ->
     StartMs = elib_dt:millisecond(),
     ChannelId = channel_logic_common:resolve_channel_id(ChannelIdBin),
@@ -938,7 +945,8 @@ revoke_message(Uid, ChannelIdBin, MessageIdBin) ->
     Result.
 
 %% @doc 编辑频道消息（仅作者本人，受编辑时间窗约束，已撤回消息不可编辑）
--spec edit_message(integer(), binary(), binary(), binary()) -> ok | {error, binary()}.
+-spec edit_message(integer(), binary(), binary(), binary()) ->
+    ok | {error, binary() | {integer(), binary()}}.
 edit_message(Uid, ChannelIdBin, MessageIdBin, NewContent) ->
     StartMs = elib_dt:millisecond(),
     ChannelId = channel_logic_common:resolve_channel_id(ChannelIdBin),
@@ -965,7 +973,7 @@ edit_message(Uid, ChannelIdBin, MessageIdBin, NewContent) ->
     Result.
 
 -spec do_edit_message(integer(), integer(), integer(), binary(), map()) ->
-    ok | {error, binary()}.
+    ok | {error, binary() | {integer(), binary()}}.
 do_edit_message(Uid, ChannelId, MessageId, NewContent, Message) ->
     MessageChannelId = maps:get(<<"channel_id">>, Message, 0),
     MessageAuthorId = maps:get(<<"author_id">>, Message, 0),
@@ -1052,7 +1060,7 @@ get_admins(ChannelId) ->
     end.
 
 -spec update_admin_role(integer(), integer() | binary(), integer(), integer()) ->
-    ok | {error, binary()}.
+    ok | {error, binary() | {integer(), binary()}}.
 update_admin_role(Uid, ChannelId, TargetUid, Role) when is_binary(ChannelId) ->
     case decode_positive_id(ChannelId) of
         0 ->

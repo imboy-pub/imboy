@@ -577,7 +577,9 @@ confirm_attach_and_pin(Conn, ObjectKey, Row, Attempt, TargetKey, Sha256Hex, Size
                 attachment_ds:ensure_upload_scope_tx(Conn, Target, Uid)
             );
         passthrough ->
-            ok
+            ok;
+        {error, Reason} ->
+            throw({abort_tx, Reason})
     end,
     Attach = confirm_attach_map(ObjectKey, Scope, ScopeRef, Size, mime_from_row(Row), Sha256Hex),
     Location = #{
@@ -590,7 +592,7 @@ confirm_attach_and_pin(Conn, ObjectKey, Row, Attempt, TargetKey, Sha256Hex, Size
         <<"storage_physical_key">> => TargetKey
     },
     ok = attachment_ds:save_confirmed_tx(
-        Conn, calendar:universal_time(), Uid, [maps:merge(Attach, Location)]
+        Conn, elib_dt:now(), Uid, [maps:merge(Attach, Location)]
     ),
     case
         attach_direct_attempt_repo:winner_pin_tx(
@@ -606,17 +608,16 @@ confirm_attach_and_pin(Conn, ObjectKey, Row, Attempt, TargetKey, Sha256Hex, Size
         {error, R} -> {error, R}
     end.
 
-attach_scope_target(Scope, ScopeRef) ->
-    %% 与 attach_logic 同名私有实现保持一致的最小守卫：group/channel 需要 ref
-    case Scope of
-        <<"group">> when ScopeRef =:= undefined; ScopeRef =:= <<>> -> {error, missing_scope_ref};
-        <<"channel">> when ScopeRef =:= undefined; ScopeRef =:= <<>> -> {error, missing_scope_ref};
-        <<"private">> -> passthrough;
-        <<"c2c">> -> passthrough;
-        <<"public">> -> passthrough;
-        <<"moment">> -> passthrough;
-        _ -> passthrough
-    end.
+attach_scope_target(<<"group">>, Ref) when Ref =/= undefined, Ref =/= <<>>, Ref =/= null ->
+    {ok, {group, Ref}};
+attach_scope_target(<<"channel">>, Ref) when Ref =/= undefined, Ref =/= <<>>, Ref =/= null ->
+    {ok, {channel, Ref}};
+attach_scope_target(<<"group">>, _Ref) ->
+    {error, missing_scope_ref};
+attach_scope_target(<<"channel">>, _Ref) ->
+    {error, missing_scope_ref};
+attach_scope_target(_Scope, _Ref) ->
+    passthrough.
 
 confirm_attach_map(ObjectKey, Scope, ScopeRef, RealSize, RealType, Sha256) ->
     #{
@@ -635,7 +636,6 @@ confirm_attach_map(ObjectKey, Scope, ScopeRef, RealSize, RealType, Sha256) ->
     }.
 
 normalize_ref(undefined) -> null;
-normalize_ref(null) -> null;
 normalize_ref(<<>>) -> null;
 normalize_ref(Bin) when is_binary(Bin) -> Bin.
 
@@ -834,4 +834,4 @@ ext_mime_map() ->
 reason_bin(R) when is_atom(R) -> atom_to_binary(R, utf8);
 reason_bin({storage_status, S}) -> <<"storage_status_", (integer_to_binary(S))/binary>>;
 reason_bin(R) when is_binary(R) -> R;
-reason_bin(R) -> elib_cnv:to_binary(io_lib:format("~p", [R])).
+reason_bin(R) -> iolist_to_binary(io_lib:format("~p", [R])).
