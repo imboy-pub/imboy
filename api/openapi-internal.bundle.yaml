@@ -24,7 +24,7 @@ info:
 
     **响应模型**：除 OA login tickets 使用 `{code,msg,sv_ts,payload}` 成功信封外，
     成功响应为**裸 payload**（无 `{code,msg,payload}` 业务信封）；
-    错误响应统一 `{"error":{"code","message"}}`，16 个稳定错误码见
+    错误响应统一 `{"error":{"code","message"}}`，15 个稳定错误码见
     `components/responses/internal/`（README §7 冻结表）。
 
     **限流与幂等**：三只独立桶 internal_read / internal_write / internal_sso；

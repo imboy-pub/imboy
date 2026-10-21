@@ -354,6 +354,51 @@ def main() -> int:
     except (KeyError, ValueError, TypeError, OSError, yaml.YAMLError) as error:
         check(False, "13) semantic contract readable", str(error))
 
+    # ---------------- ⑭ 稳定错误码四源一致（HMAC-only 后 15 码，防计数/枚举漂移） ----------------
+    # 四源：enterprise_internal_error:?STABLE_CODES（运行真源）↔ manifest
+    # stable_error_codes ↔ ErrorEnvelope.yaml enum ↔ README §7 表格行。
+    # bundle 由 flatten_internal.py 从真源生成（G04 门禁保证一致），不在此重复比对。
+    try:
+        err_src = (repo / "src/api/enterprise_internal_error.erl").read_text(encoding="utf-8")
+        stable = re.findall(
+            r'<<"([a-z_]+)">>',
+            err_src.split("-define(STABLE_CODES,")[1].split("]).")[0],
+        )
+        manifest_codes = re.findall(
+            r"stable_error_codes:\s*\[([^\]]+)\]",
+            mf.read_text(encoding="utf-8"),
+        )
+        manifest_set = sorted(re.findall(r"[a-z_]+", "".join(manifest_codes)))
+        envelope = yaml.safe_load(
+            (repo / "api/components/schemas/internal/ErrorEnvelope.yaml").read_text(encoding="utf-8")
+        )
+        envelope_set = sorted(
+            envelope["properties"]["error"]["properties"]["code"]["enum"]
+        )
+        readme = (repo / "api/internal/v1/README.md").read_text(encoding="utf-8")
+        section7 = readme.split("## 7.", 1)[1].split("## 8.", 1)[0]
+        readme_codes = re.findall(r"^\| `([a-z_]+)` \|", section7, re.M)
+        readme_declared = re.findall(r"(\d+) 个稳定错误码", section7)
+        stable_sorted = sorted(set(stable))
+        drifts = []
+        if manifest_set != stable_sorted:
+            drifts.append(f"manifest≠src: {set(manifest_set) ^ set(stable_sorted)}")
+        if envelope_set != stable_sorted:
+            drifts.append(f"envelope≠src: {set(envelope_set) ^ set(stable_sorted)}")
+        if sorted(readme_codes) != stable_sorted:
+            drifts.append(f"readme_table≠src: {set(readme_codes) ^ set(stable_sorted)}")
+        if not readme_declared or int(readme_declared[0]) != len(stable_sorted):
+            drifts.append(
+                f"readme_count={readme_declared} actual={len(stable_sorted)}"
+            )
+        check(
+            not drifts,
+            f"14) stable_error_codes 4-source一致 ({len(stable_sorted)} 码)",
+            "; ".join(drifts),
+        )
+    except (OSError, KeyError, TypeError, ValueError, IndexError) as error:
+        check(False, "14) stable_error_codes 4-source readable", str(error))
+
     print()
     if failures:
         print(f"RC MANIFEST ASSERT FAILED: {len(failures)}/{checks} 项 -> {failures}")

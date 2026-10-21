@@ -23,6 +23,13 @@
 # 与其他 eunit 会话互斥：编译与 marker PG 使用 /tmp/phase1-eunit.lock（mkdir 自旋锁）。
 set -euo pipefail
 
+# curl 超时（本地测试默认；环境变量可覆盖）：连接 5s / 单请求总 30s。
+# 必须 export：inner.sh 由 driver 的 os:cmd 起独立进程，普通变量传不进去。
+export CURL_CONNECT_TIMEOUT="${CURL_CONNECT_TIMEOUT:-5}"
+export CURL_MAX_TIME="${CURL_MAX_TIME:-30}"
+# 锁等待上限：另一运行持锁超时则显式失败，不无限自旋。
+LOCK_WAIT_TIMEOUT_S="${LOCK_WAIT_TIMEOUT:-600}"
+
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 DEPS_ROOT="${IMBOY_DEPS_ROOT:-$REPO}"
 export IMBOY_DEPS_ROOT="$DEPS_ROOT"
@@ -31,7 +38,16 @@ export Q08_RUN_DIR="$RUN_DIR"
 LOCK=/tmp/phase1-eunit.lock
 
 # ---- mkdir 自旋锁（macOS 无 flock；与并行 eunit/节点会话互斥）----
-while ! mkdir "$LOCK" 2>/dev/null; do sleep 5; done
+# 有限等待：超过上限视为环境被长期占用，显式失败退出（不持锁、不清理他人资源）。
+_lock_waited=0
+while ! mkdir "$LOCK" 2>/dev/null; do
+  sleep 5
+  _lock_waited=$((_lock_waited + 5))
+  if (( _lock_waited >= LOCK_WAIT_TIMEOUT_S )); then
+    echo "ERROR: lock $LOCK not acquired within ${LOCK_WAIT_TIMEOUT_S}s (another run holds it)" >&2
+    exit 3
+  fi
+done
 trap 'rmdir "$LOCK" 2>/dev/null' EXIT
 echo "== lock acquired: $LOCK =="
 
@@ -42,6 +58,19 @@ cleanup() {
 trap cleanup EXIT
 
 cd "$REPO"
+
+# ---- 工具与测试支撑模块预检（缺失即有限失败，不跑到一半才崩）----
+for _tool in curl openssl python3 psql erl escript make; do
+  command -v "$_tool" >/dev/null 2>&1 || {
+    echo "ERROR: required tool not found: $_tool" >&2
+    exit 3
+  }
+done
+FIXTURE_MOD=test/features/enterprise_business/infrastructure/eb_pg_test_fixture.erl
+[[ -f "$FIXTURE_MOD" ]] || {
+  echo "ERROR: missing test support module: $FIXTURE_MOD" >&2
+  exit 3
+}
 
 # ---- PG 连接（从本地 pg_conf 运行时解析；密码只进环境变量）----
 eval "$(python3 - <<'PY'
@@ -105,6 +134,7 @@ log_case() { # id name status code result（code 为信封 error.code，成功�
 }
 fail() { log_case "$1" "$2" "$3" "$4" "FAIL"; echo "$1" > "$Q08_RUN_DIR/rc$PHASE"; exit 0; }
 ok()   { log_case "$1" "$2" "$3" "$4" "PASS"; }
+die() { echo "FATAL($PHASE): $1" >&2; echo "$1" > "$Q08_RUN_DIR/rc$PHASE"; exit 3; }
 
 # get_body_code <bodyfile>  → 信封 error.code（internal 面）或顶层 code
 code_of() {
@@ -132,15 +162,21 @@ req() { # method path cred extra-headers... ; body via stdin; 输出 status，bo
     esac
   done
   cat > "$REQ_BODY_F"   # body 落盘：摘要与发送同源
+  # 签名材料任一环节失败即停（die）：空值/截断值继续发请求只会产生误导性负例。
   local ts nonce bhash sig
-  ts=$(date +%s)
+  ts=$(date +%s) || die "timestamp generation failed"
   # nonce 用 openssl rand（确定终止）；勿用 tr </dev/urandom | head：Erlang
   # os:cmd 子进程继承被忽略的 SIGPIPE，head 退出后 tr 会在 urandom 上死读。
-  nonce="q08curl$(openssl rand -hex 12)"
-  bhash=$(openssl dgst -sha256 -r "$REQ_BODY_F" | cut -d' ' -f1)
+  nonce="q08curl$(openssl rand -hex 12)" || die "nonce generation failed (openssl rand)"
+  bhash=$(openssl dgst -sha256 -r "$REQ_BODY_F" | cut -d' ' -f1) || die "body digest failed (openssl dgst)"
   sig=$(printf 'IMBOY-INTERNAL-V1\nsha256\n%s\n\n%s\n%s\n\napplication/json\n%s\n%s\n%s\n%s' \
     "$prefix" "$method" "$path" "$idem" "$bhash" "$ts" "$nonce" \
-    | openssl dgst -sha256 -hmac "$secret" -r | cut -d' ' -f1)
+    | openssl dgst -sha256 -hmac "$secret" -r | cut -d' ' -f1) || die "HMAC signing failed (openssl dgst -hmac)"
+  # 生成结果长度/格式校验：nonce = q08curl + 24 hex（31 字符，符合签名器
+  # nonce 16..128 与 [0-9a-zA-Z_-] 字符集）；摘要/签名 = 64 hex。
+  [[ ${#nonce} -eq 31 && "$nonce" =~ ^q08curl[0-9a-f]{24}$ ]] || die "bad nonce format: '$nonce'"
+  [[ ${#bhash} -eq 64 && "$bhash" =~ ^[0-9a-f]{64}$ ]] || die "bad body digest format: '$bhash'"
+  [[ ${#sig} -eq 64 && "$sig" =~ ^[0-9a-f]{64}$ ]] || die "bad signature format: '$sig'"
   local hdrs=(-H "Content-Type: application/json"
     -H "x-imboy-credential: $prefix"
     -H "x-imboy-timestamp: $ts"
@@ -148,8 +184,20 @@ req() { # method path cred extra-headers... ; body via stdin; 输出 status，bo
     -H "x-imboy-signature: sha256=$sig")
   for h in "$@"; do hdrs+=(-H "$h"); done
   : > "$BODY_F" || true
-  curl -sS -o "$BODY_F" -w '%{http_code}' -X "$method" \
-    "http://127.0.0.1:${INT_PORT}${path}" "${hdrs[@]}" --data-binary "@$REQ_BODY_F" || true
+  local http_code curl_rc
+  http_code=$(curl -sS -o "$BODY_F" -w '%{http_code}' \
+    --connect-timeout "${CURL_CONNECT_TIMEOUT:-5}" --max-time "${CURL_MAX_TIME:-30}" \
+    -X "$method" "http://127.0.0.1:${INT_PORT}${path}" "${hdrs[@]}" \
+    --data-binary "@$REQ_BODY_F")
+  curl_rc=$?
+  # 传输故障与预期 4xx 必须区分：curl 非 0（连接拒绝/超时等）时 HTTP 码无意义，
+  # 输出 000 让调用方按 FAIL 记录（不吞错、也不必中止——后续用例的失败同样入证）。
+  if (( curl_rc != 0 )); then
+    echo "TRANSPORT-ERROR: curl exit=$curl_rc on $method $path (server down or timeout; not an expected 4xx)" >&2
+    echo 000
+    return 0
+  fi
+  echo "$http_code"
 }
 BODY_F="$Q08_RUN_DIR/body.json"
 REQ_BODY_F="$Q08_RUN_DIR/req_body.json"
@@ -286,6 +334,10 @@ main(_) ->
         intbe02_http_support:teardown_all(S),
         inttest_marker_db:release(S)
     end,
+    %% 归属输出：MARKER_DB 是本次 provision State 的库名（唯一能证明归属的
+    %% 标识）；bash 侧只允许对它做幂等补删，绝不按前缀扫描/删除其他库。
+    %% 若 setup_all 本身 raise（S 未绑定），不会打印此行，bash 侧不删任何库。
+    io:format("MARKER_DB=~ts~n", [maps:get(db, S)]),
     case Rcs of
         {0, 0} ->
             io:format("Q08_CURL_EVIDENCE_RESULT=ok~n"),
@@ -303,19 +355,55 @@ read_rc(RunDir, Phase) ->
 DRIVER
 
 echo "== booting listener VM (disposable marker PG + real Cowboy) =="
+# driver 非零是预期路径（用例失败 → FAIL），set -e 会在管道处提前退出并跳过
+# evidence 校验与清理——这里临时关 -e，以 PIPESTATUS 保留真实退出码。
+set +e
 escript "$RUN_DIR/driver.escript" 2>&1 | tee "$RUN_DIR/driver.log"
 rc=${PIPESTATUS[0]}
+set -e
 echo "== evidence =="
 cat "$RUN_DIR/evidence.jsonl" || true
-# VM halt 竞态可能让 marker 库 DROP 报 55006（teardown 的默认池重建连接晚于
-# release）→ 清理**无活动连接**的 intbe02 残留 marker 库（他人在用的跳过）。
-PGPASSWORD="$INTBE02_INTTEST_PG_PASSWORD" psql -h "$INTBE02_INTTEST_PG_HOST" -p "$INTBE02_INTTEST_PG_PORT" \
-  -U "$INTBE02_INTTEST_PG_USER" -d "$INTBE02_INTTEST_PG_DBNAME" -tAc \
-  "SELECT datname FROM pg_database WHERE datname LIKE 'inttest_intbe02_%' AND NOT EXISTS (SELECT 1 FROM pg_stat_activity a WHERE a.datname = pg_database.datname AND a.pid <> pg_backend_pid())" 2>/dev/null \
-  | while read -r db; do
-      [[ -z "$db" ]] && continue
-      PGPASSWORD="$INTBE02_INTTEST_PG_PASSWORD" psql -h "$INTBE02_INTTEST_PG_HOST" -p "$INTBE02_INTTEST_PG_PORT" \
-        -U "$INTBE02_INTTEST_PG_USER" -d "$INTBE02_INTTEST_PG_DBNAME" -c "DROP DATABASE IF EXISTS \"$db\"" >/dev/null 2>&1 && echo "dropped leftover marker db: $db"
-    done
+
+# 成功判定不看打印的 "ok"：C01..C10 恰好各一次（无缺失/重复）、全部 PASS。
+_evidence_verdict="$(python3 - "$RUN_DIR/evidence.jsonl" <<'PY'
+import json, sys
+try:
+    rows = [json.loads(line) for line in open(sys.argv[1]) if line.strip()]
+except Exception as exc:
+    print(f"BAD:{exc}")
+    raise SystemExit
+ids = [row["id"] for row in rows]
+expected = [f"C{i:02d}" for i in range(1, 11)]
+if sorted(ids) != expected or len(ids) != len(set(ids)):
+    missing = sorted(set(expected) - set(ids))
+    dupes = sorted({i for i in ids if ids.count(i) > 1})
+    print(f"INCOMPLETE missing={missing} dupes={dupes}")
+elif not all(row.get("result") == "PASS" for row in rows):
+    failed = [row["id"] for row in rows if row.get("result") != "PASS"]
+    print(f"FAILED:{','.join(failed)}")
+else:
+    print("PASS")
+PY
+)"
+echo "evidence verdict: $_evidence_verdict"
+[[ "$_evidence_verdict" == "PASS" ]] || rc=1
+
+# ---- marker 库清理（归属收窄）----
+# release(S) 已在 VM 内对本 State 的库做精确 DROP；VM halt 竞态可能让该 DROP
+# 报 55006 残留。此处**只**对 driver 报告的 MARKER_DB（本次 provision 的库名）
+# 做一次幂等补删；没有归属证明的名字一律不碰，更不做任何前缀扫描。
+MARKER_DB="$(sed -n 's/^MARKER_DB=//p' "$RUN_DIR/driver.log" | tail -1)"
+if [[ -n "$MARKER_DB" ]]; then
+  if PGPASSWORD="$INTBE02_INTTEST_PG_PASSWORD" psql -h "$INTBE02_INTTEST_PG_HOST" -p "$INTBE02_INTTEST_PG_PORT" \
+      -U "$INTBE02_INTTEST_PG_USER" -d "$INTBE02_INTTEST_PG_DBNAME" \
+      -c "DROP DATABASE IF EXISTS \"$MARKER_DB\"" >/dev/null 2>&1; then
+    echo "marker db cleaned: $MARKER_DB"
+  else
+    echo "ERROR: marker db cleanup FAILED (kept for inspection; run dir: $RUN_DIR): $MARKER_DB" >&2
+    rc=1
+  fi
+else
+  echo "NOTE: driver reported no MARKER_DB (setup failed before provision); nothing to clean"
+fi
 rmdir "$LOCK" 2>/dev/null; trap - EXIT
 exit "$rc"

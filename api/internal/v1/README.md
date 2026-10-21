@@ -190,7 +190,7 @@ v1.1.1 起提供）；具体阈值由部署配置，
 { "error": { "code": "invalid_credential", "message": "..." } }
 ```
 
-16 个稳定错误码（`code` 为机器可读、snake_case、**长期稳定**，勿按 message 文案做逻辑）：
+15 个稳定错误码（`code` 为机器可读、snake_case、**长期稳定**，勿按 message 文案做逻辑）：
 
 | code | HTTP | 含义 |
 |---|---|---|

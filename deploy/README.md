@@ -402,15 +402,34 @@ docker compose -f docker-compose.prod.yml -f docker-compose-sales-policy.yml log
 详见 [scripts/README.md](../scripts/README.md)）。
 
 **Schema 迁移的回滚禁区（binary × DB 组合）**：数据库执行过破坏性迁移后，
-**不得**把应用回滚到仍依赖被删结构的旧版本 binary。当前已知的边界是
-migration 210（`internal_hmac_only`，删除 `enterprise_application.allowed_scopes`
-与 `oa_login_ticket.issuer_authentication` 列）：migration 210 之后的 DB schema
-**不能**搭配仍读取这些列的旧镜像运行（Internal API 请求会以
-`undefined_column` 失败）。回滚顺序必须为：① 回滚到仍兼容当前 schema 的
-HMAC-only 版本；② 无法回滚时 forward-fix 当前版本；③ DB down-migration 仅作
-最后手段，须先备份并安排维护窗口。回滚前可用
-`git grep -n 'allowed_scopes' <目标commit> -- src test` 预检目标 binary 的
-schema 依赖。
+**不得**把应用回滚到仍依赖被删结构的旧版本 binary。当前已知边界是
+migration 210（`internal_hmac_only`）：删除 `enterprise_application.allowed_scopes`
+与 `enterprise_oa_login_ticket.issuer_authentication` 两列，并把
+`enterprise_application_credential.secret_digest` 改为可空。migration 210 之后的
+DB schema **不能**搭配仍读取这些列的旧镜像运行（Internal API 请求会以
+`undefined_column` 失败）。
+
+down（回退到 209）在存在以下任一数据时**拒绝执行**（迁移内建守卫，勿绕过）：
+
+- `enterprise_application` 存在任何行（存量应用）；
+- `enterprise_oa_login_ticket` 存在任何行（存量登录票据）；
+- 存在 `secret_digest IS NULL` 的凭证（210 之后新签发的 HMAC 凭证）。
+
+因此回滚顺序固定为：① 回滚到仍兼容当前 schema 的 HMAC-only 版本；
+② 无法回滚时 forward-fix 当前版本。**已有备份和维护窗口不等于可以执行 down**：
+被删列的内容无法从现行数据重建，恢复旧 schema 必须另有经过验证的数据与凭证
+恢复方案；通过清空业务表、删除凭证或修改历史迁移守卫来强行 down 是不可接受的。
+
+回滚兼容性预检（**辅助手段**——零命中不代表兼容，还须确认目标版本对应的
+迁移状态与认证协议）：
+
+```bash
+git grep -nE 'allowed_scopes|issuer_authentication' <目标commit> -- src test
+```
+
+命中需区分：`src/` 生产依赖（阻断回滚）；`priv/migrations/` 历史迁移与回滚
+SQL（允许保留）；`test/` 明确固定在历史 schema 的 fixture 与"旧机制已移除"
+负向断言（允许保留）。
 
 ### 备份
 
