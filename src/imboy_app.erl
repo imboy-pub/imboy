@@ -9,6 +9,8 @@
 -export([init_throttle_rates/0]).
 %% 导出供启动装配校验测试直调（throttle_middleware_tests：C.8 旧配置拒绝 ready）
 -export([validate_limiter_ip_migration/0]).
+%% 导出供测试直调（registry 启动校验：strict 拒启/豁免/一致性）。
+-export([validate_attachment_registry/0]).
 %% 导出供纯 HTTP 链套件复刻启动语义（enterprise_mobile_bootstrap_http_tests
 %% 等不起 imboy app 的 marker DB 套件需显式准备 RSA env）；幂等，纯 env/文件操作
 -export([ensure_rsa_keys/0]).
@@ -37,7 +39,7 @@ start(_Type, _Args) ->
     %% prime IMBOYENV 缓存：所有运行时模块统一走 imboy_env:current/0
     _ = imboy_env:current(),
     ok = validate_runtime_config(),
-    ok = warn_if_attachment_registry_empty(),
+    ok = validate_attachment_registry(),
     %% OTP 28 原生 json 在启动期一次性校验术语映射；请求期从
     %% persistent_term 只读，业务权限、路由和状态机不依赖这些展示词。
     ok = product_terminology:init(),
@@ -386,22 +388,97 @@ maybe_load_keyring_env_file() ->
     ok.
 -endif.
 
-%% 附件存储注册表为空时只告警不拒启：没有附件需求的部署仍可运行，但运维必须
-%% 能在启动日志里直接看到「上传会被 503 拒绝」的原因与修法（F13）。
--spec warn_if_attachment_registry_empty() -> ok.
-warn_if_attachment_registry_empty() ->
-    case attachment_storage:validate_registry() of
-        ok ->
-            ok;
-        {error, empty_roots} ->
-            logger:error(
-                "[imboy] attachment_storage_registry has no roots: every new upload will be "
-                "rejected with 503 upload_root_unavailable. Register roots in sys.config "
-                "(see config/sys.config.example) or set IMBOY_ATTACHMENT_REGISTRY_FROM_GARAGE=true "
-                "for the single-Garage container deployment."
-            ),
+%% 附件存储注册表启动校验（prod 2026-10-20 事故加固）：
+%%   1. roots 为空 —— strict（生产）环境拒启：空 registry 意味着所有新上传
+%%      被拒（503 upload_root_unavailable），该故障此前仅打日志、静默上线，
+%%      直到用户上传失败才暴露。显式豁免：{imboy, attachment_registry_optional,
+%%      true}（确无附件需求的部署）。dev/test 维持告警不阻断（F13 原义）。
+%%   2. roots 非空但 garage 根 endpoint 与 {imboy, garage} 不一致 —— strict
+%%      拒启：运行时冻结校验（attachment_storage snapshot）本就强制一致，
+%%      不一致的 registry 等价于「历史附件全部 location_changed + 新上传
+%%      选根失败」，必须在启动时暴露而非运行期逐请求失败。
+%%   3. 校验通过时打印生效 registry 摘要（无凭据，可安全输出）：运维
+%%      「一眼可见」最终生效的根/桶配置。
+-spec validate_attachment_registry() -> ok.
+validate_attachment_registry() ->
+    Registry = attachment_storage:registry(),
+    Roots = maps:get(roots, Registry, #{}),
+    Strict = is_strict_env(runtime_env()),
+    case map_size(Roots) =:= 0 of
+        true ->
+            Msg =
+                "[imboy] attachment_storage_registry has no roots: every new upload "
+                "will be rejected with 503 upload_root_unavailable. Register roots "
+                "via IMBOY_ATTACHMENT_REGISTRY (JSON env var, survives releases) or "
+                "sys.config (see config/sys.config.example) or set "
+                "IMBOY_ATTACHMENT_REGISTRY_FROM_GARAGE=true for the single-Garage "
+                "container deployment.",
+            strict_or_warn(Strict, Msg, [], attachment_registry_empty);
+        false ->
+            ok = validate_registry_endpoint_consistency(Roots, Strict),
+            log_registry_summary(Registry),
             ok
     end.
+
+%% 显式豁免：确无附件需求的部署（attachment_registry_optional=true）空根可启动。
+strict_or_warn(Strict, Msg, Args, Reason) ->
+    Optional = application:get_env(imboy, attachment_registry_optional, false),
+    strict_or_warn(Strict, Optional, Msg, Args, Reason).
+
+strict_or_warn(true, true = _OptionalExplicit, Msg, Args, _Reason) ->
+    logger:warning(
+        "[imboy] optional attachment registry: " ++ Msg ++
+            " (deployment "
+            "explicitly opted out via attachment_registry_optional=true)",
+        Args
+    ),
+    ok;
+strict_or_warn(true, false, Msg, Args, Reason) ->
+    logger:error("[imboy] " ++ Msg ++ " Refusing to start (strict env).", Args),
+    erlang:error(Reason);
+strict_or_warn(false, _Optional, Msg, Args, _Reason) ->
+    logger:error("[imboy] " ++ Msg, Args),
+    ok.
+
+%% garage 根 endpoint 必须等于 {imboy, garage}.endpoint：与运行时
+%% attachment_storage:snapshot 的冻结校验同口径（多 Garage 各自凭据的
+%% 形态当前实现不支持，所有 garage 根共享全局 endpoint/凭据）。
+validate_registry_endpoint_consistency(Roots, Strict) ->
+    GarageEp = maps:get(endpoint, application:get_env(imboy, garage, #{}), undefined),
+    Mismatched = [
+        Id
+     || {Id, R} <- maps:to_list(Roots),
+        maps:get(driver, R, undefined) =:= <<"garage">>,
+        maps:get(endpoint, R, undefined) =/= GarageEp
+    ],
+    case Mismatched of
+        [] ->
+            ok;
+        _ ->
+            strict_or_warn(
+                Strict,
+                "attachment_storage_registry garage roots ~p have endpoints that "
+                "differ from {imboy, garage} endpoint (~p): historical attachments "
+                "will fail with location_changed and new uploads cannot select a "
+                "root. Registry and garage config must declare the same endpoint.",
+                [Mismatched, GarageEp],
+                {attachment_registry_endpoint_mismatch, Mismatched}
+            )
+    end.
+
+log_registry_summary(Registry) ->
+    Roots = maps:get(roots, Registry, #{}),
+    RootLines = [
+        {Id, maps:get(namespace, R, <<>>), maps:get(container, R, <<>>)}
+     || {Id, R} <- maps:to_list(Roots)
+    ],
+    NS = maps:size(maps:get(upload_namespaces, Registry, #{})),
+    logger:info(
+        "[imboy] attachment_storage_registry active: version=~p roots=~p "
+        "upload_namespaces=~p (env IMBOY_ATTACHMENT_REGISTRY > sys.config > "
+        "FROM_GARAGE derive)",
+        [maps:get(version, Registry, undefined), RootLines, NS]
+    ).
 
 -spec validate_runtime_config() -> ok.
 validate_runtime_config() ->

@@ -73,6 +73,8 @@
 -export([override_from_env/0]).
 %% 单独导出便于 EUnit 在不触发整套 override 的前提下驱动注册表派生。
 -export([override_attachment_storage_registry/0]).
+%% 单独导出便于 EUnit 直测 env registry 的 JSON 解析/结构校验。
+-export([parse_attachment_registry_json/1]).
 -export([current/0]).
 -export([edition/0]).
 
@@ -187,6 +189,9 @@ override_from_env() ->
 
     %% Garage S3 对象存储凭证
     ok = override_garage(),
+
+    %% 附件存储注册表（优先级：显式 env > sys.config 显式 > FROM_GARAGE 派生）
+    ok = override_attachment_registry_env(),
 
     %% 附件存储注册表：容器部署无 sys.config 可写，按已覆盖的 garage 配置显式登记根
     ok = override_attachment_storage_registry(),
@@ -503,17 +508,138 @@ override_garage() ->
             Cfg3 = maybe_override_map(Cfg2, bucket, "IMBOY_GARAGE_BUCKET", fun(V) ->
                 unicode:characters_to_binary(V)
             end),
-            Cfg4 = maybe_override_map(Cfg3, access_key, "IMBOY_GARAGE_ACCESS_KEY", fun(V) ->
+            Cfg4 = maybe_override_map(Cfg3, public_bucket, "IMBOY_GARAGE_PUBLIC_BUCKET", fun(V) ->
                 unicode:characters_to_binary(V)
             end),
-            Cfg5 = maybe_override_map(Cfg4, secret_key, "IMBOY_GARAGE_SECRET_KEY", fun(V) ->
+            Cfg5 = maybe_override_map(Cfg4, access_key, "IMBOY_GARAGE_ACCESS_KEY", fun(V) ->
                 unicode:characters_to_binary(V)
             end),
-            application:set_env(imboy, garage, Cfg5),
+            Cfg6 = maybe_override_map(Cfg5, secret_key, "IMBOY_GARAGE_SECRET_KEY", fun(V) ->
+                unicode:characters_to_binary(V)
+            end),
+            application:set_env(imboy, garage, Cfg6),
             ok;
         _ ->
             ok
     end.
+
+%% @doc 附件存储注册表的 env 显式覆盖（registry 最高优先级来源）。
+%% IMBOY_ATTACHMENT_REGISTRY 是完整 registry JSON（sys.config 显式形态的等价
+%% 物）：配置脱离 release（sys.config 随发版被覆盖是 prod 2026-10-20 上传
+%% 全量 503 的机制性根因）。优先级：本覆盖 > sys.config 显式 > FROM_GARAGE
+%% 派生（派生仅在 roots 为空时生效，本覆盖先执行且非空，天然让位）。
+%% 给了但非法（JSON 坏/结构缺项/值非 binary）→ erlang:error 拒启：显式声明
+%% 出错必须在启动时暴露，不静默回落。
+-spec override_attachment_registry_env() -> ok.
+override_attachment_registry_env() ->
+    case os:getenv("IMBOY_ATTACHMENT_REGISTRY") of
+        Raw when is_list(Raw), length(Raw) > 0 ->
+            case parse_attachment_registry_json(Raw) of
+                {ok, Registry} ->
+                    application:set_env(imboy, attachment_storage_registry, Registry),
+                    ok;
+                {error, Reason} ->
+                    logger:error(
+                        "[imboy] IMBOY_ATTACHMENT_REGISTRY invalid (~p): expected "
+                        "JSON like {\"version\":1,\"roots\":{\"<id>\":{\"driver\":"
+                        "\"garage\",\"namespace\":\"<id>\",\"endpoint\":\"http://..."
+                        "\",\"container\":\"<bucket>\"}},\"upload_namespaces\":{}}. "
+                        "Fix the env var; refusing to start with a broken explicit "
+                        "registry.",
+                        [Reason]
+                    ),
+                    erlang:error({invalid_attachment_registry_env, Reason})
+            end;
+        _ ->
+            ok
+    end.
+
+%% JSON（全 binary key/value）→ registry 内部形态（version/roots/
+%% upload_namespaces 顶层 atom key；根字段 driver/namespace/endpoint/
+%% container atom key、binary 值；根 id 与 scope 映射 key 保持 binary）。
+%% 校验口径：仅接受 garage driver（disk 根仅存在于遗留 sys.config 形态）；
+%% upload_namespaces 的值必须指向已有根的 namespace（引用完整性）。
+-spec parse_attachment_registry_json(string() | binary()) ->
+    {ok, map()} | {error, term()}.
+parse_attachment_registry_json(Raw) ->
+    try jsone:decode(unicode:characters_to_binary(Raw)) of
+        Decoded when is_map(Decoded) ->
+            convert_registry(Decoded);
+        Other ->
+            {error, {bad_shape, Other}}
+    catch
+        _:_ -> {error, bad_json}
+    end.
+
+convert_registry(#{<<"version">> := 1, <<"roots">> := Roots} = Decoded) when
+    is_map(Roots), map_size(Roots) > 0
+->
+    case convert_registry_roots(maps:to_list(Roots), #{}) of
+        {ok, RootMap} ->
+            convert_registry_namespaces(maps:get(<<"upload_namespaces">>, Decoded, #{}), RootMap);
+        {error, _} = Err ->
+            Err
+    end;
+convert_registry(#{<<"version">> := 1, <<"roots">> := Roots}) when is_map(Roots) ->
+    {error, empty_roots};
+convert_registry(#{<<"version">> := V}) ->
+    {error, {unsupported_version, V}};
+convert_registry(Other) ->
+    {error, {bad_shape, Other}}.
+
+convert_registry_roots([], Acc) ->
+    {ok, Acc};
+convert_registry_roots([{Id, Root} | Rest], Acc) when
+    is_binary(Id), Id =/= <<>>, is_map(Root)
+->
+    case root_fields(Root) of
+        {ok, Rec} -> convert_registry_roots(Rest, Acc#{Id => Rec});
+        {error, R} -> {error, {root_invalid, Id, R}}
+    end;
+convert_registry_roots([{Id, _} | _], _) ->
+    {error, {root_id_not_binary, Id}}.
+
+root_fields(Root) ->
+    Req = [<<"driver">>, <<"namespace">>, <<"endpoint">>, <<"container">>],
+    case [K || K <- Req, not is_binary(maps:get(K, Root, undefined))] of
+        [] ->
+            Driver = maps:get(<<"driver">>, Root),
+            Ns = maps:get(<<"namespace">>, Root),
+            Ep = maps:get(<<"endpoint">>, Root),
+            C = maps:get(<<"container">>, Root),
+            Empty = [F || F <- [Ns, Ep, C], F =:= <<>>],
+            case {Driver, Empty} of
+                {<<"garage">>, []} ->
+                    {ok, #{driver => Driver, namespace => Ns, endpoint => Ep, container => C}};
+                {<<"garage">>, _} ->
+                    {error, empty_field};
+                _ ->
+                    {error, {unsupported_driver, Driver}}
+            end;
+        Missing ->
+            {error, {missing_fields, Missing}}
+    end.
+
+convert_registry_namespaces(NSRaw, RootMap) when is_map(NSRaw) ->
+    ValidNs = [Ns || #{namespace := Ns} <- maps:values(RootMap)],
+    case check_namespace_refs(maps:to_list(NSRaw), ValidNs) of
+        ok -> {ok, #{version => 1, roots => RootMap, upload_namespaces => NSRaw}};
+        {error, _} = Err -> Err
+    end;
+convert_registry_namespaces(NSRaw, _) ->
+    {error, {upload_namespaces_not_map, NSRaw}}.
+
+check_namespace_refs([], _) ->
+    ok;
+check_namespace_refs([{Scope, Ns} | Rest], ValidNs) when
+    is_binary(Scope), Scope =/= <<>>, is_binary(Ns)
+->
+    case lists:member(Ns, ValidNs) of
+        true -> check_namespace_refs(Rest, ValidNs);
+        false -> {error, {namespace_not_in_roots, Scope, Ns}}
+    end;
+check_namespace_refs([{Scope, Ns} | _], _) ->
+    {error, {entry_invalid, Scope, Ns}}.
 
 %% @doc 附件存储注册表的 env 显式登记（单 Garage 部署形态）。
 %% registry 是 fail-closed：roots 为空则拒绝签发上传能力（presign 503
