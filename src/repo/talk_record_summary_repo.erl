@@ -55,7 +55,7 @@ find_by_record_tx(Conn, RecordId) ->
 %% source_content_revision/confirmed_by；revision+1）。命中 0 行由上层
 %% 区分 not_found / precondition_failed。decisions/actions 以 JSON binary
 %% 传入（::jsonb cast，logic 层负责 jsone:encode 与校验）。
--spec update_tx(any(), integer(), pos_integer(), map(), map()) ->
+-spec update_tx(any(), integer(), any(), pos_integer(), map()) ->
     {ok, map()} | {error, not_found | term()}.
 update_tx(Conn, RecordId, SummaryId, ExpectedRevision, Sets) ->
     DynCols = [

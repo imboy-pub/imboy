@@ -834,4 +834,4 @@ ext_mime_map() ->
 reason_bin(R) when is_atom(R) -> atom_to_binary(R, utf8);
 reason_bin({storage_status, S}) -> <<"storage_status_", (integer_to_binary(S))/binary>>;
 reason_bin(R) when is_binary(R) -> R;
-reason_bin(R) -> elib_cnv:to_binary(io_lib:format("~p", [R])).
+reason_bin(R) -> iolist_to_binary(io_lib:format("~p", [R])).

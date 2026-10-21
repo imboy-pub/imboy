@@ -51,7 +51,7 @@ save(Conn, CreatedAt, Uid, Attach) ->
 
 %% Human group/channel confirmations audit only the first durable metadata row.
 %% Scope qualification is locked by the caller; audit failure aborts that same transaction.
--spec save_confirmed_tx(pid(), binary(), integer(), [map()]) -> ok.
+-spec save_confirmed_tx(pid(), binary() | calendar:datetime(), integer(), [map()]) -> ok.
 save_confirmed_tx(_Conn, _CreatedAt, _Uid, []) ->
     ok;
 save_confirmed_tx(Conn, CreatedAt, Uid, [Attach | Tail]) ->

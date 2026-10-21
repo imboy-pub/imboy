@@ -89,6 +89,25 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     needs: [compile]
+    # WITH_MECKS 宏 setup 无条件 boot app（include/eunit_setup.hrl:234「先补 boot」），
+    # 无 PG 时 imboy_migrate:89 sock_closed / epgsql to_map 崩溃 → eunit_app_boot_failed。
+    # vanilla postgres:18 即可：连接池只需连接成功；migrate 以 IMBOY_AUTO_MIGRATE=false
+    # 跳过（扩展版镜像仅 migrate 的 hypertable/jieba/postgis 语句需要，未随 CI 发布）；
+    # 测试体全为 meck mock，不真查 schema。
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: imboy_user
+          POSTGRES_PASSWORD: abc54321
+          POSTGRES_DB: imboy_v1
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U imboy_user"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
 
     steps:
       - name: Checkout
@@ -119,13 +138,21 @@ jobs:
         run: cp config/sys.config.example config/sys.config
 
       - name: Run Moment Targeted EUnit (eunit-local 等价口径)
+        env:
+          # WITH_MECKS 会真 boot app：连接池指向 service PG；关自动迁移
+          # （vanilla 镜像无 timescaledb/pg_jieba/postgis，测试体全 mock 无需 schema）
+          IMBOY_PG_HOST: "127.0.0.1"
+          IMBOY_PG_PORT: "5432"
+          IMBOY_PG_USERNAME: "imboy_user"
+          IMBOY_PG_PASSWORD: "abc54321"
+          IMBOY_PG_DATABASE: "imboy_v1"
+          IMBOY_AUTO_MIGRATE: "false"
         run: |
           # CI-00：与本地 `make eunit-local` 完全同口径 —— eunit-local 目标负责
           # imboy/ebin OTP 布局 symlink（code:priv_dir(imboy) 可解析）并注入
           # -pa 布局路径；EUNIT_CONFIG=config/sys 为等价配置注入（sys.config 已
           # 从 example 物化，eunit_runner:ensure_config_loaded/0 会 application:load
-          # 后取 env，无需 -eval）。EUNIT_MODS 经命令行变量透传子 make；
-          # meck 测试不起 app 无需真 PG。
+          # 后取 env，无需 -eval）。EUNIT_MODS 经命令行变量透传子 make。
           IMBOYENV=local make eunit-local EUNIT_CONFIG=config/sys EUNIT_MODS='moment_repo_tests moment_logic_tests moment_handler_tests adm_moment_handler_tests'
 
   # ----------------------------------------------------------------
@@ -292,10 +319,31 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     needs: [compile]
+    # 与 moment-eunit 同因：WITH_MECKS 无条件 boot app（include/eunit_setup.hrl:234），
+    # CI 必须提供 PG（vanilla 18 够用，migrate 关闭，测试体全 mock）。
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: imboy_user
+          POSTGRES_PASSWORD: abc54321
+          POSTGRES_DB: imboy_v1
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U imboy_user"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
 
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+
+      - name: Materialize config/sys.config from example
+        # e2ee-verify 目标用裸 erl -noshell（无 -config），靠 eunit_runner 的
+        # ensure_config_loaded 物化文件；无此文件 boot 直接 configuration not found。
+        run: cp config/sys.config.example config/sys.config
 
       - name: Setup Erlang/OTP toolchain
         uses: erlef/setup-beam@v1
@@ -321,6 +369,14 @@ jobs:
           sudo apt-get update -qq && sudo apt-get install -y -qq ripgrep
 
       - name: Run E2EE verify suite
+        env:
+          # WITH_MECKS 真 boot app：连接池指向 service PG；关自动迁移
+          IMBOY_PG_HOST: "127.0.0.1"
+          IMBOY_PG_PORT: "5432"
+          IMBOY_PG_USERNAME: "imboy_user"
+          IMBOY_PG_PASSWORD: "abc54321"
+          IMBOY_PG_DATABASE: "imboy_v1"
+          IMBOY_AUTO_MIGRATE: "false"
         run: |
           set -o pipefail
           make e2ee-verify 2>&1 | tee e2ee-verify.log
