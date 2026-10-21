@@ -388,33 +388,86 @@ uid_vs_ip_selection_ip_test_() ->
 %%    重置有效额度；
 %% 3) 无旧 worker/index/Cache 回落：throttle 的 scope 映射表无两 IP 行；
 %% 4) UID / cs_widget 等其它 scope 仍走 throttle 原库。
+%% WITH_MECKS 软 boot 不保证 throttle app / login_attempt_ds owner 存活
+%% （全量顺序里 app 常被前置套件停掉）——真实 DS 测试自前置拉起。
+with_limiter_owner(Fun) ->
+    {ok, StartedApps} = application:ensure_all_started(throttle),
+    try
+        Owned =
+            case whereis(login_attempt_ds) of
+                undefined ->
+                    {ok, Pid} = gen_server:start(
+                        {local, login_attempt_ds},
+                        login_attempt_ds,
+                        [],
+                        []
+                    ),
+                    Pid;
+                _ ->
+                    undefined
+            end,
+        try
+            case Owned of
+                undefined -> ok;
+                _ -> ok = login_attempt_ds:activate_empty(Owned)
+            end,
+            Fun()
+        after
+            stop_owned_limiter(Owned)
+        end
+    after
+        lists:foreach(
+            fun(App) -> ok = application:stop(App) end,
+            lists:reverse(StartedApps)
+        )
+    end.
+
+stop_owned_limiter(undefined) ->
+    ok;
+stop_owned_limiter(Pid) ->
+    Ref = monitor(process, Pid),
+    ok = gen_server:stop(Pid, normal, 1000),
+    receive
+        {'DOWN', Ref, process, Pid, _} -> ok
+    after 1000 -> error(limiter_fixture_cleanup_timeout)
+    end.
+
+limiter_fixture_failure_preserves_worker_ownership_test() ->
+    Before = whereis(login_attempt_ds),
+    Apps = lists:sort(application:which_applications()),
+    ?assertThrow(fixture_failure, with_limiter_owner(fun() -> throw(fixture_failure) end)),
+    ?assertEqual(Before, whereis(login_attempt_ds)),
+    ?assertEqual(Apps, lists:sort(application:which_applications())).
+
 limiter_scope_owner_test_() ->
     {timeout, 30,
         ?WITH_MECKS(
             [],
             fun() ->
-                ?assert(login_attempt_ds:ready()),
-                Ip = ?L3_PASSPORT_IP,
-                %% 1. 新 owner 装配一次并计数
-                {ok, S1} = login_attempt_ds:admit(passport_per_ip, Ip),
-                C1 = maps:get(count, S1),
-                {ok, S2} = login_attempt_ds:admit(passport_per_ip, Ip),
-                ?assertEqual(C1 + 1, maps:get(count, S2)),
-                %% 2. 重复初始化不重置有效额度：init_throttle_rates 重跑
-                %%    （幂等，不再 setup 两 IP scope）+ set_ip_rates 同值重放
-                %%    （C.4：重复提交在生效前按最后一次替换，不动已有窗口）
-                ok = imboy_app:init_throttle_rates(),
-                ok = login_attempt_ds:set_ip_rates(#{passport_per_ip => {10, 60000}}),
-                {ok, S3} = login_attempt_ds:admit(passport_per_ip, Ip),
-                ?assertEqual(C1 + 2, maps:get(count, S3)),
-                %% 3. 无旧回落：throttle scope→表 映射中不存在两 IP scope
-                ?assertNot(ets:member(throttle_state_table, passport_per_ip)),
-                ?assertNot(ets:member(throttle_state_table, api_per_ip)),
-                %% 4. UID/widget scope 仍原库：cs_widget_per_ip 已注册且可计数
-                ?assert(ets:member(throttle_state_table, cs_widget_per_ip)),
-                ProbeKey = {ac14_probe, erlang:unique_integer()},
-                ?assertMatch({ok, _, _}, throttle:check(cs_widget_per_ip, ProbeKey)),
-                ok
+                with_limiter_owner(fun() ->
+                    ?assert(login_attempt_ds:ready()),
+                    Ip = ?L3_PASSPORT_IP,
+                    %% 1. 新 owner 装配一次并计数
+                    {ok, S1} = login_attempt_ds:admit(passport_per_ip, Ip),
+                    C1 = maps:get(count, S1),
+                    {ok, S2} = login_attempt_ds:admit(passport_per_ip, Ip),
+                    ?assertEqual(C1 + 1, maps:get(count, S2)),
+                    %% 2. 重复初始化不重置有效额度：init_throttle_rates 重跑
+                    %%    （幂等，不再 setup 两 IP scope）+ set_ip_rates 同值重放
+                    %%    （C.4：重复提交在生效前按最后一次替换，不动已有窗口）
+                    ok = imboy_app:init_throttle_rates(),
+                    ok = login_attempt_ds:set_ip_rates(#{passport_per_ip => {10, 60000}}),
+                    {ok, S3} = login_attempt_ds:admit(passport_per_ip, Ip),
+                    ?assertEqual(C1 + 2, maps:get(count, S3)),
+                    %% 3. 无旧回落：throttle scope→表 映射中不存在两 IP scope
+                    ?assertNot(ets:member(throttle_state_table, passport_per_ip)),
+                    ?assertNot(ets:member(throttle_state_table, api_per_ip)),
+                    %% 4. UID/widget scope 仍原库：cs_widget_per_ip 已注册且可计数
+                    ?assert(ets:member(throttle_state_table, cs_widget_per_ip)),
+                    ProbeKey = {ac14_probe, erlang:unique_integer()},
+                    ?assertMatch({ok, _, _}, throttle:check(cs_widget_per_ip, ProbeKey)),
+                    ok
+                end)
             end
         )}.
 
@@ -436,10 +489,14 @@ middleware_ip_scopes_not_via_throttle_test_() ->
             ]}
         ],
         fun() ->
-            %% 不 mock login_attempt_ds：真实 DS（新权威）放行
-            Req = fake_req,
-            Env = #{handler_opts => #{}},
-            ?assertMatch({ok, _, _}, throttle_middleware:execute(Req, Env))
+            %% 不 mock login_attempt_ds：真实 DS（新权威）放行；
+            %% owner 缺席时 admit 走 unavailable → 503 分支打真实
+            %% cowboy reply（fake_req 崩）——自前置保证真实权威在位。
+            with_limiter_owner(fun() ->
+                Req = fake_req,
+                Env = #{handler_opts => #{}},
+                ?assertMatch({ok, _, _}, throttle_middleware:execute(Req, Env))
+            end)
         end
     ).
 
