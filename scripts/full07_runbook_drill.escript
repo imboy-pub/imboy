@@ -8,8 +8,9 @@
 %%
 %% 本脚本在 **run-owned scratch 库**（`imboy_full07_runbook_<ts>`，跑完即 DROP）
 %% 上用**生产模块**（erlang_migrate / enterprise_webhook_repo /
-%% enterprise_application_grant_repo / enterprise_application_repo /
-%% bot_webhook_delivery_repo）逐条真跑，每条打印 PASS/FAIL 与关键数字。
+%% enterprise_internal_ops / enterprise_application_credential_repo /
+%% enterprise_application_repo / bot_webhook_delivery_repo）逐条真跑，
+%% 每条打印 PASS/FAIL 与关键数字。
 %%
 %% 四条演练：
 %%   D1 升级 / 回滚：空库全量 up → version=head；down 1 → head-1；up → head；

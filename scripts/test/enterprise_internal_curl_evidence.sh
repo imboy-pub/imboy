@@ -76,7 +76,8 @@ if not paths:
 paths.insert(0, str(deps / 'ebin'))
 files = [str(p) for p in pathlib.Path('src').rglob('*.erl')]
 files += ['test/common/eunit_runner.erl', 'test/common/meck_helper.erl',
-          'test/api/intbe02_http_support.erl', 'test/common/inttest_marker_db.erl']
+          'test/api/intbe02_http_support.erl', 'test/common/inttest_marker_db.erl',
+          'test/features/enterprise_business/infrastructure/eb_pg_test_fixture.erl']
 cmd = ['erlc', '+debug_info', '+nowarn_unused_function', '+nowarn_unused_vars',
        '+{parse_transform,lager_transform}', '-o', str(out / 'beams'), '-I', 'include', '-I', 'src']
 for path in paths:
@@ -133,7 +134,9 @@ req() { # method path cred extra-headers... ; body via stdin; 输出 status，bo
   cat > "$REQ_BODY_F"   # body 落盘：摘要与发送同源
   local ts nonce bhash sig
   ts=$(date +%s)
-  nonce="q08curl$(LC_ALL=C tr -dc 'a-f0-9' </dev/urandom | head -c 24)"
+  # nonce 用 openssl rand（确定终止）；勿用 tr </dev/urandom | head：Erlang
+  # os:cmd 子进程继承被忽略的 SIGPIPE，head 退出后 tr 会在 urandom 上死读。
+  nonce="q08curl$(openssl rand -hex 12)"
   bhash=$(openssl dgst -sha256 -r "$REQ_BODY_F" | cut -d' ' -f1)
   sig=$(printf 'IMBOY-INTERNAL-V1\nsha256\n%s\n\n%s\n%s\n\napplication/json\n%s\n%s\n%s\n%s' \
     "$prefix" "$method" "$path" "$idem" "$bhash" "$ts" "$nonce" \

@@ -401,6 +401,17 @@ docker compose -f docker-compose.prod.yml -f docker-compose-sales-policy.yml log
 蓝绿升级用 `bash scripts/imboy-deploy.sh api`（私有实现不接受直接调用；迁移时序与普通重启不同，
 详见 [scripts/README.md](../scripts/README.md)）。
 
+**Schema 迁移的回滚禁区（binary × DB 组合）**：数据库执行过破坏性迁移后，
+**不得**把应用回滚到仍依赖被删结构的旧版本 binary。当前已知的边界是
+migration 210（`internal_hmac_only`，删除 `enterprise_application.allowed_scopes`
+与 `oa_login_ticket.issuer_authentication` 列）：migration 210 之后的 DB schema
+**不能**搭配仍读取这些列的旧镜像运行（Internal API 请求会以
+`undefined_column` 失败）。回滚顺序必须为：① 回滚到仍兼容当前 schema 的
+HMAC-only 版本；② 无法回滚时 forward-fix 当前版本；③ DB down-migration 仅作
+最后手段，须先备份并安排维护窗口。回滚前可用
+`git grep -n 'allowed_scopes' <目标commit> -- src test` 预检目标 binary 的
+schema 依赖。
+
 ### 备份
 
 参见 `imboy/docs/guides/operations/deployment/backup-restore.md`。简化版：

@@ -43,8 +43,8 @@ tablename() ->
 insert_grants(_Uid, []) ->
     {ok, 0};
 insert_grants(Uid, TemplateIds) ->
-    %% created_at 走表 DEFAULT CURRENT_TIMESTAMP；unnest 批量写法与
-    %% enterprise_application_grant_repo 同款
+    %% created_at 走表 DEFAULT CURRENT_TIMESTAMP；unnest 批量写法与仓内
+    %% 既有批量 INSERT 同款
     Sql = <<
         "INSERT INTO ",
         (tablename())/binary,

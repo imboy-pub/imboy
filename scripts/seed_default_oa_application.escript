@@ -241,9 +241,6 @@ env_str(Name, Default) ->
         V -> V
     end.
 
-env_int(Name) ->
-    env_int(Name, undefined).
-
 env_int(Name, Default) ->
     case os:getenv(Name) of
         false -> Default;
