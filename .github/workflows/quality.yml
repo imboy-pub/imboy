@@ -365,7 +365,10 @@ jobs:
         run: |
           set -euo pipefail
           python3 scripts/validate_third_party_inventory.py
-          python3 -m unittest test.scripts.test_validate_third_party_inventory
+          # 注意勿改成 `python3 -m unittest test.scripts.xxx`：顶层包名 test 与 Python
+          # 标准库 test 包冲突（ModuleNotFoundError: No module named 'test.scripts'），
+          # 必须用 discover 形式（与 repository-hygiene job 同款）。
+          python3 -m unittest discover -s test/scripts -p "test_validate_third_party_inventory.py"
 
   # ----------------------------------------------------------------
   # 7) Migration files gate — ADR-0002：命名格式 / up-down 成对 / 版本号唯一
