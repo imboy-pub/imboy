@@ -26,13 +26,13 @@ patterns = {
     'nonzero_skipped': r'Skipped:\s*[1-9]',
 }
 counts = {name: len(re.findall(pattern, raw, re.I)) for name, pattern in patterns.items()}
-# OTP uses "Test passed." and "2 tests passed." for small suites.
-# Require standalone official summary lines; failure/skip/exit checks stay strict.
-complete = [int(value) if value else 1 for value in re.findall(
-    r'^\s*(?:(?:All )?([1-9][0-9]*) tests passed|Test passed)\.\s*$', raw, re.M)]
+complete = [1 if value == 'Test passed.' else int(number)
+            for value, number in re.findall(
+                r'^[ \t]*(Test passed\.|(?:All )?([1-9][0-9]*) tests passed\.)[ \t]*$', raw, re.M)]
 result = {'raw_exit': rc, 'success_summaries': complete, 'framework_markers': counts,
           'private_raw_sha256': hashlib.sha256(log.read_bytes()).hexdigest(),
-          'public_log_is_credential_redacted': True,
+          'credential_redaction_verified': False,
+          'redaction_scope': 'not assessed by test-result validator; capture masks known injected values only',
           'clean': rc == 0 and bool(complete) and not any(counts.values())}
 Path(sys.argv[2]).write_text(json.dumps(result, indent=2) + '\n')
 print(json.dumps(result, indent=2))

@@ -1,0 +1,13 @@
+type: object
+properties:
+  user_id:
+    type: integer
+    format: int64
+    minimum: 1
+    maximum: 9223372036854775807
+  display_name:
+    type: string
+  avatar:
+    type: string
+  account:
+    type: string

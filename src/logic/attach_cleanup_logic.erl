@@ -33,6 +33,11 @@ run_orphan_cleanup() ->
 -spec run_orphan_cleanup(integer()) -> ok.
 run_orphan_cleanup(AgeDays0) ->
     AgeDays = max(?MIN_AGE_DAYS, AgeDays0),
+    %% T06（00000212）：孤儿扫描前先清扫已到期的 talk_record processing lease
+    %% （§10.3 取消/超时都能释放）。GC 资格谓词按 lease_until 时间比较、
+    %% 不依赖本清扫先行，此处清扫让过期引用尽快从 bound 集合消失，避免
+    %% 管理视图长期挂着失效租约；失败不阻断孤儿清理（谓词自身是安全边界）。
+    sweep_expired_talk_record_leases(),
     case attachment_ds:orphan_cleanup(#{age_days => AgeDays}) of
         {ok, #{cleaned := Cleaned, errors := Errors}} ->
             ?INFO_LOG([
@@ -85,6 +90,28 @@ run_pending_cleanup(AgeHours0) ->
             ?ERROR_LOG([
                 "attach_cleanup_logic pending_cleanup failed",
                 {age_hours, AgeHours},
+                {reason, Reason}
+            ]),
+            ok
+    end.
+
+%% T06：到期 processing lease 清扫（独立短事务；失败仅留痕——
+%% orphan/GC 谓词按时间比较，清扫滞后不影响正确性）。
+sweep_expired_talk_record_leases() ->
+    Swept =
+        elib_pg:with_tx(fun talk_record_attachment_adapter:release_expired_leases_tx/1),
+    case Swept of
+        {ok, N} when N > 0 ->
+            ?INFO_LOG([
+                "attach_cleanup_logic talk_record lease sweep done",
+                {released, N}
+            ]),
+            ok;
+        {ok, 0} ->
+            ok;
+        {error, Reason} ->
+            ?ERROR_LOG([
+                "attach_cleanup_logic talk_record lease sweep failed",
                 {reason, Reason}
             ]),
             ok

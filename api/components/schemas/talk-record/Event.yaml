@@ -1,0 +1,35 @@
+type: object
+required:
+- client_event_id
+- device_session_id
+- seq
+- event
+- position_ms
+properties:
+  client_event_id:
+    type: string
+    format: uuid
+  device_session_id:
+    type: string
+    format: uuid
+  seq:
+    type: integer
+    format: int64
+    minimum: 0
+    maximum: 9223372036854775807
+  event:
+    type: string
+    enum:
+    - start
+    - pause
+    - resume
+    - interrupt
+    - end
+  position_ms:
+    type: integer
+    format: int64
+    minimum: 0
+    maximum: 9223372036854775807
+  reported_started_at:
+    type: string
+    format: date-time

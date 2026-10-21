@@ -1,0 +1,6 @@
+name: sk
+in: header
+required: false
+schema:
+  type: string
+description: Signing key version; defaults to vsn. No secret key is returned.

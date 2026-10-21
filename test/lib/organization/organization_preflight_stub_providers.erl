@@ -3,7 +3,7 @@
 %% DeletionPreflightFacts provider 测试替身（仅 EUnit 使用）。
 %%
 %% 行为由 app env `imboy.preflight_stub_behavior` 驱动：
-%%   ok_all                  —— 全部五域返回空 blocker（放行口径）
+%%   ok_all                  —— 全部六域返回空 blocker（放行口径）
 %%   blockers                —— organization 域返回一个 ORG_OWNER_ACTIVE blocker
 %%   unavailable             —— organization 域返回 {error, unavailable}
 %%   inconsistent            —— organization 域返回 {error, inconsistent}
@@ -21,7 +21,7 @@
 %%                              RESTRICT 兜底专用；org id 取
 %%                              `imboy.preflight_stub_org_id`）
 %%
-%% 注册表（五域全 stub）见 full_registry/0，测试直接写入
+%% 注册表（六域全 stub）见 full_registry/0，测试直接写入
 %% `imboy.deletion_preflight_providers`。
 
 -export([
@@ -30,7 +30,8 @@
     facts_workspace/1,
     facts_enterprise_business/1,
     facts_customer_service/1,
-    facts_agent/1
+    facts_agent/1,
+    facts_talk_record/1
 ]).
 
 -define(BEHAVIOR_KEY, preflight_stub_behavior).
@@ -42,7 +43,8 @@ full_registry() ->
         {workspace, ?MODULE, facts_workspace},
         {enterprise_business, ?MODULE, facts_enterprise_business},
         {customer_service, ?MODULE, facts_customer_service},
-        {agent, ?MODULE, facts_agent}
+        {agent, ?MODULE, facts_agent},
+        {talk_record, ?MODULE, facts_talk_record}
     ].
 
 facts_organization(UserId) ->
@@ -56,6 +58,11 @@ facts_enterprise_business(UserId) ->
 
 facts_customer_service(UserId) ->
     act(behavior(), customer_service, UserId).
+
+%% Orchestration fixture only; real talk_record business facts are exercised
+%% by talk_record_departure_tests against the isolated PostgreSQL database.
+facts_talk_record(UserId) ->
+    act(behavior(), talk_record, UserId).
 
 facts_agent(UserId) ->
     case behavior() of

@@ -1,0 +1,26 @@
+type: object
+properties:
+  id:
+    type: integer
+    format: int64
+    minimum: 1
+    maximum: 9223372036854775807
+  record_id:
+    type: integer
+    format: int64
+    minimum: 1
+    maximum: 9223372036854775807
+  user_id:
+    anyOf:
+    - type: integer
+      format: int64
+      minimum: 1
+      maximum: 9223372036854775807
+    - type: 'null'
+  display_name:
+    type: string
+  attendance_source:
+    type: string
+    enum:
+    - selected
+    - manual

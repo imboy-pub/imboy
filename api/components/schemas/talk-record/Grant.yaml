@@ -1,0 +1,36 @@
+type: object
+properties:
+  id:
+    type: integer
+    format: int64
+    minimum: 1
+    maximum: 9223372036854775807
+  record_id:
+    type: integer
+    format: int64
+    minimum: 1
+    maximum: 9223372036854775807
+  grantee_user_id:
+    type: integer
+    format: int64
+    minimum: 1
+    maximum: 9223372036854775807
+  grantee_display_name:
+    type: string
+  role:
+    type: string
+    enum:
+    - viewer
+    - editor
+  allow_export:
+    type: boolean
+  granted_by:
+    type: integer
+    format: int64
+    minimum: 1
+    maximum: 9223372036854775807
+  expires_at:
+    anyOf:
+    - type: string
+      format: date-time
+    - type: 'null'

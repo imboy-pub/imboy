@@ -1,0 +1,34 @@
+type: object
+properties:
+  id:
+    type: integer
+    format: int64
+    minimum: 1
+    maximum: 9223372036854775807
+  record_id:
+    type: integer
+    format: int64
+    minimum: 1
+    maximum: 9223372036854775807
+  local_label:
+    type: string
+  display_name:
+    type: string
+  matched_user_id:
+    anyOf:
+    - type: integer
+      format: int64
+      minimum: 1
+      maximum: 9223372036854775807
+    - type: 'null'
+  identity_source:
+    type: string
+    enum:
+    - anonymous
+    - self_claim
+    - manual
+  revision:
+    type: integer
+    format: int64
+    minimum: 1
+    maximum: 9223372036854775807

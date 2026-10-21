@@ -200,7 +200,9 @@ namespaces() ->
         %% ── 客服 AI：customer_service_ai_agent / customer_service_faq / customer_service_ai_job ──
         ai_cs_config,
         ai_cs_faq,
-        cs_ai_job
+        cs_ai_job,
+        %% 面聊聚合及其子资源共用已明确指定的发号游标。
+        talk_record
     ].
 
 %% @doc 别名 → canonical 映射：写同一张表的旧标签静态归并到同一游标。

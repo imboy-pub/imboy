@@ -17,8 +17,9 @@ def emit(value):
 
 
 def owns_listeners(pid, ports):
-    # Full-suite peers use the Linux cloud executor. Prove PID/port ownership,
-    # rather than accepting a response from an unrelated loopback listener.
+    # Prove PID/port ownership; a healthy unrelated listener is insufficient.
+    if sys.platform == "darwin":
+        return owns_macos_listeners(pid, ports)
     descriptors = Path(f"/proc/{pid}/fd")
     inodes = set()
     for descriptor in descriptors.iterdir():
@@ -37,6 +38,30 @@ def owns_listeners(pid, ports):
     return set(ports) <= found
 
 
+
+def owns_macos_listeners(pid, ports):
+    result = subprocess.run(
+        ["/usr/sbin/lsof", "-nP", "-a", "-p", str(pid), "-iTCP",
+         "-sTCP:LISTEN", "-Fpn"],
+        stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True,
+        timeout=2, check=False,
+    )
+    if result.returncode != 0:
+        return False
+    owners = set()
+    found = set()
+    current_owner = None
+    for field in result.stdout.splitlines():
+        if field.startswith("p"):
+            current_owner = field[1:]
+            owners.add(current_owner)
+        elif field.startswith("n127.0.0.1:") and current_owner == str(pid):
+            port = field.rsplit(":", 1)[1]
+            if port.isdecimal():
+                found.add(int(port))
+    return owners == {str(pid)} and set(ports) <= found
+
+
 def interrupted(_signum, _frame):
     raise SystemExit(1)
 
@@ -44,8 +69,8 @@ def interrupted(_signum, _frame):
 def main():
     for signum in (signal.SIGTERM, signal.SIGHUP, signal.SIGINT):
         signal.signal(signum, interrupted)
-    if sys.platform != "linux":
-        emit({"error": "owned_service_requires_linux_proc"})
+    if sys.platform not in ("linux", "darwin"):
+        emit({"error": "owned_service_platform_unsupported"})
         return 1
     child = None
     reservations = []
@@ -54,7 +79,7 @@ def main():
         if not binary.is_file() or not os.access(binary, os.X_OK):
             raise RuntimeError("binary_not_executable")
         with tempfile.TemporaryDirectory(prefix="imboy-textguard-test-") as root:
-            root = Path(root)
+            root = Path(root).resolve(strict=True)
             try:
                 for _ in range(4):
                     handle = socket.socket()

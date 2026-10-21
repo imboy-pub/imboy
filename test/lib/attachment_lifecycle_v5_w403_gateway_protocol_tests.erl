@@ -40,9 +40,10 @@ setup() ->
         S = setup_owned(),
         Resources = erlang:erase(w403_gateway_setup),
         maps:merge(Resources, S)
-    catch Class:Reason:Stack ->
-        cleanup(erlang:erase(w403_gateway_setup)),
-        erlang:raise(Class, Reason, Stack)
+    catch
+        Class:Reason:Stack ->
+            cleanup(erlang:erase(w403_gateway_setup)),
+            erlang:raise(Class, Reason, Stack)
     end.
 
 setup_owned() ->
@@ -51,7 +52,10 @@ setup_owned() ->
     <<"attv5_chain_", _/binary>> = Db,
     %% elib_pg uses the global pgsql name. Reuse only the exact manifest DB;
     %% never redirect, remove or replace a pre-existing pool.
-    case whereis(pgsql) of undefined -> ok; _ -> assert_database(Db) end,
+    case whereis(pgsql) of
+        undefined -> ok;
+        _ -> assert_database(Db)
+    end,
     {ok, [Config]} = file:consult(required("W403_CONFIG_PATH")),
     Env = proplists:get_value(imboy, Config),
     [application:set_env(imboy, K, V) || {K, V} <- Env],
@@ -65,10 +69,13 @@ setup_owned() ->
     ensure_started(pooler),
     case whereis(pgsql) of
         undefined ->
-            {ok, Pool} = pooler:new_pool(Pg0#{name => pgsql,
-                start_mfa => {epgsql, connect, [Connect]}}),
+            {ok, Pool} = pooler:new_pool(Pg0#{
+                name => pgsql,
+                start_mfa => {epgsql, connect, [Connect]}
+            }),
             own_resource(owned_pool, Pool);
-        _ -> ok
+        _ ->
+            ok
     end,
     assert_database(Db),
     case whereis(imboy_cache) of
@@ -76,32 +83,40 @@ setup_owned() ->
             {ok, Cache} = imboy_cache:start_link([]),
             unlink(Cache),
             own_resource(owned_cache, Cache);
-        _ -> ok
+        _ ->
+            ok
     end,
     EP = list_to_binary(required("W202_GARAGE_ENDPOINT")),
     Bucket = list_to_binary(required("W202_GARAGE_BUCKET")),
     application:set_env(imboy, garage, #{
-        endpoint => EP, bucket => Bucket,
+        endpoint => EP,
+        bucket => Bucket,
         access_key => list_to_binary(required("W202_GARAGE_ACCESS_KEY")),
         secret_key => list_to_binary(required("W202_GARAGE_SECRET_KEY"))
     }),
-    Temp = case os:getenv("TMPDIR") of
-        false -> "/tmp";
-        "" -> "/tmp";
-        T -> T
-    end,
-    Root = filename:join(Temp, "attv5-w403-" ++
-        binary_to_list(binary:encode_hex(crypto:strong_rand_bytes(12), lowercase))),
+    Root = filename:join(
+        temp_dir(),
+        "attv5-w403-" ++
+            binary_to_list(binary:encode_hex(crypto:strong_rand_bytes(12), lowercase))
+    ),
     ok = file:make_dir(Root),
     own_resource(root, Root),
     ok = file:change_mode(Root, 8#700),
     application:set_env(imboy, attachment_storage_registry, #{
         version => 1,
         roots => #{
-            <<"w403-disk-root">> => #{driver => <<"disk">>, namespace => <<"w403-disk">>,
-                endpoint => list_to_binary("file://" ++ Root), container => <<"fixture">>},
-            <<"w403-garage-root">> => #{driver => <<"garage">>, namespace => <<"w403-garage">>,
-                endpoint => EP, container => Bucket}
+            <<"w403-disk-root">> => #{
+                driver => <<"disk">>,
+                namespace => <<"w403-disk">>,
+                endpoint => list_to_binary("file://" ++ Root),
+                container => <<"fixture">>
+            },
+            <<"w403-garage-root">> => #{
+                driver => <<"garage">>,
+                namespace => <<"w403-garage">>,
+                endpoint => EP,
+                container => Bucket
+            }
         }
     }),
     ensure_started(cowboy),
@@ -111,24 +126,45 @@ setup_owned() ->
             {"/api/v1/attachment/content", attachment_download_handler, #{}}
         ]}
     ]),
-    {ok, Listener} = cowboy:start_clear(w403_owned_gateway,
-        [{ip, {127, 0, 0, 1}}, {port, 0}], #{env => #{dispatch => Dispatch}}),
+    {ok, Listener} = cowboy:start_clear(
+        w403_owned_gateway,
+        [{ip, {127, 0, 0, 1}}, {port, 0}],
+        #{env => #{dispatch => Dispatch}}
+    ),
     own_resource(owned_gateway, Listener),
     Port = ranch:get_port(w403_owned_gateway),
-    application:set_env(imboy, base_url,
-        list_to_binary("http://127.0.0.1:" ++ integer_to_list(Port))),
+    application:set_env(
+        imboy,
+        base_url,
+        list_to_binary("http://127.0.0.1:" ++ integer_to_list(Port))
+    ),
     case elib_tsid:readiness() of
         not_initialized ->
             ok = elib_tsid:init(#{dc_id => 1, node_id => 1, dc_bits => 3}),
             own_resource(owned_tsid, true);
-        _ -> ok
+        _ ->
+            ok
     end,
     Uid = 8000000000000 + binary:decode_unsigned(crypto:strong_rand_bytes(5)),
     {ok, _} = elib_pg:query(
         <<"INSERT INTO public.\"user\"(id,account,nickname,password,status,account_type,reg_ip,reg_cosv,created_at) VALUES($1,$2,'fixture','',1,0,'127.0.0.1','w403',now()) RETURNING id">>,
-        [Uid, <<"w403-", (integer_to_binary(Uid))/binary>>]),
-    #{root => Root, uid => Uid, port => Port, bucket => Bucket,
-        run => binary:encode_hex(crypto:strong_rand_bytes(12), lowercase)}.
+        [Uid, <<"w403-", (integer_to_binary(Uid))/binary>>]
+    ),
+    #{
+        root => Root,
+        uid => Uid,
+        port => Port,
+        bucket => Bucket,
+        run => binary:encode_hex(crypto:strong_rand_bytes(12), lowercase)
+    }.
+
+%% Match the Disk storage fixtures: macOS /tmp is a symlink to /private/tmp.
+%% Register the physical temporary root; keep the production symlink guard intact.
+temp_dir() ->
+    case file:read_link_all("/tmp") of
+        {ok, Target} -> filename:absname(Target, "/");
+        {error, einval} -> "/tmp"
+    end.
 
 own_resource(Key, Value) ->
     erlang:put(w403_gateway_setup, (erlang:get(w403_gateway_setup))#{Key => Value}),
@@ -153,17 +189,21 @@ cleanup(#{w403_before := Before} = S) ->
                     _ -> ok
                 end
             end);
-        _ -> ok
+        _ ->
+            ok
     end,
-    [best_effort(fun() -> imboy_cache:delete(K) end)
-        || K <- maps:get(owned_cache_keys, S, [])],
+    [
+        best_effort(fun() -> imboy_cache:delete(K) end)
+     || K <- maps:get(owned_cache_keys, S, [])
+    ],
     case maps:get(owned_cache, S, undefined) of
         Cache when is_pid(Cache) ->
             case whereis(imboy_cache) of
                 Cache -> best_effort(fun() -> gen_server:stop(Cache, normal, 5000) end);
                 _ -> ok
             end;
-        _ -> ok
+        _ ->
+            ok
     end,
     case maps:get(owned_pool, S, undefined) of
         Pool when is_pid(Pool) ->
@@ -171,7 +211,8 @@ cleanup(#{w403_before := Before} = S) ->
                 Pool -> best_effort(fun() -> pooler:rm_pool(pgsql) end);
                 _ -> ok
             end;
-        _ -> ok
+        _ ->
+            ok
     end,
     case maps:get(root, S, undefined) of
         undefined -> ok;
@@ -181,15 +222,26 @@ cleanup(#{w403_before := Before} = S) ->
         true -> best_effort(fun elib_tsid:reset_for_test/0);
         false -> ok
     end,
-    [best_effort(fun() -> application:stop(A) end)
-        || A <- maps:get(owned_apps, S, [])],
+    [
+        best_effort(fun() -> application:stop(A) end)
+     || A <- maps:get(owned_apps, S, [])
+    ],
     OldEnv = maps:from_list(maps:get(env, Before)),
-    [application:unset_env(imboy, K) || {K, _} <- application:get_all_env(imboy),
-        not maps:is_key(K, OldEnv)],
+    [
+        application:unset_env(imboy, K)
+     || {K, _} <- application:get_all_env(imboy),
+        not maps:is_key(K, OldEnv)
+    ],
     [application:set_env(imboy, K, V) || {K, V} <- maps:to_list(OldEnv)],
     ok;
-cleanup(_) -> ok.
-best_effort(Fun) -> try Fun() catch _:_ -> ok end.
+cleanup(_) ->
+    ok.
+best_effort(Fun) ->
+    try
+        Fun()
+    catch
+        _:_ -> ok
+    end.
 required(Name) ->
     case os:getenv(Name) of
         false -> erlang:error({no_go, required_resource_missing, Name});
@@ -458,13 +510,15 @@ delete_recovery(S, D, Domain, State) ->
                 {ok, [_]} = elib_pg:query(
                     <<"SELECT fn_v5_intent_pending_delete($1,'owned test','reject')">>, [Key]
                 ),
-                {<<"attachment_object_deletion">>, <<"path=$1">>, [Key], fun() ->
-                    assert_no_foreign_claimable(Key),
-                    attachment_delete_worker:run_batch()
-                end, fun(Token) ->
-                    assert_no_foreign_claimable(Key),
-                    elib_pg:query(<<"SELECT * FROM fn_v5_claim_ordinary($1)">>, [Token])
-                end};
+                {<<"attachment_object_deletion">>, <<"path=$1">>, [Key],
+                    fun() ->
+                        assert_no_foreign_claimable(Key),
+                        attachment_delete_worker:run_batch()
+                    end,
+                    fun(Token) ->
+                        assert_no_foreign_claimable(Key),
+                        elib_pg:query(<<"SELECT * FROM fn_v5_claim_ordinary($1)">>, [Token])
+                    end};
             enterprise ->
                 Id = 8000000000000 + binary:decode_unsigned(crypto:strong_rand_bytes(5)),
                 Ws = Id + 1,
@@ -497,14 +551,18 @@ delete_recovery(S, D, Domain, State) ->
                     <<"SELECT fn_v5_intent_eb_delete($1,$2,$1,'owned test')">>, [Id, Ws]
                 ),
                 {<<"enterprise_asset_delete_queue">>,
-                    <<"organization_id=$1 AND workspace_id=$2 AND asset_id=$1">>, [Id, Ws], fun() ->
-                    eb_pg_asset_delete_queue:drain(Id, Ws, 1)
-                end, fun(Token) ->
-                    %% Other suites retain legitimate queue tombstones/jobs.
-                    %% Claim only this fixture's organization and workspace.
-                    elib_pg:query(<<"SELECT * FROM fn_v5_claim_eb($1,$2,$3)">>,
-                        [Token, Id, Ws])
-                end}
+                    <<"organization_id=$1 AND workspace_id=$2 AND asset_id=$1">>, [Id, Ws],
+                    fun() ->
+                        eb_pg_asset_delete_queue:drain(Id, Ws, 1)
+                    end,
+                    fun(Token) ->
+                        %% Other suites retain legitimate queue tombstones/jobs.
+                        %% Claim only this fixture's organization and workspace.
+                        elib_pg:query(
+                            <<"SELECT * FROM fn_v5_claim_eb($1,$2,$3)">>,
+                            [Token, Id, Ws]
+                        )
+                    end}
         end,
     case State of
         ready ->
@@ -524,8 +582,13 @@ delete_recovery(S, D, Domain, State) ->
                     Predicate/binary, " RETURNING attempts">>,
                 Args
             ),
-            assert_no_foreign_queue_candidates(Table, Predicate, Args,
-                <<"job_state='leased' AND lease_until < clock_timestamp()">>, reap),
+            assert_no_foreign_queue_candidates(
+                Table,
+                Predicate,
+                Args,
+                <<"job_state='leased' AND lease_until < clock_timestamp()">>,
+                reap
+            ),
             case Domain of
                 ordinary -> {ok, _} = attachment_delete_worker:reconcile();
                 enterprise -> {ok, _} = eb_pg_asset_delete_queue:reap(100)
@@ -598,19 +661,33 @@ delete_recovery(S, D, Domain, State) ->
                 end;
             _ ->
                 case Domain of
-                    ordinary -> ?assertMatch({ok, _}, Drain());
+                    ordinary ->
+                        ?assertMatch({ok, _}, Drain());
                     enterprise ->
                         %% EB drain reports its failed provider attempt; the
                         %% ordinary batch wrapper reports aggregate success.
                         ?assertEqual(
                             {error, {object_delete_failed, {error, location_unverified}}},
-                            Drain())
+                            Drain()
+                        )
                 end,
-                ExpectedAttempts = case State of ready -> 1; running -> 2 end,
-                {ok, [#{<<"job_state">> := <<"retry_wait">>,
-                    <<"attempts">> := ExpectedAttempts, <<"lease_token">> := null}]} =
-                    elib_pg:query(<<"SELECT job_state,attempts,lease_token FROM ",
-                        Table/binary, " WHERE ", Predicate/binary>>, Args)
+                ExpectedAttempts =
+                    case State of
+                        ready -> 1;
+                        running -> 2
+                    end,
+                {ok, [
+                    #{
+                        <<"job_state">> := <<"retry_wait">>,
+                        <<"attempts">> := ExpectedAttempts,
+                        <<"lease_token">> := null
+                    }
+                ]} =
+                    elib_pg:query(
+                        <<"SELECT job_state,attempts,lease_token FROM ", Table/binary, " WHERE ",
+                            Predicate/binary>>,
+                        Args
+                    )
         end,
         Expected =
             case State of
@@ -659,15 +736,23 @@ delete_recovery(S, D, Domain, State) ->
 %% eligibility and fail before calling them if a serialized fixture has foreign
 %% candidates; never claim, postpone, reset or delete those rows to make a test pass.
 assert_no_foreign_claimable(Key) ->
-    assert_no_foreign_queue_candidates(<<"attachment_object_deletion">>,
-        <<"path=$1">>, [Key],
-        <<"attempts < 8 AND job_state IN ('ready','retry_wait')"
-          " AND next_retry_at <= clock_timestamp()">>, claim).
+    assert_no_foreign_queue_candidates(
+        <<"attachment_object_deletion">>,
+        <<"path=$1">>,
+        [Key],
+        <<
+            "attempts < 8 AND job_state IN ('ready','retry_wait')"
+            " AND next_retry_at <= clock_timestamp()"
+        >>,
+        claim
+    ).
 
 assert_no_foreign_queue_candidates(Table, Predicate, Args, Eligible, Action) ->
     {ok, [#{<<"foreign_count">> := Count}]} = elib_pg:query(
-        <<"SELECT count(*) AS foreign_count FROM ", Table/binary,
-          " WHERE (", Eligible/binary, ") AND NOT (", Predicate/binary, ")">>, Args),
+        <<"SELECT count(*) AS foreign_count FROM ", Table/binary, " WHERE (", Eligible/binary,
+            ") AND NOT (", Predicate/binary, ")">>,
+        Args
+    ),
     case Count of
         0 -> ok;
         _ -> erlang:error({unowned_queue_candidates, Table, Action, Count})

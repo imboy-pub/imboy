@@ -10,7 +10,8 @@
 %
 % 归属两件独立的事：
 %   写归属(上传权) = object_key 的 u<Uid>/ 前缀 + can_upload/3 的 scope 权限
-%   读归属(访问权) = authorize/2 按 scope 分发（public/private/c2c/group/channel/moment）
+%   读归属(访问权) = authorize/2 按 scope 分发（public/private/c2c/group/channel/moment
+%                    /teaching；talk_record 经 talk_record_attachment_adapter 记录 ACL 链[T06]）
 % 详见 docs/architecture/resource-access-control.md。
 %%%
 
@@ -838,6 +839,11 @@ can_upload(Uid, <<"teaching">>, _ScopeRef) ->
         ok -> ok;
         false -> {error, forbidden}
     end;
+%% talk_record（T06/DESIGN §6/§10.1）：上传权走记录域 adapter——scope_ref=
+%% record_id，owner 单写入者 + 企业记录组织归属复核；不允许借 private
+%% creator 语义绕过记录 ACL。
+can_upload(Uid, <<"talk_record">>, ScopeRef) ->
+    talk_record_attachment_adapter:can_upload(Uid, ScopeRef);
 can_upload(_Uid, _Scope, _ScopeRef) ->
     {error, forbidden}.
 
@@ -870,10 +876,15 @@ view_url(Uid, ObjectKey) ->
     end.
 
 %% Group/channel/moment URLs are checked again on every HTTP read.
+%% talk_record（T06/DESIGN §10.3 回听行）：同样逐次续票重验撤销版本——
+%% 记录撤权/删除后票据续签即失败，不签发长期直读地址。
 authorized_view(Uid, #{<<"storage_driver">> := <<"disk">>}, ObjectKey) ->
     ticket_view(Uid, ObjectKey);
 authorized_view(Uid, #{<<"scope">> := Scope}, ObjectKey) when
-    Scope =:= <<"group">>; Scope =:= <<"channel">>; Scope =:= <<"moment">>
+    Scope =:= <<"group">>;
+    Scope =:= <<"channel">>;
+    Scope =:= <<"moment">>;
+    Scope =:= <<"talk_record">>
 ->
     ticket_view(Uid, ObjectKey);
 authorized_view(_, Rec, ObjectKey) ->
@@ -989,6 +1000,11 @@ authorize(<<"channel">>, Uid, Rec) ->
     end;
 authorize(<<"moment">>, Uid, Rec) ->
     authorize_moment_scope(Uid, Rec);
+%% talk_record（T06/DESIGN §10.3 回听行）：记录 ACL → 附件授权链——记录
+%% 未删除 +（owner 或活跃 grant）+ 本记录有效 bound 引用，三条件同查；
+%% 通用用户附件授权（private 按 creator）不构成旁路。无引用 fail-closed。
+authorize(<<"talk_record">>, Uid, Rec) ->
+    talk_record_attachment_adapter:authorize(Uid, Rec);
 authorize(_Scope, _Uid, _Rec) ->
     false.
 

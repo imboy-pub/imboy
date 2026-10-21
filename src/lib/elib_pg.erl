@@ -19,6 +19,10 @@
 -include_lib("kernel/include/logger.hrl").
 -include("log.hrl").
 
+-ifdef(TEST).
+-export([with_tx/4]).
+-endif.
+
 -export([
     with_conn/1,
     with_conn/2,
@@ -273,7 +277,6 @@ transaction_with_actions(Conn, F, Opts, Tag) ->
         end
     end.
 
-confirm_actions(_Conn, Result, Actions, _Tag) when map_size(Actions) =:= 0 -> Result;
 confirm_actions(Conn, Result, Actions, Tag) ->
     %% COMMIT 的 CommandComplete 可能实际为 ROLLBACK，不能只看事务体返回值。
     Status =
@@ -282,9 +285,14 @@ confirm_actions(Conn, Result, Actions, Tag) ->
         catch
             C:R -> {error, {C, R}}
         end,
-    case Status of
-        {ok, commit} -> {Tag, Result, Actions};
-        _ -> {error, {commit_not_confirmed, Result, Status}}
+    case {Status, Result} of
+        {{ok, commit}, _} ->
+            {Tag, Result, Actions};
+        {{ok, rollback}, {error, _}} ->
+            %% 已确认回滚时保留业务错误；内部封装防止连接层重试，丢弃提交动作。
+            {Tag, Result, #{}};
+        _ ->
+            {error, {commit_not_confirmed, Result, Status}}
     end.
 
 %% 连接已归还池；动作不得使用旧 Conn，只执行有界提交后操作。

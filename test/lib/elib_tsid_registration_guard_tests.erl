@@ -63,6 +63,44 @@ collect_lock_probe(Port, Output) ->
         error({tsid_lock_probe_timeout, Output})
     end.
 
+talk_record_real_allocator_test_() ->
+    {timeout, 20, fun() ->
+        Eval =
+            "talk_record = lists:last(elib_tsid:namespaces()), "
+            "ok = elib_tsid:init(#{dc_id => 1, node_id => 1, dc_bits => 3}), "
+            "Ids = elib_tsid:generate_n(talk_record, 5000), "
+            "5000 = length(Ids), 5000 = length(lists:usort(Ids)), "
+            "Ids = lists:sort(Ids), "
+            "true = lists:all(fun(I) -> is_integer(I) andalso I > 0 end, Ids), "
+            "lists:foreach(fun(I) -> #{dc_id := 1, node_id := 1, timestamp := T} "
+            "= elib_tsid:parse(I), true = T > 1735689600000 end, Ids), halt(0).",
+        Port = open_port(
+            {spawn_executable, os:find_executable("erl")},
+            [
+                binary,
+                exit_status,
+                stderr_to_stdout,
+                {args, [
+                    "+S",
+                    "2:2",
+                    "-noshell",
+                    "-pa",
+                    filename:dirname(code:which(elib_tsid)),
+                    "-eval",
+                    Eval
+                ]}
+            ]
+        ),
+        try
+            ?assertEqual({0, <<>>}, collect_lock_probe(Port, <<>>))
+        after
+            case erlang:port_info(Port) of
+                undefined -> ok;
+                _ -> erlang:port_close(Port)
+            end
+        end
+    end}.
+
 all_generate_call_sites_registered_test() ->
     CallSites = scan_generate_calls(),
     ?assert(length(CallSites) > 50, "扫描结果异常：调用点过少，扫描逻辑可能失效"),

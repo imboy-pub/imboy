@@ -345,7 +345,15 @@ init([]) ->
             OlmOtkCleanupWorker,
             BotDeliveryWorker,
             CredentialRetentionWorker,
-            AgentPaymentCompensationWorker
+            AgentPaymentCompensationWorker,
+            #{
+                id => talk_record_job_worker,
+                start => {talk_record_job_worker, start_link, []},
+                restart => permanent,
+                shutdown => 5000,
+                type => worker,
+                modules => [talk_record_job_worker]
+            }
         ] ++
             %% Q02 二期域常驻 runtime 条件启动（AC03"无任务/外呼"）：
             %% AI Agent presence 与 MCP 协议引擎仅在其域 feature 开启时

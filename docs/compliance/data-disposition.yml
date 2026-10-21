@@ -78,6 +78,13 @@ tables:
     mechanism: enqueue Garage object deletion
     review: self-evident
     retention: n/a
+  attachment_derived_write:
+    action: retain
+    owner: attachments
+    reason: 派生附件写入意图与作业尝试台账，可经附件及来源作业关联记录主体，注销不得丢弃未确认写入证据
+    mechanism: 迁移215写入状态机保护附件生命周期，未排空写入阻断清理，不随账号级联删除，终态台账清理尚未实现
+    review: pending-owner
+    retention: unknown
   billing_subscription:
     action: delete
     owner: payments
@@ -1536,6 +1543,141 @@ tables:
     mechanism: 迁移 180 独立数据库角色治理
     review: self-evident
     retention: 随服务身份生命周期
+
+# talk_record V1 ownership and retained identity dependencies are mandatory preflight facts.
+  talk_record:
+    action: retain
+    owner: talk_record
+    reason: 企业记录与治理证据不得随个人账号级联删除；个人记录须先走显式删除与附件生命周期
+    mechanism: mandatory talk_record preflight blocks unresolved ownership and RESTRICT identity references; no implicit anonymization
+    review: self-evident
+    retention: existing record and attachment governance
+  talk_record_capture:
+    action: retain
+    owner: talk_record
+    reason: 企业记录与治理证据不得随个人账号级联删除；个人记录须先走显式删除与附件生命周期
+    mechanism: mandatory talk_record preflight blocks unresolved ownership and RESTRICT identity references; no implicit anonymization
+    review: self-evident
+    retention: existing record and attachment governance
+  talk_record_capture_event:
+    action: retain
+    owner: talk_record
+    reason: 企业记录与治理证据不得随个人账号级联删除；个人记录须先走显式删除与附件生命周期
+    mechanism: mandatory talk_record preflight blocks unresolved ownership and RESTRICT identity references; no implicit anonymization
+    review: self-evident
+    retention: existing record and attachment governance
+  talk_record_audio_part:
+    action: retain
+    owner: talk_record
+    reason: 企业记录与治理证据不得随个人账号级联删除；个人记录须先走显式删除与附件生命周期
+    mechanism: mandatory talk_record preflight blocks unresolved ownership and RESTRICT identity references; no implicit anonymization
+    review: self-evident
+    retention: existing record and attachment governance
+  talk_record_mark:
+    action: retain
+    owner: talk_record
+    reason: 企业记录与治理证据不得随个人账号级联删除；个人记录须先走显式删除与附件生命周期
+    mechanism: mandatory talk_record preflight blocks unresolved ownership and RESTRICT identity references; no implicit anonymization
+    review: self-evident
+    retention: existing record and attachment governance
+  talk_record_transcript:
+    action: retain
+    owner: talk_record
+    reason: 企业记录与治理证据不得随个人账号级联删除；个人记录须先走显式删除与附件生命周期
+    mechanism: mandatory talk_record preflight blocks unresolved ownership and RESTRICT identity references; no implicit anonymization
+    review: self-evident
+    retention: existing record and attachment governance
+  talk_record_job:
+    action: retain
+    owner: talk_record
+    reason: 企业记录与治理证据不得随个人账号级联删除；个人记录须先走显式删除与附件生命周期
+    mechanism: mandatory talk_record preflight blocks unresolved ownership and RESTRICT identity references; no implicit anonymization
+    review: self-evident
+    retention: existing record and attachment governance
+  talk_record_export:
+    action: retain
+    owner: talk_record
+    reason: 企业记录与治理证据不得随个人账号级联删除；个人记录须先走显式删除与附件生命周期
+    mechanism: mandatory talk_record preflight blocks unresolved ownership and RESTRICT identity references; no implicit anonymization
+    review: self-evident
+    retention: existing record and attachment governance
+  talk_record_consent_event:
+    action: retain
+    owner: talk_record
+    reason: 企业记录与治理证据不得随个人账号级联删除；个人记录须先走显式删除与附件生命周期
+    mechanism: mandatory talk_record preflight blocks unresolved ownership and RESTRICT identity references; no implicit anonymization
+    review: self-evident
+    retention: existing record and attachment governance
+  talk_record_idempotency:
+    action: retain
+    owner: talk_record
+    reason: 企业记录与治理证据不得随个人账号级联删除；个人记录须先走显式删除与附件生命周期
+    mechanism: mandatory talk_record preflight blocks unresolved ownership and RESTRICT identity references; no implicit anonymization
+    review: self-evident
+    retention: existing record and attachment governance
+  talk_record_attachment_ref:
+    action: retain
+    owner: talk_record
+    reason: 企业记录与治理证据不得随个人账号级联删除；个人记录须先走显式删除与附件生命周期
+    mechanism: mandatory talk_record preflight blocks unresolved ownership and RESTRICT identity references; no implicit anonymization
+    review: self-evident
+    retention: existing record and attachment governance
+  talk_record_assembly:
+    action: retain
+    owner: talk_record
+    reason: 企业记录与治理证据不得随个人账号级联删除；个人记录须先走显式删除与附件生命周期
+    mechanism: mandatory talk_record preflight blocks unresolved ownership and RESTRICT identity references; no implicit anonymization
+    review: self-evident
+    retention: existing record and attachment governance
+  talk_record_processor_run:
+    action: retain
+    owner: talk_record
+    reason: 企业记录与治理证据不得随个人账号级联删除；个人记录须先走显式删除与附件生命周期
+    mechanism: mandatory talk_record preflight blocks unresolved ownership and RESTRICT identity references; no implicit anonymization
+    review: self-evident
+    retention: existing record and attachment governance
+  talk_record_grant:
+    action: retain
+    owner: talk_record
+    reason: 企业记录与治理证据不得随个人账号级联删除；个人记录须先走显式删除与附件生命周期
+    mechanism: mandatory talk_record preflight blocks unresolved ownership and RESTRICT identity references; no implicit anonymization
+    review: self-evident
+    retention: existing record and attachment governance
+  talk_record_participant:
+    action: retain
+    owner: talk_record
+    reason: 记录事实随所属记录留存；不把可空身份列处理误称为正文匿名化
+    mechanism: existing nullable user FK uses ON DELETE SET NULL after required preflight; no content rewrite
+    review: self-evident
+    retention: existing record governance
+  talk_record_speaker:
+    action: retain
+    owner: talk_record
+    reason: 记录事实随所属记录留存；不把可空身份列处理误称为正文匿名化
+    mechanism: existing nullable user FK uses ON DELETE SET NULL after required preflight; no content rewrite
+    review: self-evident
+    retention: existing record governance
+  talk_record_segment:
+    action: retain
+    owner: talk_record
+    reason: 记录事实随所属记录留存；不把可空身份列处理误称为正文匿名化
+    mechanism: existing nullable user FK uses ON DELETE SET NULL after required preflight; no content rewrite
+    review: self-evident
+    retention: existing record governance
+  talk_record_summary:
+    action: retain
+    owner: talk_record
+    reason: 记录事实随所属记录留存；不把可空身份列处理误称为正文匿名化
+    mechanism: existing nullable user FK uses ON DELETE SET NULL after required preflight; no content rewrite
+    review: self-evident
+    retention: existing record governance
+  talk_record_audit:
+    action: retain
+    owner: talk_record
+    reason: 记录事实随所属记录留存；不把可空身份列处理误称为正文匿名化
+    mechanism: existing nullable user FK uses ON DELETE SET NULL after required preflight; no content rewrite
+    review: self-evident
+    retention: existing record governance
 
 exclusions:
   adm_role:

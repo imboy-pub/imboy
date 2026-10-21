@@ -1,0 +1,6 @@
+name: pkg
+in: header
+required: false
+schema:
+  type: string
+description: Signed package name; server compatibility default pub.imboy.apk.

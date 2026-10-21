@@ -238,7 +238,16 @@ encode_ws_msg(Protocol, _Framing, _FrameType, Msg) when is_map(Msg) ->
 pb_lossless(Msg) when is_map(Msg) ->
     e2ee_pb_lossless(Msg) andalso
         direction_pb_lossless(Msg) andalso
+        content_pb_lossless(Msg) andalso
         ctrl_fields_pb_lossless(Msg).
+
+%% Unknown content types (including record cards) must retain their wire name.
+%% Existing JSON fallback carries the complete payload without a protobuf change.
+content_pb_lossless(Msg) ->
+    case maps:get(<<"msg_type">>, Msg, <<>>) of
+        <<>> -> true;
+        Type -> content_type_to_enum(Type) =/= 'CONTENT_TYPE_UNSPECIFIED'
+    end.
 
 %% @private type 非空且不落在 MsgDirection 枚举内 → 不可无损表达
 direction_pb_lossless(Msg) ->
@@ -433,6 +442,7 @@ content_type_from_enum(_) -> <<>>.
 %% 不进入 protobuf enum（无 proto 变更），在 JSON 通道由 msg_type binary
 %% 原样透传。业务层可据此判定是否为 JSON-only 内容类型（渲染/路由 gate）。
 -spec is_json_channel_type(binary()) -> boolean().
+is_json_channel_type(<<"talk_record_card">>) -> true;
 is_json_channel_type(<<"agent_task">>) -> true;
 is_json_channel_type(<<"a2a_task_update">>) -> true;
 is_json_channel_type(<<"stream_delta">>) -> true;

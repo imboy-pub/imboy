@@ -1,0 +1,75 @@
+type: object
+properties:
+  id:
+    type: integer
+    format: int64
+    minimum: 1
+    maximum: 9223372036854775807
+  record_id:
+    type: integer
+    format: int64
+    minimum: 1
+    maximum: 9223372036854775807
+  status:
+    type: string
+    enum:
+    - draft
+    - confirmed
+    - stale
+  overview:
+    type: string
+  source_transcript_version:
+    type: integer
+    format: int64
+    minimum: 1
+    maximum: 9223372036854775807
+  source_content_revision:
+    type: integer
+    format: int64
+    minimum: 1
+    maximum: 9223372036854775807
+  revision:
+    type: integer
+    format: int64
+    minimum: 1
+    maximum: 9223372036854775807
+  decisions:
+    type: array
+    items:
+      type: object
+      properties:
+        text:
+          type: string
+        segment_ids:
+          type: array
+          items:
+            type: integer
+            format: int64
+            minimum: 1
+            maximum: 9223372036854775807
+  actions:
+    type: array
+    items:
+      type: object
+      properties:
+        text:
+          type: string
+        segment_ids:
+          type: array
+          items:
+            type: integer
+            format: int64
+            minimum: 1
+            maximum: 9223372036854775807
+        assignee_user_id:
+          anyOf:
+          - type: integer
+            format: int64
+            minimum: 1
+            maximum: 9223372036854775807
+          - type: 'null'
+        due_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'

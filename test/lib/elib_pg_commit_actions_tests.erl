@@ -6,6 +6,9 @@ commit_actions_test_() ->
         fun(C) -> ?_test(committed_actions_are_deferred_and_deduplicated(C)) end,
         fun(C) -> ?_test(rollback_discards_actions(C)) end,
         fun(C) -> ?_test(silent_rollback_does_not_run_actions(C)) end,
+        fun(C) -> ?_test(confirmed_rollback_preserves_sql_error(C)) end,
+        fun(C) -> ?_test(confirmed_rollback_never_retries_error_body(C)) end,
+        fun(C) -> ?_test(unknown_receipt_does_not_preserve_error_as_confirmed(C)) end,
         fun(C) -> ?_test(commit_exception_discards_actions(C)) end,
         fun(C) -> ?_test(action_failure_is_not_a_rollback(C)) end,
         fun(C) -> ?_test(nested_transactions_restore_outer_queue(C)) end,
@@ -83,6 +86,43 @@ silent_rollback_does_not_run_actions(_Conns) ->
         end)
     ),
     ?assertEqual([], get(commit_test_events)).
+
+confirmed_rollback_preserves_sql_error(_Conns) ->
+    Error = {error, {sql, <<"23503">>, <<"synthetic_fk">>}},
+    ?assertEqual(Error, returned_error({ok, rollback}, Error, 0)),
+    ?assertEqual([], get(commit_test_events)),
+    ?assertEqual(1, meck:num_calls(epgsql, with_transaction, 3)),
+    ?assertEqual(undefined, get(elib_pg_commit_actions)).
+
+confirmed_rollback_never_retries_error_body(_Conns) ->
+    Error = {error, {db_exception, error, synthetic_body_failure}},
+    ?assertEqual(Error, returned_error({ok, rollback}, Error, 2)),
+    ?assertEqual(1, meck:num_calls(epgsql, with_transaction, 3)),
+    ?assertEqual(1, meck:num_calls(pooler, take_member, 1)),
+    ?assertEqual([], get(commit_test_events)).
+
+unknown_receipt_does_not_preserve_error_as_confirmed(_Conns) ->
+    Error = {error, {sql, <<"23503">>, <<"synthetic_fk">>}},
+    Unknown = {error, synthetic_receipt_lost},
+    ?assertEqual(
+        {error, {commit_not_confirmed, Error, Unknown}},
+        returned_error(Unknown, Error, 2)
+    ),
+    ?assertEqual(1, meck:num_calls(epgsql, with_transaction, 3)),
+    ?assertEqual([], get(commit_test_events)).
+
+returned_error(Status, Error, RetryBudget) ->
+    meck:expect(epgsql, get_cmd_status, fun(_) -> Status end),
+    put(commit_test_events, []),
+    elib_pg:with_tx(
+        fun(C) ->
+            elib_pg:after_commit(C, never, fun() -> record_action(incorrect) end),
+            Error
+        end,
+        [{reraise, true}],
+        RetryBudget,
+        0
+    ).
 
 commit_exception_discards_actions(_Conns) ->
     meck:expect(epgsql, with_transaction, fun(C, F, _) ->

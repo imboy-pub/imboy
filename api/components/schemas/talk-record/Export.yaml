@@ -1,0 +1,43 @@
+type: object
+properties:
+  export_id:
+    type: integer
+    format: int64
+    minimum: 1
+    maximum: 9223372036854775807
+  record_id:
+    type: integer
+    format: int64
+    minimum: 1
+    maximum: 9223372036854775807
+  job_id:
+    anyOf:
+    - type: integer
+      format: int64
+      minimum: 1
+      maximum: 9223372036854775807
+    - type: 'null'
+  state:
+    type: string
+    enum:
+    - queued
+    - ready
+    - failed
+    - expired
+  format:
+    type: string
+    enum:
+    - txt
+    - md
+  expires_at:
+    anyOf:
+    - type: string
+      format: date-time
+    - type: 'null'
+  url:
+    type: string
+  ticket:
+    type: string
+  expiry:
+    type: integer
+    format: int64

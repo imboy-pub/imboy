@@ -1,0 +1,77 @@
+type: object
+properties:
+  part_id:
+    type: integer
+    format: int64
+    minimum: 1
+    maximum: 9223372036854775807
+  attachment_id:
+    anyOf:
+    - type: integer
+      format: int64
+      minimum: 1
+      maximum: 9223372036854775807
+    - type: 'null'
+  seq:
+    type: integer
+    format: int64
+    minimum: 0
+    maximum: 9223372036854775807
+  start_ms:
+    type: integer
+    format: int64
+    minimum: 0
+    maximum: 9223372036854775807
+  end_ms:
+    type: integer
+    format: int64
+    minimum: 0
+    maximum: 9223372036854775807
+  sha256:
+    type: string
+    pattern: ^[a-f0-9]{64}$
+  byte_size:
+    type: integer
+    format: int64
+    minimum: 0
+    maximum: 9223372036854775807
+  upload_status:
+    type: string
+    enum:
+    - pending
+    - verifying
+    - confirmed
+  upload_ref:
+    type: object
+    properties:
+      gateway:
+        type: boolean
+      put_url:
+        type: string
+      upload_capability:
+        type: string
+      client_upload_id:
+        type: string
+        format: uuid
+      object_key:
+        type: string
+      expires_at:
+        type: integer
+        format: int64
+        minimum: 0
+        maximum: 9223372036854775807
+  capture_id:
+    type: integer
+    format: int64
+    minimum: 1
+    maximum: 9223372036854775807
+  capture_offset_ms:
+    type: integer
+    format: int64
+    minimum: 0
+  codec:
+    type:
+    - string
+    - 'null'
+  etag:
+    type: string

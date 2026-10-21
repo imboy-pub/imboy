@@ -10,7 +10,12 @@ init(Req, State) ->
     {ok, Reply, State}.
 
 search(Req, State) ->
-    Id = elib_cnv:safe_to_integer(cowboy_req:binding(workspace_id, Req)),
+    Binding =
+        case cowboy_req:binding(workspace_id, Req) of
+            undefined -> cowboy_req:binding(organization_id, Req);
+            WsId -> WsId
+        end,
+    Id = elib_cnv:safe_to_integer(Binding),
     case is_integer(Id) andalso Id > 0 of
         false ->
             elib_response:error(Req, <<"Invalid workspace">>, 400);
@@ -23,13 +28,16 @@ search(Req, State) ->
     end.
 
 action(Req, Uid, Ws, Input) ->
-    case cowboy_req:binding(attachment_id, Req) of
-        undefined ->
+    case {cowboy_req:binding(organization_id, Req), cowboy_req:binding(attachment_id, Req)} of
+        {Org, undefined} when Org =/= undefined ->
+            workspace_attachment_logic:search_organization(Uid, Ws, Input);
+        {undefined, undefined} ->
             workspace_attachment_logic:search(Uid, Ws, Input);
-        Raw ->
+        {_, Raw} ->
             case elib_cnv:safe_to_integer(Raw) of
                 Id when is_integer(Id), Id > 0 ->
                     case workspace_attachment_logic:open(Uid, Ws, Id) of
+                        {ok, Locator} when is_map(Locator) -> {ok, Locator};
                         {ok, Url} ->
                             {ok, #{url => Url}};
                         {error, {Code, Message}} when is_integer(Code), is_binary(Message) ->

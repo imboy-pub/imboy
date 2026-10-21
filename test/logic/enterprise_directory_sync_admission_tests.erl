@@ -88,9 +88,17 @@ human_governance_is_separate_test() ->
                 []
             end),
             meck:expect(organization_member_repo, remove_tx, fun(conn, 10, 42) -> ok end),
+            meck:expect(elib_pg, query, fun(conn, _Sql, [42, 10]) -> {ok, []} end),
             meck:expect(elib_log, internal_log, fun(_, _, _, _) -> ok end),
             ?assertMatch({ok, _}, organization_member_logic:remove(99, 10, 42)),
+            ?assertEqual(1, meck:num_calls(elib_pg, query, [conn, '_', [42, 10]])),
             ?assertMatch({error, {403, _}}, organization_member_logic:remove(98, 10, 42)),
+            ?assertEqual(1, meck:num_calls(elib_pg, query, [conn, '_', [42, 10]])),
+            meck:expect(elib_pg, query, fun(conn, _Sql, [42, 10]) ->
+                {error, custody_projection_failed}
+            end),
+            ?assertMatch({error, {500, _}}, organization_member_logic:remove(99, 10, 42)),
+            ?assertEqual(2, meck:num_calls(elib_pg, query, [conn, '_', [42, 10]])),
             ?assertEqual(0, meck:num_calls(enterprise_directory_source_repo, authorize_tx, '_'))
         end
     ).

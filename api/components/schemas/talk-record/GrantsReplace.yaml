@@ -1,0 +1,30 @@
+type: object
+required:
+- grants
+properties:
+  grants:
+    type: array
+    items:
+      type: object
+      required:
+      - grantee_user_id
+      - role
+      properties:
+        grantee_user_id:
+          type: integer
+          format: int64
+          minimum: 1
+          maximum: 9223372036854775807
+        role:
+          type: string
+          enum:
+          - viewer
+          - editor
+        allow_export:
+          type: boolean
+        expires_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+    maxItems: 100

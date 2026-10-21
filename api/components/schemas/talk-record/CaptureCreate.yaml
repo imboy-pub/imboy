@@ -1,0 +1,15 @@
+type: object
+required:
+- device_session_id
+- device_id
+properties:
+  device_session_id:
+    type: string
+    format: uuid
+  device_id:
+    type: string
+    minLength: 1
+    maxLength: 128
+  reported_started_at:
+    type: string
+    format: date-time

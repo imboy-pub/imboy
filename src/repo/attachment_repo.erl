@@ -73,6 +73,8 @@
 %% 重写成 image/jpg），定义见文件尾 normalize_image_mime/1
 -ifdef(TEST).
 -export([normalize_image_mime/1]).
+%% T06：隔离库直连验证 orphan_predicate 行为（绕过 eunit 池；仅测试构建导出）
+-export([orphan_predicate/0]).
 -endif.
 -include("common.hrl").
 
@@ -184,79 +186,13 @@ confirmation_row_tx(Conn, ObjectKey) ->
         {error, _} = Error -> Error
     end.
 
-%% W3-01 引用首绑/释放同锁（02 §4）：业务关系写入口先取与 intent/GC 相同的
-%% 对象事务锁（迁移 168 的 hashtextextended(path,168)），锁内复核 lifecycle——
-%% delete_intent/deleted（墓碑）拒绝新增引用，绑定事务改变零业务行。
+%% Public facade retained for all existing callers; implementation owns reference qualification.
 -spec bind_reference_lock_tx(any(), binary()) -> ok | {error, tombstone | term()}.
 bind_reference_lock_tx(Conn, Path) ->
-    case
-        elib_pg:query(
-            Conn,
-            <<
-                "SELECT pg_advisory_xact_lock(hashtextextended($1,168)),"
-                " lifecycle_state FROM public.attachment WHERE path=$1"
-                " FOR UPDATE"
-            >>,
-            [Path]
-        )
-    of
-        {ok, [#{<<"lifecycle_state">> := <<"live">>}]} ->
-            ok;
-        {ok, [#{<<"lifecycle_state">> := _}]} ->
-            {error, tombstone};
-        {ok, []} ->
-            %% 尚无元数据行（上传绑定前）：仅取对象锁，与 intent 锁域对齐
-            case
-                elib_pg:query(
-                    Conn,
-                    <<"SELECT pg_advisory_xact_lock(hashtextextended($1,168))">>,
-                    [Path]
-                )
-            of
-                {ok, _} -> ok;
-                {error, R} -> {error, R}
-            end;
-        {error, R} ->
-            {error, R}
-    end.
-
-%% W3-01 gc_verified 覆盖证明（02 §5）：gc_verified = 「引用零」的可证明态。
-%% W3-02 两域统一资格（02 §5 统一判据 + 企业应用附件行）：proven 与 intent
-%% 函数锁后复核同一引用集（group_file 绑定 / 收藏 hash / moment 媒体 /
-%% WAR 行 / EAR hold 或未 purged）+ 明文 + 完整位置；绑定活跃/密文/位置
-%% 缺失/治理 hold 一律 false。资格标志陈旧 true 不破坏安全——intent 在
-%% 对象锁内重查全部引用。
+    attachment_reference_guard_repo:bind_reference_lock_tx(Conn, Path).
 -spec refresh_gc_verified_tx(any(), binary()) -> {ok, boolean()} | {error, term()}.
 refresh_gc_verified_tx(Conn, Path) ->
-    Sql =
-        <<
-            "UPDATE public.attachment a SET gc_verified = c.proven"
-            " FROM (SELECT a2.path,"
-            "   (a2.cipher IS NULL"
-            "    AND a2.storage_driver IS NOT NULL AND a2.storage_namespace IS NOT NULL"
-            "    AND a2.storage_container IS NOT NULL AND a2.storage_locator_sha256 IS NOT NULL"
-            "    AND (a2.group_file_id IS NULL OR NOT EXISTS"
-            "      (SELECT 1 FROM public.group_file gf WHERE gf.id = a2.group_file_id))"
-            "    AND NOT EXISTS (SELECT 1 FROM public.user_collect uc"
-            "      WHERE uc.attach_file_hash256 <> '' AND uc.attach_file_hash256 = a2.file_hash256"
-            "        AND uc.status = 1)"
-            "    AND NOT EXISTS (SELECT 1 FROM public.moment_post mp"
-            "      WHERE position(a2.path in mp.media::text) > 0)"
-            "    AND NOT EXISTS (SELECT 1 FROM public.workspace_attachment_retention war"
-            "      WHERE war.attachment_id = a2.id)"
-            "    AND NOT EXISTS (SELECT 1 FROM public.enterprise_attachment_retention ear"
-            "      WHERE ear.attachment_id = a2.id"
-            "        AND (ear.hold_state = 'held'"
-            "             OR ear.purge_state IS DISTINCT FROM 'purged'))"
-            "   ) AS proven"
-            "  FROM public.attachment a2 WHERE a2.path = $1) c"
-            " WHERE a.path = c.path RETURNING a.gc_verified"
-        >>,
-    case elib_pg:query(Conn, Sql, [Path]) of
-        {ok, [#{<<"gc_verified">> := V}]} -> {ok, V};
-        {ok, []} -> {error, not_found};
-        {error, R} -> {error, R}
-    end.
+    attachment_reference_guard_repo:refresh_gc_verified_tx(Conn, Path).
 
 %% W2-02 confirm 幂等（04-tasks 实现边界）：metadata insert-if-absent 与真实
 %% 引用新增拆开——confirm 重放不再递增 referer（收藏/转发等真实引用仍走
@@ -513,59 +449,14 @@ bind_moment_scope_ref(Conn, Uid, ObjectKeys, MomentId) when is_integer(Uid), Uid
 bind_moment_scope_ref(_, _, _, _) ->
     {error, invalid_user}.
 
-%% One predicate keeps preview, candidate selection and transactional deletion aligned.
-orphan_predicate() ->
-    <<
-        " a.status = 1 AND a.referer_time = 0"
-        " AND a.created_at < NOW() - ($1 * INTERVAL '1 day')"
-        " AND (a.last_referer_at IS NULL"
-        " OR a.last_referer_at < NOW() - ($1 * INTERVAL '1 day'))"
-        " AND NOT EXISTS (SELECT 1 FROM workspace_attachment_retention r"
-        " WHERE r.attachment_id = a.id)"
-        " AND NOT EXISTS (SELECT 1 FROM enterprise_attachment_retention r"
-        " WHERE r.attachment_id = a.id)"
-    >>.
-
+orphan_predicate() -> attachment_reference_guard_repo:orphan_predicate().
 -spec orphan_stats(map()) -> {ok, map()} | {error, term()}.
-orphan_stats(Opts) ->
-    elib_pg:one(
-        [
-            <<"SELECT COUNT(*) AS count, COALESCE(SUM(a.size), 0) AS total_size FROM ">>,
-            tablename(),
-            <<" a WHERE ">>,
-            orphan_predicate()
-        ],
-        [maps:get(age_days, Opts, 30)]
-    ).
-
+orphan_stats(Opts) -> attachment_reference_guard_repo:orphan_stats(Opts).
 -spec orphan_list_for_delete(map()) -> {ok, [map()]} | {error, term()}.
-orphan_list_for_delete(Opts) ->
-    elib_pg:query(
-        [
-            <<"SELECT a.id, a.path FROM ">>,
-            tablename(),
-            <<" a WHERE ">>,
-            orphan_predicate(),
-            <<" LIMIT 500">>
-        ],
-        [maps:get(age_days, Opts, 30)]
-    ).
-
-%% Delete inside the caller's transaction before touching object storage.
-%% FK retention checks and row locks remain effective until commit/rollback.
+orphan_list_for_delete(Opts) -> attachment_reference_guard_repo:orphan_list_for_delete(Opts).
 -spec delete_orphan_tx(pid(), integer(), map()) -> {ok, [map()]} | {error, term()}.
 delete_orphan_tx(Conn, Id, Opts) ->
-    elib_pg:query(
-        Conn,
-        [
-            <<"DELETE FROM ">>,
-            tablename(),
-            <<" a WHERE a.id = $2 AND ">>,
-            orphan_predicate(),
-            <<" RETURNING a.path,a.scope">>
-        ],
-        [maps:get(age_days, Opts, 30), Id]
-    ).
+    attachment_reference_guard_repo:delete_orphan_tx(Conn, Id, Opts).
 
 %% W4-01 入口收口（02 §4/§5）：metadata 域删除意图（迁移 179 fn）。
 %% 资格全部在 fn 内锁后复核：gc_verified=true + 无治理行/绑定/收藏/moment
@@ -630,20 +521,8 @@ intent_purged_delete_tx(Conn, Path, Reason) ->
 intent_ordinary_delete(Path, Reason) ->
     elib_pg:with_tx(fun(Conn) -> intent_ordinary_delete_tx(Conn, Path, Reason) end).
 
-%% 孤儿意图的只读定位（收口后行删除由队列 ack 协议负责，意图阶段不删行）。
 -spec orphan_path_tx(pid() | any(), integer(), map()) -> {ok, [map()]} | {error, term()}.
-orphan_path_tx(Conn, Id, Opts) ->
-    elib_pg:query(
-        Conn,
-        [
-            <<"SELECT a.path, a.scope FROM ">>,
-            tablename(),
-            <<" a WHERE a.id = $2 AND ">>,
-            orphan_predicate(),
-            <<" LIMIT 1">>
-        ],
-        [maps:get(age_days, Opts, 30), Id]
-    ).
+orphan_path_tx(Conn, Id, Opts) -> attachment_reference_guard_repo:orphan_path_tx(Conn, Id, Opts).
 
 -spec hard_delete_by_ids([integer()]) -> ok | {error, term()}.
 hard_delete_by_ids([]) ->

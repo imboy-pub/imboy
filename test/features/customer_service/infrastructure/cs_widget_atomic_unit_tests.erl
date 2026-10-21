@@ -266,7 +266,13 @@ commit_confirmation(Operation, Status) ->
                     {error, {db_exception, error, {badmatch, Status}}}
             end,
         ?assertEqual(Expected, Actual),
-        ?assertEqual(1, meck:num_calls(epgsql_sock, get_cmd_status, 1)),
+        %% 成功时驱动 ensure_committed 与通用事务保护分别确认；失败提前退出。
+        StatusChecks =
+            case Status of
+                {ok, commit} -> 2;
+                _ -> 1
+            end,
+        ?assertEqual(StatusChecks, meck:num_calls(epgsql_sock, get_cmd_status, 1)),
         ?assertEqual(1, meck:num_calls(pooler, return_member, 2))
     after
         lists:foreach(fun meck:unload/1, Mods),

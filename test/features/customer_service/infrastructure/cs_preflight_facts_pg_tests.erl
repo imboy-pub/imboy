@@ -12,7 +12,7 @@
 %%     Assignment 必须无 active，Seat 不随 User 删除）；Seat 停用 → 无 blocker；
 %%   * 编排器集成：真实 EB/CS provider + ORG-02 org/workspace provider +
 %%     agent stub 全注册 → blockers 聚合；env 显式缩减注册表 → fail-closed 拒；
-%%     默认五域注册表（agent 域 2026-09-18 登记后）→ 全 provider 聚合。
+%%     默认六域注册表（agent 域 2026-09-18 登记后）→ 全 provider 聚合。
 %%
 %% 运行：make eunit-local t=cs_preflight_facts_pg_tests
 %% PG：一次性容器 imboy-org08-pg18 @127.0.0.1:4393（ORG08_PGPORT 可覆盖）；
@@ -188,7 +188,8 @@ orchestrator_aggregates_with_real_eb_cs_providers() ->
                 {workspace, organization_preflight_facts_pg, facts_workspace},
                 {enterprise_business, eb_preflight_facts_pg, facts_enterprise_business},
                 {customer_service, cs_preflight_facts_pg, facts_customer_service},
-                {agent, organization_preflight_stub_providers, facts_agent}
+                {agent, organization_preflight_stub_providers, facts_agent},
+                {talk_record, organization_preflight_stub_providers, facts_talk_record}
             ],
         ok = application:set_env(imboy, deletion_preflight_providers, Registry),
         ok = application:set_env(imboy, preflight_stub_behavior, ok_all),
@@ -222,7 +223,7 @@ orchestrator_aggregates_with_real_eb_cs_providers() ->
 
 %% 默认注册表五域已齐（agent 域 = 2026-09-18 用户拍板登记，原「推迟登记至
 %% Agent track」裁决条款解除，见 control/ruling-agent-provider-defer.md 顶部
-%% 注记）：默认注册表下不再因缺域拒——本用例演进为验证默认五域全 provider
+%% 注记）：默认注册表下不再因缺域拒——本用例演进为验证默认六域全 provider
 %% 实时聚合成功。「缺域照拒」语义不受影响，由 env 显式缩减注册表的用例冻结
 %% （本文件上方 workspace-only 用例 + organization_preflight_tests 的
 %% reduced_registry_without_agent_still_rejected）。
@@ -231,10 +232,10 @@ orchestrator_default_registry_full_aggregation() ->
     {ok, #{subject_user_id := 424242, facts := Facts, blockers := Blockers}} =
         organization_deletion_preflight:run(424242),
     ?assertEqual(
-        [organization, workspace, enterprise_business, customer_service, agent],
+        [organization, workspace, enterprise_business, customer_service, agent, talk_record],
         [maps:get(domain, F) || F <- Facts]
     ),
-    %% 无任何资源的探测 subject → 五域全绿空 blocker
+    %% 无任何资源的探测 subject → 六域全绿空 blocker
     ?assertEqual([], Blockers).
 
 %% ===================================================================

@@ -16,7 +16,10 @@ departure_test_() ->
             resource_error,
             parent_error,
             admin_removal,
-            non_member
+            non_member,
+            talk_record_owner,
+            responsibility_error,
+            projection_error
         ]
     ].
 
@@ -36,7 +39,24 @@ mocks(Mode) ->
                     throw:{abort_tx, Reason} -> {error, Reason}
                 end
             end},
-            {execute, 3, fun(conn, _, _) -> {ok, 1} end}
+            {execute, 3, fun(conn, _, _) -> {ok, 1} end},
+            {query, 3, fun(conn, Sql, [2, 10]) ->
+                case iolist_to_binary(Sql) of
+                    <<"SELECT id FROM talk_record", _/binary>> ->
+                        put(responsibility_checks, 1),
+                        case Mode of
+                            talk_record_owner -> {ok, [#{<<"id">> => 90001}]};
+                            responsibility_error -> {error, responsibility_unavailable};
+                            _ -> {ok, []}
+                        end;
+                    <<"UPDATE talk_record", _/binary>> ->
+                        put(custody_projections, 1),
+                        case Mode of
+                            projection_error -> {error, custody_projection_unavailable};
+                            _ -> {ok, []}
+                        end
+                end
+            end}
         ]},
         {organization_member_repo, [
             {find_organization_for_share_tx, 3, fun(conn, 10, _) ->
@@ -147,10 +167,45 @@ verify(Mode) ->
             blocked(Result, 500);
         non_member ->
             blocked(Result, 403);
+        talk_record_owner ->
+            blocked(Result, 409);
+        responsibility_error ->
+            blocked(Result, 500);
+        projection_error ->
+            blocked(Result, 500);
         _ ->
             ?assertMatch({ok, #{status := <<"removed">>, affected_workspaces := [_, _]}}, Result),
             ?assertEqual([21, 20], erase(notified)),
             ?assertEqual(true, erase(committed))
+    end,
+    ExpectedChecks =
+        case Mode of
+            owner -> 0;
+            non_member -> 0;
+            admin_removal -> 0;
+            _ -> 1
+        end,
+    ExpectedProjections =
+        case Mode of
+            member -> 1;
+            admin -> 1;
+            suspended -> 1;
+            archived -> 1;
+            admin_removal -> 1;
+            projection_error -> 1;
+            _ -> 0
+        end,
+    ?assertEqual(ExpectedChecks, counter(responsibility_checks)),
+    ?assertEqual(ExpectedProjections, counter(custody_projections)),
+    ?assertEqual(
+        ExpectedChecks + ExpectedProjections,
+        meck:num_calls(elib_pg, query, [conn, '_', [2, 10]])
+    ).
+
+counter(Key) ->
+    case erase(Key) of
+        undefined -> 0;
+        N -> N
     end.
 
 blocked(Result, Code) ->

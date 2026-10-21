@@ -442,6 +442,15 @@ machine_departure_reuses_cleanup_test() ->
                 [#{workspace_id => 5}]
             end),
             meck:expect(organization_member_repo, remove_tx, fun(conn, 10, 42) -> ok end),
+            meck:expect(elib_pg, query, fun(conn, _Sql, [42, 10]) ->
+                ?assertEqual(
+                    1, meck:num_calls(organization_member_repo, remove_tx, [conn, 10, 42])
+                ),
+                case get(directory_projection_error) of
+                    true -> {error, custody_projection_failed};
+                    _ -> {ok, []}
+                end
+            end),
             meck:expect(elib_pg, after_commit, fun(conn, _, Callback) ->
                 put(directory_commit_callback, Callback),
                 ok
@@ -453,7 +462,23 @@ machine_departure_reuses_cleanup_test() ->
             ?assertEqual(0, meck:num_calls(workspace_ds, member_removed, '_')),
             Callback = erase(directory_commit_callback),
             ok = Callback(),
-            ?assertEqual(1, meck:num_calls(workspace_ds, member_removed, '_'))
+            ?assertEqual(1, meck:num_calls(workspace_ds, member_removed, '_')),
+            ?assertEqual(1, meck:num_calls(elib_pg, query, [conn, '_', [42, 10]])),
+            %% Projection failure aborts before any new commit callback is registered.
+            meck:reset(organization_member_repo),
+            put(directory_projection_error, true),
+            try
+                ?assertThrow(
+                    {abort_tx, {internal, custody_projection_failed}},
+                    organization_member_logic:directory_remove_tx(conn, ctx(), 10, 42)
+                ),
+                ?assertEqual(2, meck:num_calls(elib_pg, query, [conn, '_', [42, 10]])),
+                ?assertEqual(1, meck:num_calls(elib_pg, after_commit, '_')),
+                ?assertEqual(1, meck:num_calls(workspace_ds, member_removed, '_')),
+                ?assertEqual(undefined, get(directory_commit_callback))
+            after
+                erase(directory_projection_error)
+            end
         end
     ).
 

@@ -174,8 +174,13 @@ leave(Uid, OrgId) ->
         OrgId,
         fun(Conn, _Org, {Role, Status}) ->
             case Role of
-                <<"owner">> -> abort(409, <<"请先移交企业负责人，再退出企业"/utf8>>);
-                _ -> remove_active_tx(Conn, OrgId, Uid, Status)
+                <<"owner">> ->
+                    abort(409, <<"请先移交企业负责人，再退出企业"/utf8>>);
+                _ ->
+                    ok = talk_record_delete_logic:ensure_departure_responsibility_tx(
+                        Conn, Uid, OrgId
+                    ),
+                    remove_active_tx(Conn, OrgId, Uid, Status)
             end
         end,
         <<"退出失败，请稍后重试"/utf8>>,
@@ -381,7 +386,14 @@ remove_active_tx(Conn, OrgId, TargetUid, Status) ->
             _ -> remove_member_row_tx(Conn, OrgId, TargetUid)
         end,
     {ok, Member} = remove_row_tx(Conn, OrgId, TargetUid, Result),
+    ok = project_talk_record_departure_tx(Conn, OrgId, TargetUid),
     {ok, Member#{affected_workspaces => Workspaces}}.
+
+project_talk_record_departure_tx(Conn, OrgId, Uid) ->
+    case talk_record_delete_logic:project_departure_custody_tx(Conn, Uid, OrgId) of
+        {ok, _} -> ok;
+        {error, Reason} -> throw({abort_tx, {internal, Reason}})
+    end.
 
 remove_row_tx(_Conn, OrgId, TargetUid, Result) ->
     case Result of
@@ -420,7 +432,7 @@ remove_member_row_tx(Conn, OrgId, Uid) ->
 %% 语义要点：
 %%   * suspended 是**可恢复**的撤权第一步（EB-D07）：不动 `workspace_member`、
 %%     不动经办关系、不动个人账号；「企业业务授权立即失败」由授权路径逐请求读事实
-%%     实现（本函数只负责把事实改成 suspended）。
+%%     实现；同事务仅投影面聊待移交状态并作废旧票据，不移交或开放内容。
 %%   * `remove/3` 会因「仍被依赖资源引用」被数据库拒绝并映射为 409；suspend 不会
 %%     （暂停不破坏任何引用）——两者语义由 `dependent_resources_conflict/1` 的
 %%     窄映射保持一致：**只有真被依赖挡住时才说 409**。
@@ -508,6 +520,7 @@ suspend_tx(Conn, OrgId, TargetUid) ->
         {ok, #{<<"status">> := <<"active">>, <<"role">> := Role}} ->
             case set_member_status_tx(Conn, OrgId, TargetUid, <<"active">>, <<"suspended">>) of
                 ok ->
+                    ok = project_talk_record_departure_tx(Conn, OrgId, TargetUid),
                     {ok, member_result(OrgId, TargetUid, Role, <<"suspended">>)};
                 {error, Reason} ->
                     throw({abort_tx, {internal, Reason}})

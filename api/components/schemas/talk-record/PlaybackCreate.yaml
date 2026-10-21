@@ -1,0 +1,7 @@
+type: object
+properties:
+  position_ms:
+    type: integer
+    format: int64
+    minimum: 0
+    maximum: 9223372036854775807

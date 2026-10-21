@@ -54,6 +54,7 @@ bootstrap_rows(_Scopes, Authorized) ->
     meck:expect(elib_pg, query, fun(conn, Sql, Params) ->
         case Params of
             [1, 2] ->
+                assert_source_query(Sql),
                 {ok, [#{<<"id">> => 1}]};
             [1, <<"org">>] ->
                 ?assertNotEqual(
@@ -97,6 +98,7 @@ bootstrap_mocks(Fun) ->
 revoked_credential_and_source_lock_test() ->
     with_pg(fun() ->
         meck:expect(elib_pg, query, fun(conn, Sql, [1, 2]) ->
+            assert_source_query(Sql),
             ?assertNotEqual(nomatch, binary:match(Sql, <<"FOR UPDATE OF a">>)),
             ?assertNotEqual(nomatch, binary:match(Sql, <<"c.status='active'">>)),
             ?assertNotEqual(nomatch, binary:match(Sql, <<"c.expires_at>clock_timestamp()">>)),
@@ -338,3 +340,17 @@ with_pg(Fun) ->
     after
         meck:unload(elib_pg)
     end.
+
+%% Current credential and application remain locked during authorization.
+assert_source_query(Sql) ->
+    lists:foreach(
+        fun(Required) ->
+            ?assertNotEqual(nomatch, binary:match(Sql, Required))
+        end,
+        [
+            <<"FOR UPDATE OF a">>,
+            <<"FOR SHARE OF c">>,
+            <<"c.status='active'">>,
+            <<"c.expires_at>clock_timestamp()">>
+        ]
+    ).

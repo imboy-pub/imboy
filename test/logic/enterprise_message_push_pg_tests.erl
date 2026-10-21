@@ -142,6 +142,15 @@ install_pool_shim(Conn) ->
     meck:expect(elib_pg, query, 2, fun(Sql, Params) ->
         elib_pg:query(Conn, Sql, Params)
     end),
+    %% passthrough one/2 的模块内 query 调用不会经过导出 query/2 桩；
+    %% 新增发送时资格查询也必须读同一真实 marker 连接，绝不 mock 允许结果。
+    meck:expect(elib_pg, one, 2, fun(Sql, Params) ->
+        case elib_pg:query(Conn, Sql, Params) of
+            {ok, [Row | _]} -> {ok, Row};
+            {ok, []} -> {ok, #{}};
+            Error -> Error
+        end
+    end),
     ok.
 
 %% 异步壳同步化 + provider 全部桩化（内含「真实出网即失败」硬门）

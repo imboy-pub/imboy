@@ -1,0 +1,6 @@
+name: vsn
+in: header
+required: false
+schema:
+  type: string
+description: Device signing application version; server compatibility default 0.1.1.

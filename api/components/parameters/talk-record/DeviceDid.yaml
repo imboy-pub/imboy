@@ -1,0 +1,7 @@
+name: did
+in: header
+required: false
+schema:
+  type: string
+description: Device identity in signature plaintext; capture device_id is durably
+  pinned from the same identity.

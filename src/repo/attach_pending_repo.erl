@@ -14,7 +14,9 @@
 
 -export([claim_expired_tx/3]).
 -export([add/4]).
--export([register_v5/5, register_v5/6, status_lookup/1, register_content_pin/2, recheck_content_pin/3]).
+-export([
+    register_v5/5, register_v5/6, status_lookup/1, register_content_pin/2, recheck_content_pin/3
+]).
 -export([register_v5_tx/7, renew_capability/3, renew_capability_tx/4]).
 -export([lock_session_tx/2, confirm_session_tx/3]).
 -export([intent_pending_delete_tx/4, intent_pending_delete/3]).
@@ -357,7 +359,7 @@ principal_to_int(B) when is_binary(B) ->
 -spec renew_capability(binary(), integer(), integer()) ->
     {ok, #{committed_expires_at => integer(), deadline => integer()}} | {error, term()}.
 renew_capability(Key, Uid, NewExpirySec) ->
-    renew_result(elib_pg:query(renew_sql(), [Key, Uid, iso8601(NewExpirySec)])).
+    renew_result(elib_pg:query(renew_sql(), [Key, Uid, NewExpirySec])).
 
 %% 事务内版本（企业内部入口幂等事务回调使用）。
 -spec renew_capability_tx(any(), binary(), integer() | binary(), integer()) ->
@@ -365,7 +367,7 @@ renew_capability(Key, Uid, NewExpirySec) ->
 renew_capability_tx(Conn, Key, UidOrPrincipal, NewExpirySec) ->
     renew_result(
         elib_pg:query(
-            Conn, renew_sql(), [Key, principal_to_int(UidOrPrincipal), iso8601(NewExpirySec)]
+            Conn, renew_sql(), [Key, principal_to_int(UidOrPrincipal), NewExpirySec]
         )
     ).
 
@@ -456,26 +458,31 @@ confirm_session_tx(Conn, ObjectKey, AttachmentId) ->
 -spec intent_pending_delete_tx(pid() | any(), binary(), binary(), binary()) ->
     ok | {error, term()}.
 intent_pending_delete_tx(Conn, ObjectKey, Mode, Reason) ->
-    Savepoint = <<"v5_pending_intent_", (integer_to_binary(erlang:unique_integer([positive])))/binary>>,
+    Savepoint =
+        <<"v5_pending_intent_", (integer_to_binary(erlang:unique_integer([positive])))/binary>>,
     case elib_pg:query(Conn, [<<"SAVEPOINT ">>, Savepoint], []) of
         {ok, _} ->
-            Result = elib_pg:query(Conn,
+            Result = elib_pg:query(
+                Conn,
                 <<"SELECT fn_v5_intent_pending_delete($1, $2, $3)">>,
-                [ObjectKey, Reason, Mode]),
+                [ObjectKey, Reason, Mode]
+            ),
             recover_pending_intent(Conn, Savepoint, Result);
-        {error, _} = Error -> Error
+        {error, _} = Error ->
+            Error
     end.
 
 recover_pending_intent(Conn, Savepoint, {ok, _}) ->
     release_pending_intent(Conn, Savepoint, ok);
-recover_pending_intent(Conn, Savepoint, {error, #error{code = Code}})
-    when Code =:= <<"23510">>; Code =:= <<"23505">>; Code =:= <<"P0002">>
+recover_pending_intent(Conn, Savepoint, {error, #error{code = Code}}) when
+    Code =:= <<"23510">>; Code =:= <<"23505">>; Code =:= <<"P0002">>
 ->
-    Reason = case Code of
-        <<"23510">> -> intent_conflict;
-        <<"23505">> -> tombstone;
-        <<"P0002">> -> not_found
-    end,
+    Reason =
+        case Code of
+            <<"23510">> -> intent_conflict;
+            <<"23505">> -> tombstone;
+            <<"P0002">> -> not_found
+        end,
     case elib_pg:query(Conn, [<<"ROLLBACK TO SAVEPOINT ">>, Savepoint], []) of
         {ok, _} -> release_pending_intent(Conn, Savepoint, {error, Reason});
         {error, _} = Error -> Error
@@ -531,10 +538,12 @@ iso8601(UnixSeconds) ->
 %% 由迁移 179 的受限函数 fn_v5_pin_pending_content 在库内裁决。
 -spec register_content_pin(binary(), map()) -> ok | {error, term()}.
 register_content_pin(ObjectKey, Receipt) ->
-    content_pin_result(elib_pg:query(
-        <<"SELECT fn_v5_pin_pending_content($1,$2::jsonb) AS admitted">>,
-        [ObjectKey, jsone:encode(Receipt)]
-    )).
+    content_pin_result(
+        elib_pg:query(
+            <<"SELECT fn_v5_pin_pending_content($1,$2::jsonb) AS admitted">>,
+            [ObjectKey, jsone:encode(Receipt)]
+        )
+    ).
 
 %% OS lock is already held by the caller. This single-statement transaction
 %% finishes before byte I/O; it must never resolve the mutable registry again.
@@ -542,19 +551,32 @@ register_content_pin(ObjectKey, Receipt) ->
 recheck_content_pin(ObjectKey, Receipt, Identity) when is_map(Identity) ->
     case frozen_content_identity(Identity) of
         {ok, Frozen} ->
-            content_pin_result(elib_pg:query(
-                <<"SELECT fn_v5_recheck_pending_content($1,$2::jsonb,$3::jsonb) AS admitted">>,
-                [ObjectKey, jsone:encode(Receipt), jsone:encode(Frozen)]
-            ));
-        {error, _} = Error -> Error
+            content_pin_result(
+                elib_pg:query(
+                    <<"SELECT fn_v5_recheck_pending_content($1,$2::jsonb,$3::jsonb) AS admitted">>,
+                    [ObjectKey, jsone:encode(Receipt), jsone:encode(Frozen)]
+                )
+            );
+        {error, _} = Error ->
+            Error
     end;
 recheck_content_pin(_, _, _) ->
     {error, location_changed}.
 
-frozen_content_identity(#{driver := Driver, namespace := Ns, container := Container,
-                          key := Key, locator_digest := Digest}) ->
-    {ok, #{driver => Driver, namespace => Ns, container => Container,
-           key => Key, locator_digest => Digest}};
+frozen_content_identity(#{
+    driver := Driver,
+    namespace := Ns,
+    container := Container,
+    key := Key,
+    locator_digest := Digest
+}) ->
+    {ok, #{
+        driver => Driver,
+        namespace => Ns,
+        container => Container,
+        key => Key,
+        locator_digest => Digest
+    }};
 frozen_content_identity(_) ->
     {error, location_changed}.
 

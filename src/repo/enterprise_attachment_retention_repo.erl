@@ -21,6 +21,7 @@
     tablename/0,
     view_purgeable/0,
     upsert_tx/4,
+    upsert_talk_record_tx/4,
     find_tx/2,
     extend_tx/3,
     hold_tx/3,
@@ -32,7 +33,7 @@
 -include_lib("epgsql/include/epgsql.hrl").
 
 -define(COLUMNS, <<
-    "attachment_id, organization_id, application_id, retention_until, hold_state,"
+    "attachment_id, organization_id, application_id, source_kind, talk_record_id, retention_until, hold_state,"
     " hold_reason, hold_set_at, purge_state, purged_at, created_at, updated_at"
 >>).
 
@@ -62,12 +63,46 @@ upsert_tx(Conn, AttachmentId, OrgId, AppId) when
             " VALUES ($1, $2, $3, CURRENT_TIMESTAMP + ($4 || ' days')::interval,"
             "  'none', 'live', NOW(), NOW())", " ON CONFLICT (attachment_id) DO UPDATE",
             "  SET retention_until = GREATEST(", (tablename())/binary,
-            ".retention_until, EXCLUDED.retention_until), updated_at = NOW()", " RETURNING ",
-            ?COLUMNS/binary>>,
+            ".retention_until, EXCLUDED.retention_until), updated_at = NOW()",
+            " WHERE enterprise_attachment_retention.source_kind='application'"
+            " AND enterprise_attachment_retention.organization_id=EXCLUDED.organization_id"
+            " AND enterprise_attachment_retention.application_id=EXCLUDED.application_id",
+            " RETURNING ", ?COLUMNS/binary>>,
     case elib_pg:query(Conn, Sql, [AttachmentId, OrgId, AppId, retention_days()]) of
         {ok, [Row | _]} -> {ok, Row};
         {ok, []} -> {error, upsert_empty_result};
         {error, Reason} -> {error, Reason}
+    end.
+
+%% First registration pins the instance policy to immutable artifact creation time.
+%% Replay never recomputes now+days or extends retention; explicit extend_tx owns that operation.
+upsert_talk_record_tx(C, Aid, Org, Rid) ->
+    Sql = <<
+        "INSERT INTO enterprise_attachment_retention(attachment_id,organization_id,application_id,"
+        "source_kind,talk_record_id,retention_until,hold_state,purge_state)"
+        " SELECT a.id,r.organization_id,NULL,'talk_record',r.id,"
+        " greatest(a.created_at+make_interval(days=>$4),coalesce(r.retention_until,'-infinity')),'none','live'"
+        " FROM attachment a JOIN talk_record r ON r.id=$3 AND r.organization_id=$2"
+        " WHERE a.id=$1 AND a.scope='talk_record' AND a.scope_ref=r.id::text AND r.scope='organization'"
+        " ON CONFLICT(attachment_id) DO NOTHING"
+    >>,
+    case elib_pg:execute(C, Sql, [Aid, Org, Rid, retention_days()]) of
+        {ok, _} ->
+            case find_tx(C, Aid) of
+                {ok, #{
+                    <<"source_kind">> := <<"talk_record">>,
+                    <<"talk_record_id">> := Rid,
+                    <<"organization_id">> := Org,
+                    <<"purge_state">> := <<"live">>
+                }} = Found ->
+                    Found;
+                {ok, _} ->
+                    {error, governance_source_conflict};
+                E ->
+                    E
+            end;
+        E ->
+            E
     end.
 
 %% @doc 事务内按 attachment_id 读治理行（Org/App 边界由复合 FK 保证）。

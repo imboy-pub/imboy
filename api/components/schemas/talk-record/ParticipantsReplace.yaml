@@ -1,0 +1,41 @@
+type: object
+required:
+- participants
+properties:
+  participants:
+    type: array
+    items:
+      type: object
+      properties:
+        user_id:
+          anyOf:
+          - type: integer
+            format: int64
+            minimum: 1
+            maximum: 9223372036854775807
+          - type: 'null'
+        display_name:
+          type: string
+          maxLength: 120
+      additionalProperties: false
+      allOf:
+      - if:
+          anyOf:
+          - properties:
+              user_id:
+                type: 'null'
+            required:
+            - user_id
+          - not:
+              required:
+              - user_id
+        then:
+          required:
+          - display_name
+          properties:
+            display_name:
+              type: string
+              minLength: 1
+              maxLength: 120
+    maxItems: 100
+additionalProperties: false

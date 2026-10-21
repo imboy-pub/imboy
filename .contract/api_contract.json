@@ -4368,6 +4368,12 @@
         "static": false
       },
       {
+        "action": null,
+        "handler": "workspace_attachment_handler",
+        "path": "/api/v1/organizations/:organization_id/attachments",
+        "static": false
+      },
+      {
         "action": "default_workspace",
         "handler": "organization_api_handler",
         "path": "/api/v1/organizations/:organization_id/default-workspace",
@@ -4773,6 +4779,228 @@
         "action": "join",
         "handler": "rtc_room_handler",
         "path": "/api/v1/rtc/room/join",
+        "static": false
+      },
+      {
+        "action": "collection",
+        "handler": "talk_record_handler",
+        "path": "/api/v1/talk-records",
+        "static": false
+      },
+      {
+        "action": "item",
+        "handler": "talk_record_handler",
+        "path": "/api/v1/talk-records/:id",
+        "static": false
+      },
+      {
+        "action": null,
+        "handler": "talk_record_governance_handler",
+        "path": "/api/v1/talk-records/:id/attachments/:attachment_id/governance",
+        "static": false
+      },
+      {
+        "action": "captures_collection",
+        "handler": "talk_record_handler",
+        "path": "/api/v1/talk-records/:id/captures",
+        "static": false
+      },
+      {
+        "action": "capture_abandon",
+        "handler": "talk_record_handler",
+        "path": "/api/v1/talk-records/:id/captures/:cid/abandon",
+        "static": false
+      },
+      {
+        "action": "capture_audio_parts",
+        "handler": "talk_record_handler",
+        "path": "/api/v1/talk-records/:id/captures/:cid/audio-parts",
+        "static": false
+      },
+      {
+        "action": "capture_audio_part_confirm",
+        "handler": "talk_record_handler",
+        "path": "/api/v1/talk-records/:id/captures/:cid/audio-parts/:pid/confirm",
+        "static": false
+      },
+      {
+        "action": "capture_events",
+        "handler": "talk_record_handler",
+        "path": "/api/v1/talk-records/:id/captures/:cid/events",
+        "static": false
+      },
+      {
+        "action": "capture_recover",
+        "handler": "talk_record_handler",
+        "path": "/api/v1/talk-records/:id/captures/:cid/recover",
+        "static": false
+      },
+      {
+        "action": "complete",
+        "handler": "talk_record_handler",
+        "path": "/api/v1/talk-records/:id/complete",
+        "static": false
+      },
+      {
+        "action": "exports_collection",
+        "handler": "talk_record_handler",
+        "path": "/api/v1/talk-records/:id/exports",
+        "static": false
+      },
+      {
+        "action": "export_item",
+        "handler": "talk_record_handler",
+        "path": "/api/v1/talk-records/:id/exports/:export_id",
+        "static": false
+      },
+      {
+        "action": "export_download",
+        "handler": "talk_record_handler",
+        "path": "/api/v1/talk-records/:id/exports/:export_id/download",
+        "static": false
+      },
+      {
+        "action": "grants_collection",
+        "handler": "talk_record_handler",
+        "path": "/api/v1/talk-records/:id/grants",
+        "static": false
+      },
+      {
+        "action": "grants_item",
+        "handler": "talk_record_handler",
+        "path": "/api/v1/talk-records/:id/grants/:grant_id",
+        "static": false
+      },
+      {
+        "action": "jobs",
+        "handler": "talk_record_handler",
+        "path": "/api/v1/talk-records/:id/jobs",
+        "static": false
+      },
+      {
+        "action": "job_retry",
+        "handler": "talk_record_handler",
+        "path": "/api/v1/talk-records/:id/jobs/:job_id/retry",
+        "static": false
+      },
+      {
+        "action": "marks_collection",
+        "handler": "talk_record_handler",
+        "path": "/api/v1/talk-records/:id/marks",
+        "static": false
+      },
+      {
+        "action": "marks_item",
+        "handler": "talk_record_handler",
+        "path": "/api/v1/talk-records/:id/marks/:mark_id",
+        "static": false
+      },
+      {
+        "action": "ownership_transfers",
+        "handler": "talk_record_handler",
+        "path": "/api/v1/talk-records/:id/ownership-transfers",
+        "static": false
+      },
+      {
+        "action": null,
+        "handler": "talk_record_participant_handler",
+        "path": "/api/v1/talk-records/:id/participants",
+        "static": false
+      },
+      {
+        "action": "playback",
+        "handler": "talk_record_handler",
+        "path": "/api/v1/talk-records/:id/playback",
+        "static": false
+      },
+      {
+        "action": null,
+        "handler": "talk_record_playback_handler",
+        "path": "/api/v1/talk-records/:id/playback/stream",
+        "static": false
+      },
+      {
+        "action": "processing_requests",
+        "handler": "talk_record_handler",
+        "path": "/api/v1/talk-records/:id/processing-requests",
+        "static": false
+      },
+      {
+        "action": "segments_collection",
+        "handler": "talk_record_handler",
+        "path": "/api/v1/talk-records/:id/segments",
+        "static": false
+      },
+      {
+        "action": "segments_item",
+        "handler": "talk_record_handler",
+        "path": "/api/v1/talk-records/:id/segments/:segment_id",
+        "static": false
+      },
+      {
+        "action": "record_share_candidates",
+        "handler": "talk_record_handler",
+        "path": "/api/v1/talk-records/:id/share-candidates",
+        "static": false
+      },
+      {
+        "action": "share_card",
+        "handler": "talk_record_handler",
+        "path": "/api/v1/talk-records/:id/share-card",
+        "static": false
+      },
+      {
+        "action": "speakers_collection",
+        "handler": "talk_record_handler",
+        "path": "/api/v1/talk-records/:id/speakers",
+        "static": false
+      },
+      {
+        "action": "speakers_item",
+        "handler": "talk_record_handler",
+        "path": "/api/v1/talk-records/:id/speakers/:speaker_id",
+        "static": false
+      },
+      {
+        "action": "speaker_claim",
+        "handler": "talk_record_handler",
+        "path": "/api/v1/talk-records/:id/speakers/:speaker_id/claim",
+        "static": false
+      },
+      {
+        "action": "summary_item",
+        "handler": "talk_record_handler",
+        "path": "/api/v1/talk-records/:id/summary",
+        "static": false
+      },
+      {
+        "action": "transfer_candidates",
+        "handler": "talk_record_handler",
+        "path": "/api/v1/talk-records/:id/transfer-candidates",
+        "static": false
+      },
+      {
+        "action": null,
+        "handler": "talk_record_recovery_handler",
+        "path": "/api/v1/talk-records/by-client-recording-id",
+        "static": false
+      },
+      {
+        "action": "capabilities",
+        "handler": "talk_record_handler",
+        "path": "/api/v1/talk-records/capabilities",
+        "static": false
+      },
+      {
+        "action": "creation_contexts",
+        "handler": "talk_record_handler",
+        "path": "/api/v1/talk-records/creation-contexts",
+        "static": false
+      },
+      {
+        "action": "share_candidates",
+        "handler": "talk_record_handler",
+        "path": "/api/v1/talk-records/share-candidates",
         "static": false
       },
       {
@@ -5627,6 +5855,9 @@
   "sources": {
     "error_code": "include/error_code.hrl",
     "migrations_dir": "priv/migrations",
+    "registered_route_delegates": [
+      "src/api/talk_record_routes.erl"
+    ],
     "router": "src/imboy_router.erl",
     "ws_action_registry": "src/lib/imboy_ws_action_registry.erl",
     "ws_s2c_actions": "assemble_s2c 字面量（src/**/*.erl）"

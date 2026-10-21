@@ -48,7 +48,10 @@ exercise(Conn) ->
     {ok, _} = enterprise_source_person_repo:claim_tx(Conn, AppId, ExternalId, UserId),
     {ok, _} = enterprise_external_identity_repo:bind_tx(Conn, 977100, AppId, ExternalId, UserId),
     {ok, #{blockers := Blockers, facts := Facts}} = organization_deletion_preflight:run(UserId),
-    ?assertEqual(5, length(Facts)),
+    ?assertEqual(
+        organization_deletion_preflight:required_domains(),
+        [maps:get(domain, F) || F <- Facts]
+    ),
     ?assert(
         lists:any(
             fun(Blocker) -> maps:get(code, Blocker) =:= <<"ORG_MEMBERSHIP_ACTIVE">> end, Blockers
@@ -63,7 +66,10 @@ exercise(Conn) ->
         UserId
     ]),
     {ok, #{blockers := [], facts := ReadyFacts}} = organization_deletion_preflight:run(UserId),
-    ?assertEqual(5, length(ReadyFacts)),
+    ?assertEqual(
+        organization_deletion_preflight:required_domains(),
+        [maps:get(domain, F) || F <- ReadyFacts]
+    ),
     assert_deleted(Conn, AppId, ExternalId, UserId).
 
 assert_default_registry() ->
@@ -73,7 +79,8 @@ assert_default_registry() ->
             {workspace, organization_preflight_facts_pg, facts_workspace},
             {enterprise_business, eb_preflight_facts_pg, facts_enterprise_business},
             {customer_service, cs_preflight_facts_pg, facts_customer_service},
-            {agent, agent_preflight_facts, facts_agent}
+            {agent, agent_preflight_facts, facts_agent},
+            {talk_record, talk_record_delete_preflight, facts}
         ],
         organization_deletion_preflight:registry()
     ).

@@ -743,7 +743,7 @@ paths:
     $ref: './paths/api/v1/friend-reject/reject.yaml'
   /api/v1/attachment/presign:
     $ref: './paths/api/v1/attachment/presign.yaml'
-  /api/v1/attachment/gateway/{client_upload_id}:
+  /api/v1/attachment/gateway/{session_key}:
     $ref: './paths/api/v1/attachment/gateway-put.yaml'
   /api/v1/attachment/confirm:
     $ref: './paths/api/v1/attachment/confirm.yaml'
@@ -807,6 +807,82 @@ paths:
     $ref: './paths/api/v1/channel/micro-community/posts-essence.yaml'
   /api/v1/channel/{channel_id}/posts/{message_id}/tags:
     $ref: './paths/api/v1/channel/micro-community/posts-tags.yaml'
+  /api/v1/talk-records/capabilities:
+    $ref: './paths/api/v1/talk-records/capabilities.yaml'
+  /api/v1/talk-records/creation-contexts:
+    $ref: './paths/api/v1/talk-records/creation_contexts.yaml'
+  /api/v1/talk-records/share-candidates:
+    $ref: './paths/api/v1/talk-records/share_candidates.yaml'
+  /api/v1/talk-records/by-client-recording-id:
+    $ref: './paths/api/v1/talk-records/recovery.yaml'
+  /api/v1/talk-records:
+    $ref: './paths/api/v1/talk-records/collection.yaml'
+  /api/v1/talk-records/{id}:
+    $ref: './paths/api/v1/talk-records/item.yaml'
+  /api/v1/talk-records/{id}/captures:
+    $ref: './paths/api/v1/talk-records/captures_collection.yaml'
+  /api/v1/talk-records/{id}/captures/{cid}/events:
+    $ref: './paths/api/v1/talk-records/capture_events.yaml'
+  /api/v1/talk-records/{id}/captures/{cid}/audio-parts:
+    $ref: './paths/api/v1/talk-records/capture_audio_parts.yaml'
+  /api/v1/talk-records/{id}/captures/{cid}/audio-parts/{pid}/confirm:
+    $ref: './paths/api/v1/talk-records/capture_audio_part_confirm.yaml'
+  /api/v1/talk-records/{id}/captures/{cid}/recover:
+    $ref: './paths/api/v1/talk-records/capture_recover.yaml'
+  /api/v1/talk-records/{id}/captures/{cid}/abandon:
+    $ref: './paths/api/v1/talk-records/capture_abandon.yaml'
+  /api/v1/talk-records/{id}/marks:
+    $ref: './paths/api/v1/talk-records/marks_collection.yaml'
+  /api/v1/talk-records/{id}/marks/{mark_id}:
+    $ref: './paths/api/v1/talk-records/marks_item.yaml'
+  /api/v1/talk-records/{id}/segments:
+    $ref: './paths/api/v1/talk-records/segments_collection.yaml'
+  /api/v1/talk-records/{id}/segments/{segment_id}:
+    $ref: './paths/api/v1/talk-records/segments_item.yaml'
+  /api/v1/talk-records/{id}/speakers:
+    $ref: './paths/api/v1/talk-records/speakers_collection.yaml'
+  /api/v1/talk-records/{id}/speakers/{speaker_id}:
+    $ref: './paths/api/v1/talk-records/speakers_item.yaml'
+  /api/v1/talk-records/{id}/speakers/{speaker_id}/claim:
+    $ref: './paths/api/v1/talk-records/speaker_claim.yaml'
+  /api/v1/talk-records/{id}/summary:
+    $ref: './paths/api/v1/talk-records/summary_item.yaml'
+  /api/v1/talk-records/{id}/grants:
+    $ref: './paths/api/v1/talk-records/grants_collection.yaml'
+  /api/v1/talk-records/{id}/grants/{grant_id}:
+    $ref: './paths/api/v1/talk-records/grants_item.yaml'
+  /api/v1/talk-records/{id}/transfer-candidates:
+    $ref: './paths/api/v1/talk-records/transfer_candidates.yaml'
+  /api/v1/talk-records/{id}/share-candidates:
+    $ref: './paths/api/v1/talk-records/record_share_candidates.yaml'
+  /api/v1/talk-records/{id}/share-card:
+    $ref: './paths/api/v1/talk-records/share_card.yaml'
+  /api/v1/talk-records/{id}/participants:
+    $ref: './paths/api/v1/talk-records/participants.yaml'
+  /api/v1/talk-records/{id}/attachments/{attachment_id}/governance:
+    $ref: './paths/api/v1/talk-records/governance.yaml'
+  /api/v1/talk-records/{id}/playback/stream:
+    $ref: './paths/api/v1/talk-records/stream.yaml'
+  /api/v1/talk-records/{id}/playback:
+    $ref: './paths/api/v1/talk-records/playback.yaml'
+  /api/v1/talk-records/{id}/exports:
+    $ref: './paths/api/v1/talk-records/exports_collection.yaml'
+  /api/v1/talk-records/{id}/exports/{export_id}:
+    $ref: './paths/api/v1/talk-records/export_item.yaml'
+  /api/v1/talk-records/{id}/exports/{export_id}/download:
+    $ref: './paths/api/v1/talk-records/export_download.yaml'
+  /api/v1/talk-records/{id}/ownership-transfers:
+    $ref: './paths/api/v1/talk-records/ownership_transfers.yaml'
+  /api/v1/talk-records/{id}/complete:
+    $ref: './paths/api/v1/talk-records/complete.yaml'
+  /api/v1/talk-records/{id}/jobs:
+    $ref: './paths/api/v1/talk-records/jobs.yaml'
+  /api/v1/talk-records/{id}/jobs/{job_id}/retry:
+    $ref: './paths/api/v1/talk-records/job_retry.yaml'
+  /api/v1/talk-records/{id}/processing-requests:
+    $ref: './paths/api/v1/talk-records/processing_requests.yaml'
+  /api/v1/organizations/{organization_id}/attachments:
+    $ref: './paths/api/v1/organization/attachments.yaml'
   # ---- surface adm — 管理后台端点（编辑真源 openapi-adm.yaml） ----
   /api/adm/setup/status:
     $ref: './paths/adm/v1/setup/status.yaml'

@@ -895,6 +895,8 @@ get_routes() ->
                     action => group_list
                 }},
                 {"/api/v1/workspaces/:workspace_id/attachments", workspace_attachment_handler, #{}},
+                {"/api/v1/organizations/:organization_id/attachments", workspace_attachment_handler,
+                    #{}},
                 {"/api/v1/workspaces/:workspace_id/attachments/:attachment_id/open",
                     workspace_attachment_handler, #{}},
                 {"/api/v1/groups/:group_id/read", workspace_handler, #{
@@ -1501,7 +1503,9 @@ get_routes() ->
     %% EB-10 / BUILD-00R：enterprise_business 路由段的**编译期物理裁剪** helper
 
     CompiledApiRoutes = customer_service_wire(
-        enterprise_wire(imboy_feature:compiled_routes(api, ApiV1Routes))
+        enterprise_wire(
+            imboy_feature:compiled_routes(api, ApiV1Routes ++ talk_record_routes:routes())
+        )
     ),
     CompiledAdmRoutes = customer_service_wire(
         enterprise_wire(imboy_feature:compiled_routes(admin, AdmRoutes))

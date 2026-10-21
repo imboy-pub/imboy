@@ -1,0 +1,76 @@
+type: object
+required:
+- client_recording_id
+- scope
+- notice_ack
+- policy_version
+properties:
+  client_recording_id:
+    type: string
+    format: uuid
+  title:
+    type: string
+    maxLength: 120
+  scope:
+    type: string
+    enum:
+    - personal
+    - organization
+  organization_id:
+    anyOf:
+    - type: integer
+      format: int64
+      minimum: 1
+      maximum: 9223372036854775807
+    - type: 'null'
+  workspace_id:
+    anyOf:
+    - type: integer
+      format: int64
+      minimum: 1
+      maximum: 9223372036854775807
+    - type: 'null'
+  source_type:
+    type: string
+    enum:
+    - live_recording
+  language:
+    type: string
+  processing_mode:
+    type: string
+    enum:
+    - record_only
+    - transcribe
+    - summarize
+  notice_ack:
+    const: true
+  policy_version:
+    type: string
+    minLength: 1
+  reported_started_at:
+    type: string
+    format: date-time
+allOf:
+- if:
+    properties:
+      scope:
+        const: organization
+  then:
+    required:
+    - organization_id
+    properties:
+      organization_id:
+        type: integer
+        format: int64
+        minimum: 1
+        maximum: 9223372036854775807
+- if:
+    properties:
+      scope:
+        const: personal
+  then:
+    properties:
+      organization_id:
+        type: 'null'
+      workspace_id:
+        type: 'null'

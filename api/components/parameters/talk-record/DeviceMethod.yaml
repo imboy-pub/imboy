@@ -1,0 +1,9 @@
+name: method
+in: header
+required: true
+schema:
+  type: string
+  enum:
+  - sha256
+  - sha512
+description: Device HMAC signature method, not the HTTP verb.

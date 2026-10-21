@@ -29,6 +29,7 @@ setup() ->
     ok = meck:expect(config_ds, env, fun(sql_driver) -> pgsql end),
     ok = meck:new(epgsql, [no_link, passthrough]),
     ok = meck:expect(epgsql, with_transaction, fun(C, F, _Opts) -> F(C) end),
+    ok = meck:expect(epgsql, get_cmd_status, fun(_) -> {ok, commit} end),
     ok = meck:expect(epgsql, squery, fun(_C, <<"ROLLBACK">>) -> {ok, [], []} end),
     Conn.
 

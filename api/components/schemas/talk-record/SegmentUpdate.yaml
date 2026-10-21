@@ -1,0 +1,11 @@
+type: object
+properties:
+  text:
+    type: string
+  speaker_id:
+    anyOf:
+    - type: integer
+      format: int64
+      minimum: 1
+      maximum: 9223372036854775807
+    - type: 'null'

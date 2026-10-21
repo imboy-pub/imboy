@@ -1,0 +1,9 @@
+type: object
+properties:
+  format:
+    type: string
+    enum:
+    - txt
+    - md
+  include_audio:
+    const: false

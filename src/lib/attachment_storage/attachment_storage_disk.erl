@@ -14,6 +14,8 @@
     put_snapshot/3,
     put_snapshot/4,
     read_snapshot/1,
+    fold_snapshot/3,
+    fold_range_snapshot/6,
     delete_snapshot/1
 ]).
 -include_lib("kernel/include/file.hrl").
@@ -93,6 +95,71 @@ read_snapshot(I) ->
             E -> E
         end
     end).
+%% Read one already-verified physical inode in bounded chunks under its storage lock.
+fold_snapshot(#{container := C, key := K} = I, Fun, Acc) ->
+    with_snapshot_path(I, fun(Root, Path) ->
+        with_locked_action(Root, C, K, Path, fun() ->
+            case file:open(Path, [read, raw, binary]) of
+                {ok, Fh} ->
+                    try
+                        fold_file(Fh, Fun, Acc)
+                    after
+                        file:close(Fh)
+                    end;
+                {error, enoent} ->
+                    {error, not_found};
+                Error ->
+                    Error
+            end
+        end)
+    end).
+fold_range_snapshot(#{container := C, key := K} = I, Offset, Length, ExpectedSize, Fun, Acc) ->
+    with_snapshot_path(I, fun(Root, Path) ->
+        with_locked_action(Root, C, K, Path, fun() ->
+            case file:open(Path, [read, raw, binary]) of
+                {ok, Fh} ->
+                    try
+                        case file:read_file_info(Fh) of
+                            {ok, #file_info{type = regular, size = ExpectedSize}} ->
+                                fold_range(Fh, Offset, Length, Fun, Acc);
+                            _ ->
+                                {error, artifact_integrity_mismatch}
+                        end
+                    after
+                        file:close(Fh)
+                    end;
+                Error ->
+                    Error
+            end
+        end)
+    end).
+fold_range(_, _, 0, _, Acc) ->
+    {ok, Acc};
+fold_range(Fh, Offset, Left, Fun, Acc) ->
+    N = min(65536, Left),
+    case file:pread(Fh, Offset, N) of
+        {ok, B} when byte_size(B) =:= N ->
+            case Fun(B, Acc) of
+                {ok, Next} -> fold_range(Fh, Offset + N, Left - N, Fun, Next);
+                Error -> Error
+            end;
+        _ ->
+            {error, artifact_integrity_mismatch}
+    end.
+
+fold_file(Fh, Fun, Acc) ->
+    case file:read(Fh, 65536) of
+        eof ->
+            {ok, Acc};
+        {ok, Bytes} ->
+            case Fun(Bytes, Acc) of
+                {ok, Next} -> fold_file(Fh, Fun, Next);
+                Error -> Error
+            end;
+        Error ->
+            Error
+    end.
+
 with_snapshot_path(#{endpoint := <<"file://", RootBin/binary>>, container := C, key := K}, Fun) ->
     Root = binary_to_list(RootBin),
     case filename:pathtype(Root) =:= absolute andalso safe_segments(C) andalso safe_segments(K) of

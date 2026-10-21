@@ -1,0 +1,198 @@
+get:
+  tags:
+  - talk-record
+  summary: governance — GET
+  operationId: talkRecordGovernanceGet
+  security:
+  - bearerAuth: []
+  x-device-signature-required: true
+  x-handler: talk_record_governance_handler
+  description: Current organization owner/admin metadata-only attachment governance.
+    Does not grant record content/read/playback. Bound attachment and current organization/workspace
+    predicates are checked; hold/retention/purge enforce lifecycle rules.
+  responses:
+    '200':
+      description: Authenticated domain response; current ACL and context are rechecked.
+        Check envelope code; legacy authentication/business errors may use HTTP 200
+        with nonzero code.
+      headers:
+        ETag:
+          schema:
+            type: string
+          description: Resource revision where emitted.
+      content:
+        application/json:
+          schema:
+            oneOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
+              - type: object
+                properties:
+                  payload:
+                    $ref: ../../../../components/schemas/talk-record/Governance.yaml
+              - type: object
+                properties:
+                  code:
+                    const: 0
+            - $ref: ../../../../components/schemas/talk-record/ErrorEnvelope.yaml
+    '401':
+      description: JWT/device signature invalid.
+      content:
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/Envelope.yaml
+    '404':
+      description: Not found or not currently authorized.
+      content:
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/Envelope.yaml
+    '409':
+      description: Conflict, fenced capture, incomplete parts or policy/context changed.
+      content:
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/Envelope.yaml
+    '422':
+      description: Invalid body, consent, participant eligibility or processing unavailable.
+      content:
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/Envelope.yaml
+  parameters:
+  - name: id
+    in: path
+    required: true
+    schema:
+      type: integer
+      format: int64
+      minimum: 1
+      maximum: 9223372036854775807
+    description: Record TSID; current ACL is checked.
+  - name: attachment_id
+    in: path
+    required: true
+    schema:
+      type: integer
+      format: int64
+      minimum: 1
+      maximum: 9223372036854775807
+    description: Attachment TSID with a bound reference to this record.
+  - $ref: ../../../../components/parameters/talk-record/DeviceVsn.yaml
+  - $ref: ../../../../components/parameters/talk-record/DevicePkg.yaml
+  - $ref: ../../../../components/parameters/talk-record/DeviceDid.yaml
+  - $ref: ../../../../components/parameters/talk-record/DeviceCos.yaml
+  - $ref: ../../../../components/parameters/talk-record/DeviceMethod.yaml
+  - $ref: ../../../../components/parameters/talk-record/DeviceSign.yaml
+  - $ref: ../../../../components/parameters/talk-record/DeviceSk.yaml
+post:
+  tags:
+  - talk-record
+  summary: governance — POST
+  operationId: talkRecordGovernancePost
+  security:
+  - bearerAuth: []
+  x-device-signature-required: true
+  x-handler: talk_record_governance_handler
+  description: Current organization owner/admin metadata-only attachment governance.
+    Does not grant record content/read/playback. Bound attachment and current organization/workspace
+    predicates are checked; hold/retention/purge enforce lifecycle rules.
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: ../../../../components/schemas/talk-record/GovernanceMutation.yaml
+  responses:
+    '200':
+      description: Authenticated domain response; current ACL and context are rechecked.
+        Check envelope code; legacy authentication/business errors may use HTTP 200
+        with nonzero code.
+      headers:
+        ETag:
+          schema:
+            type: string
+          description: Resource revision where emitted.
+      content:
+        application/json:
+          schema:
+            oneOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
+              - type: object
+                properties:
+                  payload:
+                    $ref: ../../../../components/schemas/talk-record/Governance.yaml
+              - type: object
+                properties:
+                  code:
+                    const: 0
+            - $ref: ../../../../components/schemas/talk-record/ErrorEnvelope.yaml
+    '401':
+      description: JWT/device signature invalid.
+      content:
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/Envelope.yaml
+    '404':
+      description: Not found or not currently authorized.
+      content:
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/Envelope.yaml
+    '409':
+      description: Conflict, fenced capture, incomplete parts or policy/context changed.
+      content:
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/Envelope.yaml
+    '422':
+      description: Invalid body, consent, participant eligibility or processing unavailable.
+      content:
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/Envelope.yaml
+    '428':
+      description: If-Match required.
+    '412':
+      description: Revision changed; GET current resource before explicit retry.
+  parameters:
+  - name: id
+    in: path
+    required: true
+    schema:
+      type: integer
+      format: int64
+      minimum: 1
+      maximum: 9223372036854775807
+    description: Record TSID; current ACL is checked.
+  - name: attachment_id
+    in: path
+    required: true
+    schema:
+      type: integer
+      format: int64
+      minimum: 1
+      maximum: 9223372036854775807
+    description: Attachment TSID with a bound reference to this record.
+  - name: If-Match
+    in: header
+    required: true
+    schema:
+      type: string
+    description: Quoted revision; absent 428, stale 412. ACL mutations use their ACL
+      ETag.
+  - name: Idempotency-Key
+    in: header
+    required: true
+    schema:
+      type: string
+      minLength: 1
+    description: Same key must keep exact payload; replay still rechecks current authorization.
+  - $ref: ../../../../components/parameters/talk-record/DeviceVsn.yaml
+  - $ref: ../../../../components/parameters/talk-record/DevicePkg.yaml
+  - $ref: ../../../../components/parameters/talk-record/DeviceDid.yaml
+  - $ref: ../../../../components/parameters/talk-record/DeviceCos.yaml
+  - $ref: ../../../../components/parameters/talk-record/DeviceMethod.yaml
+  - $ref: ../../../../components/parameters/talk-record/DeviceSign.yaml
+  - $ref: ../../../../components/parameters/talk-record/DeviceSk.yaml

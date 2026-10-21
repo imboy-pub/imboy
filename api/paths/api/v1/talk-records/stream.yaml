@@ -1,0 +1,186 @@
+get:
+  tags:
+  - talk-record
+  summary: stream — GET
+  operationId: talkRecordStreamGet
+  security:
+  - bearerAuth: []
+  x-device-signature-required: true
+  x-handler: talk_record_playback_handler
+  description: JWT and default device-signature verification apply. Every request
+    rechecks current record ACL and organization/workspace eligibility; participation
+    does not grant access. Entity IDs are JSON int64 integers. GET and HEAD recheck
+    ticket, ACL, deletion, expiry and acl_revision. GET rechecks per block. HEAD emits
+    metadata without downloading the whole object. No external storage URL is exposed.
+  responses:
+    '200':
+      description: Authorized AAC bytes; HEAD has the same headers and no body.
+      headers:
+        Content-Length:
+          schema:
+            type: integer
+            format: int64
+            minimum: 0
+            maximum: 9223372036854775807
+        Content-Range:
+          schema:
+            type: string
+        Accept-Ranges:
+          schema:
+            const: bytes
+        Cache-Control:
+          schema:
+            const: private, no-store
+      content:
+        audio/aac:
+          schema:
+            type: string
+            format: binary
+    '206':
+      description: Authorized AAC bytes; HEAD has the same headers and no body.
+      headers:
+        Content-Length:
+          schema:
+            type: integer
+            format: int64
+            minimum: 0
+            maximum: 9223372036854775807
+        Content-Range:
+          schema:
+            type: string
+        Accept-Ranges:
+          schema:
+            const: bytes
+        Cache-Control:
+          schema:
+            const: private, no-store
+      content:
+        audio/aac:
+          schema:
+            type: string
+            format: binary
+    '403':
+      description: Invalid, expired, revoked or mismatched ticket.
+    '404':
+      description: Unavailable record.
+    '409':
+      description: Media unavailable.
+    '416':
+      description: Unsatisfiable single Range.
+  parameters:
+  - name: id
+    in: path
+    required: true
+    schema:
+      type: integer
+      format: int64
+      minimum: 1
+      maximum: 9223372036854775807
+    description: Record TSID; current ACL is checked.
+  - name: ticket
+    in: query
+    required: true
+    schema:
+      type: string
+    description: Short-lived ticket bound to uid/rid/path/acl_revision.
+  - name: Range
+    in: header
+    required: false
+    schema:
+      type: string
+    description: Single bytes range; malformed/multiple/unsatisfiable returns 416.
+  - $ref: ../../../../components/parameters/talk-record/DeviceVsn.yaml
+  - $ref: ../../../../components/parameters/talk-record/DevicePkg.yaml
+  - $ref: ../../../../components/parameters/talk-record/DeviceDid.yaml
+  - $ref: ../../../../components/parameters/talk-record/DeviceCos.yaml
+  - $ref: ../../../../components/parameters/talk-record/DeviceMethod.yaml
+  - $ref: ../../../../components/parameters/talk-record/DeviceSign.yaml
+  - $ref: ../../../../components/parameters/talk-record/DeviceSk.yaml
+head:
+  tags:
+  - talk-record
+  summary: stream — HEAD
+  operationId: talkRecordStreamHead
+  security:
+  - bearerAuth: []
+  x-device-signature-required: true
+  x-handler: talk_record_playback_handler
+  description: JWT and default device-signature verification apply. Every request
+    rechecks current record ACL and organization/workspace eligibility; participation
+    does not grant access. Entity IDs are JSON int64 integers. GET and HEAD recheck
+    ticket, ACL, deletion, expiry and acl_revision. GET rechecks per block. HEAD emits
+    metadata without downloading the whole object. No external storage URL is exposed.
+  responses:
+    '200':
+      description: Authorized AAC bytes; HEAD has the same headers and no body.
+      headers:
+        Content-Length:
+          schema:
+            type: integer
+            format: int64
+            minimum: 0
+            maximum: 9223372036854775807
+        Content-Range:
+          schema:
+            type: string
+        Accept-Ranges:
+          schema:
+            const: bytes
+        Cache-Control:
+          schema:
+            const: private, no-store
+    '206':
+      description: Authorized AAC bytes; HEAD has the same headers and no body.
+      headers:
+        Content-Length:
+          schema:
+            type: integer
+            format: int64
+            minimum: 0
+            maximum: 9223372036854775807
+        Content-Range:
+          schema:
+            type: string
+        Accept-Ranges:
+          schema:
+            const: bytes
+        Cache-Control:
+          schema:
+            const: private, no-store
+    '403':
+      description: Invalid, expired, revoked or mismatched ticket.
+    '404':
+      description: Unavailable record.
+    '409':
+      description: Media unavailable.
+    '416':
+      description: Unsatisfiable single Range.
+  parameters:
+  - name: id
+    in: path
+    required: true
+    schema:
+      type: integer
+      format: int64
+      minimum: 1
+      maximum: 9223372036854775807
+    description: Record TSID; current ACL is checked.
+  - name: ticket
+    in: query
+    required: true
+    schema:
+      type: string
+    description: Short-lived ticket bound to uid/rid/path/acl_revision.
+  - name: Range
+    in: header
+    required: false
+    schema:
+      type: string
+    description: Single bytes range; malformed/multiple/unsatisfiable returns 416.
+  - $ref: ../../../../components/parameters/talk-record/DeviceVsn.yaml
+  - $ref: ../../../../components/parameters/talk-record/DevicePkg.yaml
+  - $ref: ../../../../components/parameters/talk-record/DeviceDid.yaml
+  - $ref: ../../../../components/parameters/talk-record/DeviceCos.yaml
+  - $ref: ../../../../components/parameters/talk-record/DeviceMethod.yaml
+  - $ref: ../../../../components/parameters/talk-record/DeviceSign.yaml
+  - $ref: ../../../../components/parameters/talk-record/DeviceSk.yaml

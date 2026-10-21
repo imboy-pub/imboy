@@ -38,6 +38,7 @@ import re
 import sys
 import tempfile
 from pathlib import Path
+from contract_route_sources import talk_record_delegate
 
 REPO = Path(__file__).resolve().parent.parent
 CONTRACT_PATH = REPO / ".contract" / "api_contract.json"
@@ -144,10 +145,11 @@ def _slice_between(text, start_re, end_re):
     return rest[: len(m.group(0)) + m2.start()]
 
 
-def extract_routes(router_src: str) -> dict:
+def extract_routes(router_src: str, repo: Path = None) -> dict:
     """静态提取 cowboy 路由三元组，按 scope 分组返回排序后的端点清单。"""
     seg_main = _slice_between(router_src, SCOPE_MARKERS[0][1], SCOPE_MARKERS[1][1])
     seg_v1 = _slice_between(router_src, SCOPE_MARKERS[1][1], SCOPE_MARKERS[2][1])
+    seg_v1 += talk_record_delegate(router_src, REPO if repo is None else repo)
     seg_adm = _slice_between(
         router_src, SCOPE_MARKERS[2][1], re.compile(r"^\s*CoreRoutes\s*=", re.M))
     seg_test = _slice_between(
@@ -364,6 +366,8 @@ def build_contract() -> dict:
         "generator": "scripts/contract_gate.py",
         "sources": {
             "router": "src/imboy_router.erl",
+            "registered_route_delegates": ["src/api/talk_record_routes.erl"]
+                if talk_record_delegate(router_src, REPO) else [],
             "migrations_dir": "priv/migrations",
             "error_code": "include/error_code.hrl",
             "ws_action_registry": "src/lib/imboy_ws_action_registry.erl",

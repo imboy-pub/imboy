@@ -1,30 +1,36 @@
-# PUT /api/v1/attachment/gateway/{client_upload_id} — V5.5 受控存储网关（02 §14）
-# Handler: src/api/attachment_storage_gateway_handler.erl
-#
-# 网关能力为 aud=upload 的短期 JWT（presign/renew 下发，exp=登记冻结到期）。
-# body 为原始字节流：网关在既有限额内写入独占 0600 临时文件，计算 SHA256/size，
-# 校验登记冻结声明后先 pin（upload_content NULL 一次固定）并 COMMIT，
-# 再以冻结签名 Context 转存对象存储（同 key 不同字节 409 且 provider PUT=0）。
 put:
-  tags: [user]
+  tags:
+  - user
   summary: V5 受控上传网关（字节直传端点）
   operationId: attachmentGatewayPut
   parameters:
-    - in: path
-      name: client_upload_id
-      required: true
-      schema: { type: string, format: uuid }
-      description: V5 会话标识（真实对象键/声明在能力 token 内，路径不寻址）
-    - in: query
-      name: capability
-      required: false
-      schema: { type: string }
-      description: 上传能力 token；与 x-upload-capability 请求头等价，二选一
+  - in: path
+    name: session_key
+    required: true
+    schema:
+      type: string
+      format: uuid
+    description: V5 会话标识（真实对象键/声明在能力 token 内，路径不寻址）
+  - in: query
+    name: capability
+    required: false
+    schema:
+      type: string
+    description: 上传能力 token；与 x-upload-capability 请求头等价，二选一
+  - name: x-upload-capability
+    in: header
+    required: false
+    schema:
+      type: string
+    description: Alternative to capability query token; at least one valid upload
+      capability is required.
   requestBody:
     required: true
     content:
       application/octet-stream:
-        schema: { type: string, format: binary }
+        schema:
+          type: string
+          format: binary
   responses:
     '200':
       description: 已 pin 并转存（pinned=true）
@@ -33,9 +39,19 @@ put:
           schema:
             type: object
             properties:
-              pinned: { type: boolean }
-              sha256: { type: string, description: 小写 64 位 hex }
-              size: { type: integer }
+              pinned:
+                const: true
+              sha256:
+                type: string
+                pattern: ^[a-f0-9]{64}$
+              size:
+                type: integer
+                format: int64
+                minimum: 1
+            required:
+            - pinned
+            - sha256
+            - size
     '403':
       description: 能力 token 无效
     '404':
@@ -48,3 +64,11 @@ put:
       description: 超出限额（pin 未发生）
     '502':
       description: 对象存储转存失败（pin 保留，同内容重试合法）
+  security: []
+  x-device-signature-required: false
+  description: 'Narrow upload-capability endpoint: no login JWT or device-signature
+    headers are required. The handler verifies a short-lived upload capability (query
+    or x-upload-capability header), exact registered session/actor/object/receipt.
+    This is a raw byte PUT and raw JSON receipt, never a business envelope. Do not
+    log capability URLs or automatically retry a PUT whose outcome is unknown; reconcile
+    the capture part receipt.'

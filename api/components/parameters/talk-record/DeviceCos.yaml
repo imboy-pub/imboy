@@ -1,0 +1,6 @@
+name: cos
+in: header
+required: true
+schema:
+  type: string
+description: Client OS selecting the installed signing key.

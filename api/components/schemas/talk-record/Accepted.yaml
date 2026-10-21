@@ -1,0 +1,38 @@
+type: object
+properties:
+  record_id:
+    type: integer
+    format: int64
+    minimum: 1
+    maximum: 9223372036854775807
+  media_status:
+    type: string
+  job_id:
+    type: integer
+    format: int64
+    minimum: 1
+    maximum: 9223372036854775807
+  processing_mode:
+    type: string
+    enum:
+    - record_only
+    - transcribe
+    - summarize
+  manifest_hash:
+    type: string
+    pattern: ^[a-f0-9]{64}$
+  transcribe_job_id:
+    type: integer
+    format: int64
+    minimum: 1
+    maximum: 9223372036854775807
+  capture_id:
+    type: integer
+    format: int64
+    minimum: 1
+    maximum: 9223372036854775807
+  revision:
+    type: integer
+    format: int64
+    minimum: 1
+    maximum: 9223372036854775807

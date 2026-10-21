@@ -12,7 +12,7 @@
 %%     blocker 按冻结四字段聚合返回。
 %%   * 真实 provider（真 PG）：owner/member/workspace owner 三态 blocker；
 %%     无关用户空 blocker；env 显式缩减注册表（去掉 agent）→ 整体拒；
-%%     默认五域注册表 → 全 provider 实时聚合（合同明文，非回归）。
+%%     默认六域注册表 → 全 provider 实时聚合（合同明文，非回归）。
 %%
 %% 运行：make eunit-local t=organization_preflight_tests
 
@@ -38,7 +38,7 @@ missing_domains_rejected_test_() ->
                 detail := Missing
             }} = organization_deletion_preflight:run(42),
             ?assertEqual(
-                lists:sort([workspace, enterprise_business, customer_service, agent]),
+                lists:sort([workspace, enterprise_business, customer_service, agent, talk_record]),
                 lists:sort(Missing)
             )
         after
@@ -132,7 +132,8 @@ default_registry_is_org_workspace_eb_cs_agent_test_() ->
                 {workspace, organization_preflight_facts_pg, facts_workspace},
                 {enterprise_business, eb_preflight_facts_pg, facts_enterprise_business},
                 {customer_service, cs_preflight_facts_pg, facts_customer_service},
-                {agent, agent_preflight_facts, facts_agent}
+                {agent, agent_preflight_facts, facts_agent},
+                {talk_record, talk_record_delete_preflight, facts}
             ],
             organization_deletion_preflight:registry()
         ),
@@ -141,7 +142,7 @@ default_registry_is_org_workspace_eb_cs_agent_test_() ->
         %% control/ruling-agent-provider-defer.md 顶部注记）；
         %% EB/CS 登记 = ORG-A0 对 ORG-08 BLOCKED_INT-2 的合并（A0 裁决留痕）
         ?assertEqual(
-            [organization, workspace, enterprise_business, customer_service, agent],
+            [organization, workspace, enterprise_business, customer_service, agent, talk_record],
             organization_deletion_preflight:required_domains()
         )
     end}.
@@ -150,7 +151,7 @@ default_registry_preflight_rejection_and_full_aggregation_test_() ->
     [
         {"env 显式缩减注册表（去掉 agent）→ run 仍拒（缺域拒绝语义保留）",
             ?TEST_WITH_DB_TIMEOUT(30, fun reduced_registry_without_agent_still_rejected/0)},
-        {"默认五域注册表：全 provider 实时聚合",
+        {"默认六域注册表：全 provider 实时聚合",
             ?TEST_WITH_DB_TIMEOUT(30, fun default_five_domain_registry_aggregates/0)}
     ].
 
@@ -163,7 +164,8 @@ reduced_registry_without_agent_still_rejected() ->
         {organization, organization_preflight_facts_pg, facts_organization},
         {workspace, organization_preflight_facts_pg, facts_workspace},
         {enterprise_business, eb_preflight_facts_pg, facts_enterprise_business},
-        {customer_service, cs_preflight_facts_pg, facts_customer_service}
+        {customer_service, cs_preflight_facts_pg, facts_customer_service},
+        {talk_record, talk_record_delete_preflight, facts}
     ]),
     try
         {error, #{
@@ -190,7 +192,7 @@ default_five_domain_registry_aggregates() ->
     ?assert(is_integer(ObservedAt)),
     %% fact domain 序与默认注册表一致（五域 provider 全部实时返回）
     ?assertEqual(
-        [organization, workspace, enterprise_business, customer_service, agent],
+        [organization, workspace, enterprise_business, customer_service, agent, talk_record],
         [maps:get(domain, F) || F <- Facts]
     ),
     %% 冻结形状逐域校验（§1.6：subject/observed_at/fact_version/blockers）

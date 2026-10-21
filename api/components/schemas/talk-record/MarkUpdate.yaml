@@ -1,0 +1,11 @@
+type: object
+properties:
+  text:
+    type: string
+    maxLength: 1000
+  capture_offset_ms:
+    type: integer
+    format: int64
+    minimum: 0
+    maximum: 9223372036854775807
+minProperties: 1

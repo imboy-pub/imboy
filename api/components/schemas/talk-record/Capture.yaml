@@ -1,0 +1,131 @@
+type: object
+properties:
+  capture_id:
+    type: integer
+    format: int64
+    minimum: 1
+    maximum: 9223372036854775807
+  record_id:
+    type: integer
+    format: int64
+    minimum: 1
+    maximum: 9223372036854775807
+  device_session_id:
+    type: string
+    format: uuid
+  status:
+    type: string
+    enum:
+    - draft
+    - recording
+    - paused
+    - interrupted
+    - ended
+  lease_epoch:
+    type: integer
+    format: int64
+    minimum: 0
+    maximum: 9223372036854775807
+  lease_until:
+    anyOf:
+    - type: string
+      format: date-time
+    - type: 'null'
+  last_event_seq:
+    type: integer
+    minimum: -1
+  revision:
+    type: integer
+    format: int64
+    minimum: 1
+    maximum: 9223372036854775807
+  duration_ms:
+    type: integer
+    format: int64
+    minimum: 0
+    maximum: 9223372036854775807
+  completion_manifest_hash:
+    anyOf:
+    - type: string
+      pattern: ^[a-f0-9]{64}$
+    - type: 'null'
+  parts:
+    type: object
+    properties:
+      confirmed:
+        type: integer
+        format: int64
+        minimum: 0
+        maximum: 9223372036854775807
+      pending:
+        type: integer
+        format: int64
+        minimum: 0
+        maximum: 9223372036854775807
+      last_seq:
+        type: integer
+        minimum: -1
+      effective_ms:
+        type: integer
+        format: int64
+        minimum: 0
+        maximum: 9223372036854775807
+  confirmed_parts:
+    type: array
+    items:
+      type: object
+      properties:
+        part_id:
+          type: integer
+          format: int64
+          minimum: 1
+          maximum: 9223372036854775807
+        seq:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 9223372036854775807
+        sha256:
+          type: string
+          pattern: ^[a-f0-9]{64}$
+        byte_size:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 9223372036854775807
+        attachment_id:
+          anyOf:
+          - type: integer
+            format: int64
+            minimum: 1
+            maximum: 9223372036854775807
+          - type: 'null'
+  last_seen_at:
+    type:
+    - string
+    - 'null'
+    format: date-time
+  started_at:
+    type:
+    - string
+    - 'null'
+    format: date-time
+  reported_started_at:
+    type:
+    - string
+    - 'null'
+    format: date-time
+  ended_at:
+    type:
+    - string
+    - 'null'
+    format: date-time
+  etag:
+    type: string
+required:
+- capture_id
+- record_id
+- device_session_id
+- status
+- revision
+- lease_epoch

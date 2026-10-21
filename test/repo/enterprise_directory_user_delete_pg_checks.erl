@@ -61,7 +61,15 @@ offboarded_user_deletion_tx(Conn, Ctx) ->
         >>)
     ),
     {ok, #{blockers := [], facts := Facts}} = organization_deletion_preflight:run(977003),
-    ?assertEqual(5, length(Facts)),
+    ?assertEqual(6, length(Facts)),
+    ?assertEqual(
+        organization_deletion_preflight:required_domains(),
+        [maps:get(domain, Fact) || Fact <- Facts]
+    ),
+    ?assertMatch(
+        [#{blockers := []}],
+        [Fact || #{domain := talk_record} = Fact <- Facts]
+    ),
     History = deletion_history_snapshot(Conn),
     Before = enterprise_directory_sync_pg_tests:all_rows_snapshot(Conn),
     execute_delete_tx(Conn, rollback),

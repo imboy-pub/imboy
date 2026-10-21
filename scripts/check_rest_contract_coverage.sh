@@ -38,7 +38,7 @@ FAIL=0
 
 # Router source with comment-only lines removed: a commented-out route tuple
 # must NOT satisfy the route-presence check.
-ROUTER_BODY=$(grep -vE '^[[:space:]]*%' "$ROUTER" || true)
+ROUTER_BODY=$(python3 "$ROOT/scripts/contract_route_sources.py" --repo "$ROOT")
 
 # Body extraction helper: print every line from after the function head up
 # to (exclusive) the next column-1 top-level construct (a -attribute or a
@@ -111,7 +111,7 @@ route_tuples() {
       }
       next
     }
-  ' "$ROUTER"
+  ' <<<"$ROUTER_BODY"
 }
 
 # --- cs-credential surface (verbatim transcription of the frozen shapes in
@@ -164,6 +164,11 @@ is_single_segment_suffix() {
 # middleware: credential surfaces first, then open/option membership.
 classify_auth() {
   local path=$1
+  local handler=${2:-}
+  if [[ "$path" == /api/v1/attachment/gateway/:session_key && "$handler" == attachment_storage_gateway_handler ]]; then
+    echo "upload-capability"
+    return
+  fi
   if is_cs_credential_route "$path"; then
     echo "cs-credential"
   elif [[ "$path" == "/api/v1/mcp" ]]; then
@@ -189,6 +194,10 @@ classify_auth() {
   fi
 }
 
+openapi_path() {
+  printf '%s' "$1" | sed -E 's/:([a-zA-Z_][a-zA-Z0-9_]*)/{\1}/g'
+}
+
 inventory() {
   local out=$1
   ensure_lists
@@ -203,7 +212,8 @@ inventory() {
         # instead of killing the run under pipefail. The $ref line is the one
         # AFTER the path key, and its './x' value is relative to api/.
         methods="UNKNOWN_REVIEW_REQUIRED"
-        refline=$(grep -A1 -F "  ${path}:" "$ROOT/api/openapi.yaml" 2>/dev/null | sed -n '2p' || true)
+        api_path=$(openapi_path "$path")
+        refline=$(grep -A1 -F "  ${api_path}:" "$ROOT/api/openapi.yaml" 2>/dev/null | sed -n '2p' || true)
         ref=$(printf '%s' "$refline" | sed -nE "s/.*'([^']+)'.*/\1/p" || true)
         if [[ -n "${ref:-}" ]]; then
           target="$ROOT/api/${ref#./}"
@@ -212,7 +222,7 @@ inventory() {
             [[ -n "${found:-}" ]] && methods=$found
           fi
         fi
-        auth=$(classify_auth "$path")
+        auth=$(classify_auth "$path" "$handler")
         review="OK"
         if [[ "$methods" == "UNKNOWN_REVIEW_REQUIRED" ]]; then
           review="UNKNOWN_REVIEW_REQUIRED"
@@ -241,7 +251,7 @@ while IFS=$'\t' read -r method path handler auth spec suite case_ids operation; 
   [[ -z "${method}" || "${method}" == \#* ]] && continue
 
   status=GO
-  if ! grep -Fq "{\"${path}\", ${handler}," <<<"$ROUTER_BODY"; then
+  if ! route_tuples | awk -F '\t' -v path="$path" -v handler="$handler" '$1==path && $2==handler {found=1} END {exit !found}'; then
     echo "NO-GO ${method} ${path}: route/handler missing"
     status=NO-GO
   fi
@@ -249,12 +259,13 @@ while IFS=$'\t' read -r method path handler auth spec suite case_ids operation; 
   # registered auth must equal the middleware-derived classification — not
   # only open* rows. A route drifting jwt->open (or any other direction), or
   # a mis-filled TSV auth column, is a NO-GO.
-  computed_auth=$(classify_auth "${path}")
+  computed_auth=$(classify_auth "${path}" "${handler}")
   if [[ "${computed_auth}" != "${auth}" ]]; then
     echo "NO-GO ${method} ${path}: auth drift (tsv=${auth} computed=${computed_auth})"
     status=NO-GO
   fi
-  if ! grep -Fq "  ${path}:" "$ROOT/api/openapi.yaml"; then
+  api_path=$(openapi_path "$path")
+  if ! grep -Fq "  ${api_path}:" "$ROOT/api/openapi.yaml"; then
     echo "NO-GO ${method} ${path}: OpenAPI path missing"
     status=NO-GO
   fi

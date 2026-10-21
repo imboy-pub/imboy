@@ -1,0 +1,55 @@
+type: object
+properties:
+  record_id:
+    type: integer
+    format: int64
+    minimum: 1
+    maximum: 9223372036854775807
+  attachment_id:
+    type: integer
+    format: int64
+    minimum: 1
+    maximum: 9223372036854775807
+  organization_id:
+    type: integer
+    format: int64
+    minimum: 1
+    maximum: 9223372036854775807
+  workspace_id:
+    anyOf:
+    - type: integer
+      format: int64
+      minimum: 1
+      maximum: 9223372036854775807
+    - type: 'null'
+  revision:
+    type: integer
+    format: int64
+    minimum: 1
+    maximum: 9223372036854775807
+  retention_until:
+    anyOf:
+    - type: string
+      format: date-time
+    - type: 'null'
+  hold_state:
+    type: string
+  hold_reason:
+    anyOf:
+    - type: string
+    - type: 'null'
+  purge_state:
+    type: string
+  purged_at:
+    anyOf:
+    - type: string
+      format: date-time
+    - type: 'null'
+  lifecycle_state:
+    type: string
+  cleanup_status:
+    type: string
+  logical_deleted:
+    type: boolean
+  enterprise_governance_integrated:
+    const: true

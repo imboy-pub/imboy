@@ -1,0 +1,12 @@
+type: object
+required:
+- target_user_id
+properties:
+  target_user_id:
+    type: integer
+    format: int64
+    minimum: 1
+    maximum: 9223372036854775807
+  keep_access:
+    type: boolean
+    default: false

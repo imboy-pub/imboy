@@ -1,0 +1,30 @@
+type: object
+required:
+- captures
+properties:
+  captures:
+    type: array
+    items:
+      type: object
+      required:
+      - capture_id
+      - last_seq
+      - manifest_hash
+      properties:
+        capture_id:
+          type: integer
+          format: int64
+          minimum: 1
+          maximum: 9223372036854775807
+        last_seq:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 9223372036854775807
+        manifest_hash:
+          type: string
+          pattern: ^[a-f0-9]{64}$
+    minItems: 1
+    maxItems: 1
+  processing_consent:
+    $ref: Consent.yaml

@@ -14,7 +14,8 @@
 %% provider 注册表：
 %%   默认（代码内置）= organization + workspace（ORG-02 org 侧只读代查）+
 %%   enterprise_business（ORG-08）+ customer_service（ORG-08）+ agent
-%%   （agent_preflight_facts，Agent track ORG-06 交付）五域。agent 域于
+%%   （agent_preflight_facts，Agent track ORG-06 交付）+ talk_record
+%%   （talk_record_delete_preflight，V1 责任与保留身份依赖）六域。agent 域于
 %%   2026-09-18 用户拍板登记（原「推迟登记至 Agent track」裁决条款解除，
 %%   见 control/ruling-agent-provider-defer.md 顶部注记）；登记前该域
 %%   缺省照拒（fail-closed）。测试/集成可用
@@ -62,11 +63,11 @@ run(_) ->
         detail => subject_user_id_required
     }}.
 
-%% @doc 冻结的五个依赖域（Core Contract C17 / 计划 §1.6，不可缩减）。
+%% @doc 必需依赖域（面聊域随功能交付纳入，不可由显式五域覆盖绕过）（Core Contract C17 / 计划 §1.6，不可缩减）。
 -spec required_domains() ->
-    [organization | workspace | enterprise_business | customer_service | agent].
+    [organization | workspace | enterprise_business | customer_service | agent | talk_record].
 required_domains() ->
-    [organization, workspace, enterprise_business, customer_service, agent].
+    [organization, workspace, enterprise_business, customer_service, agent, talk_record].
 
 %% @doc 当前生效的 provider 注册表 [{Domain, Module, Function}]。
 %%
@@ -84,7 +85,8 @@ registry() ->
                 {workspace, Default, facts_workspace},
                 {enterprise_business, eb_preflight_facts_pg, facts_enterprise_business},
                 {customer_service, cs_preflight_facts_pg, facts_customer_service},
-                {agent, agent_preflight_facts, facts_agent}
+                {agent, agent_preflight_facts, facts_agent},
+                {talk_record, talk_record_delete_preflight, facts}
             ]
     end.
 

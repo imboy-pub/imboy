@@ -1,0 +1,6 @@
+name: sign
+in: header
+required: true
+schema:
+  type: string
+description: Device signature over did|vsn|cos|pkg. Never log this value.

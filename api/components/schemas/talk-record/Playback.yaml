@@ -1,0 +1,29 @@
+type: object
+properties:
+  url:
+    type: string
+  ticket:
+    type: string
+  expiry:
+    type: integer
+    format: int64
+    minimum: 0
+    maximum: 9223372036854775807
+  expires_at:
+    type: string
+    format: date-time
+  record_id:
+    type: integer
+    format: int64
+    minimum: 1
+    maximum: 9223372036854775807
+  acl_revision:
+    type: integer
+    format: int64
+    minimum: 1
+    maximum: 9223372036854775807
+  position_ms:
+    type: integer
+    format: int64
+    minimum: 0
+    maximum: 9223372036854775807

@@ -1,0 +1,12 @@
+type: object
+required:
+- mode
+- processing_consent
+properties:
+  mode:
+    type: string
+    enum:
+    - transcribe
+    - summarize
+  processing_consent:
+    $ref: Consent.yaml

@@ -31,7 +31,8 @@ admin_can_invite_and_remove_member_test_() ->
             ?assertMatch(
                 {ok, #{status := <<"removed">>}},
                 organization_member_logic:remove(?ADMIN, ?ORG_ID, ?MEMBER)
-            )
+            ),
+            ?assertEqual(1, meck:num_calls(elib_pg, query, [fake_conn, '_', [?MEMBER, ?ORG_ID]]))
         end
     ).
 
@@ -60,7 +61,8 @@ admin_cannot_manage_admin_role_test_() ->
             ?assertMatch(
                 {error, {403, _}},
                 organization_member_logic:remove(?ADMIN, ?ORG_ID, ?ADMIN)
-            )
+            ),
+            ?assertEqual(0, meck:num_calls(elib_pg, query, [fake_conn, '_', '_']))
         end
     ).
 
@@ -77,7 +79,8 @@ primary_owner_can_promote_and_remove_admin_test_() ->
             ?assertMatch(
                 {ok, #{status := <<"removed">>}},
                 organization_member_logic:remove(?OWNER, ?ORG_ID, ?ADMIN)
-            )
+            ),
+            ?assertEqual(1, meck:num_calls(elib_pg, query, [fake_conn, '_', [?ADMIN, ?ORG_ID]]))
         end
     ).
 
@@ -94,7 +97,8 @@ primary_owner_is_protected_test_() ->
                 organization_member_logic:change_role(
                     ?OWNER, ?ORG_ID, ?OWNER, <<"member">>
                 )
-            )
+            ),
+            ?assertEqual(0, meck:num_calls(elib_pg, query, [fake_conn, '_', '_']))
         end
     ).
 
@@ -365,7 +369,8 @@ transfer_owner_validation_and_sync_failures_test_() ->
 common_mocks(ActorUid, ActorRole) ->
     [
         {elib_pg, [
-            {'with_tx', 1, fun run_tx/1}
+            {'with_tx', 1, fun run_tx/1},
+            {'query', 3, fun custody_projection_query/3}
         ]},
         {workspace_member_repo, [
             {lock_organization_memberships_tx, 3, fun(_, ?ORG_ID, _) -> {ok, []} end}
@@ -410,6 +415,53 @@ common_mocks(ActorUid, ActorRole) ->
         ]}
     ].
 
+%% No owned recordings in these membership fixtures; keep the real projection path.
+custody_projection_query(fake_conn, _Sql, [TargetUid, ?ORG_ID]) when
+    TargetUid =:= ?MEMBER; TargetUid =:= ?ADMIN
+->
+    case get(t_custody_projection_error) of
+        true -> {error, custody_projection_failed};
+        _ -> {ok, []}
+    end.
+
+custody_projection_failure_is_not_reported_as_success_test_() ->
+    ?WITH_MECKS(common_mocks(?OWNER, <<"owner">>), fun() ->
+        put(t_custody_projection_error, true),
+        try
+            ?assertMatch(
+                {error, {500, _}},
+                organization_member_logic:remove(?OWNER, ?ORG_ID, ?MEMBER)
+            ),
+            ?assertEqual(1, meck:num_calls(elib_pg, query, [fake_conn, '_', [?MEMBER, ?ORG_ID]]))
+        after
+            erase(t_custody_projection_error)
+        end
+    end).
+
+suspend_projection_failure_is_not_reported_as_success_test_() ->
+    ?WITH_MECKS(suspend_mocks(), fun() ->
+        put(t_custody_projection_error, true),
+        try
+            ?assertMatch(
+                {error, {500, _}},
+                organization_member_logic:suspend(?OWNER, ?ORG_ID, ?MEMBER)
+            ),
+            ?assertEqual(
+                1,
+                meck:num_calls(
+                    elib_pg,
+                    execute,
+                    [fake_conn, '_', [?ORG_ID, ?MEMBER, <<"active">>, <<"suspended">>]]
+                )
+            ),
+            ?assertEqual(1, meck:num_calls(elib_pg, query, [fake_conn, '_', [?MEMBER, ?ORG_ID]]))
+        after
+            erase(t_custody_projection_error),
+            erase(t_sqls),
+            erase(t_params)
+        end
+    end).
+
 run_tx(Tx) ->
     try Tx(fake_conn) of
         Result -> Result
@@ -422,7 +474,7 @@ run_tx(Tx) ->
 %% ===================================================================
 
 %% @doc suspend 只做一件事：把 organization_member.status 从 active 置为
-%% suspended（**唯一**一条写语句，org 作用域显式），不动个人账号、不动经办关系。
+%% suspended（成员状态单条更新，另执行面聊责任投影），不动个人账号、不动经办关系。
 suspend_marks_member_suspended_with_a_single_scoped_statement_test_() ->
     ?WITH_MECKS(
         suspend_mocks(),
@@ -435,6 +487,7 @@ suspend_marks_member_suspended_with_a_single_scoped_statement_test_() ->
                 }},
                 organization_member_logic:suspend(?OWNER, ?ORG_ID, ?MEMBER)
             ),
+            ?assertEqual(1, meck:num_calls(elib_pg, query, [fake_conn, '_', [?MEMBER, ?ORG_ID]])),
             Sqls = lists:reverse(get(t_sqls)),
             ?assertEqual(1, length(Sqls)),
             [Sql] = Sqls,
@@ -491,11 +544,12 @@ suspend_validates_arguments_test() ->
         organization_member_logic:suspend(?OWNER, ?ORG_ID, 0)
     ).
 
-%% suspend 的 meck 期望：只读查找走 repo，唯一写语句走 elib_pg:execute/3。
+%% suspend 的 meck 期望：成员状态走 execute，面聊责任投影走同连接 query。
 suspend_mocks() ->
     [
         {elib_pg, [
             {'with_tx', 1, fun run_tx/1},
+            {'query', 3, fun custody_projection_query/3},
             {'execute', 3, fun(_Conn, Sql, Params) ->
                 put(t_sqls, [iolist_to_binary(Sql) | sqls_so_far()]),
                 put(t_params, Params),

@@ -1,0 +1,34 @@
+oneOf:
+- type: object
+  required:
+  - op
+  - reason
+  properties:
+    op:
+      const: hold
+    reason:
+      type: string
+      minLength: 1
+      maxLength: 200
+  additionalProperties: false
+- type: object
+  required:
+  - op
+  properties:
+    op:
+      type: string
+      enum:
+      - release_hold
+      - purge
+  additionalProperties: false
+- type: object
+  required:
+  - op
+  - retention_until
+  properties:
+    op:
+      const: extend_retention
+    retention_until:
+      type: string
+      format: date-time
+  additionalProperties: false

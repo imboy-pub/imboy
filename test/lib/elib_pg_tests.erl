@@ -1851,6 +1851,7 @@ with_tx_success_test_() ->
                 3,
                 fun(_Conn, Fun, _Opts) -> Fun(FakeConn) end
             ),
+            meck:expect(epgsql, get_cmd_status, fun(_) -> {ok, commit} end),
             FakeConn
         end,
         fun(FakeConn) ->
@@ -1917,6 +1918,7 @@ with_tx_with_opts_test_() ->
                 3,
                 fun(_Conn, Fun, _Opts) -> Fun(FakeConn) end
             ),
+            meck:expect(epgsql, get_cmd_status, fun(_) -> {ok, commit} end),
             FakeConn
         end,
         fun(FakeConn) ->

@@ -906,7 +906,10 @@ c03_budget_digest_is_stable_and_config_sensitive_test_() ->
 %% C04 快照回合：round/页/digest/闭合判定（snapshot 模块单元级）
 %% ===================================================================
 
-c04_round_requires_done_and_pages_test() ->
+c04_round_requires_done_and_pages_test_() ->
+    {timeout, 40, fun c04_round_requires_done_and_pages_checks/0}.
+
+c04_round_requires_done_and_pages_checks() ->
     with_snapshot_authorization(fun() ->
         %% round token 由 new_round 自生成（快照回合身份），测试从状态取出使用
         Deadline = erlang:system_time(millisecond) + 60000,
@@ -979,10 +982,13 @@ c04_round_requires_done_and_pages_test() ->
         )
     end).
 
-%% 普通 _test/0（非 generator）+ round token 从 new_round 状态取
+%% 显式 fixture 生命周期预算（peer boot 10s / call 20s / cleanup）；产品 deadline 不变。
 %%（与 c04_round_requires_done_and_pages 同款修复；预生成 token 与
 %% new_round 自生成的身份不一致，round-match 恒失败——全量 r3 实证）
-c04_page_gap_and_digest_mismatch_abort_test() ->
+c04_page_gap_and_digest_mismatch_abort_test_() ->
+    {timeout, 40, fun c04_page_gap_and_digest_mismatch_abort_checks/0}.
+
+c04_page_gap_and_digest_mismatch_abort_checks() ->
     with_snapshot_authorization(fun() ->
         St0 = imboy_cache_sync_snapshot:new_round(
             0,
@@ -1012,9 +1018,12 @@ c04_page_gap_and_digest_mismatch_abort_test() ->
         )
     end).
 
-%% 普通 _test/0 + round token 从 new_round 状态取（第三个同款修复，
+%% 显式 fixture 生命周期预算 + round token 从 new_round 状态取（第三个同款修复，
 %% 全量 r4 实证：预生成 token 与 new_round 身份不一致 → abort 分支永不命中）
-c04_buffer_overflow_abort_test() ->
+c04_buffer_overflow_abort_test_() ->
+    {timeout, 40, fun c04_buffer_overflow_abort_checks/0}.
+
+c04_buffer_overflow_abort_checks() ->
     with_snapshot_authorization(fun() ->
         Old = application:get_env(imboy, cache_replication, #{}),
         application:set_env(imboy, cache_replication, maps:merge(Old, #{b_max => 2})),

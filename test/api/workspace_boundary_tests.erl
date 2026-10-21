@@ -37,11 +37,8 @@ group_detail_boundary_test_() ->
             {imboy_error, [
                 {'validate_id', 2, fun(_, Gid) -> {ok, elib_cnv:safe_to_integer(Gid)} end}
             ]},
-            %% fc88418f 起 detail 链新增 micro_community 真实 DB 守卫
-            %% （guard_group_detail/2 → group_detail_allowed/2）；本套件
-            %% 无群 777001 种子，mock 放行，边界语义仍由 workspace guard 覆盖。
             {micro_community_access_logic, [
-                {'guard_group_detail', 2, fun(_Uid, _Gid) -> ok end}
+                {'guard_group_detail', 2, fun(?UID, ?GID) -> ok end}
             ]},
             {group_logic, [
                 {'find_by_id', 2, fun(Gid, _) ->
@@ -66,11 +63,26 @@ group_detail_boundary_body() ->
         Req1 = group_handler:handle_action(detail, req0, #{current_uid => ?OUTSIDER}),
         ?assertEqual(403, maps:get(response_status, Req1)),
         ?assert(undefined =:= get(t_detail_allowed), "must not leak group data"),
+        ?assertEqual(0, meck:num_calls(micro_community_access_logic, guard_group_detail, '_')),
 
         %% workspace member reads group detail
         Req2 = group_handler:handle_action(detail, req0, #{current_uid => ?UID}),
         ?assertEqual(200, maps:get(response_status, Req2)),
         ?assertEqual(?GID, erase(t_detail_allowed)),
+        ?assertEqual(
+            1, meck:num_calls(micro_community_access_logic, guard_group_detail, [?UID, ?GID])
+        ),
+
+        %% Workspace membership does not bypass discussion entitlement.
+        meck:expect(
+            micro_community_access_logic,
+            guard_group_detail,
+            fun(?UID, ?GID) -> {error, {403, <<"discussion entitlement denied">>}} end
+        ),
+        Req3 = group_handler:handle_action(detail, req0, #{current_uid => ?UID}),
+        ?assertEqual(403, maps:get(response_status, Req3)),
+        ?assertEqual(undefined, get(t_detail_allowed)),
+        ?assertEqual(1, meck:num_calls(group_logic, find_by_id, [?GID, '_'])),
         ok
     end.
 

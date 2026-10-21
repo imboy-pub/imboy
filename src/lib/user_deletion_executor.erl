@@ -208,6 +208,7 @@ transfer_ownerships_tx(Conn, Uid) ->
 -spec execute_main_tx(pid(), integer()) -> ok.
 execute_main_tx(Conn, Uid) ->
     ok = deletion_preflight_gate(Uid),
+    ok = talk_record_final_gate_tx(Conn, Uid),
     %% mcp_client_grant 无用户列：先按用户 client 子查询删除
     {ok, _} = elib_pg:execute(
         Conn,
@@ -241,6 +242,15 @@ deletion_preflight_gate(Uid) ->
             throw({abort_tx, {deletion_preflight_blockers, Blockers}});
         {error, Reason} ->
             throw({abort_tx, {deletion_preflight_unavailable, Reason}})
+    end.
+
+%% A stale external facts snapshot must not be the final decision. RESTRICT
+%% remains the concurrent-insert backstop; no retained identity is rewritten.
+talk_record_final_gate_tx(Conn, Uid) ->
+    case talk_record_delete_preflight:facts_tx(Conn, Uid) of
+        {ok, #{blockers := []}} -> ok;
+        {ok, #{blockers := Blockers}} -> throw({abort_tx, {deletion_preflight_blockers, Blockers}});
+        _ -> throw({abort_tx, {deletion_preflight_unavailable, talk_record}})
     end.
 
 %% 通用所有权转移：对每个 owned 对象找继任 → 转移；无继任 → Close

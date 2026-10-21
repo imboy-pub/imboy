@@ -122,6 +122,13 @@
 | `report_ticket_ds` | 举报工单 |
 | `report_action_log_ds` | 举报处理日志 |
 | `live_room_ds` | 直播间 |
+| `talk_record_ds` | 面聊记录CRUD、列表及兼容公开入口 |
+| `talk_record_context_ds` | 个人/企业创建上下文与归属组合核验 |
+| `talk_record_cursor_ds` | 面聊分页游标签名、调用者/筛选绑定与TTL |
+| `talk_record_view_ds` | 面聊角色能力、已授权可见行DTO和ETag |
+| `talk_record_capture_ds` | 采集创建、事件折叠、恢复与放弃事务 |
+| `talk_record_parts_ds` | 分段声明、真实上传引用与确认资产绑定 |
+| `talk_record_capture_support_ds` | 采集owner/fencing门禁与采集/分段DTO |
 | `wallet_ds` | 钱包服务 |
 | `payment_transaction_ds` | 统一支付流水数据服务（薄封装 payment_transaction_repo + 回调幂等记录） |
 | `billing_plan_ds` | SaaS 套餐数据服务（薄封装 billing_plan_repo） |
