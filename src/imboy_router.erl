@@ -1490,7 +1490,7 @@ get_routes() ->
             %% FULL-08：Admin 企业应用治理面 A-01..A-14（/api/adm/enterprise/*）。
             %% 与 enterprise_platform_routes()（/api/adm/enterprise-business/*）是
             %% **两个前缀不相交的 surface**：本族只服务 Application/Credential/
-            %% Grant/Webhook/审计治理，**不经 feature 门**——理由与
+            %% Webhook/审计治理，**不经 feature 门**——理由与
             %% enterprise_internal_routes() 一致（企业集成平台是核心交付面，
             %% 新增 feature key 会改 IMBOY_PRODUCT_FEATURE_MANIFEST_HASH）。
             %% 鉴权：/api/adm 前缀的 adm_auth_middleware（Admin Cookie 会话）+
@@ -2024,7 +2024,6 @@ enterprise_application_governance_routes() ->
         %% A-03 生命周期迁移（POST，CAS）
         {"/api/adm/enterprise/organizations/:org_id/applications/:application_id/status",
             adm_enterprise_application_handler, #{action => application_status}},
-        %% A-04 scope 授予/降级（PUT，CAS）
         %% A-05 列表（GET）/ A-06 签发（POST，唯一回显 secret 的响应）
         {"/api/adm/enterprise/organizations/:org_id/applications/:application_id/credentials",
             adm_enterprise_application_handler, #{action => credentials}},
@@ -2035,7 +2034,6 @@ enterprise_application_governance_routes() ->
         {"/api/adm/enterprise/organizations/:org_id/applications/:application_id/credentials/:credential_id",
             adm_enterprise_application_handler, #{action => credential_revoke}},
         %% A-09 列表（GET）/ A-10 新增（POST）
-        %% A-11 Grant CAS 增删（PATCH）
         %% A-16 身份映射列表（GET）/ A-17 绑定（POST）/ A-18 解绑（DELETE，
         %% query external_user_id）——OA 按需免登的工作台可见性与签发前提
         {"/api/adm/enterprise/organizations/:org_id/applications/:application_id/identities",

@@ -36,7 +36,7 @@ init(Req0, State0) ->
 create(<<"GET">>, Req0, State) ->
     %% INT-26（V2.1 新增）：企业群只读 keyset 列表——与 INT-04 共用本
     %% cowboy path（同 path 不重复登记，方法分派与 INT-05/06 同款口径）；
-    %% 路由匹配仍按冻结表 GET /groups -> INT-26（scope groups:read）。
+    %% 路由匹配仍按冻结表 GET /groups -> INT-26（rate internal_read）。
     list_groups(Req0, State);
 create(<<"POST">>, Req0, State) ->
     Ctx = maps:get(enterprise_internal, State, #{}),
@@ -70,7 +70,7 @@ create(_, Req0, _State) ->
 -spec members(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 members(<<"GET">>, Req0, State) ->
     %% INT-27（V2.1 新增）：群成员只读 keyset 列表——与 INT-05/06 共用本
-    %% path（方法分派；冻结表 GET -> INT-26/27 各自 scope/幂等语义生效）。
+    %% path（方法分派；冻结表 GET -> INT-26/27 各自幂等/rate 语义生效）。
     list_members(Req0, State);
 members(<<"PUT">>, Req0, State) ->
     members_op(add, <<"PUT">>, Req0, State);

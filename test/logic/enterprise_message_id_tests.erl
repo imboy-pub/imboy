@@ -9,7 +9,6 @@
     end}
 ).
 
-
 %% OA 业务 msg_id 与消息行 ID 分离，origin/审计/响应不得重新发号。
 %% OA business IDs are UUIDv7; origin, audit, and response share the accepted ID.
 oa_direct_and_group_preserve_business_id_test_() ->
@@ -28,8 +27,11 @@ oa_direct_and_group_preserve_business_id_test_() ->
             ]},
             {enterprise_org_member_repo, [
                 {'find_membership_with_user_tx', 3, fun(_, 1, 20) ->
-                    {ok, #{<<"member_status">> => <<"active">>,
-                        <<"account_type">> => 0, <<"user_status">> => 1}}
+                    {ok, #{
+                        <<"member_status">> => <<"active">>,
+                        <<"account_type">> => 0,
+                        <<"user_status">> => 1
+                    }}
                 end}
             ]},
             {enterprise_group_repo, [
@@ -51,31 +53,59 @@ oa_direct_and_group_preserve_business_id_test_() ->
             ]}
         ],
         fun() ->
-            Ctx = #{organization_id => 1, application_id => 2, principal_user_id => 10,
-                granted_scopes => [<<"messages:send">>]},
-            Input = #{sender_mode => <<"application">>, msg_type => <<"text">>,
-                content => <<"hello">>, recipient_user_id => <<"recipient">>},
+            Ctx = #{organization_id => 1, application_id => 2, principal_user_id => 10},
+            Input = #{
+                sender_mode => <<"application">>,
+                msg_type => <<"text">>,
+                content => <<"hello">>,
+                recipient_user_id => <<"recipient">>
+            },
             {ok, Direct} = enterprise_message_logic:direct_tx(test_conn, Ctx, Input),
             {ok, Group} = enterprise_message_logic:group_tx(test_conn, Ctx, 30, Input),
             DirectId = maps:get(<<"msg_id">>, Direct),
             GroupId = maps:get(<<"msg_id">>, Group),
             ?assertNotEqual(DirectId, GroupId),
-            lists:foreach(fun({Result, Kind, RowId}) ->
-                Id = maps:get(<<"msg_id">>, Result),
-                ?assertEqual(36, byte_size(Id)),
-                ?assertMatch({match, _}, re:run(Id,
-                    <<"^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$">>)),
-                ?assertEqual(RowId, maps:get(<<"webhook_resource_id">>, Result)),
-                ?assert(meck:called(enterprise_message_origin_repo, insert_tx,
-                    [test_conn, Kind, 1, 2, application, undefined, RowId, Id]))
-            end, [{Direct, direct, 71}, {Group, group, 72}]),
-            ?assert(meck:called(enterprise_message_repo, insert_direct_tx,
-                [test_conn, DirectId, 10, 20, <<"text">>, '_'])),
-            ?assert(meck:called(enterprise_message_repo, insert_group_tx,
-                [test_conn, GroupId, 10, 30, <<"text">>, '_'])),
-            AuditIds = [maps:get(<<"msg_id">>, Detail) ||
-                {_, {_, insert_audit_tx, [_, _, _, Detail]}, _} <-
-                    meck:history(enterprise_message_repo)],
+            lists:foreach(
+                fun({Result, Kind, RowId}) ->
+                    Id = maps:get(<<"msg_id">>, Result),
+                    ?assertEqual(36, byte_size(Id)),
+                    ?assertMatch(
+                        {match, _},
+                        re:run(
+                            Id,
+                            <<"^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$">>
+                        )
+                    ),
+                    ?assertEqual(RowId, maps:get(<<"webhook_resource_id">>, Result)),
+                    ?assert(
+                        meck:called(
+                            enterprise_message_origin_repo,
+                            insert_tx,
+                            [test_conn, Kind, 1, 2, application, undefined, RowId, Id]
+                        )
+                    )
+                end,
+                [{Direct, direct, 71}, {Group, group, 72}]
+            ),
+            ?assert(
+                meck:called(
+                    enterprise_message_repo,
+                    insert_direct_tx,
+                    [test_conn, DirectId, 10, 20, <<"text">>, '_']
+                )
+            ),
+            ?assert(
+                meck:called(
+                    enterprise_message_repo,
+                    insert_group_tx,
+                    [test_conn, GroupId, 10, 30, <<"text">>, '_']
+                )
+            ),
+            AuditIds = [
+                maps:get(<<"msg_id">>, Detail)
+             || {_, {_, insert_audit_tx, [_, _, _, Detail]}, _} <-
+                    meck:history(enterprise_message_repo)
+            ],
             ?assertEqual([DirectId, GroupId], AuditIds)
         end
     ).

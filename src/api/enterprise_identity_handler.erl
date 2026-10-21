@@ -23,7 +23,7 @@ init(Req0, State0) ->
             %% INT-02(PUT)/INT-15(DELETE) 共用 /identity-mappings 这一条 cowboy
             %% path（cowboy 不允许同 path 重复登记），方法分派在此收敛；
             %% enterprise_internal_routes:match/2 仍按 method+path 冻结判定，
-            %% 两条 INT 的 scope/幂等/rate 各自独立生效。
+            %% 两条 INT 的幂等/rate 各自独立生效。
             mappings -> mappings(Method, Req0, State);
             bind -> bind(Method, Req0, State);
             resolve -> resolve(Method, Req0, State);

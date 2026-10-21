@@ -13,8 +13,8 @@
 %         delivery_id => binary()}}（path 段注入 handler_opts）
 %   GET  /api/internal/v1/webhook/deliveries ->   % FULL-03 提议 INT-23
 %       {Path, enterprise_webhook_handler, #{action => deliveries}}
-% —— 必须经 enterprise_internal_middleware（A2 认证链：scope webhooks:manage
-%    → rate internal_write）。ctx 注入 handler_opts.enterprise_internal。
+% —— 必须经 enterprise_internal_middleware（A2 认证链：HMAC-SHA256 验签 →
+%    rate internal_write）。ctx 注入 handler_opts.enterprise_internal。
 %
 % 幂等：INT-12 configure upsert 天然幂等（同 key 同 body 重放原结果）；
 % INT-13 replay 的幂等资源 = 新 delivery 行（idempotency_key=replay-<新id>

@@ -186,8 +186,7 @@ routes() ->
             idempotency => not_required,
             sender_mode => none
         },
-        %% INT-18 群详情（V2.1 scope 修正：读操作降为 groups:read——§6.2/§7；
-        %%      此前误用 groups:write 导致只读查看被迫要求写授权）
+        %% INT-18 群详情（GET 读操作，rate internal_read）
         #{
             id => <<"INT-18">>,
             method => <<"GET">>,

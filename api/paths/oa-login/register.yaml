@@ -2,8 +2,8 @@ post:
   tags:
   - oa-login
   summary: OA 入站登录 register
-  description: 仅 login 意图可新建，须显式 confirm_create=true。创建、关联、投影、审计和消费同事务；缺目录权限仍可登录并返回
-    projection_pending=true，不自动扩权。
+  description: 仅 login 意图可新建，须显式 confirm_create=true。创建、关联、投影、审计和消费同事务；可信来源
+    或人员状态尚未就绪时仍可登录并返回 projection_pending=true，不自动扩权。
   operationId: oaLoginRegister
   security: []
   requestBody:
@@ -162,7 +162,8 @@ post:
               msg:
                 type: string
                 enum:
-                - insufficient_scope
+                - organization_boundary_violation
+                - account_not_active
               sv_ts:
                 type: integer
                 format: int64

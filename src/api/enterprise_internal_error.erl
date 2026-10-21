@@ -6,7 +6,7 @@
 % plan-gz §6 / manifest stable_error_codes）。
 %
 % 合同（冻结）：
-%   * 错误码只取 manifest stable_error_codes 的 16 个 snake_case 二进制，
+%   * 错误码只取 manifest stable_error_codes 的 15 个 snake_case 二进制，
 %     不新造码；未知码按 internal_error 处理（fail-safe）。
 %   * HTTP 状态映射固定：401 invalid_credential/credential_expired；
 %     403 application_disabled/organization_disabled/organization_boundary_violation/

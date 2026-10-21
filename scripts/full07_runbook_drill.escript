@@ -18,8 +18,8 @@
 %%                   单调递增（旧 generation 的签名不再被接受是本脚本断言的
 %%                   generation 语义；HMAC 验签链由
 %%                   enterprise_webhook_governance_pg_tests 覆盖）。
-%%   D3 credential emergency revoke：一次事务内撤销该应用**全部** active Grant
-%%                   → effective scope 立即为空（下一个请求即失败），且 Grant
+%%   D3 credential emergency revoke：一次事务内撤销该应用**全部** active
+%%                   credential（签名立即失效，下一个请求即 401），且 credential
 %%                   行保留为 revoked（审计可见，不是物理删除）。
 %%   D4 worker restart：投递 worker 在持租约时崩溃（事务 ROLLBACK）→ 行仍可被
 %%                   下一次认领（不丢投递）；正常提交租约后 → 不再被重复认领
@@ -174,7 +174,7 @@ secret_cipher(Conn, Principal) ->
     end.
 
 %% ------------------------------------------------------------------
-%% D3 credential emergency revoke（一次事务内撤全部 active Grant）
+%% D3 credential emergency revoke（一次事务内撤全部 active credential）
 %% ------------------------------------------------------------------
 d3_emergency_revoke(Conn) ->
     {OrgId, AppId, _Principal} = seed_org_app(Conn, <<"full07drill-revoke">>),

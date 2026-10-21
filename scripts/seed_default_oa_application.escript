@@ -11,13 +11,11 @@
 %%      organization_id 仅为业务归属）；
 %%   2. redirect_uri 由部署配置注入 allowlist（未配置则跳过 seed，
 %%      OA 入口静默隐藏——不报错）；
-%%   3. 签发 Application Credential（仅在新签发时打印明文一次，
-%%      由运维转交 OA 团队）；
-%%   4. 建立生效 Grant（scope=sso:exchange——零 Grant 时 A2 生效 scope
-%%      为空集，exchange 会 insufficient_scope，V2.1 §5.2/F-09）。
+%%   3. 签发 Application Credential（HMAC-SHA256 签名凭证，仅在新签发时
+%%      打印明文一次，由运维转交 OA 团队）。
 %%
-%% 幂等：按 application_key 定位应用，已存在则只补齐 allowlist/Grant/
-%% credential 缺口；重复部署零副作用。
+%% 幂等：按 application_key 定位应用，已存在则只补齐 allowlist/credential
+%% 缺口；重复部署零副作用。
 %%
 %% 用法（imboy 仓根）：
 %%   PG_HOST=127.0.0.1 PG_PORT=4323 PG_USER=imboy_user PG_PASSWORD=... \
@@ -33,8 +31,6 @@
 
 -define(DEFAULT_KEY, <<"default-oa">>).
 -define(DEFAULT_NAME, <<"办公"/utf8>>).
--define(SCOPES, [<<"sso:exchange">>]).
--define(GRANT_IDEM_KEY, <<"seed-default-oa-grant">>).
 
 main(_Args) ->
     RepoDir = os:getenv("IMBOY_DIR", "."),
@@ -110,7 +106,7 @@ seed(RedirectUri) ->
         epgsql:close(Conn)
     end.
 
-%% seed 主体（调用方持有事务）：定位/创建应用 -> 补齐 allowlist/Grant/credential。
+%% seed 主体（调用方持有事务）：定位/创建应用 -> 补齐 allowlist/credential。
 seed_tx(Conn, ApplicationKey, Name, RedirectUri) ->
     OrgId = resolve_org(Conn),
     AppId = ensure_application(Conn, OrgId, ApplicationKey, Name, RedirectUri),
@@ -171,10 +167,6 @@ adopt_application(Conn, OrgId, App, RedirectUri) ->
             io:format("APP: allowlist 追加 ~s~n", [RedirectUri])
     end,
     AppId.
-
-%% Grant 幂等按**生效 scope**判定（与 enterprise_oa_bootstrap 同语义）：
-%% sso:exchange 已生效即跳过；被撤销/过期/未授予才新建（幂等键带时间
-%% 后缀，绕开 (org, app, key) 唯一约束——revoked 行不可复用键）。
 
 %% credential 幂等：已有未过期 active credential 则复用（明文不可再取，
 %% 提示运维用既有凭证）；无则新签发并打印明文（仅此一次）。

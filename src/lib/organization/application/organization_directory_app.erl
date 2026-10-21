@@ -9,7 +9,7 @@
 %%% 授权门（单一裁决，先于参数校验与任何目录读）：
 %%%   org 不存在                     → {error, <<"resource_not_found">>}      404
 %%%   org archived                   → {error, <<"organization_disabled">>}   403
-%%%   非成员 / removed / suspended   → {error, <<"insufficient_scope">>}      403
+%%%   非成员 / removed / suspended   → {error, <<"organization_boundary_violation">>} 403
 %%%
 %%% 游标（CURSOR-V2 算法，Human 域绑定）：
 %%%   * payload domain=<<"human_directory">>，绑定 Human uid / Org / endpoint /
@@ -161,8 +161,9 @@ authorize(OrgId, Uid) ->
         {ok, #{<<"member_status">> := <<"active">>}} ->
             ok;
         {ok, _Other} ->
-            %% 非成员（member_status NULL）或 removed/suspended
-            {error, <<"insufficient_scope">>};
+            %% 非成员（member_status NULL）或 removed/suspended——成员资格
+            %% 不足，复用 stable 403 家族的边界违例码（Scope 体系已移除）
+            {error, <<"organization_boundary_violation">>};
         {error, not_found} ->
             {error, <<"resource_not_found">>};
         {error, Reason} ->

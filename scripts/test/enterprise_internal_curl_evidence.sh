@@ -5,9 +5,9 @@
 # 驱动；本脚本用 **curl**（第二个、独立于仓内 eunit HTTP client 的调用方）对
 # intbe02_http_support 建立的真 Cowboy 监听 + 一次性 marker PG 复跑 6 条代表路由
 # （INT-01/02/03/12/13/14 + INT-32）的正反例，产出可重放证据：
-#   C01 INT-01 GET application（全权凭证）→ 200
-#   C02 INT-01 GET application（只读凭证）→ 200
-#   C03 INT-02 PUT identity-mappings（缺 identities:write scope）→ 403 insufficient_scope
+#   C01 INT-01 GET application（HMAC 签名凭证 A）→ 200
+#   C02 INT-01 GET application（HMAC 签名凭证 RO，第二个应用凭证）→ 200
+#   C03 INT-02 PUT identity-mappings（坏 secret 签名，验签拒绝）→ 401 invalid_credential
 #   C04 INT-03 POST identity-mappings/resolve → 200 命中映射
 #   C05 INT-12 PUT webhook → 200 返回 secret（loopback http 仅 test profile 可过 SSRF 守卫）
 #   C06 INT-32 POST webhook/test-delivery → 200 enqueued=true
@@ -119,28 +119,53 @@ print(e.get('code') if isinstance(e,dict) else d.get('code',''))"
 jget() { python3 -c "import json;d=json.load(open('$1'));print(d$2)"; }
 
 req() { # method path cred extra-headers... ; body via stdin; 输出 status，body 落 $BODY_F
+  # Internal 面合同：HMAC-SHA256 请求签名（四头），canonical 12 行与
+  # enterprise_internal_signature:canonical/5 逐字节一致（org/query 空行）。
+  # REQ_SECRET_OVERRIDE 可替换 HMAC key（坏签名负例 C03 用）。
   local method="$1" path="$2" cred="$3"; shift 3
-  local hdrs=(-H "Authorization: Bearer $cred" -H 'Content-Type: application/json')
-  local h
+  local prefix="${cred%%.*}" secret="${REQ_SECRET_OVERRIDE:-${cred#*.}}"
+  local idem="" h
+  for h in "$@"; do
+    case "$h" in
+      [Ii]dempotency-[Kk]ey:*) idem="${h#*:}"; idem="${idem# }";;
+    esac
+  done
+  cat > "$REQ_BODY_F"   # body 落盘：摘要与发送同源
+  local ts nonce bhash sig
+  ts=$(date +%s)
+  nonce="q08curl$(LC_ALL=C tr -dc 'a-f0-9' </dev/urandom | head -c 24)"
+  bhash=$(openssl dgst -sha256 -r "$REQ_BODY_F" | cut -d' ' -f1)
+  sig=$(printf 'IMBOY-INTERNAL-V1\nsha256\n%s\n\n%s\n%s\n\napplication/json\n%s\n%s\n%s\n%s' \
+    "$prefix" "$method" "$path" "$idem" "$bhash" "$ts" "$nonce" \
+    | openssl dgst -sha256 -hmac "$secret" -r | cut -d' ' -f1)
+  local hdrs=(-H "Content-Type: application/json"
+    -H "x-imboy-credential: $prefix"
+    -H "x-imboy-timestamp: $ts"
+    -H "x-imboy-nonce: $nonce"
+    -H "x-imboy-signature: sha256=$sig")
   for h in "$@"; do hdrs+=(-H "$h"); done
   : > "$BODY_F" || true
   curl -sS -o "$BODY_F" -w '%{http_code}' -X "$method" \
-    "http://127.0.0.1:${INT_PORT}${path}" "${hdrs[@]}" --data-binary @- || true
+    "http://127.0.0.1:${INT_PORT}${path}" "${hdrs[@]}" --data-binary "@$REQ_BODY_F" || true
 }
 BODY_F="$Q08_RUN_DIR/body.json"
+REQ_BODY_F="$Q08_RUN_DIR/req_body.json"
 
 if [[ "$PHASE" == "1" ]]; then
   s=$(echo '{}' | req GET /api/internal/v1/application "$INT_CRED_A")
   c=$(code_of "$BODY_F"); k=$(jget "$BODY_F" "['application_key']")
-  [[ "$s" == 200 && "$k" == "$INT_APP_KEY_A" ]] && ok C01 "INT-01 full-cred GET application" "$s" "" || fail C01 "INT-01 full-cred GET application" "$s" "$c"
+  [[ "$s" == 200 && "$k" == "$INT_APP_KEY_A" ]] && ok C01 "INT-01 signed cred GET application" "$s" "" || fail C01 "INT-01 signed cred GET application" "$s" "$c"
 
   s=$(echo '{}' | req GET /api/internal/v1/application "$INT_CRED_RO")
   c=$(code_of "$BODY_F")
-  [[ "$s" == 200 ]] && ok C02 "INT-01 read-only cred GET application" "$s" "" || fail C02 "INT-01 read-only cred GET application" "$s" "$c"
+  [[ "$s" == 200 ]] && ok C02 "INT-01 second signed cred GET application" "$s" "" || fail C02 "INT-01 second signed cred GET application" "$s" "$c"
 
-  s=$(printf '{"external_user_id":"intbe02-ext-new","user_id":995013}' | req PUT /api/internal/v1/identity-mappings "$INT_CRED_RO" 'Idempotency-Key: q08-curl-C03')
+  # 坏 secret 签名（格式合法四头、canonical 正确、HMAC key 错）→ 验签拒绝 401
+  s=$(printf '{"external_user_id":"intbe02-ext-new","user_id":995013}' \
+      | REQ_SECRET_OVERRIDE="wrong_secret_for_bad_signature_neg" \
+        req PUT /api/internal/v1/identity-mappings "$INT_CRED_A" 'Idempotency-Key: q08-curl-C03')
   c=$(code_of "$BODY_F")
-  [[ "$s" == 403 && "$c" == insufficient_scope ]] && ok C03 "INT-02 missing-scope 403" "$s" "$c" || fail C03 "INT-02 missing-scope 403" "$s" "$c"
+  [[ "$s" == 401 && "$c" == invalid_credential ]] && ok C03 "INT-02 bad-signature 401" "$s" "$c" || fail C03 "INT-02 bad-signature 401" "$s" "$c"
 
   s=$(printf '{"external_user_ids":["%s"]}' "$INT_EXT_H1" | req POST /api/internal/v1/identity-mappings/resolve "$INT_CRED_A")
   c=$(code_of "$BODY_F"); u=$(jget "$BODY_F" "['mappings'][0]['user_id']")

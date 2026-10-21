@@ -317,7 +317,7 @@ policies() ->
             verdict => required_audit,
             audit_action => <<"workspace.create">>,
             audit_resource_type => <<"workspace">>,
-            reason => <<"应用侧建 workspace 改变资源拓扑，必须留痕（grant/审计/幂等同事务）"/utf8>>
+            reason => <<"应用侧建 workspace 改变资源拓扑，必须留痕（归属校验/审计/幂等同事务）"/utf8>>
         },
         #{
             id => <<"INT-38">>,
@@ -344,7 +344,7 @@ policies() ->
             verdict => required_audit,
             audit_action => <<"channel.create">>,
             audit_resource_type => <<"channel">>,
-            reason => <<"应用侧建企业频道改变资源拓扑，必须留痕（grant/审计/幂等同事务）"/utf8>>
+            reason => <<"应用侧建企业频道改变资源拓扑，必须留痕（归属校验/审计/幂等同事务）"/utf8>>
         },
         #{
             id => <<"INT-41">>,

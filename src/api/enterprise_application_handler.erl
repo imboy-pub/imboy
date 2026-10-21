@@ -53,7 +53,7 @@ self_info(<<"GET">>, Req0, State) ->
 self_info(_, Req0, _State) ->
     cowboy_req:reply(405, #{}, <<"Method Not Allowed">>, Req0).
 
-%% @doc 自检载荷：application 元数据 + 本次 credential 的授权 scope + 凭证清单。
+%% @doc 自检载荷：application 元数据 + 认证方式 + 凭证清单。
 -spec self_payload(map(), map()) -> map().
 self_payload(Status, Ctx) ->
     App = maps:get(application, Status, #{}),

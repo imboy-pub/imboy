@@ -172,7 +172,8 @@ post:
               msg:
                 type: string
                 enum:
-                - insufficient_scope
+                - organization_boundary_violation
+                - account_not_active
               sv_ts:
                 type: integer
                 format: int64

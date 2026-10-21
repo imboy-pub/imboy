@@ -7,9 +7,9 @@
 % 路由（A0 W4 经 Router lease 串行登记，本模块不接线 Router）：
 %   POST /api/internal/v1/oa/sso/exchange ->
 %       {Path, enterprise_oa_sso_exchange_handler, #{action => exchange}}
-%   —— 必须经 enterprise_internal_middleware（A2 认证链：credential →
-%      active/expiry → application active → organization active →
-%      scope sso:exchange → rate internal_sso fail-closed → INT-14 幂等豁免），
+%   —— 必须经 enterprise_internal_middleware（A2 认证链：HMAC-SHA256 验签 →
+%      credential active/expiry → application active → organization active →
+%      rate internal_sso fail-closed → INT-14 幂等豁免），
 %      不得进入人类 JWT/签名门（NEG-X02）。ctx 由中间件注入
 %      handler_opts.enterprise_internal（atom 键 map）。
 %

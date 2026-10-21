@@ -11,6 +11,9 @@
 
 ## Unreleased — OA 来源核对与契约修正
 
+> 注：本段中的只读身份权限、全域 Grant 等 Scope 设计已被上方「统一 OA 请求签名」段
+> 移除（Internal 面现为 HMAC-SHA256 签名认证，无逐接口 Scope），仅作当时的变更记录保留。
+
 - 新增 INT-45..47 来源组织、部门、人员 GET 核对；当前 33 paths / 47 Internal operations。
 - 只读身份权限、来源及目标全域 Grant、实时签名游标、精确过滤与 no-store；不要求 identities:write。
 - 目录来源兼容显式 OA 登录/SSO 能力，bootstrap 仍只授予目录权限，不自动授予签票或交换权限。
@@ -21,12 +24,18 @@
 
 ## Unreleased — Workspace writes
 
+> 注：本段中的 workspaces:write 等 Scope 设计已被上方「统一 OA 请求签名」段移除，
+> 仅作当时的变更记录保留。
+
 - 新增 INT-37..39 创建、修改及软归档；独立 workspaces:write，GET 投影追加 version。
 - 迁移 160 为所有工作空间修改自动增加版本；回退遇新授权或版本证据时拒绝静默丢弃。
 - 默认归档显式交接，应用审计与幂等同事务。
 
 
 ## v1.2 候选 — 2026-10-01（未发布 / unreleased）
+
+> 注：本段中的 customer_service:read/write 显式权限与企业全域 Grant 已被上方
+> 「统一 OA 请求签名」段移除，仅作当时的变更记录保留。
 
 - 新增 INT-33..36 企业坐席配置，28 path / 36 端点。
 - 新增 customer_service:read/write 显式权限和 3 个稳定 409 错误码。

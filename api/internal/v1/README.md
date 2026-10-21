@@ -313,7 +313,7 @@ application and device binding, short expiration and one-time consumption. Never
 - **机器契约**：`../../openapi-internal.yaml`（编辑真源）与
   `../../openapi-internal.bundle.yaml`（bundle 单文件）——字段级请求/响应
   schema 逐端点从 handler 实证（`src/api/enterprise_*_handler.erl`），
-  16 个稳定错误码为可复用 response 组件；限流桶 / 幂等要求以
+  15 个稳定错误码为可复用 response 组件；限流桶 / 幂等要求以
   `x-imboy-rate-bucket` / `x-imboy-idempotency` 扩展字段
   标注。工具导入用 bundle 单文件。
 - **动手联调**：[IMBoy-Internal-API-v1.postman_collection.json](./IMBoy-Internal-API-v1.postman_collection.json)
@@ -350,7 +350,7 @@ INT-43 同步一次最多 100 个部门和 100 个人员，整批同事务；未
 业务版本/状态冲突先核对，不盲目重试或增加版本覆盖。部门循环为 400，归档父部门、非空部门、
 Owner/任职状态冲突为对应 403/409；数据库未知故障仍为 500。跨批不具有整体原子性。
 
-INT-45..47 为 GET，只需 identities:read，不要求写权限：
+INT-45..47 为 GET，经 HMAC-SHA256 签名认证，只要求当前有效的来源配置与应用/凭据实时状态，不设独立读写权限：
 organizations 返回已建立组织且来源配置当前有效 的本来源组织；
 departments/persons 必传 external_organization_id。尚未 bootstrap 的来源配置仅在可信 Admin 查看。
 逐请求及 SQL 读取时复核应用、凭据、来源、授权有效期与目标组织状态，撤权后的旧 cursor 也重验。

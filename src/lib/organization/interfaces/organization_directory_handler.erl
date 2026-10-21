@@ -119,7 +119,7 @@ respond(Req0, {error, Code}) when is_binary(Code) ->
 reply_error(Req0, Code) ->
     Status = ?ERR:http_status(Code),
     case Code of
-        <<"insufficient_scope">> ->
+        <<"organization_boundary_violation">> ->
             ?WARN_LOG([organization_directory_forbidden, #{path => cowboy_req:path(Req0)}]);
         <<"organization_disabled">> ->
             ?WARN_LOG([organization_directory_org_disabled, #{path => cowboy_req:path(Req0)}]);

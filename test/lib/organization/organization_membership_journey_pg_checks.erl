@@ -39,7 +39,7 @@ run(C) ->
     assert_counts(C, Resources, 0),
     ?assertMatch({error, {403, _}}, workspace_logic:detail(?TARGET, W)),
     ?assertEqual(
-        {error, <<"insufficient_scope">>},
+        {error, <<"organization_boundary_violation">>},
         organization_directory_app:list_members(?ORG, ?TARGET, #{})
     ),
     assert_generations(C, G, 1, 0),

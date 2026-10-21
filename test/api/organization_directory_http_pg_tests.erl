@@ -7,7 +7,7 @@
 %%%   * active member 的 departments（root/child 结构）/ members
 %%%     （cursor/limit keyset 分页）/ me / search（q 命中）正确；
 %%%   * suspended / removed / 非成员（outsider）fail-closed（403
-%%%     insufficient_scope）；missing org 与跨 Org 同体不泄漏；
+%%%     organization_boundary_violation）；missing org 与跨 Org 同体不泄漏；
 %%%   * 无凭证 401；U-02 负例：search 不命中 email/mobile；
 %%%   * cursor/limit 翻页至尽：页数有限、无重复、总数与种子一致
 %%%     （查询数不随成员数线性增长由 keyset limit+1 语义保证）。
@@ -84,7 +84,7 @@ four_endpoints_via_real_http(State) ->
     ).
 
 %% ===================================================================
-%% suspended / removed fail-closed（403 insufficient_scope）
+%% suspended / removed fail-closed（403 organization_boundary_violation）
 %% ===================================================================
 
 suspended_and_removed_fail_closed(State) ->
@@ -99,7 +99,7 @@ suspended_and_removed_fail_closed(State) ->
             }),
             ?assertEqual(403, maps:get(status, R), {UidKey, maps:get(body, R)}),
             ?assertMatch(
-                #{<<"error">> := #{<<"code">> := <<"insufficient_scope">>}},
+                #{<<"error">> := #{<<"code">> := <<"organization_boundary_violation">>}},
                 maps:get(json, R)
             )
         end,
@@ -119,7 +119,7 @@ outsider_and_missing_org_same_shape(State) ->
     }),
     ?assertEqual(403, maps:get(status, R1), maps:get(body, R1)),
     ?assertMatch(
-        #{<<"error">> := #{<<"code">> := <<"insufficient_scope">>}}, maps:get(json, R1)
+        #{<<"error">> := #{<<"code">> := <<"organization_boundary_violation">>}}, maps:get(json, R1)
     ),
     %% missing org（不存在的 org id）→ 与 403 同型信封、状态 404：
     %% 不区分「org 不存在」与「成员不可见」以外的事实（同体不泄漏由

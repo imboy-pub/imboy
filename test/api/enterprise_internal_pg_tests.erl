@@ -12,8 +12,7 @@
 %%   ③ credential 解析：合法/畸形各形态
 %%   ④ 认证链负例矩阵：unknown prefix / 错 secret / revoked / expired /
 %%      application disabled / organization archived 不影响认证 / 成功 context 形态
-%%      （V2.1：零 Grant ⇒ granted_scopes 空集，授权后交集生效）
-%%   ⑤ 中间件 decide：路由匹配、scope、rate（含 fail-closed）、
+%%   ⑤ 中间件 decide：路由匹配、rate（含 fail-closed）、
 %%      mutation 缺/畸形 Idempotency-Key 拒绝（INV-7 + §11 形态）、INT-14 豁免
 %%   ⑥ 幂等：同 key 同 payload 精确重放 status+body / 同 key 异 payload 409 /
 %%      claim 单次 / 过期行同事务原子重置 / digest 规范化（key 序无关、
@@ -35,9 +34,6 @@
 -define(OWNER_B, 988002).
 -define(ORG_A, 988101).
 -define(ORG_B, 988102).
-
-%% 刻意不含 application:read：供 middleware_route_and_flow 的
-%% insufficient_scope 负例使用（GET /application 需要 application:read）。
 
 -define(RATE_CFG, #{internal_read => 1000, internal_write => 1000, internal_sso => 1000}).
 
@@ -187,11 +183,6 @@ enterprise_internal_pg_test_() ->
                 {"redaction_log_and_envelope", with_tx(C, fun redaction_log_and_envelope/1)}
             ]
         end}}.
-
-%%%===================================================================
-%%% ① 固定 scope 枚举（V2.1 §7 基线 16 值 + 448b9551/95115377 内部写授权
-%%%    追加 workspaces:write / channels:write / oa:login:issue / members:write → 恰 20 个）
-%%%===================================================================
 
 %%%===================================================================
 %%% ② 错误信封（manifest stable_error_codes）

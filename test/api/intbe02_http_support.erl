@@ -85,12 +85,10 @@
 -define(SECRET_RO, <<"intbe02_secret_ro_0123456789abcdef">>).
 -define(SECRET_SSO, <<"intbe02_secret_sso_0123456789abcdef">>).
 
-%% 窄写应用 scope：groups:write（+ groups:read 便于分组判别）——供「未覆盖
-%% Workspace 写拒绝」负例使用（scope 必须满足、Grant 覆盖必须失败，二者
-%% 才能把 403 归因到边界而不是 scope）。
+%% 窄写应用（App W）：认证与凭证均有效，供「未覆盖 Workspace 的写操作被
+%% 资源归属边界拒绝」负例使用（403 归因到边界）。
 
-%% App A：17 个固定 scope（除 sso:exchange——该 scope 走独立 SSO 应用），
-%% org 全域 Grant；主链全部正例/幂等用例都用它。
+%% App A：主应用；主链全部正例/幂等用例都用它。
 
 -define(EXT_H1, <<"intbe02-ext-h1">>).
 -define(EXT_H2, <<"intbe02-ext-h2">>).
@@ -430,17 +428,17 @@ seed_matrix(C) ->
         C, ?ORG_A, ?APP_KEY_C, <<"intbe02 ws narrow oa"/utf8>>, ?PRIN_A
     ),
     CredC = issue_credential(C, ?ORG_A, maps:get(<<"id">>, AppC), ?SECRET_C),
-    %% App W：窄写 Grant（groups:write 显式 WS_A1）——「未覆盖 W 写拒绝」负例
+    %% App W：同 org 对照应用——「未覆盖 Workspace 的写操作被边界拒绝」负例
     {ok, AppW} = enterprise_application_repo:create_tx(
         C, ?ORG_A, ?APP_KEY_W, <<"intbe02 ws narrow write oa"/utf8>>, ?PRIN_A
     ),
     CredW = issue_credential(C, ?ORG_A, maps:get(<<"id">>, AppW), ?SECRET_W),
-    %% App D：零 Grant（allowed_scopes 有 read4）——零 Grant deny 负例
+    %% App D：同 org 对照应用（另一有效凭证的边界负例用）
     {ok, AppD} = enterprise_application_repo:create_tx(
         C, ?ORG_A, ?APP_KEY_D, <<"intbe02 zero grant oa"/utf8>>, ?PRIN_A
     ),
     CredD = issue_credential(C, ?ORG_A, maps:get(<<"id">>, AppD), ?SECRET_D),
-    %% App RO：仅 application:read——缺 scope 负例（访问 groups:write）
+    %% App RO：同 org 对照应用（跨应用归属负例用）
     {ok, AppRO} = enterprise_application_repo:create_tx(
         C, ?ORG_A, ?APP_KEY_RO, <<"intbe02 ro oa"/utf8>>, ?PRIN_A
     ),

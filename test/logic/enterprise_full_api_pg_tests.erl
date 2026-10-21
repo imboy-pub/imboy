@@ -331,10 +331,8 @@ prin_app_ids(C) ->
 
 %% ---- ctx 构造 ----
 
-%% 未受管 ctx（零 Grant 行）：grant_governed=false（广州期口径）。
-
-%% 受管 ctx：经**真链路** context_tx/4 求值（Grant × allowed_scopes 交集），
-%% 与 handler 从认证链拿到的 ctx 同形状、同来源。
+%% 受管 ctx：经**真链路** HMAC 认证（enterprise_hmac_test_support:context_tx）
+%% 求值，与 handler 从认证链拿到的 ctx 同形状、同来源。
 
 %% ---- 群/附件夹具（用例内构造，随事务回滚） ----
 
@@ -1871,16 +1869,11 @@ msg_origin_db(C, State) ->
     ).
 
 %%%===================================================================
-%%% ⑤ FULL-01 Grant 边界接线
+%%% ⑤ FULL-01 资源边界接线
 %%%===================================================================
 
-%% V2.1 D4（plan §5.2 / F-09 / D-06）：零 Grant（grant_governed=false）不再有
-%% allowed_scopes 回退旁路——生效 scope 恒为空集，org/workspace/list 类路由
-%% 一律 insufficient_scope；仅 kind=none（application self 面，认证链 scope
-%% gate 在中间件层）不在此判定内。
-
 %% @doc 机械对齐：边界 spec 覆盖**全部**冻结路由（少一条即红）；kind 与 manifest
-%% 的 grant 语义逐条一致。当前合同包括 INT-01..44，逐项验证而非只比数量。
+%% 的 kind 语义逐条一致。当前合同包括 INT-01..44，逐项验证而非只比数量。
 bnd_spec_align_test() ->
     ?_test(begin
         FrozenIds = lists:sort([maps:get(id, R) || R <- enterprise_internal_routes:routes()]),

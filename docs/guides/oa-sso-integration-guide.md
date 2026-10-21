@@ -254,7 +254,7 @@ IMBoy 部署侧登记（二选一，均由 IMBoy 管理员/运维完成）
 ① 部署配置：在 config/sys.pro.config 的 {imboy, [...]} 列表加一项
    {oa_redirect_uri, "https://oa.example.com/sso/imboy/callback"}
    节点启动时自动登记默认 OA 应用（application_key=default-oa，
-   名称「办公」）并授予 exchange 权限——部署即开通
+   名称「办公」）并签发 HMAC-SHA256 签名凭证——部署即开通
         ↓
 ② 管理面登记：换地址、加地址或建多个应用时，
    由 IMBoy 管理员经管理接口登记（每个应用最多 20 条回调地址）

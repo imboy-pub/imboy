@@ -38,13 +38,11 @@
 -define(APP_KEY_B, fixture_app_key(<<"-b">>)).
 -define(APP_KEY_BB, fixture_app_key(<<"-bb">>)).
 -define(APP_KEY_EMPTY, fixture_app_key(<<"-empty">>)).
--define(APP_KEY_RO, fixture_app_key(<<"-ro">>)).
 -define(REDIRECT, <<"https://oa.customer.example.com/sso/cb">>).
 -define(NONCE, <<"nonce_0123456789abcdef">>).
 -define(SECRET_A, <<"epgz05_high_entropy_secret_A_0123456789">>).
 -define(SECRET_B, <<"epgz05_high_entropy_secret_B_0123456789">>).
 -define(SECRET_E, <<"epgz05_high_entropy_secret_E_0123456789">>).
--define(SECRET_RO, <<"epgz05_high_entropy_secret_RO_012345678">>).
 -define(EXCHANGE_PATH, <<"/api/internal/v1/oa/sso/exchange">>).
 -define(RATE_CFG, #{internal_read => 1000, internal_write => 1000, internal_sso => 1000}).
 
@@ -140,9 +138,9 @@ seed_member(C, OrgId, Uid) ->
     ]).
 
 %% SSO 主夹具：org A（ALICE 有 mapping / NOMAP_H 无 mapping / FOREIGN 非成员）
-%% + app A（allowlist 注册 ?REDIRECT，scope sso:exchange）+ credential；
-%% app B（同 org，NEG-06）；空 allowlist app（NEG-H05）；只读 scope app
-%% （NEG-09）；过期 credential（NEG-10）；org B + app + credential（NEG-05）。
+%% + app A（allowlist 注册 ?REDIRECT）+ credential；app B（同 org，NEG-06）；
+%% 空 allowlist app（NEG-H05）；过期 credential（NEG-10）；
+%% org B + app + credential（NEG-05）。
 seed_sso_fixture(C) ->
     put({?MODULE, fixture_app_key}, binary:encode_hex(crypto:strong_rand_bytes(16), lowercase)),
     ok = seed_org(C, ?ORG_A, ?OWNER_A),
@@ -173,13 +171,6 @@ seed_sso_fixture(C) ->
     {ok, AppEmpty} = enterprise_application_repo:create_tx(
         C, ?ORG_A, ?APP_KEY_EMPTY, <<"epgz05 oa empty"/utf8>>, null
     ),
-    %% 只读 scope app（NEG-09：缺 sso:exchange）
-    {ok, AppRO} = enterprise_application_repo:create_tx(
-        C, ?ORG_A, ?APP_KEY_RO, <<"epgz05 oa ro"/utf8>>, null
-    ),
-    AppROId = maps:get(<<"id">>, AppRO),
-    {ok, #{credential := FullRO}} =
-        enterprise_internal_ops:issue_credential_tx(C, ?ORG_A, AppROId, ?SECRET_RO, undefined),
     %% 过期 credential（挂 app A；NEG-10）
     {ok, #{credential := FullE}} = enterprise_internal_ops:issue_credential_tx(
         C, ?ORG_A, AppAId, ?SECRET_E, <<"2020-01-01T00:00:00Z">>
@@ -203,11 +194,9 @@ seed_sso_fixture(C) ->
         app_id => AppAId,
         app_b_id => AppBId,
         app_empty_id => maps:get(<<"id">>, AppEmpty),
-        app_ro_id => AppROId,
         app_bb_id => AppBBId,
         credential => FullA,
         credential_b => FullB,
-        credential_ro => FullRO,
         credential_expired => FullE,
         credential_bb => FullBB,
         secret_bb => SecretBB
@@ -502,9 +491,6 @@ neg08_nonce_mismatch(C) ->
         do_exchange(C, F, Code, ?REDIRECT, <<"nonce_ZZZZZZZZZZZZZZZZ">>)
     ).
 
-%% NEG-09：credential 缺 sso:exchange scope → decide 编排 insufficient_scope
-%%（A2 链在 exchange 端点的 scope 门）。
-
 %% NEG-10：凭证/应用授权仍拒绝失效状态；组织归档不关闭应用认证。
 neg10_credential_chain(C) ->
     F = seed_sso_fixture(C),
@@ -540,8 +526,6 @@ neg10_credential_chain(C) ->
     ok = exec(
         C, <<"UPDATE organization SET status = 'archived' WHERE id = $1">>, [?ORG_A]
     ),
-    %% scope 门前置：零 Grant 时生效 scope 为空集会先拒 insufficient_scope
-    %%（V2.1 §5.2/F-09，同 NEG-13 处理），先给 app A 种生效 Grant。
     ?assertMatch(
         {ok, _},
         enterprise_internal_auth:decide(
@@ -699,9 +683,6 @@ neg12_malformed_request_test() ->
 neg13_rate_fail_closed(C) ->
     F = seed_sso_fixture(C),
     FullA = maps:get(credential, F),
-    %% V2.1 §5.2/F-09 零 Grant 拒绝：不种 Grant 时生效 scope 为空集，
-    %% scope 门先拒 insufficient_scope，到不了本用例的目标（限流门 fail-closed）。
-    %% 先给 AppA 种生效 Grant（生效 scope = allowed ∩ grant = sso:exchange）。
     application:unset_env(imboy, enterprise_internal_rate_limits),
     try
         ?assertEqual(

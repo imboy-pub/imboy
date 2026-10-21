@@ -156,11 +156,11 @@ seed_matrix(C) ->
     seed_ws_member(C, ?WS_A1, ?H_A2),
     seed_ws_member(C, ?WS_A1, ?OWNER_A),
     seed_ws_member(C, ?WS_A1, ?OWNER_B),
-    %% app A：org 全域 Grant（四 read scope 全覆盖）
+    %% app A：org A 主应用（主读取链用）
     {ok, _AppA} = enterprise_internal_ops:create_application_tx(
         C, ?ORG_A, <<"eov21a2-oa-a">>, <<"eov21a2 org A oa"/utf8>>
     ),
-    %% app D：零 Grant（allowed_scopes 有 workspaces:read 但无 Grant 行）
+    %% app D：同 org 对照应用（边界负例用）
     {ok, _AppD} = enterprise_internal_ops:create_application_tx(
         C, ?ORG_A, <<"eov21a2-oa-d">>, <<"eov21a2 org A oa d"/utf8>>
     ),

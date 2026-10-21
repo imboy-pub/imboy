@@ -7,8 +7,10 @@
 %
 % 契约（handler 壳由 A0 W4 接线，见 checkpoint handoff）：
 %   * 输入 Ctx 为 A2 认证产物（至少 organization_id / application_id）；
-%     scope 校验在中间件（decide）完成，本层不重复。
-%   * 错误统一 {error, {ErrorCode, Detail}}，ErrorCode ∈ stable 13 码：
+%     HMAC 验签与应用/凭证/组织状态在中间件（decide）完成，本层只做
+%     资源归属校验，不重复认证。
+%   * 错误统一 {error, {ErrorCode, Detail}}，ErrorCode ∈ stable 码表
+%     （enterprise_internal_error:codes/0）：
 %       - invalid_request                    400 参数非法 / user 已被本
 %                                           app 其他 external_user_id 映射
 %       - organization_boundary_violation    403 目标不是本 Org 成员

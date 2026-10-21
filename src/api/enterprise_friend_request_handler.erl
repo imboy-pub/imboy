@@ -7,10 +7,9 @@
 %
 % 路由（A0 W4 经 Router lease 登记）：
 %   POST /api/internal/v1/friend-requests -> #{action => create}
-% —— 必须经 enterprise_internal_middleware（A2 认证链：credential →
-%    active/expiry → application active → organization active → scope
-%    friend_requests:create → rate internal_write fail-closed）。scope 必须
-%    显式授予，无隐含包含（INV-4）。
+% —— 必须经 enterprise_internal_middleware（A2 认证链：HMAC-SHA256 验签 →
+%    credential active/expiry → application active → organization active →
+%    rate internal_write fail-closed）。
 %
 % 幂等（A2 模式，INV-7）：Idempotency-Key 已由 decide 强制存在；单事务
 % begin_tx -> logic -> complete_tx -> COMMIT；业务 {error} 整体回滚。

@@ -48,7 +48,7 @@ routes:
   - id: INT-01
     method: GET
     path: /api/internal/v1/application
-    resource: application self (org/app/status/scopes)
+    resource: application self (org/app/status/credentials, authentication=hmac)
     actor: application
     idempotency: not_required
     rate: internal_read
@@ -493,9 +493,10 @@ routes:
     rate: internal_write
     sender_mode: none
 
-stable_error_codes: [invalid_credential, credential_expired, application_disabled,
+stable_error_codes: [invalid_request, invalid_credential, credential_expired,
+  application_disabled, organization_disabled, resource_not_found, identity_not_mapped,
   organization_boundary_violation, idempotency_conflict, rate_limited,
-  security_gate_closed, invalid_request, internal_error, version_conflict, resource_conflict, seat_limit_exceeded]
+  security_gate_closed, internal_error, version_conflict, resource_conflict, seat_limit_exceeded]
 
 mechanical_assertions:  # re-runnable script: control/assert_manifest.sh
   - name: open_v1_production_surface_zero
