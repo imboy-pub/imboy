@@ -62,15 +62,26 @@ ssh -p 32 root@<host> 'cat /www/server/panel/vhost/nginx/<domain>.conf' \
 
 > ⚠️ 服务器端文件可能缺行尾换行；回填后可在服务器上 `nginx -t` 校验。
 
-## 企业邀请入口 / Organization invitation entry
+## 官网落地页入口 / Website landing entries (`/invite/`, `/channel/`)
 
-官网必须将 `/invite/` 转发到 API 后端；仅发布官网静态文件不会启用该路由。
-修改时以服务器当前配置为基线，仅合入邀请 location，避免覆盖现有监听及其他入口。
+官网必须将 `/invite/`（组织邀请 H5）和 `/channel/`（频道/文章分享落地页）转发到 API
+后端；仅发布官网静态文件不会启用这些路由，缺失时会落到 Astro 静态站的 `404.html`。
+修改时以服务器当前配置为基线，仅合入这两个 location，避免覆盖现有监听及其他入口。
+
+**上游必须写 `proxy_pass http://pro_imboy_api;`**（复用 `pro.imboy.pub.conf` 的 upstream，
+同一 nginx 实例 http 级共享）。`scripts/lib/blue_green_deploy.sh` 切流只改写该 upstream
+的端口并跟切 prodadm/cs 两个 vhost，**不会跟切 `www.imboy.pub.conf`**；硬编码
+`127.0.0.1:9800/9801` 会在下一次切色后变成 502（2026-10-20 线上即因此 `/invite/` 502）。
+
 App 分享域名由构建参数 `WEB_BASE_URL` 统一指定（默认 `https://imboy.pub`，必须为 HTTPS origin）。
 发布后执行 `bash scripts/check_org_invite_landing.sh https://imboy.pub`，并对
 `https://www.imboy.pub` 重复验证；该检查验证公网状态码、无缓存头、无效链接提示和
 实际页面脚本的复制成功/失败分支。脚本使用合成码，不验证真实企业成员加入。
+频道入口另用 `curl -sI https://imboy.pub/channel/<channel_id>` 验证：应返回后端的
+200（`cache-control: no-store`、`referrer-policy: no-referrer`），而不是静态 404 页。
 
-The public website must proxy `/invite/` to the API. Merge only the invitation
-location into the live configuration and validate with the command above after
-release. Synthetic-code checks do not establish membership-join acceptance.
+The public website must proxy both `/invite/` and `/channel/` to the API via the shared
+`pro_imboy_api` upstream (never a hard-coded port: blue/green switching only rewrites
+`pro.imboy.pub.conf`). Merge only these locations into the live configuration and
+validate with the commands above after release. Synthetic-code checks do not establish
+membership-join acceptance.
