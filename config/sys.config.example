@@ -102,6 +102,12 @@
         %%         endpoint => <<"http://127.0.0.1:3900">>, container => <<"imboy-public">>}}}},
         %% 容器部署（garage 由 IMBOY_GARAGE_* 覆盖，无法预写静态 endpoint）改用
         %% IMBOY_ATTACHMENT_REGISTRY_FROM_GARAGE=true 按运行时 garage 配置登记同名两根。
+        %%
+        %% 生产推荐（2026-10-20 prod 事故加固）：registry 不写本文件——本文件随
+        %% release 发布，发版会被新包覆盖丢失。改设 IMBOY_ATTACHMENT_REGISTRY 环境
+        %% 变量（单行 JSON，形态同上，模板见 deploy/.env.example），优先级：
+        %% env 显式 > 本文件显式 > FROM_GARAGE 派生。strict 环境启动强校验：
+        %% 空 registry 或 garage 根 endpoint 与 {garage, endpoint} 不一致将拒启。
         {attachment_storage_registry, #{version => 1, roots => #{}, upload_namespaces => #{}}},
 
         %% Garage S3 兼容对象存储配置（占位符，实际值放 sys.local.config）
