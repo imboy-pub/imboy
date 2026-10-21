@@ -121,7 +121,10 @@ revoke(#{conn := C} = S, Gid) ->
         <<"UPDATE organization_member SET status='removed' WHERE organization_id=995101 AND user_id=995012">>
     ),
     try
-        ?assertEqual([], rows(S, 995201)),
+        %% org removed 后 org-aware 访问谓词（70a839f6 起）在 ensure_member 门
+        %% 即拒绝：elib_response:error 信封（HTTP 200 + code 403、payload={}），
+        %% 不再是成功信封下的空 list。
+        ?assertEqual(403, maps:get(<<"code">>, groups_envelope(S, 995201))),
         ?assertEqual(404, code(read(S, 995201, Gid, [<<"unread-new-generation">>])))
     after
         ok = ?H:sql_exec(
@@ -135,6 +138,12 @@ unread(S, Ws, Gid) ->
     maps:get(<<"unread_count">>, R).
 
 rows(S, Ws) ->
+    #{<<"payload">> := #{<<"list">> := List}} = groups_envelope(S, Ws),
+    List.
+
+%% 群列表完整信封（HTTP 200 + code/payload）。revoke 用它断言 org removed
+%% 成员在 ensure_member 门被显式 403 信封拒绝，而非空 list。
+groups_envelope(S, Ws) ->
     Path =
         <<"/api/v1/workspaces/", (integer_to_binary(Ws))/binary,
             "/groups?member_only=1&preview=1">>,
@@ -142,7 +151,7 @@ rows(S, Ws) ->
         maps:get(port, S), <<"GET">>, Path, <<>>, organization_directory_http_support:bearer(995012)
     ),
     ?assertEqual(200, status(R)),
-    maps:get(<<"list">>, maps:get(<<"payload">>, jsone:decode(maps:get(body, R)))).
+    jsone:decode(maps:get(body, R)).
 
 read(S, _Ws, Gid, Ids) ->
     Path =
