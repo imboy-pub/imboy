@@ -2,11 +2,19 @@
 -include_lib("eunit/include/eunit.hrl").
 
 transaction_acquisition_test_() ->
-    {foreach, fun setup/0, fun cleanup/1, [
-        fun(C) -> ?_test(check_wait(C, success)) end,
-        fun(C) -> ?_test(check_wait(C, timeout)) end,
-        fun(C) -> ?_test(check_wait(C, exception)) end
-    ]}.
+    [?_test(run_isolated(Mode)) || Mode <- [success, timeout, exception]].
+
+%% Pooler mocks are VM-global. The full suite has live application workers;
+%% keep all original acquisition assertions in a peer with no application boot.
+run_isolated(Mode) ->
+    pure_mock_fixture:run(fun() ->
+        Conn = setup(),
+        try
+            check_wait(Conn, Mode)
+        after
+            cleanup(Conn)
+        end
+    end).
 
 setup() ->
     Conn = spawn(fun() ->

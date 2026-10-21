@@ -1,7 +1,7 @@
 -- down: 恢复 201 版 fn_dv1_register 并移除唯一索引
 DROP INDEX IF EXISTS uk_attach_pending_client_upload_id;
 
-CREATE FUNCTION fn_dv1_register(p_key text, p_bucket text, p_scope text,
+CREATE OR REPLACE FUNCTION fn_dv1_register(p_key text, p_bucket text, p_scope text,
                                 p_scope_ref text, p_uid bigint,
                                 p_client_upload_id uuid, p_mime text,
                                 p_file_name text, p_driver text,
@@ -54,15 +54,3 @@ BEGIN
     RETURN p_key;
 END;
 $$;
-
--- ---------------------------------------------------------------- declare
--- expected 冻结（I03 与 actual proof 分开）。RESERVED→DECLARED；
--- 已 DECLARED 时同值幂等、异值冲突（T03）。
-CREATE FUNCTION fn_dv1_declare(p_key text, p_sha256 text, p_size bigint, p_mime text)
-RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
-DECLARE v_direct text; v_existing jsonb; v_deadline timestamptz;
-BEGIN
-    PERFORM pg_advisory_xact_lock(hashtextextended(p_key, 168));
-    SELECT direct_state, direct_expected, session_deadline INTO v_direct, v_existing, v_deadline
-        FROM attach_pending WHERE object_key = p_key FOR UPDATE;
-    IF NOT FOUND THEN

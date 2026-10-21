@@ -188,6 +188,16 @@ beam-presence-guard:
 
 include erlang.mk
 
+# Linux limits each exec argument (including /bin/sh -c's command) to 128 KiB.
+# Keep the complete test source list out of that command and compile bounded
+# batches with the original options. xargs failure prevents the build stamp.
+# 清单由 make 直接写入文件，完整保留测试集合；分批失败仍使构建失败。
+define compile_test_erl
+	$(file >$(ERLANG_MK_TMP)/$(PROJECT).test-compile-files,$1)
+	$(verbose) xargs -n 64 -s 32768 erlc -v $(TEST_ERLC_OPTS) -o $(TEST_DIR) \
+		-pa ebin/ -I include/ < $(ERLANG_MK_TMP)/$(PROJECT).test-compile-files
+endef
+
 autopatch-hird_runtime::
 	$(verbose) mkdir -p $(DEPS_DIR)/hird_runtime/src
 	$(verbose) for source in $(DEPS_DIR)/hird_runtime/runtime/*.erl; do \

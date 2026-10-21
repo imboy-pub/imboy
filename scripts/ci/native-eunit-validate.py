@@ -26,7 +26,10 @@ patterns = {
     'nonzero_skipped': r'Skipped:\s*[1-9]',
 }
 counts = {name: len(re.findall(pattern, raw, re.I)) for name, pattern in patterns.items()}
-complete = [int(value) for value in re.findall(r'All ([1-9][0-9]*) tests passed\.', raw)]
+# OTP uses "Test passed." and "2 tests passed." for small suites.
+# Require standalone official summary lines; failure/skip/exit checks stay strict.
+complete = [int(value) if value else 1 for value in re.findall(
+    r'^\s*(?:(?:All )?([1-9][0-9]*) tests passed|Test passed)\.\s*$', raw, re.M)]
 result = {'raw_exit': rc, 'success_summaries': complete, 'framework_markers': counts,
           'private_raw_sha256': hashlib.sha256(log.read_bytes()).hexdigest(),
           'public_log_is_credential_redacted': True,
