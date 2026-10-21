@@ -1,0 +1,77 @@
+post:
+  tags: [talk_record]
+  operationId: talk_record_cleanup_retry
+  x-device-signature-required: true
+  x-handler: talk_record_cleanup_retry_handler
+  summary: Retry exhausted physical cleanup for this deleted record
+  description: >-
+    Personal current owner, or current active organization owner/admin governance
+    actor only. This does not grant content read or global queue operations.
+    Every original resource is rechecked for hold, retention, other references,
+    immutable intent and frozen identity before any budget is renewed. Protected resources preserve their budgets; eligible exhausted resources in
+    mixed records may reopen, with reason partial_protection. At least one real exhausted resource must reopen
+    for 202; this is accepted cleanup, never proof of physical deletion. Lifetime
+    attempts and permanent tombstones are retained; done is never revived.
+  security:
+    - bearerAuth: []
+  parameters:
+    - name: id
+      in: path
+      required: true
+      description: Deleted talk-record identifier; authorization is rechecked on replay.
+      schema: {type: integer, format: int64, minimum: 1}
+    - name: If-Match
+      in: header
+      required: true
+      description: Current record revision ETag, distinct from cleanup_generation CAS.
+      schema: {type: string}
+    - name: Idempotency-Key
+      in: header
+      required: true
+      description: Durable actor/record-scoped request key; changed payload is 409.
+      schema: {type: string, minLength: 1, maxLength: 128}
+    - $ref: '../../../../components/parameters/talk-record/DeviceVsn.yaml'
+    - $ref: '../../../../components/parameters/talk-record/DevicePkg.yaml'
+    - $ref: '../../../../components/parameters/talk-record/DeviceDid.yaml'
+    - $ref: '../../../../components/parameters/talk-record/DeviceCos.yaml'
+    - $ref: '../../../../components/parameters/talk-record/DeviceMethod.yaml'
+    - $ref: '../../../../components/parameters/talk-record/DeviceSign.yaml'
+    - $ref: '../../../../components/parameters/talk-record/DeviceSk.yaml'
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          additionalProperties: false
+          required: [cleanup_generation]
+          properties:
+            cleanup_generation: {type: integer, format: int64, minimum: 0}
+            reason: {type: string, maxLength: 200}
+  responses:
+    '202':
+      description: Persisted new retry generation and purge job, or authorized exact replay.
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [code, payload]
+            properties:
+              code: {type: integer, const: 0}
+              payload:
+                type: object
+                required: [job_id, revision, cleanup_generation, cleanup_status, reopened_resources, replayed]
+                properties:
+                  job_id: {type: integer, format: int64, minimum: 1}
+                  revision: {type: integer, format: int64, minimum: 1}
+                  cleanup_generation: {type: integer, format: int64, minimum: 1}
+                  cleanup_status: {type: string, enum: [pending, retained_by_other_reference]}
+                  protected_resources: {type: integer, minimum: 0}
+                  reason: {type: string, enum: [eligible, partial_protection]}
+                  reopened_resources: {type: integer, minimum: 1}
+                  replayed: {type: boolean}
+    '404': {description: Unavailable record or current deletion responsibility denied.}
+    '409': {description: Protected, no exhausted resource, unknown identity, changed generation or idempotency payload.}
+    '412': {description: Stale record revision.}
+    '422': {description: Invalid input or request key.}
+    '428': {description: Missing If-Match.}

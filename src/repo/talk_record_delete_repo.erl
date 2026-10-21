@@ -43,7 +43,7 @@
 -include("log.hrl").
 
 -define(CLEANUP_COLUMNS,
-    <<"tr.id, tr.owner_user_id, tr.scope, tr.deleted_at, tr.cleanup_status,",
+    <<"tr.id, tr.owner_user_id, tr.scope, tr.deleted_at, tr.cleanup_status, tr.cleanup_generation,",
         " tr.retention_until, tr.revision, tr.acl_revision, tr.updated_at">>
 ).
 
@@ -236,7 +236,8 @@ purged_attachment_paths_tx(Conn, RecordId) ->
     Sql =
         <<"SELECT DISTINCT ON (a.path) a.path, a.lifecycle_state,",
             " a.gc_verified, w.state AS derived_write_state, q.job_state AS queue_state,",
-            " (q.completed_at IS NOT NULL) AS queue_done,", " (q.attempts >= 8) AS queue_exhausted",
+            " (q.completed_at IS NOT NULL) AS queue_done,",
+            " (q.attempts-q.attempt_base >= 8) AS queue_exhausted",
             " FROM attachment a LEFT JOIN attachment_derived_write w ON w.attachment_id=a.id",
             " LEFT JOIN attachment_object_deletion q", "   ON q.path = a.path",
             "  AND q.storage_driver IS NOT DISTINCT FROM a.storage_driver",

@@ -125,7 +125,7 @@ lock_record_asset_tx(C, Rid, Aid, Org) ->
         elib_pg:query(
             C,
             <<
-                "SELECT id,organization_id,workspace_id,revision,deleted_at,cleanup_status"
+                "SELECT id,organization_id,workspace_id,revision,deleted_at,cleanup_status,cleanup_generation"
                 " FROM talk_record WHERE id=$1 AND organization_id=$2 AND scope='organization' FOR UPDATE"
             >>,
             [Rid, Org]

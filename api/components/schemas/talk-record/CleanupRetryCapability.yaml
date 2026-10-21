@@ -1,0 +1,18 @@
+type: object
+required: [allowed, generation, exhausted_resources, reason]
+properties:
+  allowed:
+    type: boolean
+    description: Authoritative current actor permission and shared readonly eligibility; POST rechecks under locks.
+  generation:
+    type: [integer, 'null']
+    format: int64
+    minimum: 0
+    description: Actual record cleanup generation; missing or null never means zero.
+  exhausted_resources:
+    type: integer
+    minimum: 0
+    description: Number of eligible exhausted resources; no paths or locator facts escape.
+  reason:
+    type: string
+    enum: [eligible, partial_protection, protected, not_exhausted, identity_unverified, permission_denied, not_deleted, unknown]

@@ -278,6 +278,14 @@ map_reason(invalid_sha256) ->
     {422, <<"sha256 必须为 64 位十六进制"/utf8>>, ?ERR_PARAM_INVALID};
 map_reason(invalid_byte_size) ->
     {422, <<"byte_size 非法"/utf8>>, ?ERR_PARAM_INVALID};
+map_reason(cleanup_generation_conflict) ->
+    {409, <<"cleanup generation changed">>, ?ERR_PARAM_INVALID};
+map_reason(cleanup_not_retryable) ->
+    {409, <<"no exhausted resource to retry">>, ?ERR_PARAM_INVALID};
+map_reason(cleanup_protected) ->
+    {409, <<"cleanup is protected">>, ?ERR_PARAM_INVALID};
+map_reason(cleanup_identity_unverified) ->
+    {409, <<"cleanup identity requires reconciliation">>, ?ERR_PARAM_INVALID};
 map_reason(invalid_codec) ->
     {422, <<"codec 不合规"/utf8>>, ?ERR_PARAM_INVALID};
 map_reason(invalid_confirm_receipt) ->

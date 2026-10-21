@@ -5,7 +5,7 @@
 read(Uid, Rid, Aid) ->
     tx(fun(C) ->
         {Record, Asset, Ear} = value(talk_record_governance_repo:lock_target_tx(C, Uid, Rid, Aid)),
-        {ok, payload(Record, Asset, Ear)}
+        {ok, with_retry(C, Uid, Rid, payload(Record, Asset, Ear))}
     end).
 mutate(Uid, Rid, Aid, IfMatch, Key, Body) ->
     case
@@ -62,8 +62,13 @@ mutate_tx(C, Uid, Rid, Aid, Rev, Key, Resource, Digest, Op) ->
                     true -> <<"pending">>;
                     false -> maps:get(<<"cleanup_status">>, Record)
                 end,
-            P = (payload(
-                Record#{<<"revision">> => NewRev, <<"cleanup_status">> => Status}, Asset, NewEar
+            P = (with_retry(
+                C,
+                Uid,
+                Rid,
+                payload(
+                    Record#{<<"revision">> => NewRev, <<"cleanup_status">> => Status}, Asset, NewEar
+                )
             ))#{
                 <<"cleanup_scheduled">> => Scheduled
             },
@@ -118,6 +123,7 @@ payload(R, A, E) ->
         <<"organization_id">> => maps:get(<<"organization_id">>, R),
         <<"workspace_id">> => maps:get(<<"workspace_id">>, R),
         <<"revision">> => maps:get(<<"revision">>, R),
+        <<"cleanup_generation">> => maps:get(<<"cleanup_generation">>, R, 0),
         <<"retention_until">> => maps:get(<<"retention_until">>, E),
         <<"hold_state">> => maps:get(<<"hold_state">>, E),
         <<"hold_reason">> => maps:get(<<"hold_reason">>, E),
@@ -208,3 +214,9 @@ tx(F) ->
         {error, _} -> {error, db_error};
         V -> V
     end.
+
+with_retry(C, Uid, Rid, P) ->
+    P#{
+        <<"cleanup_retry">> =>
+            talk_record_cleanup_retry_repo:capability_tx(C, Uid, Rid)
+    }.
