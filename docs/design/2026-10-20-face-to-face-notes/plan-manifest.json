@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "plan_id": "talk-record-v1",
+  "revision": 8,
+  "files": {
+    "PLAN.md": "8e56481f7b9cb7e94127d053fcd37099441c5a63269fffebab8a9566a71d92df",
+    "DESIGN.md": "19d6e8e5db02a400a6c0af519e3ed325f42bb7ac7a4856ab344fcf764fe01433",
+    "UI-SPEC.md": "91fff2a0bc0cda9225eb77146d7990333bded9cfe8c9261948a8faa527072963",
+    "BACKEND-API.md": "13cbae11fdefb249f9a0e97e3e03db953980b7fd9a2de756888fa3b0f3707bf9",
+    "design-preview.html": "da1876b820c55a1f99c191c026bd11b3bb1b6cfe5adc81bc241ee461b92bddcc",
+    "design-tokens.json": "ecf855261a1fdd50eed4d8247d146c8420e32b2a5f18b423c882f0fd8060c107",
+    "RESUME-PROMPT.md": "ee2f16f035478fd321a76d75182f3b0597c72efdbe1789a74a7524ae2b4c059a",
+    "execution-contract.json": "fcfafb6a1df2da4ed6dc891fc50de901667faeb3bfb78fe66b0a5c7834562130",
+    "validate_plan.py": "c748db36b57134a2add83b66a1ededdd5fb8d0e2760c1862b3bf5e2148a190bd",
+    "test_validate_plan.py": "b047f2eb1109de7badc58c3fc83fda736f466df396175038f3f3b595fb6e588c",
+    "QUALITY.md": "9a89172a1d13f9ff625a2b085518a4faeb0379ac7484b0a04a00527d7a609156",
+    "fixture-execution-state.json": "6674aa26c4fd69be726b8fe6fe377d776f8e29713c56866d1fd258d0b32ced5d",
+    "fixture-execution-contract.json": "5c5b0485478fdf747415a4c747443a897b28d4f7f29f3a4bd8c570524ce4a843",
+    "CONTRACT-FREEZE-T02.md": "aa9269fa4361d4f5fd59abbbbf255b3d7d80842e465e6cdbf7c133d7101f7e2a"
+  }
+}

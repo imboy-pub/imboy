@@ -1,0 +1,533 @@
+{
+  "schema_version": 1,
+  "plan_id": "talk-record-v1",
+  "revision": "8",
+  "required_tasks": [
+    "T01",
+    "T02",
+    "T03",
+    "T04",
+    "T05",
+    "T06",
+    "T07",
+    "T08",
+    "T09",
+    "T10",
+    "T11",
+    "T12",
+    "T13",
+    "T14",
+    "T15",
+    "T16",
+    "T17",
+    "T18",
+    "T19",
+    "T20",
+    "T21",
+    "T22",
+    "T23",
+    "T24",
+    "T25"
+  ],
+  "allowed_statuses": [
+    "todo",
+    "claimed",
+    "running",
+    "component_ready",
+    "review",
+    "accepted",
+    "failed",
+    "waiting_input",
+    "needs_recheck",
+    "waiting_resource"
+  ],
+  "component_tasks": {
+    "T16": [
+      "T13",
+      "T15"
+    ],
+    "T18": [
+      "T17"
+    ],
+    "T21": [
+      "T19",
+      "T20"
+    ]
+  },
+  "max_parallel_workers": 8,
+  "acceptance_required_fields": [
+    "owner",
+    "attempt",
+    "base_sha",
+    "candidate",
+    "evidence",
+    "reviewer",
+    "last_update"
+  ],
+  "evidence_required_fields": [
+    "path",
+    "sha256",
+    "command",
+    "exit_code",
+    "candidate",
+    "created_at",
+    "result",
+    "scope",
+    "check_id",
+    "runner_sha256",
+    "cwd"
+  ],
+  "evidence_results": [
+    "PASS",
+    "FAIL",
+    "SKIP",
+    "ENV"
+  ],
+  "forbidden_implicit_permissions": [
+    "commit",
+    "push",
+    "merge_main",
+    "deploy",
+    "external_services",
+    "production_changes"
+  ],
+  "task_definitions": {
+    "T01": {
+      "lane": "C",
+      "dependencies": [],
+      "allow_component_dependencies": [],
+      "acceptance_dependencies": [],
+      "acceptance_scope": "task_card"
+    },
+    "T02": {
+      "lane": "C",
+      "dependencies": [
+        "T01"
+      ],
+      "allow_component_dependencies": [],
+      "acceptance_dependencies": [],
+      "acceptance_scope": "task_card"
+    },
+    "T03": {
+      "lane": "C",
+      "dependencies": [
+        "T01"
+      ],
+      "allow_component_dependencies": [],
+      "acceptance_dependencies": [],
+      "acceptance_scope": "task_card"
+    },
+    "T04": {
+      "lane": "B",
+      "dependencies": [
+        "T02",
+        "T03"
+      ],
+      "allow_component_dependencies": [],
+      "acceptance_dependencies": [],
+      "acceptance_scope": "task_card"
+    },
+    "T05": {
+      "lane": "B",
+      "dependencies": [
+        "T04"
+      ],
+      "allow_component_dependencies": [],
+      "acceptance_dependencies": [],
+      "acceptance_scope": "task_card"
+    },
+    "T06": {
+      "lane": "A",
+      "dependencies": [
+        "T04"
+      ],
+      "allow_component_dependencies": [],
+      "acceptance_dependencies": [],
+      "acceptance_scope": "task_card"
+    },
+    "T07": {
+      "lane": "B",
+      "dependencies": [
+        "T05"
+      ],
+      "allow_component_dependencies": [],
+      "acceptance_dependencies": [],
+      "acceptance_scope": "task_card"
+    },
+    "T08": {
+      "lane": "F",
+      "dependencies": [
+        "T02"
+      ],
+      "allow_component_dependencies": [],
+      "acceptance_dependencies": [],
+      "acceptance_scope": "task_card"
+    },
+    "T09": {
+      "lane": "R",
+      "dependencies": [
+        "T03",
+        "T08"
+      ],
+      "allow_component_dependencies": [],
+      "acceptance_dependencies": [],
+      "acceptance_scope": "task_card"
+    },
+    "T10": {
+      "lane": "U",
+      "dependencies": [
+        "T08"
+      ],
+      "allow_component_dependencies": [],
+      "acceptance_dependencies": [],
+      "acceptance_scope": "task_card"
+    },
+    "T11": {
+      "lane": "R",
+      "dependencies": [
+        "T06",
+        "T07",
+        "T09",
+        "T10"
+      ],
+      "allow_component_dependencies": [],
+      "acceptance_dependencies": [],
+      "acceptance_scope": "task_card"
+    },
+    "T12": {
+      "lane": "P",
+      "dependencies": [
+        "T06",
+        "T07"
+      ],
+      "allow_component_dependencies": [],
+      "acceptance_dependencies": [],
+      "acceptance_scope": "task_card"
+    },
+    "T13": {
+      "lane": "P",
+      "dependencies": [
+        "T03",
+        "T12"
+      ],
+      "allow_component_dependencies": [],
+      "acceptance_dependencies": [],
+      "acceptance_scope": "task_card"
+    },
+    "T14": {
+      "lane": "S",
+      "dependencies": [
+        "T03",
+        "T12"
+      ],
+      "allow_component_dependencies": [],
+      "acceptance_dependencies": [],
+      "acceptance_scope": "task_card"
+    },
+    "T15": {
+      "lane": "B",
+      "dependencies": [
+        "T05",
+        "T07"
+      ],
+      "allow_component_dependencies": [],
+      "acceptance_dependencies": [],
+      "acceptance_scope": "task_card"
+    },
+    "T16": {
+      "lane": "U",
+      "dependencies": [
+        "T08",
+        "T10"
+      ],
+      "allow_component_dependencies": [],
+      "acceptance_dependencies": [
+        "T13",
+        "T15"
+      ],
+      "acceptance_scope": "integration"
+    },
+    "T17": {
+      "lane": "B",
+      "dependencies": [
+        "T05",
+        "T15"
+      ],
+      "allow_component_dependencies": [],
+      "acceptance_dependencies": [],
+      "acceptance_scope": "task_card"
+    },
+    "T18": {
+      "lane": "U",
+      "dependencies": [
+        "T16"
+      ],
+      "allow_component_dependencies": [
+        "T16"
+      ],
+      "acceptance_dependencies": [
+        "T17"
+      ],
+      "acceptance_scope": "integration"
+    },
+    "T19": {
+      "lane": "S",
+      "dependencies": [
+        "T05",
+        "T06",
+        "T15",
+        "T17"
+      ],
+      "allow_component_dependencies": [],
+      "acceptance_dependencies": [],
+      "acceptance_scope": "task_card"
+    },
+    "T20": {
+      "lane": "A",
+      "dependencies": [
+        "T06",
+        "T12",
+        "T17"
+      ],
+      "allow_component_dependencies": [],
+      "acceptance_dependencies": [],
+      "acceptance_scope": "task_card"
+    },
+    "T21": {
+      "lane": "U",
+      "dependencies": [
+        "T18"
+      ],
+      "allow_component_dependencies": [
+        "T18"
+      ],
+      "acceptance_dependencies": [
+        "T19",
+        "T20"
+      ],
+      "acceptance_scope": "integration"
+    },
+    "T22": {
+      "lane": "C",
+      "dependencies": [
+        "T11",
+        "T13",
+        "T14",
+        "T15",
+        "T17",
+        "T18",
+        "T19",
+        "T20",
+        "T21"
+      ],
+      "allow_component_dependencies": [
+        "T18",
+        "T21"
+      ],
+      "acceptance_dependencies": [],
+      "acceptance_scope": "task_card"
+    },
+    "T23": {
+      "lane": "Q",
+      "dependencies": [
+        "T22"
+      ],
+      "allow_component_dependencies": [],
+      "acceptance_dependencies": [],
+      "acceptance_scope": "task_card"
+    },
+    "T24": {
+      "lane": "Q",
+      "dependencies": [
+        "T23"
+      ],
+      "allow_component_dependencies": [],
+      "acceptance_dependencies": [],
+      "acceptance_scope": "task_card"
+    },
+    "T25": {
+      "lane": "C",
+      "dependencies": [
+        "T24"
+      ],
+      "allow_component_dependencies": [],
+      "acceptance_dependencies": [],
+      "acceptance_scope": "task_card"
+    }
+  },
+  "decision_gates": {
+    "T02": [
+      "target_platforms",
+      "retention_and_export_policy"
+    ],
+    "T03": [
+      "target_platforms"
+    ],
+    "T13": [
+      "processor_selection",
+      "model_quality_thresholds"
+    ],
+    "T14": [
+      "processor_selection",
+      "model_quality_thresholds"
+    ]
+  },
+  "manifest_required_files": [
+    "PLAN.md",
+    "DESIGN.md",
+    "UI-SPEC.md",
+    "BACKEND-API.md",
+    "design-preview.html",
+    "design-tokens.json",
+    "RESUME-PROMPT.md",
+    "execution-contract.json",
+    "validate_plan.py",
+    "test_validate_plan.py",
+    "QUALITY.md",
+    "CONTRACT-FREEZE-T02.md"
+  ],
+  "required_checks": {
+    "T01": [
+      "baseline",
+      "resource_claims",
+      "recovery_drill"
+    ],
+    "T02": [
+      "ui_contract",
+      "api_contract",
+      "visual_layout"
+    ],
+    "T03": [
+      "platform_feasibility",
+      "attachment_feasibility",
+      "resource_isolation"
+    ],
+    "T04": [
+      "migration",
+      "db_constraints"
+    ],
+    "T05": [
+      "http_crud",
+      "scope_authorization",
+      "idempotency"
+    ],
+    "T06": [
+      "attachment_bind_gc",
+      "retention_hold",
+      "driver_integration"
+    ],
+    "T07": [
+      "capture_replay",
+      "epoch_fencing",
+      "recovery"
+    ],
+    "T08": [
+      "client_contract",
+      "id_serialization",
+      "error_mapping"
+    ],
+    "T09": [
+      "device_recording",
+      "interruption_recovery",
+      "long_recording"
+    ],
+    "T10": [
+      "widget_context_roles",
+      "visual_layout",
+      "draft_navigation"
+    ],
+    "T11": [
+      "upload_retry",
+      "permission_revoked",
+      "capture_completion"
+    ],
+    "T12": [
+      "job_recovery",
+      "assembly_refs",
+      "stale_result_rejection"
+    ],
+    "T13": [
+      "real_asr_quality",
+      "speaker_diarization",
+      "no_speech"
+    ],
+    "T14": [
+      "real_summary_quality",
+      "source_validation",
+      "prompt_injection"
+    ],
+    "T15": [
+      "edit_authorization",
+      "optimistic_conflict",
+      "summary_stale"
+    ],
+    "T16": [
+      "component_widget",
+      "component_analysis",
+      "real_playback_edit"
+    ],
+    "T17": [
+      "grant_acl",
+      "revocation_range",
+      "cold_link"
+    ],
+    "T18": [
+      "component_widget",
+      "component_analysis",
+      "real_two_account_share"
+    ],
+    "T19": [
+      "export_acl",
+      "ownership_transfer",
+      "creation_replay"
+    ],
+    "T20": [
+      "delete_retention",
+      "late_job",
+      "account_deletion"
+    ],
+    "T21": [
+      "component_widget",
+      "component_analysis",
+      "real_export_transfer_cleanup"
+    ],
+    "T22": [
+      "two_repo_integration",
+      "runtime_contract",
+      "component_upgrade"
+    ],
+    "T23": [
+      "independent_review",
+      "security_negative",
+      "concurrency_faults"
+    ],
+    "T24": [
+      "app_full",
+      "backend_full",
+      "device_journeys",
+      "visual_acceptance",
+      "resource_preemption"
+    ],
+    "T25": [
+      "candidate_binding",
+      "acceptance_coverage",
+      "handoff_recovery"
+    ]
+  },
+  "component_checks": {
+    "T16": [
+      "component_widget",
+      "component_analysis"
+    ],
+    "T18": [
+      "component_widget",
+      "component_analysis"
+    ],
+    "T21": [
+      "component_widget",
+      "component_analysis"
+    ]
+  },
+  "binding_contract_revision": 0,
+  "frozen_test_bindings": {}
+}

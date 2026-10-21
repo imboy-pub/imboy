@@ -1,0 +1,39 @@
+{
+  "source": "imboyapp/DESIGN.md; lib/theme/default/app_colors.dart; app_spacing.dart",
+  "colors": {
+    "brand": "#2474E5",
+    "link": "#007AFF",
+    "danger": "#FF3B30",
+    "text": "#000000",
+    "secondary": "#3C3C43",
+    "surface": "#FFFFFF",
+    "background": "#F2F2F7",
+    "border": "#E5E5E5",
+    "darkSurface": "#1C1C1E",
+    "darkText": "#FFFFFF"
+  },
+  "spacing": [
+    4,
+    8,
+    12,
+    16,
+    20,
+    24,
+    32,
+    48
+  ],
+  "typography": {
+    "page": 22,
+    "section": 20,
+    "body": 16,
+    "caption": 14,
+    "timer": 40
+  },
+  "touchMin": 44,
+  "buttonMin": 48,
+  "radius": {
+    "control": 12,
+    "group": 16
+  },
+  "note": "Design-only mapping to existing Flutter tokens; no production token changes"
+}
