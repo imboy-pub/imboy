@@ -562,7 +562,9 @@ override_attachment_registry_env() ->
 -spec parse_attachment_registry_json(string() | binary()) ->
     {ok, map()} | {error, term()}.
 parse_attachment_registry_json(Raw) ->
-    try jsone:decode(unicode:characters_to_binary(Raw)) of
+    %% OTP 28 原生 json（与 product_terminology 同口径；独立 escript 场景
+    %% 也可解析，不依赖 jsone 在 code path）
+    try json:decode(unicode:characters_to_binary(Raw)) of
         Decoded when is_map(Decoded) ->
             convert_registry(Decoded);
         Other ->
