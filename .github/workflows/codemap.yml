@@ -11,10 +11,18 @@
 # （数据失真，见 docs/CONVENTIONS.md:231——codemap 现由 doc-updater 同步到
 #   src/*/CLAUDE.md 模块文档）。本 workflow 扫描的目标路径已不存在，恒空转
 #   （stale_count 恒 0），触发条件已被禁用。保留文件供历史参考。
+#
+# 2026-10-22 修复：下线时用 `on: {}` 表达"禁用"，但空触发器在 GitHub
+# Actions 中属无效语法（invalid workflow）：自 2026-08-24 起每次 push 都
+# 生成一个无 job 的失败 run（共 182 次）。改为仅 workflow_dispatch 手动
+# 触发——push 不再产生失败 run；手动触发亦为无害空转（stale_count 恒 0）。
 
 name: imboy codemap freshness
 
-on: {}  # 已禁用：目标目录 docs/CODEMAPS/ 已删除，workflow 失效
+# 已停用：目标目录 docs/CODEMAPS/ 已删除。仅保留手动触发入口；
+# 注意 `on: {}` 不是合法的禁用方式，会令每次 push 生成 invalid-workflow 失败。
+on:
+  workflow_dispatch:
 
 permissions:
   contents: read
