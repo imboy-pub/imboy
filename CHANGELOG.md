@@ -11,17 +11,55 @@
 
 ## [Unreleased]
 
-- 企业频道应用接口新增创建、资料修改及软归档，要求明确 channels:write、工作空间授权、版本与幂等；审计和资源同事务，历史资料保留。
+---
+
+## [1.0.0-alpha.83] - 2026-10-22
+
+> 本条目汇总 `1.0.0-alpha.82` 之后并入 main 的变更，含广州 Phase 1 后端收口、TextGuard 审核域、企业 OA 治理、附件 Garage 直传 v1 与 talk-record 域。
+
+### Added
+
+**内容审核 / TextGuard**
+- TextGuard 有界可比 shadow mode：T19 双协议验收、T20 业务审核绑定与 W5 shadow 验证入库，moderation 域旁路比对落库
+
+**附件与存储 / Attachments**
+- direct-v1 Garage 直传全链（迁移 `00000200`-`00000205`）：presign→PUT→confirm 直传通道
+- 存储注册表迁移至 env 层并强制启动校验，空 roots 启动报错（F13）
+
+**企业域 / Enterprise**
+- 企业频道应用接口新增创建、资料修改及软归档，要求明确 channels:write、工作空间授权、版本与幂等；审计和资源同事务，历史资料保留
+- OA 免登与治理：HMAC-only OA 认证、签名 OA 请求（不授权 scope）、OA 目录对账 API、组织托管成员离职控制、OA 成员挂起即时撤销线上访问；签发 OA code 前校验活跃真实人类账号；内部请求签名收窄为 HMAC-SHA256
+
+**客服 / Customer Service**
+- 可信人类与 AI 首次回复事实持久化（与 admin 侧客服运营统计视图对接）
+
+**频道 / Channel**
+- 共享链接授权文章查询与频道/文章安全 Web 落地页（www `/channel/`、`/invite/` 经共享 pro_imboy_api 上游代理）
+
+**聊天记录 / Talk Record**
+- 录制、恢复与附件生命周期；授权清理重试与安全对象删除
 
 ### Security
 
 - TSID V10：静态业务Namespace独立atomics游标，42/10/11与BIGINT不变；Monotonic + Fixed Offset、有界CAS/容量等待、无主动借支，异常时钟阻断真实发号。跨域数字允许重复，引用须带Domain。
+- 管理端频道读端点强制 `channels:read` RBAC 并回 HTTP 403
+
+### Changed
+
+- `conversation.last_msg_id` 列类型对齐 Xid 字符串契约（迁移 `00000198`），msg_id 三端统一按 XID（非 TSID）传输
+- C2C 会话序号守卫（迁移 `00000194`）；WS 解析复用性能优化
 
 ### Fixed
 
 - TSID V10收口：并发初始化保留已用游标、业务显式Namespace、Owner用户夹具使用user游标；删除旧store/guard/lock/bootstrap/catalog/scan及持久化配置。无持久化不保证同毫秒重启、跨重启回拨或同NodeId多实例唯一，见[当前风险](docs/reference/tsid-field-convention.md)。
 - 契约漂移 #2：管理后台内置角色 4/5/6（内容审核/安全治理/客服）补展示名——抽 `shared/adminRoles.ts` 单一映射对齐后端 `role_acl/1` 真源（imboyadmin `cf9ad7b`）
 - 契约漂移 #7（收口）：上行 WS action 注册表与下行 S2C action 清单均入契约门（`api_contract.json` `ws_actions`/`ws_s2c_actions` 段，format_version 3）；App 上行常量收编 `C2SAction` 并接单向比对（imboyapp `783b752f`）；新发现 #9（App WS `message_reaction` 通道服务端不认）登记待拍板
+- 频道：发布时校验帖子图片 scope；频道统计保持精确整数计数
+- 组织：目录拒绝统一返回 `organization_boundary_violation`
+- 升级链：`app_upgrade_log` CHECK 白名单对齐并记录插入失败（F16）
+- DB：迁移内持有 `imboy_account_id_seq` 序列锁（F1）
+- 运维：api 组件收尾自动补发落后 CS 面，消除 readiness exit 55 恒败；runtime 支持显式 HTTP/TLS 监听绑定地址；上传清理对齐 Cowboy 超时契约（#20）
+- 测试：恢复完整 EUnit 验收与真实上传生命周期覆盖（#19）；eunit 启动错误快速失败；Linux 批量测试编译低于参数上限
 
 ### Docs
 
