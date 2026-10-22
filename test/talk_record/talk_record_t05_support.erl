@@ -229,9 +229,21 @@ truncate_talk(Conn) ->
             {ok, [_]} -> "talk_record_processor_run, ";
             E -> error({processor_run_fixture_lookup, E})
         end,
+    %% 迁移 221 新增 talk_record_cleanup_retry（FK → talk_record ON DELETE RESTRICT）；
+    %% 不并入同一 TRUNCATE 则 fresh 221 库上报 0A000（cannot truncate referenced table）。
+    %% 该表的行级 UPDATE/DELETE 不可变触发器不拦 TRUNCATE，合成库清空合法。
+    CleanupRetry =
+        case
+            elib_pg:query(Conn, <<"SELECT to_regclass('talk_record_cleanup_retry') AS name">>, [])
+        of
+            {ok, [#{<<"name">> := null}]} -> "";
+            {ok, [_]} -> "talk_record_cleanup_retry, ";
+            E2 -> error({cleanup_retry_fixture_lookup, E2})
+        end,
     sql(Conn, [
         "TRUNCATE ",
         Extra,
+        CleanupRetry,
         empty_governance_fixture(Conn),
         "talk_record_idempotency, talk_record_consent_event, talk_record_audit, ",
         "talk_record_export, talk_record_job, talk_record_summary, talk_record_segment, ",
@@ -240,11 +252,34 @@ truncate_talk(Conn) ->
         "talk_record_participant, talk_record_attachment_ref, talk_record_assembly, ",
         "talk_record"
     ]),
-    sql(Conn, "DELETE FROM workspace_member"),
-    sql(Conn, "DELETE FROM workspace"),
-    sql(Conn, "DELETE FROM organization"),
-    sql(Conn, "DELETE FROM organization_member"),
-    sql(Conn, "DELETE FROM \"user\"").
+    %% enterprise_retention_policy（迁移 117）随 workspace 夹具自动生成且 FK RESTRICT 到
+    %% workspace；其行级触发器禁止 DELETE 但不拦 TRUNCATE。不清则后续父表清理报 23001。
+    case elib_pg:query(Conn, <<"SELECT to_regclass('enterprise_retention_policy') AS name">>, []) of
+        {ok, [#{<<"name">> := null}]} -> ok;
+        {ok, [_]} -> sql(Conn, "TRUNCATE enterprise_retention_policy");
+        E3 -> error({retention_policy_fixture_lookup, E3})
+    end,
+    %% 全套共享库中其他套件残留（enterprise_message、enterprise_asset_delete_queue 等）
+    %% 经 RESTRICT FK 阻塞父表级联删除；父表逐一 DELETE 无法枚举全部残留引用方。
+    %% TRUNCATE ... CASCADE 按 FK 图自动纳入全部引用表；行级不可变触发器不拦 TRUNCATE。
+    %% enterprise_attachment_retention 治理守卫已在前置 TRUNCATE 生效（非空即拒绝），
+    %% 此处 CASCADE 不会绕过该守卫静默清除治理事实。
+    case elib_pg:query(Conn, <<"SELECT to_regclass('enterprise_conversation') AS name">>, []) of
+        {ok, [#{<<"name">> := null}]} ->
+            sql(Conn, "DELETE FROM workspace_member"),
+            sql(Conn, "DELETE FROM workspace"),
+            sql(Conn, "DELETE FROM organization"),
+            sql(Conn, "DELETE FROM organization_member"),
+            sql(Conn, "DELETE FROM \"user\"");
+        {ok, [_]} ->
+            sql(
+                Conn,
+                "TRUNCATE enterprise_conversation, workspace, organization, "
+                "organization_member, workspace_member, \"user\" CASCADE"
+            );
+        E4 ->
+            error({enterprise_conversation_fixture_lookup, E4})
+    end.
 
 %%%===================================================================
 %%% epgsql 连接 / tsid meck

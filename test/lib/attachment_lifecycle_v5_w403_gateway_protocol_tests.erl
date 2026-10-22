@@ -34,6 +34,9 @@ protocol_test_() ->
 setup() ->
     %% EUnit may already have booted imboy. Journal only resources we create,
     %% including partial setup, and leave pre-existing pool/cache/TSID intact.
+    %% Load before snapshotting: otherwise cleanup would unset config-file env
+    %% (e.g. sql_driver) that a later setup in the same VM still needs.
+    ok = ensure_loaded(imboy),
     Before = #{env => application:get_all_env(imboy)},
     erlang:put(w403_gateway_setup, #{w403_before => Before, owned_apps => []}),
     try
@@ -62,6 +65,10 @@ setup_owned() ->
     {ok, Pg0} = application:get_env(imboy, pg_conf),
     {epgsql, connect, [Connect0]} = maps:get(start_mfa, Pg0),
     Connect = Connect0#{database => binary_to_list(Db)},
+    %% Standalone t= VM：eunit 只把 ebin 放进 code path，不 load/启动 app；
+    %% config_ds:env(sql_driver) 依赖 application env，不 load 会返回 undefined
+    %% → with_tx 取池名 undefined（r4 standalone 实证 24 例 502）。
+    ok = ensure_loaded(imboy),
     ensure_started(inets),
     ensure_started(crypto),
     application:set_env(imboy, jwt_key, crypto:strong_rand_bytes(32)),
@@ -169,6 +176,12 @@ temp_dir() ->
 own_resource(Key, Value) ->
     erlang:put(w403_gateway_setup, (erlang:get(w403_gateway_setup))#{Key => Value}),
     ok.
+ensure_loaded(App) ->
+    case application:load(App) of
+        ok -> ok;
+        {error, {already_loaded, App}} -> ok
+    end.
+
 ensure_started(App) ->
     {ok, Started} = application:ensure_all_started(App),
     S = erlang:get(w403_gateway_setup),

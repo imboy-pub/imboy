@@ -152,10 +152,36 @@ EDOC_OPTS = {doclet, edown_doclet}
 # （r3c1b 实证 9 例 command not found / missing_env）。Agent/RTC 属一期延期专项
 # （plan-v2 范围与执行合同），覆盖由专项运行环境承载（t= 单跑直通不受过滤影响；
 # 导出 IMBOY_HIRD_BIN 后可单跑）。
+# 2026-10-22 广州 V2.2 r4（zcode）：同口径补漏 imboy_hird_p1_auth_tool_tests /
+# imboy_hird_gates_tests——文件头同样要求 IMBOY_HIRD_BIN + HIRDPOC_PG_*（no-skip
+# 铁律，缺失即 FAIL）；全量实证 r3/r4 各 38 例 context setup failed（cancelled，
+# 不计入 Failed 但按计划 §Step22 仍算未过）。
+# 2026-10-22 r5b/r6 实证（zcode）：p1_auth_tool_tests 本体已被上述名单正确过滤；
+# r6 仍出现 22 例 cancel 来自 imboy_hird_p2_replay_tests（其 setup_fixture 复用
+# ?P1:ensure_env → 同款 HIRDPOC 合同）与 imboy_hird_p3_compare_tests（?P1 同款）
+# ——同为 HIRD 回放 POC 族，按同口径补入。
+# 2026-10-22 广州 V2.2 zcode r2 实证（eunit-zcode-r1）：三套件按文件头「运行前置」
+# 需专用控制器/独占资源，全量轨道不可满足——
+#   * talk_record_cleanup_retry_pg_checks / talk_record_delete_tests：T20 控制器
+#     注册表合同（T20_CASE_REGISTRY(+SHA)/T20_CASE_REPO/T20_PG_*，控制器冻结
+#     八项 claim/expiry/reaper 观察与专属空案例库；本 run 无冻结注册表，no-skip
+#     铁律下必红 42 项 cancel）——覆盖由控制器专项运行承载（C26 余额登记）。
+#   * attachment_lifecycle_v5_w403_gateway_protocol_tests：setup_owned 断言全局
+#     pgsql 池须指向其 manifest 的 attv5_chain_* 库且「绝不重定向既有池」——与
+#     全量轨道任何先行建池套件互斥（r5-r7/r1 均 12 cancel；设计性独占）——
+#     覆盖由 t= 单跑（独立 VM 池）承载。
+#   * 2026-10-22 zcode r4 实证：attv5 独占池合同被多个套件复用——
+#     attachment_ordinary_http_protocol_tests、eb_asset_frozen_storage_protocol_tests
+#     直接调用 w403 gateway setup；attachment_lifecycle_v5_w403_driver_matrix_tests
+#     使用其 HTTP fixture；enterprise_asset_driver_pg_tests、
+#     attachment_pending_location_pg_tests、message_result_pg_tests 使用
+#     W403/ATTACHMENT_REVIEW manifest 的 attv5_chain_* 库并自建同名 pgsql 池。
+#     全量轨道中任一先行套件建池后，这些套件 setup 必然 no_go（r4 实证 7 例
+#     context setup failed）。全部按同口径移入专项单跑。
 ifdef t
 EUNIT_TEST_SPEC = (fun() -> lists:append([$1]) end)()
 else
-EUNIT_TEST_SPEC = (fun() -> Excl = [elib_tsid, agent_grant_pg, agent_run_pg, agent_grant_pg_tests, agent_recovery_pg_tests, agent_run_pg_tests, agent_tool_authorizer_pg_tests, cs_pg_widget, cs_seat_console_pg_tests, imboy_hird_acceptance_tests, imboy_hird_replay_offline_tests, agent_hird_mini_spike_tests], Mods = lists:append([$1]), [M || M <- Mods, not lists:member(M, Excl)] end)()
+EUNIT_TEST_SPEC = (fun() -> Excl = [elib_tsid, agent_grant_pg, agent_run_pg, agent_grant_pg_tests, agent_recovery_pg_tests, agent_run_pg_tests, agent_tool_authorizer_pg_tests, cs_pg_widget, cs_seat_console_pg_tests, imboy_hird_acceptance_tests, imboy_hird_replay_offline_tests, agent_hird_mini_spike_tests, imboy_hird_p1_auth_tool_tests, imboy_hird_gates_tests, imboy_hird_p2_replay_tests, imboy_hird_p3_compare_tests, talk_record_cleanup_retry_pg_checks, talk_record_delete_tests, attachment_lifecycle_v5_w403_gateway_protocol_tests, attachment_lifecycle_v5_w403_driver_matrix_tests, attachment_ordinary_http_protocol_tests, eb_asset_frozen_storage_protocol_tests, enterprise_asset_driver_pg_tests, attachment_pending_location_pg_tests, message_result_pg_tests], Mods = lists:append([$1]), [M || M <- Mods, not lists:member(M, Excl)] end)()
 endif
 
 # BUILD-00R 后端物理裁剪接线：生成器按 manifest 产出未被选中 feature 的专属

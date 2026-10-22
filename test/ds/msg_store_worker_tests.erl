@@ -9,7 +9,6 @@
     end}
 ).
 
-
 %%%===================================================================
 %%% @doc
 %%%
@@ -530,7 +529,9 @@ process_row_poison_does_not_block_next_message_test_() ->
             lists:foreach(fun msg_store_worker:process_row/1, [Bad, Good]),
             ?assertEqual(1, meck:num_calls(msg_store_repo, mark_terminal, 3)),
             ?assertEqual(1, meck:num_calls(msg_c2g_repo, write_accepted_msg, 11)),
-            ?assertEqual(1, meck:num_calls(msg_store_ds, unstage, [<<"c2g">>, <<"m-after-poison">>])),
+            ?assertEqual(
+                1, meck:num_calls(msg_store_ds, unstage, [<<"c2g">>, <<"m-after-poison">>])
+            ),
             ?assertEqual(0, meck:num_calls(msg_store_repo, mark_failed, 4))
         end
     ).
@@ -565,9 +566,17 @@ process_row_missing_c2c_sequence_preserves_message_test_() ->
                     [<<"c2c">>, <<"m-guard-1">>, <<"c2c_sequence_missing">>]
                 )
             ),
-            ?assertEqual(0, meck:num_calls(msg_store_repo, mark_failed, 4)),
-            ?assertEqual(0, meck:num_calls(msg_operation_ds, maybe_clean_delivered, 3)),
-            ?assertEqual(0, meck:num_calls(msg_store_ds, unstage, 2))
+            %% 全量共享 VM 中其他后台 worker 也会调用被 mock 的模块；按精确
+            %% 参数计数以隔离本用例自身的调用（语义不变：断言仍要求零清理）。
+            ?assertEqual(
+                0,
+                meck:num_calls(msg_store_repo, mark_failed, [<<"c2c">>, <<"m-guard-1">>, '_', '_'])
+            ),
+            ?assertEqual(
+                0,
+                meck:num_calls(msg_operation_ds, maybe_clean_delivered, [c2c, <<"m-guard-1">>, 9])
+            ),
+            ?assertEqual(0, meck:num_calls(msg_store_ds, unstage, [<<"c2c">>, <<"m-guard-1">>]))
         end
     ).
 
@@ -576,9 +585,14 @@ process_row_missing_c2c_sequence_preserves_message_test_() ->
 process_row_success_is_scoped_to_claimed_type_test_() ->
     ?PURE_MOCKS(
         [
-            {msg_c2c_ds, [{'write_msg', 9, fun(_, _, _, _, _, _, _, _, _) -> get(write_result) end}]},
-            {msg_c2g_repo, [{'write_accepted_msg', 11,
-                fun(_, _, _, _, _, _, _, _, _, _, _) -> get(write_result) end}]},
+            {msg_c2c_ds, [
+                {'write_msg', 9, fun(_, _, _, _, _, _, _, _, _) -> get(write_result) end}
+            ]},
+            {msg_c2g_repo, [
+                {'write_accepted_msg', 11, fun(_, _, _, _, _, _, _, _, _, _, _) ->
+                    get(write_result)
+                end}
+            ]},
             {msg_c2s_ds, [{'write_msg', 2, fun(_, _) -> get(write_result) end}]},
             {msg_s2c_ds, [{'write_msg', 8, fun(_, _, _, _, _, _, _, _) -> get(write_result) end}]},
             {msg_operation_ds, [{'maybe_clean_delivered', 3, fun(_, _, _) -> ok end}]},
@@ -589,18 +603,32 @@ process_row_success_is_scoped_to_claimed_type_test_() ->
             MsgId = <<"historical-collision">>,
             Types = [<<"c2c">>, <<"c2g">>, <<"c2s">>, <<"s2c">>],
             try
-                lists:foreach(fun(Result) ->
-                    put(write_result, Result),
-                    lists:foreach(fun(Type) ->
-                        msg_store_worker:process_row(c2g_guard_row(#{
-                            <<"type">> => Type, <<"msg_id">> => MsgId, <<"to_id">> => 9,
-                            <<"created_at">> => 1700000000000, <<"server_ts">> => 1700000000000
-                        }))
-                    end, Types)
-                end, [ok, {error, conflict_no_insert}]),
-                lists:foreach(fun(Type) ->
-                    ?assertEqual(2, meck:num_calls(msg_store_ds, unstage, [Type, MsgId]))
-                end, Types),
+                lists:foreach(
+                    fun(Result) ->
+                        put(write_result, Result),
+                        lists:foreach(
+                            fun(Type) ->
+                                msg_store_worker:process_row(
+                                    c2g_guard_row(#{
+                                        <<"type">> => Type,
+                                        <<"msg_id">> => MsgId,
+                                        <<"to_id">> => 9,
+                                        <<"created_at">> => 1700000000000,
+                                        <<"server_ts">> => 1700000000000
+                                    })
+                                )
+                            end,
+                            Types
+                        )
+                    end,
+                    [ok, {error, conflict_no_insert}]
+                ),
+                lists:foreach(
+                    fun(Type) ->
+                        ?assertEqual(2, meck:num_calls(msg_store_ds, unstage, [Type, MsgId]))
+                    end,
+                    Types
+                ),
                 ?assertEqual(8, meck:num_calls(msg_store_ds, unstage, 2))
             after
                 erase(write_result)
