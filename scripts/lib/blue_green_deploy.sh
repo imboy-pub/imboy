@@ -51,6 +51,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 #   IMBOY_DEPLOY_SALES_RELEASE 销售版门禁（default: true）
 #   IMBOY_DEPLOY_E2EE_MODE     节点 E2EE 模式（销售版 default: required；其他: disabled）
 #   IMBOY_DEPLOY_PLUGIN_TRUSTED_PUBLIC_KEY_FILE 本地 32 字节 Ed25519 公钥
+#   IMBOY_DEPLOY_PROD_ENV_FILE  环境层配置文件（default: /usr/local/imboy-prod.env；
+#                               启动节点前 source，含 IMBOY_ATTACHMENT_REGISTRY 等）
 #   IMBOY_DEPLOY_TSID_DC_ID 数据中心 ID（default: 1）
 #   IMBOY_DEPLOY_TSID_DC_BITS DC 位宽，全集群一致（default: 3）
 #   IMBOY_DEPLOY_TSID_BLUE_NODE_ID / GREEN_NODE_ID 明确且不同的两色节点 ID
@@ -123,6 +125,12 @@ DB_NAME="${IMBOY_DEPLOY_DB_NAME:-}"
 DB_USER="${IMBOY_DEPLOY_DB_USER:-}"
 EXPAND_MIGRATIONS="${IMBOY_DEPLOY_EXPAND_MIGRATIONS:-}"
 PLUGIN_TRUSTED_PUBLIC_KEY_FILE="${IMBOY_DEPLOY_PLUGIN_TRUSTED_PUBLIC_KEY_FILE:-}"
+# 环境层配置文件（2026-10-21 配置搬家）：插件公钥 / 附件 registry / garage
+# 公开桶等 OS env 不随 release 的 sys.config 分发，由服务器统一入口
+# start_imboy_prod 在拉起 release 前 source。蓝绿部署自行拼启动命令，
+# 同样必须加载——strict 启动校验缺 registry 会以 attachment_registry_empty
+# 拒启并进入 heart 崩溃循环，/healthz 永不就绪（2026-10-22 alpha.83 实发）。
+PROD_ENV_FILE="${IMBOY_DEPLOY_PROD_ENV_FILE:-/usr/local/imboy-prod.env}"
 TSID_DC_ID="${IMBOY_DEPLOY_TSID_DC_ID:-1}"
 TSID_DC_BITS="${IMBOY_DEPLOY_TSID_DC_BITS:-3}"
 TSID_BLUE_NODE_ID="${IMBOY_DEPLOY_TSID_BLUE_NODE_ID:-}"
@@ -247,6 +255,12 @@ if [[ -n "$DB_USER" && ! "$DB_USER" =~ ^[a-zA-Z0-9_.-]+$ ]]; then
   echo "IMBOY_DEPLOY_DB_USER 含非法字符 / invalid DB user" >&2
   exit 1
 fi
+[[ "$PROD_ENV_FILE" =~ ^/[a-zA-Z0-9._/-]+$ && "$PROD_ENV_FILE" != *..* ]] \
+  || { echo "PROD_ENV_FILE 必须是无 .. 的安全绝对路径 / unsafe PROD_ENV_FILE: $PROD_ENV_FILE" >&2; exit 1; }
+# 远端 POSIX sh 片段，拼在每个 ./bin/imboy daemon 之前：存在则 source 并
+# export（与 start_imboy_prod 同语义）。部署期显式变量（端口/E2EE/TSID/公钥）
+# 必须写在本片段之后，以命令前缀赋值压过文件内同名项。
+PROD_ENV_LOAD="if [ -f '$PROD_ENV_FILE' ]; then set -a; . '$PROD_ENV_FILE'; set +a; fi"
 
 # 规范化 STOP_OLD：接受 true/1/yes（大小写不敏感）
 # Normalize STOP_OLD: accept true/1/yes case-insensitively
@@ -582,6 +596,26 @@ wait_for_health() {
   "
 }
 
+# 新节点 40s 未就绪时，把 boot 崩溃原因直接带出（2026-10-22 alpha.83
+# attachment_registry_empty 拒启事故前，定位全靠登录服务器翻 log 目录）。
+# error.log 是 logger 的 crash 摘要，erlang.log.* 是 run_erl 控制台输出；
+# crash report 不含凭据，尾部各 15 行足够暴露拒启原因。
+dump_new_node_boot_logs() {
+  [ -n "${RELEASE_DIR:-}" ] || return 0
+  log "新节点启动日志摘录 / boot log excerpt ($RELEASE_DIR/log):"
+  ssh_exec "
+    if [ -f '$RELEASE_DIR/log/error.log' ]; then
+      echo '--- error.log 尾部 ---'
+      tail -n 15 '$RELEASE_DIR/log/error.log'
+    fi
+    ERL=\$(ls -t '$RELEASE_DIR/log'/erlang.log.* 2>/dev/null | head -1)
+    if [ -n \"\$ERL\" ]; then
+      echo \"--- \$(basename \"\$ERL\") 尾部 ---\"
+      tail -n 15 \"\$ERL\"
+    fi
+  " 2>/dev/null || true
+}
+
 wait_for_health_status() {
   local port=$1
   ssh_exec "
@@ -710,6 +744,7 @@ recover_old_node_before_cutover() {
       command -v timeout >/dev/null 2>&1 && timeout 10s '$RELEASE_DIR/bin/imboy' stop >/dev/null 2>&1 || true
     fi
     cd '$OLD_DIR'
+    $PROD_ENV_LOAD
     if [ -f '$OLD_DIR/etc/plugin_trusted_ed25519.pub' ] \
        && find '$OLD_DIR/etc/plugin_trusted_ed25519.pub' -prune -size 32c | grep -q .; then
       export IMBOY_PLUGIN_TRUSTED_PUBLIC_KEY_FILES='$OLD_DIR/etc/plugin_trusted_ed25519.pub'
@@ -1317,17 +1352,20 @@ fi
 
 log "启动新节点 (port=$APP_PORT)... / Starting new node..."
 CANDIDATE_STARTED=1
-ssh_exec "cd '$RELEASE_DIR' && IMBOYENV=pro IMBOY_AUTO_MIGRATE='$START_AUTO_MIGRATE' HTTP_PORT='$APP_PORT' IMBOY_HTTP_PORT='$APP_PORT' IMBOY_E2EE_MODE='$E2EE_MODE' IMBOY_PLUGIN_TRUSTED_PUBLIC_KEY_FILES='$PLUGIN_TRUSTED_PUBLIC_KEY_REMOTE' $TSID_NODE_ENV ./bin/imboy daemon"
+ssh_exec "cd '$RELEASE_DIR' && $PROD_ENV_LOAD && IMBOYENV=pro IMBOY_AUTO_MIGRATE='$START_AUTO_MIGRATE' HTTP_PORT='$APP_PORT' IMBOY_HTTP_PORT='$APP_PORT' IMBOY_E2EE_MODE='$E2EE_MODE' IMBOY_PLUGIN_TRUSTED_PUBLIC_KEY_FILES='$PLUGIN_TRUSTED_PUBLIC_KEY_REMOTE' $TSID_NODE_ENV ./bin/imboy daemon"
 
 # 轮询取代原来的固定 sleep 5，在慢服务器上不会误报失败
 # Polling replaces fixed sleep 5; won't false-fail on slow servers
 # C-51：探 /healthz + 校验版本，而不是只看端口有没有被监听。
 # 失败信息刻意点名"可能是残留进程"——这是实际最常见的原因，
 # 直接写出来能省掉一轮排查。
-wait_for_health "$APP_PORT" "$VSN" \
-  || fail "新节点 40s 内未就绪或版本不符 / Node not ready or version mismatch within 40s (port=$APP_PORT, expect=$VSN)。
-  常见原因：目标色端口上有上一次部署的残留进程。
-  排查：ssh $SERVER_HOST \"ss -tlnp 'sport = :$APP_PORT'\" 并确认进程的 -root 目录"
+wait_for_health "$APP_PORT" "$VSN" || {
+  dump_new_node_boot_logs
+  fail "新节点 40s 内未就绪或版本不符 / Node not ready or version mismatch within 40s (port=$APP_PORT, expect=$VSN)。
+  常见原因：新版本启动即崩（见上方日志摘录，如 strict 校验缺配置拒启）；
+  或目标色端口上有上一次部署的残留进程（排查：ssh -p $SERVER_PORT $SERVER_HOST \"ss -tlnp 'sport = :$APP_PORT'\" 并确认进程的 -root 目录）。
+  完整日志：$RELEASE_DIR/log/"
+}
 ok "新节点已就绪且版本匹配 (port=$APP_PORT, vsn=$VSN) / New node ready, version verified"
 
 if [ "$BOUNDARY_SCHEMA_REQUIRED" -eq 1 ] && [ -n "$OLD_PORT" ]; then

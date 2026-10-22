@@ -62,6 +62,19 @@ staging backlog，避免旧节点继续写入缺少 GID/`conv_seq`/snapshot 的�
 创建 `.imboy-admin-root` 标记文件；上传脚本会校验 `realpath` 与标记，并在同步时保留
 该标记，避免 `--delete` 或清理回退误作用于系统目录或符号链接目标。
 
+### 环境层配置文件（发版不丢的 OS env 真源）
+
+插件公钥、附件存储 registry（`IMBOY_ATTACHMENT_REGISTRY`）、Garage 公开桶等
+OS env 配置不随 release 的 `sys.config` 分发，统一放在服务器
+`/usr/local/imboy-prod.env`（可用 `IMBOY_DEPLOY_PROD_ENV_FILE` 覆盖路径）。
+服务器统一启动入口 `start_imboy_prod` 与蓝绿部署拉起节点前都会
+`set -a; .` 该文件；部署期显式变量（端口/E2EE/TSID）在其后注入，优先级更高。
+新代码对缺 registry 的启动是 strict 拒启（`attachment_registry_empty`，
+2026-10-22 alpha.83 部署失败实因），因此 `lib/check_prod_config.sh` 的预检
+分两层：`REQUIRED_KEYS`（`sys.pro.config`）与 `REQUIRED_ENV_VARS`
+（环境层文件）。后端新增「缺配即 fail-closed」的配置时，必须同步把键加入
+对应清单——只加代码不加清单，预检形同虚设。
+
 ## 备份与恢复
 
 | 脚本 | 用途 |

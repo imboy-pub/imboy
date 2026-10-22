@@ -9,13 +9,22 @@
 # （依赖宿主的 ok/fail 与 SSH_OPTS 数组、SSH ControlMaster 免密通道。）
 #
 # 维护纪律：后端新增「无合理默认值、缺配即 fail-closed」的配置键时，
-# 同步在 REQUIRED_KEYS 追加；只新增键不更新本清单 = 本检查形同虚设。
+# 同步在 REQUIRED_KEYS（sys.config 层）或 REQUIRED_ENV_VARS（OS env 层）
+# 追加；只新增键不更新清单 = 本检查形同虚设。
+#
+# 2026-10-22 alpha.83 教训：attachment registry 随「配置搬家」迁入
+# /usr/local/imboy-prod.env（OS env 层），sys.config 层清单看不到它，
+# 预检放行后新节点以 attachment_registry_empty 拒启，40s healthz 失败。
 
 # 必需键（imboy app env；值非空才放行）：
 #   * cs_widget_subject_key   挂件匿名访客 HMAC 材料（缺→bootstrap 422）
 #   * eb_enterprise_keyring   企业信封加密密钥环（缺→建 contact 500 missing_key）
 #   * cors_widget_origins     挂件面 CORS origin 名单（缺→跨域上传/调用 403）
 REQUIRED_KEYS=(cs_widget_subject_key eb_enterprise_keyring cors_widget_origins)
+
+# 必需 OS env 变量（环境层配置文件，start_imboy_prod 与蓝绿部署共同 source）：
+#   * IMBOY_ATTACHMENT_REGISTRY 附件存储 roots（缺→strict 启动拒启 attachment_registry_empty）
+REQUIRED_ENV_VARS=(IMBOY_ATTACHMENT_REGISTRY)
 
 check_prod_config() {
   local host="$1" port="$2"
@@ -63,7 +72,8 @@ REMOTE
   fi
   case "$out" in
     *CONFIG_KEYS_OK*)
-      ok "生产配置键预检通过（${#REQUIRED_KEYS[@]} 个必需键齐全非空）"
+      check_prod_env_layer "$host" "$port"
+      ok "生产配置键预检通过（sys.config ${#REQUIRED_KEYS[@]} 键 + env 层 ${#REQUIRED_ENV_VARS[@]} 变量齐全非空）"
       ;;
     *CONFIG_KEYS_FAIL*)
       fail "生产配置缺必需键: $out
@@ -73,6 +83,39 @@ REMOTE
       ;;
     *)
       fail "生产配置键预检输出异常: $out"
+      ;;
+  esac
+}
+
+# 环境层配置（/usr/local/imboy-prod.env）：start_imboy_prod 与蓝绿部署
+# 拉起节点前共同 source 的 OS env 真源。文件缺失或必需变量为空值
+# 都会在切流前/启动时 fail-closed，这里前置到部署最早阶段拒绝。
+check_prod_env_layer() {
+  local host="$1" port="$2"
+  local env_file="${IMBOY_DEPLOY_PROD_ENV_FILE:-/usr/local/imboy-prod.env}"
+  if [[ ! "$env_file" =~ ^/[a-zA-Z0-9._/-]+$ || "$env_file" == *..* ]]; then
+    fail "环境层配置文件路径非法 / unsafe env file path: $env_file"
+  fi
+  local out
+  out="$(ssh -p "$port" "${SSH_OPTS[@]}" "$host" "
+    if [ ! -f '$env_file' ]; then echo '__ENV_FILE_MISSING__'; exit 0; fi
+    for v in ${REQUIRED_ENV_VARS[*]}; do
+      grep -Eq \"^[[:space:]]*(export[[:space:]]+)?\${v}=[^[:space:]]+\" '$env_file' || echo \"\$v\"
+    done
+  " 2>/dev/null || true)"
+  case "$out" in
+    '')
+      return 0
+      ;;
+    *__ENV_FILE_MISSING__*)
+      fail "环境层配置文件缺失: $host:$env_file
+  start_imboy_prod 与蓝绿部署启动节点前都会 source 它；新代码 strict 启动
+  校验依赖其中的必需变量（${REQUIRED_ENV_VARS[*]}），缺失会拒启。"
+      ;;
+    *)
+      fail "环境层配置缺必需变量: $host:$env_file 缺 $out
+  修复：编辑 $env_file 补齐非空赋值（参考 config/sys.config.example
+  对应注释），无需改动 release。"
       ;;
   esac
 }
