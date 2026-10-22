@@ -124,7 +124,7 @@ notify_after_commit(Ctx, Result, Params) ->
     case {is_integer(OrgId), is_integer(AppId), SenderExt, TargetExt} of
         {true, true, S, T} when is_binary(S), is_binary(T) ->
             Uids = elib_pg:with_tx(fun(Conn) ->
-                enterprise_external_identity_repo:resolve_tx(Conn, OrgId, AppId, [S, T])
+                enterprise_friend_request_logic:resolve_identities_tx(Conn, OrgId, AppId, [S, T])
             end),
             case Uids of
                 {ok, Rows} when is_list(Rows) ->

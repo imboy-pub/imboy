@@ -55,7 +55,9 @@
     delivery_stats_tx/2,
     purgeable_tx/3,
     retention_days/0,
-    metric_names/0
+    metric_names/0,
+    with_principal_tx/2,
+    delivery_ctx_tx/2
 ]).
 
 -include("log.hrl").
@@ -1351,4 +1353,49 @@ audit_test_delivery(Conn, Ctx, DeliveryId, Generation) ->
     of
         {ok, _AuditId} -> ok;
         {error, Reason} -> {error, Reason}
+    end.
+
+%% principal 预取（webhook 配置归属判定在 handler 编排，此处只补 ctx；
+%% 宽松降级：查不到不注入、不报错）。须在事务连接上调用（Conn 由调用方
+%% 传入，不自建连接不开新事务）。
+-spec with_principal_tx(any(), map()) -> map().
+with_principal_tx(Conn, Ctx) ->
+    AppId = maps:get(application_id, Ctx),
+    OrgId = maps:get(organization_id, Ctx),
+    case enterprise_application_repo:find_tx(Conn, OrgId, AppId) of
+        {ok, App} ->
+            case maps:get(<<"principal_user_id">>, App, null) of
+                P when is_integer(P), P > 0 -> Ctx#{principal_user_id => P};
+                _ -> Ctx
+            end;
+        _ ->
+            Ctx
+    end.
+
+%% @doc 读面 ctx：与 configure 同源的 principal 链路解析（无 principal →
+%% 明确错误，不给存在性 oracle）。硬失败三元组：{ok, Ctx} |
+%% {error, invalid_request | resource_not_found}。须在事务连接上调用。
+-spec delivery_ctx_tx(any(), map()) ->
+    {ok, map()} | {error, binary()}.
+delivery_ctx_tx(Conn, Ctx0) ->
+    AppId = maps:get(application_id, Ctx0, undefined),
+    case is_integer(AppId) of
+        true ->
+            %% find_tx/3 以 (organization_id, id) 定位（Org 边界在 SQL 内强制，
+            %% F2 修复：原 arity-2 调用运行时 undef → INT-23 真实 500）。
+            case
+                enterprise_application_repo:find_tx(
+                    Conn, maps:get(organization_id, Ctx0), AppId
+                )
+            of
+                {ok, App} ->
+                    case maps:get(<<"principal_user_id">>, App, null) of
+                        P when is_integer(P), P > 0 -> {ok, Ctx0#{principal_user_id => P}};
+                        _ -> {error, <<"invalid_request">>}
+                    end;
+                _ ->
+                    {error, <<"resource_not_found">>}
+            end;
+        false ->
+            {error, <<"invalid_request">>}
     end.

@@ -535,7 +535,13 @@ exported_surface_test() ->
         %% friend request logic 只发起：无 accept/confirm/approve/reject/delete/list 形态
         FRAll = lists:sort(enterprise_friend_request_logic:module_info(exports)),
         ?assertEqual(
-            [{create_request_tx, 3}, {module_info, 0}, {module_info, 1}, {notify_request, 1}],
+            [
+                {create_request_tx, 3},
+                {module_info, 0},
+                {module_info, 1},
+                {notify_request, 1},
+                {resolve_identities_tx, 4}
+            ],
             FRAll
         ),
         ?assertEqual(

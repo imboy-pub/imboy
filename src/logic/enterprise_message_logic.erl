@@ -4,6 +4,7 @@
 
 -export([direct_tx/3, group_tx/4]).
 -export([push_after_commit/2]).
+-export([with_principal_tx/2, fetch_row_id_tx/3]).
 
 -include("log.hrl").
 
@@ -508,6 +509,40 @@ push_after_commit_tx(Conn, <<"msg_c2g">>, MsgId) ->
     end;
 push_after_commit_tx(_Conn, _Table, _MsgId) ->
     ok.
+
+%% principal 预取（application 发送主体；human 模式不依赖，缺省即拒）。
+%% find_tx/3 以 (organization_id, id) 定位（Org 边界在 SQL 内强制，F2 修复：
+%% 原 arity-2 调用运行时 undef → INT-09/10 真实 500）。
+%% 须在事务连接上调用（Conn 由调用方传入，不自建连接不开新事务）。
+-spec with_principal_tx(any(), map()) -> map().
+with_principal_tx(Conn, Ctx) ->
+    AppId = maps:get(application_id, Ctx),
+    OrgId = maps:get(organization_id, Ctx),
+    case enterprise_application_repo:find_tx(Conn, OrgId, AppId) of
+        {ok, App} ->
+            case maps:get(<<"principal_user_id">>, App, null) of
+                P when is_integer(P), P > 0 -> Ctx#{principal_user_id => P};
+                _ -> Ctx
+            end;
+        _ ->
+            Ctx
+    end.
+
+%% @doc 事务内按 msg_id 反查主键行 id（幂等登记 must_complete_tx 用；查不到
+%% 返回 null 不致命）。须在事务连接上调用（Conn 由调用方传入）。
+-spec fetch_row_id_tx(any(), binary(), binary()) -> integer() | null.
+fetch_row_id_tx(Conn, <<"msg_c2c">>, MsgId) ->
+    case enterprise_message_repo:find_direct_tx(Conn, MsgId) of
+        {ok, #{<<"id">> := Id}} -> Id;
+        _ -> null
+    end;
+fetch_row_id_tx(Conn, <<"msg_c2g">>, MsgId) ->
+    case enterprise_message_repo:find_group_tx(Conn, MsgId) of
+        {ok, #{<<"id">> := Id}} -> Id;
+        _ -> null
+    end;
+fetch_row_id_tx(_Conn, _Table, _MsgId) ->
+    null.
 
 %%%===================================================================
 %%% Internal

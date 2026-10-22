@@ -109,3 +109,61 @@ oa_direct_and_group_preserve_business_id_test_() ->
             ?assertEqual([DirectId, GroupId], AuditIds)
         end
     ).
+
+%% §3c 辅助函数下沉最小断言：Conn 透传 + 宽松降级 + null 语义
+%%（handler 改道后原链路等价；mock 未命中子句兜底 {error, not_found}）。
+with_principal_tx_passthrough_test_() ->
+    ?PURE_MOCKS(
+        [
+            {enterprise_application_repo, [
+                {'find_tx', 3, fun
+                    (test_conn, 1, 2) -> {ok, #{<<"principal_user_id">> => 10}};
+                    (_, _, _) -> {error, not_found}
+                end}
+            ]}
+        ],
+        fun() ->
+            Ctx = #{organization_id => 1, application_id => 2},
+            %% 命中：principal 注入
+            ?assertEqual(
+                #{organization_id => 1, application_id => 2, principal_user_id => 10},
+                enterprise_message_logic:with_principal_tx(test_conn, Ctx)
+            ),
+            ?assert(meck:called(enterprise_application_repo, find_tx, [test_conn, 1, 2])),
+            %% 失败宽松降级：返回原 Ctx 不注入
+            ?assertEqual(
+                #{organization_id => 9, application_id => 8},
+                enterprise_message_logic:with_principal_tx(
+                    test_conn, #{organization_id => 9, application_id => 8}
+                )
+            )
+        end
+    ).
+
+fetch_row_id_tx_semantics_test_() ->
+    ?PURE_MOCKS(
+        [
+            {enterprise_message_repo, [
+                {'find_direct_tx', 2, fun
+                    (test_conn, <<"m1">>) -> {ok, #{<<"id">> => 71}};
+                    (_, _) -> {error, not_found}
+                end},
+                {'find_group_tx', 2, fun
+                    (test_conn, <<"m2">>) -> {ok, #{<<"id">> => 72}};
+                    (_, _) -> {error, not_found}
+                end}
+            ]}
+        ],
+        fun() ->
+            %% c2c/c2g 命中 → 行 id；未命中 → null（不致命）
+            ?assertEqual(
+                71, enterprise_message_logic:fetch_row_id_tx(test_conn, <<"msg_c2c">>, <<"m1">>)
+            ),
+            ?assertEqual(
+                72, enterprise_message_logic:fetch_row_id_tx(test_conn, <<"msg_c2g">>, <<"m2">>)
+            ),
+            ?assertEqual(
+                null, enterprise_message_logic:fetch_row_id_tx(test_conn, <<"msg_c2c">>, <<"none">>)
+            )
+        end
+    ).

@@ -144,3 +144,74 @@ logic_versioned_error_maps_to_400_test_() ->
             maps:get(<<"code">>, maps:get(<<"error">>, Decoded))
         )
     end}.
+
+%%%===================================================================
+%%% §3c 闭包执行用例（下沉后 delivery_ctx_tx → deliveries_tx 全链路）
+%%%===================================================================
+
+run_deliveries_ctx(Ctx0) ->
+    {ok, _Req, _State} =
+        enterprise_webhook_handler:init(req, #{
+            action => deliveries, enterprise_internal => Ctx0
+        }),
+    case get(cpcon02_reply) of
+        {Status, Body} -> {Status, jsone:decode(Body)};
+        undefined -> erlang:error(no_reply_captured)
+    end.
+
+teardown_full(_) ->
+    lists:foreach(
+        fun(Mod) ->
+            try
+                meck:unload(Mod)
+            catch
+                _:_ -> ok
+            end
+        end,
+        [cowboy_req, elib_pg, enterprise_application_repo, enterprise_webhook_logic]
+    ),
+    ok.
+
+%% 现套件 with_tx 桩丢弃闭包（fun(_F) -> ...），本用例**执行**闭包并传入
+%% 原 Conn：证明下沉后 ctx 预取与读面查询在同一事务连接上运行（§7 I9）。
+closure_executes_with_original_conn_test_() ->
+    {setup, fun setup/0, fun teardown_full/1, fun() ->
+        mock_cowboy([{<<"page_size">>, <<"5">>}]),
+        meck:expect(elib_pg, with_tx, fun(F) -> F(test_conn) end),
+        ok = meck:new(enterprise_application_repo, [no_link]),
+        ok = meck:expect(
+            enterprise_application_repo,
+            find_tx,
+            3,
+            fun(test_conn, 1, 2) -> {ok, #{<<"principal_user_id">> => 10}} end
+        ),
+        %% 本仓 meck 模型：mock 模块只保留 module_info，函数靠 expect 注入。
+        %% delivery_ctx_tx 用 passthrough 走真实现（内部打 mock 的 find_tx），
+        %% 才能证明「ctx 预取与读面查询同一 Conn」的完整链路。
+        ok = meck:new(enterprise_webhook_logic, [no_link]),
+        ok = meck:expect(
+            enterprise_webhook_logic,
+            delivery_ctx_tx,
+            2,
+            fun(Conn, Ctx0) -> meck:passthrough([Conn, Ctx0]) end
+        ),
+        ok = meck:expect(
+            enterprise_webhook_logic,
+            deliveries_tx,
+            4,
+            fun(test_conn, #{principal_user_id := 10}, _Params, _Limit) ->
+                {ok, #{<<"items">> => []}}
+            end
+        ),
+        {200, Decoded} = run_deliveries_ctx(#{organization_id => 1, application_id => 2}),
+        ?assertEqual([], maps:get(<<"items">>, Decoded)),
+        %% 原 Conn 透传：find_tx 与 deliveries_tx 收到同一 test_conn
+        ?assert(meck:called(enterprise_application_repo, find_tx, [test_conn, 1, 2])),
+        ?assert(
+            meck:called(
+                enterprise_webhook_logic,
+                deliveries_tx,
+                [test_conn, #{principal_user_id => 10}, '_', '_']
+            )
+        )
+    end}.

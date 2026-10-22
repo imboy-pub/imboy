@@ -119,7 +119,7 @@ with_idempotency(Req0, Ctx0, ResourceType, IdemKey, Digest, MsgTable, BoundaryFu
                 enterprise_internal_idempotency:begin_tx(Conn, Ctx0, ResourceType, IdemKey, Digest)
             of
                 {ok, inserted} ->
-                    Ctx = with_principal(Conn, Ctx0),
+                    Ctx = enterprise_message_logic:with_principal_tx(Conn, Ctx0),
                     case with_boundary(BoundaryFun, Ctx, Conn) of
                         ok ->
                             run_logic(Conn, Ctx0, Ctx, ResourceType, IdemKey, MsgTable, LogicFun);
@@ -168,27 +168,11 @@ push_after_commit(Table, #{<<"msg_id">> := MsgId}) when is_binary(MsgId) ->
 push_after_commit(_Table, _Result) ->
     ok.
 
-%% principal 预取（application 发送主体；human 模式不依赖，缺省即拒）。
-%% find_tx/3 以 (organization_id, id) 定位（Org 边界在 SQL 内强制，F2 修复：
-%% 原 arity-2 调用运行时 undef → INT-09/10 真实 500）。
-with_principal(Conn, Ctx) ->
-    AppId = maps:get(application_id, Ctx),
-    OrgId = maps:get(organization_id, Ctx),
-    case enterprise_application_repo:find_tx(Conn, OrgId, AppId) of
-        {ok, App} ->
-            case maps:get(<<"principal_user_id">>, App, null) of
-                P when is_integer(P), P > 0 -> Ctx#{principal_user_id => P};
-                _ -> Ctx
-            end;
-        _ ->
-            Ctx
-    end.
-
 -spec run_logic(any(), map(), map(), binary(), binary(), binary(), fun()) -> term().
 run_logic(Conn, Ctx0, Ctx, ResourceType, IdemKey, MsgTable, LogicFun) ->
     case LogicFun(Ctx, Conn) of
         {ok, #{<<"msg_id">> := MsgId} = Result} ->
-            RowId = fetch_row_id(Conn, MsgTable, MsgId),
+            RowId = enterprise_message_logic:fetch_row_id_tx(Conn, MsgTable, MsgId),
             Body = jsone:encode(Result),
             ok = enterprise_internal_idempotency:must_complete_tx(
                 Conn, Ctx0, ResourceType, IdemKey, RowId, 200, Body
@@ -202,19 +186,6 @@ run_logic(Conn, Ctx0, Ctx, ResourceType, IdemKey, MsgTable, LogicFun) ->
 -spec with_boundary(fun(), map(), any()) -> ok | {error, {binary(), term()}}.
 with_boundary(BoundaryFun, Ctx, Conn) ->
     BoundaryFun(Ctx, Conn).
-
-fetch_row_id(Conn, <<"msg_c2c">>, MsgId) ->
-    case enterprise_message_repo:find_direct_tx(Conn, MsgId) of
-        {ok, #{<<"id">> := Id}} -> Id;
-        _ -> null
-    end;
-fetch_row_id(Conn, <<"msg_c2g">>, MsgId) ->
-    case enterprise_message_repo:find_group_tx(Conn, MsgId) of
-        {ok, #{<<"id">> := Id}} -> Id;
-        _ -> null
-    end;
-fetch_row_id(_Conn, _Table, _MsgId) ->
-    null.
 
 ok_code(Code) when is_integer(Code), Code >= 200, Code < 300 -> Code;
 ok_code(_) -> 200.

@@ -23,7 +23,8 @@
 
 -export([
     create_request_tx/3,
-    notify_request/1
+    notify_request/1,
+    resolve_identities_tx/4
 ]).
 
 -define(MAX_EXTERNAL_ID_LEN, 256).
@@ -119,6 +120,14 @@ notify_request(#{sender_uid := SenderUid, target_uid := TargetUid} = Info) ->
     MsLi = elib_retry_config:intervals(<<"s2c">>),
     message_ds:send_next(TargetUid, MsgId, jsone:encode(Msg, [native_utf8]), MsLi),
     ok.
+
+%% @doc 提交后通知回读 uid（handler notify_after_commit 专用下沉）：批量
+%% 解析 OA 侧 external_user_id → uid 行；Conn 由调用方事务传入（§7 I9），
+%% 不自建连接不开新事务。
+-spec resolve_identities_tx(any(), integer(), integer(), [binary()]) ->
+    {ok, [map()]} | {error, term()}.
+resolve_identities_tx(Conn, OrgId, AppId, ExternalIds) ->
+    enterprise_external_identity_repo:resolve_tx(Conn, OrgId, AppId, ExternalIds).
 
 %% ===================================================================
 %% Internal Functions

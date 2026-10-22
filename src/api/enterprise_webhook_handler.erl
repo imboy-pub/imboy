@@ -78,7 +78,7 @@ configure_tx(Req0, Ctx0, IdemKey, Digest, Params) ->
                 )
             of
                 {ok, inserted} ->
-                    Ctx = with_principal(Conn, Ctx0),
+                    Ctx = enterprise_webhook_logic:with_principal_tx(Conn, Ctx0),
                     case
                         enterprise_webhook_logic:configure_tx(Conn, Ctx, params_to_input(Params))
                     of
@@ -217,7 +217,7 @@ test_delivery_tx(Req0, Ctx0, IdemKey, Digest) ->
                 )
             of
                 {ok, inserted} ->
-                    Ctx = with_principal(Conn, Ctx0),
+                    Ctx = enterprise_webhook_logic:with_principal_tx(Conn, Ctx0),
                     case enterprise_webhook_logic:emit_ping_tx(Conn, Ctx) of
                         {ok, Result} ->
                             Body = jsone:encode(Result),
@@ -278,7 +278,7 @@ deliveries(<<"GET">>, Req0, State) ->
             },
             TxResult =
                 elib_pg:with_tx(fun(Conn) ->
-                    case delivery_ctx(Conn, Ctx0) of
+                    case enterprise_webhook_logic:delivery_ctx_tx(Conn, Ctx0) of
                         {ok, Ctx} ->
                             case enterprise_webhook_logic:deliveries_tx(Conn, Ctx, Params, 20) of
                                 {ok, Result} ->
@@ -361,47 +361,6 @@ reply_versioned_400(Req0) ->
     cowboy_req:reply(
         400, #{<<"content-type">> => <<"application/json">>}, Body, Req0
     ).
-
-%% 读面 ctx：与 configure 同源的 principal 链路解析（无 principal → 明确错误，
-%% 不给存在性 oracle）。
-delivery_ctx(Conn, Ctx0) ->
-    AppId = maps:get(application_id, Ctx0, undefined),
-    case is_integer(AppId) of
-        true ->
-            %% find_tx/3 以 (organization_id, id) 定位（Org 边界在 SQL 内强制，
-            %% F2 修复：原 arity-2 调用运行时 undef → INT-23 真实 500）。
-            case
-                enterprise_application_repo:find_tx(
-                    Conn, maps:get(organization_id, Ctx0), AppId
-                )
-            of
-                {ok, App} ->
-                    case maps:get(<<"principal_user_id">>, App, null) of
-                        P when is_integer(P), P > 0 -> {ok, Ctx0#{principal_user_id => P}};
-                        _ -> {error, <<"invalid_request">>}
-                    end;
-                _ ->
-                    {error, <<"resource_not_found">>}
-            end;
-        false ->
-            {error, <<"invalid_request">>}
-    end.
-
-%% principal 预取（webhook 配置归属判定在 logic，此处只补 ctx）。
-%% find_tx/3 以 (organization_id, id) 定位（Org 边界在 SQL 内强制，F2 修复：
-%% 原 arity-2 调用运行时 undef → INT-12 真实 500）。
-with_principal(Conn, Ctx) ->
-    AppId = maps:get(application_id, Ctx),
-    OrgId = maps:get(organization_id, Ctx),
-    case enterprise_application_repo:find_tx(Conn, OrgId, AppId) of
-        {ok, App} ->
-            case maps:get(<<"principal_user_id">>, App, null) of
-                P when is_integer(P), P > 0 -> Ctx#{principal_user_id => P};
-                _ -> Ctx
-            end;
-        _ ->
-            Ctx
-    end.
 
 ok_code(Code) when is_integer(Code), Code >= 200, Code < 300 -> Code;
 ok_code(_) -> 200.
