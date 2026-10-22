@@ -118,7 +118,10 @@ multi_domain_e2e_test_() ->
             ),
             %% 个人消息/朋友圈/附件/E2EE 密钥
             MsgKey = <<"m1-", (integer_to_binary(MsgId))/binary>>,
-            {ok, 1} = personal_message_order_repo:execute_formal(Uid, Member, MsgKey,
+            {ok, 1} = personal_message_order_repo:execute_formal(
+                Uid,
+                Member,
+                MsgKey,
                 <<
                     "INSERT INTO public.msg_c2c (id, from_id, to_id, msg_id, msg_type, payload, conv_seq)"
                     " VALUES ($1, $2, $3, $4, 't', 'p', $5)"
@@ -135,9 +138,9 @@ multi_domain_e2e_test_() ->
             {ok, _} = elib_pg:query(
                 <<
                     "INSERT INTO public.attachment (id, creator_user_id, path)"
-                    " VALUES ($1, $2, 'objects/u/att1.bin')"
+                    " VALUES ($1, $2, $3)"
                 >>,
-                [new_uid(), Uid]
+                [new_uid(), Uid, <<"objects/u/", (integer_to_binary(Uid))/binary, "/att1.bin">>]
             ),
             {ok, _} = elib_pg:query(
                 <<
@@ -320,9 +323,9 @@ garage_enqueue_best_effort_test_() ->
             {ok, _} = elib_pg:query(
                 <<
                     "INSERT INTO public.attachment (id, creator_user_id, path)"
-                    " VALUES ($1, $2, 'objects/u/probe.bin')"
+                    " VALUES ($1, $2, $3)"
                 >>,
-                [new_uid(), Uid]
+                [new_uid(), Uid, <<"objects/u/", (integer_to_binary(Uid))/binary, "/probe.bin">>]
             ),
             ok = seed_expired_request(Uid),
             ok = ensure_sweeper(),

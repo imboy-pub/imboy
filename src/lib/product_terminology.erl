@@ -91,7 +91,7 @@ load_file(Path, ExpectedProfile) ->
         terms => maps:get(<<"terms">>, Document)
     }.
 
--spec decode_json(binary(), file:filename()) -> term().
+-spec decode_json(binary(), file:filename() | memory) -> term().
 decode_json(Json, Path) ->
     ObjectFinish = fun(Pairs, Acc) ->
         case duplicate_key(Pairs, #{}) of
