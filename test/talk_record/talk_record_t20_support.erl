@@ -273,13 +273,13 @@ seed_parents(C) ->
     ),
     ok = talk_record_parent_fixture:organization(C, 710001, <<"t20-org-a">>, 700001, <<"active">>),
     ok = talk_record_parent_fixture:organization(C, 710002, <<"t20-org-b">>, 700004, <<"active">>),
+    ok = assert_owner_member(C, 710001, 700001),
+    ok = assert_owner_member(C, 710002, 700004),
     lists:foreach(
         fun({Org, User, Role}) -> seed_member(C, Org, User, Role) end,
         [
-            {710001, 700001, <<"owner">>},
             {710001, 700002, <<"member">>},
-            {710001, 700003, <<"member">>},
-            {710002, 700004, <<"owner">>}
+            {710001, 700003, <<"member">>}
         ]
     ),
     lists:foreach(
@@ -299,9 +299,29 @@ seed_parents(C) ->
             ok = talk_record_parent_fixture:organization(
                 C, Org, <<"t20-page-org">>, 700008, <<"active">>
             ),
+            ok = assert_owner_member(C, Org, 700008),
             seed_member(C, Org, 700006, <<"member">>)
         end,
         lists:seq(1, 21)
+    ),
+    ok.
+
+assert_owner_member(C, Org, User) ->
+    %% Formal migrations create the owner's membership through a trigger.
+    {ok, [
+        #{
+            <<"owner_id">> := User,
+            <<"role">> := <<"owner">>,
+            <<"status">> := <<"active">>
+        }
+    ]} = elib_pg:query(
+        C,
+        <<
+            "SELECT o.owner_id,m.role,m.status FROM organization o "
+            "JOIN organization_member m ON m.organization_id=o.id AND m.user_id=o.owner_id "
+            "WHERE o.id=$1 AND o.owner_id=$2"
+        >>,
+        [Org, User]
     ),
     ok.
 

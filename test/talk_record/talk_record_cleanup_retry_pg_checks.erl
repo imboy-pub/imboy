@@ -8,8 +8,78 @@
 %% This continuation never starts infrastructure, clears tables or seeds terminal rows.
 %% The controller freezes the actual eight claim/expiry/reaper observations first.
 run_registered() ->
-    {Registry, Case, Receipt} = registered_fixture(),
-    assert_sources(Registry),
+    _ = talk_record_t20_case_registry:activate(?CASE),
+    Previous = [
+        {K, application:get_env(imboy, K)}
+     || K <-
+            [sql_driver, attachment_storage_registry]
+    ],
+    try
+        {Registry, Case, Receipt} = registered_fixture(),
+        configure_storage(Case, Receipt),
+        lists:foreach(
+            fun(A) -> {ok, _} = application:ensure_all_started(A) end,
+            [crypto, epgsql, pooler]
+        ),
+        undefined = whereis(pgsql),
+        undefined = whereis(pooler_pgsql_pool_sup),
+        undefined = whereis(elib_tsid_meck),
+        ok = ensure_allocator(),
+        ok = application:set_env(imboy, sql_driver, pgsql),
+        {ok, PoolSupervisor} = pooler:new_pool(#{
+            name => pgsql,
+            max_count => 4,
+            init_count => 1,
+            start_mfa => {epgsql, connect, [connection_options()]}
+        }),
+        Pool = whereis(pgsql),
+        try
+            true = is_pid(Pool),
+            run_connected(Registry, Case, Receipt)
+        after
+            case {whereis(pooler_pgsql_pool_sup), whereis(pgsql)} of
+                {PoolSupervisor, Pool} -> pooler:rm_pool(pgsql);
+                {undefined, undefined} -> ok;
+                _ -> error(cleanup_retry_pool_ownership_lost)
+            end
+        end
+    after
+        lists:foreach(fun restore_environment/1, Previous),
+        talk_record_t20_case_registry:clear()
+    end.
+
+restore_environment({Key, undefined}) -> application:unset_env(imboy, Key);
+restore_environment({Key, {ok, Value}}) -> application:set_env(imboy, Key, Value).
+
+ensure_allocator() ->
+    case elib_tsid:readiness() of
+        ready -> ok;
+        not_initialized -> elib_tsid:init(#{dc_id => 1, node_id => 1, dc_bits => 3});
+        Other -> error({cleanup_retry_allocator_not_ready, Other})
+    end.
+
+configure_storage(
+    #{<<"disk_root">> := Root, <<"namespace">> := Ns},
+    #{<<"resources">> := Resources}
+) ->
+    [Container] = lists:usort([maps:get(<<"storage_container">>, R) || R <- Resources]),
+    [RootId] = lists:usort([maps:get(<<"storage_root_id">>, R) || R <- Resources]),
+    true = is_binary(RootId) andalso byte_size(RootId) > 0,
+    ok = application:set_env(imboy, attachment_storage_registry, #{
+        version => 1,
+        upload_namespaces => #{<<"talk_record">> => Ns},
+        roots => #{
+            RootId => #{
+                driver => <<"disk">>,
+                namespace => Ns,
+                container => Container,
+                endpoint => <<"file://", Root/binary>>
+            }
+        }
+    }),
+    assert_storage_registry(Root, Ns, Resources).
+
+run_connected(Registry, Case, Receipt) ->
     {ok, C} = epgsql:connect(connection_options()),
     try
         assert_identity(C, Registry, Case),
@@ -55,19 +125,9 @@ run_registered() ->
     end.
 
 registered_fixture() ->
-    RegistryBytes = private_bytes(required("T20_CASE_REGISTRY")),
-    RegistryHash = list_to_binary(required("T20_CASE_REGISTRY_SHA256")),
-    RegistryHash = hex(RegistryBytes),
-    Registry = jsone:decode(RegistryBytes),
-    #{
-        <<"owner">> := Owner,
-        <<"controller_epoch">> := Epoch,
-        <<"cases">> := Cases
-    } = Registry,
-    true =
-        is_binary(Owner) andalso byte_size(Owner) > 0 andalso is_integer(Epoch) andalso Epoch > 0,
-    assert_runtime_lease(Registry),
-    Case = maps:get(?CASE, Cases),
+    #{registry := Registry, entry := Case} = authorized_context(),
+    ok = assert_runtime_lease(Registry),
+    #{<<"owner">> := Owner, <<"controller_epoch">> := Epoch} = Registry,
     #{
         <<"exhaustion_receipt_path">> := Path,
         <<"exhaustion_receipt_sha256">> := Hash,
@@ -89,122 +149,18 @@ registered_fixture() ->
     } = Receipt,
     true = is_list(Resources) andalso Resources =/= [],
     assert_directory(binary_to_list(Root)),
-    assert_storage_registry(Root, Ns, Resources),
     {Registry, Case, Receipt}.
 
-assert_sources(#{<<"source_sha256">> := Sources}) when is_map(Sources) ->
-    Repo = required("T20_CASE_REPO"),
-    {ok, Repo} = file:get_cwd(),
-    true = filename:pathtype(Repo) =:= absolute,
-    assert_directory(Repo),
-    Required = lists:sort(
-        lists:append([
-            source_tree(Repo, "src", ".erl"),
-            source_tree(Repo, "include", ".hrl"),
-            source_tree(Repo, "priv/migrations", ".sql"),
-            [
-                <<"test/talk_record/talk_record_delete_tests.erl">>,
-                <<"test/talk_record/talk_record_cleanup_retry_pg_checks.erl">>
-            ]
-        ])
-    ),
-    ?assertEqual(Required, lists:sort(maps:keys(Sources))),
-    lists:foreach(
-        fun(Name) ->
-            Expected = maps:get(Name, Sources),
-            Path = source_path(Repo, binary_to_list(Name)),
-            assert_directory(filename:dirname(Path)),
-            {ok, #file_info{type = regular}} = file:read_link_info(Path),
-            {ok, Bytes} = file:read_file(Path),
-            Expected = hex(Bytes)
-        end,
-        Required
+authorized_context() ->
+    talk_record_t20_case_registry:authorize(
+        talk_record_delete_tests, purge_failed_then_retry_test_
     ).
 
-%% Derive the source set from the real tree; never traverse even a directory symlink.
-source_tree(Repo, Relative, Extension) ->
-    Directory = source_path(Repo, Relative),
-    assert_directory(Directory),
-    Files = source_directory(Repo, Relative, Extension),
-    true = Files =/= [],
-    Files.
-source_directory(Repo, Relative, Extension) ->
-    {ok, Names} = file:list_dir(source_path(Repo, Relative)),
-    lists:append([
-        source_entry(Repo, filename:join(Relative, Name), Extension)
-     || Name <- lists:sort(Names)
-    ]).
-source_entry(Repo, Relative, Extension) ->
-    Path = source_path(Repo, Relative),
-    case file:read_link_info(Path) of
-        {ok, #file_info{type = directory}} ->
-            source_directory(Repo, Relative, Extension);
-        {ok, #file_info{type = regular}} ->
-            case filename:extension(Relative) =:= Extension of
-                true -> [unicode:characters_to_binary(Relative)];
-                false -> []
-            end;
-        Other ->
-            error({non_regular_candidate_source, Relative, Other})
-    end.
-source_path(Repo, Relative) ->
-    true = filename:pathtype(Relative) =:= relative,
-    Parts = filename:split(Relative),
-    true =
-        Parts =/= [] andalso
-            lists:all(
-                fun(P) ->
-                    P =/= ".." andalso P =/= "." andalso P =/= ""
-                end,
-                Parts
-            ),
-    Relative = filename:join(Parts),
-    filename:join(Repo, Relative).
+assert_identity(C, Registry, Case) ->
+    #{registry := Registry, entry := Case} = authorized_context(),
+    talk_record_t20_case_registry:verify_connected(C).
 
-assert_identity(C, Registry, #{<<"database">> := Db}) ->
-    #{
-        <<"host">> := Host,
-        <<"connection_port">> := ConnectionPort,
-        <<"server_port">> := ServerPort,
-        <<"user">> := User,
-        <<"system_identifier">> := SysId,
-        <<"migration_head">> := Head,
-        <<"migration_count">> := Count
-    } = Registry,
-    Host = list_to_binary(required("T20_PG_HOST")),
-    ConnectionPort = list_to_integer(required("T20_PG_PORT")),
-    User = list_to_binary(required("T20_PG_USER")),
-    Db = list_to_binary(required("T20_PG_DB")),
-    {ok, [
-        #{
-            <<"db">> := Db,
-            <<"usr">> := User,
-            <<"port">> := ServerPort,
-            <<"sysid">> := SysId,
-            <<"head">> := Head,
-            <<"migrations">> := Count
-        }
-    ]} =
-        elib_pg:query(
-            C,
-            <<
-                "SELECT current_database()::text db,current_user::text usr,"
-                "inet_server_port() port,(SELECT system_identifier::text FROM pg_control_system()) sysid,"
-                "(SELECT max(version) FROM schema_migrations_history) head,"
-                "(SELECT count(*) FROM schema_migrations_history) migrations"
-            >>,
-            []
-        ),
-    ok.
-
-connection_options() ->
-    [
-        {host, required("T20_PG_HOST")},
-        {port, list_to_integer(required("T20_PG_PORT"))},
-        {username, required("T20_PG_USER")},
-        {password, required("T20_PG_PASSWORD")},
-        {database, required("T20_PG_DB")}
-    ].
+connection_options() -> talk_record_t20_case_registry:connection_options().
 
 assert_storage_registry(Root, Ns, Resources) ->
     %% Frozen file oracle and production snapshot must describe the same object.
@@ -426,73 +382,17 @@ verify_complete(C, Rid) ->
 
 %% Registry and private resource/controller leases are re-read before every write.
 active_registry() ->
-    Bytes = private_bytes(required("T20_CASE_REGISTRY")),
-    Hash = list_to_binary(required("T20_CASE_REGISTRY_SHA256")),
-    Hash = hex(Bytes),
-    jsone:decode(Bytes).
+    #{registry := Registry} = authorized_context(),
+    Registry.
 
 assert_runtime_lease(Registry) ->
     Registry = active_registry(),
-    Hash = list_to_binary(required("T20_CASE_REGISTRY_SHA256")),
-    #{
-        <<"owner">> := Owner,
-        <<"controller_epoch">> := Epoch,
-        <<"controller_pid">> := Pid,
-        <<"controller_process_start">> := Start,
-        <<"controller_owner_path">> := ControllerPath
-    } = Registry,
-    #{
-        <<"approved">> := true,
-        <<"exclusive_beam_and_pg_window">> := true,
-        <<"owner">> := Owner,
-        <<"controller_epoch">> := Epoch,
-        <<"registry_sha256">> := Hash,
-        <<"expires_at_unix">> := Until
-    } =
-        jsone:decode(private_bytes(required("T20_CASE_LEASE"))),
-    true = is_integer(Until) andalso Until >= erlang:system_time(second) + 120,
-    #{
-        <<"session">> := Owner,
-        <<"controller_epoch">> := Epoch,
-        <<"pid">> := Pid,
-        <<"process_start">> := Start,
-        <<"lease_until">> := ControllerUntil,
-        <<"host">> := ControllerHost
-    } =
-        jsone:decode(private_bytes(binary_to_list(ControllerPath))),
-    {ok, LocalHost} = inet:gethostname(),
-    true = lists:member(
-        ControllerHost,
-        [list_to_binary(LocalHost), list_to_binary(LocalHost ++ ".local")]
-    ),
-    ControllerExpiry = calendar:rfc3339_to_system_time(binary_to_list(ControllerUntil)),
-    true = ControllerExpiry >= erlang:system_time(second) + 120,
-    Start = controller_process_start(Pid),
-    assert_sources(Registry),
-    true = min(Until, ControllerExpiry) >= erlang:system_time(second) + 120,
-    %% kick/periodic workers may not escape the guarded synchronous test window.
+    %% The shared strict verifier checks the current candidate, full source set,
+    %% controller PID/start probe, ownership lease and exact 25-case registry.
+    %% This continuation never relaxes its empty-fixture setup for ordinary cases.
     undefined = whereis(talk_record_job_worker),
     undefined = whereis(attachment_delete_worker),
     ok.
-
-controller_process_start(Pid) when is_integer(Pid), Pid > 0 ->
-    Port = open_port({spawn_executable, "/bin/ps"}, [
-        binary,
-        exit_status,
-        use_stdio,
-        stderr_to_stdout,
-        {args, ["-p", integer_to_list(Pid), "-o", "lstart="]}
-    ]),
-    read_process_start(Port, <<>>).
-read_process_start(Port, Bytes) ->
-    receive
-        {Port, {data, Chunk}} -> read_process_start(Port, <<Bytes/binary, Chunk/binary>>);
-        {Port, {exit_status, 0}} -> list_to_binary(string:trim(binary_to_list(Bytes)));
-        {Port, {exit_status, Code}} -> error({controller_not_live, Code})
-    after 5000 ->
-        port_close(Port),
-        error(controller_probe_timeout)
-    end.
 
 guarded_retry(Registry, Uid, Rid, Match, Key, Body) ->
     guarded_write(Registry, fun() ->
@@ -562,17 +462,14 @@ assert_actors(C, Uid, Stranger, Rid) ->
     ),
     ok.
 
-required(Name) ->
-    case os:getenv(Name) of
-        Value when is_list(Value), Value =/= [] -> Value;
-        _ -> error({required_fixture_environment_missing, Name})
-    end.
 private_bytes(Path) ->
+    assert_directory(filename:dirname(Path)),
     {ok, #file_info{type = regular, mode = Mode}} = file:read_link_info(Path),
     true = Mode band 8#077 =:= 0,
     {ok, Bytes} = file:read_file(Path),
     Bytes.
 assert_directory(Path) ->
+    absolute = filename:pathtype(Path),
     lists:foldl(
         fun(Segment, Prefix) ->
             Current =

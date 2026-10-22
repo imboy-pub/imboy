@@ -84,8 +84,14 @@ real_detail_identity_acl_test_() ->
         end}}.
 setup() ->
     State = talk_record_t05_support:setup_all(),
-    talk_record_t05_support:seed_fixtures(maps:get(conn, State)),
-    State.
+    talk_record_setup_fixture:prepare(
+        State,
+        fun() ->
+            talk_record_t05_support:seed_fixtures(maps:get(conn, State)),
+            State
+        end,
+        fun talk_record_t05_support:teardown_all/1
+    ).
 real_detail_identity_acl(State) ->
     Ids = talk_record_t05_support:ids(),
     Uid = maps:get(u1, Ids),

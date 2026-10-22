@@ -1,0 +1,10 @@
+type: object
+additionalProperties: false
+required:
+- request_hash
+- chunk_plan_hash
+properties:
+  request_hash: &id001
+    type: string
+    pattern: ^[0-9a-f]{64}$
+  chunk_plan_hash: *id001

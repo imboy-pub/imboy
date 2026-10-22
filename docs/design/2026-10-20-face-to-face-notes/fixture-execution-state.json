@@ -1,7 +1,7 @@
 {
   "schema_version": 2,
   "plan_id": "talk-record-v1",
-  "plan_revision": "8",
+  "plan_revision": 9,
   "status": "PLANNED_NOT_STARTED",
   "max_parallel_workers": 8,
   "runtime_capacity": null,
@@ -371,6 +371,7 @@
       "lane": "P",
       "dependencies": [
         "T03",
+        "T08",
         "T12"
       ],
       "status": "todo",
@@ -400,6 +401,7 @@
       "lane": "S",
       "dependencies": [
         "T03",
+        "T08",
         "T12"
       ],
       "status": "todo",

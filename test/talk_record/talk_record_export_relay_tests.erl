@@ -9,11 +9,17 @@ export_pipeline_test_() ->
 
 setup() ->
     State = talk_record_t19_support:setup_all(),
-    C = maps:get(conn, State),
-    talk_record_t19_support:sql(C, "DELETE FROM attachment_derived_write"),
-    talk_record_t19_support:seed(State),
-    ok = talk_record_upload_test_support:configure(),
-    State.
+    talk_record_setup_fixture:prepare(
+        State,
+        fun() ->
+            C = maps:get(conn, State),
+            talk_record_t19_support:sql(C, "DELETE FROM attachment_derived_write"),
+            talk_record_t19_support:seed(State),
+            ok = talk_record_upload_test_support:configure(),
+            State
+        end,
+        fun talk_record_t19_support:teardown_all/1
+    ).
 
 pipeline(State) ->
     C = maps:get(conn, State),
@@ -392,11 +398,11 @@ released_cleanup_retry(C, Uid) ->
     {ok, 1} = elib_pg:execute(
         C,
         <<
-            "INSERT INTO attach_pending(id,object_key,bucket,scope,creator_user_id,"
-            "session_state,upload_expires_at,confirmed_attachment_id) VALUES($1,$2,'fixture','talk_record',$3,"
-            "'confirmed',clock_timestamp()+interval '1 second',$4)"
+            "INSERT INTO attach_pending(object_key,bucket,scope,creator_user_id,"
+            "session_state,upload_expires_at,confirmed_attachment_id) VALUES($1,'fixture','talk_record',$2,"
+            "'registered',clock_timestamp()+interval '1 second',NULL)"
         >>,
-        [elib_tsid:generate(attachment), Path, Uid, Aid]
+        [Path, Uid]
     ),
     {ok, _, _} = talk_record_delete_logic:delete(Uid, Rid, <<"1">>),
     {ok, #{cleanup_status := <<"retained_by_other_reference">>}} = elib_pg:with_tx(fun(X) ->

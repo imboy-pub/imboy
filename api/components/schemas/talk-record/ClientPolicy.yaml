@@ -1,0 +1,43 @@
+type: object
+additionalProperties: false
+required:
+- available
+properties:
+  available:
+    type: boolean
+  execution_mode:
+    type: string
+    enum:
+    - client_byok
+  policy_version:
+    type: string
+    maxLength: 64
+  config_version:
+    type: string
+    pattern: ^[0-9a-f]{64}$
+  providers:
+    type: object
+    additionalProperties: false
+    properties:
+      transcribe:
+        type: object
+        properties:
+          provider:
+            type: string
+            enum:
+            - minimax
+          model:
+            type: string
+            enum:
+            - asr-1.0
+      summarize:
+        type: object
+        properties:
+          provider:
+            type: string
+            enum:
+            - zhipu
+          model:
+            type: string
+            enum:
+            - glm-5.3-flash

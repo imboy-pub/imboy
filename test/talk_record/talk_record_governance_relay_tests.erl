@@ -8,9 +8,15 @@ governance_test_() ->
         end}}.
 setup() ->
     S = talk_record_t19_support:setup_all(),
-    talk_record_t19_support:seed(S),
-    application:set_env(imboy, enterprise_attachment_retention_days, 1),
-    S.
+    talk_record_setup_fixture:prepare(
+        S,
+        fun() ->
+            talk_record_t19_support:seed(S),
+            application:set_env(imboy, enterprise_attachment_retention_days, 1),
+            S
+        end,
+        fun talk_record_t19_support:teardown_all/1
+    ).
 run(S) ->
     C = maps:get(conn, S),
     I = talk_record_t19_support:ids(),
@@ -134,10 +140,10 @@ workspace_purge(C, Org, Ws) ->
     {ok, 1} = elib_pg:execute(
         C,
         <<
-            "INSERT INTO attach_pending(id,object_key,bucket,scope,creator_user_id,session_state,"
-            "upload_expires_at,confirmed_attachment_id) VALUES($1,$2,'fixture','talk_record',700001,'confirmed',NULL,$3)"
+            "INSERT INTO attach_pending(object_key,bucket,scope,creator_user_id,session_state,"
+            "upload_expires_at,confirmed_attachment_id) VALUES($1,'fixture','talk_record',700001,'registered',NULL,NULL)"
         >>,
-        [elib_tsid:generate(attachment), path(C, A), A]
+        [path(C, A)]
     ),
     ?assertEqual(
         {error, intent_conflict},

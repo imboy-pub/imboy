@@ -9,13 +9,19 @@ post:
   x-handler: talk_record_handler
   description: JWT and default device-signature verification apply. Every request
     rechecks current record ACL and organization/workspace eligibility; participation
-    does not grant access. Entity IDs are JSON int64 integers.
+    does not grant access. Entity IDs are JSON int64 integers. For client_byok,
+    the same frozen record, stage and input reuse one logical job across devices
+    and idempotency keys. Different provider or policy pins conflict; an unknown
+    provider outcome requires the explicit acknowledged successor claim. New jobs
+    and claims of failed jobs obey the per-record client queue_limit.
   requestBody:
     required: true
     content:
       application/json:
         schema:
-          $ref: ../../../../components/schemas/talk-record/ProcessingCreate.yaml
+          oneOf:
+          - $ref: ../../../../components/schemas/talk-record/ProcessingCreate.yaml
+          - $ref: ../../../../components/schemas/talk-record/ClientProcessingCreate.yaml
   responses:
     '202':
       description: Authenticated domain response; current ACL and context are rechecked.
@@ -46,7 +52,8 @@ post:
           schema:
             $ref: ../../../../components/schemas/Envelope.yaml
     '409':
-      description: Conflict, fenced capture, incomplete parts or policy/context changed.
+      description: Conflict, fenced capture, incomplete parts, policy/context changed,
+        incompatible existing client input or client_queue_full.
       content:
         application/json:
           schema:

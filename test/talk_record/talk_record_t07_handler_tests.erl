@@ -13,12 +13,19 @@
 
 setup() ->
     State = talk_record_t07_support:setup_all(),
-    talk_record_t07_support:seed(State),
-    HandlerState = setup_mocks(),
-    State#{handler_mocks => HandlerState}.
+    talk_record_setup_fixture:prepare(
+        State,
+        fun() ->
+            talk_record_t07_support:seed(State),
+            HandlerState = talk_record_setup_fixture:mocks(
+                [elib_response, elib_param, cowboy_req], fun setup_mocks/0
+            ),
+            State#{handler_mocks => HandlerState}
+        end,
+        fun talk_record_t07_support:teardown_all/1
+    ).
 
 setup_mocks() ->
-    ok = meck:new(elib_response, [passthrough, unstick, no_link]),
     ok = meck:expect(elib_response, success, fun(Req, Data) ->
         Req#{response_status => 200, response_body => Data}
     end),
@@ -28,8 +35,6 @@ setup_mocks() ->
             response_body => #{<<"msg">> => Msg, <<"code">> => Code}
         }
     end),
-    ok = meck:new(elib_param, [passthrough, unstick, no_link]),
-    ok = meck:new(cowboy_req, [passthrough, unstick, no_link]),
     ok = meck:expect(cowboy_req, reply, fun(Status, Headers, Body, Req) ->
         Req#{
             response_status => Status,
@@ -43,10 +48,11 @@ setup_mocks() ->
     ok.
 
 cleanup(State) ->
-    catch meck:unload(cowboy_req),
-    catch meck:unload(elib_param),
-    catch meck:unload(elib_response),
-    talk_record_t07_support:teardown_all(State).
+    try
+        talk_record_setup_fixture:unload(maps:get(handler_mocks, State))
+    after
+        talk_record_t07_support:teardown_all(State)
+    end.
 
 mock_body(Body) ->
     ok = meck:expect(elib_param, post, fun(_Req) -> Body end).

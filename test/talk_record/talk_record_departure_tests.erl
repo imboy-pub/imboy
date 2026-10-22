@@ -1,88 +1,103 @@
 -module(talk_record_departure_tests).
 -include_lib("eunit/include/eunit.hrl").
--define(ORG, 9791000).
--define(U0, 9791001).
--define(U1, 9791002).
--define(U2, 9791003).
--define(WS, 9791004).
--define(R, 9791010).
 
 departure_test_() ->
     {timeout, 180,
-        {setup, fun setup/0, fun cleanup/1, fun(S) ->
-            [
-                ?_test(registry_mandatory()),
-                ?_test(preflight_projection(S)),
-                ?_test(cleanup_resources_bounded(S)),
-                ?_test(voluntary_and_history(S)),
-                ?_test(forced_suspend(S)),
-                ?_test(forced_remove(S)),
-                ?_test(final_transaction_guard(S)),
-                ?_test(create_before_leave(S)),
-                ?_test(leave_before_create(S)),
-                ?_test(transfer_before_suspend(S)),
-                ?_test(suspend_before_transfer(S)),
-                ?_test(workspace_revoke_before_transfer(S)),
-                ?_test(transfer_before_workspace_revoke(S)),
-                ?_test(required_provider_unavailable(S)),
-                ?_test(disposition_contract())
-            ]
-        end}}.
+        {foreach, fun setup/0, fun cleanup/1, [
+            fun(S) -> ?_test(registry_mandatory(S)) end,
+            fun(S) -> ?_test(preflight_projection(S)) end,
+            fun(S) -> ?_test(cleanup_resources_bounded(S)) end,
+            fun(S) -> ?_test(voluntary_and_history(S)) end,
+            fun(S) -> ?_test(forced_suspend(S)) end,
+            fun(S) -> ?_test(forced_remove(S)) end,
+            fun(S) -> ?_test(final_transaction_guard(S)) end,
+            fun(S) -> ?_test(create_before_leave(S)) end,
+            fun(S) -> ?_test(leave_before_create(S)) end,
+            fun(S) -> ?_test(transfer_before_suspend(S)) end,
+            fun(S) -> ?_test(suspend_before_transfer(S)) end,
+            fun(S) -> ?_test(workspace_revoke_before_transfer(S)) end,
+            fun(S) -> ?_test(transfer_before_workspace_revoke(S)) end,
+            fun(S) -> ?_test(required_provider_unavailable(S)) end,
+            fun(_S) -> ?_test(disposition_contract()) end
+        ]}}.
 
 setup() ->
-    S = talk_record_t05_support:setup_all(),
+    State = talk_record_t05_support:setup_all(),
+    S = State#{ids => new_ids()},
+    talk_record_setup_fixture:prepare(
+        S,
+        fun() ->
+            seed_parents(S),
+            S
+        end,
+        fun talk_record_t05_support:teardown_all/1
+    ).
+
+new_ids() ->
+    %% Separate from the T05 allocator's 9e12 range; one disjoint block per case.
+    Base = 8000000000000000 + 256 * erlang:unique_integer([positive, monotonic]),
+    #{
+        org => Base,
+        u0 => Base + 1,
+        u1 => Base + 2,
+        u2 => Base + 3,
+        ws => Base + 4,
+        record_id => Base + 10,
+        record_client_uuid => client_uuid(Base + 10),
+        create_client_uuid => client_uuid(Base + 200),
+        create_key => <<"departure-create-", (integer_to_binary(Base))/binary>>,
+        transfer_key => <<"departure-transfer-", (integer_to_binary(Base))/binary>>
+    }.
+
+id(S, Name) -> maps:get(Name, maps:get(ids, S)).
+
+client_uuid(Id) ->
+    <<High:4/binary, Low:12/binary>> = binary:encode_hex(<<Id:64>>, lowercase),
+    <<"97910000-", High/binary, "-4000-8000-", Low/binary>>.
+
+seed_parents(S) ->
     C = maps:get(conn, S),
-    q(
+    [] = q(
         C,
-        <<"ALTER TABLE organization_member ADD COLUMN IF NOT EXISTS updated_at timestamptz DEFAULT now()">>,
-        []
+        <<"SELECT id FROM \"user\" WHERE id IN ($1,$2,$3)">>,
+        [id(S, u0), id(S, u1), id(S, u2)]
     ),
-    q(C, <<"ALTER TABLE workspace ADD COLUMN IF NOT EXISTS owner_id bigint">>, []),
     lists:foreach(
         fun({Uid, Name}) ->
             ok = talk_record_parent_fixture:user(C, Uid, #{
-                <<"nickname">> => Name,
-                <<"status">> => 1,
-                <<"account_type">> => 0
+                <<"nickname">> => Name, <<"status">> => 1, <<"account_type">> => 0
             })
         end,
         [
-            {?U0, <<"departure-owner">>},
-            {?U1, <<"departure-member">>},
-            {?U2, <<"departure-target">>}
+            {id(S, u0), <<"departure-owner">>},
+            {id(S, u1), <<"departure-member">>},
+            {id(S, u2), <<"departure-target">>}
         ]
     ),
     q(
         C,
         <<"INSERT INTO organization(id,name,status,owner_id) VALUES ($1,'departure-test','active',$2)">>,
-        [?ORG, ?U0]
+        [id(S, org), id(S, u0)]
     ),
     q(
         C,
-        <<"INSERT INTO organization_member(organization_id,user_id,role,status) VALUES ($1,$2,'owner','active'),($1,$3,'member','active'),($1,$4,'member','active') ON CONFLICT (organization_id,user_id) DO UPDATE SET role=EXCLUDED.role,status=EXCLUDED.status">>,
-        [?ORG, ?U0, ?U1, ?U2]
+        <<"INSERT INTO organization_member(organization_id,user_id,role,status) VALUES ($1,$2,'owner','active'),($1,$3,'member','active'),($1,$4,'member','active')">>,
+        [id(S, org), id(S, u0), id(S, u1), id(S, u2)]
     ),
     q(
         C,
         <<"INSERT INTO workspace(id,organization_id,name,status,owner_id) VALUES ($1,$2,'departure-ws','active',$3)">>,
-        [?WS, ?ORG, ?U0]
+        [id(S, ws), id(S, org), id(S, u0)]
     ),
     q(
         C,
         <<"INSERT INTO workspace_member(workspace_id,user_id,role,status) VALUES($1,$2,'member','active'),($1,$3,'member','active')">>,
-        [?WS, ?U1, ?U2]
+        [id(S, ws), id(S, u1), id(S, u2)]
     ),
-    S.
+    ok.
 
 cleanup(S) ->
     unload(),
-    C = maps:get(conn, S),
-    clear_records(C),
-    q(C, <<"DELETE FROM workspace_member WHERE workspace_id=$1">>, [?WS]),
-    q(C, <<"DELETE FROM workspace WHERE id=$1">>, [?WS]),
-    q(C, <<"DELETE FROM organization WHERE id=$1">>, [?ORG]),
-    q(C, <<"DELETE FROM organization_member WHERE organization_id=$1">>, [?ORG]),
-    q(C, <<"DELETE FROM \"user\" WHERE id IN ($1,$2,$3)">>, [?U0, ?U1, ?U2]),
     talk_record_t05_support:teardown_all(S).
 
 unload() ->
@@ -107,34 +122,21 @@ unload() ->
     ),
     application:unset_env(imboy, deletion_preflight_providers).
 
-clear_records(C) ->
-    q(
-        C,
-        <<"DELETE FROM talk_record_audit WHERE record_id IN (SELECT id FROM talk_record WHERE created_by IN ($1,$2))">>,
-        [?U1, ?U2]
-    ),
-    q(
-        C,
-        <<"DELETE FROM talk_record_grant WHERE record_id IN (SELECT id FROM talk_record WHERE created_by IN ($1,$2))">>,
-        [?U1, ?U2]
-    ),
-    q(C, <<"DELETE FROM talk_record WHERE created_by IN ($1,$2)">>, [?U1, ?U2]),
-    q(C, <<"DELETE FROM talk_record_idempotency WHERE actor_id IN ($1,$2)">>, [?U1, ?U2]).
 reset(S) ->
     unload(),
     C = maps:get(conn, S),
-    clear_records(C),
-    q(C, <<"UPDATE organization_member SET status='active' WHERE organization_id=$1">>, [?ORG]),
-    q(C, <<"UPDATE workspace_member SET status='removed' WHERE workspace_id=$1">>, [?WS]),
+    q(C, <<"UPDATE organization_member SET status='active' WHERE organization_id=$1">>, [id(S, org)]),
+    q(C, <<"UPDATE workspace_member SET status='removed' WHERE workspace_id=$1">>, [id(S, ws)]),
     ok.
+
 record(S, Ws) ->
-    C = maps:get(conn, S),
     q(
-        C,
-        <<"INSERT INTO talk_record(id,owner_user_id,created_by,client_recording_id,scope,organization_id,workspace_id) VALUES($1,$2,$2,'97910000-0000-4000-8000-000000000001','organization',$3,$4)">>,
-        [?R, ?U1, ?ORG, Ws]
+        maps:get(conn, S),
+        <<"INSERT INTO talk_record(id,owner_user_id,created_by,client_recording_id,scope,organization_id,workspace_id) VALUES($1,$2,$2,$3,'organization',$4,$5)">>,
+        [id(S, record_id), id(S, u1), id(S, record_client_uuid), id(S, org), Ws]
     ),
     ok.
+
 q(C, Sql, Params) ->
     case elib_pg:query(C, Sql, Params) of
         {ok, R} -> R;
@@ -144,12 +146,12 @@ row(S) ->
     [R] = q(
         maps:get(conn, S),
         <<"SELECT owner_user_id,created_by,custody_status,revision,acl_revision FROM talk_record WHERE id=$1">>,
-        [?R]
+        [id(S, record_id)]
     ),
     R.
 codes(F) -> [maps:get(code, B) || B <- maps:get(blockers, F)].
 
-registry_mandatory() ->
+registry_mandatory(S) ->
     application:unset_env(imboy, deletion_preflight_providers),
     Registry = organization_deletion_preflight:registry(),
     ?assert(lists:member({talk_record, talk_record_delete_preflight, facts}, Registry)),
@@ -160,7 +162,7 @@ registry_mandatory() ->
     ]),
     ?assertMatch(
         {error, #{reason := provider_unregistered, detail := [talk_record]}},
-        organization_deletion_preflight:run(?U1)
+        organization_deletion_preflight:run(id(S, u1))
     ),
     application:unset_env(imboy, deletion_preflight_providers).
 
@@ -171,70 +173,86 @@ preflight_projection(S) ->
     q(
         C,
         <<"UPDATE organization_member SET status='suspended' WHERE organization_id=$1 AND user_id=$2">>,
-        [?ORG, ?U1]
+        [id(S, org), id(S, u1)]
     ),
-    {ok, F} = talk_record_delete_preflight:facts(?U1),
+    {ok, F} = talk_record_delete_preflight:facts(id(S, u1)),
     ?assertEqual(1, maps:get(organization_handover_required, maps:get(counts, F))),
     ?assert(lists:member(<<"TALK_RECORD_ORGANIZATION_OWNER_PENDING">>, codes(F))),
     ?assertEqual(<<"active">>, maps:get(<<"custody_status">>, row(S))).
 
 cleanup_resources_bounded(S) ->
     reset(S),
-    C = maps:get(conn, S),
-    q(
-        C,
-        <<"INSERT INTO talk_record(id,owner_user_id,created_by,client_recording_id,scope,deleted_at,cleanup_status) ",
-            "SELECT $1+n,$2,$2,('97910000-0000-4000-8000-'||lpad(n::text,12,'0'))::uuid,'personal',now(),'pending' FROM generate_series(1,21) n">>,
-        [?R, ?U1]
-    ),
-    {ok, F} = talk_record_delete_preflight:facts(?U1),
+    %% Independent 21/20-record cohorts retain both histories instead of deleting
+    %% the 21st record to change a previous observation for the same actor.
+    R = id(S, record_id),
+    Rows =
+        [{R + N, id(S, u1)} || N <- lists:seq(1, 21)] ++
+            [{R + 100 + N, id(S, u2)} || N <- lists:seq(1, 20)],
+    insert_cleanup_cohorts(S, Rows),
+    {ok, F} = talk_record_delete_preflight:facts(id(S, u1)),
     Resources = maps:get(resources, F),
     ?assertEqual(20, length(Resources)),
-    ?assertEqual(#{record_id => ?R + 1}, hd(Resources)),
+    ?assertEqual(#{record_id => R + 1}, hd(Resources)),
     ?assertEqual(true, maps:get(cleanup_resources_truncated, F)),
     ?assert(
         lists:all(fun(B) -> maps:get(resource_type, B) =:= <<"account">> end, maps:get(blockers, F))
     ),
-    q(C, <<"DELETE FROM talk_record WHERE id=$1">>, [?R + 21]),
-    {ok, F20} = talk_record_delete_preflight:facts(?U1),
+    {ok, F20} = talk_record_delete_preflight:facts(id(S, u2)),
+    ?assertEqual(20, length(maps:get(resources, F20))),
     ?assertEqual(false, maps:get(cleanup_resources_truncated, F20)).
 
-transfer() ->
+insert_cleanup_cohorts(S, Rows) ->
+    Values = [
+        io_lib:format(
+            "($~B,$~B,$~B,$~B::uuid,'personal',now(),'pending')", [N, N + 1, N + 1, N + 2]
+        )
+     || N <- lists:seq(1, length(Rows) * 3, 3)
+    ],
+    Sql = iolist_to_binary([
+        "INSERT INTO talk_record(id,owner_user_id,created_by,client_recording_id,scope,deleted_at,cleanup_status) VALUES ",
+        lists:join(",", Values)
+    ]),
+    Params = lists:append([[Rid, Uid, client_uuid(Rid)] || {Rid, Uid} <- Rows]),
+    q(maps:get(conn, S), Sql, Params).
+
+transfer(S) ->
     talk_record_transfer_logic:transfer(
-        ?U1,
-        ?R,
+        id(S, u1),
+        id(S, record_id),
         <<"1">>,
-        <<"departure-transfer">>,
-        #{<<"target_user_id">> => ?U2, <<"keep_access">> => false}
+        id(S, transfer_key),
+        #{<<"target_user_id">> => id(S, u2), <<"keep_access">> => false}
     ).
 voluntary_and_history(S) ->
     reset(S),
     record(S, null),
-    ?assertMatch({error, {409, _}}, organization_member_logic:leave(?U1, ?ORG)),
-    ?assertMatch({ok, created, _}, transfer()),
-    ?assertEqual(?U1, maps:get(<<"created_by">>, row(S))),
-    {ok, F} = talk_record_delete_preflight:facts(?U1),
+    ?assertMatch({error, {409, _}}, organization_member_logic:leave(id(S, u1), id(S, org))),
+    ?assertMatch({ok, created, _}, transfer(S)),
+    ?assertEqual(id(S, u1), maps:get(<<"created_by">>, row(S))),
+    {ok, F} = talk_record_delete_preflight:facts(id(S, u1)),
     ?assertNot(lists:member(<<"TALK_RECORD_ORGANIZATION_OWNER_PENDING">>, codes(F))),
     ?assert(lists:member(<<"TALK_RECORD_RETAINED_IDENTITY_PENDING">>, codes(F))),
-    ?assertMatch({ok, _}, organization_member_logic:leave(?U1, ?ORG)),
-    ?assertEqual(?U2, maps:get(<<"owner_user_id">>, row(S))).
+    ?assertMatch({ok, _}, organization_member_logic:leave(id(S, u1), id(S, org))),
+    ?assertEqual(id(S, u2), maps:get(<<"owner_user_id">>, row(S))).
 
 forced_suspend(S) ->
     reset(S),
     record(S, null),
-    ?assertMatch({ok, _}, organization_member_logic:suspend(?U0, ?ORG, ?U1)),
+    ?assertMatch({ok, _}, organization_member_logic:suspend(id(S, u0), id(S, org), id(S, u1))),
     R = row(S),
     ?assertEqual(<<"handover_required">>, maps:get(<<"custody_status">>, R)),
     ?assertEqual(2, maps:get(<<"acl_revision">>, R)),
-    ?assertEqual({error, not_found}, talk_record_repo:find_visible(?U1, ?R)),
-    ?assertMatch({error, {409, _}}, organization_member_logic:suspend(?U0, ?ORG, ?U0)).
+    ?assertEqual({error, not_found}, talk_record_repo:find_visible(id(S, u1), id(S, record_id))),
+    ?assertMatch(
+        {error, {409, _}}, organization_member_logic:suspend(id(S, u0), id(S, org), id(S, u0))
+    ).
 
 forced_remove(S) ->
     reset(S),
     record(S, null),
-    ?assertMatch({ok, _}, organization_member_logic:remove(?U0, ?ORG, ?U1)),
+    ?assertMatch({ok, _}, organization_member_logic:remove(id(S, u0), id(S, org), id(S, u1))),
     ?assertEqual(<<"handover_required">>, maps:get(<<"custody_status">>, row(S))),
-    ?assertEqual({error, not_found}, talk_record_repo:find_visible(?U1, ?R)).
+    ?assertEqual({error, not_found}, talk_record_repo:find_visible(id(S, u1), id(S, record_id))).
 
 empty_fact(Uid, D) ->
     {ok, #{
@@ -266,14 +284,14 @@ final_transaction_guard(S) ->
     reset(S),
     record(S, null),
     mock_other_facts(),
-    {ok, #{blockers := B}} = organization_deletion_preflight:run(?U1),
+    {ok, #{blockers := B}} = organization_deletion_preflight:run(id(S, u1)),
     ?assert(B =/= []),
     meck:new(talk_record_delete_preflight, [passthrough, unstick, no_link]),
     meck:expect(talk_record_delete_preflight, facts, fun(U) -> empty_fact(U, talk_record) end),
     C = maps:get(conn, S),
     q(C, <<"BEGIN">>, []),
     try
-        try user_deletion_executor:execute_main_tx(C, ?U1) of
+        try user_deletion_executor:execute_main_tx(C, id(S, u1)) of
             Result -> error({unexpected_delete, Result})
         catch
             throw:{abort_tx, {deletion_preflight_blockers, Blockers}} -> ?assert(Blockers =/= [])
@@ -281,24 +299,25 @@ final_transaction_guard(S) ->
     after
         q(C, <<"ROLLBACK">>, [])
     end,
-    ?assertEqual(?U1, maps:get(<<"owner_user_id">>, row(S))),
+    ?assertEqual(id(S, u1), maps:get(<<"owner_user_id">>, row(S))),
     unload().
 
-validated() ->
+validated(S) ->
     #{
         scope => <<"organization">>,
-        organization_id => ?ORG,
+        organization_id => id(S, org),
         workspace_id => 0,
-        client_recording_id => <<"97910000-0000-4000-8000-000000000002">>,
+        client_recording_id => id(S, create_client_uuid),
         title => <<"barrier">>,
         language => <<>>,
+        policy_version => maps:get(<<"policy_version">>, talk_record_ds:capabilities()),
         processing_mode => <<"record_only">>
     }.
-create() ->
+create(S) ->
     talk_record_ds:create(
-        ?U1,
-        validated(),
-        <<"departure-create">>,
+        id(S, u1),
+        validated(S),
+        id(S, create_key),
         binary:copy(<<"a">>, 64)
     ).
 worker(Label, Fun) ->
@@ -317,9 +336,8 @@ result(Label) ->
         {Label, R} -> R
     after 8000 -> error({worker_timeout, Label})
     end.
-barrier(C, Name) ->
+barrier(Owner, C, Name) ->
     Pid = maps:get(<<"pid">>, hd(q(C, <<"SELECT pg_backend_pid() AS pid">>, []))),
-    Owner = whereis(departure_barrier_owner),
     Owner ! {Name, self(), Pid},
     receive
         release -> ok
@@ -349,24 +367,17 @@ blocked(S, DbPid, Deadline) ->
                     error(no_lock_wait)
             end
     end.
-owner() ->
-    case whereis(departure_barrier_owner) of
-        undefined -> ok;
-        _ -> unregister(departure_barrier_owner)
-    end,
-    register(departure_barrier_owner, self()).
-
 create_before_leave(S) ->
     reset(S),
-    owner(),
+    Owner = self(),
     meck:new(talk_record_repo, [passthrough, unstick, no_link]),
     meck:expect(talk_record_repo, insert_tx, fun(C, D) ->
-        barrier(C, create_locked),
+        barrier(Owner, C, create_locked),
         meck:passthrough([C, D])
     end),
-    worker(create_result, fun create/0),
+    worker(create_result, fun() -> create(S) end),
     {P, Db} = ready(create_locked),
-    worker(leave_result, fun() -> organization_member_logic:leave(?U1, ?ORG) end),
+    worker(leave_result, fun() -> organization_member_logic:leave(id(S, u1), id(S, org)) end),
     blocked(S, Db),
     P ! release,
     ?assertMatch({ok, created, _, _}, result(create_result)),
@@ -375,16 +386,16 @@ create_before_leave(S) ->
 
 leave_before_create(S) ->
     reset(S),
-    owner(),
+    Owner = self(),
     meck:new(talk_record_delete_logic, [passthrough, unstick, no_link]),
     meck:expect(talk_record_delete_logic, ensure_departure_responsibility_tx, fun(C, U, O) ->
         R = meck:passthrough([C, U, O]),
-        barrier(C, leave_locked),
+        barrier(Owner, C, leave_locked),
         R
     end),
-    worker(leave_result, fun() -> organization_member_logic:leave(?U1, ?ORG) end),
+    worker(leave_result, fun() -> organization_member_logic:leave(id(S, u1), id(S, org)) end),
     {P, Db} = ready(leave_locked),
-    worker(create_result, fun create/0),
+    worker(create_result, fun() -> create(S) end),
     blocked(S, Db),
     P ! release,
     ?assertMatch({ok, _}, result(leave_result)),
@@ -394,16 +405,18 @@ leave_before_create(S) ->
 transfer_before_suspend(S) ->
     reset(S),
     record(S, null),
-    owner(),
+    Owner = self(),
     meck:new(talk_record_repo, [passthrough, unstick, no_link]),
     meck:expect(talk_record_repo, lock_for_transfer_tx, fun(C, R, V) ->
         Locked = meck:passthrough([C, R, V]),
-        barrier(C, transfer_locked),
+        barrier(Owner, C, transfer_locked),
         Locked
     end),
-    worker(transfer_result, fun transfer/0),
+    worker(transfer_result, fun() -> transfer(S) end),
     {P, Db} = ready(transfer_locked),
-    worker(suspend_result, fun() -> organization_member_logic:suspend(?U0, ?ORG, ?U2) end),
+    worker(suspend_result, fun() ->
+        organization_member_logic:suspend(id(S, u0), id(S, org), id(S, u2))
+    end),
     blocked(S, Db),
     P ! release,
     ?assertMatch({ok, created, _}, result(transfer_result)),
@@ -414,62 +427,64 @@ transfer_before_suspend(S) ->
 suspend_before_transfer(S) ->
     reset(S),
     record(S, null),
-    owner(),
+    Owner = self(),
     meck:new(organization_member_repo, [passthrough, unstick, no_link]),
     meck:expect(organization_member_repo, find_for_update_tx, fun(C, O, U, Cols) ->
         Found = meck:passthrough([C, O, U, Cols]),
-        case U of
-            ?U2 -> barrier(C, suspend_locked);
-            _ -> ok
+        case U =:= id(S, u2) of
+            true -> barrier(Owner, C, suspend_locked);
+            false -> ok
         end,
         Found
     end),
-    worker(suspend_result, fun() -> organization_member_logic:suspend(?U0, ?ORG, ?U2) end),
+    worker(suspend_result, fun() ->
+        organization_member_logic:suspend(id(S, u0), id(S, org), id(S, u2))
+    end),
     {P, Db} = ready(suspend_locked),
-    worker(transfer_result, fun transfer/0),
+    worker(transfer_result, fun() -> transfer(S) end),
     blocked(S, Db),
     P ! release,
     ?assertMatch({ok, _}, result(suspend_result)),
     ?assertEqual({error, target_not_in_directory}, result(transfer_result)),
-    ?assertEqual(?U1, maps:get(<<"owner_user_id">>, row(S))),
+    ?assertEqual(id(S, u1), maps:get(<<"owner_user_id">>, row(S))),
     unload().
 
 workspace_revoke_before_transfer(S) ->
     reset(S),
-    record(S, ?WS),
+    record(S, id(S, ws)),
     C = maps:get(conn, S),
-    q(C, <<"UPDATE workspace_member SET status='active' WHERE workspace_id=$1">>, [?WS]),
+    q(C, <<"UPDATE workspace_member SET status='active' WHERE workspace_id=$1">>, [id(S, ws)]),
     q(C, <<"BEGIN">>, []),
     q(C, <<"UPDATE workspace_member SET status='removed' WHERE workspace_id=$1 AND user_id=$2">>, [
-        ?WS, ?U2
+        id(S, ws), id(S, u2)
     ]),
     [#{<<"pid">> := Db}] = q(C, <<"SELECT pg_backend_pid() AS pid">>, []),
-    worker(transfer_result, fun transfer/0),
+    worker(transfer_result, fun() -> transfer(S) end),
     blocked(S, Db),
     q(C, <<"COMMIT">>, []),
     ?assertEqual({error, target_not_in_directory}, result(transfer_result)),
-    ?assertEqual(?U1, maps:get(<<"owner_user_id">>, row(S))).
+    ?assertEqual(id(S, u1), maps:get(<<"owner_user_id">>, row(S))).
 
 transfer_before_workspace_revoke(S) ->
     reset(S),
-    record(S, ?WS),
-    owner(),
+    record(S, id(S, ws)),
+    Owner = self(),
     C = maps:get(conn, S),
-    q(C, <<"UPDATE workspace_member SET status='active' WHERE workspace_id=$1">>, [?WS]),
+    q(C, <<"UPDATE workspace_member SET status='active' WHERE workspace_id=$1">>, [id(S, ws)]),
     meck:new(talk_record_repo, [passthrough, unstick, no_link]),
     meck:expect(talk_record_repo, lock_for_transfer_tx, fun(Conn, R, V) ->
         Locked = meck:passthrough([Conn, R, V]),
-        barrier(Conn, transfer_ws_locked),
+        barrier(Owner, Conn, transfer_ws_locked),
         Locked
     end),
-    worker(transfer_result, fun transfer/0),
+    worker(transfer_result, fun() -> transfer(S) end),
     {P, Db} = ready(transfer_ws_locked),
     worker(revoke_result, fun() ->
         elib_pg:with_tx(fun(Conn) ->
             q(
                 Conn,
                 <<"UPDATE workspace_member SET status='removed' WHERE workspace_id=$1 AND user_id=$2">>,
-                [?WS, ?U2]
+                [id(S, ws), id(S, u2)]
             )
         end)
     end),
@@ -477,9 +492,9 @@ transfer_before_workspace_revoke(S) ->
     P ! release,
     ?assertMatch({ok, created, _}, result(transfer_result)),
     result(revoke_result),
-    ?assertEqual(?U2, maps:get(<<"owner_user_id">>, row(S))),
-    ?assertEqual({error, not_found}, talk_record_repo:find_visible(?U2, ?R)),
-    {ok, F} = talk_record_delete_preflight:facts(?U2),
+    ?assertEqual(id(S, u2), maps:get(<<"owner_user_id">>, row(S))),
+    ?assertEqual({error, not_found}, talk_record_repo:find_visible(id(S, u2), id(S, record_id))),
+    {ok, F} = talk_record_delete_preflight:facts(id(S, u2)),
     ?assertEqual(1, maps:get(organization_handover_required, maps:get(counts, F))),
     unload().
 
@@ -490,7 +505,7 @@ required_provider_unavailable(S) ->
     meck:expect(talk_record_delete_preflight, facts, fun(_) -> {error, unavailable} end),
     ?assertMatch(
         {error, #{domain := talk_record, reason := unavailable}},
-        organization_deletion_preflight:run(?U1)
+        organization_deletion_preflight:run(id(S, u1))
     ),
     unload().
 

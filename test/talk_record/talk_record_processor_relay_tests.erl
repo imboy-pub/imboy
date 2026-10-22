@@ -8,20 +8,32 @@ processor_protocol_test_() ->
         {setup, fun setup/0, fun cleanup/1, fun(S) -> {timeout, 60, ?_test(run(S))} end}}.
 setup() ->
     S = talk_record_t19_support:setup_all(),
-    {ok, _} = elib_pg:execute(maps:get(conn, S), <<"DELETE FROM talk_record_processor_run">>, []),
-    talk_record_t19_support:seed(S),
-    Exe = fixture_executable(),
-    Bundle = #{
-        enabled => true,
-        approved => true,
-        version => <<"synthetic-protocol-v1">>,
-        transcribe => #{
-            executable => Exe, model_version => <<"synthetic-asr-not-model">>, diarization => true
-        },
-        summarize => #{executable => Exe, model_version => <<"synthetic-summary-not-model">>}
-    },
-    application:set_env(imboy, talk_record_processor, Bundle),
-    S#{exe => Exe}.
+    talk_record_setup_fixture:prepare(
+        S,
+        fun() ->
+            {ok, _} = elib_pg:execute(
+                maps:get(conn, S), <<"DELETE FROM talk_record_processor_run">>, []
+            ),
+            talk_record_t19_support:seed(S),
+            Exe = fixture_executable(),
+            Bundle = #{
+                enabled => true,
+                approved => true,
+                version => <<"synthetic-protocol-v1">>,
+                transcribe => #{
+                    executable => Exe,
+                    model_version => <<"synthetic-asr-not-model">>,
+                    diarization => true
+                },
+                summarize => #{
+                    executable => Exe, model_version => <<"synthetic-summary-not-model">>
+                }
+            },
+            application:set_env(imboy, talk_record_processor, Bundle),
+            S#{exe => Exe}
+        end,
+        fun talk_record_t19_support:teardown_all/1
+    ).
 cleanup(S) ->
     application:unset_env(imboy, talk_record_processor),
     file:delete(maps:get(exe, S)),

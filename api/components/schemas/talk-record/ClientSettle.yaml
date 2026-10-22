@@ -1,0 +1,22 @@
+type: object
+additionalProperties: false
+required:
+- state
+- error_code
+properties:
+  state:
+    type: string
+    enum:
+    - failed
+    - cancelled
+    - provider_outcome_unknown
+  error_code:
+    type: string
+    enum:
+    - key_invalid
+    - insufficient_balance
+    - rate_limited
+    - network_unknown
+    - cancelled
+    - response_invalid
+    - device_stopped

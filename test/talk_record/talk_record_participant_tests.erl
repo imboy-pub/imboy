@@ -150,9 +150,11 @@ organization(S) ->
     ?assertMatch(
         {ok, _}, talk_record_participant_logic:replace(700001, Rid, <<"1">>, body([user(700002)]))
     ),
+    ?assertMatch({ok, _}, organization_owner_transfer:transfer(700001, 710001, 700003)),
+    ?assertMatch({ok, _}, talk_record_ds:detail(700001, Rid)),
     {ok, _} = elib_pg:execute(
         C,
-        <<"UPDATE organization_member SET status='inactive' WHERE organization_id=710001 AND user_id=700001">>,
+        <<"UPDATE organization_member SET status='suspended' WHERE organization_id=710001 AND user_id=700001">>,
         []
     ),
     ?assertEqual({error, not_found}, talk_record_participant_logic:list(700001, Rid)),
@@ -221,24 +223,32 @@ db(F) ->
         {setup, fun setup/0, fun talk_record_t15_support:teardown_all/1, fun(S) -> ?_test(F(S)) end}}.
 setup() ->
     S = talk_record_t15_support:setup_all(),
-    C = maps:get(conn, S),
-    talk_record_t05_support:sql(
-        C, "ALTER TABLE \"user\" ADD COLUMN IF NOT EXISTS status smallint NOT NULL DEFAULT 1"
-    ),
-    talk_record_t05_support:sql(
-        C, "ALTER TABLE \"user\" ADD COLUMN IF NOT EXISTS account_type smallint NOT NULL DEFAULT 0"
-    ),
-    talk_record_t05_support:sql(
-        C, "ALTER TABLE \"user\" ADD COLUMN IF NOT EXISTS avatar text NOT NULL DEFAULT ''"
-    ),
-    talk_record_t05_support:sql(
-        C,
-        "CREATE TABLE IF NOT EXISTS user_friend (id bigint PRIMARY KEY,from_user_id bigint NOT NULL,to_user_id bigint NOT NULL,status smallint NOT NULL DEFAULT 1)"
-    ),
-    talk_record_t05_support:sql(C, "DELETE FROM user_friend"),
-    talk_record_t05_support:seed_fixtures(C),
-    talk_record_t05_support:sql(
-        C,
-        "INSERT INTO user_friend(id,from_user_id,to_user_id,status) VALUES (960001,700001,700002,1),(960002,700002,700001,1),(960003,700001,700003,1),(960004,700003,700001,1)"
-    ),
-    S.
+    talk_record_setup_fixture:prepare(
+        S,
+        fun() ->
+            C = maps:get(conn, S),
+            talk_record_t05_support:sql(
+                C,
+                "ALTER TABLE \"user\" ADD COLUMN IF NOT EXISTS status smallint NOT NULL DEFAULT 1"
+            ),
+            talk_record_t05_support:sql(
+                C,
+                "ALTER TABLE \"user\" ADD COLUMN IF NOT EXISTS account_type smallint NOT NULL DEFAULT 0"
+            ),
+            talk_record_t05_support:sql(
+                C, "ALTER TABLE \"user\" ADD COLUMN IF NOT EXISTS avatar text NOT NULL DEFAULT ''"
+            ),
+            talk_record_t05_support:sql(
+                C,
+                "CREATE TABLE IF NOT EXISTS user_friend (id bigint PRIMARY KEY,from_user_id bigint NOT NULL,to_user_id bigint NOT NULL,status smallint NOT NULL DEFAULT 1)"
+            ),
+            talk_record_t05_support:sql(C, "DELETE FROM user_friend"),
+            talk_record_t05_support:seed_fixtures(C),
+            talk_record_t05_support:sql(
+                C,
+                "INSERT INTO user_friend(id,from_user_id,to_user_id,status) VALUES (960001,700001,700002,1),(960002,700002,700001,1),(960003,700001,700003,1),(960004,700003,700001,1)"
+            ),
+            S
+        end,
+        fun talk_record_t15_support:teardown_all/1
+    ).

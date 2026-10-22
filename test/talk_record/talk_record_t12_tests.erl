@@ -28,15 +28,21 @@ end).
 
 setup() ->
     State0 = talk_record_t12_support:setup_all(),
-    talk_record_t12_support:seed(State0),
-    ProcessorPrevious = application:get_env(imboy, talk_record_processor),
-    application:unset_env(imboy, talk_record_processor),
-    State0#{
-        processor_prev => ProcessorPrevious,
-        caps_prev => application:get_env(imboy, talk_record_capabilities),
-        worker_enabled_prev => application:get_env(imboy, talk_record_job_worker_enabled),
-        worker_tick_prev => application:get_env(imboy, talk_record_job_worker_tick_ms)
-    }.
+    talk_record_setup_fixture:prepare(
+        State0,
+        fun() ->
+            talk_record_t12_support:seed(State0),
+            ProcessorPrevious = application:get_env(imboy, talk_record_processor),
+            application:unset_env(imboy, talk_record_processor),
+            State0#{
+                processor_prev => ProcessorPrevious,
+                caps_prev => application:get_env(imboy, talk_record_capabilities),
+                worker_enabled_prev => application:get_env(imboy, talk_record_job_worker_enabled),
+                worker_tick_prev => application:get_env(imboy, talk_record_job_worker_tick_ms)
+            }
+        end,
+        fun talk_record_t12_support:teardown_all/1
+    ).
 
 cleanup(State) ->
     %% 防泄漏：worker gen_server 用例失败时兜底停止

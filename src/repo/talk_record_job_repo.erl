@@ -1,5 +1,5 @@
 -module(talk_record_job_repo).
--moduledoc "talk_record 持久处理任务仓储（T12：迁移 00000211+00000214）。".
+-moduledoc "talk_record 持久处理任务仓储（T12：迁移 00000211+00000214+00000222）。".
 %%%
 % talk_record_job 数据仓库层。
 %
@@ -22,6 +22,10 @@
 %                        清空）。只用 lease_until 判据，不做年龄猜测。
 %   * cancel_*_tx     —— cancelled 终态（非终态才可取消；running 行取消后
 %                        worker 的 finish CAS 自然拒绝）。
+%
+% execution_mode（00000222）：只有 server_local 可进入普通 worker、finish、
+% renew、reaper、人工 retry 与 unsuspend。client_byok 由专用执行协议管理，
+% 本仓储不提供把它降级为 server_local 的通道。取消仍覆盖两模式以支持撤权/删除。
 %
 % suspended（00000214）：处理器未选型的诚实挂起位——waiting_processor 行
 % state=retry_wait 且 suspended=true，claim 候选谓词排除；选型后（T13/T14）
@@ -54,7 +58,7 @@
 -include("log.hrl").
 
 -define(JOB_COLUMNS,
-    <<"j.id,j.record_id,j.processor_input,j.kind,j.input_version,j.input_manifest_hash,",
+    <<"j.id,j.record_id,j.processor_input,j.kind,j.execution_mode,j.input_version,j.input_manifest_hash,",
         "j.input_transcript_version,j.input_content_revision,j.dedupe_key,",
         "j.state,j.attempt,j.lease_owner,j.lease_token,j.lease_until,j.retry_at,",
         "j.error_code,j.provider_request_id,j.suspended,j.finished_at,",
@@ -77,6 +81,7 @@ tablename() ->
 %% Job :: #{
 %%   id => integer(),                       %% 缺省 elib_tsid:generate(attachment)
 %%   record_id := integer(), kind := binary(),
+%%   execution_mode => <<"server_local">> | <<"client_byok">>,
 %%   input_version => integer() | null,
 %%   input_manifest_hash => binary() | null,
 %%   input_transcript_version => integer() | null,
@@ -96,12 +101,35 @@ enqueue_tx(
 ) when
     is_integer(RecordId), RecordId > 0, is_binary(Kind), is_binary(DedupeKey)
 ->
+    case execution_mode(Kind, maps:get(execution_mode, Job, <<"server_local">>)) of
+        {ok, Mode} -> enqueue_mode_tx(Conn, Job, Mode);
+        error -> {error, invalid_job}
+    end;
+enqueue_tx(_Conn, _Job) ->
+    {error, invalid_job}.
+
+execution_mode(Kind, <<"server_local">>) ->
+    case
+        lists:member(Kind, [
+            <<"assemble">>, <<"transcribe">>, <<"summarize">>, <<"export">>, <<"purge">>
+        ])
+    of
+        true -> {ok, <<"server_local">>};
+        false -> error
+    end;
+execution_mode(Kind, <<"client_byok">>) when Kind =:= <<"transcribe">>; Kind =:= <<"summarize">> ->
+    {ok, <<"client_byok">>};
+execution_mode(_, _) ->
+    error.
+
+enqueue_mode_tx(Conn, #{record_id := RecordId, kind := Kind, dedupe_key := DedupeKey} = Job, Mode) ->
     Id = maps:get(id, Job, elib_tsid:generate(attachment)),
     Now = elib_dt:now(),
     Data = #{
         <<"id">> => Id,
         <<"record_id">> => RecordId,
         <<"kind">> => Kind,
+        <<"execution_mode">> => Mode,
         <<"input_version">> => maps:get(input_version, Job, null),
         <<"processor_input">> =>
             case maps:get(processor_input, Job, null) of
@@ -123,12 +151,17 @@ enqueue_tx(
         {ok, [#{<<"id">> := NewId}]} ->
             {ok, created, NewId};
         {ok, []} ->
-            find_by_dedupe_tx(Conn, DedupeKey);
+            replay_mode_tx(Conn, DedupeKey, Mode);
         {error, Reason} ->
             {error, Reason}
-    end;
-enqueue_tx(_Conn, _Job) ->
-    {error, invalid_job}.
+    end.
+
+replay_mode_tx(Conn, Key, Mode) ->
+    case find_by_dedupe_tx(Conn, Key) of
+        {ok, existing, #{<<"execution_mode">> := Mode}} = Existing -> Existing;
+        {ok, existing, _} -> {error, dedupe_execution_mode_conflict};
+        Error -> Error
+    end.
 
 %% ===================================================================
 %% claim（SKIP LOCKED + 租约）
@@ -145,7 +178,8 @@ claim_next_tx(Conn, LeaseOwner, LeaseToken, LeaseSeconds) when
         <<"UPDATE ", (tablename())/binary, " j SET", " state='running', attempt = j.attempt + 1,",
             " lease_owner=$1, lease_token=$2,", " lease_until = now() + make_interval(secs => $3),",
             " retry_at = NULL, error_code = NULL, updated_at = now()", " WHERE j.id IN (",
-            "   SELECT id FROM ", (tablename())/binary, "   WHERE state IN ('queued','retry_wait')",
+            "   SELECT id FROM ", (tablename())/binary,
+            "   WHERE execution_mode='server_local' AND state IN ('queued','retry_wait')",
             "     AND suspended = false", "     AND (retry_at IS NULL OR retry_at <= now())",
             "   ORDER BY created_at ASC, id ASC", "   LIMIT 1 FOR UPDATE SKIP LOCKED)",
             " RETURNING ", ?JOB_COLUMNS/binary>>,
@@ -163,7 +197,7 @@ renew_lease_tx(C, J, Seconds) when is_integer(Seconds), Seconds > 0, Seconds =< 
             <<
                 "UPDATE talk_record_job SET lease_until=clock_timestamp()+make_interval(secs=>$4),"
                 "updated_at=now() WHERE id=$1 AND state='running' AND lease_token=$2 AND attempt=$3"
-                " AND lease_until>clock_timestamp() RETURNING id"
+                " AND execution_mode='server_local' AND lease_until>clock_timestamp() RETURNING id"
             >>,
             [
                 maps:get(<<"id">>, J),
@@ -190,7 +224,8 @@ finish_success_tx(Conn, JobId, LeaseToken) ->
         <<"UPDATE ", (tablename())/binary, " SET state='succeeded', finished_at=now(),",
             " lease_owner=NULL, lease_token=NULL, lease_until=NULL,",
             " retry_at=NULL, suspended=false, updated_at=now()",
-            " WHERE id=$1 AND state='running' AND lease_token=$2", " RETURNING id">>,
+            " WHERE id=$1 AND state='running' AND lease_token=$2 AND execution_mode='server_local'",
+            " RETURNING id">>,
     case elib_pg:query(Conn, Sql, [JobId, LeaseToken]) of
         {ok, [_]} -> ok;
         {ok, []} -> {error, lease_lost};
@@ -205,7 +240,8 @@ finish_failed_tx(Conn, JobId, LeaseToken, ErrorCode) ->
         <<"UPDATE ", (tablename())/binary, " SET state='failed', error_code=$3, finished_at=now(),",
             " lease_owner=NULL, lease_token=NULL, lease_until=NULL,",
             " retry_at=NULL, suspended=false, updated_at=now()",
-            " WHERE id=$1 AND state='running' AND lease_token=$2", " RETURNING id">>,
+            " WHERE id=$1 AND state='running' AND lease_token=$2 AND execution_mode='server_local'",
+            " RETURNING id">>,
     case elib_pg:query(Conn, Sql, [JobId, LeaseToken, ErrorCode]) of
         {ok, [_]} -> ok;
         {ok, []} -> {error, lease_lost};
@@ -222,7 +258,8 @@ finish_retry_tx(Conn, JobId, LeaseToken, ErrorCode, RetryDelaySeconds) ->
             " retry_at = now() + make_interval(secs => $4),",
             " lease_owner=NULL, lease_token=NULL, lease_until=NULL,",
             " suspended=false, updated_at=now()",
-            " WHERE id=$1 AND state='running' AND lease_token=$2", " RETURNING retry_at">>,
+            " WHERE id=$1 AND state='running' AND lease_token=$2 AND execution_mode='server_local'",
+            " RETURNING retry_at">>,
     case elib_pg:query(Conn, Sql, [JobId, LeaseToken, ErrorCode, RetryDelaySeconds]) of
         {ok, [#{<<"retry_at">> := RetryAt}]} -> {ok, retry_wait, RetryAt};
         {ok, []} -> {error, lease_lost};
@@ -240,7 +277,8 @@ finish_suspended_tx(Conn, JobId, LeaseToken, ErrorCode) ->
             " SET state='retry_wait', error_code=$3, suspended=true,",
             " retry_at=NULL, lease_owner=NULL, lease_token=NULL,",
             " lease_until=NULL, updated_at=now()",
-            " WHERE id=$1 AND state='running' AND lease_token=$2", " RETURNING id">>,
+            " WHERE id=$1 AND state='running' AND lease_token=$2 AND execution_mode='server_local'",
+            " RETURNING id">>,
     case elib_pg:query(Conn, Sql, [JobId, LeaseToken, ErrorCode]) of
         {ok, [_]} -> ok;
         {ok, []} -> {error, lease_lost};
@@ -298,7 +336,8 @@ retry_failed_tx(Conn, JobId) ->
         <<"UPDATE ", (tablename())/binary, " j SET", " state='queued', attempt=0, error_code=NULL,",
             " finished_at=NULL, retry_at=NULL, suspended=false,",
             " lease_owner=NULL, lease_token=NULL, lease_until=NULL,", " updated_at=now()",
-            " WHERE j.id=$1 AND j.state='failed'", " RETURNING ", ?JOB_COLUMNS/binary>>,
+            " WHERE j.id=$1 AND j.state='failed' AND j.execution_mode='server_local'",
+            " RETURNING ", ?JOB_COLUMNS/binary>>,
     case elib_pg:query(Conn, Sql, [JobId]) of
         {ok, [Row]} ->
             {ok, Row};
@@ -316,7 +355,8 @@ retry_failed_tx(Conn, JobId) ->
 unsuspend_kind_tx(Conn, Kind) ->
     Sql =
         <<"UPDATE ", (tablename())/binary, " SET suspended=false, updated_at=now()",
-            " WHERE kind=$1 AND suspended=true AND state='retry_wait'", " RETURNING id">>,
+            " WHERE kind=$1 AND execution_mode='server_local' AND suspended=true AND state='retry_wait'",
+            " RETURNING id">>,
     case elib_pg:query(Conn, Sql, [Kind]) of
         {ok, Rows} -> {ok, length(Rows)};
         {error, Reason} -> {error, Reason}
@@ -334,8 +374,10 @@ reap_expired_tx(Conn) ->
     Sql =
         <<"UPDATE ", (tablename())/binary,
             " SET state='queued', lease_owner=NULL, lease_token=NULL,",
-            " lease_until=NULL, updated_at=now()", " WHERE state='running'",
-            "   AND lease_until IS NOT NULL AND lease_until <= now()", " RETURNING id">>,
+            " lease_until=NULL, updated_at=now()",
+            " WHERE execution_mode='server_local' AND state='running'",
+            "   AND lease_until IS NOT NULL AND lease_until <= clock_timestamp()",
+            " RETURNING id">>,
     case elib_pg:query(Conn, Sql, []) of
         {ok, Rows} -> {ok, length(Rows)};
         {error, Reason} -> {error, Reason}

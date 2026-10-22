@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "plan_id": "talk-record-v1",
-  "revision": "8",
+  "revision": "9",
   "required_tasks": [
     "T01",
     "T02",
@@ -208,6 +208,7 @@
       "lane": "P",
       "dependencies": [
         "T03",
+        "T08",
         "T12"
       ],
       "allow_component_dependencies": [],
@@ -218,6 +219,7 @@
       "lane": "S",
       "dependencies": [
         "T03",
+        "T08",
         "T12"
       ],
       "allow_component_dependencies": [],

@@ -14,9 +14,10 @@
 %% false；整卡可被 config {imboy, talk_record_capabilities} 覆写。
 -spec capabilities() -> map().
 capabilities() ->
-    talk_record_processor_config:capabilities(
+    Cap = talk_record_processor_config:capabilities(
         normalize_limits(maps:merge(default_capabilities(), override_capabilities()))
-    ).
+    ),
+    Cap#{<<"client_processing">> => talk_record_client_policy:public()}.
 
 %% The recording contract must never advertise more than the real render path.
 normalize_limits(Cap) ->
@@ -338,12 +339,19 @@ org_context(Org, ByOrg) ->
     Base#{
         <<"organization_id">> => maps:get(<<"id">>, Org),
         <<"name">> => maps:get(<<"name">>, Org),
+        <<"client_processing">> => talk_record_client_policy:for_record(#{
+            <<"scope">> => <<"organization">>,
+            <<"organization_id">> => maps:get(<<"id">>, Org)
+        }),
         <<"workspaces">> => maps:get(maps:get(<<"id">>, Org), ByOrg, [])
     }.
 
 -spec personal_context() -> map().
 personal_context() ->
-    context_base(<<"personal">>).
+    (context_base(<<"personal">>))#{
+        <<"client_processing">> =>
+            talk_record_client_policy:for_record(#{<<"scope">> => <<"personal">>})
+    }.
 
 -spec context_base(binary()) -> map().
 context_base(Scope) ->
