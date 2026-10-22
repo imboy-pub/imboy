@@ -5,7 +5,7 @@
 
   ① 冻结路由表      src/api/enterprise_internal_routes.erl        （合同源）
   ② cowboy 注册表   src/imboy_router.erl  enterprise_internal_routes/0
-  ③ 边界规格表      src/api/enterprise_internal_boundary.erl      （授权源）
+  ③ 边界规格表      src/logic/enterprise_internal_boundary.erl     （授权源）
   ④ OpenAPI 合同    .contract/api_contract.json endpoints.api_internal
   ⑤ A0 冻结 manifest  control/internal-api-manifest.yaml（经 --manifest / env 传入）
   ⑥ 接线测试        test/api/enterprise_internal_wiring_http_tests.erl（计数钉）
@@ -35,7 +35,7 @@ import yaml
 FROZEN_TABLE = "src/api/enterprise_internal_routes.erl"
 ROUTER = "src/imboy_router.erl"
 AUTH_MW = "src/api/auth_middleware.erl"
-BOUNDARY = "src/api/enterprise_internal_boundary.erl"
+BOUNDARY = "src/logic/enterprise_internal_boundary.erl"
 CONTRACT = ".contract/api_contract.json"
 WIRING_TEST = "test/api/enterprise_internal_wiring_http_tests.erl"
 DEFAULT_MANIFEST = os.environ.get("IMBOY_INTERNAL_MANIFEST", str(Path(__file__).resolve().parents[1] / "api/internal/v1/manifest.yaml"))

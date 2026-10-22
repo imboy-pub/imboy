@@ -566,8 +566,8 @@ gates:
       - src/api/enterprise_friend_request_handler.erl
       - src/api/enterprise_group_handler.erl
       - src/api/enterprise_identity_handler.erl
-      - src/api/enterprise_internal_auth.erl
-      - src/api/enterprise_internal_idempotency.erl
+      - src/logic/enterprise_internal_auth.erl
+      - src/logic/enterprise_internal_idempotency.erl
       - src/api/enterprise_internal_write_handler.erl
       - src/api/enterprise_message_handler.erl
       - src/api/enterprise_webhook_handler.erl
