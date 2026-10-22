@@ -7,7 +7,8 @@
 %%% | principal               | 凭证            | 必需条件 |
 %%% |-------------------------|-----------------|----------|
 %%% | `enterprise_owner_admin`| 普通 IMBoy JWT  | active org member + governance role owner/admin |
-%%% | `enterprise_member`     | 普通 IMBoy JWT  | active org member + active identity assignment + function 类型 + 独立 permission |
+%%% | `enterprise_member`     | 普通 IMBoy JWT  | active org member + active identity assignment + function 类型 + 独立
+%%% permission |
 %%% | `platform_admin`        | Admin session   | 对应 `enterprise_business:*` / `customer_service:*` 权限 |
 %%% | `cs_visit`              | 短期 visit token| digest 有效、未过期/吊销、绑定同一 Org/contact |
 %%% | `cs_shop_key`           | shop key        | digest 有效、未吊销、绑定同一 Org |

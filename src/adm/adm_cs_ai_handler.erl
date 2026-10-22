@@ -12,7 +12,7 @@
 %   * TSID 传输规则：JSON 里 64-bit ID 一律 string 下发/接收（防 JS 精度丢失）。
 %%%
 
--behavior(cowboy_rest).
+-behaviour(cowboy_rest).
 -compile([nowarn_deprecated_catch]).
 
 -export([init/2]).

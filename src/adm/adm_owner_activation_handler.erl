@@ -20,7 +20,7 @@
 % TSID 传输规则：JSON 里 64-bit ID 一律 string 下发/接收（防 JS 精度丢失）。
 %%%
 
--behavior(cowboy_rest).
+-behaviour(cowboy_rest).
 
 -export([init/2]).
 
@@ -129,20 +129,21 @@ write_action(Req0, State, Action, Fun) ->
                 {error, Msg} ->
                     elib_response:error(Req0, Msg, ?ERR_BAD_REQUEST);
                 {ok, OrgId} ->
-                    case catch Fun(AdmUserId, OrgId) of
+                    try Fun(AdmUserId, OrgId) of
                         {ok, Result} ->
                             audit(AdmUserId, OrgId, Action, #{}, Req0),
                             elib_response:success(
                                 Req0, normalize_rotate(Result), success_msg(Action)
                             );
                         {error, {Code, Msg2}} ->
-                            elib_response:error(Req0, Msg2, Code);
-                        {'EXIT', {Reason, Stack}} ->
+                            elib_response:error(Req0, Msg2, Code)
+                    catch
+                        error:Reason:Stack ->
                             ?ERROR_LOG([
                                 owner_activation_write_crash, Action, OrgId, Reason, Stack
                             ]),
                             elib_response:error(Req0, <<"操作失败，请稍后重试"/utf8>>, 500);
-                        {'EXIT', Reason} ->
+                        exit:Reason ->
                             ?ERROR_LOG([owner_activation_write_crash, Action, OrgId, Reason]),
                             elib_response:error(Req0, <<"操作失败，请稍后重试"/utf8>>, 500)
                     end
@@ -280,11 +281,13 @@ transfer_write(Req0, AdmUserId, OrgId, Data) ->
 parse_org_id(Req0) ->
     case cowboy_req:binding(organization_id, Req0, <<>>) of
         Bin when is_binary(Bin), byte_size(Bin) > 0 ->
-            case catch binary_to_integer(string:trim(Bin)) of
+            try binary_to_integer(string:trim(Bin)) of
                 Id when is_integer(Id), Id > 0 ->
                     {ok, Id};
                 _ ->
                     {error, <<"Organization ID 格式错误"/utf8>>}
+            catch
+                _:_ -> {error, <<"Organization ID 格式错误"/utf8>>}
             end;
         _ ->
             {error, <<"Organization ID 不能为空"/utf8>>}

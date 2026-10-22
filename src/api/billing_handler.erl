@@ -17,7 +17,7 @@
 % tenant_id 保留为逻辑分组字段：单租户场景默认取 0（无多租户实体表）。
 %%%
 
--behavior(cowboy_rest).
+-behaviour(cowboy_rest).
 
 -export([init/2]).
 
@@ -326,14 +326,14 @@ tenant_id(PostVals) ->
 %% @doc 用量上报参数校验
 -spec validate_usage(term(), term(), term()) -> ok | {error, binary()}.
 validate_usage(SubId, Metric, Delta) ->
-    if
-        not is_integer(SubId) orelse SubId =< 0 ->
+    case true of
+        _ when not is_integer(SubId) orelse SubId =< 0 ->
             {error, <<"订阅 id 不合法"/utf8>>};
-        not is_binary(Metric) orelse byte_size(Metric) =:= 0 ->
+        _ when not is_binary(Metric) orelse byte_size(Metric) =:= 0 ->
             {error, <<"指标键不能为空"/utf8>>};
-        not is_integer(Delta) orelse Delta < 0 ->
+        _ when not is_integer(Delta) orelse Delta < 0 ->
             {error, <<"用量增量不合法"/utf8>>};
-        true ->
+        _ ->
             ok
     end.
 

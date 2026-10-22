@@ -21,7 +21,7 @@
 %       自身携带（充值场景）或经 biz_order_no 反查（频道订单场景）。
 %%%
 
--behavior(cowboy_rest).
+-behaviour(cowboy_rest).
 
 -export([init/2]).
 

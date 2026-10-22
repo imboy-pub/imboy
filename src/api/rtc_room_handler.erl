@@ -8,7 +8,7 @@
 % 薄适配层：解析请求参数后转 rtc_room_logic。
 %%%
 
--behavior(cowboy_rest).
+-behaviour(cowboy_rest).
 
 -export([init/2]).
 
@@ -39,10 +39,10 @@ join(<<"POST">>, Req0, State) ->
     TargetId0 = maps:get(<<"target_id">>, PostVals, 0),
     Did = maps:get(<<"did">>, PostVals, <<"default">>),
     TargetId = ec_cnv:to_integer(TargetId0),
-    if
-        TargetId =< 0 ->
+    case true of
+        _ when TargetId =< 0 ->
             elib_response:error(Req0, "target_id 无效");
-        true ->
+        _ ->
             case rtc_room_logic:join(Uid, Did, Kind, TargetId) of
                 {ok, Grant} ->
                     elib_response:success(Req0, Grant, "success.");

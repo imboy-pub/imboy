@@ -6,7 +6,7 @@
 % 全局公告管理控制器模块
 % Global announcement management controller module
 %%%
--behavior(cowboy_rest).
+-behaviour(cowboy_rest).
 
 -export([init/2]).
 
@@ -91,15 +91,15 @@ update(<<"PUT">>, Req0, State) ->
         ok ->
             PostVals = elib_param:post(Req0),
             Id = normalize_id(maps:get(<<"id">>, PostVals, 0)),
-            if
-                is_integer(Id), Id > 0 ->
+            case true of
+                _ when is_integer(Id), Id > 0 ->
                     case announcement_ds:update(Id, PostVals) of
                         {ok, Result} ->
                             elib_response:success(Req0, Result, <<"更新成功"/utf8>>);
                         {error, Reason} ->
                             elib_response:error(Req0, Reason, ?ERR_BAD_REQUEST)
                     end;
-                true ->
+                _ ->
                     elib_response:error(Req0, <<"参数错误"/utf8>>, ?ERR_BAD_REQUEST)
             end;
         {error, Req1} ->
@@ -115,15 +115,15 @@ delete(<<"POST">>, Req0, State) ->
         ok ->
             PostVals = elib_param:post(Req0),
             Id = normalize_id(maps:get(<<"id">>, PostVals, 0)),
-            if
-                is_integer(Id), Id > 0 ->
+            case true of
+                _ when is_integer(Id), Id > 0 ->
                     case announcement_ds:delete_by_id(Id) of
                         {ok, Result} ->
                             elib_response:success(Req0, Result, <<"删除成功"/utf8>>);
                         {error, Reason} ->
                             elib_response:error(Req0, Reason, ?ERR_BAD_REQUEST)
                     end;
-                true ->
+                _ ->
                     elib_response:error(Req0, <<"参数错误"/utf8>>, ?ERR_BAD_REQUEST)
             end;
         {error, Req1} ->
@@ -139,15 +139,15 @@ publish(<<"POST">>, Req0, State) ->
         ok ->
             PostVals = elib_param:post(Req0),
             Id = normalize_id(maps:get(<<"id">>, PostVals, 0)),
-            if
-                is_integer(Id), Id > 0 ->
+            case true of
+                _ when is_integer(Id), Id > 0 ->
                     case announcement_ds:publish(Id) of
                         {ok, Result} ->
                             elib_response:success(Req0, Result, <<"发布成功"/utf8>>);
                         {error, Reason} ->
                             elib_response:error(Req0, Reason, ?ERR_BAD_REQUEST)
                     end;
-                true ->
+                _ ->
                     elib_response:error(Req0, <<"参数错误"/utf8>>, ?ERR_BAD_REQUEST)
             end;
         {error, Req1} ->
@@ -163,15 +163,15 @@ unpublish(<<"POST">>, Req0, State) ->
         ok ->
             PostVals = elib_param:post(Req0),
             Id = normalize_id(maps:get(<<"id">>, PostVals, 0)),
-            if
-                is_integer(Id), Id > 0 ->
+            case true of
+                _ when is_integer(Id), Id > 0 ->
                     case announcement_ds:unpublish(Id) of
                         {ok, Result} ->
                             elib_response:success(Req0, Result, <<"撤回成功"/utf8>>);
                         {error, Reason} ->
                             elib_response:error(Req0, Reason, ?ERR_BAD_REQUEST)
                     end;
-                true ->
+                _ ->
                     elib_response:error(Req0, <<"参数错误"/utf8>>, ?ERR_BAD_REQUEST)
             end;
         {error, Req1} ->

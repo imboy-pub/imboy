@@ -11,7 +11,7 @@
 %%%   - is_initialized() 双重防线：配置 flag + adm_user 表存在性
 %%%   - 首个管理员在事务锁内创建，保证不可重复调用
 %%%%
--behavior(cowboy_rest).
+-behaviour(cowboy_rest).
 
 -export([init/2]).
 

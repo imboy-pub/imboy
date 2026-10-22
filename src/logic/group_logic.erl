@@ -671,7 +671,10 @@ find_member(Gid, Uid) ->
     group_member_ds:find_by_gid_and_uid(
         Gid,
         Uid,
-        <<"id,group_id,user_id,invite_code,alias,description,role,is_join,join_mode,status,updated_at,created_at,remark,mute_until,category_id">>
+        <<
+            "id,group_id,user_id,invite_code,alias,description,role,is_join,join_mode,status,updated_at,created_at,"
+            "remark,mute_until,category_id"
+        >>
     ).
 
 %% @doc 获取当前用户对指定群的备注

@@ -125,10 +125,10 @@ apply_event(TaskId, TaskRow, StatusBin, FromStates, Event) ->
     Corr = maps:get(<<"correlation_id">>, TaskRow),
     Cur = cur_status(TaskRow),
     IsRepeat = (Cur =:= StatusBin) andalso (StatusBin =/= <<"working">>),
-    if
-        IsRepeat ->
+    case true of
+        _ when IsRepeat ->
             skip;
-        true ->
+        _ ->
             transition(TaskId, TaskRow, StatusBin, FromStates, Corr, Cur, Event)
     end.
 

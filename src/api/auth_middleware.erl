@@ -86,10 +86,10 @@ execute(Req, Env) ->
                     config_ds:env(api_auth_switch, <<"on">>)
                 ),
             Res1 =
-                if
-                    InOpenLi == false, Switch == <<"on">> ->
+                case true of
+                    _ when InOpenLi == false, Switch == <<"on">> ->
                         auth_ds:verify_sign(Req, Env);
-                    true ->
+                    _ ->
                         {ok, Req, Env}
                 end,
             case Res1 of

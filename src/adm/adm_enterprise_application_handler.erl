@@ -1,7 +1,7 @@
 -module(adm_enterprise_application_handler).
 -compile([nowarn_deprecated_catch]).
 
--behavior(cowboy_rest).
+-behaviour(cowboy_rest).
 
 -export([init/2]).
 
@@ -498,9 +498,11 @@ actor(State) ->
 -spec adm_account(integer()) -> binary().
 adm_account(AdmUserId) when is_integer(AdmUserId), AdmUserId > 0 ->
     Key = {adm_user_account, AdmUserId},
-    case catch adm_user_logic:find(AdmUserId, <<"id,account">>, Key) of
+    try adm_user_logic:find(AdmUserId, <<"id,account">>, Key) of
         #{<<"account">> := Account} when is_binary(Account) -> Account;
         _ -> <<>>
+    catch
+        _:_ -> <<>>
     end;
 adm_account(_) ->
     <<>>.

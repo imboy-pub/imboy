@@ -2,7 +2,7 @@
 
 -moduledoc "企业 Application 自检端点壳（EPGZ-08 W4 INT-01）—— 路由经 Router lease 登记。".
 
--behavior(cowboy_rest).
+-behaviour(cowboy_rest).
 
 -export([init/2]).
 

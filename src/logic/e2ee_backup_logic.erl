@@ -106,25 +106,34 @@ validate_put(Version, Params, Payload) ->
     KdfIterations = maps:get(<<"kdf_iterations">>, Params, 0),
     PayloadHash = maps:get(<<"payload_hash">>, Params, <<>>),
     Algo = maps:get(<<"algo">>, Params, <<"pbkdf2-sha256/aes-256-gcm">>),
-    if
-        not (is_integer(Version) andalso Version > 0 andalso Version =< ?MAX_INT4) ->
+    case true of
+        _ when not (is_integer(Version) andalso Version > 0 andalso Version =< ?MAX_INT4) ->
             {error, <<"invalid_backup_version">>};
-        not (is_binary(KdfSalt) andalso byte_size(KdfSalt) > 0 andalso
-            byte_size(KdfSalt) =< ?MAX_SALT_BYTES) ->
+        _ when
+            not (is_binary(KdfSalt) andalso byte_size(KdfSalt) > 0 andalso
+                byte_size(KdfSalt) =< ?MAX_SALT_BYTES)
+        ->
             {error, <<"invalid_kdf_salt">>};
-        not (is_integer(KdfIterations) andalso KdfIterations >= ?MIN_KDF_ITERATIONS andalso
-            KdfIterations =< ?MAX_INT4) ->
+        _ when
+            not (is_integer(KdfIterations) andalso KdfIterations >= ?MIN_KDF_ITERATIONS andalso
+                KdfIterations =< ?MAX_INT4)
+        ->
             {error, <<"invalid_kdf_iterations">>};
-        not (is_binary(PayloadHash) andalso byte_size(PayloadHash) > 0 andalso
-            byte_size(PayloadHash) =< ?MAX_HASH_BYTES) ->
+        _ when
+            not (is_binary(PayloadHash) andalso byte_size(PayloadHash) > 0 andalso
+                byte_size(PayloadHash) =< ?MAX_HASH_BYTES)
+        ->
             {error, <<"invalid_payload_hash">>};
-        not (is_binary(Algo) andalso byte_size(Algo) > 0 andalso byte_size(Algo) =< ?MAX_ALGO_BYTES) ->
+        _ when
+            not (is_binary(Algo) andalso byte_size(Algo) > 0 andalso
+                byte_size(Algo) =< ?MAX_ALGO_BYTES)
+        ->
             {error, <<"invalid_algo">>};
-        not (is_binary(Payload) andalso byte_size(Payload) > 0) ->
+        _ when not (is_binary(Payload) andalso byte_size(Payload) > 0) ->
             {error, <<"encrypted_payload_required">>};
-        byte_size(Payload) > ?MAX_PAYLOAD_BYTES ->
+        _ when byte_size(Payload) > ?MAX_PAYLOAD_BYTES ->
             {error, <<"encrypted_payload_too_large">>};
-        true ->
+        _ ->
             validate_ciphertext(Payload)
     end.
 

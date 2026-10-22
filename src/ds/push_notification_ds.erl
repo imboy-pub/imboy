@@ -455,7 +455,11 @@ open_and_cache_conn(Key, Host, Port) ->
                     put(Key, ConnPid),
                     ConnPid;
                 {error, AwaitReason} ->
-                    catch gun:close(ConnPid),
+                    try
+                        gun:close(ConnPid)
+                    catch
+                        _:_ -> ok
+                    end,
                     erase(Key),
                     error({gun_await_up_failed, AwaitReason})
             end;
@@ -467,7 +471,11 @@ close_cached_conn(Host) ->
     Key = {gun_conn, Host},
     case erase(Key) of
         Pid when is_pid(Pid) ->
-            catch gun:close(Pid),
+            try
+                gun:close(Pid)
+            catch
+                _:_ -> ok
+            end,
             ok;
         _ ->
             ok

@@ -7,7 +7,7 @@
 % group_schedule 控制器模块
 % group_schedule controller module
 %%%
--behavior(cowboy_rest).
+-behaviour(cowboy_rest).
 
 -export([init/2]).
 

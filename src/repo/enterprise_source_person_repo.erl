@@ -1,5 +1,5 @@
 -module(enterprise_source_person_repo).
--moduledoc "Source-scoped personnel and verified account association; callers own authentication and transaction audit.".
+-moduledoc "Source-scoped personnel and verified account association; callers own authentication/transaction audit.".
 -export([find_tx/3, sync_tx/6, claim_tx/4]).
 -include_lib("epgsql/include/epgsql.hrl").
 

@@ -18,7 +18,7 @@
 % 行 single_use_code：code 即幂等键，重放=拒绝）。
 %%%
 
--behavior(cowboy_rest).
+-behaviour(cowboy_rest).
 
 -export([init/2]).
 

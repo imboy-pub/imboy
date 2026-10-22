@@ -11,7 +11,8 @@
 %%% 路由片段清单（ZC-05 统一注册 imboy_router.erl 时按此合并；本模块不改 router）
 %%% =====================================================================
 %%% METHOD path                                                            → handler 动作
-%%% POST   /api/v1/projects/:project_id/channels                           → channels（method 分派：POST=link，body: channel_id）
+%%% POST   /api/v1/projects/:project_id/channels                           → channels（method 分派：POST=link，body:
+%%% channel_id）
 %%% GET    /api/v1/projects/:project_id/channels                           → channels（method 分派：GET=list）
 %%% POST   /api/v1/projects/:project_id/channels/:channel_id/unlink        → unlink
 %%% POST   /api/v1/projects/:project_id/links/update                       → update_links（body: links=[{name,url}]）
@@ -23,7 +24,7 @@
 %%% 全部路由 JWT 保护（auth_middleware /api/v1/* 默认门），State 携带 current_uid。
 %%% =====================================================================
 
--behavior(cowboy_rest).
+-behaviour(cowboy_rest).
 
 %% link/2 是本模块自定义动作函数，与 auto-imported BIF erlang:link/2 同名冲突
 -compile({no_auto_import, [link/2]}).

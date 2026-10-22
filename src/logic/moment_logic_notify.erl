@@ -80,11 +80,13 @@ notify_post_at(AuthorUid, PostId, AtUids) ->
 -spec resolve_post_recipients(integer()) -> [integer()].
 resolve_post_recipients(AuthorUid) ->
     Friends =
-        case catch friend_ds:list_by_uid(AuthorUid) of
+        try friend_ds:list_by_uid(AuthorUid) of
             List when is_list(List) ->
                 [Uid || Uid <- List, is_integer(Uid), Uid > 0];
             _ ->
                 []
+        catch
+            _:_ -> []
         end,
     lists:usort([AuthorUid | Friends]).
 

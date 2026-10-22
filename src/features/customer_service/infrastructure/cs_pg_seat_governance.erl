@@ -70,7 +70,10 @@ operate(Conn, OrgId, update, P) ->
             case
                 elib_pg:execute(
                     Conn,
-                    <<"UPDATE customer_service_seat SET max_concurrent=$3 WHERE organization_id=$1 AND business_identity_id=$2">>,
+                    <<
+                        "UPDATE customer_service_seat SET max_concurrent=$3 WHERE organization_id=$1 AND "
+                        "business_identity_id=$2"
+                    >>,
                     [OrgId, IdentityId, Max]
                 )
             of
@@ -92,7 +95,10 @@ mutation_guard(Conn, OrgId, P, AllowInactive) ->
     ),
     require_row(
         Conn,
-        <<"SELECT id FROM organization_business_identity WHERE organization_id=$1 AND id=$2 AND function_key='customer_service' AND (status='active' OR $3::boolean) FOR SHARE">>,
+        <<
+            "SELECT id FROM organization_business_identity WHERE organization_id=$1 AND id=$2 AND "
+            "function_key='customer_service' AND (status='active' OR $3::boolean) FOR SHARE"
+        >>,
         [OrgId, maps:get(business_identity_id, P), AllowInactive],
         identity
     ).

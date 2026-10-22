@@ -5,7 +5,7 @@
 % app_upgrade_log 控制器模块
 % 客户端升级事件上报 API
 %%%
--behavior(cowboy_rest).
+-behaviour(cowboy_rest).
 
 -export([init/2]).
 -export([insert_logged/1]).

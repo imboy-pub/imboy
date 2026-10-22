@@ -6,7 +6,7 @@
 %%% 所有端点复用 ensure_e2ee_enabled/1 守卫（Olm 是 E2EE 的子系统，e2ee 关闭时一并禁用）。
 %%%
 
--behavior(cowboy_rest).
+-behaviour(cowboy_rest).
 
 -export([init/2]).
 %% 导出纯谓词供 EUnit 直测设备所有权判定（DT-01/02）。

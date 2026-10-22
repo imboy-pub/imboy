@@ -5,7 +5,7 @@
 % adm_channel 控制器模块
 % 频道管理后台 API
 %%%
--behavior(cowboy_rest).
+-behaviour(cowboy_rest).
 
 -export([init/2]).
 
@@ -782,14 +782,18 @@ validate_price_channel(ChannelId0) ->
 strict_integer(Value) when is_integer(Value) ->
     Value;
 strict_integer(Value) when is_binary(Value) ->
-    case catch list_to_integer(string:trim(binary_to_list(Value))) of
+    try list_to_integer(string:trim(binary_to_list(Value))) of
         Int when is_integer(Int) -> Int;
         _ -> -1
+    catch
+        _:_ -> -1
     end;
 strict_integer(Value) when is_list(Value) ->
-    case catch list_to_integer(string:trim(Value)) of
+    try list_to_integer(string:trim(Value)) of
         Int when is_integer(Int) -> Int;
         _ -> -1
+    catch
+        _:_ -> -1
     end;
 strict_integer(_) ->
     -1.
@@ -1062,9 +1066,11 @@ parse_id(Value) when is_binary(Value), Value =/= <<>> ->
         true ->
             ec_cnv:to_integer(Value);
         false ->
-            case catch ec_cnv:to_integer(Value) of
+            try ec_cnv:to_integer(Value) of
                 Id when is_integer(Id), Id > 0 -> Id;
                 _ -> 0
+            catch
+                _:_ -> 0
             end
     end;
 parse_id(_) ->

@@ -223,10 +223,10 @@ derive_org_by_token(_Params) ->
 token_usable(Token, At) ->
     RevokedAt = maps:get(revoked_at, Token, undefined),
     ExpiresAt = maps:get(expires_at, Token, undefined),
-    if
-        is_integer(RevokedAt), RevokedAt =< At -> {error, token_revoked};
-        is_integer(ExpiresAt), At >= ExpiresAt -> {error, token_expired};
-        true -> {ok, Token}
+    case true of
+        _ when is_integer(RevokedAt), RevokedAt =< At -> {error, token_revoked};
+        _ when is_integer(ExpiresAt), At >= ExpiresAt -> {error, token_expired};
+        _ -> {ok, Token}
     end.
 
 fetch_installation(Params, OrgId, InstallationId) ->

@@ -131,11 +131,13 @@ moderate(_, _, _, _) ->
 maybe_remove_rejected_content(<<"reject">>, Id) ->
     %% catch：撤下是尽力而为的联动（review_find/内容删除基础设施故障
     %% 均不回滚已落库的审核判定），与 remove_surface_content 的容错同口径
-    case catch moderation_ds:review_find(Id) of
+    try moderation_ds:review_find(Id) of
         {ok, Row} when is_map(Row) ->
             remove_surface_content(Row);
         _ ->
             ok
+    catch
+        _:_ -> ok
     end;
 maybe_remove_rejected_content(_Action, _Id) ->
     ok.
@@ -160,29 +162,36 @@ remove_surface_content(Row, Expected) ->
     case {MsgType, MsgId > 0} of
         {<<"channel_message">>, true} ->
             ChannelId = row_positive_int(Row, <<"to_id">>),
-            case catch channel_message_ds:delete_checked(MsgId, Expected) of
+            try channel_message_ds:delete_checked(MsgId, Expected) of
                 {ok, Count} when Count > 0 ->
-                    _ = catch channel_logic_notify:notify_message_deleted(ChannelId, MsgId),
+                    _ =
+                        try
+                            channel_logic_notify:notify_message_deleted(ChannelId, MsgId)
+                        catch
+                            _:_ -> ok
+                        end,
                     ok;
                 {ok, 0} ->
                     ok;
                 {error, Reason} ->
-                    ?ERROR_LOG(["moderation reject channel remove failed: ", MsgId, Reason]),
-                    ok;
+                    log_remove_failed("moderation reject channel remove failed: ", MsgId, Reason);
                 Other ->
-                    ?ERROR_LOG(["moderation reject channel remove failed: ", MsgId, Other]),
-                    ok
+                    log_remove_failed("moderation reject channel remove failed: ", MsgId, Other)
+            catch
+                _:Reason ->
+                    log_remove_failed("moderation reject channel remove failed: ", MsgId, Reason)
             end;
         {<<"moment_post">>, true} ->
-            case catch moment_ds:delete_post_by_admin(MsgId) of
+            try delete_moment_post(MsgId) of
                 ok ->
                     ok;
                 {error, Reason} ->
-                    ?ERROR_LOG(["moderation reject moment remove failed: ", MsgId, Reason]),
-                    ok;
+                    log_remove_failed("moderation reject moment remove failed: ", MsgId, Reason);
                 Other ->
-                    ?ERROR_LOG(["moderation reject moment remove failed: ", MsgId, Other]),
-                    ok
+                    log_remove_failed("moderation reject moment remove failed: ", MsgId, Other)
+            catch
+                _:Reason ->
+                    log_remove_failed("moderation reject moment remove failed: ", MsgId, Reason)
             end;
         _ ->
             case remove_profile_field(MsgType, MsgId, Expected) of
@@ -194,16 +203,33 @@ remove_surface_content(Row, Expected) ->
             end
     end.
 
+log_remove_failed(Prefix, MsgId, Reason) ->
+    ?ERROR_LOG([Prefix, MsgId, Reason]),
+    ok.
+
+%% BUILD-00R：moment 编译期物理裁剪 helper。未选中 moment 时走 fail-closed，
+%% 文件内不出现对 moment_* 模块的引用；选中时保持原语义不变。
+-spec delete_moment_post(integer()) -> ok | {error, term()}.
+-ifdef(IMBOY_FEATURE_MOMENT).
+delete_moment_post(MsgId) ->
+    moment_ds:delete_post_by_admin(MsgId).
+-else.
+delete_moment_post(_MsgId) ->
+    {error, feature_disabled}.
+-endif.
+
 %% R-03.1：拆 msg_type 后缀定位资料字段，清空该字段（msg_id=uid）。
 -spec remove_profile_field(binary(), integer(), binary() | map()) -> ok | {error, term()}.
 remove_profile_field(MsgType, Uid, Content) ->
     case binary:split(MsgType, <<":">>) of
         [<<"profile_field">>, Field] when Field =/= <<>>, Uid > 0 ->
-            case catch user_ds:update_field_checked(Uid, Field, <<>>, Content) of
+            try user_ds:update_field_checked(Uid, Field, <<>>, Content) of
                 {ok, _} ->
                     ok;
                 Other ->
                     Other
+            catch
+                _:Other -> Other
             end;
         _ ->
             ok
@@ -257,12 +283,14 @@ apply_sla_flag(Row) ->
 
 sla_age_hours(Row) ->
     CreatedAt = get_bin(Row, <<"created_at">>),
-    case catch elib_dt:rfc3339_to(CreatedAt, millisecond) of
+    try elib_dt:rfc3339_to(CreatedAt, millisecond) of
         Ts when is_integer(Ts) ->
             Now = elib_dt:millisecond(),
             {ok, (Now - Ts) div 3600000};
         _ ->
             error
+    catch
+        _:_ -> error
     end.
 
 %% ===================================================================
@@ -304,9 +332,11 @@ row_positive_int(Row, Key) when is_map(Row) ->
         V when is_integer(V), V > 0 ->
             V;
         V when is_binary(V) ->
-            case catch ec_cnv:to_integer(V) of
+            try ec_cnv:to_integer(V) of
                 I when is_integer(I), I > 0 -> I;
                 _ -> 0
+            catch
+                _:_ -> 0
             end;
         _ ->
             0

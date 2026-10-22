@@ -10,7 +10,7 @@
 % 错误码映射（STEP-04 error-codes.md 5420 段）。
 %%%
 
--behavior(cowboy_rest).
+-behaviour(cowboy_rest).
 
 -export([init/2]).
 -export([handle_action/3]).

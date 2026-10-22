@@ -109,7 +109,10 @@ update_tx(_Conn, _AssignmentId, _Data) ->
 find_by_id(AssignmentId) when is_integer(AssignmentId), AssignmentId > 0 ->
     Tb = tablename(),
     Column =
-        <<"id,task_id,user_id,status,submitted_at,content,attachment,score,comment,reviewed_by,reviewed_at,created_at,updated_at">>,
+        <<
+            "id,task_id,user_id,status,submitted_at,content,attachment,score,comment,reviewed_by,reviewed_at,"
+            "created_at,updated_at"
+        >>,
     Where = <<"id = $1">>,
     Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary, " WHERE ", Where/binary>>,
     case elib_pg:query(Sql, [AssignmentId]) of
@@ -136,7 +139,10 @@ find_by_task_and_user(TaskId, UserId) when
 ->
     Tb = tablename(),
     Column =
-        <<"id,task_id,user_id,status,submitted_at,content,attachment,score,comment,reviewed_by,reviewed_at,created_at,updated_at">>,
+        <<
+            "id,task_id,user_id,status,submitted_at,content,attachment,score,comment,reviewed_by,reviewed_at,"
+            "created_at,updated_at"
+        >>,
     Where = <<"task_id = $1 AND user_id = $2">>,
     Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary, " WHERE ", Where/binary>>,
     case elib_pg:query(Sql, [TaskId, UserId]) of
@@ -167,7 +173,10 @@ list_by_task_id(TaskId, Page, Size) when
 ->
     Tb = tablename(),
     Column =
-        <<"id, task_id, user_id, status, submitted_at, content, attachment, score, comment, reviewed_by, reviewed_at, created_at, updated_at">>,
+        <<
+            "id, task_id, user_id, status, submitted_at, content, attachment, score, comment, reviewed_by, reviewed_at,"
+            " created_at, updated_at"
+        >>,
     Where = <<"task_id = $1">>,
     OrderBy = <<"id DESC">>,
     Offset = (Page - 1) * Size,
@@ -217,7 +226,10 @@ list_by_user_id(UserId, Status, Page, Size) when
 ->
     Tb = tablename(),
     Column =
-        <<"id, task_id, user_id, status, submitted_at, content, attachment, score, comment, reviewed_by, reviewed_at, created_at, updated_at">>,
+        <<
+            "id, task_id, user_id, status, submitted_at, content, attachment, score, comment, reviewed_by, reviewed_at,"
+            " created_at, updated_at"
+        >>,
     case user_status_where(Status) of
         {error, Reason} ->
             {error, Reason};

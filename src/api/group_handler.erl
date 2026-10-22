@@ -5,7 +5,7 @@
 
 -dialyzer({nowarn_function, [validate_gid/1, process_group_edit/5, edit/2, handle_action/3]}).
 
--behavior(cowboy_rest).
+-behaviour(cowboy_rest).
 
 -export([init/2]).
 -export([handle_action/3]).
@@ -105,7 +105,10 @@ detail_read(Req0, Gid2) ->
     % 遗漏该字段属 P1-7b 收紧时引入的契约回退（2026-09-03 真机夹具
     % flow 定案：set_e2ee_mode 落库+S2C 广播均正常，唯 detail 回读恒 0）。
     GroupCols =
-        <<"id,type,join_limit,content_limit,owner_uid,creator_uid,member_max,member_count,introduction,avatar,title,status,scope,workspace_id,e2ee_mode,updated_at,created_at">>,
+        <<
+            "id,type,join_limit,content_limit,owner_uid,creator_uid,member_max,member_count,introduction,avatar,title,"
+            "status,scope,workspace_id,e2ee_mode,updated_at,created_at"
+        >>,
     case group_logic:find_by_id(Gid2, GroupCols) of
         {error, _Reason} ->
             elib_response:error(Req0, "群组不存在");
@@ -186,7 +189,10 @@ face2face_save(Req0, State) ->
                 {ok, MemberList} ->
                     % P1-7b: 显式安全列（排除 chat_aes_key）
                     GroupCols =
-                        <<"id,type,join_limit,content_limit,owner_uid,creator_uid,member_max,member_count,introduction,avatar,title,status,updated_at,created_at">>,
+                        <<
+                            "id,type,join_limit,content_limit,owner_uid,creator_uid,member_max,member_count,"
+                            "introduction,avatar,title,status,updated_at,created_at"
+                        >>,
                     case group_logic:find_by_id(Gid2, GroupCols) of
                         {error, Reason2} ->
                             elib_response:error(Req0, Reason2);
@@ -637,7 +643,8 @@ qrcode(Req0, State) ->
                                         <<"type">> => <<"group">>,
                                         <<"group_member">> => Gm2
                                     },
-                                    % ?DEBUG_LOG(["Gid2", Gid2, "CurrentUid ", CurrentUid, " Res ", Res, " G3 ", group_logic:group_transfer(G3)]),
+                                    % ?DEBUG_LOG(["Gid2", Gid2, "CurrentUid ", CurrentUid, " Res ", Res, " G3 ",
+                                    % group_logic:group_transfer(G3)]),
                                     elib_response:success(Req0, group_logic:group_transfer(G3))
                             end;
                         %% T5（双体验 v2.5.2）：workspace 群扫码加入被 DS 层

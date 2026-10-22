@@ -161,7 +161,8 @@ select_by_where_safe(Column, WhereMap, Limit, Offset, OrderSpec, ValidFields) ->
 %% @doc 根据邮箱查找管理员用户
 %% @param Email 用户邮箱地址
 %% @param Column 要查询的列名，支持多个列用逗号分隔，或使用 "*" 查询所有列
-%% @example adm_user_repo:find_by_email(<<"admin@example.com">>, <<"id,account,mobile,password,nickname,avatar,role_id,email,status">>).
+%% @example adm_user_repo:find_by_email(<<"admin@example.com">>,
+%% <<"id,account,mobile,password,nickname,avatar,role_id,email,status">>).
 -spec find_by_email(binary(), binary()) -> map().
 find_by_email(Email, Column) ->
     Tb = tablename(),
@@ -171,8 +172,10 @@ find_by_email(Email, Column) ->
 %% @doc 根据手机号查找管理员用户
 %% @param Mobile 用户手机号码，支持binary或string类型
 %% @param Column 要查询的列名，支持多个列用逗号分隔，或使用 "*" 查询所有列
-%% @example adm_user_repo:find_by_mobile(<<"13692177080">>, <<"id,account,mobile,password,nickname,avatar,role_id,email,status">>).
-%% @example adm_user_repo:find_by_mobile("13692177080", <<"id,account,mobile,password,nickname,avatar,role_id,email,status">>).
+%% @example adm_user_repo:find_by_mobile(<<"13692177080">>,
+%% <<"id,account,mobile,password,nickname,avatar,role_id,email,status">>).
+%% @example adm_user_repo:find_by_mobile("13692177080",
+%% <<"id,account,mobile,password,nickname,avatar,role_id,email,status">>).
 -spec find_by_mobile(binary() | string(), binary()) -> map().
 find_by_mobile(Mobile, Column) when is_binary(Mobile); is_list(Mobile) ->
     Tb = tablename(),
@@ -182,7 +185,8 @@ find_by_mobile(Mobile, Column) when is_binary(Mobile); is_list(Mobile) ->
 %% @doc 根据用户账号查找管理员用户
 %% @param Account 用户账号（字符串或binary类型）
 %% @param Column 要查询的列名，支持多个列用逗号分隔，或使用 "*" 查询所有列
-%% @example adm_user_repo:find_by_account("admin", <<"id,account,mobile,password,nickname,avatar,role_id,email,status">>).
+%% @example adm_user_repo:find_by_account("admin",
+%% <<"id,account,mobile,password,nickname,avatar,role_id,email,status">>).
 -spec find_by_account(binary() | string(), binary()) -> map().
 find_by_account(Account, Column) ->
     Tb = tablename(),
@@ -234,7 +238,8 @@ list_by_ids(Uids, Column) ->
 %% @doc 保存新管理员用户记录
 %% @param Data 包含管理员用户信息的map，必须包含mobile、password、account等必要字段
 %% @return {ok, 1} 保存成功 | {ok, 1, ReturnData} 保存成功并返回数据 | {error, Reason} 保存失败
-%% @example adm_user_repo:save(#{mobile => <<"13692177080">>, password => elib_password:generate(<<"admin888">>), account => "admin", status => 1, role_id => 1, nickname => <<"管理员"/utf8>>, created_at => elib_dt:now()}).
+%% @example adm_user_repo:save(#{mobile => <<"13692177080">>, password => elib_password:generate(<<"admin888">>),
+%% account => "admin", status => 1, role_id => 1, nickname => <<"管理员"/utf8>>, created_at => elib_dt:now()}).
 -spec save(map()) -> {ok, integer()} | {error, any()}.
 save(Data) ->
     save(undefined, Data).

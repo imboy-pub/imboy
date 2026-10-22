@@ -216,10 +216,18 @@ request_token(TokenUri, Jwt) ->
                                 {error, Reason} ->
                                     {error, Reason}
                             end,
-                        catch gun:close(ConnPid),
+                        try
+                            gun:close(ConnPid)
+                        catch
+                            _:_ -> ok
+                        end,
                         cache_on_success(Result);
                     {error, AwaitReason} ->
-                        catch gun:close(ConnPid),
+                        try
+                            gun:close(ConnPid)
+                        catch
+                            _:_ -> ok
+                        end,
                         {error, AwaitReason}
                 end;
             {error, OpenReason} ->

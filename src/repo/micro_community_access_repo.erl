@@ -37,8 +37,9 @@ discussion_predicate_sql(GroupExpr, UidExpr, true) ->
         "JOIN public.\"group\" mg ON mg.id = mc.discussion_group_id ",
         "WHERE mc.discussion_group_id = ", GroupExpr/binary,
         " AND mc.status = 1 AND mc.scope = 'personal' AND mg.scope = 'personal'",
-        " AND mg.owner_uid = mc.creator_uid AND mg.status = 1 AND mg.type = 2 AND mg.join_limit = 3 AND mg.e2ee_mode = 0",
-        " AND (", Manager/binary, " OR (EXISTS (SELECT 1 FROM public.channel_subscription ms ",
+        " AND mg.owner_uid = mc.creator_uid AND mg.status = 1 AND mg.type = 2 AND mg.join_limit = 3 AND mg.e2ee_mode "
+        "= 0", " AND (", Manager/binary,
+        " OR (EXISTS (SELECT 1 FROM public.channel_subscription ms ",
         "WHERE ms.channel_id = mc.id AND ms.user_id = ", UidExpr/binary,
         " AND ms.status = 1) AND (mc.access_type <> 1 OR EXISTS (",
         "SELECT 1 FROM public.channel_order mo WHERE mo.channel_id = mc.id ", "AND mo.user_id = ",

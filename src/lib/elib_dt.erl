@@ -35,11 +35,11 @@ add(Dt, {Num, second}) ->
     add(Dt, {Num * 1000, millisecond});
 add(Dt, {Num, millisecond}) when is_binary(Dt); is_integer(Dt) ->
     Result = rfc3339_to(Dt, microsecond),
-    if
-        is_integer(Result) ->
+    case true of
+        _ when is_integer(Result) ->
             Val = Result + Num * 1000,
             to_rfc3339(Val, microsecond);
-        true ->
+        _ ->
             {error, invalid_datetime}
     end.
 
@@ -55,11 +55,11 @@ minus(Dt, {Num, second}) ->
     minus(Dt, {Num * 1000, millisecond});
 minus(Dt, {Num, millisecond}) when is_binary(Dt); is_integer(Dt) ->
     Result = rfc3339_to(Dt, microsecond),
-    if
-        is_integer(Result) ->
+    case true of
+        _ when is_integer(Result) ->
             Val = Result - Num * 1000,
             to_rfc3339(Val, microsecond);
-        true ->
+        _ ->
             {error, invalid_datetime}
     end.
 
@@ -105,7 +105,8 @@ timestamp() ->
 %% 返回毫秒
 %% 返回的时间为 UTC 时间戳，与操作系统时区设置无关。
 %% https://currentmillis.com/
-%% Methods to get the time in milliseconds since the UNIX epoch (January 1, 1970 00:00:00 UTC) in various programming languages
+%% Methods to get the time in milliseconds since the UNIX epoch (January 1, 1970 00:00:00 UTC) in various programming
+%% languages
 -spec millisecond() -> integer().
 millisecond() ->
     erlang:system_time(millisecond).

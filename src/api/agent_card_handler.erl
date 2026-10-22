@@ -1,6 +1,7 @@
 -module(agent_card_handler).
 
--moduledoc "Agent 能力发现端点 / Agent capability discovery —— GET /api/v1/agent-card 下发身份、MCP 端点与插件 manifest 声明的 tools 目录，供外部 AI 发现本实例能力。".
+-moduledoc "Agent 能力发现端点 / Agent capability discovery —— GET /api/v1/agent-card 下发身份、MCP 端点与插件 manifest 声明的 tools 目录"
+" 供外部 AI 发现本实例能力。".
 %%%
 % Phase 4 T4.1：Agent 能力发现端点 / Agent capability discovery
 %
@@ -12,7 +13,7 @@
 % 只做 imboy 原生精简能力描述。build→ETag→200 模式复用 app_manifest_handler。
 %%%
 
--behavior(cowboy_rest).
+-behaviour(cowboy_rest).
 
 -export([init/2]).
 -export([build_card/0, build_well_known_card/0, compute_etag/1]).

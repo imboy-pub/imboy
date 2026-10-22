@@ -118,10 +118,12 @@ people_nearby(CurrentUid, Lng, Lat, Radius, _Unit, Limit) ->
     %% 与点如何构造无关。
     Sql = <<
         "SELECT u.id, u.account, u.nickname, u.avatar, u.sign, u.gender, u.region,\n"
-        "                    ST_Distance(ST_GeographyFromText('SRID=4326;POINT(' || $1 || ' ' || $2 || ')'), location) as distance\n"
+        "                    ST_Distance(ST_GeographyFromText('SRID=4326;POINT(' || $1 || ' ' || $2 || ')'),"
+        " location) as distance\n"
         "             FROM public.geo_people_nearby gpn\n"
         "             JOIN public.user u ON u.id = gpn.user_id\n"
-        "             WHERE ST_DWithin(location::geography, ST_GeographyFromText('POINT(' || $1 || ' ' || $2 || ')'), $3)\n"
+        "             WHERE ST_DWithin(location::geography, ST_GeographyFromText('POINT(' || $1 || ' ' || $2 || ')'),"
+        " $3)\n"
         "             AND u.id <> $5 AND u.status = 1 AND u.account_type = 0\n"
         "             AND EXISTS (SELECT 1 FROM public.user_setting us WHERE us.user_id = u.id\n"
         "                 AND us.setting::jsonb->>'people_nearby_visible' = 'true')\n"

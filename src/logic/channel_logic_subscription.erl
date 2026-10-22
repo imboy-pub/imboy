@@ -341,11 +341,13 @@ is_subscribed(ChannelId, Uid) ->
 
 -spec decode_positive_id(term()) -> integer().
 decode_positive_id(Value) ->
-    case catch ec_cnv:to_integer(Value) of
+    try ec_cnv:to_integer(Value) of
         Id when is_integer(Id), Id > 0 ->
             Id;
         _ ->
             0
+    catch
+        _:_ -> 0
     end.
 
 -spec flush_remove_subscriber_cache(integer()) -> ok.

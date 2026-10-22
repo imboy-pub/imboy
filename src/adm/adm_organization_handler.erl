@@ -28,7 +28,7 @@
 % TSID 传输规则：JSON 里 64-bit ID 一律 string 下发/接收（防 JS 精度丢失）。
 %%%
 
--behavior(cowboy_rest).
+-behaviour(cowboy_rest).
 
 -export([init/2]).
 
@@ -405,7 +405,7 @@ lifecycle_write(Req0, State, ActionBin, Fun) ->
                     %% 禁止裸冒泡成空 body 500。
                     AuditCtx = audit_ctx(Req0),
                     Handled =
-                        catch begin
+                        try
                             R = Fun(AdmUserId, OrgId, AuditCtx),
                             case R of
                                 {ok, Result} ->
@@ -421,6 +421,10 @@ lifecycle_write(Req0, State, ActionBin, Fun) ->
                                 {error, {Code, Msg}} ->
                                     elib_response:error(Req0, Msg, Code)
                             end
+                        catch
+                            throw:Thrown -> Thrown;
+                            error:Reason:Stack -> {'EXIT', {Reason, Stack}};
+                            exit:Reason -> {'EXIT', Reason}
                         end,
                     case Handled of
                         RespReq when is_map(RespReq) ->
@@ -891,11 +895,13 @@ parse_tsid_map(Value) ->
 parse_tsid_map(Value, _EmptyMsg) when is_integer(Value), Value > 0 ->
     {ok, Value};
 parse_tsid_map(Value, _EmptyMsg) when is_binary(Value) ->
-    case catch binary_to_integer(string:trim(Value)) of
+    try binary_to_integer(string:trim(Value)) of
         Id when is_integer(Id), Id > 0 ->
             {ok, Id};
         _ ->
             {error, <<"ID 格式错误"/utf8>>}
+    catch
+        _:_ -> {error, <<"ID 格式错误"/utf8>>}
     end;
 parse_tsid_map(_, EmptyMsg) ->
     {error, EmptyMsg}.

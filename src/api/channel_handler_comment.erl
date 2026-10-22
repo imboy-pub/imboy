@@ -3,7 +3,7 @@
 % channel_handler_comment — 频道评论 HTTP handler
 % 镜像 channel_handler_message 模式，提供评论的 CRUD + 点赞 API。
 %%%
--behavior(cowboy_rest).
+-behaviour(cowboy_rest).
 -export([init/2, handle_action/3]).
 -export([
     list_comments/2,

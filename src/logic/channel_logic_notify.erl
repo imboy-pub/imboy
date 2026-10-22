@@ -155,7 +155,7 @@ send_safe(Uids, Action, Payload, SaveMode) when is_list(Uids) ->
         [] ->
             ok;
         _ ->
-            case catch msg_s2c_ds:send(0, NormalizedUids, Action, <<>>, null, Payload, SaveMode) of
+            try msg_s2c_ds:send(0, NormalizedUids, Action, <<>>, null, Payload, SaveMode) of
                 ok ->
                     ok;
                 {error, Reason} ->
@@ -163,14 +163,15 @@ send_safe(Uids, Action, Payload, SaveMode) when is_list(Uids) ->
                         channel_logic_notify_send_failed, Action, {uid_count, UidCount}, Reason
                     ]),
                     ok;
-                {'EXIT', Reason} ->
-                    ?ERROR_LOG([
-                        channel_logic_notify_send_crashed, Action, {uid_count, UidCount}, Reason
-                    ]),
-                    ok;
                 Other ->
                     ?WARN_LOG([
                         channel_logic_notify_send_unexpected, Action, {uid_count, UidCount}, Other
+                    ]),
+                    ok
+            catch
+                _:Reason ->
+                    ?ERROR_LOG([
+                        channel_logic_notify_send_crashed, Action, {uid_count, UidCount}, Reason
                     ]),
                     ok
             end
@@ -199,14 +200,15 @@ fanout_save_mode(SubscriberUids) ->
 
 -spec subscriber_uids_safe(integer(), binary()) -> list(integer()).
 subscriber_uids_safe(ChannelId, Action) ->
-    case catch channel_ds:subscriber_uids(ChannelId) of
+    try channel_ds:subscriber_uids(ChannelId) of
         Uids when is_list(Uids) ->
             Uids;
-        {'EXIT', Reason} ->
-            ?ERROR_LOG([channel_logic_notify_subscriber_lookup_crashed, Action, ChannelId, Reason]),
-            [];
         Other ->
             ?WARN_LOG([channel_logic_notify_subscriber_lookup_unexpected, Action, ChannelId, Other]),
+            []
+    catch
+        _:Reason ->
+            ?ERROR_LOG([channel_logic_notify_subscriber_lookup_crashed, Action, ChannelId, Reason]),
             []
     end.
 

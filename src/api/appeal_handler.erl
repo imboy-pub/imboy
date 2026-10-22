@@ -7,7 +7,7 @@
 %%   GET  /api/v1/appeal/actions  针对我的处置动作（R-04.1 申诉入口）
 %% 可用性门：imboy_feature:enabled(appeal)（logic 层同样校验，双保险）。
 
--behavior(cowboy_rest).
+-behaviour(cowboy_rest).
 
 -export([init/2]).
 

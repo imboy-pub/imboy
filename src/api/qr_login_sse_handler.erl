@@ -23,7 +23,7 @@
 %%%-------------------------------------------------------------------
 -module(qr_login_sse_handler).
 -moduledoc "QR 登录 SSE Handler（Phase 2 PR-3α，cowboy_loop behaviour）—— 扫码登录状态推送。".
--behavior(cowboy_loop).
+-behaviour(cowboy_loop).
 
 -export([init/2, info/3, terminate/3]).
 

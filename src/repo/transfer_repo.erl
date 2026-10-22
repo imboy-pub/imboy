@@ -42,7 +42,8 @@ create(SenderUid, ReceiverUid, Amount, Remark) ->
                 %% 2. 写入发送方钱包流水（tx_type=5：转账转出）
                 TxSql =
                     <<"INSERT INTO ", TxTb/binary,
-                        " (id, wallet_id, user_id, amount, balance_after, tx_type, reference_no, remark, status) VALUES ($1, $2, $3, $4, $5, 5, $6, $7, 1)">>,
+                        " (id, wallet_id, user_id, amount, balance_after, tx_type, reference_no, remark,"
+                        " status) VALUES ($1, $2, $3, $4, $5, 5, $6, $7, 1)">>,
                 TxId = elib_tsid:generate(wallet_transaction),
                 {ok, 1} = elib_pg:execute(Conn, TxSql, [
                     TxId, WalletId, SenderUid, -Amount, NewBalance, RefNo, <<"转账给好友"/utf8>>
@@ -116,7 +117,8 @@ accept(TransferId, ReceiverUid) ->
                         %% 4. 给接收方充值
                         CreditSql =
                             <<"UPDATE ", WalletTb/binary,
-                                " SET balance = balance + $1, version = version + 1, updated_at = NOW() WHERE user_id = $2 RETURNING balance, id">>,
+                                " SET balance = balance + $1, version = version + 1,"
+                                " updated_at = NOW() WHERE user_id = $2 RETURNING balance, id">>,
                         {ok, [#{<<"balance">> := NewBalance, <<"id">> := WalletId}]} = elib_pg:query(
                             Conn, CreditSql, [Amount, ReceiverUid]
                         ),
@@ -124,7 +126,8 @@ accept(TransferId, ReceiverUid) ->
                         %% 5. 写入接收方钱包流水（tx_type=6：转账转入）
                         TxSql =
                             <<"INSERT INTO ", TxTb/binary,
-                                " (id, wallet_id, user_id, amount, balance_after, tx_type, reference_no, remark, status) VALUES ($1, $2, $3, $4, $5, 6, $6, $7, 1)">>,
+                                " (id, wallet_id, user_id, amount, balance_after, tx_type, reference_no, remark,"
+                                " status) VALUES ($1, $2, $3, $4, $5, 6, $6, $7, 1)">>,
                         TxId = elib_tsid:generate(wallet_transaction),
                         {ok, 1} = elib_pg:execute(Conn, TxSql, [
                             TxId, WalletId, ReceiverUid, Amount, NewBalance, RefNo, <<"收取转账"/utf8>>
@@ -165,7 +168,8 @@ refund(TransferId) ->
                         %% 3. 退还资金给发送者
                         RefundSql =
                             <<"UPDATE ", WalletTb/binary,
-                                " SET balance = balance + $1, version = version + 1, updated_at = NOW() WHERE user_id = $2 RETURNING balance, id">>,
+                                " SET balance = balance + $1, version = version + 1,"
+                                " updated_at = NOW() WHERE user_id = $2 RETURNING balance, id">>,
                         {ok, [#{<<"balance">> := NewBalance, <<"id">> := WalletId}]} = elib_pg:query(
                             Conn, RefundSql, [Amount, SenderUid]
                         ),
@@ -173,7 +177,8 @@ refund(TransferId) ->
                         %% 4. 写入发送者钱包退款流水（tx_type=9：红包/转账退回）
                         TxSql =
                             <<"INSERT INTO ", TxTb/binary,
-                                " (id, wallet_id, user_id, amount, balance_after, tx_type, reference_no, remark, status) VALUES ($1, $2, $3, $4, $5, 9, $6, $7, 1)">>,
+                                " (id, wallet_id, user_id, amount, balance_after, tx_type, reference_no, remark,"
+                                " status) VALUES ($1, $2, $3, $4, $5, 9, $6, $7, 1)">>,
                         TxId = elib_tsid:generate(wallet_transaction),
                         {ok, 1} = elib_pg:execute(Conn, TxSql, [
                             TxId, WalletId, SenderUid, Amount, NewBalance, RefNo, <<"转账退回"/utf8>>

@@ -208,10 +208,10 @@ emittable(Event) ->
 
 status_bin(Event) ->
     S = maps:get(status, Event, <<>>),
-    if
-        is_atom(S) -> atom_to_binary(S, utf8);
-        is_binary(S) -> S;
-        true -> <<"unknown">>
+    case true of
+        _ when is_atom(S) -> atom_to_binary(S, utf8);
+        _ when is_binary(S) -> S;
+        _ -> <<"unknown">>
     end.
 
 %% 事件文本：优先事件自带 text，否则按状态给默认文案

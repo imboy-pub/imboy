@@ -7,7 +7,7 @@
 %% 服务端零算法（ADR 06 §8.1）：只记录带签事件 + 广播，不判 verification。
 %%%
 
--behavior(cowboy_rest).
+-behaviour(cowboy_rest).
 
 -export([init/2]).
 

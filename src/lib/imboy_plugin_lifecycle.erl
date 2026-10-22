@@ -129,9 +129,9 @@ callback_mode() -> handle_event_function.
 init(Opts) ->
     Name = maps:get(name, Opts, undefined),
     _ =
-        if
-            Name =:= undefined -> ok;
-            true -> persistent_term:put({imboy_plugin_lifecycle, Name}, self())
+        case true of
+            _ when Name =:= undefined -> ok;
+            _ -> persistent_term:put({imboy_plugin_lifecycle, Name}, self())
         end,
     {ok, unknown, #data{name = Name, rollback_strategy = atomic}}.
 
@@ -502,12 +502,17 @@ run_enable_steps(Data) ->
                     imboy_router_registry:register(Name, Routes),
                     register_routes
                 ),
-                add_undo(register_routes, fun() ->
-                    catch imboy_router_registry:unregister(Name)
-                end)
+                add_undo(register_routes, fun() -> safe_unregister_routes(Name) end)
         end,
         {ok, Data}
     end).
+
+safe_unregister_routes(Name) ->
+    try
+        imboy_router_registry:unregister(Name)
+    catch
+        _:_ -> ok
+    end.
 
 %% @doc 禁用步骤 (lifecycle.md §5.3)。
 %% 无需撤销——禁用为尽力清理。

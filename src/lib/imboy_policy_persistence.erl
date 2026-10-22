@@ -116,15 +116,15 @@ load_feature_config() ->
 
 -spec load_config_value(binary(), term()) -> term().
 load_config_value(Key, Default) ->
-    case catch config_ds:get(Key, Default) of
-        {'EXIT', _} ->
-            Default;
+    try config_ds:get(Key, Default) of
         null ->
             Default;
         undefined ->
             Default;
         Value ->
             Value
+    catch
+        _:_ -> Default
     end.
 
 -spec load_saved_config_value(binary()) -> term().

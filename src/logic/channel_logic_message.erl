@@ -983,15 +983,15 @@ do_edit_message(Uid, ChannelId, MessageId, NewContent, Message) ->
             is_integer(MessageAuthorId) andalso
             MessageAuthorId > 0,
     Revoked = maps:get(<<"revoked">>, Message, false),
-    if
-        not ValidMessage ->
+    case true of
+        _ when not ValidMessage ->
             {error, <<"消息不存在"/utf8>>};
         %% 编辑与撤回语义不同：仅作者本人可编辑，管理员不可
-        MessageAuthorId =/= Uid ->
+        _ when MessageAuthorId =/= Uid ->
             {error, <<"无权限编辑此消息"/utf8>>};
-        Revoked =:= true ->
+        _ when Revoked =:= true ->
             {error, <<"消息已撤回，无法编辑"/utf8>>};
-        true ->
+        _ ->
             case is_within_edit_window(Message) of
                 false ->
                     {error, <<"编辑时间已超出限制"/utf8>>};
@@ -1099,7 +1099,7 @@ attach_my_reactions(_Uid, []) ->
 attach_my_reactions(Uid, Messages) ->
     MsgIds = [Id || #{<<"id">> := Id} <- Messages, is_integer(Id)],
     ByMsg =
-        case catch channel_ds:list_user_reactions(Uid, MsgIds) of
+        try channel_ds:list_user_reactions(Uid, MsgIds) of
             {ok, Rows} when is_list(Rows) ->
                 lists:foldl(
                     fun
@@ -1114,11 +1114,12 @@ attach_my_reactions(Uid, Messages) ->
             {error, Reason} ->
                 ?ERROR_LOG(["channel_list_user_reactions_failed", Uid, Reason]),
                 #{};
-            {'EXIT', Reason} ->
-                ?ERROR_LOG(["channel_list_user_reactions_crashed", Uid, Reason]),
-                #{};
             Unexpected ->
                 ?ERROR_LOG(["channel_list_user_reactions_invalid", Uid, Unexpected]),
+                #{}
+        catch
+            _:Reason ->
+                ?ERROR_LOG(["channel_list_user_reactions_crashed", Uid, Reason]),
                 #{}
         end,
     [
@@ -1128,11 +1129,13 @@ attach_my_reactions(Uid, Messages) ->
 
 -spec decode_positive_id(term()) -> integer().
 decode_positive_id(Value) ->
-    case catch ec_cnv:to_integer(Value) of
+    try ec_cnv:to_integer(Value) of
         Id when is_integer(Id), Id > 0 ->
             Id;
         _ ->
             0
+    catch
+        _:_ -> 0
     end.
 
 -spec push_unread_updates(integer()) -> ok.
@@ -1176,11 +1179,13 @@ is_within_window(Message, WindowSecs) ->
         false ->
             CreatedAt = maps:get(<<"created_at">>, Message, undefined),
             CreatedAtMs =
-                case catch elib_dt:rfc3339_to(CreatedAt, millisecond) of
+                try elib_dt:rfc3339_to(CreatedAt, millisecond) of
                     Value when is_integer(Value) ->
                         Value;
                     _ ->
                         0
+                catch
+                    _:_ -> 0
                 end,
             NowMs = elib_dt:millisecond(),
             is_integer(CreatedAtMs) andalso
@@ -1191,9 +1196,11 @@ is_within_window(Message, WindowSecs) ->
 
 -spec safe_subscriber_uids(integer()) -> list(integer()).
 safe_subscriber_uids(ChannelId) ->
-    case catch channel_ds:subscriber_uids(ChannelId) of
+    try channel_ds:subscriber_uids(ChannelId) of
         Uids when is_list(Uids) ->
             Uids;
         _ ->
             []
+    catch
+        _:_ -> []
     end.

@@ -305,14 +305,17 @@ save_membership_tx(Conn, AppId, OrgId, ExternalId, Managed, UserId, Spec) ->
             Conn,
             <<
                 "INSERT INTO enterprise_directory_membership_source"
-                " (application_id,organization_id,external_user_id,managed,source_version,payload_digest,status,projected_user_id,department_external_ids)"
-                " VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb) ON CONFLICT (application_id,organization_id,external_user_id)"
+                " (application_id,organization_id,external_user_id,managed,source_version,payload_digest,status,"
+                "projected_user_id,department_external_ids)"
+                " VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb) ON CONFLICT (application_id,organization_id,"
+                "external_user_id)"
                 " DO UPDATE SET managed=EXCLUDED.managed,source_version=EXCLUDED.source_version,"
                 " suspension_member_version=CASE WHEN EXCLUDED.status='removed' THEN NULL"
                 " ELSE enterprise_directory_membership_source.suspension_member_version END,"
                 " offboarding_member_updated_at=CASE WHEN EXCLUDED.status='removed'"
                 " THEN enterprise_directory_membership_source.offboarding_member_updated_at ELSE NULL END,"
-                " payload_digest=EXCLUDED.payload_digest,status=EXCLUDED.status,projected_user_id=EXCLUDED.projected_user_id,"
+                " payload_digest=EXCLUDED.payload_digest,status=EXCLUDED.status,"
+                "projected_user_id=EXCLUDED.projected_user_id,"
                 " department_external_ids=EXCLUDED.department_external_ids"
             >>,
             [

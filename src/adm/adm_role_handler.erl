@@ -1,7 +1,7 @@
 -module(adm_role_handler).
 -compile([nowarn_deprecated_catch]).
 
--behavior(cowboy_rest).
+-behaviour(cowboy_rest).
 
 -export([init/2]).
 
@@ -177,11 +177,13 @@ guard_permission_escalation(State, RoleId, Permissions) ->
 -spec own_role_ids(integer()) -> {ok, [integer()]} | {error, term()}.
 own_role_ids(AdmUserId) when is_integer(AdmUserId), AdmUserId > 0 ->
     Key = {adm_user_role_ids, AdmUserId},
-    case catch adm_user_logic:find(AdmUserId, <<"id,role_id">>, Key) of
+    try adm_user_logic:find(AdmUserId, <<"id,role_id">>, Key) of
         AdmUser when is_map(AdmUser) ->
             {ok, normalize_role_ids(maps:get(<<"role_id">>, AdmUser, 0))};
         _ ->
             {error, not_found}
+    catch
+        _:_ -> {error, not_found}
     end;
 own_role_ids(_) ->
     {error, invalid_admin}.
@@ -591,11 +593,13 @@ maybe_save_role_description(RoleId, Description) ->
 
 -spec load_config_map(binary()) -> map().
 load_config_map(Key) ->
-    case catch config_ds:get(Key, #{}) of
+    try config_ds:get(Key, #{}) of
         Map when is_map(Map) ->
             Map;
         _ ->
             #{}
+    catch
+        _:_ -> #{}
     end.
 
 -spec role_map_get(map(), integer()) -> term().
@@ -670,24 +674,28 @@ normalize_binary(_) ->
 normalize_positive_int(Value) when is_integer(Value), Value > 0 ->
     Value;
 normalize_positive_int(Value) when is_binary(Value); is_list(Value) ->
-    case catch ec_cnv:to_integer(Value) of
+    try ec_cnv:to_integer(Value) of
         Int when is_integer(Int), Int > 0 ->
             Int;
         _ ->
             0
+    catch
+        _:_ -> 0
     end;
 normalize_positive_int(_) ->
     0.
 
 -spec normalize_status(term()) -> integer().
 normalize_status(Value) ->
-    case catch ec_cnv:to_integer(Value) of
+    try ec_cnv:to_integer(Value) of
         0 ->
             0;
         1 ->
             1;
         _ ->
             1
+    catch
+        _:_ -> 1
     end.
 
 -spec to_error_binary(term()) -> binary().
@@ -724,12 +732,14 @@ has_permission(_, _) ->
 -spec resolve_permissions_by_adm_user_id(integer()) -> [binary()].
 resolve_permissions_by_adm_user_id(AdmUserId) ->
     Key = {adm_user_role_permission, AdmUserId},
-    case catch adm_user_logic:find(AdmUserId, <<"id,role_id">>, Key) of
+    try adm_user_logic:find(AdmUserId, <<"id,role_id">>, Key) of
         AdmUser when is_map(AdmUser) ->
             RoleIds = normalize_role_ids(maps:get(<<"role_id">>, AdmUser, 0)),
             lists:usort(lists:append([role_acl_permissions(RoleId) || RoleId <- RoleIds]));
         _ ->
             []
+    catch
+        _:_ -> []
     end.
 
 -spec role_acl_permissions(integer()) -> [binary()].

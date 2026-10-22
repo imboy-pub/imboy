@@ -291,12 +291,14 @@ valid_link_url(_) ->
     false.
 
 valid_http_url(Url) ->
-    case catch uri_string:parse(Url) of
+    try uri_string:parse(Url) of
         #{scheme := Scheme, host := Host} when is_binary(Host), byte_size(Host) > 0 ->
             LowerScheme = string:lowercase(Scheme),
             LowerScheme =:= <<"http">> orelse LowerScheme =:= <<"https">>;
         _ ->
             false
+    catch
+        _:_ -> false
     end.
 
 %% Activity payload 正文类键清洗（元数据契约双保险；解析失败归一空对象）
@@ -314,9 +316,11 @@ sanitize_activity_row(Row) ->
     end.
 
 sanitize_payload(Bin) when is_binary(Bin) ->
-    case catch jsone:decode(Bin, [{object_format, map}]) of
+    try jsone:decode(Bin, [{object_format, map}]) of
         M when is_map(M) -> strip_content_keys(M);
         _ -> #{}
+    catch
+        _:_ -> #{}
     end.
 
 strip_content_keys(Payload) ->

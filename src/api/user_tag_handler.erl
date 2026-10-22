@@ -7,7 +7,7 @@
 % user_tag 控制器模块
 % user_tag controller module
 %%%
--behavior(cowboy_rest).
+-behaviour(cowboy_rest).
 
 -export([init/2]).
 
@@ -81,12 +81,12 @@ page(Req0, State) ->
                 Where0
         end,
 
-    if
-        CurrentUid == 0 ->
+    case true of
+        _ when CurrentUid == 0 ->
             elib_response:error(Req0, <<"token无效"/utf8>>, ?ERR_TOKEN_INVALID);
-        Scene2 == 0 ->
+        _ when Scene2 == 0 ->
             elib_response:error(Req0, <<"不支持的 Scene"/utf8>>);
-        true ->
+        _ ->
             Payload = user_tag_logic:page(Scene2, Page, Size, WhereMap, OrderBy),
             elib_response:success(Req0, Payload)
     end.
@@ -174,12 +174,12 @@ add(Req0, State) ->
                 0
         end,
     TagLen = string:length(Tag),
-    if
-        Scene2 == 0 ->
+    case true of
+        _ when Scene2 == 0 ->
             elib_response:error(Req0, <<"不支持的 Scene"/utf8>>);
-        TagLen > 14 ->
+        _ when TagLen > 14 ->
             elib_response:error(Req0, <<"Tag 最多14个字"/utf8>>);
-        true ->
+        _ ->
             case user_tag_logic:add(CurrentUid, Scene2, Tag) of
                 {ok, TagId} ->
                     elib_response:success(Req0, #{<<"tagId">> => TagId}, "success.");
@@ -211,10 +211,10 @@ delete(Req0, State) ->
             _ ->
                 0
         end,
-    if
-        Scene2 == 0 ->
+    case true of
+        _ when Scene2 == 0 ->
             elib_response:error(Req0, <<"不支持的 Scene"/utf8>>);
-        true ->
+        _ ->
             case user_tag_logic:delete(CurrentUid, Scene2, Tag) of
                 ok -> elib_response:success(Req0, #{}, "success.");
                 _ -> elib_response:error(Req0, <<"删除标签失败"/utf8>>)

@@ -5,7 +5,7 @@
 % test 控制器模块
 % test controller module
 %%%
--behavior(cowboy_rest).
+-behaviour(cowboy_rest).
 
 -export([init/2]).
 

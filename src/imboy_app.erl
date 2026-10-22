@@ -94,10 +94,10 @@ start(_Type, _Args) ->
     Dispatch = cowboy_router:compile(Routes),
     StartMode = config_ds:env(start_mode, http),
     ListenerResult =
-        if
-            StartMode == quic ->
+        case true of
+            _ when StartMode == quic ->
                 start_quic(Dispatch);
-            true ->
+            _ ->
                 ProtoOpts = #{
                     env => #{dispatch => Dispatch},
                     middlewares => [

@@ -92,7 +92,8 @@ read_msg(Where, Column, Limit, Params) ->
 %% @param MsgType 消息类型（text, image, audio, video, file 等）
 %% @param E2EE 端到端加密信息（JSON map，可选）
 %% @return {ok, Result} | {error, Reason}
-%% @example msg_c2c_repo:write_msg(elib_dt:now(microsecond), <<"ciik13p2888j8hhi437g">>, <<"{\"text\":\"hello\"}">>, 1, 2, elib_dt:now(microsecond), <<"text">>, <<"{\"key\":\"...\"}">>).
+%% @example msg_c2c_repo:write_msg(elib_dt:now(microsecond), <<"ciik13p2888j8hhi437g">>, <<"{\"text\":\"hello\"}">>, 1,
+%% 2, elib_dt:now(microsecond), <<"text">>, <<"{\"key\":\"...\"}">>).
 -spec write_msg(
     binary(), binary(), binary(), integer(), integer(), binary(), binary(), map() | null
 ) -> ok | {error, term()}.

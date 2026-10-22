@@ -8,7 +8,7 @@
 % 属主自身的启停走 /api/v1/bot/disable|enable（bot_logic:set_status/3）。
 %%%
 
--behavior(cowboy_rest).
+-behaviour(cowboy_rest).
 
 -export([init/2]).
 

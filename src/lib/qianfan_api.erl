@@ -66,7 +66,8 @@ create_chat(Uid, Content, History) ->
 access_token() ->
     Key = qianfan_access_token,
     Fun = fun() ->
-        % curl 'https://aip.baidubce.com/oauth/2.0/token?grant_type=client_credentials&client_id=[API Key]&client_secret=[Secret Key]'
+        % curl 'https://aip.baidubce.com/oauth/2.0/token?grant_type=client_credentials&client_id=[API
+        % Key]&client_secret=[Secret Key]'
         Conf = config_ds:env(qianfan),
         %
         AppId = maps:get(api_key, Conf),
@@ -125,7 +126,8 @@ signature(Method, URL, Headers) ->
     % SigningKey = HMAC-SHA256-HEX(sk, AuthStringPrefix)
     SigningKey = elib_hasher:hmac_sha512(Sk, AuthStringPrefix),
     % Signature = HMAC-SHA256-HEX(SigningKey, CanonicalRequest)
-    % CanonicalRequest的计算公式为： CanonicalRequest = HTTP Method + "\n" + CanonicalURI + "\n" + CanonicalQueryString + "\n" + CanonicalHeaders
+    % CanonicalRequest的计算公式为： CanonicalRequest = HTTP Method + "\n" + CanonicalURI + "\n" + CanonicalQueryString + "\n"
+    % + CanonicalHeaders
     CanonicalRequest = elib_cnv:implode("\n", [
         Method,
         CanonicalURI,

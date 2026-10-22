@@ -4,7 +4,7 @@
 %% Thin HTTP adapter for the E2EE encrypted key backup boundary (4S 模式).
 %% 服务端只存客户端加密后的密文包，本模块零密码学。
 
--behavior(cowboy_rest).
+-behaviour(cowboy_rest).
 
 -export([init/2]).
 

@@ -20,7 +20,7 @@
 %%% 全部路由 JWT 保护（auth_middleware /api/v1/* 默认门），State 携带 current_uid。
 %%% =====================================================================
 
--behavior(cowboy_rest).
+-behaviour(cowboy_rest).
 
 -export([init/2]).
 -export([handle_action/3]).
@@ -181,14 +181,14 @@ resolve_ids(Req0, PostVals) ->
     ProjectId = elib_cnv:safe_to_integer(RawProject),
     WsOk = is_integer(WsId) andalso WsId > 0,
     PidOk = is_integer(ProjectId) andalso ProjectId > 0,
-    if
-        WsOk andalso PidOk ->
+    case true of
+        _ when WsOk andalso PidOk ->
             {ok, WsId, ProjectId};
-        WsOk ->
+        _ when WsOk ->
             {ok, WsId, 0};
-        PidOk ->
+        _ when PidOk ->
             %% 无 workspace binding：show/update/status 仅带 project_id
             {ok, 0, ProjectId};
-        true ->
+        _ ->
             {error, elib_response:error(Req0, <<"workspace/project id 必须"/utf8>>, 400)}
     end.

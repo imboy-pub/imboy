@@ -16,7 +16,7 @@
 %%% SHARED_PATH_PROPOSAL.json 交 A0 集成（Router 为共享路径）。
 -module(organization_directory_handler).
 
--behavior(cowboy_rest).
+-behaviour(cowboy_rest).
 
 -export([init/2, handle_action/3]).
 

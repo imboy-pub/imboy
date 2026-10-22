@@ -13,7 +13,7 @@
 %   其他（db 类）         → HTTP 500 + 1（通用错误）
 %%%
 
--behavior(cowboy_rest).
+-behaviour(cowboy_rest).
 
 -export([init/2]).
 -export([handle_action/3]).

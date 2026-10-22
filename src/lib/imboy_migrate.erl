@@ -142,7 +142,8 @@ migrate_msg_payload_plaintext() ->
 migrate_msg_payload_plaintext(Tb, Key) ->
     Sql =
         <<"UPDATE ", Tb/binary,
-            " SET payload = convert_from(decode(encode(decrypt(decode(replace(payload,'aes_cbc_',''),'base64'), $1::text, 'aes-cbc/pad:pkcs') , 'escape'), 'base64'), 'UTF8')",
+            " SET payload = convert_from(decode(encode(decrypt(decode(replace(payload,'aes_cbc_',''),'base64'),"
+            " $1::text, 'aes-cbc/pad:pkcs') , 'escape'), 'base64'), 'UTF8')",
             " WHERE payload IS NOT NULL AND payload <> '' AND payload ~ '^(aes_cbc_)?[A-Za-z0-9+/=]+$'">>,
     elib_pg:execute(Sql, [Key]).
 

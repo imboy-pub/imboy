@@ -257,7 +257,11 @@ find_lifecycle(Name) when is_atom(Name) ->
                 true ->
                     Pid;
                 false ->
-                    catch persistent_term:erase({imboy_plugin_lifecycle, Name}),
+                    try
+                        persistent_term:erase({imboy_plugin_lifecycle, Name})
+                    catch
+                        _:_ -> ok
+                    end,
                     undefined
             end
     end.
@@ -296,7 +300,11 @@ call_and_maybe_stop(Pid, Event, Name) ->
         ok ->
             {ok, #{name => Name, state => safe_get_state(Pid)}};
         {error, Reason} ->
-            catch gen_statem:stop(Pid),
+            try
+                gen_statem:stop(Pid)
+            catch
+                _:_ -> ok
+            end,
             {error, Reason}
     catch
         exit:{noproc, _} -> {error, not_found};

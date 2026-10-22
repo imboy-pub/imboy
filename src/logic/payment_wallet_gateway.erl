@@ -154,7 +154,9 @@ normalize_frac(F) ->
 
 -spec safe_int(binary()) -> integer().
 safe_int(B) ->
-    case catch binary_to_integer(B) of
+    try binary_to_integer(B) of
         I when is_integer(I) -> I;
         _ -> 0
+    catch
+        _:_ -> 0
     end.

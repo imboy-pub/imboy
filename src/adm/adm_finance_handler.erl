@@ -22,7 +22,7 @@
 %   这两个权限新增于 adm_index_handler:role_acl/1（super_admin/ops_admin）。
 %%%
 
--behavior(cowboy_rest).
+-behaviour(cowboy_rest).
 
 -export([init/2]).
 

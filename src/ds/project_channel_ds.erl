@@ -194,9 +194,11 @@ activity(ProjectId, Page0, Size0) ->
 resources(ProjectId) ->
     case project_repo:find_by_id(ProjectId, <<"links">>) of
         #{<<"links">> := Links} when is_binary(Links) ->
-            case catch jsone:decode(Links, [{object_format, map}]) of
+            try jsone:decode(Links, [{object_format, map}]) of
                 L when is_list(L) -> {ok, L};
                 _ -> {ok, []}
+            catch
+                _:_ -> {ok, []}
             end;
         #{<<"links">> := Links} when is_list(Links) ->
             {ok, Links};
@@ -246,20 +248,20 @@ ensure_channel_linkable_row(Channel, WsId) ->
             Scope = maps:get(<<"scope">>, Channel, <<"personal">>),
             ChWsId = maps:get(<<"workspace_id">>, Channel, null),
             Status = maps:get(<<"status">>, Channel, 0),
-            if
-                Scope =/= <<"workspace">>; ChWsId =:= null ->
+            case true of
+                _ when Scope =/= <<"workspace">>; ChWsId =:= null ->
                     throw(
                         {abort_tx, {400, <<"个人频道不可关联到项目"/utf8>>}}
                     );
-                ChWsId =/= WsId ->
+                _ when ChWsId =/= WsId ->
                     throw(
                         {abort_tx, {400, <<"跨工作区频道不可关联"/utf8>>}}
                     );
-                Status =/= 1 ->
+                _ when Status =/= 1 ->
                     throw(
                         {abort_tx, {400, <<"频道当前状态不可关联"/utf8>>}}
                     );
-                true ->
+                _ ->
                     Channel
             end
     end.

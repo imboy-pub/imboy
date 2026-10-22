@@ -1,5 +1,5 @@
 -module(mcp_handler).
--behavior(cowboy_loop).
+-behaviour(cowboy_loop).
 
 %%%
 % MCP Server cowboy handler / MCP Streamable HTTP 桥接（Phase 3 T3.2 + T3.6）

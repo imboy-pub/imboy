@@ -402,9 +402,11 @@ update_branding(WsId, NewFields0, CurrentBrandings) ->
 %% @doc branding 公共视图：剥内部键 + 仅白名单键
 -spec branding_public_view(map() | binary()) -> map().
 branding_public_view(Branding) when is_binary(Branding) ->
-    case catch jsone:decode(Branding, [{object_format, map}]) of
+    try jsone:decode(Branding, [{object_format, map}]) of
         Map when is_map(Map) -> branding_public_view(Map);
         _ -> #{}
+    catch
+        _:_ -> #{}
     end;
 branding_public_view(Branding) when is_map(Branding) ->
     maps:with(?BRANDING_KEYS, Branding).

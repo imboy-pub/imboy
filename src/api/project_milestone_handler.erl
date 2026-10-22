@@ -26,7 +26,7 @@
 %%% 全部路由 JWT 保护（auth_middleware /api/v1/* 默认门），State 携带 current_uid。
 %%% =====================================================================
 
--behavior(cowboy_rest).
+-behaviour(cowboy_rest).
 
 -export([init/2]).
 -export([handle_action/3]).

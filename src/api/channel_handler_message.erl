@@ -1,5 +1,5 @@
 -module(channel_handler_message).
--behavior(cowboy_rest).
+-behaviour(cowboy_rest).
 -export([init/2, handle_action/3]).
 -export([
     show_message/2,

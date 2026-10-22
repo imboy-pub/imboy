@@ -65,20 +65,20 @@ create_order_for_method(Uid, ChannelIdBin, PaymentMethod) ->
                     JoinPolicy = maps:get(<<"join_policy">>, Channel, 0),
                     Visibility = maps:get(<<"visibility">>, Channel, 0),
                     Status = maps:get(<<"status">>, Channel, 0),
-                    if
-                        Status =/= 1 ->
+                    case true of
+                        _ when Status =/= 1 ->
                             {error, <<"频道已禁用或删除"/utf8>>};
-                        AccessType =/= 1 ->
+                        _ when AccessType =/= 1 ->
                             {error, <<"只有付费频道支持购买"/utf8>>};
-                        JoinPolicy =/= 3 ->
+                        _ when JoinPolicy =/= 3 ->
                             {error, <<"该频道暂不支持购买"/utf8>>};
-                        Visibility =:= 1 ->
+                        _ when Visibility =:= 1 ->
                             %% C4: private paid — 必须有有效邀请或购买链接上下文
                             case channel_invitation_ds:is_invited(ChannelId, Uid) of
                                 true -> do_create_order(ChannelId, Uid, PaymentMethod);
                                 false -> {error, <<"私有付费频道需要邀请才能购买"/utf8>>}
                             end;
-                        true ->
+                        _ ->
                             do_create_order(ChannelId, Uid, PaymentMethod)
                     end;
                 _Unexpected ->
@@ -167,10 +167,10 @@ pay_order(Uid, OrderNo) ->
                 false ->
                     {error, <<"订单不存在"/utf8>>};
                 true ->
-                    if
-                        OrderUserId =/= Uid ->
+                    case true of
+                        _ when OrderUserId =/= Uid ->
                             {error, <<"无权操作此订单"/utf8>>};
-                        true ->
+                        _ ->
                             Method = maps:get(<<"payment_method">>, Order, <<"wallet">>),
                             case is_payment_method_allowed(Method) of
                                 false ->
@@ -463,10 +463,10 @@ get_order(Uid, OrderNo) ->
                 false ->
                     {error, <<"订单不存在"/utf8>>};
                 true ->
-                    if
-                        OrderUserId =/= Uid ->
+                    case true of
+                        _ when OrderUserId =/= Uid ->
                             {error, <<"无权查看此订单"/utf8>>};
-                        true ->
+                        _ ->
                             {ok, order_transfer(Order)}
                     end
             end;
@@ -708,9 +708,11 @@ norm_frac(F) ->
 
 -spec safe_int(binary()) -> integer().
 safe_int(B) ->
-    case catch binary_to_integer(B) of
+    try binary_to_integer(B) of
         I when is_integer(I) -> I;
         _ -> 0
+    catch
+        _:_ -> 0
     end.
 
 -spec is_positive_amount(term()) -> boolean().
@@ -747,11 +749,13 @@ is_payment_method_allowed(Method) ->
 
 -spec decode_positive_id(term()) -> integer().
 decode_positive_id(Value) ->
-    case catch ec_cnv:to_integer(Value) of
+    try ec_cnv:to_integer(Value) of
         Id when is_integer(Id), Id > 0 ->
             Id;
         _ ->
             0
+    catch
+        _:_ -> 0
     end.
 
 %% @doc 出参整形：把「已超时但仍是待支付」的订单显示为已过期(4)。

@@ -9,7 +9,6 @@
 -export([replace_single_quote/1]).
 -export([trunc/2, trunc/3]).
 
-
 %%====================================================================
 %% @doc trunc/2
 %% 使用默认后缀 "..." 截断
@@ -43,39 +42,37 @@ trunc(Input, MaxLen) when is_binary(Input) ->
 trunc(Input, MaxLen, Suffix) when is_binary(Input), is_binary(Suffix) ->
     InputLen = byte_size(Input),
     SuffixLen = byte_size(Suffix),
-    if
-        InputLen =< MaxLen ->
+    case true of
+        _ when InputLen =< MaxLen ->
             Input;
-        SuffixLen == 0 ->
+        _ when SuffixLen == 0 ->
             <<Head:MaxLen/binary, _/binary>> = Input,
             Head;
-        SuffixLen >= MaxLen ->
+        _ when SuffixLen >= MaxLen ->
             %% 关键改动：保留 Input 前 MaxLen
             <<Head:MaxLen/binary, _/binary>> = Input,
             Head;
-        true ->
+        _ ->
             Keep = MaxLen - SuffixLen,
             <<Head:Keep/binary, _/binary>> = Input,
             <<Head/binary, Suffix/binary>>
     end;
-
 %% ---------- list 版本 ----------
 trunc(Input, MaxLen, Suffix) when is_list(Input), is_list(Suffix) ->
     InputLen = length(Input),
     SuffixLen = length(Suffix),
-    if
-        InputLen =< MaxLen ->
+    case true of
+        _ when InputLen =< MaxLen ->
             Input;
-        SuffixLen == 0 ->
+        _ when SuffixLen == 0 ->
             lists:sublist(Input, MaxLen);
-        SuffixLen >= MaxLen ->
+        _ when SuffixLen >= MaxLen ->
             %% 关键改动：不再返回 suffix，而是保留 input
             lists:sublist(Input, MaxLen);
-        true ->
+        _ ->
             Trunc = lists:sublist(Input, MaxLen - SuffixLen),
             Trunc ++ Suffix
     end.
-
 
 %% @doc 替换单引号为转义的单引号
 %% @param Bin 输入字符串（binary 或 list）
@@ -97,7 +94,6 @@ replace_single_quote(<<39, Rest/binary>>, Acc) ->
 replace_single_quote(<<Byte, Rest/binary>>, Acc) ->
     replace_single_quote(Rest, <<Acc/binary, Byte>>).
 
-
 %% @doc 替换字符串中的所有匹配项（全局替换）
 %% @param Subject 输入字符串
 %% @param Pattern 要匹配的模式（正则表达式）
@@ -111,7 +107,6 @@ replace(Subject, Pattern, Replacement) ->
     % 不区分大小写
     % Pattern2 = "(?i)" ++ Pattern,
     re:replace(Subject, Pattern, Replacement, [{return, binary}, global]).
-
 
 %% @doc 检查字符串是否以指定前缀开头
 %% @param Sub 前缀字符串
@@ -128,7 +123,6 @@ startswith(Sub, Bin) when is_binary(Sub), is_binary(Bin) ->
     end;
 startswith(Sub, Str) when is_list(Sub), is_list(Str) ->
     startswith(list_to_binary(Sub), list_to_binary(Str)).
-
 
 %% @doc 检查字符串是否以指定后缀结尾
 %% @param Suffix 后缀字符串

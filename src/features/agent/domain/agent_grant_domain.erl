@@ -248,10 +248,10 @@ is_narrow_value(_) ->
 effective_status(#{status := revoked}, _Now) ->
     revoked;
 effective_status(#{status := active, valid_from := ValidFrom, expires_at := ExpiresAt}, Now) ->
-    if
-        Now < ValidFrom -> pending;
-        Now >= ExpiresAt -> expired;
-        true -> active
+    case true of
+        _ when Now < ValidFrom -> pending;
+        _ when Now >= ExpiresAt -> expired;
+        _ -> active
     end.
 
 %% ===================================================================

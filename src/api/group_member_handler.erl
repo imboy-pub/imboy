@@ -2,7 +2,7 @@
 -moduledoc "群组成员 API 处理器 / Group member API —— 按 action 分发的成员管理端点。".
 -dialyzer({nowarn_function, [payload_list_key/1]}).
 
--behavior(cowboy_rest).
+-behaviour(cowboy_rest).
 
 -export([init/2]).
 
@@ -67,8 +67,8 @@ same_group(Req0, State) ->
     B1 = elib_cnv:safe_to_integer(B),
 
     {Count, Li4} =
-        if
-            CurrentUid == A1; CurrentUid == B1 ->
+        case true of
+            _ when CurrentUid == A1; CurrentUid == B1 ->
                 Li = group_member_logic:list_same_group(A1, B1),
                 Column =
                     <<
@@ -85,7 +85,7 @@ same_group(Req0, State) ->
                     end,
                 Li3 = [group_logic:group_transfer(M) || M <- Li2],
                 {length(Li), Li3};
-            true ->
+            _ ->
                 {0, []}
         end,
     elib_response:success(Req0, #{<<"count">> => Count, <<"list">> => Li4}, "success.").
@@ -157,10 +157,10 @@ join_with_capacity(Req0, Gid, Gid2, MemberUids, JoinMode2) ->
             Count = maps:get(<<"member_count">>, G, 0),
             Len = length(MemberUids),
             Diff = Max - Count,
-            if
-                Diff == 0 ->
+            case true of
+                _ when Diff == 0 ->
                     elib_response:error(Req0, <<"群成员已满。"/utf8>>);
-                Len > Diff ->
+                _ when Len > Diff ->
                     elib_response:error(
                         Req0,
                         elib_cnv:implode(
@@ -172,7 +172,7 @@ join_with_capacity(Req0, Gid, Gid2, MemberUids, JoinMode2) ->
                             ]
                         )
                     );
-                true ->
+                _ ->
                     MemberUids2 = [elib_cnv:safe_to_integer(Id) || Id <- MemberUids],
                     MemberListRes = group_member_logic:list_member(Gid2, MemberUids2),
                     % ?DEBUG_LOG([MemberListRes]),

@@ -13,7 +13,7 @@
 % 认证：进 ApiV1Routes 认证块，须携带有效 JWT。
 %%%
 
--behavior(cowboy_rest).
+-behaviour(cowboy_rest).
 
 -export([init/2]).
 

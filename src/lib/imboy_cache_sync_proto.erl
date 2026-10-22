@@ -424,9 +424,8 @@ commit_verified_floors(#{peers := Peers} = Round) ->
     Rows = [
         begin
             RoundId = maps:get(round, Round),
-            {cache_snapshot_cut, Origin, RoundId, Boot, Epoch, Seq, Hash, Registry} = imboy_cache_policy:snapshot_cut_base(
-                maps:get(source_cut, P)
-            ),
+            {cache_snapshot_cut, Origin, RoundId, Boot, Epoch, Seq, Hash, Registry} =
+                imboy_cache_policy:snapshot_cut_base(maps:get(source_cut, P)),
             true = valid_snapshot_cut(maps:get(source_cut, P)),
             Epoch = maps:get(source_epoch, P),
             Hash = config_hash(),

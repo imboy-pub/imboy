@@ -13,20 +13,20 @@
 %% @param Ddl DDL 语句（base64 编码）
 %% @param DownDdl 回滚 DDL 语句（base64 编码）
 %% @returns {ok, list(), list()} | {error, any()}
--export ([save/6]).
--export ([page/5]).
+-export([save/6]).
+-export([page/5]).
 
 %% @doc 根据 ID 删除 DDL 记录（仅删除 status=0 的记录）
 %% @param Id DDL 记录 ID
 %% @returns {ok, integer()} | {error, term()}
--export ([delete/1]).
+-export([delete/1]).
 
 %% @doc 获取 DDL 脚本列表
 %% @param WhereMap 查询条件映射
 %% @param OrderBy 排序条件
 %% @param Column 要查询的列
 %% @returns DDL 语句列表
--export ([get_ddl/3]).
+-export([get_ddl/3]).
 
 -include_lib("eunit/include/eunit.hrl").
 -include("log.hrl").
@@ -43,27 +43,30 @@
 save(AdmUserId, NewVsn, OldVsn, Status, Ddl, DownDdl) ->
     % 使用安全的参数化查询，避免SQL注入
     Count = elib_pg:pluck_value(
-        <<"public.app_ddl">>
-        , <<"count(*)">>
-        , #{old_vsn => OldVsn, new_vsn => NewVsn}
-        , #{}, 0),
+        <<"public.app_ddl">>,
+        <<"count(*)">>,
+        #{old_vsn => OldVsn, new_vsn => NewVsn},
+        #{},
+        0
+    ),
     Data = #{
-        ddl => Ddl
-        , down_ddl => DownDdl
-        , admin_user_id => AdmUserId
-        , old_vsn => ec_cnv:to_integer(OldVsn)
-        , new_vsn => ec_cnv:to_integer(NewVsn)
-        , status => ec_cnv:to_integer(Status)
+        ddl => Ddl,
+        down_ddl => DownDdl,
+        admin_user_id => AdmUserId,
+        old_vsn => ec_cnv:to_integer(OldVsn),
+        new_vsn => ec_cnv:to_integer(NewVsn),
+        status => ec_cnv:to_integer(Status)
     },
-        if Count > 0 ->
+    case true of
+        _ when Count > 0 ->
             % 使用安全的参数化查询，避免SQL注入
             elib_pg:update(
-                app_ddl_repo:tablename()
-                , Data#{updated_at => elib_dt:now()}
-                , <<"old_vsn = $1 AND new_vsn = $2">>
-                , [OldVsn, NewVsn]
+                app_ddl_repo:tablename(),
+                Data#{updated_at => elib_dt:now()},
+                <<"old_vsn = $1 AND new_vsn = $2">>,
+                [OldVsn, NewVsn]
             );
-        true ->
+        _ ->
             app_ddl_repo:add(Data#{created_at => elib_dt:now()})
     end.
 
@@ -92,7 +95,7 @@ get_ddl(WhereMap, OrderBy, Column) ->
     % -- 类型 1 升、降级  3 全量安装
     % Where = <<"status=1 AND type = 1 AND new_vsn<=", NewVsn2/binary>>,
     {ok, #{list := Page}} = elib_pg:page_with_total(Tb, Column, WhereMap, OrderBy, 1, 500),
-    Items = [ddl_to_list(get_ddl_field(Item))  || Item <- Page],
+    Items = [ddl_to_list(get_ddl_field(Item)) || Item <- Page],
     lists:flatten(Items).
 
 %% ===================================================================
@@ -115,13 +118,12 @@ ddl_to_list(undefined) ->
 ddl_to_list(Ddl) ->
     D2 = base64:decode(Ddl),
     D3 = uri_string:unquote(D2),
-    D4 = binary:split(D3,<<"\n">>, [global]),
+    D4 = binary:split(D3, <<"\n">>, [global]),
     % 去除注释
     D5 = [R || R <- D4, elib_str:startswith("--", binary_to_list(R)) == false],
     D6 = iolist_to_binary(D5),
-    binary:split(D6,<<";">>, [global]).
+    binary:split(D6, <<";">>, [global]).
 
 %% ===================================================================
 %% EUnit tests.
 %% ===================================================================
-

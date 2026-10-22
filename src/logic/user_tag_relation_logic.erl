@@ -117,10 +117,10 @@ set(Uid, Scene, ObjectIds, TagId, TagName) ->
             {ok, [#{<<"count">> := Count}]} -> Count;
             _ -> 0
         end,
-    if
-        Check > 0 ->
+    case true of
+        _ when Check > 0 ->
             <<TagName/binary, " 已存在"/utf8>>;
-        true ->
+        _ ->
             ObjectIds2 = [
                 integer_to_binary(ec_cnv:to_integer(I))
              || I <- ObjectIds, ec_cnv:to_integer(I) > 0
@@ -156,7 +156,8 @@ set(Uid, Scene, ObjectIds, TagId, TagName) ->
                     )
                  || I <- DelObjectId
                 ],
-                % elib_log:info(io_lib:format("user_tag_relation_ds:set/5 ObjectIds2:~p, RefCount, ~p;~n", [ObjectIds2, [Conn , TagId,TagName, RefCount, Uid, CreatedAt]])),
+                % elib_log:info(io_lib:format("user_tag_relation_ds:set/5 ObjectIds2:~p, RefCount, ~p;~n", [ObjectIds2,
+                % [Conn , TagId,TagName, RefCount, Uid, CreatedAt]])),
                 % 保存 public.user_tag
                 _ = user_tag_relation_ds:update_tag(Conn, TagId, TagName, Uid, CreatedAt),
 

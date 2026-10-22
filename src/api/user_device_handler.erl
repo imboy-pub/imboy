@@ -14,7 +14,7 @@
 % - POST /v1/user_device/kick - 踢出指定设备
 % - POST /v1/user_device/kick-others - 踢出所有其他设备
 %%%
--behavior(cowboy_handler).
+-behaviour(cowboy_handler).
 
 -export([init/2]).
 -export([handle_action/3]).

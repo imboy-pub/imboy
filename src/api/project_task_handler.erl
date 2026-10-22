@@ -18,7 +18,7 @@
 %%% 全部路由 JWT 保护（auth_middleware /api/v1/* 默认门），State 携带 current_uid。
 %%% =====================================================================
 
--behavior(cowboy_rest).
+-behaviour(cowboy_rest).
 
 -export([init/2]).
 -export([handle_action/3]).
@@ -187,14 +187,14 @@ resolve_ids(Req0, PostVals) ->
     TaskId = elib_cnv:safe_to_integer(RawTask),
     PidOk = is_integer(ProjectId) andalso ProjectId > 0,
     TidOk = is_integer(TaskId) andalso TaskId > 0,
-    if
-        PidOk andalso TidOk ->
+    case true of
+        _ when PidOk andalso TidOk ->
             {ok, ProjectId, TaskId};
-        PidOk ->
+        _ when PidOk ->
             {ok, ProjectId, 0};
-        TidOk ->
+        _ when TidOk ->
             {ok, 0, TaskId};
-        true ->
+        _ ->
             {error, elib_response:error(Req0, <<"project/task id 必须"/utf8>>, 400)}
     end.
 

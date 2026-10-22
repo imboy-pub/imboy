@@ -165,7 +165,8 @@ find_by_group_and_uid(Gid, Uid, IsRead, Limit, Offset) ->
     {Column, From} = mention_select(Tb),
     Sql =
         <<"SELECT ", Column/binary, From/binary,
-            " WHERE m.group_id = $1 AND m.mentioned_uid = $2 AND m.is_read = $3 ORDER BY m.created_at DESC LIMIT $4 OFFSET $5">>,
+            " WHERE m.group_id = $1 AND m.mentioned_uid = $2 AND m.is_read = $3 ORDER BY m.created_at DESC LIMIT $4 "
+            "OFFSET $5">>,
     elib_pg:query(Sql, [Gid, Uid, IsRead, Limit, Offset]).
 
 %% @doc 标记@消息为已读

@@ -111,14 +111,14 @@ authenticate_secret(Secret) when is_binary(Secret), byte_size(Secret) >= 32 ->
             Status = maps:get(<<"status">>, Client, <<>>),
             ExpiresAt = maps:get(<<"expires_at">>, Client, null),
             Expired = is_expired(ExpiresAt, Now),
-            if
-                Disabled =:= true ->
+            case true of
+                _ when Disabled =:= true ->
                     {error, credential_disabled};
-                Status =:= <<"revoked">> ->
+                _ when Status =:= <<"revoked">> ->
                     {error, credential_revoked};
-                Expired ->
+                _ when Expired ->
                     {error, credential_expired};
-                true ->
+                _ ->
                     ClientId = maps:get(<<"client_id">>, Client),
                     _ = mcp_client_repo:touch_last_used(ClientId),
                     {ok, #{

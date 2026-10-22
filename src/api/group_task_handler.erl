@@ -16,7 +16,7 @@
     ]}
 ).
 
--behavior(cowboy_rest).
+-behaviour(cowboy_rest).
 
 -export([init/2]).
 -export([handle_action/3]).

@@ -1,7 +1,7 @@
 -module(channel_handler_admin).
 -moduledoc "频道管理端点 / Channel admin API —— 管理员角色、移除成员、邀请生命周期等动作分发。".
 -compile([nowarn_deprecated_catch]).
--behavior(cowboy_rest).
+-behaviour(cowboy_rest).
 -export([init/2, handle_action/3]).
 -export([
     admins/2,
@@ -365,11 +365,13 @@ safe_to_integer(_) ->
 decode_positive_id(Value) when is_integer(Value), Value > 0 ->
     Value;
 decode_positive_id(Value) ->
-    case catch elib_cnv:safe_to_integer(Value) of
+    try elib_cnv:safe_to_integer(Value) of
         Id when is_integer(Id), Id > 0 ->
             Id;
         _ ->
             0
+    catch
+        _:_ -> 0
     end.
 
 -spec normalize_non_empty_binary(binary()) -> binary().

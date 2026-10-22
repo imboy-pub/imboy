@@ -1,7 +1,7 @@
 -module(group_category_handler).
 
 -moduledoc "群组分类 API —— 为当前用户创建与管理群组分类。".
--behavior(cowboy_rest).
+-behaviour(cowboy_rest).
 
 -export([init/2]).
 

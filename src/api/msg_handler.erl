@@ -1,6 +1,6 @@
 -module(msg_handler).
 
--behavior(cowboy_rest).
+-behaviour(cowboy_rest).
 
 -dialyzer([
     {nowarn_function, offline/2},

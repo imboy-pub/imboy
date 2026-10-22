@@ -340,12 +340,12 @@ presign_args(Params) ->
 actor_scope(Params) ->
     U = maps:get(actor_user_id, Params, undefined),
     C = maps:get(actor_contact_id, Params, undefined),
-    if
-        is_integer(U), not is_integer(C) ->
+    case true of
+        _ when is_integer(U), not is_integer(C) ->
             {ok, #{kind => member, id => U}};
-        is_integer(C), not is_integer(U) ->
+        _ when is_integer(C), not is_integer(U) ->
             {ok, #{kind => contact, id => C}};
-        true ->
+        _ ->
             {error, {invalid_argument, {presign_scope, [U, C]}}}
     end.
 
@@ -755,7 +755,8 @@ put_verify(OrgId, Ws, Payload, Claims, Params) ->
 upload_payload(B) when is_binary(B) -> true;
 upload_payload({upload_spool, Fh, Size, Hash}) ->
     is_pid(Fh) andalso is_integer(Size) andalso Size >= 0 andalso is_binary(Hash);
-upload_payload(_) -> false.
+upload_payload(_) ->
+    false.
 
 payload_size(B) when is_binary(B) -> byte_size(B);
 payload_size(Source) -> attachment_upload_spool:size(Source).
@@ -767,23 +768,31 @@ payload_sniff(Mime, Source) ->
     case attachment_upload_spool:read(Source, 0) of
         {ok, Head} ->
             case eb_asset_content:sniff(Mime, Head) of
-                ok when Mime =:= <<"text/plain">>; Mime =:= <<"text/markdown">>;
-                        Mime =:= <<"text/csv">>; Mime =:= <<"image/svg+xml">> ->
+                ok when
+                    Mime =:= <<"text/plain">>;
+                    Mime =:= <<"text/markdown">>;
+                    Mime =:= <<"text/csv">>;
+                    Mime =:= <<"image/svg+xml">>
+                ->
                     sniff_remaining_text(Source, byte_size(Head), Mime);
-                Result -> Result
+                Result ->
+                    Result
             end;
-        _ -> {error, {mime_content_mismatch, Mime}}
+        _ ->
+            {error, {mime_content_mismatch, Mime}}
     end.
 
 sniff_remaining_text(Source, Offset, Mime) ->
     case attachment_upload_spool:read(Source, Offset) of
-        eof -> ok;
+        eof ->
+            ok;
         {ok, Bytes} ->
             case eb_asset_content:sniff(<<"text/plain">>, Bytes) of
                 ok -> sniff_remaining_text(Source, Offset + byte_size(Bytes), Mime);
                 _ -> {error, {mime_content_mismatch, Mime}}
             end;
-        _ -> {error, {mime_content_mismatch, Mime}}
+        _ ->
+            {error, {mime_content_mismatch, Mime}}
     end.
 
 asset_put_private(OrgId, Ws, Payload, Claims, Params) ->

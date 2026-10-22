@@ -148,7 +148,10 @@ find_by_uid(Uid) ->
     case
         find_by_id(
             ec_cnv:to_integer(Uid),
-            <<"id,account,nickname,avatar,background,sign,gender,region,birthday,profession,school,interests,account_type,status,created_at">>
+            <<
+                "id,account,nickname,avatar,background,sign,gender,region,birthday,profession,school,interests,"
+                "account_type,status,created_at"
+            >>
         )
     of
         #{} = Row when map_size(Row) > 0 ->
@@ -161,7 +164,8 @@ find_by_uid(Uid) ->
 %% @param Email 用户邮箱地址
 %% @param Column 要查询的列名，支持多个列用逗号分隔，或使用 "*" 查询所有列
 %% @return map() 用户信息，未找到时返回空map
-%% @example user_repo:find_by_email(<<"100000@imboy.pub">>, <<"id,account,mobile,password,nickname,avatar,gender,region,sign">>).
+%% @example user_repo:find_by_email(<<"100000@imboy.pub">>,
+%% <<"id,account,mobile,password,nickname,avatar,gender,region,sign">>).
 -spec find_by_email(binary(), binary()) -> map().
 find_by_email(Email, Column) ->
     Tb = tablename(),
@@ -251,7 +255,8 @@ may_exist(_) ->
 %% @doc 保存新用户记录
 %% @param Data 包含用户信息的map，必须包含mobile、password、account等必要字段
 %% @return {ok, Count} 保存成功 | {error, Reason} 保存失败
-%% @example user_repo:save(#{mobile => <<"13692177080">>, password => elib_password:generate(<<"admin888">>), account => "13692177080A", status => 1, role_id => {1,3}, nickname => <<"大大大"/utf8>>, created_at => elib_dt:now()}).
+%% @example user_repo:save(#{mobile => <<"13692177080">>, password => elib_password:generate(<<"admin888">>), account
+%% => "13692177080A", status => 1, role_id => {1,3}, nickname => <<"大大大"/utf8>>, created_at => elib_dt:now()}).
 -spec save(map()) -> {ok, integer()} | {error, term()}.
 save(Data) ->
     Tb = tablename(),

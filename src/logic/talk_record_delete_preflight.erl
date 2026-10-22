@@ -1,5 +1,6 @@
 -module(talk_record_delete_preflight).
--moduledoc "Mandatory read-only deletion facts; retained identity references fail closed until an approved anonymization flow exists.".
+-moduledoc "Mandatory read-only deletion facts; retained identity references fail closed until"
+" an approved anonymization flow exists.".
 -export([facts/1, facts_tx/2]).
 -include("log.hrl").
 

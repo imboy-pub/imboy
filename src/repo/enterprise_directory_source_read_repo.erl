@@ -1,5 +1,6 @@
 -module(enterprise_directory_source_read_repo).
--moduledoc "Parameterized source reconciliation queries. Every statement checks live source, application and credential authority; no write permission is required.".
+-moduledoc "Parameterized source reconciliation queries. Every statement checks live source, application and credential"
+" authority; no write permission is required.".
 -export([organization_tx/3, page_tx/6]).
 
 %% This fragment has only static SQL. $1/$2 always come from authenticated context.

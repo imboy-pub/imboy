@@ -251,7 +251,8 @@ category_stats(Gid) ->
 %% 新客户端使用已绑定的 object_key；旧 file_url 字段保留历史兼容。
 select_columns() ->
     <<
-        "id,group_id,file_id,file_name,file_size,file_type,file_category,file_url,file_hash,uploader_id,download_count,status,created_at,updated_at,"
+        "id,group_id,file_id,file_name,file_size,file_type,file_category,file_url,file_hash,uploader_id,"
+        "download_count,status,created_at,updated_at,"
         "(SELECT a.path FROM public.attachment a WHERE a.group_file_id=group_file.id "
         "AND a.scope='group' AND a.scope_ref=group_file.group_id::text "
         "AND a.status>=0 ORDER BY a.id LIMIT 1) AS object_key"

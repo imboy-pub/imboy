@@ -141,12 +141,12 @@ validate_claims(Payload) ->
             community_state(<<"license 域名绑定不匹配，降级社区版"/utf8>>);
         true ->
             GraceMs = ?GRACE_DAYS * 86400000,
-            if
-                Now =< ExpiresAt ->
+            case true of
+                _ when Now =< ExpiresAt ->
                     valid_state(Edition, Payload, valid);
-                Now =< ExpiresAt + GraceMs ->
+                _ when Now =< ExpiresAt + GraceMs ->
                     valid_state(Edition, Payload, grace);
-                true ->
+                _ ->
                     community_state(<<"license 已过期，降级社区版"/utf8>>)
             end
     end.
@@ -219,9 +219,11 @@ trial_start_ms() ->
     Path = trial_file_path(),
     case file:read_file(Path) of
         {ok, Bin} ->
-            case catch binary_to_integer(string:trim(Bin)) of
+            try binary_to_integer(string:trim(Bin)) of
                 I when is_integer(I), I > 0 -> {ok, I};
                 _ -> init_trial_file(Path)
+            catch
+                _:_ -> init_trial_file(Path)
             end;
         {error, enoent} ->
             init_trial_file(Path);
@@ -383,9 +385,11 @@ trial_file_path() ->
 -spec to_int(term()) -> integer().
 to_int(V) when is_integer(V) -> V;
 to_int(V) when is_binary(V) ->
-    case catch binary_to_integer(V) of
+    try binary_to_integer(V) of
         I when is_integer(I) -> I;
         _ -> 0
+    catch
+        _:_ -> 0
     end;
 to_int(_) ->
     0.

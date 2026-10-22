@@ -97,14 +97,15 @@ has_any_permission(_, _) ->
 -spec permissions(integer()) -> [binary()].
 permissions(AdmUserId) ->
     Key = {adm_user_permission, AdmUserId},
-    case catch adm_user_logic:find(AdmUserId, <<"id,role_id">>, Key) of
+    try adm_user_logic:find(AdmUserId, <<"id,role_id">>, Key) of
         AdmUser when is_map(AdmUser) ->
             RoleIds = normalize_role_ids(maps:get(<<"role_id">>, AdmUser, 0)),
             lists:usort(lists:append([role_permissions(RoleId) || RoleId <- RoleIds]));
-        {'EXIT', Reason} ->
-            ok = ?ERROR_LOG([adm_acl_permissions_lookup_failed, AdmUserId, Reason]),
-            [];
         _ ->
+            []
+    catch
+        _:Reason ->
+            ok = ?ERROR_LOG([adm_acl_permissions_lookup_failed, AdmUserId, Reason]),
             []
     end.
 

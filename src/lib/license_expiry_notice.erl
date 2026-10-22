@@ -30,10 +30,10 @@
 -spec due_threshold(integer(), integer()) -> none | expired | 1 | 7 | 30.
 due_threshold(ExpiresAtMs, NowMs) when is_integer(ExpiresAtMs), is_integer(NowMs) ->
     DaysLeft = ceil_div(ExpiresAtMs - NowMs, ?MS_PER_DAY),
-    if
-        DaysLeft =< 0 ->
+    case true of
+        _ when DaysLeft =< 0 ->
             expired;
-        true ->
+        _ ->
             case [T || T <- ?THRESHOLDS, DaysLeft =< T] of
                 [] -> none;
                 Hit -> hd(Hit)

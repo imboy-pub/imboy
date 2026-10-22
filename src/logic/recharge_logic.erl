@@ -88,12 +88,12 @@ pay(Uid, OrderNo) ->
             Status = maps:get(<<"status">>, Order, 0),
             Method = maps:get(<<"payment_method">>, Order, <<>>),
             Amount = maps:get(<<"amount">>, Order, 0),
-            if
-                OrderUid =/= Uid ->
+            case true of
+                _ when OrderUid =/= Uid ->
                     {error, <<"无权操作此订单"/utf8>>};
-                Status =/= ?STATUS_PENDING ->
+                _ when Status =/= ?STATUS_PENDING ->
                     {error, <<"订单状态不允许支付"/utf8>>};
-                true ->
+                _ ->
                     do_pay(Uid, OrderNo, Method, Amount)
             end
     end.
@@ -157,12 +157,12 @@ confirm(Uid, OrderNo) ->
             OrderUid = maps:get(<<"user_id">>, Order, 0),
             Status = maps:get(<<"status">>, Order, 0),
             Method = maps:get(<<"payment_method">>, Order, <<>>),
-            if
-                OrderUid =/= Uid ->
+            case true of
+                _ when OrderUid =/= Uid ->
                     {error, <<"无权操作此订单"/utf8>>};
-                Status =:= ?STATUS_PAID ->
+                _ when Status =:= ?STATUS_PAID ->
                     {ok, confirm_result(OrderNo, ?STATUS_PAID)};
-                true ->
+                _ ->
                     confirm_via_gateway(OrderNo, Method)
             end
     end.

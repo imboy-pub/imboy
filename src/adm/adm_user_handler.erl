@@ -4,7 +4,7 @@
 % adm_user 控制器模块
 % 用户管理 API
 %%%
--behavior(cowboy_rest).
+-behaviour(cowboy_rest).
 
 -export([init/2]).
 
@@ -447,9 +447,11 @@ parse_uid_param(Req0) ->
             (_, Acc) when Acc > 0 ->
                 Acc;
             (Key, _) ->
-                case catch elib_param:int(Key, Req0, 0) of
+                try elib_param:int(Key, Req0, 0) of
                     {ok, Uid} when is_integer(Uid), Uid > 0 -> Uid;
                     _ -> 0
+                catch
+                    _:_ -> 0
                 end
         end,
         0,
@@ -464,9 +466,11 @@ parse_uid_param(Req0) ->
                     (_, Acc) when Acc > 0 ->
                         Acc;
                     (Key, _) ->
-                        case catch elib_param:binary(Key, Req0, <<>>) of
+                        try elib_param:binary(Key, Req0, <<>>) of
                             {ok, UidBin} -> parse_id(UidBin);
                             _ -> 0
+                        catch
+                            _:_ -> 0
                         end
                 end,
                 0,
@@ -484,9 +488,11 @@ parse_id(Value) when is_binary(Value), Value =/= <<>> ->
         true ->
             ec_cnv:to_integer(Value);
         false ->
-            case catch ec_cnv:to_integer(Value) of
+            try ec_cnv:to_integer(Value) of
                 Id when is_integer(Id), Id > 0 -> Id;
                 _ -> 0
+            catch
+                _:_ -> 0
             end
     end;
 parse_id(_) ->

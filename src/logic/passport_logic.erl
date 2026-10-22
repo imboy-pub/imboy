@@ -846,11 +846,13 @@ send_sms_code(Mobile) ->
                         <<"off">> ->
                             ok;
                         _ ->
-                            case catch imboy_sms:send(Mobile, SmsPayload, SmsPlatform) of
+                            try imboy_sms:send(Mobile, SmsPayload, SmsPlatform) of
                                 ok -> ok;
                                 {ok, _} -> ok;
                                 {error, SmsErr2} -> ?WARN_LOG({sms_send_failed, Mobile, SmsErr2});
                                 SmsErr3 -> ?WARN_LOG({sms_send_failed, Mobile, SmsErr3})
+                            catch
+                                _:SmsErr3 -> ?WARN_LOG({sms_send_failed, Mobile, SmsErr3})
                             end
                     end,
                     {ok, <<"验证码已发送"/utf8>>};

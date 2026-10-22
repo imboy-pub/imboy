@@ -23,7 +23,7 @@
 % uq_ewh_delivery_replay_inflight 仲裁成 idempotency_conflict）。
 %%%
 
--behavior(cowboy_rest).
+-behaviour(cowboy_rest).
 
 -export([init/2]).
 

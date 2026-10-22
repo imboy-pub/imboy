@@ -4,7 +4,7 @@
 % adm_index 控制器模块
 % adm_index controller module
 %%%
--behavior(cowboy_rest).
+-behaviour(cowboy_rest).
 
 -export([init/2, role_acl/1]).
 
@@ -578,11 +578,13 @@ resolve_role_name(RoleId, DefaultName) ->
 
 -spec load_role_config_map(binary()) -> map().
 load_role_config_map(Key) ->
-    case catch config_ds:get(Key, #{}) of
+    try config_ds:get(Key, #{}) of
         Map when is_map(Map) ->
             Map;
         _ ->
             #{}
+    catch
+        _:_ -> #{}
     end.
 
 -spec role_map_get(map(), integer()) -> term().

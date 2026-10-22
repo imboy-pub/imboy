@@ -66,8 +66,8 @@ get_sign_key(ClientOS, Vsn, Pkg, Field) ->
 -spec save(map()) -> {ok, any()} | {error, any()}.
 save(Data) ->
     Id = ec_cnv:to_integer(maps:get(<<"id">>, Data, 0)),
-    if
-        Id > 0 ->
+    case true of
+        _ when Id > 0 ->
             % 更新现有记录
             Tb = app_version_repo:tablename(),
             Data2 = maps:remove(<<"id">>, Data),
@@ -77,7 +77,7 @@ save(Data) ->
                 <<"id = $1">>,
                 [Id]
             );
-        true ->
+        _ ->
             % 新建记录
             Data2 = maps:remove(<<"id">>, Data),
             app_version_repo:add(Data2#{<<"created_at">> => elib_dt:now()})

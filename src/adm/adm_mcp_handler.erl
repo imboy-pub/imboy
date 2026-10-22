@@ -16,7 +16,7 @@
 % 权限：mcp_clients:read 读，mcp_clients:approve 审批/拒绝/撤销/创建/授权。
 %%%
 
--behavior(cowboy_rest).
+-behaviour(cowboy_rest).
 
 -export([init/2]).
 

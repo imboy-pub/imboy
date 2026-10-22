@@ -9,7 +9,7 @@
 % 路由注册与错误码 5430/5431/5432 的 error_code.hrl 宏接线由 Wave 2 统一完成；
 % 本模块用整数常量传码（本地测试直接断言返回形状）。
 
--behavior(cowboy_rest).
+-behaviour(cowboy_rest).
 
 -export([init/2]).
 -export([handle_action/3]).

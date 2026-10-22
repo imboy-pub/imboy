@@ -6,7 +6,7 @@
 % 提供余额查询、充值、流水查询接口
 %%%
 
--behavior(cowboy_rest).
+-behaviour(cowboy_rest).
 
 -export([init/2]).
 

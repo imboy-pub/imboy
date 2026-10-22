@@ -1,5 +1,8 @@
 -module(enterprise_directory_source_config_logic).
--moduledoc "Trusted instance Admin configuration. Handler must verify the Admin session and enterprise_business:write ACL before passing its server-derived adm_user_id. Machine credential requests must never invoke this surface. Public wrappers use elib_pg:with_tx; configure_source_tx callers must rollback abort_tx. Connection input uses the existing Admin application_key, name and redirect_uris atom keys and validation limits.".
+-moduledoc "Trusted instance Admin configuration. Handler must verify the Admin session and enterprise_business:write"
+" ACL before passing its server-derived adm_user_id. Machine credential requests must never invoke this surface."
+" Public wrappers use elib_pg:with_tx; configure_source_tx callers must rollback abort_tx. Connection input uses"
+" the existing Admin application_key, name and redirect_uris atom keys and validation limits.".
 -export([configure_source/4, configure_source_tx/5, create_connection/2]).
 
 configure_source(Actor, AppId, ExternalId, Spec) ->
@@ -184,7 +187,8 @@ configure(Conn, AdminId, AppId, ExternalId, #{expected_version := 0} = Spec, [])
             Conn,
             <<
                 "INSERT INTO enterprise_directory_organization_source"
-                " (application_id,external_organization_id,confirmed_owner_user_id,enabled,authorization_expires_at,configured_by_adm_user_id)"
+                " (application_id,external_organization_id,confirmed_owner_user_id,enabled,authorization_expires_at,"
+                "configured_by_adm_user_id)"
                 " VALUES ($1,$2,$3,$4,$5,$6) RETURNING *"
             >>,
             params(AdminId, AppId, ExternalId, Spec)

@@ -635,16 +635,16 @@ gen_invoice_no() ->
 %% @doc 套餐字段校验
 -spec validate_plan(binary(), binary(), integer(), binary()) -> ok | {error, binary()}.
 validate_plan(Code, Name, Price, Period) ->
-    if
-        not is_binary(Code) orelse byte_size(Code) =:= 0 ->
+    case true of
+        _ when not is_binary(Code) orelse byte_size(Code) =:= 0 ->
             {error, <<"套餐编码不能为空"/utf8>>};
-        not is_binary(Name) orelse byte_size(Name) =:= 0 ->
+        _ when not is_binary(Name) orelse byte_size(Name) =:= 0 ->
             {error, <<"套餐名称不能为空"/utf8>>};
-        not is_integer(Price) orelse Price < 0 ->
+        _ when not is_integer(Price) orelse Price < 0 ->
             {error, <<"套餐价格不合法（单位：分）"/utf8>>};
-        Period =/= <<"month">> andalso Period =/= <<"year">> ->
+        _ when Period =/= <<"month">> andalso Period =/= <<"year">> ->
             {error, <<"计费周期仅支持 month/year"/utf8>>};
-        true ->
+        _ ->
             ok
     end.
 

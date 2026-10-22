@@ -458,12 +458,12 @@ delete_pending(FromID, ToID) ->
 -spec pending_status(integer(), integer()) -> none | pending | friends | blocked.
 pending_status(FromID, ToID) ->
     {IsFriend, InDenylist} = check_relationship(FromID, ToID),
-    if
-        InDenylist ->
+    case true of
+        _ when InDenylist ->
             blocked;
-        IsFriend ->
+        _ when IsFriend ->
             friends;
-        true ->
+        _ ->
             case friend_repo:find_pending(FromID, ToID) of
                 true -> pending;
                 false -> none

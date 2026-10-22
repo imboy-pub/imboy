@@ -673,10 +673,10 @@ to_int(Value) when is_integer(Value) ->
 to_int(Value) when is_binary(Value); is_list(Value) ->
     try
         Int = ec_cnv:to_integer(Value),
-        if
-            is_integer(Int) ->
+        case true of
+            _ when is_integer(Int) ->
                 Int;
-            true ->
+            _ ->
                 0
         end
     catch

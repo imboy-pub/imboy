@@ -3,7 +3,7 @@
 %% Thin HTTP adapter for the moment_social domain.
 %% Keep transport parsing here and route business work through moment_logic.
 
--behavior(cowboy_rest).
+-behaviour(cowboy_rest).
 
 -export([init/2]).
 -export([handle_action/3]).
@@ -285,9 +285,11 @@ decode_positive_id(Value) when is_binary(Value), Value =/= <<>> ->
                 false -> 0
             end;
         false ->
-            case catch ec_cnv:to_integer(Value) of
+            try ec_cnv:to_integer(Value) of
                 Id when is_integer(Id), Id > 0 -> Id;
                 _ -> 0
+            catch
+                _:_ -> 0
             end
     end;
 decode_positive_id(Value) when is_list(Value) ->

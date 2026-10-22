@@ -42,7 +42,8 @@ pending_tx(C, Old, New, Did) ->
         elib_pg:query(
             C,
             <<
-                "UPDATE enterprise_oa_login_ticket SET digest=$2,stage='pending',device_id=$3, expires_at=clock_timestamp()+interval '5 minutes' "
+                "UPDATE enterprise_oa_login_ticket SET digest=$2,stage='pending',device_id=$3,"
+                " expires_at=clock_timestamp()+interval '5 minutes' "
                 "WHERE digest=$1 AND stage='issued' AND expires_at>clock_timestamp() RETURNING expires_at"
             >>,
             [Old, New, Did]

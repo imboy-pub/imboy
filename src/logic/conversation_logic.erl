@@ -235,10 +235,10 @@ peer_uid(Uid, FromId, ToId) when
     is_integer(ToId),
     ToId > 0
 ->
-    if
-        Uid =:= ToId -> {ok, FromId};
-        Uid =:= FromId -> {ok, ToId};
-        true -> error
+    case true of
+        _ when Uid =:= ToId -> {ok, FromId};
+        _ when Uid =:= FromId -> {ok, ToId};
+        _ -> error
     end;
 peer_uid(_, _, _) ->
     error.
@@ -272,26 +272,35 @@ to_millisecond(Value) when is_integer(Value), Value >= 0 ->
 to_millisecond(Value) when is_binary(Value); is_list(Value) ->
     ValueBin = elib_cnv:safe_to_binary(Value),
     Parsed =
-        case catch elib_dt:rfc3339_to(ValueBin, millisecond) of
+        try elib_dt:rfc3339_to(ValueBin, millisecond) of
             Ts when is_integer(Ts), Ts >= 0 ->
                 Ts;
             _ ->
-                case catch binary_to_integer(ValueBin) of
-                    Int when is_integer(Int), Int >= 0 -> Int;
-                    _ -> 0
-                end
+                parse_int_or_zero(ValueBin)
+        catch
+            _:_ -> parse_int_or_zero(ValueBin)
         end,
     Parsed;
 to_millisecond(_) ->
     0.
 
+parse_int_or_zero(ValueBin) ->
+    try binary_to_integer(ValueBin) of
+        Int when is_integer(Int), Int >= 0 -> Int;
+        _ -> 0
+    catch
+        _:_ -> 0
+    end.
+
 -spec normalize_payload(term()) -> map().
 normalize_payload(Payload) when is_map(Payload) ->
     Payload;
 normalize_payload(Payload) when is_binary(Payload) ->
-    case catch jsone:decode(Payload, [{object_format, map}]) of
+    try jsone:decode(Payload, [{object_format, map}]) of
         Map when is_map(Map) -> Map;
         _ -> #{}
+    catch
+        _:_ -> #{}
     end;
 normalize_payload(_) ->
     #{}.

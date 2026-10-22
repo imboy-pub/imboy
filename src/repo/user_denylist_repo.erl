@@ -60,8 +60,11 @@ page_for_uid(Uid, Limit, Offset) when
     % Source = <<"JSON_UNQUOTE(json_extract(f.setting, '$.source')) AS source">>,
     Source = <<"f.setting::jsonb->>'source' AS source">>,
     Column =
-        <<"d.denied_user_id, d.created_at, u.nickname, u.avatar, u.account, u.sign, f.remark,f.tag, u.gender, u.region,",
-            Source/binary>>,
+        <<
+            "d.denied_user_id, d.created_at, u.nickname, u.avatar, u.account, u.sign, f.remark,f.tag, u.gender,"
+            " u.region,",
+            Source/binary
+        >>,
 
     UserTable = elib_pg_sql:public_tablename(<<"user">>),
     UserFTable = elib_pg_sql:public_tablename(<<"user_friend">>),

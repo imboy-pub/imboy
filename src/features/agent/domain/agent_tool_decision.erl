@@ -463,12 +463,12 @@ verify_approval(GrantVersion, Providers, Effect) ->
     Authorized = maps:get(status, Effect) =:= authorized,
     DigestOk = Digest =:= maps:get(args_digest, Resource),
     VersionOk = BoundVersion =:= GrantVersion,
-    if
-        not RunOk -> {deny, approval_run_mismatch};
-        not Authorized -> {deny, approval_not_authorized};
-        not DigestOk -> {deny, stale_approval_args};
-        not VersionOk -> {deny, stale_approval_grant_version};
-        true -> step9_cs_gate(GrantVersion, Providers, allow)
+    case true of
+        _ when not RunOk -> {deny, approval_run_mismatch};
+        _ when not Authorized -> {deny, approval_not_authorized};
+        _ when not DigestOk -> {deny, stale_approval_args};
+        _ when not VersionOk -> {deny, stale_approval_grant_version};
+        _ -> step9_cs_gate(GrantVersion, Providers, allow)
     end.
 
 %% ---- 步骤 9：CS tools 过 CS gate（未 PASS → 凡 CS 域工具一律 deny，冻结） ----

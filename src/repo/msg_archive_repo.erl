@@ -195,7 +195,10 @@ verify_caller_archive(Conn, Data) ->
             case
                 archive_query(
                     Conn,
-                    <<"SELECT id FROM public.msg_store WHERE msg_id=$1 AND expire_at IS NOT DISTINCT FROM $2::timestamptz">>,
+                    <<
+                        "SELECT id FROM public.msg_store WHERE msg_id=$1 AND expire_at IS NOT DISTINCT FROM "
+                        "$2::timestamptz"
+                    >>,
                     [maps:get(msg_id, Data), maps:get(expire_at, Data)]
                 )
             of
@@ -273,7 +276,8 @@ c2g_archive_sequence(Conn, Row, Data, Default) ->
         Conn,
         <<
             "SELECT from_id,to_id AS group_id,conv_seq FROM public.msg_store_staging WHERE type='c2g' AND msg_id=$1 "
-            "UNION ALL SELECT from_id,to_gid AS group_id,conv_seq FROM public.msg_c2g_recipient_snapshot WHERE msg_id=$1"
+            "UNION ALL SELECT from_id,to_gid AS group_id,"
+            "conv_seq FROM public.msg_c2g_recipient_snapshot WHERE msg_id=$1"
         >>,
         [maps:get(msg_id, Data)]
     ),

@@ -516,14 +516,24 @@ expedite_reconcile(#state{reconcile_timer = Ref} = State) ->
     case is_reference(Ref) andalso erlang:read_timer(Ref) of
         Remaining when is_integer(Remaining), Remaining > ?REJOIN_RECONCILE_MS ->
             case erlang:cancel_timer(Ref) of
-                false -> State; %% Expired between read and cancel: keep queued tick.
-                Left -> State#state{reconcile_timer = erlang:start_timer(
-                    min(Left, ?REJOIN_RECONCILE_MS), self(), reconcile_tick)}
+                %% Expired between read and cancel: keep queued tick.
+                false ->
+                    State;
+                Left ->
+                    State#state{
+                        reconcile_timer = erlang:start_timer(
+                            min(Left, ?REJOIN_RECONCILE_MS), self(), reconcile_tick
+                        )
+                    }
             end;
         false when Ref =:= undefined ->
-            State#state{reconcile_timer = erlang:start_timer(
-                ?REJOIN_RECONCILE_MS, self(), reconcile_tick)};
-        _ -> State
+            State#state{
+                reconcile_timer = erlang:start_timer(
+                    ?REJOIN_RECONCILE_MS, self(), reconcile_tick
+                )
+            };
+        _ ->
+            State
     end.
 
 -spec terminate(term(), #state{}) -> ok.
@@ -768,12 +778,12 @@ current_rev(Key) ->
 compare_rev(_Rev, undefined) ->
     newer;
 compare_rev({C1, N1}, {C2, N2}) ->
-    if
-        C1 > C2 -> newer;
-        C1 < C2 -> older;
-        N1 > N2 -> newer;
-        N1 < N2 -> older;
-        true -> equal
+    case true of
+        _ when C1 > C2 -> newer;
+        _ when C1 < C2 -> older;
+        _ when N1 > N2 -> newer;
+        _ when N1 < N2 -> older;
+        _ -> equal
     end.
 
 %% @doc TTL 剩余（6.2）：接收端按本地时钟计算，保守扣减时钟偏差预算，不重置 TTL。

@@ -6,7 +6,7 @@
 % collect 控制器模块
 % collect controller module
 %%%
--behavior(cowboy_rest).
+-behaviour(cowboy_rest).
 
 -export([init/2]).
 

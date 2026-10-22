@@ -2,7 +2,7 @@
 
 -moduledoc "V2.1 Internal 资源只读面 INT-30/31 的 HTTP 壳 —— Cowboy 路由由 A0 接线，不进 imboy_router。".
 
--behavior(cowboy_rest).
+-behaviour(cowboy_rest).
 
 -export([init/2]).
 

@@ -113,18 +113,20 @@ execute_authorized(Req, Env) ->
             <<"/api/v1/passport/qr_login/subscribe">>
         ]),
     Res1 =
-        if
-            Path == <<"/api/v1/ws">>, Switch == <<"on">> ->
+        case true of
+            _ when Path == <<"/api/v1/ws">>, Switch == <<"on">> ->
                 auth_ds:verify_sign(Req, Env);
-            Path == <<"/api/v1/init">>, Switch == <<"on">> ->
+            _ when Path == <<"/api/v1/init">>, Switch == <<"on">> ->
                 auth_ds:verify_sign(Req, Env);
-            Path == <<"/api/v1/refreshtoken">>, Switch == <<"on">> ->
+            _ when Path == <<"/api/v1/refreshtoken">>, Switch == <<"on">> ->
                 auth_ds:verify_sign(Req, Env);
-            IsPassportPath, not IsWebQrLoginPath, Switch == <<"on">> ->
+            _ when IsPassportPath, not IsWebQrLoginPath, Switch == <<"on">> ->
                 auth_ds:verify_sign(Req, Env);
-            InOpenLi == false, not IsCsCredentialPath, not IsWebSeatPath, Switch == <<"on">> ->
+            _ when
+                InOpenLi == false, not IsCsCredentialPath, not IsWebSeatPath, Switch == <<"on">>
+            ->
                 auth_ds:verify_sign(Req, Env);
-            true ->
+            _ ->
                 {ok, Req, Env}
         end,
     case Res1 of

@@ -360,11 +360,13 @@ ensure_member_ok(WsId, Uid) ->
 -spec guard_channel_binding(cowboy_req:req() | map(), integer()) ->
     ok | {error, {403 | 503, binary()}}.
 guard_channel_binding(Req, Uid) ->
-    case catch cowboy_req:binding(channel_id, Req) of
+    try cowboy_req:binding(channel_id, Req) of
         ChannelId when is_binary(ChannelId); is_integer(ChannelId) ->
             ensure_channel_member_access(Uid, ChannelId);
         _ ->
             ok
+    catch
+        _:_ -> ok
     end.
 
 %% @doc handler 便捷门：custom_id 入口（by_custom_id 路由的直访通道）
@@ -374,15 +376,15 @@ guard_channel_binding(Req, Uid) ->
 %% fail-closed 503，不再按"未命中"吞掉放行（M-2 T5 收口）。
 -spec guard_channel_custom_id(integer(), binary()) -> ok | {error, {403 | 503, binary()}}.
 guard_channel_custom_id(Uid, CustomId) when is_binary(CustomId), CustomId =/= <<>> ->
-    case catch channel_ds:find_by_custom_id(CustomId) of
+    try channel_ds:find_by_custom_id(CustomId) of
         Channel when is_map(Channel), map_size(Channel) > 0 ->
             ensure_channel_member_access(Uid, maps:get(<<"id">>, Channel, 0));
         {error, _Reason} ->
             resolver_db_unavailable();
-        {'EXIT', _Reason} ->
-            resolver_db_unavailable();
         _ ->
             ok
+    catch
+        _:_Reason -> resolver_db_unavailable()
     end;
 guard_channel_custom_id(_Uid, _CustomId) ->
     ok.
@@ -481,13 +483,20 @@ row_scope(Tb, Id) ->
 %% 守卫归一 503。
 -spec one_row(iodata(), [term()]) -> map().
 one_row(Sql, Params) ->
-    case catch elib_pg:one(Sql, Params) of
+    try elib_pg:one(Sql, Params) of
         {ok, Row} when is_map(Row), map_size(Row) > 0 ->
             Row;
         {ok, _ZeroRowDefault} ->
             #{};
         Failed ->
             erlang:error({resolver_db_error, Failed})
+    catch
+        throw:Thrown ->
+            erlang:error({resolver_db_error, Thrown});
+        error:Reason:Stack ->
+            erlang:error({resolver_db_error, {'EXIT', {Reason, Stack}}});
+        exit:Reason ->
+            erlang:error({resolver_db_error, {'EXIT', Reason}})
     end.
 
 %% DB 异常 fail-closed 稳定错误（与 workspace_guard:ensure_writable_tx 同文案）

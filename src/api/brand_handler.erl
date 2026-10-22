@@ -12,7 +12,7 @@
 %%%   config_ds:set(<<"brand_site_name">>, <<"某企业IM"/utf8>>).
 %%% @end
 %%%===================================================================
--behavior(cowboy_rest).
+-behaviour(cowboy_rest).
 
 -export([init/2]).
 %% 供测试与前端契约：品牌字段默认值与校验回退（纯函数，不触库）

@@ -110,7 +110,10 @@ find_by_id(Id) ->
     % P1-7b: 显式安全列（group_schedule 全列，无敏感字段）
     find_by_id(
         Id,
-        <<"id,group_id,schedule_id,title,description,location,creator_id,start_at,end_at,remind_before,status,created_at,updated_at">>
+        <<
+            "id,group_id,schedule_id,title,description,location,creator_id,start_at,end_at,remind_before,status,"
+            "created_at,updated_at"
+        >>
     ).
 
 %% @doc 根据ID查询日程
@@ -133,7 +136,10 @@ find_by_schedule_id(ScheduleId) ->
     % P1-7b: 显式安全列（group_schedule 全列，无敏感字段）
     find_by_schedule_id(
         ScheduleId,
-        <<"id,group_id,schedule_id,title,description,location,creator_id,start_at,end_at,remind_before,status,created_at,updated_at">>
+        <<
+            "id,group_id,schedule_id,title,description,location,creator_id,start_at,end_at,remind_before,status,"
+            "created_at,updated_at"
+        >>
     ).
 
 %% @doc 根据schedule_id查询日程
@@ -151,7 +157,10 @@ find_by_schedule_id(ScheduleId, Column) ->
 list_by_group_id(GroupId, Page, Size) ->
     list_by_group_id(
         GroupId,
-        <<"id,schedule_id,group_id,title,description,location,creator_id,start_at,end_at,remind_before,status,created_at">>,
+        <<
+            "id,schedule_id,group_id,title,description,location,creator_id,start_at,end_at,remind_before,status,"
+            "created_at"
+        >>,
         Page,
         Size
     ).
@@ -182,7 +191,10 @@ list_by_group_id(GroupId, StartAt, EndAt, Page, Size) when
 ->
     Tb = tablename(),
     Column =
-        <<"id,schedule_id,group_id,title,description,location,creator_id,start_at,end_at,remind_before,status,created_at">>,
+        <<
+            "id,schedule_id,group_id,title,description,location,creator_id,start_at,end_at,remind_before,status,"
+            "created_at"
+        >>,
     OrderBy = <<"start_at ASC, id DESC">>,
     Offset = (Page - 1) * Size,
     {WhereSql, Params} = build_group_time_where(GroupId, StartAt, EndAt),

@@ -134,7 +134,10 @@ update_tx(_Conn, _TaskId, _Data) ->
 find_by_id(TaskId) when is_integer(TaskId), TaskId > 0 ->
     Tb = tablename(),
     Column =
-        <<"id,group_id,task_id,title,description,creator_id,deadline,status,attachment,created_at,updated_at,deleted_at">>,
+        <<
+            "id,group_id,task_id,title,description,creator_id,deadline,status,attachment,created_at,updated_at,"
+            "deleted_at"
+        >>,
     Where = <<"id = $1 AND deleted_at IS NULL">>,
     Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary, " WHERE ", Where/binary>>,
     case elib_pg:query(Sql, [TaskId]) of
@@ -155,7 +158,10 @@ find_by_id(_TaskId) ->
 find_any_by_id(TaskId) when is_integer(TaskId), TaskId > 0 ->
     Tb = tablename(),
     Column =
-        <<"id,group_id,task_id,title,description,creator_id,deadline,status,attachment,created_at,updated_at,deleted_at">>,
+        <<
+            "id,group_id,task_id,title,description,creator_id,deadline,status,attachment,created_at,updated_at,"
+            "deleted_at"
+        >>,
     Where = <<"id = $1">>,
     Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary, " WHERE ", Where/binary>>,
     case elib_pg:query(Sql, [TaskId]) of
@@ -176,7 +182,10 @@ find_any_by_id(_TaskId) ->
 find_by_task_id(TaskId) when is_binary(TaskId), byte_size(TaskId) > 0 ->
     Tb = tablename(),
     Column =
-        <<"id,group_id,task_id,title,description,creator_id,deadline,status,attachment,created_at,updated_at,deleted_at">>,
+        <<
+            "id,group_id,task_id,title,description,creator_id,deadline,status,attachment,created_at,updated_at,"
+            "deleted_at"
+        >>,
     Where = <<"task_id = $1 AND deleted_at IS NULL">>,
     Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary, " WHERE ", Where/binary>>,
     case elib_pg:query(Sql, [TaskId]) of
@@ -197,7 +206,10 @@ find_by_task_id(_TaskId) ->
 find_any_by_task_id(TaskId) when is_binary(TaskId), byte_size(TaskId) > 0 ->
     Tb = tablename(),
     Column =
-        <<"id,group_id,task_id,title,description,creator_id,deadline,status,attachment,created_at,updated_at,deleted_at">>,
+        <<
+            "id,group_id,task_id,title,description,creator_id,deadline,status,attachment,created_at,updated_at,"
+            "deleted_at"
+        >>,
     Where = <<"task_id = $1">>,
     Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary, " WHERE ", Where/binary>>,
     case elib_pg:query(Sql, [TaskId]) of
@@ -253,7 +265,10 @@ list_by_group_id(GroupId, Status, Page, Size) when
         {Where, Params} ->
             Tb = tablename(),
             Column =
-                <<"id, group_id, task_id, title, description, creator_id, deadline, status, attachment, created_at, updated_at">>,
+                <<
+                    "id, group_id, task_id, title, description, creator_id, deadline, status, attachment, created_at,"
+                    " updated_at"
+                >>,
             OrderBy = <<"id DESC">>,
             Offset = (Page - 1) * Size,
             Sql =
@@ -307,7 +322,10 @@ list_deleted_by_group_id(GroupId, Status, Page, Size) when
         {Where, Params} ->
             Tb = tablename(),
             Column =
-                <<"id, group_id, task_id, title, description, creator_id, deadline, status, attachment, deleted_at, created_at, updated_at">>,
+                <<
+                    "id, group_id, task_id, title, description, creator_id, deadline, status, attachment, deleted_at,"
+                    " created_at, updated_at"
+                >>,
             OrderBy = <<"id DESC">>,
             Offset = (Page - 1) * Size,
             Sql =

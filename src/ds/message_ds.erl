@@ -962,7 +962,10 @@ build_adm_union_sql(Scopes) ->
 
 adm_scope_sql(c2c, Tbc2c, _Tbc2g, _Tbc2s, _Tbs2c, _TbTimeline) ->
     iolist_to_binary([
-        <<"SELECT 'c2c' AS scope, msg_id, from_id, to_id, msg_type, ''::text AS action, payload, created_at, server_ts ">>,
+        <<
+            "SELECT 'c2c' AS scope, msg_id, from_id, to_id, msg_type, ''::text AS action, payload, created_at,"
+            " server_ts "
+        >>,
         <<"FROM ">>,
         Tbc2c,
         <<" m ">>,
@@ -975,7 +978,10 @@ adm_scope_sql(c2c, Tbc2c, _Tbc2g, _Tbc2s, _Tbs2c, _TbTimeline) ->
     ]);
 adm_scope_sql(c2g, _Tbc2c, Tbc2g, _Tbc2s, _Tbs2c, TbTimeline) ->
     iolist_to_binary([
-        <<"SELECT 'c2g' AS scope, msg_id, from_id, to_id, msg_type, ''::text AS action, payload::text AS payload, created_at, server_ts ">>,
+        <<
+            "SELECT 'c2g' AS scope, msg_id, from_id, to_id, msg_type, ''::text AS action, payload::text AS payload,"
+            " created_at, server_ts "
+        >>,
         <<"FROM ">>,
         Tbc2g,
         <<" m ">>,
@@ -991,7 +997,10 @@ adm_scope_sql(c2g, _Tbc2c, Tbc2g, _Tbc2s, _Tbs2c, TbTimeline) ->
     ]);
 adm_scope_sql(c2s, _Tbc2c, _Tbc2g, Tbc2s, _Tbc2s, TbTimeline) ->
     iolist_to_binary([
-        <<"SELECT 'c2s' AS scope, msg_id, from_id, to_id, msg_type, ''::text AS action, payload, created_at, COALESCE(server_ts, created_at) AS server_ts ">>,
+        <<
+            "SELECT 'c2s' AS scope, msg_id, from_id, to_id, msg_type, ''::text AS action, payload, created_at,"
+            " COALESCE(server_ts, created_at) AS server_ts "
+        >>,
         <<"FROM ">>,
         Tbc2s,
         <<" m ">>,
@@ -1007,7 +1016,10 @@ adm_scope_sql(c2s, _Tbc2c, _Tbc2g, Tbc2s, _Tbc2s, TbTimeline) ->
     ]);
 adm_scope_sql(s2c, _Tbc2c, _Tbc2g, _Tbc2s, Tbs2c, _TbTimeline) ->
     iolist_to_binary([
-        <<"SELECT 's2c' AS scope, msg_id, from_id, to_id, msg_type, action, payload::text AS payload, created_at, server_ts ">>,
+        <<
+            "SELECT 's2c' AS scope, msg_id, from_id, to_id, msg_type, action, payload::text AS payload, created_at,"
+            " server_ts "
+        >>,
         <<"FROM ">>,
         Tbs2c,
         <<" m ">>,

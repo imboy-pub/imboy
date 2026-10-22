@@ -409,16 +409,24 @@ parse_gid_param(Req0) ->
 -spec parse_positive_param(atom(), cowboy_req:req()) -> integer().
 parse_positive_param(Key, Req0) ->
     Value0 =
-        case catch elib_param:binary(Key, Req0, <<>>) of
+        try elib_param:binary(Key, Req0, <<>>) of
             {ok, Value} ->
                 Value;
             _ ->
-                case catch elib_param:int(Key, Req0, 0) of
-                    {ok, Value} -> Value;
-                    _ -> 0
-                end
+                parse_int_param(Key, Req0)
+        catch
+            _:_ -> parse_int_param(Key, Req0)
         end,
     normalize_positive_int(Value0).
+
+-spec parse_int_param(atom(), cowboy_req:req()) -> integer().
+parse_int_param(Key, Req0) ->
+    try elib_param:int(Key, Req0, 0) of
+        {ok, Value} -> Value;
+        _ -> 0
+    catch
+        _:_ -> 0
+    end.
 
 -spec resolve_category_uid(term(), integer()) -> integer().
 resolve_category_uid(UidRaw, Gid) ->
@@ -452,9 +460,11 @@ normalize_positive_int(Value) when is_binary(Value), Value =/= <<>> ->
         true ->
             ec_cnv:to_integer(Value);
         false ->
-            case catch ec_cnv:to_integer(Value) of
+            try ec_cnv:to_integer(Value) of
                 Id when is_integer(Id), Id > 0 -> Id;
                 _ -> 0
+            catch
+                _:_ -> 0
             end
     end;
 normalize_positive_int(_) ->

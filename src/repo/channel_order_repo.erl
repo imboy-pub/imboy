@@ -86,8 +86,8 @@ create_order(Data) ->
         <<"INSERT INTO channel_order ",
             "(id, channel_id, user_id, order_no, amount, currency, status, payment_method, ",
             "expires_at, extra_data, created_at) ",
-            "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, to_timestamp($9::bigint / 1000), $10, to_timestamp($11::bigint / 1000)) ",
-            "RETURNING order_no">>,
+            "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, to_timestamp($9::bigint / 1000), $10,"
+            " to_timestamp($11::bigint / 1000)) ", "RETURNING order_no">>,
     case
         elib_pg:execute(Sql, [
             GenId,

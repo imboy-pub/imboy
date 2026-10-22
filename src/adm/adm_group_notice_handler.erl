@@ -2,7 +2,7 @@
 -moduledoc "群公告管理端点 —— 详情、删除（软删除）等动作。".
 %%% adm_group_notice_handler
 
--behavior(cowboy_rest).
+-behaviour(cowboy_rest).
 
 -export([init/2]).
 

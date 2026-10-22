@@ -573,12 +573,12 @@ find_by_keyword(KwdBin) ->
     IsEmail = elib_type:is_email(KwdBin),
     IsMobile = elib_type:is_mobile(KwdBin),
     User =
-        if
-            IsEmail ->
+        case true of
+            _ when IsEmail ->
                 user_ds:find_by_email(KwdBin, ?DEF_USER_COLUMN);
-            IsMobile ->
+            _ when IsMobile ->
                 user_ds:find_by_mobile(KwdBin, ?DEF_USER_COLUMN);
-            true ->
+            _ ->
                 %% 全数字 = 用户 ID（TSID）：邀请向导占位符声明支持按 ID 搜索，
                 %% 原实现落到 find_by_account 永远空结果（批次W2R2 bug）
                 case all_digits(KwdBin) of

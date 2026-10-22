@@ -438,13 +438,13 @@ settle_outcome(ObjectKey, Row, Attempt, {copy_ok, Size}) ->
     Expected = maps:get(<<"direct_expected">>, Row, null),
     {ExpSize, ExpSha} = expected_of(Expected),
     AttemptNo = ec_cnv:to_integer(maps:get(<<"attempt_no">>, Attempt)),
-    if
-        ExpSize =:= undefined orelse ExpSha =:= undefined ->
+    case true of
+        _ when ExpSize =:= undefined orelse ExpSha =:= undefined ->
             quarantine_or_reject(ObjectKey, Row, Attempt, {copy_ok, Size});
-        ExpSize =/= Size ->
+        _ when ExpSize =/= Size ->
             %% Copy 实际成功但 size 与 expected 不符：candidate 不能成为 winner
             reject_copy(ObjectKey, AttemptNo, size_mismatch);
-        true ->
+        _ ->
             confirm_winner(ObjectKey, Row, Attempt, ExpSha, Size)
     end;
 settle_outcome(ObjectKey, _Row, Attempt, {rejected, Reason}) ->

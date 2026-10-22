@@ -1,5 +1,8 @@
 -module(talk_record_cleanup_retry_logic).
 -moduledoc "Authenticated record-scoped cleanup recovery; no generic queue permission.".
+%% elvis 5.0.4: no_operation_on_same_value crashes on this module's AST
+%% ({badkey, attrs}); the rule is unrelated to the transaction control here.
+-elvis([{elvis_style, no_operation_on_same_value, disable}]).
 -export([retry/5, parse/1]).
 retry(Uid, Rid, IfMatch, Key, Body) ->
     case
@@ -32,7 +35,7 @@ retry_valid(Uid, Rid, Rev, Generation, Key, Digest, Reason) ->
                 )
             of
                 {ok, _} = Ok -> Ok;
-                {error, R} -> throw({talk_record_rollback, {error, R}})
+                {error, R} -> exit({talk_record_rollback, {error, R}})
             end
         end,
         [{reraise, false}]

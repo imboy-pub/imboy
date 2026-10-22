@@ -66,8 +66,8 @@ qs_int(Qs, Key, Default) ->
 int(Key, Req, Def) ->
     % ?DEBUG_LOG([get_int, Key, Val, Def, Val == Def]),
     Method = cowboy_req:method(Req),
-    if
-        Method == <<"POST">> ->
+    case true of
+        _ when Method == <<"POST">> ->
             PostVals = post(Req),
             KeyBin = ec_cnv:to_binary(Key),
             case maps:get(KeyBin, PostVals, undefined) of
@@ -83,7 +83,7 @@ int(Key, Req, Def) ->
                             {ok, Val2}
                     end
             end;
-        true ->
+        _ ->
             KeyBin = ec_cnv:to_binary(Key),
             Val = maps:get(KeyBin, qs_map(Req), Def),
             case Val of
@@ -111,8 +111,8 @@ int(Key, Req, Def) ->
 
 binary(Key, Req, Def) ->
     Method = cowboy_req:method(Req),
-    if
-        Method == <<"POST">> ->
+    case true of
+        _ when Method == <<"POST">> ->
             PostVals = post(Req),
             KeyBin = ec_cnv:to_binary(Key),
             case maps:get(KeyBin, PostVals, undefined) of
@@ -121,7 +121,7 @@ binary(Key, Req, Def) ->
                 Val ->
                     {ok, ec_cnv:to_binary(Val)}
             end;
-        true ->
+        _ ->
             KeyBin = ec_cnv:to_binary(Key),
             Val = maps:get(KeyBin, qs_map(Req), undefined),
             case Val of
@@ -249,11 +249,11 @@ param(Key, Req, Default) ->
             Val;
         _ ->
             Method = cowboy_req:method(Req),
-            if
-                Method == <<"POST">> ->
+            case true of
+                _ when Method == <<"POST">> ->
                     PostVals = post(Req),
                     maps:get(KeyBin, PostVals, Default);
-                true ->
+                _ ->
                     Default
             end
     end.

@@ -66,8 +66,12 @@ execute_find_query(Sql, Params) ->
         _ -> #{}
     end.
 
-% app_version_repo:add(#{<<"type">> => "andriod", <<"package_name">> => <<>>, <<"app_name">> => <<>>, <<"vsn">> => "0.1.24", <<"download_url">> => <<>>, <<"description">> => <<>>, <<"force_update">> => 2, created_at => elib_dt:now(), <<"sign_key">> => <<>>})
-% app_version_repo:add(#{<<"region_code">> => <<"cn">>, <<"type">> => "ios", <<"package_name">> => <<>>, <<"app_name">> => <<>>, <<"vsn">> => "0.1.24", <<"download_url">> => <<>>, <<"description">> => <<>>, <<"force_update">> => 2, created_at => elib_dt:now(), <<"sign_key">> => <<>>})
+% app_version_repo:add(#{<<"type">> => "andriod", <<"package_name">> => <<>>, <<"app_name">> => <<>>, <<"vsn">> =>
+% "0.1.24", <<"download_url">> => <<>>, <<"description">> => <<>>, <<"force_update">> => 2, created_at =>
+% elib_dt:now(), <<"sign_key">> => <<>>})
+% app_version_repo:add(#{<<"region_code">> => <<"cn">>, <<"type">> => "ios", <<"package_name">> => <<>>, <<"app_name">>
+% => <<>>, <<"vsn">> => "0.1.24", <<"download_url">> => <<>>, <<"description">> => <<>>, <<"force_update">> => 2,
+% created_at => elib_dt:now(), <<"sign_key">> => <<>>})
 %% @doc 添加应用版本记录
 %% @param Data 包含版本信息的map
 %% @returns {ok, any()} | {error, any()}

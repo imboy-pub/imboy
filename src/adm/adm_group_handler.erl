@@ -4,7 +4,7 @@
 % adm_group 控制器模块
 % 群组管理 API
 %%%
--behavior(cowboy_rest).
+-behaviour(cowboy_rest).
 
 -export([init/2]).
 
@@ -234,7 +234,10 @@ members(<<"GET">>, Req0, State) ->
             case Gid > 0 of
                 true ->
                     Column =
-                        <<"gm.id,gm.group_id,gm.user_id,u.nickname,u.avatar,gm.role,gm.status,gm.created_at AS joined_at">>,
+                        <<
+                            "gm.id,gm.group_id,gm.user_id,u.nickname,u.avatar,gm.role,gm.status,"
+                            "gm.created_at AS joined_at"
+                        >>,
                     {ok, P} = group_member_ds:page_by_gid(Gid, Page, Size, Column),
                     P2 = normalize_member_payload(P),
                     elib_response:success(Req0, P2);

@@ -2,7 +2,7 @@
 -dialyzer({nowarn_function, [preview_policy_action/2, save_policy_action/2, role_permissions/1]}).
 -compile([nowarn_deprecated_catch]).
 
--behavior(cowboy_rest).
+-behaviour(cowboy_rest).
 
 -export([init/2]).
 %% EADM-02: 菜单权威声明需对外可读（W1.5 MENU_CONTRACT 双向集合校验/eunit 直调）
@@ -117,9 +117,11 @@ configured_experience() ->
 raw_to_binary(V) when is_atom(V) -> atom_to_binary(V, utf8);
 raw_to_binary(V) when is_binary(V) -> V;
 raw_to_binary(V) when is_list(V) ->
-    case catch unicode:characters_to_binary(V) of
+    try unicode:characters_to_binary(V) of
         B when is_binary(B) -> B;
         _ -> <<"undefined">>
+    catch
+        _:_ -> <<"undefined">>
     end;
 raw_to_binary(_) ->
     <<"undefined">>.
@@ -483,24 +485,28 @@ normalize_binary(_) ->
 normalize_positive_int(Value) when is_integer(Value), Value > 0 ->
     Value;
 normalize_positive_int(Value) when is_binary(Value); is_list(Value) ->
-    case catch ec_cnv:to_integer(Value) of
+    try ec_cnv:to_integer(Value) of
         Int when is_integer(Int), Int > 0 ->
             Int;
         _ ->
             0
+    catch
+        _:_ -> 0
     end;
 normalize_positive_int(_) ->
     0.
 
 -spec normalize_status(term()) -> integer().
 normalize_status(Value) ->
-    case catch ec_cnv:to_integer(Value) of
+    try ec_cnv:to_integer(Value) of
         0 ->
             0;
         1 ->
             1;
         _ ->
             1
+    catch
+        _:_ -> 1
     end.
 
 -spec parse_id(term()) -> integer().
@@ -513,11 +519,13 @@ parse_id(Value) when is_binary(Value), Value =/= <<>> ->
         true ->
             normalize_positive_int(Value);
         false ->
-            case catch ec_cnv:to_integer(Value) of
+            try ec_cnv:to_integer(Value) of
                 Id when is_integer(Id), Id > 0 ->
                     Id;
                 _ ->
                     0
+            catch
+                _:_ -> 0
             end
     end;
 parse_id(_) ->
@@ -557,12 +565,14 @@ has_permission(_, _) ->
 -spec resolve_permissions_by_adm_user_id(integer()) -> [binary()].
 resolve_permissions_by_adm_user_id(AdmUserId) ->
     Key = {adm_user_admin_permission, AdmUserId},
-    case catch adm_user_logic:find(AdmUserId, <<"id,role_id">>, Key) of
+    try adm_user_logic:find(AdmUserId, <<"id,role_id">>, Key) of
         AdmUser when is_map(AdmUser) ->
             RoleIds = normalize_role_ids(maps:get(<<"role_id">>, AdmUser, 0)),
             lists:usort(lists:append([role_permissions(RoleId) || RoleId <- RoleIds]));
         _ ->
             []
+    catch
+        _:_ -> []
     end.
 
 -spec role_permissions(integer()) -> [binary()].

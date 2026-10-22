@@ -211,9 +211,11 @@ mismatch(Tx, Reason) ->
 -spec to_int(term()) -> integer().
 to_int(V) when is_integer(V) -> V;
 to_int(V) when is_binary(V) ->
-    case catch binary_to_integer(V) of
+    try binary_to_integer(V) of
         I when is_integer(I) -> I;
         _ -> 0
+    catch
+        _:_ -> 0
     end;
 to_int(_) ->
     0.

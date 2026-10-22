@@ -634,7 +634,10 @@ list_photos(AlbumId, CurrentUid, Page, Size) ->
                 true ->
                     % P1-7b: 显式安全列（group_album_photo 全列，无敏感字段）
                     PhotoCols =
-                        <<"id,group_id,album_id,photo_id,photo_name,photo_url,thumbnail_url,photo_size,width,height,uploader_id,like_count,comment_count,status,created_at">>,
+                        <<
+                            "id,group_id,album_id,photo_id,photo_name,photo_url,thumbnail_url,photo_size,width,height,"
+                            "uploader_id,like_count,comment_count,status,created_at"
+                        >>,
                     case group_album_repo:list_photos(AlbumId, Page, Size, PhotoCols) of
                         {ok, #{list := List, total := Total}} ->
                             PhotoList = #{

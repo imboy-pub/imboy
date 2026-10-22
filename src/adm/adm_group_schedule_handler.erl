@@ -1,7 +1,7 @@
 -module(adm_group_schedule_handler).
 %%% adm_group_schedule_handler
 
--behavior(cowboy_rest).
+-behaviour(cowboy_rest).
 
 -export([init/2]).
 

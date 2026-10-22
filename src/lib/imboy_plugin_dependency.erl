@@ -194,10 +194,10 @@ ints_to_version(MajB, MinB, PatB, Pre) ->
         Maj = binary_to_integer(MajB),
         Min = binary_to_integer(MinB),
         Pat = binary_to_integer(PatB),
-        if
-            Maj >= 0, Min >= 0, Pat >= 0 ->
+        case true of
+            _ when Maj >= 0, Min >= 0, Pat >= 0 ->
                 {ok, {Maj, Min, Pat, Pre}};
-            true ->
+            _ ->
                 {error, invalid}
         end
     catch
@@ -345,7 +345,11 @@ get_plugin_state(Name) ->
         Pid when is_pid(Pid) ->
             case erlang:is_process_alive(Pid) of
                 false ->
-                    catch persistent_term:erase({imboy_plugin_lifecycle, Name}),
+                    try
+                        persistent_term:erase({imboy_plugin_lifecycle, Name})
+                    catch
+                        _:_ -> ok
+                    end,
                     case persistent_term:get({imboy_plugin_manifest, Name}, undefined) of
                         undefined -> unknown;
                         _ -> installed

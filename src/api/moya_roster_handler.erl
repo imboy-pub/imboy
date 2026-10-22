@@ -9,7 +9,7 @@
 % JWT 由路由中间件注入 State#current_uid；非法/缺失 TSID 返回参数错误，
 % 不触达 DB，不泄漏班级存在性。
 
--behavior(cowboy_rest).
+-behaviour(cowboy_rest).
 
 -export([init/2]).
 -export([handle_action/3]).

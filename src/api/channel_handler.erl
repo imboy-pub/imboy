@@ -27,7 +27,7 @@
 %%%       本 handler 不重复提供，避免双入口）
 %%% =====================================================================
 
--behavior(cowboy_rest).
+-behaviour(cowboy_rest).
 
 -include("error_code.hrl").
 
@@ -677,11 +677,13 @@ safe_to_integer(_) ->
 decode_positive_id(Value) when is_integer(Value), Value > 0 ->
     Value;
 decode_positive_id(Value) ->
-    case catch elib_cnv:safe_to_integer(Value) of
+    try elib_cnv:safe_to_integer(Value) of
         Id when is_integer(Id), Id > 0 ->
             Id;
         _ ->
             0
+    catch
+        _:_ -> 0
     end.
 
 -spec normalize_non_empty_binary(binary()) -> binary().

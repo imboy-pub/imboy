@@ -68,8 +68,8 @@ check_and_record(Uid) ->
             Count = ets:update_counter(?MSG_RATE_TAB, Uid, {2, 1}, {Uid, 0}),
             MuteThreshold = mute_threshold(),
             WarnThreshold = warn_threshold(),
-            if
-                Count > MuteThreshold ->
+            case true of
+                _ when Count > MuteThreshold ->
                     %% 超过禁言阈值，自动禁言
                     Now = erlang:system_time(millisecond),
                     do_mute(Uid, Now),
@@ -78,14 +78,14 @@ check_and_record(Uid) ->
                         [Uid, Count, MuteThreshold]
                     ),
                     {error, muted};
-                Count > WarnThreshold ->
+                _ when Count > WarnThreshold ->
                     %% 超过警告阈值
                     ?WARN_LOG(
                         "User ~p msg rate warning: ~p msgs/min exceeded threshold ~p",
                         [Uid, Count, WarnThreshold]
                     ),
                     {warning, Count};
-                true ->
+                _ ->
                     ok
             end
     end.

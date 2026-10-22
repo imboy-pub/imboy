@@ -129,7 +129,10 @@ expired_tx(Conn, CredId) ->
     case
         elib_pg:query(
             Conn,
-            <<"SELECT COALESCE(expires_at<=clock_timestamp(), false) AS expired FROM enterprise_application_credential WHERE id=$1">>,
+            <<
+                "SELECT COALESCE(expires_at<=clock_timestamp(),"
+                " false) AS expired FROM enterprise_application_credential WHERE id=$1"
+            >>,
             [CredId]
         )
     of

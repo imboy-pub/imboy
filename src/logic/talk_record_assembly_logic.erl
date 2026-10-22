@@ -286,8 +286,8 @@ lock_job_tx(Conn, JobId, LeaseToken) ->
     Sql =
         <<"SELECT id, record_id, kind, input_manifest_hash,",
             " input_transcript_version, input_content_revision, state, attempt, lease_token",
-            " FROM talk_record_job WHERE id=$1 AND state='running' AND lease_token=$2 AND lease_until>clock_timestamp()",
-            " FOR UPDATE">>,
+            " FROM talk_record_job WHERE id=$1 AND state='running' AND lease_token=$2 AND "
+            "lease_until>clock_timestamp()", " FOR UPDATE">>,
     case elib_pg:query(Conn, Sql, [JobId, LeaseToken]) of
         {ok, [Row]} -> {ok, Row};
         {ok, []} -> {error, lease_lost};

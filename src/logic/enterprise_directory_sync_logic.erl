@@ -1,5 +1,8 @@
 -module(enterprise_directory_sync_logic).
--moduledoc "Directory-only incremental sync. Source organization rows are provisioned by trusted configuration; clients cannot nominate an Owner or UID. sync/3 owns the transaction; sync_tx/4 requires its caller to rollback abort_tx and run elib_pg commit actions. Explicit higher source versions may restore removed personnel under R20; retired account bindings cannot be restored. Organization membership removal is recoverable.".
+-moduledoc "Directory-only incremental sync. Source organization rows are provisioned by trusted configuration; clients"
+" cannot nominate an Owner or UID. sync/3 owns the transaction; sync_tx/4 requires its caller to rollback abort_tx"
+" and run elib_pg commit actions. Explicit higher source versions may restore removed personnel under R20; retired"
+" account bindings cannot be restored. Organization membership removal is recoverable.".
 -export([sync/3, sync_tx/4, claim_and_project_tx/4, claim_login_tx/4, validate/1, version/2]).
 
 %% Login proves an identity, not directory write authority. Keep unauthorized
@@ -473,12 +476,12 @@ project_membership(Conn, Ctx, #{<<"user_id">> := UserId}, Source, Spec) ->
 
 version(#{<<"source_version">> := Current} = Source, Spec) ->
     Incoming = maps:get(<<"version">>, Spec),
-    if
-        Incoming > Current ->
+    case true of
+        _ when Incoming > Current ->
             advance;
-        Incoming < Current ->
+        _ when Incoming < Current ->
             {error, stale_source_version};
-        true ->
+        _ ->
             case maps:get(<<"payload_digest">>, Source, null) =:= digest(Spec) of
                 true -> replay;
                 false -> {error, source_version_conflict}

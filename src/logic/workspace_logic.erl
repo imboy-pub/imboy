@@ -857,9 +857,11 @@ ensure_not_archived(WsId) ->
 read_raw_branding(WsId) ->
     case workspace_ds:find_by_id(WsId, <<"branding">>) of
         #{<<"branding">> := Branding} when is_binary(Branding) ->
-            case catch jsone:decode(Branding, [{object_format, map}]) of
+            try jsone:decode(Branding, [{object_format, map}]) of
                 Map when is_map(Map) -> Map;
                 _ -> #{}
+            catch
+                _:_ -> #{}
             end;
         _ ->
             #{}

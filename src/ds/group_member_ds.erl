@@ -77,7 +77,11 @@ list_member(Gid, []) ->
     UserTb = user_repo:tablename(),
     % P1-7b: gm.* 改为显式列（group_member 全列，无敏感字段）
     Column =
-        <<"u.nickname,u.account,u.avatar,u.sign, gm.id,gm.group_id,gm.user_id,gm.invite_code,gm.alias,gm.description,gm.role,gm.is_join,gm.join_mode,gm.status,gm.updated_at,gm.created_at,gm.remark,gm.mute_until,gm.category_id">>,
+        <<
+            "u.nickname,u.account,u.avatar,u.sign, gm.id,gm.group_id,gm.user_id,gm.invite_code,gm.alias,gm.description,"
+            "gm.role,gm.is_join,gm.join_mode,gm.status,gm.updated_at,gm.created_at,gm.remark,gm.mute_until,"
+            "gm.category_id"
+        >>,
     Sql =
         <<"SELECT ", Column/binary, " FROM ", GMTb/binary, " gm LEFT JOIN ", UserTb/binary,
             " u ON u.id = gm.user_id WHERE gm.group_id = $1 AND gm.status = 1",
@@ -88,7 +92,11 @@ list_member(Gid, MemberUids) when length(MemberUids) > 0 ->
     UserTb = user_repo:tablename(),
     % P1-7b: gm.* 改为显式列（group_member 全列，无敏感字段）
     Column =
-        <<"u.nickname,u.account,u.avatar,u.sign, gm.id,gm.group_id,gm.user_id,gm.invite_code,gm.alias,gm.description,gm.role,gm.is_join,gm.join_mode,gm.status,gm.updated_at,gm.created_at,gm.remark,gm.mute_until,gm.category_id">>,
+        <<
+            "u.nickname,u.account,u.avatar,u.sign, gm.id,gm.group_id,gm.user_id,gm.invite_code,gm.alias,gm.description,"
+            "gm.role,gm.is_join,gm.join_mode,gm.status,gm.updated_at,gm.created_at,gm.remark,gm.mute_until,"
+            "gm.category_id"
+        >>,
     % $1 已由 group_id 占用；成员筛选参数必须从 $2 开始。
     % 旧实现从 $1 开始，导致 SQL 占位符数量小于 Params，epgsql 在生产
     % 直接抛出 lists:zip([], Params, fail)，群成员邀请返回 500。
@@ -308,9 +316,9 @@ leave(Conn, Uid, Gid, CurrentUid) ->
             % 写日志
             {ok, Body} = jsone_encode:encode(GM, [native_utf8]),
             Type =
-                if
-                    CurrentUid == Uid -> 200;
-                    true -> 202
+                case true of
+                    _ when CurrentUid == Uid -> 200;
+                    _ -> 202
                 end,
             _ = group_log_repo:add(Conn, #{
                 type => Type,

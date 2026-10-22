@@ -5,7 +5,8 @@
 %%% | principal               | 凭证                          | 必需条件 |
 %%% |-------------------------|-------------------------------|----------|
 %%% | `enterprise_owner_admin`| IMBoy JWT（current_uid）      | active member + owner/admin 治理角色 |
-%%% | `cs_seat`               | IMBoy JWT（current_uid）      | active member + customer_service 职能 active assignment + seat enabled（A04）|
+%%% | `cs_seat`               | IMBoy JWT（current_uid）      | active member + customer_service 职能 active assignment +
+%%% seat enabled（A04）|
 %%% | `platform_admin`        | Admin session（adm_user_id）  | `customer_service:read|write` 权限 |
 %%% | `cs_visit`              | 头 `x-cs-visit-token`         | digest 命中 + 未吊销 + 未过期，只返回 (Org, contact) 作用域 |
 %%% | `cs_shop_key`           | 头 `x-cs-shop-key`            | digest 命中 + 未吊销，绑定本 Org |

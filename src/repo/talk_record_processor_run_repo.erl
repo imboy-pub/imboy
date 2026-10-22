@@ -67,7 +67,8 @@ unblock_waiting() ->
         <<
             "UPDATE talk_record_job j SET suspended=false,state='queued',error_code=NULL,"
             "updated_at=now() WHERE j.suspended=true AND j.error_code='processor_cleanup_pending'"
-            " AND NOT EXISTS(SELECT 1 FROM talk_record_processor_run r JOIN talk_record_job source ON source.id=r.job_id"
+            " AND NOT EXISTS(SELECT 1 FROM talk_record_processor_run r JOIN talk_record_job source ON "
+            "source.id=r.job_id"
             " WHERE source.record_id=j.record_id AND r.state<>'stopped')"
         >>,
         []

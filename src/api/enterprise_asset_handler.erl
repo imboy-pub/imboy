@@ -1,6 +1,6 @@
 -module(enterprise_asset_handler).
 
--behavior(cowboy_rest).
+-behaviour(cowboy_rest).
 
 -export([init/2]).
 

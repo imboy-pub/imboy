@@ -77,9 +77,9 @@ do_add_friend(CurrentUid, To, Payload, CreatedAt) ->
     ok | {error, binary(), binary()}.
 check_add_way_allowed(ToId, Payload) ->
     PayloadMap =
-        if
-            is_map(Payload) -> Payload;
-            true -> jsone:decode(Payload, [{object_format, map}])
+        case true of
+            _ when is_map(Payload) -> Payload;
+            _ -> jsone:decode(Payload, [{object_format, map}])
         end,
     FromSetting = maps:get(<<"from">>, PayloadMap, #{}),
     %% 仅 mobile/qrcode 两个受控途径才查设置，其余途径零开销放行
@@ -135,9 +135,9 @@ send_apply_friend(CurrentUid, To, ToId, FromBin, Payload, CreatedAt) ->
     % v2.0: S2C 消息使用 action 字段，直接作为参数传递
     Action = <<"apply_friend">>,
     PayloadMap =
-        if
-            is_map(Payload) -> Payload;
-            true -> jsone:decode(Payload, [{object_format, map}])
+        case true of
+            _ when is_map(Payload) -> Payload;
+            _ -> jsone:decode(Payload, [{object_format, map}])
         end,
     Payload2 = maps:without([<<"action">>], PayloadMap),
     % 存储消息（v2.0: 使用 write_msg/8 API）
@@ -195,9 +195,9 @@ confirm_friend(CurrentUid, From, To, Payload) ->
 confirm_friend_do(CurrentUid, From, To, Payload, FromBin, ToBin, FromID, ToID) ->
     NowTs = elib_dt:now(),
     Payload2 =
-        if
-            is_map(Payload) -> Payload;
-            true -> jsone:decode(Payload, [{object_format, map}])
+        case true of
+            _ when is_map(Payload) -> Payload;
+            _ -> jsone:decode(Payload, [{object_format, map}])
         end,
 
     FromSetting = maps:get(<<"from">>, Payload2, #{}),
@@ -250,18 +250,18 @@ confirm_friend_do(CurrentUid, From, To, Payload, FromBin, ToBin, FromID, ToID) -
     MsLi = elib_retry_config:intervals(<<"s2c">>),
     message_ds:send_next(FromID, MsgId, jsone:encode(Msg, [native_utf8]), MsLi),
 
-    if
-        ToTag == <<>> ->
+    case true of
+        _ when ToTag == <<>> ->
             ok;
-        true ->
+        _ ->
             ToTag2 = [I || I <- binary:split(ToTag, <<",">>, [global]), I /= <<>>],
             _ = user_tag_relation_logic:add(FromID, 2, ToID, ToTag2),
             ok
     end,
-    if
-        FromTag == <<>> ->
+    case true of
+        _ when FromTag == <<>> ->
             ok;
-        true ->
+        _ ->
             FromTag2 = [I || I <- binary:split(FromTag, <<",">>, [global]), I /= <<>>],
             _ = user_tag_relation_logic:add(ToID, 2, FromID, FromTag2),
             ok

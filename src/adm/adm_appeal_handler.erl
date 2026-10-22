@@ -5,7 +5,7 @@
 % R-04 处置申诉复审控制器
 % Moderation appeal review controller
 %%%
--behavior(cowboy_rest).
+-behaviour(cowboy_rest).
 
 -export([init/2]).
 

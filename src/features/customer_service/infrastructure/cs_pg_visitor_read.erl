@@ -5,19 +5,59 @@
 sql_statements() ->
     #{
         credential =>
-            <<"SELECT t.id,i.allowed_origins FROM customer_service_widget_installation i JOIN customer_service_visit_token t ON t.organization_id=i.organization_id AND t.widget_installation_id=i.id WHERE i.organization_id=$1 AND i.id=$2 AND t.id=$3 AND t.contact_id=$4 FOR SHARE OF i,t">>,
+            <<
+                "SELECT t.id,"
+                "i.allowed_origins FROM customer_service_widget_installation i JOIN customer_service_visit_token t ON "
+                "t.organization_id=i.organization_id AND t.widget_installation_id=i.id WHERE i.organization_id=$1 AND "
+                "i.id=$2 AND t.id=$3 AND t.contact_id=$4 FOR SHARE OF i,t"
+            >>,
         session =>
-            <<"SELECT s.id FROM customer_service_session s JOIN customer_service_visit_token original ON original.organization_id=s.organization_id AND original.id=s.visit_token_id WHERE s.organization_id=$1 AND s.workspace_id=$2 AND s.id=$3 AND s.contact_id=$4 AND s.conversation_id=$6 AND original.widget_installation_id=$5 AND original.contact_id=s.contact_id FOR UPDATE OF s FOR SHARE OF original">>,
+            <<
+                "SELECT s.id FROM customer_service_session s JOIN customer_service_visit_token original ON "
+                "original.organization_id=s.organization_id AND original.id=s.visit_token_id WHERE s.organization_id="
+                "$1 AND s.workspace_id=$2 AND s.id=$3 AND s.contact_id=$4 AND s.conversation_id=$6 AND "
+                "original.widget_installation_id=$5 AND original.contact_id=s.contact_id FOR UPDATE OF s FOR SHARE OF "
+                "original"
+            >>,
         messages =>
-            <<"SELECT id FROM enterprise_message WHERE organization_id=$1 AND workspace_id=$2 AND conversation_id=$3 AND id=ANY($4::bigint[]) AND sender_type='business_identity' AND visibility='visible' ORDER BY id FOR SHARE">>,
+            <<
+                "SELECT id FROM enterprise_message WHERE organization_id=$1 AND workspace_id=$2 AND conversation_id=$3 "
+                "AND id=ANY($4::bigint[]) AND sender_type='business_identity' AND visibility='visible' ORDER BY id FOR "
+                "SHARE"
+            >>,
         clock =>
-            <<"WITH instant AS MATERIALIZED (SELECT clock_timestamp() AS at) SELECT i.status AS installation_status,(t.revoked_at IS NOT NULL AND t.revoked_at<=instant.at) AS revoked,(t.expires_at<=instant.at) AS expired,to_char(instant.at AT TIME ZONE 'UTC','YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"') AS read_at FROM customer_service_widget_installation i JOIN customer_service_visit_token t ON t.organization_id=i.organization_id AND t.widget_installation_id=i.id CROSS JOIN instant WHERE i.organization_id=$1 AND i.id=$2 AND t.id=$3 AND t.contact_id=$4">>,
+            <<
+                "WITH instant AS MATERIALIZED (SELECT clock_timestamp() AS at) SELECT i.status AS installation_status,"
+                "(t.revoked_at IS NOT NULL AND t.revoked_at<=instant.at) AS revoked,"
+                "(t.expires_at<=instant.at) AS expired,to_char(instant.at AT TIME ZONE 'UTC',"
+                "'YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"') AS read_at FROM customer_service_widget_installation i JOIN "
+                "customer_service_visit_token t ON t.organization_id=i.organization_id AND "
+                "t.widget_installation_id=i.id CROSS JOIN instant WHERE i.organization_id=$1 AND i.id=$2 AND t.id=$3 "
+                "AND t.contact_id=$4"
+            >>,
         insert =>
-            <<"INSERT INTO customer_service_visitor_message_read (organization_id,workspace_id,session_id,contact_id,conversation_id,message_id,read_at) SELECT $1,$2,$3,$4,$5,id,$7::timestamptz FROM unnest($6::bigint[]) AS requested(id) ON CONFLICT DO NOTHING">>,
+            <<
+                "INSERT INTO customer_service_visitor_message_read (organization_id,workspace_id,session_id,contact_id,"
+                "conversation_id,message_id,read_at) SELECT $1,$2,$3,$4,$5,id,"
+                "$7::timestamptz FROM unnest($6::bigint[]) AS requested(id) ON CONFLICT DO NOTHING"
+            >>,
         cursor =>
-            <<"INSERT INTO customer_service_visitor_read_cursor AS current (organization_id,workspace_id,session_id,contact_id,conversation_id,highest_confirmed_id,last_advanced_at) VALUES ($1,$2,$3,$4,$5,$6,$7::timestamptz) ON CONFLICT (organization_id,workspace_id,session_id,contact_id) DO UPDATE SET highest_confirmed_id=GREATEST(current.highest_confirmed_id,EXCLUDED.highest_confirmed_id),last_advanced_at=CASE WHEN EXCLUDED.highest_confirmed_id>current.highest_confirmed_id THEN EXCLUDED.last_advanced_at ELSE current.last_advanced_at END RETURNING highest_confirmed_id">>,
+            <<
+                "INSERT INTO customer_service_visitor_read_cursor AS current (organization_id,workspace_id,session_id,"
+                "contact_id,conversation_id,highest_confirmed_id,last_advanced_at) VALUES ($1,$2,$3,$4,$5,$6,"
+                "$7::timestamptz) ON CONFLICT (organization_id,workspace_id,session_id,"
+                "contact_id) DO UPDATE SET highest_confirmed_id=GREATEST(current.highest_confirmed_id,"
+                "EXCLUDED.highest_confirmed_id),"
+                "last_advanced_at=CASE WHEN EXCLUDED.highest_confirmed_id>current.highest_confirmed_id THEN "
+                "EXCLUDED.last_advanced_at ELSE current.last_advanced_at END RETURNING highest_confirmed_id"
+            >>,
         receipts =>
-            <<"SELECT message_id,to_char(read_at AT TIME ZONE 'UTC','YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"') AS read_at FROM customer_service_visitor_message_read WHERE organization_id=$1 AND workspace_id=$2 AND session_id=$3 AND contact_id=$4 AND conversation_id=$5 AND message_id=ANY($6::bigint[]) ORDER BY message_id">>
+            <<
+                "SELECT message_id,to_char(read_at AT TIME ZONE 'UTC',"
+                "'YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"') AS read_at FROM customer_service_visitor_message_read WHERE "
+                "organization_id=$1 AND workspace_id=$2 AND session_id=$3 AND contact_id=$4 AND conversation_id=$5 AND "
+                "message_id=ANY($6::bigint[]) ORDER BY message_id"
+            >>
     }.
 
 confirm_visitor_message_reads(Org, Ws, Scope, Ids, _At) ->

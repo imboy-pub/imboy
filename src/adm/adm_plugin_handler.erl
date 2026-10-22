@@ -3,7 +3,7 @@
 % adm_plugin 控制器模块 / adm_plugin controller module
 % 插件生命周期管理 API / Plugin lifecycle management API (lifecycle.md §10)
 %%%
--behavior(cowboy_rest).
+-behaviour(cowboy_rest).
 
 -export([init/2]).
 

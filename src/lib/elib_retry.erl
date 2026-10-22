@@ -155,7 +155,7 @@ do_retry_with_timeout(Fun, TimeoutMs, RetryCount, DelayMs, BackoffType, Attempt)
         % 设置超时执行
         Result =
             case
-                catch erlang:spawn_monitor(fun() ->
+                erlang:spawn_monitor(fun() ->
                     % 在新进程中执行，支持超时
                     exit(Fun())
                 end)

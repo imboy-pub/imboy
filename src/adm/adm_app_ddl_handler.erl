@@ -4,7 +4,7 @@
 % adm_app_ddl 控制器模块
 % adm_app_ddl controller module
 %%%
--behavior(cowboy_rest).
+-behaviour(cowboy_rest).
 
 -export([init/2]).
 

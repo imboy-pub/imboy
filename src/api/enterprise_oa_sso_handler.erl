@@ -2,7 +2,7 @@
 
 -moduledoc "OA 一次性 SSO code 签发端点壳（EPGZ-05 HUMAN-SSO-01）。".
 
--behavior(cowboy_rest).
+-behaviour(cowboy_rest).
 
 -export([init/2]).
 

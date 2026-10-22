@@ -33,24 +33,28 @@ write_topic(<<"C2S">>, TopicId, Uid, To, Title, CreatedAtRaw) ->
     % index type, user_id, title
     Tb = <<"msg_topic">>,
     % 使用安全的参数化查询，避免SQL注入
-    Query = <<"SELECT id FROM ", Tb/binary, " WHERE type = $1 AND user_id = $2 AND title = $3 ORDER BY id DESC LIMIT 1">>,
-    Id = case elib_pg:query(Query, [<<"C2S">>, Uid, Title]) of
-        {ok, [#{<<"id">> := Id2}]} when is_integer(Id2) -> Id2;
-        _ -> undefined
-    end,
+    Query =
+        <<"SELECT id FROM ", Tb/binary,
+            " WHERE type = $1 AND user_id = $2 AND title = $3 ORDER BY id DESC LIMIT "
+            "1">>,
+    Id =
+        case elib_pg:query(Query, [<<"C2S">>, Uid, Title]) of
+            {ok, [#{<<"id">> := Id2}]} when is_integer(Id2) -> Id2;
+            _ -> undefined
+        end,
     % Id.
     Data = #{
-    topic_id => TopicId,
-    user_id => Uid,
-    to_id => To,
-    type => <<"C2S">>,
-    title => Title,
-    created_at => CreatedAt
+        topic_id => TopicId,
+        user_id => Uid,
+        to_id => To,
+        type => <<"C2S">>,
+        title => Title,
+        created_at => CreatedAt
     },
-    if
-        Id > 0 ->
+    case true of
+        _ when Id > 0 ->
             ok;
-        true ->
+        _ ->
             {Sql, Params} = elib_pg_sql:insert(Tb, Data, <<>>),
             {ok, _} = elib_pg:execute(Sql, Params),
             ok
@@ -67,7 +71,14 @@ write_topic(<<"C2S">>, TopicId, Uid, To, Title, CreatedAtRaw) ->
 write_msg(MsgId, Data) ->
     Tb = <<"msg_c2s">>,
     % 使用安全的参数化查询，避免SQL注入
-    case elib_pg:query(<<"SELECT count(*) AS count FROM ", Tb/binary, " WHERE msg_id = $1 ORDER BY created_at DESC LIMIT 1">>, [MsgId]) of
+    case
+        elib_pg:query(
+            <<"SELECT count(*) AS count FROM ", Tb/binary,
+                " WHERE msg_id = $1 ORDER BY created_at DESC "
+                "LIMIT 1">>,
+            [MsgId]
+        )
+    of
         {ok, [#{<<"count">> := 0}]} ->
             {Sql, Params} = elib_pg_sql:insert(Tb, Data, <<>>),
             case elib_pg:execute(Sql, Params) of
@@ -77,7 +88,6 @@ write_msg(MsgId, Data) ->
         _ ->
             ok
     end.
-
 
 %% 读取消息
 % read_msg(ToUid, Limit) ->

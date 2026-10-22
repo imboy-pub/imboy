@@ -24,9 +24,19 @@
 %% @param ForwardToId 转发目标ID（单聊为用户ID，群聊为群组ID）
 %% @param ForwardType 转发目标类型（c2c/c2g）
 %% @return ok | {error, Reason}
--spec save_forward_record(binary(), integer(), integer(), binary(), binary(), integer(), integer(), binary()) -> ok | {error, term()}.
-save_forward_record(OriginalMsgId, OriginalFromId, OriginalToId, OriginalType,
-                    ForwardMsgId, ForwardFromId, ForwardToId, ForwardType) ->
+-spec save_forward_record(
+    binary(), integer(), integer(), binary(), binary(), integer(), integer(), binary()
+) -> ok | {error, term()}.
+save_forward_record(
+    OriginalMsgId,
+    OriginalFromId,
+    OriginalToId,
+    OriginalType,
+    ForwardMsgId,
+    ForwardFromId,
+    ForwardToId,
+    ForwardType
+) ->
     ForwardRecord = #{
         <<"original_msg_id">> => OriginalMsgId,
         <<"original_from_id">> => OriginalFromId,
@@ -38,12 +48,12 @@ save_forward_record(OriginalMsgId, OriginalFromId, OriginalToId, OriginalType,
         <<"forward_type">> => ForwardType
     },
     case msg_forward_repo:insert(ForwardRecord) of
-        {ok, _} -> ok;
+        {ok, _} ->
+            ok;
         {error, Reason} ->
             ?LOG_ERROR("Failed to save forward record: ~p", [Reason]),
             {error, Reason}
     end.
-
 
 %% ===================================================================
 %% Internal Function Definitions

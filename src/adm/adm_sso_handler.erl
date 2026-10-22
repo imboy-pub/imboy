@@ -13,7 +13,7 @@
 % 权限：仅超管（settings:view，role 1 持有）。
 %%%
 
--behavior(cowboy_rest).
+-behaviour(cowboy_rest).
 
 -export([init/2]).
 

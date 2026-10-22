@@ -14,7 +14,7 @@
 % 产生；该分支保留为兼容（服务端将来若关闭自动开户仍会用到）。
 %%%
 
--behavior(cowboy_rest).
+-behaviour(cowboy_rest).
 
 -export([init/2]).
 -export([handle_action/3]).

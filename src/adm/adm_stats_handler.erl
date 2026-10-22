@@ -3,7 +3,7 @@
 % adm_stats 控制器模块
 % 统计 API
 %%%
--behavior(cowboy_rest).
+-behaviour(cowboy_rest).
 
 -export([init/2]).
 

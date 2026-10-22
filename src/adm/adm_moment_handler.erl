@@ -2,7 +2,7 @@
 -moduledoc "moment 管理端点 / admin moment handler。".
 -dialyzer({nowarn_function, [report_resolve/3, report_batch_resolve/3]}).
 
--behavior(cowboy_rest).
+-behaviour(cowboy_rest).
 
 -export([init/2]).
 

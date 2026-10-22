@@ -209,7 +209,8 @@ requeue_deleted_tx(C, Rid) ->
             C,
             <<
                 "UPDATE talk_record SET cleanup_status='pending',updated_at=now() WHERE id=$1"
-                " AND deleted_at IS NOT NULL AND cleanup_status IN ('blocked_hold','blocked_retention','retained_by_other_reference')"
+                " AND deleted_at IS NOT NULL AND cleanup_status IN ('blocked_hold','blocked_retention',"
+                "'retained_by_other_reference')"
                 " RETURNING id"
             >>,
             [Rid]

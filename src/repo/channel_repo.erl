@@ -398,9 +398,9 @@ restore_tx(Conn, ChannelId, Now) ->
 increment_subscribers(ChannelId, Delta) ->
     Tb = tablename(),
     Op =
-        if
-            Delta > 0 -> <<"+">>;
-            true -> <<"-">>
+        case true of
+            _ when Delta > 0 -> <<"+">>;
+            _ -> <<"-">>
         end,
     DeltaAbs = abs(Delta),
     Sql =
@@ -415,9 +415,9 @@ increment_subscribers(ChannelId, Delta) ->
 increment_subscribers(Conn, ChannelId, Delta) ->
     Tb = tablename(),
     Op =
-        if
-            Delta > 0 -> <<"+">>;
-            true -> <<"-">>
+        case true of
+            _ when Delta > 0 -> <<"+">>;
+            _ -> <<"-">>
         end,
     DeltaAbs = abs(Delta),
     Sql =

@@ -1,5 +1,5 @@
 -module(websocket_handler).
--behavior(cowboy_websocket).
+-behaviour(cowboy_websocket).
 %%%
 %% websocket API 获取 header里面的token
 %%%
@@ -595,7 +595,11 @@ websocket_info_binary({reply, Msg}, State, Decoded) ->
     {reply, encode_delivery_frame(Msg, State, Decoded), State, hibernate};
 websocket_info_binary({timeout, Ref, {MsLi, TimerKey, Msg}}, State, Decoded) ->
     websocket_delivery_guard:retry(
-        Ref, MsLi, TimerKey, Msg, State,
+        Ref,
+        MsLi,
+        TimerKey,
+        Msg,
+        State,
         fun(Bin, S) -> encode_delivery_frame(Bin, S, Decoded) end
     );
 websocket_info_binary({timeout, _Ref, Msg}, State, Decoded) ->

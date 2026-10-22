@@ -80,7 +80,10 @@ group_search_page(Keyword, Limit, Offset, CategoryId) ->
                     undefined ->
                         <<"g.status = 1 AND g.type = 1 AND fts.token @@ to_tsquery('jiebacfg', $1)">>;
                     _ ->
-                        <<"g.status = 1 AND g.type = 1 AND g.category_id = $2 AND fts.token @@ to_tsquery('jiebacfg', $1)">>
+                        <<
+                            "g.status = 1 AND g.type = 1 AND g.category_id = $2 AND fts.token @@ to_tsquery('jiebacfg',"
+                            " $1)"
+                        >>
                 end,
             OrderClause = <<"ts_rank_cd(fts.token, to_tsquery('jiebacfg', $1)) DESC">>,
             Sql = build_search_sql(WhereClause, OrderClause),

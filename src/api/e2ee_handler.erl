@@ -7,7 +7,7 @@
     {nowarn_function, [key_status/2, pull_notifications/2, start_recovery/2, compliance_key/2]}
 ).
 
--behavior(cowboy_rest).
+-behaviour(cowboy_rest).
 
 -export([init/2]).
 

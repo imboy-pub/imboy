@@ -39,7 +39,8 @@
     "a.id, a.organization_id, a.workspace_id, a.conversation_id, a.message_id,"
     " a.business_identity_id, a.uploaded_by_user_id, a.object_key, a.object_hash, a.mime,"
     " a.size_bytes, a.status, a.key_version, a.file_name, a.retain_until, a.version,"
-    " a.created_at, a.deleted_at, a.pending_object_delete, a.upload_registration, a.upload_content, a.lifecycle_state, a.storage_driver, a.storage_namespace, a.storage_container, a.storage_locator_sha256"
+    " a.created_at, a.deleted_at, a.pending_object_delete, a.upload_registration, a.upload_content, a.lifecycle_state,"
+    " a.storage_driver, a.storage_namespace, a.storage_container, a.storage_locator_sha256"
 ).
 
 %% 登记：status 恒为 pending_confirm（确认只能走 confirm_asset/3）。
@@ -411,7 +412,10 @@ register_session_live(Conn, Org, Ws, D, Cid, Registration, Deadline, Expiry) ->
     case
         tx_query(
             Conn,
-            <<"SELECT id,organization_id,workspace_id,upload_registration FROM enterprise_asset WHERE client_upload_id=$1::uuid FOR UPDATE">>,
+            <<
+                "SELECT id,organization_id,workspace_id,"
+                "upload_registration FROM enterprise_asset WHERE client_upload_id=$1::uuid FOR UPDATE"
+            >>,
             [Cid]
         )
     of
@@ -468,7 +472,10 @@ register_session_live(Conn, Org, Ws, D, Cid, Registration, Deadline, Expiry) ->
                     Kind = maps:get(<<"kind">>, maps:get(<<"subject">>, Registration)),
                     tx_query(
                         Conn,
-                        <<"SELECT * FROM fn_v5_register_eb($1,$2,$3,$4,$5::uuid,$6::jsonb,$7,$8::timestamptz,$9::timestamptz)">>,
+                        <<
+                            "SELECT * FROM fn_v5_register_eb($1,$2,$3,$4,$5::uuid,$6::jsonb,$7,$8::timestamptz,"
+                            "$9::timestamptz)"
+                        >>,
                         [
                             Org,
                             Ws,
@@ -563,9 +570,12 @@ v5_session(OrgId, WsId, AssetId) ->
         case
             elib_pg:query(
                 <<
-                    "SELECT id, organization_id, workspace_id, conversation_id, message_id, file_name, uploaded_by_user_id, retain_until, lifecycle_state, object_key, object_hash, mime, size_bytes, status,"
+                    "SELECT id, organization_id, workspace_id, conversation_id, message_id, file_name,"
+                    " uploaded_by_user_id, retain_until, lifecycle_state, object_key, object_hash, mime, size_bytes,"
+                    " status,"
                     " client_upload_id, session_deadline, upload_expires_at,"
-                    " upload_registration, upload_content, storage_driver, storage_namespace, storage_container, storage_locator_sha256 FROM enterprise_asset"
+                    " upload_registration, upload_content, storage_driver, storage_namespace, storage_container,"
+                    " storage_locator_sha256 FROM enterprise_asset"
                     " WHERE organization_id = $1 AND workspace_id = $2 AND id = $3"
                 >>,
                 [OrgId, WsId, AssetId]
@@ -607,7 +617,8 @@ renew_v5(OrgId, WsId, AssetId, NewExpirySec) ->
             elib_pg:query(
                 <<
                     "UPDATE enterprise_asset SET upload_expires_at ="
-                    " LEAST(session_deadline,GREATEST(COALESCE(upload_expires_at, to_timestamp($4::double precision)), to_timestamp($4::double precision)))"
+                    " LEAST(session_deadline,GREATEST(COALESCE(upload_expires_at, to_timestamp($4::double precision)),"
+                    " to_timestamp($4::double precision)))"
                     " WHERE organization_id = $1 AND workspace_id = $2 AND id = $3"
                     " AND status = 'pending_confirm' AND lifecycle_state = 'live' AND client_upload_id IS NOT NULL"
                     " AND session_deadline IS NOT NULL AND session_deadline > now()"
@@ -734,7 +745,10 @@ insert_without_pending_delete(Conn, Org, Ws, Id, Params) ->
     case
         elib_pg:query(
             Conn,
-            <<"SELECT asset_id FROM enterprise_asset_delete_queue WHERE organization_id=$1 AND workspace_id=$2 AND asset_id=$3">>,
+            <<
+                "SELECT asset_id FROM enterprise_asset_delete_queue WHERE organization_id=$1 AND workspace_id=$2 AND "
+                "asset_id=$3"
+            >>,
             [Org, Ws, Id]
         )
     of

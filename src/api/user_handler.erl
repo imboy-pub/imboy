@@ -2,7 +2,7 @@
 %% Thin HTTP adapter for the identity user boundary.
 %% Keep transport concerns here and route user lifecycle rules through user_logic.
 
--behavior(cowboy_rest).
+-behaviour(cowboy_rest).
 
 -dialyzer([
     {nowarn_function, search/2},
@@ -75,22 +75,22 @@ search(Req0, State) ->
     KwdBin = elib_cnv:safe_to_binary(Kwd),
     {User, Uid2, AllowSearch} = user_logic:find_by_keyword(KwdBin),
     Payload =
-        if
-            Uid2 == 0 ->
+        case true of
+            _ when Uid2 == 0 ->
                 #{
                     total => 0,
                     page => Page,
                     size => Size,
                     list => []
                 };
-            AllowSearch == false ->
+            _ when AllowSearch == false ->
                 #{
                     total => 0,
                     page => Page,
                     size => Size,
                     list => []
                 };
-            true ->
+            _ ->
                 {IsF, Remark} = friend_logic:is_friend(CurrentUid, Uid2, <<"remark">>),
                 User2 = User#{<<"is_friend">> => IsF, <<"remark">> => Remark},
                 User3 = convert_user_id(User2),

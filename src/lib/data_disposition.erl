@@ -159,17 +159,17 @@ finalize(Entries) ->
 validate_entry(Name, Fields) ->
     IsTable = maps:is_key(action, Fields),
     HasReason = maps:is_key(reason, Fields),
-    if
-        IsTable ->
+    case true of
+        _ when IsTable ->
             validate_table_entry(Name, Fields);
-        HasReason ->
+        _ when HasReason ->
             %% exclusions 块：只有 reason
             #{
                 table => Name,
                 action => exclude,
                 reason => maps:get(reason, Fields)
             };
-        true ->
+        _ ->
             throw({parse_error, {missing_fields, Name, [action, reason]}})
     end.
 

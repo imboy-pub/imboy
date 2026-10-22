@@ -31,16 +31,18 @@ resolve_channel_id(ChannelIdBin) ->
 
 -spec decode_positive_id(term()) -> integer().
 decode_positive_id(Value) ->
-    case catch ec_cnv:to_integer(Value) of
+    try ec_cnv:to_integer(Value) of
         Id when is_integer(Id), Id > 0 ->
             Id;
         _ ->
             0
+    catch
+        _:_ -> 0
     end.
 
 -spec resolve_custom_channel_id(binary()) -> integer().
 resolve_custom_channel_id(ChannelIdBin) ->
-    case catch channel_ds:find_by_custom_id(ChannelIdBin) of
+    try channel_ds:find_by_custom_id(ChannelIdBin) of
         Channel when is_map(Channel) ->
             case maps:get(<<"id">>, Channel, 0) of
                 ChannelId when is_integer(ChannelId), ChannelId > 0 ->
@@ -50,6 +52,8 @@ resolve_custom_channel_id(ChannelIdBin) ->
             end;
         _ ->
             0
+    catch
+        _:_ -> 0
     end.
 
 -spec get_user_role(integer(), integer()) -> integer().

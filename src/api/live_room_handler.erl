@@ -3,7 +3,7 @@
 %% 直播间 HTTP API 处理器
 %% 提供直播间的创建、开始/停止直播、查询等功能
 
--behavior(cowboy_rest).
+-behaviour(cowboy_rest).
 
 -export([init/2]).
 -export([handle_action/3]).

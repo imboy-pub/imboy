@@ -307,7 +307,10 @@ cast_cancel(Uid, CreatedAt, Opt) ->
 cancel(Uid, CreatedAt, Opt) ->
     User = user_ds:find_by_id(
         Uid,
-        <<"id,account,nickname,avatar,sign,gender,region,birthday,profession,school,interests,account_type,status,created_at,updated_at">>
+        <<
+            "id,account,nickname,avatar,sign,gender,region,birthday,profession,school,interests,account_type,status,"
+            "created_at,updated_at"
+        >>
     ),
     Setting = user_setting_ds:find_by_uid(Uid),
     CreatedAt2 = elib_dt:to_rfc3339(CreatedAt),

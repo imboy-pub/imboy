@@ -77,10 +77,10 @@ add(Uid, Did, COS, COSV, AppVsn, Type, Rating, ContactDetail, Body, Attach) ->
         #{},
         0
     ),
-    if
-        Count > 0 ->
+    case true of
+        _ when Count > 0 ->
             ok;
-        true ->
+        _ ->
             case
                 feedback_repo:add(
                     Uid,
@@ -137,7 +137,8 @@ remove(Uid, FeedbackId) ->
     % imboy_cache:flush(Key),
     ok.
 
-% feedback_ds:add_reply(#{feedback_id => 1, feedback_reply_pid => 0, replier_user_id => 1, replier_name => <<"sss">>, body => "", created_at => elib_dt:now()})
+% feedback_ds:add_reply(#{feedback_id => 1, feedback_reply_pid => 0, replier_user_id => 1, replier_name => <<"sss">>,
+% body => "", created_at => elib_dt:now()})
 -spec add_reply(map()) -> ok.
 add_reply(Data0) ->
     FeedbackId = maps:get(<<"feedback_id">>, Data0),

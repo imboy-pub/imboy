@@ -5,7 +5,7 @@
 % fts 控制器模块
 % fts controller module
 %%%
--behavior(cowboy_rest).
+-behaviour(cowboy_rest).
 
 -export([init/2]).
 

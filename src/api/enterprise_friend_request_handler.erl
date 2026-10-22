@@ -22,7 +22,7 @@
 % /删除/批量外部路径**（A3 导出面负例已断言）。
 %%%
 
--behavior(cowboy_rest).
+-behaviour(cowboy_rest).
 
 -export([init/2]).
 

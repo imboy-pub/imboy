@@ -13,7 +13,7 @@
 %    绝不读 body 里的 owner_uid——用户只能授权从自己钱包扣款。授权/归属判定全在 logic 层。
 %%%
 
--behavior(cowboy_rest).
+-behaviour(cowboy_rest).
 
 -export([init/2]).
 

@@ -1,7 +1,7 @@
 -module(organization_handler).
 
 -moduledoc "组织 API 处理器 —— collection / mine / detail 查询与 archive / restore / deletion-preflight（ORG-02）。".
--behavior(cowboy_rest).
+-behaviour(cowboy_rest).
 
 -export([init/2, handle_action/3]).
 

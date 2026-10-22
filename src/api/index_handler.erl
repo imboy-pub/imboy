@@ -2,7 +2,7 @@
 
 -include("log.hrl").
 
--behavior(cowboy_rest).
+-behaviour(cowboy_rest).
 
 -export([init/2]).
 
@@ -183,7 +183,8 @@ get_help(Req0) ->
         "        <h1>API列表</h1>\n"
         "        <ol>\n"
         "            <li><a href=\"/api/v1/init\" target=\"_blank\">/api/v1/init  GET</a></li>\n"
-        "            <li><a href=\"/api/v1/conversation/online\" target=\"_blank\">/api/v1/conversation/online  GET</a></li>\n"
+        "            <li><a href=\"/api/v1/conversation/online\" target=\"_blank\">/api/v1/conversation/online  "
+        "GET</a></li>\n"
         "        </ol>\n"
         "    ",
     cowboy_req:reply(

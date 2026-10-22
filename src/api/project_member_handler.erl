@@ -31,7 +31,7 @@
 %%% test/api/project_member_handler_tests.erl。
 %%% =====================================================================
 
--behavior(cowboy_rest).
+-behaviour(cowboy_rest).
 
 -export([init/2]).
 -export([handle_action/3]).

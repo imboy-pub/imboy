@@ -4,7 +4,7 @@
 % adm_feedback 控制器模块
 % adm_feedback controller module
 %%%
--behavior(cowboy_rest).
+-behaviour(cowboy_rest).
 
 -export([init/2]).
 
@@ -108,8 +108,8 @@ reply(<<"POST">>, Req0, State) ->
                         {ok, Val2}
                 end,
             % ?DEBUG_LOG(["FeedbackId", FeedbackId, PostVals]),
-            if
-                is_integer(FeedbackId), FeedbackId > 0 ->
+            case true of
+                _ when is_integer(FeedbackId), FeedbackId > 0 ->
                     ReplyPid = ec_cnv:to_integer(
                         maps:get(<<"feedback_reply_pid">>, PostVals, 0)
                     ),
@@ -123,7 +123,7 @@ reply(<<"POST">>, Req0, State) ->
                         <<"created_at">> => elib_dt:now()
                     }),
                     elib_response:success(Req0, #{}, "success.");
-                true ->
+                _ ->
                     elib_response:error(Req0)
             end
     end.
@@ -356,12 +356,12 @@ normalize_sla_hours(Value, Default) ->
             error ->
                 Default
         end,
-    if
-        Base < 1 ->
+    case true of
+        _ when Base < 1 ->
             1;
-        Base > 720 ->
+        _ when Base > 720 ->
             720;
-        true ->
+        _ ->
             Base
     end.
 

@@ -86,7 +86,8 @@ remove_user_tag_relation(Conn, Scene, Uid, TagId, ObjectId) ->
 % 文本 binary（如 "obj456" 场景）照原样直通。原 is_integer→binary 转换
 % 会把整数转 binary 致 int8 编码 integer_overflow 崩连接（生产 500 实证）
 replace_object_tag(Conn, Scene, Uid, ObjectId, FromName, ToName) ->
-    % elib_log:error(io_lib:format("user_tag_relation_repo:replace_object_tag/6 args:~p;~n", [[Conn, Scene, Uid, ObjectId, FromName, ToName]])),
+    % elib_log:error(io_lib:format("user_tag_relation_repo:replace_object_tag/6 args:~p;~n", [[Conn, Scene, Uid,
+    % ObjectId, FromName, ToName]])),
     % 使用安全的参数化查询，避免SQL注入
     {Table, Where, Params} =
         case ec_cnv:to_integer(Scene) of
@@ -226,7 +227,8 @@ save_user_tag_relation(Conn, Scene, Uid, TagId, ObjectId, CreatedAt) ->
     end.
 
 % user_tag_relation_repo:select_tag(<<"scene = $1 AND name = any($2)">>, [2, <<"['a', 'b']">>], <<"id, name">>).
-% user_tag_relation_repo:select_tag(<<"scene = $1 AND name = any(string_to_array($2, ','))">>, [2, "a,b"], <<"id, name">>).
+% user_tag_relation_repo:select_tag(<<"scene = $1 AND name = any(string_to_array($2, ','))">>, [2, "a,b"], <<"id,
+% name">>).
 % {ok,[<<"id">>,<<"name">>],[{1,<<"a">>},{4,<<"b">>}]}
 %% @doc Where 必须是调用方硬编码的字面量（含 $1/$2 占位符），
 %% 禁止拼接用户输入，实际数据一律通过 WhereArgs 传递（SQL 注入防线）

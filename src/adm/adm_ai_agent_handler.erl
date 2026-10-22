@@ -21,7 +21,7 @@
 % 权限：users:read 读，users:create 建，users:update 改，finance:write 授权代付。
 %%%
 
--behavior(cowboy_rest).
+-behaviour(cowboy_rest).
 
 -export([init/2]).
 

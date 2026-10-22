@@ -18,7 +18,7 @@
 %%% @end
 %%%-------------------------------------------------------------------
 -module(qr_login_handler).
--behavior(cowboy_rest).
+-behaviour(cowboy_rest).
 
 -export([init/2]).
 -export([allowed_methods/2]).

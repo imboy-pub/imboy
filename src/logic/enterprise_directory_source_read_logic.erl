@@ -1,5 +1,6 @@
 -module(enterprise_directory_source_read_logic).
--moduledoc "Read-only source reconciliation, with signed application/organization/filter-bound cursors. No writes or account provisioning.".
+-moduledoc "Read-only source reconciliation, with signed application/organization/filter-bound cursors. No writes"
+" or account provisioning.".
 -export([page/3, page_tx/4, validate/2]).
 
 page(Ctx, Kind, Query) ->

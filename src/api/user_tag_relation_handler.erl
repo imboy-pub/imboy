@@ -7,7 +7,7 @@
 % user_tag_relation 控制器模块
 % user_tag_relation controller module
 %%%
--behavior(cowboy_rest).
+-behaviour(cowboy_rest).
 
 -export([init/2]).
 
@@ -81,22 +81,22 @@ add(Req0, State) ->
         end,
     Tag2 = [Name || Name <- Tag, string:length(Name) > 14],
     ObjectId2 =
-        if
-            Scene2 == 2, IsFriend == false ->
+        case true of
+            _ when Scene2 == 2, IsFriend == false ->
                 <<>>;
-            true ->
+            _ ->
                 ObjectId
         end,
-    if
-        Scene2 == 0 ->
+    case true of
+        _ when Scene2 == 0 ->
             elib_response:error(Req0, <<"不支持的 Scene"/utf8>>);
-        length(Tag2) > 0 ->
+        _ when length(Tag2) > 0 ->
             elib_response:error(Req0, <<"Tag 最多14个字"/utf8>>);
-        length(Tag) == 0, bit_size(ObjectId) == 0 ->
+        _ when length(Tag) == 0, bit_size(ObjectId) == 0 ->
             elib_response:error(Req0, <<"ObjectId Tag 不能同时为空"/utf8>>);
-        length(Tag) > 1, bit_size(ObjectId) == 0 ->
+        _ when length(Tag) > 1, bit_size(ObjectId) == 0 ->
             elib_response:error(Req0, <<"ObjectId 不能为空"/utf8>>);
-        true ->
+        _ ->
             % ?DEBUG_LOG(["before logic CurrentUid ", CurrentUid]),
             case user_tag_relation_logic:add(CurrentUid, Scene2, ObjectId2, Tag) of
                 ok ->
@@ -166,7 +166,8 @@ remove(Req0, State) ->
     % 被打标签收藏类型ID （kind_id） or 被打标签用户ID (int 型用户ID)
     ObjectId = maps:get(<<"objectId">>, PostVals, <<>>),
     % user_tag_relation_logic:add(1, 2, <<"2">>, [<<"a">>, <<"b">>]).
-    % INSERT INTO user_tag_relation (id, scene, user_id, tag_id, object_id, created_at) VALUES(43, 2, 109, 56, 108, 1688916074887);
+    % INSERT INTO user_tag_relation (id, scene, user_id, tag_id, object_id, created_at) VALUES(43, 2, 109, 56, 108,
+    % 1688916074887);
     % aaa30,aaa1,你好你好你好你好你好你好你1,abc1,端订单1,
     % user_tag_relation_logic:remove(109, <<"2">>, 108, 56).
     Scene2 =
@@ -191,11 +192,11 @@ remove(Req0, State) ->
             elib_response:success(Req0, #{}, "success.");
         {2, Obj, Id} ->
             ToUid = elib_cnv:safe_to_integer(Obj),
-            if
-                ToUid > 0 ->
+            case true of
+                _ when ToUid > 0 ->
                     user_tag_relation_logic:remove(CurrentUid, <<"2">>, ToUid, Id),
                     elib_response:success(Req0, #{}, "success.");
-                true ->
+                _ ->
                     elib_response:error(Req0, <<"ObjectId 格式有误"/utf8>>)
             end
     end.
@@ -217,20 +218,20 @@ page(Scene, Req0, State) ->
     Kwd = proplists:get_value(<<"kwd">>, Qs, <<>>),
     {ok, TagId} = elib_param:int(tag_id, Req0, 0),
     % elib_log:info(io_lib:format("user_tag_relation_handler:page/2 TagId: ~p; ~n", [TagId])),
-    if
-        CurrentUid == 0 ->
+    case true of
+        _ when CurrentUid == 0 ->
             elib_response:error(Req0, <<"token无效"/utf8>>, ?ERR_TOKEN_INVALID);
-        TagId == 0 ->
+        _ when TagId == 0 ->
             elib_response:error(Req0, <<"tag_id 格式有误"/utf8>>);
-        Scene == <<"collect">> ->
+        _ when Scene == <<"collect">> ->
             Payload = collect_page(CurrentUid, Page, Size, TagId, Kwd),
             elib_response:success(Req0, Payload);
-        Scene == <<"friend">> ->
+        _ when Scene == <<"friend">> ->
             Payload = user_tag_relation_logic:friend_page_by_tag(
                 CurrentUid, Page, Size, TagId, Kwd
             ),
             elib_response:success(Req0, Payload);
-        true ->
+        _ ->
             elib_response:error(Req0, <<"不支持的 Scene"/utf8>>)
     end.
 

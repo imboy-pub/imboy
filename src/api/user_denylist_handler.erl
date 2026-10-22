@@ -5,7 +5,7 @@
 % user_denylist 控制器模块
 % user_denylist controller module
 %%%
--behavior(cowboy_rest).
+-behaviour(cowboy_rest).
 
 -export([init/2]).
 

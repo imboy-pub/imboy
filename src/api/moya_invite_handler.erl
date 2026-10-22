@@ -20,7 +20,7 @@
 % 不记完整 code——拿到日志也无法重放凭证或还原名单。
 %%%
 
--behavior(cowboy_rest).
+-behaviour(cowboy_rest).
 
 -export([init/2]).
 -export([handle_action/3]).

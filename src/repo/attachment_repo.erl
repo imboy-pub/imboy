@@ -325,13 +325,22 @@ page(Page, Size, Opts) ->
     OffsetRef = <<"$", (integer_to_binary(OffsetN))/binary>>,
 
     DataSql = [
-        <<"SELECT id, file_hash256, mime_type, name, path, url, size, referer_time, status, created_at, lifecycle_state, ">>,
+        <<
+            "SELECT id, file_hash256, mime_type, name, path, url, size, referer_time, status, created_at,"
+            " lifecycle_state, "
+        >>,
         <<"COALESCE((SELECT q.job_state FROM attachment_object_deletion q WHERE q.path=a.path ">>,
         <<"AND q.storage_driver=a.storage_driver AND q.storage_namespace=a.storage_namespace ">>,
-        <<"AND q.storage_container=a.storage_container AND q.storage_locator_sha256=a.storage_locator_sha256), 'unknown') AS physical_state, ">>,
+        <<
+            "AND q.storage_container=a.storage_container AND q.storage_locator_sha256=a.storage_locator_sha256),"
+            " 'unknown') AS physical_state, "
+        >>,
         <<"(SELECT q.last_error_code FROM attachment_object_deletion q WHERE q.path=a.path ">>,
         <<"AND q.storage_driver=a.storage_driver AND q.storage_namespace=a.storage_namespace ">>,
-        <<"AND q.storage_container=a.storage_container AND q.storage_locator_sha256=a.storage_locator_sha256) AS deletion_block_reason FROM ">>,
+        <<
+            "AND q.storage_container=a.storage_container AND q.storage_locator_sha256=a.storage_locator_sha256) AS "
+            "deletion_block_reason FROM "
+        >>,
         Tb,
         <<" a">>,
         BaseWhere,
@@ -568,8 +577,12 @@ find_by_path_and_uid(ObjectKey, Uid) ->
 find_by_path(ObjectKey) ->
     Tb = tablename(),
     Sql =
-        <<"SELECT id, path, url, creator_user_id, scope, scope_ref, status, mime_type, storage_driver, storage_namespace, storage_container, storage_locator_sha256, storage_physical_key FROM ",
-            Tb/binary, " WHERE path = $1 AND status >= 0 LIMIT 1">>,
+        <<
+            "SELECT id, path, url, creator_user_id, scope, scope_ref, status, mime_type, storage_driver,"
+            " storage_namespace, storage_container, storage_locator_sha256, storage_physical_key FROM ",
+            Tb/binary,
+            " WHERE path = $1 AND status >= 0 LIMIT 1"
+        >>,
     case elib_pg:query(Sql, [ObjectKey]) of
         {ok, [Row]} -> {ok, Row};
         {ok, []} -> {error, not_found};

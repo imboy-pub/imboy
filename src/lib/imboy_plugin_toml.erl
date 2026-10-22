@@ -86,10 +86,10 @@ parse_contract_version(Bin) when is_binary(Bin) ->
             try
                 Major = binary_to_integer(MajorBin),
                 Minor = binary_to_integer(MinorBin),
-                if
-                    Major > 0 andalso Minor >= 0 ->
+                case true of
+                    _ when Major > 0 andalso Minor >= 0 ->
                         {Major, Minor};
-                    true ->
+                    _ ->
                         {error, invalid_format}
                 end
             catch
@@ -286,11 +286,11 @@ validate_audience(#{audience := #{kind := uid_hash, buckets := Buckets}}) when
         fun(B) -> is_integer(B) andalso B >= 0 andalso B =< 99 end,
         Buckets
     ),
-    if
-        Len > 100 -> {error, {audience_buckets, too_many}};
-        length(Unique) =/= Len -> {error, {audience_buckets, duplicates}};
-        not InRange -> {error, {audience_buckets, out_of_range}};
-        true -> ok
+    case true of
+        _ when Len > 100 -> {error, {audience_buckets, too_many}};
+        _ when length(Unique) =/= Len -> {error, {audience_buckets, duplicates}};
+        _ when not InRange -> {error, {audience_buckets, out_of_range}};
+        _ -> ok
     end;
 validate_audience(_) ->
     ok.

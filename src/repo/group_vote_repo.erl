@@ -133,7 +133,10 @@ insert_vote_run(Exec, Data) ->
 find_by_vote_id(VoteId) when is_binary(VoteId), byte_size(VoteId) > 0 ->
     Tb = tablename(),
     Column =
-        <<"id,group_id,vote_id,title,description,creator_id,vote_type,is_anonymous,status,end_at,created_at,updated_at">>,
+        <<
+            "id,group_id,vote_id,title,description,creator_id,vote_type,is_anonymous,status,end_at,created_at,"
+            "updated_at"
+        >>,
     Where = <<"vote_id = $1">>,
     Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary, " WHERE ", Where/binary>>,
     case elib_pg:query(Sql, [VoteId]) of
@@ -169,7 +172,8 @@ list_votes_by_group_id(GroupId, Page, Size) when
     % 多选投票下 ≠ 总票数），避免逐项 count 的 N+1。
     Column =
         <<
-            "t.id, t.group_id, t.vote_id, t.title, t.description, t.creator_id, t.vote_type, t.is_anonymous, t.status, t.end_at, t.created_at, "
+            "t.id, t.group_id, t.vote_id, t.title, t.description, t.creator_id, t.vote_type, t.is_anonymous, t.status,"
+            " t.end_at, t.created_at, "
             "(SELECT COUNT(DISTINCT r.user_id) FROM ",
             RecordTb/binary,
             " r WHERE r.vote_id = t.vote_id) AS participant_count"

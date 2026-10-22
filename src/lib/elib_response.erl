@@ -213,10 +213,10 @@ reply_json(Code, Msg, Payload, Req, Options) ->
 ) -> cowboy_req:req().
 reply_json_with_status(HttpStatus, Code, Msg, Payload, Req, Options) ->
     Msg2 =
-        if
-            is_list(Msg) ->
+        case true of
+            _ when is_list(Msg) ->
                 unicode:characters_to_binary(Msg);
-            true ->
+            _ ->
                 elib_cnv:safe_to_binary(Msg)
         end,
     BasePayload = #{

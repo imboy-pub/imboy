@@ -6,7 +6,7 @@
     {nowarn_function, [validate_bind_mail_params/4, validate_bind_mail_cache/2, bind_mail/1]}
 ).
 
--behavior(cowboy_handler).
+-behaviour(cowboy_handler).
 
 -export([init/2]).
 
@@ -114,12 +114,12 @@ validate_bind_mail_params(Ts, Tk, Uid, Mail) ->
                     Error;
                 ok ->
                     % 检查签名过期和签名匹配
-                    if
-                        Now > Ts2 ->
+                    case true of
+                        _ when Now > Ts2 ->
                             {error, "签名已过期"};
-                        ExpectedTk == Tk2 ->
+                        _ when ExpectedTk == Tk2 ->
                             {ok, #{uid => Uid, mail => Mail, cache_key => CacheKey}};
-                        true ->
+                        _ ->
                             {error, "签名有误"}
                     end
             end
@@ -361,17 +361,17 @@ getcode(Req0) ->
     Account = maps:get(<<"account">>, PostVals, <<>>),
     % ?DEBUG_LOG([Type, Account]),
     MobileExists =
-        if
-            Type == <<"sms">>, Scene == <<"signup">> ->
+        case true of
+            _ when Type == <<"sms">>, Scene == <<"signup">> ->
                 passport_logic:mobile_registered(Account);
-            true ->
+            _ ->
                 false
         end,
     % ?DEBUG_LOG([Type, Account, "MobileExists ", MobileExists, Type == <<"sms">>, Scene == <<"signup">>]),
-    if
-        MobileExists ->
+    case true of
+        _ when MobileExists ->
             elib_response:error(Req0, <<"该手机号已注册"/utf8>>);
-        true ->
+        _ ->
             % elib_response:success(Req0, #{}, "success.")
             case passport_logic:send_code(Account, Type) of
                 {ok, _} ->

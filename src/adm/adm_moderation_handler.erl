@@ -4,7 +4,7 @@
 % 内容审核管理控制器（敏感词黑名单 + 消息人工复审队列）
 % Content moderation controller (sensitive word blacklist + manual review queue)
 %%%
--behavior(cowboy_rest).
+-behaviour(cowboy_rest).
 
 -export([init/2]).
 

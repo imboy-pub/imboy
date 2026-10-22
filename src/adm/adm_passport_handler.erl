@@ -4,7 +4,7 @@
 % adm_passport 控制器模块
 % adm_passport controller module
 %%%
--behavior(cowboy_rest).
+-behaviour(cowboy_rest).
 
 -export([init/2]).
 

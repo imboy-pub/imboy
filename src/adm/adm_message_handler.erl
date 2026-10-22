@@ -5,7 +5,7 @@
 % adm_message 控制器模块
 % 消息管理 API
 %%%
--behavior(cowboy_rest).
+-behaviour(cowboy_rest).
 
 -export([init/2]).
 
@@ -408,21 +408,25 @@ parse_conversation(Conversation) ->
 -spec parse_uid_param(cowboy_req:req()) -> integer().
 parse_uid_param(Req0) ->
     Uid0 =
-        case catch elib_param:int(uid, Req0, 0) of
+        try elib_param:int(uid, Req0, 0) of
             {ok, Uid} when is_integer(Uid), Uid > 0 ->
                 Uid;
             _ ->
                 0
+        catch
+            _:_ -> 0
         end,
     case Uid0 > 0 of
         true ->
             Uid0;
         false ->
-            case catch elib_param:binary(uid, Req0, <<>>) of
+            try elib_param:binary(uid, Req0, <<>>) of
                 {ok, UidBin} ->
                     parse_id(UidBin);
                 _ ->
                     0
+            catch
+                _:_ -> 0
             end
     end.
 
@@ -468,9 +472,11 @@ parse_id(Value) when is_binary(Value), Value =/= <<>> ->
         true ->
             ec_cnv:to_integer(Value);
         false ->
-            case catch ec_cnv:to_integer(Value) of
+            try ec_cnv:to_integer(Value) of
                 Id when is_integer(Id), Id > 0 -> Id;
                 _ -> 0
+            catch
+                _:_ -> 0
             end
     end;
 parse_id(_) ->
@@ -578,11 +584,13 @@ audit_access(Req0, State, Action, Detail) ->
 
 -spec peer_ip_safe(cowboy_req:req()) -> binary().
 peer_ip_safe(Req0) ->
-    case catch elib_req:peer_ip(Req0) of
+    try elib_req:peer_ip(Req0) of
         Ip when is_binary(Ip) ->
             Ip;
         _ ->
             <<>>
+    catch
+        _:_ -> <<>>
     end.
 
 -spec mode_bin(none | metadata | full) -> binary().

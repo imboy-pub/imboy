@@ -22,12 +22,12 @@ create_invitation(Uid, ChannelIdBin, InviteeUid) ->
                 Channel when is_map(Channel) ->
                     JoinPolicy = maps:get(<<"join_policy">>, Channel, 0),
                     Status = maps:get(<<"status">>, Channel, 0),
-                    if
-                        Status =/= 1 ->
+                    case true of
+                        _ when Status =/= 1 ->
                             {error, <<"频道已禁用或删除"/utf8>>};
-                        JoinPolicy =/= 1 andalso JoinPolicy =/= 3 ->
+                        _ when JoinPolicy =/= 1 andalso JoinPolicy =/= 3 ->
                             {error, <<"只有邀请制频道支持邀请功能"/utf8>>};
-                        true ->
+                        _ ->
                             do_create_invitation(ChannelId, Uid, InviteeUid)
                     end;
                 _Unexpected ->
@@ -88,10 +88,10 @@ accept_invitation(Uid, InvitationId) ->
         {ok, Invitation} when is_map(Invitation) ->
             InviteeUid = maps:get(<<"invitee_uid">>, Invitation, 0),
             ChannelId = maps:get(<<"channel_id">>, Invitation, 0),
-            if
-                InviteeUid =/= Uid ->
+            case true of
+                _ when InviteeUid =/= Uid ->
                     {error, <<"无权接受此邀请"/utf8>>};
-                true ->
+                _ ->
                     do_accept_invitation(ChannelId, Uid, InvitationId, Invitation)
             end;
         {error, not_found} ->
@@ -203,11 +203,13 @@ get_sent_invitations(Uid) ->
 
 -spec decode_positive_id(term()) -> integer().
 decode_positive_id(Value) ->
-    case catch ec_cnv:to_integer(Value) of
+    try ec_cnv:to_integer(Value) of
         Id when is_integer(Id), Id > 0 ->
             Id;
         _ ->
             0
+    catch
+        _:_ -> 0
     end.
 
 -spec invitation_transfer(map()) -> map().

@@ -1,7 +1,7 @@
 -module(conversation_handler).
 -dialyzer({nowarn_function, [mine/2, pin_conversation/2, delete_conversation/2]}).
 
--behavior(cowboy_rest).
+-behaviour(cowboy_rest).
 
 -export([init/2]).
 

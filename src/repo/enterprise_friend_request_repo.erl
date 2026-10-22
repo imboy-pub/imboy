@@ -55,14 +55,14 @@ pending_status_tx(Conn, FromUid, ToUid) when
                 <<"is_pending">> := IsPending
             }
         ]} ->
-            if
-                InDenylist ->
+            case true of
+                _ when InDenylist ->
                     blocked;
-                IsFriend ->
+                _ when IsFriend ->
                     friends;
-                IsPending ->
+                _ when IsPending ->
                     pending;
-                true ->
+                _ ->
                     none
             end;
         {error, Reason} ->

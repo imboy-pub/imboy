@@ -68,7 +68,10 @@ user_search_page(Keyword, Limit, Offset) ->
         {ok, [#{<<"keyword">> := Keyword2}]} ->
             Sql =
                 <<"select ", ?DEF_USER_COLUMN/binary,
-                    ",u.created_at,ts_rank_cd(fts.token, to_tsquery('jiebacfg', $1)) as rank from public.fts_user fts left join public.user u on u.id = fts.user_id where fts.allow_search = 1 AND fts.token @@ to_tsquery('jiebacfg', $2) order by rank desc LIMIT $3 OFFSET $4">>,
+                    ",u.created_at,ts_rank_cd(fts.token, to_tsquery('jiebacfg',"
+                    " $1)) as rank from public.fts_user fts left join public.user u on u.id = fts.user_id where "
+                    "fts.allow_search = 1 AND fts.token @@ to_tsquery('jiebacfg',"
+                    " $2) order by rank desc LIMIT $3 OFFSET $4">>,
             elib_pg:query(Sql, [Keyword2, Keyword2, Limit, Offset]);
         _ ->
             {ok, []}
@@ -127,7 +130,13 @@ search_c2c_msg(Keyword, Limit, Offset, Uid) ->
             % 恒不命中（此前仅完整 latin token 可搜）；显式形式也与
             % idx_msg_c2c_payload_fts 的索引表达式一致，可走 GIN 索引。
             Sql =
-                <<"select m.*, f.nickname as from_nickname, t.nickname as to_nickname from msg_c2c m left join public.user f on m.from_id = f.id left join public.user t on m.to_id = t.id where to_tsvector('jiebacfg', m.payload) @@ to_tsquery('jiebacfg', $1) and m.e2ee is null and (m.from_id = $2 or m.to_id = $2) order by m.created_at desc LIMIT $3 OFFSET $4">>,
+                <<
+                    "select m.*, f.nickname as from_nickname,"
+                    " t.nickname as to_nickname from msg_c2c m left join public.user f on m.from_id = f.id left join "
+                    "public.user t on m.to_id = t.id where to_tsvector('jiebacfg', m.payload) @@ to_tsquery('jiebacfg',"
+                    " $1) and m.e2ee is null and (m.from_id = $2 or m.to_id = $2) order by m.created_at desc LIMIT $3 "
+                    "OFFSET $4"
+                >>,
             elib_pg:query(Sql, [Keyword2, Uid, Limit, Offset]);
         _ ->
             {ok, []}
@@ -160,7 +169,14 @@ search_c2g_msg(Keyword, Limit, Offset, Uid) ->
             % Q06/AC04 S3 真库验证发现：修复前只取顶层 text，真实信封消息
             % （嵌套）恒不命中——mock 单测构造的平铺形态掩盖了该缺陷。
             Sql =
-                <<"select m.*, f.nickname as from_nickname, g.title as group_name, m.to_id as group_id from msg_c2g m left join public.user f on m.from_id = f.id left join public.group g on m.to_id = g.id where to_tsvector('jiebacfg', coalesce(m.payload #>> '{payload,text}', m.payload->>'text')) @@ to_tsquery('jiebacfg', $1) and m.e2ee is null and exists (select 1 from public.group_member gm where gm.group_id = m.to_id and gm.user_id = $2) order by m.created_at desc LIMIT $3 OFFSET $4">>,
+                <<
+                    "select m.*, f.nickname as from_nickname, g.title as group_name,"
+                    " m.to_id as group_id from msg_c2g m left join public.user f on m.from_id = f.id left join "
+                    "public.group g on m.to_id = g.id where to_tsvector('jiebacfg', coalesce(m.payload #>> '{payload,"
+                    "text}', m.payload->>'text')) @@ to_tsquery('jiebacfg',"
+                    " $1) and m.e2ee is null and exists (select 1 from public.group_member gm where gm.group_id = "
+                    "m.to_id and gm.user_id = $2) order by m.created_at desc LIMIT $3 OFFSET $4"
+                >>,
             elib_pg:query(Sql, [Keyword2, Uid, Limit, Offset]);
         _ ->
             {ok, []}
@@ -179,7 +195,10 @@ search_c2c_msg_count(Keyword) ->
         {ok, #{<<"keyword">> := Keyword2}} ->
             % 统计私聊消息数量（文档侧显式 jieba 分词，理由同 search_c2c_msg/4）
             Sql =
-                <<"SELECT count(*) as count FROM msg_c2c WHERE to_tsvector('jiebacfg', payload) @@ to_tsquery('jiebacfg', $1) AND e2ee IS NULL">>,
+                <<
+                    "SELECT count(*) as count FROM msg_c2c WHERE to_tsvector('jiebacfg',"
+                    " payload) @@ to_tsquery('jiebacfg', $1) AND e2ee IS NULL"
+                >>,
             case elib_pg:one(Sql, [Keyword2]) of
                 {ok, #{<<"count">> := Count}} ->
                     Count;
@@ -206,7 +225,10 @@ search_c2g_msg_count(Keyword) ->
             % to_tsvector；文档表达式与 search_c2g_msg/4 同款（嵌套信封
             % payload.text 优先，平铺顶层 text 回退——Q06/AC04 S3 修复）
             Sql =
-                <<"SELECT count(*) as count FROM msg_c2g WHERE to_tsvector('jiebacfg', coalesce(payload #>> '{payload,text}', payload->>'text')) @@ to_tsquery('jiebacfg', $1) AND e2ee IS NULL">>,
+                <<
+                    "SELECT count(*) as count FROM msg_c2g WHERE to_tsvector('jiebacfg', coalesce(payload #>> '"
+                    "{payload,text}', payload->>'text')) @@ to_tsquery('jiebacfg', $1) AND e2ee IS NULL"
+                >>,
             case elib_pg:one(Sql, [Keyword2]) of
                 {ok, #{<<"count">> := Count}} ->
                     Count;

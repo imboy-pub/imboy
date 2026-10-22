@@ -148,14 +148,16 @@ grab(PacketId, ReceiverUid) ->
                                     end,
                                 UpSql =
                                     <<"UPDATE ", Tb/binary,
-                                        " SET remain_amount = remain_amount - $1, remain_count = remain_count - 1, status = $2 WHERE id = $3">>,
+                                        " SET remain_amount = remain_amount - $1, remain_count = remain_count - 1,"
+                                        " status = $2 WHERE id = $3">>,
                                 {ok, 1} = elib_pg:execute(Conn, UpSql, [
                                     GrabAmount, NewStatus, PacketId
                                 ]),
                                 %% 6. 往钱包充钱 / Credit receiver's wallet
                                 CreditSql =
                                     <<"UPDATE ", WalletTb/binary,
-                                        " SET balance = balance + $1, version = version + 1, updated_at = NOW() WHERE user_id = $2 RETURNING balance, id">>,
+                                        " SET balance = balance + $1, version = version + 1,"
+                                        " updated_at = NOW() WHERE user_id = $2 RETURNING balance, id">>,
                                 {ok, 1, [{NewBalance, WalletId}]} = elib_pg:execute(
                                     Conn, CreditSql, [GrabAmount, ReceiverUid]
                                 ),
@@ -164,7 +166,8 @@ grab(PacketId, ReceiverUid) ->
                                 RefNo = gen_ref_no(),
                                 TxSql =
                                     <<"INSERT INTO ", TxTb/binary,
-                                        " (id, wallet_id, user_id, amount, balance_after, tx_type, reference_no, remark, status) VALUES ($1, $2, $3, $4, $5, 8, $6, $7, 1)">>,
+                                        " (id, wallet_id, user_id, amount, balance_after, tx_type, reference_no,"
+                                        " remark, status) VALUES ($1, $2, $3, $4, $5, 8, $6, $7, 1)">>,
                                 {ok, 1} = elib_pg:execute(Conn, TxSql, [
                                     TxId,
                                     WalletId,

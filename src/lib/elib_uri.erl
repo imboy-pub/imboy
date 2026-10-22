@@ -29,18 +29,18 @@ build_query(Base, Path, Args) ->
     Base1 = ec_cnv:to_binary(Base),
     CheckBase = elib_str:endswith(<<"/">>, Base1),
     Base2 =
-        if
-            CheckBase ->
+        case true of
+            _ when CheckBase ->
                 binary:part(Base1, 0, byte_size(Base1) - 1);
-            true ->
+            _ ->
                 Base1
         end,
     CheckPath = elib_str:startswith(<<"/">>, Path),
     Path2 =
-        if
-            CheckPath ->
+        case true of
+            _ when CheckPath ->
                 Path;
-            true ->
+            _ ->
                 <<"/", Path/binary>>
         end,
     Args2 = elib_cnv:map_to_query(Args),
@@ -150,7 +150,8 @@ exclusion_param(Url, Keys) ->
 
 % 获取URL中的所有参数
 -spec get_params(list() | binary()) -> {map(), map()}.
-% elib_uri:get_params("https://a.imboy.pub/img/20235/20_15/chk7ef90poqbagho7410.jpg?s=dev&a=344af61665efff23&v=531378&width=375").
+% elib_uri:get_params("https://a.imboy.pub/img/20235/20_15/chk7ef90poqbagho7410.jpg?s=dev&a=344af61665efff23&v=531378&wi
+% dth=375").
 % {#{host => "a.imboy.pub",
 %    path => "/img/20235/20_15/chk7ef90poqbagho7410.jpg",
 %    query => "s=dev&a=344af61665efff23&v=531378&width=375",
@@ -185,8 +186,10 @@ query_pairs_to_map(_) ->
 
 %% 根据指定参数名获取在URL中对应的值
 -spec get_params(binary(), binary()) -> binary().
-% elib_uri:get_params("width", "https://a.imboy.pub/img/20235/20_15/chk7ef90poqbagho7410.jpg?s=dev&a=344af61665efff23&v=531378&width=375").
-% elib_uri:get_params(<<"width">>, <<"https://a.imboy.pub/img/20235/20_15/chk7ef90poqbagho7410.jpg?s=dev&a=344af61665efff23&v=531378&width=375">>).
+% elib_uri:get_params("width",
+% "https://a.imboy.pub/img/20235/20_15/chk7ef90poqbagho7410.jpg?s=dev&a=344af61665efff23&v=531378&width=375").
+% elib_uri:get_params(<<"width">>,
+% <<"https://a.imboy.pub/img/20235/20_15/chk7ef90poqbagho7410.jpg?s=dev&a=344af61665efff23&v=531378&width=375">>).
 get_params(Key, Url) ->
     get_params(Key, Url, <<"">>).
 

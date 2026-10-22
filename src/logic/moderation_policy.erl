@@ -171,11 +171,13 @@ cached_words() ->
     Fun = fun sensitive_word_repo:all/0,
     %% catch：缓存进程/ETS 不可用时（eunit 未 mock、imboy_cache flake）按词表
     %% 不可得处理 → 上层 fail-open，不炸发布面
-    case catch imboy_cache:memo(Fun, {moderation_sensitive_words}, ?WORDS_CACHE_TTL) of
+    try imboy_cache:memo(Fun, {moderation_sensitive_words}, ?WORDS_CACHE_TTL) of
         {ok, Words} when is_list(Words) ->
             {ok, Words};
         Other ->
             {error, Other}
+    catch
+        _:Other -> {error, Other}
     end.
 
 word_bin(Word) when is_binary(Word) ->

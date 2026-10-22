@@ -1,6 +1,6 @@
 -module(metrics_handler).
 
--behavior(cowboy_rest).
+-behaviour(cowboy_rest).
 
 -export([init/2]).
 -export([format_prometheus/1]).

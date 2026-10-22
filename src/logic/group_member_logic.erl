@@ -350,17 +350,24 @@ to_millisecond(Value) when is_integer(Value), Value >= 0 ->
     Value;
 to_millisecond(Value) when is_binary(Value); is_list(Value) ->
     ValueBin = elib_cnv:safe_to_binary(Value),
-    case catch elib_dt:rfc3339_to(ValueBin, millisecond) of
+    try elib_dt:rfc3339_to(ValueBin, millisecond) of
         Ts when is_integer(Ts), Ts >= 0 ->
             Ts;
         _ ->
-            case catch binary_to_integer(ValueBin) of
-                Int when is_integer(Int), Int >= 0 -> Int;
-                _ -> null
-            end
+            parse_int_or_null(ValueBin)
+    catch
+        _:_ -> parse_int_or_null(ValueBin)
     end;
 to_millisecond(_) ->
     null.
+
+parse_int_or_null(ValueBin) ->
+    try binary_to_integer(ValueBin) of
+        Int when is_integer(Int), Int >= 0 -> Int;
+        _ -> null
+    catch
+        _:_ -> null
+    end.
 
 %% @doc 验证禁言权限
 -spec validate_mute_permission(integer(), integer()) -> ok | {error, binary()}.

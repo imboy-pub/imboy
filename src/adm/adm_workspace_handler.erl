@@ -14,7 +14,7 @@
 % test/adm/adm_workspace_handler_tests.erl）。
 %%%
 
--behavior(cowboy_rest).
+-behaviour(cowboy_rest).
 
 -export([init/2]).
 
@@ -358,11 +358,13 @@ parse_project_id(Req0) ->
 parse_id_param(Key, EmptyMsg, Req0) ->
     case elib_param:binary(Key, Req0, <<>>) of
         {ok, Bin} when byte_size(Bin) > 0 ->
-            case catch binary_to_integer(string:trim(Bin)) of
+            try binary_to_integer(string:trim(Bin)) of
                 Id when is_integer(Id), Id > 0 ->
                     {ok, Id};
                 _ ->
                     {error, <<"ID格式错误"/utf8>>}
+            catch
+                _:_ -> {error, <<"ID格式错误"/utf8>>}
             end;
         _ ->
             {error, EmptyMsg}

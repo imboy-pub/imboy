@@ -7,7 +7,7 @@
 % GET /adm/operation_logs?adm_user_id=&action=&page=1&size=20
 %%%
 
--behavior(cowboy_rest).
+-behaviour(cowboy_rest).
 
 -export([init/2]).
 

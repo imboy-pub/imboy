@@ -57,7 +57,8 @@
 aes_encrypt(Bin, Key, IV) ->
     aes_encrypt(aes_256_cbc, Bin, Key, IV).
 
-%% PlainText = elib_cipher:aes_decrypt(elib_cipher:aes_encrypt(<<"admin8889">>, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "aaaaaaaaaaaaaaaa"), "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "aaaaaaaaaaaaaaaa").
+%% PlainText = elib_cipher:aes_decrypt(elib_cipher:aes_encrypt(<<"admin8889">>, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+%% "aaaaaaaaaaaaaaaa"), "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "aaaaaaaaaaaaaaaa").
 -spec aes_decrypt(binary(), binary() | list(), binary()) -> binary().
 aes_decrypt(Bin, Key, IV) ->
     aes_decrypt(aes_256_cbc, Bin, Key, IV).

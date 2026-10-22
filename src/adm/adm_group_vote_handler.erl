@@ -2,7 +2,7 @@
 -moduledoc "群投票管理端点 —— 投票详情等查询。".
 %%% adm_group_vote_handler
 
--behavior(cowboy_rest).
+-behaviour(cowboy_rest).
 
 -export([init/2]).
 
