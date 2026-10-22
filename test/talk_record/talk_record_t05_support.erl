@@ -229,21 +229,11 @@ truncate_talk(Conn) ->
             {ok, [_]} -> "talk_record_processor_run, ";
             E -> error({processor_run_fixture_lookup, E})
         end,
-    %% 迁移 221 新增 talk_record_cleanup_retry（FK → talk_record ON DELETE RESTRICT）；
-    %% 不并入同一 TRUNCATE 则 fresh 221 库上报 0A000（cannot truncate referenced table）。
-    %% 该表的行级 UPDATE/DELETE 不可变触发器不拦 TRUNCATE，合成库清空合法。
-    CleanupRetry =
-        case
-            elib_pg:query(Conn, <<"SELECT to_regclass('talk_record_cleanup_retry') AS name">>, [])
-        of
-            {ok, [#{<<"name">> := null}]} -> "";
-            {ok, [_]} -> "talk_record_cleanup_retry, ";
-            E2 -> error({cleanup_retry_fixture_lookup, E2})
-        end,
     sql(Conn, [
         "TRUNCATE ",
         Extra,
-        CleanupRetry,
+        empty_client_execution_fixture(Conn),
+        empty_cleanup_retry_fixture(Conn),
         empty_governance_fixture(Conn),
         "talk_record_idempotency, talk_record_consent_event, talk_record_audit, ",
         "talk_record_export, talk_record_job, talk_record_summary, talk_record_segment, ",
@@ -279,6 +269,53 @@ truncate_talk(Conn) ->
             );
         E4 ->
             error({enterprise_conversation_fixture_lookup, E4})
+    end.
+
+empty_client_execution_fixture(Conn) ->
+    case
+        elib_pg:query(
+            Conn,
+            <<
+                "SELECT to_regclass('talk_record_client_run') AS run, "
+                "to_regclass('talk_record_client_run_part') AS part"
+            >>,
+            []
+        )
+    of
+        {ok, [#{<<"run">> := null, <<"part">> := null}]} ->
+            "";
+        {ok, [#{<<"run">> := Run, <<"part">> := Part}]} when Run =/= null, Part =/= null ->
+            case
+                elib_pg:query(
+                    Conn,
+                    <<
+                        "SELECT (SELECT count(*) FROM talk_record_client_run) AS runs, "
+                        "(SELECT count(*) FROM talk_record_client_run_part) AS parts"
+                    >>,
+                    []
+                )
+            of
+                {ok, [#{<<"runs">> := 0, <<"parts">> := 0}]} ->
+                    "talk_record_client_run_part, talk_record_client_run, ";
+                Other ->
+                    error({client_execution_fixture_not_empty, Other})
+            end;
+        Other ->
+            error({client_execution_fixture_lookup, Other})
+    end.
+
+%% Migration 221 adds an FK. Name only an empty retry ledger; preserve evidence.
+empty_cleanup_retry_fixture(C) ->
+    case elib_pg:query(C, <<"SELECT to_regclass('talk_record_cleanup_retry') AS name">>, []) of
+        {ok, [#{<<"name">> := null}]} ->
+            "";
+        {ok, [_]} ->
+            case elib_pg:query(C, <<"SELECT count(*) n FROM talk_record_cleanup_retry">>, []) of
+                {ok, [#{<<"n">> := 0}]} -> "talk_record_cleanup_retry, ";
+                Other -> error({cleanup_retry_fixture_not_empty, Other})
+            end;
+        E ->
+            error({cleanup_retry_fixture_lookup, E})
     end.
 
 %%%===================================================================

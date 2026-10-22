@@ -8,7 +8,8 @@
 %% capability check. Assembly and authenticated playback use real storage;
 %% model quality and true-device processing remain separate acceptance gates.
 gateway_http_test_() ->
-    {timeout, 120,
+    %% The real upload capability lasts 3600 seconds; never mutate its expiry.
+    {timeout, 4200,
         {setup,
             fun() ->
                 Prev = [
@@ -64,7 +65,7 @@ gateway_http_test_() ->
                     maps:get(http_prev, State)
                 )
             end,
-            fun(State) -> ?_test(run(State)) end}}.
+            fun(State) -> {timeout, 4100, ?_test(run(State))} end}}.
 
 %% T07 intentionally has only talk-record foundation columns. The real organization
 %% detail and combined attachment index also read these existing production fields.
@@ -472,18 +473,8 @@ cleanup_real_artifacts(State, Rid, RecordUrl, Auth) ->
     ),
     Pending = maps:get(<<"payload">>, jsone:decode(PendingBytes)),
     ?assertNotEqual(<<"complete">>, maps:get(<<"cleanup_status">>, Pending)),
-    %% Only this dedicated synthetic fixture advances capability exhaustion.
-    %% This proves reconciliation after expiry, not real elapsed-time behavior.
-    {ok, [_]} = elib_pg:query(
-        Conn,
-        <<
-            "UPDATE attach_pending p SET upload_expires_at=now()-interval '1 second' "
-            "FROM attachment a JOIN talk_record_attachment_ref r ON r.attachment_id=a.id "
-            "WHERE p.object_key=a.path AND r.record_id=$1 AND r.role='audio_part' "
-            "RETURNING p.object_key"
-        >>,
-        [Rid]
-    ),
+    %% Preserve the issued capability and wait for PostgreSQL's real clock.
+    await_upload_expiry(Conn, Rid),
     {ok, _} = talk_record_job_worker:refresh_cleanup_pending(),
     {ok, 1} = attachment_delete_worker:run_batch(Conn, Delete),
     lists:foreach(
@@ -714,3 +705,40 @@ organization_index_over_http(Prefix, Org, Rid, Aid, Owner, Admin) ->
     ?assertEqual(0, maps:get(<<"code">>, AdminEnvelope)),
     AdminRows = maps:get(<<"items">>, maps:get(<<"payload">>, AdminEnvelope)),
     ?assertEqual([], [R || #{<<"id">> := Id} = R <- AdminRows, Id =:= Aid]).
+
+%% Bound the real expiry wait; NULL, missing or unexpectedly long leases fail.
+await_upload_expiry(Conn, Rid) ->
+    {ok, [#{<<"remaining">> := Remaining}]} = elib_pg:query(
+        Conn,
+        <<
+            "SELECT ceil(extract(epoch FROM (p.upload_expires_at-clock_timestamp())))::bigint "
+            "AS remaining FROM attach_pending p "
+            "JOIN attachment a ON a.path=p.object_key "
+            "JOIN talk_record_attachment_ref r ON r.attachment_id=a.id "
+            "WHERE r.record_id=$1 AND r.role='audio_part'"
+        >>,
+        [Rid]
+    ),
+    ?assert(is_integer(Remaining) andalso Remaining =< 3605),
+    Deadline = erlang:monotonic_time(millisecond) + max(0, Remaining) * 1000 + 5000,
+    await_upload_expiry(Conn, Rid, Deadline).
+
+await_upload_expiry(Conn, Rid, Deadline) ->
+    {ok, [#{<<"expired">> := Expired}]} = elib_pg:query(
+        Conn,
+        <<
+            "SELECT p.upload_expires_at < clock_timestamp() AS expired "
+            "FROM attach_pending p JOIN attachment a ON a.path=p.object_key "
+            "JOIN talk_record_attachment_ref r ON r.attachment_id=a.id "
+            "WHERE r.record_id=$1 AND r.role='audio_part'"
+        >>,
+        [Rid]
+    ),
+    case Expired of
+        true ->
+            ok;
+        false ->
+            ?assert(erlang:monotonic_time(millisecond) < Deadline),
+            timer:sleep(1000),
+            await_upload_expiry(Conn, Rid, Deadline)
+    end.

@@ -14,8 +14,14 @@
 
 setup() ->
     State = talk_record_t15_support:setup_all(),
-    talk_record_t15_support:seed(State),
-    State.
+    talk_record_setup_fixture:prepare(
+        State,
+        fun() ->
+            talk_record_t15_support:seed(State),
+            State
+        end,
+        fun talk_record_t15_support:teardown_all/1
+    ).
 
 cleanup(State) ->
     talk_record_t15_support:teardown_all(State).

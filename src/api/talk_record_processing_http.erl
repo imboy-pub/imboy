@@ -26,6 +26,8 @@ processing_dispatch(job_retry, Req, State) ->
         {error, Reason} ->
             talk_record_http:respond_error(Req, Reason)
     end;
+processing_dispatch(processing_requests, Req, State) ->
+    talk_record_client_handler:processing_request(Req, State);
 processing_dispatch(Action, Req, State) ->
     case talk_record_http:path_id(Req) of
         {ok, Id} -> processing_record(Action, Req, maps:get(current_uid, State, 0), Id);

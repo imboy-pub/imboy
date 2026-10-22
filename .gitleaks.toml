@@ -66,7 +66,7 @@ paths = [
 regexes = [
     # Public SHA256 file digests verified against talk-record plan-manifest.json.
     # Exact values only: do not exclude the manifest path or arbitrary hex keys.
-    '''^(13cbae11fdefb249f9a0e97e3e03db953980b7fd9a2de756888fa3b0f3707bf9|ecf855261a1fdd50eed4d8247d146c8420e32b2a5f18b423c882f0fd8060c107)$''',
+    '''^(13cbae11fdefb249f9a0e97e3e03db953980b7fd9a2de756888fa3b0f3707bf9|ecf855261a1fdd50eed4d8247d146c8420e32b2a5f18b423c882f0fd8060c107|ad762056ee467bda3711ee268e40c7652135f57b6faf85c26c887d65c34f620c)$''',
     '''(?i)(your[_-]?(api[_-]?key|secret|token)|<changeme>|placeholder|example[_-]?key|xxxxxxxx)''',
     '''(?i)(00000000|11111111|deadbeef|cafebabe|abcdef00)[a-f0-9]{8,}''',
     # README / 文档中的 base64 演示串（< 32 字符的视为示例）

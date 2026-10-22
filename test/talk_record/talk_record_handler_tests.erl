@@ -22,12 +22,19 @@ personal_body() ->
 
 setup() ->
     State = talk_record_t05_support:setup_all(),
-    talk_record_t05_support:seed_fixtures(maps:get(conn, State)),
-    HandlerState = setup_mocks(),
-    State#{handler_mocks => HandlerState}.
+    talk_record_setup_fixture:prepare(
+        State,
+        fun() ->
+            talk_record_t05_support:seed_fixtures(maps:get(conn, State)),
+            HandlerState = talk_record_setup_fixture:mocks(
+                [elib_response, elib_param, cowboy_req], fun setup_mocks/0
+            ),
+            State#{handler_mocks => HandlerState}
+        end,
+        fun talk_record_t05_support:teardown_all/1
+    ).
 
 setup_mocks() ->
-    ok = meck:new(elib_response, [passthrough, unstick, no_link]),
     %% success/2：捕获 payload（其余 success 元数走 passthrough——真回复需要
     %% socket，本套件全部经捕获断言）
     ok = meck:expect(elib_response, success, fun(Req, Data) ->
@@ -39,8 +46,6 @@ setup_mocks() ->
             response_body => #{<<"msg">> => Msg, <<"code">> => Code}
         }
     end),
-    ok = meck:new(elib_param, [passthrough, unstick, no_link]),
-    ok = meck:new(cowboy_req, [passthrough, unstick, no_link]),
     %% 201 信封（handler 本地 reply_created 走 cowboy_req:reply/4）；
     %% 405 走 reply/3。捕获合并 resp_headers（与 cowboy 真实 reply 的
     %% response_headers/2 合并语义一致）。
@@ -57,10 +62,11 @@ setup_mocks() ->
     ok.
 
 cleanup(State) ->
-    catch meck:unload(cowboy_req),
-    catch meck:unload(elib_param),
-    catch meck:unload(elib_response),
-    talk_record_t05_support:teardown_all(State).
+    try
+        talk_record_setup_fixture:unload(maps:get(handler_mocks, State))
+    after
+        talk_record_t05_support:teardown_all(State)
+    end.
 
 mock_body(Body) ->
     ok = meck:expect(elib_param, post, fun(_Req) -> Body end).

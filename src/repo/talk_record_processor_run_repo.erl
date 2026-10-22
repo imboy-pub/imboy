@@ -1,6 +1,6 @@
 -module(talk_record_processor_run_repo).
 -moduledoc "本机处理执行证明；不凭PID消失或租约超时推断副本已清除。".
--export([reserve_tx/2, started/2, finish/2, unblock_waiting/0]).
+-export([reserve_tx/2, started/2, finish/2, unblock_waiting/0, unblock_waiting_tx/1]).
 
 reserve_tx(C, J) ->
     case
@@ -63,13 +63,17 @@ identity(J) -> [maps:get(<<"id">>, J), maps:get(<<"attempt">>, J), maps:get(<<"l
 
 %% Resume only after positive stop+cleanup receipts, never from elapsed time.
 unblock_waiting() ->
-    elib_pg:execute(
-        <<
-            "UPDATE talk_record_job j SET suspended=false,state='queued',error_code=NULL,"
-            "updated_at=now() WHERE j.suspended=true AND j.error_code='processor_cleanup_pending'"
-            " AND NOT EXISTS(SELECT 1 FROM talk_record_processor_run r JOIN talk_record_job source ON "
-            "source.id=r.job_id"
-            " WHERE source.record_id=j.record_id AND r.state<>'stopped')"
-        >>,
-        []
-    ).
+    elib_pg:execute(unblock_waiting_sql(), []).
+
+unblock_waiting_tx(C) ->
+    elib_pg:execute(C, unblock_waiting_sql(), []).
+
+unblock_waiting_sql() ->
+    <<
+        "UPDATE talk_record_job j SET suspended=false,state='queued',error_code=NULL,"
+        "updated_at=now() WHERE j.execution_mode='server_local'"
+        " AND j.suspended=true AND j.error_code='processor_cleanup_pending'"
+        " AND NOT EXISTS(SELECT 1 FROM talk_record_processor_run r JOIN talk_record_job source ON "
+        "source.id=r.job_id"
+        " WHERE source.record_id=j.record_id AND r.state<>'stopped')"
+    >>.

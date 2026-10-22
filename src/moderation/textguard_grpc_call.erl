@@ -311,10 +311,11 @@ cancel(#{
 close_active(Id, Streams) ->
     try
         Stream = chatterbox_h2_stream_set:get(Id, Streams),
-        case chatterbox_h2_stream_set:type(Stream) of
-            active -> chatterbox_h2_stream_set:close(Stream, garbage, Streams);
-            _ -> ok
-        end,
+        _ =
+            case chatterbox_h2_stream_set:type(Stream) of
+                active -> chatterbox_h2_stream_set:close(Stream, garbage, Streams);
+                _ -> ok
+            end,
         false = chatterbox_h2_stream_set:type(chatterbox_h2_stream_set:get(Id, Streams)) =:= active,
         ok
     catch

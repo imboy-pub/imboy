@@ -9,13 +9,19 @@ assembly_pipeline_test_() ->
         end}}.
 setup() ->
     S = talk_record_t19_support:setup_all(),
-    talk_record_t19_support:seed(S),
-    application:set_env(
-        imboy,
-        talk_record_render_tmp_dir,
-        filename:join(os:getenv("TALK_UPLOAD_DISK_ROOT"), "render")
-    ),
-    S.
+    talk_record_setup_fixture:prepare(
+        S,
+        fun() ->
+            talk_record_t19_support:seed(S),
+            application:set_env(
+                imboy,
+                talk_record_render_tmp_dir,
+                filename:join(os:getenv("TALK_UPLOAD_DISK_ROOT"), "render")
+            ),
+            S
+        end,
+        fun talk_record_t19_support:teardown_all/1
+    ).
 
 run(S) ->
     C = maps:get(conn, S),

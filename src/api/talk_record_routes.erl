@@ -10,7 +10,7 @@
 %% 列表/创建/详情/编辑；T07：采集五端点 + recover/abandon + marks；
 %% T15：内容域；T17：授权/分享/回放）。后续任务在既有 :id 子资源清单后
 %% 按段继续增补。
--spec routes() -> [{binary(), module(), map()}].
+-spec routes() -> [{string(), module(), map()}].
 routes() ->
     [
         {"/api/v1/talk-records/capabilities", talk_record_handler, #{
@@ -114,6 +114,23 @@ routes() ->
         {"/api/v1/talk-records/:id/complete", talk_record_handler, #{action => complete}},
         {"/api/v1/talk-records/:id/jobs", talk_record_handler, #{action => jobs}},
         {"/api/v1/talk-records/:id/jobs/:job_id/retry", talk_record_handler, #{action => job_retry}},
+        {"/api/v1/talk-records/:id/jobs/:job_id/client-executions", talk_record_client_handler, #{
+            action => claim
+        }},
+        {"/api/v1/talk-records/:id/jobs/:job_id/client-executions/:run_id",
+            talk_record_client_handler, #{action => get}},
+        {"/api/v1/talk-records/:id/jobs/:job_id/client-executions/:run_id/chunk-plan",
+            talk_record_client_handler, #{action => plan}},
+        {"/api/v1/talk-records/:id/jobs/:job_id/client-executions/:run_id/heartbeat",
+            talk_record_client_handler, #{action => heartbeat}},
+        {"/api/v1/talk-records/:id/jobs/:job_id/client-executions/:run_id/parts/:seq/dispatch-intents",
+            talk_record_client_handler, #{action => dispatch}},
+        {"/api/v1/talk-records/:id/jobs/:job_id/client-executions/:run_id/parts/:seq/result",
+            talk_record_client_handler, #{action => result}},
+        {"/api/v1/talk-records/:id/jobs/:job_id/client-executions/:run_id/complete",
+            talk_record_client_handler, #{action => complete}},
+        {"/api/v1/talk-records/:id/jobs/:job_id/client-executions/:run_id/settle",
+            talk_record_client_handler, #{action => settle}},
         {"/api/v1/talk-records/:id/processing-requests", talk_record_handler, #{
             action => processing_requests
         }}

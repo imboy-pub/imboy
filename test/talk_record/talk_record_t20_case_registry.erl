@@ -10,7 +10,8 @@
     verify_connected/1,
     verify_empty/1,
     configure_storage/0,
-    connection_options/0
+    connection_options/0,
+    controller_process_start/1
 ]).
 -include_lib("kernel/include/file.hrl").
 
@@ -49,7 +50,7 @@ verify_registry(R) ->
         <<"owner">> := <<"codex-relay-20261021">>,
         <<"controller_epoch">> := 3,
         <<"host">> := <<"127.0.0.1">>,
-        <<"connection_port">> := 65497,
+        <<"connection_port">> := 59982,
         <<"server_port">> := 5432,
         <<"system_identifier">> := <<"7698912704598417449">>,
         <<"migration_head">> := 221,
@@ -115,8 +116,19 @@ verify_lease(R, Hash) ->
     ),
     true = OwnerUntil >= erlang:system_time(second) + 120,
     true = is_integer(Pid) andalso Pid > 0,
-    Start = command("/bin/ps", ["-p", integer_to_list(Pid), "-o", "lstart="]),
+    Start = controller_process_start(Pid),
     ok.
+
+%% macOS forbids setuid /bin/ps in the test sandbox; libproc retains real identity checks.
+controller_process_start(Pid) when is_integer(Pid), Pid > 0 ->
+    case os:type() of
+        {unix, darwin} ->
+            Repo = required("T20_CASE_REPO"),
+            Probe = filename:join([Repo, "test", "talk_record", "controller_pid_probe.py"]),
+            command("/usr/bin/python3", ["-I", Probe, "--pid", integer_to_list(Pid)]);
+        _ ->
+            command("/bin/ps", ["-p", integer_to_list(Pid), "-o", "lstart="])
+    end.
 
 verify_case(Key, C, R) ->
     #{
@@ -314,7 +326,11 @@ required_sources(Repo) ->
                 <<"talk_record_cleanup_retry_tests">>
             ]
     ],
-    lists:usort(Trees ++ Tests).
+    Probes = [
+        <<"test/talk_record/controller_pid_probe.py">>,
+        <<"test/talk_record/test_controller_pid_probe.py">>
+    ],
+    lists:usort(Trees ++ Tests ++ Probes).
 
 source_tree(Repo, Relative) ->
     {ok, Names} = file:list_dir(filename:join(Repo, Relative)),

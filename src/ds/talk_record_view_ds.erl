@@ -87,6 +87,7 @@ detail_payload(Uid, Row, Caps) ->
         <<"transcript_status">> => maps:get(<<"transcript_status">>, Row),
         <<"summary_status">> => maps:get(<<"summary_status">>, Row),
         <<"processing_mode">> => maps:get(<<"processing_mode">>, Row),
+        <<"client_processing">> => client_policy(Row, Caps),
         <<"duration_ms">> => maps:get(<<"duration_ms">>, Row),
         <<"revision">> => maps:get(<<"revision">>, Row),
         <<"content_revision">> => maps:get(<<"content_revision">>, Row),
@@ -137,3 +138,10 @@ idempotency_ttl_seconds() ->
         N when is_integer(N), N > 0 -> N;
         _ -> 604800
     end.
+
+client_policy(Row, Caps) ->
+    Policy = talk_record_client_policy:for_record(Row),
+    Policy#{
+        <<"available">> => maps:get(<<"available">>, Policy, false) andalso
+            maps:get(<<"edit">>, Caps, false)
+    }.

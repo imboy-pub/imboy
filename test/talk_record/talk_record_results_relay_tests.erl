@@ -8,8 +8,14 @@ results_security_test_() ->
         end}}.
 setup() ->
     S = talk_record_t19_support:setup_all(),
-    talk_record_t19_support:seed(S),
-    S.
+    talk_record_setup_fixture:prepare(
+        S,
+        fun() ->
+            talk_record_t19_support:seed(S),
+            S
+        end,
+        fun talk_record_t19_support:teardown_all/1
+    ).
 
 run(S) ->
     C = maps:get(conn, S),
@@ -101,10 +107,12 @@ complete_replay(C, Rid) ->
     ),
     {ok, _} = elib_pg:execute(C, <<"UPDATE talk_record SET revision=2 WHERE id=$1">>, [Rid]),
     ?assertMatch({ok, replay, _}, talk_record_job_logic:complete(700001, Rid, <<"1">>, Key, Body)),
+    ?assertMatch({ok, _}, organization_owner_transfer:transfer(700001, 710001, 700003)),
+    ?assertMatch({ok, _}, talk_record_ds:detail(700001, Rid)),
     {ok, _} = elib_pg:execute(
         C,
         <<
-            "UPDATE organization_member SET status='inactive'"
+            "UPDATE organization_member SET status='suspended'"
             " WHERE organization_id=710001 AND user_id=700001"
         >>,
         []

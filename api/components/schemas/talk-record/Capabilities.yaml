@@ -67,3 +67,5 @@ properties:
       type: string
       enum:
       - live_recording
+  client_processing:
+    $ref: ClientPolicy.yaml

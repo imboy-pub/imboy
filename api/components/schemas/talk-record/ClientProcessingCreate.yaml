@@ -1,0 +1,39 @@
+type: object
+additionalProperties: false
+required:
+- mode
+- execution_mode
+- provider
+- model
+- policy_version
+- config_version
+- processing_consent
+properties:
+  mode:
+    type: string
+    enum:
+    - transcribe
+    - summarize
+  execution_mode:
+    type: string
+    enum:
+    - client_byok
+  provider:
+    type: string
+    enum:
+    - minimax
+    - zhipu
+  model:
+    type: string
+    enum:
+    - asr-1.0
+    - glm-5.3-flash
+  policy_version:
+    type: string
+    minLength: 1
+    maxLength: 64
+  config_version:
+    type: string
+    pattern: ^[0-9a-f]{64}$
+  processing_consent:
+    $ref: ClientConsent.yaml

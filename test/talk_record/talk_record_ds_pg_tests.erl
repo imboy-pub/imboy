@@ -40,8 +40,14 @@ org_body(OrgId, WsId) ->
 
 setup() ->
     State = talk_record_t05_support:setup_all(),
-    talk_record_t05_support:seed_fixtures(maps:get(conn, State)),
-    State.
+    talk_record_setup_fixture:prepare(
+        State,
+        fun() ->
+            talk_record_t05_support:seed_fixtures(maps:get(conn, State)),
+            State
+        end,
+        fun talk_record_t05_support:teardown_all/1
+    ).
 
 cleanup(State) ->
     talk_record_t05_support:teardown_all(State).
@@ -238,7 +244,14 @@ visibility_and_404_test_() ->
         ?assertMatch({ok, _}, talk_record_ds:detail(U2, IdO)),
         ?assertEqual({error, not_found}, talk_record_ds:detail(U4, IdO)),
 
-        %% U1（owner）失去 org 成员资格 → 立即失读权（§8 离开企业）
+        %% The current organization owner cannot be suspended. Transfer ownership
+        %% through the domain command first, then test the record owner's revocation.
+        U3 = maps:get(u3, Ids),
+        ?assertMatch(
+            {ok, #{owner_id := U3}}, organization_owner_transfer:transfer(U1, OrgA, U3)
+        ),
+        ?assertMatch({ok, _}, talk_record_ds:detail(U1, IdO)),
+        %% U1（record owner）失去 org 成员资格 → 立即失读权（§8 离开企业）
         talk_record_t05_support:sql(
             C,
             <<"UPDATE organization_member SET status='suspended' WHERE organization_id = ",

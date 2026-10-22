@@ -51,3 +51,5 @@ properties:
           maximum: 9223372036854775807
         name:
           type: string
+  client_processing:
+    $ref: ClientPolicy.yaml

@@ -885,6 +885,22 @@ paths:
     $ref: './paths/api/v1/talk-records/processing_requests.yaml'
   /api/v1/organizations/{organization_id}/attachments:
     $ref: './paths/api/v1/organization/attachments.yaml'
+  /api/v1/talk-records/{id}/jobs/{job_id}/client-executions:
+    $ref: './paths/api/v1/talk-records/client_claim.yaml'
+  /api/v1/talk-records/{id}/jobs/{job_id}/client-executions/{run_id}:
+    $ref: './paths/api/v1/talk-records/client_get.yaml'
+  /api/v1/talk-records/{id}/jobs/{job_id}/client-executions/{run_id}/chunk-plan:
+    $ref: './paths/api/v1/talk-records/client_plan.yaml'
+  /api/v1/talk-records/{id}/jobs/{job_id}/client-executions/{run_id}/heartbeat:
+    $ref: './paths/api/v1/talk-records/client_heartbeat.yaml'
+  /api/v1/talk-records/{id}/jobs/{job_id}/client-executions/{run_id}/parts/{seq}/dispatch-intents:
+    $ref: './paths/api/v1/talk-records/client_dispatch.yaml'
+  /api/v1/talk-records/{id}/jobs/{job_id}/client-executions/{run_id}/parts/{seq}/result:
+    $ref: './paths/api/v1/talk-records/client_result.yaml'
+  /api/v1/talk-records/{id}/jobs/{job_id}/client-executions/{run_id}/complete:
+    $ref: './paths/api/v1/talk-records/client_complete.yaml'
+  /api/v1/talk-records/{id}/jobs/{job_id}/client-executions/{run_id}/settle:
+    $ref: './paths/api/v1/talk-records/client_settle.yaml'
   # ---- surface adm — 管理后台端点（编辑真源 openapi-adm.yaml） ----
   /api/adm/setup/status:
     $ref: './paths/adm/v1/setup/status.yaml'

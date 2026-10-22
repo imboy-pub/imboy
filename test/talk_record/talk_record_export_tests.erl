@@ -26,8 +26,14 @@
 
 setup() ->
     State = talk_record_t19_support:setup_all(),
-    talk_record_t19_support:seed(State),
-    State.
+    talk_record_setup_fixture:prepare(
+        State,
+        fun() ->
+            talk_record_t19_support:seed(State),
+            State
+        end,
+        fun talk_record_t19_support:teardown_all/1
+    ).
 
 cleanup(State) ->
     talk_record_t19_support:teardown_all(State).
@@ -665,8 +671,8 @@ create_replay_after_transfer_test_() ->
             #{<<"target_user_id">> => U2, <<"keep_access">> => false}
         ),
         Before = talk_record_t19_support:owner_and_custody(Conn, Rid),
-        %% 原 owner（created_by 不变）用同 client_recording_id 重放创建：
-        %% 幂等返回原记录，不建第二份（幂等键不随 owner 变化）
+        %% 移交且不保留访问后，旧创建请求不得恢复 owner 专属身份。
+        %% 幂等键仍保留，拒绝访问且不得重复建记录。
         Body = #{
             <<"client_recording_id">> => talk_record_t19_support:rec_uuid(101),
             <<"notice_ack">> => true,
@@ -676,8 +682,9 @@ create_replay_after_transfer_test_() ->
             <<"processing_mode">> => <<"transcribe">>,
             <<"title">> => <<"t15-org"/utf8>>
         },
-        {ok, replay, Payload, _ETag} = talk_record_logic:create(U1, Body, <<"t15-org-key-101">>),
-        ?assertEqual(Rid, maps:get(<<"id">>, Payload)),
+        ?assertMatch(
+            {error, not_found}, talk_record_logic:create(U1, Body, <<"t15-org-key-101">>)
+        ),
         Dup = talk_record_t19_support:one(
             Conn,
             [
@@ -711,9 +718,12 @@ custody_projection_test_() ->
         talk_record_t15_support:add_grant(Conn, Rid, U2, U1, <<"viewer">>),
         %% owner 失去归属访问（org 成员停用）→ 有 grant 的同 org 用户
         %% 读路径投影 handover_required（owner 自己 visible 失败 404）
-        talk_record_t19_support:set_org_member_status(
-            Conn, maps:get(org_a, Ids), U1, <<"inactive">>
+        Org = maps:get(org_a, Ids),
+        ?assertMatch(
+            {ok, _}, organization_owner_transfer:transfer(U1, Org, maps:get(u3, Ids))
         ),
+        ?assertMatch({ok, _}, talk_record_ds:detail(U1, Rid)),
+        talk_record_t19_support:set_org_member_status(Conn, Org, U1, <<"suspended">>),
         {ok, #{payload := P}} = talk_record_ds:detail(U2, Rid),
         ?assertEqual(<<"handover_required">>, maps:get(<<"custody_status">>, P)),
         ?assertMatch({error, not_found}, talk_record_ds:detail(U1, Rid)),

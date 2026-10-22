@@ -10,12 +10,19 @@
 
 setup() ->
     State = talk_record_t19_support:setup_all(),
-    talk_record_t19_support:seed(State),
-    HandlerState = setup_mocks(),
-    State#{handler_mocks => HandlerState}.
+    talk_record_setup_fixture:prepare(
+        State,
+        fun() ->
+            talk_record_t19_support:seed(State),
+            HandlerState = talk_record_setup_fixture:mocks(
+                [elib_response, elib_param, cowboy_req], fun setup_mocks/0
+            ),
+            State#{handler_mocks => HandlerState}
+        end,
+        fun talk_record_t19_support:teardown_all/1
+    ).
 
 setup_mocks() ->
-    ok = meck:new(elib_response, [passthrough, unstick, no_link]),
     ok = meck:expect(elib_response, success, fun(Req, Data) ->
         Req#{response_status => 200, response_body => Data}
     end),
@@ -25,8 +32,6 @@ setup_mocks() ->
             response_body => #{<<"msg">> => Msg, <<"code">> => Code}
         }
     end),
-    ok = meck:new(elib_param, [passthrough, unstick, no_link]),
-    ok = meck:new(cowboy_req, [passthrough, unstick, no_link]),
     ok = meck:expect(cowboy_req, reply, fun(Status, Headers, Body, Req) ->
         Req#{
             response_status => Status,
@@ -40,10 +45,11 @@ setup_mocks() ->
     ok.
 
 cleanup(State) ->
-    catch meck:unload(cowboy_req),
-    catch meck:unload(elib_param),
-    catch meck:unload(elib_response),
-    talk_record_t19_support:teardown_all(State).
+    try
+        talk_record_setup_fixture:unload(maps:get(handler_mocks, State))
+    after
+        talk_record_t19_support:teardown_all(State)
+    end.
 
 mock_body(Body) ->
     ok = meck:expect(elib_param, post, fun(_Req) -> Body end).
@@ -104,7 +110,7 @@ exports_create_handler_test_() ->
         ?assertEqual(202, maps:get(response_status, R1)),
         #{<<"payload">> := P1} = jsone:decode(maps:get(response_body, R1)),
         ?assert(is_integer(maps:get(<<"export_id">>, P1))),
-        ?assertEqual(<<"ready">>, maps:get(<<"state">>, P1)),
+        ?assertEqual(<<"queued">>, maps:get(<<"state">>, P1)),
         ?assert(is_integer(maps:get(<<"job_id">>, P1))),
         %% 同键重放：202 + Idempotent-Replayed: true
         R2 = talk_record_handler:handle_action(
@@ -200,7 +206,12 @@ export_state_and_download_handler_test_() ->
         ExportId = maps:get(<<"export_id">>, R0P),
         Bind = #{id => integer_to_binary(Rid), export_id => integer_to_binary(ExportId)},
 
-        %% exportState：200 + T21 冻结形状
+        ?assertEqual(<<"queued">>, maps:get(<<"state">>, R0P)),
+        ?assertMatch(
+            {error, export_not_ready}, talk_record_export_logic:download(U1, Rid, ExportId)
+        ),
+        run_export_job(U1, Rid, ExportId, maps:get(<<"job_id">>, R0P)),
+        %% exportState：worker 完成后返回 200 + T21 冻结形状
         R1 = talk_record_handler:handle_action(
             export_item,
             req(#{method => <<"GET">>, bindings => Bind}),
@@ -343,3 +354,18 @@ ownership_transfer_handler_test_() ->
         ?assertMatch({error, not_found}, talk_record_ds:detail(U1, Rid)),
         ?assertEqual(1, talk_record_t15_support:audit_count(Conn, Rid, <<"ownership_transfer">>))
     end).
+
+%% Claim and execute the real asynchronous job; reject unrelated queued work.
+run_export_job(Uid, Rid, ExportId, JobId) ->
+    {ok, Job} = elib_pg:with_tx(fun(C) ->
+        talk_record_job_repo:claim_next_tx(
+            C, <<"t19-handler-test">>, <<"11111111-2222-4333-8444-555555555555">>, 300
+        )
+    end),
+    ?assertEqual(JobId, maps:get(<<"id">>, Job)),
+    ?assertEqual(Rid, maps:get(<<"record_id">>, Job)),
+    {ok, _} = talk_record_export_job:run(Job),
+    {ok, #{<<"state">> := <<"ready">>}} = talk_record_export_logic:state(
+        Uid, Rid, ExportId
+    ),
+    ok.

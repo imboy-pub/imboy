@@ -16,8 +16,14 @@
 
 setup() ->
     State = talk_record_t17_support:setup_all(),
-    talk_record_t17_support:seed(State),
-    State.
+    talk_record_setup_fixture:prepare(
+        State,
+        fun() ->
+            talk_record_t17_support:seed(State),
+            State
+        end,
+        fun talk_record_t17_support:teardown_all/1
+    ).
 
 cleanup(State) ->
     talk_record_t17_support:teardown_all(State).
@@ -769,8 +775,7 @@ candidates_generic_access_test_() ->
                 20
             )
         ),
-        %% 陌生人查 personal 候选（limit=100 全量）：有效账号（V1 最小实现，
-        %% 见模块头声明），排除自己
+        %% 个人目录只包含有效本人和双向好友，不能枚举其他有效账号。
         {ok, PPage} = talk_record_grant_candidates:generic(
             maps:get(u7, Ids),
             #{scope => <<"personal">>, organization_id => 0, workspace_id => 0},
@@ -779,8 +784,28 @@ candidates_generic_access_test_() ->
             100
         ),
         PUsers = [maps:get(<<"user_id">>, C) || C <- maps:get(<<"list">>, PPage)],
-        ?assertNot(lists:member(maps:get(u7, Ids), PUsers)),
-        ?assert(lists:member(maps:get(u1, Ids), PUsers))
+        U7 = maps:get(u7, Ids),
+        ?assert(lists:member(U7, PUsers)),
+        ?assertNot(lists:member(U1, PUsers)),
+        Conn = maps:get(conn, State),
+        {ok, 2} = elib_pg:execute(
+            Conn,
+            <<
+                "INSERT INTO user_friend(id,from_user_id,to_user_id,status) "
+                "VALUES(9680771,$1,$2,1),(9680772,$2,$1,1)"
+            >>,
+            [U7, U1]
+        ),
+        {ok, FriendPage} = talk_record_grant_candidates:generic(
+            U7,
+            #{scope => <<"personal">>, organization_id => 0, workspace_id => 0},
+            <<>>,
+            undefined,
+            100
+        ),
+        FriendUsers = [maps:get(<<"user_id">>, C) || C <- maps:get(<<"list">>, FriendPage)],
+        ?assert(lists:member(U1, FriendUsers)),
+        ?assertNot(lists:member(U4, FriendUsers))
     end).
 
 candidates_ws_filter_test_() ->

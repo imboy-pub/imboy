@@ -518,8 +518,13 @@ reconcile_tick() ->
 
 reconcile_leases() ->
     case reap_expired() of
-        {ok, _} -> talk_record_processor_run_repo:unblock_waiting();
-        E -> E
+        {ok, _} ->
+            case talk_record_client_reaper:run_once() of
+                {ok, _} -> talk_record_processor_run_repo:unblock_waiting();
+                E -> E
+            end;
+        E ->
+            E
     end.
 
 %% @doc 删除状态回读轮询（T20）：cleanup_status IN (pending,failed) 的

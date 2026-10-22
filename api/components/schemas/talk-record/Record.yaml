@@ -127,3 +127,5 @@ properties:
     - shared
   etag:
     type: string
+  client_processing:
+    $ref: ClientPolicy.yaml

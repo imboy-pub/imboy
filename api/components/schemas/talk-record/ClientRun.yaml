@@ -1,0 +1,126 @@
+type: object
+additionalProperties: false
+required:
+- id
+- record_id
+- job_id
+- attempt
+- state
+- revision
+- etag
+- parts
+properties:
+  id:
+    type: integer
+    format: int64
+    minimum: 1
+    maximum: 9223372036854775807
+  record_id:
+    type: integer
+    format: int64
+    minimum: 1
+    maximum: 9223372036854775807
+  job_id:
+    type: integer
+    format: int64
+    minimum: 1
+    maximum: 9223372036854775807
+  attempt:
+    type: integer
+    format: int64
+    minimum: 1
+    maximum: 9223372036854775807
+  input_content_revision:
+    type: integer
+    format: int64
+    minimum: 1
+    maximum: 9223372036854775807
+  revision:
+    type: integer
+    format: int64
+    minimum: 1
+    maximum: 9223372036854775807
+  provider:
+    type: string
+    enum:
+    - minimax
+    - zhipu
+  model:
+    type: string
+    enum:
+    - asr-1.0
+    - glm-5.3-flash
+  policy_version:
+    type: string
+    minLength: 1
+    maxLength: 64
+  config_version: &id001
+    type: string
+    pattern: ^[0-9a-f]{64}$
+  input_manifest_hash: *id001
+  input_transcript_version:
+    type: integer
+    nullable: true
+  chunk_plan_hash:
+    type: string
+    pattern: ^[0-9a-f]{64}$
+    nullable: true
+  state:
+    type: string
+    enum:
+    - active
+    - complete
+    - failed
+    - cancelled
+    - provider_outcome_unknown
+    - expired
+  etag:
+    type: string
+  lease_expires_at_unix:
+    type: number
+  parts:
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required:
+      - seq
+      - provider_state
+      - result_hash
+      - dispatch_intent_id
+      properties:
+        seq:
+          type: integer
+          minimum: 0
+        provider_state:
+          type: string
+          enum:
+          - not_dispatched
+          - dispatching
+          - confirmed
+          - provider_outcome_unknown
+          - rejected
+        result_hash:
+          type: string
+          pattern: ^[0-9a-f]{64}$
+          nullable: true
+        dispatch_intent_id:
+          type: integer
+          format: int64
+          minimum: 1
+          maximum: 9223372036854775807
+          nullable: true
+  run_token:
+    type: string
+    maxLength: 128
+  input_snapshot:
+    type: object
+    description: Authenticated source part/attachment IDs and hashes or current transcript
+      segments. Returned only to the claiming device.
+  may_dispatch:
+    type: boolean
+  dispatch_intent_id:
+    type: integer
+    format: int64
+    minimum: 1
+    maximum: 9223372036854775807

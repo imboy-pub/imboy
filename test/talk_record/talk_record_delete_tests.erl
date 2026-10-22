@@ -100,6 +100,70 @@ grant_viewer(Conn, RecordId, Uid) ->
 row(Conn, Sql) ->
     talk_record_t20_support:one(Conn, Sql).
 
+%% Protected/retained assets still require valid V5 locations; these cases do
+%% not claim a successful physical deletion or manufacture gc completion.
+located_attachment(Rid, Extra) ->
+    Root = talk_record_t20_support:disk_root(disk1),
+    #{namespace := Ns, container := Container} = talk_record_t20_support:disk_registry_apply(Root),
+    maps:merge(
+        #{
+            record_id => Rid,
+            storage_driver => <<"disk">>,
+            storage_namespace => Ns,
+            storage_container => Container,
+            storage_locator => talk_record_t20_support:disk_locator_digest()
+        },
+        Extra
+    ).
+
+%% Real config validation and consent/enqueue, with a fail-only executable
+%% sentinel. The queued model job must be cancelled before any execution;
+%% this proves deletion fencing, not transcription or model quality.
+complete_for_cancellation(C, Uid, Rid, Cid) ->
+    Version = <<"synthetic-cancel-only-v1">>,
+    Body = #{
+        <<"processing_consent">> => #{
+            <<"policy_version">> => <<"talk-record-notice-v1">>,
+            <<"processor_config_version">> => Version
+        }
+    },
+    Complete = fun() ->
+        talk_record_t12_support:complete_body(
+            Uid, Rid, Cid, <<"t20-96-cmp">>, Body
+        )
+    end,
+    talk_record_t20_support:with_env(talk_record_processor, #{}, fun() ->
+        ?assertEqual({error, processing_unavailable}, Complete()),
+        #{<<"n">> := 0} = row(C, [
+            "SELECT count(*) AS n FROM talk_record_job WHERE record_id=",
+            integer_to_binary(Rid)
+        ])
+    end),
+    Bundle = #{
+        enabled => true,
+        approved => true,
+        version => Version,
+        transcribe => #{
+            executable => "/usr/bin/false",
+            model_version => <<"synthetic-must-not-execute">>,
+            diarization => true
+        }
+    },
+    talk_record_t20_support:with_env(talk_record_processor, Bundle, fun() ->
+        ?assertMatch(
+            {ok, #{executable := "/usr/bin/false"}},
+            talk_record_processor_config:get(<<"transcribe">>)
+        ),
+        ?assertEqual(true, maps:get(<<"asr_enabled">>, talk_record_ds:capabilities())),
+        ?assertEqual(Version, talk_record_processor_config:version()),
+        {ok, created, _} = Complete(),
+        #{<<"n">> := 1} = row(C, [
+            "SELECT count(*) AS n FROM talk_record_consent_event WHERE kind='processing_opt_in' AND record_id=",
+            integer_to_binary(Rid)
+        ]),
+        ok
+    end).
+
 %%%===================================================================
 %%% A. DELETE 主流程
 %%%===================================================================
@@ -330,6 +394,9 @@ whitelist_shape_test_() ->
             <<"id">>,
             <<"logical_deleted">>,
             <<"cleanup_status">>,
+            <<"cleanup_generation">>,
+            <<"cleanup_reason">>,
+            <<"cleanup_retry">>,
             <<"physical_delete_state">>,
             <<"revision">>,
             <<"deleted_at">>,
@@ -519,7 +586,7 @@ purge_blocked_retention_test_() ->
     with_db(purge_blocked_retention_test_, fun(State) ->
         C = talk_record_t20_support:conn_of(State),
         {Rid, _, U1} = ready(State, 92),
-        Path = talk_record_t20_support:insert_attachment(C, 8201, #{record_id => Rid}),
+        Path = talk_record_t20_support:insert_attachment(C, 8201, located_attachment(Rid, #{})),
         ok = talk_record_t20_support:bind_ref(C, Rid, 8201, <<"audio_part:1">>),
         talk_record_t20_support:sql(C, [
             "UPDATE talk_record SET retention_until = now() + interval '30 days' WHERE id = ",
@@ -566,7 +633,7 @@ purge_blocked_hold_test_() ->
     with_db(purge_blocked_hold_test_, fun(State) ->
         C = talk_record_t20_support:conn_of(State),
         {Rid, _, U1} = ready(State, 93),
-        Path = talk_record_t20_support:insert_attachment(C, 8301, #{record_id => Rid}),
+        Path = talk_record_t20_support:insert_attachment(C, 8301, located_attachment(Rid, #{})),
         ok = talk_record_t20_support:bind_ref(C, Rid, 8301, <<"audio_part:1">>),
         ok = talk_record_t20_support:hold_row(C, 8301),
         {ok, deleted, _} = talk_record_delete_logic:delete(U1, Rid, <<"1">>),
@@ -582,9 +649,9 @@ purge_retained_by_other_reference_test_() ->
         C = talk_record_t20_support:conn_of(State),
         {Rid, _, U1} = ready(State, 94),
         CollectHash = binary:copy(<<"e">>, 64),
-        Path = talk_record_t20_support:insert_attachment(C, 8401, #{
-            record_id => Rid, hash => CollectHash
-        }),
+        Path = talk_record_t20_support:insert_attachment(
+            C, 8401, located_attachment(Rid, #{hash => CollectHash})
+        ),
         ok = talk_record_t20_support:bind_ref(C, Rid, 8401, <<"audio_part:1">>),
         ok = talk_record_t20_support:collect_hash(C, 8401, CollectHash),
         {ok, deleted, _} = talk_record_delete_logic:delete(U1, Rid, <<"1">>),
@@ -619,18 +686,7 @@ late_results_not_published_test_() ->
         {ok, {Rid, Cid, _}} = talk_record_t12_support:ready_record(
             U1, ?REC(96), <<"transcribe">>, [0, 1], <<"t20-96">>
         ),
-        {ok, created, _} = talk_record_t12_support:complete_body(
-            U1,
-            Rid,
-            Cid,
-            <<"t20-96-cmp">>,
-            #{
-                <<"processing_consent">> => #{
-                    <<"policy_version">> => <<"talk-record-notice-1">>,
-                    <<"processor_config_version">> => <<"pc-1">>
-                }
-            }
-        ),
+        ok = complete_for_cancellation(C, U1, Rid, Cid),
         Queued = row(C, [
             "SELECT count(*) AS n FROM talk_record_job WHERE record_id = ",
             integer_to_binary(Rid),
@@ -739,6 +795,28 @@ grants_first_then_delete_consistent_test_() ->
         U1 = maps:get(u1, Ids),
         U2 = maps:get(u2, Ids),
         {Rid, _, _} = ready(State, 98),
+        %% Personal grants require actual mutual active contacts, not merely
+        %% membership in the same organization. Preserve the rejection oracle.
+        ?assertEqual(
+            {error, target_not_in_directory},
+            talk_record_grant_logic:replace(U1, Rid, <<"acl:1">>, #{
+                <<"grants">> => [
+                    #{
+                        <<"grantee_user_id">> => U2,
+                        <<"role">> => <<"viewer">>,
+                        <<"allow_export">> => false
+                    }
+                ]
+            })
+        ),
+        {ok, []} = elib_pg:query(
+            C,
+            <<
+                "INSERT INTO user_friend(id,from_user_id,to_user_id,status) VALUES"
+                " ($1,$2,$3,1),($4,$3,$2,1)"
+            >>,
+            [960001, U1, U2, 960002]
+        ),
         %% PUT grants 先行（acl_revision 1 → 2，record.revision 不动）
         Body = #{
             <<"grants">> => [
@@ -859,10 +937,24 @@ preflight_run_integration_test_() ->
             TalkBlockers = [
                 B
              || B <- Blockers,
-                maps:get(resource_type, B) =:= <<"talk_record">>
+                lists:member(maps:get(code, B), [
+                    <<"TALK_RECORD_PERSONAL_PENDING">>,
+                    <<"TALK_RECORD_RETAINED_IDENTITY_PENDING">>
+                ])
             ],
-            ?assertMatch([_ | _], TalkBlockers),
-            %% 冻结四字段形状
+            ?assertEqual(2, length(TalkBlockers)),
+            lists:foreach(
+                fun(B) ->
+                    ?assertEqual(
+                        lists:sort([code, resource_type, resource_id, organization_id]),
+                        lists:sort(maps:keys(B))
+                    ),
+                    ?assertEqual(<<"account">>, maps:get(resource_type, B)),
+                    ?assertEqual(integer_to_binary(U1), maps:get(resource_id, B)),
+                    ?assertEqual(null, maps:get(organization_id, B))
+                end,
+                TalkBlockers
+            ),
             [B1 | _] = TalkBlockers,
             ?assertEqual(null, maps:get(organization_id, B1)),
             ?assert(is_binary(maps:get(code, B1)))

@@ -1,0 +1,102 @@
+post:
+  tags:
+  - talk-record
+  summary: Device-owned BYOK settle
+  operationId: talkRecordClientSettle
+  security:
+  - bearerAuth: []
+  x-device-signature-required: true
+  x-handler: talk_record_client_handler
+  parameters:
+  - name: id
+    in: path
+    required: true
+    schema:
+      type: integer
+      format: int64
+      minimum: 1
+      maximum: 9223372036854775807
+  - name: job_id
+    in: path
+    required: true
+    schema:
+      type: integer
+      format: int64
+      minimum: 1
+      maximum: 9223372036854775807
+  - name: run_id
+    in: path
+    required: true
+    schema:
+      type: integer
+      format: int64
+      minimum: 1
+      maximum: 9223372036854775807
+  - name: Idempotency-Key
+    in: header
+    required: true
+    schema:
+      type: string
+      minLength: 1
+      maxLength: 128
+  - name: If-Match
+    in: header
+    required: true
+    schema:
+      type: string
+    description: Quoted client-run:id:revision. Claim requires the previous unknown
+      run ETag only for an explicitly acknowledged new attempt.
+  - name: X-Talk-Run-Token
+    in: header
+    required: true
+    schema:
+      type: string
+      minLength: 32
+      maxLength: 128
+  - $ref: ../../../../components/parameters/talk-record/DeviceVsn.yaml
+  - $ref: ../../../../components/parameters/talk-record/DevicePkg.yaml
+  - $ref: ../../../../components/parameters/talk-record/DeviceDid.yaml
+  - $ref: ../../../../components/parameters/talk-record/DeviceCos.yaml
+  - $ref: ../../../../components/parameters/talk-record/DeviceMethod.yaml
+  - $ref: ../../../../components/parameters/talk-record/DeviceSign.yaml
+  - $ref: ../../../../components/parameters/talk-record/DeviceSk.yaml
+  description: JWT authenticated device identity; current record ACL, active membership
+    and external processing policy are authoritative. No provider credentials, endpoint,
+    callback or file path is accepted. Dispatch intent replay always returns may_dispatch=false.
+    Exact seq/source coverage is required before atomic content publication. Unknown
+    dispatch cannot be automatically retried.
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: ../../../../components/schemas/talk-record/ClientSettle.yaml
+  responses:
+    '401':
+      description: JWT or device signature invalid.
+    '404':
+      description: Absent or not currently visible.
+    '409':
+      description: Lease, attempt, plan, result, input or policy conflict.
+    '412':
+      description: Client run revision changed.
+    '422':
+      description: Unknown field, invalid schema or processing unavailable.
+    '428':
+      description: Required revision or idempotency key absent.
+    '202':
+      description: Normalized run state. Only the claim response includes a device-bound
+        opaque run_token and source input_snapshot.
+      headers:
+        ETag:
+          schema:
+            type: string
+      content:
+        application/json:
+          schema:
+            allOf:
+            - $ref: ../../../../components/schemas/Envelope.yaml
+            - type: object
+              properties:
+                payload:
+                  $ref: ../../../../components/schemas/talk-record/ClientRun.yaml

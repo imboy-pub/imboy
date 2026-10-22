@@ -1,0 +1,113 @@
+oneOf:
+- type: object
+  description: >-
+    Ordered, contiguous source ranges cover every frozen audio part exactly once.
+    Each chunk contains one range from one source part, with no overlap or gaps;
+    offset_ms equals the source offset plus start_ms and duration_ms equals end_ms
+    minus start_ms. Split chunks must be independently decodable files and
+    byte_size is their actual encoded size, not a proportional estimate. An
+    unsplit original part retains its frozen byte_size. The server validates the
+    submitted plan; it does not inspect provider-bound audio bytes.
+  additionalProperties: false
+  required:
+  - overlap_rule
+  - chunks
+  properties:
+    overlap_rule:
+      type: string
+      enum:
+      - none
+    chunks:
+      type: array
+      minItems: 1
+      maxItems: 10000
+      items:
+        type: object
+        additionalProperties: false
+        required:
+        - seq
+        - source_part_manifest_hash
+        - source_ranges
+        - offset_ms
+        - duration_ms
+        - byte_size
+        properties:
+          seq:
+            type: integer
+            minimum: 0
+            maximum: 9999
+          source_part_manifest_hash: &id001
+            type: string
+            pattern: ^[0-9a-f]{64}$
+          source_ranges:
+            type: array
+            minItems: 1
+            maxItems: 1
+            items:
+              type: object
+              additionalProperties: false
+              required:
+              - part_id
+              - sha256
+              - start_ms
+              - end_ms
+              properties:
+                part_id:
+                  type: integer
+                  format: int64
+                  minimum: 1
+                  maximum: 9223372036854775807
+                sha256: *id001
+                start_ms:
+                  type: integer
+                  minimum: 0
+                end_ms:
+                  type: integer
+                  minimum: 1
+          offset_ms:
+            type: integer
+            minimum: 0
+          duration_ms:
+            type: integer
+            minimum: 1
+            maximum: 500000
+          byte_size:
+            type: integer
+            minimum: 1
+            maximum: 50000000
+- type: object
+  additionalProperties: false
+  required:
+  - overlap_rule
+  - chunks
+  properties:
+    overlap_rule:
+      type: string
+      enum:
+      - none
+    chunks:
+      type: array
+      minItems: 1
+      maxItems: 1
+      items:
+        type: object
+        additionalProperties: false
+        required:
+        - seq
+        - source_segment_ids
+        - source_hash
+        properties:
+          seq:
+            type: integer
+            enum:
+            - 0
+          source_segment_ids:
+            type: array
+            minItems: 1
+            maxItems: 20000
+            items:
+              type: integer
+              format: int64
+              minimum: 1
+              maximum: 9223372036854775807
+          source_hash: *id001

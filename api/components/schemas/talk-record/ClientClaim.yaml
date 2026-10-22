@@ -1,0 +1,14 @@
+type: object
+additionalProperties: false
+required:
+- processing_consent
+properties:
+  processing_consent:
+    $ref: ClientConsent.yaml
+  previous_run_id:
+    type: integer
+    format: int64
+    minimum: 1
+    maximum: 9223372036854775807
+  ack_possible_duplicate_charge:
+    type: boolean

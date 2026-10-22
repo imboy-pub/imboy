@@ -30,9 +30,7 @@ legacy_actorless_path_rejected_test() ->
     ?assertEqual({error, cleanup_actor_required}, talk_record_delete_logic:retry_purge_tx(conn, 1)).
 
 repo_authenticated_arguments_test() ->
-    meck:new(elib_pg, [non_strict]),
-    meck:new(elib_tsid, [non_strict]),
-    try
+    with_retry_mocks(fun() ->
         meck:expect(elib_tsid, generate, fun(talk_record) -> 99 end),
         meck:expect(elib_pg, query, fun(
             conn, Sql, [1, 2, 3, 4, <<"key">>, <<"hash">>, <<"reason">>, 99]
@@ -47,15 +45,10 @@ repo_authenticated_arguments_test() ->
             )
         ),
         ?assert(meck:validate(elib_pg))
-    after
-        meck:unload(elib_pg),
-        meck:unload(elib_tsid)
-    end.
+    end).
 
 no_fake_accepted_test() ->
-    meck:new(elib_pg, [non_strict]),
-    meck:new(elib_tsid, [non_strict]),
-    try
+    with_retry_mocks(fun() ->
         meck:expect(elib_tsid, generate, fun(_) -> 99 end),
         lists:foreach(
             fun({Response, Expected}) ->
@@ -75,10 +68,7 @@ no_fake_accepted_test() ->
                 {#{<<"error">> => <<"cleanup_generation_conflict">>}, cleanup_generation_conflict}
             ]
         )
-    after
-        meck:unload(elib_pg),
-        meck:unload(elib_tsid)
-    end.
+    end).
 
 readonly_capability_fail_closed_test() ->
     meck:new(elib_pg, [non_strict]),
@@ -107,3 +97,37 @@ readonly_capability_fail_closed_test() ->
     after
         meck:unload(elib_pg)
     end.
+
+%% Each successful acquisition is protected before the next can fail.
+with_retry_mocks(Test) ->
+    ok = meck:new(elib_pg, [non_strict]),
+    try
+        ok = meck:new(elib_tsid, [non_strict]),
+        try
+            Test()
+        after
+            meck:unload(elib_tsid)
+        end
+    after
+        meck:unload(elib_pg)
+    end.
+
+partial_mock_setup_preserves_existing_mock_test() ->
+    pure_mock_fixture:run(fun() ->
+        ok = meck:new(elib_tsid, [non_strict]),
+        Existing = whereis(elib_tsid_meck),
+        try
+            ?assertException(
+                error,
+                {already_started, _},
+                with_retry_mocks(fun() ->
+                    error(test_body_must_not_run)
+                end)
+            ),
+            ?assertNot(lists:member(elib_pg, meck:mocked())),
+            ?assertEqual(Existing, whereis(elib_tsid_meck)),
+            ?assert(is_process_alive(Existing))
+        after
+            meck:unload(elib_tsid)
+        end
+    end).
