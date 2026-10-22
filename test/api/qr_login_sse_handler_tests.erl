@@ -363,3 +363,57 @@ terminate_does_not_call_unsubscribe_when_state_lacks_token_test_() ->
             )
         end
     ).
+
+%% ===================================================================
+%% confirmed_ready（G-QR C08，PG 权威信号）：claim 改道 qr_login_session_ds
+%% 真 DS 转发体 + mock repo；原子领取恰好一个消费者
+%% ===================================================================
+
+info_confirmed_ready_claims_token_once_and_stops_test_() ->
+    SessionToken = <<"sess_ready_claim">>,
+    ?WITH_MECKS(
+        cowboy_req_mocks() ++
+            [
+                {qr_login_session_repo, [
+                    {claim_login_token, 1, fun(Token) when Token =:= SessionToken ->
+                        {ok, #{login_token => <<"jwt_ready_1">>, scanned_by => 7}}
+                    end}
+                ]}
+            ],
+        fun() ->
+            Event = #{<<"status">> => <<"confirmed_ready">>},
+            Req0 = req([]),
+            State = #{session_token => SessionToken},
+            Result = qr_login_sse_handler:info(Event, Req0, State),
+            ?assertMatch({stop, _, _}, Result),
+            Chunks = sent_chunks(),
+            ?assertEqual(1, length(Chunks)),
+            [Chunk] = Chunks,
+            ?assert(binary:match(Chunk, <<"\"status\":\"confirmed\"">>) =/= nomatch),
+            ?assert(binary:match(Chunk, <<"\"token\":\"jwt_ready_1\"">>) =/= nomatch),
+            %% DS 转发体真跑：repo 收到 State 里的原 SessionToken
+            ?assert(meck:called(qr_login_session_repo, claim_login_token, [SessionToken]))
+        end
+    ).
+
+info_confirmed_ready_already_claimed_no_second_grant_test_() ->
+    SessionToken = <<"sess_ready_replay">>,
+    ?WITH_MECKS(
+        cowboy_req_mocks() ++
+            [
+                {qr_login_session_repo, [
+                    {claim_login_token, 1, fun(_Token) -> {error, not_claimable} end}
+                ]}
+            ],
+        fun() ->
+            Event = #{<<"status">> => <<"confirmed_ready">>},
+            Req0 = req([]),
+            State = #{session_token => SessionToken},
+            Result = qr_login_sse_handler:info(Event, Req0, State),
+            ?assertMatch({stop, _, _}, Result),
+            %% 不二次发放：无 data 帧，只有 claimed_elsewhere 注释行
+            ?assertEqual([<<": claimed_elsewhere\n\n">>], sent_chunks()),
+            %% claim 恰好一次（无重试/重复消费）
+            ?assertEqual(1, length(meck:history(qr_login_session_repo)))
+        end
+    ).

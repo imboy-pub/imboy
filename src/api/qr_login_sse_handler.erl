@@ -100,7 +100,7 @@ info(Event, Req0, State) when is_map(Event) ->
             %% 恰好一个订阅连接/轮询者拿到 token，其余得到明确失败并关连接
             %% （客户端 EventSource onerror → 降级轮询 → ALREADY_USED 兼容响应）。
             SessionToken = maps:get(session_token, State, undefined),
-            case qr_login_session_repo:claim_login_token(SessionToken) of
+            case qr_login_session_ds:claim_login_token(SessionToken) of
                 {ok, #{login_token := Token}} ->
                     push_event(Req0, #{<<"status">> => <<"confirmed">>, <<"token">> => Token}),
                     {stop, Req0, State};

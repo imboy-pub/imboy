@@ -147,7 +147,7 @@ serve_pinned(Req0, Key, DeclMime, CapabilityExp, Source, Size) ->
                 <<"size_bytes">> => integer_to_binary(Size),
                 <<"mime">> => DeclMime
             },
-            case attach_pending_repo:register_content_pin(Key, Receipt) of
+            case attachment_ds:register_content_pin(Key, Receipt) of
                 ok ->
                     %% pin 已 COMMIT；转发同一已校验文件（不重新读可替换路径）。
                     %% 签名 Context 冻结：expires_at=capability exp（unix 秒），
@@ -185,10 +185,12 @@ serve_pinned(Req0, Key, DeclMime, CapabilityExp, Source, Size) ->
                             cowboy_req:reply(
                                 410, #{}, <<"capability window invalid">>, Req0
                             );
-                        {error, Reason} when Reason =:= session_not_renewable;
-                                             Reason =:= tombstone;
-                                             Reason =:= location_changed;
-                                             Reason =:= content_mismatch ->
+                        {error, Reason} when
+                            Reason =:= session_not_renewable;
+                            Reason =:= tombstone;
+                            Reason =:= location_changed;
+                            Reason =:= content_mismatch
+                        ->
                             cowboy_req:reply(409, #{}, atom_to_binary(Reason, utf8), Req0);
                         {error, not_found} ->
                             cowboy_req:reply(404, #{}, <<"unknown session">>, Req0);
@@ -205,9 +207,11 @@ serve_pinned(Req0, Key, DeclMime, CapabilityExp, Source, Size) ->
                     );
                 {error, not_found} ->
                     cowboy_req:reply(404, #{}, <<"unknown session">>, Req0);
-                {error, Reason} when Reason =:= session_not_renewable;
-                                     Reason =:= tombstone;
-                                     Reason =:= location_changed ->
+                {error, Reason} when
+                    Reason =:= session_not_renewable;
+                    Reason =:= tombstone;
+                    Reason =:= location_changed
+                ->
                     cowboy_req:reply(409, #{}, atom_to_binary(Reason, utf8), Req0);
                 {error, _} ->
                     cowboy_req:reply(500, #{}, <<"content pin failed">>, Req0)

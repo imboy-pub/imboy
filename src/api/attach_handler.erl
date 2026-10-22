@@ -13,7 +13,7 @@
 % POST /v1/attachment/upload?object_key=...&mime_type=...  multipart/form-data
 %   流式收文件 → 临时文件 → 转入 Garage；不做任何落库（confirm 是唯一真源）
 %%%
--behavior(cowboy_rest).
+-behaviour(cowboy_rest).
 
 -export([init/2]).
 
@@ -61,7 +61,7 @@ presign_operation(<<"status">>, Uid, Qs, Req0, _State) ->
                 Req0, <<"缺少 client_upload_id 或 object_key"/utf8>>, ?ERR_BAD_REQUEST
             );
         _ ->
-            case attach_pending_repo:status_lookup(IdOrKey) of
+            case attachment_ds:status_lookup(IdOrKey) of
                 {ok, Row} ->
                     reauthorize_status(Uid, Row, Req0);
                 {error, not_found} ->
@@ -85,7 +85,7 @@ presign_operation(<<"renew">>, Uid, Qs, Req0, _State) ->
                 Req0, <<"缺少 client_upload_id 或 object_key"/utf8>>, ?ERR_BAD_REQUEST
             );
         _ ->
-            case attach_pending_repo:status_lookup(IdOrKey) of
+            case attachment_ds:status_lookup(IdOrKey) of
                 {ok,
                     #{<<"creator_user_id">> := Uid, <<"session_state">> := <<"registered">>} = Row} ->
                     Key = maps:get(<<"object_key">>, Row),
@@ -241,7 +241,7 @@ renew_authorized(Key, _Bucket, _Scope, Uid, Row, Req0) ->
         false ->
             NewExpiry = min(NowSec + 3600, DeadlineSec),
             Mime = declared_mime(Row),
-            case attach_pending_repo:renew_capability(Key, Uid, NewExpiry) of
+            case attachment_ds:renew_capability(Key, Uid, NewExpiry) of
                 {ok, #{committed_expires_at := Committed}} ->
                     {ok, Capability} = imboy_jwt:issue_upload_capability(Key, Mime, Committed),
                     Data = #{
@@ -609,12 +609,19 @@ upload_error(Req0, file_too_large) ->
     elib_response:error(Req0, <<"文件超过大小限制"/utf8>>, ?ERR_PAYLOAD_TOO_LARGE);
 upload_error(Req0, historical_location_unverified) ->
     elib_response:error_with_status(
-        Req0, ?ERR_CONFLICT, <<"historical_location_unverified">>,
-        #{<<"retry_action">> => <<"reupload_new_session">>}, ?ERR_CONFLICT
+        Req0,
+        ?ERR_CONFLICT,
+        <<"historical_location_unverified">>,
+        #{<<"retry_action">> => <<"reupload_new_session">>},
+        ?ERR_CONFLICT
     );
 upload_error(Req0, Reason) when
-    Reason =:= content_mismatch; Reason =:= tombstone; Reason =:= session_not_renewable;
-    Reason =:= location_changed; Reason =:= location_unverified; Reason =:= scope_conflict
+    Reason =:= content_mismatch;
+    Reason =:= tombstone;
+    Reason =:= session_not_renewable;
+    Reason =:= location_changed;
+    Reason =:= location_unverified;
+    Reason =:= scope_conflict
 ->
     elib_response:error_with_status(Req0, ?ERR_CONFLICT, atom_to_binary(Reason), ?ERR_CONFLICT);
 upload_error(Req0, invalid_signature_context) ->

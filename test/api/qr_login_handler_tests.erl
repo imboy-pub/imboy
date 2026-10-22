@@ -654,6 +654,59 @@ confirm_does_not_broadcast_when_forbidden_test_() ->
     ).
 
 %% ===================================================================
+%% PG 权威分支（改道 qr_login_session_ds 后的真链路；§1.4-4 既有用例全走 cache）
+%% ===================================================================
+
+scan_pg_authority_transitions_via_ds_test_() ->
+    SessionToken = <<"session-pg-scan-1">>,
+    QRToken = make_qr_token(SessionToken),
+    Uid = 111174215241304064,
+    ?WITH_MECKS(
+        common_mocks() ++
+            [
+                {qr_login_session_repo, [
+                    {'find_by_qr_token', 1, fun(Token) when Token =:= QRToken ->
+                        #{<<"session_token">> => SessionToken}
+                    end},
+                    {'transition_scan', 2, fun(Token, U) when Token =:= SessionToken, U =:= Uid ->
+                        {ok, #{
+                            <<"session_token">> => Token,
+                            <<"status">> => <<"scanned">>,
+                            <<"device_name">> => <<"Chrome">>,
+                            <<"platform">> => <<"web">>
+                        }}
+                    end}
+                ]},
+                {qr_login_event_ds, [
+                    {'notify', 2, fun(_Topic, _Event) -> ok end}
+                ]}
+            ],
+        fun() ->
+            application:set_env(imboy, qr_login_authority, pg),
+            try
+                Body = jsone:encode(#{<<"qr_token">> => QRToken}, [native_utf8]),
+                {stop, Req1, _} = qr_login_handler:handle_request(
+                    req(<<"POST">>, Body, []),
+                    #{action => scan, current_uid => Uid}
+                ),
+                ?assertEqual(
+                    {success, #{
+                        <<"status">> => <<"scanned">>,
+                        <<"device_name">> => <<"Chrome">>,
+                        <<"platform">> => <<"web">>
+                    }},
+                    response_result(Req1)
+                ),
+                %% DS 转发体真跑：repo 收到 handler 原始参数
+                ?assert(meck:called(qr_login_session_repo, find_by_qr_token, [QRToken])),
+                ?assert(meck:called(qr_login_session_repo, transition_scan, [SessionToken, Uid]))
+            after
+                application:unset_env(imboy, qr_login_authority)
+            end
+        end
+    ).
+
+%% ===================================================================
 %% Helpers
 %% ===================================================================
 

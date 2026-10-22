@@ -17,6 +17,7 @@
 -export([disable/1, enable/1, soft_delete/1]).
 -export([orphan_stats/1, orphan_cleanup/1]).
 -export([pending_add/4, pending_remove/1, pending_cleanup/1]).
+-export([status_lookup/1, renew_capability/3, register_content_pin/2]).
 -export([find_by_path_and_uid/2]).
 -export([find_by_path/1]).
 -export([bind_moment_scope_ref/4]).
@@ -226,6 +227,23 @@ pending_add(ObjectKey, Bucket, Scope, Uid) ->
 -spec pending_remove(binary()) -> ok | {error, term()}.
 pending_remove(ObjectKey) ->
     attach_pending_repo:remove(ObjectKey).
+
+%% @doc 上传会话状态查询（client_upload_id 或 object_key 均可命中）
+-spec status_lookup(binary()) -> {ok, map()} | {error, not_found | term()}.
+status_lookup(IdOrKey) ->
+    attach_pending_repo:status_lookup(IdOrKey).
+
+%% @doc renew：同 key 单调提交新能力到期（02 §143）；NewExpirySec 由调用方
+%% 以 min(now+TTL, deadline) 冻结传入，历史最晚值保留
+-spec renew_capability(binary(), integer(), integer()) ->
+    {ok, #{committed_expires_at => integer(), deadline => integer()}} | {error, term()}.
+renew_capability(Key, Uid, NewExpirySec) ->
+    attach_pending_repo:renew_capability(Key, Uid, NewExpirySec).
+
+%% @doc 网关内容 pin 登记（sha256/size/mime 四元组收据，幂等）
+-spec register_content_pin(binary(), map()) -> ok | {error, term()}.
+register_content_pin(ObjectKey, Receipt) ->
+    attach_pending_repo:register_content_pin(ObjectKey, Receipt).
 
 %% Pending garbage shares the confirmation path lock and durable deletion queue.
 %% W4-01 入口收口（02 §2/§5）：pending 清理不再删 pending 行+字节——对每个

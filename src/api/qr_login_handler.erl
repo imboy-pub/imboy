@@ -4,7 +4,7 @@
 %%%
 %%% G-QR（收口 C08）：`qr_login_authority = pg | cache`（默认 cache）。
 %%% - cache：原 depcache 路径（生产行为不变，迁移未启用期间的兼容层）；
-%%% - pg：qr_login_session_repo PostgreSQL 权威——scan/confirm/cancel 状态机
+%%% - pg：qr_login_session_ds（薄转发 qr_login_session_repo）PostgreSQL 权威——scan/confirm/cancel 状态机
 %%%   CAS、status 原子 claim/consume（UPDATE...RETURNING 单语句原子性）；
 %%%   confirm 的 SSE 通知为 confirmed_ready 无 token 信号，token 一律经
 %%%   原子领取（SSE 服务端代领或 status 轮询领取，同一消费语义）。
@@ -78,7 +78,7 @@ handle_request(Req0, State) ->
 %% G-QR 权威选择
 %% ===================================================================
 
-%% @doc QR 会话权威存储：cache（原 depcache）| pg（qr_login_session_repo）。
+%% @doc QR 会话权威存储：cache（原 depcache）| pg（qr_login_session_ds → qr_login_session_repo）。
 %% pg 模式要求 00000170_qr_login_session 迁移已在目标库 apply
 %% （本轮仅在专属临时测试库验证；生产启用属部署决策）。
 -spec authority() -> cache | pg.
@@ -91,7 +91,7 @@ authority() ->
 %% @doc PG：QR token 反查 session_token。
 -spec pg_parse_qr_token(binary()) -> {ok, binary()} | {error, term()}.
 pg_parse_qr_token(QRToken) ->
-    case qr_login_session_repo:find_by_qr_token(QRToken) of
+    case qr_login_session_ds:find_by_qr_token(QRToken) of
         #{<<"session_token">> := ST} -> {ok, ST};
         undefined -> {error, invalid_format};
         {error, Reason} -> {error, Reason}
@@ -155,7 +155,7 @@ handle_create(Req) ->
 -spec pg_create_session(binary(), map()) -> binary().
 pg_create_session(SessionToken, SessionData) ->
     QRToken = generate_qr_token_value(),
-    ok = qr_login_session_repo:create(#{
+    ok = qr_login_session_ds:create(#{
         session_token => SessionToken,
         qr_token => QRToken,
         device_id => maps:get(<<"device_id">>, SessionData),
@@ -199,7 +199,7 @@ handle_status(Req) ->
 %% 保证并发/SSE 双读竞争下恰好一个消费者拿到 token，G-QR oracle）。
 -spec pg_handle_status(cowboy_req:req(), binary()) -> cowboy_req:req().
 pg_handle_status(Req, SessionToken) ->
-    case qr_login_session_repo:find_by_session_token(SessionToken) of
+    case qr_login_session_ds:find_by_session_token(SessionToken) of
         undefined ->
             elib_response:error(Req, <<"会话不存在或已过期"/utf8>>, ?ERR_NOT_FOUND);
         {error, _} ->
@@ -207,7 +207,7 @@ pg_handle_status(Req, SessionToken) ->
         Session ->
             case maps:get(<<"status">>, Session, <<"waiting">>) of
                 <<"confirmed">> ->
-                    case qr_login_session_repo:claim_login_token(SessionToken) of
+                    case qr_login_session_ds:claim_login_token(SessionToken) of
                         {ok, #{login_token := LoginToken, scanned_by := Uid}} ->
                             elib_response:success(Req, #{
                                 <<"status">> => <<"confirmed">>,
@@ -288,7 +288,7 @@ handle_scan(Req, State) ->
 %% @doc PG scan：waiting→scanned CAS；非转移结果按权威状态映射既有错误码。
 -spec pg_handle_scan(cowboy_req:req(), binary(), integer()) -> cowboy_req:req().
 pg_handle_scan(Req, SessionToken, Uid) ->
-    case qr_login_session_repo:transition_scan(SessionToken, Uid) of
+    case qr_login_session_ds:transition_scan(SessionToken, Uid) of
         {ok, Row} ->
             %% PR-2β：广播 scanned 事件给 SSE 订阅者
             _ = qr_login_event_ds:notify(
@@ -305,7 +305,7 @@ pg_handle_scan(Req, SessionToken, Uid) ->
 
 -spec pg_scan_error(cowboy_req:req(), binary(), integer()) -> cowboy_req:req().
 pg_scan_error(Req, SessionToken, Uid) ->
-    case qr_login_session_repo:find_by_session_token(SessionToken) of
+    case qr_login_session_ds:find_by_session_token(SessionToken) of
         undefined ->
             elib_response:error(Req, <<"二维码已过期，请刷新"/utf8>>, ?ERR_QR_LOGIN_EXPIRED);
         #{<<"status">> := <<"confirmed">>} ->
@@ -415,7 +415,7 @@ handle_confirm(Req, State) ->
 %% SSE 只发 confirmed_ready 无 token 信号（token 一律走原子领取，C08）。
 -spec pg_handle_confirm(cowboy_req:req(), binary(), integer()) -> cowboy_req:req().
 pg_handle_confirm(Req, SessionToken, Uid) ->
-    case qr_login_session_repo:find_by_session_token(SessionToken) of
+    case qr_login_session_ds:find_by_session_token(SessionToken) of
         undefined ->
             elib_response:error(Req, <<"二维码已过期，请刷新"/utf8>>, ?ERR_QR_LOGIN_EXPIRED);
         {error, _} ->
@@ -441,7 +441,7 @@ pg_handle_confirm(Req, SessionToken, Uid) ->
 
 -spec pg_confirm_as_scanner(cowboy_req:req(), binary(), integer()) -> cowboy_req:req().
 pg_confirm_as_scanner(Req, SessionToken, Uid) ->
-    case qr_login_session_repo:find_by_session_token(SessionToken) of
+    case qr_login_session_ds:find_by_session_token(SessionToken) of
         #{
             <<"device_id">> := DeviceId,
             <<"device_name">> := DeviceName,
@@ -451,7 +451,7 @@ pg_confirm_as_scanner(Req, SessionToken, Uid) ->
             %% E2EE-013：先写设备行再签发 token（批次约束保持）
             log_device_login(Uid, DeviceId, DeviceName, Platform),
             LoginToken = generate_login_token(Uid, DeviceId, Purpose),
-            case qr_login_session_repo:transition_confirm(SessionToken, Uid, LoginToken) of
+            case qr_login_session_ds:transition_confirm(SessionToken, Uid, LoginToken) of
                 {ok, _} ->
                     %% C08：syn 只发事件通知，不广播 login_token；
                     %% Web 端落地 token 经 SSE 服务端代领或 status 原子领取
@@ -570,11 +570,11 @@ handle_cancel(Req, _State) ->
 %% 属埋雷语义；PG 权威修正，边缘差异记录于收口文档）。
 -spec pg_handle_cancel(cowboy_req:req(), binary()) -> cowboy_req:req().
 pg_handle_cancel(Req, SessionToken) ->
-    case qr_login_session_repo:transition_cancel(SessionToken) of
+    case qr_login_session_ds:transition_cancel(SessionToken) of
         ok ->
             elib_response:success(Req, #{<<"status">> => <<"cancelled">>});
         {error, not_transitioned} ->
-            case qr_login_session_repo:find_by_session_token(SessionToken) of
+            case qr_login_session_ds:find_by_session_token(SessionToken) of
                 undefined ->
                     %% 不存在/过期：幂等成功（与 cache 路径对齐）
                     elib_response:success(Req, #{<<"status">> => <<"cancelled">>});
