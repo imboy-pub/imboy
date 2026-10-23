@@ -1686,6 +1686,20 @@ tables:
     mechanism: restricted record-scoped recovery function; no user FK preventing identity deletion; no user-facing audit content read
     review: self-evident
     retention: permanent deletion tombstone audit; retained historical actor identity remains personal data
+  talk_record_client_run:
+    action: retain
+    owner: talk_record
+    reason: 设备侧执行（BYOK）元数据是治理证据：含actor身份、设备会话与租约哈希，不含provider明文凭据（迁移223合同：credentials never enter this schema）
+    mechanism: RESTRICT FK to talk_record_job and talk_record via (record_id, job_id); lease_token_hash/config_version are digests only; no implicit anonymization
+    review: self-evident
+    retention: existing record and attachment governance; provider credentials live solely in client secure storage
+  talk_record_client_run_part:
+    action: retain
+    owner: talk_record
+    reason: 设备侧执行分片清单与结果指针，属同一治理证据链，不含正文或秘密
+    mechanism: RESTRICT FK to talk_record_client_run; part references carry digests/counters only
+    review: self-evident
+    retention: existing record and attachment governance
 
 exclusions:
   adm_role:
