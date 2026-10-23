@@ -1,33 +1,34 @@
-# POST /api/adm/passport/logout — admin
 post:
-  tags: [admin]
-  summary: admin adm-passport - logout
-  description: |
-    ## 中文 / English
-    管理后台 adm-passport handler 的 `logout` 动作；路径 `/adm/passport/logout`。
-    Admin handler `adm-passport`, action `logout`. Path `/adm/passport/logout`.
+  security: []
+  tags:
+  - admin
+  summary: 退出管理员会话 / Logout
+  description: 不要求有效登录 Cookie；有有效 ID 时撤销该管理员已签发会话，并清理 adm_user_id、adm_user_sig、back_uri。无需请求体。 / Clear cookies;
+    revoke the session epoch when an ID is available.
   operationId: adm_passport_logout
-  requestBody:
-    required: true
-    content:
-      application/json:
-        schema:
-          type: object
-          additionalProperties: true
   responses:
     '200':
-      description: 成功（payload 为空对象）
+      description: 成功或业务错误；检查 code / Inspect business code
       content:
         application/json:
           schema:
-            allOf:
-              - $ref: '../../../../components/schemas/Envelope.yaml'
+            anyOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
               - type: object
                 properties:
                   payload:
                     type: object
-                    description: 操作成功返回空对象 {}
-    '4XX':
-      description: 无权限 / 参数非法
-      content:
-        application/json: { schema: { $ref: '../../../../components/schemas/Envelope.yaml' } }
+                    properties: {}
+              - type: object
+                properties:
+                  code:
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+      headers:
+        Set-Cookie:
+          description: 三个 Cookie 的 Max-Age=0 / Clear authentication and redirect cookies
+          schema:
+            type: string
+    '405':
+      description: 不支持的 HTTP 方法 / Method Not Allowed

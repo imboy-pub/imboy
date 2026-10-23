@@ -1,5 +1,8 @@
 # POST /api/adm/group/task/close — admin
 post:
+  security:
+    - adminSessionId: []
+      adminSessionSignature: []
   tags: [admin]
   summary: 管理后台关闭群任务
   description: 管理员关闭指定群任务（标记为已关闭状态）。Close a group task by admin (marks as closed).

@@ -1,32 +1,41 @@
-# GET /api/v1/projects/{project_id}/aggregations/resources — 四聚合之 resources（W2 ZC-06）
 get:
-  tags: [project]
-  summary: "资源流（关联频道附件/文件类有界摘要）"
-  description: |
-    ## 中文
-    资源流（关联频道附件/文件类有界摘要）。SQL 条数固定（无 N+1），返回有界摘要。
-    ## English
-    Bounded resource digest across linked channels. Fixed number of SQL statements (no N+1), bounded result.
+  tags:
+  - project
+  summary: 项目配置的资源链接列表
+  description: 返回 project.links 中配置的最多 20 条 name/url 链接，不是频道附件流；无分页参数。 / Up to 20 configured resource links, without
+    pagination.
   operationId: projectAggResources
   parameters:
-    - name: project_id
-      in: path
-      required: true
-      schema: { type: integer, format: int64 }
-    - name: page
-      in: query
-      schema: { type: integer, default: 1 }
-    - name: size
-      in: query
-      schema: { type: integer, default: 10 }
+  - name: project_id
+    in: path
+    required: true
+    schema:
+      type: integer
+      format: int64
+    description: 项目 TSID / Project ID
   responses:
     '200':
-      description: 聚合摘要
+      description: 成功 code=0 返回以下业务载荷；业务失败 code 非零返回通用错误信封。 / Success payload or nonzero-code business error.
       content:
         application/json:
-          schema: { $ref: '../../../../components/schemas/Envelope.yaml' }
-    '4XX':
-      description: 无权限（403）/ 项目不存在（404）
-      content:
-        application/json:
-          schema: { $ref: '../../../../components/schemas/Envelope.yaml' }
+          schema:
+            oneOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
+              - type: object
+                properties:
+                  payload:
+                    type: array
+                    items:
+                      $ref: ../../../../components/schemas/client/ProjectLink.yaml
+                    maxItems: 20
+              - type: object
+                required:
+                - code
+                properties:
+                  code:
+                    type: integer
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+    '401':
+      description: 访问 JWT、设备绑定或客户端签名认证失败 / JWT, device binding or client signature rejected

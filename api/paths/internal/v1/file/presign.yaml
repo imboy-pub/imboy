@@ -1,28 +1,25 @@
-# ----------------------------------------------------------------------------
-# imboy/api/paths/internal/v1/file/presign.yaml
-# POST /api/internal/v1/files/presign — 直传预签名（INT-07）
-# 调用方：api/openapi-internal.yaml#/paths/~1api~1internal~1v1~1files~1presign
-# Handler：src/api/enterprise_asset_handler.erl presign/3
-# 请求/响应实证：enterprise_asset_logic 模块注释（file_name 必填 1..256、
-# mime_type 必填（白名单预检）、size_bytes 可选预检）
-# V2.1 §15.1 修正：runtime 恒返回 object_key/put_url/expires_at(integer epoch
-# seconds) 三字段且无 file_id——OpenAPI 对齐（删除不存在的 file_id；expires_at
-# 由 ISO string 改 integer；三字段全部 required）
-# ----------------------------------------------------------------------------
 post:
-  tags: [internal]
-  summary: 企业附件直传预签名（PUT URL）
-  description: |
-    两段式直传第一步：取对象存储预签名 PUT URL（有效期 3600 秒），随后你方
-    直传文件，再调 /files/confirm 确认入库。mime 白名单与大小上限取
-    min(全局, 应用策略)；confirm 以 HEAD 真实值复核。
+  tags:
+  - internal
+  summary: 企业附件登记、状态回查与上传能力恢复
+  description: register登记附件，status仅回查当前会话，renew在绝对截止内续期。受控会话使用client_upload_id UUID；登记事务只保存稳定事实，提交后（含幂等命中）复核当前授权和会话状态，再签发受控网关能力。能力到期不因重试自动延长；响应可能随会话当前状态变化，不能把能力接口当作首次字节缓存。错误使用Internal
+    error信封，恢复错误可附can_resume与retry_action。
+  security:
+  - ibIntHmacCredential: []
+    ibIntHmacTimestamp: []
+    ibIntHmacNonce: []
+    ibIntHmacSignature: []
   operationId: internalFilePresign
   parameters:
-    - name: Idempotency-Key
-      in: header
-      required: true
-      description: 幂等键
-      schema: { type: string, minLength: 1 }
+  - name: Idempotency-Key
+    in: header
+    required: true
+    description: 幂等键
+    schema:
+      type: string
+      minLength: 1
+      maxLength: 128
+      pattern: ^[ -~]+$
   x-imboy-authentication: hmac
   x-imboy-rate-bucket: internal_write
   x-imboy-idempotency: required
@@ -32,7 +29,6 @@ post:
       application/json:
         schema:
           type: object
-          required: [file_name, mime_type]
           properties:
             file_name:
               type: string
@@ -48,25 +44,46 @@ post:
             client_upload_id:
               type: string
               format: uuid
-              description: |
-                V5.5 恢复合同（02 §137/§143）：携带 UUID 进入受控会话链——
-                幂等事务内登记（application 主体快照，失败关闭无能力），
-                COMMIT 后签发受控网关能力（put_url 指向
-                /api/v1/attachment/gateway/{client_upload_id}，附带
-                upload_capability token）。同 UUID 重试幂等恢复；缺省保持
-                legacy 直传 URL 兼容。
+              description: 受控会话 UUID。同 UUID 在同一主体和参数下重试恢复原登记；缺省由服务端生成 UUID，仍进入 V5 受控会话。登记提交后重新复核当前授权和会话状态，再签发网关能力。
             operation:
               type: string
-              enum: [register, status, renew]
+              enum:
+              - register
+              - status
+              - renew
               default: register
-              description: |
-                V5 会话操作：register（缺省）登记；status 只读回查
+              description: 'V5 会话操作：register（缺省）登记；status 只读回查
+
                 （client_upload_id 或 object_key 定位；无能力；
+
                 Cache-Control: no-store）；renew 单调续期并重签能力
+
                 （deadline 过期 410 session_expired）。
+
+                '
             object_key:
               type: string
               description: status/renew 的备选会话定位键（client_upload_id 缺省时使用）
+          anyOf:
+          - properties:
+              operation:
+                enum:
+                - register
+            required:
+            - file_name
+            - mime_type
+          - properties:
+              operation:
+                enum:
+                - status
+                - renew
+            required:
+            - operation
+            anyOf:
+            - required:
+              - client_upload_id
+            - required:
+              - object_key
   responses:
     '200':
       description: 预签名结果
@@ -74,15 +91,16 @@ post:
         application/json:
           schema:
             type: object
-            required: [object_key, expires_at]
+            required:
+            - object_key
             additionalProperties: false
             properties:
-              object_key: { type: string }
+              object_key:
+                type: string
               put_url:
                 type: string
-                description: |
-                  legacy 为对象存储直传 URL；V5 会话为受控网关地址
-                  （能力 token 在 query capability，不存签名 URL）。
+                description: 受控网关地址 /api/v1/attachment/gateway/{client_upload_id}；query capability 携上传能力。旧缓存中的裸对象存储
+                  URL 不再直接重放。
               expires_at:
                 type: integer
                 description: 能力过期（epoch seconds）；V5 会话为登记冻结值
@@ -108,19 +126,110 @@ post:
               retry_action:
                 type: string
                 description: 续传建议（resume_same_id / resume_same_key / none）
+              bucket:
+                type: string
+                description: 登记结果中的存储桶标识。
+              mime_type:
+                type: string
+              file_id:
+                type: integer
+                format: int64
+              size:
+                type: integer
+              lifecycle_state:
+                type:
+                - string
+                - 'null'
+              upload_expires_at:
+                type: integer
+                description: status/已确认会话返回的Unix秒，不保证有expires_at或上传能力。
+            anyOf:
+            - required:
+              - expires_at
+            - required:
+              - upload_expires_at
+      headers:
+        Idempotent-Replayed:
+          description: 登记命中幂等记录时为true；当前授权、会话和能力重新复核，响应不保证与首次状态/字节相同。
+          schema:
+            type: string
+            enum:
+            - 'true'
     '404':
-      description: 会话不存在或跨应用（status/renew；不泄露存在性）
+      description: 会话不存在或不可访问
       content:
         application/json:
-          schema: { $ref: '../../../../components/schemas/Envelope.yaml' }
+          schema:
+            allOf:
+            - $ref: ../../../../components/schemas/internal/ErrorEnvelope.yaml
+            - type: object
+              properties:
+                can_resume:
+                  type: boolean
+                retry_action:
+                  type: string
+                  enum:
+                  - reupload_required
+                  - retry_same_id
+                  - none
     '410':
-      description: 会话已过绝对截止（renew；reupload_required）
+      description: 会话超过绝对截止；需重新上传
       content:
         application/json:
-          schema: { $ref: '../../../../components/schemas/Envelope.yaml' }
-    '400': { $ref: '../../../../components/responses/internal/invalid_request.yaml' }
-    '401': { $ref: '../../../../components/responses/internal/invalid_credential.yaml' }
-    '403': { $ref: '../../../../components/responses/internal/organization_boundary_violation.yaml' }
-    '409': { $ref: '../../../../components/responses/internal/idempotency_conflict.yaml' }
-    '429': { $ref: '../../../../components/responses/internal/rate_limited.yaml' }
-    '500': { $ref: '../../../../components/responses/internal/internal_error.yaml' }
+          schema:
+            allOf:
+            - $ref: ../../../../components/schemas/internal/ErrorEnvelope.yaml
+            - type: object
+              properties:
+                can_resume:
+                  type: boolean
+                retry_action:
+                  type: string
+                  enum:
+                  - reupload_required
+                  - retry_same_id
+                  - none
+    '400':
+      $ref: ../../../../components/responses/internal/invalid_request.yaml
+    '401':
+      $ref: ../../../../components/responses/internal/unauthorized.yaml
+    '403':
+      $ref: ../../../../components/responses/internal/forbidden.yaml
+    '409':
+      description: 幂等摘要冲突、旧能力缓存不可重放或会话状态冲突
+      content:
+        application/json:
+          schema:
+            allOf:
+            - $ref: ../../../../components/schemas/internal/ErrorEnvelope.yaml
+            - type: object
+              properties:
+                can_resume:
+                  type: boolean
+                retry_action:
+                  type: string
+                  enum:
+                  - reupload_required
+                  - retry_same_id
+                  - none
+    '429':
+      $ref: ../../../../components/responses/internal/rate_limited.yaml
+    '500':
+      $ref: ../../../../components/responses/internal/internal_error.yaml
+    '503':
+      description: 当前授权、会话查询或能力签发暂不可用
+      content:
+        application/json:
+          schema:
+            allOf:
+            - $ref: ../../../../components/schemas/internal/ErrorEnvelope.yaml
+            - type: object
+              properties:
+                can_resume:
+                  type: boolean
+                retry_action:
+                  type: string
+                  enum:
+                  - reupload_required
+                  - retry_same_id
+                  - none

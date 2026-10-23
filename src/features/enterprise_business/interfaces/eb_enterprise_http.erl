@@ -591,7 +591,55 @@ respond(_Entry, Req, {error, Reason}) ->
     reply_error(Req, Reason).
 
 reply_ok(Req, Payload) ->
-    elib_response:success_rfc3339(Req, encode_entity(Payload)).
+    elib_response:success_rfc3339(Req, encode_entity(public_payload(Payload))).
+
+%% 接受只由持久化事务决定。通知执行结果属于服务端诊断，绝不出线；
+%% 特别是重放/通知失败的 tuple 既不是 JSON，也不能转字符串暴露内部原因。
+public_payload(#{accepted := true, message := Message} = View) ->
+    (maps:with([accepted, message_id, replayed, audit_id], View))#{
+        message => public_message(Message)
+    };
+public_payload(View) ->
+    View.
+
+public_message(Message) ->
+    Public = maps:with(
+        [
+            id,
+            organization_id,
+            workspace_id,
+            conversation_id,
+            sender_type,
+            sender_contact_id,
+            sender_business_identity_id,
+            actor_user_id,
+            client_msg_id,
+            body,
+            body_cipher,
+            key_version,
+            aad_hash,
+            content_hash,
+            policy_id,
+            policy_version,
+            retention_days,
+            retain_until,
+            visibility,
+            version,
+            created_at
+        ],
+        Message
+    ),
+    case maps:find(assets, Message) of
+        {ok, Assets} when is_list(Assets) ->
+            Public#{
+                assets => [
+                    maps:with([id, message_id, mime, size_bytes, file_name, status], A)
+                 || A <- Assets
+                ]
+            };
+        error ->
+            Public
+    end.
 
 -spec reply_error(cowboy_req:req(), term()) -> cowboy_req:req().
 reply_error(Req, Reason) ->
@@ -892,6 +940,8 @@ encode_entity(List) when is_list(List) ->
 encode_entity(Other) ->
     Other.
 
+encode_value(_Key, undefined) ->
+    null;
 encode_value(Key, Value) when is_integer(Value) ->
     case is_tsid_key(Key) of
         true -> integer_to_binary(Value);

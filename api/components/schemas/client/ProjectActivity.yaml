@@ -1,0 +1,27 @@
+type: object
+properties:
+  id:
+    type: integer
+    format: int64
+  event_type:
+    type: string
+  actor_id:
+    type: integer
+    format: int64
+  target_id:
+    type:
+    - integer
+    - 'null'
+    format: int64
+  payload:
+    type: object
+    description: 事件元数据；正文类键递归清除。 / Sanitized event metadata.
+  created_at:
+    type: string
+    description: 数据库时间戳字符串 / Database timestamp string
+required:
+- id
+- event_type
+- actor_id
+- payload
+- created_at

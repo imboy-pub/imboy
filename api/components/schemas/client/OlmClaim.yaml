@@ -1,0 +1,18 @@
+type: object
+properties:
+  type:
+    type: string
+    enum:
+    - one_time
+    - fallback
+  key_id:
+    type: string
+  key_base64:
+    type: string
+  identity:
+    $ref: ./OlmIdentity.yaml
+required:
+- type
+- key_id
+- key_base64
+- identity

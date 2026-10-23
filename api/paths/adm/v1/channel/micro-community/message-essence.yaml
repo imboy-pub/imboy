@@ -1,4 +1,7 @@
 put:
+  security:
+  - adminSessionId: []
+    adminSessionSignature: []
   tags:
   - channel
   operationId: admSetMicroCommunityMessageEssence
@@ -13,11 +16,13 @@ put:
     required: true
     schema:
       $ref: ../../../../../openapi-adm.yaml#/components/schemas/MicroCommunityEntityId
+    description: 频道业务实体 ID，保留完整十进制精度。
   - name: message_id
     in: path
     required: true
     schema:
       $ref: ../../../../../openapi-adm.yaml#/components/schemas/MicroCommunityEntityId
+    description: 频道消息业务实体 ID。
   responses:
     '200':
       description: '业务信封：code=0成功，非零失败。 / Business envelope: code 0 succeeds; nonzero fails.'

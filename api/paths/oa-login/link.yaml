@@ -219,11 +219,17 @@ post:
                   - TOKEN PURPOSE NOT ALLOWED
                   - 会话已吊销，请重新登录
                   - 设备已被移除，请重新登录
+              required:
+              - code
+              - msg
             - properties:
                 code:
                   const: 705
                 msg:
                   const: Please refresh token
+              required:
+              - code
+              - msg
             - properties:
                 code:
                   const: 706
@@ -231,6 +237,9 @@ post:
                   enum:
                   - Invalid token
                   - Invalid token.
+              required:
+              - code
+              - msg
           examples:
             missingJwt:
               summary: 有效签名头，缺少 Authorization

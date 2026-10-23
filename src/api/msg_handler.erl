@@ -185,8 +185,8 @@ history(Req0, State) ->
             PeerIdEnc = proplists:get_value(<<"peer_id">>, Qs, <<>>),
             {ok, AfterSeq} = elib_param:int(after_seq, Req0, 0),
             {ok, Limit0} = elib_param:int(limit, Req0, 50),
-            %% 最大 100 条
-            Limit = erlang:min(Limit0, 100),
+            %% 单页夹紧为 1..100，避免零条空扫描及负数 sublist 参数。
+            Limit = erlang:max(1, erlang:min(Limit0, 100)),
             %% 可选 did（发生率压降路径2）：携带时 per_device fan-out 信封
             %% 不含本机的收件消息不再下发；缺省保持旧语义 fail-open
             DID = proplists:get_value(<<"did">>, Qs, <<>>),

@@ -1,26 +1,45 @@
-# GET /api/v1/tasks/{task_id} — 任务详情（W0/W1）
 get:
-  tags: [project]
+  tags:
+  - project
   summary: 任务详情
-  description: |
-    ## 中文
+  description: '## 中文
+
     单个任务详情；active 项目成员可读。
+
     ## English
+
     Single task detail; active project members can read.
+
+    '
   operationId: taskShow
   parameters:
-    - name: task_id
-      in: path
-      required: true
-      schema: { type: integer, format: int64 }
+  - name: task_id
+    in: path
+    required: true
+    schema:
+      type: integer
+      format: int64
+    description: 任务 TSID / Task ID
   responses:
     '200':
-      description: 任务行（结构同创建返回 payload）
+      description: 成功 code=0 返回以下业务载荷；业务失败 code 非零返回通用错误信封。 / Success payload or nonzero-code business error.
       content:
         application/json:
-          schema: { $ref: '../../../../components/schemas/Envelope.yaml' }
-    '404':
-      description: 任务不存在
-      content:
-        application/json:
-          schema: { $ref: '../../../../components/schemas/Envelope.yaml' }
+          schema:
+            oneOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
+              - type: object
+                properties:
+                  payload:
+                    $ref: ../../../../components/schemas/client/ProjectTask.yaml
+              - type: object
+                required:
+                - code
+                properties:
+                  code:
+                    type: integer
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+    '401':
+      description: 访问 JWT、设备绑定或客户端签名认证失败 / JWT, device binding or client signature rejected

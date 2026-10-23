@@ -1,0 +1,6 @@
+type: integer
+format: int64
+minimum: 1
+maximum: 9223372036854775807
+description: JSON bigint；客户端解析为 EntityId，禁止经 JavaScript Number 丢失精度。 / JSON bigint;
+  preserve exact client EntityId.

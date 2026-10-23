@@ -1,0 +1,96 @@
+type: object
+properties:
+  asset_id:
+    type: string
+    pattern: ^[0-9]+$
+    description: 无损十进制 TSID 字符串。
+  client_upload_id:
+    type:
+    - string
+    - 'null'
+  session_state:
+    type: string
+  session_deadline:
+    type: integer
+    format: int64
+    description: Unix 秒；客服 response helper 保留底层秒值。
+  upload_expires_at:
+    type: integer
+    format: int64
+    description: Unix 秒；客服 response helper 保留底层秒值。
+  can_resume:
+    type: boolean
+  retry_action:
+    type: string
+  upload_ref:
+    type: string
+    description: 短时上传能力凭证，不是用户/坐席 JWT。
+  object_hash:
+    type: string
+  mime:
+    type: string
+  size_bytes:
+    type: integer
+  file_name:
+    type:
+    - string
+    - 'null'
+  retain_until:
+    type:
+    - integer
+    - 'null'
+  expires_at:
+    type: integer
+    format: int64
+    description: Unix 秒；客服 response helper 保留底层秒值。
+  status:
+    type: string
+  confirmed:
+    type: boolean
+  upload:
+    type: object
+    properties:
+      method:
+        type: string
+      token:
+        type: string
+      url:
+        type: string
+        format: uri
+      expires_at:
+        type: integer
+        format: int64
+        description: Unix 秒；客服 response helper 保留底层秒值。
+      adapter:
+        type: string
+      rule:
+        type: string
+  organization_id:
+    type: string
+    pattern: ^[0-9]+$
+  workspace_id:
+    type: string
+    pattern: ^[0-9]+$
+  conversation_id:
+    type:
+    - string
+    - 'null'
+    pattern: ^[0-9]+$
+  message_id:
+    type:
+    - string
+    - 'null'
+    pattern: ^[0-9]+$
+  hold_count:
+    type: integer
+    minimum: 0
+  created_at:
+    type: integer
+    format: int64
+    description: Unix 秒。
+  updated_at:
+    type: integer
+    format: int64
+    description: Unix 秒。
+required:
+- asset_id

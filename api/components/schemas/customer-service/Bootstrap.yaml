@@ -1,0 +1,36 @@
+type: object
+properties:
+  installation_id:
+    type: string
+    pattern: ^[0-9]+$
+    description: 无损十进制 TSID 字符串。
+  public_widget_id:
+    type: string
+  display_name:
+    type: string
+  consent_version:
+    type: string
+  branding:
+    $ref: Branding.yaml
+  contact_id:
+    type: string
+    pattern: ^[0-9]+$
+    description: 无损十进制 TSID 字符串。
+  secret:
+    type: string
+  expires_at:
+    type: integer
+    format: int64
+    description: Unix 秒；客服 response helper 保留底层秒值。
+  reused:
+    type: boolean
+required:
+- installation_id
+- public_widget_id
+- display_name
+- consent_version
+- branding
+- contact_id
+- secret
+- expires_at
+- reused

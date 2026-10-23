@@ -1,0 +1,319 @@
+$defs:
+  Agent:
+    type: object
+    properties:
+      user_id:
+        type: integer
+        format: int64
+        minimum: 1
+        description: JSON int64；客户端需无损解析 / Preserve bigint precision
+      provider:
+        type: string
+        minLength: 1
+      model:
+        type: string
+      role_id:
+        type: string
+      system_prompt:
+        type: string
+      owner_uid:
+        type: integer
+        format: int64
+        minimum: 0
+      trigger_policy:
+        type: object
+        description: 触发策略JSON / Trigger policy configuration
+      description:
+        type: string
+      visibility:
+        type: integer
+        enum:
+        - 0
+        - 1
+      category:
+        type: string
+      voice_id:
+        type: string
+      greeting:
+        type: string
+      capabilities:
+        type: object
+        properties:
+          knowledge:
+            type: boolean
+          group_reply:
+            type: boolean
+          proactive:
+            type: boolean
+      temperature:
+        type: number
+      status:
+        type: integer
+        enum:
+        - 0
+        - 1
+      role_code:
+        type: string
+      role_version:
+        type: integer
+      role_status:
+        type: integer
+      knowledge_policy:
+        type: object
+        properties:
+          knowledge:
+            type: object
+            properties:
+              mode:
+                type: string
+                enum:
+                - 'off'
+                - on_demand
+                - required
+              source:
+                type: string
+                enum:
+                - all
+                - faq
+                - group_rule
+              max_context_bytes:
+                type: integer
+                minimum: 0
+                maximum: 8000
+          group_reply:
+            type: object
+            properties:
+              mode:
+                type: string
+                enum:
+                - 'off'
+                - mention_only
+          proactive:
+            type: object
+            properties:
+              mode:
+                type: string
+                enum:
+                - 'off'
+                - welcome_only
+              daily_limit:
+                type: integer
+                minimum: 0
+                maximum: 1000
+      policy_source:
+        type: string
+  AgentRow:
+    type: object
+    properties:
+      user_id:
+        type: integer
+        format: int64
+        minimum: 1
+        description: JSON int64；客户端需无损解析 / Preserve bigint precision
+      nickname:
+        type: string
+      avatar:
+        type: string
+      provider:
+        type: string
+      model:
+        type: string
+      description:
+        type: string
+      visibility:
+        type: integer
+      status:
+        type: integer
+      owner_uid:
+        type: integer
+        format: int64
+        minimum: 1
+        description: JSON int64；客户端需无损解析 / Preserve bigint precision
+      category:
+        type: string
+      role_id:
+        type: string
+      role_name:
+        type:
+        - string
+        - 'null'
+      role_version:
+        type:
+        - integer
+        - 'null'
+      created_at:
+        type:
+        - integer
+        - 'null'
+        format: int64
+        description: Unix 毫秒 / Unix milliseconds
+  Role:
+    type: object
+    properties:
+      code:
+        type: string
+      name:
+        type: string
+      description:
+        type: string
+      status:
+        type: integer
+      active_version:
+        type:
+        - integer
+        - 'null'
+      created_by:
+        type: integer
+        format: int64
+        minimum: 1
+        description: JSON int64；客户端需无损解析 / Preserve bigint precision
+      created_at:
+        type:
+        - integer
+        - 'null'
+        format: int64
+        description: Unix 毫秒 / Unix milliseconds
+      updated_at:
+        type:
+        - integer
+        - 'null'
+        format: int64
+        description: Unix 毫秒 / Unix milliseconds
+      bound_agent_count:
+        type: integer
+        minimum: 0
+  RoleDetail:
+    type: object
+    properties:
+      code:
+        type: string
+      name:
+        type: string
+      description:
+        type: string
+      status:
+        type: integer
+      active_version:
+        type:
+        - integer
+        - 'null'
+      created_by:
+        type: integer
+        format: int64
+        minimum: 1
+        description: JSON int64；客户端需无损解析 / Preserve bigint precision
+      created_at:
+        type:
+        - integer
+        - 'null'
+        format: int64
+        description: Unix 毫秒 / Unix milliseconds
+      updated_at:
+        type:
+        - integer
+        - 'null'
+        format: int64
+        description: Unix 毫秒 / Unix milliseconds
+      bound_agent_count:
+        type: integer
+        minimum: 0
+      version_id:
+        type:
+        - integer
+        - 'null'
+        format: int64
+      version:
+        type:
+        - integer
+        - 'null'
+      state:
+        type:
+        - string
+        - 'null'
+      system_prompt:
+        type:
+        - string
+        - 'null'
+      capabilities:
+        type:
+        - string
+        - 'null'
+        description: 持久化JSON文本 / Stored JSON text
+      knowledge_policy:
+        type:
+        - string
+        - 'null'
+        description: 持久化JSON文本 / Stored JSON text
+      version_created_by:
+        type:
+        - integer
+        - 'null'
+        format: int64
+      published_by:
+        type:
+        - integer
+        - 'null'
+        format: int64
+      version_created_at:
+        type:
+        - integer
+        - 'null'
+        format: int64
+        description: Unix 毫秒 / Unix milliseconds
+      published_at:
+        type:
+        - integer
+        - 'null'
+        format: int64
+        description: Unix 毫秒 / Unix milliseconds
+  Capabilities:
+    type: object
+    properties:
+      knowledge:
+        type: boolean
+      group_reply:
+        type: boolean
+      proactive:
+        type: boolean
+  KnowledgePolicy:
+    type: object
+    properties:
+      knowledge:
+        type: object
+        properties:
+          mode:
+            type: string
+            enum:
+            - 'off'
+            - on_demand
+            - required
+          source:
+            type: string
+            enum:
+            - all
+            - faq
+            - group_rule
+          max_context_bytes:
+            type: integer
+            minimum: 0
+            maximum: 8000
+      group_reply:
+        type: object
+        properties:
+          mode:
+            type: string
+            enum:
+            - 'off'
+            - mention_only
+      proactive:
+        type: object
+        properties:
+          mode:
+            type: string
+            enum:
+            - 'off'
+            - welcome_only
+          daily_limit:
+            type: integer
+            minimum: 0
+            maximum: 1000

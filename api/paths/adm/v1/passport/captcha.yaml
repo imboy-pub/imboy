@@ -1,11 +1,10 @@
-# GET /api/adm/passport/captcha — admin
 get:
-  tags: [admin]
-  summary: admin adm-passport - captcha
-  description: |
-    ## 中文 / English
-    管理后台 adm-passport handler 的 `captcha` 动作；路径 `/adm/passport/captcha`。
-    Admin handler `adm-passport`, action `captcha`. Path `/adm/passport/captcha`.
+  security: []
+  tags:
+  - admin
+  summary: 登录验证码 / Login captcha
+  description: 返回 PNG 并设置 captcha_key Cookie。登录请求必须回传该 Cookie。 / Returns PNG and captcha_key cookie required by
+    login.
   operationId: adm_passport_captcha
   responses:
     '200':
@@ -15,6 +14,11 @@ get:
           schema:
             type: string
             format: binary
+      headers:
+        Set-Cookie:
+          description: captcha_key；HttpOnly、SameSite=Lax，TLS 时 Secure
+          schema:
+            type: string
     '503':
       description: ImageMagick convert 未安装时返回 JSON 错误
       content:
@@ -28,7 +32,9 @@ get:
                 type: string
               hint:
                 type: string
-    '4XX':
+    4XX:
       description: 无权限 / 参数非法
       content:
-        application/json: { schema: { $ref: '../../../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/Envelope.yaml

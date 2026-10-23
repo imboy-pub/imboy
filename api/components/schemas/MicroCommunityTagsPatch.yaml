@@ -1,0 +1,6 @@
+type: object
+required:
+- tags
+properties:
+  tags:
+    $ref: MicroCommunityTagsInput.yaml

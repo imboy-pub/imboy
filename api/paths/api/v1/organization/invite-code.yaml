@@ -1,0 +1,133 @@
+get:
+  tags:
+  - organization
+  summary: 读取组织加入码
+  operationId: organizationInviteCodeGet
+  description: '组织 Owner/Admin；GET 无 active 码时 code/status=null；重新生成使旧码失效。码只赋予 member 角色。 / Governors; regeneration
+    revokes the prior code; member role only.
+
+    访问 JWT 认证；业务失败通常返回 HTTP 200 与非零 code，须检查 code。 / JWT; inspect business code.'
+  parameters:
+  - name: organization_id
+    in: path
+    required: true
+    schema:
+      type: integer
+      format: int64
+      minimum: 1
+    description: 组织 TSID；业务归属，不替代授权 / Organization business ID
+  responses:
+    '200':
+      description: 成功 code=0 返回以下业务载荷；业务失败 code 非零返回通用错误信封。 / Success payload or nonzero-code business error.
+      content:
+        application/json:
+          schema:
+            oneOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
+              - type: object
+                properties:
+                  payload:
+                    $ref: ../../../../components/schemas/client/OrganizationInviteCode.yaml
+              - type: object
+                required:
+                - code
+                properties:
+                  code:
+                    type: integer
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+    '405':
+      description: Method Not Allowed
+    '401':
+      description: 访问 JWT、设备绑定或客户端签名认证失败 / JWT, device binding or client signature rejected
+post:
+  tags:
+  - organization
+  summary: 生成组织加入码
+  operationId: organizationInviteCodePost
+  description: '组织 Owner/Admin；GET 无 active 码时 code/status=null；重新生成使旧码失效。码只赋予 member 角色。 / Governors; regeneration
+    revokes the prior code; member role only.
+
+    访问 JWT 认证；业务失败通常返回 HTTP 200 与非零 code，须检查 code。 / JWT; inspect business code.'
+  parameters:
+  - name: organization_id
+    in: path
+    required: true
+    schema:
+      type: integer
+      format: int64
+      minimum: 1
+    description: 组织 TSID；业务归属，不替代授权 / Organization business ID
+  responses:
+    '200':
+      description: 成功 code=0 返回以下业务载荷；业务失败 code 非零返回通用错误信封。 / Success payload or nonzero-code business error.
+      content:
+        application/json:
+          schema:
+            oneOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
+              - type: object
+                properties:
+                  payload:
+                    $ref: ../../../../components/schemas/client/OrganizationInviteCode.yaml
+              - type: object
+                required:
+                - code
+                properties:
+                  code:
+                    type: integer
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+    '405':
+      description: Method Not Allowed
+    '401':
+      description: 访问 JWT、设备绑定或客户端签名认证失败 / JWT, device binding or client signature rejected
+delete:
+  tags:
+  - organization
+  summary: 撤销组织加入码
+  operationId: organizationInviteCodeDelete
+  description: '组织 Owner/Admin；GET 无 active 码时 code/status=null；重新生成使旧码失效。码只赋予 member 角色。 / Governors; regeneration
+    revokes the prior code; member role only.
+
+    访问 JWT 认证；业务失败通常返回 HTTP 200 与非零 code，须检查 code。 / JWT; inspect business code.'
+  parameters:
+  - name: organization_id
+    in: path
+    required: true
+    schema:
+      type: integer
+      format: int64
+      minimum: 1
+    description: 组织 TSID；业务归属，不替代授权 / Organization business ID
+  responses:
+    '200':
+      description: 成功 code=0 返回以下业务载荷；业务失败 code 非零返回通用错误信封。 / Success payload or nonzero-code business error.
+      content:
+        application/json:
+          schema:
+            oneOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      revoked:
+                        type: integer
+                        minimum: 0
+              - type: object
+                required:
+                - code
+                properties:
+                  code:
+                    type: integer
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+    '405':
+      description: Method Not Allowed
+    '401':
+      description: 访问 JWT、设备绑定或客户端签名认证失败 / JWT, device binding or client signature rejected

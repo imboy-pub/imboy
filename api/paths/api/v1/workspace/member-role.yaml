@@ -1,0 +1,74 @@
+post:
+  tags:
+  - workspace
+  summary: 调整工作区成员角色
+  operationId: workspaceMemberRole
+  description: 工作区 Owner 或所属 Organization Owner/Admin 可治理；主 Owner 角色不能通过此接口降级。 / Governors only; primary owner must
+    use ownership transfer.
+  parameters:
+  - name: workspace_id
+    in: path
+    required: true
+    schema:
+      type: integer
+      format: int64
+      minimum: 1
+    description: 工作区 TSID / Workspace ID
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            user_id:
+              type: integer
+              format: int64
+              minimum: 1
+            role:
+              type: string
+              enum:
+              - owner
+              - member
+              - guest
+          required:
+          - user_id
+          - role
+  responses:
+    '200':
+      description: 成功 code=0 返回以下业务载荷；业务失败 code 非零返回通用错误信封。 / Success payload or nonzero-code business error.
+      content:
+        application/json:
+          schema:
+            oneOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      workspace_id:
+                        type: integer
+                        format: int64
+                        minimum: 1
+                      user_id:
+                        type: integer
+                        format: int64
+                        minimum: 1
+                      role:
+                        type: string
+                        enum:
+                        - owner
+                        - member
+                        - guest
+              - type: object
+                required:
+                - code
+                properties:
+                  code:
+                    type: integer
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+    '401':
+      description: 访问 JWT、设备绑定或客户端签名认证失败 / JWT, device binding or client signature rejected

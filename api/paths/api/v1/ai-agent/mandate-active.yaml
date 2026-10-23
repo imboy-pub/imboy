@@ -1,0 +1,41 @@
+get:
+  tags:
+  - ai-agent
+  summary: 读取 Agent 当前有效授权
+  operationId: agentMandateActive
+  description: 仅 Agent Owner；无有效授权时 payload={}。 / Agent owner only; empty object if no active mandate.
+  parameters:
+  - name: agent_uid
+    in: query
+    required: true
+    schema:
+      type: integer
+      format: int64
+      minimum: 1
+    description: agent_uid
+  responses:
+    '200':
+      description: 成功 code=0 返回以下业务载荷；业务失败 code 非零返回通用错误信封。 / Success payload or nonzero-code business error.
+      content:
+        application/json:
+          schema:
+            oneOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
+              - type: object
+                properties:
+                  payload:
+                    anyOf:
+                    - $ref: ../../../../components/schemas/client/AgentPaymentMandate.yaml
+                    - type: object
+                      maxProperties: 0
+              - type: object
+                required:
+                - code
+                properties:
+                  code:
+                    type: integer
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+    '401':
+      description: 访问 JWT 或客户端认证失败 / Authentication rejected

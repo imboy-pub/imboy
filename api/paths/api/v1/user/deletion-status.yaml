@@ -1,0 +1,59 @@
+get:
+  tags:
+  - user
+  summary: 读取本人注销申请状态
+  operationId: userDeletionStatus
+  description: 仅本人；未申请时省略 requested_at，申请中可能包含预计处理时间。 / Current user only; timestamps optional by request state.
+  responses:
+    '200':
+      description: 成功 code=0 返回以下业务载荷；业务失败 code 非零返回通用错误信封。 / Success payload or nonzero-code business error.
+      content:
+        application/json:
+          schema:
+            oneOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      status:
+                        type: string
+                        enum:
+                        - not_requested
+                        - requested
+                        - cancelled
+                        - approved
+                      grace_days:
+                        type: integer
+                      retained_categories:
+                        type: array
+                        items:
+                          type: string
+                      requested_at:
+                        type:
+                        - integer
+                        - 'null'
+                        format: int64
+                        description: Unix 毫秒 / Unix milliseconds
+                      expected_deletion_at:
+                        type:
+                        - integer
+                        - 'null'
+                        format: int64
+                        description: Unix 毫秒 / Unix milliseconds
+                    required:
+                    - status
+                    - grace_days
+                    - retained_categories
+              - type: object
+                required:
+                - code
+                properties:
+                  code:
+                    type: integer
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+    '401':
+      description: 访问 JWT 或客户端认证失败 / Authentication rejected

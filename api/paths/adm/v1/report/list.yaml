@@ -1,71 +1,81 @@
-# GET /api/adm/report/list — admin
 get:
-  tags: [admin]
+  security:
+  - adminSessionId: []
+    adminSessionSignature: []
+  tags:
+  - admin
   summary: admin adm-report - list
-  description: |
-    ## 中文 / English
-    管理后台 adm-report handler 的 `list` 动作；路径 `/adm/report/list`。
-    Admin handler `adm-report`, action `list`. Path `/adm/report/list`.
+  description: '## 中文 / English
+
+    管理后台 adm-report handler 的 `list` 动作；路径 `/api/adm/report/list`。
+
+    Admin handler `adm-report`, action `list`. Path `/api/adm/report/list`.
+
     权限 reports:read 或 moments:report:read；moment 查询仅使用状态及分页，其他筛选仅对非 moment 生效。
-    Permission: reports:read or moments:report:read. Moment queries use status and pagination only; other filters apply to non-moment tickets.
+
+    Permission: reports:read or moments:report:read. Moment queries use status and pagination only; other filters
+    apply to non-moment tickets.
+
+    '
   operationId: adm_report_list
   parameters:
-    - $ref: '../../../../components/parameters/PaginationPage.yaml'
-    - $ref: '../../../../components/parameters/PaginationSize.yaml'
-    - in: query
-      name: target_type
-      description: 举报目标类型；省略时查询 moment / Report target type; defaults to moment
-      schema:
-        type: string
-        enum:
-        - moment
-        - group
-        - channel
-        - user
-        - message
-        description: 举报目标类型 / Report target type
-        default: moment
-    - in: query
-      name: status
-      description: 处理状态；-1 查询全部 / Resolution status; -1 selects all
-      schema:
-        type: integer
-        default: -1
-        description: -1 全部，0 待处理，1 无违规，2 违规 / -1 all, 0 pending, 1 dismissed, 2 confirmed
-    - in: query
-      name: target_id
-      description: 被举报对象 ID，仅非 moment 生效 / Target ID; non-moment only
-      schema:
-        oneOf:
-        - type: integer
-          format: int64
-          minimum: 1
-        - type: string
-          pattern: ^[1-9][0-9]*$
-    - in: query
-      name: reporter_uid
-      description: 举报人员 ID，仅非 moment 生效 / Reporter ID; non-moment only
-      schema:
-        oneOf:
-        - type: integer
-          format: int64
-          minimum: 1
-        - type: string
-          pattern: ^[1-9][0-9]*$
-    - in: query
-      name: keyword
-      description: 关键字，仅非 moment 生效 / Search keyword; non-moment only
-      schema:
-        type: string
-        description: 非 moment 检索关键字，最多128字符 / Non-moment search keyword, capped at 128 characters
+  - $ref: ../../../../components/parameters/PaginationPage.yaml
+  - $ref: ../../../../components/parameters/PaginationSize.yaml
+  - in: query
+    name: target_type
+    description: 举报目标类型；省略时查询 moment / Report target type; defaults to moment
+    schema:
+      type: string
+      enum:
+      - moment
+      - group
+      - channel
+      - user
+      - message
+      description: 举报目标类型 / Report target type
+      default: moment
+  - in: query
+    name: status
+    description: 处理状态；-1 查询全部 / Resolution status; -1 selects all
+    schema:
+      type: integer
+      default: -1
+      description: -1 全部，0 待处理，1 无违规，2 违规 / -1 all, 0 pending, 1 dismissed, 2 confirmed
+  - in: query
+    name: target_id
+    description: 被举报对象 ID，仅非 moment 生效 / Target ID; non-moment only
+    schema:
+      oneOf:
+      - type: integer
+        format: int64
+        minimum: 1
+      - type: string
+        pattern: ^[1-9][0-9]*$
+  - in: query
+    name: reporter_uid
+    description: 举报人员 ID，仅非 moment 生效 / Reporter ID; non-moment only
+    schema:
+      oneOf:
+      - type: integer
+        format: int64
+        minimum: 1
+      - type: string
+        pattern: ^[1-9][0-9]*$
+  - in: query
+    name: keyword
+    description: 关键字，仅非 moment 生效 / Search keyword; non-moment only
+    schema:
+      type: string
+      description: 非 moment 检索关键字，最多128字符 / Non-moment search keyword, capped at 128 characters
   responses:
     '200':
-      description: 成功
+      description: 成功；非零 code 为业务错误 / Non-zero code is a business error
       content:
         application/json:
           schema:
-            allOf:
-              - $ref: '../../../../components/schemas/Envelope.yaml'
+            anyOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
               - type: object
                 properties:
                   payload:
@@ -90,7 +100,11 @@ get:
                               description: 被举报目标 TSID（message 时为服务端消息行 ID）/ Target TSID
                             target_sub_type:
                               type: string
-                              enum: ['', c2c, c2g, channel]
+                              enum:
+                              - ''
+                              - c2c
+                              - c2g
+                              - channel
                               description: message 举报的消息表面 / Message surface (R-01)
                             target_scope_id:
                               type: integer
@@ -133,7 +147,14 @@ get:
                         type: integer
                       size:
                         type: integer
-    '4XX':
+              - type: object
+                properties:
+                  code:
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+    4XX:
       description: 无权限 / 参数非法
       content:
-        application/json: { schema: { $ref: '../../../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/Envelope.yaml

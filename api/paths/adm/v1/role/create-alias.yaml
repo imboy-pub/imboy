@@ -1,0 +1,56 @@
+post:
+  security:
+  - adminSessionId: []
+    adminSessionSignature: []
+  tags:
+  - admin
+  summary: admin adm-role - create
+  deprecated: true
+  description: '兼容别名；主入口见 `/api/adm/role/create`。 / Compatibility alias; prefer the canonical path.
+
+    ## 中文 / English
+
+    管理后台 adm-role handler 的 `create` 动作；路径 `/api/adm/role/create`。
+
+    Admin handler `adm-role`, action `create`. Path `/api/adm/role/create`.
+
+    '
+  operationId: adm_role_create_create_alias
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          additionalProperties: true
+  responses:
+    '200':
+      description: 成功；非零 code 为业务错误 / Non-zero code is a business error
+      content:
+        application/json:
+          schema:
+            anyOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      role_id:
+                        type: integer
+                        description: 新建角色 ID
+                      id:
+                        type: integer
+                        description: 新建角色 ID（同 role_id）
+              - type: object
+                properties:
+                  code:
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+    4XX:
+      description: 无权限 / 参数非法
+      content:
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/Envelope.yaml

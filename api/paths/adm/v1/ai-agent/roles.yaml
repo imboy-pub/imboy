@@ -1,0 +1,117 @@
+get:
+  security:
+  - adminSessionId: []
+    adminSessionSignature: []
+  tags:
+  - admin
+  summary: 兼容人格提示词配置 / Legacy role prompts
+  description: 需 users:read。 / Legacy role prompts
+  operationId: admAiAgentRolesGet
+  responses:
+    '200':
+      description: 成功或业务错误；检查 code / Inspect business code
+      content:
+        application/json:
+          schema:
+            anyOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      roles:
+                        type: object
+                        additionalProperties:
+                          type: string
+                        description: 角色标识→提示词 / Role ID to system prompt
+              - type: object
+                properties:
+                  code:
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+    '401':
+      description: Cookie 缺失、无效、到期或已撤销 / Invalid session cookies
+      content:
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/Envelope.yaml
+post:
+  security:
+  - adminSessionId: []
+    adminSessionSignature: []
+  tags:
+  - admin
+  summary: 保存或删除兼容人格提示词 / Save or delete legacy prompt
+  description: 需 users:update。 / Save or delete legacy prompt
+  operationId: admAiAgentRolesPost
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            action:
+              type: string
+              enum:
+              - save
+              - delete
+            role_id:
+              type: string
+              minLength: 1
+            prompt:
+              type: string
+              description: action=save时必填非空 / Required for save
+          required:
+          - action
+          - role_id
+      application/x-www-form-urlencoded:
+        schema:
+          type: object
+          properties:
+            action:
+              type: string
+              enum:
+              - save
+              - delete
+            role_id:
+              type: string
+              minLength: 1
+            prompt:
+              type: string
+              description: action=save时必填非空 / Required for save
+          required:
+          - action
+          - role_id
+  responses:
+    '200':
+      description: 成功或业务错误；检查 code / Inspect business code
+      content:
+        application/json:
+          schema:
+            anyOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      roles:
+                        type: object
+                        additionalProperties:
+                          type: string
+                        description: 角色标识→提示词 / Role ID to system prompt
+              - type: object
+                properties:
+                  code:
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+    '401':
+      description: Cookie 缺失、无效、到期或已撤销 / Invalid session cookies
+      content:
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/Envelope.yaml

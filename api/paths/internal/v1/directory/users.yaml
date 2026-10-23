@@ -17,6 +17,11 @@ post:
     external_user_id（本应用未映射则 null）/ member_role 等。
 
     '
+  security:
+    - ibIntHmacCredential: []
+      ibIntHmacTimestamp: []
+      ibIntHmacNonce: []
+      ibIntHmacSignature: []
   operationId: internalDirectoryUsers
   x-imboy-authentication: hmac
   x-imboy-rate-bucket: internal_read
@@ -36,6 +41,9 @@ post:
                 HMAC 段）一律 400 invalid_request。
             page_size:
               type: integer
+              minimum: 1
+              maximum: 100
+              default: 50
               description: 页大小，1..100（缺省 50）；越界/非整数一律 400 invalid_request（拒绝，不静默截断）。
             workspace_id:
               type: integer
@@ -48,11 +56,13 @@ post:
         application/json:
           schema:
             type: object
+            required: [items, page_size, has_more, next_cursor]
             properties:
               items:
                 type: array
                 items:
                   type: object
+                  required: [user_id, external_user_id, member_role, member_status]
                   properties:
                     user_id:
                       type: integer
@@ -63,10 +73,15 @@ post:
                       - 'null'
                       description: 本应用已映射的 OA 标识；未映射为 null
                     member_role:
-                      type: string
-                      description: 组织内角色
+                      type: [string, 'null']
+                      description: 组织内角色；无值时 null
+                    member_status:
+                      type: [string, 'null']
+                      description: 组织成员状态；无值时 null
               page_size:
                 type: integer
+                minimum: 1
+                maximum: 100
               has_more:
                 type: boolean
               next_cursor:
@@ -77,10 +92,11 @@ post:
     '400':
       $ref: ../../../../components/responses/internal/invalid_request.yaml
     '401':
-      $ref: ../../../../components/responses/internal/invalid_credential.yaml
+      $ref: ../../../../components/responses/internal/unauthorized.yaml
     '403':
-      $ref: ../../../../components/responses/internal/organization_boundary_violation.yaml
+      $ref: ../../../../components/responses/internal/forbidden.yaml
     '429':
       $ref: ../../../../components/responses/internal/rate_limited.yaml
     '500':
       $ref: ../../../../components/responses/internal/internal_error.yaml
+    '503': { $ref: '../../../../components/responses/internal/security_gate_closed.yaml' }

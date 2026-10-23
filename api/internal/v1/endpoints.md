@@ -7,52 +7,31 @@
 
 图例：幂等 `—`=不需要 / `K`=必须带 `Idempotency-Key` / `code`=一次性 code。
 
-## 企业数据 CRUD 覆盖审计（2026-09-23）
+## 资源覆盖范围
 
-运营后台与企业集成是两个独立安全面：
+运营后台使用 Admin Cookie 与 `/api/adm/*`；Internal 使用 HMAC 签名和
+`/api/internal/v1/*`。Admin 的菜单与 CRUD 不自动构成集成能力。
 
-- **运营后台**：Admin Cookie + `/api/adm/*`，供平台运营人员跨企业治理数据；
+| 资源 | 当前操作 | 范围 |
+|---|---|---|
+| 来源目录 | INT-43、45..49 | 可信来源显式增量、核对、成员离职检查及停用/恢复；无任意组织治理 |
+| Workspace | INT-24/25、37..39 | 分页、详情、创建、修改、软归档 |
+| 客服坐席 | INT-33..36 | 分页、详情、开通和配置调整；停用使用 PATCH enabled=false |
+| 企业频道 | INT-30/31、40..42 | 仅 Workspace 频道；分页、详情、创建、修改、软归档 |
+| 企业群 | INT-04..06、18..21、26/27 | 创建、成员与角色管理、资料修改、解散、分页与详情 |
+| 企业项目 | INT-28/29 | 只读分页与详情；当前不提供创建、修改或归档接口 |
 
-因此，管理后台出现一个菜单，并不表示同名资源应自动暴露完整 Internal CRUD。
-当前冻结合同（INT-01..INT-49）的实际覆盖如下：
+列表使用不透明 `cursor`，不提供无界导出。页大小参数分三组：
 
-| 企业数据 | 分页查看 | 新增 | 详情 | 修改 | 删除/归档 | 当前结论 |
-|---|---|---|---|---|---|---|
-| 组织与来源目录 | INT-45..47 | INT-43 可信来源引导 | INT-45..47 | INT-43 显式增量 | 显式移除部门/任职 | 不开放任意组织治理；首次组织使用可信配置中确认的 Human Owner |
-| Workspace | INT-24 | INT-37 | INT-25 | INT-38 | INT-39 | 创建、修改及软归档已实现；版本并发保护及应用审计 |
-| 客服坐席 | INT-33 | INT-35 | INT-34 | INT-36 | INT-36 enabled=false | 企业级配置接口；保留历史，不签发 Seat JWT |
-| 企业频道 | INT-30 | INT-40 | INT-31 | INT-41 | INT-42 | 创建、修改、软归档已实现；仅 workspace，版本与应用审计保护 |
-| 企业群 | INT-26 | INT-04 | INT-18 | INT-19 / INT-20 | INT-21 / INT-06 | **只读+写核心已实现**（成员分页 INT-27） |
-| 企业项目 | INT-28 | — | INT-29 | — | — | **只读已实现（写操作为 P1 待补）**；按目标 Workspace 业务归属校验 |
-
-### 需要追加的 Internal v1 合同
-
-以下是补齐上述企业数据所需的**最小追加面**。其中 P0 只读四组（INT-24..31）
-已于 V2.1 落地——已进入 `enterprise_internal_routes:routes/0`、可调用，
-并出现在下方 Postman 集合中；下列仍标注**待补**的行（各资源 P1
-写操作）未进入 `routes/0`，当前调用会返回 404。必须先完成 handler、
-签名认证、业务归属、OpenAPI、审计和自动化测试，再作为 v1 只追加端点发布。
-
-| 优先级 | 资源 | 建议追加路径 | 语义 |
+| 列表 | 参数 | 默认 | 范围 |
 |---|---|---|---|
-| P0 | Workspace | `GET /workspaces`、`GET /workspaces/{workspace_id}` | ✅ 已实现（INT-24/25）；业务归属过滤的 cursor 分页与详情 |
-| P0 | 企业群 | `GET /groups`、`GET /groups/{group_id}/members` | ✅ 已实现（INT-26/27）；只返回 Application 可访问的 Workspace 企业群 |
-| P0 | 企业项目 | `GET /projects`、`GET /projects/{project_id}` | ✅ 已实现（INT-28/29）；业务归属过滤的 cursor 分页与详情 |
-| P0 | 企业频道 | `GET /channels`、`GET /channels/{channel_id}` | ✅ 已实现（INT-30/31）；仅 `scope=workspace`，排除个人频道 |
-| P0 | 客服坐席 | `GET /customer-service/seats`、`GET /customer-service/seats/{business_identity_id}` | INT-33/34：企业业务归属校验，ID 升序 cursor 分页与详情 |
-| 已实现 | Workspace | `POST /workspaces`、`PATCH /workspaces/{workspace_id}`、`DELETE /workspaces/{workspace_id}` | 新建、修改、软归档；写请求必须幂等 |
-| 后续可选，非广州一期必需 | 企业项目 | `POST /projects`、`PATCH /projects/{project_id}`、`DELETE /projects/{project_id}` | 新建、修改、软归档；项目必须属于已授权 Workspace |
-| 已实现 INT-40..42 | 企业频道 | `POST /channels`、`PATCH /channels/{channel_id}`、`DELETE /channels/{channel_id}` | 新建、修改、软归档；`scope/workspace_id` 创建后不可变 |
-| 已实现 INT-35/36 | 客服坐席 | `POST /customer-service/seats`、`PATCH /customer-service/seats/{business_identity_id}` | INT-35/36：开通、版本校验调整并发/状态、PATCH 停用；不签发 Admin 或 Seat 身份 |
+| Workspace、群、群成员、项目、频道、客服坐席 | `limit` | 50 | 1..100 |
+| 身份目录、可映射用户、来源组织/部门/人员 | `page_size` | 50 | 1..100 |
+| Webhook 投递 | `page_size` | 20 | 1..50 |
 
-约束：
-
-- 所有列表使用 `cursor + limit`，不提供无界导出；默认 `limit=50`，最大 `100`；
-- `DELETE` 是可审计的软归档/停用，不做物理删除；
-- 所有 P1 写请求要求 `Idempotency-Key`，并记录真实应用来源（资源既有 origin_application_id 或同事务审计的 application_id）；
-- 应用生命周期和凭证治理由 `/api/adm/*` 管理；
-- 上述待补合同正式实现前，当前可导入 Postman 的权威集合仍是本目录的
-  `IMBoy-Internal-API-v1.postman_collection.json`（49 个 Internal 操作及 3 个 Human 伴随请求）。
+超界拒绝，不静默截断；`has_more=false` 时 `next_cursor=null`。
+写请求按端点的幂等要求调用，资源版本、来源与业务归属由平台复核。
+应用生命周期和凭证治理通过 Admin 管理面处理。
 
 `scope=workspace` 是资源业务归属字段，不是授权枚举。
 
@@ -76,7 +55,7 @@
 
 - **绑定（INT-02）/ 解绑（INT-15）**：把 OA 侧用户标识绑定到平台用户；解绑后
   该用户对你的消息/群操作立即不可达（`identity_not_mapped`）。
-- **解析（INT-03）**：OA 标识 → 平台用户；未映射返回 `identity_not_mapped`（422）。
+- **解析（INT-03）**：OA 标识 → 平台用户；只返回命中的 active 映射，未映射项省略，不使整个请求失败。最多 100 个外部标识。
 - **目录（INT-16/17）**：查询本组织已映射/可映射用户（分页，只回元数据）。
   游标为 CURSOR-V2 签名形态（HMAC-SHA256、24h 有效，绑定页族
   identity_mappings / directory_users 与 organization / application /
@@ -98,7 +77,9 @@
 | INT-20 | `PUT /api/internal/v1/groups/{group_id}/members/roles` | write | K |
 | INT-21 | `DELETE /api/internal/v1/groups/{group_id}` | write | K |
 
-成员操作按 `user_id` 精确定位（必须是本组织已映射用户）；跨组织 `group_id`
+添加/移除成员使用 `external_user_ids` 数组；角色修改使用
+`roles: [{external_user_id, role}]`，role 为整数 1/2/3/5（普通成员/嘉宾/管理员/副群主）。
+标识须映射到本组织有效用户；群主角色不由该接口调整。跨组织 `group_id`
 一律 `resource_not_found`（平台侧不区分「不存在」与「不归你」）。
 签名请求无需为群详情或成员分页另配读取权限。
 
@@ -119,7 +100,7 @@ Workspace keyset 列表与详情；签名请求按目标业务组织收窄行集
 | INT-29 | `GET /api/internal/v1/projects/{project_id}` | read | — |
 
 企业项目 keyset 列表与详情（V2.1 新增）；按目标 Workspace 业务归属校验。
-写操作为 P1 待补。
+当前合同只提供读取，写操作不属于已实现的 v1 接口面。
 
 ## 企业频道（读取与写管理）
 
@@ -151,9 +132,11 @@ Workspace keyset 列表与详情；签名请求按目标业务组织收窄行集
 
 - INT-09 单聊直发；INT-10 群发到企业群。
 - 请求显式声明 `sender_mode=application | human`：
-  `application` 消耗 `messages:send`；`human` 消耗 `messages:send_as_human`
-  且必须指定本组织已映射、已启用的目标发送者（不接受别名参数，平台侧强制校验）。
-- 消息为**企业托管、固定非端到端加密**；重复的 `Idempotency-Key` 返回首次结果。
+  两种模式均使用 HMAC；`human` 还必须指定本组织已映射、已启用的发送者
+  （不接受别名参数，平台侧强制校验），不另设逐接口 scope 权限。
+- 消息为**企业托管、固定非端到端加密**；幂等窗口内相同请求重放首次结果。
+- 响应 `msg_id` 为 UUID v7 字符串，`webhook_resource_id` 为 JSON int64 行 ID；
+  `accepted_at` 为 Unix 毫秒。三者不能互换。
 
 ## 好友申请（只发起，平台不自动通过）
 
@@ -207,8 +190,6 @@ INT-23 分页为 CURSOR-V2 签名游标（`cursor` / `page_size`，缺省 20 上
 | INT-39 | `DELETE /api/internal/v1/workspaces/{workspace_id}` | write | K |
 
 
-
-
 ## 企业频道写管理（INT-40..42）
 
 | ID | 方法与路径 | 归属边界 | 幂等 |
@@ -221,7 +202,7 @@ POST 必需 workspace_id、creator_user_id、name，可选 description、avatar�
 
 PATCH 必需 expected_version，并至少修改 name/description/avatar 一项；DELETE 必需 expected_version，为 status=0 软归档。scope、workspace_id、creator_user_id、策略与未知字段拒绝；旧版本 409 version_conflict。GET 返回治理 version，旧用户/Admin 入口的资料与状态变更也受版本触发器保护，订阅计数变化不增加治理版本。归档保留历史消息、订阅及管理员关系。
 
-资源变更、带 application_id/correlation_id 且 actor_user_id=NULL 的应用审计，以及幂等结果共用事务。资源实际归属仍为工作空间所在企业；审计记录应用来源。重试必须复用同业务 key、方法、路径及相同规范化 JSON 内容；重放前验证当前凭证与业务归属，停用后拒绝。幂等键为 1..128 ASCII，详情见机器契约。
+资源变更、带 application_id/correlation_id 且 actor_user_id=NULL 的应用审计，以及幂等结果共用事务。资源实际归属仍为工作空间所在企业；审计记录应用来源。重试必须复用同业务 key、方法、路径及相同规范化 JSON 内容；重放前验证当前凭证与业务归属，停用后拒绝。幂等键为 1..128 个可打印 ASCII 字符，有效期默认 24 小时且可配置，统一规则见 README §5。
 
 English summary: Three channel write operations are implemented with HMAC authentication and Workspace business attribution, eligible Human creator membership, non-public visibility, quota, optimistic governance versions, atomic application audit and authorized idempotent replay. Soft archive preserves channel history and identity relations.
 

@@ -1,41 +1,69 @@
-# GET /api/adm/project/aggregations — 项目聚合（Admin 治理只读，W2）
 get:
-  tags: [admin]
+  security:
+  - adminSessionId: []
+    adminSessionSignature: []
+  tags:
+  - admin
   summary: Admin 项目聚合（type 分派）
-  description: |
-    ## 中文
-    W2 治理只读面：按 type 分派的聚合查询（pinned / resources / activity /
-    related_posts 等），对 resources / related_posts 无分页语义的同型包装。
-    workspaces:read ACL，fail-closed。
-    ## English
-    W2 governance read surface: type-dispatched aggregation wrapper.
+  description: 需 workspaces:read。type=pinned/activity 使用分页（底层 size 上限50）；resources/related_posts 为有界数组，page/size不切分数组，返回total为数组长度、total_page=1。事件及帖文仅返回元数据。
+    / Paged pinned/activity or bounded resource/post summaries.
   operationId: admProjectAggregations
   parameters:
-    - name: project_id
-      description: 查询目标项目 ID / Project ID to query
-      in: query
-      required: true
-      schema: { type: integer, format: int64 }
-    - name: type
-      description: 聚合类型，默认 pinned / Aggregation type, defaults to pinned
-      in: query
-      schema: { type: string, enum: [pinned, resources, activity, related_posts], default: pinned }
-    - name: page
-      description: 分页页码，默认1 / Page number, defaults to 1
-      in: query
-      schema: { type: integer, default: 1 }
-    - name: size
-      description: 每页条数，默认10 / Items per page, defaults to 10
-      in: query
-      schema: { type: integer, default: 10 }
+  - name: project_id
+    description: 查询目标项目 ID / Project ID to query
+    in: query
+    required: true
+    schema:
+      type: string
+      pattern: ^[1-9][0-9]*$
+      description: TSID 十进制字符串 / Decimal TSID string
+  - name: type
+    description: 聚合类型，默认 pinned / Aggregation type, defaults to pinned
+    in: query
+    schema:
+      type: string
+      enum:
+      - pinned
+      - resources
+      - activity
+      - related_posts
+      default: pinned
+  - name: page
+    description: 分页页码，默认1 / Page number, defaults to 1
+    in: query
+    schema:
+      type: integer
+      minimum: 1
+      default: 1
+  - name: size
+    description: 每页条数，服务端默认20；聚合pinned/activity下钳制至50 / Page size
+    in: query
+    schema:
+      type: integer
+      minimum: 1
+      maximum: 100
+      default: 20
   responses:
     '200':
-      description: 聚合结果
+      description: 聚合结果；非零 code 为业务错误 / Non-zero code is a business error
       content:
         application/json:
-          schema: { $ref: '../../../../components/schemas/Envelope.yaml' }
-    '4XX':
+          schema:
+            anyOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
+              - type: object
+                properties:
+                  payload:
+                    $ref: ../../../../components/schemas/adm/WorkspaceProject.yaml#/$defs/ProjectAggregations
+              - type: object
+                properties:
+                  code:
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+    4XX:
       description: 参数缺失（400）/ ACL（403）
       content:
         application/json:
-          schema: { $ref: '../../../../components/schemas/Envelope.yaml' }
+          schema:
+            $ref: ../../../../components/schemas/Envelope.yaml

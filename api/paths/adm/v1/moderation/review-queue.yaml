@@ -1,0 +1,147 @@
+get:
+  security:
+  - adminSessionId: []
+    adminSessionSignature: []
+  tags:
+  - admin
+  summary: 内容复审队列 / Content review queue
+  description: 需 reports:read。overdue标记pending超过24小时；total_pages为本接口分页字段。 / Content review queue
+  operationId: admModerationReviewQueueGet
+  parameters:
+  - name: page
+    in: query
+    required: false
+    description: page
+    schema:
+      type: integer
+      minimum: 1
+      default: 1
+  - name: size
+    in: query
+    required: false
+    description: size
+    schema:
+      type: integer
+      minimum: 1
+      maximum: 1000
+      default: 20
+  - name: status
+    in: query
+    required: false
+    description: status
+    schema:
+      type: string
+  - name: keyword
+    in: query
+    required: false
+    description: keyword
+    schema:
+      type: string
+  - name: start
+    in: query
+    required: false
+    description: start
+    schema:
+      type: string
+      format: date
+  - name: end
+    in: query
+    required: false
+    description: end
+    schema:
+      type: string
+      format: date
+  responses:
+    '200':
+      description: 成功或业务错误；检查 code / Inspect business code
+      content:
+        application/json:
+          schema:
+            anyOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      list:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id:
+                              type: integer
+                              format: int64
+                              minimum: 1
+                              description: JSON int64；客户端需无损解析 / Preserve bigint precision
+                            msg_id:
+                              type: string
+                            msg_type:
+                              type: string
+                            content:
+                              type: string
+                            from_id:
+                              type: integer
+                              format: int64
+                              minimum: 1
+                              description: JSON int64；客户端需无损解析 / Preserve bigint precision
+                            from_account:
+                              type: string
+                            to_id:
+                              type: integer
+                              format: int64
+                              minimum: 1
+                              description: JSON int64；客户端需无损解析 / Preserve bigint precision
+                            to_type:
+                              type: string
+                            hit_words:
+                              description: 命中词JSON / Matched keywords
+                            review_status:
+                              type: string
+                            reviewer_id:
+                              type:
+                              - integer
+                              - 'null'
+                              format: int64
+                            reason:
+                              type:
+                              - string
+                              - 'null'
+                            reviewed_at:
+                              type:
+                              - integer
+                              - 'null'
+                              format: int64
+                              description: Unix 毫秒 / Unix milliseconds
+                            created_at:
+                              type:
+                              - integer
+                              - 'null'
+                              format: int64
+                              description: Unix 毫秒 / Unix milliseconds
+                            metadata:
+                              description: 审核上下文JSON / Review context
+                            overdue:
+                              type: boolean
+                      total:
+                        type: integer
+                        minimum: 0
+                      page:
+                        type: integer
+                      size:
+                        type: integer
+                      total_pages:
+                        type: integer
+                        minimum: 0
+              - type: object
+                properties:
+                  code:
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+    '401':
+      description: Cookie 缺失、无效、到期或已撤销 / Invalid session cookies
+      content:
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/Envelope.yaml

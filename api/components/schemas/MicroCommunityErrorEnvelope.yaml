@@ -1,0 +1,10 @@
+allOf:
+- $ref: Envelope.yaml
+- type: object
+  properties:
+    code:
+      type: integer
+      minimum: 1
+    payload:
+      type: object
+      maxProperties: 0

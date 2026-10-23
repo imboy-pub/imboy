@@ -12,6 +12,11 @@ post:
     （整体语义见 endpoints.md INT-03）。请求字段实证自 handler
     `maps:get(<<"external_user_ids">>, ...)`（**数组**，非单数）；
     响应实证自 `enterprise_identity_logic:rows_to_pairs/1`。
+  security:
+    - ibIntHmacCredential: []
+      ibIntHmacTimestamp: []
+      ibIntHmacNonce: []
+      ibIntHmacSignature: []
   operationId: internalIdentityResolve
   x-imboy-authentication: hmac
   x-imboy-rate-bucket: internal_read
@@ -27,7 +32,8 @@ post:
             external_user_ids:
               type: array
               minItems: 1
-              items: { type: string }
+              maxItems: 100
+              items: { type: string, minLength: 1, maxLength: 256, description: UTF-8 最多 256 字节 }
               description: OA 侧用户标识列表
   responses:
     '200':
@@ -36,16 +42,19 @@ post:
         application/json:
           schema:
             type: object
+            required: [mappings]
             properties:
               mappings:
                 type: array
                 items:
                   type: object
+                  required: [external_user_id, user_id]
                   properties:
                     external_user_id: { type: string }
                     user_id: { type: integer, format: int64 }
     '400': { $ref: '../../../../components/responses/internal/invalid_request.yaml' }
-    '401': { $ref: '../../../../components/responses/internal/invalid_credential.yaml' }
-    '403': { $ref: '../../../../components/responses/internal/organization_boundary_violation.yaml' }
+    '401': { $ref: '../../../../components/responses/internal/unauthorized.yaml' }
+    '403': { $ref: '../../../../components/responses/internal/forbidden.yaml' }
     '429': { $ref: '../../../../components/responses/internal/rate_limited.yaml' }
     '500': { $ref: '../../../../components/responses/internal/internal_error.yaml' }
+    '503': { $ref: '../../../../components/responses/internal/security_gate_closed.yaml' }

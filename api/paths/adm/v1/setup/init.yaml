@@ -7,13 +7,13 @@
 # Handler：src/adm/adm_setup_handler.erl
 # ----------------------------------------------------------------------------
 post:
+  security: []
   tags: [admin-setup]
   summary: 执行首启初始化
   description: |
     创建 `role_id=1` 超级管理员。成功一次后后端会把 `adm.setup.completed_at`
     写入 `config` 表，再次调用返回 `ERR_SETUP_ALREADY_COMPLETED`。
   operationId: initSetup
-  security: []
   requestBody:
     required: true
     content:

@@ -1,0 +1,27 @@
+type: object
+properties:
+  id:
+    type: integer
+    format: int64
+  channel_id:
+    type: integer
+    format: int64
+  author_id:
+    type: integer
+    format: int64
+  msg_type:
+    type:
+    - string
+    - 'null'
+  created_at:
+    type: string
+    description: 数据库时间戳字符串 / Database timestamp string
+  author_name:
+    type:
+    - string
+    - 'null'
+required:
+- id
+- channel_id
+- author_id
+- created_at

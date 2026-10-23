@@ -1,0 +1,87 @@
+post:
+  security:
+  - adminSessionId: []
+    adminSessionSignature: []
+  tags:
+  - admin
+  summary: 批量导入敏感词 / Import sensitive words
+  description: 需 reports:handle。空词、重复项或写入失败计入skipped；不会宣称全部成功。 / Import sensitive words
+  operationId: admModerationSensitiveWordsImportPost
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            words:
+              type: array
+              items:
+                type: object
+                properties:
+                  word:
+                    type: string
+                    minLength: 1
+                  category:
+                    type: string
+                    default: custom
+                  severity:
+                    type: string
+                    default: medium
+                required:
+                - word
+          required:
+          - words
+      application/x-www-form-urlencoded:
+        schema:
+          type: object
+          properties:
+            words:
+              type: array
+              items:
+                type: object
+                properties:
+                  word:
+                    type: string
+                    minLength: 1
+                  category:
+                    type: string
+                    default: custom
+                  severity:
+                    type: string
+                    default: medium
+                required:
+                - word
+          required:
+          - words
+  responses:
+    '200':
+      description: 成功或业务错误；检查 code / Inspect business code
+      content:
+        application/json:
+          schema:
+            anyOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      imported:
+                        type: integer
+                        minimum: 0
+                      skipped:
+                        type: integer
+                        minimum: 0
+              - type: object
+                properties:
+                  code:
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+    '401':
+      description: Cookie 缺失、无效、到期或已撤销 / Invalid session cookies
+      content:
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/Envelope.yaml

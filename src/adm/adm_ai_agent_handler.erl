@@ -324,6 +324,8 @@ avatar_direct(<<"POST">>, Req0, State) ->
         {ok, Body, Req1} = elib_req:body(Req0, []),
         Op = maps:get(<<"op">>, Body, <<>>),
         case avatar_direct_op(Op, Body) of
+            ok ->
+                elib_response:success(Req1, #{});
             {ok, Data} ->
                 elib_response:success(Req1, Data);
             {error, not_confirmed} ->

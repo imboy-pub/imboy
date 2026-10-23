@@ -1,5 +1,8 @@
 # POST /api/adm/group/schedule/restore — admin
 post:
+  security:
+    - adminSessionId: []
+      adminSessionSignature: []
   tags: [admin]
   summary: 管理后台恢复群日程
   description: 管理员恢复已取消或已删除的群日程。Restore a cancelled or deleted group schedule by admin.

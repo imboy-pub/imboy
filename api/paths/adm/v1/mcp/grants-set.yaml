@@ -1,0 +1,64 @@
+post:
+  security:
+  - adminSessionId: []
+    adminSessionSignature: []
+  tags:
+  - admin
+  summary: 设置MCP工具授权 / Set MCP tool grant
+  description: 需 mcp_clients:approve。仅使用 application/json；enabled 必须为 JSON 布尔值。true 启用，false 停用对应工具授权。 / Requires
+    mcp_clients:approve and JSON boolean enabled; use application/json.
+  operationId: admMcpGrantsSetPost
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            client_id:
+              type: integer
+              format: int64
+              minimum: 1
+              description: JSON int64；客户端需无损解析 / Preserve bigint precision
+            tool:
+              type: string
+            enabled:
+              type: boolean
+          required:
+          - client_id
+          - tool
+          - enabled
+  responses:
+    '200':
+      description: 成功或业务错误；检查 code / Inspect business code
+      content:
+        application/json:
+          schema:
+            anyOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      client_id:
+                        type: integer
+                        format: int64
+                        minimum: 1
+                        description: JSON int64；客户端需无损解析 / Preserve bigint precision
+                      tool:
+                        type: string
+                      enabled:
+                        type: boolean
+              - type: object
+                properties:
+                  code:
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+    '401':
+      description: Cookie 缺失、无效、到期或已撤销 / Invalid session cookies
+      content:
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/Envelope.yaml

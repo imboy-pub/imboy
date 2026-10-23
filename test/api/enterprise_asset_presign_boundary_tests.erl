@@ -9,6 +9,9 @@ postcommit_test_() ->
         fun invalid_base/0,
         fun unknown_location/0,
         fun legacy_cached_url/0,
+        fun fresh_registration/0,
+        fun governance_null_times/0,
+        fun governance_pg_times/0,
         fun transaction_failure/0,
         fun confirmed_no_capability/0,
         fun terminal_conflict/0,
@@ -27,6 +30,7 @@ setup() ->
         enterprise_internal_idempotency,
         enterprise_internal_boundary,
         enterprise_asset_logic,
+        enterprise_asset_retention_logic,
         imboy_jwt
     ],
     try
@@ -67,6 +71,7 @@ cleanup({Modules, Prior}) ->
         {ok, V} -> application:set_env(imboy, base_url, V)
     end,
     erase(recovery_tx_seen),
+    erase(stored_json_body),
     ok.
 reg() ->
     #{
@@ -124,6 +129,65 @@ legacy_cached_url() ->
         409, <<"resource_conflict">>, replay(#{<<"put_url">> => <<"https://old.invalid/unsafe">>})
     ),
     ?assertEqual(0, meck:num_calls(imboy_jwt, issue_upload_capability, '_')).
+fresh_registration() ->
+    %% 无 client_upload_id 的旧调用方也先登记 V5 稳定会话，不返回裸 PUT URL。
+    inserted(),
+    meck:expect(enterprise_asset_logic, presign_tx, fun(_, _, Input) ->
+        ?assertNot(maps:is_key(client_upload_id, Input)),
+        {ok, reg()}
+    end),
+    R = invoke(),
+    ?assertEqual(200, maps:get(status, R)),
+    ?assert(maps:is_key(<<"put_url">>, jsone:decode(maps:get(body, R)))),
+    ?assertEqual(1, meck:num_calls(enterprise_asset_logic, presign_recovery_tx, '_')).
+
+inserted() ->
+    meck:expect(enterprise_internal_idempotency, begin_tx, fun(_, _, _, _, _) ->
+        {ok, inserted}
+    end),
+    meck:expect(
+        enterprise_internal_idempotency,
+        must_complete_tx,
+        fun(_, _, _, _, _, 200, Body) ->
+            put(stored_json_body, jsone:decode(Body)),
+            ok
+        end
+    ).
+
+governance_null_times() ->
+    Result = governance_response(undefined, null, undefined),
+    ?assertEqual(null, maps:get(<<"purged_at">>, Result)),
+    ?assertEqual(null, maps:get(<<"extended_until">>, Result)),
+    ?assertEqual(null, maps:get(<<"retention_until">>, Result)).
+
+governance_pg_times() ->
+    Time = {{2026, 10, 23}, {1, 2, 3.25}},
+    Result = governance_response(Time, Time, <<"2026-10-24T00:00:00Z">>),
+    ?assertEqual(<<"2026-10-23T01:02:03.250Z">>, maps:get(<<"purged_at">>, Result)),
+    ?assertEqual(<<"2026-10-23T01:02:03.250Z">>, maps:get(<<"extended_until">>, Result)),
+    ?assertEqual(<<"2026-10-24T00:00:00Z">>, maps:get(<<"retention_until">>, Result)).
+
+governance_response(PurgedAt, ExtendedUntil, RetentionUntil) ->
+    inserted(),
+    meck:expect(enterprise_internal_boundary, enforce, fun(_, _, <<"INT-22">>, _) -> ok end),
+    meck:expect(enterprise_asset_retention_logic, governance_tx, fun(_, _, _) ->
+        {ok, #{
+            <<"file_id">> => 42,
+            <<"object_key">> => <<"fixture/key">>,
+            <<"purged">> => false,
+            <<"purged_at">> => PurgedAt,
+            <<"extended_until">> => ExtendedUntil,
+            <<"retention_until">> => RetentionUntil
+        }}
+    end),
+    {ok, R, _} = enterprise_asset_handler:init(
+        #{},
+        #{action => governance, enterprise_internal => #{}}
+    ),
+    ?assertEqual(200, maps:get(status, R)),
+    Decoded = jsone:decode(maps:get(body, R)),
+    ?assertEqual(Decoded, erase(stored_json_body)),
+    Decoded.
 transaction_failure() ->
     meck:expect(elib_pg, with_tx, fun(_) -> {rollback, fixture_failure} end),
     assert_error(500, <<"internal_error">>, invoke()),

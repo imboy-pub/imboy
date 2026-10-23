@@ -1,26 +1,34 @@
-# GET /api/adm/channel/{channel_id}/stats — admin
 get:
-  tags: [admin]
+  security:
+  - adminSessionId: []
+    adminSessionSignature: []
+  tags:
+  - admin
   summary: admin adm-channel - stats
-  description: |
-    ## 中文 / English
-    管理后台 adm-channel handler 的 `stats` 动作；路径 `/adm/channel/{channel_id}/stats`。
-    Admin handler `adm-channel`, action `stats`. Path `/adm/channel/{channel_id}/stats`.
+  description: '## 中文 / English
+
+    管理后台 adm-channel handler 的 `stats` 动作；路径 `/api/adm/channel/{channel_id}/stats`。
+
+    Admin handler `adm-channel`, action `stats`. Path `/api/adm/channel/{channel_id}/stats`.
+
+    '
   operationId: adm_channel_stats
   parameters:
-    - in: path
-      name: channel_id
-      required: true
-      description: 频道 ID / Channel ID
-      schema: { type: string }
+  - in: path
+    name: channel_id
+    required: true
+    description: 频道 ID / Channel ID
+    schema:
+      type: string
   responses:
     '200':
-      description: 成功
+      description: 成功；非零 code 为业务错误 / Non-zero code is a business error
       content:
         application/json:
           schema:
-            allOf:
-              - $ref: '../../../../components/schemas/Envelope.yaml'
+            anyOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
               - type: object
                 properties:
                   payload:
@@ -43,7 +51,14 @@ get:
                       total_reactions:
                         type: integer
                         description: 总互动数 / Total reactions
-    '4XX':
+              - type: object
+                properties:
+                  code:
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+    4XX:
       description: 无权限 / 参数非法
       content:
-        application/json: { schema: { $ref: '../../../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/Envelope.yaml

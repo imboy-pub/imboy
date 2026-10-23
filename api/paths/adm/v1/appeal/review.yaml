@@ -1,0 +1,125 @@
+post:
+  security:
+  - adminSessionId: []
+    adminSessionSignature: []
+  tags:
+  - admin
+  summary: 独立复审申诉 / Independently review appeal
+  description: 需 reports:handle。复审人不得为原处置执行人；accept联动撤销处置。 / Independently review appeal
+  operationId: admAppealReviewPost
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            id:
+              type: integer
+              format: int64
+              minimum: 1
+              description: JSON int64；客户端需无损解析 / Preserve bigint precision
+            verdict:
+              type: string
+              enum:
+              - accept
+              - reject
+            review_reason:
+              type: string
+          required:
+          - id
+          - verdict
+          - review_reason
+      application/x-www-form-urlencoded:
+        schema:
+          type: object
+          properties:
+            id:
+              type: integer
+              format: int64
+              minimum: 1
+              description: JSON int64；客户端需无损解析 / Preserve bigint precision
+            verdict:
+              type: string
+              enum:
+              - accept
+              - reject
+            review_reason:
+              type: string
+          required:
+          - id
+          - verdict
+          - review_reason
+  responses:
+    '200':
+      description: 成功或业务错误；检查 code / Inspect business code
+      content:
+        application/json:
+          schema:
+            anyOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      appeal:
+                        type: object
+                        properties:
+                          id:
+                            type: integer
+                            format: int64
+                            minimum: 1
+                            description: JSON int64；客户端需无损解析 / Preserve bigint precision
+                          action_id:
+                            type: integer
+                            format: int64
+                            minimum: 1
+                            description: JSON int64；客户端需无损解析 / Preserve bigint precision
+                          case_id:
+                            type: integer
+                            format: int64
+                            minimum: 1
+                            description: JSON int64；客户端需无损解析 / Preserve bigint precision
+                          appellant_uid:
+                            type: integer
+                            format: int64
+                            minimum: 1
+                            description: JSON int64；客户端需无损解析 / Preserve bigint precision
+                          reason:
+                            type: string
+                          status:
+                            type: string
+                          reviewer_id:
+                            type:
+                            - integer
+                            - 'null'
+                            format: int64
+                          review_reason:
+                            type:
+                            - string
+                            - 'null'
+                          reviewed_at:
+                            type:
+                            - integer
+                            - 'null'
+                            format: int64
+                            description: Unix 毫秒 / Unix milliseconds
+                          created_at:
+                            type:
+                            - integer
+                            - 'null'
+                            format: int64
+                            description: Unix 毫秒 / Unix milliseconds
+              - type: object
+                properties:
+                  code:
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+    '401':
+      description: Cookie 缺失、无效、到期或已撤销 / Invalid session cookies
+      content:
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/Envelope.yaml

@@ -1,6 +1,9 @@
-# POST /api/adm/feedback/delete — admin
 post:
-  tags: [admin]
+  security:
+  - adminSessionId: []
+    adminSessionSignature: []
+  tags:
+  - admin
   summary: 管理后台删除反馈
   description: 删除指定用户反馈记录（软删除）。Delete a specified user feedback record (soft delete).
   operationId: adm_feedback_delete
@@ -10,23 +13,34 @@ post:
       application/json:
         schema:
           type: object
-          required: [feedback_id]
+          required:
+          - feedback_id
           properties:
-            feedback_id: { type: integer, description: '目标 ID' }
+            feedback_id:
+              type: integer
+              description: 目标 ID
   responses:
     '200':
-      description: 成功（payload 为空对象）
+      description: 成功（payload 为空对象）；非零 code 为业务错误 / Non-zero code is a business error
       content:
         application/json:
           schema:
-            allOf:
-              - $ref: '../../../../components/schemas/Envelope.yaml'
+            anyOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
               - type: object
                 properties:
                   payload:
                     type: object
                     description: 操作成功返回空对象 {}
-    '4XX':
+              - type: object
+                properties:
+                  code:
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+    4XX:
       description: 无权限 / 参数非法
       content:
-        application/json: { schema: { $ref: '../../../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/Envelope.yaml

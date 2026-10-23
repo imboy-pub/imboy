@@ -1,17 +1,29 @@
 get:
-  tags: [organization]
+  tags:
+  - organization
   summary: 我的 Organization 列表
-  description: |
-    按 active Organization Member 关系分页，包含 active 与 archived Organization。
+  description: '按 active Organization Member 关系分页，包含 active 与 archived Organization。
+
     Organization 成员关系不依赖 Workspace 或 Group 成员关系。
+
+    '
   operationId: organizationMine
   parameters:
-    - name: page
-      in: query
-      schema: { type: integer, minimum: 1, default: 1 }
-    - name: size
-      in: query
-      schema: { type: integer, minimum: 1, maximum: 100, default: 10 }
+  - name: page
+    in: query
+    schema:
+      type: integer
+      minimum: 1
+      default: 1
+    description: 页码，从 1 开始 / Page starting at 1
+  - name: size
+    in: query
+    schema:
+      type: integer
+      minimum: 1
+      maximum: 100
+      default: 10
+    description: 每页条数 / Page size
   responses:
     '200':
       description: Organization 分页或业务错误信封
@@ -19,10 +31,10 @@ get:
         application/json:
           schema:
             allOf:
-              - $ref: '../../../../components/schemas/Envelope.yaml'
-              - type: object
-                properties:
-                  payload:
-                    $ref: '../../../../components/schemas/OrganizationPage.yaml'
+            - $ref: ../../../../components/schemas/Envelope.yaml
+            - type: object
+              properties:
+                payload:
+                  $ref: ../../../../components/schemas/OrganizationPage.yaml
     '405':
       description: Method Not Allowed

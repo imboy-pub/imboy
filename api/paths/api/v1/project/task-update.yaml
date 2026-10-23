@@ -1,19 +1,27 @@
-# POST /api/v1/tasks/{task_id}/update — 任务更新（W0/W1）
 post:
-  tags: [project]
+  tags:
+  - project
   summary: 更新任务（部分更新）
-  description: |
-    ## 中文
+  description: '## 中文
+
     更新 title / assignee_id / sort（只传需要改的字段）。assignee 换人时新
+
     assignee 必须是项目成员。
+
     ## English
+
     Partial task update (title / assignee_id / sort).
+
+    '
   operationId: taskUpdate
   parameters:
-    - name: task_id
-      in: path
-      required: true
-      schema: { type: integer, format: int64 }
+  - name: task_id
+    in: path
+    required: true
+    schema:
+      type: integer
+      format: int64
+    description: 任务 TSID / Task ID
   requestBody:
     required: true
     content:
@@ -22,17 +30,37 @@ post:
           type: object
           minProperties: 1
           properties:
-            title: { type: string, maxLength: 255 }
-            assignee_id: { type: [integer, "null"], format: int64 }
-            sort: { type: integer }
+            title:
+              type: string
+              maxLength: 500
+              minLength: 1
+            assignee_id:
+              type:
+              - integer
+              - 'null'
+              format: int64
+            sort:
+              type: integer
   responses:
     '200':
-      description: 更新成功（返回任务行）
+      description: 成功 code=0 返回以下业务载荷；业务失败 code 非零返回通用错误信封。 / Success payload or nonzero-code business error.
       content:
         application/json:
-          schema: { $ref: '../../../../components/schemas/Envelope.yaml' }
-    '404':
-      description: 任务不存在
-      content:
-        application/json:
-          schema: { $ref: '../../../../components/schemas/Envelope.yaml' }
+          schema:
+            oneOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
+              - type: object
+                properties:
+                  payload:
+                    $ref: ../../../../components/schemas/client/ProjectTask.yaml
+              - type: object
+                required:
+                - code
+                properties:
+                  code:
+                    type: integer
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+    '401':
+      description: 访问 JWT、设备绑定或客户端签名认证失败 / JWT, device binding or client signature rejected

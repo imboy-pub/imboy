@@ -1,42 +1,49 @@
-# GET /api/adm/stats/ranking — admin
 get:
-  tags: [admin]
+  security:
+  - adminSessionId: []
+    adminSessionSignature: []
+  tags:
+  - admin
   summary: admin adm-stats - ranking
-  description: |
-    ## 中文 / English
-    管理后台 adm-stats handler 的 `ranking` 动作；路径 `/adm/stats/ranking`。
-    Admin handler `adm-stats`, action `ranking`. Path `/adm/stats/ranking`.
+  description: '## 中文 / English
+
+    管理后台 adm-stats handler 的 `ranking` 动作；路径 `/api/adm/stats/ranking`。
+
+    Admin handler `adm-stats`, action `ranking`. Path `/api/adm/stats/ranking`.
+
+    '
   operationId: adm_stats_ranking
   parameters:
-    - name: type
-      in: query
-      required: false
-      schema:
-        type: string
-        default: user
-      description: '排行类型 / Ranking type (e.g. user, group)'
-    - name: metric
-      in: query
-      required: false
-      schema:
-        type: string
-        default: count
-      description: '排行指标 / Ranking metric (e.g. count, active)'
-    - name: limit
-      in: query
-      required: false
-      schema:
-        type: integer
-        default: 10
-      description: '返回条数 / Number of entries to return'
+  - name: type
+    in: query
+    required: false
+    schema:
+      type: string
+      default: user
+    description: 排行类型 / Ranking type (e.g. user, group)
+  - name: metric
+    in: query
+    required: false
+    schema:
+      type: string
+      default: count
+    description: 排行指标 / Ranking metric (e.g. count, active)
+  - name: limit
+    in: query
+    required: false
+    schema:
+      type: integer
+      default: 10
+    description: 返回条数 / Number of entries to return
   responses:
     '200':
-      description: 成功
+      description: 成功；非零 code 为业务错误 / Non-zero code is a business error
       content:
         application/json:
           schema:
-            allOf:
-              - $ref: '../../../../components/schemas/Envelope.yaml'
+            anyOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
               - type: object
                 properties:
                   payload:
@@ -61,7 +68,14 @@ get:
                             metric:
                               type: integer
                               description: 排名指标值（消息数/好友数/成员数/订阅数）
-    '4XX':
+              - type: object
+                properties:
+                  code:
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+    4XX:
       description: 无权限 / 参数非法
       content:
-        application/json: { schema: { $ref: '../../../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/Envelope.yaml

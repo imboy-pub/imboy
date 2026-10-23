@@ -1,0 +1,318 @@
+get:
+  tags:
+  - enterprise-business
+  summary: Seat JWT：读取会话消息
+  description: '可选 enterprise_business 功能面，部署未启用时不可调用。组织标识来自路径，workspace_id 必须显式提供；每次请求重新校验成员、业务身份和权限。此面成功用业务信封，实体ID返回十进制字符串，时间保留用例原值。
+
+    Optional enterprise_business feature; current resource membership and permissions are rechecked on every request.
+    此镜像仅接受purpose=seat的JWT，需要customer_service功能与职能资格。'
+  operationId: ebSeatConversationMessagesGet
+  security:
+  - seatBearerAuth: []
+  x-imboy-feature:
+  - enterprise_business
+  - customer_service
+  x-handler: eb_tenant_handler
+  x-action: conversation_messages
+  parameters:
+  - name: org_id
+    in: path
+    required: true
+    description: 路径中的业务实体ID。
+    schema:
+      type: string
+      pattern: ^[0-9]+$
+  - name: id
+    in: path
+    required: true
+    description: 路径中的业务实体ID。
+    schema:
+      type: string
+      pattern: ^[0-9]+$
+  - name: after_id
+    in: query
+    required: false
+    description: 十进制实体 ID，字符串可无损传输。
+    schema:
+      oneOf:
+      - type: string
+        pattern: ^[0-9]+$
+      - type: integer
+        minimum: 1
+      description: 十进制实体 ID，字符串可无损传输。
+  - name: before_id
+    in: query
+    required: false
+    description: 十进制实体 ID，字符串可无损传输。
+    schema:
+      oneOf:
+      - type: string
+        pattern: ^[0-9]+$
+      - type: integer
+        minimum: 1
+      description: 十进制实体 ID，字符串可无损传输。
+  - name: order
+    in: query
+    required: false
+    description: order 参数；语义见动作说明。
+    schema:
+      type: string
+      enum:
+      - asc
+      - desc
+      default: asc
+  - name: limit
+    in: query
+    required: false
+    description: limit 参数；语义见动作说明。
+    schema:
+      type: integer
+      minimum: 1
+      maximum: 200
+      default: 50
+  - name: workspace_id
+    in: query
+    required: true
+    description: 十进制实体 ID，字符串可无损传输。
+    schema:
+      oneOf:
+      - type: string
+        pattern: ^[0-9]+$
+      - type: integer
+        minimum: 1
+      description: 十进制实体 ID，字符串可无损传输。
+  x-imboy-auth-context:
+    auth_context: enterprise_member
+    required_function:
+    - sales
+    - customer_service
+    required_permission: conversation.read
+  responses:
+    '200':
+      description: 业务响应；成功code=0，载荷为当前用例视图。
+      content:
+        application/json:
+          schema:
+            allOf:
+            - $ref: ../../../../components/schemas/Envelope.yaml
+            - type: object
+              properties:
+                payload:
+                  type: array
+                  items:
+                    $ref: ../../../../components/schemas/enterprise-business/Message.yaml
+    '400':
+      description: 请求形状或客户端派生字段非法
+      content:
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/Envelope.yaml
+    '401':
+      description: 凭证无效
+      content:
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/Envelope.yaml
+    '403':
+      description: 当前成员、职能或治理权限不满足
+      content:
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/Envelope.yaml
+    '404':
+      description: 目标不存在或不可访问
+      content:
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/Envelope.yaml
+    '405':
+      description: 不支持的方法
+      content:
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/Envelope.yaml
+    '409':
+      description: 版本或业务状态冲突
+      content:
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/Envelope.yaml
+    '422':
+      description: 缺少必填参数或业务参数非法
+      content:
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/Envelope.yaml
+    '500':
+      description: 内部处理或配置错误
+      content:
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/Envelope.yaml
+  x-imboy-jwt-purpose: seat
+post:
+  tags:
+  - enterprise-business
+  summary: Seat JWT：发送企业托管消息
+  description: '可选 enterprise_business 功能面，部署未启用时不可调用。组织标识来自路径，workspace_id 必须显式提供；每次请求重新校验成员、业务身份和权限。此面成功用业务信封，实体ID返回十进制字符串，时间保留用例原值。
+
+    Optional enterprise_business feature; current resource membership and permissions are rechecked on every request.
+    client_msg_id作为业务去重键；identity_id由认证主体覆盖，不允许冒充其他经办人。 此镜像仅接受purpose=seat的JWT，需要customer_service功能与职能资格。'
+  operationId: ebSeatConversationMessagesPost
+  security:
+  - seatBearerAuth: []
+  x-imboy-feature:
+  - enterprise_business
+  - customer_service
+  x-handler: eb_tenant_handler
+  x-action: conversation_messages
+  parameters:
+  - name: org_id
+    in: path
+    required: true
+    description: 路径中的业务实体ID。
+    schema:
+      type: string
+      pattern: ^[0-9]+$
+  - name: id
+    in: path
+    required: true
+    description: 路径中的业务实体ID。
+    schema:
+      type: string
+      pattern: ^[0-9]+$
+  x-imboy-auth-context:
+    auth_context: enterprise_member
+    required_function:
+    - sales
+    - customer_service
+    required_permission: conversation.read
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            client_msg_id:
+              type: string
+            sender_type:
+              type: string
+              enum:
+              - contact
+              - business_identity
+            body:
+              type: string
+            asset_ids:
+              type: array
+              items:
+                type: string
+                pattern: ^[0-9]+$
+            contact_id:
+              oneOf:
+              - type: string
+                pattern: ^[0-9]+$
+              - type: integer
+                minimum: 1
+              description: 十进制实体 ID，字符串可无损传输。
+            identity_id:
+              oneOf:
+              - type: string
+                pattern: ^[0-9]+$
+              - type: integer
+                minimum: 1
+              description: 十进制实体 ID，字符串可无损传输。
+            workspace_id:
+              oneOf:
+              - type: string
+                pattern: ^[0-9]+$
+              - type: integer
+                minimum: 1
+              description: 十进制实体 ID，字符串可无损传输。
+          required:
+          - client_msg_id
+          - sender_type
+          - workspace_id
+  responses:
+    '200':
+      description: 业务响应；成功code=0，载荷为当前用例视图。
+      content:
+        application/json:
+          schema:
+            allOf:
+            - $ref: ../../../../components/schemas/Envelope.yaml
+            - type: object
+              properties:
+                payload:
+                  type: object
+                  properties:
+                    accepted:
+                      type: boolean
+                    message:
+                      $ref: ../../../../components/schemas/enterprise-business/CanonicalMessage.yaml
+                    message_id:
+                      type: string
+                      pattern: ^[0-9]+$
+                      description: 完整十进制实体 ID；此接口出站以字符串传输。
+                    replayed:
+                      type: boolean
+                    audit_id:
+                      type:
+                      - string
+                      - 'null'
+                      pattern: ^[0-9]+$
+                  required:
+                  - accepted
+                  - message
+                  - message_id
+                  - replayed
+                  description: 持久化接受结果；通知执行诊断不属于公开响应。
+    '400':
+      description: 请求形状或客户端派生字段非法
+      content:
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/Envelope.yaml
+    '401':
+      description: 凭证无效
+      content:
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/Envelope.yaml
+    '403':
+      description: 当前成员、职能或治理权限不满足
+      content:
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/Envelope.yaml
+    '404':
+      description: 目标不存在或不可访问
+      content:
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/Envelope.yaml
+    '405':
+      description: 不支持的方法
+      content:
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/Envelope.yaml
+    '409':
+      description: 版本或业务状态冲突
+      content:
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/Envelope.yaml
+    '422':
+      description: 缺少必填参数或业务参数非法
+      content:
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/Envelope.yaml
+    '500':
+      description: 内部处理或配置错误
+      content:
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/Envelope.yaml
+  x-imboy-jwt-purpose: seat

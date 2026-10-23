@@ -1,11 +1,17 @@
-# POST /api/adm/announcement/unpublish — admin
 post:
-  tags: [admin]
+  security:
+  - adminSessionId: []
+    adminSessionSignature: []
+  tags:
+  - admin
   summary: admin adm-announcement - unpublish
-  description: |
-    ## 中文 / English
-    管理后台 adm-announcement handler 的 `unpublish` 动作；路径 `/adm/announcement/unpublish`。
-    Admin handler `adm-announcement`, action `unpublish`. Path `/adm/announcement/unpublish`.
+  description: '## 中文 / English
+
+    管理后台 adm-announcement handler 的 `unpublish` 动作；路径 `/api/adm/announcement/unpublish`。
+
+    Admin handler `adm-announcement`, action `unpublish`. Path `/api/adm/announcement/unpublish`.
+
+    '
   operationId: adm_announcement_unpublish
   requestBody:
     required: true
@@ -13,7 +19,8 @@ post:
       application/json:
         schema:
           type: object
-          required: [id]
+          required:
+          - id
           properties:
             id:
               type: string
@@ -22,8 +29,12 @@ post:
     '200':
       description: 成功
       content:
-        application/json: { schema: { $ref: '../../../../components/schemas/Envelope.yaml' } }
-    '4XX':
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/Envelope.yaml
+    4XX:
       description: 无权限 / 参数非法
       content:
-        application/json: { schema: { $ref: '../../../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/Envelope.yaml

@@ -1,0 +1,107 @@
+get:
+  tags:
+  - customer-service
+  summary: 组织坐席运行状态（GET）
+  description: 仅编译启用 IMBOY_FEATURE_CUSTOMER_SERVICE 时注册。组织是业务对象；按请求资源与认证事实复核组织、工作空间及成员/坐席资格。
+  operationId: csSeatPresenceListGet
+  security:
+  - bearerAuth: []
+  x-imboy-feature: customer_service
+  x-imboy-handler: cs_tenant_handler
+  x-imboy-action: seat_presence_list
+  x-imboy-principal: cs_seat
+  x-imboy-required-permission: conversation.read
+  parameters:
+  - name: org_id
+    in: path
+    required: true
+    description: 路径业务实体 TSID。
+    schema:
+      type: string
+      pattern: ^[0-9]+$
+      description: 无损十进制 TSID 字符串。
+  - name: workspace_id
+    in: query
+    required: true
+    description: 十进制 TSID；JSON 可传整数或无损字符串，响应统一字符串。
+    schema:
+      type:
+      - string
+      - integer
+      pattern: ^[0-9]+$
+      minimum: 1
+      description: 十进制 TSID；JSON 可传整数或无损字符串，响应统一字符串。
+  responses:
+    '200':
+      description: 操作成功；TSID 转为字符串，payload 时间保持应用层值。
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              code:
+                type: integer
+                const: 0
+              msg:
+                type: string
+              sv_ts:
+                type: integer
+                format: int64
+                description: 服务器 Unix 毫秒。
+              payload:
+                type: array
+                items:
+                  $ref: ../../../../components/schemas/customer-service/Presence.yaml
+            required:
+            - code
+            - msg
+            - sv_ts
+            - payload
+    '400':
+      description: 请求形状错误、服务端派生键被客户端申报或参数格式不合法。
+      content:
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/customer-service/Error.yaml
+    '401':
+      description: 缺少、无效或过期的当前接口凭据。
+      content:
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/customer-service/Error.yaml
+    '403':
+      description: 组织/成员/坐席资格、来源或权限不满足。
+      content:
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/customer-service/Error.yaml
+    '404':
+      description: 业务资源不存在、已撤销或不在当前作用域。
+      content:
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/customer-service/Error.yaml
+    '405':
+      description: 该路径不支持此 HTTP 方法。
+      content:
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/customer-service/Error.yaml
+    '409':
+      description: 状态或版本冲突；cas_mismatch 可附期望与当前版本，offboarding_required 表示需先交接。
+      content:
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/customer-service/Error.yaml
+    '422':
+      description: 缺少必填项或业务参数非法。
+      content:
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/customer-service/Error.yaml
+    '500':
+      description: 内部处理失败。
+      content:
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/customer-service/Error.yaml

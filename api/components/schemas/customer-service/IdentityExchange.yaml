@@ -1,0 +1,21 @@
+type: object
+properties:
+  installation_id:
+    type: string
+    pattern: ^[0-9]+$
+    description: 无损十进制 TSID 字符串。
+  contact_id:
+    type: string
+    pattern: ^[0-9]+$
+    description: 无损十进制 TSID 字符串。
+  anonymous_contact_id:
+    type: string
+    pattern: ^[0-9]+$
+    description: 无损十进制 TSID 字符串。
+  contact_reused:
+    type: boolean
+required:
+- installation_id
+- contact_id
+- anonymous_contact_id
+- contact_reused

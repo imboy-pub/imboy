@@ -11,15 +11,21 @@ post:
   - name: id
     in: path
     required: true
-    schema: &id001
+    schema:
       type: integer
       format: int64
       minimum: 1
       maximum: 9223372036854775807
+    description: 谈话记录 TSID / Talk record ID
   - name: job_id
     in: path
     required: true
-    schema: *id001
+    schema:
+      type: integer
+      format: int64
+      minimum: 1
+      maximum: 9223372036854775807
+    description: 处理作业 ID / Processing job ID
   - name: Idempotency-Key
     in: header
     required: true
@@ -27,23 +33,21 @@ post:
       type: string
       minLength: 1
       maxLength: 128
+    description: 本操作幂等键；重试同一操作时复用 / Reuse for retries of the same operation
   - name: If-Match
     in: header
     required: true
     schema:
       type: string
       maxLength: 128
-    description: Same actor and authenticated device may reuse the exact task active
-      run without extending its lease or source window. Other active devices cannot
-      be preempted; expired runs use a new query-only lease. Prepare uses client-run
-      ETag; all other mutations use provider-task ETag. JSON etag is unquoted.
-  description: JWT current actor/device and current record permissions are required.
-    Latest returns the complete existing ClientRun view and optional latest provider
-    Task without token or source URL. A query-only run id need not equal task.source_run_id.
-    Recovery requires fresh action idempotency, latest run ETag, current consent and
-    a whole-job absence of all Task/dispatch/result/uncertain facts. Same active device
-    receives the existing token without lease renewal; expired safe execution receives
-    a new run. Never submits to provider.
+    description: Same actor and authenticated device may reuse the exact task active run without extending its lease
+      or source window. Other active devices cannot be preempted; expired runs use a new query-only lease. Prepare
+      uses client-run ETag; all other mutations use provider-task ETag. JSON etag is unquoted.
+  description: JWT current actor/device and current record permissions are required. Latest returns the complete
+    existing ClientRun view and optional latest provider Task without token or source URL. A query-only run id need
+    not equal task.source_run_id. Recovery requires fresh action idempotency, latest run ETag, current consent and
+    a whole-job absence of all Task/dispatch/result/uncertain facts. Same active device receives the existing token
+    without lease renewal; expired safe execution receives a new run. Never submits to provider.
   responses:
     '200':
       description: Current task metadata.
@@ -51,8 +55,7 @@ post:
         application/json:
           schema:
             type: object
-            description: Existing API success envelope; payload is the durable task
-              response.
+            description: Existing API success envelope; payload is the durable task response.
             properties:
               data:
                 type: object
@@ -90,8 +93,7 @@ post:
         application/json:
           schema:
             type: object
-            description: Existing API success envelope; payload is the durable task
-              response.
+            description: Existing API success envelope; payload is the durable task response.
             properties:
               data:
                 type: object

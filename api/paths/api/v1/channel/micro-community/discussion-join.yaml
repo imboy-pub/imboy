@@ -13,6 +13,7 @@ post:
     required: true
     schema:
       $ref: ../../../../../openapi-api.yaml#/components/schemas/MicroCommunityEntityId
+    description: 频道 TSID / Channel ID
   responses:
     '200':
       description: '业务信封：code=0成功，非零失败。 / Business envelope: code 0 succeeds; nonzero fails.'

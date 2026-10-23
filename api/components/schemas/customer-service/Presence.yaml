@@ -1,0 +1,36 @@
+type: object
+properties:
+  organization_id:
+    type: string
+    pattern: ^[0-9]+$
+    description: 无损十进制 TSID 字符串。
+  business_identity_id:
+    type: string
+    pattern: ^[0-9]+$
+    description: 无损十进制 TSID 字符串。
+  enabled:
+    type: boolean
+  max_concurrent:
+    type: integer
+  active_count:
+    type: integer
+  last_heartbeat_at:
+    type:
+    - integer
+    - 'null'
+    format: int64
+    description: Unix 秒；客服 response helper 保留底层秒值。
+  manual_status:
+    type:
+    - string
+    - 'null'
+    enum:
+    - away
+    - null
+  status:
+    type: string
+    enum:
+    - online
+    - away
+    - busy
+    - offline

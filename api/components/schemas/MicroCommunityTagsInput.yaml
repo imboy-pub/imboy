@@ -1,0 +1,8 @@
+type: array
+maxItems: 5
+description: 按原始项数最多5；UTF-8字符串trim后1–20 Unicode code points，去重保序；空数组清空。 / At most
+  5 raw items; trim, validate 1–20 Unicode code points, stable deduplicate; [] clears.
+items:
+  type: string
+  x-normalized-minLength: 1
+  x-normalized-maxLength: 20

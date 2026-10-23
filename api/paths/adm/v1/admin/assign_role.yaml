@@ -1,11 +1,11 @@
-# POST /api/adm/admin/assign_role — admin
 post:
-  tags: [admin]
-  summary: admin adm-admin - assign_role
-  description: |
-    ## 中文 / English
-    管理后台 adm-admin handler 的 `assign_role` 动作；路径 `/adm/admin/assign_role`。
-    Admin handler `adm-admin`, action `assign_role`. Path `/adm/admin/assign_role`.
+  security:
+  - adminSessionId: []
+    adminSessionSignature: []
+  tags:
+  - admin
+  summary: 分配管理员角色 / Assign administrator role
+  description: admins:assign_role；禁止给自己赋权，目标权限必须为自身权限子集。 / No self-grants or privilege escalation. 此动作将目标管理员的全部角色替换为指定单一role_id，其他已有角色会被移除。
   operationId: adm_admin_assign_role
   requestBody:
     required: true
@@ -13,21 +13,166 @@ post:
       application/json:
         schema:
           type: object
-          additionalProperties: true
+          properties:
+            admin_id:
+              type: integer
+              format: int64
+              minimum: 1
+              description: JSON int64；客户端需无损解析 / Preserve bigint precision
+            uid:
+              type: integer
+              format: int64
+              minimum: 1
+              description: admin_id 缺失时的兼容字段 / Fallback alias
+            role_id:
+              type: integer
+              format: int64
+              minimum: 1
+              description: JSON int64；客户端需无损解析 / Preserve bigint precision
+          required:
+          - role_id
+          anyOf:
+          - required:
+            - admin_id
+          - required:
+            - uid
+      application/x-www-form-urlencoded:
+        schema:
+          type: object
+          properties:
+            admin_id:
+              type: integer
+              format: int64
+              minimum: 1
+              description: JSON int64；客户端需无损解析 / Preserve bigint precision
+            uid:
+              type: integer
+              format: int64
+              minimum: 1
+              description: admin_id 缺失时的兼容字段 / Fallback alias
+            role_id:
+              type: integer
+              format: int64
+              minimum: 1
+              description: JSON int64；客户端需无损解析 / Preserve bigint precision
+          required:
+          - role_id
+          anyOf:
+          - required:
+            - admin_id
+          - required:
+            - uid
   responses:
     '200':
-      description: 成功（payload 为空对象）
+      description: 成功（payload 为空对象）；非零 code 为业务错误 / Non-zero code is a business error
       content:
         application/json:
           schema:
-            allOf:
-              - $ref: '../../../../components/schemas/Envelope.yaml'
+            anyOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
               - type: object
                 properties:
                   payload:
                     type: object
                     description: 操作成功返回空对象 {}
-    '4XX':
+              - type: object
+                properties:
+                  code:
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+    4XX:
       description: 无权限 / 参数非法
       content:
-        application/json: { schema: { $ref: '../../../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/Envelope.yaml
+put:
+  security:
+  - adminSessionId: []
+    adminSessionSignature: []
+  tags:
+  - admin
+  summary: 分配管理员角色 / Assign administrator role
+  description: admins:assign_role；禁止给自己赋权，目标权限必须为自身权限子集。 / No self-grants or privilege escalation. 此动作将目标管理员的全部角色替换为指定单一role_id，其他已有角色会被移除。
+  operationId: adm_admin_assign_role_put
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            admin_id:
+              type: integer
+              format: int64
+              minimum: 1
+              description: JSON int64；客户端需无损解析 / Preserve bigint precision
+            uid:
+              type: integer
+              format: int64
+              minimum: 1
+              description: admin_id 缺失时的兼容字段 / Fallback alias
+            role_id:
+              type: integer
+              format: int64
+              minimum: 1
+              description: JSON int64；客户端需无损解析 / Preserve bigint precision
+          required:
+          - role_id
+          anyOf:
+          - required:
+            - admin_id
+          - required:
+            - uid
+      application/x-www-form-urlencoded:
+        schema:
+          type: object
+          properties:
+            admin_id:
+              type: integer
+              format: int64
+              minimum: 1
+              description: JSON int64；客户端需无损解析 / Preserve bigint precision
+            uid:
+              type: integer
+              format: int64
+              minimum: 1
+              description: admin_id 缺失时的兼容字段 / Fallback alias
+            role_id:
+              type: integer
+              format: int64
+              minimum: 1
+              description: JSON int64；客户端需无损解析 / Preserve bigint precision
+          required:
+          - role_id
+          anyOf:
+          - required:
+            - admin_id
+          - required:
+            - uid
+  responses:
+    '200':
+      description: 成功（payload 为空对象）；非零 code 为业务错误 / Non-zero code is a business error
+      content:
+        application/json:
+          schema:
+            anyOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    description: 操作成功返回空对象 {}
+              - type: object
+                properties:
+                  code:
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+    4XX:
+      description: 无权限 / 参数非法
+      content:
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/Envelope.yaml

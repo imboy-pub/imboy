@@ -403,6 +403,38 @@ response_structure_validation_test_() ->
 %% Q06（AC12-R3 债务修复）：offline limit 上限夹紧
 %% ===================================================================
 
+history_limit_clamped_test_() ->
+    [
+        history_limit_clamp_case(Input, Expected)
+     || {Input, Expected} <- [{0, 1}, {-1, 1}, {101, 100}]
+    ].
+
+history_limit_clamp_case(InputLimit, ExpectedLimit) ->
+    ?WITH_MECKS(
+        [
+            {elib_param, [
+                {'int', 3, fun
+                    (limit, _Req, _Default) -> {ok, InputLimit};
+                    (_Param, _Req, Default) -> {ok, Default}
+                end}
+            ]},
+            {messaging_logic, [
+                {'history', 6, fun(12345, <<"c2c">>, <<"200">>, 0, Limit, <<"test-device">>) ->
+                    ?assertEqual(ExpectedLimit, Limit),
+                    {ok, #{<<"messages">> => [], <<"next_seq">> => 0}}
+                end}
+            ]},
+            {elib_response, [
+                {'success', 2, fun(_Req, _Payload) -> req_history_ok end}
+            ]}
+        ],
+        fun() ->
+            Req = (req_mock())#{qs => <<"chat_type=c2c&peer_id=200&did=test-device">>},
+            ?assertEqual(req_history_ok, msg_handler:history(Req, #{current_uid => 12345})),
+            ?assertEqual(1, meck:num_calls(messaging_logic, history, 6))
+        end
+    ).
+
 %% @doc 客户端可传超大 limit（如 10^6）；修复前 elib_param 默认值 1000
 %% 之外无上限，超大值直通 DS 查询（DB 压垮面）。修复后与 history 的
 %% min 100 范式对齐：上限夹 1000（App 离线拉取合同的单页上限）。

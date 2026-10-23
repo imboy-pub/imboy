@@ -11,6 +11,11 @@ get:
     分页为 CURSOR-V2 签名游标（非法/过期/foreign 一律 400，客户端从首页重启）。
 
     '
+  security:
+    - ibIntHmacCredential: []
+      ibIntHmacTimestamp: []
+      ibIntHmacNonce: []
+      ibIntHmacSignature: []
   operationId: internalChannelList
   parameters:
   - name: workspace_id
@@ -95,9 +100,9 @@ get:
     '400':
       $ref: ../../../../components/responses/internal/invalid_request.yaml
     '401':
-      $ref: ../../../../components/responses/internal/invalid_credential.yaml
+      $ref: ../../../../components/responses/internal/unauthorized.yaml
     '403':
-      $ref: ../../../../components/responses/internal/organization_boundary_violation.yaml
+      $ref: ../../../../components/responses/internal/forbidden.yaml
     '429':
       $ref: ../../../../components/responses/internal/rate_limited.yaml
     '500':
@@ -108,6 +113,11 @@ post:
   tags:
   - internal
   summary: 创建企业频道
+  security:
+    - ibIntHmacCredential: []
+      ibIntHmacTimestamp: []
+      ibIntHmacNonce: []
+      ibIntHmacSignature: []
   operationId: internalChannelCreate
   description: INT-40。采用 HMAC 签名。创建者须为有效企业成员（企业 Owner 包含）且是工作空间
     Owner/Member，Guest 禁止。企业频道固定非公开 visibility=1、access_type=0、join_policy=1。归属和创建者不可修改。修改/归档必须
@@ -125,6 +135,7 @@ post:
       type: string
       minLength: 1
       maxLength: 128
+      pattern: ^[ -~]+$
   requestBody:
     required: true
     content:
@@ -161,9 +172,9 @@ post:
     '400':
       $ref: ../../../../components/responses/internal/invalid_request.yaml
     '401':
-      $ref: ../../../../components/responses/internal/invalid_credential.yaml
+      $ref: ../../../../components/responses/internal/unauthorized.yaml
     '403':
-      $ref: ../../../../components/responses/internal/organization_boundary_violation.yaml
+      $ref: ../../../../components/responses/internal/forbidden.yaml
     '404':
       $ref: ../../../../components/responses/internal/resource_not_found.yaml
     '409':

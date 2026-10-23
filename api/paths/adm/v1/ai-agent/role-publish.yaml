@@ -1,0 +1,61 @@
+post:
+  security:
+  - adminSessionId: []
+    adminSessionSignature: []
+  tags:
+  - admin
+  summary: 发布AI角色草稿 / Publish AI role draft
+  description: 需 users:update。发布人来自管理员会话；成功payload为空数组。 / Publish AI role draft
+  operationId: admAiAgentRolePublishPost
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            role_code:
+              type: string
+            version:
+              type: integer
+              minimum: 1
+          required:
+          - role_code
+          - version
+      application/x-www-form-urlencoded:
+        schema:
+          type: object
+          properties:
+            role_code:
+              type: string
+            version:
+              type: integer
+              minimum: 1
+          required:
+          - role_code
+          - version
+  responses:
+    '200':
+      description: 成功或业务错误；检查 code / Inspect business code
+      content:
+        application/json:
+          schema:
+            anyOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
+              - type: object
+                properties:
+                  payload:
+                    type: array
+                    maxItems: 0
+              - type: object
+                properties:
+                  code:
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+    '401':
+      description: Cookie 缺失、无效、到期或已撤销 / Invalid session cookies
+      content:
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/Envelope.yaml

@@ -1,0 +1,86 @@
+type: object
+description: canonical 消息行视图。消息详情及发送接受结果保留密文列，不承诺返回明文 body；ID 为十进制字符串。
+properties:
+  id:
+    type: string
+    pattern: ^[0-9]+$
+    description: 完整十进制实体 ID。
+  organization_id:
+    type: string
+    pattern: ^[0-9]+$
+    description: 完整十进制实体 ID。
+  workspace_id:
+    type: string
+    pattern: ^[0-9]+$
+    description: 完整十进制实体 ID。
+  conversation_id:
+    type: string
+    pattern: ^[0-9]+$
+    description: 完整十进制实体 ID。
+  sender_contact_id:
+    type:
+    - string
+    - 'null'
+    pattern: ^[0-9]+$
+    description: 完整十进制实体 ID。
+  sender_business_identity_id:
+    type:
+    - string
+    - 'null'
+    pattern: ^[0-9]+$
+    description: 完整十进制实体 ID。
+  actor_user_id:
+    type:
+    - string
+    - 'null'
+    pattern: ^[0-9]+$
+    description: 完整十进制实体 ID。
+  policy_id:
+    type:
+    - string
+    - 'null'
+    pattern: ^[0-9]+$
+    description: 完整十进制实体 ID。
+  sender_type:
+    type: string
+    enum:
+    - contact
+    - business_identity
+  client_msg_id:
+    type: string
+  body_cipher:
+    type:
+    - string
+    - 'null'
+  key_version:
+    type:
+    - integer
+    - 'null'
+  aad_hash:
+    type:
+    - string
+    - 'null'
+  content_hash:
+    type:
+    - string
+    - 'null'
+  policy_version:
+    type:
+    - integer
+    - 'null'
+  retention_days:
+    type:
+    - integer
+    - 'null'
+  retain_until:
+    type:
+    - integer
+    - 'null'
+    description: Unix 秒；不经通用毫秒转换。
+  visibility:
+    type: string
+  version:
+    type: integer
+  created_at:
+    type: integer
+    description: Unix 秒；不经通用毫秒转换。

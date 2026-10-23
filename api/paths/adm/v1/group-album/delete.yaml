@@ -1,5 +1,8 @@
 # POST /api/adm/group/album/delete — admin
 post:
+  security:
+    - adminSessionId: []
+      adminSessionSignature: []
   tags: [admin]
   summary: 管理后台删除群相册
   description: 管理员删除指定群相册（软删除）。Delete a group album by admin (soft delete).

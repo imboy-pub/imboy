@@ -1,0 +1,48 @@
+type: object
+properties:
+  id:
+    type:
+    - string
+    - 'null'
+    pattern: ^[0-9]+$
+  case_id:
+    type:
+    - string
+    - 'null'
+    pattern: ^[0-9]+$
+  business_identity_id:
+    type:
+    - string
+    - 'null'
+    pattern: ^[0-9]+$
+  from_user_id:
+    type:
+    - string
+    - 'null'
+    pattern: ^[0-9]+$
+  to_user_id:
+    type:
+    - string
+    - 'null'
+    pattern: ^[0-9]+$
+  function_key:
+    type:
+    - string
+    - 'null'
+  status:
+    type:
+    - string
+    - 'null'
+  attempt:
+    type:
+    - integer
+    - 'null'
+  failure_reason:
+    type:
+    - string
+    - 'null'
+  idempotency_key:
+    type:
+    - string
+    - 'null'
+description: 企业业务公开视图；实体ID由eb_enterprise_http:encode_entity转字符串。时间保持success_rfc3339输入，不套用通用毫秒转换。

@@ -1,0 +1,41 @@
+type: object
+properties:
+  contexts:
+    type: array
+    items:
+      type: object
+      properties:
+        organization_id:
+          type: string
+          pattern: ^[0-9]+$
+          description: 无损十进制 TSID 字符串。
+        organization_name:
+          type: string
+        workspaces:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+                pattern: ^[0-9]+$
+                description: 无损十进制 TSID 字符串。
+              name:
+                type: string
+        business_identity_id:
+          type: string
+          pattern: ^[0-9]+$
+          description: 无损十进制 TSID 字符串。
+        seat_enabled:
+          type: boolean
+        capabilities:
+          type: array
+          items:
+            type: string
+  user_id:
+    type: string
+    pattern: ^[0-9]+$
+    description: 无损十进制 TSID 字符串。
+required:
+- contexts
+- user_id

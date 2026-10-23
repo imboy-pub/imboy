@@ -1,0 +1,278 @@
+$defs:
+  Config:
+    type: object
+    properties:
+      id:
+        type: string
+        description: 完整十进制实体 ID；响应以字符串传输。
+        pattern: ^[0-9]+$
+      name:
+        type: string
+        default: 智能客服
+      provider:
+        type: string
+        default: bigmodel
+      model:
+        type: string
+      system_prompt:
+        type: string
+      greeting:
+        type: string
+      auto_reply_mode:
+        type: string
+        enum:
+        - disabled
+        - observe
+        - canary
+        - enabled
+        default: disabled
+      config_version:
+        type: integer
+        default: 1
+      seat_identity_id:
+        type:
+        - string
+        - 'null'
+        pattern: ^[0-9]+$
+        description: 完整十进制实体 ID；响应以字符串传输。
+      max_unresolved_turns:
+        type: integer
+        minimum: 0
+        default: 2
+      faq_require_hit:
+        type: boolean
+        default: true
+      max_inflight:
+        type: integer
+        default: 1
+      job_timeout_ms:
+        type: integer
+        default: 120000
+      max_job_age_ms:
+        type: integer
+        default: 300000
+      version:
+        type: integer
+      created_at:
+        type:
+        - integer
+        - 'null'
+        description: Unix 秒 / Unix seconds
+      updated_at:
+        type:
+        - integer
+        - 'null'
+        description: Unix 秒 / Unix seconds
+      configured:
+        type: boolean
+  FAQ:
+    type: object
+    properties:
+      id:
+        type: string
+        description: 完整十进制实体 ID；响应以字符串传输。
+        pattern: ^[0-9]+$
+      question:
+        type: string
+      answer:
+        type: string
+      intent:
+        type: string
+        enum:
+        - refund
+        - order
+        - tech
+        - other
+      category:
+        type: string
+      keywords:
+        type: array
+        items:
+          type: string
+        description: 关键词数组 / Keywords
+      enabled:
+        type: boolean
+      hit_count:
+        type: integer
+        minimum: 0
+      version:
+        type: integer
+      created_at:
+        type:
+        - integer
+        - 'null'
+        description: Unix 秒 / Unix seconds
+      updated_at:
+        type:
+        - integer
+        - 'null'
+        description: Unix 秒 / Unix seconds
+      embedded:
+        type: boolean
+  Session:
+    type: object
+    properties:
+      id:
+        type: string
+        description: 完整十进制实体 ID；响应以字符串传输。
+        pattern: ^[0-9]+$
+      workspace_id:
+        type: string
+        description: 完整十进制实体 ID；响应以字符串传输。
+        pattern: ^[0-9]+$
+      contact_id:
+        type: string
+        description: 完整十进制实体 ID；响应以字符串传输。
+        pattern: ^[0-9]+$
+      status:
+        type: string
+      rating:
+        type:
+        - integer
+        - 'null'
+      queued_at:
+        type:
+        - integer
+        - 'null'
+        description: Unix 秒 / Unix seconds
+      claimed_at:
+        type:
+        - integer
+        - 'null'
+        description: Unix 秒 / Unix seconds
+      closed_at:
+        type:
+        - integer
+        - 'null'
+        description: Unix 秒 / Unix seconds
+      current_intent:
+        type: string
+      intent_confidence:
+        type: number
+      ai_turns:
+        type: integer
+        minimum: 0
+      unresolved_turns:
+        type: integer
+        minimum: 0
+      handoff:
+        type: boolean
+      handoff_reason:
+        type: string
+      turn_count:
+        type: integer
+        minimum: 0
+  Turn:
+    type: object
+    properties:
+      seq:
+        type: integer
+      direction:
+        type: string
+      intent:
+        type: string
+      model_reported_confidence:
+        type: number
+      action:
+        type: string
+      faq_ids:
+        type: array
+        items:
+          type: string
+          pattern: ^[0-9]+$
+        description: FAQ引用ID数组 / Referenced FAQ IDs
+      reply_text:
+        type: string
+      model:
+        type: string
+      latency_ms:
+        type: integer
+        minimum: 0
+      detail:
+        type: object
+      created_at:
+        type:
+        - integer
+        - 'null'
+        description: Unix 秒 / Unix seconds
+  Stats:
+    type: object
+    properties:
+      sessions:
+        type: integer
+        minimum: 0
+      rated:
+        type: integer
+        minimum: 0
+      avg_rating:
+        type: number
+      rating_5:
+        type: integer
+        minimum: 0
+      rating_4:
+        type: integer
+        minimum: 0
+      rating_3:
+        type: integer
+        minimum: 0
+      rating_2:
+        type: integer
+        minimum: 0
+      rating_1:
+        type: integer
+        minimum: 0
+      closed:
+        type: integer
+        minimum: 0
+      intents:
+        type: array
+        items:
+          type: object
+          properties:
+            intent:
+              type: string
+            n:
+              type: integer
+              minimum: 0
+            handoff_n:
+              type: integer
+              minimum: 0
+      actions:
+        type: array
+        items:
+          type: object
+          properties:
+            action:
+              type: string
+            n:
+              type: integer
+              minimum: 0
+      turns:
+        type: object
+        properties:
+          turns:
+            type: integer
+            minimum: 0
+          handoff_turns:
+            type: integer
+            minimum: 0
+          avg_latency_ms:
+            type: number
+      satisfaction_rate:
+        type:
+        - number
+        - 'null'
+        description: 已评分会话4-5星占比；无样本为null / Null when no rated sessions
+  Preview:
+    type: object
+    properties:
+      action:
+        type: string
+        enum:
+        - auto_reply
+        - handoff
+        - no_match
+      reason:
+        type: string
+      intent:
+        type: string

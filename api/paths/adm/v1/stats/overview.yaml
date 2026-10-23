@@ -1,20 +1,27 @@
-# GET /api/adm/stats/overview — admin
 get:
-  tags: [admin]
+  security:
+  - adminSessionId: []
+    adminSessionSignature: []
+  tags:
+  - admin
   summary: admin adm-stats - overview
-  description: |
-    ## 中文 / English
-    管理后台 adm-stats handler 的 `overview` 动作；路径 `/adm/stats/overview`。
-    Admin handler `adm-stats`, action `overview`. Path `/adm/stats/overview`.
+  description: '## 中文 / English
+
+    管理后台 adm-stats handler 的 `overview` 动作；路径 `/api/adm/stats/overview`。
+
+    Admin handler `adm-stats`, action `overview`. Path `/api/adm/stats/overview`.
+
+    '
   operationId: adm_stats_overview
   responses:
     '200':
-      description: 成功
+      description: 成功；非零 code 为业务错误 / Non-zero code is a business error
       content:
         application/json:
           schema:
-            allOf:
-              - $ref: '../../../../components/schemas/Envelope.yaml'
+            anyOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
               - type: object
                 properties:
                   payload:
@@ -47,7 +54,14 @@ get:
                       today_c2g:
                         type: integer
                         description: 今日 C2G 消息数
-    '4XX':
+              - type: object
+                properties:
+                  code:
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+    4XX:
       description: 无权限 / 参数非法
       content:
-        application/json: { schema: { $ref: '../../../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/Envelope.yaml

@@ -1,0 +1,84 @@
+get:
+  tags:
+  - user
+  summary: 附件直传会话 status
+  operationId: attachmentDirectStatus
+  description: direct-v1 会话：register→declare→grant→存储 PUT→finalize；处理中也返回 HTTP 200，通过 state/outcome 和 retry_action
+    决定重试。跨主体会话返回不可见，不泄露归属。失败 retry_action 位于错误信封 meta（retry_session/new_session/retry_attempt/poll/abort）。 / HTTP
+    200 state machine; follow retry_action, not HTTP 202.
+  parameters:
+  - name: object_key
+    in: query
+    required: true
+    schema:
+      type: string
+      minLength: 1
+    description: object_key
+  responses:
+    '200':
+      description: 成功 code=0 返回以下业务载荷；业务失败 code 非零返回通用错误信封。 / Success payload or nonzero-code business error.
+      content:
+        application/json:
+          schema:
+            oneOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      object_key:
+                        type: string
+                        minLength: 1
+                      state:
+                        type:
+                        - string
+                        - 'null'
+                      session_state:
+                        type: string
+                      expected:
+                        type:
+                        - object
+                        - string
+                        - 'null'
+                        properties:
+                          sha256:
+                            type: string
+                          size_bytes:
+                            type: string
+                            pattern: ^(0|[1-9][0-9]*)$
+                            description: 冻结声明将大小存为十进制字符串。 / Frozen decimal size string.
+                          mime:
+                            type: string
+                        description: 冻结声明；当前 JSONB 可能为 JSON 字符串，未声明时 to_js 输出字符串 null。 / Frozen declaration; JSONB
+                          string or string null before declaration.
+                      attempts:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            attempt_id:
+                              type: integer
+                              minimum: 1
+                            state:
+                              type: string
+                          required:
+                          - attempt_id
+                          - state
+                    required:
+                    - object_key
+                    - state
+                    - session_state
+                    - expected
+                    - attempts
+              - type: object
+                required:
+                - code
+                properties:
+                  code:
+                    type: integer
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+    '401':
+      description: 访问 JWT 或客户端认证失败 / Authentication rejected

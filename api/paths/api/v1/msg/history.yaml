@@ -1,57 +1,95 @@
-# ----------------------------------------------------------------------------
-# imboy/api/paths/api/v1/msg/history.yaml
-# GET /api/msg/history — 按 conv_seq 游标拉取历史消息 / Fetch history by cursor
-#
-# 关联：.claude/plans/quality-loop.md v1.3 T3.2 (split phase 4 / B)
-# 调用方：api/openapi-api.yaml#/paths/~1msg~1history
-# Handler：src/api/msg_handler.erl#history/1
-# 修订：参数与代码对齐（chat_type/peer_id/after_seq/limit）
-# ----------------------------------------------------------------------------
 get:
-  tags: [msg]
-  summary: 按 conv_seq 游标拉取历史消息
-  description: |
-    IMBoy 消息永久存储使用 `conv_seq` 游标（per-conversation 单调递增）保证严格顺序。
-    客户端持久化 `last_conv_seq`，每次请求传入以拉取增量。
+  tags:
+  - msg
+  summary: 按会话序号读取永久历史
   operationId: getMsgHistory
+  description: 需部署启用历史存储且数据库归档表可用。C2G 校验当前成员历史代次并将游标钳制到授权下界；conv_seq 是增量顺序依据，不能根据 msg_id 推断历史顺序。did 仅用于 per-device
+    密文过滤；省略保持兼容行为。next_seq 按扫描行推进，可能出现 messages=[] 但游标前进；继续按 next_seq/has_more 拉取。业务错误使用 HTTP200 非零 code。 / Archive
+    page with authoritative sequence cursor and optional device fan-out filtering.
   parameters:
-    - in: query
-      name: chat_type
-      required: true
-      schema: { type: string, enum: [c2c, c2g] }
-      description: 会话类型 / Conversation type
-    - in: query
-      name: peer_id
-      required: true
-      schema: { type: string }
-      description: 对端 ID（C2C 为对方 uid，C2G 为 group_id）/ Peer ID
-    - in: query
-      name: after_seq
-      required: false
-      schema: { type: integer, minimum: 0 }
-      description: "游标：从该 conv_seq 之后拉取 / Cursor: fetch after this seq"
-    - in: query
-      name: limit
-      required: false
-      schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
-      description: 单次拉取条数 / Batch size
+  - in: query
+    name: chat_type
+    required: true
+    schema:
+      type: string
+      enum:
+      - c2c
+      - c2g
+    description: 会话类别 / Conversation kind
+  - in: query
+    name: peer_id
+    required: true
+    schema:
+      type: string
+      minLength: 1
+    description: 目标用户 UID（C2C）或群 ID（C2G）；仅接受正十进制整数，最大 9223372036854775807。兼容 +9/0009；小数、垃圾值和越界值返回业务 400，不访问归档或群授权。
+      / Positive int64 decimal, including compatible +9/0009 forms.
+  - in: query
+    name: after_seq
+    required: false
+    schema:
+      type: integer
+      format: int64
+      minimum: 0
+      default: 0
+    description: 排他 conv_seq 下界，首次为 0。 / Exclusive sequence lower bound.
+  - in: query
+    name: limit
+    required: false
+    schema:
+      type: integer
+      minimum: 1
+      maximum: 100
+      default: 50
+    description: 服务端将传入值夹紧为 1..100（0/负数归为 1，超过 100 归为 100）；设备过滤后实际返回数可能更少。 / Clamped to 1..100 before device filtering.
+  - in: query
+    name: did
+    required: false
+    schema:
+      type: string
+    description: 用于 per-device 接收信封过滤的设备 ID；不替代 JWT 身份。 / Optional device fan-out filter, not authorization.
   responses:
     '200':
-      description: 增量消息数组
+      description: 成功返回历史分页对象，或非零 code 业务错误；不是消息数组。 / History page or business error.
       content:
         application/json:
           schema:
-            allOf:
-              - $ref: '../../../../components/schemas/Envelope.yaml'
+            oneOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
               - type: object
                 properties:
+                  code:
+                    type: integer
+                    const: 0
                   payload:
-                    type: array
-                    items:
-                      $ref: '../../../../components/schemas/Message.yaml'
-    '4XX':
-      description: 未鉴权（401）、参数非法或调用方无权访问该会话（403）
+                    type: object
+                    properties:
+                      messages:
+                        type: array
+                        items:
+                          $ref: ../../../../components/schemas/client/ArchivedMessage.yaml
+                      next_seq:
+                        type: integer
+                        format: int64
+                        minimum: 0
+                      has_more:
+                        type: boolean
+                      conv_key:
+                        type: string
+                        description: c2c:{较小uid}:{较大uid} 或 c2g:{group_id}。 / Canonical conversation key.
+                    required:
+                    - messages
+                    - next_seq
+                    - has_more
+                    - conv_key
+                required:
+                - code
+                - payload
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+    '401':
+      description: JWT、设备会话或客户端认证失败。 / Authentication rejected.
       content:
         application/json:
           schema:
-            $ref: '../../../../components/schemas/Envelope.yaml'
+            $ref: ../../../../components/schemas/Envelope.yaml

@@ -25,11 +25,13 @@ info:
 
     **响应模型**：除 OA login tickets 使用 `{code,msg,sv_ts,payload}` 成功信封外，
     成功响应为**裸 payload**（无 `{code,msg,payload}` 业务信封）；
-    错误响应统一 `{"error":{"code","message"}}`，15 个稳定错误码见
-    `components/responses/internal/`（README §7 冻结表）。
+    错误响应统一 `{"error":{"code","message"}}`，通用 15 个稳定错误码见
+    `components/responses/internal/`（README §7）；端点可声明兼容错误例外，如 INT-23 的 cursor_required_v1。
 
     **限流与幂等**：三只独立桶 internal_read / internal_write / internal_sso；
-    除 OA login tickets 为 not_required 外，写动作必须携带 `Idempotency-Key` 头（同 key 重放返回首次结果）。
+    端点标记 required 的动作须携带 `Idempotency-Key`（1..128 可打印 ASCII）。
+    幂等窗口默认 24 小时、可配置；相同 org/app/key、方法、路径与规范化正文重放首次结果。
+    读取型 POST 为 not_required；OA SSO 为 single_use_code；OA login tickets 为 not_required。
 
     **路由冻结**：method+path 不在冻结表内一律 resource_not_found（fail-closed）。
     人类文档：[internal/v1/README.md](./internal/v1/README.md)（本 API 整个
@@ -138,7 +140,7 @@ components:
       type: apiKey
       in: header
       name: X-Imboy-Credential
-      description: 服务端签发的 ib_int_ 定位符；不发送 secret。
+      description: 服务端签发的 ib_int_ 加 1..24 位十进制数字定位符；不发送 secret，也不使用 Authorization 头。
     ibIntHmacTimestamp:
       type: apiKey
       in: header
@@ -148,7 +150,7 @@ components:
       type: apiKey
       in: header
       name: X-Imboy-Nonce
-      description: 每请求随机单次 nonce，16..128 字符。
+      description: 每请求随机单次 nonce，16..128 字符，仅 A-Z、a-z、0-9、下划线和短横线。
     ibIntHmacSignature:
       type: apiKey
       in: header

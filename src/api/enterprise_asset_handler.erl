@@ -139,7 +139,7 @@ with_idempotency(Req0, Ctx, ResourceType, IdemKey, Digest, LogicFun, PostCommitF
                 {ok, inserted} ->
                     case LogicFun(Conn) of
                         {ok, Result} ->
-                            Body = jsone:encode(Result),
+                            Body = jsone:encode(public_result(Result)),
                             ok = enterprise_internal_idempotency:must_complete_tx(
                                 Conn,
                                 Ctx,
@@ -194,6 +194,31 @@ post_commit_reply(Req0, PostCommitFun, Body, Kind) ->
             _ -> <<"{}">>
         end,
     PostCommitFun(Req0, BodyBin, Kind).
+
+%% 在幂等缓存写入前规范化治理时间，重放正文与首次响应逐字一致。
+%% PostgreSQL datetime tuple 不属于 JSON；空治理时间使用 JSON null。
+public_result(Result) ->
+    maps:map(
+        fun(Key, Value) ->
+            case
+                lists:member(Key, [<<"purged_at">>, <<"extended_until">>, <<"retention_until">>])
+            of
+                true -> public_time(Value);
+                false -> Value
+            end
+        end,
+        Result
+    ).
+
+public_time(undefined) ->
+    null;
+public_time(null) ->
+    null;
+public_time({{_, _, _}, {_, _, _}} = Value) ->
+    Milliseconds = elib_dt:rfc3339_to(Value),
+    true = is_integer(Milliseconds),
+    elib_dt:to_rfc3339(Milliseconds, millisecond, "Z");
+public_time(Value) when is_binary(Value) -> Value.
 
 %% 签名后响应统一出口：重放携带幂等重放头；V5 会话/续签视图一律 no-store。
 presign_signed_reply(Req0, Status, Body, Kind, NoStore) ->

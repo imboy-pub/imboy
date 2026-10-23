@@ -1,23 +1,30 @@
-# GET /api/adm/user/report/list — admin
 get:
-  tags: [admin]
+  security:
+  - adminSessionId: []
+    adminSessionSignature: []
+  tags:
+  - admin
   summary: admin adm-report - user_list
-  description: |
-    ## 中文 / English
-    管理后台 adm-report handler 的 `user_list` 动作；路径 `/adm/user/report/list`。
-    Admin handler `adm-report`, action `user_list`. Path `/adm/user/report/list`.
+  description: '## 中文 / English
+
+    管理后台 adm-report handler 的 `user_list` 动作；路径 `/api/adm/user/report/list`。
+
+    Admin handler `adm-report`, action `user_list`. Path `/api/adm/user/report/list`.
+
+    '
   operationId: adm_report_user_list
   parameters:
-    - $ref: '../../../../components/parameters/PaginationPage.yaml'
-    - $ref: '../../../../components/parameters/PaginationSize.yaml'
+  - $ref: ../../../../components/parameters/PaginationPage.yaml
+  - $ref: ../../../../components/parameters/PaginationSize.yaml
   responses:
     '200':
-      description: 成功
+      description: 成功；非零 code 为业务错误 / Non-zero code is a business error
       content:
         application/json:
           schema:
-            allOf:
-              - $ref: '../../../../components/schemas/Envelope.yaml'
+            anyOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
               - type: object
                 properties:
                   payload:
@@ -29,21 +36,47 @@ get:
                         items:
                           type: object
                           properties:
-                            id: { type: integer, format: int64 }
-                            target_type: { type: string, description: '固定为 user / Always "user"' }
-                            target_id: { type: integer, format: int64 }
-                            reporter_uid: { type: integer, format: int64 }
-                            reason: { type: string }
-                            description: { type: string }
-                            status: { type: integer }
-                            handled_by: { type: integer, format: int64 }
-                            handled_at: { type: string }
-                            created_at: { type: string }
-                            updated_at: { type: string }
-                      total: { type: integer }
-                      page: { type: integer }
-                      size: { type: integer }
-    '4XX':
+                            id:
+                              type: integer
+                              format: int64
+                            target_type:
+                              type: string
+                              description: 固定为 user / Always "user"
+                            target_id:
+                              type: integer
+                              format: int64
+                            reporter_uid:
+                              type: integer
+                              format: int64
+                            reason:
+                              type: string
+                            description:
+                              type: string
+                            status:
+                              type: integer
+                            handled_by:
+                              type: integer
+                              format: int64
+                            handled_at:
+                              type: string
+                            created_at:
+                              type: string
+                            updated_at:
+                              type: string
+                      total:
+                        type: integer
+                      page:
+                        type: integer
+                      size:
+                        type: integer
+              - type: object
+                properties:
+                  code:
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+    4XX:
       description: 无权限 / 参数非法
       content:
-        application/json: { schema: { $ref: '../../../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/Envelope.yaml

@@ -1,5 +1,5 @@
 # Internal API v1 错误信封（15 稳定错误码，README §7 冻结）。
-# 成功响应为裸 payload（无 {code,msg,payload} 信封）；错误响应统一本形态。
+# 成功通常为裸 payload，OA login tickets 使用业务信封；本组件仅定义通用错误。
 type: object
 required: [error]
 properties:

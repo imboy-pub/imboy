@@ -4,6 +4,11 @@ put:
   summary: 绑定外部身份（OA 用户 → 平台用户）
   description: '绑定本组织有效 Human 成员的外部标识。首次执行返回 external_user_id、user_id、status=active；幂等重放保留首次响应原字节，用
     Idempotent-Replayed: true 响应头标识，不添加 replayed 正文字段。重放是历史提交快照；查询当前映射应调用 resolve。'
+  security:
+    - ibIntHmacCredential: []
+      ibIntHmacTimestamp: []
+      ibIntHmacNonce: []
+      ibIntHmacSignature: []
   operationId: internalIdentityBind
   parameters:
   - name: Idempotency-Key
@@ -14,6 +19,7 @@ put:
       type: string
       minLength: 1
       maxLength: 128
+      pattern: ^[ -~]+$
   x-imboy-authentication: hmac
   x-imboy-rate-bucket: internal_write
   x-imboy-idempotency: required
@@ -70,9 +76,9 @@ put:
     '400':
       $ref: ../../../../components/responses/internal/invalid_request.yaml
     '401':
-      $ref: ../../../../components/responses/internal/invalid_credential.yaml
+      $ref: ../../../../components/responses/internal/unauthorized.yaml
     '403':
-      $ref: ../../../../components/responses/internal/organization_boundary_violation.yaml
+      $ref: ../../../../components/responses/internal/forbidden.yaml
     '409':
       $ref: ../../../../components/responses/internal/idempotency_conflict.yaml
     '422':
@@ -81,6 +87,7 @@ put:
       $ref: ../../../../components/responses/internal/rate_limited.yaml
     '500':
       $ref: ../../../../components/responses/internal/internal_error.yaml
+    '503': { $ref: '../../../../components/responses/internal/security_gate_closed.yaml' }
 delete:
   tags:
   - internal
@@ -93,6 +100,11 @@ delete:
     true}`）。
 
     '
+  security:
+    - ibIntHmacCredential: []
+      ibIntHmacTimestamp: []
+      ibIntHmacNonce: []
+      ibIntHmacSignature: []
   operationId: internalIdentityRevoke
   parameters:
   - name: Idempotency-Key
@@ -103,6 +115,7 @@ delete:
       type: string
       minLength: 1
       maxLength: 128
+      pattern: ^[ -~]+$
   x-imboy-authentication: hmac
   x-imboy-rate-bucket: internal_write
   x-imboy-idempotency: required
@@ -151,9 +164,9 @@ delete:
     '400':
       $ref: ../../../../components/responses/internal/invalid_request.yaml
     '401':
-      $ref: ../../../../components/responses/internal/invalid_credential.yaml
+      $ref: ../../../../components/responses/internal/unauthorized.yaml
     '403':
-      $ref: ../../../../components/responses/internal/organization_boundary_violation.yaml
+      $ref: ../../../../components/responses/internal/forbidden.yaml
     '404':
       $ref: ../../../../components/responses/internal/resource_not_found.yaml
     '409':
@@ -162,3 +175,4 @@ delete:
       $ref: ../../../../components/responses/internal/rate_limited.yaml
     '500':
       $ref: ../../../../components/responses/internal/internal_error.yaml
+    '503': { $ref: '../../../../components/responses/internal/security_gate_closed.yaml' }

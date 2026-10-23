@@ -3,6 +3,11 @@ get:
   - internal
   summary: Workspace 详情
   description: 读取当前组织内的活跃工作空间。跨组织、不存在和已归档资源均返回 resource_not_found。
+  security:
+    - ibIntHmacCredential: []
+      ibIntHmacTimestamp: []
+      ibIntHmacNonce: []
+      ibIntHmacSignature: []
   operationId: internalWorkspaceDetail
   parameters:
   - name: workspace_id
@@ -12,6 +17,8 @@ get:
     schema:
       type: integer
       format: int64
+      minimum: 1
+      maximum: 9223372036854775807
   x-imboy-authentication: hmac
   x-imboy-rate-bucket: internal_read
   x-imboy-idempotency: not_required
@@ -49,19 +56,25 @@ get:
     '400':
       $ref: ../../../../components/responses/internal/invalid_request.yaml
     '401':
-      $ref: ../../../../components/responses/internal/invalid_credential.yaml
+      $ref: ../../../../components/responses/internal/unauthorized.yaml
     '403':
-      $ref: ../../../../components/responses/internal/organization_boundary_violation.yaml
+      $ref: ../../../../components/responses/internal/forbidden.yaml
     '404':
       $ref: ../../../../components/responses/internal/resource_not_found.yaml
     '429':
       $ref: ../../../../components/responses/internal/rate_limited.yaml
     '500':
       $ref: ../../../../components/responses/internal/internal_error.yaml
+    '503': { $ref: '../../../../components/responses/internal/security_gate_closed.yaml' }
 patch:
   tags:
   - internal
   summary: 修改企业工作空间
+  security:
+    - ibIntHmacCredential: []
+      ibIntHmacTimestamp: []
+      ibIntHmacNonce: []
+      ibIntHmacSignature: []
   operationId: internalWorkspaceUpdate
   x-imboy-authentication: hmac
   x-imboy-rate-bucket: internal_write
@@ -109,9 +122,9 @@ patch:
     '400':
       $ref: ../../../../components/responses/internal/invalid_request.yaml
     '401':
-      $ref: ../../../../components/responses/internal/invalid_credential.yaml
+      $ref: ../../../../components/responses/internal/unauthorized.yaml
     '403':
-      $ref: ../../../../components/responses/internal/organization_boundary_violation.yaml
+      $ref: ../../../../components/responses/internal/forbidden.yaml
     '404':
       $ref: ../../../../components/responses/internal/resource_not_found.yaml
     '429':
@@ -162,6 +175,11 @@ delete:
   tags:
   - internal
   summary: 归档企业工作空间
+  security:
+    - ibIntHmacCredential: []
+      ibIntHmacTimestamp: []
+      ibIntHmacNonce: []
+      ibIntHmacSignature: []
   operationId: internalWorkspaceArchive
   x-imboy-authentication: hmac
   x-imboy-rate-bucket: internal_write
@@ -209,9 +227,9 @@ delete:
     '400':
       $ref: ../../../../components/responses/internal/invalid_request.yaml
     '401':
-      $ref: ../../../../components/responses/internal/invalid_credential.yaml
+      $ref: ../../../../components/responses/internal/unauthorized.yaml
     '403':
-      $ref: ../../../../components/responses/internal/organization_boundary_violation.yaml
+      $ref: ../../../../components/responses/internal/forbidden.yaml
     '404':
       $ref: ../../../../components/responses/internal/resource_not_found.yaml
     '429':

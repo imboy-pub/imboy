@@ -1,0 +1,70 @@
+type: object
+properties:
+  id:
+    type:
+    - string
+    - 'null'
+    pattern: ^[0-9]+$
+  case_id:
+    type:
+    - string
+    - 'null'
+    pattern: ^[0-9]+$
+  organization_id:
+    type:
+    - string
+    - 'null'
+    pattern: ^[0-9]+$
+  leaver_user_id:
+    type:
+    - string
+    - 'null'
+    pattern: ^[0-9]+$
+  successor_user_id:
+    type:
+    - string
+    - 'null'
+    pattern: ^[0-9]+$
+  created_by_user_id:
+    type:
+    - string
+    - 'null'
+    pattern: ^[0-9]+$
+  audit_id:
+    type:
+    - string
+    - 'null'
+    pattern: ^[0-9]+$
+  status:
+    type:
+    - string
+    - 'null'
+  version:
+    type:
+    - integer
+    - 'null'
+  item_total:
+    type: integer
+  item_success:
+    type: integer
+  item_failed:
+    type: integer
+  items_total:
+    type: integer
+  items:
+    type: array
+    items:
+      $ref: OffboardingItem.yaml
+  reason:
+    type:
+    - string
+    - 'null'
+  member_removed:
+    type: boolean
+  db_guard_rechecked:
+    type: boolean
+  idempotent:
+    type: boolean
+  snapshot_hash:
+    type: string
+description: 企业业务公开视图；实体ID由eb_enterprise_http:encode_entity转字符串。时间保持success_rfc3339输入，不套用通用毫秒转换。

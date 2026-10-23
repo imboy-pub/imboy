@@ -1,28 +1,36 @@
-# GET /api/adm/channel/{channel_id}/subscribers — admin
 get:
-  tags: [admin]
+  security:
+  - adminSessionId: []
+    adminSessionSignature: []
+  tags:
+  - admin
   summary: admin adm-channel - subscribers
-  description: |
-    ## 中文 / English
-    管理后台 adm-channel handler 的 `subscribers` 动作；路径 `/adm/channel/{channel_id}/subscribers`。
-    Admin handler `adm-channel`, action `subscribers`. Path `/adm/channel/{channel_id}/subscribers`.
+  description: '## 中文 / English
+
+    管理后台 adm-channel handler 的 `subscribers` 动作；路径 `/api/adm/channel/{channel_id}/subscribers`。
+
+    Admin handler `adm-channel`, action `subscribers`. Path `/api/adm/channel/{channel_id}/subscribers`.
+
+    '
   operationId: adm_channel_subscribers
   parameters:
-    - in: path
-      name: channel_id
-      required: true
-      description: 频道 ID / Channel ID
-      schema: { type: string }
-    - $ref: '../../../../components/parameters/PaginationPage.yaml'
-    - $ref: '../../../../components/parameters/PaginationSize.yaml'
+  - in: path
+    name: channel_id
+    required: true
+    description: 频道 ID / Channel ID
+    schema:
+      type: string
+  - $ref: ../../../../components/parameters/PaginationPage.yaml
+  - $ref: ../../../../components/parameters/PaginationSize.yaml
   responses:
     '200':
-      description: 成功
+      description: 成功；非零 code 为业务错误 / Non-zero code is a business error
       content:
         application/json:
           schema:
-            allOf:
-              - $ref: '../../../../components/schemas/Envelope.yaml'
+            anyOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
               - type: object
                 properties:
                   payload:
@@ -62,18 +70,31 @@ get:
                               type: object
                               description: 用户基础信息（富化）/ User basic info (enriched)
                               properties:
-                                id: { type: integer, format: int64 }
-                                account: { type: string }
-                                nickname: { type: string }
-                                avatar: { type: string }
-                                status: { type: integer }
+                                id:
+                                  type: integer
+                                  format: int64
+                                account:
+                                  type: string
+                                nickname:
+                                  type: string
+                                avatar:
+                                  type: string
+                                status:
+                                  type: integer
                       total:
                         type: integer
                       page:
                         type: integer
                       size:
                         type: integer
-    '4XX':
+              - type: object
+                properties:
+                  code:
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+    4XX:
       description: 无权限 / 参数非法
       content:
-        application/json: { schema: { $ref: '../../../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/Envelope.yaml

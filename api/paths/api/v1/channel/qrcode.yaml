@@ -1,0 +1,68 @@
+get:
+  tags:
+  - channel
+  summary: 解析频道二维码名片
+  operationId: channelQrcode
+  description: 只读取频道名片，不自动订阅。无登录身份或签名不合法时 302 跳转部署配置 redirect_url；过期返回业务错误信封。 / Resolves a card without subscribing.
+  parameters:
+  - name: id
+    in: query
+    required: true
+    schema:
+      type: integer
+      format: int64
+      minimum: 1
+    description: id
+  - name: exp
+    in: query
+    required: true
+    schema:
+      type: integer
+      format: int64
+    description: 毫秒过期时间 / Expiry in milliseconds
+  - name: tk
+    in: query
+    required: true
+    schema:
+      type: string
+    description: 二维码签名 / QR signature
+  responses:
+    '200':
+      description: 成功 code=0 返回以下业务载荷；业务失败 code 非零返回通用错误信封。 / Success payload or nonzero-code business error.
+      content:
+        application/json:
+          schema:
+            oneOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      type:
+                        type: string
+                        const: channel
+                      id:
+                        type: integer
+                        format: int64
+                        minimum: 1
+                      name:
+                        type: string
+              - type: object
+                required:
+                - code
+                properties:
+                  code:
+                    type: integer
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+    '302':
+      description: 跳转配置的 redirect_url
+      headers:
+        Location:
+          schema:
+            type: string
+          description: 部署配置的跳转地址
+    '401':
+      description: 访问 JWT、设备绑定或客户端签名认证失败 / JWT, device binding or client signature rejected

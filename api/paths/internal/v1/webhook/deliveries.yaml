@@ -23,6 +23,11 @@ get:
     **旧 offset 参数 page/size 任一出现即 400 cursor_required_v1**
     （versioned 迁移错误，DEC-INT23-COMPAT；不存在「带着 page 用游标」的
     过渡形态）。
+  security:
+    - ibIntHmacCredential: []
+      ibIntHmacTimestamp: []
+      ibIntHmacNonce: []
+      ibIntHmacSignature: []
   operationId: internalWebhookDeliveries
   parameters:
     - name: cursor
@@ -108,8 +113,8 @@ get:
                     type: string
                     enum: [invalid_request, cursor_required_v1]
                   message: { type: string }
-    '401': { $ref: '../../../../components/responses/internal/invalid_credential.yaml' }
-    '403': { $ref: '../../../../components/responses/internal/organization_boundary_violation.yaml' }
+    '401': { $ref: '../../../../components/responses/internal/unauthorized.yaml' }
+    '403': { $ref: '../../../../components/responses/internal/forbidden.yaml' }
     '429': { $ref: '../../../../components/responses/internal/rate_limited.yaml' }
     '500': { $ref: '../../../../components/responses/internal/internal_error.yaml' }
     '503': { $ref: '../../../../components/responses/internal/security_gate_closed.yaml' }

@@ -1,0 +1,9 @@
+allOf:
+- $ref: Envelope.yaml
+- type: object
+  properties:
+    code:
+      type: integer
+      const: 0
+    payload:
+      $ref: MicroCommunityBinding.yaml

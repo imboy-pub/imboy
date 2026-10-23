@@ -1,47 +1,60 @@
-# GET /api/adm/message/list — admin
 get:
-  tags: [admin]
+  security:
+  - adminSessionId: []
+    adminSessionSignature: []
+  tags:
+  - admin
   summary: admin adm-message - list
-  description: |
-    ## 中文 / English
-    管理后台 adm-message handler 的 `list` 动作；路径 `/adm/message/list`。
-    Admin handler `adm-message`, action `list`. Path `/adm/message/list`.
+  description: '## 中文 / English
+
+    管理后台 adm-message handler 的 `list` 动作；路径 `/api/adm/message/list`。
+
+    Admin handler `adm-message`, action `list`. Path `/api/adm/message/list`.
+
+    '
   operationId: adm_message_list
   parameters:
-    - $ref: '../../../../components/parameters/PaginationPage.yaml'
-    - $ref: '../../../../components/parameters/PaginationSize.yaml'
-    - in: query
-      name: msg_scope
-      schema: { type: string }
-      description: 消息范围（c2c / c2g / channel）/ Message scope
-    - in: query
-      name: uid
-      schema: { type: string }
-      description: 用户 ID / User ID
-    - in: query
-      name: conversation
-      schema: { type: string }
-      description: 会话标识 / Conversation key
-    - in: query
-      name: from_ts
-      schema: { type: integer }
-      description: 起始时间戳（毫秒）/ Start timestamp (ms)
-    - in: query
-      name: to_ts
-      schema: { type: integer }
-      description: 结束时间戳（毫秒）/ End timestamp (ms)
-    - in: query
-      name: keyword
-      schema: { type: string }
-      description: 关键词检索 / Keyword search
+  - $ref: ../../../../components/parameters/PaginationPage.yaml
+  - $ref: ../../../../components/parameters/PaginationSize.yaml
+  - in: query
+    name: msg_scope
+    schema:
+      type: string
+    description: 消息范围（c2c / c2g / channel）/ Message scope
+  - in: query
+    name: uid
+    schema:
+      type: string
+    description: 用户 ID / User ID
+  - in: query
+    name: conversation
+    schema:
+      type: string
+    description: 会话标识 / Conversation key
+  - in: query
+    name: from_ts
+    schema:
+      type: integer
+    description: 起始时间戳（毫秒）/ Start timestamp (ms)
+  - in: query
+    name: to_ts
+    schema:
+      type: integer
+    description: 结束时间戳（毫秒）/ End timestamp (ms)
+  - in: query
+    name: keyword
+    schema:
+      type: string
+    description: 关键词检索 / Keyword search
   responses:
     '200':
-      description: 成功
+      description: 成功；非零 code 为业务错误 / Non-zero code is a business error
       content:
         application/json:
           schema:
-            allOf:
-              - $ref: '../../../../components/schemas/Envelope.yaml'
+            anyOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
               - type: object
                 properties:
                   payload:
@@ -89,7 +102,14 @@ get:
                         type: integer
                       size:
                         type: integer
-    '4XX':
+              - type: object
+                properties:
+                  code:
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+    4XX:
       description: 无权限 / 参数非法
       content:
-        application/json: { schema: { $ref: '../../../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/Envelope.yaml

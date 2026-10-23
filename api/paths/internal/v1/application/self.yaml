@@ -9,6 +9,11 @@ get:
     为平台行数据的 binary 键透出（最小字段集，不含 secret）。
 
     '
+  security:
+    - ibIntHmacCredential: []
+      ibIntHmacTimestamp: []
+      ibIntHmacNonce: []
+      ibIntHmacSignature: []
   operationId: internalApplicationSelf
   x-imboy-authentication: hmac
   x-imboy-rate-bucket: internal_read
@@ -54,11 +59,11 @@ get:
                 items:
                   type: object
                 description: 凭证清单（不含 secret）
-            required: []
+            required: [organization_id, application_id, credential_id, application_key, application, authentication, credentials]
     '401':
-      $ref: ../../../../components/responses/internal/invalid_credential.yaml
+      $ref: ../../../../components/responses/internal/unauthorized.yaml
     '403':
-      $ref: ../../../../components/responses/internal/application_disabled.yaml
+      $ref: ../../../../components/responses/internal/forbidden.yaml
     '429':
       $ref: ../../../../components/responses/internal/rate_limited.yaml
     '500':

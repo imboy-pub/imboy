@@ -1,47 +1,47 @@
-# GET /api/v1/projects/{project_id} — 项目详情（W0/W1）
 get:
-  tags: [project]
+  tags:
+  - project
   summary: 项目详情
-  description: |
-    ## 中文
+  description: '## 中文
+
     单个项目详情。Project Owner / Workspace Owner / active 项目成员可读；
+
     非成员直访 403。
+
     ## English
+
     Single project detail; readable by owner / governance / active members.
+
+    '
   operationId: projectShow
   parameters:
-    - name: project_id
-      in: path
-      required: true
-      schema: { type: integer, format: int64 }
+  - name: project_id
+    in: path
+    required: true
+    schema:
+      type: integer
+      format: int64
+    description: 项目 TSID / Project ID
   responses:
     '200':
-      description: 项目行（含 links jsonb）
+      description: 成功 code=0 返回以下业务载荷；业务失败 code 非零返回通用错误信封。 / Success payload or nonzero-code business error.
       content:
         application/json:
           schema:
-            allOf:
-              - $ref: '../../../../components/schemas/Envelope.yaml'
+            oneOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
               - type: object
                 properties:
                   payload:
-                    type: object
-                    properties:
-                      id: { type: integer, format: int64 }
-                      workspace_id: { type: integer, format: int64 }
-                      owner_id: { type: integer, format: int64 }
-                      name: { type: string }
-                      description: { type: [string, "null"] }
-                      status: { type: string, enum: [active, done] }
-                      links:
-                        type: array
-                        items:
-                          type: object
-                          properties:
-                            name: { type: string }
-                            url: { type: string }
-    '404':
-      description: 项目不存在
-      content:
-        application/json:
-          schema: { $ref: '../../../../components/schemas/Envelope.yaml' }
+                    $ref: ../../../../components/schemas/client/Project.yaml
+              - type: object
+                required:
+                - code
+                properties:
+                  code:
+                    type: integer
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+    '401':
+      description: 访问 JWT、设备绑定或客户端签名认证失败 / JWT, device binding or client signature rejected

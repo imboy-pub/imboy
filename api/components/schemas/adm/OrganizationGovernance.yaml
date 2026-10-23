@@ -1,0 +1,260 @@
+$defs:
+  Organization:
+    type: object
+    properties:
+      id:
+        type: string
+        pattern: ^[1-9][0-9]*$
+        description: TSID 十进制字符串 / Decimal TSID string
+      name:
+        type: string
+      owner_id:
+        type: string
+        pattern: ^[1-9][0-9]*$
+        description: TSID 十进制字符串 / Decimal TSID string
+      status:
+        type: string
+      created_at:
+        type:
+        - integer
+        - 'null'
+        format: int64
+        description: Unix 毫秒；空值为 null / Unix milliseconds or null
+      updated_at:
+        type:
+        - integer
+        - 'null'
+        format: int64
+        description: Unix 毫秒；空值为 null / Unix milliseconds or null
+      owner_nickname:
+        type:
+        - string
+        - 'null'
+      owner_account:
+        type:
+        - string
+        - 'null'
+      member_count:
+        type: integer
+        minimum: 0
+      workspace_count:
+        type: integer
+        minimum: 0
+  Member:
+    type: object
+    properties:
+      organization_id:
+        type: string
+        pattern: ^[1-9][0-9]*$
+        description: TSID 十进制字符串 / Decimal TSID string
+      user_id:
+        type: string
+        pattern: ^[1-9][0-9]*$
+        description: TSID 十进制字符串 / Decimal TSID string
+      role:
+        type: string
+      invited_by:
+        anyOf:
+        - type: string
+          pattern: ^[1-9][0-9]*$
+          description: TSID 十进制字符串 / Decimal TSID string
+        - type: 'null'
+      joined_at:
+        type:
+        - integer
+        - 'null'
+        format: int64
+        description: Unix 毫秒；空值为 null / Unix milliseconds or null
+      status:
+        type: string
+      nickname:
+        type:
+        - string
+        - 'null'
+      avatar:
+        type:
+        - string
+        - 'null'
+      account:
+        type:
+        - string
+        - 'null'
+  Workspace:
+    type: object
+    properties:
+      id:
+        type: string
+        pattern: ^[1-9][0-9]*$
+        description: TSID 十进制字符串 / Decimal TSID string
+      name:
+        type: string
+      owner_id:
+        type: string
+        pattern: ^[1-9][0-9]*$
+        description: TSID 十进制字符串 / Decimal TSID string
+      organization_id:
+        type: string
+        pattern: ^[1-9][0-9]*$
+        description: TSID 十进制字符串 / Decimal TSID string
+      status:
+        type: string
+      created_at:
+        type:
+        - integer
+        - 'null'
+        format: int64
+        description: Unix 毫秒；空值为 null / Unix milliseconds or null
+      updated_at:
+        type:
+        - integer
+        - 'null'
+        format: int64
+        description: Unix 毫秒；空值为 null / Unix milliseconds or null
+      is_default:
+        type: boolean
+  Invitation:
+    type: object
+    properties:
+      invitation_id:
+        type: string
+        pattern: ^[1-9][0-9]*$
+        description: TSID 十进制字符串 / Decimal TSID string
+      organization_id:
+        type: string
+        pattern: ^[1-9][0-9]*$
+        description: TSID 十进制字符串 / Decimal TSID string
+      target_user_id:
+        type: string
+        pattern: ^[1-9][0-9]*$
+        description: TSID 十进制字符串 / Decimal TSID string
+      invited_by:
+        anyOf:
+        - type: string
+          pattern: ^[1-9][0-9]*$
+          description: TSID 十进制字符串 / Decimal TSID string
+        - type: 'null'
+      status:
+        type: string
+      expires_at:
+        type:
+        - integer
+        - 'null'
+        format: int64
+        description: Unix 秒；已为整数的时间戳由响应层原样保留 / Unix seconds
+      responded_at:
+        type:
+        - integer
+        - 'null'
+        format: int64
+        description: Unix 秒；已为整数的时间戳由响应层原样保留 / Unix seconds
+      created_at:
+        type:
+        - integer
+        - 'null'
+        format: int64
+        description: Unix 秒；已为整数的时间戳由响应层原样保留 / Unix seconds
+      token:
+        type: string
+        description: 仅创建返回；敏感凭据 / Only present on creation
+      already_terminal:
+        type: boolean
+  Department:
+    type: object
+    properties:
+      id:
+        type: string
+        pattern: ^[1-9][0-9]*$
+        description: TSID 十进制字符串 / Decimal TSID string
+      organization_id:
+        type: string
+        pattern: ^[1-9][0-9]*$
+        description: TSID 十进制字符串 / Decimal TSID string
+      parent_id:
+        anyOf:
+        - type: string
+          pattern: ^[1-9][0-9]*$
+          description: TSID 十进制字符串 / Decimal TSID string
+        - type: 'null'
+      name:
+        type: string
+      status:
+        type: string
+      version:
+        type: integer
+      created_by_user_id:
+        anyOf:
+        - type: string
+          pattern: ^[1-9][0-9]*$
+          description: TSID 十进制字符串 / Decimal TSID string
+        - type: 'null'
+      updated_by_user_id:
+        anyOf:
+        - type: string
+          pattern: ^[1-9][0-9]*$
+          description: TSID 十进制字符串 / Decimal TSID string
+        - type: 'null'
+      created_at:
+        type:
+        - integer
+        - 'null'
+        format: int64
+        description: Unix 毫秒；空值为 null / Unix milliseconds or null
+      updated_at:
+        type:
+        - integer
+        - 'null'
+        format: int64
+        description: Unix 毫秒；空值为 null / Unix milliseconds or null
+  OwnerActivationInvite:
+    type: object
+    properties:
+      invite_id:
+        type: string
+        pattern: ^[1-9][0-9]*$
+        description: TSID 十进制字符串 / Decimal TSID string
+      organization_id:
+        type: string
+        pattern: ^[1-9][0-9]*$
+        description: TSID 十进制字符串 / Decimal TSID string
+      owner_user_id:
+        type: string
+        pattern: ^[1-9][0-9]*$
+        description: TSID 十进制字符串 / Decimal TSID string
+      mobile_masked:
+        type: string
+      status:
+        type: string
+      expires_at:
+        type:
+        - integer
+        - 'null'
+        format: int64
+        description: Unix 秒；已为整数的时间戳由响应层原样保留 / Unix seconds
+      resend_count:
+        type: integer
+        minimum: 0
+      last_sent_at:
+        type:
+        - integer
+        - 'null'
+        format: int64
+        description: Unix 秒；已为整数的时间戳由响应层原样保留 / Unix seconds
+      consumed_at:
+        type:
+        - integer
+        - 'null'
+        format: int64
+        description: Unix 秒；已为整数的时间戳由响应层原样保留 / Unix seconds
+      created_at:
+        type:
+        - integer
+        - 'null'
+        format: int64
+        description: Unix 秒；已为整数的时间戳由响应层原样保留 / Unix seconds
+      ttl_remaining_seconds:
+        type: integer
+      expired:
+        type: boolean
+      activation_token:
+        type: string
+        description: 仅轮换响应一次性返回的敏感 token / Returned once on rotation

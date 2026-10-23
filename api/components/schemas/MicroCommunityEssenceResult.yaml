@@ -1,0 +1,12 @@
+type: object
+required:
+- id
+- is_essence
+- is_pinned
+properties:
+  id:
+    $ref: MicroCommunityEntityId.yaml
+  is_essence:
+    type: boolean
+  is_pinned:
+    type: boolean

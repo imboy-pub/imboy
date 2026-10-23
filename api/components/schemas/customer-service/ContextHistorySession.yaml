@@ -1,0 +1,49 @@
+type: object
+properties:
+  id:
+    type: string
+    pattern: ^[0-9]+$
+    description: 无损十进制 TSID 字符串。
+  conversation_id:
+    type: string
+    pattern: ^[0-9]+$
+    description: 无损十进制 TSID 字符串。
+  workspace_id:
+    type: string
+    pattern: ^[0-9]+$
+    description: 无损十进制 TSID 字符串。
+  status:
+    type: string
+    enum:
+    - queued
+    - active
+    - closed
+  version:
+    type: integer
+  rating:
+    type:
+    - integer
+    - 'null'
+  queued_at:
+    type:
+    - integer
+    - 'null'
+    format: int64
+    description: Unix 秒；客服 response helper 保留底层秒值。
+  claimed_at:
+    type:
+    - integer
+    - 'null'
+    format: int64
+    description: Unix 秒；客服 response helper 保留底层秒值。
+  closed_at:
+    type:
+    - integer
+    - 'null'
+    format: int64
+    description: Unix 秒；客服 response helper 保留底层秒值。
+required:
+- id
+- workspace_id
+- status
+- version

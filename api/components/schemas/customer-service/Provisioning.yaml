@@ -1,0 +1,25 @@
+type: object
+properties:
+  business_identity_id:
+    type: string
+    pattern: ^[0-9]+$
+    description: 无损十进制 TSID 字符串。
+  seat:
+    $ref: Seat.yaml
+  seat_enabled:
+    type: boolean
+  organization_id:
+    type: string
+    pattern: ^[0-9]+$
+  workspace_id:
+    type: string
+    pattern: ^[0-9]+$
+  identity_created:
+    type: boolean
+required:
+- organization_id
+- workspace_id
+- business_identity_id
+- identity_created
+- seat
+- seat_enabled

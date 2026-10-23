@@ -1,0 +1,33 @@
+type: object
+properties:
+  id:
+    type: integer
+    format: int64
+    minimum: 1
+  owner_uid:
+    type: integer
+    format: int64
+    minimum: 1
+  agent_uid:
+    type: integer
+    format: int64
+    minimum: 1
+  max_amount_fen:
+    type: integer
+  max_total_fen:
+    type: integer
+  period_secs:
+    type: integer
+  spent_fen:
+    type: integer
+  status:
+    type: integer
+required:
+- id
+- owner_uid
+- agent_uid
+- max_amount_fen
+- max_total_fen
+- period_secs
+- spent_fen
+- status

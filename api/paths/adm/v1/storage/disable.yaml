@@ -1,5 +1,8 @@
 # POST /api/adm/storage/disable — admin
 post:
+  security:
+    - adminSessionId: []
+      adminSessionSignature: []
   tags: [admin]
   summary: 管理后台禁用存储
   description: 禁用指定存储记录，使其不可访问。Disable a specified storage record to make it inaccessible.

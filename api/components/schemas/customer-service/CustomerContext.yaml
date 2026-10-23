@@ -1,0 +1,69 @@
+type: object
+properties:
+  session_id:
+    type: string
+    pattern: ^[0-9]+$
+    description: 无损十进制 TSID 字符串。
+  workspace_id:
+    type: string
+    pattern: ^[0-9]+$
+    description: 无损十进制 TSID 字符串。
+  source:
+    type: string
+    enum:
+    - widget
+    - seat
+    - shop_key
+  contact:
+    type: object
+    properties:
+      masked_name:
+        type: string
+        description: 脱敏展示名，或guest#加匿名尾号。
+      first_seen:
+        type: integer
+        format: int64
+        description: Unix 秒；客服 response helper 保留底层秒值。
+      last_seen:
+        type: integer
+        format: int64
+        description: Unix 秒；客服 response helper 保留底层秒值。
+  history:
+    type: object
+    properties:
+      sessions:
+        type: array
+        items:
+          $ref: ContextHistorySession.yaml
+      next_after_id:
+        type:
+        - string
+        - 'null'
+        pattern: ^[0-9]+$
+        description: 无损十进制 TSID 字符串。
+  notes:
+    type: array
+    items:
+      type: object
+      properties:
+        id:
+          type: string
+          pattern: ^[0-9]+$
+          description: 无损十进制 TSID 字符串。
+        created_by_identity_id:
+          type:
+          - string
+          - 'null'
+          pattern: ^[0-9]+$
+          description: 无损十进制 TSID 字符串。
+        created_at:
+          type: integer
+          format: int64
+          description: Unix 秒；客服 response helper 保留底层秒值。
+required:
+- session_id
+- workspace_id
+- source
+- contact
+- history
+- notes

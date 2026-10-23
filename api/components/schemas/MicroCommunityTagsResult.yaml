@@ -1,0 +1,18 @@
+type: object
+required:
+- id
+- payload
+properties:
+  id:
+    $ref: MicroCommunityEntityId.yaml
+  payload:
+    type: object
+    additionalProperties: true
+    properties:
+      tags:
+        type: array
+        maxItems: 5
+        items:
+          type: string
+          minLength: 1
+          maxLength: 20

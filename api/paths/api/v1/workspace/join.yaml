@@ -1,0 +1,52 @@
+post:
+  tags:
+  - workspace
+  summary: 使用团队码加入工作区
+  operationId: workspaceJoin
+  description: 任意登录用户；trim 后转大写；重复加入返回 unchanged。业务错误：981 无效或撤销，982 过期，980 已归档。 / Authenticated users; repeat join
+    returns unchanged.
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            code:
+              type: string
+          required:
+          - code
+  responses:
+    '200':
+      description: 成功 code=0 返回以下业务载荷；业务失败 code 非零返回通用错误信封。 / Success payload or nonzero-code business error.
+      content:
+        application/json:
+          schema:
+            oneOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      status:
+                        type: string
+                        enum:
+                        - joined
+                        - unchanged
+                      workspace:
+                        $ref: ../../../../components/schemas/Workspace.yaml
+                    required:
+                    - status
+                    - workspace
+              - type: object
+                required:
+                - code
+                properties:
+                  code:
+                    type: integer
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+    '401':
+      description: 访问 JWT、设备绑定或客户端签名认证失败 / JWT, device binding or client signature rejected

@@ -1,0 +1,171 @@
+get:
+  tags:
+  - workspace
+  summary: 当前工作区可见附件索引
+  operationId: workspaceAttachmentsList
+  security:
+  - bearerAuth: []
+  x-device-signature-required: true
+  description: Requires active workspace membership; each attachment is rechecked against its source ACL. talk_record
+    entries navigate through record_id/open_kind, never raw storage URLs. can_govern exposes governance metadata
+    ability only, not content access. source=talk_record cannot combine group_id/channel_id; from_ms < until_ms.
+    Up to 100 scanned rows per page, next_cursor can be present even if post-ACL items is empty. Legacy domain errors
+    are returned as HTTP 200 with nonzero code (e.g. 403); clients must inspect code.
+  parameters:
+  - name: workspace_id
+    in: path
+    required: true
+    schema:
+      type: integer
+      format: int64
+      minimum: 1
+    description: 工作区业务归属；不替代来源 ACL。 / Workspace scope; source ACL is always checked.
+  - name: group_id
+    in: query
+    schema:
+      type: integer
+      format: int64
+      minimum: 1
+    description: Optional group source filter; cannot combine with channel_id.
+  - name: channel_id
+    in: query
+    schema:
+      type: integer
+      format: int64
+      minimum: 1
+    description: Optional channel source filter; cannot combine with group_id.
+  - name: user_id
+    in: query
+    schema:
+      type: integer
+      format: int64
+      minimum: 1
+    description: Optional uploader/creator TSID filter; never authorizes hidden attachments.
+  - name: from_ms
+    in: query
+    schema:
+      type: integer
+      format: int64
+      minimum: 1
+    description: Positive inclusive creation timestamp in milliseconds; must precede until_ms.
+  - name: until_ms
+    in: query
+    schema:
+      type: integer
+      format: int64
+      minimum: 1
+    description: Positive exclusive creation timestamp in milliseconds.
+  - name: cursor
+    in: query
+    schema:
+      type: integer
+      format: int64
+      minimum: 1
+    description: Last scanned attachment TSID; next_cursor may advance even if per-item ACL filters hide the scanned
+      rows.
+  - name: keyword
+    in: query
+    schema:
+      type: string
+      maxLength: 200
+    description: Attachment-name filter, at most 200 UTF-8 bytes; wildcard literals are escaped.
+  - name: user_keyword
+    in: query
+    schema:
+      type: string
+      maxLength: 200
+    description: Creator-name filter, at most 200 UTF-8 bytes; current ACL still applies.
+  - name: source
+    in: query
+    schema:
+      type: string
+      enum:
+      - all
+      - group
+      - channel
+      - talk_record
+      default: all
+    description: Filter all/group/channel/talk_record; talk_record cannot combine group_id/channel_id.
+  responses:
+    '200':
+      description: Visible items only; no unauthorized titles/counts. Check envelope code; legacy authentication/business
+        errors may use HTTP 200 with nonzero code.
+      content:
+        application/json:
+          schema:
+            oneOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      workspace_id:
+                        type: integer
+                        format: int64
+                        minimum: 1
+                      items:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id:
+                              type: integer
+                              format: int64
+                              minimum: 1
+                            creator_user_id:
+                              type: integer
+                              format: int64
+                              minimum: 1
+                            organization_id:
+                              type: integer
+                              format: int64
+                              minimum: 1
+                            workspace_id:
+                              type: integer
+                              format: int64
+                              minimum: 1
+                            record_id:
+                              type: integer
+                              format: int64
+                              minimum: 1
+                            name:
+                              type: string
+                            mime_type:
+                              type: string
+                            creator_name:
+                              type: string
+                            scope:
+                              type: string
+                            source_name:
+                              type: string
+                            open_kind:
+                              type: string
+                            attachment_role:
+                              type: string
+                            retention_state:
+                              type: string
+                            size:
+                              type: integer
+                              format: int64
+                              minimum: 0
+                            can_govern:
+                              type: boolean
+                            created_at:
+                              type: integer
+                              format: int64
+                              description: Unix 毫秒；经 elib_response:success 转换。 / Unix milliseconds.
+                      next_cursor:
+                        anyOf:
+                        - type: integer
+                          format: int64
+                          minimum: 1
+                        - type: 'null'
+              - type: object
+                properties:
+                  code:
+                    const: 0
+            - $ref: ../../../../components/schemas/talk-record/ErrorEnvelope.yaml
+    '401':
+      description: JWT/device signature invalid.

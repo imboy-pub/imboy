@@ -1,5 +1,8 @@
 # POST /api/adm/storage/enable — admin
 post:
+  security:
+    - adminSessionId: []
+      adminSessionSignature: []
   tags: [admin]
   summary: 管理后台启用存储
   description: 启用指定存储记录，恢复其可访问状态。Enable a specified storage record to restore its accessible state.

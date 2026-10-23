@@ -299,7 +299,21 @@ faq_delete_params(Data) ->
     {ai_faq_delete, atom_params([id], Data)}.
 
 preview_params(Data) ->
-    {ai_preview, atom_params([text, intent, resolved, faq_score, unresolved_turns], Data)}.
+    Params = atom_params(
+        [text, intent, confidence, resolved, faq_score, unresolved_turns], Data
+    ),
+    %% JSON 内层键也是 binary；domain 的试算配置使用 atom 白名单。
+    Config = maps:get(<<"config">>, Data, #{}),
+    case is_map(Config) of
+        true ->
+            {ai_preview, Params#{
+                config => atom_params(
+                    [threshold, max_unresolved_turns, faq_min_score], Config
+                )
+            }};
+        false ->
+            {ai_preview, Params}
+    end.
 
 atom_params(Keys, Data) ->
     maps:from_list([
@@ -396,17 +410,26 @@ normalize(Map) when is_map(Map) ->
 normalize(Other) ->
     Other.
 
-normalize_value(K, V) when is_integer(V), is_binary(K) ->
-    case lists:member(binary_to_atom(K, utf8), ?ID_KEYS) of
+normalize_value(K, V) when is_integer(V) ->
+    case is_id_key(K) of
         true -> integer_to_binary(V);
         false -> V
     end;
+normalize_value(K, V) when is_list(V), K =:= faq_ids; is_list(V), K =:= <<"faq_ids">> ->
+    [normalize_value(faq_id, I) || I <- V];
 normalize_value(_K, V) when is_list(V) ->
-    [normalize(I) || I <- V, is_map(I)];
+    [normalize(I) || I <- V];
 normalize_value(_K, V) when is_map(V) ->
     normalize(V);
 normalize_value(_K, V) ->
     V.
+
+is_id_key(K) when is_atom(K) ->
+    lists:member(K, ?ID_KEYS);
+is_id_key(K) when is_binary(K) ->
+    lists:any(fun(IdKey) -> atom_to_binary(IdKey) =:= K end, ?ID_KEYS);
+is_id_key(_) ->
+    false.
 
 to_binary(V) when is_binary(V) -> V;
 to_binary(V) -> iolist_to_binary(io_lib:format("~0p", [V])).

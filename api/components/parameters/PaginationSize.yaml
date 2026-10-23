@@ -9,11 +9,13 @@ in: query
 name: size
 schema:
   type: integer
-  default: 10
-  maximum: 100
+  default: 20
+  minimum: 1
+  maximum: 1000
 description: |
   ## 中文
-  每页条数（默认 10，最大 100）；超过 maximum 后端会按 100 截断。
+  每页条数（elib_param:page/1 默认 20，最大 1000）；具体端点可进一步限制。
+  客户端希望每页 10 条时须显式传 size=10。
   ## English
-  Items per page (default 10, max 100). Values above the maximum are
-  silently clamped to 100 by the server.
+  Items per page (elib_param:page/1 default 20, max 1000); endpoint limits take precedence.
+  Clients requesting ten rows must send size=10 explicitly.

@@ -1,0 +1,65 @@
+post:
+  tags:
+  - workspace
+  summary: 转让工作区主 Owner
+  operationId: workspaceOwnerTransfer
+  description: 原主 Owner 发起；目标须为 active 成员且不可为 Guest。 / Current primary owner; target must be an active non-Guest
+    member.
+  parameters:
+  - name: workspace_id
+    in: path
+    required: true
+    schema:
+      type: integer
+      format: int64
+      minimum: 1
+    description: 工作区 TSID / Workspace ID
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            user_id:
+              type: integer
+              format: int64
+              minimum: 1
+          required:
+          - user_id
+  responses:
+    '200':
+      description: 成功 code=0 返回以下业务载荷；业务失败 code 非零返回通用错误信封。 / Success payload or nonzero-code business error.
+      content:
+        application/json:
+          schema:
+            oneOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      workspace_id:
+                        type: integer
+                        format: int64
+                        minimum: 1
+                      owner_id:
+                        type: integer
+                        format: int64
+                        minimum: 1
+                      previous_owner_id:
+                        type: integer
+                        format: int64
+                        minimum: 1
+              - type: object
+                required:
+                - code
+                properties:
+                  code:
+                    type: integer
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+    '401':
+      description: 访问 JWT、设备绑定或客户端签名认证失败 / JWT, device binding or client signature rejected

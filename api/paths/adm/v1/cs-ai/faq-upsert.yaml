@@ -1,0 +1,91 @@
+post:
+  security:
+  - adminSessionId: []
+    adminSessionSignature: []
+  tags:
+  - admin
+  summary: 新增或覆盖FAQ / Upsert FAQ
+  description: 需 customer_service:write。未编译 customer_service 时返回 not found（业务码404）；业务错误遵循现有HTTP200信封。id必须JSON整数；省略时生成新ID。省略的answer/category/keywords/status使用默认值覆盖。
+    / Requires the customer_service build feature and platform permission.
+  operationId: admCsAiFaqUpsert
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            org_id:
+              anyOf:
+              - type: string
+                pattern: ^[1-9][0-9]*$
+                description: TSID 十进制字符串 / Decimal TSID string
+              - type: integer
+                format: int64
+                minimum: 1
+                description: JSON int64；客户端需无损解析 / Preserve bigint precision
+            id:
+              type: integer
+              format: int64
+              minimum: 1
+              description: JSON int64；客户端需无损解析 / Preserve bigint precision
+            question:
+              type: string
+              minLength: 1
+            answer:
+              type: string
+            intent:
+              type: string
+              enum:
+              - refund
+              - order
+              - tech
+              - other
+              default: other
+            category:
+              type: string
+            status:
+              type: string
+              default: draft
+            keywords:
+              anyOf:
+              - type: array
+                items:
+                  type: string
+              - type: string
+              description: 字符串数组或逗号分隔字符串 / Array or comma-separated string
+          required:
+          - question
+  responses:
+    '200':
+      description: 成功或业务错误；检查 code / Inspect business code
+      content:
+        application/json:
+          schema:
+            anyOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
+              - type: object
+                properties:
+                  payload:
+                    $ref: ../../../../components/schemas/adm/CustomerServiceAI.yaml#/$defs/FAQ
+              - type: object
+                properties:
+                  code:
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+    '401':
+      description: Cookie 缺失、无效、到期或已撤销 / Invalid session cookies
+      content:
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/Envelope.yaml
+  parameters:
+  - name: org_id
+    in: query
+    required: false
+    description: 也可放在JSON body，body优先；二者至少一个 / Body value takes precedence
+    schema:
+      type: string
+      pattern: ^[1-9][0-9]*$
+      description: TSID 十进制字符串 / Decimal TSID string

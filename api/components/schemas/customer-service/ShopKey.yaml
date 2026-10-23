@@ -1,0 +1,31 @@
+type: object
+properties:
+  id:
+    type: string
+    pattern: ^[0-9]+$
+    description: 无损十进制 TSID 字符串。
+  organization_id:
+    type: string
+    pattern: ^[0-9]+$
+    description: 无损十进制 TSID 字符串。
+  workspace_id:
+    type: string
+    pattern: ^[0-9]+$
+    description: 无损十进制 TSID 字符串。
+  display_hint:
+    type:
+    - string
+    - 'null'
+  status:
+    type: string
+  created_at:
+    type: integer
+    format: int64
+    description: Unix 秒；客服 response helper 保留底层秒值。
+  updated_at:
+    type: integer
+    format: int64
+    description: Unix 秒；客服 response helper 保留底层秒值。
+  secret:
+    type: string
+    description: 仅创建响应回显调用方提供的 secret；列表不返回。

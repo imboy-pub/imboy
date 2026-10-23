@@ -6,6 +6,11 @@ get:
     Admin 入口查看。来源无效或归属不符不放行。按外部 ID 的 UTF-8 字节序升序，page_size 1..100，未知或重复参数拒绝。 projection_status
     结合来源退役、任职状态、账号状态、实际组织成员及部门关系计算；linked 不表示已投影。只返回本来源在目标组织有任职来源记录的人员，不枚举全实例用户；user_id
     对退役或停用账号返回 null。
+  security:
+    - ibIntHmacCredential: []
+      ibIntHmacTimestamp: []
+      ibIntHmacNonce: []
+      ibIntHmacSignature: []
   operationId: internalSourcePersons
   x-imboy-authentication: hmac
   x-imboy-rate-bucket: internal_read

@@ -1,0 +1,43 @@
+post:
+  tags:
+  - ai-agent
+  summary: 撤销本人 Agent 支付授权
+  operationId: agentMandateRevoke
+  description: 访问 JWT 认证；普通业务错误使用非零 code，须检查信封。 / Inspect envelope code for business errors.
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            mandate_id:
+              type: integer
+              format: int64
+              minimum: 1
+          required:
+          - mandate_id
+  responses:
+    '200':
+      description: 成功 code=0 返回以下业务载荷；业务失败 code 非零返回通用错误信封。 / Success payload or nonzero-code business error.
+      content:
+        application/json:
+          schema:
+            oneOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties: {}
+              - type: object
+                required:
+                - code
+                properties:
+                  code:
+                    type: integer
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+    '401':
+      description: 访问 JWT 或客户端认证失败 / Authentication rejected

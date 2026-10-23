@@ -1,0 +1,48 @@
+post:
+  tags:
+  - workspace
+  summary: 恢复工作区
+  operationId: workspaceRestore
+  description: 工作区 Owner 或所属 Organization Owner/Admin 可治理。归档默认工作区需 replacement_workspace_id 指定替代默认项，否则业务 409。重复归档/恢复也返回业务
+    409。 / Governors only; archive default workspace requires a replacement; invalid transitions return business
+    409.
+  parameters:
+  - name: workspace_id
+    in: path
+    required: true
+    schema:
+      type: integer
+      format: int64
+      minimum: 1
+    description: 工作区 TSID / Workspace ID
+  responses:
+    '200':
+      description: 成功 code=0 返回以下业务载荷；业务失败 code 非零返回通用错误信封。 / Success payload or nonzero-code business error.
+      content:
+        application/json:
+          schema:
+            oneOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      workspace_id:
+                        type: integer
+                        format: int64
+                        minimum: 1
+                      status:
+                        type: string
+                        const: active
+              - type: object
+                required:
+                - code
+                properties:
+                  code:
+                    type: integer
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+    '401':
+      description: 访问 JWT、设备绑定或客户端签名认证失败 / JWT, device binding or client signature rejected

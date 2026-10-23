@@ -1,0 +1,26 @@
+type: object
+properties:
+  organization_id:
+    type: integer
+    format: int64
+    minimum: 1
+  department_id:
+    type: integer
+    format: int64
+    minimum: 1
+  user_id:
+    type: integer
+    format: int64
+    minimum: 1
+  is_admin:
+    type: boolean
+  created_at:
+    type: integer
+    format: int64
+    description: Unix 毫秒；经 elib_response:success 转换。 / Unix milliseconds.
+  updated_at:
+    type: integer
+    format: int64
+    description: Unix 毫秒；经 elib_response:success 转换。 / Unix milliseconds.
+  idempotent:
+    type: boolean

@@ -1,0 +1,125 @@
+post:
+  tags:
+  - user
+  summary: 批量绑定群相册照片
+  operationId: groupAlbumPhotosBind
+  description: 最多 50 项；部分失败不中断，按 results 逐项处理。 / Up to 50 items, inspect per-item status.
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            gid:
+              type: integer
+              format: int64
+              minimum: 1
+            items:
+              type: array
+              items:
+                type: object
+                properties:
+                  album_id:
+                    type: integer
+                    format: int64
+                    minimum: 1
+                  object_key:
+                    type: string
+                    minLength: 1
+                  photo_name:
+                    type: string
+                    default: photo.jpg
+                  photo_size:
+                    type: integer
+                    minimum: 0
+                  mime_type:
+                    type: string
+                    default: image/jpeg
+                  sha256:
+                    type: string
+                    pattern: ^[0-9a-f]{64}$
+                required:
+                - album_id
+                - object_key
+              minItems: 1
+              maxItems: 50
+          required:
+          - gid
+          - items
+  responses:
+    '200':
+      description: 成功 code=0 返回以下业务载荷；业务失败 code 非零返回通用错误信封。 / Success payload or nonzero-code business error.
+      content:
+        application/json:
+          schema:
+            oneOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      results:
+                        type: array
+                        items:
+                          oneOf:
+                          - type: object
+                            properties:
+                              object_key:
+                                type: string
+                              status:
+                                type: string
+                                const: ok
+                              photo:
+                                type: object
+                                properties:
+                                  id:
+                                    type: integer
+                                    format: int64
+                                    minimum: 1
+                                  photo_id:
+                                    type:
+                                    - integer
+                                    - string
+                                    description: 新绑定为业务文件标识字符串；重复绑定历史实现返回行 ID。 / Business ID string on create, row
+                                      ID on duplicate.
+                                  photo_url:
+                                    type: string
+                                  thumbnail_url:
+                                    type: string
+                                  duplicate:
+                                    type: boolean
+                                required:
+                                - id
+                                - photo_id
+                            required:
+                            - object_key
+                            - status
+                            - photo
+                          - type: object
+                            properties:
+                              object_key:
+                                type: string
+                              status:
+                                type: string
+                                const: error
+                              reason:
+                                type: string
+                            required:
+                            - object_key
+                            - status
+                            - reason
+                    required:
+                    - results
+              - type: object
+                required:
+                - code
+                properties:
+                  code:
+                    type: integer
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+    '401':
+      description: 访问 JWT 或客户端认证失败 / Authentication rejected

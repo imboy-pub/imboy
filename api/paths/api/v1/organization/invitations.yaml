@@ -1,0 +1,137 @@
+get:
+  tags:
+  - organization
+  summary: 组织邀请列表
+  operationId: organizationInvitationsList
+  description: '仅组织 Owner/Admin 可列举治理面邀请；响应不包含 token_digest 或 token。 / Governors only; no token material returned.
+
+    访问 JWT 认证；业务失败通常返回 HTTP 200 与非零 code，须检查 code。 / JWT; inspect business code.'
+  parameters:
+  - name: organization_id
+    in: path
+    required: true
+    schema:
+      type: integer
+      format: int64
+      minimum: 1
+    description: 组织 TSID；业务归属，不替代授权 / Organization business ID
+  - name: status
+    in: query
+    required: false
+    schema:
+      type: string
+      enum:
+      - pending
+      - accepted
+      - rejected
+      - revoked
+      - expired
+    description: 状态筛选 / Status filter
+  - name: limit
+    in: query
+    required: false
+    schema:
+      type: integer
+      minimum: 1
+      maximum: 100
+      default: 20
+    description: 最多返回条数 / Maximum rows
+  responses:
+    '200':
+      description: 成功 code=0 返回以下业务载荷；业务失败 code 非零返回通用错误信封。 / Success payload or nonzero-code business error.
+      content:
+        application/json:
+          schema:
+            oneOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      list:
+                        type: array
+                        items:
+                          $ref: ../../../../components/schemas/client/OrganizationInvitation.yaml
+                    required:
+                    - list
+              - type: object
+                required:
+                - code
+                properties:
+                  code:
+                    type: integer
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+    '405':
+      description: Method Not Allowed
+    '401':
+      description: 访问 JWT、设备绑定或客户端签名认证失败 / JWT, device binding or client signature rejected
+post:
+  tags:
+  - organization
+  summary: 邀请已注册用户加入组织
+  operationId: organizationInvitationCreate
+  description: '组织 Owner/Admin；expires_at 缺省当前时间加 7 天。明文 token 仅此响应返回一次；发起邀请不直接建立成员关系。 / Governors; token returned
+    once, invite is not membership.
+
+    访问 JWT 认证；业务失败通常返回 HTTP 200 与非零 code，须检查 code。 / JWT; inspect business code.'
+  parameters:
+  - name: organization_id
+    in: path
+    required: true
+    schema:
+      type: integer
+      format: int64
+      minimum: 1
+    description: 组织 TSID；业务归属，不替代授权 / Organization business ID
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            user_id:
+              type: integer
+              format: int64
+              minimum: 1
+            expires_at:
+              type: integer
+              format: int64
+              description: Unix 秒 / Unix seconds
+          required:
+          - user_id
+  responses:
+    '200':
+      description: 成功 code=0 返回以下业务载荷；业务失败 code 非零返回通用错误信封。 / Success payload or nonzero-code business error.
+      content:
+        application/json:
+          schema:
+            oneOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
+              - type: object
+                properties:
+                  payload:
+                    allOf:
+                    - $ref: ../../../../components/schemas/client/OrganizationInvitation.yaml
+                    - type: object
+                      properties:
+                        token:
+                          type: string
+                      required:
+                      - token
+              - type: object
+                required:
+                - code
+                properties:
+                  code:
+                    type: integer
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+    '405':
+      description: Method Not Allowed
+    '401':
+      description: 访问 JWT、设备绑定或客户端签名认证失败 / JWT, device binding or client signature rejected

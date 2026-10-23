@@ -1,0 +1,44 @@
+post:
+  tags:
+  - channel
+  summary: 申请频道订单退款
+  operationId: channelOrderRefund
+  description: 从当前 JWT 用户身份校验订单归属和状态；成功 payload 为空对象。 / Checks order ownership and state; success payload is empty.
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            order_no:
+              type: string
+              minLength: 1
+            refund_reason:
+              type: string
+          required:
+          - order_no
+  responses:
+    '200':
+      description: 成功 code=0 返回以下业务载荷；业务失败 code 非零返回通用错误信封。 / Success payload or nonzero-code business error.
+      content:
+        application/json:
+          schema:
+            oneOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties: {}
+              - type: object
+                required:
+                - code
+                properties:
+                  code:
+                    type: integer
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+    '401':
+      description: 访问 JWT 或客户端认证失败 / Authentication rejected

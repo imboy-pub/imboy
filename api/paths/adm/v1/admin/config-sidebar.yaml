@@ -1,0 +1,40 @@
+get:
+  security:
+  - adminSessionId: []
+    adminSessionSignature: []
+  tags:
+  - admin
+  summary: 后台侧栏配置 / Admin sidebar configuration
+  description: 需 settings:view。 / Admin sidebar configuration
+  operationId: admAdminConfigSidebarGet
+  responses:
+    '200':
+      description: 成功或业务错误；检查 code / Inspect business code
+      content:
+        application/json:
+          schema:
+            anyOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      title:
+                        type: string
+                      items:
+                        type: array
+                        items:
+                          $ref: ../../../../components/schemas/adm/AdminUI.yaml#/$defs/SidebarItem
+              - type: object
+                properties:
+                  code:
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+    '401':
+      description: Cookie 缺失、无效、到期或已撤销 / Invalid session cookies
+      content:
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/Envelope.yaml

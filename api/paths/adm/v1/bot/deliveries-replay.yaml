@@ -1,0 +1,70 @@
+post:
+  security:
+  - adminSessionId: []
+    adminSessionSignature: []
+  tags:
+  - admin
+  summary: 重放Bot投递死信 / Replay dead bot delivery
+  description: 需 mcp_clients:approve。仅dead可重放，delivery_id不变，attempt续号。 / Replay dead bot delivery
+  operationId: admBotDeliveriesReplayPost
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            delivery_id:
+              type: string
+            deliveryId:
+              type: string
+              description: delivery_id的兼容字段 / Alias
+          anyOf:
+          - required:
+            - delivery_id
+          - required:
+            - deliveryId
+      application/x-www-form-urlencoded:
+        schema:
+          type: object
+          properties:
+            delivery_id:
+              type: string
+            deliveryId:
+              type: string
+              description: delivery_id的兼容字段 / Alias
+          anyOf:
+          - required:
+            - delivery_id
+          - required:
+            - deliveryId
+  responses:
+    '200':
+      description: 成功或业务错误；检查 code / Inspect business code
+      content:
+        application/json:
+          schema:
+            anyOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      delivery_id:
+                        type: string
+                      status:
+                        type: string
+                        const: pending
+              - type: object
+                properties:
+                  code:
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+    '401':
+      description: Cookie 缺失、无效、到期或已撤销 / Invalid session cookies
+      content:
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/Envelope.yaml

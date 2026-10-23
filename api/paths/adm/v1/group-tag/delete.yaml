@@ -1,5 +1,8 @@
 # POST /api/adm/group/tag/delete — admin
 post:
+  security:
+    - adminSessionId: []
+      adminSessionSignature: []
   tags: [admin]
   summary: 管理后台删除群标签
   description: 管理员删除指定群的标签。Delete a group tag by admin.

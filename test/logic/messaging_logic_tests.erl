@@ -231,6 +231,64 @@ reaction_add_uses_messaging_boundary_test_() ->
 %%% 覆盖：游标推进 / 重连幂等 / gap / 空结果 / archive 未开启降级 / 参数校验
 %%%===================================================================
 
+history_invalid_peer_rejected_before_dependencies_test_() ->
+    ?WITH_MECKS(
+        [
+            {msg_archive_ds, [
+                {'conv_key_c2c', 2, fun(_, _) -> error(unexpected_archive_access) end},
+                {'conv_key_c2g', 1, fun(_) -> error(unexpected_archive_access) end},
+                {'history', 3, fun(_, _, _) -> error(unexpected_archive_access) end}
+            ]},
+            {group_ds, [
+                {'authorize_group_history', 2, fun(_, _) -> error(unexpected_group_access) end}
+            ]}
+        ],
+        fun() ->
+            Invalid = [
+                <<"not-an-id">>, <<"1.5">>, <<"0">>, <<"-1">>, <<"9223372036854775808">>
+            ],
+            lists:foreach(
+                fun({Type, Peer}) ->
+                    ?assertMatch(
+                        {error, _, ?ERR_BAD_REQUEST},
+                        messaging_logic:history(1, Type, Peer, 0, 10)
+                    )
+                end,
+                [{Type, Peer} || Type <- [<<"c2c">>, <<"c2g">>], Peer <- Invalid]
+            ),
+            ?assertEqual(0, meck:num_calls(msg_archive_ds, conv_key_c2c, 2)),
+            ?assertEqual(0, meck:num_calls(msg_archive_ds, conv_key_c2g, 1)),
+            ?assertEqual(0, meck:num_calls(msg_archive_ds, history, 3)),
+            ?assertEqual(0, meck:num_calls(group_ds, authorize_group_history, 2))
+        end
+    ).
+
+history_decimal_peer_compatibility_test_() ->
+    ?WITH_MECKS(
+        [
+            {msg_archive_ds, [
+                {'conv_key_c2c', 2, fun(_, Peer) -> integer_to_binary(Peer) end},
+                {'conv_key_c2g', 1, fun(Peer) -> integer_to_binary(Peer) end},
+                {'history', 3, fun(_, _, _) -> {ok, []} end}
+            ]},
+            {group_ds, [
+                {'authorize_group_history', 2, fun(_, _) -> {ok, #{start_seq => 1}} end}
+            ]}
+        ],
+        fun() ->
+            Peers = [
+                {<<"0009">>, 9}, {<<"+9">>, 9}, {<<"9223372036854775807">>, 9223372036854775807}
+            ],
+            lists:foreach(
+                fun({Type, {Peer, Expected}}) ->
+                    {ok, Result} = messaging_logic:history(1, Type, Peer, 0, 10),
+                    ?assertEqual(integer_to_binary(Expected), maps:get(<<"conv_key">>, Result))
+                end,
+                [{Type, Peer} || Type <- [<<"c2c">>, <<"c2g">>], Peer <- Peers]
+            )
+        end
+    ).
+
 %% 正常 range fetch：next_seq 取最后一行 conv_seq，满页 has_more=true。
 %% 服务端按 Limit+1 取数判定：mock 返回 3 行（> limit=2）→ has_more=true，
 %% 且第 3 行（探测行）不随 messages 下发、next_seq 取截断后末行

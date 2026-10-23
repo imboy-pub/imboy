@@ -1,11 +1,17 @@
-# POST /api/adm/channel/report/resolve — admin
 post:
-  tags: [admin]
+  security:
+  - adminSessionId: []
+    adminSessionSignature: []
+  tags:
+  - admin
   summary: admin adm-report - channel_resolve
-  description: |
-    ## 中文 / English
-    管理后台 adm-report handler 的 `channel_resolve` 动作；路径 `/adm/channel/report/resolve`。
-    Admin handler `adm-report`, action `channel_resolve`. Path `/adm/channel/report/resolve`.
+  description: '## 中文 / English
+
+    管理后台 adm-report handler 的 `channel_resolve` 动作；路径 `/api/adm/channel/report/resolve`。
+
+    Admin handler `adm-report`, action `channel_resolve`. Path `/api/adm/channel/report/resolve`.
+
+    '
   operationId: adm_report_channel_resolve
   requestBody:
     required: true
@@ -16,18 +22,26 @@ post:
           additionalProperties: true
   responses:
     '200':
-      description: 成功（payload 为空对象）/ Success (empty payload)
+      description: 成功（payload 为空对象）/ Success (empty payload)；非零 code 为业务错误 / Non-zero code is a business error
       content:
         application/json:
           schema:
-            allOf:
-              - $ref: '../../../../components/schemas/Envelope.yaml'
+            anyOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
               - type: object
                 properties:
                   payload:
                     type: object
                     description: 处理成功，payload 为空对象 / Empty object on success
-    '4XX':
+              - type: object
+                properties:
+                  code:
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+    4XX:
       description: 无权限 / 参数非法
       content:
-        application/json: { schema: { $ref: '../../../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/Envelope.yaml

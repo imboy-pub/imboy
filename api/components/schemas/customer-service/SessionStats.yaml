@@ -1,0 +1,82 @@
+type: object
+properties:
+  organization_id:
+    type: string
+    pattern: ^[0-9]+$
+    description: 无损十进制 TSID 字符串。
+  workspace_id:
+    type:
+    - string
+    - 'null'
+    pattern: ^[0-9]+$
+    description: 无损十进制 TSID 字符串。
+  date:
+    type: string
+    format: date
+  tz_offset:
+    type: integer
+  window_start:
+    type: integer
+    format: int64
+    description: Unix 秒；客服 response helper 保留底层秒值。
+  window_end:
+    type: integer
+    format: int64
+    description: Unix 秒；客服 response helper 保留底层秒值。
+  new_sessions:
+    type: integer
+  first_response:
+    type: object
+    properties:
+      count:
+        type:
+        - integer
+        - 'null'
+      avg_seconds:
+        type:
+        - number
+        - 'null'
+  first_human_response:
+    type: object
+    properties:
+      count:
+        type:
+        - integer
+        - 'null'
+      avg_seconds:
+        type:
+        - number
+        - 'null'
+  first_ai_response:
+    type: object
+    properties:
+      count:
+        type:
+        - integer
+        - 'null'
+      avg_seconds:
+        type:
+        - number
+        - 'null'
+  response_unknown_count:
+    type:
+    - integer
+    - 'null'
+  closed_sessions:
+    type: integer
+  rating:
+    type: object
+    properties:
+      count:
+        type: integer
+      avg:
+        type:
+        - number
+        - 'null'
+  current:
+    type: object
+    properties:
+      queued:
+        type: integer
+      active:
+        type: integer

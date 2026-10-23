@@ -1,0 +1,111 @@
+type: object
+description: 消息列表视图。keyring 可用时返回解密后的 body 并去除 body_cipher/aad_hash；不可用时保留密文投影。时间整数保持 Unix 秒。
+properties:
+  id:
+    type: string
+    pattern: ^[0-9]+$
+    description: 完整十进制实体 ID。
+  organization_id:
+    type: string
+    pattern: ^[0-9]+$
+    description: 完整十进制实体 ID。
+  workspace_id:
+    type: string
+    pattern: ^[0-9]+$
+    description: 完整十进制实体 ID。
+  conversation_id:
+    type: string
+    pattern: ^[0-9]+$
+    description: 完整十进制实体 ID。
+  sender_contact_id:
+    type:
+    - string
+    - 'null'
+    pattern: ^[0-9]+$
+    description: 完整十进制实体 ID。
+  sender_business_identity_id:
+    type:
+    - string
+    - 'null'
+    pattern: ^[0-9]+$
+    description: 完整十进制实体 ID。
+  actor_user_id:
+    type:
+    - string
+    - 'null'
+    pattern: ^[0-9]+$
+    description: 完整十进制实体 ID。
+  policy_id:
+    type:
+    - string
+    - 'null'
+    pattern: ^[0-9]+$
+    description: 完整十进制实体 ID。
+  sender_type:
+    type: string
+    enum:
+    - contact
+    - business_identity
+  client_msg_id:
+    type: string
+  body_cipher:
+    type:
+    - string
+    - 'null'
+  key_version:
+    type:
+    - integer
+    - 'null'
+  aad_hash:
+    type:
+    - string
+    - 'null'
+  content_hash:
+    type:
+    - string
+    - 'null'
+  policy_version:
+    type:
+    - integer
+    - 'null'
+  retention_days:
+    type:
+    - integer
+    - 'null'
+  retain_until:
+    type:
+    - integer
+    - 'null'
+    description: Unix 秒；不经通用毫秒转换。
+  visibility:
+    type: string
+  version:
+    type: integer
+  created_at:
+    type: integer
+    description: Unix 秒；不经通用毫秒转换。
+  body:
+    type: string
+  assets:
+    type: array
+    items:
+      type: object
+      properties:
+        id:
+          type: string
+          pattern: ^[0-9]+$
+          description: 无损十进制 TSID 字符串。
+        asset_id:
+          type: string
+          pattern: ^[0-9]+$
+          description: 无损十进制 TSID 字符串。
+        mime:
+          type: string
+        size_bytes:
+          type: integer
+        file_name:
+          type:
+          - string
+          - 'null'
+        status:
+          type: string

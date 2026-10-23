@@ -1,0 +1,134 @@
+post:
+  security:
+  - adminSessionId: []
+    adminSessionSignature: []
+  tags:
+  - admin
+  summary: 全量保存角色权限 / Replace role permissions
+  deprecated: true
+  description: '兼容别名；主入口 `/api/adm/role/permissions/save`。 / Compatibility alias.
+
+
+    需 roles:update。此操作全量替换权限集合；permissions 是可选字段，省略时按 [] 处理并清空权限，并非部分更新。description 省略时保留，空字符串清空。禁止修改角色 1、操作者自身所属角色，禁止授予超出操作者自身权限集的权限。
+
+    Requires roles:update. Omitting permissions clears the full permission set. Role 1, the operator’s own roles,
+    and grants exceeding the operator’s permissions are rejected.'
+  operationId: adm_role_permissions_save_permissions_save_alias
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required:
+          - role_id
+          properties:
+            role_id:
+              type: integer
+              format: int64
+              minimum: 1
+              description: 目标管理员角色 ID；角色 1 和操作者自身所属角色不可修改。 / Target role ID; role 1 and the operator’s own roles
+                are protected.
+            permissions:
+              type: array
+              items:
+                type: string
+              default: []
+              description: 全量替换权限集合；省略或传 [] 都会清空该角色权限，不会保留现有权限。重复及空白权限会归一化。 / Replaces the full set; omitted or
+                [] clears all permissions.
+            description:
+              type: string
+              description: 可选角色说明；省略时保留原说明，传空字符串清空。 / Omit to preserve the existing description; empty string clears
+                it.
+  responses:
+    '200':
+      description: 成功（payload 为空对象）；非零 code 为业务错误 / Non-zero code is a business error
+      content:
+        application/json:
+          schema:
+            anyOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    description: 操作成功返回空对象 {}
+              - type: object
+                properties:
+                  code:
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+    4XX:
+      description: 无权限 / 参数非法
+      content:
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/Envelope.yaml
+put:
+  security:
+  - adminSessionId: []
+    adminSessionSignature: []
+  tags:
+  - admin
+  summary: 全量保存角色权限 / Replace role permissions
+  deprecated: true
+  description: '兼容别名；主入口 `/api/adm/role/permissions/save`。 / Compatibility alias.
+
+
+    需 roles:update。此操作全量替换权限集合；permissions 是可选字段，省略时按 [] 处理并清空权限，并非部分更新。description 省略时保留，空字符串清空。禁止修改角色 1、操作者自身所属角色，禁止授予超出操作者自身权限集的权限。
+
+    Requires roles:update. Omitting permissions clears the full permission set. Role 1, the operator’s own roles,
+    and grants exceeding the operator’s permissions are rejected.'
+  operationId: adm_role_permissions_save_permissions_save_alias_put
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required:
+          - role_id
+          properties:
+            role_id:
+              type: integer
+              format: int64
+              minimum: 1
+              description: 目标管理员角色 ID；角色 1 和操作者自身所属角色不可修改。 / Target role ID; role 1 and the operator’s own roles
+                are protected.
+            permissions:
+              type: array
+              items:
+                type: string
+              default: []
+              description: 全量替换权限集合；省略或传 [] 都会清空该角色权限，不会保留现有权限。重复及空白权限会归一化。 / Replaces the full set; omitted or
+                [] clears all permissions.
+            description:
+              type: string
+              description: 可选角色说明；省略时保留原说明，传空字符串清空。 / Omit to preserve the existing description; empty string clears
+                it.
+  responses:
+    '200':
+      description: 成功（payload 为空对象）；非零 code 为业务错误 / Non-zero code is a business error
+      content:
+        application/json:
+          schema:
+            anyOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    description: 操作成功返回空对象 {}
+              - type: object
+                properties:
+                  code:
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+    4XX:
+      description: 无权限 / 参数非法
+      content:
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/Envelope.yaml

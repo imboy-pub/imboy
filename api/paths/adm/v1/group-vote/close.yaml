@@ -1,5 +1,8 @@
 # POST /api/adm/group/vote/close — admin
 post:
+  security:
+    - adminSessionId: []
+      adminSessionSignature: []
   tags: [admin]
   summary: 管理后台关闭群投票
   description: 管理员强制关闭指定群投票（提前终止投票）。Force close a group vote by admin (ends voting early).

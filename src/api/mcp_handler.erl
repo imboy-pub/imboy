@@ -51,16 +51,7 @@ init(Req0, State) ->
                     ),
                     {ok, Req, State};
                 {ok, Principal} ->
-                    {ok, Body, Req1} = read_body(Req0, <<>>),
-                    AuthInfo = Principal,
-                    %% T3.6：接 Mcp-Session-Id（无则 initialize 时惰性创建）。
-                    SessionId0 = cowboy_req:header(<<"mcp-session-id">>, Req1),
-                    {Code, Resp, SessionId} = process(Body, AuthInfo, SessionId0),
-                    Headers = maybe_session_header(
-                        #{<<"content-type">> => <<"application/json">>}, SessionId
-                    ),
-                    Req = cowboy_req:reply(Code, Headers, Resp, Req1),
-                    {ok, Req, State}
+                    {ok, post_response(Req0, Principal), State}
             end;
         <<"GET">> ->
             %% SSE 长连接同样要求凭证认证
@@ -78,6 +69,18 @@ init(Req0, State) ->
             end;
         _ ->
             {ok, cowboy_req:reply(405, #{}, <<"Method Not Allowed">>, Req0), State}
+    end.
+
+post_response(Req0, Principal) ->
+    Headers0 = #{<<"content-type">> => <<"application/json">>},
+    case read_body(Req0, <<>>) of
+        {error, body_too_large, Req} ->
+            cowboy_req:reply(413, Headers0, <<"{\"error\":\"body_too_large\"}">>, Req);
+        {ok, Body, Req} ->
+            %% T3.6：接 Mcp-Session-Id（无则 initialize 时惰性创建）。
+            SessionId0 = cowboy_req:header(<<"mcp-session-id">>, Req),
+            {Code, Resp, SessionId} = process(Body, Principal, SessionId0),
+            cowboy_req:reply(Code, maybe_session_header(Headers0, SessionId), Resp, Req)
     end.
 
 %% @doc MCP client credential 认证（PDT-01 mcp_client 契约 §2/§3）。
@@ -303,11 +306,18 @@ parse_error() ->
     },
     barrel_mcp_protocol:encode(Err).
 
--spec read_body(cowboy_req:req(), binary()) -> {ok, binary(), cowboy_req:req()}.
+-spec read_body(cowboy_req:req(), binary()) ->
+    {ok, binary(), cowboy_req:req()} | {error, body_too_large, cowboy_req:req()}.
 read_body(Req0, Acc) ->
-    case cowboy_req:read_body(Req0, #{length => ?MAX_BODY}) of
-        {ok, Data, Req} ->
+    %% Cowboy length 限制单次读取，必须另行检查所有分块的累计大小。
+    {Status, Data, Req} = cowboy_req:read_body(
+        Req0, #{length => ?MAX_BODY - byte_size(Acc) + 1}
+    ),
+    case byte_size(Acc) + byte_size(Data) > ?MAX_BODY of
+        true ->
+            {error, body_too_large, Req};
+        false when Status =:= ok ->
             {ok, <<Acc/binary, Data/binary>>, Req};
-        {more, Data, Req} ->
+        false when Status =:= more ->
             read_body(Req, <<Acc/binary, Data/binary>>)
     end.

@@ -1,0 +1,29 @@
+type: object
+properties:
+  id:
+    type: string
+    pattern: ^[0-9]+$
+    description: 完整十进制实体 ID；此接口出站以字符串传输。
+  organization_id:
+    type: string
+    pattern: ^[0-9]+$
+    description: 完整十进制实体 ID；此接口出站以字符串传输。
+  workspace_id:
+    type: string
+    pattern: ^[0-9]+$
+    description: 完整十进制实体 ID；此接口出站以字符串传输。
+  contact_id:
+    type: string
+    pattern: ^[0-9]+$
+    description: 完整十进制实体 ID；此接口出站以字符串传输。
+  business_identity_id:
+    type: string
+    pattern: ^[0-9]+$
+    description: 完整十进制实体 ID；此接口出站以字符串传输。
+  status:
+    type: string
+  notice_version:
+    type: string
+  version:
+    type: integer
+description: 企业业务公开视图；实体ID由eb_enterprise_http:encode_entity转字符串。时间保持success_rfc3339输入，不套用通用毫秒转换。

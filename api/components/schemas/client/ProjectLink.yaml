@@ -1,0 +1,13 @@
+type: object
+properties:
+  name:
+    type: string
+    minLength: 1
+    maxLength: 200
+  url:
+    type: string
+    maxLength: 2048
+    description: http/https URL；长度限制按 UTF-8 字节。 / HTTP(S), limit in UTF-8 bytes.
+required:
+- name
+- url

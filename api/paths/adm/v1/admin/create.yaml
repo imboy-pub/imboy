@@ -1,11 +1,11 @@
-# POST /api/adm/admin/create — admin
 post:
-  tags: [admin]
-  summary: admin adm-admin - create
-  description: |
-    ## 中文 / English
-    管理后台 adm-admin handler 的 `create` 动作；路径 `/adm/admin/create`。
-    Admin handler `adm-admin`, action `create`. Path `/adm/admin/create`.
+  security:
+  - adminSessionId: []
+    adminSessionSignature: []
+  tags:
+  - admin
+  summary: 创建管理员 / Create administrator
+  description: admins:create 权限；pwd 或 password 至少一个，pwd 优先。 / Requires admins:create; pwd takes precedence.
   operationId: adm_admin_create
   requestBody:
     required: true
@@ -13,21 +13,107 @@ post:
       application/json:
         schema:
           type: object
-          additionalProperties: true
+          properties:
+            account:
+              type: string
+              minLength: 3
+            pwd:
+              type: string
+              minLength: 6
+              description: 创建密码（此接口为明文密码字段） / Creation password
+            password:
+              type: string
+              minLength: 6
+              description: pwd 缺失时的兼容字段 / Fallback alias
+            role_id:
+              type: integer
+              format: int64
+              minimum: 1
+              description: JSON int64；客户端需无损解析 / Preserve bigint precision
+            status:
+              type: integer
+              enum:
+              - 0
+              - 1
+              default: 1
+            nickname:
+              type: string
+              description: 空时使用 account / Defaults to account
+            email:
+              type: string
+            mobile:
+              type: string
+          required:
+          - account
+          - role_id
+          anyOf:
+          - required:
+            - pwd
+          - required:
+            - password
+      application/x-www-form-urlencoded:
+        schema:
+          type: object
+          properties:
+            account:
+              type: string
+              minLength: 3
+            pwd:
+              type: string
+              minLength: 6
+              description: 创建密码（此接口为明文密码字段） / Creation password
+            password:
+              type: string
+              minLength: 6
+              description: pwd 缺失时的兼容字段 / Fallback alias
+            role_id:
+              type: integer
+              format: int64
+              minimum: 1
+              description: JSON int64；客户端需无损解析 / Preserve bigint precision
+            status:
+              type: integer
+              enum:
+              - 0
+              - 1
+              default: 1
+            nickname:
+              type: string
+              description: 空时使用 account / Defaults to account
+            email:
+              type: string
+            mobile:
+              type: string
+          required:
+          - account
+          - role_id
+          anyOf:
+          - required:
+            - pwd
+          - required:
+            - password
   responses:
     '200':
-      description: 成功（payload 为空对象）
+      description: 成功（payload 为空对象）；非零 code 为业务错误 / Non-zero code is a business error
       content:
         application/json:
           schema:
-            allOf:
-              - $ref: '../../../../components/schemas/Envelope.yaml'
+            anyOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
               - type: object
                 properties:
                   payload:
                     type: object
                     description: 创建成功时返回空对象 {}
-    '4XX':
+              - type: object
+                properties:
+                  code:
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+    4XX:
       description: 无权限 / 参数非法
       content:
-        application/json: { schema: { $ref: '../../../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/Envelope.yaml

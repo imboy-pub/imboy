@@ -1,0 +1,93 @@
+type: object
+properties:
+  id:
+    type: string
+    pattern: ^[0-9]+$
+    description: 无损十进制 TSID 字符串。
+  organization_id:
+    type: string
+    pattern: ^[0-9]+$
+    description: 无损十进制 TSID 字符串。
+  workspace_id:
+    type: string
+    pattern: ^[0-9]+$
+    description: 无损十进制 TSID 字符串。
+  contact_id:
+    type: string
+    pattern: ^[0-9]+$
+    description: 无损十进制 TSID 字符串。
+  conversation_id:
+    type: string
+    pattern: ^[0-9]+$
+    description: 无损十进制 TSID 字符串。
+  business_identity_id:
+    type:
+    - string
+    - 'null'
+    pattern: ^[0-9]+$
+    description: 无损十进制 TSID 字符串。
+  visit_token_id:
+    type:
+    - string
+    - 'null'
+    pattern: ^[0-9]+$
+    description: 无损十进制 TSID 字符串。
+  status:
+    type: string
+    enum:
+    - queued
+    - active
+    - closed
+  version:
+    type: integer
+  rating:
+    type:
+    - integer
+    - 'null'
+  rating_at:
+    type:
+    - integer
+    - 'null'
+    format: int64
+    description: Unix 秒；客服 response helper 保留底层秒值。
+  close_reason:
+    type:
+    - string
+    - 'null'
+  queued_at:
+    type:
+    - integer
+    - 'null'
+    format: int64
+    description: Unix 秒；客服 response helper 保留底层秒值。
+  claimed_at:
+    type:
+    - integer
+    - 'null'
+    format: int64
+    description: Unix 秒；客服 response helper 保留底层秒值。
+  closed_at:
+    type:
+    - integer
+    - 'null'
+    format: int64
+    description: Unix 秒；客服 response helper 保留底层秒值。
+  updated_at:
+    type:
+    - integer
+    - 'null'
+    format: int64
+    description: Unix 秒；客服 response helper 保留底层秒值。
+  first_visitor_message_at:
+    type:
+    - integer
+    - 'null'
+    format: int64
+    description: Unix 秒；客服 response helper 保留底层秒值。
+required:
+- id
+- organization_id
+- workspace_id
+- contact_id
+- status
+- version

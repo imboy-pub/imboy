@@ -1,27 +1,41 @@
-# GET /api/adm/storage/stats — admin
 get:
-  tags: [admin]
+  security:
+  - adminSessionId: []
+    adminSessionSignature: []
+  tags:
+  - admin
   summary: admin adm-attach - stats
-  description: |
-    ## 中文 / English
-    管理后台 adm-attach handler 的 `stats` 动作；路径 `/adm/storage/stats`。
-    Admin handler `adm-attach`, action `stats`. Path `/adm/storage/stats`.
+  description: '## 中文 / English
+
+    管理后台 adm-attach handler 的 `stats` 动作；路径 `/api/adm/storage/stats`。
+
+    Admin handler `adm-attach`, action `stats`. Path `/api/adm/storage/stats`.
+
+    '
   operationId: adm_attach_stats
   responses:
     '200':
-      description: 成功
+      description: 成功；非零 code 为业务错误 / Non-zero code is a business error
       content:
         application/json:
           schema:
-            allOf:
-              - $ref: '../../../../components/schemas/Envelope.yaml'
+            anyOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
               - type: object
                 properties:
                   payload:
                     type: object
                     additionalProperties: true
                     description: 附件存储统计信息（attachment_ds:stats 返回）
-    '4XX':
+              - type: object
+                properties:
+                  code:
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+    4XX:
       description: 无权限 / 参数非法
       content:
-        application/json: { schema: { $ref: '../../../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/Envelope.yaml

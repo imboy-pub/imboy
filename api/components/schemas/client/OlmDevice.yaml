@@ -1,0 +1,41 @@
+type: object
+properties:
+  device_id:
+    type: string
+  ed25519_key:
+    type: string
+  curve25519_key:
+    type: string
+  signature:
+    type: string
+  device_type:
+    type: string
+  capabilities:
+    type: array
+    items:
+      type: string
+  trust_state:
+    type: string
+    enum:
+    - unverified
+    - verified
+    - revoked
+  identity_blob:
+    type:
+    - object
+    - string
+    - 'null'
+    description: 身份扩展 JSONB；当前驱动可能透传 JSON 字符串。 / JSONB may be serialized as a JSON string.
+  identity_signature:
+    type:
+    - string
+    - 'null'
+  device_generation:
+    type: integer
+  identity_version:
+    type: integer
+required:
+- device_id
+- ed25519_key
+- curve25519_key
+- signature

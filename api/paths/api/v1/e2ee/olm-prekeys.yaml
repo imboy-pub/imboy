@@ -1,0 +1,68 @@
+post:
+  tags:
+  - e2ee
+  summary: 上报 Olm prekeys
+  operationId: olmReportPrekeys
+  description: 需启用 E2EE，并使用绑定设备的访问 JWT。写入的 device_id 必须等于 JWT 绑定设备；服务端仅保存公钥侧材料。 / E2EE capability and device-bound
+    JWT required; device_id must match the token.
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            device_id:
+              type: string
+            keys:
+              oneOf:
+              - type: array
+                items:
+                  type: object
+                  properties:
+                    key_id:
+                      type: string
+                    key_base64:
+                      type: string
+                  required:
+                  - key_id
+                  - key_base64
+                minItems: 1
+                maxItems: 100
+              - type: object
+                minProperties: 1
+                maxProperties: 100
+                additionalProperties:
+                  type: string
+          required:
+          - device_id
+          - keys
+  responses:
+    '200':
+      description: 成功 code=0 返回以下业务载荷；业务失败 code 非零返回通用错误信封。 / Success payload or nonzero-code business error.
+      content:
+        application/json:
+          schema:
+            oneOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      count:
+                        type: integer
+                        minimum: 0
+                    required:
+                    - count
+              - type: object
+                required:
+                - code
+                properties:
+                  code:
+                    type: integer
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+    '401':
+      description: 访问 JWT、设备绑定或客户端签名认证失败 / JWT, device binding or client signature rejected

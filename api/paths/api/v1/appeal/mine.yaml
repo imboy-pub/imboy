@@ -1,0 +1,37 @@
+get:
+  tags:
+  - user
+  summary: 我的申诉列表
+  operationId: appealMine
+  description: 最多最近 100 条，无分页参数。 / Up to 100 recent appeals, no paging.
+  responses:
+    '200':
+      description: 成功 code=0 返回以下业务载荷；业务失败 code 非零返回通用错误信封。 / Success payload or nonzero-code business error.
+      content:
+        application/json:
+          schema:
+            oneOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      appeals:
+                        type: array
+                        items:
+                          $ref: ../../../../components/schemas/client/ModerationAppeal.yaml
+                        maxItems: 100
+                    required:
+                    - appeals
+              - type: object
+                required:
+                - code
+                properties:
+                  code:
+                    type: integer
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+    '401':
+      description: 访问 JWT 或客户端认证失败 / Authentication rejected

@@ -1,0 +1,89 @@
+get:
+  security:
+  - adminSessionId: []
+    adminSessionSignature: []
+  tags:
+  - bots
+  summary: Bot detail / Platform bot detail
+  description: 需 bots:read；返回不包含 api_token/verify_token。 / Tokens are omitted; feature availability follows deployment
+    manifest.
+  operationId: admBotDetail
+  parameters:
+  - name: bot_id
+    in: query
+    required: true
+    description: bot_id
+    schema:
+      type: integer
+      format: int64
+      minimum: 1
+      description: JSON int64；客户端需无损解析 / Preserve bigint precision
+  responses:
+    '200':
+      description: 成功或业务错误；检查 code / Inspect business code
+      content:
+        application/json:
+          schema:
+            anyOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      user_id:
+                        type: integer
+                        format: int64
+                        minimum: 1
+                        description: JSON int64；客户端需无损解析 / Preserve bigint precision
+                      name:
+                        type: string
+                      username:
+                        type: string
+                      description:
+                        type: string
+                      owner_uid:
+                        type: integer
+                        format: int64
+                        minimum: 1
+                        description: JSON int64；客户端需无损解析 / Preserve bigint precision
+                      is_public:
+                        type: boolean
+                      status:
+                        type: integer
+                      nickname:
+                        type: string
+                      avatar:
+                        type: string
+                      webhook_url:
+                        type: string
+                      commands:
+                        description: 持久化 JSON 配置 / Stored JSON configuration
+                      permissions:
+                        description: 持久化 JSON 配置 / Stored JSON configuration
+                      events:
+                        description: 持久化 JSON 配置 / Stored JSON configuration
+                      created_at:
+                        type:
+                        - integer
+                        - 'null'
+                        format: int64
+                        description: Unix 毫秒 / Unix milliseconds
+                      updated_at:
+                        type:
+                        - integer
+                        - 'null'
+                        format: int64
+                        description: Unix 毫秒 / Unix milliseconds
+              - type: object
+                properties:
+                  code:
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+    '401':
+      description: Cookie 缺失、无效、到期或已撤销 / Invalid session cookies
+      content:
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/Envelope.yaml

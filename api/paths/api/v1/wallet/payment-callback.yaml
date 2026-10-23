@@ -1,0 +1,67 @@
+post:
+  tags:
+  - wallet
+  summary: 支付网关异步回调
+  operationId: paymentGatewayCallback
+  description: 需启用支付网关；原始报文验签和幂等入账为强制门，可配置来源 IP 白名单。调用方必须按具体网关签名头/原始报文协议发送，不能使用业务 JWT 替代验签。原始 body 最多 8 MiB。 / Provider-signed
+    raw payload; idempotent settlement, optional source allowlist.
+  parameters:
+  - name: gateway
+    in: path
+    required: true
+    schema:
+      type: string
+      enum:
+      - alipay
+      - wechat
+      - stripe
+    description: 支付网关 / Payment gateway
+  requestBody:
+    required: true
+    content:
+      application/octet-stream:
+        schema:
+          type: string
+      application/x-www-form-urlencoded:
+        schema:
+          type: object
+          additionalProperties:
+            type: string
+      application/json:
+        schema:
+          type: object
+          additionalProperties: true
+  security: []
+  responses:
+    '200':
+      description: 网关格式：支付宝 success/failure；微信 SUCCESS/FAIL 对象；Stripe received:true。检查网关协议状态，HTTP200不总表示入账。
+      content:
+        text/plain:
+          schema:
+            type: string
+            enum:
+            - success
+            - failure
+        application/json:
+          schema:
+            anyOf:
+            - type: object
+              properties:
+                code:
+                  type: string
+                message:
+                  type: string
+              required:
+              - code
+              - message
+            - type: object
+              properties:
+                received:
+                  type: boolean
+              required:
+              - received
+            - $ref: ../../../../components/schemas/Envelope.yaml
+    '400':
+      description: Stripe 验签/处理失败，received:false
+    '403':
+      description: 来源不在已配置 IP 白名单

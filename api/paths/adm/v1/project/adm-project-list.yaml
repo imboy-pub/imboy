@@ -1,38 +1,80 @@
-# GET /api/adm/project/list — 项目分页（Admin 治理只读，W0）
 get:
-  tags: [admin]
+  security:
+  - adminSessionId: []
+    adminSessionSignature: []
+  tags:
+  - admin
   summary: Admin 项目分页列表
-  description: |
-    ## 中文
+  description: '## 中文
+
     管理后台项目分页（workspaces:read ACL，fail-closed）。status/keyword 过滤。
+
     ## English
+
     Admin-side paginated project list (workspaces:read ACL).
+
+    '
   operationId: admProjectList
   parameters:
-    - name: page
-      description: 分页页码，默认1 / Page number, defaults to 1
-      in: query
-      schema: { type: integer, default: 1 }
-    - name: size
-      description: 每页条数，默认10 / Items per page, defaults to 10
-      in: query
-      schema: { type: integer, default: 10 }
-    - name: status
-      description: 状态筛选，默认 all；取值见 enum / Status filter, defaults to all; allowed values are in enum
-      in: query
-      schema: { type: string, enum: [all, active, done], default: all }
-    - name: keyword
-      in: query
-      schema: { type: string }
-      description: 按项目名模糊匹配
+  - name: page
+    description: 分页页码，默认1 / Page number, defaults to 1
+    in: query
+    schema:
+      type: integer
+      minimum: 1
+      default: 1
+  - name: size
+    description: 每页条数，服务端默认20；聚合pinned/activity下钳制至50 / Page size
+    in: query
+    schema:
+      type: integer
+      minimum: 1
+      maximum: 100
+      default: 20
+  - name: status
+    description: 状态筛选，默认 all；取值见 enum / Status filter, defaults to all; allowed values are in enum
+    in: query
+    schema:
+      type: string
+      enum:
+      - all
+      - active
+      - done
+      default: all
+  - name: keyword
+    in: query
+    schema:
+      type: string
+    description: 按项目名模糊匹配
+  - name: organization_id
+    in: query
+    required: false
+    description: 可选组织关系过滤 / Optional organization filter
+    schema:
+      type: string
+      pattern: ^[1-9][0-9]*$
+      description: TSID 十进制字符串 / Decimal TSID string
   responses:
     '200':
-      description: 项目分页
+      description: 项目分页；非零 code 为业务错误 / Non-zero code is a business error
       content:
         application/json:
-          schema: { $ref: '../../../../components/schemas/Envelope.yaml' }
+          schema:
+            anyOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
+              - type: object
+                properties:
+                  payload:
+                    $ref: ../../../../components/schemas/adm/WorkspaceProject.yaml#/$defs/ProjectList
+              - type: object
+                properties:
+                  code:
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
     '403':
       description: ACL 不满足
       content:
         application/json:
-          schema: { $ref: '../../../../components/schemas/Envelope.yaml' }
+          schema:
+            $ref: ../../../../components/schemas/Envelope.yaml

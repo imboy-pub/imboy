@@ -1,0 +1,185 @@
+get:
+  tags:
+  - organization
+  summary: 组织通讯录搜索
+  operationId: organizationDirectorySearch
+  description: 'active 组织成员可读；游标绑定组织、当前用户、端点和筛选条件，不能跨条件复用。limit 越界返回 400，不截断。检索仅部门名、昵称和账号，不搜索联系方式。 / Bound opaque
+    cursors; invalid limit rejected; no contact search.
+
+    成功为业务信封；目录应用错误使用真实 HTTP 状态和 error 对象。 / Directory errors use semantic HTTP status and error object.'
+  parameters:
+  - name: organization_id
+    in: path
+    required: true
+    schema:
+      type: integer
+      format: int64
+      minimum: 1
+    description: 组织 TSID；业务归属，不替代授权 / Organization business ID
+  - name: q
+    in: query
+    required: true
+    schema:
+      type: string
+      minLength: 2
+      maxLength: 64
+    description: 搜索词，trim 后 2..64 字符 / Search text after trimming
+  - name: cursor
+    in: query
+    required: false
+    schema:
+      type: string
+    description: 上页返回的游标；保持筛选条件不变 / Cursor from previous response, same filters
+  - name: limit
+    in: query
+    required: false
+    schema:
+      type: integer
+      minimum: 1
+      maximum: 100
+      default: 50
+    description: 最多返回条数 / Maximum rows
+  responses:
+    '200':
+      description: 业务结果 / Business result
+      content:
+        application/json:
+          schema:
+            allOf:
+            - $ref: ../../../../components/schemas/Envelope.yaml
+            - type: object
+              properties:
+                payload:
+                  type: object
+                  properties:
+                    list:
+                      type: array
+                      items:
+                        oneOf:
+                        - allOf:
+                          - $ref: ../../../../components/schemas/client/OrganizationDirectoryDepartment.yaml
+                          - type: object
+                            properties:
+                              type:
+                                type: string
+                                const: department
+                            required:
+                            - type
+                        - allOf:
+                          - $ref: ../../../../components/schemas/client/OrganizationDirectoryMember.yaml
+                          - type: object
+                            properties:
+                              type:
+                                type: string
+                                const: member
+                            required:
+                            - type
+                    cursor:
+                      type:
+                      - string
+                      - 'null'
+                    has_more:
+                      type: boolean
+                  required:
+                  - list
+                  - cursor
+                  - has_more
+    '400':
+      description: 参数或游标非法
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: object
+                properties:
+                  code:
+                    type: string
+                  message:
+                    type: string
+                required:
+                - code
+                - message
+            required:
+            - error
+    '403':
+      description: 组织非 active 或当前成员权限不足 / Organization or membership disabled
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: object
+                properties:
+                  code:
+                    type: string
+                  message:
+                    type: string
+                required:
+                - code
+                - message
+            required:
+            - error
+    '503':
+      description: 安全门或依赖不可用
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: object
+                properties:
+                  code:
+                    type: string
+                  message:
+                    type: string
+                required:
+                - code
+                - message
+            required:
+            - error
+    '405':
+      description: Method Not Allowed
+    '401':
+      description: 访问 JWT、设备绑定或客户端签名认证失败 / JWT, device binding or client signature rejected
+    '404':
+      description: 目录资源不存在 / Resource not found
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: object
+                properties:
+                  code:
+                    type: string
+                  message:
+                    type: string
+                required:
+                - code
+                - message
+            required:
+            - error
+    '500':
+      description: 内部错误 / Internal failure
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: object
+                properties:
+                  code:
+                    type: string
+                  message:
+                    type: string
+                required:
+                - code
+                - message
+            required:
+            - error

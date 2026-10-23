@@ -1,0 +1,64 @@
+post:
+  tags:
+  - user
+  summary: 附件直传会话 declare
+  operationId: attachmentDirectDeclare
+  description: direct-v1 会话：register→declare→grant→存储 PUT→finalize；处理中也返回 HTTP 200，通过 state/outcome 和 retry_action
+    决定重试。跨主体会话返回不可见，不泄露归属。失败 retry_action 位于错误信封 meta（retry_session/new_session/retry_attempt/poll/abort）。 / HTTP
+    200 state machine; follow retry_action, not HTTP 202.
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            object_key:
+              type: string
+              minLength: 1
+            sha256:
+              type: string
+              pattern: ^[0-9a-f]{64}$
+            size_bytes:
+              type: integer
+              minimum: 0
+            mime:
+              type: string
+              default: application/octet-stream
+          required:
+          - object_key
+          - sha256
+          - size_bytes
+  responses:
+    '200':
+      description: 成功 code=0 返回以下业务载荷；业务失败 code 非零返回通用错误信封。 / Success payload or nonzero-code business error.
+      content:
+        application/json:
+          schema:
+            oneOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      object_key:
+                        type: string
+                        minLength: 1
+                      state:
+                        type: string
+                        const: DECLARED
+                    required:
+                    - object_key
+                    - state
+              - type: object
+                required:
+                - code
+                properties:
+                  code:
+                    type: integer
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+    '401':
+      description: 访问 JWT 或客户端认证失败 / Authentication rejected

@@ -1,0 +1,43 @@
+get:
+  security:
+  - adminSessionId: []
+    adminSessionSignature: []
+  tags:
+  - admin
+  summary: 客服AI配置 / Customer service AI configuration
+  description: 需 customer_service:read。未编译 customer_service 时返回 not found（业务码404）；业务错误遵循现有HTTP200信封。未配置时payload仅含configured=false。ID按JSON
+    int64传输，调用方需无损解析。 / Requires the customer_service build feature and platform permission.
+  operationId: admCsAiConfig
+  parameters:
+  - name: org_id
+    in: query
+    required: true
+    description: 组织业务归属 ID / Organization business ID
+    schema:
+      type: string
+      pattern: ^[1-9][0-9]*$
+      description: TSID 十进制字符串 / Decimal TSID string
+  responses:
+    '200':
+      description: 成功或业务错误；检查 code / Inspect business code
+      content:
+        application/json:
+          schema:
+            anyOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
+              - type: object
+                properties:
+                  payload:
+                    $ref: ../../../../components/schemas/adm/CustomerServiceAI.yaml#/$defs/Config
+              - type: object
+                properties:
+                  code:
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+    '401':
+      description: Cookie 缺失、无效、到期或已撤销 / Invalid session cookies
+      content:
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/Envelope.yaml

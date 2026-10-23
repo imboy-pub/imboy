@@ -1,0 +1,150 @@
+post:
+  security:
+  - adminSessionId: []
+    adminSessionSignature: []
+  tags:
+  - admin
+  summary: 创建AI助手 / Create AI agent
+  description: 需 users:create。 / Create AI agent
+  operationId: admAiAgentCreatePost
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            nickname:
+              type: string
+              minLength: 1
+            account:
+              type: string
+            avatar:
+              type: string
+            provider:
+              type: string
+              minLength: 1
+            model:
+              type: string
+            role_id:
+              type: string
+            system_prompt:
+              type: string
+            owner_uid:
+              type: integer
+              format: int64
+              minimum: 0
+            trigger_policy:
+              type: object
+              description: 触发策略JSON / Trigger policy configuration
+            description:
+              type: string
+            visibility:
+              type: integer
+              enum:
+              - 0
+              - 1
+            category:
+              type: string
+            voice_id:
+              type: string
+            greeting:
+              type: string
+            capabilities:
+              type: object
+              properties:
+                knowledge:
+                  type: boolean
+                group_reply:
+                  type: boolean
+                proactive:
+                  type: boolean
+            temperature:
+              type: number
+          required:
+          - nickname
+          - provider
+      application/x-www-form-urlencoded:
+        schema:
+          type: object
+          properties:
+            nickname:
+              type: string
+              minLength: 1
+            account:
+              type: string
+            avatar:
+              type: string
+            provider:
+              type: string
+              minLength: 1
+            model:
+              type: string
+            role_id:
+              type: string
+            system_prompt:
+              type: string
+            owner_uid:
+              type: integer
+              format: int64
+              minimum: 0
+            trigger_policy:
+              type: object
+              description: 触发策略JSON / Trigger policy configuration
+            description:
+              type: string
+            visibility:
+              type: integer
+              enum:
+              - 0
+              - 1
+            category:
+              type: string
+            voice_id:
+              type: string
+            greeting:
+              type: string
+            capabilities:
+              type: object
+              properties:
+                knowledge:
+                  type: boolean
+                group_reply:
+                  type: boolean
+                proactive:
+                  type: boolean
+            temperature:
+              type: number
+          required:
+          - nickname
+          - provider
+  responses:
+    '200':
+      description: 成功或业务错误；检查 code / Inspect business code
+      content:
+        application/json:
+          schema:
+            anyOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      user_id:
+                        type: integer
+                        format: int64
+                        minimum: 1
+                        description: JSON int64；客户端需无损解析 / Preserve bigint precision
+              - type: object
+                properties:
+                  code:
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+    '401':
+      description: Cookie 缺失、无效、到期或已撤销 / Invalid session cookies
+      content:
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/Envelope.yaml

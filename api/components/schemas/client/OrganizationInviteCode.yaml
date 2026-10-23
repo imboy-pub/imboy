@@ -1,0 +1,29 @@
+type: object
+properties:
+  organization_id:
+    type: integer
+    format: int64
+    minimum: 1
+  code:
+    type:
+    - string
+    - 'null'
+  role:
+    type: string
+    const: member
+  status:
+    type:
+    - string
+    - 'null'
+    enum:
+    - active
+    - revoked
+    - null
+  expires_at:
+    type: integer
+    format: int64
+    description: Unix 秒 / Unix seconds
+  created_at:
+    type: integer
+    format: int64
+    description: Unix 秒 / Unix seconds

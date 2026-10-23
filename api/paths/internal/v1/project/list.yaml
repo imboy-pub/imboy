@@ -15,6 +15,11 @@ get:
     可见域）；status 过滤 active|done|all（缺省 all）。项目无 archive 语义，
     active 与 done 均可读。分页为 CURSOR-V2 签名游标（非法/过期/foreign 一律
     400，客户端从首页重启）。
+  security:
+    - ibIntHmacCredential: []
+      ibIntHmacTimestamp: []
+      ibIntHmacNonce: []
+      ibIntHmacSignature: []
   operationId: internalProjectList
   parameters:
     - name: workspace_id
@@ -70,8 +75,8 @@ get:
               has_more: { type: boolean }
               next_cursor: { type: [string, 'null'] }
     '400': { $ref: '../../../../components/responses/internal/invalid_request.yaml' }
-    '401': { $ref: '../../../../components/responses/internal/invalid_credential.yaml' }
-    '403': { $ref: '../../../../components/responses/internal/organization_boundary_violation.yaml' }
+    '401': { $ref: '../../../../components/responses/internal/unauthorized.yaml' }
+    '403': { $ref: '../../../../components/responses/internal/forbidden.yaml' }
     '429': { $ref: '../../../../components/responses/internal/rate_limited.yaml' }
     '500': { $ref: '../../../../components/responses/internal/internal_error.yaml' }
     '503': { $ref: '../../../../components/responses/internal/security_gate_closed.yaml' }

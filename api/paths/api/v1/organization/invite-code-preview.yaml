@@ -1,0 +1,54 @@
+post:
+  tags:
+  - organization
+  summary: 预览加入码对应组织
+  operationId: organizationInviteCodePreview
+  description: 'JWT 认证；仅预览，不创建成员关系。无效码业务 981，过期业务 982。 / Preview only; no membership change.
+
+    访问 JWT 认证；业务失败通常返回 HTTP 200 与非零 code，须检查 code。 / JWT; inspect business code.'
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            code:
+              type: string
+          required:
+          - code
+  responses:
+    '200':
+      description: 成功 code=0 返回以下业务载荷；业务失败 code 非零返回通用错误信封。 / Success payload or nonzero-code business error.
+      content:
+        application/json:
+          schema:
+            oneOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      organization_id:
+                        type: integer
+                        format: int64
+                        minimum: 1
+                      name:
+                        type: string
+                      role:
+                        type: string
+                        const: member
+              - type: object
+                required:
+                - code
+                properties:
+                  code:
+                    type: integer
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+    '405':
+      description: Method Not Allowed
+    '401':
+      description: 访问 JWT、设备绑定或客户端签名认证失败 / JWT, device binding or client signature rejected

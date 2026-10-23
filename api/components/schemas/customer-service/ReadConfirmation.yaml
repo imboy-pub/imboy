@@ -1,0 +1,29 @@
+type: object
+properties:
+  session_id:
+    type: string
+    pattern: ^[0-9]+$
+    description: 无损十进制 TSID 字符串。
+  highest_confirmed_id:
+    type: string
+    pattern: ^[0-9]+$
+    description: 无损十进制 TSID 字符串。
+  receipts:
+    type: array
+    items:
+      type: object
+      properties:
+        message_id:
+          type: string
+          pattern: ^[0-9]+$
+          description: 无损十进制 TSID 字符串。
+        read_at:
+          type: string
+          format: date-time
+      required:
+      - message_id
+      - read_at
+required:
+- session_id
+- highest_confirmed_id
+- receipts

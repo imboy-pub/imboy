@@ -1,0 +1,35 @@
+type: object
+properties:
+  session_id:
+    type: string
+    pattern: ^[0-9]+$
+    description: 无损十进制 TSID 字符串。
+  conversation_id:
+    type: string
+    pattern: ^[0-9]+$
+    description: 无损十进制 TSID 字符串。
+  contact_id:
+    type: string
+    pattern: ^[0-9]+$
+    description: 无损十进制 TSID 字符串。
+  workspace_id:
+    type: string
+    pattern: ^[0-9]+$
+    description: 无损十进制 TSID 字符串。
+  installation_id:
+    type: string
+    pattern: ^[0-9]+$
+    description: 无损十进制 TSID 字符串。
+  status:
+    type: string
+    enum:
+    - queued
+    - active
+    - closed
+required:
+- session_id
+- conversation_id
+- contact_id
+- workspace_id
+- installation_id
+- status

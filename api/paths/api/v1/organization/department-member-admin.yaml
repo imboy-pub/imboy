@@ -1,0 +1,80 @@
+put:
+  tags:
+  - organization
+  summary: 设置部门局部管理员
+  operationId: organizationDepartmentMemberAdmin
+  description: '仅组织 Owner/Admin；局部目录管理员不获得组织、工作区或业务职能权限。 / Governors; local admin confers no broader authority.
+
+    访问 JWT 认证；业务失败通常返回 HTTP 200 与非零 code，须检查 code。 / JWT; inspect business code.'
+  parameters:
+  - name: organization_id
+    in: path
+    required: true
+    schema:
+      type: integer
+      format: int64
+      minimum: 1
+    description: 组织 TSID；业务归属，不替代授权 / Organization business ID
+  - name: department_id
+    in: path
+    required: true
+    schema:
+      type: integer
+      format: int64
+      minimum: 1
+    description: 部门 TSID / Department ID
+  - name: user_id
+    in: path
+    required: true
+    schema:
+      type: integer
+      format: int64
+      minimum: 1
+    description: 用户 TSID / User ID
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            admin:
+              type: boolean
+          required:
+          - admin
+  responses:
+    '200':
+      description: 成功 code=0 返回以下业务载荷；业务失败 code 非零返回通用错误信封。 / Success payload or nonzero-code business error.
+      content:
+        application/json:
+          schema:
+            oneOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      department_id:
+                        type: integer
+                        format: int64
+                        minimum: 1
+                      user_id:
+                        type: integer
+                        format: int64
+                        minimum: 1
+                      is_admin:
+                        type: boolean
+              - type: object
+                required:
+                - code
+                properties:
+                  code:
+                    type: integer
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+    '405':
+      description: Method Not Allowed
+    '401':
+      description: 访问 JWT、设备绑定或客户端签名认证失败 / JWT, device binding or client signature rejected

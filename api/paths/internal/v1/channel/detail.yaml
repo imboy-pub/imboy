@@ -9,6 +9,11 @@ get:
     但频道所属工作空间不符合当前业务归属 → organization_boundary_violation（403）。
 
     '
+  security:
+    - ibIntHmacCredential: []
+      ibIntHmacTimestamp: []
+      ibIntHmacNonce: []
+      ibIntHmacSignature: []
   operationId: internalChannelDetail
   parameters:
   - name: channel_id
@@ -18,6 +23,8 @@ get:
     schema:
       type: integer
       format: int64
+      minimum: 1
+      maximum: 9223372036854775807
   x-imboy-authentication: hmac
   x-imboy-rate-bucket: internal_read
   x-imboy-idempotency: not_required
@@ -62,19 +69,25 @@ get:
     '400':
       $ref: ../../../../components/responses/internal/invalid_request.yaml
     '401':
-      $ref: ../../../../components/responses/internal/invalid_credential.yaml
+      $ref: ../../../../components/responses/internal/unauthorized.yaml
     '403':
-      $ref: ../../../../components/responses/internal/organization_boundary_violation.yaml
+      $ref: ../../../../components/responses/internal/forbidden.yaml
     '404':
       $ref: ../../../../components/responses/internal/resource_not_found.yaml
     '429':
       $ref: ../../../../components/responses/internal/rate_limited.yaml
     '500':
       $ref: ../../../../components/responses/internal/internal_error.yaml
+    '503': { $ref: '../../../../components/responses/internal/security_gate_closed.yaml' }
 patch:
   tags:
   - internal
   summary: 修改企业频道资料
+  security:
+    - ibIntHmacCredential: []
+      ibIntHmacTimestamp: []
+      ibIntHmacNonce: []
+      ibIntHmacSignature: []
   operationId: internalChannelUpdate
   description: INT-41。采用 HMAC 签名。创建者须为有效企业成员（企业 Owner 包含）且是工作空间
     Owner/Member，Guest 禁止。企业频道固定非公开 visibility=1、access_type=0、join_policy=1。归属和创建者不可修改。修改/归档必须
@@ -101,6 +114,7 @@ patch:
       type: string
       minLength: 1
       maxLength: 128
+      pattern: ^[ -~]+$
   requestBody:
     required: true
     content:
@@ -131,9 +145,9 @@ patch:
     '400':
       $ref: ../../../../components/responses/internal/invalid_request.yaml
     '401':
-      $ref: ../../../../components/responses/internal/invalid_credential.yaml
+      $ref: ../../../../components/responses/internal/unauthorized.yaml
     '403':
-      $ref: ../../../../components/responses/internal/organization_boundary_violation.yaml
+      $ref: ../../../../components/responses/internal/forbidden.yaml
     '404':
       $ref: ../../../../components/responses/internal/resource_not_found.yaml
     '409':
@@ -161,6 +175,11 @@ delete:
   tags:
   - internal
   summary: 归档企业频道
+  security:
+    - ibIntHmacCredential: []
+      ibIntHmacTimestamp: []
+      ibIntHmacNonce: []
+      ibIntHmacSignature: []
   operationId: internalChannelArchive
   description: INT-42。采用 HMAC 签名。创建者须为有效企业成员（企业 Owner 包含）且是工作空间
     Owner/Member，Guest 禁止。企业频道固定非公开 visibility=1、access_type=0、join_policy=1。归属和创建者不可修改。修改/归档必须
@@ -187,6 +206,7 @@ delete:
       type: string
       minLength: 1
       maxLength: 128
+      pattern: ^[ -~]+$
   requestBody:
     required: true
     content:
@@ -206,9 +226,9 @@ delete:
     '400':
       $ref: ../../../../components/responses/internal/invalid_request.yaml
     '401':
-      $ref: ../../../../components/responses/internal/invalid_credential.yaml
+      $ref: ../../../../components/responses/internal/unauthorized.yaml
     '403':
-      $ref: ../../../../components/responses/internal/organization_boundary_violation.yaml
+      $ref: ../../../../components/responses/internal/forbidden.yaml
     '404':
       $ref: ../../../../components/responses/internal/resource_not_found.yaml
     '409':

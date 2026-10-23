@@ -1,0 +1,79 @@
+type: object
+properties:
+  id:
+    type: string
+    pattern: ^[0-9]+$
+    description: 无损十进制 TSID 字符串。
+  organization_id:
+    type: string
+    pattern: ^[0-9]+$
+    description: 无损十进制 TSID 字符串。
+  workspace_id:
+    type: string
+    pattern: ^[0-9]+$
+    description: 无损十进制 TSID 字符串。
+  conversation_id:
+    type: string
+    pattern: ^[0-9]+$
+    description: 无损十进制 TSID 字符串。
+  client_msg_id:
+    type: string
+  sender_kind:
+    type: string
+  sender_contact_id:
+    type:
+    - string
+    - 'null'
+    pattern: ^[0-9]+$
+    description: 无损十进制 TSID 字符串。
+  sender_business_identity_id:
+    type:
+    - string
+    - 'null'
+    pattern: ^[0-9]+$
+    description: 无损十进制 TSID 字符串。
+  actor_user_id:
+    type:
+    - string
+    - 'null'
+    pattern: ^[0-9]+$
+    description: 无损十进制 TSID 字符串。
+  visibility:
+    type: string
+  body:
+    type: string
+  key_version:
+    type: integer
+  created_at:
+    type: integer
+    format: int64
+    description: Unix 秒；客服 response helper 保留底层秒值。
+  read_at:
+    type: string
+    format: date-time
+    description: 存在访客已读回执时返回，UTC RFC3339。
+  assets:
+    type: array
+    items:
+      type: object
+      properties:
+        id:
+          type: string
+          pattern: ^[0-9]+$
+          description: 无损十进制 TSID 字符串。
+        asset_id:
+          type: string
+          pattern: ^[0-9]+$
+          description: 无损十进制 TSID 字符串。
+        mime:
+          type: string
+        size_bytes:
+          type: integer
+        file_name:
+          type:
+          - string
+          - 'null'
+        status:
+          type: string
+  sender_type:
+    type: string

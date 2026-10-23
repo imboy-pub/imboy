@@ -1,5 +1,8 @@
 # POST /api/adm/group/task/delete — admin
 post:
+  security:
+    - adminSessionId: []
+      adminSessionSignature: []
   tags: [admin]
   summary: 管理后台删除群任务
   description: 管理员删除指定群任务（软删除）。Delete a group task by admin (soft delete).

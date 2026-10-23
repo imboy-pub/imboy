@@ -1,0 +1,11 @@
+type: object
+required:
+- discussion_group_id
+properties:
+  discussion_group_id:
+    type:
+    - integer
+    - 'null'
+    format: int64
+    minimum: 1
+    maximum: 9223372036854775807

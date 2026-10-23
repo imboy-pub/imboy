@@ -805,7 +805,7 @@
             "description": "分页查询本组织已映射用户（只回元数据）。cursor 为上一页返回的 next_cursor（CURSOR-V2 签名游标：HMAC-SHA256、24h 有效、绑定页族 identity_mappings 与 organization/application/workspace 过滤）；篡改/垃圾串/跨页族/换过滤/过期(>24h)/旧版未签名形态一律 400 invalid_request。page_size 1..100（缺省 50），越界拒绝（不截断）。",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"page_size\": 20,\n  \"cursor\": \"<上一页 next_cursor>\"\n}",
+              "raw": "{\n  \"page_size\": 20\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -894,7 +894,7 @@
             "description": "内部接口使用 HMAC 签名，并校验应用、凭证和资源的实际归属。",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"page_size\": 20,\n  \"cursor\": \"<上一页 next_cursor>\"\n}",
+              "raw": "{\n  \"page_size\": 20\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1470,10 +1470,10 @@
                 "value": "{{$guid}}"
               }
             ],
-            "description": "调整成员角色。roles 的合法取值请在联调时向平台方确认。",
+            "description": "调整成员角色。role 为整数：1 普通成员、2 嘉宾、3 管理员、5 副群主；不能修改群主角色。",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"roles\": [\n    {\n      \"external_user_id\": \"oa-1001\",\n      \"role\": \"member\"\n    }\n  ]\n}",
+              "raw": "{\n  \"roles\": [\n    {\n      \"external_user_id\": \"oa-1001\",\n      \"role\": 1\n    }\n  ]\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -2571,7 +2571,7 @@
                 "value": "{{$guid}}"
               }
             ],
-            "description": "sender_mode=application：以应用身份发；sender_mode=human：代人类发（追加 principal_user_id，消耗 messages:send_as_human）。",
+            "description": "sender_mode=application：以应用身份发；sender_mode=human：代有效映射人类发，必须提供 sender_user_id（OA 外部标识）。两者均用 HMAC 签名。",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"sender_mode\": \"application\",\n  \"recipient_user_id\": \"oa-1002\",\n  \"msg_type\": \"text\",\n  \"content\": \"您好，来自 OA 的通知\"\n}",

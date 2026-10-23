@@ -13,6 +13,11 @@ post:
     一个 code 只能成功交换一次（single_use_code），重放即失败——不存在
     「二次成功」。code TTL 60 秒。成功 payload 永不含 IMBoy 凭证（R-6）；
     TSID 以 JSON integer 输出（INV-8）。独立限流桶 internal_sso。
+  security:
+    - ibIntHmacCredential: []
+      ibIntHmacTimestamp: []
+      ibIntHmacNonce: []
+      ibIntHmacSignature: []
   operationId: internalOaSsoExchange
   x-imboy-authentication: hmac
   x-imboy-rate-bucket: internal_sso
@@ -54,9 +59,10 @@ post:
                 type: string
                 description: 消费时间（ISO-8601 UTC 毫秒）
     '400': { $ref: '../../../../components/responses/internal/invalid_request.yaml' }
-    '401': { $ref: '../../../../components/responses/internal/invalid_credential.yaml' }
-    '403': { $ref: '../../../../components/responses/internal/organization_boundary_violation.yaml' }
+    '401': { $ref: '../../../../components/responses/internal/unauthorized.yaml' }
+    '403': { $ref: '../../../../components/responses/internal/forbidden.yaml' }
     '404': { $ref: '../../../../components/responses/internal/resource_not_found.yaml' }
     '422': { $ref: '../../../../components/responses/internal/identity_not_mapped.yaml' }
     '429': { $ref: '../../../../components/responses/internal/rate_limited.yaml' }
     '500': { $ref: '../../../../components/responses/internal/internal_error.yaml' }
+    '503': { $ref: '../../../../components/responses/internal/security_gate_closed.yaml' }

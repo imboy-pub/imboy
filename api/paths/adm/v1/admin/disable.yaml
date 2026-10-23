@@ -1,5 +1,8 @@
 # POST /api/adm/admin/disable — admin
 post:
+  security:
+    - adminSessionId: []
+      adminSessionSignature: []
   tags: [admin]
   summary: 管理后台禁用管理员
   description: 禁用指定管理员账号，使其无法登录管理后台。Disable a specified admin account to prevent login to the admin panel.

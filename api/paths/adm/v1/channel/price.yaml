@@ -1,0 +1,96 @@
+put:
+  security:
+  - adminSessionId: []
+    adminSessionSignature: []
+  tags:
+  - admin
+  summary: 设置频道订阅价格 / Set channel subscription price
+  description: 需 channels:update。金额单位分；仅存活的付费频道可配置。 / Set channel subscription price
+  operationId: admChannelPricePut
+  parameters:
+  - name: channel_id
+    in: path
+    required: true
+    description: channel_id
+    schema:
+      type: string
+      pattern: ^[1-9][0-9]*$
+      description: TSID 十进制字符串 / Decimal TSID string
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            price_fen:
+              type: integer
+              minimum: 1
+            original_price_fen:
+              type: integer
+              minimum: 0
+              default: 0
+            currency:
+              type: string
+              default: CNY
+            subscription_type:
+              type: integer
+              enum:
+              - 1
+              - 2
+              - 3
+              default: 1
+            description:
+              type: string
+          required:
+          - price_fen
+      application/x-www-form-urlencoded:
+        schema:
+          type: object
+          properties:
+            price_fen:
+              type: integer
+              minimum: 1
+            original_price_fen:
+              type: integer
+              minimum: 0
+              default: 0
+            currency:
+              type: string
+              default: CNY
+            subscription_type:
+              type: integer
+              enum:
+              - 1
+              - 2
+              - 3
+              default: 1
+            description:
+              type: string
+          required:
+          - price_fen
+  responses:
+    '200':
+      description: 成功或业务错误；检查 code / Inspect business code
+      content:
+        application/json:
+          schema:
+            anyOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties: {}
+              - type: object
+                properties:
+                  code:
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+    '401':
+      description: Cookie 缺失、无效、到期或已撤销 / Invalid session cookies
+      content:
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/Envelope.yaml

@@ -13,13 +13,18 @@ post:
     直传完成后的确认：服务端以 HEAD 真实值复核大小与 MIME（超限/非法类型对象
     被删除），登记 attachment 行并建立治理行。object_key 必须是本 org/app 域
     且已 presign 登记的对象。
+  security:
+    - ibIntHmacCredential: []
+      ibIntHmacTimestamp: []
+      ibIntHmacNonce: []
+      ibIntHmacSignature: []
   operationId: internalFileConfirm
   parameters:
     - name: Idempotency-Key
       in: header
       required: true
       description: 幂等键
-      schema: { type: string, minLength: 1 }
+      schema: { type: string, minLength: 1, maxLength: 128, pattern: '^[ -~]+$' }
   x-imboy-authentication: hmac
   x-imboy-rate-bucket: internal_write
   x-imboy-idempotency: required
@@ -50,10 +55,15 @@ post:
               object_key: { type: string }
               size: { type: integer, format: int64, description: HEAD 实测字节数 }
               mime_type: { type: string, description: HEAD 实测类型 }
+      headers:
+        Idempotent-Replayed:
+          description: 重放首次已提交的 HTTP 状态与正文时为 true；首次响应不带此头。
+          schema: { type: string, enum: ['true'] }
     '400': { $ref: '../../../../components/responses/internal/invalid_request.yaml' }
-    '401': { $ref: '../../../../components/responses/internal/invalid_credential.yaml' }
-    '403': { $ref: '../../../../components/responses/internal/organization_boundary_violation.yaml' }
+    '401': { $ref: '../../../../components/responses/internal/unauthorized.yaml' }
+    '403': { $ref: '../../../../components/responses/internal/forbidden.yaml' }
     '404': { $ref: '../../../../components/responses/internal/resource_not_found.yaml' }
     '409': { $ref: '../../../../components/responses/internal/idempotency_conflict.yaml' }
     '429': { $ref: '../../../../components/responses/internal/rate_limited.yaml' }
     '500': { $ref: '../../../../components/responses/internal/internal_error.yaml' }
+    '503': { $ref: '../../../../components/responses/internal/security_gate_closed.yaml' }

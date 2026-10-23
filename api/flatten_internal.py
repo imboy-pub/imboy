@@ -119,10 +119,12 @@ def selfcheck(bundle):
     # INT-07 V5 status 不签上传能力；固定现有响应及操作形状，防止合同漂移。
     presign = paths['/api/internal/v1/files/presign']['post']
     schema = presign['responses']['200']['content']['application/json']['schema']
-    if 'file_id' in schema.get('properties', {}):
-        sys.exit('selfcheck: INT-07 200 schema still declares file_id')
-    if schema.get('required') != ['object_key', 'expires_at']:
+    if schema.get('required') != ['object_key']:
         sys.exit('selfcheck: INT-07 required=%r' % schema.get('required'))
+    if schema.get('anyOf') != [
+        {'required': ['expires_at']}, {'required': ['upload_expires_at']}
+    ]:
+        sys.exit('selfcheck: INT-07 must allow current session expiry without upload capability')
     if schema.get('additionalProperties') is not False:
         sys.exit('selfcheck: INT-07 response must reject unknown fields')
     for name, kind in (('object_key', 'string'), ('put_url', 'string'),
@@ -134,6 +136,10 @@ def selfcheck(bundle):
             sys.exit('selfcheck: INT-07 %s must be %s' % (name, kind))
     if schema['properties']['expires_at'].get('type') != 'integer':
         sys.exit('selfcheck: INT-07 expires_at not integer')
+    if schema['properties']['upload_expires_at'].get('type') != 'integer':
+        sys.exit('selfcheck: INT-07 upload_expires_at not integer')
+    if schema['properties']['file_id'].get('type') != 'integer':
+        sys.exit('selfcheck: INT-07 current session file_id not integer')
     request = presign['requestBody']['content']['application/json']['schema']
     if request['properties']['operation'].get('enum') != ['register', 'status', 'renew']:
         sys.exit('selfcheck: INT-07 V5 operation enum drift')

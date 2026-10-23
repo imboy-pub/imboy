@@ -58,6 +58,8 @@ files += ['test/common/eunit_runner.erl', 'test/common/meck_helper.erl', 'test/a
           'test/api/customer_service_browser_fixture.erl',
           'test/features/customer_service/interfaces/cs_route_contract_tests.erl',
           'test/api/enterprise_asset_garage_pg_checks.erl',
+          'test/api/enterprise_public_response_tests.erl',
+          'test/features/enterprise_business/interfaces/eb_handler_test_support.erl',
           'test/features/enterprise_business/application/eb_ports_tests.erl',
           'test/api/customer_service_seat_sse_checks.erl',
           'test/api/customer_service_widget_expiry_http_checks.erl',

@@ -1,0 +1,187 @@
+get:
+  security:
+  - adminSessionId: []
+    adminSessionSignature: []
+  tags:
+  - admin
+  summary: 反馈工作流配置 / Feedback workflow configuration
+  description: 需 feedback:read。 / Feedback workflow configuration
+  operationId: admAdminConfigFeedbackWorkflowGet
+  responses:
+    '200':
+      description: 成功或业务错误；检查 code / Inspect business code
+      content:
+        application/json:
+          schema:
+            anyOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      reply_templates:
+                        type: array
+                        items:
+                          type: string
+                      sla_hours:
+                        type: integer
+                        minimum: 1
+                        maximum: 720
+                        default: 24
+              - type: object
+                properties:
+                  code:
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+    '401':
+      description: Cookie 缺失、无效、到期或已撤销 / Invalid session cookies
+      content:
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/Envelope.yaml
+put:
+  security:
+  - adminSessionId: []
+    adminSessionSignature: []
+  tags:
+  - admin
+  summary: 保存反馈工作流 / Save feedback workflow
+  description: 需 feedback:reply。未传字段使用默认值覆盖；保存至当前运行实例配置。 / Save feedback workflow
+  operationId: admAdminConfigFeedbackWorkflowPut
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            reply_templates:
+              type: array
+              items:
+                type: string
+            sla_hours:
+              type: integer
+              minimum: 1
+              maximum: 720
+              default: 24
+      application/x-www-form-urlencoded:
+        schema:
+          type: object
+          properties:
+            reply_templates:
+              type: array
+              items:
+                type: string
+            sla_hours:
+              type: integer
+              minimum: 1
+              maximum: 720
+              default: 24
+  responses:
+    '200':
+      description: 成功或业务错误；检查 code / Inspect business code
+      content:
+        application/json:
+          schema:
+            anyOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      reply_templates:
+                        type: array
+                        items:
+                          type: string
+                      sla_hours:
+                        type: integer
+                        minimum: 1
+                        maximum: 720
+                        default: 24
+              - type: object
+                properties:
+                  code:
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+    '401':
+      description: Cookie 缺失、无效、到期或已撤销 / Invalid session cookies
+      content:
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/Envelope.yaml
+post:
+  security:
+  - adminSessionId: []
+    adminSessionSignature: []
+  tags:
+  - admin
+  summary: 保存反馈工作流 / Save feedback workflow
+  description: 需 feedback:reply。未传字段使用默认值覆盖；保存至当前运行实例配置。 / Save feedback workflow
+  operationId: admAdminConfigFeedbackWorkflowPost
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            reply_templates:
+              type: array
+              items:
+                type: string
+            sla_hours:
+              type: integer
+              minimum: 1
+              maximum: 720
+              default: 24
+      application/x-www-form-urlencoded:
+        schema:
+          type: object
+          properties:
+            reply_templates:
+              type: array
+              items:
+                type: string
+            sla_hours:
+              type: integer
+              minimum: 1
+              maximum: 720
+              default: 24
+  responses:
+    '200':
+      description: 成功或业务错误；检查 code / Inspect business code
+      content:
+        application/json:
+          schema:
+            anyOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      reply_templates:
+                        type: array
+                        items:
+                          type: string
+                      sla_hours:
+                        type: integer
+                        minimum: 1
+                        maximum: 720
+                        default: 24
+              - type: object
+                properties:
+                  code:
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+    '401':
+      description: Cookie 缺失、无效、到期或已撤销 / Invalid session cookies
+      content:
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/Envelope.yaml

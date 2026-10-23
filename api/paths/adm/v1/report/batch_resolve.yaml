@@ -1,13 +1,22 @@
-# POST /api/adm/report/batch_resolve — admin
 post:
-  tags: [admin]
+  security:
+  - adminSessionId: []
+    adminSessionSignature: []
+  tags:
+  - admin
   summary: admin adm-report - batch_resolve
-  description: |
-    ## 中文 / English
-    管理后台 adm-report handler 的 `batch_resolve` 动作；路径 `/adm/report/batch_resolve`。
-    Admin handler `adm-report`, action `batch_resolve`. Path `/adm/report/batch_resolve`.
+  description: '## 中文 / English
+
+    管理后台 adm-report handler 的 `batch_resolve` 动作；路径 `/api/adm/report/batch_resolve`。
+
+    Admin handler `adm-report`, action `batch_resolve`. Path `/api/adm/report/batch_resolve`.
+
     权限 reports:handle 或 moments:report:handle / Permission: reports:handle or moments:report:handle.
-    省略 target_type 默认 moment；ID 去重，逐条处理，非原子事务 / Missing target_type defaults to moment; IDs are deduplicated and resolved individually, not atomically.
+
+    省略 target_type 默认 moment；ID 去重，逐条处理，非原子事务 / Missing target_type defaults to moment; IDs are deduplicated and
+    resolved individually, not atomically.
+
+    '
   operationId: adm_report_batch_resolve
   requestBody:
     required: true
@@ -51,12 +60,13 @@ post:
               description: 备注；非 moment 最多保留500字符 / Note; non-moment notes are capped at 500 characters
   responses:
     '200':
-      description: 成功
+      description: 成功；非零 code 为业务错误 / Non-zero code is a business error
       content:
         application/json:
           schema:
-            allOf:
-              - $ref: '../../../../components/schemas/Envelope.yaml'
+            anyOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
               - type: object
                 properties:
                   payload:
@@ -74,7 +84,14 @@ post:
                         description: 失败的举报 ID 列表 / Failed report IDs
                         items:
                           type: string
-    '4XX':
+              - type: object
+                properties:
+                  code:
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+    4XX:
       description: 无权限 / 参数非法
       content:
-        application/json: { schema: { $ref: '../../../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/Envelope.yaml

@@ -1,0 +1,20 @@
+$defs:
+  SidebarItem:
+    type: object
+    properties:
+      path:
+        type: string
+      icon:
+        type: string
+      label:
+        type: string
+      roles:
+        type: array
+        items:
+          type: integer
+      permission:
+        type: string
+      children:
+        type: array
+        items:
+          $ref: '#/$defs/SidebarItem'

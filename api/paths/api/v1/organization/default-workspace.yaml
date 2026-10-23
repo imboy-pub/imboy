@@ -1,0 +1,158 @@
+get:
+  tags:
+  - organization
+  summary: 读取默认工作区
+  operationId: organizationDefaultWorkspaceGet
+  description: '写操作仅组织 Owner/Admin；目标工作区必须属于本组织且 active。GET 未设置返回 default_workspace_id=null。 / Governors write;
+    target must be active and in organization; unset read returns null.
+
+    访问 JWT 认证；业务失败通常返回 HTTP 200 与非零 code，须检查 code。 / JWT; inspect business code.'
+  parameters:
+  - name: organization_id
+    in: path
+    required: true
+    schema:
+      type: integer
+      format: int64
+      minimum: 1
+    description: 组织 TSID；业务归属，不替代授权 / Organization business ID
+  responses:
+    '200':
+      description: 成功 code=0 返回以下业务载荷；业务失败 code 非零返回通用错误信封。 / Success payload or nonzero-code business error.
+      content:
+        application/json:
+          schema:
+            oneOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      organization_id:
+                        type: integer
+                        format: int64
+                        minimum: 1
+                      default_workspace_id:
+                        type:
+                        - integer
+                        - 'null'
+                        format: int64
+              - type: object
+                required:
+                - code
+                properties:
+                  code:
+                    type: integer
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+    '405':
+      description: Method Not Allowed
+    '401':
+      description: 访问 JWT、设备绑定或客户端签名认证失败 / JWT, device binding or client signature rejected
+post:
+  tags:
+  - organization
+  summary: 设置默认工作区
+  operationId: organizationDefaultWorkspacePost
+  description: '写操作仅组织 Owner/Admin；目标工作区必须属于本组织且 active。GET 未设置返回 default_workspace_id=null。 / Governors write;
+    target must be active and in organization; unset read returns null.
+
+    访问 JWT 认证；业务失败通常返回 HTTP 200 与非零 code，须检查 code。 / JWT; inspect business code.'
+  parameters:
+  - name: organization_id
+    in: path
+    required: true
+    schema:
+      type: integer
+      format: int64
+      minimum: 1
+    description: 组织 TSID；业务归属，不替代授权 / Organization business ID
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            workspace_id:
+              type: integer
+              format: int64
+              minimum: 1
+          required:
+          - workspace_id
+  responses:
+    '200':
+      description: 成功 code=0 返回以下业务载荷；业务失败 code 非零返回通用错误信封。 / Success payload or nonzero-code business error.
+      content:
+        application/json:
+          schema:
+            oneOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
+              - type: object
+                properties:
+                  payload:
+                    type: string
+                    enum:
+                    - changed
+                    - unchanged
+              - type: object
+                required:
+                - code
+                properties:
+                  code:
+                    type: integer
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+    '405':
+      description: Method Not Allowed
+    '401':
+      description: 访问 JWT、设备绑定或客户端签名认证失败 / JWT, device binding or client signature rejected
+delete:
+  tags:
+  - organization
+  summary: 清空默认工作区
+  operationId: organizationDefaultWorkspaceDelete
+  description: '写操作仅组织 Owner/Admin；目标工作区必须属于本组织且 active。GET 未设置返回 default_workspace_id=null。 / Governors write;
+    target must be active and in organization; unset read returns null.
+
+    访问 JWT 认证；业务失败通常返回 HTTP 200 与非零 code，须检查 code。 / JWT; inspect business code.'
+  parameters:
+  - name: organization_id
+    in: path
+    required: true
+    schema:
+      type: integer
+      format: int64
+      minimum: 1
+    description: 组织 TSID；业务归属，不替代授权 / Organization business ID
+  responses:
+    '200':
+      description: 成功 code=0 返回以下业务载荷；业务失败 code 非零返回通用错误信封。 / Success payload or nonzero-code business error.
+      content:
+        application/json:
+          schema:
+            oneOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
+              - type: object
+                properties:
+                  payload:
+                    type: string
+                    enum:
+                    - cleared
+                    - already_empty
+              - type: object
+                required:
+                - code
+                properties:
+                  code:
+                    type: integer
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+    '405':
+      description: Method Not Allowed
+    '401':
+      description: 访问 JWT、设备绑定或客户端签名认证失败 / JWT, device binding or client signature rejected

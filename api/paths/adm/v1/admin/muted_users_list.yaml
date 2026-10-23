@@ -1,23 +1,30 @@
-# GET /api/adm/admin/muted_users/list — admin
 get:
-  tags: [admin]
+  security:
+  - adminSessionId: []
+    adminSessionSignature: []
+  tags:
+  - admin
   summary: admin adm-admin - muted_users_list
-  description: |
-    ## 中文 / English
-    管理后台 adm-admin handler 的 `muted_users_list` 动作；路径 `/adm/admin/muted_users/list`。
-    Admin handler `adm-admin`, action `muted_users_list`. Path `/adm/admin/muted_users/list`.
+  description: '## 中文 / English
+
+    管理后台 adm-admin handler 的 `muted_users_list` 动作；路径 `/api/adm/admin/muted_users/list`。
+
+    Admin handler `adm-admin`, action `muted_users_list`. Path `/api/adm/admin/muted_users/list`.
+
+    '
   operationId: adm_admin_muted_users_list
   parameters:
-    - $ref: '../../../../components/parameters/PaginationPage.yaml'
-    - $ref: '../../../../components/parameters/PaginationSize.yaml'
+  - $ref: ../../../../components/parameters/PaginationPage.yaml
+  - $ref: ../../../../components/parameters/PaginationSize.yaml
   responses:
     '200':
-      description: 成功
+      description: 成功；非零 code 为业务错误 / Non-zero code is a business error
       content:
         application/json:
           schema:
-            allOf:
-              - $ref: '../../../../components/schemas/Envelope.yaml'
+            anyOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
               - type: object
                 properties:
                   payload:
@@ -40,7 +47,14 @@ get:
                             remaining_seconds:
                               type: integer
                               description: 剩余禁言秒数
-    '4XX':
+              - type: object
+                properties:
+                  code:
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+    4XX:
       description: 无权限 / 参数非法
       content:
-        application/json: { schema: { $ref: '../../../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/Envelope.yaml

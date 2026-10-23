@@ -1,0 +1,27 @@
+type: object
+properties:
+  id:
+    $ref: MicroCommunityEntityId.yaml
+  channel_id:
+    $ref: MicroCommunityEntityId.yaml
+  author_id:
+    $ref: MicroCommunityEntityId.yaml
+  content:
+    type: string
+  msg_type:
+    type: string
+  payload:
+    type: object
+    additionalProperties: true
+    properties:
+      tags:
+        type: array
+        maxItems: 5
+        items:
+          type: string
+          minLength: 1
+          maxLength: 20
+  is_essence:
+    type: boolean
+  is_pinned:
+    type: boolean

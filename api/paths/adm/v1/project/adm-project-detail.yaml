@@ -1,28 +1,43 @@
-# GET /api/adm/project/detail — 项目详情（Admin 治理只读，W0）
 get:
-  tags: [admin]
+  security:
+  - adminSessionId: []
+    adminSessionSignature: []
+  tags:
+  - admin
   summary: Admin 项目详情
-  description: |
-    ## 中文
-    管理后台项目详情：基本信息 + Owner + 成员分页预览 + 关联资源清单
-    （projects/groups/channels 的 id 归一）。workspaces:read ACL。
-    ## English
-    Admin project detail: base info + owner + member preview + linked resources.
+  description: 需 workspaces:read。基本项目字段、workspace 概要、owner、task_stats 和 assignees（最多20人）。成员/频道等通过独立治理端点读取。 / Read-only
+    project detail with task and assignee summaries.
   operationId: admProjectDetail
   parameters:
-    - name: project_id
-      description: 查询目标项目 ID / Project ID to query
-      in: query
-      required: true
-      schema: { type: integer, format: int64 }
+  - name: project_id
+    description: 查询目标项目 ID / Project ID to query
+    in: query
+    required: true
+    schema:
+      type: string
+      pattern: ^[1-9][0-9]*$
+      description: TSID 十进制字符串 / Decimal TSID string
   responses:
     '200':
-      description: 项目详情
+      description: 项目详情；非零 code 为业务错误 / Non-zero code is a business error
       content:
         application/json:
-          schema: { $ref: '../../../../components/schemas/Envelope.yaml' }
-    '4XX':
+          schema:
+            anyOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
+              - type: object
+                properties:
+                  payload:
+                    $ref: ../../../../components/schemas/adm/WorkspaceProject.yaml#/$defs/ProjectDetail
+              - type: object
+                properties:
+                  code:
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+    4XX:
       description: project_id 缺失（400）/ ACL（403）
       content:
         application/json:
-          schema: { $ref: '../../../../components/schemas/Envelope.yaml' }
+          schema:
+            $ref: ../../../../components/schemas/Envelope.yaml

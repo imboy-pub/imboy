@@ -1,0 +1,138 @@
+get:
+  tags:
+  - user
+  summary: 读取附件内容
+  operationId: attachmentContentGet
+  description: 专用 ticket 能力认证；每次读取重新检查当前 ACL，支持单个 bytes Range。响应为二进制流，private,no-store，不是业务 JSON 信封。 / Ticket capability,
+    current ACL recheck, single byte range, binary stream.
+  parameters:
+  - name: ticket
+    in: query
+    required: true
+    schema:
+      type: string
+      minLength: 1
+    description: ticket
+  - name: Range
+    in: header
+    required: false
+    schema:
+      type: string
+      pattern: ^bytes=([0-9]+-[0-9]*|-[0-9]+)$
+    description: Range
+  security: []
+  responses:
+    '200':
+      description: 完整内容 / Full content
+      headers:
+        Content-Type:
+          schema:
+            type: string
+          description: 附件 MIME 类型
+        Content-Length:
+          schema:
+            type: integer
+          description: 返回字节数
+        Content-Range:
+          schema:
+            type: string
+          description: 仅 206 返回
+      content:
+        application/octet-stream:
+          schema:
+            type: string
+            format: binary
+    '206':
+      description: 部分内容 / Partial content
+      headers:
+        Content-Type:
+          schema:
+            type: string
+          description: 附件 MIME 类型
+        Content-Length:
+          schema:
+            type: integer
+          description: 返回字节数
+        Content-Range:
+          schema:
+            type: string
+          description: 仅 206 返回
+      content:
+        application/octet-stream:
+          schema:
+            type: string
+            format: binary
+    '403':
+      description: ticket 无效、过期或 ACL 已撤销
+    '404':
+      description: 对象不存在
+    '416':
+      description: Range 无效或越界
+    '502':
+      description: 上游读取失败
+    '504':
+      description: 上游读取超时
+head:
+  tags:
+  - user
+  summary: 读取附件内容头
+  operationId: attachmentContentHead
+  description: 专用 ticket 能力认证；每次读取重新检查当前 ACL，支持单个 bytes Range。响应为二进制流，private,no-store，不是业务 JSON 信封。 / Ticket capability,
+    current ACL recheck, single byte range, binary stream.
+  parameters:
+  - name: ticket
+    in: query
+    required: true
+    schema:
+      type: string
+      minLength: 1
+    description: ticket
+  - name: Range
+    in: header
+    required: false
+    schema:
+      type: string
+      pattern: ^bytes=([0-9]+-[0-9]*|-[0-9]+)$
+    description: Range
+  security: []
+  responses:
+    '200':
+      description: 完整内容 / Full content
+      headers:
+        Content-Type:
+          schema:
+            type: string
+          description: 附件 MIME 类型
+        Content-Length:
+          schema:
+            type: integer
+          description: 返回字节数
+        Content-Range:
+          schema:
+            type: string
+          description: 仅 206 返回
+    '206':
+      description: 部分内容 / Partial content
+      headers:
+        Content-Type:
+          schema:
+            type: string
+          description: 附件 MIME 类型
+        Content-Length:
+          schema:
+            type: integer
+          description: 返回字节数
+        Content-Range:
+          schema:
+            type: string
+          description: 仅 206 返回
+    '403':
+      description: ticket 无效、过期或 ACL 已撤销
+    '404':
+      description: 对象不存在
+    '416':
+      description: Range 无效或越界
+    '502':
+      description: 上游读取失败
+    '504':
+      description: 上游读取超时

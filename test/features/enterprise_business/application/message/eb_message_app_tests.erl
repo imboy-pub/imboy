@@ -147,6 +147,7 @@ a03_replay_adds_no_row_and_no_audit() ->
         Capturer = capturing_publisher(self()),
         Params = (base_params(Scope, <<"eb06-replay-1">>))#{notify => Capturer},
         {ok, First} = eb_message_app:append_message(Org, Params),
+        enterprise_public_response_tests:assert_accepted_response(First),
         ?assertEqual(true, maps:get(accepted, First)),
         ?assertEqual(false, maps:get(replayed, First)),
         ?assert(is_integer(maps:get(audit_id, First))),
@@ -162,6 +163,7 @@ a03_replay_adds_no_row_and_no_audit() ->
             end,
         %% 重放：同样 client_msg_id，第二次
         {ok, Second} = eb_message_app:append_message(Org, Params),
+        enterprise_public_response_tests:assert_accepted_response(Second),
         ?assertEqual(true, maps:get(accepted, Second)),
         ?assertEqual(true, maps:get(replayed, Second)),
         ?assertEqual(undefined, maps:get(audit_id, Second)),
@@ -414,6 +416,7 @@ a05_realtime_failure_does_not_roll_back_committed_truth() ->
         }),
         ?assertEqual(true, maps:get(accepted, Returned)),
         ?assertMatch({failed, publisher_down}, maps:get(publisher, Returned)),
+        enterprise_public_response_tests:assert_accepted_response(Returned),
         MessageId = maps:get(message_id, Returned),
         %% 真源已提交且字段 hash 与返回体一致（失败没有把它回滚掉）
         {ok, Row} = eb_pg_store:fetch_message(Org, Ws, MessageId),
@@ -427,6 +430,7 @@ a05_realtime_failure_does_not_roll_back_committed_truth() ->
         }),
         ?assertEqual(true, maps:get(accepted, Crashed)),
         ?assertMatch({failed, {publisher_crashed, _}}, maps:get(publisher, Crashed)),
+        enterprise_public_response_tests:assert_accepted_response(Crashed),
         {ok, CrashRow} = eb_pg_store:fetch_message(Org, Ws, maps:get(message_id, Crashed)),
         ?assertEqual(
             canonical_hash(CrashRow),

@@ -1,0 +1,74 @@
+delete:
+  tags:
+  - organization
+  summary: 移除部门成员
+  operationId: organizationDepartmentMemberRemove
+  description: '只移除部门关系，不移除组织或工作区身份；重复移除幂等。 / Removes department membership only, idempotent.
+
+    访问 JWT 认证；业务失败通常返回 HTTP 200 与非零 code，须检查 code。 / JWT; inspect business code.'
+  parameters:
+  - name: organization_id
+    in: path
+    required: true
+    schema:
+      type: integer
+      format: int64
+      minimum: 1
+    description: 组织 TSID；业务归属，不替代授权 / Organization business ID
+  - name: department_id
+    in: path
+    required: true
+    schema:
+      type: integer
+      format: int64
+      minimum: 1
+    description: 部门 TSID / Department ID
+  - name: user_id
+    in: path
+    required: true
+    schema:
+      type: integer
+      format: int64
+      minimum: 1
+    description: 用户 TSID / User ID
+  responses:
+    '200':
+      description: 成功 code=0 返回以下业务载荷；业务失败 code 非零返回通用错误信封。 / Success payload or nonzero-code business error.
+      content:
+        application/json:
+          schema:
+            oneOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      department_id:
+                        type: integer
+                        format: int64
+                        minimum: 1
+                      user_id:
+                        type: integer
+                        format: int64
+                        minimum: 1
+                      result:
+                        type: string
+                        enum:
+                        - removed
+                        - not_present
+                      idempotent:
+                        type: boolean
+              - type: object
+                required:
+                - code
+                properties:
+                  code:
+                    type: integer
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+    '405':
+      description: Method Not Allowed
+    '401':
+      description: 访问 JWT、设备绑定或客户端签名认证失败 / JWT, device binding or client signature rejected

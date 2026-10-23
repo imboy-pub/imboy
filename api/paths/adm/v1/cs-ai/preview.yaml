@@ -1,0 +1,88 @@
+post:
+  security:
+  - adminSessionId: []
+    adminSessionSignature: []
+  tags:
+  - admin
+  summary: 客服AI规则试算 / Preview AI decision
+  description: 需 customer_service:write。未编译 customer_service 时返回 not found（业务码404）；业务错误遵循现有HTTP200信封。纯规则试算，不查库、不调用模型。使用默认置信度与规则配置，参数范围以本契约列出字段为准。
+    / Requires the customer_service build feature and platform permission.
+  operationId: admCsAiPreview
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            org_id:
+              anyOf:
+              - type: string
+                pattern: ^[1-9][0-9]*$
+                description: TSID 十进制字符串 / Decimal TSID string
+              - type: integer
+                format: int64
+                minimum: 1
+                description: JSON int64；客户端需无损解析 / Preserve bigint precision
+            text:
+              type: string
+            intent:
+              type: string
+              enum:
+              - refund
+              - order
+              - tech
+              - other
+            resolved:
+              type: boolean
+            faq_score:
+              type: number
+            unresolved_turns:
+              type: integer
+              minimum: 0
+            confidence:
+              type: number
+              description: 当前意图分类置信度，直接参与阈值裁决。
+            config:
+              type: object
+              properties:
+                threshold:
+                  type: number
+                max_unresolved_turns:
+                  type: integer
+                faq_min_score:
+                  type: number
+              description: 本次试算配置覆盖，仅接受此白名单；不持久化配置。
+  responses:
+    '200':
+      description: 成功或业务错误；检查 code / Inspect business code
+      content:
+        application/json:
+          schema:
+            anyOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
+              - type: object
+                properties:
+                  payload:
+                    $ref: ../../../../components/schemas/adm/CustomerServiceAI.yaml#/$defs/Preview
+              - type: object
+                properties:
+                  code:
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+    '401':
+      description: Cookie 缺失、无效、到期或已撤销 / Invalid session cookies
+      content:
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/Envelope.yaml
+  parameters:
+  - name: org_id
+    in: query
+    required: false
+    description: 也可放在JSON body，body优先；二者至少一个 / Body value takes precedence
+    schema:
+      type: string
+      pattern: ^[1-9][0-9]*$
+      description: TSID 十进制字符串 / Decimal TSID string

@@ -1,0 +1,103 @@
+get:
+  security:
+  - adminSessionId: []
+    adminSessionSignature: []
+  tags:
+  - admin
+  summary: 支付流水分页 / List payment transactions
+  description: 需 finance:read。 / List payment transactions
+  operationId: admFinancePaymentTransactionsGet
+  parameters:
+  - name: page
+    in: query
+    required: false
+    description: page
+    schema:
+      type: integer
+      minimum: 1
+      default: 1
+  - name: size
+    in: query
+    required: false
+    description: size
+    schema:
+      type: integer
+      minimum: 1
+      maximum: 1000
+      default: 20
+  - name: gateway
+    in: query
+    required: false
+    description: gateway
+    schema:
+      type: string
+  - name: biz_type
+    in: query
+    required: false
+    description: biz_type
+    schema:
+      type: integer
+  - name: status
+    in: query
+    required: false
+    description: status
+    schema:
+      type: integer
+  - name: user_id
+    in: query
+    required: false
+    description: user_id
+    schema:
+      type: string
+      pattern: ^[1-9][0-9]*$
+      description: TSID 十进制字符串 / Decimal TSID string
+  - name: trade_no
+    in: query
+    required: false
+    description: trade_no
+    schema:
+      type: string
+  responses:
+    '200':
+      description: 成功或业务错误；检查 code / Inspect business code
+      content:
+        application/json:
+          schema:
+            anyOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      list:
+                        type: array
+                        items:
+                          $ref: ../../../../components/schemas/adm/Finance.yaml#/$defs/PaymentTransaction
+                      page:
+                        type: integer
+                      size:
+                        type: integer
+                      total:
+                        type: integer
+                        minimum: 0
+                      total_page:
+                        type: integer
+                        minimum: 0
+                    required:
+                    - list
+                    - page
+                    - size
+                    - total
+              - type: object
+                properties:
+                  code:
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+    '401':
+      description: Cookie 缺失、无效、到期或已撤销 / Invalid session cookies
+      content:
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/Envelope.yaml

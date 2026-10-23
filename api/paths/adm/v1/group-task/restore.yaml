@@ -1,5 +1,8 @@
 # POST /api/adm/group/task/restore — admin
 post:
+  security:
+    - adminSessionId: []
+      adminSessionSignature: []
   tags: [admin]
   summary: 管理后台恢复群任务
   description: 管理员恢复已删除的群任务。Restore a deleted group task by admin.

@@ -1,0 +1,62 @@
+get:
+  security:
+  - adminSessionId: []
+    adminSessionSignature: []
+  tags:
+  - admin
+  summary: MCP工具授权 / MCP tool grants
+  description: 需 mcp_clients:read。 / MCP tool grants
+  operationId: admMcpGrantsGet
+  parameters:
+  - name: client_id
+    in: query
+    required: true
+    description: client_id
+    schema:
+      type: integer
+      format: int64
+      minimum: 1
+      description: JSON int64；客户端需无损解析 / Preserve bigint precision
+  responses:
+    '200':
+      description: 成功或业务错误；检查 code / Inspect business code
+      content:
+        application/json:
+          schema:
+            anyOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      client_id:
+                        type: integer
+                        format: int64
+                        minimum: 1
+                        description: JSON int64；客户端需无损解析 / Preserve bigint precision
+                      tools:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            name:
+                              type: string
+                            enabled:
+                              type: boolean
+                      scopes:
+                        type: array
+                        items:
+                          type: string
+              - type: object
+                properties:
+                  code:
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+    '401':
+      description: Cookie 缺失、无效、到期或已撤销 / Invalid session cookies
+      content:
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/Envelope.yaml

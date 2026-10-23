@@ -1,0 +1,103 @@
+type: object
+properties:
+  msg_id:
+    type: string
+    minLength: 1
+    description: 不透明业务消息 ID；可以含字母、连字符或下划线，不是数据库行 TSID。 / Opaque business message ID, not a database row key.
+  chat_type:
+    type: string
+    enum:
+    - c2c
+    - c2g
+  conv_seq:
+    type: integer
+    format: int64
+    minimum: 1
+  msg_type:
+    type: string
+    description: 内容类型，如 text/image/custom；不等同 chat_type。 / Content kind, independent of chat_type.
+  from:
+    type: string
+    description: 十进制 TSID 字符串；不经 JavaScript Number。 / Decimal TSID string.
+  to:
+    type: string
+    description: 十进制 TSID 字符串；不经 JavaScript Number。 / Decimal TSID string.
+  group_id:
+    type: string
+    description: 十进制 TSID 字符串；不经 JavaScript Number。 / Decimal TSID string.
+  sender_did:
+    type:
+    - string
+    - 'null'
+    description: 原发送设备；旧行可为 null。 / Original sender device, null for legacy rows.
+  e2ee:
+    type:
+    - object
+    - string
+    - 'null'
+    description: 透传的 E2EE 元数据；对象包含协议字段和设备信封。未加密时可为 null/空串，旧格式 JSON 字符串解码失败时保留字符串。不提供顶层 ciphertext。 / Opaque encryption
+      metadata, empty for plaintext; ciphertext stays inside the protocol envelope.
+    properties:
+      meta_version:
+        type: integer
+      fan_out:
+        type: string
+      devices:
+        type: object
+        additionalProperties:
+          type: object
+    additionalProperties: true
+  payload:
+    type:
+    - object
+    - array
+    - string
+    - number
+    - boolean
+    - 'null'
+    description: 按 msg_type/协议定义的 JSON 业务载荷；加密消息可为空字符串，不能固定为 object。服务端不解密。 / Protocol-defined JSON payload; encrypted
+      content may use empty string.
+  created_at:
+    type: integer
+    format: int64
+    description: Unix 毫秒；经 elib_response:success 的时间转换。 / Unix milliseconds.
+  server_ts:
+    type:
+    - integer
+    - 'null'
+    format: int64
+    description: Unix 毫秒；经 elib_response:success 的时间转换。 / Unix milliseconds.
+additionalProperties: false
+required:
+- msg_id
+- chat_type
+- conv_seq
+- msg_type
+- from
+- sender_did
+- e2ee
+- payload
+- created_at
+- server_ts
+description: 历史消息行：msg_archive_repo 查询列经 messaging_logic:encode_history_msg 处理，JSONB 解码，from/to/group_id 转字符串，时间字段最终转毫秒。C2C
+  有 to；C2G 用 group_id，通常不输出 to。没有实时帧 id/type/ver，也没有独立顶层 ciphertext。 / Archived row projection, distinct from realtime
+  and offline rows.
+oneOf:
+- properties:
+    chat_type:
+      const: c2c
+    to:
+      type: string
+      description: 十进制 TSID 字符串；不经 JavaScript Number。 / Decimal TSID string.
+    group_id: false
+  required:
+  - to
+- properties:
+    chat_type:
+      const: c2g
+    group_id:
+      type: string
+      description: 十进制 TSID 字符串；不经 JavaScript Number。 / Decimal TSID string.
+    to: false
+  required:
+  - group_id

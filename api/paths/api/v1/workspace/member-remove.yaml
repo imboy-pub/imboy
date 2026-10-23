@@ -1,0 +1,82 @@
+post:
+  tags:
+  - workspace
+  summary: 移除工作区成员
+  operationId: workspaceMemberRemove
+  description: 工作区 Owner 或所属 Organization Owner/Admin 可治理；主 Owner、仍拥有项目/频道或未完成任务等依赖导致业务 409。 / Workspace or organization
+    governors; dependency conflicts return business 409.
+  parameters:
+  - name: workspace_id
+    in: path
+    required: true
+    schema:
+      type: integer
+      format: int64
+      minimum: 1
+    description: 工作区 TSID / Workspace ID
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            user_id:
+              type: integer
+              format: int64
+              minimum: 1
+          required:
+          - user_id
+  responses:
+    '200':
+      description: 成功 code=0 返回以下业务载荷；业务失败 code 非零返回通用错误信封。 / Success payload or nonzero-code business error.
+      content:
+        application/json:
+          schema:
+            oneOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      workspace_id:
+                        type: integer
+                        format: int64
+                        minimum: 1
+                      user_id:
+                        type: integer
+                        format: int64
+                        minimum: 1
+                      status:
+                        type: string
+                        const: removed
+                      affected_groups:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            group_id:
+                              type: integer
+                              format: int64
+                              minimum: 1
+                      affected_channels:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            channel_id:
+                              type: integer
+                              format: int64
+                              minimum: 1
+              - type: object
+                required:
+                - code
+                properties:
+                  code:
+                    type: integer
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+    '401':
+      description: 访问 JWT、设备绑定或客户端签名认证失败 / JWT, device binding or client signature rejected

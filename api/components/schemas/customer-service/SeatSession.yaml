@@ -1,0 +1,134 @@
+type: object
+properties:
+  id:
+    type: string
+    pattern: ^[0-9]+$
+    description: 无损十进制 TSID 字符串。
+  organization_id:
+    type: string
+    pattern: ^[0-9]+$
+    description: 无损十进制 TSID 字符串。
+  workspace_id:
+    type: string
+    pattern: ^[0-9]+$
+    description: 无损十进制 TSID 字符串。
+  contact_id:
+    type: string
+    pattern: ^[0-9]+$
+    description: 无损十进制 TSID 字符串。
+  conversation_id:
+    type: string
+    pattern: ^[0-9]+$
+    description: 无损十进制 TSID 字符串。
+  business_identity_id:
+    type:
+    - string
+    - 'null'
+    pattern: ^[0-9]+$
+    description: 无损十进制 TSID 字符串。
+  visit_token_id:
+    type:
+    - string
+    - 'null'
+    pattern: ^[0-9]+$
+    description: 无损十进制 TSID 字符串。
+  status:
+    type: string
+    enum:
+    - queued
+    - active
+    - closed
+  version:
+    type: integer
+  rating:
+    type:
+    - integer
+    - 'null'
+  rating_at:
+    type:
+    - integer
+    - 'null'
+    format: int64
+    description: Unix 秒；客服 response helper 保留底层秒值。
+  close_reason:
+    type:
+    - string
+    - 'null'
+  queued_at:
+    type:
+    - integer
+    - 'null'
+    format: int64
+    description: Unix 秒；客服 response helper 保留底层秒值。
+  claimed_at:
+    type:
+    - integer
+    - 'null'
+    format: int64
+    description: Unix 秒；客服 response helper 保留底层秒值。
+  closed_at:
+    type:
+    - integer
+    - 'null'
+    format: int64
+    description: Unix 秒；客服 response helper 保留底层秒值。
+  updated_at:
+    type:
+    - integer
+    - 'null'
+    format: int64
+    description: Unix 秒；客服 response helper 保留底层秒值。
+  first_visitor_message_at:
+    type:
+    - integer
+    - 'null'
+    format: int64
+    description: Unix 秒；客服 response helper 保留底层秒值。
+  source:
+    type: string
+    description: 平台来源事实推导，非客户端申报。
+    enum:
+    - widget
+    - seat
+    - shop_key
+  contact:
+    type: object
+    properties:
+      masked_name:
+        type: string
+  last_message:
+    type:
+    - object
+    - 'null'
+    properties:
+      id:
+        type: string
+        pattern: ^[0-9]+$
+        description: 无损十进制 TSID 字符串。
+      preview:
+        type:
+        - string
+        - 'null'
+      created_at:
+        type:
+        - integer
+        - 'null'
+        format: int64
+        description: Unix 秒；客服 response helper 保留底层秒值。
+      sender_type:
+        type:
+        - string
+        - 'null'
+  unread_count:
+    type: integer
+  needs_reply:
+    type: boolean
+  waiting_seconds:
+    type: integer
+required:
+- id
+- organization_id
+- workspace_id
+- contact_id
+- status
+- version

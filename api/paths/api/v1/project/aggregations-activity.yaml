@@ -1,32 +1,80 @@
-# GET /api/v1/projects/{project_id}/aggregations/activity — 四聚合之 activity（W2 ZC-06）
 get:
-  tags: [project]
-  summary: "活动流（project_event 元数据流；payload 已清洗 content/message/body/text 正文类键）"
-  description: |
-    ## 中文
+  tags:
+  - project
+  summary: 活动流（project_event 元数据流；payload 已清洗 content/message/body/text 正文类键）
+  description: '## 中文
+
     活动流（project_event 元数据流；payload 已清洗 content/message/body/text 正文类键）。SQL 条数固定（无 N+1），返回有界摘要。
+
     ## English
-    Event metadata stream; content-bearing keys are stripped from payloads. Fixed number of SQL statements (no N+1), bounded result.
+
+    Event metadata stream; content-bearing keys are stripped from payloads. Fixed number of SQL statements (no N+1),
+    bounded result.
+
+    '
   operationId: projectAggActivity
   parameters:
-    - name: project_id
-      in: path
-      required: true
-      schema: { type: integer, format: int64 }
-    - name: page
-      in: query
-      schema: { type: integer, default: 1 }
-    - name: size
-      in: query
-      schema: { type: integer, default: 10 }
+  - name: project_id
+    in: path
+    required: true
+    schema:
+      type: integer
+      format: int64
+    description: 项目 TSID / Project ID
+  - name: page
+    in: query
+    schema:
+      type: integer
+      minimum: 1
+      default: 1
+    description: 页码，从 1 开始 / Page starting at 1
+  - name: size
+    in: query
+    schema:
+      type: integer
+      minimum: 1
+      maximum: 50
+      default: 20
+    description: 每页条数 / Page size
   responses:
     '200':
-      description: 聚合摘要
+      description: 成功 code=0 返回以下业务载荷；业务失败 code 非零返回通用错误信封。 / Success payload or nonzero-code business error.
       content:
         application/json:
-          schema: { $ref: '../../../../components/schemas/Envelope.yaml' }
-    '4XX':
-      description: 无权限（403）/ 项目不存在（404）
-      content:
-        application/json:
-          schema: { $ref: '../../../../components/schemas/Envelope.yaml' }
+          schema:
+            oneOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      list:
+                        type: array
+                        items:
+                          $ref: ../../../../components/schemas/client/ProjectActivity.yaml
+                      page:
+                        type: integer
+                      size:
+                        type: integer
+                      total:
+                        type: integer
+                      total_page:
+                        type: integer
+                    required:
+                    - list
+                    - page
+                    - size
+                    - total
+                    - total_page
+              - type: object
+                required:
+                - code
+                properties:
+                  code:
+                    type: integer
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+    '401':
+      description: 访问 JWT、设备绑定或客户端签名认证失败 / JWT, device binding or client signature rejected

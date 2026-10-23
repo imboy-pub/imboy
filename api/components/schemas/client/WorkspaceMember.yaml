@@ -1,0 +1,42 @@
+type: object
+properties:
+  workspace_id:
+    type: integer
+    format: int64
+    minimum: 1
+  user_id:
+    type: integer
+    format: int64
+    minimum: 1
+  role:
+    type: string
+    enum:
+    - owner
+    - member
+    - guest
+  invited_by:
+    type:
+    - integer
+    - 'null'
+    format: int64
+  joined_at:
+    type: integer
+    format: int64
+    description: Unix 毫秒；经 elib_response:success 转换。 / Unix milliseconds.
+  status:
+    type: string
+    enum:
+    - active
+    - removed
+  nickname:
+    type:
+    - string
+    - 'null'
+  avatar:
+    type:
+    - string
+    - 'null'
+  account:
+    type:
+    - string
+    - 'null'

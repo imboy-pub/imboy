@@ -1,0 +1,173 @@
+$defs:
+  Wallet:
+    type: object
+    properties:
+      id:
+        type: string
+        pattern: ^[1-9][0-9]*$
+        description: TSID 十进制字符串 / Decimal TSID string
+      user_id:
+        type: string
+        pattern: ^[1-9][0-9]*$
+        description: TSID 十进制字符串 / Decimal TSID string
+      balance:
+        type: integer
+        format: int64
+        description: 金额（分） / Amount in minor units
+      frozen:
+        type: integer
+        format: int64
+        description: 金额（分） / Amount in minor units
+      version:
+        type: integer
+      status:
+        type: integer
+      created_at:
+        type:
+        - integer
+        - 'null'
+        format: int64
+        description: Unix 毫秒 / Unix milliseconds
+      updated_at:
+        type:
+        - integer
+        - 'null'
+        format: int64
+        description: Unix 毫秒 / Unix milliseconds
+  WalletTransaction:
+    type: object
+    properties:
+      id:
+        type: string
+        pattern: ^[1-9][0-9]*$
+        description: TSID 十进制字符串 / Decimal TSID string
+      wallet_id:
+        type: string
+        pattern: ^[1-9][0-9]*$
+        description: TSID 十进制字符串 / Decimal TSID string
+      user_id:
+        type: string
+        pattern: ^[1-9][0-9]*$
+        description: TSID 十进制字符串 / Decimal TSID string
+      amount:
+        type: integer
+        format: int64
+        description: 金额（分） / Amount in minor units
+      balance_after:
+        type: integer
+        format: int64
+        description: 金额（分） / Amount in minor units
+      tx_type:
+        type: integer
+      reference_no:
+        type: string
+      remark:
+        type: string
+      status:
+        type: integer
+      created_at:
+        type:
+        - integer
+        - 'null'
+        format: int64
+        description: Unix 毫秒 / Unix milliseconds
+  RechargeOrder:
+    type: object
+    properties:
+      id:
+        type: string
+        pattern: ^[1-9][0-9]*$
+        description: TSID 十进制字符串 / Decimal TSID string
+      order_no:
+        type: string
+      user_id:
+        type: string
+        pattern: ^[1-9][0-9]*$
+        description: TSID 十进制字符串 / Decimal TSID string
+      amount:
+        type: integer
+        format: int64
+        description: 金额（分） / Amount in minor units
+      currency:
+        type: string
+      payment_method:
+        type: string
+      payment_no:
+        type:
+        - string
+        - 'null'
+      status:
+        type: integer
+      paid_at:
+        type:
+        - integer
+        - 'null'
+        format: int64
+        description: Unix 毫秒 / Unix milliseconds
+      expires_at:
+        type:
+        - integer
+        - 'null'
+        format: int64
+        description: Unix 毫秒 / Unix milliseconds
+      created_at:
+        type:
+        - integer
+        - 'null'
+        format: int64
+        description: Unix 毫秒 / Unix milliseconds
+      updated_at:
+        type:
+        - integer
+        - 'null'
+        format: int64
+        description: Unix 毫秒 / Unix milliseconds
+  PaymentTransaction:
+    type: object
+    properties:
+      id:
+        type: string
+        pattern: ^[1-9][0-9]*$
+        description: TSID 十进制字符串 / Decimal TSID string
+      trade_no:
+        type: string
+      biz_type:
+        type: integer
+      biz_order_no:
+        type: string
+      user_id:
+        type: string
+        pattern: ^[1-9][0-9]*$
+        description: TSID 十进制字符串 / Decimal TSID string
+      gateway:
+        type: string
+      gateway_payment_no:
+        type:
+        - string
+        - 'null'
+      amount:
+        type: integer
+        format: int64
+        description: 金额（分） / Amount in minor units
+      currency:
+        type: string
+      status:
+        type: integer
+      paid_at:
+        type:
+        - integer
+        - 'null'
+        format: int64
+        description: Unix 毫秒 / Unix milliseconds
+      created_at:
+        type:
+        - integer
+        - 'null'
+        format: int64
+        description: Unix 毫秒 / Unix milliseconds
+      updated_at:
+        type:
+        - integer
+        - 'null'
+        format: int64
+        description: Unix 毫秒 / Unix milliseconds

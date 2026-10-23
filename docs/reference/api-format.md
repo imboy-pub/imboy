@@ -1,326 +1,99 @@
-# API 格式规范
+# API 格式规范 / API formats
 
-> Last Updated: 2026-08-20  
-> Status: 长期接口规范文档  
-> Scope: HTTP/REST 与 WebSocket 的通用消息格式约定  
-> Source of truth: `src/lib/elib_response.erl`, `docs/api/envelope.schema.json`, `docs/reference/websocket-api-2.md`
-> Related docs: `docs/reference/rest-api.md`, `docs/api/envelope.schema.json`, `docs/reference/websocket-api-2.md`
+本文说明当前公共传输规则。机器契约入口为 [`api/README.md`](../../api/README.md)；
+具体参数、类型和例外以对应端点及最终响应实现为准。
+This guide describes current shared wire conventions; endpoint contracts define exceptions.
 
+## 三种接口面 / Audiences
 
-## HTTP API 响应格式
+| 接口面 | 路径 | 认证 | JSON 响应 |
+|---|---|---|---|
+| 人类业务客户端 | `/api/v1/*` | Access JWT；公开入口或专用凭证见端点 | 通常为业务信封 |
+| 管理后台 | `/api/adm/*` | `adm_user_id` 与 `adm_user_sig` Cookie；登录及 setup 等例外见端点 | 通常为业务信封 |
+| 企业集成 | `/api/internal/v1/*` | HMAC-SHA256 四头联合认证 | 通常为裸成功对象及稳定 error 对象 |
 
-### 标准响应结构
+HTTP 页面、下载／导出流、受控上传 receipt、握手错误及 OA 登录票据等存在专用格式。
+详见 [Internal 集成说明](../../api/internal/v1/README.md) 和各受众 OpenAPI。
+
+## 业务响应信封 / Business envelope
+
+[`elib_response.erl`](../../src/lib/elib_response.erl) 生成的标准 JSON：
 
 ```json
 {
   "code": 0,
-  "msg": "success.",
+  "msg": "success",
+  "sv_ts": 1792713600000,
   "payload": {}
 }
 ```
-
-### 字段说明
-
-| 字段 | 类型 | 必需 | 说明 |
-|------|------|------|------|
-| `code` | integer | ✅ | 响应状态码 |
-| `msg` | binary | ✅ | 响应消息 |
-| `payload` | map | ⚪ | 响应数据，可选 |
-
-### 状态码分类
-
-| code | 类型 | 说明 |
-|------|------|------|
-| `0` | 成功 | 操作成功 |
-| `4xx` | 客户端错误 | 参数、认证、资源等错误 |
-| `5xx` | 服务端错误 | 服务器内部问题 |
-| `9xx` | 业务错误 | IM 业务特定错误 |
-
-### 成功响应
-
-```json
-{
-  "code": 0,
-  "msg": "success.",
-  "payload": {
-    "id": "XyZ9aBcDeF",
-    "name": "张三",
-    "avatar": "https://example.com/avatar.jpg"
-  }
-}
-```
-
-### 错误响应
-
-```json
-{
-  "code": 404,
-  "msg": "用户不存在",
-  "payload": {}
-}
-```
-
-## WebSocket 消息格式
-
-> **详细规范**: 请参阅 [websocket-api.md](./websocket-api-2.md) - 完整的 WebSocket API 规范文档
-
-### 基础消息结构
-
-```json
-{
-  "id": "msg_id",
-  "type": "C2C",
-  "from": "encoded_user_id",
-  "to": "encoded_user_id",
-  "payload": {
-    "msg_type": "text",
-    "text": "message content"
-  },
-  "created_at": 1650118822382,
-  "server_ts": 1650118823376
-}
-```
-
-### 字段说明
-
-| 字段 | 类型 | 必需 | 说明 |
-|------|------|------|------|
-| `id` | binary | ✅ | 消息唯一标识符，格式：`<type>.<tsid>.<timestamp>.<random>` |
-| `type` | binary | ✅ | 消息类型：`C2C`\|`C2G`\|`C2S`\|`S2C` |
-| `from` | binary | ✅ | 发送方 ID (TSID integer) |
-| `to` | binary | ✅ | 接收方 ID (TSID integer) |
-| `payload` | map | ✅ | 消息载荷 |
-| `created_at` | integer | ⚪ | 客户端创建时间（毫秒时间戳，UTC+0），可选 |
-| `server_ts` | integer | ✅ | 服务端时间戳 (毫秒，UTC+0) |
-
-### 消息类型
-
-| 类型 | 说明 |
-|------|------|
-| **C2C** | 单聊消息 |
-| **C2G** | 群聊消息 |
-| **C2S** | 客户端请求（如 AI 机器人） |
-| **S2C** | 服务端通知（如系统消息） |
-
-## 响应处理建议
-
-### 客户端处理流程
-
-```javascript
-// 伪代码
-handleResponse(response) {
-    if (response.code === 0) {
-        // 成功
-        onSuccess(response.payload);
-    } else if (response.code >= 400 && response.code < 500) {
-        // 客户端错误
-        handleClientError(response.code, response.msg);
-    } else if (response.code >= 500 && response.code < 600) {
-        // 服务端错误
-        handleServerError(response.code, response.msg);
-    } else if (response.code >= 900 && response.code < 1000) {
-        // 业务错误
-        handleBusinessError(response.code, response.msg);
-    } else {
-        // 未知错误
-        handleUnknownError(response);
-    }
-}
-```
-
-### 错误提示策略
-
-| code | 弹窗类型 | 说明 |
-|------|---------|------|
-| 0 | 无弹窗 | 成功，正常处理 |
-| 4xx | Toast/提示 | 客户端错误，轻提示 |
-| 5xx | Alert | 服务端错误，需要用户知晓 |
-| 9xx | Toast | 业务错误，轻提示 |
-
-## 数据编码规范
-
-### ID 字段编码
-
-所有 ID 字段使用 TSID（64-bit BIGINT integer）直接返回：
-
-```json
-{
-  "code": 0,
-  "msg": "success.",
-  "payload": {
-    "id": 1838294017982464,
-    "uid": 1838294017982465,
-    "from": 1838294017982464,
-    "to": 1838294017982466
-  }
-}
-```
-
-**详细规范**: [elib_tsid 文档](https://github.com/imboy-pub/imboy/blob/main/src/lib/CLAUDE.md)
-
-### 时间戳格式
-
-时间字段的格式取决于出现位置，共两种：
-
-| 出现位置 | 格式 | 说明 |
-|---------|------|------|
-| REST 响应（HTTP） | **毫秒时间戳 (integer, UTC+0)** | `elib_response:success` 统一经 `elib_cnv:convert_at_timestamps`，所有以 `_at` / `_ts` 结尾的字段（DB 中为 RFC3339 串或 tuple）一律转为毫秒整数 |
-| WebSocket 消息信封 | **毫秒时间戳 (integer, UTC+0)** | `server_ts` / `created_at` 等信封级字段 |
-| WebSocket 业务 payload 内部 | **RFC3339 字符串（微秒精度）** | 部分业务通知字段（如 `channel_message_edited` 的 `edited_at`、`channel_message_revoked` 的 `revoked_at`）为服务端 `elib_dt:now()` 生成的 RFC3339 微秒串（如 `"2026-08-20T19:30:00.123456+08:00"`），**不经过** `convert_at_timestamps` 转换 |
-
-```json
-{
-  "server_ts": 1736141700000,
-  "created_at": 1736141700000
-}
-```
-
-> 客户端注意：消费 WS 业务 payload 内的时间字段时，需按 RFC3339（含微秒）解析，
-> 不能假设所有时间字段都是整数毫秒。
-
-### 字符串编码
-
-所有包含中文的字符串必须使用 UTF-8 编码：
-
-```erlang
-% Erlang 示例
-Msg = <<"操作成功"/utf8>>,
-```
-
-**详细规范**: [utf8-encoding.md](./utf8-encoding.md)
-
-## 用户 ID 键名规范（BE-17）
-
-> **Last Updated**: 2026-06-13 | **Status**: 定标（阶段 0，新端点强制；存量迁移按 T22 三阶段推进）
-
-### 规则
-
-| 场景 | 规范键名 | 说明 |
-|------|---------|------|
-| 所有新端点（请求 + 响应） | `user_id` | **强制**，不得使用 `uid` |
-| 存量端点（已发布） | `uid` → 双写过渡 | 按 T22 阶段 1 加双写后再迁移 |
-
-### 背景
-
-历史原因导致 `uid`（11 处端点）与 `user_id`（20 处端点）并存，客户端须逐端点记忆。`channel_handler_admin.erl` 已做双键兼容解析，是存量状态的体现，不是目标模式。
-
-### 迁移计划（T22，不在此文档展开）
-
-| 阶段 | 操作 | 关键点 |
-|------|------|--------|
-| Stage 0（当前） | 本文档定标 | 新端点即日起只用 `user_id` |
-| Stage 1 | 11 个 `uid` 端点双写（响应同时输出 `uid`+`user_id`，请求两键皆收） | OpenAPI 标 `uid: deprecated` |
-| Stage 2 | 三端（imboyapp/imboy-sdk-js/admin）切换读写 `user_id` | 借 OpenAPI 对账 CI 验证 |
-| Stage 3 | 旧版客户端发版覆盖后删 `uid` 键 | 确认线上旧版占比后执行 |
-
-### 违规示例 vs 正确示例
-
-```erlang
-%% ❌ 新端点禁止
-elib_response:success(Req, #{<<"uid">> => Uid, ...})
-
-%% ✅ 新端点必须
-elib_response:success(Req, #{<<"user_id">> => Uid, ...})
-```
-
----
-
-## 错误码使用
-
-### 错误码定义
-
-所有错误码定义在 `include/error_code.hrl` 中：
-
-```erlang
--define(ERR_OK, 0).
--define(ERR_BAD_REQUEST, 400).
--define(ERR_UNAUTHORIZED, 401).
--define(ERR_NOT_FOUND, 404).
--define(ERR_USER_NOT_FOUND, 940).
-```
-
-### 错误响应示例
-
-```erlang
-% 使用宏定义
-elib_response:error(Req, <<"用户不存在"/utf8>>, ?ERR_USER_NOT_FOUND).
-
-% 使用辅助函数
-elib_response:error(Req, error_msg(?ERR_USER_NOT_FOUND), ?ERR_USER_NOT_FOUND).
-```
-
-**详细规范**: [error-codes.md](./error-codes.md)
-
-## 分页格式
-
-### 请求参数
-
-```
-GET /api/messages?page=1&size=20
-```
-
-- `page`：页码，从 1 开始；缺省或 < 1 时按 1 处理
-- `size`：每页数量，默认 20，上限 1000（超出按上限截断）
-
-### 响应格式
-
-```json
-{
-  "code": 0,
-  "msg": "success.",
-  "payload": {
-    "total": 100,
-    "page": 1,
-    "size": 20,
-    "list": [...]
-  }
-}
-```
-
-### 字段说明
 
 | 字段 | 类型 | 说明 |
-|------|------|------|
-| `total` | integer | 总记录数 |
-| `page` | integer | 当前页码 |
-| `size` | integer | 每页数量 |
-| `list` | array | 数据列表 |
+|---|---|---|
+| `code` | integer | 0 成功，非零为业务失败；普通 error/2 的缺省码为 1 |
+| `msg` | string | UTF-8 人类可读说明，不作为机器判断依据 |
+| `sv_ts` | integer | 服务端 Unix 毫秒 |
+| `payload` | 端点定义 | 可以是对象或数组；具体成功／失败形状见 schema |
 
-> 注：响应无信封级 `has_more` 字段，客户端按 `page * size < total` 自行判断是否还有下一页。
-> 分页参数名是 `page` / `size`（非 `limit`），与 `elib_param:page/1` 及 `elib_pg:page_with_total` 的返回形状对应。
+四个字段在公共信封中必需。普通 `success/error` helper 默认 HTTP 200，
+`error_with_status` 及专用 handler 可返回实际 HTTP 错误码。
+调用方应先处理 HTTP／网络状态，再检查信封 `code`；不能把 HTTP 200 等同于业务成功。
+Check transport status and the business code separately. This envelope does not apply to every HTTP response.
 
-## 批量操作格式
+业务错误码见 [`error_code.hrl`](../../include/error_code.hrl) 和
+[错误码说明](error-codes.md)。Internal 的字符串错误码是另一套模型。
 
-### 批量请求
+## ID 与时间 / IDs and time
+
+- 实体 TSID 通常以 JSON integer 传输，部分端点显式返回十进制字符串。
+  JavaScript 使用无损解析后以 `EntityId` 持有；不能经 `Number` 损失精度。
+- 普通 IM 消息 `id` 是不透明字符串，保留原值；消息表行主键等实体 ID 仍是 TSID。
+- 消息顺序与历史增量以 `conv_seq` 为准，不能从业务消息 ID 推断。
+- 新业务端点的用户字段优先采用 `user_id`；已发布的 `uid` 等字段按端点兼容规则保留。
+
+详见 [TSID 字段约定](tsid-field-convention.md) 和
+[WebSocket 消息身份](ws-protocol-contract.md#41-业务消息-id--business-message-identity)。
+
+| 最终输出路径 | 时间表示 |
+|---|---|
+| `elib_response:success/2,3,4` | 递归处理 `_at`／`_ts`：字符串／PG 时间 tuple 转 Unix 毫秒；已有整数原样保留（部分端点为秒） |
+| `elib_response:success_rfc3339/2,3` | 保持调用方时间值，端点通常声明 RFC3339 字符串 |
+| 直接 `cowboy_req:reply`／`jsone:encode` | 不经过上述转换，按端点实际编码 |
+| WebSocket | `server_ts` 通常为 Unix 毫秒；业务 payload 的日期字段可能为 RFC3339 |
+
+数据库字段类型本身不能决定最终 JSON 类型。没有统一“所有时间字段均为毫秒”的规则。
+Follow the final serializer, not only the database column type.
+
+## 分页 / Pagination
+
+| 模式 | 参数 | 当前公共行为 |
+|---|---|---|
+| `elib_param:page/1` | `page`、`size` | 默认 1／20；通用 size 上限 1000；业务逻辑可进一步限制 |
+| `elib_param:page_qs/2` | `page`、`size` | 页大小默认值由调用方提供，通用上限 100 |
+| Internal cursor | `cursor` 加 `limit` 或 `page_size` | 默认值、上限及错误规则按端点；游标原样回传 |
+| 消息历史 | `after_seq` 等 | 按会话序列拉取，具体参数见消息契约 |
+
+Offset 响应常包含 `list/page/size/total/total_page`，cursor 响应常包含
+`items/has_more/next_cursor`；只有端点实际提供 `total` 时才能按总数计算翻页。
+不假设所有列表的参数、容器键、空游标或越界行为相同。
+
+## WebSocket 信封 / WebSocket envelope
+
+握手、协议选择和帧格式见 [WebSocket 契约](ws-protocol-contract.md)；
+[AsyncAPI](../../api/asyncapi.yaml) 从客户端视角描述 send／receive。
+JSON 业务信封使用大写 `C2C/C2G/C2S/S2C`，内容类型 `msg_type` 和
+动作 `action` 位于顶层，业务载荷放在 `payload`。例如：
 
 ```json
 {
-  "ids": ["XyZ9aBcDeF", "GhI8jKlMnO", "AbCdEfGhIj"]
+  "id": "019f0000-0000-7000-8000-000000000001",
+  "type": "C2C",
+  "from": "84442613760000001",
+  "to": "84442613760000002",
+  "msg_type": "text",
+  "payload": {"text": "hello"}
 }
 ```
 
-### 批量响应
-
-```json
-{
-  "code": 0,
-  "msg": "success.",
-  "payload": {
-    "success": ["XyZ9aBcDeF", "GhI8jKlMnO"],
-    "failed": [
-      {
-        "id": "AbCdEfGhIj",
-        "error": "用户不存在"
-      }
-    ]
-  }
-}
-```
-
-## 相关文档
-
-- **UTF-8 编码规范**: [utf8-encoding.md](./utf8-encoding.md)
-- **错误码规范**: [error-codes.md](./error-codes.md)
-- **TSID 规范**: [elib_tsid 文档](https://github.com/imboy-pub/imboy/blob/main/src/lib/CLAUDE.md)（hashid-encoding.md 已删除，TSID 迁移后不再使用 hashids）
-- **WebSocket API**: [websocket-api.md](./websocket-api-2.md)
-- **主文档**: [CLAUDE.md](https://github.com/imboy-pub/imboy/blob/main/CLAUDE.md)
+示例 ID 为合成值。E2EE 载荷不可套用明文 payload；JSON 与 Protobuf 的类型及字段能力
+存在差异，按 [`imboy_codec.erl`](../../src/lib/imboy_codec.erl) 和具体协议定义处理。

@@ -1,13 +1,21 @@
-# POST /api/adm/report/create — admin
 post:
-  tags: [admin]
+  security:
+  - adminSessionId: []
+    adminSessionSignature: []
+  tags:
+  - admin
   summary: admin adm-report - create
-  description: |
-    ## 中文 / English
-    管理后台 adm-report handler 的 `create` 动作；路径 `/adm/report/create`。
-    Admin handler `adm-report`, action `create`. Path `/adm/report/create`.
+  description: '## 中文 / English
+
+    管理后台 adm-report handler 的 `create` 动作；路径 `/api/adm/report/create`。
+
+    Admin handler `adm-report`, action `create`. Path `/api/adm/report/create`.
+
     APP 提交使用 /api/v1/report/create，不能以管理端创建入口代替用户鉴权。
+
     Apps submit via /api/v1/report/create; this admin endpoint does not replace user authentication.
+
+    '
   operationId: adm_report_create
   requestBody:
     required: true
@@ -16,19 +24,26 @@ post:
         schema:
           type: object
           additionalProperties: true
-          required: [target_type, target_id, reason]
+          required:
+          - target_type
+          - target_id
+          - reason
           properties:
             target_type:
               type: string
-              enum: [moment, group, channel, user]
+              enum:
+              - moment
+              - group
+              - channel
+              - user
               description: 管理端兼容创建入口；消息举报使用用户端正式入口 / Legacy admin creation; message reports use the user endpoint
             target_id:
               oneOf:
-                - type: integer
-                  format: int64
-                  minimum: 1
-                - type: string
-                  pattern: '^[1-9][0-9]*$'
+              - type: integer
+                format: int64
+                minimum: 1
+              - type: string
+                pattern: ^[1-9][0-9]*$
             reason:
               type: string
               description: 举报原因 / Report reason
@@ -37,12 +52,13 @@ post:
               description: 补充说明 / Additional description
   responses:
     '200':
-      description: 成功
+      description: 成功；非零 code 为业务错误 / Non-zero code is a business error
       content:
         application/json:
           schema:
-            allOf:
-              - $ref: '../../../../components/schemas/Envelope.yaml'
+            anyOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
               - type: object
                 properties:
                   payload:
@@ -56,7 +72,14 @@ post:
                       target_type:
                         type: string
                         description: 举报目标类型 moment/group/channel/user / Target type
-    '4XX':
+              - type: object
+                properties:
+                  code:
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+    4XX:
       description: 无权限 / 参数非法
       content:
-        application/json: { schema: { $ref: '../../../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/Envelope.yaml

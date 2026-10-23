@@ -1,65 +1,72 @@
 # IMBoy API 与协议契约 / API and protocol contracts
 
-本目录保存机器可读的接口与协议定义。接口存在于契约中，不代表它在当前交付 profile 中启用，也不代表已通过端到端验收。
-This directory contains machine-readable contracts. A documented endpoint is not necessarily enabled by the delivery profile or qualified by end-to-end tests.
+本目录描述当前实现的接口。契约中存在一个端点，不代表当前部署 profile 已启用它，
+也不代表已通过真实请求、权限负例或端到端验收。
+A documented endpoint is not necessarily enabled or qualified by runtime acceptance tests.
 
 ## 查阅入口 / Entry points
 
-| 受众 / Audience | 定义 / Contract |
-|---|---|
-| APP 与业务客户端 / Apps and business clients | [openapi-api.yaml](./openapi-api.yaml) |
-| 管理后台 / Admin | [openapi-adm.yaml](./openapi-adm.yaml) |
-| 企业集成 / Enterprise integration | [openapi-internal.yaml](./openapi-internal.yaml) · [集成说明 / Integration guide](./internal/v1/README.md) |
-| WebSocket | [asyncapi.yaml](./asyncapi.yaml) · [协议说明 / Protocol guide](../docs/reference/ws-protocol-contract.md) |
-| 公共响应信封 / Response envelope | [Envelope.yaml](./components/schemas/Envelope.yaml) |
-| 代码生成 / Code generation | [codegen/README.md](./codegen/README.md) |
+| 受众 | 契约 | 认证与响应 |
+|---|---|---|
+| APP 与业务客户端 | [openapi-api.yaml](openapi-api.yaml) | 通常 Access JWT；公开、Bot、访客和 Seat 凭证见具体端点 |
+| 管理后台 | [openapi-adm.yaml](openapi-adm.yaml) | Admin Cookie 会话；登录和 setup 等入口显式公开 |
+| 企业集成 | [openapi-internal.yaml](openapi-internal.yaml) · [集成指南](internal/v1/README.md) | HMAC 请求签名；裸成功对象／稳定 error，OA票据成功信封例外 |
+| WebSocket | [asyncapi.yaml](asyncapi.yaml) · [协议契约](../docs/reference/ws-protocol-contract.md) | `/api/v1/ws`；有效 Access JWT 与编码子协议 |
+| 公共响应 | [Envelope.yaml](components/schemas/Envelope.yaml) · [格式说明](../docs/reference/api-format.md) | `code/msg/sv_ts/payload`，具体载荷由端点定义 |
+| Protobuf 生成 | [codegen/README.md](codegen/README.md) | WebSocket Protobuf 载荷生成，与 REST 客户端生成分开 |
 
-端点文件位于 `paths/<api|adm|internal>/v1/`，公共定义位于 `components/`。
-目录中的 `v1` 用于契约定位，不保证请求 URL 带有 `/v1`；请求路径以对应 root 的 `paths` 为准。
-Endpoint files live under `paths/<api|adm|internal>/v1/`; shared definitions live under `components/`.
-The directory version does not imply a URL prefix. Use the root's `paths` keys.
+`paths/<api|adm|internal>/v1/` 保存端点，`components/` 保存可复用定义。
+目录中的 `v1` 是文档定位，不保证 URL 包含 `/v1`；请求路径以受众 root 的 `paths` 为准。
+Use the root's path keys and operation security requirements when calling an endpoint.
 
-## 修改与校验 / Editing and validation
+## 编辑与校验 / Editing and validation
 
-编辑对应受众 root 或其引用的端点文件。`openapi.yaml` 是三份 root 的聚合生成物，不直接编辑。
-Edit the relevant audience root or referenced path file. Do not edit the generated aggregate `openapi.yaml`.
+编辑对应受众 root 及引用文件。`openapi.yaml` 是生成的三受众聚合桥接；
+`openapi-internal.bundle.yaml` 是 Internal 单文件交付物，二者均不手改。
+`gen_aggregate.py` 保留受众认证差异：默认认证不同的面必须在 leaf 操作中显式声明
+`security`，防止聚合后继承客户端 JWT。兼容别名也必须使用唯一 `operationId`。
 
-在后端仓库根目录执行 / Run from the backend repository root:
+需要 Python 3 + PyYAML 6.0.2 + jsonschema 4.25.1、Node 24 及 Redocly CLI 2.70.0（与 CI 一致）。
+在后端仓库根目录运行：
 
 ```bash
-redocly lint api/openapi-api.yaml api/openapi-adm.yaml api/openapi-internal.yaml --config api/redocly.yaml
+# 修改后生成
 python3 api/gen_aggregate.py
+python3 api/flatten_internal.py
+
+# 检查当前产物
 python3 api/gen_aggregate.py --check
+python3 api/flatten_internal.py --check
+python3 -m unittest discover -s test/scripts -p 'test_api_*.py'
+redocly lint api/openapi-api.yaml api/openapi-adm.yaml api/openapi-internal.yaml --config api/redocly.yaml
+python3 scripts/check_enterprise_release_manifest.py
 ```
 
-Redocly CLI 需要单独提供；配置见 [redocly.yaml](./redocly.yaml)。聚合检查仅证明生成物一致，不能代替 schema 校验、权限测试或真实请求验收。
-Provide Redocly CLI separately. Aggregate checks prove generated-file consistency only; they do not replace schema validation, authorization tests, or real-request acceptance.
+生成一致性、schema lint 和路由断言是静态检查，不能替代实际 HTTP／权限／业务验收。
+Schema and generation checks do not prove runtime authorization or end-to-end behavior.
 
-## 数据约定 / Data conventions
+## 设计与兼容规则 / Design and compatibility
 
-- JSON 信封以公共定义为准，字段为 `code`、`msg`、`sv_ts`、`payload`；业务失败须检查 `code`，不能仅看 HTTP 状态。
-- ID 必须保留完整精度；各端点的 wire 类型以 schema 和实际处理代码为准，前端解析遵循 [TSID 约定](../docs/reference/tsid-field-convention.md)。
-- 分页参数与返回字段按端点定义，不统一假设 cursor 或 `items`。
-- 协议背景见 [参考文档索引](../docs/reference/README.md)，业务说明见 [三端对齐约定](../docs/api-contracts/three-platform-alignment.md)。
+- 文档必须跟随真实路径、方法、认证、HTTP 状态、业务码和最终 JSON 类型。
+  修正文档不意味着迁移运行时协议；已发布字段和路径按兼容策略演进。
+- 新接口优先资源名、明确的 HTTP 方法与状态语义；保留必要动作端点。
+  不为统一命名自行更改存量 URL、ID 类型、成功信封或错误处理。
+- 参数写明必填、类型、范围、默认值、空值与业务资格；有数据载荷时提供具体 schema。
+  无载荷或可扩展对象按真实语义声明，不用开放 object 掩盖未知字段。
+- 列表按实际实现声明 offset／cursor 参数、返回容器、排序与边界行为。
+  前端每页 10 条的默认体验不等于后端默认值；需要时显式传参。
+- 实体 TSID 保留完整精度；普通业务消息 ID 是不透明字符串。
+  以 [TSID 约定](../docs/reference/tsid-field-convention.md) 及端点最终序列化为准。
+- `organization` 是业务对象；归属校验、职能权限和部署实例的授权边界分别按实现描述。
+- 条件编译、功能开关和专用凭证必须明确标注。完整路由来源是
+  [`imboy_router.erl`](../src/imboy_router.erl) 及其委托路由模块；OpenAPI 不自动证明所有动态注册接口均已收录。
 
-The common envelope uses `code`, `msg`, `sv_ts`, and `payload`. Inspect business codes as well as HTTP status. Preserve ID precision and follow each endpoint's wire and pagination schema.
+## 范围外的 HTTP 内容 / Non-API HTTP content
 
-执行计划、测试结果、审查报告与运行证据保存在仓库外；本入口不维护历史任务进度或未经当前候选验证的覆盖率声明。
-Keep execution plans, test results, review reports, and runtime evidence outside Git. This entry point does not track historical task status or unverified coverage claims.
+法律页面 `/account-deletion`、`/privacy-policy` 和 `/static/[...]` 由 `cowboy_static`
+提供；开发调试路由不作为客户端契约。其他页面、流和握手只在存在明确接入需求时
+按其实际 `text/html`、`text/event-stream`、字节流或 HTTP 状态描述。
+不要仅因响应不是 JSON 就把已有集成入口排除，也不要为路由清单补不存在的 CRUD。
 
-## 已排除路由 / Explicitly excluded routes
-
-下列路由在 `src/imboy_router.erl` 中存在，但**有意不挂载**到 `openapi.yaml`：
-
-| 路由 | Handler | 排除原因 / Exclusion rationale |
-|------|---------|--------------------------------|
-| `/account-deletion` | `index_handler` (HTML) | 合规需要的账号注销页，HTML 响应而非 JSON API |
-| `/privacy-policy` | `index_handler` (HTML) | 隐私政策页，HTML 响应 |
-| `/static/[...]` | `cowboy_static` | 静态资源中间件，不属于业务契约 |
-| `/static/admin/[...]` | `cowboy_static` | 管理后台前端 SPA 资源 |
-| `/test/req_get` | `test_handler` | 开发调试端点，不暴露给客户端 codegen |
-| `/test/req_post` | `test_handler` | 同上 |
-
-如未来需要把这些挂入 OpenAPI（例如静态资源需 SDK 化、或测试端点需契约化），可参考 `paths/api/v1/system/help.yaml` 的 `text/html` content type 模式。
-
----
+执行计划、临时输出和测试结果保留在仓库外。必要的契约、脱敏 fixtures 和回归测试
+按项目要求维护；本入口不记录任务进度或未经当前候选验证的覆盖率声明。

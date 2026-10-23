@@ -1,5 +1,8 @@
 # POST /api/adm/group/file/delete — admin
 post:
+  security:
+    - adminSessionId: []
+      adminSessionSignature: []
   tags: [admin]
   summary: 管理后台删除群文件
   description: 管理员删除指定群文件（软删除）。Delete a group file by admin (soft delete).

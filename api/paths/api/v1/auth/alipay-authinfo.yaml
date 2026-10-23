@@ -1,0 +1,33 @@
+get:
+  tags:
+  - auth
+  summary: 获取支付宝 SDK 授权参数
+  operationId: alipayAuthInfo
+  description: 匿名；返回 SDK 所需签名授权串，要求部署已配置支付宝。 / Anonymous SDK authorization info; provider configuration required.
+  security: []
+  responses:
+    '200':
+      description: 成功 code=0 返回以下业务载荷；业务失败 code 非零返回通用错误信封。 / Success payload or nonzero-code business error.
+      content:
+        application/json:
+          schema:
+            oneOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      authinfo:
+                        type: string
+                    required:
+                    - authinfo
+              - type: object
+                required:
+                - code
+                properties:
+                  code:
+                    type: integer
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml

@@ -1,0 +1,63 @@
+post:
+  tags:
+  - workspace
+  summary: 推进已查看群消息的已读游标
+  operationId: workspaceGroupRead
+  description: 只接受当前有效工作区群成员代次内实际可见且未过期的消息 ID；原子推进单调 read_seq。不能提交任意序号绕过可见性。 / Uses actually viewed message IDs,
+    not an arbitrary client sequence.
+  parameters:
+  - name: group_id
+    in: path
+    required: true
+    schema:
+      type: integer
+      format: int64
+      minimum: 1
+    description: group_id
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            msg_ids:
+              type: array
+              items:
+                type: string
+                minLength: 1
+                maxLength: 128
+              minItems: 1
+              maxItems: 200
+          required:
+          - msg_ids
+  responses:
+    '200':
+      description: 成功 code=0 返回以下业务载荷；业务失败 code 非零返回通用错误信封。 / Success payload or nonzero-code business error.
+      content:
+        application/json:
+          schema:
+            oneOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      read_seq:
+                        type: integer
+                        format: int64
+                        minimum: 1
+                    required:
+                    - read_seq
+              - type: object
+                required:
+                - code
+                properties:
+                  code:
+                    type: integer
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+    '401':
+      description: 访问 JWT 或客户端认证失败 / Authentication rejected

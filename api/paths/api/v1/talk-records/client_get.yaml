@@ -16,6 +16,7 @@ get:
       format: int64
       minimum: 1
       maximum: 9223372036854775807
+    description: 谈话记录 TSID / Talk record ID
   - name: job_id
     in: path
     required: true
@@ -24,6 +25,7 @@ get:
       format: int64
       minimum: 1
       maximum: 9223372036854775807
+    description: 处理作业 ID / Processing job ID
   - name: run_id
     in: path
     required: true
@@ -32,6 +34,7 @@ get:
       format: int64
       minimum: 1
       maximum: 9223372036854775807
+    description: 客户端执行 ID / Client run ID
   - $ref: ../../../../components/parameters/talk-record/DeviceVsn.yaml
   - $ref: ../../../../components/parameters/talk-record/DevicePkg.yaml
   - $ref: ../../../../components/parameters/talk-record/DeviceDid.yaml
@@ -39,11 +42,10 @@ get:
   - $ref: ../../../../components/parameters/talk-record/DeviceMethod.yaml
   - $ref: ../../../../components/parameters/talk-record/DeviceSign.yaml
   - $ref: ../../../../components/parameters/talk-record/DeviceSk.yaml
-  description: JWT authenticated device identity; current record ACL, active membership
-    and external processing policy are authoritative. No provider credentials, endpoint,
-    callback or file path is accepted. Dispatch intent replay always returns may_dispatch=false.
-    Exact seq/source coverage is required before atomic content publication. Unknown
-    dispatch cannot be automatically retried.
+  description: JWT authenticated device identity; current record ACL, active membership and external processing
+    policy are authoritative. No provider credentials, endpoint, callback or file path is accepted. Dispatch intent
+    replay always returns may_dispatch=false. Exact seq/source coverage is required before atomic content publication.
+    Unknown dispatch cannot be automatically retried.
   responses:
     '401':
       description: JWT or device signature invalid.
@@ -58,8 +60,8 @@ get:
     '428':
       description: Required revision or idempotency key absent.
     '200':
-      description: Normalized run state. Only the claim response includes a device-bound
-        opaque run_token and source input_snapshot.
+      description: Normalized run state. Only the claim response includes a device-bound opaque run_token and source
+        input_snapshot.
       headers:
         ETag:
           schema:

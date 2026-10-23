@@ -8,14 +8,14 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 IMBOY_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
-ADMIN_DIR="$(cd "${IMBOY_DIR}/.." && pwd)/imboy-admin-frontend"
+ADMIN_DIR="$(cd "${IMBOY_DIR}/.." && pwd)/imboyadmin"
 PROTO_FILE="${IMBOY_DIR}/api/proto/imboy.proto"
 OUT_DIR="${ADMIN_DIR}/src/api/_gen/proto"
 
 # 邻居仓存在性检查
 if [ ! -d "${ADMIN_DIR}" ]; then
-  echo "ERROR: imboy-admin-frontend 邻居仓未找到: ${ADMIN_DIR}" >&2
-  echo "       v1.1 polyrepo 拓扑要求 imboy/ 与 imboy-admin-frontend/ 同级" >&2
+  echo "ERROR: imboyadmin 邻居仓未找到: ${ADMIN_DIR}" >&2
+  echo "       imboy/ 与 imboyadmin/ 必须位于同一工作区" >&2
   exit 1
 fi
 

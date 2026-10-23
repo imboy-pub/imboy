@@ -1,0 +1,41 @@
+type: object
+properties:
+  id:
+    type: integer
+    format: int64
+    minimum: 1
+  name:
+    type: string
+  owner_id:
+    type: integer
+    format: int64
+    minimum: 1
+  status:
+    type: string
+    enum:
+    - active
+    - archived
+    - pending
+    - rejected
+  branding:
+    type:
+    - object
+    - string
+    description: 当前底层 JSONB 编码透传 / JSONB encoding from storage
+  settings:
+    type:
+    - object
+    - string
+  created_at:
+    type: integer
+    format: int64
+    description: Unix 毫秒；经 elib_response:success 转换。 / Unix milliseconds.
+  updated_at:
+    type: integer
+    format: int64
+    description: Unix 毫秒；经 elib_response:success 转换。 / Unix milliseconds.
+required:
+- id
+- name
+- owner_id
+- status

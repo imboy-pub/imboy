@@ -1,23 +1,30 @@
-# GET /api/adm/moment/list — admin
 get:
-  tags: [admin]
+  security:
+  - adminSessionId: []
+    adminSessionSignature: []
+  tags:
+  - admin
   summary: admin adm-moment - list
-  description: |
-    ## 中文 / English
-    管理后台 adm-moment handler 的 `list` 动作；路径 `/adm/moment/list`。
-    Admin handler `adm-moment`, action `list`. Path `/adm/moment/list`.
+  description: '## 中文 / English
+
+    管理后台 adm-moment handler 的 `list` 动作；路径 `/api/adm/moment/list`。
+
+    Admin handler `adm-moment`, action `list`. Path `/api/adm/moment/list`.
+
+    '
   operationId: adm_moment_list
   parameters:
-    - $ref: '../../../../components/parameters/PaginationPage.yaml'
-    - $ref: '../../../../components/parameters/PaginationSize.yaml'
+  - $ref: ../../../../components/parameters/PaginationPage.yaml
+  - $ref: ../../../../components/parameters/PaginationSize.yaml
   responses:
     '200':
-      description: 成功
+      description: 成功；非零 code 为业务错误 / Non-zero code is a business error
       content:
         application/json:
           schema:
-            allOf:
-              - $ref: '../../../../components/schemas/Envelope.yaml'
+            anyOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
               - type: object
                 properties:
                   payload:
@@ -55,8 +62,10 @@ get:
                             stats:
                               type: object
                               properties:
-                                like_count: { type: integer }
-                                comment_count: { type: integer }
+                                like_count:
+                                  type: integer
+                                comment_count:
+                                  type: integer
                             status:
                               type: integer
                               description: 状态 / Status
@@ -70,7 +79,14 @@ get:
                         type: integer
                       size:
                         type: integer
-    '4XX':
+              - type: object
+                properties:
+                  code:
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+    4XX:
       description: 无权限 / 参数非法
       content:
-        application/json: { schema: { $ref: '../../../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/Envelope.yaml

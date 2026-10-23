@@ -1,93 +1,148 @@
-# /api/v1/projects/{project_id}/tasks — 任务列表(GET)/创建(POST)（W0/W1）
 get:
-  tags: [project]
+  tags:
+  - project
   summary: 项目任务列表（分页，status 过滤）
-  description: |
-    ## 中文
-    项目任务分页列表，可按 status（todo/doing/review/done）过滤；active
-    项目成员可读。分页形状 list/page/size/total/total_page。
-    ## English
-    Paginated task list with optional status filter.
+  description: 项目任务列表，支持 status 和 page/size；当前响应仅含 list，无 total/page 元数据。 / Filtered task list; payload contains
+    list only.
   operationId: projectTasksList
   parameters:
-    - name: project_id
-      in: path
-      required: true
-      schema: { type: integer, format: int64 }
-    - name: status
-      in: query
-      schema: { type: string, enum: [all, todo, doing, review, done], default: all }
-    - name: page
-      in: query
-      schema: { type: integer, default: 1 }
-    - name: size
-      in: query
-      schema: { type: integer, default: 10 }
+  - name: project_id
+    in: path
+    required: true
+    schema:
+      type: integer
+      format: int64
+    description: 项目 TSID / Project ID
+  - name: status
+    in: query
+    schema:
+      type: string
+      enum:
+      - all
+      - todo
+      - doing
+      - review
+      - done
+      default: all
+    description: 状态筛选 / Status filter
+  - name: page
+    in: query
+    schema:
+      type: integer
+      minimum: 1
+      default: 1
+    description: 页码，从 1 开始 / Page starting at 1
+  - name: size
+    in: query
+    schema:
+      type: integer
+      minimum: 1
+      maximum: 1000
+      default: 20
+    description: 每页条数 / Page size
   responses:
     '200':
-      description: 任务分页（行结构见 POST payload）
+      description: 成功 code=0 返回以下业务载荷；业务失败 code 非零返回通用错误信封。 / Success payload or nonzero-code business error.
       content:
         application/json:
           schema:
-            allOf:
-              - $ref: '../../../../components/schemas/Envelope.yaml'
+            oneOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
               - type: object
                 properties:
                   payload:
                     type: object
                     properties:
-                      list: { type: array, items: { type: object } }
-                      page: { type: integer }
-                      size: { type: integer }
-                      total: { type: integer }
-                      total_page: { type: integer }
+                      list:
+                        type: array
+                        items:
+                          $ref: ../../../../components/schemas/client/ProjectTask.yaml
+                    required:
+                    - list
+              - type: object
+                required:
+                - code
+                properties:
+                  code:
+                    type: integer
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+    '401':
+      description: 访问 JWT、设备绑定或客户端签名认证失败 / JWT, device binding or client signature rejected
 post:
-  tags: [project]
+  tags:
+  - project
   summary: 创建任务
-  description: |
-    ## 中文
+  description: '## 中文
+
     在项目下创建任务（title + 可选 assignee_id / sort）。Owner / active 项目
+
     成员可创建；assignee 必须是项目成员。成功后写 project_event。
+
     ## English
+
     Create a task; assignee must be a project member.
+
+    '
   operationId: projectTasksCreate
   parameters:
-    - name: project_id
-      in: path
-      required: true
-      schema: { type: integer, format: int64 }
+  - name: project_id
+    in: path
+    required: true
+    schema:
+      type: integer
+      format: int64
+    description: 项目 TSID / Project ID
   requestBody:
     required: true
     content:
       application/json:
         schema:
           type: object
-          required: [title]
+          required:
+          - title
           properties:
-            title: { type: string, maxLength: 255 }
-            assignee_id: { type: integer, format: int64 }
-            sort: { type: integer, default: 0 }
+            title:
+              type: string
+              maxLength: 500
+              minLength: 1
+            assignee_id:
+              type: integer
+              format: int64
+            sort:
+              type: integer
+              default: 0
   responses:
     '200':
-      description: 创建成功（返回任务行：id/project_id/title/status/assignee_id/sort/时间戳）
+      description: 成功 code=0 返回以下业务载荷；业务失败 code 非零返回通用错误信封。 / Success payload or nonzero-code business error.
       content:
         application/json:
           schema:
-            allOf:
-              - $ref: '../../../../components/schemas/Envelope.yaml'
+            oneOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
               - type: object
                 properties:
                   payload:
-                    type: object
-                    properties:
-                      id: { type: integer, format: int64 }
-                      project_id: { type: integer, format: int64 }
-                      title: { type: string }
-                      status: { type: string, enum: [todo, doing, review, done] }
-                      assignee_id: { type: [integer, "null"], format: int64 }
-                      sort: { type: integer }
-    '4XX':
-      description: title 缺失（400）/ assignee 非成员（422）/ Guest（403）
-      content:
-        application/json:
-          schema: { $ref: '../../../../components/schemas/Envelope.yaml' }
+                    allOf:
+                    - $ref: ../../../../components/schemas/client/ProjectTask.yaml
+                    - type: object
+                      properties:
+                        status_flag:
+                          type: string
+                          enum:
+                          - created
+                          - existing
+                      required:
+                      - status_flag
+              - type: object
+                required:
+                - code
+                properties:
+                  code:
+                    type: integer
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+    '401':
+      description: 访问 JWT、设备绑定或客户端签名认证失败 / JWT, device binding or client signature rejected

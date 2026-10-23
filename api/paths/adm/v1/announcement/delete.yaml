@@ -1,11 +1,17 @@
-# POST /api/adm/announcement/delete — admin
 post:
-  tags: [admin]
+  security:
+  - adminSessionId: []
+    adminSessionSignature: []
+  tags:
+  - admin
   summary: admin adm-announcement - delete
-  description: |
-    ## 中文 / English
-    管理后台 adm-announcement handler 的 `delete` 动作；路径 `/adm/announcement/delete`。
-    Admin handler `adm-announcement`, action `delete`. Path `/adm/announcement/delete`.
+  description: '## 中文 / English
+
+    管理后台 adm-announcement handler 的 `delete` 动作；路径 `/api/adm/announcement/delete`。
+
+    Admin handler `adm-announcement`, action `delete`. Path `/api/adm/announcement/delete`.
+
+    '
   operationId: adm_announcement_delete
   requestBody:
     required: true
@@ -13,7 +19,8 @@ post:
       application/json:
         schema:
           type: object
-          required: [id]
+          required:
+          - id
           properties:
             id:
               type: string
@@ -22,8 +29,12 @@ post:
     '200':
       description: 成功
       content:
-        application/json: { schema: { $ref: '../../../../components/schemas/Envelope.yaml' } }
-    '4XX':
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/Envelope.yaml
+    4XX:
       description: 无权限 / 参数非法
       content:
-        application/json: { schema: { $ref: '../../../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/Envelope.yaml

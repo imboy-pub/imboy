@@ -1,0 +1,84 @@
+post:
+  security:
+  - adminSessionId: []
+    adminSessionSignature: []
+  tags:
+  - admin
+  summary: 创建MCP客户端 / Create MCP client
+  description: 需 mcp_clients:approve。 / Create MCP client
+  operationId: admMcpCreatePost
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            owner_uid:
+              type: integer
+              format: int64
+              minimum: 1
+              description: JSON int64；客户端需无损解析 / Preserve bigint precision
+            name:
+              type: string
+            description:
+              type: string
+          required:
+          - owner_uid
+          - name
+      application/x-www-form-urlencoded:
+        schema:
+          type: object
+          properties:
+            owner_uid:
+              type: integer
+              format: int64
+              minimum: 1
+              description: JSON int64；客户端需无损解析 / Preserve bigint precision
+            name:
+              type: string
+            description:
+              type: string
+          required:
+          - owner_uid
+          - name
+  responses:
+    '200':
+      description: 成功或业务错误；检查 code / Inspect business code
+      content:
+        application/json:
+          schema:
+            anyOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      client_id:
+                        type: integer
+                        format: int64
+                        minimum: 1
+                        description: JSON int64；客户端需无损解析 / Preserve bigint precision
+                      client_key:
+                        type: string
+                      secret:
+                        type: string
+                        description: 仅本次返回 / Returned once
+                      credential_prefix:
+                        type: string
+                      status:
+                        type: string
+                        const: pending
+              - type: object
+                properties:
+                  code:
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+    '401':
+      description: Cookie 缺失、无效、到期或已撤销 / Invalid session cookies
+      content:
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/Envelope.yaml

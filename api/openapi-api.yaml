@@ -11,10 +11,10 @@ info:
   title: IMBoy REST API — api surface
   version: 1.0.0-rc.3
   x-stability: stable
-  summary: IMBoy 后端 HTTP / REST 接口冻结版（业务 surface）
+  summary: IMBoy 后端 HTTP / REST 接口契约（业务 surface）
   description: |
-    本文件是 IMBoy REST API **surface api**（业务端点）的编辑真源，桥接 354 条
-    path（362 个操作，2026-09-22 三受众重组）。覆盖认证、用户、消息、群组、
+    本文件是 IMBoy REST API **surface api**（业务端点）的编辑真源。
+    路径与操作数量以当前 paths 为准；覆盖认证、用户、消息、群组、
     好友、频道、朋友圈、项目协作等业务路径；完整路径清单以
     `imboy/src/imboy_router.erl` 为权威；契约机器真源见
     `.contract/api_contract.json`（contract-export）。
@@ -22,8 +22,8 @@ info:
     **响应信封**：普通业务 JSON 响应统一为 `{ code, msg, sv_ts, payload }`；受控上传网关裸 receipt 与回放/导出二进制流例外，定义见
     [envelope.schema.json](./envelope.schema.json)。
 
-    **认证**：Bearer JWT，载荷中的 `sub` 为 TSID（integer 字符串）；白名单
-    路径免鉴权（见 `imboy_router:open/0`）。
+    **认证**：默认 Bearer JWT，`sub` 为 TSID 字符串；公开入口单独声明。Bot API token、
+    MCP client credential 与下载 ticket 是独立凭证。以各操作 security 为准，不能互换。
 
     **版本策略**：1.0.x 期间保证路径签名向后兼容，破坏性变更通过 `/v2` 路径前缀发布。
   license:
@@ -52,6 +52,10 @@ tags:
     description: OA 入站登录、明确关联已有账号或新建账号
   - name: auth
     description: 登录、注册、token 刷新
+  - name: channel
+    description: 频道与订阅
+  - name: e2ee
+    description: 设备公钥、Olm 预密钥与历史密文恢复
   - name: user
     description: 用户资料
   - name: msg
@@ -82,13 +86,16 @@ tags:
   - name: talk-record
     description: Explicitly authorized personal and organization recording resources
 
+  - name: customer-service
+    description: 客服、访客接待、坐席与嵌入集成 / Customer service
+
+  - name: enterprise-business
+    description: 企业客户、业务身份、托管会话与交接 / Enterprise business
+
 paths:
-  /api/v1/oa/login/exchange:
-    $ref: './paths/oa-login/exchange.yaml'
-  /api/v1/oa/login/link:
-    $ref: './paths/oa-login/link.yaml'
-  /api/v1/oa/login/register:
-    $ref: './paths/oa-login/register.yaml'
+  /api/v1/oa/login/exchange: { $ref: './paths/oa-login/exchange.yaml' }
+  /api/v1/oa/login/link: { $ref: './paths/oa-login/link.yaml' }
+  /api/v1/oa/login/register: { $ref: './paths/oa-login/register.yaml' }
   # --------------------------------------------------------------------------
   # 系统级 / 基础端点（D-extras phase 26, 2026-05-17）
   # 包含：根欢迎页、初始化探针、Prometheus 指标、auth-gated assets、WebSocket
@@ -96,1116 +103,655 @@ paths:
   # --------------------------------------------------------------------------
   /:
     $ref: './paths/api/v1/system/help.yaml'
-  /help:
-    $ref: './paths/api/v1/system/help.yaml'
-  /api/v1/init:
-    $ref: './paths/api/v1/system/init.yaml'
-  /api/v1/metrics:
-    $ref: './paths/api/v1/system/metrics.yaml'
-  /api/v1/auth/assets:
-    $ref: './paths/api/v1/system/auth-assets.yaml'
-  /api/v1/ws:
-    $ref: './paths/api/v1/ws/connect.yaml'
-  /api/v1/refreshtoken:
-    $ref: './paths/api/v1/auth/refreshtoken.yaml'
-  /api/v1/passport/qr_login/subscribe:
-    $ref: './paths/api/v1/auth/qr-subscribe.yaml'
-  /api/v1/user/export_data:
-    $ref: './paths/api/v1/user/export-data.yaml'
-  /api/v1/organizations:
-    $ref: './paths/api/v1/organization/organizations.yaml'
-  /api/v1/organizations/mine:
-    $ref: './paths/api/v1/organization/mine.yaml'
-  /api/v1/organizations/{organization_id}:
-    $ref: './paths/api/v1/organization/detail.yaml'
-  /api/v1/organizations/{organization_id}/members:
-    $ref: './paths/api/v1/organization/members.yaml'
-  /api/v1/organizations/{organization_id}/members/transfer_owner:
-    $ref: './paths/api/v1/organization/owner-transfer.yaml'
-  /api/v1/organizations/{organization_id}/members/{user_id}/role:
-    $ref: './paths/api/v1/organization/member-role.yaml'
-  /api/v1/organizations/{organization_id}/members/{user_id}:
-    $ref: './paths/api/v1/organization/member.yaml'
-  /api/v1/workspaces:
-    $ref: './paths/api/v1/workspace/workspaces.yaml'
-  /api/v1/workspaces/{workspace_id}/channels:
-    $ref: './paths/api/v1/workspace/channels.yaml'
-  /api/v1/workspaces/{workspace_id}/groups:
-    $ref: './paths/api/v1/workspace/groups.yaml'
-  /brand:
-    $ref: './paths/api/v1/system/brand.yaml'
-  /api/v1/passport/login:
-    $ref: './paths/api/v1/auth/login.yaml'
-  /api/v1/passport/quick_login:
-    $ref: './paths/api/v1/auth/quick-login.yaml'
-  /api/v1/passport/signup:
-    $ref: './paths/api/v1/auth/signup.yaml'
-  /api/v1/passport/getcode:
-    $ref: './paths/api/v1/auth/getcode.yaml'
-  /api/v1/passport/findpassword:
-    $ref: './paths/api/v1/auth/findpassword.yaml'
-  /api/v1/passport/bind_mail:
-    $ref: './paths/api/v1/auth/bind-mail.yaml'
-  /api/v1/passport/qr_login/create:
-    $ref: './paths/api/v1/auth/qr-create.yaml'
-  /api/v1/passport/qr_login/status:
-    $ref: './paths/api/v1/auth/qr-status.yaml'
-  /api/v1/passport/qr_login/scan:
-    $ref: './paths/api/v1/auth/qr-scan.yaml'
-  /api/v1/passport/qr_login/confirm:
-    $ref: './paths/api/v1/auth/qr-confirm.yaml'
-  /api/v1/passport/qr_login/cancel:
-    $ref: './paths/api/v1/auth/qr-cancel.yaml'
-  /api/v1/auth/oidc/authorize:
-    $ref: './paths/api/v1/auth/oidc-authorize.yaml'
-  /api/v1/auth/oidc/callback:
-    $ref: './paths/api/v1/auth/oidc-callback.yaml'
-  /api/v1/auth/oidc/exchange:
-    $ref: './paths/api/v1/auth/oidc-exchange.yaml'
-  /api/v1/user/update:
-    $ref: './paths/api/v1/user/update.yaml'
-  /api/v1/user/show:
-    $ref: './paths/api/v1/user/show.yaml'
-  /api/v1/user/qrcode:
-    $ref: './paths/api/v1/user/qrcode.yaml'
-  /api/v1/user/change_state:
-    $ref: './paths/api/v1/user/change-state.yaml'
-  /api/v1/user/setting:
-    $ref: './paths/api/v1/user/setting.yaml'
-  /api/v1/user/change_password:
-    $ref: './paths/api/v1/user/change-password.yaml'
-  /api/v1/user/set_password:
-    $ref: './paths/api/v1/user/set-password.yaml'
-  /api/v1/user/apply_logout:
-    $ref: './paths/api/v1/user/apply-logout.yaml'
-  /api/v1/user/cancel_logout:
-    $ref: './paths/api/v1/user/cancel-logout.yaml'
-  /api/v1/user/search:
-    $ref: './paths/api/v1/user/search.yaml'
-  /api/v1/user_tag/page:
-    $ref: './paths/api/v1/user-tag/page.yaml'
-  /api/v1/user_tag/add:
-    $ref: './paths/api/v1/user-tag/add.yaml'
-  /api/v1/user_tag/change_name:
-    $ref: './paths/api/v1/user-tag/change-name.yaml'
-  /api/v1/user_tag/delete:
-    $ref: './paths/api/v1/user-tag/delete.yaml'
-  /api/v1/user_tag_relation/collect_page:
-    $ref: './paths/api/v1/user-tag-relation/collect-page.yaml'
-  /api/v1/user_tag_relation/friend_page:
-    $ref: './paths/api/v1/user-tag-relation/friend-page.yaml'
-  /api/v1/user_tag_relation/add:
-    $ref: './paths/api/v1/user-tag-relation/add.yaml'
-  /api/v1/user_tag_relation/set:
-    $ref: './paths/api/v1/user-tag-relation/set.yaml'
-  /api/v1/user_tag_relation/remove:
-    $ref: './paths/api/v1/user-tag-relation/remove.yaml'
-  /api/v1/user_collect/page:
-    $ref: './paths/api/v1/user-collect/page.yaml'
-  /api/v1/user_collect/add:
-    $ref: './paths/api/v1/user-collect/add.yaml'
-  /api/v1/user_collect/remove:
-    $ref: './paths/api/v1/user-collect/remove.yaml'
-  /api/v1/user_collect/change:
-    $ref: './paths/api/v1/user-collect/change.yaml'
-  /api/v1/user_device/page:
-    $ref: './paths/api/v1/user-device/page.yaml'
-  /api/v1/user_device/change_name:
-    $ref: './paths/api/v1/user-device/change-name.yaml'
-  /api/v1/user_device/delete:
-    $ref: './paths/api/v1/user-device/delete.yaml'
-  /api/v1/user_device/sessions:
-    $ref: './paths/api/v1/user-device/sessions.yaml'
-  /api/v1/user_device/check_login:
-    $ref: './paths/api/v1/user-device/check-login.yaml'
-  /api/v1/user_device/kick:
-    $ref: './paths/api/v1/user-device/kick.yaml'
-  /api/v1/user_device/kick-others:
-    $ref: './paths/api/v1/user-device/kick-others.yaml'
-  /api/v1/push/register:
-    $ref: './paths/api/v1/push/register.yaml'
-  /api/v1/push/unregister:
-    $ref: './paths/api/v1/push/unregister.yaml'
-  /api/v1/friend/denylist/page:
-    $ref: './paths/api/v1/friend-denylist/page.yaml'
-  /api/v1/friend/denylist/add:
-    $ref: './paths/api/v1/friend-denylist/add.yaml'
-  /api/v1/friend/denylist/remove:
-    $ref: './paths/api/v1/friend-denylist/remove.yaml'
-  /api/v1/friend/list:
-    $ref: './paths/api/v1/friend/list.yaml'
-  /api/v1/friend/add:
-    $ref: './paths/api/v1/friend/add.yaml'
-  /api/v1/friend/confirm:
-    $ref: './paths/api/v1/friend/confirm.yaml'
-  /api/v1/friend/delete:
-    $ref: './paths/api/v1/friend/delete.yaml'
-  /api/v1/friend/move:
-    $ref: './paths/api/v1/friend/move.yaml'
-  /api/v1/friend/information:
-    $ref: './paths/api/v1/friend/information.yaml'
-  /api/v1/friend/change_remark:
-    $ref: './paths/api/v1/friend/change-remark.yaml'
-  /api/v1/friend/category/add:
-    $ref: './paths/api/v1/friend-category/add.yaml'
-  /api/v1/friend/category/delete:
-    $ref: './paths/api/v1/friend-category/delete.yaml'
-  /api/v1/friend/category/rename:
-    $ref: './paths/api/v1/friend-category/rename.yaml'
-  /api/v1/msg/history:
-    $ref: './paths/api/v1/msg/history.yaml'
-  /api/v1/msg/result:
-    $ref: './paths/api/v1/msg/result.yaml'
-  /api/v1/msg/offline:
-    $ref: './paths/api/v1/msg/offline.yaml'
-  /api/v1/msg/offline_ack:
-    $ref: './paths/api/v1/msg/offline-ack.yaml'
-  /api/v1/msg/read_stats:
-    $ref: './paths/api/v1/msg/read-stats.yaml'
-  /api/v1/msg/pin:
-    $ref: './paths/api/v1/msg/pin.yaml'
-  /api/v1/msg/forward:
-    $ref: './paths/api/v1/msg/forward.yaml'
-  /api/v1/msg/reaction/add:
-    $ref: './paths/api/v1/msg/reaction-add.yaml'
-  /api/v1/msg/reaction/remove:
-    $ref: './paths/api/v1/msg/reaction-remove.yaml'
-  /api/v1/msg/reaction/list:
-    $ref: './paths/api/v1/msg/reaction-list.yaml'
-  /api/v1/conversation/online:
-    $ref: './paths/api/v1/conversation/online.yaml'
-  /api/v1/conversation/mine:
-    $ref: './paths/api/v1/conversation/mine.yaml'
-  /api/v1/conversation/pin:
-    $ref: './paths/api/v1/conversation/pin.yaml'
-  /api/v1/conversation/unpin:
-    $ref: './paths/api/v1/conversation/unpin.yaml'
-  /api/v1/conversation/pinned:
-    $ref: './paths/api/v1/conversation/pinned.yaml'
-  /api/v1/conversation/delete:
-    $ref: './paths/api/v1/conversation/delete.yaml'
-  /api/v1/conversation/restore:
-    $ref: './paths/api/v1/conversation/restore.yaml'
-  /api/v1/mention/list:
-    $ref: './paths/api/v1/mention/list.yaml'
-  /api/v1/mention/unread:
-    $ref: './paths/api/v1/mention/unread.yaml'
-  /api/v1/mention/mark_read:
-    $ref: './paths/api/v1/mention/mark-read.yaml'
-  /api/v1/mention/suggest:
-    $ref: './paths/api/v1/mention/suggest.yaml'
-  /api/v1/moment/create:
-    $ref: './paths/api/v1/moment/create.yaml'
-  /api/v1/moment/{moment_id}:
-    $ref: './paths/api/v1/moment/show.yaml'
-  /api/v1/moment/{moment_id}/delete:
-    $ref: './paths/api/v1/moment/delete.yaml'
-  /api/v1/moments/feed:
-    $ref: './paths/api/v1/moment/feed.yaml'
-  /api/v1/moments/user/{uid}:
-    $ref: './paths/api/v1/moment/user-posts.yaml'
-  /api/v1/moment/{moment_id}/like:
-    $ref: './paths/api/v1/moment/like.yaml'
-  /api/v1/moment/{moment_id}/unlike:
-    $ref: './paths/api/v1/moment/unlike.yaml'
-  /api/v1/moment/{moment_id}/comment:
-    $ref: './paths/api/v1/moment/add-comment.yaml'
-  /api/v1/moment/{moment_id}/comments:
-    $ref: './paths/api/v1/moment/comments.yaml'
-  /api/v1/moment/{moment_id}/comment/{comment_id}/delete:
-    $ref: './paths/api/v1/moment/delete-comment.yaml'
-  /api/v1/moment/{moment_id}/report:
-    $ref: './paths/api/v1/moment/report.yaml'
-  /api/v1/bot/register:
-    $ref: './paths/api/v1/bot/register.yaml'
-  /api/v1/bot/search:
-    $ref: './paths/api/v1/bot/search.yaml'
-  /api/v1/bot/send_message:
-    $ref: './paths/api/v1/bot/send_message.yaml'
-  /api/v1/bot/get:
-    $ref: './paths/api/v1/bot/get.yaml'
-  /api/v1/bot/update:
-    $ref: './paths/api/v1/bot/update.yaml'
-  /api/v1/bot/disable:
-    $ref: './paths/api/v1/bot/disable.yaml'
-  /api/v1/bot/enable:
-    $ref: './paths/api/v1/bot/enable.yaml'
-  /api/v1/bot/list_mine:
-    $ref: './paths/api/v1/bot/list_mine.yaml'
-  /api/v1/rtc/room/join:
-    $ref: './paths/api/v1/rtc/room_join.yaml'
-  /api/v1/group/add:
-    $ref: './paths/api/v1/group/add.yaml'
-  /api/v1/group/edit:
-    $ref: './paths/api/v1/group/edit.yaml'
-  /api/v1/group/set_e2ee_mode:
-    $ref: './paths/api/v1/group/set-e2ee-mode.yaml'
-  /api/v1/group/dissolve:
-    $ref: './paths/api/v1/group/dissolve.yaml'
-  /api/v1/group/detail:
-    $ref: './paths/api/v1/group/detail.yaml'
-  /api/v1/group/page:
-    $ref: './paths/api/v1/group/page.yaml'
-  /api/v1/group/search:
-    $ref: './paths/api/v1/group/search.yaml'
-  /api/v1/group/discover:
-    $ref: './paths/api/v1/group/discover.yaml'
-  /api/v1/group/featured:
-    $ref: './paths/api/v1/group/featured.yaml'
-  /api/v1/group/hot:
-    $ref: './paths/api/v1/group/hot.yaml'
-  /api/v1/group/categories:
-    $ref: './paths/api/v1/group/categories.yaml'
-  /api/v1/group/preview:
-    $ref: './paths/api/v1/group/preview.yaml'
-  /api/v1/group/msg_page:
-    $ref: './paths/api/v1/group/msg-page.yaml'
-  /api/v1/group/qrcode:
-    $ref: './paths/api/v1/group/qrcode.yaml'
-  /api/v1/group/face2face:
-    $ref: './paths/api/v1/group/face2face.yaml'
-  /api/v1/group/face2face_save:
-    $ref: './paths/api/v1/group/face2face-save.yaml'
-  /api/v1/group/remark:
-    $ref: './paths/api/v1/group/remark.yaml'
-  /api/v1/group/transfer:
-    $ref: './paths/api/v1/group/transfer.yaml'
-  /api/v1/group_member/join:
-    $ref: './paths/api/v1/group-member/join.yaml'
-  /api/v1/group_member/leave:
-    $ref: './paths/api/v1/group-member/leave.yaml'
-  /api/v1/group_member/page:
-    $ref: './paths/api/v1/group-member/page.yaml'
-  /api/v1/group_member/alias:
-    $ref: './paths/api/v1/group-member/alias.yaml'
-  /api/v1/group_member/same_group:
-    $ref: './paths/api/v1/group-member/same-group.yaml'
-  /api/v1/group_member/mute:
-    $ref: './paths/api/v1/group-member/mute.yaml'
-  /api/v1/group_member/unmute:
-    $ref: './paths/api/v1/group-member/unmute.yaml'
-  /api/v1/group_member/role:
-    $ref: './paths/api/v1/group-member/role.yaml'
-  /api/v1/group_notice/add:
-    $ref: './paths/api/v1/group-notice/add.yaml'
-  /api/v1/group_notice/edit:
-    $ref: './paths/api/v1/group-notice/edit.yaml'
-  /api/v1/group_notice/delete:
-    $ref: './paths/api/v1/group-notice/delete.yaml'
-  /api/v1/group_notice/page:
-    $ref: './paths/api/v1/group-notice/page.yaml'
-  /api/v1/group_notice/publish:
-    $ref: './paths/api/v1/group-notice/publish.yaml'
-  /api/v1/group_notice/latest:
-    $ref: './paths/api/v1/group-notice/latest.yaml'
-  /api/v1/group/notice/list:
-    $ref: './paths/api/v1/group-notice/list.yaml'
-  /api/v1/group/notice/detail:
-    $ref: './paths/api/v1/group-notice/detail.yaml'
-  /api/v1/group/notice/pin:
-    $ref: './paths/api/v1/group-notice/pin.yaml'
-  /api/v1/group/notice/unpin:
-    $ref: './paths/api/v1/group-notice/unpin.yaml'
-  /api/v1/group/notice/mark_read:
-    $ref: './paths/api/v1/group-notice/mark-read.yaml'
-  /api/v1/group_album/create:
-    $ref: './paths/api/v1/group-album/create.yaml'
-  /api/v1/group_album/list:
-    $ref: './paths/api/v1/group-album/list.yaml'
-  /api/v1/group_album/rename:
-    $ref: './paths/api/v1/group-album/rename.yaml'
-  /api/v1/group_album/delete:
-    $ref: './paths/api/v1/group-album/delete.yaml'
-  /api/v1/group_album/photo/upload:
-    $ref: './paths/api/v1/group-album/photo/upload.yaml'
-  /api/v1/group_album/photo/batch:
-    $ref: './paths/api/v1/group-album/photo/batch.yaml'
-  /api/v1/group_album/photo/list:
-    $ref: './paths/api/v1/group-album/photo/list.yaml'
-  /api/v1/group_album/photo/detail:
-    $ref: './paths/api/v1/group-album/photo/detail.yaml'
-  /api/v1/group_album/photo/delete:
-    $ref: './paths/api/v1/group-album/photo/delete.yaml'
-  /api/v1/group_album/photo/like:
-    $ref: './paths/api/v1/group-album/photo/like.yaml'
-  /api/v1/group_album/photo/unlike:
-    $ref: './paths/api/v1/group-album/photo/unlike.yaml'
-  /api/v1/group_album/photo/comment:
-    $ref: './paths/api/v1/group-album/photo/comment.yaml'
-  /api/v1/group_album/photo/comments:
-    $ref: './paths/api/v1/group-album/photo/comments.yaml'
-  /api/v1/group_album/cover/update:
-    $ref: './paths/api/v1/group-album/cover/update.yaml'
-  /api/v1/group/category/create:
-    $ref: './paths/api/v1/group-category/create.yaml'
-  /api/v1/group/category/list:
-    $ref: './paths/api/v1/group-category/list.yaml'
-  /api/v1/group/category/rename:
-    $ref: './paths/api/v1/group-category/rename.yaml'
-  /api/v1/group/category/delete:
-    $ref: './paths/api/v1/group-category/delete.yaml'
-  /api/v1/group/category/move_group:
-    $ref: './paths/api/v1/group-category/move-group.yaml'
-  /api/v1/group/category/sort:
-    $ref: './paths/api/v1/group-category/sort.yaml'
-  /api/v1/group/tag/add:
-    $ref: './paths/api/v1/group-tag/add.yaml'
-  /api/v1/group/tag/remove:
-    $ref: './paths/api/v1/group-tag/remove.yaml'
-  /api/v1/group/tag/list:
-    $ref: './paths/api/v1/group-tag/list.yaml'
-  /api/v1/group/tag/search:
-    $ref: './paths/api/v1/group-tag/search.yaml'
-  /api/v1/group/tag/hot:
-    $ref: './paths/api/v1/group-tag/hot.yaml'
-  /api/v1/group/vote/create:
-    $ref: './paths/api/v1/group-vote/create.yaml'
-  /api/v1/group/vote/list:
-    $ref: './paths/api/v1/group-vote/list.yaml'
-  /api/v1/group/vote/detail:
-    $ref: './paths/api/v1/group-vote/detail.yaml'
-  /api/v1/group/vote/cast:
-    $ref: './paths/api/v1/group-vote/cast.yaml'
-  /api/v1/group/vote/update:
-    $ref: './paths/api/v1/group-vote/update.yaml'
-  /api/v1/group/vote/cancel:
-    $ref: './paths/api/v1/group-vote/cancel.yaml'
-  /api/v1/group/vote/close:
-    $ref: './paths/api/v1/group-vote/close.yaml'
-  /api/v1/group/vote/my_vote:
-    $ref: './paths/api/v1/group-vote/my-vote.yaml'
-  /api/v1/group_schedule/create:
-    $ref: './paths/api/v1/group-schedule/create.yaml'
-  /api/v1/group_schedule/update:
-    $ref: './paths/api/v1/group-schedule/update.yaml'
-  /api/v1/group_schedule/cancel:
-    $ref: './paths/api/v1/group-schedule/cancel.yaml'
-  /api/v1/group_schedule/detail:
-    $ref: './paths/api/v1/group-schedule/detail.yaml'
-  /api/v1/group_schedule/list:
-    $ref: './paths/api/v1/group-schedule/list.yaml'
-  /api/v1/group_schedule/my_list:
-    $ref: './paths/api/v1/group-schedule/my-list.yaml'
-  /api/v1/group_schedule/confirm:
-    $ref: './paths/api/v1/group-schedule/confirm.yaml'
-  /api/v1/group/file/upload:
-    $ref: './paths/api/v1/group-file/upload.yaml'
-  /api/v1/group/file/download:
-    $ref: './paths/api/v1/group-file/download.yaml'
-  /api/v1/group/file/list:
-    $ref: './paths/api/v1/group-file/list.yaml'
-  /api/v1/group/file/delete:
-    $ref: './paths/api/v1/group-file/delete.yaml'
-  /api/v1/group/file/search:
-    $ref: './paths/api/v1/group-file/search.yaml'
-  /api/v1/group/file/categories:
-    $ref: './paths/api/v1/group-file/categories.yaml'
-  /api/v1/group/task/create:
-    $ref: './paths/api/v1/group-task/create.yaml'
-  /api/v1/group/task/update:
-    $ref: './paths/api/v1/group-task/update.yaml'
-  /api/v1/group/task/assign:
-    $ref: './paths/api/v1/group-task/assign.yaml'
-  /api/v1/group/task/submit:
-    $ref: './paths/api/v1/group-task/submit.yaml'
-  /api/v1/group/task/review:
-    $ref: './paths/api/v1/group-task/review.yaml'
-  /api/v1/group/task/list:
-    $ref: './paths/api/v1/group-task/list.yaml'
-  /api/v1/group/task/detail:
-    $ref: './paths/api/v1/group-task/detail.yaml'
-  /api/v1/group/task/my:
-    $ref: './paths/api/v1/group-task/my.yaml'
-  /api/v1/group/task/pending:
-    $ref: './paths/api/v1/group-task/pending.yaml'
-  /api/v1/channel/create:
-    $ref: './paths/api/v1/channel/create.yaml'
-  /api/v1/channel/{channel_id}:
-    $ref: './paths/api/v1/channel/show.yaml'
-  /api/v1/channel/by_custom_id/{custom_id}:
-    $ref: './paths/api/v1/channel/by-custom-id.yaml'
-  /api/v1/channel/{channel_id}/update:
-    $ref: './paths/api/v1/channel/update.yaml'
-  /api/v1/channel/{channel_id}/delete:
-    $ref: './paths/api/v1/channel/delete.yaml'
-  /api/v1/channel/{channel_id}/subscribe:
-    $ref: './paths/api/v1/channel/subscribe.yaml'
-  /api/v1/channel/{channel_id}/unsubscribe:
-    $ref: './paths/api/v1/channel/unsubscribe.yaml'
-  /api/v1/channels/subscribed:
-    $ref: './paths/api/v1/channel/subscribed.yaml'
-  /api/v1/channels/managed:
-    $ref: './paths/api/v1/channel/managed.yaml'
-  /api/v1/channels/unread/summary:
-    $ref: './paths/api/v1/channel/unread-summary.yaml'
-  /api/v1/channels/search:
-    $ref: './paths/api/v1/channel/search.yaml'
-  /api/v1/channels/discover:
-    $ref: './paths/api/v1/channel/discover.yaml'
-  /api/v1/channels/featured:
-    $ref: './paths/api/v1/channel/featured.yaml'
-  /api/v1/channels/trending:
-    $ref: './paths/api/v1/channel/trending.yaml'
-  /api/v1/channels/categories:
-    $ref: './paths/api/v1/channel/categories.yaml'
-  /api/v1/channels/sync:
-    $ref: './paths/api/v1/channel/sync.yaml'
-  /api/v1/channel/{channel_id}/webhook/create:
-    $ref: './paths/api/v1/channel/webhook-create.yaml'
-  /api/v1/channel/{channel_id}/webhook/list:
-    $ref: './paths/api/v1/channel/webhook-list.yaml'
-  /api/v1/channel/{channel_id}/webhook/{webhook_id}/disable:
-    $ref: './paths/api/v1/channel/webhook-disable.yaml'
-  /api/v1/webhook/channel/{token}:
-    $ref: './paths/api/v1/channel/webhook-incoming.yaml'
-  /api/v1/channel/{channel_id}/message:
-    $ref: './paths/api/v1/channel/message/publish.yaml'
-  /api/v1/channel/{channel_id}/messages:
-    $ref: './paths/api/v1/channel/message/list.yaml'
-  /api/v1/channel/{channel_id}/read:
-    $ref: './paths/api/v1/channel/message/mark-read.yaml'
-  /api/v1/channel/{channel_id}/message/{message_id}/view:
-    $ref: './paths/api/v1/channel/message/view.yaml'
-  /api/v1/channel/{channel_id}/message/{message_id}/reaction:
-    $ref: './paths/api/v1/channel/message/reaction-add.yaml'
-  /api/v1/channel/{channel_id}/message/{message_id}/reaction/{reaction_type}:
-    $ref: './paths/api/v1/channel/message/reaction-remove.yaml'
-  /api/v1/channel/{channel_id}/message/{message_id}/pin:
-    $ref: './paths/api/v1/channel/message/pin.yaml'
-  /api/v1/channel/{channel_id}/message/{message_id}/delete:
-    $ref: './paths/api/v1/channel/message/delete.yaml'
-  /api/v1/channel/{channel_id}/message/{message_id}/revoke:
-    $ref: './paths/api/v1/channel/message/revoke.yaml'
-  /api/v1/channel/{channel_id}/message/{message_id}/edit:
-    $ref: './paths/api/v1/channel/message/edit.yaml'
-  /api/v1/channel/{channel_id}/admin:
-    $ref: './paths/api/v1/channel/admin/add.yaml'
-  /api/v1/channel/{channel_id}/admins:
-    $ref: './paths/api/v1/channel/admin/list.yaml'
-  /api/v1/channel/{channel_id}/admin/{user_id}/role:
-    $ref: './paths/api/v1/channel/admin/update-role.yaml'
-  /api/v1/channel/{channel_id}/admin/{user_id}:
-    $ref: './paths/api/v1/channel/admin/remove.yaml'
-  /api/v1/channel/{channel_id}/stats:
-    $ref: './paths/api/v1/channel/stats/overview.yaml'
-  /api/v1/channel/{channel_id}/stats/daily:
-    $ref: './paths/api/v1/channel/stats/daily.yaml'
-  /api/v1/channel/{channel_id}/subscribers:
-    $ref: './paths/api/v1/channel/subscriber/list.yaml'
-  /api/v1/channel/{channel_id}/subscriber/{user_id}:
-    $ref: './paths/api/v1/channel/subscriber/remove.yaml'
-  /api/v1/channel/{channel_id}/invitation:
-    $ref: './paths/api/v1/channel/invitation/create.yaml'
-  /api/v1/channel/invitation/accept:
-    $ref: './paths/api/v1/channel/invitation/accept.yaml'
-  /api/v1/channel/invitation/reject:
-    $ref: './paths/api/v1/channel/invitation/reject.yaml'
-  /api/v1/channel/invitations/my:
-    $ref: './paths/api/v1/channel/invitation/my.yaml'
-  /api/v1/channel/invitations/sent:
-    $ref: './paths/api/v1/channel/invitation/sent.yaml'
-  /api/v1/channel/{channel_id}/order:
-    $ref: './paths/api/v1/channel/order/create.yaml'
-  /api/v1/channel/order/pay:
-    $ref: './paths/api/v1/channel/order/pay.yaml'
-  /api/v1/channel/orders/my:
-    $ref: './paths/api/v1/channel/order/my.yaml'
-  /api/v1/channel/order/{order_no}:
-    $ref: './paths/api/v1/channel/order/get.yaml'
-  /api/v1/e2ee/user_keys:
-    $ref: './paths/api/v1/e2ee/user-keys.yaml'
-  /api/v1/e2ee/group_member_keys:
-    $ref: './paths/api/v1/e2ee/group-member-keys.yaml'
-  /api/v1/e2ee/report_device_key:
-    $ref: './paths/api/v1/e2ee/report-device-key.yaml'
-  /api/v1/e2ee/key/status:
-    $ref: './paths/api/v1/e2ee/key-status.yaml'
-  /api/v1/e2ee/notifications/pull:
-    $ref: './paths/api/v1/e2ee/pull-notifications.yaml'
-  /api/v1/e2ee/recovery/start:
-    $ref: './paths/api/v1/e2ee/start-recovery.yaml'
-  /api/v1/e2ee/trust/record:
-    $ref: './paths/api/v1/e2ee/trust-record.yaml'
-  /api/v1/e2ee/backup/put:
-    $ref: './paths/api/v1/e2ee/backup-put.yaml'
-  /api/v1/e2ee/backup/get:
-    $ref: './paths/api/v1/e2ee/backup-get.yaml'
-  /api/v1/e2ee/backup/info:
-    $ref: './paths/api/v1/e2ee/backup-info.yaml'
-  /api/v1/e2ee/backup/delete:
-    $ref: './paths/api/v1/e2ee/backup-delete.yaml'
-  /api/v1/e2ee/compliance_key:
-    $ref: './paths/api/v1/e2ee/compliance-key.yaml'
-  /api/v1/e2ee/transfer/create:
-    $ref: './paths/api/v1/e2ee-transfer/create.yaml'
-  /api/v1/e2ee/transfer/accept:
-    $ref: './paths/api/v1/e2ee-transfer/accept.yaml'
-  /api/v1/e2ee/transfer/confirm:
-    $ref: './paths/api/v1/e2ee-transfer/confirm.yaml'
-  /api/v1/e2ee/transfer/cancel:
-    $ref: './paths/api/v1/e2ee-transfer/cancel.yaml'
-  /api/v1/e2ee/transfer/info:
-    $ref: './paths/api/v1/e2ee-transfer/info.yaml'
-  /api/v1/e2ee/transfer/pending:
-    $ref: './paths/api/v1/e2ee-transfer/pending.yaml'
-  /api/v1/e2ee/social/contacts:
-    $ref: './paths/api/v1/e2ee-social/contacts.yaml'
-  /api/v1/e2ee/social/contacts/add:
-    $ref: './paths/api/v1/e2ee-social/add-contact.yaml'
-  /api/v1/e2ee/social/contacts/remove:
-    $ref: './paths/api/v1/e2ee-social/remove-contact.yaml'
-  /api/v1/e2ee/social/create_shards:
-    $ref: './paths/api/v1/e2ee-social/create-shards.yaml'
-  /api/v1/e2ee/social/shards:
-    $ref: './paths/api/v1/e2ee-social/get-shards.yaml'
-  /api/v1/e2ee/social/recover:
-    $ref: './paths/api/v1/e2ee-social/recover.yaml'
-  /api/v1/e2ee/social/proxy_shards:
-    $ref: './paths/api/v1/e2ee-social/proxy-shards.yaml'
-  /api/v1/e2ee/social/decrypt_shard:
-    $ref: './paths/api/v1/e2ee-social/decrypt-shard.yaml'
-  /api/v1/app_version/check:
-    $ref: './paths/api/v1/app/version-check.yaml'
-  /api/v1/app/features:
-    $ref: './paths/api/v1/app/features.yaml'
-  /api/v1/app/manifest:
-    $ref: './paths/api/v1/app/manifest.yaml'
-  /api/v1/app/policy:
-    $ref: './paths/api/v1/app/policy.yaml'
-  /api/v1/app/ice_servers:
-    $ref: './paths/api/v1/app/ice-servers.yaml'
-  /api/v1/app_upgrade/report:
-    $ref: './paths/api/v1/app/upgrade-report.yaml'
-  /api/v1/feedback/page:
-    $ref: './paths/api/v1/feedback/page.yaml'
-  /api/v1/feedback/add:
-    $ref: './paths/api/v1/feedback/add.yaml'
-  /api/v1/feedback/change:
-    $ref: './paths/api/v1/feedback/change.yaml'
-  /api/v1/feedback/remove:
-    $ref: './paths/api/v1/feedback/remove.yaml'
-  /api/v1/feedback/reply:
-    $ref: './paths/api/v1/feedback/reply.yaml'
-  /api/v1/feedback/page_reply:
-    $ref: './paths/api/v1/feedback/page-reply.yaml'
-  /api/v1/fts/user_search:
-    $ref: './paths/api/v1/fts/user-search.yaml'
-  /api/v1/fts/recently_user:
-    $ref: './paths/api/v1/fts/recently-user.yaml'
-  /api/v1/fts/msg:
-    $ref: './paths/api/v1/fts/msg.yaml'
-  /api/v1/location/makeMyselfVisible:
-    $ref: './paths/api/v1/location/make-visible.yaml'
-  /api/v1/location/makeMyselfUnvisible:
-    $ref: './paths/api/v1/location/make-unvisible.yaml'
-  /api/v1/location/peopleNearby:
-    $ref: './paths/api/v1/location/people-nearby.yaml'
-  /api/v1/report/create:
-    $ref: './paths/api/v1/report/create.yaml'
-  /api/v1/moment/report/create:
-    $ref: './paths/api/v1/report/moment-create.yaml'
-  /api/v1/live_room/list:
-    $ref: './paths/api/v1/live-room/list.yaml'
-  /api/v1/live_room/my_list:
-    $ref: './paths/api/v1/live-room/my-list.yaml'
-  /api/v1/live_room/create:
-    $ref: './paths/api/v1/live-room/create.yaml'
-  /api/v1/live_room/start:
-    $ref: './paths/api/v1/live-room/start.yaml'
-  /api/v1/live_room/stop:
-    $ref: './paths/api/v1/live-room/stop.yaml'
-  /api/v1/live_room/detail:
-    $ref: './paths/api/v1/live-room/detail.yaml'
-  /api/v1/wallet/balance:
-    $ref: './paths/api/v1/wallet/balance.yaml'
-  /api/v1/wallet/transactions:
-    $ref: './paths/api/v1/wallet/transactions.yaml'
-  /api/v1/wallet/topup:
-    $ref: './paths/api/v1/wallet/topup.yaml'
-  /api/v1/wallet/withdraw:
-    $ref: './paths/api/v1/wallet/withdraw.yaml'
-  /api/v1/wallet/transfer/send:
-    $ref: './paths/api/v1/wallet/transfer_send.yaml'
-  /api/v1/wallet/recharge/{order_no}:
-    $ref: './paths/api/v1/wallet/recharge_order.yaml'
-  /api/v1/wallet/recharge/order:
-    $ref: './paths/api/v1/wallet/recharge_create.yaml'
-  /api/v1/wallet/recharge/pay:
-    $ref: './paths/api/v1/wallet/recharge_pay.yaml'
-  /api/v1/billing/plan/list:
-    $ref: './paths/api/v1/billing/plan-list.yaml'
-  /api/v1/billing/subscribe:
-    $ref: './paths/api/v1/billing/subscribe.yaml'
-  /api/v1/billing/renew:
-    $ref: './paths/api/v1/billing/renew.yaml'
-  /api/v1/billing/cancel:
-    $ref: './paths/api/v1/billing/cancel.yaml'
-  /api/v1/billing/subscription:
-    $ref: './paths/api/v1/billing/subscription.yaml'
-  /api/v1/billing/usage:
-    $ref: './paths/api/v1/billing/usage.yaml'
-  /api/v1/billing/quota:
-    $ref: './paths/api/v1/billing/quota.yaml'
-  /api/v1/billing/invoice/generate:
-    $ref: './paths/api/v1/billing/invoice-generate.yaml'
-  /api/v1/billing/invoice/pay:
-    $ref: './paths/api/v1/billing/invoice-pay.yaml'
-  /api/v1/billing/invoice/list:
-    $ref: './paths/api/v1/billing/invoice-list.yaml'
+  /help: { $ref: './paths/api/v1/system/help-alias.yaml' }
+  /api/v1/init: { $ref: './paths/api/v1/system/init.yaml' }
+  /api/v1/metrics: { $ref: './paths/api/v1/system/metrics.yaml' }
+  /api/v1/ws: { $ref: './paths/api/v1/ws/connect.yaml' }
+  /api/v1/refreshtoken: { $ref: './paths/api/v1/auth/refreshtoken.yaml' }
+  /api/v1/passport/qr_login/subscribe: { $ref: './paths/api/v1/auth/qr-subscribe.yaml' }
+  /api/v1/user/export_data: { $ref: './paths/api/v1/user/export-data.yaml' }
+  /api/v1/organizations: { $ref: './paths/api/v1/organization/organizations.yaml' }
+  /api/v1/organizations/mine: { $ref: './paths/api/v1/organization/mine.yaml' }
+  /api/v1/organizations/{organization_id}: { $ref: './paths/api/v1/organization/detail.yaml' }
+  /api/v1/organizations/{organization_id}/members: { $ref: './paths/api/v1/organization/members.yaml' }
+  /api/v1/organizations/{organization_id}/members/transfer_owner: { $ref: './paths/api/v1/organization/owner-transfer.yaml' }
+  /api/v1/organizations/{organization_id}/members/{user_id}/role: { $ref: './paths/api/v1/organization/member-role.yaml' }
+  /api/v1/organizations/{organization_id}/members/{user_id}: { $ref: './paths/api/v1/organization/member.yaml' }
+  /api/v1/workspaces: { $ref: './paths/api/v1/workspace/workspaces.yaml' }
+  /api/v1/workspaces/{workspace_id}/channels: { $ref: './paths/api/v1/workspace/channels.yaml' }
+  /api/v1/workspaces/{workspace_id}/groups: { $ref: './paths/api/v1/workspace/groups.yaml' }
+  /brand: { $ref: './paths/api/v1/system/brand.yaml' }
+  /api/v1/passport/login: { $ref: './paths/api/v1/auth/login.yaml' }
+  /api/v1/passport/quick_login: { $ref: './paths/api/v1/auth/quick-login.yaml' }
+  /api/v1/passport/signup: { $ref: './paths/api/v1/auth/signup.yaml' }
+  /api/v1/passport/getcode: { $ref: './paths/api/v1/auth/getcode.yaml' }
+  /api/v1/passport/findpassword: { $ref: './paths/api/v1/auth/findpassword.yaml' }
+  /api/v1/passport/bind_mail: { $ref: './paths/api/v1/auth/bind-mail.yaml' }
+  /api/v1/passport/qr_login/create: { $ref: './paths/api/v1/auth/qr-create.yaml' }
+  /api/v1/passport/qr_login/status: { $ref: './paths/api/v1/auth/qr-status.yaml' }
+  /api/v1/passport/qr_login/scan: { $ref: './paths/api/v1/auth/qr-scan.yaml' }
+  /api/v1/passport/qr_login/confirm: { $ref: './paths/api/v1/auth/qr-confirm.yaml' }
+  /api/v1/passport/qr_login/cancel: { $ref: './paths/api/v1/auth/qr-cancel.yaml' }
+  /api/v1/auth/oidc/authorize: { $ref: './paths/api/v1/auth/oidc-authorize.yaml' }
+  /api/v1/auth/oidc/callback: { $ref: './paths/api/v1/auth/oidc-callback.yaml' }
+  /api/v1/auth/oidc/exchange: { $ref: './paths/api/v1/auth/oidc-exchange.yaml' }
+  /api/v1/user/update: { $ref: './paths/api/v1/user/update.yaml' }
+  /api/v1/user/show: { $ref: './paths/api/v1/user/show.yaml' }
+  /api/v1/user/qrcode: { $ref: './paths/api/v1/user/qrcode.yaml' }
+  /api/v1/user/change_state: { $ref: './paths/api/v1/user/change-state.yaml' }
+  /api/v1/user/setting: { $ref: './paths/api/v1/user/setting.yaml' }
+  /api/v1/user/change_password: { $ref: './paths/api/v1/user/change-password.yaml' }
+  /api/v1/user/set_password: { $ref: './paths/api/v1/user/set-password.yaml' }
+  /api/v1/user/apply_logout: { $ref: './paths/api/v1/user/apply-logout.yaml' }
+  /api/v1/user/cancel_logout: { $ref: './paths/api/v1/user/cancel-logout.yaml' }
+  /api/v1/user/search: { $ref: './paths/api/v1/user/search.yaml' }
+  /api/v1/user_tag/page: { $ref: './paths/api/v1/user-tag/page.yaml' }
+  /api/v1/user_tag/add: { $ref: './paths/api/v1/user-tag/add.yaml' }
+  /api/v1/user_tag/change_name: { $ref: './paths/api/v1/user-tag/change-name.yaml' }
+  /api/v1/user_tag/delete: { $ref: './paths/api/v1/user-tag/delete.yaml' }
+  /api/v1/user_tag_relation/collect_page: { $ref: './paths/api/v1/user-tag-relation/collect-page.yaml' }
+  /api/v1/user_tag_relation/friend_page: { $ref: './paths/api/v1/user-tag-relation/friend-page.yaml' }
+  /api/v1/user_tag_relation/add: { $ref: './paths/api/v1/user-tag-relation/add.yaml' }
+  /api/v1/user_tag_relation/set: { $ref: './paths/api/v1/user-tag-relation/set.yaml' }
+  /api/v1/user_tag_relation/remove: { $ref: './paths/api/v1/user-tag-relation/remove.yaml' }
+  /api/v1/user_collect/page: { $ref: './paths/api/v1/user-collect/page.yaml' }
+  /api/v1/user_collect/add: { $ref: './paths/api/v1/user-collect/add.yaml' }
+  /api/v1/user_collect/remove: { $ref: './paths/api/v1/user-collect/remove.yaml' }
+  /api/v1/user_collect/change: { $ref: './paths/api/v1/user-collect/change.yaml' }
+  /api/v1/user_device/page: { $ref: './paths/api/v1/user-device/page.yaml' }
+  /api/v1/user_device/change_name: { $ref: './paths/api/v1/user-device/change-name.yaml' }
+  /api/v1/user_device/delete: { $ref: './paths/api/v1/user-device/delete.yaml' }
+  /api/v1/user_device/sessions: { $ref: './paths/api/v1/user-device/sessions.yaml' }
+  /api/v1/user_device/check_login: { $ref: './paths/api/v1/user-device/check-login.yaml' }
+  /api/v1/user_device/kick: { $ref: './paths/api/v1/user-device/kick.yaml' }
+  /api/v1/user_device/kick-others: { $ref: './paths/api/v1/user-device/kick-others.yaml' }
+  /api/v1/push/register: { $ref: './paths/api/v1/push/register.yaml' }
+  /api/v1/push/unregister: { $ref: './paths/api/v1/push/unregister.yaml' }
+  /api/v1/friend/denylist/page: { $ref: './paths/api/v1/friend-denylist/page.yaml' }
+  /api/v1/friend/denylist/add: { $ref: './paths/api/v1/friend-denylist/add.yaml' }
+  /api/v1/friend/denylist/remove: { $ref: './paths/api/v1/friend-denylist/remove.yaml' }
+  /api/v1/friend/list: { $ref: './paths/api/v1/friend/list.yaml' }
+  /api/v1/friend/add: { $ref: './paths/api/v1/friend/add.yaml' }
+  /api/v1/friend/confirm: { $ref: './paths/api/v1/friend/confirm.yaml' }
+  /api/v1/friend/delete: { $ref: './paths/api/v1/friend/delete.yaml' }
+  /api/v1/friend/move: { $ref: './paths/api/v1/friend/move.yaml' }
+  /api/v1/friend/information: { $ref: './paths/api/v1/friend/information.yaml' }
+  /api/v1/friend/change_remark: { $ref: './paths/api/v1/friend/change-remark.yaml' }
+  /api/v1/friend/category/add: { $ref: './paths/api/v1/friend-category/add.yaml' }
+  /api/v1/friend/category/delete: { $ref: './paths/api/v1/friend-category/delete.yaml' }
+  /api/v1/friend/category/rename: { $ref: './paths/api/v1/friend-category/rename.yaml' }
+  /api/v1/msg/history: { $ref: './paths/api/v1/msg/history.yaml' }
+  /api/v1/msg/result: { $ref: './paths/api/v1/msg/result.yaml' }
+  /api/v1/msg/offline: { $ref: './paths/api/v1/msg/offline.yaml' }
+  /api/v1/msg/offline_ack: { $ref: './paths/api/v1/msg/offline-ack.yaml' }
+  /api/v1/msg/read_stats: { $ref: './paths/api/v1/msg/read-stats.yaml' }
+  /api/v1/msg/pin: { $ref: './paths/api/v1/msg/pin.yaml' }
+  /api/v1/msg/forward: { $ref: './paths/api/v1/msg/forward.yaml' }
+  /api/v1/msg/reaction/add: { $ref: './paths/api/v1/msg/reaction-add.yaml' }
+  /api/v1/msg/reaction/remove: { $ref: './paths/api/v1/msg/reaction-remove.yaml' }
+  /api/v1/msg/reaction/list: { $ref: './paths/api/v1/msg/reaction-list.yaml' }
+  /api/v1/conversation/online: { $ref: './paths/api/v1/conversation/online.yaml' }
+  /api/v1/conversation/mine: { $ref: './paths/api/v1/conversation/mine.yaml' }
+  /api/v1/conversation/pin: { $ref: './paths/api/v1/conversation/pin.yaml' }
+  /api/v1/conversation/unpin: { $ref: './paths/api/v1/conversation/unpin.yaml' }
+  /api/v1/conversation/pinned: { $ref: './paths/api/v1/conversation/pinned.yaml' }
+  /api/v1/conversation/delete: { $ref: './paths/api/v1/conversation/delete.yaml' }
+  /api/v1/conversation/restore: { $ref: './paths/api/v1/conversation/restore.yaml' }
+  /api/v1/mention/list: { $ref: './paths/api/v1/mention/list.yaml' }
+  /api/v1/mention/unread: { $ref: './paths/api/v1/mention/unread.yaml' }
+  /api/v1/mention/mark_read: { $ref: './paths/api/v1/mention/mark-read.yaml' }
+  /api/v1/mention/suggest: { $ref: './paths/api/v1/mention/suggest.yaml' }
+  /api/v1/moment/create: { $ref: './paths/api/v1/moment/create.yaml' }
+  /api/v1/moment/{moment_id}: { $ref: './paths/api/v1/moment/show.yaml' }
+  /api/v1/moment/{moment_id}/delete: { $ref: './paths/api/v1/moment/delete.yaml' }
+  /api/v1/moments/feed: { $ref: './paths/api/v1/moment/feed.yaml' }
+  /api/v1/moments/user/{uid}: { $ref: './paths/api/v1/moment/user-posts.yaml' }
+  /api/v1/moment/{moment_id}/like: { $ref: './paths/api/v1/moment/like.yaml' }
+  /api/v1/moment/{moment_id}/unlike: { $ref: './paths/api/v1/moment/unlike.yaml' }
+  /api/v1/moment/{moment_id}/comment: { $ref: './paths/api/v1/moment/add-comment.yaml' }
+  /api/v1/moment/{moment_id}/comments: { $ref: './paths/api/v1/moment/comments.yaml' }
+  /api/v1/moment/{moment_id}/comment/{comment_id}/delete: { $ref: './paths/api/v1/moment/delete-comment.yaml' }
+  /api/v1/moment/{moment_id}/report: { $ref: './paths/api/v1/moment/report.yaml' }
+  /api/v1/bot/register: { $ref: './paths/api/v1/bot/register.yaml' }
+  /api/v1/bot/search: { $ref: './paths/api/v1/bot/search.yaml' }
+  /api/v1/bot/send_message: { $ref: './paths/api/v1/bot/send_message.yaml' }
+  /api/v1/bot/get: { $ref: './paths/api/v1/bot/get.yaml' }
+  /api/v1/bot/update: { $ref: './paths/api/v1/bot/update.yaml' }
+  /api/v1/bot/disable: { $ref: './paths/api/v1/bot/disable.yaml' }
+  /api/v1/bot/enable: { $ref: './paths/api/v1/bot/enable.yaml' }
+  /api/v1/bot/list_mine: { $ref: './paths/api/v1/bot/list_mine.yaml' }
+  /api/v1/rtc/room/join: { $ref: './paths/api/v1/rtc/room_join.yaml' }
+  /api/v1/group/add: { $ref: './paths/api/v1/group/add.yaml' }
+  /api/v1/group/edit: { $ref: './paths/api/v1/group/edit.yaml' }
+  /api/v1/group/set_e2ee_mode: { $ref: './paths/api/v1/group/set-e2ee-mode.yaml' }
+  /api/v1/group/dissolve: { $ref: './paths/api/v1/group/dissolve.yaml' }
+  /api/v1/group/detail: { $ref: './paths/api/v1/group/detail.yaml' }
+  /api/v1/group/page: { $ref: './paths/api/v1/group/page.yaml' }
+  /api/v1/group/search: { $ref: './paths/api/v1/group/search.yaml' }
+  /api/v1/group/discover: { $ref: './paths/api/v1/group/discover.yaml' }
+  /api/v1/group/featured: { $ref: './paths/api/v1/group/featured.yaml' }
+  /api/v1/group/hot: { $ref: './paths/api/v1/group/hot.yaml' }
+  /api/v1/group/categories: { $ref: './paths/api/v1/group/categories.yaml' }
+  /api/v1/group/preview: { $ref: './paths/api/v1/group/preview.yaml' }
+  /api/v1/group/msg_page: { $ref: './paths/api/v1/group/msg-page.yaml' }
+  /api/v1/group/qrcode: { $ref: './paths/api/v1/group/qrcode.yaml' }
+  /api/v1/group/face2face: { $ref: './paths/api/v1/group/face2face.yaml' }
+  /api/v1/group/face2face_save: { $ref: './paths/api/v1/group/face2face-save.yaml' }
+  /api/v1/group/remark: { $ref: './paths/api/v1/group/remark.yaml' }
+  /api/v1/group/transfer: { $ref: './paths/api/v1/group/transfer.yaml' }
+  /api/v1/group_member/join: { $ref: './paths/api/v1/group-member/join.yaml' }
+  /api/v1/group_member/leave: { $ref: './paths/api/v1/group-member/leave.yaml' }
+  /api/v1/group_member/page: { $ref: './paths/api/v1/group-member/page.yaml' }
+  /api/v1/group_member/alias: { $ref: './paths/api/v1/group-member/alias.yaml' }
+  /api/v1/group_member/same_group: { $ref: './paths/api/v1/group-member/same-group.yaml' }
+  /api/v1/group_member/mute: { $ref: './paths/api/v1/group-member/mute.yaml' }
+  /api/v1/group_member/unmute: { $ref: './paths/api/v1/group-member/unmute.yaml' }
+  /api/v1/group_member/role: { $ref: './paths/api/v1/group-member/role.yaml' }
+  /api/v1/group_notice/add: { $ref: './paths/api/v1/group-notice/add.yaml' }
+  /api/v1/group_notice/edit: { $ref: './paths/api/v1/group-notice/edit.yaml' }
+  /api/v1/group_notice/delete: { $ref: './paths/api/v1/group-notice/delete.yaml' }
+  /api/v1/group_notice/page: { $ref: './paths/api/v1/group-notice/page.yaml' }
+  /api/v1/group_notice/publish: { $ref: './paths/api/v1/group-notice/publish.yaml' }
+  /api/v1/group_notice/latest: { $ref: './paths/api/v1/group-notice/latest.yaml' }
+  /api/v1/group/notice/list: { $ref: './paths/api/v1/group-notice/list.yaml' }
+  /api/v1/group/notice/detail: { $ref: './paths/api/v1/group-notice/detail.yaml' }
+  /api/v1/group/notice/pin: { $ref: './paths/api/v1/group-notice/pin.yaml' }
+  /api/v1/group/notice/unpin: { $ref: './paths/api/v1/group-notice/unpin.yaml' }
+  /api/v1/group/notice/mark_read: { $ref: './paths/api/v1/group-notice/mark-read.yaml' }
+  /api/v1/group_album/create: { $ref: './paths/api/v1/group-album/create.yaml' }
+  /api/v1/group_album/list: { $ref: './paths/api/v1/group-album/list.yaml' }
+  /api/v1/group_album/rename: { $ref: './paths/api/v1/group-album/rename.yaml' }
+  /api/v1/group_album/delete: { $ref: './paths/api/v1/group-album/delete.yaml' }
+  /api/v1/group_album/photo/upload: { $ref: './paths/api/v1/group-album/photo/upload.yaml' }
+  /api/v1/group_album/photo/batch: { $ref: './paths/api/v1/group-album/photo/batch.yaml' }
+  /api/v1/group_album/photo/list: { $ref: './paths/api/v1/group-album/photo/list.yaml' }
+  /api/v1/group_album/photo/detail: { $ref: './paths/api/v1/group-album/photo/detail.yaml' }
+  /api/v1/group_album/photo/delete: { $ref: './paths/api/v1/group-album/photo/delete.yaml' }
+  /api/v1/group_album/photo/like: { $ref: './paths/api/v1/group-album/photo/like.yaml' }
+  /api/v1/group_album/photo/unlike: { $ref: './paths/api/v1/group-album/photo/unlike.yaml' }
+  /api/v1/group_album/photo/comment: { $ref: './paths/api/v1/group-album/photo/comment.yaml' }
+  /api/v1/group_album/photo/comments: { $ref: './paths/api/v1/group-album/photo/comments.yaml' }
+  /api/v1/group_album/cover/update: { $ref: './paths/api/v1/group-album/cover/update.yaml' }
+  /api/v1/group/category/create: { $ref: './paths/api/v1/group-category/create.yaml' }
+  /api/v1/group/category/list: { $ref: './paths/api/v1/group-category/list.yaml' }
+  /api/v1/group/category/rename: { $ref: './paths/api/v1/group-category/rename.yaml' }
+  /api/v1/group/category/delete: { $ref: './paths/api/v1/group-category/delete.yaml' }
+  /api/v1/group/category/move_group: { $ref: './paths/api/v1/group-category/move-group.yaml' }
+  /api/v1/group/category/sort: { $ref: './paths/api/v1/group-category/sort.yaml' }
+  /api/v1/group/tag/add: { $ref: './paths/api/v1/group-tag/add.yaml' }
+  /api/v1/group/tag/remove: { $ref: './paths/api/v1/group-tag/remove.yaml' }
+  /api/v1/group/tag/list: { $ref: './paths/api/v1/group-tag/list.yaml' }
+  /api/v1/group/tag/search: { $ref: './paths/api/v1/group-tag/search.yaml' }
+  /api/v1/group/tag/hot: { $ref: './paths/api/v1/group-tag/hot.yaml' }
+  /api/v1/group/vote/create: { $ref: './paths/api/v1/group-vote/create.yaml' }
+  /api/v1/group/vote/list: { $ref: './paths/api/v1/group-vote/list.yaml' }
+  /api/v1/group/vote/detail: { $ref: './paths/api/v1/group-vote/detail.yaml' }
+  /api/v1/group/vote/cast: { $ref: './paths/api/v1/group-vote/cast.yaml' }
+  /api/v1/group/vote/update: { $ref: './paths/api/v1/group-vote/update.yaml' }
+  /api/v1/group/vote/cancel: { $ref: './paths/api/v1/group-vote/cancel.yaml' }
+  /api/v1/group/vote/close: { $ref: './paths/api/v1/group-vote/close.yaml' }
+  /api/v1/group/vote/my_vote: { $ref: './paths/api/v1/group-vote/my-vote.yaml' }
+  /api/v1/group_schedule/create: { $ref: './paths/api/v1/group-schedule/create.yaml' }
+  /api/v1/group_schedule/update: { $ref: './paths/api/v1/group-schedule/update.yaml' }
+  /api/v1/group_schedule/cancel: { $ref: './paths/api/v1/group-schedule/cancel.yaml' }
+  /api/v1/group_schedule/detail: { $ref: './paths/api/v1/group-schedule/detail.yaml' }
+  /api/v1/group_schedule/list: { $ref: './paths/api/v1/group-schedule/list.yaml' }
+  /api/v1/group_schedule/my_list: { $ref: './paths/api/v1/group-schedule/my-list.yaml' }
+  /api/v1/group_schedule/confirm: { $ref: './paths/api/v1/group-schedule/confirm.yaml' }
+  /api/v1/group/file/upload: { $ref: './paths/api/v1/group-file/upload.yaml' }
+  /api/v1/group/file/download: { $ref: './paths/api/v1/group-file/download.yaml' }
+  /api/v1/group/file/list: { $ref: './paths/api/v1/group-file/list.yaml' }
+  /api/v1/group/file/delete: { $ref: './paths/api/v1/group-file/delete.yaml' }
+  /api/v1/group/file/search: { $ref: './paths/api/v1/group-file/search.yaml' }
+  /api/v1/group/file/categories: { $ref: './paths/api/v1/group-file/categories.yaml' }
+  /api/v1/group/task/create: { $ref: './paths/api/v1/group-task/create.yaml' }
+  /api/v1/group/task/update: { $ref: './paths/api/v1/group-task/update.yaml' }
+  /api/v1/group/task/assign: { $ref: './paths/api/v1/group-task/assign.yaml' }
+  /api/v1/group/task/submit: { $ref: './paths/api/v1/group-task/submit.yaml' }
+  /api/v1/group/task/review: { $ref: './paths/api/v1/group-task/review.yaml' }
+  /api/v1/group/task/list: { $ref: './paths/api/v1/group-task/list.yaml' }
+  /api/v1/group/task/detail: { $ref: './paths/api/v1/group-task/detail.yaml' }
+  /api/v1/group/task/my: { $ref: './paths/api/v1/group-task/my.yaml' }
+  /api/v1/group/task/pending: { $ref: './paths/api/v1/group-task/pending.yaml' }
+  /api/v1/channel/create: { $ref: './paths/api/v1/channel/create.yaml' }
+  /api/v1/channel/{channel_id}: { $ref: './paths/api/v1/channel/show.yaml' }
+  /api/v1/channel/by_custom_id/{custom_id}: { $ref: './paths/api/v1/channel/by-custom-id.yaml' }
+  /api/v1/channel/{channel_id}/update: { $ref: './paths/api/v1/channel/update.yaml' }
+  /api/v1/channel/{channel_id}/delete: { $ref: './paths/api/v1/channel/delete.yaml' }
+  /api/v1/channel/{channel_id}/subscribe: { $ref: './paths/api/v1/channel/subscribe.yaml' }
+  /api/v1/channel/{channel_id}/unsubscribe: { $ref: './paths/api/v1/channel/unsubscribe.yaml' }
+  /api/v1/channels/subscribed: { $ref: './paths/api/v1/channel/subscribed.yaml' }
+  /api/v1/channels/managed: { $ref: './paths/api/v1/channel/managed.yaml' }
+  /api/v1/channels/unread/summary: { $ref: './paths/api/v1/channel/unread-summary.yaml' }
+  /api/v1/channels/search: { $ref: './paths/api/v1/channel/search.yaml' }
+  /api/v1/channels/discover: { $ref: './paths/api/v1/channel/discover.yaml' }
+  /api/v1/channels/featured: { $ref: './paths/api/v1/channel/featured.yaml' }
+  /api/v1/channels/trending: { $ref: './paths/api/v1/channel/trending.yaml' }
+  /api/v1/channels/categories: { $ref: './paths/api/v1/channel/categories.yaml' }
+  /api/v1/channels/sync: { $ref: './paths/api/v1/channel/sync.yaml' }
+  /api/v1/channel/{channel_id}/webhook/create: { $ref: './paths/api/v1/channel/webhook-create.yaml' }
+  /api/v1/channel/{channel_id}/webhook/list: { $ref: './paths/api/v1/channel/webhook-list.yaml' }
+  /api/v1/channel/{channel_id}/webhook/{webhook_id}/disable: { $ref: './paths/api/v1/channel/webhook-disable.yaml' }
+  /api/v1/webhook/channel/{token}: { $ref: './paths/api/v1/channel/webhook-incoming.yaml' }
+  /api/v1/channel/{channel_id}/message: { $ref: './paths/api/v1/channel/message/publish.yaml' }
+  /api/v1/channel/{channel_id}/messages: { $ref: './paths/api/v1/channel/message/list.yaml' }
+  /api/v1/channel/{channel_id}/read: { $ref: './paths/api/v1/channel/message/mark-read.yaml' }
+  /api/v1/channel/{channel_id}/message/{message_id}/view: { $ref: './paths/api/v1/channel/message/view.yaml' }
+  /api/v1/channel/{channel_id}/message/{message_id}/reaction: { $ref: './paths/api/v1/channel/message/reaction-add.yaml' }
+  /api/v1/channel/{channel_id}/message/{message_id}/reaction/{reaction_type}: { $ref: './paths/api/v1/channel/message/reaction-remove.yaml' }
+  /api/v1/channel/{channel_id}/message/{message_id}/pin: { $ref: './paths/api/v1/channel/message/pin.yaml' }
+  /api/v1/channel/{channel_id}/message/{message_id}/delete: { $ref: './paths/api/v1/channel/message/delete.yaml' }
+  /api/v1/channel/{channel_id}/message/{message_id}/revoke: { $ref: './paths/api/v1/channel/message/revoke.yaml' }
+  /api/v1/channel/{channel_id}/message/{message_id}/edit: { $ref: './paths/api/v1/channel/message/edit.yaml' }
+  /api/v1/channel/{channel_id}/admin: { $ref: './paths/api/v1/channel/admin/add.yaml' }
+  /api/v1/channel/{channel_id}/admins: { $ref: './paths/api/v1/channel/admin/list.yaml' }
+  /api/v1/channel/{channel_id}/admin/{user_id}/role: { $ref: './paths/api/v1/channel/admin/update-role.yaml' }
+  /api/v1/channel/{channel_id}/admin/{user_id}: { $ref: './paths/api/v1/channel/admin/remove.yaml' }
+  /api/v1/channel/{channel_id}/stats: { $ref: './paths/api/v1/channel/stats/overview.yaml' }
+  /api/v1/channel/{channel_id}/stats/daily: { $ref: './paths/api/v1/channel/stats/daily.yaml' }
+  /api/v1/channel/{channel_id}/subscribers: { $ref: './paths/api/v1/channel/subscriber/list.yaml' }
+  /api/v1/channel/{channel_id}/subscriber/{user_id}: { $ref: './paths/api/v1/channel/subscriber/remove.yaml' }
+  /api/v1/channel/{channel_id}/invitation: { $ref: './paths/api/v1/channel/invitation/create.yaml' }
+  /api/v1/channel/invitation/accept: { $ref: './paths/api/v1/channel/invitation/accept.yaml' }
+  /api/v1/channel/invitation/reject: { $ref: './paths/api/v1/channel/invitation/reject.yaml' }
+  /api/v1/channel/invitations/my: { $ref: './paths/api/v1/channel/invitation/my.yaml' }
+  /api/v1/channel/invitations/sent: { $ref: './paths/api/v1/channel/invitation/sent.yaml' }
+  /api/v1/channel/{channel_id}/order: { $ref: './paths/api/v1/channel/order/create.yaml' }
+  /api/v1/channel/order/pay: { $ref: './paths/api/v1/channel/order/pay.yaml' }
+  /api/v1/channel/orders/my: { $ref: './paths/api/v1/channel/order/my.yaml' }
+  /api/v1/channel/order/{order_no}: { $ref: './paths/api/v1/channel/order/get.yaml' }
+  /api/v1/e2ee/user_keys: { $ref: './paths/api/v1/e2ee/user-keys.yaml' }
+  /api/v1/e2ee/group_member_keys: { $ref: './paths/api/v1/e2ee/group-member-keys.yaml' }
+  /api/v1/e2ee/report_device_key: { $ref: './paths/api/v1/e2ee/report-device-key.yaml' }
+  /api/v1/e2ee/key/status: { $ref: './paths/api/v1/e2ee/key-status.yaml' }
+  /api/v1/e2ee/notifications/pull: { $ref: './paths/api/v1/e2ee/pull-notifications.yaml' }
+  /api/v1/e2ee/recovery/start: { $ref: './paths/api/v1/e2ee/start-recovery.yaml' }
+  /api/v1/e2ee/trust/record: { $ref: './paths/api/v1/e2ee/trust-record.yaml' }
+  /api/v1/e2ee/backup/put: { $ref: './paths/api/v1/e2ee/backup-put.yaml' }
+  /api/v1/e2ee/backup/get: { $ref: './paths/api/v1/e2ee/backup-get.yaml' }
+  /api/v1/e2ee/backup/info: { $ref: './paths/api/v1/e2ee/backup-info.yaml' }
+  /api/v1/e2ee/backup/delete: { $ref: './paths/api/v1/e2ee/backup-delete.yaml' }
+  /api/v1/e2ee/compliance_key: { $ref: './paths/api/v1/e2ee/compliance-key.yaml' }
+  /api/v1/app_version/check: { $ref: './paths/api/v1/app/version-check.yaml' }
+  /api/v1/app/features: { $ref: './paths/api/v1/app/features.yaml' }
+  /api/v1/app/manifest: { $ref: './paths/api/v1/app/manifest.yaml' }
+  /api/v1/app/policy: { $ref: './paths/api/v1/app/policy.yaml' }
+  /api/v1/app/ice_servers: { $ref: './paths/api/v1/app/ice-servers.yaml' }
+  /api/v1/app_upgrade/report: { $ref: './paths/api/v1/app/upgrade-report.yaml' }
+  /api/v1/feedback/page: { $ref: './paths/api/v1/feedback/page.yaml' }
+  /api/v1/feedback/add: { $ref: './paths/api/v1/feedback/add.yaml' }
+  /api/v1/feedback/change: { $ref: './paths/api/v1/feedback/change.yaml' }
+  /api/v1/feedback/remove: { $ref: './paths/api/v1/feedback/remove.yaml' }
+  /api/v1/feedback/reply: { $ref: './paths/api/v1/feedback/reply.yaml' }
+  /api/v1/feedback/page_reply: { $ref: './paths/api/v1/feedback/page-reply.yaml' }
+  /api/v1/fts/user_search: { $ref: './paths/api/v1/fts/user-search.yaml' }
+  /api/v1/fts/recently_user: { $ref: './paths/api/v1/fts/recently-user.yaml' }
+  /api/v1/fts/msg: { $ref: './paths/api/v1/fts/msg.yaml' }
+  /api/v1/location/makeMyselfVisible: { $ref: './paths/api/v1/location/make-visible.yaml' }
+  /api/v1/location/makeMyselfUnvisible: { $ref: './paths/api/v1/location/make-unvisible.yaml' }
+  /api/v1/location/peopleNearby: { $ref: './paths/api/v1/location/people-nearby.yaml' }
+  /api/v1/report/create: { $ref: './paths/api/v1/report/create.yaml' }
+  /api/v1/moment/report/create: { $ref: './paths/api/v1/report/moment-create.yaml' }
+  /api/v1/live_room/list: { $ref: './paths/api/v1/live-room/list.yaml' }
+  /api/v1/live_room/my_list: { $ref: './paths/api/v1/live-room/my-list.yaml' }
+  /api/v1/live_room/create: { $ref: './paths/api/v1/live-room/create.yaml' }
+  /api/v1/live_room/start: { $ref: './paths/api/v1/live-room/start.yaml' }
+  /api/v1/live_room/stop: { $ref: './paths/api/v1/live-room/stop.yaml' }
+  /api/v1/live_room/detail: { $ref: './paths/api/v1/live-room/detail.yaml' }
+  /api/v1/wallet/balance: { $ref: './paths/api/v1/wallet/balance.yaml' }
+  /api/v1/wallet/transactions: { $ref: './paths/api/v1/wallet/transactions.yaml' }
+  /api/v1/wallet/topup: { $ref: './paths/api/v1/wallet/topup.yaml' }
+  /api/v1/wallet/withdraw: { $ref: './paths/api/v1/wallet/withdraw.yaml' }
+  /api/v1/wallet/transfer/send: { $ref: './paths/api/v1/wallet/transfer_send.yaml' }
+  /api/v1/wallet/recharge/{order_no}: { $ref: './paths/api/v1/wallet/recharge_order.yaml' }
+  /api/v1/wallet/recharge/order: { $ref: './paths/api/v1/wallet/recharge_create.yaml' }
+  /api/v1/wallet/recharge/pay: { $ref: './paths/api/v1/wallet/recharge_pay.yaml' }
+  /api/v1/billing/plan/list: { $ref: './paths/api/v1/billing/plan-list.yaml' }
+  /api/v1/billing/subscribe: { $ref: './paths/api/v1/billing/subscribe.yaml' }
+  /api/v1/billing/renew: { $ref: './paths/api/v1/billing/renew.yaml' }
+  /api/v1/billing/cancel: { $ref: './paths/api/v1/billing/cancel.yaml' }
+  /api/v1/billing/subscription: { $ref: './paths/api/v1/billing/subscription.yaml' }
+  /api/v1/billing/usage: { $ref: './paths/api/v1/billing/usage.yaml' }
+  /api/v1/billing/quota: { $ref: './paths/api/v1/billing/quota.yaml' }
+  /api/v1/billing/invoice/generate: { $ref: './paths/api/v1/billing/invoice-generate.yaml' }
+  /api/v1/billing/invoice/pay: { $ref: './paths/api/v1/billing/invoice-pay.yaml' }
+  /api/v1/billing/invoice/list: { $ref: './paths/api/v1/billing/invoice-list.yaml' }
   # ---- 新增 48 条路由覆盖（2026-06-07 审计补全）----
-  /api/v1/friend/reject:
-    $ref: './paths/api/v1/friend-reject/reject.yaml'
-  /api/v1/attachment/presign:
-    $ref: './paths/api/v1/attachment/presign.yaml'
-  /api/v1/attachment/gateway/{session_key}:
-    $ref: './paths/api/v1/attachment/gateway-put.yaml'
-  /api/v1/attachment/confirm:
-    $ref: './paths/api/v1/attachment/confirm.yaml'
-  /api/v1/attachment/view_url:
-    $ref: './paths/api/v1/attachment/view_url.yaml'
-  /api/v1/agent/list:
-    $ref: './paths/api/v1/ai-agent/list.yaml'
+  /api/v1/friend/reject: { $ref: './paths/api/v1/friend-reject/reject.yaml' }
+  /api/v1/attachment/presign: { $ref: './paths/api/v1/attachment/presign.yaml' }
+  /api/v1/attachment/gateway/{session_key}: { $ref: './paths/api/v1/attachment/gateway-put.yaml' }
+  /api/v1/attachment/confirm: { $ref: './paths/api/v1/attachment/confirm.yaml' }
+  /api/v1/attachment/view_url: { $ref: './paths/api/v1/attachment/view_url.yaml' }
+  /api/v1/agent/list: { $ref: './paths/api/v1/ai-agent/list.yaml' }
   # --------------------------------------------------------------------------
   # Channel-first-class W2：项目协作（成员 / 里程碑 / 频道关联 / 四聚合）
   # 真源：.contract/api_contract.json（contract-export）；Handler 见
   # project_member_handler / project_milestone_handler / project_channel_handler
   # --------------------------------------------------------------------------
-  /api/v1/projects/{project_id}/members:
-    $ref: './paths/api/v1/project/members-list.yaml'
-  /api/v1/projects/{project_id}/members/invite:
-    $ref: './paths/api/v1/project/members-invite.yaml'
-  /api/v1/projects/{project_id}/members/remove:
-    $ref: './paths/api/v1/project/members-remove.yaml'
-  /api/v1/projects/{project_id}/members/transfer_owner:
-    $ref: './paths/api/v1/project/members-transfer-owner.yaml'
-  /api/v1/projects/{project_id}/milestones:
-    $ref: './paths/api/v1/project/milestones.yaml'
-  /api/v1/milestones/{milestone_id}/update:
-    $ref: './paths/api/v1/project/milestone-update.yaml'
-  /api/v1/milestones/{milestone_id}/reach:
-    $ref: './paths/api/v1/project/milestone-reach.yaml'
-  /api/v1/projects/{project_id}/channels:
-    $ref: './paths/api/v1/project/channels.yaml'
-  /api/v1/projects/{project_id}/channels/{channel_id}/unlink:
-    $ref: './paths/api/v1/project/channel-unlink.yaml'
-  /api/v1/projects/{project_id}/links/update:
-    $ref: './paths/api/v1/project/links-update.yaml'
-  /api/v1/projects/{project_id}/aggregations/pinned:
-    $ref: './paths/api/v1/project/aggregations-pinned.yaml'
-  /api/v1/projects/{project_id}/aggregations/resources:
-    $ref: './paths/api/v1/project/aggregations-resources.yaml'
-  /api/v1/projects/{project_id}/aggregations/activity:
-    $ref: './paths/api/v1/project/aggregations-activity.yaml'
-  /api/v1/projects/{project_id}/aggregations/related_posts:
-    $ref: './paths/api/v1/project/aggregations-related-posts.yaml'
-  /api/v1/workspaces/{workspace_id}/projects:
-    $ref: './paths/api/v1/project/projects-list-create.yaml'
-  /api/v1/projects/{project_id}:
-    $ref: './paths/api/v1/project/project-show.yaml'
-  /api/v1/projects/{project_id}/update:
-    $ref: './paths/api/v1/project/project-update.yaml'
-  /api/v1/projects/{project_id}/status:
-    $ref: './paths/api/v1/project/project-status.yaml'
-  /api/v1/projects/{project_id}/tasks:
-    $ref: './paths/api/v1/project/tasks-list-create.yaml'
-  /api/v1/tasks/{task_id}:
-    $ref: './paths/api/v1/project/task-show.yaml'
-  /api/v1/tasks/{task_id}/update:
-    $ref: './paths/api/v1/project/task-update.yaml'
-  /api/v1/tasks/{task_id}/status:
-    $ref: './paths/api/v1/project/task-status.yaml'
-  /api/v1/channel/{channel_id}/discussion:
-    $ref: './paths/api/v1/channel/micro-community/discussion.yaml'
-  /api/v1/channel/{channel_id}/discussion/candidates:
-    $ref: './paths/api/v1/channel/micro-community/discussion-candidates.yaml'
-  /api/v1/channel/{channel_id}/discussion/join:
-    $ref: './paths/api/v1/channel/micro-community/discussion-join.yaml'
-  /api/v1/channel/{channel_id}/posts:
-    $ref: './paths/api/v1/channel/micro-community/posts.yaml'
-  /api/v1/channel/{channel_id}/posts/{message_id}/essence:
-    $ref: './paths/api/v1/channel/micro-community/posts-essence.yaml'
-  /api/v1/channel/{channel_id}/posts/{message_id}/tags:
-    $ref: './paths/api/v1/channel/micro-community/posts-tags.yaml'
-  /api/v1/talk-records/capabilities:
-    $ref: './paths/api/v1/talk-records/capabilities.yaml'
-  /api/v1/talk-records/creation-contexts:
-    $ref: './paths/api/v1/talk-records/creation_contexts.yaml'
-  /api/v1/talk-records/share-candidates:
-    $ref: './paths/api/v1/talk-records/share_candidates.yaml'
-  /api/v1/talk-records/by-client-recording-id:
-    $ref: './paths/api/v1/talk-records/recovery.yaml'
-  /api/v1/talk-records:
-    $ref: './paths/api/v1/talk-records/collection.yaml'
-  /api/v1/talk-records/{id}:
-    $ref: './paths/api/v1/talk-records/item.yaml'
-  /api/v1/talk-records/{id}/captures:
-    $ref: './paths/api/v1/talk-records/captures_collection.yaml'
-  /api/v1/talk-records/{id}/captures/{cid}/events:
-    $ref: './paths/api/v1/talk-records/capture_events.yaml'
-  /api/v1/talk-records/{id}/captures/{cid}/audio-parts:
-    $ref: './paths/api/v1/talk-records/capture_audio_parts.yaml'
-  /api/v1/talk-records/{id}/captures/{cid}/audio-parts/{pid}/confirm:
-    $ref: './paths/api/v1/talk-records/capture_audio_part_confirm.yaml'
-  /api/v1/talk-records/{id}/captures/{cid}/recover:
-    $ref: './paths/api/v1/talk-records/capture_recover.yaml'
-  /api/v1/talk-records/{id}/captures/{cid}/abandon:
-    $ref: './paths/api/v1/talk-records/capture_abandon.yaml'
-  /api/v1/talk-records/{id}/marks:
-    $ref: './paths/api/v1/talk-records/marks_collection.yaml'
-  /api/v1/talk-records/{id}/marks/{mark_id}:
-    $ref: './paths/api/v1/talk-records/marks_item.yaml'
-  /api/v1/talk-records/{id}/segments:
-    $ref: './paths/api/v1/talk-records/segments_collection.yaml'
-  /api/v1/talk-records/{id}/segments/{segment_id}:
-    $ref: './paths/api/v1/talk-records/segments_item.yaml'
-  /api/v1/talk-records/{id}/speakers:
-    $ref: './paths/api/v1/talk-records/speakers_collection.yaml'
-  /api/v1/talk-records/{id}/speakers/{speaker_id}:
-    $ref: './paths/api/v1/talk-records/speakers_item.yaml'
-  /api/v1/talk-records/{id}/speakers/{speaker_id}/claim:
-    $ref: './paths/api/v1/talk-records/speaker_claim.yaml'
-  /api/v1/talk-records/{id}/summary:
-    $ref: './paths/api/v1/talk-records/summary_item.yaml'
-  /api/v1/talk-records/{id}/grants:
-    $ref: './paths/api/v1/talk-records/grants_collection.yaml'
-  /api/v1/talk-records/{id}/grants/{grant_id}:
-    $ref: './paths/api/v1/talk-records/grants_item.yaml'
-  /api/v1/talk-records/{id}/transfer-candidates:
-    $ref: './paths/api/v1/talk-records/transfer_candidates.yaml'
-  /api/v1/talk-records/{id}/share-candidates:
-    $ref: './paths/api/v1/talk-records/record_share_candidates.yaml'
-  /api/v1/talk-records/{id}/share-card:
-    $ref: './paths/api/v1/talk-records/share_card.yaml'
-  /api/v1/talk-records/{id}/participants:
-    $ref: './paths/api/v1/talk-records/participants.yaml'
-  /api/v1/talk-records/{id}/attachments/{attachment_id}/governance:
-    $ref: './paths/api/v1/talk-records/governance.yaml'
-  /api/v1/talk-records/{id}/playback/stream:
-    $ref: './paths/api/v1/talk-records/stream.yaml'
-  /api/v1/talk-records/{id}/playback:
-    $ref: './paths/api/v1/talk-records/playback.yaml'
-  /api/v1/talk-records/{id}/exports:
-    $ref: './paths/api/v1/talk-records/exports_collection.yaml'
-  /api/v1/talk-records/{id}/exports/{export_id}:
-    $ref: './paths/api/v1/talk-records/export_item.yaml'
-  /api/v1/talk-records/{id}/exports/{export_id}/download:
-    $ref: './paths/api/v1/talk-records/export_download.yaml'
-  /api/v1/talk-records/{id}/ownership-transfers:
-    $ref: './paths/api/v1/talk-records/ownership_transfers.yaml'
-  /api/v1/talk-records/{id}/cleanup/retry:
-    $ref: './paths/api/v1/talk-records/cleanup_retry.yaml'
-  /api/v1/talk-records/{id}/complete:
-    $ref: './paths/api/v1/talk-records/complete.yaml'
-  /api/v1/talk-records/{id}/jobs:
-    $ref: './paths/api/v1/talk-records/jobs.yaml'
-  /api/v1/talk-records/{id}/jobs/{job_id}/retry:
-    $ref: './paths/api/v1/talk-records/job_retry.yaml'
-  /api/v1/talk-records/{id}/processing-requests:
-    $ref: './paths/api/v1/talk-records/processing_requests.yaml'
-
-  /api/v1/organizations/{organization_id}/attachments:
-    $ref: './paths/api/v1/organization/attachments.yaml'
-
-
-  /api/v1/talk-records/{id}/jobs/{job_id}/client-executions:
-    $ref: './paths/api/v1/talk-records/client_claim.yaml'
-
-  /api/v1/talk-records/{id}/jobs/{job_id}/client-executions/{run_id}:
-    $ref: './paths/api/v1/talk-records/client_get.yaml'
-
-  /api/v1/talk-records/{id}/jobs/{job_id}/client-executions/{run_id}/chunk-plan:
-    $ref: './paths/api/v1/talk-records/client_plan.yaml'
-
-  /api/v1/talk-records/{id}/jobs/{job_id}/client-executions/{run_id}/heartbeat:
-    $ref: './paths/api/v1/talk-records/client_heartbeat.yaml'
-
-  /api/v1/talk-records/{id}/jobs/{job_id}/client-executions/{run_id}/parts/{seq}/dispatch-intents:
-    $ref: './paths/api/v1/talk-records/client_dispatch.yaml'
-
-  /api/v1/talk-records/{id}/jobs/{job_id}/client-executions/{run_id}/parts/{seq}/result:
-    $ref: './paths/api/v1/talk-records/client_result.yaml'
-
-  /api/v1/talk-records/{id}/jobs/{job_id}/client-executions/{run_id}/complete:
-    $ref: './paths/api/v1/talk-records/client_complete.yaml'
-
-  /api/v1/talk-records/{id}/jobs/{job_id}/client-executions/{run_id}/settle:
-    $ref: './paths/api/v1/talk-records/client_settle.yaml'
-
-  /api/v1/talk-records/{id}/provider-tasks/{task_id}:
-    $ref: './paths/api/v1/talk-records/provider_get.yaml'
-
-  /api/v1/talk-records/{id}/jobs/{job_id}/client-executions/{run_id}/provider-tasks:
-    $ref: './paths/api/v1/talk-records/provider_prepare.yaml'
-
-  /api/v1/talk-records/{id}/provider-tasks/{task_id}/query-executions:
-    $ref: './paths/api/v1/talk-records/provider_query_execution.yaml'
-
-  /api/v1/talk-records/{id}/provider-tasks/{task_id}/resubmissions:
-    $ref: './paths/api/v1/talk-records/provider_resubmission.yaml'
-
-  /api/v1/talk-records/{id}/provider-tasks/{task_id}/cancel:
-    $ref: './paths/api/v1/talk-records/provider_cancel.yaml'
-
-  /api/v1/talk-records/{id}/provider-tasks/{task_id}/reconcile-receipt:
-    $ref: './paths/api/v1/talk-records/provider_reconcile_receipt.yaml'
-
-  /api/v1/talk-records/{id}/jobs/{job_id}/client-executions/{run_id}/provider-tasks/{task_id}/submit-intents:
-    $ref: './paths/api/v1/talk-records/provider_submit_intent.yaml'
-
-  /api/v1/talk-records/{id}/jobs/{job_id}/client-executions/{run_id}/provider-tasks/{task_id}/submission-receipts:
-    $ref: './paths/api/v1/talk-records/provider_submission_receipt.yaml'
-
-  /api/v1/talk-records/{id}/jobs/{job_id}/client-executions/{run_id}/provider-tasks/{task_id}/query-intents:
-    $ref: './paths/api/v1/talk-records/provider_query_intent.yaml'
-
-  /api/v1/talk-records/{id}/jobs/{job_id}/client-executions/{run_id}/provider-tasks/{task_id}/query-receipts:
-    $ref: './paths/api/v1/talk-records/provider_query_receipt.yaml'
-
-  /api/v1/talk-records/{id}/jobs/{job_id}/client-executions/{run_id}/provider-tasks/{task_id}/complete:
-    $ref: './paths/api/v1/talk-records/provider_complete.yaml'
-
-  /api/v1/talk-records/client-audio-source:
-    $ref: './paths/api/v1/talk-records/client_audio_source.yaml'
-
-  /api/v1/talk-records/{id}/jobs/{job_id}/client-executions/latest:
-    $ref: ./paths/api/v1/talk-records/client_latest.yaml
-  /api/v1/talk-records/{id}/jobs/{job_id}/client-executions/recover-unprepared:
-    $ref: ./paths/api/v1/talk-records/client_recover_unprepared.yaml
+  /api/v1/projects/{project_id}/members: { $ref: './paths/api/v1/project/members-list.yaml' }
+  /api/v1/projects/{project_id}/members/invite: { $ref: './paths/api/v1/project/members-invite.yaml' }
+  /api/v1/projects/{project_id}/members/remove: { $ref: './paths/api/v1/project/members-remove.yaml' }
+  /api/v1/projects/{project_id}/members/transfer_owner: { $ref: './paths/api/v1/project/members-transfer-owner.yaml' }
+  /api/v1/projects/{project_id}/milestones: { $ref: './paths/api/v1/project/milestones.yaml' }
+  /api/v1/milestones/{milestone_id}/update: { $ref: './paths/api/v1/project/milestone-update.yaml' }
+  /api/v1/milestones/{milestone_id}/reach: { $ref: './paths/api/v1/project/milestone-reach.yaml' }
+  /api/v1/projects/{project_id}/channels: { $ref: './paths/api/v1/project/channels.yaml' }
+  /api/v1/projects/{project_id}/channels/{channel_id}/unlink: { $ref: './paths/api/v1/project/channel-unlink.yaml' }
+  /api/v1/projects/{project_id}/links/update: { $ref: './paths/api/v1/project/links-update.yaml' }
+  /api/v1/projects/{project_id}/aggregations/pinned: { $ref: './paths/api/v1/project/aggregations-pinned.yaml' }
+  /api/v1/projects/{project_id}/aggregations/resources: { $ref: './paths/api/v1/project/aggregations-resources.yaml' }
+  /api/v1/projects/{project_id}/aggregations/activity: { $ref: './paths/api/v1/project/aggregations-activity.yaml' }
+  /api/v1/projects/{project_id}/aggregations/related_posts: { $ref: './paths/api/v1/project/aggregations-related-posts.yaml' }
+  /api/v1/workspaces/{workspace_id}/projects: { $ref: './paths/api/v1/project/projects-list-create.yaml' }
+  /api/v1/projects/{project_id}: { $ref: './paths/api/v1/project/project-show.yaml' }
+  /api/v1/projects/{project_id}/update: { $ref: './paths/api/v1/project/project-update.yaml' }
+  /api/v1/projects/{project_id}/status: { $ref: './paths/api/v1/project/project-status.yaml' }
+  /api/v1/projects/{project_id}/tasks: { $ref: './paths/api/v1/project/tasks-list-create.yaml' }
+  /api/v1/tasks/{task_id}: { $ref: './paths/api/v1/project/task-show.yaml' }
+  /api/v1/tasks/{task_id}/update: { $ref: './paths/api/v1/project/task-update.yaml' }
+  /api/v1/tasks/{task_id}/status: { $ref: './paths/api/v1/project/task-status.yaml' }
+  /api/v1/channel/{channel_id}/discussion: { $ref: './paths/api/v1/channel/micro-community/discussion.yaml' }
+  /api/v1/channel/{channel_id}/discussion/candidates: { $ref: './paths/api/v1/channel/micro-community/discussion-candidates.yaml' }
+  /api/v1/channel/{channel_id}/discussion/join: { $ref: './paths/api/v1/channel/micro-community/discussion-join.yaml' }
+  /api/v1/channel/{channel_id}/posts: { $ref: './paths/api/v1/channel/micro-community/posts.yaml' }
+  /api/v1/channel/{channel_id}/posts/{message_id}/essence: { $ref: './paths/api/v1/channel/micro-community/posts-essence.yaml' }
+  /api/v1/channel/{channel_id}/posts/{message_id}/tags: { $ref: './paths/api/v1/channel/micro-community/posts-tags.yaml' }
+  /api/v1/talk-records/capabilities: { $ref: './paths/api/v1/talk-records/capabilities.yaml' }
+  /api/v1/talk-records/creation-contexts: { $ref: './paths/api/v1/talk-records/creation_contexts.yaml' }
+  /api/v1/talk-records/share-candidates: { $ref: './paths/api/v1/talk-records/share_candidates.yaml' }
+  /api/v1/talk-records/by-client-recording-id: { $ref: './paths/api/v1/talk-records/recovery.yaml' }
+  /api/v1/talk-records: { $ref: './paths/api/v1/talk-records/collection.yaml' }
+  /api/v1/talk-records/{id}: { $ref: './paths/api/v1/talk-records/item.yaml' }
+  /api/v1/talk-records/{id}/captures: { $ref: './paths/api/v1/talk-records/captures_collection.yaml' }
+  /api/v1/talk-records/{id}/captures/{cid}/events: { $ref: './paths/api/v1/talk-records/capture_events.yaml' }
+  /api/v1/talk-records/{id}/captures/{cid}/audio-parts: { $ref: './paths/api/v1/talk-records/capture_audio_parts.yaml' }
+  /api/v1/talk-records/{id}/captures/{cid}/audio-parts/{pid}/confirm: { $ref: './paths/api/v1/talk-records/capture_audio_part_confirm.yaml' }
+  /api/v1/talk-records/{id}/captures/{cid}/recover: { $ref: './paths/api/v1/talk-records/capture_recover.yaml' }
+  /api/v1/talk-records/{id}/captures/{cid}/abandon: { $ref: './paths/api/v1/talk-records/capture_abandon.yaml' }
+  /api/v1/talk-records/{id}/marks: { $ref: './paths/api/v1/talk-records/marks_collection.yaml' }
+  /api/v1/talk-records/{id}/marks/{mark_id}: { $ref: './paths/api/v1/talk-records/marks_item.yaml' }
+  /api/v1/talk-records/{id}/segments: { $ref: './paths/api/v1/talk-records/segments_collection.yaml' }
+  /api/v1/talk-records/{id}/segments/{segment_id}: { $ref: './paths/api/v1/talk-records/segments_item.yaml' }
+  /api/v1/talk-records/{id}/speakers: { $ref: './paths/api/v1/talk-records/speakers_collection.yaml' }
+  /api/v1/talk-records/{id}/speakers/{speaker_id}: { $ref: './paths/api/v1/talk-records/speakers_item.yaml' }
+  /api/v1/talk-records/{id}/speakers/{speaker_id}/claim: { $ref: './paths/api/v1/talk-records/speaker_claim.yaml' }
+  /api/v1/talk-records/{id}/summary: { $ref: './paths/api/v1/talk-records/summary_item.yaml' }
+  /api/v1/talk-records/{id}/grants: { $ref: './paths/api/v1/talk-records/grants_collection.yaml' }
+  /api/v1/talk-records/{id}/grants/{grant_id}: { $ref: './paths/api/v1/talk-records/grants_item.yaml' }
+  /api/v1/talk-records/{id}/transfer-candidates: { $ref: './paths/api/v1/talk-records/transfer_candidates.yaml' }
+  /api/v1/talk-records/{id}/share-candidates: { $ref: './paths/api/v1/talk-records/record_share_candidates.yaml' }
+  /api/v1/talk-records/{id}/share-card: { $ref: './paths/api/v1/talk-records/share_card.yaml' }
+  /api/v1/talk-records/{id}/participants: { $ref: './paths/api/v1/talk-records/participants.yaml' }
+  /api/v1/talk-records/{id}/attachments/{attachment_id}/governance: { $ref: './paths/api/v1/talk-records/governance.yaml' }
+  /api/v1/talk-records/{id}/playback/stream: { $ref: './paths/api/v1/talk-records/stream.yaml' }
+  /api/v1/talk-records/{id}/playback: { $ref: './paths/api/v1/talk-records/playback.yaml' }
+  /api/v1/talk-records/{id}/exports: { $ref: './paths/api/v1/talk-records/exports_collection.yaml' }
+  /api/v1/talk-records/{id}/exports/{export_id}: { $ref: './paths/api/v1/talk-records/export_item.yaml' }
+  /api/v1/talk-records/{id}/exports/{export_id}/download: { $ref: './paths/api/v1/talk-records/export_download.yaml' }
+  /api/v1/talk-records/{id}/ownership-transfers: { $ref: './paths/api/v1/talk-records/ownership_transfers.yaml' }
+  /api/v1/talk-records/{id}/cleanup/retry: { $ref: './paths/api/v1/talk-records/cleanup_retry.yaml' }
+  /api/v1/talk-records/{id}/complete: { $ref: './paths/api/v1/talk-records/complete.yaml' }
+  /api/v1/talk-records/{id}/jobs: { $ref: './paths/api/v1/talk-records/jobs.yaml' }
+  /api/v1/talk-records/{id}/jobs/{job_id}/retry: { $ref: './paths/api/v1/talk-records/job_retry.yaml' }
+  /api/v1/talk-records/{id}/processing-requests: { $ref: './paths/api/v1/talk-records/processing_requests.yaml' }
+  /api/v1/organizations/{organization_id}/attachments: { $ref: './paths/api/v1/organization/attachments.yaml' }
+  /api/v1/talk-records/{id}/jobs/{job_id}/client-executions: { $ref: './paths/api/v1/talk-records/client_claim.yaml' }
+  /api/v1/talk-records/{id}/jobs/{job_id}/client-executions/{run_id}: { $ref: './paths/api/v1/talk-records/client_get.yaml' }
+  /api/v1/talk-records/{id}/jobs/{job_id}/client-executions/{run_id}/chunk-plan: { $ref: './paths/api/v1/talk-records/client_plan.yaml' }
+  /api/v1/talk-records/{id}/jobs/{job_id}/client-executions/{run_id}/heartbeat: { $ref: './paths/api/v1/talk-records/client_heartbeat.yaml' }
+  /api/v1/talk-records/{id}/jobs/{job_id}/client-executions/{run_id}/parts/{seq}/dispatch-intents: { $ref: './paths/api/v1/talk-records/client_dispatch.yaml' }
+  /api/v1/talk-records/{id}/jobs/{job_id}/client-executions/{run_id}/parts/{seq}/result: { $ref: './paths/api/v1/talk-records/client_result.yaml' }
+  /api/v1/talk-records/{id}/jobs/{job_id}/client-executions/{run_id}/complete: { $ref: './paths/api/v1/talk-records/client_complete.yaml' }
+  /api/v1/talk-records/{id}/jobs/{job_id}/client-executions/{run_id}/settle: { $ref: './paths/api/v1/talk-records/client_settle.yaml' }
+  /api/v1/talk-records/{id}/provider-tasks/{task_id}: { $ref: './paths/api/v1/talk-records/provider_get.yaml' }
+  /api/v1/talk-records/{id}/jobs/{job_id}/client-executions/{run_id}/provider-tasks: { $ref: './paths/api/v1/talk-records/provider_prepare.yaml' }
+  /api/v1/talk-records/{id}/provider-tasks/{task_id}/query-executions: { $ref: './paths/api/v1/talk-records/provider_query_execution.yaml' }
+  /api/v1/talk-records/{id}/provider-tasks/{task_id}/resubmissions: { $ref: './paths/api/v1/talk-records/provider_resubmission.yaml' }
+  /api/v1/talk-records/{id}/provider-tasks/{task_id}/cancel: { $ref: './paths/api/v1/talk-records/provider_cancel.yaml' }
+  /api/v1/talk-records/{id}/provider-tasks/{task_id}/reconcile-receipt: { $ref: './paths/api/v1/talk-records/provider_reconcile_receipt.yaml' }
+  /api/v1/talk-records/{id}/jobs/{job_id}/client-executions/{run_id}/provider-tasks/{task_id}/submit-intents: { $ref: './paths/api/v1/talk-records/provider_submit_intent.yaml' }
+  /api/v1/talk-records/{id}/jobs/{job_id}/client-executions/{run_id}/provider-tasks/{task_id}/submission-receipts: { $ref: './paths/api/v1/talk-records/provider_submission_receipt.yaml' }
+  /api/v1/talk-records/{id}/jobs/{job_id}/client-executions/{run_id}/provider-tasks/{task_id}/query-intents: { $ref: './paths/api/v1/talk-records/provider_query_intent.yaml' }
+  /api/v1/talk-records/{id}/jobs/{job_id}/client-executions/{run_id}/provider-tasks/{task_id}/query-receipts: { $ref: './paths/api/v1/talk-records/provider_query_receipt.yaml' }
+  /api/v1/talk-records/{id}/jobs/{job_id}/client-executions/{run_id}/provider-tasks/{task_id}/complete: { $ref: './paths/api/v1/talk-records/provider_complete.yaml' }
+  /api/v1/talk-records/client-audio-source: { $ref: './paths/api/v1/talk-records/client_audio_source.yaml' }
+  /api/v1/talk-records/{id}/jobs/{job_id}/client-executions/latest: { $ref: './paths/api/v1/talk-records/client_latest.yaml' }
+  /api/v1/talk-records/{id}/jobs/{job_id}/client-executions/recover-unprepared: { $ref: './paths/api/v1/talk-records/client_recover_unprepared.yaml' }
+  /api/v1/e2ee/olm/identity: { $ref: './paths/api/v1/e2ee/olm-identity.yaml' }
+  /api/v1/e2ee/olm/prekeys: { $ref: './paths/api/v1/e2ee/olm-prekeys.yaml' }
+  /api/v1/e2ee/olm/fallback_key: { $ref: './paths/api/v1/e2ee/olm-fallback-key.yaml' }
+  /api/v1/e2ee/olm/get_identity: { $ref: './paths/api/v1/e2ee/olm-get-identity.yaml' }
+  /api/v1/e2ee/olm/prekey_count: { $ref: './paths/api/v1/e2ee/olm-prekey-count.yaml' }
+  /api/v1/e2ee/olm/claim: { $ref: './paths/api/v1/e2ee/olm-claim.yaml' }
+  /api/v1/e2ee/devices/batch_claim: { $ref: './paths/api/v1/e2ee/devices-batch-claim.yaml' }
+  /api/v1/e2ee/devices: { $ref: './paths/api/v1/e2ee/devices.yaml' }
+  /api/v1/channel/qrcode: { $ref: './paths/api/v1/channel/qrcode.yaml' }
+  /api/v1/workspaces/mine: { $ref: './paths/api/v1/workspace/mine.yaml' }
+  /api/v1/workspaces/{workspace_id}: { $ref: './paths/api/v1/workspace/detail.yaml' }
+  /api/v1/workspaces/{workspace_id}/update: { $ref: './paths/api/v1/workspace/update.yaml' }
+  /api/v1/workspaces/{workspace_id}/branding: { $ref: './paths/api/v1/workspace/branding.yaml' }
+  /api/v1/workspaces/{workspace_id}/overview: { $ref: './paths/api/v1/workspace/overview.yaml' }
+  /api/v1/workspaces/{workspace_id}/members: { $ref: './paths/api/v1/workspace/members.yaml' }
+  /api/v1/workspaces/{workspace_id}/members/invite: { $ref: './paths/api/v1/workspace/member-invite.yaml' }
+  /api/v1/workspaces/{workspace_id}/members/remove: { $ref: './paths/api/v1/workspace/member-remove.yaml' }
+  /api/v1/workspaces/{workspace_id}/members/role: { $ref: './paths/api/v1/workspace/member-role.yaml' }
+  /api/v1/workspaces/{workspace_id}/members/transfer_owner: { $ref: './paths/api/v1/workspace/owner-transfer.yaml' }
+  /api/v1/workspaces/{workspace_id}/invite_code: { $ref: './paths/api/v1/workspace/invite-code.yaml' }
+  /api/v1/workspaces/{workspace_id}/invite_code/revoke: { $ref: './paths/api/v1/workspace/invite-code-revoke.yaml' }
+  /api/v1/workspaces/join: { $ref: './paths/api/v1/workspace/join.yaml' }
+  /api/v1/workspaces/{workspace_id}/archive: { $ref: './paths/api/v1/workspace/archive.yaml' }
+  /api/v1/workspaces/{workspace_id}/restore: { $ref: './paths/api/v1/workspace/restore.yaml' }
+  /api/v1/workspaces/{workspace_id}/attachments: { $ref: './paths/api/v1/workspace/attachments.yaml' }
+  /api/v1/workspaces/{workspace_id}/attachments/{attachment_id}/open: { $ref: './paths/api/v1/workspace/attachment-open.yaml' }
+  /api/v1/organizations/{organization_id}/archive: { $ref: './paths/api/v1/organization/archive.yaml' }
+  /api/v1/organizations/{organization_id}/restore: { $ref: './paths/api/v1/organization/restore.yaml' }
+  /api/v1/organizations/{organization_id}/members/{user_id}/suspend: { $ref: './paths/api/v1/organization/member-suspend.yaml' }
+  /api/v1/organizations/{organization_id}/members/{user_id}/restore: { $ref: './paths/api/v1/organization/member-restore.yaml' }
+  /api/v1/organizations/{organization_id}/members/{user_id}/offboard: { $ref: './paths/api/v1/organization/member-offboard.yaml' }
+  /api/v1/organizations/{organization_id}/members/{user_id}/workspaces: { $ref: './paths/api/v1/organization/member-workspaces.yaml' }
+  /api/v1/organizations/deletion-preflight: { $ref: './paths/api/v1/organization/deletion-preflight.yaml' }
+  /api/v1/organizations/invitations/mine: { $ref: './paths/api/v1/organization/invitations-mine.yaml' }
+  /api/v1/organizations/{organization_id}/invitations: { $ref: './paths/api/v1/organization/invitations.yaml' }
+  /api/v1/organizations/{organization_id}/invitations/accept: { $ref: './paths/api/v1/organization/invitation-accept.yaml' }
+  /api/v1/organizations/{organization_id}/invitations/{invitation_id}/reject: { $ref: './paths/api/v1/organization/invitation-reject.yaml' }
+  /api/v1/organizations/{organization_id}/invitations/{invitation_id}/revoke: { $ref: './paths/api/v1/organization/invitation-revoke.yaml' }
+  /api/v1/organizations/{organization_id}/departments: { $ref: './paths/api/v1/organization/departments.yaml' }
+  /api/v1/organizations/{organization_id}/departments/{department_id}: { $ref: './paths/api/v1/organization/department.yaml' }
+  /api/v1/organizations/{organization_id}/departments/{department_id}/move: { $ref: './paths/api/v1/organization/department-move.yaml' }
+  /api/v1/organizations/{organization_id}/departments/{department_id}/archive: { $ref: './paths/api/v1/organization/department-archive.yaml' }
+  /api/v1/organizations/{organization_id}/departments/{department_id}/members: { $ref: './paths/api/v1/organization/department-members.yaml' }
+  /api/v1/organizations/{organization_id}/departments/{department_id}/members/{user_id}: { $ref: './paths/api/v1/organization/department-member.yaml' }
+  /api/v1/organizations/{organization_id}/departments/{department_id}/members/{user_id}/admin: { $ref: './paths/api/v1/organization/department-member-admin.yaml' }
+  /api/v1/organizations/{organization_id}/default-workspace: { $ref: './paths/api/v1/organization/default-workspace.yaml' }
+  /api/v1/organizations/{organization_id}/invite_code: { $ref: './paths/api/v1/organization/invite-code.yaml' }
+  /api/v1/organizations/{organization_id}/invite_code/join: { $ref: './paths/api/v1/organization/invite-code-join.yaml' }
+  /api/v1/organizations/invite_code/join: { $ref: './paths/api/v1/organization/invite-code-join-only.yaml' }
+  /api/v1/organizations/invite_code/preview: { $ref: './paths/api/v1/organization/invite-code-preview.yaml' }
+  /api/v1/organizations/{organization_id}/directory/departments: { $ref: './paths/api/v1/organization/directory-departments.yaml' }
+  /api/v1/organizations/{organization_id}/directory/members: { $ref: './paths/api/v1/organization/directory-members.yaml' }
+  /api/v1/organizations/{organization_id}/directory/search: { $ref: './paths/api/v1/organization/directory-search.yaml' }
+  /api/v1/organizations/{organization_id}/directory/me: { $ref: './paths/api/v1/organization/directory-me.yaml' }
+  /api/v1/channel/{channel_id}/archive: { $ref: './paths/api/v1/channel/archive.yaml' }
+  /api/v1/channel/{channel_id}/restore: { $ref: './paths/api/v1/channel/restore.yaml' }
+  /api/v1/channel/{channel_id}/message/{message_id}: { $ref: './paths/api/v1/channel/message-show.yaml' }
+  /api/v1/channel/{channel_id}/message/{message_id}/comments: { $ref: './paths/api/v1/channel/comment-list.yaml' }
+  /api/v1/channel/{channel_id}/message/{message_id}/comment: { $ref: './paths/api/v1/channel/comment-create.yaml' }
+  /api/v1/channel/{channel_id}/comment/{comment_id}/delete: { $ref: './paths/api/v1/channel/comment-delete.yaml' }
+  /api/v1/channel/{channel_id}/comment/{comment_id}/like: { $ref: './paths/api/v1/channel/comment-like.yaml' }
+  /api/v1/channel/{channel_id}/comment/{comment_id}/unlike: { $ref: './paths/api/v1/channel/comment-unlike.yaml' }
+  /api/v1/channel/{channel_id}/webhook/{webhook_id}/rotate: { $ref: './paths/api/v1/channel/webhook-rotate.yaml' }
+  /api/v1/channel/order/cancel: { $ref: './paths/api/v1/channel/order-cancel.yaml' }
+  /api/v1/channel/order/refund: { $ref: './paths/api/v1/channel/order-refund.yaml' }
+  /api/v1/e2ee/group_history_grant: { $ref: './paths/api/v1/e2ee/group-history-grant.yaml' }
+  /api/v1/groups/{group_id}/read: { $ref: './paths/api/v1/workspace/group-read.yaml' }
+  /api/v1/agent/categories: { $ref: './paths/api/v1/ai-agent/categories.yaml' }
+  /api/v1/agent-card: { $ref: './paths/api/v1/ai-agent/card.yaml' }
+  /api/v1/agent/mandate/authorize: { $ref: './paths/api/v1/ai-agent/mandate-authorize.yaml' }
+  /api/v1/agent/mandate/revoke: { $ref: './paths/api/v1/ai-agent/mandate-revoke.yaml' }
+  /api/v1/agent/mandate/active: { $ref: './paths/api/v1/ai-agent/mandate-active.yaml' }
+  /api/v1/agent_task/approve: { $ref: './paths/api/v1/ai-agent/task-approve.yaml' }
+  /api/v1/agent_task/reject: { $ref: './paths/api/v1/ai-agent/task-reject.yaml' }
+  /api/v1/appeal/create: { $ref: './paths/api/v1/appeal/create.yaml' }
+  /api/v1/appeal/my: { $ref: './paths/api/v1/appeal/mine.yaml' }
+  /api/v1/appeal/actions: { $ref: './paths/api/v1/appeal/actions.yaml' }
+  /api/v1/auth/wechat-mini/login: { $ref: './paths/api/v1/auth/wechat-mini-login.yaml' }
+  /api/v1/oa/sso/code: { $ref: './paths/api/v1/auth/oa-sso-code.yaml' }
+  /api/v1/workbench/entries: { $ref: './paths/api/v1/auth/workbench-entries.yaml' }
+  /api/v1/wallet/recharge/confirm: { $ref: './paths/api/v1/wallet/recharge-confirm.yaml' }
+  /api/v1/wallet/transfer/accept: { $ref: './paths/api/v1/wallet/transfer-accept.yaml' }
+  /api/v1/wallet/red_packet/send: { $ref: './paths/api/v1/wallet/red-packet-send.yaml' }
+  /api/v1/wallet/red_packet/open: { $ref: './paths/api/v1/wallet/red-packet-open.yaml' }
+  /api/v1/wallet/red_packet/{id}/detail: { $ref: './paths/api/v1/wallet/red-packet-detail.yaml' }
+  /api/v1/attachment/direct/register: { $ref: './paths/api/v1/attachment/direct-register.yaml' }
+  /api/v1/attachment/direct/declare: { $ref: './paths/api/v1/attachment/direct-declare.yaml' }
+  /api/v1/attachment/direct/grant: { $ref: './paths/api/v1/attachment/direct-grant.yaml' }
+  /api/v1/attachment/direct/renew: { $ref: './paths/api/v1/attachment/direct-renew.yaml' }
+  /api/v1/attachment/direct/finalize: { $ref: './paths/api/v1/attachment/direct-finalize.yaml' }
+  /api/v1/attachment/direct/status: { $ref: './paths/api/v1/attachment/direct-status.yaml' }
+  /api/v1/attachment/upload: { $ref: './paths/api/v1/attachment/upload.yaml' }
+  /api/v1/attachment/content: { $ref: './paths/api/v1/attachment/content.yaml' }
+  /api/v1/group/file/bind: { $ref: './paths/api/v1/group/file-bind.yaml' }
+  /api/v1/group_album/photo/bind: { $ref: './paths/api/v1/group-album/photo-bind.yaml' }
+  /api/v1/group_album/photo/bind_batch: { $ref: './paths/api/v1/group-album/photo-bind-batch.yaml' }
+  /api/v1/user/deletion_status: { $ref: './paths/api/v1/user/deletion-status.yaml' }
+  /api/v1/passport/alipay_authinfo: { $ref: './paths/api/v1/auth/alipay-authinfo.yaml' }
+  /api/v1/passport/alipay_login: { $ref: './paths/api/v1/auth/alipay-login.yaml' }
+  /api/v1/payment/callback/{gateway}: { $ref: './paths/api/v1/wallet/payment-callback.yaml' }
+  /api/v1/mcp: { $ref: './paths/api/v1/ai-agent/mcp.yaml' }
+  /api/v1/agent/discover: { $ref: './paths/api/v1/ai-agent/discover.yaml' }
+  /api/v1/agent/search: { $ref: './paths/api/v1/ai-agent/search.yaml' }
+  /api/v1/cs/me/seat-contexts: {$ref: './paths/api/v1/customer-service/seat-contexts.yaml'}
+  /api/v1/cs/organizations/{org_id}/sessions/queue: {$ref: './paths/api/v1/customer-service/session-queue.yaml'}
+  /api/v1/cs/organizations/{org_id}/sessions/{id}/claim: {$ref: './paths/api/v1/customer-service/session-claim.yaml'}
+  /api/v1/cs/organizations/{org_id}/sessions/{id}/transfer: {$ref: './paths/api/v1/customer-service/session-transfer.yaml'}
+  /api/v1/cs/organizations/{org_id}/sessions/{id}/close: {$ref: './paths/api/v1/customer-service/session-close.yaml'}
+  /api/v1/cs/sessions: {$ref: './paths/api/v1/customer-service/visitor-sessions.yaml'}
+  /api/v1/cs/sessions/{id}/messages: {$ref: './paths/api/v1/customer-service/session-messages.yaml'}
+  /api/v1/cs/sessions/{id}/rating: {$ref: './paths/api/v1/customer-service/session-rating.yaml'}
+  /api/v1/cs/organizations/{org_id}/seats: {$ref: './paths/api/v1/customer-service/seats.yaml'}
+  /api/v1/cs/organizations/{org_id}/seats/{id}/suspend: {$ref: './paths/api/v1/customer-service/seat-suspend.yaml'}
+  /api/v1/cs/organizations/{org_id}/seats/{id}/resume: {$ref: './paths/api/v1/customer-service/seat-resume.yaml'}
+  /api/v1/cs/organizations/{org_id}/shop-keys: {$ref: './paths/api/v1/customer-service/shop-key-list.yaml'}
+  /api/v1/cs/organizations/{org_id}/shop-keys/{id}/revoke: {$ref: './paths/api/v1/customer-service/shop-key-revoke.yaml'}
+  /api/v1/cs/organizations/{org_id}/visit-tokens: {$ref: './paths/api/v1/customer-service/visit-token-list.yaml'}
+  /api/v1/cs/organizations/{org_id}/visit-tokens/{id}/revoke: {$ref: './paths/api/v1/customer-service/visit-token-revoke.yaml'}
+  /api/v1/cs/organizations/{org_id}/sessions/{id}: {$ref: './paths/api/v1/customer-service/session-detail.yaml'}
+  /api/v1/cs/organizations/{org_id}/sessions/{id}/context: {$ref: './paths/api/v1/customer-service/session-customer-context.yaml'}
+  /api/v1/cs/organizations/{org_id}/sessions/{id}/read-cursor: {$ref: './paths/api/v1/customer-service/session-read-cursor.yaml'}
+  /api/v1/cs/organizations/{org_id}/seat-limit: {$ref: './paths/api/v1/customer-service/seat-limit-governance.yaml'}
+  /api/v1/cs/organizations/{org_id}/stats/sessions: {$ref: './paths/api/v1/customer-service/session-stats.yaml'}
+  /api/v1/cs/organizations/{org_id}/seats/me/heartbeat: {$ref: './paths/api/v1/customer-service/seat-presence-heartbeat.yaml'}
+  /api/v1/cs/organizations/{org_id}/seats/me/presence: {$ref: './paths/api/v1/customer-service/seat-presence-status.yaml'}
+  /api/v1/cs/organizations/{org_id}/seats/presence: {$ref: './paths/api/v1/customer-service/seat-presence-list.yaml'}
+  /api/v1/cs/organizations/{org_id}/seats/sessions: {$ref: './paths/api/v1/customer-service/seat-session-list.yaml'}
+  /api/v1/cs/organizations/{org_id}/transfer-targets: {$ref: './paths/api/v1/customer-service/transfer-targets.yaml'}
+  /api/v1/cs/organizations/{org_id}/seats/me/events: {$ref: './paths/api/v1/customer-service/seat-events.yaml'}
+  /api/v1/cs/widget/bootstrap: {$ref: './paths/api/v1/customer-service/widget-bootstrap.yaml'}
+  /api/v1/cs/widget/identity/exchange: {$ref: './paths/api/v1/customer-service/widget-identity-exchange.yaml'}
+  /api/v1/cs/widget/frame/{installation_id}: {$ref: './paths/api/v1/customer-service/widget-frame-html.yaml'}
+  /w/{public_widget_id}: {$ref: './paths/api/v1/customer-service/widget-public-frame-html.yaml'}
+  /seat/{public_seat_console_id}: {$ref: './paths/api/v1/customer-service/seat-console-frame-html.yaml'}
+  /api/v1/cs/widget/sessions: {$ref: './paths/api/v1/customer-service/widget-sessions.yaml'}
+  /api/v1/cs/widget/sessions/{id}/messages: {$ref: './paths/api/v1/customer-service/widget-session-messages.yaml'}
+  /api/v1/cs/widget/sessions/{id}/events: {$ref: './paths/api/v1/customer-service/widget-session-events.yaml'}
+  /api/v1/cs/widget/sessions/{id}/assets/presign: {$ref: './paths/api/v1/customer-service/widget-asset-upload.yaml'}
+  /api/v1/cs/widget/sessions/{id}/assets/confirm: {$ref: './paths/api/v1/customer-service/widget-asset-confirm.yaml'}
+  /api/v1/cs/widget/sessions/{id}/assets/upload: {$ref: './paths/api/v1/customer-service/widget-asset-put.yaml'}
+  /api/v1/cs/widget/sessions/{id}/assets/{asset}/content: {$ref: './paths/api/v1/customer-service/widget-asset-content.yaml'}
+  /api/v1/cs/widget/sessions/{id}/rating: {$ref: './paths/api/v1/customer-service/widget-session-rating.yaml'}
+  /api/v1/seat/cs/me/seat-contexts: {$ref: './paths/api/v1/customer-service/seat-mirror-seat-contexts.yaml'}
+  /api/v1/seat/cs/organizations/{org_id}/sessions/queue: {$ref: './paths/api/v1/customer-service/seat-mirror-session-queue.yaml'}
+  /api/v1/seat/cs/organizations/{org_id}/sessions/{id}/claim: {$ref: './paths/api/v1/customer-service/seat-mirror-session-claim.yaml'}
+  /api/v1/seat/cs/organizations/{org_id}/sessions/{id}/transfer: {$ref: './paths/api/v1/customer-service/seat-mirror-session-transfer.yaml'}
+  /api/v1/seat/cs/organizations/{org_id}/sessions/{id}/close: {$ref: './paths/api/v1/customer-service/seat-mirror-session-close.yaml'}
+  /api/v1/seat/enterprise/conversations/{conversation_id}/messages: {$ref: './paths/api/v1/customer-service/seat-mirror-conversation-messages.yaml'}
+  /api/v1/seat/cs/organizations/{org_id}/sessions/{id}: {$ref: './paths/api/v1/customer-service/seat-mirror-session-detail.yaml'}
+  /api/v1/seat/cs/organizations/{org_id}/sessions/{id}/context: {$ref: './paths/api/v1/customer-service/seat-mirror-session-customer-context.yaml'}
+  /api/v1/seat/cs/organizations/{org_id}/sessions/{id}/read-cursor: {$ref: './paths/api/v1/customer-service/seat-mirror-session-read-cursor.yaml'}
+  /api/v1/seat/cs/organizations/{org_id}/seats/me/heartbeat: {$ref: './paths/api/v1/customer-service/seat-mirror-seat-presence-heartbeat.yaml'}
+  /api/v1/seat/cs/organizations/{org_id}/seats/me/presence: {$ref: './paths/api/v1/customer-service/seat-mirror-seat-presence-status.yaml'}
+  /api/v1/seat/cs/organizations/{org_id}/seats/presence: {$ref: './paths/api/v1/customer-service/seat-mirror-seat-presence-list.yaml'}
+  /api/v1/seat/cs/organizations/{org_id}/seats/sessions: {$ref: './paths/api/v1/customer-service/seat-mirror-seat-session-list.yaml'}
+  /api/v1/seat/cs/organizations/{org_id}/transfer-targets: {$ref: './paths/api/v1/customer-service/seat-mirror-transfer-targets.yaml'}
+  /api/v1/seat/cs/organizations/{org_id}/seats/me/events: {$ref: './paths/api/v1/customer-service/seat-mirror-seat-events.yaml'}
+  /api/v1/enterprise/conversations/{conversation_id}/messages: {$ref: './paths/api/v1/customer-service/conversation-messages.yaml'}
+  /api/v1/enterprise/organizations/{org_id}/business-identities: {$ref: './paths/api/v1/enterprise-business/business_identities.yaml'}
+  /api/v1/enterprise/organizations/{org_id}/business-identities/{id}/assign: {$ref: './paths/api/v1/enterprise-business/assign_identity.yaml'}
+  /api/v1/enterprise/organizations/{org_id}/contacts: {$ref: './paths/api/v1/enterprise-business/contacts.yaml'}
+  /api/v1/enterprise/organizations/{org_id}/contacts/{id}: {$ref: './paths/api/v1/enterprise-business/contact_detail.yaml'}
+  /api/v1/enterprise/organizations/{org_id}/contacts/{id}/notes: {$ref: './paths/api/v1/enterprise-business/append_note.yaml'}
+  /api/v1/enterprise/organizations/{org_id}/conversations: {$ref: './paths/api/v1/enterprise-business/open_conversation.yaml'}
+  /api/v1/enterprise/organizations/{org_id}/conversations/{id}/messages: {$ref: './paths/api/v1/enterprise-business/conversation_messages.yaml'}
+  /api/v1/enterprise/organizations/{org_id}/conversations/{id}/messages/{message_id}/ack: {$ref: './paths/api/v1/enterprise-business/ack_delivery.yaml'}
+  /api/v1/enterprise/organizations/{org_id}/assets/presign: {$ref: './paths/api/v1/enterprise-business/presign.yaml'}
+  /api/v1/enterprise/organizations/{org_id}/assets/confirm: {$ref: './paths/api/v1/enterprise-business/confirm_asset.yaml'}
+  /api/v1/enterprise/organizations/{org_id}/assets/{id}/content: {$ref: './paths/api/v1/enterprise-business/asset_content.yaml'}
+  /api/v1/enterprise/organizations/{org_id}/members/{uid}/suspend: {$ref: './paths/api/v1/enterprise-business/suspend_member.yaml'}
+  /api/v1/enterprise/organizations/{org_id}/offboarding: {$ref: './paths/api/v1/enterprise-business/offboarding_open.yaml'}
+  /api/v1/enterprise/organizations/{org_id}/offboarding/{id}/execute: {$ref: './paths/api/v1/enterprise-business/offboarding_execute.yaml'}
+  /api/v1/enterprise/organizations/{org_id}/offboarding/{id}/verify: {$ref: './paths/api/v1/enterprise-business/offboarding_verify.yaml'}
+  /api/v1/enterprise/organizations/{org_id}/offboarding/{id}/finalize: {$ref: './paths/api/v1/enterprise-business/offboarding_finalize.yaml'}
+  /api/v1/enterprise/organizations/{org_id}/offboarding/cases: {$ref: './paths/api/v1/enterprise-business/offboarding_list.yaml'}
+  /api/v1/enterprise/organizations/{org_id}/offboarding/cases/{id}: {$ref: './paths/api/v1/enterprise-business/offboarding_detail.yaml'}
 
 components:
   securitySchemes:
+    csVisitToken: {in: header, name: X-CS-Visit-Token, type: apiKey}
+    csShopKey: {in: header, name: X-CS-Shop-Key, type: apiKey}
+    seatBearerAuth: {bearerFormat: Seat JWT (purpose=seat), scheme: bearer, type: http}
+    mcpClientCredential:
+      type: http
+      scheme: bearer
+      description: 独立 MCP client secret，由 MCP 治理面签发；非用户 JWT。
+    botToken:
+      type: http
+      scheme: bearer
+      description: 开发者 Bot 的 opaque api_token；不是用户 JWT。
+    wsQueryToken:
+      type: apiKey
+      in: query
+      name: token
+      description: WebSocket 浏览器接入使用的访问 JWT；Authorization header 优先。
     bearerAuth:
       type: http
       scheme: bearer
       bearerFormat: JWT
       description: |
-        JWT 载荷 `sub` 为 TSID integer 字符串；过期后前端需调用 `/passport/refresh`
-        而非直接重连（此前反转逻辑已于 1.0.0-rc.1 修复）。
+        JWT 载荷 `sub` 为 TSID integer 字符串；刷新入口为 `/api/v1/refreshtoken`。
 
   schemas:
     MicroCommunityEntityId:
-      type: integer
-      format: int64
-      minimum: 1
-      maximum: 9223372036854775807
-      description: JSON bigint；客户端解析为 EntityId，禁止经 JavaScript Number 丢失精度。 / JSON
-        bigint; preserve exact client EntityId.
+      $ref: './components/schemas/MicroCommunityEntityId.yaml'
     MicroCommunityBinding:
-      type: object
-      required:
-      - discussion_group_id
-      properties:
-        discussion_group_id:
-          type:
-          - integer
-          - 'null'
-          format: int64
-          minimum: 1
-          maximum: 9223372036854775807
+      $ref: './components/schemas/MicroCommunityBinding.yaml'
     MicroCommunityTagsInput:
-      type: array
-      maxItems: 5
-      description: 按原始项数最多5；UTF-8字符串trim后1–20 Unicode code points，去重保序；空数组清空。 / At
-        most 5 raw items; trim, validate 1–20 Unicode code points, stable deduplicate;
-        [] clears.
-      items:
-        type: string
-        x-normalized-minLength: 1
-        x-normalized-maxLength: 20
+      $ref: './components/schemas/MicroCommunityTagsInput.yaml'
     MicroCommunityEssenceInput:
-      type: object
-      required:
-      - is_essence
-      properties:
-        is_essence:
-          type: boolean
-          description: 独立于is_pinned。 / Independent of is_pinned.
+      $ref: './components/schemas/MicroCommunityEssenceInput.yaml'
     MicroCommunityTagsPatch:
-      type: object
-      required:
-      - tags
-      properties:
-        tags:
-          $ref: '#/components/schemas/MicroCommunityTagsInput'
+      $ref: './components/schemas/MicroCommunityTagsPatch.yaml'
     MicroCommunityCandidatePage:
-      type: object
-      required:
-      - list
-      - total
-      - page
-      - size
-      properties:
-        list:
-          type: array
-          items:
-            type: object
-            required:
-            - id
-            - title
-            properties:
-              id:
-                $ref: '#/components/schemas/MicroCommunityEntityId'
-              title:
-                type: string
-        total:
-          type: integer
-          minimum: 0
-        page:
-          type: integer
-          minimum: 1
-        size:
-          type: integer
-          minimum: 1
-          maximum: 50
+      $ref: './components/schemas/MicroCommunityCandidatePage.yaml'
     MicroCommunityPost:
-      type: object
-      properties:
-        id:
-          $ref: '#/components/schemas/MicroCommunityEntityId'
-        channel_id:
-          $ref: '#/components/schemas/MicroCommunityEntityId'
-        author_id:
-          $ref: '#/components/schemas/MicroCommunityEntityId'
-        content:
-          type: string
-        msg_type:
-          type: string
-        payload:
-          type: object
-          additionalProperties: true
-          properties:
-            tags:
-              type: array
-              maxItems: 5
-              items:
-                type: string
-                minLength: 1
-                maxLength: 20
-        is_essence:
-          type: boolean
-        is_pinned:
-          type: boolean
+      $ref: './components/schemas/MicroCommunityPost.yaml'
     MicroCommunityPostPage:
-      type: object
-      required:
-      - list
-      - total
-      - page
-      - size
-      properties:
-        list:
-          type: array
-          items:
-            $ref: '#/components/schemas/MicroCommunityPost'
-        total:
-          type: integer
-          minimum: 0
-        page:
-          type: integer
-          minimum: 1
-        size:
-          type: integer
-          minimum: 1
-          maximum: 50
+      $ref: './components/schemas/MicroCommunityPostPage.yaml'
     MicroCommunityEssenceResult:
-      type: object
-      required:
-      - id
-      - is_essence
-      - is_pinned
-      properties:
-        id:
-          $ref: '#/components/schemas/MicroCommunityEntityId'
-        is_essence:
-          type: boolean
-        is_pinned:
-          type: boolean
+      $ref: './components/schemas/MicroCommunityEssenceResult.yaml'
     MicroCommunityTagsResult:
-      type: object
-      required:
-      - id
-      - payload
-      properties:
-        id:
-          $ref: '#/components/schemas/MicroCommunityEntityId'
-        payload:
-          type: object
-          additionalProperties: true
-          properties:
-            tags:
-              type: array
-              maxItems: 5
-              items:
-                type: string
-                minLength: 1
-                maxLength: 20
+      $ref: './components/schemas/MicroCommunityTagsResult.yaml'
     MicroCommunityErrorEnvelope:
-      allOf:
-      - $ref: '#/components/schemas/Envelope'
-      - type: object
-        properties:
-          code:
-            type: integer
-            minimum: 1
-          payload:
-            type: object
-            maxProperties: 0
+      $ref: './components/schemas/MicroCommunityErrorEnvelope.yaml'
     MicroCommunityBindingEnvelope:
-      allOf:
-      - $ref: '#/components/schemas/Envelope'
-      - type: object
-        properties:
-          code:
-            type: integer
-            const: 0
-          payload:
-            $ref: '#/components/schemas/MicroCommunityBinding'
+      $ref: './components/schemas/MicroCommunityBindingEnvelope.yaml'
     MicroCommunityCandidatePageEnvelope:
-      allOf:
-      - $ref: '#/components/schemas/Envelope'
-      - type: object
-        properties:
-          code:
-            type: integer
-            const: 0
-          payload:
-            $ref: '#/components/schemas/MicroCommunityCandidatePage'
+      $ref: './components/schemas/MicroCommunityCandidatePageEnvelope.yaml'
     MicroCommunityPostPageEnvelope:
-      allOf:
-      - $ref: '#/components/schemas/Envelope'
-      - type: object
-        properties:
-          code:
-            type: integer
-            const: 0
-          payload:
-            $ref: '#/components/schemas/MicroCommunityPostPage'
+      $ref: './components/schemas/MicroCommunityPostPageEnvelope.yaml'
     MicroCommunityEssenceResultEnvelope:
-      allOf:
-      - $ref: '#/components/schemas/Envelope'
-      - type: object
-        properties:
-          code:
-            type: integer
-            const: 0
-          payload:
-            $ref: '#/components/schemas/MicroCommunityEssenceResult'
+      $ref: './components/schemas/MicroCommunityEssenceResultEnvelope.yaml'
     MicroCommunityTagsResultEnvelope:
-      allOf:
-      - $ref: '#/components/schemas/Envelope'
-      - type: object
-        properties:
-          code:
-            type: integer
-            const: 0
-          payload:
-            $ref: '#/components/schemas/MicroCommunityTagsResult'
-    # ----------------------------------------------------------------------
-    # T3.2 split phase 1 (2026-05-16)：通用 schema 抽离为独立文件，
-    # 便于 review、按域演进、避免单文件膨胀至万行。
-    # 根 yaml 仍保持内部锚 #/components/schemas/<Name> 不变，
-    # 现有 paths 中的 $ref 无需调整。
-    # ----------------------------------------------------------------------
+      $ref: './components/schemas/MicroCommunityTagsResultEnvelope.yaml'
     Envelope:
       $ref: './components/schemas/Envelope.yaml'
     User:

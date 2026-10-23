@@ -1,5 +1,8 @@
 # POST /api/adm/group/notice/delete — admin
 post:
+  security:
+    - adminSessionId: []
+      adminSessionSignature: []
   tags: [admin]
   summary: 管理后台删除群公告
   description: 管理员删除指定群公告。Delete a group notice by admin.

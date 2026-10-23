@@ -5,8 +5,8 @@
 > **机器契约**：`api/openapi-internal.yaml`（编辑真源，34 path / 49 端点，
 > 字段级 schema 逐端点实证自 handler）；`api/openapi-internal.bundle.yaml`
 > （bundle 单文件，可直接导入 Postman / Apifox / openapi-generator）。
-> 本目录是面向集成方的交付文档。路由与合同由 12 项机械断言
-> （`scripts/check_enterprise_release_manifest.py`）持续守护，文档漂移会被门禁发现。
+> 本目录是面向集成方的交付文档。路由与合同由静态机械断言
+> （`scripts/check_enterprise_release_manifest.py`）持续检查；它们不替代字段级核对与真实 HTTP 验证。
 
 本目录就是给集成方的交付物：整个 `v1/` 目录可直接打包发给对接方。
 Base URL（协议/域名/端口）由部署方提供，本文档只约定路径与协议语义。
@@ -14,7 +14,7 @@ Base URL（协议/域名/端口）由部署方提供，本文档只约定路径�
 > **不要把 Admin 菜单接口等同于 Internal API**：运营后台使用 Admin Cookie +
 > `/api/adm/*`；本目录使用 Application Credential + `/api/internal/v1/*`。
 > 两者不能互换。组织、Workspace、项目、企业频道、客服坐席等运营治理资源的
-> 当前覆盖与待补合同，见 [endpoints.md 的 CRUD 覆盖审计](./endpoints.md#企业数据-crud-覆盖审计2026-09-23)。
+> 当前覆盖范围，见 [endpoints.md 的资源覆盖范围](./endpoints.md#资源覆盖范围)。
 
 ---
 
@@ -33,7 +33,8 @@ Base URL（协议/域名/端口）由部署方提供，本文档只约定路径�
 | 好友申请 | 代 OA 用户发起（只发起、不自动通过，见 §6）（INT-11） |
 | Webhook | 登记出站回调、查询/重放投递、连通性测试（INT-12/13/23/32） |
 | OA SSO | 一次性 code 原子交换登录态（INT-14）；入站登录签票（INT-44） |
-| 来源目录 | 显式增量同步（INT-43），组织/部门/人员版本与投影核对（INT-45..47） |
+| 来源目录 | 显式增量同步（INT-43），组织/部门/人员核对（INT-45..47），成员离职检查及停用/恢复（INT-48/49） |
+| 客服坐席 | 列表、详情、开通和调整配置（INT-33..36）；不签发坐席身份 |
 | 企业项目只读 | 列表与详情（INT-28/29） |
 | 企业频道 | 列表与详情（INT-30/31）；创建、修改、软归档（INT-40..42） |
 
@@ -158,11 +159,24 @@ idempotency key and body are signed.
 `internal_sso`（SSO 交换与入站签票）。超限返回 `rate_limited`（429），并携带
 `Retry-After` 响应头（delta-seconds＝窗口剩余时间向上取整，最小 1s；
 v1.1.1 起提供）；具体阈值由部署配置，
-**认证失败也计读桶**（fail-closed：挡不住时宁可错杀）。
+配置或存储不可用时返回 `security_gate_closed`（503）。
 
-**幂等**：所有写动作（下表标 `required`）必须携带 `Idempotency-Key` 头，
-同一 key 重复提交返回首次结果而非二次生效；key 冲突返回
-`idempotency_conflict`（409）。SSO 交换的 code 本身一次性（`single_use_code`）。
+**幂等**：所有标记 `required` 的操作必须携带 `Idempotency-Key` 头，
+key 为 **1..128 个可打印 ASCII 字符**（`0x20..0x7E`，不含控制字符）。
+幂等作用域为 `(organization_id, application_id, key)`，默认有效期 **24 小时**；
+部署可通过 `enterprise_internal_idempotency_ttl_seconds` 设置正整数秒数。
+窗口到期后，相同 key 的下一次请求会被视为新请求，不能依赖它永久去重。
+
+窗口内重试必须保持相同方法、具体路径与规范化 JSON 内容；对象键顺序不影响
+幂等摘要，浮点数或不可规范化正文被拒绝。不要混淆两种摘要：HMAC 签名始终
+使用原始正文字节；每次重试须重新生成时间戳、nonce 和签名。
+普通已完成写请求重放首次提交的 HTTP 状态和 JSON 正文字节，并附
+`Idempotent-Replayed: true`；当前凭证及业务归属检查仍执行，重放不重复业务写入和审计。
+同 key 换方法、路径或内容返回 `idempotency_conflict`（409）。
+INT-07 附件能力是例外：幂等记录保存登记事实，重放仍重新授权、读取当前会话并签发能力；
+会话确认、过期或配置不可用时，响应可变化或返回 409/410/503，不能缓存首次上传能力长期使用。
+以端点 `x-imboy-idempotency` 为准：读取用 POST 也可以是 `not_required`；
+INT-14 的 code 本身一次性（`single_use_code`）；INT-44 不要求该头，票据单次消费。
 
 ## 6. 消息发送者语义（`sender_mode`）— 重要
 
@@ -190,7 +204,7 @@ v1.1.1 起提供）；具体阈值由部署配置，
 { "error": { "code": "invalid_credential", "message": "..." } }
 ```
 
-15 个稳定错误码（`code` 为机器可读、snake_case、**长期稳定**，勿按 message 文案做逻辑）：
+通用模型含 15 个稳定错误码（`code` 为机器可读、snake_case、**长期稳定**，勿按 message 文案做逻辑）：
 
 | code | HTTP | 含义 |
 |---|---|---|
@@ -210,9 +224,12 @@ v1.1.1 起提供）；具体阈值由部署配置，
 | `resource_conflict` | 409 | 资源已存在，例如坐席重复开通 |
 | `seat_limit_exceeded` | 409 | 企业坐席额度不足 |
 
+INT-23 还保留一个端点特定的兼容错误：旧 `page`/`size` 参数返回 HTTP 400
+`cursor_required_v1`，详见该端点 schema；通用错误枚举不代表每个端点的全部例外。
+
 ## 8. Webhook 出站（你方系统将收到的回调）
 
-出站投递使用独立的 Webhook HMAC secret，与 Internal API 的入站签名凭证不同。通过 INT-12（`PUT /webhook`）设置 `rotate: true` 轮换签名密钥，响应只返回新 secret 一次；轮换 API 凭证不会轮换此密钥。接收方更新为新签名密钥后，旧密钥生成的签名不能通过验证。
+出站投递使用独立的 Webhook HMAC secret，与 Internal API 的入站签名凭证不同。通过 INT-12（`PUT /webhook`）设置 `rotate: true` 轮换签名密钥，首次成功响应返回新 secret；同幂等键的授权重放仍返回该响应快照。普通读取不返回 secret；轮换 API 凭证不会轮换此密钥。接收方更新为新签名密钥后，旧密钥生成的签名不能通过验证。
 
 出站投递包含以下签名头：
 
@@ -319,11 +336,9 @@ application and device binding, short expiration and one-time consumption. Never
 - **动手联调**：[IMBoy-Internal-API-v1.postman_collection.json](./IMBoy-Internal-API-v1.postman_collection.json)
   —— Postman / Apifox 直接导入（Collection v2.1），已含全部 49 个 Internal 操作、按域分文件夹、
   示例请求体与 base_url / credential 等变量；另含 3 个 Human 入站伴随请求，其认证分别配置。目录外部组织标识须对应可信来源配置，不能只替换域名即全量运行。
-  集合只收录当前冻结路由表中**已实现、可调用**的端点；CRUD 覆盖审计中标为
-  `待实现` 的路径不会作为假请求提前塞入集合。
+  集合收录全部 Internal 冻结路由及上述 Human 伴随请求，不包含尚未实现的接口。
   注意：示例体为合成数据（ID / 域名 / object_key 均为占位值，替换后使用）；
-  v1.1.1 起示例字段名与必填集已与机器契约逐端点对齐（此前 INT-02/03/04/
-  07/08/09/10/11/12/14/20/22 共 12 处示例与契约不一致，已全部修正）。
+  首页请求省略 cursor，翻页时填上一次真实响应的 next_cursor。
 
 ## 11. 版本与变更
 

@@ -1,0 +1,42 @@
+type: object
+properties:
+  id:
+    type: integer
+    format: int64
+    minimum: 1
+  organization_id:
+    type: integer
+    format: int64
+    minimum: 1
+  parent_id:
+    type:
+    - integer
+    - 'null'
+    format: int64
+  name:
+    type: string
+  status:
+    type: string
+    enum:
+    - active
+    - archived
+  version:
+    type: integer
+    minimum: 1
+  created_at:
+    type: integer
+    format: int64
+    description: Unix 毫秒；经 elib_response:success 转换。 / Unix milliseconds.
+  updated_at:
+    type: integer
+    format: int64
+    description: Unix 毫秒；经 elib_response:success 转换。 / Unix milliseconds.
+  archive_idempotent:
+    type: boolean
+required:
+- id
+- organization_id
+- parent_id
+- name
+- status
+- version

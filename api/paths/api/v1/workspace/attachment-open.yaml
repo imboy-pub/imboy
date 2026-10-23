@@ -1,0 +1,65 @@
+get:
+  tags:
+  - workspace
+  summary: 获取附件授权打开定位信息
+  operationId: workspaceAttachmentOpen
+  description: 先重新检查工作区成员与来源 ACL；普通附件返回授权 url，谈话记录返回 open_kind/record_id，不能将原始存储路径当可访问链接。 / Rechecks source ACL;
+    returns an authorized URL or talk-record locator.
+  parameters:
+  - name: workspace_id
+    in: path
+    required: true
+    schema:
+      type: integer
+      format: int64
+      minimum: 1
+    description: 工作区 TSID / Workspace ID
+  - name: attachment_id
+    in: path
+    required: true
+    schema:
+      type: integer
+      format: int64
+      minimum: 1
+    description: 附件 TSID / Attachment ID
+  responses:
+    '200':
+      description: 成功 code=0 返回以下业务载荷；业务失败 code 非零返回通用错误信封。 / Success payload or nonzero-code business error.
+      content:
+        application/json:
+          schema:
+            oneOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
+              - type: object
+                properties:
+                  payload:
+                    oneOf:
+                    - type: object
+                      properties:
+                        url:
+                          type: string
+                      required:
+                      - url
+                    - type: object
+                      properties:
+                        open_kind:
+                          type: string
+                          const: talk_record
+                        record_id:
+                          type: integer
+                          format: int64
+                          minimum: 1
+                      required:
+                      - open_kind
+                      - record_id
+              - type: object
+                required:
+                - code
+                properties:
+                  code:
+                    type: integer
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+    '401':
+      description: 访问 JWT、设备绑定或客户端签名认证失败 / JWT, device binding or client signature rejected

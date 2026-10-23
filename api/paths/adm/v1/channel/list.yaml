@@ -1,27 +1,35 @@
-# GET /api/adm/channel/list — admin
 get:
-  tags: [admin]
+  security:
+  - adminSessionId: []
+    adminSessionSignature: []
+  tags:
+  - admin
   summary: admin adm-channel - list
-  description: |
-    ## 中文 / English
-    管理后台 adm-channel handler 的 `list` 动作；路径 `/adm/channel/list`。
-    Admin handler `adm-channel`, action `list`. Path `/adm/channel/list`.
+  description: '## 中文 / English
+
+    管理后台 adm-channel handler 的 `list` 动作；路径 `/api/adm/channel/list`。
+
+    Admin handler `adm-channel`, action `list`. Path `/api/adm/channel/list`.
+
+    '
   operationId: adm_channel_list
   parameters:
-    - $ref: '../../../../components/parameters/PaginationPage.yaml'
-    - $ref: '../../../../components/parameters/PaginationSize.yaml'
-    - in: query
-      name: status
-      schema: { type: integer }
-      description: 频道状态筛选 / Filter by channel status
+  - $ref: ../../../../components/parameters/PaginationPage.yaml
+  - $ref: ../../../../components/parameters/PaginationSize.yaml
+  - in: query
+    name: status
+    schema:
+      type: integer
+    description: 频道状态筛选 / Filter by channel status
   responses:
     '200':
-      description: 成功
+      description: 成功；非零 code 为业务错误 / Non-zero code is a business error
       content:
         application/json:
           schema:
-            allOf:
-              - $ref: '../../../../components/schemas/Envelope.yaml'
+            anyOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
               - type: object
                 properties:
                   payload:
@@ -77,7 +85,14 @@ get:
                       size:
                         type: integer
                         description: 每页条数 / Page size
-    '4XX':
+              - type: object
+                properties:
+                  code:
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+    4XX:
       description: 无权限 / 参数非法
       content:
-        application/json: { schema: { $ref: '../../../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/Envelope.yaml

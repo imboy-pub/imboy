@@ -1,0 +1,38 @@
+type: object
+properties:
+  key_version:
+    type: integer
+    minimum: 1
+  claims:
+    type: object
+    properties:
+      iss:
+        type: string
+      aud:
+        type: string
+      widget_id:
+        type: string
+      sub:
+        type: string
+      exp:
+        type: integer
+      iat:
+        type: integer
+      jti:
+        type: string
+    required:
+    - iss
+    - aud
+    - widget_id
+    - sub
+    - exp
+    - iat
+    - jti
+  sig:
+    type: string
+    pattern: ^[0-9a-f]{64}$
+    description: HMAC-SHA256 十六进制签名；原文为按键名字典序排列的 claims 键值对数组的 JSON。
+required:
+- key_version
+- claims
+- sig

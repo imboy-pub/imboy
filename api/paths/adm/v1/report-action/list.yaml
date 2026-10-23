@@ -1,0 +1,126 @@
+get:
+  security:
+  - adminSessionId: []
+    adminSessionSignature: []
+  tags:
+  - admin
+  summary: 举报处置动作列表 / Report action history
+  description: 需 reports:handle。 / Report action history
+  operationId: admReportActionListGet
+  parameters:
+  - name: case_id
+    in: query
+    required: true
+    description: case_id
+    schema:
+      type: integer
+      format: int64
+      minimum: 1
+      description: JSON int64；客户端需无损解析 / Preserve bigint precision
+  responses:
+    '200':
+      description: 成功或业务错误；检查 code / Inspect business code
+      content:
+        application/json:
+          schema:
+            anyOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
+              - type: object
+                properties:
+                  payload:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                          format: int64
+                          minimum: 1
+                          description: JSON int64；客户端需无损解析 / Preserve bigint precision
+                        case_id:
+                          type: integer
+                          format: int64
+                          minimum: 1
+                          description: JSON int64；客户端需无损解析 / Preserve bigint precision
+                        action:
+                          type: string
+                        target_type:
+                          type: string
+                        target_id:
+                          type: integer
+                          format: int64
+                          minimum: 1
+                          description: JSON int64；客户端需无损解析 / Preserve bigint precision
+                        target_uid:
+                          type: integer
+                          format: int64
+                          minimum: 1
+                          description: JSON int64；客户端需无损解析 / Preserve bigint precision
+                        scope:
+                          description: 动作范围JSON / Action scope JSON
+                        reason:
+                          type: string
+                        actor_id:
+                          type: integer
+                          format: int64
+                          minimum: 1
+                          description: JSON int64；客户端需无损解析 / Preserve bigint precision
+                        status:
+                          type: string
+                        result:
+                          description: 执行结果JSON / Execution result
+                        fail_reason:
+                          type:
+                          - string
+                          - 'null'
+                        start_at:
+                          type:
+                          - integer
+                          - 'null'
+                          format: int64
+                          description: Unix 毫秒 / Unix milliseconds
+                        end_at:
+                          type:
+                          - integer
+                          - 'null'
+                          format: int64
+                          description: Unix 毫秒 / Unix milliseconds
+                        reversed_at:
+                          type:
+                          - integer
+                          - 'null'
+                          format: int64
+                          description: Unix 毫秒 / Unix milliseconds
+                        reversed_by:
+                          type:
+                          - integer
+                          - 'null'
+                          format: int64
+                        reverse_reason:
+                          type:
+                          - string
+                          - 'null'
+                        created_at:
+                          type:
+                          - integer
+                          - 'null'
+                          format: int64
+                          description: Unix 毫秒 / Unix milliseconds
+                        updated_at:
+                          type:
+                          - integer
+                          - 'null'
+                          format: int64
+                          description: Unix 毫秒 / Unix milliseconds
+              - type: object
+                properties:
+                  code:
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+    '401':
+      description: Cookie 缺失、无效、到期或已撤销 / Invalid session cookies
+      content:
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/Envelope.yaml

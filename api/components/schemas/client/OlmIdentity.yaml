@@ -1,0 +1,15 @@
+type: object
+properties:
+  device_id:
+    type: string
+  ed25519_key:
+    type: string
+  curve25519_key:
+    type: string
+  signature:
+    type: string
+required:
+- device_id
+- ed25519_key
+- curve25519_key
+- signature

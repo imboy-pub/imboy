@@ -1,0 +1,35 @@
+type: object
+properties:
+  id:
+    type: string
+    pattern: ^[0-9]+$
+    description: 无损十进制 TSID 字符串。
+  organization_id:
+    type: string
+    pattern: ^[0-9]+$
+    description: 无损十进制 TSID 字符串。
+  workspace_id:
+    type: string
+    pattern: ^[0-9]+$
+    description: 无损十进制 TSID 字符串。
+  public_seat_console_id:
+    type: string
+  allowed_origins:
+    type: array
+    items:
+      type: string
+  status:
+    type: string
+    enum:
+    - active
+    - revoked
+  version:
+    type: integer
+  created_at:
+    type: integer
+    format: int64
+    description: Unix 秒；客服 response helper 保留底层秒值。
+  updated_at:
+    type: integer
+    format: int64
+    description: Unix 秒；客服 response helper 保留底层秒值。

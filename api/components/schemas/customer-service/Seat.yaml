@@ -1,0 +1,38 @@
+type: object
+properties:
+  organization_id:
+    type: string
+    pattern: ^[0-9]+$
+    description: 无损十进制 TSID 字符串。
+  workspace_id:
+    type: string
+    pattern: ^[0-9]+$
+    description: 无损十进制 TSID 字符串。
+  business_identity_id:
+    type: string
+    pattern: ^[0-9]+$
+    description: 无损十进制 TSID 字符串。
+  function_key:
+    type: string
+    enum:
+    - customer_service
+  enabled:
+    type: boolean
+  max_concurrent:
+    type: integer
+  version:
+    type: integer
+  created_at:
+    type: integer
+    format: int64
+    description: Unix 秒；客服 response helper 保留底层秒值。
+  updated_at:
+    type: integer
+    format: int64
+    description: Unix 秒；客服 response helper 保留底层秒值。
+  active_count:
+    type: integer
+  organization_name:
+    type: string
+  display_name:
+    type: string

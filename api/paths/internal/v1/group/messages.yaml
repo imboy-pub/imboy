@@ -13,18 +13,23 @@ post:
     发送到企业群。HMAC 无需 Scope。
     human 发送者必须是该群 active 成员；企业托管消息固定非端到端加密。
     **as_user_id / actor_user_id 别名参数出现即拒**（INV-5）。
+  security:
+    - ibIntHmacCredential: []
+      ibIntHmacTimestamp: []
+      ibIntHmacNonce: []
+      ibIntHmacSignature: []
   operationId: internalMessageGroup
   parameters:
     - name: group_id
       in: path
       required: true
       description: 企业群 TSID
-      schema: { type: integer, format: int64 }
+      schema: { type: integer, format: int64 , minimum: 1, maximum: 9223372036854775807 }
     - name: Idempotency-Key
       in: header
       required: true
       description: 幂等键
-      schema: { type: string, minLength: 1 }
+      schema: { type: string, minLength: 1, maxLength: 128, pattern: '^[ -~]+$' }
   x-imboy-authentication: hmac
   x-imboy-rate-bucket: internal_write
   x-imboy-idempotency: required
@@ -35,6 +40,28 @@ post:
         schema:
           type: object
           required: [sender_mode, msg_type]
+          allOf:
+            - if:
+                properties:
+                  sender_mode: { const: human }
+              then:
+                required: [sender_user_id]
+                properties:
+                  sender_user_id: { type: string }
+            - if:
+                properties:
+                  msg_type: { const: text }
+              then:
+                required: [content]
+                properties:
+                  content: { type: string }
+            - if:
+                properties:
+                  msg_type: { const: file }
+              then:
+                required: [object_key]
+                properties:
+                  object_key: { type: string }
           properties:
             sender_mode:
               type: string
@@ -49,7 +76,7 @@ post:
               type: string
               minLength: 1
               maxLength: 4000
-              description: msg_type=text 必填
+              description: msg_type=text 必填；UTF-8 编码 1..4000 字节
             object_key:
               type: string
               description: msg_type=file 必填（本 org/app 已 confirm 附件）
@@ -60,8 +87,9 @@ post:
         application/json:
           schema:
             type: object
+            required: [msg_id, webhook_resource_id, sender_kind, sender_user_id, origin_kind, origin_application_id, accepted_at]
             properties:
-              msg_id: { type: integer, format: int64 }
+              msg_id: { type: string, format: uuid, description: 客户端消息 ID（UUID v7） }
               webhook_resource_id:
                 type: integer
                 format: int64
@@ -69,7 +97,7 @@ post:
                   v1.1.1 追加。webhook 关联键：与 message.enterprise.accepted /
                   failed 事件 resource.id 同源（消息表行 ID）。与 msg_id 是
                   **两个不同标识符**；集成方以此把回调关联回本次发送响应。
-              sender_kind: { type: string }
+              sender_kind: { type: string, enum: [application, human] }
               sender_user_id:
                 type: [integer, 'null']
                 format: int64
@@ -77,12 +105,17 @@ post:
                 type: string
                 enum: [enterprise_application]
               origin_application_id: { type: integer, format: int64 }
-              accepted_at: { type: string, description: 受理时间（ISO-8601） }
+              accepted_at: { type: integer, format: int64, description: 受理时间（Unix 毫秒） }
+      headers:
+        Idempotent-Replayed:
+          description: 重放首次已提交的 HTTP 状态与正文时为 true；首次响应不带此头。
+          schema: { type: string, enum: ['true'] }
     '400': { $ref: '../../../../components/responses/internal/invalid_request.yaml' }
-    '401': { $ref: '../../../../components/responses/internal/invalid_credential.yaml' }
-    '403': { $ref: '../../../../components/responses/internal/organization_boundary_violation.yaml' }
+    '401': { $ref: '../../../../components/responses/internal/unauthorized.yaml' }
+    '403': { $ref: '../../../../components/responses/internal/forbidden.yaml' }
     '404': { $ref: '../../../../components/responses/internal/resource_not_found.yaml' }
     '409': { $ref: '../../../../components/responses/internal/idempotency_conflict.yaml' }
     '422': { $ref: '../../../../components/responses/internal/identity_not_mapped.yaml' }
     '429': { $ref: '../../../../components/responses/internal/rate_limited.yaml' }
     '500': { $ref: '../../../../components/responses/internal/internal_error.yaml' }
+    '503': { $ref: '../../../../components/responses/internal/security_gate_closed.yaml' }

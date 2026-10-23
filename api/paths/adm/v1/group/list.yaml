@@ -1,35 +1,42 @@
-# GET /api/adm/group/list — admin
 get:
-  tags: [admin]
+  security:
+  - adminSessionId: []
+    adminSessionSignature: []
+  tags:
+  - admin
   summary: admin adm-group - list
-  description: |
-    ## 中文 / English
-    管理后台 adm-group handler 的 `list` 动作；路径 `/adm/group/list`。
-    Admin handler `adm-group`, action `list`. Path `/adm/group/list`.
+  description: '## 中文 / English
+
+    管理后台 adm-group handler 的 `list` 动作；路径 `/api/adm/group/list`。
+
+    Admin handler `adm-group`, action `list`. Path `/api/adm/group/list`.
+
+    '
   operationId: adm_group_list
   parameters:
-    - $ref: '../../../../components/parameters/PaginationPage.yaml'
-    - $ref: '../../../../components/parameters/PaginationSize.yaml'
-    - name: status
-      in: query
-      required: false
-      description: 群组状态筛选 / Group status filter
-      schema:
-        type: integer
-    - name: type
-      in: query
-      required: false
-      description: 群组类型筛选 / Group type filter
-      schema:
-        type: integer
+  - $ref: ../../../../components/parameters/PaginationPage.yaml
+  - $ref: ../../../../components/parameters/PaginationSize.yaml
+  - name: status
+    in: query
+    required: false
+    description: 群组状态筛选 / Group status filter
+    schema:
+      type: integer
+  - name: type
+    in: query
+    required: false
+    description: 群组类型筛选 / Group type filter
+    schema:
+      type: integer
   responses:
     '200':
-      description: 成功
+      description: 成功；非零 code 为业务错误 / Non-zero code is a business error
       content:
         application/json:
           schema:
-            allOf:
-              - $ref: '../../../../components/schemas/Envelope.yaml'
+            anyOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
               - type: object
                 properties:
                   payload:
@@ -42,41 +49,51 @@ get:
                           properties:
                             id:
                               type: string
-                              description: '群组 TSID (string) / Group TSID'
+                              description: 群组 TSID (string) / Group TSID
                             title:
                               type: string
-                              description: '群名称 / Group name'
+                              description: 群名称 / Group name
                             avatar:
                               type: string
-                              description: '群头像 URL / Group avatar URL'
+                              description: 群头像 URL / Group avatar URL
                             introduction:
                               type: string
-                              description: '群介绍 / Group introduction'
+                              description: 群介绍 / Group introduction
                             owner_uid:
                               type: string
-                              description: '群主 UID (string) / Owner UID'
+                              description: 群主 UID (string) / Owner UID
                             creator_uid:
                               type: string
-                              description: '创建者 UID (string) / Creator UID'
+                              description: 创建者 UID (string) / Creator UID
                             type:
                               type: integer
-                              description: '群类型 / Group type'
+                              description: 群类型 / Group type
                             join_limit:
                               type: integer
-                              description: '加群限制 / Join restriction'
+                              description: 加群限制 / Join restriction
                             member_count:
                               type: integer
-                              description: '当前成员数 / Current member count'
+                              description: 当前成员数 / Current member count
                             status:
                               type: integer
-                              description: '群状态 / Group status'
+                              description: 群状态 / Group status
                             created_at:
                               type: string
-                              description: '创建时间 / Created at'
-                      total: { type: integer }
-                      page: { type: integer }
-                      size: { type: integer }
-    '4XX':
+                              description: 创建时间 / Created at
+                      total:
+                        type: integer
+                      page:
+                        type: integer
+                      size:
+                        type: integer
+              - type: object
+                properties:
+                  code:
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+    4XX:
       description: 无权限 / 参数非法
       content:
-        application/json: { schema: { $ref: '../../../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/Envelope.yaml

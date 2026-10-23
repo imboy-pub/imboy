@@ -624,14 +624,98 @@ now_sec() ->
 %% ===================================================================
 
 -spec respond(map(), cowboy_req:req(), term()) -> cowboy_req:req().
-respond(_Entry, Req, {ok, View}) ->
-    elib_response:success_rfc3339(Req, encode_entity(View));
+respond(Entry, Req, {ok, View}) ->
+    elib_response:success_rfc3339(Req, encode_entity(public_payload(Entry, View)));
 %% 无载荷成功（revoke_shop_key/revoke_visit_token 返回裸 ok）——空载荷 200，
 %% 缺此子句会 function_clause 500（DEFECT-4 收尾，CS-04 E2E 发现）。
 respond(_Entry, Req, ok) ->
     elib_response:success_rfc3339(Req, #{});
 respond(_Entry, Req, {error, Reason}) ->
     reply_error(Req, Reason).
+
+%% 本 feature 的 HTTP 边界独立投影，避免跨 feature 直接调用 EB interfaces。
+%% accepted 的通知诊断不出线；凭证创建只回一次明文，摘要与未知存储列不出线。
+public_payload(_Entry, #{accepted := true, message := Message} = View) ->
+    (maps:with([accepted, message_id, replayed, audit_id], View))#{
+        message => public_message(Message)
+    };
+public_payload(#{action := shop_key_list}, #{secret := _} = View) ->
+    maps:with(
+        [
+            id,
+            organization_id,
+            workspace_id,
+            display_hint,
+            status,
+            created_by_user_id,
+            version,
+            created_at,
+            updated_at,
+            revoked_at,
+            secret
+        ],
+        View
+    );
+public_payload(#{action := visit_token_list}, #{secret := _} = View) ->
+    maps:with(
+        [
+            id,
+            organization_id,
+            workspace_id,
+            contact_id,
+            display_hint,
+            expires_at,
+            revoked_at,
+            created_by_business_identity_id,
+            created_by_user_id,
+            version,
+            created_at,
+            updated_at,
+            secret
+        ],
+        View
+    );
+public_payload(_Entry, View) ->
+    View.
+
+public_message(Message) ->
+    Public = maps:with(
+        [
+            id,
+            organization_id,
+            workspace_id,
+            conversation_id,
+            sender_type,
+            sender_contact_id,
+            sender_business_identity_id,
+            actor_user_id,
+            client_msg_id,
+            body,
+            body_cipher,
+            key_version,
+            aad_hash,
+            content_hash,
+            policy_id,
+            policy_version,
+            retention_days,
+            retain_until,
+            visibility,
+            version,
+            created_at
+        ],
+        Message
+    ),
+    case maps:find(assets, Message) of
+        {ok, Assets} when is_list(Assets) ->
+            Public#{
+                assets => [
+                    maps:with([id, message_id, mime, size_bytes, file_name, status], A)
+                 || A <- Assets
+                ]
+            };
+        error ->
+            Public
+    end.
 
 -spec reply_error(cowboy_req:req(), term()) -> cowboy_req:req().
 %% F-6（REVIEW-3）：CAS 失败对外契约——409 + `cas_mismatch` 标签，envelope

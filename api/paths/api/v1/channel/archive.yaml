@@ -1,0 +1,50 @@
+post:
+  tags:
+  - channel
+  summary: 归档频道
+  operationId: channelArchive
+  description: 按频道创建者或工作区/组织治理权限裁决；归档与删除不同，已删除频道不能恢复。非法状态迁移业务 409。 / Authority follows channel and workspace governance;
+    deleted channels cannot be restored.
+  parameters:
+  - name: channel_id
+    in: path
+    required: true
+    schema:
+      type: integer
+      format: int64
+      minimum: 1
+    description: 频道 TSID / Channel ID
+  responses:
+    '200':
+      description: 成功 code=0 返回以下业务载荷；业务失败 code 非零返回通用错误信封。 / Success payload or nonzero-code business error.
+      content:
+        application/json:
+          schema:
+            oneOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      channel_id:
+                        type: integer
+                        format: int64
+                        minimum: 1
+                      status:
+                        type: string
+                        const: archived
+                    required:
+                    - channel_id
+                    - status
+              - type: object
+                required:
+                - code
+                properties:
+                  code:
+                    type: integer
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+    '401':
+      description: 访问 JWT 或客户端认证失败 / Authentication rejected

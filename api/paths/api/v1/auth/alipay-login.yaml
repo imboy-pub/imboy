@@ -1,0 +1,63 @@
+post:
+  tags:
+  - auth
+  summary: 支付宝授权码登录
+  operationId: alipayLogin
+  description: 匿名；auth_code 由支付宝 SDK 获取，后端验证并建立登录会话；成功结构与普通登录一致。 / Provider code exchange, same login payload.
+  parameters:
+  - name: did
+    in: header
+    required: false
+    schema:
+      type: string
+    description: 客户端设备 ID / Device ID
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            auth_code:
+              type: string
+              minLength: 1
+            sys_version:
+              type: string
+            cos:
+              type: string
+            dname:
+              type: string
+          required:
+          - auth_code
+  security: []
+  responses:
+    '200':
+      description: 成功 code=0 返回以下业务载荷；业务失败 code 非零返回通用错误信封。 / Success payload or nonzero-code business error.
+      content:
+        application/json:
+          schema:
+            oneOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      uid:
+                        type: integer
+                        format: int64
+                        description: 用户 TSID（JSON integer，前端 safeParseBigIntJson 转为 string）
+                      token:
+                        type: string
+                        description: JWT access token
+                      refreshtoken:
+                        type: string
+              - type: object
+                required:
+                - code
+                properties:
+                  code:
+                    type: integer
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml

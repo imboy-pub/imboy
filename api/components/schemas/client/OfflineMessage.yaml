@@ -1,0 +1,111 @@
+type: object
+properties:
+  id:
+    type:
+    - integer
+    - string
+    description: C2C/C2G：内部数据库行 TSID integer；S2C：业务消息 ID string。不得将两者混用。 / Row key for C2C/G, business ID for S2C.
+  msg_id:
+    type: string
+    minLength: 1
+    description: 不透明业务消息 ID；可以含字母、连字符或下划线，不是数据库行 TSID。 / Opaque business message ID, not a database row key.
+  from:
+    type: string
+    description: 十进制 TSID 字符串；不经 JavaScript Number。 / Decimal TSID string.
+  to:
+    type: string
+    description: 十进制 TSID 字符串；不经 JavaScript Number。 / Decimal TSID string.
+  msg_type:
+    type: string
+  action:
+    type: string
+    description: S2C 指令；C2C/G 当前 HTTP 行没有独立 action 列。 / S2C action.
+  sender_did:
+    type:
+    - string
+    - 'null'
+  conv_seq:
+    type:
+    - integer
+    - 'null'
+    format: int64
+    description: C2C 历史行可空；C2G 从接收者 timeline 取权威序号。S2C 无此字段。 / Optional conversation sequence; authoritative timeline
+      value for C2G.
+  e2ee:
+    type:
+    - object
+    - string
+    - 'null'
+    description: 透传的 E2EE 元数据；对象包含协议字段和设备信封。未加密时可为 null/空串，旧格式 JSON 字符串解码失败时保留字符串。不提供顶层 ciphertext。 / Opaque encryption
+      metadata, empty for plaintext; ciphertext stays inside the protocol envelope.
+    properties:
+      meta_version:
+        type: integer
+      fan_out:
+        type: string
+      devices:
+        type: object
+        additionalProperties:
+          type: object
+    additionalProperties: true
+  payload:
+    type:
+    - object
+    - array
+    - string
+    - number
+    - boolean
+    - 'null'
+    description: 按 msg_type/协议定义的 JSON 业务载荷；加密消息可为空字符串，不能固定为 object。服务端不解密。 / Protocol-defined JSON payload; encrypted
+      content may use empty string.
+  created_at:
+    type: integer
+    format: int64
+    description: Unix 毫秒；经 elib_response:success 的时间转换。 / Unix milliseconds.
+  server_ts:
+    type:
+    - integer
+    - 'null'
+    format: int64
+    description: Unix 毫秒；经 elib_response:success 的时间转换。 / Unix milliseconds.
+additionalProperties: false
+required:
+- id
+- from
+- to
+- msg_type
+- e2ee
+- payload
+- created_at
+- server_ts
+description: HTTP /msg/offline 的数据库行投影，不是 WS message_ds:offline_envelope 的 ver/id/type 实时信封。外层 c2c/c2g/s2c 桶决定类别；本行没有
+  type。普通业务 msg_id 保持不透明字符串。 / HTTP offline row; category belongs to the bucket, not a type field.
+oneOf:
+- properties:
+    id:
+      type: integer
+      format: int64
+    msg_id:
+      type: string
+      minLength: 1
+      description: 不透明业务消息 ID；可以含字母、连字符或下划线，不是数据库行 TSID。 / Opaque business message ID, not a database row key.
+    sender_did:
+      type:
+      - string
+      - 'null'
+    action: false
+  required:
+  - msg_id
+  - sender_did
+- properties:
+    id:
+      type: string
+      minLength: 1
+      description: 不透明业务消息 ID；可以含字母、连字符或下划线，不是数据库行 TSID。 / Opaque business message ID, not a database row key.
+    action:
+      type: string
+    msg_id: false
+    sender_did: false
+    conv_seq: false
+  required:
+  - action

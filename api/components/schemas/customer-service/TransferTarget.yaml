@@ -1,0 +1,14 @@
+type: object
+properties:
+  business_identity_id:
+    type: string
+    pattern: ^[0-9]+$
+    description: 无损十进制 TSID 字符串。
+  display_name:
+    type: string
+  available:
+    type: boolean
+required:
+- business_identity_id
+- display_name
+- available

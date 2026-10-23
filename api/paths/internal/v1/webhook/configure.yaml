@@ -12,14 +12,19 @@ put:
   description: |
     配置本应用的回调端点与订阅事件（upsert）。url 即时过 SSRF guard（DNS
     解析私网/保留段拒）；events 须在事件白名单内（空列表 = 只停用订阅）。
-    rotate=true 轮换 secret，响应返回新明文一次。
+    rotate=true 轮换 secret，首次成功响应返回新明文；相同幂等键的授权重放保留该快照。
+  security:
+    - ibIntHmacCredential: []
+      ibIntHmacTimestamp: []
+      ibIntHmacNonce: []
+      ibIntHmacSignature: []
   operationId: internalWebhookConfigure
   parameters:
     - name: Idempotency-Key
       in: header
       required: true
       description: 幂等键
-      schema: { type: string, minLength: 1 }
+      schema: { type: string, minLength: 1, maxLength: 128, pattern: '^[ -~]+$' }
   x-imboy-authentication: hmac
   x-imboy-rate-bucket: internal_write
   x-imboy-idempotency: required
@@ -55,7 +60,7 @@ put:
               description: 缺省 enabled
             rotate:
               type: boolean
-              description: true = 轮换 secret（响应返回新明文一次）
+              description: true = 轮换 secret（首次及相同幂等键授权重放响应含明文）
   responses:
     '200':
       description: 配置结果
@@ -80,15 +85,20 @@ put:
               rotated: { type: boolean }
               secret:
                 type: [string, 'null']
-                description: rotate=true 时返回新 secret 明文（仅此一次）；否则 null
+                description: rotate=true 时返回新 secret 明文；相同幂等键授权重放仍含该值，否则 null
               endpoint_generation:
                 type: integer
                 description: |
                   端点配置代际（任何配置写入 +1）。V2.1 §15.1：required——
                   generation 持久化失败时整个配置事务失败，不以 2xx 缺字段返回。
+      headers:
+        Idempotent-Replayed:
+          description: 重放首次已提交的 HTTP 状态与正文时为 true；首次响应不带此头。
+          schema: { type: string, enum: ['true'] }
     '400': { $ref: '../../../../components/responses/internal/invalid_request.yaml' }
-    '401': { $ref: '../../../../components/responses/internal/invalid_credential.yaml' }
-    '403': { $ref: '../../../../components/responses/internal/organization_boundary_violation.yaml' }
+    '401': { $ref: '../../../../components/responses/internal/unauthorized.yaml' }
+    '403': { $ref: '../../../../components/responses/internal/forbidden.yaml' }
     '409': { $ref: '../../../../components/responses/internal/idempotency_conflict.yaml' }
     '429': { $ref: '../../../../components/responses/internal/rate_limited.yaml' }
     '500': { $ref: '../../../../components/responses/internal/internal_error.yaml' }
+    '503': { $ref: '../../../../components/responses/internal/security_gate_closed.yaml' }

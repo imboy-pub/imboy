@@ -1,0 +1,60 @@
+post:
+  tags:
+  - auth
+  summary: 微信小程序 code 登录
+  operationId: wechatMiniLogin
+  description: wx.login 一次性 code 换访问/刷新 token；匿名入口，由微信 code 证明身份，禁止重放。当前签发不绑定 DID 的 legacy token，不承诺可用于设备绑定加密接口。
+    / One-time wx.login code; current token is legacy without device binding.
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            code:
+              type: string
+              minLength: 5
+              maxLength: 128
+            device_id:
+              type: string
+          required:
+          - code
+  security: []
+  responses:
+    '200':
+      description: 成功 code=0 返回以下业务载荷；业务失败 code 非零返回通用错误信封。 / Success payload or nonzero-code business error.
+      content:
+        application/json:
+          schema:
+            oneOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      token:
+                        type: string
+                      refresh_token:
+                        type: string
+                      expires_in:
+                        type: integer
+                      uid:
+                        type: string
+                        pattern: ^[0-9]+$
+                        description: 此专用入口真实 wire 为十进制字符串 / Decimal string wire ID
+                    required:
+                    - token
+                    - refresh_token
+                    - expires_in
+                    - uid
+              - type: object
+                required:
+                - code
+                properties:
+                  code:
+                    type: integer
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml

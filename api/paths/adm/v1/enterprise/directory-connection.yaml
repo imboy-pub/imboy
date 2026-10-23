@@ -1,0 +1,87 @@
+post:
+  security:
+  - adminSessionId: []
+    adminSessionSignature: []
+  tags:
+  - admin
+  summary: 创建目录连接 / Create directory connection
+  description: 需 enterprise_business:write。 / Create directory connection
+  operationId: admEnterpriseDirectoryConnectionPost
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            application_key:
+              type: string
+              minLength: 8
+              maxLength: 128
+              description: 8-128 ASCII 字节，实例内全局唯一 / Instance-wide unique key
+            name:
+              type: string
+              description: 1-128 UTF-8 字节且非全空白
+            redirect_uris:
+              type: array
+              maxItems: 20
+              uniqueItems: true
+              items:
+                type: string
+                pattern: ^https://[^/?#][^#]*$
+                maxLength: 2048
+          required:
+          - application_key
+          - name
+      application/x-www-form-urlencoded:
+        schema:
+          type: object
+          properties:
+            application_key:
+              type: string
+              minLength: 8
+              maxLength: 128
+              description: 8-128 ASCII 字节，实例内全局唯一 / Instance-wide unique key
+            name:
+              type: string
+              description: 1-128 UTF-8 字节且非全空白
+            redirect_uris:
+              type: array
+              maxItems: 20
+              uniqueItems: true
+              items:
+                type: string
+                pattern: ^https://[^/?#][^#]*$
+                maxLength: 2048
+          required:
+          - application_key
+          - name
+  responses:
+    '200':
+      description: 成功或业务错误；检查 code / Inspect business code
+      content:
+        application/json:
+          schema:
+            anyOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      application_id:
+                        type: string
+                        pattern: ^[1-9][0-9]*$
+                        description: TSID 十进制字符串 / Decimal TSID string
+              - type: object
+                properties:
+                  code:
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+    '401':
+      description: Cookie 缺失、无效、到期或已撤销 / Invalid session cookies
+      content:
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/Envelope.yaml

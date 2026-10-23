@@ -24,11 +24,13 @@ info:
 
     **响应模型**：除 OA login tickets 使用 `{code,msg,sv_ts,payload}` 成功信封外，
     成功响应为**裸 payload**（无 `{code,msg,payload}` 业务信封）；
-    错误响应统一 `{"error":{"code","message"}}`，15 个稳定错误码见
-    `components/responses/internal/`（README §7 冻结表）。
+    错误响应统一 `{"error":{"code","message"}}`，通用 15 个稳定错误码见
+    `components/responses/internal/`（README §7）；端点可声明兼容错误例外，如 INT-23 的 cursor_required_v1。
 
     **限流与幂等**：三只独立桶 internal_read / internal_write / internal_sso；
-    除 OA login tickets 为 not_required 外，写动作必须携带 `Idempotency-Key` 头（同 key 重放返回首次结果）。
+    端点标记 required 的动作须携带 `Idempotency-Key`（1..128 可打印 ASCII）。
+    幂等窗口默认 24 小时、可配置；相同 org/app/key、方法、路径与规范化正文重放首次结果。
+    读取型 POST 为 not_required；OA SSO 为 single_use_code；OA login tickets 为 not_required。
 
     **路由冻结**：method+path 不在冻结表内一律 resource_not_found（fail-closed）。
     人类文档：[internal/v1/README.md](./internal/v1/README.md)（本 API 整个
@@ -72,6 +74,11 @@ paths:
         返回本应用元数据、认证方式与凭证清单。使用 HMAC-SHA256 请求签名。字段实证自
         `enterprise_application_handler:self_payload/2`：application/credentials
         为平台行数据的 binary 键透出（最小字段集，不含 secret）。
+      security:
+      - ibIntHmacCredential: []
+        ibIntHmacTimestamp: []
+        ibIntHmacNonce: []
+        ibIntHmacSignature: []
       operationId: internalApplicationSelf
       x-imboy-authentication: hmac
       x-imboy-rate-bucket: internal_read
@@ -117,9 +124,16 @@ paths:
                     items:
                       type: object
                     description: 凭证清单（不含 secret）
-                required: []
+                required:
+                - organization_id
+                - application_id
+                - credential_id
+                - application_key
+                - application
+                - authentication
+                - credentials
         '401':
-          description: 凭证缺失/格式错/不存在的 locator
+          description: 凭证缺失、格式或签名无效、已撤销，或凭证已过期。
           content:
             application/json:
               schema:
@@ -162,8 +176,9 @@ paths:
                       code:
                         enum:
                         - invalid_credential
+                        - credential_expired
         '403':
-          description: 应用被停用/归档
+          description: 应用或组织停用，或目标业务组织归属不允许访问。
           content:
             application/json:
               schema:
@@ -206,6 +221,8 @@ paths:
                       code:
                         enum:
                         - application_disabled
+                        - organization_disabled
+                        - organization_boundary_violation
         '429':
           description: 触发限流（fail-closed）
           headers:
@@ -352,6 +369,11 @@ paths:
       summary: 绑定外部身份（OA 用户 → 平台用户）
       description: '绑定本组织有效 Human 成员的外部标识。首次执行返回 external_user_id、user_id、status=active；幂等重放保留首次响应原字节，用 Idempotent-Replayed:
         true 响应头标识，不添加 replayed 正文字段。重放是历史提交快照；查询当前映射应调用 resolve。'
+      security:
+      - ibIntHmacCredential: []
+        ibIntHmacTimestamp: []
+        ibIntHmacNonce: []
+        ibIntHmacSignature: []
       operationId: internalIdentityBind
       parameters:
       - name: Idempotency-Key
@@ -362,6 +384,7 @@ paths:
           type: string
           minLength: 1
           maxLength: 128
+          pattern: ^[ -~]+$
       x-imboy-authentication: hmac
       x-imboy-rate-bucket: internal_write
       x-imboy-idempotency: required
@@ -460,7 +483,7 @@ paths:
                         enum:
                         - invalid_request
         '401':
-          description: 凭证缺失/格式错/不存在的 locator
+          description: 凭证缺失、格式或签名无效、已撤销，或凭证已过期。
           content:
             application/json:
               schema:
@@ -503,8 +526,9 @@ paths:
                       code:
                         enum:
                         - invalid_credential
+                        - credential_expired
         '403':
-          description: 跨组织访问（IDOR 防线）
+          description: 应用或组织停用，或目标业务组织归属不允许访问。
           content:
             application/json:
               schema:
@@ -546,6 +570,8 @@ paths:
                     properties:
                       code:
                         enum:
+                        - application_disabled
+                        - organization_disabled
                         - organization_boundary_violation
         '409':
           description: Idempotency-Key 与既有请求冲突
@@ -730,6 +756,50 @@ paths:
                       code:
                         enum:
                         - internal_error
+        '503':
+          description: 平台安全闸关闭（暂时拒绝服务）
+          content:
+            application/json:
+              schema:
+                allOf:
+                - type: object
+                  required:
+                  - error
+                  properties:
+                    error:
+                      type: object
+                      required:
+                      - code
+                      - message
+                      properties:
+                        code:
+                          type: string
+                          description: 机器可读稳定错误码（snake_case，长期稳定，勿按 message 做逻辑）
+                          enum:
+                          - invalid_request
+                          - invalid_credential
+                          - credential_expired
+                          - application_disabled
+                          - organization_disabled
+                          - organization_boundary_violation
+                          - resource_not_found
+                          - idempotency_conflict
+                          - identity_not_mapped
+                          - rate_limited
+                          - security_gate_closed
+                          - internal_error
+                          - version_conflict
+                          - resource_conflict
+                          - seat_limit_exceeded
+                        message:
+                          type: string
+                          description: 人类可读说明（文案不保证稳定）
+                properties:
+                  error:
+                    properties:
+                      code:
+                        enum:
+                        - security_gate_closed
     delete:
       tags:
       - internal
@@ -738,6 +808,11 @@ paths:
         撤销 external identity 映射（软删）。解绑后该用户对本应用的消息/群操作
         立即不可达（identity_not_mapped）。响应字段实证自
         `enterprise_identity_logic`（revoke 返回 `{external_user_id, status: removed, revoked: true}`）。
+      security:
+      - ibIntHmacCredential: []
+        ibIntHmacTimestamp: []
+        ibIntHmacNonce: []
+        ibIntHmacSignature: []
       operationId: internalIdentityRevoke
       parameters:
       - name: Idempotency-Key
@@ -748,6 +823,7 @@ paths:
           type: string
           minLength: 1
           maxLength: 128
+          pattern: ^[ -~]+$
       x-imboy-authentication: hmac
       x-imboy-rate-bucket: internal_write
       x-imboy-idempotency: required
@@ -838,7 +914,7 @@ paths:
                         enum:
                         - invalid_request
         '401':
-          description: 凭证缺失/格式错/不存在的 locator
+          description: 凭证缺失、格式或签名无效、已撤销，或凭证已过期。
           content:
             application/json:
               schema:
@@ -881,8 +957,9 @@ paths:
                       code:
                         enum:
                         - invalid_credential
+                        - credential_expired
         '403':
-          description: 跨组织访问（IDOR 防线）
+          description: 应用或组织停用，或目标业务组织归属不允许访问。
           content:
             application/json:
               schema:
@@ -924,6 +1001,8 @@ paths:
                     properties:
                       code:
                         enum:
+                        - application_disabled
+                        - organization_disabled
                         - organization_boundary_violation
         '404':
           description: 资源不存在或不属于本组织（不区分「不存在」与「不归你」）
@@ -1108,6 +1187,50 @@ paths:
                       code:
                         enum:
                         - internal_error
+        '503':
+          description: 平台安全闸关闭（暂时拒绝服务）
+          content:
+            application/json:
+              schema:
+                allOf:
+                - type: object
+                  required:
+                  - error
+                  properties:
+                    error:
+                      type: object
+                      required:
+                      - code
+                      - message
+                      properties:
+                        code:
+                          type: string
+                          description: 机器可读稳定错误码（snake_case，长期稳定，勿按 message 做逻辑）
+                          enum:
+                          - invalid_request
+                          - invalid_credential
+                          - credential_expired
+                          - application_disabled
+                          - organization_disabled
+                          - organization_boundary_violation
+                          - resource_not_found
+                          - idempotency_conflict
+                          - identity_not_mapped
+                          - rate_limited
+                          - security_gate_closed
+                          - internal_error
+                          - version_conflict
+                          - resource_conflict
+                          - seat_limit_exceeded
+                        message:
+                          type: string
+                          description: 人类可读说明（文案不保证稳定）
+                properties:
+                  error:
+                    properties:
+                      code:
+                        enum:
+                        - security_gate_closed
   /api/internal/v1/identity-mappings/resolve:
     post:
       tags:
@@ -1118,6 +1241,11 @@ paths:
         （整体语义见 endpoints.md INT-03）。请求字段实证自 handler
         `maps:get(<<"external_user_ids">>, ...)`（**数组**，非单数）；
         响应实证自 `enterprise_identity_logic:rows_to_pairs/1`。
+      security:
+      - ibIntHmacCredential: []
+        ibIntHmacTimestamp: []
+        ibIntHmacNonce: []
+        ibIntHmacSignature: []
       operationId: internalIdentityResolve
       x-imboy-authentication: hmac
       x-imboy-rate-bucket: internal_read
@@ -1134,8 +1262,12 @@ paths:
                 external_user_ids:
                   type: array
                   minItems: 1
+                  maxItems: 100
                   items:
                     type: string
+                    minLength: 1
+                    maxLength: 256
+                    description: UTF-8 最多 256 字节
                   description: OA 侧用户标识列表
       responses:
         '200':
@@ -1144,11 +1276,16 @@ paths:
             application/json:
               schema:
                 type: object
+                required:
+                - mappings
                 properties:
                   mappings:
                     type: array
                     items:
                       type: object
+                      required:
+                      - external_user_id
+                      - user_id
                       properties:
                         external_user_id:
                           type: string
@@ -1200,7 +1337,7 @@ paths:
                         enum:
                         - invalid_request
         '401':
-          description: 凭证缺失/格式错/不存在的 locator
+          description: 凭证缺失、格式或签名无效、已撤销，或凭证已过期。
           content:
             application/json:
               schema:
@@ -1243,8 +1380,9 @@ paths:
                       code:
                         enum:
                         - invalid_credential
+                        - credential_expired
         '403':
-          description: 跨组织访问（IDOR 防线）
+          description: 应用或组织停用，或目标业务组织归属不允许访问。
           content:
             application/json:
               schema:
@@ -1286,6 +1424,8 @@ paths:
                     properties:
                       code:
                         enum:
+                        - application_disabled
+                        - organization_disabled
                         - organization_boundary_violation
         '429':
           description: 触发限流（fail-closed）
@@ -1382,6 +1522,50 @@ paths:
                       code:
                         enum:
                         - internal_error
+        '503':
+          description: 平台安全闸关闭（暂时拒绝服务）
+          content:
+            application/json:
+              schema:
+                allOf:
+                - type: object
+                  required:
+                  - error
+                  properties:
+                    error:
+                      type: object
+                      required:
+                      - code
+                      - message
+                      properties:
+                        code:
+                          type: string
+                          description: 机器可读稳定错误码（snake_case，长期稳定，勿按 message 做逻辑）
+                          enum:
+                          - invalid_request
+                          - invalid_credential
+                          - credential_expired
+                          - application_disabled
+                          - organization_disabled
+                          - organization_boundary_violation
+                          - resource_not_found
+                          - idempotency_conflict
+                          - identity_not_mapped
+                          - rate_limited
+                          - security_gate_closed
+                          - internal_error
+                          - version_conflict
+                          - resource_conflict
+                          - seat_limit_exceeded
+                        message:
+                          type: string
+                          description: 人类可读说明（文案不保证稳定）
+                properties:
+                  error:
+                    properties:
+                      code:
+                        enum:
+                        - security_gate_closed
   /api/internal/v1/identity-mappings/directory:
     post:
       tags:
@@ -1397,6 +1581,11 @@ paths:
         PII）；不存在 list-all/export 形态。请求字段实证自 handler
         `page_opts/1`（cursor / page_size / workspace_id）；响应实证自
         `enterprise_directory_logic`（`{items, page_size, has_more, next_cursor}`）。
+      security:
+      - ibIntHmacCredential: []
+        ibIntHmacTimestamp: []
+        ibIntHmacNonce: []
+        ibIntHmacSignature: []
       operationId: internalIdentityDirectory
       x-imboy-authentication: hmac
       x-imboy-rate-bucket: internal_read
@@ -1415,6 +1604,9 @@ paths:
                     （>24h）及旧版未签名形态（无 HMAC 段）一律 400 invalid_request。
                 page_size:
                   type: integer
+                  minimum: 1
+                  maximum: 100
+                  default: 50
                   description: 页大小，1..100（缺省 50）；越界/非整数一律 400 invalid_request（拒绝，不静默截断）。
                 workspace_id:
                   type: integer
@@ -1427,11 +1619,19 @@ paths:
             application/json:
               schema:
                 type: object
+                required:
+                - items
+                - page_size
+                - has_more
+                - next_cursor
                 properties:
                   items:
                     type: array
                     items:
                       type: object
+                      required:
+                      - external_user_id
+                      - user_id
                       properties:
                         external_user_id:
                           type: string
@@ -1440,6 +1640,8 @@ paths:
                           format: int64
                   page_size:
                     type: integer
+                    minimum: 1
+                    maximum: 100
                   has_more:
                     type: boolean
                   next_cursor:
@@ -1492,7 +1694,7 @@ paths:
                         enum:
                         - invalid_request
         '401':
-          description: 凭证缺失/格式错/不存在的 locator
+          description: 凭证缺失、格式或签名无效、已撤销，或凭证已过期。
           content:
             application/json:
               schema:
@@ -1535,8 +1737,9 @@ paths:
                       code:
                         enum:
                         - invalid_credential
+                        - credential_expired
         '403':
-          description: 跨组织访问（IDOR 防线）
+          description: 应用或组织停用，或目标业务组织归属不允许访问。
           content:
             application/json:
               schema:
@@ -1578,6 +1781,8 @@ paths:
                     properties:
                       code:
                         enum:
+                        - application_disabled
+                        - organization_disabled
                         - organization_boundary_violation
         '429':
           description: 触发限流（fail-closed）
@@ -1674,6 +1879,50 @@ paths:
                       code:
                         enum:
                         - internal_error
+        '503':
+          description: 平台安全闸关闭（暂时拒绝服务）
+          content:
+            application/json:
+              schema:
+                allOf:
+                - type: object
+                  required:
+                  - error
+                  properties:
+                    error:
+                      type: object
+                      required:
+                      - code
+                      - message
+                      properties:
+                        code:
+                          type: string
+                          description: 机器可读稳定错误码（snake_case，长期稳定，勿按 message 做逻辑）
+                          enum:
+                          - invalid_request
+                          - invalid_credential
+                          - credential_expired
+                          - application_disabled
+                          - organization_disabled
+                          - organization_boundary_violation
+                          - resource_not_found
+                          - idempotency_conflict
+                          - identity_not_mapped
+                          - rate_limited
+                          - security_gate_closed
+                          - internal_error
+                          - version_conflict
+                          - resource_conflict
+                          - seat_limit_exceeded
+                        message:
+                          type: string
+                          description: 人类可读说明（文案不保证稳定）
+                properties:
+                  error:
+                    properties:
+                      code:
+                        enum:
+                        - security_gate_closed
   /api/internal/v1/directory/organizations:
     get:
       tags:
@@ -1681,6 +1930,11 @@ paths:
       summary: 来源组织核对列表
       description: 只读核对本来源数据。采用 HMAC 签名，并逐语句复核应用、凭据、来源启用及有效期。尚未建立组织的配置不在列表中，由可信 Admin 入口查看。来源无效或归属不符不放行。按外部 ID 的 UTF-8 字节序升序，page_size
         1..100，未知或重复参数拒绝。
+      security:
+      - ibIntHmacCredential: []
+        ibIntHmacTimestamp: []
+        ibIntHmacNonce: []
+        ibIntHmacSignature: []
       operationId: internalSourceOrganizations
       x-imboy-authentication: hmac
       x-imboy-rate-bucket: internal_read
@@ -2083,6 +2337,11 @@ paths:
       summary: 来源部门核对列表
       description: 只读核对本来源数据。采用 HMAC 签名，并逐语句复核应用、凭据、来源启用及有效期。尚未建立组织的配置不在列表中，由可信 Admin 入口查看。来源无效或归属不符不放行。按外部 ID 的 UTF-8 字节序升序，page_size
         1..100，未知或重复参数拒绝。
+      security:
+      - ibIntHmacCredential: []
+        ibIntHmacTimestamp: []
+        ibIntHmacNonce: []
+        ibIntHmacSignature: []
       operationId: internalSourceDepartments
       x-imboy-authentication: hmac
       x-imboy-rate-bucket: internal_read
@@ -2522,6 +2781,11 @@ paths:
       - internal
       summary: 来源成员状态与离职前检查
       description: 只读检查本来源任职，不枚举用户。采用 HMAC 签名，仍复核应用和可信来源。仅返回阻塞数量和代码；资格是当前业务状态的建议，实际变更仍需相应权限并在事务内复核。停用不删除个人账号、历史或其他组织关系。未知或重复查询参数拒绝。
+      security:
+      - ibIntHmacCredential: []
+        ibIntHmacTimestamp: []
+        ibIntHmacNonce: []
+        ibIntHmacSignature: []
       operationId: internalDirectoryMemberPreflight
       x-imboy-authentication: hmac
       x-imboy-rate-bucket: internal_read
@@ -2960,6 +3224,11 @@ paths:
       summary: 来源托管普通成员停用或恢复
       description: 采用 HMAC 签名；逐事务复核可信来源、组织归属和成员状态。只允许操作本来源已绑定且已投影的普通成员，Owner/Admin 拒绝。恢复只允许本来源暂停且版本未被人工改变的成员。必须提供 GET 返回的
         expected_member_version。状态、来源标记、审计及幂等快照同事务。重放重新鉴权；同键不同请求冲突。
+      security:
+      - ibIntHmacCredential: []
+        ibIntHmacTimestamp: []
+        ibIntHmacNonce: []
+        ibIntHmacSignature: []
       operationId: internalDirectoryMemberStatus
       x-imboy-authentication: hmac
       x-imboy-rate-bucket: internal_write
@@ -2972,11 +3241,18 @@ paths:
           type: string
           minLength: 1
           maxLength: 128
+          pattern: ^[ -~]+$
         description: 一次业务状态变更使用稳定键；重试沿用，同键不同请求返回409。
       responses:
         '200':
-          description: 成员状态已变更；重放返回原始响应并携带 Idempotency-Replayed。
+          description: 成员状态已变更；重放返回原始响应并携带 Idempotent-Replayed。
           headers:
+            Idempotent-Replayed:
+              description: 重放首次已提交的 HTTP 状态与正文时为 true；首次响应不带此头。
+              schema:
+                type: string
+                enum:
+                - 'true'
             Cache-Control:
               schema:
                 type: string
@@ -3401,6 +3677,11 @@ paths:
       description: 只读核对本来源数据。采用 HMAC 签名，并逐语句复核应用、凭据、来源启用及有效期。尚未建立组织的配置不在列表中，由可信 Admin 入口查看。来源无效或归属不符不放行。按外部 ID 的 UTF-8 字节序升序，page_size
         1..100，未知或重复参数拒绝。 projection_status 结合来源退役、任职状态、账号状态、实际组织成员及部门关系计算；linked 不表示已投影。只返回本来源在目标组织有任职来源记录的人员，不枚举全实例用户；user_id
         对退役或停用账号返回 null。
+      security:
+      - ibIntHmacCredential: []
+        ibIntHmacTimestamp: []
+        ibIntHmacNonce: []
+        ibIntHmacSignature: []
       operationId: internalSourcePersons
       x-imboy-authentication: hmac
       x-imboy-rate-bucket: internal_read
@@ -3888,6 +4169,11 @@ paths:
       description: 来源由当前 Application 及可信配置识别，须启用目录来源，且目标组织由当前应用的可信来源映射覆盖。客户端不能指定 user_id、Owner 或接入授权；组织首次建立仅使用可信配置中已确认的 Human
         Owner。来源关联、组织/部门/人员变更、目录投影及审计同事务提交。首次同步只建来源档案，不凭姓名等字段创建或绑定 IMBoy 账号；后续经 OA 双重身份证明关联。组织、部门、人员和成员关系各按对应版本及内容摘要校验：低版本或同版本不同内容冲突，同版本同内容可重放。未包含记录不代表删除；removed
         为显式移除，组织离职保留实例用户及其他组织关系，Owner 须先交接。source_status=removed 的账号关联退休不可自动恢复；membership=removed 可通过更高版本显式恢复。
+      security:
+      - ibIntHmacCredential: []
+        ibIntHmacTimestamp: []
+        ibIntHmacNonce: []
+        ibIntHmacSignature: []
       operationId: internalDirectorySync
       x-imboy-authentication: hmac
       x-imboy-rate-bucket: internal_write
@@ -4077,6 +4363,13 @@ paths:
                     type: boolean
                     enum:
                     - true
+          headers:
+            Idempotent-Replayed:
+              description: 重放首次已提交的 HTTP 状态与正文时为 true；首次响应不带此头。
+              schema:
+                type: string
+                enum:
+                - 'true'
         '400':
           description: invalid_request
           content:
@@ -4211,7 +4504,6 @@ paths:
                         enum:
                         - application_disabled
                         - organization_disabled
-                        - organization_boundary_violation
                         - organization_boundary_violation
         '404':
           description: resource_not_found
@@ -4448,6 +4740,11 @@ paths:
         invalid_request；签名密钥不可用时 503 security_gate_closed。
         响应 items 字段实证自 `enterprise_directory_logic`：user_id /
         external_user_id（本应用未映射则 null）/ member_role 等。
+      security:
+      - ibIntHmacCredential: []
+        ibIntHmacTimestamp: []
+        ibIntHmacNonce: []
+        ibIntHmacSignature: []
       operationId: internalDirectoryUsers
       x-imboy-authentication: hmac
       x-imboy-rate-bucket: internal_read
@@ -4466,6 +4763,9 @@ paths:
                     （>24h）及旧版未签名形态（无 HMAC 段）一律 400 invalid_request。
                 page_size:
                   type: integer
+                  minimum: 1
+                  maximum: 100
+                  default: 50
                   description: 页大小，1..100（缺省 50）；越界/非整数一律 400 invalid_request（拒绝，不静默截断）。
                 workspace_id:
                   type: integer
@@ -4478,11 +4778,21 @@ paths:
             application/json:
               schema:
                 type: object
+                required:
+                - items
+                - page_size
+                - has_more
+                - next_cursor
                 properties:
                   items:
                     type: array
                     items:
                       type: object
+                      required:
+                      - user_id
+                      - external_user_id
+                      - member_role
+                      - member_status
                       properties:
                         user_id:
                           type: integer
@@ -4493,10 +4803,19 @@ paths:
                           - 'null'
                           description: 本应用已映射的 OA 标识；未映射为 null
                         member_role:
-                          type: string
-                          description: 组织内角色
+                          type:
+                          - string
+                          - 'null'
+                          description: 组织内角色；无值时 null
+                        member_status:
+                          type:
+                          - string
+                          - 'null'
+                          description: 组织成员状态；无值时 null
                   page_size:
                     type: integer
+                    minimum: 1
+                    maximum: 100
                   has_more:
                     type: boolean
                   next_cursor:
@@ -4549,7 +4868,7 @@ paths:
                         enum:
                         - invalid_request
         '401':
-          description: 凭证缺失/格式错/不存在的 locator
+          description: 凭证缺失、格式或签名无效、已撤销，或凭证已过期。
           content:
             application/json:
               schema:
@@ -4592,8 +4911,9 @@ paths:
                       code:
                         enum:
                         - invalid_credential
+                        - credential_expired
         '403':
-          description: 跨组织访问（IDOR 防线）
+          description: 应用或组织停用，或目标业务组织归属不允许访问。
           content:
             application/json:
               schema:
@@ -4635,6 +4955,8 @@ paths:
                     properties:
                       code:
                         enum:
+                        - application_disabled
+                        - organization_disabled
                         - organization_boundary_violation
         '429':
           description: 触发限流（fail-closed）
@@ -4731,6 +5053,50 @@ paths:
                       code:
                         enum:
                         - internal_error
+        '503':
+          description: 平台安全闸关闭（暂时拒绝服务）
+          content:
+            application/json:
+              schema:
+                allOf:
+                - type: object
+                  required:
+                  - error
+                  properties:
+                    error:
+                      type: object
+                      required:
+                      - code
+                      - message
+                      properties:
+                        code:
+                          type: string
+                          description: 机器可读稳定错误码（snake_case，长期稳定，勿按 message 做逻辑）
+                          enum:
+                          - invalid_request
+                          - invalid_credential
+                          - credential_expired
+                          - application_disabled
+                          - organization_disabled
+                          - organization_boundary_violation
+                          - resource_not_found
+                          - idempotency_conflict
+                          - identity_not_mapped
+                          - rate_limited
+                          - security_gate_closed
+                          - internal_error
+                          - version_conflict
+                          - resource_conflict
+                          - seat_limit_exceeded
+                        message:
+                          type: string
+                          description: 人类可读说明（文案不保证稳定）
+                properties:
+                  error:
+                    properties:
+                      code:
+                        enum:
+                        - security_gate_closed
   /api/internal/v1/groups:
     get:
       tags:
@@ -4742,6 +5108,11 @@ paths:
         scope=workspace 且组织归属匹配的 W（收窄谓词在服务端列表 SQL 内）。
         人类自建群/他应用建群/已归档群不可见。分页为 CURSOR-V2 签名游标
         （非法/过期/foreign 一律 400 invalid_request，客户端从首页重启）。
+      security:
+      - ibIntHmacCredential: []
+        ibIntHmacTimestamp: []
+        ibIntHmacNonce: []
+        ibIntHmacSignature: []
       operationId: internalGroupList
       parameters:
       - name: limit
@@ -4854,7 +5225,7 @@ paths:
                         enum:
                         - invalid_request
         '401':
-          description: 凭证缺失/格式错/不存在的 locator
+          description: 凭证缺失、格式或签名无效、已撤销，或凭证已过期。
           content:
             application/json:
               schema:
@@ -4897,8 +5268,9 @@ paths:
                       code:
                         enum:
                         - invalid_credential
+                        - credential_expired
         '403':
-          description: 跨组织访问（IDOR 防线）
+          description: 应用或组织停用，或目标业务组织归属不允许访问。
           content:
             application/json:
               schema:
@@ -4940,6 +5312,8 @@ paths:
                     properties:
                       code:
                         enum:
+                        - application_disabled
+                        - organization_disabled
                         - organization_boundary_violation
         '429':
           description: 触发限流（fail-closed）
@@ -5087,6 +5461,11 @@ paths:
       description: |
         成员用 OA 侧 external_user_id 列表（1..200 项，自动去重）；owner 缺省取
         首个成员且必须在 members 内。
+      security:
+      - ibIntHmacCredential: []
+        ibIntHmacTimestamp: []
+        ibIntHmacNonce: []
+        ibIntHmacSignature: []
       operationId: internalGroupCreate
       parameters:
       - name: Idempotency-Key
@@ -5096,6 +5475,8 @@ paths:
         schema:
           type: string
           minLength: 1
+          maxLength: 128
+          pattern: ^[ -~]+$
       x-imboy-authentication: hmac
       x-imboy-rate-bucket: internal_write
       x-imboy-idempotency: required
@@ -5151,6 +5532,13 @@ paths:
                     format: int64
                   member_count:
                     type: integer
+          headers:
+            Idempotent-Replayed:
+              description: 重放首次已提交的 HTTP 状态与正文时为 true；首次响应不带此头。
+              schema:
+                type: string
+                enum:
+                - 'true'
         '400':
           description: 请求参数/形状非法
           content:
@@ -5196,7 +5584,7 @@ paths:
                         enum:
                         - invalid_request
         '401':
-          description: 凭证缺失/格式错/不存在的 locator
+          description: 凭证缺失、格式或签名无效、已撤销，或凭证已过期。
           content:
             application/json:
               schema:
@@ -5239,8 +5627,9 @@ paths:
                       code:
                         enum:
                         - invalid_credential
+                        - credential_expired
         '403':
-          description: 跨组织访问（IDOR 防线）
+          description: 应用或组织停用，或目标业务组织归属不允许访问。
           content:
             application/json:
               schema:
@@ -5282,6 +5671,8 @@ paths:
                     properties:
                       code:
                         enum:
+                        - application_disabled
+                        - organization_disabled
                         - organization_boundary_violation
         '404':
           description: 资源不存在或不属于本组织（不区分「不存在」与「不归你」）
@@ -5510,12 +5901,61 @@ paths:
                       code:
                         enum:
                         - internal_error
+        '503':
+          description: 平台安全闸关闭（暂时拒绝服务）
+          content:
+            application/json:
+              schema:
+                allOf:
+                - type: object
+                  required:
+                  - error
+                  properties:
+                    error:
+                      type: object
+                      required:
+                      - code
+                      - message
+                      properties:
+                        code:
+                          type: string
+                          description: 机器可读稳定错误码（snake_case，长期稳定，勿按 message 做逻辑）
+                          enum:
+                          - invalid_request
+                          - invalid_credential
+                          - credential_expired
+                          - application_disabled
+                          - organization_disabled
+                          - organization_boundary_violation
+                          - resource_not_found
+                          - idempotency_conflict
+                          - identity_not_mapped
+                          - rate_limited
+                          - security_gate_closed
+                          - internal_error
+                          - version_conflict
+                          - resource_conflict
+                          - seat_limit_exceeded
+                        message:
+                          type: string
+                          description: 人类可读说明（文案不保证稳定）
+                properties:
+                  error:
+                    properties:
+                      code:
+                        enum:
+                        - security_gate_closed
   /api/internal/v1/groups/{group_id}:
     get:
       tags:
       - internal
       summary: 读取企业群详情
       description: 读取本组织工作空间内的群资料，跨组织或不存在均返回 resource_not_found；执行当前资源归属检查。
+      security:
+      - ibIntHmacCredential: []
+        ibIntHmacTimestamp: []
+        ibIntHmacNonce: []
+        ibIntHmacSignature: []
       operationId: internalGroupDetail
       parameters:
       - name: group_id
@@ -5525,6 +5965,8 @@ paths:
         schema:
           type: integer
           format: int64
+          minimum: 1
+          maximum: 9223372036854775807
       x-imboy-authentication: hmac
       x-imboy-rate-bucket: internal_read
       x-imboy-idempotency: not_required
@@ -5625,7 +6067,7 @@ paths:
                         enum:
                         - invalid_request
         '401':
-          description: 凭证缺失/格式错/不存在的 locator
+          description: 凭证缺失、格式或签名无效、已撤销，或凭证已过期。
           content:
             application/json:
               schema:
@@ -5668,8 +6110,9 @@ paths:
                       code:
                         enum:
                         - invalid_credential
+                        - credential_expired
         '403':
-          description: 跨组织访问（IDOR 防线）
+          description: 应用或组织停用，或目标业务组织归属不允许访问。
           content:
             application/json:
               schema:
@@ -5711,6 +6154,8 @@ paths:
                     properties:
                       code:
                         enum:
+                        - application_disabled
+                        - organization_disabled
                         - organization_boundary_violation
         '404':
           description: 资源不存在或不属于本组织（不区分「不存在」与「不归你」）
@@ -5851,14 +6296,62 @@ paths:
                       code:
                         enum:
                         - internal_error
+        '503':
+          description: 平台安全闸关闭（暂时拒绝服务）
+          content:
+            application/json:
+              schema:
+                allOf:
+                - type: object
+                  required:
+                  - error
+                  properties:
+                    error:
+                      type: object
+                      required:
+                      - code
+                      - message
+                      properties:
+                        code:
+                          type: string
+                          description: 机器可读稳定错误码（snake_case，长期稳定，勿按 message 做逻辑）
+                          enum:
+                          - invalid_request
+                          - invalid_credential
+                          - credential_expired
+                          - application_disabled
+                          - organization_disabled
+                          - organization_boundary_violation
+                          - resource_not_found
+                          - idempotency_conflict
+                          - identity_not_mapped
+                          - rate_limited
+                          - security_gate_closed
+                          - internal_error
+                          - version_conflict
+                          - resource_conflict
+                          - seat_limit_exceeded
+                        message:
+                          type: string
+                          description: 人类可读说明（文案不保证稳定）
+                properties:
+                  error:
+                    properties:
+                      code:
+                        enum:
+                        - security_gate_closed
     patch:
       tags:
       - internal
       summary: 修改企业群信息
       description: |
-        可更新字段实证自 handler `known_key/1`：title / introduction / members
-        （members 为成员覆盖语义）。响应实证自 logic update：`{group_id, title,
-        introduction, updated: true}`。
+        部分更新群标题或简介，至少提供 title / introduction 中的一项；未提供的字段保持原值。
+        成员变更通过 INT-05/06 调用，本接口不提供成员覆盖。
+      security:
+      - ibIntHmacCredential: []
+        ibIntHmacTimestamp: []
+        ibIntHmacNonce: []
+        ibIntHmacSignature: []
       operationId: internalGroupUpdate
       parameters:
       - name: group_id
@@ -5868,6 +6361,8 @@ paths:
         schema:
           type: integer
           format: int64
+          minimum: 1
+          maximum: 9223372036854775807
       - name: Idempotency-Key
         in: header
         required: true
@@ -5875,6 +6370,8 @@ paths:
         schema:
           type: string
           minLength: 1
+          maxLength: 128
+          pattern: ^[ -~]+$
       x-imboy-authentication: hmac
       x-imboy-rate-bucket: internal_write
       x-imboy-idempotency: required
@@ -5893,11 +6390,6 @@ paths:
                 introduction:
                   type: string
                   maxLength: 2000
-                members:
-                  type: array
-                  items:
-                    type: string
-                  description: 成员覆盖（external_user_id 列表）
       responses:
         '200':
           description: 更新结果
@@ -5917,6 +6409,13 @@ paths:
                     type: boolean
                     enum:
                     - true
+          headers:
+            Idempotent-Replayed:
+              description: 重放首次已提交的 HTTP 状态与正文时为 true；首次响应不带此头。
+              schema:
+                type: string
+                enum:
+                - 'true'
         '400':
           description: 请求参数/形状非法
           content:
@@ -5962,7 +6461,7 @@ paths:
                         enum:
                         - invalid_request
         '401':
-          description: 凭证缺失/格式错/不存在的 locator
+          description: 凭证缺失、格式或签名无效、已撤销，或凭证已过期。
           content:
             application/json:
               schema:
@@ -6005,8 +6504,9 @@ paths:
                       code:
                         enum:
                         - invalid_credential
+                        - credential_expired
         '403':
-          description: 跨组织访问（IDOR 防线）
+          description: 应用或组织停用，或目标业务组织归属不允许访问。
           content:
             application/json:
               schema:
@@ -6048,6 +6548,8 @@ paths:
                     properties:
                       code:
                         enum:
+                        - application_disabled
+                        - organization_disabled
                         - organization_boundary_violation
         '404':
           description: 资源不存在或不属于本组织（不区分「不存在」与「不归你」）
@@ -6232,12 +6734,61 @@ paths:
                       code:
                         enum:
                         - internal_error
+        '503':
+          description: 平台安全闸关闭（暂时拒绝服务）
+          content:
+            application/json:
+              schema:
+                allOf:
+                - type: object
+                  required:
+                  - error
+                  properties:
+                    error:
+                      type: object
+                      required:
+                      - code
+                      - message
+                      properties:
+                        code:
+                          type: string
+                          description: 机器可读稳定错误码（snake_case，长期稳定，勿按 message 做逻辑）
+                          enum:
+                          - invalid_request
+                          - invalid_credential
+                          - credential_expired
+                          - application_disabled
+                          - organization_disabled
+                          - organization_boundary_violation
+                          - resource_not_found
+                          - idempotency_conflict
+                          - identity_not_mapped
+                          - rate_limited
+                          - security_gate_closed
+                          - internal_error
+                          - version_conflict
+                          - resource_conflict
+                          - seat_limit_exceeded
+                        message:
+                          type: string
+                          description: 人类可读说明（文案不保证稳定）
+                properties:
+                  error:
+                    properties:
+                      code:
+                        enum:
+                        - security_gate_closed
     delete:
       tags:
       - internal
       summary: 解散（归档）企业群
       description: |
         归档式解散；重复解散返回 `{group_id, archived: true, already: true}`。
+      security:
+      - ibIntHmacCredential: []
+        ibIntHmacTimestamp: []
+        ibIntHmacNonce: []
+        ibIntHmacSignature: []
       operationId: internalGroupArchive
       parameters:
       - name: group_id
@@ -6247,6 +6798,8 @@ paths:
         schema:
           type: integer
           format: int64
+          minimum: 1
+          maximum: 9223372036854775807
       - name: Idempotency-Key
         in: header
         required: true
@@ -6254,6 +6807,8 @@ paths:
         schema:
           type: string
           minLength: 1
+          maxLength: 128
+          pattern: ^[ -~]+$
       x-imboy-authentication: hmac
       x-imboy-rate-bucket: internal_write
       x-imboy-idempotency: required
@@ -6275,6 +6830,13 @@ paths:
                   already:
                     type: boolean
                     description: 重复解散时 true
+          headers:
+            Idempotent-Replayed:
+              description: 重放首次已提交的 HTTP 状态与正文时为 true；首次响应不带此头。
+              schema:
+                type: string
+                enum:
+                - 'true'
         '400':
           description: 请求参数/形状非法
           content:
@@ -6320,7 +6882,7 @@ paths:
                         enum:
                         - invalid_request
         '401':
-          description: 凭证缺失/格式错/不存在的 locator
+          description: 凭证缺失、格式或签名无效、已撤销，或凭证已过期。
           content:
             application/json:
               schema:
@@ -6363,8 +6925,9 @@ paths:
                       code:
                         enum:
                         - invalid_credential
+                        - credential_expired
         '403':
-          description: 跨组织访问（IDOR 防线）
+          description: 应用或组织停用，或目标业务组织归属不允许访问。
           content:
             application/json:
               schema:
@@ -6406,6 +6969,8 @@ paths:
                     properties:
                       code:
                         enum:
+                        - application_disabled
+                        - organization_disabled
                         - organization_boundary_violation
         '404':
           description: 资源不存在或不属于本组织（不区分「不存在」与「不归你」）
@@ -6590,6 +7155,50 @@ paths:
                       code:
                         enum:
                         - internal_error
+        '503':
+          description: 平台安全闸关闭（暂时拒绝服务）
+          content:
+            application/json:
+              schema:
+                allOf:
+                - type: object
+                  required:
+                  - error
+                  properties:
+                    error:
+                      type: object
+                      required:
+                      - code
+                      - message
+                      properties:
+                        code:
+                          type: string
+                          description: 机器可读稳定错误码（snake_case，长期稳定，勿按 message 做逻辑）
+                          enum:
+                          - invalid_request
+                          - invalid_credential
+                          - credential_expired
+                          - application_disabled
+                          - organization_disabled
+                          - organization_boundary_violation
+                          - resource_not_found
+                          - idempotency_conflict
+                          - identity_not_mapped
+                          - rate_limited
+                          - security_gate_closed
+                          - internal_error
+                          - version_conflict
+                          - resource_conflict
+                          - seat_limit_exceeded
+                        message:
+                          type: string
+                          description: 人类可读说明（文案不保证稳定）
+                properties:
+                  error:
+                    properties:
+                      code:
+                        enum:
+                        - security_gate_closed
   /api/internal/v1/groups/{group_id}/members:
     get:
       tags:
@@ -6601,6 +7210,11 @@ paths:
         resource_not_found（不泄露存在性）；同 Org 但群所属工作空间不符合业务归属
         → organization_boundary_violation（403）。分页为 CURSOR-V2 签名游标
         （非法/过期/跨群游标一律 400 invalid_request）。
+      security:
+      - ibIntHmacCredential: []
+        ibIntHmacTimestamp: []
+        ibIntHmacNonce: []
+        ibIntHmacSignature: []
       operationId: internalGroupMemberList
       parameters:
       - name: group_id
@@ -6610,6 +7224,8 @@ paths:
         schema:
           type: integer
           format: int64
+          minimum: 1
+          maximum: 9223372036854775807
       - name: limit
         in: query
         description: 页大小（缺省 50；1..100，越界 400 拒绝不截断）
@@ -6655,7 +7271,7 @@ paths:
                           format: int64
                         role:
                           type: integer
-                          description: 0 未定义 1 成员 2/3 管理 4 群主 5 自定义（INT-20 同口径）
+                          description: 0 未定义 1 普通成员 2 嘉宾 3 管理员 4 群主 5 副群主（INT-20 同口径）
                         created_at:
                           type: string
                           description: RFC3339 入群时间戳
@@ -6714,7 +7330,7 @@ paths:
                         enum:
                         - invalid_request
         '401':
-          description: 凭证缺失/格式错/不存在的 locator
+          description: 凭证缺失、格式或签名无效、已撤销，或凭证已过期。
           content:
             application/json:
               schema:
@@ -6757,8 +7373,9 @@ paths:
                       code:
                         enum:
                         - invalid_credential
+                        - credential_expired
         '403':
-          description: 跨组织访问（IDOR 防线）
+          description: 应用或组织停用，或目标业务组织归属不允许访问。
           content:
             application/json:
               schema:
@@ -6800,6 +7417,8 @@ paths:
                     properties:
                       code:
                         enum:
+                        - application_disabled
+                        - organization_disabled
                         - organization_boundary_violation
         '404':
           description: 资源不存在或不属于本组织（不区分「不存在」与「不归你」）
@@ -6991,6 +7610,11 @@ paths:
       description: |
         成员须为本组织已映射用户；已在群（active）计入 already_member，不重复开世代。
         群 owner 不可被移除（owner invariant 由 INT-06 强制）。
+      security:
+      - ibIntHmacCredential: []
+        ibIntHmacTimestamp: []
+        ibIntHmacNonce: []
+        ibIntHmacSignature: []
       operationId: internalGroupAddMembers
       parameters:
       - name: group_id
@@ -7000,6 +7624,8 @@ paths:
         schema:
           type: integer
           format: int64
+          minimum: 1
+          maximum: 9223372036854775807
       - name: Idempotency-Key
         in: header
         required: true
@@ -7007,6 +7633,8 @@ paths:
         schema:
           type: string
           minLength: 1
+          maxLength: 128
+          pattern: ^[ -~]+$
       x-imboy-authentication: hmac
       x-imboy-rate-bucket: internal_write
       x-imboy-idempotency: required
@@ -7022,6 +7650,7 @@ paths:
                 external_user_ids:
                   type: array
                   minItems: 1
+                  maxItems: 200
                   items:
                     type: string
       responses:
@@ -7043,6 +7672,13 @@ paths:
                   already_member:
                     type: integer
                     description: 已在群的数量
+          headers:
+            Idempotent-Replayed:
+              description: 重放首次已提交的 HTTP 状态与正文时为 true；首次响应不带此头。
+              schema:
+                type: string
+                enum:
+                - 'true'
         '400':
           description: 请求参数/形状非法
           content:
@@ -7088,7 +7724,7 @@ paths:
                         enum:
                         - invalid_request
         '401':
-          description: 凭证缺失/格式错/不存在的 locator
+          description: 凭证缺失、格式或签名无效、已撤销，或凭证已过期。
           content:
             application/json:
               schema:
@@ -7131,8 +7767,9 @@ paths:
                       code:
                         enum:
                         - invalid_credential
+                        - credential_expired
         '403':
-          description: 跨组织访问（IDOR 防线）
+          description: 应用或组织停用，或目标业务组织归属不允许访问。
           content:
             application/json:
               schema:
@@ -7174,6 +7811,8 @@ paths:
                     properties:
                       code:
                         enum:
+                        - application_disabled
+                        - organization_disabled
                         - organization_boundary_violation
         '404':
           description: 资源不存在或不属于本组织（不区分「不存在」与「不归你」）
@@ -7402,6 +8041,50 @@ paths:
                       code:
                         enum:
                         - internal_error
+        '503':
+          description: 平台安全闸关闭（暂时拒绝服务）
+          content:
+            application/json:
+              schema:
+                allOf:
+                - type: object
+                  required:
+                  - error
+                  properties:
+                    error:
+                      type: object
+                      required:
+                      - code
+                      - message
+                      properties:
+                        code:
+                          type: string
+                          description: 机器可读稳定错误码（snake_case，长期稳定，勿按 message 做逻辑）
+                          enum:
+                          - invalid_request
+                          - invalid_credential
+                          - credential_expired
+                          - application_disabled
+                          - organization_disabled
+                          - organization_boundary_violation
+                          - resource_not_found
+                          - idempotency_conflict
+                          - identity_not_mapped
+                          - rate_limited
+                          - security_gate_closed
+                          - internal_error
+                          - version_conflict
+                          - resource_conflict
+                          - seat_limit_exceeded
+                        message:
+                          type: string
+                          description: 人类可读说明（文案不保证稳定）
+                properties:
+                  error:
+                    properties:
+                      code:
+                        enum:
+                        - security_gate_closed
     delete:
       tags:
       - internal
@@ -7409,6 +8092,11 @@ paths:
       description: |
         群 owner 不可被 OA 移除（移除后必须仍剩 active 群主）；已不在群计入
         already_absent，重复调用同结果。
+      security:
+      - ibIntHmacCredential: []
+        ibIntHmacTimestamp: []
+        ibIntHmacNonce: []
+        ibIntHmacSignature: []
       operationId: internalGroupRemoveMembers
       parameters:
       - name: group_id
@@ -7418,6 +8106,8 @@ paths:
         schema:
           type: integer
           format: int64
+          minimum: 1
+          maximum: 9223372036854775807
       - name: Idempotency-Key
         in: header
         required: true
@@ -7425,6 +8115,8 @@ paths:
         schema:
           type: string
           minLength: 1
+          maxLength: 128
+          pattern: ^[ -~]+$
       x-imboy-authentication: hmac
       x-imboy-rate-bucket: internal_write
       x-imboy-idempotency: required
@@ -7440,6 +8132,7 @@ paths:
                 external_user_ids:
                   type: array
                   minItems: 1
+                  maxItems: 200
                   items:
                     type: string
       responses:
@@ -7459,6 +8152,13 @@ paths:
                     type: integer
                   already_absent:
                     type: integer
+          headers:
+            Idempotent-Replayed:
+              description: 重放首次已提交的 HTTP 状态与正文时为 true；首次响应不带此头。
+              schema:
+                type: string
+                enum:
+                - 'true'
         '400':
           description: 请求参数/形状非法
           content:
@@ -7504,7 +8204,7 @@ paths:
                         enum:
                         - invalid_request
         '401':
-          description: 凭证缺失/格式错/不存在的 locator
+          description: 凭证缺失、格式或签名无效、已撤销，或凭证已过期。
           content:
             application/json:
               schema:
@@ -7547,8 +8247,9 @@ paths:
                       code:
                         enum:
                         - invalid_credential
+                        - credential_expired
         '403':
-          description: 跨组织访问（IDOR 防线）
+          description: 应用或组织停用，或目标业务组织归属不允许访问。
           content:
             application/json:
               schema:
@@ -7590,6 +8291,8 @@ paths:
                     properties:
                       code:
                         enum:
+                        - application_disabled
+                        - organization_disabled
                         - organization_boundary_violation
         '404':
           description: 资源不存在或不属于本组织（不区分「不存在」与「不归你」）
@@ -7818,14 +8521,64 @@ paths:
                       code:
                         enum:
                         - internal_error
+        '503':
+          description: 平台安全闸关闭（暂时拒绝服务）
+          content:
+            application/json:
+              schema:
+                allOf:
+                - type: object
+                  required:
+                  - error
+                  properties:
+                    error:
+                      type: object
+                      required:
+                      - code
+                      - message
+                      properties:
+                        code:
+                          type: string
+                          description: 机器可读稳定错误码（snake_case，长期稳定，勿按 message 做逻辑）
+                          enum:
+                          - invalid_request
+                          - invalid_credential
+                          - credential_expired
+                          - application_disabled
+                          - organization_disabled
+                          - organization_boundary_violation
+                          - resource_not_found
+                          - idempotency_conflict
+                          - identity_not_mapped
+                          - rate_limited
+                          - security_gate_closed
+                          - internal_error
+                          - version_conflict
+                          - resource_conflict
+                          - seat_limit_exceeded
+                        message:
+                          type: string
+                          description: 人类可读说明（文案不保证稳定）
+                properties:
+                  error:
+                    properties:
+                      code:
+                        enum:
+                        - security_gate_closed
   /api/internal/v1/groups/{group_id}/members/roles:
     put:
       tags:
       - internal
       summary: 设置企业群成员角色
       description: |
-        按成员逐个设置角色（role 取值由群域定义，如 member / admin）。
+        按外部成员标识设置整数角色：1 普通成员、2 嘉宾、3 管理员、5 副群主。
+        群主（4）不能由此接口授予或修改；目标必须是本群 active 成员。
         **请求形态以 handler 为准**：roles 为 `[{external_user_id, role}]` 对象数组。
+      security:
+      - ibIntHmacCredential: []
+        ibIntHmacTimestamp: []
+        ibIntHmacNonce: []
+        ibIntHmacSignature: []
       operationId: internalGroupSetMemberRoles
       parameters:
       - name: group_id
@@ -7835,6 +8588,8 @@ paths:
         schema:
           type: integer
           format: int64
+          minimum: 1
+          maximum: 9223372036854775807
       - name: Idempotency-Key
         in: header
         required: true
@@ -7842,6 +8597,8 @@ paths:
         schema:
           type: string
           minLength: 1
+          maxLength: 128
+          pattern: ^[ -~]+$
       x-imboy-authentication: hmac
       x-imboy-rate-bucket: internal_write
       x-imboy-idempotency: required
@@ -7857,6 +8614,7 @@ paths:
                 roles:
                   type: array
                   minItems: 1
+                  maxItems: 200
                   items:
                     type: object
                     required:
@@ -7866,7 +8624,12 @@ paths:
                       external_user_id:
                         type: string
                       role:
-                        type: string
+                        type: integer
+                        enum:
+                        - 1
+                        - 2
+                        - 3
+                        - 5
       responses:
         '200':
           description: 角色设置结果
@@ -7874,6 +8637,11 @@ paths:
             application/json:
               schema:
                 type: object
+                required:
+                - group_id
+                - updated
+                - unchanged
+                - members
                 properties:
                   group_id:
                     type: integer
@@ -7889,12 +8657,33 @@ paths:
                     description: 设置后的成员角色清单
                     items:
                       type: object
+                      required:
+                      - external_user_id
+                      - user_id
+                      - role
+                      - previous_role
                       properties:
+                        external_user_id:
+                          type: string
                         user_id:
                           type: integer
                           format: int64
                         role:
-                          type: string
+                          type: integer
+                          enum:
+                          - 1
+                          - 2
+                          - 3
+                          - 5
+                        previous_role:
+                          type: integer
+          headers:
+            Idempotent-Replayed:
+              description: 重放首次已提交的 HTTP 状态与正文时为 true；首次响应不带此头。
+              schema:
+                type: string
+                enum:
+                - 'true'
         '400':
           description: 请求参数/形状非法
           content:
@@ -7940,7 +8729,7 @@ paths:
                         enum:
                         - invalid_request
         '401':
-          description: 凭证缺失/格式错/不存在的 locator
+          description: 凭证缺失、格式或签名无效、已撤销，或凭证已过期。
           content:
             application/json:
               schema:
@@ -7983,8 +8772,9 @@ paths:
                       code:
                         enum:
                         - invalid_credential
+                        - credential_expired
         '403':
-          description: 跨组织访问（IDOR 防线）
+          description: 应用或组织停用，或目标业务组织归属不允许访问。
           content:
             application/json:
               schema:
@@ -8026,6 +8816,8 @@ paths:
                     properties:
                       code:
                         enum:
+                        - application_disabled
+                        - organization_disabled
                         - organization_boundary_violation
         '404':
           description: 资源不存在或不属于本组织（不区分「不存在」与「不归你」）
@@ -8254,6 +9046,50 @@ paths:
                       code:
                         enum:
                         - internal_error
+        '503':
+          description: 平台安全闸关闭（暂时拒绝服务）
+          content:
+            application/json:
+              schema:
+                allOf:
+                - type: object
+                  required:
+                  - error
+                  properties:
+                    error:
+                      type: object
+                      required:
+                      - code
+                      - message
+                      properties:
+                        code:
+                          type: string
+                          description: 机器可读稳定错误码（snake_case，长期稳定，勿按 message 做逻辑）
+                          enum:
+                          - invalid_request
+                          - invalid_credential
+                          - credential_expired
+                          - application_disabled
+                          - organization_disabled
+                          - organization_boundary_violation
+                          - resource_not_found
+                          - idempotency_conflict
+                          - identity_not_mapped
+                          - rate_limited
+                          - security_gate_closed
+                          - internal_error
+                          - version_conflict
+                          - resource_conflict
+                          - seat_limit_exceeded
+                        message:
+                          type: string
+                          description: 人类可读说明（文案不保证稳定）
+                properties:
+                  error:
+                    properties:
+                      code:
+                        enum:
+                        - security_gate_closed
   /api/internal/v1/groups/{group_id}/messages:
     post:
       tags:
@@ -8263,6 +9099,11 @@ paths:
         发送到企业群。HMAC 无需 Scope。
         human 发送者必须是该群 active 成员；企业托管消息固定非端到端加密。
         **as_user_id / actor_user_id 别名参数出现即拒**（INV-5）。
+      security:
+      - ibIntHmacCredential: []
+        ibIntHmacTimestamp: []
+        ibIntHmacNonce: []
+        ibIntHmacSignature: []
       operationId: internalMessageGroup
       parameters:
       - name: group_id
@@ -8272,6 +9113,8 @@ paths:
         schema:
           type: integer
           format: int64
+          minimum: 1
+          maximum: 9223372036854775807
       - name: Idempotency-Key
         in: header
         required: true
@@ -8279,6 +9122,8 @@ paths:
         schema:
           type: string
           minLength: 1
+          maxLength: 128
+          pattern: ^[ -~]+$
       x-imboy-authentication: hmac
       x-imboy-rate-bucket: internal_write
       x-imboy-idempotency: required
@@ -8291,6 +9136,37 @@ paths:
               required:
               - sender_mode
               - msg_type
+              allOf:
+              - if:
+                  properties:
+                    sender_mode:
+                      const: human
+                then:
+                  required:
+                  - sender_user_id
+                  properties:
+                    sender_user_id:
+                      type: string
+              - if:
+                  properties:
+                    msg_type:
+                      const: text
+                then:
+                  required:
+                  - content
+                  properties:
+                    content:
+                      type: string
+              - if:
+                  properties:
+                    msg_type:
+                      const: file
+                then:
+                  required:
+                  - object_key
+                  properties:
+                    object_key:
+                      type: string
               properties:
                 sender_mode:
                   type: string
@@ -8309,7 +9185,7 @@ paths:
                   type: string
                   minLength: 1
                   maxLength: 4000
-                  description: msg_type=text 必填
+                  description: msg_type=text 必填；UTF-8 编码 1..4000 字节
                 object_key:
                   type: string
                   description: msg_type=file 必填（本 org/app 已 confirm 附件）
@@ -8320,10 +9196,19 @@ paths:
             application/json:
               schema:
                 type: object
+                required:
+                - msg_id
+                - webhook_resource_id
+                - sender_kind
+                - sender_user_id
+                - origin_kind
+                - origin_application_id
+                - accepted_at
                 properties:
                   msg_id:
-                    type: integer
-                    format: int64
+                    type: string
+                    format: uuid
+                    description: 客户端消息 ID（UUID v7）
                   webhook_resource_id:
                     type: integer
                     format: int64
@@ -8333,6 +9218,9 @@ paths:
                       **两个不同标识符**；集成方以此把回调关联回本次发送响应。
                   sender_kind:
                     type: string
+                    enum:
+                    - application
+                    - human
                   sender_user_id:
                     type:
                     - integer
@@ -8346,8 +9234,16 @@ paths:
                     type: integer
                     format: int64
                   accepted_at:
-                    type: string
-                    description: 受理时间（ISO-8601）
+                    type: integer
+                    format: int64
+                    description: 受理时间（Unix 毫秒）
+          headers:
+            Idempotent-Replayed:
+              description: 重放首次已提交的 HTTP 状态与正文时为 true；首次响应不带此头。
+              schema:
+                type: string
+                enum:
+                - 'true'
         '400':
           description: 请求参数/形状非法
           content:
@@ -8393,7 +9289,7 @@ paths:
                         enum:
                         - invalid_request
         '401':
-          description: 凭证缺失/格式错/不存在的 locator
+          description: 凭证缺失、格式或签名无效、已撤销，或凭证已过期。
           content:
             application/json:
               schema:
@@ -8436,8 +9332,9 @@ paths:
                       code:
                         enum:
                         - invalid_credential
+                        - credential_expired
         '403':
-          description: 跨组织访问（IDOR 防线）
+          description: 应用或组织停用，或目标业务组织归属不允许访问。
           content:
             application/json:
               schema:
@@ -8479,6 +9376,8 @@ paths:
                     properties:
                       code:
                         enum:
+                        - application_disabled
+                        - organization_disabled
                         - organization_boundary_violation
         '404':
           description: 资源不存在或不属于本组织（不区分「不存在」与「不归你」）
@@ -8707,6 +9606,50 @@ paths:
                       code:
                         enum:
                         - internal_error
+        '503':
+          description: 平台安全闸关闭（暂时拒绝服务）
+          content:
+            application/json:
+              schema:
+                allOf:
+                - type: object
+                  required:
+                  - error
+                  properties:
+                    error:
+                      type: object
+                      required:
+                      - code
+                      - message
+                      properties:
+                        code:
+                          type: string
+                          description: 机器可读稳定错误码（snake_case，长期稳定，勿按 message 做逻辑）
+                          enum:
+                          - invalid_request
+                          - invalid_credential
+                          - credential_expired
+                          - application_disabled
+                          - organization_disabled
+                          - organization_boundary_violation
+                          - resource_not_found
+                          - idempotency_conflict
+                          - identity_not_mapped
+                          - rate_limited
+                          - security_gate_closed
+                          - internal_error
+                          - version_conflict
+                          - resource_conflict
+                          - seat_limit_exceeded
+                        message:
+                          type: string
+                          description: 人类可读说明（文案不保证稳定）
+                properties:
+                  error:
+                    properties:
+                      code:
+                        enum:
+                        - security_gate_closed
   /api/internal/v1/messages/direct:
     post:
       tags:
@@ -8716,6 +9659,11 @@ paths:
         以应用身份或代本组织已映射人类用户发送单聊。企业托管消息**固定非端到端
         加密**，审计事实永久保留。sender_mode 区分应用身份与已映射的 Human 身份；两者均以 HMAC 签名调用。
         **as_user_id / actor_user_id 别名参数出现即拒**（INV-5）。
+      security:
+      - ibIntHmacCredential: []
+        ibIntHmacTimestamp: []
+        ibIntHmacNonce: []
+        ibIntHmacSignature: []
       operationId: internalMessageDirect
       parameters:
       - name: Idempotency-Key
@@ -8725,6 +9673,8 @@ paths:
         schema:
           type: string
           minLength: 1
+          maxLength: 128
+          pattern: ^[ -~]+$
       x-imboy-authentication: hmac
       x-imboy-rate-bucket: internal_write
       x-imboy-idempotency: required
@@ -8738,6 +9688,37 @@ paths:
               - sender_mode
               - recipient_user_id
               - msg_type
+              allOf:
+              - if:
+                  properties:
+                    sender_mode:
+                      const: human
+                then:
+                  required:
+                  - sender_user_id
+                  properties:
+                    sender_user_id:
+                      type: string
+              - if:
+                  properties:
+                    msg_type:
+                      const: text
+                then:
+                  required:
+                  - content
+                  properties:
+                    content:
+                      type: string
+              - if:
+                  properties:
+                    msg_type:
+                      const: file
+                then:
+                  required:
+                  - object_key
+                  properties:
+                    object_key:
+                      type: string
               properties:
                 sender_mode:
                   type: string
@@ -8759,7 +9740,7 @@ paths:
                   type: string
                   minLength: 1
                   maxLength: 4000
-                  description: msg_type=text 必填
+                  description: msg_type=text 必填；UTF-8 编码 1..4000 字节
                 object_key:
                   type: string
                   description: msg_type=file 必填（本 org/app 已 confirm 附件）
@@ -8770,10 +9751,19 @@ paths:
             application/json:
               schema:
                 type: object
+                required:
+                - msg_id
+                - webhook_resource_id
+                - sender_kind
+                - sender_user_id
+                - origin_kind
+                - origin_application_id
+                - accepted_at
                 properties:
                   msg_id:
-                    type: integer
-                    format: int64
+                    type: string
+                    format: uuid
+                    description: 客户端消息 ID（UUID v7）
                   webhook_resource_id:
                     type: integer
                     format: int64
@@ -8783,7 +9773,9 @@ paths:
                       **两个不同标识符**；集成方以此把回调关联回本次发送响应。
                   sender_kind:
                     type: string
-                    description: application | human
+                    enum:
+                    - application
+                    - human
                   sender_user_id:
                     type:
                     - integer
@@ -8798,8 +9790,16 @@ paths:
                     type: integer
                     format: int64
                   accepted_at:
-                    type: string
-                    description: 受理时间（ISO-8601）
+                    type: integer
+                    format: int64
+                    description: 受理时间（Unix 毫秒）
+          headers:
+            Idempotent-Replayed:
+              description: 重放首次已提交的 HTTP 状态与正文时为 true；首次响应不带此头。
+              schema:
+                type: string
+                enum:
+                - 'true'
         '400':
           description: 请求参数/形状非法
           content:
@@ -8845,7 +9845,7 @@ paths:
                         enum:
                         - invalid_request
         '401':
-          description: 凭证缺失/格式错/不存在的 locator
+          description: 凭证缺失、格式或签名无效、已撤销，或凭证已过期。
           content:
             application/json:
               schema:
@@ -8888,8 +9888,9 @@ paths:
                       code:
                         enum:
                         - invalid_credential
+                        - credential_expired
         '403':
-          description: 跨组织访问（IDOR 防线）
+          description: 应用或组织停用，或目标业务组织归属不允许访问。
           content:
             application/json:
               schema:
@@ -8931,6 +9932,8 @@ paths:
                     properties:
                       code:
                         enum:
+                        - application_disabled
+                        - organization_disabled
                         - organization_boundary_violation
         '404':
           description: 资源不存在或不属于本组织（不区分「不存在」与「不归你」）
@@ -9159,15 +10162,62 @@ paths:
                       code:
                         enum:
                         - internal_error
+        '503':
+          description: 平台安全闸关闭（暂时拒绝服务）
+          content:
+            application/json:
+              schema:
+                allOf:
+                - type: object
+                  required:
+                  - error
+                  properties:
+                    error:
+                      type: object
+                      required:
+                      - code
+                      - message
+                      properties:
+                        code:
+                          type: string
+                          description: 机器可读稳定错误码（snake_case，长期稳定，勿按 message 做逻辑）
+                          enum:
+                          - invalid_request
+                          - invalid_credential
+                          - credential_expired
+                          - application_disabled
+                          - organization_disabled
+                          - organization_boundary_violation
+                          - resource_not_found
+                          - idempotency_conflict
+                          - identity_not_mapped
+                          - rate_limited
+                          - security_gate_closed
+                          - internal_error
+                          - version_conflict
+                          - resource_conflict
+                          - seat_limit_exceeded
+                        message:
+                          type: string
+                          description: 人类可读说明（文案不保证稳定）
+                properties:
+                  error:
+                    properties:
+                      code:
+                        enum:
+                        - security_gate_closed
   /api/internal/v1/files/presign:
     post:
       tags:
       - internal
-      summary: 企业附件直传预签名（PUT URL）
-      description: |
-        两段式直传第一步：取对象存储预签名 PUT URL（有效期 3600 秒），随后你方
-        直传文件，再调 /files/confirm 确认入库。mime 白名单与大小上限取
-        min(全局, 应用策略)；confirm 以 HEAD 真实值复核。
+      summary: 企业附件登记、状态回查与上传能力恢复
+      description: register登记附件，status仅回查当前会话，renew在绝对截止内续期。受控会话使用client_upload_id UUID；登记事务只保存稳定事实，提交后（含幂等命中）复核当前授权和会话状态，再签发受控网关能力。能力到期不因重试自动延长；响应可能随会话当前状态变化，不能把能力接口当作首次字节缓存。错误使用Internal
+        error信封，恢复错误可附can_resume与retry_action。
+      security:
+      - ibIntHmacCredential: []
+        ibIntHmacTimestamp: []
+        ibIntHmacNonce: []
+        ibIntHmacSignature: []
       operationId: internalFilePresign
       parameters:
       - name: Idempotency-Key
@@ -9177,6 +10227,8 @@ paths:
         schema:
           type: string
           minLength: 1
+          maxLength: 128
+          pattern: ^[ -~]+$
       x-imboy-authentication: hmac
       x-imboy-rate-bucket: internal_write
       x-imboy-idempotency: required
@@ -9186,9 +10238,6 @@ paths:
           application/json:
             schema:
               type: object
-              required:
-              - file_name
-              - mime_type
               properties:
                 file_name:
                   type: string
@@ -9204,13 +10253,7 @@ paths:
                 client_upload_id:
                   type: string
                   format: uuid
-                  description: |
-                    V5.5 恢复合同（02 §137/§143）：携带 UUID 进入受控会话链——
-                    幂等事务内登记（application 主体快照，失败关闭无能力），
-                    COMMIT 后签发受控网关能力（put_url 指向
-                    /api/v1/attachment/gateway/{client_upload_id}，附带
-                    upload_capability token）。同 UUID 重试幂等恢复；缺省保持
-                    legacy 直传 URL 兼容。
+                  description: 受控会话 UUID。同 UUID 在同一主体和参数下重试恢复原登记；缺省由服务端生成 UUID，仍进入 V5 受控会话。登记提交后重新复核当前授权和会话状态，再签发网关能力。
                 operation:
                   type: string
                   enum:
@@ -9226,6 +10269,26 @@ paths:
                 object_key:
                   type: string
                   description: status/renew 的备选会话定位键（client_upload_id 缺省时使用）
+              anyOf:
+              - properties:
+                  operation:
+                    enum:
+                    - register
+                required:
+                - file_name
+                - mime_type
+              - properties:
+                  operation:
+                    enum:
+                    - status
+                    - renew
+                required:
+                - operation
+                anyOf:
+                - required:
+                  - client_upload_id
+                - required:
+                  - object_key
       responses:
         '200':
           description: 预签名结果
@@ -9235,16 +10298,14 @@ paths:
                 type: object
                 required:
                 - object_key
-                - expires_at
                 additionalProperties: false
                 properties:
                   object_key:
                     type: string
                   put_url:
                     type: string
-                    description: |
-                      legacy 为对象存储直传 URL；V5 会话为受控网关地址
-                      （能力 token 在 query capability，不存签名 URL）。
+                    description: 受控网关地址 /api/v1/attachment/gateway/{client_upload_id}；query capability 携上传能力。旧缓存中的裸对象存储 URL
+                      不再直接重放。
                   expires_at:
                     type: integer
                     description: 能力过期（epoch seconds）；V5 会话为登记冻结值
@@ -9270,104 +10331,131 @@ paths:
                   retry_action:
                     type: string
                     description: 续传建议（resume_same_id / resume_same_key / none）
+                  bucket:
+                    type: string
+                    description: 登记结果中的存储桶标识。
+                  mime_type:
+                    type: string
+                  file_id:
+                    type: integer
+                    format: int64
+                  size:
+                    type: integer
+                  lifecycle_state:
+                    type:
+                    - string
+                    - 'null'
+                  upload_expires_at:
+                    type: integer
+                    description: status/已确认会话返回的Unix秒，不保证有expires_at或上传能力。
+                anyOf:
+                - required:
+                  - expires_at
+                - required:
+                  - upload_expires_at
+          headers:
+            Idempotent-Replayed:
+              description: 登记命中幂等记录时为true；当前授权、会话和能力重新复核，响应不保证与首次状态/字节相同。
+              schema:
+                type: string
+                enum:
+                - 'true'
         '404':
-          description: 会话不存在或跨应用（status/renew；不泄露存在性）
+          description: 会话不存在或不可访问
           content:
             application/json:
               schema:
-                type: object
-                required:
-                - code
-                - msg
-                - sv_ts
-                - payload
-                properties:
-                  code:
-                    type: integer
-                    description: |
-                      ## 中文
-                      业务状态码。0 表示成功，其余为业务错误码（见 `include/error_code.hrl`）。
-                      ## English
-                      Business status code. 0 = success; non-zero values map to error codes
-                      defined in `include/error_code.hrl`.
-                  msg:
-                    type: string
-                    description: |
-                      ## 中文
-                      人类可读的状态描述；成功时通常为 "ok"。
-                      ## English
-                      Human-readable status message; typically "ok" on success.
-                  sv_ts:
-                    type: integer
-                    description: |
-                      ## 中文
-                      服务端时间戳（毫秒，UTC）。注：实际为 64-bit，但 1.0.0-rc.1 历史契约
-                      未声明 format，保留原签名避免破坏性变更（codegen 仍按 integer 处理）。
-                      ## English
-                      Server timestamp in ms (UTC). Note: stored as 64-bit, but the 1.0.0-rc.1
-                      frozen contract did not declare `format`; kept as plain integer here to
-                      avoid a breaking change.
-                  payload:
-                    description: |
-                      ## 中文
-                      业务载荷，形状因端点而异；错误响应允许为 null 或 {}。
-                      ## English
-                      Endpoint-specific business payload; may be null or {} on error.
-                example:
-                  code: 0
-                  msg: ok
-                  sv_ts: 1771481621000
-                  payload:
-                    id: 1
+                allOf:
+                - type: object
+                  required:
+                  - error
+                  properties:
+                    error:
+                      type: object
+                      required:
+                      - code
+                      - message
+                      properties:
+                        code:
+                          type: string
+                          description: 机器可读稳定错误码（snake_case，长期稳定，勿按 message 做逻辑）
+                          enum:
+                          - invalid_request
+                          - invalid_credential
+                          - credential_expired
+                          - application_disabled
+                          - organization_disabled
+                          - organization_boundary_violation
+                          - resource_not_found
+                          - idempotency_conflict
+                          - identity_not_mapped
+                          - rate_limited
+                          - security_gate_closed
+                          - internal_error
+                          - version_conflict
+                          - resource_conflict
+                          - seat_limit_exceeded
+                        message:
+                          type: string
+                          description: 人类可读说明（文案不保证稳定）
+                - type: object
+                  properties:
+                    can_resume:
+                      type: boolean
+                    retry_action:
+                      type: string
+                      enum:
+                      - reupload_required
+                      - retry_same_id
+                      - none
         '410':
-          description: 会话已过绝对截止（renew；reupload_required）
+          description: 会话超过绝对截止；需重新上传
           content:
             application/json:
               schema:
-                type: object
-                required:
-                - code
-                - msg
-                - sv_ts
-                - payload
-                properties:
-                  code:
-                    type: integer
-                    description: |
-                      ## 中文
-                      业务状态码。0 表示成功，其余为业务错误码（见 `include/error_code.hrl`）。
-                      ## English
-                      Business status code. 0 = success; non-zero values map to error codes
-                      defined in `include/error_code.hrl`.
-                  msg:
-                    type: string
-                    description: |
-                      ## 中文
-                      人类可读的状态描述；成功时通常为 "ok"。
-                      ## English
-                      Human-readable status message; typically "ok" on success.
-                  sv_ts:
-                    type: integer
-                    description: |
-                      ## 中文
-                      服务端时间戳（毫秒，UTC）。注：实际为 64-bit，但 1.0.0-rc.1 历史契约
-                      未声明 format，保留原签名避免破坏性变更（codegen 仍按 integer 处理）。
-                      ## English
-                      Server timestamp in ms (UTC). Note: stored as 64-bit, but the 1.0.0-rc.1
-                      frozen contract did not declare `format`; kept as plain integer here to
-                      avoid a breaking change.
-                  payload:
-                    description: |
-                      ## 中文
-                      业务载荷，形状因端点而异；错误响应允许为 null 或 {}。
-                      ## English
-                      Endpoint-specific business payload; may be null or {} on error.
-                example:
-                  code: 0
-                  msg: ok
-                  sv_ts: 1771481621000
-                  payload:
-                    id: 1
+                allOf:
+                - type: object
+                  required:
+                  - error
+                  properties:
+                    error:
+                      type: object
+                      required:
+                      - code
+                      - message
+                      properties:
+                        code:
+                          type: string
+                          description: 机器可读稳定错误码（snake_case，长期稳定，勿按 message 做逻辑）
+                          enum:
+                          - invalid_request
+                          - invalid_credential
+                          - credential_expired
+                          - application_disabled
+                          - organization_disabled
+                          - organization_boundary_violation
+                          - resource_not_found
+                          - idempotency_conflict
+                          - identity_not_mapped
+                          - rate_limited
+                          - security_gate_closed
+                          - internal_error
+                          - version_conflict
+                          - resource_conflict
+                          - seat_limit_exceeded
+                        message:
+                          type: string
+                          description: 人类可读说明（文案不保证稳定）
+                - type: object
+                  properties:
+                    can_resume:
+                      type: boolean
+                    retry_action:
+                      type: string
+                      enum:
+                      - reupload_required
+                      - retry_same_id
+                      - none
         '400':
           description: 请求参数/形状非法
           content:
@@ -9413,7 +10501,7 @@ paths:
                         enum:
                         - invalid_request
         '401':
-          description: 凭证缺失/格式错/不存在的 locator
+          description: 凭证缺失、格式或签名无效、已撤销，或凭证已过期。
           content:
             application/json:
               schema:
@@ -9456,8 +10544,9 @@ paths:
                       code:
                         enum:
                         - invalid_credential
+                        - credential_expired
         '403':
-          description: 跨组织访问（IDOR 防线）
+          description: 应用或组织停用，或目标业务组织归属不允许访问。
           content:
             application/json:
               schema:
@@ -9499,9 +10588,11 @@ paths:
                     properties:
                       code:
                         enum:
+                        - application_disabled
+                        - organization_disabled
                         - organization_boundary_violation
         '409':
-          description: Idempotency-Key 与既有请求冲突
+          description: 幂等摘要冲突、旧能力缓存不可重放或会话状态冲突
           content:
             application/json:
               schema:
@@ -9538,12 +10629,16 @@ paths:
                         message:
                           type: string
                           description: 人类可读说明（文案不保证稳定）
-                properties:
-                  error:
-                    properties:
-                      code:
-                        enum:
-                        - idempotency_conflict
+                - type: object
+                  properties:
+                    can_resume:
+                      type: boolean
+                    retry_action:
+                      type: string
+                      enum:
+                      - reupload_required
+                      - retry_same_id
+                      - none
         '429':
           description: 触发限流（fail-closed）
           headers:
@@ -9639,6 +10734,54 @@ paths:
                       code:
                         enum:
                         - internal_error
+        '503':
+          description: 当前授权、会话查询或能力签发暂不可用
+          content:
+            application/json:
+              schema:
+                allOf:
+                - type: object
+                  required:
+                  - error
+                  properties:
+                    error:
+                      type: object
+                      required:
+                      - code
+                      - message
+                      properties:
+                        code:
+                          type: string
+                          description: 机器可读稳定错误码（snake_case，长期稳定，勿按 message 做逻辑）
+                          enum:
+                          - invalid_request
+                          - invalid_credential
+                          - credential_expired
+                          - application_disabled
+                          - organization_disabled
+                          - organization_boundary_violation
+                          - resource_not_found
+                          - idempotency_conflict
+                          - identity_not_mapped
+                          - rate_limited
+                          - security_gate_closed
+                          - internal_error
+                          - version_conflict
+                          - resource_conflict
+                          - seat_limit_exceeded
+                        message:
+                          type: string
+                          description: 人类可读说明（文案不保证稳定）
+                - type: object
+                  properties:
+                    can_resume:
+                      type: boolean
+                    retry_action:
+                      type: string
+                      enum:
+                      - reupload_required
+                      - retry_same_id
+                      - none
   /api/internal/v1/files/confirm:
     post:
       tags:
@@ -9648,6 +10791,11 @@ paths:
         直传完成后的确认：服务端以 HEAD 真实值复核大小与 MIME（超限/非法类型对象
         被删除），登记 attachment 行并建立治理行。object_key 必须是本 org/app 域
         且已 presign 登记的对象。
+      security:
+      - ibIntHmacCredential: []
+        ibIntHmacTimestamp: []
+        ibIntHmacNonce: []
+        ibIntHmacSignature: []
       operationId: internalFileConfirm
       parameters:
       - name: Idempotency-Key
@@ -9657,6 +10805,8 @@ paths:
         schema:
           type: string
           minLength: 1
+          maxLength: 128
+          pattern: ^[ -~]+$
       x-imboy-authentication: hmac
       x-imboy-rate-bucket: internal_write
       x-imboy-idempotency: required
@@ -9696,6 +10846,13 @@ paths:
                   mime_type:
                     type: string
                     description: HEAD 实测类型
+          headers:
+            Idempotent-Replayed:
+              description: 重放首次已提交的 HTTP 状态与正文时为 true；首次响应不带此头。
+              schema:
+                type: string
+                enum:
+                - 'true'
         '400':
           description: 请求参数/形状非法
           content:
@@ -9741,7 +10898,7 @@ paths:
                         enum:
                         - invalid_request
         '401':
-          description: 凭证缺失/格式错/不存在的 locator
+          description: 凭证缺失、格式或签名无效、已撤销，或凭证已过期。
           content:
             application/json:
               schema:
@@ -9784,8 +10941,9 @@ paths:
                       code:
                         enum:
                         - invalid_credential
+                        - credential_expired
         '403':
-          description: 跨组织访问（IDOR 防线）
+          description: 应用或组织停用，或目标业务组织归属不允许访问。
           content:
             application/json:
               schema:
@@ -9827,6 +10985,8 @@ paths:
                     properties:
                       code:
                         enum:
+                        - application_disabled
+                        - organization_disabled
                         - organization_boundary_violation
         '404':
           description: 资源不存在或不属于本组织（不区分「不存在」与「不归你」）
@@ -10011,6 +11171,50 @@ paths:
                       code:
                         enum:
                         - internal_error
+        '503':
+          description: 平台安全闸关闭（暂时拒绝服务）
+          content:
+            application/json:
+              schema:
+                allOf:
+                - type: object
+                  required:
+                  - error
+                  properties:
+                    error:
+                      type: object
+                      required:
+                      - code
+                      - message
+                      properties:
+                        code:
+                          type: string
+                          description: 机器可读稳定错误码（snake_case，长期稳定，勿按 message 做逻辑）
+                          enum:
+                          - invalid_request
+                          - invalid_credential
+                          - credential_expired
+                          - application_disabled
+                          - organization_disabled
+                          - organization_boundary_violation
+                          - resource_not_found
+                          - idempotency_conflict
+                          - identity_not_mapped
+                          - rate_limited
+                          - security_gate_closed
+                          - internal_error
+                          - version_conflict
+                          - resource_conflict
+                          - seat_limit_exceeded
+                        message:
+                          type: string
+                          description: 人类可读说明（文案不保证稳定）
+                properties:
+                  error:
+                    properties:
+                      code:
+                        enum:
+                        - security_gate_closed
   /api/internal/v1/files/governance:
     post:
       tags:
@@ -10022,6 +11226,11 @@ paths:
         不变量在 DB 层声明式强制（migration 00000140 触发器）；违规动作归一
         invalid_request（detail 区分 purge_blocked_by_hold / retention_not_elapsed /
         already_purged 等，不新增错误码）。
+      security:
+      - ibIntHmacCredential: []
+        ibIntHmacTimestamp: []
+        ibIntHmacNonce: []
+        ibIntHmacSignature: []
       operationId: internalFileGovernance
       parameters:
       - name: Idempotency-Key
@@ -10031,6 +11240,8 @@ paths:
         schema:
           type: string
           minLength: 1
+          maxLength: 128
+          pattern: ^[ -~]+$
       x-imboy-authentication: hmac
       x-imboy-rate-bucket: internal_write
       x-imboy-idempotency: required
@@ -10071,14 +11282,11 @@ paths:
             application/json:
               schema:
                 type: object
+                required:
+                - file_id
+                - object_key
+                - purged
                 properties:
-                  op:
-                    type: string
-                    enum:
-                    - set_retention
-                    - hold
-                    - release_hold
-                    - purge
                   file_id:
                     type: integer
                     format: int64
@@ -10088,7 +11296,8 @@ paths:
                     type:
                     - string
                     - 'null'
-                    description: 留存截止（ISO-8601；未设置 null）
+                    format: date-time
+                    description: 留存截止；PG 时间规范化为 UTC RFC3339（毫秒精度），未设置为 null。
                   hold_state:
                     type: string
                   purge_state:
@@ -10105,6 +11314,25 @@ paths:
                     - boolean
                     - 'null'
                     description: hold/release_hold 时回显
+                  purged_at:
+                    type:
+                    - string
+                    - 'null'
+                    format: date-time
+                    description: 清除时间；PG 时间规范化为 UTC RFC3339（毫秒精度），未设置为 null。
+                  extended_until:
+                    type:
+                    - string
+                    - 'null'
+                    format: date-time
+                    description: 本次延长后的留存截止；PG 时间规范化为 UTC RFC3339（毫秒精度），未设置为 null。
+          headers:
+            Idempotent-Replayed:
+              description: 重放首次已提交的 HTTP 状态与正文时为 true；首次响应不带此头。
+              schema:
+                type: string
+                enum:
+                - 'true'
         '400':
           description: 请求参数/形状非法
           content:
@@ -10150,7 +11378,7 @@ paths:
                         enum:
                         - invalid_request
         '401':
-          description: 凭证缺失/格式错/不存在的 locator
+          description: 凭证缺失、格式或签名无效、已撤销，或凭证已过期。
           content:
             application/json:
               schema:
@@ -10193,8 +11421,9 @@ paths:
                       code:
                         enum:
                         - invalid_credential
+                        - credential_expired
         '403':
-          description: 跨组织访问（IDOR 防线）
+          description: 应用或组织停用，或目标业务组织归属不允许访问。
           content:
             application/json:
               schema:
@@ -10236,6 +11465,8 @@ paths:
                     properties:
                       code:
                         enum:
+                        - application_disabled
+                        - organization_disabled
                         - organization_boundary_violation
         '404':
           description: 资源不存在或不属于本组织（不区分「不存在」与「不归你」）
@@ -10420,6 +11651,50 @@ paths:
                       code:
                         enum:
                         - internal_error
+        '503':
+          description: 平台安全闸关闭（暂时拒绝服务）
+          content:
+            application/json:
+              schema:
+                allOf:
+                - type: object
+                  required:
+                  - error
+                  properties:
+                    error:
+                      type: object
+                      required:
+                      - code
+                      - message
+                      properties:
+                        code:
+                          type: string
+                          description: 机器可读稳定错误码（snake_case，长期稳定，勿按 message 做逻辑）
+                          enum:
+                          - invalid_request
+                          - invalid_credential
+                          - credential_expired
+                          - application_disabled
+                          - organization_disabled
+                          - organization_boundary_violation
+                          - resource_not_found
+                          - idempotency_conflict
+                          - identity_not_mapped
+                          - rate_limited
+                          - security_gate_closed
+                          - internal_error
+                          - version_conflict
+                          - resource_conflict
+                          - seat_limit_exceeded
+                        message:
+                          type: string
+                          description: 人类可读说明（文案不保证稳定）
+                properties:
+                  error:
+                    properties:
+                      code:
+                        enum:
+                        - security_gate_closed
   /api/internal/v1/friend-requests:
     post:
       tags:
@@ -10428,6 +11703,11 @@ paths:
       description: |
         仅可对**同组织已映射用户**发起；发送者形态固定为 human（代 OA 用户）。
         平台没有自动通过/确认、删除好友、批量加好友的 API。
+      security:
+      - ibIntHmacCredential: []
+        ibIntHmacTimestamp: []
+        ibIntHmacNonce: []
+        ibIntHmacSignature: []
       operationId: internalFriendRequestCreate
       parameters:
       - name: Idempotency-Key
@@ -10437,6 +11717,8 @@ paths:
         schema:
           type: string
           minLength: 1
+          maxLength: 128
+          pattern: ^[ -~]+$
       x-imboy-authentication: hmac
       x-imboy-rate-bucket: internal_write
       x-imboy-idempotency: required
@@ -10458,7 +11740,8 @@ paths:
                   description: 目标用户 OA 侧标识（同组织已映射）
                 greeting:
                   type: string
-                  description: 打招呼文案（缺省空串）
+                  maxLength: 500
+                  description: 打招呼文案（缺省空串，UTF-8 最多 500 字节）
       responses:
         '200':
           description: 申请受理结果（平台不自动通过）
@@ -10466,6 +11749,10 @@ paths:
             application/json:
               schema:
                 type: object
+                required:
+                - request_status
+                - sender_user_id
+                - target_user_id
                 properties:
                   request_status:
                     type: string
@@ -10475,9 +11762,13 @@ paths:
                     type: string
                   target_user_id:
                     type: string
-                  replayed:
-                    type: boolean
-                    description: 幂等重放时为 true
+          headers:
+            Idempotent-Replayed:
+              description: 重放首次已提交的 HTTP 状态与正文时为 true；首次响应不带此头。
+              schema:
+                type: string
+                enum:
+                - 'true'
         '400':
           description: 请求参数/形状非法
           content:
@@ -10523,7 +11814,7 @@ paths:
                         enum:
                         - invalid_request
         '401':
-          description: 凭证缺失/格式错/不存在的 locator
+          description: 凭证缺失、格式或签名无效、已撤销，或凭证已过期。
           content:
             application/json:
               schema:
@@ -10566,8 +11857,9 @@ paths:
                       code:
                         enum:
                         - invalid_credential
+                        - credential_expired
         '403':
-          description: 跨组织访问（IDOR 防线）
+          description: 应用或组织停用，或目标业务组织归属不允许访问。
           content:
             application/json:
               schema:
@@ -10609,6 +11901,8 @@ paths:
                     properties:
                       code:
                         enum:
+                        - application_disabled
+                        - organization_disabled
                         - organization_boundary_violation
         '404':
           description: 资源不存在或不属于本组织（不区分「不存在」与「不归你」）
@@ -10837,6 +12131,50 @@ paths:
                       code:
                         enum:
                         - internal_error
+        '503':
+          description: 平台安全闸关闭（暂时拒绝服务）
+          content:
+            application/json:
+              schema:
+                allOf:
+                - type: object
+                  required:
+                  - error
+                  properties:
+                    error:
+                      type: object
+                      required:
+                      - code
+                      - message
+                      properties:
+                        code:
+                          type: string
+                          description: 机器可读稳定错误码（snake_case，长期稳定，勿按 message 做逻辑）
+                          enum:
+                          - invalid_request
+                          - invalid_credential
+                          - credential_expired
+                          - application_disabled
+                          - organization_disabled
+                          - organization_boundary_violation
+                          - resource_not_found
+                          - idempotency_conflict
+                          - identity_not_mapped
+                          - rate_limited
+                          - security_gate_closed
+                          - internal_error
+                          - version_conflict
+                          - resource_conflict
+                          - seat_limit_exceeded
+                        message:
+                          type: string
+                          description: 人类可读说明（文案不保证稳定）
+                properties:
+                  error:
+                    properties:
+                      code:
+                        enum:
+                        - security_gate_closed
   /api/internal/v1/webhook:
     put:
       tags:
@@ -10845,7 +12183,12 @@ paths:
       description: |
         配置本应用的回调端点与订阅事件（upsert）。url 即时过 SSRF guard（DNS
         解析私网/保留段拒）；events 须在事件白名单内（空列表 = 只停用订阅）。
-        rotate=true 轮换 secret，响应返回新明文一次。
+        rotate=true 轮换 secret，首次成功响应返回新明文；相同幂等键的授权重放保留该快照。
+      security:
+      - ibIntHmacCredential: []
+        ibIntHmacTimestamp: []
+        ibIntHmacNonce: []
+        ibIntHmacSignature: []
       operationId: internalWebhookConfigure
       parameters:
       - name: Idempotency-Key
@@ -10855,6 +12198,8 @@ paths:
         schema:
           type: string
           minLength: 1
+          maxLength: 128
+          pattern: ^[ -~]+$
       x-imboy-authentication: hmac
       x-imboy-rate-bucket: internal_write
       x-imboy-idempotency: required
@@ -10894,7 +12239,7 @@ paths:
                   description: 缺省 enabled
                 rotate:
                   type: boolean
-                  description: true = 轮换 secret（响应返回新明文一次）
+                  description: true = 轮换 secret（首次及相同幂等键授权重放响应含明文）
       responses:
         '200':
           description: 配置结果
@@ -10933,12 +12278,19 @@ paths:
                     type:
                     - string
                     - 'null'
-                    description: rotate=true 时返回新 secret 明文（仅此一次）；否则 null
+                    description: rotate=true 时返回新 secret 明文；相同幂等键授权重放仍含该值，否则 null
                   endpoint_generation:
                     type: integer
                     description: |
                       端点配置代际（任何配置写入 +1）。V2.1 §15.1：required——
                       generation 持久化失败时整个配置事务失败，不以 2xx 缺字段返回。
+          headers:
+            Idempotent-Replayed:
+              description: 重放首次已提交的 HTTP 状态与正文时为 true；首次响应不带此头。
+              schema:
+                type: string
+                enum:
+                - 'true'
         '400':
           description: 请求参数/形状非法
           content:
@@ -10984,7 +12336,7 @@ paths:
                         enum:
                         - invalid_request
         '401':
-          description: 凭证缺失/格式错/不存在的 locator
+          description: 凭证缺失、格式或签名无效、已撤销，或凭证已过期。
           content:
             application/json:
               schema:
@@ -11027,8 +12379,9 @@ paths:
                       code:
                         enum:
                         - invalid_credential
+                        - credential_expired
         '403':
-          description: 跨组织访问（IDOR 防线）
+          description: 应用或组织停用，或目标业务组织归属不允许访问。
           content:
             application/json:
               schema:
@@ -11070,6 +12423,8 @@ paths:
                     properties:
                       code:
                         enum:
+                        - application_disabled
+                        - organization_disabled
                         - organization_boundary_violation
         '409':
           description: Idempotency-Key 与既有请求冲突
@@ -11210,6 +12565,50 @@ paths:
                       code:
                         enum:
                         - internal_error
+        '503':
+          description: 平台安全闸关闭（暂时拒绝服务）
+          content:
+            application/json:
+              schema:
+                allOf:
+                - type: object
+                  required:
+                  - error
+                  properties:
+                    error:
+                      type: object
+                      required:
+                      - code
+                      - message
+                      properties:
+                        code:
+                          type: string
+                          description: 机器可读稳定错误码（snake_case，长期稳定，勿按 message 做逻辑）
+                          enum:
+                          - invalid_request
+                          - invalid_credential
+                          - credential_expired
+                          - application_disabled
+                          - organization_disabled
+                          - organization_boundary_violation
+                          - resource_not_found
+                          - idempotency_conflict
+                          - identity_not_mapped
+                          - rate_limited
+                          - security_gate_closed
+                          - internal_error
+                          - version_conflict
+                          - resource_conflict
+                          - seat_limit_exceeded
+                        message:
+                          type: string
+                          description: 人类可读说明（文案不保证稳定）
+                properties:
+                  error:
+                    properties:
+                      code:
+                        enum:
+                        - security_gate_closed
   /api/internal/v1/webhook/deliveries:
     get:
       tags:
@@ -11228,6 +12627,11 @@ paths:
         **旧 offset 参数 page/size 任一出现即 400 cursor_required_v1**
         （versioned 迁移错误，DEC-INT23-COMPAT；不存在「带着 page 用游标」的
         过渡形态）。
+      security:
+      - ibIntHmacCredential: []
+        ibIntHmacTimestamp: []
+        ibIntHmacNonce: []
+        ibIntHmacSignature: []
       operationId: internalWebhookDeliveries
       parameters:
       - name: cursor
@@ -11344,7 +12748,7 @@ paths:
                       message:
                         type: string
         '401':
-          description: 凭证缺失/格式错/不存在的 locator
+          description: 凭证缺失、格式或签名无效、已撤销，或凭证已过期。
           content:
             application/json:
               schema:
@@ -11387,8 +12791,9 @@ paths:
                       code:
                         enum:
                         - invalid_credential
+                        - credential_expired
         '403':
-          description: 跨组织访问（IDOR 防线）
+          description: 应用或组织停用，或目标业务组织归属不允许访问。
           content:
             application/json:
               schema:
@@ -11430,6 +12835,8 @@ paths:
                     properties:
                       code:
                         enum:
+                        - application_disabled
+                        - organization_disabled
                         - organization_boundary_violation
         '429':
           description: 触发限流（fail-closed）
@@ -11578,12 +12985,17 @@ paths:
       description: |
         按 delivery_id 重放（失败投递可重放；重放产生新 delivery 行，幂等键由
         平台侧派生，在途重放由唯一索引仲裁为 idempotency_conflict）。
+      security:
+      - ibIntHmacCredential: []
+        ibIntHmacTimestamp: []
+        ibIntHmacNonce: []
+        ibIntHmacSignature: []
       operationId: internalWebhookReplay
       parameters:
       - name: delivery_id
         in: path
         required: true
-        description: 投递 ID（INT-23 列表中的 delivery_id）
+        description: 投递 ID（INT-23 列表中的 delivery_id，不透明字符串，原样传递）
         schema:
           type: string
           minLength: 1
@@ -11595,6 +13007,7 @@ paths:
           type: string
           minLength: 1
           maxLength: 128
+          pattern: ^[ -~]+$
       x-imboy-authentication: hmac
       x-imboy-rate-bucket: internal_write
       x-imboy-idempotency: required
@@ -11665,7 +13078,7 @@ paths:
                         enum:
                         - invalid_request
         '401':
-          description: 凭证缺失/格式错/不存在的 locator
+          description: 凭证缺失、格式或签名无效、已撤销，或凭证已过期。
           content:
             application/json:
               schema:
@@ -11708,8 +13121,9 @@ paths:
                       code:
                         enum:
                         - invalid_credential
+                        - credential_expired
         '403':
-          description: 跨组织访问（IDOR 防线）
+          description: 应用或组织停用，或目标业务组织归属不允许访问。
           content:
             application/json:
               schema:
@@ -11751,6 +13165,8 @@ paths:
                     properties:
                       code:
                         enum:
+                        - application_disabled
+                        - organization_disabled
                         - organization_boundary_violation
         '404':
           description: 资源不存在或不属于本组织（不区分「不存在」与「不归你」）
@@ -11935,6 +13351,50 @@ paths:
                       code:
                         enum:
                         - internal_error
+        '503':
+          description: 平台安全闸关闭（暂时拒绝服务）
+          content:
+            application/json:
+              schema:
+                allOf:
+                - type: object
+                  required:
+                  - error
+                  properties:
+                    error:
+                      type: object
+                      required:
+                      - code
+                      - message
+                      properties:
+                        code:
+                          type: string
+                          description: 机器可读稳定错误码（snake_case，长期稳定，勿按 message 做逻辑）
+                          enum:
+                          - invalid_request
+                          - invalid_credential
+                          - credential_expired
+                          - application_disabled
+                          - organization_disabled
+                          - organization_boundary_violation
+                          - resource_not_found
+                          - idempotency_conflict
+                          - identity_not_mapped
+                          - rate_limited
+                          - security_gate_closed
+                          - internal_error
+                          - version_conflict
+                          - resource_conflict
+                          - seat_limit_exceeded
+                        message:
+                          type: string
+                          description: 人类可读说明（文案不保证稳定）
+                properties:
+                  error:
+                    properties:
+                      code:
+                        enum:
+                        - security_gate_closed
   /api/internal/v1/webhook/test-delivery:
     post:
       tags:
@@ -11953,6 +13413,11 @@ paths:
         - 端点未配置 / disabled / 被安全守卫拒绝 → `invalid_request`（400）；
         - 成功仅代表**已入箱**（`enqueued:true`），不代表对方已接收——投递结果
           请以 INT-23 的 `status`（pending/retry/success/dead）为准。
+      security:
+      - ibIntHmacCredential: []
+        ibIntHmacTimestamp: []
+        ibIntHmacNonce: []
+        ibIntHmacSignature: []
       operationId: internalWebhookTestDelivery
       parameters:
       - name: Idempotency-Key
@@ -11962,6 +13427,8 @@ paths:
         schema:
           type: string
           minLength: 1
+          maxLength: 128
+          pattern: ^[ -~]+$
       x-imboy-authentication: hmac
       x-imboy-rate-bucket: internal_write
       x-imboy-idempotency: required
@@ -11992,6 +13459,13 @@ paths:
                   endpoint_generation:
                     type: integer
                     description: 投递绑定的端点配置代际
+          headers:
+            Idempotent-Replayed:
+              description: 重放首次已提交的 HTTP 状态与正文时为 true；首次响应不带此头。
+              schema:
+                type: string
+                enum:
+                - 'true'
         '400':
           description: 请求参数/形状非法
           content:
@@ -12037,7 +13511,7 @@ paths:
                         enum:
                         - invalid_request
         '401':
-          description: 凭证缺失/格式错/不存在的 locator
+          description: 凭证缺失、格式或签名无效、已撤销，或凭证已过期。
           content:
             application/json:
               schema:
@@ -12080,8 +13554,9 @@ paths:
                       code:
                         enum:
                         - invalid_credential
+                        - credential_expired
         '403':
-          description: 跨组织访问（IDOR 防线）
+          description: 应用或组织停用，或目标业务组织归属不允许访问。
           content:
             application/json:
               schema:
@@ -12123,6 +13598,8 @@ paths:
                     properties:
                       code:
                         enum:
+                        - application_disabled
+                        - organization_disabled
                         - organization_boundary_violation
         '409':
           description: Idempotency-Key 与既有请求冲突
@@ -12314,6 +13791,11 @@ paths:
       summary: OA 入站登录 tickets
       description: INT-44。OA 后端先认证员工，使用 HMAC-SHA256 请求签名。发起端安全随机生成并保留 verifier，OA 只接收 S256 challenge。票据绑定应用、发行凭据、外部身份、意图与
         challenge；60 秒单次消费，禁止日志及普通客户端存储。成功使用标准业务信封，错误沿用 Internal error 信封。
+      security:
+      - ibIntHmacCredential: []
+        ibIntHmacTimestamp: []
+        ibIntHmacNonce: []
+        ibIntHmacSignature: []
       operationId: internalOaLoginIssue
       requestBody:
         required: true
@@ -12428,7 +13910,7 @@ paths:
                         enum:
                         - invalid_request
         '401':
-          description: 凭证缺失/格式错/不存在的 locator
+          description: 凭证缺失、格式或签名无效、已撤销，或凭证已过期。
           content:
             application/json:
               schema:
@@ -12471,8 +13953,9 @@ paths:
                       code:
                         enum:
                         - invalid_credential
+                        - credential_expired
         '403':
-          description: 跨组织访问（IDOR 防线）
+          description: 应用或组织停用，或目标业务组织归属不允许访问。
           content:
             application/json:
               schema:
@@ -12514,6 +13997,8 @@ paths:
                     properties:
                       code:
                         enum:
+                        - application_disabled
+                        - organization_disabled
                         - organization_boundary_violation
         '429':
           description: 触发限流（fail-closed）
@@ -12610,6 +14095,50 @@ paths:
                       code:
                         enum:
                         - internal_error
+        '503':
+          description: 平台安全闸关闭（暂时拒绝服务）
+          content:
+            application/json:
+              schema:
+                allOf:
+                - type: object
+                  required:
+                  - error
+                  properties:
+                    error:
+                      type: object
+                      required:
+                      - code
+                      - message
+                      properties:
+                        code:
+                          type: string
+                          description: 机器可读稳定错误码（snake_case，长期稳定，勿按 message 做逻辑）
+                          enum:
+                          - invalid_request
+                          - invalid_credential
+                          - credential_expired
+                          - application_disabled
+                          - organization_disabled
+                          - organization_boundary_violation
+                          - resource_not_found
+                          - idempotency_conflict
+                          - identity_not_mapped
+                          - rate_limited
+                          - security_gate_closed
+                          - internal_error
+                          - version_conflict
+                          - resource_conflict
+                          - seat_limit_exceeded
+                        message:
+                          type: string
+                          description: 人类可读说明（文案不保证稳定）
+                properties:
+                  error:
+                    properties:
+                      code:
+                        enum:
+                        - security_gate_closed
       x-imboy-authentication: hmac
       x-imboy-rate-bucket: internal_sso
       x-imboy-idempotency: not_required
@@ -12622,6 +14151,11 @@ paths:
         一个 code 只能成功交换一次（single_use_code），重放即失败——不存在
         「二次成功」。code TTL 60 秒。成功 payload 永不含 IMBoy 凭证（R-6）；
         TSID 以 JSON integer 输出（INV-8）。独立限流桶 internal_sso。
+      security:
+      - ibIntHmacCredential: []
+        ibIntHmacTimestamp: []
+        ibIntHmacNonce: []
+        ibIntHmacSignature: []
       operationId: internalOaSsoExchange
       x-imboy-authentication: hmac
       x-imboy-rate-bucket: internal_sso
@@ -12724,7 +14258,7 @@ paths:
                         enum:
                         - invalid_request
         '401':
-          description: 凭证缺失/格式错/不存在的 locator
+          description: 凭证缺失、格式或签名无效、已撤销，或凭证已过期。
           content:
             application/json:
               schema:
@@ -12767,8 +14301,9 @@ paths:
                       code:
                         enum:
                         - invalid_credential
+                        - credential_expired
         '403':
-          description: 跨组织访问（IDOR 防线）
+          description: 应用或组织停用，或目标业务组织归属不允许访问。
           content:
             application/json:
               schema:
@@ -12810,6 +14345,8 @@ paths:
                     properties:
                       code:
                         enum:
+                        - application_disabled
+                        - organization_disabled
                         - organization_boundary_violation
         '404':
           description: 资源不存在或不属于本组织（不区分「不存在」与「不归你」）
@@ -12994,12 +14531,61 @@ paths:
                       code:
                         enum:
                         - internal_error
+        '503':
+          description: 平台安全闸关闭（暂时拒绝服务）
+          content:
+            application/json:
+              schema:
+                allOf:
+                - type: object
+                  required:
+                  - error
+                  properties:
+                    error:
+                      type: object
+                      required:
+                      - code
+                      - message
+                      properties:
+                        code:
+                          type: string
+                          description: 机器可读稳定错误码（snake_case，长期稳定，勿按 message 做逻辑）
+                          enum:
+                          - invalid_request
+                          - invalid_credential
+                          - credential_expired
+                          - application_disabled
+                          - organization_disabled
+                          - organization_boundary_violation
+                          - resource_not_found
+                          - idempotency_conflict
+                          - identity_not_mapped
+                          - rate_limited
+                          - security_gate_closed
+                          - internal_error
+                          - version_conflict
+                          - resource_conflict
+                          - seat_limit_exceeded
+                        message:
+                          type: string
+                          description: 人类可读说明（文案不保证稳定）
+                properties:
+                  error:
+                    properties:
+                      code:
+                        enum:
+                        - security_gate_closed
   /api/internal/v1/workspaces:
     get:
       tags:
       - internal
       summary: Workspace 列表（业务组织归属）
       description: 当前组织业务归属内的活跃工作空间列表。分页使用签名游标，游标绑定组织、应用及筛选条件。
+      security:
+      - ibIntHmacCredential: []
+        ibIntHmacTimestamp: []
+        ibIntHmacNonce: []
+        ibIntHmacSignature: []
       operationId: internalWorkspaceList
       parameters:
       - name: limit
@@ -13116,7 +14702,7 @@ paths:
                         enum:
                         - invalid_request
         '401':
-          description: 凭证缺失/格式错/不存在的 locator
+          description: 凭证缺失、格式或签名无效、已撤销，或凭证已过期。
           content:
             application/json:
               schema:
@@ -13159,8 +14745,9 @@ paths:
                       code:
                         enum:
                         - invalid_credential
+                        - credential_expired
         '403':
-          description: 跨组织访问（IDOR 防线）
+          description: 应用或组织停用，或目标业务组织归属不允许访问。
           content:
             application/json:
               schema:
@@ -13202,6 +14789,8 @@ paths:
                     properties:
                       code:
                         enum:
+                        - application_disabled
+                        - organization_disabled
                         - organization_boundary_violation
         '429':
           description: 触发限流（fail-closed）
@@ -13346,6 +14935,11 @@ paths:
       tags:
       - internal
       summary: 创建企业工作空间
+      security:
+      - ibIntHmacCredential: []
+        ibIntHmacTimestamp: []
+        ibIntHmacNonce: []
+        ibIntHmacSignature: []
       operationId: internalWorkspaceCreate
       x-imboy-authentication: hmac
       x-imboy-rate-bucket: internal_write
@@ -13514,7 +15108,7 @@ paths:
                         enum:
                         - invalid_request
         '401':
-          description: 凭证缺失/格式错/不存在的 locator
+          description: 凭证缺失、格式或签名无效、已撤销，或凭证已过期。
           content:
             application/json:
               schema:
@@ -13557,8 +15151,9 @@ paths:
                       code:
                         enum:
                         - invalid_credential
+                        - credential_expired
         '403':
-          description: 跨组织访问（IDOR 防线）
+          description: 应用或组织停用，或目标业务组织归属不允许访问。
           content:
             application/json:
               schema:
@@ -13600,6 +15195,8 @@ paths:
                     properties:
                       code:
                         enum:
+                        - application_disabled
+                        - organization_disabled
                         - organization_boundary_violation
         '404':
           description: 资源不存在或不属于本组织（不区分「不存在」与「不归你」）
@@ -13810,6 +15407,11 @@ paths:
       - internal
       summary: Workspace 详情
       description: 读取当前组织内的活跃工作空间。跨组织、不存在和已归档资源均返回 resource_not_found。
+      security:
+      - ibIntHmacCredential: []
+        ibIntHmacTimestamp: []
+        ibIntHmacNonce: []
+        ibIntHmacSignature: []
       operationId: internalWorkspaceDetail
       parameters:
       - name: workspace_id
@@ -13819,6 +15421,8 @@ paths:
         schema:
           type: integer
           format: int64
+          minimum: 1
+          maximum: 9223372036854775807
       x-imboy-authentication: hmac
       x-imboy-rate-bucket: internal_read
       x-imboy-idempotency: not_required
@@ -13898,7 +15502,7 @@ paths:
                         enum:
                         - invalid_request
         '401':
-          description: 凭证缺失/格式错/不存在的 locator
+          description: 凭证缺失、格式或签名无效、已撤销，或凭证已过期。
           content:
             application/json:
               schema:
@@ -13941,8 +15545,9 @@ paths:
                       code:
                         enum:
                         - invalid_credential
+                        - credential_expired
         '403':
-          description: 跨组织访问（IDOR 防线）
+          description: 应用或组织停用，或目标业务组织归属不允许访问。
           content:
             application/json:
               schema:
@@ -13984,6 +15589,8 @@ paths:
                     properties:
                       code:
                         enum:
+                        - application_disabled
+                        - organization_disabled
                         - organization_boundary_violation
         '404':
           description: 资源不存在或不属于本组织（不区分「不存在」与「不归你」）
@@ -14124,10 +15731,59 @@ paths:
                       code:
                         enum:
                         - internal_error
+        '503':
+          description: 平台安全闸关闭（暂时拒绝服务）
+          content:
+            application/json:
+              schema:
+                allOf:
+                - type: object
+                  required:
+                  - error
+                  properties:
+                    error:
+                      type: object
+                      required:
+                      - code
+                      - message
+                      properties:
+                        code:
+                          type: string
+                          description: 机器可读稳定错误码（snake_case，长期稳定，勿按 message 做逻辑）
+                          enum:
+                          - invalid_request
+                          - invalid_credential
+                          - credential_expired
+                          - application_disabled
+                          - organization_disabled
+                          - organization_boundary_violation
+                          - resource_not_found
+                          - idempotency_conflict
+                          - identity_not_mapped
+                          - rate_limited
+                          - security_gate_closed
+                          - internal_error
+                          - version_conflict
+                          - resource_conflict
+                          - seat_limit_exceeded
+                        message:
+                          type: string
+                          description: 人类可读说明（文案不保证稳定）
+                properties:
+                  error:
+                    properties:
+                      code:
+                        enum:
+                        - security_gate_closed
     patch:
       tags:
       - internal
       summary: 修改企业工作空间
+      security:
+      - ibIntHmacCredential: []
+        ibIntHmacTimestamp: []
+        ibIntHmacNonce: []
+        ibIntHmacSignature: []
       operationId: internalWorkspaceUpdate
       x-imboy-authentication: hmac
       x-imboy-rate-bucket: internal_write
@@ -14305,7 +15961,7 @@ paths:
                         enum:
                         - invalid_request
         '401':
-          description: 凭证缺失/格式错/不存在的 locator
+          description: 凭证缺失、格式或签名无效、已撤销，或凭证已过期。
           content:
             application/json:
               schema:
@@ -14348,8 +16004,9 @@ paths:
                       code:
                         enum:
                         - invalid_credential
+                        - credential_expired
         '403':
-          description: 跨组织访问（IDOR 防线）
+          description: 应用或组织停用，或目标业务组织归属不允许访问。
           content:
             application/json:
               schema:
@@ -14391,6 +16048,8 @@ paths:
                     properties:
                       code:
                         enum:
+                        - application_disabled
+                        - organization_disabled
                         - organization_boundary_violation
         '404':
           description: 资源不存在或不属于本组织（不区分「不存在」与「不归你」）
@@ -14617,6 +16276,11 @@ paths:
       tags:
       - internal
       summary: 归档企业工作空间
+      security:
+      - ibIntHmacCredential: []
+        ibIntHmacTimestamp: []
+        ibIntHmacNonce: []
+        ibIntHmacSignature: []
       operationId: internalWorkspaceArchive
       x-imboy-authentication: hmac
       x-imboy-rate-bucket: internal_write
@@ -14794,7 +16458,7 @@ paths:
                         enum:
                         - invalid_request
         '401':
-          description: 凭证缺失/格式错/不存在的 locator
+          description: 凭证缺失、格式或签名无效、已撤销，或凭证已过期。
           content:
             application/json:
               schema:
@@ -14837,8 +16501,9 @@ paths:
                       code:
                         enum:
                         - invalid_credential
+                        - credential_expired
         '403':
-          description: 跨组织访问（IDOR 防线）
+          description: 应用或组织停用，或目标业务组织归属不允许访问。
           content:
             application/json:
               schema:
@@ -14880,6 +16545,8 @@ paths:
                     properties:
                       code:
                         enum:
+                        - application_disabled
+                        - organization_disabled
                         - organization_boundary_violation
         '404':
           description: 资源不存在或不属于本组织（不区分「不存在」与「不归你」）
@@ -15095,6 +16762,11 @@ paths:
         可见域）；status 过滤 active|done|all（缺省 all）。项目无 archive 语义，
         active 与 done 均可读。分页为 CURSOR-V2 签名游标（非法/过期/foreign 一律
         400，客户端从首页重启）。
+      security:
+      - ibIntHmacCredential: []
+        ibIntHmacTimestamp: []
+        ibIntHmacNonce: []
+        ibIntHmacSignature: []
       operationId: internalProjectList
       parameters:
       - name: workspace_id
@@ -15227,7 +16899,7 @@ paths:
                         enum:
                         - invalid_request
         '401':
-          description: 凭证缺失/格式错/不存在的 locator
+          description: 凭证缺失、格式或签名无效、已撤销，或凭证已过期。
           content:
             application/json:
               schema:
@@ -15270,8 +16942,9 @@ paths:
                       code:
                         enum:
                         - invalid_credential
+                        - credential_expired
         '403':
-          description: 跨组织访问（IDOR 防线）
+          description: 应用或组织停用，或目标业务组织归属不允许访问。
           content:
             application/json:
               schema:
@@ -15313,6 +16986,8 @@ paths:
                     properties:
                       code:
                         enum:
+                        - application_disabled
+                        - organization_disabled
                         - organization_boundary_violation
         '429':
           description: 触发限流（fail-closed）
@@ -15462,6 +17137,11 @@ paths:
         单个项目详情。跨 Organization / 不存在 / 所属 Workspace 已归档一律
         resource_not_found（IDOR 同不存在同体）；同 Organization 但不符合业务归属
         覆盖项目所属 W → organization_boundary_violation（403）。
+      security:
+      - ibIntHmacCredential: []
+        ibIntHmacTimestamp: []
+        ibIntHmacNonce: []
+        ibIntHmacSignature: []
       operationId: internalProjectDetail
       parameters:
       - name: project_id
@@ -15471,6 +17151,8 @@ paths:
         schema:
           type: integer
           format: int64
+          minimum: 1
+          maximum: 9223372036854775807
       x-imboy-authentication: hmac
       x-imboy-rate-bucket: internal_read
       x-imboy-idempotency: not_required
@@ -15557,7 +17239,7 @@ paths:
                         enum:
                         - invalid_request
         '401':
-          description: 凭证缺失/格式错/不存在的 locator
+          description: 凭证缺失、格式或签名无效、已撤销，或凭证已过期。
           content:
             application/json:
               schema:
@@ -15600,8 +17282,9 @@ paths:
                       code:
                         enum:
                         - invalid_credential
+                        - credential_expired
         '403':
-          description: 跨组织访问（IDOR 防线）
+          description: 应用或组织停用，或目标业务组织归属不允许访问。
           content:
             application/json:
               schema:
@@ -15643,6 +17326,8 @@ paths:
                     properties:
                       code:
                         enum:
+                        - application_disabled
+                        - organization_disabled
                         - organization_boundary_violation
         '404':
           description: 资源不存在或不属于本组织（不区分「不存在」与「不归你」）
@@ -15783,6 +17468,50 @@ paths:
                       code:
                         enum:
                         - internal_error
+        '503':
+          description: 平台安全闸关闭（暂时拒绝服务）
+          content:
+            application/json:
+              schema:
+                allOf:
+                - type: object
+                  required:
+                  - error
+                  properties:
+                    error:
+                      type: object
+                      required:
+                      - code
+                      - message
+                      properties:
+                        code:
+                          type: string
+                          description: 机器可读稳定错误码（snake_case，长期稳定，勿按 message 做逻辑）
+                          enum:
+                          - invalid_request
+                          - invalid_credential
+                          - credential_expired
+                          - application_disabled
+                          - organization_disabled
+                          - organization_boundary_violation
+                          - resource_not_found
+                          - idempotency_conflict
+                          - identity_not_mapped
+                          - rate_limited
+                          - security_gate_closed
+                          - internal_error
+                          - version_conflict
+                          - resource_conflict
+                          - seat_limit_exceeded
+                        message:
+                          type: string
+                          description: 人类可读说明（文案不保证稳定）
+                properties:
+                  error:
+                    properties:
+                      code:
+                        enum:
+                        - security_gate_closed
   /api/internal/v1/channels:
     get:
       tags:
@@ -15793,6 +17522,11 @@ paths:
         workspace_id 必填——缺失/非整数 400 invalid_request。行集恒被
         scope=workspace AND status=1 过滤（个人频道/已停用/已删除频道不可见）。
         分页为 CURSOR-V2 签名游标（非法/过期/foreign 一律 400，客户端从首页重启）。
+      security:
+      - ibIntHmacCredential: []
+        ibIntHmacTimestamp: []
+        ibIntHmacNonce: []
+        ibIntHmacSignature: []
       operationId: internalChannelList
       parameters:
       - name: workspace_id
@@ -15919,7 +17653,7 @@ paths:
                         enum:
                         - invalid_request
         '401':
-          description: 凭证缺失/格式错/不存在的 locator
+          description: 凭证缺失、格式或签名无效、已撤销，或凭证已过期。
           content:
             application/json:
               schema:
@@ -15962,8 +17696,9 @@ paths:
                       code:
                         enum:
                         - invalid_credential
+                        - credential_expired
         '403':
-          description: 跨组织访问（IDOR 防线）
+          description: 应用或组织停用，或目标业务组织归属不允许访问。
           content:
             application/json:
               schema:
@@ -16005,6 +17740,8 @@ paths:
                     properties:
                       code:
                         enum:
+                        - application_disabled
+                        - organization_disabled
                         - organization_boundary_violation
         '429':
           description: 触发限流（fail-closed）
@@ -16149,6 +17886,11 @@ paths:
       tags:
       - internal
       summary: 创建企业频道
+      security:
+      - ibIntHmacCredential: []
+        ibIntHmacTimestamp: []
+        ibIntHmacNonce: []
+        ibIntHmacSignature: []
       operationId: internalChannelCreate
       description: INT-40。采用 HMAC 签名。创建者须为有效企业成员（企业 Owner 包含）且是工作空间 Owner/Member，Guest 禁止。企业频道固定非公开 visibility=1、access_type=0、join_policy=1。归属和创建者不可修改。修改/归档必须
         expected_version，旧版本 409；治理版本包含旧入口更新，订阅人数等派生更新不增加版本。应用审计、资源、幂等响应同事务；重放仍验证当前业务归属及生命周期。409 可能为版本、配额/归档状态或幂等冲突，以 error.code
@@ -16165,6 +17907,7 @@ paths:
           type: string
           minLength: 1
           maxLength: 128
+          pattern: ^[ -~]+$
       requestBody:
         required: true
         content:
@@ -16243,7 +17986,7 @@ paths:
                         enum:
                         - invalid_request
         '401':
-          description: 凭证缺失/格式错/不存在的 locator
+          description: 凭证缺失、格式或签名无效、已撤销，或凭证已过期。
           content:
             application/json:
               schema:
@@ -16286,8 +18029,9 @@ paths:
                       code:
                         enum:
                         - invalid_credential
+                        - credential_expired
         '403':
-          description: 跨组织访问（IDOR 防线）
+          description: 应用或组织停用，或目标业务组织归属不允许访问。
           content:
             application/json:
               schema:
@@ -16329,6 +18073,8 @@ paths:
                     properties:
                       code:
                         enum:
+                        - application_disabled
+                        - organization_disabled
                         - organization_boundary_violation
         '404':
           description: 资源不存在或不属于本组织（不区分「不存在」与「不归你」）
@@ -16642,6 +18388,11 @@ paths:
         单个工作区频道详情。跨 Organization / 个人频道 / 已停用（status≠1）/ 已
         删除 / 不存在一律 resource_not_found（IDOR 同不存在同体）；同 Organization
         但频道所属工作空间不符合当前业务归属 → organization_boundary_violation（403）。
+      security:
+      - ibIntHmacCredential: []
+        ibIntHmacTimestamp: []
+        ibIntHmacNonce: []
+        ibIntHmacSignature: []
       operationId: internalChannelDetail
       parameters:
       - name: channel_id
@@ -16651,6 +18402,8 @@ paths:
         schema:
           type: integer
           format: int64
+          minimum: 1
+          maximum: 9223372036854775807
       x-imboy-authentication: hmac
       x-imboy-rate-bucket: internal_read
       x-imboy-idempotency: not_required
@@ -16737,7 +18490,7 @@ paths:
                         enum:
                         - invalid_request
         '401':
-          description: 凭证缺失/格式错/不存在的 locator
+          description: 凭证缺失、格式或签名无效、已撤销，或凭证已过期。
           content:
             application/json:
               schema:
@@ -16780,8 +18533,9 @@ paths:
                       code:
                         enum:
                         - invalid_credential
+                        - credential_expired
         '403':
-          description: 跨组织访问（IDOR 防线）
+          description: 应用或组织停用，或目标业务组织归属不允许访问。
           content:
             application/json:
               schema:
@@ -16823,6 +18577,8 @@ paths:
                     properties:
                       code:
                         enum:
+                        - application_disabled
+                        - organization_disabled
                         - organization_boundary_violation
         '404':
           description: 资源不存在或不属于本组织（不区分「不存在」与「不归你」）
@@ -16963,10 +18719,59 @@ paths:
                       code:
                         enum:
                         - internal_error
+        '503':
+          description: 平台安全闸关闭（暂时拒绝服务）
+          content:
+            application/json:
+              schema:
+                allOf:
+                - type: object
+                  required:
+                  - error
+                  properties:
+                    error:
+                      type: object
+                      required:
+                      - code
+                      - message
+                      properties:
+                        code:
+                          type: string
+                          description: 机器可读稳定错误码（snake_case，长期稳定，勿按 message 做逻辑）
+                          enum:
+                          - invalid_request
+                          - invalid_credential
+                          - credential_expired
+                          - application_disabled
+                          - organization_disabled
+                          - organization_boundary_violation
+                          - resource_not_found
+                          - idempotency_conflict
+                          - identity_not_mapped
+                          - rate_limited
+                          - security_gate_closed
+                          - internal_error
+                          - version_conflict
+                          - resource_conflict
+                          - seat_limit_exceeded
+                        message:
+                          type: string
+                          description: 人类可读说明（文案不保证稳定）
+                properties:
+                  error:
+                    properties:
+                      code:
+                        enum:
+                        - security_gate_closed
     patch:
       tags:
       - internal
       summary: 修改企业频道资料
+      security:
+      - ibIntHmacCredential: []
+        ibIntHmacTimestamp: []
+        ibIntHmacNonce: []
+        ibIntHmacSignature: []
       operationId: internalChannelUpdate
       description: INT-41。采用 HMAC 签名。创建者须为有效企业成员（企业 Owner 包含）且是工作空间 Owner/Member，Guest 禁止。企业频道固定非公开 visibility=1、access_type=0、join_policy=1。归属和创建者不可修改。修改/归档必须
         expected_version，旧版本 409；治理版本包含旧入口更新，订阅人数等派生更新不增加版本。应用审计、资源、幂等响应同事务；重放仍验证当前业务归属及生命周期。409 可能为版本、配额/归档状态或幂等冲突，以 error.code
@@ -16992,6 +18797,7 @@ paths:
           type: string
           minLength: 1
           maxLength: 128
+          pattern: ^[ -~]+$
       requestBody:
         required: true
         content:
@@ -17064,7 +18870,7 @@ paths:
                         enum:
                         - invalid_request
         '401':
-          description: 凭证缺失/格式错/不存在的 locator
+          description: 凭证缺失、格式或签名无效、已撤销，或凭证已过期。
           content:
             application/json:
               schema:
@@ -17107,8 +18913,9 @@ paths:
                       code:
                         enum:
                         - invalid_credential
+                        - credential_expired
         '403':
-          description: 跨组织访问（IDOR 防线）
+          description: 应用或组织停用，或目标业务组织归属不允许访问。
           content:
             application/json:
               schema:
@@ -17150,6 +18957,8 @@ paths:
                     properties:
                       code:
                         enum:
+                        - application_disabled
+                        - organization_disabled
                         - organization_boundary_violation
         '404':
           description: 资源不存在或不属于本组织（不区分「不存在」与「不归你」）
@@ -17458,6 +19267,11 @@ paths:
       tags:
       - internal
       summary: 归档企业频道
+      security:
+      - ibIntHmacCredential: []
+        ibIntHmacTimestamp: []
+        ibIntHmacNonce: []
+        ibIntHmacSignature: []
       operationId: internalChannelArchive
       description: INT-42。采用 HMAC 签名。创建者须为有效企业成员（企业 Owner 包含）且是工作空间 Owner/Member，Guest 禁止。企业频道固定非公开 visibility=1、access_type=0、join_policy=1。归属和创建者不可修改。修改/归档必须
         expected_version，旧版本 409；治理版本包含旧入口更新，订阅人数等派生更新不增加版本。应用审计、资源、幂等响应同事务；重放仍验证当前业务归属及生命周期。409 可能为版本、配额/归档状态或幂等冲突，以 error.code
@@ -17483,6 +19297,7 @@ paths:
           type: string
           minLength: 1
           maxLength: 128
+          pattern: ^[ -~]+$
       requestBody:
         required: true
         content:
@@ -17544,7 +19359,7 @@ paths:
                         enum:
                         - invalid_request
         '401':
-          description: 凭证缺失/格式错/不存在的 locator
+          description: 凭证缺失、格式或签名无效、已撤销，或凭证已过期。
           content:
             application/json:
               schema:
@@ -17587,8 +19402,9 @@ paths:
                       code:
                         enum:
                         - invalid_credential
+                        - credential_expired
         '403':
-          description: 跨组织访问（IDOR 防线）
+          description: 应用或组织停用，或目标业务组织归属不允许访问。
           content:
             application/json:
               schema:
@@ -17630,6 +19446,8 @@ paths:
                     properties:
                       code:
                         enum:
+                        - application_disabled
+                        - organization_disabled
                         - organization_boundary_violation
         '404':
           description: 资源不存在或不属于本组织（不区分「不存在」与「不归你」）
@@ -17939,6 +19757,11 @@ paths:
       tags:
       - internal
       summary: 企业客服坐席列表
+      security:
+      - ibIntHmacCredential: []
+        ibIntHmacTimestamp: []
+        ibIntHmacNonce: []
+        ibIntHmacSignature: []
       operationId: internalCustomerServiceSeatList
       x-imboy-authentication: hmac
       x-imboy-rate-bucket: internal_read
@@ -18058,7 +19881,7 @@ paths:
                         enum:
                         - invalid_request
         '401':
-          description: 凭证缺失/格式错/不存在的 locator
+          description: 凭证缺失、格式或签名无效、已撤销，或凭证已过期。
           content:
             application/json:
               schema:
@@ -18101,8 +19924,9 @@ paths:
                       code:
                         enum:
                         - invalid_credential
+                        - credential_expired
         '403':
-          description: 跨组织访问（IDOR 防线）
+          description: 应用或组织停用，或目标业务组织归属不允许访问。
           content:
             application/json:
               schema:
@@ -18144,6 +19968,8 @@ paths:
                     properties:
                       code:
                         enum:
+                        - application_disabled
+                        - organization_disabled
                         - organization_boundary_violation
         '404':
           description: 资源不存在或不属于本组织（不区分「不存在」与「不归你」）
@@ -18332,6 +20158,11 @@ paths:
       tags:
       - internal
       summary: 创建企业客服坐席
+      security:
+      - ibIntHmacCredential: []
+        ibIntHmacTimestamp: []
+        ibIntHmacNonce: []
+        ibIntHmacSignature: []
       operationId: internalCustomerServiceSeatCreate
       x-imboy-authentication: hmac
       x-imboy-rate-bucket: internal_write
@@ -18470,7 +20301,7 @@ paths:
                         enum:
                         - invalid_request
         '401':
-          description: 凭证缺失/格式错/不存在的 locator
+          description: 凭证缺失、格式或签名无效、已撤销，或凭证已过期。
           content:
             application/json:
               schema:
@@ -18513,8 +20344,9 @@ paths:
                       code:
                         enum:
                         - invalid_credential
+                        - credential_expired
         '403':
-          description: 跨组织访问（IDOR 防线）
+          description: 应用或组织停用，或目标业务组织归属不允许访问。
           content:
             application/json:
               schema:
@@ -18556,6 +20388,8 @@ paths:
                     properties:
                       code:
                         enum:
+                        - application_disabled
+                        - organization_disabled
                         - organization_boundary_violation
         '404':
           description: 资源不存在或不属于本组织（不区分「不存在」与「不归你」）
@@ -18775,6 +20609,11 @@ paths:
       tags:
       - internal
       summary: 企业客服坐席详情
+      security:
+      - ibIntHmacCredential: []
+        ibIntHmacTimestamp: []
+        ibIntHmacNonce: []
+        ibIntHmacSignature: []
       operationId: internalCustomerServiceSeatDetail
       x-imboy-authentication: hmac
       x-imboy-rate-bucket: internal_read
@@ -18869,7 +20708,7 @@ paths:
                         enum:
                         - invalid_request
         '401':
-          description: 凭证缺失/格式错/不存在的 locator
+          description: 凭证缺失、格式或签名无效、已撤销，或凭证已过期。
           content:
             application/json:
               schema:
@@ -18912,8 +20751,9 @@ paths:
                       code:
                         enum:
                         - invalid_credential
+                        - credential_expired
         '403':
-          description: 跨组织访问（IDOR 防线）
+          description: 应用或组织停用，或目标业务组织归属不允许访问。
           content:
             application/json:
               schema:
@@ -18955,6 +20795,8 @@ paths:
                     properties:
                       code:
                         enum:
+                        - application_disabled
+                        - organization_disabled
                         - organization_boundary_violation
         '404':
           description: 资源不存在或不属于本组织（不区分「不存在」与「不归你」）
@@ -19143,6 +20985,11 @@ paths:
       tags:
       - internal
       summary: 修改或停用企业客服坐席
+      security:
+      - ibIntHmacCredential: []
+        ibIntHmacTimestamp: []
+        ibIntHmacNonce: []
+        ibIntHmacSignature: []
       operationId: internalCustomerServiceSeatUpdate
       x-imboy-authentication: hmac
       x-imboy-rate-bucket: internal_write
@@ -19290,7 +21137,7 @@ paths:
                         enum:
                         - invalid_request
         '401':
-          description: 凭证缺失/格式错/不存在的 locator
+          description: 凭证缺失、格式或签名无效、已撤销，或凭证已过期。
           content:
             application/json:
               schema:
@@ -19333,8 +21180,9 @@ paths:
                       code:
                         enum:
                         - invalid_credential
+                        - credential_expired
         '403':
-          description: 跨组织访问（IDOR 防线）
+          description: 应用或组织停用，或目标业务组织归属不允许访问。
           content:
             application/json:
               schema:
@@ -19376,6 +21224,8 @@ paths:
                     properties:
                       code:
                         enum:
+                        - application_disabled
+                        - organization_disabled
                         - organization_boundary_violation
         '404':
           description: 资源不存在或不属于本组织（不区分「不存在」与「不归你」）
@@ -19602,7 +21452,7 @@ components:
       type: apiKey
       in: header
       name: X-Imboy-Credential
-      description: 服务端签发的 ib_int_ 定位符；不发送 secret。
+      description: 服务端签发的 ib_int_ 加 1..24 位十进制数字定位符；不发送 secret，也不使用 Authorization 头。
     ibIntHmacTimestamp:
       type: apiKey
       in: header
@@ -19612,7 +21462,7 @@ components:
       type: apiKey
       in: header
       name: X-Imboy-Nonce
-      description: 每请求随机单次 nonce，16..128 字符。
+      description: 每请求随机单次 nonce，16..128 字符，仅 A-Z、a-z、0-9、下划线和短横线。
     ibIntHmacSignature:
       type: apiKey
       in: header

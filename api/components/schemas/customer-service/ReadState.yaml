@@ -1,0 +1,18 @@
+type: object
+properties:
+  session_id:
+    type: string
+    pattern: ^[0-9]+$
+    description: 无损十进制 TSID 字符串。
+  business_identity_id:
+    type: string
+    pattern: ^[0-9]+$
+    description: 无损十进制 TSID 字符串。
+  last_read_message_id:
+    type:
+    - string
+    - 'null'
+    pattern: ^[0-9]+$
+    description: 无损十进制 TSID 字符串。
+  unread_count:
+    type: integer

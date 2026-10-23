@@ -1,95 +1,157 @@
-# /api/v1/projects/{project_id}/milestones — 里程碑创建(POST)/列表(GET)（W2 ZC-03）
 post:
-  tags: [project]
+  tags:
+  - project
   summary: 创建里程碑
-  description: |
-    ## 中文
+  description: '## 中文
+
     在项目下创建里程碑（name + 可选 due_date）。Owner / active 项目成员可创建；
+
     Guest 403；工作区归档 980。请求体携带 status 会被拒绝（状态由 reach 单向推进）。
+
     成功后写 project_event=milestone_created；返回事务内取到的完整里程碑行。
+
     ## English
+
     Create a milestone under the project. Passing `status` in the body is
+
     rejected — status only moves forward via reach.
+
+    '
   operationId: projectMilestonesCreate
   parameters:
-    - name: project_id
-      in: path
-      required: true
-      schema: { type: integer, format: int64 }
+  - name: project_id
+    in: path
+    required: true
+    schema:
+      type: integer
+      format: int64
+    description: 项目 TSID / Project ID
   requestBody:
     required: true
     content:
       application/json:
         schema:
           type: object
-          required: [name]
+          required:
+          - name
           properties:
             name:
               type: string
-              maxLength: 255
+              maxLength: 200
+              minLength: 1
             due_date:
               type: string
               format: date
               description: YYYY-MM-DD；缺省为无截止日
   responses:
     '200':
-      description: 创建成功（返回完整里程碑行）
+      description: 成功 code=0 返回以下业务载荷；业务失败 code 非零返回通用错误信封。 / Success payload or nonzero-code business error.
       content:
         application/json:
           schema:
-            allOf:
-              - $ref: '../../../../components/schemas/Envelope.yaml'
+            oneOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
               - type: object
                 properties:
                   payload:
                     type: object
                     properties:
-                      id: { type: integer, format: int64 }
-                      workspace_id: { type: integer, format: int64 }
-                      project_id: { type: integer, format: int64 }
-                      name: { type: string }
-                      due_date: { type: [string, "null"], format: date }
-                      status: { type: string, enum: [planned, reached] }
-                      reached_at: { type: [string, "null"] }
-                      created_at: { type: string }
-                      updated_at: { type: string }
-    '4XX':
-      description: name 缺失（400）/ Guest（403）/ 归档（980）
-      content:
-        application/json:
-          schema: { $ref: '../../../../components/schemas/Envelope.yaml' }
+                      id:
+                        type: integer
+                        format: int64
+                      workspace_id:
+                        type: integer
+                        format: int64
+                      project_id:
+                        type: integer
+                        format: int64
+                      name:
+                        type: string
+                      due_date:
+                        type:
+                        - string
+                        - 'null'
+                        format: date
+                      status:
+                        type: string
+                        enum:
+                        - planned
+                        - reached
+                      reached_at:
+                        type:
+                        - string
+                        - 'null'
+                      created_at:
+                        type: string
+                      updated_at:
+                        type: string
+              - type: object
+                required:
+                - code
+                properties:
+                  code:
+                    type: integer
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+    '401':
+      description: 访问 JWT、设备绑定或客户端签名认证失败 / JWT, device binding or client signature rejected
 get:
-  tags: [project]
+  tags:
+  - project
   summary: 里程碑列表（分页，status 过滤）
-  description: |
-    ## 中文
+  description: '## 中文
+
     项目里程碑分页列表，可按 status（planned/reached）过滤。
+
     active 工作区成员且项目成员可读。
+
     ## English
+
     Paginated milestone list with optional status filter.
+
+    '
   operationId: projectMilestonesList
   parameters:
-    - name: project_id
-      in: path
-      required: true
-      schema: { type: integer, format: int64 }
-    - name: status
-      in: query
-      schema: { type: string, enum: [planned, reached] }
-    - name: page
-      in: query
-      schema: { type: integer, default: 1 }
-    - name: size
-      in: query
-      schema: { type: integer, default: 10 }
+  - name: project_id
+    in: path
+    required: true
+    schema:
+      type: integer
+      format: int64
+    description: 项目 TSID / Project ID
+  - name: status
+    in: query
+    schema:
+      type: string
+      enum:
+      - planned
+      - reached
+    description: 状态筛选 / Status filter
+  - name: page
+    in: query
+    schema:
+      type: integer
+      minimum: 1
+      default: 1
+    description: 页码，从 1 开始 / Page starting at 1
+  - name: size
+    in: query
+    schema:
+      type: integer
+      minimum: 1
+      maximum: 100
+      default: 20
+    description: 每页条数 / Page size
   responses:
     '200':
-      description: 里程碑分页（list 元素见 milestones POST 的 payload 行结构）
+      description: 成功 code=0 返回以下业务载荷；业务失败 code 非零返回通用错误信封。 / Success payload or nonzero-code business error.
       content:
         application/json:
           schema:
-            allOf:
-              - $ref: '../../../../components/schemas/Envelope.yaml'
+            oneOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
               - type: object
                 properties:
                   payload:
@@ -97,13 +159,23 @@ get:
                     properties:
                       list:
                         type: array
-                        items: { type: object }
-                      page: { type: integer }
-                      size: { type: integer }
-                      total: { type: integer }
-                      total_page: { type: integer }
-    '4XX':
-      description: 无权限（403）
-      content:
-        application/json:
-          schema: { $ref: '../../../../components/schemas/Envelope.yaml' }
+                        items:
+                          type: object
+                      page:
+                        type: integer
+                      size:
+                        type: integer
+                      total:
+                        type: integer
+                      total_page:
+                        type: integer
+              - type: object
+                required:
+                - code
+                properties:
+                  code:
+                    type: integer
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+    '401':
+      description: 访问 JWT、设备绑定或客户端签名认证失败 / JWT, device binding or client signature rejected

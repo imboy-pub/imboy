@@ -1,5 +1,8 @@
 # POST /api/adm/user/collect/remove — admin
 post:
+  security:
+    - adminSessionId: []
+      adminSessionSignature: []
   tags: [admin]
   summary: 管理后台移除用户收藏
   description: 移除指定用户的某条收藏记录（管理员操作）。Remove a specified user's collection record (admin operation).

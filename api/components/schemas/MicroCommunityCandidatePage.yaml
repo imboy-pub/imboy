@@ -1,0 +1,29 @@
+type: object
+required:
+- list
+- total
+- page
+- size
+properties:
+  list:
+    type: array
+    items:
+      type: object
+      required:
+      - id
+      - title
+      properties:
+        id:
+          $ref: MicroCommunityEntityId.yaml
+        title:
+          type: string
+  total:
+    type: integer
+    minimum: 0
+  page:
+    type: integer
+    minimum: 1
+  size:
+    type: integer
+    minimum: 1
+    maximum: 50

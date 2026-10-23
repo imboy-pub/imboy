@@ -5,7 +5,7 @@ properties:
   role: { type: string, enum: [owner, admin, member] }
   invited_by: { type: [integer, 'null'], format: int64 }
   joined_at: { type: [integer, 'null'], format: int64 }
-  status: { type: string, enum: [active, removed] }
+  status: { type: string, enum: [active, suspended, removed] }
   nickname: { type: [string, 'null'] }
   avatar: { type: [string, 'null'] }
   account: { type: [string, 'null'] }

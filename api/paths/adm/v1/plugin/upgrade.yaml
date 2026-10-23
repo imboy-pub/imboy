@@ -1,11 +1,17 @@
-# POST /api/adm/plugin/upgrade — admin
 post:
-  tags: [admin]
+  security:
+  - adminSessionId: []
+    adminSessionSignature: []
+  tags:
+  - admin
   summary: admin adm-plugin - upgrade
-  description: |
-    ## 中文 / English
-    管理后台 adm-plugin handler 的 `upgrade` 动作；路径 `/adm/plugin/upgrade`。
-    Admin handler `adm-plugin`, action `upgrade`. Path `/adm/plugin/upgrade`.
+  description: '## 中文 / English
+
+    管理后台 adm-plugin handler 的 `upgrade` 动作；路径 `/api/adm/plugin/upgrade`。
+
+    Admin handler `adm-plugin`, action `upgrade`. Path `/api/adm/plugin/upgrade`.
+
+    '
   operationId: adm_plugin_upgrade
   requestBody:
     required: true
@@ -16,12 +22,13 @@ post:
           additionalProperties: true
   responses:
     '200':
-      description: 成功
+      description: 成功；非零 code 为业务错误 / Non-zero code is a business error
       content:
         application/json:
           schema:
-            allOf:
-              - $ref: '../../../../components/schemas/Envelope.yaml'
+            anyOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
               - type: object
                 properties:
                   payload:
@@ -33,7 +40,14 @@ post:
                       version:
                         type: string
                         description: 升级目标版本
-    '4XX':
+              - type: object
+                properties:
+                  code:
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+    4XX:
       description: 无权限 / 参数非法
       content:
-        application/json: { schema: { $ref: '../../../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/Envelope.yaml

@@ -1,0 +1,43 @@
+type: object
+properties:
+  id:
+    type: integer
+    format: int64
+  project_id:
+    type: integer
+    format: int64
+  creator_id:
+    type: integer
+    format: int64
+  title:
+    type: string
+  status:
+    type: string
+    enum:
+    - todo
+    - doing
+    - review
+    - done
+  assignee_id:
+    type:
+    - integer
+    - 'null'
+    format: int64
+  sort:
+    type: integer
+  created_at:
+    type: string
+    description: 数据库时间戳字符串 / Database timestamp string
+  updated_at:
+    type: string
+    description: 数据库时间戳字符串 / Database timestamp string
+required:
+- id
+- project_id
+- creator_id
+- title
+- status
+- assignee_id
+- sort
+- created_at
+- updated_at

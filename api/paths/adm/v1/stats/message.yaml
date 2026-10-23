@@ -1,20 +1,27 @@
-# GET /api/adm/stats/message — admin
 get:
-  tags: [admin]
+  security:
+  - adminSessionId: []
+    adminSessionSignature: []
+  tags:
+  - admin
   summary: admin adm-stats - message
-  description: |
-    ## 中文 / English
-    管理后台 adm-stats handler 的 `message` 动作；路径 `/adm/stats/message`。
-    Admin handler `adm-stats`, action `message`. Path `/adm/stats/message`.
+  description: '## 中文 / English
+
+    管理后台 adm-stats handler 的 `message` 动作；路径 `/api/adm/stats/message`。
+
+    Admin handler `adm-stats`, action `message`. Path `/api/adm/stats/message`.
+
+    '
   operationId: adm_stats_message
   responses:
     '200':
-      description: 成功
+      description: 成功；非零 code 为业务错误 / Non-zero code is a business error
       content:
         application/json:
           schema:
-            allOf:
-              - $ref: '../../../../components/schemas/Envelope.yaml'
+            anyOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
               - type: object
                 properties:
                   payload:
@@ -40,7 +47,14 @@ get:
                               type: string
                             count:
                               type: integer
-    '4XX':
+              - type: object
+                properties:
+                  code:
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+    4XX:
       description: 无权限 / 参数非法
       content:
-        application/json: { schema: { $ref: '../../../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/Envelope.yaml

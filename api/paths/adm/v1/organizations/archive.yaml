@@ -1,0 +1,54 @@
+post:
+  security:
+  - adminSessionId: []
+    adminSessionSignature: []
+  tags:
+  - organizations
+  summary: 组织归档 / Archive organization
+  description: '需 organizations:write。 Organization 是业务对象，平台操作不代理普通用户身份。 / Platform governance; organization is
+    a business object. '
+  operationId: admOrganizationArchive
+  parameters:
+  - name: organization_id
+    in: path
+    required: true
+    description: organization_id
+    schema:
+      type: string
+      pattern: ^[1-9][0-9]*$
+      description: TSID 十进制字符串 / Decimal TSID string
+  responses:
+    '200':
+      description: 成功或业务错误；检查 code / Inspect business code
+      content:
+        application/json:
+          schema:
+            anyOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      organization_id:
+                        type: string
+                        pattern: ^[1-9][0-9]*$
+                        description: TSID 十进制字符串 / Decimal TSID string
+                      status:
+                        type: string
+                      changed:
+                        type: boolean
+              - type: object
+                properties:
+                  code:
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+    '405':
+      description: 不支持的 HTTP 方法 / Method Not Allowed
+    '401':
+      description: Cookie 缺失、无效、到期或已撤销 / Invalid session cookies
+      content:
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/Envelope.yaml

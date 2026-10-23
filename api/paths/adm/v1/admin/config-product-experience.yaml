@@ -1,0 +1,49 @@
+get:
+  security:
+  - adminSessionId: []
+    adminSessionSignature: []
+  tags:
+  - admin
+  summary: 安装级产品体验配置 / Installation product experience
+  description: 需 settings:view。只读；更改部署配置后受控重启生效。 / Installation product experience
+  operationId: admAdminConfigProductExperienceGet
+  responses:
+    '200':
+      description: 成功或业务错误；检查 code / Inspect business code
+      content:
+        application/json:
+          schema:
+            anyOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      effective_product_experience:
+                        type: string
+                        enum:
+                        - chat
+                        - workspace
+                      config_version:
+                        type: string
+                      configured_value:
+                        type: string
+                      configured_raw:
+                        type: string
+                      source:
+                        const: install_env
+                      level:
+                        const: install
+              - type: object
+                properties:
+                  code:
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+    '401':
+      description: Cookie 缺失、无效、到期或已撤销 / Invalid session cookies
+      content:
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/Envelope.yaml

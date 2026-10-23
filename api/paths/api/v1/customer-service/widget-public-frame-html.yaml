@@ -1,0 +1,83 @@
+get:
+  tags:
+  - customer-service
+  summary: widget public frame html（GET）
+  description: 仅编译启用 IMBOY_FEATURE_CUSTOMER_SERVICE 时注册。公开 iframe 导航入口；返回 HTML，凭证样式查询参数一律拒绝。
+  operationId: csWidgetPublicFrameHtmlGet
+  security: []
+  x-imboy-feature: customer_service
+  x-imboy-handler: cs_widget_handler
+  x-imboy-action: widget_public_frame_html
+  x-imboy-principal: cs_visit
+  parameters:
+  - name: public_widget_id
+    in: path
+    required: true
+    description: 公开嵌入标识。
+    schema:
+      type: string
+  responses:
+    '200':
+      description: 动态 iframe HTML。
+      headers:
+        Content-Security-Policy:
+          description: frame-ancestors 仅列出允许来源；空名单为 none。
+          schema:
+            type: string
+        Cache-Control:
+          description: 禁止缓存。
+          schema:
+            type: string
+            const: no-store
+      content:
+        text/html:
+          schema:
+            type: string
+    '400':
+      description: 请求形状错误、服务端派生键被客户端申报或参数格式不合法。
+      content:
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/customer-service/Error.yaml
+    '401':
+      description: 缺少、无效或过期的当前接口凭据。
+      content:
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/customer-service/Error.yaml
+    '403':
+      description: 组织/成员/坐席资格、来源或权限不满足。
+      content:
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/customer-service/Error.yaml
+    '404':
+      description: 业务资源不存在、已撤销或不在当前作用域。
+      content:
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/customer-service/Error.yaml
+    '405':
+      description: 该路径不支持此 HTTP 方法。
+      content:
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/customer-service/Error.yaml
+    '409':
+      description: 状态或版本冲突；cas_mismatch 可附期望与当前版本，offboarding_required 表示需先交接。
+      content:
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/customer-service/Error.yaml
+    '422':
+      description: 缺少必填项或业务参数非法。
+      content:
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/customer-service/Error.yaml
+    '500':
+      description: 内部处理失败。
+      content:
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/customer-service/Error.yaml

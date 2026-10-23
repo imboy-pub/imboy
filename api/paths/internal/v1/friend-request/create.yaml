@@ -12,13 +12,18 @@ post:
   description: |
     仅可对**同组织已映射用户**发起；发送者形态固定为 human（代 OA 用户）。
     平台没有自动通过/确认、删除好友、批量加好友的 API。
+  security:
+    - ibIntHmacCredential: []
+      ibIntHmacTimestamp: []
+      ibIntHmacNonce: []
+      ibIntHmacSignature: []
   operationId: internalFriendRequestCreate
   parameters:
     - name: Idempotency-Key
       in: header
       required: true
       description: 幂等键
-      schema: { type: string, minLength: 1 }
+      schema: { type: string, minLength: 1, maxLength: 128, pattern: '^[ -~]+$' }
   x-imboy-authentication: hmac
   x-imboy-rate-bucket: internal_write
   x-imboy-idempotency: required
@@ -38,7 +43,8 @@ post:
               description: 目标用户 OA 侧标识（同组织已映射）
             greeting:
               type: string
-              description: 打招呼文案（缺省空串）
+              maxLength: 500
+              description: 打招呼文案（缺省空串，UTF-8 最多 500 字节）
   responses:
     '200':
       description: 申请受理结果（平台不自动通过）
@@ -46,20 +52,23 @@ post:
         application/json:
           schema:
             type: object
+            required: [request_status, sender_user_id, target_user_id]
             properties:
               request_status:
                 type: string
                 enum: [pending]
               sender_user_id: { type: string }
               target_user_id: { type: string }
-              replayed:
-                type: boolean
-                description: 幂等重放时为 true
+      headers:
+        Idempotent-Replayed:
+          description: 重放首次已提交的 HTTP 状态与正文时为 true；首次响应不带此头。
+          schema: { type: string, enum: ['true'] }
     '400': { $ref: '../../../../components/responses/internal/invalid_request.yaml' }
-    '401': { $ref: '../../../../components/responses/internal/invalid_credential.yaml' }
-    '403': { $ref: '../../../../components/responses/internal/organization_boundary_violation.yaml' }
+    '401': { $ref: '../../../../components/responses/internal/unauthorized.yaml' }
+    '403': { $ref: '../../../../components/responses/internal/forbidden.yaml' }
     '404': { $ref: '../../../../components/responses/internal/resource_not_found.yaml' }
     '409': { $ref: '../../../../components/responses/internal/idempotency_conflict.yaml' }
     '422': { $ref: '../../../../components/responses/internal/identity_not_mapped.yaml' }
     '429': { $ref: '../../../../components/responses/internal/rate_limited.yaml' }
     '500': { $ref: '../../../../components/responses/internal/internal_error.yaml' }
+    '503': { $ref: '../../../../components/responses/internal/security_gate_closed.yaml' }

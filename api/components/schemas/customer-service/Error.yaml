@@ -1,0 +1,22 @@
+type: object
+properties:
+  code:
+    type: integer
+  msg:
+    type: string
+  sv_ts:
+    type: integer
+    format: int64
+    description: 服务器 Unix 毫秒。
+  payload:
+    type: object
+    properties:
+      expected_version:
+        type: integer
+      actual_version:
+        type: integer
+required:
+- code
+- msg
+- sv_ts
+- payload

@@ -1,19 +1,27 @@
-# POST /api/v1/milestones/{milestone_id}/update — 里程碑更新（W2 ZC-03）
 post:
-  tags: [project]
+  tags:
+  - project
   summary: 更新里程碑
-  description: |
-    ## 中文
+  description: '## 中文
+
     更新里程碑的 name / due_date（部分更新，只传需要改的字段）。
+
     成功后写 project_event=milestone_updated。已 reached 的里程碑仍可改名/改期。
+
     ## English
+
     Partial update of milestone name / due_date.
+
+    '
   operationId: projectMilestonesUpdate
   parameters:
-    - name: milestone_id
-      in: path
-      required: true
-      schema: { type: integer, format: int64 }
+  - name: milestone_id
+    in: path
+    required: true
+    schema:
+      type: integer
+      format: int64
+    description: milestone_id
   requestBody:
     required: true
     content:
@@ -22,32 +30,63 @@ post:
           type: object
           minProperties: 1
           properties:
-            name: { type: string, maxLength: 255 }
-            due_date: { type: string, format: date }
+            name:
+              type: string
+              maxLength: 200
+              minLength: 1
+            due_date:
+              type: string
+              format: date
   responses:
     '200':
-      description: 更新成功（返回完整里程碑行）
+      description: 成功 code=0 返回以下业务载荷；业务失败 code 非零返回通用错误信封。 / Success payload or nonzero-code business error.
       content:
         application/json:
           schema:
-            allOf:
-              - $ref: '../../../../components/schemas/Envelope.yaml'
+            oneOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
               - type: object
                 properties:
                   payload:
                     type: object
                     properties:
-                      id: { type: integer, format: int64 }
-                      workspace_id: { type: integer, format: int64 }
-                      project_id: { type: integer, format: int64 }
-                      name: { type: string }
-                      due_date: { type: [string, "null"], format: date }
-                      status: { type: string, enum: [planned, reached] }
-                      reached_at: { type: [string, "null"] }
-                      created_at: { type: string }
-                      updated_at: { type: string }
-    '404':
-      description: 里程碑不存在
-      content:
-        application/json:
-          schema: { $ref: '../../../../components/schemas/Envelope.yaml' }
+                      id:
+                        type: integer
+                        format: int64
+                      workspace_id:
+                        type: integer
+                        format: int64
+                      project_id:
+                        type: integer
+                        format: int64
+                      name:
+                        type: string
+                      due_date:
+                        type:
+                        - string
+                        - 'null'
+                        format: date
+                      status:
+                        type: string
+                        enum:
+                        - planned
+                        - reached
+                      reached_at:
+                        type:
+                        - string
+                        - 'null'
+                      created_at:
+                        type: string
+                      updated_at:
+                        type: string
+              - type: object
+                required:
+                - code
+                properties:
+                  code:
+                    type: integer
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+    '401':
+      description: 访问 JWT、设备绑定或客户端签名认证失败 / JWT, device binding or client signature rejected

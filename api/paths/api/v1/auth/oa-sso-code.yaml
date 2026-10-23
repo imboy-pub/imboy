@@ -1,0 +1,67 @@
+post:
+  tags:
+  - oa-login
+  summary: 签发出站 OA 一次性免登码
+  operationId: oaSsoCode
+  description: Human JWT 身份；application_key 实例内唯一。redirect_uri 必须为已注册 HTTPS 地址且无 fragment；nonce 为 state 原值。code
+    仅返回一次，60 秒有效，供内部集成面兑换。organization_id 不参与签发。 / Instance-wide app key, registered HTTPS redirect, one-time 60-second
+    code.
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            application_key:
+              type: string
+              minLength: 8
+              maxLength: 128
+            redirect_uri:
+              type: string
+              format: uri
+              maxLength: 2048
+            nonce:
+              type: string
+              minLength: 16
+              maxLength: 128
+              pattern: ^[A-Za-z0-9_-]+$
+          required:
+          - application_key
+          - redirect_uri
+          - nonce
+  responses:
+    '200':
+      description: 成功 code=0 返回以下业务载荷；业务失败 code 非零返回通用错误信封。 / Success payload or nonzero-code business error.
+      content:
+        application/json:
+          schema:
+            oneOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      expires_in:
+                        type: integer
+                        const: 60
+                      redirect_uri:
+                        type: string
+                    required:
+                    - code
+                    - expires_in
+                    - redirect_uri
+              - type: object
+                required:
+                - code
+                properties:
+                  code:
+                    type: integer
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+    '401':
+      description: 访问 JWT 或客户端认证失败 / Authentication rejected

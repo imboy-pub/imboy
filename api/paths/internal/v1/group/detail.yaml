@@ -3,6 +3,11 @@ get:
   - internal
   summary: 读取企业群详情
   description: 读取本组织工作空间内的群资料，跨组织或不存在均返回 resource_not_found；执行当前资源归属检查。
+  security:
+    - ibIntHmacCredential: []
+      ibIntHmacTimestamp: []
+      ibIntHmacNonce: []
+      ibIntHmacSignature: []
   operationId: internalGroupDetail
   parameters:
   - name: group_id
@@ -12,6 +17,8 @@ get:
     schema:
       type: integer
       format: int64
+      minimum: 1
+      maximum: 9223372036854775807
   x-imboy-authentication: hmac
   x-imboy-rate-bucket: internal_read
   x-imboy-idempotency: not_required
@@ -72,26 +79,28 @@ get:
     '400':
       $ref: ../../../../components/responses/internal/invalid_request.yaml
     '401':
-      $ref: ../../../../components/responses/internal/invalid_credential.yaml
+      $ref: ../../../../components/responses/internal/unauthorized.yaml
     '403':
-      $ref: ../../../../components/responses/internal/organization_boundary_violation.yaml
+      $ref: ../../../../components/responses/internal/forbidden.yaml
     '404':
       $ref: ../../../../components/responses/internal/resource_not_found.yaml
     '429':
       $ref: ../../../../components/responses/internal/rate_limited.yaml
     '500':
       $ref: ../../../../components/responses/internal/internal_error.yaml
+    '503': { $ref: '../../../../components/responses/internal/security_gate_closed.yaml' }
 patch:
   tags:
   - internal
   summary: 修改企业群信息
-  description: '可更新字段实证自 handler `known_key/1`：title / introduction / members
-
-    （members 为成员覆盖语义）。响应实证自 logic update：`{group_id, title,
-
-    introduction, updated: true}`。
-
-    '
+  description: |
+    部分更新群标题或简介，至少提供 title / introduction 中的一项；未提供的字段保持原值。
+    成员变更通过 INT-05/06 调用，本接口不提供成员覆盖。
+  security:
+    - ibIntHmacCredential: []
+      ibIntHmacTimestamp: []
+      ibIntHmacNonce: []
+      ibIntHmacSignature: []
   operationId: internalGroupUpdate
   parameters:
   - name: group_id
@@ -101,6 +110,8 @@ patch:
     schema:
       type: integer
       format: int64
+      minimum: 1
+      maximum: 9223372036854775807
   - name: Idempotency-Key
     in: header
     required: true
@@ -108,6 +119,8 @@ patch:
     schema:
       type: string
       minLength: 1
+      maxLength: 128
+      pattern: ^[ -~]+$
   x-imboy-authentication: hmac
   x-imboy-rate-bucket: internal_write
   x-imboy-idempotency: required
@@ -126,11 +139,6 @@ patch:
             introduction:
               type: string
               maxLength: 2000
-            members:
-              type: array
-              items:
-                type: string
-              description: 成员覆盖（external_user_id 列表）
   responses:
     '200':
       description: 更新结果
@@ -150,12 +158,16 @@ patch:
                 type: boolean
                 enum:
                 - true
+      headers:
+        Idempotent-Replayed:
+          description: 重放首次已提交的 HTTP 状态与正文时为 true；首次响应不带此头。
+          schema: { type: string, enum: ['true'] }
     '400':
       $ref: ../../../../components/responses/internal/invalid_request.yaml
     '401':
-      $ref: ../../../../components/responses/internal/invalid_credential.yaml
+      $ref: ../../../../components/responses/internal/unauthorized.yaml
     '403':
-      $ref: ../../../../components/responses/internal/organization_boundary_violation.yaml
+      $ref: ../../../../components/responses/internal/forbidden.yaml
     '404':
       $ref: ../../../../components/responses/internal/resource_not_found.yaml
     '409':
@@ -164,6 +176,7 @@ patch:
       $ref: ../../../../components/responses/internal/rate_limited.yaml
     '500':
       $ref: ../../../../components/responses/internal/internal_error.yaml
+    '503': { $ref: '../../../../components/responses/internal/security_gate_closed.yaml' }
 delete:
   tags:
   - internal
@@ -171,6 +184,11 @@ delete:
   description: '归档式解散；重复解散返回 `{group_id, archived: true, already: true}`。
 
     '
+  security:
+    - ibIntHmacCredential: []
+      ibIntHmacTimestamp: []
+      ibIntHmacNonce: []
+      ibIntHmacSignature: []
   operationId: internalGroupArchive
   parameters:
   - name: group_id
@@ -180,6 +198,8 @@ delete:
     schema:
       type: integer
       format: int64
+      minimum: 1
+      maximum: 9223372036854775807
   - name: Idempotency-Key
     in: header
     required: true
@@ -187,6 +207,8 @@ delete:
     schema:
       type: string
       minLength: 1
+      maxLength: 128
+      pattern: ^[ -~]+$
   x-imboy-authentication: hmac
   x-imboy-rate-bucket: internal_write
   x-imboy-idempotency: required
@@ -208,12 +230,16 @@ delete:
               already:
                 type: boolean
                 description: 重复解散时 true
+      headers:
+        Idempotent-Replayed:
+          description: 重放首次已提交的 HTTP 状态与正文时为 true；首次响应不带此头。
+          schema: { type: string, enum: ['true'] }
     '400':
       $ref: ../../../../components/responses/internal/invalid_request.yaml
     '401':
-      $ref: ../../../../components/responses/internal/invalid_credential.yaml
+      $ref: ../../../../components/responses/internal/unauthorized.yaml
     '403':
-      $ref: ../../../../components/responses/internal/organization_boundary_violation.yaml
+      $ref: ../../../../components/responses/internal/forbidden.yaml
     '404':
       $ref: ../../../../components/responses/internal/resource_not_found.yaml
     '409':
@@ -222,3 +248,4 @@ delete:
       $ref: ../../../../components/responses/internal/rate_limited.yaml
     '500':
       $ref: ../../../../components/responses/internal/internal_error.yaml
+    '503': { $ref: '../../../../components/responses/internal/security_gate_closed.yaml' }

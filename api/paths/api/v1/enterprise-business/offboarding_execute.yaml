@@ -1,0 +1,113 @@
+post:
+  tags:
+  - enterprise-business
+  summary: 执行离职交接
+  description: '可选 enterprise_business 功能面，部署未启用时不可调用。组织标识来自路径，workspace_id 必须显式提供；每次请求重新校验成员、业务身份和权限。此面成功用业务信封，实体ID返回十进制字符串，时间保留用例原值。
+
+    Optional enterprise_business feature; current resource membership and permissions are rechecked on
+    every request.'
+  operationId: ebTenantOffboardingExecutePost
+  security:
+  - bearerAuth: []
+  x-imboy-feature: enterprise_business
+  x-handler: eb_tenant_handler
+  x-action: offboarding_execute
+  parameters:
+  - name: org_id
+    in: path
+    required: true
+    description: 路径中的业务实体ID。
+    schema:
+      type: string
+      pattern: ^[0-9]+$
+  - name: id
+    in: path
+    required: true
+    description: 路径中的业务实体ID。
+    schema:
+      type: string
+      pattern: ^[0-9]+$
+  x-imboy-auth-context:
+    auth_context: enterprise_owner_admin
+    required_governance:
+    - owner
+    - admin
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            expected_version:
+              type: integer
+            workspace_id:
+              oneOf:
+              - type: string
+                pattern: ^[0-9]+$
+              - type: integer
+                minimum: 1
+              description: 十进制实体 ID，字符串可无损传输。
+          required:
+          - expected_version
+          - workspace_id
+  responses:
+    '200':
+      description: 业务响应；成功code=0，载荷为当前用例视图。
+      content:
+        application/json:
+          schema:
+            allOf:
+            - $ref: ../../../../components/schemas/Envelope.yaml
+            - type: object
+              properties:
+                payload:
+                  $ref: ../../../../components/schemas/enterprise-business/OffboardingCase.yaml
+    '400':
+      description: 请求形状或客户端派生字段非法
+      content:
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/Envelope.yaml
+    '401':
+      description: 凭证无效
+      content:
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/Envelope.yaml
+    '403':
+      description: 当前成员、职能或治理权限不满足
+      content:
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/Envelope.yaml
+    '404':
+      description: 目标不存在或不可访问
+      content:
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/Envelope.yaml
+    '405':
+      description: 不支持的方法
+      content:
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/Envelope.yaml
+    '409':
+      description: 版本或业务状态冲突
+      content:
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/Envelope.yaml
+    '422':
+      description: 缺少必填参数或业务参数非法
+      content:
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/Envelope.yaml
+    '500':
+      description: 内部处理或配置错误
+      content:
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/Envelope.yaml

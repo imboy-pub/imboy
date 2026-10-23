@@ -1,11 +1,17 @@
-# DELETE /api/adm/app_version/delete — admin
 delete:
-  tags: [admin]
+  security:
+  - adminSessionId: []
+    adminSessionSignature: []
+  tags:
+  - admin
   summary: admin adm-app-version - delete
-  description: |
-    ## 中文 / English
-    管理后台 adm-app-version handler 的 `delete` 动作；路径 `/adm/app_version/delete`。
-    Admin handler `adm-app-version`, action `delete`. Path `/adm/app_version/delete`.
+  description: '## 中文 / English
+
+    管理后台 adm-app-version handler 的 `delete` 动作；路径 `/api/adm/app_version/delete`。
+
+    Admin handler `adm-app-version`, action `delete`. Path `/api/adm/app_version/delete`.
+
+    '
   operationId: adm_app_version_delete
   requestBody:
     required: true
@@ -13,24 +19,35 @@ delete:
       application/json:
         schema:
           type: object
-          required: [id]
+          required:
+          - id
           properties:
-            id: { type: integer, description: '要删除的版本记录 ID / App version record ID to delete' }
+            id:
+              type: integer
+              description: 要删除的版本记录 ID / App version record ID to delete
   responses:
     '200':
-      description: 成功（返回提交的 PostVals）
+      description: 成功（返回提交的 PostVals）；非零 code 为业务错误 / Non-zero code is a business error
       content:
         application/json:
           schema:
-            allOf:
-              - $ref: '../../../../components/schemas/Envelope.yaml'
+            anyOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
               - type: object
                 properties:
                   payload:
                     type: object
                     additionalProperties: true
                     description: 删除成功时返回原始提交参数
-    '4XX':
+              - type: object
+                properties:
+                  code:
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+    4XX:
       description: 无权限 / 参数非法
       content:
-        application/json: { schema: { $ref: '../../../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/Envelope.yaml

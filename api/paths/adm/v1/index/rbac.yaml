@@ -1,20 +1,27 @@
-# GET /api/adm/rbac/me — admin
 get:
-  tags: [admin]
+  security:
+  - adminSessionId: []
+    adminSessionSignature: []
+  tags:
+  - admin
   summary: admin adm-index - rbac
-  description: |
-    ## 中文 / English
-    管理后台 adm-index handler 的 `rbac` 动作；路径 `/adm/rbac/me`。
-    Admin handler `adm-index`, action `rbac`. Path `/adm/rbac/me`.
+  description: '## 中文 / English
+
+    管理后台 adm-index handler 的 `rbac` 动作；路径 `/api/adm/rbac/me`。
+
+    Admin handler `adm-index`, action `rbac`. Path `/api/adm/rbac/me`.
+
+    '
   operationId: adm_index_rbac
   responses:
     '200':
-      description: 成功
+      description: 成功；非零 code 为业务错误 / Non-zero code is a business error
       content:
         application/json:
           schema:
-            allOf:
-              - $ref: '../../../../components/schemas/Envelope.yaml'
+            anyOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
               - type: object
                 properties:
                   payload:
@@ -46,7 +53,14 @@ get:
                         items:
                           type: string
                         description: 可访问菜单路径列表
-    '4XX':
+              - type: object
+                properties:
+                  code:
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+    4XX:
       description: 无权限 / 参数非法
       content:
-        application/json: { schema: { $ref: '../../../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/Envelope.yaml

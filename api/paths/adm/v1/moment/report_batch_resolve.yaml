@@ -1,14 +1,23 @@
-# POST /api/adm/moment/report/batch_resolve — admin
 post:
-  tags: [admin]
+  security:
+  - adminSessionId: []
+    adminSessionSignature: []
+  tags:
+  - admin
   summary: admin adm-moment - report_batch_resolve
-  description: |
-    ## 中文 / English
-    管理后台 adm-moment handler 的 `report_batch_resolve` 动作；路径 `/adm/moment/report/batch_resolve`。
-    Admin handler `adm-moment`, action `report_batch_resolve`. Path `/adm/moment/report/batch_resolve`.
+  description: '## 中文 / English
+
+    管理后台 adm-moment handler 的 `report_batch_resolve` 动作；路径 `/api/adm/moment/report/batch_resolve`。
+
+    Admin handler `adm-moment`, action `report_batch_resolve`. Path `/api/adm/moment/report/batch_resolve`.
+
     权限：moments:report:handle。有效 ID 去重后逐条处理，部分失败仍返回汇总。
+
     Permission: moments:report:handle. Valid IDs are deduplicated and resolved individually;
+
     partial failures return summary counts and failed IDs. No atomic batch guarantee.
+
+    '
   operationId: adm_moment_report_batch_resolve
   requestBody:
     required: true
@@ -16,23 +25,28 @@ post:
       application/json:
         schema:
           type: object
-          required: [report_ids, result]
+          required:
+          - report_ids
+          - result
           additionalProperties: true
           properties:
             report_ids:
               type: array
               minItems: 1
-              description: 举报 TSID；无效项被忽略，去重后为空则拒绝 / Report TSIDs; invalid entries are ignored, empty normalized input is rejected
+              description: 举报 TSID；无效项被忽略，去重后为空则拒绝 / Report TSIDs; invalid entries are ignored, empty normalized
+                input is rejected
               items:
                 oneOf:
-                  - type: integer
-                    format: int64
-                    minimum: 1
-                  - type: string
-                    pattern: '^[1-9][0-9]*$'
+                - type: integer
+                  format: int64
+                  minimum: 1
+                - type: string
+                  pattern: ^[1-9][0-9]*$
             result:
               type: integer
-              enum: [1, 2]
+              enum:
+              - 1
+              - 2
               description: 1 无违规，2 违规确认 / 1 dismiss, 2 confirm violation
             note:
               type: string
@@ -40,12 +54,13 @@ post:
               description: 处理备注 / Resolution note
   responses:
     '200':
-      description: 成功
+      description: 成功；非零 code 为业务错误 / Non-zero code is a business error
       content:
         application/json:
           schema:
-            allOf:
-              - $ref: '../../../../components/schemas/Envelope.yaml'
+            anyOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
               - type: object
                 properties:
                   payload:
@@ -63,7 +78,14 @@ post:
                         description: 失败的举报 ID 列表 / Failed report IDs
                         items:
                           type: string
-    '4XX':
+              - type: object
+                properties:
+                  code:
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+    4XX:
       description: 无权限 / 参数非法
       content:
-        application/json: { schema: { $ref: '../../../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/Envelope.yaml

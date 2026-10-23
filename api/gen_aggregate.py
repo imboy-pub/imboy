@@ -1,246 +1,145 @@
 #!/usr/bin/env python3
-"""imboy/api/gen_aggregate.py — 生成式聚合桥接（三受众布局配套工具）。
+"""Generate the OpenAPI bridge from the three audience roots (requires PyYAML).
 
-三个手工编辑真源：
-    api/openapi-api.yaml        surface api（业务 v1）
-    api/openapi-adm.yaml        surface adm（管理后台）
-    api/openapi-internal.yaml   surface internal（企业集成 v1）
-
-本脚本把三者的 paths 段求并集，生成汇总入口 api/openapi.yaml（GENERATED，
-请勿手改）。聚合文件的存在是为了让既有的契约校验工具链
-（check_rest_contract_coverage.sh / check_release_consistency.sh /
-contract_gate.py）以及单文件导入方继续零改动工作。
-
-用法（在仓库任意位置）：
-    python3 api/gen_aggregate.py           # 重新生成 api/openapi.yaml
-    python3 api/gen_aggregate.py --check   # 只校验磁盘文件与应生成内容一致
-
---check 不一致时 exit 1（CI/门禁用）。纯文本解析，无第三方依赖；
-三个 root 的格式由本仓约定（path key 两空格缩进，下一行为 $ref）。
+Run from the repository root: python3 api/gen_aggregate.py [--check].
+Path references retain the two-line bridge consumed by existing route gates.
 """
-import os
-import re
+import copy
+from pathlib import Path
 import sys
 
-API_DIR = os.path.dirname(os.path.abspath(__file__))
-ROOTS = ['openapi-api.yaml', 'openapi-adm.yaml', 'openapi-internal.yaml']
-AGG = 'openapi.yaml'
+import yaml
 
-PATH_KEY_RE = re.compile(r'^  (/[^:\s]*):$')
-REF_RE = re.compile(r"^\s+\$ref: '(\./paths/[^']+)'$")
-TAG_NAME_RE = re.compile(r'^  - name: (\S+)$')
-
-
-def read(name):
-    return open(os.path.join(API_DIR, name)).read().splitlines()
+API_DIR = Path(__file__).resolve().parent
+ROOTS = ("openapi-api.yaml", "openapi-adm.yaml", "openapi-internal.yaml")
+AGG = "openapi.yaml"
+METHODS = {"get", "post", "put", "patch", "delete", "head", "options", "trace"}
 
 
-def section_slice(lines, start_re, end_res):
-    """Lines from start anchor (inclusive) to the first of end anchors
-    (exclusive). end_res may be None (to EOF)."""
-    start = None
-    for i, l in enumerate(lines):
-        if re.match(start_re, l):
-            start = i
-            break
-    if start is None:
-        return None
-    end = len(lines)
-    for i in range(start + 1, len(lines)):
-        if end_res and any(re.match(e, lines[i]) for e in end_res):
-            end = i
-            break
-    return lines[start:end]
+class UniqueKeyLoader(yaml.SafeLoader):
+    """Reject duplicate keys instead of silently losing a path or component."""
+
+    _MERGE_KEY = object()
+
+    def __init__(self, stream):
+        super().__init__(stream)
+        self._checked_mappings = set()
+
+    def flatten_mapping(self, node):
+        # SafeLoader recursively flattens inline merge sources without calling
+        # construct_mapping. Check here before inherited keys enter the node,
+        # and only once because aliases can reuse an already flattened mapping.
+        if node not in self._checked_mappings:
+            seen = set()
+            for key_node, _ in node.value:
+                key = (self._MERGE_KEY if key_node.tag == "tag:yaml.org,2002:merge"
+                       else self.construct_object(key_node))
+                if key in seen:
+                    raise ValueError("duplicate YAML mapping key")
+                seen.add(key)
+            self._checked_mappings.add(node)
+        return super().flatten_mapping(node)
 
 
-def parse_paths(root_lines, name):
-    """Return ordered list of (key, ref). Supports 'paths: {}' empty form."""
-    sec = section_slice(root_lines, r'^paths: \{\}$', None)
-    if sec is not None:
-        return []
-    sec = section_slice(root_lines, r'^paths:$', (r'^[a-zA-Z#]',))
-    if sec is None:
-        sys.exit(f'{name}: no paths section')
-    out = []
-    i = 1
-    while i < len(sec):
-        m = PATH_KEY_RE.match(sec[i])
-        if m:
-            ref = REF_RE.match(sec[i + 1]) if i + 1 < len(sec) else None
-            if not ref:
-                sys.exit(f'{name}: path key {m.group(1)} next line is not a $ref bridge')
-            out.append((m.group(1), ref.group(1)))
-            i += 2
-            continue
-        i += 1
-    return out
+class Reference(str):
+    """Keep file references quoted for existing shell contract consumers."""
 
 
-def parse_tag_blocks(root_lines):
-    sec = section_slice(root_lines, r'^tags:$', (r'^[a-zA-Z#]',))
-    if sec is None:
-        return {}
-    blocks = {}
-    cur, buf = None, []
-    for l in sec[1:]:
-        m = TAG_NAME_RE.match(l)
-        if m:
-            if cur:
-                blocks[cur] = buf
-            cur, buf = m.group(1), [l]
-        elif cur is not None:
-            buf.append(l)
-    if cur:
-        blocks[cur] = buf
-    return blocks
+class Dumper(yaml.SafeDumper):
+    def ignore_aliases(self, data):
+        return True
 
 
-def parse_components_entries(root_lines):
-    """Return {subsection: {entry_key: [lines]}} from the components section."""
-    sec = section_slice(root_lines, r'^components:$', (r'^security:$', r'^[a-zA-Z]'))
-    if sec is None:
-        return {}
-    result = {}
-    sub, key, buf = None, None, []
-    for l in sec[1:]:
-        m = re.match(r'^  ([A-Za-z]+):$', l)
-        if m:
-            if sub and key:
-                result[sub][key] = buf
-            sub = m.group(1)
-            result.setdefault(sub, {})
-            key, buf = None, []
-            continue
-        if sub is None:
-            continue
-        e = re.match(r'^    ([A-Za-z][\w-]*):', l)
-        if e and key is None:
-            key, buf = e.group(1), [l]
-        elif key is not None:
-            buf.append(l)
-    if sub and key:
-        result[sub][key] = buf
-    # strip trailing blank lines from each entry buffer
-    for sub in result:
-        for k in result[sub]:
-            while result[sub][k] and result[sub][k][-1].strip() == '':
-                result[sub][k].pop()
-    return result
+Dumper.add_representer(Reference, lambda dumper, value: dumper.represent_scalar(
+    "tag:yaml.org,2002:str", value, style="'"))
 
 
-def build():
-    root_paths = []
-    tag_blocks = {}
-    comp_entries = {}
-    version = None
-    header_meta = {}
+def load(path):
+    document = yaml.load(Path(path).read_text(encoding="utf-8"), Loader=UniqueKeyLoader)
+    if not isinstance(document, dict):
+        raise ValueError(f"{path}: expected a YAML mapping")
+    return document
+
+
+def add_paths(aggregate, root, name, api_dir):
+    if not isinstance(root.get("paths"), dict):
+        raise ValueError(f"{name}: paths must be an explicit mapping")
+    for path, item in root["paths"].items():
+        if path in aggregate["paths"]:
+            raise ValueError(f"duplicate path across roots: {path} ({name})")
+        if (not isinstance(item, dict) or set(item) != {"$ref"}
+                or not isinstance(item["$ref"], str)
+                or not item["$ref"].startswith("./paths/")):
+            raise ValueError(f"{name}: {path} must reference a local path file")
+        leaf = load(api_dir / item["$ref"])
+        # A shared Path Item inherits the aggregate's default security. Require
+        # explicit security whenever its audience has another default.
+        for method, operation in leaf.items():
+            if method not in METHODS:
+                continue
+            if not isinstance(operation, dict):
+                raise ValueError(f"{name}: {method.upper()} {path} must be a mapping")
+            expected = operation.get("security", root.get("security", []))
+            actual = operation.get("security", aggregate.get("security", []))
+            if expected != actual:
+                raise ValueError(f"{name}: {method.upper()} {path} needs explicit security")
+        aggregate["paths"][path] = {"$ref": Reference(item["$ref"])}
+
+
+def merge_components(aggregate, root, name):
+    for section, entries in root.get("components", {}).items():
+        target = aggregate["components"].setdefault(section, {})
+        for key, value in entries.items():
+            if key in target and target[key] != value:
+                raise ValueError(f"components/{section}/{key} differs in {name}")
+            target[key] = copy.deepcopy(value)
+
+
+def build(api_dir=None):
+    api_dir = API_DIR if api_dir is None else Path(api_dir)
+    first = load(api_dir / ROOTS[0])
+    info = copy.deepcopy(first["info"])
+    info.update(title="IMBoy REST API", summary="IMBoy HTTP / REST 三受众聚合入口",
+                description="Generated from openapi-api.yaml, openapi-adm.yaml and "
+                "openapi-internal.yaml. Edit the audience roots and path files, "
+                "then run python3 api/gen_aggregate.py. Authentication and wire "
+                "formats are defined separately for each audience.")
+    aggregate = {"openapi": first["openapi"], "info": info,
+                 "servers": first.get("servers", []), "tags": [], "paths": {},
+                 "components": {}, "security": first.get("security", [])}
+    tags = set()
     for name in ROOTS:
-        lines = read(name)
-        ps = parse_paths(lines, name)
-        root_paths.append((name, ps))
-        for t, blk in parse_tag_blocks(lines).items():
-            tag_blocks.setdefault(t, blk)
-        for sub, ents in parse_components_entries(lines).items():
-            merged = comp_entries.setdefault(sub, {})
-            for k, blk in ents.items():
-                if k in merged and merged[k] != blk:
-                    sys.exit(f'components/{sub}/{k} differs between roots')
-                merged.setdefault(k, blk)
-        if version is None:
-            m = re.search(r'^  version: (\S+)$', '\n'.join(lines), re.M)
-            assert m, f'{name}: no info.version'
-            version = m.group(1)
-        if 'servers' not in header_meta:
-            header_meta['servers'] = section_slice(lines, r'^servers:$', (r'^tags:$',))
-        if 'security' not in header_meta:
-            header_meta['security'] = section_slice(lines, r'^security:$', None)
-
-    # duplicate key guard across roots
-    seen = {}
-    for name, ps in root_paths:
-        for k, _ in ps:
-            if k in seen:
-                sys.exit(f'path key {k} declared in both {seen[k]} and {name}')
-            seen[k] = name
-
-    out = []
-    out.append('# ----------------------------------------------------------------------------')
-    out.append('# imboy/api/openapi.yaml — 三受众聚合桥接（GENERATED，请勿手改）')
-    out.append('#')
-    out.append('# 本文件由 gen_aggregate.py 从三个编辑真源生成并维护并集：')
-    out.append('#   openapi-api.yaml（surface api）/ openapi-adm.yaml（surface adm）/')
-    out.append('#   openapi-internal.yaml（surface internal）。')
-    out.append('# 手改会被下次生成覆盖；改契约请改对应 root 或 paths/ 下端点文件，')
-    out.append('# 然后运行 python3 api/gen_aggregate.py。保留本聚合文件是为了让')
-    out.append('# check_rest_contract_coverage.sh / check_release_consistency.sh /')
-    out.append('# contract_gate.py 等工具与单文件导入方零改动工作。')
-    out.append('# ----------------------------------------------------------------------------')
-    out.append('openapi: 3.1.0')
-    out.append('info:')
-    out.append('  title: IMBoy REST API')
-    out.append(f'  version: {version}')
-    out.append('  x-stability: stable')
-    out.append('  summary: IMBoy HTTP / REST 接口聚合入口（三受众并集）')
-    out.append('  description: |')
-    out.append('    本文件是**生成式聚合桥接**：三个受众编辑真源（openapi-api.yaml /')
-    out.append('    openapi-adm.yaml / openapi-internal.yaml）的 paths 并集，由')
-    out.append('    gen_aggregate.py 维护。请勿手改本文件；改契约请改对应 root 或')
-    out.append('    paths/ 下端点文件，然后运行 python3 api/gen_aggregate.py。')
-    out.append('    完整路径清单以 `imboy/src/imboy_router.erl` 为权威；契约机器真源见')
-    out.append('    `.contract/api_contract.json`（contract-export）。')
-    out.append('  license:')
-    out.append('    name: BUSL-1.1')
-    out.append('    url: https://mariadb.com/bsl11/')
-    out.append('  contact:')
-    out.append('    name: IMBoy Maintainers')
-    out.append('    url: https://github.com/imboy-pub/imboy')
-    out.extend(header_meta['servers'])
-    out.append('tags:')
-    for t, blk in tag_blocks.items():
-        out.extend(blk)
-    out.append('paths:')
-    surface_note = {
-        'openapi-api.yaml': 'surface api — 业务 v1 端点（编辑真源 openapi-api.yaml）',
-        'openapi-adm.yaml': 'surface adm — 管理后台端点（编辑真源 openapi-adm.yaml）',
-        'openapi-internal.yaml': 'surface internal — 企业集成 v1 端点（编辑真源 openapi-internal.yaml）',
-    }
-    for name, ps in root_paths:
-        if not ps:
-            continue
-        out.append(f'  # ---- {surface_note[name]} ----')
-        for k, ref in ps:
-            out.append(f'  {k}:')
-            out.append(f"    $ref: '{ref}'")
-    out.append('components:')
-    for sub, ents in comp_entries.items():
-        out.append(f'  {sub}:')
-        for k, blk in ents.items():
-            out.extend(blk)
-            out.append('')
-        while out and out[-1] == '' and out[-2] == '':
-            out.pop()
-    out.extend(header_meta['security'])
-    return '\n'.join(out).rstrip('\n') + '\n'
+        root = load(api_dir / name)
+        if root["openapi"] != aggregate["openapi"]:
+            raise ValueError(f"OpenAPI version differs in {name}")
+        add_paths(aggregate, root, name, api_dir)
+        merge_components(aggregate, root, name)
+        for tag in root.get("tags", []):
+            if tag["name"] not in tags:
+                aggregate["tags"].append(tag)
+                tags.add(tag["name"])
+    header = "# GENERATED by api/gen_aggregate.py; edit the three audience roots instead.\n"
+    return header + yaml.dump(aggregate, Dumper=Dumper, allow_unicode=True,
+                              sort_keys=False, width=100)
 
 
 def main():
-    if '--check' in sys.argv:
-        want = build()
-        cur = open(os.path.join(API_DIR, AGG)).read()
-        if want == cur:
-            print(f'{AGG}: up to date with {", ".join(ROOTS)}')
-            return 0
-        print(f'{AGG}: OUT OF SYNC with the three roots — rerun '
-              f'"python3 api/gen_aggregate.py" and commit the result')
+    try:
+        content = build()
+    except (ValueError, OSError, yaml.YAMLError) as error:
+        print(f"aggregate: {error}", file=sys.stderr)
         return 1
-    target = os.path.join(API_DIR, AGG)
-    content = build()
-    with open(target, 'w') as f:
-        f.write(content)
-    n_paths = content.count("    $ref: './paths/")
-    print(f'generated {AGG}: {n_paths} bridged path keys')
+    target = API_DIR / AGG
+    if "--check" in sys.argv:
+        if target.read_text(encoding="utf-8") != content:
+            print(f"{AGG}: OUT OF SYNC; run python3 api/gen_aggregate.py")
+            return 1
+        print(f"{AGG}: up to date with all three audience roots")
+        return 0
+    target.write_text(content, encoding="utf-8")
+    print(f"generated {AGG}")
     return 0
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     sys.exit(main())

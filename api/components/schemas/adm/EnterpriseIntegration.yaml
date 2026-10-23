@@ -1,0 +1,272 @@
+$defs:
+  Application:
+    type: object
+    properties:
+      id:
+        type: string
+        pattern: ^[1-9][0-9]*$
+        description: TSID 十进制字符串 / Decimal TSID string
+      organization_id:
+        type: string
+        pattern: ^[1-9][0-9]*$
+        description: TSID 十进制字符串 / Decimal TSID string
+      name:
+        type: string
+      status:
+        type: string
+        enum:
+        - draft
+        - active
+        - disabled
+        - archived
+      version:
+        type: integer
+      created_at:
+        type:
+        - integer
+        - 'null'
+        format: int64
+        description: Unix 毫秒 / Unix milliseconds
+      updated_at:
+        type:
+        - integer
+        - 'null'
+        format: int64
+        description: Unix 毫秒 / Unix milliseconds
+  ApplicationDetail:
+    type: object
+    properties:
+      id:
+        type: string
+        pattern: ^[1-9][0-9]*$
+        description: TSID 十进制字符串 / Decimal TSID string
+      organization_id:
+        type: string
+        pattern: ^[1-9][0-9]*$
+        description: TSID 十进制字符串 / Decimal TSID string
+      name:
+        type: string
+      status:
+        type: string
+        enum:
+        - draft
+        - active
+        - disabled
+        - archived
+      version:
+        type: integer
+      created_at:
+        type:
+        - integer
+        - 'null'
+        format: int64
+        description: Unix 毫秒 / Unix milliseconds
+      updated_at:
+        type:
+        - integer
+        - 'null'
+        format: int64
+        description: Unix 毫秒 / Unix milliseconds
+      description:
+        type: string
+        const: ''
+      owner_application_key:
+        type: string
+  Credential:
+    type: object
+    properties:
+      id:
+        type: string
+        pattern: ^[1-9][0-9]*$
+        description: TSID 十进制字符串 / Decimal TSID string
+      credential_prefix:
+        type: string
+      status:
+        type: string
+      created_at:
+        type:
+        - integer
+        - 'null'
+        format: int64
+        description: Unix 毫秒 / Unix milliseconds
+      expires_at:
+        type:
+        - integer
+        - 'null'
+        format: int64
+        description: Unix 毫秒 / Unix milliseconds
+      last_used_at:
+        type:
+        - integer
+        - 'null'
+        format: int64
+        description: Unix 毫秒 / Unix milliseconds
+      revoked_at:
+        type:
+        - integer
+        - 'null'
+        format: int64
+        description: Unix 毫秒 / Unix milliseconds
+  CredentialOnce:
+    type: object
+    properties:
+      credential:
+        type: object
+        properties:
+          id:
+            type: string
+            pattern: ^[1-9][0-9]*$
+            description: TSID 十进制字符串 / Decimal TSID string
+          credential_prefix:
+            type: string
+          status:
+            type: string
+          created_at:
+            type:
+            - integer
+            - 'null'
+            format: int64
+            description: Unix 毫秒 / Unix milliseconds
+          expires_at:
+            type:
+            - integer
+            - 'null'
+            format: int64
+            description: Unix 毫秒 / Unix milliseconds
+          last_used_at:
+            type:
+            - integer
+            - 'null'
+            format: int64
+            description: Unix 毫秒 / Unix milliseconds
+          revoked_at:
+            type:
+            - integer
+            - 'null'
+            format: int64
+            description: Unix 毫秒 / Unix milliseconds
+      secret:
+        type: string
+        description: 完整凭据，仅本次返回 / Full credential returned once
+  Identity:
+    type: object
+    properties:
+      id:
+        type: string
+        pattern: ^[1-9][0-9]*$
+        description: TSID 十进制字符串 / Decimal TSID string
+      external_user_id:
+        type: string
+      user_id:
+        type: string
+        pattern: ^[1-9][0-9]*$
+        description: TSID 十进制字符串 / Decimal TSID string
+      status:
+        type: string
+      created_at:
+        type:
+        - integer
+        - 'null'
+        format: int64
+        description: Unix 毫秒 / Unix milliseconds
+      updated_at:
+        type:
+        - integer
+        - 'null'
+        format: int64
+        description: Unix 毫秒 / Unix milliseconds
+  Delivery:
+    type: object
+    properties:
+      id:
+        type: string
+      event_id:
+        type: string
+      event_type:
+        type: string
+      status:
+        type: string
+      attempt_count:
+        type: integer
+        minimum: 0
+      endpoint_generation:
+        type: integer
+      ledger_version:
+        type: integer
+      replay_of:
+        type:
+        - string
+        - 'null'
+      correlation_id:
+        type: string
+      next_retry_at:
+        type:
+        - integer
+        - 'null'
+        format: int64
+        description: Unix 毫秒 / Unix milliseconds
+      created_at:
+        type:
+        - integer
+        - 'null'
+        format: int64
+        description: Unix 毫秒 / Unix milliseconds
+      updated_at:
+        type:
+        - integer
+        - 'null'
+        format: int64
+        description: Unix 毫秒 / Unix milliseconds
+  DeliveryStats:
+    type: object
+    properties:
+      total:
+        type: integer
+        minimum: 0
+      success:
+        type: integer
+        minimum: 0
+      retry:
+        type: integer
+        minimum: 0
+      dead:
+        type: integer
+        minimum: 0
+      pending:
+        type: integer
+        minimum: 0
+      success_rate:
+        type: number
+      dead_letter_rate:
+        type: number
+  Audit:
+    type: object
+    properties:
+      id:
+        type: string
+        pattern: ^[1-9][0-9]*$
+        description: TSID 十进制字符串 / Decimal TSID string
+      action:
+        type: string
+      actor_account:
+        type: string
+      target_kind:
+        type: string
+      target_id:
+        anyOf:
+        - type: string
+          pattern: ^[1-9][0-9]*$
+          description: TSID 十进制字符串 / Decimal TSID string
+        - type: 'null'
+      created_at:
+        type:
+        - integer
+        - 'null'
+        format: int64
+        description: Unix 毫秒 / Unix milliseconds
+      before:
+        type: object
+        description: 业务字段快照 / Business field snapshot
+      after:
+        type: object
+        description: 业务字段快照 / Business field snapshot

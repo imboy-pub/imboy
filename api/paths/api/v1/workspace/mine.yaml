@@ -1,0 +1,66 @@
+get:
+  tags:
+  - workspace
+  summary: 我的工作区列表
+  operationId: workspaceMine
+  description: 访问 JWT 认证；业务失败通常返回 HTTP 200 与非零 code，须检查 code。 / JWT access token; inspect envelope code.
+  parameters:
+  - name: page
+    in: query
+    required: false
+    schema:
+      type: integer
+      minimum: 1
+      default: 1
+    description: 页码，从 1 开始 / Page starting at 1
+  - name: size
+    in: query
+    required: false
+    schema:
+      type: integer
+      minimum: 1
+      maximum: 100
+      default: 20
+    description: 每页条数 / Page size
+  responses:
+    '200':
+      description: 成功 code=0 返回以下业务载荷；业务失败 code 非零返回通用错误信封。 / Success payload or nonzero-code business error.
+      content:
+        application/json:
+          schema:
+            oneOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      list:
+                        type: array
+                        items:
+                          $ref: ../../../../components/schemas/client/WorkspaceSummary.yaml
+                      page:
+                        type: integer
+                      size:
+                        type: integer
+                      total:
+                        type: integer
+                      total_page:
+                        type: integer
+                    required:
+                    - list
+                    - page
+                    - size
+                    - total
+                    - total_page
+              - type: object
+                required:
+                - code
+                properties:
+                  code:
+                    type: integer
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+    '401':
+      description: 访问 JWT、设备绑定或客户端签名认证失败 / JWT, device binding or client signature rejected

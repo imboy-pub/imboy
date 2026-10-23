@@ -1,0 +1,68 @@
+get:
+  security:
+  - adminSessionId: []
+    adminSessionSignature: []
+  tags:
+  - admin
+  summary: 财务月报 / Monthly finance report
+  description: 需 finance:read。 / Monthly finance report
+  operationId: admStatsFinanceReportGet
+  parameters:
+  - name: months
+    in: query
+    required: false
+    description: months
+    schema:
+      type: integer
+      minimum: 1
+      maximum: 24
+      default: 6
+  responses:
+    '200':
+      description: 成功或业务错误；检查 code / Inspect business code
+      content:
+        application/json:
+          schema:
+            anyOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            month:
+                              type: string
+                              pattern: ^[0-9]{4}-[0-9]{2}$
+                            recharge_amount:
+                              type: integer
+                              format: int64
+                              description: 金额（分） / Amount in minor units
+                            recharge_count:
+                              type: integer
+                              minimum: 0
+                            subscription_amount:
+                              type: integer
+                              format: int64
+                              description: 金额（分） / Amount in minor units
+                            subscription_count:
+                              type: integer
+                              minimum: 0
+                      months:
+                        type: integer
+              - type: object
+                properties:
+                  code:
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+    '401':
+      description: Cookie 缺失、无效、到期或已撤销 / Invalid session cookies
+      content:
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/Envelope.yaml

@@ -227,17 +227,22 @@ read_message_result(Uid, Type, Peer, Id, ConvKey, MinSeq) ->
 
 %% @private 验证参数并生成 conv_key
 validate_history_params(<<"c2c">>, PeerIdEnc, CurrentUid) when PeerIdEnc =/= <<>> ->
-    PeerId = ec_cnv:to_integer(PeerIdEnc),
-    {ok, msg_archive_ds:conv_key_c2c(CurrentUid, PeerId), 0};
+    case parse_history_peer_id(PeerIdEnc) of
+        {ok, PeerId} -> {ok, msg_archive_ds:conv_key_c2c(CurrentUid, PeerId), 0};
+        {error, _} = Error -> Error
+    end;
 validate_history_params(<<"c2g">>, PeerIdEnc, CurrentUid) when PeerIdEnc =/= <<>> ->
-    Gid = ec_cnv:to_integer(PeerIdEnc),
-    %% E2EE-2026-012（Task 8/LT-03）：F2/R2 共享授权谓词——仅当前 open 世代
-    %% start_seq 之后的历史可见；MinSeq 由 history/5 钳制游标（fail-closed deny）。
-    case group_ds:authorize_group_history(CurrentUid, Gid) of
-        {ok, #{start_seq := MinSeq}} ->
-            {ok, msg_archive_ds:conv_key_c2g(Gid), MinSeq};
-        {error, denied} ->
-            {error, permission_denied}
+    case parse_history_peer_id(PeerIdEnc) of
+        {ok, Gid} ->
+            %% F2/R2 共享授权谓词：仅当前 open 世代 start_seq 之后可见。
+            case group_ds:authorize_group_history(CurrentUid, Gid) of
+                {ok, #{start_seq := MinSeq}} ->
+                    {ok, msg_archive_ds:conv_key_c2g(Gid), MinSeq};
+                {error, denied} ->
+                    {error, permission_denied}
+            end;
+        {error, _} = Error ->
+            Error
     end;
 validate_history_params(<<>>, _, _) ->
     {error, <<"缺少 chat_type 参数"/utf8>>};
@@ -245,6 +250,17 @@ validate_history_params(_, <<>>, _) ->
     {error, <<"缺少 peer_id 参数"/utf8>>};
 validate_history_params(ChatType, _, _) ->
     {error, iolist_to_binary([<<"不支持的 chat_type: "/utf8>>, ChatType])}.
+
+%% 严格解析整数，拒绝 ec_cnv 对小数的舍入；保留 +9/0009 等十进制兼容格式。
+parse_history_peer_id(Value) when is_binary(Value) ->
+    try binary_to_integer(Value) of
+        Id when Id > 0, Id =< 9223372036854775807 -> {ok, Id};
+        _ -> {error, <<"peer_id 必须为有效的正整数"/utf8>>}
+    catch
+        error:badarg -> {error, <<"peer_id 必须为有效的正整数"/utf8>>}
+    end;
+parse_history_peer_id(_) ->
+    {error, <<"peer_id 必须为有效的正整数"/utf8>>}.
 
 %% @private 编码历史消息（from_id/to_id → TSID）
 encode_history_msg(_CurrentUid, Row) ->

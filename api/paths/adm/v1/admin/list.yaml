@@ -1,23 +1,30 @@
-# GET /api/adm/admin/list — admin
 get:
-  tags: [admin]
+  security:
+  - adminSessionId: []
+    adminSessionSignature: []
+  tags:
+  - admin
   summary: admin adm-admin - list
-  description: |
-    ## 中文 / English
-    管理后台 adm-admin handler 的 `list` 动作；路径 `/adm/admin/list`。
-    Admin handler `adm-admin`, action `list`. Path `/adm/admin/list`.
+  description: '## 中文 / English
+
+    管理后台 adm-admin handler 的 `list` 动作；路径 `/api/adm/admin/list`。
+
+    Admin handler `adm-admin`, action `list`. Path `/api/adm/admin/list`.
+
+    '
   operationId: adm_admin_list
   parameters:
-    - $ref: '../../../../components/parameters/PaginationPage.yaml'
-    - $ref: '../../../../components/parameters/PaginationSize.yaml'
+  - $ref: ../../../../components/parameters/PaginationPage.yaml
+  - $ref: ../../../../components/parameters/PaginationSize.yaml
   responses:
     '200':
-      description: 成功
+      description: 成功；非零 code 为业务错误 / Non-zero code is a business error
       content:
         application/json:
           schema:
-            allOf:
-              - $ref: '../../../../components/schemas/Envelope.yaml'
+            anyOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
               - type: object
                 properties:
                   payload:
@@ -46,7 +53,7 @@ get:
                               description: 手机号
                             status:
                               type: integer
-                              description: '状态：1=正常，0=禁用'
+                              description: 状态：1=正常，0=禁用
                             role_id:
                               type: integer
                               description: 主角色 ID
@@ -67,7 +74,14 @@ get:
                       size:
                         type: integer
                         description: 每页条数
-    '4XX':
+              - type: object
+                properties:
+                  code:
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+    4XX:
       description: 无权限 / 参数非法
       content:
-        application/json: { schema: { $ref: '../../../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/Envelope.yaml

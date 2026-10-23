@@ -1,0 +1,119 @@
+get:
+  security:
+  - adminSessionId: []
+    adminSessionSignature: []
+  tags:
+  - admin
+  summary: MCP审计分页 / MCP audit log
+  description: 需 mcp_clients:read。 / MCP audit log
+  operationId: admMcpAuditGet
+  parameters:
+  - name: page
+    in: query
+    required: false
+    description: page
+    schema:
+      type: integer
+      minimum: 1
+      default: 1
+  - name: size
+    in: query
+    required: false
+    description: size
+    schema:
+      type: integer
+      minimum: 1
+      maximum: 1000
+      default: 20
+  - name: client_id
+    in: query
+    required: false
+    description: client_id
+    schema:
+      type: integer
+      format: int64
+      minimum: 1
+      description: JSON int64；客户端需无损解析 / Preserve bigint precision
+  - name: action
+    in: query
+    required: false
+    description: action
+    schema:
+      type: string
+  responses:
+    '200':
+      description: 成功或业务错误；检查 code / Inspect business code
+      content:
+        application/json:
+          schema:
+            anyOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      list:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id:
+                              type: integer
+                              format: int64
+                              minimum: 1
+                              description: JSON int64；客户端需无损解析 / Preserve bigint precision
+                            client_id:
+                              type: integer
+                              format: int64
+                              minimum: 1
+                              description: JSON int64；客户端需无损解析 / Preserve bigint precision
+                            owner_uid:
+                              type: integer
+                              format: int64
+                              minimum: 1
+                              description: JSON int64；客户端需无损解析 / Preserve bigint precision
+                            action:
+                              type: string
+                            tool:
+                              type: string
+                            actor_uid:
+                              type: integer
+                              format: int64
+                              minimum: 1
+                              description: JSON int64；客户端需无损解析 / Preserve bigint precision
+                            detail:
+                              description: 审计JSON内容 / Audit JSON
+                            created_at:
+                              type:
+                              - integer
+                              - 'null'
+                              format: int64
+                              description: Unix 毫秒 / Unix milliseconds
+                      page:
+                        type: integer
+                      size:
+                        type: integer
+                      total:
+                        type: integer
+                        minimum: 0
+                      total_page:
+                        type: integer
+                        minimum: 0
+                    required:
+                    - list
+                    - page
+                    - size
+                    - total
+              - type: object
+                properties:
+                  code:
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+    '401':
+      description: Cookie 缺失、无效、到期或已撤销 / Invalid session cookies
+      content:
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/Envelope.yaml

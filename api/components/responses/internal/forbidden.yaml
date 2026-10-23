@@ -1,0 +1,11 @@
+description: 应用或组织停用，或目标业务组织归属不允许访问。
+content:
+  application/json:
+    schema:
+      allOf:
+        - $ref: ../../schemas/internal/ErrorEnvelope.yaml
+      properties:
+        error:
+          properties:
+            code:
+              enum: [application_disabled, organization_disabled, organization_boundary_violation]

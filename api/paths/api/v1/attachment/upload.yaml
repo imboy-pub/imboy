@@ -1,0 +1,63 @@
+post:
+  tags:
+  - user
+  summary: 通过服务端上传已登记附件
+  operationId: attachmentMultipartUpload
+  description: 先经 presign 登记，再以单个 file part 上传；必须匹配当前用户、登记的 scope/mime，受服务端大小限制。响应不是原始存储 URL，后续读取使用 view_url。 /
+    Registered multipart upload; owner/scope/mime and size are checked.
+  parameters:
+  - name: object_key
+    in: query
+    required: true
+    schema:
+      type: string
+      minLength: 1
+    description: object_key
+  - name: mime_type
+    in: query
+    required: true
+    schema:
+      type: string
+    description: mime_type
+  requestBody:
+    required: true
+    content:
+      multipart/form-data:
+        schema:
+          type: object
+          properties:
+            file:
+              type: string
+              format: binary
+          required:
+          - file
+  responses:
+    '200':
+      description: 成功 code=0 返回以下业务载荷；业务失败 code 非零返回通用错误信封。 / Success payload or nonzero-code business error.
+      content:
+        application/json:
+          schema:
+            oneOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      object_key:
+                        type: string
+                      size:
+                        type: integer
+                      mime_type:
+                        type: string
+              - type: object
+                required:
+                - code
+                properties:
+                  code:
+                    type: integer
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+    '401':
+      description: 访问 JWT 或客户端认证失败 / Authentication rejected

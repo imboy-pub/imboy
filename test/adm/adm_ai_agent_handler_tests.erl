@@ -346,3 +346,37 @@ role_publish_passes_operator_and_version_test_() ->
             )
         end
     ).
+
+avatar_direct_declare_returns_empty_success_test_() ->
+    ?WITH_MECKS(
+        with_perm_ok() ++
+            [
+                {cowboy_req, [{'method', 1, fun(_) -> <<"POST">> end}]},
+                {elib_req, [
+                    {'body', 2, fun(Req, []) ->
+                        {ok,
+                            #{
+                                <<"op">> => <<"declare">>,
+                                <<"object_key">> => <<"avatar-key">>,
+                                <<"sha256">> => <<"checksum">>,
+                                <<"size_bytes">> => 100,
+                                <<"mime">> => <<"image/png">>
+                            },
+                            Req}
+                    end}
+                ]},
+                {attach_direct_logic, [
+                    {'require_application_session', 1, fun(<<"avatar-key">>) -> ok end},
+                    {'declare', 4, fun(<<"avatar-key">>, <<"checksum">>, 100, <<"image/png">>) ->
+                        ok
+                    end}
+                ]}
+            ] ++ response_ok(),
+        fun() ->
+            {ok, Resp, _} = adm_ai_agent_handler:init(
+                mock_req(), #{action => avatar_direct, adm_user_id => 1}
+            ),
+            ?assertEqual(200, maps:get(response_status, Resp)),
+            ?assertEqual(#{}, maps:get(data, Resp))
+        end
+    ).

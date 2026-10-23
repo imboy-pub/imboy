@@ -1,0 +1,11 @@
+description: 凭证缺失、格式或签名无效、已撤销，或凭证已过期。
+content:
+  application/json:
+    schema:
+      allOf:
+        - $ref: ../../schemas/internal/ErrorEnvelope.yaml
+      properties:
+        error:
+          properties:
+            code:
+              enum: [invalid_credential, credential_expired]

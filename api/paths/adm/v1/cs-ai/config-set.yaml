@@ -1,0 +1,108 @@
+post:
+  security:
+  - adminSessionId: []
+    adminSessionSignature: []
+  tags:
+  - admin
+  summary: 保存客服AI配置 / Save AI configuration
+  description: 需 customer_service:write。未编译 customer_service 时返回 not found（业务码404）；业务错误遵循现有HTTP200信封。省略id时沿用现有配置或新建。未传字段按服务端默认值覆盖，不是PATCH；config_version更新时自增。返回最新配置或空对象。
+    / Requires the customer_service build feature and platform permission.
+  operationId: admCsAiConfigSet
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            org_id:
+              anyOf:
+              - type: string
+                pattern: ^[1-9][0-9]*$
+                description: TSID 十进制字符串 / Decimal TSID string
+              - type: integer
+                format: int64
+                minimum: 1
+                description: JSON int64；客户端需无损解析 / Preserve bigint precision
+            id:
+              type: integer
+              format: int64
+              minimum: 1
+              description: JSON int64；客户端需无损解析 / Preserve bigint precision
+            name:
+              type: string
+              default: 智能客服
+            provider:
+              type: string
+              default: bigmodel
+            model:
+              type: string
+            system_prompt:
+              type: string
+            greeting:
+              type: string
+            auto_reply_mode:
+              type: string
+              enum:
+              - disabled
+              - observe
+              - canary
+              - enabled
+              default: disabled
+            config_version:
+              type: integer
+              default: 1
+            seat_identity_id:
+              type:
+              - integer
+              - 'null'
+              format: int64
+            max_unresolved_turns:
+              type: integer
+              minimum: 0
+              default: 2
+            faq_require_hit:
+              type: boolean
+              default: true
+            max_inflight:
+              type: integer
+              default: 1
+            job_timeout_ms:
+              type: integer
+              default: 120000
+            max_job_age_ms:
+              type: integer
+              default: 300000
+  responses:
+    '200':
+      description: 成功或业务错误；检查 code / Inspect business code
+      content:
+        application/json:
+          schema:
+            anyOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
+              - type: object
+                properties:
+                  payload:
+                    $ref: ../../../../components/schemas/adm/CustomerServiceAI.yaml#/$defs/Config
+              - type: object
+                properties:
+                  code:
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+    '401':
+      description: Cookie 缺失、无效、到期或已撤销 / Invalid session cookies
+      content:
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/Envelope.yaml
+  parameters:
+  - name: org_id
+    in: query
+    required: false
+    description: 也可放在JSON body，body优先；二者至少一个 / Body value takes precedence
+    schema:
+      type: string
+      pattern: ^[1-9][0-9]*$
+      description: TSID 十进制字符串 / Decimal TSID string

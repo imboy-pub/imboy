@@ -1,0 +1,17 @@
+type: object
+properties:
+  organization_id:
+    type: string
+    pattern: ^[0-9]+$
+    description: 无损十进制 TSID 字符串。
+  seat_limit:
+    oneOf:
+    - type: integer
+    - type: string
+      const: unlimited
+  used:
+    type: integer
+required:
+- organization_id
+- seat_limit
+- used

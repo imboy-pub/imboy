@@ -13,11 +13,13 @@ put:
     required: true
     schema:
       $ref: ../../../../../openapi-api.yaml#/components/schemas/MicroCommunityEntityId
+    description: 频道 TSID / Channel ID
   - name: message_id
     in: path
     required: true
     schema:
       $ref: ../../../../../openapi-api.yaml#/components/schemas/MicroCommunityEntityId
+    description: 消息 ID / Message ID
   responses:
     '200':
       description: '业务信封：code=0成功，非零失败。 / Business envelope: code 0 succeeds; nonzero fails.'

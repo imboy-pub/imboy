@@ -1,0 +1,65 @@
+get:
+  tags:
+  - ai-agent
+  summary: 实例 Agent 能力目录
+  operationId: agentCapabilityCard
+  description: 需当前访问 JWT；返回裸 JSON（不包业务信封）。插件 tools 的完整 schema 通过 MCP tools/list 获取。支持 ETag/304，缓存 max-age=30。 /
+    Raw JSON capability card; ETag and conditional GET supported.
+  parameters:
+  - name: If-None-Match
+    in: header
+    required: false
+    schema:
+      type: string
+    description: If-None-Match
+  responses:
+    '200':
+      description: 业务结果或错误信封 / Business result or error envelope
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              name:
+                type: string
+                const: imboy
+              protocol:
+                type: string
+                const: mcp
+              mcp_endpoint:
+                type: string
+              plugin_tools:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    name:
+                      type: string
+                    description:
+                      type: string
+                  required:
+                  - name
+                  - description
+              generated_at:
+                type: integer
+                format: int64
+                description: Unix 毫秒 / Unix milliseconds
+            required:
+            - name
+            - protocol
+            - mcp_endpoint
+            - plugin_tools
+            - generated_at
+      headers:
+        ETag:
+          schema:
+            type: string
+          description: 内容校验值
+        Cache-Control:
+          schema:
+            type: string
+          description: max-age=30
+    '401':
+      description: 访问 JWT 或客户端认证失败 / Authentication rejected
+    '304':
+      description: ETag 命中，无响应体 / Not modified

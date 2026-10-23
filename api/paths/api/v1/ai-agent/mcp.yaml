@@ -1,0 +1,186 @@
+get:
+  tags:
+  - ai-agent
+  summary: MCP SSE 事件流
+  operationId: mcpGet
+  description: 独立 MCP client credential Bearer secret 认证，不接受普通用户 JWT 替代。POST 为 JSON-RPC 2.0，最大 1 MiB，同步结果/协议错误使用裸
+    JSON-RPC；通知请求返回 202 空体。GET 为 text/event-stream，支持会话及事件重放。工具完整参数以 tools/list 的 inputSchema 为准。 / MCP client credential,
+    JSON-RPC or SSE, separate from business envelopes.
+  parameters:
+  - name: Mcp-Session-Id
+    in: header
+    required: false
+    schema:
+      type: string
+    description: 现有 MCP 会话标识 / Existing session ID
+  - name: Last-Event-ID
+    in: header
+    required: false
+    schema:
+      type: string
+    description: 断线重放起点 / Replay start
+  security:
+  - mcpClientCredential: []
+  responses:
+    '200':
+      description: MCP SSE 事件流
+      content:
+        text/event-stream:
+          schema:
+            type: string
+      headers:
+        Mcp-Session-Id:
+          schema:
+            type: string
+          description: MCP 会话标识
+    '401':
+      description: MCP client credential 缺失、无效或已撤销
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+                const: credential_invalid
+            required:
+            - error
+    '405':
+      description: Method Not Allowed
+post:
+  tags:
+  - ai-agent
+  summary: MCP JSON-RPC 请求
+  operationId: mcpPost
+  description: 独立 MCP client credential Bearer secret 认证，不接受普通用户 JWT 替代。POST 为 JSON-RPC 2.0，最大 1 MiB，同步结果/协议错误使用裸
+    JSON-RPC；通知请求返回 202 空体。GET 为 text/event-stream，支持会话及事件重放。工具完整参数以 tools/list 的 inputSchema 为准。 / MCP client credential,
+    JSON-RPC or SSE, separate from business envelopes.
+  parameters:
+  - name: Mcp-Session-Id
+    in: header
+    required: false
+    schema:
+      type: string
+    description: 现有 MCP 会话标识 / Existing session ID
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            jsonrpc:
+              type: string
+              const: '2.0'
+            id:
+              type:
+              - string
+              - integer
+              - 'null'
+            method:
+              type: string
+              minLength: 1
+            params:
+              type: object
+              additionalProperties: true
+          required:
+          - jsonrpc
+          - method
+  security:
+  - mcpClientCredential: []
+  responses:
+    '200':
+      description: JSON-RPC 响应
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              jsonrpc:
+                type: string
+                const: '2.0'
+              id:
+                type:
+                - string
+                - integer
+                - 'null'
+              result:
+                description: 由 MCP method 定义的结果；tools/list 提供各工具 inputSchema。
+              error:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                  message:
+                    type: string
+                  data: {}
+                required:
+                - code
+                - message
+            required:
+            - jsonrpc
+            - id
+      headers:
+        Mcp-Session-Id:
+          schema:
+            type: string
+          description: MCP 会话标识
+    '401':
+      description: MCP client credential 缺失、无效或已撤销
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+                const: credential_invalid
+            required:
+            - error
+    '202':
+      description: 通知请求已处理，无响应体 / Notification accepted
+    '400':
+      description: JSON-RPC 解析失败，error.code=-32700
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              jsonrpc:
+                type: string
+                const: '2.0'
+              id:
+                type:
+                - string
+                - integer
+                - 'null'
+              result:
+                description: 由 MCP method 定义的结果；tools/list 提供各工具 inputSchema。
+              error:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                  message:
+                    type: string
+                  data: {}
+                required:
+                - code
+                - message
+            required:
+            - jsonrpc
+            - id
+    '405':
+      description: Method Not Allowed
+    '413':
+      description: 请求体累计超过 1 MiB。
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+            - error
+            properties:
+              error:
+                type: string
+                const: body_too_large

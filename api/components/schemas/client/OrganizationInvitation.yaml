@@ -1,0 +1,65 @@
+type: object
+properties:
+  invitation_id:
+    type: integer
+    format: int64
+    minimum: 1
+  organization_id:
+    type: integer
+    format: int64
+    minimum: 1
+  target_user_id:
+    type: integer
+    format: int64
+    minimum: 1
+  invited_by:
+    type: integer
+    format: int64
+    minimum: 1
+  status:
+    type: string
+    enum:
+    - pending
+    - accepted
+    - rejected
+    - revoked
+    - expired
+  expires_at:
+    type: integer
+    format: int64
+    description: Unix 秒 / Unix seconds
+  responded_at:
+    type:
+    - integer
+    - 'null'
+    format: int64
+    description: Unix 秒 / Unix seconds
+  created_at:
+    type: integer
+    format: int64
+    description: Unix 秒 / Unix seconds
+  target_nickname:
+    type:
+    - string
+    - 'null'
+  target_account:
+    type:
+    - string
+    - 'null'
+  target_avatar:
+    type:
+    - string
+    - 'null'
+  inviter_nickname:
+    type:
+    - string
+    - 'null'
+required:
+- invitation_id
+- organization_id
+- target_user_id
+- invited_by
+- status
+- expires_at
+- responded_at
+- created_at

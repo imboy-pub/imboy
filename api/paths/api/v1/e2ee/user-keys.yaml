@@ -1,31 +1,35 @@
-# GET /api/v1/e2ee/user_keys
 get:
-  tags: [user]
-  summary: 查询用户公钥（RSA-OAEP-256）
-  description: |
-    ## 中文 / English
-    查询用户公钥（RSA-OAEP-256）
-    See docs/api/e2ee_*.md for crypto invariants.
+  tags:
+  - e2ee
+  summary: 查询历史 RSA 设备公钥（兼容解密）
+  description: 历史 RSA 密文兼容接口；新会话使用 Olm 设备与预密钥接口。uid 为单个目标用户，不接受逗号列表。 / Legacy RSA compatibility; use Olm for new
+    sessions.
   operationId: e2eeUserKeys
   parameters:
-    - in: query
-      name: uid
-      required: true
-      description: '目标用户 ID 列表 / Target user ID list'
-      schema: { type: string, description: '逗号分隔 TSID 列表 / Comma-separated TSID list' }
+  - in: query
+    name: uid
+    required: true
+    description: 单个目标用户 TSID / Single target user ID
+    schema:
+      type: integer
+      format: int64
+      minimum: 1
   responses:
     '200':
-      description: 成功
+      description: 成功 code=0 返回以下业务载荷；业务失败 code 非零返回通用错误信封。 / Success payload or nonzero-code business error.
       content:
         application/json:
           schema:
-            allOf:
-              - $ref: '../../../../components/schemas/Envelope.yaml'
+            oneOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
               - type: object
                 properties:
                   payload:
                     type: object
-                    required: [uid, devices]
+                    required:
+                    - uid
+                    - devices
                     properties:
                       uid:
                         type: integer
@@ -49,7 +53,19 @@ get:
                             key_id:
                               type: string
                               description: 密钥版本 ID / Key version ID
-    '4XX':
+              - type: object
+                required:
+                - code
+                properties:
+                  code:
+                    type: integer
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+    4XX:
       description: 参数非法 / 无权限
       content:
-        application/json: { schema: { $ref: '../../../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/Envelope.yaml
+    '401':
+      description: 访问 JWT、设备绑定或客户端签名认证失败 / JWT, device binding or client signature rejected

@@ -1,0 +1,91 @@
+post:
+  tags:
+  - organization
+  summary: 凭码加入组织及默认工作区
+  operationId: organizationInviteCodeJoin
+  description: '任意登录用户；统一加入组织、默认工作区与默认群/频道。重复加入幂等；无默认资源的摘要值为字符串 none。 / Authenticated code join, idempotent; absent
+    default resources use string none.
+
+    访问 JWT 认证；业务失败通常返回 HTTP 200 与非零 code，须检查 code。 / JWT; inspect business code.'
+  parameters:
+  - name: organization_id
+    in: path
+    required: true
+    schema:
+      type: integer
+      format: int64
+      minimum: 1
+    description: 组织 TSID；业务归属，不替代授权 / Organization business ID
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            code:
+              type: string
+          required:
+          - code
+  responses:
+    '200':
+      description: 成功 code=0 返回以下业务载荷；业务失败 code 非零返回通用错误信封。 / Success payload or nonzero-code business error.
+      content:
+        application/json:
+          schema:
+            oneOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      status:
+                        type: string
+                        enum:
+                        - joined
+                        - unchanged
+                      join:
+                        type: object
+                        properties:
+                          organization_id:
+                            type: integer
+                            format: int64
+                            minimum: 1
+                          workspace_id:
+                            oneOf:
+                            - type: integer
+                              format: int64
+                              minimum: 1
+                            - type: string
+                              const: none
+                          group_id:
+                            oneOf:
+                            - type: integer
+                              format: int64
+                              minimum: 1
+                            - type: string
+                              const: none
+                          channel_id:
+                            oneOf:
+                            - type: integer
+                              format: int64
+                              minimum: 1
+                            - type: string
+                              const: none
+                    required:
+                    - status
+                    - join
+              - type: object
+                required:
+                - code
+                properties:
+                  code:
+                    type: integer
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+    '405':
+      description: Method Not Allowed
+    '401':
+      description: 访问 JWT、设备绑定或客户端签名认证失败 / JWT, device binding or client signature rejected

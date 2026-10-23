@@ -1,0 +1,52 @@
+type: object
+properties:
+  asset_id:
+    type: string
+    pattern: ^[0-9]+$
+    description: 完整十进制实体 ID；此接口出站以字符串传输。
+  conversation_id:
+    type: string
+    pattern: ^[0-9]+$
+    description: 完整十进制实体 ID；此接口出站以字符串传输。
+  message_id:
+    type: string
+    pattern: ^[0-9]+$
+    description: 完整十进制实体 ID；此接口出站以字符串传输。
+  session_state:
+    type: string
+  object_hash:
+    type: string
+  mime:
+    type: string
+  size_bytes:
+    type: integer
+  file_name:
+    type:
+    - string
+    - 'null'
+  retain_until:
+    type: integer
+  expires_at:
+    type: integer
+    description: 绝对Unix秒；不可据重试重新延长。
+  upload_ref:
+    type: string
+  upload:
+    type: object
+    properties:
+      url:
+        type: string
+        description: 本API上传地址，非存储直链。
+      method:
+        type: string
+        enum:
+        - PUT
+      token:
+        type: string
+      expires_at:
+        type: integer
+      adapter:
+        type: string
+      rule:
+        type: string
+description: 企业业务公开视图；实体ID由eb_enterprise_http:encode_entity转字符串。时间保持success_rfc3339输入，不套用通用毫秒转换。

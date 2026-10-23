@@ -1,0 +1,24 @@
+type: object
+properties:
+  accepted:
+    type: boolean
+    const: true
+  message:
+    $ref: Message.yaml
+  message_id:
+    type: string
+    pattern: ^[0-9]+$
+    description: 无损十进制 TSID 字符串。
+  replayed:
+    type: boolean
+  audit_id:
+    type:
+    - string
+    - 'null'
+    pattern: ^[0-9]+$
+    description: 无损十进制 TSID 字符串。
+required:
+- accepted
+- message
+- message_id
+- replayed

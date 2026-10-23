@@ -1,38 +1,73 @@
-# POST /api/v1/tasks/{task_id}/status — 任务状态流转（W0/W1）
 post:
-  tags: [project]
+  tags:
+  - project
   summary: 任务状态流转（前向相邻一步 / 回退任意）
-  description: |
-    ## 中文
+  description: '## 中文
+
     状态机：todo→doing→review→done。前向仅允许相邻一步（todo→review、
+
     todo→done、doing→done 等跳级 400）；回退任意（done→review/doing/todo、
+
     review→doing/todo、doing→todo）。同态流转非法（400）。
+
     ## English
+
     State machine todo→doing→review→done. Forward moves are single-step only
+
     (skips are rejected with 400); backward moves are unrestricted.
+
+    '
   operationId: taskUpdateStatus
   parameters:
-    - name: task_id
-      in: path
-      required: true
-      schema: { type: integer, format: int64 }
+  - name: task_id
+    in: path
+    required: true
+    schema:
+      type: integer
+      format: int64
+    description: 任务 TSID / Task ID
   requestBody:
     required: true
     content:
       application/json:
         schema:
           type: object
-          required: [status]
+          required:
+          - status
           properties:
-            status: { type: string, enum: [todo, doing, review, done] }
+            status:
+              type: string
+              enum:
+              - todo
+              - doing
+              - review
+              - done
   responses:
     '200':
-      description: 流转成功（返回任务行）
+      description: 成功 code=0 返回以下业务载荷；业务失败 code 非零返回通用错误信封。 / Success payload or nonzero-code business error.
       content:
         application/json:
-          schema: { $ref: '../../../../components/schemas/Envelope.yaml' }
+          schema:
+            oneOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
+              - type: object
+                properties:
+                  payload:
+                    $ref: ../../../../components/schemas/client/ProjectTask.yaml
+              - type: object
+                required:
+                - code
+                properties:
+                  code:
+                    type: integer
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
     '400':
       description: 非法流转（跳级 / 同态）
       content:
         application/json:
-          schema: { $ref: '../../../../components/schemas/Envelope.yaml' }
+          schema:
+            $ref: ../../../../components/schemas/Envelope.yaml
+    '401':
+      description: 访问 JWT、设备绑定或客户端签名认证失败 / JWT, device binding or client signature rejected

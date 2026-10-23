@@ -1,0 +1,22 @@
+type: object
+properties:
+  user_id:
+    type: integer
+    format: int64
+    minimum: 1
+  display_name:
+    type: string
+  avatar:
+    type:
+    - string
+    - 'null'
+  department_ids:
+    type: array
+    items:
+      type: integer
+      format: int64
+      minimum: 1
+required:
+- user_id
+- display_name
+- department_ids

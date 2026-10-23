@@ -126,8 +126,8 @@ ImBoy WebSocket API v2.0 遵循以下设计原则：
 ### 连接端点
 
 ```
-ws://host:port/ws
-wss://host:port/ws
+ws://host:port/api/v1/ws
+wss://host:port/api/v1/ws
 ```
 
 ### 连接建立
@@ -135,7 +135,7 @@ wss://host:port/ws
 #### 握手请求 (HTTP)
 
 ```http
-GET /ws HTTP/1.1
+GET /api/v1/ws HTTP/1.1
 Host: example.com
 Upgrade: websocket
 Connection: Upgrade
@@ -143,8 +143,9 @@ Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==
 Sec-WebSocket-Version: 13
 Authorization: Bearer <jwt_token>
 User-Agent: Imboy/2.0.0
-X-Device-ID: <device_id>
-X-Device-Type: ios|android|web|desktop
+Sec-WebSocket-Protocol: imboy.v2, imboy-json
+did: <device_id>
+cos: ios|android|web|desktop
 ```
 
 #### 握手响应
@@ -166,21 +167,18 @@ Sec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=
 Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 ```
 
-#### Token 刷新消息
+#### 握手凭证与刷新 / Handshake credentials
 
-Token 过期时，服务端发送刷新消息（v2.0 格式）：
+握手只接受有效 access JWT；过期 token 返回 HTTP 401、业务码 705 与
+`X-Token-Error: expired`，refresh token 返回 401 / `refresh_not_allowed`。
+缺少凭证返回 412。客户端先经 `/api/v1/refreshtoken` 换取 access token，再重新握手。
+JWT 从 `Authorization` 读取，该头缺失时才使用 query `token`。
+`Sec-WebSocket-Protocol` 仅选择编码，不承载 JWT；可选
+`imboy.v2`、`imboy-protobuf`、`imboy-json`、`text`，按此顺序优先选择。
 
-```json
-{
-  "id": "s2c.x9j8.5ia0V5.Kr3aUs.F",
-  "type": "S2C",
-  "from": "",
-  "to": "<user_id>",
-  "action": "please_refresh_token",
-  "payload": {},// "Token 已过期，请在 8 秒内刷新"
-  "server_ts": 1736141700000
-}
-```
+Only a valid access JWT can establish a connection. Refresh an expired token before reconnecting.
+The subprotocol header selects encoding, not authentication. See `websocket_ds:auth/4`
+and `websocket_handler:init/2` for the current HTTP mapping.
 
 ### 心跳机制
 
@@ -404,7 +402,7 @@ Erlang 访问器：`imboy_frame:is_compressed/1`、`is_encrypted/1`、`needs_ack
 ```
 Client                                             Server
   |                                                  |
-  |  GET /ws HTTP/1.1                                |
+  |  GET /api/v1/ws HTTP/1.1                                |
   |  Upgrade: websocket                              |
   |  Sec-WebSocket-Protocol:                         |
   |    imboy.v2, imboy-protobuf, imboy-json, text    |
@@ -842,7 +840,7 @@ Erlang 与 Dart 构造同一帧时必须输出完全相同的字节序列，任�
 | action | 说明 | 处理建议 |
 |--------|------|----------|
 | `pull_offline_msg` | 拉取离线消息 | 客户端立即拉取离线消息 |
-| `please_refresh_token` | Token 刷新请求 | 客户端 8 秒内刷新 Token |
+| `please_refresh_token` | 历史刷新通知 action | 不表示当前握手接受过期 JWT；按握手 HTTP 结果刷新后重连 |
 | `logged_another_device` | 异地登录通知 | 提示用户并强制下线 |
 | `online` | 用户上线通知 | 更新好友在线状态 |
 | `offline` | 用户离线通知 | 更新好友离线状态 |
@@ -991,7 +989,7 @@ CLIENT_ACK,C2C,c2c.x9j8.5ia0V5.Kr3aUs.F,device123
 
 | 场景 | 表现 | 客户端处理建议 |
 |------|------|----------------|
-| Token 无效 / 缺失 | 顶层 `401` 或 `please_refresh_token` | 刷新 Token，必要时重连 |
+| Token 无效 / 过期 / 缺失 | 握手 HTTP 401 / 412 | 使用有效 access JWT；过期时先刷新再重连 |
 | 黑名单 / 权限拒绝 | `S2C.action` 如 `in_denylist`、`permission_denied` | 给出提示，不做本地伪成功 |
 | 客户端消息校验失败 | `invalid_message` | 记录日志并提示重发 |
 | 客户端 JSON 非法 | `invalid_json` | 记录日志并提示检查客户端版本 |

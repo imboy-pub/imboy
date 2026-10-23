@@ -1,0 +1,109 @@
+post:
+  security:
+  - adminSessionId: []
+    adminSessionSignature: []
+  tags:
+  - admin
+  summary: 配置目录来源 / Configure directory source
+  description: 需 enterprise_business:write。首次配置expected_version=0；后续使用configuration_version，冲突业务码409。 / Configure
+    directory source
+  operationId: admEnterpriseDirectorySourcePost
+  parameters:
+  - name: application_id
+    in: path
+    required: true
+    description: application_id
+    schema:
+      type: string
+      pattern: ^[1-9][0-9]*$
+      description: TSID 十进制字符串 / Decimal TSID string
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            external_organization_id:
+              type: string
+            confirmed_owner_user_id:
+              type: integer
+              format: int64
+              minimum: 1
+              description: JSON int64；客户端需无损解析 / Preserve bigint precision
+            enabled:
+              type: boolean
+            authorization_expires_at:
+              type: string
+              format: date-time
+            expected_version:
+              type: integer
+              minimum: 0
+          required:
+          - external_organization_id
+          - confirmed_owner_user_id
+          - enabled
+          - authorization_expires_at
+          - expected_version
+      application/x-www-form-urlencoded:
+        schema:
+          type: object
+          properties:
+            external_organization_id:
+              type: string
+            confirmed_owner_user_id:
+              type: integer
+              format: int64
+              minimum: 1
+              description: JSON int64；客户端需无损解析 / Preserve bigint precision
+            enabled:
+              type: boolean
+            authorization_expires_at:
+              type: string
+              format: date-time
+            expected_version:
+              type: integer
+              minimum: 0
+          required:
+          - external_organization_id
+          - confirmed_owner_user_id
+          - enabled
+          - authorization_expires_at
+          - expected_version
+  responses:
+    '200':
+      description: 成功或业务错误；检查 code / Inspect business code
+      content:
+        application/json:
+          schema:
+            anyOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      external_organization_id:
+                        type: string
+                      enabled:
+                        type: boolean
+                      configuration_version:
+                        type: integer
+                      authorization_expires_at:
+                        type:
+                        - integer
+                        - 'null'
+                        format: int64
+                        description: Unix 毫秒 / Unix milliseconds
+              - type: object
+                properties:
+                  code:
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+    '401':
+      description: Cookie 缺失、无效、到期或已撤销 / Invalid session cookies
+      content:
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/Envelope.yaml

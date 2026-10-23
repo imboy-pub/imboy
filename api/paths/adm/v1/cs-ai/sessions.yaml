@@ -1,0 +1,80 @@
+get:
+  security:
+  - adminSessionId: []
+    adminSessionSignature: []
+  tags:
+  - admin
+  summary: 客服AI会话列表 / List AI sessions
+  description: 需 customer_service:read。未编译 customer_service 时返回 not found（业务码404）；业务错误遵循现有HTTP200信封。支持分页与workspace_id过滤。
+    / Requires the customer_service build feature and platform permission.
+  operationId: admCsAiSessions
+  parameters:
+  - name: org_id
+    in: query
+    required: true
+    description: 组织业务归属 ID / Organization business ID
+    schema:
+      type: string
+      pattern: ^[1-9][0-9]*$
+      description: TSID 十进制字符串 / Decimal TSID string
+  - name: page
+    in: query
+    required: false
+    description: page
+    schema:
+      type: integer
+      minimum: 1
+      default: 1
+  - name: size
+    in: query
+    required: false
+    description: size
+    schema:
+      type: integer
+      minimum: 1
+      maximum: 1000
+      default: 20
+  - name: workspace_id
+    in: query
+    required: false
+    description: 可选工作区过滤 / Optional workspace filter
+    schema:
+      type: integer
+      format: int64
+      minimum: 1
+      description: JSON int64；客户端需无损解析 / Preserve bigint precision
+  responses:
+    '200':
+      description: 成功或业务错误；检查 code / Inspect business code
+      content:
+        application/json:
+          schema:
+            anyOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      sessions:
+                        type: array
+                        items:
+                          $ref: ../../../../components/schemas/adm/CustomerServiceAI.yaml#/$defs/Session
+                      total:
+                        type: integer
+                        minimum: 0
+                    required:
+                    - sessions
+                    - total
+              - type: object
+                properties:
+                  code:
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+    '401':
+      description: Cookie 缺失、无效、到期或已撤销 / Invalid session cookies
+      content:
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/Envelope.yaml

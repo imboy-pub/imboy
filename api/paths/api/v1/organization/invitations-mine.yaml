@@ -1,0 +1,62 @@
+get:
+  tags:
+  - organization
+  summary: 我的组织邀请
+  operationId: organizationInvitationsMine
+  description: '仅当前用户作为目标的邀请；列表有界，不支持 cursor/page。 / Targeted invitations for current user; bounded list.
+
+    访问 JWT 认证；业务失败通常返回 HTTP 200 与非零 code，须检查 code。 / JWT; inspect business code.'
+  parameters:
+  - name: status
+    in: query
+    required: false
+    schema:
+      type: string
+      enum:
+      - pending
+      - accepted
+      - rejected
+      - revoked
+      - expired
+    description: 状态筛选 / Status filter
+  - name: limit
+    in: query
+    required: false
+    schema:
+      type: integer
+      minimum: 1
+      maximum: 100
+      default: 20
+    description: 最多返回条数 / Maximum rows
+  responses:
+    '200':
+      description: 成功 code=0 返回以下业务载荷；业务失败 code 非零返回通用错误信封。 / Success payload or nonzero-code business error.
+      content:
+        application/json:
+          schema:
+            oneOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      list:
+                        type: array
+                        items:
+                          $ref: ../../../../components/schemas/client/OrganizationInvitation.yaml
+                    required:
+                    - list
+              - type: object
+                required:
+                - code
+                properties:
+                  code:
+                    type: integer
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+    '405':
+      description: Method Not Allowed
+    '401':
+      description: 访问 JWT、设备绑定或客户端签名认证失败 / JWT, device binding or client signature rejected

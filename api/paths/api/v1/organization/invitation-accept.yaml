@@ -1,0 +1,58 @@
+post:
+  tags:
+  - organization
+  summary: 接受当前用户的组织邀请
+  operationId: organizationInvitationAccept
+  description: '仅邀请目标可接受；可不传 token。首次接受同事务加入组织、默认工作区、General 群与 Announcements 频道；无默认工作区时只加入组织。重复接受幂等。 / Target only;
+    atomic membership orchestration, idempotent.
+
+    访问 JWT 认证；业务失败通常返回 HTTP 200 与非零 code，须检查 code。 / JWT; inspect business code.'
+  parameters:
+  - name: organization_id
+    in: path
+    required: true
+    schema:
+      type: integer
+      format: int64
+      minimum: 1
+    description: 组织 TSID；业务归属，不替代授权 / Organization business ID
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            token:
+              type: string
+              description: 可选旧版口令；省略时以 JWT 当前用户定向邀请为凭据。
+  responses:
+    '200':
+      description: 成功 code=0 返回以下业务载荷；业务失败 code 非零返回通用错误信封。 / Success payload or nonzero-code business error.
+      content:
+        application/json:
+          schema:
+            oneOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
+              - type: object
+                properties:
+                  payload:
+                    allOf:
+                    - $ref: ../../../../components/schemas/client/OrganizationInvitation.yaml
+                    - type: object
+                      properties:
+                        already_accepted:
+                          type: boolean
+              - type: object
+                required:
+                - code
+                properties:
+                  code:
+                    type: integer
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+    '405':
+      description: Method Not Allowed
+    '401':
+      description: 访问 JWT、设备绑定或客户端签名认证失败 / JWT, device binding or client signature rejected

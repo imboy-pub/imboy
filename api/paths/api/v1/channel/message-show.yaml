@@ -1,0 +1,47 @@
+get:
+  tags:
+  - channel
+  summary: 读取频道单篇消息
+  operationId: channelMessageShow
+  description: 先校验频道内容权益，再校验消息属于该频道；撤回或不可见内容拒绝。 / Content entitlement and channel ownership are checked before returning
+    message.
+  parameters:
+  - name: channel_id
+    in: path
+    required: true
+    schema:
+      type: integer
+      format: int64
+      minimum: 1
+    description: 频道 TSID / Channel ID
+  - name: message_id
+    in: path
+    required: true
+    schema:
+      type: integer
+      format: int64
+      minimum: 1
+    description: 消息 TSID / Message ID
+  responses:
+    '200':
+      description: 成功 code=0 返回以下业务载荷；业务失败 code 非零返回通用错误信封。 / Success payload or nonzero-code business error.
+      content:
+        application/json:
+          schema:
+            oneOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
+              - type: object
+                properties:
+                  payload:
+                    $ref: ../../../../components/schemas/client/ChannelMessage.yaml
+              - type: object
+                required:
+                - code
+                properties:
+                  code:
+                    type: integer
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+    '401':
+      description: 访问 JWT 或客户端认证失败 / Authentication rejected

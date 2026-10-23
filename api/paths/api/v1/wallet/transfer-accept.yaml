@@ -1,0 +1,47 @@
+post:
+  tags:
+  - wallet
+  summary: 接收转账
+  operationId: walletTransferAccept
+  description: 当前 JWT 用户必须为待接收转账的收款人，状态与余额变更由事务裁决。 / Intended receiver and transfer state checked transactionally.
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            transfer_id:
+              type: string
+              pattern: ^[0-9]+$
+          required:
+          - transfer_id
+  responses:
+    '200':
+      description: 成功 code=0 返回以下业务载荷；业务失败 code 非零返回通用错误信封。 / Success payload or nonzero-code business error.
+      content:
+        application/json:
+          schema:
+            oneOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      amount:
+                        type: integer
+                        description: 实收金额，分 / Amount in fen
+                    required:
+                    - amount
+              - type: object
+                required:
+                - code
+                properties:
+                  code:
+                    type: integer
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+    '401':
+      description: 访问 JWT 或客户端认证失败 / Authentication rejected

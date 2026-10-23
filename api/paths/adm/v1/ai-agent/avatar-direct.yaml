@@ -1,0 +1,174 @@
+post:
+  security:
+  - adminSessionId: []
+    adminSessionSignature: []
+  tags:
+  - admin
+  summary: AI头像直传会话 / AI avatar direct-transfer session
+  description: 需 users:update。仅application会话；按register→declare→grant→finalize→publish推进，grant描述符用于存储PUT，publish返回公开头像引用。
+    / AI avatar direct-transfer session
+  operationId: admAiAgentAvatarDirectPost
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          oneOf:
+          - type: object
+            properties:
+              op:
+                const: register
+              application_id:
+                type: string
+              org_id:
+                type: string
+              filename:
+                type: string
+                default: avatar.png
+              client_upload_id:
+                type: string
+                format: uuid
+            required:
+            - op
+            - application_id
+            - org_id
+          - type: object
+            properties:
+              op:
+                const: declare
+              object_key:
+                type: string
+              sha256:
+                type: string
+                pattern: ^[0-9a-fA-F]{64}$
+              size_bytes:
+                type: integer
+                minimum: 0
+              mime:
+                type: string
+                default: image/png
+            required:
+            - op
+            - object_key
+            - sha256
+            - size_bytes
+          - type: object
+            properties:
+              op:
+                const: grant
+              object_key:
+                type: string
+              sha256:
+                type: string
+            required:
+            - op
+            - object_key
+            - sha256
+          - type: object
+            properties:
+              op:
+                const: finalize
+              object_key:
+                type: string
+              attempt_id:
+                type: integer
+                minimum: 1
+            required:
+            - op
+            - object_key
+            - attempt_id
+          - type: object
+            properties:
+              op:
+                const: publish
+              object_key:
+                type: string
+              agent_id:
+                type: string
+            required:
+            - op
+            - object_key
+            - agent_id
+  responses:
+    '200':
+      description: 成功或业务错误；检查 code / Inspect business code
+      content:
+        application/json:
+          schema:
+            anyOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
+              - type: object
+                properties:
+                  payload:
+                    anyOf:
+                    - type: object
+                      properties:
+                        object_key:
+                          type: string
+                        state:
+                          type: string
+                        session_state:
+                          type: string
+                        deadline:
+                          type: integer
+                          description: Unix秒 / Unix seconds
+                    - type: object
+                      properties:
+                        state:
+                          type: string
+                        object_key:
+                          type: string
+                        attempt_id:
+                          type: integer
+                        grant:
+                          type: object
+                          properties:
+                            transport:
+                              const: s3_put
+                            url:
+                              type: string
+                            method:
+                              const: PUT
+                            container:
+                              type: string
+                            required_headers:
+                              type: object
+                              additionalProperties:
+                                type: string
+                            expires_in:
+                              type: integer
+                    - type: object
+                      properties:
+                        state:
+                          type: string
+                        attempt_id:
+                          type: integer
+                        object_key:
+                          type: string
+                        size:
+                          type: integer
+                          minimum: 0
+                        outcome:
+                          type: string
+                        reason:
+                          type: string
+                    - type: object
+                      properties:
+                        public_url:
+                          type: string
+                        public_key:
+                          type: string
+                        agent_ref:
+                          type: string
+              - type: object
+                properties:
+                  code:
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+    '401':
+      description: Cookie 缺失、无效、到期或已撤销 / Invalid session cookies
+      content:
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/Envelope.yaml

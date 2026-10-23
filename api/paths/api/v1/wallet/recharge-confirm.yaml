@@ -1,0 +1,52 @@
+post:
+  tags:
+  - wallet
+  summary: 主动确认充值订单状态
+  operationId: walletRechargeConfirm
+  description: 按 JWT 用户校验订单归属，向网关查询并幂等入账；不能仅凭客户端支付成功声明入账。 / Owner-bound gateway verification and idempotent credit.
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            order_no:
+              type: string
+              minLength: 1
+          required:
+          - order_no
+  responses:
+    '200':
+      description: 成功 code=0 返回以下业务载荷；业务失败 code 非零返回通用错误信封。 / Success payload or nonzero-code business error.
+      content:
+        application/json:
+          schema:
+            oneOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      order_no:
+                        type: string
+                      status:
+                        type: integer
+                      balance:
+                        type: integer
+                        description: 本次首次入账时可能返回余额，分。
+                    required:
+                    - order_no
+                    - status
+              - type: object
+                required:
+                - code
+                properties:
+                  code:
+                    type: integer
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+    '401':
+      description: 访问 JWT 或客户端认证失败 / Authentication rejected

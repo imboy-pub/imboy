@@ -3,6 +3,11 @@ get:
   - internal
   summary: Workspace 列表（业务组织归属）
   description: 当前组织业务归属内的活跃工作空间列表。分页使用签名游标，游标绑定组织、应用及筛选条件。
+  security:
+    - ibIntHmacCredential: []
+      ibIntHmacTimestamp: []
+      ibIntHmacNonce: []
+      ibIntHmacSignature: []
   operationId: internalWorkspaceList
   parameters:
   - name: limit
@@ -77,9 +82,9 @@ get:
     '400':
       $ref: ../../../../components/responses/internal/invalid_request.yaml
     '401':
-      $ref: ../../../../components/responses/internal/invalid_credential.yaml
+      $ref: ../../../../components/responses/internal/unauthorized.yaml
     '403':
-      $ref: ../../../../components/responses/internal/organization_boundary_violation.yaml
+      $ref: ../../../../components/responses/internal/forbidden.yaml
     '429':
       $ref: ../../../../components/responses/internal/rate_limited.yaml
     '500':
@@ -90,6 +95,11 @@ post:
   tags:
   - internal
   summary: 创建企业工作空间
+  security:
+    - ibIntHmacCredential: []
+      ibIntHmacTimestamp: []
+      ibIntHmacNonce: []
+      ibIntHmacSignature: []
   operationId: internalWorkspaceCreate
   x-imboy-authentication: hmac
   x-imboy-rate-bucket: internal_write
@@ -128,9 +138,9 @@ post:
     '400':
       $ref: ../../../../components/responses/internal/invalid_request.yaml
     '401':
-      $ref: ../../../../components/responses/internal/invalid_credential.yaml
+      $ref: ../../../../components/responses/internal/unauthorized.yaml
     '403':
-      $ref: ../../../../components/responses/internal/organization_boundary_violation.yaml
+      $ref: ../../../../components/responses/internal/forbidden.yaml
     '404':
       $ref: ../../../../components/responses/internal/resource_not_found.yaml
     '429':

@@ -17,6 +17,11 @@ post:
     PII）；不存在 list-all/export 形态。请求字段实证自 handler
     `page_opts/1`（cursor / page_size / workspace_id）；响应实证自
     `enterprise_directory_logic`（`{items, page_size, has_more, next_cursor}`）。
+  security:
+    - ibIntHmacCredential: []
+      ibIntHmacTimestamp: []
+      ibIntHmacNonce: []
+      ibIntHmacSignature: []
   operationId: internalIdentityDirectory
   x-imboy-authentication: hmac
   x-imboy-rate-bucket: internal_read
@@ -40,6 +45,9 @@ post:
                 invalid_request。
             page_size:
               type: integer
+              minimum: 1
+              maximum: 100
+              default: 50
               description: >-
                 页大小，1..100（缺省 50）；越界/非整数一律 400
                 invalid_request（拒绝，不静默截断）。
@@ -54,21 +62,24 @@ post:
         application/json:
           schema:
             type: object
+            required: [items, page_size, has_more, next_cursor]
             properties:
               items:
                 type: array
                 items:
                   type: object
+                  required: [external_user_id, user_id]
                   properties:
                     external_user_id: { type: string }
                     user_id: { type: integer, format: int64 }
-              page_size: { type: integer }
+              page_size: { type: integer, minimum: 1, maximum: 100 }
               has_more: { type: boolean }
               next_cursor:
                 type: [string, 'null']
                 description: 下页游标（CURSOR-V2 签名形态；has_more=false 时 null）
     '400': { $ref: '../../../../components/responses/internal/invalid_request.yaml' }
-    '401': { $ref: '../../../../components/responses/internal/invalid_credential.yaml' }
-    '403': { $ref: '../../../../components/responses/internal/organization_boundary_violation.yaml' }
+    '401': { $ref: '../../../../components/responses/internal/unauthorized.yaml' }
+    '403': { $ref: '../../../../components/responses/internal/forbidden.yaml' }
     '429': { $ref: '../../../../components/responses/internal/rate_limited.yaml' }
     '500': { $ref: '../../../../components/responses/internal/internal_error.yaml' }
+    '503': { $ref: '../../../../components/responses/internal/security_gate_closed.yaml' }

@@ -1,0 +1,58 @@
+get:
+  tags:
+  - oa-login
+  summary: 发现可用 OA 工作台入口
+  operationId: workbenchEntries
+  description: 仅要求 Human JWT；发现为实例级，不依赖 organization_id。返回可用应用与注册重定向入口，列表不等于外部系统最终授权。 / Instance-wide discovery
+    for authenticated humans.
+  responses:
+    '200':
+      description: 成功 code=0 返回以下业务载荷；业务失败 code 非零返回通用错误信封。 / Success payload or nonzero-code business error.
+      content:
+        application/json:
+          schema:
+            oneOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      entries:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            kind:
+                              type: string
+                              const: oa
+                            organization_id:
+                              type: integer
+                              format: int64
+                              minimum: 1
+                            application_id:
+                              type: integer
+                              format: int64
+                              minimum: 1
+                            application_key:
+                              type: string
+                            label:
+                              type: string
+                            redirect_uri:
+                              type: string
+                            login_start_uri:
+                              type: string
+                              description: 仅配置且与允许重定向同源时返回。
+                    required:
+                    - entries
+              - type: object
+                required:
+                - code
+                properties:
+                  code:
+                    type: integer
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+    '401':
+      description: 访问 JWT 或客户端认证失败 / Authentication rejected

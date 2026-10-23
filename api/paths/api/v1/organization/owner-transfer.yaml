@@ -1,25 +1,35 @@
 post:
-  tags: [organization]
+  tags:
+  - organization
   summary: 转移 Organization Owner
-  description: |
-    仅当前主 Owner 可把 Organization Owner 转移给该 Organization 的 active
+  description: '仅当前主 Owner 可把 Organization Owner 转移给该 Organization 的 active
+
     Admin 或 Member。新 Owner 升为 Owner，原 Owner 降为 Admin，全部在同一事务完成。
 
+
     本操作不修改任何 Workspace 的 `owner_id`、`organization_id` 或成员关系，也不
+
     修改 Group 成员关系；Workspace Owner 与 Organization Owner 是独立角色。
+
+    '
   operationId: organizationOwnerTransfer
   parameters:
-    - name: organization_id
-      in: path
-      required: true
-      schema: { type: integer, format: int64, minimum: 1 }
+  - name: organization_id
+    in: path
+    required: true
+    schema:
+      type: integer
+      format: int64
+      minimum: 1
+    description: 组织 TSID；业务归属不替代授权 / Organization business ID
   requestBody:
     required: true
     content:
       application/json:
         schema:
           type: object
-          required: [user_id]
+          required:
+          - user_id
           properties:
             user_id:
               type: integer
@@ -33,17 +43,29 @@ post:
         application/json:
           schema:
             allOf:
-              - $ref: '../../../../components/schemas/Envelope.yaml'
-              - type: object
-                properties:
-                  payload:
-                    type: object
-                    required:
-                      [organization_id, owner_id, previous_owner_id, previous_owner_role]
-                    properties:
-                      organization_id: { type: integer, format: int64 }
-                      owner_id: { type: integer, format: int64 }
-                      previous_owner_id: { type: integer, format: int64 }
-                      previous_owner_role: { type: string, enum: [admin] }
+            - $ref: ../../../../components/schemas/Envelope.yaml
+            - type: object
+              properties:
+                payload:
+                  type: object
+                  required:
+                  - organization_id
+                  - owner_id
+                  - previous_owner_id
+                  - previous_owner_role
+                  properties:
+                    organization_id:
+                      type: integer
+                      format: int64
+                    owner_id:
+                      type: integer
+                      format: int64
+                    previous_owner_id:
+                      type: integer
+                      format: int64
+                    previous_owner_role:
+                      type: string
+                      enum:
+                      - admin
     '405':
       description: Method Not Allowed

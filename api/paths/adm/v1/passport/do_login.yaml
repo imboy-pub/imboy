@@ -1,11 +1,27 @@
-# POST /api/adm/passport/do_login — admin
+get:
+  security: []
+  tags:
+  - admin
+  summary: 管理员登录页面 / Admin login page
+  operationId: adm_passport_do_login_page
+  responses:
+    '200':
+      description: 含公钥与 CSRF token 的 HTML 登录页 / HTML login page
+      content:
+        text/html:
+          schema:
+            type: string
+    '405':
+      description: Method Not Allowed
+  deprecated: true
+  description: 返回管理端登录 HTML 页面，供浏览器表单登录；JSON 登录调用 POST。
 post:
-  tags: [admin]
-  summary: admin adm-passport - do_login
-  description: |
-    ## 中文 / English
-    管理后台 adm-passport handler 的 `do_login` 动作；路径 `/adm/passport/do_login`。
-    Admin handler `adm-passport`, action `do_login`. Path `/adm/passport/do_login`.
+  security: []
+  tags:
+  - admin
+  summary: 管理员登录 / Admin login
+  description: 先调用 meta 获取公钥和 csrf_token、captcha 获取图片与 captcha_key Cookie，再提交；支持 JSON 与表单。成功签发两项会话 Cookie。 / Fetch
+    metadata and captcha before submitting. 此路径是 /api/adm/passport/login 的兼容别名。 / Compatibility alias.
   operationId: adm_passport_do_login
   requestBody:
     required: true
@@ -13,15 +29,50 @@ post:
       application/json:
         schema:
           type: object
-          additionalProperties: true
+          properties:
+            account:
+              type: string
+            pwd:
+              type: string
+              description: 使用 meta.public_key RSA 加密后的密码；不是明文 / RSA-encrypted password
+            captcha:
+              type: string
+            csrf_token:
+              type: string
+              description: meta 签发的单次 token；成功登录后消费 / Single-use token
+          required:
+          - account
+          - pwd
+          - captcha
+          - csrf_token
+      application/x-www-form-urlencoded:
+        schema:
+          type: object
+          properties:
+            account:
+              type: string
+            pwd:
+              type: string
+              description: 使用 meta.public_key RSA 加密后的密码；不是明文 / RSA-encrypted password
+            captcha:
+              type: string
+            csrf_token:
+              type: string
+              description: meta 签发的单次 token；成功登录后消费 / Single-use token
+          required:
+          - account
+          - pwd
+          - captcha
+          - csrf_token
   responses:
     '200':
-      description: 成功
+      description: 成功或业务错误；检查 code / Inspect business code
       content:
         application/json:
           schema:
-            allOf:
-              - $ref: '../../../../components/schemas/Envelope.yaml'
+            anyOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
               - type: object
                 properties:
                   payload:
@@ -30,17 +81,28 @@ post:
                       id:
                         type: integer
                         format: int64
-                        description: 管理员 ID (TSID)
+                        minimum: 1
+                        description: JSON int64；客户端需无损解析 / Preserve bigint precision
                       account:
                         type: string
-                        description: 账号
                       nickname:
                         type: string
-                        description: 昵称
+                      avatar:
+                        type: string
                       next:
                         type: string
-                        description: 登录后跳转路径
-    '4XX':
-      description: 无权限 / 参数非法
-      content:
-        application/json: { schema: { $ref: '../../../../components/schemas/Envelope.yaml' } }
+                        description: 登录后的页面跳转地址 / Post-login redirect
+              - type: object
+                properties:
+                  code:
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+      headers:
+        Set-Cookie:
+          description: 分别设置 adm_user_id、adm_user_sig，并清理 back_uri；多个 Set-Cookie 响应头。HttpOnly、SameSite=Lax，TLS 时
+            Secure。 / Multiple session Set-Cookie headers.
+          schema:
+            type: string
+    '405':
+      description: 不支持的 HTTP 方法 / Method Not Allowed
+  deprecated: true

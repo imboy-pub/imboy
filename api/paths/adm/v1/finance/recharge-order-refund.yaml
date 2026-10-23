@@ -1,0 +1,65 @@
+post:
+  security:
+  - adminSessionId: []
+    adminSessionSignature: []
+  tags:
+  - admin
+  summary: 退回充值订单 / Refund recharge order
+  description: 需 finance:write。仅已支付且可用余额足够的订单可退；重复退款被拒绝。 / Refund recharge order
+  operationId: admFinanceRechargeOrderRefundPost
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            order_no:
+              type: string
+              minLength: 1
+            refund_reason:
+              type: string
+          required:
+          - order_no
+      application/x-www-form-urlencoded:
+        schema:
+          type: object
+          properties:
+            order_no:
+              type: string
+              minLength: 1
+            refund_reason:
+              type: string
+          required:
+          - order_no
+  responses:
+    '200':
+      description: 成功或业务错误；检查 code / Inspect business code
+      content:
+        application/json:
+          schema:
+            anyOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      order_no:
+                        type: string
+                      balance:
+                        type: integer
+                        format: int64
+                        description: 金额（分） / Amount in minor units
+              - type: object
+                properties:
+                  code:
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+    '401':
+      description: Cookie 缺失、无效、到期或已撤销 / Invalid session cookies
+      content:
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/Envelope.yaml

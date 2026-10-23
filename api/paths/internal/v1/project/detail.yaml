@@ -12,13 +12,18 @@ get:
     单个项目详情。跨 Organization / 不存在 / 所属 Workspace 已归档一律
     resource_not_found（IDOR 同不存在同体）；同 Organization 但不符合业务归属
     覆盖项目所属 W → organization_boundary_violation（403）。
+  security:
+    - ibIntHmacCredential: []
+      ibIntHmacTimestamp: []
+      ibIntHmacNonce: []
+      ibIntHmacSignature: []
   operationId: internalProjectDetail
   parameters:
     - name: project_id
       in: path
       required: true
       description: 项目 TSID
-      schema: { type: integer, format: int64 }
+      schema: { type: integer, format: int64 , minimum: 1, maximum: 9223372036854775807 }
   x-imboy-authentication: hmac
   x-imboy-rate-bucket: internal_read
   x-imboy-idempotency: not_required
@@ -41,8 +46,9 @@ get:
               status: { type: string, enum: [active, done] }
               created_at: { type: string, description: RFC3339 时间戳 }
     '400': { $ref: '../../../../components/responses/internal/invalid_request.yaml' }
-    '401': { $ref: '../../../../components/responses/internal/invalid_credential.yaml' }
-    '403': { $ref: '../../../../components/responses/internal/organization_boundary_violation.yaml' }
+    '401': { $ref: '../../../../components/responses/internal/unauthorized.yaml' }
+    '403': { $ref: '../../../../components/responses/internal/forbidden.yaml' }
     '404': { $ref: '../../../../components/responses/internal/resource_not_found.yaml' }
     '429': { $ref: '../../../../components/responses/internal/rate_limited.yaml' }
     '500': { $ref: '../../../../components/responses/internal/internal_error.yaml' }
+    '503': { $ref: '../../../../components/responses/internal/security_gate_closed.yaml' }

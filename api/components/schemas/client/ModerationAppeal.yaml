@@ -1,0 +1,53 @@
+type: object
+properties:
+  id:
+    type: integer
+    format: int64
+    minimum: 1
+  reason:
+    type: string
+  status:
+    type: string
+  review_reason:
+    type:
+    - string
+    - 'null'
+  reviewed_at:
+    type:
+    - integer
+    - 'null'
+    format: int64
+    description: Unix 毫秒 / Unix milliseconds
+  created_at:
+    type:
+    - integer
+    - 'null'
+    format: int64
+    description: Unix 毫秒 / Unix milliseconds
+  action:
+    type: object
+    properties:
+      id:
+        type: integer
+        format: int64
+        minimum: 1
+      action:
+        type: string
+      reason:
+        type: string
+      status:
+        type: string
+      reversed_at:
+        type:
+        - integer
+        - 'null'
+        format: int64
+        description: Unix 毫秒 / Unix milliseconds
+      created_at:
+        type:
+        - integer
+        - 'null'
+        format: int64
+        description: Unix 毫秒 / Unix milliseconds
+      appealed:
+        type: boolean

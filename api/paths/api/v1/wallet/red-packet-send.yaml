@@ -1,0 +1,70 @@
+post:
+  tags:
+  - wallet
+  summary: 发送红包
+  operationId: walletRedPacketSend
+  description: 金额单位为分；会话 scope_type/scope_id 用于领取侧权限，C2G 要求有效群成员。旧客户端不带 scope 的兼容行为受 red_packet_require_scope 配置控制。
+    / Amount in fen; conversation scope enforces recipient access.
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            type:
+              type: string
+              enum:
+              - fixed
+              - random
+              default: fixed
+            amount:
+              type: integer
+              minimum: 1
+              description: 总金额，分；不得少于 count。
+            count:
+              type: integer
+              minimum: 1
+              default: 1
+            greeting:
+              type: string
+            scope_type:
+              type: string
+              enum:
+              - C2C
+              - C2G
+            scope_id:
+              type: integer
+              format: int64
+              minimum: 1
+          required:
+          - amount
+  responses:
+    '200':
+      description: 成功 code=0 返回以下业务载荷；业务失败 code 非零返回通用错误信封。 / Success payload or nonzero-code business error.
+      content:
+        application/json:
+          schema:
+            oneOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      red_packet_id:
+                        type: string
+                        pattern: ^[0-9]+$
+                    required:
+                    - red_packet_id
+              - type: object
+                required:
+                - code
+                properties:
+                  code:
+                    type: integer
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+    '401':
+      description: 访问 JWT 或客户端认证失败 / Authentication rejected

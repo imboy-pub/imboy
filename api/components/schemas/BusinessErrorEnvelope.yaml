@@ -1,0 +1,9 @@
+description: HTTP 200 中的业务失败；与 code=0 成功分支互斥。 / Business failure envelope.
+allOf:
+  - $ref: Envelope.yaml
+  - type: object
+    properties:
+      code:
+        type: integer
+        not:
+          const: 0

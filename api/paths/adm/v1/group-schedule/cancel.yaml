@@ -1,5 +1,8 @@
 # POST /api/adm/group/schedule/cancel — admin
 post:
+  security:
+    - adminSessionId: []
+      adminSessionSignature: []
   tags: [admin]
   summary: 管理后台取消群日程
   description: 管理员取消指定群日程（标记为已取消状态）。Cancel a group schedule by admin (marks as cancelled).

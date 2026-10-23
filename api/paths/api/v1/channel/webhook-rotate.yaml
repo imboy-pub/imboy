@@ -1,0 +1,62 @@
+post:
+  tags:
+  - channel
+  summary: 轮换频道 Webhook Token
+  operationId: channelWebhookRotate
+  description: 频道管理员；新 token 只在此响应返回一次，旧 token 在可配置宽限窗口内仍可用，默认 600 秒。 / Channel admin; token returned once, old
+    token remains valid during configurable grace.
+  parameters:
+  - name: channel_id
+    in: path
+    required: true
+    schema:
+      type: integer
+      format: int64
+      minimum: 1
+    description: 频道 TSID / Channel ID
+  - name: webhook_id
+    in: path
+    required: true
+    schema:
+      type: integer
+      format: int64
+      minimum: 1
+    description: webhook_id
+  responses:
+    '200':
+      description: 成功 code=0 返回以下业务载荷；业务失败 code 非零返回通用错误信封。 / Success payload or nonzero-code business error.
+      content:
+        application/json:
+          schema:
+            oneOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      webhook_id:
+                        type: integer
+                        format: int64
+                        minimum: 1
+                      token:
+                        type: string
+                      grace_secs:
+                        type: integer
+                        minimum: 0
+                        default: 600
+                    required:
+                    - webhook_id
+                    - token
+                    - grace_secs
+              - type: object
+                required:
+                - code
+                properties:
+                  code:
+                    type: integer
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+    '401':
+      description: 访问 JWT 或客户端认证失败 / Authentication rejected

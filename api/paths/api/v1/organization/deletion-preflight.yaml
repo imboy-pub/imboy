@@ -1,0 +1,107 @@
+get:
+  tags:
+  - organization
+  summary: 读取当前用户注销依赖预检
+  operationId: organizationDeletionPreflight
+  description: '实时读取组织、工作区、企业业务、客服、Agent、谈话记录依赖。仅解释阻塞原因，不执行交接或注销；无阻塞不替代最终删除事务约束。依赖不可用返回业务 code 503。 / Read-only
+    deletion blockers; never authorizes deletion by itself.
+
+    访问 JWT 认证；业务失败通常返回 HTTP 200 与非零 code，须检查 code。 / JWT; inspect business code.'
+  responses:
+    '200':
+      description: 成功 code=0 返回以下业务载荷；业务失败 code 非零返回通用错误信封。 / Success payload or nonzero-code business error.
+      content:
+        application/json:
+          schema:
+            oneOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      subject_user_id:
+                        type: integer
+                        format: int64
+                        minimum: 1
+                      observed_at:
+                        type: integer
+                        format: int64
+                      blockers:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            code:
+                              type: string
+                            resource_type:
+                              type: string
+                            resource_id:
+                              type: string
+                            organization_id:
+                              type:
+                              - integer
+                              - 'null'
+                              format: int64
+                          required:
+                          - code
+                          - resource_type
+                          - resource_id
+                          - organization_id
+                      facts:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            subject_user_id:
+                              type: integer
+                              format: int64
+                              minimum: 1
+                            domain:
+                              type: string
+                            observed_at:
+                              type: integer
+                              format: int64
+                              description: Unix 毫秒 / Unix milliseconds
+                            fact_version:
+                              type: integer
+                              minimum: 1
+                            blockers:
+                              type: array
+                              items:
+                                type: object
+                                properties:
+                                  code:
+                                    type: string
+                                  resource_type:
+                                    type: string
+                                  resource_id:
+                                    type: string
+                                  organization_id:
+                                    type:
+                                    - integer
+                                    - 'null'
+                                    format: int64
+                                required:
+                                - code
+                                - resource_type
+                                - resource_id
+                                - organization_id
+                    required:
+                    - subject_user_id
+                    - observed_at
+                    - blockers
+                    - facts
+              - type: object
+                required:
+                - code
+                properties:
+                  code:
+                    type: integer
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+    '405':
+      description: Method Not Allowed
+    '401':
+      description: 访问 JWT、设备绑定或客户端签名认证失败 / JWT, device binding or client signature rejected

@@ -1,11 +1,17 @@
-# PUT /api/adm/announcement/update — admin
 put:
-  tags: [admin]
+  security:
+  - adminSessionId: []
+    adminSessionSignature: []
+  tags:
+  - admin
   summary: admin adm-announcement - update
-  description: |
-    ## 中文 / English
-    管理后台 adm-announcement handler 的 `update` 动作；路径 `/adm/announcement/update`。
-    Admin handler `adm-announcement`, action `update`. Path `/adm/announcement/update`.
+  description: '## 中文 / English
+
+    管理后台 adm-announcement handler 的 `update` 动作；路径 `/api/adm/announcement/update`。
+
+    Admin handler `adm-announcement`, action `update`. Path `/api/adm/announcement/update`.
+
+    '
   operationId: adm_announcement_update
   requestBody:
     required: true
@@ -13,7 +19,8 @@ put:
       application/json:
         schema:
           type: object
-          required: [id]
+          required:
+          - id
           properties:
             id:
               type: string
@@ -37,8 +44,12 @@ put:
     '200':
       description: 成功
       content:
-        application/json: { schema: { $ref: '../../../../components/schemas/Envelope.yaml' } }
-    '4XX':
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/Envelope.yaml
+    4XX:
       description: 无权限 / 参数非法
       content:
-        application/json: { schema: { $ref: '../../../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/Envelope.yaml

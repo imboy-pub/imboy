@@ -7,6 +7,11 @@ post:
     IMBoy 账号；后续经 OA 双重身份证明关联。组织、部门、人员和成员关系各按对应版本及内容摘要校验：低版本或同版本不同内容冲突，同版本同内容可重放。未包含记录不代表删除；removed
     为显式移除，组织离职保留实例用户及其他组织关系，Owner 须先交接。source_status=removed 的账号关联退休不可自动恢复；membership=removed
     可通过更高版本显式恢复。
+  security:
+    - ibIntHmacCredential: []
+      ibIntHmacTimestamp: []
+      ibIntHmacNonce: []
+      ibIntHmacSignature: []
   operationId: internalDirectorySync
   x-imboy-authentication: hmac
   x-imboy-rate-bucket: internal_write
@@ -196,6 +201,10 @@ post:
                 type: boolean
                 enum:
                 - true
+      headers:
+        Idempotent-Replayed:
+          description: 重放首次已提交的 HTTP 状态与正文时为 true；首次响应不带此头。
+          schema: { type: string, enum: ['true'] }
     '400':
       description: invalid_request
       content:
@@ -238,7 +247,6 @@ post:
                     enum:
                     - application_disabled
                     - organization_disabled
-                    - organization_boundary_violation
                     - organization_boundary_violation
     '404':
       description: resource_not_found

@@ -10,20 +10,26 @@ put:
   tags: [internal]
   summary: 设置企业群成员角色
   description: |
-    按成员逐个设置角色（role 取值由群域定义，如 member / admin）。
+    按外部成员标识设置整数角色：1 普通成员、2 嘉宾、3 管理员、5 副群主。
+    群主（4）不能由此接口授予或修改；目标必须是本群 active 成员。
     **请求形态以 handler 为准**：roles 为 `[{external_user_id, role}]` 对象数组。
+  security:
+    - ibIntHmacCredential: []
+      ibIntHmacTimestamp: []
+      ibIntHmacNonce: []
+      ibIntHmacSignature: []
   operationId: internalGroupSetMemberRoles
   parameters:
     - name: group_id
       in: path
       required: true
       description: 企业群 TSID
-      schema: { type: integer, format: int64 }
+      schema: { type: integer, format: int64 , minimum: 1, maximum: 9223372036854775807 }
     - name: Idempotency-Key
       in: header
       required: true
       description: 幂等键
-      schema: { type: string, minLength: 1 }
+      schema: { type: string, minLength: 1, maxLength: 128, pattern: '^[ -~]+$' }
   x-imboy-authentication: hmac
   x-imboy-rate-bucket: internal_write
   x-imboy-idempotency: required
@@ -38,12 +44,13 @@ put:
             roles:
               type: array
               minItems: 1
+              maxItems: 200
               items:
                 type: object
                 required: [external_user_id, role]
                 properties:
                   external_user_id: { type: string }
-                  role: { type: string }
+                  role: { type: integer, enum: [1, 2, 3, 5] }
   responses:
     '200':
       description: 角色设置结果
@@ -51,6 +58,7 @@ put:
         application/json:
           schema:
             type: object
+            required: [group_id, updated, unchanged, members]
             properties:
               group_id: { type: integer, format: int64 }
               updated: { type: integer, description: 本次变更数 }
@@ -60,14 +68,22 @@ put:
                 description: 设置后的成员角色清单
                 items:
                   type: object
+                  required: [external_user_id, user_id, role, previous_role]
                   properties:
+                    external_user_id: { type: string }
                     user_id: { type: integer, format: int64 }
-                    role: { type: string }
+                    role: { type: integer, enum: [1, 2, 3, 5] }
+                    previous_role: { type: integer }
+      headers:
+        Idempotent-Replayed:
+          description: 重放首次已提交的 HTTP 状态与正文时为 true；首次响应不带此头。
+          schema: { type: string, enum: ['true'] }
     '400': { $ref: '../../../../components/responses/internal/invalid_request.yaml' }
-    '401': { $ref: '../../../../components/responses/internal/invalid_credential.yaml' }
-    '403': { $ref: '../../../../components/responses/internal/organization_boundary_violation.yaml' }
+    '401': { $ref: '../../../../components/responses/internal/unauthorized.yaml' }
+    '403': { $ref: '../../../../components/responses/internal/forbidden.yaml' }
     '404': { $ref: '../../../../components/responses/internal/resource_not_found.yaml' }
     '409': { $ref: '../../../../components/responses/internal/idempotency_conflict.yaml' }
     '422': { $ref: '../../../../components/responses/internal/identity_not_mapped.yaml' }
     '429': { $ref: '../../../../components/responses/internal/rate_limited.yaml' }
     '500': { $ref: '../../../../components/responses/internal/internal_error.yaml' }
+    '503': { $ref: '../../../../components/responses/internal/security_gate_closed.yaml' }

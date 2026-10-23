@@ -1,0 +1,51 @@
+post:
+  tags:
+  - user
+  summary: 提交处置申诉
+  operationId: appealCreate
+  description: 需启用 appeal 特性；只能申诉针对本人的处置，受申诉窗口与重复申请约束。 / Feature-gated appeal of own moderation action.
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            action_id:
+              type: integer
+              format: int64
+              minimum: 1
+            reason:
+              type: string
+              description: 服务端 trim 并截断至 1000 UTF-8 字节。
+          required:
+          - action_id
+          - reason
+  responses:
+    '200':
+      description: 成功 code=0 返回以下业务载荷；业务失败 code 非零返回通用错误信封。 / Success payload or nonzero-code business error.
+      content:
+        application/json:
+          schema:
+            oneOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      appeal:
+                        $ref: ../../../../components/schemas/client/ModerationAppeal.yaml
+                    required:
+                    - appeal
+              - type: object
+                required:
+                - code
+                properties:
+                  code:
+                    type: integer
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+    '401':
+      description: 访问 JWT 或客户端认证失败 / Authentication rejected

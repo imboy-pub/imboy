@@ -1,27 +1,41 @@
-# GET /api/adm/admin/config/features — admin
 get:
-  tags: [admin]
+  security:
+  - adminSessionId: []
+    adminSessionSignature: []
+  tags:
+  - admin
   summary: admin adm-admin - config_features
-  description: |
-    ## 中文 / English
-    管理后台 adm-admin handler 的 `config_features` 动作；路径 `/adm/admin/config/features`。
-    Admin handler `adm-admin`, action `config_features`. Path `/adm/admin/config/features`.
+  description: '## 中文 / English
+
+    管理后台 adm-admin handler 的 `config_features` 动作；路径 `/api/adm/admin/config/features`。
+
+    Admin handler `adm-admin`, action `config_features`. Path `/api/adm/admin/config/features`.
+
+    '
   operationId: adm_admin_config_features
   responses:
     '200':
-      description: 成功
+      description: 成功；非零 code 为业务错误 / Non-zero code is a business error
       content:
         application/json:
           schema:
-            allOf:
-              - $ref: '../../../../components/schemas/Envelope.yaml'
+            anyOf:
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
               - type: object
                 properties:
                   payload:
                     type: object
                     additionalProperties: true
                     description: 功能开关键值对，key=功能名，value=boolean
-    '4XX':
+              - type: object
+                properties:
+                  code:
+                    const: 0
+            - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+    4XX:
       description: 无权限 / 参数非法
       content:
-        application/json: { schema: { $ref: '../../../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/Envelope.yaml

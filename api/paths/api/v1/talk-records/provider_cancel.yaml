@@ -16,6 +16,7 @@ post:
       format: int64
       minimum: 1
       maximum: 9223372036854775807
+    description: 谈话记录 TSID / Talk record ID
   - name: task_id
     in: path
     required: true
@@ -24,6 +25,7 @@ post:
       format: int64
       minimum: 1
       maximum: 9223372036854775807
+    description: 提供方执行任务 ID / Provider task ID
   - name: Idempotency-Key
     in: header
     required: true
@@ -31,20 +33,19 @@ post:
       type: string
       minLength: 1
       maxLength: 128
+    description: 本操作幂等键；重试同一操作时复用 / Reuse for retries of the same operation
   - name: If-Match
     in: header
     required: true
     schema:
       type: string
       maxLength: 128
-    description: Prepare uses client-run ETag; all other mutations use provider-task
-      ETag. JSON etag is unquoted.
-  description: Current JWT actor/device, record/editor/enterprise policy, consent
-    and immutable input pins are checked. Supplier returned task ID differs from submission
-    UUID. Query never submits. No credentials, arbitrary URLs, paths or raw errors
-    are accepted. Source URL is returned only once, after durable submit intent; replays
-    cannot resend. Source expiry does not expire accepted task queries. Cancellation
-    revokes local authority without claiming supplier cancellation.
+    description: Prepare uses client-run ETag; all other mutations use provider-task ETag. JSON etag is unquoted.
+  description: Current JWT actor/device, record/editor/enterprise policy, consent and immutable input pins are checked.
+    Supplier returned task ID differs from submission UUID. Query never submits. No credentials, arbitrary URLs,
+    paths or raw errors are accepted. Source URL is returned only once, after durable submit intent; replays cannot
+    resend. Source expiry does not expire accepted task queries. Cancellation revokes local authority without claiming
+    supplier cancellation.
   responses:
     '200':
       description: Current task metadata.
@@ -52,8 +53,7 @@ post:
         application/json:
           schema:
             type: object
-            description: Existing API success envelope; payload is the durable task
-              response.
+            description: Existing API success envelope; payload is the durable task response.
             properties:
               data:
                 $ref: ../../../../components/schemas/talk-record/ProviderTaskResponse.yaml
@@ -63,8 +63,7 @@ post:
         application/json:
           schema:
             type: object
-            description: Existing API success envelope; payload is the durable task
-              response.
+            description: Existing API success envelope; payload is the durable task response.
             properties:
               data:
                 $ref: ../../../../components/schemas/talk-record/ProviderTaskResponse.yaml
