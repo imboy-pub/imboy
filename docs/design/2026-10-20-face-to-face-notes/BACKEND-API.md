@@ -1,8 +1,12 @@
 # 面聊记录后端数据结构与 API / Backend contract v5
 
+修订10候选（2026-10-23）：**DRAFT_NOT_ACCEPTED**。用户已批准豆包 ASR 2.0 + 智谱 `glm-5.3-flash`；当前方案以 [DOUBAO-API.md](DOUBAO-API.md) 为异步增量合同、[design-preview-doubao.html](design-preview-doubao.html) 为候选交互原型。本文不是代码、真实供应商、真机或最终验收证明。仓外执行状态仍属修订9；主控制器审查、保留旧快照并显式迁移前，不得刷新旧证据为PASS。
+
+用户已批准使用公开或合成样本进行真实 API 验收，本轮预算目标不超过人民币5元；Key仅在当前账号本设备填写并加密保存，不进IMBoy服务端、日志、云备份或设备迁移。此授权不扩展至真实用户录音、无限费用或部署；智谱年度Max不默认覆盖通用API额度。当前文档修改不执行任何调用。
+
 日期：2026-10-22；业务命名统一为 `talk_record`。
 
-状态：用户已批准首版改为 App 直连 MiniMax `asr-1.0` 与智谱 `glm-5.3-flash`，Key 仅在本设备加密保存。修订9的客户端执行补充见第12节；原服务端本地模型合同仅保留为后续可选部署路径，不能冒充已支持 BYOK。实际实现、未完成项与候选验收以仓外 execution-state.json 为准；本文不宣称已完成客户端执行、真机或真实供应商验收。新增迁移实施前核对各分支最新编号，不在设计中预占编号。
+状态：当前首版为App直连豆包 ASR 2.0 与智谱 `glm-5.3-flash`，Key仅在本设备加密保存。修订9的客户端执行补充见第12节；原服务端本地模型合同仅保留为后续可选部署路径，不能冒充已支持 BYOK。实际实现、未完成项与候选验收以仓外 execution-state.json 为准；本文不宣称已完成客户端执行、真机或真实供应商验收。新增迁移实施前核对各分支最新编号，不在设计中预占编号。
 
 ## 1. 领域与授权 / Domain and authorization
 
@@ -310,7 +314,9 @@ The record-scoped retry renews one bounded physical retry generation only after 
 
 已删除 owner metadata 与当前企业治理 metadata 提供只读 cleanup_retry:{allowed,generation,exhausted_resources,reason}；与POST锁后复核使用同一资格计划，不签发预算、不写审计。generation是实际整数，未知/null/缺失不默认0；未授权或不确定时allowed=false。reason白名单：eligible/partial_protection/protected/not_exhausted/identity_unverified/permission_denied/not_deleted/unknown。不返回资源路径或定位。UI仅依据该当前能力投影显示操作，角色标签不构成授权，POST仍重验。
 
-## 12. 修订9：本设备 BYOK 执行 / Device-owned BYOK execution
+## 12. 修订9历史：本设备 BYOK 执行 / Historical device BYOK
+
+本节保留旧MiniMax同步合同及其历史限制，不用于新豆包ASR派发。修订10 ASR具体wire、状态、source与恢复规则以DOUBAO-API.md为准；通用身份/输入栅栏、GLM、附件和权限不变量继续适用。
 
 本节是已批准的首版方向及待实施合同，不是当前服务端本机 processor 的能力说明。个人与企业复用业务模型，企业多执行供应商外发策略，不因成员拥有 Key 就允许发送企业录音。未配置或拒绝外部处理时，仍可保存、补传、回听及手工笔记。
 
@@ -375,3 +381,9 @@ GLM 返回带 segment IDs 引用的结构化草稿；服务端校验来源、边
 必验：Key 不出设备/不进备份与日志、账号/部署切换、企业外发禁用、每块权限与内容版本失效、过期 lease/旧 attempt 迟到、PUT/confirm/complete 与 AI 阶段独立恢复、供应商未知付费结果、500秒/50MB 边界、跨块重复文本/时轴/说话人、无语音不虚构、摘要引用和注入防护。真实供应商 Key/预算/允许上传的样本另行授权；mock、HTTP200、结构校验及本机测试数不能替代原 T13/T14 的质量验收。
 
 参考：[MiniMax ASR 接口](https://platform.minimax.cn/docs/api-reference/speech-to-text)、[GLM-5.3-Flash](https://docs.bigmodel.cn/cn/guide/models/vlm/glm-5.3-flash)、[智谱订阅使用规范](https://docs.bigmodel.cn/cn/terms/subscription-agreement)、[官方端点与额度区别](https://zcode.z.ai/cn/docs/configuration)。供应商能力、价格与条款需在真实测试前重新核验。
+
+## 13. 修订10：豆包异步合同候选
+
+完整端点与表增量见[DOUBAO-API.md](DOUBAO-API.md)，共享请求profile见[fixture](fixtures/doubao-profile-v1.json)。BE R7/App R8代码候选不等于正式验收。迁移222/223/224及provider-task事实依实际冻结源码核对，编号合并前再查所有分支；不改历史223。source purpose只允许成功assembly、当前ACL/同意/策略、bound/live引用及保留/删除语义下的短时读取，不放宽derived通用view_url，不接受任意URL/路径，不新建公开桶或GC链。
+
+submission UUID不是供应商返回taskID。durable intent只首次授权may_submit；knownID pending/unknown只能query；首版query_receipt failed不开放，HTTP拒绝不是ASR终态。响应丢失通过latest发现task/run或recover-unprepared，已保存taskID可reconcile-receipt；source300秒期限不截断受理后的查询和完成。明确未派发prepared恢复不收虚假重复费用确认；无ID未知重提须双风险确认，旧未知事实不抹除。完整恢复/撤权/旧generic旁路拒绝须定向与真实事务验证，不由文档认定通过。

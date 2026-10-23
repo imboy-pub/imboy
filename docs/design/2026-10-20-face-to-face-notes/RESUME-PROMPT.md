@@ -1,18 +1,25 @@
 # 同一份续接提示词 / Reusable execution prompt
 
+> 2026-10-23 收拢说明：本轮执行已按用户要求停止。本文保留设计与历史任务约束，不作为恢复旧 RUN_ROOT 的指令；待环境清理后另行整理广州 V3。源码合并不等于功能验收通过，真机闭环、真实模型质量及最终专项证据仍待补齐。
+
+
+修订10候选（2026-10-23）：**DRAFT_NOT_ACCEPTED**。用户已批准豆包 ASR 2.0 + 智谱 `glm-5.3-flash`；当前方案以 [DOUBAO-API.md](DOUBAO-API.md) 为异步增量合同、[design-preview-doubao.html](design-preview-doubao.html) 为候选交互原型。本文不是代码、真实供应商、真机或最终验收证明。仓外执行状态仍属修订9；主控制器审查、保留旧快照并显式迁移前，不得刷新旧证据为PASS。
+
+用户已批准使用公开或合成样本进行真实 API 验收，本轮预算目标不超过人民币5元；Key仅在当前账号本设备填写并加密保存，不进IMBoy服务端、日志、云备份或设备迁移。此授权不扩展至真实用户录音、无限费用或部署；智谱年度Max不默认覆盖通用API额度。当前文档修改不执行任何调用。
+
 以下正文供用户在执行会话中完整发送；文件本身不授权当前设计会话开始开发。会话中断后原样再次发送即可。需要仍可访问同一磁盘，或先恢复任务文件、工作树与证据；不会自动跨机器同步。
 
 ---
 
 请执行或继续 IMBoy「面聊记录 talk_record V1」计划。
 
-修订9的文件布局：设计目录以当前仓库检出路径为准，以下个人绝对路径仅帮助定位既有运行，不是跨机器默认值。真实 `execution-state.json`、锁、日志、秘密和执行证据放仓外 RUN_ROOT；从已有控制器/运行凭据找回其准确位置。使用 `python3 <设计目录>/validate_plan.py --directory <设计目录> --state <RUN_ROOT>/execution-state.json` 校验，不因仓内缺少台账重新初始化。仓内 `fixture-execution-state.json` 仅供测试，不是当前进度或授权。旧修订证据保持原绑定；迁移到修订9须保留快照并重新核验受影响任务，不重置台账或把旧证据提升为BYOK验收。
+修订10候选的文件布局：设计目录以当前仓库检出路径为准，以下个人绝对路径仅帮助定位既有运行，不是跨机器默认值。真实 `execution-state.json`、锁、日志、秘密和执行证据放仓外 RUN_ROOT；从已有控制器/运行凭据找回其准确位置。使用 `python3 <设计目录>/validate_plan.py --directory <设计目录> --state <RUN_ROOT>/execution-state.json` 校验，不因仓内缺少台账重新初始化。仓内 `fixture-execution-state.json` 仅供测试，不是当前进度或授权。旧修订证据保持原绑定；迁移到修订10须保留快照并重新核验受影响任务，不重置台账或把旧证据提升为BYOK验收。
 
-我确认按计划的首版范围、个人/企业默认权限和V4设计方向进入本地实施；允许先完成契约、原型布局及可行性门槛，再分步骤开发和测试。允许委派子agent，最多8个worker，并按环境槽位降并发；允许创建和复用本任务独立worktree。不授权commit、push、合并main、发布部署、生产变更、付费或外部处理服务、联系或影响第三方，以上需另行明确授权。保护其他会话改动，不清理、重置、暂存或提交他人WIP。模型选型、外部服务、保留平台文件例外若待确认，先做独立可做项，再提出具体选项，不自行决定。
+我确认按计划的首版范围、个人/企业默认权限和V4设计方向进入本地实施；允许先完成契约、原型布局及可行性门槛，再分步骤开发和测试。允许委派子agent，最多8个worker，并按环境槽位降并发；允许创建和复用本任务独立worktree。不授权commit、push、合并main、发布部署、生产变更、超出已批准公开或合成样本及5元预算目标的外部处理服务、联系或影响第三方，以上需另行明确授权。保护其他会话改动，不清理、重置、暂存或提交他人WIP。模型选型、外部服务、保留平台文件例外若待确认，先做独立可做项，再提出具体选项，不自行决定。
 
 工作区 /Users/leeyi/project/imboy.pub 不是git仓库。
 权威目录 /Users/leeyi/project/imboy.pub/imboy/docs/design/2026-10-20-face-to-face-notes/
-读取适用AGENTS.md/CLAUDE.md和该目录：PLAN.md、DESIGN.md、UI-SPEC.md、design-preview.html、BACKEND-API.md、execution-state.json、plan-manifest.json、执行校验合同execution-contract.json。台账不是完成证明，实际源码与有效证据优先。
+读取适用AGENTS.md/CLAUDE.md和该目录：PLAN.md、DESIGN.md、UI-SPEC.md、design-preview.html、design-preview-doubao.html、DOUBAO-API.md、BACKEND-API.md、仓外execution-state.json、plan-manifest.json、执行校验合同execution-contract.json。台账不是完成证明，实际源码与有效证据优先。
 
 先恢复审计，不重新规划：
 1. 核对两仓HEAD/分支/WIP及归属，任务worktree、owner、活跃worker、进程、设备锁和证据。写文件前确认git归属。
@@ -35,6 +42,6 @@ worker交review后主集成者核验才accepted。不得把未独立审查称为
 
 单会话与跨会话资源补充：优先一个会话持续执行到完整本地验收，任务阶段结束不逐项停下来问继续。已有授权内的实现选择自行决定、记录依据；缺外部服务/模型只挂起对应模型任务，其他录音/附件/权限/UI继续。遵守PLAN.md §14—§15，已知广州收口任务计划与RUN_ROOT只读受保护；真机/数据库/构建资源先验证归属与隔离，无证明则waiting_resource并继续独立任务。自建锁不代表对方会话配合；不杀未知进程、不重启共享DB/adb、不覆盖同包名、不改对方台账。测试中发生资源抢占则记RESOURCE_PREEMPTED，失效证据重跑；绝不拼成PASS。当前提示词不授权向其他会话发消息。用同一提示词续接，无需改路径或重新说明上次进度。
 
-开始派发前运行只读validate_plan.py，运行test_validate_plan.py校验调度反例；未通过先修复本任务计划/状态的一致性，不重置外来资源。每任务执行前冻结test_bindings；component_ready也要真实组件证据，accepted要覆盖required_checks，不能拿无关PASS代替。
+本候选未获审查迁移前，不执行计划或修复revision mismatch：保持仓外修订9状态与其旧合同配对。主控制器显式迁移后，开始派发前运行只读validate_plan.py，运行test_validate_plan.py校验调度反例；未通过先修复本任务计划/状态的一致性，不重置外来资源。每任务执行前冻结test_bindings；component_ready也要真实组件证据，accepted要覆盖required_checks，不能拿无关PASS代替。
 
-首版处理方案已由用户确认：App直连 MiniMax asr-1.0 与智普 glm-5.3-flash，Key仅本设备加密保存；本地模型不再是首版必做项。通用API不使用Coding Plan端点，不假定年度Max覆盖费用。方案确认不等于真实付费调用授权；测试Key和预算尚待单独确认。录音附件生命周期、个人/企业权限和原质量线保留。T13/T14依赖T08客户端基础，外发前持久化意图，未知结果不自动重放。
+首版方案：App直连豆包ASR2.0与GLM-5.3-Flash，Key仅当前账号本设备保存。读取DOUBAO-API.md、design-preview-doubao.html及共享profile fixture；knownID只query，未知无ID不能自动submit，prepared未派发和claim/prepare丢包按服务端恢复动作处理。公开或合成样本、5元预算目标已批准；仍需设备内Key与实际受控执行输入。附件生命周期、个人企业权限、原质量线和最终适用全量不减。

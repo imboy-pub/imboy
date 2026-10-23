@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "plan_id": "talk-record-v1",
-  "revision": "9",
+  "revision": "10",
   "required_tasks": [
     "T01",
     "T02",
@@ -386,7 +386,10 @@
     "validate_plan.py",
     "test_validate_plan.py",
     "QUALITY.md",
-    "CONTRACT-FREEZE-T02.md"
+    "CONTRACT-FREEZE-T02.md",
+    "DOUBAO-API.md",
+    "design-preview-doubao.html",
+    "fixtures/doubao-profile-v1.json"
   ],
   "required_checks": {
     "T01": [
@@ -426,7 +429,8 @@
     "T08": [
       "client_contract",
       "id_serialization",
-      "error_mapping"
+      "error_mapping",
+      "async_task_wire"
     ],
     "T09": [
       "device_recording",
@@ -446,12 +450,17 @@
     "T12": [
       "job_recovery",
       "assembly_refs",
-      "stale_result_rejection"
+      "stale_result_rejection",
+      "provider_task_recovery",
+      "source_authorization",
+      "paid_dispatch_fence"
     ],
     "T13": [
       "real_asr_quality",
       "speaker_diarization",
-      "no_speech"
+      "no_speech",
+      "async_submit_query",
+      "provider_fetch_window"
     ],
     "T14": [
       "real_summary_quality",
@@ -531,5 +540,6 @@
     ]
   },
   "binding_contract_revision": 0,
-  "frozen_test_bindings": {}
+  "frozen_test_bindings": {},
+  "revision_status": "DRAFT_NOT_ACCEPTED"
 }

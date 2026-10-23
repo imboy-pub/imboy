@@ -1,5 +1,13 @@
 # T02 契约冻结记录 / Contract freeze record
 
+## 修订10增量候选 — DRAFT_NOT_ACCEPTED
+
+当前用户批准豆包ASR2.0+GLM-5.3-Flash，权威增量为DOUBAO-API.md，原型为design-preview-doubao.html，profile fixture SHA256为`d723bf03c21bf27f6d35a38d6134c2cdf33ebe4a6700b35c8bd98ec27fc4cfab`（profile语义hash，不是fixture文件hash）。当前BE R7冻结manifest为`ce5c604fea8cd5129ea7be5b70279b026fa8fc6f96c2bba7a0c753d92bde848b`，App R8冻结manifest `app-doubao-recovery-r8-final-manifest.json` SHA256为`c45400a33c21b308c2eec59c528555b7e8930d5c86e4bd98055683a18622d2a9`，独立审查及候选范围另核；这些不是当前计划accepted证据。候选迁移222/223/224、OpenAPI和实际源码绑定由主控制器核对，224 up hash `1d93316541f90bb75e00149331d555f1977c163ebd78e9a072d142ce091783ff`、down hash `2dae588aa2c0eeeaafd9423d488861aecce5e66ab826d2150a37d9a62f1577ac`。
+
+plan-manifest仅冻结本次文档候选内容；仓外STATE仍revision9，须审查和显式迁移。旧runner绑定、历史PASS/FAIL及下文20261020快照完全保留，不因更新hash提升状态。当前模型真实质量、供应商可达取音窗口、适用全量、真机与视觉验收不得由静态原型或合成回执替代。
+
+## 原冻结历史（不追改哈希）
+
 修订9的历史边界（2026-10-22）：以下为2026-10-20冻结快照，保留当时文件哈希、行号和迁移分配事实，不表示当前源码仍与快照相同。主仓已合并的面聊迁移实际为211—220；新增清理重试迁移221仍属当前任务候选，尚未合并或完整验收。最新API以本目录 BACKEND-API.md 及其修订9 manifest 为准，清理重试不在旧冻结快照内；须在最终候选契约复核时补验。下列视觉发现仍是实施必须满足的要求，不能用本次文档整理视为已关闭。
 
 修订9采用已批准BYOK方案；本文件下列哈希仍是历史冻结快照，不代表新原型已完成视觉验收或新方案已实现。

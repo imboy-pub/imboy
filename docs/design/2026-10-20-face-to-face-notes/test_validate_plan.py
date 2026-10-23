@@ -16,6 +16,25 @@ C = json.loads((R / 'fixture-execution-contract.json').read_text())
 M = {'revision': C['revision'], 'files': {n: '0' * 64 for n in C['manifest_required_files']}}
 
 class Checks(unittest.TestCase):
+    def test_revision9_state_cannot_silently_use_revision10_contract(self):
+        state = copy.deepcopy(S)
+        state['plan_revision'] = '9'
+        self.assertIn('contract revision mismatch', v.validate(state, C, M, R, False))
+
+    def test_revision10_preserves_task_and_final_acceptance_scope(self):
+        self.assertEqual(C['required_tasks'], [f'T{i:02d}' for i in range(1, 26)])
+        self.assertTrue({'backend_full', 'app_full', 'device_journeys',
+                         'visual_acceptance', 'resource_preemption'} <= set(C['required_checks']['T24']))
+        self.assertIn('attachment_bind_gc', C['required_checks']['T06'])
+        self.assertIn('scope_authorization', C['required_checks']['T05'])
+
+    def test_revision10_async_additions_do_not_create_fake_runner_bindings(self):
+        for name in ('DOUBAO-API.md', 'design-preview-doubao.html',
+                     'fixtures/doubao-profile-v1.json'):
+            self.assertIn(name, C['manifest_required_files'])
+        self.assertIn('paid_dispatch_fence', C['required_checks']['T12'])
+        self.assertNotIn('paid_dispatch_fence', C['frozen_test_bindings'].get('T12', {}))
+
     def test_external_state_argument_is_explicit(self):
         args = v.parse_arguments(['--directory', '/tmp/design', '--state', '/tmp/run/state.json'])
         self.assertEqual(args.directory, Path('/tmp/design'))
