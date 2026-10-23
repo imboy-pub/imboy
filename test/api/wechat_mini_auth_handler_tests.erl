@@ -16,7 +16,6 @@
 -module(wechat_mini_auth_handler_tests).
 
 -include_lib("eunit/include/eunit.hrl").
--include("eunit_setup.hrl").
 -include("error_code.hrl").
 
 -define(CLIENT_IP, <<"203.0.113.77">>).
@@ -94,7 +93,7 @@ logic_params() ->
 
 %% body 完整：code / device_id 原样传入；ip 来自 elib_req（不是占位值）
 params_parsed_test_() ->
-    ?WITH_MECKS(
+    handler_test(
         handler_mocks(
             #{<<"code">> => <<"good_code_123">>, <<"device_id">> => <<"dev_1">>},
             {ok, token_payload()}
@@ -116,7 +115,7 @@ params_parsed_test_() ->
 
 %% body 缺字段：注入空串（而不是 crash / 传 undefined 进去）
 params_defaults_test_() ->
-    ?WITH_MECKS(
+    handler_test(
         handler_mocks(#{}, {error, missing_code}),
         fun() ->
             _ = call(#{req => ok}),
@@ -130,7 +129,7 @@ params_defaults_test_() ->
 %% 首登自动开户会写 user.reg_ip：ip 必须是真实客户端 IP。
 %% 这条是**防回归**——若有人把 ip 换成 <<"127.0.0.1">> 常量，此处必红。
 ip_is_real_not_placeholder_test_() ->
-    ?WITH_MECKS(
+    handler_test(
         handler_mocks(#{<<"code">> => <<"good_code_123">>}, {ok, token_payload()}),
         fun() ->
             _ = call(#{req => ok}),
@@ -144,7 +143,7 @@ ip_is_real_not_placeholder_test_() ->
 %% 的 "perf-test" 兜底 —— 那是内部压测占位值，写进真实用户账号后运营侧
 %% 无法区分真实用户与压测数据（2026-09-21 生产库实测踩到）。
 reg_cosv_is_real_not_placeholder_test_() ->
-    ?WITH_MECKS(
+    handler_test(
         handler_mocks(#{<<"code">> => <<"good_code_123">>}, {ok, token_payload()}),
         fun() ->
             _ = call(#{req => ok}),
@@ -158,7 +157,7 @@ reg_cosv_is_real_not_placeholder_test_() ->
 
 %% UA 缺失 → <<"unknown">>（可区分「没采到」与「旧数据」），绝不空串/占位
 reg_cosv_unknown_without_ua_test_() ->
-    ?WITH_MECKS(
+    handler_test(
         handler_mocks(#{<<"code">> => <<"good_code_123">>}, {ok, token_payload()}, <<>>),
         fun() ->
             _ = call(#{req => ok}),
@@ -169,7 +168,7 @@ reg_cosv_unknown_without_ua_test_() ->
 %% UA 超长必须截断（外部输入不进无界列）
 reg_cosv_truncated_test_() ->
     LongUa = binary:copy(<<"A">>, 1000),
-    ?WITH_MECKS(
+    handler_test(
         handler_mocks(#{<<"code">> => <<"good_code_123">>}, {ok, token_payload()}, LongUa),
         fun() ->
             _ = call(#{req => ok}),
@@ -184,7 +183,7 @@ reg_cosv_truncated_test_() ->
 %%%===================================================================
 
 success_passes_payload_verbatim_test_() ->
-    ?WITH_MECKS(
+    handler_test(
         handler_mocks(#{<<"code">> => <<"good_code_123">>}, {ok, token_payload()}),
         fun() ->
             ?assertEqual(
@@ -210,7 +209,7 @@ error_mapping_test_() ->
     [
         {
             atom_to_list(Reason),
-            ?WITH_MECKS(
+            handler_test(
                 handler_mocks(#{<<"code">> => <<"good_code_123">>}, {error, Reason}),
                 fun() ->
                     ?assertEqual(
@@ -225,7 +224,7 @@ error_mapping_test_() ->
 
 %% 未知 reason：兜底 5401，不得新造码 / 不得把内部细节透给客户端
 unknown_reason_falls_back_test_() ->
-    ?WITH_MECKS(
+    handler_test(
         handler_mocks(#{<<"code">> => <<"good_code_123">>}, {error, some_brand_new_atom}),
         fun() ->
             ?assertEqual(
@@ -238,7 +237,7 @@ unknown_reason_falls_back_test_() ->
 %% 授权上限是**永久**条件：必须走 402（全局授权码），客户端据此关掉重试按钮。
 %% 若被折叠成 5401，用户会看到可重试文案并无限重试 —— 与 5404 同款坑。
 quota_is_not_login_failed_test_() ->
-    ?WITH_MECKS(
+    handler_test(
         handler_mocks(#{<<"code">> => <<"good_code_123">>}, {error, account_quota_exceeded}),
         fun() ->
             Code = maps:get(code, call(#{req => ok})),
@@ -246,3 +245,9 @@ quota_is_not_login_failed_test_() ->
             ?assertNotEqual(?ERR_WECHAT_LOGIN_FAILED, Code)
         end
     ).
+
+%% Handler contracts promise no application startup, network or database access.
+handler_test(Configs, Fun) ->
+    {timeout, 30, fun() ->
+        pure_mock_fixture:run(fun() -> pure_mock_fixture:with_mocks(Configs, Fun) end)
+    end}.
