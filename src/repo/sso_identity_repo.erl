@@ -48,7 +48,7 @@ upsert(Provider, Subject, Uid, Email) ->
     log_upsert_result(elib_pg:query(Sql, Params)).
 
 %% @doc 事务内 upsert 身份映射（DS 层 with_tx Fun(Conn) 内调用）
-%% 与 upsert/4 的唯一差异是连接来源。把它单独留出来的原因：moya 首登
+%% 与 upsert/4 的唯一差异是连接来源。把它单独留出来的原因：微信小程序首登
 %% 「建 user 行 + 绑 sso_identity」必须是同一连接上的同一事务，否则中途失败
 %% 会留下一个有 user 行却没有身份映射的孤儿账号（重试时因为查不到映射会再建
 %% 一个，无限堆积），而 upsert/4 走的是池连接、无法参与调用方的事务。

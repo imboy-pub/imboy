@@ -149,15 +149,6 @@ namespaces() ->
         %% ── AI Agent ──
         ai_agent_role_version,
         agent_task,
-        %% ── Moya（教学域）──
-        moya_task,
-        moya_assignment,
-        moya_submission,
-        submission_asset,
-        calligraphy_review_draft,
-        teacher_review,
-        review_asset,
-        teaching_admin_audit,
         %% ── Customer Service（cs_id_port 的 Kind）──
         business_identity,
         cs_event,

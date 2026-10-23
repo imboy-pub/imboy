@@ -60,8 +60,6 @@
 | `make arch-check` | Feature Slice 九铁律（ADR-0007）；`arch-check-self-test` 为门禁自检 |
 | `make migrations-check` | 迁移文件门禁：命名格式 / up-down 成对 / 版本号唯一（ADR-0002） |
 | `make cron-check` | ecron 定时作业配置校验（发布前自查加 `--strict` 口径见脚本） |
-| `make moya-ai-check` | 墨芽 AI 回课配置前置校验 |
-| `make moya-ai-key-check` | 墨芽 AI 密钥真实可用性体检（独立临时节点 + 纯文本 ping；`--no-ping` 离线） |
 | `make terminology-check` | 术语表校验（`priv/terminology/*.json`） |
 
 ## 数据库 / 跨仓专项门禁

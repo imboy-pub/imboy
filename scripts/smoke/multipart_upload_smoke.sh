@@ -3,7 +3,7 @@
 # 链路：wechat-mini mock 登录 → presign(&method=multipart) → multipart POST
 #       → confirm 落库 → psql 核查（可选）。
 # Usage:  ./multipart_upload_smoke.sh [BASE_URL]   # 默认 http://127.0.0.1:9700
-# 前置：节点已启动；moya 联调 mock jscode2session 在 127.0.0.1:9817（登录用）。
+# 前置：节点已启动；隔离联调 mock jscode2session 在 127.0.0.1:9817（登录用）。
 # Exit 0 = PASS, non-zero = FAIL。
 
 set -u

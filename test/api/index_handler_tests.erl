@@ -38,7 +38,7 @@ init_success_test_() ->
             ?assert(maps:is_key(<<"core">>, Features)),
             ?assert(is_boolean(maps:get(<<"location">>, Features))),
             Terminology = maps:get(<<"terminology">>, InitData),
-            ?assertEqual(<<"moya">>, maps:get(<<"profile">>, Terminology)),
+            ?assertEqual(<<"generic">>, maps:get(<<"profile">>, Terminology)),
             ?assertEqual(
                 <<"operator-label">>,
                 maps:get(<<"operator">>, maps:get(<<"terms">>, Terminology))
@@ -114,7 +114,7 @@ init_mocks(LegacyCbc, RsaFlag) ->
                 (<<"cos">>, _Req, _Default) -> <<"ios">>;
                 (<<"pkg">>, _Req, _Default) -> <<"com.imboy.test">>;
                 (<<"sk">>, _Req, Default) -> Default;
-                (<<"terminology-profile">>, _Req, _Default) -> <<"moya">>;
+                (<<"terminology-profile">>, _Req, _Default) -> <<"generic">>;
                 (_Name, _Req, Default) -> Default
             end}
         ]},

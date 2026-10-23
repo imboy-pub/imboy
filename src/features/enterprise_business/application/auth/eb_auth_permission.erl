@@ -12,7 +12,7 @@
 %%%     传入的 `function_key` 字面量**显式拒绝**，不会因为权限集合里恰好有同名
 %%%     字符串就放行。
 %%%   * `governance role`——Organization 的组织治理权（`owner | admin`），与既有
-%%%     `moya_acl:resolve_org_manager/2` 读取的同一事实源（`organization_member.role`）。
+%%%     机构治理 读取的同一事实源（`organization_member.role`）。
 %%%     持有 sales/customer_service identity **不会**自动获得治理权；反之治理角色
 %%%     也不会让 owner/admin 自动获得成员面的业务身份与权限。
 %%%
@@ -49,7 +49,7 @@
 function_keys() ->
     eb_identity:function_keys().
 
-%% @doc 组织治理角色值域（与既有 `moya_acl:resolve_org_manager/2` 同源同值）。
+%% @doc 组织治理角色值域（与既有 机构治理 同源同值）。
 -spec governance_roles() -> [governance_role()].
 governance_roles() ->
     [<<"owner">>, <<"admin">>].

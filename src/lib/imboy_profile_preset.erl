@@ -41,7 +41,6 @@ delivery_locked_features(phase1_delivery) ->
         agent_hub,
         mcp,
         wallet,
-        moya,
         channel_discover,
         channel_invitation,
         channel_order,

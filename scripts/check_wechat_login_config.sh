@@ -115,7 +115,7 @@ echo "  · 调用 jscode2session（故意使用无效 js_code，不改动任何�
 RESP="$(curl -s -m 15 -G "https://api.weixin.qq.com/sns/jscode2session" \
   --data-urlencode "appid=${APPID}" \
   --data-urlencode "secret=${SECRET}" \
-  --data-urlencode "js_code=moya_preflight_invalid_code" \
+  --data-urlencode "js_code=imboy_preflight_invalid_code" \
   --data-urlencode "grant_type=authorization_code" 2>/dev/null)"
 
 if [ -z "${RESP}" ]; then

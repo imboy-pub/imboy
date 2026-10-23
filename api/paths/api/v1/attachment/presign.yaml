@@ -20,7 +20,7 @@ get:
     - in: query
       name: scope
       required: false
-      schema: { type: string, default: private, enum: [private, public, c2c, group, teaching] }
+      schema: { type: string, default: private, enum: [private, public, c2c, group] }
       description: 上传域（含 scope_ref 时按域校验）
     - in: query
       name: scope_ref

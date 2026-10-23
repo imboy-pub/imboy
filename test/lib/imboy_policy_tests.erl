@@ -714,14 +714,13 @@ meta_view_returns_profiles_defaults_and_edit_options_test_() ->
                 %% 与 src/lib/imboy_feature.erl 的 Builtin 同序）
                 <<"project">>,
                 %% Q02 非一期域键（字面量契约，与 Builtin 后的
-                %% Phase2Domains 同序）：二期七域 + 钱包/支付 + moya。
+                %% Phase2Domains 同序）：二期七域 + 钱包/支付。
                 <<"rtc">>,
                 <<"live_room">>,
                 <<"ai_assistant">>,
                 <<"agent_hub">>,
                 <<"mcp">>,
-                <<"wallet">>,
-                <<"moya">>
+                <<"wallet">>
             ],
             maps:get(<<"features">>, EditorOrder)
         ),
@@ -2353,7 +2352,6 @@ phase1_delivery_full_open_overrides_still_locked_test_() ->
             [e2ee, rtc, live_room, bot_webhook, ai_assistant, agent_hub, mcp] ++
                 [
                     wallet,
-                    moya,
                     channel_discover,
                     channel_invitation,
                     channel_order,

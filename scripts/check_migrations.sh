@@ -129,7 +129,7 @@ while IFS= read -r stem; do
   fi
 
   # 文件名式自引（PR-W3-C01 盲区补漏）：注释行里以完整文件名自引本迁移
-  # （如 "-- 00000152_moya_subscribe_grant.up.sql"）时，slug 与本文件一致
+  # （如 "-- 00000223_talk_record_client_execution.up.sql"）时，slug 与本文件一致
   # 即视为注释头自报，版本必须与文件名一致。slug 不同的文件名引用是对
   # 其他迁移的合法交叉引用，不校验。此前 00000151/152 的注释头写
   # 152/153 即因此格式不在 CITE_PATTERN 内而被静默跳过。

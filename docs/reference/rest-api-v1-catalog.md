@@ -393,16 +393,19 @@
 
 ---
 
-# D2. 墨芽教学（花名册/教学作业）/ Moya Teaching (Roster & Tasks)
+# D2. 已迁出的独立产品 / Retired Product
 
-> 墨芽（moya）子项目教学域增量端点。**与主站 TSID 约定不同：本域全部 TSID 字段以 JSON string 传输**（64-bit 精度保护，客户端不做 number 转换）。
-> 错误码段：5420-5429（上下文/ACL）、5430-5432（花名册/教学作业）、5440-5444（作业/提交）、5460-5461（幂等）、5480-5485（回评）。
+墨芽已迁出，IMBoy 不再提供旧教学路由、微信教学事件或回评任务。
+微信登录保留 `/api/v1/auth/wechat-mini/login`，由 `wechat_mini_auth_handler` 处理，
+响应只含 token、refresh_token、expires_in 与 uid，不含教学身份。
+机构、工作区、群任务、SSO 身份和附件底座保留。
 
-| 方法 Method | 路径 Path | 鉴权 Auth | Handler#action | 用途 Purpose（中 / EN） | 请求参数 Request | 响应载荷 Response payload | 主要错误码 Errors |
-|---|---|---|---|---|---|---|---|
-| GET | /api/v1/moya/classes/:id/learners | JWT | moya_roster_handler#list | 班级学员名单（只读；manager/teacher/assistant 均可读；非本班 active staff 统一 5430 不泄漏班级存在性）/ Class roster (read-only) | path `id`(TSID string)* | `{group_id(TSID string), learners:[{learner_id(TSID string), display_name, assignment_ready, setup_reason(null\|"no_submit_guardian"\|"multiple_submit_guardians")}]}` | 422, 5430, 5426, 500 |
-| GET | /api/v1/moya/tasks | JWT | moya_task_handler#list | 老师教学作业列表（真源：含 0 提交新作业；仅本人 active staff 班级）/ Teaching task list | `group_id`(TSID string,可选),`page`(默认1),`size`(默认10,≤100) | `{list:[{task_id,group_id,group_name,title,description,deadline,learner_count,submitted_count,pending_review_count,created_at}],page,size,total}`（TSID string；时间 RFC3339） | 422, 5430, 500 |
-| POST | /api/v1/moya/tasks | JWT | moya_task_handler#create | 发布教学作业（Idempotency-Key 必填 8..128 字节；持久幂等：同 key 同 body 重放 replayed=true，同 key 异 body 5460）/ Publish teaching task (idempotent) | Header: `Idempotency-Key`*；body `group_id`*,`title`(trim≤200)*,`description`,`deadline`(未来 RFC3339),`learner_ids`(TSID string 非空去重)* | `{task_id, assignments:[{assignment_id,learner_id}], replayed}` | 422, 5424, 5425, 5426, 5431, 5432, 5442, 5460, 5461, 500 |
+数据库升级使用 `00000224_retire_moya`，仅删除 13 张空专属表及共享任务表的教学字段。
+任一专属表（含审计）非空、教学任务字段非空、教学附件/上传会话残留或依赖不明即失败。
+先停用所有旧节点及运行配置中的教学 ecron 作业，再经专门授权迁出数据与审计记录后升级；
+不得清空数据绕过检查。本次未在现役数据库执行迁移。
+历史迁移、封存设计合同及证据保留用于审计，不是当前服务契约。
+down 只能恢复空结构，不能恢复业务数据、审计记录、媒体或运行能力。
 
 ---
 

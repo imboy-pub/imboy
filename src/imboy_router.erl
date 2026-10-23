@@ -86,8 +86,8 @@ get_routes() ->
             {"/api/v1/passport/findpassword", passport_handler, #{action => find_password}},
             {"/api/v1/passport/bind_mail", passport_handler, #{action => bind_mail}},
 
-            % 墨芽习字：微信小程序登录（免 Bearer，见 open/0；code 一次性换 IMBoy token）
-            {"/api/v1/auth/wechat-mini/login", moya_auth_handler, #{
+            % 微信小程序登录（免 Bearer，见 open/0；code 一次性换 IMBoy token）
+            {"/api/v1/auth/wechat-mini/login", wechat_mini_auth_handler, #{
                 action => wechat_mini_login
             }},
 
@@ -101,11 +101,6 @@ get_routes() ->
             {"/api/v1/oa/login/register", enterprise_oa_login_handler, #{action => register}},
             {"/api/v1/oa/sso/code", enterprise_oa_sso_handler, #{action => code}},
             {"/api/v1/workbench/entries", enterprise_oa_sso_handler, #{action => entries}},
-
-            % 墨芽习字：微信小程序「消息推送」接收端点（免 Bearer，见 open/0）
-            % GET  = 保存配置时的验签（原样回 echostr）
-            % POST = 客服消息 / 进入会话等事件（兼容/安全模式 + JSON）
-            {"/api/v1/wechat/mini/events", moya_wechat_msg_handler, #{}},
 
             % QR 码登录（WhatsApp Web 风格）
             {"/api/v1/passport/qr_login/create", qr_login_handler, #{action => create}},
@@ -567,80 +562,6 @@ get_routes() ->
                 {"/api/v1/agent_task/approve", agent_task_handler, #{action => approve}},
                 {"/api/v1/agent_task/reject", agent_task_handler, #{action => reject}},
                 {"/api/v1/group/task/pending", group_task_handler, #{action => pending_review}},
-
-                % 墨芽习字教学域 API（Step 8：登录/上下文/ACL；Step 9：作业/提交/回评；
-                % 错误码契约见 include/error_code.hrl 墨芽教学域 5400-5519）
-                % wechat-mini login 免 Bearer（open/0 白名单）；其余教学端点全部走 JWT
-                {"/api/v1/moya/contexts", moya_context_handler, #{action => contexts}},
-                {"/api/v1/moya/context/switch", moya_context_handler, #{action => switch}},
-                {"/api/v1/moya/assignments", moya_assignment_handler, #{action => list}},
-                {"/api/v1/moya/assignments/:id", moya_assignment_handler, #{
-                    action => detail
-                }},
-                {"/api/v1/moya/assignments/:id/submissions", moya_assignment_handler, #{
-                    action => create_submission
-                }},
-                {"/api/v1/moya/submissions/:id", moya_assignment_handler, #{
-                    action => submission_detail
-                }},
-                {"/api/v1/moya/submissions/:id/withdraw", moya_assignment_handler, #{
-                    action => withdraw
-                }},
-                {"/api/v1/moya/submissions/:id/review-workbench", moya_review_handler, #{
-                    action => workbench
-                }},
-                %% 老师手动触发 AI 整理（此前 AI 草稿只在家长提交时入队，老师端无入口）
-                {"/api/v1/moya/submissions/:id/ai-draft", moya_review_handler, #{
-                    action => ai_draft
-                }},
-                {"/api/v1/moya/submissions/:id/review-draft", moya_review_handler, #{
-                    action => save_draft
-                }},
-                {"/api/v1/moya/submissions/:id/reviews/publish", moya_review_handler, #{
-                    action => publish
-                }},
-                {"/api/v1/moya/review-queue", moya_review_handler, #{action => queue}},
-                {"/api/v1/moya/learners/:id/history", moya_assignment_handler, #{
-                    action => history
-                }},
-                {"/api/v1/moya/learners/:id/history/unread-count", moya_assignment_handler, #{
-                    action => history_unread_count
-                }},
-                %% 教学学员账号绑定（Step 16：管理侧最小动作；JWT；logic/repo 由 D 泳道
-                %% 就绪，错误映射与码段决定见 STEP-16/notes.md「B 接线完成」）
-                {"/api/v1/moya/learners/:id/bind", moya_learner_bind_handler, #{
-                    action => bind
-                }},
-                {"/api/v1/moya/learners/:id/unbind", moya_learner_bind_handler, #{
-                    action => unbind
-                }},
-                %% 教学班级学员名单（MN-ROSTER-01）：只读；binding 名 `id` 以
-                %% moya_roster_handler 实际（cowboy_req:binding(id, _)）为准
-                {"/api/v1/moya/classes/:id/learners", moya_roster_handler, #{
-                    action => list
-                }},
-                %% 教学作业列表/发布（MN-TASK-01/02）：集合路径同路径双语义
-                %% GET=list / POST=create，其余 method 405。cowboy 路由匹配只看
-                %% path（同路径双条目的第二条恒被遮蔽），故 method 分派在 handler
-                %% 侧（moya_task_handler:resolve_action/2，同 project_task_handler）。
-                {"/api/v1/moya/tasks", moya_task_handler, #{action => tasks}},
-                %% 订阅消息授权上报（客户端 requestSubscribeMessage accept 模板回执；
-                %% JWT 主路由区；契约见 moya_subscribe_logic report/2）
-                {"/api/v1/moya/subscribe/report", moya_subscribe_handler, #{
-                    action => report
-                }},
-                %% 老师邀请码（W3 服务端依赖之二：家长凭码加入班级并绑定监护关系）。
-                %% create_code 仅该班 active class_staff / org owner（deny-by-default）；
-                %% info/join 凭码访问，码校验失败统一折叠 404（防探测）。
-                {"/api/v1/moya/classes/:id/invite-code", moya_invite_handler, #{
-                    action => create_code
-                }},
-                {"/api/v1/moya/invite/info", moya_invite_handler, #{
-                    action => info
-                }},
-                {"/api/v1/moya/invite/join", moya_invite_handler, #{
-                    action => join
-                }},
 
                 {"/api/v1/report/create", report_handler, #{action => create}},
 
@@ -1626,15 +1547,9 @@ open() ->
         <<"/api/v1/auth/oidc/authorize">>,
         <<"/api/v1/auth/oidc/callback">>,
         <<"/api/v1/auth/oidc/exchange">>,
-        %% 墨芽习字：微信小程序登录——wx.login 一次性 code 换 token，握手前无
+        %% 微信小程序登录——wx.login 一次性 code 换 token，握手前无
         %% sign/did 头；code 本身即凭证（AUTH-01：code 消费后重放必失败）
         <<"/api/v1/auth/wechat-mini/login">>,
-
-        %% 墨芽习字：微信「消息推送」——微信侧不带任何 IMBoy 凭证，唯一凭证是
-        %% URL 上的签名（GET 校验 signature / POST 校验 msg_signature，均由
-        %% moya_wechat_msg_logic 逐条 fail-closed 裁决）。同理不带 sign/did 头，
-        %% 必须免 902 签名门，否则微信保存配置时恒 403、后台报「Token 验证失败」。
-        <<"/api/v1/wechat/mini/events">>,
 
         <<"/api/v1/metrics">>,
 

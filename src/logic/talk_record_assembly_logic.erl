@@ -12,7 +12,7 @@
 %     enterprise_cursor_v2（与幂等 digest 同一规范），段序稳定 → 哈希确定。
 %
 % V1 worker 产生真实 AAC 与 JSON manifest 两个生命周期附件后原子发布。
-% 三段式执行（claim 与 finish 分事务，moya_ai_worker 范式）：
+% 三段式执行（claim 与 finish 分事务，持久任务范式）：
 %   prepare_tx —— 记录门禁（未删除）+ manifest 重算比对 job 输入绑定 +
 %                 每段 processing lease（§10.3 任务期间源文件有效引用）；
 %   finish_tx  —— CAS（state=running+lease_token）+ 迟到结果拒绝（记录

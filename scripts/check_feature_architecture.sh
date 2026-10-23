@@ -440,10 +440,10 @@ seed_fixture() {   # 构造"合规基线"：应零违规
   local r="$1"
   mkdir -p "$r/src/lib" "$r/src/features/cs/domain" "$r/src/features/cs/application" \
            "$r/src/features/cs/interfaces" "$r/src/features/cs/infrastructure" \
-           "$r/src/products/moya/infrastructure" "$r/src/plugins/payment/stripe" \
+           "$r/src/products/sample_product/infrastructure" "$r/src/plugins/payment/stripe" \
            "$r/config/product-feature-manifests" "$r/test/features/cs/domain"
   printf '{"schema_version":1,"product_id":"imboy","profile":"x","selected_features":[]}\n' > "$r/config/product-feature-manifest.json"
-  printf '{"schema_version":1,"product_id":"moya","profile":"y","selected_features":[]}\n' > "$r/config/product-feature-manifests/moya.json"
+  printf '{"schema_version":1,"product_id":"sample_product","profile":"y","selected_features":[]}\n' > "$r/config/product-feature-manifests/sample_product.json"
 
   printf -- '-module(elib_helper).\n-export([f/1]).\nf(X) -> X.\n'                 > "$r/src/lib/elib_helper.erl"
   printf -- '-module(cs_session_agg).\n-export([f/1]).\nf(X) -> X.\n'             > "$r/src/features/cs/domain/cs_session_agg.erl"
@@ -453,7 +453,7 @@ seed_fixture() {   # 构造"合规基线"：应零违规
   # $1 is an Erlang SQL placeholder in the fixture.
   # shellcheck disable=SC2016
   printf -- '-module(cs_seat_repo).\n-export([f/1]).\nf(O) -> elib_pg:query(<<"SELECT id FROM s WHERE org_id = $1">>, [O]).\n' > "$r/src/features/cs/infrastructure/cs_seat_repo.erl"
-  printf -- '-module(moya_grades).\n-export([f/1]).\nf(X) -> X.\n'                > "$r/src/products/moya/infrastructure/moya_grades.erl"
+  printf -- '-module(sample_product_grades).\n-export([f/1]).\nf(X) -> X.\n'                > "$r/src/products/sample_product/infrastructure/sample_product_grades.erl"
 }
 
 run_self_test() {
@@ -492,10 +492,10 @@ run_self_test() {
   printf -- '-module(cs_seat_uc).\n-export([f/1]).\nf(X) -> cs_seat_repo:f(X).\n' > "$c/src/features/cs/application/cs_seat_uc.erl"
   expect_rule "②" "application 直连 repo" "$c" '铁律5'
 
-  # ③ core 出现外部产品名 moya（铁律8）
+  # ③ core 出现外部产品名 sample_product（铁律8）
   local d="$tmp/coreprod"; seed_fixture "$d"
-  printf -- '-module(elib_moya_bridge).\n-export([f/1]).\nf(X) -> X.\n' > "$d/src/lib/elib_moya_bridge.erl"
-  expect_rule "③" "core 出现产品名 moya" "$d" '铁律8'
+  printf -- '-module(elib_sample_product_bridge).\n-export([f/1]).\nf(X) -> X.\n' > "$d/src/lib/elib_sample_product_bridge.erl"
+  expect_rule "③" "core 出现产品名 sample_product" "$d" '铁律8'
 
   # ④ feature 依赖具体 Plugin（铁律9）
   local e="$tmp/featplugin"; seed_fixture "$e"

@@ -263,16 +263,10 @@ scope_segment(<<"channel">>, _) ->
     <<"channel">>;
 scope_segment(<<"moment">>, _) ->
     <<"moment">>;
-%% teaching（Step 10 教学附件）：段名用固定 scope 名（读鉴权走
-%% moya_attach_logic:authorize 的 submission 绑定关系，与段名无关）。
-%% 此前缺此子句 → scope_segment(<<"teaching">>,_) function_clause →
-%% presign HTTP 500，教学上传全断（R8 契约实测发现；channel/moment 同款先例）。
-scope_segment(<<"teaching">>, _) ->
-    <<"teaching">>;
 scope_segment(<<"talk_record">>, _) ->
     %% 面聊记录（T06/T07）：段名固定 scope 名；读鉴权走
     %% talk_record_attachment_adapter 的记录 ACL 链，与段名无关。
-    %% 缺此子句 → presign 生成 object_key 崩溃（控制器预集成实测，channel/moment/teaching 同款先例）。
+    %% 缺此子句 → presign 生成 object_key 崩溃（控制器预集成实测，channel/moment 同款先例）。
     <<"talk_record">>;
 scope_segment(<<"group">>, undefined) ->
     %% 原 to_bin(undefined) function_clause 隐式崩；显式化后语义不变（fail-closed）
@@ -588,8 +582,7 @@ env_get(Var, Default) ->
 
 %% @doc object key 的**根前缀**（可配，默认无前缀）。
 %%
-%% 用途：多个环境共用同一个 bucket 时做命名空间隔离（如本地开发共用生产的
-%% `imboy` 桶，全部 key 落在 `moya/` 下，避免测试对象污染生产数据）。
+%% 用途：多个环境共用同一个 bucket 时做命名空间隔离（通过独立 bucket 或明确的环境前缀隔离）。
 %%
 %% ⚠ 只作用于**生成** key 的三处（presign_put/3、build_object_key/4、
 %% upload_to_storage/4）；读取类函数（presign_get_for_key/head_object/

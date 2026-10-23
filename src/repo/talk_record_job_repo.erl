@@ -3,7 +3,7 @@
 %%%
 % talk_record_job 数据仓库层。
 %
-% 队列协议（仿 moya_ai_worker claim 分事务 + attachment_delete_worker SKIP
+% 队列协议（持久任务 claim 分事务 + attachment_delete_worker SKIP
 % LOCKED/租约/退避/attempts 上限，T03 findings A4 两范例合并）：
 %   * enqueue_tx/2    —— dedupe_key UNIQUE 幂等投递（HTTP 超时/离线补传
 %                        重试不产生重复任务与重复付费调用，§4）；

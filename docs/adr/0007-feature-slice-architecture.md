@@ -1,5 +1,7 @@
 # ADR: Feature Slice 架构 —— 业务功能按限界上下文纵切，清晰区分 Plugin / Feature / Product
 
+> 2026-10-23：墨芽已迁出。相关案例仅说明历史架构动机；当前边界见 REST API 目录 D2。
+
 - Status: Accepted
 - Date: 2026-09-14
 - 关联：ADR 0001（四层单向依赖）、ADR 0005（模块化单体边界）、ADR 0006（DDD 迁移端点线）、ADR 0003（插件路由命名空间 / `imboy_plugin_*` 冻结）

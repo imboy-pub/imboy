@@ -163,7 +163,7 @@
                 %% qwen3.7-flash 已在该网关 models 列表确认（2026-08-08）
                 model => {env, <<"BAILIAN_MODEL">>, <<"qwen3.7-flash">>}
             },
-            %% 智谱原生多模态（输入模态：图片/视频/文件/文本）——墨芽 AI 回课视频理解通路。
+            %% 智谱原生多模态（输入模态：图片/视频/文件/文本）。
             %% 密钥 export BIGMODEL_API_KEY=<id.secret>；模型 export BIGMODEL_MODEL 覆盖。
             %% ⚠️ glm-5.3-flash 始终思考，勿配 thinking 开关：disabled/low/high/max
             %% 一律被 400 拒绝（「该模型始终思考，不支持关闭思考」）；思考 token 计入输出计费。
@@ -171,7 +171,7 @@
             %% timeout（毫秒，可选）：单次请求超时。缺省 30s（imboy_llm_openai 的
             %% ?DEFAULT_TIMEOUT_MS，与 elib_req 全局默认一致）。视频理解类请求会把
             %% 30s 顶满甚至超时，需要放开到 60s 量级。
-            %% ⚠️ 服务端最坏路径 = timeout × 尝试次数（teaching_ai_max_retries，默认 2）；
+            %% ⚠️ 服务端最坏路径 = timeout × 调用方最大尝试次数；
             %% 客户端轮询预算必须大于它，两侧要成对修改。
             #{
                 name => <<"bigmodel">>,
@@ -443,20 +443,6 @@
         %% presign 有效期是分钟级，24 小时足够覆盖"上传成功但 confirm 丢了、
         %% 客户端稍后重试"的场景。与上面的 age_days 语义不同，勿混用。
         {attachment_pending_cleanup_age_hours, 24},
-        %% 墨芽 AI 回课：是否给 AI provider 签发附件视频的可达 URL。**默认 false**。
-        %% false → worker 只把 object_key 交给模型：回课看不到画面（内容盲，但链路
-        %% 完整、不报错）。true → 每条回课把一段短时（600s）有效的视频 URL 交给
-        %% 第三方多模态模型，属涉及未成年人媒体内容的对外数据流，须先确认合规。
-        %% 详见 moya_ai_worker:maybe_attach_view_url/1。
-        {teaching_ai_attach_video_url, false},
-        %% 墨芽 AI 回课：指定用哪个 llm_providers 条目（如 <<"bigmodel">>）。
-        %% ⚠️ 本键此前在全部配置模板与文档中缺失 —— 未设置时
-        %% moya_ai_draft_logic:analyze_video/2 恒返回 provider_unavailable，
-        %% 草稿一律落 failed 交老师人工队列（任何环境都不会产出 AI 点评）。
-        %% 这是**诚实的失败**，优于产出「看不到视频」的内容盲点评；因此在打开
-        %% {teaching_ai_attach_video_url, true} 之前，不建议把本键设为真实 provider。
-        %% 两者应成对启用：provider 名 + 视频开关，缺一则回课无意义。
-        {teaching_ai_llm_provider, undefined},
         % 启用分布式缓存同步功能
         {dsync_enabled, true},
         %% ---- 缓存 V2.2.1（W1~W5 本地实施轮新增；详见
@@ -855,28 +841,6 @@
             %% 这边是"从未确认"（小时级），不可混用阈值。
             {attachment_pending_cleanup, "17 * * * *",
                 {attach_cleanup_logic, run_pending_cleanup, []}},
-            %% Step 10：教学未绑定附件回收（confirm 后从未绑定 submission 的教学
-            %% 孤儿，小时级；与上两条语义不同——仅 scope='teaching' 且带
-            %% NOT EXISTS submission_asset 守卫，已绑定/撤回证据不误删）。
-            %% 阈值由 {teaching_unbound_cleanup_age_hours, N} 控制（默认 24，下限 2）。
-            {teaching_unbound_cleanup, "23 * * * *",
-                {moya_attach_logic, run_unbound_cleanup, []}},
-            %% Step 11：墨芽 AI 回课 Worker 轮询（每分钟一笔；provider 未就绪时
-            %% 全部快速降级 failed=provider_unavailable，老师人工队列不受影响）。
-            %% （R6/C 修复：原行首 /// 非法注释符致 file:consult 整体解析失败，
-            %%   会使 sys.config 加载崩溃、全部 ecron 作业失效。）
-            %%
-            %% ⚠️ 启用前须知：该 Worker 默认**看不到视频**——附件 URL 由
-            %% {teaching_ai_attach_video_url, true} 决定是否签发，默认 false 时
-            %% provider 只拿到 object_key（回课内容盲）。开启即产生「未成年人
-            %% 媒体内容外发给第三方多模态模型」的数据流，须显式打开并确认合规。
-            {teaching_ai_worker, "*/1 * * * *", {moya_ai_worker, run_once, []}},
-            %% Step 11/R7：AI 回课卡死行回收（worker 在 claim 后崩溃遗留 running
-            %% 行，永不自愈）。每 10 分钟扫一次 running 超龄行回 queued；
-            %% 阈值 {teaching_ai_stuck_age_seconds, N} 控制（默认 900，下限 300
-            %% 强制钳制在 moya_ai_worker:reclaim_stuck_tx/2 内），ai_task_id
-            %% 保留使坏行重试预算延续、快速达上限 failed。
-            {teaching_ai_stuck_reclaim, "*/10 * * * *", {moya_ai_worker, reclaim_stuck, []}},
             %% B-06 支付对账：每小时 37 分核对 payment_transaction 与业务订单一致性，
             %% 发现「已收款但业务侧没落地」就复用回调侧 credit/1 幂等补单，并推
             %% payment_reconcile_* 指标供 Alertmanager 消费（见 imboy-alerts.yml）。

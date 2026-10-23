@@ -40,7 +40,7 @@
 -include_lib("eunit/include/eunit.hrl").
 -include_lib("epgsql/include/epgsql.hrl").
 
-%% ---- 夹具（987 段独立 ID，与 moya 97/98 段互不冲突；每次运行独立 marker 库） ----
+%% ---- 夹具（987 段独立 ID，与其他集成测试 97/98 段互不冲突；每次运行独立 marker 库） ----
 
 -define(OWNER_A, 987001).
 -define(OWNER_B, 987002).

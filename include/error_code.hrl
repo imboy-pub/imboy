@@ -192,7 +192,7 @@
 
 %% 7xx JWT 细分认证失败码（token_ds:decrypt_token 产生）。
 %% MFS3-F01/F02：这两类与 401 同属认证边界，auth_ds:do_authorization
-%% 以真实 HTTP 401 + envelope code 原值返回，客户端（moya 401 单飞刷新 /
+%% 以真实 HTTP 401 + envelope code 原值返回，客户端（小程序 401 单飞刷新 /
 %% imboyapp shouldReLogin）据此触发统一恢复链，并按 code 细分过期与无效。
 % access token 已过期（可用 refresh token 刷新）
 -define(ERR_TOKEN_EXPIRED_REFRESHABLE, 705).
@@ -463,79 +463,14 @@
 -define(ERR_QR_LOGIN_DEVICE_LIMIT, 5205).
 
 %% ===================================================================
-%% 墨芽教学域错误（5400-5519）— 契约冻结（本文件即契约真源）
+%% 微信登录与通用幂等错误
 %% ===================================================================
 
-% 微信登录失败（非凭证类失败）
 -define(ERR_WECHAT_LOGIN_FAILED, 5401).
-% 微信 code 无效或已使用（一次性，重放拒绝）
 -define(ERR_WECHAT_CODE_INVALID, 5402).
-% 登录服务未配置（无 appsecret/provider，不泄漏内部细节）
--define(ERR_TEACHING_PROVIDER_UNCONFIGURED, 5403).
-% 用户未绑定教学身份（sso_identity 无映射）
--define(ERR_TEACHING_IDENTITY_NONE, 5404).
-% 上下文不属于当前用户
--define(ERR_TEACHING_CONTEXT_INVALID, 5420).
-% 上下文已失效（关系 removed/archived）
--define(ERR_TEACHING_CONTEXT_INACTIVE, 5421).
-% 列表请求的 learner_id 非当前用户监护（显式拒绝，非空列表）
--define(ERR_TEACHING_LEARNER_NOT_GUARDED, 5422).
-% 非该学员 can_submit 监护人 / 提交目标学员不符
--define(ERR_TEACHING_NOT_GUARDIAN, 5423).
-% 非本班任课老师（class_staff 关系不存在或不 active）
--define(ERR_TEACHING_NOT_STAFF, 5424).
-% 教学角色无写权限（assistant 写 review / publish）
--define(ERR_TEACHING_STAFF_WRITE_DENIED, 5425).
-% 跨机构访问被拒绝（资源链 organization 不一致）
--define(ERR_TEACHING_CROSS_ORG, 5426).
-% 学员账号绑定：同机构内该账号已绑定其他学员（uk_learner_org_user）
--define(ERR_TEACHING_BIND_DUPLICATE_IN_ORG, 5427).
-% 学员账号绑定：目标用户不存在或不可用
--define(ERR_TEACHING_BIND_INVALID_TARGET, 5428).
-% 学员账号绑定：操作人非 Org Owner / 班级 manager（管理动作守卫）
--define(ERR_TEACHING_BIND_NOT_AUTHORIZED, 5429).
-% 班级不存在或不可见（非本班 active staff；不泄漏班级存在性）
--define(ERR_TEACHING_CLASS_NOT_VISIBLE, 5430).
-% 学员不在本班或已移出（enrollment 无行/removed/机构不一致）
--define(ERR_TEACHING_LEARNER_NOT_IN_CLASS, 5431).
-% 监护关系需完善（0 个或多个 active can_submit 监护人）
--define(ERR_TEACHING_GUARDIAN_SETUP_REQUIRED, 5432).
-% 机构设置仅机构 owner 可操作（AI 辅助开关等机构级策略）
--define(ERR_TEACHING_ORG_OWNER_REQUIRED, 5433).
-% 作业不存在或对请求者不可见
--define(ERR_ASSIGNMENT_NOT_FOUND, 5440).
-% 提交附件不合规（缺视频/超量/非本人/MIME 不符）
--define(ERR_SUBMISSION_ASSETS_INVALID, 5441).
-% 作业已截止或关闭
--define(ERR_ASSIGNMENT_CLOSED, 5442).
-% 提交不存在或不可见
--define(ERR_SUBMISSION_NOT_FOUND, 5443).
-% 该提交已撤回
--define(ERR_SUBMISSION_WITHDRAWN, 5444).
-% 幂等键冲突：同 key 不同请求内容
+-define(ERR_WECHAT_PROVIDER_UNCONFIGURED, 5403).
 -define(ERR_IDEMPOTENCY_CONFLICT, 5460).
-% 缺少幂等键
 -define(ERR_IDEMPOTENCY_KEY_REQUIRED, 5461).
-% 无可发布的回评草稿
--define(ERR_REVIEW_DRAFT_NOT_FOUND, 5480).
-% 该提交已有发布回评，不可撤回
--define(ERR_SUBMISSION_REVIEWED, 5481).
-% 提交已撤回，无法发布回评
--define(ERR_REVIEW_SUBMISSION_WITHDRAWN, 5482).
-% 发布确认学员不一致
--define(ERR_REVIEW_CONFIRM_MISMATCH, 5483).
-% 请求包含服务端保留字段（reviewer_uid/status/published_at 伪造）
--define(ERR_REVIEW_FIELD_NOT_ACCEPTED, 5484).
-% 回评内容为空（发布时无任何有效反馈）
--define(ERR_REVIEW_EMPTY_CONTENT, 5485).
-% 回评已发布，不能再保存草稿（DC-2：存草稿与撤回语境拆分）
--define(ERR_REVIEW_PUBLISHED_DRAFT, 5486).
-% 逐字点评字卡数据不合规（char_reviews 整体结构非法：非数组）
--define(ERR_REVIEW_CHAR_REVIEWS_INVALID, 5487).
-% 订阅授权上报的模板 ID 列表非法（template_ids 缺失/非数组/元素非字符串或超长）
--define(ERR_SUBSCRIBE_TEMPLATES_INVALID, 5488).
-% 邀请码无效或已失效（供并行实现的邀请码 handler 使用，先占位注册）
--define(ERR_INVITE_CODE_INVALID, 5489).
 % 客户端版本低于 E2EE 硬版本门（C12 / AC-25：旧端不能绕过 required E2EE 协议面）
 -define(ERR_E2EE_APP_VERSION_TOO_LOW, 5070).
 
@@ -669,36 +604,6 @@
     5401 => <<"微信登录失败"/utf8>>,
     5402 => <<"微信登录凭证无效或已使用"/utf8>>,
     5403 => <<"登录服务未配置"/utf8>>,
-    5404 => <<"该微信未绑定教学账号，请联系机构"/utf8>>,
-    5420 => <<"所选身份不属于当前用户"/utf8>>,
-    5421 => <<"所选身份已失效"/utf8>>,
-    5422 => <<"未监护该学员"/utf8>>,
-    5423 => <<"无监护提交权限"/utf8>>,
-    5424 => <<"非本班任课老师"/utf8>>,
-    5425 => <<"当前教学角色无操作权限"/utf8>>,
-    5426 => <<"跨机构访问被拒绝"/utf8>>,
-    5427 => <<"该账号在同机构已绑定其他学员"/utf8>>,
-    5428 => <<"目标账号不存在或不可用"/utf8>>,
-    5429 => <<"无学员绑定操作权限"/utf8>>,
-    5430 => <<"班级不存在或不可见"/utf8>>,
-    5431 => <<"学员不在本班或已移出"/utf8>>,
-    5432 => <<"监护关系需完善"/utf8>>,
-    5433 => <<"仅机构管理员可操作机构设置"/utf8>>,
-    5440 => <<"作业不存在"/utf8>>,
-    5441 => <<"提交附件不合规"/utf8>>,
-    5442 => <<"作业已截止或关闭"/utf8>>,
-    5443 => <<"提交不存在"/utf8>>,
-    5444 => <<"该提交已撤回"/utf8>>,
     5460 => <<"请求与幂等键已绑定内容冲突"/utf8>>,
-    5461 => <<"缺少幂等键"/utf8>>,
-    5480 => <<"无可发布的回评草稿"/utf8>>,
-    5481 => <<"该提交已有发布回评，不可撤回"/utf8>>,
-    5482 => <<"提交已撤回，无法发布回评"/utf8>>,
-    5483 => <<"发布确认学员不一致"/utf8>>,
-    5484 => <<"请求包含服务端保留字段"/utf8>>,
-    5485 => <<"回评内容为空"/utf8>>,
-    5486 => <<"回评已发布，不能再保存草稿"/utf8>>,
-    5487 => <<"逐字点评字卡数据不合规"/utf8>>,
-    5488 => <<"订阅消息模板列表非法"/utf8>>,
-    5489 => <<"邀请码无效或已失效"/utf8>>
+    5461 => <<"缺少幂等键"/utf8>>
 }).

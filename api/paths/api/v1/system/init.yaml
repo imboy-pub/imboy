@@ -25,7 +25,7 @@ get:
       in: header
       required: false
       description: |
-        客户端展示术语配置。默认 `generic`，当前内置 `generic`、`moya`；未知、
+        客户端展示术语配置。默认 `generic`，内置 `generic`；未知、
         非法或超过 32 字节的值回退为 `generic`。该配置只控制前端展示词，不参与
         权限、路由或业务状态机。
       schema:

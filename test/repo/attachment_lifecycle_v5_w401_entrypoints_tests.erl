@@ -56,13 +56,11 @@ run() ->
 
 %% 12 入口所属模块（02 §6 入口表 → 生产入口实现模块）。
 -define(ENTRYPOINT_MODULES, [
-    %% reject_size / reject_mime / reject_teaching
+    %% reject_size / reject_mime
     attach_logic,
     %% orphan_cleanup / pending_cleanup
     attach_cleanup_logic,
     attachment_ds,
-    %% teaching_unbound
-    moya_attach_logic,
     %% account_deletion
     user_deletion_logic,
     user_deletion_executor,
@@ -132,8 +130,6 @@ w401_feature_path("attach_cleanup_logic") ->
     "logic/attach_cleanup_logic.erl";
 w401_feature_path("attachment_ds") ->
     "ds/attachment_ds.erl";
-w401_feature_path("moya_attach_logic") ->
-    "logic/moya_attach_logic.erl";
 w401_feature_path("user_deletion_logic") ->
     "logic/user_deletion_logic.erl";
 w401_feature_path("user_deletion_executor") ->

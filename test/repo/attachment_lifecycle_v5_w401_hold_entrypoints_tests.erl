@@ -3,13 +3,13 @@
 %%% Retention×12；DELETE=0）。
 %%%
 %%% 域语义（诚实映射，不伪造 Hold 成功或 N/A）：
-%%%   * metadata 域入口（orphan_cleanup / teaching_unbound / account_deletion /
+%%%   * metadata 域入口（orphan_cleanup / account_deletion /
 %%%     app_retention_purge）：资产=attachment 行 + 治理行（WAR/EAR）——意图
 %%%     函数锁内资格复核拒绝（23510），零删除、零 ready job。
 %%%   * 企业 hold 域入口（eb_private_delete / eb_pending_cleanup）：资产=
 %%%     enterprise_asset 行 + enterprise_retention_hold（workspace 级）——
 %%%     fn/app 层 hold 检查拒绝。
-%%%   * pending 域入口（reject_size / reject_mime / reject_teaching /
+%%%   * pending 域入口（reject_size / reject_mime /
 %%%     pending_cleanup）：资产=pending 对象，无治理行锚点（保护=状态机 +
 %%%     能力窗）——N/A 语义明示，断言 DELETE=0。
 %%%   * eb_purge_drain：drain 侧=Worker（W4-02），生产入口尚不存在——
@@ -120,8 +120,12 @@ seed_scoped_asset(Conn, Key, N, ScopeAtom, ScopeRefVal) ->
         "SELECT * FROM fn_v5_register_pending($1,'b',$2,101,"
         "gen_random_uuid(),$3::jsonb,now() + interval '2 hours',"
         "now() + interval '3 seconds','garage','ns1','c1',$4)",
-        [Key, atom_to_binary(ScopeAtom),
-            registration_fixture(atom_to_binary(ScopeAtom), ScopeRefVal), loc(N)]
+        [
+            Key,
+            atom_to_binary(ScopeAtom),
+            registration_fixture(atom_to_binary(ScopeAtom), ScopeRefVal),
+            loc(N)
+        ]
     ),
     {ok, _, _} = epgsql:equery(
         Conn,
@@ -153,8 +157,11 @@ seed_scoped_asset(Conn, Key, N, ScopeAtom, ScopeRefVal) ->
 registration_fixture(Scope, ScopeRef) ->
     jsone:encode(#{
         <<"subject">> => #{<<"kind">> => <<"user">>, <<"principal">> => <<"101">>},
-        <<"declaration">> => #{<<"mime">> => <<"image/png">>,
-            <<"scope">> => Scope, <<"scope_ref">> => ScopeRef}
+        <<"declaration">> => #{
+            <<"mime">> => <<"image/png">>,
+            <<"scope">> => Scope,
+            <<"scope_ref">> => ScopeRef
+        }
     }).
 
 %% 企业 asset（enterprise_asset 行 + workspace hold fixture）。
@@ -310,12 +317,6 @@ run_matrix(Conn, Fixture) ->
     {ok, _} = attachment_ds:orphan_cleanup(#{age_days => 7}),
     assert_no_delete(Conn, MetaKey, <<"orphan_cleanup/", (atom_to_binary(Fixture, utf8))/binary>>),
 
-    %% ② teaching_unbound：教学扫描范围不含本资产（N/A）→ 零删除
-    {ok, #{cleaned := _}} = moya_attach_logic:cleanup_unbound(2),
-    assert_no_delete(
-        Conn, MetaKey, <<"teaching_unbound/", (atom_to_binary(Fixture, utf8))/binary>>
-    ),
-
     %% ③ account_deletion：注销附件段 = collect + intent（生产同款）→ 治理行拒
     {ok, Keys} = elib_pg:with_tx(fun(C) ->
         user_deletion_executor:collect_attachment_keys_tx(C, 101)
@@ -377,7 +378,7 @@ run_matrix(Conn, Fixture) ->
         Conn, EbPending, <<"eb_pending_cleanup/", (atom_to_binary(Fixture, utf8))/binary>>
     ),
 
-    %% ⑦⑧⑨⑩ pending 域入口（reject_size/mime/teaching、pending_cleanup）：
+    %% ⑦⑧⑨⑩ pending 域入口（reject_size/mime、pending_cleanup）：
     %% pending 对象无治理行锚点——N/A 语义明示；断言 DELETE=0。
     PendKey =
         <<"v5e2e/w401h/pend-", (integer_to_binary(run_base()))/binary, "-",
@@ -476,15 +477,24 @@ run_base() ->
 %% Pin/confirm must finish inside the real capability window. Never shrink it.
 %% Wait on the database clock, capped at five seconds; a missed window fails.
 await_upload_expiry(Conn, Key) ->
-    {ok, _, [{true}]} = epgsql:equery(Conn,
+    {ok, _, [{true}]} = epgsql:equery(
+        Conn,
         "SELECT session_state='confirmed' AND upload_content IS NOT NULL"
         " AND upload_expires_at > clock_timestamp()"
-        " FROM attach_pending WHERE object_key=$1", [Key]),
-    {ok, _, [_]} = epgsql:equery(Conn,
+        " FROM attach_pending WHERE object_key=$1",
+        [Key]
+    ),
+    {ok, _, [_]} = epgsql:equery(
+        Conn,
         "SELECT pg_sleep(LEAST(5.0, GREATEST(0.0,"
         " EXTRACT(EPOCH FROM (upload_expires_at - clock_timestamp())))))"
-        " FROM attach_pending WHERE object_key=$1", [Key]),
-    {ok, _, [{true}]} = epgsql:equery(Conn,
+        " FROM attach_pending WHERE object_key=$1",
+        [Key]
+    ),
+    {ok, _, [{true}]} = epgsql:equery(
+        Conn,
         "SELECT upload_expires_at <= clock_timestamp()"
-        " FROM attach_pending WHERE object_key=$1", [Key]),
+        " FROM attach_pending WHERE object_key=$1",
+        [Key]
+    ),
     ok.

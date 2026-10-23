@@ -113,14 +113,6 @@
 | `sso_config` |
 | `ai_agent_role_version` |
 | `agent_task` |
-| `moya_task` |
-| `moya_assignment` |
-| `moya_submission` |
-| `submission_asset` |
-| `calligraphy_review_draft` |
-| `teacher_review` |
-| `review_asset` |
-| `teaching_admin_audit` |
 | `business_identity` |
 | `cs_event` |
 | `cs_read_cursor` |

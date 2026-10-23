@@ -11,7 +11,7 @@
 - `direct-v1` 是**新会话协议**：客户端在创建会话时显式声明 `protocol=direct-v1`；未声明者保持 V5 语义不变（旧字段、旧枚举、旧 URL 含义均不原地改义）。
 - 已创建 direct 会话后不静默回退 BEAM 上传路径（I14）；失败只能重试 direct 或显式取消后另建会话。
 - 协议版本固定到会话：`attach_pending.upload_registration->'protocol' = "direct-v1"`，会话存续期内不可变。
-- 本轮不启用：MPU（T37–T39 范围外）、新 Disk 数据面（T42/T43 用户取消）、Moya 改造（第四仓不动）。
+- 本轮不启用：MPU（T37–T39 范围外）、新 Disk 数据面（T42/T43 用户取消）。墨芽已迁出独立产品，旧教学 scope 不再提供上传或读取接口；历史媒体保持保护，迁移边界见 REST API 目录 D2。
 
 ## 1. 会话状态机（映射真实 Schema）
 
@@ -115,7 +115,7 @@ s3_put presign 合同（step-5 实现，此处冻结语义）：
 
 ## 7. 下载与撤权窗口（scope 政策冻结）
 
-- group/channel/moment/teaching + 企业/Seat/Visitor content：**逐请求 edge_content**（业务 ACL 复核，正文不进 BEAM）。
+- group/channel/moment + 企业/Seat/Visitor content：**逐请求 edge_content**（业务 ACL 复核，正文不进 BEAM）。
 - private/c2c：**有限授权窗口**短 GET（与签名寿命一致，600s；客户端缓存 540s 现状即为此设计），窗口内不追溯撤销（如实描述，不强称强撤权）。
 - 历史已发 S3 GET URL：到期自然排空（最长 600s+余量），不宣称可主动召回；已下载字节不可召回。
 - staging/candidate 在 CONFIRMED 前**无任何面向用户的读取或匿名面**（I13）。

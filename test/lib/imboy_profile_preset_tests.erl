@@ -115,7 +115,6 @@ phase1_delivery_whitelist_test_() ->
             fun(K) -> ?assertEqual(false, maps:get(K, Features)) end,
             [
                 wallet,
-                moya,
                 channel_discover,
                 channel_invitation,
                 channel_order,
@@ -168,7 +167,6 @@ phase1_delivery_delivery_lock_test_() ->
         ?assert(lists:member(agent_hub, Locked)),
         ?assert(lists:member(mcp, Locked)),
         ?assert(lists:member(wallet, Locked)),
-        ?assert(lists:member(moya, Locked)),
         ?assertNot(lists:member(moment, Locked)),
         ?assertNot(lists:member(location, Locked)),
         ?assertNot(lists:member(group_vote, Locked)),

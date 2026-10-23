@@ -33,10 +33,6 @@ cases() ->
         fun account_deletion_intent_insert_error/0,
         fun account_deletion_audit_insert_error/0,
         fun account_deletion_commit_response_lost/0,
-        fun teaching_unbound_rollback/0,
-        fun teaching_unbound_intent_insert_error/0,
-        fun teaching_unbound_audit_insert_error/0,
-        fun teaching_unbound_commit_response_lost/0,
         fun eb_pending_cleanup_rollback/0,
         fun eb_pending_cleanup_intent_insert_error/0,
         fun eb_pending_cleanup_audit_insert_error/0,
@@ -59,7 +55,6 @@ setup() ->
         enterprise_asset_retention_logic,
         elib_pg,
         elib_oss,
-        moya_submission_repo,
         eb_pg_asset_meta,
         eb_pg_store
     ],
@@ -218,23 +213,6 @@ account_deletion_rollback() -> account_deletion_fault(rollback).
 account_deletion_intent_insert_error() -> account_deletion_fault(intent_insert_error).
 account_deletion_audit_insert_error() -> account_deletion_fault(audit_insert_error).
 account_deletion_commit_response_lost() -> account_deletion_fault(commit_response_lost).
-
-%% 4. teaching_unbound（moya_attach_logic：扫描空=范围外 N/A；注入以扫描
-%%    失败形态验证入口不误报 ok）
-teaching_unbound_fault(Fault) ->
-    meck:expect(moya_submission_repo, unbound_teaching_attachments, fun(_) ->
-        case Fault of
-            rollback -> {error, sql_rollback};
-            _ -> {error, fault_result(Fault)}
-        end
-    end),
-    {ok, #{cleaned := 0, errors := 0}} = moya_attach_logic:cleanup_unbound(2),
-    no_object_delete().
-
-teaching_unbound_rollback() -> teaching_unbound_fault(rollback).
-teaching_unbound_intent_insert_error() -> teaching_unbound_fault(intent_insert_error).
-teaching_unbound_audit_insert_error() -> teaching_unbound_fault(audit_insert_error).
-teaching_unbound_commit_response_lost() -> teaching_unbound_fault(commit_response_lost).
 
 %% 5. eb_pending_cleanup（eb_asset_app cleanup_pending：claim 失败=skipped）
 eb_pending_cleanup_fault(Fault) ->

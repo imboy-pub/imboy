@@ -111,8 +111,7 @@ all_returns_binary_key_view_for_known_features_test_() ->
         ai_assistant => true,
         agent_hub => false,
         mcp => true,
-        wallet => false,
-        moya => false
+        wallet => false
     },
     ?WITH_MECKS(
         [
@@ -165,8 +164,7 @@ feature_names_contract_test() ->
             ai_assistant,
             agent_hub,
             mcp,
-            wallet,
-            moya
+            wallet
         ],
         imboy_feature:feature_names()
     ).

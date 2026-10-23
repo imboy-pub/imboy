@@ -23,7 +23,7 @@
 %% 用法（测试套件内）：
 %%   setup_conn() ->
 %%       inttest_marker_db:provision(
-%%           #{env_prefix => <<"MOYA_INTTEST">>,
+%%           #{env_prefix => <<"IMBOY_INTTEST">>,
 %%             connect_extra => #{codecs => [{epgsql_codec_rfc3339_bin, []}]}}).
 %%   close_conn(State) -> inttest_marker_db:release(State).
 %%   %% State 内 conn 字段为已连接 epgsql pid；测试体自行 BEGIN/ROLLBACK。
@@ -66,13 +66,15 @@ provision(Opts) when is_map(Opts) ->
 %% the standard extensions, but the caller must apply its own schema explicitly.
 schema_mode(Opts) ->
     case maps:get(schema_mode, Opts, full) of
-        full -> full;
+        full ->
+            full;
         empty ->
             case {maps:get(reuse, Opts, false), maps:is_key(migration_target, Opts)} of
                 {false, false} -> empty;
                 _ -> error(marker_db_empty_schema_cannot_reuse_or_target)
             end;
-        Other -> error({marker_db_invalid_schema_mode, Other})
+        Other ->
+            error({marker_db_invalid_schema_mode, Other})
     end.
 
 provision_fresh(Opts) when is_map(Opts) ->
@@ -119,7 +121,7 @@ release_fresh(#{conn := Conn, maint_conn := MaintConn, db := DbName, server := S
 %% 背景（evidence/CP-TD-A02 full_run1/run2 实证）：全量 eunit 长跑中，
 %% 本 VM 对 127.0.0.1:<port> 的新建 TCP 连接会被 macOS Docker 端口转发层
 %% 持续 econnrefused（同刻 pg_isready / 全新 erl VM 直连均成功、容器与
-%% postmaster 全程健康——按进程拒绝，非全局窗口）。moya_ai_worker_tests
+%% postmaster 全程健康——按进程拒绝，非全局窗口）。历史 worker 测试
 %% 每用例独立 provision（18 次/全量），一次被拒即整组 cancel。
 %%
 %% 复用语义：同 env_prefix 的 provision 共享同一 marker 库与同一条连接

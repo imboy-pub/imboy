@@ -708,11 +708,11 @@ put_object_httpc_error_returns_error_test_() ->
 %% ===================================================================
 %%
 %% 背景：本地开发共用生产的 `imboy` 桶，但不能让测试对象污染生产数据，
-%% 于是给本地的全部 object key 加一个根前缀 `moya/`。
+%% 于是给本地的全部 object key 加一个根前缀 `dev-fixture/`。
 %%
 %% ⚠ 关键不变量：前缀只在**生成** key 处拼一次。读取类函数
 %% （presign_get_for_key / head_object / put_object）收到的 key 已含前缀，
-%% 若再拼一次就会变成 `moya/moya/...`，表现为「对象 404」且极难定位。
+%% 若再拼一次就会变成 `dev-fixture/dev-fixture/...`，表现为「对象 404」且极难定位。
 
 with_garage_cfg(Cfg, Fun) ->
     Old = application:get_env(imboy, garage),
@@ -752,14 +752,14 @@ key_prefix_applies_to_build_object_key_test_() ->
                 Cfg = (base_cfg())#{key_prefix => P},
                 with_garage_cfg(Cfg, fun() ->
                     Key = elib_oss:build_object_key(7, <<"private">>, undefined, <<"a.jpg">>),
-                    ?assertMatch(<<"moya/u7/", _/binary>>, Key),
+                    ?assertMatch(<<"dev-fixture/u7/", _/binary>>, Key),
                     %% 公开资源（头像）同样带前缀
                     Pub = elib_oss:build_object_key(7, <<"public">>, undefined, <<"a.jpg">>),
-                    ?assertMatch(<<"moya/u7/", _/binary>>, Pub)
+                    ?assertMatch(<<"dev-fixture/u7/", _/binary>>, Pub)
                 end)
             end,
-            %% 带不带结尾斜杠都要正确（自动补 /，避免拼出 moyau7/ 这种怪物）
-            [<<"moya">>, <<"moya/">>]
+            %% 带不带结尾斜杠都要正确（自动补 /，避免拼出 dev-fixtureu7/ 这种怪物）
+            [<<"dev-fixture">>, <<"dev-fixture/">>]
         )
     end).
 
@@ -767,10 +767,10 @@ key_prefix_applies_to_presign_put_test_() ->
     ?WITH_MECKS(
         [{elib_s3_sign, [{'presign_put', 5, fun(_E, _B, Key, _M, _X) -> Key end}]}],
         fun() ->
-            Cfg = (base_cfg())#{key_prefix => <<"moya/">>},
+            Cfg = (base_cfg())#{key_prefix => <<"dev-fixture/">>},
             with_garage_cfg(Cfg, fun() ->
                 Key = elib_oss:presign_put(<<"a.jpg">>, <<"image/jpeg">>, 60),
-                ?assertMatch(<<"moya/file_", _/binary>>, Key)
+                ?assertMatch(<<"dev-fixture/file_", _/binary>>, Key)
             end)
         end
     ).
@@ -780,12 +780,12 @@ key_prefix_not_applied_twice_on_read_test_() ->
     ?WITH_MECKS(
         [{elib_s3_sign, [{'presign_get', 4, fun(_E, _B, Key, _X) -> Key end}]}],
         fun() ->
-            Cfg = (base_cfg())#{key_prefix => <<"moya/">>},
+            Cfg = (base_cfg())#{key_prefix => <<"dev-fixture/">>},
             with_garage_cfg(Cfg, fun() ->
                 %% 传入的 key 已含前缀，返回值必须原样
                 ?assertEqual(
-                    <<"moya/file_1/a.jpg">>,
-                    elib_oss:presign_get_for_key(<<"imboy">>, <<"moya/file_1/a.jpg">>, 60)
+                    <<"dev-fixture/file_1/a.jpg">>,
+                    elib_oss:presign_get_for_key(<<"imboy">>, <<"dev-fixture/file_1/a.jpg">>, 60)
                 )
             end)
         end

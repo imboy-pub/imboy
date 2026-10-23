@@ -119,7 +119,7 @@ principal_credential_classes_test() ->
     ?assertEqual(shop_key, eb_auth_principal:credential_class(cs_shop_key)).
 
 %% 三概念分离的**值域**证据：function_key 值域复用 domain（eb_identity），
-%% governance role 值域与既有 moya_acl:resolve_org_manager/2 相同的 owner/admin，
+%% governance role 值域与既有 机构治理 相同的 owner/admin，
 %% permission 是独立字符串集合，三集合两两不相等。
 three_concepts_are_distinct_value_domains_test() ->
     ?assertEqual(eb_identity:function_keys(), eb_auth_permission:function_keys()),

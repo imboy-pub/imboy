@@ -114,7 +114,7 @@ save(Conn, CreatedAt, Uid, [Attach | Tail]) ->
     % Path2 = ec_cnv:to_binary(Path),
     Attach2 = jsone:encode(Attach),
 
-    %% image/* mime 归一化（2026-09-11 moya 报障根因修复）：历史逻辑用 object_key
+    %% image/* mime 归一化（历史 MIME 归一化修复）：历史逻辑用 object_key
     %% 扩展名重写 image 子类型（image/jpeg + .jpg → image/jpg），产生非法 MIME
     %% 子类型——confirm HEAD 核实值本为 image/jpeg，落库却成 image/jpg，客户端
     %% 按 image/jpeg 白名单判不过。改为仅归一化已知别名，标准值原样落库

@@ -532,22 +532,6 @@ feature-cross-repo-check: ## 校验三仓特性产物与 config/product-feature-
 cron-check: ## 校验 ecron 定时作业配置（模板真源硬门 + 逐机漂移告警）
 	@bash scripts/check_cron_config.sh
 
-# 墨芽 AI 回课启用前置：指定的 teaching_ai_llm_provider 在本环境 llm_providers
-# 里是否存在、是否满足 vision、key 是否可用（四类可证明「开了也一定不工作」
-# 的配置为硬门）；视频开关配对与 ecron worker 为告警。
-# 不带参数扫全部存在的 config；也可 `bash scripts/check_moya_ai_config.sh <config>`。
-.PHONY: moya-ai-check
-moya-ai-check: ## 校验墨芽 AI 回课启用前置（provider 名/vision/key 硬门 + 配对告警）
-	@bash scripts/check_moya_ai_config.sh
-
-# 密钥可用性体检：上面的 config 门禁对 api_key 只能告警（密钥走 {env, Var}，
-# 只存在于进程环境里，配置文件里看不到值）。本目标另起独立临时节点、加载
-# .env.local 后真的发一次纯文本 ping，把「配置全绿但一触发就 provider_unavailable」
-# 这一类漏检补上。不重启、不动运行中的服务；`--no-ping` 可离线只验被读到。
-.PHONY: moya-ai-key-check
-moya-ai-key-check: ## 校验墨芽 AI 密钥真能认证（独立临时节点 + 纯文本 ping）
-	@bash scripts/check_moya_ai_key.sh
-
 # P3-C2 API 契约门禁（Golden Gates §2.3 C2 / §2.2 契约变更流程）
 # 真源：src/imboy_router.erl + priv/migrations CHECK 约束 + include/error_code.hrl
 # 合法变更：改后端真源后，同一 PR 内 make contract-export 并提交 .contract/api_contract.json

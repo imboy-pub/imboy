@@ -168,7 +168,7 @@ python3 imboy/scripts/verify_product_feature_artifacts.py \
 一期交付 profile 下，运行时（DB saved / 远端配置）**不得重新开启**的特性键，合并链最后强制压 `false`（与 e2ee `storage_mode` 硬闸同一时机），保证"旧缓存或远端全开配置不能绕过关闭面"（AC03）。共 13 键：
 
 - **二期七域**：`e2ee`、`rtc`、`live_room`、`bot_webhook`、`ai_assistant`、`agent_hub`、`mcp`
-- **一期默认不承诺的运营域**：`wallet`、`moya`、`channel_discover`、`channel_invitation`、`channel_order`、`project`
+- **一期默认不承诺的运营域**：`wallet`、`channel_discover`、`channel_invitation`、`channel_order`、`project`
 
 **OA 共享设施豁免（F08）**：`bot_delivery` outbox / worker / guard 不在锁内——`enterprise_webhook`（OA 对接）走独立门，Bot 产品关闭不影响合法企业事件投递。
 

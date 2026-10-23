@@ -119,7 +119,7 @@
 | 特性开关 | Feature Flag / Product Feature | `product-feature-manifest.json`、`make feature-smoke` | 编译期/运行期产品特性裁剪与开关体系。 | — |
 | 插件 | Plugin | `imboy_plugin_*`、`priv/plugins/` | 签名插件动态加载体系（可注册路由与 WS action）。 | — |
 | MCP | Model Context Protocol | `src/mcp/`（vendored barrel_mcp）、`mcp_*` 表 | 智能体工具调用协议引擎与客户端治理。 | — |
-| 墨芽 | Moya (Calligraphy) | `moya_*_handler`，路由 `/api/v1/moya/*` | 微信小程序书法教学子系统（班级/作业/AI 回课），独立业务线。 | — |
+| 墨芽 | Moya | 已迁出独立产品 | IMBoy 不再提供教学接口、worker 与专属表；历史迁移及封存证据仅作审计。 | — |
 
 ## 9. 代码命名前缀约定（供文档引用代码时对照）
 

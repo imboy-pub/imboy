@@ -1,7 +1,7 @@
 %% Migration 108/109, group attachment/action ACL, and room-key member snapshot
 %% PostgreSQL integration coverage.
 %% The harness provisions a one-shot marker database (inttest_marker_db recipe,
-%% env prefix MOYA_INTTEST, full migration chain to current head); any
+%% env prefix IMBOY_INTTEST, full migration chain to current head); any
 %% provisioning failure fails the suite explicitly — no silent skip.
 
 -module(group_attachment_acl_integration_tests).
@@ -26,7 +26,7 @@ group_attachment_acl_postgres_test_() ->
 setup() ->
     %% 一次性 marker 库（inttest_marker_db 配方）：env 覆盖（<= imboy.pg_conf
     %% 回退）→ 建库 → 12 扩展 → erlang_migrate:up 全链；任一失败显式 error。
-    inttest_marker_db:provision(#{env_prefix => <<"MOYA_INTTEST">>}).
+    inttest_marker_db:provision(#{env_prefix => <<"IMBOY_INTTEST">>}).
 
 cleanup(State) ->
     inttest_marker_db:release(State).
@@ -34,14 +34,15 @@ cleanup(State) ->
 run(State) ->
     Conn = maps:get(conn, State),
     [
-        {timeout, 240, ?_test(begin
-            c2g_boundary_migration_matrix(Conn),
-            group_session_attestation_migration_matrix(Conn),
-            historical_migration_roundtrip(),
-            authorization_matrix(Conn),
-            action_recipient_matrix(Conn),
-            member_public_keys_matrix(Conn)
-        end)}
+        {timeout, 240,
+            ?_test(begin
+                c2g_boundary_migration_matrix(Conn),
+                group_session_attestation_migration_matrix(Conn),
+                historical_migration_roundtrip(),
+                authorization_matrix(Conn),
+                action_recipient_matrix(Conn),
+                member_public_keys_matrix(Conn)
+            end)}
     ].
 
 group_session_attestation_migration_matrix(Conn) ->
@@ -219,20 +220,26 @@ historical_migration_roundtrip() ->
     %% 108 回滚必须独立于 head 的 V5 依赖；ACL 业务仍在原 head 库验证。
     %% Isolate 108's rollback from later V5 dependencies and the head ACL fixture.
     State = inttest_marker_db:provision(#{
-        env_prefix => <<"MOYA_INTTEST">>, migration_target => 108
+        env_prefix => <<"IMBOY_INTTEST">>, migration_target => 108
     }),
     Conn = maps:get(conn, State),
     try
         migration_roundtrip_and_backfill(Conn),
         MigConfig = #{conn => Conn, dir => "priv/migrations", strict => true},
         ok = erlang_migrate:up(MigConfig),
-        ?assertEqual({ok, inttest_marker_db:migration_head(), false},
-            erlang_migrate:version(MigConfig)),
+        ?assertEqual(
+            {ok, inttest_marker_db:migration_head(), false},
+            erlang_migrate:version(MigConfig)
+        ),
         assert_migration_objects(Conn),
-        ?assertEqual(91080401,
-            scalar(Conn, <<"SELECT group_file_id FROM attachment WHERE id = 91080501">>)),
-        ?assertEqual(1,
-            scalar(Conn, <<"SELECT anchor_conv_seq FROM attachment WHERE id = 91080502">>))
+        ?assertEqual(
+            91080401,
+            scalar(Conn, <<"SELECT group_file_id FROM attachment WHERE id = 91080501">>)
+        ),
+        ?assertEqual(
+            1,
+            scalar(Conn, <<"SELECT anchor_conv_seq FROM attachment WHERE id = 91080502">>)
+        )
     after
         inttest_marker_db:release(State)
     end.

@@ -34,7 +34,6 @@
     "/api/v1/test/req_get",
     "/api/v1/test/req_post",
     "/api/v1/user/show",
-    "/api/v1/wechat/mini/events",
     "/api/v1/ws",
     "/brand",
     "/healthz",
@@ -2311,7 +2310,7 @@
       },
       {
         "action": "wechat_mini_login",
-        "handler": "moya_auth_handler",
+        "handler": "wechat_mini_auth_handler",
         "path": "/api/v1/auth/wechat-mini/login",
         "static": false
       },
@@ -4134,138 +4133,6 @@
         "static": false
       },
       {
-        "action": "list",
-        "handler": "moya_assignment_handler",
-        "path": "/api/v1/moya/assignments",
-        "static": false
-      },
-      {
-        "action": "detail",
-        "handler": "moya_assignment_handler",
-        "path": "/api/v1/moya/assignments/:id",
-        "static": false
-      },
-      {
-        "action": "create_submission",
-        "handler": "moya_assignment_handler",
-        "path": "/api/v1/moya/assignments/:id/submissions",
-        "static": false
-      },
-      {
-        "action": "create_code",
-        "handler": "moya_invite_handler",
-        "path": "/api/v1/moya/classes/:id/invite-code",
-        "static": false
-      },
-      {
-        "action": "list",
-        "handler": "moya_roster_handler",
-        "path": "/api/v1/moya/classes/:id/learners",
-        "static": false
-      },
-      {
-        "action": "switch",
-        "handler": "moya_context_handler",
-        "path": "/api/v1/moya/context/switch",
-        "static": false
-      },
-      {
-        "action": "contexts",
-        "handler": "moya_context_handler",
-        "path": "/api/v1/moya/contexts",
-        "static": false
-      },
-      {
-        "action": "info",
-        "handler": "moya_invite_handler",
-        "path": "/api/v1/moya/invite/info",
-        "static": false
-      },
-      {
-        "action": "join",
-        "handler": "moya_invite_handler",
-        "path": "/api/v1/moya/invite/join",
-        "static": false
-      },
-      {
-        "action": "bind",
-        "handler": "moya_learner_bind_handler",
-        "path": "/api/v1/moya/learners/:id/bind",
-        "static": false
-      },
-      {
-        "action": "history",
-        "handler": "moya_assignment_handler",
-        "path": "/api/v1/moya/learners/:id/history",
-        "static": false
-      },
-      {
-        "action": "history_unread_count",
-        "handler": "moya_assignment_handler",
-        "path": "/api/v1/moya/learners/:id/history/unread-count",
-        "static": false
-      },
-      {
-        "action": "unbind",
-        "handler": "moya_learner_bind_handler",
-        "path": "/api/v1/moya/learners/:id/unbind",
-        "static": false
-      },
-      {
-        "action": "queue",
-        "handler": "moya_review_handler",
-        "path": "/api/v1/moya/review-queue",
-        "static": false
-      },
-      {
-        "action": "submission_detail",
-        "handler": "moya_assignment_handler",
-        "path": "/api/v1/moya/submissions/:id",
-        "static": false
-      },
-      {
-        "action": "ai_draft",
-        "handler": "moya_review_handler",
-        "path": "/api/v1/moya/submissions/:id/ai-draft",
-        "static": false
-      },
-      {
-        "action": "save_draft",
-        "handler": "moya_review_handler",
-        "path": "/api/v1/moya/submissions/:id/review-draft",
-        "static": false
-      },
-      {
-        "action": "workbench",
-        "handler": "moya_review_handler",
-        "path": "/api/v1/moya/submissions/:id/review-workbench",
-        "static": false
-      },
-      {
-        "action": "publish",
-        "handler": "moya_review_handler",
-        "path": "/api/v1/moya/submissions/:id/reviews/publish",
-        "static": false
-      },
-      {
-        "action": "withdraw",
-        "handler": "moya_assignment_handler",
-        "path": "/api/v1/moya/submissions/:id/withdraw",
-        "static": false
-      },
-      {
-        "action": "report",
-        "handler": "moya_subscribe_handler",
-        "path": "/api/v1/moya/subscribe/report",
-        "static": false
-      },
-      {
-        "action": "tasks",
-        "handler": "moya_task_handler",
-        "path": "/api/v1/moya/tasks",
-        "static": false
-      },
-      {
         "action": "forward",
         "handler": "msg_handler",
         "path": "/api/v1/msg/forward",
@@ -4884,6 +4751,54 @@
         "static": false
       },
       {
+        "action": "claim",
+        "handler": "talk_record_client_handler",
+        "path": "/api/v1/talk-records/:id/jobs/:job_id/client-executions",
+        "static": false
+      },
+      {
+        "action": "get",
+        "handler": "talk_record_client_handler",
+        "path": "/api/v1/talk-records/:id/jobs/:job_id/client-executions/:run_id",
+        "static": false
+      },
+      {
+        "action": "plan",
+        "handler": "talk_record_client_handler",
+        "path": "/api/v1/talk-records/:id/jobs/:job_id/client-executions/:run_id/chunk-plan",
+        "static": false
+      },
+      {
+        "action": "complete",
+        "handler": "talk_record_client_handler",
+        "path": "/api/v1/talk-records/:id/jobs/:job_id/client-executions/:run_id/complete",
+        "static": false
+      },
+      {
+        "action": "heartbeat",
+        "handler": "talk_record_client_handler",
+        "path": "/api/v1/talk-records/:id/jobs/:job_id/client-executions/:run_id/heartbeat",
+        "static": false
+      },
+      {
+        "action": "dispatch",
+        "handler": "talk_record_client_handler",
+        "path": "/api/v1/talk-records/:id/jobs/:job_id/client-executions/:run_id/parts/:seq/dispatch-intents",
+        "static": false
+      },
+      {
+        "action": "result",
+        "handler": "talk_record_client_handler",
+        "path": "/api/v1/talk-records/:id/jobs/:job_id/client-executions/:run_id/parts/:seq/result",
+        "static": false
+      },
+      {
+        "action": "settle",
+        "handler": "talk_record_client_handler",
+        "path": "/api/v1/talk-records/:id/jobs/:job_id/client-executions/:run_id/settle",
+        "static": false
+      },
+      {
         "action": "job_retry",
         "handler": "talk_record_handler",
         "path": "/api/v1/talk-records/:id/jobs/:job_id/retry",
@@ -5304,12 +5219,6 @@
         "static": false
       },
       {
-        "action": null,
-        "handler": "moya_wechat_msg_handler",
-        "path": "/api/v1/wechat/mini/events",
-        "static": false
-      },
-      {
         "action": "entries",
         "handler": "enterprise_oa_sso_handler",
         "path": "/api/v1/workbench/entries",
@@ -5668,7 +5577,7 @@
     }
   },
   "error_code_summary": {
-    "defines": 191,
+    "defines": 161,
     "distinct_codes": [
       0,
       1,
@@ -5802,38 +5711,8 @@
       5401,
       5402,
       5403,
-      5404,
-      5420,
-      5421,
-      5422,
-      5423,
-      5424,
-      5425,
-      5426,
-      5427,
-      5428,
-      5429,
-      5430,
-      5431,
-      5432,
-      5433,
-      5440,
-      5441,
-      5442,
-      5443,
-      5444,
       5460,
-      5461,
-      5480,
-      5481,
-      5482,
-      5483,
-      5484,
-      5485,
-      5486,
-      5487,
-      5488,
-      5489
+      5461
     ],
     "note": "flutter 全量契约由 C1 imboyapp/scripts/generate_error_code.dart --check 承担",
     "segments": {
@@ -5844,7 +5723,7 @@
       "5100": 7,
       "5200": 6,
       "5300": 7,
-      "5400": 35,
+      "5400": 5,
       "700": 2,
       "900": 43
     },

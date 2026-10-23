@@ -1,7 +1,7 @@
 -module(talk_record_job_worker).
 -moduledoc "面聊持久处理 job worker（T12）：gen_server 壳 + claim 分事务 + kind 分派 + 过期租约 reaper。".
 %%%
-% talk_record_job 持久 worker（仿 moya_ai_worker 的 claim/finish 分事务 +
+% talk_record_job 持久 worker（持久任务 的 claim/finish 分事务 +
 % attachment_delete_worker 的 gen_server 壳/SKIP LOCKED/退避/禁用默认）：
 %
 %   tick → run_batch（≤BATCH_LIMIT）→ 每 job：claim tx（租约）→ 分派 →
@@ -86,7 +86,7 @@ kick() ->
     end.
 
 %% @doc 池入口：claim → 分派 → finish（单条；claim 与 finish 分开事务，
-%% 处理期间不持锁——moya_ai_worker 范式）。
+%% 处理期间不持锁——持久任务范式）。
 -spec run_once() -> {ok, done | map()} | {error, term()}.
 run_once() ->
     Token = new_token(),

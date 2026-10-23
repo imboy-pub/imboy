@@ -84,11 +84,9 @@ entrypoints() ->
     [
         {reject_size, <<"group">>, null, 10},
         {reject_mime, <<"group">>, null, 11},
-        {reject_teaching, <<"private">>, null, 12},
         {orphan_cleanup, <<"moment">>, null, 13},
         {pending_cleanup, <<"private">>, null, 14},
         {account_deletion, <<"private">>, null, 15},
-        {teaching_unbound, <<"private">>, <<"AES-256-GCM">>, 16},
         {app_confirm_reject, <<"enterprise">>, null, 17},
         {app_retention_purge, <<"enterprise">>, null, 18},
         {eb_private_delete, <<"c2c">>, null, 19},
@@ -141,8 +139,11 @@ seed(Conn, Key, ScopeVal, Cipher, N) ->
 registration_fixture(Scope, ScopeRef) ->
     jsone:encode(#{
         <<"subject">> => #{<<"kind">> => <<"user">>, <<"principal">> => <<"101">>},
-        <<"declaration">> => #{<<"mime">> => <<"image/png">>,
-            <<"scope">> => Scope, <<"scope_ref">> => ScopeRef}
+        <<"declaration">> => #{
+            <<"mime">> => <<"image/png">>,
+            <<"scope">> => Scope,
+            <<"scope_ref">> => ScopeRef
+        }
     }).
 
 scope_ref_fixture(<<"group">>) -> <<"66">>;
@@ -274,8 +275,10 @@ w302_entrypoint_matrix(Conn, Ep, ScopeVal, Cipher, N) ->
             AttId = ?ASSET_BASE + N2,
             %% 明文先证明可清理，避免 gc_verified=false 掩盖真正的 hold 拒绝。
             %% Make plaintext otherwise eligible before installing its hold.
-            ?assertEqual({ok, Cipher =:= null},
-                attachment_repo:refresh_gc_verified_tx(Conn, iolist_to_binary(Key))),
+            ?assertEqual(
+                {ok, Cipher =:= null},
+                attachment_repo:refresh_gc_verified_tx(Conn, iolist_to_binary(Key))
+            ),
             install_governance(Conn, AttId, Scope),
             R = e(
                 Conn,
@@ -345,15 +348,24 @@ w302_hold_gc_race(Conn) ->
 %% Pin/confirm must finish inside the real capability window. Never shrink it.
 %% Wait on the database clock, capped at five seconds; a missed window fails.
 await_upload_expiry(Conn, Key) ->
-    {ok, _, [{true}]} = epgsql:equery(Conn,
+    {ok, _, [{true}]} = epgsql:equery(
+        Conn,
         "SELECT session_state='confirmed' AND upload_content IS NOT NULL"
         " AND upload_expires_at > clock_timestamp()"
-        " FROM attach_pending WHERE object_key=$1", [Key]),
-    {ok, _, [_]} = epgsql:equery(Conn,
+        " FROM attach_pending WHERE object_key=$1",
+        [Key]
+    ),
+    {ok, _, [_]} = epgsql:equery(
+        Conn,
         "SELECT pg_sleep(LEAST(5.0, GREATEST(0.0,"
         " EXTRACT(EPOCH FROM (upload_expires_at - clock_timestamp())))))"
-        " FROM attach_pending WHERE object_key=$1", [Key]),
-    {ok, _, [{true}]} = epgsql:equery(Conn,
+        " FROM attach_pending WHERE object_key=$1",
+        [Key]
+    ),
+    {ok, _, [{true}]} = epgsql:equery(
+        Conn,
         "SELECT upload_expires_at <= clock_timestamp()"
-        " FROM attach_pending WHERE object_key=$1", [Key]),
+        " FROM attach_pending WHERE object_key=$1",
+        [Key]
+    ),
     ok.

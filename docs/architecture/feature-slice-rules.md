@@ -1,5 +1,7 @@
 # Feature Slice 架构铁律（规范性）
 
+> 2026-10-23：墨芽已迁出。相关案例仅说明历史架构动机；当前边界见 REST API 目录 D2。
+
 > **状态**: 冻结 v1.5 — 2026-09-14
 > **性质**: 规范性（normative）。与 ADR 0007 配套；ADR 记录"为什么"，本文记录"必须怎么做"。
 > **适用**: `src/features/`（Feature）、`src/products/`（Product）、`src/plugins/`（Plugin）下所有代码

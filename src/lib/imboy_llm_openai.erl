@@ -104,11 +104,6 @@ do_chat(_Uid, Messages, Opts) ->
 %% 截断（-> dispatch_failure(timeout) -> 前端 error_code=timeout）。实测
 %% glm-5.3-flash 跑完一段回课视频耗时 21.7s，30s 只余不到 1.4x 余量。
 %%
-%% ⚠️ 调大本值时务必同步改前端轮询预算，两侧是**同一个最坏路径**的两半：
-%%     服务端最坏 = Opts.timeout × moya_ai_worker 的最大尝试次数
-%%     前端预算（moya/src/packages/teacher/workbench/workbench.ts）
-%% 只看一侧会重现「前端先放弃、后端还在跑」——老师看到的是一屏不变的
-%% 「AI 正在看这份作业」，而任务其实成了。
 -spec timeout_ms(map()) -> pos_integer().
 timeout_ms(Opts) when is_map(Opts) ->
     case maps:get(timeout, Opts, undefined) of

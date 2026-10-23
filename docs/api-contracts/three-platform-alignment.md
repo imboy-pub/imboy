@@ -18,7 +18,7 @@ App 对响应工作区、元数据白名单和游标推进做校验；切换账�
 
 | API 面 | 路径前缀 | 消费方 | 认证 | 凭证形态 |
 |---|---|---|---|---|
-| 客户端面 | `/api/v1/*` | imboyapp、客服挂件（仅 `/cs/widget/*`）、墨芽小程序（`/moya/*` 子集免 Bearer） | JWT Bearer（`auth_ds`/`token_ds` 签发校验） | `Authorization: Bearer`；WS 握手同源校验 |
+| 客户端面 | `/api/v1/*` | imboyapp、客服挂件（仅 `/cs/widget/*`） | JWT Bearer（`auth_ds`/`token_ds` 签发校验） | `Authorization: Bearer`；WS 握手同源校验 |
 | 管理面 | `/api/adm/*` | imboyadmin | cookie 会话 + CSRF（三层：csrf_token 参数 + SameSite=Lax + `X-Requested-With`） | RSA-OAEP 加密密码登录 |
 | 挂件面 | `/api/v1/cs/widget/*` | 嵌入第三方站点的挂件 | 访问令牌 | `x-cs-visit-token` 头（禁止 URL 携带）+ 每请求申报 `organization_id` |
 
@@ -54,7 +54,7 @@ App 对响应工作区、元数据白名单和游标推进做校验；切换账�
 | 企业业务（平台面） | adm `enterprise-business/*` | — | ●（只读+交接执行） | |
 | MCP 治理 | adm `mcp/*` | — | ● | |
 | Bot 管理 | `/bot*` + adm | — | ● | |
-| 墨芽教学 | `/moya/*`（18 条） | — | — | 消费方是独立微信小程序（外部仓），App/Admin 均不接 |
+| 墨芽教学 | 已迁出 | — | — | 旧教学合同已移除；迁移与保留边界见 REST API 目录 D2。 |
 | 直播/RTC | `/live_room` `/rtc/room/join` | ● | — | LiveKit |
 
 ## 3. 跨端数据约定

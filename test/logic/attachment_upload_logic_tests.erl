@@ -50,24 +50,17 @@ upload_rejects_unpresigned_key_test() ->
         assert_unwritten(C)
     end).
 
-upload_teaching_mime_whitelist_rejects_test() ->
-    with_fixture(fun(C) ->
-        pending(scope_row(maps:get(row, C), <<"teaching">>, <<"image/gif">>)),
-        ?assertEqual(
-            {error, invalid_file_type},
-            attachment_upload_logic:upload_multipart(
-                7, ?KEY, <<"image/gif">>, maps:get(path, C), 8
-            )
-        ),
-        assert_unwritten(C)
-    end).
-
-upload_teaching_mime_whitelist_allows_jpeg_test() ->
-    with_fixture(fun(C) ->
-        pending(scope_row(maps:get(row, C), <<"teaching">>, ?MIME)),
-        ?assertMatch({ok, _}, upload(C)),
-        ?assertEqual({ok, maps:get(bytes, C)}, file:read_file(maps:get(target, C)))
-    end).
+retired_scope_rejects_upload_test() ->
+    lists:foreach(
+        fun(Scope) ->
+            with_fixture(fun(C) ->
+                pending(scope_row(maps:get(row, C), Scope, ?MIME)),
+                ?assertEqual({error, forbidden}, upload(C)),
+                assert_unwritten(C)
+            end)
+        end,
+        [<<"teaching">>, <<"moya">>]
+    ).
 
 upload_global_mime_whitelist_rejects_test() ->
     with_fixture(fun(C) ->

@@ -377,7 +377,7 @@ do_authorization_without_token_test_() ->
 
 %% MFS3-F01：过期 token（token_ds 细分码 705）属认证边界，必须返回真实
 %% HTTP 401 + envelope code 705（客户端按 code 细分"可刷新"），而不是
-%% 200 + 业务错误——否则 moya request.ts 的 401 单飞刷新链、imboyapp
+%% 200 + 业务错误——否则 客户端的 401 单飞刷新链、imboyapp
 %% 的 shouldReLogin 均不触发，token 失效无法自动恢复。
 do_authorization_expired_token_maps_http_401_test_() ->
     ?WITH_MECKS(

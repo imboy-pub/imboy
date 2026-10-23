@@ -19,6 +19,7 @@
 
 meta:
   schema_version: 1
+  retired_product_note: 墨芽空表通过迁移 224 移除；非空审计与业务数据须先迁出，不授权删除。
   review_note: retain/anonymize 行为法律例外，需 owner 确认（见头部四项默认）
 
 tables:
@@ -454,20 +455,6 @@ tables:
     owner: moments
     reason: 朋友圈时间线
     mechanism: delete rows by user ownership column
-    review: self-evident
-    retention: n/a
-  moya_invite_code:
-    action: delete
-    owner: moya
-    reason: 老师班级邀请码（短生命周期凭证，非持久审计数据）
-    mechanism: FK on delete cascade（group/创建者删除连带清理，审计走结构化日志）
-    review: self-evident
-    retention: n/a
-  moya_subscribe_grant:
-    action: delete
-    owner: moya
-    reason: 订阅消息一次性授权额度（uid 关联；openid 不入库）
-    mechanism: FK on delete cascade（user 删除连带清理，消费审计走结构化日志）
     review: self-evident
     retention: n/a
   msg_c2c:
@@ -1038,27 +1025,6 @@ tables:
     mechanism: delete rows by user ownership column
     review: self-evident
     retention: n/a
-  calligraphy_review_draft:
-    action: delete
-    owner: teaching
-    reason: 习字点评草稿（学习者内容）
-    mechanism: delete rows by user ownership column
-    review: self-evident
-    retention: n/a
-  class_enrollment:
-    action: delete
-    owner: teaching
-    reason: 班级报名关系
-    mechanism: delete rows by user ownership column
-    review: self-evident
-    retention: n/a
-  class_staff:
-    action: delete
-    owner: teaching
-    reason: 班级任教（职员）关系行
-    mechanism: delete rows by user ownership column
-    review: self-evident
-    retention: n/a
   customer_service_event:
     action: delete
     owner: customer_service
@@ -1276,55 +1242,6 @@ tables:
     mechanism: delete rows by user ownership column
     review: self-evident
     retention: n/a
-  guardian_learner:
-    action: delete
-    owner: teaching
-    reason: 监护-学习者关系，注销即解除
-    mechanism: delete rows by user ownership column
-    review: self-evident
-    retention: n/a
-  homework_submission:
-    action: delete
-    owner: teaching
-    reason: 作业提交（学习者个人数据）
-    mechanism: delete rows by user ownership column
-    review: self-evident
-    retention: n/a
-  learner:
-    action: delete
-    owner: teaching
-    reason: 学习者档案（儿童数据从严删除）
-    mechanism: delete rows by user ownership column
-    review: self-evident
-    retention: n/a
-  review_asset:
-    action: delete
-    owner: teaching
-    reason: 点评附件
-    mechanism: delete rows by user ownership column
-    review: self-evident
-    retention: n/a
-  submission_asset:
-    action: delete
-    owner: teaching
-    reason: 提交附件
-    mechanism: delete rows by user ownership column
-    review: self-evident
-    retention: n/a
-  teacher_review:
-    action: delete
-    owner: teaching
-    reason: 教师点评记录
-    mechanism: delete rows by user ownership column
-    review: self-evident
-    retention: n/a
-  teaching_admin_audit:
-    action: retain
-    owner: teaching
-    reason: 教学管理审计，安全留存
-    mechanism: retention per policy
-    review: pending-owner
-    retention: indefinite
   moderation_appeal:
     action: anonymize
     owner: moderation
@@ -1740,8 +1657,6 @@ exclusions:
     reason: 组织默认工作区配置（组织资产）
   organization_department:
     reason: 组织部门结构（组织资产）
-  class_profile:
-    reason: 班级档案为机构与班级资产（成员个人行见 class_enrollment 与 class_staff）
   channel_category:
     reason: 系统分类字典（无用户归属列），不属于删除范围
 

@@ -2,7 +2,7 @@
 %%%
 % multipart 直传端点业务逻辑（POST /api/v1/attachment/upload）
 %
-% 与 presign→PUT 直传→confirm 链路互补：客户端（moya 小程序 wx.uploadFile、
+% 与 presign→PUT 直传→confirm 链路互补：客户端（小程序 wx.uploadFile、
 % curl 调试）把文件 multipart/form-data 直接 POST 给本服务，服务端流式落
 % 临时文件后从这里转入冻结的存储位置。confirm 仍是唯一落库真源——本端点只收文件，
 % 失败可重传，幂等。
@@ -11,8 +11,7 @@
 %   1. object_key 第一段必须为 u<Uid>/（elib_oss:owner_of_key）
 %   2. object_key 必须存在 presign 登记的 pending 行且 creator_user_id = Uid
 %      （attach_pending_repo:status_lookup；mime/scope/位置/期限以登记为准）
-%   3. mime 守卫与 presign 同口径：teaching scope 走
-%      moya_attach_logic:check_mime 白名单，全局走 elib_oss:validate_file_type
+%   3. MIME 使用全局白名单，已迁出的教学 scope 拒绝上传
 %   4. size 上限对齐 elib_oss:max_file_size()（100MB）
 % 实际字节先固定 receipt，再从同一私有文件句柄写入 provider，不能绕过 V5 pin。
 % Actual bytes are pinned before I/O; hashing and the provider share one private inode.
@@ -38,8 +37,12 @@ upload_multipart(Uid, ObjectKey, MimeType, FilePath, Size) ->
     case elib_oss:owner_of_key(ObjectKey) of
         {ok, Uid} ->
             case attach_pending_repo:status_lookup(ObjectKey) of
-                {ok, #{<<"object_key">> := ObjectKey, <<"creator_user_id">> := Uid,
-                       <<"scope">> := Scope} = Row} ->
+                {ok,
+                    #{
+                        <<"object_key">> := ObjectKey,
+                        <<"creator_user_id">> := Uid,
+                        <<"scope">> := Scope
+                    } = Row} ->
                     guard_and_put(Uid, ObjectKey, MimeType, FilePath, Size, Scope, Row);
                 {ok, #{<<"creator_user_id">> := _OtherUid}} ->
                     {error, forbidden_key};
@@ -85,16 +88,20 @@ prepare_upload(Uid, Key, Mime, Path, Scope, Row) ->
             case session_context(Uid, Mime, Scope, Row) of
                 {ok, Expiry} ->
                     upload_from_path(Key, Mime, Path, Identity, Expiry);
-                {error, _} = Error -> Error
+                {error, _} = Error ->
+                    Error
             end;
-        {error, _} = Error -> Error
+        {error, _} = Error ->
+            Error
     end.
 
 upload_from_path(Key, Mime, Path, Identity, Expiry) ->
-    case attachment_upload_spool:with_source({file, Path}, fun(Source) ->
-        %% Tag callback results separately from local spool failures.
-        {upload_result, pin_and_put(Key, Mime, Source, Identity, Expiry)}
-    end) of
+    case
+        attachment_upload_spool:with_source({file, Path}, fun(Source) ->
+            %% Tag callback results separately from local spool failures.
+            {upload_result, pin_and_put(Key, Mime, Source, Identity, Expiry)}
+        end)
+    of
         {upload_result, Result} -> Result;
         {error, Reason} -> {error, {storage_error, Reason}}
     end.
@@ -102,15 +109,23 @@ upload_from_path(Key, Mime, Path, Identity, Expiry) ->
 session_context(Uid, Mime, Scope, #{
     <<"session_state">> := <<"registered">>,
     <<"client_upload_id">> := ClientId,
-    <<"upload_registration">> := #{<<"subject">> := Subject,
-        <<"declaration">> := #{<<"mime">> := DeclaredMime, <<"scope">> := DeclaredScope}},
+    <<"upload_registration">> := #{
+        <<"subject">> := Subject,
+        <<"declaration">> := #{<<"mime">> := DeclaredMime, <<"scope">> := DeclaredScope}
+    },
     <<"upload_expires_at">> := ExpiresAt,
     <<"session_deadline">> := Deadline
 }) when is_binary(ClientId), byte_size(ClientId) > 0 ->
     Expected = #{<<"kind">> => <<"user">>, <<"principal">> => integer_to_binary(Uid)},
     Expiry = min(unix_seconds(ExpiresAt), unix_seconds(Deadline)),
-    case {Subject =:= Expected, Scope =:= DeclaredScope, Mime =:= DeclaredMime,
-          erlang:system_time(second) < Expiry} of
+    case
+        {
+            Subject =:= Expected,
+            Scope =:= DeclaredScope,
+            Mime =:= DeclaredMime,
+            erlang:system_time(second) < Expiry
+        }
+    of
         {false, _, _, _} -> {error, forbidden_key};
         {_, false, _, _} -> {error, scope_conflict};
         {_, _, false, _} -> {error, content_mismatch};
@@ -132,68 +147,101 @@ pin_and_put(Key, Mime, Source, Identity, Expiry) ->
     %% handler 的计数只作快速拦截，receipt/响应大小来自实际保留的文件句柄。
     Size = attachment_upload_spool:size(Source),
     case Size > elib_oss:max_file_size() of
-        true -> {error, file_too_large};
+        true ->
+            {error, file_too_large};
         false ->
-            Receipt = #{<<"version">> => 1,
+            Receipt = #{
+                <<"version">> => 1,
                 <<"sha256">> => attachment_upload_spool:sha256(Source),
-                <<"size_bytes">> => integer_to_binary(Size), <<"mime">> => Mime},
+                <<"size_bytes">> => integer_to_binary(Size),
+                <<"mime">> => Mime
+            },
             case admission_result(attach_pending_repo:register_content_pin(Key, Receipt)) of
                 ok ->
                     case provider_put(Key, Source, Mime, Identity, Expiry, Receipt) of
-                        ok -> {ok, #{<<"object_key">> => Key,
-                                     <<"mime_type">> => Mime, <<"size">> => Size}};
-                        {error, _} = Error -> Error
+                        ok ->
+                            {ok, #{
+                                <<"object_key">> => Key,
+                                <<"mime_type">> => Mime,
+                                <<"size">> => Size
+                            }};
+                        {error, _} = Error ->
+                            Error
                     end;
-                {error, _} = Error -> Error
+                {error, _} = Error ->
+                    Error
             end
     end.
 
 provider_put(Key, Source, Mime, Identity, Expiry, Receipt) ->
-    Recheck = fun() -> admission_result(
-        attach_pending_repo:recheck_content_pin(Key, Receipt, Identity)) end,
+    Recheck = fun() ->
+        admission_result(
+            attach_pending_repo:recheck_content_pin(Key, Receipt, Identity)
+        )
+    end,
     try
-        Result = case maps:get(driver, Identity) of
-            disk ->
-                %% The live DB recheck runs after the physical-object OS lock.
-                %% DB 复核必须发生于物理对象 OS 锁内，结束事务后才写字节。
-                attachment_storage_disk:put_snapshot(Identity, Source, Expiry, Recheck);
-            garage ->
-                case Recheck() of
-                    ok ->
-                        Context = #{
-                            issued_at => calendar:universal_time(),
-                            expires_at => calendar:gregorian_seconds_to_datetime(
-                                Expiry + 62167219200)},
-                        attachment_storage_garage:put_snapshot(Identity, Source, Mime, Context);
-                    {error, _} = Error -> Error
-                end;
-            _ -> {error, unsupported_driver}
-        end,
+        Result =
+            case maps:get(driver, Identity) of
+                disk ->
+                    %% The live DB recheck runs after the physical-object OS lock.
+                    %% DB 复核必须发生于物理对象 OS 锁内，结束事务后才写字节。
+                    attachment_storage_disk:put_snapshot(Identity, Source, Expiry, Recheck);
+                garage ->
+                    case Recheck() of
+                        ok ->
+                            Context = #{
+                                issued_at => calendar:universal_time(),
+                                expires_at => calendar:gregorian_seconds_to_datetime(
+                                    Expiry + 62167219200
+                                )
+                            },
+                            attachment_storage_garage:put_snapshot(Identity, Source, Mime, Context);
+                        {error, _} = Error ->
+                            Error
+                    end;
+                _ ->
+                    {error, unsupported_driver}
+            end,
         storage_result(Result)
     catch
         _:_ -> {error, {storage_error, put_failed}}
     end.
 
-admission_result(ok) -> ok;
-admission_result({error, not_found}) -> {error, object_not_found};
-admission_result({error, Reason}) when Reason =:= content_mismatch;
-    Reason =:= session_not_renewable; Reason =:= tombstone; Reason =:= location_changed ->
+admission_result(ok) ->
+    ok;
+admission_result({error, not_found}) ->
+    {error, object_not_found};
+admission_result({error, Reason}) when
+    Reason =:= content_mismatch;
+    Reason =:= session_not_renewable;
+    Reason =:= tombstone;
+    Reason =:= location_changed
+->
     {error, Reason};
-admission_result({error, Reason}) -> {error, {db_error, Reason}}.
+admission_result({error, Reason}) ->
+    {error, {db_error, Reason}}.
 
-storage_result(ok) -> ok;
-storage_result({error, {db_error, _}} = Error) -> Error;
-storage_result({error, Reason} = Error) when Reason =:= content_mismatch;
-    Reason =:= session_not_renewable; Reason =:= tombstone; Reason =:= location_changed;
-    Reason =:= object_not_found; Reason =:= invalid_signature_context -> Error;
-storage_result({error, Reason}) -> {error, {storage_error, Reason}}.
+storage_result(ok) ->
+    ok;
+storage_result({error, {db_error, _}} = Error) ->
+    Error;
+storage_result({error, Reason} = Error) when
+    Reason =:= content_mismatch;
+    Reason =:= session_not_renewable;
+    Reason =:= tombstone;
+    Reason =:= location_changed;
+    Reason =:= object_not_found;
+    Reason =:= invalid_signature_context
+->
+    Error;
+storage_result({error, Reason}) ->
+    {error, {storage_error, Reason}}.
 
-%% teaching scope 走教学白名单（与 presign 的 teaching_presign_guard 同款），
-%% 其余 scope 走全局 ALLOWED_TYPES；query MIME 还必须等于会话的冻结声明，
+%% query MIME 必须等于会话的冻结声明，已迁出的产品 scope 拒绝上传；
 %% 不信任 multipart part 自带的 Content-Type（客户端可能给错）。
--spec mime_guard(binary(), binary()) -> ok | {error, invalid_file_type}.
-mime_guard(<<"teaching">>, MimeType) ->
-    moya_attach_logic:check_mime(MimeType);
+-spec mime_guard(binary(), binary()) -> ok | {error, invalid_file_type | forbidden}.
+mime_guard(Scope, _MimeType) when Scope =:= <<"teaching">>; Scope =:= <<"moya">> ->
+    {error, forbidden};
 mime_guard(_Scope, MimeType) ->
     case elib_oss:validate_file_type(MimeType) of
         true -> ok;

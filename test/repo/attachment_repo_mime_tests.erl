@@ -1,9 +1,9 @@
 -module(attachment_repo_mime_tests).
 %%%
-% attachment_repo mime 归一化单元测试（2026-09-11 moya 报障根因修复）
+% attachment_repo mime 归一化单元测试（历史 MIME 归一化修复）
 % 历史行为：image/* 用 object_key 扩展名重写子类型（image/jpeg + .jpg →
 % image/jpg，非法子类型）。修复后：仅归一化已知别名，标准值原样落库。
-% 落库全链（confirm HEAD → save）的端到端验证见 moya backend-e2e 场景⑨。
+% 落库全链（confirm HEAD → save）的端到端验证由附件 confirm 契约验证。
 %%%
 
 -include_lib("eunit/include/eunit.hrl").

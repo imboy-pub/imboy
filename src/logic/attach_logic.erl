@@ -11,7 +11,7 @@
 % 归属两件独立的事：
 %   写归属(上传权) = object_key 的 u<Uid>/ 前缀 + can_upload/3 的 scope 权限
 %   读归属(访问权) = authorize/2 按 scope 分发（public/private/c2c/group/channel/moment
-%                    /teaching；talk_record 经 talk_record_attachment_adapter 记录 ACL 链[T06]）
+%                    ；talk_record 经 talk_record_attachment_adapter 记录 ACL 链[T06]）
 % 详见 docs/architecture/resource-access-control.md。
 %%%
 
@@ -53,23 +53,8 @@ presign(Uid, FileName, MimeType, Scope, ScopeRef, ClientUploadId) ->
         false ->
             {error, invalid_file_type};
         true ->
-            %% Step 10 教学附件：声明 MIME 预检（confirm 阶段以 HEAD 真实值复核）
-            case teaching_presign_guard(Scope, MimeType) of
-                ok ->
-                    presign_authorized(
-                        Uid, FileName, MimeType, Scope, ScopeRef, ClientUploadId
-                    );
-                {error, _} = E ->
-                    E
-            end
+            presign_authorized(Uid, FileName, MimeType, Scope, ScopeRef, ClientUploadId)
     end.
-
-%% 教学白名单预检；非教学 scope 直通（保持既有行为零变化）
--spec teaching_presign_guard(binary(), binary()) -> ok | {error, invalid_file_type}.
-teaching_presign_guard(<<"teaching">>, MimeType) ->
-    moya_attach_logic:check_mime(MimeType);
-teaching_presign_guard(_Scope, _MimeType) ->
-    ok.
 
 %% V5 恢复合同（AC01 / 02 §12）：登记事务 COMMIT 成功后才签发能力。
 %% 登记失败、异常或提交结果未知一律不返回可用 put_url —— 签名器调用 0 次。
@@ -376,7 +361,7 @@ v5_object_bytes(Key, _Scope) ->
     end.
 
 %% 与 legacy verify_and_save 同口径的白名单/上限/教学复核；V5 失败不删对象。
-v5_meta_guard(Scope, RealType, RealSize, Meta) ->
+v5_meta_guard(_Scope, RealType, RealSize, _Meta) ->
     case RealSize > elib_oss:max_file_size() of
         true ->
             {error, file_too_large};
@@ -385,7 +370,7 @@ v5_meta_guard(Scope, RealType, RealSize, Meta) ->
                 false ->
                     {error, invalid_file_type};
                 true ->
-                    teaching_verify_guard(Scope, RealType, RealSize, Meta)
+                    ok
             end
     end.
 
@@ -564,21 +549,7 @@ verify_and_save(Uid, ObjectKey, Scope, ScopeRef, Meta) ->
                             reject_upload_object(ObjectKey, <<"confirm reject invalid_file_type">>),
                             {error, invalid_file_type};
                         true ->
-                            %% Step 10 教学附件：教学白名单/大小上限/时长复核
-                            %% （video mp4|mov ≤100MB+duration≤60s；photo jpeg|png ≤20MB）
-                            case teaching_verify_guard(Scope, RealType, RealSize, Meta) of
-                                ok ->
-                                    do_save(
-                                        Uid, ObjectKey, Scope, ScopeRef, Meta, RealSize, RealType
-                                    );
-                                {error, Reason} ->
-                                    reject_upload_object(
-                                        ObjectKey,
-                                        <<"confirm reject teaching: ",
-                                            (ec_cnv:to_binary(Reason))/binary>>
-                                    ),
-                                    {error, Reason}
-                            end
+                            do_save(Uid, ObjectKey, Scope, ScopeRef, Meta, RealSize, RealType)
                     end
             end
     end.
@@ -611,14 +582,6 @@ reject_upload_object(ObjectKey, Reason) ->
             ]),
             ok
     end.
-
-%% 教学复核；非教学 scope 直通（既有行为零变化）
--spec teaching_verify_guard(binary(), binary(), non_neg_integer(), map()) ->
-    ok | {error, file_too_large | invalid_file_type}.
-teaching_verify_guard(<<"teaching">>, RealType, RealSize, Meta) ->
-    moya_attach_logic:verify_upload(RealType, RealSize, Meta);
-teaching_verify_guard(_Scope, _RealType, _RealSize, _Meta) ->
-    ok.
 
 -spec do_save(
     integer(), binary(), binary(), binary() | undefined, map(), non_neg_integer(), binary()
@@ -832,13 +795,6 @@ can_upload(Uid, <<"channel">>, ScopeRef) ->
 %% 发帖后 moment_logic:create_post 会把这些附件 scope_ref 回填成 momentId。
 can_upload(_Uid, <<"moment">>, _ScopeRef) ->
     ok;
-%% Step 10 教学附件：上传人须持有至少一个有效教学身份（active guardian/staff）；
-%% 强归属（附件只能进本人提交）在 create_submission 的 validate_assets 把关
-can_upload(Uid, <<"teaching">>, _ScopeRef) ->
-    case moya_attach_logic:can_upload(Uid) of
-        ok -> ok;
-        false -> {error, forbidden}
-    end;
 %% talk_record（T06/DESIGN §6/§10.1）：上传权走记录域 adapter——scope_ref=
 %% record_id，owner 单写入者 + 企业记录组织归属复核；不允许借 private
 %% creator 语义绕过记录 ACL。
@@ -972,10 +928,6 @@ authorize(<<"public">>, _Uid, _Rec) ->
     true;
 authorize(<<"private">>, Uid, Rec) ->
     Uid =:= maps:get(<<"creator_user_id">>, Rec, 0);
-%% Step 10 教学附件：必须已绑定 submission（未绑定→拒绝）；submission 未撤回；
-%% moya_acl:submission_access 复用（guardian can_view_review / 本班 staff，MEDIA-01）
-authorize(<<"teaching">>, Uid, Rec) ->
-    moya_attach_logic:authorize(Uid, Rec);
 authorize(<<"c2c">>, Uid, Rec) ->
     case scope_ref(Rec) of
         ScopeRef when is_binary(ScopeRef) ->

@@ -56,7 +56,7 @@ success(Req, Payload0, Msg, Options) ->
 
 %% @doc 返回成功响应，payload 时间字段保持 logic 层原样输出（不转 epoch ms）。
 %% 供按 Rfc3339 string 时间契约（format: date-time）输出 JSON 的模块使用
-%% （如 teaching 域 handler）：logic 层已把时间统一为 RFC3339 binary，
+%% （如已格式化时间的 handler）：logic 层已把时间统一为 RFC3339 binary，
 %% success/2,3 的 elib_cnv:convert_at_timestamps 会把 *_at/*_ts 键再转回
 %% epoch ms integer，违反该类契约；本入口跳过该转换。
 %% @param Req cowboy请求对象
