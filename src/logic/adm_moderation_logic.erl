@@ -15,6 +15,9 @@
 
 -include("common.hrl").
 -include("log.hrl").
+%% BUILD-00R feature ifdef（IMBOY_FEATURE_MOMENT）依赖该 hrl 的 define；
+%% 漏 include 时编译单元内宏不可见，moment 裁剪判定永远走 feature_disabled。
+-include("generated/imboy_product_features.hrl").
 
 -define(SEVERITIES, [<<"low">>, <<"medium">>, <<"high">>]).
 
