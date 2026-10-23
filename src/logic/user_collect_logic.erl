@@ -114,9 +114,19 @@ add(Uid, <<"3">>, KindId, Info, Source, Remark) when is_map(Info) ->
     collect_result(add_kind(Count, Uid, <<"3">>, KindId, Info2, Source, Remark, [Attach]));
 add(Uid, <<"2">>, KindId, Info, Source, Remark) when is_map(Info) ->
     Count = user_collect_ds:count_by_uid_kind_id(Uid, KindId),
-    MimeType = <<"image/jpeg">>,
-    {Attach, Info2} = get_info(Count, MimeType, <<"uri">>, Info),
-    collect_result(add_kind(Count, Uid, <<"2">>, KindId, Info2, Source, Remark, [Attach]));
+    case collect_image_attaches(Count, Info) of
+        {multi, Attaches} ->
+            Info2 = jsone:encode(Info, [native_forward_slash]),
+            collect_result(
+                add_kind(Count, Uid, <<"2">>, KindId, Info2, Source, Remark, Attaches)
+            );
+        single ->
+            MimeType = <<"image/jpeg">>,
+            {Attach, Info2} = get_info(Count, MimeType, <<"uri">>, Info),
+            collect_result(
+                add_kind(Count, Uid, <<"2">>, KindId, Info2, Source, Remark, [Attach])
+            )
+    end;
 add(Uid, <<"1">>, KindId, Info, Source, Remark) when is_map(Info) ->
     Count = user_collect_ds:count_by_uid_kind_id(Uid, KindId),
     Info2 = jsone:encode(Info, [native_forward_slash]),
@@ -246,6 +256,81 @@ get_info(_Count, _MimeType, _Key, _Info) ->
     % 已经收藏，不需要再上传附件了
     {#{}, ok}.
 
+%% @doc kind=2 多图（imageMulti）：payload.images 含有效哈希项时每张图产出
+%% 一个 Attach——附件哈希经 attachment_hashes/1 逗号拼接落
+%% user_collect.attach_file_hash256（列语义即逗号列表，迁移 26），逐行经
+%% attachment_ds:save 递增 referer_time；引用守卫按 ANY(string_to_array)
+%% 匹配（迁移 00000226 对齐）。空哈希项跳过（不产生 path='' 垃圾行）；
+%% images 缺失/为空/全无效或已收藏（Count≠0）返回 single 走既有单图路径，
+%% 行为逐字节不变。
+%% @private
+-spec collect_image_attaches(non_neg_integer(), map()) -> {multi, [map()]} | single.
+collect_image_attaches(0, Info) ->
+    Payload = collect_payload(Info),
+    case maps:get(<<"images">>, Payload, undefined) of
+        Images when is_list(Images), Images =/= [] ->
+            Attaches = [
+                image_attach(Item)
+             || Item <- Images,
+                is_map(Item),
+                image_hash_valid(Item)
+            ],
+            case Attaches of
+                [] -> single;
+                _ -> {multi, Attaches}
+            end;
+        _ ->
+            single
+    end;
+collect_image_attaches(_Count, _Info) ->
+    % 已经收藏：add_kind 对 Count≠0 为 no-op，无需重新提取
+    single.
+
+%% @doc payload 收口（与 get_info/4 同一口径）：已解析 map 直接用，
+%% JSON binary 解码，其余降级空 map。
+%% @private
+-spec collect_payload(map()) -> map().
+collect_payload(Info) ->
+    case maps:get(<<"payload">>, Info, #{}) of
+        PBin when is_binary(PBin) ->
+            ensure_map(jsone:decode(PBin, [{object_format, map}]));
+        PM when is_map(PM) ->
+            PM;
+        _ ->
+            #{}
+    end.
+
+%% @private
+image_hash_valid(Item) ->
+    case maps:get(<<"file_hash256">>, Item, maps:get(<<"md5">>, Item, <<>>)) of
+        Hash when is_binary(Hash), Hash =/= <<>> -> true;
+        _ -> false
+    end.
+
+%% @doc 单张图片元素 → Attach（形态与 get_info/4 单图产物一致；
+%% 双读兼容：优先 file_hash256，回退 md5）。
+%% @private
+-spec image_attach(map()) -> map().
+image_attach(Item) ->
+    Uri = maps:get(<<"uri">>, Item, <<>>),
+    UriList =
+        case Uri of
+            B when is_binary(B) -> binary_to_list(B);
+            L when is_list(L) -> L;
+            _ -> ""
+        end,
+    {UrlMap, _UpData} = elib_uri:get_params(UriList),
+    #{
+        <<"file_hash256">> => maps:get(
+            <<"file_hash256">>, Item, maps:get(<<"md5">>, Item, <<>>)
+        ),
+        <<"mime_type">> => <<"image/jpeg">>,
+        <<"name">> => maps:get(<<"name">>, Item, <<>>),
+        <<"path">> => maps:get(path, UrlMap),
+        <<"url">> => Uri,
+        <<"size">> => maps:get(<<"size">>, Item, 0)
+    }.
+
 -spec add_kind(integer(), integer(), binary(), binary(), binary(), binary(), binary(), list()) ->
     ok | {error, term()} | {rollback, term()}.
 add_kind(0, Uid, KindBin, KindId, Info, Source, Remark, Attach) ->
@@ -313,5 +398,60 @@ get_info_missing_key_degrades_test() ->
 get_info_non_map_payload_degrades_test() ->
     {Attach, _} = get_info(0, <<"image/jpeg">>, <<"uri">>, #{<<"payload">> => [1, 2]}),
     ?assertEqual(<<>>, maps:get(<<"url">>, Attach)).
+
+%% kind=2 多图：payload.images 每图一个 Attach，file_hash256 双读 md5，
+%% 无哈希项（含纯 uri 项）跳过
+collect_image_attaches_multi_test() ->
+    Info = #{
+        <<"payload">> => #{
+            <<"images">> => [
+                #{<<"uri">> => <<"u1/a.jpg">>, <<"file_hash256">> => <<"h1">>, <<"size">> => 100},
+                #{<<"uri">> => <<"u1/b.jpg">>, <<"md5">> => <<"h2">>, <<"size">> => 200},
+                #{<<"uri">> => <<"u1/c.jpg">>},
+                <<"not-a-map">>
+            ]
+        }
+    },
+    {multi, Attaches} = collect_image_attaches(0, Info),
+    ?assertEqual(2, length(Attaches)),
+    ?assertEqual(<<"h1">>, maps:get(<<"file_hash256">>, lists:nth(1, Attaches))),
+    ?assertEqual(<<"h2">>, maps:get(<<"file_hash256">>, lists:nth(2, Attaches))),
+    ?assertEqual(<<"u1/b.jpg">>, maps:get(<<"url">>, lists:nth(2, Attaches))),
+    ?assertEqual(<<"image/jpeg">>, maps:get(<<"mime_type">>, lists:nth(1, Attaches))).
+
+%% images 全部无有效哈希 → single（回退单图路径，不产生垃圾行）
+collect_image_attaches_all_invalid_test() ->
+    ?assertEqual(
+        single,
+        collect_image_attaches(0, #{
+            <<"payload">> => #{
+                <<"images">> => [
+                    #{<<"uri">> => <<"u1/a.jpg">>},
+                    #{<<"file_hash256">> => <<>>}
+                ]
+            }
+        })
+    ).
+
+%% 旧单图（无 images）/ images 空列表 / payload 非 map / 无 payload → single
+collect_image_attaches_single_test() ->
+    ?assertEqual(
+        single,
+        collect_image_attaches(0, #{<<"payload">> => #{<<"uri">> => <<"u1/a.jpg">>}})
+    ),
+    ?assertEqual(single, collect_image_attaches(0, #{<<"payload">> => #{<<"images">> => []}})),
+    ?assertEqual(single, collect_image_attaches(0, #{<<"payload">> => [1, 2]})),
+    ?assertEqual(single, collect_image_attaches(0, #{})).
+
+%% payload 为 JSON binary 同样解出多图；已收藏（Count≠0）恒 single
+collect_image_attaches_binary_and_recollect_test() ->
+    PayloadBin = jsone:encode(#{
+        <<"images">> => [
+            #{<<"uri">> => <<"u1/a.jpg">>, <<"file_hash256">> => <<"h1">>}
+        ]
+    }),
+    {multi, [Attach]} = collect_image_attaches(0, #{<<"payload">> => PayloadBin}),
+    ?assertEqual(<<"h1">>, maps:get(<<"file_hash256">>, Attach)),
+    ?assertEqual(single, collect_image_attaches(1, #{<<"payload">> => PayloadBin})).
 
 -endif.

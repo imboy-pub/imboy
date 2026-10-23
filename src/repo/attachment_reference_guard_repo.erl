@@ -51,6 +51,8 @@ bind_reference_lock_tx(Conn, Path) ->
     end.
 
 %% W3-01 gc_verified 覆盖证明（02 §5）：gc_verified = 「引用零」的可证明态。
+%% 收藏哈希为逗号列表（迁移 26 列语义，视频/多图收藏多个哈希拼接），
+%% 匹配口径与 imboy_user_collect_fun 触发器一致：ANY(string_to_array)。
 %% W3-02 两域统一资格（02 §5 统一判据 + 企业应用附件行）：proven 与 intent
 %% 函数锁后复核同一引用集（group_file 绑定 / 收藏 hash / moment 媒体 /
 %% WAR 行 / EAR hold 或未 purged / talk_record 有效引用[00000212]）+ 明文 +
@@ -68,7 +70,8 @@ refresh_gc_verified_tx(Conn, Path) ->
             "    AND (a2.group_file_id IS NULL OR NOT EXISTS"
             "      (SELECT 1 FROM public.group_file gf WHERE gf.id = a2.group_file_id))"
             "    AND NOT EXISTS (SELECT 1 FROM public.user_collect uc"
-            "      WHERE uc.attach_file_hash256 <> '' AND uc.attach_file_hash256 = a2.file_hash256"
+            "      WHERE uc.attach_file_hash256 <> ''"
+            "        AND a2.file_hash256 = ANY(string_to_array(uc.attach_file_hash256, ','))"
             "        AND uc.status = 1)"
             "    AND NOT EXISTS (SELECT 1 FROM public.moment_post mp"
             "      WHERE position(a2.path in mp.media::text) > 0)"
