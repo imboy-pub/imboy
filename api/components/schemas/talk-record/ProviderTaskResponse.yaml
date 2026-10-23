@@ -1,0 +1,25 @@
+type: object
+additionalProperties: false
+required:
+- task
+properties:
+  task:
+    $ref: ./ProviderTask.yaml
+  run:
+    $ref: ./ClientRun.yaml
+  run_token:
+    type: string
+    minLength: 32
+    maxLength: 128
+  may_submit:
+    type: boolean
+  source_url:
+    type: string
+    format: uri
+    description: Only the first durable submit intent returns this in-memory bearer.
+      Never stored in idempotency snapshots or recovery views.
+  may_query:
+    type: boolean
+  query_task_id:
+    type: string
+    maxLength: 128

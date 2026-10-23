@@ -3,7 +3,7 @@
 
 request_exact_consent_test() ->
     {P, B} = request(),
-    ?assertMatch({ok, #{provider := <<"minimax">>}}, talk_record_client_contract:request(B, P)),
+    ?assertMatch({ok, #{provider := <<"doubao">>}}, talk_record_client_contract:request(B, P)),
     ?assertEqual(
         {error, client_schema_invalid},
         talk_record_client_contract:request(B#{<<"api_key">> => <<"secret">>}, P)
@@ -161,7 +161,7 @@ split_plan_reconstruction_and_publish_offsets_test() ->
     ?assertMatch(
         {ok, #{hash := Hash}}, talk_record_client_contract:plan(<<"transcribe">>, Rebuilt, Snapshot)
     ),
-    #{segments := Segments} = talk_record_client_publish:transcript(Stored, <<"asr-1.0">>),
+    #{segments := Segments} = talk_record_client_publish:transcript(Stored, <<"volc.seedasr.auc">>),
     ?assertEqual([0, 300000, 600000], [maps:get(<<"start_ms">>, S) || S <- Segments]),
     ?assertEqual([<<"0:S1">>, <<"1:S1">>, <<"2:S1">>], [
         maps:get(<<"speaker_label">>, S)
@@ -249,11 +249,20 @@ public_view_omits_secrets_test() ->
     ?assertEqual(<<"client-run:1:2">>, maps:get(<<"etag">>, V)).
 
 request() ->
-    P = #{<<"policy_version">> => <<"p1">>, <<"config_version">> => <<"c1">>},
-    Pin = P#{
+    P = #{
+        <<"policy_version">> => <<"p1">>,
+        <<"config_version">> => <<"c1">>,
+        <<"providers">> => #{
+            <<"transcribe">> => #{
+                <<"provider">> => <<"doubao">>,
+                <<"model">> => <<"volc.seedasr.auc">>
+            }
+        }
+    },
+    Pin = (maps:without([<<"providers">>], P))#{
         <<"execution_mode">> => <<"client_byok">>,
-        <<"provider">> => <<"minimax">>,
-        <<"model">> => <<"asr-1.0">>
+        <<"provider">> => <<"doubao">>,
+        <<"model">> => <<"volc.seedasr.auc">>
     },
     {P, Pin#{
         <<"mode">> => <<"transcribe">>, <<"processing_consent">> => Pin#{<<"confirmed">> => true}
@@ -290,7 +299,7 @@ plan(P) ->
 
 result_schema_and_hash_fences_test() ->
     R = #{
-        <<"model_version">> => <<"asr-1.0">>,
+        <<"model_version">> => <<"volc.seedasr.auc">>,
         <<"status">> => <<"ready">>,
         <<"speakers">> => [#{<<"label">> => <<"S1">>}],
         <<"segments">> => [
@@ -310,7 +319,7 @@ result_schema_and_hash_fences_test() ->
                 <<"result_hash">> => talk_record_client_contract:hash(Result)
             },
             #{<<"duration_ms">> => 1000},
-            #{}
+            #{<<"source_kind">> => <<"assembly">>}
         )
     end,
     ?assertMatch({ok, _}, F(R)),
@@ -327,7 +336,7 @@ result_schema_and_hash_fences_test() ->
             <<"transcribe">>,
             #{<<"result">> => R, <<"result_hash">> => binary:copy(<<"0">>, 64)},
             #{<<"duration_ms">> => 1000},
-            #{}
+            #{<<"source_kind">> => <<"assembly">>}
         )
     ).
 

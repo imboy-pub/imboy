@@ -20,11 +20,13 @@ properties:
     type: string
     enum:
     - minimax
+    - doubao
     - zhipu
   model:
     type: string
     enum:
     - asr-1.0
+    - volc.seedasr.auc
     - glm-5.3-flash
   policy_version:
     type: string

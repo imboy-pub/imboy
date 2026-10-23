@@ -1,6 +1,6 @@
 -module(talk_record_client_claim).
 -moduledoc "Exclusive authenticated-device claims and explicit unknown-charge successors.".
--export([create_tx/6]).
+-export([create_tx/6, insert_unprepared_tx/7]).
 
 create_tx(C, Context, R, J, Headers, Body) ->
     talk_record_client_gate:ensure(
@@ -13,6 +13,7 @@ create_tx(C, Context, R, J, Headers, Body) ->
         lists:member(maps:get(<<"state">>, J), [<<"queued">>, <<"retry_wait">>, <<"failed">>]),
         client_execution_conflict
     ),
+    first_async_claim(C, J),
     Previous = previous(C, J, Headers, Body),
     talk_record_client_admission:claim_tx(C, R, J),
     Config = talk_record_client_gate:require(talk_record_client_policy:get()),
@@ -32,7 +33,7 @@ create_tx(C, Context, R, J, Headers, Body) ->
         )
     ),
     Sources = talk_record_client_gate:require(
-        talk_record_client_repo:sources_tx(C, maps:get(<<"id">>, R), Kind)
+        sources(C, maps:get(<<"id">>, R), Kind, Pin)
     ),
     true = byte_size(jsone:encode(Sources)) =< 1048576,
     insert(C, Context, R, J, Config, Parsed, Sources, Previous).
@@ -107,3 +108,25 @@ safe_successor(Body) ->
             not maps:is_key(<<"previous_run_id">>, Body),
         client_schema_invalid
     ).
+
+sources(C, Rid, <<"transcribe">>, #{<<"provider">> := <<"doubao">>}) ->
+    talk_record_provider_repo:snapshot_tx(C, Rid);
+sources(C, Rid, Kind, _) ->
+    talk_record_client_repo:sources_tx(C, Rid, Kind).
+
+first_async_claim(C, J) ->
+    Pin = talk_record_client_gate:json(maps:get(<<"processor_input">>, J, #{})),
+    case maps:get(<<"provider">>, Pin, undefined) of
+        <<"doubao">> ->
+            case talk_record_client_repo:latest_tx(C, maps:get(<<"id">>, J)) of
+                {error, not_found} -> ok;
+                {ok, _} -> talk_record_client_gate:abort(async_protocol_required);
+                {error, R} -> talk_record_client_gate:abort(R)
+            end;
+        _ ->
+            ok
+    end.
+
+%% Only the dedicated recovery transaction may call this after whole-job no-grant proof.
+insert_unprepared_tx(C, Ctx, R, J, Config, Parsed, Source) ->
+    insert(C, Ctx, R, J, Config, Parsed, Source, null).

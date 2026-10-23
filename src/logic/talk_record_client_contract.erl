@@ -15,7 +15,7 @@ request(Body, Public) ->
         ]),
         <<"client_byok">> = maps:get(<<"execution_mode">>, Body),
         Kind = maps:get(<<"mode">>, Body),
-        {Provider, Model} = provider(Kind),
+        {Provider, Model} = provider(Kind, Public),
         Provider = maps:get(<<"provider">>, Body),
         Model = maps:get(<<"model">>, Body),
         PV = maps:get(<<"policy_version">>, Public),
@@ -43,9 +43,24 @@ request(Body, Public) ->
         }
     end).
 
-provider(<<"transcribe">>) -> {<<"minimax">>, <<"asr-1.0">>};
-provider(<<"summarize">>) -> {<<"zhipu">>, <<"glm-5.3-flash">>}.
+provider(Kind, Public) ->
+    Selected = maps:get(Kind, maps:get(<<"providers">>, Public)),
+    true = maps:get(<<"available">>, Selected, true),
+    Provider = maps:get(<<"provider">>, Selected),
+    Model = maps:get(<<"model">>, Selected),
+    true = lists:member({Kind, Provider, Model}, [
+        {<<"transcribe">>, <<"minimax">>, <<"asr-1.0">>},
+        {<<"transcribe">>, <<"doubao">>, <<"volc.seedasr.auc">>},
+        {<<"summarize">>, <<"zhipu">>, <<"glm-5.3-flash">>}
+    ]),
+    {Provider, Model}.
 
+plan(<<"transcribe">>, Body, #{<<"source_kind">> := <<"assembly">>} = Snapshot) ->
+    checked(fun() ->
+        Expected = talk_record_provider_contract:plan(Snapshot),
+        true = Body =:= Expected,
+        #{chunks => maps:get(<<"chunks">>, Expected), hash => hash(Expected)}
+    end);
 plan(<<"transcribe">>, Body, #{<<"parts">> := Parts}) ->
     checked(fun() ->
         true = allowed(Body, [<<"chunks">>, <<"overlap_rule">>]),
@@ -120,12 +135,16 @@ result(Kind, Body, Chunk, Snapshot) ->
         true = re:run(Trace, <<"^[A-Za-z0-9_.:-]*$">>, [{capture, none}]) =:= match,
         bounded_labels(Kind, R),
         Context = context(Kind, Chunk, Snapshot),
-        {_, Model} = provider(Kind),
+        Model = result_model(Kind, Snapshot),
         {ok, Valid} = talk_record_processor_result:validate(
             Kind, R, #{model_version => Model}, Context
         ),
         #{result => Valid, wire_result => R, hash => H, provider_request_id => Trace}
     end).
+
+result_model(<<"transcribe">>, #{<<"source_kind">> := <<"assembly">>}) -> <<"volc.seedasr.auc">>;
+result_model(<<"transcribe">>, _) -> <<"asr-1.0">>;
+result_model(<<"summarize">>, _) -> <<"glm-5.3-flash">>.
 
 context(<<"transcribe">>, Chunk, _) ->
     #{duration_ms => maps:get(<<"duration_ms">>, Chunk)};

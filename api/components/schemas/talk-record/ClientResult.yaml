@@ -18,6 +18,7 @@ properties:
           type: string
           enum:
           - asr-1.0
+          - volc.seedasr.auc
         status:
           type: string
           enum:

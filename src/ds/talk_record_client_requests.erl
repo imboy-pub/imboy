@@ -79,7 +79,17 @@ enqueue(C, #{uid := Uid}, R, P, Input) ->
         Kind,
         {maps:get(policy_version, P), maps:get(config_version, P)}
     ),
-    Pin = #{
+    ProviderPin = maps:get(
+        Kind,
+        maps:get(
+            <<"providers">>,
+            maps:get(
+                public,
+                talk_record_client_gate:require(talk_record_client_policy:get())
+            )
+        )
+    ),
+    Pin = ProviderPin#{
         <<"provider">> => maps:get(provider, P),
         <<"model">> => maps:get(model, P),
         <<"processing_mode">> => Kind,

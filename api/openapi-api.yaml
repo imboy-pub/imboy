@@ -931,6 +931,47 @@ paths:
   /api/v1/talk-records/{id}/jobs/{job_id}/client-executions/{run_id}/settle:
     $ref: './paths/api/v1/talk-records/client_settle.yaml'
 
+  /api/v1/talk-records/{id}/provider-tasks/{task_id}:
+    $ref: './paths/api/v1/talk-records/provider_get.yaml'
+
+  /api/v1/talk-records/{id}/jobs/{job_id}/client-executions/{run_id}/provider-tasks:
+    $ref: './paths/api/v1/talk-records/provider_prepare.yaml'
+
+  /api/v1/talk-records/{id}/provider-tasks/{task_id}/query-executions:
+    $ref: './paths/api/v1/talk-records/provider_query_execution.yaml'
+
+  /api/v1/talk-records/{id}/provider-tasks/{task_id}/resubmissions:
+    $ref: './paths/api/v1/talk-records/provider_resubmission.yaml'
+
+  /api/v1/talk-records/{id}/provider-tasks/{task_id}/cancel:
+    $ref: './paths/api/v1/talk-records/provider_cancel.yaml'
+
+  /api/v1/talk-records/{id}/provider-tasks/{task_id}/reconcile-receipt:
+    $ref: './paths/api/v1/talk-records/provider_reconcile_receipt.yaml'
+
+  /api/v1/talk-records/{id}/jobs/{job_id}/client-executions/{run_id}/provider-tasks/{task_id}/submit-intents:
+    $ref: './paths/api/v1/talk-records/provider_submit_intent.yaml'
+
+  /api/v1/talk-records/{id}/jobs/{job_id}/client-executions/{run_id}/provider-tasks/{task_id}/submission-receipts:
+    $ref: './paths/api/v1/talk-records/provider_submission_receipt.yaml'
+
+  /api/v1/talk-records/{id}/jobs/{job_id}/client-executions/{run_id}/provider-tasks/{task_id}/query-intents:
+    $ref: './paths/api/v1/talk-records/provider_query_intent.yaml'
+
+  /api/v1/talk-records/{id}/jobs/{job_id}/client-executions/{run_id}/provider-tasks/{task_id}/query-receipts:
+    $ref: './paths/api/v1/talk-records/provider_query_receipt.yaml'
+
+  /api/v1/talk-records/{id}/jobs/{job_id}/client-executions/{run_id}/provider-tasks/{task_id}/complete:
+    $ref: './paths/api/v1/talk-records/provider_complete.yaml'
+
+  /api/v1/talk-records/client-audio-source:
+    $ref: './paths/api/v1/talk-records/client_audio_source.yaml'
+
+  /api/v1/talk-records/{id}/jobs/{job_id}/client-executions/latest:
+    $ref: ./paths/api/v1/talk-records/client_latest.yaml
+  /api/v1/talk-records/{id}/jobs/{job_id}/client-executions/recover-unprepared:
+    $ref: ./paths/api/v1/talk-records/client_recover_unprepared.yaml
+
 components:
   securitySchemes:
     bearerAuth:

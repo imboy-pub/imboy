@@ -22,14 +22,39 @@ properties:
       transcribe:
         type: object
         properties:
+          available:
+            type: boolean
           provider:
             type: string
             enum:
             - minimax
+            - doubao
           model:
             type: string
             enum:
             - asr-1.0
+            - volc.seedasr.auc
+          resource_id:
+            const: volc.seedasr.auc
+          model_name:
+            const: bigmodel
+          protocol:
+            const: doubao_auc_v1
+          source_delivery:
+            const: assembly_url_v1
+          ssd_version:
+            const: '300'
+          enable_speaker_info:
+            const: true
+          show_utterances:
+            const: true
+          enable_itn:
+            const: true
+          enable_punc:
+            const: true
+          enable_ddc:
+            const: false
+        additionalProperties: false
       summarize:
         type: object
         properties:

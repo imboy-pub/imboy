@@ -1618,6 +1618,14 @@ tables:
     review: pending-owner
     retention: 当前随记录治理保留；完整结果正文的保留与删除政策仍待负责人确认，不代表隐私验收通过
 
+  talk_record_provider_task:
+    action: retain
+    owner: talk_record
+    reason: 异步供应商任务保存参与者身份、授权与计费意图、音频引用和result正文，不含provider凭据或音频URL
+    mechanism: Insert/update trigger custody guards bind run and job identities; paid-request lineage is immutable; no implicit anonymization
+    review: pending-owner
+    retention: 当前按记录治理保留且拒绝无归档回滚；结果正文和身份的保留期限及注销处置待负责人确认，不代表隐私验收通过
+
 exclusions:
   adm_role:
     reason: 管理端 RBAC 角色配置，非终端用户数据

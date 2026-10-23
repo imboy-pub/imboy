@@ -13,6 +13,35 @@
 -spec routes() -> [{string(), module(), map()}].
 routes() ->
     [
+        {"/api/v1/talk-records/:id/jobs/:job_id/client-executions/latest",
+            talk_record_provider_handler, #{action => latest}},
+        {"/api/v1/talk-records/:id/jobs/:job_id/client-executions/recover-unprepared",
+            talk_record_provider_handler, #{action => recover_unprepared}},
+        {"/api/v1/talk-records/client-audio-source", talk_record_client_audio_handler, #{}},
+        {"/api/v1/talk-records/:id/provider-tasks/:task_id", talk_record_provider_handler, #{
+            action => get
+        }},
+        {"/api/v1/talk-records/:id/provider-tasks/:task_id/query-executions",
+            talk_record_provider_handler, #{action => query_execution}},
+        {"/api/v1/talk-records/:id/provider-tasks/:task_id/resubmissions",
+            talk_record_provider_handler, #{action => resubmission}},
+        {"/api/v1/talk-records/:id/provider-tasks/:task_id/cancel", talk_record_provider_handler, #{
+                action => cancel
+            }},
+        {"/api/v1/talk-records/:id/provider-tasks/:task_id/reconcile-receipt",
+            talk_record_provider_handler, #{action => reconcile_receipt}},
+        {"/api/v1/talk-records/:id/jobs/:job_id/client-executions/:run_id/provider-tasks",
+            talk_record_provider_handler, #{action => prepare}},
+        {"/api/v1/talk-records/:id/jobs/:job_id/client-executions/:run_id/provider-tasks/:task_id/submit-intents",
+            talk_record_provider_handler, #{action => submit_intent}},
+        {"/api/v1/talk-records/:id/jobs/:job_id/client-executions/:run_id/provider-tasks/:task_id/submission-receipts",
+            talk_record_provider_handler, #{action => submission_receipt}},
+        {"/api/v1/talk-records/:id/jobs/:job_id/client-executions/:run_id/provider-tasks/:task_id/query-intents",
+            talk_record_provider_handler, #{action => query_intent}},
+        {"/api/v1/talk-records/:id/jobs/:job_id/client-executions/:run_id/provider-tasks/:task_id/query-receipts",
+            talk_record_provider_handler, #{action => query_receipt}},
+        {"/api/v1/talk-records/:id/jobs/:job_id/client-executions/:run_id/provider-tasks/:task_id/complete",
+            talk_record_provider_handler, #{action => complete}},
         {"/api/v1/talk-records/capabilities", talk_record_handler, #{
             action => capabilities
         }},

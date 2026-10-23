@@ -147,6 +147,22 @@ registered_fixture() ->
         <<"namespace">> := Ns,
         <<"resources">> := Resources
     } = Receipt,
+    ok = talk_record_t20_frozen_config:same(Receipt, Registry, [
+        <<"frozen_config_sha256">>,
+        <<"candidate_commit">>,
+        <<"source_sha256">>,
+        <<"controller_thread_id">>,
+        <<"controller_pid">>,
+        <<"controller_process_start">>,
+        <<"host">>,
+        <<"connection_port">>,
+        <<"server_port">>,
+        <<"system_identifier">>,
+        <<"user">>,
+        <<"migration_head">>,
+        <<"migration_count">>,
+        <<"migration_versions">>
+    ]),
     true = is_list(Resources) andalso Resources =/= [],
     assert_directory(binary_to_list(Root)),
     {Registry, Case, Receipt}.
@@ -275,6 +291,14 @@ assert_exhausted_resource(C, #{
     ).
 
 assert_expiry_step(Step, Path, Gen, Attempt, N) ->
+    Registry = active_registry(),
+    ok = talk_record_t20_frozen_config:same(Step, Registry, [
+        <<"owner">>,
+        <<"controller_epoch">>,
+        <<"controller_thread_id">>,
+        <<"candidate_commit">>,
+        <<"frozen_config_sha256">>
+    ]),
     #{
         <<"path">> := Path,
         <<"generation">> := Gen,
@@ -291,6 +315,8 @@ assert_expiry_step(Step, Path, Gen, Attempt, N) ->
     true = is_binary(Token) andalso byte_size(Token) > 0,
     true = lists:all(fun is_number/1, [Claim, Until, Expired, Reaped]),
     true = Until - Claim >= 120 andalso Expired > Until andalso Reaped >= Expired,
+    true = Claim >= maps:get(<<"valid_from_unix">>, Registry),
+    true = Reaped =< maps:get(<<"expires_at_unix">>, Registry),
     ExpectedState =
         case N of
             8 -> <<"blocked">>;

@@ -1,0 +1,43 @@
+get:
+  tags: &id001
+  - talk-record
+  summary: Purpose-bound third-party assembly audio source
+  operationId: talkRecordClientAudioSource
+  security: &id002 []
+  x-handler: talk_record_client_audio_handler
+  parameters: &id003
+  - name: ticket
+    in: query
+    required: true
+    schema:
+      type: string
+      minLength: 1
+      maxLength: 8192
+  - name: Range
+    in: header
+    schema:
+      type: string
+      maxLength: 106
+  description: Single ticket only; duplicate or unknown query parameters rejected.
+    Current authority rechecked before IO and every 64KiB chunk. GET/HEAD single range;
+    no redirect, no-store. Not a generic attachment URL. Ticket never appears in JSON/errors/logs.
+  responses: &id004
+    '200':
+      description: AAC/ADTS assembly audio
+    '206':
+      description: Single byte range
+    '403':
+      description: Expired or revoked purpose authority
+    '416':
+      description: Invalid range
+head:
+  tags: *id001
+  summary: Purpose-bound third-party assembly audio source
+  operationId: talkRecordClientAudioSourceHead
+  security: *id002
+  x-handler: talk_record_client_audio_handler
+  parameters: *id003
+  description: Single ticket only; duplicate or unknown query parameters rejected.
+    Current authority rechecked before IO and every 64KiB chunk. GET/HEAD single range;
+    no redirect, no-store. Not a generic attachment URL. Ticket never appears in JSON/errors/logs.
+  responses: *id004

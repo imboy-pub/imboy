@@ -1,0 +1,173 @@
+post:
+  tags:
+  - talk-record
+  summary: Recover proven unprepared execution without paid submission
+  operationId: talkRecordClientRecoverUnprepared
+  security:
+  - bearerAuth: []
+  x-device-signature-required: true
+  x-handler: talk_record_provider_handler
+  parameters:
+  - name: id
+    in: path
+    required: true
+    schema: &id001
+      type: integer
+      format: int64
+      minimum: 1
+      maximum: 9223372036854775807
+  - name: job_id
+    in: path
+    required: true
+    schema: *id001
+  - name: Idempotency-Key
+    in: header
+    required: true
+    schema:
+      type: string
+      minLength: 1
+      maxLength: 128
+  - name: If-Match
+    in: header
+    required: true
+    schema:
+      type: string
+      maxLength: 128
+    description: Same actor and authenticated device may reuse the exact task active
+      run without extending its lease or source window. Other active devices cannot
+      be preempted; expired runs use a new query-only lease. Prepare uses client-run
+      ETag; all other mutations use provider-task ETag. JSON etag is unquoted.
+  description: JWT current actor/device and current record permissions are required.
+    Latest returns the complete existing ClientRun view and optional latest provider
+    Task without token or source URL. A query-only run id need not equal task.source_run_id.
+    Recovery requires fresh action idempotency, latest run ETag, current consent and
+    a whole-job absence of all Task/dispatch/result/uncertain facts. Same active device
+    receives the existing token without lease renewal; expired safe execution receives
+    a new run. Never submits to provider.
+  responses:
+    '200':
+      description: Current task metadata.
+      content:
+        application/json:
+          schema:
+            type: object
+            description: Existing API success envelope; payload is the durable task
+              response.
+            properties:
+              data:
+                type: object
+                properties:
+                  run:
+                    oneOf:
+                    - $ref: ../../../../components/schemas/talk-record/ClientRun.yaml
+                    - type: 'null'
+                  task:
+                    oneOf:
+                    - $ref: ../../../../components/schemas/talk-record/ProviderTask.yaml
+                    - type: 'null'
+                  allowed_actions:
+                    type: array
+                    items:
+                      type: string
+                  recovery_status:
+                    type: string
+                    enum:
+                    - no_execution
+                    - ready
+                    - task_available
+                    - device_busy
+                    - reconciliation_required
+                    - published
+                    - cancelled
+                  run_token:
+                    type: string
+                    writeOnly: true
+                  may_submit:
+                    const: false
+    '202':
+      description: Durable state accepted; may_submit/may_query is one-shot.
+      content:
+        application/json:
+          schema:
+            type: object
+            description: Existing API success envelope; payload is the durable task
+              response.
+            properties:
+              data:
+                type: object
+                properties:
+                  run:
+                    oneOf:
+                    - $ref: ../../../../components/schemas/talk-record/ClientRun.yaml
+                    - type: 'null'
+                  task:
+                    oneOf:
+                    - $ref: ../../../../components/schemas/talk-record/ProviderTask.yaml
+                    - type: 'null'
+                  allowed_actions:
+                    type: array
+                    items:
+                      type: string
+                  recovery_status:
+                    type: string
+                    enum:
+                    - no_execution
+                    - ready
+                    - task_available
+                    - device_busy
+                    - reconciliation_required
+                    - published
+                    - cancelled
+                  run_token:
+                    type: string
+                    writeOnly: true
+                  may_submit:
+                    const: false
+    '401':
+      description: JWT or device invalid.
+    '403':
+      description: Current authorization denied.
+    '409':
+      description: State, source or input conflict.
+    '412':
+      description: ETag changed.
+    '422':
+      description: Strict schema invalid.
+    '428':
+      description: Precondition required.
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          additionalProperties: false
+          properties:
+            processing_consent:
+              type: object
+              additionalProperties: false
+              required:
+              - confirmed
+              - execution_mode
+              - provider
+              - model
+              - policy_version
+              - config_version
+              properties:
+                confirmed:
+                  const: true
+                execution_mode:
+                  const: client_byok
+                provider:
+                  const: doubao
+                model:
+                  const: volc.seedasr.auc
+                policy_version:
+                  type: string
+                  minLength: 1
+                  maxLength: 64
+                config_version:
+                  type: string
+                  pattern: ^[0-9a-f]{64}$
+          required:
+          - processing_consent

@@ -1,0 +1,135 @@
+post:
+  tags:
+  - talk-record
+  summary: Durable asynchronous ASR query_receipt
+  operationId: talkRecordProviderQueryReceipt
+  security:
+  - bearerAuth: []
+  x-device-signature-required: true
+  x-handler: talk_record_provider_handler
+  parameters:
+  - name: id
+    in: path
+    required: true
+    schema:
+      type: integer
+      format: int64
+      minimum: 1
+      maximum: 9223372036854775807
+  - name: job_id
+    in: path
+    required: true
+    schema:
+      type: integer
+      format: int64
+      minimum: 1
+      maximum: 9223372036854775807
+  - name: run_id
+    in: path
+    required: true
+    schema:
+      type: integer
+      format: int64
+      minimum: 1
+      maximum: 9223372036854775807
+  - name: task_id
+    in: path
+    required: true
+    schema:
+      type: integer
+      format: int64
+      minimum: 1
+      maximum: 9223372036854775807
+  - name: Idempotency-Key
+    in: header
+    required: true
+    schema:
+      type: string
+      minLength: 1
+      maxLength: 128
+  - name: If-Match
+    in: header
+    required: true
+    schema:
+      type: string
+      maxLength: 128
+    description: Prepare uses client-run ETag; all other mutations use provider-task
+      ETag. JSON etag is unquoted.
+  - name: X-Talk-Run-Token
+    in: header
+    required: true
+    schema:
+      type: string
+      minLength: 32
+      maxLength: 128
+  description: Current JWT actor/device, record/editor/enterprise policy, consent
+    and immutable input pins are checked. Supplier returned task ID differs from submission
+    UUID. Query never submits. No credentials, arbitrary URLs, paths or raw errors
+    are accepted. Source URL is returned only once, after durable submit intent; replays
+    cannot resend. Source expiry does not expire accepted task queries. Cancellation
+    revokes local authority without claiming supplier cancellation. Version one does
+    not accept failed as a query receipt. HTTP query rejection or transport failure
+    is unknown with the original supplier task ID retained; it never proves that the
+    ASR task failed or that resubmission is free.
+  responses:
+    '200':
+      description: Current task metadata.
+      content:
+        application/json:
+          schema:
+            type: object
+            description: Existing API success envelope; payload is the durable task
+              response.
+            properties:
+              data:
+                $ref: ../../../../components/schemas/talk-record/ProviderTaskResponse.yaml
+    '202':
+      description: Durable state accepted; may_submit/may_query is one-shot.
+      content:
+        application/json:
+          schema:
+            type: object
+            description: Existing API success envelope; payload is the durable task
+              response.
+            properties:
+              data:
+                $ref: ../../../../components/schemas/talk-record/ProviderTaskResponse.yaml
+    '401':
+      description: JWT or device invalid.
+    '403':
+      description: Current authorization denied.
+    '409':
+      description: State, source or input conflict.
+    '412':
+      description: ETag changed.
+    '422':
+      description: Strict schema invalid.
+    '428':
+      description: Precondition required.
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          additionalProperties: false
+          properties:
+            provider_task_id:
+              type:
+              - string
+              - 'null'
+              maxLength: 128
+              pattern: ^[A-Za-z0-9_.:-]+$
+            state:
+              enum:
+              - processing
+              - unknown
+              - result_ready
+            result:
+              type: object
+            result_hash:
+              type: string
+              pattern: ^[0-9a-f]{64}$
+          required:
+          - provider_task_id
+          - state

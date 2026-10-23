@@ -159,10 +159,14 @@ constraints(C, Job, Run) ->
         >>,
         [Id, hash()]
     ),
-    reject_code(C, <<"23503">>, <<"DELETE FROM talk_record_consent_event WHERE id=$1">>, [
+    %% PostgreSQL raises 23001 restrict_violation when a DELETE hits rows still
+    %% referenced through an ON DELETE RESTRICT foreign key; 23503
+    %% foreign_key_violation is only returned for INSERT/UPDATE pointing at
+    %% missing rows. Verified on the sealed-template chain under PG 18.1.
+    reject_code(C, <<"23001">>, <<"DELETE FROM talk_record_consent_event WHERE id=$1">>, [
         maps:get(<<"consent_event_id">>, Run)
     ]),
-    reject_code(C, <<"23503">>, <<"DELETE FROM talk_record_job WHERE id=$1">>, [Job]),
+    reject_code(C, <<"23001">>, <<"DELETE FROM talk_record_job WHERE id=$1">>, [Job]),
     {ok, Rows} = elib_pg:query(
         C,
         <<
@@ -364,6 +368,15 @@ ds_flow(C, _ParentRid, Uid) ->
 restore_policy({ok, Value}) -> application:set_env(imboy, talk_record_client_processing, Value);
 restore_policy(undefined) -> application:unset_env(imboy, talk_record_client_processing).
 
+%% The full talk_record schema carries UNIQUE (created_by, client_recording_id)
+%% (uq_tr_creator_client) and the caller-seeded parent row already occupies the
+%% fixed synthetic uuid for this user, so this flow derives its recording id
+%% from the fresh record TSID: the (created_by, client_recording_id) pair is
+%% then guaranteed distinct without changing what the ds request flow verifies.
+%% Hex text because epgsql's uuid codec encodes from hex digits.
+ds_recording_id(Rid) ->
+    binary:encode_hex(<<0:32, 223:32, Rid:64/big-unsigned-integer>>, lowercase).
+
 ds_request_flow(C, Uid) ->
     Rid = elib_tsid:generate(attachment),
     Capture = elib_tsid:generate(attachment),
@@ -371,9 +384,9 @@ ds_request_flow(C, Uid) ->
         C,
         <<
             "INSERT INTO talk_record(id,owner_user_id,created_by,client_recording_id,scope,media_status)"
-            " VALUES($1,$2,$2,'00000000-0000-0000-0000-000000000223','personal','available')"
+            " VALUES($1,$2,$2,$3,'personal','available')"
         >>,
-        [Rid, Uid]
+        [Rid, Uid, ds_recording_id(Rid)]
     ),
     {ok, 1} = elib_pg:execute(
         C,

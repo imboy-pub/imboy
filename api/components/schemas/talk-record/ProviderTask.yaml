@@ -1,0 +1,173 @@
+type: object
+additionalProperties: false
+required:
+- id
+- job_id
+- source_run_id
+- attempt
+- input_content_revision
+- revision
+- profile_hash
+- input_manifest_hash
+- input_transcript_version
+- seq
+- client_request_id
+- provider_task_id
+- provider
+- model
+- resource_id
+- model_name
+- request_profile
+- assembly
+- source_authorization
+- state
+- etag
+- allowed_actions
+properties:
+  id:
+    type: integer
+    format: int64
+    minimum: 1
+    maximum: 9223372036854775807
+  job_id:
+    type: integer
+    format: int64
+    minimum: 1
+    maximum: 9223372036854775807
+  source_run_id:
+    type: integer
+    format: int64
+    minimum: 1
+    maximum: 9223372036854775807
+  attempt:
+    type: integer
+    format: int64
+    minimum: 1
+    maximum: 9223372036854775807
+  input_content_revision:
+    type: integer
+    format: int64
+    minimum: 1
+    maximum: 9223372036854775807
+  revision:
+    type: integer
+    format: int64
+    minimum: 1
+    maximum: 9223372036854775807
+  profile_hash:
+    type: string
+    pattern: ^[0-9a-f]{64}$
+  input_manifest_hash:
+    type: string
+    pattern: ^[0-9a-f]{64}$
+  input_transcript_version:
+    type:
+    - integer
+    - 'null'
+    minimum: 1
+  seq:
+    const: 0
+  client_request_id:
+    type: string
+    format: uuid
+  provider_task_id:
+    type:
+    - string
+    - 'null'
+    maxLength: 128
+  provider:
+    const: doubao
+  model:
+    const: volc.seedasr.auc
+  resource_id:
+    const: volc.seedasr.auc
+  model_name:
+    const: bigmodel
+  request_profile:
+    type: object
+    const:
+      audio:
+        format: aac
+        rate: 16000
+        bits: 16
+        channel: 1
+      request:
+        model_name: bigmodel
+        ssd_version: '300'
+        enable_speaker_info: true
+        show_utterances: true
+        enable_itn: true
+        enable_punc: true
+        enable_ddc: false
+  assembly:
+    type: object
+    additionalProperties: false
+    required:
+    - id
+    - sha256
+    - byte_size
+    - duration_ms
+    - mime_type
+    properties:
+      id: &id001
+        type: integer
+        format: int64
+        minimum: 1
+        maximum: 9223372036854775807
+      sha256:
+        type: string
+        pattern: ^[0-9a-f]{64}$
+      byte_size:
+        type: integer
+        minimum: 1
+        maximum: 134217727
+      duration_ms:
+        type: integer
+        minimum: 1
+        maximum: 7200000
+      mime_type:
+        const: audio/aac
+  source_authorization:
+    type: object
+    additionalProperties: false
+    required:
+    - id
+    - issued_at
+    - expires_at
+    properties:
+      id: *id001
+      issued_at:
+        type:
+        - integer
+        - 'null'
+        description: Unix seconds, immutable once submit intent is durable.
+      expires_at:
+        type:
+        - integer
+        - 'null'
+        description: Unix seconds, at most 300 seconds after issued_at; never extended.
+  state:
+    enum:
+    - prepared
+    - submit_outcome_unknown
+    - accepted
+    - processing
+    - result_ready
+    - failed
+    - rejected
+    - published
+  etag:
+    type: string
+    pattern: ^provider-task:[0-9]+:[0-9]+$
+  allowed_actions:
+    type: array
+    uniqueItems: true
+    items:
+      enum:
+      - submit_intent
+      - resume_preparation
+      - reconcile_receipt
+      - query_execution
+      - complete
+      - resubmission
+      - cancel

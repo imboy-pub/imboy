@@ -44,11 +44,13 @@ properties:
     type: string
     enum:
     - minimax
+    - doubao
     - zhipu
   model:
     type: string
     enum:
     - asr-1.0
+    - volc.seedasr.auc
     - glm-5.3-flash
   policy_version:
     type: string
@@ -124,3 +126,11 @@ properties:
     format: int64
     minimum: 1
     maximum: 9223372036854775807
+
+  execution_purpose:
+    type: string
+    enum: [submit, query_only]
+  provider_task_id:
+    type: [integer, "null"]
+    format: int64
+    description: Durable local provider Task ID for query_only; not supplier task ID.

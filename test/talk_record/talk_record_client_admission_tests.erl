@@ -41,7 +41,7 @@ new_idem_and_device_cannot_bypass_unknown_test() ->
             }}
         end),
         ?assertThrow(
-            {talk_client_abort, client_execution_conflict},
+            {talk_client_abort, async_protocol_required},
             talk_record_client_claim:create_tx(
                 conn,
                 Context#{did => <<"device-b">>},
@@ -72,7 +72,7 @@ setup_request() ->
     meck:expect(talk_record_client_gate, record_tx, fun(_, _, 7, write) ->
         get(client_admission_record)
     end),
-    meck:expect(talk_record_client_policy, get, fun() -> {ok, #{public => public()}} end),
+    meck:expect(talk_record_client_policy, get, fun() -> {ok, #{public => policy_public()}} end),
     meck:expect(talk_record_assembly_logic, find_tx, fun(_, 7) ->
         {ok, #{<<"manifest_hash">> => hash()}}
     end),
@@ -122,8 +122,8 @@ same_input_policy_change_cannot_mint_job_test() ->
             <<"id">> => 99,
             <<"state">> => <<"failed">>,
             <<"processor_input">> => #{
-                <<"provider">> => <<"minimax">>,
-                <<"model">> => <<"asr-1.0">>,
+                <<"provider">> => <<"doubao">>,
+                <<"model">> => <<"volc.seedasr.auc">>,
                 <<"policy_version">> => <<"old">>,
                 <<"config_version">> => hash(),
                 <<"processing_mode">> => <<"transcribe">>
@@ -175,8 +175,14 @@ input_dedupe_independent_of_request_identity_test() ->
     ?assertNotEqual(K, talk_record_client_admission:dedupe_key(8, <<"transcribe">>, I)),
     ?assertNotEqual(K, talk_record_client_admission:dedupe_key(7, <<"summarize">>, I)).
 
-unknown_successor_records_specific_ack_test() ->
-    Modules = [talk_record_client_repo, talk_record_client_policy, talk_record_ds, elib_tsid],
+doubao_successor_requires_async_protocol_test() ->
+    Modules = [
+        talk_record_client_repo,
+        talk_record_provider_repo,
+        talk_record_client_policy,
+        talk_record_ds,
+        elib_tsid
+    ],
     lists:foreach(fun(M) -> meck:new(M, [passthrough, no_link]) end, Modules),
     try
         Old = #{<<"id">> => 88, <<"state">> => <<"provider_outcome_unknown">>, <<"revision">> => 4},
@@ -186,9 +192,9 @@ unknown_successor_records_specific_ack_test() ->
             {ok, #{<<"count">> => 0}}
         end),
         meck:expect(talk_record_client_policy, get, fun() ->
-            {ok, #{public => public(), signing_key => binary:copy(<<"k">>, 32)}}
+            {ok, #{public => policy_public(), signing_key => binary:copy(<<"k">>, 32)}}
         end),
-        meck:expect(talk_record_client_repo, sources_tx, fun(_, 7, <<"transcribe">>) ->
+        meck:expect(talk_record_provider_repo, snapshot_tx, fun(_, 7) ->
             {ok, #{<<"parts">> => []}}
         end),
         meck:expect(talk_record_client_repo, consent_tx, fun(_, 7, 11, <<"transcribe">>, _) ->
@@ -222,8 +228,8 @@ unknown_successor_records_specific_ack_test() ->
             <<"input_content_revision">> => 5,
             <<"input_transcript_version">> => null
         },
-        ?assertMatch(
-            {ok, created, #{<<"id">> := 100}},
+        ?assertThrow(
+            {talk_client_abort, async_protocol_required},
             talk_record_client_claim:create_tx(
                 conn,
                 #{uid => 11, did => <<"device-b">>},
@@ -234,7 +240,7 @@ unknown_successor_records_specific_ack_test() ->
             )
         ),
         ?assertEqual(0, meck:num_calls(talk_record_client_repo, settle_tx, '_')),
-        ?assertEqual(1, meck:num_calls(talk_record_client_repo, insert_run_tx, '_'))
+        ?assertEqual(0, meck:num_calls(talk_record_client_repo, insert_run_tx, '_'))
     after
         lists:foreach(fun meck:unload/1, Modules),
         erase(client_successor)
@@ -274,19 +280,24 @@ headers(Rev, Key) -> #{if_match => integer_to_binary(Rev), idempotency_key => Ke
 public() -> #{<<"policy_version">> => <<"p1">>, <<"config_version">> => hash()}.
 pin() ->
     (public())#{
-        <<"provider">> => <<"minimax">>,
-        <<"model">> => <<"asr-1.0">>,
+        <<"provider">> => <<"doubao">>,
+        <<"model">> => <<"volc.seedasr.auc">>,
         <<"processing_mode">> => <<"transcribe">>
     }.
 request() ->
     Pin = (public())#{
         <<"execution_mode">> => <<"client_byok">>,
-        <<"provider">> => <<"minimax">>,
-        <<"model">> => <<"asr-1.0">>
+        <<"provider">> => <<"doubao">>,
+        <<"model">> => <<"volc.seedasr.auc">>
     },
     Body = Pin#{
         <<"mode">> => <<"transcribe">>, <<"processing_consent">> => Pin#{<<"confirmed">> => true}
     },
-    {ok, P} = talk_record_client_contract:request(Body, public()),
+    {ok, P} = talk_record_client_contract:request(Body, policy_public()),
     {Body, P}.
 hash() -> binary:copy(<<"a">>, 64).
+
+policy_public() ->
+    (public())#{
+        <<"providers">> => #{<<"transcribe">> => maps:with([<<"provider">>, <<"model">>], pin())}
+    }.

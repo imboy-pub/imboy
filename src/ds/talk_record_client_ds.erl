@@ -63,6 +63,7 @@ dispatch(C, Action, Context, Record, Job, RunId, Seq, Headers, Body) ->
         maps:get(<<"config_version">>, Public) =:= maps:get(<<"config_version">>, Run),
         processing_consent_required
     ),
+    async_guard(Action, Run),
     idempotent(C, Context, resource(Job, RunId, Action, Seq), Headers, Body, fun() ->
         active(Run),
         revision(Run, maps:get(if_match, Headers, undefined)),
@@ -166,6 +167,8 @@ view(Run, Parts) ->
             <<"input_content_revision">>,
             <<"input_transcript_version">>,
             <<"chunk_plan_hash">>,
+            <<"execution_purpose">>,
+            <<"provider_task_id">>,
             <<"state">>,
             <<"revision">>,
             <<"lease_expires_at_unix">>
@@ -190,3 +193,10 @@ tx(Fun) ->
         {rollback, _} -> {error, db_error};
         E -> E
     end.
+
+async_guard(Action, #{<<"provider">> := <<"doubao">>}) when
+    Action =:= plan; Action =:= dispatch; Action =:= result; Action =:= complete; Action =:= settle
+->
+    talk_record_client_gate:abort(async_protocol_required);
+async_guard(_, _) ->
+    ok.

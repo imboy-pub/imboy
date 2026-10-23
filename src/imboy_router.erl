@@ -1517,6 +1517,7 @@ open() ->
         <<"/api/v1/app/features">>,
         %% Dedicated download capability; handler verifies signature and current ACL.
         <<"/api/v1/attachment/content">>,
+        <<"/api/v1/talk-records/client-audio-source">>,
         <<"/api/v1/app/manifest">>,
         <<"/api/v1/app/policy">>,
         <<"/api/v1/user/show">>,

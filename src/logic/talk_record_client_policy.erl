@@ -20,11 +20,16 @@ get() ->
                     <<"provider">> => <<"zhipu">>, <<"model">> => <<"glm-5.3-flash">>
                 }
             },
+            Selected =
+                case maps:get(doubao_enabled, Config, false) of
+                    true -> Providers#{<<"transcribe">> => doubao(Config)};
+                    _ -> Providers
+                end,
             Public = #{
                 <<"available">> => true,
                 <<"execution_mode">> => <<"client_byok">>,
                 <<"policy_version">> => PV,
-                <<"providers">> => Providers
+                <<"providers">> => Selected
             },
             {ok, Config#{
                 public => Public#{<<"config_version">> => talk_record_client_contract:hash(Public)}
@@ -66,3 +71,26 @@ for_record(Record) ->
         {ok, Config} -> (maps:get(public, Config))#{<<"available">> => allowed(Record, Config)};
         _ -> #{<<"available">> => false}
     end.
+
+%% Deployments must opt into the async protocol; existing MiniMax deployments
+%% keep their pinned provider and audio-part snapshot contract.
+doubao(Config) ->
+    Origin = talk_record_client_audio_contract:origin(config_ds:env(base_url, <<>>)),
+    Ready =
+        maps:get(audio_source_enabled, Config, false) =:= true andalso
+            element(1, Origin) =:= ok,
+    #{
+        <<"provider">> => <<"doubao">>,
+        <<"model">> => <<"volc.seedasr.auc">>,
+        <<"resource_id">> => <<"volc.seedasr.auc">>,
+        <<"model_name">> => <<"bigmodel">>,
+        <<"protocol">> => <<"doubao_auc_v1">>,
+        <<"source_delivery">> => <<"assembly_url_v1">>,
+        <<"enable_speaker_info">> => true,
+        <<"show_utterances">> => true,
+        <<"ssd_version">> => <<"300">>,
+        <<"enable_itn">> => true,
+        <<"enable_punc">> => true,
+        <<"enable_ddc">> => false,
+        <<"available">> => Ready
+    }.

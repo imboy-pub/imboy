@@ -1,0 +1,120 @@
+get:
+  tags:
+  - talk-record
+  summary: Discover client execution without grants
+  operationId: talkRecordClientLatest
+  security:
+  - bearerAuth: []
+  x-device-signature-required: true
+  x-handler: talk_record_provider_handler
+  parameters:
+  - name: id
+    in: path
+    required: true
+    schema: &id001
+      type: integer
+      format: int64
+      minimum: 1
+      maximum: 9223372036854775807
+  - name: job_id
+    in: path
+    required: true
+    schema: *id001
+  description: JWT current actor/device and current record permissions are required.
+    Latest returns the complete existing ClientRun view and optional latest provider
+    Task without token or source URL. A query-only run id need not equal task.source_run_id.
+    Recovery requires fresh action idempotency, latest run ETag, current consent and
+    a whole-job absence of all Task/dispatch/result/uncertain facts. Same active device
+    receives the existing token without lease renewal; expired safe execution receives
+    a new run. Never submits to provider.
+  responses:
+    '200':
+      description: Current task metadata.
+      content:
+        application/json:
+          schema:
+            type: object
+            description: Existing API success envelope; payload is the durable task
+              response.
+            properties:
+              data:
+                type: object
+                properties:
+                  run:
+                    oneOf:
+                    - $ref: ../../../../components/schemas/talk-record/ClientRun.yaml
+                    - type: 'null'
+                  task:
+                    oneOf:
+                    - $ref: ../../../../components/schemas/talk-record/ProviderTask.yaml
+                    - type: 'null'
+                  allowed_actions:
+                    type: array
+                    items:
+                      type: string
+                  recovery_status:
+                    type: string
+                    enum:
+                    - no_execution
+                    - ready
+                    - task_available
+                    - device_busy
+                    - reconciliation_required
+                    - published
+                    - cancelled
+                  run_token:
+                    type: string
+                    writeOnly: true
+                  may_submit:
+                    const: false
+    '202':
+      description: Durable state accepted; may_submit/may_query is one-shot.
+      content:
+        application/json:
+          schema:
+            type: object
+            description: Existing API success envelope; payload is the durable task
+              response.
+            properties:
+              data:
+                type: object
+                properties:
+                  run:
+                    oneOf:
+                    - $ref: ../../../../components/schemas/talk-record/ClientRun.yaml
+                    - type: 'null'
+                  task:
+                    oneOf:
+                    - $ref: ../../../../components/schemas/talk-record/ProviderTask.yaml
+                    - type: 'null'
+                  allowed_actions:
+                    type: array
+                    items:
+                      type: string
+                  recovery_status:
+                    type: string
+                    enum:
+                    - no_execution
+                    - ready
+                    - task_available
+                    - device_busy
+                    - reconciliation_required
+                    - published
+                    - cancelled
+                  run_token:
+                    type: string
+                    writeOnly: true
+                  may_submit:
+                    const: false
+    '401':
+      description: JWT or device invalid.
+    '403':
+      description: Current authorization denied.
+    '409':
+      description: State, source or input conflict.
+    '412':
+      description: ETag changed.
+    '422':
+      description: Strict schema invalid.
+    '428':
+      description: Precondition required.

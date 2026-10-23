@@ -33,31 +33,30 @@ recheck() ->
     ok.
 
 load(Key) ->
+    {Config, ConfigHash} = talk_record_t20_frozen_config:load(),
     RegistryPath = required("T20_CASE_REGISTRY"),
+    true = list_to_binary(RegistryPath) =:= maps:get(<<"registry_path">>, Config),
     RegistryBytes = private_file(RegistryPath),
     Hash = list_to_binary(required("T20_CASE_REGISTRY_SHA256")),
     Hash = hex(RegistryBytes),
     Registry = jsone:decode(RegistryBytes),
-    verify_registry(Registry),
-    verify_lease(Registry, Hash),
+    ConfigHash = maps:get(<<"frozen_config_sha256">>, Registry),
+    ok = talk_record_t20_frozen_config:same(
+        Registry,
+        Config,
+        talk_record_t20_frozen_config:binding_keys()
+    ),
+    verify_registry(Registry, Config),
+    verify_lease(Registry, Hash, Config, ConfigHash),
     Cases = maps:get(<<"cases">>, Registry),
     Case = maps:get(Key, Cases),
     verify_case(Key, Case, Registry),
     #{case_key => Key, registry => Registry, registry_sha256 => Hash, entry => Case}.
 
-verify_registry(R) ->
-    #{
-        <<"owner">> := <<"codex-relay-20261021">>,
-        <<"controller_epoch">> := 3,
-        <<"host">> := <<"127.0.0.1">>,
-        <<"connection_port">> := 59982,
-        <<"server_port">> := 5432,
-        <<"system_identifier">> := <<"7698912704598417449">>,
-        <<"migration_head">> := 221,
-        <<"migration_count">> := 219
-    } = R,
+verify_registry(R, Config) ->
     Repo = required("T20_CASE_REPO"),
     {ok, Repo} = file:get_cwd(),
+    true = list_to_binary(Repo) =:= maps:get(<<"repo">>, Config),
     assert_directory(Repo),
     Sources = maps:get(<<"source_sha256">>, R),
     true = lists:sort(maps:keys(Sources)) =:= required_sources(Repo),
@@ -74,7 +73,8 @@ verify_registry(R) ->
     Candidate = list_to_binary(required("T20_CASE_BASE_COMMIT")),
     Candidate = git_head(Repo),
     Cases = maps:get(<<"cases">>, R),
-    true = lists:sort(maps:keys(Cases)) =:= lists:sort(required_cases()),
+    verify_cases(Cases, maps:get(<<"case_authorizations">>, Config)),
+
     lists:foreach(
         fun(Field) ->
             Values = [maps:get(Field, V) || V <- maps:values(Cases)],
@@ -84,37 +84,69 @@ verify_registry(R) ->
     ),
     ok.
 
-verify_lease(R, Hash) ->
-    Lease = jsone:decode(private_file(required("T20_CASE_LEASE"))),
+verify_cases(Cases, Authorized) ->
+    true = lists:sort(maps:keys(Cases)) =:= lists:sort(required_cases()),
+    true = lists:sort(maps:keys(Authorized)) =:= lists:sort(required_cases()),
+    maps:foreach(
+        fun(K, Entry) ->
+            ok = talk_record_t20_frozen_config:same(
+                Entry,
+                maps:get(K, Authorized),
+                [<<"database">>, <<"disk_root">>, <<"namespace">>, <<"clone_receipt_path">>]
+            ),
+            case K of
+                <<"talk_record_delete_tests:purge_failed_then_retry_test_">> ->
+                    ok = talk_record_t20_frozen_config:same(
+                        Entry,
+                        maps:get(K, Authorized),
+                        [<<"exhaustion_receipt_path">>]
+                    );
+                _ ->
+                    ok
+            end
+        end,
+        Cases
+    ).
+
+verify_lease(R, Hash, Config, ConfigHash) ->
+    LeasePath = required("T20_CASE_LEASE"),
+    true = list_to_binary(LeasePath) =:= maps:get(<<"lease_path">>, Config),
+    Lease = jsone:decode(private_file(LeasePath)),
+    ConfigHash = maps:get(<<"frozen_config_sha256">>, Lease),
     #{
         <<"approved">> := true,
         <<"exclusive_beam_and_pg_window">> := true,
         <<"registry_sha256">> := Hash,
         <<"expires_at_unix">> := Until
     } = Lease,
-    true = is_integer(Until) andalso Until >= erlang:system_time(second) + 120,
+    ok = talk_record_t20_frozen_config:lease_window(Lease, Config, erlang:system_time(second)),
     lists:foreach(
         fun(K) -> true = maps:get(K, R) =:= maps:get(K, Lease) end,
-        [<<"owner">>, <<"controller_epoch">>, <<"controller_pid">>, <<"controller_process_start">>]
+        [
+            <<"owner">>,
+            <<"controller_epoch">>,
+            <<"controller_pid">>,
+            <<"controller_process_start">>,
+            <<"controller_thread_id">>
+        ]
     ),
+    verify_controller(R, Until).
+
+verify_controller(R, Until) ->
     Lock = binary_to_list(maps:get(<<"controller_lock_path">>, R)),
-    Owner = jsone:decode(private_file(filename:join(Lock, "owner.json"))),
-    Epoch = maps:get(<<"controller_epoch">>, R),
+    Owner = jsone:decode(identity_file(filename:join(Lock, "owner.json"))),
     Pid = maps:get(<<"controller_pid">>, R),
     Start = maps:get(<<"controller_process_start">>, R),
-    #{
-        <<"controller_epoch">> := Epoch,
-        <<"pid">> := Pid,
-        <<"process_start">> := Start,
-        <<"session">> := <<"codex-relay-20261021">>
-    } = Owner,
     Host = maps:get(<<"controller_host">>, R),
-    Host = maps:get(<<"host">>, Owner),
     Host = command("/bin/hostname", []),
     OwnerUntil = calendar:rfc3339_to_system_time(
         binary_to_list(maps:get(<<"lease_until">>, Owner)), [{unit, second}]
     ),
-    true = OwnerUntil >= erlang:system_time(second) + 120,
+    true = OwnerUntil >= Until,
+    StatePath = maps:get(<<"controller_state_path">>, R),
+    StatePath = maps:get(<<"state_path">>, Owner),
+    State = jsone:decode(identity_file(binary_to_list(StatePath))),
+    ok = talk_record_t20_frozen_config:controller_identity(R, Owner, State),
     true = is_integer(Pid) andalso Pid > 0,
     Start = controller_process_start(Pid),
     ok.
@@ -151,7 +183,9 @@ verify_case(Key, C, R) ->
         <<"case_key">> := Key,
         <<"database">> := Db,
         <<"clone_exit_code">> := 0,
-        <<"empty_business_verified">> := true
+        <<"empty_business_verified">> := true,
+        <<"disk_root">> := Root,
+        <<"namespace">> := Ns
     } = Receipt,
     lists:foreach(
         fun(K) -> true = maps:get(K, Receipt) =:= maps:get(K, R) end,
@@ -161,7 +195,17 @@ verify_case(Key, C, R) ->
             <<"system_identifier">>,
             <<"migration_head">>,
             <<"migration_count">>,
-            <<"candidate_commit">>
+            <<"candidate_commit">>,
+            <<"frozen_config_sha256">>,
+            <<"source_sha256">>,
+            <<"controller_thread_id">>,
+            <<"controller_pid">>,
+            <<"controller_process_start">>,
+            <<"host">>,
+            <<"connection_port">>,
+            <<"server_port">>,
+            <<"user">>,
+            <<"migration_versions">>
         ]
     ),
     ok.
@@ -211,6 +255,17 @@ verify_connected(Conn) ->
             {<<"head">>, <<"migration_head">>},
             {<<"migrations">>, <<"migration_count">>}
         ]
+    ),
+    {ok, Versions} = elib_pg:query(
+        Conn,
+        <<"SELECT version FROM public.schema_migrations_history ORDER BY version">>,
+        []
+    ),
+    true = [maps:get(<<"version">>, V) || V <- Versions] =:= maps:get(<<"migration_versions">>, R),
+    {ok, [#{<<"dirty">> := false}]} = elib_pg:query(
+        Conn,
+        <<"SELECT dirty FROM public.schema_migrations">>,
+        []
     ),
     ok.
 
@@ -270,6 +325,13 @@ private_file(Path) ->
     {ok, #file_info{type = regular, mode = Mode}} = file:read_link_info(Path),
     true = Mode band 8#077 =:= 0,
     private_source(Path).
+%% Controller identity files contain no secrets and may be world-readable (0644),
+%% but must not be symlinks or writable by group/other. Resource receipts remain 0600.
+identity_file(Path) ->
+    assert_directory(filename:dirname(Path)),
+    {ok, #file_info{type = regular, mode = Mode}} = file:read_link_info(Path),
+    true = Mode band 8#022 =:= 0,
+    private_source(Path).
 private_source(Path) ->
     assert_directory(filename:dirname(Path)),
     {ok, #file_info{type = regular}} = file:read_link_info(Path),
@@ -314,6 +376,8 @@ required_sources(Repo) ->
      || Name <-
             [
                 <<"talk_record_t20_case_registry">>,
+                <<"talk_record_t20_frozen_config">>,
+                <<"talk_record_t20_frozen_config_tests">>,
                 <<"talk_record_t20_support">>,
                 <<"talk_record_delete_tests">>,
                 <<"talk_record_t20_handler_tests">>,
