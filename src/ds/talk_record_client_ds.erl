@@ -137,8 +137,8 @@ idempotent(C, #{uid := Uid, did := Did}, Resource, Headers, Body, Fun) ->
             {ok, created, P};
         {ok, existing, Row} ->
             replay(talk_record_job_support:replay_idem(Row, Digest));
-        E ->
-            talk_record_client_gate:require(E)
+        {error, R} ->
+            talk_record_client_gate:abort(R)
     end.
 
 replay({ok, replay, #{<<"may_dispatch">> := _} = P}) ->
