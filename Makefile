@@ -178,10 +178,38 @@ EDOC_OPTS = {doclet, edown_doclet}
 #     W403/ATTACHMENT_REVIEW manifest 的 attv5_chain_* 库并自建同名 pgsql 池。
 #     全量轨道中任一先行套件建池后，这些套件 setup 必然 no_go（r4 实证 7 例
 #     context setup failed）。全部按同口径移入专项单跑。
+#   * 2026-10-22 zcode r5 实证（eunit-zcode-r4d + focus-govrelay-r6）：governance
+#     relay 的 bind/purge 场景按业务合同写入 enterprise_attachment_retention
+#     治理行（行级不可变，TRUNCATE 前置守卫 empty_governance_fixture 禁止清除
+#     ——t05_support「绝不静默清除治理事实」）；而全量轨道共享 t05 stub 库的
+#     talk_record 系套件要求进入时治理表为空（fresh-governance fixture）。
+#     relay 先行运行后残留 4 行（实证），后续 87 例 setup cancel 级联。两合同
+#     在同一共享库上设计性互斥——单跑绿（focus-govrelay-r6 1/1），覆盖由
+#     重置 stub 后的专项单跑承载。
+#   * 2026-10-22 zcode r6 实证（eunit-zcode-r6 + r6solo 焦点）：
+#     talk_record_t12_tests 的 Q-M2 用例要求 talk_record_job_worker:run_once
+#     领到指定 job（meck 注入 SELECT 故障后断言 db_error 重排）；全量 VM 的
+#     imboy_sup 常驻 job worker 每数秒抢先消费同一 stub 库队列，run_once 返回
+#     done → badmatch（r6 2 例；单跑绿 r6solo exit=0）。设计性独占：由专项
+#     单跑承载。
+#     talk_record_gateway_http_tests 文件头要求 TALK_HTTP_AAC_FIXTURE 指向
+#     AAC 合成样例（relay-audit synthetic-gateway.aac），全量轨道无该 env
+#     必红（r4d/r5d/r6 各 1 例 enoent；no-skip 铁律）。同 AG31/HIRD 口径：
+#     导出 env 后专项单跑承载。
+#   * 2026-10-22 zcode r7 实证（eunit-zcode-r7：13665 pass / 0 failed /
+#     t20 全系 setup cancel）：talk_record_t20_handler_tests 是 T20 控制器
+#     注册表合同的主消费者——setup_all 经 case_registry:activate 强制
+#     T20_CASE_REGISTRY(+SHA256)/T20_CASE_LEASE/T20_CASE_REPO(+BASE_COMMIT
+#     源码 SHA 对拍)/T20_PG_* 七项 env，且 lease 声明 exclusive_beam_and_pg_
+#     window（设计性独占 VM+PG），no-skip 铁律缺失即 error。全量轨道不可
+#     满足（r1/r5d/r6/r7 同款 cancel）。历史隔离资产（relay-audit r14）
+#     终态 PREPARED_NOT_TESTED、绑定源码 SHA 与本树已失配、PG 集群已关——
+#     恢复须重建整套 case-isolation 资产（C26 余额登记 BLOCKED_RESOURCE），
+#     覆盖由控制器专项运行承载。
 ifdef t
 EUNIT_TEST_SPEC = (fun() -> lists:append([$1]) end)()
 else
-EUNIT_TEST_SPEC = (fun() -> Excl = [elib_tsid, agent_grant_pg, agent_run_pg, agent_grant_pg_tests, agent_recovery_pg_tests, agent_run_pg_tests, agent_tool_authorizer_pg_tests, cs_pg_widget, cs_seat_console_pg_tests, imboy_hird_acceptance_tests, imboy_hird_replay_offline_tests, agent_hird_mini_spike_tests, imboy_hird_p1_auth_tool_tests, imboy_hird_gates_tests, imboy_hird_p2_replay_tests, imboy_hird_p3_compare_tests, talk_record_cleanup_retry_pg_checks, talk_record_delete_tests, attachment_lifecycle_v5_w403_gateway_protocol_tests, attachment_lifecycle_v5_w403_driver_matrix_tests, attachment_ordinary_http_protocol_tests, eb_asset_frozen_storage_protocol_tests, enterprise_asset_driver_pg_tests, attachment_pending_location_pg_tests, message_result_pg_tests], Mods = lists:append([$1]), [M || M <- Mods, not lists:member(M, Excl)] end)()
+EUNIT_TEST_SPEC = (fun() -> Excl = [elib_tsid, agent_grant_pg, agent_run_pg, agent_grant_pg_tests, agent_recovery_pg_tests, agent_run_pg_tests, agent_tool_authorizer_pg_tests, cs_pg_widget, cs_seat_console_pg_tests, imboy_hird_acceptance_tests, imboy_hird_replay_offline_tests, agent_hird_mini_spike_tests, imboy_hird_p1_auth_tool_tests, imboy_hird_gates_tests, imboy_hird_p2_replay_tests, imboy_hird_p3_compare_tests, talk_record_cleanup_retry_pg_checks, talk_record_delete_tests, talk_record_governance_relay_tests, talk_record_t12_tests, talk_record_gateway_http_tests, talk_record_t20_handler_tests, attachment_lifecycle_v5_w403_gateway_protocol_tests, attachment_lifecycle_v5_w403_driver_matrix_tests, attachment_ordinary_http_protocol_tests, eb_asset_frozen_storage_protocol_tests, enterprise_asset_driver_pg_tests, attachment_pending_location_pg_tests, message_result_pg_tests], Mods = lists:append([$1]), [M || M <- Mods, not lists:member(M, Excl)] end)()
 endif
 
 # BUILD-00R 后端物理裁剪接线：生成器按 manifest 产出未被选中 feature 的专属
