@@ -123,5 +123,4 @@ respond(Req, {error, E}) when
 respond(Req, {error, E}) ->
     talk_record_http:respond_error(Req, E).
 
-execution_mode(Body) when is_map(Body) -> maps:get(<<"execution_mode">>, Body, undefined);
-execution_mode(_) -> invalid.
+execution_mode(Body) -> maps:get(<<"execution_mode">>, Body, undefined).

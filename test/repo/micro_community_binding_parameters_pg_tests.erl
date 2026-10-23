@@ -66,11 +66,6 @@ setup_rows(S) ->
     ),
     execute(
         C,
-        <<"INSERT INTO public.\"group\"(id,owner_uid,creator_uid,title,type,join_limit,status,scope,e2ee_mode) VALUES ($1,$2,$2,'unbound personal fixture',1,1,1,'personal',0)">>,
-        [99001012, 99001001]
-    ),
-    execute(
-        C,
         <<"INSERT INTO public.channel(id,name,creator_uid,scope,status,discussion_group_id,access_type) VALUES ($1,'binding parameter fixture',$2,'personal',1,$3,0)">>,
         [99001021, 99001001, 99001011]
     ),

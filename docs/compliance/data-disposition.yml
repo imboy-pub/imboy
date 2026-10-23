@@ -1603,6 +1603,20 @@ tables:
     mechanism: restricted record-scoped recovery function; no user FK preventing identity deletion; no user-facing audit content read
     review: self-evident
     retention: permanent deletion tombstone audit; retained historical actor identity remains personal data
+  talk_record_client_run:
+    action: retain
+    owner: talk_record
+    reason: BYOK执行证据含actor身份、设备会话与输入快照；摘要输入快照可能包含转写正文，不含provider明文凭据
+    mechanism: RESTRICT FK to talk_record_job and talk_record; input_snapshot may contain personal content; no implicit anonymization
+    review: pending-owner
+    retention: 当前随记录治理保留；正文及身份数据的留存期限和账号注销处置仍待负责人确认，不代表隐私验收通过
+  talk_record_client_run_part:
+    action: retain
+    owner: talk_record
+    reason: BYOK分片执行结果含转写或摘要正文及来源信息；result JSON并非仅digest或计数
+    mechanism: RESTRICT FK to talk_record_client_run; result JSON stores provider output; no implicit anonymization
+    review: pending-owner
+    retention: 当前随记录治理保留；完整结果正文的保留与删除政策仍待负责人确认，不代表隐私验收通过
 
 exclusions:
   adm_role:

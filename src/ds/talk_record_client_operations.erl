@@ -241,7 +241,8 @@ confirm(C, Run, #{<<"provider_state">> := <<"dispatching">>} = P, V) ->
         maps:get(hash, V),
         {maps:get(wire_result, V), maps:get(provider_request_id, V)}
     ),
-    {ok, 1} = talk_record_client_repo:touch_tx(C, maps:get(<<"id">>, Run));
+    {ok, 1} = talk_record_client_repo:touch_tx(C, maps:get(<<"id">>, Run)),
+    ok;
 confirm(_, _, #{<<"provider_state">> := <<"confirmed">>, <<"result_hash">> := H}, #{hash := H}) ->
     ok;
 confirm(_, _, _, _) ->

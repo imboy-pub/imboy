@@ -113,7 +113,7 @@ live_asset(C, Aid) ->
     case elib_pg:query(C, <<"SELECT lifecycle_state FROM attachment WHERE id=$1">>, [Aid]) of
         {ok, [#{<<"lifecycle_state">> := <<"live">>}]} -> ok;
         {ok, _} -> abort(already_deleting);
-        E -> require(E)
+        {error, R} -> abort(R)
     end.
 
 payload(R, A, E) ->
@@ -205,7 +205,7 @@ require({error, R}) -> abort(R);
 require(V) -> V.
 value({ok, V}) -> V;
 value({ok, existing, Row}) -> {existing, Row};
-value(E) -> require(E).
+value({error, R}) -> abort(R).
 abort(R) -> throw({talk_governance, R}).
 tx(F) ->
     case elib_pg:with_tx(F, [{reraise, false}]) of
