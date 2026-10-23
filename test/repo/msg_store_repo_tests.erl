@@ -9,7 +9,6 @@
     end}
 ).
 
-
 %%%===================================================================
 %%% @doc  msg_store_repo 高质量测试套件
 %%%
@@ -1860,7 +1859,12 @@ mark_processed_validates_sql_structure_test_() ->
                     ?assertNotEqual(nomatch, binary:match(Sql, <<"UPDATE ">>)),
                     ?assertNotEqual(nomatch, binary:match(Sql, <<"SET processed_at = NOW()">>)),
                     ?assertNotEqual(nomatch, binary:match(Sql, <<"error_msg = NULL">>)),
-                    ?assertNotEqual(nomatch, binary:match(Sql, <<"WHERE type = $1 AND msg_id = $2 AND processed_at IS NULL">>)),
+                    ?assertNotEqual(
+                        nomatch,
+                        binary:match(
+                            Sql, <<"WHERE type = $1 AND msg_id = $2 AND processed_at IS NULL">>
+                        )
+                    ),
 
                     % 验证参数
                     ?assertEqual(<<"c2c">>, Type),
@@ -2325,6 +2329,42 @@ create_indexes_validates_index_ddl_test_() ->
             ?assertNotEqual(nomatch, binary:match(Combined, <<"_created_at_idx">>)),
             ?assertEqual(ok, Result),
             erase(create_idx_sqls),
+            ok
+        end
+    ).
+
+%% 回归：PG 索引名不允许 schema 前缀。带 public. 前缀的表名输入时，
+%% 索引名须剥掉前缀，否则 CREATE INDEX 报 syntax error at or near "."，
+%% 全新库动态建表路径炸掉 EUnit（CI run 39920905071）。
+create_indexes_strips_schema_prefix_test_() ->
+    ?WITH_MECK(
+        elib_pg,
+        [
+            {'execute', 2, fun(Sql, []) ->
+                Prev = get(create_idx_sqls2),
+                put(create_idx_sqls2, [Sql | Prev]),
+                {ok, [], []}
+            end}
+        ],
+        fun() ->
+            put(create_idx_sqls2, []),
+            Result = msg_store_repo:create_indexes(<<"public.msg_store_staging">>),
+            AllSql = get(create_idx_sqls2),
+            Combined = iolist_to_binary(lists:reverse(AllSql)),
+            % 索引名不带 schema 前缀
+            ?assertNotEqual(
+                nomatch,
+                binary:match(Combined, <<"EXISTS msg_store_staging_processed_at_idx">>)
+            ),
+            % ON 子句保留完整表名
+            ?assertNotEqual(
+                nomatch,
+                binary:match(Combined, <<"ON public.msg_store_staging">>)
+            ),
+            % 禁止 "EXISTS public." 形态
+            ?assertEqual(nomatch, binary:match(Combined, <<"EXISTS public.">>)),
+            ?assertEqual(ok, Result),
+            erase(create_idx_sqls2),
             ok
         end
     ).

@@ -38,8 +38,7 @@ properties:
                 minLength: 1
                 maxLength: 48
               confidence:
-                type: integer
-                nullable: true
+                type: [integer, 'null']
                 minimum: 0
                 maximum: 1
         segments:
@@ -68,8 +67,7 @@ properties:
                 type: string
                 maxLength: 20000
               confidence:
-                type: integer
-                nullable: true
+                type: [integer, 'null']
                 minimum: 0
                 maximum: 1
         language:
@@ -115,13 +113,11 @@ properties:
                   minimum: 1
                   maximum: 9223372036854775807
               owner_user_id:
-                type: integer
-                nullable: true
+                type: [integer, 'null']
                 enum:
                 - null
               due_date:
-                type: string
-                nullable: true
+                type: [string, 'null']
                 enum:
                 - null
         actions:

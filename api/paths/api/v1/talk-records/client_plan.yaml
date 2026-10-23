@@ -10,6 +10,11 @@ put:
     independently decodable request is at most 500000 ms and 50000000 bytes.
     Only overlap_rule=none is supported. Completion revalidates the stored plan
     against the frozen sources; submitted sizes do not prove actual encoding.
+    JWT authenticated device identity; current record ACL, active membership
+    and external processing policy are authoritative. No provider credentials, endpoint,
+    callback or file path is accepted. Dispatch intent replay always returns may_dispatch=false.
+    Exact seq/source coverage is required before atomic content publication. Unknown
+    dispatch cannot be automatically retried.
   security:
   - bearerAuth: []
   x-device-signature-required: true
@@ -67,11 +72,6 @@ put:
   - $ref: ../../../../components/parameters/talk-record/DeviceMethod.yaml
   - $ref: ../../../../components/parameters/talk-record/DeviceSign.yaml
   - $ref: ../../../../components/parameters/talk-record/DeviceSk.yaml
-  description: JWT authenticated device identity; current record ACL, active membership
-    and external processing policy are authoritative. No provider credentials, endpoint,
-    callback or file path is accepted. Dispatch intent replay always returns may_dispatch=false.
-    Exact seq/source coverage is required before atomic content publication. Unknown
-    dispatch cannot be automatically retried.
   requestBody:
     required: true
     content:

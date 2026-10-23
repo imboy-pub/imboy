@@ -1288,23 +1288,30 @@ ensure_table_exists() ->
 %% @doc 创建备份表的索引
 -spec create_indexes(binary()) -> ok | {error, any()}.
 create_indexes(Tb) ->
+    %% PG 索引名不允许 schema 前缀（索引随表 schema），表名允许；
+    %% Tb 形如 <<"public.msg_store_staging">> 时索引名须剥掉前缀
+    IdxTb =
+        case binary:split(Tb, <<".">>) of
+            [_, Table] -> Table;
+            [Table] -> Table
+        end,
     %% 创建 processed_at 索引（用于清理已处理记录）
     _ = elib_pg:execute(
-        <<"CREATE INDEX IF NOT EXISTS ", Tb/binary,
+        <<"CREATE INDEX IF NOT EXISTS ", IdxTb/binary,
             "_processed_at_idx\n"
             "            ON ", Tb/binary, " (processed_at) WHERE processed_at IS NOT NULL">>,
         []
     ),
     %% 创建 available_at 索引（用于抢占待处理记录）
     _ = elib_pg:execute(
-        <<"CREATE INDEX IF NOT EXISTS ", Tb/binary,
+        <<"CREATE INDEX IF NOT EXISTS ", IdxTb/binary,
             "_available_at_idx\n"
             "            ON ", Tb/binary, " (available_at) WHERE processed_at IS NULL">>,
         []
     ),
     %% 创建 created_at 索引（用于按时间排序）
     _ = elib_pg:execute(
-        <<"CREATE INDEX IF NOT EXISTS ", Tb/binary,
+        <<"CREATE INDEX IF NOT EXISTS ", IdxTb/binary,
             "_created_at_idx\n"
             "            ON ", Tb/binary, " (created_at)">>,
         []

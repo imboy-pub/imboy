@@ -35,7 +35,7 @@
 #   elvis          实测 308 条（elvis 5.0.4 homebrew, 10397 violations / 308 FAIL 文件）
 # =============================================================================
 schema_version: 1
-updated: "2026-10-22"
+updated: "2026-10-23"
 # 增量收编（2026-10-21，本地 main 树 fdb3d464 实测，classify.sh --emit-known 机械生成）：
 #   elvis +157 文件（talk-record-v1 / enterprise / micro-community 等 feature 批次带入，
 #   同为风格类；CI 侧 elvis 5.0.3 与本地 5.0.4 若有差异以 CI 重跑为准）并移除 4 个 FIXED
@@ -546,16 +546,16 @@ gates:
       - src/adm/adm_workspace_handler.erl
       - src/api/attach_handler.erl
       - src/api/attachment_storage_gateway_handler.erl
-      - src/api/auth_middleware_api_v1.erl
       - src/api/auth_middleware.erl
+      - src/api/auth_middleware_api_v1.erl
       - src/api/auth_oidc_handler.erl
       - src/api/billing_handler.erl
       - src/api/bot_handler.erl
       - src/api/channel_discovery_handler.erl
+      - src/api/channel_handler.erl
       - src/api/channel_handler_admin.erl
       - src/api/channel_handler_comment.erl
       - src/api/channel_handler_message.erl
-      - src/api/channel_handler.erl
       - src/api/channel_webhook_handler.erl
       - src/api/conversation_handler.erl
       - src/api/cors_middleware.erl
@@ -566,8 +566,6 @@ gates:
       - src/api/enterprise_friend_request_handler.erl
       - src/api/enterprise_group_handler.erl
       - src/api/enterprise_identity_handler.erl
-      - src/logic/enterprise_internal_auth.erl
-      - src/logic/enterprise_internal_idempotency.erl
       - src/api/enterprise_internal_write_handler.erl
       - src/api/enterprise_message_handler.erl
       - src/api/enterprise_webhook_handler.erl
@@ -585,8 +583,6 @@ gates:
       - src/api/mcp_handler.erl
       - src/api/mention_handler.erl
       - src/api/moment_handler.erl
-      - src/api/moya_invite_handler.erl
-      - src/api/moya_learner_bind_handler.erl
       - src/api/msg_handler.erl
       - src/api/olm_handler.erl
       - src/api/organization_member_handler.erl
@@ -640,7 +636,6 @@ gates:
       - src/ds/micro_community_access_ds.erl
       - src/ds/micro_community_binding_ds.erl
       - src/ds/moment_ds.erl
-      - src/ds/moya_identity_ds.erl
       - src/ds/msg_c2c_ds.erl
       - src/ds/msg_c2g_ds.erl
       - src/ds/msg_operation_ds.erl
@@ -657,12 +652,19 @@ gates:
       - src/ds/report_ticket_ds.erl
       - src/ds/talk_record_audio_render.erl
       - src/ds/talk_record_capture_ds.erl
+      - src/ds/talk_record_client_audio_ds.erl
+      - src/ds/talk_record_client_claim.erl
+      - src/ds/talk_record_client_ds.erl
+      - src/ds/talk_record_client_gate.erl
+      - src/ds/talk_record_client_operations.erl
       - src/ds/talk_record_context_ds.erl
       - src/ds/talk_record_ds.erl
       - src/ds/talk_record_job_worker.erl
       - src/ds/talk_record_parts_ds.erl
       - src/ds/talk_record_processor_audio.erl
       - src/ds/talk_record_processor_config.erl
+      - src/ds/talk_record_provider_actions.erl
+      - src/ds/talk_record_provider_recovery.erl
       - src/ds/talk_record_recovery_ds.erl
       - src/ds/token_ds.erl
       - src/ds/user_ds.erl
@@ -670,6 +672,7 @@ gates:
       - src/ds/user_tag_ds.erl
       - src/ds/user_tag_relation_ds.erl
       - src/ds/websocket_ds.erl
+      - src/ds/wechat_mini_identity_ds.erl
       - src/ds/workspace_ds.erl
       - src/features/agent/application/agent_grant_command.erl
       - src/features/agent/application/agent_mcp_tool_adapter.erl
@@ -681,9 +684,9 @@ gates:
       - src/features/agent/infrastructure/agent_grant_pg.erl
       - src/features/agent/infrastructure/agent_org_membership_adapter.erl
       - src/features/agent/infrastructure/agent_run_pg.erl
+      - src/features/agent/infrastructure/imboy_hird/imboy_hird.erl
       - src/features/agent/infrastructure/imboy_hird/imboy_hird_host_bridge.erl
       - src/features/agent/infrastructure/imboy_hird/imboy_hird_replay.erl
-      - src/features/agent/infrastructure/imboy_hird/imboy_hird.erl
       - src/features/customer_service/application/access/cs_access_app.erl
       - src/features/customer_service/application/ai/cs_ai_admin_app.erl
       - src/features/customer_service/application/ai/cs_ai_app.erl
@@ -709,9 +712,9 @@ gates:
       - src/features/customer_service/domain/cs_visitor_read.erl
       - src/features/customer_service/domain/cs_widget.erl
       - src/features/customer_service/infrastructure/cs_pg_ai.erl
+      - src/features/customer_service/infrastructure/cs_pg_seat.erl
       - src/features/customer_service/infrastructure/cs_pg_seat_console.erl
       - src/features/customer_service/infrastructure/cs_pg_seat_governance.erl
-      - src/features/customer_service/infrastructure/cs_pg_seat.erl
       - src/features/customer_service/infrastructure/cs_pg_session.erl
       - src/features/customer_service/infrastructure/cs_pg_store.erl
       - src/features/customer_service/infrastructure/cs_pg_visitor_read.erl
@@ -759,9 +762,9 @@ gates:
       - src/lib/attachment_content_receipt.erl
       - src/lib/attachment_content_worker.erl
       - src/lib/attachment_guards_activation_check.erl
+      - src/lib/attachment_storage/attachment_storage.erl
       - src/lib/attachment_storage/attachment_storage_disk.erl
       - src/lib/attachment_storage/attachment_storage_garage.erl
-      - src/lib/attachment_storage/attachment_storage.erl
       - src/lib/attachment_storage/attachment_upload_body.erl
       - src/lib/auth_oidc_jwks.erl
       - src/lib/bot_webhook_delivery_sender.erl
@@ -777,8 +780,8 @@ gates:
       - src/lib/elib_oss.erl
       - src/lib/elib_param.erl
       - src/lib/elib_password.erl
-      - src/lib/elib_pg_sql.erl
       - src/lib/elib_pg.erl
+      - src/lib/elib_pg_sql.erl
       - src/lib/elib_req.erl
       - src/lib/elib_retry.erl
       - src/lib/elib_s3_sign.erl
@@ -788,19 +791,19 @@ gates:
       - src/lib/elib_wechat_msg.erl
       - src/lib/enterprise_cursor_v2.erl
       - src/lib/eunit_runner.erl
+      - src/lib/imboy_cache.erl
       - src/lib/imboy_cache_policy.erl
+      - src/lib/imboy_cache_sync.erl
       - src/lib/imboy_cache_sync_apply.erl
       - src/lib/imboy_cache_sync_coverage.erl
       - src/lib/imboy_cache_sync_proto.erl
       - src/lib/imboy_cache_sync_recover.erl
       - src/lib/imboy_cache_sync_snapshot.erl
-      - src/lib/imboy_cache_sync.erl
-      - src/lib/imboy_cache.erl
       - src/lib/imboy_cluster.erl
       - src/lib/imboy_codec.erl
       - src/lib/imboy_dtl.erl
-      - src/lib/imboy_env_overrides.erl
       - src/lib/imboy_env.erl
+      - src/lib/imboy_env_overrides.erl
       - src/lib/imboy_error.erl
       - src/lib/imboy_feature.erl
       - src/lib/imboy_frame.erl
@@ -813,8 +816,8 @@ gates:
       - src/lib/imboy_plugin_manager.erl
       - src/lib/imboy_plugin_signature.erl
       - src/lib/imboy_plugin_toml.erl
-      - src/lib/imboy_policy_normalize.erl
       - src/lib/imboy_policy.erl
+      - src/lib/imboy_policy_normalize.erl
       - src/lib/imboy_sms.erl
       - src/lib/imboy_syn.erl
       - src/lib/imboy_telemetry.erl
@@ -859,12 +862,12 @@ gates:
       - src/logic/bot_webhook_delivery_worker.erl
       - src/logic/bot_webhook_logic.erl
       - src/logic/channel_comment_logic.erl
+      - src/logic/channel_logic.erl
       - src/logic/channel_logic_invitation.erl
       - src/logic/channel_logic_message.erl
       - src/logic/channel_logic_order.erl
       - src/logic/channel_logic_stats.erl
       - src/logic/channel_logic_subscription.erl
-      - src/logic/channel_logic.erl
       - src/logic/conversation_logic.erl
       - src/logic/conversation_pin_logic.erl
       - src/logic/enterprise_admin_governance_logic.erl
@@ -878,6 +881,8 @@ gates:
       - src/logic/enterprise_friend_request_logic.erl
       - src/logic/enterprise_group_logic.erl
       - src/logic/enterprise_identity_logic.erl
+      - src/logic/enterprise_internal_auth.erl
+      - src/logic/enterprise_internal_idempotency.erl
       - src/logic/enterprise_internal_ops.erl
       - src/logic/enterprise_message_logic.erl
       - src/logic/enterprise_oa_login_logic.erl
@@ -902,15 +907,6 @@ gates:
       - src/logic/moderation_action_logic.erl
       - src/logic/moderation_sweep_logic.erl
       - src/logic/moment_logic.erl
-      - src/logic/moya_acl.erl
-      - src/logic/moya_ai_draft_logic.erl
-      - src/logic/moya_ai_worker.erl
-      - src/logic/moya_assignment_logic.erl
-      - src/logic/moya_attach_logic.erl
-      - src/logic/moya_context_logic.erl
-      - src/logic/moya_review_logic.erl
-      - src/logic/moya_task_logic.erl
-      - src/logic/moya_wechat_client.erl
       - src/logic/msg_c2c_logic.erl
       - src/logic/msg_c2g_logic.erl
       - src/logic/msg_forward_logic.erl
@@ -935,6 +931,10 @@ gates:
       - src/logic/talk_record_assembly_logic.erl
       - src/logic/talk_record_attachment_adapter.erl
       - src/logic/talk_record_capture_input.erl
+      - src/logic/talk_record_client_audio_contract.erl
+      - src/logic/talk_record_client_audio_ticket.erl
+      - src/logic/talk_record_client_contract.erl
+      - src/logic/talk_record_client_policy.erl
       - src/logic/talk_record_content_segments.erl
       - src/logic/talk_record_content_speakers.erl
       - src/logic/talk_record_content_summary.erl
@@ -951,6 +951,7 @@ gates:
       - src/logic/talk_record_marks_logic.erl
       - src/logic/talk_record_model_job.erl
       - src/logic/talk_record_participant_logic.erl
+      - src/logic/talk_record_provider_contract.erl
       - src/logic/talk_record_transfer_logic.erl
       - src/logic/user_collect_logic.erl
       - src/logic/user_deletion_logic.erl
@@ -967,8 +968,8 @@ gates:
       - src/moderation/moderation_detector_grpcbox.erl
       - src/moderation/moderation_detector_http.erl
       - src/moderation/moderation_detector_transport.erl
-      - src/moderation/moderation_shadow_lease.erl
       - src/moderation/moderation_shadow.erl
+      - src/moderation/moderation_shadow_lease.erl
       - src/moderation/textguard_export.erl
       - src/moderation/textguard_grpc_call.erl
       - src/moderation/textguard_publisher.erl
@@ -1032,13 +1033,6 @@ gates:
       - src/repo/moderation_appeal_repo.erl
       - src/repo/moment_comment_repo.erl
       - src/repo/moment_like_repo.erl
-      - src/repo/moya_context_repo.erl
-      - src/repo/moya_invite_repo.erl
-      - src/repo/moya_learner_bind_repo.erl
-      - src/repo/moya_review_repo.erl
-      - src/repo/moya_roster_repo.erl
-      - src/repo/moya_submission_repo.erl
-      - src/repo/moya_task_repo.erl
       - src/repo/msg_archive_repo.erl
       - src/repo/msg_c2c_repo.erl
       - src/repo/msg_c2g_repo.erl
@@ -1061,12 +1055,14 @@ gates:
       - src/repo/review_queue_repo.erl
       - src/repo/talk_record_attachment_ref_repo.erl
       - src/repo/talk_record_capture_repo.erl
+      - src/repo/talk_record_client_repo.erl
       - src/repo/talk_record_governance_repo.erl
       - src/repo/talk_record_grant_repo.erl
       - src/repo/talk_record_idempotency_repo.erl
       - src/repo/talk_record_job_repo.erl
       - src/repo/talk_record_marks_repo.erl
       - src/repo/talk_record_model_result_repo.erl
+      - src/repo/talk_record_provider_repo.erl
       - src/repo/talk_record_repo.erl
       - src/repo/talk_record_segment_repo.erl
       - src/repo/talk_record_speaker_repo.erl

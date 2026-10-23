@@ -71,7 +71,7 @@ post:
                   reopened_resources: {type: integer, minimum: 1}
                   replayed: {type: boolean}
     '404': {description: Unavailable record or current deletion responsibility denied.}
-    '409': {description: Protected, no exhausted resource, unknown identity, changed generation or idempotency payload.}
+    '409': {description: 'Protected, no exhausted resource, unknown identity, changed generation or idempotency payload.'}
     '412': {description: Stale record revision.}
     '422': {description: Invalid input or request key.}
     '428': {description: Missing If-Match.}

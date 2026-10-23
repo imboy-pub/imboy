@@ -61,12 +61,10 @@ properties:
     pattern: ^[0-9a-f]{64}$
   input_manifest_hash: *id001
   input_transcript_version:
-    type: integer
-    nullable: true
+    type: [integer, 'null']
   chunk_plan_hash:
-    type: string
+    type: [string, 'null']
     pattern: ^[0-9a-f]{64}$
-    nullable: true
   state:
     type: string
     enum:
@@ -103,15 +101,13 @@ properties:
           - provider_outcome_unknown
           - rejected
         result_hash:
-          type: string
+          type: [string, 'null']
           pattern: ^[0-9a-f]{64}$
-          nullable: true
         dispatch_intent_id:
-          type: integer
+          type: [integer, 'null']
           format: int64
           minimum: 1
           maximum: 9223372036854775807
-          nullable: true
   run_token:
     type: string
     maxLength: 128
