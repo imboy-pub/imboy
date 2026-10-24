@@ -1,5 +1,6 @@
 -module(talk_record_gateway_http_tests).
 -include_lib("eunit/include/eunit.hrl").
+-export([source_descriptor/0, available_source/2]).
 
 %% Requires the caller's identity-gated dedicated PostgreSQL and synthetic AAC.
 %% Record create/detail use real JWT middleware; device-signature checking is
@@ -8,64 +9,119 @@
 %% capability check. Assembly and authenticated playback use real storage;
 %% model quality and true-device processing remain separate acceptance gates.
 gateway_http_test_() ->
-    %% The real upload capability lasts 3600 seconds; never mutate its expiry.
+    %% Original TTL/body and timeout envelopes are unchanged.
     {timeout, 4200,
-        {setup,
-            fun() ->
-                Prev = [
-                    {K, application:get_env(imboy, K)}
-                 || K <-
-                        [
-                            api_auth_switch,
-                            jwt_key,
-                            attachment_storage_registry,
-                            garage,
-                            enterprise_attachment_retention_days
-                        ]
-                ],
-                State = talk_record_t07_support:setup_all(),
-                %% Integration must exercise the production allocator, including
-                %% its static namespace registration, rather than T05's ID fixture.
-                ok = meck:unload(elib_tsid),
-                false = lists:member(elib_tsid, meck:mocked()),
-                ok = application:set_env(imboy, api_auth_switch, <<"off">>),
-                ok = talk_record_t07_support:seed(State),
-                ok = organization_index_fixture(State),
-                ok = configure_private_garage(),
-                {ok, _} = application:ensure_all_started(cowboy),
-                {ok, _} = application:ensure_all_started(inets),
-                Dispatch = cowboy_router:compile([
-                    {'_',
-                        talk_record_routes:routes() ++
-                            [
-                                {"/api/v1/organizations/:organization_id/attachments",
-                                    workspace_attachment_handler, #{}},
-                                {"/api/v1/attachment/gateway/:session_key",
-                                    attachment_storage_gateway_handler, #{action => put}}
-                            ]}
-                ]),
-                {ok, _} = cowboy:start_clear(
-                    talk_record_http_relay,
-                    [{ip, {127, 0, 0, 1}}, {port, 0}],
-                    #{
-                        env => #{dispatch => Dispatch},
-                        middlewares => [cowboy_router, auth_middleware, cowboy_handler]
-                    }
-                ),
-                State#{http_port => ranch:get_port(talk_record_http_relay), http_prev => Prev}
-            end,
-            fun(State) ->
-                ok = cowboy:stop_listener(talk_record_http_relay),
-                ok = talk_record_t07_support:teardown_all(State),
-                lists:foreach(
-                    fun
-                        ({K, undefined}) -> application:unset_env(imboy, K);
-                        ({K, {ok, V}}) -> application:set_env(imboy, K, V)
-                    end,
-                    maps:get(http_prev, State)
-                )
-            end,
-            fun(State) -> {timeout, 4100, ?_test(run(State))} end}}.
+        {setup, fun gateway_setup/0, fun gateway_cleanup/1, fun(State) ->
+            {timeout, 4100, ?_test(run(State))}
+        end}}.
+
+gateway_setup() ->
+    Prev = [
+        {K, application:get_env(imboy, K)}
+     || K <-
+            [
+                api_auth_switch,
+                jwt_key,
+                attachment_storage_registry,
+                garage,
+                enterprise_attachment_retention_days
+            ]
+    ],
+    case fixture_capture(fun talk_record_t07_support:setup_all/0) of
+        {ok, State} ->
+            case fixture_capture(fun() -> gateway_ready(State, Prev) end) of
+                {ok, Ready} ->
+                    Ready;
+                Failure ->
+                    fixture_finish(
+                        gateway_fixture_failure,
+                        Failure,
+                        gateway_release(State, Prev)
+                    )
+            end;
+        Failure ->
+            %% No usable State: T07 partial effects require external reconciliation.
+            fixture_finish(
+                gateway_state_unavailable,
+                Failure,
+                fixture_errors([fun() -> ok = gateway_restore(E) end || E <- Prev])
+            )
+    end.
+
+gateway_ready(State, Prev) ->
+    ok = meck:unload(elib_tsid),
+    false = lists:member(elib_tsid, meck:mocked()),
+    ok = application:set_env(imboy, api_auth_switch, <<"off">>),
+    ok = talk_record_t07_support:seed(State),
+    ok = organization_index_fixture(State),
+    ok = configure_private_garage(),
+    {ok, _} = application:ensure_all_started(cowboy),
+    {ok, _} = application:ensure_all_started(inets),
+    Dispatch = cowboy_router:compile([
+        {'_',
+            talk_record_routes:routes() ++
+                [
+                    {"/api/v1/organizations/:organization_id/attachments",
+                        workspace_attachment_handler, #{}},
+                    {"/api/v1/attachment/gateway/:session_key", attachment_storage_gateway_handler,
+                        #{action => put}}
+                ]}
+    ]),
+    {ok, _} = cowboy:start_clear(
+        talk_record_http_relay,
+        [{ip, {127, 0, 0, 1}}, {port, 0}],
+        #{
+            env => #{dispatch => Dispatch},
+            middlewares => [cowboy_router, auth_middleware, cowboy_handler]
+        }
+    ),
+    State#{http_port => ranch:get_port(talk_record_http_relay), http_prev => Prev}.
+
+gateway_cleanup(State) ->
+    fixture_finish(
+        gateway_fixture_failure,
+        {ok, ok},
+        gateway_release(State, maps:get(http_prev, State))
+    ).
+gateway_release(State, Prev) ->
+    fixture_errors(
+        [
+            fun gateway_stop_listener/0,
+            fun() -> ok = talk_record_t07_support:teardown_all(State) end
+        ] ++
+            [fun() -> ok = gateway_restore(E) end || E <- Prev]
+    ).
+gateway_stop_listener() ->
+    case cowboy:stop_listener(talk_record_http_relay) of
+        ok -> ok;
+        {error, not_found} -> ok
+    end.
+gateway_restore({K, undefined}) -> application:unset_env(imboy, K);
+gateway_restore({K, {ok, V}}) -> application:set_env(imboy, K, V).
+fixture_errors(Funs) ->
+    [E || {error, _, _, _} = E <- [fixture_capture(F) || F <- Funs]].
+fixture_capture(Fun) ->
+    try
+        {ok, Fun()}
+    catch
+        Class:Reason:Stack ->
+            {error, Class,
+                {redacted_failure_sha256,
+                    binary:encode_hex(
+                        crypto:hash(sha256, term_to_binary(Reason)), lowercase
+                    )},
+                [
+                    {M, F, fixture_arity(A), []}
+                 || {M, F, A, _} <- Stack,
+                    is_atom(M),
+                    is_atom(F)
+                ]}
+    end.
+fixture_arity(A) when is_integer(A), A >= 0 -> A;
+fixture_arity(A) when is_list(A) -> length(A);
+fixture_arity(_) -> 0.
+fixture_finish(gateway_fixture_failure, {ok, Value}, []) -> Value;
+fixture_finish(Tag, Outcome, Errors) -> error({Tag, Outcome, Errors}).
 
 %% T07 intentionally has only talk-record foundation columns. The real organization
 %% detail and combined attachment index also read these existing production fields.
@@ -163,6 +219,10 @@ run(State) ->
         201
     ),
     Ref = maps:get(<<"upload_ref">>, Part),
+    case get(client_audio_pending_observer) of
+        Observe when is_function(Observe, 4) -> Observe(State, Rid, Cid, Ref);
+        _ -> ok
+    end,
     Url = Prefix ++ binary_to_list(maps:get(<<"put_url">>, Ref)),
     {ok, {{_, 200, _}, _, Reply}} = httpc:request(
         put,
@@ -203,15 +263,22 @@ run(State) ->
         [{timeout, 15000}],
         []
     ),
-    complete_record(
+    Available = complete_record(
         State, RecordUrl, CaptureUrl, Auth, Device, Cid, Confirm, Sha, byte_size(Bytes)
     ),
-    governance_over_http(State).
+    case get(client_audio_source_fixture) of
+        true -> Available;
+        _ -> governance_over_http(State)
+    end.
 
 create_over_http(State, Uid) ->
     Prefix = "http://127.0.0.1:" ++ integer_to_list(maps:get(http_port, State)),
     Url = Prefix ++ "/api/v1/talk-records",
-    Token = token_ds:encrypt_token(Uid),
+    Token =
+        case get(client_audio_source_fixture) of
+            true -> token_ds:encrypt_token(Uid, <<"10000000-0000-0000-0000-000000090001">>);
+            _ -> token_ds:encrypt_token(Uid)
+        end,
     Auth = [{"authorization", "Bearer " ++ binary_to_list(Token)}],
     ClientId = <<"00000000-0000-0000-0000-000000090001">>,
     Body = jsone:encode(#{
@@ -380,8 +447,28 @@ complete_record(State, RecordUrl, CaptureUrl, Auth, Device, Cid, Part, Sha, Size
     ),
     ?assert(is_integer(maps:get(<<"audio_manifest_attachment_id">>, Row))),
     ?assert(is_integer(maps:get(<<"audio_attachment_id">>, Row))),
-    playback_over_http(State, RecordUrl, Auth),
-    cleanup_real_artifacts(State, Rid, RecordUrl, Auth).
+    case get(client_audio_source_fixture) of
+        true ->
+            Aid = maps:get(<<"audio_attachment_id">>, Row),
+            {ok, AssemblyBytes} = attachment_derived_artifact:read_live(Aid, 134217728),
+            {ok, {{_, 200, _}, LatestH, _}} = httpc:request(
+                get,
+                {RecordUrl, Auth},
+                [{autoredirect, false}],
+                [{body_format, binary}]
+            ),
+            #{
+                port => maps:get(http_port, State),
+                conn => maps:get(conn, State),
+                record_id => Rid,
+                auth => Auth,
+                assembly_bytes => AssemblyBytes,
+                record_etag => list_to_binary(proplists:get_value("etag", LatestH))
+            };
+        _ ->
+            playback_over_http(State, RecordUrl, Auth),
+            cleanup_real_artifacts(State, Rid, RecordUrl, Auth)
+    end.
 
 playback_over_http(State, RecordUrl, Auth) ->
     Session = post_json(RecordUrl ++ "/playback", Auth, #{}, 200),
@@ -706,39 +793,58 @@ organization_index_over_http(Prefix, Org, Rid, Aid, Owner, Admin) ->
     AdminRows = maps:get(<<"items">>, maps:get(<<"payload">>, AdminEnvelope)),
     ?assertEqual([], [R || #{<<"id">> := Id} = R <- AdminRows, Id =:= Aid]).
 
-%% Bound the real expiry wait; NULL, missing or unexpectedly long leases fail.
+%% One issued capability, not one reference row or one distinct TTL scalar.
+%% Historical audio_part references may share the same physical attachment.
 await_upload_expiry(Conn, Rid) ->
-    {ok, [#{<<"remaining">> := Remaining}]} = elib_pg:query(
-        Conn,
-        <<
-            "SELECT ceil(extract(epoch FROM (p.upload_expires_at-clock_timestamp())))::bigint "
-            "AS remaining FROM attach_pending p "
-            "JOIN attachment a ON a.path=p.object_key "
-            "JOIN talk_record_attachment_ref r ON r.attachment_id=a.id "
-            "WHERE r.record_id=$1 AND r.role='audio_part'"
-        >>,
-        [Rid]
-    ),
+    Row = upload_expiry_capability(Conn, Rid),
+    Remaining = maps:get(<<"remaining">>, Row),
     ?assert(is_integer(Remaining) andalso Remaining =< 3605),
+    Capability = maps:without([<<"remaining">>, <<"expired">>], Row),
     Deadline = erlang:monotonic_time(millisecond) + max(0, Remaining) * 1000 + 5000,
-    await_upload_expiry(Conn, Rid, Deadline).
+    await_upload_expiry(Conn, {Rid, Capability}, Deadline).
 
-await_upload_expiry(Conn, Rid, Deadline) ->
-    {ok, [#{<<"expired">> := Expired}]} = elib_pg:query(
-        Conn,
-        <<
-            "SELECT p.upload_expires_at < clock_timestamp() AS expired "
-            "FROM attach_pending p JOIN attachment a ON a.path=p.object_key "
-            "JOIN talk_record_attachment_ref r ON r.attachment_id=a.id "
-            "WHERE r.record_id=$1 AND r.role='audio_part'"
-        >>,
-        [Rid]
-    ),
-    case Expired of
+await_upload_expiry(Conn, {Rid, Capability}, Deadline) ->
+    Row = upload_expiry_capability(Conn, Rid),
+    ?assertEqual(Capability, maps:without([<<"remaining">>, <<"expired">>], Row)),
+    case maps:get(<<"expired">>, Row) of
         true ->
             ok;
         false ->
             ?assert(erlang:monotonic_time(millisecond) < Deadline),
             timer:sleep(1000),
-            await_upload_expiry(Conn, Rid, Deadline)
+            await_upload_expiry(Conn, {Rid, Capability}, Deadline)
+    end.
+
+upload_expiry_capability(Conn, Rid) ->
+    {ok, [Row]} = elib_pg:query(
+        Conn,
+        <<
+            "SELECT p.object_key,p.confirmed_attachment_id AS attachment_id,"
+            "p.storage_driver,p.storage_namespace,p.storage_container,p.storage_locator_sha256,"
+            "p.upload_expires_at,"
+            "ceil(extract(epoch FROM (p.upload_expires_at-clock_timestamp())))::bigint AS remaining,"
+            "p.upload_expires_at < clock_timestamp() AS expired FROM attach_pending p "
+            "WHERE EXISTS (SELECT 1 FROM attachment a WHERE a.id=p.confirmed_attachment_id "
+            "AND a.path=p.object_key AND a.storage_driver=p.storage_driver "
+            "AND a.storage_namespace=p.storage_namespace AND a.storage_container=p.storage_container "
+            "AND a.storage_locator_sha256=p.storage_locator_sha256 "
+            "AND EXISTS (SELECT 1 FROM talk_record_attachment_ref r WHERE r.attachment_id=a.id "
+            "AND r.record_id=$1 AND r.role='audio_part'))"
+        >>,
+        [Rid]
+    ),
+    Row.
+
+%% Test-only extraction: original setup, capture and assembly implementation.
+source_descriptor() ->
+    {timeout, _, {setup, Setup, Cleanup, _}} = gateway_http_test_(),
+    {Setup, Cleanup}.
+available_source(State, Observe) ->
+    put(client_audio_pending_observer, Observe),
+    put(client_audio_source_fixture, true),
+    try
+        run(State)
+    after
+        erase(client_audio_source_fixture),
+        erase(client_audio_pending_observer)
     end.

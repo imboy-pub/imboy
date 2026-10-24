@@ -44,7 +44,7 @@ recheck_content_pin(Key, Receipt, Identity) ->
 %% ===================================================================
 
 -spec presign(integer(), binary(), binary(), binary(), binary() | undefined) ->
-    {ok, map()} | {error, invalid_file_type | forbidden | registration_failed}.
+    {ok, map()} | {error, term()}.
 presign(Uid, FileName, MimeType, Scope, ScopeRef) ->
     presign(Uid, FileName, MimeType, Scope, ScopeRef, undefined).
 
@@ -68,11 +68,7 @@ presign(Uid, FileName, MimeType, Scope, ScopeRef, ClientUploadId) ->
     binary() | undefined,
     undefined | binary()
 ) ->
-    {ok, map()}
-    | {error,
-        invalid_file_type
-        | forbidden
-        | registration_failed}.
+    {ok, map()} | {error, term()}.
 presign_authorized(Uid, FileName, MimeType, Scope, ScopeRef, ClientUploadId) ->
     case can_upload(Uid, Scope, ScopeRef) of
         ok ->
@@ -754,7 +750,7 @@ attach_scope_target(_Scope, _Ref) ->
 %% ===================================================================
 
 -spec can_upload(integer(), binary(), binary() | undefined) ->
-    ok | {error, forbidden | upload_not_supported}.
+    ok | {error, term()}.
 can_upload(_Uid, <<"public">>, _ScopeRef) ->
     ok;
 can_upload(_Uid, <<"private">>, _ScopeRef) ->

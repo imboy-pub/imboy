@@ -12,7 +12,7 @@
 -export([add_with_request_id/2]).
 -export([add_with_request_id/3]).
 -export([find_by_id/1]).
--export([list_by_channel/3]).
+-export([list_by_channel/3, list_by_channel_page/3]).
 -export([update/2]).
 -export([update_tx/3]).
 -export([delete/1]).
@@ -193,6 +193,34 @@ list_by_channel(ChannelId, Cursor, Limit) ->
             "ORDER BY created_at DESC LIMIT $3">>,
     CursorTs = elib_dt:to_rfc3339(Cursor),
     elib_pg:query(Sql, [ChannelId, CursorTs, Limit]).
+
+%% Precise DB timestamp projection is private cursor material, not model time.
+list_by_channel_page(ChannelId, Cursor, Limit) ->
+    Tb = tablename(),
+    Select = <<
+        "SELECT *,to_char(created_at AT TIME ZONE 'UTC',"
+        "'YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"') AS cursor_at FROM ",
+        Tb/binary,
+        " WHERE channel_id=$1 AND status=1"
+    >>,
+    {Boundary, Params} =
+        case Cursor of
+            0 ->
+                {<<>>, [ChannelId, Limit + 1]};
+            {legacy, LegacyAt} ->
+                {<<" AND created_at < $2::timestamptz ">>, [ChannelId, LegacyAt, Limit + 1]};
+            {At, Id} ->
+                {<<" AND (created_at,id) < ($2::timestamptz,$3::bigint) ">>, [
+                    ChannelId, At, binary_to_integer(Id), Limit + 1
+                ]}
+        end,
+    Sql = iolist_to_binary([
+        Select,
+        Boundary,
+        " ORDER BY created_at DESC,id DESC LIMIT $",
+        integer_to_list(length(Params))
+    ]),
+    elib_pg:query(Sql, Params).
 
 %% @doc 获取频道置顶消息
 -spec list_pinned(integer()) -> {ok, list(map())} | {error, any()}.

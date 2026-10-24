@@ -52,6 +52,8 @@
 
 -spec setup_all() -> map().
 setup_all() ->
+    {ok, _} = application:ensure_all_started(ranch),
+    false = maps:is_key(?LISTENER, ranch:info()),
     try
         elib_tsid:init(#{dc_id => 1, node_id => 1, dc_bits => 3})
     catch
@@ -76,10 +78,21 @@ setup_all() ->
      || K <-
             [jwt_key, enterprise_internal_cursor_signing_key, api_auth_switch]
     ],
-    State = inttest_marker_db:provision(#{
+    State = (inttest_marker_db:provision(#{
         env_prefix => <<"INTBE04_INTTEST">>,
         connect_extra => #{codecs => [{epgsql_codec_rfc3339_bin, []}]}
-    }),
+    }))#{
+        previous_env => Previous
+    },
+    try
+        initialize(State)
+    catch
+        Class:Reason:Stack ->
+            _ = catch teardown_all(State),
+            erlang:raise(Class, Reason, Stack)
+    end.
+
+initialize(State) ->
     %% 认证 env 注入必须在 provision **之后**：inttest_marker_db 内部
     %% application:load(imboy) 会把 -config（sys.config）注入的 env 重新合并，
     %% 覆盖 load 之前 set_env 的运行时值——api_auth_switch 会回到 sys.config
@@ -98,25 +111,17 @@ setup_all() ->
     ?DEVICE_KEY = app_version_ds:sign_key(
         <<"synthetic">>, <<"orgdir-test">>, <<"synthetic.orgdir">>
     ),
-    Scope =
-        try
-            organization_directory_fixture:new_scope()
-        catch
-            Class:Reason:Stack ->
-                release_pool(),
-                inttest_marker_db:release(State),
-                erlang:raise(Class, {orgdir_seed_failed, Reason}, Stack)
-        end,
+    Scope = organization_directory_fixture:new_scope(),
     {ok, _} = application:ensure_all_started(cowboy),
     {ok, _} = application:ensure_all_started(ranch),
     Dispatch = cowboy_router:compile(imboy_router:get_routes()),
     {ok, _} = cowboy:start_clear(
         ?LISTENER,
-        [{port, 0}],
+        [{ip, {127, 0, 0, 1}}, {port, 0}],
         #{env => #{dispatch => Dispatch}, middlewares => ?MIDDLEWARES}
     ),
     Port = ranch:get_port(?LISTENER),
-    State#{scope => Scope, port => Port, previous_env => Previous}.
+    State#{scope => Scope, port => Port}.
 
 -spec teardown_all(map()) -> ok.
 teardown_all(State) ->
@@ -152,7 +157,7 @@ ensure_pool(State) ->
     },
     {ok, _} = application:ensure_all_started(pooler),
     catch pooler:rm_pool(pgsql),
-    _ = pooler:new_pool(#{
+    {ok, _} = pooler:new_pool(#{
         name => pgsql,
         max_count => 8,
         init_count => 2,

@@ -1,6 +1,7 @@
 -module(micro_community_owned_http_fixture).
 -export([
     run/1,
+    run_cursor/1,
     run_transport/1,
     capture/1,
     report_outcome/2,
@@ -17,33 +18,62 @@
 ]).
 -include_lib("kernel/include/file.hrl").
 
-%% Run-scoped private dir override: MC_RUN_PRIVATE_DIR lets a later isolated run
-%% keep the historical default untouched while pointing at its own secrets.
--define(CONFIG, mc_private_config_path()).
+%% No historical target fallback: every run explicitly binds its own resource.
+-ifdef(TEST).
+-export([
+    expected_target/0,
+    validate_target/2,
+    private_config/0,
+    validate_routes/3,
+    validate_cursor_routes/1
+]).
+-endif.
 
-mc_private_config_path() ->
-    Default = "/Users/leeyi/.codex/micro-community-runs/mc-20261008T083109Z/private",
-    Dir =
-        case os:getenv("MC_RUN_PRIVATE_DIR") of
-            false -> Default;
-            D -> D
-        end,
-    Dir ++ "/pg-owned.config".
+required_env(Name) ->
+    Value = os:getenv(Name),
+    assert(is_list(Value) andalso Value =/= [], required_run_environment),
+    Value.
 
-mc_env_int(Name, Default) ->
-    case os:getenv(Name) of
-        false ->
-            Default;
-        V ->
-            try
-                list_to_integer(V)
-            catch
-                _:_ -> Default
-            end
-    end.
--define(OWNER_COMMENT,
-    <<"Owned by MC run mc-20261008T083109Z; synthetic micro-community test data only">>
-).
+expected_target() ->
+    Run = required_env("MC_RUN_ID"),
+    assert(
+        re:run(Run, "^[A-Za-z0-9][A-Za-z0-9_-]{0,99}\\z", [{capture, none}]) =:= match,
+        invalid_run_id
+    ),
+    Dir = required_env("MC_RUN_PRIVATE_DIR"),
+    assert(filename:pathtype(Dir) =:= absolute, private_directory_required),
+    PortText = required_env("MC_RUN_PG_PORT"),
+    assert(re:run(PortText, "^[0-9]+\\z", [{capture, none}]) =:= match, invalid_run_port),
+    Port = list_to_integer(PortText),
+    assert(
+        Port > 0 andalso Port =< 65535 andalso Port =/= 4323 andalso Port =/= 5432,
+        unsafe_run_port
+    ),
+    Db = required_env("MC_RUN_PG_DATABASE"),
+    assert(
+        re:run(Db, "^[a-z][a-z0-9_]{0,62}\\z", [{capture, none}]) =:= match,
+        invalid_run_database
+    ),
+    #{
+        port => Port,
+        database => Db,
+        config => filename:join(Dir, "pg-owned.config"),
+        owner => iolist_to_binary([
+            "Owned by MC run ",
+            Run,
+            "; synthetic micro-community test data only"
+        ])
+    }.
+
+validate_target(Opts, #{port := Port, database := Db}) when is_map(Opts) ->
+    Host = maps:get(host, Opts, undefined),
+    assert(
+        (Host =:= "127.0.0.1" orelse Host =:= "localhost") andalso
+            maps:get(port, Opts, undefined) =:= Port andalso
+            maps:get(database, Opts, undefined) =:= Db,
+        private_target_rejected
+    ),
+    ok.
 -define(LISTENER, mc_owned_http_listener).
 -define(BASE, 9007199254744000).
 -define(U, (?BASE + 1)).
@@ -72,6 +102,9 @@ mc_env_int(Name, Default) ->
 %% Explicit opt-in only: no EUnit discovery hook, imboy, WS or migration startup.
 %% Every failure crossing run/0 is a fixed code; never return request/config terms.
 run(Callback) -> run_mode(Callback, http).
+
+%% Separate explicit fresh-owned session; original run/1 routes are unchanged.
+run_cursor(Callback) -> run_mode(Callback, cursor).
 
 run_transport(Callback) -> run_mode(Callback, websocket).
 
@@ -110,39 +143,42 @@ fresh_vm() ->
     assert(not lists:keymember(imboy, 1, Running), imboy_started),
     assert(not lists:keymember(pooler, 1, Running), pooler_started),
     assert(whereis(imboy_cache) =:= undefined, cache_already_started),
+    assert(whereis(login_attempt_ds) =:= undefined, limiter_already_started),
     assert(whereis(user_server) =:= undefined, user_worker_started),
     assert(whereis(msg_store_sup) =:= undefined, message_worker_started).
 
 private_config() ->
+    Expected = expected_target(),
     Path = os:getenv("IMBOY_MICRO_PG_CONFIG"),
-    assert(Path =:= ?CONFIG, private_config_path_required),
+    assert(Path =:= maps:get(config, Expected), private_config_path_required),
     case file:read_link_info(Path) of
         {ok, #file_info{type = regular, mode = Mode}} ->
             assert(Mode band 8#777 =:= 8#600, private_config_permissions);
         _ ->
             fail(private_config_unavailable)
     end,
-    ExpectedPort = mc_env_int("MC_RUN_PG_PORT", 4323),
-    ExpectedDb =
-        case os:getenv("MC_RUN_PG_DATABASE") of
-            false -> "imboy_test_group";
-            Db -> Db
-        end,
     case file:consult(Path) of
-        {ok, [#{database := ExpectedDb, host := Host, port := ExpectedPort} = Opts]} when
-            Host =:= "localhost"; Host =:= "127.0.0.1"
-        ->
+        {ok, [Opts]} when is_map(Opts) ->
+            ok = validate_target(Opts, Expected),
             maps:with([host, port, database, username, password, ssl, timeout, codecs], Opts);
         _ ->
             fail(private_target_rejected)
     end.
 
 connect_owned(Opts) ->
+    try
+        Expected = expected_target(),
+        ok = validate_target(Opts, Expected),
+        connect_verified(Opts, Expected)
+    catch
+        throw:{mc_http_failed, _} -> {error, owned_target_rejected}
+    end.
+
+connect_verified(Opts, Expected) ->
     try epgsql:connect(Opts) of
         {ok, Conn} ->
             try
-                %% 期望库名取自 Opts（runs 可指向不同隔离库），owner comment
-                %% 仍守 MC 域所有权标记；硬编码库名会误拒其他 run 的隔离库。
+                %% Both target and ownership come from the explicit current run.
                 Db = ec_cnv:to_binary(maps:get(database, Opts)),
                 assert(
                     rows(
@@ -153,7 +189,7 @@ connect_owned(Opts) ->
                         >>,
                         []
                     ) =:=
-                        [{Db, ?OWNER_COMMENT}],
+                        [{Db, maps:get(owner, Expected)}],
                     owned_database_mismatch
                 ),
                 sql(Conn, <<"SET statement_timeout='15000'; SET lock_timeout='10000'">>),
@@ -179,6 +215,16 @@ connect_owned(Opts) ->
 run_owned(Conn, Opts, Callback, Mode) ->
     configure_runtime(),
     start_dependencies(),
+    {ok, Limiter} = gen_server:start({local, login_attempt_ds}, login_attempt_ds, [], []),
+    try
+        ok = login_attempt_ds:activate_empty(Limiter),
+        true = login_attempt_ds:ready(),
+        run_with_limiter(Conn, Opts, Callback, Mode)
+    after
+        gen_server:stop(Limiter)
+    end.
+
+run_with_limiter(Conn, Opts, Callback, Mode) ->
     {ok, Cache} = imboy_cache:start_link([{depcache_memory_max, 8}]),
     ok = elib_tsid:init(#{
         dc_id => 7,
@@ -217,6 +263,12 @@ configure_runtime() ->
         {adm_ip_allowlist, ["127.0.0.1"]},
         {start_mode, http},
         {api_auth_switch, <<"on">>},
+        %% Current production owner: no legacy throttle IP bucket or fail-open.
+        {limiter_ip_rates, #{
+            passport_per_ip => {1000, 60000},
+            api_per_ip => {1000, 60000},
+            oidc_request => {1000, 3600000}
+        }},
         {product_profile, community},
         {jwt_key, crypto:strong_rand_bytes(32)},
         {adm_cookie_secret, crypto:strong_rand_bytes(32)},
@@ -228,7 +280,7 @@ configure_runtime() ->
     ],
     [application:set_env(imboy, Key, Value) || {Key, Value} <- Settings],
     application:set_env(pooler, pools, []),
-    application:set_env(throttle, rates, [{api_per_ip, 1000, per_minute}]),
+    application:set_env(throttle, rates, []),
     ok.
 
 start_dependencies() ->
@@ -286,24 +338,65 @@ with_listener(Conn, Callback, Mode) ->
         micro_community_join_handler,
         micro_community_content_handler,
         adm_micro_community_handler,
-        %% MC21 新候选重跑（2026-10-10）：发现页旅程改走通用频道发现 API
-        %% （/api/v1/channels/{search,discover,featured,trending,categories}），
-        %% fixture listener 须随生产路由演进扩白名单（9 -> 14）。
         channel_discovery_handler,
-        %% MC22 负例活测（2026-10-10）：prepareOwnedClock 取 sv_ts 预置时间缓存
-        %% （免公网 NTP）需 GET /api/v1/app/features；该 handler 另含
-        %% policy/ice_servers 两条 ApiV1 路由，放行即 +3（14 -> 17）。
         app_feature_handler
     ],
-    Routes = [
+    Available = [
         R
      || {_, HostRoutes} <- imboy_router:get_routes(),
         R = {_, Handler, _} <- HostRoutes,
         lists:member(Handler, Wanted)
     ],
-    assert(length(Routes) =:= 17, route_whitelist_mismatch),
+    Compiled = lists:member(channel_discover, imboy_feature:compiled_features()),
+    Enabled = imboy_feature:enabled(channel_discover),
+    Routes = validate_routes(Available, Compiled, Enabled),
     Dispatch = cowboy_router:compile([{'_', Routes ++ admin_read_route() ++ transport_routes(Mode)}]),
     start_listener(Dispatch, Conn, Callback).
+
+validate_routes(Routes, Compiled, Enabled) ->
+    Core = [
+        {"/api/v1/channel/:channel_id/discussion", micro_community_handler, discussion},
+        {"/api/v1/channel/:channel_id/discussion/candidates", micro_community_handler, candidates},
+        {"/api/v1/channel/:channel_id/discussion/join", micro_community_join_handler, undefined},
+        {"/api/v1/channel/:channel_id/posts", micro_community_content_handler, search},
+        {"/api/v1/channel/:channel_id/posts/:message_id/essence", micro_community_content_handler,
+            essence},
+        {"/api/v1/channel/:channel_id/posts/:message_id/tags", micro_community_content_handler,
+            tags},
+        {"/api/adm/channel/:channel_id/discussion", adm_micro_community_handler, discussion},
+        {"/api/adm/channel/:channel_id/discussion/candidates", adm_micro_community_handler,
+            candidates},
+        {"/api/adm/channel/:channel_id/message/:message_id/essence", adm_micro_community_handler,
+            essence},
+        {"/api/v1/app/features", app_feature_handler, features},
+        {"/api/v1/app/policy", app_feature_handler, policy},
+        {"/api/v1/app/ice_servers", app_feature_handler, ice_servers}
+    ],
+    Discovery = [
+        {"/api/v1/channels/" ++ atom_to_list(Action), channel_discovery_handler, Action}
+     || Action <- [search, discover, featured, trending, categories]
+    ],
+    Expected =
+        Core ++
+            case Compiled of
+                true -> Discovery;
+                false -> []
+            end,
+    Actual = [
+        {Path, Handler, maps:get(action, State, undefined)}
+     || {Path, Handler, State} <- Routes
+    ],
+    assert(lists:sort(Actual) =:= lists:sort(Expected), route_whitelist_mismatch),
+    case Compiled andalso Enabled of
+        true ->
+            Routes;
+        false ->
+            io:format(
+                "MC_DISCOVERY_SCOPE_NOT_ACCEPTED compiled=~p runtime_enabled=~p required_gate=BLOCKED_PROFILE~n",
+                [Compiled, Enabled]
+            ),
+            [R || R = {_, Handler, _} <- Routes, Handler =/= channel_discovery_handler]
+    end.
 
 admin_read_route() ->
     Extra = [
@@ -317,6 +410,14 @@ admin_read_route() ->
     assert(length(Extra) =:= 1, admin_read_route_whitelist_mismatch),
     Extra.
 
+transport_routes(cursor) ->
+    Extra = [
+        R
+     || {_, Rs} <- imboy_router:get_routes(),
+        R = {Path, _, _} <- Rs,
+        Path =:= "/api/v1/channel/:channel_id/messages"
+    ],
+    validate_cursor_routes(Extra);
 transport_routes(http) ->
     [];
 transport_routes(websocket) ->
@@ -328,6 +429,16 @@ transport_routes(websocket) ->
     ],
     assert(length(Extra) =:= 2, transport_route_whitelist_mismatch),
     Extra.
+
+%% Exact production route only; no generic channel_handler registration.
+validate_cursor_routes(Routes) ->
+    Expected = [
+        {"/api/v1/channel/:channel_id/messages", channel_handler, #{
+            action => messages, required_feature => channel
+        }}
+    ],
+    assert(Routes =:= Expected, cursor_route_whitelist_mismatch),
+    Routes.
 
 start_listener(Dispatch, Conn, Callback) ->
     Middlewares = [

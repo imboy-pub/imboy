@@ -7,6 +7,7 @@
 -export([
     setup_all/0,
     setup_all/1,
+    setup_disk_queue_prepare/0,
     teardown_all/1,
     seed/1,
     ids/0,
@@ -44,11 +45,18 @@
 setup_all() -> error(t20_explicit_case_key_required).
 
 -spec setup_all(binary() | {atom(), atom()}) -> map().
-setup_all(Key) ->
+setup_all(Key) -> setup_all(Key, resume).
+
+%% Explicit create-only admission, restricted to this one case; not a general empty-check bypass.
+setup_disk_queue_prepare() ->
+    setup_all(<<"talk_record_delete_tests:purge_complete_disk_queue_test_">>, create).
+
+setup_all(Key, Mode) ->
     undefined = whereis(pgsql),
     undefined = whereis(pooler_pgsql_pool_sup),
     undefined = whereis(elib_tsid_meck),
-    Context = talk_record_t20_case_registry:activate(Key),
+    Context0 = talk_record_t20_case_registry:activate(Key),
+    Context = Context0#{disk_queue_mode => Mode},
     Ref = make_ref(),
     put({?MODULE, Ref}, #{environment => []}),
     try
@@ -82,13 +90,27 @@ setup_case(Ref, Context) ->
         []
     ),
     Conn = acquire_connections(Ref),
-    ok = talk_record_t20_case_registry:verify_empty(Conn),
+    PreparedResume =
+        maps:get(case_key, Context) =:=
+            <<"talk_record_delete_tests:purge_complete_disk_queue_test_">> andalso
+            maps:get(disk_queue_mode, Context) =:= resume,
+    case PreparedResume of
+        true -> ok = talk_record_t20_case_registry:verify_connected(Conn);
+        false -> ok = talk_record_t20_case_registry:verify_empty(Conn)
+    end,
     capture_environment(
         Ref,
         fun() -> talk_record_t20_case_registry:configure_storage() end,
         [attachment_storage_registry],
         ["TALK_UPLOAD_DISK_ROOT"]
     ),
+    case PreparedResume of
+        true ->
+            _ = talk_record_t20_case_registry:prepared_disk_queue(Conn),
+            ok = resume_disk_queue_tsid(Conn);
+        false ->
+            ok
+    end,
     capture_environment(
         Ref,
         fun() -> talk_record_t12_support:setup_audio_fixture() end,
@@ -101,7 +123,60 @@ setup_case(Ref, Context) ->
         [jwt_key],
         []
     ),
-    #{conn => Conn, t20_context => Context, t20_resources => get({?MODULE, Ref})}.
+    #{
+        conn => Conn,
+        t20_context => Context,
+        t20_resources => get({?MODULE, Ref}),
+        disk_queue_preparing => maps:get(disk_queue_mode, Context) =:= create,
+        disk_queue_resume => PreparedResume
+    }.
+
+%% A new VM's unique_integer counter is NOT a cross-VM identifier allocator.
+%% After the complete prepared-receipt/DB/file verification, and before DELETE's
+%% first write, rebase only this case above every TSID row its real fixture made.
+%% Continuation allocates job (enqueue_purge_tx) and audit (insert_audit_tx) IDs;
+%% capture fencing only UPDATEs. Queue keys are paths; V5 audit IDs are PG identity.
+resume_disk_queue_tsid(Conn) ->
+    #{case_key := <<"talk_record_delete_tests:purge_complete_disk_queue_test_">>} =
+        talk_record_t20_case_registry:current(),
+    ok = talk_record_t20_case_registry:verify_connected(Conn),
+    Tables = [
+        <<"talk_record">>,
+        <<"talk_record_capture">>,
+        <<"talk_record_capture_event">>,
+        <<"talk_record_audio_part">>,
+        <<"talk_record_assembly">>,
+        <<"attachment">>,
+        <<"talk_record_attachment_ref">>,
+        <<"talk_record_job">>,
+        <<"talk_record_audit">>,
+        <<"talk_record_consent_event">>,
+        <<"talk_record_idempotency">>,
+        <<"talk_record_grant">>
+    ],
+    Highs = [
+        begin
+            {ok, [#{<<"high">> := Raw}]} = elib_pg:query(
+                Conn,
+                <<"SELECT coalesce(max(id),0)::text AS high FROM public.", Table/binary>>,
+                []
+            ),
+            High = binary_to_integer(Raw),
+            true = High >= 0 andalso High =< 9223372036854775807,
+            High
+        end
+     || Table <- Tables
+    ],
+    HighWater = lists:max(Highs),
+    true = HighWater < 9223372036854775806,
+    Base = HighWater + 1,
+    ok = talk_record_t20_case_registry:verify_connected(Conn),
+    meck:expect(elib_tsid, generate, fun(_) ->
+        Id = Base + erlang:unique_integer([positive, monotonic]),
+        %% Check every allocation; a near-limit database fails closed, never wraps/retries.
+        true = Id > HighWater andalso Id =< 9223372036854775807,
+        Id
+    end).
 
 acquire_connections(Ref) ->
     {ok, _} = application:ensure_all_started(epgsql),
@@ -261,6 +336,9 @@ with_env(Key, Value, Fun) ->
     end.
 
 -spec seed(map()) -> ok.
+seed(#{disk_queue_resume := true, conn := Conn}) ->
+    _ = talk_record_t20_case_registry:prepared_disk_queue(Conn),
+    ok;
 seed(State) ->
     Conn = maps:get(conn, State),
     ok = talk_record_t20_case_registry:verify_empty(Conn),
@@ -419,30 +497,39 @@ collect_hash(Conn, CollectId, Hash) ->
     ok.
 
 %% @doc EAR hold 行（defense-in-depth：evaluate_release_blockers held 分支）。
-%% 需 enterprise_application 存量（复合 FK）；CHECK 要求 held 行带
-%% hold_reason + hold_set_at。
+%% 由真实资产归属定位企业记录；talk_record 来源不伪造 application 身份。
 -spec hold_row(pid() | map(), integer()) -> ok.
 hold_row(Conn, AttachmentId) ->
     ok = talk_record_t20_case_registry:verify_connected(Conn),
-    {ok, []} =
-        elib_pg:query(
-            Conn,
-            <<
-                "INSERT INTO enterprise_application(id, organization_id)"
-                " VALUES (1, 710001) ON CONFLICT DO NOTHING"
-            >>,
-            []
-        ),
-    {ok, []} =
+    {ok, [
+        #{
+            <<"organization_id">> := Org,
+            <<"talk_record_id">> := Rid,
+            <<"application_id">> := null,
+            <<"source_kind">> := <<"talk_record">>
+        }
+    ]} =
         elib_pg:query(
             Conn,
             <<
                 "INSERT INTO enterprise_attachment_retention(attachment_id, organization_id,"
-                " application_id, retention_until, hold_state, hold_reason, hold_set_at)"
-                " VALUES ($1, 710001, 1, now() - interval '1 day', 'held', 't20-hold', now())"
+                " application_id, source_kind, talk_record_id, retention_until, hold_state, hold_reason, hold_set_at)"
+                " SELECT a.id,r.organization_id,NULL,'talk_record',r.id,"
+                " now() - interval '1 day','held','t20-hold',now()"
+                " FROM attachment a JOIN talk_record r ON a.scope_ref=r.id::text"
+                " WHERE a.id=$1 AND a.scope='talk_record' AND r.scope='organization'"
+                " RETURNING organization_id,talk_record_id,application_id,source_kind"
             >>,
             [AttachmentId]
         ),
+    {ok, [#{<<"organization_id">> := Org, <<"record_id">> := Rid}]} = elib_pg:query(
+        Conn,
+        <<
+            "SELECT r.organization_id,r.id AS record_id FROM attachment a"
+            " JOIN talk_record r ON a.scope_ref=r.id::text WHERE a.id=$1 AND a.scope='talk_record'"
+        >>,
+        [AttachmentId]
+    ),
     ok.
 
 %% @doc 队列终态失败行（attempts 耗尽 blocked → refresh 投影 failed）。

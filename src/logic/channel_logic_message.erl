@@ -14,7 +14,7 @@
 -export([restore_channel/2]).
 -export([publish_message/5]).
 -export([publish_message/6]).
--export([get_messages/4, get_message/3]).
+-export([get_messages/4, get_messages_page/4, get_message/3]).
 -export([mark_as_read/3]).
 -export([search_channels/2]).
 -export([get_discover_channels/1]).
@@ -618,6 +618,9 @@ read_message(Uid, ChannelId, MessageId) ->
 -spec get_messages(integer(), binary(), integer(), integer()) ->
     {ok, list(map())} | {error, binary()}.
 get_messages(Uid, ChannelIdBin, Cursor, Limit) ->
+    get_messages_with_access(Uid, ChannelIdBin, Cursor, Limit).
+
+get_messages_with_access(Uid, ChannelIdBin, Cursor, Limit) ->
     ChannelId = channel_logic_common:resolve_channel_id(ChannelIdBin),
     case ChannelId of
         0 ->
@@ -625,10 +628,9 @@ get_messages(Uid, ChannelIdBin, Cursor, Limit) ->
         _ ->
             case channel_logic_common:ensure_channel_content_access(Uid, ChannelId) of
                 ok ->
-                    case channel_message_ds:list_by_channel(ChannelId, Cursor, Limit) of
+                    case message_rows(ChannelId, Cursor, Limit) of
                         {ok, Messages} when is_list(Messages) ->
-                            Messages2 = [message_transfer(M) || M <- Messages, is_map(M)],
-                            {ok, attach_my_reactions(Uid, Messages2)};
+                            message_page(Uid, Cursor, Messages, Limit);
                         {ok, UnexpectedMessages} ->
                             {error, elib_cnv:safe_to_binary(UnexpectedMessages)};
                         {error, Reason} ->
@@ -640,6 +642,92 @@ get_messages(Uid, ChannelIdBin, Cursor, Limit) ->
                     {error, Reason}
             end
     end.
+
+%% Both APIs enter the existing access guard before any cursor-backed read.
+get_messages_page(Uid, ChannelIdBin, Cursor, Limit) when
+    is_integer(Limit), Limit >= 1, Limit =< 200
+->
+    get_messages_with_access(Uid, ChannelIdBin, {page, Cursor}, Limit);
+get_messages_page(_, _, _, _) ->
+    {error, <<"invalid_message_limit">>}.
+
+message_rows(ChannelId, {page, Raw}, Limit) ->
+    case message_cursor(Raw) of
+        {ok, Cursor} -> channel_message_ds:list_by_channel_page(ChannelId, Cursor, Limit);
+        {error, _} = Error -> Error
+    end;
+message_rows(ChannelId, Cursor, Limit) ->
+    channel_message_ds:list_by_channel(ChannelId, Cursor, Limit).
+
+message_cursor(<<>>) ->
+    {ok, 0};
+message_cursor(Ms) when is_integer(Ms), Ms >= 0 -> legacy_message_cursor(Ms);
+message_cursor(Raw) when is_binary(Raw), byte_size(Raw) =< 512 ->
+    case re:run(Raw, <<"\\A[0-9]+\\z">>, [{capture, none}]) of
+        match ->
+            legacy_message_cursor(binary_to_integer(Raw));
+        nomatch ->
+            case msg_offline_cursor:decode(Raw) of
+                {ok, {At, Id}} -> positive_cursor_id(At, Id);
+                _ -> {error, <<"invalid_message_cursor">>}
+            end
+    end;
+message_cursor(_) ->
+    {error, <<"invalid_message_cursor">>}.
+
+%% Preserve integer-value digit inference, including zero-padded strings.
+%% Guard the real helper's 2100 cap before it can silently return the epoch.
+legacy_message_cursor(0) ->
+    {ok, 0};
+legacy_message_cursor(Value) when is_integer(Value), Value > 0 ->
+    Digits = byte_size(integer_to_binary(Value)),
+    Factor =
+        case Digits of
+            N when N =< 10 -> 1;
+            N when N =< 13 -> 1000;
+            N when N =< 16 -> 1000000;
+            _ -> 1000000000
+        end,
+    case Value =< 4102444800 * Factor of
+        true ->
+            try
+                {ok, {legacy, elib_dt:to_rfc3339(Value)}}
+            catch
+                _:_ -> {error, <<"invalid_message_cursor">>}
+            end;
+        false ->
+            {error, <<"invalid_message_cursor">>}
+    end;
+legacy_message_cursor(_) ->
+    {error, <<"invalid_message_cursor">>}.
+
+positive_cursor_id(At, Id) ->
+    case re:run(Id, <<"\\A[1-9][0-9]{0,18}\\z">>, [{capture, none}]) of
+        match ->
+            case binary_to_integer(Id) =< 9223372036854775807 of
+                true -> {ok, {At, Id}};
+                false -> {error, <<"invalid_message_cursor">>}
+            end;
+        nomatch ->
+            {error, <<"invalid_message_cursor">>}
+    end.
+
+message_page(Uid, {page, _}, Rows, Limit) ->
+    PageRows = lists:sublist(Rows, Limit),
+    Next =
+        case length(Rows) > Limit of
+            true ->
+                Last = lists:last(PageRows),
+                msg_offline_cursor:encode({
+                    maps:get(<<"cursor_at">>, Last), integer_to_binary(maps:get(<<"id">>, Last))
+                });
+            false ->
+                null
+        end,
+    Messages = [message_transfer(maps:remove(<<"cursor_at">>, M)) || M <- PageRows],
+    {ok, #{list => attach_my_reactions(Uid, Messages), next_cursor => Next}};
+message_page(Uid, _, Rows, _) ->
+    {ok, attach_my_reactions(Uid, [message_transfer(M) || M <- Rows, is_map(M)])}.
 
 -spec mark_as_read(integer(), binary(), binary()) -> ok | {error, binary()}.
 mark_as_read(Uid, ChannelIdBin, _MessageIdBin) ->

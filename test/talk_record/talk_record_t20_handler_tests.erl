@@ -92,7 +92,7 @@ req(Opts) ->
 with_db(Case, TestFun) ->
     {timeout, 120,
         {setup, fun() -> setup(Case) end, fun cleanup/1, fun(State) ->
-            ?_test(TestFun(State))
+            {timeout, 120, ?_test(TestFun(State))}
         end}}.
 
 %%%===================================================================

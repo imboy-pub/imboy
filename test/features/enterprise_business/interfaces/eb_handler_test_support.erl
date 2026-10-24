@@ -16,7 +16,7 @@
 %%%   3. **合成租户**：直接复用 EB-03 的 `eb_pg_test_fixture`（随机 TSID 隔离，
 %%%      不 TRUNCATE、不碰共享库的既有行）与最小 SQL 断言辅助。
 %%%
-%%% 不含任何业务逻辑；不做断言（断言在套件里）。
+%%% 不含业务逻辑；仅校验监听器隔离，业务断言在套件里。
 -module(eb_handler_test_support).
 
 -export([
@@ -61,9 +61,32 @@ listener(Pattern, Opts) ->
 listener(Pattern, Opts, Handler) ->
     Name = listener_name(),
     Dispatch = cowboy_router:compile([{'_', [{binary_to_list(Pattern), Handler, Opts}]}]),
-    case cowboy:start_clear(Name, [{port, 0}], #{env => #{dispatch => Dispatch}}) of
-        {ok, _Pid} -> {ok, Name, ranch:get_port(Name)};
-        {error, Reason} -> {error, Reason}
+    case
+        cowboy:start_clear(
+            Name,
+            [{ip, {127, 0, 0, 1}}, {port, 0}],
+            #{env => #{dispatch => Dispatch}}
+        )
+    of
+        {ok, _Pid} ->
+            try
+                {{127, 0, 0, 1}, Port} = ranch:get_addr(Name),
+                true = is_integer(Port) andalso Port > 0 andalso Port =< 65535,
+                {ok, Name, Port}
+            catch
+                Class:Reason:Stack ->
+                    %% Caller cannot close a listener that was never returned.
+                    %% Preserve the original isolation failure after close attempt.
+                    _ =
+                        try
+                            cowboy:stop_listener(Name)
+                        catch
+                            _:_ -> ok
+                        end,
+                    erlang:raise(Class, Reason, Stack)
+            end;
+        {error, Reason} ->
+            {error, Reason}
     end.
 
 handler(#{surface := platform}) -> eb_platform_handler;

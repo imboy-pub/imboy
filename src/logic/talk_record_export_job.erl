@@ -18,7 +18,7 @@ prepare_tx(Conn, Job) ->
             Conn, maps:get(<<"requester_id">>, Export), Rid
         )
     ),
-    check_input(Record, Job),
+    ok = check_input(Record, Job),
     {ok, Generated} = require(talk_record_export_logic:snapshot_tx(Conn, Export)),
     {ok, Artifact} = require(talk_record_export_artifact:prepare_tx(Conn, Job, Export, Generated)),
     {ok, #{export => Export, artifact => Artifact, generated => Generated}}.
@@ -41,7 +41,7 @@ publish_tx(Conn, Job, #{export := Export, artifact := Artifact}) ->
             Conn, maps:get(<<"requester_id">>, Export), Rid
         )
     ),
-    check_input(Record, Job),
+    ok = check_input(Record, Job),
     ok = require(talk_record_export_artifact:publish_tx(Conn, Artifact)),
     {ok, Ready} = require(
         talk_record_export_repo:mark_ready_tx(
@@ -77,8 +77,8 @@ require_live_job(Conn, Job) ->
                 true -> Result;
                 false -> abort(input_stale)
             end;
-        Result ->
-            require(Result)
+        {error, Reason} ->
+            abort(Reason)
     end.
 
 check_input(Record, Job) ->

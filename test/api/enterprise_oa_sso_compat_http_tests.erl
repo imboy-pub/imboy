@@ -18,8 +18,11 @@ outbound_attribution_test_() ->
             attribution(State, Organization, <<"compat-owned">>),
             attribution(State, null, <<"compat-global">>)
         after
-            intbe02_http_support:teardown_all(State),
-            inttest_marker_db:release(State)
+            try
+                intbe02_http_support:teardown_all(State)
+            after
+                inttest_marker_db:release(State)
+            end
         end
     end}.
 

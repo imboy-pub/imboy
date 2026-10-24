@@ -5,7 +5,13 @@ get:
   description: |
     ## 中文 / English
     频道消息列表
-    Channel messages
+    Channel messages, ordered by created_at DESC, id DESC.
+    缺省、空字符串或数字 0 表示首屏。后续请求原样传回 next_cursor；不得根据公开的 created_at 重建。
+    新游标为 opaque base64 JSON v1（内部 at 保留数据库微秒精度，id 为正 BIGINT 十进制字符串）。
+    兼容非负数字时间游标：1-10 位秒、11-13 位毫秒、14-16 位微秒、17 位及以上纳秒；
+    各单位上限为 4102444800 秒乘对应单位倍率（2100-01-01T00:00:00Z）。
+    游标仅用于分页；目标频道原有内容访问授权仍独立执行，游标不是访问凭据。
+    非法游标返回 HTTP 200，envelope code=1、msg=invalid_message_cursor。
   operationId: listChannelMessages
   parameters:
     - in: path
@@ -22,7 +28,7 @@ get:
       name: limit
       required: false
       description: 每页条数 / Page size
-      schema: { type: integer, default: 20, description: '每页条数 / Page size' }
+      schema: { type: integer, minimum: 1, maximum: 200, default: 20, description: '每页条数 / Page size' }
   responses:
     '200':
       description: 成功
@@ -35,7 +41,11 @@ get:
                 properties:
                   payload:
                     type: object
+                    required: [list, next_cursor]
                     properties:
+                      next_cursor:
+                        type: [string, 'null']
+                        description: 原样用于下一页的 opaque 游标；末页（含空列表）为 null
                       list:
                         type: array
                         items:

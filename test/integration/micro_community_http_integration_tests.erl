@@ -1,5 +1,5 @@
 -module(micro_community_http_integration_tests).
--export([run/0]).
+-export([run/0, run_cursor/0]).
 -import(micro_community_owned_http_fixture, [
     assert/2,
     rows/3,
@@ -385,3 +385,201 @@ search_sql_ids(Conn, Needle) ->
             [?C1, Needle]
         )
     ].
+
+%% Explicit opt-in, separate fresh fixture/VM admission from the 22-group run/0.
+run_cursor() -> micro_community_owned_http_fixture:run_cursor(fun cursor_cases/1).
+
+cursor_cases(Ctx = #{conn := Conn}) ->
+    micro_community_owned_http_fixture:committed(Conn, fun cursor_seed_ties/1),
+    unchanged(Ctx, tz05_ties, fun() -> cursor_ties(Ctx) end),
+    micro_community_owned_http_fixture:committed(Conn, fun cursor_seed_microseconds/1),
+    unchanged(Ctx, tz05_microseconds, fun() -> cursor_microseconds(Ctx) end),
+    unchanged(Ctx, tz05_legacy, fun() -> cursor_legacy(Ctx) end),
+    unchanged(Ctx, tz05_invalid, fun() -> cursor_invalid(Ctx) end),
+    unchanged(Ctx, tz05_authorization, fun() -> cursor_authorization(Ctx) end),
+    io:format("TZ05_CURSOR_HTTP_GROUPS_COMPLETED count=5~n"),
+    ok.
+
+cursor_seed_ties(Conn) ->
+    %% C2 is fixture-owned but do not assume its data is empty.
+    assert(
+        rows(
+            Conn,
+            <<"SELECT count(*) FROM public.channel_message WHERE channel_id=$1">>,
+            [?C2]
+        ) =:= [{0}],
+        cursor_channel_not_empty
+    ),
+    [
+        cursor_insert(Conn, ?BASE + 200 + N, <<"2026-10-24T01:02:03.123456Z">>)
+     || N <- lists:seq(0, 24)
+    ],
+    assert(
+        rows(
+            Conn,
+            <<
+                "SELECT count(*),count(DISTINCT created_at) FROM public.channel_message "
+                "WHERE channel_id=$1 AND id BETWEEN $2 AND $3"
+            >>,
+            [?C2, ?BASE + 200, ?BASE + 224]
+        ) =:= [{25, 1}],
+        cursor_ties_not_exact
+    ),
+    ok.
+
+cursor_insert(Conn, Id, At) ->
+    assert(Id >= ?BASE andalso Id =< ?BASE + 999, cursor_id_outside_owned_range),
+    exec(
+        Conn,
+        <<
+            "INSERT INTO public.channel_message(id,channel_id,author_id,content,created_at) "
+            "VALUES($1,$2,$3,'TZ05 owned synthetic',$4::timestamptz)"
+        >>,
+        [Id, ?C2, ?U, At]
+    ).
+
+cursor_ties(Ctx) ->
+    Expected = lists:seq(?BASE + 224, ?BASE + 200, -1),
+    First = cursor_get(Ctx, ?U, undefined, 20, tz05_ties_first),
+    assert(result_ids(First) =:= lists:sublist(Expected, 20), cursor_first_ids),
+    Next = cursor_next(First),
+    assert(is_binary(Next) andalso byte_size(Next) > 0, cursor_first_missing_next),
+    assert(
+        msg_offline_cursor:decode(Next) =:=
+            {ok, {<<"2026-10-24T01:02:03.123456Z">>, bin(?BASE + 205)}},
+        cursor_tie_boundary
+    ),
+    Last = cursor_get(Ctx, ?U, Next, 20, tz05_ties_last),
+    assert(result_ids(Last) =:= lists:nthtail(20, Expected), cursor_last_ids),
+    All = result_ids(First) ++ result_ids(Last),
+    assert(All =:= Expected andalso length(lists:usort(All)) =:= 25, cursor_ids_not_complete),
+    assert(cursor_next(Last) =:= null, cursor_last_not_terminal),
+    End = msg_offline_cursor:encode({<<"2026-10-24T01:02:03.123456Z">>, bin(?BASE + 200)}),
+    Empty = cursor_get(Ctx, ?U, End, 20, tz05_ties_empty),
+    assert(result_ids(Empty) =:= [] andalso cursor_next(Empty) =:= null, cursor_end_restarted).
+
+cursor_seed_microseconds(Conn) ->
+    Entries = [
+        {?BASE + 230, <<"2023-11-13T01:02:03.123458Z">>},
+        {?BASE + 231, <<"2023-11-13T01:02:03.123457Z">>},
+        {?BASE + 232, <<"2023-11-13T01:02:03.123456Z">>}
+    ],
+    [cursor_insert(Conn, Id, At) || {Id, At} <- Entries],
+    Actual = rows(
+        Conn,
+        <<
+            "SELECT id,to_char(created_at AT TIME ZONE 'UTC',"
+            "'YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"') FROM public.channel_message "
+            "WHERE channel_id=$1 AND id BETWEEN $2 AND $3 ORDER BY created_at DESC,id DESC"
+        >>,
+        [?C2, ?BASE + 230, ?BASE + 232]
+    ),
+    assert(Actual =:= Entries, cursor_microseconds_not_persisted),
+    ok.
+
+cursor_microseconds(Ctx) ->
+    Before = msg_offline_cursor:encode({<<"2023-11-13T01:02:03.123459Z">>, bin(?BASE + 233)}),
+    First = cursor_get(Ctx, ?U, Before, 2, tz05_micro_first),
+    assert(result_ids(First) =:= [?BASE + 230, ?BASE + 231], cursor_micro_first_ids),
+    Next = cursor_next(First),
+    assert(
+        msg_offline_cursor:decode(Next) =:=
+            {ok, {<<"2023-11-13T01:02:03.123457Z">>, bin(?BASE + 231)}},
+        cursor_micro_precision
+    ),
+    Last = cursor_get(Ctx, ?U, Next, 2, tz05_micro_last),
+    assert(
+        result_ids(Last) =:= [?BASE + 232] andalso cursor_next(Last) =:= null,
+        cursor_micro_last_ids
+    ).
+
+cursor_legacy(Ctx) ->
+    [
+        begin
+            Result = cursor_get(Ctx, ?U, Token, 20, tz05_legacy_equivalent),
+            assert(
+                result_ids(Result) =:= [?BASE + 230, ?BASE + 231, ?BASE + 232] andalso
+                    cursor_next(Result) =:= null,
+                cursor_legacy_wrong_unit
+            )
+        end
+     || Token <- [<<"1700000000">>, <<"1700000000000">>]
+    ],
+    Maxima = [4102444800, 4102444800000, 4102444800000000, 4102444800000000000],
+    [
+        begin
+            Result = cursor_get(Ctx, ?U, bin(Max), 20, tz05_unit_max),
+            assert(
+                result_ids(Result) =:= lists:seq(?BASE + 224, ?BASE + 205, -1),
+                cursor_unit_max_epoch_fallback
+            ),
+            assert(is_binary(cursor_next(Result)), cursor_max_missing_next),
+            cursor_rejected(Ctx, bin(Max + 1), tz05_unit_overflow)
+        end
+     || Max <- Maxima
+    ],
+    ok.
+
+cursor_invalid(Ctx) ->
+    At = <<"2026-10-24T01:02:03.123456Z">>,
+    Invalid = [
+        <<"-1">>,
+        <<"garbage">>,
+        binary:copy(<<"9">>, 512),
+        binary:copy(<<"a">>, 513),
+        msg_offline_cursor:encode({At, <<"0">>}),
+        msg_offline_cursor:encode({At, <<"-1">>}),
+        msg_offline_cursor:encode({At, <<"9223372036854775808">>}),
+        <<"1700000000", 10>>,
+        msg_offline_cursor:encode({At, <<"1", 10>>}),
+        msg_offline_cursor:encode({At, <<"1.0">>}),
+        msg_offline_cursor:encode({<<"not-a-date">>, <<"1">>}),
+        base64:encode(jsone:encode(#{<<"v">> => 2, <<"at">> => At, <<"id">> => <<"1">>})),
+        base64:encode(
+            jsone:encode(#{
+                <<"v">> => 1,
+                <<"at">> => At,
+                <<"id">> => <<"1">>,
+                <<"extra">> => true
+            })
+        )
+    ],
+    [cursor_rejected(Ctx, Token, tz05_bad_cursor) || Token <- Invalid],
+    ok.
+
+cursor_rejected(Ctx, Token, Case) ->
+    {Status, Result} = request(Ctx, ?U, get, cursor_path(Token, 20), none),
+    evidence(Case, Status, maps:get(<<"code">>, Result, invalid)),
+    assert(
+        Status =:= 200 andalso maps:get(<<"code">>, Result, invalid) =:= 1 andalso
+            maps:get(<<"msg">>, Result, invalid) =:= <<"invalid_message_cursor">>,
+        cursor_invalid_not_explicit
+    ),
+    assert(not maps:is_key(<<"list">>, payload(Result)), cursor_invalid_returned_page).
+
+cursor_authorization(Ctx) ->
+    Valid = msg_offline_cursor:encode({<<"2026-10-24T01:02:03.123456Z">>, bin(?BASE + 205)}),
+    {401, Anon} = request(Ctx, none, get, cursor_path(Valid, 20), none),
+    assert(maps:get(<<"code">>, Anon, 0) =/= 0, cursor_anonymous_allowed),
+    expect(Ctx, bad_signature, get, cursor_path(Valid, 20), none, 902, tz05_signature),
+    {Status, Denied} = request(Ctx, ?OUTSIDER, get, cursor_path(Valid, 20), none),
+    evidence(tz05_outsider, Status, maps:get(<<"code">>, Denied, invalid)),
+    assert(
+        Status =:= 200 andalso maps:get(<<"code">>, Denied, 0) =/= 0 andalso
+            maps:get(<<"msg">>, Denied, invalid) =:= <<"私有频道仅限订阅用户访问"/utf8>>,
+        cursor_replaced_authorization
+    ),
+    assert(not maps:is_key(<<"list">>, payload(Denied)), cursor_outsider_received_page).
+
+cursor_get(Ctx, Identity, Token, Limit, Case) ->
+    expect(Ctx, Identity, get, cursor_path(Token, Limit), none, 0, Case).
+cursor_next(Result) -> maps:get(<<"next_cursor">>, payload(Result)).
+cursor_path(Token, Limit) ->
+    Query =
+        [{<<"limit">>, bin(Limit)}] ++
+            case Token of
+                undefined -> [];
+                _ -> [{<<"cursor">>, Token}]
+            end,
+    Qs = uri_string:compose_query(Query),
+    <<"/api/v1/channel/", (bin(?C2))/binary, "/messages?", Qs/binary>>.

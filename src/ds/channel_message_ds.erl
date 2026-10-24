@@ -9,7 +9,7 @@
 
 %% ==================== API ====================
 -export([find_by_id/1]).
--export([list_by_channel/3]).
+-export([list_by_channel/3, list_by_channel_page/3]).
 -export([update/2]).
 -export([update_checked/3, delete_checked/2]).
 -export([delete/1]).
@@ -24,6 +24,9 @@ find_by_id(MessageId) -> channel_message_repo:find_by_id(MessageId).
 -spec list_by_channel(integer(), integer(), integer()) -> {ok, list(map())} | {error, any()}.
 list_by_channel(ChannelId, Cursor, Limit) ->
     channel_message_repo:list_by_channel(ChannelId, Cursor, Limit).
+
+list_by_channel_page(ChannelId, Cursor, Limit) ->
+    channel_message_repo:list_by_channel_page(ChannelId, Cursor, Limit).
 
 -spec update(integer(), map()) -> {ok, integer()} | {error, any()}.
 update(MessageId, Data) ->

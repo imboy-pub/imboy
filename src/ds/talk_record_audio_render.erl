@@ -1,6 +1,9 @@
 -module(talk_record_audio_render).
 -moduledoc "有界本地音频合成；只经附件driver取已核验源，不调用shell。".
 -export([with_audio/2]).
+-ifdef(TEST).
+-export([with_cleanup/2, finish_private_dir/2]).
+-endif.
 -include_lib("kernel/include/file.hrl").
 -define(MAX_BYTES, 134217728).
 -define(PCM_BYTES_PER_MS, 32).
@@ -8,11 +11,7 @@
 with_audio(Parts, Fun) ->
     case private_dir() of
         {ok, Dir} ->
-            try
-                render(Dir, Parts, Fun)
-            after
-                cleanup(Dir)
-            end;
+            with_cleanup(Dir, fun() -> render(Dir, Parts, Fun) end);
         Error ->
             Error
     end.
@@ -32,19 +31,20 @@ private_dir() ->
             ),
             case file:make_dir(Dir) of
                 ok ->
-                    case file:change_mode(Dir, 8#700) of
-                        ok ->
-                            {ok, Dir};
-                        Error ->
-                            file:del_dir(Dir),
-                            Error
-                    end;
+                    finish_private_dir(Dir, file:change_mode(Dir, 8#700));
                 Error ->
                     Error
             end;
         Error ->
             Error
     end.
+
+%% Preserve the permission failure even when removal also fails.
+finish_private_dir(Dir, ok) ->
+    {ok, Dir};
+finish_private_dir(Dir, Error) ->
+    report_cleanup(Dir, file:del_dir(Dir)),
+    Error.
 
 render(Dir, Parts, Fun) ->
     Total = lists:sum([maps:get(<<"byte_size">>, P) || P <- Parts]),
@@ -330,11 +330,43 @@ with_output(Path, Fun) ->
             {error, audio_render_invalid_output}
     end.
 
+%% Cleanup diagnostics must never replace a committed callback result or throw.
+with_cleanup(Dir, Fun) ->
+    try
+        Fun()
+    after
+        report_cleanup(Dir, cleanup(Dir))
+    end.
+
+report_cleanup(_Dir, ok) ->
+    ok;
+report_cleanup(Dir, {error, _}) ->
+    %% No raw path, content, filesystem error, or callback value enters the log.
+    try
+        Digest = binary:encode_hex(
+            crypto:hash(sha256, unicode:characters_to_binary(Dir)), lowercase
+        ),
+        logger:error(#{
+            event => talk_record_audio_render_cleanup_failed,
+            directory_sha256 => Digest,
+            cleanup_confirmed => false
+        })
+    catch
+        _:_ -> ok
+    end,
+    ok.
+
 cleanup(Dir) ->
     case file:list_dir(Dir) of
         {ok, Names} ->
-            [file:delete(filename:join(Dir, N)) || N <- Names],
-            file:del_dir(Dir);
-        _ ->
-            ok
+            Results = [file:delete(filename:join(Dir, N)) || N <- Names],
+            DirectoryResult = file:del_dir(Dir),
+            case [Error || {error, _} = Error <- Results ++ [DirectoryResult]] of
+                [] -> ok;
+                [Error | _] -> Error
+            end;
+        {error, enoent} ->
+            ok;
+        {error, _} = Error ->
+            Error
     end.

@@ -1,16 +1,19 @@
 -module(isolated_pg_fixture).
--export([run/1, run_case/1, test/1, setup_single_node_cache/2]).
+-export([run/1, run/2, run_case/1, test/1, test/2, setup_single_node_cache/2]).
 -behaviour(eunit_listener).
 -export([start/1, init/1, handle_begin/3, handle_end/3, handle_cancel/3, terminate/2]).
 
 %% 整个生成器在子 VM 执行，不能把描述符返回父 VM 或当作普通结果丢弃。
 %% Execute setup, tests and cleanup in the peer; require actual passing tests.
-test(Generator) when is_function(Generator, 0) ->
-    {timeout, 900, fun() ->
-        {Result, Summary} = run(fun() -> run_tests(Generator) end),
+test(Generator) when is_function(Generator, 0) -> test(Generator, 900).
+
+%% Seconds include peer boot/shutdown; existing callers keep the 900/880 budget.
+test(Generator, Seconds) when is_function(Generator, 0), is_integer(Seconds), Seconds > 20 ->
+    {timeout, Seconds, fun() ->
+        {Result, Summary} = run(fun() -> run_tests(Generator) end, Seconds),
         {module, Module} = erlang:fun_info(Generator, module),
         {name, Name} = erlang:fun_info(Generator, name),
-        logger:notice("[isolated_pg_fixture] ~p:~p result=~p counts=~p", [
+        io:format(user, "[isolated_pg_fixture] ~p:~p result=~p counts=~0p~n", [
             Module, Name, Result, Summary
         ]),
         case {Result, proplists:get_value(pass, Summary, 0)} of
@@ -47,15 +50,18 @@ setup_single_node_cache(Setup, Cleanup) ->
 
 await_cache_ready(Deadline) ->
     case imboy_cache_sync:status() of
-        ready -> ok;
-        degraded -> error({standalone_cache_not_ready, degraded});
+        ready ->
+            ok;
+        degraded ->
+            error({standalone_cache_not_ready, degraded});
         Status ->
             Remaining = Deadline - erlang:monotonic_time(millisecond),
             case Remaining > 0 of
                 true ->
                     timer:sleep(erlang:min(25, Remaining)),
                     await_cache_ready(Deadline);
-                false -> error({standalone_cache_not_ready, Status})
+                false ->
+                    error({standalone_cache_not_ready, Status})
             end
     end.
 
@@ -65,10 +71,14 @@ init(Options) -> proplists:get_value(owner, Options).
 handle_begin(_Type, _Data, State) -> State.
 handle_end(_Type, _Data, State) -> State.
 handle_cancel(_Type, _Data, State) -> State.
-terminate(Result, {Owner, Ref}) -> Owner ! {Ref, Result}, ok.
+terminate(Result, {Owner, Ref}) ->
+    Owner ! {Ref, Result},
+    ok.
 
 %% Each PG case owns a fresh BEAM: TSID and named pools cannot reuse App state.
-run(TestFun) when is_function(TestFun, 0) ->
+run(TestFun) when is_function(TestFun, 0) -> run(TestFun, 900).
+
+run(TestFun, Seconds) when is_function(TestFun, 0), is_integer(Seconds), Seconds > 20 ->
     Paths = [filename:absname(P) || P <- code:get_path()],
     ConfigArgs =
         case init:get_argument(config) of
@@ -84,7 +94,7 @@ run(TestFun) when is_function(TestFun, 0) ->
     }),
     try
         %% Leave time for boot and shutdown inside the outer 900-second budget.
-        peer:call(Peer, ?MODULE, run_case, [TestFun], 880000)
+        peer:call(Peer, ?MODULE, run_case, [TestFun], (Seconds - 20) * 1000)
     after
         peer:stop(Peer)
     end.

@@ -159,10 +159,63 @@ step1_seed_data() {
   echo "[g19] step1 造数据完成：users=2 c2c=${G19_C2C_N} att=${G19_ATT_N} c2g=${G19_C2G_M} → $state"
 }
 
+# Preserve relative/../ backup paths, but reject symlink ancestors before any backup.
+g19_normalize_backup_dir() {
+  local normalized
+  normalized="$(python3 - "$DRILL_BACKUP_DIR" <<'PYTHON'
+import os, pathlib, sys
+path = pathlib.Path(sys.argv[1])
+if not path.is_absolute():
+    path = pathlib.Path.cwd() / path
+# Check the supplied traversal before collapsing '..' (a/../ may cross a link).
+prefix = pathlib.Path(path.anchor)
+for part in path.parts[1:]:
+    prefix = prefix / part
+    if prefix.is_symlink():
+        raise SystemExit('Garage backup path symlink ancestor refused')
+normalized = pathlib.Path(os.path.abspath(str(path)))
+for item in [normalized, *normalized.parents]:
+    if item.is_symlink():
+        raise SystemExit('Garage backup path symlink ancestor refused')
+print(normalized)
+PYTHON
+)" || return 1
+  DRILL_BACKUP_DIR="$normalized"
+}
+
+# backup_garage.sh writes exactly one timestamped bucket snapshot below DEST.
+# Pin that directory, not its parent, so restoration preserves every object key.
+g19_snapshot_dir() (
+  shopt -s nullglob dotglob
+  local parent="$DRILL_BACKUP_DIR/garage" path actual
+  local -a entries
+  [[ -d "$parent" && ! -L "$parent" ]] || return 1
+  actual="$(cd "$parent" && pwd -P)" || return 1
+  [[ "$actual" == "$parent" ]] || return 1
+  entries=("$parent"/*)
+  [[ "${#entries[@]}" -eq 1 ]] || return 1
+  path="${entries[0]}"
+  [[ -d "$path" && ! -L "$path" && "${path##*/}" == "$DRILL_BUCKET"_* ]] || return 1
+  [[ "$path" != *$'\n'* && "$(cd "$path" && pwd -P)" == "$path" ]] || return 1
+  printf '%s\n' "$path"
+)
+
+restore_garage_snapshot() {
+  local snapshot current
+  IFS= read -r snapshot < "$DRILL_BACKUP_DIR/oracle_before/garage_snapshot.path" || return 1
+  current="$(g19_snapshot_dir)" || { echo "ERROR: Garage snapshot layout invalid" >&2; return 1; }
+  [[ "$snapshot" == "$current" ]] || { echo "ERROR: Garage snapshot changed" >&2; return 1; }
+  rclone copy "$snapshot" "${GARAGE_REMOTE}:${RCLONE_RESTORE_PREFIX}" \
+    || { echo "ERROR: Garage snapshot restore failed" >&2; return 1; }
+}
+
 # ---- step2 备份（资产表 L135/L138；并导出备份时 oracle 基线集合）----------
 step2_backup() {
   [ -n "$GARAGE_REMOTE" ] || { echo "ERROR: GARAGE_REMOTE 未绑定（Q12 执行时注入 rclone remote 名，R4）" >&2; return 1; }
-  local dump_out
+  local dump_out snapshot
+  g19_normalize_backup_dir || return 1
+  [[ ! -e "$DRILL_BACKUP_DIR/garage" && ! -L "$DRILL_BACKUP_DIR/garage" ]] \
+    || { echo "ERROR: Garage backup parent must be fresh" >&2; return 1; }
   PG_CONTAINER="$PG_CONTAINER" POSTGRES_USER="$PG_USER" POSTGRES_DB="$DRILL_TARGET_DB" \
     BACKUP_DIR="$DRILL_BACKUP_DIR" bash "$IMBOY_ROOT/scripts/backup_pg.sh" --full \
     || return 1
@@ -170,9 +223,12 @@ step2_backup() {
   GARAGE_REMOTE="$GARAGE_REMOTE" BUCKET="$DRILL_BUCKET" \
     DEST="$DRILL_BACKUP_DIR/garage" bash "$IMBOY_ROOT/scripts/backup_garage.sh" \
     || return 1
+  snapshot="$(g19_snapshot_dir)" || { echo "ERROR: Garage snapshot layout invalid" >&2; return 1; }
   mkdir -p "$DRILL_BACKUP_DIR/oracle_before"
+  [[ ! -e "$DRILL_BACKUP_DIR/oracle_before/garage_snapshot.path" ]] || return 1
+  printf '%s\n' "$snapshot" > "$DRILL_BACKUP_DIR/oracle_before/garage_snapshot.path"
   shasum -a 256 "$dump_out" > "$DRILL_BACKUP_DIR/oracle_before/dump.sha256"
-  find "$DRILL_BACKUP_DIR/garage" -type f -exec shasum -a 256 {} + \
+  find "$snapshot" -type f -exec shasum -a 256 {} + \
     > "$DRILL_BACKUP_DIR/oracle_before/garage_files.sha256"
   # 备份时基线集合（step4 与恢复后比对；真实列名已对库核实：
   # msg_store 无 conversation_id → 用 (chat_type, conv_key, msg_id)；
@@ -185,7 +241,7 @@ step2_backup() {
     > "$DRILL_BACKUP_DIR/oracle_before/att_set.txt"
   psql_exec "$DRILL_TARGET_DB" "SELECT version FROM schema_migrations ORDER BY 1" \
     > "$DRILL_BACKUP_DIR/oracle_before/migrations.txt"
-  echo "[g19] step2 备份完成：dump=$(basename "$dump_out") + garage → $DRILL_BACKUP_DIR（oracle 基线三集合已导出）"
+  echo "[g19] step2 备份完成：dump=$(basename "$dump_out") + garage → ${DRILL_BACKUP_DIR}（oracle 基线三集合已导出）"
 }
 
 # ---- step3 破坏+恢复（资产表 L136；防御性 DROP 守卫）----------------------
@@ -202,8 +258,7 @@ step3_drop_and_restore() {
   bash "$IMBOY_ROOT/scripts/restore_pg.sh" "$dump_out" --target "$DRILL_RESTORE_DB" \
     || return 1
   # Garage 回桶（新 bucket，不动原桶——保留对照面）
-  rclone copy "$DRILL_BACKUP_DIR/garage" "${GARAGE_REMOTE}:${RCLONE_RESTORE_PREFIX}" \
-    || { echo "ERROR: rclone copy 回桶失败（remote=${GARAGE_REMOTE}）" >&2; return 1; }
+  restore_garage_snapshot || return 1
   echo "[g19] step3 恢复完成：DB→$DRILL_RESTORE_DB 桶→${GARAGE_REMOTE}:${RCLONE_RESTORE_PREFIX}"
 }
 
@@ -253,7 +308,7 @@ step4_oracle() {
   elif [ "$(tail -1 "$od/migrations.txt")" != "$repo_head" ]; then
     echo "FAIL: c) 迁移水位恢复后 head=$(tail -1 "$od/migrations.txt") ≠ 仓内 head=$repo_head"; rc=1
   else
-    echo "[g19] c) 迁移水位一致：head=$repo_head（备份==恢复==仓内）"
+    echo "[g19] c) 迁移水位一致：head=${repo_head}（备份==恢复==仓内）"
   fi
   [ "$rc" -eq 0 ] && echo "ORACLE-PASS" > "$od/verdict.txt" \
     || echo "ORACLE-FAIL" > "$od/verdict.txt"
@@ -266,6 +321,9 @@ step5_quick_line() {
     || { echo "ERROR: restore_smoke.sh MIN_TABLES 快速线失败" >&2; return 1; }
   echo "[g19] step5 快速线通过"
 }
+
+# Sourcing exposes functions only; executing this file preserves the normal main.
+if [[ "${BASH_SOURCE[0]}" != "$0" ]]; then return 0; fi
 
 if [ "$DRY_RUN" -eq 1 ]; then
   echo "[DRY-RUN] cd ${IMBOY_ROOT}（演练对象: DB=${DRILL_TARGET_DB}→${DRILL_RESTORE_DB} bucket=${DRILL_BUCKET} container=${PG_CONTAINER}）"

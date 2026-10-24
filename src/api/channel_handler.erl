@@ -477,14 +477,9 @@ messages(Req0, State) ->
             Qs = cowboy_req:parse_qs(Req0),
             CursorBin = proplists:get_value(<<"cursor">>, Qs, <<>>),
             Limit = parse_qs_int(proplists:get_value(<<"limit">>, Qs), 20, 1, 200),
-            Cursor =
-                case CursorBin of
-                    <<>> -> 0;
-                    _ -> parse_qs_int(CursorBin, 0, 0, 16#7fffffff)
-                end,
-            case channel_logic:get_messages(Uid, ChannelId, Cursor, Limit) of
-                {ok, Messages} ->
-                    elib_response:success(Req0, #{list => Messages});
+            case channel_logic:get_messages_page(Uid, ChannelId, CursorBin, Limit) of
+                {ok, Page} ->
+                    elib_response:success(Req0, Page);
                 {error, {Code, Msg}} when is_integer(Code) ->
                     %% T7 归档写守卫稳定错误码（980）透传 envelope code
                     elib_response:error(Req0, Msg, Code);

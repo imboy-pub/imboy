@@ -81,7 +81,20 @@ verify(C, Now) ->
     ),
     true = is_map(maps:get(<<"source_sha256">>, C)),
     true = is_map(maps:get(<<"case_authorizations">>, C)),
+    ok = verify_controller_schema(C),
     ok.
+
+verify_controller_schema(C) ->
+    case maps:get(<<"controller_schema">>, C, <<"legacy">>) of
+        <<"legacy">> ->
+            ok;
+        <<"imboy_delivery_v3">> ->
+            Run = maps:get(<<"controller_run_id">>, C),
+            true = is_binary(Run) andalso byte_size(Run) > 0,
+            ok;
+        Other ->
+            error({unsupported_controller_schema, Other})
+    end.
 
 binding_keys() ->
     [
@@ -121,6 +134,34 @@ lease_window(Lease, Config, Now) ->
     ok.
 
 controller_identity(R, Owner, State) ->
+    case maps:get(<<"controller_schema">>, R, <<"legacy">>) of
+        <<"legacy">> -> legacy_controller_identity(R, Owner, State);
+        <<"imboy_delivery_v3">> -> v3_controller_identity(R, Owner, State);
+        Other -> error({unsupported_controller_schema, Other})
+    end.
+
+%% Owner is a read-only lock-file observation, not a fabricated legacy owner.
+%% The real V3 state is the fence; ACTIVE does not grant an exclusive test window.
+v3_controller_identity(R, LockInfo, State) ->
+    #{<<"type">> := <<"regular">>, <<"path">> := Lock} = LockInfo,
+    Lock = maps:get(<<"controller_lock_path">>, R),
+    Run = maps:get(<<"controller_run_id">>, R),
+    Epoch = maps:get(<<"controller_epoch">>, R),
+    Pid = maps:get(<<"controller_pid">>, R),
+    Start = maps:get(<<"controller_process_start">>, R),
+    #{
+        <<"run_id">> := Run,
+        <<"status">> := <<"ACTIVE">>,
+        <<"controller">> := Controller
+    } = State,
+    #{<<"epoch">> := Epoch, <<"pid">> := Pid, <<"started">> := Start} = Controller,
+    false = maps:get(<<"released">>, Controller, false),
+    true = is_integer(Epoch) andalso Epoch > 0,
+    true = is_integer(Pid) andalso Pid > 0,
+    true = is_binary(Start) andalso byte_size(Start) > 0,
+    ok.
+
+legacy_controller_identity(R, Owner, State) ->
     Epoch = maps:get(<<"controller_epoch">>, R),
     Pid = maps:get(<<"controller_pid">>, R),
     Start = maps:get(<<"controller_process_start">>, R),

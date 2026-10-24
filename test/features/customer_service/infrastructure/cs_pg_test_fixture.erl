@@ -6,7 +6,7 @@
 %%% 合成主键与 `cs01-` 前缀合成文本，无真实联系方式/客户资料/生产资源。
 %%%
 %%% 清场：customer_service 表先删（事件 → 会话 → token/key → seat），再清
-%%% enterprise 侧被引用行；清场是 best-effort，ID 复用 eb_pg_test_fixture 的有限盐方案，非永久唯一保证。
+%%% enterprise 侧被引用行；清场失败显式冒泡，ID 复用 eb_pg_test_fixture 的有限盐方案，非永久唯一保证。
 -module(cs_pg_test_fixture).
 
 -export([
@@ -14,6 +14,9 @@
     new_scope/0,
     new_scope/1,
     cleanup/1,
+    cleanup_scope/1,
+    cleanup_plan/1,
+    checked_cleanup_result/2,
     exec/2,
     tx/1,
     scalar/2,
@@ -180,111 +183,179 @@ new_scope(Opts) ->
     }.
 
 %% ===================================================================
-%% 清场（best-effort）
+%% 清场：完整合成 scope 身份核验后，在同一事务内精确删除。
 %% ===================================================================
 
 -spec cleanup(map()) -> ok.
 cleanup(Scope) ->
-    Org = maps:get(org_id, Scope, undefined),
-    Workspace = maps:get(workspace_id, Scope, undefined),
-    Actor = maps:get(actor_user_id, Scope, undefined),
-    case {is_integer(Org), is_integer(Workspace)} of
-        {true, true} ->
-            %% R2：customer_service_event 是 append-only（触发器禁 DELETE），
-            %% 普通清理永远 23514，且 event → session → seat 的 RESTRICT 链会把
-            %% 后续清理全部挡死（run5/R2 实证：每跑一轮套件永久累积残留）。
-            %% 处置：customer_service 五表在一个事务内「临时禁用触发器 → 删本
-            %% scope → 复原触发器」（与 eb_offboarding_concurrency_tests 的 a07
-            %% 同款手法，需要表 owner 权限——scratch 库由 imboy_user 持有）。
-            ok = purge_cs_tables(Org),
-            lists:foreach(fun(Sql) -> _ = quiet(Sql) end, cleanup_sql(Org, Workspace, Actor)),
-            ok;
-        _ ->
-            ok
-    end.
-
-purge_cs_tables(Org) ->
-    _ = elib_pg:with_tx(
+    ok = cleanup_scope(Scope),
+    ok = elib_pg:with_tx(
         fun(Conn) ->
-            _ = elib_pg:execute(
-                Conn,
-                <<
-                    "ALTER TABLE customer_service_event"
-                    " DISABLE TRIGGER trg_customer_service_event_append_only"
-                >>,
-                []
-            ),
+            ok = verify_cleanup_scope(Conn, Scope),
             lists:foreach(
-                fun(Table) ->
-                    _ = elib_pg:execute(
-                        Conn,
-                        <<"DELETE FROM ", Table/binary, " WHERE organization_id = $1">>,
-                        [Org]
-                    )
+                fun({Sql, Params}) ->
+                    ok = checked_cleanup_result(Sql, elib_pg:execute(Conn, Sql, Params))
                 end,
-                [
-                    <<"customer_service_event">>,
-                    %% CS-BE-04：游标行 RESTRICT 引用 session/seat——先删。
-                    <<"customer_service_read_cursor">>,
-                    <<"customer_service_session">>,
-                    <<"customer_service_visit_token">>,
-                    <<"customer_service_shop_key">>,
-                    <<"customer_service_seat">>
-                ]
-            ),
-            _ = elib_pg:execute(
-                Conn,
-                <<
-                    "ALTER TABLE customer_service_event"
-                    " ENABLE TRIGGER trg_customer_service_event_append_only"
-                >>,
-                []
+                cleanup_plan(Scope)
             ),
             ok
         end,
-        [{reraise, false}]
+        [{reraise, true}]
     ),
     ok.
 
-cleanup_sql(Org, Workspace, Actor) ->
-    [
-        {<<"DELETE FROM enterprise_message_delivery WHERE organization_id = $1 AND workspace_id = $2">>,
-            [
-                Org, Workspace
-            ]},
-        {<<"DELETE FROM enterprise_message WHERE organization_id = $1 AND workspace_id = $2">>, [
-            Org, Workspace
-        ]},
-        {<<"DELETE FROM enterprise_conversation WHERE organization_id = $1 AND workspace_id = $2">>,
-            [
-                Org, Workspace
-            ]},
-        {<<"DELETE FROM enterprise_contact WHERE organization_id = $1">>, [Org]},
+cleanup_scope(Scope) when is_map(Scope) ->
+    Keys = [
+        owner_user_id,
+        actor_user_id,
+        peer_user_id,
+        org_id,
+        workspace_id,
+        other_org_id,
+        other_workspace_id
+    ],
+    Values = [maps:get(Key, Scope, undefined) || Key <- Keys],
+    case
+        lists:all(fun(V) -> is_integer(V) andalso V > 0 end, Values) andalso
+            length(lists:usort(Values)) =:= length(Keys)
+    of
+        true -> ok;
+        false -> error({invalid_cs_cleanup_scope, Keys})
+    end;
+cleanup_scope(_) ->
+    error(invalid_cs_cleanup_scope).
+
+verify_cleanup_scope(Conn, S) ->
+    Owner = maps:get(owner_user_id, S),
+    lists:foreach(
+        fun(Key) ->
+            Id = maps:get(Key, S),
+            {ok, _, [{Id}]} = epgsql:equery(
+                Conn,
+                <<"SELECT id FROM \"user\" WHERE id=$1 AND account=$2 FOR UPDATE">>,
+                [Id, account(Id)]
+            )
+        end,
+        [owner_user_id, actor_user_id, peer_user_id]
+    ),
+    lists:foreach(
+        fun({OrgKey, WsKey}) ->
+            Org = maps:get(OrgKey, S),
+            Ws = maps:get(WsKey, S),
+            {ok, _, [{Org}]} = epgsql:equery(
+                Conn,
+                <<"SELECT id FROM organization WHERE id=$1 AND name=$2 AND owner_id=$3 FOR UPDATE">>,
+                [Org, name(<<"cs01-org-">>, Org), Owner]
+            ),
+            {ok, _, [{Ws}]} = epgsql:equery(
+                Conn,
+                <<"SELECT id FROM workspace WHERE id=$1 AND name=$2 AND organization_id=$3 AND owner_id=$4 FOR UPDATE">>,
+                [Ws, name(<<"cs01-ws-">>, Ws), Org, Owner]
+            )
+        end,
+        [{org_id, workspace_id}, {other_org_id, other_workspace_id}]
+    ),
+    ok.
+
+%% Only named, existing synthetic-fixture guard triggers are disabled. PostgreSQL
+%% transactional DDL restores them on any SQL error; successful cleanup re-enables
+%% them before COMMIT. Neither FK triggers nor global replication modes are altered.
+cleanup_plan(S) ->
+    ok = cleanup_scope(S),
+    Orgs = [maps:get(org_id, S), maps:get(other_org_id, S)],
+    Triggers = [
+        {<<"customer_service_event">>, <<"trg_customer_service_event_append_only">>},
+        {<<"enterprise_audit_event">>, <<"trg_enterprise_audit_event_append_only">>},
+        {<<"enterprise_message">>, <<"trg_enterprise_message_purge_guard">>},
+        {<<"enterprise_retention_hold">>, <<"trg_enterprise_retention_hold_append_only">>},
+        {<<"enterprise_retention_policy">>, <<"trg_enterprise_retention_policy_immutable">>}
+    ],
+    Guards = [
         {
-            <<
-                "UPDATE organization_business_identity_assignment SET status='ended', ended_at=assigned_at"
-                " WHERE organization_id=$1 AND status='active'"
-            >>,
-            [Org]
-        },
-        {<<"DELETE FROM organization_member WHERE organization_id=$1 AND user_id=$2">>, [
-            Org, Actor
-        ]},
-        {<<"DELETE FROM organization_business_identity WHERE organization_id=$1">>, [Org]}
+            <<"DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgrelid='", Table/binary,
+                "'::regclass AND tgname='", Trigger/binary,
+                "' AND tgenabled='O') THEN RAISE EXCEPTION 'fixture trigger state mismatch'; END IF; END $$">>,
+            []
+        }
+     || {Table, Trigger} <- Triggers
+    ],
+    Guards ++ trigger_sql(Triggers, <<"DISABLE">>) ++
+        [{<<"SET LOCAL imboy.ai_trace_purge = 'on'">>, []}] ++
+        [
+            {<<"DELETE FROM ", Table/binary, " WHERE organization_id IN ($1,$2)">>, Orgs}
+         || Table <- cleanup_tables()
+        ] ++
+        parent_cleanup_sql(S) ++ trigger_sql(Triggers, <<"ENABLE">>).
+
+trigger_sql(Triggers, Action) ->
+    [
+        {<<"ALTER TABLE ", Table/binary, " ", Action/binary, " TRIGGER ", Trigger/binary>>, []}
+     || {Table, Trigger} <- Triggers
     ].
 
-%% 每个语句独立事务 + purge GUC：一条语句失败（如 RESTRICT FK 引用）只影响
-%% 它自己，不会让后续清场语句整批停摆。
-quiet({Sql, Params}) ->
-    _ = elib_pg:with_tx(
-        fun(Conn) ->
-            _ = epgsql:squery(Conn, <<"SET LOCAL imboy.enterprise_purge = 'on'">>),
-            _ = elib_pg:execute(Conn, Sql, Params),
-            ok
-        end,
-        [{reraise, false}]
-    ),
-    ok.
+cleanup_tables() ->
+    [
+        <<"customer_service_ai_budget_attempt">>,
+        <<"customer_service_ai_consume_seen">>,
+        <<"customer_service_ai_consume_cursor">>,
+        <<"customer_service_ai_delivery">>,
+        <<"customer_service_ai_job">>,
+        <<"customer_service_ai_turn">>,
+        <<"customer_service_ai_session">>,
+        <<"customer_service_ai_budget">>,
+        <<"customer_service_event">>,
+        <<"customer_service_visitor_message_read">>,
+        <<"customer_service_visitor_read_cursor">>,
+        <<"customer_service_read_cursor">>,
+        <<"customer_service_session">>,
+        <<"customer_service_visit_token">>,
+        <<"customer_service_widget_nonce">>,
+        <<"customer_service_widget_identity_key">>,
+        <<"customer_service_widget_installation">>,
+        <<"customer_service_shop_key">>,
+        <<"customer_service_seat_presence">>,
+        <<"customer_service_seat_console">>,
+        <<"customer_service_seat_limit">>,
+        <<"customer_service_seat">>,
+        <<"customer_service_ai_agent">>,
+        <<"customer_service_ai_canary">>,
+        <<"customer_service_faq">>,
+        <<"enterprise_retention_hold">>,
+        <<"enterprise_message_delivery">>,
+        <<"enterprise_message">>,
+        <<"enterprise_conversation">>,
+        <<"enterprise_contact_identity">>,
+        <<"enterprise_contact_assignment">>,
+        <<"enterprise_note">>,
+        <<"enterprise_contact">>,
+        <<"enterprise_audit_event">>,
+        <<"organization_business_identity_assignment">>,
+        <<"organization_business_identity">>,
+        <<"organization_member">>,
+        <<"enterprise_retention_policy">>
+    ].
+
+parent_cleanup_sql(S) ->
+    Owner = maps:get(owner_user_id, S),
+    lists:append([
+        [
+            {<<"DELETE FROM workspace WHERE id=$1 AND organization_id=$2 AND owner_id=$3">>, [
+                maps:get(WsKey, S), maps:get(OrgKey, S), Owner
+            ]},
+            {<<"DELETE FROM organization WHERE id=$1 AND owner_id=$2">>, [
+                maps:get(OrgKey, S), Owner
+            ]}
+        ]
+     || {OrgKey, WsKey} <- [{org_id, workspace_id}, {other_org_id, other_workspace_id}]
+    ]) ++
+        [
+            {<<"DELETE FROM \"user\" WHERE id=$1 AND account=$2">>, [Id, account(Id)]}
+         || Id <- [Owner, maps:get(actor_user_id, S), maps:get(peer_user_id, S)]
+        ].
+
+checked_cleanup_result(_Sql, {ok, _Count}) -> ok;
+checked_cleanup_result(_Sql, {ok, _Count, _Rows}) -> ok;
+checked_cleanup_result(Sql, Other) -> error({cs_fixture_cleanup_sql_failed, Sql, Other}).
 
 %% ===================================================================
 %% 只读探针 / 通用执行

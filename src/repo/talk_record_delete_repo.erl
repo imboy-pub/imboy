@@ -53,12 +53,14 @@
 
 %% @doc 删除行锁（§4 DELETE /:id：owner + If-Match 对 record.revision）。
 %% FOR UPDATE 序列化并发 DELETE/PUT grants（同一行锁）；锁后复核：
-%%   deleted_at 已置位 → {ok, deleted, Row}（幂等重放分支，调用方返回
+%%   deleted_at 已置位 → {ok, deleted, undefined}（幂等重放分支，调用方返回
 %%     首次结果形状——§3 幂等动作重放先返回首次结果再校验版本）；
 %%   revision 不匹配 → precondition_failed（412）；
 %%   行不存在 → not_found；非 owner 由调用方在锁前/锁后裁决。
 -spec lock_for_delete_tx(any(), integer(), pos_integer()) ->
-    {ok, live, map()} | {ok, deleted, map()} | {error, not_found | precondition_failed | term()}.
+    {ok, live, map()}
+    | {ok, deleted, undefined}
+    | {error, not_found | precondition_failed | term()}.
 lock_for_delete_tx(Conn, Id, ExpectedRevision) ->
     Sql =
         <<"SELECT ", ?CLEANUP_COLUMNS/binary, " FROM talk_record tr",
@@ -69,7 +71,7 @@ lock_for_delete_tx(Conn, Id, ExpectedRevision) ->
         {ok, [#{<<"deleted_at">> := null}]} ->
             {error, precondition_failed};
         {ok, [_Deleted]} ->
-            %% 已软删：行存在（owner 校验由调用方复核 Row）——幂等重放
+            %% 已软删：行存在；调用方重新读取并复核 owner 后返回幂等结果
             {ok, deleted, undefined};
         {ok, []} ->
             {error, not_found};

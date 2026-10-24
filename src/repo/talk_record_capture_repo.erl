@@ -316,7 +316,7 @@ insert_part_tx(Conn, Data) ->
         maps:get(<<"channels">>, Data, null),
         maps:get(<<"upload_status">>, Data, <<"pending">>)
     ],
-    case elib_pg:execute(Conn, Insert, Params) of
+    case execute_replayable_insert(Conn, Insert, Params) of
         {ok, 1} ->
             {ok, inserted, #{}};
         {ok, 0} ->
@@ -489,12 +489,45 @@ update_record_projection_tx(Conn, RecordId, ActiveCaptureId, CaptureStatus) ->
 
 %% @private epgsql 错误形态 → SQLSTATE（与 talk_record_repo:sqlstate 同构）。
 -spec sqlstate(term()) -> binary() | undefined.
-sqlstate({error, Inner}) when
-    is_tuple(Inner), tuple_size(Inner) >= 3, element(1, Inner) =:= error
-->
-    case element(3, Inner) of
+sqlstate({error, Inner}) when is_tuple(Inner), tuple_size(Inner) >= 3 ->
+    sqlstate(Inner);
+sqlstate(Error) when is_tuple(Error), tuple_size(Error) >= 3, element(1, Error) =:= error ->
+    case element(3, Error) of
         Code when is_binary(Code), byte_size(Code) =:= 5 -> Code;
         _ -> undefined
     end;
 sqlstate(_) ->
     undefined.
+
+%% Only the expected unique violation is recovered before business-key reads.
+%% Other errors remain aborting and must be rolled back by the transaction owner.
+execute_replayable_insert(Conn, Sql, Params) ->
+    Savepoint = <<"talk_replay_", (integer_to_binary(erlang:unique_integer([positive])))/binary>>,
+    case elib_pg:query(Conn, [<<"SAVEPOINT ">>, Savepoint], []) of
+        {ok, _} ->
+            Result = elib_pg:execute(Conn, Sql, Params),
+            case Result of
+                {error, Reason} ->
+                    case sqlstate(Reason) of
+                        <<"23505">> ->
+                            case
+                                elib_pg:query(Conn, [<<"ROLLBACK TO SAVEPOINT ">>, Savepoint], [])
+                            of
+                                {ok, _} -> release_insert_savepoint(Conn, Savepoint, Result);
+                                {error, _} = Error -> Error
+                            end;
+                        _ ->
+                            Result
+                    end;
+                _ ->
+                    release_insert_savepoint(Conn, Savepoint, Result)
+            end;
+        {error, _} = Error ->
+            Error
+    end.
+
+release_insert_savepoint(Conn, Savepoint, Result) ->
+    case elib_pg:query(Conn, [<<"RELEASE SAVEPOINT ">>, Savepoint], []) of
+        {ok, _} -> Result;
+        {error, _} = Error -> Error
+    end.

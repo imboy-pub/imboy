@@ -25,10 +25,21 @@ production_routes_test() ->
         Expected
     ),
     ?assertEqual(Routes, 'talk_record_routes.fragment':routes()),
+    %% Only this exact signed-capability source tuple bypasses JWT. Its actual
+    %% capability/expiry/identity protections are verified by the real HTTP suite.
+    CapabilitySource =
+        {"/api/v1/talk-records/client-audio-source", talk_record_client_audio_handler, #{}},
+    Open = imboy_router:open(),
+    ?assertEqual([CapabilitySource], [
+        Route
+     || {P, _, _} = Route <- Routes,
+        lists:member(list_to_binary(P), Open)
+    ]),
     ?assertEqual([], [
         P
-     || {P, _, _} <- Routes,
-        lists:member(list_to_binary(P), imboy_router:open())
+     || {P, _, _} = Route <- Routes,
+        Route =/= CapabilitySource,
+        lists:member(list_to_binary(P), Open)
     ]).
 
 processing_dispatch_test_() ->

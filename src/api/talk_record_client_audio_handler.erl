@@ -32,7 +32,7 @@ respond(Req, T, #{size := N, headers := Base}) ->
             case cowboy_req:method(Req) of
                 <<"HEAD">> ->
                     case talk_record_client_audio_logic:metadata(T) of
-                        {ok, _} -> cowboy_req:reply(Status, H, <<>>, Req);
+                        {ok, _} -> cowboy_req:stream_reply(Status, H, Req);
                         _ -> deny(Req)
                     end;
                 _ ->

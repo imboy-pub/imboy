@@ -145,7 +145,7 @@ sha(N) ->
 persistent_test_ids(Conn) ->
     Expected = list_to_binary(os:getenv("T05_PG_DB", "talk_record_t05")),
     {ok, _, [{Expected}]} = epgsql:squery(Conn, "SELECT current_database()"),
-    true = binary:match(Expected, <<"talk_record_">>) =:= {0, 12},
+    ok = authorize_id_database(Conn, Expected),
     {ok, _, _} = epgsql:squery(
         Conn,
         "CREATE SEQUENCE IF NOT EXISTS talk_record_test_entity_id"
@@ -161,3 +161,11 @@ persistent_test_ids(Conn) ->
         true = Id > 0 andalso Id =< 9223372036854775807,
         Id
     end).
+
+%% Legacy dedicated DBs retain their original guard and environment contract.
+%% Owned children additionally require wrapper-issued proof plus live identity.
+authorize_id_database(Conn, Expected) ->
+    case binary:match(Expected, <<"talk_record_">>) of
+        {0, 12} -> ok;
+        _ -> talk_record_owned_eunit_fixture:assert_owned_database(Conn, Expected)
+    end.

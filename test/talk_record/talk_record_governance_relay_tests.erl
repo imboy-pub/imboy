@@ -213,7 +213,9 @@ personal(C) ->
     ?assertEqual({error, not_found}, enterprise_attachment_retention_repo:find_tx(C, A)).
 legacy_application(C, Org) ->
     {ok, 1} = elib_pg:execute(
-        C, <<"INSERT INTO enterprise_application(id,organization_id) VALUES(810001,$1)">>, [Org]
+        C,
+        <<"INSERT INTO enterprise_application(id,organization_id,application_key,name) VALUES(810001,$1,'synthetic-talk-governance-legacy-810001','Synthetic legacy retention application')">>,
+        [Org]
     ),
     {ok, R} = talk_record_t15_support:create_record(700001, 804, <<"application fixture source">>),
     A = artifact(C, R, false),
@@ -231,25 +233,41 @@ legacy_application(C, Org) ->
     ).
 
 admin_api(C, Org) ->
+    Actor = 700003,
+    {ok, [#{<<"role">> := <<"member">>, <<"status">> := <<"active">>}]} =
+        elib_pg:query(
+            C,
+            <<"SELECT role,status FROM organization_member WHERE organization_id=$1 AND user_id=$2">>,
+            [Org, Actor]
+        ),
+    {ok, 1} = elib_pg:execute(
+        C,
+        <<
+            "UPDATE organization_member SET role='admin' WHERE organization_id=$1 AND user_id=$2"
+            " AND role='member' AND status='active'"
+        >>,
+        [Org, Actor]
+    ),
+    ok = assert_admin_state(C, Org, Actor, <<"active">>),
     {ok, R} = talk_record_t15_support:create_org_record(700002, Org, 0, 805),
     A = artifact(C, R, true),
     {ok, _, _} = bind(C, R, A, <<"admin-meta">>),
-    ?assertEqual({error, not_found}, talk_record_repo:find_visible(700001, R)),
-    {ok, Meta} = talk_record_governance_logic:read(700001, R, A),
+    ?assertEqual({error, not_found}, talk_record_repo:find_visible(Actor, R)),
+    {ok, Meta} = talk_record_governance_logic:read(Actor, R, A),
     ?assertEqual(false, maps:is_key(<<"title">>, Meta)),
     ?assertEqual(false, maps:is_key(<<"path">>, Meta)),
     ?assertEqual({error, not_found}, talk_record_governance_logic:read(700002, R, A)),
     ?assertEqual({error, not_found}, talk_record_governance_logic:read(700004, R, A)),
     ?assertEqual(
         {error, precondition_required},
-        talk_record_governance_logic:mutate(700001, R, A, undefined, <<"x">>, #{
+        talk_record_governance_logic:mutate(Actor, R, A, undefined, <<"x">>, #{
             <<"op">> => <<"purge">>
         })
     ),
     ?assertEqual(
         {error, invalid_body},
         talk_record_governance_logic:mutate(
-            700001,
+            Actor,
             R,
             A,
             <<"1">>,
@@ -270,46 +288,54 @@ admin_api(C, Org) ->
     ),
     ?assertEqual(
         {error, hold_not_set},
-        talk_record_governance_logic:mutate(700001, R, A, <<"1">>, <<"none-held">>, #{
+        talk_record_governance_logic:mutate(Actor, R, A, <<"1">>, <<"none-held">>, #{
             <<"op">> => <<"release_hold">>
         })
     ),
-    audit_rollback(C, R, A),
+    audit_rollback(C, R, A, Actor),
     {ok, created, H} = talk_record_governance_logic:mutate(
-        700001, R, A, <<"1">>, <<"admin-hold">>, #{
+        Actor, R, A, <<"1">>, <<"admin-hold">>, #{
             <<"op">> => <<"hold">>, <<"reason">> => <<"synthetic hold">>
         }
     ),
     ?assertEqual(2, maps:get(<<"revision">>, H)),
     ?assertMatch(
         {ok, replay, _},
-        talk_record_governance_logic:mutate(700001, R, A, <<"1">>, <<"admin-hold">>, #{
+        talk_record_governance_logic:mutate(Actor, R, A, <<"1">>, <<"admin-hold">>, #{
             <<"op">> => <<"hold">>, <<"reason">> => <<"synthetic hold">>
         })
     ),
     ?assertEqual(
         {error, revision_mismatch},
-        talk_record_governance_logic:mutate(700001, R, A, <<"1">>, <<"stale">>, #{
+        talk_record_governance_logic:mutate(Actor, R, A, <<"1">>, <<"stale">>, #{
             <<"op">> => <<"release_hold">>
         })
     ),
     {ok, 1} = elib_pg:execute(
         C,
-        <<"UPDATE organization_member SET status='suspended' WHERE organization_id=$1 AND user_id=700001">>,
-        [Org]
+        <<"UPDATE organization_member SET status='suspended' WHERE organization_id=$1 AND user_id=$2">>,
+        [Org, Actor]
     ),
+    ok = assert_admin_state(C, Org, Actor, <<"suspended">>),
+    {ok, [#{<<"role">> := <<"owner">>, <<"status">> := <<"active">>}]} =
+        elib_pg:query(
+            C,
+            <<"SELECT role,status FROM organization_member WHERE organization_id=$1 AND user_id=700001">>,
+            [Org]
+        ),
     ?assertEqual(
         {error, not_found},
-        talk_record_governance_logic:mutate(700001, R, A, <<"1">>, <<"admin-hold">>, #{
+        talk_record_governance_logic:mutate(Actor, R, A, <<"1">>, <<"admin-hold">>, #{
             <<"op">> => <<"hold">>, <<"reason">> => <<"synthetic hold">>
         })
     ),
     {ok, 1} = elib_pg:execute(
         C,
-        <<"UPDATE organization_member SET status='active' WHERE organization_id=$1 AND user_id=700001">>,
-        [Org]
+        <<"UPDATE organization_member SET status='active' WHERE organization_id=$1 AND user_id=$2">>,
+        [Org, Actor]
     ),
-    {ok, created, _} = talk_record_governance_logic:mutate(700001, R, A, <<"2">>, <<"release">>, #{
+    ok = assert_admin_state(C, Org, Actor, <<"active">>),
+    {ok, created, _} = talk_record_governance_logic:mutate(Actor, R, A, <<"2">>, <<"release">>, #{
         <<"op">> => <<"release_hold">>
     }),
     {ok, _, _} = talk_record_delete_logic:delete(700002, R, <<"3">>),
@@ -318,14 +344,14 @@ admin_api(C, Org) ->
     end),
     Guard = unknown_processor_fixture(C, R),
     {ok, created, Blocked} = talk_record_governance_logic:mutate(
-        700001, R, A, <<"4">>, <<"approved-purge">>, #{<<"op">> => <<"purge">>}
+        Actor, R, A, <<"4">>, <<"approved-purge">>, #{<<"op">> => <<"purge">>}
     ),
     ?assertEqual(false, maps:get(<<"cleanup_scheduled">>, Blocked)),
     ?assertEqual(<<"retained_by_other_reference">>, maps:get(<<"cleanup_status">>, Blocked)),
     %% This explicit synthetic run never launched an OS process; only its known fixture is stopped.
     ok = talk_record_processor_run_repo:finish(Guard, <<"stopped">>),
     {ok, created, P} = talk_record_governance_logic:mutate(
-        700001, R, A, <<"5">>, <<"reconcile-approved-purge">>, #{<<"op">> => <<"purge">>}
+        Actor, R, A, <<"5">>, <<"reconcile-approved-purge">>, #{<<"op">> => <<"purge">>}
     ),
     ?assertEqual(true, maps:get(<<"cleanup_scheduled">>, P)),
     ?assertEqual(<<"pending">>, maps:get(<<"cleanup_status">>, P)),
@@ -338,7 +364,7 @@ admin_api(C, Org) ->
         [R]
     ).
 
-audit_rollback(C, R, A) ->
+audit_rollback(C, R, A, Actor) ->
     ok = meck:new(talk_record_repo, [passthrough, no_link]),
     meck:expect(talk_record_repo, insert_audit_tx, fun(_, _, _, _, _, _) ->
         {error, synthetic_audit_failed}
@@ -347,7 +373,7 @@ audit_rollback(C, R, A) ->
         ?assertEqual(
             {error, synthetic_audit_failed},
             talk_record_governance_logic:mutate(
-                700001,
+                Actor,
                 R,
                 A,
                 <<"1">>,
@@ -369,6 +395,15 @@ audit_rollback(C, R, A) ->
             C, <<"SELECT 1 FROM talk_record_idempotency WHERE idempotency_key='audit-failure'">>, []
         )
     ).
+
+assert_admin_state(C, Org, Actor, Status) ->
+    {ok, [#{<<"role">> := <<"admin">>, <<"status">> := Status}]} =
+        elib_pg:query(
+            C,
+            <<"SELECT role,status FROM organization_member WHERE organization_id=$1 AND user_id=$2">>,
+            [Org, Actor]
+        ),
+    ok.
 
 unknown_processor_fixture(C, R) ->
     {ok, created, Jid} = talk_record_job_repo:enqueue_tx(C, #{

@@ -80,3 +80,42 @@ row(Messages, Views) ->
 
 invalid() ->
     {error, invalid_channel_message_stats}.
+
+%% SQL shape/parameter test, not a PostgreSQL behavioral oracle.
+message_page_sql_boundary_test_() ->
+    {setup, fun() -> meck:new(elib_pg, [passthrough, no_link, unstick]) end,
+        fun(_) -> meck:unload(elib_pg) end, fun(_) ->
+            ?_test(begin
+                At = <<"2026-10-24T01:02:03.123456Z">>,
+                meck:expect(elib_pg, query, fun(Sql, [42, At0, CursorId, 21]) ->
+                    EncodedId = epgsql_codec_integer:encode(CursorId, int8, []),
+                    ?assertEqual(
+                        9223372036854775807,
+                        epgsql_codec_integer:decode(EncodedId, int8, [])
+                    ),
+                    ?assertEqual(At, At0),
+                    ?assertNotEqual(
+                        nomatch,
+                        binary:match(
+                            Sql,
+                            <<"(created_at,id) < ($2::timestamptz,$3::bigint)">>
+                        )
+                    ),
+                    ?assertNotEqual(
+                        nomatch,
+                        binary:match(
+                            Sql,
+                            <<"ORDER BY created_at DESC,id DESC LIMIT $4">>
+                        )
+                    ),
+                    ?assertNotEqual(nomatch, binary:match(Sql, <<"SS.US">>)),
+                    {ok, []}
+                end),
+                ?assertEqual(
+                    {ok, []},
+                    channel_message_ds:list_by_channel_page(
+                        42, {At, <<"9223372036854775807">>}, 20
+                    )
+                )
+            end)
+        end}.

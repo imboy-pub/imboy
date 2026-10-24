@@ -10,44 +10,90 @@ from contract_gate import ROUTE_RE, extract_routes
 from contract_route_sources import uncomment
 
 
+HTTP_METHOD = r'<<"(GET|POST|PUT|PATCH|DELETE|HEAD)">>'
+
+
+def action_methods(module, action, source):
+    """Support the actual dispatch forms; an unrecognized form must fail closed."""
+    if module == 'talk_record_handler':
+        block = re.search(r'^handle_action\(' + re.escape(action) +
+                          r',.*?(?=^handle_action\(|\Z)', source, re.M | re.S)
+        if block is None:
+            raise ValueError(f'Missing action {module}:{action}')
+        methods = set(re.findall(HTTP_METHOD, block.group()))
+    elif module == 'talk_record_client_handler':
+        pairs = re.findall(r'^method\((\w+)\)\s*->\s*' + HTTP_METHOD, source, re.M)
+        mapping = dict(pairs)
+        if '_' not in mapping:
+            raise ValueError('Missing client method fallback')
+        methods = {mapping.get(action, mapping['_'])}
+    elif module == 'talk_record_provider_handler':
+        block = re.search(r'\bMethod\s*=\s*case A of(.*?)end', source, re.S)
+        if block is None:
+            raise ValueError('Unsupported provider method dispatch')
+        pairs = re.findall(r'(\w+)\s*->\s*' + HTTP_METHOD, block.group(1))
+        mapping = dict(pairs)
+        if '_' not in mapping:
+            raise ValueError('Missing provider method fallback')
+        methods = {mapping.get(action, mapping['_'])}
+    elif action is None:
+        methods = set(re.findall(HTTP_METHOD, source))
+    else:
+        raise ValueError(f'Unsupported handler {module}')
+    if not methods:
+        raise ValueError(f'No methods found for {module}:{action}')
+    return methods
+
+
 def routes():
     source = uncomment((ROOT / 'src/api/talk_record_routes.erl').read_text())
-    handler = (ROOT / 'src/api/talk_record_handler.erl').read_text()
-    dedicated = {'talk_record_cleanup_retry_handler': 'cleanup_retry',
-                 'talk_record_recovery_handler': 'recovery',
-                 'talk_record_participant_handler': 'participants',
-                 'talk_record_governance_handler': 'governance',
-                 'talk_record_playback_handler': 'stream'}
     for match in ROUTE_RE.finditer(source):
         path, module, opts = match.groups()
         action = re.search(r'action\s*=>\s*(\w+)', opts)
-        if action:
-            name = action.group(1)
-            block = re.search(r'^handle_action\(' + name + r',.*?(?=^handle_action\(|\Z)', handler, re.M | re.S).group()
-        else:
-            name = dedicated[module]
-            block = uncomment((ROOT / 'src/api' / (module + '.erl')).read_text())
-        methods = set(re.findall(r'<<"(GET|POST|PUT|PATCH|DELETE|HEAD)">>', block))
-        yield path, name, methods
+        handler = uncomment((ROOT / 'src/api' / (module + '.erl')).read_text())
+        name = action.group(1) if action else None
+        yield path, module, action_methods(module, name, handler)
 
 
 class TalkRecordContractTests(unittest.TestCase):
-    def test_all_38_paths_49_real_methods_are_registered_and_documented(self):
+    def test_all_60_paths_actual_handler_methods_are_registered_and_documented(self):
         root = (ROOT / 'api/openapi-api.yaml').read_text()
         exported = extract_routes((ROOT / 'src/imboy_router.erl').read_text())
         registered = {e['path'] for e in exported['api_v1']}
+        documents = dict(re.findall(
+            r'^  (/api/v1/talk-records[^\n]*):\n\s+\$ref: [\'"]?([^\s\'"]+)',
+            root, re.M))
         total = 0
-        for path, action, methods in routes():
+        actual_routes = list(routes())
+        self.assertEqual(len(actual_routes), 60)
+        self.assertEqual(len({path for path, _, _ in actual_routes}), 60)
+        self.assertEqual(set(documents), {
+            re.sub(r':(\w+)', r'{\1}', path) for path, _, _ in actual_routes})
+        for path, module, methods in actual_routes:
             with self.subTest(path=path):
                 self.assertIn(path, registered)
                 key = re.sub(r':(\w+)', r'{\1}', path)
-                self.assertIn('  ' + key + ':', root)
-                document = ROOT / 'api/paths/api/v1/talk-records' / (action + '.yaml')
+                document = ROOT / 'api' / documents[key]
                 actual = set(re.findall(r'^(get|post|put|patch|delete|head):', document.read_text(), re.M))
                 self.assertEqual({m.lower() for m in methods}, actual)
                 total += len(methods)
-        self.assertEqual(len(list(routes())), 38)
-        self.assertEqual(total, 49)
+        self.assertGreater(total, len(actual_routes))
+
+    def test_split_handler_method_dispatch_is_not_borrowed_from_other_actions(self):
+        provider = (ROOT / 'src/api/talk_record_provider_handler.erl').read_text()
+        client = (ROOT / 'src/api/talk_record_client_handler.erl').read_text()
+        for action, expected in [('latest', 'GET'), ('prepare', 'POST')]:
+            self.assertEqual({expected}, action_methods('talk_record_provider_handler', action, provider))
+        for action, expected in [('get', 'GET'), ('plan', 'PUT'), ('claim', 'POST')]:
+            self.assertEqual({expected}, action_methods('talk_record_client_handler', action, client))
+
+    def test_missing_or_unsupported_dispatch_fails_instead_of_skipping_routes(self):
+        with self.assertRaisesRegex(ValueError, 'Missing action'):
+            action_methods('talk_record_handler', 'missing', '')
+        with self.assertRaisesRegex(ValueError, 'Unsupported provider'):
+            action_methods('talk_record_provider_handler', 'get', '')
+        with self.assertRaisesRegex(ValueError, 'fallback'):
+            action_methods('talk_record_client_handler', 'claim', 'method(get) -> <<"GET">>.')
 
     def test_all_new_local_schema_refs_resolve(self):
         files = list((ROOT / 'api/paths/api/v1/talk-records').glob('*.yaml'))

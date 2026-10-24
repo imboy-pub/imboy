@@ -22,15 +22,15 @@ run(Job) ->
     end.
 
 prepare_tx(C, Job) ->
-    gate(C, Job),
+    ok = gate(C, Job),
     require(talk_record_assembly_logic:prepare_tx(C, Job)).
 
 reserve_tx(C, Job, P, {Source, Bytes}) ->
-    gate(C, Job),
+    ok = gate(C, Job),
     {ok, talk_record_assembly_artifact:reserve_tx(C, Job, P, Source, Bytes)}.
 
 publish_tx(C, Job, P) ->
-    gate(C, Job),
+    ok = gate(C, Job),
     require(talk_record_assembly_logic:finish_tx(C, Job, P)).
 
 gate(C, Job) ->
@@ -62,8 +62,8 @@ gate(C, Job) ->
             end;
         {error, not_found} ->
             abort(record_deleted);
-        Error ->
-            require(Error)
+        {error, R} ->
+            abort(R)
     end.
 
 check_manifest(C, Rid, Job) ->
@@ -98,7 +98,7 @@ fail(Job, Code) ->
             true -> ok;
             false -> abort(lease_lost)
         end,
-        maybe_failed_media(C, Rid, Rows, Locked),
+        ok = maybe_failed_media(C, Rid, Rows, Locked),
         ok = require(
             talk_record_job_repo:finish_failed_tx(
                 C,
@@ -127,14 +127,15 @@ maybe_failed_media(C, Rid, [#{<<"deleted_at">> := null, <<"content_revision">> :
                             >>,
                             [Rid]
                         )
-                    );
+                    ),
+                    ok;
                 false ->
                     ok
             end;
         {error, not_found} ->
             ok;
-        E ->
-            require(E)
+        {error, R} ->
+            abort(R)
     end;
 maybe_failed_media(_, _, _, _) ->
     ok.

@@ -159,3 +159,90 @@ controller_identity_test_() ->
                 )
             )
         ].
+
+v3_controller_identity_test_() ->
+    C = (config())#{
+        <<"controller_schema">> => <<"imboy_delivery_v3">>,
+        <<"controller_run_id">> => <<"owned-run">>
+    },
+    Lock = #{<<"type">> => <<"regular">>, <<"path">> => <<"/offline/lock">>},
+    Controller = #{<<"epoch">> => 7, <<"pid">> => 123, <<"started">> => <<"start">>},
+    State = #{
+        <<"run_id">> => <<"owned-run">>,
+        <<"status">> => <<"ACTIVE">>,
+        <<"controller">> => Controller
+    },
+    [
+        ?_assertEqual(ok, talk_record_t20_frozen_config:verify(C, 1100)),
+        ?_assertEqual(ok, talk_record_t20_frozen_config:controller_identity(C, Lock, State))
+    ] ++
+        [
+            ?_assertException(
+                error, _, talk_record_t20_frozen_config:controller_identity(C, Lock, Bad)
+            )
+         || Bad <- [
+                State#{<<"status">> => <<"USER_PAUSED">>},
+                State#{<<"status">> => <<"RUNNING">>},
+                State#{<<"run_id">> => <<"foreign">>},
+                State#{<<"controller">> => Controller#{<<"epoch">> => 8}},
+                State#{<<"controller">> => Controller#{<<"pid">> => 124}},
+                State#{<<"controller">> => Controller#{<<"started">> => <<"old">>}},
+                State#{<<"controller">> => Controller#{<<"released">> => true}},
+                State#{<<"controller">> => maps:remove(<<"started">>, Controller)},
+                maps:remove(<<"run_id">>, State)
+            ]
+        ] ++
+        [
+            ?_assertException(
+                error, _, talk_record_t20_frozen_config:controller_identity(C, Bad, State)
+            )
+         || Bad <- [
+                #{},
+                Lock#{<<"type">> => <<"directory">>},
+                Lock#{<<"path">> => <<"/foreign/lock">>}
+            ]
+        ] ++
+        [
+            ?_assertException(
+                error,
+                _,
+                talk_record_t20_frozen_config:controller_identity(
+                    config(), Lock, State
+                )
+            ),
+            ?_assertException(
+                error,
+                _,
+                talk_record_t20_frozen_config:verify(
+                    C#{<<"controller_schema">> => <<"unknown">>}, 1100
+                )
+            ),
+            ?_assertException(
+                error,
+                _,
+                talk_record_t20_frozen_config:verify(
+                    maps:remove(<<"controller_run_id">>, C), 1100
+                )
+            ),
+            ?_assertException(
+                error,
+                _,
+                talk_record_t20_frozen_config:verify(
+                    C#{<<"controller_run_id">> => <<>>}, 1100
+                )
+            )
+        ].
+
+v3_lease_stays_required_test() ->
+    C = (config())#{
+        <<"controller_schema">> => <<"imboy_delivery_v3">>,
+        <<"controller_run_id">> => <<"owned-run">>
+    },
+    ?assertException(
+        error,
+        _,
+        talk_record_t20_frozen_config:lease_window(
+            #{<<"issued_at_unix">> => 1000, <<"expires_at_unix">> => 1099}, C, 1100
+        )
+    ),
+    ?assertException(error, _, talk_record_t20_frozen_config:lease_window(#{}, C, 1100)).

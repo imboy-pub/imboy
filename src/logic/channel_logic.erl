@@ -101,7 +101,7 @@
 
 -export([publish_message/5]).
 -export([publish_message/6]).
--export([get_messages/4]).
+-export([get_messages/4, get_messages_page/4]).
 -export([mark_as_read/3]).
 -export([pin_message/3]).
 -export([delete_message/2]).
@@ -203,6 +203,9 @@ publish_message(Uid, ChannelIdBin, Content, MsgType, Payload, RequestId) ->
 
 get_messages(Uid, ChannelIdBin, Cursor, Limit) ->
     channel_logic_message:get_messages(Uid, ChannelIdBin, Cursor, Limit).
+
+get_messages_page(Uid, ChannelIdBin, Cursor, Limit) ->
+    channel_logic_message:get_messages_page(Uid, ChannelIdBin, Cursor, Limit).
 
 mark_as_read(Uid, ChannelIdBin, MessageIdBin) ->
     channel_logic_message:mark_as_read(Uid, ChannelIdBin, MessageIdBin).

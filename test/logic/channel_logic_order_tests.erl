@@ -36,3 +36,22 @@ yuan_to_fen_test() ->
     ?assertEqual(999, channel_logic_order:yuan_to_fen(<<"9.999">>)),
     %% 非法输入安全返回 0
     ?assertEqual(0, channel_logic_order:yuan_to_fen(<<"abc">>)).
+
+%% safe_int 成功必为 integer；非法输入仍由 catch/既有入口防御处理。
+yuan_to_fen_integer_boundary_test() ->
+    ?assertEqual(1200, channel_logic_order:yuan_to_fen(<<"+12">>)),
+    ?assertEqual(-1200, channel_logic_order:yuan_to_fen(<<"-12">>)),
+    ?assertEqual(0, channel_logic_order:yuan_to_fen(<<>>)),
+    ?assertEqual(0, channel_logic_order:yuan_to_fen(<<"12x">>)),
+    %% Erlang integer 为任意精度，不得引入 64-bit 截断或伪 overflow fallback。
+    ?assertEqual(
+        922337203685477580800,
+        channel_logic_order:yuan_to_fen(<<"9223372036854775808">>)
+    ),
+    ?assertEqual(
+        -922337203685477580900,
+        channel_logic_order:yuan_to_fen(<<"-9223372036854775809">>)
+    ),
+    ?assertEqual(1200, channel_logic_order:yuan_to_fen("12")),
+    ?assertEqual(0, channel_logic_order:yuan_to_fen(undefined)),
+    ?assertEqual(0, channel_logic_order:yuan_to_fen(#{})).

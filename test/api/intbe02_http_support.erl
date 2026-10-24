@@ -128,8 +128,12 @@ setup_all() ->
         State#{storage_fixture => Storage}
     catch
         Class:Reason:Stack ->
-            teardown_storage(Storage),
-            erlang:raise(Class, Reason, Stack)
+            raise_after_cleanup(
+                Class,
+                Reason,
+                Stack,
+                [fun() -> teardown_storage(Storage) end]
+            )
     end.
 
 setup_with_limiter() ->
@@ -138,8 +142,12 @@ setup_with_limiter() ->
         setup_all(LimiterOwner)
     catch
         Class:Reason:Stack ->
-            stop_limiter_owner(LimiterOwner),
-            erlang:raise(Class, Reason, Stack)
+            raise_after_cleanup(
+                Class,
+                Reason,
+                Stack,
+                [fun() -> stop_limiter_owner(LimiterOwner) end]
+            )
     end.
 
 setup_all(LimiterOwner) ->
@@ -169,49 +177,74 @@ setup_all(LimiterOwner) ->
         env_prefix => <<"INTBE02_INTTEST">>,
         connect_extra => #{codecs => [{epgsql_codec_rfc3339_bin, []}]}
     }),
+    setup_stages(State#{limiter_owner => LimiterOwner}, [
+        fun snapshot_default_pool/1,
+        fun suspend_default_pool/1,
+        fun(S) ->
+            Pid = ensure_pool(S),
+            S#{owned_pool_pid => Pid}
+        end,
+        fun setup_seed/1,
+        fun(S) ->
+            %% Never adopt or clear a table from a different fixture.
+            undefined = ets:whereis(?COVERED_TAB),
+            ?COVERED_TAB = ets:new(?COVERED_TAB, [named_table, public, set]),
+            S#{owned_covered_tid => ets:whereis(?COVERED_TAB)}
+        end,
+        fun(S) ->
+            {ok, _} = application:ensure_all_started(cowboy),
+            {ok, _} = application:ensure_all_started(ranch),
+            Dispatch = cowboy_router:compile(imboy_router:get_routes()),
+            %% already_started is a refusal, never permission to adopt.
+            {ok, Pid} = cowboy:start_clear(
+                ?LISTENER,
+                [{ip, {127, 0, 0, 1}}, {port, 0}],
+                #{env => #{dispatch => Dispatch}, middlewares => ?MIDDLEWARES}
+            ),
+            S#{owned_listener_pid => Pid}
+        end,
+        fun setup_result/1
+    ]).
+
+setup_stages(State, []) ->
+    State;
+setup_stages(State, [Step | Rest]) ->
+    %% Recurse outside the try: a later failure must not double-release earlier states.
+    Result = cleanup_capture(fun() -> Step(State) end),
+    case Result of
+        {ok, Next} ->
+            setup_stages(Next, Rest);
+        {error, Class, Reason, Stack} ->
+            raise_after_cleanup(Class, Reason, Stack, [
+                fun() -> stop_owned_listener(State) end,
+                fun() -> delete_owned_covered(State) end,
+                fun() -> release_owned_pool(State) end,
+                fun() -> inttest_marker_db:release(State) end
+            ])
+    end.
+
+setup_seed(State) ->
     C = maps:get(conn, State),
-    ensure_pool(State),
-    ok = sql_exec(C, <<"BEGIN">>),
-    Creds =
-        try
-            Creds0 = seed_matrix(C),
-            ok = sql_exec(C, <<"COMMIT">>),
-            Creds0
-        catch
-            Class:Reason:Stack ->
-                _ = sql_exec_quiet(C, <<"ROLLBACK">>),
-                release_pool(),
-                inttest_marker_db:release(State),
-                erlang:raise(Class, {intbe02_seed_failed, Reason}, Stack)
-        end,
-    %% named_table 跨套件幂等：33 个 intbe02 系套件共用本 setup_all，若前序
-    %% 套件异常退出未走 teardown_all（catch ets:delete），残留表会让本套件
-    %% ets:new 直接 badarg（run7 三连失败根因）——复用旧表并清空。
-    Covered =
-        case ets:whereis(?COVERED_TAB) of
-            undefined -> ets:new(?COVERED_TAB, [named_table, public, set]);
-            Existing -> Existing
-        end,
-    ets:delete_all_objects(Covered),
-    {ok, _} = application:ensure_all_started(cowboy),
-    {ok, _} = application:ensure_all_started(ranch),
-    Dispatch = cowboy_router:compile(imboy_router:get_routes()),
-    %% 全量顺序下前序 http-check 模块可能已留下同名 listener（teardown 缺失或
-    %% 复用场景）：already_started 时复用现有 listener，路由同候选等价。
-    case
-        cowboy:start_clear(
-            ?LISTENER,
-            [{port, 0}],
-            #{env => #{dispatch => Dispatch}, middlewares => ?MIDDLEWARES}
-        )
-    of
-        {ok, _} -> ok;
-        {error, {already_started, _}} -> ok
-    end,
-    Port = ranch:get_port(?LISTENER),
-    State#{
-        limiter_owner => LimiterOwner,
-        conn => C,
+    try
+        ok = sql_exec(C, <<"BEGIN">>),
+        Creds = seed_matrix(C),
+        ok = sql_exec(C, <<"COMMIT">>),
+        State#{fixture_credentials => Creds}
+    catch
+        Class:Reason:Stack ->
+            raise_after_cleanup(
+                Class,
+                Reason,
+                Stack,
+                [fun() -> sql_exec(C, <<"ROLLBACK">>) end]
+            )
+    end.
+
+setup_result(State) ->
+    C = maps:get(conn, State),
+    Creds = maps:get(fixture_credentials, State),
+    {{127, 0, 0, 1}, Port} = ranch:get_addr(?LISTENER),
+    maps:remove(fixture_credentials, State#{
         port => Port,
         app_a => app_id(C, ?APP_KEY_A),
         app_c => app_id(C, ?APP_KEY_C),
@@ -225,29 +258,171 @@ setup_all(LimiterOwner) ->
         cred_d => maps:get(cred_d, Creds),
         cred_ro => maps:get(cred_ro, Creds),
         cred_sso => maps:get(cred_sso, Creds)
-    }.
+    }).
+
+cleanup_capture(Fun) ->
+    try
+        {ok, Fun()}
+    catch
+        Class:Reason:Stack -> {error, Class, Reason, Stack}
+    end.
+
+raise_after_cleanup(Class, Reason, Stack, Operations) ->
+    Errors = [E || {error, _, _, _} = E <- [cleanup_capture(F) || F <- Operations]],
+    case Errors of
+        [] -> erlang:raise(Class, Reason, Stack);
+        _ -> erlang:raise(Class, {setup_cleanup_failed, Reason, Errors}, Stack)
+    end.
+
+stop_owned_listener(State) ->
+    case maps:find(owned_listener_pid, State) of
+        error ->
+            ok;
+        {ok, Pid} ->
+            case is_process_alive(Pid) of
+                false ->
+                    ok;
+                true ->
+                    #{pid := Pid} = ranch:info(?LISTENER),
+                    ok = cowboy:stop_listener(?LISTENER)
+            end
+    end.
+
+delete_owned_covered(State) ->
+    case maps:find(owned_covered_tid, State) of
+        error ->
+            ok;
+        {ok, Tid} ->
+            case ets:info(Tid, owner) of
+                undefined ->
+                    ok;
+                Owner when Owner =:= self() ->
+                    true = ets:delete(Tid),
+                    ok;
+                _ ->
+                    error(foreign_covered_table_owner)
+            end
+    end.
+
+snapshot_default_pool(State) ->
+    %% Even an absent pool must restore the original configured EUnit default.
+    true = os:getenv("IMBOYENV") =:= "test",
+    {ok, Conf} = application:get_env(imboy, pg_conf),
+    #{name := pgsql, start_mfa := {epgsql, connect, [Opts]}} = Conf,
+    true = is_map(Opts),
+    case whereis(pgsql) of
+        undefined ->
+            State#{prior_default_pool => #{absent => true, config => Conf}};
+        Pid ->
+            Dump = gen_server:call(Pid, dump_pool),
+            true = maps:with(maps:keys(Conf), Dump) =:= Conf,
+            Pid = whereis(pgsql),
+            Sup = whereis(pooler_pgsql_pool_sup),
+            true = lists:member({pooler, Pid, worker, [pooler]}, supervisor:which_children(Sup)),
+            State#{prior_default_pool => #{pid => Pid, supervisor => Sup, config => Conf}}
+    end.
+
+suspend_default_pool(State) ->
+    case maps:get(prior_default_pool, State) of
+        #{absent := true} ->
+            undefined = whereis(pgsql);
+        #{pid := Pid, supervisor := Sup, config := Conf} ->
+            Pid = whereis(pgsql),
+            Sup = whereis(pooler_pgsql_pool_sup),
+            true = maps:with(maps:keys(Conf), gen_server:call(Pid, dump_pool)) =:= Conf,
+            ok = pooler:rm_pool(pgsql)
+    end,
+    State.
+
+release_owned_pool(State) ->
+    %% Restoration must still be attempted if stopping our fixture pool fails.
+    Results = [
+        cleanup_capture(F)
+     || F <- [
+            fun() -> stop_fixture_pool(State) end,
+            fun() -> restore_default_pool(State) end
+        ]
+    ],
+    case [E || {error, _, _, _} = E <- Results] of
+        [] -> ok;
+        Errors -> error({intbe02_pool_release_failed, Errors})
+    end.
+
+stop_fixture_pool(State) ->
+    case maps:find(owned_pool_pid, State) of
+        error ->
+            ok;
+        {ok, {Pid, Sup}} ->
+            case is_process_alive(Sup) of
+                false ->
+                    ok;
+                true ->
+                    Sup = whereis(pooler_pgsql_pool_sup),
+                    Pid = whereis(pgsql),
+                    true = lists:member(
+                        {pooler, Pid, worker, [pooler]}, supervisor:which_children(Sup)
+                    ),
+                    ok = pooler:rm_pool(pgsql)
+            end
+    end.
+
+restore_default_pool(State) ->
+    case maps:find(prior_default_pool, State) of
+        %% No ownership proof was obtained: never touch the pool.
+        error ->
+            ok;
+        {ok, #{absent := true, config := Conf}} ->
+            undefined = whereis(pgsql),
+            _ = create_checked_pool(Conf),
+            ok;
+        {ok, #{pid := PriorPid, supervisor := PriorSup, config := Conf}} ->
+            case whereis(pgsql) of
+                undefined ->
+                    _ = create_checked_pool(Conf),
+                    ok;
+                PriorPid ->
+                    PriorSup = whereis(pooler_pgsql_pool_sup),
+                    true =
+                        maps:with(
+                            maps:keys(Conf),
+                            gen_server:call(PriorPid, dump_pool)
+                        ) =:= Conf,
+                    ok;
+                _ ->
+                    error(foreign_pool_blocks_default_restore)
+            end
+    end.
 
 -spec teardown_all(map()) -> ok.
 teardown_all(State) ->
-    try
-        teardown_existing(State)
-    after
-        teardown_storage(maps:get(storage_fixture, State))
+    Results = [
+        cleanup_capture(F)
+     || F <- [
+            fun() -> teardown_existing(State) end,
+            fun() -> teardown_storage(maps:get(storage_fixture, State)) end
+        ]
+    ],
+    case [E || {error, _, _, _} = E <- Results] of
+        [] -> ok;
+        Errors -> error({intbe02_full_teardown_failed, Errors})
     end.
 
 teardown_existing(State) ->
-    try
-        ok = cowboy:stop_listener(?LISTENER)
-    catch
-        _:_ -> ok
-    end,
-    catch ets:delete(?COVERED_TAB),
-    stop_limiter_owner(maps:get(limiter_owner, State, undefined)),
-    application:unset_env(imboy, enterprise_internal_cursor_signing_key),
-    application:unset_env(imboy, enterprise_internal_rate_limits),
-    release_pool(),
-    %% 释放前关 marker 连接由 release/1 承担
-    ok.
+    Results = [
+        cleanup_capture(F)
+     || F <- [
+            fun() -> stop_owned_listener(State) end,
+            fun() -> delete_owned_covered(State) end,
+            fun() -> stop_limiter_owner(maps:get(limiter_owner, State, undefined)) end,
+            fun() -> application:unset_env(imboy, enterprise_internal_cursor_signing_key) end,
+            fun() -> application:unset_env(imboy, enterprise_internal_rate_limits) end,
+            fun() -> release_owned_pool(State) end
+        ]
+    ],
+    case [E || {error, _, _, _} = E <- Results] of
+        [] -> ok;
+        Errors -> error({intbe02_teardown_failed, Errors})
+    end.
 
 %% Only these new resources are owned here. Keep the prior registry and URL,
 %% including an unset value, intact across successful and failed setup.
@@ -603,23 +778,52 @@ ensure_pool(State) ->
         codecs => [{epgsql_codec_rfc3339_bin, []}]
     },
     {ok, _} = application:ensure_all_started(pooler),
-    catch pooler:rm_pool(pgsql),
-    {ok, _} = pooler:new_pool(#{
+    undefined = whereis(pgsql),
+    create_checked_pool(#{
         name => pgsql,
         max_count => 8,
         init_count => 2,
         start_mfa => {epgsql, connect, [ConnOpts]}
-    }),
-    ok.
+    }).
 
-release_pool() ->
-    catch pooler:rm_pool(pgsql),
-    %% teardown 不留毒（2026-10-01）：只 rm 不重建会让共享 pgsql 池永久缺失，
-    %% 其后非本链套件 take_member noproc 级联 cancelled（CS 全组 no_pool，
-    %% 全量 run9 实证）。按 pg_conf 恢复默认池，与本 VM boot 语义一致；
-    %% best-effort（失败不炸 teardown——后续套件 try_db 的 noproc 自愈兜底）。
-    _ = eunit_runner:ensure_default_pool(),
-    ok.
+create_checked_pool(Conf) ->
+    Parent = whereis(pooler_sup),
+    true = is_pid(Parent),
+    {ok, Sup} = pooler:new_pool(Conf),
+    %% Acquired Sup is already owned, even if any following proof fails.
+    try
+        Sup = whereis(pooler_pgsql_pool_sup),
+        Pid = whereis(pgsql),
+        true = lists:member({pooler, Pid, worker, [pooler]}, supervisor:which_children(Sup)),
+        true = maps:with(maps:keys(Conf), gen_server:call(Pid, dump_pool)) =:= Conf,
+        {Pid, Sup}
+    catch
+        Class:Reason:Stack ->
+            raise_after_cleanup(
+                Class,
+                Reason,
+                Stack,
+                [fun() -> release_created_pool(Parent, Sup) end]
+            )
+    end.
+
+release_created_pool(Parent, Sup) ->
+    %% new_pool returns the pool supervisor, not its registered worker.
+    Id = pooler_pgsql_pool_sup,
+    case lists:keyfind(Id, 1, supervisor:which_children(Parent)) of
+        {Id, Sup, supervisor, [pooler_pool_sup]} ->
+            %% Stop our exact PID. Never route stop through a replaced name.
+            ok = gen_server:stop(Sup, shutdown, 5000),
+            release_created_pool(Parent, Sup);
+        {Id, undefined, supervisor, [pooler_pool_sup]} ->
+            false = is_process_alive(Sup),
+            ok = supervisor:delete_child(Parent, Id);
+        false ->
+            false = is_process_alive(Sup),
+            ok;
+        _ ->
+            error(foreign_pool_supervisor_replaced)
+    end.
 
 %%%===================================================================
 %%% HTTP（裸 TCP，定长 body，返回 #{status, headers, body, json}）

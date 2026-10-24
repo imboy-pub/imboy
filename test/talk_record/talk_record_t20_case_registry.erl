@@ -9,6 +9,9 @@
     clear/0,
     verify_connected/1,
     verify_empty/1,
+    prepared_disk_queue/1,
+    disk_queue_snapshot/2,
+    disk_queue_binding/0,
     configure_storage/0,
     connection_options/0,
     controller_process_start/1
@@ -46,6 +49,7 @@ load(Key) ->
         Config,
         talk_record_t20_frozen_config:binding_keys()
     ),
+    ok = same_controller_schema(Registry, Config),
     verify_registry(Registry, Config),
     verify_lease(Registry, Hash, Config, ConfigHash),
     Cases = maps:get(<<"cases">>, Registry),
@@ -101,6 +105,12 @@ verify_cases(Cases, Authorized) ->
                         maps:get(K, Authorized),
                         [<<"exhaustion_receipt_path">>]
                     );
+                <<"talk_record_delete_tests:purge_complete_disk_queue_test_">> ->
+                    ok = talk_record_t20_frozen_config:same(
+                        Entry,
+                        maps:get(K, Authorized),
+                        [<<"preparation_receipt_path">>]
+                    );
                 _ ->
                     ok
             end
@@ -113,6 +123,7 @@ verify_lease(R, Hash, Config, ConfigHash) ->
     true = list_to_binary(LeasePath) =:= maps:get(<<"lease_path">>, Config),
     Lease = jsone:decode(private_file(LeasePath)),
     ConfigHash = maps:get(<<"frozen_config_sha256">>, Lease),
+    ok = same_controller_schema(Lease, Config),
     #{
         <<"approved">> := true,
         <<"exclusive_beam_and_pg_window">> := true,
@@ -132,7 +143,49 @@ verify_lease(R, Hash, Config, ConfigHash) ->
     ),
     verify_controller(R, Until).
 
+same_controller_schema(Registry, Config) ->
+    Schema = maps:get(<<"controller_schema">>, Config, <<"legacy">>),
+    Schema = maps:get(<<"controller_schema">>, Registry, <<"legacy">>),
+    case Schema of
+        <<"legacy">> ->
+            ok;
+        <<"imboy_delivery_v3">> ->
+            ok = talk_record_t20_frozen_config:same(
+                Registry, Config, [<<"controller_run_id">>]
+            );
+        Other ->
+            error({unsupported_controller_schema, Other})
+    end.
+
 verify_controller(R, Until) ->
+    case maps:get(<<"controller_schema">>, R, <<"legacy">>) of
+        <<"legacy">> -> verify_legacy_controller(R, Until);
+        <<"imboy_delivery_v3">> -> verify_v3_controller(R);
+        Other -> error({unsupported_controller_schema, Other})
+    end.
+
+verify_v3_controller(R) ->
+    Lock = binary_to_list(maps:get(<<"controller_lock_path">>, R)),
+    %% identity_file checks real regular file, no symlinks/group writes. V3's
+    %% flock is held only during state mutations, never claimed as a test lease.
+    _ = identity_file(Lock),
+    StatePath = binary_to_list(maps:get(<<"controller_state_path">>, R)),
+    true = filename:dirname(Lock) =:= filename:dirname(StatePath),
+    true = filename:basename(Lock) =:= "controller.lock",
+    true = filename:basename(StatePath) =:= "state.json",
+    State = jsone:decode(identity_file(StatePath)),
+    ok = talk_record_t20_frozen_config:controller_identity(
+        R,
+        #{<<"type">> => <<"regular">>, <<"path">> => list_to_binary(Lock)},
+        State
+    ),
+    Host = maps:get(<<"controller_host">>, R),
+    Host = command("/bin/hostname", []),
+    Start = maps:get(<<"controller_process_start">>, R),
+    Start = controller_process_start(maps:get(<<"controller_pid">>, R)),
+    ok.
+
+verify_legacy_controller(R, Until) ->
     Lock = binary_to_list(maps:get(<<"controller_lock_path">>, R)),
     Owner = jsone:decode(identity_file(filename:join(Lock, "owner.json"))),
     Pid = maps:get(<<"controller_pid">>, R),
@@ -295,6 +348,426 @@ verify_empty(Conn) ->
     ),
     ok.
 
+%% This binding deliberately excludes registry SHA: the final receipt hash is added
+%% to that registry only AFTER publication. The immutable clone receipt is never rewritten.
+disk_queue_binding() ->
+    ok = recheck(),
+    #{
+        case_key := <<"talk_record_delete_tests:purge_complete_disk_queue_test_">>,
+        registry := Registry,
+        entry := Case
+    } = current(),
+    maps:merge(
+        maps:with(
+            talk_record_t20_frozen_config:binding_keys() ++
+                [<<"frozen_config_sha256">>],
+            Registry
+        ),
+        maps:with(
+            [
+                <<"database">>,
+                <<"disk_root">>,
+                <<"namespace">>,
+                <<"clone_receipt_path">>,
+                <<"clone_receipt_sha256">>,
+                <<"preparation_receipt_path">>
+            ],
+            Case
+        )
+    ).
+
+prepared_disk_queue(C) ->
+    ok = verify_connected(C),
+    #{entry := Case} = current(),
+    Path = binary_to_list(maps:get(<<"preparation_receipt_path">>, Case)),
+    Bytes = private_file(Path),
+    true = hex(Bytes) =:= maps:get(<<"preparation_receipt_sha256">>, Case),
+    #{
+        <<"status">> := <<"PREPARED_NOT_TEST_PASS">>,
+        <<"binding">> := Binding,
+        <<"snapshot">> := Snapshot,
+        <<"staged_path">> := StagedPath,
+        <<"staged_sha256">> := StagedHash,
+        <<"prepared_at_db_unix">> := PreparedAt
+    } =
+        jsone:decode(Bytes),
+    Binding = disk_queue_binding(),
+    StagedBytes = private_file(binary_to_list(StagedPath)),
+    StagedHash = hex(StagedBytes),
+    #{
+        <<"status">> := <<"STAGED_WAIT_NATURAL_EXPIRY_NOT_TEST_PASS">>,
+        <<"binding">> := Binding,
+        <<"snapshot">> := Snapshot,
+        <<"staged_at_db_unix">> := StagedAt
+    } = jsone:decode(StagedBytes),
+    #{<<"record">> := #{<<"id">> := Rid}, <<"uploads">> := Uploads} = Snapshot,
+    Snapshot = disk_queue_snapshot(C, Rid),
+    {ok, [#{<<"now">> := Now}]} = elib_pg:query(
+        C,
+        <<"SELECT extract(epoch FROM clock_timestamp())::float8 AS now">>,
+        []
+    ),
+    true = StagedAt < PreparedAt andalso PreparedAt =< Now,
+    lists:foreach(
+        fun(#{<<"expires_epoch">> := Expiry}) ->
+            T = binary_to_float(Expiry),
+            true = StagedAt < T andalso T < PreparedAt
+        end,
+        Uploads
+    ),
+    Snapshot.
+
+%% Strict read-only facts shared by create, finalize and original case admission.
+%% Expiry is read verbatim; only the caller decides whether it is still live or naturally past.
+disk_queue_snapshot(C, Rid) ->
+    ok = verify_connected(C),
+    #{registry := Registry, entry := Case} = current(),
+    Clone = jsone:decode(private_file(binary_to_list(maps:get(<<"clone_receipt_path">>, Case)))),
+    #{<<"case_key">> := <<"talk_record_delete_tests:purge_complete_disk_queue_test_">>} = Clone,
+    {ok, [#{<<"marker">> := Marker}]} = elib_pg:query(
+        C,
+        <<
+            "SELECT shobj_description(oid,'pg_database') AS marker FROM pg_database"
+            " WHERE datname=current_database()"
+        >>,
+        []
+    ),
+    Marker = maps:get(<<"database_marker">>, Clone),
+    ok = disk_queue_counts(C),
+    {ok, [Record]} = elib_pg:query(
+        C,
+        <<"SELECT r.* FROM talk_record r WHERE r.id=$1">>,
+        [Rid]
+    ),
+    #{
+        <<"owner_user_id">> := 700001,
+        <<"scope">> := <<"personal">>,
+        <<"organization_id">> := null,
+        <<"workspace_id">> := null,
+        <<"revision">> := 1,
+        <<"acl_revision">> := 1,
+        <<"deleted_at">> := null
+    } = Record,
+    {ok, [#{<<"status">> := 1, <<"account_type">> := 0}]} = elib_pg:query(
+        C,
+        <<"SELECT status,account_type FROM public.\"user\" WHERE id=700001">>,
+        []
+    ),
+    {ok, Jobs = [#{<<"kind">> := <<"assemble">>, <<"state">> := <<"succeeded">>}]} =
+        elib_pg:query(
+            C, <<"SELECT j.* FROM talk_record_job j WHERE j.record_id=$1 ORDER BY j.id">>, [Rid]
+        ),
+    {ok, Captures = [#{<<"status">> := <<"ended">>}]} = elib_pg:query(
+        C,
+        <<"SELECT c.* FROM talk_record_capture c WHERE c.record_id=$1 ORDER BY c.id">>,
+        [Rid]
+    ),
+    {ok, Parts = [_, _]} = elib_pg:query(
+        C,
+        <<"SELECT p.* FROM talk_record_audio_part p WHERE p.record_id=$1 ORDER BY p.seq">>,
+        [Rid]
+    ),
+    {ok, Refs} = elib_pg:query(
+        C,
+        <<"SELECT r.* FROM talk_record_attachment_ref r WHERE r.record_id=$1 ORDER BY r.id">>,
+        [Rid]
+    ),
+    {ok, Derived = [#{<<"state">> := <<"complete">>}, #{<<"state">> := <<"complete">>}]} =
+        elib_pg:query(
+            C,
+            <<
+                "SELECT w.* FROM attachment_derived_write w JOIN talk_record_job j"
+                " ON j.id=w.source_job_id WHERE j.record_id=$1 ORDER BY w.attachment_id"
+            >>,
+            [Rid]
+        ),
+    {ok, Assets} = elib_pg:query(
+        C,
+        <<
+            "SELECT a.* FROM attachment a WHERE a.id IN"
+            " (SELECT attachment_id FROM talk_record_attachment_ref WHERE record_id=$1 UNION"
+            " SELECT w.attachment_id FROM attachment_derived_write w JOIN talk_record_job j ON j.id=w.source_job_id"
+            " WHERE j.record_id=$1) ORDER BY a.id"
+        >>,
+        [Rid]
+    ),
+    5 = length(Assets),
+    [Extra] = [A || #{<<"id">> := 8101} = A <- Assets],
+    2 = length(lists:usort([maps:get(<<"attachment_id">>, P) || P <- Parts])),
+    2 = length(lists:usort([maps:get(<<"attachment_id">>, D) || D <- Derived])),
+    true =
+        lists:sort([maps:get(<<"id">>, A) || A <- Assets]) =:=
+            lists:usort(
+                [8101] ++ [maps:get(<<"attachment_id">>, P) || P <- Parts] ++
+                    [maps:get(<<"attachment_id">>, D) || D <- Derived]
+            ),
+    Objects = [disk_queue_object(A, Case) || A <- Assets],
+    5 = length(lists:usort([maps:get(<<"disk_file">>, O) || O <- Objects])),
+    {ok, Uploads = [_, _]} = elib_pg:query(
+        C,
+        <<
+            "SELECT p.*,"
+            "extract(epoch FROM p.upload_expires_at)::text AS expires_epoch"
+            " FROM attach_pending p WHERE p.confirmed_attachment_id IN"
+            " (SELECT attachment_id FROM talk_record_audio_part WHERE record_id=$1) ORDER BY p.confirmed_attachment_id"
+        >>,
+        [Rid]
+    ),
+    true =
+        [maps:get(<<"confirmed_attachment_id">>, U) || U <- Uploads] =:=
+            lists:sort([maps:get(<<"attachment_id">>, P) || P <- Parts]),
+    lists:foreach(fun(U) -> verify_disk_upload(U, Assets, Parts, Rid) end, Uploads),
+    [Job] = Jobs,
+    [Capture] = Captures,
+    {ok, [Assembly]} = elib_pg:query(
+        C,
+        <<"SELECT a.* FROM talk_record_assembly a WHERE a.record_id=$1">>,
+        [Rid]
+    ),
+    verify_disk_assembly(Record, Capture, Parts, Job, Assembly, Derived, Refs),
+    ok = recheck(),
+    #{registry := Registry, entry := Case} = current(),
+    #{
+        <<"record">> => Record,
+        <<"jobs">> => Jobs,
+        <<"captures">> => Captures,
+        <<"parts">> => Parts,
+        <<"refs">> => Refs,
+        <<"derived">> => Derived,
+        <<"assembly">> => Assembly,
+        <<"objects">> => Objects,
+        <<"uploads">> => Uploads,
+        <<"extra_attachment_path">> => maps:get(<<"path">>, Extra)
+    }.
+
+verify_disk_upload(
+    #{
+        <<"confirmed_attachment_id">> := Aid,
+        <<"object_key">> := Path,
+        <<"session_state">> := <<"confirmed">>,
+        <<"expires_epoch">> := Expiry
+    } = U,
+    Assets,
+    Parts,
+    Rid
+) ->
+    true = is_binary(Expiry),
+    [A] = [Asset || #{<<"id">> := Id} = Asset <- Assets, Id =:= Aid],
+    [P] = [Part || #{<<"attachment_id">> := Id} = Part <- Parts, Id =:= Aid],
+    Path = maps:get(<<"path">>, A),
+    true = maps:get(<<"record_id">>, P) =:= Rid,
+    true = maps:get(<<"scope">>, U) =:= <<"talk_record">>,
+    true = maps:get(<<"creator_user_id">>, U) =:= 700001,
+    %% V5 binds scope_ref in registration; the legacy pending column remains NULL.
+    #{<<"subject">> := Subject, <<"declaration">> := Declaration} =
+        disk_upload_json(maps:get(<<"upload_registration">>, U)),
+    #{<<"kind">> := <<"user">>, <<"principal">> := <<"700001">>} = Subject,
+    true = map_size(Subject) =:= 2,
+    true = maps:get(<<"scope">>, Declaration) =:= <<"talk_record">>,
+    true = maps:get(<<"scope_ref">>, Declaration) =:= integer_to_binary(Rid),
+    true = maps:get(<<"scope_ref">>, A) =:= integer_to_binary(Rid),
+    true = maps:get(<<"filename">>, Declaration) =:= maps:get(<<"name">>, A),
+    true = maps:get(<<"mime">>, Declaration) =:= maps:get(<<"mime_type">>, A),
+    lists:foreach(
+        fun(K) -> true = maps:get(K, U) =:= maps:get(K, A) end,
+        [
+            <<"creator_user_id">>,
+            <<"scope">>,
+            <<"storage_driver">>,
+            <<"storage_namespace">>,
+            <<"storage_container">>,
+            <<"storage_locator_sha256">>
+        ]
+    ),
+    %% epgsql default json codec returns UTF-8 JSON bytes; retain those raw bytes
+    %% in the snapshot and decode only for this content/ownership assertion.
+    Pin = disk_upload_json(maps:get(<<"upload_content">>, U)),
+    #{<<"sha256">> := Hash, <<"size_bytes">> := Size, <<"mime">> := Mime} = Pin,
+    Hash = maps:get(<<"sha256">>, P),
+    Hash = maps:get(<<"file_hash256">>, A),
+    true = binary_to_integer(Size) =:= maps:get(<<"byte_size">>, P),
+    true = binary_to_integer(Size) =:= maps:get(<<"size">>, A),
+    Mime = maps:get(<<"mime_type">>, A),
+    ok.
+
+disk_upload_json(B) when is_binary(B) -> jsone:decode(B);
+disk_upload_json(M) when is_map(M) -> M.
+
+verify_disk_assembly(Record, Capture, Parts, Job, Assembly, Derived, Refs) ->
+    Rid = maps:get(<<"id">>, Record),
+    Cid = maps:get(<<"id">>, Capture),
+    Jid = maps:get(<<"id">>, Job),
+    Attempt = maps:get(<<"attempt">>, Job),
+    Rid = maps:get(<<"record_id">>, Capture),
+    Rid = maps:get(<<"record_id">>, Job),
+    Rid = maps:get(<<"record_id">>, Assembly),
+    Cid = maps:get(<<"capture_id">>, Assembly),
+    Jid = maps:get(<<"job_id">>, Assembly),
+    2 = maps:get(<<"part_count">>, Assembly),
+    true = maps:get(<<"input_manifest_hash">>, Job) =:= maps:get(<<"manifest_hash">>, Assembly),
+    lists:foreach(
+        fun(P) ->
+            Rid = maps:get(<<"record_id">>, P),
+            Cid = maps:get(<<"capture_id">>, P),
+            <<"confirmed">> = maps:get(<<"upload_status">>, P)
+        end,
+        Parts
+    ),
+    lists:foreach(
+        fun(D) ->
+            Jid = maps:get(<<"source_job_id">>, D),
+            Attempt = maps:get(<<"source_attempt">>, D)
+        end,
+        Derived
+    ),
+    verify_disk_refs(Record, Parts, Job, Assembly, Derived, Refs).
+
+verify_disk_refs(Record, Parts, Job, Assembly, Derived, Refs) ->
+    Rid = maps:get(<<"id">>, Record),
+    Jid = maps:get(<<"id">>, Job),
+    Attempt = maps:get(<<"attempt">>, Job),
+    Permanent = [
+        R
+     || #{
+            <<"state">> := <<"bound">>,
+            <<"lease_until">> := null,
+            <<"released_at">> := null
+        } = R <- Refs
+    ],
+    Released = [
+        R
+     || #{
+            <<"state">> := <<"released">>,
+            <<"lease_until">> := L,
+            <<"released_at">> := At
+        } = R <- Refs,
+        is_binary(L),
+        is_binary(At)
+    ],
+    9 = length(Refs),
+    5 = length(Permanent),
+    4 = length(Released),
+    true = lists:all(fun(#{<<"record_id">> := Id}) -> Id =:= Rid end, Refs),
+    AudioAid = maps:get(<<"audio_attachment_id">>, Assembly),
+    ManifestAid = maps:get(<<"audio_manifest_attachment_id">>, Record),
+    true =
+        lists:sort([AudioAid, ManifestAid]) =:=
+            lists:sort([maps:get(<<"attachment_id">>, D) || D <- Derived]),
+    Artifacts = [{AudioAid, <<"transcoded_audio">>}, {ManifestAid, <<"manifest">>}],
+    ExpectedPermanent =
+        [{8101, <<"audio_part">>, <<"audio_part:1">>, null}] ++
+            [
+                {
+                    maps:get(<<"attachment_id">>, P),
+                    <<"audio_part">>,
+                    talk_record_assembly_logic:part_business_key(maps:get(<<"id">>, P)),
+                    maps:get(<<"capture_id">>, P)
+                }
+             || P <- Parts
+            ] ++
+            [
+                {Aid, Role, <<"assembly:", Role/binary, ":", (integer_to_binary(Aid))/binary>>,
+                    null}
+             || {Aid, Role} <- Artifacts
+            ],
+    ExpectedReleased =
+        [
+            {
+                maps:get(<<"attachment_id">>, P),
+                <<"audio_part">>,
+                talk_record_assembly_logic:lease_business_key(Jid, Attempt, maps:get(<<"id">>, P)),
+                null
+            }
+         || P <- Parts
+        ] ++
+            [
+                {Aid, Role, <<"assembly_pending:", (integer_to_binary(Aid))/binary>>, null}
+             || {Aid, Role} <- Artifacts
+            ],
+    RefKey = fun(R) ->
+        {
+            maps:get(<<"attachment_id">>, R),
+            maps:get(<<"role">>, R),
+            maps:get(<<"business_key">>, R),
+            maps:get(<<"capture_id">>, R)
+        }
+    end,
+    true = lists:sort(ExpectedPermanent) =:= lists:sort([RefKey(R) || R <- Permanent]),
+    true = lists:sort(ExpectedReleased) =:= lists:sort([RefKey(R) || R <- Released]),
+    ok.
+
+disk_queue_counts(C) ->
+    lists:foreach(
+        fun({Table, Expected}) ->
+            {ok, [#{<<"n">> := Expected}]} = elib_pg:query(
+                C,
+                <<"SELECT count(*) AS n FROM public.", Table/binary>>,
+                []
+            )
+        end,
+        [
+            {<<"talk_record">>, 1},
+            {<<"attachment">>, 5},
+            {<<"attach_pending">>, 2},
+            {<<"attachment_derived_write">>, 2},
+            {<<"talk_record_grant">>, 0},
+            {<<"talk_record_cleanup_retry">>, 0},
+            {<<"attachment_object_deletion">>, 0},
+            {<<"enterprise_attachment_retention">>, 0},
+            {<<"workspace_attachment_retention">>, 0}
+        ]
+    ),
+    ok.
+
+disk_queue_object(
+    #{
+        <<"path">> := Path,
+        <<"lifecycle_state">> := <<"live">>,
+        <<"gc_verified">> := GcVerified,
+        <<"storage_driver">> := <<"disk">>
+    } = A,
+    Case
+) ->
+    true = is_boolean(GcVerified),
+    Ns = maps:get(<<"namespace">>, Case),
+    Ns = maps:get(<<"storage_namespace">>, A),
+    <<"capture">> = maps:get(<<"storage_container">>, A),
+    {ok,
+        #{
+            driver := disk,
+            namespace := Ns,
+            container := Container,
+            key := Key,
+            locator_digest := Digest
+        } = I} = attachment_storage:frozen_location(Path, A),
+    relative = filename:pathtype(binary_to_list(Key)),
+    false = lists:any(
+        fun(S) -> S =:= ".." orelse S =:= "." end, filename:split(binary_to_list(Key))
+    ),
+    File = filename:join([
+        binary_to_list(maps:get(<<"disk_root">>, Case)),
+        binary_to_list(Container),
+        binary_to_list(Key)
+    ]),
+    Bytes = private_source(File),
+    {ok, Bytes} = attachment_storage_disk:read_snapshot(I),
+    Size = byte_size(Bytes),
+    true = Size > 0,
+    Size = maps:get(<<"size">>, A),
+    Hash = hex(Bytes),
+    Hash = maps:get(<<"file_hash256">>, A),
+    #{
+        <<"attachment">> => A,
+        <<"path">> => Path,
+        <<"disk_file">> => list_to_binary(File),
+        <<"storage_namespace">> => Ns,
+        <<"storage_container">> => Container,
+        <<"resolved_storage_key">> => Key,
+        <<"storage_locator_sha256">> => Digest,
+        <<"byte_size">> => Size,
+        <<"sha256">> => Hash
+    }.
+
 configure_storage() ->
     ok = recheck(),
     #{entry := #{<<"disk_root">> := Root, <<"namespace">> := Ns}} = current(),
@@ -394,7 +867,8 @@ required_sources(Repo) ->
         <<"test/talk_record/controller_pid_probe.py">>,
         <<"test/talk_record/test_controller_pid_probe.py">>
     ],
-    lists:usort(Trees ++ Tests ++ Probes).
+    HttpHelpers = [<<"test/common/cowboy_req_h.erl">>],
+    lists:usort(Trees ++ Tests ++ HttpHelpers ++ Probes).
 
 source_tree(Repo, Relative) ->
     {ok, Names} = file:list_dir(filename:join(Repo, Relative)),

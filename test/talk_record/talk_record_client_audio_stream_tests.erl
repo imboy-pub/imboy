@@ -100,3 +100,71 @@ binding(Size) ->
         <<"attachment_hash">> => binary:copy(<<"a">>, 64)
     }.
 denied() -> {error, audio_source_denied}.
+
+%% Real Cowboy/httpc HTTP semantics; only source metadata is synthetic.
+%% No PostgreSQL, attachment reads or provider requests occur in this test.
+head_http_preserves_length_without_reading_audio_test_() ->
+    {timeout, 20, fun head_http_preserves_length_without_reading_audio/0}.
+
+head_http_preserves_length_without_reading_audio() ->
+    {ok, _} = application:ensure_all_started(cowboy),
+    {ok, _} = application:ensure_all_started(inets),
+    meck:new(talk_record_client_audio_logic, [passthrough, no_link]),
+    try
+        M = #{
+            size => 100,
+            headers => #{
+                <<"content-type">> => <<"audio/aac">>,
+                <<"cache-control">> => <<"private, no-store">>
+            }
+        },
+        meck:expect(
+            talk_record_client_audio_logic,
+            metadata,
+            fun(<<"synthetic-head-ticket">>) -> {ok, M} end
+        ),
+        meck:expect(
+            talk_record_client_audio_logic,
+            fold,
+            fun(_, _, _, _) -> error(head_must_not_read_audio) end
+        ),
+        Listener = {?MODULE, make_ref()},
+        Dispatch = cowboy_router:compile([
+            {'_', [
+                {"/synthetic-audio", talk_record_client_audio_handler, #{}}
+            ]}
+        ]),
+        {ok, _} = cowboy:start_clear(
+            Listener,
+            [{ip, {127, 0, 0, 1}}, {port, 0}],
+            #{env => #{dispatch => Dispatch}}
+        ),
+        try
+            URL =
+                "http://127.0.0.1:" ++ integer_to_list(ranch:get_port(Listener)) ++
+                    "/synthetic-audio?ticket=synthetic-head-ticket",
+            {ok, {{_, 200, _}, H, <<>>}} = httpc:request(
+                head,
+                {URL, []},
+                [{autoredirect, false}, {timeout, 5000}],
+                [{body_format, binary}]
+            ),
+            ?assertEqual("100", proplists:get_value("content-length", H)),
+            ?assertEqual("audio/aac", proplists:get_value("content-type", H)),
+            ?assertEqual("private, no-store", proplists:get_value("cache-control", H)),
+            {ok, {{_, 206, _}, RH, <<>>}} = httpc:request(
+                head,
+                {URL, [{"range", "bytes=7-42"}]},
+                [{autoredirect, false}, {timeout, 5000}],
+                [{body_format, binary}]
+            ),
+            ?assertEqual("36", proplists:get_value("content-length", RH)),
+            ?assertEqual("bytes 7-42/100", proplists:get_value("content-range", RH)),
+            ?assertEqual(4, meck:num_calls(talk_record_client_audio_logic, metadata, '_')),
+            ?assertEqual(0, meck:num_calls(talk_record_client_audio_logic, fold, '_'))
+        after
+            ok = cowboy:stop_listener(Listener)
+        end
+    after
+        meck:unload(talk_record_client_audio_logic)
+    end.

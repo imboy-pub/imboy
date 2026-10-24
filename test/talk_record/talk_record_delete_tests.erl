@@ -13,7 +13,10 @@
 %%%   H. T06-L2 修复回归（cast 洁净假设/ILIKE 转义/LIMIT 钳制）
 -module(talk_record_delete_tests).
 
+-export([prepare_disk_queue_fixture/1]).
+
 -include_lib("eunit/include/eunit.hrl").
+-include_lib("epgsql/include/epgsql.hrl").
 
 -define(REC(N), <<"30000000-0000-0000-0000-0000000000", (integer_to_binary(N))/binary>>).
 
@@ -46,7 +49,7 @@ cleanup(State) ->
 with_db(Case, TestFun) ->
     {timeout, 120,
         {setup, fun() -> setup(Case) end, fun cleanup/1, fun(State) ->
-            ?_test(TestFun(State))
+            {timeout, 120, ?_test(TestFun(State))}
         end}}.
 
 %% complete 就绪记录（complete 投 assemble → 先消费成功），返回 {Rid, Cid, U1}。
@@ -54,7 +57,9 @@ with_db(Case, TestFun) ->
 %% 关闭；否则 intent fn 的 attach_pending 能力检查使清理误判 retained）。
 ready(State, N) ->
     Ids = talk_record_t20_support:ids(),
-    U1 = maps:get(u1, Ids),
+    ready(State, N, maps:get(u1, Ids)).
+
+ready(State, N, U1) ->
     {ok, {Rid, Cid, _}} = talk_record_t12_support:ready_record(
         U1, ?REC(N), <<"record_only">>, [0, 1], <<"t20-", (integer_to_binary(N))/binary>>
     ),
@@ -65,6 +70,22 @@ ready(State, N) ->
     {ok, #{outcome := succeeded}} = talk_record_job_worker:run_once(),
     drain_upload_sessions(State, Rid),
     {Rid, Cid, U1}.
+
+draft(Uid, N, Scope) ->
+    Body = maps:merge(
+        #{
+            <<"client_recording_id">> => ?REC(N),
+            <<"notice_ack">> => true,
+            <<"policy_version">> => <<"talk-record-notice-v1">>,
+            <<"processing_mode">> => <<"record_only">>
+        },
+        Scope
+    ),
+    {ok, created, Payload, ETag} = talk_record_logic:create(
+        Uid, Body, <<"t20-draft-", (integer_to_binary(N))/binary>>
+    ),
+    ?assertEqual({ok, 1}, talk_record_logic:parse_if_match(ETag)),
+    maps:get(<<"id">>, Payload).
 
 drain_upload_sessions(State, Rid) ->
     C = maps:get(conn, State),
@@ -286,30 +307,51 @@ delete_fences_active_capture_test_() ->
     %% active_capture_id 投影已清（deleted_at 在上一断言组已验）
     end).
 
-%% 分段附件真实字节落盘（disk driver put + locator 对齐 registry）。
-seg_put_bytes(C, Rid, Ns, Container, Digest) ->
-    talk_record_t20_support:sql(C, [
-        "UPDATE attachment SET storage_namespace='",
-        Ns,
-        "', storage_container='",
-        Container,
-        "', storage_locator_sha256='",
-        Digest,
-        "' WHERE path LIKE 'talk_record/",
-        integer_to_binary(Rid),
-        "/%'"
-    ]),
+disk_objects(C, Rid) ->
     {ok, Rows} = elib_pg:query(
         C,
-        <<"SELECT path FROM attachment WHERE path LIKE $1">>,
-        [<<"talk_record/", (integer_to_binary(Rid))/binary, "/%">>]
+        <<
+            "SELECT a.*,EXISTS(SELECT 1 FROM talk_record_audio_part p"
+            " WHERE p.record_id=$1 AND p.attachment_id=a.id) AS part,"
+            "EXISTS(SELECT 1 FROM attachment_derived_write w JOIN talk_record_job j"
+            " ON j.id=w.source_job_id WHERE j.record_id=$1 AND w.attachment_id=a.id) AS derived"
+            " FROM attachment a WHERE a.id IN"
+            " (SELECT attachment_id FROM talk_record_attachment_ref WHERE record_id=$1"
+            " UNION SELECT w.attachment_id FROM attachment_derived_write w JOIN talk_record_job j"
+            " ON j.id=w.source_job_id WHERE j.record_id=$1) ORDER BY a.path"
+        >>,
+        [Rid]
     ),
-    lists:foreach(
-        fun(#{<<"path">> := P}) ->
-            ok = attachment_storage_disk:put(Ns, Container, P, <<"t20-seg">>)
-        end,
-        Rows
-    ).
+    ?assertEqual(2, length([R || #{<<"part">> := true} = R <- Rows])),
+    ?assertEqual(2, length([R || #{<<"derived">> := true} = R <- Rows])),
+    Objects = [disk_object(R) || R <- Rows],
+    ?assertEqual(5, length(lists:usort([maps:get(identity, O) || O <- Objects]))),
+    Objects.
+
+disk_object(#{<<"path">> := Path} = Row) ->
+    {ok,
+        #{
+            driver := disk,
+            namespace := Ns,
+            container := Container,
+            key := Key,
+            locator_digest := Digest,
+            endpoint := <<"file://", Root/binary>>
+        } = I} =
+        attachment_storage:frozen_location(Path, Row),
+    ?assertEqual(talk_record_t20_support:disk_root(disk1), binary_to_list(Root)),
+    {ok, Bytes} = attachment_storage_disk:read_snapshot(I),
+    ?assert(byte_size(Bytes) > 0),
+    File = filename:join([binary_to_list(Root), binary_to_list(Container), binary_to_list(Key)]),
+    {ok, PhysicalBytes} = file:read_file(File),
+    Hash = crypto:hash(sha256, Bytes),
+    ?assertEqual(Hash, crypto:hash(sha256, PhysicalBytes)),
+    #{
+        path => Path,
+        file => File,
+        sha256 => Hash,
+        identity => {Ns, Container, Digest, Key}
+    }.
 
 %%%===================================================================
 %%% B. 撤权即时性
@@ -513,11 +555,31 @@ project_outcomes_pure_functions_test_() ->
 purge_complete_no_attachments_test_() ->
     with_db(purge_complete_no_attachments_test_, fun(State) ->
         C = talk_record_t20_support:conn_of(State),
-        {Rid, _, U1} = ready(State, 90),
-        %% 装配"无附件记录"：清除分段附件引用行（未上传任何字节的草稿形态）
-        talk_record_t20_support:sql(C, [
-            "DELETE FROM talk_record_attachment_ref WHERE record_id = ", integer_to_binary(Rid)
-        ]),
+        U1 = maps:get(u1, talk_record_t20_support:ids()),
+        Rid = draft(U1, 90, #{<<"scope">> => <<"personal">>}),
+        %% 真实未上传草稿：没有分段、派生资产或处理任务，不能删引用伪造空记录。
+        {ok, [Empty]} = elib_pg:query(
+            C,
+            <<
+                "SELECT (SELECT count(*) FROM talk_record_attachment_ref WHERE record_id=$1) AS refs,"
+                "(SELECT count(*) FROM talk_record_capture WHERE record_id=$1) AS captures,"
+                "(SELECT count(*) FROM talk_record_audio_part WHERE record_id=$1) AS parts,"
+                "(SELECT count(*) FROM talk_record_job WHERE record_id=$1) AS jobs,"
+                "(SELECT count(*) FROM attachment_derived_write w JOIN talk_record_job j"
+                " ON j.id=w.source_job_id WHERE j.record_id=$1) AS derived"
+            >>,
+            [Rid]
+        ),
+        ?assertEqual(
+            #{
+                <<"refs">> => 0,
+                <<"captures">> => 0,
+                <<"parts">> => 0,
+                <<"jobs">> => 0,
+                <<"derived">> => 0
+            },
+            Empty
+        ),
         {ok, deleted, P0} = talk_record_delete_logic:delete(U1, Rid, <<"1">>),
         ?assertEqual(<<"none">>, maps:get(<<"physical_delete_state">>, P0)),
         {ok, #{outcome := succeeded, kind := <<"purge">>}} = talk_record_job_worker:run_once(),
@@ -534,23 +596,16 @@ purge_complete_no_attachments_test_() ->
 purge_complete_disk_queue_test_() ->
     with_db(purge_complete_disk_queue_test_, fun(State) ->
         C = talk_record_t20_support:conn_of(State),
-        {Rid, _, U1} = ready(State, 91),
-        Root = talk_record_t20_support:disk_root(disk1),
-        #{namespace := Ns, container := Container} = talk_record_t20_support:disk_registry_apply(
-            Root
-        ),
-        Digest = talk_record_t20_support:disk_locator_digest(),
-        Path = talk_record_t20_support:insert_attachment(C, 8101, #{
-            record_id => Rid,
-            storage_driver => <<"disk">>,
-            storage_namespace => Ns,
-            storage_container => Container,
-            storage_locator => Digest
-        }),
-        ok = attachment_storage_disk:put(Ns, Container, Path, <<"t20-bytes">>),
-        ok = talk_record_t20_support:bind_ref(C, Rid, 8101, <<"audio_part:1">>),
-        %% 分段附件换真实 locator + 真字节落盘（完整位置资格 + worker 可删）
-        seg_put_bytes(C, Rid, Ns, Container, Digest),
+        %% Only a strict, registry-pinned, naturally expired prepared fixture is admitted.
+        Prepared = talk_record_t20_case_registry:prepared_disk_queue(C),
+        #{
+            <<"record">> := #{<<"id">> := Rid, <<"owner_user_id">> := U1},
+            <<"extra_attachment_path">> := Path
+        } = Prepared,
+        Objects = disk_objects(C, Rid),
+        ?assertEqual(5, length(Objects)),
+        ?assertEqual(5, length(lists:usort([maps:get(path, O) || O <- Objects]))),
+        ?assert(lists:member(Path, [maps:get(path, O) || O <- Objects])),
         {ok, deleted, P0} = talk_record_delete_logic:delete(U1, Rid, <<"1">>),
         ?assertEqual(<<"none">>, maps:get(<<"physical_delete_state">>, P0)),
         %% purge 协调：引用释放 + intent 入队（物理未完成 → pending）
@@ -560,19 +615,31 @@ purge_complete_disk_queue_test_() ->
         ?assertEqual(<<"released">>, St),
         ?assertEqual(<<"delete_intent">>, talk_record_t20_support:attachment_state(C, Path)),
         %% 既有附件 worker：claim → disk DELETE → ack done（真路径；
-        %% 3 任务 = 8101 + 两段分段附件——全部真字节落盘后可删）
-        {ok, 3} = attachment_delete_worker:run_batch(
+        %% 5 个真实对象：8101、两段上传、assemble 的 audio 与 manifest。
+        {ok, 5} = attachment_delete_worker:run_batch(
             C, fun(_Ns2, _C2, _K, I) -> attachment_storage:delete_snapshot(I) end
         ),
         %% ack 后墓碑保持 delete_intent（行删除归队列 ack 协议后续；
         %% 物理完成证据 = 队列 done + 字节消失）
         ?assertEqual(<<"delete_intent">>, talk_record_t20_support:attachment_state(C, Path)),
-        DiskFile = filename:join([
-            talk_record_t20_support:disk_root(disk1),
-            "t20c",
-            binary_to_list(Path)
-        ]),
-        ?assertEqual({error, enoent}, file:read_file(DiskFile)),
+        lists:foreach(
+            fun(#{file := File}) ->
+                ?assertEqual({error, enoent}, file:read_file(File))
+            end,
+            Objects
+        ),
+        {ok, Purged} = talk_record_delete_repo:purged_attachment_paths_tx(C, Rid),
+        ?assertEqual(
+            lists:sort([maps:get(path, O) || O <- Objects]),
+            lists:sort([maps:get(<<"path">>, P) || P <- Purged])
+        ),
+        lists:foreach(
+            fun(P) ->
+                ?assertEqual(true, maps:get(<<"queue_done">>, P)),
+                ?assertEqual(<<"done">>, maps:get(<<"queue_state">>, P))
+            end,
+            Purged
+        ),
         %% 状态回读 → complete（queue done → deleted 投影）
         {ok, _} = talk_record_job_worker:refresh_cleanup_pending(),
         ?assertEqual(<<"complete">>, talk_record_t20_support:cleanup_status(Rid)),
@@ -580,6 +647,38 @@ purge_complete_disk_queue_test_() ->
         {ok, WL} = talk_record_logic:detail(U1, Rid),
         ?assertEqual(<<"deleted">>, maps:get(<<"physical_delete_state">>, WL))
     end).
+
+%% Controller-only creation phase: real upload/confirm/assemble, then STOP before DELETE.
+%% Never call ready/2 or seg_put_bytes/5 here: neither time nor storage identity may be rewritten.
+prepare_disk_queue_fixture(#{disk_queue_preparing := true} = State) ->
+    C = talk_record_t20_support:conn_of(State),
+    #{case_key := <<"talk_record_delete_tests:purge_complete_disk_queue_test_">>} =
+        talk_record_t20_case_registry:current(),
+    Uid = maps:get(u1, talk_record_t20_support:ids()),
+    {ok, {Rid, Cid, [_, _]}} = talk_record_t12_support:ready_record(
+        Uid, ?REC(91), <<"record_only">>, [0, 1], <<"t20-disk-natural-91">>
+    ),
+    {ok, created, _} = talk_record_t12_support:complete(
+        Uid, Rid, Cid, <<"t20-disk-natural-91-complete">>
+    ),
+    %% Assemble returns outcome only; disk_queue_snapshot verifies the actual job kind/state.
+    {ok, #{outcome := succeeded}} = talk_record_job_worker:run_once(),
+    #{namespace := Ns, container := Container} = talk_record_t20_support:disk_registry_apply(
+        talk_record_t20_support:disk_root(disk1)
+    ),
+    Bytes = <<"t20-bytes!">>,
+    Path = talk_record_t20_support:insert_attachment(C, 8101, #{
+        record_id => Rid,
+        gc_verified => false,
+        hash => binary:encode_hex(crypto:hash(sha256, Bytes), lowercase),
+        storage_driver => <<"disk">>,
+        storage_namespace => Ns,
+        storage_container => Container,
+        storage_locator => talk_record_t20_support:disk_locator_digest()
+    }),
+    ok = attachment_storage_disk:put(Ns, Container, Path, Bytes),
+    ok = talk_record_t20_support:bind_ref(C, Rid, 8101, <<"audio_part:1">>),
+    talk_record_t20_case_registry:disk_queue_snapshot(C, Rid).
 
 %% retention_until 未到期 → blocked_retention（引用保持 bound，GC 谓词继续挡）
 purge_blocked_retention_test_() ->
@@ -632,15 +731,32 @@ purge_blocked_retention_test_() ->
 purge_blocked_hold_test_() ->
     with_db(purge_blocked_hold_test_, fun(State) ->
         C = talk_record_t20_support:conn_of(State),
-        {Rid, _, U1} = ready(State, 93),
+        U1 = maps:get(u1, talk_record_t20_support:ids()),
+        Rid = draft(U1, 93, #{<<"scope">> => <<"organization">>, <<"organization_id">> => 710001}),
         Path = talk_record_t20_support:insert_attachment(C, 8301, located_attachment(Rid, #{})),
         ok = talk_record_t20_support:bind_ref(C, Rid, 8301, <<"audio_part:1">>),
         ok = talk_record_t20_support:hold_row(C, 8301),
+        {ok, [#{<<"held_count">> := 1, <<"retained_count">> := 0}]} =
+            talk_record_governance_repo:facts_tx(C, Rid),
         {ok, deleted, _} = talk_record_delete_logic:delete(U1, Rid, <<"1">>),
         {ok, #{outcome := succeeded, kind := <<"purge">>}} = talk_record_job_worker:run_once(),
         ?assertEqual(<<"blocked_hold">>, talk_record_t20_support:cleanup_status(Rid)),
         ?assertEqual(<<"bound">>, element(1, talk_record_t20_support:ref_state(C, Rid))),
-        ?assertEqual(<<"live">>, talk_record_t20_support:attachment_state(C, Path))
+        ?assertEqual(<<"live">>, talk_record_t20_support:attachment_state(C, Path)),
+        {ok, [#{<<"state">> := <<"bound">>, <<"attachment_id">> := 8301}]} =
+            elib_pg:query(
+                C,
+                <<
+                    "SELECT state,attachment_id FROM talk_record_attachment_ref"
+                    " WHERE record_id=$1"
+                >>,
+                [Rid]
+            ),
+        {ok, [#{<<"n">> := 0}]} = elib_pg:query(
+            C,
+            <<"SELECT count(*) AS n FROM attachment_object_deletion WHERE path=$1">>,
+            [Path]
+        )
     end).
 
 %% 收藏引用（同 hash）→ retained_by_other_reference（字节保留）
@@ -736,57 +852,97 @@ late_results_not_published_test_() ->
 delete_grants_mutual_exclusion_test_() ->
     with_db(delete_grants_mutual_exclusion_test_, fun(State) ->
         C = talk_record_t20_support:conn_of(State),
-        Ids = talk_record_t20_support:ids(),
         {Rid, _, _} = ready(State, 97),
-        %% conn1 持删除行锁（未提交）；conn2 的授权行锁必须等待
         C2 = talk_record_t20_support:fresh_conn(),
+        Ref = make_ref(),
+        Parent = self(),
+        {Writer, Monitor} = spawn_monitor(fun() -> locked_delete(C, Rid, Parent, Ref) end),
         try
+            receive
+                {Ref, locked, Writer} -> ok;
+                {'DOWN', Monitor, process, Writer, Reason} -> error({writer_before_lock, Reason})
+            after 5000 -> error(writer_lock_timeout)
+            end,
             {ok, [], []} = epgsql:squery(C2, "SET statement_timeout = '600ms'"),
-            Self = self(),
-            spawn(fun() ->
-                R =
-                    (catch talk_record_t20_support:raw_tx(
-                        C,
-                        fun(ConnL) ->
-                            {ok, live, _} =
-                                talk_record_delete_repo:lock_for_delete_tx(ConnL, Rid, 1),
-                            {ok, _} = talk_record_delete_repo:soft_delete_tx(ConnL, Rid),
-                            timer:sleep(1200)
-                        end
-                    )),
-                Self ! {conn1_done, R}
-            end),
-            timer:sleep(200),
-            %% conn2 同行 lock_for_acl 在 conn1 提交前不可完成（互斥）——
-            %% statement_timeout 打断等待
-            Locked = (fun() ->
-                {ok, [], []} = epgsql:squery(C2, "BEGIN"),
+            {ok, [], []} = epgsql:squery(C2, "BEGIN"),
+            Locked =
                 try
                     talk_record_repo:lock_for_acl_tx(C2, Rid, 1)
-                catch
-                    _:_ -> {error, lock_wait_interrupted}
                 after
-                    catch epgsql:squery(C2, "ROLLBACK")
-                end
-            end)(),
+                    {ok, [], []} = epgsql:squery(C2, "ROLLBACK")
+                end,
+            %% 唯有真实 PG statement_timeout 证明等待持有中的同一行锁。
+            ?assertMatch({error, #error{code = <<"57014">>}}, Locked),
+            Writer ! {Ref, release},
             receive
-                {conn1_done, _} -> ok
-            after 5000 ->
-                ?assert(false)
+                {Ref, committed, Writer} -> ok
+            after 5000 -> error(writer_commit_timeout)
             end,
-            %% 600ms 超时打断（query canceled / lock 不可得），非 {ok,_}
-            ?assertMatch({error, _}, Locked),
-            %% conn1 提交后 conn2 可拿锁并正确观测软删（lock_for_acl 复核
-            %% deleted_at → not_found）
+            receive
+                {'DOWN', Monitor, process, Writer, normal} -> ok;
+                {'DOWN', Monitor, process, Writer, Why} -> error({writer_failed, Why})
+            after 5000 -> error(writer_exit_timeout)
+            end,
             {ok, [], []} = epgsql:squery(C2, "SET statement_timeout = '5s'"),
             {ok, [], []} = epgsql:squery(C2, "BEGIN"),
-            R2 = talk_record_repo:lock_for_acl_tx(C2, Rid, 1),
-            catch epgsql:squery(C2, "ROLLBACK"),
-            ?assertMatch({error, not_found}, R2)
+            R2 =
+                try
+                    talk_record_repo:lock_for_acl_tx(C2, Rid, 1)
+                after
+                    {ok, [], []} = epgsql:squery(C2, "ROLLBACK")
+                end,
+            ?assertEqual({error, not_found}, R2),
+            Deleted = row(C, [
+                "SELECT deleted_at,revision,acl_revision FROM talk_record WHERE id=",
+                integer_to_binary(Rid)
+            ]),
+            ?assertNotEqual(null, maps:get(<<"deleted_at">>, Deleted)),
+            ?assertEqual(2, maps:get(<<"revision">>, Deleted)),
+            ?assertEqual(2, maps:get(<<"acl_revision">>, Deleted))
         after
-            catch epgsql:close(C2)
+            try
+                release_delete_writer(C, Writer, Monitor, Ref)
+            after
+                catch epgsql:close(C2)
+            end
         end
     end).
+
+locked_delete(C, Rid, Parent, Ref) ->
+    ParentMonitor = monitor(process, Parent),
+    try
+        committed = talk_record_t20_support:raw_tx(C, fun(Conn) ->
+            {ok, live, _} = talk_record_delete_repo:lock_for_delete_tx(Conn, Rid, 1),
+            {ok, _} = talk_record_delete_repo:soft_delete_tx(Conn, Rid),
+            Parent ! {Ref, locked, self()},
+            receive
+                {Ref, release} -> committed;
+                {'DOWN', ParentMonitor, process, Parent, Why} -> error({parent_down, Why})
+            after 5000 -> error(writer_release_timeout)
+            end
+        end),
+        Parent ! {Ref, committed, self()}
+    after
+        demonitor(ParentMonitor, [flush])
+    end.
+
+release_delete_writer(C, Writer, Monitor, Ref) ->
+    Writer ! {Ref, release},
+    case is_process_alive(Writer) of
+        false ->
+            demonitor(Monitor, [flush]);
+        true ->
+            receive
+                {'DOWN', Monitor, process, Writer, _} -> ok
+            after 5000 ->
+                exit(Writer, kill),
+                receive
+                    {'DOWN', Monitor, process, Writer, _} -> ok
+                after 5000 -> error(writer_cleanup_timeout)
+                end,
+                {ok, [], []} = epgsql:squery(C, "ROLLBACK")
+            end
+    end.
 
 grants_first_then_delete_consistent_test_() ->
     with_db(grants_first_then_delete_consistent_test_, fun(State) ->
@@ -971,22 +1127,37 @@ departure_custody_projection_test_() ->
         C = talk_record_t20_support:conn_of(State),
         Ids = talk_record_t20_support:ids(),
         U1 = maps:get(u1, Ids),
-        {Rid1, _, _} = ready(State, 53),
-        {Rid2, _, _} = ready(State, 54),
-        %% Rid2 企业归属；U1 保持 org 成员
+        U2 = maps:get(u2, Ids),
+        OwnerSql = <<
+            "SELECT o.owner_id,m.role,m.status FROM organization o"
+            " JOIN organization_member m ON m.organization_id=o.id AND m.user_id=o.owner_id"
+            " WHERE o.id=710001"
+        >>,
+        {ok, [OwnerBefore]} = elib_pg:query(C, OwnerSql, []),
+        ?assertMatch(
+            #{
+                <<"owner_id">> := U1,
+                <<"role">> := <<"owner">>,
+                <<"status">> := <<"active">>
+            },
+            OwnerBefore
+        ),
+        {Rid1, _, U2} = ready(State, 53, U2),
+        {Rid2, _, U2} = ready(State, 54, U2),
+        %% 离企主体为普通成员 U2；不得制造有效企业 owner 失权的非法状态。
         talk_record_t20_support:sql(C, [
             "UPDATE talk_record SET scope='organization', organization_id=710001,",
             " workspace_id=NULL WHERE id = ",
             integer_to_binary(Rid2)
         ]),
-        %% U1 失去企业成员资格（离企/注销投影触发条件）
+        %% U2 失去企业成员资格（离企/注销投影触发条件）
         talk_record_t20_support:sql(C, [
             "UPDATE organization_member SET status='suspended'",
             " WHERE organization_id=710001 AND user_id=",
-            integer_to_binary(U1)
+            integer_to_binary(U2)
         ]),
         {ok, 1} = elib_pg:with_tx(
-            fun(Conn) -> talk_record_delete_logic:project_departure_custody_tx(Conn, U1) end,
+            fun(Conn) -> talk_record_delete_logic:project_departure_custody_tx(Conn, U2) end,
             [{reraise, false}]
         ),
         Custody2 = row(
@@ -1004,8 +1175,9 @@ departure_custody_projection_test_() ->
                 integer_to_binary(Rid1)
         ),
         ?assertEqual(<<"active">>, maps:get(<<"custody_status">>, Custody1)),
-        %% owner 失权：U1 对企业记录 visible 失败（成员资格谓词）
-        ?assertMatch({error, not_found}, talk_record_ds:detail(U1, Rid2))
+        %% 记录 owner 离企后不可见；企业 owner 身份约束始终保持。
+        ?assertMatch({error, not_found}, talk_record_ds:detail(U2, Rid2)),
+        ?assertEqual({ok, [OwnerBefore]}, elib_pg:query(C, OwnerSql, []))
     end).
 
 %%%===================================================================
@@ -1026,7 +1198,11 @@ scan_organization_l2_regression_test_() ->
             integer_to_binary(Rid1)
         ]),
         %% 附件命名：一个字面含 % 的名字 + 一个普通名
-        Path1 = talk_record_t20_support:insert_attachment(C, 8601, #{record_id => Rid1}),
+        Path1 = talk_record_t20_support:insert_attachment(
+            C,
+            8601,
+            #{record_id => Rid1, gc_verified => false}
+        ),
         talk_record_t20_support:sql(C, [
             "UPDATE attachment SET name='plan 50% done' WHERE path = '", Path1, "'"
         ]),
@@ -1036,7 +1212,7 @@ scan_organization_l2_regression_test_() ->
             " VALUES (8602, repeat('d',64), 'audio/aac', 'abc50x', 't20/dirty-8602',"
             " 't20/dirty-8602', 10, 1, ",
             integer_to_binary(U1),
-            ", 'talk_record', 'not-a-number', true)"
+            ", 'talk_record', 'not-a-number', false)"
         ]),
         %% 1) 脏 scope_ref（非数字）不再炸查询（文本比较跳行；本 org 的
         %% talk_record 附件含分段附件与 8601，脏行不在内）

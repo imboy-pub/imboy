@@ -435,7 +435,7 @@ down 只能恢复空结构，不能恢复业务数据、审计记录、媒体或
 |---|---|---|---|---|---|---|
 | POST | /api/v1/channel/:channel_id/message | JWT | channel_handler#publish_message | 发布消息 / Publish | path `channel_id`；body `content`*,`msg_type`(默认 text),`payload`,`request_id`(可选幂等键) | Message object（`id`/`channel_id` TSID） |
 | GET | /api/v1/channel/:channel_id/message/:message_id | JWT | channel_handler_message#show_message | 单篇文章读取；先检查工作区边界及频道内容权益，再校验文章归属 | path `channel_id`*, `message_id`* | Message object；不可用时不返回正文 |
-| GET | /api/v1/channel/:channel_id/messages | JWT | channel_handler#messages | 消息列表 / List | path `channel_id`*；`cursor`(默认0),`limit`(默认20,1-200) | `{list}` |
+| GET | /api/v1/channel/:channel_id/messages | JWT | channel_handler#messages | 消息列表 / List | path `channel_id`*；`cursor`(缺/空/0首屏；后续原样传 `next_cursor`),`limit`(默认20,1-200) | `{list,next_cursor}`；末页 `next_cursor=null`；`created_at` 仍为 Unix 毫秒 integer |
 | POST | /api/v1/channel/:channel_id/read | JWT | channel_handler#mark_read | 标记已读 / Mark read | path `channel_id`；body `message_id` | `{}` |
 | POST | /api/v1/channel/:channel_id/message/:message_id/view | JWT | channel_handler#record_view | 记录阅读 / Record view | path `channel_id`,`message_id`* | `{}` |
 | POST | /api/v1/channel/:channel_id/message/:message_id/reaction | JWT | channel_handler#add_reaction | 添加反应 / Add reaction | path 同上；body `reaction_type`(默认 like) | `{}` |
@@ -443,6 +443,8 @@ down 只能恢复空结构，不能恢复业务数据、审计记录、媒体或
 | PUT/POST | /api/v1/channel/:channel_id/message/:message_id/pin | JWT | channel_handler#pin_message | 置顶/取消置顶 / Pin | path `message_id`*；body `pinned`(默认true) | Message object |
 | DELETE | /api/v1/channel/:channel_id/message/:message_id/delete | JWT | channel_handler#delete_message | 删除消息 / Delete | path `message_id`* | `{}` |
 | POST | /api/v1/channel/:channel_id/message/:message_id/revoke | JWT | channel_handler#revoke_message | 撤回消息 / Revoke | path `channel_id`,`message_id`* | `{}` |
+
+消息列表按 `created_at DESC,id DESC` 排序；opaque base64 JSON v1 游标内部使用精确数据库微秒时间 `at` 和正 BIGINT 字符串 `id`，客户端不得从公开毫秒时间重建。旧非负数字游标继续按位数解释为秒（≤10）、毫秒（11–13）、微秒（14–16）、纳秒（≥17），各单位上限为 `4102444800` 秒乘相应倍率。非法游标返回 HTTP 200、`code=1`、`msg=invalid_message_cursor`。游标不是凭据；目标频道原有授权链保持不变。完整协议见 [Channel contract §3.2](./contracts/channel-api-contract-v1.md#32-message-list-pagination-contract)。
 
 ## 频道管理员与订阅者 / Channel Admins & Subscribers
 

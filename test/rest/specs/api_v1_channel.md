@@ -31,8 +31,7 @@ context; it is not a test DSL. Tokens must be redacted from evidence.
   Unknown channel id also collapses to `频道不存在` / code `1`.
 - `messages` requires `ensure_channel_content_access/2`: public (`visibility=0`) channels
   are readable without subscribing; private (`visibility=1`) needs subscription; paid
-  (`access_type=1`) needs purchase. Payload is `#{list => [...]}`; an empty channel returns
-  an empty list.
+  (`access_type=1`) needs purchase. The message pagination contract is defined below; the original list fields are preserved.
 
 ## Cases
 
@@ -96,7 +95,7 @@ with `limit=1`.
 
 #### Then
 
-Both return HTTP `200`, `code` `0`, `payload.list` exactly `[]`.
+Both return HTTP `200`, `code` `0`, `payload.list` exactly `[]` and `payload.next_cursor` exactly `null`.
 
 ### CHANNEL-005: nonexistent channel
 
@@ -141,6 +140,14 @@ A posts `POST /api/v1/channel/create` with `name = ""`.
 #### Then
 
 - HTTP `200`, `code` `1`, msg `频道名称不能为空`.
+
+## Message cursor protocol (contract intent; not an execution receipt)
+
+- Success preserves `payload.list` and adds `payload.next_cursor: string | null`; terminal pages return `null`. Ordering is `created_at DESC, id DESC`, with `limit=20` by default and range `1..200`.
+- Missing/empty/zero cursor starts at the first page. Consumers pass opaque `next_cursor` unchanged; base64 JSON v1 contains the exact database microsecond `at` and a canonical positive BIGINT string `id` (`1..9223372036854775807`). Public `created_at` remains a Unix millisecond integer and must not be used to reconstruct cursors.
+- Legacy nonnegative numeric cursors retain seconds/milliseconds/microseconds/nanoseconds interpretation at ≤10/11–13/14–16/≥17 digits. Maximums are respectively `4102444800`, `4102444800000`, `4102444800000000`, `4102444800000000000`.
+- Invalid cursor: HTTP `200`, envelope `code=1`, `msg=invalid_message_cursor`.
+- The existing target-channel authorization chain still applies; cursor possession is not authorization, including across channels.
 
 ## Known gaps / not covered here
 

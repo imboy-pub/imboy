@@ -75,6 +75,7 @@ a01_suspend_member_denies_cs_and_eb_auth() ->
     Actor = maps:get(actor_user_id, Scope),
     Owner = maps:get(owner_user_id, Scope),
     Service = maps:get(service_identity_id, Scope),
+    Admin = ?FIX:id(),
     try
         %% A01 前置：active operator assignment（customer_service 职能）+ enabled
         %% seat → cs_seat 放行；owner 治理面放行。
@@ -102,7 +103,6 @@ a01_suspend_member_denies_cs_and_eb_auth() ->
         %% EB 治理面同样即时拒绝：admin 成员 suspend 后 governance 立即失效。
         %% （owner 行不可用同法验证：C04 deferred guard 拒绝 suspend/移除
         %% owner_id 指向的成员行，须先 transfer——恰是冻结语义，不在本测试绕过。）
-        Admin = ?FIX:id(),
         ok = ?FIX:exec(
             <<
                 "INSERT INTO \"user\"(id,password,account,reg_ip,reg_cosv)"
@@ -137,7 +137,11 @@ a01_suspend_member_denies_cs_and_eb_auth() ->
         ?assertEqual(2, ActiveAssignments),
         ?assertEqual(1, ?FIX:count(Org, seats))
     after
-        ?FIX:cleanup(Scope)
+        ok = ?FIX:cleanup(Scope),
+        ok = ?FIX:exec(
+            <<"DELETE FROM \"user\" WHERE id=$1 AND account=$2">>,
+            [Admin, admin_account(Admin)]
+        )
     end.
 
 %% ===================================================================
@@ -391,9 +395,9 @@ a06_default_workspace_change_keeps_persisted_session_scope() ->
     Owner = maps:get(owner_user_id, Scope),
     Contact = maps:get(contact_id, Scope),
     Conversation = maps:get(conversation_id, Scope),
+    Ws2 = ?FIX:id(),
     try
         %% 同 Org 第二个 Workspace（作为新默认）
-        Ws2 = ?FIX:id(),
         ok = ?FIX:exec(
             <<
                 "INSERT INTO workspace(id,name,owner_id,status,type,organization_id)"
@@ -443,9 +447,13 @@ a06_default_workspace_change_keeps_persisted_session_scope() ->
             Org
         ])
     after
-        _ = ?FIX:exec(<<"DELETE FROM organization_default_workspace WHERE organization_id=$1">>, [
+        ok = ?FIX:exec(<<"DELETE FROM organization_default_workspace WHERE organization_id=$1">>, [
             Org
         ]),
+        ok = ?FIX:exec(
+            <<"DELETE FROM workspace WHERE id=$1 AND name=$2 AND owner_id=$3 AND organization_id=$4">>,
+            [Ws2, ws_name(Ws2), Owner, Org]
+        ),
         ?FIX:cleanup(Scope)
     end.
 

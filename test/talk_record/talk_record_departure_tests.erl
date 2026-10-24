@@ -79,10 +79,18 @@ seed_parents(S) ->
         <<"INSERT INTO organization(id,name,status,owner_id) VALUES ($1,'departure-test','active',$2)">>,
         [id(S, org), id(S, u0)]
     ),
+    ?assertMatch(
+        [#{<<"role">> := <<"owner">>, <<"status">> := <<"active">>}],
+        q(
+            C,
+            <<"SELECT role,status FROM organization_member WHERE organization_id=$1 AND user_id=$2">>,
+            [id(S, org), id(S, u0)]
+        )
+    ),
     q(
         C,
-        <<"INSERT INTO organization_member(organization_id,user_id,role,status) VALUES ($1,$2,'owner','active'),($1,$3,'member','active'),($1,$4,'member','active')">>,
-        [id(S, org), id(S, u0), id(S, u1), id(S, u2)]
+        <<"INSERT INTO organization_member(organization_id,user_id,role,status) VALUES ($1,$2,'member','active'),($1,$3,'member','active')">>,
+        [id(S, org), id(S, u1), id(S, u2)]
     ),
     q(
         C,

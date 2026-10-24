@@ -87,7 +87,7 @@ Covered endpoints:
 | My managed channels | `GET` | `/api/v1/channels/managed` | - | - | `{list}` |
 | Unread summary | `GET` | `/api/v1/channels/unread/summary` | - | - | `{total_unread, unread_channels, channels[]}` |
 | Publish message | `POST` | `/api/v1/channel/:channel_id/message` | - | `content`, `msg_type`, `payload?`, `request_id?`（同作者/频道内幂等） | Message object |
-| Message list | `GET` | `/api/v1/channel/:channel_id/messages` | `cursor?`, `limit?` | - | `{list}` |
+| Message list | `GET` | `/api/v1/channel/:channel_id/messages` | `cursor?`, `limit?` | - | `{list, next_cursor}` |
 | Mark read | `POST` | `/api/v1/channel/:channel_id/read` | - | `message_id` | `{}` |
 | Search channels | `GET` | `/api/v1/channels/search` | `keyword`, `limit?` | - | `{list}` |
 | Discover channels | `GET` | `/api/v1/channels/discover` | `category?`, `limit?` | - | `{list}` |
@@ -140,6 +140,18 @@ Rules:
 - mark-read should push unread count `0` for the caller channel scope.
 - push and pull must read from the same authoritative unread source.
 - client may use push for immediate UI updates and pull for cold-start resync.
+
+## 3.2 Message List Pagination Contract
+
+Endpoint: `GET /api/v1/channel/:channel_id/messages`.
+
+- Preserve the existing `list` fields and add `next_cursor: string | null`. Results are ordered by `created_at DESC, id DESC`; a terminal page, including an empty page, returns `next_cursor = null`.
+- `limit` defaults to `20`, range `1..200`. Missing/empty `cursor` or numeric `0` requests the first page.
+- Consumers must pass the returned opaque `next_cursor` unchanged. Its internal format is base64 JSON with exactly `v: 1`, `at` (RFC3339 database timestamp retaining microseconds), and `id` (canonical positive decimal BIGINT string, `1..9223372036854775807`). Do not rebuild it from response fields.
+- Public message `created_at` remains a Unix millisecond integer; internal cursor precision does not change the message wire format.
+- Legacy nonnegative numeric cursors remain accepted: 1–10 digits are seconds, 11–13 milliseconds, 14–16 microseconds, and 17 or more nanoseconds. The respective maximum values are `4102444800`, `4102444800000`, `4102444800000000`, and `4102444800000000000` (2100-01-01T00:00:00Z).
+- Invalid cursors return HTTP `200`, envelope `code = 1`, `msg = invalid_message_cursor`.
+- Pagination retains the target channel's existing authorization chain in §2.4. A cursor is not a credential and grants no cross-channel access.
 
 ## 4. Admin/Subscribers/Stats Matrix
 

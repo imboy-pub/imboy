@@ -144,10 +144,10 @@ join_binary([P | Rest], Sep) ->
     [P, Sep | join_binary(Rest, Sep)].
 
 -spec sqlstate(term()) -> binary() | undefined.
-sqlstate({error, Inner}) when
-    is_tuple(Inner), tuple_size(Inner) >= 3, element(1, Inner) =:= error
-->
-    case element(3, Inner) of
+sqlstate({error, Inner}) when is_tuple(Inner), tuple_size(Inner) >= 3 ->
+    sqlstate(Inner);
+sqlstate(Error) when is_tuple(Error), tuple_size(Error) >= 3, element(1, Error) =:= error ->
+    case element(3, Error) of
         Code when is_binary(Code), byte_size(Code) =:= 5 -> Code;
         _ -> undefined
     end;

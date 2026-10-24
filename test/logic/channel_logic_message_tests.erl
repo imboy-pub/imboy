@@ -453,3 +453,178 @@ create_channel_custom_lookup_failure_is_closed_test_() ->
             ?assertEqual(0, meck:num_calls(channel_ds, create_channel, 3))
         end
     ).
+
+%% TZ05 seam checks only; real PostgreSQL/HTTP tie ordering remains mandatory.
+message_cursor_ties_and_microseconds_test_() ->
+    At = <<"2026-10-24T01:02:03.123456Z">>,
+    Rows = [#{<<"id">> => I, <<"cursor_at">> => At} || I <- lists:seq(25, 1, -1)],
+    ?WITH_MECKS(
+        [
+            {channel_logic_common, [
+                {resolve_channel_id, 1, fun(_) -> 42 end},
+                {ensure_channel_content_access, 2, fun(_, _) -> ok end}
+            ]},
+            {channel_ds, [{list_user_reactions, 2, fun(_, _) -> {ok, []} end}]},
+            {channel_message_ds, [
+                {list_by_channel_page, 3, fun
+                    (42, 0, 20) -> {ok, lists:sublist(Rows, 21)};
+                    (42, {At0, <<"6">>}, 20) when At0 =:= At -> {ok, lists:nthtail(20, Rows)}
+                end}
+            ]}
+        ],
+        fun() ->
+            {ok, #{list := First, next_cursor := Next}} =
+                channel_logic_message:get_messages_page(1001, <<"42">>, <<>>, 20),
+            ?assertEqual(20, length(First)),
+            ?assertEqual({ok, {At, <<"6">>}}, msg_offline_cursor:decode(Next)),
+            {ok, #{list := Last, next_cursor := null}} =
+                channel_logic_message:get_messages_page(1001, <<"42">>, Next, 20),
+            ?assertEqual(5, length(Last)),
+            ?assertEqual(lists:seq(25, 1, -1), [maps:get(<<"id">>, M) || M <- First ++ Last]),
+            ?assert(lists:all(fun(M) -> not maps:is_key(<<"cursor_at">>, M) end, First ++ Last))
+        end
+    ).
+
+message_cursor_legacy_and_negative_test_() ->
+    At = <<"2026-10-24T01:02:03.123456Z">>,
+    Tokens = [
+        <<"-1">>,
+        <<"garbage">>,
+        <<" ">>,
+        binary:copy(<<"9">>, 512),
+        10000000000000000000,
+        msg_offline_cursor:encode({At, <<"0">>}),
+        msg_offline_cursor:encode({At, <<"-1">>}),
+        msg_offline_cursor:encode({At, <<"01">>}),
+        msg_offline_cursor:encode({At, <<"1.0">>}),
+        msg_offline_cursor:encode({At, <<"9223372036854775808">>}),
+        <<"1700000000", 10>>,
+        msg_offline_cursor:encode({At, <<"1", 10>>}),
+        msg_offline_cursor:encode({<<"not-a-date">>, <<"1">>})
+    ],
+    ?WITH_MECKS(
+        [
+            {channel_logic_common, [
+                {resolve_channel_id, 1, fun(_) -> 42 end},
+                {ensure_channel_content_access, 2, fun(_, _) -> ok end}
+            ]},
+            {channel_ds, [{list_user_reactions, 2, fun(_, _) -> {ok, []} end}]},
+            {channel_message_ds, [
+                {list_by_channel_page, 3, fun(42, {legacy, LegacyAt}, 20) ->
+                    ?assertEqual(
+                        1700000000000000,
+                        calendar:rfc3339_to_system_time(
+                            binary_to_list(LegacyAt), [{unit, microsecond}]
+                        )
+                    ),
+                    {ok, []}
+                end}
+            ]}
+        ],
+        fun() ->
+            lists:foreach(
+                fun(Token) ->
+                    ?assertEqual(
+                        {error, <<"invalid_message_cursor">>},
+                        channel_logic_message:get_messages_page(1001, <<"42">>, Token, 20)
+                    )
+                end,
+                Tokens
+            ),
+            ?assertEqual(0, meck:num_calls(channel_message_ds, list_by_channel_page, '_')),
+            ?assertEqual(
+                {ok, #{list => [], next_cursor => null}},
+                channel_logic_message:get_messages_page(1001, <<"42">>, <<"1700000000000">>, 20)
+            ),
+            lists:foreach(
+                fun(Legacy) ->
+                    ?assertEqual(
+                        {ok, #{list => [], next_cursor => null}},
+                        channel_logic_message:get_messages_page(1001, <<"42">>, Legacy, 20)
+                    )
+                end,
+                [
+                    <<"1700000000">>,
+                    1700000000,
+                    1700000000000,
+                    <<"1700000000000000">>,
+                    <<"1700000000000000000">>
+                ]
+            )
+        end
+    ).
+
+message_cursor_does_not_replace_access_guard_test_() ->
+    ?WITH_MECKS(
+        [
+            {channel_logic_common, [
+                {resolve_channel_id, 1, fun(_) -> 42 end},
+                {ensure_channel_content_access, 2, fun(_, _) -> {error, <<"denied">>} end}
+            ]},
+            {channel_message_ds, [
+                {list_by_channel_page, 3, fun(_, _, _) -> error(must_not_read) end}
+            ]}
+        ],
+        fun() ->
+            ?assertEqual(
+                {error, <<"denied">>},
+                channel_logic_message:get_messages_page(1001, <<"42">>, <<"garbage">>, 20)
+            ),
+            ?assertEqual(0, meck:num_calls(channel_message_ds, list_by_channel_page, '_'))
+        end
+    ).
+
+message_cursor_real_helper_caps_test_() ->
+    Maxima = [4102444800, 4102444800000, 4102444800000000, 4102444800000000000],
+    ?WITH_MECKS(
+        [
+            {channel_logic_common, [
+                {resolve_channel_id, 1, fun(_) -> 42 end},
+                {ensure_channel_content_access, 2, fun(_, _) -> ok end}
+            ]},
+            {channel_ds, [{list_user_reactions, 2, fun(_, _) -> {ok, []} end}]},
+            {channel_message_ds, [
+                {list_by_channel_page, 3, fun(42, {legacy, At}, 20) ->
+                    ?assertEqual(
+                        4102444800000000,
+                        calendar:rfc3339_to_system_time(
+                            binary_to_list(At), [{unit, microsecond}]
+                        )
+                    ),
+                    {ok, []}
+                end}
+            ]}
+        ],
+        fun() ->
+            lists:foreach(
+                fun(Max) ->
+                    lists:foreach(
+                        fun(Bad) ->
+                            ?assertEqual(
+                                {error, <<"invalid_message_cursor">>},
+                                channel_logic_message:get_messages_page(1001, <<"42">>, Bad, 20)
+                            )
+                        end,
+                        [Max + 1, integer_to_binary(Max + 1)]
+                    )
+                end,
+                Maxima
+            ),
+            ?assertEqual(0, meck:num_calls(channel_message_ds, list_by_channel_page, '_')),
+            lists:foreach(
+                fun(Max) ->
+                    lists:foreach(
+                        fun(Good) ->
+                            ?assertEqual(
+                                {ok, #{list => [], next_cursor => null}},
+                                channel_logic_message:get_messages_page(1001, <<"42">>, Good, 20)
+                            )
+                        end,
+                        [Max, integer_to_binary(Max), <<"000", (integer_to_binary(Max))/binary>>]
+                    )
+                end,
+                Maxima
+            ),
+            ?assertEqual(12, meck:num_calls(channel_message_ds, list_by_channel_page, '_'))
+        end
+    ).

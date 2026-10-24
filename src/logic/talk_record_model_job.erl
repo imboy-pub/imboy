@@ -52,21 +52,23 @@ renew(Job, Config, P) ->
             false -> abort(processing_consent_required)
         end,
         ok = require(talk_record_job_repo:renew_lease_tx(C, Locked, 900)),
-        case P of
-            #{audio_attachment_id := Aid} ->
-                {ok, _, _} = require(
-                    talk_record_attachment_adapter:grant_processing_lease_tx(
-                        C,
-                        maps:get(<<"record_id">>, Job),
-                        Aid,
-                        <<"transcoded_audio">>,
-                        lease_key(Job),
-                        900
-                    )
-                );
-            _ ->
-                ok
-        end,
+        ok =
+            case P of
+                #{audio_attachment_id := Aid} ->
+                    {ok, _, _} = require(
+                        talk_record_attachment_adapter:grant_processing_lease_tx(
+                            C,
+                            maps:get(<<"record_id">>, Job),
+                            Aid,
+                            <<"transcoded_audio">>,
+                            lease_key(Job),
+                            900
+                        )
+                    ),
+                    ok;
+                _ ->
+                    ok
+            end,
         ok
     end).
 
@@ -136,7 +138,7 @@ prepare_tx(C, Job, Config) ->
             {ok, T} = require(talk_record_transcript_repo:find_current_tx(C, Rid, <<"t.version">>)),
             V = maps:get(<<"version">>, T),
             true = V =:= maps:get(<<"input_transcript_version">>, Locked),
-            check_text_budget(C, Rid, V),
+            ok = check_text_budget(C, Rid, V),
             {ok, Segments} = require(
                 elib_pg:query(
                     C,
@@ -171,7 +173,7 @@ check_text_budget(C, Rid, V) ->
     of
         {ok, [#{<<"n">> := N, <<"bytes">> := B}]} when N =< 20000, B =< 1048576 -> ok;
         {ok, _} -> abort(processor_input_limit);
-        E -> require(E)
+        {error, R} -> abort(R)
     end.
 
 gate(C, Job, Config) ->
@@ -216,10 +218,10 @@ gate(C, Job, Config) ->
         true -> ok;
         false -> abort(input_stale)
     end,
-    check_transcript(C, Rid, Locked),
+    ok = check_transcript(C, Rid, Locked),
     Pin = pin(Locked),
-    check_consent(C, Rid, Pin, Config),
-    check_summary_snapshot(C, Rid, Locked, Pin),
+    ok = check_consent(C, Rid, Pin, Config),
+    ok = check_summary_snapshot(C, Rid, Locked, Pin),
     {Record, Locked, Pin}.
 
 check_summary_snapshot(C, Rid, #{<<"kind">> := <<"summarize">>}, Pin) ->
@@ -242,8 +244,8 @@ check_transcript(C, Rid, #{<<"kind">> := <<"summarize">>} = Job) ->
             end;
         {error, not_found} ->
             abort(media_not_ready);
-        E ->
-            require(E)
+        {error, R} ->
+            abort(R)
     end;
 check_transcript(_, _, _) ->
     ok.
@@ -275,8 +277,8 @@ check_consent(C, Rid, Pin, Config) ->
         )
     of
         {ok, [#{<<"actor_id">> := Actor}]} -> check_actor(C, Actor, Rid);
-        {ok, []} -> abort(processing_consent_required);
-        E -> require(E)
+        {ok, _Invalid} -> abort(processing_consent_required);
+        {error, R} -> abort(R)
     end.
 
 check_actor(C, Actor, Rid) ->
@@ -297,12 +299,12 @@ check_actor(C, Actor, Rid) ->
             of
                 {ok, [_]} -> ok;
                 {ok, _} -> abort(processing_consent_required);
-                E -> require(E)
+                {error, R} -> abort(R)
             end;
         {error, not_found} ->
             abort(processing_consent_required);
-        E ->
-            require(E)
+        {error, R} ->
+            abort(R)
     end.
 
 publish_tx(C, Job, Config, R) ->
@@ -461,8 +463,8 @@ project(C, Record, Job, Status) ->
                             maps:get(<<"input_transcript_version">>, Job);
                     {error, not_found} ->
                         false;
-                    E ->
-                        require(E)
+                    {error, R} ->
+                        abort(R)
                 end;
             _ ->
                 true
@@ -501,7 +503,7 @@ published_content(C, Record, <<"summarize">>) ->
     case talk_record_summary_repo:find_by_record_tx(C, maps:get(<<"id">>, Record)) of
         {ok, _} -> true;
         {error, not_found} -> false;
-        E -> require(E)
+        {error, R} -> abort(R)
     end.
 
 tx(F) ->

@@ -708,9 +708,8 @@ norm_frac(F) ->
 
 -spec safe_int(binary()) -> integer().
 safe_int(B) ->
-    try binary_to_integer(B) of
-        I when is_integer(I) -> I;
-        _ -> 0
+    try
+        binary_to_integer(B)
     catch
         _:_ -> 0
     end.
