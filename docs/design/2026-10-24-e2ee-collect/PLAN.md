@@ -302,6 +302,10 @@ D1 入密（含 §7.3 客户端化编辑/检索与同步）；D2 留 M2；D3 T3 
 - **F4 高水位门 HTTP 全栈复演**：kv=2 首写成功（hw 0→2）→ kv=1 迟到写与重放均 5504 → kv=2 等值写成功；`user_collect_key_state` hw=2 与落库行一致，kv=1 行从未落库；
 - **范围外观察（attachment 域，报 attachment owner 裁决）**：gc_verified 仅在 group_file/talk_record 绑定事件时逐 path 刷新，上传 confirm 与孤儿扫描链无刷新入口——普通附件孤儿清理现状对 gc_verified=false 行保守 skipped；staging 正式复演 A8 时需经 refresh 路径（或补批量刷新入口）后方可演示孤儿被清的对照组；
 - 仍需真实环境：A1/A3 抓包、A4 真机四变体、A6 旧端占位、A7 组合 manifest 实测、A10 nonce 审计，及 staging 正式复跑本层。
+
+**真机矩阵前置（2026-10-24 补）**：
+- **组合**：A4/A7 正向场景依赖两端编译契约含 e2ee 域（phase1_delivery 未选 → 客户端 fail-closed 拒绝+升级提示，一进收藏即被拦死）。联调用 `config/product-feature-manifests/e2ee_dev.json`（phase1_delivery 8 域 + e2ee，即未来生产组合的最可能形态）：`python3 scripts/generate_product_features.py --manifest config/product-feature-manifests/e2ee_dev.json` 生成两端契约 → 服务端 `make rel` → 客户端 rebuild → 真机验证；完成后以 canonical（默认 manifest）重新生成恢复 phase1_delivery 契约——**联调态生成物不提交**，仅 e2ee_dev.json 定义本身入库。`run_product_feature_matrix.sh` 的 preset 流程同构可参考；overseas_baseline/agent_hub 亦含 e2ee 可作快速替代（域差异大，结论外推性弱）。
+- **A10 采集**：客户端 `CollectSealedService.sealPayload`（创建/编辑/重包裹/复活全部 seal 操作的汇聚点）已加 `[A10] seal kind_id=... key_version=... nonce=...` 审计锚点（仅 debug 构建，不含密钥与正文）；真机双设备编辑风暴经 flutter logs/console 采集后按 §8.3 密钥域核对唯一性。
 **门禁**：A1-A10 + F1-F4 全绿且无未声明偏差方可宣布 §5 能力成立；任一失败按 §5 条件化措辞降级声明（如语音跨设备失败归 M2）。
 **验收硬门（v7 新增）**：**F1-F4 属 M1 强制项**——失败时必须修复后重验，或重新评审并**明文缩减 §5/§7 声明范围**；禁止在强制项失败的状态下转入 M2 并宣称 M1 完成。§5 能力声明与验收结果一一对应，未通过的条件不得保留在声明中。
 **回归面**：legacy 收藏全路径（创建/编辑 remark/取消/列表/转发）不因 v1 分支引入回归；迁移 226 相关守卫测试保持绿。
