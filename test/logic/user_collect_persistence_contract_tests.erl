@@ -30,6 +30,9 @@ sql_case(SqlResult, Expected) ->
             ],
             [meck:new(M, [no_link, non_strict]) || M <- Modules],
             meck:expect(user_collect_ds, count_by_uid_kind_id, fun(_, _) -> 0 end),
+            %% §9 legacy add 前置（迁移 227）：sealed 行守卫——legacy 契约
+            %% 用例默认无 sealed 行（false 直进 add_legacy）
+            meck:expect(user_collect_ds, sealed_exists, fun(_, _) -> false end),
             meck:expect(elib_dt, now, fun() -> 1000000 end),
             meck:expect(attachment_ds, save, fun(_, _, _, []) -> ok end),
             meck:expect(elib_hasher, encoded_val, fun(_) -> <<"opaque">> end),
@@ -71,6 +74,8 @@ persistence_case(Kind, TransactionResult, Expected) ->
             Modules = [user_collect_ds, elib_dt, elib_pg],
             [meck:new(M, [no_link, non_strict]) || M <- Modules],
             meck:expect(user_collect_ds, count_by_uid_kind_id, fun(_, _) -> 0 end),
+            %% 同上：legacy 契约用例默认无 sealed 行
+            meck:expect(user_collect_ds, sealed_exists, fun(_, _) -> false end),
             meck:expect(elib_dt, now, fun() -> 1000000 end),
             meck:expect(elib_pg, with_tx, fun(_) -> TransactionResult end),
             Modules
