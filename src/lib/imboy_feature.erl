@@ -17,12 +17,17 @@
 -include("error_code.hrl").
 -include("generated/imboy_product_features.hrl").
 
-%% Q02 运行时域键：二期七域（e2ee 除外——它在 CoreFixed）、一期默认
-%% 不承诺域（钱包/支付）、以及 appeal（治理申诉，builtin 键但
-%% 从未进 manifest selected_features，模块常驻 beam）。这些域无编译期
-%% 物理裁剪，compiled/1 恒 true——完全物理裁剪是渐进优化（主计划 §6），
-%% 关闭面由运行时门承担：profile 白名单 + 交付锁 + feature_gate 中间件
+%% Q02 运行时域键：二期七域、一期默认不承诺域（钱包/支付）、以及
+%% appeal（治理申诉，builtin 键但从未进 manifest selected_features，
+%% 模块常驻 beam）。这些域无编译期物理裁剪，compiled/1 恒 true——
+%% 完全物理裁剪是渐进优化（主计划 §6），关闭面由运行时门承担：
+%% profile 白名单 + 交付锁 + feature_gate 中间件
 %% + compiled_routes 运行时过滤（imboy_policy:effective_features）。
+%% 注意 e2ee/e2ee_collect 属 feature_names 的 CoreFixed 段（排序用途），
+%% 但不是本清单成员：e2ee 须 manifest selected_features 显式选择才进
+%% IMBOY_COMPILED_FEATURES——未选（如 phase1_delivery）时
+%% compiled(e2ee)=false，enabled(e2ee_collect) 随之 false
+%% （客户端协商即拒，A7 语义）。
 -define(RUNTIME_DOMAIN_FEATURES, [
     rtc,
     live_room,

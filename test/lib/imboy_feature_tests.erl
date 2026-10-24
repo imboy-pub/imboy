@@ -139,6 +139,10 @@ feature_names_contract_test() ->
         [
             core,
             e2ee,
+            %% B1（迁移 227）：e2ee_collect 是 v1 协议能力键，随 e2ee 域
+            %% 一起宣告（enabled/1 特例）；在 feature_names 的 CoreFixed
+            %% 段硬编码，非 manifest 可选域，不进 compiled_features。
+            e2ee_collect,
             channel,
             location,
             moment,
