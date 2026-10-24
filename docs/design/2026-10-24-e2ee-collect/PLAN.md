@@ -294,6 +294,14 @@ D1 入密（含 §7.3 客户端化编辑/检索与同步）；D2 留 M2；D3 T3 
 ## 16. 针对性验证与最终集成验收安排
 
 **分层**：单元（C1t/C2t/B5，向量+状态机+服务端分支+**F1-F4**）→ staging 后端（A2/A8/A9：DB 断言、强制 `age_days` 触发 GC 扫描、referer 对账；**F4 并发交错在 staging 以双连接事务复演**）→ 真机矩阵（A4 四变体、A5、A6 旧端占位、A7 旧后端拒绝；**F3 以旧版本安装包操作 sealed 行**）→ 抓包（A1/A3，代理采集请求与响应）→ 并发审计（A10：双设备编辑风暴全操作日志）。
+
+**staging 层本地等价预验（2026-10-24，本地真实服务器 imboy_local@127.0.0.1 + PG 4323 迁移 227）**：
+- **A9 三操作对账全绿**：迁移 227 真实触发器差分——创建（attach='a,b' 逐行 +1）、编辑差集（旧−新释放 a、新−旧建立 c，交集 b 计数不动）、同值重放（差集空、计数零变化，F1 幂等零副作用断言点）、墓碑（status=0+attach='' 全释放归零）；
+- **A2 存储面**：sealed 行 info 为密文（非明文 JSON）、attach_file_hash256 声明非空、generation=1/key_version=1 齐备；
+- **A8 GC 保留引用全绿**（含多哈希）：被引用行（单哈希行 + 多哈希列表成员）三道防线存活——①孤儿谓词 referer_time=1 不入候选；②`refresh_gc_verified_tx`（生产代码路径）对被引用行 proven=false（收藏 ANY(string_to_array) 匹配拦截）；③fn 锁后复核路径走通；无引用孤儿 delete_intent + attachment_object_deletion 入队（cleaned=1）；引用释放（收藏删除）后同批附件恢复 proven=true 并被正常回收——保留/回收对称闭环；
+- **F4 高水位门 HTTP 全栈复演**：kv=2 首写成功（hw 0→2）→ kv=1 迟到写与重放均 5504 → kv=2 等值写成功；`user_collect_key_state` hw=2 与落库行一致，kv=1 行从未落库；
+- **范围外观察（attachment 域，报 attachment owner 裁决）**：gc_verified 仅在 group_file/talk_record 绑定事件时逐 path 刷新，上传 confirm 与孤儿扫描链无刷新入口——普通附件孤儿清理现状对 gc_verified=false 行保守 skipped；staging 正式复演 A8 时需经 refresh 路径（或补批量刷新入口）后方可演示孤儿被清的对照组；
+- 仍需真实环境：A1/A3 抓包、A4 真机四变体、A6 旧端占位、A7 组合 manifest 实测、A10 nonce 审计，及 staging 正式复跑本层。
 **门禁**：A1-A10 + F1-F4 全绿且无未声明偏差方可宣布 §5 能力成立；任一失败按 §5 条件化措辞降级声明（如语音跨设备失败归 M2）。
 **验收硬门（v7 新增）**：**F1-F4 属 M1 强制项**——失败时必须修复后重验，或重新评审并**明文缩减 §5/§7 声明范围**；禁止在强制项失败的状态下转入 M2 并宣称 M1 完成。§5 能力声明与验收结果一一对应，未通过的条件不得保留在声明中。
 **回归面**：legacy 收藏全路径（创建/编辑 remark/取消/列表/转发）不因 v1 分支引入回归；迁移 226 相关守卫测试保持绿。
