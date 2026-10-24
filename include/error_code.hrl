@@ -473,6 +473,19 @@
 -define(ERR_IDEMPOTENCY_KEY_REQUIRED, 5461).
 % 客户端版本低于 E2EE 硬版本门（C12 / AC-25：旧端不能绕过 required E2EE 协议面）
 -define(ERR_E2EE_APP_VERSION_TOO_LOW, 5070).
+% E2EE 收藏 v1（迁移 227 / PLAN 2026-10-24-e2ee-collect §9）：sealed 行对
+% legacy 接口只读（remove 由服务端代执行墓碑；remark/add 覆盖被拒）。
+-define(ERR_COLLECT_SEALED_READONLY, 5501).
+% CAS 条件更新冲突（generation 不匹配且非幂等重放）
+-define(ERR_COLLECT_GENERATION_CONFLICT, 5502).
+% 引用附件不存在或无权引用（§7.2 存在性+授权校验失败，整单拒绝）
+-define(ERR_COLLECT_ATTACH_INVALID, 5503).
+% key_version 低于用户高水位（§7.2 写入门；设备须先同步密钥状态再写）
+-define(ERR_COLLECT_KEY_VERSION_REJECTED, 5504).
+% v1 请求参数非法（kind/kind_id/密文/引用列表越界或格式错误）
+-define(ERR_COLLECT_BAD_REQUEST, 5505).
+% 目标为 legacy 明文行，v1 sealed 操作不可覆盖（升级路径 T2 属 M2）
+-define(ERR_COLLECT_LEGACY_CONFLICT, 5506).
 
 %% ===================================================================
 %% 辅助函数
@@ -605,5 +618,11 @@
     5402 => <<"微信登录凭证无效或已使用"/utf8>>,
     5403 => <<"登录服务未配置"/utf8>>,
     5460 => <<"请求与幂等键已绑定内容冲突"/utf8>>,
-    5461 => <<"缺少幂等键"/utf8>>
+    5461 => <<"缺少幂等键"/utf8>>,
+    5501 => <<"该收藏已启用端到端加密，请升级客户端后操作"/utf8>>,
+    5502 => <<"收藏已在其他设备修改，请刷新后重试"/utf8>>,
+    5503 => <<"收藏附件校验失败（不存在或无权引用）"/utf8>>,
+    5504 => <<"加密密钥版本过旧，请先完成密钥同步"/utf8>>,
+    5505 => <<"收藏请求参数非法"/utf8>>,
+    5506 => <<"该收藏为历史明文记录，请取消收藏后重新收藏以启用加密"/utf8>>
 }).

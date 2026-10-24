@@ -12,6 +12,7 @@
 -export([delete/2]).
 -export([update/3]).
 -export([page/5]).
+-export([find_any_by_uid_kind_id/2, sealed_exists/2, tombstone_sealed/2]).
 
 %% ===================================================================
 %% API functions
@@ -54,6 +55,33 @@ update(Uid, KindId, Data) ->
 page(Column, WhereMap, Order, Page, Size) ->
     Tb = user_collect_repo:tablename(),
     elib_pg:page_with_total(Tb, Column, WhereMap, Order, Page, Size).
+
+%% ===================================================================
+%% E2EE 收藏 v1（迁移 227）：转发 repo，语义见 user_collect_repo 同名函数
+%% ===================================================================
+
+%% @doc 取该 (user_id, kind_id) 任意 status 行（单行模型，至多一行）。
+-spec find_any_by_uid_kind_id(integer(), binary()) -> not_found | {ok, map()}.
+find_any_by_uid_kind_id(Uid, KindId) ->
+    user_collect_repo:find_any_by_uid_kind_id(Uid, KindId).
+
+%% @doc sealed 行存在性（任意 status）——legacy 守卫。
+-spec sealed_exists(integer(), binary()) -> boolean().
+sealed_exists(Uid, KindId) ->
+    user_collect_repo:sealed_exists(Uid, KindId).
+
+%% @doc sealed 行墓碑化（§7.3/§9）：事务内 key_state 锁先行 + status=0
+%% + generation+1 + attach=''（触发器 −1）。幂等：已墓碑为 noop。
+-spec tombstone_sealed(integer(), binary()) -> {ok, tombstoned | noop | deleted} | {error, term()}.
+tombstone_sealed(Uid, KindId) ->
+    elib_pg:with_tx(fun(Conn) ->
+        %% 墓碑不携带新 key_version：仅取用户级行锁串行化（§7.2），
+        %% 不过门不推进高水位。
+        {ok, _Hw} = user_collect_repo:key_state_lock_tx(Conn, Uid),
+        case user_collect_repo:tombstone_sealed_tx(Conn, Uid, KindId) of
+            {ok, Res} -> {ok, Res}
+        end
+    end).
 
 %% ===================================================================
 %% Internal Function Definitions

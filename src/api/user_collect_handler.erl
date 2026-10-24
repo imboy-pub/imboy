@@ -13,6 +13,7 @@
 -include_lib("eunit/include/eunit.hrl").
 
 -include("log.hrl").
+-include("error_code.hrl").
 
 -include_lib("kernel/include/logger.hrl").
 
@@ -102,14 +103,39 @@ page(Req0, State) ->
 
     % Build column list
     % A-05：info 取原始列，解密在应用层做（历史实现把主密钥内联进 SQL 列表达式）
-    Column = <<"kind, kind_id, source, created_at, updated_at, tag, info">>,
+    % 迁移 227：sealed 行（key_version 非空）info 为客户端密文 base64，逐行
+    % 分流——legacy 行走原解密+JSON 解码链，sealed 行 info 原样返回。
+    Column =
+        <<"kind, kind_id, source, created_at, updated_at, tag, info, ", "generation, key_version">>,
 
     {ok, Payload} = user_collect_logic:page(Column, WhereMap, Order, Page, Size),
-    % Parse info field JSON string to structured data
-    List = elib_hasher:decode_list_field(maps:get(list, Payload, []), <<"info">>),
-    List2 = elib_response:json_decode_list_field(List, <<"info">>),
+    List0 = maps:get(list, Payload, []),
+    List2 = lists:map(fun decode_collect_info/1, List0),
     Payload2 = maps:put(list, List2, Payload),
     elib_response:success(Req0, Payload2).
+
+%% @doc info 列按行分流解码：legacy 行（key_version NULL）= 服务端持钥
+%% 密文 → 解密 + JSON 解码（A-05 原链）；sealed 行 = 客户端密文 base64，
+%% 原样返回（含 generation/key_version 供客户端同步与 CAS）。
+decode_collect_info(Item) when is_map(Item) ->
+    case maps:get(<<"key_version">>, Item, null) of
+        null ->
+            case elib_hasher:decode_list_field([Item], <<"info">>) of
+                [Legacy | _] ->
+                    case elib_response:json_decode_list_field([Legacy], <<"info">>) of
+                        [Decoded | _] -> Decoded;
+                        [] -> Legacy
+                    end;
+                %% 解码链异常（历史坏行）：原样返回，页面层按空信息渲染
+                %% ——与旧行为（decode_list_field 过滤）等价，不 500。
+                [] ->
+                    Item
+            end;
+        _Kv ->
+            Item
+    end;
+decode_collect_info(Item) ->
+    Item.
 
 %% @doc 添加收藏
 %% 添加新的收藏项
@@ -122,6 +148,24 @@ page(Req0, State) ->
 add(Req0, State) ->
     CurrentUid = auth_ds:current_uid(State),
     PostVals = elib_param:post(Req0),
+    case maps:get(<<"info_sealed">>, PostVals, undefined) of
+        undefined ->
+            add_legacy(Req0, CurrentUid, PostVals);
+        InfoSealed ->
+            % E2EE 收藏 v1（迁移 227 / PLAN 2026-10-24-e2ee-collect §7）
+            Kind = ec_cnv:to_integer(maps:get(<<"kind">>, PostVals, 0)),
+            KindId = maps:get(<<"kind_id">>, PostVals, <<"">>),
+            KeyVersion = ec_cnv:to_integer(maps:get(<<"key_version">>, PostVals, 0)),
+            Hashes = maps:get(<<"attach_file_hash256">>, PostVals, []),
+            collect_v1_response(
+                Req0,
+                user_collect_logic:add_v1(
+                    CurrentUid, Kind, KindId, InfoSealed, KeyVersion, Hashes
+                )
+            )
+    end.
+
+add_legacy(Req0, CurrentUid, PostVals) ->
     % Kind 被收藏的资源种类： 1 文本  2 图片  3 语音  4 视频  5 文件  6 位置消息  7 个人名片
     Kind = maps:get(<<"kind">>, PostVals, <<"">>),
     KindId = maps:get(<<"kind_id">>, PostVals, <<"">>),
@@ -131,9 +175,18 @@ add(Req0, State) ->
     case user_collect_logic:add(CurrentUid, Kind, KindId, Info, Source, Remark) of
         {ok, _Msg} ->
             elib_response:success(Req0);
+        {error, Code} when is_integer(Code) ->
+            elib_response:error(Req0, imboy_error:error_msg(Code), Code);
         {error, Msg} ->
             elib_response:error(Req0, Msg)
     end.
+
+%% v1 统一响应：{ok, Payload} 成功；{error, Code} 带错误码（客户端据此走
+%% 升级提示/密钥同步/冲突重读路径）。
+collect_v1_response(Req0, {ok, Payload}) ->
+    elib_response:success(Req0, Payload);
+collect_v1_response(Req0, {error, Code}) when is_integer(Code) ->
+    elib_response:error(Req0, imboy_error:error_msg(Code), Code).
 
 %% @doc 删除收藏
 %% 删除指定的收藏项
@@ -164,8 +217,36 @@ change(Req0, State) ->
     PostVals = elib_param:post(Req0),
     Action = maps:get(<<"action">>, PostVals, <<>>),
     KindId = maps:get(<<"kind_id">>, PostVals, <<>>),
-    user_collect_logic:change(CurrentUid, Action, KindId, PostVals),
-    elib_response:success(Req0, #{}, "success.").
+    case {Action, maps:get(<<"info_sealed">>, PostVals, undefined)} of
+        {<<"update">>, InfoSealed} when is_binary(InfoSealed) ->
+            % E2EE 收藏 v1 编辑（CAS，§7.3）
+            ExpectedGen = ec_cnv:to_integer(maps:get(<<"expected_generation">>, PostVals, 0)),
+            NewGen = ec_cnv:to_integer(maps:get(<<"generation">>, PostVals, 0)),
+            KeyVersion = ec_cnv:to_integer(maps:get(<<"key_version">>, PostVals, 0)),
+            Hashes = maps:get(<<"attach_file_hash256">>, PostVals, []),
+            collect_v1_response(
+                Req0,
+                user_collect_logic:update_v1(
+                    CurrentUid,
+                    KindId,
+                    ExpectedGen,
+                    NewGen,
+                    InfoSealed,
+                    KeyVersion,
+                    Hashes
+                )
+            );
+        _ ->
+            change_legacy(Req0, CurrentUid, Action, KindId, PostVals)
+    end.
+
+change_legacy(Req0, CurrentUid, Action, KindId, PostVals) ->
+    case user_collect_logic:change(CurrentUid, Action, KindId, PostVals) of
+        ok ->
+            elib_response:success(Req0, #{}, "success.");
+        {error, Code} when is_integer(Code) ->
+            elib_response:error(Req0, imboy_error:error_msg(Code), Code)
+    end.
 
 %% ===================================================================
 %% EUnit tests.

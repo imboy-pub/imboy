@@ -36,6 +36,11 @@
 -type feature() :: atom() | binary() | string().
 
 -spec enabled(feature()) -> boolean().
+%% E2EE 收藏 v1 协议能力（迁移 227 + v1 分支随本版本编译）：
+%% 与 e2ee 域同开即宣告。旧后端 manifest 无此键 → 客户端协商失败拒建
+%% sealed 收藏（A7；PLAN 2026-10-24-e2ee-collect §9）。
+enabled(e2ee_collect) ->
+    enabled(e2ee);
 enabled(Feature) ->
     case normalize_feature_key(Feature) of
         undefined ->
@@ -264,10 +269,10 @@ ensure_enabled(Req, Feature) ->
     end.
 
 %% @doc 全量特性键列表，以 registry 插件 feature_keys 为单一数据源，
-%% 追加 core/e2ee（非插件内置特性）。顺序固定以保证 manifest etag 稳定。
+%% 追加 core/e2ee/e2ee_collect（非插件内置特性）。顺序固定以保证 manifest etag 稳定。
 -spec feature_names() -> [atom()].
 feature_names() ->
-    CoreFixed = [core, e2ee],
+    CoreFixed = [core, e2ee, e2ee_collect],
     PluginKeys = imboy_plugin_registry:all_feature_keys(),
     %% 保持历史顺序：channel/location/moment/channel_*/group_*
     Ordered = [
