@@ -88,6 +88,7 @@ NORMAL(vN) → ROTATING（本地生成 CKv2，即刻停止用 vN seal——旧�
 (d) 服务端 key_version 高水位门已在 §16-F4 类验证中生效（迟到 vN 写入会被服务端拒绝；权威数据源 `user_collect_key_state`，§7.2）。
 未满足 → 无限期保留 vN（保留无害，清除是优化）。任何 vN 行再现（理论仅剩服务端拒绝前的窗口）→ 重跑 REWRAP。
 6.6 **全部旧设备丢失不可恢复矩阵**：无 M2 恢复短语时，全部 key version 的 sealed 收藏永久不可读；尚存一台持最新 CK 设备：其 key version 记录可恢复；更低版本记录依赖 §6.5(b) 的跨设备持久化冗余与已完成的清除门槛。撤销设备保留旧钥属暴露而非数据丢失。
+6.7 **logout / 换号生命周期（2026-10-24 实施补记）**：CK 版本链是账号级秘密，持久键落 C05 秘密清单 `collect_ck_` 前缀（`E2eeSecretInventory` 条目 `collect-keychain`），logout/换号经 `purgeAll` fail-closed 清理；`CollectKeychain` 单例内存副本同步经 `clearMemoryCaches` 丢弃——缺此一步，换号后 `load()` 命中缓存会把前一账号的 CK 交给下一账号（已由 `collect_keychain_purge_test` 固化为回归守卫）。purge 后本设备无 CK，重新登录须经 §6.2 跨设备同步取回，**无本地降级路径**；全部设备均 purge 等价于 §6.6 丢失矩阵。
 
 ## 7. 上传结构 v1 字段表
 
@@ -250,13 +251,13 @@ D1 入密（含 §7.3 客户端化编辑/检索与同步）；D2 留 M2；D3 T3 
 |---|---|---|---|
 | C1 | 加密模块 | `lib/service/e2ee/collect_crypto.dart`（新） | TLV 编解码、HKDF 派生、seal/open、CSPRNG nonce、attach_digest；纯函数 |
 | C1t | 向量测试 | `test/unit_test/service/e2ee/collect_crypto_vectors_test.dart`（新） | §15 全部向量 |
-| C2 | 密钥链 | `lib/service/e2ee/collect_keychain.dart`（新） | CK 版本化存储、§6.5 状态机持久化、写入门槛 |
+| C2 | 密钥链 | `lib/service/e2ee/collect_keychain.dart`（新） | CK 版本化存储、§6.5 状态机持久化、写入门槛；**§6.7 logout/换号接线**：持久键 `collect_ck_` 前缀登记 `E2eeSecretInventory` + `clearCache` 进 `clearMemoryCaches`（守卫：`collect_keychain_purge_test.dart`、`secret_inventory_registry_test.dart` 归类表） |
 | C2t | 状态机测试 | `test/unit_test/service/e2ee/collect_keychain_rotation_test.dart`（新） | 中断恢复/掉队行/清除四前置 |
 | C3 | 密钥同步 | `lib/service/e2ee/collect_key_sync.dart`（新） | §6.2 入组协议（enroll/批准/发送前重查/ACK/重试）、自发通道承载 |
 | C4 | 收藏 API v1 | `lib/store/api/user_collect_api.dart`（改） | 能力协商读取；v1 add（含墓碑复活路径：复用原行 CAS，不 INSERT）/update(CAS)/remove(墓碑) |
 | C5 | 收藏 Provider | `lib/page/mine/user_collect/user_collect_provider.dart`（改）+ `lib/service/e2ee/collect_sealed_service.dart` | sealed 解析+本地优先读（decryptModels，失败占位）、D1 编辑流（remark 全量委托 service：sealed 走 v1 CAS/legacy 走原接口）、同步检测=仅看 generation 变化（needsResync 已实现并测试；provider 增量刷新接线留真机联调段，当前 onRefresh 全量路径已覆盖同步语义）。**实施注记（2026-10-24）：provider 受 800 行 only-shrink 门禁（基线 1366），逻辑全部外移 service，净行数不增** |
 | C6 | 详情页转发修复 | `lib/page/mine/user_collect/user_collect_detail_page.dart`（改） | 保留原 id/会话/发送者作源绑定，目标 id 入 SendToPage 后生成 |
-| C7 | 本地库 | `lib/store/repository/user_collect_repo_sqlite.dart`（改） | generation/密文行 upsert、解密缓存 |
+| C7 | 本地库 | `lib/store/repository/user_collect_repo_sqlite.dart`（改）+ `lib/service/migrations/upgrade_edges_v34.dart` / `downgrade_edges_all.dart` | generation/密文行 upsert、解密缓存；本地 v34 迁移 ADD COLUMN ×3。**纪律（2026-10-24 纠偏）**：`kBaselineSchemaSql` 是冻结的 v16 基线（`_onCreate` 应用后再逐级升级），新列**只**经 v34 upgrade 块进入，不得写进 baseline（否则 v16 schema 金样漂移；且 v17–24 的 user_collect 重建块会使 baseline 注入列失效）；downgrade 块头须为裸 `-- VERSION: 34`（inventory 解析器 `int.tryParse`，带后缀即静默丢块） |
 | C8 | 集成测试 | `test/.../collect_e2ee_integration_test.dart`（新） | A4/A5 场景自动化可自动部分 |
 
 ### 后端 imboy（fix_leeyi 分支）
