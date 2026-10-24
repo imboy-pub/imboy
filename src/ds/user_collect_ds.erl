@@ -78,9 +78,8 @@ tombstone_sealed(Uid, KindId) ->
         %% 墓碑不携带新 key_version：仅取用户级行锁串行化（§7.2），
         %% 不过门不推进高水位。
         {ok, _Hw} = user_collect_repo:key_state_lock_tx(Conn, Uid),
-        case user_collect_repo:tombstone_sealed_tx(Conn, Uid, KindId) of
-            {ok, Res} -> {ok, Res}
-        end
+        {ok, Res} = user_collect_repo:tombstone_sealed_tx(Conn, Uid, KindId),
+        {ok, Res}
     end).
 
 %% ===================================================================

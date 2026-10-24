@@ -96,18 +96,16 @@ find_any_by_uid_kind_id(Uid, KindId) ->
 -spec find_any_by_uid_kind_id_tx(pid() | undefined, integer(), binary()) ->
     not_found | {ok, map()}.
 find_any_by_uid_kind_id_tx(undefined, Uid, KindId) ->
-    Sql = find_any_sql(),
-    case elib_pg:query(Sql, [Uid, KindId]) of
-        {ok, [Row | _]} -> {ok, Row};
-        {ok, []} -> not_found;
-        {error, Reason} -> erlang:error({collect_find_failed, Reason})
-    end;
+    handle_find_any(elib_pg:query(find_any_sql(), [Uid, KindId]));
 find_any_by_uid_kind_id_tx(Conn, Uid, KindId) when is_pid(Conn) ->
-    case elib_pg:query(Conn, find_any_sql(), [Uid, KindId]) of
-        {ok, [Row | _]} -> {ok, Row};
-        {ok, []} -> not_found;
-        {error, Reason} -> erlang:error({collect_find_failed, Reason})
-    end.
+    handle_find_any(elib_pg:query(Conn, find_any_sql(), [Uid, KindId])).
+
+handle_find_any({ok, [Row | _]}) ->
+    {ok, Row};
+handle_find_any({ok, []}) ->
+    not_found;
+handle_find_any({error, Reason}) ->
+    erlang:error({collect_find_failed, Reason}).
 
 find_any_sql() ->
     <<"SELECT ", ?SEALED_ROW_COLUMNS/binary, " FROM ", (tablename())/binary,
@@ -189,6 +187,11 @@ insert_sealed_tx(Conn, Uid, Kind, KindId, InfoSealed, KeyVersion, AttachHashes) 
         {error, Reason} -> erlang:error({collect_sealed_insert_failed, Reason})
     end.
 
+%% 单行模型 UPDATE 计数归一：1 行命中为 Hit 标签，0 行幂等 noop，多行兜底 Hit。
+update_count_result({ok, 1}, Hit) -> {ok, Hit};
+update_count_result({ok, 0}, _Hit) -> {ok, noop};
+update_count_result({ok, _}, Hit) -> {ok, Hit}.
+
 %% @doc v1 编辑（CAS）：UPDATE ... WHERE generation = ExpectedGen AND status = 1。
 %% 引用差集由触发器差分完成（§7.4，不调 save 防双计）。
 %% 返回 {ok, updated} | {ok, noop}（0 行，由调用方读行判定幂等/冲突）。
@@ -201,21 +204,9 @@ cas_update_sealed_tx(Conn, Uid, KindId, ExpectedGen, NewGen, InfoSealed, KeyVers
         <<"UPDATE ", (tablename())/binary, " SET generation = $3, info = $4, key_version = $5, ",
             "attach_file_hash256 = $6, updated_at = now() ",
             "WHERE user_id = $1 AND kind_id = $2 AND status = 1 AND generation = $7">>,
-    case
-        elib_pg:execute(Conn, Sql, [
-            Uid,
-            KindId,
-            NewGen,
-            InfoSealed,
-            KeyVersion,
-            elib_cnv:implode(<<",">>, AttachHashes),
-            ExpectedGen
-        ])
-    of
-        {ok, 1} -> {ok, updated};
-        {ok, 0} -> {ok, noop};
-        {ok, _} -> {ok, updated}
-    end.
+    run_sealed_update(
+        Conn, Sql, Uid, KindId, NewGen, InfoSealed, KeyVersion, AttachHashes, ExpectedGen
+    ).
 
 %% @doc v1 复活：复用墓碑行 UPDATE（禁止 INSERT——跨 status 唯一约束，
 %% §7.3）。客户端已重新 seal（seal_generation=墓碑G+1）。触发器对差集 +1。
@@ -228,7 +219,14 @@ revive_sealed_tx(Conn, Uid, KindId, TombstoneGen, InfoSealed, KeyVersion, Attach
             " SET status = 1, generation = $3, info = $4, key_version = $5, ",
             "attach_file_hash256 = $6, updated_at = now() ",
             "WHERE user_id = $1 AND kind_id = $2 AND status = 0 AND generation = $7">>,
-    case
+    run_sealed_update(
+        Conn, Sql, Uid, KindId, NewGen, InfoSealed, KeyVersion, AttachHashes, TombstoneGen
+    ).
+
+%% cas/revive 共用执行体：$1 uid $2 kind_id $3 目标 generation $4 sealed info
+%% $5 key_version $6 attach 哈希串 $7 守护 generation（cas=期望值，revive=墓碑值）。
+run_sealed_update(Conn, Sql, Uid, KindId, NewGen, InfoSealed, KeyVersion, AttachHashes, GuardGen) ->
+    update_count_result(
         elib_pg:execute(Conn, Sql, [
             Uid,
             KindId,
@@ -236,13 +234,10 @@ revive_sealed_tx(Conn, Uid, KindId, TombstoneGen, InfoSealed, KeyVersion, Attach
             InfoSealed,
             KeyVersion,
             elib_cnv:implode(<<",">>, AttachHashes),
-            TombstoneGen
-        ])
-    of
-        {ok, 1} -> {ok, updated};
-        {ok, 0} -> {ok, noop};
-        {ok, _} -> {ok, updated}
-    end.
+            GuardGen
+        ]),
+        updated
+    ).
 
 %% @doc sealed 行墓碑化（§7.3/§9）：status=0 + generation+1 + attach=''
 %% （触发器对 OLD −1 释放引用）；绝不物理 DELETE。幂等：已 status=0 为 noop。
@@ -253,11 +248,7 @@ tombstone_sealed_tx(Conn, Uid, KindId) ->
             " SET status = 0, generation = generation + 1, attach_file_hash256 = '', ",
             "updated_at = now() WHERE user_id = $1 AND kind_id = $2 AND status = 1 ",
             "AND key_version IS NOT NULL">>,
-    case elib_pg:execute(Conn, Sql, [Uid, KindId]) of
-        {ok, 1} -> {ok, tombstoned};
-        {ok, 0} -> {ok, noop};
-        {ok, _} -> {ok, tombstoned}
-    end.
+    update_count_result(elib_pg:execute(Conn, Sql, [Uid, KindId]), tombstoned).
 %% ===================================================================
 %% Internal Function Definitions
 %% ===================================================================

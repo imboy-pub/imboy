@@ -373,7 +373,7 @@ OA 后端向 IMBoy 发一个服务器对服务器的请求（员工浏览器和�
 
 ### 9.1 请求
 
-服务器间请求统一采用 HMAC-SHA256。以下占位头不能直接发送，必须按实际方法、路径、原始正文和请求头生成签名；12 行 canonical 与 Python 示例以 [Internal API README §3](../../api/internal/v1/README.md#3-请求签名认证) 为准。Secret 仅保存在 OA 服务端，不发送到请求头或客户端。
+服务器间请求统一采用 HMAC-SHA256。以下占位头不能直接发送，必须按实际方法、路径、原始正文和请求头生成签名；12 行 canonical 与 Python 示例以 [Internal API README §3](https://github.com/imboy-pub/imboy/blob/main/api/internal/v1/README.md#3-请求签名认证) 为准。Secret 仅保存在 OA 服务端，不发送到请求头或客户端。
 
 ```http
 POST /api/internal/v1/oa/sso/exchange

@@ -40,8 +40,13 @@ parse_dialyzer_log() {
     local log_file="$1"
     awk '
     BEGIN { in_analysis = 0; done_count = 0; saw_plt = 0; }
-    # 记录 PLT 构建段，分析段从 "Proceeding with analysis..." 开始
-    /Proceeding with analysis\.\.\./ { in_analysis = 1; next }
+    # 记录 PLT 构建段，分析段从 "Proceeding with analysis..." 开始；
+    # 合并行（Proceeding 与 done in 同行，OTP 28 瞬时分析）直接结束分析段
+    /Proceeding with analysis\.\.\./ {
+        in_analysis = 1
+        if ($0 ~ / done in /) exit
+        next
+    }
     /Creating PLT/ { saw_plt = 1; next }
     # 段终止行：done in / done (…) —— 标记当前段结束
     /^[[:space:]]*done in / || /^done \(/ {
@@ -138,7 +143,9 @@ main() {
     # --update 模式同样拦截：不允许用截断 log 生成基线。
     local last_proceeding last_done_in
     last_proceeding="$(grep -n 'Proceeding with analysis' "$log_file" | tail -1 | cut -d: -f1 || true)"
-    last_done_in="$(grep -nE '^[[:space:]]*done in ' "$log_file" | tail -1 | cut -d: -f1 || true)"
+    # OTP 28 dialyzer 在分析瞬时完成（如空文件集）时把 "Proceeding with analysis..."
+    # 与 "done in" 打在同一行；行中匹配兼容两行/合并行两种输出格式。
+    last_done_in="$(grep -nE '[[:space:]]done in ' "$log_file" | tail -1 | cut -d: -f1 || true)"
     if [[ -z "$last_proceeding" || -z "$last_done_in" || "$last_done_in" -lt "$last_proceeding" ]]; then
         echo "DIALYZER BASELINE GATE: RED —— dialyzer 执行未完成（log 缺 'Proceeding with analysis' 分析段或缺 'done in' 终止行），判定为截断/执行失败，不可与基线比对（与新增告警的 ratchet RED 分离）。" >&2
         result_error "$log_file"
@@ -147,8 +154,8 @@ main() {
 
     # Fail closed on changed warning headers / multiple analyses, not an empty ratchet.
     if ! awk '
-      /Proceeding with analysis\.\.\./ { starts++; active=1; next }
-      active && /^[[:space:]]*done in / { active=0; next }
+      /Proceeding with analysis\.\.\./ { starts++; active=1; if ($0 ~ /done in /) active=0; next }
+      active && /done in / { active=0; next }
       !active || /^[[:space:]]*$/ { next }
       /^[A-Za-z0-9_.\/-]+\.erl:[0-9]+(:[0-9]+)?:[[:space:]]*[^[:space:]]/ { context=1; next }
       /^Unknown (functions|types):$/ { context=1; next }

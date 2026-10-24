@@ -14,7 +14,7 @@
 Bearer 头，缺少该头时才读取 query `token`。`Sec-WebSocket-Protocol` 必须提供支持的
 编码名（`imboy.v2` / `imboy-protobuf` / `imboy-json` / `text`），不能在此传 JWT。
 过期 token 返回 HTTP 401；缺少凭证返回 412。详细握手响应见
-[OpenAPI](../../api/paths/api/v1/ws/connect.yaml)。
+[OpenAPI](https://github.com/imboy-pub/imboy/blob/main/api/paths/api/v1/ws/connect.yaml)。
 The endpoint requires a valid access JWT and a supported encoding subprotocol.
 
 ## 1. V2 二进制帧格式

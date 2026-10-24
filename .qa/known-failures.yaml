@@ -35,7 +35,10 @@
 #   elvis          实测 308 条（elvis 5.0.4 homebrew, 10397 violations / 308 FAIL 文件）
 # =============================================================================
 schema_version: 1
-updated: "2026-10-23"
+updated: "2026-10-24"
+# 2026-10-24 回册 1 文件：src/repo/user_collect_repo.erl（e2ee-collect 功能带入
+#   no_throw——throw({abort_tx,...}) 为 elib_pg 事务中止协议、无法改 error；
+#   及 cas/revive 对称 UPDATE 的结构性 DRY 一对。find_any 两处重复已真修）。
 # 增量收编（2026-10-21，本地 main 树 fdb3d464 实测，classify.sh --emit-known 机械生成）：
 #   elvis +157 文件（talk-record-v1 / enterprise / micro-community 等 feature 批次带入，
 #   同为风格类；CI 侧 elvis 5.0.3 与本地 5.0.4 若有差异以 CI 重跑为准）并移除 4 个 FIXED
@@ -1068,6 +1071,7 @@ gates:
       - src/repo/talk_record_speaker_repo.erl
       - src/repo/talk_record_summary_repo.erl
       - src/repo/transfer_repo.erl
+      - src/repo/user_collect_repo.erl
       - src/repo/user_deletion_request_repo.erl
       - src/repo/user_repo.erl
       - src/repo/user_tag_relation_repo.erl

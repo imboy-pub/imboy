@@ -10,18 +10,31 @@ run(Info, State, Continue, ContinueBinary) ->
     case delivery_binary(Info) of
         {ok, Bin} ->
             Uid = auth_ds:current_uid(State),
-            Decoded = try jsone:decode(Bin, [{object_format, map}])
-                      catch _:_ -> invalid_json end,
-            Allowed = try micro_community_access_logic:delivery_allowed(
-                Uid, Decoded
-            ) catch _:_ -> false end,
+            Decoded =
+                try
+                    jsone:decode(Bin, [{object_format, map}])
+                catch
+                    _:DecodeErr ->
+                        _ = ?WARN_LOG({delivery_decode_failed, DecodeErr}),
+                        invalid_json
+                end,
+            Allowed =
+                try
+                    micro_community_access_logic:delivery_allowed(Uid, Decoded)
+                catch
+                    _:AllowErr ->
+                        _ = ?WARN_LOG({delivery_allowed_check_failed, Uid, AllowErr}),
+                        false
+                end,
             case Allowed of
-                true -> ContinueBinary(Info, State, Decoded);
+                true ->
+                    ContinueBinary(Info, State, Decoded);
                 false ->
                     cleanup_denied_delivery(Info),
                     {ok, State, hibernate}
             end;
-        none -> run(Info, State, Continue)
+        none ->
+            run(Info, State, Continue)
     end.
 
 delivery_binary({reply, Bin}) when is_binary(Bin) -> {ok, Bin};

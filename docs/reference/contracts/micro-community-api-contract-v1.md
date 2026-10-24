@@ -2,7 +2,7 @@
 
 本文件描述当前隔离候选源码的接口，不代表 PostgreSQL、管理后台真实浏览器或 Android 验收通过。路由真源为 `src/imboy_router.erl`，Human 与平台管理员身份必须分离。 / This documents the current source candidate, not a live database, browser or Android qualification. The router is authoritative; Human and platform administrator identities remain distinct.
 
-OpenAPI 编辑真源：[Human](../../../api/openapi-api.yaml)、[Admin](../../../api/openapi-adm.yaml)。本次不修改已有 `/channel/:channel_id/messages` 游标接口，也不更新聚合文件或计划哈希。 / These are the editable OpenAPI sources. Existing message cursors, the aggregate document and plan hash are unchanged.
+OpenAPI 编辑真源：[Human](https://github.com/imboy-pub/imboy/blob/main/api/openapi-api.yaml)、[Admin](https://github.com/imboy-pub/imboy/blob/main/api/openapi-adm.yaml)。本次不修改已有 `/channel/:channel_id/messages` 游标接口，也不更新聚合文件或计划哈希。 / These are the editable OpenAPI sources. Existing message cursors, the aggregate document and plan hash are unchanged.
 
 ## 路由 / Routes
 

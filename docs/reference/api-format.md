@@ -1,6 +1,6 @@
 # API 格式规范 / API formats
 
-本文说明当前公共传输规则。机器契约入口为 [`api/README.md`](../../api/README.md)；
+本文说明当前公共传输规则。机器契约入口为 [`api/README.md`](https://github.com/imboy-pub/imboy/blob/main/api/README.md)；
 具体参数、类型和例外以对应端点及最终响应实现为准。
 This guide describes current shared wire conventions; endpoint contracts define exceptions.
 
@@ -13,11 +13,11 @@ This guide describes current shared wire conventions; endpoint contracts define 
 | 企业集成 | `/api/internal/v1/*` | HMAC-SHA256 四头联合认证 | 通常为裸成功对象及稳定 error 对象 |
 
 HTTP 页面、下载／导出流、受控上传 receipt、握手错误及 OA 登录票据等存在专用格式。
-详见 [Internal 集成说明](../../api/internal/v1/README.md) 和各受众 OpenAPI。
+详见 [Internal 集成说明](https://github.com/imboy-pub/imboy/blob/main/api/internal/v1/README.md) 和各受众 OpenAPI。
 
 ## 业务响应信封 / Business envelope
 
-[`elib_response.erl`](../../src/lib/elib_response.erl) 生成的标准 JSON：
+[`elib_response.erl`](https://github.com/imboy-pub/imboy/blob/main/src/lib/elib_response.erl) 生成的标准 JSON：
 
 ```json
 {
@@ -40,7 +40,7 @@ HTTP 页面、下载／导出流、受控上传 receipt、握手错误及 OA 登
 调用方应先处理 HTTP／网络状态，再检查信封 `code`；不能把 HTTP 200 等同于业务成功。
 Check transport status and the business code separately. This envelope does not apply to every HTTP response.
 
-业务错误码见 [`error_code.hrl`](../../include/error_code.hrl) 和
+业务错误码见 [`error_code.hrl`](https://github.com/imboy-pub/imboy/blob/main/include/error_code.hrl) 和
 [错误码说明](error-codes.md)。Internal 的字符串错误码是另一套模型。
 
 ## ID 与时间 / IDs and time
@@ -80,7 +80,7 @@ Offset 响应常包含 `list/page/size/total/total_page`，cursor 响应常包�
 ## WebSocket 信封 / WebSocket envelope
 
 握手、协议选择和帧格式见 [WebSocket 契约](ws-protocol-contract.md)；
-[AsyncAPI](../../api/asyncapi.yaml) 从客户端视角描述 send／receive。
+[AsyncAPI](https://github.com/imboy-pub/imboy/blob/main/api/asyncapi.yaml) 从客户端视角描述 send／receive。
 JSON 业务信封使用大写 `C2C/C2G/C2S/S2C`，内容类型 `msg_type` 和
 动作 `action` 位于顶层，业务载荷放在 `payload`。例如：
 
@@ -96,4 +96,4 @@ JSON 业务信封使用大写 `C2C/C2G/C2S/S2C`，内容类型 `msg_type` 和
 ```
 
 示例 ID 为合成值。E2EE 载荷不可套用明文 payload；JSON 与 Protobuf 的类型及字段能力
-存在差异，按 [`imboy_codec.erl`](../../src/lib/imboy_codec.erl) 和具体协议定义处理。
+存在差异，按 [`imboy_codec.erl`](https://github.com/imboy-pub/imboy/blob/main/src/lib/imboy_codec.erl) 和具体协议定义处理。

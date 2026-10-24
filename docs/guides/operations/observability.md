@@ -225,5 +225,5 @@ curl -fsS https://$API_DOMAIN/metrics/online
 - [Sentry Vue](https://docs.sentry.io/platforms/javascript/guides/vue/)
 - [Erlang observer_cli](https://github.com/zhongwencool/observer_cli)
 - [PostgreSQL Monitoring](https://www.postgresql.org/docs/current/monitoring.html)
-- [CHANGELOG.md](../../../CHANGELOG.md — 版本历史
-- [SECURITY.md](../../../SECURITY.md — 安全上报渠道
+- [CHANGELOG.md](https://github.com/imboy-pub/imboy/blob/main/CHANGELOG.md) — 版本历史
+- [SECURITY.md](https://github.com/imboy-pub/imboy/blob/main/SECURITY.md) — 安全上报渠道

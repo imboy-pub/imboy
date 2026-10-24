@@ -189,7 +189,14 @@ jobs:
           key: ${{ runner.os }}-otp28-dialyzer-${{ hashFiles('Makefile', 'include/deps.mk') }}
 
       - name: Run Dialyzer + baseline gate
-        run: IMBOYENV=local make dialyze-check
+        run: |
+          # 缓存恢复的 .erlang.mk 携带 app-built 标记会让 make app 跳过编译，
+          # 而 ebin/ 不在缓存路径里（beam-cache 槽位交换已禁用，防 stale beam）
+          # → ebin 空 → dialyzer 空文件集 0.48s「passed successfully」假绿
+          # （2026-10-24 实证：0 告警 + 合并行输出）。删标记强制重编 src beams
+          # （deps 走缓存），与 eunit-local A1c 三连删同款纵深防御。
+          rm -f .erlang.mk/imboy .erlang.mk/imboy.test
+          IMBOYENV=local make dialyze-check
 
       - name: Summarize Dialyzer baseline result
         if: always()
@@ -317,22 +324,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     needs: [compile]
-    # 与 moment-eunit 同因：WITH_MECKS 无条件 boot app（include/eunit_setup.hrl:234），
-    # CI 必须提供 PG（vanilla 18 够用，migrate 关闭，测试体全 mock）。
-    services:
-      postgres:
-        image: postgres:18
-        env:
-          POSTGRES_USER: imboy_user
-          POSTGRES_PASSWORD: abc54321
-          POSTGRES_DB: imboy_v1
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U imboy_user"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 20
+    # WITH_MECKS 无条件 boot app（include/eunit_setup.hrl:234）需要 PG；且套件含
+    # TEST_WITH_DB 真库负例（group_e2ee_logic_tests c08 等直接写 public."group"），
+    # vanilla PG 无 schema 必红（2026-10-24 实证：505 passed / 1 failed 42P01）。
+    # 与 nightly full-eunit 同口径：docker/pg18_Dockerfile 扩展镜像 + drill_migrate
+    # 到 head + 直连 4323（config/sys.config.example 默认口径，零 env 覆盖）。
 
     steps:
       - name: Checkout
@@ -362,22 +358,59 @@ jobs:
       - name: Compile
         run: IMBOYENV=local make test-build
 
+      - name: Build PG image from docker/pg18_Dockerfile (no registry push)
+        # 与 nightly / pg-behavior-harnesses 同镜像同 scope：gha 缓存命中时秒级。
+        run: |
+          docker buildx build             --file docker/pg18_Dockerfile             --tag imboy-pg18:ci             --load             --cache-from type=gha,scope=pg18             --cache-to type=gha,scope=pg18,mode=max             .
+
+      - name: Start scratch PG on 127.0.0.1:4323 (imboy_v1)
+        # 端口/库/账号与 config/sys.config.example 的 pg_conf 逐字一致，
+        # config/sys 口径零改动即连；scratch 容器随 runner 销毁。
+        run: |
+          set -euo pipefail
+          docker run -d --name imboy_pg_eunit             -e POSTGRES_USER=imboy_user             -e POSTGRES_PASSWORD=abc54321             -e POSTGRES_DB=imboy_v1             -p 4323:5432 imboy-pg18:ci
+          for i in $(seq 1 60); do
+            if docker exec imboy_pg_eunit pg_isready -U imboy_user -d imboy_v1 >/dev/null 2>&1; then
+              echo "PG ready after ${i}s"; exit 0
+            fi
+            sleep 1
+          done
+          echo "::error::PG 未在 60s 内就绪"; docker logs imboy_pg_eunit; exit 1
+
+      - name: Apply extensions and migrations to head
+        # W1-A01 教训：迁移文件不含 CREATE EXTENSION，扩展必须先铺（foundation
+        # v1 依赖 timescaledb/postgis/pg_jieba/pgcrypto）；schema 未到 head 时
+        # imboy_app:start 的 imboy_migrate 会 {out_of_order,...} 使 app 起不来。
+        env:
+          PGHOST: 127.0.0.1
+          PGPORT: "4323"
+          PGUSER: imboy_user
+          PGPASSWORD: abc54321
+          PGDATABASE: imboy_v1
+        run: |
+          set -euo pipefail
+          for ext in timescaledb postgis pg_jieba pgcrypto pg_trgm vector citext \
+                     btree_gin btree_gist '"uuid-ossp"' hstore unaccent; do
+            eval "docker exec imboy_pg_eunit psql -U imboy_user -d imboy_v1 -c \"CREATE EXTENSION IF NOT EXISTS $ext;\""
+          done
+          ./scripts/drill_migrate.escript up
+
       - name: Install ripgrep (check_module_boundaries.sh / check_feature_architecture.sh 依赖)
         run: |
           sudo apt-get update -qq && sudo apt-get install -y -qq ripgrep
 
       - name: Run E2EE verify suite
         env:
-          # WITH_MECKS 真 boot app：连接池指向 service PG；关自动迁移
-          IMBOY_PG_HOST: "127.0.0.1"
-          IMBOY_PG_PORT: "5432"
-          IMBOY_PG_USERNAME: "imboy_user"
-          IMBOY_PG_PASSWORD: "abc54321"
-          IMBOY_PG_DATABASE: "imboy_v1"
+          # 连接走 config/sys 默认 4323（上面 scratch PG）；schema 已到 head，
+          # 关自动迁移避免 boot 期重复迁移。
           IMBOY_AUTO_MIGRATE: "false"
         run: |
           set -o pipefail
           make e2ee-verify 2>&1 | tee e2ee-verify.log
+
+      - name: Dump PG logs on failure
+        if: failure()
+        run: docker logs imboy_pg_eunit || true
 
       - name: Guard against cancelled tests (critical no-skip)
         run: |

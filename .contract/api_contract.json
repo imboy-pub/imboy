@@ -31,6 +31,7 @@
     "/api/v1/passport/quick_login",
     "/api/v1/passport/signup",
     "/api/v1/refreshtoken",
+    "/api/v1/talk-records/client-audio-source",
     "/api/v1/test/req_get",
     "/api/v1/test/req_post",
     "/api/v1/user/show",
@@ -4793,9 +4794,57 @@
         "static": false
       },
       {
+        "action": "prepare",
+        "handler": "talk_record_provider_handler",
+        "path": "/api/v1/talk-records/:id/jobs/:job_id/client-executions/:run_id/provider-tasks",
+        "static": false
+      },
+      {
+        "action": "complete",
+        "handler": "talk_record_provider_handler",
+        "path": "/api/v1/talk-records/:id/jobs/:job_id/client-executions/:run_id/provider-tasks/:task_id/complete",
+        "static": false
+      },
+      {
+        "action": "query_intent",
+        "handler": "talk_record_provider_handler",
+        "path": "/api/v1/talk-records/:id/jobs/:job_id/client-executions/:run_id/provider-tasks/:task_id/query-intents",
+        "static": false
+      },
+      {
+        "action": "query_receipt",
+        "handler": "talk_record_provider_handler",
+        "path": "/api/v1/talk-records/:id/jobs/:job_id/client-executions/:run_id/provider-tasks/:task_id/query-receipts",
+        "static": false
+      },
+      {
+        "action": "submission_receipt",
+        "handler": "talk_record_provider_handler",
+        "path": "/api/v1/talk-records/:id/jobs/:job_id/client-executions/:run_id/provider-tasks/:task_id/submission-receipts",
+        "static": false
+      },
+      {
+        "action": "submit_intent",
+        "handler": "talk_record_provider_handler",
+        "path": "/api/v1/talk-records/:id/jobs/:job_id/client-executions/:run_id/provider-tasks/:task_id/submit-intents",
+        "static": false
+      },
+      {
         "action": "settle",
         "handler": "talk_record_client_handler",
         "path": "/api/v1/talk-records/:id/jobs/:job_id/client-executions/:run_id/settle",
+        "static": false
+      },
+      {
+        "action": "latest",
+        "handler": "talk_record_provider_handler",
+        "path": "/api/v1/talk-records/:id/jobs/:job_id/client-executions/latest",
+        "static": false
+      },
+      {
+        "action": "recover_unprepared",
+        "handler": "talk_record_provider_handler",
+        "path": "/api/v1/talk-records/:id/jobs/:job_id/client-executions/recover-unprepared",
         "static": false
       },
       {
@@ -4844,6 +4893,36 @@
         "action": "processing_requests",
         "handler": "talk_record_handler",
         "path": "/api/v1/talk-records/:id/processing-requests",
+        "static": false
+      },
+      {
+        "action": "get",
+        "handler": "talk_record_provider_handler",
+        "path": "/api/v1/talk-records/:id/provider-tasks/:task_id",
+        "static": false
+      },
+      {
+        "action": "cancel",
+        "handler": "talk_record_provider_handler",
+        "path": "/api/v1/talk-records/:id/provider-tasks/:task_id/cancel",
+        "static": false
+      },
+      {
+        "action": "query_execution",
+        "handler": "talk_record_provider_handler",
+        "path": "/api/v1/talk-records/:id/provider-tasks/:task_id/query-executions",
+        "static": false
+      },
+      {
+        "action": "reconcile_receipt",
+        "handler": "talk_record_provider_handler",
+        "path": "/api/v1/talk-records/:id/provider-tasks/:task_id/reconcile-receipt",
+        "static": false
+      },
+      {
+        "action": "resubmission",
+        "handler": "talk_record_provider_handler",
+        "path": "/api/v1/talk-records/:id/provider-tasks/:task_id/resubmissions",
         "static": false
       },
       {
@@ -4910,6 +4989,12 @@
         "action": "capabilities",
         "handler": "talk_record_handler",
         "path": "/api/v1/talk-records/capabilities",
+        "static": false
+      },
+      {
+        "action": null,
+        "handler": "talk_record_client_audio_handler",
+        "path": "/api/v1/talk-records/client-audio-source",
         "static": false
       },
       {
@@ -5577,7 +5662,7 @@
     }
   },
   "error_code_summary": {
-    "defines": 161,
+    "defines": 167,
     "distinct_codes": [
       0,
       1,
@@ -5712,7 +5797,13 @@
       5402,
       5403,
       5460,
-      5461
+      5461,
+      5501,
+      5502,
+      5503,
+      5504,
+      5505,
+      5506
     ],
     "note": "flutter 全量契约由 C1 imboyapp/scripts/generate_error_code.dart --check 承担",
     "segments": {
@@ -5724,6 +5815,7 @@
       "5200": 6,
       "5300": 7,
       "5400": 5,
+      "5500": 6,
       "700": 2,
       "900": 43
     },
