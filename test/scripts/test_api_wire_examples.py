@@ -27,6 +27,39 @@ def validator(path, schema=None):
 
 
 class WireExamplesTest(unittest.TestCase):
+    def test_client_summary_matches_generated_and_not_generated_responses(self):
+        path = API / "paths/api/v1/talk-records/summary_item.yaml"
+        schema = yaml.safe_load(path.read_text())["get"]["responses"]["200"]["content"]["application/json"]["schema"]
+        check = validator(path, schema)
+        envelope = {"code": 0, "msg": "success", "sv_ts": 1792713600000}
+        generated = {"id": 101, "status": "draft", "overview": "summary", "decisions": [],
+                     "actions": [], "source_transcript_version": 1, "source_content_revision": 1,
+                     "model_version": None, "confirmed_by": None, "revision": 1,
+                     "etag": "summary:1", "created_at": 1792713600000, "updated_at": None}
+        missing = {"status": "not_generated", "summary_status": "none", "summary": None}
+        for payload in [generated, missing]:
+            self.assertTrue(check.is_valid({**envelope, "payload": payload}))
+        for key in generated:
+            with self.subTest(missing_generated_field=key):
+                payload = {k: v for k, v in generated.items() if k != key}
+                self.assertFalse(check.is_valid({**envelope, "payload": payload}))
+        for payload in [{}, {"status": "not_generated"}, {**missing, "summary": {}}]:
+            self.assertFalse(check.is_valid({**envelope, "payload": payload}))
+
+    def test_client_processing_request_dispatch_matches_execution_mode(self):
+        path = API / "paths/api/v1/talk-records/processing_requests.yaml"
+        schema = yaml.safe_load(path.read_text())["post"]["requestBody"]["content"]["application/json"]["schema"]
+        check = validator(path, schema)
+        legacy = {"mode": "transcribe", "processing_consent": {
+            "policy_version": "v1", "processor_config_version": "v1"}}
+        self.assertTrue(check.is_valid(legacy))
+        for execution_mode in [None, "server_managed", "unknown", "client_byok"]:
+            self.assertFalse(check.is_valid({**legacy, "execution_mode": execution_mode}))
+        pins = {"execution_mode": "client_byok", "provider": "minimax", "model": "asr-1.0",
+                "policy_version": "v1", "config_version": "a" * 64}
+        client = {"mode": "transcribe", **pins, "processing_consent": {**pins, "confirmed": True}}
+        self.assertTrue(check.is_valid(client))
+
     def test_business_error_is_distinct_from_success(self):
         check = validator(API / "components/schemas/BusinessErrorEnvelope.yaml")
         response = {"code": 403, "msg": "forbidden", "sv_ts": 1792713600000, "payload": {}}

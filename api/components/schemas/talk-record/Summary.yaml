@@ -1,11 +1,20 @@
 type: object
+required:
+- id
+- status
+- overview
+- decisions
+- actions
+- source_transcript_version
+- source_content_revision
+- model_version
+- confirmed_by
+- revision
+- etag
+- created_at
+- updated_at
 properties:
   id:
-    type: integer
-    format: int64
-    minimum: 1
-    maximum: 9223372036854775807
-  record_id:
     type: integer
     format: int64
     minimum: 1
@@ -33,6 +42,22 @@ properties:
     format: int64
     minimum: 1
     maximum: 9223372036854775807
+  model_version:
+    type: [string, 'null']
+  confirmed_by:
+    type: [integer, 'null']
+    format: int64
+    minimum: 1
+    maximum: 9223372036854775807
+  etag:
+    type: string
+    description: 摘要版本令牌，如 summary:1；HTTP ETag 头另带双引号。
+  created_at:
+    type: integer
+    description: 经公共响应序列化后的 Unix 毫秒。
+  updated_at:
+    type: [integer, 'null']
+    description: 经公共响应序列化后的 Unix 毫秒；未设置为 null。
   decisions:
     type: array
     items:

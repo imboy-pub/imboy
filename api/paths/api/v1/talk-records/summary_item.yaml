@@ -32,6 +32,7 @@ get:
                     oneOf:
                     - $ref: ../../../../components/schemas/talk-record/Summary.yaml
                     - type: object
+                      required: [status, summary_status, summary]
                       properties:
                         status:
                           const: not_generated

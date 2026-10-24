@@ -3,6 +3,7 @@ required:
 - mode
 - processing_consent
 properties:
+  execution_mode: false
   mode:
     type: string
     enum:
@@ -10,3 +11,4 @@ properties:
     - summarize
   processing_consent:
     $ref: Consent.yaml
+description: 服务端处理请求必须省略 execution_mode；显式 null 或其他值不等同于省略。client_byok 使用独立请求契约。
