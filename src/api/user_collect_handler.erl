@@ -106,7 +106,8 @@ page(Req0, State) ->
     % 迁移 227：sealed 行（key_version 非空）info 为客户端密文 base64，逐行
     % 分流——legacy 行走原解密+JSON 解码链，sealed 行 info 原样返回。
     Column =
-        <<"kind, kind_id, source, created_at, updated_at, tag, info, ", "generation, key_version">>,
+        <<"kind, kind_id, source, created_at, updated_at, tag, info, ",
+            "generation, key_version, attach_file_hash256">>,
 
     {ok, Payload} = user_collect_logic:page(Column, WhereMap, Order, Page, Size),
     List0 = maps:get(list, Payload, []),

@@ -254,7 +254,7 @@ D1 入密（含 §7.3 客户端化编辑/检索与同步）；D2 留 M2；D3 T3 
 | C2t | 状态机测试 | `test/unit_test/service/e2ee/collect_keychain_rotation_test.dart`（新） | 中断恢复/掉队行/清除四前置 |
 | C3 | 密钥同步 | `lib/service/e2ee/collect_key_sync.dart`（新） | §6.2 入组协议（enroll/批准/发送前重查/ACK/重试）、自发通道承载 |
 | C4 | 收藏 API v1 | `lib/store/api/user_collect_api.dart`（改） | 能力协商读取；v1 add（含墓碑复活路径：复用原行 CAS，不 INSERT）/update(CAS)/remove(墓碑) |
-| C5 | 收藏 Provider | `lib/page/mine/user_collect/user_collect_provider.dart`（改） | sealed 解析+本地优先读、D1 编辑流（generation 修订号）、**同步检测=仅看 generation 变化（重包裹亦推进，key_version 变化不漏检）** |
+| C5 | 收藏 Provider | `lib/page/mine/user_collect/user_collect_provider.dart`（改）+ `lib/service/e2ee/collect_sealed_service.dart` | sealed 解析+本地优先读（decryptModels，失败占位）、D1 编辑流（remark 全量委托 service：sealed 走 v1 CAS/legacy 走原接口）、同步检测=仅看 generation 变化（needsResync 已实现并测试；provider 增量刷新接线留真机联调段，当前 onRefresh 全量路径已覆盖同步语义）。**实施注记（2026-10-24）：provider 受 800 行 only-shrink 门禁（基线 1366），逻辑全部外移 service，净行数不增** |
 | C6 | 详情页转发修复 | `lib/page/mine/user_collect/user_collect_detail_page.dart`（改） | 保留原 id/会话/发送者作源绑定，目标 id 入 SendToPage 后生成 |
 | C7 | 本地库 | `lib/store/repository/user_collect_repo_sqlite.dart`（改） | generation/密文行 upsert、解密缓存 |
 | C8 | 集成测试 | `test/.../collect_e2ee_integration_test.dart`（新） | A4/A5 场景自动化可自动部分 |
