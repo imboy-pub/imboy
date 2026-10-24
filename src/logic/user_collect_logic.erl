@@ -689,10 +689,11 @@ collect_image_attaches_multi_test() ->
     },
     {multi, Attaches} = collect_image_attaches(0, Info),
     ?assertEqual(2, length(Attaches)),
-    ?assertEqual(<<"h1">>, maps:get(<<"file_hash256">>, lists:nth(1, Attaches))),
-    ?assertEqual(<<"h2">>, maps:get(<<"file_hash256">>, lists:nth(2, Attaches))),
-    ?assertEqual(<<"u1/b.jpg">>, maps:get(<<"url">>, lists:nth(2, Attaches))),
-    ?assertEqual(<<"image/jpeg">>, maps:get(<<"mime_type">>, lists:nth(1, Attaches))).
+    [First, Second | _] = Attaches,
+    ?assertEqual(<<"h1">>, maps:get(<<"file_hash256">>, First)),
+    ?assertEqual(<<"h2">>, maps:get(<<"file_hash256">>, Second)),
+    ?assertEqual(<<"u1/b.jpg">>, maps:get(<<"url">>, Second)),
+    ?assertEqual(<<"image/jpeg">>, maps:get(<<"mime_type">>, First)).
 
 %% images 全部无有效哈希 → single（回退单图路径，不产生垃圾行）
 collect_image_attaches_all_invalid_test() ->
