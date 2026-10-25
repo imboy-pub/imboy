@@ -9,7 +9,7 @@
 -export([tablename/0]).
 -export([read/2]).
 -export([read_msg/4]).
--export([write_msg/9]).
+-export([write_msg/9, write_msg/10]).
 -export([delete_msg/1]).
 -export([delete_msg/2]).
 -export([count_by_to_id/1]).
@@ -64,7 +64,34 @@ read_msg(Where, Vals, Column, Limit) ->
 ) -> {ok, any()} | {error, any()}.
 write_msg(CreatedAt, Id, Payload, FromId, ToId, ServerTS, Action, MsgType, E2EE) ->
     %% from_id 和 to_id 是 bigint 类型，需要传入 integer
-    GenId = elib_tsid:generate(msg_s2c),
+    write_msg(
+        elib_tsid:generate(msg_s2c),
+        CreatedAt,
+        Id,
+        Payload,
+        FromId,
+        ToId,
+        ServerTS,
+        Action,
+        MsgType,
+        E2EE
+    ).
+
+%% staging 的固定主键和 created_at 让 worker 重试幂等，不生成重复通知行。
+-spec write_msg(
+    integer(),
+    binary(),
+    binary(),
+    binary(),
+    integer(),
+    integer(),
+    binary(),
+    binary(),
+    binary(),
+    map() | binary() | null
+) ->
+    {ok, integer()} | {error, term()}.
+write_msg(GenId, CreatedAt, Id, Payload, FromId, ToId, ServerTS, Action, MsgType, E2EE) ->
     Data = #{
         id => GenId,
         payload => Payload,
@@ -91,8 +118,16 @@ write_msg(CreatedAt, Id, Payload, FromId, ToId, ServerTS, Action, MsgType, E2EE)
             end
     },
     {Sql, Params} = elib_pg_sql:insert(tablename(), Data),
-    case elib_pg:query(Sql, Params) of
-        {ok, _Count} -> {ok, GenId};
+    Same =
+        <<" ON CONFLICT (id,created_at) DO UPDATE SET id=EXCLUDED.id WHERE ",
+            "msg_s2c.msg_id=EXCLUDED.msg_id AND msg_s2c.to_id=EXCLUDED.to_id ",
+            "AND msg_s2c.from_id=EXCLUDED.from_id AND msg_s2c.action=EXCLUDED.action ",
+            "AND msg_s2c.payload=EXCLUDED.payload AND msg_s2c.msg_type=EXCLUDED.msg_type ",
+            "AND msg_s2c.e2ee IS NOT DISTINCT FROM EXCLUDED.e2ee ",
+            "AND msg_s2c.server_ts IS NOT DISTINCT FROM EXCLUDED.server_ts RETURNING id">>,
+    case elib_pg:query(<<Sql/binary, Same/binary>>, Params) of
+        {ok, [_]} -> {ok, GenId};
+        {ok, []} -> {error, staging_identity_conflict};
         {error, _} = Err -> Err
     end.
 

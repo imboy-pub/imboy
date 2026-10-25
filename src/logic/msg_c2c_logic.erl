@@ -949,57 +949,75 @@ handle_read_receipt(MsgId, To, ToId, From, _FromId, CurrentUid, Data) ->
                 <<"peer">> => To,
                 <<"read_at">> => ReadAt
             },
-            _ = msg_s2c_ds:send(
-                0, [CurrentUid], <<"message_read_sync">>, <<>>, null, ReadSyncPayload, save
-            ),
-            % 构建已读回执消息（v2.0 格式）；msg_ids 必须回带——
-            % 发送方客户端按 payload.msg_ids 标记 seen
-            ReadPayload = #{
-                <<"read_at">> => ReadAt,
-                <<"msg_ids">> => MsgIds
-            },
+            case
+                msg_s2c_ds:send(
+                    0, [CurrentUid], <<"message_read_sync">>, <<>>, null, ReadSyncPayload, save
+                )
+            of
+                {error, _} ->
+                    {reply, message_ds:assemble_s2c(MsgId, <<"internal_error">>, To)};
+                ok ->
+                    % 构建已读回执消息（v2.0 格式）；msg_ids 必须回带——
+                    % 发送方客户端按 payload.msg_ids 标记 seen
+                    ReadPayload = #{
+                        <<"read_at">> => ReadAt,
+                        <<"msg_ids">> => MsgIds
+                    },
 
-            ReadAckMsg = #{
-                <<"id">> => MsgId,
-                <<"type">> => <<"C2C">>,
-                <<"from">> => From,
-                <<"to">> => To,
-                <<"msg_type">> => <<"custom">>,
-                <<"action">> => <<"message_read_ack">>,
-                <<"payload">> => ReadPayload,
-                <<"server_ts">> => NowMs
-            },
+                    ReadAckMsg = #{
+                        <<"id">> => MsgId,
+                        <<"type">> => <<"C2C">>,
+                        <<"from">> => From,
+                        <<"to">> => To,
+                        <<"msg_type">> => <<"custom">>,
+                        <<"action">> => <<"message_read_ack">>,
+                        <<"payload">> => ReadPayload,
+                        <<"server_ts">> => NowMs
+                    },
 
-            % 构建发送给发送者的已读通知
-            ReadNotifyMsg = #{
-                <<"id">> => MsgId,
-                <<"type">> => <<"C2C">>,
-                % 发送者
-                <<"from">> => From,
-                % 发送给发送者
-                <<"to">> => From,
-                <<"msg_type">> => <<"custom">>,
-                <<"action">> => <<"message_read">>,
-                <<"payload">> => ReadPayload,
-                <<"server_ts">> => NowMs
-            },
+                    % 构建发送给发送者的已读通知
+                    ReadNotifyMsg = #{
+                        <<"id">> => MsgId,
+                        <<"type">> => <<"C2C">>,
+                        % 发送者
+                        <<"from">> => From,
+                        % 发送给发送者
+                        <<"to">> => From,
+                        <<"msg_type">> => <<"custom">>,
+                        <<"action">> => <<"message_read">>,
+                        <<"payload">> => ReadPayload,
+                        <<"server_ts">> => NowMs
+                    },
 
-            % 判断发送者是否在线
-            case user_logic:is_online(ToId) of
-                true ->
-                    % 在线：直接发送已读通知
-                    imboy_message_helper:encode_and_send(ToId, MsgId, ReadNotifyMsg, <<"c2c">>),
-                    {reply, ReadAckMsg};
-                false ->
-                    % 离线：逐条存储离线已读通知
-                    %（原实现只存顶层回执 id；另删除无用的 jsone:encode 死计算）
-                    _ = [
-                        msg_c2c_ds:read_offline_msg(
-                            Id, ToId, CurrentUid, ReadAtRfc, <<"message_read">>
-                        )
-                     || Id <- MsgIds
-                    ],
-                    {reply, ReadAckMsg}
+                    % 判断发送者是否在线
+                    case user_logic:is_online(ToId) of
+                        true ->
+                            % 在线：直接发送已读通知
+                            case
+                                msg_operation_ds:register_read_notice(
+                                    MsgId, CurrentUid, ToId, ReadPayload
+                                )
+                            of
+                                ok ->
+                                    imboy_message_helper:encode_and_send(
+                                        ToId, MsgId, ReadNotifyMsg, <<"c2c">>
+                                    ),
+                                    {reply, ReadAckMsg};
+                                {error, _} ->
+                                    {reply,
+                                        message_ds:assemble_s2c(MsgId, <<"internal_error">>, To)}
+                            end;
+                        false ->
+                            % 离线：逐条存储离线已读通知
+                            %（原实现只存顶层回执 id；另删除无用的 jsone:encode 死计算）
+                            _ = [
+                                msg_c2c_ds:read_offline_msg(
+                                    Id, ToId, CurrentUid, ReadAtRfc, <<"message_read">>
+                                )
+                             || Id <- MsgIds
+                            ],
+                            {reply, ReadAckMsg}
+                    end
             end;
         [Reason | _] ->
             ok = ?ERROR_LOG(

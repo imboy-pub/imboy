@@ -201,6 +201,23 @@ send_save_persists_payload_and_schedules_retry_test_() ->
             {elib_dt, [
                 {'now', 0, fun() -> CreatedAt end}
             ]},
+            {msg_store_ds, [
+                {enqueue, 3, fun(_, _, _) -> ok end},
+                {stage, 10, fun(
+                    <<"s2c">>,
+                    MsgId,
+                    MsgType,
+                    Action,
+                    null,
+                    PayloadJson,
+                    FromId,
+                    ToUid,
+                    CreatedAt,
+                    CreatedAt
+                ) ->
+                    {ok, new}
+                end}
+            ]},
             {msg_s2c_repo, [
                 {'count_by_to_id', 1, fun(ToUid) -> 0 end},
                 {'write_msg', 9, fun(

@@ -31,6 +31,10 @@ send_system_message_success_test_() ->
             {elib_dt, [
                 {'now', 0, fun() -> <<"2024-01-01T00:00:00Z">> end}
             ]},
+            {msg_store_ds, [
+                {stage, 10, fun(_, _, _, _, _, _, _, _, _, _) -> {ok, new} end},
+                {enqueue, 3, fun(_, _, _) -> ok end}
+            ]},
             {msg_s2c_repo, [
                 {'count_by_to_id', 1, fun(_ToUid) -> 0 end},
                 {'write_msg', 9, fun(
@@ -70,6 +74,10 @@ send_with_action_test_() ->
             ]},
             {elib_dt, [
                 {'now', 0, fun() -> <<"2024-01-01T00:00:00Z">> end}
+            ]},
+            {msg_store_ds, [
+                {stage, 10, fun(_, _, _, _, _, _, _, _, _, _) -> {ok, new} end},
+                {enqueue, 3, fun(_, _, _) -> ok end}
             ]},
             {msg_s2c_repo, [
                 {'count_by_to_id', 1, fun(_ToUid) -> 0 end},
@@ -114,6 +122,10 @@ send_with_multiple_recipients_test_() ->
             {elib_dt, [
                 {'now', 0, fun() -> <<"2024-01-01T00:00:00Z">> end}
             ]},
+            {msg_store_ds, [
+                {stage, 10, fun(_, _, _, _, _, _, _, _, _, _) -> {ok, new} end},
+                {enqueue, 3, fun(_, _, _) -> ok end}
+            ]},
             {msg_s2c_repo, [
                 {'count_by_to_id', 1, fun(_ToUid) -> 0 end},
                 {'write_msg', 9, fun(
@@ -153,6 +165,10 @@ send_with_empty_body_test_() ->
             ]},
             {elib_dt, [
                 {'now', 0, fun() -> <<"2024-01-01T00:00:00Z">> end}
+            ]},
+            {msg_store_ds, [
+                {stage, 10, fun(_, _, _, _, _, _, _, _, _, _) -> {ok, new} end},
+                {enqueue, 3, fun(_, _, _) -> ok end}
             ]},
             {msg_s2c_repo, [
                 {'count_by_to_id', 1, fun(_ToUid) -> 0 end},

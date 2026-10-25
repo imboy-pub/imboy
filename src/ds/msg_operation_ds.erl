@@ -18,7 +18,11 @@
 -export([ack_c2s_msg/2]).
 -export([ack_c2c_batch/3]).
 -export([ack_s2c_batch/3]).
--export([maybe_clean_delivered/3]).
+-export([maybe_clean_delivered/3, register_read_notice/4]).
+
+-spec register_read_notice(binary(), integer(), integer(), map()) -> ok | {error, term()}.
+register_read_notice(MsgId, FromUid, ToUid, Payload) ->
+    msg_delivery_repo:register_read_notice(MsgId, FromUid, ToUid, Payload).
 
 %% ===================================================================
 %% API functions

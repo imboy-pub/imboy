@@ -8,7 +8,7 @@
 
 -export([write_msg/6]).
 -export([write_msg/8]).
--export([write_msg/9]).
+-export([write_msg/9, write_msg/10]).
 -export([read_msg/2]).
 -export([read_msg/3]).
 -export([read_msg_for_device/4]).
@@ -31,7 +31,7 @@
 %% @param Save 发送模式，save表示先存储再发送，其他表示直接发送
 %% @returns ok 表示操作成功
 -spec send(integer() | binary() | list(), list(), binary(), binary(), map() | null, map(), atom()) ->
-    ok.
+    ok | {error, term()}.
 send(_, [], _, _, _, _, _) ->
     ok;
 send(FromId, [ToUid | Tail], Action, MsgType, E2EE, Payload, Save) ->
@@ -50,22 +50,40 @@ send(FromId, [ToUid | Tail], Action, MsgType, E2EE, Payload, Save) ->
         E2EE
     ),
     EncodedMsg = jsone:encode(Msg, [native_utf8]),
-    _ =
+    Result =
         case Save of
             save ->
                 CreatedAt = elib_dt:now(),
-                % 只存储实际的 payload 数据，而不是整个消息对象
-                % 避免 API 返回时出现 payload 嵌套问题
-                PayloadJson = jsone:encode(Payload, [native_utf8]),
-                _ = write_msg(
-                    CreatedAt, MsgId, PayloadJson, FromId, ToUid, CreatedAt, Action, MsgType, null
-                ),
-                MsLi = [0, 1_000_000, 1_000_000],
-                message_ds:send_next(ToUid, MsgId, EncodedMsg, MsLi);
+                case
+                    msg_store_ds:stage(
+                        <<"s2c">>,
+                        MsgId,
+                        MsgType,
+                        Action,
+                        E2EE,
+                        jsone:encode(Payload, [native_utf8]),
+                        FromId,
+                        ToUid,
+                        CreatedAt,
+                        CreatedAt
+                    )
+                of
+                    {ok, _} ->
+                        ok = msg_store_ds:enqueue(<<"s2c">>, MsgId, #{}),
+                        message_ds:send_next(ToUid, MsgId, EncodedMsg, [0, 1_000_000, 1_000_000]);
+                    {error, _} = Error ->
+                        Error;
+                    error ->
+                        {error, staging_failed}
+                end;
             _ ->
                 imboy_syn:publish(ToUid, EncodedMsg)
         end,
-    send(FromId, Tail, Action, MsgType, E2EE, Payload, Save).
+    case Result of
+        ok -> send(FromId, Tail, Action, MsgType, E2EE, Payload, Save);
+        {ok, _} -> send(FromId, Tail, Action, MsgType, E2EE, Payload, Save);
+        {error, _} = SendError -> SendError
+    end.
 
 %% @doc 存储服务端到客户端的消息
 %%
@@ -100,19 +118,7 @@ write_msg(CreatedAt, Id, Payload, From, To, ServerTS) ->
     Action = maps:get(<<"action">>, PayloadMap, <<>>),
     MsgType = maps:get(<<"msg_type">>, PayloadMap, <<>>),
 
-    % 检查消息存储数量，如果数量大于limit 删除旧数据、插入新数据
-    Count = msg_s2c_repo:count_by_to_id(To),
-    _ =
-        case Count >= ?SAVE_MSG_LIMIT of
-            true ->
-                Limit = Count - ?SAVE_MSG_LIMIT + 1,
-                elib_async:async_retry(fun() ->
-                    ok = msg_s2c_repo:delete_overflow_msg(To, Limit),
-                    ok
-                end);
-            false ->
-                ok
-        end,
+    reserve_message_capacity(To),
     msg_s2c_repo:write_msg(CreatedAt, Id, Payload, From, To, ServerTS, Action, MsgType, null).
 
 %% @doc 存储服务端到客户端的消息（8 参数版本，E2EE 默认为 null）
@@ -181,20 +187,57 @@ write_msg(CreatedAt, Id, Payload, From, To, ServerTS, Action, MsgType, E2EE) whe
         E2EE
     );
 write_msg(CreatedAt, Id, Payload, From, To, ServerTS, Action, MsgType, E2EE) ->
-    % 检查消息存储数量，如果数量大于limit 删除旧数据、插入新数据
-    Count = msg_s2c_repo:count_by_to_id(To),
-    _ =
-        case Count >= ?SAVE_MSG_LIMIT of
-            true ->
-                Limit = Count - ?SAVE_MSG_LIMIT + 1,
-                elib_async:async_retry(fun() ->
-                    ok = msg_s2c_repo:delete_overflow_msg(To, Limit),
-                    ok
-                end);
-            false ->
-                ok
-        end,
+    reserve_message_capacity(To),
     msg_s2c_repo:write_msg(CreatedAt, Id, Payload, From, To, ServerTS, Action, MsgType, E2EE).
+
+%% worker 固定存储主键：重放已有行不再次预留容量，保留原有离线容量策略。
+-spec write_msg(
+    integer(),
+    binary(),
+    binary(),
+    binary(),
+    integer(),
+    integer(),
+    binary(),
+    binary(),
+    binary(),
+    map() | binary() | null
+) ->
+    {ok, integer()} | {error, term()}.
+write_msg(StorageId, CreatedAt, Id, Payload, From, To, ServerTS, Action, MsgType, E2EE) ->
+    case
+        msg_s2c_repo:read_msg(
+            <<"WHERE id=$1 AND created_at=$2">>,
+            [StorageId, CreatedAt],
+            <<"id">>,
+            1
+        )
+    of
+        {ok, Rows} ->
+            case Rows of
+                [] -> reserve_message_capacity(To);
+                [_] -> ok
+            end,
+            msg_s2c_repo:write_msg(
+                StorageId, CreatedAt, Id, Payload, From, To, ServerTS, Action, MsgType, E2EE
+            );
+        {error, _} = Error ->
+            Error
+    end.
+
+reserve_message_capacity(To) ->
+    Count = msg_s2c_repo:count_by_to_id(To),
+    case Count >= ?SAVE_MSG_LIMIT of
+        true ->
+            Limit = Count - ?SAVE_MSG_LIMIT + 1,
+            elib_async:async_retry(fun() ->
+                ok = msg_s2c_repo:delete_overflow_msg(To, Limit),
+                ok
+            end),
+            ok;
+        false ->
+            ok
+    end.
 
 %% @doc 读取服务端到客户端的消息
 %%

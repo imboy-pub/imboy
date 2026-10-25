@@ -598,7 +598,14 @@ process_row_success_is_scoped_to_claimed_type_test_() ->
                 end}
             ]},
             {msg_c2s_ds, [{'write_msg', 2, fun(_, _) -> get(write_result) end}]},
-            {msg_s2c_ds, [{'write_msg', 8, fun(_, _, _, _, _, _, _, _) -> get(write_result) end}]},
+            {msg_s2c_ds, [
+                {'write_msg', 10, fun(_, _, _, _, _, _, _, _, _, _) ->
+                    case get(write_result) of
+                        ok -> {ok, 1};
+                        R -> R
+                    end
+                end}
+            ]},
             {msg_operation_ds, [{'maybe_clean_delivered', 3, fun(_, _, _) -> ok end}]},
             {msg_archive_repo, [{'archive', 1, fun(_) -> ok end}]},
             {elib_pg, [{with_tx, 1, fun(F) -> F(self()) end}]},
@@ -616,6 +623,7 @@ process_row_success_is_scoped_to_claimed_type_test_() ->
                             fun(Type) ->
                                 msg_store_worker:process_row(
                                     c2g_guard_row(#{
+                                        <<"id">> => 1,
                                         <<"type">> => Type,
                                         <<"msg_id">> => MsgId,
                                         <<"to_id">> => 9,

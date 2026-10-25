@@ -26,6 +26,7 @@ c2c_read_with_valid_data_succeeds_test_() ->
             {user_logic, [
                 {'is_online', 1, fun(_Uid) -> true end}
             ]},
+            {msg_operation_ds, [{register_read_notice, 4, fun(_, _, _, _) -> ok end}]},
             {msg_s2c_ds, [
                 {'send', 7, fun(_From, _ToLi, _Action, _MsgType, _E2EE, _Payload, _Save) -> ok end}
             ]},
@@ -119,6 +120,7 @@ c2c_read_with_offline_sender_stores_notification_test_() ->
             {user_logic, [
                 {'is_online', 1, fun(_Uid) -> false end}
             ]},
+            {msg_operation_ds, [{register_read_notice, 4, fun(_, _, _, _) -> ok end}]},
             {msg_s2c_ds, [
                 {'send', 7, fun(_From, _ToLi, _Action, _MsgType, _E2EE, _Payload, _Save) -> ok end}
             ]},
@@ -160,6 +162,7 @@ c2c_read_syncs_to_own_devices_test_() ->
             {user_logic, [
                 {'is_online', 1, fun(_Uid) -> true end}
             ]},
+            {msg_operation_ds, [{register_read_notice, 4, fun(_, _, _, _) -> ok end}]},
             {msg_s2c_ds, [
                 {'send', 7, fun(FromId, ToLi, Action, _MsgType, _E2EE, Payload, Save) ->
                     %% 同步目标 = 阅读者本人；action = message_read_sync；save 保证离线设备可拉
@@ -234,6 +237,7 @@ c2c_read_with_empty_msg_id_test_() ->
             {user_logic, [
                 {'is_online', 1, fun(_Uid) -> true end}
             ]},
+            {msg_operation_ds, [{register_read_notice, 4, fun(_, _, _, _) -> ok end}]},
             {msg_s2c_ds, [
                 {'send', 7, fun(_From, _ToLi, _Action, _MsgType, _E2EE, _Payload, _Save) -> ok end}
             ]},
@@ -301,6 +305,7 @@ c2c_read_with_duplicate_read_is_idempotent_test_() ->
             {user_logic, [
                 {'is_online', 1, fun(_Uid) -> true end}
             ]},
+            {msg_operation_ds, [{register_read_notice, 4, fun(_, _, _, _) -> ok end}]},
             {msg_s2c_ds, [
                 {'send', 7, fun(_From, _ToLi, _Action, _MsgType, _E2EE, _Payload, _Save) -> ok end}
             ]},
@@ -351,6 +356,7 @@ c2c_read_batch_msg_ids_marks_each_and_echoes_test_() ->
             {user_logic, [
                 {'is_online', 1, fun(_Uid) -> true end}
             ]},
+            {msg_operation_ds, [{register_read_notice, 4, fun(_, _, _, _) -> ok end}]},
             {msg_s2c_ds, [
                 {'send', 7, fun(_From, _ToLi, _Action, _MsgType, _E2EE, _Payload, _Save) -> ok end}
             ]},

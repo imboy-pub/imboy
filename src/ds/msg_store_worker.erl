@@ -421,8 +421,25 @@ do_write(s2c, Row) ->
     ServerTs = maps:get(<<"server_ts">>, Row, CreatedAt),
     MsgId = maps:get(<<"msg_id">>, Row),
     Action = maps:get(<<"action">>, Row, <<>>),
-    Res = msg_s2c_ds:write_msg(CreatedAt, MsgId, PayloadBin, FromId, ToId, ServerTs, Action, <<>>),
-    Res;
+    MsgType = maps:get(<<"msg_type">>, Row, <<>>),
+    E2EE = maps:get(<<"e2ee">>, Row, null),
+    case
+        msg_s2c_ds:write_msg(
+            maps:get(<<"id">>, Row),
+            CreatedAt,
+            MsgId,
+            PayloadBin,
+            FromId,
+            ToId,
+            ServerTs,
+            Action,
+            MsgType,
+            E2EE
+        )
+    of
+        {ok, _} -> ok;
+        Other -> Other
+    end;
 do_write(c2s, Row) ->
     PayloadBin = unwrap_staging_payload(maps:get(<<"payload">>, Row)),
     FromId = maps:get(<<"from_id">>, Row),

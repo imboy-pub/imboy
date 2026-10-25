@@ -12,7 +12,7 @@
 -export([mark_acked_batch/4]).
 -export([delete_delivered/4]).
 -export([delete_delivered_batch/4, delete_delivered_batch/5]).
--export([pending_filter/3]).
+-export([pending_filter/3, register_read_notice/4]).
 
 -spec tablename() -> binary().
 tablename() ->
@@ -40,11 +40,58 @@ mark_acked_batch(Kind, MsgIds, ToUid, ToDid) ->
             <<"INSERT INTO ", Tb/binary,
                 " (msg_kind,msg_id,to_uid,to_did) SELECT $1::varchar, ids.msg_id, $2::bigint, $3::varchar ",
                 "FROM unnest($4::varchar[]) ids(msg_id) WHERE NOT EXISTS (SELECT 1 FROM ",
-                Staging/binary, " s WHERE s.type=$1 AND s.msg_id=ids.msg_id AND s.to_id=$2 ",
+                Staging/binary,
+                " s WHERE (s.type=$1 OR ($1='c2c' AND s.type='c2c_notice' AND s.action='message_read')) AND s.msg_id=ids.msg_id AND s.to_id=$2 ",
                 "AND s.processed_at IS NOT NULL AND s.error_msg IS NULL ",
+                "AND NOT EXISTS (SELECT 1 FROM ", Staging/binary,
+                " p WHERE p.type=$1 AND p.msg_id=ids.msg_id AND p.to_id=$2 ",
+                "AND (p.processed_at IS NULL OR p.error_msg IS NOT NULL)) ",
                 "AND NOT EXISTS (SELECT 1 FROM ", Main/binary,
                 " m WHERE m.msg_id=ids.msg_id AND m.to_id=$2)) ON CONFLICT DO NOTHING">>,
         checked(elib_pg:execute_count(Conn, Sql, [Kind, ToUid, ToDid, MsgIds]))
+    end).
+
+%% 在线已读通知不进入时间线；processed_at 仅表示登记已提交，沿用 staging 的 1h GC。
+%% 重放固定 msg_ids；read_at 可因客户端省略后按 now 补齐而变化，不覆盖首次登记。
+-spec register_read_notice(binary(), integer(), integer(), map()) -> ok | {error, term()}.
+register_read_notice(MsgId, FromUid, ToUid, Payload) ->
+    delivery_tx(fun(Conn) ->
+        lock_messages(Conn, <<"c2c">>, [MsgId], ToUid),
+        Tb = msg_store_repo:tablename(),
+        Sql =
+            <<"INSERT INTO ", Tb/binary,
+                " (id,type,msg_id,action,payload,from_id,to_id,processed_at) ",
+                "VALUES($1,'c2c_notice',$2,'message_read',$3,$4,$5,now()) ON CONFLICT DO NOTHING">>,
+        _ = checked(
+            elib_pg:execute(
+                Conn,
+                Sql,
+                [elib_tsid:generate(msg_store), MsgId, jsone:encode(Payload), FromUid, ToUid]
+            )
+        ),
+        case
+            checked(
+                elib_pg:query(
+                    Conn,
+                    <<"SELECT 1 FROM ", Tb/binary,
+                        " WHERE type='c2c_notice' AND msg_id=$1 AND from_id=$2 AND to_id=$3 ",
+                        "AND action='message_read' AND processed_at IS NOT NULL AND error_msg IS NULL ",
+                        "AND payload->'msg_ids'=$4::jsonb">>,
+                    [MsgId, FromUid, ToUid, jsone:encode(maps:get(<<"msg_ids">>, Payload, []))]
+                )
+            )
+        of
+            {ok, [_]} ->
+                delete_delivered_batch(
+                    Conn,
+                    <<"c2c">>,
+                    [MsgId],
+                    ToUid,
+                    application:get_env(imboy, msg_delivery_active_days, 30)
+                );
+            {ok, []} ->
+                throw({rollback, notification_id_conflict})
+        end
     end).
 
 %% @doc 若消息已被该用户全部活跃设备确认，则删除主行并清除标记
@@ -94,7 +141,7 @@ delete_delivered_batch(Conn, Kind, MsgIds, ToUid, ActiveDays) ->
             Staging/binary,
             " s WHERE s.type=$1 AND s.msg_id=a.msg_id AND s.to_id=$2 AND (s.processed_at IS NULL OR s.error_msg IS NOT NULL)) ",
             "AND (a.msg_id=ANY($4::varchar[]) OR EXISTS (SELECT 1 FROM ", Staging/binary,
-            " s WHERE s.type=$1 AND s.msg_id=a.msg_id AND s.to_id=$2 ",
+            " s WHERE (s.type=$1 OR ($1='c2c' AND s.type='c2c_notice' AND s.action='message_read')) AND s.msg_id=a.msg_id AND s.to_id=$2 ",
             "AND s.processed_at IS NOT NULL AND s.error_msg IS NULL))">>,
     _ = checked(elib_pg:execute(Conn, Cleanup, [Kind, ToUid, MsgIds, DeletedIds])),
     ok.

@@ -17,7 +17,10 @@ run() ->
                     ?_test(early_unknown(S)),
                     ?_test(scope(S)),
                     ?_test(concurrent(S)),
-                    ?_test(worker_retry(S))
+                    ?_test(worker_retry(S)),
+                    ?_test(notice_lifecycle(S)),
+                    ?_test(s2c_save_lifecycle(S)),
+                    ?_test(s2c_capacity(S))
                 ]
             end}},
         [verbose]
@@ -44,7 +47,10 @@ setup() ->
     try
         application:set_env(pooler, pools, []),
         {ok, _} = application:ensure_all_started(pooler),
-        PoolOpts = (maps:get(server, S))#{database => binary_to_list(maps:get(db, S))},
+        PoolOpts = (maps:get(server, S))#{
+            database => binary_to_list(maps:get(db, S)),
+            codecs => [{epgsql_codec_rfc3339_bin, []}]
+        },
         {ok, _} = pooler:new_pool(#{
             name => pgsql,
             init_count => 8,
@@ -354,4 +360,195 @@ wait_advisory(N) ->
             wait_advisory(N - 1);
         _ ->
             ok
+    end.
+
+notice_lifecycle(_) ->
+    reset(),
+    with_notice_mocks(fun() ->
+        Payload = #{<<"msg_ids">> => [<<"read-business">>]},
+        ack(<<"c2c">>, <<"notice">>, 9, <<"a">>),
+        {ok, _} = elib_pg:execute(
+            <<"CREATE OR REPLACE FUNCTION public.notice_register_fail() RETURNS trigger ",
+                "LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'notice register controlled fault'; END $$">>,
+            []
+        ),
+        {ok, _} = elib_pg:execute(
+            <<"CREATE TRIGGER notice_register_fault BEFORE INSERT ON msg_store_staging ",
+                "FOR EACH ROW WHEN (NEW.type='c2c_notice') EXECUTE FUNCTION public.notice_register_fail()">>,
+            []
+        ),
+        try
+            ?assertMatch(
+                {error, _}, msg_operation_ds:register_read_notice(<<"notice">>, 8, 9, Payload)
+            ),
+            ?assertEqual({0, 1}, counts(<<"c2c">>, <<"notice">>, 9)),
+            ?assertEqual(
+                0, one(<<"SELECT count(*) FROM msg_store_staging WHERE type='c2c_notice'">>, [])
+            )
+        after
+            {ok, _} = elib_pg:execute(
+                <<"DROP TRIGGER notice_register_fault ON msg_store_staging">>, []
+            )
+        end,
+        ok = msg_operation_ds:register_read_notice(<<"notice">>, 8, 9, Payload),
+        ?assertMatch(
+            {error, _},
+            msg_operation_ds:register_read_notice(
+                <<"notice">>,
+                8,
+                9,
+                #{<<"msg_ids">> => [<<"different-business">>]}
+            )
+        ),
+        ?assertEqual(
+            ok,
+            msg_operation_ds:register_read_notice(<<"notice">>, 8, 9, Payload#{<<"read_at">> => 123})
+        ),
+        ack(<<"c2c">>, <<"notice">>, 9, <<"a">>),
+        ack(<<"c2c">>, <<"notice">>, 9, <<"a">>),
+        ?assertEqual({0, 0}, counts(<<"c2c">>, <<"notice">>, 9)),
+        ?assertEqual(
+            1,
+            one(
+                <<"SELECT count(*) FROM msg_store_staging WHERE type='c2c_notice' ",
+                    "AND msg_id='notice' AND action='message_read' AND to_id=9 AND from_id=8 ",
+                    "AND processed_at IS NOT NULL AND conv_seq IS NULL">>,
+                []
+            )
+        ),
+        ?assertMatch(
+            {error, _}, msg_operation_ds:register_read_notice(<<"notice">>, 8, 10, Payload)
+        ),
+        ack(<<"c2c">>, <<"notice">>, 10, <<"a">>),
+        ?assertEqual({0, 1}, counts(<<"c2c">>, <<"notice">>, 10)),
+        ack(<<"s2c">>, <<"notice">>, 9, <<"a">>),
+        ?assertEqual({0, 1}, counts(<<"s2c">>, <<"notice">>, 9)),
+        stage(<<"c2c">>, <<"notice">>, 9, false),
+        ack(<<"c2c">>, <<"notice">>, 9, <<"a">>),
+        ?assertEqual({0, 1}, counts(<<"c2c">>, <<"notice">>, 9)),
+        {ok, 1} = elib_pg:execute(
+            <<"UPDATE msg_store_staging SET processed_at=now(),error_msg='terminal failure' ",
+                "WHERE type='c2c' AND msg_id='notice'">>,
+            []
+        ),
+        ack(<<"c2c">>, <<"notice">>, 9, <<"a">>),
+        ?assertEqual({0, 1}, counts(<<"c2c">>, <<"notice">>, 9)),
+        main(<<"c2c">>, <<"notice">>, 9),
+        ?assertEqual({1, 1}, counts(<<"c2c">>, <<"notice">>, 9))
+    end).
+s2c_save_lifecycle(_) ->
+    reset(),
+    with_notice_mocks(fun() ->
+        meck:new(message_ds, [passthrough, no_link]),
+        meck:expect(message_ds, send_next, fun(_, _, _, _) -> ok end),
+        try
+            {ok, _} = elib_pg:execute(
+                <<"CREATE OR REPLACE FUNCTION public.ack_notice_fail() RETURNS trigger ",
+                    "LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'notification controlled fault'; END $$">>,
+                []
+            ),
+            {ok, _} = elib_pg:execute(
+                <<"CREATE TRIGGER ack_notice_fault BEFORE INSERT ON msg_store_staging ",
+                    "FOR EACH ROW EXECUTE FUNCTION public.ack_notice_fail()">>,
+                []
+            ),
+            try
+                ?assertMatch(
+                    {error, _},
+                    msg_s2c_ds:send(0, [9], <<"message_read_sync">>, <<>>, null, #{}, save)
+                ),
+                ?assertEqual(0, meck:num_calls(message_ds, send_next, 4)),
+                ?assertEqual(0, one(<<"SELECT count(*) FROM msg_store_staging">>, []))
+            after
+                {ok, _} = elib_pg:execute(
+                    <<"DROP TRIGGER ack_notice_fault ON msg_store_staging">>, []
+                )
+            end,
+            ok = msg_s2c_ds:send(
+                0,
+                [9],
+                <<"message_read_sync">>,
+                <<"custom">>,
+                #{<<"synthetic_key">> => <<"preserved">>},
+                #{<<"msg_ids">> => [<<"business">>]},
+                save
+            ),
+            {ok, [Row]} = elib_pg:query(<<"SELECT * FROM msg_store_staging WHERE type='s2c'">>, []),
+            Id = maps:get(<<"msg_id">>, Row),
+            application:set_env(imboy, msg_archive_enabled, false),
+            msg_store_worker:process_row(Row),
+            msg_store_worker:process_row(Row),
+            ?assertEqual({1, 0}, counts(<<"s2c">>, Id, 9)),
+            ?assertEqual(
+                1,
+                one(
+                    <<"SELECT count(*) FROM msg_s2c m JOIN msg_store_staging s ON s.id=m.id ",
+                        "AND s.created_at=m.created_at AND s.server_ts=m.server_ts ",
+                        "WHERE m.msg_id=$1 AND m.action=s.action AND m.msg_type=s.msg_type ",
+                        "AND m.e2ee IS NOT DISTINCT FROM s.e2ee AND m.payload=s.payload">>,
+                    [Id]
+                )
+            ),
+            Bad = Row#{<<"msg_id">> => <<"conflicting-storage-id">>},
+            ?assertEqual({error, staging_identity_conflict}, msg_store_worker:do_write(s2c, Bad)),
+            ack(<<"s2c">>, Id, 9, <<"a">>),
+            ack(<<"s2c">>, Id, 9, <<"a">>),
+            ?assertEqual({0, 0}, counts(<<"s2c">>, Id, 9)),
+            ?assertEqual(
+                1,
+                one(
+                    <<"SELECT count(*) FROM msg_store_staging ",
+                        "WHERE type='s2c' AND processed_at IS NOT NULL AND action='message_read_sync'">>,
+                    []
+                )
+            )
+        after
+            meck:unload(message_ds)
+        end
+    end).
+with_notice_mocks(F) ->
+    meck:new(elib_tsid, [passthrough, no_link]),
+    meck:expect(elib_tsid, generate, fun(_) -> erlang:unique_integer([positive]) end),
+    try
+        F()
+    after
+        meck:unload(elib_tsid)
+    end.
+
+s2c_capacity(_) ->
+    reset(),
+    with_notice_mocks(fun() ->
+        {ok, 5000} = elib_pg:execute(
+            <<"INSERT INTO msg_s2c(id,from_id,to_id,msg_id,action,payload) ",
+                "SELECT -n,0,9,'cap-'||n,'capacity','{}' FROM generate_series(1,5000) n">>,
+            []
+        ),
+        CreatedAt = elib_dt:now(),
+        Row = #{
+            <<"id">> => 123456789,
+            <<"type">> => <<"s2c">>,
+            <<"msg_id">> => <<"capacity-new">>,
+            <<"payload">> => <<"{}">>,
+            <<"from_id">> => 0,
+            <<"to_id">> => 9,
+            <<"created_at">> => CreatedAt,
+            <<"server_ts">> => CreatedAt,
+            <<"action">> => <<"capacity">>
+        },
+        ?assertEqual(ok, msg_store_worker:do_write(s2c, Row)),
+        ok = wait_s2c_count(5000, 100),
+        ?assertEqual(0, one(<<"SELECT count(*) FROM msg_s2c WHERE id=-5000">>, [])),
+        ?assertEqual(ok, msg_store_worker:do_write(s2c, Row)),
+        ?assertEqual(5000, one(<<"SELECT count(*) FROM msg_s2c WHERE to_id=9">>, [])),
+        ?assertEqual(1, one(<<"SELECT count(*) FROM msg_s2c WHERE id=-4999">>, []))
+    end).
+wait_s2c_count(_, 0) ->
+    error(capacity_cleanup_timeout);
+wait_s2c_count(Expected, N) ->
+    case one(<<"SELECT count(*) FROM msg_s2c WHERE to_id=9">>, []) of
+        Expected ->
+            ok;
+        _ ->
+            timer:sleep(20),
+            wait_s2c_count(Expected, N - 1)
     end.
