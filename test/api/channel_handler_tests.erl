@@ -303,8 +303,8 @@ messages_passes_current_uid_to_logic_test_() ->
                 end}
             ]},
             {channel_logic, [
-                {'get_messages', 4, fun(1001, <<"ch_hash_path">>, 10, 30) ->
-                    {ok, [#{<<"id">> => <<"msg_100">>}]}
+                {'get_messages_page', 4, fun(1001, <<"ch_hash_path">>, <<"10">>, 30) ->
+                    {ok, #{list => [#{<<"id">> => <<"msg_100">>}], next_cursor => null}}
                 end}
             ]},
             {elib_response, [
@@ -327,7 +327,7 @@ messages_access_denied_returns_error_test_() ->
                 {'parse_qs', 1, fun(_Req) -> [] end}
             ]},
             {channel_logic, [
-                {'get_messages', 4, fun(1001, <<"ch_hash_path">>, 0, 20) ->
+                {'get_messages_page', 4, fun(1001, <<"ch_hash_path">>, <<>>, 20) ->
                     {error, <<"付费频道需要先购买"/utf8>>}
                 end}
             ]},
@@ -958,7 +958,7 @@ messages_private_channel_access_denied_returns_error_test_() ->
                 {'parse_qs', 1, fun(_Req) -> [] end}
             ]},
             {channel_logic, [
-                {'get_messages', 4, fun(1001, <<"ch_hash_path">>, 0, 20) ->
+                {'get_messages_page', 4, fun(1001, <<"ch_hash_path">>, <<>>, 20) ->
                     {error, <<"私有频道仅限订阅用户访问"/utf8>>}
                 end}
             ]},
