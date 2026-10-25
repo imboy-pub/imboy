@@ -26,16 +26,39 @@ retention_test_() ->
             ]}
         end}}.
 setup() ->
-    S = ?H:setup_all(),
+    Base = ?H:setup_all(),
+    S = Base#{
+        previous_jwt => application:get_env(imboy, jwt_key),
+        previous_archive => application:get_env(imboy, msg_archive_enabled),
+        previous_super => application:get_env(imboy, super_account),
+        previous_pool => application:get_env(imboy, pg_conf)
+    },
+    try
+        setup_owned(S)
+    catch
+        Class:Reason:Stack ->
+            try
+                close(S)
+            catch
+                CleanupClass:CleanupReason:CleanupStack ->
+                    erlang:raise(
+                        Class,
+                        {setup_cleanup_failed, Reason, {CleanupClass, CleanupReason, CleanupStack}},
+                        Stack
+                    )
+            end,
+            erlang:raise(Class, Reason, Stack)
+    end.
 
+setup_owned(S) ->
     %% marker server 端口断言：默认沿用 phase1 的 4337 隔离容器；后续 run 经
     %% OA_CLOUD_MARKER_PORT 显式覆盖到自己的隔离 PG（如 relay 端口），防止
     %% 误连共享库的守卫语义不变。
     ExpectedMarkerPort = list_to_integer(os:getenv("OA_CLOUD_MARKER_PORT", "4337")),
     #{port := ExpectedMarkerPort} = maps:get(server, S),
     C = maps:get(conn, S),
-    PreviousSuper = application:get_env(imboy, super_account),
-    PreviousPool = application:get_env(imboy, pg_conf),
+    PreviousSuper = maps:get(previous_super, S),
+    PreviousPool = maps:get(previous_pool, S),
     {ok, SourceOpts} = PreviousSuper,
     OwnOpts = SourceOpts#{database => maps:get(db, S)},
     application:set_env(imboy, super_account, OwnOpts),
@@ -46,8 +69,9 @@ setup() ->
         erlang_migrate:version(#{conn => C, dir => "priv/migrations"})
     ),
     ?assertEqual(0, count(C, <<"config">>)),
-    io:format(user, "OWN_MARKER ~s PORT4337 SCHEMA169 CONFIG0~n", [maps:get(db, S)]),
-    PreviousArchive = application:get_env(imboy, msg_archive_enabled),
+    io:format(user, "OWN_MARKER ~s PORT~B SCHEMA169 CONFIG0~n", [
+        maps:get(db, S), ExpectedMarkerPort
+    ]),
     application:set_env(imboy, msg_archive_enabled, false),
     lists:foreach(
         fun(D) ->
@@ -65,19 +89,32 @@ setup() ->
         <<"synthetic.oa-cloud">>,
         <<"synthetic-oa-cloud-device-key">>
     ),
-    S#{
-        previous_jwt => application:get_env(imboy, jwt_key),
-        previous_archive => PreviousArchive,
-        previous_super => PreviousSuper,
-        previous_pool => PreviousPool
-    }.
+    S.
 close(S) ->
-    restore_env(jwt_key, maps:get(previous_jwt, S)),
-    restore_env(msg_archive_enabled, maps:get(previous_archive, S)),
-    restore_env(super_account, maps:get(previous_super, S)),
-    restore_env(pg_conf, maps:get(previous_pool, S)),
-    ?H:teardown_all(S),
-    inttest_marker_db:release(S).
+    Operations = [
+        fun() -> restore_env(jwt_key, maps:get(previous_jwt, S)) end,
+        fun() -> restore_env(msg_archive_enabled, maps:get(previous_archive, S)) end,
+        fun() -> restore_env(super_account, maps:get(previous_super, S)) end,
+        fun() -> restore_env(pg_conf, maps:get(previous_pool, S)) end,
+        fun() -> ?H:teardown_all(S) end,
+        fun() -> inttest_marker_db:release(S) end
+    ],
+    Errors = lists:filtermap(
+        fun(F) ->
+            try F() of
+                ok -> false;
+                Other -> {true, {unexpected_cleanup_result, Other}}
+            catch
+                Class:Reason:Stack -> {true, {Class, Reason, Stack}}
+            end
+        end,
+        Operations
+    ),
+    case Errors of
+        [] -> ok;
+        _ -> error({oa_fixture_cleanup_failed, Errors})
+    end.
+
 body(Mode) ->
     B = #{
         <<"sender_mode">> => Mode,

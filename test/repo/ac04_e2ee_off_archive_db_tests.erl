@@ -52,16 +52,14 @@ flush_staging(MsgId, TimeoutMs) ->
         [MsgId]
     ),
     ?assertMatch(ok, msg_store_worker:process_row(Row)),
-    %% process_row 只发出 unstage cast；DS 随后另启异步 UPDATE，需等待其提交。
-    %% process_row only casts unstage; the DS starts a separate asynchronous UPDATE.
+    %% process_row returns only after the completion transaction commits.
     wait_staging_processed(
         maps:get(<<"type">>, Row),
         MsgId,
         erlang:monotonic_time(millisecond) + TimeoutMs
     ).
 
-%% processed_at 是另一个异步事务的提交边界；缺失行或终态失败不能假装完成。
-%% processed_at is a separate asynchronous commit; missing/terminal rows are not success.
+%% Verify the committed completion boundary; missing/terminal rows are not success.
 wait_staging_processed(Type, MsgId, Deadline) ->
     {ok, Rows} = elib_pg:query(
         <<"SELECT processed_at,error_msg FROM public.msg_store_staging WHERE type=$1 AND msg_id=$2">>,
@@ -85,8 +83,7 @@ wait_staging_processed(Type, MsgId, Deadline) ->
             error({staging_completion_rows, Type, MsgId, length(Rows)})
     end.
 
-%% 真库行锁只阻止本夹具的异步完成标记，正式表和归档仍必须先提交。
-%% A real owned-row lock delays only completion marking; formal/archive commits remain real.
+%% A real owned-row lock blocks synchronous completion after main/archive commit.
 flush_waits_for_processed_commit_test_() ->
     ?TEST_WITH_DB_TIMEOUT(30, fun() ->
         A = uid(),
@@ -111,7 +108,7 @@ flush_waits_for_processed_commit_test_() ->
             ),
             assert_flush_under_completion_lock(Owner, OwnerPid, A, B, MsgId)
         after
-            %% 连接关闭保证失败路径也释放锁，再等真实异步写完成才清理本夹具。
+            %% 连接关闭保证失败路径也释放锁，再等真实同步写完成才清理本夹具。
             %% Closing releases the lock even on failure; join the actual DB completion before cleanup.
             try
                 try
@@ -150,15 +147,11 @@ assert_flush_under_completion_lock(Owner, OwnerPid, A, B, MsgId) ->
         Parent ! {Ref, Result}
     end),
     try
-        %% 若写入失败，mark_failed 也会等行锁；owner 必须能独立释放并 join。
-        %% A failed write can block in mark_failed too; keep the owner free to release/join.
-        Result =
-            receive
-                {Ref, Value} -> Value
-            after 5000 -> error(completion_flusher_timeout)
-            end,
-        ?assertEqual({raised, error, {staging_completion_timeout, <<"c2c">>, MsgId}}, Result),
         wait_completion_update_blocked(OwnerPid, erlang:monotonic_time(millisecond) + 5000),
+        receive
+            {Ref, Early} -> error({completion_returned_before_commit, Early})
+        after 0 -> ok
+        end,
         {ok, [#{<<"processed_at">> := null, <<"error_msg">> := null}]} = elib_pg:query(
             <<"SELECT processed_at,error_msg FROM public.msg_store_staging WHERE msg_id=$1">>, [
                 MsgId
@@ -166,7 +159,11 @@ assert_flush_under_completion_lock(Owner, OwnerPid, A, B, MsgId) ->
         ),
         assert_completion_copies(A, B, MsgId),
         {ok, _, _} = epgsql:squery(Owner, <<"ROLLBACK">>),
-        ok = flush_staging(MsgId),
+        receive
+            {Ref, Result} -> ?assertEqual({returned, ok}, Result)
+        after 5000 -> error(completion_flusher_timeout)
+        end,
+        ok = wait_staging_processed(<<"c2c">>, MsgId, erlang:monotonic_time(millisecond) + 1000),
         assert_completion_copies(A, B, MsgId)
     after
         try
@@ -360,7 +357,7 @@ s1_s2_plaintext_archive_body() ->
         ),
         ?assertEqual(3, N),
         ?assertEqual(0, ENull),
-        %% worker 搬运并等待异步完成标记提交 / Transfer and await the asynchronous completion commit.
+        %% worker 搬运并验证同步完成提交 / Transfer and verify the synchronous completion commit.
         [flush_staging(MsgId) || MsgId <- MsgIds],
         {ok, [#{<<"n">> := ArchN}]} = elib_pg:query(
             <<"SELECT count(*) AS n FROM public.msg_store WHERE msg_id = ANY($1)">>,

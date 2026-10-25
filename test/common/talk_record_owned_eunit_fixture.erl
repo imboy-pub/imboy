@@ -217,6 +217,10 @@ bind_fixture(#{db := Db} = Pg, Identity) ->
     lists:foreach(fun({Key, Value}) -> true = os:putenv(Key, Value) end, fixture_env(Name)),
     Root = filename:join(required("TALK_OWNED_RUN_ROOT"), Name),
     ok = filelib:ensure_dir(filename:join(Root, ".owner")),
+    UploadRoot = filename:join(Root, "upload"),
+    ok = file:make_dir(UploadRoot),
+    ok = real_directory(UploadRoot),
+    true = os:putenv("TALK_UPLOAD_DISK_ROOT", UploadRoot),
     true = os:putenv("T06_RUN_ROOT", Root),
     ok.
 
