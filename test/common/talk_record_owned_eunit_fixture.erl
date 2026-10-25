@@ -221,7 +221,8 @@ bind_fixture(#{db := Db} = Pg, Identity) ->
     ok.
 
 %% Called only with the fresh provision/1 result in this isolated child VM.
-%% Before COMMENT, require an unmarked child with no other database sessions.
+%% Before COMMENT, require an unmarked child with no other client sessions.
+%% TimescaleDB background workers belong to the fresh database, not external clients.
 bind_child_proof(#{conn := C, db := Db, server := Server} = Pg, Identity) ->
     false = maps:is_key(reuse_key, Pg),
     {match, _} = re:run(Db, "^inttest_talk_owned_[0-9]+_[0-9]+$"),
@@ -239,7 +240,8 @@ bind_child_proof(#{conn := C, db := Db, server := Server} = Pg, Identity) ->
     ok = same_server(Before, Identity),
     {ok, _, [{0}]} = epgsql:equery(
         C,
-        "SELECT count(*) FROM pg_stat_activity WHERE datname=$1 AND pid<>pg_backend_pid()",
+        "SELECT count(*) FROM pg_stat_activity WHERE datname=$1 AND pid<>pg_backend_pid()"
+        " AND (backend_type='client backend' OR client_port IS NOT NULL)",
         [Db]
     ),
     Marker = marker(),

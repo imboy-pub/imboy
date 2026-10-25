@@ -111,10 +111,11 @@ verify_before_setup(Opts) ->
     {ok, C} = epgsql:connect(Opts),
     try
         verify_target(C),
+        %% Extension background workers are not foreign client connections.
         {ok, _, [{0}]} = epgsql:equery(
             C,
             "SELECT count(*) FROM pg_stat_activity WHERE datname=current_database()"
-            " AND pid<>pg_backend_pid()",
+            " AND pid<>pg_backend_pid() AND (backend_type='client backend' OR client_port IS NOT NULL)",
             []
         ),
         verify_empty_business(C)
