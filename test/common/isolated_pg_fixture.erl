@@ -95,8 +95,18 @@ run(TestFun, Seconds) when is_function(TestFun, 0), is_integer(Seconds), Seconds
     try
         %% Leave time for boot and shutdown inside the outer 900-second budget.
         peer:call(Peer, ?MODULE, run_case, [TestFun], (Seconds - 20) * 1000)
-    after
-        peer:stop(Peer)
+    of
+        Result ->
+            peer:stop(Peer),
+            Result
+    catch
+        Class:Reason:Stack ->
+            try
+                peer:stop(Peer)
+            catch
+                exit:noproc -> ok
+            end,
+            erlang:raise(Class, Reason, Stack)
     end.
 
 run_case(TestFun) when is_function(TestFun, 0) ->
