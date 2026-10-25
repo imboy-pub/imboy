@@ -203,10 +203,17 @@ ack_per_device(_Kind, [], _Uid, _DID, _LegacyFun) ->
 ack_per_device(Kind, MsgIds, Uid, DID, _LegacyFun) when is_binary(DID), DID =/= <<>> ->
     case msg_delivery_repo:mark_acked_batch(Kind, MsgIds, Uid, DID) of
         {ok, N} ->
-            ok = msg_delivery_repo:delete_delivered_batch(
-                Kind, MsgIds, Uid, delivery_active_days()
-            ),
-            {ok, N};
+            case
+                msg_delivery_repo:delete_delivered_batch(
+                    Kind, MsgIds, Uid, delivery_active_days()
+                )
+            of
+                ok ->
+                    {ok, N};
+                {error, CleanupReason} ->
+                    ok = ?ERROR_LOG({ack_cleanup_failed, Kind, Uid, DID, CleanupReason}),
+                    {error, <<"ack_persistence_failed">>}
+            end;
         {error, Reason} ->
             %% 标记失败不删主行（宁可重复投递，不可丢消息），交给下次 ACK/重试
             ok = ?ERROR_LOG({mark_acked_failed, Kind, Uid, DID, Reason}),

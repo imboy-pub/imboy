@@ -197,17 +197,16 @@ process_row(Row) ->
     MsgId = maps:get(<<"msg_id">>, Row),
     RetryCount = maps:get(<<"retry_count">>, Row, 0),
     TypeAtom = msg_type_atom(TypeBin),
-    WriteResult = write_and_archive(TypeAtom, Row),
+    WriteResult =
+        case write_and_archive(TypeAtom, Row) of
+            Written when Written =:= ok; Written =:= {error, conflict_no_insert} ->
+                complete_staged(Row);
+            Error ->
+                Error
+        end,
     case WriteResult of
         ok ->
-            msg_store_ds:unstage(TypeBin, MsgId),
             _ = ?DEBUG_LOG([msg_store_worker, write_success, TypeAtom, MsgId]);
-        %% ON CONFLICT DO NOTHING 冲突跳过（msg_c2c_repo:write_msg_with_sender
-        %% 改用 execute 后返回的 0 行插入）：消息已存在=幂等成功，unstage 即可，
-        %% 但记 WARN 以便排查"冲突但正式表里没有行"的异常场景。
-        {error, conflict_no_insert} ->
-            msg_store_ds:unstage(TypeBin, MsgId),
-            _ = ?WARN_LOG([msg_store_worker, write_conflict_no_insert, TypeAtom, MsgId]);
         {error, Reason} ->
             ErrorMsg = list_to_binary(io_lib:format("~p", [Reason])),
             case terminal_write_reason(Reason) of
@@ -231,6 +230,33 @@ process_row(Row) ->
                     end,
                     _ = ?ERROR_LOG([msg_store_worker, write_error, TypeAtom, MsgId, Reason])
             end
+    end.
+
+%% 完成与 ACK 清理同事务；失败回滚使 staging 仍可被 worker 重试。
+complete_staged(Row) ->
+    Type = maps:get(<<"type">>, Row),
+    MsgId = maps:get(<<"msg_id">>, Row),
+    Result = elib_pg:with_tx(fun(Conn) ->
+        case msg_store_repo:mark_processed(Conn, Type, MsgId) of
+            {ok, _} -> ok;
+            {error, Reason} -> throw({rollback, {mark_processed_failed, Reason}})
+        end,
+        case Type of
+            K when K =:= <<"c2c">>; K =:= <<"s2c">> ->
+                msg_delivery_repo:delete_delivered_batch(
+                    Conn,
+                    K,
+                    [MsgId],
+                    maps:get(<<"to_id">>, Row),
+                    application:get_env(imboy, msg_delivery_active_days, 30)
+                );
+            _ ->
+                ok
+        end
+    end),
+    case Result of
+        {rollback, Reason} -> {error, Reason};
+        Other -> Other
     end.
 
 write_and_archive(Type, Row) ->
@@ -346,13 +372,6 @@ do_write(c2c, Row) ->
     Res = msg_c2c_ds:write_msg(
         CreatedAt, MsgId, PayloadBin, FromId, ToId, ServerTs, MsgType, E2EE, SenderDid
     ),
-    %% 【P0-1】ACK 先于落库竞态：落库后若该消息已被全部活跃设备确认则立即清理
-    case Res of
-        Written when Written =:= ok; Written =:= {error, conflict_no_insert} ->
-            ok = msg_operation_ds:maybe_clean_delivered(c2c, MsgId, ToId);
-        _ ->
-            ok
-    end,
     Res;
 do_write(c2g, Row) ->
     PayloadBin = unwrap_staging_payload(maps:get(<<"payload">>, Row)),
@@ -403,8 +422,6 @@ do_write(s2c, Row) ->
     MsgId = maps:get(<<"msg_id">>, Row),
     Action = maps:get(<<"action">>, Row, <<>>),
     Res = msg_s2c_ds:write_msg(CreatedAt, MsgId, PayloadBin, FromId, ToId, ServerTs, Action, <<>>),
-    %% 【P0-1】同 c2c：处理 ACK 先于落库的竞态
-    ok = msg_operation_ds:maybe_clean_delivered(s2c, MsgId, ToId),
     Res;
 do_write(c2s, Row) ->
     PayloadBin = unwrap_staging_payload(maps:get(<<"payload">>, Row)),

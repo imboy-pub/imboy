@@ -516,9 +516,10 @@ process_row_poison_does_not_block_next_message_test_() ->
             {msg_c2g_repo, [
                 {'write_accepted_msg', 11, fun(_, _, _, _, _, _, _, _, _, _, _) -> ok end}
             ]},
-            {msg_store_ds, [{'unstage', 2, fun(_, _) -> ok end}]},
+            {elib_pg, [{with_tx, 1, fun(F) -> F(self()) end}]},
             {msg_archive_repo, [{'archive', 1, fun(_) -> ok end}]},
             {msg_store_repo, [
+                {'mark_processed', 3, fun(_, _, _) -> {ok, 1} end},
                 {'mark_terminal', 3, fun(_, _, _) -> {ok, 1} end},
                 {'mark_failed', 4, fun(_, _, _, _) -> {ok, 1} end}
             ]}
@@ -530,7 +531,10 @@ process_row_poison_does_not_block_next_message_test_() ->
             ?assertEqual(1, meck:num_calls(msg_store_repo, mark_terminal, 3)),
             ?assertEqual(1, meck:num_calls(msg_c2g_repo, write_accepted_msg, 11)),
             ?assertEqual(
-                1, meck:num_calls(msg_store_ds, unstage, [<<"c2g">>, <<"m-after-poison">>])
+                1,
+                meck:num_calls(msg_store_repo, mark_processed, [
+                    '_', <<"c2g">>, <<"m-after-poison">>
+                ])
             ),
             ?assertEqual(0, meck:num_calls(msg_store_repo, mark_failed, 4))
         end
@@ -597,7 +601,9 @@ process_row_success_is_scoped_to_claimed_type_test_() ->
             {msg_s2c_ds, [{'write_msg', 8, fun(_, _, _, _, _, _, _, _) -> get(write_result) end}]},
             {msg_operation_ds, [{'maybe_clean_delivered', 3, fun(_, _, _) -> ok end}]},
             {msg_archive_repo, [{'archive', 1, fun(_) -> ok end}]},
-            {msg_store_ds, [{'unstage', 2, fun(_, _) -> ok end}]}
+            {elib_pg, [{with_tx, 1, fun(F) -> F(self()) end}]},
+            {msg_delivery_repo, [{delete_delivered_batch, 5, fun(_, _, _, _, _) -> ok end}]},
+            {msg_store_repo, [{mark_processed, 3, fun(_, _, _) -> {ok, 1} end}]}
         ],
         fun() ->
             MsgId = <<"historical-collision">>,
@@ -625,11 +631,13 @@ process_row_success_is_scoped_to_claimed_type_test_() ->
                 ),
                 lists:foreach(
                     fun(Type) ->
-                        ?assertEqual(2, meck:num_calls(msg_store_ds, unstage, [Type, MsgId]))
+                        ?assertEqual(
+                            2, meck:num_calls(msg_store_repo, mark_processed, ['_', Type, MsgId])
+                        )
                     end,
                     Types
                 ),
-                ?assertEqual(8, meck:num_calls(msg_store_ds, unstage, 2))
+                ?assertEqual(8, meck:num_calls(msg_store_repo, mark_processed, 3))
             after
                 erase(write_result)
             end

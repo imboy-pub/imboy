@@ -32,7 +32,7 @@
 %% 删除操作
 -export([unstage/2]).
 -export([claim_pending/2]).
--export([mark_processed/2]).
+-export([mark_processed/2, mark_processed/3]).
 -export([mark_failed/4]).
 -export([mark_terminal/3]).
 -export([delete_processed/1]).
@@ -1112,11 +1112,15 @@ claim_pending(Limit, LeaseSeconds) ->
 %% @return {ok, Count} | {error, any()}
 -spec mark_processed(binary(), binary()) -> {ok, integer()} | {error, any()}.
 mark_processed(Type, MsgId) ->
+    elib_pg:execute(mark_processed_sql(), [Type, MsgId]).
+
+mark_processed(Conn, Type, MsgId) ->
+    elib_pg:execute(Conn, mark_processed_sql(), [Type, MsgId]).
+
+mark_processed_sql() ->
     Tb = tablename(),
-    Sql =
-        <<"UPDATE ", Tb/binary, " SET processed_at = NOW(), error_msg = NULL ",
-            " WHERE type = $1 AND msg_id = $2 AND processed_at IS NULL">>,
-    elib_pg:execute(Sql, [Type, MsgId]).
+    <<"UPDATE ", Tb/binary, " SET processed_at = NOW(), error_msg = NULL ",
+        " WHERE type = $1 AND msg_id = $2 AND processed_at IS NULL">>.
 
 %% @doc 标记失败并设置下次重试时间
 -spec mark_failed(binary(), binary(), binary(), pos_integer()) -> {ok, integer()} | {error, any()}.
