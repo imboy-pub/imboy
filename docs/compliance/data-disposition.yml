@@ -653,6 +653,13 @@ tables:
     mechanism: delete rows by user ownership column
     review: self-evident
     retention: n/a
+  user_collect_key_state:
+    action: delete
+    owner: account
+    reason: 用户收藏 E2EE 密钥版本高水位（随账号级联删除，迁移 227）
+    mechanism: delete rows by user ownership column
+    review: self-evident
+    retention: n/a
   user_deletion_job:
     action: retain
     owner: security

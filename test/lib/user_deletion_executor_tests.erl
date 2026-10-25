@@ -76,6 +76,48 @@ absent_table_is_zero_rows_disposed_test_() ->
         end)
     end).
 
+collect_key_state_deletion_is_isolated_and_idempotent_test_() ->
+    ?TEST_WITH_DB_TIMEOUT(30, fun() ->
+        Uid = new_uid(),
+        Peer = new_uid(),
+        with_full_registry(fun() ->
+            try
+                ok = create_user(Uid),
+                ok = create_user(Peer),
+                {ok, 2} = elib_pg:execute(
+                    <<
+                        "INSERT INTO public.user_collect_key_state (user_id, max_key_version)"
+                        " VALUES ($1, 7), ($2, 11)"
+                    >>,
+                    [Uid, Peer]
+                ),
+                lists:foreach(
+                    fun(_Attempt) ->
+                        ok = elib_pg:with_tx(fun(Conn) ->
+                            user_deletion_executor:execute_main_tx(Conn, Uid)
+                        end),
+                        {ok, [#{<<"user_id">> := Peer, <<"max_key_version">> := 11}]} =
+                            elib_pg:query(
+                                <<
+                                    "SELECT user_id, max_key_version"
+                                    " FROM public.user_collect_key_state WHERE user_id IN ($1, $2)"
+                                >>,
+                                [Uid, Peer]
+                            ),
+                        {ok, [#{<<"id">> := Peer}]} = elib_pg:query(
+                            <<"SELECT id FROM public.\"user\" WHERE id IN ($1, $2)">>,
+                            [Uid, Peer]
+                        )
+                    end,
+                    [first, repeat]
+                )
+            after
+                cleanup_user(Uid),
+                cleanup_user(Peer)
+            end
+        end)
+    end).
+
 %% ORG-02（C17）：preflight blockers 非空 → 整事务拒绝、零部分删除。
 preflight_blockers_abort_no_partial_deletion_test_() ->
     ?TEST_WITH_DB_TIMEOUT(30, fun() ->
@@ -87,6 +129,13 @@ preflight_blockers_abort_no_partial_deletion_test_() ->
                 ok = create_user(Uid),
                 ok = create_user(Peer),
                 ok = insert_c2c(MsgId, Uid, Peer, <<"m-blocker-probe">>),
+                {ok, 1} = elib_pg:execute(
+                    <<
+                        "INSERT INTO public.user_collect_key_state (user_id, max_key_version)"
+                        " VALUES ($1, 7)"
+                    >>,
+                    [Uid]
+                ),
                 {error, {deletion_preflight_blockers, [Blocker]}} =
                     elib_pg:with_tx(fun(Conn) ->
                         user_deletion_executor:execute_main_tx(Conn, Uid)
@@ -99,6 +148,10 @@ preflight_blockers_abort_no_partial_deletion_test_() ->
                 ),
                 {ok, [_]} = elib_pg:query(
                     <<"SELECT id FROM public.msg_c2c WHERE id = $1">>, [MsgId]
+                ),
+                {ok, [#{<<"max_key_version">> := 7}]} = elib_pg:query(
+                    <<"SELECT max_key_version FROM public.user_collect_key_state WHERE user_id = $1">>,
+                    [Uid]
                 )
             after
                 cleanup_user(Uid),
@@ -185,6 +238,13 @@ concurrent_change_after_preflight_rejected_by_db_restrict_test_() ->
                 ok = create_user(Uid),
                 ok = create_user(Peer),
                 ok = insert_c2c(MsgId, Uid, Peer, <<"m-toctou-probe">>),
+                {ok, 1} = elib_pg:execute(
+                    <<
+                        "INSERT INTO public.user_collect_key_state (user_id, max_key_version)"
+                        " VALUES ($1, 7)"
+                    >>,
+                    [Uid]
+                ),
                 %% facts 全绿（stub 撒谎/竞态窗口），但并发注入的 owner
                 %% 行令用户主行删除撞 RESTRICT → 事务回滚
                 {error, _Reason} =
@@ -199,6 +259,10 @@ concurrent_change_after_preflight_rejected_by_db_restrict_test_() ->
                 ),
                 {ok, [#{<<"owner_id">> := Uid}]} = elib_pg:query(
                     <<"SELECT owner_id FROM public.organization WHERE id = $1">>, [OrgId]
+                ),
+                {ok, [#{<<"max_key_version">> := 7}]} = elib_pg:query(
+                    <<"SELECT max_key_version FROM public.user_collect_key_state WHERE user_id = $1">>,
+                    [Uid]
                 )
             after
                 application:unset_env(imboy, preflight_stub_org_id),
@@ -261,10 +325,16 @@ create_user(Uid) ->
 
 insert_c2c(Id, FromId, ToId, Prefix) ->
     MsgKey = <<Prefix/binary, "-", (integer_to_binary(Id))/binary>>,
-    {ok, 1} = personal_message_order_repo:execute_formal(FromId, ToId, MsgKey,
-        <<"INSERT INTO public.msg_c2c (id, from_id, to_id, msg_id, msg_type, payload, conv_seq)"
-          " VALUES ($1, $2, $3, $4, 't', 'p', $5)">>,
-        [Id, FromId, ToId, MsgKey]),
+    {ok, 1} = personal_message_order_repo:execute_formal(
+        FromId,
+        ToId,
+        MsgKey,
+        <<
+            "INSERT INTO public.msg_c2c (id, from_id, to_id, msg_id, msg_type, payload, conv_seq)"
+            " VALUES ($1, $2, $3, $4, 't', 'p', $5)"
+        >>,
+        [Id, FromId, ToId, MsgKey]
+    ),
     ok.
 
 cleanup_c2c_sequence(FromId, ToId) ->
@@ -277,6 +347,7 @@ cleanup_user(Uid) ->
         <<"DELETE FROM public.user_deletion_job WHERE user_id = $1">>,
         <<"DELETE FROM public.user_deletion_request WHERE user_id = $1">>,
         <<"DELETE FROM public.msg_c2c WHERE from_id = $1 OR to_id = $1">>,
+        <<"DELETE FROM public.user_collect_key_state WHERE user_id = $1">>,
         <<"DELETE FROM public.\"user\" WHERE id = $1">>
     ]).
 

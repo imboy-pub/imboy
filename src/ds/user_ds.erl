@@ -197,6 +197,9 @@ delete_all_related_data(Uid) ->
 delete_all_related_data(Conn, Uid) ->
     % 旧测试夹具会反复复用手机号。这里优先删除依赖表，再删除 user 主表，
     % 同时兼容当前 schema 中已经移除的历史表，避免清理阶段因缺表中断。
+    ok = delete_from_table_if_exists(
+        Conn, <<"public.user_collect_key_state">>, <<"user_id = $1">>, [Uid]
+    ),
     ok = delete_from_table_if_exists(Conn, user_collect_repo:tablename(), <<"user_id = $1">>, [Uid]),
     ok = delete_from_table_if_exists(Conn, user_denylist_repo:tablename(), <<"user_id = $1">>, [Uid]),
     ok = delete_from_table_if_exists(Conn, user_device_repo:tablename(), <<"user_id = $1">>, [Uid]),
