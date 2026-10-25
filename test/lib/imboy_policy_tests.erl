@@ -693,6 +693,7 @@ meta_view_returns_profiles_defaults_and_edit_options_test_() ->
             [
                 <<"core">>,
                 <<"e2ee">>,
+                <<"e2ee_collect">>,
                 <<"channel">>,
                 <<"location">>,
                 <<"moment">>,
