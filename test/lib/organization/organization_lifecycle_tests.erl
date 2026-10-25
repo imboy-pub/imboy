@@ -276,7 +276,7 @@ org_status_is(OrgId, Status) ->
     ok.
 
 new_uid() ->
-    erlang:system_time(millisecond) * 1000 + rand:uniform(999).
+    elib_tsid:generate(user).
 
 create_user(Uid) ->
     {ok, _} = elib_pg:query(

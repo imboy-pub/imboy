@@ -22,8 +22,13 @@
 %% ===================================================================
 
 new_uid() ->
-    %% 真库唯一键惯例：毫秒时间戳基址，自清理兜底跨跑残留
-    erlang:system_time(millisecond) * 1000 + rand:uniform(999).
+    elib_tsid:generate(user).
+
+fixture_user_ids_are_unique_test_() ->
+    ?TEST_WITH_APP(fun() ->
+        Ids = [new_uid() || _Index <- lists:seq(1, 1500)],
+        ?assertEqual(1500, length(lists:usort(Ids)))
+    end).
 
 create_user(Uid) ->
     Account = <<"u", (integer_to_binary(Uid))/binary>>,
