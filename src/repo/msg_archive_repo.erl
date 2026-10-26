@@ -40,7 +40,7 @@
 -export([get_history_batch/2]).
 -export([message_result/4]).
 %% R02/D05：归档增量的安全推进边界与受控补扫
--export([safe_head/4, safe_history/6, backfill/6, backfill_range_limit/0]).
+-export([safe_head/4, safe_heads/2, safe_history/6, backfill/6, backfill_range_limit/0]).
 
 message_result(ConvKey, MsgId, Sender, MinSeq) ->
     elib_pg:query(
@@ -514,6 +514,75 @@ clamp_head(FormalMax, StagingMin) when
         0 -> FormalMax;
         _ -> erlang:min(FormalMax, StagingMin - 1)
     end.
+
+%%-------------------------------------------------------------------
+%% @doc P2（审查发现修复轮）：多会话批量取 B 边界——单事务单 SQL。
+%%
+%% offline v2 cursor 此前对每个有新行的群各发起一次独立 with_tx 的
+%% safe_head/4（50 群最坏 50 次 BEGIN/COMMIT 往返串行放大）；本函数把
+%% 同一批 conv_key 的窗口判定收进一次事务一条 SQL。SQL 语义与
+%% head_scope(<<"c2g">>) 的 formal_max / staging_min 子查询逐字一致，
+%% 钳制复用 clamp_head/2，批量结果与逐群 safe_head/4 一一对应。
+%%
+%% 仅支持 c2g（offline v2 marks 均为群会话；c2c 批量键为双参数，另行演进）。
+%% 同一 conv_key 重复出现时按 map 去重（同键同值，无害）。
+%%
+%% @param ChatType 仅 <<"c2g">>
+%% @param Items    [{ConvKey :: binary(), PeerA :: integer(), PeerB :: integer()}]
+%%                 与 safe_head/4 参数对齐；c2g 只消费 PeerA = gid
+%% @return {ok, #{ConvKey => SafeHead}} | {error, term()}
+%% @end
+%%-------------------------------------------------------------------
+-spec safe_heads(binary(), [{binary(), integer(), integer()}]) ->
+    {ok, #{binary() => non_neg_integer()}} | {error, term()}.
+safe_heads(<<"c2g">>, []) ->
+    {ok, #{}};
+safe_heads(<<"c2g">>, Items) when is_list(Items) ->
+    elib_pg:with_tx(fun(Conn) -> safe_heads_tx(Conn, Items) end);
+safe_heads(_, _) ->
+    {error, badarg}.
+
+safe_heads_tx(Conn, Items) ->
+    {ValuesSql, Params} = build_head_values(Items),
+    %% 与 head_scope(<<"c2g">>) 的 formal/staging 子查询语义逐字一致
+    Sql =
+        <<"SELECT v.conv_key AS conv_key, ",
+            "coalesce((SELECT max(ms.conv_seq) FROM public.msg_store ms ",
+            "WHERE ms.chat_type='c2g' AND ms.conv_key = v.conv_key), 0) AS formal_max, ",
+            "coalesce((SELECT min(st.conv_seq) FROM public.msg_store_staging st ",
+            "WHERE st.type='c2g' AND st.to_id = v.gid ",
+            "AND st.conv_seq IS NOT NULL AND st.processed_at IS NULL), 0) AS staging_min ",
+            "FROM (VALUES ", ValuesSql/binary, ") AS v(conv_key, gid)">>,
+    case elib_pg:query(Conn, Sql, Params) of
+        {ok, Rows} ->
+            {ok,
+                maps:from_list([
+                    {
+                        maps:get(<<"conv_key">>, R),
+                        clamp_head(
+                            maps:get(<<"formal_max">>, R), maps:get(<<"staging_min">>, R)
+                        )
+                    }
+                 || R <- Rows
+                ])};
+        {error, Reason} ->
+            {error, Reason}
+    end.
+
+%% 与 get_history_batch 的 build_cursor_values/1 同范式：
+%% [{K,A,_}] → {"($1::text,$2::bigint),...", [K,A,...]}
+build_head_values(Items) ->
+    Indexed = lists:zip(lists:seq(1, length(Items)), Items),
+    Parts = [
+        begin
+            P1 = integer_to_binary(2 * I - 1),
+            P2 = integer_to_binary(2 * I),
+            <<"($", P1/binary, "::text,$", P2/binary, "::bigint)">>
+        end
+     || {I, _} <- Indexed
+    ],
+    Params = lists:append([[K, A] || {_, {K, A, _B}} <- Indexed]),
+    {elib_cnv:implode(<<",">>, Parts), Params}.
 
 %% 正式表与 staging 的 per-chat_type 范围 SQL 片段与参数。
 %% C2C 正式：msg_store(conv_key) + msg_c2c(min/max uid 对)；staging：type='c2c' 同 uid 对。

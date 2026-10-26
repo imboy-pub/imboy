@@ -122,8 +122,16 @@ review_queue(<<"GET">>, Req0, State) ->
             zone => Zone
         }),
         case adm_moderation_logic:list_review_queue(Page, Size, Filters) of
-            {ok, P} -> elib_response:success(Req0, P);
-            {error, _} -> elib_response:error(Req0, <<"查询失败"/utf8>>, ?ERR_BAD_REQUEST)
+            {ok, P} ->
+                elib_response:success(Req0, P);
+            %% P3（审查发现修复轮）：非法 IANA zone 入口早失败（repo 侧
+            %% pg_timezone_names 权威校验）→ 明确 400 文案
+            {error, invalid_zone} ->
+                elib_response:error(
+                    Req0, <<"zone 参数非法，需合法 IANA 时区名"/utf8>>, ?ERR_BAD_REQUEST
+                );
+            {error, _} ->
+                elib_response:error(Req0, <<"查询失败"/utf8>>, ?ERR_BAD_REQUEST)
         end
     end);
 review_queue(_, Req0, _State) ->

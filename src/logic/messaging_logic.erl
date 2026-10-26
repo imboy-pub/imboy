@@ -124,7 +124,10 @@ offline(CurrentUid, Limit, C2CLastMsgAtInt, C2GLastMsgAtInt, S2CLastMsgAtInt, DI
 %% 安全推进边界 B（R02）——跨群投递进度基于服务端权威 seq，不再依赖
 %% 客户端 created_at；无返回行的群保持原游标（不回退、不推断 gap）。
 next_c2g_cursor(Msgs, {marks, Marks}) when is_list(Msgs) ->
-    Marks2 = [c2g_advance_mark(Mark, Msgs) || Mark <- Marks],
+    %% P2（审查发现修复轮）：需要 B 边界的群一次性批量取（单事务单 SQL），
+    %% 消除逐群独立 with_tx 的串行查询放大；批量语义与逐群 safe_head 一致。
+    Heads = c2g_batch_safe_heads(Marks, Msgs),
+    Marks2 = [c2g_advance_mark(Mark, Msgs, Heads) || Mark <- Marks],
     msg_offline_cursor:encode({marks, Marks2});
 next_c2g_cursor([], Cursor) ->
     msg_offline_cursor:encode(Cursor);
@@ -173,26 +176,45 @@ c2g_v2_read(Uid, [{Gid, Seq} | Tail], Rest, Acc) ->
 %% v2 next_cursor：每群推进到本次返回的最大 conv_seq，且不超过该群的
 %% 安全推进边界 B（R02）——跨群投递进度基于服务端权威 seq，不再依赖
 %% 客户端 created_at；无返回行的群保持原游标（不回退、不推断 gap）。
-c2g_advance_mark({Gid, Seq}, Msgs) ->
+%% P2：收集本次确有新行（conv_seq > 游标）的群，一次批量取 B；
+%% 无新行群的 B 不参与查询（与原逐群路径的按需取一致）。
+c2g_batch_safe_heads(Marks, Msgs) ->
+    Need = [Gid || {Gid, Seq} <- Marks, c2g_mark_new_seqs(Gid, Seq, Msgs) =/= []],
+    case Need of
+        [] ->
+            #{};
+        _ ->
+            {ok, Heads} =
+                msg_archive_ds:safe_heads(
+                    <<"c2g">>,
+                    [{msg_archive_ds:conv_key_c2g(Gid), Gid, 0} || Gid <- Need]
+                ),
+            Heads
+    end.
+
+%% 单群本次返回行中的新 conv_seq（原 c2g_advance_mark 内联逻辑抽出）。
+c2g_mark_new_seqs(Gid, Seq, Msgs) ->
     %% v2 读取的行来自 msg_c2g 正文表（to_id = 群 id）；timeline 原始行才有 to_gid
     GidOf = fun(M) ->
         maps:get(<<"to_id">>, M, maps:get(<<"to_gid">>, M, null))
     end,
-    Seqs = [
+    [
         S
      || M <- Msgs,
         GidOf(M) =:= Gid,
         S <- [maps:get(<<"conv_seq">>, M, null)],
         is_integer(S),
         S > Seq
-    ],
-    case Seqs of
+    ].
+
+c2g_advance_mark({Gid, Seq}, Msgs, Heads) ->
+    case c2g_mark_new_seqs(Gid, Seq, Msgs) of
         [] ->
             {Gid, Seq};
-        _ ->
-            {ok, SafeHead} = msg_archive_ds:safe_head(
-                msg_archive_ds:conv_key_c2g(Gid), <<"c2g">>, Gid, 0
-            ),
+        Seqs ->
+            %% 取 B 失败时与原实现一致：{ok,_} 模式匹配暴露异常（safe_heads
+            %% 的 {error,_} 在此崩溃），静默降级会破坏投递进度合同。
+            SafeHead = maps:get(msg_archive_ds:conv_key_c2g(Gid), Heads),
             {Gid, erlang:min(lists:max(Seqs), SafeHead)}
     end.
 
@@ -235,12 +257,13 @@ history(CurrentUid, ChatType, PeerIdEnc, AfterSeq, Limit) ->
     history(CurrentUid, ChatType, PeerIdEnc, AfterSeq, Limit, <<>>).
 
 history(CurrentUid, ChatType, PeerIdEnc, AfterSeq, Limit, DID) ->
-    case validate_history_scope(ChatType, PeerIdEnc, CurrentUid) of
-        {error, permission_denied} ->
-            {error, <<"无权限访问该群消息历史"/utf8>>, ?ERR_ACCESS_DENIED};
-        {error, Reason} ->
-            {error, Reason, ?ERR_BAD_REQUEST};
-        {ok, ConvKey, MinSeq, PeerA, PeerB} ->
+    %% P1（审查发现修复轮）：scope 校验/错误映射骨架提取为 run_history_scope/4，
+    %% 两路径纯重构零行为变化（错误元组形态、响应键集、钳制语义逐一保持）。
+    run_history_scope(
+        CurrentUid,
+        ChatType,
+        PeerIdEnc,
+        fun(ConvKey, MinSeq, PeerA, PeerB) ->
             %% E2EE-2026-012（Task 8/LT-03）：游标钳制到授权下界——
             %% seq=0 / 负数 / 越界游标都不能读穿 join boundary。
             AfterSeq2 = erlang:max(AfterSeq, MinSeq - 1),
@@ -259,8 +282,7 @@ history(CurrentUid, ChatType, PeerIdEnc, AfterSeq, Limit, DID) ->
                     %% next_seq 仍按**全量行**（含被滤行）推进——滤行位于游标
                     %% 之后，后续拉取天然不会再取到；再经 B 钳制（不越过
                     %% 暂未归档的已接受低序号）且只进不退（>= AfterSeq）。
-                    RowsDeliver = filter_c2c_history_for_device(Rows, DID, CurrentUid),
-                    Messages = [encode_history_msg(CurrentUid, Row) || Row <- RowsDeliver],
+                    Messages = history_deliver_msgs(Rows, DID, CurrentUid),
                     NextSeqRaw = next_seq_from_rows(Rows, AfterSeq),
                     NextSeq =
                         erlang:min(
@@ -269,37 +291,18 @@ history(CurrentUid, ChatType, PeerIdEnc, AfterSeq, Limit, DID) ->
                     %% blocked：正式表已有高于 B 的行（被非终态 staging 行钳住），
                     %% 客户端应等待下一轮增量，不得自行推断 gap。
                     Blocked = NextSeqRaw > SafeHead,
-                    Gaps =
-                        [
-                            #{
-                                <<"from_seq">> => 1,
-                                <<"to_seq">> => MinSeq - 1,
-                                <<"reason">> => <<"authorization">>
-                            }
-                         || MinSeq > 1, AfterSeq2 < MinSeq - 1
-                        ] ++
-                            [
-                                #{
-                                    <<"from_seq">> => Seq,
-                                    <<"to_seq">> => Seq,
-                                    <<"reason">> => Reason
-                                }
-                             || {Seq, Reason} <- TerminalGaps
-                            ],
-                    {ok, #{
-                        <<"messages">> => Messages,
-                        <<"next_seq">> => NextSeq,
-                        <<"has_more">> => HasMore,
-                        <<"conv_key">> => ConvKey,
-                        <<"safe_head">> => SafeHead,
-                        <<"blocked">> => Blocked,
-                        <<"gaps">> => Gaps
-                    }};
-                {error, _Reason} ->
-                    {error, <<"消息历史暂不可用，请确认服务已开启 msg_archive_enabled"/utf8>>,
-                        ?ERR_INTERNAL_SERVER_ERROR}
+                    Gaps = build_history_gaps(MinSeq, AfterSeq2, TerminalGaps),
+                    {ok,
+                        history_payload(Messages, NextSeq, HasMore, ConvKey, #{
+                            <<"safe_head">> => SafeHead,
+                            <<"blocked">> => Blocked,
+                            <<"gaps">> => Gaps
+                        })};
+                {error, Reason} ->
+                    history_unavailable(Reason)
             end
-    end.
+        end
+    ).
 
 %%-------------------------------------------------------------------
 %% @doc R02/D05：晚到补齐的有界范围补取。
@@ -313,32 +316,94 @@ history(CurrentUid, ChatType, PeerIdEnc, AfterSeq, Limit, DID) ->
 -spec history_backfill(integer(), binary(), binary(), non_neg_integer(), pos_integer(), binary()) ->
     {ok, map()} | {error, binary(), integer()}.
 history_backfill(CurrentUid, ChatType, PeerIdEnc, AfterSeq, Limit, DID) ->
+    run_history_scope(
+        CurrentUid,
+        ChatType,
+        PeerIdEnc,
+        fun(ConvKey, MinSeq, PeerA, PeerB) ->
+            AfterSeq2 = erlang:max(AfterSeq, MinSeq - 1),
+            ChatTypeBin = chat_type_bin(ChatType),
+            case msg_archive_ds:backfill(ConvKey, AfterSeq2, Limit, ChatTypeBin, PeerA, PeerB) of
+                {ok, Rows, NextSeq, HasMore} ->
+                    Messages = history_deliver_msgs(Rows, DID, CurrentUid),
+                    {ok,
+                        history_payload(Messages, NextSeq, HasMore, ConvKey, #{
+                            <<"range_limit">> => msg_archive_repo:backfill_range_limit()
+                        })};
+                {error, backfill_range_exceeded} ->
+                    {error, <<"补扫范围超限，请分批推进"/utf8>>, ?ERR_BAD_REQUEST};
+                {error, Reason} ->
+                    history_unavailable(Reason)
+            end
+        end
+    ).
+
+%% P1（审查发现修复轮）：history 与 history_backfill 共享的 scope 校验 +
+%% 错误映射骨架。纯提取零行为变化：permission_denied → 403 文案、其余
+%% 参数错 → 400 原文案，均与两函数原实现逐字一致。
+%% P1 修复：Fun 的错误分支实际恒为三元组 {error, Binary, Code}
+%% （两调用方均经 history_unavailable/字面量映射），spec 收窄对齐真实形状，
+%% 防 dialyze 棘轮门新增告警。
+-spec run_history_scope(
+    integer(),
+    binary(),
+    binary(),
+    fun((binary(), integer(), integer(), integer()) -> {ok, map()} | {error, binary(), integer()})
+) ->
+    {ok, map()} | {error, binary(), integer()}.
+run_history_scope(CurrentUid, ChatType, PeerIdEnc, Fun) ->
     case validate_history_scope(ChatType, PeerIdEnc, CurrentUid) of
         {error, permission_denied} ->
             {error, <<"无权限访问该群消息历史"/utf8>>, ?ERR_ACCESS_DENIED};
         {error, Reason} ->
             {error, Reason, ?ERR_BAD_REQUEST};
         {ok, ConvKey, MinSeq, PeerA, PeerB} ->
-            AfterSeq2 = erlang:max(AfterSeq, MinSeq - 1),
-            ChatTypeBin = chat_type_bin(ChatType),
-            case msg_archive_ds:backfill(ConvKey, AfterSeq2, Limit, ChatTypeBin, PeerA, PeerB) of
-                {ok, Rows, NextSeq, HasMore} ->
-                    RowsDeliver = filter_c2c_history_for_device(Rows, DID, CurrentUid),
-                    Messages = [encode_history_msg(CurrentUid, Row) || Row <- RowsDeliver],
-                    {ok, #{
-                        <<"messages">> => Messages,
-                        <<"next_seq">> => NextSeq,
-                        <<"has_more">> => HasMore,
-                        <<"conv_key">> => ConvKey,
-                        <<"range_limit">> => msg_archive_repo:backfill_range_limit()
-                    }};
-                {error, backfill_range_exceeded} ->
-                    {error, <<"补扫范围超限，请分批推进"/utf8>>, ?ERR_BAD_REQUEST};
-                {error, _Reason} ->
-                    {error, <<"消息历史暂不可用，请确认服务已开启 msg_archive_enabled"/utf8>>,
-                        ?ERR_INTERNAL_SERVER_ERROR}
-            end
+            Fun(ConvKey, MinSeq, PeerA, PeerB)
     end.
+
+%% P1：两路径共同的下发行编码（路径2 DID 信封过滤 + 历史消息编码）。
+history_deliver_msgs(Rows, DID, CurrentUid) ->
+    RowsDeliver = filter_c2c_history_for_device(Rows, DID, CurrentUid),
+    [encode_history_msg(CurrentUid, Row) || Row <- RowsDeliver].
+
+%% P1：两路径共同响应键（messages/next_seq/has_more/conv_key），差异键经 Extra 合并。
+history_payload(Messages, NextSeq, HasMore, ConvKey, Extra) ->
+    maps:merge(
+        #{
+            <<"messages">> => Messages,
+            <<"next_seq">> => NextSeq,
+            <<"has_more">> => HasMore,
+            <<"conv_key">> => ConvKey
+        },
+        Extra
+    ).
+
+%% P3（审查发现修复轮）：gaps 构造自 history/6 原样抽出（纯提取零行为变化）：
+%% 授权段 gap（1..MinSeq-1，仅当请求游标尚未越过该段）+ 归档终态空洞逐点列出。
+build_history_gaps(MinSeq, AfterSeq2, TerminalGaps) ->
+    [
+        #{
+            <<"from_seq">> => 1,
+            <<"to_seq">> => MinSeq - 1,
+            <<"reason">> => <<"authorization">>
+        }
+     || MinSeq > 1, AfterSeq2 < MinSeq - 1
+    ] ++
+        [
+            #{
+                <<"from_seq">> => Seq,
+                <<"to_seq">> => Seq,
+                <<"reason">> => Reason
+            }
+         || {Seq, Reason} <- TerminalGaps
+        ].
+
+%% P3-3（审查发现修复轮）：safe_history/backfill 归档查询失败原先被
+%% `_Reason` 吞掉，两条路径失败不可区分且无日志。补 logger 级错误日志
+%% 保留完整错误元组；对外文案与状态码不变（API 合同零变化）。
+history_unavailable(Reason) ->
+    ?ERROR_LOG([messaging_history_unavailable, Reason]),
+    {error, <<"消息历史暂不可用，请确认服务已开启 msg_archive_enabled"/utf8>>, ?ERR_INTERNAL_SERVER_ERROR}.
 
 chat_type_bin(<<"c2g">>) -> <<"c2g">>;
 chat_type_bin(_) -> <<"c2c">>.

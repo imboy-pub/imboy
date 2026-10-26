@@ -217,20 +217,35 @@ history_backfill(Req0, State) ->
             ChatType = proplists:get_value(<<"chat_type">>, Qs, <<>>),
             PeerIdEnc = proplists:get_value(<<"peer_id">>, Qs, <<>>),
             {ok, AfterSeq} = elib_param:int(after_seq, Req0, 0),
-            {ok, Limit0} = elib_param:int(limit, Req0, 50),
-            %% 单页夹紧为 1..100（与 history 同范式）。
-            Limit = erlang:max(1, erlang:min(Limit0, 100)),
-            DID = proplists:get_value(<<"did">>, Qs, <<>>),
-            case
-                messaging_logic:history_backfill(
-                    CurrentUid, ChatType, PeerIdEnc, AfterSeq, Limit, DID
-                )
-            of
-                {ok, Payload} ->
-                    elib_response:success(Req0, Payload);
-                {error, Reason, Code} ->
-                    elib_response:error(Req0, Reason, Code)
+            %% P3（审查发现修复轮）：负游标入口早失败（400，与既有参数校验
+            %% 风格一致）。history 主路径不动——负值由 logic 层
+            %% max(AfterSeq, MinSeq-1) 钳到授权下界（既有安全语义）；
+            %% backfill 的补扫窗口 (AfterSeq, SafeHead] 直接消费 AfterSeq，
+            %% 负值会无谓扩大 range_limit 判定跨度，故入口拒绝。
+            case AfterSeq < 0 of
+                true ->
+                    elib_response:error(Req0, <<"after_seq 参数非法"/utf8>>, ?ERR_BAD_REQUEST);
+                false ->
+                    history_backfill_do(
+                        Req0, CurrentUid, Qs, ChatType, PeerIdEnc, AfterSeq
+                    )
             end
+    end.
+
+history_backfill_do(Req0, CurrentUid, Qs, ChatType, PeerIdEnc, AfterSeq) ->
+    {ok, Limit0} = elib_param:int(limit, Req0, 50),
+    %% 单页夹紧为 1..100（与 history 同范式）。
+    Limit = erlang:max(1, erlang:min(Limit0, 100)),
+    DID = proplists:get_value(<<"did">>, Qs, <<>>),
+    case
+        messaging_logic:history_backfill(
+            CurrentUid, ChatType, PeerIdEnc, AfterSeq, Limit, DID
+        )
+    of
+        {ok, Payload} ->
+            elib_response:success(Req0, Payload);
+        {error, Reason, Code} ->
+            elib_response:error(Req0, Reason, Code)
     end.
 
 %% Read only an original sender's persisted acceptance result.

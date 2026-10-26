@@ -42,6 +42,18 @@ tablename() ->
 %%     zone 在纯日期模式下生效，对 start_at/end_at 无影响。
 -spec page(map(), integer(), integer()) -> {ok, map()} | {error, term()}.
 page(Filter, Page, Size) ->
+    %% P3（审查发现修复轮）：zone 传入即校验 IANA 合法性（无论纯日期/时刻
+    %% 模式，入口早失败）；非法 → {error, invalid_zone}，由 handler 层映射 400。
+    %% 此前非法 zone 仅在纯日期边界实际参与 SQL 时由 PG 运行时报错兜住
+    %% （浪费 DB 往返 + 报错噪音），时刻模式下被静默忽略。
+    case validate_zone_param(maps:get(zone, Filter, undefined)) of
+        ok ->
+            page_do(Filter, Page, Size);
+        {error, _} = Err ->
+            Err
+    end.
+
+page_do(Filter, Page, Size) ->
     Tb = tablename(),
     Offset = erlang:max(0, (Page - 1) * Size),
     {WhereSql, Params} = build_where(Filter),
@@ -70,6 +82,28 @@ page(Filter, Page, Size) ->
         {{ok, _}, {error, Reason}} ->
             {error, Reason}
     end.
+
+%% zone 校验（default_zone/1 的上游入口）：合法 IANA 名单以 PG
+%% pg_timezone_names 为权威——与 SQL 中 `AT TIME ZONE $zone` 使用同一份
+%% tzdata，保证"校验通过则查询必不因 zone 报错"。缺省/空值走 default_zone
+%% 的 UTC 兜底语义，不校验。管理端低频列表页，一次 EXISTS 查询开销可忽略。
+%% P3 修复：仅 {ok, ok=false/空行} 判 invalid_zone；{error, Reason} 原样
+%% 透传——瞬态连接故障不得误报为 zone 非法（handler 泛化分支兜底文案）。
+-spec validate_zone_param(term()) -> ok | {error, invalid_zone} | {error, term()}.
+validate_zone_param(Zone) when is_binary(Zone), Zone =/= <<>> ->
+    Sql = <<"SELECT EXISTS (SELECT 1 FROM pg_timezone_names WHERE name = $1) AS ok">>,
+    case elib_pg:one(Sql, [Zone]) of
+        {ok, #{<<"ok">> := true}} ->
+            ok;
+        {ok, #{<<"ok">> := false}} ->
+            {error, invalid_zone};
+        {ok, #{}} ->
+            {error, invalid_zone};
+        {error, Reason} ->
+            {error, Reason}
+    end;
+validate_zone_param(_) ->
+    ok.
 
 -spec find_by_id(integer()) -> {ok, map()} | {error, term()}.
 find_by_id(Id) ->
@@ -178,7 +212,10 @@ add_date_le(Field, V, Zone, Conds, Params, N) when is_binary(V) ->
 add_date_le(_Field, _V, _Zone, Conds, Params, N) ->
     {Conds, Params, N}.
 
-%% zone 缺省 UTC：与旧实现（session TimeZone=UTC 时）语义一致，不静默改变报表含义
+%% zone 缺省 UTC：与旧实现（session TimeZone=UTC 时）语义一致，不静默改变报表含义。
+%% P3（审查发现修复轮）：IANA 合法性校验上移至 page/3 入口
+%% （validate_zone_param/1，pg_timezone_names 权威名单）；本函数保持纯
+%% fallback 语义，仅对缺省/空值兜底 UTC，非法值到不了这里。
 -spec default_zone(term()) -> binary().
 default_zone(Z) when is_binary(Z), Z =/= <<>> ->
     Z;

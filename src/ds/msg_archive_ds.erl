@@ -24,7 +24,7 @@
 -export([message_result/4]).
 -export([conv_key_c2c/2, conv_key_c2g/1]).
 %% R02/D05：安全推进边界、一致快照历史与有界补扫
--export([safe_head/4, safe_history/6, backfill/6]).
+-export([safe_head/4, safe_heads/2, safe_history/6, backfill/6]).
 
 message_result(ConvKey, MsgId, Sender, MinSeq) ->
     msg_archive_repo:message_result(ConvKey, MsgId, Sender, MinSeq).
@@ -98,6 +98,13 @@ conv_key_c2g(Gid) ->
     {ok, non_neg_integer()} | {error, term()}.
 safe_head(ConvKey, ChatType, PeerA, PeerB) ->
     msg_archive_repo:safe_head(ConvKey, ChatType, PeerA, PeerB).
+
+%% @doc P2（审查发现修复轮）：多会话批量取 B 边界——单事务单 SQL，
+%% 消除 offline v2 cursor 逐群 with_tx 串行放大（见 msg_archive_repo:safe_heads/2）。
+-spec safe_heads(binary(), [{binary(), integer(), integer()}]) ->
+    {ok, #{binary() => non_neg_integer()}} | {error, term()}.
+safe_heads(ChatType, Items) ->
+    msg_archive_repo:safe_heads(ChatType, Items).
 
 %% @doc R02/D05：一致快照下的增量历史（行 + B 边界 + 终态空洞）。
 -spec safe_history(binary(), integer(), pos_integer(), binary(), integer(), integer()) ->

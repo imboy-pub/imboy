@@ -1,6 +1,7 @@
 -module(review_queue_repo_tests).
 
 -include_lib("eunit/include/eunit.hrl").
+-include("eunit_setup.hrl").
 
 %%%===================================================================
 %%% @doc review_queue_repo R12-BE 时间边界构造单测（纯 SQL 构造断言，不依赖 PG）。
@@ -10,6 +11,8 @@
 %%%   - rfc3339 时刻参数（start_at/end_at）直接瞬间比较
 %%%   - 优先级：start_at/end_at > start/end
 %%%   - 不引入 DATE(created_at) 包装（保持索引可用）
+%%% P3（审查发现修复轮）：zone 传入即 IANA 校验（pg_timezone_names 权威），
+%%% 非法 → {error, invalid_zone}（handler 层映射 400），PG 用例验证。
 %%%===================================================================
 
 %% 旧纯日期参数 + 缺省 zone → AT TIME ZONE UTC，半开区间
@@ -144,3 +147,65 @@ ny_checks() ->
         }),
     nomatch =/= binary:match(Sql2, <<"AT TIME ZONE $2">>) andalso
         Params2 =:= [<<"2026-03-08">>, <<"America/New_York">>].
+
+%% ===================================================================
+%% P3（审查发现修复轮）：zone IANA 合法性校验（PG 权威名单）
+%% ===================================================================
+
+%% 非法 zone（语法上像 IANA 但不存在的 Area）→ {error, invalid_zone}，
+%% 不再透传 SQL（旧行为：纯日期模式下 PG 运行时报错、时刻模式静默忽略）。
+invalid_zone_rejected_test_() ->
+    ?TEST_WITH_DB(fun() ->
+        ?assertEqual(
+            {error, invalid_zone},
+            review_queue_repo:page(#{zone => <<"Not/AZone">>, start => <<"2026-10-26">>}, 1, 10)
+        ),
+        %% 时刻模式下同样拒绝（入口早失败，不再静默忽略）
+        ?assertEqual(
+            {error, invalid_zone},
+            review_queue_repo:page(#{zone => <<"Not/AZone">>}, 1, 10)
+        )
+    end).
+
+%% 合法 zone（时刻过滤模式，生产主路径）不再被校验拦截，正常走 SQL 查询。
+%% 注：不在此用例覆盖纯日期+zone 的真实执行——该路径存在预存缺陷
+%% （epgsql binary datetime 编码对 <<...>>::date 参数 date2j function_clause，
+%% R12-BE 旧参数兼容模式问题，与 zone 校验无关），已登记 follow-up。
+valid_zone_passes_test_() ->
+    ?TEST_WITH_DB(fun() ->
+        case
+            review_queue_repo:page(
+                #{
+                    zone => <<"UTC">>,
+                    start_at => <<"2026-10-26T00:00:00Z">>,
+                    end_at => <<"2026-10-27T00:00:00Z">>
+                },
+                1,
+                10
+            )
+        of
+            {ok, #{total := Total}} -> ?assert(is_integer(Total));
+            {error, Reason} -> ?assertEqual(ok, {zone_query_unexpected_error, Reason})
+        end
+    end).
+
+%% 缺省/空值 zone 走 UTC 兜底，不触发校验（向后兼容）。
+absent_zone_untouched_test_() ->
+    ?TEST_WITH_DB(fun() ->
+        ?assertMatch({ok, _}, review_queue_repo:page(#{}, 1, 10))
+    end).
+
+%% P3 修复轮：pg_timezone_names 校验查询自身失败（瞬态连接故障）→ 原因
+%% 原样透传 {error, Reason}，不得误报 invalid_zone（误报会让 handler 把
+%% 基础设施故障映射成"zone 参数非法"400，掩盖真实故障）。纯 meck，不依赖 DB。
+zone_check_db_error_passthrough_test() ->
+    meck:new(elib_pg, [non_strict, no_link]),
+    try
+        meck:expect(elib_pg, one, fun(_Sql, _Args) -> {error, pg_conn_down} end),
+        ?assertEqual(
+            {error, pg_conn_down},
+            review_queue_repo:page(#{zone => <<"Asia/Shanghai">>}, 1, 10)
+        )
+    after
+        meck:unload(elib_pg)
+    end.

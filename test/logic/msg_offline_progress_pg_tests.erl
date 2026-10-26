@@ -18,6 +18,8 @@
 
 -define(R1_GA, 997001).
 -define(R1_GB, 997002).
+-define(R1_GC, 997003).
+-define(R1_GD, 997004).
 -define(R1_UID, 99701001).
 -define(R1_SENDER, 99701002).
 -define(C2C_A, 99702001).
@@ -49,26 +51,38 @@ cleanup() ->
     _ = elib_pg:execute(<<"DELETE FROM public.msg_store_seq WHERE conv_key = $1">>, [?C2C_KEY]),
     _ = elib_pg:execute(<<"DELETE FROM msg_c2g_timeline WHERE to_gid = $1">>, [?R1_GA]),
     _ = elib_pg:execute(<<"DELETE FROM msg_c2g_timeline WHERE to_gid = $1">>, [?R1_GB]),
-    _ = elib_pg:execute(<<"DELETE FROM msg_c2g WHERE to_id IN ($1, $2)">>, [?R1_GA, ?R1_GB]),
+    _ = elib_pg:execute(<<"DELETE FROM msg_c2g_timeline WHERE to_gid = $1">>, [?R1_GC]),
+    _ = elib_pg:execute(<<"DELETE FROM msg_c2g_timeline WHERE to_gid = $1">>, [?R1_GD]),
     _ = elib_pg:execute(
-        <<"DELETE FROM msg_store WHERE conv_key IN ($1, $2)">>,
-        [<<"c2g:997001">>, <<"c2g:997002">>]
+        <<"DELETE FROM msg_c2g WHERE to_id IN ($1, $2, $3, $4)">>,
+        [?R1_GA, ?R1_GB, ?R1_GC, ?R1_GD]
     ),
     _ = elib_pg:execute(
-        <<"DELETE FROM msg_store_staging WHERE type='c2g' AND to_id IN ($1, $2)">>,
-        [?R1_GA, ?R1_GB]
+        <<"DELETE FROM msg_store WHERE conv_key IN ($1, $2, $3, $4)">>,
+        [<<"c2g:997001">>, <<"c2g:997002">>, <<"c2g:997003">>, <<"c2g:997004">>]
     ),
     _ = elib_pg:execute(
-        <<"DELETE FROM msg_store_seq WHERE conv_key IN ($1, $2)">>,
-        [<<"c2g:997001">>, <<"c2g:997002">>]
+        <<"DELETE FROM msg_store_staging WHERE type='c2g' AND to_id IN ($1, $2, $3, $4)">>,
+        [?R1_GA, ?R1_GB, ?R1_GC, ?R1_GD]
+    ),
+    _ = elib_pg:execute(
+        <<"DELETE FROM msg_store_seq WHERE conv_key IN ($1, $2, $3, $4)">>,
+        [<<"c2g:997001">>, <<"c2g:997002">>, <<"c2g:997003">>, <<"c2g:997004">>]
     ),
     _ = elib_pg:execute(<<"DELETE FROM group_member_generation WHERE group_id IN ($1, $2)">>, [
         ?R1_GA, ?R1_GB
     ]),
+    _ = elib_pg:execute(<<"DELETE FROM group_member_generation WHERE group_id IN ($1, $2)">>, [
+        ?R1_GC, ?R1_GD
+    ]),
     _ = elib_pg:execute(<<"DELETE FROM group_member WHERE group_id IN ($1, $2)">>, [
         ?R1_GA, ?R1_GB
     ]),
+    _ = elib_pg:execute(<<"DELETE FROM group_member WHERE group_id IN ($1, $2)">>, [
+        ?R1_GC, ?R1_GD
+    ]),
     _ = elib_pg:execute(<<"DELETE FROM \"group\" WHERE id IN ($1, $2)">>, [?R1_GA, ?R1_GB]),
+    _ = elib_pg:execute(<<"DELETE FROM \"group\" WHERE id IN ($1, $2)">>, [?R1_GC, ?R1_GD]),
     ok.
 
 setup_group(Gid) ->
@@ -266,6 +280,128 @@ r01_5_seq_batch_recovery_and_safe_head_clamp_test_() ->
         {ok, {marks, Marks2}} =
             msg_offline_cursor:decode(maps:get(<<"next_cursor">>, C2g2)),
         ?assertEqual([{?R1_GA, 3}], Marks2)
+    end).
+
+%% ------------------------------------------------------------------
+%% R08-P2：批量 safe_heads 与逐群 safe_head 一致（多群混合语义）
+%% ------------------------------------------------------------------
+
+%% staging 行 fixture：non_terminal=可重试（钳 B），terminal=终态失败（空洞不阻塞）
+insert_staging_row(Id, Gid, Seq, non_terminal) ->
+    {ok, _} =
+        elib_pg:execute(
+            <<
+                "INSERT INTO msg_store_staging (id, type, msg_id, payload, from_id, to_id, "
+                "to_id_list, created_at, server_ts, conv_seq) ",
+                "VALUES ($1, 'c2g', $2, '{}', $3, $4, '{}'::bigint[], NOW(), NOW(), $5)"
+            >>,
+            [Id, <<"r01stg_", (integer_to_binary(Id))/binary>>, ?R1_SENDER, Gid, Seq]
+        ),
+    ok;
+insert_staging_row(Id, Gid, Seq, terminal) ->
+    {ok, _} =
+        elib_pg:execute(
+            <<
+                "INSERT INTO msg_store_staging (id, type, msg_id, payload, from_id, to_id, "
+                "to_id_list, created_at, server_ts, conv_seq, processed_at) ",
+                "VALUES ($1, 'c2g', $2, '{}', $3, $4, '{}'::bigint[], NOW(), NOW(), $5, NOW())"
+            >>,
+            [Id, <<"r01stg_", (integer_to_binary(Id))/binary>>, ?R1_SENDER, Gid, Seq]
+        ),
+    ok.
+
+%% @doc R08-P2a：三群混合（GA 正常 / GC 终态空洞 / GD staging 钳制），
+%% safe_heads 批量结果与逐群 safe_head 一一对应，且语义逐群可推导：
+%%   GA formal_max=2、无非终态 → B=2
+%%   GC formal_max=1、终态行 seq=2 不入阻塞集 → B=1
+%%   GD formal_max=5、非终态 staging min=3 → B=min(5, 3-1)=2
+r08_p2a_safe_heads_batch_matches_per_group_test_() ->
+    ?TEST_WITH_DB(fun() ->
+        cleanup(),
+        ok = setup_group(?R1_GA),
+        ok = setup_group(?R1_GC),
+        ok = setup_group(?R1_GD),
+        lists:foreach(
+            fun(N) -> insert_c2g(?R1_GA, <<"r01ga_", (integer_to_binary(N))/binary>>, N) end,
+            lists:seq(1, 2)
+        ),
+        lists:foreach(
+            fun(N) -> insert_c2g(?R1_GC, <<"r01gc_", (integer_to_binary(N))/binary>>, N) end,
+            lists:seq(1, 1)
+        ),
+        lists:foreach(
+            fun(N) -> insert_c2g(?R1_GD, <<"r01gd_", (integer_to_binary(N))/binary>>, N) end,
+            lists:seq(1, 5)
+        ),
+        ok = insert_staging_row(99799101, ?R1_GC, 2, terminal),
+        ok = insert_staging_row(99799102, ?R1_GD, 3, non_terminal),
+
+        Items = [
+            {<<"c2g:997001">>, ?R1_GA, 0},
+            {<<"c2g:997003">>, ?R1_GC, 0},
+            {<<"c2g:997004">>, ?R1_GD, 0}
+        ],
+        {ok, Heads} = msg_archive_repo:safe_heads(<<"c2g">>, Items),
+
+        %% 批量与逐群一一对应（复用 safe_head_tx 同一窗口判定语义）
+        PerGroup = [
+            begin
+                {ok, B} = msg_archive_repo:safe_head(K, <<"c2g">>, A, B0),
+                {K, B}
+            end
+         || {K, A, B0} <- Items
+        ],
+        ?assertEqual(lists:sort(PerGroup), lists:sort(maps:to_list(Heads))),
+
+        %% 语义逐群可推导（终态空洞不阻塞、非终态 staging 钳制）
+        ?assertEqual(2, maps:get(<<"c2g:997001">>, Heads)),
+        ?assertEqual(1, maps:get(<<"c2g:997003">>, Heads)),
+        ?assertEqual(2, maps:get(<<"c2g:997004">>, Heads))
+    end).
+
+%% ------------------------------------------------------------------
+%% R08-P2b：offline v2 cursor 推进走批量取 B——三群仅 1 次 with_tx
+%% ------------------------------------------------------------------
+
+%% @doc R08-P2b：marks 三群均有新行时，next_cursor 推进的 B 边界批量取
+%% 收敛为单事务（原逐群 safe_head 为 N 次 with_tx）；推进值仍被各群 B 钳制。
+r08_p2b_offline_single_tx_for_heads_test_() ->
+    ?TEST_WITH_DB(fun() ->
+        cleanup(),
+        ok = setup_group(?R1_GA),
+        ok = setup_group(?R1_GB),
+        ok = setup_group(?R1_GD),
+        lists:foreach(
+            fun(N) -> insert_c2g(?R1_GA, <<"r01ga_", (integer_to_binary(N))/binary>>, N) end,
+            lists:seq(1, 2)
+        ),
+        lists:foreach(
+            fun(N) -> insert_c2g(?R1_GB, <<"r01gb_", (integer_to_binary(N))/binary>>, N) end,
+            lists:seq(1, 2)
+        ),
+        lists:foreach(
+            fun(N) -> insert_c2g(?R1_GD, <<"r01gd_", (integer_to_binary(N))/binary>>, N) end,
+            lists:seq(1, 5)
+        ),
+        ok = insert_staging_row(99799102, ?R1_GD, 3, non_terminal),
+
+        Cursor0 = {marks, [{?R1_GA, 0}, {?R1_GB, 0}, {?R1_GD, 0}]},
+        meck:new(elib_pg, [passthrough, no_link, non_strict]),
+        meck:expect(elib_pg, with_tx, fun(F) -> meck:passthrough([F]) end),
+        try
+            Payload = messaging_logic:offline(?R1_UID, 50, 0, 0, 0, <<>>, Cursor0),
+            C2g = maps:get(<<"c2g">>, Payload),
+            {ok, {marks, Marks}} =
+                msg_offline_cursor:decode(maps:get(<<"next_cursor">>, C2g)),
+            %% 各群推进到自身返回最大 conv_seq 且被 B 钳制（GD 钳到 2）
+            ?assertEqual(
+                [{?R1_GA, 2}, {?R1_GB, 2}, {?R1_GD, 2}], lists:sort(Marks)
+            ),
+            %% 批量路径：三群 B 边界单事务（修复前为 3 次独立 with_tx）
+            ?assertEqual(1, meck:num_calls(elib_pg, with_tx, 1))
+        after
+            catch meck:unload(elib_pg)
+        end
     end).
 
 %% ------------------------------------------------------------------

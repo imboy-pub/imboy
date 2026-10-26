@@ -175,7 +175,7 @@ last_week_range({Date, _Time}) ->
 %% DST 分支：本地钟面不存在（春季跳变）或歧义（秋季回拨）时各取确定解；
 %% 生产 zone（UTC / Asia/Shanghai）无 DST，分支仅为健壮性兜底。
 -spec local_midnight_to_rfc3339(calendar:datetime()) -> binary().
-local_midnight_to_rfc3339(LocalDT) ->
+local_midnight_to_rfc3339({Date, _Time} = LocalDT) ->
     EpochSec =
         case calendar:local_time_to_universal_time_dst(LocalDT) of
             [UTC] ->
@@ -184,10 +184,31 @@ local_midnight_to_rfc3339(LocalDT) ->
                 %% 秋季回拨歧义：取较早瞬间（DST 期 00:00）
                 gregorian_to_epoch_sec(UTC1);
             [] ->
-                %% 春季跳变 00:00 不存在：按标准钟面回退（仅影响有 DST 时区的个别周日）
-                gregorian_to_epoch_sec(LocalDT)
+                %% P3（审查发现修复轮）：春季跳变 00:00 不存在——旧实现把本地
+                %% 钟面当无偏移 epoch（把钟面误当 UTC，产生不对应任何合法本地
+                %% 时刻的窗口起点）。改为取跳变后该日首个有效本地钟面的真实
+                %% 瞬间：IANA 现实跳变幅度 <= 2h，按 30 分钟步进探测
+                %% （含 Lord Howe 30 分钟跳变），窗口起点不跨日、不倒退。
+                spring_forward_epoch(Date)
         end,
     elib_dt:to_rfc3339(EpochSec, second).
+
+%% 春季跳变日：按 30 分钟步进探测首个存在的本地钟面（00:30..02:30 覆盖
+%% IANA 全部现实跳变幅度），返回其 UTC 瞬间。
+spring_forward_epoch(Date) ->
+    spring_forward_epoch(Date, [{0, 30}, {1, 0}, {1, 30}, {2, 0}, {2, 30}]).
+
+spring_forward_epoch(Date, [{H, M} | Rest]) ->
+    case calendar:local_time_to_universal_time_dst({Date, {H, M, 0}}) of
+        [] ->
+            spring_forward_epoch(Date, Rest);
+        [UTC | _] ->
+            gregorian_to_epoch_sec(UTC)
+    end;
+%% 理论不可达出口（IANA 无 >2h 跳变）：确定性回退到跳变日标准钟面解释，
+%% 避免崩溃面（行为退化为旧实现语义，仍优于 function_clause）。
+spring_forward_epoch(Date, []) ->
+    gregorian_to_epoch_sec({Date, {0, 0, 0}}).
 
 -spec gregorian_to_epoch_sec(calendar:datetime()) -> integer().
 gregorian_to_epoch_sec(DT) ->
