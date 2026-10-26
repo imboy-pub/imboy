@@ -443,6 +443,16 @@ statements() ->
 
 %% ===================================================================
 %% 归一化：二进制列名 → 原子键；timestamptz → Unix 秒；NULL → undefined
+%%
+%% R08-BE 时间单位合同（显式化，防再漂移）：
+%%   * 本模块（EB 域 wire）所有 `ts` kind 列（*_at/*_ts）出站为 **Unix 秒**
+%%     （to_unix/1 经 elib_dt:rfc3339_to(Value, second)）。
+%%   * 通用 REST 出站（elib_response → elib_cnv:convert_at_timestamps）
+%%     把 `*_at/*_ts` 转为 **epoch 毫秒**（elib_dt:rfc3339_to/1 按值长度判单位，
+%%     库内统一毫秒）。
+%%   * 三端 adapter 合同（state.json D04 / R08-AD apiInstant.ts 显式
+%%     seconds|milliseconds unit、R08-FL 解析边界秒→毫秒归一）均按此消费：
+%%     **EB 域字段单位不得改为毫秒**（零 wire 变更），通用 REST 毫秒同理保持。
 %% ===================================================================
 
 normalize(Row, Fields) ->

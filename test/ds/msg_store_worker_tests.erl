@@ -282,7 +282,7 @@ c2g_write_requires_authoritative_conv_seq_test_() ->
     ?WITH_MECKS(
         [
             {msg_c2g_repo, [
-                {'write_accepted_msg', 11, fun(_, _, _, _, _, _, _, _, _, _, _) ->
+                {'write_accepted_msg', 12, fun(_, _, _, _, _, _, _, _, _, _, _, _) ->
                     erlang:error(should_not_write_without_conv_seq)
                 end}
             ]}
@@ -292,7 +292,7 @@ c2g_write_requires_authoritative_conv_seq_test_() ->
                 {error, c2g_conv_seq_missing},
                 msg_store_worker:do_write(c2g, c2g_row(null))
             ),
-            ?assertEqual(0, meck:num_calls(msg_c2g_repo, write_accepted_msg, 11))
+            ?assertEqual(0, meck:num_calls(msg_c2g_repo, write_accepted_msg, 12))
         end
     ).
 
@@ -300,8 +300,8 @@ c2g_write_propagates_authoritative_conv_seq_test_() ->
     ?WITH_MECKS(
         [
             {msg_c2g_repo, [
-                {'write_accepted_msg', 11, fun(
-                    _, _, BodyJson, _, _, 9, _, _, null, 77, <<"did-1">>
+                {'write_accepted_msg', 12, fun(
+                    _, _, BodyJson, _, _, 9, _, _, null, 77, <<"did-1">>, _
                 ) ->
                     ?assertEqual(#{<<"text">> => <<"stored text">>}, jsone:decode(BodyJson)),
                     ok
@@ -310,7 +310,7 @@ c2g_write_propagates_authoritative_conv_seq_test_() ->
         ],
         fun() ->
             ?assertEqual(ok, msg_store_worker:do_write(c2g, c2g_row(77))),
-            ?assertEqual(1, meck:num_calls(msg_c2g_repo, write_accepted_msg, 11))
+            ?assertEqual(1, meck:num_calls(msg_c2g_repo, write_accepted_msg, 12))
         end
     ).
 
@@ -494,7 +494,7 @@ process_row_db_failure_retries_not_terminal_test_() ->
     ?WITH_MECKS(
         [
             {msg_c2g_repo, [
-                {'write_accepted_msg', 11, fun(_, _, _, _, _, _, _, _, _, _, _) ->
+                {'write_accepted_msg', 12, fun(_, _, _, _, _, _, _, _, _, _, _, _) ->
                     {error, {db_exception, error, timeout}}
                 end}
             ]},
@@ -514,7 +514,7 @@ process_row_poison_does_not_block_next_message_test_() ->
     ?WITH_MECKS(
         [
             {msg_c2g_repo, [
-                {'write_accepted_msg', 11, fun(_, _, _, _, _, _, _, _, _, _, _) -> ok end}
+                {'write_accepted_msg', 12, fun(_, _, _, _, _, _, _, _, _, _, _, _) -> ok end}
             ]},
             {msg_store_ds, [{'unstage', 2, fun(_, _) -> ok end}]},
             {msg_archive_repo, [{'archive', 1, fun(_) -> ok end}]},
@@ -528,7 +528,7 @@ process_row_poison_does_not_block_next_message_test_() ->
             Good = c2g_guard_row(#{<<"msg_id">> => <<"m-after-poison">>}),
             lists:foreach(fun msg_store_worker:process_row/1, [Bad, Good]),
             ?assertEqual(1, meck:num_calls(msg_store_repo, mark_terminal, 3)),
-            ?assertEqual(1, meck:num_calls(msg_c2g_repo, write_accepted_msg, 11)),
+            ?assertEqual(1, meck:num_calls(msg_c2g_repo, write_accepted_msg, 12)),
             ?assertEqual(
                 1, meck:num_calls(msg_store_ds, unstage, [<<"c2g">>, <<"m-after-poison">>])
             ),
@@ -540,7 +540,7 @@ process_row_missing_c2c_sequence_preserves_message_test_() ->
     ?WITH_MECKS(
         [
             {msg_c2c_ds, [
-                {'write_msg', 9, fun(_, _, _, _, _, _, _, _, _) ->
+                {'write_msg', 11, fun(_, _, _, _, _, _, _, _, _, _, _) ->
                     {error, c2c_sequence_missing}
                 end}
             ]},
@@ -586,10 +586,10 @@ process_row_success_is_scoped_to_claimed_type_test_() ->
     ?PURE_MOCKS(
         [
             {msg_c2c_ds, [
-                {'write_msg', 9, fun(_, _, _, _, _, _, _, _, _) -> get(write_result) end}
+                {'write_msg', 11, fun(_, _, _, _, _, _, _, _, _, _, _) -> get(write_result) end}
             ]},
             {msg_c2g_repo, [
-                {'write_accepted_msg', 11, fun(_, _, _, _, _, _, _, _, _, _, _) ->
+                {'write_accepted_msg', 12, fun(_, _, _, _, _, _, _, _, _, _, _, _) ->
                     get(write_result)
                 end}
             ]},

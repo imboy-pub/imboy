@@ -8,8 +8,11 @@ own_device_history_preserves_logical_recipient_test_() ->
         [
             {msg_archive_ds, [
                 {conv_key_c2c, 2, fun(100, 200) -> <<"c2c:100:200">> end},
-                {history, 3, fun(<<"c2c:100:200">>, 0, 3) ->
-                    {ok, [row(1, 100, 200), row(2, 200, 100)]}
+                %% R02/D05：safe_history/6 快照 {ok, Rows, SafeHead, TerminalGaps}；
+                %% 两行均正式归档 → B=2。next_seq 仍按全量行（含被 DID 过滤行）
+                %% 推进再钳 B：expected = min(2, 2) = 2。
+                {safe_history, 6, fun(<<"c2c:100:200">>, 0, 3, <<"c2c">>, 100, 200) ->
+                    {ok, [row(1, 100, 200), row(2, 200, 100)], 2, []}
                 end}
             ]}
         ],

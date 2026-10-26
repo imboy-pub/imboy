@@ -12,8 +12,11 @@
 -export([write_msg/9]).
 -export([write_msg/10]).
 -export([write_accepted_msg/11]).
+-export([write_accepted_msg/12]).
 -export([write_msg_with_reply/11]).
 -export([write_msg_with_reply/12]).
+-export([write_msg_with_reply/13]).
+-export([write_msg_with_reply/14]).
 -export([list_by_ids/2]).
 -export([find_msg_by_id/1]).
 -export([find_by_reply_to_msg_id/1]).
@@ -180,6 +183,56 @@ write_accepted_msg(
     ConvSeq,
     SenderDid
 ) ->
+    %% R03/D04：兼容旧入口（接受时间缺失，accepted_at 列保持 NULL，
+    %% server_ts 维持旧语义回退 CreatedAt）。
+    write_accepted_msg(
+        CreatedAtRaw,
+        MsgId,
+        Payload,
+        FromId,
+        ToUids,
+        Gid,
+        MsgType,
+        E2EE,
+        ExpireAt,
+        ConvSeq,
+        SenderDid,
+        undefined
+    ).
+
+%% @doc R03/D04（IMBOY-TIMEZONE-REPAIR-V1）：worker 转正路径带接受时间写入。
+%% AcceptedAt 为首次持久接受事务内固定的服务端接受时间（RFC3339 binary），
+%% 来自 staging 行；新行 server_ts 对齐 accepted_at（修复历史上把客户端
+%% CreatedAt 写进 server_ts 的污染），ON CONFLICT 幂等子句不触碰
+%% accepted_at/server_ts——重复/重放不重赋。
+-spec write_accepted_msg(
+    binary() | integer(),
+    binary(),
+    binary(),
+    integer(),
+    [integer()],
+    integer(),
+    binary(),
+    map() | binary() | null,
+    binary() | null,
+    pos_integer(),
+    binary() | null,
+    binary() | null
+) -> ok | {error, term()}.
+write_accepted_msg(
+    CreatedAtRaw,
+    MsgId,
+    Payload,
+    FromId,
+    ToUids,
+    Gid,
+    MsgType,
+    E2EE,
+    ExpireAt,
+    ConvSeq,
+    SenderDid,
+    AcceptedAt
+) ->
     write_msg_impl(
         CreatedAtRaw,
         MsgId,
@@ -193,13 +246,17 @@ write_accepted_msg(
         ConvSeq,
         undefined,
         SenderDid,
-        accepted
+        accepted,
+        AcceptedAt
     ).
 
 %% @private RT-P3-03：统一写入主体。ReplyMeta = undefined | {ReplyToMsgId,
 %% ReplyToFromId, ReplySnippet}——非 undefined 时把引用三列并入正式表 INSERT，
 %% 且冲突子句升级为「条件补洞 UPDATE」（仅当既有行 reply_to_msg_id IS NULL），
 %% 与 staging worker 的无引用双写竞态不再互相吞没。
+%% R03/D04：AcceptedAt = undefined | RFC3339 binary——首次持久接受时间。
+%% 有值时新行 accepted_at/server_ts 均写该值；undefined 时维持旧行为
+%% （不写 accepted_at，server_ts 回退 CreatedAt）。
 write_msg_impl(
     CreatedAtRaw,
     MsgId,
@@ -215,8 +272,48 @@ write_msg_impl(
     SenderDid,
     AcceptanceMode
 ) ->
+    write_msg_impl(
+        CreatedAtRaw,
+        MsgId,
+        Payload,
+        FromId,
+        ToUids,
+        Gid,
+        MsgType,
+        E2EE,
+        ExpireAt,
+        ConvSeq,
+        ReplyMeta,
+        SenderDid,
+        AcceptanceMode,
+        undefined
+    ).
+
+write_msg_impl(
+    CreatedAtRaw,
+    MsgId,
+    Payload,
+    FromId,
+    ToUids,
+    Gid,
+    MsgType,
+    E2EE,
+    ExpireAt,
+    ConvSeq,
+    ReplyMeta,
+    SenderDid,
+    AcceptanceMode,
+    AcceptedAt
+) ->
     %% ---------- 统一转换 CreatedAt ----------
     CreatedAt = elib_dt:to_rfc3339(CreatedAtRaw),
+    %% R03/D04：接受时间存在时 server_ts 对齐 accepted_at（新行止污）；
+    %% 不存在时保持旧语义（server_ts = CreatedAt），旧行为零影响。
+    ServerTs =
+        case AcceptedAt of
+            AcceptedRfc when is_binary(AcceptedRfc), AcceptedRfc =/= <<>> -> AcceptedRfc;
+            _ -> CreatedAt
+        end,
 
     %% 群离线消息表
     TbMsg = tablename(),
@@ -233,7 +330,7 @@ write_msg_impl(
             to_id => Gid,
             from_id => FromId,
             created_at => CreatedAt,
-            server_ts => CreatedAt,
+            server_ts => ServerTs,
             topic_id => 0,
             msg_id => MsgId,
             msg_type => MsgType,
@@ -246,7 +343,14 @@ write_msg_impl(
                     _ -> null
                 end
         },
-        MsgData = put_sender_did(MsgData0, SenderDid),
+        MsgData1 =
+            case AcceptedAt of
+                AcceptedRfc2 when is_binary(AcceptedRfc2), AcceptedRfc2 =/= <<>> ->
+                    MsgData0#{accepted_at => AcceptedRfc2};
+                _ ->
+                    MsgData0
+            end,
+        MsgData = put_sender_did(MsgData1, SenderDid),
         %% 仅当 ExpireAt 非 null 时添加字段
         MsgData2 =
             case ExpireAt of
@@ -350,7 +454,11 @@ list_by_ids(Ids, Column) ->
 -spec find_msg_by_id(binary()) -> {ok, map()} | {error, any()}.
 find_msg_by_id(Id) ->
     Tb = tablename(),
-    Column = <<"id, payload, created_at, from_id, to_id, msg_id, msg_type, e2ee">>,
+    %% R04：accepted_at/server_ts 供撤回/编辑窗口的可信时间基准解析
+    %% （msg_store_repo:resolve_accepted_ms/1）；created_at 保留为低可信回退。
+    Column =
+        <<"id, payload, created_at, server_ts, accepted_at, from_id, to_id, msg_id,",
+            " msg_type, e2ee">>,
     Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary, " WHERE msg_id = $1 LIMIT 1">>,
     case elib_pg:query(Sql, [Id]) of
         {ok, [Row]} when is_map(Row) -> {ok, Row};
@@ -515,6 +623,91 @@ write_msg_with_reply(
     ReplySnippet,
     ConvSeq
 ) ->
+    %% R03/D04：兼容旧入口，不带接受时间。
+    write_msg_with_reply(
+        CreatedAt,
+        Id,
+        Payload,
+        FromId,
+        ToUids,
+        Gid,
+        MsgType,
+        E2EE,
+        ReplyToMsgId,
+        ReplyToFromId,
+        ReplySnippet,
+        ConvSeq,
+        undefined
+    ).
+
+%% @doc R03/D04 + R05-A 兼容旧入口（/13）：无自毁期限。
+write_msg_with_reply(
+    CreatedAt,
+    Id,
+    Payload,
+    FromId,
+    ToUids,
+    Gid,
+    MsgType,
+    E2EE,
+    ReplyToMsgId,
+    ReplyToFromId,
+    ReplySnippet,
+    ConvSeq,
+    AcceptedAt
+) ->
+    write_msg_with_reply(
+        CreatedAt,
+        Id,
+        Payload,
+        FromId,
+        ToUids,
+        Gid,
+        MsgType,
+        E2EE,
+        ReplyToMsgId,
+        ReplyToFromId,
+        ReplySnippet,
+        ConvSeq,
+        AcceptedAt,
+        null
+    ).
+
+%% @doc R03/D04 + R05-A（IMBOY-TIMEZONE-REPAIR-V1）：带接受时间与自毁期限的
+%% 引用回复直写。AcceptedAt/ExpireAt 与 staging 行同一值；ON CONFLICT 补洞
+%% 子句只回填 reply 三列，不触碰 accepted_at/server_ts/expire_at。
+-spec write_msg_with_reply(
+    binary() | integer(),
+    binary(),
+    binary(),
+    integer(),
+    [integer()],
+    integer(),
+    binary(),
+    map() | binary() | null,
+    binary(),
+    integer(),
+    binary(),
+    pos_integer() | null,
+    binary() | null,
+    binary() | null
+) -> ok | {error, term()}.
+write_msg_with_reply(
+    CreatedAt,
+    Id,
+    Payload,
+    FromId,
+    ToUids,
+    Gid,
+    MsgType,
+    E2EE,
+    ReplyToMsgId,
+    ReplyToFromId,
+    ReplySnippet,
+    ConvSeq,
+    AcceptedAt,
+    ExpireAt
+) ->
     %% RT-P3-03（2026-08-27）：表自建库迁移 00000006 起即有 reply 三列，
     %% 原"不支持"注释系误记导致引用元数据被静默丢弃；改走真实现。
     write_msg_impl(
@@ -526,11 +719,12 @@ write_msg_with_reply(
         Gid,
         MsgType,
         E2EE,
-        null,
+        ExpireAt,
         ConvSeq,
         {ReplyToMsgId, ReplyToFromId, ReplySnippet},
         null,
-        current_state
+        current_state,
+        AcceptedAt
     ).
 
 %% @doc 根据被引用消息ID查找所有回复消息

@@ -4,7 +4,7 @@
 >
 > **不可妥协（Non-Negotiable）**：以下 6 条规则适用于三端（Erlang 后端 / Flutter 客户端 / React 管理后台）。任何 PR 违反任一条 → 必须修复或显式标记 `convention-exception` 标签并在 PR 描述中说明充分理由。
 >
-> **版本**：v1.1 · **最后更新**：2026-09-19（对齐代码事实：错误码整数形态、WS action 命名、ID 进路径现状；v1.0 中与代码相反的三处已修正，详见各节）
+> **版本**：v1.2 · **最后更新**：2026-10-26（§2 时间规则按生产事实重写：废除"全部 ISO-8601 字符串"声明，登记毫秒 int 信封等真实混合合同，权威字段表见 [time-field-contract.md](./reference/time-field-contract.md)；v1.1 详见各节）
 
 ---
 
@@ -32,30 +32,41 @@
 
 ## 2. 时间规则（Timestamps）
 
-**规则**：所有时间字段在传输与存储中统一为 **UTC，毫秒精度，ISO-8601 字符串**（带 `Z` 后缀）。
+> **v1.2 修正（IMBOY-TIMEZONE-REPAIR-V1 / R22-B）**：v1.0/v1.1 曾声明"所有时间字段统一为 UTC 毫秒精度 ISO-8601 字符串（带 Z）、禁止传输 Unix epoch 整数"——**与生产事实相反**。现行通用 REST 信封对一切 `_at`/`_ts` 键统一输出 **epoch 毫秒 int**（`elib_response:success` → `elib_cnv:convert_at_timestamps`），且系统本就存在多条单位轨道（EB 域=秒、服务端内部管线=RFC3339 微秒字符串、CS `tz_offset`=分钟等）。本节按已实现事实重写，不发明新合同；**逐字段权威登记表见 [时间字段合同](./reference/time-field-contract.md)**（含单位四轨、schema 演进/兼容矩阵、存量恢复、回滚策略）。
 
-**理由**：
-- 时区转换在客户端展示层处理，避免后端业务逻辑被时区污染
-- 毫秒精度对齐 IM 消息排序需求
-- ISO-8601 跨语言库支持成熟
+**规则（登记事实）**：
 
-**格式**：`YYYY-MM-DDTHH:mm:ss.sssZ`（合成示例：`2026-05-08T01:30:42.137Z`）
+- **通用 REST 信封**：payload 中一切 `_at` / `_ts` 后缀键统一为 **epoch 毫秒 int**；SQL NULL → JSON null。实现：`elib_response.erl:32` → `elib_cnv:convert_at_timestamps/1` → `elib_dt:rfc3339_to/1`（整数直通、PG tuple→毫秒、RFC3339 字符串→毫秒、空/解析失败→null）。
+- **EB 企业业务域**：全部 `ts` kind 列出站为 **Unix 秒 int**（`eb_pg_store_sql.erl:447-479` 合同注释明文 EB 不得改毫秒）；消费端解析边界归一（AD `apiInstant` unit='seconds'、FL `parseEpochSeconds`）。
+- **服务端内部管线**：消息写入路径的 `created_at` 用 `elib_dt:now()` 生成 **RFC3339 微秒字符串**（恒 `Z`）；该形态出现在 DB 落库值与兼容回投帧中，出站经信封归一为毫秒。
+- **WS 实时信封**：时间基准是 `server_ts`（毫秒 int），信封无 `created_at` 键。
+- **非瞬间量**：DateOnly（`YYYY-MM-DD`）无时区语义，必须配 `zone` 参数解释为当地自然日；`tz_offset` 为分钟 int；`conv_seq` 为会话内序数（无时区语义，仅同 conv_key 可比）。
+
+**消费方铁律**：
+
+- **禁止按字段名/位数猜单位**；解析必须走各端统一入口（BE 生成即正确；AD `src/lib/apiInstant.ts` 显式 unit；FL `lib/util/api_time.dart`）。
+- 时间缺失/非法 → **null 或 0（=未知）**，**禁止回填 now()**。
+- 客户端创作时间（消息 `created_at`）保留客户端钟面语义，**不得**作为服务端排序/游标权威；排序权威是 `conv_seq`，首次接受时间是 `accepted_at`（D04，REST 毫秒 int，旧行 NULL 走低可信回退，绝不回填）。
 
 **字段命名**：
 - 创建时间：`created_at`（数据库列）/ `createdAt`（JSON）
 - 更新时间：`updated_at` / `updatedAt`
 - 软删除：`deleted_at` / `deletedAt`（`null` 表示未删除）
 - 业务时间：`{action}_at`（如 `published_at`、`expired_at`）
+- **`_at` / `_ts` 后缀即进入毫秒 int 信封归一**（命名即合同的一部分；EB 域例外见字段表）
 
 **实现**：
-- 后端（Erlang）：`imboy_dt:utc_now/0` 返回 `binary()`；DB 列类型 `TIMESTAMPTZ DEFAULT NOW()`
-- Flutter：`DateTime.parse(...).toUtc()` 解析；展示层用 `intl` 转本地时区
-- React：`dayjs.utc(...).local()` 转换
+- 后端（Erlang）：`imboy_dt:utc_now/0` 返回 `binary()`；DB 列类型 `TIMESTAMPTZ DEFAULT NOW()`；管理面信封附 `sv_ts`（服务器当前毫秒）
+- Flutter：经 `ApiTime` 统一解析（毫秒 int / RFC3339 / 秒三态归一，0=未知）；展示层转本地时区
+- React：`apiInstant.ts` / `displayTime.ts` 统一解析与展示（null fail-closed）
 
 **禁止**：
-- 传输 Unix epoch 整数（除非协议层明确约定，如 v2 frame 协议头）
+- 新增端点绕过 `_at`/`_ts` 信封归一自造字符串时间（确需 RFC3339 出站的，走 `elib_response:success_rfc3339` 并在契约文档显式声明）
 - 字段使用 `time` / `date` / `timestamp` 这类不带语义的命名
 - 任何场景在 DB 用 `TIMESTAMP`（无时区）类型
+- 客户端/服务端任何路径用 `now()` 回填缺失历史时间（不可恢复边界见字段合同 §5）
+
+**例外与漂移登记**：单位例外（EB 秒、CS 分钟、DateOnly、cursor token 等）逐条登记于字段合同 §2.4/§2.5；新增例外必须先在该表登记，再写代码。
 
 ---
 

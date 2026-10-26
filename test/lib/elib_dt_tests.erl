@@ -294,3 +294,80 @@ utc_millisecond_returns_integer_test_() ->
         ?assert(is_integer(Result)),
         ?assert(Result > 1700000000000)
     end).
+
+%% ===================================================================
+%% R19（IMBOY-TIMEZONE-REPAIR-V1）：offset 语义、微秒解析与坏值行为快照
+%% ===================================================================
+
+r19_to_rfc3339_explicit_z_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        % 显式 "Z" 输出 UTC（同一瞬间、与服务器本地时区无关）
+        ?assertEqual(
+            <<"2026-09-16T23:06:40Z">>,
+            elib_dt:to_rfc3339(1789600000, second, "Z")
+        ),
+        %% 毫秒单位输出恒带 3 位小数（OTP calendar 语义）
+        ?assertEqual(
+            <<"2026-09-16T23:06:40.000Z">>,
+            elib_dt:to_rfc3339(1789600000000, millisecond, "Z")
+        )
+    end).
+
+r19_to_rfc3339_default_offset_is_local_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        % 行为快照：/2 的默认 offset "" = BEAM 本地时区偏移（OTP 文档语义），
+        % 输出瞬间与 "Z" 相同、仅表示形式不同。该差异正是 R19 让 codec
+        % decode 显式传 "Z" 的原因；应用层调用面的清理属 R21-B 范围。
+        Local = elib_dt:to_rfc3339(1789600000, second),
+        %% 形状：合法 RFC3339（Z 或 ±HH:MM 结尾，具体随本机时区）
+        ?assertMatch(
+            <<_:4/binary, $-, _:2/binary, $-, _:2/binary, $T, _:2/binary, $:, _:2/binary, $:,
+                _:2/binary, _/binary>>,
+            Local
+        ),
+        %% 瞬间不变：仅表示形式（本地偏移）不同
+        ?assertEqual(
+            elib_dt:rfc3339_to(Local, second),
+            elib_dt:rfc3339_to(<<"2026-09-16T23:06:40Z">>, second)
+        )
+    end).
+
+r19_rfc3339_to_keeps_microseconds_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        % R19-2 配套：微秒字符串解析精度不丢
+        ?assertEqual(
+            946684799123456,
+            elib_dt:rfc3339_to(<<"1999-12-31T23:59:59.123456Z">>, microsecond)
+        )
+    end).
+
+r19_rfc3339_to_offset_equivalence_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        % R19-3 配套：+08:00 与 Z 表示同一瞬间
+        ?assertEqual(
+            elib_dt:rfc3339_to(<<"2026-09-16T23:06:40Z">>, second),
+            elib_dt:rfc3339_to(<<"2026-09-17T07:06:40+08:00">>, second)
+        )
+    end).
+
+r19_bad_values_snapshot_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        % R19 审查快照：elib_dt:to_rfc3339/3 对负值/超范围值返回伪造
+        % epoch 串（1970-01-01T00:00:00Z）——应用层防崩策略，非数据库
+        % 边界行为。epgsql_codec_rfc3339_bin decode 已不再经过该路径
+        % （直接 calendar:system_time_to_rfc3339，负值正确、超 9999 年
+        % 才落兜底并留 warning 日志）。全局改此返回值合同属 R21-B，
+        % 此处固化现状防止无意漂移。
+        ?assertEqual(
+            <<"1970-01-01T00:00:00Z">>,
+            elib_dt:to_rfc3339(-1, second)
+        ),
+        ?assertEqual(
+            <<"1970-01-01T00:00:00Z">>,
+            elib_dt:to_rfc3339(99999999999, second)
+        ),
+        ?assertEqual(
+            {error, empty_input},
+            elib_dt:rfc3339_to(<<"not-a-date">>, millisecond)
+        )
+    end).

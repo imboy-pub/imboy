@@ -54,33 +54,48 @@ calc_expire_at_zero_test() ->
 calc_expire_at_negative_test() ->
     ?assertEqual(null, msg_burn_logic:calc_expire_at(<<"2026-01-01T00:00:00Z">>, -5)).
 
-%% created_at 非法（客户端不可信输入）时必须回退服务端时间，
-%% 绝不能返回 null——null 会让阅后即焚静默失效
-calc_expire_at_invalid_created_at_fallback_test() ->
-    Before = elib_dt:millisecond(),
+%% R05-A：接受时间非法时不再回退服务端 now()（回退会把期限锚到与消息无关
+%% 的时刻且重算漂移）——记 WARN 并返回 null（忽略自毁元数据，不伪造期限）。
+%% 输入本应是服务端生成的可信 RFC3339，解析失败即内部契约破裂。
+calc_expire_at_invalid_accepted_at_drops_metadata_test() ->
     Result = msg_burn_logic:calc_expire_at(<<"garbage">>, 5),
-    ?assert(is_binary(Result)),
-    ExpireMs = elib_dt:rfc3339_to(Result),
-    ?assert(is_integer(ExpireMs)),
-    ?assert(ExpireMs >= Before + 5000).
+    ?assertEqual(null, Result).
 
+%% R05-A：期限基准 = 可信接受时间（不再用客户端 created_at）：
+%% expire_at = accepted_at + expire_secs*1000，输出 "Z"（UTC）。
 calc_expire_at_5s_test() ->
     ?WITH_MECKS([elib_dt], fun() ->
-        %% CreatedAt -> 毫秒时间戳
-        meck:expect(elib_dt, rfc3339_to, fun(<<"2026-01-01T00:00:00Z">>) -> 1767225600000 end),
+        %% AcceptedAt -> 毫秒时间戳（服务端接受时刻）
+        meck:expect(elib_dt, rfc3339_to, fun(<<"2026-01-01T00:00:00Z">>, millisecond) ->
+            1767225600000
+        end),
         %% ExpireAtMs = 1767225600000 + 5000 = 1767225605000
-        meck:expect(elib_dt, to_rfc3339, fun(1767225605000) -> <<"2026-01-01T00:00:05Z">> end),
+        meck:expect(elib_dt, to_rfc3339, fun(1767225605000, millisecond, "Z") ->
+            <<"2026-01-01T00:00:05Z">>
+        end),
         Result = msg_burn_logic:calc_expire_at(<<"2026-01-01T00:00:00Z">>, 5),
         ?assertEqual(<<"2026-01-01T00:00:05Z">>, Result)
     end).
 
 calc_expire_at_3600s_test() ->
     ?WITH_MECKS([elib_dt], fun() ->
-        meck:expect(elib_dt, rfc3339_to, fun(<<"2026-01-01T00:00:00Z">>) -> 1767225600000 end),
-        meck:expect(elib_dt, to_rfc3339, fun(1767229200000) -> <<"2026-01-01T01:00:00Z">> end),
+        meck:expect(elib_dt, rfc3339_to, fun(<<"2026-01-01T00:00:00Z">>, millisecond) ->
+            1767225600000
+        end),
+        meck:expect(elib_dt, to_rfc3339, fun(1767229200000, millisecond, "Z") ->
+            <<"2026-01-01T01:00:00Z">>
+        end),
         Result = msg_burn_logic:calc_expire_at(<<"2026-01-01T00:00:00Z">>, 3600),
         ?assertEqual(<<"2026-01-01T01:00:00Z">>, Result)
     end).
+
+%% R05-A：纯函数直测（不 meck elib_dt）——真实解析/编码路径
+calc_expire_at_real_parse_test() ->
+    Accepted = <<"2026-01-01T00:00:00Z">>,
+    Result = msg_burn_logic:calc_expire_at(Accepted, 60),
+    ?assertEqual(1767225660000, elib_dt:rfc3339_to(Result, millisecond)),
+    %% 输出为 UTC Z 形式
+    ?assert(binary:match(Result, <<"Z">>) =/= nomatch).
 
 %% ===================================================================
 %% cleanup GenServer Tests

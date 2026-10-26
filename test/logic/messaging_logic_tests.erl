@@ -237,7 +237,8 @@ history_invalid_peer_rejected_before_dependencies_test_() ->
             {msg_archive_ds, [
                 {'conv_key_c2c', 2, fun(_, _) -> error(unexpected_archive_access) end},
                 {'conv_key_c2g', 1, fun(_) -> error(unexpected_archive_access) end},
-                {'history', 3, fun(_, _, _) -> error(unexpected_archive_access) end}
+                %% R02/D05：logic 层改走一致快照 safe_history/6（history/3 已退役）
+                {'safe_history', 6, fun(_, _, _, _, _, _) -> error(unexpected_archive_access) end}
             ]},
             {group_ds, [
                 {'authorize_group_history', 2, fun(_, _) -> error(unexpected_group_access) end}
@@ -258,7 +259,7 @@ history_invalid_peer_rejected_before_dependencies_test_() ->
             ),
             ?assertEqual(0, meck:num_calls(msg_archive_ds, conv_key_c2c, 2)),
             ?assertEqual(0, meck:num_calls(msg_archive_ds, conv_key_c2g, 1)),
-            ?assertEqual(0, meck:num_calls(msg_archive_ds, history, 3)),
+            ?assertEqual(0, meck:num_calls(msg_archive_ds, safe_history, 6)),
             ?assertEqual(0, meck:num_calls(group_ds, authorize_group_history, 2))
         end
     ).
@@ -269,7 +270,9 @@ history_decimal_peer_compatibility_test_() ->
             {msg_archive_ds, [
                 {'conv_key_c2c', 2, fun(_, Peer) -> integer_to_binary(Peer) end},
                 {'conv_key_c2g', 1, fun(Peer) -> integer_to_binary(Peer) end},
-                {'history', 3, fun(_, _, _) -> {ok, []} end}
+                %% R02/D05：safe_history/6 快照 {ok, Rows, SafeHead, TerminalGaps}；
+                %% 本例只验证十进制 peer 解析与 conv_key 透传，行集/边界取空固定值
+                {'safe_history', 6, fun(_, _, _, _, _, _) -> {ok, [], 0, []} end}
             ]},
             {group_ds, [
                 {'authorize_group_history', 2, fun(_, _) -> {ok, #{start_seq => 1}} end}
@@ -290,8 +293,11 @@ history_decimal_peer_compatibility_test_() ->
     ).
 
 %% 正常 range fetch：next_seq 取最后一行 conv_seq，满页 has_more=true。
-%% 服务端按 Limit+1 取数判定：mock 返回 3 行（> limit=2）→ has_more=true，
-%% 且第 3 行（探测行）不随 messages 下发、next_seq 取截断后末行
+%% 服务端按 Limit+1 取数判定：ds 返回 3 行（> limit=2）→ has_more=true，
+%% 且第 3 行（探测行）不随 messages 下发、next_seq 取截断后末行。
+%% R02/D05 边界推导：行 6,7,8 均已正式归档、无非终态 staging →
+%% safe_head(B) = 正式表 max = 8；expected next_seq = min(旧行为 7, B=8) = 7，
+%% 不越过 B（blocked=false）。
 history_range_fetch_advances_cursor_test_() ->
     ?WITH_MECKS(
         [
@@ -300,14 +306,16 @@ history_range_fetch_advances_cursor_test_() ->
                     <<"c2c:", (integer_to_binary(min(A, B)))/binary, ":",
                         (integer_to_binary(max(A, B)))/binary>>
                 end},
-                {'history', 3, fun(_ConvKey, AfterSeq, Limit) ->
+                {'safe_history', 6, fun(_ConvKey, AfterSeq, Limit, _Type, _A, _B) ->
                     ?assertEqual(5, AfterSeq),
                     ?assertEqual(3, Limit),
-                    {ok, [
-                        #{<<"conv_seq">> => 6, <<"from_id">> => 100, <<"to_id">> => 200},
-                        #{<<"conv_seq">> => 7, <<"from_id">> => 200, <<"to_id">> => 100},
-                        #{<<"conv_seq">> => 8, <<"from_id">> => 100, <<"to_id">> => 200}
-                    ]}
+                    {ok,
+                        [
+                            #{<<"conv_seq">> => 6, <<"from_id">> => 100, <<"to_id">> => 200},
+                            #{<<"conv_seq">> => 7, <<"from_id">> => 200, <<"to_id">> => 100},
+                            #{<<"conv_seq">> => 8, <<"from_id">> => 100, <<"to_id">> => 200}
+                        ],
+                        8, []}
                 end}
             ]}
         ],
@@ -316,6 +324,9 @@ history_range_fetch_advances_cursor_test_() ->
             ?assertEqual(7, maps:get(<<"next_seq">>, Res)),
             ?assertEqual(true, maps:get(<<"has_more">>, Res)),
             ?assertEqual(2, length(maps:get(<<"messages">>, Res))),
+            % R02 验证要求：断言最终消息集合，不能只断言 next_seq 数字
+            ?assertEqual([6, 7], [maps:get(<<"conv_seq">>, M) || M <- maps:get(<<"messages">>, Res)]),
+            ?assertEqual(false, maps:get(<<"blocked">>, Res)),
             % from_id/to_id 重命名为 from/to（S0 契约：ID 归一化 binary）
             [First | _] = maps:get(<<"messages">>, Res),
             ?assertEqual(<<"100">>, maps:get(<<"from">>, First)),
@@ -324,7 +335,9 @@ history_range_fetch_advances_cursor_test_() ->
     ).
 
 %% 末页恰好满额：ds 不足 Limit+1 条（恰返回 Limit 条）→ has_more=false。
-%% 旧判定 >= Limit 在此场景虚报 true，客户端多拉一次空页
+%% 旧判定 >= Limit 在此场景虚报 true，客户端多拉一次空页。
+%% R02/D05 边界推导：行 6,7 恰为全部正式行、无非终态 staging →
+%% safe_head(B) = 7；expected next_seq = min(旧行为 7, B=7) = 7。
 history_exact_full_page_has_more_false_test_() ->
     ?WITH_MECKS(
         [
@@ -333,11 +346,13 @@ history_exact_full_page_has_more_false_test_() ->
                     <<"c2c:", (integer_to_binary(min(A, B)))/binary, ":",
                         (integer_to_binary(max(A, B)))/binary>>
                 end},
-                {'history', 3, fun(_ConvKey, _AfterSeq, _Limit) ->
-                    {ok, [
-                        #{<<"conv_seq">> => 6, <<"from_id">> => 100, <<"to_id">> => 200},
-                        #{<<"conv_seq">> => 7, <<"from_id">> => 200, <<"to_id">> => 100}
-                    ]}
+                {'safe_history', 6, fun(_ConvKey, _AfterSeq, _Limit, _Type, _A, _B) ->
+                    {ok,
+                        [
+                            #{<<"conv_seq">> => 6, <<"from_id">> => 100, <<"to_id">> => 200},
+                            #{<<"conv_seq">> => 7, <<"from_id">> => 200, <<"to_id">> => 100}
+                        ],
+                        7, []}
                 end}
             ]}
         ],
@@ -345,18 +360,21 @@ history_exact_full_page_has_more_false_test_() ->
             {ok, Res} = messaging_logic:history(100, <<"c2c">>, <<"200">>, 5, 2),
             ?assertEqual(false, maps:get(<<"has_more">>, Res)),
             ?assertEqual(2, length(maps:get(<<"messages">>, Res))),
-            ?assertEqual(7, maps:get(<<"next_seq">>, Res))
+            ?assertEqual(7, maps:get(<<"next_seq">>, Res)),
+            ?assertEqual(false, maps:get(<<"blocked">>, Res))
         end
     ).
 
-%% 重连幂等：同一 after_seq 重复拉取结果一致（服务端无隐藏游标状态）
+%% 重连幂等：同一 after_seq 重复拉取结果一致（服务端无隐藏游标状态）。
+%% R02/D05 边界推导：行 3 为全部正式行 → safe_head(B)=3；
+%% expected next_seq = min(旧行为 3, B=3) = 3，重复请求一致（无状态快照）。
 history_reconnect_idempotent_test_() ->
     ?WITH_MECKS(
         [
             {msg_archive_ds, [
                 {'conv_key_c2g', 1, fun(Gid) -> <<"c2g:", (integer_to_binary(Gid))/binary>> end},
-                {'history', 3, fun(_ConvKey, _AfterSeq, _Limit) ->
-                    {ok, [#{<<"conv_seq">> => 3, <<"from_id">> => 1, <<"group_id">> => 9}]}
+                {'safe_history', 6, fun(_ConvKey, _AfterSeq, _Limit, _Type, _A, _B) ->
+                    {ok, [#{<<"conv_seq">> => 3, <<"from_id">> => 1, <<"group_id">> => 9}], 3, []}
                 end}
             ]},
             {group_ds, [
@@ -388,7 +406,7 @@ history_c2g_rejects_non_member_before_archive_test_() ->
             ]},
             {msg_archive_ds, [
                 {'conv_key_c2g', 1, fun(_) -> error(conv_key_must_not_be_built) end},
-                {'history', 3, fun(_, _, _) -> error(history_must_not_be_queried) end}
+                {'safe_history', 6, fun(_, _, _, _, _, _) -> error(history_must_not_be_queried) end}
             ]}
         ],
         fun() ->
@@ -400,18 +418,24 @@ history_c2g_rejects_non_member_before_archive_test_() ->
     ).
 
 %% gap 场景：存储侧 conv_seq 不连续（如 6,9,10），next_seq 取末行；
-%% gap 检测是客户端职责（按 conv_seq 连续性判断），服务端如实返回
+%% gap 检测是客户端职责（按 conv_seq 连续性判断），服务端如实返回。
+%% R02/D05 边界推导：行 6,9,10 均为正式行 → safe_head(B)=10；
+%% expected next_seq = min(旧行为 10, B=10) = 10；未分配/已清理的跳号
+%% （7,8）既不在正式表也不在 staging，不属 terminal_failure/authorization
+%% 空洞，D05 要求 gaps 为空、客户端自行按 seq 连续性发现。
 history_gap_rows_next_seq_is_last_test_() ->
     ?WITH_MECKS(
         [
             {msg_archive_ds, [
                 {'conv_key_c2c', 2, fun(_, _) -> <<"c2c:1:2">> end},
-                {'history', 3, fun(_ConvKey, _AfterSeq, _Limit) ->
-                    {ok, [
-                        #{<<"conv_seq">> => 6, <<"from_id">> => 1, <<"to_id">> => 2},
-                        #{<<"conv_seq">> => 9, <<"from_id">> => 2, <<"to_id">> => 1},
-                        #{<<"conv_seq">> => 10, <<"from_id">> => 1, <<"to_id">> => 2}
-                    ]}
+                {'safe_history', 6, fun(_ConvKey, _AfterSeq, _Limit, _Type, _A, _B) ->
+                    {ok,
+                        [
+                            #{<<"conv_seq">> => 6, <<"from_id">> => 1, <<"to_id">> => 2},
+                            #{<<"conv_seq">> => 9, <<"from_id">> => 2, <<"to_id">> => 1},
+                            #{<<"conv_seq">> => 10, <<"from_id">> => 1, <<"to_id">> => 2}
+                        ],
+                        10, []}
                 end}
             ]}
         ],
@@ -419,17 +443,23 @@ history_gap_rows_next_seq_is_last_test_() ->
             {ok, Res} = messaging_logic:history(1, <<"c2c">>, <<"2">>, 5, 10),
             ?assertEqual(10, maps:get(<<"next_seq">>, Res)),
             Seqs = [maps:get(<<"conv_seq">>, M) || M <- maps:get(<<"messages">>, Res)],
-            ?assertEqual([6, 9, 10], Seqs)
+            ?assertEqual([6, 9, 10], Seqs),
+            ?assertEqual([], maps:get(<<"gaps">>, Res)),
+            ?assertEqual(false, maps:get(<<"blocked">>, Res))
         end
     ).
 
-%% 空结果：游标不回退（next_seq 保持 after_seq）
+%% 空结果：游标不回退（next_seq 保持 after_seq）。
+%% R02/D05 只进不退：NextSeq = max(AfterSeq, min(next_raw, max(SafeHead, AfterSeq)))
+%% ——即使快照 SafeHead=0（B 尚无已归档行），游标也不得回退到 42 以下。
 history_empty_keeps_cursor_test_() ->
     ?WITH_MECKS(
         [
             {msg_archive_ds, [
                 {'conv_key_c2c', 2, fun(_, _) -> <<"c2c:1:2">> end},
-                {'history', 3, fun(_ConvKey, _AfterSeq, _Limit) -> {ok, []} end}
+                {'safe_history', 6, fun(_ConvKey, _AfterSeq, _Limit, _Type, _A, _B) ->
+                    {ok, [], 0, []}
+                end}
             ]}
         ],
         fun() ->
@@ -446,7 +476,7 @@ history_archive_disabled_returns_error_test_() ->
         [
             {msg_archive_ds, [
                 {'conv_key_c2c', 2, fun(_, _) -> <<"c2c:1:2">> end},
-                {'history', 3, fun(_ConvKey, _AfterSeq, _Limit) -> {error, disabled} end}
+                {'safe_history', 6, fun(_, _, _, _, _, _) -> {error, disabled} end}
             ]}
         ],
         fun() ->

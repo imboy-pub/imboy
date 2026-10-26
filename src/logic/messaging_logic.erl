@@ -8,6 +8,7 @@
     read_stats/2,
     history/5,
     history/6,
+    history_backfill/6,
     message_result/4,
     reaction_add/4,
     reaction_remove/4,
@@ -43,23 +44,47 @@ offline(CurrentUid, Limit, C2CLastMsgAtInt, C2GLastMsgAtInt, S2CLastMsgAtInt, DI
     C2GLastMsgAt = ms_to_since_ts(C2GLastMsgAtInt),
     S2CLastMsgAt = ms_to_since_ts(S2CLastMsgAtInt),
 
-    CountC2CMsg = msg_c2c_ds:count_unread_since(CurrentUid, C2CLastMsgAt, DID),
+    %% R01（IMBOY-TIMEZONE-REPAIR-V1）：带 DID 的 C2C 拉取改为「按设备未 ACK
+    %% 集合」语义——消除 created_at >= 客户端游标的过滤条件。服务端在客户端
+    %% 保存游标之后新接受的晚到旧 created_at 消息（客户端时钟偏移/重试）不再
+    %% 被漏取；ACK 收缩未确认集合保证重复拉取有界（不会无限重取）。
+    %% DID 缺省的旧客户端保持时间游标语义不变（协议兼容）。
+    {C2cSince, CountC2CMsg} =
+        case DID of
+            <<>> ->
+                {C2CLastMsgAt, msg_c2c_ds:count_unread_since(CurrentUid, C2CLastMsgAt, <<>>)};
+            _ ->
+                {undefined, msg_c2c_ds:count_unread_since(CurrentUid, undefined, DID)}
+        end,
+    %% R01：v2 cursor 的 per-group 投递进度 marks 只解析一次（两处消费：
+    %% count 与 read；绑定名字不同避免 unsafe variable）
+    C2gV2 = c2g_v2_marks(Cursor),
     CountC2GMsg =
-        case Cursor of
-            undefined -> get_c2g_msg_count(CurrentUid, C2GLastMsgAt);
-            _ -> msg_c2g_ds:count_pending_after(CurrentUid, Cursor)
+        case C2gV2 of
+            {ok, MarksCount} ->
+                c2g_v2_count(CurrentUid, MarksCount);
+            error ->
+                case Cursor of
+                    undefined -> get_c2g_msg_count(CurrentUid, C2GLastMsgAt);
+                    _ -> msg_c2g_ds:count_pending_after(CurrentUid, Cursor)
+                end
         end,
     CountS2CMsg = msg_s2c_ds:count_since(CurrentUid, S2CLastMsgAt, DID),
 
-    C2CMsgs0 = msg_c2c_ds:read_msg_for_device(CurrentUid, DID, Limit, C2CLastMsgAt),
+    C2CMsgs0 = msg_c2c_ds:read_msg_for_device(CurrentUid, DID, Limit, C2cSince),
     %% 路径2：per_device fan-out 信封里没有本机 DID 的收件消息不下发
     %% （密文构造时就不含该设备，客户端恢复密钥也永远解不开）；滤掉的同时
     %% 按 (uid, did) 标记已确认，pending_filter/count 随即排除，不会每轮重取
     C2CMsgs = filter_c2c_for_device(C2CMsgs0, DID, CurrentUid),
     C2GMsgs =
-        case Cursor of
-            undefined -> msg_c2g_ds:read_msg(CurrentUid, Limit, C2GLastMsgAt);
-            _ -> msg_c2g_ds:read_msg_after(CurrentUid, Limit, Cursor)
+        case C2gV2 of
+            {ok, MarksRead} ->
+                c2g_v2_read(CurrentUid, MarksRead, Limit);
+            error ->
+                case Cursor of
+                    undefined -> msg_c2g_ds:read_msg(CurrentUid, Limit, C2GLastMsgAt);
+                    _ -> msg_c2g_ds:read_msg_after(CurrentUid, Limit, Cursor)
+                end
         end,
     S2CMsgs = msg_s2c_ds:read_msg_for_device(CurrentUid, DID, Limit, S2CLastMsgAt),
 
@@ -95,6 +120,12 @@ offline(CurrentUid, Limit, C2CLastMsgAtInt, C2GLastMsgAtInt, S2CLastMsgAtInt, DI
             }
     }.
 
+%% v2 next_cursor：每群推进到本次返回的最大 conv_seq，且不超过该群的
+%% 安全推进边界 B（R02）——跨群投递进度基于服务端权威 seq，不再依赖
+%% 客户端 created_at；无返回行的群保持原游标（不回退、不推断 gap）。
+next_c2g_cursor(Msgs, {marks, Marks}) when is_list(Msgs) ->
+    Marks2 = [c2g_advance_mark(Mark, Msgs) || Mark <- Marks],
+    msg_offline_cursor:encode({marks, Marks2});
 next_c2g_cursor([], Cursor) ->
     msg_offline_cursor:encode(Cursor);
 next_c2g_cursor(Msgs, _Cursor) ->
@@ -105,6 +136,64 @@ next_c2g_cursor(Msgs, _Cursor) ->
             msg_offline_cursor:encode({elib_dt:to_rfc3339(Ms, millisecond), Id});
         _ ->
             <<>>
+    end.
+
+%% ===================================================================
+%% R01（IMBOY-TIMEZONE-REPAIR-V1）：C2G 离线同步进度脱离客户端创建时间
+%% ===================================================================
+
+%% 识别 v2 cursor（per-group 投递进度 marks）。v1 {At, Id} 与 undefined 均返回 error。
+-spec c2g_v2_marks(term()) -> {ok, [{integer(), integer()}]} | error.
+c2g_v2_marks({marks, Marks}) when is_list(Marks), Marks =/= [] ->
+    {ok, Marks};
+c2g_v2_marks(_) ->
+    error.
+
+%% v2 total：各群 seq 游标之后的待投递行数之和（群级授权谓词内）
+c2g_v2_count(Uid, Marks) ->
+    lists:sum([msg_c2g_ds:count_after_seq(Uid, Gid, Seq) || {Gid, Seq} <- Marks]).
+
+%% v2 读取：按 marks 稳定顺序逐群取 conv_seq > 游标的行，跨群顺序填满 Limit
+%% （总页额有界）；单群游标推进由 next_c2g_cursor_v2 按 B 边界钳制。
+c2g_v2_read(Uid, Marks, Limit) ->
+    c2g_v2_read(Uid, Marks, Limit, []).
+
+c2g_v2_read(_Uid, _Marks, Rest, Acc) when Rest =< 0 ->
+    lists:reverse(Acc);
+c2g_v2_read(_Uid, [], _Rest, Acc) ->
+    lists:reverse(Acc);
+c2g_v2_read(Uid, [{Gid, Seq} | Tail], Rest, Acc) ->
+    case msg_c2g_ds:read_after_seq(Uid, Rest, {Gid, Seq}) of
+        [] ->
+            c2g_v2_read(Uid, Tail, Rest, Acc);
+        Rows ->
+            c2g_v2_read(Uid, Tail, Rest - length(Rows), lists:reverse(Rows, Acc))
+    end.
+
+%% v2 next_cursor：每群推进到本次返回的最大 conv_seq，且不超过该群的
+%% 安全推进边界 B（R02）——跨群投递进度基于服务端权威 seq，不再依赖
+%% 客户端 created_at；无返回行的群保持原游标（不回退、不推断 gap）。
+c2g_advance_mark({Gid, Seq}, Msgs) ->
+    %% v2 读取的行来自 msg_c2g 正文表（to_id = 群 id）；timeline 原始行才有 to_gid
+    GidOf = fun(M) ->
+        maps:get(<<"to_id">>, M, maps:get(<<"to_gid">>, M, null))
+    end,
+    Seqs = [
+        S
+     || M <- Msgs,
+        GidOf(M) =:= Gid,
+        S <- [maps:get(<<"conv_seq">>, M, null)],
+        is_integer(S),
+        S > Seq
+    ],
+    case Seqs of
+        [] ->
+            {Gid, Seq};
+        _ ->
+            {ok, SafeHead} = msg_archive_ds:safe_head(
+                msg_archive_ds:conv_key_c2g(Gid), <<"c2g">>, Gid, 0
+            ),
+            {Gid, erlang:min(lists:max(Seqs), SafeHead)}
     end.
 
 -spec read_stats(integer() | binary(), integer()) ->
@@ -146,39 +235,113 @@ history(CurrentUid, ChatType, PeerIdEnc, AfterSeq, Limit) ->
     history(CurrentUid, ChatType, PeerIdEnc, AfterSeq, Limit, <<>>).
 
 history(CurrentUid, ChatType, PeerIdEnc, AfterSeq, Limit, DID) ->
-    case validate_history_params(ChatType, PeerIdEnc, CurrentUid) of
+    case validate_history_scope(ChatType, PeerIdEnc, CurrentUid) of
         {error, permission_denied} ->
             {error, <<"无权限访问该群消息历史"/utf8>>, ?ERR_ACCESS_DENIED};
         {error, Reason} ->
             {error, Reason, ?ERR_BAD_REQUEST};
-        {ok, ConvKey, MinSeq} ->
+        {ok, ConvKey, MinSeq, PeerA, PeerB} ->
             %% E2EE-2026-012（Task 8/LT-03）：游标钳制到授权下界——
             %% seq=0 / 负数 / 越界游标都不能读穿 join boundary。
             AfterSeq2 = erlang:max(AfterSeq, MinSeq - 1),
-            %% 多取 1 条判定 has_more：末页恰好满额（== Limit）时不再虚报
-            %% true（旧判定 >= Limit 会让客户端多拉一次空页）
-            case msg_archive_ds:history(ConvKey, AfterSeq2, Limit + 1) of
-                {ok, Rows0} ->
+            %% R02/D05：行查询与 B 边界同一数据库事务（一致快照）；
+            %% next_seq 不得超过仍可重试的已接受低序号（B 不越过）。
+            ChatTypeBin = chat_type_bin(ChatType),
+            case
+                msg_archive_ds:safe_history(
+                    ConvKey, AfterSeq2, Limit + 1, ChatTypeBin, PeerA, PeerB
+                )
+            of
+                {ok, Rows0, SafeHead, TerminalGaps} ->
                     HasMore = length(Rows0) > Limit,
                     Rows = lists:sublist(Rows0, Limit),
                     %% 路径2：per_device 信封无本机 DID 的收件行不下发。
                     %% next_seq 仍按**全量行**（含被滤行）推进——滤行位于游标
-                    %% 之后，后续拉取天然不会再取到；C2G 行 e2ee 非 fan-out
-                    %% 形状，判定函数对其恒 keep，无需按 chat_type 分流。
+                    %% 之后，后续拉取天然不会再取到；再经 B 钳制（不越过
+                    %% 暂未归档的已接受低序号）且只进不退（>= AfterSeq）。
                     RowsDeliver = filter_c2c_history_for_device(Rows, DID, CurrentUid),
                     Messages = [encode_history_msg(CurrentUid, Row) || Row <- RowsDeliver],
-                    NextSeq = next_seq_from_rows(Rows, AfterSeq),
+                    NextSeqRaw = next_seq_from_rows(Rows, AfterSeq),
+                    NextSeq =
+                        erlang:min(
+                            erlang:max(NextSeqRaw, AfterSeq), erlang:max(SafeHead, AfterSeq)
+                        ),
+                    %% blocked：正式表已有高于 B 的行（被非终态 staging 行钳住），
+                    %% 客户端应等待下一轮增量，不得自行推断 gap。
+                    Blocked = NextSeqRaw > SafeHead,
+                    Gaps =
+                        [
+                            #{
+                                <<"from_seq">> => 1,
+                                <<"to_seq">> => MinSeq - 1,
+                                <<"reason">> => <<"authorization">>
+                            }
+                         || MinSeq > 1, AfterSeq2 < MinSeq - 1
+                        ] ++
+                            [
+                                #{
+                                    <<"from_seq">> => Seq,
+                                    <<"to_seq">> => Seq,
+                                    <<"reason">> => Reason
+                                }
+                             || {Seq, Reason} <- TerminalGaps
+                            ],
                     {ok, #{
                         <<"messages">> => Messages,
                         <<"next_seq">> => NextSeq,
                         <<"has_more">> => HasMore,
-                        <<"conv_key">> => ConvKey
+                        <<"conv_key">> => ConvKey,
+                        <<"safe_head">> => SafeHead,
+                        <<"blocked">> => Blocked,
+                        <<"gaps">> => Gaps
                     }};
                 {error, _Reason} ->
                     {error, <<"消息历史暂不可用，请确认服务已开启 msg_archive_enabled"/utf8>>,
                         ?ERR_INTERNAL_SERVER_ERROR}
             end
     end.
+
+%%-------------------------------------------------------------------
+%% @doc R02/D05：晚到补齐的有界范围补取。
+%%
+%% 对修复前已保存过大 next_seq（过冲）的客户端：在 (AfterSeq, SafeHead]
+%% 显式重扫已归档行（晚到的低序号在其中），按 msg_id 去重由调用方负责、
+%% 范围跨度受 backfill_range_limit() 约束、批次 = Limit、终点 = SafeHead、
+%% 恢复位置 = 返回 next_seq（has_more 时以 next_seq 续扫，直至 >= safe_head）。
+%% 遵守与 history 相同的授权（群代际下界）与 DID 信封过滤。
+%%-------------------------------------------------------------------
+-spec history_backfill(integer(), binary(), binary(), non_neg_integer(), pos_integer(), binary()) ->
+    {ok, map()} | {error, binary(), integer()}.
+history_backfill(CurrentUid, ChatType, PeerIdEnc, AfterSeq, Limit, DID) ->
+    case validate_history_scope(ChatType, PeerIdEnc, CurrentUid) of
+        {error, permission_denied} ->
+            {error, <<"无权限访问该群消息历史"/utf8>>, ?ERR_ACCESS_DENIED};
+        {error, Reason} ->
+            {error, Reason, ?ERR_BAD_REQUEST};
+        {ok, ConvKey, MinSeq, PeerA, PeerB} ->
+            AfterSeq2 = erlang:max(AfterSeq, MinSeq - 1),
+            ChatTypeBin = chat_type_bin(ChatType),
+            case msg_archive_ds:backfill(ConvKey, AfterSeq2, Limit, ChatTypeBin, PeerA, PeerB) of
+                {ok, Rows, NextSeq, HasMore} ->
+                    RowsDeliver = filter_c2c_history_for_device(Rows, DID, CurrentUid),
+                    Messages = [encode_history_msg(CurrentUid, Row) || Row <- RowsDeliver],
+                    {ok, #{
+                        <<"messages">> => Messages,
+                        <<"next_seq">> => NextSeq,
+                        <<"has_more">> => HasMore,
+                        <<"conv_key">> => ConvKey,
+                        <<"range_limit">> => msg_archive_repo:backfill_range_limit()
+                    }};
+                {error, backfill_range_exceeded} ->
+                    {error, <<"补扫范围超限，请分批推进"/utf8>>, ?ERR_BAD_REQUEST};
+                {error, _Reason} ->
+                    {error, <<"消息历史暂不可用，请确认服务已开启 msg_archive_enabled"/utf8>>,
+                        ?ERR_INTERNAL_SERVER_ERROR}
+            end
+    end.
+
+chat_type_bin(<<"c2g">>) -> <<"c2g">>;
+chat_type_bin(_) -> <<"c2c">>.
 
 %% Positive archive evidence only: a missing/purged row never proves non-acceptance.
 message_result(Uid, Type, Peer, Id) ->
@@ -250,6 +413,31 @@ validate_history_params(_, <<>>, _) ->
     {error, <<"缺少 peer_id 参数"/utf8>>};
 validate_history_params(ChatType, _, _) ->
     {error, iolist_to_binary([<<"不支持的 chat_type: "/utf8>>, ChatType])}.
+
+%% @private R02：带原始 peer 信息的授权校验（B 边界/补扫需要 per-conv 范围）。
+%% 返回 {ok, ConvKey, MinSeq, PeerA, PeerB}：
+%%   C2C → PeerA=CurrentUid, PeerB=对方 uid；C2G → PeerA=Gid, PeerB=0。
+validate_history_scope(<<"c2c">>, PeerIdEnc, CurrentUid) when PeerIdEnc =/= <<>> ->
+    case parse_history_peer_id(PeerIdEnc) of
+        {ok, PeerId} ->
+            {ok, msg_archive_ds:conv_key_c2c(CurrentUid, PeerId), 0, CurrentUid, PeerId};
+        {error, _} = Error ->
+            Error
+    end;
+validate_history_scope(<<"c2g">>, PeerIdEnc, CurrentUid) when PeerIdEnc =/= <<>> ->
+    case parse_history_peer_id(PeerIdEnc) of
+        {ok, Gid} ->
+            case group_ds:authorize_group_history(CurrentUid, Gid) of
+                {ok, #{start_seq := MinSeq}} ->
+                    {ok, msg_archive_ds:conv_key_c2g(Gid), MinSeq, Gid, 0};
+                {error, denied} ->
+                    {error, permission_denied}
+            end;
+        {error, _} = Error ->
+            Error
+    end;
+validate_history_scope(ChatType, PeerIdEnc, CurrentUid) ->
+    validate_history_params(ChatType, PeerIdEnc, CurrentUid).
 
 %% 严格解析整数，拒绝 ec_cnv 对小数的舍入；保留 +9/0009 等十进制兼容格式。
 parse_history_peer_id(Value) when is_binary(Value) ->

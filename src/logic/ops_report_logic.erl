@@ -12,9 +12,19 @@
 %%%   - compute 纯读（可单测）；deliver 调 send_text 写库（需真跑 PG）。
 %%%   - run_weekly_report 恒 ok（ecron 入口不抛），任何异常记日志后跳过投递。
 %%%   - 统计「上周」：周一 00:00 ~ 周一 00:00（本地时区，与 ecron time_zone:local 对齐）。
+%%%   - R17：统计窗口按业务 zone（本地时区）的日历周构造，对齐周一 00:00，
+%%%     不从调度时刻的钟点减固定分钟（旧实现周一 09:00 触发会得到
+%%%     [上周一 09:00, 本周一 09:00) 的错位窗口）。
+%%%     cron 触发钟点（周一 09:00）只决定何时算，不改变统计窗口本身；
+%%%     任意星期/时刻调用 last_week_range 均得到同一周窗口。
+%%%     BE 无时区库：日历运算用 Erlang calendar 纯日历算术（跨年/闰年由
+%%%     gregorian day 换算保证）；跨 DST 周不假设 168 小时定长，钟面
+%%%     00:00 对齐优先，瞬时长度由 PG 按真实偏移解释（生产 zone 无 DST）。
+%%%     SQL 侧 [start, end) 半开区间由 ops_report_repo（>= $1 AND < $2）保证。
 %%%
 
 -export([run_weekly_report/0, compute/0, render/1, deliver/1]).
+-export([last_week_range/0, last_week_range/1]).
 
 -include("log.hrl").
 
@@ -140,18 +150,49 @@ deliver(Report) ->
 %% ===================================================================
 
 %% 上周时间范围 [上周一 00:00, 本周一 00:00)，本地时区 rfc3339
+%% R17：日历周构造，对齐周一 00:00；参考时刻仅取日期，钟点不影响窗口。
 -spec last_week_range() -> {binary(), binary()}.
 last_week_range() ->
-    Now = elib_dt:now(),
-    %% calendar:day_of_the_week(Date): Date={Y,M,D}，返回 1=Monday..7=Sunday
-    {Date, _Time} = erlang:localtime(),
+    %% 调度 zone 与统计窗口 zone 一致：ecron {time_zone, local}，此处取本地钟面
+    last_week_range(erlang:localtime()).
+
+%% @doc 输入参考本地钟面时间（calendar:datetime()），返回
+%% [上周一 00:00, 本周一 00:00) 的 rfc3339（本地偏移，与 elib_dt 输出格式一致）。
+%% 纯日历算术，可单测注入任意参考时间；跨 DST 不按 168 小时定长。
+-spec last_week_range(calendar:datetime()) -> {binary(), binary()}.
+last_week_range({Date, _Time}) ->
+    %% 1=Monday..7=Sunday
     DayOfWeek = calendar:day_of_the_week(Date),
-    %% 本周一 00:00 = 现在 - (DayOfWeek-1) 天（转分钟），到本周一 00:00 的偏移
-    %% 注意：粗略按天回退到周一，00:00 对齐由 to_rfc3339 截断保证
-    MinsToMonday = (DayOfWeek - 1) * 24 * 60,
-    ThisMonday = elib_dt:minus(Now, {MinsToMonday, minute}),
-    LastMonday = elib_dt:minus(ThisMonday, {7 * 24 * 60, minute}),
-    {LastMonday, ThisMonday}.
+    Days = calendar:date_to_gregorian_days(Date),
+    ThisMondayDate = calendar:gregorian_days_to_date(Days - (DayOfWeek - 1)),
+    LastMondayDate = calendar:gregorian_days_to_date(Days - (DayOfWeek - 1) - 7),
+    {
+        local_midnight_to_rfc3339({LastMondayDate, {0, 0, 0}}),
+        local_midnight_to_rfc3339({ThisMondayDate, {0, 0, 0}})
+    }.
+
+%% @doc 本地钟面 00:00 → rfc3339（本地偏移）。经 UTC 瞬间换算避免钟面/偏移双重叠加。
+%% DST 分支：本地钟面不存在（春季跳变）或歧义（秋季回拨）时各取确定解；
+%% 生产 zone（UTC / Asia/Shanghai）无 DST，分支仅为健壮性兜底。
+-spec local_midnight_to_rfc3339(calendar:datetime()) -> binary().
+local_midnight_to_rfc3339(LocalDT) ->
+    EpochSec =
+        case calendar:local_time_to_universal_time_dst(LocalDT) of
+            [UTC] ->
+                gregorian_to_epoch_sec(UTC);
+            [UTC1, _UTC2] ->
+                %% 秋季回拨歧义：取较早瞬间（DST 期 00:00）
+                gregorian_to_epoch_sec(UTC1);
+            [] ->
+                %% 春季跳变 00:00 不存在：按标准钟面回退（仅影响有 DST 时区的个别周日）
+                gregorian_to_epoch_sec(LocalDT)
+        end,
+    elib_dt:to_rfc3339(EpochSec, second).
+
+-spec gregorian_to_epoch_sec(calendar:datetime()) -> integer().
+gregorian_to_epoch_sec(DT) ->
+    %% 0001-01-01 00:00:00 → 1970-01-01 00:00:00 之间的公历秒数
+    calendar:datetime_to_gregorian_seconds(DT) - 62167219200.
 
 -spec to_int(term()) -> integer().
 to_int(I) when is_integer(I) ->

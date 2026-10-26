@@ -64,7 +64,9 @@ c2c_pipeline_mecks() ->
             {'millisecond', 0, fun() -> 1708768800000 end}
         ]},
         {msg_store_ds, [
-            {'stage_with_sequence', 11, fun(_, _, _, _, _, _, _, _, _, _, _) -> {ok, new, 1} end},
+            {'stage_with_sequence', 13, fun(_, _, _, _, _, _, _, _, _, _, _, _, _) ->
+                {ok, new, 1}
+            end},
             {'stage', 11, fun(_, _, _, _, _, _, _, _, _, _, _) -> {ok, new} end},
             {'enqueue', 3, fun(_, _, _) -> ok end}
         ]},
@@ -195,7 +197,7 @@ c2c_required_plaintext_never_reaches_logs_test_() ->
                 ])
             ),
             %% 零落库、零入队、零投递
-            ?assertEqual(0, meck:num_calls(msg_store_ds, stage_with_sequence, 11)),
+            ?assertEqual(0, meck:num_calls(msg_store_ds, stage_with_sequence, 13)),
             ?assertEqual(0, meck:num_calls(msg_store_ds, stage, 11)),
             ?assertEqual(0, meck:num_calls(msg_store_ds, enqueue, 3)),
             ?assertEqual(0, meck:num_calls(imboy_message_helper, encode_and_send, 4)),
@@ -249,7 +251,7 @@ c2c_required_olm_envelope_accepted_and_log_clean_test_() ->
                 }
             },
             ok = msg_c2c_logic:c2c(<<"msg_e01_olm_001">>, 123, Data),
-            ?assertEqual(1, meck:num_calls(msg_store_ds, stage_with_sequence, 11)),
+            ?assertEqual(1, meck:num_calls(msg_store_ds, stage_with_sequence, 13)),
             ?assertEqual(1, meck:num_calls(imboy_message_helper, encode_and_send, 4)),
             ?assertEqual(nomatch, binary:match(captured_log_text(), [?SENTINEL]))
         end

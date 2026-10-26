@@ -44,7 +44,9 @@
 -export([
     insert_remind/1,
     list_pending_reminds/0,
-    update_remind_sent/1
+    update_remind_sent/1,
+    cancel_pending_reminds/1,
+    claim_remind/1
 ]).
 
 %% @doc 按内部 PK 查日程
@@ -142,6 +144,14 @@ insert_remind(Data) ->
     end.
 
 list_pending_reminds() -> group_schedule_repo:list_pending_reminds().
+
+%% R18：作废待发提醒（取消日程/改期重排时调用）
+cancel_pending_reminds(ScheduleId) ->
+    group_schedule_repo:cancel_pending_reminds(ScheduleId).
+
+%% R18：派发前原子认领（CAS），1=认领成功需发送；0=跳过
+claim_remind(RemindId) ->
+    group_schedule_repo:claim_remind(RemindId).
 
 update_remind_sent(RemindId) ->
     %% T7 派生读写（freeze 语义）：提醒已发送标记为生命周期簿记，

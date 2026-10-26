@@ -132,3 +132,117 @@ run_weekly_report_crash_safe_test_() ->
             ?assertEqual(ok, ops_report_logic:run_weekly_report())
         end
     ).
+
+%% ===================================================================
+%% R17：周报范围对齐周一午夜（日历周构造，可注入参考时间）
+%% ===================================================================
+
+%% R17-1：周一 09:00 与周一 17:00 触发得到同一统计窗口（cron 钟点不影响窗口）
+r17_same_window_monday_morning_evening_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        %% 2026-10-19 是周一
+        Mon09 = {{2026, 10, 19}, {9, 0, 0}},
+        Mon17 = {{2026, 10, 19}, {17, 0, 0}},
+        ?assertEqual(
+            ops_report_logic:last_week_range(Mon09), ops_report_logic:last_week_range(Mon17)
+        )
+    end).
+
+%% R17-2：一周内任意星期运行均得到同一窗口（本周一 00:00 ~ 上周一 00:00）
+r17_any_weekday_same_window_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        %% 2026-10-19(周一) .. 2026-10-25(周日)，窗口恒为 [2026-10-12 00:00, 2026-10-19 00:00)
+        Expected = ops_report_logic:last_week_range({{2026, 10, 19}, {9, 0, 0}}),
+        [
+            ?assertEqual(Expected, ops_report_logic:last_week_range(DT))
+         || DT <- [
+                {{2026, 10, 19}, {0, 0, 1}},
+                {{2026, 10, 20}, {3, 47, 0}},
+                {{2026, 10, 21}, {12, 0, 0}},
+                {{2026, 10, 22}, {23, 59, 59}},
+                {{2026, 10, 23}, {6, 30, 0}},
+                {{2026, 10, 24}, {15, 15, 0}},
+                {{2026, 10, 25}, {20, 0, 0}}
+            ]
+        ],
+        {Since, Until} = Expected,
+        ?assertEqual(<<"2026-10-12">>, binary:part(Since, 0, 10)),
+        ?assertEqual(<<"2026-10-19">>, binary:part(Until, 0, 10))
+    end).
+
+%% R17-3：跨年与闰年边界
+r17_year_boundary_and_leap_year_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        %% 跨年：2026-01-01 是周四，所在周为 2025-12-29(周一)~2026-01-04(周日)
+        %% → 上周 [2025-12-22 00:00, 2025-12-29 00:00)
+        {Since1, Until1} = ops_report_logic:last_week_range({{2026, 1, 1}, {10, 0, 0}}),
+        ?assertEqual(<<"2025-12-22">>, binary:part(Since1, 0, 10)),
+        ?assertEqual(<<"2025-12-29">>, binary:part(Until1, 0, 10)),
+        %% 闰年：2024-02-29 是周四 → 上周 [2024-02-19 00:00, 2024-02-26 00:00)
+        {Since2, Until2} = ops_report_logic:last_week_range({{2024, 2, 29}, {10, 0, 0}}),
+        ?assertEqual(<<"2024-02-19">>, binary:part(Since2, 0, 10)),
+        ?assertEqual(<<"2024-02-26">>, binary:part(Until2, 0, 10))
+    end).
+
+%% R17-4：窗口两端对齐 00:00:00、since < until、恒差 7 天（[start,end) 半开）；
+%%         SQL 侧半开区间（>= $1 AND < $2）由 ops_report_repo 保证
+r17_midnight_aligned_half_open_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        {Since, Until} = ops_report_logic:last_week_range({{2026, 10, 21}, {13, 5, 0}}),
+        ?assertEqual(<<"00:00:00">>, binary:part(Since, 11, 8)),
+        ?assertEqual(<<"00:00:00">>, binary:part(Until, 11, 8)),
+        %% 同格式 rfc3339 字符串比较等价于瞬时比较：since < until（半开下界）
+        ?assert(Since < Until),
+        SinceDays = calendar:date_to_gregorian_days(
+            {
+                binary_to_integer(binary:part(Since, 0, 4)),
+                binary_to_integer(binary:part(Since, 5, 2)),
+                binary_to_integer(binary:part(Since, 8, 2))
+            }
+        ),
+        UntilDays = calendar:date_to_gregorian_days(
+            {
+                binary_to_integer(binary:part(Until, 0, 4)),
+                binary_to_integer(binary:part(Until, 5, 2)),
+                binary_to_integer(binary:part(Until, 8, 2))
+            }
+        ),
+        ?assertEqual(7, UntilDays - SinceDays)
+    end).
+
+%% R17-4（SQL 侧）：统计查询使用 [start, end) 半开区间（>= 与 <，无 <=）
+r17_sql_uses_half_open_interval_test_() ->
+    ?WITH_MECKS(
+        [
+            {elib_pg, [
+                {'query', 2, fun(Sql, _Args) ->
+                    put(r17_sqls, [
+                        Sql
+                        | case get(r17_sqls) of
+                            undefined -> [];
+                            L -> L
+                        end
+                    ]),
+                    {ok, [#{<<"n">> => 1}]}
+                end}
+            ]}
+        ],
+        fun() ->
+            {ok, _Stats} = ops_report_logic:compute(),
+            Sqls =
+                case get(r17_sqls) of
+                    undefined -> [];
+                    L -> L
+                end,
+            ?assert(length(Sqls) >= 4),
+            %% 半开区间：每条范围 SQL 同时含 >= 与 <，不含闭区间 <=
+            [
+                begin
+                    ?assertNotEqual(nomatch, binary:match(Sql, <<">= $1">>)),
+                    ?assertNotEqual(nomatch, binary:match(Sql, <<"< $2">>)),
+                    ?assertEqual(nomatch, binary:match(Sql, <<"<= $2">>))
+                end
+             || Sql <- Sqls
+            ]
+        end
+    ).

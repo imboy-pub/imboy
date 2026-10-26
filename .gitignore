@@ -246,3 +246,7 @@ docs/design/**/evidence/
 /docs/compliance/IMBoy V-02 Logging and Crash Redaction Checklist.md
 /config/sys.cs-ai-eunit.config
 config/sys.cs-ai-accept.config
+# IMBOY-TIMEZONE-REPAIR-V1（2026-10-26）：本轮隔离库 imboy_tz_v1（127.0.0.1:4330）
+# 的 eunit 配置（从 sys.local.config 派生、pg_conf/super_account 指向 run 库；
+# 与 sys.local.config 同类非产品配置，untracked by design）
+/config/sys.tzv1.config

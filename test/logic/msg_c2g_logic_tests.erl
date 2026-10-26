@@ -26,7 +26,7 @@ c2g_success_sends_server_ack_and_dispatch_test_() ->
                 {'to_rfc3339', 1, fun(1708768700000) -> <<"2026-02-24T09:58:20Z">> end}
             ]},
             {msg_store_ds, [
-                {'stage', 12, fun(_, _, _, _, _, _, FromId, 100, _, _, _, 3) ->
+                {'stage', 13, fun(_, _, _, _, _, _, FromId, 100, _, _, _, 3, _) ->
                     {ok, new, 7, [FromId, 1002, 1003]}
                 end},
                 {'enqueue', 3, fun(_, _, _) -> ok end}
@@ -76,7 +76,7 @@ c2g_success_sends_server_ack_and_dispatch_test_() ->
             ?assertNotEqual(timeout, Reply),
             ?assertEqual(MsgId, maps:get(<<"id">>, Reply)),
             ?assertEqual(<<"C2G_SERVER_ACK">>, maps:get(<<"type">>, Reply)),
-            ?assertEqual(1, meck:num_calls(msg_store_ds, stage, 12)),
+            ?assertEqual(1, meck:num_calls(msg_store_ds, stage, 13)),
             ?assertEqual(1, meck:num_calls(msg_store_ds, enqueue, 3)),
             ?assertEqual(2, meck:num_calls(message_ds, send_next, 4)),
             ?assertEqual(1, meck:num_calls(mention_logic, create_mentions, 4)),
@@ -107,7 +107,7 @@ c2g_duplicate_only_acks_without_downstream_side_effects_test_() ->
                 {'to_rfc3339', 1, fun(1789091900000) -> <<"2026-09-11T09:58:20Z">> end}
             ]},
             {msg_store_ds, [
-                {'stage', 12, fun(_, _, _, _, _, _, 1001, 100, _, _, _, 1) ->
+                {'stage', 13, fun(_, _, _, _, _, _, 1001, 100, _, _, _, 1, _) ->
                     {ok, duplicate}
                 end},
                 {'enqueue', 3, fun(_, _, _) -> ok end}
@@ -116,8 +116,8 @@ c2g_duplicate_only_acks_without_downstream_side_effects_test_() ->
                 {'find_msg_by_id', 1, fun(<<"original_msg_001">>) ->
                     {ok, #{<<"payload">> => <<"{\"content\":\"original\"}">>}}
                 end},
-                {'write_msg_with_reply', 11, fun(_, _, _, _, _, _, _, _, _, _, _) -> ok end},
-                {'set_expire_at', 2, fun(_, _) -> ok end}
+                {'write_msg_with_reply', 13, fun(_, _, _, _, _, _, _, _, _, _, _, _, _) -> ok end},
+                {'set_expire_at', 2, fun(_, _) -> {ok, 0} end}
             ]},
             {message_ds, [
                 {'send_next', 4, fun(_, _, _, _) -> ok end}
@@ -163,9 +163,9 @@ c2g_duplicate_only_acks_without_downstream_side_effects_test_() ->
             after 1000 ->
                 ?assert(false)
             end,
-            ?assertEqual(1, meck:num_calls(msg_store_ds, stage, 12)),
+            ?assertEqual(1, meck:num_calls(msg_store_ds, stage, 13)),
             ?assertEqual(0, meck:num_calls(msg_store_ds, enqueue, 3)),
-            ?assertEqual(0, meck:num_calls(msg_c2g_ds, write_msg_with_reply, 11)),
+            ?assertEqual(0, meck:num_calls(msg_c2g_ds, write_msg_with_reply, 12)),
             ?assertEqual(0, meck:num_calls(msg_c2g_ds, set_expire_at, 2)),
             ?assertEqual(0, meck:num_calls(message_ds, send_next, 4)),
             ?assertEqual(0, meck:num_calls(push_notification_logic, maybe_push_for_c2g, 4)),
@@ -297,7 +297,7 @@ c2g_mention_all_rechecks_admin_in_staging_transaction_test_() ->
                 {'to_rfc3339', 1, fun(1708768700000) -> <<"2026-02-24T09:58:20Z">> end}
             ]},
             {msg_store_ds, [
-                {'stage', 12, fun(_, _, _, _, _, _, 1001, 100, _, _, _, 3) ->
+                {'stage', 13, fun(_, _, _, _, _, _, 1001, 100, _, _, _, 3, _) ->
                     {error, forbidden}
                 end}
             ]}
@@ -321,7 +321,7 @@ c2g_mention_all_rechecks_admin_in_staging_transaction_test_() ->
             after 1000 ->
                 ?assert(false)
             end,
-            ?assertEqual(1, meck:num_calls(msg_store_ds, stage, 12))
+            ?assertEqual(1, meck:num_calls(msg_store_ds, stage, 13))
         end
     ).
 
@@ -341,7 +341,7 @@ c2g_staging_failure_returns_retryable_error_test_() ->
                 {'to_rfc3339', 1, fun(1708768700000) -> <<"2026-02-24T09:58:20Z">> end}
             ]},
             {msg_store_ds, [
-                {'stage', 12, fun(_, _, _, _, _, _, 1001, 100, _, _, _, 1) ->
+                {'stage', 13, fun(_, _, _, _, _, _, 1001, 100, _, _, _, 1, _) ->
                     {error, unavailable}
                 end}
             ]}
@@ -387,7 +387,7 @@ c2g_session_conflict_reply_identifies_group_for_rotation_test_() ->
                 {'validate_message_write', 5, fun(_, _, _, _, _) -> ok end}
             ]},
             {msg_store_ds, [
-                {'stage', 12, fun(_, _, _, _, _, _, 1001, 100, _, _, _, 1) ->
+                {'stage', 13, fun(_, _, _, _, _, _, 1001, 100, _, _, _, 1, _) ->
                     {error, e2ee_session_conflict}
                 end}
             ]}
@@ -444,7 +444,7 @@ c2g_reply_to_missing_message_emits_msg_not_found_reply_test_() ->
                 end}
             ]},
             {msg_store_ds, [
-                {'stage', 12, fun(_, _, _, _, _, _, FromId, 100, _, _, _, 1) ->
+                {'stage', 13, fun(_, _, _, _, _, _, FromId, 100, _, _, _, 1, _) ->
                     {ok, new, 8, [FromId, 1002, 1003]}
                 end}
             ]}
@@ -472,7 +472,7 @@ c2g_reply_to_missing_message_emits_msg_not_found_reply_test_() ->
 
             ?assertNotEqual(timeout, Reply),
             ?assertEqual(<<"MSG_NOT_FOUND">>, maps:get(<<"type">>, Reply)),
-            ?assertEqual(0, meck:num_calls(msg_store_ds, stage, 12))
+            ?assertEqual(0, meck:num_calls(msg_store_ds, stage, 13))
         end
     ).
 
@@ -1026,7 +1026,7 @@ c2g_plaintext_blocked_when_encryption_required_test_() ->
                 end}
             ]},
             {msg_store_ds, [
-                {'stage', 12, fun(_, _, _, _, _, _, FromId, _, _, _, _, 1) ->
+                {'stage', 13, fun(_, _, _, _, _, _, FromId, _, _, _, _, 1, _) ->
                     {ok, new, 11, [FromId]}
                 end},
                 {'enqueue', 3, fun(_, _, _) -> ok end}
@@ -1050,7 +1050,7 @@ c2g_plaintext_blocked_when_encryption_required_test_() ->
                 <<"encrypted_message_required">>,
                 maps:get(<<"reason">>, maps:get(<<"payload">>, Reply))
             ),
-            ?assertEqual(0, meck:num_calls(msg_store_ds, stage, 12)),
+            ?assertEqual(0, meck:num_calls(msg_store_ds, stage, 13)),
             ?assertEqual(0, meck:num_calls(msg_store_ds, enqueue, 3))
         end
     ).
@@ -1078,7 +1078,7 @@ c2g_e2ee_message_allowed_when_encryption_required_test_() ->
                 {'validate_message_write', 5, fun(_, _, _, _, _) -> ok end}
             ]},
             {msg_store_ds, [
-                {'stage', 12, fun(_, _, _, _, _, _, FromId, 100, _, _, _, 1) ->
+                {'stage', 13, fun(_, _, _, _, _, _, FromId, 100, _, _, _, 1, _) ->
                     {ok, new, 12, [FromId]}
                 end},
                 {'enqueue', 3, fun(_, _, _) -> ok end}
@@ -1105,7 +1105,7 @@ c2g_e2ee_message_allowed_when_encryption_required_test_() ->
             },
 
             ok = msg_c2g_logic:c2g(MsgId, 1001, Data),
-            ?assertEqual(1, meck:num_calls(msg_store_ds, stage, 12)),
+            ?assertEqual(1, meck:num_calls(msg_store_ds, stage, 13)),
             ?assertEqual(1, meck:num_calls(msg_store_ds, enqueue, 3))
         end
     ).
@@ -1130,6 +1130,12 @@ c2g_edit_plaintext_blocked_when_encryption_required_test_() ->
                         <<"created_at">> => 1700000000000
                     }}
                 end}
+            ]},
+            {elib_dt, [
+                %% R04：窗口基准改为 resolve_accepted_ms（integer created_at 经
+                %% rfc3339_to/1 直通为低可信回退）；固定时钟让窗口必然在期内，
+                %% 隔离出下方策略门的独立作用。
+                {'millisecond', 0, fun() -> 1700000060000 end}
             ]},
             {imboy_policy, [
                 {'validate_message_write', 5, fun(_, _, _, _, _) ->
@@ -1182,6 +1188,10 @@ c2g_edit_plaintext_blocked_when_group_e2ee_required_test_() ->
                         <<"created_at">> => 1700000000000
                     }}
                 end}
+            ]},
+            {elib_dt, [
+                %% R04：固定时钟让窗口必然在期内，隔离出群级门的独立作用。
+                {'millisecond', 0, fun() -> 1700000060000 end}
             ]},
             {imboy_policy, [
                 %% 全局策略放行，隔离出群级门的独立作用
@@ -1314,7 +1324,7 @@ c2g_e2ee_room_key_relayed_opaque_and_skips_gate_test_() ->
                 {'to_rfc3339', 1, fun(1708768700000) -> <<"2026-02-24T09:58:20Z">> end}
             ]},
             {msg_store_ds, [
-                {'stage', 12, fun(_, _, _, _, _, _, FromId, 100, _, _, _, 1) ->
+                {'stage', 13, fun(_, _, _, _, _, _, FromId, 100, _, _, _, 1, _) ->
                     {ok, new, 14, [FromId, 1002, 1003]}
                 end},
                 {'enqueue', 3, fun(_, _, _) -> ok end}
@@ -1389,7 +1399,7 @@ c2g_e2ee_room_key_relayed_opaque_and_skips_gate_test_() ->
                 first,
                 msg_store_ds,
                 stage,
-                ['_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_'],
+                ['_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_'],
                 6
             ),
             EnqueuedMap = meck:capture(first, msg_store_ds, enqueue, ['_', '_', '_'], 3),
@@ -1453,3 +1463,187 @@ group_e2ee_gate_keeps_blocking_without_hard_off_test_() ->
             )
         end
     ).
+
+%%%===================================================================
+%%% R04（IMBOY-TIMEZONE-REPAIR-V1）：C2G 撤回/编辑窗口用可信时间
+%%%
+%%% 与 c2c 同范式：窗口基准 = accepted_at（D04）；客户端 created_at 任意值
+%%% 不影响允许时长；时间源全部缺失/非法时 fail-closed 明确拒绝。
+%%%===================================================================
+
+-define(R04G_ACCEPTED_RFC, <<"2023-11-14T22:13:20Z">>).
+-define(R04G_ACCEPTED_MS, 1700000000000).
+
+r04g_action_mecks(FindRow) ->
+    [
+        {elib_log, [
+            {'internal_log', 4, fun(_, _, _, _) -> ok end},
+            {'internal_log', 5, fun(_, _, _, _, _) -> ok end}
+        ]},
+        {group_ds, [
+            {'e2ee_mode', 1, fun(_) -> {ok, 0} end},
+            {'is_member', 2, fun(1001, 88) -> true end}
+        ]},
+        {msg_c2g_ds, [
+            {'find_msg_by_id', 1, fun(_) -> {ok, FindRow} end}
+        ]},
+        {elib_dt, [
+            {'millisecond', 0, fun() -> ?R04G_ACCEPTED_MS + 121000 end},
+            {'now', 0, fun() -> <<"2023-11-14T22:15:21Z">> end}
+        ]},
+        {imboy_policy, [
+            {'validate_message_write', 5, fun(_, _, _, _, _) -> ok end}
+        ]}
+    ].
+
+%% R04-1(c2g)：撤回窗口用 accepted_at——接受后 121s（> 2 分钟）拒绝；
+%% 客户端 created_at 慢 1 小时（差值仍在窗口内）不改变判定。
+r04g_1_revoke_window_uses_accepted_at_test_() ->
+    Row = #{
+        <<"from_id">> => 1001,
+        <<"to_id">> => 88,
+        <<"accepted_at">> => ?R04G_ACCEPTED_RFC,
+        <<"created_at">> => elib_dt:to_rfc3339(?R04G_ACCEPTED_MS - 3600000, millisecond, "Z")
+    },
+    ?WITH_MECKS(
+        r04g_action_mecks(Row),
+        fun() ->
+            Data = #{
+                <<"to">> => <<"88">>,
+                <<"from">> => <<"1001">>,
+                <<"payload">> => #{<<"original_msg_id">> => <<"orig_r04g_1">>}
+            },
+            {reply, Reply} = msg_c2g_logic:c2g_revoke(<<"r04g_rev_1">>, 1001, Data),
+            ?assertEqual(<<"message_revoke_error">>, maps:get(<<"action">>, Reply)),
+            ?assertEqual(409, maps:get(<<"code">>, maps:get(<<"payload">>, Reply)))
+        end
+    ).
+
+%% R04-2(c2g)：设备快/慢不影响允许时长——accepted_at 后 60s 时，客户端
+%% created_at 快 1 天也不提前把消息"顶出"窗口。
+r04g_2_client_created_at_irrelevant_test_() ->
+    Row = #{
+        <<"from_id">> => 1001,
+        <<"to_id">> => 88,
+        <<"accepted_at">> => ?R04G_ACCEPTED_RFC,
+        <<"created_at">> => elib_dt:to_rfc3339(?R04G_ACCEPTED_MS + 86400000, millisecond, "Z")
+    },
+    Mecks =
+        r04g_action_mecks(Row) ++
+            [
+                {group_ds, [
+                    {'e2ee_mode', 1, fun(_) -> {ok, 0} end},
+                    {'is_member', 2, fun(1001, 88) -> true end},
+                    {'member_uids', 1, fun(88) -> [1001, 1002] end}
+                ]},
+                {msg_store_ds, [
+                    {'stage_action', 13, fun(_, _, _, _, _, _, _, _, _, _, _, _, _) ->
+                        {ok, new, 9, [1001, 1002]}
+                    end},
+                    {'enqueue', 3, fun(_, _, _) -> ok end}
+                ]},
+                {elib_dt, [
+                    {'millisecond', 0, fun() -> ?R04G_ACCEPTED_MS + 60000 end},
+                    {'now', 0, fun() -> <<"2023-11-14T22:14:20Z">> end}
+                ]},
+                {elib_retry_config, [{'intervals', 1, fun(_) -> [0, 200] end}]},
+                {message_ds, [{'send_next', 4, fun(_, _, _, _) -> ok end}]},
+                {user_device_logic, [{'online_dids', 1, fun(_) -> [] end}]}
+            ],
+    ?WITH_MECKS(
+        Mecks,
+        fun() ->
+            Data = #{
+                <<"to">> => <<"88">>,
+                <<"from">> => <<"1001">>,
+                <<"payload">> => #{<<"original_msg_id">> => <<"orig_r04g_2">>}
+            },
+            {reply, Reply} = msg_c2g_logic:c2g_revoke(<<"r04g_rev_2">>, 1001, Data),
+            ?assertEqual(<<"message_revoke_ack">>, maps:get(<<"action">>, Reply))
+        end
+    ).
+
+%% R04-3(c2g)：编辑不重置期限——原消息 accepted_at 不变，第一次编辑后
+%% 超窗的第二次编辑仍按首次接受时间拒绝（E2EE 编辑路径同款基准）。
+r04g_3_e2ee_edit_window_from_accepted_at_test_() ->
+    Row = #{
+        <<"from_id">> => 1001,
+        <<"to_id">> => 88,
+        <<"accepted_at">> => ?R04G_ACCEPTED_RFC,
+        <<"created_at">> => ?R04G_ACCEPTED_RFC
+    },
+    Base = r04g_action_mecks(Row),
+    %% 编辑窗口默认 24h；服务端时钟 = 接受后 24h+1s → 超窗
+    Mecks = lists:keyreplace(
+        elib_dt,
+        1,
+        Base,
+        {elib_dt, [
+            {'millisecond', 0, fun() -> ?R04G_ACCEPTED_MS + 86400000 + 1000 end},
+            {'now', 0, fun() -> <<"2023-11-15T22:13:21Z">> end}
+        ]}
+    ),
+    ?WITH_MECKS(
+        Mecks,
+        fun() ->
+            Data = #{
+                <<"to">> => <<"88">>,
+                <<"from">> => <<"1001">>,
+                <<"payload">> => <<"v3-cipher">>,
+                <<"msg_type">> => <<"text">>,
+                <<"e2ee">> => #{
+                    <<"meta_version">> => 3,
+                    <<"edit_of">> => <<"orig_r04g_3">>,
+                    <<"relay_action">> => <<"message_edit">>
+                }
+            },
+            {reply, Reply} = msg_c2g_logic:c2g_edit(<<"r04g_edit_3">>, 1001, Data),
+            ?assertEqual(<<"message_edit_error">>, maps:get(<<"action">>, Reply)),
+            ?assertEqual(409, maps:get(<<"code">>, maps:get(<<"payload">>, Reply)))
+        end
+    ).
+
+%% R04-4(c2g)：旧行回退 + 双缺失 fail-closed——accepted_at NULL 回退
+%% server_ts；全部时间源缺失时明确拒绝（500）。
+r04g_4_legacy_fallback_and_fail_closed_test_() ->
+    [
+        %% 旧行：accepted_at NULL → server_ts 低可信回退，超窗照常拒绝
+        ?WITH_MECKS(
+            r04g_action_mecks(#{
+                <<"from_id">> => 1001,
+                <<"to_id">> => 88,
+                <<"accepted_at">> => null,
+                <<"server_ts">> => ?R04G_ACCEPTED_RFC,
+                <<"created_at">> => null
+            }),
+            fun() ->
+                Data = #{
+                    <<"to">> => <<"88">>,
+                    <<"from">> => <<"1001">>,
+                    <<"payload">> => #{<<"original_msg_id">> => <<"orig_r04g_4a">>}
+                },
+                {reply, Reply} = msg_c2g_logic:c2g_revoke(<<"r04g_rev_4a">>, 1001, Data),
+                ?assertEqual(<<"message_revoke_error">>, maps:get(<<"action">>, Reply)),
+                ?assertEqual(409, maps:get(<<"code">>, maps:get(<<"payload">>, Reply)))
+            end
+        ),
+        %% 双缺失：无任何可用时间源 → fail-closed 明确拒绝
+        ?WITH_MECKS(
+            r04g_action_mecks(#{
+                <<"from_id">> => 1001,
+                <<"to_id">> => 88
+            }),
+            fun() ->
+                Data = #{
+                    <<"to">> => <<"88">>,
+                    <<"from">> => <<"1001">>,
+                    <<"payload">> => #{<<"original_msg_id">> => <<"orig_r04g_4b">>}
+                },
+                {reply, Reply} = msg_c2g_logic:c2g_revoke(<<"r04g_rev_4b">>, 1001, Data),
+                ?assertEqual(<<"message_revoke_error">>, maps:get(<<"action">>, Reply)),
+                ?assertEqual(
+                    500, maps:get(<<"code">>, maps:get(<<"payload">>, Reply))
+                )
+            end
+        )
+    ].

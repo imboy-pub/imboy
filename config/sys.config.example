@@ -855,6 +855,9 @@
             %% A3-4 运营周报：每周一 09:00 统计上周新增/活跃/消息/举报并私信运营者。
             %% 运营者 uid / 发送方 agent uid 经 config 表 ops_report.* 键配置。
             {ops_weekly_report, "0 9 * * 1", {ops_report_logic, run_weekly_report, []}},
+            %% R18：日程提醒派发（每分钟扫 pending；claim CAS 幂等，多 worker 安全）
+            {group_schedule_remind, "* * * * *",
+                {group_schedule_logic, process_reminders, []}},
             %% G3/Q09：推送过期 token 定期清理。把超过 N 天未更新的不活跃
             %% token 行翻转为 status=0（不物理删除），补齐 cleanup_inactive_tokens
             %% 的生产挂载点（此前仅 provider 404/410/1003 被动下线）。

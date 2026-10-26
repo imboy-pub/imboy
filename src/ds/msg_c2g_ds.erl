@@ -5,8 +5,11 @@
 -export([write_msg/6]).
 -export([write_msg/8]).
 -export([write_msg_with_reply/11]).
+-export([write_msg_with_reply/12]).
+-export([write_msg_with_reply/13]).
 -export([read_msg/1]).
 -export([read_msg/3, read_msg_after/3, count_pending_after/2]).
+-export([read_after_seq/3, count_after_seq/3]).
 -export([find_msg_by_id/1]).
 -export([delete_msg/1]).
 -export([timeline_find_by_msg_id/1]).
@@ -197,6 +200,21 @@ read_msg_after(ToUid, Limit, Cursor) ->
 count_pending_after(ToUid, Cursor) ->
     msg_c2g_timeline_repo:count_pending_after(ToUid, Cursor).
 
+%% R01：单群 conv_seq 游标读取——服务端投递进度基于权威接受顺序（D05/R02
+%% 的 B 边界钳制），不依赖客户端 created_at。Mark = {Gid, Seq}。
+read_after_seq(ToUid, Limit, {Gid, Seq}) when is_integer(Limit), Limit >= 1 ->
+    Column = <<"tl.msg_id, tl.created_at, tl.conv_seq, tl.to_gid">>,
+    case msg_c2g_timeline_repo:list_by_uid_after_seq(ToUid, Column, Limit, {Gid, Seq}) of
+        {ok, Rows} ->
+            load_timeline_messages(Rows);
+        {error, Reason} ->
+            ?ERROR_LOG([c2g_read_after_seq_failed, ToUid, Gid, Reason]),
+            []
+    end.
+
+count_after_seq(ToUid, Gid, Seq) ->
+    msg_c2g_timeline_repo:count_after_seq(ToUid, Gid, Seq).
+
 %% The content query can return timestamp ties in a different order. Keep
 %% the timeline's total ordering, including its authoritative timestamp.
 load_timeline_messages([]) ->
@@ -355,6 +373,7 @@ write_msg_with_reply(
     ReplyToFromId,
     ReplySnippet
 ) ->
+    %% R03/D04：兼容旧入口，不带接受时间（accepted_at 列保持 NULL）。
     msg_c2g_repo:write_msg_with_reply(
         CreatedAt,
         Id,
@@ -366,7 +385,92 @@ write_msg_with_reply(
         E2EE,
         ReplyToMsgId,
         ReplyToFromId,
-        ReplySnippet
+        ReplySnippet,
+        null,
+        null
+    ).
+
+%% @doc R03/D04（IMBOY-TIMEZONE-REPAIR-V1）：带接受时间的引用回复直写。
+%% AcceptedAt 与 staging 行同一值（首次持久接受事务内固定的服务端接受时间）。
+%% @doc R03/D04 + R05-A 兼容旧入口（/12）：无自毁期限。
+write_msg_with_reply(
+    CreatedAt,
+    Id,
+    Payload,
+    FromId,
+    ToUids,
+    Gid,
+    MsgType,
+    E2EE,
+    ReplyToMsgId,
+    ReplyToFromId,
+    ReplySnippet,
+    AcceptedAt
+) ->
+    write_msg_with_reply(
+        CreatedAt,
+        Id,
+        Payload,
+        FromId,
+        ToUids,
+        Gid,
+        MsgType,
+        E2EE,
+        ReplyToMsgId,
+        ReplyToFromId,
+        ReplySnippet,
+        AcceptedAt,
+        null
+    ).
+
+%% @doc R03/D04 + R05-A（IMBOY-TIMEZONE-REPAIR-V1）：带接受时间与自毁期限的
+%% 引用回复直写。AcceptedAt/ExpireAt 与 staging 行同一值（接受事务内固定）。
+-spec write_msg_with_reply(
+    binary() | integer(),
+    binary(),
+    binary(),
+    integer(),
+    [integer()],
+    integer(),
+    binary(),
+    map() | null,
+    binary(),
+    integer(),
+    binary(),
+    binary() | null,
+    binary() | null
+) ->
+    ok | {error, term()}.
+write_msg_with_reply(
+    CreatedAt,
+    Id,
+    Payload,
+    FromId,
+    ToUids,
+    Gid,
+    MsgType,
+    E2EE,
+    ReplyToMsgId,
+    ReplyToFromId,
+    ReplySnippet,
+    AcceptedAt,
+    ExpireAt
+) ->
+    msg_c2g_repo:write_msg_with_reply(
+        CreatedAt,
+        Id,
+        Payload,
+        FromId,
+        ToUids,
+        Gid,
+        MsgType,
+        E2EE,
+        ReplyToMsgId,
+        ReplyToFromId,
+        ReplySnippet,
+        null,
+        AcceptedAt,
+        ExpireAt
     ).
 
 %% G3: msg_forward_logic / msg_c2g_logic 查找原始群消息记录，不应直调 timeline repo
@@ -433,13 +537,21 @@ check_and_delete_overflow(ToUid) ->
     ok.
 
 %% G3: msg_c2g_logic 不应直调 msg_c2g_repo:tablename()
--spec set_expire_at(binary(), binary()) -> ok.
+%% R05-A（IMBOY-TIMEZONE-REPAIR-V1）：
+%%   1. 仅当 expire_at 当前为 NULL 时写入——重复请求/重试不延长期限；
+%%   2. 0 行 UPDATE 返回 {ok, 0}（明确结果），错误返回 {error, Reason}
+%%      不再吞成 ok；期限持久化主路径是 staging 行携带 → worker 转正搬运。
+-spec set_expire_at(binary(), binary()) -> {ok, non_neg_integer()} | {error, term()}.
 set_expire_at(MsgId, ExpireAt) ->
     Tb = msg_c2g_repo:tablename(),
-    Sql = <<"UPDATE ", Tb/binary, " SET expire_at = $1 WHERE msg_id = $2">>,
+    Sql =
+        <<"UPDATE ", Tb/binary, " SET expire_at = $1 WHERE msg_id = $2", " AND expire_at IS NULL">>,
     case elib_pg:execute(Sql, [ExpireAt, MsgId]) of
-        {ok, _} -> ok;
-        {error, _Reason} -> ok
+        {ok, Count} when is_integer(Count) ->
+            {ok, Count};
+        {error, Reason} ->
+            ?ERROR_LOG([msg_c2g_set_expire_at_failed, MsgId, Reason]),
+            {error, Reason}
     end.
 
 %% G3: msg_burn_logic 不应直调 msg_c2g_repo:tablename()

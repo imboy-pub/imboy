@@ -59,28 +59,35 @@ cleanup_now() ->
 get_status() ->
     gen_server:call(?MODULE, get_status).
 
-%% @doc 根据 expire_secs 计算 expire_at（RFC3339 格式）
-%% 返回 null 表示不自毁
+%% @doc R05-A（IMBOY-TIMEZONE-REPAIR-V1）：根据 expire_secs 计算自毁绝对期限。
+%%
+%% 语义变更（修复 W0 勘察的 msg_burn_logic.erl:69-84 故障）：
+%%   * 基准从客户端 created_at（不可信，设备快慢直接影响自毁时点）改为
+%%     调用方传入的**可信接受时间** AcceptedAt（D04：服务端在接受事务内
+%%     取的 elib_dt:millisecond()，RFC3339 binary）；
+%%   * 解析失败不再回退服务端 now()——回退会把期限锚到一个与消息无关的
+%%     时刻（且每次重算漂移）。接受时间由服务端自己生成，解析失败即内部
+%%     契约破裂：记 WARN 并返回 null（忽略自毁元数据、留痕），不伪造期限。
+%%     期限的持久化由调用方随接受事务落 staging（R05-A 主路径）。
+%%   * 输出统一 "Z"（UTC），避免本地时区偏移串进入 timestamptz 编码路径。
+%% 返回 null 表示不自毁。
 -spec calc_expire_at(binary(), integer() | undefined) -> binary() | null.
-calc_expire_at(_CreatedAt, undefined) ->
+calc_expire_at(_AcceptedAt, undefined) ->
     null;
-calc_expire_at(_CreatedAt, 0) ->
+calc_expire_at(_AcceptedAt, 0) ->
     null;
-calc_expire_at(CreatedAt, ExpireSecs) when is_integer(ExpireSecs), ExpireSecs > 0 ->
-    %% created_at 是客户端上送的不可信输入；解析失败必须回退服务端时间，
-    %% 不能返回 null——null 会让阅后即焚静默失效（消息落库后永不自毁）
-    CreatedAtMs =
-        case elib_dt:rfc3339_to(CreatedAt) of
-            Ms when is_integer(Ms) ->
-                Ms;
-            Err ->
-                ?WARN_LOG("burn created_at parse failed ~p: ~p, fallback to server time", [
-                    CreatedAt, Err
-                ]),
-                elib_dt:millisecond()
-        end,
-    elib_dt:to_rfc3339(CreatedAtMs + ExpireSecs * 1000);
-calc_expire_at(_CreatedAt, _) ->
+calc_expire_at(AcceptedAt, ExpireSecs) when is_integer(ExpireSecs), ExpireSecs > 0 ->
+    case elib_dt:rfc3339_to(AcceptedAt, millisecond) of
+        AcceptedMs when is_integer(AcceptedMs) ->
+            elib_dt:to_rfc3339(AcceptedMs + ExpireSecs * 1000, millisecond, "Z");
+        Err ->
+            ?WARN_LOG(
+                "burn accepted_at parse failed ~p: ~p; drop burn metadata (no fake deadline)",
+                [AcceptedAt, Err]
+            ),
+            null
+    end;
+calc_expire_at(_AcceptedAt, _) ->
     null.
 
 %% @doc 验证 expire_secs 是否在允许范围内

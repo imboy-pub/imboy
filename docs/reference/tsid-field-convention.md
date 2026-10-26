@@ -50,6 +50,12 @@ TSID（Time-Sorted ID）是 Imboy 使用的分布式 ID 生成方案，取代原
 - **部署**：多实例唯一性依赖 `(IMBOY_TSID_DC_ID, IMBOY_TSID_NODE_ID)` 全集群
   唯一 + preflight 位布局校验；V10 无持久化状态目录、无跨实例互斥锁
 
+> **⚠️ TSID 内嵌时间戳 ≠ 业务时间字段**（2026-10-26 R22-B 登记）：TSID 高 42 位
+> 的时间成分仅用于发号排序与本地化生成，**不是**可消费的业务时间来源——禁止从
+> ID 反解时间用于展示或比较。业务时间字段的 wire 单位/语义（REST 毫秒 int、
+> EB 域秒、内部管线 RFC3339 微秒、conv_seq 序数等）见
+> [时间字段合同](./time-field-contract.md)。
+
 ---
 
 ## 2. API 传输格式

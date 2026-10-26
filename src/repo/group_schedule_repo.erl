@@ -48,6 +48,8 @@
 -export([list_pending_reminds/1]).
 -export([update_remind_sent/1]).
 -export([update_remind_sent_tx/2]).
+-export([cancel_pending_reminds/1]).
+-export([claim_remind/1]).
 
 %% ===================================================================
 %% API functions - 日程表
@@ -454,6 +456,32 @@ update_remind_sent_tx(Conn, Id) when Id > 0 ->
     Data = #{is_sent => true},
     elib_pg:update(Conn, Tb, Data, <<"id = $1">>, [Id]);
 update_remind_sent_tx(_Conn, _) ->
+    {error, invalid_id}.
+
+%% R18：作废日程的待发提醒。is_sent=true 复用为「终态（已发送或已作废，
+%% 不再发送）」标志——list_pending_reminds 只扫 is_sent=false，取消后
+%% 天然不再派发。已发送（is_sent=true）的行不动（R18-5：不撤回已发通知）。
+-spec cancel_pending_reminds(binary()) -> {ok, non_neg_integer()} | {error, term()}.
+cancel_pending_reminds(ScheduleId) when is_binary(ScheduleId), ScheduleId =/= <<>> ->
+    Tb = remind_tablename(),
+    Sql =
+        <<"UPDATE ", Tb/binary, " SET is_sent = true",
+            " WHERE schedule_id = $1 AND is_sent = false">>,
+    elib_pg:execute_count(Sql, [ScheduleId]);
+cancel_pending_reminds(_) ->
+    {error, invalid_id}.
+
+%% R18：派发前原子认领（CAS）。UPDATE ... WHERE is_sent = false 竞态安全：
+%% 返回 1 = 认领成功（本次调用方负责发送）；0 = 已被并发 worker 认领/已取消/
+%% 已发送，跳过。认领先行保证「发送成功后崩溃不重发」（R18-4）：
+%% 认领提交后扫描不再命中该行。
+-spec claim_remind(integer()) -> {ok, non_neg_integer()} | {error, term()}.
+claim_remind(Id) when Id > 0 ->
+    Tb = remind_tablename(),
+    Sql =
+        <<"UPDATE ", Tb/binary, " SET is_sent = true", " WHERE id = $1 AND is_sent = false">>,
+    elib_pg:execute_count(Sql, [Id]);
+claim_remind(_) ->
     {error, invalid_id}.
 
 %% ===================================================================

@@ -17,10 +17,12 @@ c2c_success_sends_server_ack_and_dispatch_test_() ->
             {elib_dt, [
                 {'now', 0, fun() -> <<"2026-02-24T10:00:00Z">> end},
                 {'rfc3339_to', 2, fun(<<"2026-02-24T10:00:00Z">>, millisecond) -> 1708768800000 end},
-                {'to_rfc3339', 1, fun(1708768700000) -> <<"2026-02-24T09:58:20Z">> end}
+                {'to_rfc3339', 1, fun(1708768700000) -> <<"2026-02-24T09:58:20Z">> end},
+                %% R03/D04：固定服务端时钟，验证 accepted_at 取值来源
+                {'millisecond', 0, fun() -> 1708768800000 end}
             ]},
             {msg_store_ds, [
-                {'stage_with_sequence', 11, fun(_, _, _, _, _, _, _, _, _, _, _) ->
+                {'stage_with_sequence', 13, fun(_, _, _, _, _, _, _, _, _, _, _, _, _) ->
                     {ok, new, 1}
                 end},
                 {'enqueue', 3, fun(_, _, _) -> ok end}
@@ -96,7 +98,17 @@ c2c_success_sends_server_ack_and_dispatch_test_() ->
             ?assertNotEqual(timeout, Reply),
             ?assertEqual(MsgId, maps:get(<<"id">>, Reply)),
             ?assertEqual(<<"C2C_SERVER_ACK">>, maps:get(<<"type">>, Reply)),
-            ?assertEqual(1, meck:num_calls(msg_store_ds, stage_with_sequence, 11)),
+            ?assertEqual(1, meck:num_calls(msg_store_ds, stage_with_sequence, 13)),
+            %% R03-1：接受时间 = 固定服务端时钟（elib_dt:millisecond 一次取值，
+            %% UTC "Z" 形式），与客户端 created_at（1708768700000）无关
+            ?assertEqual(
+                elib_dt:to_rfc3339(1708768800000, millisecond, "Z"),
+                meck:capture(1, msg_store_ds, stage_with_sequence, 13, 12)
+            ),
+            %% R05-A：无 expire_secs 时第 13 参为 null（不自毁，旧语义）
+            ?assertEqual(
+                null, meck:capture(1, msg_store_ds, stage_with_sequence, 13, 13)
+            ),
             ?assertEqual(1, meck:num_calls(msg_store_ds, enqueue, 3)),
             ?assertEqual(1, meck:num_calls(imboy_message_helper, encode_and_send, 4)),
             ?assertEqual(1, meck:num_calls(msg_c2c_delivery_ds, send_other_devices, 4))
@@ -182,7 +194,7 @@ c2c_to_enabled_agent_skips_friend_check_test_() ->
                 {'to_rfc3339', 1, fun(1708768700000) -> <<"2026-02-24T09:58:20Z">> end}
             ]},
             {msg_store_ds, [
-                {'stage_with_sequence', 11, fun(_, _, _, _, _, _, _, _, _, _, _) ->
+                {'stage_with_sequence', 13, fun(_, _, _, _, _, _, _, _, _, _, _, _, _) ->
                     {ok, new, 1}
                 end},
                 {'enqueue', 3, fun(_, _, _) -> ok end}
@@ -227,7 +239,7 @@ c2c_to_enabled_agent_skips_friend_check_test_() ->
             ?assertEqual(MsgId, maps:get(<<"id">>, Reply)),
             ?assertEqual(<<"C2C_SERVER_ACK">>, maps:get(<<"type">>, Reply)),
             %% 消息真正走 stage（未被 not_a_friend 拦截）
-            ?assertEqual(1, meck:num_calls(msg_store_ds, stage_with_sequence, 11))
+            ?assertEqual(1, meck:num_calls(msg_store_ds, stage_with_sequence, 13))
         end
     ).
 
@@ -311,7 +323,7 @@ c2c_reply_to_missing_message_emits_msg_not_found_reply_test_() ->
                 end}
             ]},
             {msg_store_ds, [
-                {'stage_with_sequence', 11, fun(_, _, _, _, _, _, _, _, _, _, _) ->
+                {'stage_with_sequence', 13, fun(_, _, _, _, _, _, _, _, _, _, _, _, _) ->
                     {ok, new, 1}
                 end}
             ]}
@@ -332,7 +344,7 @@ c2c_reply_to_missing_message_emits_msg_not_found_reply_test_() ->
             {reply, Reply} = msg_c2c_logic:c2c(MsgId, 123, Data),
 
             ?assertEqual(<<"MSG_NOT_FOUND">>, maps:get(<<"type">>, Reply)),
-            ?assertEqual(0, meck:num_calls(msg_store_ds, stage_with_sequence, 11))
+            ?assertEqual(0, meck:num_calls(msg_store_ds, stage_with_sequence, 13))
         end
     ).
 
@@ -420,7 +432,7 @@ c2c_plaintext_blocked_when_encryption_required_test_() ->
                 end}
             ]},
             {msg_store_ds, [
-                {'stage_with_sequence', 11, fun(_, _, _, _, _, _, _, _, _, _, _) ->
+                {'stage_with_sequence', 13, fun(_, _, _, _, _, _, _, _, _, _, _, _, _) ->
                     {ok, new, 1}
                 end},
                 {'enqueue', 3, fun(_, _, _) -> ok end}
@@ -444,7 +456,7 @@ c2c_plaintext_blocked_when_encryption_required_test_() ->
                 <<"encrypted_message_required">>,
                 maps:get(<<"reason">>, maps:get(<<"payload">>, Reply))
             ),
-            ?assertEqual(0, meck:num_calls(msg_store_ds, stage_with_sequence, 11)),
+            ?assertEqual(0, meck:num_calls(msg_store_ds, stage_with_sequence, 13)),
             ?assertEqual(0, meck:num_calls(msg_store_ds, enqueue, 3))
         end
     ).
@@ -476,7 +488,7 @@ c2c_plaintext_allowed_for_agent_peer_when_encryption_required_test_() ->
                 end}
             ]},
             {msg_store_ds, [
-                {'stage_with_sequence', 11, fun(_, _, _, _, _, _, _, _, _, _, _) ->
+                {'stage_with_sequence', 13, fun(_, _, _, _, _, _, _, _, _, _, _, _, _) ->
                     {ok, new, 1}
                 end},
                 {'enqueue', 3, fun(_, _, _) -> ok end}
@@ -514,7 +526,7 @@ c2c_plaintext_allowed_for_agent_peer_when_encryption_required_test_() ->
 
             %% agent 豁免好友校验（is_agent→SendIsFriend=true），明文门放行走完整条投递链
             ok = msg_c2c_logic:c2c(MsgId, 123, Data),
-            ?assertEqual(1, meck:num_calls(msg_store_ds, stage_with_sequence, 11)),
+            ?assertEqual(1, meck:num_calls(msg_store_ds, stage_with_sequence, 13)),
             ?assertEqual(1, meck:num_calls(msg_store_ds, enqueue, 3))
         end
     ).
@@ -540,7 +552,7 @@ c2c_e2ee_message_allowed_when_encryption_required_test_() ->
                 {'validate_message_write', 5, fun(_, _, _, _, _) -> ok end}
             ]},
             {msg_store_ds, [
-                {'stage_with_sequence', 11, fun(_, _, _, _, _, _, _, _, _, _, _) ->
+                {'stage_with_sequence', 13, fun(_, _, _, _, _, _, _, _, _, _, _, _, _) ->
                     {ok, new, 1}
                 end},
                 {'enqueue', 3, fun(_, _, _) -> ok end}
@@ -578,7 +590,7 @@ c2c_e2ee_message_allowed_when_encryption_required_test_() ->
             },
 
             ok = msg_c2c_logic:c2c(MsgId, 123, Data),
-            ?assertEqual(1, meck:num_calls(msg_store_ds, stage_with_sequence, 11)),
+            ?assertEqual(1, meck:num_calls(msg_store_ds, stage_with_sequence, 13)),
             ?assertEqual(1, meck:num_calls(msg_store_ds, enqueue, 3))
         end
     ).
@@ -1050,7 +1062,7 @@ c2c_duplicate_resend_acks_without_redelivery_test_() ->
                 {'to_rfc3339', 1, fun(1708768700000) -> <<"2026-02-24T09:58:20Z">> end}
             ]},
             {msg_store_ds, [
-                {'stage_with_sequence', 11, fun(_, _, _, _, _, _, _, _, _, _, _) ->
+                {'stage_with_sequence', 13, fun(_, _, _, _, _, _, _, _, _, _, _, _, _) ->
                     {ok, duplicate, 1}
                 end},
                 {'enqueue', 3, fun(_, _, _) -> ok end}
@@ -1138,7 +1150,9 @@ c2c_pipeline_mecks() ->
             {'millisecond', 0, fun() -> 1708768800000 end}
         ]},
         {msg_store_ds, [
-            {'stage_with_sequence', 11, fun(_, _, _, _, _, _, _, _, _, _, _) -> {ok, new, 1} end},
+            {'stage_with_sequence', 13, fun(_, _, _, _, _, _, _, _, _, _, _, _, _) ->
+                {ok, new, 1}
+            end},
             {'enqueue', 3, fun(_, _, _) -> ok end}
         ]},
         {elib_async, [
@@ -1187,7 +1201,7 @@ c2c_plaintext_allowed_when_deployment_does_not_require_e2ee_test_() ->
             ?assertEqual(
                 ok, msg_c2c_logic:c2c(<<"msg_plain_allowed_001">>, 123, plaintext_c2c_data())
             ),
-            ?assertEqual(1, meck:num_calls(msg_store_ds, stage_with_sequence, 11)),
+            ?assertEqual(1, meck:num_calls(msg_store_ds, stage_with_sequence, 13)),
             ?assertEqual(1, meck:num_calls(msg_store_ds, enqueue, 3)),
             ?assertEqual(1, meck:num_calls(imboy_message_helper, encode_and_send, 4))
         end
@@ -1204,7 +1218,7 @@ c2c_plaintext_allowed_when_e2ee_disabled_test_() ->
             ?assertEqual(
                 ok, msg_c2c_logic:c2c(<<"msg_plain_allowed_002">>, 123, plaintext_c2c_data())
             ),
-            ?assertEqual(1, meck:num_calls(msg_store_ds, stage_with_sequence, 11))
+            ?assertEqual(1, meck:num_calls(msg_store_ds, stage_with_sequence, 13))
         end
     ).
 
@@ -1222,7 +1236,7 @@ c2c_plaintext_blocked_by_real_policy_when_e2ee_required_test_() ->
                 <<"encrypted_message_required">>,
                 maps:get(<<"reason">>, maps:get(<<"payload">>, Reply))
             ),
-            ?assertEqual(0, meck:num_calls(msg_store_ds, stage_with_sequence, 11)),
+            ?assertEqual(0, meck:num_calls(msg_store_ds, stage_with_sequence, 13)),
             ?assertEqual(0, meck:num_calls(msg_store_ds, enqueue, 3)),
             ?assertEqual(0, meck:num_calls(imboy_message_helper, encode_and_send, 4))
         end
@@ -1237,7 +1251,7 @@ c2c_plaintext_blocked_when_storage_mode_secure_e2ee_test_() ->
                 <<"msg_plain_blocked_002">>, 123, plaintext_c2c_data()
             ),
             ?assertEqual(<<"policy_violation">>, maps:get(<<"action">>, Reply)),
-            ?assertEqual(0, meck:num_calls(msg_store_ds, stage_with_sequence, 11))
+            ?assertEqual(0, meck:num_calls(msg_store_ds, stage_with_sequence, 13))
         end
     ).
 
@@ -1264,7 +1278,7 @@ c2c_encrypted_allowed_when_msg_type_stays_text_test_() ->
                 }
             },
             ?assertEqual(ok, msg_c2c_logic:c2c(<<"msg_enc_allowed_001">>, 123, Data)),
-            ?assertEqual(1, meck:num_calls(msg_store_ds, stage_with_sequence, 11)),
+            ?assertEqual(1, meck:num_calls(msg_store_ds, stage_with_sequence, 13)),
             ?assertEqual(1, meck:num_calls(msg_store_ds, enqueue, 3))
         end
     ).
@@ -1283,7 +1297,7 @@ c2c_encrypted_allowed_when_payload_is_map_test_() ->
                 <<"e2ee">> => #{<<"e2ee">> => true, <<"nonce">> => <<"bm9uY2U=">>}
             },
             ?assertEqual(ok, msg_c2c_logic:c2c(<<"msg_enc_allowed_002">>, 123, Data)),
-            ?assertEqual(1, meck:num_calls(msg_store_ds, stage_with_sequence, 11))
+            ?assertEqual(1, meck:num_calls(msg_store_ds, stage_with_sequence, 13))
         end
     ).
 
@@ -1371,7 +1385,7 @@ c2c_agent_gate_rejection_zero_side_effects_test_() ->
                 end}
             ]},
             {msg_store_ds, [
-                {'stage_with_sequence', 11, fun(_, _, _, _, _, _, _, _, _, _, _) ->
+                {'stage_with_sequence', 13, fun(_, _, _, _, _, _, _, _, _, _, _, _, _) ->
                     {ok, new, 1}
                 end},
                 {'enqueue', 3, fun(_, _, _) -> ok end}
@@ -1404,7 +1418,7 @@ c2c_agent_gate_rejection_zero_side_effects_test_() ->
                 maps:get(<<"reason">>, maps:get(<<"payload">>, Reply))
             ),
             %% 零落库
-            ?assertEqual(0, meck:num_calls(msg_store_ds, stage_with_sequence, 11)),
+            ?assertEqual(0, meck:num_calls(msg_store_ds, stage_with_sequence, 13)),
             ?assertEqual(0, meck:num_calls(msg_store_ds, enqueue, 3)),
             %% 零 agent 触发 / 零计费 / 零推送
             ?assertEqual(0, meck:num_calls(ai_agent_reply, maybe_dispatch, 3)),
@@ -1431,7 +1445,7 @@ c2c_plaintext_allowed_when_storage_mode_hard_off_test_() ->
                     <<"msg_plain_allowed_hard_off">>, 123, plaintext_c2c_data()
                 )
             ),
-            ?assertEqual(1, meck:num_calls(msg_store_ds, stage_with_sequence, 11))
+            ?assertEqual(1, meck:num_calls(msg_store_ds, stage_with_sequence, 13))
         end
     ).
 
@@ -1462,7 +1476,7 @@ c2c_stage_failure_no_ack_no_dispatch_test_() ->
             ]},
             {msg_store_ds, [
                 %% 故障注入：staging 同步写入失败
-                {'stage_with_sequence', 11, fun(_, _, _, _, _, _, _, _, _, _, _) ->
+                {'stage_with_sequence', 13, fun(_, _, _, _, _, _, _, _, _, _, _, _, _) ->
                     {error, unavailable}
                 end},
                 {'enqueue', 3, fun(_, _, _) -> ok end}
@@ -1505,3 +1519,309 @@ c2c_stage_failure_no_ack_no_dispatch_test_() ->
             ?assertEqual(0, meck:num_calls(msg_store_ds, enqueue, 3))
         end
     ).
+
+%%%===================================================================
+%%% R04（IMBOY-TIMEZONE-REPAIR-V1）：撤回/编辑窗口用可信时间
+%%%
+%%% 窗口基准 = 首次服务端接受时间 accepted_at（D04），比较对象 = 服务端
+%%% 当前时刻；客户端 created_at 任意取值不影响允许时长；时间源全部缺失
+%%% 时 fail-closed 明确拒绝。
+%%%===================================================================
+
+%% 固定基准：accepted_at = 2023-11-14T22:13:20Z = 1700000000000ms
+-define(R04_ACCEPTED_MS, 1700000000000).
+-define(R04_ACCEPTED_RFC, <<"2023-11-14T22:13:20Z">>).
+
+r04_revoke_data(OriginalId) ->
+    #{
+        <<"to">> => <<"456">>,
+        <<"from">> => <<"123">>,
+        <<"payload">> => #{<<"original_msg_id">> => OriginalId}
+    }.
+
+%% R04-1：撤回窗口边界——窗口前/正好边界/边界后（`>` 才超时的现状语义保持）
+r04_1_revoke_window_boundaries_test_() ->
+    [
+        %% 窗口前（接受后 119999ms < 120000ms）：允许
+        ?WITH_MECKS(
+            [
+                {msg_c2c_ds, [
+                    {'find_msg_by_id', 1, fun(_) ->
+                        {ok, #{
+                            <<"from_id">> => 123,
+                            <<"accepted_at">> => ?R04_ACCEPTED_RFC,
+                            <<"created_at">> => ?R04_ACCEPTED_RFC
+                        }}
+                    end},
+                    {'revoke_offline_msg', 9, fun(_, _, _, _, _, _, _, _, _) -> ok end}
+                ]},
+                {elib_dt, [
+                    {'millisecond', 0, fun() -> ?R04_ACCEPTED_MS + 119999 end},
+                    {'now', 0, fun() -> <<"2023-11-14T22:15:19Z">> end}
+                ]},
+                {user_logic, [{'is_online', 1, fun(456) -> false end}]},
+                {user_device_logic, [{'online_dids', 1, fun(456) -> [] end}]}
+            ],
+            fun() ->
+                {reply, Reply} = msg_c2c_logic:c2c_revoke(
+                    <<"r04_rev_before">>, 123, r04_revoke_data(<<"orig_r04_1">>)
+                ),
+                ?assertEqual(<<"message_revoke_ack">>, maps:get(<<"action">>, Reply))
+            end
+        ),
+        %% 正好边界（差值 == 窗口，`>` 不成立）：仍允许
+        ?WITH_MECKS(
+            [
+                {msg_c2c_ds, [
+                    {'find_msg_by_id', 1, fun(_) ->
+                        {ok, #{
+                            <<"from_id">> => 123,
+                            <<"accepted_at">> => ?R04_ACCEPTED_RFC,
+                            <<"created_at">> => ?R04_ACCEPTED_RFC
+                        }}
+                    end},
+                    {'revoke_offline_msg', 9, fun(_, _, _, _, _, _, _, _, _) -> ok end}
+                ]},
+                {elib_dt, [
+                    {'millisecond', 0, fun() -> ?R04_ACCEPTED_MS + 120000 end},
+                    {'now', 0, fun() -> <<"2023-11-14T22:15:20Z">> end}
+                ]},
+                {user_logic, [{'is_online', 1, fun(456) -> false end}]},
+                {user_device_logic, [{'online_dids', 1, fun(456) -> [] end}]}
+            ],
+            fun() ->
+                {reply, Reply} = msg_c2c_logic:c2c_revoke(
+                    <<"r04_rev_boundary">>, 123, r04_revoke_data(<<"orig_r04_1">>)
+                ),
+                ?assertEqual(<<"message_revoke_ack">>, maps:get(<<"action">>, Reply))
+            end
+        ),
+        %% 边界后（差值 > 窗口 1ms）：超时拒绝
+        ?WITH_MECKS(
+            [
+                {msg_c2c_ds, [
+                    {'find_msg_by_id', 1, fun(_) ->
+                        {ok, #{
+                            <<"from_id">> => 123,
+                            <<"accepted_at">> => ?R04_ACCEPTED_RFC,
+                            <<"created_at">> => ?R04_ACCEPTED_RFC
+                        }}
+                    end}
+                ]},
+                {elib_dt, [
+                    {'millisecond', 0, fun() -> ?R04_ACCEPTED_MS + 120001 end}
+                ]}
+            ],
+            fun() ->
+                {reply, Reply} = msg_c2c_logic:c2c_revoke(
+                    <<"r04_rev_after">>, 123, r04_revoke_data(<<"orig_r04_1">>)
+                ),
+                ?assertEqual(<<"message_revoke_error">>, maps:get(<<"action">>, Reply)),
+                ?assertEqual(409, maps:get(<<"code">>, maps:get(<<"payload">>, Reply)))
+            end
+        )
+    ].
+
+%% R04-2：设备快慢/时区/重试不改允许时长——客户端 created_at 任意取值
+%% （慢 1 天 / 快 1 天 / 完全非法）不影响判定，窗口只看 accepted_at。
+r04_2_client_created_at_irrelevant_test_() ->
+    ClientVariants = [
+        {slow_one_day, ?R04_ACCEPTED_MS - 86400000},
+        {fast_one_day, ?R04_ACCEPTED_MS + 86400000},
+        {unparsable, <<"not-a-time">>},
+        {missing, null}
+    ],
+    [
+        begin
+            ClientCreatedAt =
+                case Variant of
+                    unparsable -> <<"not-a-time">>;
+                    missing -> null;
+                    _ -> elib_dt:to_rfc3339(Ms, millisecond, "Z")
+                end,
+            ?WITH_MECKS(
+                [
+                    {msg_c2c_ds, [
+                        {'find_msg_by_id', 1, fun(_) ->
+                            {ok, #{
+                                <<"from_id">> => 123,
+                                <<"accepted_at">> => ?R04_ACCEPTED_RFC,
+                                <<"created_at">> => ClientCreatedAt
+                            }}
+                        end}
+                    ]},
+                    {elib_dt, [{'millisecond', 0, fun() -> ?R04_ACCEPTED_MS + 60000 end}]}
+                ],
+                fun() ->
+                    %% 接受后 60s（< 2 分钟窗口）→ 无论客户端 created_at 多离谱都允许
+                    {reply, Reply} = msg_c2c_logic:c2c_revoke(
+                        <<"r04_rev_var">>, 123, r04_revoke_data(<<"orig_r04_2">>)
+                    ),
+                    ?assertEqual(<<"message_revoke_ack">>, maps:get(<<"action">>, Reply))
+                end
+            )
+        end
+     || {Variant, Ms} <- ClientVariants
+    ].
+
+%% R04-3：第一次编辑不重置后续期限——编辑成功后，原消息 accepted_at 不变，
+%% 后续编辑仍以首次接受时间为基准（accepted_at 不可变，D04）。
+r04_3_first_edit_does_not_reset_deadline_test_() ->
+    ?WITH_MECKS(
+        [
+            {elib_log, [
+                {'internal_log', 4, fun(_, _, _, _) -> ok end},
+                {'internal_log', 5, fun(_, _, _, _, _) -> ok end}
+            ]},
+            {msg_c2c_ds, [
+                {'find_msg_by_id', 1, fun(_) ->
+                    %% 编辑#1 与编辑#2 看到同一原消息行：accepted_at 不随编辑变化
+                    {ok, #{
+                        <<"from_id">> => 123,
+                        <<"accepted_at">> => ?R04_ACCEPTED_RFC,
+                        <<"created_at">> => ?R04_ACCEPTED_RFC
+                    }}
+                end},
+                {'update_payload_by_msg_id', 2, fun(_, _) -> ok end}
+            ]},
+            {elib_dt, [
+                %% 编辑#1 时刻：接受后 1 小时（默认 24h 窗口内）
+                {'millisecond', 0, fun() -> ?R04_ACCEPTED_MS + 3600000 end},
+                {'now', 0, fun() -> <<"2023-11-14T23:13:20Z">> end}
+            ]},
+            {user_logic, [{'is_online', 1, fun(456) -> true end}]},
+            {imboy_message_helper, [
+                {'encode_and_send', 4, fun(_, _, _, _) -> ok end}
+            ]}
+        ],
+        fun() ->
+            EditData = #{
+                <<"to">> => <<"456">>,
+                <<"from">> => <<"123">>,
+                <<"payload">> => #{
+                    <<"original_msg_id">> => <<"orig_r04_3">>,
+                    <<"content">> => <<"first edit"/utf8>>,
+                    <<"msg_type">> => <<"text">>
+                }
+            },
+            %% 编辑#1：窗口内成功
+            {reply, Reply1} = msg_c2c_logic:c2c_edit(<<"r04_edit_1">>, 123, EditData),
+            ?assertEqual(<<"message_edit_ack">>, maps:get(<<"action">>, Reply1)),
+            %% 编辑#2：距首次接受 24h+1s（默认窗口外）——即便编辑#1 刚发生过，
+            %% 期限仍是首次接受时间 + 窗口，不被编辑#1 重置。
+            %% 编辑#2 前推进固定时钟（卸载后按同一 passthrough 方式重建桩）
+            ok = meck:unload(elib_dt),
+            {ok, _} = meck_helper:setup_mock(elib_dt, [
+                {'millisecond', 0, fun() -> ?R04_ACCEPTED_MS + 86400000 + 1000 end},
+                {'now', 0, fun() -> <<"2023-11-15T22:13:21Z">> end}
+            ]),
+            EditData2 = EditData#{
+                <<"payload">> =>
+                    (maps:get(<<"payload">>, EditData))#{<<"content">> => <<"second edit"/utf8>>}
+            },
+            {reply, Reply2} = msg_c2c_logic:c2c_edit(<<"r04_edit_2">>, 123, EditData2),
+            ?assertEqual(<<"message_edit_error">>, maps:get(<<"action">>, Reply2)),
+            ?assertEqual(409, maps:get(<<"code">>, maps:get(<<"payload">>, Reply2)))
+        end
+    ).
+
+%% R04-4：旧数据回退与双缺失拒绝——accepted_at NULL 时回退 server_ts（低可信），
+%% 全部时间源缺失/非法时 fail-closed 明确拒绝（不再静默放行）。
+r04_4_legacy_fallback_and_fail_closed_test_() ->
+    [
+        %% 旧行：accepted_at NULL → server_ts 回退（低可信），窗口判定照常
+        ?WITH_MECKS(
+            [
+                {msg_c2c_ds, [
+                    {'find_msg_by_id', 1, fun(_) ->
+                        {ok, #{
+                            <<"from_id">> => 123,
+                            <<"accepted_at">> => null,
+                            <<"server_ts">> => ?R04_ACCEPTED_RFC,
+                            <<"created_at">> => null
+                        }}
+                    end}
+                ]},
+                {elib_dt, [{'millisecond', 0, fun() -> ?R04_ACCEPTED_MS + 130000 end}]}
+            ],
+            fun() ->
+                {reply, Reply} = msg_c2c_logic:c2c_revoke(
+                    <<"r04_rev_fallback">>, 123, r04_revoke_data(<<"orig_r04_4">>)
+                ),
+                ?assertEqual(<<"message_revoke_error">>, maps:get(<<"action">>, Reply)),
+                ?assertEqual(409, maps:get(<<"code">>, maps:get(<<"payload">>, Reply)))
+            end
+        ),
+        %% 双缺失：accepted_at/server_ts/created_at 全部缺失 → fail-closed 明确拒绝
+        ?WITH_MECKS(
+            [
+                {msg_c2c_ds, [
+                    {'find_msg_by_id', 1, fun(_) ->
+                        {ok, #{<<"from_id">> => 123}}
+                    end}
+                ]},
+                {elib_dt, [{'millisecond', 0, fun() -> ?R04_ACCEPTED_MS + 1000 end}]}
+            ],
+            fun() ->
+                {reply, Reply} = msg_c2c_logic:c2c_revoke(
+                    <<"r04_rev_nosrc">>, 123, r04_revoke_data(<<"orig_r04_4b">>)
+                ),
+                ?assertEqual(<<"message_revoke_error">>, maps:get(<<"action">>, Reply)),
+                ?assertEqual(
+                    500, maps:get(<<"code">>, maps:get(<<"payload">>, Reply))
+                )
+            end
+        ),
+        %% 双非法：全部时间源存在但都不可解析 → 同样 fail-closed 拒绝
+        ?WITH_MECKS(
+            [
+                {msg_c2c_ds, [
+                    {'find_msg_by_id', 1, fun(_) ->
+                        {ok, #{
+                            <<"from_id">> => 123,
+                            <<"accepted_at">> => <<>>,
+                            <<"server_ts">> => <<"garbage">>,
+                            <<"created_at">> => null
+                        }}
+                    end}
+                ]},
+                {elib_dt, [{'millisecond', 0, fun() -> ?R04_ACCEPTED_MS + 1000 end}]}
+            ],
+            fun() ->
+                {reply, Reply} = msg_c2c_logic:c2c_revoke(
+                    <<"r04_rev_badsrc">>, 123, r04_revoke_data(<<"orig_r04_4c">>)
+                ),
+                ?assertEqual(<<"message_revoke_error">>, maps:get(<<"action">>, Reply)),
+                ?assertEqual(
+                    500, maps:get(<<"code">>, maps:get(<<"payload">>, Reply))
+                )
+            end
+        ),
+        %% 编辑路径同款 fail-closed（c2c_edit_window_check → no_time_source 分支）
+        ?WITH_MECKS(
+            [
+                {msg_c2c_ds, [
+                    {'find_msg_by_id', 1, fun(_) ->
+                        {ok, #{<<"from_id">> => 123}}
+                    end}
+                ]},
+                {elib_dt, [{'millisecond', 0, fun() -> ?R04_ACCEPTED_MS + 1000 end}]}
+            ],
+            fun() ->
+                EditData = #{
+                    <<"to">> => <<"456">>,
+                    <<"from">> => <<"123">>,
+                    <<"payload">> => #{
+                        <<"original_msg_id">> => <<"orig_r04_4d">>,
+                        <<"content">> => <<"x">>,
+                        <<"msg_type">> => <<"text">>
+                    }
+                },
+                {reply, Reply} = msg_c2c_logic:c2c_edit(<<"r04_edit_nosrc">>, 123, EditData),
+                ?assertEqual(<<"message_edit_error">>, maps:get(<<"action">>, Reply)),
+                ?assertEqual(
+                    500, maps:get(<<"code">>, maps:get(<<"payload">>, Reply))
+                )
+            end
+        )
+    ].

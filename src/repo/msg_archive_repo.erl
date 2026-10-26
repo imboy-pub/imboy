@@ -39,6 +39,8 @@
 -export([get_history/3, get_history/4]).
 -export([get_history_batch/2]).
 -export([message_result/4]).
+%% R02/D05：归档增量的安全推进边界与受控补扫
+-export([safe_head/4, safe_history/6, backfill/6, backfill_range_limit/0]).
 
 message_result(ConvKey, MsgId, Sender, MinSeq) ->
     elib_pg:query(
@@ -460,6 +462,203 @@ build_cursor_values(Cursors) ->
     Params = lists:append([[K, S] || {_, {K, S}} <- Indexed]),
     {elib_cnv:implode(<<",">>, Parts), Params}.
 
+%% ===================================================================
+%% R02 / D05（IMBOY-TIMEZONE-REPAIR-V1）：归档增量的安全推进边界
+%% ===================================================================
+
+%% 补扫单次允许的最大序号跨度：(AfterSeq, SafeHead] 超过此值须分批。
+-define(BACKFILL_RANGE_LIMIT, 1000).
+
+-spec backfill_range_limit() -> pos_integer().
+backfill_range_limit() ->
+    ?BACKFILL_RANGE_LIMIT.
+
+%%-------------------------------------------------------------------
+%% @doc D05：会话安全推进边界 B(conv_key)。
+%%
+%% B = min( max(conv_seq) over 正式表(msg_store + msg_c2c/msg_c2g),
+%%          (min(seq) over msg_store_staging 非终态行) - 1 )
+%% 无非终态 staging 行时 B = 正式表 max。
+%%
+%% 终态失败（mark_terminal，processed_at 置位）、授权过滤、保留清理形成的
+%% seq **排除在阻塞集外**（合法空洞不阻塞边界）——非终态判定即
+%% processed_at IS NULL（claim 租约/mark_failed 重试均保持 NULL）。
+%%
+%% 单事务内计算：B 与其调用方 safe_history 的行查询共用同一连接快照序列，
+%% B 只可能偏保守（read_committed 下晚到的归档使 B 变大不影响已返回值）。
+%%-------------------------------------------------------------------
+-spec safe_head(binary(), binary(), integer(), integer()) ->
+    {ok, non_neg_integer()} | {error, term()}.
+safe_head(ConvKey, ChatType, PeerA, PeerB) ->
+    elib_pg:with_tx(fun(Conn) -> safe_head_tx(Conn, ConvKey, ChatType, PeerA, PeerB) end).
+
+safe_head_tx(Conn, ConvKey, ChatType, PeerA, PeerB) ->
+    {FormalSql, StagingSql, Params} = head_scope(ConvKey, ChatType, PeerA, PeerB),
+    Sql =
+        <<"SELECT greatest(", FormalSql/binary, ") AS formal_max, ",
+            "coalesce((SELECT min(conv_seq) FROM ", StagingSql/binary, "), 0) AS staging_min">>,
+    case elib_pg:query(Conn, Sql, Params) of
+        {ok, [#{<<"formal_max">> := FormalMax, <<"staging_min">> := StagingMin}]} ->
+            {ok, clamp_head(FormalMax, StagingMin)};
+        {ok, _} ->
+            {error, safe_head_shape};
+        {error, Reason} ->
+            {error, Reason}
+    end.
+
+%% B = min(formal_max, staging_min - 1)；staging_min=0 表示无非终态行 → B = formal_max。
+clamp_head(FormalMax, StagingMin) when
+    is_integer(FormalMax), FormalMax >= 0, is_integer(StagingMin), StagingMin >= 0
+->
+    case StagingMin of
+        0 -> FormalMax;
+        _ -> erlang:min(FormalMax, StagingMin - 1)
+    end.
+
+%% 正式表与 staging 的 per-chat_type 范围 SQL 片段与参数。
+%% C2C 正式：msg_store(conv_key) + msg_c2c(min/max uid 对)；staging：type='c2c' 同 uid 对。
+%% C2G 正式：msg_store(conv_key) + msg_c2g(to_id=gid)；staging：type='c2g' 同 gid。
+head_scope(<<"c2c:", _/binary>> = ConvKey, <<"c2c">>, PeerA, PeerB) ->
+    FormalSql =
+        <<
+            "coalesce((SELECT max(conv_seq) FROM public.msg_store WHERE chat_type='c2c' AND conv_key=$1),0), "
+            "coalesce((SELECT max(conv_seq) FROM public.msg_c2c "
+            "WHERE least(from_id,to_id)=$2 AND greatest(from_id,to_id)=$3),0)"
+        >>,
+    StagingSql =
+        <<
+            "public.msg_store_staging WHERE type='c2c' "
+            "AND least(from_id,to_id)=$2 AND greatest(from_id,to_id)=$3 "
+            "AND conv_seq IS NOT NULL AND processed_at IS NULL"
+        >>,
+    {FormalSql, StagingSql, [ConvKey, erlang:min(PeerA, PeerB), erlang:max(PeerA, PeerB)]};
+head_scope(<<"c2g:", _/binary>> = ConvKey, <<"c2g">>, Gid, _PeerB) ->
+    %% msg_c2g 正文表无 conv_seq 列（权威 seq 在接受事务分配、归档入 msg_store，
+    %% timeline 行同源搬运）；C2G 正式表 max 以 msg_store 为准。
+    FormalSql =
+        <<"coalesce((SELECT max(conv_seq) FROM public.msg_store WHERE chat_type='c2g' AND conv_key=$1),0)">>,
+    StagingSql =
+        <<
+            "public.msg_store_staging WHERE type='c2g' AND to_id=$2 "
+            "AND conv_seq IS NOT NULL AND processed_at IS NULL"
+        >>,
+    {FormalSql, StagingSql, [ConvKey, Gid]};
+head_scope(_ConvKey, _ChatType, _A, _B) ->
+    erlang:error(badarg).
+
+%%-------------------------------------------------------------------
+%% @doc D05/R02：一致快照下的增量历史——行查询与 B 边界同一事务。
+%%
+%% 返回 {ok, Rows, SafeHead, TerminalGaps}：
+%%   Rows         按 conv_seq 升序的正式表行（conv_seq > AfterSeq，最多 Limit）
+%%   SafeHead     B 边界；调用方 next_seq 不得超过
+%%   TerminalGaps [{Seq, Reason}] 终态失败 staging 行形成的合法空洞
+%%                （seq ∈ (AfterSeq, B]，未出现在正式表、staging 已终态）
+%% 授权过滤与保留清理空洞不在此列：前者由调用方授权下界（MinSeq）表达，
+%% 后者被清理的 seq 既不在正式表也不在 staging，天然不参与 B 与行集。
+%%-------------------------------------------------------------------
+-spec safe_history(binary(), integer(), pos_integer(), binary(), integer(), integer()) ->
+    {ok, list(map()), non_neg_integer(), [{integer(), binary()}]} | {error, term()}.
+safe_history(ConvKey, AfterSeq, Limit, ChatType, PeerA, PeerB) ->
+    elib_pg:with_tx(fun(Conn) ->
+        {ok, SafeHead} = safe_head_tx(Conn, ConvKey, ChatType, PeerA, PeerB),
+        Rows = history_rows_tx(Conn, ConvKey, AfterSeq, Limit),
+        TerminalGaps = terminal_gap_tx(Conn, ConvKey, ChatType, PeerA, PeerB, AfterSeq, SafeHead),
+        {ok, Rows, SafeHead, TerminalGaps}
+    end).
+
+history_rows_tx(Conn, ConvKey, AfterSeq, Limit) ->
+    Sql =
+        <<
+            "SELECT msg_id, chat_type, conv_seq, msg_type, from_id, to_id, group_id, "
+            "e2ee, sender_did, payload, created_at, server_ts "
+            "FROM public.msg_store WHERE conv_key = $1 AND conv_seq > $2 "
+            "ORDER BY conv_seq ASC LIMIT $3"
+        >>,
+    case elib_pg:query(Conn, Sql, [ConvKey, AfterSeq, Limit]) of
+        {ok, Rows} -> Rows;
+        {error, Reason} -> throw({rollback, Reason})
+    end.
+
+%% 终态失败空洞：staging 已终态（processed_at NOT NULL）、seq 在窗口内、
+%% 且该 seq 未被正式表占用（正式表占用的不算空洞）。
+terminal_gap_tx(Conn, ConvKey, ChatType, PeerA, PeerB, AfterSeq, SafeHead) ->
+    {_F, _S, Params0} = head_scope(ConvKey, ChatType, PeerA, PeerB),
+    {FromPh, ToPh} = gap_window_ph(ChatType),
+    case
+        elib_pg:query(
+            Conn,
+            <<
+                "SELECT conv_seq FROM public.msg_store_staging s WHERE ",
+                (staging_scope_sql(ChatType))/binary,
+                " AND s.conv_seq > ",
+                FromPh/binary,
+                " AND s.conv_seq <= ",
+                ToPh/binary,
+                " AND s.processed_at IS NOT NULL "
+                "AND NOT EXISTS (SELECT 1 FROM public.msg_store m "
+                "WHERE m.conv_key = $1 AND m.conv_seq = s.conv_seq) "
+                "ORDER BY s.conv_seq LIMIT 200"
+            >>,
+            terminal_gap_params(ChatType, Params0, AfterSeq, SafeHead)
+        )
+    of
+        {ok, Rows} ->
+            [{maps:get(<<"conv_seq">>, R), <<"terminal_failure">>} || R <- Rows];
+        {error, Reason} ->
+            throw({rollback, Reason})
+    end.
+
+staging_scope_sql(<<"c2c">>) ->
+    <<"s.type='c2c' AND least(s.from_id,s.to_id)=$2 AND greatest(s.from_id,s.to_id)=$3">>;
+staging_scope_sql(<<"c2g">>) ->
+    <<"s.type='c2g' AND s.to_id=$2">>.
+
+terminal_gap_params(<<"c2c">>, [ConvKey, A, B], AfterSeq, SafeHead) ->
+    [ConvKey, A, B, AfterSeq, SafeHead];
+terminal_gap_params(<<"c2g">>, [ConvKey, Gid], AfterSeq, SafeHead) ->
+    [ConvKey, Gid, AfterSeq, SafeHead].
+
+%% 空洞窗口参数号随 staging 范围占位符数量而定：c2c 范围占 $2/$3 → 窗口
+%% $4/$5；c2g 范围只占 $2 → 窗口 $3/$4。R23-A2 修复（c 类真缺陷）：原实现
+%% 硬编码 $4/$5，c2g 绑定只有 4 参数 → $3 声明未用、$5 越界，PG 42P18
+%% indeterminate_datatype，所有 c2g history 一致快照查询必然回滚。
+gap_window_ph(<<"c2c">>) -> {<<"$4">>, <<"$5">>};
+gap_window_ph(<<"c2g">>) -> {<<"$3">>, <<"$4">>}.
+
+%%-------------------------------------------------------------------
+%% @doc D05/R02：晚到补齐的有界范围补扫。
+%%
+%% 对已过冲（next_seq 越过晚到低序号）的客户端，在 (AfterSeq, SafeHead]
+%% 显式重扫已归档行，按 msg_id 去重。范围跨度受 ?BACKFILL_RANGE_LIMIT
+%% 约束（超出要求分批：终点=SafeHead、批次=Limit、恢复位置=返回 next_seq）。
+%% 授权/保留/撤回约束由调用方（conv_key 授权校验 + 行为现存正式行）承担。
+%%-------------------------------------------------------------------
+-spec backfill(binary(), integer(), pos_integer(), binary(), integer(), integer()) ->
+    {ok, list(map()), non_neg_integer(), boolean()} | {error, term()}.
+backfill(ConvKey, AfterSeq, Limit, ChatType, PeerA, PeerB) when
+    is_integer(AfterSeq), AfterSeq >= 0, is_integer(Limit), Limit >= 1
+->
+    elib_pg:with_tx(fun(Conn) ->
+        {ok, SafeHead} = safe_head_tx(Conn, ConvKey, ChatType, PeerA, PeerB),
+        case SafeHead - AfterSeq > ?BACKFILL_RANGE_LIMIT of
+            true ->
+                {error, backfill_range_exceeded};
+            false ->
+                Rows = history_rows_tx(Conn, ConvKey, AfterSeq, Limit),
+                NextSeq =
+                    case Rows of
+                        [] -> AfterSeq;
+                        _ -> maps:get(<<"conv_seq">>, lists:last(Rows))
+                    end,
+                %% has_more：本批取满且仍 < SafeHead（下一批从 NextSeq 续扫）
+                HasMore = NextSeq < SafeHead andalso length(Rows) >= Limit,
+                {ok, Rows, erlang:max(NextSeq, AfterSeq), HasMore}
+        end
+    end);
+backfill(_ConvKey, _AfterSeq, _Limit, _ChatType, _A, _B) ->
+    {error, badarg}.
+
 %% @private 构建归档数据，返回 {ok, ConvKey, DataMap} | skip | {error, Reason}
 build_archive_data(<<"c2c">>, Row) ->
     FromId = maps:get(<<"from_id">>, Row),
@@ -471,6 +670,8 @@ build_archive_data(<<"c2c">>, Row) ->
     Payload = maps:get(<<"payload">>, Row),
     CreatedAt = maps:get(<<"created_at">>, Row),
     ServerTs = maps:get(<<"server_ts">>, Row, CreatedAt),
+    %% R03/D04：首次接受时间随 staging 行/正式行搬运；旧行缺失为 null（低可信）。
+    AcceptedAt = maps:get(<<"accepted_at">>, Row, null),
     ConvKey = conv_key(<<"c2c">>, FromId, ToId),
     Data = #{
         chat_type => <<"c2c">>,
@@ -484,7 +685,10 @@ build_archive_data(<<"c2c">>, Row) ->
         sender_did => SenderDid,
         payload => Payload,
         created_at => CreatedAt,
-        server_ts => ServerTs
+        server_ts => ServerTs,
+        accepted_at => AcceptedAt,
+        %% R05-A：自毁绝对期限随行搬运（旧行/无自毁缺失为 null，不伪造）。
+        expire_at => maps:get(<<"expire_at">>, Row, null)
     },
     {ok, ConvKey, Data};
 build_archive_data(<<"c2g">>, Row) ->
@@ -512,7 +716,11 @@ build_archive_data(<<"c2g">>, Row) ->
                 sender_did => SenderDid,
                 payload => Payload,
                 created_at => CreatedAt,
-                server_ts => ServerTs
+                server_ts => ServerTs,
+                %% R03/D04：首次接受时间随 staging 行搬运；旧行缺失为 null。
+                accepted_at => maps:get(<<"accepted_at">>, Row, null),
+                %% R05-A：自毁绝对期限随行搬运（缺失 null，不伪造）。
+                expire_at => maps:get(<<"expire_at">>, Row, null)
             },
             {ok, ConvKey, Data};
         {error, Reason} ->

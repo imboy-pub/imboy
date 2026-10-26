@@ -9,7 +9,6 @@
     end}
 ).
 
-
 %%%===================================================================
 %%% @doc
 %%% msg_store_ds public contract tests
@@ -128,7 +127,7 @@ c2g_stage_forwards_required_role_and_snapshot_test_() ->
     ?WITH_MECK(
         msg_store_repo,
         [
-            {'stage', 12, fun(_, _, _, _, _, _, 50, 100, _, _, _, 3) ->
+            {'stage', 13, fun(_, _, _, _, _, _, 50, 100, _, _, _, 3, _) ->
                 {ok, 12345, 7, [50, 60]}
             end}
         ],
@@ -213,7 +212,7 @@ c2g_stage_database_error_is_retryable_test_() ->
     ?WITH_MECK(
         msg_store_repo,
         [
-            {'stage', 12, fun(_, _, _, _, _, _, _, _, _, _, _, _) ->
+            {'stage', 13, fun(_, _, _, _, _, _, _, _, _, _, _, _, _) ->
                 {error, connection_lost}
             end}
         ],
@@ -406,18 +405,37 @@ status_returns_zero_queue_on_error_test_() ->
 unstage_keeps_type_through_async_retry_test_() ->
     ?PURE_MOCKS(
         [
-            {elib_async, [{'async_retry', 1, fun(F) -> F(), ok end}]},
+            {elib_async, [
+                {'async_retry', 1, fun(F) ->
+                    F(),
+                    ok
+                end}
+            ]},
             {msg_store_repo, [{'mark_processed', 2, fun(_, _) -> {ok, 1} end}]}
         ],
         fun() ->
             MsgId = <<"legacy-shared-id">>,
             State = test_state,
-            ?assertEqual({noreply, State},
-                msg_store_ds:handle_cast({unstage, <<"c2g">>, MsgId}, State)),
-            ?assertEqual(1, meck:num_calls(msg_store_repo, mark_processed,
-                [<<"c2g">>, MsgId])),
-            ?assertEqual(0, meck:num_calls(msg_store_repo, mark_processed,
-                [<<"c2c">>, MsgId]))
+            ?assertEqual(
+                {noreply, State},
+                msg_store_ds:handle_cast({unstage, <<"c2g">>, MsgId}, State)
+            ),
+            ?assertEqual(
+                1,
+                meck:num_calls(
+                    msg_store_repo,
+                    mark_processed,
+                    [<<"c2g">>, MsgId]
+                )
+            ),
+            ?assertEqual(
+                0,
+                meck:num_calls(
+                    msg_store_repo,
+                    mark_processed,
+                    [<<"c2c">>, MsgId]
+                )
+            )
         end
     ).
 

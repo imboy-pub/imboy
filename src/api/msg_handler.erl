@@ -17,6 +17,7 @@
     offline_ack/2,
     read_stats/2,
     history/2,
+    history_backfill/2,
     message_result/2,
     pin/2,
     forward/2,
@@ -69,6 +70,8 @@ dispatch_rest_action(reaction_list, Req0, State) ->
     reaction_list(Req0, State);
 dispatch_rest_action(history, Req0, State) ->
     history(Req0, State);
+dispatch_rest_action(history_backfill, Req0, State) ->
+    history_backfill(Req0, State);
 dispatch_rest_action(message_result, Req0, State) ->
     message_result(Req0, State);
 dispatch_rest_action(false, Req0, _State) ->
@@ -191,6 +194,38 @@ history(Req0, State) ->
             %% 不含本机的收件消息不再下发；缺省保持旧语义 fail-open
             DID = proplists:get_value(<<"did">>, Qs, <<>>),
             case messaging_logic:history(CurrentUid, ChatType, PeerIdEnc, AfterSeq, Limit, DID) of
+                {ok, Payload} ->
+                    elib_response:success(Req0, Payload);
+                {error, Reason, Code} ->
+                    elib_response:error(Req0, Reason, Code)
+            end
+    end.
+
+%% @doc R02/D05 晚到补齐：对过冲 next_seq 的有界范围补扫
+%%
+%% GET /v1/msg?...&action=history_backfill&chat_type=c2c&peer_id=xxx&after_seq=0&limit=50
+%%
+%% 扫描 (after_seq, safe_head] 内已归档行（晚到低序号在其中），终点=safe_head、
+%% 批次=limit、恢复位置=响应 next_seq；范围跨度受服务端 range_limit 约束。
+-spec history_backfill(cowboy_req:req(), map()) -> cowboy_req:req().
+history_backfill(Req0, State) ->
+    case maps:get(current_uid, State, undefined) of
+        undefined ->
+            elib_response:error(Req0, <<"未授权"/utf8>>, ?ERR_UNAUTHORIZED);
+        CurrentUid ->
+            Qs = cowboy_req:parse_qs(Req0),
+            ChatType = proplists:get_value(<<"chat_type">>, Qs, <<>>),
+            PeerIdEnc = proplists:get_value(<<"peer_id">>, Qs, <<>>),
+            {ok, AfterSeq} = elib_param:int(after_seq, Req0, 0),
+            {ok, Limit0} = elib_param:int(limit, Req0, 50),
+            %% 单页夹紧为 1..100（与 history 同范式）。
+            Limit = erlang:max(1, erlang:min(Limit0, 100)),
+            DID = proplists:get_value(<<"did">>, Qs, <<>>),
+            case
+                messaging_logic:history_backfill(
+                    CurrentUid, ChatType, PeerIdEnc, AfterSeq, Limit, DID
+                )
+            of
                 {ok, Payload} ->
                     elib_response:success(Req0, Payload);
                 {error, Reason, Code} ->

@@ -229,18 +229,52 @@ do_update_schedule(ScheduleId, Title, Description, Location, StartAt, EndAt) ->
     },
 
     case group_schedule_ds:find_by_schedule_id(ScheduleId) of
-        #{<<"id">> := ScheduleDbId} ->
+        #{<<"id">> := ScheduleDbId} = Schedule ->
             case
                 normalize_write_result(
                     group_schedule_ds:update_schedule(ScheduleDbId, UpdateData)
                 )
             of
-                {ok, 1} -> ok;
-                {error, Reason} -> {error, Reason}
+                {ok, 1} ->
+                    % R18-1：改期后重排未发送提醒——作废旧未发送提醒，
+                    % 按新 start_at 重建（复用 schedule_reminders 的未来提醒构造）。
+                    % R18-5 规则：已发送（is_sent=true）的提醒不重排、不重发——
+                    % 每个参与者每版日程至多一次提醒；改期不影响已提醒历史。
+                    _ = group_schedule_ds:cancel_pending_reminds(ScheduleId),
+                    RemindBefore = maps:get(<<"remind_before">>, Schedule, undefined),
+                    ParticipantIds = participant_ids_of(ScheduleId),
+                    schedule_reminders(
+                        ScheduleId, StartAt, to_int_maybe(RemindBefore), ParticipantIds
+                    ),
+                    ok;
+                {error, Reason} ->
+                    {error, Reason}
             end;
         _ ->
             {error, not_found}
     end.
+
+%% R18：重排提醒的参与人 = creator + 现有参与人（与创建口径一致）
+-spec participant_ids_of(binary()) -> [integer()].
+participant_ids_of(ScheduleId) ->
+    case group_schedule_ds:list_participants(ScheduleId) of
+        {ok, Rows} when is_list(Rows) ->
+            [maps:get(<<"user_id">>, R) || R <- Rows];
+        _ ->
+            []
+    end.
+
+-spec to_int_maybe(term()) -> integer() | undefined.
+to_int_maybe(V) when is_integer(V) ->
+    V;
+to_int_maybe(V) when is_binary(V) ->
+    try
+        binary_to_integer(V)
+    catch
+        _:_ -> undefined
+    end;
+to_int_maybe(_) ->
+    undefined.
 
 %% @doc 取消群组日程
 -spec cancel_schedule(binary(), integer()) -> ok | {error, term()}.
@@ -271,8 +305,13 @@ cancel_schedule(ScheduleId, CreatorId) ->
                                     group_schedule_ds:update_status(ScheduleDbId, 4)
                                 )
                             of
-                                {ok, 1} -> ok;
-                                {error, Reason} -> {error, Reason}
+                                {ok, 1} ->
+                                    % R18-2：取消日程即作废全部待发提醒
+                                    % （is_sent=true 终态；已发送的不撤回）
+                                    _ = group_schedule_ds:cancel_pending_reminds(ScheduleId),
+                                    ok;
+                                {error, Reason} ->
+                                    {error, Reason}
                             end
                     end
             end
@@ -443,13 +482,19 @@ process_remind_list([Remind | Rest], Acc) ->
             %% 工作区已归档：不发送、不标记（读取不受影响）
             process_remind_list(Rest, Acc);
         {written, _} ->
-            % 发送提醒通知
-            send_remind_notification(ScheduleId, UserId),
+            % R18-4：派发前原子认领（CAS：is_sent false→true）。
+            % 认领成功才发送——发送成功后崩溃不重发（扫描不再命中已认领行）；
+            % 认领失败（0）= 已被并发 worker 认领/已取消/已发送，跳过（R18-3 竞态）。
+            case group_schedule_ds:claim_remind(RemindId) of
+                {ok, 1} ->
+                    % 发送提醒通知
+                    send_remind_notification(ScheduleId, UserId),
 
-            % 标记为已发送
-            _ = group_schedule_ds:update_remind_sent(RemindId),
-
-            process_remind_list(Rest, Acc + 1)
+                    process_remind_list(Rest, Acc + 1);
+                _ ->
+                    %% 认领失败：并发/取消/已发送，不再发送
+                    process_remind_list(Rest, Acc)
+            end
     end.
 
 %% @doc 安排提醒
@@ -489,11 +534,19 @@ create_remind_records(ScheduleId, [UserId | Rest], RemindAt) ->
     create_remind_records(ScheduleId, Rest, RemindAt).
 
 %% @doc 发送提醒通知
+%% R18-3：派发前复查日程当前状态——已取消（status=4）的日程不发提醒
+%% （worker 读到旧 remind 记录后日程被取消/改期的竞态兜底；
+%% 认领 CAS 已保证不重发，此处保证取消后不漏发）。
+%% R18-5 规则（记录在案）：已发送过的提醒不因改期而重发——改期只重排
+%% is_sent=false 的未发送提醒，is_sent=true 的历史提醒保持终态。
 send_remind_notification(ScheduleId, UserId) ->
     case group_schedule_ds:find_by_schedule_id(ScheduleId) of
         {error, _} ->
             skip;
         M when map_size(M) =:= 0 ->
+            skip;
+        #{<<"status">> := 4} ->
+            %% 已取消：不发送（认领已提交，本条提醒作废）
             skip;
         Schedule ->
             #{<<"title">> := Title, <<"start_at">> := StartAt} = Schedule,

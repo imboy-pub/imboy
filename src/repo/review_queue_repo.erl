@@ -9,6 +9,8 @@
 -export([page/3]).
 -export([find_by_id/1]).
 -export([moderate/4]).
+%% 导出供测试断言 SQL 构造（R12-BE）
+-export([build_where/1]).
 
 -include("common.hrl").
 -include("log.hrl").
@@ -23,7 +25,21 @@ tablename() ->
     elib_pg_sql:public_tablename(<<"review_queue">>).
 
 %% @doc 分页查询复审队列
-%% Filters: status(binary) / keyword(binary, 命中 from_account|content) / start / end(YYYY-MM-DD)
+%% Filters:
+%%   status(binary) / keyword(binary, 命中 from_account|content)
+%%   start / end(binary, YYYY-MM-DD 纯日期，旧参数，保留)
+%%   start_at / end_at(binary, rfc3339 瞬间，新参数)
+%%   zone(binary, IANA 时区名，仅解释纯日期 start/end；缺省 UTC)
+%%
+%% R12-BE 时间边界合同：
+%%   - 业务日定义 = 按请求 zone 的当地自然日；zone 缺省 'UTC'（与旧实现
+%%     在 session TimeZone=UTC 时的语义一致，不静默改变现有报表含义）。
+%%   - [start, endExclusive) 半开区间：结束日上界为该 zone 次日 00:00。
+%%   - 边界经 `AT TIME ZONE $zone` 构造明确瞬间（timestamptz 域比较），
+%%     消除对 PG session TimeZone 的隐含依赖；不用 DATE(created_at) 包装，
+%%     保持 created_at 索引可用。
+%%   - 优先级/冲突：start_at > start，end_at > end（同时传时忽略纯日期）；
+%%     zone 在纯日期模式下生效，对 start_at/end_at 无影响。
 -spec page(map(), integer(), integer()) -> {ok, map()} | {error, term()}.
 page(Filter, Page, Size) ->
     Tb = tablename(),
@@ -80,18 +96,33 @@ moderate(Id, Status, Reason, ReviewerId) ->
 build_where(Filter) ->
     Status = maps:get(status, Filter, undefined),
     Keyword = maps:get(keyword, Filter, undefined),
+    StartAt = maps:get(start_at, Filter, undefined),
+    EndAt = maps:get(end_at, Filter, undefined),
     Start = maps:get(start, Filter, undefined),
     End = maps:get('end', Filter, undefined),
+    Zone = maps:get(zone, Filter, undefined),
+    %% R12-BE 优先级：时刻参数 > 纯日期参数；zone 仅在纯日期模式下生效
+    {C0, P0, N0} =
+        case truthy(StartAt) of
+            true -> add_instant_ge(<<"created_at">>, StartAt, [], [], 1);
+            false -> add_date_ge(<<"created_at">>, Start, Zone, [], [], 1)
+        end,
+    {C1, P1, N1} =
+        case truthy(EndAt) of
+            true -> add_instant_le(<<"created_at">>, EndAt, C0, P0, N0);
+            false -> add_date_le(<<"created_at">>, End, Zone, C0, P0, N0)
+        end,
+    {C2, P2, N2} = add_bin_eq(<<"review_status">>, Status, C1, P1, N1),
+    {C3, P3, _N3} = add_keyword(Keyword, C2, P2, N2),
 
-    {C1, P1, N1} = add_bin_eq(<<"review_status">>, Status, [], [], 1),
-    {C2, P2, N2} = add_keyword(Keyword, C1, P1, N1),
-    {C3, P3, N3} = add_date_ge(<<"created_at">>, Start, C2, P2, N2),
-    {C4, P4, _N4} = add_date_le(<<"created_at">>, End, C3, P3, N3),
-
-    case C4 of
-        [] -> {<<>>, P4};
-        _ -> {<<" WHERE ", (join_and(lists:reverse(C4)))/binary>>, P4}
+    case C3 of
+        [] -> {<<>>, P3};
+        _ -> {<<" WHERE ", (join_and(lists:reverse(C3)))/binary>>, P3}
     end.
+
+-spec truthy(term()) -> boolean().
+truthy(V) when V =:= undefined; V =:= <<>> -> false;
+truthy(_) -> true.
 
 add_bin_eq(_Field, V, Conds, Params, N) when V =:= undefined; V =:= <<>> ->
     {Conds, Params, N};
@@ -112,22 +143,47 @@ add_keyword(V, Conds, Params, N) when is_binary(V) ->
 add_keyword(_V, Conds, Params, N) ->
     {Conds, Params, N}.
 
-add_date_ge(_Field, V, Conds, Params, N) when V =:= undefined; V =:= <<>> ->
+%% rfc3339 瞬间参数：直接与 timestamptz 列比较（明确瞬间边界，最高优先级）
+add_instant_ge(Field, V, Conds, Params, N) ->
+    Cond = <<Field/binary, " >= $", (integer_to_binary(N))/binary>>,
+    {[Cond | Conds], Params ++ [V], N + 1}.
+
+add_instant_le(Field, V, Conds, Params, N) ->
+    Cond = <<Field/binary, " < $", (integer_to_binary(N))/binary>>,
+    {[Cond | Conds], Params ++ [V], N + 1}.
+
+%% 纯日期参数：经 AT TIME ZONE $zone 构造该时区当地日 00:00 的明确瞬间，
+%% 消除对 PG session TimeZone 的隐含依赖（旧形式 `>= $N::date` 按 session zone 解释）。
+add_date_ge(_Field, V, _Zone, Conds, Params, N) when V =:= undefined; V =:= <<>> ->
     {Conds, Params, N};
-add_date_ge(Field, V, Conds, Params, N) when is_binary(V) ->
-    Cond = <<Field/binary, " >= $", (integer_to_binary(N))/binary, "::date">>,
-    {[Cond | Conds], Params ++ [V], N + 1};
-add_date_ge(_Field, _V, Conds, Params, N) ->
+add_date_ge(Field, V, Zone, Conds, Params, N) when is_binary(V) ->
+    Z = default_zone(Zone),
+    Cond =
+        <<Field/binary, " >= (($", (integer_to_binary(N))/binary,
+            ")::date)::timestamp AT TIME ZONE $", (integer_to_binary(N + 1))/binary>>,
+    {[Cond | Conds], Params ++ [V, Z], N + 2};
+add_date_ge(_Field, _V, _Zone, Conds, Params, N) ->
     {Conds, Params, N}.
 
-add_date_le(_Field, V, Conds, Params, N) when V =:= undefined; V =:= <<>> ->
+%% [start, endExclusive)：结束日上界 = 该时区当地日次日 00:00（半开区间）
+add_date_le(_Field, V, _Zone, Conds, Params, N) when V =:= undefined; V =:= <<>> ->
     {Conds, Params, N};
-add_date_le(Field, V, Conds, Params, N) when is_binary(V) ->
-    %% 含当日：< (end + 1 day)
-    Cond = <<Field/binary, " < ($", (integer_to_binary(N))/binary, "::date + INTERVAL '1 day')">>,
-    {[Cond | Conds], Params ++ [V], N + 1};
-add_date_le(_Field, _V, Conds, Params, N) ->
+add_date_le(Field, V, Zone, Conds, Params, N) when is_binary(V) ->
+    Z = default_zone(Zone),
+    Cond =
+        <<Field/binary, " < ((($", (integer_to_binary(N))/binary,
+            ")::date)::timestamp AT TIME ZONE $", (integer_to_binary(N + 1))/binary,
+            ") + INTERVAL '1 day')">>,
+    {[Cond | Conds], Params ++ [V, Z], N + 2};
+add_date_le(_Field, _V, _Zone, Conds, Params, N) ->
     {Conds, Params, N}.
+
+%% zone 缺省 UTC：与旧实现（session TimeZone=UTC 时）语义一致，不静默改变报表含义
+-spec default_zone(term()) -> binary().
+default_zone(Z) when is_binary(Z), Z =/= <<>> ->
+    Z;
+default_zone(_) ->
+    <<"UTC">>.
 
 -spec join_and([binary()]) -> binary().
 join_and([One]) ->

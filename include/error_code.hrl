@@ -136,6 +136,10 @@
 -define(ERR_ACCOUNT_LOCKED, 423).
 % 消息撤回超时
 -define(ERR_REVOKE_TIMEOUT, 409).
+% R04（IMBOY-TIMEZONE-REPAIR-V1）：消息时间源缺失（accepted_at 与低可信回退
+% server_ts/created_at 全部缺失/非法），撤回/编辑窗口校验 fail-closed 明确拒绝。
+% 复用 500 语义（服务端数据完整性问题），payload 内 error 文本可区分场景。
+-define(ERR_MSG_TIME_SOURCE_MISSING, 500).
 %% 429 Too Many Requests - 请求过于频繁
 
 % 请求过于频繁

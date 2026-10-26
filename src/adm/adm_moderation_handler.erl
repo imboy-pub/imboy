@@ -107,11 +107,19 @@ review_queue(<<"GET">>, Req0, State) ->
         {ok, Keyword} = elib_param:binary(<<"keyword">>, Req0, undefined),
         {ok, Start} = elib_param:binary(<<"start">>, Req0, undefined),
         {ok, End} = elib_param:binary(<<"end">>, Req0, undefined),
+        %% R12-BE：时刻边界（rfc3339）与目标时区（IANA，仅解释 start/end 纯日期；
+        %% 优先级 start_at/end_at > start/end），向后兼容旧纯日期参数
+        {ok, StartAt} = elib_param:binary(<<"start_at">>, Req0, undefined),
+        {ok, EndAt} = elib_param:binary(<<"end_at">>, Req0, undefined),
+        {ok, Zone} = elib_param:binary(<<"zone">>, Req0, undefined),
         Filters = drop_undefined(#{
             status => normalize_status(Status),
             keyword => Keyword,
             start => Start,
-            'end' => End
+            'end' => End,
+            start_at => StartAt,
+            end_at => EndAt,
+            zone => Zone
         }),
         case adm_moderation_logic:list_review_queue(Page, Size, Filters) of
             {ok, P} -> elib_response:success(Req0, P);
