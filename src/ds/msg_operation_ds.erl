@@ -172,8 +172,11 @@ ack_s2c_batch(MsgIds, Uid, DID) ->
 -spec maybe_clean_delivered(atom(), binary(), integer()) -> ok.
 maybe_clean_delivered(Kind, MsgId, Uid) when Kind =:= c2c; Kind =:= s2c ->
     KindBin = erlang:atom_to_binary(Kind),
-    try
-        msg_delivery_repo:delete_delivered(KindBin, MsgId, Uid, delivery_active_days())
+    try msg_delivery_repo:delete_delivered(KindBin, MsgId, Uid, delivery_active_days()) of
+        ok ->
+            ok;
+        {error, CleanupReason} ->
+            ok = ?ERROR_LOG({maybe_clean_delivered_error, Kind, MsgId, Uid, CleanupReason})
     catch
         Class:Reason ->
             ok = ?ERROR_LOG({maybe_clean_delivered_error, Kind, MsgId, Uid, Class, Reason})

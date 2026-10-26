@@ -155,20 +155,25 @@ send_safe(Uids, Action, Payload, SaveMode) when is_list(Uids) ->
         [] ->
             ok;
         _ ->
-            try msg_s2c_ds:send(0, NormalizedUids, Action, <<>>, null, Payload, SaveMode) of
-                ok ->
-                    ok;
-                {error, Reason} ->
-                    ?WARN_LOG([
-                        channel_logic_notify_send_failed, Action, {uid_count, UidCount}, Reason
-                    ]),
-                    ok;
-                Other ->
+            try
+                case msg_s2c_ds:send(0, NormalizedUids, Action, <<>>, null, Payload, SaveMode) of
+                    ok ->
+                        ok;
+                    {error, SendReason} ->
+                        ?WARN_LOG([
+                            channel_logic_notify_send_failed,
+                            Action,
+                            {uid_count, UidCount},
+                            SendReason
+                        ]),
+                        ok
+                end
+            catch
+                error:{case_clause, Other} ->
                     ?WARN_LOG([
                         channel_logic_notify_send_unexpected, Action, {uid_count, UidCount}, Other
                     ]),
-                    ok
-            catch
+                    ok;
                 _:Reason ->
                     ?ERROR_LOG([
                         channel_logic_notify_send_crashed, Action, {uid_count, UidCount}, Reason

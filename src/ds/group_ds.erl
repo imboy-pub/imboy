@@ -629,8 +629,13 @@ do_dissolve(Uid, Gid, G, Authz) ->
             % 发送通知（接收者=事务内成员快照；快照为空时发空列表为无害空转）
             Action = <<"group_dissolve">>,
             Payload = #{<<"gid">> => Gid},
-            msg_s2c_ds:send(Uid, ToUidLi, Action, <<>>, null, Payload, save),
-            ok;
+            case msg_s2c_ds:send(Uid, ToUidLi, Action, <<>>, null, Payload, save) of
+                ok ->
+                    ok;
+                {error, Reason} ->
+                    ?WARN_LOG({group_dissolve_notification_failed, Reason}),
+                    ok
+            end;
         %% run_with_conn 契约：abort_tx throw 被收敛为 {error, Reason}，
         %% 归档拒绝实际形态是 {error, {980, Msg}}（裸 {980, _} 永不命中，
         %% 会退化成下方通用「解散群组失败」——空转期测试未曾暴露）

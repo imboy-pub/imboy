@@ -96,8 +96,13 @@ notify_conversation_change(Uid, ConversationId, Type, Action) ->
         <<"conversation_id">> => ConversationId,
         <<"conversation_type">> => Type
     },
-    msg_s2c_ds:send(Uid, [Uid], Action, <<>>, null, Payload, no_save),
-    ok.
+    case msg_s2c_ds:send(Uid, [Uid], Action, <<>>, null, Payload, no_save) of
+        ok ->
+            ok;
+        {error, Reason} ->
+            ?WARN_LOG({conversation_pin_notification_failed, Action, Reason}),
+            ok
+    end.
 
 %% ===================================================================
 %% EUnit tests.

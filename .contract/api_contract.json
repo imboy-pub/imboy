@@ -5954,7 +5954,9 @@
       {
         "action": "internal_error",
         "sources": [
-          "src/logic/msg_c2c_logic.erl:1009",
+          "src/logic/msg_c2c_logic.erl:958",
+          "src/logic/msg_c2c_logic.erl:1008",
+          "src/logic/msg_c2c_logic.erl:1027",
           "src/logic/msg_c2s_logic.erl:164",
           "src/logic/msg_s2c_logic.erl:62"
         ]

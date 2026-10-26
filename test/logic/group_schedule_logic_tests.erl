@@ -699,6 +699,38 @@ process_reminders_success_test() ->
     _ = catch meck:unload(elib_pg),
     meck:unload(group_schedule_repo).
 
+process_reminders_failed_delivery_stays_pending_test() ->
+    Modules = [group_schedule_ds, workspace_guard, msg_s2c_ds],
+    lists:foreach(fun(M) -> meck:new(M, [passthrough, no_link]) end, Modules),
+    try
+        meck:expect(group_schedule_ds, list_pending_reminds, fun() ->
+            {ok, [
+                #{
+                    <<"id">> => 3001,
+                    <<"schedule_id">> => <<"sched_retry">>,
+                    <<"user_id">> => 789
+                }
+            ]}
+        end),
+        meck:expect(group_schedule_ds, find_by_schedule_id, fun(_) ->
+            #{<<"title">> => <<"retry">>, <<"start_at">> => <<"2026-02-20T10:00:00Z">>}
+        end),
+        meck:expect(workspace_guard, write_tx_or_skip, fun(_, F) ->
+            {written, F(fake_conn)}
+        end),
+        meck:expect(group_schedule_ds, update_remind_sent, fun(_) -> {ok, 1} end),
+        meck:expect(msg_s2c_ds, send, fun(_, _, _, _, _, _, _) ->
+            {error, staging_failed}
+        end),
+        ?assertEqual({ok, 0}, group_schedule_logic:process_reminders()),
+        ?assertEqual(0, meck:num_calls(group_schedule_ds, update_remind_sent, 1)),
+        meck:expect(msg_s2c_ds, send, fun(_, _, _, _, _, _, _) -> ok end),
+        ?assertEqual({ok, 1}, group_schedule_logic:process_reminders()),
+        ?assertEqual(1, meck:num_calls(group_schedule_ds, update_remind_sent, [3001]))
+    after
+        lists:foreach(fun meck:unload/1, lists:reverse(Modules))
+    end.
+
 process_reminders_empty_test() ->
     _ = catch meck:unload(group_schedule_repo),
     meck:new(group_schedule_repo, [passthrough, no_link]),

@@ -443,13 +443,24 @@ process_remind_list([Remind | Rest], Acc) ->
             %% 工作区已归档：不发送、不标记（读取不受影响）
             process_remind_list(Rest, Acc);
         {written, _} ->
-            % 发送提醒通知
-            send_remind_notification(ScheduleId, UserId),
-
-            % 标记为已发送
-            _ = group_schedule_ds:update_remind_sent(RemindId),
-
-            process_remind_list(Rest, Acc + 1)
+            case send_remind_notification(ScheduleId, UserId) of
+                ok ->
+                    case group_schedule_ds:update_remind_sent(RemindId) of
+                        {ok, 1} ->
+                            process_remind_list(Rest, Acc + 1);
+                        {ok, 0} ->
+                            process_remind_list(Rest, Acc);
+                        {error, Reason} ->
+                            ?WARN_LOG({schedule_remind_mark_failed, Reason}),
+                            process_remind_list(Rest, Acc)
+                    end;
+                skip ->
+                    process_remind_list(Rest, Acc);
+                {error, Reason} ->
+                    %% Keep the reminder pending so the next run can retry delivery.
+                    ?WARN_LOG({schedule_remind_delivery_failed, Reason}),
+                    process_remind_list(Rest, Acc)
+            end
     end.
 
 %% @doc 安排提醒

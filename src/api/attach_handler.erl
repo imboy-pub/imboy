@@ -134,8 +134,6 @@ do_presign_register(Uid, Qs, Req0) ->
             elib_response:success(Req0, Data, "success.");
         {error, invalid_file_type} ->
             elib_response:error(Req0, <<"不支持的文件类型"/utf8>>, ?ERR_BAD_REQUEST);
-        {error, upload_not_supported} ->
-            elib_response:error(Req0, <<"该资源类型暂不支持上传"/utf8>>, ?ERR_BAD_REQUEST);
         {error, forbidden} ->
             elib_response:error(Req0, <<"无权向该范围上传"/utf8>>, ?ERR_FORBIDDEN);
         {error, historical_location_unverified} ->

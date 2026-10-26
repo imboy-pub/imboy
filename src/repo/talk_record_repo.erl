@@ -89,7 +89,7 @@ insert_tx(Conn, Data) ->
         {ok, 0} ->
             {error, unique_violation};
         {error, Reason} ->
-            case sqlstate(Reason) of
+            case elib_pg_error:sqlstate(Reason) of
                 <<"23505">> -> {error, unique_violation};
                 _ -> {error, Reason}
             end
@@ -592,19 +592,6 @@ join_binary([P], _Sep) ->
 join_binary([P | Rest], Sep) ->
     [P, Sep | join_binary(Rest, Sep)].
 
-%% @private epgsql 错误形态 → SQLSTATE（#error{} record 元组的第 3 位；
-%% tuple_size 随 epgsql 版本可有增减，按位取且校验 5 位十六进制形态）。
--spec sqlstate(term()) -> binary() | undefined.
-sqlstate({error, Inner}) when is_tuple(Inner), tuple_size(Inner) >= 3 ->
-    sqlstate(Inner);
-sqlstate(Error) when is_tuple(Error), tuple_size(Error) >= 3, element(1, Error) =:= error ->
-    case element(3, Error) of
-        Code when is_binary(Code), byte_size(Code) =:= 5 -> Code;
-        _ -> undefined
-    end;
-sqlstate(_) ->
-    undefined.
-
 %% 主体只来自JWT；归属必须与本机不可变绑定完全一致。
 find_recovery_tx(C, Uid, V) ->
     Sql =
@@ -643,7 +630,7 @@ execute_replayable_insert(Conn, Sql, Params) ->
             Result = elib_pg:execute(Conn, Sql, Params),
             case Result of
                 {error, Reason} ->
-                    case sqlstate(Reason) of
+                    case elib_pg_error:sqlstate(Reason) of
                         <<"23505">> ->
                             case
                                 elib_pg:query(Conn, [<<"ROLLBACK TO SAVEPOINT ">>, Savepoint], [])

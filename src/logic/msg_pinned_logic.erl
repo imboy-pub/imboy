@@ -105,5 +105,10 @@ notify_pinned(CurrentUid, ToUids, MsgId, Pinned) ->
         <<"pinned">> => Pinned,
         <<"operator">> => CurrentUid
     },
-    msg_s2c_ds:send(CurrentUid, ToUids, <<"message_pinned">>, MsgId, null, Payload, nosave),
-    ok.
+    case msg_s2c_ds:send(CurrentUid, ToUids, <<"message_pinned">>, MsgId, null, Payload, nosave) of
+        ok ->
+            ok;
+        {error, Reason} ->
+            ?WARN_LOG({message_pin_notification_failed, Reason}),
+            ok
+    end.

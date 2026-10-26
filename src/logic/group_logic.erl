@@ -504,16 +504,23 @@ edit(Uid, Gid, Data) ->
                         {ok, _} ->
                             ToUidLi = group_ds:member_uids(Gid),
                             Action = <<"group_edit">>,
-                            msg_s2c_ds:send(
-                                Uid,
-                                ToUidLi,
-                                Action,
-                                <<>>,
-                                null,
-                                Data#{<<"gid">> => Gid},
-                                save
-                            ),
-                            ok;
+                            case
+                                msg_s2c_ds:send(
+                                    Uid,
+                                    ToUidLi,
+                                    Action,
+                                    <<>>,
+                                    null,
+                                    Data#{<<"gid">> => Gid},
+                                    save
+                                )
+                            of
+                                ok ->
+                                    ok;
+                                {error, Reason} ->
+                                    ?WARN_LOG({group_edit_notification_failed, Reason}),
+                                    ok
+                            end;
                         {error, _} = Err ->
                             Err
                     end
@@ -568,16 +575,23 @@ do_set_e2ee_mode(Uid, Gid) ->
                     ok = group_ds:flush_e2ee_mode(Gid),
                     %% 广播开关事件：客户端据此建立群会话并停发明文
                     ToUidLi = group_ds:member_uids(Gid),
-                    msg_s2c_ds:send(
-                        Uid,
-                        ToUidLi,
-                        <<"group_e2ee_mode">>,
-                        <<>>,
-                        null,
-                        #{<<"gid">> => Gid, <<"e2ee_mode">> => 1},
-                        save
-                    ),
-                    ok;
+                    case
+                        msg_s2c_ds:send(
+                            Uid,
+                            ToUidLi,
+                            <<"group_e2ee_mode">>,
+                            <<>>,
+                            null,
+                            #{<<"gid">> => Gid, <<"e2ee_mode">> => 1},
+                            save
+                        )
+                    of
+                        ok ->
+                            ok;
+                        {error, Reason} ->
+                            ?WARN_LOG({group_e2ee_notification_failed, Reason}),
+                            ok
+                    end;
                 {error, {Code, Msg}} when is_integer(Code), is_binary(Msg) ->
                     %% T7 收口：归档守卫（980）等稳定错误码原样透传
                     {error, {Code, Msg}};

@@ -773,6 +773,15 @@ maybe_clean_delivered_delegates_test_() ->
     ).
 
 %% @doc 清理钩子异常不得外抛（不阻塞 worker 投递）
+maybe_clean_delivered_explicit_error_does_not_crash_test_() ->
+    ?WITH_MECK(
+        msg_delivery_repo,
+        [{'delete_delivered', 4, fun(_K, _M, _U, _A) -> {error, db_unavailable} end}],
+        fun() ->
+            ?assertEqual(ok, msg_operation_ds:maybe_clean_delivered(s2c, <<"msg_error">>, 7))
+        end
+    ).
+
 maybe_clean_delivered_never_crashes_test_() ->
     ?WITH_MECK(
         msg_delivery_repo,
