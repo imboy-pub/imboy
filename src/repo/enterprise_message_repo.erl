@@ -59,9 +59,11 @@ insert_direct_tx(Conn, MsgId, FromId, ToId, MsgType, Payload) ->
     RowId = next_id(msg_c2c),
     Sql =
         <<
+            %% R03/D04：accepted_at 与 server_ts 同事务 PG 时钟（NOW()）——
+            %% OA 代发的首次持久接受时刻，archive_direct_tx 读回后随行归档。
             "INSERT INTO msg_c2c (id, from_id, to_id, msg_id, msg_type, e2ee, payload,"
-            " server_ts, created_at, conv_seq)"
-            " VALUES ($1,$2,$3,$4,$5,NULL,$6::jsonb,NOW(),NOW(),$7)"
+            " server_ts, created_at, accepted_at, conv_seq)"
+            " VALUES ($1,$2,$3,$4,$5,NULL,$6::jsonb,NOW(),NOW(),NOW(),$7)"
         >>,
     case
         personal_message_order_repo:execute_formal_tx(
@@ -97,9 +99,10 @@ insert_group_tx(Conn, MsgId, FromId, GroupId, MsgType, Payload) ->
     RowId = next_id(msg_c2g),
     Sql =
         <<
+            %% R03/D04：accepted_at 与 server_ts 同事务 PG 时钟（NOW()）。
             "INSERT INTO msg_c2g (id, topic_id, from_id, to_id, msg_id, msg_type, e2ee,"
-            " payload, mentions, server_ts, created_at)"
-            " VALUES ($1,0,$2,$3,$4,$5,NULL,$6::jsonb,'[]'::jsonb,NOW(),NOW())"
+            " payload, mentions, server_ts, created_at, accepted_at)"
+            " VALUES ($1,0,$2,$3,$4,$5,NULL,$6::jsonb,'[]'::jsonb,NOW(),NOW(),NOW())"
         >>,
     case
         elib_pg:query(Conn, Sql, [RowId, FromId, GroupId, MsgId, MsgType, jsone:encode(Payload)])

@@ -23,6 +23,8 @@
 -export([history_batch/2]).
 -export([message_result/4]).
 -export([conv_key_c2c/2, conv_key_c2g/1]).
+%% R02/D05：安全推进边界、一致快照历史与有界补扫
+-export([safe_head/4, safe_heads/2, safe_history/6, backfill/6]).
 
 message_result(ConvKey, MsgId, Sender, MinSeq) ->
     msg_archive_repo:message_result(ConvKey, MsgId, Sender, MinSeq).
@@ -87,3 +89,31 @@ conv_key_c2c(UidA, UidB) ->
 -spec conv_key_c2g(integer()) -> binary().
 conv_key_c2g(Gid) ->
     msg_archive_repo:conv_key(<<"c2g">>, 0, Gid).
+
+%%-------------------------------------------------------------------
+%% @doc R02/D05：会话安全推进边界 B（见 msg_archive_repo:safe_head/4）。
+%% PeerA/PeerB：C2C 传两端 uid（内部排序）；C2G 传 (Gid, 0)。
+%%-------------------------------------------------------------------
+-spec safe_head(binary(), binary(), integer(), integer()) ->
+    {ok, non_neg_integer()} | {error, term()}.
+safe_head(ConvKey, ChatType, PeerA, PeerB) ->
+    msg_archive_repo:safe_head(ConvKey, ChatType, PeerA, PeerB).
+
+%% @doc P2（审查发现修复轮）：多会话批量取 B 边界——单事务单 SQL，
+%% 消除 offline v2 cursor 逐群 with_tx 串行放大（见 msg_archive_repo:safe_heads/2）。
+-spec safe_heads(binary(), [{binary(), integer(), integer()}]) ->
+    {ok, #{binary() => non_neg_integer()}} | {error, term()}.
+safe_heads(ChatType, Items) ->
+    msg_archive_repo:safe_heads(ChatType, Items).
+
+%% @doc R02/D05：一致快照下的增量历史（行 + B 边界 + 终态空洞）。
+-spec safe_history(binary(), integer(), pos_integer(), binary(), integer(), integer()) ->
+    {ok, list(map()), non_neg_integer(), [{integer(), binary()}]} | {error, term()}.
+safe_history(ConvKey, AfterSeq, Limit, ChatType, PeerA, PeerB) ->
+    msg_archive_repo:safe_history(ConvKey, AfterSeq, Limit, ChatType, PeerA, PeerB).
+
+%% @doc R02/D05：晚到补齐的有界范围补扫（见 msg_archive_repo:backfill/6）。
+-spec backfill(binary(), integer(), pos_integer(), binary(), integer(), integer()) ->
+    {ok, list(map()), non_neg_integer(), boolean()} | {error, term()}.
+backfill(ConvKey, AfterSeq, Limit, ChatType, PeerA, PeerB) ->
+    msg_archive_repo:backfill(ConvKey, AfterSeq, Limit, ChatType, PeerA, PeerB).

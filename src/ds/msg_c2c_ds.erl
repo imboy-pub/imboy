@@ -10,7 +10,11 @@
 -export([write_msg/6]).
 -export([write_msg/8]).
 -export([write_msg/9]).
+-export([write_msg/10]).
+-export([write_msg/11]).
 -export([write_msg_with_reply/11]).
+-export([write_msg_with_reply/12]).
+-export([write_msg_with_reply/13]).
 -export([revoke_offline_msg/5]).
 -export([revoke_offline_msg/9]).
 -export([edit_offline_msg/5]).
@@ -145,13 +149,63 @@ write_msg(CreatedAt, Id, Payload, From, To, ServerTS, MsgType, E2EE, SenderDid) 
         SenderDid
     );
 write_msg(CreatedAt, Id, Payload, From, To, ServerTS, MsgType, E2EE, SenderDid) ->
+    % R03/D04：兼容旧入口，不带接受时间（accepted_at 列保持 NULL）。
+    write_msg(CreatedAt, Id, Payload, From, To, ServerTS, MsgType, E2EE, SenderDid, null).
+
+%% @doc R03/D04 + R05-A 兼容旧入口（/10）：无自毁期限。
+write_msg(
+    CreatedAt, Id, Payload, From, To, ServerTS, MsgType, E2EE, SenderDid, AcceptedAt
+) ->
+    write_msg(
+        CreatedAt,
+        Id,
+        Payload,
+        From,
+        To,
+        ServerTS,
+        MsgType,
+        E2EE,
+        SenderDid,
+        AcceptedAt,
+        null
+    ).
+
+%% @doc R03/D04 + R05-A（IMBOY-TIMEZONE-REPAIR-V1）：worker 转正路径带接受时间
+%% 与自毁期限写入。AcceptedAt/ExpireAt 来自 staging 行（首次持久接受事务内
+%% 固定），RFC3339 binary 或 null（旧行/旧 staging 无该列值）。
+-spec write_msg(
+    binary() | integer(),
+    binary(),
+    binary(),
+    integer(),
+    integer(),
+    binary() | integer(),
+    binary(),
+    map() | null,
+    binary() | null,
+    binary() | null,
+    binary() | null
+) -> ok | {error, term()}.
+write_msg(
+    CreatedAt, Id, Payload, From, To, ServerTS, MsgType, E2EE, SenderDid, AcceptedAt, ExpireAt
+) ->
     % 统一转换时间戳为 RFC3339 binary 格式（timestamptz 列需要）
     CreatedAt2 = elib_dt:to_rfc3339(CreatedAt),
     ServerTS2 = elib_dt:to_rfc3339(ServerTS),
     % 检查并清理溢出消息
     ok = check_and_delete_overflow(To),
     msg_c2c_repo:write_msg_with_sender(
-        CreatedAt2, Id, Payload, From, To, ServerTS2, MsgType, E2EE, SenderDid
+        CreatedAt2,
+        Id,
+        Payload,
+        From,
+        To,
+        ServerTS2,
+        MsgType,
+        E2EE,
+        SenderDid,
+        AcceptedAt,
+        ExpireAt
     ).
 
 %% @doc 读取点对点消息
@@ -521,6 +575,87 @@ write_msg_with_reply(
     ReplyToFromId,
     ReplySnippet
 ) ->
+    % R03/D04：兼容旧入口，不带接受时间（accepted_at 列保持 NULL）。
+    write_msg_with_reply(
+        CreatedAt,
+        Id,
+        Payload,
+        From,
+        To,
+        ServerTS,
+        MsgType,
+        E2EE,
+        ReplyToMsgId,
+        ReplyToFromId,
+        ReplySnippet,
+        null
+    ).
+
+%% @doc R03/D04 + R05-A 兼容旧入口（/12）：无自毁期限。
+write_msg_with_reply(
+    CreatedAt,
+    Id,
+    Payload,
+    From,
+    To,
+    ServerTS,
+    MsgType,
+    E2EE,
+    ReplyToMsgId,
+    ReplyToFromId,
+    ReplySnippet,
+    AcceptedAt
+) ->
+    write_msg_with_reply(
+        CreatedAt,
+        Id,
+        Payload,
+        From,
+        To,
+        ServerTS,
+        MsgType,
+        E2EE,
+        ReplyToMsgId,
+        ReplyToFromId,
+        ReplySnippet,
+        AcceptedAt,
+        null
+    ).
+
+%% @doc R03/D04 + R05-A（IMBOY-TIMEZONE-REPAIR-V1）：带接受时间与自毁期限的
+%% 引用回复直写。AcceptedAt/ExpireAt 为接受事务内固定值（RFC3339 binary），
+%% 与 staging 行同一值；ON CONFLICT 补洞子句不触碰 accepted_at/expire_at。
+-spec write_msg_with_reply(
+    binary() | integer(),
+    binary(),
+    binary(),
+    integer(),
+    integer(),
+    binary() | integer(),
+    binary(),
+    map() | null,
+    binary(),
+    integer(),
+    binary(),
+    binary() | null,
+    binary() | null
+) ->
+    ok | {error, term()}.
+write_msg_with_reply(
+    CreatedAt,
+    Id,
+    Payload,
+    From,
+    To,
+    ServerTS,
+    MsgType,
+    E2EE,
+    ReplyToMsgId,
+    ReplyToFromId,
+    ReplySnippet,
+    AcceptedAt,
+    ExpireAt
+) ->
     % 统一转换时间戳为 RFC3339 binary 格式（timestamptz 列需要）
     CreatedAt2 = elib_dt:to_rfc3339(CreatedAt),
     ServerTS2 = elib_dt:to_rfc3339(ServerTS),
@@ -537,7 +672,9 @@ write_msg_with_reply(
         E2EE,
         ReplyToMsgId,
         ReplyToFromId,
-        ReplySnippet
+        ReplySnippet,
+        AcceptedAt,
+        ExpireAt
     ).
 
 %% G3: msg_reaction_logic / msg_pinned_logic 不应直调 msg_c2c_repo
@@ -567,7 +704,9 @@ count_unread_since(ToId, Since, DID) when is_binary(DID), DID =/= <<>> ->
 count_unread_since(ToId, Since, _DID) ->
     count_unread_since(ToId, Since).
 
--spec set_expire_at(binary(), binary()) -> ok.
+%% R05-A：返回 {ok, Count} | {error, Reason}（repo 层语义，见
+%% msg_c2c_repo:set_expire_at/2 注释）。
+-spec set_expire_at(binary(), binary()) -> {ok, non_neg_integer()} | {error, term()}.
 set_expire_at(MsgId, ExpireAt) ->
     msg_c2c_repo:set_expire_at(MsgId, ExpireAt).
 

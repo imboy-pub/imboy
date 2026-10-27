@@ -14,6 +14,7 @@
 -export([read_msg_for_device/4]).
 -export([delete_msg/1]).
 -export([send/7]).
+-export([stage_schedule_remind_tx/3]).
 -export([delete_by_msg_ids_and_to_id/2]).
 -export([count_since/2, count_since/3]).
 
@@ -83,6 +84,24 @@ send(FromId, [ToUid | Tail], Action, MsgType, E2EE, Payload, Save) ->
         ok -> send(FromId, Tail, Action, MsgType, E2EE, Payload, Save);
         {ok, _} -> send(FromId, Tail, Action, MsgType, E2EE, Payload, Save);
         {error, _} = SendError -> SendError
+    end.
+
+%% Called inside the reminder transaction; no externally visible delivery before commit.
+stage_schedule_remind_tx(Conn, ToUid, Payload) ->
+    MsgId = elib_id:gen("s2c"),
+    CreatedAt = elib_dt:now(),
+    case msg_store_repo:stage_schedule_remind_tx(Conn, MsgId, ToUid, Payload, CreatedAt) of
+        {ok, _} ->
+            Msg = message_ds:assemble_msg(
+                <<"S2C">>, 0, ToUid, Payload, MsgId, <<>>, <<"schedule_remind">>, null
+            ),
+            Encoded = jsone:encode(Msg, [native_utf8]),
+            elib_pg:after_commit(Conn, {schedule_remind, MsgId}, fun() ->
+                ok = msg_store_ds:enqueue(<<"s2c">>, MsgId, #{}),
+                message_ds:send_next(ToUid, MsgId, Encoded, [0, 1_000_000, 1_000_000])
+            end);
+        {error, _} = Error ->
+            Error
     end.
 
 %% @doc 存储服务端到客户端的消息

@@ -400,6 +400,72 @@ response_structure_validation_test_() ->
     end).
 
 %% ===================================================================
+%% P3（审查发现修复轮）：history_backfill 负 after_seq 入口 400
+%% ===================================================================
+
+%% 负游标入口早失败：400 + 文案；不触达 messaging_logic:history_backfill。
+backfill_negative_after_seq_rejected_test_() ->
+    ?WITH_MECKS(
+        [
+            {elib_param, [
+                {'int', 3, fun
+                    (after_seq, _Req, _Default) -> {ok, -1};
+                    (_Param, _Req, Default) -> {ok, Default}
+                end}
+            ]},
+            {messaging_logic, [
+                {'history_backfill', 6, fun(_U, _T, _P, _S, _L, _D) -> {ok, #{}} end}
+            ]},
+            {elib_response, [
+                {'error', 3, fun(_Req, _Msg, Code) ->
+                    self() ! {resp_error_code, Code},
+                    req_backfill_rejected
+                end}
+            ]}
+        ],
+        fun() ->
+            Req = (req_mock())#{qs => <<"chat_type=c2c&peer_id=200&after_seq=-1">>},
+            ?assertEqual(
+                req_backfill_rejected, msg_handler:history_backfill(Req, #{current_uid => 12345})
+            ),
+            ?assertEqual(
+                ?ERR_BAD_REQUEST,
+                receive
+                    {resp_error_code, C} -> C
+                after 1000 ->
+                    timeout
+                end
+            ),
+            ?assertEqual(0, meck:num_calls(messaging_logic, history_backfill, 6))
+        end
+    ).
+
+%% 非负 after_seq 照常透传 logic（负值校验不破坏正常路径）。
+backfill_zero_after_seq_passes_through_test_() ->
+    ?WITH_MECKS(
+        [
+            {elib_param, [
+                {'int', 3, fun(_Param, _Req, Default) -> {ok, Default} end}
+            ]},
+            {messaging_logic, [
+                {'history_backfill', 6, fun(12345, <<"c2c">>, <<"200">>, 0, 50, <<>>) ->
+                    {ok, #{<<"messages">> => []}}
+                end}
+            ]},
+            {elib_response, [
+                {'success', 2, fun(_Req, _Payload) -> req_backfill_ok end}
+            ]}
+        ],
+        fun() ->
+            Req = (req_mock())#{qs => <<"chat_type=c2c&peer_id=200&after_seq=0">>},
+            ?assertEqual(
+                req_backfill_ok, msg_handler:history_backfill(Req, #{current_uid => 12345})
+            ),
+            ?assertEqual(1, meck:num_calls(messaging_logic, history_backfill, 6))
+        end
+    ).
+
+%% ===================================================================
 %% Q06（AC12-R3 债务修复）：offline limit 上限夹紧
 %% ===================================================================
 

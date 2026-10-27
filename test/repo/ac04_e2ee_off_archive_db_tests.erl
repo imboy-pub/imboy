@@ -723,7 +723,7 @@ s8_push_dispatch_survives_e2ee_off_test_() ->
                 {'to_rfc3339', 1, fun(1708768700000) -> <<"2026-02-24T09:58:20Z">> end}
             ]},
             {msg_store_ds, [
-                {'stage_with_sequence', 11, fun(_, _, _, _, _, _, _, _, _, _, _) ->
+                {'stage_with_sequence', 13, fun(_, _, _, _, _, _, _, _, _, _, _, _, _) ->
                     {ok, new, 1}
                 end},
                 {'stage', 11, fun(_, _, _, _, _, _, _, _, _, _, _) -> {ok, new} end},

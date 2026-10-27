@@ -232,11 +232,15 @@ do_update_schedule(ScheduleId, Title, Description, Location, StartAt, EndAt) ->
         #{<<"id">> := ScheduleDbId} ->
             case
                 normalize_write_result(
-                    group_schedule_ds:update_schedule(ScheduleDbId, UpdateData)
+                    group_schedule_ds:update_with_reminders(
+                        ScheduleId, ScheduleDbId, UpdateData, StartAt
+                    )
                 )
             of
-                {ok, 1} -> ok;
-                {error, Reason} -> {error, Reason}
+                {ok, 1} ->
+                    ok;
+                {error, Reason} ->
+                    {error, Reason}
             end;
         _ ->
             {error, not_found}
@@ -268,11 +272,15 @@ cancel_schedule(ScheduleId, CreatorId) ->
                         _ ->
                             case
                                 normalize_write_result(
-                                    group_schedule_ds:update_status(ScheduleDbId, 4)
+                                    group_schedule_ds:cancel_with_reminders(
+                                        ScheduleId, ScheduleDbId
+                                    )
                                 )
                             of
-                                {ok, 1} -> ok;
-                                {error, Reason} -> {error, Reason}
+                                {ok, 1} ->
+                                    ok;
+                                {error, Reason} ->
+                                    {error, Reason}
                             end
                     end
             end
@@ -436,31 +444,18 @@ process_remind_list([Remind | Rest], Acc) ->
         <<"user_id">> := UserId
     } = Remind,
 
-    case
-        workspace_guard:write_tx_or_skip({group_schedule_remind, RemindId}, fun(_Conn) -> ok end)
-    of
-        skipped ->
-            %% 工作区已归档：不发送、不标记（读取不受影响）
+    case group_schedule_ds:dispatch_remind(RemindId, ScheduleId, UserId) of
+        {written, sent} ->
+            process_remind_list(Rest, Acc + 1);
+        {error, {after_commit_failed, {written, sent}, Failures}} ->
+            %% The durable row has committed; the worker can recover delivery.
+            ?WARN_LOG({schedule_remind_after_commit_failed, Failures}),
+            process_remind_list(Rest, Acc + 1);
+        {error, Reason} ->
+            ?WARN_LOG({schedule_remind_delivery_failed, Reason}),
             process_remind_list(Rest, Acc);
-        {written, _} ->
-            case send_remind_notification(ScheduleId, UserId) of
-                ok ->
-                    case group_schedule_ds:update_remind_sent(RemindId) of
-                        {ok, 1} ->
-                            process_remind_list(Rest, Acc + 1);
-                        {ok, 0} ->
-                            process_remind_list(Rest, Acc);
-                        {error, Reason} ->
-                            ?WARN_LOG({schedule_remind_mark_failed, Reason}),
-                            process_remind_list(Rest, Acc)
-                    end;
-                skip ->
-                    process_remind_list(Rest, Acc);
-                {error, Reason} ->
-                    %% Keep the reminder pending so the next run can retry delivery.
-                    ?WARN_LOG({schedule_remind_delivery_failed, Reason}),
-                    process_remind_list(Rest, Acc)
-            end
+        _ ->
+            process_remind_list(Rest, Acc)
     end.
 
 %% @doc 安排提醒
@@ -498,24 +493,6 @@ create_remind_records(ScheduleId, [UserId | Rest], RemindAt) ->
     },
     _ = group_schedule_ds:insert_remind(RemindData),
     create_remind_records(ScheduleId, Rest, RemindAt).
-
-%% @doc 发送提醒通知
-send_remind_notification(ScheduleId, UserId) ->
-    case group_schedule_ds:find_by_schedule_id(ScheduleId) of
-        {error, _} ->
-            skip;
-        M when map_size(M) =:= 0 ->
-            skip;
-        Schedule ->
-            #{<<"title">> := Title, <<"start_at">> := StartAt} = Schedule,
-            Payload = #{
-                schedule_id => ScheduleId,
-                title => Title,
-                start_at => StartAt
-            },
-            % 发送系统通知
-            msg_s2c_ds:send(0, [UserId], <<"schedule_remind">>, <<>>, null, Payload, save)
-    end.
 
 %% @doc 根据数据库主键 ID 查询日程的对外 schedule_id 字段
 %% 用于将数字主键（客户端可能传入）转换为标准 schedule_id（sched_xxx 格式）

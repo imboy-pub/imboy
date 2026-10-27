@@ -395,6 +395,25 @@ jobs:
           done
           ./scripts/drill_migrate.escript up
 
+      - name: Schedule reminder exclusive PostgreSQL gate
+        env:
+          PGHOST: 127.0.0.1
+          PGPORT: "4323"
+          PGUSER: imboy_user
+          PGPASSWORD: abc54321
+          PGDATABASE: schedule_remind_ci
+          IMBOY_TEST_EXCLUSIVE_DATABASE: schedule_remind_ci
+        run: |
+          set -euo pipefail
+          docker exec imboy_pg_eunit createdb -U imboy_user schedule_remind_ci
+          docker exec imboy_pg_eunit psql -U imboy_user -d postgres -v ON_ERROR_STOP=1 -c "COMMENT ON DATABASE schedule_remind_ci IS 'imboy-delivery-v3.2 merge schedule CI exclusive test'"
+          for ext in timescaledb postgis pg_jieba pgcrypto pg_trgm vector citext btree_gin btree_gist hstore unaccent; do
+            docker exec imboy_pg_eunit psql -U imboy_user -d schedule_remind_ci -v ON_ERROR_STOP=1 -c "CREATE EXTENSION IF NOT EXISTS $ext"
+          done
+          export IMBOY_TEST_PG_SYSTEM_ID=$(docker exec imboy_pg_eunit psql -U imboy_user -d schedule_remind_ci -At -c 'select system_identifier from pg_control_system()')
+          ./scripts/drill_migrate.escript up
+          bash scripts/test/group_schedule_remind_pg_gate.sh
+
       - name: Install ripgrep (check_module_boundaries.sh / check_feature_architecture.sh 依赖)
         run: |
           sudo apt-get update -qq && sudo apt-get install -y -qq ripgrep

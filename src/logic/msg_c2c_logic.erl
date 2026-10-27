@@ -198,10 +198,30 @@ prepare_c2c_data(CurrentUid, Data) ->
     % map() | null
     E2EE = maps:get(<<"e2ee">>, Data, null),
 
+    % R03/D04：首次持久接受时间——进入接受事务前取一次服务端时钟（UTC），
+    % 同一次发送内 staging 与 reply 直写两路复用同一值；重复请求由
+    % staging UNIQUE(type, msg_id) 收敛为 duplicate，不会重新赋值。
+    AcceptedAtRfc = elib_dt:to_rfc3339(elib_dt:millisecond(), millisecond, "Z"),
+
+    % R05-A：自毁绝对期限在接受事务内决定——基于可信接受时间（而非客户端
+    % created_at）计算 expire_at = accepted_at + expire_secs；非法/未带
+    % expire_secs 时为 null（不自毁，旧语义）。期限随 staging 行同事务落库，
+    % 修复"staging 无列 → worker 转正前 UPDATE 打 0 行 → deadline 丢失"。
+    ExpireSecs = maps:get(<<"expire_secs">>, Data, undefined),
+    ExpireAtRfc =
+        case msg_burn_logic:valid_expire_secs(ExpireSecs) of
+            true when is_integer(ExpireSecs), ExpireSecs > 0 ->
+                msg_burn_logic:calc_expire_at(AcceptedAtRfc, ExpireSecs);
+            _ ->
+                null
+        end,
+
     Timestamps = #{
         now_ts => NowTs,
         now_ms => NowMS,
-        created_at_rfc => CreatedAtRfc
+        created_at_rfc => CreatedAtRfc,
+        accepted_at_rfc => AcceptedAtRfc,
+        expire_at_rfc => ExpireAtRfc
     },
     {From, Payload, MsgType, Action, E2EE, Timestamps}.
 
@@ -224,7 +244,14 @@ prepare_c2c_data(CurrentUid, Data) ->
 stage_and_send_c2c(
     MsgId, To, ToId, From, Payload, MsgType, Action, E2EE, Timestamps, CurrentUid, Data
 ) ->
-    #{now_ts := NowTs, now_ms := NowMS, created_at_rfc := CreatedAtRfc} = Timestamps,
+    #{
+        now_ts := NowTs,
+        now_ms := NowMS,
+        created_at_rfc := CreatedAtRfc,
+        accepted_at_rfc := AcceptedAtRfc,
+        expire_at_rfc := ExpireAtRfc
+    } =
+        Timestamps,
 
     % 【修复】将 Payload map 编码成 JSON binary
     % T1.2：构建决策退化为外壳调用 message_policy:encode_payload/1
@@ -270,7 +297,9 @@ stage_and_send_c2c(
                             ToId,
                             CreatedAtRfc,
                             NowTs,
-                            SenderDid
+                            SenderDid,
+                            AcceptedAtRfc,
+                            ExpireAtRfc
                         );
                     {reply, _, _, _} ->
                         % 有引用信息，需要先验证被引用的消息是否存在
@@ -287,7 +316,9 @@ stage_and_send_c2c(
                                     ToId,
                                     CreatedAtRfc,
                                     NowTs,
-                                    SenderDid
+                                    SenderDid,
+                                    AcceptedAtRfc,
+                                    ExpireAtRfc
                                 );
                             {error, not_found} ->
                                 % 被引用的消息不存在，直接返回错误 reply（不使用 self() ! 副作用）
@@ -309,7 +340,9 @@ stage_and_send_c2c(
                                     ToId,
                                     CreatedAtRfc,
                                     NowTs,
-                                    SenderDid
+                                    SenderDid,
+                                    AcceptedAtRfc,
+                                    ExpireAtRfc
                                 );
                             Other ->
                                 ok = ?ERROR_LOG(
@@ -327,7 +360,8 @@ stage_and_send_c2c(
                                     ToId,
                                     CreatedAtRfc,
                                     NowTs,
-                                    SenderDid
+                                    SenderDid,
+                                    AcceptedAtRfc
                                 )
                         end
                 end,
@@ -382,6 +416,10 @@ stage_and_send_c2c(
                                     % 此前传 NowTs 毫秒经 to_rfc3339 与 staging 的精度不一致，
                                     % 唯一键 (msg_id, created_at) 永不碰撞，双写各插一行。
                                     % 复用同一 RFC 串后两路碰撞，由补洞子句收敛为一行。
+                                    %% R03/D04：AcceptedAtRfc 与 staging 行同一值——无论 reply
+                                    %% 直写与 worker 转正谁先落库，(msg_id, created_at) 冲突
+                                    %% 子句只补 reply 三列/sender_did，accepted_at 均保持首次
+                                    %% 插入者的同一接受值（两种先后顺序同结果，R03-3）。
                                     msg_c2c_ds:write_msg_with_reply(
                                         CreatedAtRfc,
                                         MsgId,
@@ -393,20 +431,31 @@ stage_and_send_c2c(
                                         E2EE,
                                         ReplyToMsgId,
                                         ReplyToFromId,
-                                        ReplySnippet
+                                        ReplySnippet,
+                                        AcceptedAtRfc,
+                                        ExpireAtRfc
                                     )
                             end,
 
-                            % ③ 消息自毁：设置 expire_at（如果客户端指定了 expire_secs）
-                            ExpireSecs = maps:get(<<"expire_secs">>, Data, undefined),
-                            case msg_burn_logic:valid_expire_secs(ExpireSecs) of
-                                true when is_integer(ExpireSecs), ExpireSecs > 0 ->
-                                    ExpireAt = msg_burn_logic:calc_expire_at(
-                                        CreatedAtRfc, ExpireSecs
-                                    ),
-                                    set_c2c_expire_at(MsgId, ExpireAt);
+                            % ③ 消息自毁兜底：staging 行已在接受事务内携带期限
+                            % （ExpireAtRfc），worker 转正时搬运；本 UPDATE 只兜底
+                            % 补齐"reply 直写先落正式表"的窄窗（R05-A）。期限不再
+                            % 用客户端 created_at 重算——重试/重复不延长期限。
+                            case ExpireAtRfc of
+                                null ->
+                                    ok;
                                 _ ->
-                                    ok
+                                    case set_c2c_expire_at(MsgId, ExpireAtRfc) of
+                                        {ok, _} ->
+                                            ok;
+                                        {error, SetReason} ->
+                                            %% 不吞错：staging/worker 主路径仍会
+                                            %% 搬运期限，但此处显式记录失败。
+                                            ?ERROR_LOG([
+                                                msg_c2c_set_expire_at_failed, MsgId, SetReason
+                                            ]),
+                                            ok
+                                    end
                             end
                         end,
                         3,
@@ -497,16 +546,15 @@ c2c_revoke(MsgId, CurrentUid, Data) ->
                     %% 消除"影子信任"：即便未来误删了外层等值校验，这里仍然安全
                     case MsgData of
                         #{<<"from_id">> := CurrentUid} ->
-                            CreatedAt = maps:get(<<"created_at">>, MsgData),
-                            CreatedAtMs = elib_dt:rfc3339_to(CreatedAt, millisecond),
-                            NowMs = elib_dt:millisecond(),
-
-                            % 检查是否超过撤回时间限制（2分钟）
-                            case
-                                is_integer(CreatedAtMs) andalso
-                                    NowMs - CreatedAtMs > ?REVOKE_TIMEOUT_MS
-                            of
-                                true ->
+                            %% R04（IMBOY-TIMEZONE-REPAIR-V1）：撤回窗口改用可信时间
+                            %% 基准——首次服务端接受时间 accepted_at（D04）vs 服务端
+                            %% 当前时刻；旧行 accepted_at NULL 由 resolve_accepted_ms
+                            %% 回退 server_ts/created_at（低可信）。客户端 created_at
+                            %% 任意取值（设备快慢/时区/重试重发）不再影响允许时长。
+                            %% 全部时间源缺失/非法时明确拒绝（fail-closed），不再
+                            %% 静默放行。
+                            case trusted_window_decision(MsgData, ?REVOKE_TIMEOUT_MS) of
+                                {expired, NowMs} ->
                                     % 超过撤回时间限制
                                     ErrorMsg = #{
                                         <<"id">> => MsgId,
@@ -524,9 +572,30 @@ c2c_revoke(MsgId, CurrentUid, Data) ->
                                         <<"server_ts">> => NowMs
                                     },
                                     {reply, ErrorMsg};
-                                false ->
+                                {no_time_source, NowMs} ->
+                                    % R04 fail-closed：accepted_at 与低可信回退全部
+                                    % 缺失/非法——明确拒绝，不静默放行
+                                    ErrorMsg = #{
+                                        <<"id">> => MsgId,
+                                        <<"type">> => <<"C2C">>,
+                                        <<"from">> => From,
+                                        <<"to">> => To,
+                                        <<"msg_type">> => <<"custom">>,
+                                        <<"action">> => <<"message_revoke_error">>,
+                                        <<"payload">> => #{
+                                            <<"content">> => <<>>,
+                                            <<"original_msg_id">> => OriginalMsgId,
+                                            <<"error">> =>
+                                                <<"消息时间信息缺失，无法校验撤回时限"/utf8>>,
+                                            <<"code">> => ?ERR_MSG_TIME_SOURCE_MISSING
+                                        },
+                                        <<"server_ts">> => NowMs
+                                    },
+                                    {reply, ErrorMsg};
+                                ok ->
                                     % 未超过时间限制，继续原有逻辑
                                     NowTs = elib_dt:now(),
+                                    NowMs = elib_dt:millisecond(),
 
                                     % 取消原消息在接收方各在线设备上的投递重试定时器，
                                     % 避免撤回后重试窗口内原文仍被再投递一次
@@ -649,6 +718,25 @@ c2c_edit(MsgId, CurrentUid, Data) ->
                             <<"original_msg_id">> => OriginalMsgId,
                             <<"error">> => <<"超过编辑时间限制"/utf8>>,
                             <<"code">> => ?ERR_REVOKE_TIMEOUT
+                        },
+                        <<"server_ts">> => NowMs
+                    },
+                    {reply, ErrorMsg};
+                %% R04 fail-closed：accepted_at 与低可信回退全部缺失/非法——
+                %% 明确拒绝，不静默放行
+                {no_time_source, NowMs} ->
+                    ErrorMsg = #{
+                        <<"id">> => MsgId,
+                        <<"type">> => <<"C2C">>,
+                        <<"from">> => From,
+                        <<"to">> => To,
+                        <<"msg_type">> => <<"custom">>,
+                        <<"action">> => <<"message_edit_error">>,
+                        <<"payload">> => #{
+                            <<"content">> => <<>>,
+                            <<"original_msg_id">> => OriginalMsgId,
+                            <<"error">> => <<"消息时间信息缺失，无法校验编辑时限"/utf8>>,
+                            <<"code">> => ?ERR_MSG_TIME_SOURCE_MISSING
                         },
                         <<"server_ts">> => NowMs
                     },
@@ -807,8 +895,15 @@ encrypted_payload_binary(_) ->
     <<>>.
 
 %% @private 编辑时间窗校验：查原消息（staging 兜底），核对归属并检查是否超窗
+%% R04（IMBOY-TIMEZONE-REPAIR-V1）：窗口基准改为可信接受时间 accepted_at
+%% （旧行 NULL 回退 server_ts/created_at 低可信）；全部时间源缺失/非法返回
+%% {no_time_source, NowMs} 由调用方明确拒绝（fail-closed）。
 -spec c2c_edit_window_check(binary(), integer()) ->
-    ok | {expired, integer()} | permission_denied | not_found.
+    ok
+    | {expired, integer()}
+    | {no_time_source, integer()}
+    | permission_denied
+    | not_found.
 c2c_edit_window_check(OriginalMsgId, CurrentUid) ->
     %% 正式表查不到时兜底查 staging（消息仍在异步管道内）
     FindResult =
@@ -818,23 +913,34 @@ c2c_edit_window_check(OriginalMsgId, CurrentUid) ->
         end,
     case FindResult of
         {ok, #{<<"from_id">> := CurrentUid} = MsgData} ->
-            CreatedAt = maps:get(<<"created_at">>, MsgData),
-            CreatedAtMs = elib_dt:rfc3339_to(CreatedAt, millisecond),
-            NowMs = elib_dt:millisecond(),
-            WindowMs = msg_edit_window_ms(),
-            case
-                WindowMs > 0 andalso
-                    is_integer(CreatedAtMs) andalso
-                    NowMs - CreatedAtMs > WindowMs
-            of
-                true -> {expired, NowMs};
-                false -> ok
-            end;
+            trusted_window_decision(MsgData, msg_edit_window_ms());
         {ok, _} ->
             permission_denied;
         _ ->
             not_found
     end.
+
+%% @private R04（IMBOY-TIMEZONE-REPAIR-V1）：可信时间窗决策。
+%% 基准 = 首次服务端接受时间（accepted_at，trusted；旧行 NULL 时
+%% resolve_accepted_ms 回退 server_ts/created_at，low_trust），比较对象 =
+%% 服务端当前时刻（elib_dt:millisecond()）。边界语义保持现状：差值**大于**
+%% 窗口才超时（== 窗口仍在窗内）。WindowMs =< 0 表示不限时（现有语义）。
+%% 全部时间源缺失/非法 → {no_time_source, NowMs}（fail-closed，调用方拒绝）。
+-spec trusted_window_decision(map(), integer()) ->
+    ok | {expired, integer()} | {no_time_source, integer()}.
+trusted_window_decision(MsgData, WindowMs) when WindowMs > 0 ->
+    NowMs = elib_dt:millisecond(),
+    case msg_store_repo:resolve_accepted_ms(MsgData) of
+        {ok, BaseMs, _Trust} ->
+            case NowMs - BaseMs > WindowMs of
+                true -> {expired, NowMs};
+                false -> ok
+            end;
+        {error, no_time_source} ->
+            {no_time_source, NowMs}
+    end;
+trusted_window_decision(_MsgData, _WindowMs) ->
+    ok.
 
 %% @private 编辑时间窗（毫秒），env msg_edit_window_seconds，默认 86400 秒；<=0 不限
 -spec msg_edit_window_ms() -> integer().
@@ -1139,7 +1245,10 @@ extract_snippet_plain(OriginalMsg) ->
 %% @doc 设置C2C消息的自毁时间
 %% @param MsgId 消息ID
 %% @param ExpireAt 过期时间（RFC3339 binary）
--spec set_c2c_expire_at(binary(), binary()) -> ok.
+%% R05-A：返回 {ok, Count} | {error, Reason}——Count=0 表示未命中或已有
+%% 期限（不覆盖）；错误由调用方记录（不再吞成 ok）。
+-spec set_c2c_expire_at(binary(), binary()) ->
+    {ok, non_neg_integer()} | {error, term()}.
 set_c2c_expire_at(MsgId, ExpireAt) ->
     msg_c2c_ds:set_expire_at(MsgId, ExpireAt).
 

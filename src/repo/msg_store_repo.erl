@@ -24,10 +24,16 @@
 %% 写入操作
 -export([stage/10]).
 -export([stage/11, stage_with_sequence/11]).
+-export([stage_schedule_remind_tx/5]).
 -export([stage/12]).
+-export([stage_with_sequence/12]).
+%% R05-A：带自毁绝对期限的 staging 入口。
+-export([stage/13, stage_with_sequence/13]).
 -export([stage_action/13]).
 %% 真库回归直接执行生产 SQL，避免 mock 只验证字符串形状。
 -export([action_recipient_sql/0]).
+%% R03/D04：旧记录 accepted_at NULL 的读侧兼容解析（回退 + 低可信标记）。
+-export([resolve_accepted_ms/1]).
 
 %% 删除操作
 -export([unstage/2]).
@@ -52,8 +58,10 @@
 -spec find_by_msg_id(binary(), binary()) -> {ok, map()} | {error, not_found} | {error, term()}.
 find_by_msg_id(Type, MsgId) ->
     Tb = tablename(),
+    %% R04：accepted_at/server_ts 供撤回/编辑窗口的可信时间基准解析
+    %% （resolve_accepted_ms/1）；created_at 保留为低可信回退。
     Sql =
-        <<"SELECT msg_id, from_id, to_id, created_at FROM ", Tb/binary,
+        <<"SELECT msg_id, from_id, to_id, created_at, server_ts, accepted_at FROM ", Tb/binary,
             " WHERE type = $1 AND msg_id = $2 AND processed_at IS NULL LIMIT 1">>,
     case elib_pg:query(Sql, [Type, MsgId]) of
         {ok, []} -> {error, not_found};
@@ -165,7 +173,11 @@ stage(
         ToId,
         CreatedAt,
         ServerTs,
-        SenderDid
+        SenderDid,
+        %% R03/D04：未显式提供接受时间的旧入口按"首次接受=现在"取服务端时钟。
+        elib_dt:to_rfc3339(elib_dt:millisecond(), millisecond, "Z"),
+        %% R05-A：旧入口无自毁期限，列保持 NULL。
+        null
     ),
     GenId = maps:get(id, Data2),
     case Type of
@@ -241,6 +253,95 @@ stage_with_sequence(
     ServerTs,
     SenderDid
 ) when is_integer(ToId) ->
+    %% R03/D04 兼容旧入口：未显式提供接受时间的调用者按"首次接受=现在"
+    %% 取服务端时钟（elib_dt:millisecond，UTC）。
+    stage_with_sequence(
+        Type,
+        MsgId,
+        MsgType,
+        Action,
+        E2EE,
+        Payload,
+        FromId,
+        ToId,
+        CreatedAt,
+        ServerTs,
+        SenderDid,
+        elib_dt:to_rfc3339(elib_dt:millisecond(), millisecond, "Z"),
+        null
+    ).
+
+%% @doc R03/D04 + R05-A 兼容旧入口（/12）：无自毁期限，列保持 NULL。
+stage_with_sequence(
+    <<"c2c">> = Type,
+    MsgId,
+    MsgType,
+    Action,
+    E2EE,
+    Payload,
+    FromId,
+    ToId,
+    CreatedAt,
+    ServerTs,
+    SenderDid,
+    AcceptedAt
+) when is_integer(ToId) ->
+    stage_with_sequence(
+        Type,
+        MsgId,
+        MsgType,
+        Action,
+        E2EE,
+        Payload,
+        FromId,
+        ToId,
+        CreatedAt,
+        ServerTs,
+        SenderDid,
+        AcceptedAt,
+        null
+    ).
+
+%% @doc R03/D04（IMBOY-TIMEZONE-REPAIR-V1）：C2C staging + 序列分配的统一入口。
+%% AcceptedAt 是**首次持久接受事务内固定的服务端接受时间**（调用方在进入
+%% 接受事务前取一次 elib_dt:millisecond() 并全程复用同一值），随 staging 行
+%% 落库；UNIQUE(type, msg_id) 冲突（重复请求）不重新赋值。
+%% R05-A：ExpireAt 是接受事务内决定的自毁绝对期限（accepted_at + expire_secs，
+%% 由 msg_burn_logic:calc_expire_at 基于 AcceptedAt 计算）；随 staging 行同事务
+%% 落库，worker 转正/归档搬运；重复请求不重赋（UNIQUE 冲突收敛为首行）。
+-spec stage_with_sequence(
+    binary(),
+    binary(),
+    binary(),
+    binary(),
+    map() | binary() | null,
+    binary(),
+    integer(),
+    integer(),
+    binary(),
+    binary(),
+    binary(),
+    %% RFC3339 binary：首次接受时刻（服务端时钟，UTC）
+    binary() | null,
+    %% RFC3339 binary | null：自毁绝对期限（R05-A）；null=不自毁
+    binary() | null
+) ->
+    {ok, term()} | {ok, term(), term()} | {error, term()}.
+stage_with_sequence(
+    <<"c2c">> = Type,
+    MsgId,
+    MsgType,
+    Action,
+    E2EE,
+    Payload,
+    FromId,
+    ToId,
+    CreatedAt,
+    ServerTs,
+    SenderDid,
+    AcceptedAt,
+    ExpireAt
+) when is_integer(ToId) ->
     Data = single_staging_row(
         Type,
         MsgId,
@@ -252,10 +353,27 @@ stage_with_sequence(
         ToId,
         CreatedAt,
         ServerTs,
-        SenderDid
+        SenderDid,
+        AcceptedAt,
+        ExpireAt
     ),
     personal_message_order_repo:stage_c2c_ordered(tablename(), Data).
 
+-spec single_staging_row(
+    binary(),
+    binary(),
+    binary(),
+    binary(),
+    map() | binary() | null,
+    binary(),
+    integer(),
+    integer(),
+    binary(),
+    binary(),
+    binary() | null,
+    binary() | null,
+    binary() | null
+) -> map().
 single_staging_row(
     Type,
     MsgId,
@@ -267,27 +385,48 @@ single_staging_row(
     ToId,
     CreatedAt,
     ServerTs,
-    SenderDid
+    SenderDid,
+    AcceptedAt,
+    ExpireAt
 ) ->
-    put_sender_did(
-        #{
-            id => elib_tsid:generate(msg_store),
-            type => Type,
-            msg_id => MsgId,
-            msg_type => MsgType,
-            action => Action,
-            e2ee => msg_store_e2ee_to_jsonb(E2EE),
-            payload => msg_store_payload_to_jsonb(Payload),
-            from_id => FromId,
-            to_id => ToId,
-            created_at => CreatedAt,
-            server_ts => ServerTs,
-            retry_count => 0
-        },
-        SenderDid
-    ).
+    Row0 =
+        put_sender_did(
+            #{
+                id => elib_tsid:generate(msg_store),
+                type => Type,
+                msg_id => MsgId,
+                msg_type => MsgType,
+                action => Action,
+                e2ee => msg_store_e2ee_to_jsonb(E2EE),
+                payload => msg_store_payload_to_jsonb(Payload),
+                from_id => FromId,
+                to_id => ToId,
+                created_at => CreatedAt,
+                server_ts => ServerTs,
+                retry_count => 0
+            },
+            SenderDid
+        ),
+    %% R03/D04：接受时间仅在首次持久接受 INSERT 时写入；null/undefined/空 串
+    %% 时省略键（列保持 NULL），旧行/未迁移调用者维持兼容读语义。
+    Row1 =
+        case AcceptedAt of
+            null -> Row0;
+            undefined -> Row0;
+            <<>> -> Row0;
+            _ -> Row0#{accepted_at => AcceptedAt}
+        end,
+    %% R05-A：自毁绝对期限同样只在首次接受 INSERT 时写入（与 accepted_at
+    %% 同事务）；空值省略键（列保持 NULL = 不自毁，旧语义）。
+    case ExpireAt of
+        null -> Row1;
+        undefined -> Row1;
+        <<>> -> Row1;
+        _ -> Row1#{expire_at => ExpireAt}
+    end.
 
 %% @doc C2G 持久接受：在序列锁内重验 active sender、最低角色和收件人快照。
+%% R05-A 兼容旧入口（/12）：无自毁期限。
 -spec stage(
     binary(),
     binary(),
@@ -317,6 +456,54 @@ stage(
     SenderDid,
     RequiredRole
 ) when is_integer(ToId), (RequiredRole =:= 1 orelse RequiredRole =:= 3) ->
+    stage(
+        Type,
+        MsgId,
+        MsgType,
+        Action,
+        E2EE,
+        Payload,
+        FromId,
+        ToId,
+        CreatedAt,
+        ServerTs,
+        SenderDid,
+        RequiredRole,
+        null
+    ).
+
+%% @doc R05-A（IMBOY-TIMEZONE-REPAIR-V1）：带自毁绝对期限的 C2G 持久接受。
+%% ExpireAt（RFC3339 binary | null）与 accepted_at 同事务落 staging 行。
+-spec stage(
+    binary(),
+    binary(),
+    binary(),
+    binary(),
+    map() | binary() | null,
+    binary(),
+    integer(),
+    integer(),
+    binary(),
+    binary(),
+    binary(),
+    1 | 3,
+    binary() | null
+) -> {ok, term(), pos_integer(), [integer()]} | {error, term()}.
+stage(
+    <<"c2g">> = Type,
+    MsgId,
+    MsgType,
+    Action,
+    E2EE,
+    Payload,
+    FromId,
+    ToId,
+    CreatedAt,
+    ServerTs,
+    SenderDid,
+    RequiredRole,
+    ExpireAt
+) when is_integer(ToId), (RequiredRole =:= 1 orelse RequiredRole =:= 3) ->
     case valid_c2g_msg_id(MsgId) of
         true ->
             stage_c2g(
@@ -332,7 +519,8 @@ stage(
                 ServerTs,
                 SenderDid,
                 RequiredRole,
-                undefined
+                undefined,
+                ExpireAt
             );
         false ->
             {error, invalid_msgid}
@@ -391,7 +579,9 @@ stage_action(
                 ServerTs,
                 SenderDid,
                 RequiredRole,
-                OriginalMsgId
+                OriginalMsgId,
+                %% R05-A：编辑/撤回 action 行不自毁。
+                null
             );
         false ->
             {error, invalid_msgid}
@@ -434,10 +624,68 @@ stage_c2g(
     RequiredRole,
     OriginalMsgId
 ) ->
+    %% R05-A 兼容旧入口（/13）：无自毁期限。
+    stage_c2g(
+        Type,
+        MsgId,
+        MsgType,
+        Action,
+        E2EE,
+        Payload,
+        FromId,
+        ToId,
+        CreatedAt,
+        ServerTs,
+        SenderDid,
+        RequiredRole,
+        OriginalMsgId,
+        null
+    ).
+
+%% @doc R05-A（IMBOY-TIMEZONE-REPAIR-V1）：带自毁绝对期限的 C2G 持久接受。
+%% ExpireAt 与 accepted_at 同事务落 staging 行（NULL=不自毁）；重复 msg_id
+%% 整体回滚，期限不重赋。编辑/撤回 action 行（stage_action）传 null——
+%% 动作消息本身不自毁。
+-spec stage_c2g(
+    binary(),
+    binary(),
+    binary(),
+    binary(),
+    map() | binary() | null,
+    binary(),
+    integer(),
+    integer(),
+    binary(),
+    binary(),
+    binary(),
+    1 | 3,
+    undefined | binary(),
+    binary() | null
+) -> {ok, term(), pos_integer(), [integer()]} | {error, term()}.
+stage_c2g(
+    Type,
+    MsgId,
+    MsgType,
+    Action,
+    E2EE,
+    Payload,
+    FromId,
+    ToId,
+    CreatedAt,
+    ServerTs,
+    SenderDid,
+    RequiredRole,
+    OriginalMsgId,
+    ExpireAt
+) ->
     %% Sequence、发送权限、recipient snapshot 与 staging INSERT 位于同一事务。
     %% 重复 msg_id 会整体回滚，不改变原行 conv_seq，也不制造序号 gap。
     ConvKey = msg_archive_ds:conv_key_c2g(ToId),
     Tb = tablename(),
+    %% R03/D04：调用约定——C2G 路径的 ServerTs 参数即**首次持久接受事务内的
+    %% 服务端接受时刻**（msg_c2g_logic 传 AcceptedAtRfc，修复历史上把客户端
+    %% CreatedAt 写进 server_ts 的污染）。staging 行的 server_ts 与 accepted_at
+    %% 同值落库；重复 msg_id 触发 UNIQUE(type, msg_id) 整体回滚，不重赋。
     Data0 = #{
         type => Type,
         msg_id => MsgId,
@@ -449,9 +697,18 @@ stage_c2g(
         to_id => ToId,
         created_at => CreatedAt,
         server_ts => ServerTs,
+        accepted_at => ServerTs,
         retry_count => 0
     },
-    Data = put_sender_did(Data0, SenderDid),
+    %% R05-A：自毁绝对期限随接受事务落列；空值省略键（NULL=不自毁）。
+    Data1 =
+        case ExpireAt of
+            null -> Data0;
+            undefined -> Data0;
+            <<>> -> Data0;
+            _ -> Data0#{expire_at => ExpireAt}
+        end,
+    Data = put_sender_did(Data1, SenderDid),
     GenId = elib_tsid:generate(msg_store),
     case
         elib_pg:with_tx(fun(Conn) ->
@@ -958,6 +1215,30 @@ insert_staging_row(Tb, Data2, GenId, MsgId) ->
             {error, Reason}
     end.
 
+%% The reminder terminal state and its durable S2C staging row must commit together.
+stage_schedule_remind_tx(Conn, MsgId, ToId, Payload, CreatedAt) ->
+    Row = single_staging_row(
+        <<"s2c">>,
+        MsgId,
+        <<>>,
+        <<"schedule_remind">>,
+        null,
+        jsone:encode(Payload, [native_utf8]),
+        0,
+        ToId,
+        CreatedAt,
+        CreatedAt,
+        <<>>,
+        elib_dt:to_rfc3339(elib_dt:millisecond(), millisecond, "Z"),
+        null
+    ),
+    {Sql, Params} = elib_pg_sql:insert(tablename(), Row),
+    case elib_pg:execute_count(Conn, Sql, Params) of
+        {ok, 1} -> {ok, maps:get(id, Row)};
+        {ok, Count} -> {error, {unexpected_staging_count, Count}};
+        {error, _} = Error -> Error
+    end.
+
 -spec allocate_c2g_seq(pid(), binary()) -> pos_integer().
 allocate_c2g_seq(Conn, ConvKey) ->
     try epgsql:equery(Conn, stage_conv_seq_sql(), [ConvKey]) of
@@ -1063,6 +1344,37 @@ put_sender_did(Data, Did) when is_binary(Did), Did =/= <<>> ->
 put_sender_did(Data, _Did) ->
     Data.
 
+%% @doc R03/D04 读侧兼容：解析一行的"可信接受时间"（毫秒 UTC）。
+%%
+%% D04 冻结合同：accepted_at 是唯一高可信来源；旧行 accepted_at IS NULL 时
+%% 回退现有 server_ts / created_at 现值并显式标记 low_trust（它们可能是被
+%% 客户端时间污染过的历史值），**绝不**用 now() 回填。排序权威始终是
+%% conv_seq，本函数的输出只用于业务窗口计算与展示。
+%%
+%% @param Row 含 <<"accepted_at">> / <<"server_ts">> / <<"created_at">> 键的行
+%%            （timestamptz 列经 codec 解码为 RFC3339 binary）
+%% @return {ok, Ms :: integer(), trusted | low_trust} | {error, no_time_source}
+-spec resolve_accepted_ms(map()) -> {ok, integer(), trusted | low_trust} | {error, no_time_source}.
+resolve_accepted_ms(Row) when is_map(Row) ->
+    Candidates = [
+        {<<"accepted_at">>, trusted},
+        {<<"server_ts">>, low_trust},
+        {<<"created_at">>, low_trust}
+    ],
+    resolve_first_time(Candidates, Row).
+
+-spec resolve_first_time([{binary(), trusted | low_trust}], map()) ->
+    {ok, integer(), trusted | low_trust} | {error, no_time_source}.
+resolve_first_time([], _Row) ->
+    {error, no_time_source};
+resolve_first_time([{Key, Trust} | Rest], Row) ->
+    case elib_dt:rfc3339_to(maps:get(Key, Row, null)) of
+        Ms when is_integer(Ms) ->
+            {ok, Ms, Trust};
+        _ ->
+            resolve_first_time(Rest, Row)
+    end.
+
 %% @doc 删除备份表记录（消息成功写入正式表后调用）
 -spec unstage(binary(), binary()) -> {ok, integer()} | {error, any()}.
 unstage(Type, MsgId) ->
@@ -1077,7 +1389,7 @@ claim_pending(Limit, LeaseSeconds) ->
     elib_pg:with_tx(fun(Conn) ->
         Sql = <<
             "SELECT id, type, msg_id, payload, from_id, to_id, to_id_list, created_at, server_ts, retry_count, "
-            "msg_type, action, e2ee, sender_did, conv_seq "
+            "msg_type, action, e2ee, sender_did, conv_seq, accepted_at, expire_at "
             "FROM ",
             Tb/binary,
             " WHERE processed_at IS NULL ",
@@ -1265,6 +1577,14 @@ ensure_table_exists() ->
                 %% 本 DDL 只覆盖全新安装；存量部署由 priv/migrations/00000101
                 %% 的 ALTER 补列——两处必须同步（同 sender_did 的 00000048 惯例）。
                 "            conv_seq BIGINT,\n"
+                %% R03/D04（IMBOY-TIMEZONE-REPAIR-V1）：首次持久接受时间。
+                %% 本 DDL 只覆盖全新安装；存量部署由 priv/migrations/00000229
+                %% 的 ALTER 补列——两处必须同步（同 conv_seq 的 00000101 惯例）。
+                "            accepted_at TIMESTAMPTZ,\n"
+                %% R05-A（IMBOY-TIMEZONE-REPAIR-V1）：接受事务内决定的自毁绝对
+                %% 期限。本 DDL 只覆盖全新安装；存量部署由 priv/migrations/00000229
+                %% 的 ALTER 补列——两处必须同步（同 accepted_at 惯例）。
+                "            expire_at TIMESTAMPTZ,\n"
                 "            payload JSONB NOT NULL,\n"
                 "            from_id BIGINT NOT NULL,\n"
                 "            to_id BIGINT,\n"

@@ -185,12 +185,19 @@ update_schedule_success_test() ->
             <<"id">> => 1001,
             <<"schedule_id">> => <<"sched_123">>,
             <<"creator_id">> => 456,
-            <<"status">> => 1
+            <<"status">> => 1,
+            <<"remind_before">> => undefined
         }
+    end),
+    meck:expect(group_schedule_repo, lock_schedule_tx, fun(_, _) ->
+        {ok, [#{<<"id">> => 1001, <<"status">> => 1, <<"remind_before">> => undefined}]}
     end),
     meck:expect(group_schedule_repo, update_tx, fun(_Conn, _Id, _Data) ->
         {ok, 1}
     end),
+    %% R18：更新后重排提醒（remind_before=undefined 时不建提醒，仅作废旧 pending）
+    meck:expect(group_schedule_repo, cancel_pending_reminds_tx, fun(_Conn, _SchedId) -> {ok, 0} end),
+    meck:expect(group_schedule_repo, list_participants_tx, fun(_Conn, _SchedId) -> {ok, []} end),
 
     Result = group_schedule_logic:update_schedule(
         <<"sched_123">>,
@@ -294,9 +301,14 @@ cancel_schedule_success_test() ->
             <<"status">> => 1
         }
     end),
+    meck:expect(group_schedule_repo, lock_schedule_tx, fun(_, _) ->
+        {ok, [#{<<"id">> => 1001, <<"status">> => 1, <<"remind_before">> => undefined}]}
+    end),
     meck:expect(group_schedule_repo, update_status_tx, fun(_Conn, _Id, _Status) ->
         {ok, 1}
     end),
+    %% R18：取消后作废全部待发提醒
+    meck:expect(group_schedule_repo, cancel_pending_reminds_tx, fun(_Conn, _SchedId) -> {ok, 0} end),
 
     Result = group_schedule_logic:cancel_schedule(<<"sched_123">>, 456),
 
@@ -679,14 +691,28 @@ process_reminders_success_test() ->
     meck:expect(group_schedule_repo, list_pending_reminds, fun() ->
         {ok, [#{<<"id">> => 3001, <<"schedule_id">> => <<"sched_123">>, <<"user_id">> => 789}]}
     end),
-    meck:expect(group_schedule_repo, update_remind_sent_tx, fun(_Conn, _Id) ->
-        {ok, 1}
+    %% R18：派发前 claim CAS（is_sent false→true）
+    meck:expect(group_schedule_repo, lock_schedule_tx, fun(_, _) ->
+        {ok, [
+            #{
+                <<"status">> => 1,
+                <<"title">> => <<"t">>,
+                <<"start_at">> => <<"2026-02-20T10:00:00Z">>
+            }
+        ]}
     end),
+    meck:expect(group_schedule_repo, claim_remind_tx, fun(_, _, _, _) -> {ok, 1} end),
+    meck:expect(group_schedule_repo, claim_remind, fun(_Id) -> {ok, 1} end),
     meck:expect(group_schedule_repo, find_by_schedule_id, fun(_ScheduleId) ->
-        #{<<"title">> => <<"会议提醒"/utf8>>, <<"start_at">> => <<"2026-02-20T10:00:00Z">>}
+        #{
+            <<"title">> => <<"会议提醒"/utf8>>,
+            <<"start_at">> => <<"2026-02-20T10:00:00Z">>,
+            <<"status">> => 1
+        }
     end),
     _ = catch meck:unload(msg_s2c_ds),
     meck:new(msg_s2c_ds, [passthrough, no_link]),
+    meck:expect(msg_s2c_ds, stage_schedule_remind_tx, fun(_, _, _) -> ok end),
     meck:expect(msg_s2c_ds, send, fun(_From, _To, _Action, _MsgId, _Body, _Payload, _Save) ->
         ok
     end),
@@ -700,35 +726,19 @@ process_reminders_success_test() ->
     meck:unload(group_schedule_repo).
 
 process_reminders_failed_delivery_stays_pending_test() ->
-    Modules = [group_schedule_ds, workspace_guard, msg_s2c_ds],
-    lists:foreach(fun(M) -> meck:new(M, [passthrough, no_link]) end, Modules),
+    meck:new(group_schedule_ds, [passthrough, no_link]),
     try
         meck:expect(group_schedule_ds, list_pending_reminds, fun() ->
             {ok, [
-                #{
-                    <<"id">> => 3001,
-                    <<"schedule_id">> => <<"sched_retry">>,
-                    <<"user_id">> => 789
-                }
+                #{<<"id">> => 3001, <<"schedule_id">> => <<"sched_retry">>, <<"user_id">> => 789}
             ]}
         end),
-        meck:expect(group_schedule_ds, find_by_schedule_id, fun(_) ->
-            #{<<"title">> => <<"retry">>, <<"start_at">> => <<"2026-02-20T10:00:00Z">>}
-        end),
-        meck:expect(workspace_guard, write_tx_or_skip, fun(_, F) ->
-            {written, F(fake_conn)}
-        end),
-        meck:expect(group_schedule_ds, update_remind_sent, fun(_) -> {ok, 1} end),
-        meck:expect(msg_s2c_ds, send, fun(_, _, _, _, _, _, _) ->
-            {error, staging_failed}
-        end),
+        meck:expect(group_schedule_ds, dispatch_remind, fun(_, _, _) -> {error, staging_failed} end),
         ?assertEqual({ok, 0}, group_schedule_logic:process_reminders()),
-        ?assertEqual(0, meck:num_calls(group_schedule_ds, update_remind_sent, 1)),
-        meck:expect(msg_s2c_ds, send, fun(_, _, _, _, _, _, _) -> ok end),
-        ?assertEqual({ok, 1}, group_schedule_logic:process_reminders()),
-        ?assertEqual(1, meck:num_calls(group_schedule_ds, update_remind_sent, [3001]))
+        meck:expect(group_schedule_ds, dispatch_remind, fun(_, _, _) -> {written, sent} end),
+        ?assertEqual({ok, 1}, group_schedule_logic:process_reminders())
     after
-        lists:foreach(fun meck:unload/1, lists:reverse(Modules))
+        meck:unload(group_schedule_ds)
     end.
 
 process_reminders_empty_test() ->
@@ -859,3 +869,248 @@ create_schedule_not_group_member_test() ->
 
     ?assertMatch({error, not_group_member}, Result),
     meck:unload(group_ds).
+
+%% ===================================================================
+%% R18：日程提醒改期/取消/调度生命周期
+%% 规则（记录在案，R18-5）：已发送（is_sent=true）的提醒不因改期重发；
+%% 改期只作废未发送提醒并按新 start_at 重建；取消作废全部未发送提醒。
+%% 所有用例 mock 推送层（msg_s2c_ds），不触生产推送通道。
+%% ===================================================================
+
+%% R18-1：改期（10:00→12:00）后作废旧未发送提醒并按新 start_at 重建
+%% （mock 断言：cancel_pending_reminds 被调 + insert_remind 收到新 remind_at）
+r18_update_reschedules_pending_reminds_test() ->
+    _ = catch meck:unload(group_schedule_repo),
+    _ = catch meck:unload(workspace_resolver),
+    _ = catch meck:unload(elib_pg),
+    _ = catch meck:unload(msg_s2c_ds),
+    meck:new(group_schedule_repo, [passthrough, no_link]),
+    meck:new(workspace_resolver, [passthrough, no_link]),
+    meck:new(elib_pg, [passthrough, no_link]),
+    meck:expect(workspace_resolver, resolve_workspace, fun(_T) -> personal end),
+    meck:expect(elib_pg, with_tx, fun(F) -> F(fake_conn) end),
+    Now = 1000000000000,
+    _ = catch meck:unload(elib_dt),
+    meck:new(elib_dt, [passthrough, no_link]),
+    meck:expect(elib_dt, now, fun() -> Now end),
+    %% StartAt(12:00Z) 解析为未来毫秒；其余返回当前
+    meck:expect(elib_dt, rfc3339_to, fun
+        (<<"2026-02-20T12:00:00Z">>) -> Now + 7200000;
+        (_X) -> Now
+    end),
+    meck:expect(elib_dt, to_rfc3339, fun(X) -> X end),
+    NewStartAt = <<"2026-02-20T12:00:00Z">>,
+    meck:expect(group_schedule_repo, find_by_schedule_id, fun(_Id) ->
+        #{
+            <<"id">> => 1001,
+            <<"creator_id">> => 55,
+            <<"status">> => 1,
+            <<"remind_before">> => 15,
+            <<"group_id">> => 123,
+            <<"title">> => <<"t">>,
+            <<"start_at">> => NewStartAt
+        }
+    end),
+    meck:expect(group_schedule_repo, lock_schedule_tx, fun(_, _) ->
+        {ok, [#{<<"id">> => 1001, <<"status">> => 1, <<"remind_before">> => 15}]}
+    end),
+    meck:expect(group_schedule_repo, update_tx, fun(_Conn, _Id, _Data) -> {ok, 1} end),
+    meck:expect(group_schedule_repo, cancel_pending_reminds_tx, fun(_Conn, _SchedId) ->
+        {ok, 2}
+    end),
+    meck:expect(group_schedule_repo, list_participants_tx, fun(_Conn, _SchedId) ->
+        {ok, [#{<<"user_id">> => 789, <<"status">> => 1}]}
+    end),
+    %% ds guard 路径走 _tx 变体；直调路径走 insert_remind——两处都捕获
+    MeckInsert = fun(Data) ->
+        %% 新 remind_at = 12:00 - 15min；旧提醒（9:45）已作废
+        %% （create_remind_records 用原子键构造）
+        #{remind_at := RemindAt} = Data,
+        store(r18_remind_at, RemindAt),
+        {ok, 3002, #{<<"id">> => 3002}}
+    end,
+    meck:expect(group_schedule_repo, insert_remind, MeckInsert),
+    meck:expect(group_schedule_repo, insert_remind_tx, fun(_Conn, Data) -> MeckInsert(Data) end),
+
+    Result = group_schedule_logic:update_schedule(
+        <<"sched_123">>, 55, <<"t2">>, <<>>, <<>>, NewStartAt, <<"2026-02-20T13:00:00Z">>
+    ),
+
+    ?assertEqual(ok, Result),
+    ?assert(meck:called(group_schedule_repo, cancel_pending_reminds_tx, ['_', '_'])),
+    RemindAt = fetch(r18_remind_at),
+    %% 12:00Z(mock 解析为 Now+7200000) - 15min = Now+6300000
+    ?assert(is_integer(RemindAt)),
+    ?assertEqual(Now + 7200000 - 15 * 60 * 1000, RemindAt),
+    _ = catch meck:unload(elib_dt),
+    _ = catch meck:unload(workspace_resolver),
+    _ = catch meck:unload(elib_pg),
+    meck:unload(group_schedule_repo).
+
+%% R18-2：取消日程后作废全部待发提醒（不发送）
+r18_cancel_stops_pending_reminds_test() ->
+    _ = catch meck:unload(group_schedule_repo),
+    _ = catch meck:unload(workspace_resolver),
+    _ = catch meck:unload(elib_pg),
+    meck:new(group_schedule_repo, [passthrough, no_link]),
+    meck:new(workspace_resolver, [passthrough, no_link]),
+    meck:new(elib_pg, [passthrough, no_link]),
+    meck:expect(workspace_resolver, resolve_workspace, fun(_T) -> personal end),
+    meck:expect(elib_pg, with_tx, fun(F) -> F(fake_conn) end),
+    meck:expect(group_schedule_repo, find_by_schedule_id, fun(_Id) ->
+        #{<<"id">> => 1001, <<"creator_id">> => 55, <<"status">> => 1}
+    end),
+    meck:expect(group_schedule_repo, lock_schedule_tx, fun(_, _) ->
+        {ok, [#{<<"id">> => 1001, <<"status">> => 1, <<"remind_before">> => undefined}]}
+    end),
+    meck:expect(group_schedule_repo, update_status_tx, fun(_C, _DbId, _St) -> {ok, 1} end),
+    meck:expect(group_schedule_repo, cancel_pending_reminds_tx, fun(_Conn, _SchedId) -> {ok, 3} end),
+
+    Result = group_schedule_logic:cancel_schedule(<<"sched_123">>, 55),
+
+    ?assertEqual(ok, Result),
+    %% 取消后待发提醒被作废
+    ?assert(meck:called(group_schedule_repo, cancel_pending_reminds_tx, ['_', <<"sched_123">>])),
+    _ = catch meck:unload(workspace_resolver),
+    _ = catch meck:unload(elib_pg),
+    meck:unload(group_schedule_repo).
+
+%% R18-3：worker 读到旧记录后日程被取消 → 发送前状态复查跳过，不误发
+r18_cancelled_schedule_skips_send_test() ->
+    _ = catch meck:unload(group_schedule_repo),
+    _ = catch meck:unload(workspace_resolver),
+    _ = catch meck:unload(elib_pg),
+    _ = catch meck:unload(msg_s2c_ds),
+    meck:new(group_schedule_repo, [passthrough, no_link]),
+    meck:new(workspace_resolver, [passthrough, no_link]),
+    meck:new(elib_pg, [passthrough, no_link]),
+    meck:new(msg_s2c_ds, [passthrough, no_link]),
+    meck:expect(msg_s2c_ds, stage_schedule_remind_tx, fun(_, _, _) -> ok end),
+    meck:expect(workspace_resolver, resolve_workspace, fun(_T) -> personal end),
+    meck:expect(elib_pg, with_tx, fun(F) -> F(fake_conn) end),
+    meck:expect(group_schedule_repo, list_pending_reminds, fun() ->
+        {ok, [#{<<"id">> => 3001, <<"schedule_id">> => <<"sched_x">>, <<"user_id">> => 789}]}
+    end),
+    meck:expect(group_schedule_repo, lock_schedule_tx, fun(_, _) ->
+        {ok, [
+            #{
+                <<"status">> => 4,
+                <<"title">> => <<"t">>,
+                <<"start_at">> => <<"2026-02-20T10:00:00Z">>
+            }
+        ]}
+    end),
+    meck:expect(group_schedule_repo, claim_remind_tx, fun(_, _, _, _) -> {ok, 1} end),
+    meck:expect(group_schedule_repo, claim_remind, fun(_Id) -> {ok, 1} end),
+    %% 日程已被取消（status=4）：发送前复查发现，跳过
+    meck:expect(group_schedule_repo, find_by_schedule_id, fun(_Id) ->
+        #{
+            <<"title">> => <<"t">>,
+            <<"start_at">> => <<"2026-02-20T10:00:00Z">>,
+            <<"status">> => 4
+        }
+    end),
+
+    Result = group_schedule_logic:process_reminders(),
+
+    ?assertEqual({ok, 0}, Result),
+    %% 不触达推送通道
+    ?assertNot(meck:called(msg_s2c_ds, stage_schedule_remind_tx, '_')),
+    meck:unload(msg_s2c_ds),
+    _ = catch meck:unload(workspace_resolver),
+    _ = catch meck:unload(elib_pg),
+    meck:unload(group_schedule_repo).
+
+%% R18-4：claim CAS 幂等——并发 worker 认领失败（0）不重发
+r18_claim_cas_prevents_duplicate_test() ->
+    _ = catch meck:unload(group_schedule_repo),
+    _ = catch meck:unload(workspace_resolver),
+    _ = catch meck:unload(elib_pg),
+    _ = catch meck:unload(msg_s2c_ds),
+    meck:new(group_schedule_repo, [passthrough, no_link]),
+    meck:new(workspace_resolver, [passthrough, no_link]),
+    meck:new(elib_pg, [passthrough, no_link]),
+    meck:new(msg_s2c_ds, [passthrough, no_link]),
+    meck:expect(msg_s2c_ds, stage_schedule_remind_tx, fun(_, _, _) -> ok end),
+    meck:expect(workspace_resolver, resolve_workspace, fun(_T) -> personal end),
+    meck:expect(elib_pg, with_tx, fun(F) -> F(fake_conn) end),
+    meck:expect(group_schedule_repo, list_pending_reminds, fun() ->
+        {ok, [#{<<"id">> => 3001, <<"schedule_id">> => <<"sched_y">>, <<"user_id">> => 789}]}
+    end),
+    %% 另一 worker 已认领（返回 0）
+    meck:expect(group_schedule_repo, lock_schedule_tx, fun(_, _) ->
+        {ok, [
+            #{
+                <<"status">> => 1,
+                <<"title">> => <<"t">>,
+                <<"start_at">> => <<"2026-02-20T10:00:00Z">>
+            }
+        ]}
+    end),
+    meck:expect(group_schedule_repo, claim_remind_tx, fun(_, _, _, _) -> {ok, 0} end),
+    meck:expect(group_schedule_repo, claim_remind, fun(_Id) -> {ok, 0} end),
+    meck:expect(group_schedule_repo, find_by_schedule_id, fun(_Id) ->
+        #{
+            <<"title">> => <<"t">>,
+            <<"start_at">> => <<"2026-02-20T10:00:00Z">>,
+            <<"status">> => 1
+        }
+    end),
+
+    Result = group_schedule_logic:process_reminders(),
+
+    ?assertEqual({ok, 0}, Result),
+    ?assertNot(meck:called(msg_s2c_ds, stage_schedule_remind_tx, '_')),
+    meck:unload(msg_s2c_ds),
+    _ = catch meck:unload(workspace_resolver),
+    _ = catch meck:unload(elib_pg),
+    meck:unload(group_schedule_repo).
+
+%% R18-5（规则验证）：认领成功 + 日程活跃 → 正常发送一次
+r18_active_schedule_sends_once_test() ->
+    _ = catch meck:unload(group_schedule_repo),
+    _ = catch meck:unload(workspace_resolver),
+    _ = catch meck:unload(elib_pg),
+    _ = catch meck:unload(msg_s2c_ds),
+    meck:new(group_schedule_repo, [passthrough, no_link]),
+    meck:new(workspace_resolver, [passthrough, no_link]),
+    meck:new(elib_pg, [passthrough, no_link]),
+    meck:new(msg_s2c_ds, [passthrough, no_link]),
+    meck:expect(msg_s2c_ds, stage_schedule_remind_tx, fun(_, _, _) -> ok end),
+    meck:expect(workspace_resolver, resolve_workspace, fun(_T) -> personal end),
+    meck:expect(elib_pg, with_tx, fun(F) -> F(fake_conn) end),
+    meck:expect(group_schedule_repo, list_pending_reminds, fun() ->
+        {ok, [#{<<"id">> => 3001, <<"schedule_id">> => <<"sched_z">>, <<"user_id">> => 789}]}
+    end),
+    meck:expect(group_schedule_repo, lock_schedule_tx, fun(_, _) ->
+        {ok, [
+            #{
+                <<"status">> => 1,
+                <<"title">> => <<"t">>,
+                <<"start_at">> => <<"2026-02-20T10:00:00Z">>
+            }
+        ]}
+    end),
+    meck:expect(group_schedule_repo, claim_remind_tx, fun(_, _, _, _) -> {ok, 1} end),
+    meck:expect(group_schedule_repo, claim_remind, fun(_Id) -> {ok, 1} end),
+    meck:expect(group_schedule_repo, find_by_schedule_id, fun(_Id) ->
+        #{
+            <<"title">> => <<"t">>,
+            <<"start_at">> => <<"2026-02-20T10:00:00Z">>,
+            <<"status">> => 1
+        }
+    end),
+    meck:expect(msg_s2c_ds, send, fun(_F, _To, _A, _M, _B, _P, _S) -> ok end),
+
+    Result = group_schedule_logic:process_reminders(),
+
+    ?assertEqual({ok, 1}, Result),
+    ?assert(meck:called(msg_s2c_ds, stage_schedule_remind_tx, '_')),
+    meck:unload(msg_s2c_ds),
+    _ = catch meck:unload(workspace_resolver),
+    _ = catch meck:unload(elib_pg),
+    meck:unload(group_schedule_repo).
+
+%% 测试辅助：进程字典存取（捕获 insert_remind 参数）
+store(Key, Val) -> put(Key, Val).
+fetch(Key) -> get(Key).

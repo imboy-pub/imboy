@@ -71,9 +71,11 @@
 
 %% 备份与入队
 -export([
-    stage/10, stage/11, stage/12,
+    stage/10, stage/11, stage/12, stage/13,
     stage_action/13,
     stage_with_sequence/11,
+    stage_with_sequence/12,
+    stage_with_sequence/13,
     enqueue/3,
     unstage/2,
     find_staged/2
@@ -227,6 +229,7 @@ stage(Type, MsgId, MsgType, Action, E2EE, Payload, FromId, ToId, CreatedAt, Serv
     ).
 
 %% @doc C2G 专用持久接受；RequiredRole=3 用于在事务快照内重验 @all 权限。
+%% R05-A 兼容旧入口（/12）：无自毁期限。
 -spec stage(
     binary(),
     binary(),
@@ -260,6 +263,59 @@ stage(
     SenderDid,
     RequiredRole
 ) ->
+    stage(
+        Type,
+        MsgId,
+        MsgType,
+        Action,
+        E2EE,
+        Payload,
+        FromId,
+        ToId,
+        CreatedAt,
+        ServerTs,
+        SenderDid,
+        RequiredRole,
+        null
+    ).
+
+%% @doc R05-A（IMBOY-TIMEZONE-REPAIR-V1）：带自毁绝对期限（RFC3339 binary |
+%% null）的 C2G 持久接受；期限与 accepted_at 同事务落 staging 行，
+%% worker 转正搬运到 msg_c2g/msg_store。null=不自毁（旧语义）。
+-spec stage(
+    binary(),
+    binary(),
+    binary(),
+    binary(),
+    map() | binary() | null,
+    binary(),
+    integer(),
+    integer(),
+    binary(),
+    binary(),
+    binary(),
+    1 | 3,
+    binary() | null
+) ->
+    {ok, new, [integer()]}
+    | {ok, new, pos_integer(), [integer()]}
+    | {ok, duplicate}
+    | {error, term()}.
+stage(
+    <<"c2g">> = Type,
+    MsgId,
+    MsgType,
+    Action,
+    E2EE,
+    Payload,
+    FromId,
+    ToId,
+    CreatedAt,
+    ServerTs,
+    SenderDid,
+    RequiredRole,
+    ExpireAt
+) ->
     handle_stage_result(
         Type,
         MsgId,
@@ -275,7 +331,8 @@ stage(
             CreatedAt,
             ServerTs,
             SenderDid,
-            RequiredRole
+            RequiredRole,
+            ExpireAt
         )
     ).
 
@@ -357,6 +414,107 @@ stage_with_sequence(
     ServerTs,
     SenderDid
 ) ->
+    %% R03/D04：兼容旧入口，接受时间由 repo 层取当前服务端时钟。
+    stage_with_sequence(
+        Type,
+        MsgId,
+        MsgType,
+        Action,
+        E2EE,
+        Payload,
+        FromId,
+        ToId,
+        CreatedAt,
+        ServerTs,
+        SenderDid,
+        undefined
+    ).
+
+%% @doc R03/D04（IMBOY-TIMEZONE-REPAIR-V1）：C2C staging + 序列分配。
+%% AcceptedAt 为首次持久接受事务内固定的服务端接受时间（RFC3339 binary），
+%% 调用方（msg_c2c_logic）在同一次发送里把它同时传给 staging 与 reply 直写
+%% 两路，保证双写先后顺序同结果；undefined/null 时不写该列（旧行为兼容）。
+%% R05-A 兼容旧入口（/12）：无自毁期限。
+-spec stage_with_sequence(
+    binary(),
+    binary(),
+    binary(),
+    binary(),
+    map() | binary() | null,
+    binary(),
+    integer(),
+    integer(),
+    binary(),
+    binary(),
+    binary() | null,
+    binary() | null
+) ->
+    {ok, new, pos_integer()} | {ok, duplicate, pos_integer()} | {error, term()}.
+stage_with_sequence(
+    <<"c2c">> = Type,
+    MsgId,
+    MsgType,
+    Action,
+    E2EE,
+    Payload,
+    FromId,
+    ToId,
+    CreatedAt,
+    ServerTs,
+    SenderDid,
+    AcceptedAt
+) ->
+    stage_with_sequence(
+        Type,
+        MsgId,
+        MsgType,
+        Action,
+        E2EE,
+        Payload,
+        FromId,
+        ToId,
+        CreatedAt,
+        ServerTs,
+        SenderDid,
+        AcceptedAt,
+        null
+    ).
+
+%% @doc R05-A（IMBOY-TIMEZONE-REPAIR-V1）：带自毁绝对期限的 C2C staging +
+%% 序列分配。ExpireAt（RFC3339 binary | null）= accepted_at + expire_secs，
+%% 接受事务内由 msg_burn_logic:calc_expire_at 基于 AcceptedAt 计算；与
+%% staging 行同事务落库，worker 转正/归档搬运；null=不自毁（旧语义）。
+-spec stage_with_sequence(
+    binary(),
+    binary(),
+    binary(),
+    binary(),
+    map() | binary() | null,
+    binary(),
+    integer(),
+    integer(),
+    binary(),
+    binary(),
+    binary() | null,
+    binary() | null,
+    binary() | null
+) ->
+    {ok, new, pos_integer()} | {ok, duplicate, pos_integer()} | {error, term()}.
+stage_with_sequence(
+    <<"c2c">> = Type,
+    MsgId,
+    MsgType,
+    Action,
+    E2EE,
+    Payload,
+    FromId,
+    ToId,
+    CreatedAt,
+    ServerTs,
+    SenderDid,
+    AcceptedAt,
+    ExpireAt
+) ->
     case
         msg_store_repo:stage_with_sequence(
             Type,
@@ -369,7 +527,9 @@ stage_with_sequence(
             ToId,
             CreatedAt,
             ServerTs,
-            SenderDid
+            SenderDid,
+            AcceptedAt,
+            ExpireAt
         )
     of
         {ok, duplicate, Seq} -> {ok, duplicate, Seq};

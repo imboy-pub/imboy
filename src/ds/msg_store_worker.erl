@@ -369,8 +369,23 @@ do_write(c2c, Row) ->
     %% A2-a：把 staging 行里的发送者设备标识搬进正式表；离线拉取时
     %% PFv3 context binding 第 6 项要用（漏搬 = 静默丢字段，不会报错）
     SenderDid = maps:get(<<"sender_did">>, Row, null),
+    %% R03/D04：把首次持久接受时间从 staging 行搬进正式表（旧行缺失为 null）。
+    AcceptedAt = maps:get(<<"accepted_at">>, Row, null),
+    %% R05-A：自毁绝对期限同样从 staging 行搬运（接受事务内落库）；
+    %% 旧行/无自毁缺失为 null（不自毁）。
+    ExpireAt = maps:get(<<"expire_at">>, Row, null),
     Res = msg_c2c_ds:write_msg(
-        CreatedAt, MsgId, PayloadBin, FromId, ToId, ServerTs, MsgType, E2EE, SenderDid
+        CreatedAt,
+        MsgId,
+        PayloadBin,
+        FromId,
+        ToId,
+        ServerTs,
+        MsgType,
+        E2EE,
+        SenderDid,
+        AcceptedAt,
+        ExpireAt
     ),
     Res;
 do_write(c2g, Row) ->
@@ -402,9 +417,12 @@ do_write(c2g, Row) ->
                 G,
                 MsgType,
                 E2EE,
-                null,
+                %% R05-A：staging 行的自毁绝对期限（接受事务内落库；缺失 null）。
+                maps:get(<<"expire_at">>, Row, null),
                 Seq,
-                SenderDid
+                SenderDid,
+                %% R03/D04：staging 行的首次接受时间（缺失为 null，旧行兼容）。
+                maps:get(<<"accepted_at">>, Row, null)
             );
         {Seq, G, []} when is_integer(Seq), Seq >= 1, is_integer(G), G > 0 ->
             {error, no_recipients};

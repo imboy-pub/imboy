@@ -11,6 +11,9 @@
 
 -ifdef(TEST).
 -export([to_gateway_amount/2, yuan_to_fen/1]).
+%% R11（IMBOY-TIMEZONE-REPAIR-V1）：读时派生「已过期」的可测出口——
+%% 列表（get_my_orders）与详情（get_order）共用本函数，一致性由同一实现保证。
+-export([order_transfer/1]).
 -endif.
 -export([refund_order/2, refund_order/3]).
 -export([admin_refund_order/2]).
@@ -804,6 +807,18 @@ expires_at_ms({{_, _, _}, {H, Mi, S}} = Dt) when is_number(H), is_number(Mi), is
         Secs -> (Secs - ?EPOCH_GREGORIAN_SECS) * 1000
     catch
         _:_ -> 0
+    end;
+%% R11（IMBOY-TIMEZONE-REPAIR-V1）：epgsql_codec_rfc3339_bin（sys.tzv1 /
+%% sys.runtime 的 codecs 注册）把 timestamptz 解码为 RFC3339 binary——旧实现
+%% 不识别该形状落兜底 0（=「未过期」），读时派生「已过期」失效，过期 pending
+%% 订单在列表/详情显示为永久待支付（状态派生错误）。付款合同不受影响：
+%% channel_order_repo:pay/2 的 `expires_at > NOW()` 守卫在 PG 端判过期。
+%% 显式解析 binary；非法/空值仍安全返回 0（不误杀正常订单），tuple 形状
+%% 分支保留（未注册 RFC3339 codec 的环境兼容）。
+expires_at_ms(Bin) when is_binary(Bin), Bin =/= <<>> ->
+    case elib_dt:rfc3339_to(Bin) of
+        Ms when is_integer(Ms) -> Ms;
+        _ -> 0
     end;
 expires_at_ms(Ms) when is_integer(Ms), Ms > 0 ->
     Ms;

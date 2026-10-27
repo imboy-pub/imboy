@@ -12,9 +12,13 @@
 -export([write_msg/8]).
 -export([write_msg/9]).
 -export([write_msg_with_sender/9]).
+-export([write_msg_with_sender/10]).
+-export([write_msg_with_sender/11]).
 -export([write_msg_if_absent/8]).
 -export([write_msg_if_absent_with_sender/9]).
 -export([write_msg_with_reply/11]).
+-export([write_msg_with_reply/12]).
+-export([write_msg_with_reply/13]).
 -export([delete_msg/1]).
 -export([delete_msg/2]).
 -export([count_by_to_id/1]).
@@ -45,8 +49,10 @@ tablename() ->
 -spec find_msg_by_id(binary()) -> {ok, map()} | {error, any()}.
 find_msg_by_id(MsgId) ->
     Tb = tablename(),
+    %% R04：accepted_at/server_ts 供撤回/编辑窗口的可信时间基准解析
+    %% （msg_store_repo:resolve_accepted_ms/1）；created_at 保留为低可信回退。
     Sql = <<
-        "SELECT from_id, to_id, created_at, payload "
+        "SELECT from_id, to_id, created_at, server_ts, accepted_at, payload "
         "FROM ",
         Tb/binary,
         " WHERE msg_id = $1 LIMIT 1"
@@ -115,6 +121,60 @@ write_msg(CreatedAt, Id, Payload, FromId, ToId, ServerTS, MsgType, E2EE) ->
     binary() | null
 ) -> ok | {error, term()}.
 write_msg_with_sender(CreatedAt, Id, Payload, FromId, ToId, ServerTS, MsgType, E2EE, SenderDid) ->
+    % R03/D04：兼容旧入口，不带接受时间（accepted_at 列保持 NULL）。
+    write_msg_with_sender(
+        CreatedAt, Id, Payload, FromId, ToId, ServerTS, MsgType, E2EE, SenderDid, null
+    ).
+
+%% @doc R03/D04 + R05-A 兼容旧入口（/10）：无自毁期限（expire_at 列保持 NULL）。
+write_msg_with_sender(
+    CreatedAt, Id, Payload, FromId, ToId, ServerTS, MsgType, E2EE, SenderDid, AcceptedAt
+) ->
+    write_msg_with_sender(
+        CreatedAt,
+        Id,
+        Payload,
+        FromId,
+        ToId,
+        ServerTS,
+        MsgType,
+        E2EE,
+        SenderDid,
+        AcceptedAt,
+        null
+    ).
+
+%% @doc R03/D04 + R05-A（IMBOY-TIMEZONE-REPAIR-V1）：worker 转正路径带接受时间
+%% 与自毁期限写入。AcceptedAt 为首次持久接受事务内固定的服务端接受时间
+%% （RFC3339 binary），ExpireAt 为接受事务内决定的自毁绝对期限（RFC3339
+%% binary）；均来自 staging 行；null 时省略列（旧行兼容）。ON CONFLICT DO
+%% NOTHING 不触碰 accepted_at/expire_at——重复/重放不重赋首次接受时间与期限。
+-spec write_msg_with_sender(
+    binary(),
+    binary(),
+    binary(),
+    integer(),
+    integer(),
+    binary(),
+    binary(),
+    map() | null,
+    binary() | null,
+    binary() | null,
+    binary() | null
+) -> ok | {error, term()}.
+write_msg_with_sender(
+    CreatedAt,
+    Id,
+    Payload,
+    FromId,
+    ToId,
+    ServerTS,
+    MsgType,
+    E2EE,
+    SenderDid,
+    AcceptedAt,
+    ExpireAt
+) ->
     %% from_id 和 to_id 是 bigint 类型，必须传入 integer
     Tb = tablename(),
     E2EEValue =
@@ -130,11 +190,16 @@ write_msg_with_sender(CreatedAt, Id, Payload, FromId, ToId, ServerTS, MsgType, E
     %% 使用 ON CONFLICT DO NOTHING 避免重试时的唯一约束冲突
     %% 唯一约束: (msg_id, created_at)
     GenId = elib_tsid:generate(msg_c2c),
+    {TsCol, TsPh, SeqPh} = optional_ts_sql_fragments(
+        [{<<"accepted_at">>, AcceptedAt}, {<<"expire_at">>, ExpireAt}], 10
+    ),
     Sql = [
         <<"INSERT INTO ">>,
         Tb,
-        <<" (id, payload, from_id, to_id, created_at, server_ts, msg_id, msg_type, e2ee, sender_did, conv_seq)">>,
-        <<" VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)">>,
+        <<" (id, payload, from_id, to_id, created_at, server_ts, msg_id, msg_type, e2ee, sender_did",
+            TsCol/binary, ", conv_seq)">>,
+        <<" VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10", TsPh/binary, ", ", SeqPh/binary,
+            ")">>,
         <<" ON CONFLICT (msg_id, created_at) DO NOTHING">>
     ],
     %% 【BUG 修复】改用 elib_pg:execute/3 替代 elib_pg:query/3：
@@ -155,6 +220,7 @@ write_msg_with_sender(CreatedAt, Id, Payload, FromId, ToId, ServerTS, MsgType, E
             MsgType,
             E2EEValue,
             null_if_empty(SenderDid)
+            | optional_ts_params([{<<"accepted_at">>, AcceptedAt}, {<<"expire_at">>, ExpireAt}])
         ])
     of
         {ok, Count} when Count > 0 -> ok;
@@ -162,6 +228,58 @@ write_msg_with_sender(CreatedAt, Id, Payload, FromId, ToId, ServerTS, MsgType, E
         {ok, _Count, _Returning} -> ok;
         {error, Reason} -> {error, Reason}
     end.
+
+%% @private R03/D04：接受时间列的 SQL 片段（BaseN = 既有参数个数）。accepted_at
+%% 列插在 conv_seq 之前，参数顺序为 [...既有参数, AcceptedAt]，conv_seq（由
+%% execute_formal 追加的服务端序号）恒为最后一个参数，占位符编号随
+%% accepted_at 是否存在而偏移。空值（null/undefined/空串）省略列，保持旧行为。
+-spec accepted_at_sql_fragments(binary() | null, pos_integer()) ->
+    {AcceptedCol :: binary(), AcceptedPlaceholder :: binary(), SeqPlaceholder :: binary()}.
+accepted_at_sql_fragments(AcceptedAt, BaseN) when is_binary(AcceptedAt), AcceptedAt =/= <<>> ->
+    {
+        <<", accepted_at">>,
+        iolist_to_binary([", $", integer_to_binary(BaseN + 1)]),
+        iolist_to_binary(["$", integer_to_binary(BaseN + 2)])
+    };
+accepted_at_sql_fragments(_, BaseN) ->
+    {<<>>, <<>>, iolist_to_binary(["$", integer_to_binary(BaseN + 1)])}.
+
+-spec accepted_at_params(binary() | null) -> [term()].
+accepted_at_params(AcceptedAt) when is_binary(AcceptedAt), AcceptedAt =/= <<>> ->
+    [AcceptedAt];
+accepted_at_params(_) ->
+    [].
+
+%% @private R05-A：可选时间戳列（accepted_at/expire_at 等）的通用 SQL 片段。
+%% 依次拼接非空列（", col"），占位符随列数递增；SeqPh 恒为最后一个参数的
+%% 占位符（与 accepted_at_sql_fragments 同一编号规则）。空值省略列。
+-spec optional_ts_sql_fragments(
+    [{binary(), binary() | null}], pos_integer()
+) ->
+    {Cols :: binary(), Placeholders :: binary(), SeqPlaceholder :: binary()}.
+optional_ts_sql_fragments(Cols, BaseN) ->
+    {Present, N} = lists:foldl(
+        fun({Col, V}, {Acc, I}) ->
+            case is_binary(V) andalso V =/= <<>> of
+                true ->
+                    {[{Col, I + 1} | Acc], I + 1};
+                false ->
+                    {Acc, I}
+            end
+        end,
+        {[], BaseN},
+        Cols
+    ),
+    Ordered = lists:reverse(Present),
+    {
+        iolist_to_binary([[", ", C] || {C, _} <- Ordered]),
+        iolist_to_binary([[", $", integer_to_binary(I)] || {_, I} <- Ordered]),
+        iolist_to_binary(["$", integer_to_binary(N + 1)])
+    }.
+
+-spec optional_ts_params([{binary(), binary() | null}]) -> [term()].
+optional_ts_params(Cols) ->
+    [V || {_, V} <- Cols, is_binary(V), V =/= <<>>].
 
 %% @private 空串不是设备标识，一律写 NULL（与 msg_store_repo:put_sender_did/2 同语义）
 -spec null_if_empty(term()) -> binary() | null.
@@ -521,6 +639,88 @@ write_msg_with_reply(
     ReplyToFromId,
     ReplySnippet
 ) ->
+    % R03/D04：兼容旧入口，不带接受时间（accepted_at 列保持 NULL）。
+    write_msg_with_reply(
+        CreatedAt,
+        Id,
+        Payload,
+        FromId,
+        ToId,
+        ServerTS,
+        MsgType,
+        E2EE,
+        ReplyToMsgId,
+        ReplyToFromId,
+        ReplySnippet,
+        null
+    ).
+
+%% @doc R03/D04 + R05-A 兼容旧入口（/12）：无自毁期限。
+write_msg_with_reply(
+    CreatedAt,
+    Id,
+    Payload,
+    FromId,
+    ToId,
+    ServerTS,
+    MsgType,
+    E2EE,
+    ReplyToMsgId,
+    ReplyToFromId,
+    ReplySnippet,
+    AcceptedAt
+) ->
+    write_msg_with_reply(
+        CreatedAt,
+        Id,
+        Payload,
+        FromId,
+        ToId,
+        ServerTS,
+        MsgType,
+        E2EE,
+        ReplyToMsgId,
+        ReplyToFromId,
+        ReplySnippet,
+        AcceptedAt,
+        null
+    ).
+
+%% @doc R03/D04 + R05-A（IMBOY-TIMEZONE-REPAIR-V1）：带接受时间与自毁期限的
+%% 引用回复直写。AcceptedAt/ExpireAt 与 staging 行同一值（接受事务内固定）。
+%% ON CONFLICT 补洞子句只回填 reply 三列，不触碰 accepted_at/expire_at——
+%% 与 worker 转正路径无论先后，最终行保持同一首次接受值与期限
+%% （R03-3/R05-2 两种先后顺序同结果）。
+-spec write_msg_with_reply(
+    binary(),
+    binary(),
+    binary(),
+    integer(),
+    integer(),
+    binary(),
+    binary(),
+    map() | null,
+    binary() | null,
+    integer() | null,
+    binary() | null,
+    binary() | null,
+    binary() | null
+) -> ok | {error, term()}.
+write_msg_with_reply(
+    CreatedAt,
+    Id,
+    Payload,
+    FromId,
+    ToId,
+    ServerTS,
+    MsgType,
+    E2EE,
+    ReplyToMsgId,
+    ReplyToFromId,
+    ReplySnippet,
+    AcceptedAt,
+    ExpireAt
+) ->
     Tb = tablename(),
     E2EEValue =
         case E2EE of
@@ -545,19 +745,27 @@ write_msg_with_reply(
             _ -> null
         end,
     GenId = elib_tsid:generate(msg_c2c),
+    {TsCol, TsPh, SeqPh} = optional_ts_sql_fragments(
+        [{<<"accepted_at">>, AcceptedAt}, {<<"expire_at">>, ExpireAt}], 12
+    ),
     Sql = [
         <<"INSERT INTO ">>,
         Tb,
         <<
             " (id, payload, from_id, to_id, created_at, server_ts, msg_id, msg_type, e2ee,"
-            " reply_to_msg_id, reply_to_from_id, reply_snippet, conv_seq)"
+            " reply_to_msg_id, reply_to_from_id, reply_snippet",
+            TsCol/binary,
+            ", conv_seq)"
         >>,
-        <<" VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)">>,
+        <<" VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12", TsPh/binary, ", ",
+            SeqPh/binary, ")">>,
         %% RT-P3-03（2026-08-27）：本写入与 staging worker 双写并发存在竞态——
         %% 若 worker 先插入无引用行，原 DO NOTHING 让本次 reply 直写变 no-op，
         %% 引用元数据静默丢失。改为条件补洞：仅当既有行尚未携带引用时回填三列；
         %% 正常重放（reply 已有值）WHERE 不满足 → 0 行变更，
         %% 上游 conflict_no_insert 幂等语义保持不变。
+        %% R03/D04：补洞子句不更新 accepted_at / server_ts——首次接受时间
+        %% 由先插入者固定。
         <<
             " ON CONFLICT (msg_id, created_at) DO UPDATE SET "
             "reply_to_msg_id = EXCLUDED.reply_to_msg_id, "
@@ -582,6 +790,7 @@ write_msg_with_reply(
             ReplyToMsgId,
             ReplyToFromIdVal,
             ReplySnippetVal
+            | optional_ts_params([{<<"accepted_at">>, AcceptedAt}, {<<"expire_at">>, ExpireAt}])
         ])
     of
         {ok, Count} when Count > 0 -> ok;
@@ -645,15 +854,25 @@ count_unread_since(ToId, Since, DID) ->
         _ -> 0
     end.
 
+%% @doc R05-A（IMBOY-TIMEZONE-REPAIR-V1）：设置自毁期限（收敛兜底）。
+%% 语义变更：
+%%   1. 仅当 expire_at 当前为 NULL 时写入（AND expire_at IS NULL）——重复请求
+%%      /重试不延长期限（首次接受事务内决定的期限是权威值）；
+%%   2. 0 行 UPDATE 返回 {ok, 0}（明确结果：未命中或已有期限），错误不再
+%%      吞成 ok——调用方按需记录。期限的持久化主路径是 staging 行携带
+%%      （接受事务内落库）→ worker 转正搬运，本函数只兜底补齐"reply 直写
+%%      先落正式表但期限尚未写入"的窄窗。
+-spec set_expire_at(binary(), binary()) -> {ok, non_neg_integer()} | {error, term()}.
 set_expire_at(MsgId, ExpireAt) ->
     Tb = tablename(),
-    Sql = <<"UPDATE ", Tb/binary, " SET expire_at = $1 WHERE msg_id = $2">>,
+    Sql =
+        <<"UPDATE ", Tb/binary, " SET expire_at = $1 WHERE msg_id = $2", " AND expire_at IS NULL">>,
     case elib_pg:execute(Sql, [ExpireAt, MsgId]) of
-        {ok, _} ->
-            ok;
+        {ok, Count} when is_integer(Count) ->
+            {ok, Count};
         {error, Reason} ->
             ?ERROR_LOG([msg_c2c_set_expire_at_failed, MsgId, Reason]),
-            ok
+            {error, Reason}
     end.
 
 %% ponytail: NOW() 避免 epgsql 对 RFC3339 binary 的 timestamptz 转换

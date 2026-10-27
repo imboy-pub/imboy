@@ -48,6 +48,12 @@
 -export([list_pending_reminds/1]).
 -export([update_remind_sent/1]).
 -export([update_remind_sent_tx/2]).
+-export([cancel_pending_reminds/1]).
+-export([claim_remind/1]).
+-export([
+    lock_schedule_tx/2, lock_schedule_by_id_tx/2, claim_remind_tx/4, cancel_pending_reminds_tx/2
+]).
+-export([list_participants_tx/2]).
 
 %% ===================================================================
 %% API functions - 日程表
@@ -364,6 +370,12 @@ list_participants(ScheduleId, Column) ->
     }),
     elib_pg:query(Sql, Params).
 
+list_participants_tx(Conn, ScheduleId) ->
+    Tb = participant_tablename(),
+    elib_pg:query(Conn, <<"SELECT user_id FROM ", Tb/binary, " WHERE schedule_id = $1">>, [
+        ScheduleId
+    ]).
+
 %% @doc 统计日程参与人数量
 -spec count_participants(binary()) -> {ok, non_neg_integer()} | {error, term()}.
 count_participants(ScheduleId) ->
@@ -455,6 +467,63 @@ update_remind_sent_tx(Conn, Id) when Id > 0 ->
     elib_pg:update(Conn, Tb, Data, <<"id = $1">>, [Id]);
 update_remind_sent_tx(_Conn, _) ->
     {error, invalid_id}.
+
+%% R18：作废日程的待发提醒。is_sent=true 复用为「终态（已发送或已作废，
+%% 不再发送）」标志——list_pending_reminds 只扫 is_sent=false，取消后
+%% 天然不再派发。已发送（is_sent=true）的行不动（R18-5：不撤回已发通知）。
+-spec cancel_pending_reminds(binary()) -> {ok, non_neg_integer()} | {error, term()}.
+cancel_pending_reminds(ScheduleId) when is_binary(ScheduleId), ScheduleId =/= <<>> ->
+    Tb = remind_tablename(),
+    Sql =
+        <<"UPDATE ", Tb/binary, " SET is_sent = true",
+            " WHERE schedule_id = $1 AND is_sent = false">>,
+    elib_pg:execute_count(Sql, [ScheduleId]);
+cancel_pending_reminds(_) ->
+    {error, invalid_id}.
+
+%% R18：派发前原子认领（CAS）。UPDATE ... WHERE is_sent = false 竞态安全：
+%% 返回 1 = 认领成功（本次调用方负责发送）；0 = 已被并发 worker 认领/已取消/
+%% 已发送，跳过。认领先行保证「发送成功后崩溃不重发」（R18-4）：
+%% 认领提交后扫描不再命中该行。
+-spec claim_remind(integer()) -> {ok, non_neg_integer()} | {error, term()}.
+claim_remind(Id) when Id > 0 ->
+    Tb = remind_tablename(),
+    Sql =
+        <<"UPDATE ", Tb/binary, " SET is_sent = true", " WHERE id = $1 AND is_sent = false">>,
+    elib_pg:execute_count(Sql, [Id]);
+claim_remind(_) ->
+    {error, invalid_id}.
+
+lock_schedule_tx(Conn, ScheduleId) ->
+    Tb = tablename(),
+    elib_pg:query(
+        Conn,
+        <<"SELECT id, status, title, start_at, remind_before FROM ", Tb/binary,
+            " WHERE schedule_id = $1 FOR UPDATE">>,
+        [ScheduleId]
+    ).
+
+lock_schedule_by_id_tx(Conn, Id) ->
+    Tb = tablename(),
+    elib_pg:query(
+        Conn,
+        <<"SELECT id, schedule_id, status FROM ", Tb/binary, " WHERE id = $1 FOR UPDATE">>,
+        [Id]
+    ).
+
+claim_remind_tx(Conn, Id, ScheduleId, UserId) ->
+    Tb = remind_tablename(),
+    Sql =
+        <<"UPDATE ", Tb/binary, " SET is_sent = true",
+            " WHERE id = $1 AND schedule_id = $2 AND user_id = $3 AND is_sent = false">>,
+    elib_pg:execute_count(Conn, Sql, [Id, ScheduleId, UserId]).
+
+cancel_pending_reminds_tx(Conn, ScheduleId) ->
+    Tb = remind_tablename(),
+    Sql =
+        <<"UPDATE ", Tb/binary, " SET is_sent = true",
+            " WHERE schedule_id = $1 AND is_sent = false">>,
+    elib_pg:execute_count(Conn, Sql, [ScheduleId]).
 
 %% ===================================================================
 %% Internal functions

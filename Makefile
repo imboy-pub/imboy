@@ -178,10 +178,14 @@ EDOC_OPTS = {doclet, edown_doclet}
 #     W403/ATTACHMENT_REVIEW manifest 的 attv5_chain_* 库并自建同名 pgsql 池。
 #     全量轨道中任一先行套件建池后，这些套件 setup 必然 no_go（r4 实证 7 例
 #     context setup failed）。全部按同口径移入专项单跑。
+#   * group_schedule_remind_pg_tests：专属 PG 和独立 pgsql 池，专项运行；
+#     缺资源直接失败，专项验收须确认实际执行，不能以全量排除冒充通过。
+#     编译候选后设置 PG*、IMBOY_TEST_EXCLUSIVE_DATABASE、IMBOY_TEST_PG_SYSTEM_ID，
+#     运行 scripts/test/group_schedule_remind_pg_gate.sh；库 comment 必须标注本任务独占。
 ifdef t
 EUNIT_TEST_SPEC = (fun() -> lists:append([$1]) end)()
 else
-EUNIT_TEST_SPEC = (fun() -> Excl = [elib_tsid, agent_grant_pg, agent_run_pg, agent_grant_pg_tests, agent_recovery_pg_tests, agent_run_pg_tests, agent_tool_authorizer_pg_tests, cs_pg_widget, cs_seat_console_pg_tests, imboy_hird_acceptance_tests, imboy_hird_replay_offline_tests, agent_hird_mini_spike_tests, imboy_hird_p1_auth_tool_tests, imboy_hird_gates_tests, imboy_hird_p2_replay_tests, imboy_hird_p3_compare_tests, talk_record_cleanup_retry_pg_checks, talk_record_delete_tests, attachment_lifecycle_v5_w403_gateway_protocol_tests, attachment_lifecycle_v5_w403_driver_matrix_tests, attachment_ordinary_http_protocol_tests, eb_asset_frozen_storage_protocol_tests, enterprise_asset_driver_pg_tests, attachment_pending_location_pg_tests, message_result_pg_tests], Mods = lists:append([$1]), [talk_record_owned_eunit_fixture:entry(M) || M <- Mods, not lists:member(M, Excl)] end)()
+EUNIT_TEST_SPEC = (fun() -> Excl = [elib_tsid, agent_grant_pg, agent_run_pg, agent_grant_pg_tests, agent_recovery_pg_tests, agent_run_pg_tests, agent_tool_authorizer_pg_tests, cs_pg_widget, cs_seat_console_pg_tests, imboy_hird_acceptance_tests, imboy_hird_replay_offline_tests, agent_hird_mini_spike_tests, imboy_hird_p1_auth_tool_tests, imboy_hird_gates_tests, imboy_hird_p2_replay_tests, imboy_hird_p3_compare_tests, talk_record_cleanup_retry_pg_checks, talk_record_delete_tests, attachment_lifecycle_v5_w403_gateway_protocol_tests, attachment_lifecycle_v5_w403_driver_matrix_tests, attachment_ordinary_http_protocol_tests, eb_asset_frozen_storage_protocol_tests, enterprise_asset_driver_pg_tests, attachment_pending_location_pg_tests, message_result_pg_tests, group_schedule_remind_pg_tests], Mods = lists:append([$1]), [talk_record_owned_eunit_fixture:entry(M) || M <- Mods, not lists:member(M, Excl)] end)()
 endif
 
 # BUILD-00R 后端物理裁剪接线：生成器按 manifest 产出未被选中 feature 的专属

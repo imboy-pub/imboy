@@ -11,6 +11,7 @@
 -export([delete_timeline/2]).
 -export([list_by_uid/2, list_by_uid/3]).
 -export([list_by_uid_since/4, list_by_uid_after/4, count_pending_after/2]).
+-export([list_by_uid_after_seq/4, count_after_seq/3]).
 -export([count_pending_by_uid/2]).
 -export([count_unread_by_uid/2]).
 -export([check_msg/1]).
@@ -68,6 +69,42 @@ count_pending_after(Uid, {At, Id}) ->
         {ok, [#{<<"count">> := Count}]} -> Count;
         {error, Reason} -> error({offline_count_failed, Reason})
     end.
+
+%% R01：单群 conv_seq 游标读取——服务端投递进度基于权威接受顺序，
+%% 与客户端 created_at 无关。授权谓词（成员代际 + 读取资格）与
+%% authorized_pending_sql 完全一致，仅排序键换 conv_seq。
+-spec list_by_uid_after_seq(integer(), binary(), integer(), {integer(), integer()}) ->
+    {ok, list(map())} | {error, term()}.
+list_by_uid_after_seq(Uid, Column, Limit, {Gid, Seq}) ->
+    Where = <<" AND tl.to_gid = $2 AND tl.conv_seq > $3">>,
+    Sql = authorized_pending_seq_sql(tablename(), Column, Where, <<"4">>),
+    elib_pg:query(Sql, [Uid, Gid, Seq, Limit]).
+
+-spec count_after_seq(integer(), integer(), integer()) -> non_neg_integer().
+count_after_seq(Uid, Gid, Seq) ->
+    Where = <<" AND tl.to_gid = $2 AND tl.conv_seq > $3">>,
+    Sql = authorized_pending_seq_sql(tablename(), <<"count(*) AS count">>, Where, undefined),
+    case elib_pg:query(Sql, [Uid, Gid, Seq]) of
+        {ok, [#{<<"count">> := Count}]} when is_integer(Count) -> Count;
+        _ -> 0
+    end.
+
+%% 与 authorized_pending_sql 同谓词；ORDER BY 换权威 seq 序（同群内 msg_id 决胜）。
+authorized_pending_seq_sql(Tb, Column, Where, LimitParam) ->
+    Entitlement = micro_community_access_repo:predicate_sql(<<"grp.id">>, <<"tl.to_uid">>),
+    LimitSql =
+        case LimitParam of
+            undefined -> <<>>;
+            _ -> <<" ORDER BY tl.conv_seq ASC, tl.msg_id ASC LIMIT $", LimitParam/binary>>
+        end,
+    <<"SELECT ", Column/binary, " FROM ", Tb/binary, " tl ",
+        "JOIN public.\"group\" grp ON grp.id = tl.to_gid AND grp.status = 1 ",
+        "JOIN public.group_member gm ON gm.group_id = tl.to_gid ",
+        "AND gm.user_id = tl.to_uid AND gm.status = 1 ",
+        "JOIN public.group_member_generation gmg ON gmg.group_id = tl.to_gid ",
+        "AND gmg.user_id = tl.to_uid AND gmg.end_seq IS NULL ", "WHERE tl.to_uid = $1 ",
+        "AND tl.conv_seq IS NOT NULL AND tl.conv_seq >= gmg.start_seq AND ", Entitlement/binary,
+        Where/binary, LimitSql/binary>>.
 
 -spec count_pending_by_uid(integer(), undefined | binary()) -> non_neg_integer().
 count_pending_by_uid(Uid, Since) ->
