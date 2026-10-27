@@ -92,7 +92,7 @@ def main():
         fail("runner source has no parsable MUTATIONS list")
     source_mutations = re.findall(r'\(\s*"([^"]+)"', block.group(1))
     par_start = source.find("def _parallel_selftests")
-    par_end = source.find("def _holder_hang_selftest")
+    par_end = source.find("def _scenario_selftests")
     if par_start < 0 or par_end <= par_start:
         fail("runner source has no parsable _parallel_selftests block")
     declared_parallel = re.findall(r'record\("([^"]+)"', source[par_start:par_end])

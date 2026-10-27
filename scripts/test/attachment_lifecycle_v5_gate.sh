@@ -294,6 +294,30 @@ bootstrap_w002_history() {
   grep -c OBSERVED "$cdir/raw.log" | grep -q '^3$' || { echo 'PROBES_MISSING' >> "$cdir/raw.log"; return 30; }
   grep -q '^ 0$\|0$' "$cdir/raw.log" || true
   grep -qE 'remaining_synthetic_rows' "$cdir/raw.log" || { echo 'ROLLBACK_PROBE_MISSING' >> "$cdir/raw.log"; return 30; }
+  # Static per-class classification derived from the frozen contract itself:
+  # each history class must be bound to its W3-01/W6 enforcement leaves.
+  python3 - "$ROOT/docs/architecture/attachment-lifecycle-v5/execution-contract.json" \
+    "$cdir/static-history-matrix.json" <<'PYMX' || return 30
+import json, sys
+contract = json.load(open(sys.argv[1]))
+mx = contract.get("expected_leaf_matrix", {})
+w3 = mx.get("W3-01/history-unknown", [])
+w6 = [l for cid, ls in mx.items() if cid.startswith("W6") for l in ls]
+classes = []
+for cls in ("unknown_location", "opaque_reference", "ambiguous_reference"):
+    w3h = [l for l in w3 if l.get("ordering_or_fault") == cls]
+    w6h = [l for l in w6 if l.get("ordering_or_fault") == cls]
+    if not w3h and not w6h:
+        sys.exit(1)
+    classes.append({"history_class": cls,
+        "protection": ("classified protected: historical ciphertext/location stays undeletable; "
+                       "frozen contract binds %d W3-01/history-unknown leaf(ves) and %d W6 driver leaf(ves) that enforce refusal"
+                       % (len(w3h), len(w6h))),
+        "enforcement": "W3-01/history-unknown" + (" + W6 real-driver matrix" if w6h else "")})
+json.dump({"kind": "w0-02-history-unknown-static-matrix",
+           "source": "frozen execution-contract.json expected_leaf_matrix",
+           "classes": classes}, open(sys.argv[2], "w"), ensure_ascii=False, indent=1)
+PYMX
 }
 
 # ---------------- W2-02 executors ----------------
