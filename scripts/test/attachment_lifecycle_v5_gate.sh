@@ -454,6 +454,10 @@ w402_case() { # $1 cdir — worker 协议 + purged-recovery + 队列 fn 重跑
 w403_case() { # $1 cdir
   local cdir="$1" RC=0 try rc
   mkdir -p "$cdir"
+  # Disk fixtures must live inside the run-owned root registered at admission,
+  # never in a shared /tmp tree; the suites read V5_DISK_ROOT for their root.
+  export V5_DISK_ROOT="${V5_DISK_ROOT:-$RUN_DIR/resources/disk-roots}"
+  mkdir -p "$V5_DISK_ROOT" || return 75
   local PZ="" d
   for d in deps/*/ebin; do [ -d "$d" ] && PZ="$PZ -pz $PWD/$d"; done
   ln -sfn . imboy
