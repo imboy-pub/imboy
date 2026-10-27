@@ -142,6 +142,7 @@ get_routes() ->
                 {"/api/v1/msg/reaction/add", msg_handler, #{action => reaction_add}},
                 {"/api/v1/msg/reaction/remove", msg_handler, #{action => reaction_remove}},
                 {"/api/v1/msg/reaction/list", msg_handler, #{action => reaction_list}},
+                {"/api/v1/msg", msg_handler, #{action => history_backfill}},
                 {"/api/v1/msg/history", msg_handler, #{action => history}},
                 {"/api/v1/msg/result", msg_handler, #{action => message_result}},
 

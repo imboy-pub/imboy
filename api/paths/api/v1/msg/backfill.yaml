@@ -1,0 +1,87 @@
+get:
+  tags: [msg]
+  summary: 有界补扫会话历史，恢复过冲游标遗漏的晚到消息
+  operationId: getMsgHistoryBackfill
+  x-handler: msg_handler
+  x-action: history_backfill
+  security:
+  - bearerAuth: []
+  description: |
+    Flutter API.msgBackfill 的真实路径 GET /api/v1/msg。imboy_router 将 handler state
+    固定为 action=history_backfill，msg_handler:dispatch_rest_action 调用 history_backfill/2。
+    客户端既有 action=history_backfill query 可继续传入；省略也命中同一 action，
+    不引入新 query 分派协议。/api/v1/msg/history 仍固定为 history。
+    沿用 /api/v1/* 的现有客户端认证及 Access JWT 门；本路径不在 open()/option() 白名单。
+    C2C 由 JWT 用户和 peer_id 确定会话，不能指定他人的 conv_key；C2G 必须属于当前 open
+    成员历史代次，after_seq 钳制到 start_seq-1；did 只过滤 per-device 信封，不授予访问权限。
+    after_seq 必须非负；limit 默认 50，夹紧到 1..100。扫描窗口为授权下界钳制后的
+    (after_seq, min(safe_head, after_seq+1000)]，SQL 上界+limit+1，最多返回 limit 行；
+    无剩余行时 next_seq 推进窗口终点，已过终点的游标不回退；has_more 表示未扫描到 safe_head。
+    range_limit=1000 是单次扫描上限，不是总历史长度硬拒绝；safe_head=0 也是合法边界。
+    无 target_seq、safe_head 或 range_limit query。设备过滤后的空页仍可能需要继续补扫。
+    按账号/会话隔离恢复进度，从本地确认的补扫起点重扫，按 msg_id 去重落库成功后保存 next_seq。
+    未知 accepted_at 保持 null，不以当前时间或固定时差补造。
+    业务错误使用 HTTP 200 + 非零 code：400 参数错误（含负 after_seq）；403 无群历史权限；
+    500 历史存储未启用或归档查询失败。认证中间件可提前拒绝，见 401。
+    Existing Flutter path, required JWT authentication and bounded backfill; no new query protocol.
+  parameters:
+  - in: query
+    name: action
+    required: false
+    schema:
+      type: string
+      enum:
+      - history_backfill
+    description: 兼容 Flutter 已传的 action=history_backfill；路由固定 handler action，省略仍补扫，不按 query 切换。 / Existing
+      optional client field, not a query dispatcher.
+  - in: query
+    name: chat_type
+    required: true
+    schema:
+      type: string
+      enum:
+      - c2c
+      - c2g
+    description: 会话类别 / Conversation kind
+  - in: query
+    name: peer_id
+    required: true
+    schema:
+      type: string
+      minLength: 1
+    description: 目标用户 UID（C2C）或群 ID（C2G）；仅接受正十进制整数，最大 9223372036854775807。兼容 +9/0009；小数、垃圾值和越界值返回业务 400，不访问归档或群授权。
+      / Positive int64 decimal, including compatible +9/0009 forms.
+  - in: query
+    name: after_seq
+    required: false
+    schema:
+      type: integer
+      format: int64
+      minimum: 0
+      default: 0
+    description: 排他 conv_seq 下界，首次为 0。 / Exclusive sequence lower bound.
+  - in: query
+    name: limit
+    required: false
+    schema:
+      type: integer
+      minimum: 1
+      maximum: 100
+      default: 50
+    description: 服务端将传入值夹紧为 1..100（0/负数归为 1，超过 100 归为 100）；设备过滤后实际返回数可能更少。 / Clamped to 1..100 before device
+      filtering.
+  - in: query
+    name: did
+    required: false
+    schema:
+      type: string
+    description: 用于 per-device 接收信封过滤的设备 ID；不替代 JWT 身份。 / Optional device fan-out filter, not authorization.
+  responses:
+    '200':
+      $ref: ../../../../components/responses/HistoryBackfill.yaml
+    '401':
+      description: JWT、设备会话或客户端认证失败。 / Authentication rejected.
+      content:
+        application/json:
+          schema:
+            $ref: ../../../../components/schemas/Envelope.yaml

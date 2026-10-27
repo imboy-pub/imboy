@@ -1,0 +1,33 @@
+type: object
+description: |
+  GET /api/v1/msg 的 history_backfill 补扫载荷。每次在授权下界钳制后的
+  (after_seq, min(safe_head, after_seq + range_limit)] 内按 conv_seq 升序扫描。
+  range_limit=1000 是单次扫描的序号跨度上限，不是会话历史长度硬限制。
+  SQL 上界限制在该窗口内，并以 limit+1 判断是否还有扫描行；最多返回 limit 条。
+  窗口内没有剩余行时 next_seq 推进到窗口终点，否则为本页最后扫描行的序号；
+  已过终点的游标不回退。设备过滤可能令 messages 为空，不能据此停止补扫。
+  has_more 表示尚未扫描到 safe_head，而非 messages 已取满；safe_head=0 合法。
+  按账号/会话隔离本地恢复进度，持久化成功后使用 next_seq 续扫，按 msg_id 去重。
+  Bounded scan progress, independent of delivered message count; no target_seq parameter.
+properties:
+  messages:
+    type: array
+    items:
+      $ref: ArchivedMessage.yaml
+  next_seq:
+    type: integer
+    format: int64
+    minimum: 0
+    description: 扫描恢复位置；不按设备过滤后的消息数推导。 / Resume cursor after scanning.
+  has_more:
+    type: boolean
+    description: 当前扫描位置仍小于本次快照的 safe_head。 / More sequence windows remain.
+  conv_key:
+    type: string
+    description: JWT 用户参与的 C2C 会话或已授权 C2G 会话键。 / Authorized conversation key.
+  range_limit:
+    type: integer
+    const: 1000
+    description: 单次扫描最多覆盖的 conv_seq 跨度，不是 limit 或可请求的 query 参数。 / Per-call scan span.
+required: [messages, next_seq, has_more, conv_key, range_limit]
+additionalProperties: false

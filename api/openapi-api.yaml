@@ -180,6 +180,7 @@ paths:
   /api/v1/friend/category/add: { $ref: './paths/api/v1/friend-category/add.yaml' }
   /api/v1/friend/category/delete: { $ref: './paths/api/v1/friend-category/delete.yaml' }
   /api/v1/friend/category/rename: { $ref: './paths/api/v1/friend-category/rename.yaml' }
+  /api/v1/msg: { $ref: './paths/api/v1/msg/backfill.yaml' }
   /api/v1/msg/history: { $ref: './paths/api/v1/msg/history.yaml' }
   /api/v1/msg/result: { $ref: './paths/api/v1/msg/result.yaml' }
   /api/v1/msg/offline: { $ref: './paths/api/v1/msg/offline.yaml' }
@@ -719,6 +720,8 @@ components:
       description: |
         JWT 载荷 `sub` 为 TSID integer 字符串；刷新入口为 `/api/v1/refreshtoken`。
 
+  responses:
+    HistoryBackfill: {$ref: './components/responses/HistoryBackfill.yaml'}
   schemas:
     MicroCommunityEntityId:
       $ref: './components/schemas/MicroCommunityEntityId.yaml'

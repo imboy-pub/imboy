@@ -195,7 +195,7 @@ history(Req0, State) ->
             DID = proplists:get_value(<<"did">>, Qs, <<>>),
             case messaging_logic:history(CurrentUid, ChatType, PeerIdEnc, AfterSeq, Limit, DID) of
                 {ok, Payload} ->
-                    elib_response:success(Req0, Payload);
+                    history_success(Req0, Payload);
                 {error, Reason, Code} ->
                     elib_response:error(Req0, Reason, Code)
             end
@@ -206,7 +206,7 @@ history(Req0, State) ->
 %% GET /v1/msg?...&action=history_backfill&chat_type=c2c&peer_id=xxx&after_seq=0&limit=50
 %%
 %% 扫描 (after_seq, safe_head] 内已归档行（晚到低序号在其中），终点=safe_head、
-%% 批次=limit、恢复位置=响应 next_seq；范围跨度受服务端 range_limit 约束。
+%% 批次=limit、恢复位置=响应 next_seq；每次扫描窗口受服务端 range_limit 约束。
 -spec history_backfill(cowboy_req:req(), map()) -> cowboy_req:req().
 history_backfill(Req0, State) ->
     case maps:get(current_uid, State, undefined) of
@@ -243,10 +243,23 @@ history_backfill_do(Req0, CurrentUid, Qs, ChatType, PeerIdEnc, AfterSeq) ->
         )
     of
         {ok, Payload} ->
-            elib_response:success(Req0, Payload);
+            history_success(Req0, Payload);
         {error, Reason, Code} ->
             elib_response:error(Req0, Reason, Code)
     end.
+
+history_success(Req, #{<<"messages">> := Messages} = Payload) ->
+    WireMessages = [
+        (elib_cnv:convert_at_timestamps(maps:remove(<<"accepted_at">>, Message)))#{
+            <<"accepted_at">> =>
+                case maps:get(<<"accepted_at">>, Message, null) of
+                    null -> null;
+                    AcceptedAt -> elib_dt:rfc3339_to(AcceptedAt)
+                end
+        }
+     || Message <- Messages
+    ],
+    elib_response:success_rfc3339(Req, Payload#{<<"messages">> => WireMessages}).
 
 %% Read only an original sender's persisted acceptance result.
 message_result(Req0, State) ->

@@ -309,7 +309,7 @@ history(CurrentUid, ChatType, PeerIdEnc, AfterSeq, Limit, DID) ->
 %%
 %% 对修复前已保存过大 next_seq（过冲）的客户端：在 (AfterSeq, SafeHead]
 %% 显式重扫已归档行（晚到的低序号在其中），按 msg_id 去重由调用方负责、
-%% 范围跨度受 backfill_range_limit() 约束、批次 = Limit、终点 = SafeHead、
+%% 每次扫描跨度受 backfill_range_limit() 约束、批次 = Limit、终点 = SafeHead、
 %% 恢复位置 = 返回 next_seq（has_more 时以 next_seq 续扫，直至 >= safe_head）。
 %% 遵守与 history 相同的授权（群代际下界）与 DID 信封过滤。
 %%-------------------------------------------------------------------
@@ -330,8 +330,6 @@ history_backfill(CurrentUid, ChatType, PeerIdEnc, AfterSeq, Limit, DID) ->
                         history_payload(Messages, NextSeq, HasMore, ConvKey, #{
                             <<"range_limit">> => msg_archive_repo:backfill_range_limit()
                         })};
-                {error, backfill_range_exceeded} ->
-                    {error, <<"补扫范围超限，请分批推进"/utf8>>, ?ERR_BAD_REQUEST};
                 {error, Reason} ->
                     history_unavailable(Reason)
             end

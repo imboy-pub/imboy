@@ -453,7 +453,7 @@ backfill_zero_after_seq_passes_through_test_() ->
                 end}
             ]},
             {elib_response, [
-                {'success', 2, fun(_Req, _Payload) -> req_backfill_ok end}
+                {'success_rfc3339', 2, fun(_Req, _Payload) -> req_backfill_ok end}
             ]}
         ],
         fun() ->
@@ -491,7 +491,7 @@ history_limit_clamp_case(InputLimit, ExpectedLimit) ->
                 end}
             ]},
             {elib_response, [
-                {'success', 2, fun(_Req, _Payload) -> req_history_ok end}
+                {'success_rfc3339', 2, fun(_Req, _Payload) -> req_history_ok end}
             ]}
         ],
         fun() ->

@@ -233,6 +233,8 @@ paths:
     $ref: './paths/api/v1/friend-category/delete.yaml'
   /api/v1/friend/category/rename:
     $ref: './paths/api/v1/friend-category/rename.yaml'
+  /api/v1/msg:
+    $ref: './paths/api/v1/msg/backfill.yaml'
   /api/v1/msg/history:
     $ref: './paths/api/v1/msg/history.yaml'
   /api/v1/msg/result:
@@ -2033,6 +2035,9 @@ components:
       in: header
       name: X-Imboy-Signature
       description: sha256=<64位小写hex>；原文见 README §3。
+  responses:
+    HistoryBackfill:
+      $ref: ./components/responses/HistoryBackfill.yaml
   schemas:
     MicroCommunityEntityId:
       $ref: ./components/schemas/MicroCommunityEntityId.yaml

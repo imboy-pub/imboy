@@ -184,6 +184,39 @@ r17_year_boundary_and_leap_year_test_() ->
         ?assertEqual(<<"2024-02-26">>, binary:part(Until2, 0, 10))
     end).
 
+r17_new_york_dst_weeks_test_() ->
+    case os:getenv("TZ") of
+        "America/New_York" ->
+            [
+                {"spring DST week spans 167 hours", fun() ->
+                    assert_dst_week(
+                        {{2026, 3, 9}, {9, 0, 0}},
+                        "2026-03-02T05:00:00Z",
+                        "2026-03-09T04:00:00Z",
+                        167
+                    )
+                end},
+                {"autumn DST week spans 169 hours", fun() ->
+                    assert_dst_week(
+                        {{2026, 11, 2}, {9, 0, 0}},
+                        "2026-10-26T04:00:00Z",
+                        "2026-11-02T05:00:00Z",
+                        169
+                    )
+                end}
+            ];
+        _ ->
+            []
+    end.
+
+assert_dst_week(Reference, ExpectedSince, ExpectedUntil, ExpectedHours) ->
+    {Since, Until} = ops_report_logic:last_week_range(Reference),
+    SinceSeconds = calendar:rfc3339_to_system_time(binary_to_list(Since), [{unit, second}]),
+    UntilSeconds = calendar:rfc3339_to_system_time(binary_to_list(Until), [{unit, second}]),
+    ?assertEqual(calendar:rfc3339_to_system_time(ExpectedSince, [{unit, second}]), SinceSeconds),
+    ?assertEqual(calendar:rfc3339_to_system_time(ExpectedUntil, [{unit, second}]), UntilSeconds),
+    ?assertEqual(ExpectedHours * 3600, UntilSeconds - SinceSeconds).
+
 %% R17-4：窗口两端对齐 00:00:00、since < until、恒差 7 天（[start,end) 半开）；
 %%         SQL 侧半开区间（>= $1 AND < $2）由 ops_report_repo 保证
 r17_midnight_aligned_half_open_test_() ->

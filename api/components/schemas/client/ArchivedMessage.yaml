@@ -67,6 +67,12 @@ properties:
     - 'null'
     format: int64
     description: Unix 毫秒；经 elib_response:success 的时间转换。 / Unix milliseconds.
+  accepted_at:
+    type:
+    - integer
+    - 'null'
+    format: int64
+    description: 服务端首次接受消息的事实时间，REST 按 D04 输出 Unix 毫秒整数；不接受 RFC3339 字符串。字段必填，旧行无可信来源时保持 null，不以 created_at、server_ts 或当前时间补造。 / Required first server acceptance instant in Unix milliseconds (int64), nullable for unknown legacy rows; RFC3339 strings are invalid.
 additionalProperties: false
 required:
 - msg_id
@@ -79,9 +85,10 @@ required:
 - payload
 - created_at
 - server_ts
+- accepted_at
 description: 历史消息行：msg_archive_repo 查询列经 messaging_logic:encode_history_msg 处理，JSONB 解码，from/to/group_id 转字符串，时间字段最终转毫秒。C2C
   有 to；C2G 用 group_id，通常不输出 to。没有实时帧 id/type/ver，也没有独立顶层 ciphertext。 / Archived row projection, distinct from realtime
-  and offline rows.
+  and offline rows. accepted_at 按 D04 保持 nullable int64 Unix 毫秒，与既有 REST 时间信封合同一致。
 oneOf:
 - properties:
     chat_type:
