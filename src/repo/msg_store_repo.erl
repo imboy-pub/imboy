@@ -25,6 +25,8 @@
 -export([stage/10]).
 -export([stage/11, stage_with_sequence/11]).
 -export([stage_schedule_remind_tx/5]).
+%% W04.b（channel-group-ux v2.2 §6.4）：创建受理通知的同事务 s2c 入队入口。
+-export([stage_s2c_tx/7]).
 -export([stage/12]).
 -export([stage_with_sequence/12]).
 %% R05-A：带自毁绝对期限的 staging 入口。
@@ -1239,7 +1241,38 @@ stage_schedule_remind_tx(Conn, MsgId, ToId, Payload, CreatedAt) ->
         {error, _} = Error -> Error
     end.
 
--spec allocate_c2g_seq(pid(), binary()) -> pos_integer().
+%% W04.b（channel-group-ux v2.2 §6.4）：群/频道创建受理的持久 s2c 通知在
+%% 受理事务内 staging（提交前无任何对外可见投递）；提交后的 kick/drain
+%% 与在线 send_next 由调用方（msg_s2c_ds:send_tx）经 elib_pg:after_commit
+%% 注册，镜像 stage_schedule_remind_tx 的链路分工。MsgId 由调用方按
+%% 逻辑效果身份确定性派生——staging UNIQUE(type,msg_id) 使同效果的意外
+%% 重复入队以 23505 中止而非重复投递（J23.c 固定消息身份）。
+-spec stage_s2c_tx(
+    pid(), binary(), binary(), binary() | map(), integer(), integer(), binary()
+) ->
+    {ok, integer()} | {error, term()}.
+stage_s2c_tx(Conn, MsgId, Action, Payload, FromId, ToId, CreatedAt) ->
+    Row = single_staging_row(
+        <<"s2c">>,
+        MsgId,
+        <<>>,
+        Action,
+        null,
+        jsone:encode(Payload, [native_utf8]),
+        FromId,
+        ToId,
+        CreatedAt,
+        CreatedAt,
+        <<>>,
+        elib_dt:to_rfc3339(elib_dt:millisecond(), millisecond, "Z"),
+        null
+    ),
+    {Sql, Params} = elib_pg_sql:insert(tablename(), Row),
+    case elib_pg:execute_count(Conn, Sql, Params) of
+        {ok, 1} -> {ok, maps:get(id, Row)};
+        {ok, Count} -> {error, {unexpected_staging_count, Count}};
+        {error, _} = Error -> Error
+    end.
 allocate_c2g_seq(Conn, ConvKey) ->
     try epgsql:equery(Conn, stage_conv_seq_sql(), [ConvKey]) of
         {ok, _, _, [{Seq}]} when is_integer(Seq), Seq >= 1 ->

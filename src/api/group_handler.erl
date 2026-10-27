@@ -1,5 +1,13 @@
 -module(group_handler).
--dialyzer({nowarn_function, [add/2, payload_list_key/1]}).
+-dialyzer(
+    {nowarn_function, [
+        add/2,
+        payload_list_key/1,
+        receipt_request_id/1,
+        recover_only_flag/1,
+        respond_group_add_receipt/4
+    ]}
+).
 %% Thin HTTP adapter for the core group_collab boundary.
 %% Keep transport parsing here and route domain work through group_logic.
 
@@ -11,6 +19,8 @@
 -export([handle_action/3]).
 
 -include("log.hrl").
+%% W04.b（channel-group-ux v2.2 §6.4）：创建受理稳定错误符号。
+-include("error_code.hrl").
 
 %% ===================================================================
 %% API
@@ -239,43 +249,171 @@ add(Req0, State) ->
                 end,
             Scope = maps:get(<<"scope">>, PostVals, <<"personal">>),
             WorkspaceId = elib_cnv:safe_to_integer(maps:get(<<"workspace_id">>, PostVals, 0)),
-            case group_logic:add(Count, Uid, Type, MemberUids2, {Scope, WorkspaceId}) of
-                {ok, Gid} ->
-                    case group_logic:find_by_id(Gid, <<"*">>) of
-                        {error, Reason} ->
-                            elib_response:error(Req0, Reason);
-                        GData ->
-                            GData3 = group_logic:group_transfer(GData),
-                            case group_member_logic:list_member(Gid) of
-                                {error, Reason2} ->
-                                    elib_response:error(Req0, Reason2);
-                                {ok, MemberList} ->
-                                    elib_response:success(
-                                        Req0,
-                                        #{
-                                            group => GData3,
-                                            member_list =>
-                                                group_member_transfer:member_list(MemberList)
-                                        },
-                                        "success."
-                                    )
-                            end
+            %% W04.b（channel-group-ux v2.2 §6.4 C1）：携带非空 request_id 的
+            %% 请求走受理合同（占位/重放/recover_only）；缺失或空串走旧路径，
+            %% 行为零变化（回归红线）。绝不剥离客户端已携带的键。
+            case receipt_request_id(PostVals) of
+                <<>> ->
+                    case group_logic:add(Count, Uid, Type, MemberUids2, {Scope, WorkspaceId}) of
+                        {ok, Gid} ->
+                            case group_logic:find_by_id(Gid, <<"*">>) of
+                                {error, Reason} ->
+                                    elib_response:error(Req0, Reason);
+                                GData ->
+                                    GData3 = group_logic:group_transfer(GData),
+                                    case group_member_logic:list_member(Gid) of
+                                        {error, Reason2} ->
+                                            elib_response:error(Req0, Reason2);
+                                        {ok, MemberList} ->
+                                            elib_response:success(
+                                                Req0,
+                                                #{
+                                                    group => GData3,
+                                                    member_list =>
+                                                        group_member_transfer:member_list(
+                                                            MemberList
+                                                        )
+                                                },
+                                                "success."
+                                            )
+                                    end
+                            end;
+                        {error, {Code, Msg}} ->
+                            %% T5：scope 校验错误（400/403/409）带稳定错误码
+                            elib_response:error(Req0, Msg, Code);
+                        {error, Msg} ->
+                            elib_response:error(Req0, Msg);
+                        %% 兜底：with_tx reraise 的 throw 形态 {error, throw, Reason}
+                        %% 不让 handler crash，统一转成可读错误返回前端。
+                        {error, throw, ThrowReason} ->
+                            ?ERROR_LOG([group_add_handler_throw, Uid, ThrowReason]),
+                            elib_response:error(Req0, <<"群创建失败，请稍后重试"/utf8>>);
+                        Unexpected ->
+                            ?ERROR_LOG([group_add_handler_unexpected, Uid, Unexpected]),
+                            elib_response:error(Req0, <<"群创建失败，请稍后重试"/utf8>>)
                     end;
-                {error, {Code, Msg}} ->
-                    %% T5：scope 校验错误（400/403/409）带稳定错误码
-                    elib_response:error(Req0, Msg, Code);
-                {error, Msg} ->
-                    elib_response:error(Req0, Msg);
-                %% 兜底：with_tx reraise 的 throw 形态 {error, throw, Reason}
-                %% 不让 handler crash，统一转成可读错误返回前端。
-                {error, throw, ThrowReason} ->
-                    ?ERROR_LOG([group_add_handler_throw, Uid, ThrowReason]),
-                    elib_response:error(Req0, <<"群创建失败，请稍后重试"/utf8>>);
-                Unexpected ->
-                    ?ERROR_LOG([group_add_handler_unexpected, Uid, Unexpected]),
-                    elib_response:error(Req0, <<"群创建失败，请稍后重试"/utf8>>)
+                RequestId ->
+                    Title = elib_cnv:safe_to_binary(maps:get(<<"title">>, PostVals, <<>>)),
+                    RecoverOnly = recover_only_flag(PostVals),
+                    respond_group_add_receipt(
+                        Req0,
+                        Uid,
+                        RequestId,
+                        group_logic:add_with_receipt(
+                            Count,
+                            Uid,
+                            Type,
+                            MemberUids2,
+                            {Scope, WorkspaceId},
+                            RequestId,
+                            Title,
+                            RecoverOnly
+                        )
+                    )
             end
     end.
+
+%% ===================================================================
+%% W04.b（channel-group-ux v2.2 §6.4 C1）：创建受理合同响应
+%% ===================================================================
+
+%% request_id 解析：非空二进制视为新合同意图；缺失/空串走旧路径。
+-spec receipt_request_id(map()) -> binary().
+receipt_request_id(PostVals) when is_map(PostVals) ->
+    Raw =
+        case maps:get(<<"request_id">>, PostVals, <<>>) of
+            Bin when is_binary(Bin) -> Bin;
+            Other -> elib_cnv:safe_to_binary(Other)
+        end,
+    elib_str:trunc(string:trim(Raw), 128);
+receipt_request_id(_) ->
+    <<>>.
+
+%% recover_only 只查标志（§6.4：>=24h 的未知意图绝不创建，只查）。
+-spec recover_only_flag(map()) -> boolean().
+recover_only_flag(PostVals) when is_map(PostVals) ->
+    case maps:get(<<"recover_only">>, PostVals, false) of
+        true -> true;
+        <<"true">> -> true;
+        1 -> true;
+        <<"1">> -> true;
+        _ -> false
+    end;
+recover_only_flag(_) ->
+    false.
+
+%% 受理结果 → HTTP 响应：成功附 request_id/creation_state 增量字段；
+%% 四个稳定错误符号分开（§6.4），错误 envelope payload 携带核对元信息
+%%（request_id，可达时附 gid），不泄露名称/成员。
+-spec respond_group_add_receipt(cowboy_req:req(), integer(), binary(), term()) ->
+    cowboy_req:req().
+respond_group_add_receipt(Req0, _Uid, RequestId, {ok, Gid, CreationState}) ->
+    case group_logic:find_by_id(Gid, <<"*">>) of
+        {error, Reason} ->
+            elib_response:error(Req0, Reason);
+        GData ->
+            GData3 = group_logic:group_transfer(GData),
+            case group_member_logic:list_member(Gid) of
+                {error, Reason2} ->
+                    elib_response:error(Req0, Reason2);
+                {ok, MemberList} ->
+                    elib_response:success(
+                        Req0,
+                        #{
+                            group => GData3,
+                            member_list => group_member_transfer:member_list(MemberList),
+                            request_id => RequestId,
+                            creation_state => CreationState
+                        },
+                        "success."
+                    )
+            end
+    end;
+respond_group_add_receipt(Req0, _Uid, RequestId, {error, request_id_conflict}) ->
+    elib_response:error_with_status(
+        Req0,
+        409,
+        <<"request_id_conflict：同一 request_id 已绑定不同的创建内容"/utf8>>,
+        #{<<"request_id">> => RequestId},
+        ?ERR_CREATE_REQUEST_ID_CONFLICT
+    );
+respond_group_add_receipt(Req0, _Uid, RequestId, {error, create_not_accepted}) ->
+    %% 仅表示查询时未见已提交受理，不证明在途请求不会迟到（§6.4）。
+    elib_response:error_with_status(
+        Req0,
+        404,
+        <<"create_not_accepted：查询时未见该 request_id 的受理记录"/utf8>>,
+        #{<<"request_id">> => RequestId},
+        ?ERR_CREATE_NOT_ACCEPTED
+    );
+respond_group_add_receipt(Req0, _Uid, RequestId, {error, {create_recovery_expired, Gid}}) ->
+    elib_response:error_with_status(
+        Req0,
+        410,
+        <<"create_recovery_expired：受理结果已超过7天保留窗口，仅可用于核对"/utf8>>,
+        #{<<"request_id">> => RequestId, <<"gid">> => Gid},
+        ?ERR_CREATE_RECOVERY_EXPIRED
+    );
+respond_group_add_receipt(Req0, _Uid, RequestId, {error, {create_resource_unavailable, Gid}}) ->
+    Payload =
+        case is_integer(Gid) andalso Gid > 0 of
+            true -> #{<<"request_id">> => RequestId, <<"gid">> => Gid};
+            false -> #{<<"request_id">> => RequestId}
+        end,
+    elib_response:error_with_status(
+        Req0,
+        409,
+        <<"create_resource_unavailable：该创建结果当前不可用"/utf8>>,
+        Payload,
+        ?ERR_CREATE_RESOURCE_UNAVAILABLE
+    );
+respond_group_add_receipt(Req0, _Uid, _RequestId, {error, {Code, Msg}}) ->
+    elib_response:error(Req0, Msg, Code);
+respond_group_add_receipt(Req0, _Uid, _RequestId, {error, Msg}) when is_binary(Msg) ->
+    elib_response:error(Req0, Msg);
+respond_group_add_receipt(Req0, Uid, RequestId, Unexpected) ->
+    ?ERROR_LOG([group_add_receipt_unexpected, Uid, RequestId, Unexpected]),
+    elib_response:error(Req0, <<"群创建失败，请稍后重试"/utf8>>).
 
 %% @doc 编辑群组信息
 %% 修改群组的标题、头像、简介等信息

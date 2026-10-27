@@ -618,6 +618,11 @@ do_dissolve(Uid, Gid, G, Authz) ->
             Sql2 = <<"DELETE FROM ", Tb2/binary, " WHERE group_id = $1">>,
             {ok, _} = elib_pg:execute(Conn, Sql2, [Gid]),
 
+            %% W04.b（channel-group-ux v2.2 §6.4/J24.b）：同事务置位创建回执
+            %% 删除标识——同键重放不泄露内容、不复活对象；receipt 保留已受理
+            %% 事实（不把错误改为首次创建）。无回执行时为合法 no-op。
+            ok = mark_create_receipts_deleted(Conn, Gid),
+
             %% 事务成功后按本快照直发解散通知（接收者列表提交给外层 case）
             {ok, [maps:get(<<"user_id">>, V) || V <- MemberRows]}
         end)
@@ -652,6 +657,19 @@ do_dissolve(Uid, Gid, G, Authz) ->
         Err ->
             ?ERROR_LOG([dissolve_group_tx_failed, Gid, Uid, Err]),
             {error, <<"解散群组失败"/utf8>>}
+    end.
+
+%% W04.b（channel-group-ux v2.2 §6.4/J24.b）：解散事务内标记该群的创建
+%% 受理回执为已删除。失败即中止事务（与群日志审计同级）；mark_deleted_
+%% by_resource_tx 对无回执行的旧群天然 0 行更新，恒 ok。
+-spec mark_create_receipts_deleted(pid(), integer()) -> ok.
+mark_create_receipts_deleted(Conn, Gid) ->
+    case resource_create_receipt_repo:mark_deleted_by_resource_tx(Conn, <<"create_group">>, Gid) of
+        ok ->
+            ok;
+        {error, Reason} ->
+            ?ERROR_LOG([group_dissolve_receipt_mark_failed, Gid, Reason]),
+            throw({abort_tx, {receipt_mark_deleted_failed, Gid, Reason}})
     end.
 
 %% G3: group_logic 不应直调 group_repo / thin DS wrappers

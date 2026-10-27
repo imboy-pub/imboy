@@ -42,6 +42,10 @@
 -export([list_workspace_groups/2, list_member_workspace_groups/4, list_member_workspace_groups/5]).
 -export([mark_workspace_read/3]).
 
+%% ============ W04.b（channel-group-ux v2.2 §6.4 C1）：带受理回执的群创建 ============
+%% 纯增量入口：不带 request_id 的旧请求继续走 add/5，行为零变化（回归红线）。
+-export([add_with_receipt/8]).
+
 -include("log.hrl").
 -include("group_role.hrl").
 -include("error_code.hrl").
@@ -810,6 +814,350 @@ workspace_add_tx(Uid, Type, MemberUids4, WorkspaceId) ->
             ?ERROR_LOG([workspace_group_create_failed, Uid, WorkspaceId, Reason]),
             {error, <<"群创建失败，请稍后重试"/utf8>>}
     end.
+
+%% ===================================================================
+%% W04.b（channel-group-ux v2.2 §6.4 C1）：带受理回执的群创建与重放
+%% ===================================================================
+
+%% @doc 带受理回执的群创建（新合同入口，仅当请求携带非空 request_id）。
+%%
+%% 身份唯一键 (Uid, create_group, RequestId)。事务序列（§6.4）：advisory
+%% 串行化 → receipt 占位 → 资源（含初始名 title）→ 去重成员/世代 →
+%% receipt 回填（resource_id/server_accepted_at）→ 必要持久通知入队
+%% （msg_s2c_ds:send_tx，提交后投递）。任何一步失败全部回滚（J23.a：
+%% 同键可再次首次受理）；重放（占位命中既有受理）不再执行资源创建与
+%% 通知入队（J23.b/c）。服务端 7d 年龄独立决定完整结果（J24.b）。
+%%
+%% 结果形状（handler 映射稳定错误符号）：
+%%   {ok, Gid, accepted | replayed}                        完整结果（<7d 且资格有效）
+%%   {error, request_id_conflict}                          同键不同规范载荷
+%%   {error, create_not_accepted}                          recover_only 只查未见受理
+%%   {error, {create_recovery_expired, Gid}}               >=7d：仅核对元信息
+%%   {error, {create_resource_unavailable, Gid|undefined}} 删除/撤权：不泄露内容
+%%   {error, {Code, Msg}} / {error, Msg}                   既有校验/系统错误形状
+-spec add_with_receipt(
+    non_neg_integer(),
+    integer(),
+    integer(),
+    [binary()],
+    {binary(), integer()},
+    binary(),
+    binary(),
+    boolean()
+) ->
+    {ok, integer(), accepted | replayed}
+    | {error, request_id_conflict | create_not_accepted | binary()}
+    | {error, {create_recovery_expired | create_resource_unavailable, integer() | undefined}}
+    | {error, {integer(), binary()}}.
+add_with_receipt(
+    _Count, _Uid, _Type, _MemberUids, {Scope, _}, _RequestId, _Title, _RecoverOnly
+) when
+    Scope =/= <<"personal">>, Scope =/= <<"workspace">>
+->
+    {error, {400, <<"scope 仅支持 personal|workspace"/utf8>>}};
+add_with_receipt(
+    _Count, _Uid, _Type, _MemberUids, {<<"workspace">>, WorkspaceId}, _RequestId, _Title, _RO
+) when
+    is_integer(WorkspaceId) =:= false orelse WorkspaceId =< 0
+->
+    {error, {400, <<"scope=workspace 时 workspace_id 必须"/utf8>>}};
+add_with_receipt(Count, Uid, Type, MemberUids, {Scope, WorkspaceId}, RequestId, Title, RecoverOnly) ->
+    case normalize_receipt_payload(Uid, MemberUids, Title) of
+        {error, Reason} ->
+            {error, Reason};
+        {ok, Norm} ->
+            Digest = resource_create_receipt_repo:canonical_group_digest(
+                Norm#{scope => Scope, workspace_id => WorkspaceId}
+            ),
+            case RecoverOnly of
+                true ->
+                    recover_only_lookup(Uid, RequestId, Digest);
+                false ->
+                    case resource_create_receipt_repo:find(Uid, <<"create_group">>, RequestId) of
+                        {ok, Row} ->
+                            replay_receipt(Digest, Row, Uid);
+                        {error, not_found} ->
+                            first_accept_with_receipt(
+                                Count, Uid, Type, Norm, Scope, WorkspaceId, RequestId, Digest
+                            );
+                        {error, Reason} ->
+                            ?ERROR_LOG([group_receipt_find_failed, Uid, RequestId, Reason]),
+                            {error, <<"创建受理查询失败，请稍后重试"/utf8>>}
+                    end
+            end
+    end.
+
+%% 规范化（§6.4 规范形式）：标题 Unicode 原值仅 trim（不大小写/NFKC）、
+%% 长度 <=200 字符；成员沿用既有 add/4 的二进制十进制转换，随后去重、
+%% 移除创建者、升序数字排序——摘要与实际创建共用同一份规范化结果。
+-spec normalize_receipt_payload(integer(), [binary()], binary()) ->
+    {ok, #{title := binary(), members := [integer()]}} | {error, {400, binary()}}.
+normalize_receipt_payload(Uid, MemberUids, Title) ->
+    MemberUids2 =
+        case MemberUids of
+            List when is_list(List) -> List;
+            _ -> []
+        end,
+    Members = lists:usort([
+        U
+     || U <- [ec_cnv:to_integer(Id) || Id <- MemberUids2, is_binary(Id)],
+        U =/= Uid
+    ]),
+    Title2 = string:trim(Title),
+    case string:length(Title2) =< 200 of
+        false ->
+            {error, {400, <<"群名称长度不能超过200个字符"/utf8>>}};
+        true ->
+            {ok, #{title => Title2, members => Members}}
+    end.
+
+%% 首次受理前置校验（与 add/5 同序：scope 合法性 → workspace 资格 → 数量）。
+-spec first_accept_with_receipt(
+    non_neg_integer(),
+    integer(),
+    integer(),
+    map(),
+    binary(),
+    integer(),
+    binary(),
+    binary()
+) ->
+    {ok, integer(), accepted | replayed}
+    | {error, binary()}
+    | {error, {integer(), binary()}}
+    | {error, request_id_conflict | create_not_accepted | binary()}
+    | {error, {create_recovery_expired | create_resource_unavailable, integer() | undefined}}.
+first_accept_with_receipt(
+    Count, _Uid, _Type, _Norm, <<"personal">>, _WsId, _RequestId, _Digest
+) when
+    Count > 100
+->
+    {error, <<"每人最多创建100个群"/utf8>>};
+first_accept_with_receipt(Count, Uid, Type, Norm, <<"workspace">>, WorkspaceId, RequestId, Digest) ->
+    case workspace_logic:ensure_can_create_resource(WorkspaceId, Uid) of
+        {error, {Code, Msg}} ->
+            {error, {Code, Msg}};
+        ok when Count > 100 ->
+            {error, <<"每人最多创建100个群"/utf8>>};
+        ok ->
+            run_first_accept_tx(Uid, Type, Norm, <<"workspace">>, WorkspaceId, RequestId, Digest)
+    end;
+first_accept_with_receipt(_Count, Uid, Type, Norm, <<"personal">>, _WsId, RequestId, Digest) ->
+    run_first_accept_tx(Uid, Type, Norm, <<"personal">>, 0, RequestId, Digest).
+
+%% 首次受理事务：占位 → 资源+初始名 → 成员 → 回填 → 通知入队（同一 Conn）。
+-spec run_first_accept_tx(integer(), integer(), map(), binary(), integer(), binary(), binary()) ->
+    {ok, integer(), accepted | replayed}
+    | {error, binary()}
+    | {error, {integer(), binary()}}
+    | {error, request_id_conflict | create_not_accepted | binary()}
+    | {error, {create_recovery_expired | create_resource_unavailable, integer() | undefined}}.
+run_first_accept_tx(Uid, Type, Norm, Scope, WorkspaceId, RequestId, Digest) ->
+    Now = elib_dt:now(),
+    UserTitle = user_ds:title(Uid),
+    case
+        elib_pg:with_tx(fun(Conn) ->
+            ok = abort_on_receipt_repo_error(
+                resource_create_receipt_repo:serialize_tx(Conn, Uid, <<"create_group">>, RequestId)
+            ),
+            case
+                resource_create_receipt_repo:placeholder_tx(
+                    Conn, Uid, <<"create_group">>, RequestId, Digest
+                )
+            of
+                {ok, inserted, _PlaceholderRow} ->
+                    Gid = create_group_in_receipt_tx(
+                        Conn, Uid, Type, Norm, Scope, WorkspaceId, Now
+                    ),
+                    Members = maps:get(members, Norm),
+                    JoinMode = receipt_join_mode(Scope, Uid, UserTitle),
+                    lists:foreach(
+                        fun(Uid2) -> join_initial_member(Conn, JoinMode, Uid2, Gid) end,
+                        Members
+                    ),
+                    {ok, _Row} = accept_receipt_or_abort(
+                        resource_create_receipt_repo:accept_tx(
+                            Conn, Uid, <<"create_group">>, RequestId, Gid
+                        )
+                    ),
+                    ok = enqueue_receipt_notifications_tx(
+                        Conn, Uid, Gid, <<"create_group">>, RequestId, Members
+                    ),
+                    {ok, Gid};
+                {ok, existing, Row} ->
+                    %% 同键并发前事务已提交：事务内重放，不再创建/入队。
+                    replay_receipt(Digest, Row, Uid);
+                {error, Reason} ->
+                    throw({abort_tx, {receipt_placeholder_failed, Reason}})
+            end
+        end)
+    of
+        {ok, Gid} ->
+            {ok, Gid, accepted};
+        %% 事务内占位命中既有受理（同键并发前事务已提交）：重放结果原样透传。
+        {ok, _Gid, replayed} = Replayed ->
+            Replayed;
+        {error, request_id_conflict} = Conflict ->
+            Conflict;
+        {error, {create_recovery_expired, _}} = Expired ->
+            Expired;
+        {error, {create_resource_unavailable, _}} = Unavailable ->
+            Unavailable;
+        {error, {?ERR_WORKSPACE_ARCHIVED, _Msg}} ->
+            {error, ?ERR_WORKSPACE_ARCHIVED};
+        {error, workspace_membership_required} ->
+            {error, {409, <<"workspace_membership_required：初始成员必须先是该工作区的 active 工作区成员"/utf8>>}};
+        {error, Reason} ->
+            ?ERROR_LOG([group_receipt_create_failed, Uid, RequestId, Reason]),
+            {error, <<"群创建失败，请稍后重试"/utf8>>};
+        {error, throw, ThrowReason} ->
+            ?ERROR_LOG([group_receipt_create_throw, Uid, RequestId, ThrowReason]),
+            {error, <<"群创建失败，请稍后重试"/utf8>>}
+    end.
+
+%% 受理事务内的群创建（镜像 add/4 与 workspace_add_tx 的既有分工：
+%% personal 预置 join_limit=1，workspace 走归档写守卫 + scoped 创建），
+%% 外加初始名 title 与群行同事务（§6.4：群初始名称目标字段固定为 title）。
+-spec create_group_in_receipt_tx(pid(), integer(), integer(), map(), binary(), integer(), binary()) ->
+    integer().
+create_group_in_receipt_tx(Conn, Uid, Type, Norm, <<"personal">>, _WorkspaceId, Now) ->
+    Gid = group_ds:create_group(Conn, 0, Uid, Now, Type, 1),
+    ok = set_initial_title_tx(Conn, Gid, maps:get(title, Norm)),
+    Gid;
+create_group_in_receipt_tx(Conn, Uid, Type, Norm, <<"workspace">>, WorkspaceId, Now) ->
+    ok = workspace_guard:abort_on_error(
+        workspace_guard:ensure_writable_tx(Conn, {workspace, WorkspaceId})
+    ),
+    Gid0 = elib_tsid:generate(group_info),
+    Gid = group_ds:create_scoped_group(Conn, Gid0, Uid, Now, Type, <<"workspace">>, WorkspaceId),
+    ok = set_initial_title_tx(Conn, Gid, maps:get(title, Norm)),
+    Gid.
+
+%% 初始群名：空标题保持既有默认 ''（与旧路径零差异），不产生额外 UPDATE。
+-spec set_initial_title_tx(pid(), integer(), binary()) -> ok.
+set_initial_title_tx(_Conn, _Gid, <<>>) ->
+    ok;
+set_initial_title_tx(Conn, Gid, Title) ->
+    case group_repo:update_by_id_tx(Conn, Gid, #{<<"title">> => Title}) of
+        {ok, 1} ->
+            ok;
+        Other ->
+            throw({abort_tx, {initial_title_failed, Other}})
+    end.
+
+%% 受理通知（J23.c）：初始成员收 group_member_join（载荷与既有
+%% notify_member_join 形状一致）；MsgId 由 (op,request_id,effect_kind,
+%% target) 确定派生（msg_s2c_ds:send_tx），入队失败整体回滚。
+-spec enqueue_receipt_notifications_tx(pid(), integer(), integer(), binary(), binary(), [integer()]) ->
+    ok.
+enqueue_receipt_notifications_tx(_Conn, _Uid, _Gid, _Operation, _RequestId, []) ->
+    ok;
+enqueue_receipt_notifications_tx(Conn, Uid, Gid, Operation, RequestId, Members) ->
+    User = user_ds:find_by_id(Uid, <<"account,avatar,nickname">>),
+    Payload = #{
+        <<"gid">> => Gid,
+        <<"nickname">> => maps:get(<<"nickname">>, User, <<>>),
+        <<"avatar">> => maps:get(<<"avatar">>, User, <<>>),
+        <<"account">> => maps:get(<<"account">>, User, <<>>)
+    },
+    EffectKey = <<Operation/binary, "|", RequestId/binary, "|group_member_join">>,
+    case msg_s2c_ds:send_tx(Conn, Uid, Members, <<"group_member_join">>, Payload, EffectKey) of
+        ok ->
+            ok;
+        {error, Reason} ->
+            throw({abort_tx, {receipt_notify_stage_failed, Reason}})
+    end.
+
+-spec receipt_join_mode(binary(), integer(), binary()) -> binary().
+receipt_join_mode(<<"personal">>, Uid, UserTitle) ->
+    <<"invite_", (ec_cnv:to_binary(Uid))/binary, "_", UserTitle/binary>>;
+receipt_join_mode(<<"workspace">>, _Uid, _UserTitle) ->
+    <<"workspace_group_create">>.
+
+%% recover_only 只查：不新增受理占位/资源/通知（§6.4 恢复状态表）。
+-spec recover_only_lookup(integer(), binary(), binary()) ->
+    {ok, integer(), replayed}
+    | {error, request_id_conflict | create_not_accepted | binary()}
+    | {error, {create_recovery_expired | create_resource_unavailable, integer() | undefined}}.
+recover_only_lookup(Uid, RequestId, Digest) ->
+    case resource_create_receipt_repo:find(Uid, <<"create_group">>, RequestId) of
+        {ok, Row} ->
+            replay_receipt(Digest, Row, Uid);
+        {error, not_found} ->
+            %% 仅表示查询时未见已提交受理，不证明在途请求不会迟到（§6.4）；
+            %% 未知意图不提供换键恢复。
+            {error, create_not_accepted};
+        {error, Reason} ->
+            ?ERROR_LOG([group_receipt_recover_lookup_failed, Uid, RequestId, Reason]),
+            {error, <<"创建受理查询失败，请稍后重试"/utf8>>}
+    end.
+
+%% 重放判定：先比对规范摘要（同键不同载荷 → 冲突，不剥键不换键），
+%% 再按删除/7d/资格分派结果（J24.b/c）。
+-spec replay_receipt(binary(), map(), integer()) ->
+    {ok, integer(), replayed}
+    | {error, request_id_conflict}
+    | {error, {create_recovery_expired | create_resource_unavailable, integer() | undefined}}.
+replay_receipt(Digest, Row, _Uid) ->
+    case maps:get(<<"request_digest">>, Row) =:= Digest of
+        false ->
+            {error, request_id_conflict};
+        true ->
+            replay_outcome(Row)
+    end.
+
+-spec replay_outcome(map()) ->
+    {ok, integer(), replayed}
+    | {error, {create_recovery_expired | create_resource_unavailable, integer() | undefined}}.
+replay_outcome(Row) ->
+    case maps:get(<<"resource_id">>, Row) of
+        Gid when is_integer(Gid), Gid > 0 ->
+            Expired = maps:get(<<"expired">>, Row) =:= true,
+            Deleted = maps:get(<<"resource_deleted">>, Row) =:= true,
+            replay_decision(Gid, Deleted, Expired, maps:get(<<"uid">>, Row));
+        _ ->
+            %% 防御：committed 行恒有 resource_id（占位与回填同事务）；异常按不可用。
+            {error, {create_resource_unavailable, undefined}}
+    end.
+
+%% 删除例外优先：不泄露名称/成员、不复活对象；receipt 保留已受理事实、
+%% 不把错误改为首次创建（J24.b）。7d 过窗：只给可用于核对的 ID/状态。
+%% 完整结果还需群存活 + 调用者仍是 active 成员（撤权统一不可用）。
+-spec replay_decision(integer(), boolean(), boolean(), integer()) ->
+    {ok, integer(), replayed}
+    | {error, {create_recovery_expired | create_resource_unavailable, integer()}}.
+replay_decision(Gid, true = _Deleted, _Expired, _Uid) ->
+    {error, {create_resource_unavailable, Gid}};
+replay_decision(Gid, false, true = _Expired, _Uid) ->
+    {error, {create_recovery_expired, Gid}};
+replay_decision(Gid, false, false, Uid) ->
+    case group_receipt_resource_alive(Uid, Gid) of
+        true ->
+            {ok, Gid, replayed};
+        false ->
+            {error, {create_resource_unavailable, Gid}}
+    end.
+
+-spec group_receipt_resource_alive(integer(), integer()) -> boolean().
+group_receipt_resource_alive(Uid, Gid) ->
+    case find_by_id(Gid, <<"status">>) of
+        #{<<"status">> := 1} ->
+            group_member_ds:is_member(Gid, Uid);
+        _ ->
+            false
+    end.
+
+-spec abort_on_receipt_repo_error(ok | {error, term()}) -> ok.
+abort_on_receipt_repo_error(ok) ->
+    ok;
+abort_on_receipt_repo_error({error, Reason}) ->
+    throw({abort_tx, {receipt_repo_error, Reason}}).
+
+-spec accept_receipt_or_abort({ok, map()} | {error, term()}) -> {ok, map()}.
+accept_receipt_or_abort({ok, Row}) ->
+    {ok, Row};
+accept_receipt_or_abort({error, Reason}) ->
+    throw({abort_tx, {receipt_accept_failed, Reason}}).
 
 %% @doc 更新入口守卫：scope 与 workspace_id 创建后不可变（§1.4.2 规则 9）。
 %% 提交了这两个字段之一即拒绝（不静默忽略，防止客户端误以为已改归属）。
