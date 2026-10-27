@@ -70,6 +70,19 @@ assemble_msg_5_carries_current_ver_test_() ->
         ?assertEqual(?CUR_MSG_VER, maps:get(<<"ver">>, Msg))
     end).
 
+assemble_msg_system_sender_zero_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        Payload = #{schedule_id => <<"schedule-1">>},
+        Msg = message_ds:assemble_msg(
+            <<"S2C">>, 0, 222, Payload, <<"system-message">>, <<>>, <<"schedule_remind">>, null
+        ),
+        ?assertEqual(0, maps:get(<<"from">>, Msg)),
+        ?assertEqual(Payload, maps:get(<<"payload">>, Msg)),
+        ?assertEqual(null, maps:get(<<"e2ee">>, Msg)),
+        Legacy = message_ds:assemble_msg(<<"S2C">>, 0, 222, Payload, <<"legacy-system-message">>),
+        ?assertEqual(0, maps:get(<<"from">>, Legacy))
+    end).
+
 %% assemble_s2c 系统消息经 assemble_msg/8 亦带 ver
 assemble_s2c_carries_current_ver_test_() ->
     ?TEST_SIMPLE(fun() ->

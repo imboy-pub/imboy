@@ -190,7 +190,7 @@ assemble_s2c(MsgId, Action, To) ->
 %% @returns v2.0 格式的消息数据（map格式）
 -spec assemble_msg(
     binary(),
-    pos_integer() | binary(),
+    non_neg_integer() | binary(),
     pos_integer() | binary() | [pos_integer() | binary()],
     map(),
     binary(),
@@ -227,7 +227,7 @@ assemble_msg(Type, From, To, Payload, MsgId, MsgType, Action, E2EE) ->
 %% @returns v2.0 格式的消息数据（map格式）
 -spec assemble_msg(
     binary(),
-    pos_integer() | binary(),
+    non_neg_integer() | binary(),
     pos_integer() | binary() | [pos_integer() | binary()],
     map(),
     binary()
