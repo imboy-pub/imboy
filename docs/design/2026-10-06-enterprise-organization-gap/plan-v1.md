@@ -1,4 +1,4 @@
-> FROZEN / SUPERSEDED_FOR_EXECUTION（2026-10-11）：后续执行统一使用 [统一收口计划](/Users/leeyi/project/imboy.pub/imboy/docs/design/2026-10-11-unified-delivery-closeout/plan-v1.md)。本页原状态与 PASS 属于历史声明，不作为现行验收；冻结前原文与摘要见新计划 source-contracts。旧 .sha256 仅对应冻结前正文，不再用于启动旧计划。
+> FROZEN / SUPERSEDED_FOR_EXECUTION（2026-10-11）：后续执行统一使用 [统一收口计划](../2026-10-11-unified-delivery-closeout/plan-v1.md)。本页原状态与 PASS 属于历史声明，不作为现行验收；冻结前原文与摘要见新计划 source-contracts。旧 .sha256 仅对应冻结前正文，不再用于启动旧计划。
 
 # 企业组织三端增量完善计划 V1 / Three-platform organization closure plan
 

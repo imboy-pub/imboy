@@ -5,6 +5,8 @@
 本文把 TASKS.md（V2.3 standalone-1）A 部分安全设计映射到三仓真实 Schema、API、锁序与错误码。
 任何实现与本文冲突处，先修订本文（ADR）再改码；不得默默放宽。
 
+版本族提示：本文版本号属 **direct-v1 协议族**（会话级传输协议，与旧 V5 语义并存、互不取代，见 §0 与 §1.4）；与计划族文档（`attachment-lifecycle-v5`、`s3-direct-transfer-plan-v2.2` 的 V2.x 编号）编号体系互不相干，计划实施状态以计划文档自标为准。
+
 ## 0. 范围与并存规则
 
 - Garage 是唯一新增存储目标；Disk 只保留历史 reader/intent 兼容。
