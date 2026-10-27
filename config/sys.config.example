@@ -470,7 +470,7 @@
         %% Depcache settings,
         {depcache, [
             % maximum size in mbs
-            {depcache_memory_max, 100}
+            {depcache_memory_max, 1024}
         ]},
 
         % SMTP 邮件发送（用户名/密码走 SECTION C）
