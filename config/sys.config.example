@@ -32,6 +32,10 @@
         {start_mode, http},
         % 启动时自动执行迁移；蓝绿部署通过 IMBOY_AUTO_MIGRATE=false 关闭，切流后显式迁移
         {auto_migrate, true},
+        %% D02（2026-10-27 冻结）：免打扰旧规则（user_dnd_rule.time_zone IS NULL）
+        %% 的部署 fallback IANA zone。必须与本部署服务器 OS 时区/业务运营时区
+        %% 一致（本部署 = Asia/Shanghai，用户确认）；缺省即 Asia/Shanghai。
+        %%, {dnd_fallback_zone, <<"Asia/Shanghai">>}
         % limiter-v1（C.5）：IP 维度限流规则——passport_per_ip / api_per_ip /
         % oidc_request 三只 scope 的权威 owner 是 login_attempt_ds（唯一装配，
         % 启动期经 imboy_app 校验）。**不得**再把这两只 HTTP IP scope 写回

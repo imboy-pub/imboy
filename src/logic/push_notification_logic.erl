@@ -168,14 +168,16 @@ maybe_push_for_c2g(FromUid, GroupId, _MsgType, MemberUids) ->
 %% 全部离线推送静默，口径统一，不做按通知类型的豁免白名单）。
 %%
 %% 时区口径：App 侧免打扰（群免打扰 KV 源合并）按用户设备本地时区判定；
-%% 服务端此处按**服务器本地时区**（calendar:local_time()）换算当日分钟数。
-%% 自托管单节点部署下两者通常一致；跨时区多租户的精确对齐属后续增强。
+%% 服务端 D02（2026-10-27 冻结）：规则携带账号级 IANA time_zone 时按该
+%% zone 的当地时分判定（PG `NOW() AT TIME ZONE`）；旧行无 zone 按部署
+%% fallback zone（配置 dnd_fallback_zone = Asia/Shanghai，用户确认）解释
+%% ——与原 calendar:local_time()（单节点部署 TZ=Asia/Shanghai）逐分钟等价，
+%% 静默时段不因升级移动（R15-4）。
 
 %% @doc 免打扰判定：当前时刻落在用户 DND 时段则返回 true（该用户静默）
 -spec dnd_muted(integer()) -> boolean().
 dnd_muted(Uid) ->
-    {_Date, {H, M, _S}} = calendar:local_time(),
-    user_dnd_rule_ds:is_dnd_at(Uid, H * 60 + M).
+    user_dnd_rule_ds:is_dnd_now(Uid).
 
 %% ===================================================================
 %% 企业托管消息离线推送入口（FULL-07）

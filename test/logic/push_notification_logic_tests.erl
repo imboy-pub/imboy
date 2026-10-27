@@ -2,14 +2,14 @@
 
 -include_lib("eunit/include/eunit.hrl").
 
-%% 宏自动注入 user_dnd_rule_ds 默认桩（is_dnd_at → false，G1 接线后
+%% 宏自动注入 user_dnd_rule_ds 默认桩（is_dnd_now → false，G1 接线后
 %% 离线分支必经 DND 判定；不注入则 passthrough 触达真 depcache → badarg）。
 %% 需要 DND 命中的用例用 stub_dnd/1 覆盖默认桩。
 -define(WITH_MECKS(Modules, Fun),
     (fun() ->
         Mods = lists:usort([user_dnd_rule_ds | Modules]),
         ok = meck:new(Mods, [passthrough, no_link]),
-        meck:expect(user_dnd_rule_ds, is_dnd_at, fun(_Uid, _NowMin) -> false end),
+        meck:expect(user_dnd_rule_ds, is_dnd_now, fun(_Uid) -> false end),
         try
             Fun()
         after
@@ -588,7 +588,7 @@ e2ee_c2g_push_body_never_leaks_test() ->
 %% ===================================================================
 %% G1（Q09/AC22#7）· 免打扰 DND 接线：离线且 DND 命中 → 零推送
 %%
-%% user_dnd_rule_ds:is_dnd_at(Uid, 当日分钟数 0..1439) 命中即整条静默
+%% user_dnd_rule_ds:is_dnd_now(Uid)（D02：zone 语义，分钟换算在 DS 内）命中即整条静默
 %% （含 org_invite 触达——免打扰期间全部离线推送静默，口径统一）。
 %% 判定位置在离线判定**之后**：在线用户短路返回，不触发 DND 查询。
 %% 每个用例收尾以 meck:num_calls 断言 DND 查询与 DS 发送的真实调用数，
@@ -597,8 +597,10 @@ e2ee_c2g_push_body_never_leaks_test() ->
 
 %% DND 桩辅助：按 Uid 返回是否命中，并把收到的分钟数回传供域断言
 stub_dnd(HitUids) ->
-    meck:expect(user_dnd_rule_ds, is_dnd_at, fun(Uid, NowMin) ->
-        self() ! {dnd_checked, Uid, NowMin},
+    %% D02 后 dnd_muted 委托 is_dnd_now/1：当地分钟换算在 DS 内部（PG）完成，
+    %% mock 面只按 Uid 判定（传输仍全 mock，不触真推送渠道）。
+    meck:expect(user_dnd_rule_ds, is_dnd_now, fun(Uid) ->
+        self() ! {dnd_checked, Uid},
         lists:member(Uid, HitUids)
     end).
 
@@ -607,7 +609,7 @@ dnd_hit_blocks_notify_offline_user_test() ->
         meck:expect(imboy_syn, count_user, fun(1) -> 0 end),
         stub_dnd([1]),
         ?assertEqual(ok, push_notification_logic:notify_offline_user(1, <<"title">>, <<"body">>)),
-        ?assertEqual(1, meck:num_calls(user_dnd_rule_ds, is_dnd_at, '_')),
+        ?assertEqual(1, meck:num_calls(user_dnd_rule_ds, is_dnd_now, '_')),
         ?assertEqual(0, meck:num_calls(push_notification_ds, send_to_user_with_data, '_'))
     end).
 
@@ -619,7 +621,7 @@ dnd_miss_allows_notify_offline_user_test() ->
             ok
         end),
         ?assertEqual(ok, push_notification_logic:notify_offline_user(1, <<"title">>, <<"body">>)),
-        ?assertEqual(1, meck:num_calls(user_dnd_rule_ds, is_dnd_at, '_')),
+        ?assertEqual(1, meck:num_calls(user_dnd_rule_ds, is_dnd_now, '_')),
         ?assertEqual(1, meck:num_calls(push_notification_ds, send_to_user_with_data, '_'))
     end).
 
@@ -629,7 +631,7 @@ dnd_not_checked_when_online_test() ->
         meck:expect(imboy_syn, count_user, fun(1) -> 2 end),
         stub_dnd([1]),
         ?assertEqual(ok, push_notification_logic:notify_offline_user(1, <<"title">>, <<"body">>)),
-        ?assertEqual(0, meck:num_calls(user_dnd_rule_ds, is_dnd_at, '_')),
+        ?assertEqual(0, meck:num_calls(user_dnd_rule_ds, is_dnd_now, '_')),
         ?assertEqual(0, meck:num_calls(push_notification_ds, send_to_user_with_data, '_'))
     end).
 
@@ -642,7 +644,7 @@ dnd_hit_blocks_c2c_push_test() ->
         meck:expect(imboy_syn, count_user, fun(2) -> 0 end),
         stub_dnd([2]),
         ?assertEqual(ok, push_notification_logic:maybe_push_for_c2c(1, 2, <<"text">>, <<"hi">>)),
-        ?assertEqual(1, meck:num_calls(user_dnd_rule_ds, is_dnd_at, '_')),
+        ?assertEqual(1, meck:num_calls(user_dnd_rule_ds, is_dnd_now, '_')),
         ?assertEqual(0, meck:num_calls(push_notification_ds, send_to_user, '_'))
     end).
 
@@ -667,7 +669,7 @@ dnd_filters_c2g_members_test() ->
             ok, push_notification_logic:maybe_push_for_c2g(1, 100, <<"text">>, [1, 2, 3])
         ),
         %% 只有离线成员 2/3 各查一次 DND（发送者 1 在线短路）
-        ?assertEqual(2, meck:num_calls(user_dnd_rule_ds, is_dnd_at, '_')),
+        ?assertEqual(2, meck:num_calls(user_dnd_rule_ds, is_dnd_now, '_')),
         ?assert(meck:called(push_notification_ds, send_to_group_users, [100, [3], '_', '_'])),
         ?assertEqual(1, meck:num_calls(push_notification_ds, send_to_group_users, '_'))
     end).
@@ -703,19 +705,20 @@ dnd_filters_notify_offline_users_test() ->
         ?assertEqual(1, meck:num_calls(push_notification_ds, send_to_users, '_'))
     end).
 
-%% 域断言：is_dnd_at 收到的第二参必须是「当日分钟数」(0..1439 的整数)，
-%% 而非秒/毫秒/时刻元组——接线若传错单位，跨午夜边界判断会整体漂移。
-dnd_receives_minute_of_day_test() ->
+%% 域断言：D02 后分钟换算移入 DS 内部（PG AT TIME ZONE），logic 层只传
+%% Uid——用例钉住「离线用户必经一次 DND 判定」的接线事实（单位域断言
+%% 移交 user_dnd_rule_zone_pg_tests 的 local_minute_of_day 用例）。
+dnd_checked_once_for_offline_user_test() ->
     ?WITH_MECKS([imboy_syn, user_dnd_rule_ds, push_notification_ds], fun() ->
         meck:expect(imboy_syn, count_user, fun(9) -> 0 end),
         stub_dnd([]),
         meck:expect(push_notification_ds, send_to_user_with_data, fun(_, _, _, _) -> ok end),
         ?assertEqual(ok, push_notification_logic:notify_offline_user(9, <<"title">>, <<"body">>)),
         receive
-            {dnd_checked, 9, NowMin} ->
-                ?assert(is_integer(NowMin)),
-                ?assert(NowMin >= 0 andalso NowMin =< 1439)
+            {dnd_checked, 9} ->
+                ok
         after 1000 ->
             erlang:error(dnd_not_checked)
-        end
+        end,
+        ?assertEqual(1, meck:num_calls(user_dnd_rule_ds, is_dnd_now, '_'))
     end).
