@@ -179,11 +179,11 @@ add_keyword(_V, Conds, Params, N) ->
 
 %% rfc3339 瞬间参数：直接与 timestamptz 列比较（明确瞬间边界，最高优先级）
 add_instant_ge(Field, V, Conds, Params, N) ->
-    Cond = <<Field/binary, " >= $", (integer_to_binary(N))/binary>>,
+    Cond = <<Field/binary, " >= $", (integer_to_binary(N))/binary, "::text::timestamptz">>,
     {[Cond | Conds], Params ++ [V], N + 1}.
 
 add_instant_le(Field, V, Conds, Params, N) ->
-    Cond = <<Field/binary, " < $", (integer_to_binary(N))/binary>>,
+    Cond = <<Field/binary, " < $", (integer_to_binary(N))/binary, "::text::timestamptz">>,
     {[Cond | Conds], Params ++ [V], N + 1}.
 
 %% 纯日期参数：经 AT TIME ZONE $zone 构造该时区当地日 00:00 的明确瞬间，
@@ -194,7 +194,7 @@ add_date_ge(Field, V, Zone, Conds, Params, N) when is_binary(V) ->
     Z = default_zone(Zone),
     Cond =
         <<Field/binary, " >= (($", (integer_to_binary(N))/binary,
-            ")::date)::timestamp AT TIME ZONE $", (integer_to_binary(N + 1))/binary>>,
+            "::text)::date)::timestamp AT TIME ZONE $", (integer_to_binary(N + 1))/binary>>,
     {[Cond | Conds], Params ++ [V, Z], N + 2};
 add_date_ge(_Field, _V, _Zone, Conds, Params, N) ->
     {Conds, Params, N}.
@@ -206,8 +206,8 @@ add_date_le(Field, V, Zone, Conds, Params, N) when is_binary(V) ->
     Z = default_zone(Zone),
     Cond =
         <<Field/binary, " < ((($", (integer_to_binary(N))/binary,
-            ")::date)::timestamp AT TIME ZONE $", (integer_to_binary(N + 1))/binary,
-            ") + INTERVAL '1 day')">>,
+            "::text)::date + 1)::timestamp AT TIME ZONE $", (integer_to_binary(N + 1))/binary,
+            ")">>,
     {[Cond | Conds], Params ++ [V, Z], N + 2};
 add_date_le(_Field, _V, _Zone, Conds, Params, N) ->
     {Conds, Params, N}.

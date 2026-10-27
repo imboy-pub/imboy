@@ -16,8 +16,8 @@
 %%%         terminal_failure，客户端合同成立
 %%%   R02-4 授权过滤（per_device DID 信封过滤）：被滤行不下发但 next_seq
 %%%         按全量行推进且不越过 B；next_seq 只进不退
-%%%   R02-5 修复前过冲游标经 history_backfill 有界恢复：范围超限拒绝、
-%%%         批次推进、恢复位置可断言
+%%%   R02-5 修复前过冲游标经 history_backfill 有界恢复：跨窗口完整恢复、
+%%%         空洞窗口推进、恢复位置可断言
 %%%   R02-6 晚到归档后旧 history 游标（过冲）不再取到、必须走 backfill——
 %%%         服务端提供显式补取接口，客户端绝不自行推断 gap
 %%%===================================================================
@@ -314,38 +314,171 @@ r02_5_backfill_recovers_overshot_cursor_test_() ->
     end).
 
 %% ------------------------------------------------------------------
-%% R02-5b：补扫范围超限拒绝（真实 PG 合成数据注入 1001 行）
+%% R02-5b：跨窗口完整恢复（真实 PG 合成数据注入 1001 行）
 %% ------------------------------------------------------------------
-r02_5b_backfill_range_exceeded_test_() ->
+r02_5b_backfill_restores_full_history_test_() ->
     ?TEST_WITH_DB(fun() ->
         cleanup(),
-        %% 真实 PG 注入：合成 1001 行正式归档（conv_seq 1..1001）
-        {ok, _} =
-            elib_pg:execute(
-                <<
-                    "INSERT INTO public.msg_store "
-                    "(id, msg_id, chat_type, conv_key, conv_seq, msg_type, from_id, to_id, "
-                    "group_id, e2ee, sender_did, payload, created_at, server_ts) "
-                    "SELECT 941000000000000 + i, 'tzv1_r02_rng_' || i, 'c2c', $1, i, 'text', $2, $3, "
-                    "null, null, null, '{}', NOW(), NOW() "
-                    "FROM generate_series(1, 1001) AS i "
-                    "ON CONFLICT (msg_id, created_at) DO NOTHING"
-                >>,
-                [?KEY, ?UA, ?UB]
+        try
+            Sequences = lists:seq(1, 1001),
+            Prefix = <<"tzv1_r02_rng_">>,
+            seed_backfill(Sequences, Prefix, null),
+            ?assertEqual({ok, 1001}, msg_archive_repo:safe_head(?KEY, <<"c2c">>, ?UA, ?UB)),
+            Pages = collect_backfill(0, 1001, 25),
+            Messages = lists:append([maps:get(<<"messages">>, Page) || Page <- Pages]),
+            ?assertEqual(21, length(Pages)),
+            ?assertEqual(Sequences, [maps:get(<<"conv_seq">>, Msg) || Msg <- Messages]),
+            ?assertEqual(
+                [<<Prefix/binary, (integer_to_binary(Seq))/binary>> || Seq <- Sequences],
+                [maps:get(<<"msg_id">>, Msg) || Msg <- Messages]
             ),
-        {ok, B} = msg_archive_repo:safe_head(?KEY, <<"c2c">>, ?UA, ?UB),
-        ?assert(B >= 1001),
-
-        %% 范围跨度 > range_limit：拒绝并要求分批（客户端不无限从 0 重拉）
-        ?assertMatch(
-            {error, _, ?ERR_BAD_REQUEST},
-            messaging_logic:history_backfill(?UA, <<"c2c">>, <<"920002">>, 0, 50, <<>>)
-        ),
-        %% 分批推进：从 900 起（跨度 101 <= 1000）正常返回
-        {ok, BF} =
-            messaging_logic:history_backfill(?UA, <<"c2c">>, <<"920002">>, 900, 50, <<>>),
-        Rows = maps:get(<<"messages">>, BF),
-        ?assertEqual(50, length(Rows)),
-        ?assertEqual(950, maps:get(<<"next_seq">>, BF)),
-        ?assertEqual(true, maps:get(<<"has_more">>, BF))
+            ?assertEqual(
+                1001, length(lists:usort([maps:get(<<"msg_id">>, Msg) || Msg <- Messages]))
+            ),
+            ?assertMatch(#{<<"next_seq">> := 1000, <<"has_more">> := true}, lists:nth(20, Pages)),
+            ?assertMatch(#{<<"next_seq">> := 1001, <<"has_more">> := false}, lists:last(Pages))
+        after
+            cleanup()
+        end
     end).
+
+r02_5c_backfill_advances_empty_windows_test_() ->
+    ?TEST_WITH_DB(fun() ->
+        cleanup(),
+        try
+            seed_backfill([2001, 2500], <<"tzv1_r02_hole_">>, null),
+            Pages = collect_backfill(0, 2500, 5),
+            ?assertEqual([1000, 2000, 2500], [maps:get(<<"next_seq">>, Page) || Page <- Pages]),
+            ?assertEqual([true, true, false], [maps:get(<<"has_more">>, Page) || Page <- Pages]),
+            ?assertEqual(
+                [[], [], [<<"tzv1_r02_hole_2001">>, <<"tzv1_r02_hole_2500">>]],
+                [ids(Page) || Page <- Pages]
+            ),
+            {ok, Overshot} = messaging_logic:history_backfill(
+                ?UA, <<"c2c">>, <<"920002">>, 3000, 50, <<>>
+            ),
+            ?assertMatch(
+                #{<<"messages">> := [], <<"next_seq">> := 3000, <<"has_more">> := false}, Overshot
+            )
+        after
+            cleanup()
+        end
+    end).
+
+r02_accepted_at_response_rfc3339_pg_test_() ->
+    [
+        {
+            atom_to_list(Action),
+            ?TEST_WITH_DB(fun() ->
+                cleanup(),
+                try
+                    AcceptedAt = <<"2026-03-08T05:00:02.345678Z">>,
+                    seed_backfill([1], <<"tzv1_r02_wire_">>, AcceptedAt),
+                    {ok, Payload} = history_payload(Action),
+                    [Message] = maps:get(<<"messages">>, Payload),
+                    ?assertEqual(
+                        elib_dt:rfc3339_to(AcceptedAt, microsecond),
+                        elib_dt:rfc3339_to(maps:get(<<"accepted_at">>, Message), microsecond)
+                    ),
+                    assert_response_timestamps(Action, 1772946002346)
+                after
+                    cleanup()
+                end
+            end)
+        }
+     || Action <- [history, history_backfill]
+    ].
+
+r02_legacy_accepted_at_response_null_pg_test_() ->
+    [
+        {
+            atom_to_list(Action),
+            ?TEST_WITH_DB(fun() ->
+                cleanup(),
+                try
+                    seed_backfill([1], <<"tzv1_r02_legacy_">>, null),
+                    [Message] = maps:get(<<"messages">>, response_payload(Action)),
+                    ?assertEqual(null, maps:get(<<"accepted_at">>, Message))
+                after
+                    cleanup()
+                end
+            end)
+        }
+     || Action <- [history, history_backfill]
+    ].
+
+history_payload(history) ->
+    messaging_logic:history(?UA, <<"c2c">>, <<"920002">>, 0, 50, <<>>);
+history_payload(history_backfill) ->
+    messaging_logic:history_backfill(?UA, <<"c2c">>, <<"920002">>, 0, 50, <<>>).
+
+seed_backfill(Sequences, Prefix, AcceptedAt) ->
+    {ok, Count} = elib_pg:execute(
+        <<
+            "INSERT INTO public.msg_store "
+            "(id, msg_id, chat_type, conv_key, conv_seq, msg_type, from_id, to_id, "
+            "payload, created_at, server_ts, accepted_at) "
+            "SELECT 941000000000000 + seq, $4::text || seq::text, 'c2c', $1, seq, 'text', $2, $3, "
+            "'{}', '2026-03-08T05:00:00.123456Z'::timestamptz, "
+            "'2026-03-08T05:00:01.234567Z'::timestamptz, $6::text::timestamptz "
+            "FROM unnest($5::bigint[]) AS seq"
+        >>,
+        [?KEY, ?UA, ?UB, Prefix, Sequences, AcceptedAt]
+    ),
+    ?assertEqual(length(Sequences), Count).
+
+collect_backfill(AfterSeq, SafeHead, Remaining) when Remaining > 0 ->
+    {ok, Page} = messaging_logic:history_backfill(?UA, <<"c2c">>, <<"920002">>, AfterSeq, 50, <<>>),
+    NextSeq = maps:get(<<"next_seq">>, Page),
+    Messages = maps:get(<<"messages">>, Page),
+    ?assertEqual(1000, maps:get(<<"range_limit">>, Page)),
+    ?assert(length(Messages) =< 50),
+    ?assert(NextSeq > AfterSeq),
+    ?assert(NextSeq =< min(SafeHead, AfterSeq + 1000)),
+    ?assert(
+        lists:all(
+            fun(Msg) ->
+                Seq = maps:get(<<"conv_seq">>, Msg),
+                Seq > AfterSeq andalso Seq =< NextSeq
+            end,
+            Messages
+        )
+    ),
+    ?assertEqual(NextSeq < SafeHead, maps:get(<<"has_more">>, Page)),
+    case maps:get(<<"has_more">>, Page) of
+        true -> [Page | collect_backfill(NextSeq, SafeHead, Remaining - 1)];
+        false -> [Page]
+    end;
+collect_backfill(AfterSeq, SafeHead, 0) ->
+    erlang:error({backfill_did_not_finish, AfterSeq, SafeHead}).
+
+assert_response_timestamps(Action, AcceptedMs) ->
+    [Message] = maps:get(<<"messages">>, response_payload(Action)),
+    lists:foreach(
+        fun({Key, Expected}) ->
+            Value = maps:get(Key, Message),
+            ?assertEqual({Key, Expected}, {Key, Value})
+        end,
+        [
+            {<<"accepted_at">>, AcceptedMs},
+            {<<"created_at">>, 1772946000123},
+            {<<"server_ts">>, 1772946001235}
+        ]
+    ).
+
+response_payload(Action) ->
+    StreamId = make_ref(),
+    Req = #{
+        pid => self(),
+        streamid => StreamId,
+        method => <<"GET">>,
+        qs => <<"chat_type=c2c&peer_id=920002&after_seq=0&limit=50">>
+    },
+    {ok, _, _} = msg_handler:init(Req, #{action => Action, current_uid => ?UA}),
+    receive
+        {{_, StreamId}, {response, 200, _, Body}} ->
+            #{<<"code">> := 0, <<"payload">> := Response} = jsone:decode(Body),
+            Response
+    after 1000 ->
+        erlang:error(response_not_emitted)
+    end.

@@ -403,9 +403,9 @@ get_history(ConvKey, AfterSeq, Limit, Order) ->
         end,
     Sql =
         <<"SELECT msg_id, chat_type, conv_seq, msg_type, from_id, to_id, group_id, ",
-            "e2ee, sender_did, payload, created_at, server_ts ", "FROM ", ?TABLE/binary,
-            " WHERE conv_key = $1 AND conv_seq", Cmp/binary, "$2 ", "ORDER BY conv_seq ",
-            OrderBin/binary, " LIMIT $3">>,
+            "e2ee, sender_did, payload, created_at, server_ts, accepted_at ", "FROM ",
+            ?TABLE/binary, " WHERE conv_key = $1 AND conv_seq", Cmp/binary, "$2 ",
+            "ORDER BY conv_seq ", OrderBin/binary, " LIMIT $3">>,
     elib_pg:query(Sql, [ConvKey, AfterSeq, Limit]).
 
 %%-------------------------------------------------------------------
@@ -427,13 +427,13 @@ get_history_batch(Cursors, Limit) ->
     {ValuesSql, Params} = build_cursor_values(Cursors),
     Sql = <<
         "SELECT c.conv_key AS conv_key, h.msg_id, h.chat_type, h.conv_seq, h.msg_type, ",
-        "h.from_id, h.to_id, h.group_id, h.e2ee, h.sender_did, h.payload, h.created_at, h.server_ts ",
+        "h.from_id, h.to_id, h.group_id, h.e2ee, h.sender_did, h.payload, h.created_at, h.server_ts, h.accepted_at ",
         "FROM (VALUES ",
         ValuesSql/binary,
         ") AS c(conv_key, after_seq) ",
         "CROSS JOIN LATERAL ("
         "SELECT msg_id, chat_type, conv_seq, msg_type, from_id, to_id, group_id, "
-        "e2ee, sender_did, payload, created_at, server_ts "
+        "e2ee, sender_did, payload, created_at, server_ts, accepted_at "
         "FROM ",
         ?TABLE/binary,
         " m "
@@ -640,7 +640,7 @@ history_rows_tx(Conn, ConvKey, AfterSeq, Limit) ->
     Sql =
         <<
             "SELECT msg_id, chat_type, conv_seq, msg_type, from_id, to_id, group_id, "
-            "e2ee, sender_did, payload, created_at, server_ts "
+            "e2ee, sender_did, payload, created_at, server_ts, accepted_at "
             "FROM public.msg_store WHERE conv_key = $1 AND conv_seq > $2 "
             "ORDER BY conv_seq ASC LIMIT $3"
         >>,
@@ -700,7 +700,7 @@ gap_window_ph(<<"c2g">>) -> {<<"$3">>, <<"$4">>}.
 %%
 %% 对已过冲（next_seq 越过晚到低序号）的客户端，在 (AfterSeq, SafeHead]
 %% 显式重扫已归档行，按 msg_id 去重。范围跨度受 ?BACKFILL_RANGE_LIMIT
-%% 约束（超出要求分批：终点=SafeHead、批次=Limit、恢复位置=返回 next_seq）。
+%% 约束；每次只扫描一个窗口，next_seq 是已扫描位置，可跨保留清理空洞续跑。
 %% 授权/保留/撤回约束由调用方（conv_key 授权校验 + 行为现存正式行）承担。
 %%-------------------------------------------------------------------
 -spec backfill(binary(), integer(), pos_integer(), binary(), integer(), integer()) ->
@@ -710,23 +710,30 @@ backfill(ConvKey, AfterSeq, Limit, ChatType, PeerA, PeerB) when
 ->
     elib_pg:with_tx(fun(Conn) ->
         {ok, SafeHead} = safe_head_tx(Conn, ConvKey, ChatType, PeerA, PeerB),
-        case SafeHead - AfterSeq > ?BACKFILL_RANGE_LIMIT of
-            true ->
-                {error, backfill_range_exceeded};
-            false ->
-                Rows = history_rows_tx(Conn, ConvKey, AfterSeq, Limit),
-                NextSeq =
-                    case Rows of
-                        [] -> AfterSeq;
-                        _ -> maps:get(<<"conv_seq">>, lists:last(Rows))
-                    end,
-                %% has_more：本批取满且仍 < SafeHead（下一批从 NextSeq 续扫）
-                HasMore = NextSeq < SafeHead andalso length(Rows) >= Limit,
-                {ok, Rows, erlang:max(NextSeq, AfterSeq), HasMore}
-        end
+        EndSeq = erlang:min(SafeHead, AfterSeq + ?BACKFILL_RANGE_LIMIT),
+        Rows0 = backfill_rows_tx(Conn, ConvKey, AfterSeq, EndSeq, Limit + 1),
+        Rows = lists:sublist(Rows0, Limit),
+        NextSeq =
+            case length(Rows0) > Limit of
+                true -> maps:get(<<"conv_seq">>, lists:last(Rows));
+                false -> erlang:max(EndSeq, AfterSeq)
+            end,
+        {ok, Rows, NextSeq, NextSeq < SafeHead}
     end);
 backfill(_ConvKey, _AfterSeq, _Limit, _ChatType, _A, _B) ->
     {error, badarg}.
+
+backfill_rows_tx(Conn, ConvKey, AfterSeq, EndSeq, Limit) ->
+    Sql = <<
+        "SELECT msg_id, chat_type, conv_seq, msg_type, from_id, to_id, group_id, "
+        "e2ee, sender_did, payload, created_at, server_ts, accepted_at "
+        "FROM public.msg_store WHERE conv_key = $1 AND conv_seq > $2 AND conv_seq <= $3 "
+        "ORDER BY conv_seq ASC LIMIT $4"
+    >>,
+    case elib_pg:query(Conn, Sql, [ConvKey, AfterSeq, EndSeq, Limit]) of
+        {ok, Rows} -> Rows;
+        {error, Reason} -> throw({rollback, Reason})
+    end.
 
 %% @private 构建归档数据，返回 {ok, ConvKey, DataMap} | skip | {error, Reason}
 build_archive_data(<<"c2c">>, Row) ->

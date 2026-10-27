@@ -1,0 +1,62 @@
+description: 补扫页或非零 code 业务错误。 / Backfill page or business error.
+content:
+  application/json:
+    schema:
+      oneOf:
+      - allOf:
+        - $ref: ../schemas/Envelope.yaml
+        - type: object
+          properties:
+            code: {type: integer, const: 0}
+            payload:
+              $ref: ../schemas/client/HistoryBackfillPage.yaml
+          required: [code, payload]
+      - $ref: ../schemas/BusinessErrorEnvelope.yaml
+    examples:
+      empty_window:
+        summary: safe_head=2501，空窗口推进到 1000 后仍需继续
+        value:
+          code: 0
+          msg: success
+          sv_ts: 1792713600000
+          payload: {messages: [], next_seq: 1000, has_more: true, conv_key: 'c2c:101:102', range_limit: 1000}
+      final_window:
+        summary: 未满页仍推进到 safe_head
+        value:
+          code: 0
+          msg: success
+          sv_ts: 1792713600000
+          payload: {messages: [], next_seq: 2501, has_more: false, conv_key: 'c2c:101:102', range_limit: 1000}
+      zero_head:
+        summary: safe_head=0 且起点为 0
+        value:
+          code: 0
+          msg: success
+          sv_ts: 1792713600000
+          payload: {messages: [], next_seq: 0, has_more: false, conv_key: 'c2c:101:102', range_limit: 1000}
+      legacy_group_row:
+        summary: 群代次授权后的旧归档行，接受时间未知
+        value:
+          code: 0
+          msg: success
+          sv_ts: 1792713600000
+          payload:
+            messages:
+            - msg_id: synthetic-group_2
+              chat_type: c2g
+              conv_seq: 2002
+              msg_type: text
+              from: '101'
+              group_id: '103'
+              sender_did: null
+              e2ee: null
+              payload: {text: legacy}
+              created_at: 1792713600000
+              server_ts: null
+              accepted_at: null
+            next_seq: 2501
+            has_more: false
+            conv_key: c2g:103
+            range_limit: 1000
+      negative_cursor:
+        value: {code: 400, msg: after_seq 参数非法, sv_ts: 1792713600000, payload: {}}

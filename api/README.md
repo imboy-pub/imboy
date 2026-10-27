@@ -45,6 +45,33 @@ python3 scripts/check_enterprise_release_manifest.py
 生成一致性、schema lint 和路由断言是静态检查，不能替代实际 HTTP／权限／业务验收。
 Schema and generation checks do not prove runtime authorization or end-to-end behavior.
 
+## 历史消息时间与恢复 / History time and recovery
+
+`GET /api/v1/msg/history` 实际固定 `msg_handler` 的 `action=history`。
+Flutter `API.msgBackfill` 的真实路径 `GET /api/v1/msg` 固定分派 `action=history_backfill`，
+兼容现有客户端传入的 `action=history_backfill` query；该参数不切换路由，也不是新增协议。
+补扫参数、错误与授权见 [`backfill.yaml`](paths/api/v1/msg/backfill.yaml)，wire 例子见
+[`HistoryBackfill.yaml`](components/responses/HistoryBackfill.yaml)。
+Both actions require the JWT user's conversation scope and current open group membership generation;
+`did` only filters device envelopes and never grants access.
+
+| 字段 / Field | wire 与权威语义 / Wire and authority |
+|---|---|
+| `sv_ts` | 信封生成时间，UTC Unix 毫秒；不是消息接受时间 / Response time in epoch ms |
+| `ArchivedMessage.created_at` / `server_ts` | 既有 Unix 毫秒合同；`server_ts` 可空 / Existing epoch-ms projection |
+| `ArchivedMessage.accepted_at` | 服务端首次接受事实，字段必填、nullable int64 Unix 毫秒；拒绝 RFC3339 字符串，旧行未知保持 null / Required nullable epoch-ms first acceptance instant (D04) |
+| `safe_head` / `blocked` / `gaps` | 同快照安全头（0 合法）、扫描越界阻塞标志、明确授权或终态空洞 / Safe progress metadata |
+| backfill `range_limit` | 每次扫描跨度 1000，不拒绝总历史跨度大于 1000；不是 query 参数 / Per-call scan span |
+
+REST 时间类型遵循冻结 D04，见[时间字段合同](../docs/reference/time-field-contract.md#22-消息核心时间四元组)和[项目约定](../docs/CONVENTIONS.md)。数据库 `timestamptz` 不改变 REST 毫秒整数合同。
+
+补扫窗口为授权下界钳制后的 `(after_seq, min(safe_head, after_seq+1000)]`，查询带 SQL 上界和
+`limit+1`；未满页或窗口剩余行已耗尽时，`next_seq` 推进到窗口终点。`has_more` 表示尚未扫描到
+安全头，设备过滤后的空消息页不能用作终止条件。已有过冲游标不自动回退；从本地确认的恢复起点
+重扫，按账号/会话隔离 checkpoint，按 `msg_id` 去重且持久化成功后再推进。不要从未知旧时间猜造
+now/1970 或统一加八小时。`backfill/6` 的 bounded-window 实现与本合同须由最终集成候选共同验收。
+Persist idempotently before advancing a conversation checkpoint; unknown legacy timestamps remain unknown.
+
 ## 设计与兼容规则 / Design and compatibility
 
 - 文档必须跟随真实路径、方法、认证、HTTP 状态、业务码和最终 JSON 类型。

@@ -3,9 +3,26 @@ get:
   - msg
   summary: 按会话序号读取永久历史
   operationId: getMsgHistory
-  description: 需部署启用历史存储且数据库归档表可用。C2G 校验当前成员历史代次并将游标钳制到授权下界；conv_seq 是增量顺序依据，不能根据 msg_id 推断历史顺序。did 仅用于 per-device
-    密文过滤；省略保持兼容行为。next_seq 按扫描行推进，可能出现 messages=[] 但游标前进；继续按 next_seq/has_more 拉取。业务错误使用 HTTP200 非零 code。 / Archive
-    page with authoritative sequence cursor and optional device fan-out filtering.
+  x-handler: msg_handler
+  x-action: history
+  security:
+  - bearerAuth: []
+  description: |
+    真实路由 GET /api/v1/msg/history 的 handler state 固定 action=history，query action 不切换分派。
+    补扫使用 Flutter API.msgBackfill 的真实路径 GET /api/v1/msg，固定分派 action=history_backfill；
+    不通过本 history URL 的 query action 切换。
+    需有效 Access JWT、部署启用 msg_archive_enabled 且归档表可用。C2C 以 JWT 用户和 peer_id
+    生成会话键；不能指定他人的 conv_key。C2G 需当前 open 成员历史代次授权，
+    after_seq 钳制到 start_seq-1；退群/已关闭代次返回业务 403。
+    conv_seq 是增量顺序依据，不从 msg_id 或时间推导顺序。did 只过滤 per-device 信封，
+    不代替 JWT 或成员授权，省略时保持兼容行为。next_seq 按过滤前扫描行推进且不回退，
+    不越过仍可重试的已接受低序号安全边界（旧过冲游标不会自动回退）。
+    safe_head=0 合法；blocked 表示已扫描行越过安全头，客户端需等待后续增量，不自行宣布 gap。
+    gaps 只表达服务端明确的授权边界或终态失败，不将暂时延迟误判为永久丢失。
+    messages=[] 可能仍有扫描进度，按 next_seq/has_more 继续。
+    业务错误是 HTTP 200 + 非零 code：400 参数错误；403 无群历史权限；
+    500 历史存储未启用/归档查询失败。认证中间件可提前拒绝，见 401。
+    JWT-scoped history, safe sequence progress and explicit terminal gaps; no query-action dispatch.
   parameters:
   - in: query
     name: chat_type
@@ -75,18 +92,108 @@ get:
                         minimum: 0
                       has_more:
                         type: boolean
+                        description: 过滤前扫描行超过 limit；不按 messages 长度判断。 / More scanned rows than the page limit.
                       conv_key:
                         type: string
                         description: c2c:{较小uid}:{较大uid} 或 c2g:{group_id}。 / Canonical conversation key.
+                      safe_head:
+                        type: integer
+                        format: int64
+                        minimum: 0
+                        description: 同事务快照的安全推进边界；0 合法，不能当成缺失。 / Safe head, including zero.
+                      blocked:
+                        type: boolean
+                        description: 已扫描行的序号超过 safe_head；等待增量重试。 / Scanned rows exceed the safe head.
+                      gaps:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            from_seq:
+                              type: integer
+                              format: int64
+                              minimum: 1
+                            to_seq:
+                              type: integer
+                              format: int64
+                              minimum: 1
+                            reason:
+                              type: string
+                              enum: [authorization, terminal_failure]
+                          required: [from_seq, to_seq, reason]
+                          additionalProperties: false
+                        description: 闭区间明确空洞；terminal_failure 为已处理且未入正式表的 staging 序号。 / Explicit inclusive gaps.
                     required:
                     - messages
                     - next_seq
                     - has_more
                     - conv_key
+                    - safe_head
+                    - blocked
+                    - gaps
                 required:
                 - code
                 - payload
             - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
+          examples:
+            archived:
+              summary: 首次接受时间按 D04 输出 Unix 毫秒整数
+              value:
+                code: 0
+                msg: success
+                sv_ts: 1792713600000
+                payload:
+                  messages:
+                  - msg_id: synthetic-msg_1
+                    chat_type: c2c
+                    conv_seq: 1
+                    msg_type: text
+                    from: '101'
+                    to: '102'
+                    sender_did: null
+                    e2ee: null
+                    payload: {text: '你好 🌏'}
+                    created_at: 1792713600000
+                    server_ts: 1792713600000
+                    accepted_at: 1792713600123
+                  next_seq: 1
+                  has_more: false
+                  conv_key: c2c:101:102
+                  safe_head: 1
+                  blocked: false
+                  gaps: []
+            zero_head:
+              summary: 合法零安全头
+              value:
+                code: 0
+                msg: success
+                sv_ts: 1792713600000
+                payload: {messages: [], next_seq: 0, has_more: false, conv_key: 'c2c:101:102', safe_head: 0, blocked: false, gaps: []}
+            blocked:
+              summary: 设备过滤后空页被暂未归档的低序号阻断
+              value:
+                code: 0
+                msg: success
+                sv_ts: 1792713600000
+                payload: {messages: [], next_seq: 0, has_more: false, conv_key: 'c2c:101:102', safe_head: 0, blocked: true, gaps: []}
+            terminal_gap:
+              summary: 设备过滤后空页仍有明确终态空洞
+              value:
+                code: 0
+                msg: success
+                sv_ts: 1792713600000
+                payload:
+                  messages: []
+                  next_seq: 8
+                  has_more: false
+                  conv_key: c2g:103
+                  safe_head: 8
+                  blocked: false
+                  gaps: [{from_seq: 7, to_seq: 7, reason: terminal_failure}]
+            forbidden:
+              value: {code: 403, msg: 无权限访问该群消息历史, sv_ts: 1792713600000, payload: {}}
+            unavailable:
+              value: {code: 500, msg: 消息历史暂不可用，请确认服务已开启 msg_archive_enabled, sv_ts: 1792713600000, payload: {}}
     '401':
       description: JWT、设备会话或客户端认证失败。 / Authentication rejected.
       content:
