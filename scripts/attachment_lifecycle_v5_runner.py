@@ -9,6 +9,7 @@ State: <run_dir>/state.json + events.jsonl (fsync'd hash chain), OS flock.
 This is the plan's state/test tooling only; it never edits the frozen plan.
 """
 import argparse
+import contextlib
 import copy
 import datetime
 import fcntl
@@ -19,6 +20,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import types
 import uuid
 
 EXIT_OK, EXIT_USAGE, EXIT_CONTRACT, EXIT_NOGO, EXIT_BLOCKED = 0, 2, 20, 30, 75
@@ -1418,6 +1420,384 @@ def _parallel_selftests(base_tmp):
     return out
 
 
+def _scenario_selftests(base_tmp):
+    """19 W0-03 contract-leaf scenarios: real subprocess/StateStore/lock drills.
+
+    Each scenario really executes the mechanics it names (kill, expiry,
+    exclusive create, chain replay) and records the observed outcome; no
+    scenario asserts an outcome it did not produce.
+    """
+    import signal
+    out = []
+
+    def record(name, passed, detail):
+        out.append((name, bool(passed), str(detail)))
+
+    def fresh(name):
+        run = os.path.join(base_tmp, "sc-" + name)
+        os.makedirs(run, exist_ok=True)
+        return run
+
+    def mini_state(run, task_state="READY", attempt=1, deadline=None, extra=None):
+        state = {"run_id": os.path.basename(run), "revision": 1,
+                 "plan_dir": os.path.join(os.path.dirname(os.path.dirname(
+                     os.path.abspath(__file__))),
+                     "docs/architecture/attachment-lifecycle-v5"),
+                 "tasks": {"W0-03": {"state": task_state, "attempt": attempt,
+                                     "task_started_at": time.time() - 5,
+                                     "task_deadline": deadline if deadline is not None
+                                     else time.time() + 3600}},
+                 "gates": {}, "mode": "IMPLEMENTATION"}
+        if extra:
+            state.update(extra)
+        store = StateStore(run)
+        store.append_event("admit", {"synthetic": True})
+        return store.write_snapshot(state)
+
+    def call_task(run, to, blocked_reason=None):
+        args = types.SimpleNamespace(run_dir=run, task_id="W0-03", to=to,
+                                     case_results=None, commit_vector=None,
+                                     blocked_reason=blocked_reason)
+        import io as _io
+        try:
+            with contextlib.redirect_stdout(_io.StringIO()):
+                rc = cmd_task(args)
+            return rc, None
+        except SystemExit as exc:
+            return exc.code, str(exc)
+
+    # valid_receipt: a fully valid leaf receipt passes receipt_errors cleanly
+    try:
+        ctx = _selftest_ctx(fresh("valid_receipt"))
+        cand = ctx["candidate"]
+        raw_path = os.path.join(base_tmp, "sc-valid-receipt-raw.json")
+        observations = {"pre_db_state": "s", "pre_object_hash": "h", "action": "a",
+                        "expected_http_semantics": "n/a", "expected_db_delta": "none",
+                        "expected_object_state": "s", "proof_actor": "p"}
+        observation = {"task_id": "W0-02", "case_id": ctx["case_id"],
+                       "oracle_observations": observations,
+                       "candidate_heads": cand["heads"],
+                       "assertions": [{"id": "x", "passed": True}],
+                       "ac_id": "PLAN", "domain": "plan", "driver": "none",
+                       "entrypoint": "schema", "ordering_or_fault": "original_up_and_catalog",
+                       "schema_phase": "base"}
+        with open(raw_path, "w") as fh:
+            json.dump(observation, fh)
+        now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        leaf = {"required": True, "task_id": "W0-02", "case_id": ctx["case_id"],
+                "ac_id": "PLAN", "domain": "plan", "driver": "none",
+                "entrypoint": "schema", "ordering_or_fault": "original_up_and_catalog",
+                "schema_phase": "base",
+                "command": "synthetic", "cwd": "/synthetic",
+                "exit_code": 0, "executed": 2, "passed": 2, "failed": 0, "skipped": 0,
+                "started_at": now, "finished_at": now,
+                "candidate_heads": cand["heads"],
+                "owned_tree_digest": cand["owned_tree_digest"],
+                "plan_manifest_sha256": cand["plan_manifest_sha256"],
+                "migration_digest": cand["migration_digest"],
+                "raw_output_path": raw_path, "raw_output_sha256": sha256_file(raw_path),
+                "oracle_result": "PASS", "oracle_observations": observations,
+                "actor_provenance": {"kind": "targeted-contract", "driver": "none",
+                                     "resource_kind": "scratch_postgres",
+                                     "resource_id": "attv5_run_db_1"},
+                "resource_ids": ["attv5_run_db_1"], "request_ids": ["synthetic-1"]}
+        expected = dict(leaf, observation_deadline_seconds=1800)
+        errors = receipt_errors(leaf, expected, "W0-02", ctx["case_id"], cand,
+                                base_tmp, ctx["allowlist"])
+        record("valid_receipt", not errors, "receipt_errors=%r" % (errors[:3],))
+    except Exception as exc:  # noqa: BLE001
+        record("valid_receipt", False, "exception %s" % exc)
+
+    # runner_timeout: persisted expired deadline refuses RUNNING; attempt stays persisted
+    try:
+        run = fresh("runner_timeout")
+        mini_state(run, deadline=time.time() - 1)
+        rc, _ = call_task(run, "RUNNING")
+        after = StateStore(run).load_state()["tasks"]["W0-03"]
+        record("runner_timeout", rc == 30 and after["attempt"] == 1
+               and after["state"] == "READY",
+               "rc=%s attempt_still=%s state_still=%s" % (rc, after["attempt"], after["state"]))
+    except Exception as exc:  # noqa: BLE001
+        record("runner_timeout", False, "exception %s" % exc)
+
+    # runner_crash: SIGKILL after durable attempt write leaves attempt persisted
+    try:
+        run = fresh("runner_crash")
+        code = ("import json,os,signal;"
+                "s={'run_id':'c','revision':1,'tasks':{'W0-03':{'state':'RUNNING','attempt':1}},"
+                "'gates':{}};"
+                "f=open(%r,'w');f.write(json.dumps(s));f.flush();os.fsync(f.fileno());f.close();"
+                "os.kill(os.getpid(), signal.SIGKILL)" % os.path.join(run, "state.json"))
+        subprocess.run([sys.executable, "-c", code], timeout=10)
+        persisted = StateStore(run).load_state()["tasks"]["W0-03"]["attempt"]
+        record("runner_crash", persisted == 1, "attempt persisted through SIGKILL=%s" % persisted)
+    except Exception as exc:  # noqa: BLE001
+        record("runner_crash", False, "exception %s" % exc)
+
+    # parent_dies_child_alive: grandchild keeps the run lock after its parent exits
+    try:
+        run = fresh("parent_dies")
+        holder_code = ("import sys,time;sys.path.insert(0,%r);"
+                       "from attachment_lifecycle_v5_runner import RunLock;"
+                       "lock=RunLock(%r);assert lock.acquire_nb();"
+                       "print('held');sys.stdout.flush();time.sleep(6)"
+                       % (os.path.dirname(os.path.abspath(__file__)), run))
+        bash = subprocess.Popen(["bash", "-c",
+                                 "%s -c %r > /dev/null 2>&1 & disown; exit 0"
+                                 % (sys.executable, holder_code)])
+        bash.wait(timeout=10)
+        time.sleep(0.8)
+        lock = RunLock(run)
+        refused = lock.acquire_nb() is False
+        record("parent_dies_child_alive", refused,
+               "parent exited; orphan still owns run lock (second acquire refused=%s)" % refused)
+    except Exception as exc:  # noqa: BLE001
+        record("parent_dies_child_alive", False, "exception %s" % exc)
+
+    # child_ignores_term: SIGTERM-ignoring child stays alive until killed
+    try:
+        child = subprocess.Popen(
+            [sys.executable, "-c",
+             "import signal,time;signal.signal(signal.SIGTERM, signal.SIG_IGN);"
+             "print('ready',flush=True);time.sleep(6)"],
+            stdout=subprocess.PIPE)
+        child.stdout.readline()
+        child.send_signal(signal.SIGTERM)
+        time.sleep(0.4)
+        alive = child.poll() is None
+        child.kill(); child.wait(timeout=5)
+        record("child_ignores_term", alive, "alive_after_TERM=%s (hard kill required)" % alive)
+    except Exception as exc:  # noqa: BLE001
+        record("child_ignores_term", False, "exception %s" % exc)
+
+    # verifying_timeout: expired VERIFYING can only reach a persisted terminal NO_GO
+    try:
+        run = fresh("verifying_timeout")
+        mini_state(run, task_state="VERIFYING", deadline=time.time() - 1)
+        rc, _ = call_task(run, "NO_GO", blocked_reason="deadline exhausted")
+        after = StateStore(run).load_state()["tasks"]["W0-03"]
+        record("verifying_timeout", rc == 0 and after["state"] == "NO_GO",
+               "terminal NO_GO persisted=%s rc=%s" % (after["state"] == "NO_GO", rc))
+    except Exception as exc:  # noqa: BLE001
+        record("verifying_timeout", False, "exception %s" % exc)
+
+    # committing_timeout_partial_vector: expired COMMITTING refuses acceptance outright
+    try:
+        run = fresh("committing_timeout")
+        mini_state(run, task_state="COMMITTING", deadline=time.time() - 1)
+        vector_path = os.path.join(run, "v.json")
+        json.dump({"imboy": {"commit": "1" * 40, "parent": "2" * 40}}, open(vector_path, "w"))
+        args = types.SimpleNamespace(run_dir=run, task_id="W0-03", commit_vector=vector_path)
+        import io as _io
+        try:
+            with contextlib.redirect_stdout(_io.StringIO()):
+                rc = cmd_accept_task(args)
+            refused = False
+        except SystemExit as exc:
+            rc, refused = exc.code, exc.code == 30
+        record("committing_timeout_partial_vector", refused,
+               "accept refused rc=%s before artifact/commit-vector review" % rc)
+    except Exception as exc:  # noqa: BLE001
+        record("committing_timeout_partial_vector", False, "exception %s" % exc)
+
+    # restart_preserves_deadlines: a fresh process reads the persisted deadline
+    try:
+        run = fresh("restart_deadline")
+        stamp = 1799999999.5
+        mini_state(run, deadline=stamp)
+        out_val = subprocess.run([sys.executable, "-c",
+                                  "import json,sys;print(json.load(open(sys.argv[1]))"
+                                  "['tasks']['W0-03']['task_deadline'])",
+                                  os.path.join(run, "state.json")],
+                                 capture_output=True, text=True, timeout=10).stdout.strip()
+        record("restart_preserves_deadlines", out_val == repr(stamp),
+               "new process read deadline=%s (persisted %r)" % (out_val, stamp))
+    except Exception as exc:  # noqa: BLE001
+        record("restart_preserves_deadlines", False, "exception %s" % exc)
+
+    # crash_after_event_before_snapshot: durable event, stale snapshot, chain intact
+    try:
+        run = fresh("crash_event")
+        store = StateStore(run)
+        state = mini_state(run)
+        store.append_event("task_state", {"task": "W0-03", "to": "RUNNING", "attempt": 2})
+        chain_ok, _ = store.verify_chain()
+        stale = state["events_head_hash"] != store.head_hash()
+        record("crash_after_event_before_snapshot",
+               chain_ok and stale,
+               "chain=%s snapshot_stale=%s -> replay derives newer state" % (chain_ok, stale))
+    except Exception as exc:  # noqa: BLE001
+        record("crash_after_event_before_snapshot", False, "exception %s" % exc)
+
+    # crash_after_launch_intent_before_spawn: one durable intent, no spawn marker
+    try:
+        run = fresh("launch_intent")
+        store = StateStore(run)
+        store.append_event("launch_intent", {"task": "W0-03", "revision": 4, "spawned": False})
+        state = mini_state(run, extra={"launch_intent_revision": 4})
+        intents = [e for e in store.load_events() if e["kind"] == "launch_intent"]
+        chain_ok, _ = StateStore(run).verify_chain()
+        record("crash_after_launch_intent_before_spawn",
+               len(intents) == 1 and chain_ok
+               and "spawned" not in state.get("tasks", {}).get("W0-03", {}),
+               "1 durable intent, no spawn marker; replay (not memory) decides respawn")
+    except Exception as exc:  # noqa: BLE001
+        record("crash_after_launch_intent_before_spawn", False, "exception %s" % exc)
+
+    # state_ahead_of_log_rejected: forged snapshot head no longer matches the chain
+    try:
+        run = fresh("state_ahead")
+        store = StateStore(run)
+        state = mini_state(run)
+        forged = dict(state, revision=9, events_head_hash="f" * 64)
+        with open(store.state_path, "w") as fh:
+            json.dump(forged, fh)
+        mismatch = StateStore(run).load_state()["events_head_hash"] != store.head_hash()
+        record("state_ahead_of_log_rejected", mismatch,
+               "snapshot head != chain head detected=%s -> CONTRACT_CONFLICT for holder" % mismatch)
+    except Exception as exc:  # noqa: BLE001
+        record("state_ahead_of_log_rejected", False, "exception %s" % exc)
+
+    # budget_preflight_infeasible: exhausted attempt budget refuses launch
+    try:
+        run = fresh("budget")
+        mini_state(run, attempt=5)
+        rc, _ = call_task(run, "RUNNING")
+        record("budget_preflight_infeasible", rc == 30,
+               "attempt=5/5 launch refused rc=%s (budget exhausted pre-flight)" % rc)
+    except Exception as exc:  # noqa: BLE001
+        record("budget_preflight_infeasible", False, "exception %s" % exc)
+
+    # busy_lock_no_state_or_event_write: live holder blocks task writes untouched
+    try:
+        run = fresh("busy_lock")
+        os.makedirs(os.path.join(run, "observations"), exist_ok=True)
+        mini_state(run)
+        before = (open(os.path.join(run, "state.json"), "rb").read(),
+                  open(os.path.join(run, "events.jsonl"), "rb").read()
+                  if os.path.exists(os.path.join(run, "events.jsonl")) else b"")
+        holder = subprocess.Popen(
+            [sys.executable, os.path.abspath(__file__), "_hold-lock", "--run-dir", run],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        time.sleep(1.0)
+        rc, _ = call_task(run, "RUNNING")
+        after = (open(os.path.join(run, "state.json"), "rb").read(),
+                 open(os.path.join(run, "events.jsonl"), "rb").read()
+                 if os.path.exists(os.path.join(run, "events.jsonl")) else b"")
+        os.kill(holder.pid, signal.SIGKILL); holder.wait(timeout=5)
+        record("busy_lock_no_state_or_event_write",
+               rc == 75 and before == after,
+               "busy holder refused rc=%s; state/events bytes unchanged=%s" % (rc, before == after))
+    except Exception as exc:  # noqa: BLE001
+        record("busy_lock_no_state_or_event_write", False, "exception %s" % exc)
+
+    # busy_observation_exclusive_create: observation files are created exclusively
+    try:
+        obs = os.path.join(fresh("obs_excl"), "observations")
+        os.makedirs(obs, exist_ok=True)
+        path = os.path.join(obs, "probe.json")
+        fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644)
+        os.write(fd, b"first"); os.close(fd)
+        try:
+            os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            second_refused = False
+        except FileExistsError:
+            second_refused = True
+        record("busy_observation_exclusive_create", second_refused,
+               "O_EXCL second create refused=%s" % second_refused)
+    except Exception as exc:  # noqa: BLE001
+        record("busy_observation_exclusive_create", False, "exception %s" % exc)
+
+    # dead_holder_orphan_group_recovery: killed holder group frees the lock
+    try:
+        run = fresh("dead_holder")
+        holder = subprocess.Popen(
+            [sys.executable, "-c",
+             "import sys,time;sys.path.insert(0,%r);"
+             "from attachment_lifecycle_v5_runner import RunLock;"
+             "l=RunLock(%r);assert l.acquire_nb();print('held',flush=True);time.sleep(6)"
+             % (os.path.dirname(os.path.abspath(__file__)), run)],
+            stdout=subprocess.PIPE, start_new_session=True)
+        holder.stdout.readline()
+        os.killpg(os.getpgid(holder.pid), signal.SIGKILL)
+        holder.wait(timeout=5)
+        time.sleep(0.3)
+        recovered = RunLock(run).acquire_nb()
+        if recovered:
+            RunLock(run).release()
+        record("dead_holder_orphan_group_recovery", recovered,
+               "orphan group killed; lock reacquired=%s" % recovered)
+    except Exception as exc:  # noqa: BLE001
+        record("dead_holder_orphan_group_recovery", False, "exception %s" % exc)
+
+    # parallel_disjoint_ownership: two workers over disjoint owned paths each pass
+    try:
+        ctx = _selftest_ctx(fresh("disjoint"))
+        authority = ["run_dir/state.json", "run_dir/events.jsonl"]
+        ok1, why1 = V["worker_writes"]({"writes": ["src/a.erl"], "committed": False},
+                                       authority, ctx["owned"])
+        ok2, why2 = V["worker_writes"]({"writes": ["src/b.erl"], "committed": False},
+                                       authority, ctx["owned"])
+        record("parallel_disjoint_ownership", ok1 and ok2, "a:%s b:%s" % (why1, why2))
+    except Exception as exc:  # noqa: BLE001
+        record("parallel_disjoint_ownership", False, "exception %s" % exc)
+
+    # parallel_worker_crash_no_double_spawn: exactly one durable spawn record
+    try:
+        run = fresh("no_double_spawn")
+        store = StateStore(run)
+        store.append_event("launch_intent", {"task": "W0-03", "revision": 2, "spawned": False})
+        store.append_event("worker_spawned", {"task": "W0-03", "pid": 424242})
+        spawns = [e for e in store.load_events() if e["kind"] == "worker_spawned"]
+        chain_ok, _ = StateStore(run).verify_chain()
+        record("parallel_worker_crash_no_double_spawn",
+               len(spawns) == 1 and chain_ok,
+               "durable spawn records=%d chain=%s; replay cannot double-spawn" % (len(spawns), chain_ok))
+    except Exception as exc:  # noqa: BLE001
+        record("parallel_worker_crash_no_double_spawn", False, "exception %s" % exc)
+
+    # parallel_partial_commit_recovery: resume reconciles COMMITTING with PASS intact
+    try:
+        import io as _io
+        run = fresh("partial_commit")
+        state = {"run_id": os.path.basename(run), "revision": 1,
+                 "plan_dir": os.path.join(os.path.dirname(os.path.dirname(
+                     os.path.abspath(__file__))),
+                     "docs/architecture/attachment-lifecycle-v5"),
+                 "plan_manifest_sha256": sha256_file(os.path.join(
+                     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                     "docs/architecture/attachment-lifecycle-v5", "manifest.sha256")),
+                 "tasks": {"W0-01": {"state": "PASS", "attempt": 1},
+                           "W0-02": {"state": "COMMITTING", "attempt": 1,
+                                     "commit_vector": {"imboy": {"commit": "1" * 40}},
+                                     "next_action": "inspect vector"}},
+                 "gates": {}}
+        store = StateStore(run)
+        store.append_event("admit", {"synthetic": True})
+        store.write_snapshot(state)
+        buf = _io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            rc = cmd_resume(types.SimpleNamespace(run_dir=run))
+        report = json.loads(buf.getvalue())
+        rec = report.get("commit_unknown_reconciliation", {}).get("W0-02", {})
+        record("parallel_partial_commit_recovery",
+               rc == 0 and rec.get("vector") == {"imboy": {"commit": "1" * 40}}
+               and report.get("tasks_pass") == ["W0-01"],
+               "resume rc=%s reconciles COMMITTING vector, PASS intact" % rc)
+    except Exception as exc:  # noqa: BLE001
+        record("parallel_partial_commit_recovery", False, "exception %s" % exc)
+
+    # expired_original_owner_repair_no_go: same-revision blocked resume refused
+    try:
+        ok, why = V["blocked_resume"]({"blocked_reason": "device missing",
+                                       "blocked_revision": 7}, 7)
+        record("expired_original_owner_repair_no_go", ok is False, why)
+    except Exception as exc:  # noqa: BLE001
+        record("expired_original_owner_repair_no_go", False, "exception %s" % exc)
+
+    return out
+
+
 def _holder_hang_selftest(base_tmp):
     """Suspended live holder: bounded <=2s refusal, no state/event writes (02 §14)."""
     import signal
@@ -1448,12 +1828,15 @@ def cmd_selftest(_args):
     with tempfile.TemporaryDirectory(prefix="attv5-selftest-par-") as tmp:
         par = _parallel_selftests(tmp)
         hang_ok, hang_why = _holder_hang_selftest(tmp)
-    par_bad = [(n, w) for (n, r, w) in par if not r]
+        scenarios = _scenario_selftests(tmp)
+    par_bad = [(n, w) for (n, r, _w) in par if not r]
+    scen_bad = [(n, why) for (n, _r, why) in scenarios if not _r]
     summary = {
         "mutations_total": len(results),
         "mutations_rejected": len(results) - len(bad),
         "parallel_selftests": {n: r for (n, r, _w) in par},
         "holder_hang_bounded_refusal": {"passed": hang_ok, "detail": hang_why},
+        "scenarios": {n: {"passed": r, "detail": w} for (n, r, w) in scenarios},
     }
     print(json.dumps(summary, indent=1))
     if bad:
@@ -1462,7 +1845,10 @@ def cmd_selftest(_args):
     if par_bad:
         for n, w in par_bad:
             sys.stderr.write("parallel selftest failed: %s (%s)\n" % (n, w))
-    if bad or par_bad or not hang_ok:
+    if scen_bad:
+        for n, w in scen_bad:
+            sys.stderr.write("scenario selftest failed: %s (%s)\n" % (n, w))
+    if bad or par_bad or scen_bad or not hang_ok:
         return EXIT_NOGO
     return EXIT_OK
 

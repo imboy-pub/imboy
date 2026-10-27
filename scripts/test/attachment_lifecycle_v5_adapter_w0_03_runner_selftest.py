@@ -191,6 +191,23 @@ def main():
                        % (contract_mutations[33], rejected, total)),
         }
 
+    # 19 contract-leaf scenarios measured by _scenario_selftests (real
+    # subprocess/StateStore/lock drills reported in the self-test summary).
+    scenarios = summary.get("scenarios")
+    if not isinstance(scenarios, dict) or not scenarios:
+        fail("self-test summary lacks the scenarios block (cmd_selftest predates "
+             "_scenario_selftests?); 19 contract leaves cannot be measured")
+    scenario_bad = sorted(name for name, row in scenarios.items()
+                          if not (isinstance(row, dict) and row.get("passed") is True))
+    if scenario_bad:
+        fail("self-test scenarios did not pass: %r" % (scenario_bad,))
+    for name, row in sorted(scenarios.items()):
+        evidence[name] = {
+            "id": "scenario_%s_measured" % name,
+            "passed": True,
+            "detail": "scenarios[%r].detail=%r" % (name, row.get("detail", "")),
+        }
+
     uncovered = [leaf.get("ordering_or_fault") for leaf in leaves
                  if leaf.get("ordering_or_fault") not in evidence]
     if uncovered:

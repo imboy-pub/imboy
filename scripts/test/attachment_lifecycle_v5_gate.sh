@@ -277,9 +277,18 @@ bootstrap_w002_history() {
   for E in pg_jieba postgis postgis_raster timescaledb pgcrypto "uuid-ossp" pg_trgm btree_gin btree_gist unaccent pg_stat_statements; do
     docker exec -i "$PG_CONTAINER" psql -X -U imboy_user -d "$DB" -c "CREATE EXTENSION IF NOT EXISTS \"$E\"" >> "$cdir/db.log" 2>&1 || return 75
   done
+  # The frozen baseline-probes.sql documents PRE-V5 behaviour (mutable pending
+  # identity, no db guard) as the "before" evidence for this wave; replay only
+  # the migrations that predate the first V5 migration (00000178), else the V5
+  # immutability guards correctly reject the probe's mutation upserts.
+  local f
   for f in $(ls "$ROOT/priv/migrations/"*.up.sql | sed 's|.*/||' | sort); do
+    case "$f" in
+      0000017[8-9]*|000001[89]*|000002*) break ;;
+    esac
     docker exec -i "$PG_CONTAINER" psql -X -U imboy_user -d "$DB" -v ON_ERROR_STOP=1 --single-transaction -f - < "$ROOT/priv/migrations/$f" >> "$cdir/raw.log" 2>&1 || return 30
   done
+  echo "replayed_pre_v5=$f" >> "$cdir/raw.log"
   docker exec -i "$PG_CONTAINER" psql -X -U imboy_user -d "$DB" -v ON_ERROR_STOP=1 \
     < "$ROOT/docs/architecture/attachment-lifecycle-v5/evidence/baseline-probes.sql" > "$cdir/raw.log" 2>&1 || return 30
   grep -c OBSERVED "$cdir/raw.log" | grep -q '^3$' || { echo 'PROBES_MISSING' >> "$cdir/raw.log"; return 30; }
