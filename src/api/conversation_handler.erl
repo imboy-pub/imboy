@@ -197,14 +197,28 @@ set_manual_pending(Req0, State) ->
     CurrentUid = auth_ds:current_uid(State),
     Uk3 = maps:get(<<"uk3">>, Payload, <<>>),
     Value = maps:get(<<"value">>, Payload, undefined),
+    %% W09.c（J17.d）：可选 expected_version CAS；冲突返回当前状态供回读
+    %% （保留 desired_value 由客户端决定重试，不自动取反）。
+    Expected = normalize_expected_version(
+        maps:get(<<"expected_version">>, Payload, undefined)
+    ),
     case {is_binary(Uk3), Uk3 =/= <<>>, is_boolean(Value)} of
         {true, true, true} ->
-            case user_setting_ds:set_manual_pending(CurrentUid, Uk3, Value) of
+            case user_setting_ds:set_manual_pending(CurrentUid, Uk3, Value, Expected) of
                 {ok, Entry} ->
                     elib_response:success(Req0, #{
                         <<"uk3">> => Uk3,
                         <<"value">> => Value,
                         <<"version">> => maps:get(<<"version">>, Entry, 0)
+                    });
+                {conflict, Current} ->
+                    elib_response:error(Req0, <<"版本冲突"/utf8>>, ?ERR_OPERATION_FAILED, #{
+                        <<"conflict">> => true,
+                        <<"current">> => #{
+                            <<"uk3">> => Uk3,
+                            <<"value">> => maps:get(<<"value">>, Current, false),
+                            <<"version">> => maps:get(<<"version">>, Current, 0)
+                        }
                     });
                 {error, Msg} when is_binary(Msg) ->
                     elib_response:error(Req0, Msg, ?ERR_OPERATION_FAILED);
@@ -216,6 +230,10 @@ set_manual_pending(Req0, State) ->
         _ ->
             elib_response:error(Req0, <<"人工待处理参数无效"/utf8>>, ?ERR_OPERATION_FAILED)
     end.
+
+%% expected_version 缺省/非整数 → undefined（旧端语义，直接应用推进版本）。
+normalize_expected_version(V) when is_integer(V), V >= 0 -> V;
+normalize_expected_version(_) -> undefined.
 
 %% @doc W09.a：当前账号全部人工待处理元数据投影（uk3/value/version）。
 -spec manual_pending_list(cowboy_req:req(), map()) -> cowboy_req:req().

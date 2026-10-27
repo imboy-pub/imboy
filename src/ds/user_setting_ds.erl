@@ -11,6 +11,9 @@
 -export([search/1]).
 -export([manual_pending_map/1]).
 -export([set_manual_pending/3]).
+-export([set_manual_pending/4]).
+-export([bump_conversation_version/2]).
+-export([conversation_uk3/3]).
 
 -include("log.hrl").
 
@@ -81,8 +84,105 @@ manual_pending_map(Uid) ->
 %% 推进该会话版本。无变化的同目标重试返回当前状态、不重复副作用
 %% （版本不变）；目标变化才推进版本。
 -spec set_manual_pending(integer(), binary(), boolean()) ->
-    {ok, map()} | {error, term()}.
-set_manual_pending(Uid, Uk3, Target) when is_boolean(Target), Uk3 =/= <<>> ->
+    {ok, map()} | {conflict, map()} | {error, term()}.
+set_manual_pending(Uid, Uk3, Target) ->
+    %% 无期望版本（旧端语义）→ 直接应用并推进版本（J17.e）。
+    set_manual_pending(Uid, Uk3, Target, undefined).
+
+%% @doc W09.c（J17.d）：带 expected_version 的 CAS 写。
+%% 期望版本与当前不符 → {conflict, CurrentEntry}（调用方回读后重试
+%% 原目标，保留 desired_value，不自动取反）；无期望版本（旧端）直接
+%% 应用并推进版本（J17.e 同业务入口推进版本）。
+-spec set_manual_pending(
+    integer(),
+    binary(),
+    boolean(),
+    undefined | non_neg_integer()
+) ->
+    {ok, map()} | {conflict, map()} | {error, term()}.
+set_manual_pending(Uid, Uk3, Target, ExpectedVersion) when
+    is_boolean(Target), Uk3 =/= <<>>
+->
+    elib_pg:with_tx(fun(Conn) ->
+        case user_setting_repo:find_setting_for_update_tx(Conn, Uid) of
+            {ok, Setting0} ->
+                Setting =
+                    case Setting0 of
+                        M when is_map(M) -> M;
+                        _ -> #{}
+                    end,
+                Mp0 = maps:get(<<"manual_pending">>, Setting, #{}),
+                Mp0b =
+                    case is_map(Mp0) of
+                        true -> Mp0;
+                        _ -> #{}
+                    end,
+                Now = elib_dt:now(),
+                Current = maps:get(Uk3, Mp0b, undefined),
+                %% CAS：期望版本存在且与当前不符 → 冲突（可安全回读）。
+                case {ExpectedVersion, Current} of
+                    {V, Entry} when is_integer(V), is_map(Entry) ->
+                        CurV = maps:get(<<"version">>, Entry, 0),
+                        case CurV =:= V of
+                            false ->
+                                {conflict, Entry};
+                            true ->
+                                apply_manual_pending(
+                                    Conn, Uid, Setting, Mp0b, Uk3, Target, Entry, Now
+                                )
+                        end;
+                    {V, _Other} when is_integer(V) ->
+                        %% 期望有版本但本地无条目 → 版本视 0，不符即冲突。
+                        case V of
+                            0 ->
+                                apply_manual_pending(
+                                    Conn, Uid, Setting, Mp0b, Uk3, Target, undefined, Now
+                                );
+                            _ ->
+                                {conflict, #{<<"value">> => false, <<"version">> => 0}}
+                        end;
+                    _ ->
+                        apply_manual_pending(
+                            Conn, Uid, Setting, Mp0b, Uk3, Target, Current, Now
+                        )
+                end;
+            {error, _} = Err ->
+                Err
+        end
+    end);
+set_manual_pending(_Uid, _Uk3, _Target, _Expected) ->
+    {error, <<"人工待处理参数无效"/utf8>>}.
+
+%% 同目标重试返回当前状态不推进版本；目标变化才推进（§6.7）。
+apply_manual_pending(Conn, Uid, Setting, Mp0b, Uk3, Target, Current, Now) ->
+    case Current of
+        #{<<"value">> := Target} = Entry when is_map(Entry) ->
+            {ok, Entry};
+        Entry when is_map(Entry) ->
+            V = erlang:max(0, maps:get(<<"version">>, Entry, 0)) + 1,
+            write_manual_pending(Conn, Uid, Setting, Mp0b, Uk3, Target, V, Now);
+        _ ->
+            write_manual_pending(Conn, Uid, Setting, Mp0b, Uk3, Target, 1, Now)
+    end.
+
+write_manual_pending(Conn, Uid, Setting, Mp0b, Uk3, Target, V, Now) ->
+    NewEntry = #{
+        <<"value">> => Target,
+        <<"version">> => V,
+        <<"updated_at">> => Now
+    },
+    ok = user_setting_repo:upsert_setting_tx(
+        Conn,
+        Uid,
+        Setting#{<<"manual_pending">> => maps:put(Uk3, NewEntry, Mp0b)}
+    ),
+    {ok, NewEntry}.
+
+%% @doc W09.c（J17.e）：旧写动作（pin/unpin/delete/restore，无版本参数）
+%% 成功后经同一业务入口推进该会话版本——新端凭 stale expected_version
+%% 可检测旧写冲突。条目不存在则以 value=false、version=1 建立。
+-spec bump_conversation_version(integer(), binary()) -> {ok, map()} | {error, term()}.
+bump_conversation_version(Uid, Uk3) when Uk3 =/= <<>> ->
     elib_pg:with_tx(fun(Conn) ->
         case user_setting_repo:find_setting_for_update_tx(Conn, Uid) of
             {ok, Setting0} ->
@@ -99,41 +199,38 @@ set_manual_pending(Uid, Uk3, Target) when is_boolean(Target), Uk3 =/= <<>> ->
                     end,
                 Now = elib_dt:now(),
                 case maps:get(Uk3, Mp0b, undefined) of
-                    #{<<"value">> := Target} = Entry when is_map(Entry) ->
-                        %% 无变化同目标重试：返回当前状态，不推进版本
-                        {ok, Entry};
                     Entry when is_map(Entry) ->
                         V = erlang:max(0, maps:get(<<"version">>, Entry, 0)) + 1,
-                        NewEntry = #{
-                            <<"value">> => Target,
-                            <<"version">> => V,
-                            <<"updated_at">> => Now
-                        },
-                        ok = user_setting_repo:upsert_setting_tx(
-                            Conn,
-                            Uid,
-                            Setting#{<<"manual_pending">> => maps:put(Uk3, NewEntry, Mp0b)}
-                        ),
-                        {ok, NewEntry};
+                        Target = maps:get(<<"value">>, Entry, false),
+                        write_manual_pending(
+                            Conn, Uid, Setting, Mp0b, Uk3, Target, V, Now
+                        );
                     _ ->
-                        NewEntry = #{
-                            <<"value">> => Target,
-                            <<"version">> => 1,
-                            <<"updated_at">> => Now
-                        },
-                        ok = user_setting_repo:upsert_setting_tx(
-                            Conn,
-                            Uid,
-                            Setting#{<<"manual_pending">> => maps:put(Uk3, NewEntry, Mp0b)}
-                        ),
-                        {ok, NewEntry}
+                        write_manual_pending(
+                            Conn, Uid, Setting, Mp0b, Uk3, false, 1, Now
+                        )
                 end;
             {error, _} = Err ->
                 Err
         end
     end);
-set_manual_pending(_Uid, _Uk3, _Target) ->
+bump_conversation_version(_Uid, _Uk3) ->
     {error, <<"人工待处理参数无效"/utf8>>}.
+
+%% @doc 会话 uk3 构造（与 App ConversationUk3Generator 约定一致）：
+%% C2C_小id_大id；C2G_当前用户id_群id。
+-spec conversation_uk3(binary(), integer(), integer()) -> binary().
+conversation_uk3(<<"c2c">>, Uid, PeerId) ->
+    [A, B] = lists:sort([
+        elib_cnv:safe_to_binary(Uid),
+        elib_cnv:safe_to_binary(PeerId)
+    ]),
+    <<"C2C_", A/binary, "_", B/binary>>;
+conversation_uk3(<<"c2g">>, Uid, GroupId) ->
+    <<"C2G_", (elib_cnv:safe_to_binary(Uid))/binary, "_",
+        (elib_cnv:safe_to_binary(GroupId))/binary>>;
+conversation_uk3(_Type, _Uid, _Id) ->
+    <<>>.
 
 safe_decode_setting(Bin) ->
     try

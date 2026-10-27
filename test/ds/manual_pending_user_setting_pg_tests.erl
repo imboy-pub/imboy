@@ -15,13 +15,18 @@
 %%%===================================================================
 
 -define(UID, 880951).
+-define(PEER, 880952).
 -define(UK3A, <<"C2C_880951_880952">>).
 -define(UK3B, <<"C2G_880951_880953">>).
 
 cleanup_test_rows() ->
-    _ = elib_pg:execute(<<"DELETE FROM user_setting WHERE user_id = $1">>, [
-        ?UID
-    ]),
+    lists:foreach(
+        fun({Sql, Params}) -> _ = elib_pg:execute(Sql, Params) end,
+        [
+            {<<"DELETE FROM user_setting WHERE user_id = $1">>, [?UID]},
+            {<<"DELETE FROM conversation_pin WHERE user_id = $1">>, [?UID]}
+        ]
+    ),
     ok.
 
 manual_pending_user_setting_vectors_test_() ->
@@ -85,6 +90,46 @@ vectors() ->
         ?assertMatch(
             {error, _},
             user_setting_ds:set_manual_pending(?UID, <<>>, true)
+        ),
+
+        %% ── V6：CAS expected_version 匹配 → 应用并推进（J17.d）。
+        {ok, #{<<"version">> := V6}} =
+            user_setting_ds:set_manual_pending(?UID, ?UK3A, true),
+        {ok, #{<<"version">> := V6b}} =
+            user_setting_ds:set_manual_pending(?UID, ?UK3A, false, V6),
+        ?assert(V6b =:= V6 + 1),
+
+        %% ── V7：stale expected_version → conflict + 当前状态可回读，
+        %% 当前值不被覆盖（保留 desired_value 由客户端决定重试）。
+        {conflict, CurrentEntry} =
+            user_setting_ds:set_manual_pending(?UID, ?UK3A, true, V6),
+        ?assertMatch(
+            #{<<"value">> := false, <<"version">> := V6b}, CurrentEntry
+        ),
+        ?assertMatch(
+            #{?UK3A := #{<<"value">> := false, <<"version">> := V6b}},
+            user_setting_ds:manual_pending_map(?UID)
+        ),
+
+        %% ── V8：同 expected_version 重放（已达目标）→ 正常返回当前状态，
+        %% 版本不再推进（无变化同目标重试无重复副作用）。
+        {ok, #{<<"version">> := V6b}} =
+            user_setting_ds:set_manual_pending(?UID, ?UK3A, false, V6b),
+
+        %% ── V9：旧写 bump——pin 旧入口推进同会话版本（J17.e），新端凭
+        %% stale expected_version 可检测旧写冲突。
+        ok = conversation_pin_ds:pin_conversation(?UID, ?PEER, <<"c2c">>),
+        {ok, #{<<"version">> := VBumped}} =
+            user_setting_ds:set_manual_pending(?UID, ?UK3A, true, V6b),
+        ?assert(VBumped > V6b),
+        %% uk3 构造与服务端约定一致（C2C_小_大）。
+        ?assertEqual(
+            <<"C2C_880951_880962">>,
+            user_setting_ds:conversation_uk3(<<"c2c">>, ?UID, 880962)
+        ),
+        ?assertEqual(
+            <<"C2C_880951_880962">>,
+            user_setting_ds:conversation_uk3(<<"c2c">>, 880962, ?UID)
         ),
 
         ok

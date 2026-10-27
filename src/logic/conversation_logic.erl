@@ -58,6 +58,11 @@ delete(Uid, ConversationId, Type) ->
             % 标记会话为已删除
             case conversation_delete_ds:delete_conversation(Uid, ConversationId, Type) of
                 ok ->
+                    %% W09.c（J17.e）：旧写同业务入口推进版本。
+                    _ = user_setting_ds:bump_conversation_version(
+                        Uid,
+                        user_setting_ds:conversation_uk3(Type, Uid, ConversationId)
+                    ),
                     notify_conversation_change(
                         Uid, ConversationId, Type, <<"conversation_deleted">>
                     ),
@@ -78,6 +83,10 @@ restore(_Uid, ConversationId, _Type) when not is_integer(ConversationId); Conver
     {error, <<"会话ID无效"/utf8>>};
 restore(Uid, ConversationId, Type) ->
     conversation_delete_ds:restore_conversation(Uid, ConversationId, Type),
+    %% W09.c（J17.e）：旧写同业务入口推进版本。
+    _ = user_setting_ds:bump_conversation_version(
+        Uid, user_setting_ds:conversation_uk3(Type, Uid, ConversationId)
+    ),
     notify_conversation_change(Uid, ConversationId, Type, <<"conversation_restored">>),
     ok.
 
