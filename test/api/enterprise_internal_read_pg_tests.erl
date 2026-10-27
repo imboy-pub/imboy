@@ -1010,6 +1010,25 @@ limit_parsing_test() ->
             end,
             [<<"0">>, <<"101">>, <<"-1">>, <<"abc">>, <<"1.5">>, <<>>, true, <<" 5">>]
         ),
+        %% page_size canonical / limit 别名：单名等价，同传即 400（v1 冻结收容）
+        ?assertEqual(
+            {ok, 30}, enterprise_internal_read_page:parse_limit(#{<<"page_size">> => <<"30">>})
+        ),
+        ?assertEqual(
+            {ok, 30}, enterprise_internal_read_page:parse_limit(#{<<"limit">> => <<"30">>})
+        ),
+        ?assertEqual(
+            {error, invalid_request},
+            enterprise_internal_read_page:parse_limit(#{
+                <<"page_size">> => <<"30">>, <<"limit">> => <<"30">>
+            })
+        ),
+        ?assertEqual(
+            {error, invalid_request},
+            enterprise_internal_read_page:parse_limit(#{
+                <<"page_size">> => <<"30">>, <<"limit">> => <<"40">>
+            })
+        ),
         %% cursor 提取
         ?assertEqual(undefined, enterprise_internal_read_page:parse_cursor(#{})),
         ?assertEqual(

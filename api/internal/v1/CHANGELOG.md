@@ -1,6 +1,15 @@
 # Internal API v1 — 变更记录
 
 当前 Internal v1 使用 HMAC-SHA256 签名认证，49 个操作、34 条路径。
+## Unreleased — 分页参数统一 page_size（limit 为弃用别名）
+- 列表页大小参数统一为 `page_size`（canonical）：Workspace、群、群成员、项目、
+  频道、客服坐席六个 `limit` 族端点（INT-24/26/27/28/30/33）追加接受 `page_size`。
+- `limit` 保持接受并标注 deprecated（v1 冻结别名收容，不破坏既有形状）；
+  `page_size` 与 `limit` 同时出现即 400 `invalid_request`（不比较值，与
+  INT-45..47「禁止重复参数」同一严格语义）。
+- 值域不变：缺省 50、1..100 越界拒绝不截断；Webhook 投递（INT-23）保持 20/50。
+- 实现收敛在 `enterprise_internal_read_page:parse_limit/1` 共享入口与坐席
+  handler 参数白名单；OpenAPI 真源与 bundle 已同步标注。
 
 ## Unreleased — 统一 OA 请求签名
 

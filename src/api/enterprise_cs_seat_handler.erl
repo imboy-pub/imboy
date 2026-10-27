@@ -25,7 +25,7 @@ read(Req, Ctx, Operation, Params) ->
     Qs = maps:from_list(cowboy_req:parse_qs(Req)),
     case
         {
-            maps:keys(Qs) -- [<<"limit">>, <<"cursor">>],
+            maps:keys(Qs) -- [<<"page_size">>, <<"limit">>, <<"cursor">>],
             enterprise_internal_read_page:parse_limit(Qs)
         }
     of

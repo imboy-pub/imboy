@@ -7,8 +7,9 @@
 % 实现编码与 HMAC）。
 %
 % 职责（§10.1 的 handler 义务收敛为三个原语）：
-%   * parse_limit/1 —— query `limit`：缺省 50；非整数 / <1 / >100 一律
-%     {error, invalid_request}（越界**拒绝不截断**，冻结值）；
+%   * parse_limit/1 —— query `page_size`（canonical）/ `limit`（v1 兼容
+%     别名，二选一，同传即 invalid_request）：缺省 50；非整数 / <1 / >100
+%     一律 {error, invalid_request}（越界**拒绝不截断**，冻结值）；
 %   * resolve/4 —— cursor 入参的验签 + family/O(App ctx)/App/filter 的
 %     **逐字段绑定比对**（foreign family/O/App/filter → invalid_request，
 %     不得自动改写为当前请求；malformed/tampered/expired 同样
@@ -40,20 +41,28 @@
 %%% API
 %%%===================================================================
 
-%% @doc query 参数 limit（§10.1）：缺省 50；值必须是无符号整数字符串且
-%% 1..100，越界/非整数一律拒绝（不截断、不 clamp）。
+%% @doc query 参数 page_size（canonical）/ limit（v1 兼容别名）：二选一，
+%% 缺省 50；值必须是无符号整数字符串且 1..100，越界/非整数一律拒绝
+%% （不截断、不 clamp）；两个名字同时出现即 invalid_request（不比较值，
+%% 与 INT-45..47「禁止重复参数」同一严格语义）。
 -spec parse_limit(map()) -> {ok, pos_integer()} | {error, invalid_request}.
 parse_limit(Qs) when is_map(Qs) ->
-    case maps:get(<<"limit">>, Qs, undefined) of
-        undefined ->
+    case {maps:get(<<"page_size">>, Qs, undefined), maps:get(<<"limit">>, Qs, undefined)} of
+        {undefined, undefined} ->
             {ok, ?DEFAULT_LIMIT};
-        Bin when is_binary(Bin) ->
-            case to_pos_integer(Bin) of
-                N when N >= 1, N =< ?MAX_LIMIT -> {ok, N};
-                _ -> {error, invalid_request}
-            end;
+        {Bin, undefined} when is_binary(Bin) ->
+            limit_of(Bin);
+        {undefined, Bin} when is_binary(Bin) ->
+            limit_of(Bin);
         _ ->
             {error, invalid_request}
+    end.
+
+-spec limit_of(binary()) -> {ok, pos_integer()} | {error, invalid_request}.
+limit_of(Bin) ->
+    case to_pos_integer(Bin) of
+        N when N >= 1, N =< ?MAX_LIMIT -> {ok, N};
+        _ -> {error, invalid_request}
     end.
 
 %% @doc query 参数 cursor 原样提取（无值形态 true 也视为提供——由 verify

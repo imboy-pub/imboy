@@ -178,6 +178,12 @@ INT-07 附件能力是例外：幂等记录保存登记事实，重放仍重新�
 以端点 `x-imboy-idempotency` 为准：读取用 POST 也可以是 `not_required`；
 INT-14 的 code 本身一次性（`single_use_code`）；INT-44 不要求该头，票据单次消费。
 
+**分页**：列表使用不透明签名 `cursor`（CURSOR-V2）。页大小统一参数
+`page_size`（Webhook 投递默认 20、上限 50；其余默认 50、范围 1..100）；
+历史参数 `limit` 仍接受但已弃用（v1 冻结别名收容），与 `page_size`
+同传即 400 `invalid_request`。超界拒绝不截断，`has_more=false` 时
+`next_cursor=null`。
+
 ## 6. 消息发送者语义（`sender_mode`）— 重要
 
 企业托管消息支持两种发送者形态，**请求里显式声明，平台分别校验发送者身份**：
@@ -347,7 +353,7 @@ application and device binding, short expiration and one-time consumption. Never
 
 ## 客服坐席集成 / Customer service seats
 
-INT-33..36 管理企业坐席配置，不签发 Seat JWT。坐席主键为 business_identity_id，必须对应本企业 customer_service 业务身份；workspace_id 只是审计位置。签名请求按目标企业与有效业务身份校验。PATCH 必须带 expected_version 以及 enabled/max_concurrent 至少一个；停用用 enabled=false，不删除历史。列表默认 limit=50，最大100，按 ID 升序，包含停用项。应用、凭证或企业停用后，包括幂等重放在内的下一请求仍须通过授权检查。
+INT-33..36 管理企业坐席配置，不签发 Seat JWT。坐席主键为 business_identity_id，必须对应本企业 customer_service 业务身份；workspace_id 只是审计位置。签名请求按目标企业与有效业务身份校验。PATCH 必须带 expected_version 以及 enabled/max_concurrent 至少一个；停用用 enabled=false，不删除历史。列表默认 page_size=50，最大100（limit 为弃用别名），按 ID 升序，包含停用项。应用、凭证或企业停用后，包括幂等重放在内的下一请求仍须通过授权检查。
 
 English: Seats belong to the organization. Workspace IDs select audit locations only. Updates require optimistic versions; disabling retains history. Signed cursors bind organization, application and seat-list family.
 

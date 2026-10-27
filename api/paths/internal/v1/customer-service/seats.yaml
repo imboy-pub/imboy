@@ -14,14 +14,23 @@ get:
   description: HMAC 复核应用的组织业务归属。坐席属于企业；workspace_id 仅指定同企业内的活跃审计位置，不改变坐席归属。 包括停用坐席；按 business_identity_id
     升序。签名游标绑定企业、应用及列表类型；不接受企业或工作空间过滤参数。
   parameters:
-  - name: limit
+  - name: page_size
     in: query
     schema:
       type: integer
       minimum: 1
       maximum: 100
       default: 50
-    description: 页大小，默认50，1..100；越界拒绝。
+    description: 页大小（canonical；默认50，1..100；越界拒绝；与已弃用别名 limit 同时出现即 400 invalid_request）。
+  - name: limit
+    in: query
+    deprecated: true
+    schema:
+      type: integer
+      minimum: 1
+      maximum: 100
+      default: 50
+    description: 页大小兼容别名（已弃用，统一用 page_size；默认50，1..100；越界拒绝）。
   - name: cursor
     in: query
     schema:
