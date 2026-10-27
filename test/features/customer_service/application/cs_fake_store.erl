@@ -23,6 +23,8 @@
     next_seq/0,
     events/0,
     events_with_action/1,
+    %% D03 zone 自然日窗口 canned 种子（fake 无 tzdata，窗口由测试显式给）
+    put_zone_day_window/3,
     %% C1~C4 列表测试注入/读取面
     put_session_for_list/1,
     put_shop_key_for_list/1,
@@ -76,6 +78,7 @@
     seat_session_search_anchors/3,
     %% CS-BE-07：按需统计（窗口聚合 + 当前 status 计数）
     session_stats/4,
+    zone_day_window/2,
     default_workspace/1,
     insert_shop_key/2,
     fetch_shop_key/2,
@@ -576,6 +579,19 @@ inbox_facts(Session, #{business_identity_id := IdentityId}, Cursors, Messages) -
         needs_reply => binary_status(maps:get(status, Session)) =/= <<"closed">> andalso
             lists:max([0 | ContactIds]) > lists:max([0 | BusinessIds])
     }.
+
+%% D03：zone 自然日窗口——canned 查表（fake 无 tzdata；未种子的 zone 一律
+%% invalid_zone，镜像真库 pg_timezone_names 校验语义；真实窗口事实由
+%% cs_stats_pg_tests 在真库钉住）。
+put_zone_day_window(Zone, DateText, Window) ->
+    true = ets:insert(?TAB, {{zone_day_window, Zone, DateText}, Window}),
+    ok.
+
+zone_day_window(Zone, DateText) ->
+    case ets:lookup(?TAB, {zone_day_window, Zone, DateText}) of
+        [{_, {Start, End}}] -> {ok, Start, End};
+        [] -> {error, invalid_zone}
+    end.
 
 binary_status(StatusBin) when is_binary(StatusBin) -> StatusBin;
 binary_status(Status) when is_atom(Status) -> atom_to_binary(Status, utf8).

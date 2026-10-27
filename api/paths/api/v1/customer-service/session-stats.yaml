@@ -34,12 +34,21 @@ get:
   - name: tz_offset
     in: query
     required: false
-    description: tz_offset 请求参数。
+    description: 固定偏移分钟（旧模式，窗口恒 24h）。与 zone 同现返回 400。
     schema:
       type: integer
       minimum: -840
       maximum: 840
       default: 0
+  - name: zone
+    in: query
+    required: false
+    description: IANA 时区名（D03 natural_day 模式）。窗口=该 zone 该日期两个
+      自然午夜的 UTC 瞬间（23/24/25 小时，DST 边界日由 tzdata 保证）；与
+      tz_offset 同现返回 400；名单外值返回 422 invalid_zone。
+    schema:
+      type: string
+      minLength: 1
   - name: workspace_id
     in: query
     required: false
@@ -76,7 +85,8 @@ get:
             - sv_ts
             - payload
     '400':
-      description: 请求形状错误、服务端派生键被客户端申报或参数格式不合法。
+      description: 请求形状错误、服务端派生键被客户端申报、参数格式不合法，
+        或 zone 与 tz_offset 同现（参数冲突）。
       content:
         application/json:
           schema:
@@ -112,7 +122,7 @@ get:
           schema:
             $ref: ../../../../components/schemas/customer-service/Error.yaml
     '422':
-      description: 缺少必填项或业务参数非法。
+      description: 缺少必填项或业务参数非法（含非法 IANA zone：invalid_zone）。
       content:
         application/json:
           schema:

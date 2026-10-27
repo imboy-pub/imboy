@@ -505,7 +505,8 @@ table(tenant) ->
                     {<<"GET">>, session_stats,
                         [
                             {date, binary, optional},
-                            {tz_offset, int, optional}
+                            {tz_offset, int, optional},
+                            {zone, binary, optional}
                         ],
                         [], #{
                             workspace => optional,
@@ -1013,7 +1014,8 @@ table(platform) ->
                     {<<"GET">>, session_stats,
                         [
                             {date, binary, optional},
-                            {tz_offset, int, optional}
+                            {tz_offset, int, optional},
+                            {zone, binary, optional}
                         ],
                         [], #{
                             workspace => optional,

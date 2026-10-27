@@ -35,6 +35,7 @@
     fetch_session_read_state/4,
     %% CS-BE-07：按需统计（窗口聚合 + 当前 status 计数）
     session_stats/4,
+    zone_day_window/2,
     sql_statements/0
 ]).
 
@@ -537,6 +538,33 @@ seat_session_total_by_status(OrgId, WorkspaceId) ->
 %% ===================================================================
 %% CS-BE-07：按需统计（纯读；三轴窗口聚合 + 当前 status 计数现算）
 %% ===================================================================
+
+%% D03：zone 自然日窗口（两午夜 UTC epoch 秒；23/24/25h 由 PG tzdata 保证）。
+%% 两步：先 pg_timezone_names 校验（非法 → invalid_zone，HTTP 面 422），再以
+%% R12 复审队列同款 `(($N::text)::date)::timestamp AT TIME ZONE $zone` 形态
+%% 计算当日/次日两个午夜瞬间（规避 epgsql `$N::date` binary 编码缺陷，
+%% follow-up #16）。
+-spec zone_day_window(binary(), binary()) ->
+    {ok, non_neg_integer(), non_neg_integer()} | {error, invalid_zone | term()}.
+zone_day_window(Zone, DateText) when is_binary(Zone), Zone =/= <<>>, is_binary(DateText) ->
+    ValidSql = <<"SELECT EXISTS (SELECT 1 FROM pg_timezone_names WHERE name = $1) AS ok">>,
+    case cs_pg_common:fetch_one(ValidSql, [Zone], [ok]) of
+        {ok, #{ok := true}} ->
+            WindowSql = <<
+                "SELECT EXTRACT(EPOCH FROM ((($1::text)::date)::timestamp AT TIME ZONE $2))::bigint AS ws, ",
+                "EXTRACT(EPOCH FROM (((($1::text)::date + 1))::timestamp AT TIME ZONE $2))::bigint AS we"
+            >>,
+            case cs_pg_common:fetch_one(WindowSql, [DateText, Zone], [ws, we]) of
+                {ok, #{ws := Ws, we := We}} when is_integer(Ws), is_integer(We) ->
+                    {ok, Ws, We};
+                {error, Reason} ->
+                    {error, Reason}
+            end;
+        {ok, _} ->
+            {error, invalid_zone};
+        {error, Reason} ->
+            {error, Reason}
+    end.
 
 -spec session_stats(integer(), integer(), non_neg_integer(), non_neg_integer()) ->
     {ok, map()} | {error, term()}.

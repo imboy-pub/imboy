@@ -1193,8 +1193,8 @@ session_stats(OrgId, Params) when is_integer(OrgId), OrgId > 0, is_map(Params) -
             case stats_window(Params) of
                 {error, _} = Err2 ->
                     Err2;
-                {ok, Date, Tz, Start, End} ->
-                    stats_view(OrgId, WorkspaceId, Date, Tz, Start, End, Params)
+                {ok, Window} ->
+                    stats_view(OrgId, WorkspaceId, Window, Params)
             end
     end;
 session_stats(OrgId, _Params) ->
@@ -1212,9 +1212,31 @@ stats_workspace_scope(Params) ->
             {error, {invalid_workspace_id, Other}}
     end.
 
-%% 窗口换算：date（缺省 = at 的 UTC 当日）+ tz_offset（缺省 0，界 ±840）→
-%% UTC epoch [start, end)。date 二进制形状严格 YYYY-MM-DD 且为真实日历日。
+%% 窗口换算（D03 双模式）：
+%%   * fixed_offset（旧合同，逐字节不变）：date（缺省 = at 的 UTC 当日）
+%%     + tz_offset（缺省 0，界 ±840）→ 固定 24h 的 UTC epoch [start, end)；
+%%   * natural_day（D03 新增）：date + zone（IANA）→ 该 zone 两个自然午夜
+%%     的 UTC epoch 窗口（23/24/25h 由 PG tzdata 保证）。
+%% zone 与 tz_offset 同现 → {error, zone_tz_offset_conflict}（HTTP 400，
+%% 显式冲突不静默择一）。窗口统一返回
+%% #{mode, date, tz_offset, zone, window_start, window_end}。
+%% date 二进制形状严格 YYYY-MM-DD 且为真实日历日。
 stats_window(Params) ->
+    Zone = maps:get(zone, Params, undefined),
+    TzGiven = maps:is_key(tz_offset, Params),
+    case {Zone, TzGiven} of
+        {undefined, _} ->
+            stats_window_fixed(Params);
+        {_, true} ->
+            %% zone 与 tz_offset 同现：显式冲突（两个窗口语义不可同真）
+            {error, zone_tz_offset_conflict};
+        {_, false} when is_binary(Zone) ->
+            stats_window_natural(Params, Zone);
+        {_, false} ->
+            {error, {invalid_zone, Zone}}
+    end.
+
+stats_window_fixed(Params) ->
     case stats_date(maps:get(date, Params, undefined), maps:get(at, Params, undefined)) of
         {error, _} = Err ->
             Err;
@@ -1224,7 +1246,38 @@ stats_window(Params) ->
                     Err2;
                 {ok, Tz} ->
                     Start = gregorian_day_epoch(Date) - Tz * 60,
-                    {ok, date_binary(Date), Tz, Start, Start + 86400}
+                    {ok, #{
+                        mode => fixed_offset,
+                        date => date_binary(Date),
+                        tz_offset => Tz,
+                        zone => null,
+                        window_start => Start,
+                        window_end => Start + 86400
+                    }}
+            end
+    end.
+
+stats_window_natural(Params, Zone) ->
+    case stats_date(maps:get(date, Params, undefined), maps:get(at, Params, undefined)) of
+        {error, _} = Err ->
+            Err;
+        {ok, Date} ->
+            DateBin = date_binary(Date),
+            %% 窗口事实由 PG 计算（tzdata 权威；AD 只展示不重算）
+            case with_store(Params, fun(Store) -> Store:zone_day_window(Zone, DateBin) end) of
+                {ok, Ws, We} when is_integer(Ws), is_integer(We) ->
+                    {ok, #{
+                        mode => natural_day,
+                        date => DateBin,
+                        tz_offset => null,
+                        zone => Zone,
+                        window_start => Ws,
+                        window_end => We
+                    }};
+                {error, invalid_zone} ->
+                    {error, {invalid_zone, Zone}};
+                {error, Reason} ->
+                    {error, Reason}
             end
     end.
 
@@ -1280,7 +1333,9 @@ b2i(Bin) ->
 %% 出站组装：store 事实 → 白名单视图（唯一出口；红线键在此裁剪）。
 %% count=0 时均值强制 undefined——PG AVG 无样本为 NULL，这里双保险，
 %% 0 绝不伪装成均值。
-stats_view(OrgId, WorkspaceId, DateBin, Tz, Start, End, Params) ->
+stats_view(OrgId, WorkspaceId, Window, Params) ->
+    Start = maps:get(window_start, Window),
+    End = maps:get(window_end, Window),
     case
         with_store(Params, fun(Store) -> Store:session_stats(OrgId, WorkspaceId, Start, End) end)
     of
@@ -1293,8 +1348,13 @@ stats_view(OrgId, WorkspaceId, DateBin, Tz, Start, End, Params) ->
             {ok, #{
                 organization_id => OrgId,
                 workspace_id => WorkspaceId,
-                date => DateBin,
-                tz_offset => Tz,
+                %% D03：回显窗口模式与锚（fixed_offset=date+tz_offset 固定 24h；
+                %% natural_day=date+zone 两自然午夜，23/24/25h）。旧模式字段
+                %% （date/tz_offset/window_start/window_end）逐字节不变。
+                date => maps:get(date, Window),
+                tz_offset => maps:get(tz_offset, Window),
+                zone => maps:get(zone, Window),
+                window_mode => maps:get(mode, Window),
                 window_start => Start,
                 window_end => End,
                 new_sessions => maps:get(new_sessions, Facts, 0),

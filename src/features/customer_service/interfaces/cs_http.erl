@@ -1007,6 +1007,13 @@ classify({invalid_date, _}) ->
     ?ERR_UNPROCESSABLE_ENTITY;
 classify({invalid_tz_offset, _}) ->
     ?ERR_UNPROCESSABLE_ENTITY;
+%% D03（IMBOY-TIMEZONE-DECISIONS-V1）：zone 与 tz_offset 同现 = 参数形状
+%% 冲突（两个窗口语义不可同真）→ 400 显式报错，不静默择一。
+classify(zone_tz_offset_conflict) ->
+    ?ERR_BAD_REQUEST;
+%% D03：非法 IANA zone（pg_timezone_names 名单外）→ 422 invalid_zone。
+classify({invalid_zone, _}) ->
+    ?ERR_UNPROCESSABLE_ENTITY;
 classify({invalid_limit, _}) ->
     ?ERR_UNPROCESSABLE_ENTITY;
 classify({invalid_status, _}) ->

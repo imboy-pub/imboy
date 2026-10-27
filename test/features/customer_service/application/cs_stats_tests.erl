@@ -32,11 +32,16 @@
 -define(CONV, 831000000000005).
 
 %% 出站白名单（逐字；红线键绝不出现在任何层）。
+%% D03（IMBOY-TIMEZONE-DECISIONS-V1）：出站投影增 zone / window_mode 两键
+%%（fixed_offset 模式 zone=null；natural_day 模式 tz_offset=null）——合同
+%% 增项，其余键冻结不变。
 -define(STATS_KEYS, [
     organization_id,
     workspace_id,
     date,
     tz_offset,
+    zone,
+    window_mode,
     window_start,
     window_end,
     new_sessions,
@@ -85,6 +90,8 @@ cases() ->
         fun default_date_derives_from_server_clock/0,
         fun tz_offset_shifts_window/0,
         fun invalid_date_and_tz_offset_rejected/0,
+        fun d03_zone_conflict_and_invalid_rejected/0,
+        fun d03_natural_day_canned_echo/0,
         fun workspace_scope_narrows/0,
         fun outbound_projection_whitelist/0,
         fun wiring_registered_in_tables/0
@@ -405,4 +412,48 @@ assert_float_avg(Expected, Actual) ->
     case is_number(Actual) andalso abs(Expected - Actual) < 0.0001 of
         true -> ok;
         false -> erlang:error({assert_float_avg, Expected, Actual})
+    end.
+
+%% ===================================================================
+%% D03（IMBOY-TIMEZONE-DECISIONS-V1）：zone 自然日模式——app 层形状用例
+%%（fake store canned 窗口；真实 PG 窗口事实由 cs_stats_zone_pg_tests 钉住）
+%% ===================================================================
+
+%% R16-5：zone 与 tz_offset 同现 → 显式冲突错误（HTTP 400）；非法 zone
+%%（fake 未种子）→ {error,{invalid_zone,_}}（HTTP 422）。
+d03_zone_conflict_and_invalid_rejected() ->
+    ?assertEqual(
+        {error, zone_tz_offset_conflict},
+        cs_session_app:session_stats(1, #{
+            store => cs_fake_store, date => ?DAY, zone => <<"America/New_York">>, tz_offset => 480
+        })
+    ),
+    ?assertEqual(
+        {error, {invalid_zone, <<"Asia/Foo">>}},
+        cs_session_app:session_stats(1, #{
+            store => cs_fake_store, date => ?DAY, zone => <<"Asia/Foo">>
+        })
+    ).
+
+%% D03：natural_day 回显——canned 窗口透传，模式/zone/date/tz_offset=null
+%% 键位齐全（AD 校验按模式分支消费这些键）。
+d03_natural_day_canned_echo() ->
+    cs_fake_store:init(),
+    Cs = 1772965200,
+    Ce = Cs + 23 * 3600,
+    ok = cs_fake_store:put_zone_day_window(<<"America/New_York">>, ?DAY, {Cs, Ce}),
+    try
+        {ok, Stats} = cs_session_app:session_stats(1, #{
+            store => cs_fake_store, date => ?DAY, zone => <<"America/New_York">>
+        }),
+        ?assertEqual(natural_day, maps:get(window_mode, Stats)),
+        ?assertEqual(<<"America/New_York">>, maps:get(zone, Stats)),
+        ?assertEqual(?DAY, maps:get(date, Stats)),
+        ?assertEqual(null, maps:get(tz_offset, Stats)),
+        ?assertEqual(Cs, maps:get(window_start, Stats)),
+        ?assertEqual(Ce, maps:get(window_end, Stats)),
+        %% 指标轴零样本语义不因模式变化
+        ?assertEqual(0, maps:get(new_sessions, Stats))
+    after
+        cs_fake_store:destroy()
     end.

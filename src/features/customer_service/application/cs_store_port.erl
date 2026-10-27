@@ -259,6 +259,16 @@
 ) ->
     {ok, Stats :: map()} | {error, term()}.
 
+%% @doc D03（IMBOY-TIMEZONE-DECISIONS-V1）：zone 自然日窗口——指定 IANA
+%% zone 在该日历日的两个自然午夜对应的 UTC epoch 秒 [Start, End)。长度
+%% 可为 23/24/25 小时（DST 边界日，由 PG tzdata 保证）。日期参数经
+%% `(($N::text)::date)` 形态传入（规避 epgsql 对 `$N::date` 的 binary
+%% 编码缺陷，follow-up #16）。非法 zone 名 → {error, invalid_zone}
+%% （HTTP 面 422 invalid_zone）。
+-callback zone_day_window(Zone :: binary(), DateText :: binary()) ->
+    {ok, WindowStart :: non_neg_integer(), WindowEnd :: non_neg_integer()}
+    | {error, invalid_zone | term()}.
+
 %% @doc CSB-02R 坐席工作台分页（org-wide；WorkspaceId=0 表示不限 workspace）。
 %% 返回同作用域的稳定计数（列表页 + status 全量分布）；行含 contact 掩码
 %% 原料（display_name / subject_mask）与末条消息安全摘要（id / sender_type /

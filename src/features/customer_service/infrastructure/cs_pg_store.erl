@@ -61,6 +61,7 @@
     fetch_session_read_state/4,
     %% CS-BE-07：按需统计（窗口聚合 + 当前 status 计数）
     session_stats/4,
+    zone_day_window/2,
     %% shop key / visit token
     insert_shop_key/2,
     fetch_shop_key/2,
@@ -247,6 +248,9 @@ fetch_session_read_state(OrgId, WorkspaceId, SessionId, IdentityId) ->
 %% CS-BE-07：按需统计（cs_store_port 同名 callback 的薄委派；纯读）。
 session_stats(OrgId, WorkspaceId, WindowStart, WindowEnd) ->
     cs_pg_session:session_stats(OrgId, WorkspaceId, WindowStart, WindowEnd).
+
+zone_day_window(Zone, DateText) ->
+    cs_pg_session:zone_day_window(Zone, DateText).
 
 %% CSB-02R：widget 装配的本 Org 缺省 Workspace 解析。
 default_workspace(OrgId) ->

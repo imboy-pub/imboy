@@ -14,7 +14,22 @@ properties:
     type: string
     format: date
   tz_offset:
-    type: integer
+    type:
+    - integer
+    - 'null'
+    description: 固定偏移分钟；natural_day 模式为 null。
+  zone:
+    type:
+    - string
+    - 'null'
+    description: IANA 时区名（D03 natural_day 模式回显）；fixed_offset 模式为 null。
+  window_mode:
+    type: string
+    enum:
+    - fixed_offset
+    - natural_day
+    description: 窗口模式。fixed_offset=date+tz_offset 固定 24h（旧合同不变）；
+      natural_day=date+zone 两自然午夜（23/24/25h）。
   window_start:
     type: integer
     format: int64
