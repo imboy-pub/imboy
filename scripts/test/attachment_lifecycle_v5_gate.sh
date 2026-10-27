@@ -78,6 +78,9 @@ fi
 
 EVID="$RUN_DIR/evidence/$TASK"
 mkdir -p "$EVID" "$RUN_DIR/logs"
+# seal.sh requires an explicit absolute V5_RUN_DIR; export it once here so
+# cases that skip ensure_pg (e.g. W0-01) still seal.
+export V5_RUN_DIR="$RUN_DIR"
 LOG="$RUN_DIR/logs/$TASK-gate-$(date +%H%M%S).log"
 exec > >(tee -a "$LOG") 2>&1
 
