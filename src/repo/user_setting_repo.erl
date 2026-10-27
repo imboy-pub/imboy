@@ -11,6 +11,8 @@
 -export([get/2]).
 -export([save/3]).
 -export([update/2]).
+-export([find_setting_for_update_tx/2]).
+-export([upsert_setting_tx/3]).
 
 -dialyzer({nowarn_function, execute_compat/2}).
 
@@ -153,6 +155,52 @@ update(Uid, Setting) ->
     FullSql = [Sql, <<" ">>, OnConflict],
     _ = elib_pg:execute(FullSql, Params),
     ok.
+
+%% @doc W09（§6.7）：事务内行锁读取整份 setting JSON。
+%% 版本化偏好读改写必须与锁同一事务（SELECT ... FOR UPDATE）。
+%% 行不存在返回 {ok, absent}（由调用方决定首写默认值）。
+-spec find_setting_for_update_tx(any(), integer()) ->
+    {ok, map() | absent} | {error, term()}.
+find_setting_for_update_tx(Conn, Uid) when is_binary(Uid) ->
+    find_setting_for_update_tx(Conn, ec_cnv:to_integer(Uid));
+find_setting_for_update_tx(Conn, Uid) ->
+    Tb = tablename(),
+    Sql =
+        <<"SELECT setting FROM ", Tb/binary, " WHERE user_id = $1 FOR UPDATE">>,
+    case elib_pg:query(Conn, Sql, [Uid]) of
+        {ok, [#{<<"setting">> := Bin}]} when is_binary(Bin), Bin =/= <<>> ->
+            try jsone:decode(Bin, [{object_format, map}]) of
+                M when is_map(M) -> {ok, M};
+                _ -> {ok, #{}}
+            catch
+                _:_ -> {ok, #{}}
+            end;
+        {ok, _} ->
+            {ok, absent};
+        {error, _} = Err ->
+            Err
+    end.
+
+%% @doc W09（§6.7）：事务内整份 upsert setting JSON（与行锁同事务）。
+-spec upsert_setting_tx(any(), integer(), map()) -> ok | {error, term()}.
+upsert_setting_tx(Conn, Uid, Setting) when is_binary(Uid) ->
+    upsert_setting_tx(Conn, ec_cnv:to_integer(Uid), Setting);
+upsert_setting_tx(Conn, Uid, Setting) when is_map(Setting) ->
+    Tb = tablename(),
+    Now = elib_dt:now(),
+    Bin = jsone:encode(Setting, [
+        native_utf8,
+        {float_format, [{decimals, 4}, compact]}
+    ]),
+    Sql =
+        <<"INSERT INTO ", Tb/binary,
+            " (user_id, setting, updated_at) VALUES ($1, $2, $3) "
+            "ON CONFLICT (user_id) DO UPDATE SET "
+            "setting = EXCLUDED.setting, updated_at = EXCLUDED.updated_at">>,
+    case elib_pg:execute(Conn, Sql, [Uid, Bin, Now]) of
+        {ok, _} -> ok;
+        {error, _} = Err -> Err
+    end.
 
 normalize_setting_rows(Rows) ->
     lists:map(

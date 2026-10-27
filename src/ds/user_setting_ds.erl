@@ -9,6 +9,8 @@
 -export([batch_chat_state_hide/1]).
 -export([save/3]).
 -export([search/1]).
+-export([manual_pending_map/1]).
+-export([set_manual_pending/3]).
 
 -include("log.hrl").
 
@@ -55,6 +57,94 @@ find_by_uid(Uid) ->
 %%
 %% @param Uid 用户ID
 %% @returns true | false true表示隐藏状态，false表示显示状态
+%% ===================================================================
+%% W09.a（channel-group-ux-v2.2 §6.7/J17.c）：人工待处理元数据
+%% ===================================================================
+
+%% @doc 读取 manual_pending 子对象（uk3 => #{value, version, updated_at}）。
+%% 真实未读水位不依赖本元数据；旧 unreadNum 不回填历史人工意图。
+-spec manual_pending_map(integer()) -> map().
+manual_pending_map(Uid) ->
+    case user_setting_repo:find_by_uid(Uid, <<"setting">>) of
+        #{<<"setting">> := Bin} when is_binary(Bin), Bin =/= <<>> ->
+            case safe_decode_setting(Bin) of
+                #{<<"manual_pending">> := M} when is_map(M) -> M;
+                _ -> #{}
+            end;
+        _ ->
+            #{}
+    end.
+
+%% @doc 显式目标 true/false 设置某会话人工待处理（版本化，J17.c/d）。
+%%
+%% 同一业务事务：行锁（SELECT ... FOR UPDATE）→ 读 → 应用明确目标值 →
+%% 推进该会话版本。无变化的同目标重试返回当前状态、不重复副作用
+%% （版本不变）；目标变化才推进版本。
+-spec set_manual_pending(integer(), binary(), boolean()) ->
+    {ok, map()} | {error, term()}.
+set_manual_pending(Uid, Uk3, Target) when is_boolean(Target), Uk3 =/= <<>> ->
+    elib_pg:with_tx(fun(Conn) ->
+        case user_setting_repo:find_setting_for_update_tx(Conn, Uid) of
+            {ok, Setting0} ->
+                Setting =
+                    case Setting0 of
+                        M when is_map(M) -> M;
+                        _ -> #{}
+                    end,
+                Mp0 = maps:get(<<"manual_pending">>, Setting, #{}),
+                Mp0b =
+                    case is_map(Mp0) of
+                        true -> Mp0;
+                        _ -> #{}
+                    end,
+                Now = elib_dt:now(),
+                case maps:get(Uk3, Mp0b, undefined) of
+                    #{<<"value">> := Target} = Entry when is_map(Entry) ->
+                        %% 无变化同目标重试：返回当前状态，不推进版本
+                        {ok, Entry};
+                    Entry when is_map(Entry) ->
+                        V = erlang:max(0, maps:get(<<"version">>, Entry, 0)) + 1,
+                        NewEntry = #{
+                            <<"value">> => Target,
+                            <<"version">> => V,
+                            <<"updated_at">> => Now
+                        },
+                        ok = user_setting_repo:upsert_setting_tx(
+                            Conn,
+                            Uid,
+                            Setting#{<<"manual_pending">> => maps:put(Uk3, NewEntry, Mp0b)}
+                        ),
+                        {ok, NewEntry};
+                    _ ->
+                        NewEntry = #{
+                            <<"value">> => Target,
+                            <<"version">> => 1,
+                            <<"updated_at">> => Now
+                        },
+                        ok = user_setting_repo:upsert_setting_tx(
+                            Conn,
+                            Uid,
+                            Setting#{<<"manual_pending">> => maps:put(Uk3, NewEntry, Mp0b)}
+                        ),
+                        {ok, NewEntry}
+                end;
+            {error, _} = Err ->
+                Err
+        end
+    end);
+set_manual_pending(_Uid, _Uk3, _Target) ->
+    {error, <<"人工待处理参数无效"/utf8>>}.
+
+safe_decode_setting(Bin) ->
+    try
+        case jsone:decode(Bin, [{object_format, map}]) of
+            M when is_map(M) -> M;
+            _ -> #{}
+        end
+    catch
+        _:_ -> #{}
+    end.
+
 %% user_setting_ds:chat_state_hide(1).
 -spec chat_state_hide(integer()) -> true | false.
 chat_state_hide(Uid) ->

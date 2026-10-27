@@ -41,6 +41,10 @@ init(Req0, State0) ->
                 delete_conversation(Req0, State);
             restore_conversation ->
                 restore_conversation(Req0, State);
+            set_manual_pending ->
+                set_manual_pending(Req0, State);
+            manual_pending_list ->
+                manual_pending_list(Req0, State);
             false ->
                 Req0
         end,
@@ -179,6 +183,56 @@ unpin_conversation(Req0, State) ->
         {error, Msg} when is_binary(Msg) ->
             elib_response:error(Req0, Msg, ?ERR_OPERATION_FAILED)
     end.
+
+%% @doc W09.a（§6.7/J17.c）：显式目标 true/false 设置某会话人工待处理。
+%% 真实未读水位不依赖本元数据；无变化同目标重试返回当前状态不重复副作用。
+-spec set_manual_pending(cowboy_req:req(), map()) -> cowboy_req:req().
+set_manual_pending(Req0, State) ->
+    {ok, Body, _Req1} = cowboy_req:read_body(Req0),
+    Payload =
+        case Body of
+            <<>> -> #{};
+            _ -> jsone:decode(Body, [{object_format, map}])
+        end,
+    CurrentUid = auth_ds:current_uid(State),
+    Uk3 = maps:get(<<"uk3">>, Payload, <<>>),
+    Value = maps:get(<<"value">>, Payload, undefined),
+    case {is_binary(Uk3), Uk3 =/= <<>>, is_boolean(Value)} of
+        {true, true, true} ->
+            case user_setting_ds:set_manual_pending(CurrentUid, Uk3, Value) of
+                {ok, Entry} ->
+                    elib_response:success(Req0, #{
+                        <<"uk3">> => Uk3,
+                        <<"value">> => Value,
+                        <<"version">> => maps:get(<<"version">>, Entry, 0)
+                    });
+                {error, Msg} when is_binary(Msg) ->
+                    elib_response:error(Req0, Msg, ?ERR_OPERATION_FAILED);
+                _ ->
+                    elib_response:error(
+                        Req0, error_msg(?ERR_OPERATION_FAILED), ?ERR_OPERATION_FAILED
+                    )
+            end;
+        _ ->
+            elib_response:error(Req0, <<"人工待处理参数无效"/utf8>>, ?ERR_OPERATION_FAILED)
+    end.
+
+%% @doc W09.a：当前账号全部人工待处理元数据投影（uk3/value/version）。
+-spec manual_pending_list(cowboy_req:req(), map()) -> cowboy_req:req().
+manual_pending_list(Req0, State) ->
+    CurrentUid = auth_ds:current_uid(State),
+    Map = user_setting_ds:manual_pending_map(CurrentUid),
+    Items = [
+        begin
+            #{
+                <<"uk3">> => Uk3,
+                <<"value">> => maps:get(<<"value">>, Entry, false),
+                <<"version">> => maps:get(<<"version">>, Entry, 0)
+            }
+        end
+     || {Uk3, Entry} <- maps:to_list(Map), is_map(Entry)
+    ],
+    elib_response:success(Req0, #{<<"list">> => Items}).
 
 %% @doc 获取置顶会话列表
 %% 获取当前用户的置顶会话列表

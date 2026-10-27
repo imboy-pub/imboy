@@ -128,6 +128,12 @@ get_routes() ->
                     action => unpin_conversation
                 }},
                 {"/api/v1/conversation/pinned", conversation_handler, #{action => pinned_list}},
+                {"/api/v1/conversation/manual_pending", conversation_handler, #{
+                    action => set_manual_pending
+                }},
+                {"/api/v1/conversation/manual_pending/list", conversation_handler, #{
+                    action => manual_pending_list
+                }},
                 {"/api/v1/conversation/delete", conversation_handler, #{
                     action => delete_conversation
                 }},
