@@ -26,9 +26,9 @@
 -export([count_by_owner/1]).
 -export([edit/3]).
 -export([set_e2ee_mode/3]).
--export([page_by_owner/3]).
--export([page_joined/3]).
--export([page_managed/3]).
+-export([page_by_owner/3, page_by_owner/4]).
+-export([page_joined/3, page_joined/4]).
+-export([page_managed/3, page_managed/4]).
 -export([is_member/2]).
 -export([msg_page/3]).
 -export([find_member/2]).
@@ -651,7 +651,13 @@ dissolve_by_org_manager(Uid, Gid, G) ->
 %% @return {ok, map()} | {error, any()}
 -spec page_by_owner(integer(), pos_integer(), pos_integer()) -> {ok, map()} | {error, any()}.
 page_by_owner(OwnerUid, Page, Size) ->
-    group_ds:page_by_owner(OwnerUid, Page, Size).
+    page_by_owner(OwnerUid, Page, Size, <<>>).
+
+%% W07.a（C2 个人群）：服务端 q 在授权交集内过滤（尾页私有对象可达）。
+-spec page_by_owner(integer(), pos_integer(), pos_integer(), binary()) ->
+    {ok, map()} | {error, any()}.
+page_by_owner(OwnerUid, Page, Size, Q) ->
+    group_ds:page_by_owner(OwnerUid, Page, Size, Q).
 
 %% @doc 分页查询当前用户已加入的群组列表
 %% @param Uid 用户ID
@@ -660,7 +666,13 @@ page_by_owner(OwnerUid, Page, Size) ->
 %% @return {ok, map()} | {error, any()}
 -spec page_joined(integer(), pos_integer(), pos_integer()) -> {ok, map()} | {error, any()}.
 page_joined(Uid, Page, Size) ->
-    group_ds:page_joined(Uid, Page, Size).
+    page_joined(Uid, Page, Size, <<>>).
+
+%% W07.a（C2 个人群）：服务端 q（attr+scope 交集内 title ILIKE）。
+-spec page_joined(integer(), pos_integer(), pos_integer(), binary()) ->
+    {ok, map()} | {error, any()}.
+page_joined(Uid, Page, Size, Q) ->
+    group_ds:page_joined(Uid, Page, Size, Q).
 
 %% @doc 分页查询当前用户管理的群组列表（群主/副群主/管理员）
 %% @param Uid 用户ID
@@ -669,7 +681,13 @@ page_joined(Uid, Page, Size) ->
 %% @return {ok, map()} | {error, any()}
 -spec page_managed(integer(), pos_integer(), pos_integer()) -> {ok, map()} | {error, any()}.
 page_managed(Uid, Page, Size) ->
-    group_ds:page_managed(Uid, Page, Size).
+    page_managed(Uid, Page, Size, <<>>).
+
+%% W07.a（C2 个人群）：服务端 q（群主/管理角色交集内 title ILIKE）。
+-spec page_managed(integer(), pos_integer(), pos_integer(), binary()) ->
+    {ok, map()} | {error, any()}.
+page_managed(Uid, Page, Size, Q) ->
+    group_ds:page_managed(Uid, Page, Size, Q).
 
 %% @doc 判断用户是否为群成员
 %% @param Gid 群组ID

@@ -542,8 +542,10 @@ dissolve(Req0, State) ->
 page(Req0, State, <<"owner">>) ->
     CurrentUid = auth_ds:current_uid(State),
     {Page, Size} = elib_param:page(Req0),
+    % W07.a（C2 个人群）：可选服务端搜索词（授权交集内过滤，尾页可达）。
+    Q = q_param(Req0),
     Payload =
-        case group_logic:page_by_owner(CurrentUid, Page, Size) of
+        case group_logic:page_by_owner(CurrentUid, Page, Size, Q) of
             {ok, #{total := Total, list := Rows}} ->
                 #{
                     total => Total,
@@ -564,8 +566,10 @@ page(Req0, State, <<"owner">>) ->
 page(Req0, State, <<"join">>) ->
     CurrentUid = auth_ds:current_uid(State),
     {Page, Size} = elib_param:page(Req0),
+    % W07.a（C2 个人群）：可选服务端搜索词（授权交集内过滤，尾页可达）。
+    Q = q_param(Req0),
     Payload =
-        case group_logic:page_joined(CurrentUid, Page, Size) of
+        case group_logic:page_joined(CurrentUid, Page, Size, Q) of
             {ok, #{total := Total, list := Rows}} ->
                 #{
                     total => Total,
@@ -586,8 +590,10 @@ page(Req0, State, <<"join">>) ->
 page(Req0, State, <<"manager">>) ->
     CurrentUid = auth_ds:current_uid(State),
     {Page, Size} = elib_param:page(Req0),
+    % W07.a（C2 个人群）：可选服务端搜索词（授权交集内过滤，尾页可达）。
+    Q = q_param(Req0),
     Payload =
-        case group_logic:page_managed(CurrentUid, Page, Size) of
+        case group_logic:page_managed(CurrentUid, Page, Size, Q) of
             {ok, #{total := Total, list := Rows}} ->
                 #{
                     total => Total,
@@ -888,4 +894,16 @@ payload_list_key(Payload) ->
                 true -> <<"list">>;
                 false -> list
             end
+    end.
+
+%% W07.a（C2 个人群）：page 列表的可选服务端搜索词。
+%% 缺席/空白 → <<>>（旧客户端行为零变化）；trim + 64 字符截断 + LIKE 转义
+%% 在 ds 层统一处理。
+-spec q_param(cowboy_req:req()) -> binary().
+q_param(Req) ->
+    Qs = cowboy_req:parse_qs(Req),
+    Raw = proplists:get_value(<<"q">>, Qs, <<>>),
+    case is_binary(Raw) of
+        true -> Raw;
+        false -> elib_cnv:safe_to_binary(Raw)
     end.

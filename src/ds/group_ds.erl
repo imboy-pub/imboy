@@ -31,9 +31,9 @@
 -export([exists/1]).
 -export([update_by_id/2]).
 -export([insert/1]).
--export([page_by_owner/3]).
--export([page_joined/3]).
--export([page_managed/3]).
+-export([page_by_owner/3, page_by_owner/4]).
+-export([page_joined/3, page_joined/4]).
+-export([page_managed/3, page_managed/4]).
 -export([load_aggregate/1, save_aggregate/1]).
 
 -include("cache.hrl").
@@ -724,33 +724,49 @@ insert(Data) ->
     elib_pg:insert(Tb, Data).
 
 %% @doc 分页查询我拥有的群（attr=owner）
+%% W07.a（C2 个人群）：可带服务端 q（授权交集内 title ILIKE）；
+%% 稳定排序 created_at DESC, id DESC（tie-break，防同刻创建翻页漏重）。
 -spec page_by_owner(integer(), pos_integer(), pos_integer()) -> {ok, map()} | {error, any()}.
 page_by_owner(OwnerUid, Page, Size) ->
+    page_by_owner(OwnerUid, Page, Size, <<>>).
+
+page_by_owner(OwnerUid, Page, Size, Q) ->
     Tb = group_repo:tablename(),
-    Where = #{status => 1, owner_uid => OwnerUid},
-    elib_pg:page_with_total(Tb, Where, Page, Size).
+    Where = title_q_where(#{status => 1, owner_uid => OwnerUid}, Q),
+    elib_pg:page_with_total(
+        Tb, <<"*">>, Where, <<"created_at DESC, id DESC">>, Page, Size
+    ).
 
 %% @doc 分页查询我加入的群（attr=join，排除自己是群主的）
 -spec page_joined(integer(), pos_integer(), pos_integer()) -> {ok, map()} | {error, any()}.
 page_joined(Uid, Page, Size) ->
+    page_joined(Uid, Page, Size, <<>>).
+
+page_joined(Uid, Page, Size, Q) ->
     GTb = group_repo:tablename(),
     MTb = group_member_repo:tablename(),
     Tb = <<GTb/binary, " g LEFT JOIN ", MTb/binary, " m ON g.id = m.group_id">>,
-    Where = #{
+    Where0 = #{
         <<"g.status">> => 1,
         <<"m.status">> => 1,
         <<"m.user_id">> => Uid,
         <<"g.owner_uid">> => {op, <<"!=">>, Uid}
     },
-    elib_pg:page_with_total(Tb, <<"g.*">>, Where, <<"g.id desc">>, Page, Size).
+    Where = title_q_where(Where0, Q, <<"g.title">>),
+    %% W07.a（C2）：稳定 created_at,id tie-break（原 g.id desc 对同刻创建
+    %% 的群翻页会漏/重）。
+    elib_pg:page_with_total(Tb, <<"g.*">>, Where, <<"g.created_at DESC, g.id DESC">>, Page, Size).
 
 %% @doc 分页查询我管理的群（attr=manager，群主/副群主/管理员）
 -spec page_managed(integer(), pos_integer(), pos_integer()) -> {ok, map()} | {error, any()}.
 page_managed(Uid, Page, Size) ->
+    page_managed(Uid, Page, Size, <<>>).
+
+page_managed(Uid, Page, Size, Q) ->
     GTb = group_repo:tablename(),
     MTb = group_member_repo:tablename(),
     Tb = <<GTb/binary, " g LEFT JOIN ", MTb/binary, " m ON g.id = m.group_id">>,
-    Where = #{
+    Where0 = #{
         <<"g.status">> => 1,
         <<"__or">> =>
             [
@@ -762,7 +778,27 @@ page_managed(Uid, Page, Size) ->
                 }
             ]
     },
-    elib_pg:page_with_total(Tb, <<"g.*">>, Where, <<"g.id desc">>, Page, Size).
+    Where = title_q_where(Where0, Q, <<"g.title">>),
+    elib_pg:page_with_total(Tb, <<"g.*">>, Where, <<"g.created_at DESC, g.id DESC">>, Page, Size).
+
+%% W07.a（C2 个人群）：可选服务端搜索词。q 为空原样返回；非空在**授权
+%% 交集内**追加 title ILIKE（escape_like 防通配注入）。q 只会缩小结果，
+%% 绝不放宽授权。
+-spec title_q_where(map(), binary()) -> map().
+title_q_where(Where, Q) -> title_q_where(Where, Q, <<"title">>).
+
+-spec title_q_where(map(), binary(), binary()) -> map().
+title_q_where(Where, Q, _Col) when is_binary(Q), Q =:= <<>> ->
+    Where;
+title_q_where(Where, Q, Col) when is_binary(Q) ->
+    Q2 = elib_str:trunc(string:trim(Q), 64),
+    case Q2 of
+        <<>> ->
+            Where;
+        _ ->
+            Pattern = <<"%", (elib_pg:escape_like(Q2))/binary, "%">>,
+            Where#{Col => {op, <<"ILIKE">>, Pattern}}
+    end.
 
 %% ===================================================================
 %% 聚合加载/保存（group_agg 聚合根 I/O 外壳）
