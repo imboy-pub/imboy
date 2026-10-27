@@ -138,11 +138,17 @@ seed_all_tables() ->
     ok = insert_c2c_row(920101, 1, <<"tzd01x_c2c_expired">>, <<"NOW() - INTERVAL '60 seconds'">>),
     ok = insert_c2c_row(920102, 2, <<"tzd01x_c2c_future">>, <<"NOW() + INTERVAL '3600 seconds'">>),
     ok = insert_c2c_row(920103, 3, <<"tzd01x_c2c_null">>, <<"NULL">>),
-    %% 归档表（history / backfill 数据面）：seq 3 已到期，1/2/4 存活
+    %% 归档表（history / backfill 数据面）：seq 3/5 已到期，1/2/4 存活。
+    %% seq 5 刻意放尾部：SafeHead=5 与 NextSeq=5 才能证伪"safe_head/推进
+    %% 被正文过滤吞掉"与"只推进到末条存活行 seq"两类变异（若过期行在
+    %% 中间，两断言与"过滤后 max seq"无法区分）。
     ok = insert_store_row(920201, 1, <<"tzd01x_st_alive1">>, <<"NULL">>),
     ok = insert_store_row(920202, 2, <<"tzd01x_st_alive2">>, <<"NOW() + INTERVAL '3600 seconds'">>),
     ok = insert_store_row(920203, 3, <<"tzd01x_st_expired">>, <<"NOW() - INTERVAL '60 seconds'">>),
     ok = insert_store_row(920204, 4, <<"tzd01x_st_null">>, <<"NULL">>),
+    ok = insert_store_row(
+        920205, 5, <<"tzd01x_st_expired_tail">>, <<"NOW() - INTERVAL '60 seconds'">>
+    ),
     %% C2G 正文 + 时间线（含群/成员/代际 fixture）
     ok = setup_group(),
     ok = insert_c2g_fixture(
@@ -193,8 +199,9 @@ r05b_2b_history_filters_expired_test_() ->
             lists:any(fun(R) -> maps:get(<<"msg_id">>, R) =:= <<"tzd01x_st_expired">> end, Rows) =:=
                 false
         ),
-        %% safe_head 是序号边界查询，不受正文过滤影响（过期行仍占 seq 空间）
-        ?assertEqual(4, SafeHead)
+        %% safe_head 是序号边界查询，不受正文过滤影响（过期行仍占 seq 空间）。
+        %% 尾部过期行使本断言可证伪：若 safe_head 吞掉过期行会得 4。
+        ?assertEqual(5, SafeHead)
     end).
 
 %%%-------------------------------------------------------------------
@@ -206,15 +213,16 @@ r05b_2c_backfill_filters_expired_test_() ->
         {ok, Rows, NextSeq, HasMore} =
             msg_archive_repo:backfill(?CONV_KEY, 0, 100, <<"c2c">>, ?ST_UID_A, ?ST_UID_B),
         ?assertEqual([1, 2, 4], [maps:get(<<"conv_seq">>, R) || R <- Rows]),
-        %% 全批存活行 ≤ Limit → NextSeq 推进到 EndSeq（=SafeHead），不空转
-        ?assertEqual(4, NextSeq),
+        %% 全批存活行 ≤ Limit → NextSeq 推进到 EndSeq（=SafeHead=5，含尾部
+        %% 过期行占位），不空转；若实现退化成"推进到末条存活行 seq"会得 4。
+        ?assertEqual(5, NextSeq),
         ?assertEqual(false, HasMore),
 
-        %% AfterSeq=2 起：仅 seq 4 存活（3 已过滤），NextSeq 仍推进到 4
+        %% AfterSeq=2 起：仅 seq 4 存活（3/5 已过滤），NextSeq 仍推进到 5
         {ok, Rows2, NextSeq2, _} =
             msg_archive_repo:backfill(?CONV_KEY, 2, 100, <<"c2c">>, ?ST_UID_A, ?ST_UID_B),
         ?assertEqual([4], [maps:get(<<"conv_seq">>, R) || R <- Rows2]),
-        ?assertEqual(4, NextSeq2)
+        ?assertEqual(5, NextSeq2)
     end).
 
 %%%-------------------------------------------------------------------

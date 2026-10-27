@@ -442,6 +442,29 @@ d03_natural_day_canned_echo() ->
     Cs = 1772965200,
     Ce = Cs + 23 * 3600,
     ok = cs_fake_store:put_zone_day_window(<<"America/New_York">>, ?DAY, {Cs, Ce}),
+    %% 指标轴接线：canned 窗口必须真实流入 session_stats 的 new 轴——
+    %% 恰窗起（含）入窗、恰窗终（排外）不入。app 层把 Start/End 传反或
+    %% 传 [0,0] 给 store 时，本断言必红（真库窗口数学由 PG 套件持有）。
+    ok = put_session(#{
+        id => 831000000000301,
+        org => 1,
+        status => queued,
+        queued_at => Cs,
+        claimed_at => undefined,
+        closed_at => undefined,
+        rating => undefined,
+        rating_at => undefined
+    }),
+    ok = put_session(#{
+        id => 831000000000302,
+        org => 1,
+        status => queued,
+        queued_at => Ce,
+        claimed_at => undefined,
+        closed_at => undefined,
+        rating => undefined,
+        rating_at => undefined
+    }),
     try
         {ok, Stats} = cs_session_app:session_stats(1, #{
             store => cs_fake_store, date => ?DAY, zone => <<"America/New_York">>
@@ -452,8 +475,8 @@ d03_natural_day_canned_echo() ->
         ?assertEqual(null, maps:get(tz_offset, Stats)),
         ?assertEqual(Cs, maps:get(window_start, Stats)),
         ?assertEqual(Ce, maps:get(window_end, Stats)),
-        %% 指标轴零样本语义不因模式变化
-        ?assertEqual(0, maps:get(new_sessions, Stats))
+        %% 半开语义：恰窗起入 +1、恰窗终排外不增
+        ?assertEqual(1, maps:get(new_sessions, Stats))
     after
         cs_fake_store:destroy()
     end.
