@@ -717,25 +717,25 @@
             {per_minute_once, 1, per_minute},
             % 每用户每分钟 API 调用上限（活跃 IM 客户端列表/历史/离线分页
             % 一轮就是十几个请求，原 120 偏紧致业务页频繁 429，2026-10 放宽至 3000）
-            {api_per_user, 3000, per_minute},
+            {api_per_user, 30000, per_minute},
             % 每用户每秒 API 突发上限：与分钟桶串联，挡住固定分钟窗口
             % 边界处的请求突刺（中间件 throttle_middleware 双桶检查）
-            {api_per_user_burst, 300, per_second},
+            {api_per_user_burst, 3000, per_second},
             % Widget 接入面：每 IP 每分钟请求上限（bootstrap/消息/SSE 共享；
             % 访客无 UID 恒按 IP；代码级缺省同值，CSB-03）
-            {cs_widget_per_ip, 30, per_minute},
+            {cs_widget_per_ip, 300, per_minute},
             % 每用户每分钟消息发送上限
             {msg_per_user, 60, per_minute},
-            % 密钥上报：每用户每小时最多 10 次
-            {e2ee_report_key, 10, per_hour},
-            % 加密密钥备份：每用户每小时最多 20 次（put/delete 共享）
-            {e2ee_backup, 20, per_hour},
+            % 密钥上报：每用户每小时最多 200 次
+            {e2ee_report_key, 200, per_hour},
+            % 加密密钥备份：每用户每小时最多 200 次（put/delete 共享）
+            {e2ee_backup, 200, per_hour},
             % 分片创建：每用户每天最多 5 次（per_day = 86400000ms）
             {e2ee_create_shards, 5, per_day},
-            % 分片解密：每用户每小时最多 20 次
-            {e2ee_decrypt_shard, 20, per_hour},
-            % 设备间密钥转移：每用户每小时最多 20 次（create/accept/confirm/cancel 共享）
-            {e2ee_transfer, 20, per_hour},
+            % 分片解密：每用户每小时最多 200 次
+            {e2ee_decrypt_shard, 200, per_hour},
+            % 设备间密钥转移：每用户每小时最多 200 次（create/accept/confirm/cancel 共享）
+            {e2ee_transfer, 200, per_hour},
             % OTK claim：每用户每分钟最多 30 次（claim_key + batch_claim 共享）
             {olm_claim, 30, per_minute},
             %% E2EE-062 续：目标级抗耗尽。键是**被领取方**，防「换账号 / 换 request_id」
