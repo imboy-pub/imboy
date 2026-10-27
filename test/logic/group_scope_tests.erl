@@ -110,6 +110,14 @@ add_scope_validation_body() ->
             erase(t_gs_scoped_created),
             "scoped group not created"
         ),
+        %% A returned error must abort rather than commit a partial group.
+        meck(group_member_ds, [
+            {'join_group', 5, fun(_, _, _, _, _) -> {error, simulated_member_failure} end}
+        ]),
+        ?assertMatch(
+            {error, _},
+            group_logic:add(0, ?UID, 2, [<<"900009">>], {<<"workspace">>, ?WS_ID})
+        ),
         %% workspace group create blocked by membership subset rolls back
         meck(group_member_ds, [
             {'join_group', 5, fun(_, _, _, _, _) ->

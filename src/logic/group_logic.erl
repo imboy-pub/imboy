@@ -146,12 +146,21 @@ add(_, Uid, Type, MemberUids) ->
     elib_pg:with_tx(fun(Conn) ->
         Gid = group_ds:create_group(Conn, 0, Uid, Now, Type, 1),
         %% 【原子性修复】批量添加成员并检查结果
-        _ = [
-            group_member_logic:join_group(Conn, JoinMode, Uid2, Gid, #{})
-         || Uid2 <- MemberUids4
-        ],
+        lists:foreach(
+            fun(Uid2) -> join_initial_member(Conn, JoinMode, Uid2, Gid) end,
+            MemberUids4
+        ),
         {ok, Gid}
     end).
+
+join_initial_member(Conn, JoinMode, Uid, Gid) ->
+    case group_member_logic:join_group(Conn, JoinMode, Uid, Gid, #{}) of
+        {ok, _} ->
+            ok;
+        {error, Reason} ->
+            ?ERROR_LOG([group_initial_member_create_failed, Gid, Uid, Reason]),
+            throw({abort_tx, <<"群创建失败，请稍后重试"/utf8>>})
+    end.
 
 %% @doc 解散群组
 %% 解散指定群组，通知所有成员并清理相关数据
@@ -782,12 +791,12 @@ workspace_add_tx(Uid, Type, MemberUids4, WorkspaceId) ->
             ),
             %% 初始成员入群：非 active workspace_member 的成员在 DS 层
             %% throw({abort_tx, workspace_membership_required}) 整体回滚
-            _ = [
-                group_member_logic:join_group(
-                    Conn, <<"workspace_group_create">>, Uid2, Gid2, #{}
-                )
-             || Uid2 <- MemberUids4
-            ],
+            lists:foreach(
+                fun(Uid2) ->
+                    join_initial_member(Conn, <<"workspace_group_create">>, Uid2, Gid2)
+                end,
+                MemberUids4
+            ),
             {ok, Gid2}
         end)
     of
