@@ -123,8 +123,16 @@ ack(Org, Ws, AssetId, Token, Ok) ->
             {error, R}
     end.
 
-reap(Limit) ->
-    case elib_pg:query(<<"SELECT fn_v5_reaper_eb($1)">>, [Limit]) of
-        {ok, _} -> {ok, 0};
-        {error, R} -> {error, R}
-    end.
+reap(Limit) when Limit > 0, Limit =< 100 ->
+    elib_pg:with_tx(fun(Conn) ->
+        case elib_pg:query(Conn, <<"SELECT set_config('statement_timeout','5000',true)">>, []) of
+            {ok, _} ->
+                case elib_pg:query(Conn, <<"SELECT fn_v5_reaper_eb($1)">>, [Limit]) of
+                    {ok, [#{<<"fn_v5_reaper_eb">> := N}]} when is_integer(N) -> {ok, N};
+                    {ok, Other} -> {error, {unexpected_reaper_result, Other}};
+                    {error, R} -> {error, R}
+                end;
+            {error, R} ->
+                throw({abort_tx, R})
+        end
+    end).

@@ -1,7 +1,7 @@
 -module(attachment_gc_repo).
 -moduledoc "Durable object deletion jobs; completed rows reserve retired object keys.".
 -export([enqueue_tx/3, pending/0, lock_tx/2, complete_tx/2, defer/1]).
--export([v5_claim/2, v5_ack/4, v5_reap/2, retry_talk_record_tx/9]).
+-export([v5_claim/2, v5_ack/4, v5_reap/1, v5_reap/2, retry_talk_record_tx/9]).
 
 enqueue_tx(Conn, Path, Bucket) ->
     case
@@ -127,12 +127,21 @@ v5_ack(Conn, Path, Token, Ok) ->
             {error, R}
     end.
 
+%% Periodic recovery is replay-safe and does not wait through connection retries.
+v5_reap(Limit) when Limit > 0, Limit =< 100 ->
+    elib_pg:with_tx(fun(Conn) ->
+        case elib_pg:query(Conn, <<"SELECT set_config('statement_timeout','5000',true)">>, []) of
+            {ok, _} -> v5_reap(Conn, Limit);
+            {error, R} -> throw({abort_tx, R})
+        end
+    end).
+
 %% 过期租约回收（返回回收行数）。
 -spec v5_reap(epgsql:connection() | pid(), integer()) -> {ok, integer()} | {error, term()}.
 v5_reap(Conn, Limit) ->
     case elib_pg:query(Conn, <<"SELECT fn_v5_reaper_ordinary($1)">>, [Limit]) of
         {ok, [#{<<"fn_v5_reaper_ordinary">> := N}]} when is_integer(N) -> {ok, N};
-        {ok, _} -> {ok, 0};
+        {ok, Other} -> {error, {unexpected_reaper_result, Other}};
         {error, R} -> {error, R}
     end.
 

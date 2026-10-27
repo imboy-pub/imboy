@@ -367,6 +367,7 @@ init([]) ->
                 {mcp, McpSession},
                 {mcp, McpTools}
             ]) ++
+            attachment_delete_reaper:child_specs() ++
             eb_retention_purge_children() ++ CacheSyncSpec,
     % intensity/period 放宽：顶层 supervisor 下挂了十余个 worker，
     % 5次/50s 门槛偏紧，短时多个worker同时重启（如DB抖动）易触发supervisor整体退出

@@ -112,6 +112,7 @@
 | `conversation_mute_ds` | 对话静音 |
 | `conversation_pin_ds` | 对话置顶 |
 | `attachment_ds` | 附件管理 |
+| `attachment_delete_reaper` | 两个既有删除队列的独立周期租约回收 |
 | `moment_ds` | 朋友圈 |
 | `fts_user_ds` | 全文搜索用户 |
 | `geo_people_nearby_ds` | 附近人 |
