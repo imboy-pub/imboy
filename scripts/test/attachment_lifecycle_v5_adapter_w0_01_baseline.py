@@ -37,14 +37,23 @@ heads_ok = all(subprocess.run(
 ).stdout.strip() == candidate["heads"][repo]
     for repo, path in candidate["repository_paths"].items())
 
-# 3) contract-level foreign conflict files unchanged inside the candidate worktrees
+# 3) contract-level foreign conflict items verified inside the candidate
+# worktrees. Items the 2026-10-27 rebaseline recorded as missing must stay
+# absent and untracked (absence is the measured fact); others must hash-match.
 foreign = contract.get("known_external_conflicts", [])
 foreign_ok = True
 foreign_detail = []
 for item in foreign:
     repo, rel = item["path"].split("/", 1)
     p = os.path.join(candidate["repository_paths"][repo], rel)
-    if not os.path.exists(p) or sha(p) != item["sha256"]:
+    if item.get("status_2026_10_27") == "missing":
+        tracked = subprocess.run(
+            ["git", "-C", candidate["repository_paths"][repo], "ls-files", "--error-unmatch", rel],
+            capture_output=True).returncode == 0
+        if os.path.exists(p) or tracked:
+            foreign_ok = False
+            foreign_detail.append(item["path"] + " (expected absent, present)")
+    elif not os.path.exists(p) or sha(p) != item["sha256"]:
         foreign_ok = False
         foreign_detail.append(item["path"])
 
