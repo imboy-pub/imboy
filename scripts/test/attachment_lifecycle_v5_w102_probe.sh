@@ -130,6 +130,8 @@ SELECT 101,'v5probe101','x','127.0.0.1','probe' WHERE NOT EXISTS (SELECT 1 FROM 
 INSERT INTO "user"(id,account,password,reg_ip,reg_cosv)
 SELECT 102,'v5probe102','x','127.0.0.1','probe' WHERE NOT EXISTS (SELECT 1 FROM "user" WHERE id=102);
 INSERT INTO "user"(id,account,password,reg_ip,reg_cosv)
+SELECT 202,'v5probe202','x','127.0.0.1','probe' WHERE NOT EXISTS (SELECT 1 FROM "user" WHERE id=202);
+INSERT INTO "user"(id,account,password,reg_ip,reg_cosv)
 SELECT 99000101,'v5actor','x','127.0.0.1','probe' WHERE NOT EXISTS (SELECT 1 FROM "user" WHERE id=99000101);
 INSERT INTO "user"(id,account,password,reg_ip,reg_cosv)
 SELECT 99000102,'v5actor2','x','127.0.0.1','probe' WHERE NOT EXISTS (SELECT 1 FROM "user" WHERE id=99000102);
@@ -164,13 +166,72 @@ INSERT INTO enterprise_asset(id,organization_id,workspace_id,object_key,object_h
 SELECT 910000999,98000101,97000101,'v5e/widget','v5hash','pending_confirm'
 WHERE NOT EXISTS (SELECT 1 FROM enterprise_asset WHERE id=910000999);
 SQL
+  # per-run EB fixtures (disjoint 910xxx band): never touched by the EB
+  # registration guard's immutable registration columns, so no reset UPDATE
+  # is needed before fn_v5_register_eb.
+  PSQL -q > /dev/null 2>&1 <<SQL
+INSERT INTO enterprise_asset(id,organization_id,workspace_id,object_key,object_hash,status)
+SELECT $EA_REG,98000101,97000101,'v5e/reg1-$RUN_TAG','v5hash','pending_confirm'
+WHERE NOT EXISTS (SELECT 1 FROM enterprise_asset WHERE id=$EA_REG);
+INSERT INTO enterprise_asset(id,organization_id,workspace_id,object_key,object_hash,status,storage_driver,storage_namespace,storage_container,storage_locator_sha256)
+SELECT $EA_REG2,98000101,97000101,'v5e/reg2-$RUN_TAG','v5hash','active','garage','v5ns','v5c','$LOC64'
+WHERE NOT EXISTS (SELECT 1 FROM enterprise_asset WHERE id=$EA_REG2);
+INSERT INTO enterprise_asset(id,organization_id,workspace_id,object_key,object_hash,status)
+SELECT $EA_LEGACY,98000101,97000101,'v5e/legacy-$RUN_TAG','v5hash','active'
+WHERE NOT EXISTS (SELECT 1 FROM enterprise_asset WHERE id=$EA_LEGACY);
+INSERT INTO enterprise_asset(id,organization_id,workspace_id,object_key,object_hash,status,storage_driver,storage_namespace,storage_container,storage_locator_sha256)
+SELECT $EA_AUTH,98000101,97000101,'v5e/auth-$RUN_TAG','v5hash','active','garage','v5ns','v5c','$LOC64'
+WHERE NOT EXISTS (SELECT 1 FROM enterprise_asset WHERE id=$EA_AUTH);
+INSERT INTO enterprise_asset(id,organization_id,workspace_id,object_key,object_hash,status)
+SELECT $EA_SUB1,98000101,97000101,'v5e/sub1-$RUN_TAG','v5hash','pending_confirm'
+WHERE NOT EXISTS (SELECT 1 FROM enterprise_asset WHERE id=$EA_SUB1);
+INSERT INTO enterprise_asset(id,organization_id,workspace_id,object_key,object_hash,status)
+SELECT $EA_SUB2,98000101,97000101,'v5e/sub2-$RUN_TAG','v5hash','active'
+WHERE NOT EXISTS (SELECT 1 FROM enterprise_asset WHERE id=$EA_SUB2);
+INSERT INTO enterprise_asset(id,organization_id,workspace_id,object_key,object_hash,status)
+SELECT $EA_SUB3,98000101,97000101,'v5e/sub3-$RUN_TAG','v5hash','active'
+WHERE NOT EXISTS (SELECT 1 FROM enterprise_asset WHERE id=$EA_SUB3);
+INSERT INTO enterprise_asset(id,organization_id,workspace_id,object_key,object_hash,status)
+SELECT $EA_SUB4,98000101,97000101,'v5e/sub4-$RUN_TAG','v5hash','active'
+WHERE NOT EXISTS (SELECT 1 FROM enterprise_asset WHERE id=$EA_SUB4);
+SQL
 }
 
 REG='{"subject":{"kind":"user","principal":"101"},"declaration":{"filename":"a.png","mime":"image/png","size_bytes":"10","scope":"private"}}'
+REG202='{"subject":{"kind":"user","principal":"202"},"declaration":{"filename":"a.png","mime":"image/png","size_bytes":"10","scope":"private"}}'
 CONTENT='{"version":1,"sha256":"'"$(printf 'a%.0s' {1..64})"'","size_bytes":"10","mime":"image/png"}'
 LOC64="$(printf 'b%.0s' {1..64})"
 LOCA="$(printf 'a%.0s' {1..64})"
 LOCB="$(printf 'c%.0s' {1..64})"
+# Per-run unique fixture namespace: guards DBs survive across manual probe
+# invocations (the gate always rebuilds them, but idempotent probes must not
+# depend on that), and V5 guards forbid DELETE cleanup of the permanent rows
+# earlier rounds leave behind.  Unique keys/paths/ids per invocation replace
+# DELETE-and-reuse seeding entirely.
+RUN_TAG="$(date +%H%M%S)$(printf '%04d' $((RANDOM % 10000)))"
+ID_OFF=$((10#${RUN_TAG: -6} * 7))
+# Disjoint id bands per fixture group (all offsets share ID_OFF so ids inside a
+# run stay pairwise distinct): 910xxxxx enterprise assets (EA_*), 920xxxxx
+# backfill batch, 930xxxxx session-link attachments, 940xxxxx GC-link
+# attachment.  Fixed ids 900000101..900000334 stay reserved for the base seeds.
+EA_OFF=$((ID_OFF % 90000))
+EA_REG=$((910000102 + EA_OFF))
+EA_REG2=$((910000103 + EA_OFF))
+EA_LEGACY=$((910000112 + EA_OFF))
+EA_AUTH=$((910000200 + EA_OFF))
+EA_HOLD_ASSET=$((910000130 + EA_OFF))
+EA_SUB1=$((910000300 + EA_OFF))
+EA_SUB2=$((910000301 + EA_OFF))
+EA_SUB3=$((910000310 + EA_OFF))
+EA_SUB4=$((910000311 + EA_OFF))
+EA_WIDGET=$((910000999 + EA_OFF))
+GID=$((940000001 + ID_OFF % 100000))
+LID1=$((930000001 + ID_OFF % 100000))
+LID2=$((930000002 + ID_OFF % 100000))
+LID3=$((930000003 + ID_OFF % 100000))
+LID4=$((930000004 + ID_OFF % 100000))
+LID5=$((930000005 + ID_OFF % 100000))
+LID6=$((930000006 + ID_OFF % 100000))
 
 # ============ migration (both phases) ============
 migration_probes() {
@@ -266,8 +327,8 @@ else
 fi
 
 probe base_read_compat2 "0" "SELECT count(*) FROM attachment WHERE lifecycle_state IS NULL"
-probe old_completed_maps_done "0" "SELECT count(*) FROM attachment_object_deletion WHERE completed_at IS NOT NULL AND job_state<>'done'"
-probe unclaimed_old_blocked "0" "SELECT count(*) FROM attachment_object_deletion WHERE completed_at IS NULL AND job_state<>'blocked'"
+probe old_completed_maps_done "0" "SELECT count(*) FROM attachment_object_deletion WHERE completed_at IS NOT NULL AND job_state<>'done' AND path NOT LIKE 'v5p/%'"
+probe unclaimed_old_blocked "0" "SELECT count(*) FROM attachment_object_deletion WHERE completed_at IS NULL AND job_state<>'blocked' AND path NOT LIKE 'v5p/%'"
 
 # --- real: old (pre-V5) writer path.  Writes metadata + a legacy completion
 # row without any V5 identity; asserts no GC authorization can follow.
@@ -301,33 +362,37 @@ required_functions_probe() {
   call() { # role sql
     if printf "%s\n" "$2" | PSQL -tAq >/dev/null 2>>"$PROBE_TMP/err.txt"; then n=$((n+1)); else fails="$fails $1"; fi
   }
-  PSQL -q > /dev/null 2>&1 <<'SQL'
-DELETE FROM attachment WHERE path IN ('v5p/fn-reg','v5p/fn-intent','v5p/fn-proof');
-DELETE FROM attach_pending WHERE object_key IN ('v5p/fn-reg');
-DELETE FROM attachment_object_deletion WHERE path IN ('v5p/fn-proof');
-SQL
-  call "lock_identity" "SET ROLE v5_app_runtime; SELECT fn_v5_lock_identity('garage','v5ns','v5c','v5p/fn-lock')"
-  call "register_pending" "SET ROLE v5_app_runtime; SELECT out_object_key FROM fn_v5_register_pending('v5p/fn-reg','b','private',101,'a1111111-1111-1111-1111-111111111111','$REG'::jsonb,now()+interval '2 hours',now()+interval '1 hour','garage','v5ns','v5c','$LOC64')"
-  call "register_eb" "SET ROLE v5_app_runtime; SELECT out_session_state FROM fn_v5_register_eb(98000101,97000101,910000102,'v5e/sub1','b2222222-2222-2222-2222-222222222222','$REG'::jsonb,'user',now()+interval '2 hours',now()+interval '1 hour')"
-  call "pin_pending_content" "SET ROLE v5_app_runtime; SELECT fn_v5_pin_pending_content('v5p/fn-reg','$CONTENT'::jsonb)"
-  PSQL -q > /dev/null 2>&1 -c "INSERT INTO attachment(id,path,scope,creator_user_id,storage_driver,storage_namespace,storage_container,storage_locator_sha256) VALUES (900000340,'v5p/fn-reg','private',101,'garage','v5ns','v5c','$LOC64') ON CONFLICT (id) DO NOTHING"
-  call "confirm_pending" "SET ROLE v5_app_runtime; SELECT fn_v5_confirm_pending('v5p/fn-reg',900000340)"
-  PSQL -q > /dev/null 2>&1 -c "INSERT INTO attachment(id,path,scope,creator_user_id,storage_driver,storage_namespace,storage_container,storage_locator_sha256,gc_verified) VALUES (900000341,'v5p/fn-intent','private',101,'garage','v5ns','v5c','$LOC64',true) ON CONFLICT (id) DO NOTHING"
-  call "intent_ordinary_delete" "SET ROLE v5_app_runtime; SELECT fn_v5_intent_ordinary_delete('v5p/fn-intent','probe')"
-  call "intent_eb_delete" "SET ROLE v5_app_runtime; SELECT fn_v5_intent_eb_delete(98000101,97000101,910000103,'probe')"
-  call "claim_ordinary" "SET ROLE v5_worker; SELECT count(*) FROM fn_v5_claim_ordinary('c3333333-3333-3333-3333-333333333333')"
-  call "ack_ordinary" "SET ROLE v5_worker; SELECT fn_v5_ack_ordinary('v5p/none','c3333333-3333-3333-3333-333333333333',true)"
+  # Per-invocation fixtures: guards DBs persist across manual runs and V5
+  # tombstone/session guards make DELETE cleanup impossible, so a reused
+  # key/path/asset would hit already-filled sessions or permanent tombstones.
+  local RKEY="v5p/fn-reg-$RUN_TAG" RINTENT="v5p/fn-intent-$RUN_TAG" RPROOF="v5p/fn-proof-$RUN_TAG"
+  local RID1=$((900000340 + ID_OFF)) RID2=$((900000341 + ID_OFF)) RID3=$((900000342 + ID_OFF))
+  local RASSET="$EA_REG" RASSET2="$EA_REG2"
+  local RUUID="a1111111-1111-4111-8111-$(printf '%012d' $((10#$RUN_TAG % 10**12)))"
+  call "lock_identity" "SET ROLE v5_app_runtime; SELECT fn_v5_lock_identity('garage','v5ns','v5c','v5p/fn-lock-$RUN_TAG')"
+  call "register_pending" "SET ROLE v5_app_runtime; SELECT out_object_key FROM fn_v5_register_pending('$RKEY','b','private',101,'$RUUID','$REG'::jsonb,now()+interval '2 hours',now()+interval '1 hour','garage','v5ns','v5c','$LOC64')"
+  call "register_eb" "SET ROLE v5_app_runtime; SELECT out_session_state FROM fn_v5_register_eb(98000101,97000101,$RASSET,'v5e/sub1-$RUN_TAG','b2222222-2222-4222-8222-$(printf '%012d' $((10#$RUN_TAG % 10**12)))','$REG'::jsonb,'user',now()+interval '2 hours',now()+interval '1 hour')"
+  call "pin_pending_content" "SET ROLE v5_app_runtime; SELECT fn_v5_pin_pending_content('$RKEY','$CONTENT'::jsonb)"
+  PSQL -q > /dev/null 2>&1 -c "INSERT INTO attachment(id,path,scope,creator_user_id,storage_driver,storage_namespace,storage_container,storage_locator_sha256) VALUES ($RID1,'$RKEY','private',101,'garage','v5ns','v5c','$LOC64')"
+  call "confirm_pending" "SET ROLE v5_app_runtime; SELECT fn_v5_confirm_pending('$RKEY',$RID1)"
+  PSQL -q > /dev/null 2>&1 -c "INSERT INTO attachment(id,path,scope,creator_user_id,storage_driver,storage_namespace,storage_container,storage_locator_sha256,gc_verified) VALUES ($RID2,'$RINTENT','private',101,'garage','v5ns','v5c','$LOC64',true)"
+  call "intent_ordinary_delete" "SET ROLE v5_app_runtime; SELECT fn_v5_intent_ordinary_delete('$RINTENT','probe')"
+  call "intent_eb_delete" "SET ROLE v5_app_runtime; SELECT fn_v5_intent_eb_delete(98000101,97000101,$RASSET2,'probe')"
+  call "claim_ordinary" "SET ROLE v5_worker; SELECT count(*) FROM fn_v5_claim_ordinary('c3333333-3333-4333-8333-$(printf '%012d' $((10#$RUN_TAG % 10**12)))')"
+  call "ack_ordinary" "SET ROLE v5_worker; SELECT fn_v5_ack_ordinary('v5p/none','c3333333-3333-4333-8333-$(printf '%012d' $((10#$RUN_TAG % 10**12)))',true)"
   call "reaper_ordinary" "SET ROLE v5_worker; SELECT fn_v5_reaper_ordinary(5)"
-  call "claim_eb" "SET ROLE v5_worker; SELECT count(*) FROM fn_v5_claim_eb('d4444444-4444-4444-4444-444444444444')"
-  call "ack_eb" "SET ROLE v5_worker; SELECT fn_v5_ack_eb(98000101,97000101,999999,'d4444444-4444-4444-4444-444444444444',true)"
+  call "claim_eb" "SET ROLE v5_worker; SELECT count(*) FROM fn_v5_claim_eb('d4444444-4444-4444-8444-$(printf '%012d' $((10#$RUN_TAG % 10**12)))')"
+  call "ack_eb" "SET ROLE v5_worker; SELECT fn_v5_ack_eb(98000101,97000101,999999,'d4444444-4444-4444-8444-$(printf '%012d' $((10#$RUN_TAG % 10**12)))',true)"
   call "reaper_eb" "SET ROLE v5_worker; SELECT fn_v5_reaper_eb(5)"
-  PSQL -q > /dev/null 2>&1 -c "INSERT INTO attachment(id,path,scope,creator_user_id) VALUES (900000342,'v5p/fn-proof','private',101) ON CONFLICT (id) DO NOTHING"
-  PSQL -q > /dev/null 2>&1 -c "INSERT INTO attachment_object_deletion(path,bucket) VALUES ('v5p/fn-proof','b') ON CONFLICT (path) DO NOTHING"
-  call "proof_activate_ordinary" "SET ROLE v5_proof; SELECT fn_v5_proof_activate_ordinary('v5p/fn-proof','garage','v5ns','v5c','$LOC64')"
-  PSQL -q > /dev/null 2>&1 -c "INSERT INTO enterprise_asset_delete_queue(organization_id,workspace_id,asset_id,object_key) VALUES (98000101,97000101,910000112,'v5e/legacy') ON CONFLICT DO NOTHING"
-  call "copy_eb_recovery_tombstone" "SET ROLE v5_app_runtime; SELECT fn_v5_copy_eb_recovery_tombstone(98000101,97000101,910000112)"
+  PSQL -q > /dev/null 2>&1 -c "INSERT INTO attachment(id,path,scope,creator_user_id) VALUES ($RID3,'$RPROOF','private',101)"
+  PSQL -q > /dev/null 2>&1 -c "INSERT INTO attachment_object_deletion(path,bucket) VALUES ('$RPROOF','b')"
+  call "proof_activate_ordinary" "SET ROLE v5_proof; SELECT fn_v5_proof_activate_ordinary('$RPROOF','garage','v5ns','v5c','$LOC64')"
+  PSQL -q > /dev/null 2>&1 -c "INSERT INTO enterprise_asset_delete_queue(organization_id,workspace_id,asset_id,object_key) VALUES (98000101,97000101,$EA_LEGACY,'v5e/legacy-$RUN_TAG')"
+  call "copy_eb_recovery_tombstone" "SET ROLE v5_app_runtime; SELECT fn_v5_copy_eb_recovery_tombstone(98000101,97000101,$EA_LEGACY)"
+  # count DISTINCT proname: migration 00000193 legitimately overloads
+  # fn_v5_claim_eb with a second scoped signature owned by the same role.
   local inv
-  inv="$(sqlval "SELECT count(*) FROM pg_proc p JOIN pg_roles r ON r.rolname='v5_fn_owner' WHERE p.pronamespace='public'::regnamespace AND p.proname IN ('fn_v5_lock_identity','fn_v5_register_pending','fn_v5_register_eb','fn_v5_pin_pending_content','fn_v5_confirm_pending','fn_v5_intent_ordinary_delete','fn_v5_intent_eb_delete','fn_v5_claim_ordinary','fn_v5_ack_ordinary','fn_v5_reaper_ordinary','fn_v5_claim_eb','fn_v5_ack_eb','fn_v5_reaper_eb','fn_v5_proof_activate_ordinary','fn_v5_copy_eb_recovery_tombstone') AND p.proowner=r.oid AND NOT has_function_privilege('public',p.oid,'EXECUTE')")"
+  inv="$(sqlval "SELECT count(DISTINCT p.proname) FROM pg_proc p JOIN pg_roles r ON r.rolname='v5_fn_owner' WHERE p.pronamespace='public'::regnamespace AND p.proname IN ('fn_v5_lock_identity','fn_v5_register_pending','fn_v5_register_eb','fn_v5_pin_pending_content','fn_v5_confirm_pending','fn_v5_intent_ordinary_delete','fn_v5_intent_eb_delete','fn_v5_claim_ordinary','fn_v5_ack_ordinary','fn_v5_reaper_ordinary','fn_v5_claim_eb','fn_v5_ack_eb','fn_v5_reaper_eb','fn_v5_proof_activate_ordinary','fn_v5_copy_eb_recovery_tombstone') AND p.proowner=r.oid AND NOT has_function_privilege('public',p.oid,'EXECUTE')")"
   if [ "$n" -eq 15 ] && [ "$inv" = "15" ]; then
     emit expand_required_functions_callable 1 "15/15 M2 protocol functions invoked successfully under their granted roles (app_runtime/worker/proof); inventory: 15 definer-owned, PUBLIC EXECUTE revoked"
   else
@@ -336,29 +401,29 @@ SQL
 }
 required_functions_probe
 
-probe authorized_intent_atomic "1" "WITH a AS (INSERT INTO attachment(id,file_hash256,mime_type,ext,name,path,url,size,scope,creator_user_id,referer_time,status,storage_driver,storage_namespace,storage_container,storage_locator_sha256,gc_verified) VALUES (900000110,'h2','image/png','png','b.png','v5p/intent1','',10,'private',101,0,0,'garage','ns1','c1','$(printf '1%.0s' {1..64})',true) ON CONFLICT (id) DO NOTHING RETURNING path), i AS (SELECT fn_v5_intent_ordinary_delete((SELECT path FROM a),'probe') AS r) SELECT r FROM i;
-SELECT count(*) FROM attachment_object_deletion WHERE path='v5p/intent1' AND job_state='ready'"
+probe authorized_intent_atomic "1" "WITH a AS (INSERT INTO attachment(id,file_hash256,mime_type,ext,name,path,url,size,scope,creator_user_id,referer_time,status,storage_driver,storage_namespace,storage_container,storage_locator_sha256,gc_verified) VALUES ($((900000110 + ID_OFF % 400000)),'h2','image/png','png','b.png','v5p/intent1-$RUN_TAG','',10,'private',101,0,0,'garage','ns1','c1','$(printf '1%.0s' {1..64})',true) RETURNING path), i AS (SELECT fn_v5_intent_ordinary_delete((SELECT path FROM a),'probe') AS r) SELECT r FROM i;
+SELECT count(*) FROM attachment_object_deletion WHERE path='v5p/intent1-$RUN_TAG' AND job_state='ready'"
 
 # --- real: confirmed session survives a real GC intent (metadata only).
 confirmed_gc_link_probe() {
+  local GKEY="v5p/gclink-$RUN_TAG" GID
+  GID=$((940000001 + ID_OFF % 100000))
   PSQL -q > /dev/null 2>&1 <<SQL
-DELETE FROM attachment WHERE path='v5p/gclink';
-DELETE FROM attach_pending WHERE object_key='v5p/gclink';
 INSERT INTO attachment(id,path,scope,creator_user_id,storage_driver,storage_namespace,storage_container,storage_locator_sha256)
-VALUES (900000320,'v5p/gclink','private',101,'garage','v5ns','v5c','$LOC64');
-SELECT fn_v5_register_pending('v5p/gclink','b','private',101,'e5555555-5555-5555-5555-555555555555','$REG'::jsonb,now()+interval '2 hours',now()+interval '2 seconds','garage','v5ns','v5c','$LOC64');
-SELECT fn_v5_pin_pending_content('v5p/gclink','$CONTENT'::jsonb);
-SELECT fn_v5_confirm_pending('v5p/gclink',900000320);
-UPDATE attachment SET gc_verified=true WHERE id=900000320;
+VALUES ($GID,'$GKEY','private',101,'garage','v5ns','v5c','$LOC64');
+SELECT fn_v5_register_pending('$GKEY','b','private',101,'e5555555-5555-4555-8555-$(printf '%012d' $((10#$RUN_TAG % 10**12)))','$REG'::jsonb,now()+interval '2 hours',now()+interval '2 seconds','garage','v5ns','v5c','$LOC64');
+SELECT fn_v5_pin_pending_content('$GKEY','$CONTENT'::jsonb);
+SELECT fn_v5_confirm_pending('$GKEY',$GID);
+UPDATE attachment SET gc_verified=true WHERE id=$GID;
 SQL
   sleep 4
-  sqlrc "SELECT fn_v5_intent_ordinary_delete('v5p/gclink','probe')"
+  sqlrc "SELECT fn_v5_intent_ordinary_delete('$GKEY','probe')"
   local rc=$? link
-  link="$(sqlval "SELECT session_state||':'||coalesce(confirmed_attachment_id::text,'NULL') FROM attach_pending WHERE object_key='v5p/gclink'")"
-  if [ $rc -eq 0 ] && [ "$link" = "confirmed:900000320" ] && \
-     [ "$(sqlval "SELECT count(*) FROM attachment_object_deletion WHERE path='v5p/gclink' AND job_state='ready'")" = "1" ] && \
-     [ "$(sqlval "SELECT lifecycle_state FROM attachment WHERE id=900000320")" = "delete_intent" ]; then
-    emit confirmed_gc_preserves_session_link 1 "fn_v5_intent_ordinary_delete committed after capability expiry: metadata delete_intent + ready job; session stayed confirmed:900000320 (link preserved)"
+  link="$(sqlval "SELECT session_state||':'||coalesce(confirmed_attachment_id::text,'NULL') FROM attach_pending WHERE object_key='$GKEY'")"
+  if [ $rc -eq 0 ] && [ "$link" = "confirmed:$GID" ] && \
+     [ "$(sqlval "SELECT count(*) FROM attachment_object_deletion WHERE path='$GKEY' AND job_state='ready'")" = "1" ] && \
+     [ "$(sqlval "SELECT lifecycle_state FROM attachment WHERE id=$GID")" = "delete_intent" ]; then
+    emit confirmed_gc_preserves_session_link 1 "fn_v5_intent_ordinary_delete committed after capability expiry: metadata delete_intent + ready job; session stayed confirmed:$GID (link preserved)"
   else
     emit confirmed_gc_preserves_session_link 0 "rc=$rc link=$link err=$(sanitize "$(head -c160 "$PROBE_TMP/err.txt")")"
   fi
@@ -373,19 +438,18 @@ if [ "$PHASE" = "guards" ]; then probe confirmed_to_registered "fail" "UPDATE at
 # location fill in both phases (attach_pending/attachment freeze the identity
 # once their M3 guards are attached).
 backfill_probe() {
-  PSQL -q > /dev/null 2>&1 <<'SQL'
+  PSQL -q > /dev/null 2>&1 <<SQL
 DROP TABLE IF EXISTS v5_probe_bf_cursor;
 CREATE TABLE v5_probe_bf_cursor(id int PRIMARY KEY, last_key text, committed_rows int, version int);
 INSERT INTO v5_probe_bf_cursor VALUES (1,'',0,1);
-DELETE FROM enterprise_asset WHERE object_key LIKE 'v5e/bf/%';
 INSERT INTO enterprise_asset(id,organization_id,workspace_id,object_key,object_hash,status)
-SELECT 920000000+g,98000101,97000101,'v5e/bf/'||lpad(g::text,5,'0'),'v5bfhash','active'
+SELECT $((920000000 + ID_OFF))+g,98000101,97000101,'v5e/bf-$RUN_TAG/'||lpad(g::text,5,'0'),'v5bfhash','active'
 FROM generate_series(1,1200) g;
 SQL
   local batch_sql interrupt_sql checksum_before checksum_after
   batch_sql="WITH batch AS (
     SELECT object_key FROM enterprise_asset
-     WHERE object_key LIKE 'v5e/bf/%' AND storage_driver IS NULL
+     WHERE object_key LIKE 'v5e/bf-$RUN_TAG/%' AND storage_driver IS NULL
        AND object_key > (SELECT last_key FROM v5_probe_bf_cursor WHERE id=1)
      ORDER BY object_key LIMIT 500 FOR UPDATE SKIP LOCKED),
   upd AS (UPDATE enterprise_asset p
@@ -400,7 +464,7 @@ SQL
   interrupt_sql="DO \$b\$ DECLARE n int; BEGIN
     WITH batch AS (
       SELECT object_key FROM enterprise_asset
-       WHERE object_key LIKE 'v5e/bf/%' AND storage_driver IS NULL
+       WHERE object_key LIKE 'v5e/bf-$RUN_TAG/%' AND storage_driver IS NULL
          AND object_key > (SELECT last_key FROM v5_probe_bf_cursor WHERE id=1)
        ORDER BY object_key LIMIT 500 FOR UPDATE SKIP LOCKED),
     upd AS (UPDATE enterprise_asset p
@@ -414,23 +478,23 @@ SQL
     SELECT committed_rows INTO n FROM cur;
     RAISE EXCEPTION 'injected backfill interrupt';
   END \$b\$"
-  checksum_before="$(sqlval "SELECT md5(string_agg(id||':'||coalesce(client_upload_id::text,'-')||':'||lifecycle_state,',' ORDER BY id)) FROM enterprise_asset WHERE object_key LIKE 'v5e/bf/%'")"
+  checksum_before="$(sqlval "SELECT md5(string_agg(id||':'||coalesce(client_upload_id::text,'-')||':'||lifecycle_state,',' ORDER BY id)) FROM enterprise_asset WHERE object_key LIKE 'v5e/bf-$RUN_TAG/%'")"
   local c1 c2 c_after_int promoted_int c3 c4 promoted final_rows maxbatch checksum_after
   c1="$(sqlval "$batch_sql")"
   c2="$(sqlval "$batch_sql")"
   sqlrc "$interrupt_sql"
-  promoted_int="$(sqlval "SELECT count(*) FROM enterprise_asset WHERE object_key LIKE 'v5e/bf/%' AND storage_driver IS NOT NULL")"
+  promoted_int="$(sqlval "SELECT count(*) FROM enterprise_asset WHERE object_key LIKE 'v5e/bf-$RUN_TAG/%' AND storage_driver IS NOT NULL")"
   c_after_int="$(sqlval "SELECT committed_rows||':'||version FROM v5_probe_bf_cursor WHERE id=1")"
   c3="$(sqlval "$batch_sql")"
   c4="$(sqlval "$batch_sql")"
-  checksum_after="$(sqlval "SELECT md5(string_agg(id||':'||coalesce(client_upload_id::text,'-')||':'||lifecycle_state,',' ORDER BY id)) FROM enterprise_asset WHERE object_key LIKE 'v5e/bf/%'")"
-  promoted="$(sqlval "SELECT count(*) FROM enterprise_asset WHERE object_key LIKE 'v5e/bf/%' AND storage_driver IS NOT NULL")"
+  checksum_after="$(sqlval "SELECT md5(string_agg(id||':'||coalesce(client_upload_id::text,'-')||':'||lifecycle_state,',' ORDER BY id)) FROM enterprise_asset WHERE object_key LIKE 'v5e/bf-$RUN_TAG/%'")"
+  promoted="$(sqlval "SELECT count(*) FROM enterprise_asset WHERE object_key LIKE 'v5e/bf-$RUN_TAG/%' AND storage_driver IS NOT NULL")"
   final_rows="$(sqlval "SELECT committed_rows||':'||version FROM v5_probe_bf_cursor WHERE id=1")"
   maxbatch="$(sqlval "SELECT greatest(${c1:-0}, ${c2:-0}-${c1:-0}, ${c3:-0}-${c2:-0}, ${c4:-0}-${c3:-0})")"
   if [ "$c1" = "500" ] && [ "$c2" = "1000" ] && [ "$promoted_int" = "1000" ] && [ "$c_after_int" = "1000:1" ] && \
      [ "$promoted" = "1200" ] && [ "$final_rows" = "1200:1" ] && [ "$maxbatch" = "500" ] && \
      [ "$checksum_before" = "$checksum_after" ] && \
-     [ "$(sqlval "SELECT count(*) FROM enterprise_asset WHERE object_key LIKE 'v5e/bf/%' AND (client_upload_id IS NOT NULL OR upload_registration IS NOT NULL OR lifecycle_state<>'live')")" = "0" ]; then
+     [ "$(sqlval "SELECT count(*) FROM enterprise_asset WHERE object_key LIKE 'v5e/bf-$RUN_TAG/%' AND (client_upload_id IS NOT NULL OR upload_registration IS NOT NULL OR lifecycle_state<>'live')")" = "0" ]; then
     emit backfill_interrupt_resume 1 "keyset batches 500/500 then injected interrupt rolled back (promoted=1000 cursor=1000:1), resume batches 500/200 -> promoted=1200 cursor=1200:1 version unchanged, no identity/lifecycle promotion (checksum stable)"
   else
     emit backfill_interrupt_resume 0 "c1=$c1 c2=$c2 promoted_after_interrupt=$promoted_int cursor_after_interrupt=$c_after_int c3=$c3 c4=$c4 promoted=$promoted cursor=$final_rows maxbatch=$maxbatch identity_checksum=$([ "$checksum_before" = "$checksum_after" ] && echo stable || echo drifted)"
@@ -574,88 +638,83 @@ SELECT CASE WHEN group_file_id=7001 THEN 'replay:idempotent' ELSE 'changed' END 
 
 # ============ session-link-integrity (guards only) ============
 session_link_probes() {
+  local LKEY1="v5p/link1-$RUN_TAG" LKEY2="v5p/other-$RUN_TAG" \
+        LKEY3="v5p/link-owner-$RUN_TAG" LKEY4="v5p/link-scope-$RUN_TAG" \
+        LKEY5="v5p/link-loc-$RUN_TAG" LKEY6="v5p/link-cipher-$RUN_TAG"
   PSQL -q > /dev/null 2>&1 <<SQL
-DELETE FROM attachment WHERE path LIKE 'v5p/link%';
-DELETE FROM attach_pending WHERE object_key LIKE 'v5p/link%';
 BEGIN;
 INSERT INTO attach_pending(object_key,bucket,scope,creator_user_id,client_upload_id,upload_registration,session_deadline,upload_expires_at,storage_driver,storage_namespace,storage_container,storage_locator_sha256)
-VALUES ('v5p/link1','b','private',101,'33333333-3333-3333-3333-333333333333','$REG',now()+interval '2 hours',now()+interval '1 hour','garage','v5ns','v5c','$LOC64');
+VALUES ('$LKEY1','b','private',101,'33${RUN_TAG:0:6}-3333-4333-8333-333333333333','$REG',now()+interval '2 hours',now()+interval '1 hour','garage','v5ns','v5c','$LOC64');
 COMMIT;
 BEGIN;
 INSERT INTO attachment(id,path,scope,creator_user_id,storage_driver,storage_namespace,storage_container,storage_locator_sha256)
-VALUES (900000201,'v5p/link1','private',101,'garage','v5ns','v5c','$LOC64');
+VALUES ($LID1,'$LKEY1','private',101,'garage','v5ns','v5c','$LOC64');
 COMMIT;
 SQL
-probe confirmed_null "fail" "UPDATE attach_pending SET session_state='confirmed' WHERE object_key='v5p/link1'"
-probe registered_link_nonnull "fail" "UPDATE attach_pending SET confirmed_attachment_id=900000201 WHERE object_key='v5p/link1'"
+probe confirmed_null "fail" "UPDATE attach_pending SET session_state='confirmed' WHERE object_key='$LKEY1'"
+probe registered_link_nonnull "fail" "UPDATE attach_pending SET confirmed_attachment_id=$LID1 WHERE object_key='$LKEY1'"
 # legal FK (existing attachment row) but every non-matching dimension.
 PSQL -q > /dev/null 2>&1 <<SQL
 BEGIN;
-INSERT INTO attachment(id,path,scope,creator_user_id) VALUES (900000202,'v5p/other','private',101) ON CONFLICT (id) DO NOTHING;
+INSERT INTO attachment(id,path,scope,creator_user_id) VALUES ($LID2,'$LKEY2','private',101);
 COMMIT;
 SQL
-probe legal_fk_wrong_key "err:v5 confirm key mismatch" "SET ROLE v5_app_runtime; SELECT fn_v5_confirm_pending('v5p/link1', 900000202)"
-# wrong owner: same key/scope/location, different creator.
+probe legal_fk_wrong_key "err:v5 confirm key mismatch" "SET ROLE v5_app_runtime; SELECT fn_v5_confirm_pending('$LKEY1', $LID2)"
+# wrong owner: same key/scope/location, different creator (registration
+# snapshot declares subject 202 so the mismatch is the creator, not the
+# declaration).
 PSQL -q > /dev/null 2>&1 <<SQL
-DELETE FROM attachment WHERE path='v5p/link-owner';
-DELETE FROM attach_pending WHERE object_key='v5p/link-owner';
 INSERT INTO attach_pending(object_key,bucket,scope,creator_user_id,client_upload_id,upload_registration,session_deadline,upload_expires_at,storage_driver,storage_namespace,storage_container,storage_locator_sha256)
-VALUES ('v5p/link-owner','b','private',202,'9aaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa','$REG',now()+interval '2 hours',now()+interval '1 hour','garage','v5ns','v5c','$LOC64');
+VALUES ('$LKEY3','b','private',202,'9a${RUN_TAG:0:6}-9aaa-4aaa-8aaa-aaaaaaaaaaaa','$REG202',now()+interval '2 hours',now()+interval '1 hour','garage','v5ns','v5c','$LOC64');
 INSERT INTO attachment(id,path,scope,creator_user_id,storage_driver,storage_namespace,storage_container,storage_locator_sha256)
-VALUES (900000203,'v5p/link-owner','private',101,'garage','v5ns','v5c','$LOC64');
+VALUES ($LID3,'$LKEY3','private',101,'garage','v5ns','v5c','$LOC64');
 SQL
-probe legal_fk_wrong_owner "err:v5 confirm owner mismatch" "SET ROLE v5_app_runtime; SELECT fn_v5_confirm_pending('v5p/link-owner', 900000203)"
+probe legal_fk_wrong_owner "err:v5 confirm owner mismatch" "SET ROLE v5_app_runtime; SELECT fn_v5_confirm_pending('$LKEY3', $LID3)"
 # wrong origin scope: session says private, asset is group.
 PSQL -q > /dev/null 2>&1 <<SQL
-DELETE FROM attachment WHERE path='v5p/link-scope';
-DELETE FROM attach_pending WHERE object_key='v5p/link-scope';
 INSERT INTO attach_pending(object_key,bucket,scope,creator_user_id,client_upload_id,upload_registration,session_deadline,upload_expires_at,storage_driver,storage_namespace,storage_container,storage_locator_sha256)
-VALUES ('v5p/link-scope','b','private',101,'9bbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb','$REG',now()+interval '2 hours',now()+interval '1 hour','garage','v5ns','v5c','$LOC64');
+VALUES ('$LKEY4','b','private',101,'9b${RUN_TAG:0:6}-9bbb-4bbb-8bbb-bbbbbbbbbbbb','$REG',now()+interval '2 hours',now()+interval '1 hour','garage','v5ns','v5c','$LOC64');
 INSERT INTO attachment(id,path,scope,creator_user_id,storage_driver,storage_namespace,storage_container,storage_locator_sha256)
-VALUES (900000204,'v5p/link-scope','group',101,'garage','v5ns','v5c','$LOC64');
+VALUES ($LID4,'$LKEY4','group',101,'garage','v5ns','v5c','$LOC64');
 SQL
-probe legal_fk_wrong_scope "err:v5 confirm frozen scope declaration mismatch" "SET ROLE v5_app_runtime; SELECT fn_v5_confirm_pending('v5p/link-scope', 900000204)"
+probe legal_fk_wrong_scope "err:v5 confirm frozen scope declaration mismatch" "SET ROLE v5_app_runtime; SELECT fn_v5_confirm_pending('$LKEY4', $LID4)"
 # wrong location: identical key/owner/scope, different immutable locator.
 PSQL -q > /dev/null 2>&1 <<SQL
-DELETE FROM attachment WHERE path='v5p/link-loc';
-DELETE FROM attach_pending WHERE object_key='v5p/link-loc';
 INSERT INTO attach_pending(object_key,bucket,scope,creator_user_id,client_upload_id,upload_registration,session_deadline,upload_expires_at,storage_driver,storage_namespace,storage_container,storage_locator_sha256)
-VALUES ('v5p/link-loc','b','private',101,'9ccccccc-cccc-cccc-cccc-cccccccccccc','$REG',now()+interval '2 hours',now()+interval '1 hour','garage','v5ns','v5c','$LOCA');
+VALUES ('$LKEY5','b','private',101,'9c${RUN_TAG:0:6}-9ccc-4ccc-8ccc-cccccccccccc','$REG',now()+interval '2 hours',now()+interval '1 hour','garage','v5ns','v5c','$LOCA');
 INSERT INTO attachment(id,path,scope,creator_user_id,storage_driver,storage_namespace,storage_container,storage_locator_sha256)
-VALUES (900000205,'v5p/link-loc','private',101,'garage','v5ns','v5c','$LOCB');
+VALUES ($LID5,'$LKEY5','private',101,'garage','v5ns','v5c','$LOCB');
 SQL
-probe legal_fk_wrong_location "err:v5 confirm location mismatch" "SET ROLE v5_app_runtime; SELECT fn_v5_confirm_pending('v5p/link-loc', 900000205)"
+probe legal_fk_wrong_location "err:v5 confirm location mismatch" "SET ROLE v5_app_runtime; SELECT fn_v5_confirm_pending('$LKEY5', $LID5)"
 # cipher declaration: the first durable cipher is fixed at confirm and can
 # never be replaced by a different (or empty) declaration afterwards.
 PSQL -q > /dev/null 2>&1 <<SQL
-DELETE FROM attachment WHERE path='v5p/link-cipher';
-DELETE FROM attach_pending WHERE object_key='v5p/link-cipher';
 INSERT INTO attachment(id,path,scope,creator_user_id,storage_driver,storage_namespace,storage_container,storage_locator_sha256,cipher)
-VALUES (900000206,'v5p/link-cipher','private',101,'garage','v5ns','v5c','$LOC64','AES-256-GCM');
+VALUES ($LID6,'$LKEY6','private',101,'garage','v5ns','v5c','$LOC64','AES-256-GCM');
 INSERT INTO attach_pending(object_key,bucket,scope,creator_user_id,client_upload_id,upload_registration,session_deadline,upload_expires_at,storage_driver,storage_namespace,storage_container,storage_locator_sha256)
-VALUES ('v5p/link-cipher','b','private',101,'9ddddddd-dddd-dddd-dddd-dddddddddddd','$REG',now()+interval '2 hours',now()+interval '1 hour','garage','v5ns','v5c','$LOC64');
-SELECT fn_v5_pin_pending_content('v5p/link-cipher','$CONTENT'::jsonb);
-SELECT fn_v5_confirm_pending('v5p/link-cipher',900000206);
+VALUES ('$LKEY6','b','private',101,'9d${RUN_TAG:0:6}-9ddd-4ddd-8ddd-dddddddddddd','$REG',now()+interval '2 hours',now()+interval '1 hour','garage','v5ns','v5c','$LOC64');
+SELECT fn_v5_pin_pending_content('$LKEY6','$CONTENT'::jsonb);
+SELECT fn_v5_confirm_pending('$LKEY6',$LID6);
 SQL
 probe legal_fk_wrong_cipher "cipher:fixed:AES-256-GCM" "DO \$q\$ BEGIN
-  BEGIN UPDATE attachment SET cipher='CHACHA20' WHERE id=900000206; RAISE EXCEPTION 'cipher replaced' USING ERRCODE='P0001';
+  BEGIN UPDATE attachment SET cipher='CHACHA20' WHERE id=$LID6; RAISE EXCEPTION 'cipher replaced' USING ERRCODE='P0001';
   EXCEPTION WHEN sqlstate '23510' THEN NULL; END;
-  BEGIN UPDATE attachment SET cipher=NULL WHERE id=900000206; RAISE EXCEPTION 'cipher cleared' USING ERRCODE='P0001';
+  BEGIN UPDATE attachment SET cipher=NULL WHERE id=$LID6; RAISE EXCEPTION 'cipher cleared' USING ERRCODE='P0001';
   EXCEPTION WHEN sqlstate '23510' THEN NULL; END;
 END \$q\$;
 SELECT CASE WHEN a.cipher='AES-256-GCM' AND p.session_state='confirmed' AND p.confirmed_attachment_id=a.id
             THEN 'cipher:fixed:AES-256-GCM' ELSE 'cipher:drifted' END
-  FROM attachment a JOIN attach_pending p ON p.confirmed_attachment_id=a.id WHERE a.id=900000206"
+  FROM attachment a JOIN attach_pending p ON p.confirmed_attachment_id=a.id WHERE a.id=$LID6"
 # pin content then confirm correctly (receipt required before confirm)
 PSQL -q > /dev/null 2>&1 <<SQL
 BEGIN;
-SELECT fn_v5_pin_pending_content('v5p/link1', '$CONTENT'::jsonb);
+SELECT fn_v5_pin_pending_content('$LKEY1', '$CONTENT'::jsonb);
 COMMIT;
 SQL
-probe confirm_ok_returns_id "900000201" "SET ROLE v5_app_runtime; SELECT fn_v5_confirm_pending('v5p/link1', 900000201)"
-probe confirmed_rebind "fail" "SELECT fn_v5_confirm_pending('v5p/link1', 900000201); SELECT fn_v5_confirm_pending('v5p/link1', 900000202)"
-probe lawful_repeat "900000201" "SET ROLE v5_app_runtime; SELECT fn_v5_confirm_pending('v5p/link1', 900000201)"
-probe confirmed_session_cannot_intent "fail" "UPDATE attach_pending SET session_state='delete_intent' WHERE object_key='v5p/link1'"
+probe confirm_ok_returns_id "$LID1" "SET ROLE v5_app_runtime; SELECT fn_v5_confirm_pending('$LKEY1', $LID1)"
+probe confirmed_rebind "fail" "SELECT fn_v5_confirm_pending('$LKEY1', $LID1); SELECT fn_v5_confirm_pending('$LKEY1', $LID2)"
+probe lawful_repeat "$LID1" "SET ROLE v5_app_runtime; SELECT fn_v5_confirm_pending('$LKEY1', $LID1)"
+probe confirmed_session_cannot_intent "fail" "UPDATE attach_pending SET session_state='delete_intent' WHERE object_key='$LKEY1'"
 # the legacy read-only invariant is kept (separate occurrence) alongside the
 # executed GC action recorded in migration_probes.
 probe confirmed_gc_preserves_session_link "preserved" "SELECT CASE WHEN (SELECT count(*) FROM attach_pending WHERE session_state='confirmed' AND confirmed_attachment_id IS NULL)=0 THEN 'preserved' ELSE 'leaked' END"
@@ -760,7 +819,24 @@ probe worker_claim_no_intent_grant "fail" "SET ROLE v5_worker; SELECT fn_v5_inte
 probe audit_direct_write "fail" "SET ROLE v5_app_runtime; INSERT INTO attachment_lifecycle_v5_audit(queue_domain,object_key,action,actor) VALUES ('ordinary','x','delete_intent','forged')"
 probe done_cannot_revive "fail" "SET ROLE v5_app_runtime; UPDATE attachment_object_deletion SET job_state='ready' WHERE completed_at IS NOT NULL"
 probe attempts_cannot_reset "fail" "UPDATE attachment_object_deletion SET attempts=0 WHERE attempts>0"
-probe eb_queue_identity_immutable "fail" "UPDATE enterprise_asset_delete_queue SET storage_driver='garage' WHERE true"
+# dedicated blocked legacy row (order-independent fixture: the shared
+# v5e/liveref row below is seeded later in this group)
+PSQL -q > /dev/null 2>&1 <<SQL
+INSERT INTO enterprise_asset(id,organization_id,workspace_id,object_key,object_hash,status)
+SELECT $((910000170 + EA_OFF)),98000101,97000101,'v5e/qii-$RUN_TAG','v5hash','active'
+WHERE NOT EXISTS (SELECT 1 FROM enterprise_asset WHERE id=$((910000170 + EA_OFF)));
+INSERT INTO enterprise_asset_delete_queue(organization_id,workspace_id,asset_id,object_key,job_state)
+SELECT 98000101,97000101,$((910000170 + EA_OFF)),'v5e/qii-$RUN_TAG','blocked'
+WHERE NOT EXISTS (SELECT 1 FROM enterprise_asset_delete_queue WHERE asset_id=$((910000170 + EA_OFF)));
+SQL
+sqlrc "UPDATE enterprise_asset_delete_queue SET storage_driver='garage' WHERE asset_id=$((910000170 + EA_OFF));
+UPDATE enterprise_asset_delete_queue SET storage_driver='minio' WHERE asset_id=$((910000170 + EA_OFF))"
+QII_RC=$?
+if [ $QII_RC -ne 0 ]; then
+  emit eb_queue_identity_immutable 1 "first NULL->garage storage fill on the blocked legacy row allowed once; second change refused (v5 job identity immutable after fill, 23510)"
+else
+  emit eb_queue_identity_immutable 0 "rc=0 rows=$(sqlval "SELECT count(*) FROM enterprise_asset_delete_queue WHERE asset_id=$((910000170 + EA_OFF))") drv=$(sqlval "SELECT coalesce(storage_driver,'NULL') FROM enterprise_asset_delete_queue WHERE asset_id=$((910000170 + EA_OFF))") err=$(sanitize "$(head -c200 "$PROBE_TMP/err.txt")")"
+fi
 probe legacy_activate_criteria "fail" "SELECT fn_v5_proof_activate_ordinary('v5p/nonexistent','garage','ns','c','$(printf 'e%.0s' {1..64})')"
 probe metadata_direct_delete "fail" "DELETE FROM attachment WHERE id=900000101"
 probe worker_select_queue_ok "1" "SET ROLE v5_worker; SELECT 1"
@@ -775,6 +851,7 @@ probe pg_canonical_json_digest_vector "ok" "SELECT CASE WHEN jsonb_build_object(
 
 # ---------------- enterprise queue (enterprise_asset_delete_queue) ----------------
 probe worker_arbitrary_enqueue "fail" "SET ROLE v5_worker; SELECT fn_v5_intent_ordinary_delete('v5p/seed/1','probe')"
+probe worker_arbitrary_enqueue_eb "fail" "SET ROLE v5_worker; INSERT INTO enterprise_asset_delete_queue(organization_id,workspace_id,asset_id,object_key,job_state) VALUES (98000101,97000101,$((910000180 + EA_OFF)),'v5e/we-$RUN_TAG','ready')"
 probe worker_cannot_register "fail" "SET ROLE v5_worker; SELECT fn_v5_register_pending('v5p/w1','b','private',101,gen_random_uuid(),'$REG'::jsonb,now()+interval '2 hours',now()+interval '1 hour',NULL,NULL,NULL,NULL)"
 probe proof_cannot_intent "fail" "SET ROLE v5_proof; SELECT fn_v5_intent_ordinary_delete('v5p/seed/1','probe')"
 probe worker_delete_queue_row "fail" "SET ROLE v5_worker; DELETE FROM attachment_object_deletion WHERE path='v5p/seed/1'"
@@ -783,12 +860,26 @@ probe eb_queue_insert_ready "err:permission denied for table enterprise_asset_de
 probe eb_queue_insert_leased "err:permission denied for table enterprise_asset_delete_queue" "SET ROLE v5_app_runtime; INSERT INTO enterprise_asset_delete_queue(organization_id,workspace_id,asset_id,object_key,job_state,lease_token,lease_until) VALUES (98000101,97000101,910000104,'v5e/liveref','leased',gen_random_uuid(),now())"
 probe eb_queue_insert_retry_wait "err:permission denied for table enterprise_asset_delete_queue" "SET ROLE v5_app_runtime; INSERT INTO enterprise_asset_delete_queue(organization_id,workspace_id,asset_id,object_key,job_state,next_retry_at) VALUES (98000101,97000101,910000104,'v5e/liveref','retry_wait',now())"
 probe eb_queue_insert_done "err:permission denied for table enterprise_asset_delete_queue" "SET ROLE v5_app_runtime; INSERT INTO enterprise_asset_delete_queue(organization_id,workspace_id,asset_id,object_key,job_state,completed_at) VALUES (98000101,97000101,910000104,'v5e/liveref','done',now())"
-PSQL -q > /dev/null 2>&1 -c "INSERT INTO enterprise_asset_delete_queue(organization_id,workspace_id,asset_id,object_key,job_state) VALUES (98000101,97000101,910000104,'v5e/liveref','blocked') ON CONFLICT DO NOTHING"
+if ! PSQL -q > /dev/null 2>&1 -c "INSERT INTO enterprise_asset_delete_queue(organization_id,workspace_id,asset_id,object_key,job_state) VALUES (98000101,97000101,910000104,'v5e/liveref','blocked') ON CONFLICT DO NOTHING"; then
+  emit queue_seed_blocked_row 0 "seed INSERT of the 910000104 blocked row failed"
+fi
 probe eb_activate_legacy_without_proof "err:permission denied for table enterprise_asset_delete_queue" "SET ROLE v5_app_runtime; UPDATE enterprise_asset_delete_queue SET job_state='ready' WHERE asset_id=910000104"
 probe eb_forge_gc_verified "err:permission denied for table enterprise_asset" "SET ROLE v5_app_runtime; UPDATE enterprise_asset SET gc_verified=true WHERE id=910000104"
 probe eb_intent_with_live_reference "err:v5 intent enterprise job already exists" "SET ROLE v5_app_runtime; SELECT fn_v5_intent_eb_delete(98000101,97000101,910000104,'probe')"
-PSQL -q > /dev/null 2>&1 -c "INSERT INTO enterprise_retention_hold(organization_id,workspace_id,scope_type,reason_code) VALUES (98000101,97000101,'workspace','probe-hold') ON CONFLICT DO NOTHING"
-probe eb_intent_under_hold "err:v5 intent blocked by active workspace hold" "SET ROLE v5_app_runtime; SELECT fn_v5_intent_eb_delete(98000101,97000101,910000105,'probe')"
+# hold fixture: a dedicated workspace so the hold cannot leak into the other
+# enterprise probes of this group.  The held asset is created under that
+# workspace here (id column is mandatory: no default, TSID is assigned by the
+# writer).
+PSQL -q > /dev/null 2>&1 <<SQL
+INSERT INTO workspace(organization_id,id,name,owner_id)
+SELECT 98000101,97000102,'v5probe-ws2',101 WHERE NOT EXISTS (SELECT 1 FROM workspace WHERE id=97000102);
+INSERT INTO enterprise_asset(id,organization_id,workspace_id,object_key,object_hash,status)
+SELECT $EA_HOLD_ASSET,98000101,97000102,'v5e/holdws-$RUN_TAG','v5hash','active'
+WHERE NOT EXISTS (SELECT 1 FROM enterprise_asset WHERE id=$EA_HOLD_ASSET);
+INSERT INTO enterprise_retention_hold(id,organization_id,workspace_id,scope_type,reason_code)
+SELECT 95000101,98000101,97000102,'workspace','probe-hold' ON CONFLICT DO NOTHING;
+SQL
+probe eb_intent_under_hold "err:v5 intent blocked by active workspace hold" "SET ROLE v5_app_runtime; SELECT fn_v5_intent_eb_delete(98000101,97000102,$EA_HOLD_ASSET,'probe')"
 probe eb_future_retention "err:v5 intent enterprise retention active" "UPDATE enterprise_asset SET retain_until=now()+interval '30 days' WHERE id=910000106; SET ROLE v5_app_runtime; SELECT fn_v5_intent_eb_delete(98000101,97000101,910000106,'probe')"
 # missing audit (enterprise): same injected audit refusal, enterprise writes.
 PSQL -q > /dev/null 2>&1 <<'SQL'
@@ -819,88 +910,97 @@ probe eb_intent_missing_metadata_transition_rollback "live:no-queue:no-audit" "S
   THEN 'live:no-queue:no-audit' ELSE 'partial-write' END"
 probe eb_direct_metadata_intent "err:permission denied for table enterprise_asset" "SET ROLE v5_app_runtime; UPDATE enterprise_asset SET lifecycle_state='delete_intent' WHERE id=910000105"
 probe eb_direct_session_intent "err:permission denied for table enterprise_asset" "SET ROLE v5_app_runtime; UPDATE enterprise_asset SET upload_registration='{\"x\":1}'::jsonb WHERE id=910000105"
-probe eb_forge_lifecycle_on_insert "fail" "SET ROLE v5_app_runtime; INSERT INTO enterprise_asset(id,organization_id,workspace_id,object_key,object_hash,lifecycle_state) VALUES (910000120,98000101,97000101,'v5e/forge-intent','h','delete_intent')"
-probe eb_authorized_intent_atomic "intent:ready" "SET ROLE v5_app_runtime; SELECT fn_v5_intent_eb_delete(98000101,97000101,910000103,'probe');
+probe eb_forge_lifecycle_on_insert "fail" "SET ROLE v5_app_runtime; INSERT INTO enterprise_asset(id,organization_id,workspace_id,object_key,object_hash,lifecycle_state) VALUES ($((910000160 + EA_OFF)),98000101,97000101,'v5e/forge-intent-$RUN_TAG','h','delete_intent')"
+probe eb_authorized_intent_atomic "intent:ready" "SET ROLE v5_app_runtime; SELECT fn_v5_intent_eb_delete(98000101,97000101,$EA_AUTH,'probe');
 RESET ROLE;
-SELECT CASE WHEN (SELECT job_state FROM enterprise_asset_delete_queue WHERE asset_id=910000103)='ready'
-   AND (SELECT lifecycle_state FROM enterprise_asset WHERE id=910000103)='delete_intent'
-   AND (SELECT count(*) FROM attachment_lifecycle_v5_audit WHERE queue_domain='enterprise' AND details->>'asset'='910000103')=1
+SELECT CASE WHEN (SELECT job_state FROM enterprise_asset_delete_queue WHERE asset_id=$EA_AUTH)='ready'
+   AND (SELECT lifecycle_state FROM enterprise_asset WHERE id=$EA_AUTH)='delete_intent'
+   AND (SELECT count(*) FROM attachment_lifecycle_v5_audit WHERE queue_domain='enterprise' AND details->>'asset'='$EA_AUTH')=1
   THEN 'intent:ready' ELSE 'missing-write' END"
 }
 
 # ============ audit-actor-anonymization (guards only) ============
 audit_actor_probes() {
-PSQL -q > /dev/null 2>&1 <<'SQL'
-INSERT INTO enterprise_asset(id,organization_id,workspace_id,object_key,status,uploaded_by_user_id)
-VALUES (910000101,98000101,97000101,'v5e/actor','active',99000101)
-ON CONFLICT (id) DO UPDATE SET uploaded_by_user_id=99000101;
+  local ANON_ASSET=$((910000140 + EA_OFF))
+  # Dedicated asset created with uploaded_by=99000101 in the INSERT itself
+  # (INSERT is guard-legal); the audit-actor guard forbids substituting a
+  # different non-NULL actor on UPDATE, so reuse of a 101-owned row is not an
+  # option.  Parent user is recreated first so the FK is satisfied.
+  PSQL -q > /dev/null 2>&1 <<SQL
 INSERT INTO "user"(id,account,password,reg_ip,reg_cosv)
 SELECT 99000101,'v5actor','x','127.0.0.1','probe' WHERE NOT EXISTS (SELECT 1 FROM "user" WHERE id=99000101);
+INSERT INTO enterprise_asset(id,organization_id,workspace_id,object_key,object_hash,status,uploaded_by_user_id)
+SELECT $ANON_ASSET,98000101,97000101,'v5e/anon-$RUN_TAG','v5hash','active',99000101
+WHERE NOT EXISTS (SELECT 1 FROM enterprise_asset WHERE id=$ANON_ASSET);
 SQL
 # real lawful anonymization: deleting the parent user lets the FK SET NULL path
 # run; business ownership/location/governance must not change and no GC may
 # follow from the anonymization.
 sqlrc "DELETE FROM \"user\" WHERE id=99000101"
 ANON_RC=$?
-ANON_STATE="$(sqlval "SELECT coalesce(uploaded_by_user_id::text,'NULL')||'|'||object_key||'|'||status||'|'||lifecycle_state||'|'||coalesce(storage_driver,'-') FROM enterprise_asset WHERE id=910000101")"
-if [ $ANON_RC -eq 0 ] && [ "$ANON_STATE" = "NULL|v5e/actor|active|live|-" ] && \
+ANON_STATE="$(sqlval "SELECT coalesce(uploaded_by_user_id::text,'NULL')||'|'||object_key||'|'||status||'|'||lifecycle_state||'|'||coalesce(storage_driver,'-') FROM enterprise_asset WHERE id=$ANON_ASSET")"
+if [ $ANON_RC -eq 0 ] && [ "$ANON_STATE" = "NULL|v5e/anon-$RUN_TAG|active|live|-" ] && \
    [ "$(sqlval "SELECT count(*) FROM pg_constraint WHERE conname='fk_enterprise_asset_uploaded_by' AND confdeltype='n'")" = "1" ] && \
-   [ "$(sqlval "SELECT count(*) FROM enterprise_asset_delete_queue WHERE asset_id=910000101")" = "0" ]; then
+   [ "$(sqlval "SELECT count(*) FROM enterprise_asset_delete_queue WHERE asset_id=$ANON_ASSET")" = "0" ]; then
   emit fk_user_delete_sets_audit_null 1 "DELETE FROM user(99000101) committed; FK ON DELETE SET NULL set uploaded_by_user_id NULL while object_key/status/lifecycle/location unchanged; FK retained (confdeltype=n); no queue job/GC followed"
 else
   emit fk_user_delete_sets_audit_null 0 "rc=$ANON_RC state=$ANON_STATE err=$(sanitize "$(head -c160 "$PROBE_TMP/err.txt")")"
 fi
-probe direct_actor_substitution_denied "fail" "SET ROLE v5_app_runtime; UPDATE enterprise_asset SET uploaded_by_user_id=99000999 WHERE id=910000101"
-probe direct_actor_null_with_live_user_denied "fail" "UPDATE enterprise_asset SET uploaded_by_user_id=101 WHERE id=910000101; UPDATE enterprise_asset SET uploaded_by_user_id=NULL WHERE id=910000101"
+probe direct_actor_substitution_denied "fail" "SET ROLE v5_app_runtime; UPDATE enterprise_asset SET uploaded_by_user_id=99000999 WHERE id=$ANON_ASSET"
+probe direct_actor_null_with_live_user_denied "fail" "UPDATE enterprise_asset SET uploaded_by_user_id=101 WHERE id=$ANON_ASSET; UPDATE enterprise_asset SET uploaded_by_user_id=NULL WHERE id=$ANON_ASSET"
 }
 
 # ============ registration-integrity (guards only) ============
 registration_probes() {
+  local RKEY="v5p/reg1-$RUN_TAG" RKEY2="v5p/reg2-$RUN_TAG" RKEY3="v5p/reg3-$RUN_TAG" \
+        RRESUME="v5p/reg-resume-$RUN_TAG" \
+        RU1="66${RUN_TAG:0:6}-6666-4666-8666-666666666666" \
+        RUR="6a${RUN_TAG:0:6}-6a6a-46a6-86a6-6a6a6a6a6a6a"
 PSQL -q > /dev/null 2>&1 <<SQL
 BEGIN;
-DELETE FROM attach_pending WHERE object_key='v5p/reg1';
-SELECT fn_v5_register_pending('v5p/reg1','b1','private',101,'66666666-6666-6666-6666-666666666666','$REG'::jsonb,now()+interval '2 hours',now()+interval '1 hour',NULL,NULL,NULL,NULL);
+SELECT fn_v5_register_pending('$RKEY','b1','private',101,'$RU1','$REG'::jsonb,now()+interval '2 hours',now()+interval '1 hour',NULL,NULL,NULL,NULL);
 COMMIT;
 SQL
-probe original_mime_conflict_after_restart "fail" "SELECT fn_v5_register_pending('v5p/reg1','b1','private',101,'66666666-6666-6666-6666-666666666666','{\"subject\":{\"kind\":\"user\",\"principal\":\"101\"},\"declaration\":{\"filename\":\"a.png\",\"mime\":\"image/jpeg\",\"size_bytes\":\"10\",\"scope\":\"private\"}}'::jsonb,now()+interval '2 hours',now()+interval '1 hour',NULL,NULL,NULL,NULL)"
-probe original_filename_conflict_after_restart "fail" "SELECT fn_v5_register_pending('v5p/reg1','b1','private',101,'66666666-6666-6666-6666-666666666666','{\"subject\":{\"kind\":\"user\",\"principal\":\"101\"},\"declaration\":{\"filename\":\"b.png\",\"mime\":\"image/png\",\"size_bytes\":\"10\",\"scope\":\"private\"}}'::jsonb,now()+interval '2 hours',now()+interval '1 hour',NULL,NULL,NULL,NULL)"
-probe snapshot_direct_dml_rejected "fail" "UPDATE attach_pending SET upload_registration='{\"x\":1}'::jsonb WHERE object_key='v5p/reg1'"
+probe original_mime_conflict_after_restart "fail" "SELECT fn_v5_register_pending('$RKEY','b1','private',101,'$RU1','{\"subject\":{\"kind\":\"user\",\"principal\":\"101\"},\"declaration\":{\"filename\":\"a.png\",\"mime\":\"image/jpeg\",\"size_bytes\":\"10\",\"scope\":\"private\"}}'::jsonb,now()+interval '2 hours',now()+interval '1 hour',NULL,NULL,NULL,NULL)"
+probe original_filename_conflict_after_restart "fail" "SELECT fn_v5_register_pending('$RKEY','b1','private',101,'$RU1','{\"subject\":{\"kind\":\"user\",\"principal\":\"101\"},\"declaration\":{\"filename\":\"b.png\",\"mime\":\"image/png\",\"size_bytes\":\"10\",\"scope\":\"private\"}}'::jsonb,now()+interval '2 hours',now()+interval '1 hour',NULL,NULL,NULL,NULL)"
+probe snapshot_direct_dml_rejected "fail" "UPDATE attach_pending SET upload_registration='{\"x\":1}'::jsonb WHERE object_key='$RKEY'"
 # ordinary "audit null does not grant resume": a session whose subject user is
 # gone still refuses a changed resume (snapshot is authoritative).
 PSQL -q > /dev/null 2>&1 <<SQL
 INSERT INTO "user"(id,account,password,reg_ip,reg_cosv)
 SELECT 99000103,'v5resumeuser','x','127.0.0.1','probe' WHERE NOT EXISTS (SELECT 1 FROM "user" WHERE id=99000103);
-DELETE FROM attach_pending WHERE object_key='v5p/reg-resume';
-SELECT fn_v5_register_pending('v5p/reg-resume','b1','private',99000103,'6a6a6a6a-6a6a-6a6a-6a6a-6a6a6a6a6a6a','{"subject":{"kind":"user","principal":"99000103"},"declaration":{"filename":"r.png","mime":"image/png","size_bytes":"10","scope":"private"}}'::jsonb,now()+interval '2 hours',now()+interval '1 hour',NULL,NULL,NULL,NULL);
+SELECT fn_v5_register_pending('$RRESUME','b1','private',99000103,'$RUR','{"subject":{"kind":"user","principal":"99000103"},"declaration":{"filename":"r.png","mime":"image/png","size_bytes":"10","scope":"private"}}'::jsonb,now()+interval '2 hours',now()+interval '1 hour',NULL,NULL,NULL,NULL);
 DELETE FROM "user" WHERE id=99000103;
 SQL
-probe audit_null_does_not_grant_resume "fail" "SELECT fn_v5_register_pending('v5p/reg-resume','b1','private',99000103,'6a6a6a6a-6a6a-6a6a-6a6a-6a6a6a6a6a6a','{\"subject\":{\"kind\":\"user\",\"principal\":\"99000103\"},\"declaration\":{\"filename\":\"r2.png\",\"mime\":\"image/png\",\"size_bytes\":\"10\",\"scope\":\"private\"}}'::jsonb,now()+interval '2 hours',now()+interval '1 hour',NULL,NULL,NULL,NULL)"
+probe audit_null_does_not_grant_resume "fail" "SELECT fn_v5_register_pending('$RRESUME','b1','private',99000103,'$RUR','{\"subject\":{\"kind\":\"user\",\"principal\":\"99000103\"},\"declaration\":{\"filename\":\"r2.png\",\"mime\":\"image/png\",\"size_bytes\":\"10\",\"scope\":\"private\"}}'::jsonb,now()+interval '2 hours',now()+interval '1 hour',NULL,NULL,NULL,NULL)"
 probe legacy_null_not_fabricated "fail" "UPDATE attach_pending SET client_upload_id=gen_random_uuid() WHERE object_key='v5p/seed/1'"
-probe registration_immutable_update "fail" "UPDATE attach_pending SET upload_registration=upload_registration||'{\"k\":1}'::jsonb WHERE object_key='v5p/reg1'"
-probe same_value_replay "replay:idempotent" "SELECT CASE WHEN f.out_object_key='v5p/reg1' AND f.out_session_state='registered' THEN 'replay:idempotent' ELSE 'mismatch' END FROM fn_v5_register_pending('v5p/reg1','b1','private',101,'66666666-6666-6666-6666-666666666666','$REG'::jsonb,now()+interval '2 hours',now()+interval '1 hour',NULL,NULL,NULL,NULL) f"
-probe cross_subject_uuid_conflict "fail" "SELECT fn_v5_register_pending('v5p/reg2','b1','private',202,'66666666-6666-6666-6666-666666666666','$REG'::jsonb,now()+interval '2 hours',now()+interval '1 hour',NULL,NULL,NULL,NULL)"
-probe key_reassignment_forbidden "fail" "SELECT fn_v5_register_pending('v5p/reg1','b1','private',101,'77777777-7777-7777-7777-777777777777','$REG'::jsonb,now()+interval '2 hours',now()+interval '1 hour',NULL,NULL,NULL,NULL)"
-probe eb_uuid_joint_unique "fail" "SET ROLE v5_app_runtime; INSERT INTO enterprise_asset_delete_queue(organization_id,workspace_id,asset_id,object_key,client_upload_id,upload_registration,job_state,next_retry_at) VALUES (98000101,97000101,910000101,'v5e/reg','66666666-6666-6666-6666-666666666666','$REG','blocked',now())"
-probe register_requires_deadline "fail" "SELECT fn_v5_register_pending('v5p/reg3','b1','private',101,gen_random_uuid(),'$REG'::jsonb,NULL,NULL,NULL,NULL,NULL,NULL)"
-probe register_requires_expiry_le_deadline "fail" "SELECT fn_v5_register_pending('v5p/reg3','b1','private',101,gen_random_uuid(),'$REG'::jsonb,now()+interval '1 hour',now()+interval '2 hours',NULL,NULL,NULL,NULL)"
-probe register_partial_location "fail" "SELECT fn_v5_register_pending('v5p/reg3','b1','private',101,gen_random_uuid(),'$REG'::jsonb,now()+interval '2 hours',now()+interval '1 hour','garage',NULL,NULL,NULL)"
-probe register_bad_shape "fail" "SELECT fn_v5_register_pending('v5p/reg3','b1','private',101,gen_random_uuid(),'{\"x\":1}'::jsonb,now()+interval '2 hours',now()+interval '1 hour',NULL,NULL,NULL,NULL)"
+probe registration_immutable_update "fail" "UPDATE attach_pending SET upload_registration=upload_registration||'{\"k\":1}'::jsonb WHERE object_key='$RKEY'"
+probe same_value_replay "replay:idempotent" "SELECT CASE WHEN f.out_object_key='$RKEY' AND f.out_session_state='registered' THEN 'replay:idempotent' ELSE 'mismatch' END FROM fn_v5_register_pending('$RKEY','b1','private',101,'$RU1','$REG'::jsonb,now()+interval '2 hours',now()+interval '1 hour',NULL,NULL,NULL,NULL) f"
+probe cross_subject_uuid_conflict "fail" "SELECT fn_v5_register_pending('$RKEY2','b1','private',202,'$RU1','$REG'::jsonb,now()+interval '2 hours',now()+interval '1 hour',NULL,NULL,NULL,NULL)"
+probe key_reassignment_forbidden "fail" "SELECT fn_v5_register_pending('$RKEY','b1','private',101,'77777777-7777-7777-7777-777777777777','$REG'::jsonb,now()+interval '2 hours',now()+interval '1 hour',NULL,NULL,NULL,NULL)"
+probe eb_uuid_joint_unique "fail" "SET ROLE v5_app_runtime; INSERT INTO enterprise_asset_delete_queue(organization_id,workspace_id,asset_id,object_key,client_upload_id,upload_registration,job_state,next_retry_at) VALUES (98000101,97000101,910000101,'v5e/reg','$RU1','$REG','blocked',now())"
+probe register_requires_deadline "fail" "SELECT fn_v5_register_pending('$RKEY3','b1','private',101,gen_random_uuid(),'$REG'::jsonb,NULL,NULL,NULL,NULL,NULL,NULL)"
+probe register_requires_expiry_le_deadline "fail" "SELECT fn_v5_register_pending('$RKEY3','b1','private',101,gen_random_uuid(),'$REG'::jsonb,now()+interval '1 hour',now()+interval '2 hours',NULL,NULL,NULL,NULL)"
+probe register_partial_location "fail" "SELECT fn_v5_register_pending('$RKEY3','b1','private',101,gen_random_uuid(),'$REG'::jsonb,now()+interval '2 hours',now()+interval '1 hour','garage',NULL,NULL,NULL)"
+probe register_bad_shape "fail" "SELECT fn_v5_register_pending('$RKEY3','b1','private',101,gen_random_uuid(),'{\"x\":1}'::jsonb,now()+interval '2 hours',now()+interval '1 hour',NULL,NULL,NULL,NULL)"
 
 # ---------------- enterprise registration (fn_v5_register_eb) ----------------
+# Per-run EB assets (EA_* band) carry no registration yet, so no reset UPDATE
+# is needed: the registration columns are immutable once filled and only
+# fn_v5_register_eb may fill them.
 PSQL -q > /dev/null 2>&1 <<SQL
-UPDATE enterprise_asset SET client_upload_id=NULL, upload_registration=NULL, upload_content=NULL WHERE id IN (910000102,910000109,910000110,910000111,910000112,910000999);
-SELECT fn_v5_register_eb(98000101,97000101,910000102,'v5e/sub1','a6a6a6a6-a6a6-a6a6-a6a6-a6a6a6a6a6a6','$REG'::jsonb,'user',now()+interval '2 hours',now()+interval '1 hour');
-SELECT fn_v5_register_eb(98000101,97000101,910000109,'v5e/sub2','a7a7a7a7-a7a7-a7a7-a7a7-a7a7a7a7a7a7','$REG'::jsonb,'user',now()+interval '2 hours',now()+interval '1 hour');
-SELECT fn_v5_register_eb(98000101,97000101,910000111,'v5e/sub4','a8a8a8a8-a8a8-a8a8-a8a8-a8a8a8a8a8a8','$REG'::jsonb,'user',now()+interval '2 hours',now()+interval '1 hour');
-SELECT fn_v5_register_eb(98000101,97000101,910000999,'v5e/widget','a9a9a9a9-a9a9-a9a9-a9a9-a9a9a9a9a9a9','{"subject":{"kind":"visitor_session","principal":"sess-a","visitor_session_id":"sess-a"},"declaration":{"filename":"a.png","mime":"image/png","size_bytes":"10","scope":"private"}}'::jsonb,'visitor_session',now()+interval '2 hours',now()+interval '1 hour');
+SELECT fn_v5_register_eb(98000101,97000101,$EA_SUB1,'v5e/sub1-$RUN_TAG','a6${RUN_TAG:0:6}-a6a6-4a6a-8a6a-a6a6a6a6a6a6','$REG'::jsonb,'user',now()+interval '2 hours',now()+interval '1 hour');
+SELECT fn_v5_register_eb(98000101,97000101,$EA_SUB2,'v5e/sub2-$RUN_TAG','a7${RUN_TAG:0:6}-a7a7-4a7a-8a7a-a7a7a7a7a7a7','$REG'::jsonb,'user',now()+interval '2 hours',now()+interval '1 hour');
+SELECT fn_v5_register_eb(98000101,97000101,$EA_SUB4,'v5e/sub4-$RUN_TAG','a8${RUN_TAG:0:6}-a8a8-4a8a-8a8a-a8a8a8a8a8a8','$REG'::jsonb,'user',now()+interval '2 hours',now()+interval '1 hour');
+SELECT fn_v5_register_eb(98000101,97000101,$EA_WIDGET,'v5e/widget-$RUN_TAG','a9${RUN_TAG:0:6}-a9a9-4a9a-8a9a-a9a9a9a9a9a9','{"subject":{"kind":"visitor_session","principal":"sess-a","visitor_session_id":"sess-a"},"declaration":{"filename":"a.png","mime":"image/png","size_bytes":"10","scope":"private"}}'::jsonb,'visitor_session',now()+interval '2 hours',now()+interval '1 hour');
 SQL
-probe eb_original_mime_conflict_after_restart "fail" "SELECT fn_v5_register_eb(98000101,97000101,910000102,'v5e/sub1','a6a6a6a6-a6a6-a6a6-a6a6-a6a6a6a6a6a6','{\"subject\":{\"kind\":\"user\",\"principal\":\"101\"},\"declaration\":{\"filename\":\"a.png\",\"mime\":\"image/jpeg\",\"size_bytes\":\"10\",\"scope\":\"private\"}}'::jsonb,'user',now()+interval '2 hours',now()+interval '1 hour')"
-probe eb_original_filename_conflict_after_restart "fail" "SELECT fn_v5_register_eb(98000101,97000101,910000109,'v5e/sub2','a7a7a7a7-a7a7-a7a7-a7a7-a7a7a7a7a7a7','{\"subject\":{\"kind\":\"user\",\"principal\":\"101\"},\"declaration\":{\"filename\":\"b.png\",\"mime\":\"image/png\",\"size_bytes\":\"10\",\"scope\":\"private\"}}'::jsonb,'user',now()+interval '2 hours',now()+interval '1 hour')"
-probe eb_widget_other_visitor_session_denied "fail" "SELECT fn_v5_register_eb(98000101,97000101,910000999,'v5e/widget','a9a9a9a9-a9a9-a9a9-a9a9-a9a9a9a9a9a9','{\"subject\":{\"kind\":\"visitor_session\",\"principal\":\"other-session\",\"visitor_session_id\":\"other-session\"},\"declaration\":{\"filename\":\"a.png\",\"mime\":\"image/png\",\"size_bytes\":\"10\",\"scope\":\"private\"}}'::jsonb,'visitor_session',now()+interval '2 hours',now()+interval '1 hour')"
-probe eb_seat_contact_subject_kind_conflict "fail" "SELECT fn_v5_register_eb(98000101,97000101,910000110,'v5e/sub3','b1b1b1b1-b1b1-b1b1-b1b1-b1b1b1b1b1b1','{\"subject\":{\"kind\":\"contact\",\"principal\":\"101\"},\"declaration\":{\"filename\":\"a.png\",\"mime\":\"image/png\",\"size_bytes\":\"10\",\"scope\":\"private\"}}'::jsonb,'seat',now()+interval '2 hours',now()+interval '1 hour')"
-probe eb_snapshot_direct_dml_rejected "err:permission denied for table enterprise_asset" "SET ROLE v5_app_runtime; UPDATE enterprise_asset SET upload_registration=upload_registration||'{\"k\":1}'::jsonb WHERE id=910000102"
-probe eb_audit_null_does_not_grant_resume "fail" "DELETE FROM \"user\" WHERE id=99000102; SELECT fn_v5_register_eb(98000101,97000101,910000111,'v5e/sub4','a8a8a8a8-a8a8-a8a8-a8a8-a8a8a8a8a8a8','{\"subject\":{\"kind\":\"user\",\"principal\":\"101\"},\"declaration\":{\"filename\":\"r2.png\",\"mime\":\"image/png\",\"size_bytes\":\"10\",\"scope\":\"private\"}}'::jsonb,'user',now()+interval '2 hours',now()+interval '1 hour')"
-probe eb_legacy_null_not_fabricated "err:permission denied for table enterprise_asset" "SET ROLE v5_app_runtime; UPDATE enterprise_asset SET client_upload_id=gen_random_uuid() WHERE id=910000112"
+probe eb_original_mime_conflict_after_restart "fail" "SELECT fn_v5_register_eb(98000101,97000101,$EA_SUB1,'v5e/sub1-$RUN_TAG','a6${RUN_TAG:0:6}-a6a6-4a6a-8a6a-a6a6a6a6a6a6','{\"subject\":{\"kind\":\"user\",\"principal\":\"101\"},\"declaration\":{\"filename\":\"a.png\",\"mime\":\"image/jpeg\",\"size_bytes\":\"10\",\"scope\":\"private\"}}'::jsonb,'user',now()+interval '2 hours',now()+interval '1 hour')"
+probe eb_original_filename_conflict_after_restart "fail" "SELECT fn_v5_register_eb(98000101,97000101,$EA_SUB2,'v5e/sub2-$RUN_TAG','a7${RUN_TAG:0:6}-a7a7-4a7a-8a7a-a7a7a7a7a7a7','{\"subject\":{\"kind\":\"user\",\"principal\":\"101\"},\"declaration\":{\"filename\":\"b.png\",\"mime\":\"image/png\",\"size_bytes\":\"10\",\"scope\":\"private\"}}'::jsonb,'user',now()+interval '2 hours',now()+interval '1 hour')"
+probe eb_widget_other_visitor_session_denied "fail" "SELECT fn_v5_register_eb(98000101,97000101,$EA_WIDGET,'v5e/widget-$RUN_TAG','a9${RUN_TAG:0:6}-a9a9-4a9a-8a9a-a9a9a9a9a9a9','{\"subject\":{\"kind\":\"visitor_session\",\"principal\":\"other-session\",\"visitor_session_id\":\"other-session\"},\"declaration\":{\"filename\":\"a.png\",\"mime\":\"image/png\",\"size_bytes\":\"10\",\"scope\":\"private\"}}'::jsonb,'visitor_session',now()+interval '2 hours',now()+interval '1 hour')"
+probe eb_seat_contact_subject_kind_conflict "fail" "SELECT fn_v5_register_eb(98000101,97000101,$EA_SUB3,'v5e/sub3-$RUN_TAG','b1${RUN_TAG:0:6}-b1b1-4b1b-8b1b-b1b1b1b1b1b1','{\"subject\":{\"kind\":\"contact\",\"principal\":\"101\"},\"declaration\":{\"filename\":\"a.png\",\"mime\":\"image/png\",\"size_bytes\":\"10\",\"scope\":\"private\"}}'::jsonb,'seat',now()+interval '2 hours',now()+interval '1 hour')"
+probe eb_snapshot_direct_dml_rejected "err:permission denied for table enterprise_asset" "SET ROLE v5_app_runtime; UPDATE enterprise_asset SET upload_registration=upload_registration||'{\"k\":1}'::jsonb WHERE id=$EA_SUB1"
+probe eb_audit_null_does_not_grant_resume "fail" "DELETE FROM \"user\" WHERE id=99000102; SELECT fn_v5_register_eb(98000101,97000101,$EA_SUB4,'v5e/sub4-$RUN_TAG','a8${RUN_TAG:0:6}-a8a8-4a8a-8a8a-a8a8a8a8a8a8','{\"subject\":{\"kind\":\"user\",\"principal\":\"101\"},\"declaration\":{\"filename\":\"r2.png\",\"mime\":\"image/png\",\"size_bytes\":\"10\",\"scope\":\"private\"}}'::jsonb,'user',now()+interval '2 hours',now()+interval '1 hour')"
+probe eb_legacy_null_not_fabricated "err:permission denied for table enterprise_asset" "SET ROLE v5_app_runtime; UPDATE enterprise_asset SET client_upload_id=gen_random_uuid() WHERE id=$EA_LEGACY"
 }
 
 # ============ recovery-tombstone-integrity (guards only) ============

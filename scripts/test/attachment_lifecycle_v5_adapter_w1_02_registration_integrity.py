@@ -13,66 +13,47 @@ ORDINARY_ADEQUATE = {
     "snapshot_direct_dml_rejected": [("snapshot_direct_dml_rejected", 0)],
     "legacy_null_not_fabricated": [("legacy_null_not_fabricated", 0)],
     "pg_canonical_json_digest_vector": [("pg_canonical_json_digest_vector", 0)],
-}
-
-ORDINARY_GAPS = {
-    "audit_null_does_not_grant_resume": (
-        [("audit_null_does_not_grant_resume", 0)],
-        "probe executes a direct NULL update on enterprise_asset and expects "
-        "failure; no resume request after a legitimate anonymization is "
-        "attempted, so 'does not grant resume' is not measured"),
+    # real resume attempt after lawful anonymization: a session registered by
+    # user 99000103 whose parent user row is deleted still refuses a changed
+    # resume (the snapshot is authoritative), via fn_v5_register_pending.
+    "audit_null_does_not_grant_resume": [("audit_null_does_not_grant_resume", 0)],
 }
 
 ENTERPRISE_ADEQUATE = {
     # jsonb canonicalisation is database-level and domain-independent.
     "pg_canonical_json_digest_vector": [("pg_canonical_json_digest_vector", 0)],
-}
-
-ENTERPRISE_GAPS = {
-    "original_mime_conflict_after_restart": (
-        [("original_mime_conflict_after_restart", 0)],
-        "probe calls fn_v5_register_pending on ordinary attach_pending "
-        "(v5p/reg1); no fn_v5_register_eb / enterprise_asset_delete_queue "
-        "replay is executed"),
-    "original_filename_conflict_after_restart": (
-        [("original_filename_conflict_after_restart", 0)],
-        "probe calls fn_v5_register_pending on ordinary attach_pending "
-        "(v5p/reg1); no fn_v5_register_eb / enterprise_asset_delete_queue "
-        "replay is executed"),
-    "widget_other_visitor_session_denied": (
-        [("widget_other_visitor_session_denied", 0)],
-        "probe calls fn_v5_register_eb for asset_id=910000999, but the probe "
-        "seed only creates 910000101; failure may be a missing asset rather "
-        "than visitor-session denial"),
-    "seat_contact_subject_kind_conflict": (
-        [("seat_contact_subject_kind_conflict", 0)],
-        "probe calls fn_v5_register_eb for asset_id=910000102, but the probe "
-        "seed only creates 910000101; failure may be a missing asset rather "
-        "than a seat subject-kind conflict"),
-    "snapshot_direct_dml_rejected": (
-        [("snapshot_direct_dml_rejected", 0)],
-        "probe updates attach_pending.upload_registration (ordinary); no "
-        "enterprise_asset_delete_queue.upload_registration DML is attempted"),
-    "audit_null_does_not_grant_resume": (
-        [("audit_null_does_not_grant_resume", 0)],
-        "probe updates enterprise_asset.uploaded_by_user_id directly and "
-        "expects failure; no enterprise resume is attempted after an "
-        "anonymization"),
-    "legacy_null_not_fabricated": (
-        [("legacy_null_not_fabricated", 0)],
-        "probe updates attach_pending.client_upload_id (ordinary legacy row); "
-        "no enterprise queue legacy-NULL backfill attempt is made"),
+    # real fn_v5_register_eb replays against per-run EA_* assets (created with
+    # empty registration columns, then registered once by the restricted
+    # function): changed mime / changed filename / other visitor session are
+    # each refused on replay.
+    "original_mime_conflict_after_restart":
+        [("eb_original_mime_conflict_after_restart", 0)],
+    "original_filename_conflict_after_restart":
+        [("eb_original_filename_conflict_after_restart", 0)],
+    "widget_other_visitor_session_denied":
+        [("eb_widget_other_visitor_session_denied", 0)],
+    # declared subject kind "contact" conflicts with the function's subject
+    # kind argument ("seat") on a pre-created fresh asset; refused at
+    # registration time.
+    "seat_contact_subject_kind_conflict":
+        [("eb_seat_contact_subject_kind_conflict", 0)],
+    # v5_app_runtime denied DML on enterprise_asset registration columns
+    # (column grants revoked; only fn_v5_register_eb fills them).
+    "snapshot_direct_dml_rejected": [("eb_snapshot_direct_dml_rejected", 0)],
+    # real enterprise resume after anonymization: user 99000102 deleted, the
+    # changed-declaration replay of the registered EA_SUB4 session refused.
+    "audit_null_does_not_grant_resume":
+        [("eb_audit_null_does_not_grant_resume", 0)],
+    # direct client_upload_id fabrication on a legacy (never-registered)
+    # enterprise asset denied for v5_app_runtime; no identity is fabricated.
+    "legacy_null_not_fabricated": [("eb_legacy_null_not_fabricated", 0)],
 }
 
 MAPPING = {}
 for _ordering, _probes in ORDINARY_ADEQUATE.items():
     MAPPING[("ordinary", _ordering, PHASE)] = {"probes": _probes}
-for _ordering, (_probes, _reason) in ORDINARY_GAPS.items():
-    MAPPING[("ordinary", _ordering, PHASE)] = {"probes": _probes, "gap": _reason}
 for _ordering, _probes in ENTERPRISE_ADEQUATE.items():
     MAPPING[("enterprise", _ordering, PHASE)] = {"probes": _probes}
-for _ordering, (_probes, _reason) in ENTERPRISE_GAPS.items():
-    MAPPING[("enterprise", _ordering, PHASE)] = {"probes": _probes, "gap": _reason}
 
 if __name__ == "__main__":
     run_w102_case(CASE_ID, MAPPING, two_phase=False)

@@ -15,27 +15,17 @@ ADEQUATE = {
     "mutate_cipher": [("mutate_cipher", 0)],
     "mutate_locator_digest": [("mutate_locator_digest", 0)],
     "tombstone_recreation": [("tombstone_recreation", 0)],
-}
-
-GAPS = {
-    "first_bind_once": (
-        [("first_bind_once", 0)],
-        "probe executes UPDATE attachment SET group_file_id=NULL ... then "
-        "SELECT 'ok'; it creates no first bind and makes no second-bind "
-        "attempt, so once-only binding is not measured"),
-    "same_value_replay": (
-        [("same_value_replay", 0)],
-        "the only row with this name is emitted by registration_probes "
-        "(fn_v5_register_pending replay on v5p/reg1); immutable_probes has no "
-        "attachment-binding replay, so this immutable leaf would read an "
-        "ordinary upload-registration measurement"),
+    # real first bind executed: NULL -> 7001 accepted once, 7001 -> 7002
+    # refused (23510), replay of the identical value idempotent.
+    "first_bind_once": [("first_bind_once", 0)],
+    # real attachment group_file_id same-value replay (immutable_probes
+    # occurrence 0; registration_probes emits a same-named row later).
+    "same_value_replay": [("same_value_replay", 0)],
 }
 
 MAPPING = {}
 for _ordering, _probes in ADEQUATE.items():
     MAPPING[("plan", _ordering, PHASE)] = {"probes": _probes}
-for _ordering, (_probes, _reason) in GAPS.items():
-    MAPPING[("plan", _ordering, PHASE)] = {"probes": _probes, "gap": _reason}
 
 if __name__ == "__main__":
     run_w102_case(CASE_ID, MAPPING, two_phase=False)

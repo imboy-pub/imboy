@@ -14,31 +14,23 @@ ADEQUATE = {
     "confirmed_rebind": [("confirmed_rebind", 0)],
     "confirmed_to_registered": [("confirmed_to_registered", 0)],
     "lawful_repeat": [("lawful_repeat", 0)],
-}
-
-GAPS = {
-    "legal_fk_wrong_location": (
-        [("legal_fk_wrong_location", 0)],
-        "probe SQL references OLD outside a trigger ( ... AND OLD IS NULL), so "
-        "the expected failure is a parser error; no fn_v5_confirm_pending call "
-        "with a wrong-location target is executed"),
-    "legal_fk_wrong_cipher": (
-        [("legal_fk_wrong_cipher", 0)],
-        "probe executes UPDATE attachment SET cipher='abc' WHERE id=900000201; "
-        "it never calls fn_v5_confirm_pending with a cipher-mismatched "
-        "attachment, so confirm-time cipher equivalence is not measured"),
-    "confirmed_gc_preserves_session_link": (
-        [("confirmed_gc_preserves_session_link", 0)],
-        "probe is a read-only count of confirmed sessions without a link; no "
-        "GC is executed, so preservation of the confirmed link across GC is "
-        "not measured"),
+    # real fn_v5_confirm_pending call against a session/asset pair whose
+    # immutable locator digests differ (LOCA vs LOCB); refused with the
+    # frozen-location mismatch error.
+    "legal_fk_wrong_location": [("legal_fk_wrong_location", 0)],
+    # real confirm-then-forgery sequence: cipher replaced and cleared, both
+    # refused with 23510, fixed declaration re-verified with the confirmed
+    # link intact.
+    "legal_fk_wrong_cipher": [("legal_fk_wrong_cipher", 0)],
+    # real GC intent (fn_v5_intent_ordinary_delete after capability expiry,
+    # migration_probes occurrence 0) committing delete_intent + ready job
+    # while the confirmed session keeps its link (confirmed:<id>).
+    "confirmed_gc_preserves_session_link": [("confirmed_gc_preserves_session_link", 0)],
 }
 
 MAPPING = {}
 for _ordering, _probes in ADEQUATE.items():
     MAPPING[("ordinary", _ordering, PHASE)] = {"probes": _probes}
-for _ordering, (_probes, _reason) in GAPS.items():
-    MAPPING[("ordinary", _ordering, PHASE)] = {"probes": _probes, "gap": _reason}
 
 if __name__ == "__main__":
     run_w102_case(CASE_ID, MAPPING, two_phase=False)
