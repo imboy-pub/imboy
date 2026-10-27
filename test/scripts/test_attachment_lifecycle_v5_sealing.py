@@ -89,7 +89,7 @@ class SealingTests(unittest.TestCase):
         source = (ROOT / "scripts/test/attachment_lifecycle_v5_gate.sh").read_text()
         start = source.index("execute_case() {")
         function = source[start:source.index("\n}", start) + 2]
-        script = 'run_case() { return 0; }\n' + function + '\nexecute_case "$CASE_ID"'
+        script = 'run_case() { return 0; }\nproduce_measured() { return 0; }\n' + function + '\nexecute_case "$CASE_ID"'
         before = self.f.raw.read_bytes()
         env = dict(os.environ, ROOT=str(ROOT), SCRIPT_DIR=str(ROOT / "scripts/test"),
             V5_RUN_DIR=str(self.f.run), EVID=str(self.f.case_dir.parent),

@@ -732,8 +732,19 @@ seal_leafs() {
 }
 
 # ---------------- dispatch ----------------
+produce_measured() {  # $1 case_id $2 case_dir — adapter -> producer -> measured-receipts.json
+  local cid="$1" cdir="$2" adapter
+  adapter="$SCRIPT_DIR/attachment_lifecycle_v5_adapter_$(echo "$cid" | tr '/-' '__' | tr 'A-Z' 'a-z').py"
+  [ -f "$adapter" ] || { echo "no measured adapter for case $cid (evidence cannot be sealed)" >&2; return 30; }
+  python3 "$adapter" "$RUN_DIR" "$cdir" "$ROOT" >> "$cdir/adapter.log" 2>&1 || { echo "ADAPTER_FAIL $cid" >> "$cdir/adapter.log"; return 30; }
+  python3 "$ROOT/scripts/attachment_lifecycle_v5_producer.py" produce \
+    --run-dir "$RUN_DIR" --task-id "${cid%%/*}" --case-id "$cid" --case-dir "$cdir" \
+    --command "$V5_GATE_COMMAND" --cwd "$ROOT" \
+    --observations "$cdir/observations.json" >> "$cdir/adapter.log" 2>&1 || return 30
+}
 execute_case() {
   run_case "$1" || return $?
+  produce_measured "$1" "$EVID/${1#*/}" || return $?
   bash "$SCRIPT_DIR/attachment_lifecycle_v5_seal.sh" "$ROOT" "$1" "$EVID/${1#*/}" "$V5_GATE_COMMAND"
 }
 RC=0

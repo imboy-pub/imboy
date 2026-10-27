@@ -779,6 +779,31 @@ def _valid_digest(value, length=64):
             and all(c in "0123456789abcdef" for c in value))
 
 
+def _ls_files_modes(root):
+    """Map tracked path -> git mode ('100644', '100755', '120000', '160000')."""
+    out = subprocess.check_output(["git", "-C", root, "ls-files", "-s", "-z"],
+                                  timeout=30).decode("utf-8", "surrogateescape")
+    modes = {}
+    for entry in out.split("\0"):
+        if not entry:
+            continue
+        parts = entry.split("\t", 1)
+        if len(parts) == 2:
+            meta = parts[0].split()
+            if len(meta) == 3:  # "<mode> <object> <stage>\t<path>"
+                modes[parts[1]] = meta[0]
+    return modes
+
+
+def _owned_entry_digest(root, name, mode):
+    """Content digest for a tracked entry; gitlinks (submodules) bind the commit SHA."""
+    if mode == "160000":
+        commit = subprocess.check_output(["git", "-C", root, "rev-parse", "HEAD:%s" % name],
+                                         text=True, stderr=subprocess.DEVNULL, timeout=10).strip()
+        return commit
+    return sha256_file(os.path.realpath(os.path.join(root, name)))
+
+
 def candidate_errors(candidate):
     """Compare the frozen verification input with the actual worktree bytes."""
     errors = []
@@ -820,12 +845,15 @@ def candidate_errors(candidate):
             repo, rel = name.split("/", 1)
             path = os.path.realpath(os.path.join(roots[repo], rel))
             root = os.path.realpath(roots[repo])
-            if os.path.commonpath([root, path]) != root or not _valid_digest(digest):
+            mode = _ls_files_modes(root).get(rel)
+            digest_ok = (_valid_digest(digest, 40) if mode == "160000"
+                         else _valid_digest(digest))
+            if os.path.commonpath([root, path]) != root or not digest_ok:
                 raise ValueError("invalid path or digest")
-            actual_files[name] = sha256_file(path)
+            actual_files[name] = _owned_entry_digest(root, rel, mode)
             if actual_files[name] != digest:
                 errors.append("candidate file drift: " + name)
-        except (KeyError, ValueError, OSError):
+        except (KeyError, ValueError, OSError, subprocess.SubprocessError):
             errors.append("candidate file unavailable: " + name)
     if sha256_bytes(canonical_json(actual_files).encode()) != candidate.get("owned_tree_digest"):
         errors.append("candidate owned tree digest mismatch")
@@ -871,12 +899,12 @@ def cmd_freeze_candidate(args):
             candidate["repository_paths"][repo] = root
             candidate["heads"][repo] = subprocess.check_output(
                 ["git", "-C", root, "rev-parse", "HEAD"], text=True, timeout=5).strip()
-            names = subprocess.check_output(["git", "-C", root, "ls-files", "-z"], timeout=5).decode().split("\0")
-            for name in filter(None, names):
+            modes = _ls_files_modes(root)
+            for name in filter(None, modes):
                 path = os.path.realpath(os.path.join(root, name))
                 if os.path.commonpath([root, path]) != root:
                     die(EXIT_CONTRACT, "candidate tracked path escapes repository")
-                candidate["owned_paths_sha256"][repo + "/" + name] = sha256_file(path)
+                candidate["owned_paths_sha256"][repo + "/" + name] = _owned_entry_digest(root, name, modes[name])
         candidate["owned_tree_digest"] = sha256_bytes(canonical_json(candidate["owned_paths_sha256"]).encode())
         migration_dir = os.path.join(candidate["repository_paths"]["imboy"], "priv/migrations")
         migrations = {name: sha256_file(os.path.join(migration_dir, name))
