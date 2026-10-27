@@ -439,7 +439,10 @@ d03_zone_conflict_and_invalid_rejected() ->
 %% 键位齐全（AD 校验按模式分支消费这些键）。
 d03_natural_day_canned_echo() ->
     cs_fake_store:init(),
-    Cs = 1772965200,
+    %% canned 窗口取 NY 2026-03-08 真实两午夜 05:00Z→次日 04:00Z（恰 23h，
+    %% 与 cs_stats_zone_pg_tests 的 ny_spring 期望同一对 epoch——真库套件
+    %% 持有窗口数学，本用例只钉接线与回显）
+    Cs = 1772946000,
     Ce = Cs + 23 * 3600,
     ok = cs_fake_store:put_zone_day_window(<<"America/New_York">>, ?DAY, {Cs, Ce}),
     %% 指标轴接线：canned 窗口必须真实流入 session_stats 的 new 轴——
