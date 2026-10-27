@@ -95,8 +95,11 @@
 
 -export([subscribe/2]).
 -export([unsubscribe/2]).
--export([get_subscribed_channels/1, get_subscribed_channels/2]).
--export([get_managed_channels/1, get_managed_channels/2]).
+-export([
+    get_subscribed_channels/1, get_subscribed_channels/2,
+    get_subscribed_channels_cursor/4
+]).
+-export([get_managed_channels/1, get_managed_channels/2, get_managed_channels_cursor/4]).
 -export([get_unread_summary/1]).
 -export([get_subscribers/3]).
 -export([remove_subscriber/3]).
@@ -195,12 +198,20 @@ get_subscribed_channels(Uid) ->
 get_subscribed_channels(Uid, Q) ->
     channel_logic_subscription:get_subscribed_channels(Uid, Q).
 
+%% W07.b（C2 已订阅频道 cursor 协议）：s.id DESC keyset 游标页。
+get_subscribed_channels_cursor(Uid, BeforeId, Limit, Q) ->
+    channel_logic_subscription:get_subscribed_channels_cursor(Uid, BeforeId, Limit, Q).
+
 get_managed_channels(Uid) ->
     get_managed_channels(Uid, <<>>).
 
 %% W07.a（C2 我管理频道）：可选服务端 q（管理交集内 name ILIKE）。
 get_managed_channels(Uid, Q) ->
     channel_logic_subscription:get_managed_channels(Uid, Q).
+
+%% W07.b（C2 我管理频道 cursor 协议）：c.id DESC keyset 游标页。
+get_managed_channels_cursor(Uid, BeforeId, Limit, Q) ->
+    channel_logic_subscription:get_managed_channels_cursor(Uid, BeforeId, Limit, Q).
 
 get_unread_summary(Uid) ->
     channel_logic_subscription:get_unread_summary(Uid).

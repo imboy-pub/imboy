@@ -14,8 +14,8 @@
 -export([find_by_custom_id/1]).
 -export([list_by_ids/2]).
 -export([list_by_ids_since/2, list_by_ids_since/3]).
--export([list_subscribed/2, list_subscribed/3]).
--export([list_managed/1, list_managed/2, count_managed_tx/2]).
+-export([list_subscribed/2, list_subscribed/3, list_subscribed_keyset/4]).
+-export([list_managed/1, list_managed/2, list_managed_keyset/4, count_managed_tx/2]).
 -export([update/2]).
 -export([
     internal_find_tx/3, internal_write_find_tx/4, internal_creator_tx/4, internal_creator_org_tx/3
@@ -309,6 +309,72 @@ list_managed(Uid, Q) ->
         "ORDER BY a.role DESC, c.created_at DESC"
     >>,
     elib_pg:query(Sql, [Uid | Params]).
+
+%% W07.b（C2 已订阅频道 cursor 协议）：keyset 分页，稳定排序 s.id DESC
+%% （channel_subscription.id BIGINT PK，重新激活复用 id → 稳定）；q 为
+%% 授权交集内 c.name ILIKE（$4）；投影含 cursor_id（=s.id，作下一页上界）。
+%% 注意 ?CHANNEL_SAFE_COLUMNS 在 channel_logic_message 定义，此处直接以
+%% 同一列清单内联（列变更时两处需同改——以逻辑层 spec 注释提示）。
+-spec list_subscribed_keyset(integer(), integer(), pos_integer(), binary()) ->
+    {ok, list(map())} | {error, any()}.
+list_subscribed_keyset(Uid, BeforeId, Limit, Q) ->
+    Tb = tablename(),
+    SubTb = channel_subscription_repo:tablename(),
+    AdminTb = channel_admin_repo:tablename(),
+    Access = organization_resource_access_repo:resource_predicate_sql(
+        <<"c.scope">>, <<"c.workspace_id">>, <<"$1">>
+    ),
+    {QSql, Params} = name_q_clause(Q, 4),
+    Sql =
+        <<
+            "SELECT sel.id,sel.name,sel.description,sel.avatar,sel.custom_id,"
+            "sel.creator_uid,sel.subscriber_count,sel.is_verified,sel.tags,"
+            "sel.visibility,sel.access_type,sel.join_policy,sel.created_at,"
+            "sel.updated_at,sel.cursor_id,COALESCE(a.role, 0) AS user_role,"
+            "true AS is_subscribed "
+            "FROM (SELECT c.*, s.id AS cursor_id FROM ",
+            Tb/binary,
+            " c INNER JOIN ",
+            SubTb/binary,
+            " s ON c.id = s.channel_id ",
+            "WHERE s.user_id = $1 AND s.status = 1 AND c.status = 1 AND ",
+            Access/binary,
+            " AND s.id < $2",
+            QSql/binary,
+            " ORDER BY s.id DESC LIMIT $3) sel ",
+            "LEFT JOIN ",
+            AdminTb/binary,
+            " a ON a.channel_id = sel.id AND a.user_id = $1",
+            " ORDER BY sel.cursor_id DESC"
+        >>,
+    elib_pg:query(Sql, [Uid, BeforeId, Limit | Params]).
+
+%% W07.b（C2 我管理频道 cursor 协议）：keyset 分页，稳定排序 c.id DESC；
+%% cursor_id=c.id。
+-spec list_managed_keyset(integer(), integer(), pos_integer(), binary()) ->
+    {ok, list(map())} | {error, any()}.
+list_managed_keyset(Uid, BeforeId, Limit, Q) ->
+    Tb = tablename(),
+    AdminTb = channel_admin_repo:tablename(),
+    Access = organization_resource_access_repo:resource_predicate_sql(
+        <<"c.scope">>, <<"c.workspace_id">>, <<"$1">>
+    ),
+    {QSql, Params} = name_q_clause(Q, 4),
+    Sql =
+        <<
+            "SELECT c.*, a.role AS user_role, true AS is_subscribed, c.id AS cursor_id "
+            "FROM ",
+            Tb/binary,
+            " c INNER JOIN ",
+            AdminTb/binary,
+            " a ON c.id = a.channel_id ",
+            "WHERE a.user_id = $1 AND c.status = 1 AND ",
+            Access/binary,
+            " AND c.id < $2",
+            QSql/binary,
+            " ORDER BY c.id DESC LIMIT $3"
+        >>,
+    elib_pg:query(Sql, [Uid, BeforeId, Limit | Params]).
 
 %% W07.a：q 子句构造。空 q → {<<>>, []}（SQL 逐字节同旧路径）；非空 →
 %% {" AND c.name ILIKE $N", [pattern]}（trim + 64 截断 + escape_like）。

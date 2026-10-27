@@ -16,7 +16,7 @@
 %% G3 thin wrappers for channel_logic_*
 -export([find_by_id/2]).
 -export([find_by_id_with_price/1]).
--export([list_managed/1, list_managed/2]).
+-export([list_managed/1, list_managed/2, list_managed_keyset/4]).
 %% T5（双体验 v2.5.2）：工作区频道列表（scope 分区）
 -export([list_workspace_channels/2]).
 -export([list_workspace_channels/3, workspace_channel_page/4, workspace_channel_page/5]).
@@ -28,7 +28,7 @@
 -export([restore/1]).
 -export([search/3]).
 -export([list_discover/2]).
--export([list_subscribed/2, list_subscribed/3]).
+-export([list_subscribed/2, list_subscribed/3, list_subscribed_keyset/4]).
 -export([increment_subscribers/3]).
 -export([get_reaction_count/1]).
 -export([has_viewed_message/2]).
@@ -398,6 +398,12 @@ list_managed(Uid) -> list_managed(Uid, <<>>).
 -spec list_managed(integer(), binary()) -> {ok, list(map())} | {error, any()}.
 list_managed(Uid, Q) -> channel_repo:list_managed(Uid, Q).
 
+%% W07.b（C2 我管理频道 cursor 协议）：c.id DESC keyset，行含 cursor_id。
+-spec list_managed_keyset(integer(), integer(), pos_integer(), binary()) ->
+    {ok, list(map())} | {error, any()}.
+list_managed_keyset(Uid, BeforeId, Limit, Q) ->
+    channel_repo:list_managed_keyset(Uid, BeforeId, Limit, Q).
+
 %% T5（双体验 v2.5.2）：工作区频道列表（仅 scope='workspace'，personal 零影响）
 -spec list_workspace_channels(integer(), integer()) -> {ok, list(map())} | {error, any()}.
 list_workspace_channels(WorkspaceId, Limit) ->
@@ -531,6 +537,12 @@ list_subscribed(Uid, Column) -> list_subscribed(Uid, Column, <<>>).
 -spec list_subscribed(integer(), binary(), binary()) ->
     {ok, list(map())} | {error, any()}.
 list_subscribed(Uid, Column, Q) -> channel_repo:list_subscribed(Uid, Column, Q).
+
+%% W07.b（C2 已订阅频道 cursor 协议）：s.id DESC keyset，行含 cursor_id。
+-spec list_subscribed_keyset(integer(), integer(), pos_integer(), binary()) ->
+    {ok, list(map())} | {error, any()}.
+list_subscribed_keyset(Uid, BeforeId, Limit, Q) ->
+    channel_repo:list_subscribed_keyset(Uid, BeforeId, Limit, Q).
 
 -spec increment_subscribers(epgsql:connection(), integer(), integer()) ->
     {ok, integer()} | {error, any()}.

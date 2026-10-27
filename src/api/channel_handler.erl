@@ -500,6 +500,23 @@ unsubscribe(Req0, State) ->
 subscribed(Req0, State) ->
     Uid = maps:get(current_uid, State),
     Qs = cowboy_req:parse_qs(Req0),
+
+    %% W07.b（C2）：显式 pagination=cursor 走签名游标协议（J27.a：旧
+    %% 客户端不带该参数 → 旧 envelope 逐字不变）。
+    case proplists:get_value(<<"pagination">>, Qs, <<>>) of
+        <<"cursor">> ->
+            channel_cursor_page(
+                Req0,
+                Uid,
+                <<"channel_subscribed">>,
+                Qs,
+                fun channel_logic:get_subscribed_channels_cursor/4
+            );
+        _ ->
+            subscribed_legacy(Req0, Uid, Qs)
+    end.
+
+subscribed_legacy(Req0, Uid, Qs) ->
     CursorBin = proplists:get_value(<<"cursor">>, Qs, <<>>),
     Cursor =
         case CursorBin of
@@ -507,7 +524,6 @@ subscribed(Req0, State) ->
             _ -> parse_qs_int(CursorBin, 0, 0, 16#7fffffff)
         end,
     Limit = parse_qs_int(proplists:get_value(<<"limit">>, Qs), 50, 1, 200),
-
     %% W07.a（C2 已订阅频道）：可选服务端 q（订阅交集内 name ILIKE；
     %% 缺席时行为零变化，cursor/limit 回显保持原样）。
     Q = proplists:get_value(<<"q">>, Qs, <<>>),
@@ -522,8 +538,24 @@ subscribed(Req0, State) ->
 -spec managed(cowboy_req:req(), map()) -> cowboy_req:req().
 managed(Req0, State) ->
     Uid = maps:get(current_uid, State),
+    %% W07.b（C2）：显式 pagination=cursor 走签名游标协议。
+    Qs2 = cowboy_req:parse_qs(Req0),
+    case proplists:get_value(<<"pagination">>, Qs2, <<>>) of
+        <<"cursor">> ->
+            channel_cursor_page(
+                Req0,
+                Uid,
+                <<"channel_managed">>,
+                Qs2,
+                fun channel_logic:get_managed_channels_cursor/4
+            );
+        _ ->
+            managed_legacy(Req0, Uid, Qs2)
+    end.
+
+managed_legacy(Req0, Uid, Qs) ->
     %% W07.a（C2 我管理频道）：可选服务端 q（管理交集内 name ILIKE）。
-    Q = q_qs_binary(proplists:get_value(<<"q">>, cowboy_req:parse_qs(Req0), <<>>)),
+    Q = q_qs_binary(proplists:get_value(<<"q">>, Qs, <<>>)),
     case channel_logic:get_managed_channels(Uid, Q) of
         {ok, Channels} ->
             elib_response:success(Req0, #{list => Channels});
@@ -843,3 +875,71 @@ internalize_visibility(_Scope, Visibility, JoinPolicy) -> {Visibility, JoinPolic
 -spec q_qs_binary(term()) -> binary().
 q_qs_binary(V) when is_binary(V) -> V;
 q_qs_binary(V) -> elib_cnv:safe_to_binary(V).
+
+%% W07.b（C2 频道清单 cursor 协议）：订阅/管理两族共用游标页响应。
+%% 上界语义由 list_kind 决定（subscribed=s.id、managed=c.id），游标绑定
+%% uid/scope=list_kind 对应域/规范 q/排序版本/上界；绑定不符一律 400
+%% invalid_request 绝不回落首页；密钥缺失 503 fail-closed。
+-spec channel_cursor_page(cowboy_req:req(), integer(), binary(), list(), fun()) ->
+    cowboy_req:req().
+channel_cursor_page(Req0, Uid, Kind, Qs, Fetcher) ->
+    Ctx = #{
+        scope => <<"personal">>,
+        workspace_id => 0,
+        q => q_qs_binary(proplists:get_value(<<"q">>, Qs, <<>>))
+    },
+    Limit = parse_qs_int(proplists:get_value(<<"limit">>, Qs), 50, 1, 200),
+    case proplists:get_value(<<"cursor">>, Qs, <<>>) of
+        <<>> ->
+            respond_channel_cursor(Req0, Uid, Kind, Ctx, 16#7FFFFFFFFFFFFFFF, Limit, Fetcher);
+        CursorBin ->
+            case list_cursor:resolve(CursorBin, Uid, Kind, Ctx) of
+                {ok, Upper} ->
+                    respond_channel_cursor(Req0, Uid, Kind, Ctx, Upper, Limit, Fetcher);
+                {error, expired} ->
+                    elib_response:error(Req0, <<"invalid_request：游标已过期"/utf8>>, 400);
+                {error, key_unavailable} ->
+                    elib_response:error(Req0, <<"security_gate_closed"/utf8>>, 503);
+                {error, _} ->
+                    elib_response:error(Req0, <<"invalid_request：游标无效"/utf8>>, 400)
+            end
+    end.
+
+-spec respond_channel_cursor(
+    cowboy_req:req(),
+    integer(),
+    binary(),
+    map(),
+    integer(),
+    pos_integer(),
+    fun()
+) ->
+    cowboy_req:req().
+respond_channel_cursor(Req0, Uid, Kind, Ctx, BeforeId, Limit, Fetcher) ->
+    case Fetcher(Uid, BeforeId, Limit, maps:get(q, Ctx, <<>>)) of
+        {ok, #{list := Rows, has_more := HasMore, upper := Upper}} ->
+            case next_channel_cursor(HasMore, Uid, Kind, Ctx, Upper) of
+                {ok, NextCursor} ->
+                    elib_response:success(Req0, #{
+                        list => Rows,
+                        has_more => HasMore,
+                        next_cursor => NextCursor,
+                        limit => Limit
+                    });
+                {error, Status, Msg} ->
+                    elib_response:error(Req0, Msg, Status)
+            end;
+        {error, _Reason} ->
+            elib_response:error(Req0, <<"查询失败"/utf8>>)
+    end.
+
+-spec next_channel_cursor(boolean(), integer(), binary(), map(), integer()) ->
+    {ok, binary()} | {error, integer(), binary()}.
+next_channel_cursor(false, _Uid, _Kind, _Ctx, _Upper) ->
+    {ok, <<>>};
+next_channel_cursor(true, Uid, Kind, Ctx, Upper) ->
+    case list_cursor:issue(Uid, Kind, Ctx#{upper => Upper}, os:system_time(second)) of
+        {ok, Token} -> {ok, Token};
+        {error, key_unavailable} -> {error, 503, <<"security_gate_closed"/utf8>>};
+        {error, _} -> {error, 400, <<"invalid_request"/utf8>>}
+    end.
