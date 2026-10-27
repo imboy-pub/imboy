@@ -73,6 +73,10 @@ KEY="v5w201/$CID/a.png"
 KEY2="v5w201/$CID2/b.pdf"
 KEY_D="v5w201/$CID/d-expired.png"
 CID_D='0f0e0d0c-1111-2222-3333-444455556671'
+KEY_C="v5w201/$CID/c-confirmed.png"
+CID_C='0f0e0d0c-1111-2222-3333-444455556672'
+KEY2C="v5w201/$CID2/c2-confirmed.pdf"
+CID2C='0f0e0d0c-1111-2222-3333-444455556673'
 HASH64="$(printf 'a%.0s' {1..64})"
 LOC64="$(printf 'b%.0s' {1..64})"
 CONTENT="{\"version\":1,\"sha256\":\"$HASH64\",\"size_bytes\":\"10\",\"mime\":\"image/png\"}"
@@ -127,16 +131,27 @@ probe recovery_deadline_pre ordinary absolute_deadline_reupload_required AC01 "0
 # renew races intent: intent wins -> renew gets 0 rows.  The intent's committed
 # terminal effect closes the renew window; the M3 session guard only allows
 # registered->{confirmed,rejected,expired} and {rejected,expired}->delete_intent,
-# so the race is expressed as that legal two-step transition.
-probe recovery_renew_races_intent ordinary renew_races_intent AC01 "1|1|0" \
-  "WITH i AS (UPDATE attach_pending SET session_state='expired' WHERE object_key='$KEY' AND session_state='registered' RETURNING 1), i2 AS (UPDATE attach_pending SET session_state='delete_intent' WHERE object_key='$KEY' AND session_state='expired' RETURNING 1), r AS (UPDATE attach_pending SET upload_expires_at = now() + interval '10 minutes' WHERE object_key='$KEY' AND creator_user_id=101 AND session_state='registered' AND session_deadline > now() RETURNING 1) SELECT (SELECT count(*) FROM i) || '|' || (SELECT count(*) FROM i2) || '|' || (SELECT count(*) FROM r)"
+# so the race is expressed as that legal two-step transition (separate
+# statements: CTEs share one snapshot and would not see the first UPDATE).
+# The committed terminal state stays delete_intent afterwards.
+probe recovery_renew_races_intent ordinary renew_races_intent AC01 "0" \
+  "UPDATE attach_pending SET session_state='expired' WHERE object_key='$KEY' AND session_state='registered'; UPDATE attach_pending SET session_state='delete_intent' WHERE object_key='$KEY' AND session_state='expired'; WITH r AS (UPDATE attach_pending SET upload_expires_at = now() + interval '10 minutes' WHERE object_key='$KEY' AND creator_user_id=101 AND session_state='registered' AND session_deadline > now() RETURNING 1) SELECT count(*) FROM r"
 # cross-principal lookup leaks nothing (authorization revoked -> not found)
 probe recovery_authorization_revoked ordinary authorization_revoked AC01 "0" \
   "SELECT count(*) FROM attach_pending WHERE object_key='$KEY' AND creator_user_id=999999"
-# confirmed -> no new capability (status not registered)
-probe recovery_confirmed_no_capability ordinary confirmed_no_new_capability AC01 "confirmed" \
-  "BEGIN; UPDATE attach_pending SET session_state='registered' WHERE object_key='$KEY'; SELECT fn_v5_pin_pending_content('$KEY', '$CONTENT'::jsonb); INSERT INTO attachment(id,file_hash256,mime_type,ext,name,path,url,size,scope,creator_user_id,referer_time,status) SELECT 900000201,'$HASH64','image/png','png','a.png','$KEY','',10,'private',101,0,0 WHERE NOT EXISTS (SELECT 1 FROM attachment WHERE id=900000201); SELECT fn_v5_confirm_pending('$KEY', 900000201); SELECT session_state FROM attach_pending WHERE object_key='$KEY'; ROLLBACK;" \
-  2>/dev/null
+# confirmed -> no new capability: a dedicated registered session is pinned,
+# confirmed against its attachment, and then cannot be renewed (0 rows) — the
+# status stays confirmed with the committed link intact.
+reg_pending "$KEY_C" "$CID_C" "$REG" >/dev/null
+PSQL -q -v KEYC="$KEY_C" -v CIDC="$CID_C" -v CONTENT="$CONTENT" -v HASH="$HASH64" <<'SQL' > /dev/null 2>&1
+SELECT fn_v5_pin_pending_content(:'KEYC', :'CONTENT'::jsonb);
+INSERT INTO attachment(id,file_hash256,mime_type,ext,name,path,url,size,scope,creator_user_id,referer_time,status)
+SELECT 940000201, :'HASH', 'image/png', 'png', 'a.png', :'KEYC', '', 10, 'private', 101, 0, 0
+WHERE NOT EXISTS (SELECT 1 FROM attachment WHERE id=940000201);
+SELECT fn_v5_confirm_pending(:'KEYC', 940000201);
+SQL
+probe recovery_confirmed_no_capability ordinary confirmed_no_new_capability AC01 "confirmed|0" \
+  "WITH r AS (UPDATE attach_pending SET upload_expires_at = now() + interval '5 minutes' WHERE object_key='$KEY_C' AND session_state='registered' AND session_deadline > now() RETURNING 1) SELECT session_state || '|' || (SELECT count(*) FROM r) FROM attach_pending WHERE object_key='$KEY_C'"
 # idempotency: post-commit stable identity (internal_idempotency_postcommit_sign)
 probe recovery_idempotent_identity ordinary internal_idempotency_postcommit_sign AC01 "1" \
   "SELECT count(*) FROM attach_pending WHERE client_upload_id='$CID'::uuid AND object_key='$KEY'"
@@ -164,10 +179,20 @@ probe internal_renew_same_key internal expired_capability_same_key_renew AC01 "t
   "UPDATE attach_pending SET upload_expires_at = GREATEST(COALESCE(upload_expires_at, to_timestamp(extract(epoch from now() + interval '30 minutes'))), to_timestamp(extract(epoch from now() + interval '30 minutes'))) WHERE object_key='$KEY2' AND session_state='registered' AND session_deadline > now() RETURNING upload_expires_at > now()"
 probe internal_deadline_pre internal absolute_deadline_reupload_required AC01 "0" \
   "WITH r AS (UPDATE attach_pending SET upload_expires_at = now() + interval '10 minutes' WHERE object_key='$KEY_D' AND creator_user_id=101 AND session_state='registered' AND session_deadline > now() RETURNING 1) SELECT count(*) FROM r"
-probe internal_renew_races_intent internal renew_races_intent AC01 "1|1|0" \
-  "WITH i AS (UPDATE attach_pending SET session_state='expired' WHERE object_key='$KEY2' AND session_state='registered' RETURNING 1), i2 AS (UPDATE attach_pending SET session_state='delete_intent' WHERE object_key='$KEY2' AND session_state='expired' RETURNING 1), r AS (UPDATE attach_pending SET upload_expires_at = now() + interval '10 minutes' WHERE object_key='$KEY2' AND session_state='registered' AND session_deadline > now() RETURNING 1) SELECT (SELECT count(*) FROM i) || '|' || (SELECT count(*) FROM i2) || '|' || (SELECT count(*) FROM r)"
-probe internal_confirmed_no_capability internal confirmed_no_new_capability AC01 "registered" \
-  "UPDATE attach_pending SET session_state='registered' WHERE object_key='$KEY2' RETURNING session_state"
+probe internal_renew_races_intent internal renew_races_intent AC01 "0" \
+  "UPDATE attach_pending SET session_state='expired' WHERE object_key='$KEY2' AND session_state='registered'; UPDATE attach_pending SET session_state='delete_intent' WHERE object_key='$KEY2' AND session_state='expired'; WITH r AS (UPDATE attach_pending SET upload_expires_at = now() + interval '10 minutes' WHERE object_key='$KEY2' AND session_state='registered' AND session_deadline > now() RETURNING 1) SELECT count(*) FROM r"
+# confirmed -> no new capability: dedicated session pinned + confirmed, renew
+# refuses (0 rows) and the status stays confirmed with the link intact.
+reg_pending "$KEY2C" "$CID2C" "$REG_APP" >/dev/null
+PSQL -q -v KEYC2="$KEY2C" -v CONTENT="$CONTENT" -v HASH="$HASH64" <<'SQL' > /dev/null 2>&1
+SELECT fn_v5_pin_pending_content(:'KEYC2', :'CONTENT'::jsonb);
+INSERT INTO attachment(id,file_hash256,mime_type,ext,name,path,url,size,scope,creator_user_id,referer_time,status)
+SELECT 940000202, :'HASH', 'image/png', 'png', 'a2.png', :'KEYC2', '', 10, 'private', 101, 0, 0
+WHERE NOT EXISTS (SELECT 1 FROM attachment WHERE id=940000202);
+SELECT fn_v5_confirm_pending(:'KEYC2', 940000202);
+SQL
+probe internal_confirmed_no_capability internal confirmed_no_new_capability AC01 "confirmed|0" \
+  "WITH r AS (UPDATE attach_pending SET upload_expires_at = now() + interval '5 minutes' WHERE object_key='$KEY2C' AND session_state='registered' AND session_deadline > now() RETURNING 1) SELECT session_state || '|' || (SELECT count(*) FROM r) FROM attach_pending WHERE object_key='$KEY2C'"
 probe internal_request_id_conflict internal request_id_payload_conflict AC01 "1" \
   "SELECT count(*) FROM attach_pending WHERE client_upload_id='$CID2'::uuid AND upload_registration->'subject'->>'principal' = '77001'"
 cleanup_keys
