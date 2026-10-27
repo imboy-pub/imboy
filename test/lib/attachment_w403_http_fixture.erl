@@ -580,7 +580,7 @@ overlap(Leaf, Paused, #{request_id := CompetingId}) ->
     ?assertNotEqual(maps:get(connection_id, First), maps:get(connection_id, Second)),
     ?assert(maps:get(observed_at_us, Second) >= maps:get(observed_at_us, First)),
     ?assert(is_process_alive(Paused)),
-    io:format("W403_HTTP_OVERLAP ~s~n", [
+    io:format(user, "W403_HTTP_OVERLAP ~s~n", [
         jsone:encode(#{
             leaf => Leaf,
             paused_request => First,
@@ -612,7 +612,7 @@ inflight_overlap(Leaf, Paused, Competing) ->
     ?assert(maps:get(observed_at_us, Second) >= maps:get(observed_at_us, First)),
     ?assert(is_process_alive(Paused)),
     ?assert(is_process_alive(Competing)),
-    io:format("W403_HTTP_OVERLAP ~s~n", [
+    io:format(user, "W403_HTTP_OVERLAP ~s~n", [
         jsone:encode(#{
             leaf => Leaf,
             paused_request => First,

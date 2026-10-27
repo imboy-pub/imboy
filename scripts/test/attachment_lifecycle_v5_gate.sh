@@ -177,6 +177,25 @@ w201_case() { # $1 cdir
   seal_w201_leafs "$CUR_CASE" "$cdir" "$?" "w201 full-chain fresh DB + per-scenario SQL probes + gate-layer eunit evidence (elib_s3_sign_tests, eb_asset_tests)"
 }
 
+# The frozen guards-contract.sql predates M3 (migration 00000190 replays the
+# same trigger attachments), so applying it after the full 227-file chain hits
+# `trigger ... already exists`. Drop exactly the contract's own triggers first
+# and let the unchanged SQL re-attach them: identical final schema, idempotent.
+guards_contract_stream() {
+  cat <<'GUARDS_DROP_PRELUDE'
+DROP TRIGGER IF EXISTS trg_v5_attachment_location_immutable ON attachment;
+DROP TRIGGER IF EXISTS trg_v5_attachment_identity_immutable ON attachment;
+DROP TRIGGER IF EXISTS trg_v5_attachment_first_bind ON attachment;
+DROP TRIGGER IF EXISTS trg_v5_pending_session_guard ON attach_pending;
+DROP TRIGGER IF EXISTS trg_v5_eb_registration_guard ON enterprise_asset;
+DROP TRIGGER IF EXISTS trg_v5_eb_audit_actor_guard ON enterprise_asset;
+DROP TRIGGER IF EXISTS trg_v5_aod_job_guard ON attachment_object_deletion;
+DROP TRIGGER IF EXISTS trg_v5_ebdq_job_guard ON enterprise_asset_delete_queue;
+DROP TRIGGER IF EXISTS trg_v5_metadata_delete_guard ON attachment;
+GUARDS_DROP_PRELUDE
+  cat "$ROOT/docs/architecture/attachment-lifecycle-v5/guards-contract.sql"
+}
+
 w102_phase_run() { # $1 cdir $2 phase
   local cdir="$1" phase="$2"
   local PGPASSWORD_FILE="$RUN_DIR/resources/pg-attv5.password"
@@ -196,8 +215,8 @@ w102_phase_run() { # $1 cdir $2 phase
   echo "replayed $(ls "$ROOT/priv/migrations/"*.up.sql | wc -l | tr -d ' ') up files" >> "$cdir/raw.log"
   local GUARDS_DB="attv5_${SLOT}_w102_guards"
   if [ "$phase" = "guards" ]; then
-    docker exec -i "$PG_CONTAINER" psql -X -U imboy_user -d "$DB" -v ON_ERROR_STOP=1 --single-transaction -f - \
-      < "$ROOT/docs/architecture/attachment-lifecycle-v5/guards-contract.sql" >> "$cdir/raw.log" 2>&1 \
+    guards_contract_stream | docker exec -i "$PG_CONTAINER" psql -X -U imboy_user -d "$DB" -v ON_ERROR_STOP=1 --single-transaction -f - \
+      >> "$cdir/raw.log" 2>&1 \
       || { echo "GUARDS_FAIL" >> "$cdir/raw.log"; return 30; }
     V5_EXPAND_DB="${V5_EXPAND_DB:-attv5_${SLOT}_w102_expand}" V5_GUARDS_DB="$DB" \
       V5_RUN_DIR="$RUN_DIR" bash "$ROOT/scripts/test/attachment_lifecycle_v5_w102_probe.sh" "$DB" guards "$cdir/probes.jsonl" >> "$cdir/raw.log" 2>&1
@@ -212,8 +231,8 @@ w102_phase_run() { # $1 cdir $2 phase
       docker exec -i "$PG_CONTAINER" psql -X -U imboy_user -d "$GUARDS_DB" -v ON_ERROR_STOP=1 --single-transaction -f - \
         < "$ROOT/priv/migrations/$f" >> "$cdir/raw.log" 2>&1 || { echo "GUARDS_REPLAY_FAIL $f" >> "$cdir/raw.log"; return 30; }
     done
-    docker exec -i "$PG_CONTAINER" psql -X -U imboy_user -d "$GUARDS_DB" -v ON_ERROR_STOP=1 --single-transaction -f - \
-      < "$ROOT/docs/architecture/attachment-lifecycle-v5/guards-contract.sql" >> "$cdir/raw.log" 2>&1 \
+    guards_contract_stream | docker exec -i "$PG_CONTAINER" psql -X -U imboy_user -d "$GUARDS_DB" -v ON_ERROR_STOP=1 --single-transaction -f - \
+      >> "$cdir/raw.log" 2>&1 \
       || { echo "GUARDS_FAIL" >> "$cdir/raw.log"; return 30; }
     V5_EXPAND_DB="$DB" V5_GUARDS_DB="$GUARDS_DB" \
       V5_RUN_DIR="$RUN_DIR" bash "$ROOT/scripts/test/attachment_lifecycle_v5_w102_probe.sh" "$DB" expand "$cdir/probes.jsonl" >> "$cdir/raw.log" 2>&1

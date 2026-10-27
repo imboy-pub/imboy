@@ -8,8 +8,12 @@ main([Input, Output, PasswordFile, Host, PortText, Database]) ->
         {ok, Password} = file:read_file(PasswordFile),
         true = byte_size(Password) > 0,
         Pg0 = proplists:get_value(pg_conf, Env),
-        {epgsql, connect, [_]} = maps:get(start_mfa, Pg0),
-        Connect = #{host => Host, port => list_to_integer(PortText),
+        {epgsql, connect, [Source0]} = maps:get(start_mfa, Pg0),
+        %% Keep the source pool's codec/ssl/timeout options. Dropping them
+        %% (e.g. codecs => [{epgsql_codec_rfc3339_bin, []}]) silently reverts
+        %% timestamptz parameters to epgsql's tuple-only default codec, which
+        %% crashes on the production RFC3339 binaries written by elib_dt:now().
+        Connect = Source0#{host => Host, port => list_to_integer(PortText),
             username => "imboy_user", password => string:trim(binary_to_list(Password)),
             database => Database},
         Pg = Pg0#{start_mfa => {epgsql, connect, [Connect]}},
