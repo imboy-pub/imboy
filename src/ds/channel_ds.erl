@@ -16,7 +16,7 @@
 %% G3 thin wrappers for channel_logic_*
 -export([find_by_id/2]).
 -export([find_by_id_with_price/1]).
--export([list_managed/1]).
+-export([list_managed/1, list_managed/2]).
 %% T5（双体验 v2.5.2）：工作区频道列表（scope 分区）
 -export([list_workspace_channels/2]).
 -export([list_workspace_channels/3, workspace_channel_page/4]).
@@ -28,7 +28,7 @@
 -export([restore/1]).
 -export([search/3]).
 -export([list_discover/2]).
--export([list_subscribed/2]).
+-export([list_subscribed/2, list_subscribed/3]).
 -export([increment_subscribers/3]).
 -export([get_reaction_count/1]).
 -export([has_viewed_message/2]).
@@ -392,7 +392,11 @@ find_by_id_tx(Conn, ChannelId, Column) ->
 find_by_id_with_price(ChannelId) -> channel_repo:find_by_id_with_price(ChannelId).
 
 -spec list_managed(integer()) -> {ok, list(map())} | {error, any()}.
-list_managed(Uid) -> channel_repo:list_managed(Uid).
+list_managed(Uid) -> list_managed(Uid, <<>>).
+
+%% W07.a（C2 我管理频道）：可选服务端 q（管理交集内 name ILIKE）。
+-spec list_managed(integer(), binary()) -> {ok, list(map())} | {error, any()}.
+list_managed(Uid, Q) -> channel_repo:list_managed(Uid, Q).
 
 %% T5（双体验 v2.5.2）：工作区频道列表（仅 scope='workspace'，personal 零影响）
 -spec list_workspace_channels(integer(), integer()) -> {ok, list(map())} | {error, any()}.
@@ -517,7 +521,12 @@ search(Keyword, Limit, Column) -> channel_repo:search(Keyword, Limit, Column).
 list_discover(Limit, Column) -> channel_repo:list_discover(Limit, Column).
 
 -spec list_subscribed(integer(), binary()) -> {ok, list(map())} | {error, any()}.
-list_subscribed(Uid, Column) -> channel_repo:list_subscribed(Uid, Column).
+list_subscribed(Uid, Column) -> list_subscribed(Uid, Column, <<>>).
+
+%% W07.a（C2 已订阅频道）：可选服务端 q（订阅交集内 name ILIKE）。
+-spec list_subscribed(integer(), binary(), binary()) ->
+    {ok, list(map())} | {error, any()}.
+list_subscribed(Uid, Column, Q) -> channel_repo:list_subscribed(Uid, Column, Q).
 
 -spec increment_subscribers(epgsql:connection(), integer(), integer()) ->
     {ok, integer()} | {error, any()}.

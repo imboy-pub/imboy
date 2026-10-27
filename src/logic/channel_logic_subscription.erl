@@ -6,8 +6,8 @@
 
 -export([subscribe/2]).
 -export([unsubscribe/2]).
--export([get_subscribed_channels/1]).
--export([get_managed_channels/1]).
+-export([get_subscribed_channels/1, get_subscribed_channels/2]).
+-export([get_managed_channels/1, get_managed_channels/2]).
 -export([get_unread_summary/1]).
 -export([get_subscribers/3]).
 -export([remove_subscriber/3]).
@@ -183,7 +183,13 @@ unsubscribe(Uid, ChannelIdBin) ->
 
 -spec get_subscribed_channels(integer()) -> {ok, list(map())} | {error, binary()}.
 get_subscribed_channels(Uid) ->
-    case channel_ds:list_subscribed(Uid, ?CHANNEL_SAFE_COLUMNS) of
+    get_subscribed_channels(Uid, <<>>).
+
+%% W07.a（C2 已订阅频道）：可选服务端 q（订阅交集内 name ILIKE）。
+-spec get_subscribed_channels(integer(), binary()) ->
+    {ok, list(map())} | {error, binary()}.
+get_subscribed_channels(Uid, Q) ->
+    case channel_ds:list_subscribed(Uid, ?CHANNEL_SAFE_COLUMNS, Q) of
         {ok, Channels} when is_list(Channels) ->
             {ok, [channel_logic_common:channel_transfer(C) || C <- Channels, is_map(C)]};
         {ok, UnexpectedChannels} ->
@@ -196,7 +202,13 @@ get_subscribed_channels(Uid) ->
 
 -spec get_managed_channels(integer()) -> {ok, list(map())} | {error, binary()}.
 get_managed_channels(Uid) ->
-    case channel_ds:list_managed(Uid) of
+    get_managed_channels(Uid, <<>>).
+
+%% W07.a（C2 我管理频道）：可选服务端 q（管理交集内 name ILIKE）。
+-spec get_managed_channels(integer(), binary()) ->
+    {ok, list(map())} | {error, binary()}.
+get_managed_channels(Uid, Q) ->
+    case channel_ds:list_managed(Uid, Q) of
         {ok, Channels} when is_list(Channels) ->
             {ok, [channel_logic_common:channel_transfer(C) || C <- Channels, is_map(C)]};
         {ok, UnexpectedChannels} ->

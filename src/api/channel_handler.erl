@@ -508,7 +508,10 @@ subscribed(Req0, State) ->
         end,
     Limit = parse_qs_int(proplists:get_value(<<"limit">>, Qs), 50, 1, 200),
 
-    case channel_logic:get_subscribed_channels(Uid) of
+    %% W07.a（C2 已订阅频道）：可选服务端 q（订阅交集内 name ILIKE；
+    %% 缺席时行为零变化，cursor/limit 回显保持原样）。
+    Q = proplists:get_value(<<"q">>, Qs, <<>>),
+    case channel_logic:get_subscribed_channels(Uid, q_qs_binary(Q)) of
         {ok, Channels} ->
             elib_response:success(Req0, #{list => Channels, cursor => Cursor, limit => Limit});
         {error, Msg} ->
@@ -519,7 +522,9 @@ subscribed(Req0, State) ->
 -spec managed(cowboy_req:req(), map()) -> cowboy_req:req().
 managed(Req0, State) ->
     Uid = maps:get(current_uid, State),
-    case channel_logic:get_managed_channels(Uid) of
+    %% W07.a（C2 我管理频道）：可选服务端 q（管理交集内 name ILIKE）。
+    Q = q_qs_binary(proplists:get_value(<<"q">>, cowboy_req:parse_qs(Req0), <<>>)),
+    case channel_logic:get_managed_channels(Uid, Q) of
         {ok, Channels} ->
             elib_response:success(Req0, #{list => Channels});
         {error, Msg} ->
@@ -833,3 +838,8 @@ validate_access_policy(_, _, _) -> false.
 internalize_visibility(<<"workspace">>, 0, 0) -> {1, 1};
 internalize_visibility(<<"workspace">>, 0, 3) -> {1, 3};
 internalize_visibility(_Scope, Visibility, JoinPolicy) -> {Visibility, JoinPolicy}.
+
+%% W07.a：query string 里的 q 统一转 binary（非二进制容错）。
+-spec q_qs_binary(term()) -> binary().
+q_qs_binary(V) when is_binary(V) -> V;
+q_qs_binary(V) -> elib_cnv:safe_to_binary(V).

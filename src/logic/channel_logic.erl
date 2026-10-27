@@ -46,7 +46,9 @@
 -spec subscribe(integer(), binary()) -> ok | {error, binary() | {integer(), binary()}}.
 -spec unsubscribe(integer(), binary()) -> ok | {error, binary() | {integer(), binary()}}.
 -spec get_subscribed_channels(integer()) -> {ok, list(map())} | {error, binary()}.
+-spec get_subscribed_channels(integer(), binary()) -> {ok, list(map())} | {error, binary()}.
 -spec get_managed_channels(integer()) -> {ok, list(map())} | {error, binary()}.
+-spec get_managed_channels(integer(), binary()) -> {ok, list(map())} | {error, binary()}.
 -spec get_unread_summary(integer()) -> {ok, map()} | {error, binary()}.
 -spec get_subscribers(binary(), integer(), integer()) -> {ok, list(map())} | {error, binary()}.
 -spec remove_subscriber(integer(), integer() | binary(), integer()) -> ok | {error, binary()}.
@@ -93,8 +95,8 @@
 
 -export([subscribe/2]).
 -export([unsubscribe/2]).
--export([get_subscribed_channels/1]).
--export([get_managed_channels/1]).
+-export([get_subscribed_channels/1, get_subscribed_channels/2]).
+-export([get_managed_channels/1, get_managed_channels/2]).
 -export([get_unread_summary/1]).
 -export([get_subscribers/3]).
 -export([remove_subscriber/3]).
@@ -187,10 +189,18 @@ unsubscribe(Uid, ChannelIdBin) ->
     channel_logic_subscription:unsubscribe(Uid, ChannelIdBin).
 
 get_subscribed_channels(Uid) ->
-    channel_logic_subscription:get_subscribed_channels(Uid).
+    get_subscribed_channels(Uid, <<>>).
+
+%% W07.a（C2 已订阅频道）：可选服务端 q（订阅交集内 name ILIKE）。
+get_subscribed_channels(Uid, Q) ->
+    channel_logic_subscription:get_subscribed_channels(Uid, Q).
 
 get_managed_channels(Uid) ->
-    channel_logic_subscription:get_managed_channels(Uid).
+    get_managed_channels(Uid, <<>>).
+
+%% W07.a（C2 我管理频道）：可选服务端 q（管理交集内 name ILIKE）。
+get_managed_channels(Uid, Q) ->
+    channel_logic_subscription:get_managed_channels(Uid, Q).
 
 get_unread_summary(Uid) ->
     channel_logic_subscription:get_unread_summary(Uid).

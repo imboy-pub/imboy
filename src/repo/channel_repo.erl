@@ -14,8 +14,8 @@
 -export([find_by_custom_id/1]).
 -export([list_by_ids/2]).
 -export([list_by_ids_since/2, list_by_ids_since/3]).
--export([list_subscribed/2]).
--export([list_managed/1, count_managed_tx/2]).
+-export([list_subscribed/2, list_subscribed/3]).
+-export([list_managed/1, list_managed/2, count_managed_tx/2]).
 -export([update/2]).
 -export([
     internal_find_tx/3, internal_write_find_tx/4, internal_creator_tx/4, internal_creator_org_tx/3
@@ -223,6 +223,13 @@ list_by_ids_since(Ids, Since, Uid) when is_integer(Uid), Uid > 0 ->
 %% @return {ok, Rows} | {error, Reason}
 -spec list_subscribed(integer(), binary()) -> {ok, list(map())} | {error, any()}.
 list_subscribed(Uid, Column) ->
+    list_subscribed(Uid, Column, <<>>).
+
+%% W07.a（C2 已订阅频道）：可选服务端 q（授权交集内 name ILIKE）。q 为空
+%% 时 SQL 与参数逐字节同旧路径——旧 List 消费者全量形状/排序零变化。
+-spec list_subscribed(integer(), binary(), binary()) ->
+    {ok, list(map())} | {error, any()}.
+list_subscribed(Uid, Column, Q) ->
     Tb = tablename(),
     SubTb = channel_subscription_repo:tablename(),
     AdminTb = channel_admin_repo:tablename(),
@@ -237,6 +244,7 @@ list_subscribed(Uid, Column) ->
     Access = organization_resource_access_repo:resource_predicate_sql(
         <<"c.scope">>, <<"c.workspace_id">>, <<"$1">>
     ),
+    {QSql, Params} = name_q_clause(Q, 2),
     Sql =
         % BUG#123: 三表 join 下裸 * 会展开为 c.*+s.*+a.* 全部列，
         % epgsql 重复键覆盖导致返回行 id 非频道 id；必须限定 c. 前缀
@@ -251,9 +259,10 @@ list_subscribed(Uid, Column) ->
             "LEFT JOIN ", AdminTb/binary,
             " a ON c.id = a.channel_id AND a.user_id = s.user_id "
             "WHERE s.user_id = $1 AND s.status = 1 AND c.status = 1 AND ", Access/binary,
+            QSql/binary,
             " "
             "ORDER BY s.is_pinned DESC, s.subscribed_at DESC">>,
-    elib_pg:query(Sql, [Uid]).
+    elib_pg:query(Sql, [Uid | Params]).
 
 %% Quota usage counts retained managed channels, including temporarily hidden parents.
 -spec count_managed_tx(any(), integer()) -> {ok, non_neg_integer()} | {error, term()}.
@@ -273,11 +282,18 @@ count_managed_tx(Conn, Uid) ->
 %% @return {ok, Rows} | {error, Reason}
 -spec list_managed(integer()) -> {ok, list(map())} | {error, any()}.
 list_managed(Uid) ->
+    list_managed(Uid, <<>>).
+
+%% W07.a（C2 我管理频道）：可选服务端 q（管理角色交集内 name ILIKE）。
+%% 管理集合不是订阅集合，不创建订阅/清未读。
+-spec list_managed(integer(), binary()) -> {ok, list(map())} | {error, any()}.
+list_managed(Uid, Q) ->
     Tb = tablename(),
     AdminTb = channel_admin_repo:tablename(),
     Access = organization_resource_access_repo:resource_predicate_sql(
         <<"c.scope">>, <<"c.workspace_id">>, <<"$1">>
     ),
+    {QSql, Params} = name_q_clause(Q, 2),
     Sql = <<
         "SELECT c.*, a.role as user_role, true as is_subscribed "
         "FROM ",
@@ -288,10 +304,27 @@ list_managed(Uid) ->
         " a ON c.id = a.channel_id "
         "WHERE a.user_id = $1 AND c.status = 1 AND ",
         Access/binary,
+        QSql/binary,
         " "
         "ORDER BY a.role DESC, c.created_at DESC"
     >>,
-    elib_pg:query(Sql, [Uid]).
+    elib_pg:query(Sql, [Uid | Params]).
+
+%% W07.a：q 子句构造。空 q → {<<>>, []}（SQL 逐字节同旧路径）；非空 →
+%% {" AND c.name ILIKE $N", [pattern]}（trim + 64 截断 + escape_like）。
+-spec name_q_clause(binary(), pos_integer()) -> {binary(), [binary()]}.
+name_q_clause(Q, _N) when is_binary(Q), Q =:= <<>> ->
+    {<<>>, []};
+name_q_clause(Q, N) when is_binary(Q) ->
+    Q2 = elib_str:trunc(string:trim(Q), 64),
+    case Q2 of
+        <<>> ->
+            {<<>>, []};
+        _ ->
+            Pattern = <<"%", (elib_pg:escape_like(Q2))/binary, "%">>,
+            NBin = elib_cnv:safe_to_binary(N),
+            {<<" AND c.name ILIKE $", NBin/binary>>, [Pattern]}
+    end.
 
 %% @doc 工作区频道列表（双体验 v2.5.2 T5：scope 严格分区）
 %% 命中部分索引 i_channel_scope_ws（00000077）；personal 列表接口不受影响。
