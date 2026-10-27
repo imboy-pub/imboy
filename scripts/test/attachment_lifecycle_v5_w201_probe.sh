@@ -71,15 +71,22 @@ CID3='0f0e0d0c-1111-2222-3333-444455556668'
 CID4='0f0e0d0c-1111-2222-3333-444455556670'
 KEY="v5w201/$CID/a.png"
 KEY2="v5w201/$CID2/b.pdf"
+KEY_D="v5w201/$CID/d-expired.png"
+CID_D='0f0e0d0c-1111-2222-3333-444455556671'
 HASH64="$(printf 'a%.0s' {1..64})"
+LOC64="$(printf 'b%.0s' {1..64})"
 CONTENT="{\"version\":1,\"sha256\":\"$HASH64\",\"size_bytes\":\"10\",\"mime\":\"image/png\"}"
 
 # register an ordinary V5 session; $1 key $2 cid $3 registration json
+# $4 optional locator digest (default LOC64).  The frozen location is part of
+# the registration contract: pin/confirm and the content gate refuse sessions
+# without a complete storage identity.
 reg_pending() {
-  PSQL -tAq -v KEY="$1" -v CID="$2" -v REG="$3" <<'SQL' | tail -1
+  PSQL -tAq -v KEY="$1" -v CID="$2" -v REG="$3" -v LOC="${4:-$LOC64}" <<'SQL' | tail -1
 SELECT out_session_state FROM fn_v5_register_pending(
   :'KEY', 'b1', 'private', 101, :'CID'::uuid, :'REG'::jsonb,
-  now() + interval '2 hours', now() + interval '1 hour', NULL, NULL, NULL, NULL);
+  now() + interval '2 hours', now() + interval '1 hour',
+  'garage', 'v5ns', 'v5c', :'LOC');
 SQL
 }
 
@@ -98,24 +105,31 @@ probe failclosed_insert_error ordinary insert_error AC01 fail \
 # duplicate UUID with a DIFFERENT snapshot -> exception (idempotency contract)
 reg_pending "$KEY" "$CID" "$REG" >/dev/null
 probe failclosed_snapshot_conflict ordinary insert_exception AC01 fail \
-  "SELECT fn_v5_register_pending('$KEY','b1','private',101,'$CID'::uuid,'{\"subject\":{\"kind\":\"user\",\"principal\":\"101\"},\"declaration\":{\"filename\":\"OTHER\",\"mime\":\"image/png\"}}'::jsonb, now() + interval '2 hours', now() + interval '1 hour', NULL,NULL,NULL,NULL)"
+  "SELECT fn_v5_register_pending('$KEY','b1','private',101,'$CID'::uuid,'{\"subject\":{\"kind\":\"user\",\"principal\":\"101\"},\"declaration\":{\"filename\":\"OTHER\",\"mime\":\"image/png\"}}'::jsonb, now() + interval '2 hours', now() + interval '1 hour', 'garage','v5ns','v5c','$LOC64')"
 # same UUID same snapshot replay -> same registered session (commit-unknown reconciliation)
 probe commit_unknown_reconcile_same_id ordinary commit_unknown_no_capability AC01 "registered|$CID" \
-  "SELECT out_session_state||'|'||out_client_upload_id FROM fn_v5_register_pending('$KEY','b1','private',101,'$CID'::uuid,'$REG'::jsonb, now() + interval '2 hours', now() + interval '1 hour', NULL,NULL,NULL,NULL)"
+  "SELECT out_session_state||'|'||out_client_upload_id FROM fn_v5_register_pending('$KEY','b1','private',101,'$CID'::uuid,'$REG'::jsonb, now() + interval '2 hours', now() + interval '1 hour', 'garage','v5ns','v5c','$LOC64')"
 # response lost / restart before put: status lookup recovers registered + resumable
 probe recovery_presign_response_lost ordinary presign_response_lost AC01 "registered|true" \
   "SELECT session_state||'|'||(session_deadline IS NOT NULL) FROM attach_pending WHERE object_key='$KEY'"
 # expired capability same key renew: monotonic committed expiry (repo renew SQL)
 probe renew_monotonic ordinary expired_capability_same_key_renew AC01 "t" \
   "UPDATE attach_pending SET upload_expires_at = GREATEST(COALESCE(upload_expires_at, to_timestamp(extract(epoch from now() + interval '30 minutes'))), to_timestamp(extract(epoch from now() + interval '30 minutes'))) WHERE object_key='$KEY' AND creator_user_id=101 AND session_state='registered' AND session_deadline > now() RETURNING upload_expires_at > now()"
-# absolute deadline passed -> renew 0 rows (reupload required)
-probe recovery_deadline_pre ordinary absolute_deadline_reupload_required AC01 "t" \
-  "UPDATE attach_pending SET session_deadline = now() - interval '5 minutes', upload_expires_at = now() - interval '10 minutes' WHERE object_key='$KEY' RETURNING session_deadline < now()"
-# renew races intent: intent wins -> renew gets 0 rows
-# intent's committed terminal effect (delete_intent) closes the renew window;
-# the live GC-vs-renew race itself is W2-03's dual-connection barrier case.
-probe recovery_renew_races_intent ordinary renew_races_intent AC01 "1|0" \
-  "WITH i AS (UPDATE attach_pending SET session_state='delete_intent' WHERE object_key='$KEY' RETURNING 1), r AS (UPDATE attach_pending SET upload_expires_at = now() + interval '10 minutes' WHERE object_key='$KEY' AND creator_user_id=101 AND session_state='registered' AND session_deadline > now() RETURNING 1) SELECT (SELECT count(*) FROM i) || '|' || (SELECT count(*) FROM r)"
+# absolute deadline passed -> renew 0 rows (reupload required).  The deadline
+# is frozen at registration (M3 guard rejects deadline updates), so the probe
+# registers a dedicated already-expired session instead of mutating one.
+PSQL -q -v KEYD="$KEY_D" -v CIDD="$CID_D" -v REG="$REG" <<'SQL' > /dev/null 2>&1
+SELECT fn_v5_register_pending(:'KEYD', 'b1', 'private', 101, :'CIDD'::uuid, :'REG'::jsonb,
+  now() - interval '5 minutes', now() - interval '10 minutes', NULL, NULL, NULL, NULL);
+SQL
+probe recovery_deadline_pre ordinary absolute_deadline_reupload_required AC01 "0" \
+  "WITH r AS (UPDATE attach_pending SET upload_expires_at = now() + interval '10 minutes' WHERE object_key='$KEY_D' AND creator_user_id=101 AND session_state='registered' AND session_deadline > now() RETURNING 1) SELECT count(*) FROM r"
+# renew races intent: intent wins -> renew gets 0 rows.  The intent's committed
+# terminal effect closes the renew window; the M3 session guard only allows
+# registered->{confirmed,rejected,expired} and {rejected,expired}->delete_intent,
+# so the race is expressed as that legal two-step transition.
+probe recovery_renew_races_intent ordinary renew_races_intent AC01 "1|1|0" \
+  "WITH i AS (UPDATE attach_pending SET session_state='expired' WHERE object_key='$KEY' AND session_state='registered' RETURNING 1), i2 AS (UPDATE attach_pending SET session_state='delete_intent' WHERE object_key='$KEY' AND session_state='expired' RETURNING 1), r AS (UPDATE attach_pending SET upload_expires_at = now() + interval '10 minutes' WHERE object_key='$KEY' AND creator_user_id=101 AND session_state='registered' AND session_deadline > now() RETURNING 1) SELECT (SELECT count(*) FROM i) || '|' || (SELECT count(*) FROM i2) || '|' || (SELECT count(*) FROM r)"
 # cross-principal lookup leaks nothing (authorization revoked -> not found)
 probe recovery_authorization_revoked ordinary authorization_revoked AC01 "0" \
   "SELECT count(*) FROM attach_pending WHERE object_key='$KEY' AND creator_user_id=999999"
@@ -148,10 +162,10 @@ probe internal_restart_before_put internal restart_before_put AC01 "registered" 
   "SELECT session_state FROM attach_pending WHERE client_upload_id='$CID2'::uuid"
 probe internal_renew_same_key internal expired_capability_same_key_renew AC01 "t" \
   "UPDATE attach_pending SET upload_expires_at = GREATEST(COALESCE(upload_expires_at, to_timestamp(extract(epoch from now() + interval '30 minutes'))), to_timestamp(extract(epoch from now() + interval '30 minutes'))) WHERE object_key='$KEY2' AND session_state='registered' AND session_deadline > now() RETURNING upload_expires_at > now()"
-probe internal_deadline_pre internal absolute_deadline_reupload_required AC01 "t" \
-  "UPDATE attach_pending SET session_deadline = now() - interval '5 minutes', upload_expires_at = now() - interval '10 minutes' WHERE object_key='$KEY2' RETURNING session_deadline < now()"
-probe internal_renew_races_intent internal renew_races_intent AC01 "1|0" \
-  "WITH i AS (UPDATE attach_pending SET session_state='delete_intent' WHERE object_key='$KEY2' RETURNING 1), r AS (UPDATE attach_pending SET upload_expires_at = now() + interval '10 minutes' WHERE object_key='$KEY2' AND session_state='registered' AND session_deadline > now() RETURNING 1) SELECT (SELECT count(*) FROM i) || '|' || (SELECT count(*) FROM r)"
+probe internal_deadline_pre internal absolute_deadline_reupload_required AC01 "0" \
+  "WITH r AS (UPDATE attach_pending SET upload_expires_at = now() + interval '10 minutes' WHERE object_key='$KEY_D' AND creator_user_id=101 AND session_state='registered' AND session_deadline > now() RETURNING 1) SELECT count(*) FROM r"
+probe internal_renew_races_intent internal renew_races_intent AC01 "1|1|0" \
+  "WITH i AS (UPDATE attach_pending SET session_state='expired' WHERE object_key='$KEY2' AND session_state='registered' RETURNING 1), i2 AS (UPDATE attach_pending SET session_state='delete_intent' WHERE object_key='$KEY2' AND session_state='expired' RETURNING 1), r AS (UPDATE attach_pending SET upload_expires_at = now() + interval '10 minutes' WHERE object_key='$KEY2' AND session_state='registered' AND session_deadline > now() RETURNING 1) SELECT (SELECT count(*) FROM i) || '|' || (SELECT count(*) FROM i2) || '|' || (SELECT count(*) FROM r)"
 probe internal_confirmed_no_capability internal confirmed_no_new_capability AC01 "registered" \
   "UPDATE attach_pending SET session_state='registered' WHERE object_key='$KEY2' RETURNING session_state"
 probe internal_request_id_conflict internal request_id_payload_conflict AC01 "1" \
