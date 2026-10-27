@@ -229,30 +229,9 @@ write_msg_with_sender(
         {error, Reason} -> {error, Reason}
     end.
 
-%% @private R03/D04：接受时间列的 SQL 片段（BaseN = 既有参数个数）。accepted_at
-%% 列插在 conv_seq 之前，参数顺序为 [...既有参数, AcceptedAt]，conv_seq（由
-%% execute_formal 追加的服务端序号）恒为最后一个参数，占位符编号随
-%% accepted_at 是否存在而偏移。空值（null/undefined/空串）省略列，保持旧行为。
--spec accepted_at_sql_fragments(binary() | null, pos_integer()) ->
-    {AcceptedCol :: binary(), AcceptedPlaceholder :: binary(), SeqPlaceholder :: binary()}.
-accepted_at_sql_fragments(AcceptedAt, BaseN) when is_binary(AcceptedAt), AcceptedAt =/= <<>> ->
-    {
-        <<", accepted_at">>,
-        iolist_to_binary([", $", integer_to_binary(BaseN + 1)]),
-        iolist_to_binary(["$", integer_to_binary(BaseN + 2)])
-    };
-accepted_at_sql_fragments(_, BaseN) ->
-    {<<>>, <<>>, iolist_to_binary(["$", integer_to_binary(BaseN + 1)])}.
-
--spec accepted_at_params(binary() | null) -> [term()].
-accepted_at_params(AcceptedAt) when is_binary(AcceptedAt), AcceptedAt =/= <<>> ->
-    [AcceptedAt];
-accepted_at_params(_) ->
-    [].
-
 %% @private R05-A：可选时间戳列（accepted_at/expire_at 等）的通用 SQL 片段。
 %% 依次拼接非空列（", col"），占位符随列数递增；SeqPh 恒为最后一个参数的
-%% 占位符（与 accepted_at_sql_fragments 同一编号规则）。空值省略列。
+%% 参数占位符随可选列递增；空值省略列。
 -spec optional_ts_sql_fragments(
     [{binary(), binary() | null}], pos_integer()
 ) ->

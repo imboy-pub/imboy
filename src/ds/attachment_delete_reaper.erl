@@ -72,7 +72,7 @@ schedule(State) ->
     cancel(State),
     State#{timer => erlang:send_after(?INTERVAL, self(), reap)}.
 cancel(#{timer := Ref}) ->
-    erlang:cancel_timer(Ref),
+    _ = erlang:cancel_timer(Ref),
     ok;
 cancel(_) ->
     ok.

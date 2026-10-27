@@ -447,7 +447,7 @@ stage_with_sequence(
     binary(),
     binary(),
     binary() | null,
-    binary() | null
+    binary() | null | undefined
 ) ->
     {ok, new, pos_integer()} | {ok, duplicate, pos_integer()} | {error, term()}.
 stage_with_sequence(
@@ -496,7 +496,7 @@ stage_with_sequence(
     binary(),
     binary(),
     binary() | null,
-    binary() | null,
+    binary() | null | undefined,
     binary() | null
 ) ->
     {ok, new, pos_integer()} | {ok, duplicate, pos_integer()} | {error, term()}.

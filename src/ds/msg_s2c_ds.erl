@@ -87,6 +87,8 @@ send(FromId, [ToUid | Tail], Action, MsgType, E2EE, Payload, Save) ->
     end.
 
 %% Called inside the reminder transaction; no externally visible delivery before commit.
+-spec stage_schedule_remind_tx(epgsql:connection() | pid(), pos_integer(), map()) ->
+    ok | {error, term()}.
 stage_schedule_remind_tx(Conn, ToUid, Payload) ->
     MsgId = elib_id:gen("s2c"),
     CreatedAt = elib_dt:now(),

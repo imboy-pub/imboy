@@ -217,7 +217,7 @@ write_accepted_msg(
     binary() | null,
     pos_integer(),
     binary() | null,
-    binary() | null
+    binary() | null | undefined
 ) -> ok | {error, term()}.
 write_accepted_msg(
     CreatedAtRaw,
@@ -689,7 +689,7 @@ write_msg_with_reply(
     integer(),
     binary(),
     pos_integer() | null,
-    binary() | null,
+    binary() | null | undefined,
     binary() | null
 ) -> ok | {error, term()}.
 write_msg_with_reply(

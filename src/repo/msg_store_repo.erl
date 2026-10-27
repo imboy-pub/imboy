@@ -322,7 +322,7 @@ stage_with_sequence(
     binary(),
     binary(),
     %% RFC3339 binary：首次接受时刻（服务端时钟，UTC）
-    binary() | null,
+    binary() | null | undefined,
     %% RFC3339 binary | null：自毁绝对期限（R05-A）；null=不自毁
     binary() | null
 ) ->
@@ -371,7 +371,7 @@ stage_with_sequence(
     binary(),
     binary(),
     binary() | null,
-    binary() | null,
+    binary() | null | undefined,
     binary() | null
 ) -> map().
 single_staging_row(
@@ -592,55 +592,6 @@ valid_c2g_msg_id(MsgId) when is_binary(MsgId) ->
     byte_size(MsgId) >= 1 andalso byte_size(MsgId) =< 40;
 valid_c2g_msg_id(_) ->
     false.
-
--spec stage_c2g(
-    binary(),
-    binary(),
-    binary(),
-    binary(),
-    %% null|<<>>|map|binary 均合法（msg_store_e2ee_to_jsonb/1 消费）
-    map() | binary() | null,
-    binary(),
-    integer(),
-    integer(),
-    binary(),
-    binary(),
-    binary(),
-    1 | 3,
-    undefined | binary()
-) -> {ok, term(), pos_integer(), [integer()]} | {error, term()}.
-stage_c2g(
-    Type,
-    MsgId,
-    MsgType,
-    Action,
-    E2EE,
-    Payload,
-    FromId,
-    ToId,
-    CreatedAt,
-    ServerTs,
-    SenderDid,
-    RequiredRole,
-    OriginalMsgId
-) ->
-    %% R05-A 兼容旧入口（/13）：无自毁期限。
-    stage_c2g(
-        Type,
-        MsgId,
-        MsgType,
-        Action,
-        E2EE,
-        Payload,
-        FromId,
-        ToId,
-        CreatedAt,
-        ServerTs,
-        SenderDid,
-        RequiredRole,
-        OriginalMsgId,
-        null
-    ).
 
 %% @doc R05-A（IMBOY-TIMEZONE-REPAIR-V1）：带自毁绝对期限的 C2G 持久接受。
 %% ExpireAt 与 accepted_at 同事务落 staging 行（NULL=不自毁）；重复 msg_id
