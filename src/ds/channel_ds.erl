@@ -291,63 +291,109 @@ publish_message(ChannelId, AuthorId, Content, MsgType, Payload, RequestId) ->
         end,
 
     Now = elib_dt:now(),
-    Data = #{
-        channel_id => ChannelId,
-        author_id => AuthorId,
-        author_name => AuthorName,
-        author_avatar => AuthorAvatar,
-        content => Content,
-        msg_type => MsgType,
-        payload => PayloadJson,
-        created_at => Now
-    },
 
     %% T7 归档写守卫（R3 #6/#7）：发帖主链路事务化——守卫（channel→workspace
     %% 行锁）+ 消息插入 + 未读计数同一事务提交，消除"检查-写窗口"；
     %% 免 JWT 的 webhook incoming（#7）复用本函数，行级条件按
     %% channel.scope + workspace.status 判定（无用户上下文）；
     %% personal 频道由 resolver 直通，零行为变化。
+    %%
+    %% W08（§6.8 C4/D3）：发布单调序列同事务分配——发帖与序列分配、
+    %% 计数/水位变更必须同事务。插入成功才消耗序号（幂等重放 duplicate
+    %% 不写新行，可能留下序号空洞；序列只承诺单调不承诺连续）。
+    %% 作者自己的新发布不计其未查看（沿既有通知口径）：同事务将其
+    %% 激活订阅的 view_seq 推进到新序号（GREATEST，不倒退）。
     Result =
         elib_pg:with_tx(fun(Conn) ->
             ok = workspace_guard:abort_on_error(
                 workspace_guard:ensure_writable_tx(Conn, {channel, ChannelId})
             ),
-            case RequestId of
-                <<>> ->
-                    case channel_message_repo:add(Conn, Data) of
-                        {ok, NewMessageId} -> {ok, NewMessageId, inserted};
-                        {error, Reason} -> {error, normalize_error(Reason)}
-                    end;
-                _ ->
-                    case channel_message_repo:add_with_request_id(Conn, Data, RequestId) of
-                        {ok, NewMessageId, NewStatus} -> {ok, NewMessageId, NewStatus};
-                        {error, Reason} -> {error, normalize_error(Reason)}
-                    end
+            case allocate_update_seq_tx(Conn, ChannelId) of
+                {ok, UpdateSeq} ->
+                    Data = #{
+                        channel_id => ChannelId,
+                        author_id => AuthorId,
+                        author_name => AuthorName,
+                        author_avatar => AuthorAvatar,
+                        content => Content,
+                        msg_type => MsgType,
+                        payload => PayloadJson,
+                        update_seq => UpdateSeq,
+                        created_at => Now
+                    },
+                    insert_publish_tx(Conn, RequestId, Data, UpdateSeq, AuthorId);
+                {error, Reason} ->
+                    {error, normalize_error(Reason)}
             end
         end),
-    case Result of
-        {ok, MessageId, Status} ->
-            % 增加所有订阅者的未读计数（与插入同事务完成后执行）
-            case Status of
-                inserted -> increment_all_unread(ChannelId, AuthorId);
-                duplicate -> ok
-            end,
-            {ok, MessageId, Status};
-        Error ->
-            Error
+    Result.
+
+%% 事务内插入（legacy 与 request_id 幂等两分支），inserted 时同事务完成
+%% 订阅者未读累加与作者查看边界推进。
+insert_publish_tx(Conn, <<>>, Data, UpdateSeq, AuthorId) ->
+    ChannelId = maps:get(channel_id, Data),
+    case channel_message_repo:add(Conn, Data) of
+        {ok, NewMessageId} ->
+            ok = increment_all_unread_tx(Conn, ChannelId, AuthorId),
+            ok = advance_author_view_tx(Conn, ChannelId, AuthorId, UpdateSeq),
+            {ok, NewMessageId, inserted};
+        {error, Reason} ->
+            {error, normalize_error(Reason)}
+    end;
+insert_publish_tx(Conn, RequestId, Data, UpdateSeq, AuthorId) ->
+    ChannelId = maps:get(channel_id, Data),
+    case channel_message_repo:add_with_request_id(Conn, Data, RequestId) of
+        {ok, NewMessageId, inserted} ->
+            ok = increment_all_unread_tx(Conn, ChannelId, AuthorId),
+            ok = advance_author_view_tx(Conn, ChannelId, AuthorId, UpdateSeq),
+            {ok, NewMessageId, inserted};
+        {ok, NewMessageId, duplicate} ->
+            {ok, NewMessageId, duplicate};
+        {error, Reason} ->
+            {error, normalize_error(Reason)}
     end.
 
-%% @doc 增加所有订阅者的未读计数
--spec increment_all_unread(integer(), integer()) -> ok.
-increment_all_unread(ChannelId, AuthorId) ->
-    % 使用批量更新SQL提高性能
+%% W08：发布事务内取每频道下一个发布序号（channel 行锁串行化并发发帖）。
+-spec allocate_update_seq_tx(any(), integer()) -> {ok, integer()} | {error, any()}.
+allocate_update_seq_tx(Conn, ChannelId) ->
+    Sql =
+        <<
+            "UPDATE channel SET publish_seq = publish_seq + 1 "
+            "WHERE id = $1 RETURNING publish_seq"
+        >>,
+    case elib_pg:query(Conn, Sql, [ChannelId]) of
+        {ok, [#{<<"publish_seq">> := Seq}]} when is_integer(Seq) -> {ok, Seq};
+        {ok, [#{<<"publish_seq">> := Seq}]} -> {ok, elib_cnv:safe_to_integer(Seq)};
+        {ok, []} -> {error, channel_not_found};
+        {error, _} = Err -> Err
+    end.
+
+%% W08：作者自己的新发布不计其未查看——同事务推进其激活订阅 view_seq。
+-spec advance_author_view_tx(any(), integer(), integer(), integer()) -> ok.
+advance_author_view_tx(Conn, ChannelId, AuthorId, UpdateSeq) ->
+    Tb = channel_subscription_repo:tablename(),
+    Sql =
+        <<"UPDATE ", Tb/binary,
+            " SET view_seq = GREATEST(view_seq, $1) "
+            "WHERE channel_id = $2 AND user_id = $3 AND status = 1">>,
+    case elib_pg:execute(Conn, Sql, [UpdateSeq, ChannelId, AuthorId]) of
+        {ok, _} -> ok;
+        {error, Reason} -> throw({abort_tx, {author_view_advance_failed, Reason}})
+    end.
+
+%% W08：与发布同事务的订阅者未读累加（计划 §6.8：计数/水位变更必须
+%% 与发帖同事务，消除事务外累加窗口）。
+-spec increment_all_unread_tx(any(), integer(), integer()) -> ok.
+increment_all_unread_tx(Conn, ChannelId, AuthorId) ->
     Tb = channel_subscription_repo:tablename(),
     Sql =
         <<"UPDATE ", Tb/binary,
             " SET unread_count = unread_count + 1 "
             "WHERE channel_id = $1 AND status = 1 AND user_id <> $2">>,
-    _ = elib_pg:execute(Sql, [ChannelId, AuthorId]),
-    ok.
+    case elib_pg:execute(Conn, Sql, [ChannelId, AuthorId]) of
+        {ok, _} -> ok;
+        {error, Reason} -> throw({abort_tx, {unread_increment_failed, Reason}})
+    end.
 
 %% ===================================================================
 %% Internal Function Definitions

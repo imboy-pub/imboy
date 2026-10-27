@@ -93,6 +93,7 @@ handle_action(unread_summary, Req, State) -> unread_summary(Req, State);
 handle_action(publish_message, Req, State) -> publish_message(Req, State);
 handle_action(messages, Req, State) -> messages(Req, State);
 handle_action(mark_read, Req, State) -> mark_read(Req, State);
+handle_action(mark_viewed, Req, State) -> mark_viewed(Req, State);
 handle_action(search, Req, State) -> search(Req, State);
 handle_action(discover, Req, State) -> discover(Req, State);
 handle_action(add_admin, Req, State) -> add_admin(Req, State);
@@ -654,6 +655,30 @@ mark_read(Req0, State) ->
                 {error, {Code, Msg}} when is_integer(Code) ->
                     %% T7 归档写守卫稳定错误码（980）透传 envelope code
                     elib_response:error(Req0, Msg, Code);
+                {error, Msg} ->
+                    elib_response:error(Req0, Msg)
+            end
+    end.
+
+%% @doc W08（§6.8 C4/D3）：显式标记已查看到此更新边界——单一更新边界
+%% 语义，非逐帖回执；服务端 GREATEST 推进并夹到发布上界。
+-spec mark_viewed(cowboy_req:req(), map()) -> cowboy_req:req().
+mark_viewed(Req0, State) ->
+    Uid = maps:get(current_uid, State),
+    PostVals = elib_param:post(Req0),
+    ChannelId = resolve_channel_id(Req0, PostVals),
+    Boundary = maps:get(<<"boundary">>, PostVals, <<>>),
+
+    case ChannelId of
+        <<>> ->
+            elib_response:error(Req0, <<"频道ID不能为空"/utf8>>);
+        _ ->
+            case channel_logic:mark_viewed(Uid, ChannelId, Boundary) of
+                {ok, Payload} ->
+                    elib_response:success(Req0, Payload);
+                skipped ->
+                    %% 归档频道：读取/展示不受影响，推进跳过（零副作用成功）
+                    elib_response:success(Req0, #{});
                 {error, Msg} ->
                     elib_response:error(Req0, Msg)
             end

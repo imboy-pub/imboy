@@ -18,6 +18,7 @@
 -export([publish_message/6]).
 -export([get_messages/4, get_messages_page/4, get_message/3]).
 -export([mark_as_read/3]).
+-export([mark_viewed/3]).
 -export([search_channels/2]).
 -export([get_discover_channels/1]).
 -export([add_admin/4]).
@@ -1016,6 +1017,9 @@ message_page(Uid, _, Rows, _) ->
 
 -spec mark_as_read(integer(), binary(), binary()) -> ok | {error, binary()}.
 mark_as_read(Uid, ChannelIdBin, _MessageIdBin) ->
+    %% W08（§6.8）：本端点保持旧语义——清零聚合 unread_count；
+    %% **不推进**新版权里 view_seq（旧 clear_unread 不构成精确查看水位，
+    %% 精确边界走 mark_viewed/3）。
     ChannelId = channel_logic_common:resolve_channel_id(ChannelIdBin),
     case ChannelId of
         0 ->
@@ -1041,6 +1045,58 @@ mark_as_read(Uid, ChannelIdBin, _MessageIdBin) ->
                     {error, Reason}
             end
     end.
+
+%% @doc W08（§6.8 C4/D3）：显式"标已查看至此更新"。
+%% boundary 为客户端本次成功内容响应持有的更新边界（§6.8：不从后来未
+%% 展示的新推送取最大值）；服务端 GREATEST 推进（晚到旧边界不倒退）并
+%% 夹到当前发布上界。返回新水位与未查看更新数（当前可读、未撤销且
+%% update_seq > V 的发布项；作者自己的新发布已在发布事务内推进其 V）。
+-spec mark_viewed(integer(), binary(), binary()) ->
+    {ok, map()} | skipped | {error, binary()}.
+mark_viewed(Uid, ChannelIdBin, BoundaryBin) ->
+    ChannelId = channel_logic_common:resolve_channel_id(ChannelIdBin),
+    case ChannelId of
+        0 ->
+            {error, <<"频道不存在"/utf8>>};
+        _ ->
+            case viewed_boundary(BoundaryBin) of
+                {ok, Boundary} ->
+                    case channel_logic_common:ensure_channel_content_access(Uid, ChannelId) of
+                        ok ->
+                            mark_viewed_after_access(Uid, ChannelId, Boundary);
+                        {error, Reason} ->
+                            {error, Reason}
+                    end;
+                {error, Msg} ->
+                    {error, Msg}
+            end
+    end.
+
+mark_viewed_after_access(Uid, ChannelId, Boundary) ->
+    case channel_subscription_repo:advance_view(ChannelId, Uid, Boundary) of
+        {ok, ViewSeq} ->
+            case channel_subscription_repo:count_unseen(ChannelId, ViewSeq) of
+                {ok, Unseen} ->
+                    {ok, #{view_seq => ViewSeq, unseen_count => Unseen}};
+                {error, Reason} ->
+                    {error, elib_cnv:safe_to_binary(Reason)}
+            end;
+        skipped ->
+            skipped;
+        {error, not_subscribed} ->
+            {error, <<"未订阅该频道"/utf8>>};
+        {error, Reason} ->
+            {error, elib_cnv:safe_to_binary(Reason)}
+    end.
+
+-spec viewed_boundary(binary()) -> {ok, non_neg_integer()} | {error, binary()}.
+viewed_boundary(Bin) when is_binary(Bin) ->
+    case catch binary_to_integer(Bin) of
+        N when is_integer(N), N >= 0 -> {ok, N};
+        _ -> {error, <<"查看边界无效"/utf8>>}
+    end;
+viewed_boundary(_) ->
+    {error, <<"查看边界无效"/utf8>>}.
 
 -spec search_channels(binary(), integer()) -> {ok, list(map())} | {error, binary()}.
 search_channels(Keyword, Limit) ->

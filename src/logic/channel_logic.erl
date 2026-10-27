@@ -108,6 +108,7 @@
 -export([publish_message/6]).
 -export([get_messages/4, get_messages_page/4]).
 -export([mark_as_read/3]).
+-export([mark_viewed/3]).
 -export([pin_message/3]).
 -export([delete_message/2]).
 -export([revoke_message/3]).
@@ -238,6 +239,9 @@ get_messages_page(Uid, ChannelIdBin, Cursor, Limit) ->
 
 mark_as_read(Uid, ChannelIdBin, MessageIdBin) ->
     channel_logic_message:mark_as_read(Uid, ChannelIdBin, MessageIdBin).
+
+mark_viewed(Uid, ChannelIdBin, BoundaryBin) ->
+    channel_logic_message:mark_viewed(Uid, ChannelIdBin, BoundaryBin).
 
 pin_message(Uid, MessageIdBin, IsPinned) ->
     channel_logic_message:pin_message(Uid, MessageIdBin, IsPinned).
