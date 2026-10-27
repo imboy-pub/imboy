@@ -1242,7 +1242,18 @@ list_workspace_groups(WorkspaceId, Limit) ->
 -spec list_workspace_groups(integer(), integer(), binary()) ->
     {ok, [map()]} | {error, binary()}.
 list_workspace_groups(WorkspaceId, Limit, Q) ->
-    case workspace_ds:groups(WorkspaceId, Limit, Q) of
+    list_workspace_groups(WorkspaceId, Limit, Q, 0).
+
+%% W07.b（C2 工作区目录 cursor 协议）：BeforeId>0 为 keyset 上界。
+-spec list_workspace_groups_before(integer(), integer(), integer(), binary()) ->
+    {ok, [map()]} | {error, binary()}.
+list_workspace_groups_before(WorkspaceId, BeforeId, Limit, Q) ->
+    list_workspace_groups(WorkspaceId, Limit, Q, BeforeId).
+
+-spec list_workspace_groups(integer(), integer(), binary(), integer()) ->
+    {ok, [map()]} | {error, binary()}.
+list_workspace_groups(WorkspaceId, Limit, Q, BeforeId) ->
+    case workspace_ds:groups(WorkspaceId, Limit, Q, BeforeId) of
         {ok, Rows} ->
             {ok, [group_transfer(R) || R <- Rows]};
         {error, Reason} ->

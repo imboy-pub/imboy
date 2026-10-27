@@ -289,12 +289,25 @@ group_list(Req0, State) ->
                 {ok, _Role} ->
                     {ok, Limit} = elib_param:int(limit, Req0, 100),
                     {ok, MemberOnly} = elib_param:int(member_only, Req0, 0),
-                    {ok, Cursor} = elib_param:int(cursor, Req0, 0),
                     {ok, Preview} = elib_param:int(preview, Req0, 0),
                     {ok, Q} = elib_param:binary(q, Req0, <<>>),
-                    workspace_group_response(
-                        Req0, WsId, Uid, MemberOnly, Cursor, max(1, min(Limit, 200)), Preview, Q
-                    )
+                    Limit2 = max(1, min(Limit, 200)),
+                    %% W07.b（C2 工作区目录 cursor 协议）：显式
+                    %% pagination=cursor 时 cursor 参数承载签名游标
+                    %% （J27.a：不带该参数 → 数值 cursor 旧语义零变化）。
+                    QsAll = cowboy_req:parse_qs(Req0),
+                    case proplists:get_value(<<"pagination">>, QsAll, <<>>) of
+                        <<"cursor">> ->
+                            SignedCursor = elib_param:binary(cursor, Req0, <<>>),
+                            workspace_group_signed_response(
+                                Req0, WsId, Uid, MemberOnly, SignedCursor, Limit2, Preview, Q
+                            );
+                        _ ->
+                            {ok, Cursor} = elib_param:int(cursor, Req0, 0),
+                            workspace_group_response(
+                                Req0, WsId, Uid, MemberOnly, Cursor, Limit2, Preview, Q
+                            )
+                    end
             end
     end.
 
@@ -312,6 +325,117 @@ workspace_group_response(Req, WsId, _Uid, 0, _Cursor, Limit, 0, Q) ->
     end;
 workspace_group_response(Req, _WsId, _Uid, _MemberOnly, _Cursor, _Limit, _Preview, _Q) ->
     elib_response:error(Req, <<"member_only 和 preview 必须为 0 或 1，preview 仅用于本人模式"/utf8>>, 400).
+
+%% W07.b（C2 工作区目录 cursor 协议）：签名游标响应。
+%% member_only=1 → ws_group_member（上界=末行 g.id，前进=g.id>upper）；
+%% member_only=0 → ws_group_directory（DESC 全量目录，上界=末行 id）。
+-spec workspace_group_signed_response(
+    cowboy_req:req(),
+    integer(),
+    integer(),
+    integer(),
+    binary(),
+    pos_integer(),
+    integer(),
+    binary()
+) -> cowboy_req:req().
+workspace_group_signed_response(Req, WsId, Uid, MemberOnly, SignedCursor, Limit, Preview, Q) ->
+    Kind =
+        case MemberOnly of
+            1 -> <<"ws_group_member">>;
+            _ -> <<"ws_group_directory">>
+        end,
+    Ctx = #{scope => <<"workspace">>, workspace_id => WsId, q => Q},
+    case resolve_ws_cursor(SignedCursor, Uid, Kind, Ctx) of
+        {ok, Upper} ->
+            respond_ws_group_signed(
+                Req, WsId, Uid, MemberOnly, Upper, Limit, Preview, Q, Kind, Ctx
+            );
+        {error, Status, Msg} ->
+            elib_response:error(Req, Msg, Status)
+    end.
+
+-spec resolve_ws_cursor(binary(), integer(), binary(), map()) ->
+    {ok, integer()} | {error, integer(), binary()}.
+resolve_ws_cursor(<<>>, _Uid, _Kind, _Ctx) ->
+    %% 首页：member 前进域用 0（id>0 全域）；目录 DESC 域用最大 int。
+    {ok, 0};
+resolve_ws_cursor(CursorBin, Uid, Kind, Ctx) ->
+    case list_cursor:resolve(CursorBin, Uid, Kind, Ctx) of
+        {ok, Upper} ->
+            {ok, Upper};
+        {error, expired} ->
+            {error, 400, <<"invalid_request：游标已过期"/utf8>>};
+        {error, key_unavailable} ->
+            {error, 503, <<"security_gate_closed"/utf8>>};
+        {error, _} ->
+            {error, 400, <<"invalid_request：游标无效"/utf8>>}
+    end.
+
+-spec respond_ws_group_signed(
+    cowboy_req:req(),
+    integer(),
+    integer(),
+    integer(),
+    integer(),
+    pos_integer(),
+    integer(),
+    binary(),
+    binary(),
+    map()
+) -> cowboy_req:req().
+respond_ws_group_signed(Req, WsId, Uid, 1, Upper, Limit, Preview, Q, Kind, Ctx) ->
+    case group_logic:list_member_workspace_groups(WsId, Uid, Upper, Limit, Preview =:= 1, Q) of
+        {ok, #{has_more := HasMore, next_cursor := NextId}} = Page ->
+            case ws_next_cursor(HasMore, Uid, Kind, Ctx, NextId) of
+                {ok, Token} ->
+                    elib_response:success(Req, Page#{workspace_id => WsId, next_cursor => Token});
+                {error, Status, Msg} ->
+                    elib_response:error(Req, Msg, Status)
+            end;
+        {error, Message} ->
+            elib_response:error(Req, Message)
+    end;
+respond_ws_group_signed(Req, WsId, Uid, 0, Upper, Limit, _Preview, Q, Kind, Ctx) ->
+    %% 目录 DESC：upper=0 表示首页（全域），非 0 为末行 id（id < upper）。
+    BeforeId =
+        case Upper of
+            0 -> 16#7FFFFFFFFFFFFFFF;
+            N when is_integer(N), N > 0 -> N
+        end,
+    case group_logic:list_workspace_groups_before(WsId, BeforeId, Limit, Q) of
+        {ok, Groups} ->
+            HasMore = length(Groups) >= Limit,
+            NextId =
+                case {HasMore, lists:reverse(Groups)} of
+                    {true, [Last | _]} -> maps:get(<<"id">>, Last);
+                    _ -> 0
+                end,
+            case ws_next_cursor(HasMore, Uid, Kind, Ctx, NextId) of
+                {ok, Token} ->
+                    elib_response:success(Req, #{
+                        workspace_id => WsId,
+                        list => Groups,
+                        has_more => HasMore,
+                        next_cursor => Token
+                    });
+                {error, Status, Msg} ->
+                    elib_response:error(Req, Msg, Status)
+            end;
+        {error, Message} ->
+            elib_response:error(Req, Message)
+    end.
+
+-spec ws_next_cursor(boolean(), integer(), binary(), map(), integer()) ->
+    {ok, binary()} | {error, integer(), binary()}.
+ws_next_cursor(false, _Uid, _Kind, _Ctx, _Upper) ->
+    {ok, <<>>};
+ws_next_cursor(true, Uid, Kind, Ctx, Upper) ->
+    case list_cursor:issue(Uid, Kind, Ctx#{upper => Upper}, os:system_time(second)) of
+        {ok, Token} -> {ok, Token};
+        {error, key_unavailable} -> {error, 503, <<"security_gate_closed"/utf8>>};
+        {error, _} -> {error, 400, <<"invalid_request"/utf8>>}
+    end.
 
 %% @doc Advance the current member's read cursor using actually viewed messages.
 group_read(Req0, State) ->

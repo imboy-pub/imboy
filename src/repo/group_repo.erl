@@ -1,6 +1,6 @@
 -module(group_repo).
 -export([
-    workspace_groups/2, workspace_groups/3,
+    workspace_groups/2, workspace_groups/3, workspace_groups/4,
     member_workspace_groups/4, member_workspace_groups/5, member_workspace_groups/6
 ]).
 -export([mark_workspace_group_read/4]).
@@ -265,12 +265,25 @@ workspace_groups(WorkspaceId, Limit) ->
 %% W07.a（C2 工作区目录）：可选服务端 q（目录授权内 title ILIKE；q 为空
 %% SQL 逐字节同旧路径）。目录仍只列本工作区群，不冒充订阅或内容授权。
 workspace_groups(WorkspaceId, Limit, Q) ->
-    {QSql, Params} = title_q_clause(Q, 3),
+    %% 旧全量形状（无 q 且 BeforeId=0 时 SQL 逐字节同旧路径）。
+    workspace_groups(WorkspaceId, Limit, Q, 0).
+
+%% W07.b（C2 工作区目录 cursor 协议）：BeforeId>0 为上界（g.id < Before），
+%% 配稳定 created_at,id DESC 排序；=0 首页全域。
+-spec workspace_groups(integer(), integer(), binary(), integer()) ->
+    {ok, list(map())} | {error, any()}.
+workspace_groups(WorkspaceId, Limit, Q, BeforeId) ->
+    {QSql, Params} = title_q_clause(Q, 4),
+    {BeforeSql, BeforeParams} =
+        case is_integer(BeforeId) andalso BeforeId > 0 of
+            true -> {<<" AND g.id < $3">>, [BeforeId]};
+            false -> {<<>>, []}
+        end,
     Sql =
         <<"SELECT ", (workspace_group_columns())/binary, " FROM \"group\" g",
-            " WHERE g.workspace_id = $1 AND g.scope = 'workspace' AND g.status = 1", QSql/binary,
-            " ORDER BY g.created_at DESC, g.id DESC LIMIT $2">>,
-    elib_pg:query(Sql, [WorkspaceId, Limit | Params]).
+            " WHERE g.workspace_id = $1 AND g.scope = 'workspace' AND g.status = 1",
+            BeforeSql/binary, QSql/binary, " ORDER BY g.created_at DESC, g.id DESC LIMIT $2">>,
+    elib_pg:query(Sql, [WorkspaceId, Limit | BeforeParams] ++ Params).
 
 %% W07.a：q 子句构造（g.title ILIKE）。空 q → {<<>>, []}；非空 → trim +
 %% 64 截断 + escape_like 后的 {" AND g.title ILIKE $N", [pattern]}。
