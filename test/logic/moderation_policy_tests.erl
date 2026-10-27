@@ -125,6 +125,16 @@ inspect_fail_open_when_wordlist_unavailable_test_() ->
     ).
 
 enqueue_writes_pending_row_test_() ->
+    [
+        {binary_to_list(Expected), enqueue_pending_row(MsgId, Expected)}
+     || {MsgId, Expected} <- [
+            {501, <<"501">>},
+            {<<"opaque:legacy/message-id">>, <<"opaque:legacy/message-id">>},
+            {<<"001">>, <<"001">>}
+        ]
+    ].
+
+enqueue_pending_row(MsgId, Expected) ->
     ?WITH_MECKS(
         [
             {elib_tsid, [
@@ -140,7 +150,7 @@ enqueue_writes_pending_row_test_() ->
                     ?assertEqual(
                         [
                             9001,
-                            501,
+                            Expected,
                             <<"channel_message">>,
                             <<"bad content">>,
                             1001,
@@ -162,7 +172,7 @@ enqueue_writes_pending_row_test_() ->
         fun() ->
             Hits = [#{word => <<"badword">>, severity => <<"high">>}],
             ok = moderation_policy:enqueue(
-                channel_message, 501, 11, 1001, <<>>, <<"bad content">>, Hits
+                channel_message, MsgId, 11, 1001, <<>>, <<"bad content">>, Hits
             )
         end
     ).
@@ -209,7 +219,7 @@ enqueue_profile_field_encodes_field_in_msg_type_test_() ->
                     ?assertEqual(
                         [
                             9003,
-                            77,
+                            <<"77">>,
                             <<"profile_field:sign">>,
                             <<"签名内容"/utf8>>,
                             77,

@@ -97,7 +97,7 @@ snapshot(Words, Verdict) ->
 
 %% @doc 命中入队（先发后审复核行）。入队失败由调用方决定策略（发布面 fail-open）。
 -spec enqueue(
-    surface(), integer(), integer(), integer(), binary(), binary(), [hit()]
+    surface(), binary() | integer(), integer(), integer(), binary(), binary(), [hit()]
 ) -> ok | {error, term()}.
 enqueue(Surface, MsgId, ToId, FromId, FromAccount, Content, Hits) ->
     try enqueue_row(Surface, MsgId, ToId, FromId, FromAccount, Content, Hits) of
@@ -133,7 +133,16 @@ enqueue_row(Surface, MsgId, ToId, FromId, FromAccount, Content, Hits) ->
         content_sha256 => binary:encode_hex(crypto:hash(sha256, Content), lowercase)
     }),
     elib_pg:query(Sql, [
-        Id, MsgId, MsgType, Content, FromId, FromAccount, ToId, ToType, HitWords, Metadata
+        Id,
+        ec_cnv:to_binary(MsgId),
+        MsgType,
+        Content,
+        FromId,
+        FromAccount,
+        ToId,
+        ToType,
+        HitWords,
+        Metadata
     ]).
 
 %% @doc 文本归一化：小写 + 全角 ASCII 变体（U+FF01..FF5E）转半角 + 去零宽字符。

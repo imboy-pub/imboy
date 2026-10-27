@@ -139,11 +139,17 @@ TSID十进制字符串等既有身份不重编号；重试、流式定稿、ACK�
 将它机械替换成普通IM业务msgId。消息严格顺序由既有 `conv_seq` 等业务游标承担，
 不按XID/UUIDv7/历史TSID的混合字符串排序。
 
+审核队列 `review_queue.msg_id` 自迁移 00000230 起使用 text，保留 opaque 原值；
+频道、动态和资料审核的既有实体整数引用仅转换为十进制字符串。回滚为 bigint
+会拒绝非规范十进制或越界值，避免改变身份或丢失数据。
+
 Ordinary IM message IDs are opaque business identities, distinct from entity row
 keys. Clients retain XID; newly created server messages use UUIDv7. Preserve existing
 IDs across retries, finalization, acknowledgements, references and E2EE bindings.
 Use Type + MsgId for defensive completion targeting without relaxing archive
 uniqueness. Canonical customer-service message entity keys remain domain TSIDs.
+Migration 00000230 stores review queue message references as text, preserving opaque
+IDs and decimal entity references. Its rollback rejects noncanonical or out-of-range IDs.
 
 ---
 

@@ -342,7 +342,7 @@ seed_handler_calendar_samples(Marker, StartAt, EndAt) ->
             " from_account, to_id, to_type, hit_words, review_status, reviewer_id, reason,"
             " reviewed_at, created_at, metadata)"
             " SELECT 942100000000000 + sample.ordinal, $3::text || ':' || sample.label,"
-            " 'text', $3, 920001, 'timezone-fixture', 920002, 'c2c', NULL, 'approved',"
+            " 'text', $3, 920001, 'timezone-fixture', 920002, 'c2c', '', 'approved',"
             " NULL, NULL, NULL, sample.created_at, '{\"hit_words\":[\"synthetic\"]}'::jsonb"
             " FROM bounds CROSS JOIN LATERAL (VALUES"
             " (1, 'before', start_at - INTERVAL '1 microsecond'),"
