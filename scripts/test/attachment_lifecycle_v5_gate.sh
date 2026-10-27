@@ -77,7 +77,7 @@ if [ -n "$SCENARIO" ] && [ -z "$CASE" ]; then
 fi
 
 EVID="$RUN_DIR/evidence/$TASK"
-mkdir -p "$EVID"
+mkdir -p "$EVID" "$RUN_DIR/logs"
 LOG="$RUN_DIR/logs/$TASK-gate-$(date +%H%M%S).log"
 exec > >(tee -a "$LOG") 2>&1
 
