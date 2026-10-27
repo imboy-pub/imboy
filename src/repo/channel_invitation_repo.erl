@@ -217,15 +217,16 @@ list_by_inviter(InviterUid, Limit) ->
     end.
 
 %% @doc 检查用户是否被邀请（有有效的待处理邀请）
--spec is_invited(integer(), integer()) -> boolean().
+-spec is_invited(integer(), integer()) -> boolean() | {error, term()}.
 is_invited(ChannelId, Uid) ->
     Sql =
         <<"SELECT COUNT(*) as cnt FROM channel_invitation ",
             "WHERE channel_id = $1 AND invitee_uid = $2 ",
             "AND status = 0 AND expires_at > NOW()">>,
     case elib_pg:query(Sql, [ChannelId, Uid]) of
-        {ok, [#{<<"cnt">> := Count}]} when Count > 0 -> true;
-        _ -> false
+        {ok, [#{<<"cnt">> := Count}]} when is_integer(Count), Count >= 0 -> Count > 0;
+        {error, Reason} -> {error, Reason};
+        _ -> {error, invalid_invitation_count}
     end.
 
 %%===================================================================

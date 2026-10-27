@@ -3814,7 +3814,7 @@ subscribe_private_channel_rejects_unexpected_invitation_state_test_() ->
     {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
         ?_test(begin
             Result = channel_logic:subscribe(2002, ChannelIdBin),
-            ?assertEqual({error, <<"私有频道需要邀请才能订阅"/utf8>>}, Result),
+            ?assertEqual({error, <<"邀请状态暂不可用，请稍后重试"/utf8>>}, Result),
             ?assertEqual(
                 0, meck:num_calls(channel_invitation_ds, find_pending_by_channel_and_invitee, 2)
             )

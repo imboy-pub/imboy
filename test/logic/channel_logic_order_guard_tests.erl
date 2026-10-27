@@ -401,3 +401,28 @@ refund_order_returns_ds_error_instead_of_case_clause_test_() ->
             )
         end
     ).
+
+private_order_invitation_query_failure_does_not_create_test_() ->
+    ?WITH_MECKS(
+        [
+            {imboy_env, [{current, 0, fun() -> <<"local">> end}]},
+            {channel_ds, [
+                {find_by_id, 2, fun(_, _) ->
+                    #{
+                        <<"status">> => 1,
+                        <<"access_type">> => 1,
+                        <<"join_policy">> => 3,
+                        <<"visibility">> => 1
+                    }
+                end}
+            ]},
+            {channel_invitation_ds, [{is_invited, 2, fun(_, _) -> {error, secret_db_password} end}]},
+            {channel_order_ds, [{create_order, 1, fun(_) -> error(unexpected_order) end}]}
+        ],
+        fun() ->
+            ?assertEqual(
+                {error, <<"邀请状态暂不可用，请稍后重试"/utf8>>}, channel_logic_order:create_order(1001, <<"11">>)
+            ),
+            ?assertEqual(0, meck:num_calls(channel_order_ds, create_order, '_'))
+        end
+    ).

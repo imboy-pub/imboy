@@ -2532,3 +2532,23 @@ channel_write_error_expectations(channel_comment_logic, Expectation) ->
 
 req_mock() ->
     #{mock_req => true}.
+
+subscribe_preserves_prewrite_rejection_code_test_() ->
+    ?WITH_MECKS(
+        [
+            {elib_param, [{post, 1, fun(_) -> #{} end}]},
+            {cowboy_req, [{binding, 2, fun(channel_id, _) -> <<"42">> end}]},
+            {channel_logic, [
+                {subscribe, 2, fun(1001, <<"42">>) ->
+                    {error, {990, <<"私有频道需要邀请才能订阅"/utf8>>}}
+                end}
+            ]},
+            {elib_response, [{error, 3, fun(_, Msg, Code) -> {error_resp, Code, Msg} end}]}
+        ],
+        fun() ->
+            ?assertEqual(
+                {error_resp, 990, <<"私有频道需要邀请才能订阅"/utf8>>},
+                channel_handler:handle_action(subscribe, req_mock(), #{current_uid => 1001})
+            )
+        end
+    ).

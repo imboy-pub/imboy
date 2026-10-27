@@ -79,7 +79,8 @@ create_order_for_method(Uid, ChannelIdBin, PaymentMethod) ->
                             %% C4: private paid — 必须有有效邀请或购买链接上下文
                             case channel_invitation_ds:is_invited(ChannelId, Uid) of
                                 true -> do_create_order(ChannelId, Uid, PaymentMethod);
-                                false -> {error, <<"私有付费频道需要邀请才能购买"/utf8>>}
+                                false -> {error, <<"私有付费频道需要邀请才能购买"/utf8>>};
+                                {error, _} -> {error, <<"邀请状态暂不可用，请稍后重试"/utf8>>}
                             end;
                         _ ->
                             do_create_order(ChannelId, Uid, PaymentMethod)
