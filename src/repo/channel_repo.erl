@@ -29,7 +29,7 @@
 -export([increment_subscribers/2]).
 -export([increment_subscribers/3]).
 -export([list_workspace_channels/2]).
--export([list_workspace_channels/3, workspace_channel_page/4]).
+-export([list_workspace_channels/3, workspace_channel_page/4, workspace_channel_page/5]).
 -export([search/3]).
 -export([list_discover/2]).
 % 统计相关
@@ -361,13 +361,19 @@ list_workspace_channels(WorkspaceId, Limit, Status) ->
 
 %% Keyset pages use immutable ID order; legacy lists retain created_at ordering.
 workspace_channel_page(WsId, Cursor, Limit, Status) ->
+    workspace_channel_page(WsId, Cursor, Limit, Status, <<>>).
+
+%% W07.a（C2 工作区频道目录）：可选服务端 q（目录授权内 name ILIKE，$5）。
+workspace_channel_page(WsId, Cursor, Limit, Status, Q) ->
+    {QSql, Params} = name_q_clause(Q, 5),
     Sql = <<
         "SELECT c.* FROM channel c WHERE c.workspace_id=$1 AND c.scope='workspace' "
         "AND ($2::bigint=0 OR c.id<$2) "
-        "AND ($3::text='all' OR c.status=CASE WHEN $3='archived' THEN 0 ELSE 1 END) "
-        "ORDER BY c.id DESC LIMIT $4"
+        "AND ($3::text='all' OR c.status=CASE WHEN $3='archived' THEN 0 ELSE 1 END) ",
+        QSql/binary,
+        " ORDER BY c.id DESC LIMIT $4"
     >>,
-    elib_pg:query(Sql, [WsId, Cursor, Status, Limit]).
+    elib_pg:query(Sql, [WsId, Cursor, Status, Limit | Params]).
 
 %% @doc 更新频道信息
 %% @param ChannelId 频道ID

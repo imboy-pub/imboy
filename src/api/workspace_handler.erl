@@ -230,9 +230,10 @@ channel_list(Req0, State) ->
                     Limit2 = max(1, min(Limit, 200)),
                     {ok, Status} = elib_param:binary(status, Req0, <<"active">>),
                     {ok, Paged} = elib_param:binary(paged, Req0, <<"0">>),
+                    {ok, Q} = elib_param:binary(q, Req0, <<>>),
                     case Paged of
                         <<"1">> ->
-                            workspace_channel_page_response(Req0, WsId, Limit2, Status);
+                            workspace_channel_page_response(Req0, WsId, Limit2, Status, Q);
                         <<"0">> ->
                             case channel_logic:list_workspace_channels(WsId, Limit2, Status) of
                                 {ok, Channels} ->
@@ -249,6 +250,10 @@ channel_list(Req0, State) ->
     end.
 
 workspace_channel_page_response(Req, WsId, Limit, Status) ->
+    {ok, Q} = elib_param:binary(q, Req, <<>>),
+    workspace_channel_page_response(Req, WsId, Limit, Status, Q).
+
+workspace_channel_page_response(Req, WsId, Limit, Status, Q) ->
     {ok, RawCursor} = elib_param:binary(cursor, Req, <<"0">>),
     Cursor =
         try
@@ -263,7 +268,7 @@ workspace_channel_page_response(Req, WsId, Limit, Status) ->
         false ->
             elib_response:error(Req, <<"分页参数无效"/utf8>>, 400);
         true ->
-            case channel_logic:workspace_channel_page(WsId, Cursor, Limit, Status) of
+            case channel_logic:workspace_channel_page(WsId, Cursor, Limit, Status, Q) of
                 {ok, Page} -> elib_response:success(Req, Page#{workspace_id => WsId});
                 {error, Message} -> elib_response:error(Req, Message)
             end
@@ -286,25 +291,26 @@ group_list(Req0, State) ->
                     {ok, MemberOnly} = elib_param:int(member_only, Req0, 0),
                     {ok, Cursor} = elib_param:int(cursor, Req0, 0),
                     {ok, Preview} = elib_param:int(preview, Req0, 0),
+                    {ok, Q} = elib_param:binary(q, Req0, <<>>),
                     workspace_group_response(
-                        Req0, WsId, Uid, MemberOnly, Cursor, max(1, min(Limit, 200)), Preview
+                        Req0, WsId, Uid, MemberOnly, Cursor, max(1, min(Limit, 200)), Preview, Q
                     )
             end
     end.
 
-workspace_group_response(Req, WsId, Uid, 1, Cursor, Limit, Preview) when
+workspace_group_response(Req, WsId, Uid, 1, Cursor, Limit, Preview, Q) when
     Preview =:= 0; Preview =:= 1
 ->
-    case group_logic:list_member_workspace_groups(WsId, Uid, Cursor, Limit, Preview =:= 1) of
+    case group_logic:list_member_workspace_groups(WsId, Uid, Cursor, Limit, Preview =:= 1, Q) of
         {ok, Page} -> elib_response:success(Req, Page#{workspace_id => WsId});
         {error, Message} -> elib_response:error(Req, Message)
     end;
-workspace_group_response(Req, WsId, _Uid, 0, _Cursor, Limit, 0) ->
-    case group_logic:list_workspace_groups(WsId, Limit) of
+workspace_group_response(Req, WsId, _Uid, 0, _Cursor, Limit, 0, Q) ->
+    case group_logic:list_workspace_groups(WsId, Limit, Q) of
         {ok, Groups} -> elib_response:success(Req, #{workspace_id => WsId, list => Groups});
         {error, Message} -> elib_response:error(Req, Message)
     end;
-workspace_group_response(Req, _WsId, _Uid, _MemberOnly, _Cursor, _Limit, _Preview) ->
+workspace_group_response(Req, _WsId, _Uid, _MemberOnly, _Cursor, _Limit, _Preview, _Q) ->
     elib_response:error(Req, <<"member_only 和 preview 必须为 0 或 1，preview 仅用于本人模式"/utf8>>, 400).
 
 %% @doc Advance the current member's read cursor using actually viewed messages.

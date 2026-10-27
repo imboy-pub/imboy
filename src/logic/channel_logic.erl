@@ -430,7 +430,11 @@ list_workspace_channels(WorkspaceId, Limit, Status) ->
     end.
 
 %% Descending immutable IDs prevent repeats after newer channels are added.
-workspace_channel_page(WsId, Cursor, Limit, Status) when
+workspace_channel_page(WsId, Cursor, Limit, Status) ->
+    workspace_channel_page(WsId, Cursor, Limit, Status, <<>>).
+
+%% W07.a（C2 工作区频道目录）：可选服务端 q（目录授权内 name ILIKE）。
+workspace_channel_page(WsId, Cursor, Limit, Status, Q) when
     is_integer(Cursor),
     Cursor >= 0,
     Cursor =< 9223372036854775807,
@@ -439,7 +443,7 @@ workspace_channel_page(WsId, Cursor, Limit, Status) when
     Limit =< 200,
     (Status =:= <<"active">> orelse Status =:= <<"archived">> orelse Status =:= <<"all">>)
 ->
-    case channel_ds:workspace_channel_page(WsId, Cursor, Limit + 1, Status) of
+    case channel_ds:workspace_channel_page(WsId, Cursor, Limit + 1, Status, Q) of
         {ok, Rows} ->
             Page = lists:sublist(Rows, Limit),
             More = length(Rows) > Limit,

@@ -39,7 +39,10 @@
 %% 新增函数，不改上方任何既有函数签名；personal 路径行为零变化。
 -export([add/5]).
 -export([edit_checked/3]).
--export([list_workspace_groups/2, list_member_workspace_groups/4, list_member_workspace_groups/5]).
+-export([
+    list_workspace_groups/2, list_workspace_groups/3,
+    list_member_workspace_groups/4, list_member_workspace_groups/5, list_member_workspace_groups/6
+]).
 -export([mark_workspace_read/3]).
 
 %% ============ W04.b（channel-group-ux v2.2 §6.4 C1）：带受理回执的群创建 ============
@@ -1193,7 +1196,13 @@ edit_checked(Uid, Gid, Data) ->
 %% personal 群列表接口零行为变化）。命中部分索引 i_group_scope_ws。
 -spec list_workspace_groups(integer(), integer()) -> {ok, [map()]} | {error, binary()}.
 list_workspace_groups(WorkspaceId, Limit) ->
-    case workspace_ds:groups(WorkspaceId, Limit) of
+    list_workspace_groups(WorkspaceId, Limit, <<>>).
+
+%% W07.a（C2 工作区目录）：可选服务端 q（目录授权内 title ILIKE）。
+-spec list_workspace_groups(integer(), integer(), binary()) ->
+    {ok, [map()]} | {error, binary()}.
+list_workspace_groups(WorkspaceId, Limit, Q) ->
+    case workspace_ds:groups(WorkspaceId, Limit, Q) of
         {ok, Rows} ->
             {ok, [group_transfer(R) || R <- Rows]};
         {error, Reason} ->
@@ -1205,7 +1214,11 @@ list_workspace_groups(WorkspaceId, Limit) ->
 list_member_workspace_groups(WorkspaceId, Uid, AfterId, Limit) ->
     list_member_workspace_groups(WorkspaceId, Uid, AfterId, Limit, false).
 
-list_member_workspace_groups(WorkspaceId, Uid, AfterId, Limit, Preview) when
+list_member_workspace_groups(WorkspaceId, Uid, AfterId, Limit, Preview) ->
+    list_member_workspace_groups(WorkspaceId, Uid, AfterId, Limit, Preview, <<>>).
+
+%% W07.a（C2 成员群子集）：可选服务端 q（资格 SQL 内 title ILIKE）。
+list_member_workspace_groups(WorkspaceId, Uid, AfterId, Limit, Preview, Q) when
     is_boolean(Preview),
     is_integer(AfterId),
     AfterId >= 0,
@@ -1214,7 +1227,7 @@ list_member_workspace_groups(WorkspaceId, Uid, AfterId, Limit, Preview) when
     Limit > 0,
     Limit =< 200
 ->
-    case workspace_ds:member_groups(WorkspaceId, Uid, AfterId, Limit + 1, Preview) of
+    case workspace_ds:member_groups(WorkspaceId, Uid, AfterId, Limit + 1, Preview, Q) of
         {ok, Rows} ->
             Page = lists:sublist(Rows, Limit),
             HasMore = length(Rows) > Limit,
@@ -1239,7 +1252,7 @@ list_member_workspace_groups(WorkspaceId, Uid, AfterId, Limit, Preview) when
             ?ERROR_LOG([member_workspace_groups_failed, WorkspaceId, Reason]),
             {error, <<"查询失败，请稍后重试"/utf8>>}
     end;
-list_member_workspace_groups(_, _, _, _, _) ->
+list_member_workspace_groups(_, _, _, _, _, _) ->
     {error, <<"分页参数无效"/utf8>>}.
 
 mark_workspace_read(Uid, Gid, MsgIds) when
