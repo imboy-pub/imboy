@@ -32,6 +32,7 @@
 -export([update_by_id/2]).
 -export([insert/1]).
 -export([page_by_owner/3, page_by_owner/4]).
+-export([page_by_owner_keyset/4, page_joined_keyset/4, page_managed_keyset/4]).
 -export([page_joined/3, page_joined/4]).
 -export([page_managed/3, page_managed/4]).
 -export([load_aggregate/1, save_aggregate/1]).
@@ -780,6 +781,66 @@ page_managed(Uid, Page, Size, Q) ->
     },
     Where = title_q_where(Where0, Q, <<"g.title">>),
     elib_pg:page_with_total(Tb, <<"g.*">>, Where, <<"g.created_at DESC, g.id DESC">>, Page, Size).
+
+%% W07.b（C2 个人群 cursor 协议）：id keyset 分页（id 唯一不可变 →
+%% 全扫描无漏/重；展示排序仍 created_at DESC, id DESC）。游标协议的
+%% 上界由签名游标（list_cursor）承载，DS 只接受已解析的数值上界。
+%% WHERE 为常量片段（与 W07.a offset 页同一授权交集）+ 可选 q 片段，
+%% 不走通用 Where-map 渲染（build_select 不支持 __or 组合）。
+-spec page_by_owner_keyset(integer(), integer(), pos_integer(), binary()) ->
+    {ok, list(map())} | {error, any()}.
+page_by_owner_keyset(Uid, BeforeId, Limit, Q) ->
+    Tb = group_repo:tablename(),
+    {QSql, Params} = q_clause(Q, 4),
+    Sql =
+        <<"SELECT g.* FROM ", Tb/binary, " g",
+            " WHERE g.status = 1 AND g.owner_uid = $1 AND g.id < $2", QSql/binary,
+            " ORDER BY g.created_at DESC, g.id DESC LIMIT $3">>,
+    elib_pg:query(Sql, [Uid, BeforeId, Limit | Params]).
+
+-spec page_joined_keyset(integer(), integer(), pos_integer(), binary()) ->
+    {ok, list(map())} | {error, any()}.
+page_joined_keyset(Uid, BeforeId, Limit, Q) ->
+    GTb = group_repo:tablename(),
+    MTb = group_member_repo:tablename(),
+    {QSql, Params} = q_clause(Q, 4),
+    Sql =
+        <<"SELECT g.* FROM ", GTb/binary, " g LEFT JOIN ", MTb/binary, " m ON g.id = m.group_id",
+            " WHERE g.status = 1 AND m.status = 1 AND m.user_id = $1", " AND g.owner_uid <> $1",
+            QSql/binary,
+            " AND g.id < $2"
+            " ORDER BY g.created_at DESC, g.id DESC LIMIT $3">>,
+    elib_pg:query(Sql, [Uid, BeforeId, Limit | Params]).
+
+-spec page_managed_keyset(integer(), integer(), pos_integer(), binary()) ->
+    {ok, list(map())} | {error, any()}.
+page_managed_keyset(Uid, BeforeId, Limit, Q) ->
+    GTb = group_repo:tablename(),
+    MTb = group_member_repo:tablename(),
+    {QSql, Params} = q_clause(Q, 4),
+    Sql =
+        <<"SELECT g.* FROM ", GTb/binary, " g LEFT JOIN ", MTb/binary, " m ON g.id = m.group_id",
+            " WHERE g.status = 1 AND (g.owner_uid = $1 OR (m.status = 1",
+            " AND m.user_id = $1 AND m.role >= 3))", QSql/binary,
+            " AND g.id < $2"
+            " ORDER BY g.created_at DESC, g.id DESC LIMIT $3">>,
+    elib_pg:query(Sql, [Uid, BeforeId, Limit | Params]).
+
+%% q 片段：空 q → {<<>>, []}；非空 → {" AND g.title ILIKE $N", [pattern]}
+%% （trim/64 截断/escape_like 与 W07.a offset 页同一定义）。
+-spec q_clause(binary(), pos_integer()) -> {binary(), [binary()]}.
+q_clause(Q, _N) when is_binary(Q), Q =:= <<>> ->
+    {<<>>, []};
+q_clause(Q, N) when is_binary(Q) ->
+    Q2 = elib_str:trunc(string:trim(Q), 64),
+    case Q2 of
+        <<>> ->
+            {<<>>, []};
+        _ ->
+            Pattern = <<"%", (elib_pg:escape_like(Q2))/binary, "%">>,
+            NBin = elib_cnv:safe_to_binary(N),
+            {<<" AND g.title ILIKE $", NBin/binary>>, [Pattern]}
+    end.
 
 %% W07.a（C2 个人群）：可选服务端搜索词。q 为空原样返回；非空在**授权
 %% 交集内**追加 title ILIKE（escape_like 防通配注入）。q 只会缩小结果，

@@ -29,6 +29,7 @@
 -export([page_by_owner/3, page_by_owner/4]).
 -export([page_joined/3, page_joined/4]).
 -export([page_managed/3, page_managed/4]).
+-export([page_by_owner_cursor/4, page_joined_cursor/4, page_managed_cursor/4]).
 -export([is_member/2]).
 -export([msg_page/3]).
 -export([find_member/2]).
@@ -691,6 +692,45 @@ page_managed(Uid, Page, Size) ->
     {ok, map()} | {error, any()}.
 page_managed(Uid, Page, Size, Q) ->
     group_ds:page_managed(Uid, Page, Size, Q).
+
+%% W07.b（C2 个人群 cursor 协议）：逻辑层游标页。取 Limit+1 判定
+%% has_more；rows 走 group_transfer 出站投影（剥 chat_aes_key）；
+%% upper=本页末行 id（has_more=false 时置 0）。
+-spec page_by_owner_cursor(integer(), integer(), pos_integer(), binary()) ->
+    {ok, #{list := [map()], has_more := boolean(), upper := integer()}} | {error, any()}.
+page_by_owner_cursor(Uid, BeforeId, Limit, Q) ->
+    case group_ds:page_by_owner_keyset(Uid, BeforeId, Limit + 1, Q) of
+        {ok, Rows} -> cursor_page_rows(Rows, Limit);
+        {error, Reason} -> {error, Reason}
+    end.
+
+-spec page_joined_cursor(integer(), integer(), pos_integer(), binary()) ->
+    {ok, #{list := [map()], has_more := boolean(), upper := integer()}} | {error, any()}.
+page_joined_cursor(Uid, BeforeId, Limit, Q) ->
+    case group_ds:page_joined_keyset(Uid, BeforeId, Limit + 1, Q) of
+        {ok, Rows} -> cursor_page_rows(Rows, Limit);
+        {error, Reason} -> {error, Reason}
+    end.
+
+-spec page_managed_cursor(integer(), integer(), pos_integer(), binary()) ->
+    {ok, #{list := [map()], has_more := boolean(), upper := integer()}} | {error, any()}.
+page_managed_cursor(Uid, BeforeId, Limit, Q) ->
+    case group_ds:page_managed_keyset(Uid, BeforeId, Limit + 1, Q) of
+        {ok, Rows} -> cursor_page_rows(Rows, Limit);
+        {error, Reason} -> {error, Reason}
+    end.
+
+-spec cursor_page_rows([map()], pos_integer()) ->
+    {ok, #{list := [map()], has_more := boolean(), upper := integer()}}.
+cursor_page_rows(Rows, Limit) ->
+    Page = [group_transfer(R) || R <- lists:sublist(Rows, Limit)],
+    HasMore = length(Rows) > Limit,
+    Upper =
+        case {HasMore, lists:reverse(Page)} of
+            {true, [Last | _]} -> maps:get(<<"id">>, Last);
+            _ -> 0
+        end,
+    {ok, #{list => Page, has_more => HasMore, upper => Upper}}.
 
 %% @doc 判断用户是否为群成员
 %% @param Gid 群组ID
