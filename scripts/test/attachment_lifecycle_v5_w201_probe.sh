@@ -6,19 +6,30 @@
 # the gate seals them into leaf receipts keyed by entrypoint+ordering_or_fault+ac.
 set -u
 DB="$1"; SECTION="$2"; OUT="$3"
-RUN_DIR="${V5_RUN_DIR:-/Users/leeyi/project/imboy.pub/.Codex/runs/att-v5-20261014-121848-3714}"
-PASS="$(cat "$RUN_DIR/resources/pg-attv5.password")"
+RUN_DIR="${V5_RUN_DIR:?explicit run required}"
+SLOT="${V5_SLOT:?explicit fixture slot required}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PG_RESOURCE="$(python3 "$SCRIPT_DIR/attachment_lifecycle_v5_pg_guard.py" "$RUN_DIR" "$SLOT")" || exit 20
+IFS=$'\t' read -r PG_CONTAINER PG_HOST PG_PORT <<< "$PG_RESOURCE"
+valid_db() { [[ "$1" =~ ^attv5_${SLOT}_[a-z0-9_]+$ ]]; }
+valid_db "$DB" || exit 20
+for target in "${V5_EXPAND_DB:-attv5_${SLOT}_w102_expand}" "${V5_GUARDS_DB:-$DB}"; do
+  valid_db "$target" || exit 20
+done
+PROBE_TMP="$(mktemp -d "$RUN_DIR/resources/w201-probe.XXXXXX")" || exit 20
+trap 'rm -f "$PROBE_TMP/out.txt" "$PROBE_TMP/err.txt"; rmdir "$PROBE_TMP"' EXIT
+PASS="$(cat "$RUN_DIR/resources/pg-attv5.password")" || exit 20
 export PGPASSWORD="$PASS"
-PSQL() { docker exec -i -e PGPASSWORD="$PASS" imboy_pg18 psql -X -U imboy_user -d "$DB" -v ON_ERROR_STOP=1 "$@"; }
+PSQL() { docker exec -i -e PGPASSWORD="$PASS" "$PG_CONTAINER" psql -X -U imboy_user -d "$DB" -v ON_ERROR_STOP=1 "$@"; }
 : > "$OUT"
 ok=0; bad=0
 
 # name entrypoint scenario ac expected(0=fail-any|value) sql
 probe() {
   local name="$1" ep="$2" sc="$3" ac="$4" expected="$5" sql="$6" rc val
-  echo "$sql" | PSQL -tAq > /tmp/w201_out.txt 2>/tmp/w201_err.txt
+  echo "$sql" | PSQL -tAq > "$PROBE_TMP/out.txt" 2>"$PROBE_TMP/err.txt"
   rc=$?
-  val="$(tail -1 /tmp/w201_out.txt)"
+  val="$(tail -1 "$PROBE_TMP/out.txt")"
   local pass=false
   if [ "$expected" = "fail" ]; then
     [ $rc -ne 0 ] && pass=true
@@ -30,7 +41,7 @@ probe() {
     echo "{\"name\":\"$name\",\"entrypoint\":\"$ep\",\"scenario\":\"$sc\",\"ac\":\"$ac\",\"pass\":true}" >> "$OUT"
   else
     bad=$((bad+1))
-    echo "{\"name\":\"$name\",\"entrypoint\":\"$ep\",\"scenario\":\"$sc\",\"ac\":\"$ac\",\"pass\":false,\"detail\":\"rc=$rc val=$val want=$expected $(head -c100 /tmp/w201_err.txt | tr -d '\n')\"}" >> "$OUT"
+    echo "{\"name\":\"$name\",\"entrypoint\":\"$ep\",\"scenario\":\"$sc\",\"ac\":\"$ac\",\"pass\":false,\"detail\":\"rc=$rc val=$val want=$expected $(head -c100 "$PROBE_TMP/err.txt" | tr -d '\n')\"}" >> "$OUT"
   fi
 }
 

@@ -842,6 +842,76 @@ def candidate_errors(candidate):
     return errors
 
 
+def cmd_freeze_candidate(args):
+    """Bind the first clean candidate; replacing accepted input needs explicit re-admission."""
+    run_dir = _run_dir_from(args)
+    lock = RunLock(run_dir)
+    if not lock.acquire_nb():
+        die(EXIT_BLOCKED, "freeze-candidate cannot acquire run lock")
+    try:
+        state = _require_state(run_dir)
+        auth_path = state.get("authorization_path", "")
+        if not os.path.isfile(auth_path) or sha256_file(auth_path) != state.get("authorization_sha256"):
+            die(EXIT_CONTRACT, "authorization original unavailable")
+        with open(auth_path) as fh:
+            auth = json.load(fh)
+        ok, digest = verify_plan_manifest(state["plan_dir"])
+        if (not ok or digest != state.get("plan_manifest_sha256")
+                or auth.get("plan_manifest_sha256") != digest
+                or not auth.get("implementation_allowed")
+                or auth.get("expires_at", "") < time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())):
+            die(EXIT_CONTRACT, "candidate admission/plan binding invalid")
+        roots = auth.get("repository_paths", {})
+        if not isinstance(roots, dict) or set(roots) != set(REPO_NAMES):
+            die(EXIT_CONTRACT, "authorization must bind three repository paths")
+        candidate = {"repository_paths": {}, "heads": {}, "owned_paths_sha256": {},
+                     "plan_manifest_sha256": digest}
+        for repo in REPO_NAMES:
+            root = os.path.realpath(roots[repo])
+            candidate["repository_paths"][repo] = root
+            candidate["heads"][repo] = subprocess.check_output(
+                ["git", "-C", root, "rev-parse", "HEAD"], text=True, timeout=5).strip()
+            names = subprocess.check_output(["git", "-C", root, "ls-files", "-z"], timeout=5).decode().split("\0")
+            for name in filter(None, names):
+                path = os.path.realpath(os.path.join(root, name))
+                if os.path.commonpath([root, path]) != root:
+                    die(EXIT_CONTRACT, "candidate tracked path escapes repository")
+                candidate["owned_paths_sha256"][repo + "/" + name] = sha256_file(path)
+        candidate["owned_tree_digest"] = sha256_bytes(canonical_json(candidate["owned_paths_sha256"]).encode())
+        migration_dir = os.path.join(candidate["repository_paths"]["imboy"], "priv/migrations")
+        migrations = {name: sha256_file(os.path.join(migration_dir, name))
+                      for name in sorted(os.listdir(migration_dir)) if name.endswith((".up.sql", ".down.sql"))}
+        candidate["migration_digest"] = sha256_bytes(canonical_json(migrations).encode())
+        errors = candidate_errors(candidate)
+        if errors:
+            die(EXIT_CONTRACT, "; ".join(errors[:10]))
+        store = StateStore(run_dir)
+        frozen_events = []
+        if os.path.exists(store.events_path):
+            with open(store.events_path) as fh:
+                frozen_events = [event["payload"]["candidate"] for line in fh if line.strip()
+                    for event in [json.loads(line)] if event.get("kind") == "candidate_frozen"]
+        if any(frozen != candidate for frozen in frozen_events):
+            die(EXIT_CONTRACT, "persisted freeze event differs; reviewed re-admission required")
+        previous = state.get("verification_candidate")
+        if previous:
+            if previous != candidate:
+                die(EXIT_CONTRACT, "candidate changed; reviewed re-admission required")
+            return EXIT_OK
+        if (any(task.get("state") not in {"NOT_STARTED", "READY"} or task.get("attempt", 0) != 0
+                    for task in state["tasks"].values())
+                or any(value != "NOT_STARTED" for value in state["gates"].values())):
+            die(EXIT_CONTRACT, "cannot bind historical or in-flight evidence to a new candidate")
+        state["verification_candidate"] = candidate
+        state["resource_allowlist"] = auth.get("resource_allowlist", {})
+        if not frozen_events:
+            store.append_event("candidate_frozen", {"candidate": candidate})
+        store.write_snapshot(state)
+        return EXIT_OK
+    finally:
+        lock.release()
+
+
 def receipt_errors(leaf, expected_leaf, task_id, case_id, candidate, run_dir, allowlist,
                    contract=None):
     errors = []
@@ -1025,6 +1095,112 @@ def cmd_verify(args, held_lock=False):
     finally:
         if not held_lock:
             lock.release()
+
+
+def _measured_case_rows(args, state, contract, run_dir):
+    case_dir = os.path.realpath(args.case_dir)
+    expected_dir = os.path.abspath(os.path.join(
+        run_dir, "evidence", args.task_id, args.case_id.split("/", 1)[-1]))
+    if case_dir != expected_dir or os.path.commonpath([run_dir, case_dir]) != run_dir:
+        return [], ["case directory does not match task/case"], case_dir, None
+    directory = os.stat(case_dir, follow_symlinks=False)
+    directory_id = (directory.st_dev, directory.st_ino)
+    if os.path.realpath(args.receipts) != os.path.join(case_dir, "measured-receipts.json"):
+        return [], ["measured receipts must be owned by the case directory"], case_dir, None
+    if args.case_id not in (task_case_ids(contract, args.task_id) or []):
+        return [], ["case is not declared by task"], case_dir, None
+    if state.get("tasks", {}).get(args.task_id, {}).get("state") not in ("RUNNING", "VERIFYING"):
+        return [], ["task is not running or verifying"], case_dir, None
+    with open(args.receipts) as fh:
+        rows = json.load(fh)
+    if not isinstance(rows, list) or any(not isinstance(row, dict) for row in rows):
+        return [], ["measured receipts must be an object array"], case_dir, None
+    expected = contract["expected_leaf_matrix"][args.case_id]
+    identity = lambda row: "|".join(str(row.get(k)) for k in LEAF_FIELDS)
+    index = {identity(row): row for row in expected}
+    ok, why = v_leaf_set(list(index), [identity(row) for row in rows])
+    if not ok:
+        return [], [why], case_dir, None
+    candidate = state.get("verification_candidate", {})
+    errors = []
+    for row in rows:
+        if row.get("command") != args.command:
+            errors.append("measured command does not match launched command")
+        errors.extend(receipt_errors(row, index[identity(row)], args.task_id,
+            args.case_id, candidate, run_dir, state.get("resource_allowlist", {}), contract))
+    targets = {"leaf-%03d.json" % n for n in range(1, len(rows) + 1)}
+    if any(name.startswith("leaf-") and name.endswith(".json") and name not in targets
+           for name in os.listdir(case_dir)):
+        errors.append("unexpected existing leaf files; preserve and reconcile first")
+    return rows, errors, case_dir, directory_id
+
+
+def _write_case_rows(run_dir, case_dir, rows, directory_id):
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    fd = os.open(run_dir, flags)
+    try:
+        for part in os.path.relpath(case_dir, run_dir).split(os.sep):
+            child = os.open(part, flags, dir_fd=fd)
+            os.close(fd)
+            fd = child
+        opened = os.fstat(fd)
+        if (opened.st_dev, opened.st_ino) != directory_id:
+            return False
+        for n, row in enumerate(rows, 1):
+            temporary = ".sealing-" + uuid.uuid4().hex
+            temp_fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+                             0o600, dir_fd=fd)
+            try:
+                with os.fdopen(temp_fd, "w") as fh:
+                    json.dump(row, fh, sort_keys=True)
+                    fh.flush()
+                    os.fsync(fh.fileno())
+                os.replace(temporary, "leaf-%03d.json" % n, src_dir_fd=fd, dst_dir_fd=fd)
+            finally:
+                try:
+                    os.unlink(temporary, dir_fd=fd)
+                except FileNotFoundError:
+                    pass
+        os.fsync(fd)
+        current = os.stat(case_dir, follow_symlinks=False)
+        opened = os.fstat(fd)
+        return ((current.st_dev, current.st_ino) == (opened.st_dev, opened.st_ino)
+                and os.path.realpath(case_dir) == case_dir)
+    finally:
+        os.close(fd)
+
+
+def cmd_seal_case(args):
+    """Seal measured leaves only; suite-level success never supplies an oracle."""
+    run_dir = os.path.realpath(_run_dir_from(args))
+    lock = RunLock(run_dir)
+    if not lock.acquire_nb():
+        die(EXIT_BLOCKED, "seal-case cannot acquire run lock")
+    try:
+        state = _require_state(run_dir)
+        contract = load_contract(state["plan_dir"])
+        ok, digest = verify_plan_manifest(state["plan_dir"])
+        errors = candidate_errors(state.get("verification_candidate", {}))
+        if not ok or digest != state.get("plan_manifest_sha256"):
+            errors.append("frozen plan manifest mismatch")
+        if state.get("verification_candidate", {}).get("plan_manifest_sha256") != digest:
+            errors.append("candidate plan binding mismatch")
+        auth = state.get("authorization_path", "")
+        if not os.path.isfile(auth) or sha256_file(auth) != state.get("authorization_sha256"):
+            errors.append("authorization original unavailable")
+        rows, row_errors, case_dir, directory_id = _measured_case_rows(args, state, contract, run_dir)
+        errors.extend(row_errors)
+        errors.extend(candidate_errors(state.get("verification_candidate", {})))
+        if errors:
+            print(json.dumps({"result": "FAIL", "errors": errors[:20]}))
+            return EXIT_CONTRACT
+        if not _write_case_rows(run_dir, case_dir, rows, directory_id):
+            print(json.dumps({"result": "FAIL", "errors": ["case directory changed while sealing"]}))
+            return EXIT_CONTRACT
+        print(json.dumps({"result": "SEALED", "leaves": len(rows), "state_updated": False}))
+        return EXIT_OK
+    finally:
+        lock.release()
 
 
 def cmd_accept_gate(args):
@@ -1464,6 +1640,9 @@ def main(argv):
     ad.add_argument("--run-dir", required=True)
     ad.add_argument("--authorization", required=True)
     ad.set_defaults(func=cmd_admit)
+    freeze = sub.add_parser("freeze-candidate")
+    freeze.add_argument("--run-dir", required=True)
+    freeze.set_defaults(func=cmd_freeze_candidate)
     nx = sub.add_parser("next")
     nx.add_argument("--run-dir")
     nx.set_defaults(func=cmd_next)
@@ -1478,6 +1657,14 @@ def main(argv):
     ag.add_argument("--run-dir", required=True)
     ag.add_argument("--gate", required=True)
     ag.set_defaults(func=cmd_accept_gate)
+    seal = sub.add_parser("seal-case")
+    seal.add_argument("--run-dir", required=True)
+    seal.add_argument("--task-id", required=True)
+    seal.add_argument("--case-id", required=True)
+    seal.add_argument("--case-dir", required=True)
+    seal.add_argument("--receipts", required=True)
+    seal.add_argument("--command", required=True)
+    seal.set_defaults(func=cmd_seal_case)
     tk = sub.add_parser("task")
     tk.add_argument("--run-dir")
     tk.add_argument("--task-id", required=True)

@@ -10,6 +10,7 @@ import tempfile
 import time
 import types
 import unittest
+from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -89,6 +90,81 @@ class VerificationTests(unittest.TestCase):
         (self.case_dir / "leaf-001.json").write_text(json.dumps(receipt or self.receipt))
         with contextlib.redirect_stdout(io.StringIO()):
             return runner.cmd_verify(types.SimpleNamespace(run_dir=str(self.run), gate="G4"))
+
+    def freeze_fixture(self):
+        self.state.pop("verification_candidate")
+        self.state["tasks"]["W4-02"]["state"] = "NOT_STARTED"
+        auth = Path(self.state["authorization_path"])
+        auth.write_text(json.dumps({"implementation_allowed": True, "expires_at": "2999-01-01T00:00:00Z",
+            "plan_manifest_sha256": self.state["plan_manifest_sha256"],
+            "repository_paths": self.candidate["repository_paths"],
+            "resource_allowlist": {"postgres_container": ["attv5-synthetic"]}}))
+        self.state["authorization_sha256"] = runner.sha256_file(auth)
+        self.state_file.write_text(json.dumps(self.state))
+        return types.SimpleNamespace(run_dir=str(self.run))
+
+    def test_freeze_clean_candidate_is_idempotent_and_does_not_pass_tasks(self):
+        args = self.freeze_fixture()
+        self.assertEqual(0, runner.cmd_freeze_candidate(args))
+        frozen = json.loads(self.state_file.read_text())
+        self.assertEqual([], runner.candidate_errors(frozen["verification_candidate"]))
+        self.assertEqual("NOT_STARTED", frozen["tasks"]["W4-02"]["state"])
+        self.assertEqual({"postgres_container": ["attv5-synthetic"]}, frozen["resource_allowlist"])
+        before = self.state_file.read_bytes()
+        events = (self.run / "events.jsonl").read_bytes()
+        self.assertEqual(0, runner.cmd_freeze_candidate(args))
+        self.assertEqual(before, self.state_file.read_bytes())
+        self.assertEqual(events, (self.run / "events.jsonl").read_bytes())
+
+    def test_freeze_refuses_dirty_worktree_without_mutating_state(self):
+        args = self.freeze_fixture()
+        (Path(self.candidate["repository_paths"]["imboy"]) / "foreign.txt").write_text("foreign WIP")
+        before = self.state_file.read_bytes()
+        with self.assertRaises(SystemExit): runner.cmd_freeze_candidate(args)
+        self.assertEqual(before, self.state_file.read_bytes())
+
+    def test_freeze_refuses_binding_old_pass_to_new_candidate(self):
+        args = self.freeze_fixture()
+        self.state["tasks"]["W4-02"]["state"] = "PASS"
+        self.state_file.write_text(json.dumps(self.state))
+        before = self.state_file.read_bytes()
+        with self.assertRaises(SystemExit): runner.cmd_freeze_candidate(args)
+        self.assertEqual(before, self.state_file.read_bytes())
+
+    def test_freeze_refuses_verifying_or_previously_attempted_evidence(self):
+        args = self.freeze_fixture()
+        for status, attempt in [("VERIFYING", 1), ("RETRYABLE", 1), ("READY", 1), ("BLOCKED_EXTERNAL", 0)]:
+            with self.subTest(status=status, attempt=attempt):
+                self.state["tasks"]["W4-02"].update(state=status, attempt=attempt)
+                self.state_file.write_text(json.dumps(self.state))
+                before = self.state_file.read_bytes()
+                with self.assertRaises(SystemExit): runner.cmd_freeze_candidate(args)
+                self.assertEqual(before, self.state_file.read_bytes())
+                self.assertFalse((self.run / "events.jsonl").exists())
+
+    def test_freeze_recovers_same_event_after_snapshot_failure(self):
+        args = self.freeze_fixture()
+        with mock.patch.object(runner.StateStore, "write_snapshot", side_effect=OSError("synthetic crash")):
+            with self.assertRaises(OSError): runner.cmd_freeze_candidate(args)
+        events = (self.run / "events.jsonl").read_bytes()
+        self.assertNotIn("verification_candidate", json.loads(self.state_file.read_text()))
+        self.assertEqual(0, runner.cmd_freeze_candidate(args))
+        self.assertEqual(events, (self.run / "events.jsonl").read_bytes())
+        self.assertIn("verification_candidate", json.loads(self.state_file.read_text()))
+
+    def test_freeze_cannot_replace_crashed_event_with_new_clean_head(self):
+        args = self.freeze_fixture()
+        with mock.patch.object(runner.StateStore, "write_snapshot", side_effect=OSError("synthetic crash")):
+            with self.assertRaises(OSError): runner.cmd_freeze_candidate(args)
+        before = self.state_file.read_bytes()
+        events = (self.run / "events.jsonl").read_bytes()
+        root = Path(self.candidate["repository_paths"]["imboy"])
+        (root / "fixture.txt").write_text("changed clean candidate")
+        subprocess.run(["git", "add", "fixture.txt"], cwd=root, check=True, capture_output=True)
+        subprocess.run(["git", "-c", "user.name=leeyi", "-c", "user.email=leeyisoft@qq.com", "commit", "-qm", "synthetic changed candidate"], cwd=root, check=True, capture_output=True)
+        with self.assertRaises(SystemExit): runner.cmd_freeze_candidate(args)
+        self.assertEqual(before, self.state_file.read_bytes())
+        self.assertEqual(events, (self.run / "events.jsonl").read_bytes())
 
     def test_old_suite_flag_receipt_cannot_pass(self):
         before = self.state_file.read_bytes()

@@ -5,24 +5,35 @@
 # into leaf receipts keyed by ordering_or_fault.
 set -u
 DB="$1"; PHASE="$2"; OUT="$3"
-PGPASSWORD_FILE="${V5_RUN_DIR:-/Users/leeyi/project/imboy.pub/.Codex/runs/att-v5-20261014-121848-3714}/resources/pg-attv5.password"
-PASS="$(cat "$PGPASSWORD_FILE")"
+RUN_DIR="${V5_RUN_DIR:?explicit run required}"
+SLOT="${V5_SLOT:?explicit fixture slot required}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PG_RESOURCE="$(python3 "$SCRIPT_DIR/attachment_lifecycle_v5_pg_guard.py" "$RUN_DIR" "$SLOT")" || exit 20
+IFS=$'\t' read -r PG_CONTAINER PG_HOST PG_PORT <<< "$PG_RESOURCE"
+valid_db() { [[ "$1" =~ ^attv5_${SLOT}_[a-z0-9_]+$ ]]; }
+valid_db "$DB" || exit 20
+for target in "${V5_EXPAND_DB:-attv5_${SLOT}_w102_expand}" "${V5_GUARDS_DB:-$DB}"; do
+  valid_db "$target" || exit 20
+done
+PROBE_TMP="$(mktemp -d "$RUN_DIR/resources/w102-probe.XXXXXX")" || exit 20
+trap 'rm -f "$PROBE_TMP/out.txt" "$PROBE_TMP/err.txt"; rmdir "$PROBE_TMP"' EXIT
+PASS="$(cat "$RUN_DIR/resources/pg-attv5.password")" || exit 20
 export PGPASSWORD="$PASS"
-PSQL() { docker exec -i -e PGPASSWORD="$PASS" imboy_pg18 psql -X -U imboy_user -d "$DB" -v ON_ERROR_STOP=1 "$@"; }
+PSQL() { docker exec -i -e PGPASSWORD="$PASS" "$PG_CONTAINER" psql -X -U imboy_user -d "$DB" -v ON_ERROR_STOP=1 "$@"; }
 : > "$OUT"
 
 ok=0; bad=0
 probe() { # name expected(0=must-fail-any / else must-equal-value) sql
   local name="$1" expected="$2" sql="$3" rc
-  echo "$sql" | PSQL -tAq > /tmp/w102_probe_out.txt 2>/tmp/w102_probe_err.txt
+  echo "$sql" | PSQL -tAq > "$PROBE_TMP/out.txt" 2>"$PROBE_TMP/err.txt"
   rc=$?
   if [ "$expected" = "fail" ]; then
     if [ $rc -ne 0 ]; then ok=$((ok+1)); echo "{\"name\":\"$name\",\"pass\":true}" >> "$OUT"
     else bad=$((bad+1)); echo "{\"name\":\"$name\",\"pass\":false,\"detail\":\"expected failure, rc=0\"}" >> "$OUT"; fi
   else
-    local val; val="$(cat /tmp/w102_probe_out.txt | tail -1)"
+    local val; val="$(cat "$PROBE_TMP/out.txt" | tail -1)"
     if [ $rc -eq 0 ] && [ "$val" = "$expected" ]; then ok=$((ok+1)); echo "{\"name\":\"$name\",\"pass\":true}" >> "$OUT"
-    else bad=$((bad+1)); echo "{\"name\":\"$name\",\"pass\":false,\"detail\":\"rc=$rc val=$val want=$expected $(head -c120 /tmp/w102_probe_err.txt)\"}" >> "$OUT"; fi
+    else bad=$((bad+1)); echo "{\"name\":\"$name\",\"pass\":false,\"detail\":\"rc=$rc val=$val want=$expected $(head -c120 "$PROBE_TMP/err.txt")\"}" >> "$OUT"; fi
   fi
 }
 
@@ -191,7 +202,7 @@ probe queue_direct_delete_row "fail" "SET ROLE v5_app_runtime; DELETE FROM attac
 probe queue_direct_update_state_g "fail" "SET ROLE v5_app_runtime; UPDATE enterprise_asset_delete_queue SET job_state='ready' WHERE true"
 probe queue_direct_delete_row_g "fail" "SET ROLE v5_app_runtime; DELETE FROM enterprise_asset_delete_queue WHERE true"
 probe eb_forge_tombstone_direct "fail" "SET ROLE v5_app_runtime; UPDATE enterprise_asset_delete_queue SET client_upload_id='55555555-5555-5555-5555-555555555555', upload_registration='{}'::jsonb WHERE true"
-if docker exec -i -e PGPASSWORD=v5_probe_runtime_pw imboy_pg18 psql -X -U v5_probe_runtime -h 127.0.0.1 -d "$DB" -tAc "SET ROLE v5_proof" > /dev/null 2>&1; then
+if docker exec -i -e PGPASSWORD=v5_probe_runtime_pw "$PG_CONTAINER" psql -X -U v5_probe_runtime -h 127.0.0.1 -d "$DB" -tAc "SET ROLE v5_proof" > /dev/null 2>&1; then
   bad=$((bad+1)); echo '{"name":"proof_role_not_setroleable","pass":false,"detail":"runtime role escalated to proof"}' >> "$OUT"
 else
   ok=$((ok+1)); echo '{"name":"proof_role_not_setroleable","pass":true}' >> "$OUT"
@@ -207,7 +218,7 @@ probe metadata_direct_delete "fail" "DELETE FROM attachment WHERE id=900000101"
 probe worker_select_queue_ok "1" "SET ROLE v5_worker; SELECT 1"
 probe claim_requires_worker_role "fail" "SET ROLE v5_app_runtime; SELECT * FROM fn_v5_claim_ordinary(gen_random_uuid())"
 probe reaper_requires_worker_role "fail" "SET ROLE v5_app_runtime; SELECT fn_v5_reaper_ordinary(10)"
-if docker exec -i -e PGPASSWORD=v5_probe_runtime_pw imboy_pg18 psql -X -U v5_probe_runtime -h 127.0.0.1 -d "$DB" -tAc "SET ROLE v5_fn_owner" > /dev/null 2>&1; then
+if docker exec -i -e PGPASSWORD=v5_probe_runtime_pw "$PG_CONTAINER" psql -X -U v5_probe_runtime -h 127.0.0.1 -d "$DB" -tAc "SET ROLE v5_fn_owner" > /dev/null 2>&1; then
   bad=$((bad+1)); echo '{"name":"runtime_set_role_owner","pass":false,"detail":"runtime escalated to owner"}' >> "$OUT"
 else
   ok=$((ok+1)); echo '{"name":"runtime_set_role_owner","pass":true}' >> "$OUT"
@@ -285,11 +296,11 @@ probe down_with_recovery_tombstone_refused "blocked" "SELECT CASE WHEN (SELECT c
 }
 
 cross_phase_probes() {
-local EXPAND_DB="${V5_EXPAND_DB:-attv5_w102_expand}"
+local EXPAND_DB="${V5_EXPAND_DB:-attv5_${SLOT}_w102_expand}"
 local GUARDS_DB="${V5_GUARDS_DB:-$DB}"
 local n_expand n_guards
-n_expand=$(docker exec -i -e PGPASSWORD="$PASS" imboy_pg18 psql -X -U imboy_user -d "$EXPAND_DB" -tAc "SELECT count(*)||'.'||coalesce(sum(hashtext(md5(p.prosrc))::bigint)::text,'0') FROM pg_proc p WHERE p.pronamespace='public'::regnamespace AND p.proname LIKE 'fn\\_v5\\_%'" 2>/dev/null || echo "err")
-n_guards=$(docker exec -i -e PGPASSWORD="$PASS" imboy_pg18 psql -X -U imboy_user -d "$GUARDS_DB" -tAc "SELECT count(*)||'.'||coalesce(sum(hashtext(md5(p.prosrc))::bigint)::text,'0') FROM pg_proc p WHERE p.pronamespace='public'::regnamespace AND p.proname LIKE 'fn\\_v5\\_%'" 2>/dev/null || echo "err2")
+n_expand=$(docker exec -i -e PGPASSWORD="$PASS" "$PG_CONTAINER" psql -X -U imboy_user -d "$EXPAND_DB" -tAc "SELECT count(*)||'.'||coalesce(sum(hashtext(md5(p.prosrc))::bigint)::text,'0') FROM pg_proc p WHERE p.pronamespace='public'::regnamespace AND p.proname LIKE 'fn\\_v5\\_%'" 2>/dev/null || echo "err")
+n_guards=$(docker exec -i -e PGPASSWORD="$PASS" "$PG_CONTAINER" psql -X -U imboy_user -d "$GUARDS_DB" -tAc "SELECT count(*)||'.'||coalesce(sum(hashtext(md5(p.prosrc))::bigint)::text,'0') FROM pg_proc p WHERE p.pronamespace='public'::regnamespace AND p.proname LIKE 'fn\\_v5\\_%'" 2>/dev/null || echo "err2")
 if [ -n "$n_expand" ] && [ -n "$n_guards" ] && [ "$n_expand" = "$n_guards" ] && [[ "$n_expand" =~ ^[0-9]+\.[0-9]+$ ]]; then
   ok=$((ok+1)); echo '{"name":"function_digest_same_across_phases","pass":true}' >> "$OUT"
 else
@@ -297,7 +308,7 @@ else
 fi
 local GUARDS_DB2="${V5_GUARDS_DB:-$DB}"
 local TRIG_COUNT
-TRIG_COUNT=$(docker exec -i -e PGPASSWORD="$PASS" imboy_pg18 psql -X -U imboy_user -d "$GUARDS_DB2" -tAc "SELECT count(*) FROM pg_trigger t WHERE NOT t.tgisinternal AND t.tgname LIKE 'trg\\_v5\\_%'" 2>/dev/null || echo "-1")
+TRIG_COUNT=$(docker exec -i -e PGPASSWORD="$PASS" "$PG_CONTAINER" psql -X -U imboy_user -d "$GUARDS_DB2" -tAc "SELECT count(*) FROM pg_trigger t WHERE NOT t.tgisinternal AND t.tgname LIKE 'trg\\_v5\\_%'" 2>/dev/null || echo "-1")
 if [ "$TRIG_COUNT" = "9" ]; then
   ok=$((ok+1)); echo '{"name":"guards_do_not_install_missing_functions","pass":true}' >> "$OUT"
 else
