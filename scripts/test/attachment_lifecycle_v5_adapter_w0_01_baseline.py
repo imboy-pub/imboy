@@ -37,26 +37,13 @@ heads_ok = all(subprocess.run(
 ).stdout.strip() == candidate["heads"][repo]
     for repo, path in candidate["repository_paths"].items())
 
-# 3) contract-level foreign conflict files unchanged (main worktrees)
-MAIN = {
-    "imboy": "/Users/leeyi/project/imboy.pub/imboy",
-    "imboyapp": "/Users/leeyi/project/imboy.pub/imboyapp",
-    "imboyadmin": "/Users/leeyi/project/imboy.pub/imboyadmin",
-}
-
-
-def sha(path):
-    h = hashlib.sha256()
-    h.update(open(path, "rb").read())
-    return h.hexdigest()
-
-
+# 3) contract-level foreign conflict files unchanged inside the candidate worktrees
 foreign = contract.get("known_external_conflicts", [])
 foreign_ok = True
 foreign_detail = []
 for item in foreign:
     repo, rel = item["path"].split("/", 1)
-    p = os.path.join(MAIN[repo], rel)
+    p = os.path.join(candidate["repository_paths"][repo], rel)
     if not os.path.exists(p) or sha(p) != item["sha256"]:
         foreign_ok = False
         foreign_detail.append(item["path"])
