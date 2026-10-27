@@ -1076,6 +1076,22 @@ def cmd_verify(args, held_lock=False):
             fails.extend(candidate_errors(candidate))
             if candidate.get("plan_manifest_sha256") != manifest_hash:
                 fails.append("candidate plan binding mismatch")
+        # candidate_progression_contract.historical_gate: G0..G5 receipts are
+        # bound to the candidate each task was ACCEPTED at; a later authorized
+        # task advancing the candidate must not invalidate them (the final
+        # candidate's real coverage is re-bound by W6).  Verify therefore
+        # checks each task's leaves against its own acceptance candidate.
+        accepted_candidates = {}
+        events_path = os.path.join(run_dir, "events.jsonl")
+        if os.path.exists(events_path):
+            with open(events_path) as _fh:
+                for _line in _fh:
+                    if not _line.strip():
+                        continue
+                    _ev = json.loads(_line)
+                    if _ev.get("kind") == "task_artifacts_accepted":
+                        accepted_candidates[_ev["payload"].get("task")] = \
+                            _ev["payload"].get("candidate")
         auth_path = state.get("authorization_path", "")
         if not os.path.isfile(auth_path) or sha256_file(auth_path) != state.get("authorization_sha256"):
             fails.append("authorization original missing or hash mismatch; recovery admission required")
@@ -1108,7 +1124,8 @@ def cmd_verify(args, held_lock=False):
                                 if identity not in by_id:
                                     fails.append(cid + ": unexpected leaf " + fn)
                                     continue
-                                issues = receipt_errors(leaf, by_id[identity], tid, cid, candidate,
+                                issues = receipt_errors(leaf, by_id[identity], tid, cid,
+                                                        accepted_candidates.get(tid, candidate),
                                                         run_dir, state.get("resource_allowlist", {}), contract)
                                 fails.extend(cid + " " + fn + ": " + why for why in issues)
                             except (OSError, ValueError, TypeError, AttributeError) as exc:
