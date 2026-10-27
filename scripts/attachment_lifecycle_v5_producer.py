@@ -182,6 +182,11 @@ def main():
         }
         for k in LEAF_FIELDS:
             receipt[k] = leaf.get(k)
+        # Provenance the runner verifies verbatim must survive into the receipt:
+        # surface entrypoints, physical device and real-browser process identity.
+        for proof in ("entrypoint_provenance", "device_provenance", "browser_provenance"):
+            if row.get(proof):
+                receipt[proof] = row[proof]
         receipts.append(receipt)
 
     out = os.path.join(case_dir, "measured-receipts.json")
