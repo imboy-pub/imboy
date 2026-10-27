@@ -7,6 +7,7 @@
 
 -export([tablename/0]).
 -export([mark_deleted/3]).
+-export([mark_deleted/4]).
 -export([is_deleted/3]).
 -export([list/1]).
 -export([restore/3]).
@@ -34,16 +35,24 @@ tablename() ->
 %% @return {ok, Count} 插入成功返回影响行数 | {error, Reason} 插入失败
 -spec mark_deleted(integer(), integer(), binary()) -> {ok, non_neg_integer()} | {error, term()}.
 mark_deleted(Uid, ConversationId, Type) ->
+    %% W09.b：无世代参数的旧入口 → C2C 恒 0；C2G 建议走 mark_deleted/4。
+    mark_deleted(Uid, ConversationId, Type, 0).
+
+%% @doc W09.b（§6.7）：删除（隐藏）行绑定世代（C2C=0；C2G=写入时 active 世代）。
+%% 已有行（含旧世代行）UPSERT 刷新绑定与时间——重入群重新隐藏即换绑新世代。
+-spec mark_deleted(integer(), integer(), binary(), non_neg_integer()) ->
+    {ok, non_neg_integer()} | {error, term()}.
+mark_deleted(Uid, ConversationId, Type, GenerationId) ->
     Tb = tablename(),
     Now = elib_dt:now(),
-    GenId = elib_tsid:generate(conversation_delete),
-    % 使用 INSERT ... ON CONFLICT DO NOTHING 实现幂等性
+    RowId = elib_tsid:generate(conversation_delete),
     Sql =
         <<"INSERT INTO ", Tb/binary,
-            " (id, user_id, conversation_id, conversation_type, deleted_at, created_at) ",
-            "VALUES ($1, $2, $3, $4, $5, $6) ",
-            "ON CONFLICT (user_id, conversation_id, conversation_type) ", "DO NOTHING">>,
-    Params = [GenId, Uid, ConversationId, Type, Now, Now],
+            " (id, user_id, conversation_id, conversation_type, generation_id, deleted_at, created_at) ",
+            "VALUES ($1, $2, $3, $4, $5, $6, $7) ",
+            "ON CONFLICT (user_id, conversation_id, conversation_type) DO UPDATE ",
+            "SET generation_id = EXCLUDED.generation_id, deleted_at = EXCLUDED.deleted_at">>,
+    Params = [RowId, Uid, ConversationId, Type, GenerationId, Now, Now],
     case elib_pg:execute_count(Sql, Params) of
         {ok, Count} -> {ok, Count};
         {error, Reason} -> {error, Reason}
@@ -56,9 +65,15 @@ mark_deleted(Uid, ConversationId, Type) ->
 %% @return true 已删除 | false 未删除
 -spec is_deleted(integer(), integer(), binary()) -> boolean().
 is_deleted(Uid, ConversationId, Type) ->
+    %% W09.b：世代过滤——C2G 隐藏态不跨世代延续（重入群重新校验，§6.7）。
     Sql =
         <<"SELECT count(*) as count FROM ", (tablename())/binary,
-            " WHERE user_id = $1 AND conversation_id = $2 AND conversation_type = $3">>,
+            " p"
+            " WHERE p.user_id = $1 AND p.conversation_id = $2 AND p.conversation_type = $3"
+            " AND (p.conversation_type = 'c2c' OR EXISTS ("
+            "  SELECT 1 FROM public.group_member_generation g"
+            "  WHERE g.group_id = p.conversation_id AND g.user_id = p.user_id"
+            "  AND g.end_seq IS NULL AND g.id = p.generation_id))">>,
     case elib_pg:query(Sql, [Uid, ConversationId, Type]) of
         {ok, [#{<<"count">> := Count}]} when Count > 0 ->
             true;
@@ -71,9 +86,21 @@ is_deleted(Uid, ConversationId, Type) ->
 %% @return {ok, List} 查询成功返回已删除列表 | {error, Reason} 查询失败
 -spec list(integer()) -> {ok, list(map())} | {error, term()}.
 list(Uid) ->
+    %% W09.b：世代过滤同 is_deleted/3——C2C 行恒适用；C2G 行仅绑定当前
+    %% active 世代才适用。
     Sql =
-        <<"SELECT conversation_id, conversation_type, deleted_at ", "FROM ", (tablename())/binary,
-            " WHERE user_id = $1 ", "ORDER BY deleted_at DESC">>,
+        <<
+            "SELECT p.conversation_id, p.conversation_type, p.deleted_at "
+            "FROM ",
+            (tablename())/binary,
+            " p "
+            "WHERE p.user_id = $1 AND ("
+            "p.conversation_type = 'c2c' OR EXISTS ("
+            "  SELECT 1 FROM public.group_member_generation g "
+            "  WHERE g.group_id = p.conversation_id AND g.user_id = p.user_id "
+            "  AND g.end_seq IS NULL AND g.id = p.generation_id)) "
+            "ORDER BY p.deleted_at DESC"
+        >>,
     case elib_pg:query(Sql, [Uid]) of
         {ok, Rows} when is_list(Rows) ->
             {ok, Rows};

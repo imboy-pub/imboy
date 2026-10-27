@@ -8,6 +8,7 @@
 -include("log.hrl").
 -include("common.hrl").
 
+-export([active_generation_id/2]).
 -export([list_member/2]).
 -export([list_members/1]).
 -export([list_members_with_info/1]).
@@ -177,6 +178,21 @@ join_group(Conn, JoinMode, Uid, Gid, OptData) ->
 %% @doc 开启新世代：start_seq = 锁内计数器下一值（join/rejoin，§7.4）。
 %% 与 staging 接受对同一 msg_store_seq 行加锁（无自增 upsert），
 %% 重复 join（已有 open 世代）幂等：ON CONFLICT DO NOTHING。
+%% @doc W09.b（§6.7）：成员当前 active 世代 id（end_seq IS NULL，取最大
+%% generation_no）；无 open 世代（已退群/从未入群）返回 0。
+-spec active_generation_id(integer(), integer()) -> non_neg_integer().
+active_generation_id(Gid, Uid) ->
+    Sql =
+        <<
+            "SELECT id FROM public.group_member_generation "
+            "WHERE group_id = $1 AND user_id = $2 AND end_seq IS NULL "
+            "ORDER BY generation_no DESC LIMIT 1"
+        >>,
+    case elib_pg:one(Sql, [Gid, Uid]) of
+        {ok, #{<<"id">> := Id}} when is_integer(Id), Id > 0 -> Id;
+        _ -> 0
+    end.
+
 %% gen_no 取该成员历史最大值+1；首代为 1。
 -spec open_history_generation(pid(), integer(), integer()) -> ok.
 open_history_generation(Conn, Gid, Uid) ->

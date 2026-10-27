@@ -27,7 +27,13 @@
 %% @return ok 成功 | {error, Reason} 失败
 -spec pin_conversation(integer(), integer(), binary()) -> ok | {error, term()}.
 pin_conversation(Uid, ConversationId, Type) ->
-    case conversation_pin_repo:pin(Uid, ConversationId, Type) of
+    %% W09.b（§6.7）：C2G 置顶行绑定写入时 active 成员世代；C2C 恒 0。
+    GenerationId =
+        case Type of
+            <<"c2g">> -> group_member_ds:active_generation_id(ConversationId, Uid);
+            _ -> 0
+        end,
+    case conversation_pin_repo:pin(Uid, ConversationId, Type, GenerationId) of
         {ok, _Count} ->
             ok;
         {error, Reason} ->

@@ -7,6 +7,7 @@
 
 -export([tablename/0]).
 -export([pin/3]).
+-export([pin/4]).
 -export([unpin/3]).
 -export([is_pinned/3]).
 -export([list/1]).
@@ -34,19 +35,30 @@ tablename() ->
 %% @return {ok, Count} 插入成功返回影响行数 | {error, Reason} 插入失败
 -spec pin(integer(), integer(), binary()) -> {ok, non_neg_integer()} | {error, term()}.
 pin(Uid, ConversationId, Type) ->
+    %% W09.b：无世代参数的旧入口 → C2C 恒 0；C2G 建议走 pin/4。
+    pin(Uid, ConversationId, Type, 0).
+
+%% @doc W09.b（§6.7）：置顶行绑定世代（C2C=0；C2G=写入时 active 成员世代）。
+%% 已有行（含旧世代行）UPSERT 刷新绑定与时间——重入群重新置顶即换绑新世代。
+-spec pin(integer(), integer(), binary(), non_neg_integer()) ->
+    {ok, non_neg_integer()} | {error, term()}.
+pin(Uid, ConversationId, Type, GenerationId) ->
     Tb = tablename(),
     Now = elib_dt:now(),
-    Data = #{
-        <<"user_id">> => Uid,
-        <<"conversation_id">> => ConversationId,
-        <<"conversation_type">> => Type,
-        <<"pinned_at">> => Now,
-        <<"created_at">> => Now
-    },
     Id = elib_tsid:generate(conversation_pin),
-    Data2 = Data#{<<"id">> => Id},
-    {Sql, Params} = elib_pg_sql:insert(Tb, Data2),
-    case elib_pg:execute_count(Sql, Params) of
+    Sql =
+        <<"INSERT INTO ", Tb/binary,
+            " (id, user_id, conversation_id, conversation_type, "
+            "generation_id, pinned_at, created_at) "
+            "VALUES ($1, $2, $3, $4, $5, $6, $7) "
+            "ON CONFLICT (user_id, conversation_id, conversation_type) DO UPDATE "
+            "SET generation_id = EXCLUDED.generation_id, "
+            "pinned_at = EXCLUDED.pinned_at">>,
+    case
+        elib_pg:execute_count(Sql, [
+            Id, Uid, ConversationId, Type, GenerationId, Now, Now
+        ])
+    of
         {ok, Count} -> {ok, Count};
         {error, Reason} -> {error, Reason}
     end.
@@ -73,9 +85,15 @@ unpin(Uid, ConversationId, Type) ->
 %% @return true 已置顶 | false 未置顶
 -spec is_pinned(integer(), integer(), binary()) -> boolean().
 is_pinned(Uid, ConversationId, Type) ->
+    %% W09.b：世代过滤同 list/1——C2G 旧行/跨世代行不适用。
     Sql =
         <<"SELECT count(*) as count FROM ", (tablename())/binary,
-            " WHERE user_id = $1 AND conversation_id = $2 AND conversation_type = $3">>,
+            " p"
+            " WHERE p.user_id = $1 AND p.conversation_id = $2 AND p.conversation_type = $3"
+            " AND (p.conversation_type = 'c2c' OR EXISTS ("
+            "  SELECT 1 FROM public.group_member_generation g"
+            "  WHERE g.group_id = p.conversation_id AND g.user_id = p.user_id"
+            "  AND g.end_seq IS NULL AND g.id = p.generation_id))">>,
     case elib_pg:query(Sql, [Uid, ConversationId, Type]) of
         {ok, [#{<<"count">> := Count}]} when Count > 0 ->
             true;
@@ -88,9 +106,22 @@ is_pinned(Uid, ConversationId, Type) ->
 %% @return {ok, List} 查询成功返回置顶列表 | {error, Reason} 查询失败
 -spec list(integer()) -> {ok, list(map())} | {error, term()}.
 list(Uid) ->
+    %% W09.b 世代过滤：C2C 行恒适用；C2G 行仅当绑定行等于该成员当前
+    %% active 世代才适用——旧值不能用于新世代（§6.7/W09.d 固定退出），
+    %% 由读取投影过滤承载，不靠客户端筛选。
     Sql =
-        <<"SELECT conversation_id, conversation_type, pinned_at ", "FROM ", (tablename())/binary,
-            " WHERE user_id = $1 ", "ORDER BY pinned_at DESC">>,
+        <<
+            "SELECT p.conversation_id, p.conversation_type, p.pinned_at "
+            "FROM ",
+            (tablename())/binary,
+            " p "
+            "WHERE p.user_id = $1 AND ("
+            "p.conversation_type = 'c2c' OR EXISTS ("
+            "  SELECT 1 FROM public.group_member_generation g "
+            "  WHERE g.group_id = p.conversation_id AND g.user_id = p.user_id "
+            "  AND g.end_seq IS NULL AND g.id = p.generation_id)) "
+            "ORDER BY p.pinned_at DESC"
+        >>,
     case elib_pg:query(Sql, [Uid]) of
         {ok, Rows} when is_list(Rows) ->
             {ok, Rows};
