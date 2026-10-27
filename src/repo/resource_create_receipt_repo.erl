@@ -33,6 +33,7 @@
     find/3,
     mark_deleted_by_resource_tx/3,
     canonical_group_digest/1,
+    canonical_channel_digest/1,
     sha256_hex/1
 ]).
 
@@ -213,6 +214,71 @@ canonical_group_digest(#{
         Title,
         <<"\nmembers=">>,
         MembersSeg
+    ]),
+    sha256_hex(Canonical).
+
+%% @doc 频道创建规范载荷摘要（§6.4：补齐服务端实际默认选项；固定字段序列）。
+%% 输入必须是已规范化载荷：
+%%   #{name => TrimmedBinary（Unicode 原值仅 trim，不大小写/NFKC）,
+%%     scope => <<"personal">> | <<"workspace">>,
+%%     workspace_id => integer（personal 为 0）,
+%%     visibility/access_type/join_policy => integer（服务端内部化后默认值）,
+%%     description/avatar/custom_id => binary（缺省补 <<>>）,
+%%     tags => [binary()]（去重升序）}
+%% 固定字段序列（UTF-8，换行分隔）；摘要排除 request_id、recover_only 与
+%% 两端时间。频道创建无初始成员——成员段不存在即不进规范形式。
+-spec canonical_channel_digest(map()) -> binary().
+canonical_channel_digest(#{
+    name := Name,
+    scope := Scope,
+    workspace_id := WorkspaceId,
+    visibility := Visibility,
+    access_type := AccessType,
+    join_policy := JoinPolicy,
+    description := Description,
+    avatar := Avatar,
+    custom_id := CustomId,
+    tags := Tags
+}) when
+    is_binary(Name),
+    is_binary(Scope),
+    is_integer(WorkspaceId),
+    is_integer(Visibility),
+    is_integer(AccessType),
+    is_integer(JoinPolicy),
+    is_binary(Description),
+    is_binary(Avatar),
+    is_binary(CustomId),
+    is_list(Tags)
+->
+    WsSeg =
+        case Scope of
+            <<"workspace">> -> integer_to_binary(WorkspaceId);
+            <<"personal">> -> <<>>
+        end,
+    TagsSeg = iolist_to_binary(lists:join(<<",">>, lists:sort(lists:usort(Tags)))),
+    Canonical = iolist_to_binary([
+        <<"create_channel">>,
+        <<"\nscope=">>,
+        Scope,
+        <<"\nworkspace_id=">>,
+        WsSeg,
+        <<"\nvisibility=">>,
+        integer_to_binary(Visibility),
+        <<"\naccess_type=">>,
+        integer_to_binary(AccessType),
+        <<"\njoin_policy=">>,
+        integer_to_binary(JoinPolicy),
+        <<"\nname=">>,
+        Name,
+        <<"\ndescription=">>,
+        Description,
+        <<"\navatar=">>,
+        Avatar,
+        <<"\ncustom_id=">>,
+        CustomId,
+        <<"\ntags=">>,
+        TagsSeg
     ]),
     sha256_hex(Canonical).
 

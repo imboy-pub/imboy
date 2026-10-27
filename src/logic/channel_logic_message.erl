@@ -5,6 +5,8 @@
 -export([channel_transfer/1]).
 -export([message_transfer/1]).
 -export([create_channel/4]).
+%% W04.c（channel-group-ux v2.2 §6.4 C1）：带受理回执的频道创建。
+-export([create_channel_with_receipt/7]).
 -export([get_channel/2]).
 -export([get_channel_by_custom_id/2]).
 -export([update_channel/3]).
@@ -82,6 +84,289 @@ do_create_channel(Uid, Name, Opts) ->
         {error, Reason} ->
             {error, elib_cnv:safe_to_binary(Reason)}
     end.
+
+%% ===================================================================
+%% W04.c（channel-group-ux v2.2 §6.4 C1）：带受理回执的频道创建与重放
+%% ===================================================================
+
+%% @doc 带受理回执的频道创建（新合同入口，仅当请求携带非空 request_id）。
+%% 身份唯一键 (Uid, create_channel, RequestId)。事务序列：advisory 串行化
+%% → receipt 占位 → 既有 channel_ds:create_channel_tx（频道+创建者订阅/
+%% 管理员+配额，同一 Conn）→ receipt 回填 resource_id/server_accepted_at。
+%% 频道创建无初始成员邀请——无通知入队步骤（§6.4 通知义务按效果存在性）。
+%% 任何一步失败全部回滚（J23.a）；重放不再创建（J23.b）。7d 服务端年龄
+%% 独立决定完整结果（J24.b）；删除例外优先（delete_channel 同事务置位）。
+-spec create_channel_with_receipt(
+    integer(), binary(), map(), integer(), {binary(), integer()}, binary(), boolean()
+) ->
+    {ok, map(), accepted | replayed}
+    | {error, request_id_conflict | create_not_accepted | binary()}
+    | {error, {create_recovery_expired | create_resource_unavailable, integer() | undefined}}
+    | {error, {integer(), binary()}}.
+create_channel_with_receipt(
+    Uid, Name, Opts, MaxChannels, {Scope, WorkspaceId}, RequestId, RecoverOnly
+) when
+    Scope =:= <<"personal">> orelse Scope =:= <<"workspace">>
+->
+    case normalize_receipt_name(Name) of
+        {error, Reason} ->
+            {error, Reason};
+        {ok, NameNorm} ->
+            Digest = receipt_channel_digest(NameNorm, Opts, Scope, WorkspaceId),
+            case RecoverOnly of
+                true ->
+                    recover_only_channel(Uid, RequestId, Digest);
+                false ->
+                    case resource_create_receipt_repo:find(Uid, <<"create_channel">>, RequestId) of
+                        {ok, Row} ->
+                            replay_and_fetch(Uid, Digest, Row);
+                        {error, not_found} ->
+                            first_accept_channel(
+                                Uid,
+                                NameNorm,
+                                Opts,
+                                MaxChannels,
+                                Scope,
+                                WorkspaceId,
+                                RequestId,
+                                Digest
+                            );
+                        {error, Reason} ->
+                            ?ERROR_LOG([channel_receipt_find_failed, Uid, RequestId, Reason]),
+                            {error, <<"创建受理查询失败，请稍后重试"/utf8>>}
+                    end
+            end
+    end.
+
+%% 首次受理前置（镜像 create_channel/5 的资格顺序：scope 合法性 →
+%% workspace 资格），占位/创建/回填同一事务。
+-spec first_accept_channel(
+    integer(), binary(), map(), integer(), binary(), integer(), binary(), binary()
+) ->
+    {ok, map(), accepted}
+    | {error, binary()}
+    | {error, {integer(), binary()}}
+    | {error, request_id_conflict}
+    | {error, {create_recovery_expired | create_resource_unavailable, integer() | undefined}}.
+first_accept_channel(Uid, NameNorm, Opts, MaxChannels, <<"personal">>, _WsId, RequestId, Digest) ->
+    run_first_accept_channel_tx(
+        Uid, NameNorm, Opts, MaxChannels, RequestId, Digest
+    );
+first_accept_channel(
+    Uid, NameNorm, Opts, MaxChannels, <<"workspace">>, WorkspaceId, RequestId, Digest
+) ->
+    case is_integer(WorkspaceId) andalso WorkspaceId > 0 of
+        false ->
+            {error, {400, <<"scope=workspace 时 workspace_id 必须"/utf8>>}};
+        true ->
+            case workspace_logic:ensure_can_create_resource(WorkspaceId, Uid) of
+                {error, {Code, Msg}} ->
+                    {error, {Code, Msg}};
+                ok ->
+                    Opts2 = Opts#{scope => <<"workspace">>, workspace_id => WorkspaceId},
+                    run_first_accept_channel_tx(
+                        Uid, NameNorm, Opts2, MaxChannels, RequestId, Digest
+                    )
+            end
+    end.
+
+-spec run_first_accept_channel_tx(
+    integer(), binary(), map(), integer(), binary(), binary()
+) ->
+    {ok, map(), accepted | replayed}
+    | {error, binary()}
+    | {error, {integer(), binary()}}
+    | {error, request_id_conflict}
+    | {error, {create_recovery_expired | create_resource_unavailable, integer() | undefined}}.
+run_first_accept_channel_tx(Uid, NameNorm, Opts, MaxChannels, RequestId, Digest) ->
+    Options = Opts#{max_channels => MaxChannels},
+    case
+        elib_pg:with_tx(fun(Conn) ->
+            ok = abort_on_receipt_repo_error(
+                resource_create_receipt_repo:serialize_tx(
+                    Conn, Uid, <<"create_channel">>, RequestId
+                )
+            ),
+            case
+                resource_create_receipt_repo:placeholder_tx(
+                    Conn, Uid, <<"create_channel">>, RequestId, Digest
+                )
+            of
+                {ok, inserted, _Row} ->
+                    case channel_ds:create_channel_tx(Conn, Uid, NameNorm, Options) of
+                        {ok, ChannelId} ->
+                            accept_receipt_or_abort(
+                                resource_create_receipt_repo:accept_tx(
+                                    Conn, Uid, <<"create_channel">>, RequestId, ChannelId
+                                )
+                            ),
+                            {ok, ChannelId};
+                        {error, Reason} ->
+                            throw({abort_tx, Reason})
+                    end;
+                {ok, existing, Row} ->
+                    %% 同键并发前事务已提交：事务内重放，不再创建。
+                    replay_channel_receipt(Uid, Digest, Row);
+                {error, Reason} ->
+                    throw({abort_tx, {receipt_placeholder_failed, Reason}})
+            end
+        end)
+    of
+        {ok, ChannelId} ->
+            {ok, Channel} = fetch_created_channel(ChannelId),
+            {ok, Channel, accepted};
+        {ok, ChannelId, replayed} ->
+            {ok, Channel} = fetch_created_channel(ChannelId),
+            {ok, Channel, replayed};
+        {error, {Code, Msg}} when is_integer(Code) ->
+            {error, {Code, Msg}};
+        {error, channel_creation_limit} ->
+            {error, <<"已达频道创建上限"/utf8>>};
+        {error, request_id_conflict} = Conflict ->
+            Conflict;
+        {error, {create_recovery_expired, _}} = Expired ->
+            Expired;
+        {error, {create_resource_unavailable, _}} = Unavailable ->
+            Unavailable;
+        {error, Reason} ->
+            ?ERROR_LOG([channel_receipt_create_failed, Uid, RequestId, Reason]),
+            {error, <<"频道创建失败，请稍后重试"/utf8>>};
+        {error, throw, ThrowReason} ->
+            ?ERROR_LOG([channel_receipt_create_throw, Uid, RequestId, ThrowReason]),
+            {error, <<"频道创建失败，请稍后重试"/utf8>>}
+    end.
+
+-spec fetch_created_channel(integer()) -> {ok, map()} | {error, binary()}.
+fetch_created_channel(ChannelId) ->
+    case channel_ds:find_by_id(ChannelId, ?CHANNEL_SAFE_COLUMNS) of
+        {error, Reason} ->
+            {error, elib_cnv:safe_to_binary(Reason)};
+        Channel when is_map(Channel) ->
+            {ok, channel_transfer(Channel)};
+        Unexpected ->
+            {error, elib_cnv:safe_to_binary(Unexpected)}
+    end.
+
+%% 规范化（§6.4）：名称 Unicode 原值仅 trim，空名拒绝；摘要由服务端实际
+%% 默认选项（visibility/access_type/join_policy 补 0；description/avatar/
+%% custom_id 补空串；tags 去重升序）构成。
+-spec normalize_receipt_name(binary()) -> {ok, binary()} | {error, {400, binary()}}.
+normalize_receipt_name(Name) when is_binary(Name) ->
+    Name2 = string:trim(Name),
+    case Name2 of
+        <<>> -> {error, {400, <<"频道名称不能为空"/utf8>>}};
+        _ -> {ok, Name2}
+    end;
+normalize_receipt_name(_) ->
+    {error, {400, <<"频道名称不能为空"/utf8>>}}.
+
+-spec receipt_channel_digest(binary(), map(), binary(), integer()) -> binary().
+receipt_channel_digest(NameNorm, Opts, Scope, WorkspaceId) ->
+    resource_create_receipt_repo:canonical_channel_digest(#{
+        name => NameNorm,
+        scope => Scope,
+        workspace_id =>
+            case Scope of
+                <<"workspace">> -> WorkspaceId;
+                <<"personal">> -> 0
+            end,
+        visibility => elib_cnv:safe_to_integer(maps:get(visibility, Opts, 0)),
+        access_type => elib_cnv:safe_to_integer(maps:get(access_type, Opts, 0)),
+        join_policy => elib_cnv:safe_to_integer(maps:get(join_policy, Opts, 0)),
+        description => elib_cnv:safe_to_binary(maps:get(description, Opts, <<>>)),
+        avatar => elib_cnv:safe_to_binary(maps:get(avatar, Opts, <<>>)),
+        custom_id =>
+            case maps:get(custom_id, Opts, undefined) of
+                Bin when is_binary(Bin) -> Bin;
+                _ -> <<>>
+            end,
+        tags =>
+            case maps:get(tags, Opts, []) of
+                List when is_list(List) -> List;
+                _ -> []
+            end
+    }).
+
+%% 重放判定后取频道出站 DTO：对外形状恒为 {ok, ChannelMap, replayed}
+%%（与首受理一致；ChannelId 仅用于错误核对元信息）。
+-spec replay_and_fetch(integer(), binary(), map()) ->
+    {ok, map(), replayed}
+    | {error, request_id_conflict}
+    | {error, {create_recovery_expired | create_resource_unavailable, integer() | undefined}}.
+replay_and_fetch(Uid, Digest, Row) ->
+    case replay_channel_receipt(Uid, Digest, Row) of
+        {ok, ChannelId, replayed} ->
+            {ok, Channel} = fetch_created_channel(ChannelId),
+            {ok, Channel, replayed};
+        Other ->
+            Other
+    end.
+
+%% recover_only 只查：不新增受理占位/资源（§6.4 恢复状态表）。
+-spec recover_only_channel(integer(), binary(), binary()) ->
+    {ok, map(), replayed}
+    | {error, request_id_conflict | create_not_accepted | binary()}
+    | {error, {create_recovery_expired | create_resource_unavailable, integer() | undefined}}.
+recover_only_channel(Uid, RequestId, Digest) ->
+    case resource_create_receipt_repo:find(Uid, <<"create_channel">>, RequestId) of
+        {ok, Row} ->
+            replay_and_fetch(Uid, Digest, Row);
+        {error, not_found} ->
+            %% 仅表示查询时未见已提交受理，不证明在途请求不会迟到（§6.4）。
+            {error, create_not_accepted};
+        {error, Reason} ->
+            ?ERROR_LOG([channel_receipt_recover_lookup_failed, Uid, RequestId, Reason]),
+            {error, <<"创建受理查询失败，请稍后重试"/utf8>>}
+    end.
+
+%% 重放判定：先比对规范摘要（同键不同载荷 → 冲突），再按删除/7d/资格
+%% 分派（创建者仍是资源管理者；撤权/删除统一不可用，不泄露内容）。
+-spec replay_channel_receipt(integer(), binary(), map()) ->
+    {ok, integer(), replayed}
+    | {error, request_id_conflict}
+    | {error, {create_recovery_expired | create_resource_unavailable, integer() | undefined}}.
+replay_channel_receipt(Uid, Digest, Row) ->
+    case maps:get(<<"request_digest">>, Row) =:= Digest of
+        false ->
+            {error, request_id_conflict};
+        true ->
+            case maps:get(<<"resource_id">>, Row) of
+                ChannelId when is_integer(ChannelId), ChannelId > 0 ->
+                    Expired = maps:get(<<"expired">>, Row) =:= true,
+                    Deleted = maps:get(<<"resource_deleted">>, Row) =:= true,
+                    replay_channel_decision(Uid, ChannelId, Deleted, Expired);
+                _ ->
+                    %% 防御：committed 行恒有 resource_id（占位与回填同事务）。
+                    {error, {create_resource_unavailable, undefined}}
+            end
+    end.
+
+-spec replay_channel_decision(integer(), integer(), boolean(), boolean()) ->
+    {ok, integer(), replayed}
+    | {error, {create_recovery_expired | create_resource_unavailable, integer()}}.
+replay_channel_decision(_Uid, ChannelId, true = _Deleted, _Expired) ->
+    {error, {create_resource_unavailable, ChannelId}};
+replay_channel_decision(_Uid, ChannelId, false, true = _Expired) ->
+    {error, {create_recovery_expired, ChannelId}};
+replay_channel_decision(Uid, ChannelId, false, false) ->
+    case channel_ds:find_by_id(ChannelId, <<"status,creator_uid">>) of
+        #{<<"status">> := 1, <<"creator_uid">> := Uid} ->
+            {ok, ChannelId, replayed};
+        _ ->
+            {error, {create_resource_unavailable, ChannelId}}
+    end.
+
+-spec abort_on_receipt_repo_error(ok | {error, term()}) -> ok.
+abort_on_receipt_repo_error(ok) ->
+    ok;
+abort_on_receipt_repo_error({error, Reason}) ->
+    throw({abort_tx, {receipt_repo_error, Reason}}).
+
+-spec accept_receipt_or_abort({ok, map()} | {error, term()}) -> {ok, map()}.
+accept_receipt_or_abort({ok, Row}) ->
+    {ok, Row};
+accept_receipt_or_abort({error, Reason}) ->
+    throw({abort_tx, {receipt_accept_failed, Reason}}).
 
 -spec get_channel(binary(), integer()) -> {ok, map()} | {error, binary() | {integer(), binary()}}.
 get_channel(ChannelIdBin, Uid) ->

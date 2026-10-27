@@ -139,22 +139,133 @@ create(Req0, State) ->
                         join_policy => JoinPolicy2
                     },
                     MaxChannels = 20,
-                    case
-                        channel_logic:create_channel(
-                            Uid, Name, Opts, MaxChannels, {Scope, WorkspaceId}
-                        )
-                    of
-                        {ok, Channel} ->
-                            elib_response:success(Req0, Channel);
-                        {error, {Code, Msg}} ->
-                            elib_response:error(Req0, Msg, Code);
-                        {error, Msg} ->
-                            elib_response:error(Req0, Msg)
+                    %% W04.c（channel-group-ux v2.2 §6.4 C1）：携带非空
+                    %% request_id 的请求走受理合同（占位/重放/recover_only）；
+                    %% 缺失或空串走旧路径，行为零变化（回归红线）。
+                    %% 绝不剥离客户端已携带的键。
+                    case receipt_request_id(PostVals) of
+                        <<>> ->
+                            case
+                                channel_logic:create_channel(
+                                    Uid, Name, Opts, MaxChannels, {Scope, WorkspaceId}
+                                )
+                            of
+                                {ok, Channel} ->
+                                    elib_response:success(Req0, Channel);
+                                {error, {Code, Msg}} ->
+                                    elib_response:error(Req0, Msg, Code);
+                                {error, Msg} ->
+                                    elib_response:error(Req0, Msg)
+                            end;
+                        RequestId ->
+                            RecoverOnly = recover_only_flag(PostVals),
+                            respond_channel_create_receipt(
+                                Req0,
+                                Uid,
+                                RequestId,
+                                channel_logic:create_channel_with_receipt(
+                                    Uid,
+                                    Name,
+                                    Opts,
+                                    MaxChannels,
+                                    {Scope, WorkspaceId},
+                                    RequestId,
+                                    RecoverOnly
+                                )
+                            )
                     end;
                 false ->
                     elib_response:error(Req0, <<"频道访问策略组合无效"/utf8>>)
             end
     end.
+
+%% ===================================================================
+%% W04.c（channel-group-ux v2.2 §6.4 C1）：创建受理合同响应
+%% ===================================================================
+
+%% request_id 解析：非空二进制视为新合同意图；缺失/空串走旧路径。
+-spec receipt_request_id(map()) -> binary().
+receipt_request_id(PostVals) when is_map(PostVals) ->
+    Raw =
+        case maps:get(<<"request_id">>, PostVals, <<>>) of
+            Bin when is_binary(Bin) -> Bin;
+            Other -> elib_cnv:safe_to_binary(Other)
+        end,
+    elib_str:trunc(string:trim(Raw), 128);
+receipt_request_id(_) ->
+    <<>>.
+
+%% recover_only 只查标志（§6.4：>=24h 的未知意图绝不创建，只查）。
+-spec recover_only_flag(map()) -> boolean().
+recover_only_flag(PostVals) when is_map(PostVals) ->
+    case maps:get(<<"recover_only">>, PostVals, false) of
+        true -> true;
+        <<"true">> -> true;
+        1 -> true;
+        <<"1">> -> true;
+        _ -> false
+    end;
+recover_only_flag(_) ->
+    false.
+
+%% 受理结果 → HTTP 响应：成功 Channel map 附 request_id/creation_state
+%% 增量字段；四个稳定错误符号分开（§6.4），错误 envelope payload 携带
+%% 核对元信息（request_id，可达时附频道 ID），不泄露名称/成员。
+-spec respond_channel_create_receipt(cowboy_req:req(), integer(), binary(), term()) ->
+    cowboy_req:req().
+respond_channel_create_receipt(Req0, _Uid, RequestId, {ok, Channel, CreationState}) ->
+    elib_response:success(
+        Req0,
+        maps:merge(Channel, #{
+            <<"request_id">> => RequestId,
+            <<"creation_state">> => CreationState
+        })
+    );
+respond_channel_create_receipt(Req0, _Uid, RequestId, {error, request_id_conflict}) ->
+    elib_response:error_with_status(
+        Req0,
+        409,
+        <<"request_id_conflict：同一 request_id 已绑定不同的创建内容"/utf8>>,
+        #{<<"request_id">> => RequestId},
+        ?ERR_CREATE_REQUEST_ID_CONFLICT
+    );
+respond_channel_create_receipt(Req0, _Uid, RequestId, {error, create_not_accepted}) ->
+    %% 仅表示查询时未见已提交受理，不证明在途请求不会迟到（§6.4）。
+    elib_response:error_with_status(
+        Req0,
+        404,
+        <<"create_not_accepted：查询时未见该 request_id 的受理记录"/utf8>>,
+        #{<<"request_id">> => RequestId},
+        ?ERR_CREATE_NOT_ACCEPTED
+    );
+respond_channel_create_receipt(Req0, _Uid, RequestId, {error, {create_recovery_expired, Cid}}) ->
+    elib_response:error_with_status(
+        Req0,
+        410,
+        <<"create_recovery_expired：受理结果已超过7天保留窗口，仅可用于核对"/utf8>>,
+        #{<<"request_id">> => RequestId, <<"channel_id">> => Cid},
+        ?ERR_CREATE_RECOVERY_EXPIRED
+    );
+respond_channel_create_receipt(Req0, _Uid, RequestId, {error, {create_resource_unavailable, Cid}}) ->
+    Payload =
+        case is_integer(Cid) andalso Cid > 0 of
+            true -> #{<<"request_id">> => RequestId, <<"channel_id">> => Cid};
+            false -> #{<<"request_id">> => RequestId}
+        end,
+    elib_response:error_with_status(
+        Req0,
+        409,
+        <<"create_resource_unavailable：该创建结果当前不可用"/utf8>>,
+        Payload,
+        ?ERR_CREATE_RESOURCE_UNAVAILABLE
+    );
+respond_channel_create_receipt(Req0, _Uid, _RequestId, {error, {Code, Msg}}) ->
+    elib_response:error(Req0, Msg, Code);
+respond_channel_create_receipt(Req0, _Uid, _RequestId, {error, Msg}) when is_binary(Msg) ->
+    elib_response:error(Req0, Msg);
+respond_channel_create_receipt(Req0, Uid, RequestId, Unexpected) ->
+    ?ERROR_LOG([channel_create_receipt_unexpected, Uid, RequestId, Unexpected]),
+    elib_response:error(Req0, <<"频道创建失败，请稍后重试"/utf8>>).
 
 %% @doc 通过自定义ID获取频道
 -spec by_custom_id(cowboy_req:req(), map()) -> cowboy_req:req().

@@ -148,10 +148,18 @@
 -export([list_workspace_channels/2]).
 -export([list_workspace_channels/3, workspace_channel_page/4]).
 
+%% W04.c（channel-group-ux v2.2 §6.4 C1）：带受理回执的频道创建/重放。
+-export([create_channel_with_receipt/7]).
+
 %% ==================== Delegates ====================
 
 create_channel(Uid, Name, Opts, MaxChannels) ->
     channel_logic_message:create_channel(Uid, Name, Opts, MaxChannels).
+
+create_channel_with_receipt(Uid, Name, Opts, MaxChannels, ScopeCtx, RequestId, RecoverOnly) ->
+    channel_logic_message:create_channel_with_receipt(
+        Uid, Name, Opts, MaxChannels, ScopeCtx, RequestId, RecoverOnly
+    ).
 
 get_channel(ChannelIdBin, Uid) ->
     channel_logic_message:get_channel(ChannelIdBin, Uid).

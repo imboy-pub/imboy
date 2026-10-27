@@ -438,8 +438,34 @@ encode_update_fields(Data) ->
 delete(ChannelId) ->
     %% T7 归档写守卫（P0 收口）：频道软删与守卫同事务（原自动提交写）。
     workspace_guard:write_tx({channel, ChannelId}, fun(Conn) ->
-        channel_repo:delete_tx(Conn, ChannelId)
+        case channel_repo:delete_tx(Conn, ChannelId) of
+            {ok, _} = Ok ->
+                %% W04.c（channel-group-ux v2.2 §6.4/J24.b）：同事务置位创建
+                %% 回执删除标识——同键重放不泄露内容、不复活对象；receipt
+                %% 保留已受理事实。无回执行时为合法 no-op。
+                ok = mark_create_receipts_deleted(Conn, ChannelId),
+                Ok;
+            Error ->
+                Error
+        end
     end).
+
+%% W04.c：删除事务内标记该频道的创建受理回执（resource_create_receipt）。
+%% 失败即中止事务；mark_deleted_by_resource_tx 对无回执行的旧频道天然
+%% 0 行更新，恒 ok。
+-spec mark_create_receipts_deleted(pid(), integer()) -> ok.
+mark_create_receipts_deleted(Conn, ChannelId) ->
+    case
+        resource_create_receipt_repo:mark_deleted_by_resource_tx(
+            Conn, <<"create_channel">>, ChannelId
+        )
+    of
+        ok ->
+            ok;
+        {error, Reason} ->
+            ?ERROR_LOG([channel_delete_receipt_mark_failed, ChannelId, Reason]),
+            throw({abort_tx, {receipt_mark_deleted_failed, ChannelId, Reason}})
+    end.
 
 %% @doc 归档频道（GZAPP-02/G4：status 1→0，复用既有列语义、无 DDL）；
 %% 与 workspace_guard 同事务——ws 频道所属工作区已归档时稳定 980 拒绝。
