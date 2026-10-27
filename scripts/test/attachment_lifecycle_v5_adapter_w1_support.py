@@ -207,17 +207,21 @@ def load_probe_definitions(repo_root):
                          r'("[^"]*"|\'[^\']*\'|\S+)\s')
     for match in pattern.finditer(text):
         defs.setdefault(match.group(1), set()).add(match.group(2).strip("\"'"))
-    return text, defs
+    # emit()-based leaves have no static expected token: the probe computes
+    # pass/fail itself and emits the row (probe_expected returns None for
+    # them, like literal echo rows).
+    emit_names = frozenset(re.findall(r'(?<![\w])emit\s+([A-Za-z0-9_]+)\s', text))
+    return text, defs, emit_names
 
 
-def probe_expected(probe_text, defs, name):
+def probe_expected(probe_text, defs, name, emit_names=frozenset()):
     """Return the frozen expected token, or None for a dynamic echo probe."""
     if name in defs:
         values = sorted(defs[name])
         if len(values) != 1:
             raise Gap("probe %s has conflicting expected tokens %r" % (name, values))
         return values[0]
-    if ('"name":"%s"' % name) in probe_text:
+    if ('"name":"%s"' % name) in probe_text or name in emit_names:
         return None
     raise Gap("probe %s is not defined in %s" % (name, PROBE_SCRIPT_REL))
 
@@ -254,23 +258,24 @@ def actor_kind(contract, case_id, leaf):
     return "targeted-contract"
 
 
-def _assertion_rows(block, spec, probe_text, defs):
+def _assertion_rows(block, spec, probe_text, defs, emit_names=frozenset()):
     rows = []
     for name, occurrence in spec["probes"]:
         row = select_row(block, name, occurrence)
-        rows.append((name, occurrence, row, probe_expected(probe_text, defs, name)))
+        rows.append((name, occurrence, row,
+                     probe_expected(probe_text, defs, name, emit_names)))
     if not rows:
         raise Gap("leaf mapping contains no probe row")
     return rows
 
 
 def _build_leaf(case_id, leaf, spec, blocks, raw_facts,
-                probe_text, defs, slot, allowlist, candidate, contract,
+                probe_text, defs, emit_names, slot, allowlist, candidate, contract,
                 started, finished):
     phase = PHASE_FOR_SCHEMA[leaf["schema_phase"]]
     block = blocks[phase]
     db = resolve_db(slot, phase, allowlist)
-    rows = _assertion_rows(block, spec, probe_text, defs)
+    rows = _assertion_rows(block, spec, probe_text, defs, emit_names)
 
     assertions, deltas = [], []
     for name, occurrence, row, expected in rows:
@@ -330,12 +335,12 @@ def _build_leaf(case_id, leaf, spec, blocks, raw_facts,
     return observation
 
 
-def _describe_gap_spec(block, spec, probe_text, defs):
+def _describe_gap_spec(block, spec, probe_text, defs, emit_names=frozenset()):
     """Confirm a gap leaf's named probes exist, then report their insufficiency."""
     notes = []
     for name, occurrence in spec["probes"]:
         try:
-            probe_expected(probe_text, defs, name)
+            probe_expected(probe_text, defs, name, emit_names)
         except Gap as exc:
             notes.append(str(exc))
             continue
@@ -376,7 +381,7 @@ def run_w102_case(case_id, mapping, two_phase):
         block_list = parse_probe_blocks(os.path.join(case_dir, "probes.jsonl"))
         blocks = require_phase_order(block_list, two_phase)
         raw_facts = raw_log_facts(case_dir, block_list)
-        probe_text, defs = load_probe_definitions(repo_root)
+        probe_text, defs, emit_names = load_probe_definitions(repo_root)
         slot = os.environ.get("V5_SLOT")
         for leaf in expected:
             resolve_db(slot, PHASE_FOR_SCHEMA[leaf["schema_phase"]], allowlist)
@@ -390,11 +395,11 @@ def run_w102_case(case_id, mapping, two_phase):
                             % (leaf["domain"], leaf["entrypoint"],
                                leaf["ordering_or_fault"], leaf["schema_phase"],
                                _describe_gap_spec(blocks[phase], spec,
-                                                  probe_text, defs)))
+                                                  probe_text, defs, emit_names)))
                 continue
             observations.append(_build_leaf(
                 case_id, leaf, spec, blocks, raw_facts,
-                probe_text, defs, slot, allowlist, candidate, contract,
+                probe_text, defs, emit_names, slot, allowlist, candidate, contract,
                 started, started))
     except Gap as exc:
         gaps.append(str(exc))
