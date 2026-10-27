@@ -439,7 +439,15 @@ list_by_ids(Ids, Column) ->
             [<<"$", (integer_to_binary(I))/binary>> || I <- lists:seq(1, length(Ids))]
         )
     ),
-    Where = <<" WHERE msg_id IN (", Placeholders/binary, ")">>,
+    Where = <<
+        " WHERE msg_id IN (",
+        Placeholders/binary,
+        ")",
+        %% D01：C2G 离线正文装载不返回已到期自毁消息（expire_at 唯一服务端
+        %% 权威）；过滤片段无占位符，不改变 IN 列表的 $N 编号。时间线行无正
+        %% 文时由 load_timeline_messages 自然丢弃，与 msg_c2c 扫描窗语义一致。
+        " AND (expire_at IS NULL OR expire_at > NOW())"
+    >>,
     Sql =
         <<"SELECT ", Column/binary, " FROM ", Tb/binary, Where/binary, " ORDER BY created_at ASC">>,
     % 将Ids转换为参数列表

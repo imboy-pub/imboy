@@ -505,7 +505,12 @@ check_and_delete_overflow(ToUid) ->
 %% @param Params 查询参数列表
 %% @returns list() 处理后的消息列表
 -spec read_msg_filter(binary(), integer(), list()) -> [map()].
-read_msg_filter(Where, Limit, Params) ->
+read_msg_filter(Where0, Limit, Params) ->
+    %% D01（冻结合同）：服务端到期期限 expire_at 是唯一服务端权威——离线/
+    %% 会话列表读取不返回已到期（expire_at <= NOW()）的自毁消息正文。过滤
+    %% 片段不含参数占位符，不改变调用方 Where 内的 $N 编号；与 60s 物理删除
+    %% 扫描（expire_at <= NOW()）锚同一 PG 时钟，消除扫描窗内的正文泄漏。
+    Where = <<Where0/binary, " AND (expire_at IS NULL OR expire_at > NOW())">>,
     %% sender_did（A2-a）：PFv3 接收侧 context binding 第 6 项要拿它与受认证的
     %% protected_header.sender_did 硬比对。漏列 = 离线拉取的 v3 消息永久判
     %% context_mismatch_sender_did 不可读。见 evidence/E2EE-A2-a-offline-sender-did.md

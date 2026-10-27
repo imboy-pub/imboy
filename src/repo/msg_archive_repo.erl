@@ -642,6 +642,10 @@ history_rows_tx(Conn, ConvKey, AfterSeq, Limit) ->
             "SELECT msg_id, chat_type, conv_seq, msg_type, from_id, to_id, group_id, "
             "e2ee, sender_did, payload, created_at, server_ts, accepted_at "
             "FROM public.msg_store WHERE conv_key = $1 AND conv_seq > $2 "
+            %% D01：history 不返回已到期自毁消息正文（expire_at 唯一服务端权威）。
+            %% 归档表不做物理删除，靠读侧过滤兜底；与 msg_c2c/msg_c2g 60s 扫描
+            %% 锚同一 PG NOW()。过期行不进 gaps（保留清理语义，seq 空洞合法）。
+            "AND (expire_at IS NULL OR expire_at > NOW()) "
             "ORDER BY conv_seq ASC LIMIT $3"
         >>,
     case elib_pg:query(Conn, Sql, [ConvKey, AfterSeq, Limit]) of
@@ -728,6 +732,9 @@ backfill_rows_tx(Conn, ConvKey, AfterSeq, EndSeq, Limit) ->
         "SELECT msg_id, chat_type, conv_seq, msg_type, from_id, to_id, group_id, "
         "e2ee, sender_did, payload, created_at, server_ts, accepted_at "
         "FROM public.msg_store WHERE conv_key = $1 AND conv_seq > $2 AND conv_seq <= $3 "
+        %% D01：同 history_rows_tx——已到期自毁行不返回正文。NextSeq 语义不受
+        %% 影响（仍由 SafeHead/EndSeq 钳制，全过滤空批时推进到 EndSeq，不空转）。
+        "AND (expire_at IS NULL OR expire_at > NOW()) "
         "ORDER BY conv_seq ASC LIMIT $4"
     >>,
     case elib_pg:query(Conn, Sql, [ConvKey, AfterSeq, EndSeq, Limit]) of

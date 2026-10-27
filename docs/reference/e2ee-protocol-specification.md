@@ -334,6 +334,8 @@ The server infrastructure adheres to a strict zero-knowledge policy regarding cr
 
 7. **C2G e2ee passthrough.** Group message e2ee fields traverse the entire server pipeline (decode → validate → stage → store → fan-out → offline pull) as opaque maps. No server component reads, pattern-matches, transforms, or strips any field within the e2ee envelope. Byte-for-byte preservation is enforced by contract tests covering decode, assemble, JSON serialization roundtrip, and offline retrieval format consistency.
 
+8. **E2EE self-destruct is client-enforced ("端上自律", D01 frozen contract 2026-10-27).** Disappearing-message settings (burn / burn_after_ms / expire_secs) for E2EE messages remain **inside the encrypted payload**; the server cannot see them and therefore never schedules, filters, or deletes E2EE messages based on their burn timers. Consequences, registered explicitly: (a) an E2EE self-destruct message held in server-side offline stash does **not** auto-destroy while the recipient stays offline — it persists as opaque ciphertext until the recipient's device fetches and locally enforces the timer; (b) the server-side `expire_at` column is only populated from **top-level plaintext `expire_secs`** (send-time TTL, `msg_c2c_logic`), which E2EE senders never emit today — hence E2EE rows keep `expire_at IS NULL` and are exempt from both the 60s physical-delete scan and the read-side expiry filter; (c) clients remain solely responsible for local countdown start (read-based for receivers, send-based for senders), local deletion, and tombstones. This is a deliberate privacy trade-off accepted by product decision D01 (decision record: `_task_packages/IMBoy_Timezone_Decisions_V1/state.json#decisions.D01`).
+
 ---
 
 ## 12. Threat Model Traceability (ADR 08 §4)
