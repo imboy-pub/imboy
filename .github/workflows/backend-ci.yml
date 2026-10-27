@@ -102,7 +102,7 @@ jobs:
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U imboy_user"
+          --health-cmd "pg_isready -h 127.0.0.1 -U imboy_user -d imboy_v1"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 20
@@ -370,12 +370,17 @@ jobs:
           set -euo pipefail
           docker run -d --name imboy_pg_eunit             -e POSTGRES_USER=imboy_user             -e POSTGRES_PASSWORD=abc54321             -e POSTGRES_DB=imboy_v1             -p 4323:5432 imboy-pg18:ci
           for i in $(seq 1 60); do
-            if docker exec imboy_pg_eunit pg_isready -U imboy_user -d imboy_v1 >/dev/null 2>&1; then
+            # The entrypoint temporary server only listens on Unix sockets.
+            # TCP becomes available after all init scripts complete successfully.
+            if docker exec imboy_pg_eunit pg_isready -h 127.0.0.1 -U imboy_user -d imboy_v1 >/dev/null 2>&1; then
               echo "PG ready after ${i}s"; exit 0
             fi
             sleep 1
           done
           echo "::error::PG 未在 60s 内就绪"; docker logs imboy_pg_eunit; exit 1
+
+      - name: Verify fresh initialization, restart and extension idempotency
+        run: bash scripts/test/pg18_init_gate.sh imboy-pg18:ci
 
       - name: Apply extensions and migrations to head
         # W1-A01 教训：迁移文件不含 CREATE EXTENSION，扩展必须先铺（foundation
@@ -391,7 +396,7 @@ jobs:
           set -euo pipefail
           for ext in timescaledb postgis pg_jieba pgcrypto pg_trgm vector citext \
                      btree_gin btree_gist '"uuid-ossp"' hstore unaccent; do
-            eval "docker exec imboy_pg_eunit psql -U imboy_user -d imboy_v1 -c \"CREATE EXTENSION IF NOT EXISTS $ext;\""
+            docker exec imboy_pg_eunit psql -U imboy_user -d imboy_v1 -v ON_ERROR_STOP=1 -c "CREATE EXTENSION IF NOT EXISTS $ext;"
           done
           ./scripts/drill_migrate.escript up
 

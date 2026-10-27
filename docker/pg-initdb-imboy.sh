@@ -27,7 +27,7 @@ POSTGIS_VERSION="${POSTGIS_VERSION%%+*}"
 # "$@"，否则会尝试连接名为该路径的数据库并导致首次初始化失败。
 DB="$POSTGRES_DB"
 echo "Updating PostGIS extensions '$DB' to $POSTGIS_VERSION"
-psql --dbname="$DB" -c "
+psql -v ON_ERROR_STOP=1 --dbname="$DB" -c "
         -- Upgrade PostGIS (includes raster)
         CREATE EXTENSION IF NOT EXISTS postgis VERSION '$POSTGIS_VERSION';
         ALTER EXTENSION postgis UPDATE TO '$POSTGIS_VERSION';
