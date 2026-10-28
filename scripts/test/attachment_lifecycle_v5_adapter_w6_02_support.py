@@ -14,7 +14,9 @@ integer > 0 and whose resource id is in the admission allowlist.
 """
 import json
 import os
+import subprocess
 import sys
+import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import attachment_lifecycle_v5_adapter_w5_support as S5  # noqa: E402
@@ -152,7 +154,7 @@ def spec_gaps(preflight, specs_needed):
 
 
 def provenance_pipeline_gaps(root, case_id, need_device, need_browser):
-    """Name fields the frozen producer drops before the runner can verify them."""
+    """Reject proofs that are not bound to the individual driver run."""
     fields = []
     if need_device:
         fields.append("device_provenance")
@@ -160,13 +162,14 @@ def provenance_pipeline_gaps(root, case_id, need_device, need_browser):
         fields.append("browser_provenance")
     path = os.path.join(root, "scripts", PRODUCER)
     dropped = producer_drops(path, fields, case_id)
-    if not dropped:
-        return []
-    return ["frozen producer never copies %s from a row into the receipt "
+    gaps = ["device/browser process provenance lacks per-driver session and time binding"]
+    if dropped:
+        gaps.append("frozen producer never copies %s from a row into the receipt "
             "(producer.py receipt assembly); the runner's receipt_errors then "
             "rejects every W6-02 receipt with 'missing registered live %s' even "
             "when the adapter measured a live provenance record"
-            % (", ".join(dropped), "/".join(dropped))]
+            % (", ".join(dropped), "/".join(dropped)))
+    return gaps
 
 
 def require_all(case_id, gaps, total_leaves):
@@ -186,14 +189,50 @@ PRODUCER = "attachment_lifecycle_v5_producer.py"
 
 
 def producer_drops(producer_path, fields, case_id):
-    """Return the fields that the frozen producer never copies to a receipt."""
-    text = S6.read_text(producer_path, case_id, "frozen producer source")
-    dropped = []
-    for field in fields:
-        if ('receipt["%s"]' % field) not in text \
-                and ("receipt['%s']" % field) not in text:
-            dropped.append(field)
-    return dropped
+    """Exercise the producer with isolated synthetic data, never acceptance evidence."""
+    leaf = dict(ac_id="probe", domain="probe", driver="disk", entrypoint="probe",
+                ordering_or_fault="probe", schema_phase="integrated")
+    proof = {field: {"probe": field} for field in fields}
+    row = dict(leaf=leaf, exit_code=0, executed=1, passed=1, failed=0, skipped=0,
+               started_at="2026-01-01T00:00:00Z", finished_at="2026-01-01T00:00:01Z",
+               oracle_observations={name: "probe" for name in (
+                   "pre_db_state", "pre_object_hash", "action", "expected_http_semantics",
+                   "expected_db_delta", "expected_object_state", "proof_actor")},
+               actor={"kind": "real", "driver": "disk", "resource_kind": "disk_root",
+                      "resource_id": "probe"}, resource_ids=["probe"], request_ids=["probe"],
+               assertions=[{"passed": True}], **proof)
+    try:
+        with tempfile.TemporaryDirectory(prefix="v5-producer-probe-") as tmp:
+            plan = os.path.join(tmp, "plan")
+            case = os.path.join(tmp, "evidence", "W6-02", "probe")
+            os.mkdir(plan)
+            os.makedirs(case)
+            def write(name, data):
+                with open(name, "w") as handle:
+                    json.dump(data, handle)
+            write(os.path.join(plan, "execution-contract.json"),
+                  {"expected_leaf_matrix": {"W6-02/probe": [leaf]}})
+            write(os.path.join(tmp, "state.json"),
+                  {"plan_dir": plan, "tasks": {"W6-02": {"state": "RUNNING", "attempt": 1}},
+                   "resource_allowlist": {"disk_root": "probe"},
+                   "verification_candidate": {"heads": {"probe": "probe"},
+                     "owned_tree_digest": "probe", "plan_manifest_sha256": "probe",
+                     "migration_digest": "probe"}})
+            observations = os.path.join(case, "observations.json")
+            write(observations, {"leaves": [row]})
+            result = subprocess.run([sys.executable, producer_path, "produce", "--run-dir", tmp,
+                "--task-id", "W6-02", "--case-id", "W6-02/probe", "--case-dir", case,
+                "--command", "probe", "--cwd", tmp, "--observations", observations],
+                capture_output=True, timeout=10, check=False)
+            if result.returncode:
+                return list(fields)
+            with open(os.path.join(case, "measured-receipts.json")) as handle:
+                receipts = json.load(handle)
+            if not isinstance(receipts, list) or len(receipts) != 1 or not isinstance(receipts[0], dict):
+                return list(fields)
+            return [field for field in fields if receipts[0].get(field) != proof[field]]
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return list(fields)
 
 
 def rows_for(ctx, case_id, leaves, case_dir, suites, mapping, device, browser,

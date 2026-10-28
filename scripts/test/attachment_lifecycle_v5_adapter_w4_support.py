@@ -298,20 +298,16 @@ def resolve_disk_root(ctx, case_id):
     if not isinstance(allowed, str) or not allowed:
         die(case_id, "resource_allowlist.disk_root is missing")
     env = os.environ.get("V5_DISK_ROOT", "").strip()
-    if env:
-        candidate = os.path.abspath(env)
-        allowed_clean = allowed.rstrip("/")
-        if candidate != allowed_clean and not candidate.startswith(
-                allowed_clean + "/"):
-            die(case_id, "V5_DISK_ROOT=%s is outside allowlisted disk_root %s"
-                % (candidate, allowed))
-        if not os.path.isdir(candidate):
-            die(case_id, "V5_DISK_ROOT=%s is not a directory" % candidate)
-        return candidate
-    if os.path.isdir(allowed):
-        return os.path.abspath(allowed)
-    die(case_id, "V5_DISK_ROOT unset and allowlisted disk_root %s does not "
-        "exist" % allowed)
+    allowed_real = os.path.realpath(allowed)
+    if allowed_real != os.path.abspath(allowed):
+        die(case_id, "allowlisted disk_root contains a symbolic link")
+    candidate = os.path.realpath(env or allowed)
+    if os.path.commonpath([allowed_real, candidate]) != allowed_real:
+        die(case_id, "V5_DISK_ROOT=%s is outside allowlisted disk_root %s"
+            % (candidate, allowed_real))
+    if not os.path.isdir(candidate):
+        die(case_id, "V5_DISK_ROOT=%s is not a directory" % candidate)
+    return candidate
 
 
 def resolve_garage(ctx, case_id, require_env=True):

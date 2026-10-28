@@ -95,13 +95,15 @@ def owned_container(allow):
         fail("cannot inspect owned container %r: %s" % (container, exc))
     info = json.loads(out)
     labels = info.get("Labels") or {}
-    if info.get("Id") != pg.get("container_id") or info.get("Running") is not True:
+    container_id = info.get("Id")
+    if (not isinstance(container_id, str) or not re.fullmatch(r"[0-9a-f]{64}", container_id)
+            or container_id != pg.get("container_id") or info.get("Running") is not True):
         fail("live container identity/running state differs from receipt for %r"
              % (container,))
     if labels.get("codex.run") != run_name \
             or labels.get("codex.role") != "attachment-lifecycle-pg":
         fail("live container labels do not match the run-owned PostgreSQL role")
-    return container
+    return container_id
 
 
 def pg_password():

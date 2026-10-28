@@ -16,12 +16,18 @@ import fcntl
 import hashlib
 import json
 import os
+import stat
 import subprocess
 import sys
 import tempfile
 import time
 import types
 import uuid
+try:
+    from . import attachment_lifecycle_v5_case_store as case_store
+except ImportError:
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import attachment_lifecycle_v5_case_store as case_store
 
 EXIT_OK, EXIT_USAGE, EXIT_CONTRACT, EXIT_NOGO, EXIT_BLOCKED = 0, 2, 20, 30, 75
 TASK_STATES = ["NOT_STARTED", "READY", "RUNNING", "VERIFYING", "COMMITTING",
@@ -43,6 +49,102 @@ def die(code, msg):
     sys.exit(code)
 
 
+def _boot_id():
+    try:
+        with open('/proc/sys/kernel/random/boot_id') as fh:
+            value = fh.read().strip()
+    except OSError:
+        try:
+            value = subprocess.check_output(['sysctl', '-n', 'kern.boottime'],
+                                            text=True, timeout=2).strip()
+        except (OSError, subprocess.SubprocessError):
+            die(EXIT_BLOCKED, 'cannot determine boot identity')
+    if not value:
+        die(EXIT_BLOCKED, 'empty boot identity')
+    return value
+
+
+def _clock_check(anchor):
+    if not isinstance(anchor, dict) or set(anchor) != {'boot', 'wall', 'monotonic'}:
+        die(EXIT_CONTRACT, 'missing persistent clock anchor; reviewed reconciliation required')
+    wall, mono = time.time(), time.clock_gettime(time.CLOCK_MONOTONIC)
+    previous_wall, previous_mono = anchor['wall'], anchor['monotonic']
+    if (not isinstance(anchor['boot'], str) or not anchor['boot']
+            or type(previous_wall) not in (int, float) or type(previous_mono) not in (int, float)
+            or not 0 < previous_wall < float('inf') or not 0 <= previous_mono < float('inf')):
+        die(EXIT_CONTRACT, 'invalid persistent clock anchor')
+    if anchor['boot'] != _boot_id():
+        die(EXIT_BLOCKED, 'boot changed; trusted clock reconciliation required')
+    if wall < previous_wall or (anchor['boot'] == _boot_id() and
+                               (mono < previous_mono or wall + 1 < previous_wall + mono - previous_mono)):
+        die(EXIT_BLOCKED, 'clock rollback or anomaly; no deadline reset')
+    return {'boot': _boot_id(), 'wall': wall, 'monotonic': mono}
+
+
+def _clock_transition(old, new):
+    if (new['wall'] < old['wall'] or (new['boot'] == old['boot'] and
+            (new['monotonic'] < old['monotonic'] or
+             new['wall'] + 1 < old['wall'] + new['monotonic'] - old['monotonic']))):
+        die(EXIT_BLOCKED, 'replayed clock rollback or anomaly')
+
+
+def _budget_start(state, contract, task_id, started):
+    budget = copy.deepcopy(state['time_budgets'])
+    task = next((item for item in contract['tasks'] if item.get('task_id') == task_id), None)
+    if not task or not isinstance(task.get('wave'), str):
+        die(EXIT_CONTRACT, 'task wave missing')
+    wave = task['wave']
+    timeouts = contract.get('timeouts', {})
+    run_seconds = timeouts.get('run_seconds', 604800)
+    wave_seconds = timeouts.get('wave_overrides', {}).get(wave, timeouts.get('wave_seconds', 86400))
+    if any(type(v) not in (int, float) or not 0 < v < float('inf') for v in (run_seconds, wave_seconds)):
+        die(EXIT_CONTRACT, 'invalid run or wave timeout')
+    if budget['run'] is None:
+        budget['run'] = {'started_at': started, 'deadline': started + run_seconds}
+    if wave not in budget['waves']:
+        budget['waves'][wave] = {'started_at': started, 'deadline': started + wave_seconds}
+    return budget
+
+
+def _budget_check(state, contract, task_id=None, enforce=True, at=None):
+    budget = state.get('time_budgets')
+    if not isinstance(budget, dict) or set(budget) != {'run', 'waves'} or not isinstance(budget['waves'], dict):
+        die(EXIT_CONTRACT, 'missing persistent run/wave budgets; reviewed reconciliation required')
+    entries = []
+    if budget['run'] is not None:
+        entries.append((budget['run'], contract.get('timeouts', {}).get('run_seconds', 604800)))
+    for wave, entry in budget['waves'].items():
+        seconds = contract.get('timeouts', {}).get('wave_overrides', {}).get(wave, contract.get('timeouts', {}).get('wave_seconds', 86400))
+        entries.append((entry, seconds))
+    if budget['waves'] and budget['run'] is None:
+        die(EXIT_CONTRACT, 'wave budget without run budget')
+    for entry, seconds in entries:
+        if (not isinstance(entry, dict) or set(entry) != {'started_at', 'deadline'}
+                or any(type(v) not in (int, float) or not 0 < v < float('inf') for v in (entry['started_at'], entry['deadline'], seconds))
+                or entry['deadline'] != entry['started_at'] + seconds):
+            die(EXIT_CONTRACT, 'invalid persistent run/wave budget')
+    now = time.time() if at is None else at
+    if enforce and budget['run'] and now >= budget['run']['deadline']:
+        die(EXIT_NOGO, 'run deadline exhausted')
+    if task_id:
+        task = next((item for item in contract['tasks'] if item.get('task_id') == task_id), None)
+        wave = task.get('wave') if task else None
+        if enforce and wave in budget['waves'] and now >= budget['waves'][wave]['deadline']:
+            die(EXIT_NOGO, 'wave deadline exhausted')
+
+
+def _task_attempt_check(state, contract, task_id):
+    task = state.get('tasks', {}).get(task_id, {})
+    deadline = task.get('task_deadline')
+    attempt = task.get('attempt')
+    limit = contract.get('retry_policy', {}).get('task_attempts_total_max', 5)
+    if (type(deadline) not in (int, float) or not 0 < deadline < float('inf')
+            or time.time() >= deadline):
+        die(EXIT_NOGO, 'persisted task deadline missing or exhausted')
+    if type(limit) is not int or limit < 1 or type(attempt) is not int or not 1 <= attempt <= limit:
+        die(EXIT_NOGO, 'invalid or exhausted task attempt budget')
+
+
 def sha256_file(path):
     h = hashlib.sha256()
     with open(path, "rb") as fh:
@@ -57,6 +159,18 @@ def sha256_bytes(b):
 
 def canonical_json(obj):
     return json.dumps(obj, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+
+
+def authorization_unexpired(auth):
+    try:
+        issued = datetime.datetime.fromisoformat(auth["issued_at"].replace("Z", "+00:00"))
+        expires = datetime.datetime.fromisoformat(auth["expires_at"].replace("Z", "+00:00"))
+        now = datetime.datetime.now(datetime.timezone.utc)
+        return (issued.tzinfo is not None and expires.tzinfo is not None
+                and issued <= now < expires
+                and expires - issued <= datetime.timedelta(days=7))
+    except (KeyError, TypeError, ValueError, AttributeError):
+        return False
 
 
 # ---------------------------------------------------------------- locking
@@ -142,10 +256,23 @@ class StateStore:
                     n += 1
         return n + 1
 
-    def write_snapshot(self, state):
+    def write_snapshot(self, state, kind="snapshot_bound", payload=None):
         state = dict(state)
+        if 'clock_anchor' in state:
+            state['clock_anchor'] = _clock_check(state['clock_anchor'])
+        else:
+            state['clock_anchor'] = {'boot': _boot_id(), 'wall': time.time(), 'monotonic': time.clock_gettime(time.CLOCK_MONOTONIC)}
+        state.setdefault('time_budgets', {'run': None, 'waves': {}})
+        state.pop("events_head_hash", None)
         state["revision"] = state.get("revision", 0) + 1
-        state["events_head_hash"] = self.head_hash()
+        event_payload = dict(payload or {})
+        event_payload.update(state_payload=state, state_digest=sha256_bytes(canonical_json(state).encode()))
+        self.append_event(kind, event_payload)
+        return self.persist_snapshot(state, self.head_hash())
+
+    def persist_snapshot(self, state, event_hash):
+        state = dict(state)
+        state["events_head_hash"] = event_hash
         d = os.path.dirname(self.state_path)
         tmp = os.path.join(d, ".state.tmp.%s" % uuid.uuid4().hex)
         with open(tmp, "w") as fh:
@@ -185,7 +312,29 @@ class StateStore:
             if sha256_bytes(canonical_json(body).encode()) != ev["entry_hash"]:
                 return False, "event %d entry_hash mismatch" % i
             prev = ev["entry_hash"]
-        return True, "chain ok (%d events)" % i if self.load_events() else ("ok", "empty")
+        return True, "chain ok (%d events)" % i if self.load_events() else "empty"
+
+    def snapshot_bound(self, state, events):
+        if not isinstance(state, dict) or not events:
+            return False
+        # Accept-style records (accept-task / accept-gate) append plain
+        # artifact events and rebind the snapshot head hash without a
+        # state payload; the binding is against the newest event that
+        # carries one.
+        for event in reversed(events):
+            if not isinstance(event, dict):
+                return False
+            payload = event.get("payload")
+            if not (isinstance(payload, dict)
+                    and isinstance(payload.get("state_payload"), dict)):
+                continue
+            expected = dict(state)
+            expected.pop("events_head_hash", None)
+            bound = payload["state_payload"]
+            encoded = canonical_json(bound)
+            return (canonical_json(expected) == encoded
+                    and payload.get("state_digest") == sha256_bytes(encoded.encode()))
+        return False
 
 
 # ---------------------------------------------------------------- validators
@@ -250,6 +399,47 @@ def v_raw_output(receipt):
 
 
 V["raw_output"] = v_raw_output
+
+
+# Structured observations and receipt lists are metadata, not object contents.
+MAX_STRUCTURED_EVIDENCE_BYTES = 64 * 1024 * 1024
+
+
+def _read_run_artifact(run_dir, path):
+    """Open each path component without following links and read one regular file."""
+    root = os.path.abspath(run_dir)
+    if not isinstance(path, str) or not os.path.isabs(path):
+        raise ValueError("raw output path must be absolute")
+    relative = os.path.relpath(path, root)
+    parts = relative.split(os.sep)
+    if any(part in ("", ".", "..") for part in parts):
+        raise ValueError("raw output outside run directory")
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    directory = os.open(root, flags)
+    try:
+        for part in parts[:-1]:
+            child = os.open(part, flags, dir_fd=directory)
+            os.close(directory)
+            directory = child
+        fd = os.open(parts[-1], os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK,
+                     dir_fd=directory)
+        try:
+            info = os.fstat(fd)
+            if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
+                raise ValueError("raw output is not a regular file")
+            if info.st_size > MAX_STRUCTURED_EVIDENCE_BYTES:
+                raise ValueError("structured evidence exceeds size limit")
+            with os.fdopen(fd, "rb") as stream:
+                fd = -1
+                data = stream.read(MAX_STRUCTURED_EVIDENCE_BYTES + 1)
+                if len(data) > MAX_STRUCTURED_EVIDENCE_BYTES:
+                    raise ValueError("structured evidence exceeds size limit")
+                return data
+        finally:
+            if fd != -1:
+                os.close(fd)
+    finally:
+        os.close(directory)
 
 
 def v_execution_counts(receipt):
@@ -346,14 +536,28 @@ V["commit_parent"] = v_commit_parent
 
 def v_resource(res, allowlist):
     kind = _fields(res).get("kind")
-    rid = _fields(res).get("id", "")
+    rid = _fields(res).get("id")
+    if (not isinstance(allowlist, dict) or not isinstance(kind, str) or not kind
+            or not isinstance(rid, str) or not rid):
+        return False, "invalid resource or allowlist"
     allowed = allowlist.get(kind)
-    if allowed is None:
-        return False, "resource kind %r outside allowlist" % kind
-    if isinstance(allowed, list) and rid not in allowed:
-        return False, "resource id outside registered allowlist"
-    if isinstance(allowed, str) and not rid.startswith(allowed):
-        return False, "resource id outside run-owned prefix"
+    if kind == "disk_root":
+        if not isinstance(allowed, str) or not allowed:
+            return False, "disk root must be a nonempty path string"
+        if not os.path.isabs(allowed) or not os.path.isabs(rid):
+            return False, "disk root and resource must be absolute paths"
+        try:
+            root = os.path.realpath(allowed)
+            if os.path.commonpath([root, os.path.realpath(rid)]) != root:
+                return False, "resource id outside run-owned disk root"
+        except (OSError, ValueError):
+            return False, "invalid disk resource path"
+    else:
+        if (not isinstance(allowed, list) or not allowed
+                or any(not isinstance(value, str) or not value for value in allowed)):
+            return False, "invalid registered resource list"
+        if rid not in allowed:
+            return False, "resource id outside registered allowlist"
     return True, "resource allowed"
 
 
@@ -607,21 +811,31 @@ def cmd_admit(args):
     for p, code, what in ((plan_dir, 20, "plan dir"), (run_dir, 2, "run dir"), (auth_path, 20, "authorization")):
         if not os.path.isdir(p) and p != auth_path:
             die(code, "missing %s: %s" % (what, p))
-    with open(auth_path) as fh:
-        auth = json.load(fh)
+    try:
+        with open(auth_path, "rb") as fh:
+            auth_bytes = fh.read()
+        auth = json.loads(auth_bytes)
+    except (OSError, ValueError):
+        die(EXIT_CONTRACT, "authorization missing or invalid")
+    if not isinstance(auth, dict):
+        die(EXIT_CONTRACT, "authorization must be an object")
+    auth_digest = sha256_bytes(auth_bytes)
     ok, manifest_sha = verify_plan_manifest(plan_dir)
     if not ok:
         die(20, "plan manifest verification failed (CONTRACT_CONFLICT)")
     if auth.get("plan_manifest_sha256") != manifest_sha:
         die(20, "authorization plan hash does not bind current plan manifest")
-    if not auth.get("implementation_allowed") or not auth.get("local_commit_allowed"):
+    if auth.get("implementation_allowed") is not True or auth.get("local_commit_allowed") is not True:
         die(20, "authorization does not allow implementation+commit")
     contract = load_contract(plan_dir)
-    allowed = set(auth.get("allowed_tasks", []))
+    allowed_tasks = auth.get("allowed_tasks")
+    if not isinstance(allowed_tasks, list) or not all(isinstance(t, str) for t in allowed_tasks):
+        die(EXIT_CONTRACT, "authorization allowed_tasks invalid")
+    allowed = set(allowed_tasks)
     need = {t["task_id"] for t in contract["tasks"]}
-    if not need <= allowed:
-        die(20, "authorization allowed_tasks missing: %s" % sorted(need - allowed))
-    if auth.get("expires_at", "") < time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()):
+    if len(allowed_tasks) != len(allowed) or allowed != need:
+        die(20, "authorization allowed_tasks must match the contract exactly")
+    if not authorization_unexpired(auth):
         die(20, "authorization expired")
     lock = RunLock(run_dir)
     if not lock.acquire_nb():
@@ -632,7 +846,18 @@ def cmd_admit(args):
                        "action": "admit"}, fh)
         die(75, "BLOCKED_EXTERNAL: live lock holder unresponsive")
     store = StateStore(run_dir)
-    if store.load_state() is None:
+    try:
+        existing = store.load_state()
+    except (OSError, ValueError):
+        lock.release()
+        die(EXIT_CONTRACT, "existing admission snapshot invalid")
+    if os.path.exists(store.state_path) and not isinstance(existing, dict):
+        lock.release()
+        die(EXIT_CONTRACT, "existing admission snapshot is not an object")
+    if existing is None:
+        if os.path.exists(store.events_path):
+            lock.release()
+            die(EXIT_CONTRACT, "existing event history without snapshot; reconciliation required")
         state = {
             "run_id": os.path.basename(run_dir),
             "revision": 0,
@@ -641,53 +866,102 @@ def cmd_admit(args):
             "plan_dir": plan_dir,
             "plan_manifest_sha256": manifest_sha,
             "authorization_path": auth_path,
-            "authorization_sha256": sha256_file(auth_path),
+            "authorization_sha256": auth_digest,
             "initial_heads": auth.get("initial_three_repo_heads", {}),
             "tasks": {t["task_id"]: {"state": "NOT_STARTED", "attempt": 0}
                       for t in contract["tasks"]},
             "gates": {g: "NOT_STARTED" for g in contract["wave_gates"]},
             "mode": "IMPLEMENTATION",
         }
-        store.append_event("admit", {"plan_manifest_sha256": manifest_sha,
-                                     "authorization_sha256": state["authorization_sha256"]})
-        store.write_snapshot(state)
+        store.write_snapshot(state, "admit", {"plan_manifest_sha256": manifest_sha,
+                                               "authorization_sha256": state["authorization_sha256"]})
         print(json.dumps({"admitted": True, "run_id": state["run_id"],
                           "plan_manifest_sha256": manifest_sha,
                           "tasks": len(state["tasks"])}))
     else:
+        try:
+            events = store.load_events()
+            chain_ok, _ = store.verify_chain()
+            first = events[0] if events else {}
+            # snapshot_bound is deliberately not checked here: accept-task /
+            # accept-gate rebind the snapshot via persist_snapshot without a
+            # state_payload event, so a healthy post-accept state never
+            # matches the last state-carrying event. Tamper detection is
+            # carried by the hash chain plus the admit anchor below, and the
+            # re-admit write_snapshot restores the payload binding.
+            ledger_ok = (bool(events) and chain_ok
+                         and existing.get("events_head_hash") == store.head_hash()
+                         and first.get("kind") == "admit"
+                         and first.get("payload", {}).get("plan_manifest_sha256") == manifest_sha
+                         and first.get("payload", {}).get("authorization_sha256") == auth_digest)
+        except (OSError, ValueError, KeyError, TypeError, AttributeError):
+            ledger_ok = False
+        if not ledger_ok:
+            lock.release()
+            die(EXIT_CONTRACT, "existing admission ledger incomplete or inconsistent")
+        if (not isinstance(existing.get("plan_dir"), str)
+                or not existing["plan_dir"]
+                or not isinstance(existing.get("authorization_path"), str)
+                or not existing["authorization_path"]
+                or existing.get("run_id") != os.path.basename(run_dir)
+                or existing.get("mode") != "IMPLEMENTATION"
+                or os.path.realpath(existing.get("plan_dir", "")) != os.path.realpath(plan_dir)
+                or existing.get("plan_manifest_sha256") != manifest_sha
+                or os.path.realpath(existing.get("authorization_path", "")) != os.path.realpath(auth_path)
+                or existing.get("authorization_sha256") != auth_digest):
+            lock.release()
+            die(EXIT_CONTRACT, "existing admission differs; new reviewed run required")
+        try:
+            if not isinstance(existing.get('clock_anchor'), dict):
+                # Legacy pre-anchor snapshot (admitted by an older runner):
+                # establish the persistent clock anchor once, as a
+                # ledger-visible reconciliation event.
+                existing['clock_anchor'] = {'boot': _boot_id(), 'wall': time.time(),
+                                            'monotonic': time.clock_gettime(
+                                                time.CLOCK_MONOTONIC)}
+                existing = store.write_snapshot(existing, "clock_anchor_reconciled",
+                                                {"reason": "legacy snapshot predates "
+                                                           "persistent clock anchors"})
+            else:
+                _clock_check(existing.get('clock_anchor'))
+            _budget_check(existing, contract)
+        except BaseException:
+            lock.release()
+            raise
+        # Re-admission doubles as the run liveness heartbeat: pg_guard's
+        # owned_container rejects a stale lease_until. A single gate run
+        # (full migration replay + suite) legitimately exceeds two minutes and
+        # audits the resource repeatedly, so the lease window covers one gate
+        # run; the authorization expiry remains the outer bound.
+        refreshed = dict(existing)
+        refreshed["lease_until"] = time.time() + 3600
+        store.write_snapshot(refreshed, "admit",
+                             {"plan_manifest_sha256": manifest_sha,
+                              "authorization_sha256": auth_digest})
         print(json.dumps({"admitted": True, "already": True}))
     lock.release()
     return EXIT_OK
 
 
 def _compute_ready(state, contract):
+    run_budget = state.get('time_budgets', {}).get('run')
+    if run_budget and time.time() >= run_budget['deadline']:
+        return []
     candidate = state.get("verification_candidate")
     if candidate and candidate_errors(candidate):
         return []
     ready = []
     tasks = {t["task_id"]: t for t in contract["tasks"]}
-    gates = contract["wave_gates"]
     for tid, t in tasks.items():
         st = state["tasks"].get(tid, {})
         if not candidate and t.get("wave") != "W0":
             continue
         if st.get("state") != "NOT_STARTED":
             continue
-        deps_ok = all(state["tasks"].get(d, {}).get("state") == "PASS" for d in t.get("dependencies", []))
-        wave = t["wave"]
-        prev_gate = None
-        for g, gi in gates.items():
-            if gi.get("wave") == wave:
-                prev_gate = gi.get("previous_gate")
-                break
-        gate_ok = True
-        if prev_gate:
-            gate_ok = (state["gates"].get(prev_gate) == "PASS"
-                       and state.get("gate_candidates", {}).get(prev_gate)
-                       == state.get("verification_candidate")
-                       and bool(state.get("verification_candidate")))
-        wave_ok = wave == "W0" or gate_ok
-        if deps_ok and wave_ok:
+        wave_budget = state.get('time_budgets', {}).get('waves', {}).get(t.get('wave'))
+        if wave_budget and time.time() >= wave_budget['deadline']:
+            continue
+        if _task_prerequisites(state, contract, tid):
             claims = {"files": t.get("files", []), "case_ids": t.get("case_ids", []),
                       "read_only_files": t.get("read_only_files", []),
                       "schema_phase": t.get("schema_phase"),
@@ -698,14 +972,20 @@ def _compute_ready(state, contract):
 
 def cmd_next(args):
     run_dir = _run_dir_from(args)
-    state = _require_state(run_dir)
-    contract = load_contract(state["plan_dir"])
-    candidate = state.get("verification_candidate")
-    if candidate and candidate_errors(candidate):
-        die(EXIT_CONTRACT, "candidate drift; no tasks ready")
-    ready = _compute_ready(state, contract)
-    print(json.dumps({"ready": ready, "count": len(ready)}, ensure_ascii=False, indent=1))
-    return EXIT_OK
+    lock = RunLock(run_dir)
+    if not lock.acquire_nb():
+        die(EXIT_BLOCKED, "next cannot acquire run lock")
+    try:
+        state = _require_state(run_dir)
+        contract = load_contract(state["plan_dir"])
+        candidate = state.get("verification_candidate")
+        if candidate and candidate_errors(candidate):
+            die(EXIT_CONTRACT, "candidate drift; no tasks ready")
+        ready = _compute_ready(state, contract)
+        print(json.dumps({"ready": ready, "count": len(ready)}, ensure_ascii=False, indent=1))
+        return EXIT_OK
+    finally:
+        lock.release()
 
 
 def _run_dir_from(args):
@@ -719,15 +999,238 @@ def _run_dir_from(args):
     return rd
 
 
-def _require_state(run_dir):
+def _require_admission(state):
+    """Revalidate the original authorization and frozen plan before work."""
+    try:
+        plan = state["plan_dir"]
+        if not isinstance(plan, str) or not plan:
+            raise ValueError("plan missing")
+        ok, digest = verify_plan_manifest(plan)
+        with open(state["authorization_path"], "rb") as fh:
+            raw = fh.read()
+        auth = json.loads(raw)
+        if (not ok or not isinstance(auth, dict)
+                or digest != state.get("plan_manifest_sha256")
+                or digest != auth.get("plan_manifest_sha256")
+                or sha256_bytes(raw) != state.get("authorization_sha256")
+                or auth.get("implementation_allowed") is not True
+                or auth.get("local_commit_allowed") is not True
+                or not authorization_unexpired(auth)):
+            raise ValueError("authorization or plan changed")
+        contract = load_contract(plan)
+        allowed = auth.get("allowed_tasks")
+        need = {task["task_id"] for task in contract["tasks"]}
+        if (not isinstance(allowed, list) or any(not isinstance(item, str) for item in allowed)
+                or len(set(allowed)) != len(allowed) or set(allowed) != need):
+            raise ValueError("task authorization differs")
+        return contract
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        die(EXIT_CONTRACT, "admission or plan invalid; reconciliation required")
+
+
+def _require_state(run_dir, allow_expired=False):
     store = StateStore(run_dir)
-    state = store.load_state()
-    if state is None:
+    try:
+        state = store.load_state()
+        events = store.load_events()
+        ok, why = store.verify_chain()
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        die(EXIT_CONTRACT, "state or event chain invalid; reconciliation required")
+    if not isinstance(state, dict):
         die(20, "run not admitted; run admit first")
-    ok, why = store.verify_chain()
-    if not ok:
+    if not events or not ok:
         die(20, "event chain corrupt: %s" % why)
+    if state.get("events_head_hash") != events[-1].get("entry_hash"):
+        die(EXIT_CONTRACT, "snapshot is behind or diverges from event chain; reconciliation required")
+    if not store.snapshot_bound(state, events):
+        die(EXIT_CONTRACT, "snapshot payload or digest is not bound to event chain")
+    contract = _require_admission(state)
+    _clock_check(state.get('clock_anchor'))
+    _budget_check(state, contract, enforce=not allow_expired)
     return state
+
+
+def _task_transition_allowed(task, target):
+    previous = task.get("state")
+    if target not in TRANSITIONS.get(previous, []):
+        return False
+    if previous == "COMMITTING" and target in ("RETRYABLE", "NO_GO"):
+        return False
+    if previous == "BLOCKED_EXTERNAL" and target in ("READY", "COMMITTING"):
+        return False
+    return True
+
+
+def _task_prerequisites(state, contract, task_id):
+    tasks = [task for task in contract.get("tasks", []) if task.get("task_id") == task_id]
+    if len(tasks) != 1:
+        return False
+    task = tasks[0]
+    dependencies = task.get("dependencies", [])
+    if (not isinstance(dependencies, list)
+            or any(state.get("tasks", {}).get(dep, {}).get("state") != "PASS" for dep in dependencies)):
+        return False
+    candidate = state.get("verification_candidate")
+    if candidate is not None and (not isinstance(candidate, dict)
+            or candidate.get("plan_manifest_sha256") != state.get("plan_manifest_sha256")
+            or candidate_errors(candidate)):
+        return False
+    wave = task.get("wave")
+    if wave == "W0":
+        return True
+    if not isinstance(wave, str) or not wave:
+        return False
+    if not candidate:
+        return False
+    gates = [gate for gate in contract.get("wave_gates", {}).values() if gate.get("wave") == wave]
+    if len(gates) != 1:
+        return False
+    previous = gates[0].get("previous_gate")
+    return (bool(previous) and state.get("gates", {}).get(previous) == "PASS"
+            and state.get("gate_candidates", {}).get(previous) == candidate)
+
+
+def _resume_case_manifest(run_dir, store, old, new, event):
+    """Recover a single sealed case only after revalidating its complete evidence."""
+    payload = event["payload"]
+    case_id, digest = payload.get("case_id"), payload.get("manifest_sha256")
+    if not isinstance(case_id, str) or "/" not in case_id or not _valid_digest(digest):
+        die(EXIT_CONTRACT, "invalid case binding event")
+    task_id, case_name = case_id.split("/", 1)
+    if not case_name or "/" in case_name or case_name in (".", ".."):
+        die(EXIT_CONTRACT, "invalid case binding path")
+    old_bindings = old.get("case_manifest_digests", {})
+    new_bindings = new.get("case_manifest_digests")
+    if (not isinstance(old_bindings, dict) or not isinstance(new_bindings, dict)
+            or case_id in old_bindings or new_bindings != dict(old_bindings, **{case_id: digest})
+            or payload.get("candidate") != old.get("verification_candidate")):
+        die(EXIT_CONTRACT, "case binding event changed other bindings")
+    excluded = ("revision", "events_head_hash", "clock_anchor", "case_manifest_digests")
+    if (type(old.get("revision")) is not int or new.get("revision") != old["revision"] + 1
+            or canonical_json({k: v for k, v in old.items() if k not in excluded})
+            != canonical_json({k: v for k, v in new.items() if k not in excluded})):
+        die(EXIT_CONTRACT, "case binding event changed unrelated state")
+    contract = _require_admission(old)
+    _task_attempt_check(old, contract, task_id)
+    _clock_check(old.get("clock_anchor"))
+    _clock_check(new.get("clock_anchor"))
+    _clock_transition(old["clock_anchor"], new["clock_anchor"])
+    _budget_check(old, contract, task_id, at=event.get("ts"))
+    _budget_check(old, contract, task_id)
+    if (case_id not in (task_case_ids(contract, task_id) or [])
+            or old.get("tasks", {}).get(task_id, {}).get("state") not in ("RUNNING", "VERIFYING")
+            or candidate_errors(old.get("verification_candidate", {}))):
+        die(EXIT_CONTRACT, "case binding admission or candidate invalid")
+    expected = contract.get("expected_leaf_matrix", {}).get(case_id)
+    if not isinstance(expected, list) or not expected:
+        die(EXIT_CONTRACT, "case binding leaf contract missing")
+    case_dir = os.path.join(run_dir, "evidence", task_id, case_name)
+    rows = [row for _, row in _read_case_rows(run_dir, case_dir, digest)]
+    identity = lambda row: "|".join(str(row.get(k)) for k in LEAF_FIELDS)
+    index = {identity(row): row for row in expected}
+    ok, _ = v_leaf_set([identity(row) for row in expected], [identity(row) for row in rows])
+    if not ok:
+        die(EXIT_CONTRACT, "case binding leaves do not match contract")
+    for row in rows:
+        if receipt_errors(row, index[identity(row)], task_id, case_id,
+                          old["verification_candidate"], run_dir,
+                          old.get("resource_allowlist", {}), contract,
+                          old.get("tasks", {}).get(task_id, {}).get("attempt")):
+            die(EXIT_CONTRACT, "case binding evidence failed revalidation")
+    return store.persist_snapshot(new, event["entry_hash"])
+
+
+def _resume_state(run_dir):
+    """Reconcile one durable task transition while the caller holds RunLock."""
+    store = StateStore(run_dir)
+    try:
+        old = store.load_state()
+        events = store.load_events()
+        valid, _ = store.verify_chain()
+        if not isinstance(old, dict) or not valid or not events:
+            die(EXIT_CONTRACT, "invalid run state or event chain")
+        if old.get("events_head_hash") == events[-1].get("entry_hash"):
+            return _require_state(run_dir, allow_expired=True)
+        if len(events) < 2:
+            die(EXIT_CONTRACT, "snapshot cannot be reconciled without prior event")
+        if old.get("events_head_hash") != events[-2].get("entry_hash") or not store.snapshot_bound(old, events[:-1]):
+            die(EXIT_CONTRACT, "snapshot cannot be reconciled with a single event")
+        event = events[-1]
+        payload = event.get("payload", {})
+        new = payload.get("state_payload") if isinstance(payload, dict) else None
+        if not isinstance(new, dict):
+            die(EXIT_CONTRACT, "event lacks a recoverable task state")
+        reconstructed = dict(new, events_head_hash=event["entry_hash"])
+        if not store.snapshot_bound(reconstructed, events):
+            die(EXIT_CONTRACT, "event state digest mismatch")
+        if event.get("kind") == "case_manifest_bound":
+            return _resume_case_manifest(run_dir, store, old, new, event)
+        if event.get("kind") != "task_state":
+            die(EXIT_CONTRACT, "event lacks a recoverable task state")
+        task_id = payload.get("task")
+        old_tasks, new_tasks = old.get("tasks"), new.get("tasks")
+        if not isinstance(old_tasks, dict) or not isinstance(new_tasks, dict) or task_id not in old_tasks or task_id not in new_tasks:
+            die(EXIT_CONTRACT, "event task missing")
+        old_task, new_task = old_tasks[task_id], new_tasks[task_id]
+        if not isinstance(old_task, dict) or not isinstance(new_task, dict):
+            die(EXIT_CONTRACT, "event task invalid")
+        old_other = {k: v for k, v in old.items() if k not in ("revision", "events_head_hash", "tasks", "clock_anchor", "time_budgets")}
+        new_other = {k: v for k, v in new.items() if k not in ("revision", "events_head_hash", "tasks", "clock_anchor", "time_budgets")}
+        other_old = {k: v for k, v in old_tasks.items() if k != task_id}
+        other_new = {k: v for k, v in new_tasks.items() if k != task_id}
+        old_status, new_status = old_task.get("state"), new_task.get("state")
+        old_attempt, new_attempt = old_task.get("attempt", 0), new_task.get("attempt")
+        if (type(old.get("revision")) is not int or new.get("revision") != old["revision"] + 1
+                or canonical_json(old_other) != canonical_json(new_other)
+                or canonical_json(other_old) != canonical_json(other_new)
+                or not _task_transition_allowed(old_task, new_status) or new_status == "PASS"
+                or payload.get("to") != new_status or type(old_attempt) is not int or type(new_attempt) is not int
+                or new_attempt != old_attempt + (1 if new_status == "RUNNING" else 0)
+                or payload.get("attempt") != new_attempt):
+            die(EXIT_CONTRACT, "event transition or budget invalid")
+        allowed = {"state", "attempt", "task_started_at", "task_deadline", "case_results", "commit_vector", "blocked_reason", "resume_state"}
+        if any(k not in old_task and k not in allowed for k in new_task):
+            die(EXIT_CONTRACT, "event added unexpected task fields")
+        for key, value in old_task.items():
+            if (key not in ("state", "attempt", "case_results", "commit_vector", "blocked_reason")
+                    and not (key == "resume_state" and new_status == "BLOCKED_EXTERNAL")
+                    and (key not in new_task or canonical_json(new_task[key]) != canonical_json(value))):
+                die(EXIT_CONTRACT, "event changed durable task budget or metadata")
+        if new_status == "BLOCKED_EXTERNAL" and new_task.get("resume_state") != old_status:
+            die(EXIT_CONTRACT, "blocked task lost its prior state")
+        contract = _require_admission(old)
+        _clock_check(old.get('clock_anchor'))
+        _clock_check(new.get('clock_anchor'))
+        _clock_transition(old['clock_anchor'], new['clock_anchor'])
+        _budget_check(old, contract, task_id, enforce=False)
+        expected_budgets = old.get('time_budgets')
+        if new_status == 'RUNNING':
+            expected_budgets = _budget_start(old, contract, task_id, new_task.get('task_started_at'))
+        if canonical_json(new.get('time_budgets')) != canonical_json(expected_budgets):
+            die(EXIT_CONTRACT, 'event changed run/wave budget')
+        _budget_check(new, contract, task_id, enforce=new_status not in ('NO_GO', 'BLOCKED_EXTERNAL'),
+                      at=event.get('ts'))
+        if new_status in ("READY", "RUNNING") and not _task_prerequisites(old, contract, task_id):
+            die(EXIT_CONTRACT, "event task prerequisites not satisfied")
+        if new_status == "RUNNING":
+            started, deadline = new_task.get("task_started_at"), new_task.get("task_deadline")
+            timeouts = contract.get("timeouts", {})
+            seconds = timeouts.get("task_overrides", {}).get(task_id, timeouts.get("task_seconds", 28800))
+            limit = contract.get("retry_policy", {}).get("task_attempts_total_max", 5)
+            if (type(started) not in (int, float) or type(deadline) not in (int, float)
+                    or not 0 < started <= deadline < float("inf")
+                    or type(limit) is not int or not 1 <= new_attempt <= limit
+                    or type(seconds) not in (int, float) or not 0 < seconds < float("inf")
+                    or type(event.get("ts")) not in (int, float) or started > event["ts"]
+                    or ("task_deadline" not in old_task and deadline != started + seconds)):
+                die(EXIT_CONTRACT, "event task deadline invalid")
+            if event['ts'] >= deadline:
+                die(EXIT_CONTRACT, "task transition was recorded after deadline")
+        if old.get("verification_candidate") and candidate_errors(old["verification_candidate"]):
+            die(EXIT_CONTRACT, "candidate drift prevents recovery")
+        return store.persist_snapshot(new, event["entry_hash"])
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        die(EXIT_CONTRACT, "state or event reconciliation failed")
 
 
 def cmd_resume(args):
@@ -741,7 +1244,7 @@ def cmd_resume(args):
                        "action": "resume"}, fh)
         die(75, "BLOCKED_EXTERNAL: live lock holder unresponsive (bounded 2s refusal)")
     try:
-        state = _require_state(run_dir)
+        state = _resume_state(run_dir)
         store = StateStore(run_dir)
         contract = load_contract(state["plan_dir"])
         ok, manifest_sha = verify_plan_manifest(state["plan_dir"])
@@ -765,7 +1268,6 @@ def cmd_resume(args):
                       "next_action": s.get("next_action")}
                 for tid, s in state["tasks"].items() if s.get("state") == "COMMITTING"},
         }
-        store.append_event("resume_inspected", {"revision": state["revision"]})
         print(json.dumps(report, ensure_ascii=False, indent=1))
         return EXIT_OK
     finally:
@@ -884,15 +1386,23 @@ def cmd_freeze_candidate(args):
     try:
         state = _require_state(run_dir)
         auth_path = state.get("authorization_path", "")
-        if not os.path.isfile(auth_path) or sha256_file(auth_path) != state.get("authorization_sha256"):
+        if not isinstance(auth_path, str) or not auth_path or not os.path.isfile(auth_path):
             die(EXIT_CONTRACT, "authorization original unavailable")
-        with open(auth_path) as fh:
-            auth = json.load(fh)
+        try:
+            with open(auth_path, "rb") as fh:
+                auth_bytes = fh.read()
+            if sha256_bytes(auth_bytes) != state.get("authorization_sha256"):
+                die(EXIT_CONTRACT, "authorization original unavailable")
+            auth = json.loads(auth_bytes)
+        except (OSError, ValueError):
+            die(EXIT_CONTRACT, "authorization missing or invalid")
+        if not isinstance(auth, dict):
+            die(EXIT_CONTRACT, "authorization must be an object")
         ok, digest = verify_plan_manifest(state["plan_dir"])
         if (not ok or digest != state.get("plan_manifest_sha256")
                 or auth.get("plan_manifest_sha256") != digest
-                or not auth.get("implementation_allowed")
-                or auth.get("expires_at", "") < time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())):
+                or auth.get("implementation_allowed") is not True
+                or not authorization_unexpired(auth)):
             die(EXIT_CONTRACT, "candidate admission/plan binding invalid")
         roots = auth.get("repository_paths", {})
         if not isinstance(roots, dict) or set(roots) != set(REPO_NAMES):
@@ -937,29 +1447,38 @@ def cmd_freeze_candidate(args):
             die(EXIT_CONTRACT, "cannot bind historical or in-flight evidence to a new candidate")
         state["verification_candidate"] = candidate
         state["resource_allowlist"] = auth.get("resource_allowlist", {})
-        if not frozen_events:
-            store.append_event("candidate_frozen", {"candidate": candidate})
-        store.write_snapshot(state)
+        store.write_snapshot(state, "candidate_frozen", {"candidate": candidate})
         return EXIT_OK
     finally:
         lock.release()
 
 
+_ATTEMPT_NOT_GIVEN = object()
+
+
 def receipt_errors(leaf, expected_leaf, task_id, case_id, candidate, run_dir, allowlist,
-                   contract=None):
+                   contract=None, expected_attempt=_ATTEMPT_NOT_GIVEN):
     errors = []
     if not isinstance(leaf, dict):
         return ["leaf receipt must be an object"]
+    # shortcut: W6-02 lacks session-bound device/browser and backend proof;
+    # remove when the runner verifies per-driver provenance independently.
+    if task_id == "W6-02" or (isinstance(case_id, str) and case_id.startswith("W6-02/")):
+        errors.append("W6-02 provenance is not bound to its driver session and owned backend")
     if leaf.get("required") is not True:
         errors.append("required must be boolean true")
     if leaf.get("task_id") != task_id or leaf.get("case_id") != case_id:
         errors.append("task/case identity mismatch")
+    if expected_attempt is not _ATTEMPT_NOT_GIVEN and (type(expected_attempt) is not int
+                                         or expected_attempt < 1
+                                         or leaf.get("task_attempt") != expected_attempt
+                                         or type(leaf.get("task_attempt")) is not int):
+        errors.append("task attempt binding mismatch")
     for field in LEAF_FIELDS:
         if leaf.get(field) != expected_leaf.get(field):
             errors.append("leaf identity mismatch: " + field)
     for validator, values in ((v_execution_counts, (leaf,)),
-                              (v_binding, (leaf, candidate)),
-                              (v_raw_output, (leaf,))):
+                              (v_binding, (leaf, candidate))):
         ok, why = validator(*values)
         if not ok:
             errors.append(why)
@@ -967,9 +1486,6 @@ def receipt_errors(leaf, expected_leaf, task_id, case_id, candidate, run_dir, al
         if not _valid_digest(leaf.get(field)):
             errors.append("missing/invalid binding: " + field)
     raw = leaf.get("raw_output_path", "")
-    if not isinstance(raw, str) or os.path.commonpath([
-            os.path.realpath(run_dir), os.path.realpath(raw or ".")]) != os.path.realpath(run_dir):
-        errors.append("raw output outside run directory")
     for field in ("command", "cwd", "request_ids", "resource_ids"):
         if not leaf.get(field):
             errors.append("missing execution field: " + field)
@@ -1020,19 +1536,24 @@ def receipt_errors(leaf, expected_leaf, task_id, case_id, candidate, run_dir, al
         if not isinstance(actor, dict) or actor.get("kind") != "real":
             errors.append("required real execution cannot use a targeted-contract actor")
     need_device = case_id in ("W6-02/flutter-recovery-real", "W6-02/e2e-compat", "W6-02/ac08")
-    need_browser = case_id in ("W6-02/admin-recovery-real", "W6-02/e2e-compat", "W6-02/ac08")
+    need_browser = case_id in ("W6-02/admin-recovery-real", "W6-02/e2e-compat")
     for needed, field, kind in ((need_device, "device_provenance", "physical"),
                                 (need_browser, "browser_provenance", "real-browser")):
         if needed:
             proof = leaf.get(field, {})
             if (not isinstance(proof, dict) or proof.get("kind") != kind
+                    or not isinstance(allowlist.get(field), list)
                     or proof.get("resource_id") not in allowlist.get(field, [])
                     or type(proof.get("process_id")) is not int or proof["process_id"] <= 0):
                 errors.append("missing registered live " + field)
     try:
-        with open(raw) as stream:
-            observation = json.load(stream)
+        raw_bytes = _read_run_artifact(run_dir, raw)
+        if sha256_bytes(raw_bytes) != leaf.get("raw_output_sha256"):
+            errors.append("raw output sha mismatch")
+        observation = json.loads(raw_bytes)
         identity_fields = ("task_id", "case_id") + LEAF_FIELDS
+        if expected_attempt is not _ATTEMPT_NOT_GIVEN:
+            identity_fields += ("task_attempt",)
         if (not isinstance(observation, dict)
                 or any(observation.get(k) != leaf.get(k) for k in identity_fields)
                 or observation.get("oracle_observations") != observations
@@ -1115,24 +1636,20 @@ def cmd_verify(args, held_lock=False):
                     by_id = {tuple(leaf.get(k) for k in LEAF_FIELDS): leaf for leaf in expected}
                     case_dir = os.path.join(run_dir, "evidence", tid, cid.split("/", 1)[1])
                     actual = []
-                    if os.path.isdir(case_dir):
-                        for fn in sorted(os.listdir(case_dir)):
-                            if not (fn.startswith("leaf-") and fn.endswith(".json")):
+                    try:
+                        for fn, leaf in _read_case_rows(run_dir, case_dir, state.get("case_manifest_digests", {}).get(cid)):
+                            identity = tuple(leaf.get(k) for k in LEAF_FIELDS)
+                            actual.append("|".join(map(str, identity)))
+                            if identity not in by_id:
+                                fails.append(cid + ": unexpected leaf " + fn)
                                 continue
-                            try:
-                                with open(os.path.join(case_dir, fn)) as fh:
-                                    leaf = json.load(fh)
-                                identity = tuple(leaf.get(k) for k in LEAF_FIELDS)
-                                actual.append("|".join(map(str, identity)))
-                                if identity not in by_id:
-                                    fails.append(cid + ": unexpected leaf " + fn)
-                                    continue
-                                issues = receipt_errors(leaf, by_id[identity], tid, cid,
-                                                        accepted_candidates.get(tid, candidate),
-                                                        run_dir, state.get("resource_allowlist", {}), contract)
-                                fails.extend(cid + " " + fn + ": " + why for why in issues)
-                            except (OSError, ValueError, TypeError, AttributeError) as exc:
-                                fails.append(cid + " " + fn + ": malformed receipt " + type(exc).__name__)
+                            issues = receipt_errors(leaf, by_id[identity], tid, cid,
+                                                    accepted_candidates.get(tid, candidate),
+                                                    run_dir, state.get("resource_allowlist", {}), contract,
+                                                    state.get("tasks", {}).get(tid, {}).get("attempt"))
+                            fails.extend(cid + " " + fn + ": " + why for why in issues)
+                    except (OSError, ValueError, TypeError, AttributeError) as exc:
+                        fails.append(cid + ": uncommitted or corrupt case " + type(exc).__name__)
                     ok, why = v_leaf_set(leaf_ids_for_case(contract, cid), actual)
                     if not ok:
                         fails.append(cid + ": " + why)
@@ -1153,7 +1670,10 @@ def _measured_case_rows(args, state, contract, run_dir):
         run_dir, "evidence", args.task_id, args.case_id.split("/", 1)[-1]))
     if case_dir != expected_dir or os.path.commonpath([run_dir, case_dir]) != run_dir:
         return [], ["case directory does not match task/case"], case_dir, None
-    directory = os.stat(case_dir, follow_symlinks=False)
+    try:
+        directory = os.stat(case_dir, follow_symlinks=False)
+    except OSError:
+        return [], ["case directory unavailable"], case_dir, None
     directory_id = (directory.st_dev, directory.st_ino)
     if os.path.realpath(args.receipts) != os.path.join(case_dir, "measured-receipts.json"):
         return [], ["measured receipts must be owned by the case directory"], case_dir, None
@@ -1161,8 +1681,10 @@ def _measured_case_rows(args, state, contract, run_dir):
         return [], ["case is not declared by task"], case_dir, None
     if state.get("tasks", {}).get(args.task_id, {}).get("state") not in ("RUNNING", "VERIFYING"):
         return [], ["task is not running or verifying"], case_dir, None
-    with open(args.receipts) as fh:
-        rows = json.load(fh)
+    try:
+        rows = json.loads(_read_run_artifact(run_dir, args.receipts))
+    except (OSError, TypeError, ValueError):
+        return [], ["measured receipts are not a regular, run-owned JSON file"], case_dir, None
     if not isinstance(rows, list) or any(not isinstance(row, dict) for row in rows):
         return [], ["measured receipts must be an object array"], case_dir, None
     expected = contract["expected_leaf_matrix"][args.case_id]
@@ -1177,10 +1699,15 @@ def _measured_case_rows(args, state, contract, run_dir):
         if row.get("command") != args.command:
             errors.append("measured command does not match launched command")
         errors.extend(receipt_errors(row, index[identity(row)], args.task_id,
-            args.case_id, candidate, run_dir, state.get("resource_allowlist", {}), contract))
+            args.case_id, candidate, run_dir, state.get("resource_allowlist", {}), contract,
+            state.get("tasks", {}).get(args.task_id, {}).get("attempt")))
     targets = {"leaf-%03d.json" % n for n in range(1, len(rows) + 1)}
+    try:
+        names = os.listdir(case_dir)
+    except OSError:
+        return [], ["case directory unavailable while inspecting leaves"], case_dir, None
     if any(name.startswith("leaf-") and name.endswith(".json") and name not in targets
-           for name in os.listdir(case_dir)):
+           for name in names):
         errors.append("unexpected existing leaf files; preserve and reconcile first")
     return rows, errors, case_dir, directory_id
 
@@ -1196,26 +1723,34 @@ def _write_case_rows(run_dir, case_dir, rows, directory_id):
         opened = os.fstat(fd)
         if (opened.st_dev, opened.st_ino) != directory_id:
             return False
-        for n, row in enumerate(rows, 1):
-            temporary = ".sealing-" + uuid.uuid4().hex
-            temp_fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL,
-                             0o600, dir_fd=fd)
-            try:
-                with os.fdopen(temp_fd, "w") as fh:
-                    json.dump(row, fh, sort_keys=True)
-                    fh.flush()
-                    os.fsync(fh.fileno())
-                os.replace(temporary, "leaf-%03d.json" % n, src_dir_fd=fd, dst_dir_fd=fd)
-            finally:
-                try:
-                    os.unlink(temporary, dir_fd=fd)
-                except FileNotFoundError:
-                    pass
-        os.fsync(fd)
+        try:
+            case_store.publish(fd, rows)
+        except FileExistsError:
+            # A previous committed generation is never replaced.
+            existing = [row for _, row in case_store.read(fd)]
+            if canonical_json(existing) != canonical_json(rows):
+                return False
         current = os.stat(case_dir, follow_symlinks=False)
         opened = os.fstat(fd)
         return ((current.st_dev, current.st_ino) == (opened.st_dev, opened.st_ino)
                 and os.path.realpath(case_dir) == case_dir)
+    finally:
+        os.close(fd)
+
+
+def _read_case_rows(run_dir, case_dir, expected_digest=None):
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    fd = os.open(run_dir, flags)
+    try:
+        for part in os.path.relpath(case_dir, run_dir).split(os.sep):
+            if part in ("", ".", ".."):
+                raise ValueError("invalid case path")
+            child = os.open(part, flags, dir_fd=fd)
+            os.close(fd)
+            fd = child
+        if not expected_digest:
+            raise ValueError("case manifest is not bound to state")
+        return case_store.read(fd, expected_digest)
     finally:
         os.close(fd)
 
@@ -1229,6 +1764,8 @@ def cmd_seal_case(args):
     try:
         state = _require_state(run_dir)
         contract = load_contract(state["plan_dir"])
+        _budget_check(state, contract, args.task_id)
+        _task_attempt_check(state, contract, args.task_id)
         ok, digest = verify_plan_manifest(state["plan_dir"])
         errors = candidate_errors(state.get("verification_candidate", {}))
         if not ok or digest != state.get("plan_manifest_sha256"):
@@ -1247,7 +1784,25 @@ def cmd_seal_case(args):
         if not _write_case_rows(run_dir, case_dir, rows, directory_id):
             print(json.dumps({"result": "FAIL", "errors": ["case directory changed while sealing"]}))
             return EXIT_CONTRACT
-        print(json.dumps({"result": "SEALED", "leaves": len(rows), "state_updated": False}))
+        fd = os.open(case_dir, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        try:
+            manifest_digest = case_store.manifest_digest(fd)
+            # Verify again before binding the manifest to the fsynced event chain.
+            if canonical_json([row for _, row in case_store.read(fd, manifest_digest)]) != canonical_json(rows):
+                raise ValueError("case changed before binding")
+        finally:
+            os.close(fd)
+        bindings = state.setdefault("case_manifest_digests", {})
+        previous = bindings.get(args.case_id)
+        if previous and previous != manifest_digest:
+            print(json.dumps({"result": "FAIL", "errors": ["case binding conflict"]}))
+            return EXIT_CONTRACT
+        if not previous:
+            bindings[args.case_id] = manifest_digest
+            StateStore(run_dir).write_snapshot(state, "case_manifest_bound", {
+                "case_id": args.case_id, "manifest_sha256": manifest_digest,
+                "candidate": state.get("verification_candidate")})
+        print(json.dumps({"result": "SEALED", "leaves": len(rows), "state_updated": not bool(previous)}))
         return EXIT_OK
     finally:
         lock.release()
@@ -1269,9 +1824,8 @@ def cmd_accept_gate(args):
         state["gates"][args.gate] = "PASS"
         state.setdefault("gate_candidates", {})[args.gate] = copy.deepcopy(state["verification_candidate"])
         store = StateStore(run_dir)
-        store.append_event("gate_artifacts_accepted", {"gate": args.gate,
+        store.write_snapshot(state, "gate_artifacts_accepted", {"gate": args.gate,
             "candidate": state["verification_candidate"]})
-        store.write_snapshot(state)
         return EXIT_OK
     finally:
         lock.release()
@@ -1895,7 +2449,7 @@ def cmd_task(args):
     if not lock.acquire_nb():
         die(75, "BLOCKED_EXTERNAL: cannot mutate task state without lock")
     try:
-        state = _require_state(run_dir)
+        state = _require_state(run_dir, allow_expired=args.to in ('NO_GO', 'BLOCKED_EXTERNAL'))
         contract = load_contract(state["plan_dir"])
         if args.task_id not in state["tasks"]:
             die(2, "unknown task %r" % args.task_id)
@@ -1903,22 +2457,35 @@ def cmd_task(args):
         to = args.to
         if to not in TASK_STATES:
             die(2, "unknown state %r" % to)
-        if to not in TRANSITIONS[cur["state"]]:
+        if not _task_transition_allowed(cur, to):
             die(20, "illegal transition %s -> %s" % (cur["state"], to))
+        if to in ("READY", "RUNNING") and not _task_prerequisites(state, contract, args.task_id):
+            die(EXIT_CONTRACT, "task prerequisites not satisfied")
         now = time.time()
+        _budget_check(state, contract, args.task_id, enforce=to not in ('NO_GO', 'BLOCKED_EXTERNAL'))
         if to == "RUNNING":
             limit = contract.get("retry_policy", {}).get("task_attempts_total_max", 5)
-            if cur.get("attempt", 0) >= limit:
+            attempts = cur.get("attempt", 0)
+            if type(limit) is not int or limit <= 0 or type(attempts) is not int or attempts < 0:
+                die(EXIT_CONTRACT, "invalid task attempt budget")
+            if attempts >= limit:
                 die(EXIT_NOGO, "task attempt budget exhausted")
             started = cur.get("task_started_at", now)
             timeouts = contract.get("timeouts", {})
             seconds = timeouts.get("task_overrides", {}).get(
                 args.task_id, timeouts.get("task_seconds", 28800))
+            if (type(started) not in (int, float) or not 0 < started <= now
+                    or type(seconds) not in (int, float) or not 0 < seconds < float("inf")):
+                die(EXIT_CONTRACT, "invalid task start or deadline budget")
             deadline = cur.get("task_deadline", started + seconds)
+            if type(deadline) not in (int, float) or not started <= deadline < float("inf"):
+                die(EXIT_CONTRACT, "invalid persisted task deadline")
             if now >= deadline:
                 die(EXIT_NOGO, "persisted task deadline exhausted")
             cur["task_started_at"] = started
             cur["task_deadline"] = deadline
+            state['time_budgets'] = _budget_start(state, contract, args.task_id, now)
+            _budget_check(state, contract, args.task_id)
         if to == "PASS":
             # PASS cannot be supplied as an operator assertion while proofs are absent.
             candidate = state.get("verification_candidate", {})
@@ -1927,6 +2494,8 @@ def cmd_task(args):
             if not cur.get("case_results") or not cur.get("commit_vector"):
                 die(EXIT_CONTRACT, "task PASS needs measured case results and commit vector")
             die(EXIT_CONTRACT, "task PASS requires sealed artifact acceptance; manual PASS is disabled")
+        if to == "BLOCKED_EXTERNAL":
+            cur["resume_state"] = cur["state"]
         cur["state"] = to
         if to in ("RUNNING",):
             cur["attempt"] = cur.get("attempt", 0) + 1
@@ -1939,9 +2508,8 @@ def cmd_task(args):
         if args.blocked_reason:
             cur["blocked_reason"] = args.blocked_reason
         st = StateStore(run_dir)
-        st.append_event("task_state", {"task": args.task_id, "to": to,
-                                       "attempt": cur.get("attempt", 0)})
-        st.write_snapshot(state)
+        st.write_snapshot(state, "task_state", {"task": args.task_id, "to": to,
+                                                  "attempt": cur.get("attempt", 0)})
         print(json.dumps({"task": args.task_id, "state": to, "attempt": cur.get("attempt", 0)}))
         return EXIT_OK
     finally:
@@ -1958,24 +2526,21 @@ def _task_artifacts(state, contract, task_id, run_dir):
         case_dir = os.path.join(run_dir, "evidence", task_id, cid.split("/", 1)[1])
         actual = []
         total = dict(executed=0, passed=0, failed=0, skipped=0, exit_code=0)
-        for name in sorted(os.listdir(case_dir)) if os.path.isdir(case_dir) else []:
-            if not (name.startswith("leaf-") and name.endswith(".json")):
-                continue
-            try:
-                with open(os.path.join(case_dir, name)) as fh:
-                    row = json.load(fh)
+        try:
+            for name, row in _read_case_rows(run_dir, case_dir, state.get("case_manifest_digests", {}).get(cid)):
                 identity = tuple(row.get(k) for k in LEAF_FIELDS)
                 actual.append("|".join(map(str, identity)))
                 if identity not in index:
                     errors.append(cid + ": unexpected leaf")
                     continue
                 errors.extend(receipt_errors(row, index[identity], task_id, cid,
-                                             candidate, run_dir, state.get("resource_allowlist", {}), contract))
+                                             candidate, run_dir, state.get("resource_allowlist", {}), contract,
+                                             state.get("tasks", {}).get(task_id, {}).get("attempt")))
                 for field in ("executed", "passed", "failed", "skipped"):
                     if type(row.get(field)) is int:
                         total[field] += row[field]
-            except (OSError, ValueError, TypeError, AttributeError):
-                errors.append(cid + ": malformed leaf")
+        except (OSError, ValueError, TypeError, AttributeError):
+            errors.append(cid + ": uncommitted or corrupt case")
         ok, why = v_leaf_set(leaf_ids_for_case(contract, cid), actual)
         if not ok:
             errors.append(cid + ": " + why)
@@ -2024,6 +2589,7 @@ def cmd_accept_task(args):
         if cur.get("state") != "COMMITTING":
             die(EXIT_CONTRACT, "accept-task requires COMMITTING")
         contract = load_contract(state["plan_dir"])
+        _budget_check(state, contract, args.task_id)
         deadline = cur.get("task_deadline")
         attempt = cur.get("attempt")
         limit = contract.get("retry_policy", {}).get("task_attempts_total_max", 5)
@@ -2055,9 +2621,8 @@ def cmd_accept_task(args):
             return EXIT_CONTRACT
         cur.update(state="PASS", case_results=counts, commit_vector=vector)
         store = StateStore(run_dir)
-        store.append_event("task_artifacts_accepted", {"task": args.task_id,
-                           "candidate": state["verification_candidate"], "commit_vector": vector})
-        store.write_snapshot(state)
+        store.write_snapshot(state, "task_artifacts_accepted", {"task": args.task_id,
+                             "candidate": state["verification_candidate"], "commit_vector": vector})
         print(json.dumps({"task": args.task_id, "state": "PASS"}))
         return EXIT_OK
     finally:
