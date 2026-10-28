@@ -581,3 +581,14 @@ def w301_gaps(leaves_list, parsed, source_text, evidence_text, tokens, functions
             "expected_db_delta", "expected_object_state"))
         gaps.append({"leaf": leaf, "missing": missing})
     return gaps
+
+def named_test_in_module(parsed, name, module, case_id):
+    """Find the named test line inside one module (multi-module runs reuse
+    generic fun names like run/0, so the module must disambiguate)."""
+    for test in parsed["tests"]:
+        if test["name"] == name and test["module"] == module:
+            if not test["ok"]:
+                die(case_id, "eunit test %s in %s reported failure" % (name, module))
+            return test
+    die(case_id, "eunit test %s absent from parsed log for module %s"
+        % (name, module))
