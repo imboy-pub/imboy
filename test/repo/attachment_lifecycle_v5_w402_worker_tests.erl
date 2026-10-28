@@ -1051,7 +1051,7 @@ w402_poison_not_starving(Conn) ->
 w402_emit(Entry, Ord, <<"ordinary">>, Measured) ->
     Base = Measured#{entrypoint_case => atom_to_binary(Entry, utf8)},
     attachment_lifecycle_v5_obs:emit(#{
-        case_id => iolist_to_binary(["W4-02/", atom_to_binary(Entry, utf8)]),
+        case_id => iolist_to_binary(["W4-02/", w402_ep_binary(Entry)]),
         entrypoint => w402_ep_binary(Entry),
         scenario => atom_to_binary(Ord, utf8),
         domain => <<"ordinary">>,
@@ -1059,7 +1059,7 @@ w402_emit(Entry, Ord, <<"ordinary">>, Measured) ->
         measured => Base
     }),
     attachment_lifecycle_v5_obs:emit(#{
-        case_id => iolist_to_binary(["W4-02/", atom_to_binary(Entry, utf8)]),
+        case_id => iolist_to_binary(["W4-02/", w402_ep_binary(Entry)]),
         entrypoint => w402_ep_binary(Entry),
         scenario => atom_to_binary(Ord, utf8),
         domain => <<"enterprise">>,
@@ -1070,7 +1070,7 @@ w402_emit(Entry, Ord, <<"ordinary">>, Measured) ->
 w402_emit(Entry, Ord, <<"ordinary_solo">>, Measured) ->
     %% 单域叶（契约矩阵 ordinary-queue-recovery 为 ordinary 4 叶，无双域）
     attachment_lifecycle_v5_obs:emit(#{
-        case_id => iolist_to_binary(["W4-02/", atom_to_binary(Entry, utf8)]),
+        case_id => iolist_to_binary(["W4-02/", w402_ep_binary(Entry)]),
         entrypoint => w402_ep_binary(Entry),
         scenario => atom_to_binary(Ord, utf8),
         domain => <<"ordinary">>,
@@ -1080,7 +1080,7 @@ w402_emit(Entry, Ord, <<"ordinary_solo">>, Measured) ->
     ok;
 w402_emit(Entry, Ord, Domain, Measured) ->
     attachment_lifecycle_v5_obs:emit(#{
-        case_id => iolist_to_binary(["W4-02/", atom_to_binary(Entry, utf8)]),
+        case_id => iolist_to_binary(["W4-02/", w402_ep_binary(Entry)]),
         entrypoint => w402_ep_binary(Entry),
         scenario => atom_to_binary(Ord, utf8),
         domain => Domain,
