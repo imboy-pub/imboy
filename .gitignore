@@ -106,7 +106,10 @@ api/openapi.bundled.json
 # --- 类型检查工具产物（ELP/Gradualizer，不入仓） ---
 /.elp/
 /.gradualizer/
-/tools/
+# IMBOY_ERLANG_QUALITY：框架源码 tools/imboy_quality/ 是源码而非产物，
+# 需要入仓（P1-03 起）；其余 tools/ 子目录仍按产物排除。
+/tools/*
+!/tools/imboy_quality/
 
 # B-25：Alertmanager 通知渠道取值（收件邮箱 / webhook URL）。
 # webhook URL 本身就是凭据，谁拿到谁就能往群里发消息 —— 绝不入库。
