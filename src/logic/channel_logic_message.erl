@@ -197,17 +197,13 @@ run_first_accept_channel_tx(Uid, NameNorm, Opts, MaxChannels, RequestId, Digest)
                 )
             of
                 {ok, inserted, _Row} ->
-                    case channel_ds:create_channel_tx(Conn, Uid, NameNorm, Options) of
-                        {ok, ChannelId} ->
-                            accept_receipt_or_abort(
-                                resource_create_receipt_repo:accept_tx(
-                                    Conn, Uid, <<"create_channel">>, RequestId, ChannelId
-                                )
-                            ),
-                            {ok, ChannelId};
-                        {error, Reason} ->
-                            throw({abort_tx, Reason})
-                    end;
+                    {ok, ChannelId} = channel_ds:create_channel_tx(Conn, Uid, NameNorm, Options),
+                    _ = accept_receipt_or_abort(
+                        resource_create_receipt_repo:accept_tx(
+                            Conn, Uid, <<"create_channel">>, RequestId, ChannelId
+                        )
+                    ),
+                    {ok, ChannelId};
                 {ok, existing, Row} ->
                     %% 同键并发前事务已提交：事务内重放，不再创建。
                     replay_channel_receipt(Uid, Digest, Row);

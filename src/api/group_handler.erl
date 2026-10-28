@@ -967,8 +967,6 @@ resolve_cursor_limit(Qs, Uid, Kind, Ctx) ->
                     {ok, Upper, Limit};
                 {error, expired} ->
                     {error, 400, <<"invalid_request：游标已过期"/utf8>>};
-                {error, foreign} ->
-                    {error, 400, <<"invalid_request：游标与当前请求不匹配"/utf8>>};
                 {error, key_unavailable} ->
                     {error, 503, <<"security_gate_closed"/utf8>>};
                 {error, _} ->

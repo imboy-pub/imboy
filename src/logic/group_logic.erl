@@ -42,6 +42,7 @@
 -export([edit_checked/3]).
 -export([
     list_workspace_groups/2, list_workspace_groups/3,
+    list_workspace_groups_before/4,
     list_member_workspace_groups/4, list_member_workspace_groups/5, list_member_workspace_groups/6
 ]).
 -export([mark_workspace_read/3]).
@@ -162,13 +163,10 @@ add(_, Uid, Type, MemberUids) ->
     end).
 
 join_initial_member(Conn, JoinMode, Uid, Gid) ->
-    case group_member_logic:join_group(Conn, JoinMode, Uid, Gid, #{}) of
-        {ok, _} ->
-            ok;
-        {error, Reason} ->
-            ?ERROR_LOG([group_initial_member_create_failed, Gid, Uid, Reason]),
-            throw({abort_tx, <<"群创建失败，请稍后重试"/utf8>>})
-    end.
+    %% join_group/5 失败路径在事务内 throw({abort_tx, _})，成功恒 {ok, _}；
+    %% 异常形状由 with_tx 回滚兜底。
+    {ok, _} = group_member_logic:join_group(Conn, JoinMode, Uid, Gid, #{}),
+    ok.
 
 %% @doc 解散群组
 %% 解散指定群组，通知所有成员并清理相关数据

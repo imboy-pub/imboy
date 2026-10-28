@@ -120,16 +120,12 @@ subscribe_private_channel(Uid, ChannelId) ->
                 {error, not_found} ->
                     {error, {?ERR_CHANNEL_INVITATION_REQUIRED, <<"邀请不存在或已过期"/utf8>>}};
                 {error, _} ->
-                    {error, <<"邀请状态暂不可用，请稍后重试"/utf8>>};
-                _ ->
-                    {error, <<"邀请不存在或已过期"/utf8>>}
+                    {error, <<"邀请状态暂不可用，请稍后重试"/utf8>>}
             end;
         false ->
             {error, {?ERR_CHANNEL_INVITATION_REQUIRED, <<"私有频道需要邀请才能订阅"/utf8>>}};
         {error, _} ->
-            {error, <<"邀请状态暂不可用，请稍后重试"/utf8>>};
-        _ ->
-            {error, <<"私有频道需要邀请才能订阅"/utf8>>}
+            {error, <<"邀请状态暂不可用，请稍后重试"/utf8>>}
     end.
 
 -spec subscribe_paid_channel(integer(), integer()) ->
@@ -152,9 +148,7 @@ subscribe_paid_channel(Uid, ChannelId) ->
         {error, Reason} ->
             {error, elib_cnv:safe_to_binary(Reason)};
         false ->
-            {error, {?ERR_CHANNEL_PURCHASE_REQUIRED, <<"付费频道需要先购买"/utf8>>}};
-        _ ->
-            {error, <<"付费频道需要先购买"/utf8>>}
+            {error, {?ERR_CHANNEL_PURCHASE_REQUIRED, <<"付费频道需要先购买"/utf8>>}}
     end.
 
 -spec unsubscribe(integer(), binary()) -> ok | {error, binary() | {integer(), binary()}}.

@@ -258,8 +258,14 @@ add_member_failure_aborts_transaction_test_() ->
             {elib_dt, [{'now', 0, fun() -> <<"2023-01-01T00:00:00Z">> end}]},
             {group_ds, [{'create_group', 6, fun(_, _, _, _, _, _) -> 999 end}]},
             {user_ds, [{'title', 1, fun(_) -> <<"user123">> end}]},
+            %% join_group/5 的真实失败通道是事务内 throw({abort_tx,_})
+            %% （资格/守卫/成员资格校验同型），与 PG 套例
+            %% group_creation_recovery_pg_tests 的 workspace_membership_required
+            %% 回滚路径一致；成功契约恒 {ok, _}。
             {group_member_logic, [
-                {'join_group', 5, fun(_, _, _, _, _) -> {error, simulated_member_failure} end}
+                {'join_group', 5, fun(_, _, _, _, _) ->
+                    throw({abort_tx, simulated_member_failure})
+                end}
             ]},
             {elib_pg, [
                 {'with_tx', 1, fun(Fun) ->

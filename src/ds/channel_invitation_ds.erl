@@ -30,7 +30,7 @@ create(Data) ->
 find_by_id(Id) -> channel_invitation_repo:find_by_id(Id).
 
 -spec find_pending_by_channel_and_invitee(integer(), integer()) ->
-    {ok, map()} | {error, not_found}.
+    {ok, map()} | {error, not_found | term()}.
 find_pending_by_channel_and_invitee(ChannelId, InviteeUid) ->
     channel_invitation_repo:find_pending_by_channel_and_invitee(ChannelId, InviteeUid).
 
