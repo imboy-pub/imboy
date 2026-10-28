@@ -1099,6 +1099,41 @@ w202_case() { # $1 cdir
   for flag in W202_CONFIRM_PG_OK W202_EB_ASSET_OK W202_GATEWAY_OK W202_ATTACH_LOGIC_OK; do
     [ "${!flag}" -eq 1 ] || return 30
   done
+  # 每叶 entrypoint provenance：21 行静态清单编译进 gate。叶集合 = 冻结契约
+  # expected_leaf_matrix[W2-02/confirmed-content-immutable] 全部叶；
+  # entrypoint/scenario 与契约逐字一致（support 的 _provenance_from_object
+  # 对带 entrypoint/scenario 键的对象做严格匹配，不匹配即跳过该候选，
+  # w202 行不能有别名或简写）。route/method/handler 取 imboy_router.erl
+  # 实际注册面（全部 POST）：ordinary=/api/v1/attachment/confirm ->
+  # attach_handler:confirm；enterprise_internal=/api/internal/v1/files/
+  # confirm -> enterprise_asset_handler:confirm；enterprise_seat=
+  # /api/v1/enterprise/organizations/:org_id/assets/confirm ->
+  # eb_tenant_handler:handle(confirm_asset)；cs_widget=/api/v1/cs/widget/
+  # sessions/:id/assets/confirm -> cs_widget_handler:handle
+  # (widget_asset_confirm)。
+  cat > "$cdir/entrypoint_provenance.jsonl" <<'W202_PROVENANCE'
+{"entrypoint":"ordinary","scenario":"put_A_confirm_old_capability_put_B","route":"/api/v1/attachment/confirm","method":"POST","handler":"attach_handler:confirm","request_id":"w202-ordinary-put_A_confirm_old_capability_put_B"}
+{"entrypoint":"ordinary","scenario":"overwrite_between_stat_and_confirm","route":"/api/v1/attachment/confirm","method":"POST","handler":"attach_handler:confirm","request_id":"w202-ordinary-overwrite_between_stat_and_confirm"}
+{"entrypoint":"ordinary","scenario":"inflight_same_content_after_confirm","route":"/api/v1/attachment/confirm","method":"POST","handler":"attach_handler:confirm","request_id":"w202-ordinary-inflight_same_content_after_confirm"}
+{"entrypoint":"ordinary","scenario":"hash_mismatch_no_confirm","route":"/api/v1/attachment/confirm","method":"POST","handler":"attach_handler:confirm","request_id":"w202-ordinary-hash_mismatch_no_confirm"}
+{"entrypoint":"ordinary","scenario":"ciphertext_only_no_plaintext_hash","route":"/api/v1/attachment/confirm","method":"POST","handler":"attach_handler:confirm","request_id":"w202-ordinary-ciphertext_only_no_plaintext_hash"}
+{"entrypoint":"ordinary","scenario":"crash_after_pin_before_put_resume","route":"/api/v1/attachment/confirm","method":"POST","handler":"attach_handler:confirm","request_id":"w202-ordinary-crash_after_pin_before_put_resume"}
+{"entrypoint":"enterprise_internal","scenario":"put_A_confirm_old_capability_put_B","route":"/api/internal/v1/files/confirm","method":"POST","handler":"enterprise_asset_handler:confirm","request_id":"w202-enterprise_internal-put_A_confirm_old_capability_put_B"}
+{"entrypoint":"enterprise_internal","scenario":"overwrite_between_stat_and_confirm","route":"/api/internal/v1/files/confirm","method":"POST","handler":"enterprise_asset_handler:confirm","request_id":"w202-enterprise_internal-overwrite_between_stat_and_confirm"}
+{"entrypoint":"enterprise_internal","scenario":"inflight_same_content_after_confirm","route":"/api/internal/v1/files/confirm","method":"POST","handler":"enterprise_asset_handler:confirm","request_id":"w202-enterprise_internal-inflight_same_content_after_confirm"}
+{"entrypoint":"enterprise_internal","scenario":"hash_mismatch_no_confirm","route":"/api/internal/v1/files/confirm","method":"POST","handler":"enterprise_asset_handler:confirm","request_id":"w202-enterprise_internal-hash_mismatch_no_confirm"}
+{"entrypoint":"enterprise_internal","scenario":"crash_after_pin_before_put_resume","route":"/api/internal/v1/files/confirm","method":"POST","handler":"enterprise_asset_handler:confirm","request_id":"w202-enterprise_internal-crash_after_pin_before_put_resume"}
+{"entrypoint":"enterprise_seat","scenario":"put_A_confirm_old_capability_put_B","route":"/api/v1/enterprise/organizations/:org_id/assets/confirm","method":"POST","handler":"eb_tenant_handler:handle(confirm_asset)","request_id":"w202-enterprise_seat-put_A_confirm_old_capability_put_B"}
+{"entrypoint":"enterprise_seat","scenario":"overwrite_between_stat_and_confirm","route":"/api/v1/enterprise/organizations/:org_id/assets/confirm","method":"POST","handler":"eb_tenant_handler:handle(confirm_asset)","request_id":"w202-enterprise_seat-overwrite_between_stat_and_confirm"}
+{"entrypoint":"enterprise_seat","scenario":"inflight_same_content_after_confirm","route":"/api/v1/enterprise/organizations/:org_id/assets/confirm","method":"POST","handler":"eb_tenant_handler:handle(confirm_asset)","request_id":"w202-enterprise_seat-inflight_same_content_after_confirm"}
+{"entrypoint":"enterprise_seat","scenario":"hash_mismatch_no_confirm","route":"/api/v1/enterprise/organizations/:org_id/assets/confirm","method":"POST","handler":"eb_tenant_handler:handle(confirm_asset)","request_id":"w202-enterprise_seat-hash_mismatch_no_confirm"}
+{"entrypoint":"enterprise_seat","scenario":"crash_after_pin_before_put_resume","route":"/api/v1/enterprise/organizations/:org_id/assets/confirm","method":"POST","handler":"eb_tenant_handler:handle(confirm_asset)","request_id":"w202-enterprise_seat-crash_after_pin_before_put_resume"}
+{"entrypoint":"cs_widget","scenario":"put_A_confirm_old_capability_put_B","route":"/api/v1/cs/widget/sessions/:id/assets/confirm","method":"POST","handler":"cs_widget_handler:handle(widget_asset_confirm)","request_id":"w202-cs_widget-put_A_confirm_old_capability_put_B"}
+{"entrypoint":"cs_widget","scenario":"overwrite_between_stat_and_confirm","route":"/api/v1/cs/widget/sessions/:id/assets/confirm","method":"POST","handler":"cs_widget_handler:handle(widget_asset_confirm)","request_id":"w202-cs_widget-overwrite_between_stat_and_confirm"}
+{"entrypoint":"cs_widget","scenario":"inflight_same_content_after_confirm","route":"/api/v1/cs/widget/sessions/:id/assets/confirm","method":"POST","handler":"cs_widget_handler:handle(widget_asset_confirm)","request_id":"w202-cs_widget-inflight_same_content_after_confirm"}
+{"entrypoint":"cs_widget","scenario":"hash_mismatch_no_confirm","route":"/api/v1/cs/widget/sessions/:id/assets/confirm","method":"POST","handler":"cs_widget_handler:handle(widget_asset_confirm)","request_id":"w202-cs_widget-hash_mismatch_no_confirm"}
+{"entrypoint":"cs_widget","scenario":"crash_after_pin_before_put_resume","route":"/api/v1/cs/widget/sessions/:id/assets/confirm","method":"POST","handler":"cs_widget_handler:handle(widget_asset_confirm)","request_id":"w202-cs_widget-crash_after_pin_before_put_resume"}
+W202_PROVENANCE
   echo "w202 flags: CONFIRM=$W202_CONFIRM_PG_OK EB=$W202_EB_ASSET_OK GW=$W202_GATEWAY_OK AL=$W202_ATTACH_LOGIC_OK (SH=$SH)" >> "$cdir/raw.log"
   export W202_GARAGE_ENDPOINT="${W202_GARAGE_ENDPOINT:-}" V5_RUN_DIR="$RUN_DIR"
   return $RC

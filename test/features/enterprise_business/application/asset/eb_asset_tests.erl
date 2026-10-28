@@ -28,15 +28,17 @@ setup() ->
             try
                 Registry = eb_pg_test_fixture:install_asset_registry(),
                 {asset_stub, Previous, Registry, Result}
-            catch Class:Reason:Stack ->
-                try
-                    cleanup_db(Result)
-                after
-                    eb_pg_test_fixture:restore_asset_store(Previous)
-                end,
-                erlang:raise(Class, Reason, Stack)
+            catch
+                Class:Reason:Stack ->
+                    try
+                        cleanup_db(Result)
+                    after
+                        eb_pg_test_fixture:restore_asset_store(Previous)
+                    end,
+                    erlang:raise(Class, Reason, Stack)
             end;
-        _ -> Result
+        _ ->
+            Result
     end.
 
 setup_db() ->
@@ -80,7 +82,20 @@ cases({ok, _Conn}) ->
         {timeout, 60, fun bes01b_visitor_content_binding_negatives/0},
         %% W2-02：confirm 幂等重放 + asset_id 恢复（不要求持久化 upload_ref）
         {timeout, 60, fun w202_confirm_replay_idempotent_active/0},
-        {timeout, 60, fun w202_confirm_by_asset_id_recovery/0}
+        {timeout, 60, fun w202_confirm_by_asset_id_recovery/0},
+        %% V5.5 收尾（W2-02 confirmed-content-immutable EB 叶；real-Garage）：
+        %% seat / visitor_session 主体各 5 场景；缺 W202_GARAGE_* 时逐用例 skip
+        %%（描述符仍列出，计数可见、不空转）。
+        {timeout, 120, fun eb_garage_seat_old_capability_put_b_test_/0},
+        {timeout, 120, fun eb_garage_seat_overwrite_between_stat_and_confirm_test_/0},
+        {timeout, 120, fun eb_garage_seat_inflight_same_content_after_confirm_test_/0},
+        {timeout, 120, fun eb_garage_seat_hash_mismatch_no_confirm_test_/0},
+        {timeout, 120, fun eb_garage_seat_crash_after_pin_before_put_resume_test_/0},
+        {timeout, 120, fun eb_garage_widget_old_capability_put_b_test_/0},
+        {timeout, 120, fun eb_garage_widget_overwrite_between_stat_and_confirm_test_/0},
+        {timeout, 120, fun eb_garage_widget_inflight_same_content_after_confirm_test_/0},
+        {timeout, 120, fun eb_garage_widget_hash_mismatch_no_confirm_test_/0},
+        {timeout, 120, fun eb_garage_widget_crash_after_pin_before_put_resume_test_/0}
     ];
 cases(_Skipped) ->
     %% 裸 {skip,_} 从 instantiator 返回是非法 descriptor（eunit 报
@@ -631,3 +646,566 @@ w202_confirm_by_asset_id_recovery() ->
     after
         _ = eb_asset_object_stub:reset()
     end.
+
+-define(EB_GARAGE_TIMEOUT, 120).
+
+%% ===================================================================
+%% V5.5 real-Garage named tests（生成器：环境门 + 超时预算）
+%% ===================================================================
+
+eb_garage_seat_old_capability_put_b_test_() ->
+    eb_garage_named(fun eb_garage_seat_old_capability_put_b/0).
+
+eb_garage_seat_overwrite_between_stat_and_confirm_test_() ->
+    eb_garage_named(fun eb_garage_seat_overwrite_between_stat_and_confirm/0).
+
+eb_garage_seat_inflight_same_content_after_confirm_test_() ->
+    eb_garage_named(fun eb_garage_seat_inflight_same_content_after_confirm/0).
+
+eb_garage_seat_hash_mismatch_no_confirm_test_() ->
+    eb_garage_named(fun eb_garage_seat_hash_mismatch_no_confirm/0).
+
+eb_garage_seat_crash_after_pin_before_put_resume_test_() ->
+    eb_garage_named(fun eb_garage_seat_crash_after_pin_before_put_resume/0).
+
+eb_garage_widget_old_capability_put_b_test_() ->
+    eb_garage_named(fun eb_garage_widget_old_capability_put_b/0).
+
+eb_garage_widget_overwrite_between_stat_and_confirm_test_() ->
+    eb_garage_named(fun eb_garage_widget_overwrite_between_stat_and_confirm/0).
+
+eb_garage_widget_inflight_same_content_after_confirm_test_() ->
+    eb_garage_named(fun eb_garage_widget_inflight_same_content_after_confirm/0).
+
+eb_garage_widget_hash_mismatch_no_confirm_test_() ->
+    eb_garage_named(fun eb_garage_widget_hash_mismatch_no_confirm/0).
+
+eb_garage_widget_crash_after_pin_before_put_resume_test_() ->
+    eb_garage_named(fun eb_garage_widget_crash_after_pin_before_put_resume/0).
+
+%% 环境门：W202_GARAGE_* 齐备 ⇒ 带超时的真实用例；缺 ⇒ 可见 skip（不静默）。
+eb_garage_named(Fun) ->
+    case garage_ready() of
+        true ->
+            {timeout, ?EB_GARAGE_TIMEOUT, Fun};
+        false ->
+            {skip,
+                "W202_GARAGE_* not exported; real-garage EB confirmed-byte "
+                "cases not run"}
+    end.
+
+garage_ready() ->
+    case
+        {
+            os:getenv("W202_GARAGE_ENDPOINT"),
+            os:getenv("W202_GARAGE_ACCESS_KEY"),
+            os:getenv("W202_GARAGE_SECRET_KEY")
+        }
+    of
+        {EP, AK, SK} when EP =/= false, AK =/= false, SK =/= false ->
+            true;
+        _ ->
+            false
+    end.
+
+%% ===================================================================
+%% 用例体：seat / widget 同构，主体种类由 Kind 参数化
+%% ===================================================================
+
+eb_garage_seat_old_capability_put_b() ->
+    eb_garage_with_scope(seat, old_capability_put_b).
+
+eb_garage_seat_overwrite_between_stat_and_confirm() ->
+    eb_garage_with_scope(seat, overwrite_between_stat_and_confirm).
+
+eb_garage_seat_inflight_same_content_after_confirm() ->
+    eb_garage_with_scope(seat, inflight_same_content_after_confirm).
+
+eb_garage_seat_hash_mismatch_no_confirm() ->
+    eb_garage_with_scope(seat, hash_mismatch_no_confirm).
+
+eb_garage_seat_crash_after_pin_before_put_resume() ->
+    eb_garage_with_scope(seat, crash_after_pin_before_put_resume).
+
+eb_garage_widget_old_capability_put_b() ->
+    eb_garage_with_scope(widget, old_capability_put_b).
+
+eb_garage_widget_overwrite_between_stat_and_confirm() ->
+    eb_garage_with_scope(widget, overwrite_between_stat_and_confirm).
+
+eb_garage_widget_inflight_same_content_after_confirm() ->
+    eb_garage_with_scope(widget, inflight_same_content_after_confirm).
+
+eb_garage_widget_hash_mismatch_no_confirm() ->
+    eb_garage_with_scope(widget, hash_mismatch_no_confirm).
+
+eb_garage_widget_crash_after_pin_before_put_resume() ->
+    eb_garage_with_scope(widget, crash_after_pin_before_put_resume).
+
+%% 每测试自建 fixture：合成租户 + garage 注入；after 中先恢复 app env 再清 DB。
+eb_garage_with_scope(Kind, Scenario) ->
+    Scope = eb_asset_it_lib:new_scope(),
+    Saved = garage_begin(),
+    try
+        eb_garage_scenario(Kind, Scenario, Scope)
+    after
+        garage_end(Saved),
+        _ = eb_pg_test_fixture:cleanup(Scope)
+    end.
+
+%% -------------------------------------------------------------------
+%% 场景 1：old_capability_put_b —— confirm 后旧 capability PUT 不同字节 B
+%% 被三道门拒绝，确认对象字节仍是 hash A。
+%% -------------------------------------------------------------------
+eb_garage_scenario(Kind, old_capability_put_b, Scope) ->
+    PayloadA = eb_garage_payload(<<"oldcap-A">>),
+    Sess = eb_garage_open_confirmed_session(Scope, Kind, PayloadA),
+    #{
+        org := Org,
+        ws := Ws,
+        asset_id := AssetId,
+        ref := Ref,
+        actor_params := AP,
+        scope := Scope0,
+        bucket := Bucket,
+        key := Key,
+        payload := PayloadA,
+        sha := ShaA
+    } = Sess,
+    PayloadB = eb_garage_payload(<<"oldcap-B">>),
+    ShaB = eb_asset_it_lib:sha256_hex(PayloadB),
+    %% ① 产品门：旧凭证（claims hash=A）携带 B 字节 —— PUT 前复核拒绝，
+    %%    任何存储写/收据 pin 都不发生。
+    {error, {hash_mismatch, ShaA, ShaB}} =
+        eb_asset_app:put_object(
+            Org,
+            AP#{
+                workspace_id => Ws,
+                upload_ref => Ref,
+                payload => PayloadB,
+                key_ref => eb_asset_it_lib:key_ref(Scope0)
+            }
+        ),
+    %% ②③ 收据门（EB 链 meta 入口，迁移 00000196 fn_v5_eb_content_gate）：
+    %%    B 收据写前复核拒绝（23510 → content_mismatch）；
+    %%    active 态新预准入直接拒绝（55000 → session_not_renewable）。
+    Identity = eb_garage_frozen_identity(Org, Ws, AssetId),
+    DescB = eb_garage_put_descriptor(Sess, PayloadB),
+    {error, content_mismatch} =
+        eb_pg_asset_meta:recheck_registered_put(Org, Ws, DescB, Identity),
+    {error, session_not_renewable} =
+        eb_pg_asset_meta:reserve_registered_put(Org, Ws, DescB),
+    %% ④ DB：confirm 幂等重放同一 asset id、状态仍 active；行 hash 未被改写；
+    %%    attachment 表无行。
+    {ok, Replay} = eb_garage_confirm(Sess),
+    ?assertEqual(AssetId, maps:get(asset_id, Replay)),
+    ?assertEqual(active, maps:get(status, Replay)),
+    ?assertEqual(ShaA, eb_asset_it_lib:asset_hash(Org, Ws, AssetId)),
+    ?assertEqual(0, eb_garage_attachment_count(Key)),
+    %% ⑤ 字节裁决（elib_oss:object_sha256 GET 全量）：确认对象字节仍是 A。
+    {ok, ShaNow, _} = elib_oss:object_sha256(Bucket, Key),
+    ?assertEqual(ShaA, ShaNow);
+%% -------------------------------------------------------------------
+%% 场景 2：overwrite_between_stat_and_confirm —— stat 与 confirm 之间对象
+%% 字节被覆盖 ⇒ confirm 读全量字节识破并拒绝；状态不推进、无行。
+%% -------------------------------------------------------------------
+eb_garage_scenario(Kind, overwrite_between_stat_and_confirm, Scope) ->
+    PayloadA = eb_garage_payload(<<"ovw-A">>),
+    Sess = eb_garage_open_session(Scope, Kind, PayloadA),
+    #{
+        org := Org,
+        ws := Ws,
+        asset_id := AssetId,
+        bucket := Bucket,
+        key := Key,
+        sha := ShaA
+    } = Sess,
+    PayloadB = eb_garage_payload(<<"ovw-B">>),
+    ShaB = eb_asset_it_lib:sha256_hex(PayloadB),
+    %% stat：对象在场（HEAD 只证元数据——02 §4「HEAD 本身不充分」的靶子）。
+    {ok, #{size := _}} = elib_oss:head_object(Bucket, Key),
+    %% stat 与 confirm 之间对象字节被带外覆盖。
+    ok = elib_oss:put_object(Bucket, Key, PayloadB, <<"text/plain">>),
+    %% confirm 真实读流识破：拒绝确认（EB 面 = integrity_check_failed）。
+    {error, {integrity_check_failed, ShaA, ShaB}} = eb_garage_confirm(Sess),
+    %% DB：状态不推进、无 confirm 行；attachment 表无行。
+    ?assertEqual(pending_confirm, eb_asset_it_lib:asset_status(Org, Ws, AssetId)),
+    ?assertEqual(0, eb_garage_attachment_count(Key)),
+    %% 字节裁决：拒绝后对象就是被换上的 B——confirm 的判定与真实字节一致。
+    {ok, ShaNow, _} = elib_oss:object_sha256(Bucket, Key),
+    ?assertEqual(ShaB, ShaNow);
+%% -------------------------------------------------------------------
+%% 场景 3：inflight_same_content_after_confirm —— confirm 后同内容在途
+%% 重写不改变已确认字节，confirm 幂等回读同一 asset id。
+%% -------------------------------------------------------------------
+eb_garage_scenario(Kind, inflight_same_content_after_confirm, Scope) ->
+    PayloadA = eb_garage_payload(<<"infl-A">>),
+    Sess = eb_garage_open_confirmed_session(Scope, Kind, PayloadA),
+    #{
+        org := Org,
+        ws := Ws,
+        asset_id := AssetId,
+        bucket := Bucket,
+        key := Key,
+        payload := PayloadA,
+        sha := ShaA
+    } = Sess,
+    %% 确认后同字节在途重写（幂等内容，不构成新版本）。
+    ok = elib_oss:put_object(Bucket, Key, PayloadA, <<"text/plain">>),
+    {ok, Replay} = eb_garage_confirm(Sess),
+    ?assertEqual(AssetId, maps:get(asset_id, Replay)),
+    ?assertEqual(active, maps:get(status, Replay)),
+    %% DB：行 hash 与状态不变；attachment 表无行。
+    ?assertEqual(ShaA, eb_asset_it_lib:asset_hash(Org, Ws, AssetId)),
+    ?assertEqual(active, eb_asset_it_lib:asset_status(Org, Ws, AssetId)),
+    ?assertEqual(0, eb_garage_attachment_count(Key)),
+    %% 字节裁决：仍是 A。
+    {ok, ShaNow, _} = elib_oss:object_sha256(Bucket, Key),
+    ?assertEqual(ShaA, ShaNow);
+%% -------------------------------------------------------------------
+%% 场景 4：hash_mismatch_no_confirm —— 声明(A)与内容(B) hash 不匹配 ⇒
+%% PUT 准入即拒（不落存储、不提交 pin），confirm 稳定失败、无行。
+%% （EB 链语义差异：mismatch 在准入门 fail-closed，见文件头差异 §3。）
+%% -------------------------------------------------------------------
+eb_garage_scenario(Kind, hash_mismatch_no_confirm, Scope) ->
+    PayloadA = eb_garage_payload(<<"hm-A">>),
+    Sess = eb_garage_open_session_unput(Scope, Kind, PayloadA),
+    #{
+        org := Org,
+        ws := Ws,
+        asset_id := AssetId,
+        ref := Ref,
+        actor_params := AP,
+        scope := Scope0,
+        bucket := Bucket,
+        key := Key,
+        sha := ShaA
+    } = Sess,
+    PayloadB = eb_garage_payload(<<"hm-B">>),
+    ShaB = eb_asset_it_lib:sha256_hex(PayloadB),
+    %% ① 声明与内容不符：put_verify 服务端重算 hash —— 准入即拒。
+    {error, {hash_mismatch, ShaA, ShaB}} =
+        eb_asset_app:put_object(
+            Org,
+            AP#{
+                workspace_id => Ws,
+                upload_ref => Ref,
+                payload => PayloadB,
+                key_ref => eb_asset_it_lib:key_ref(Scope0)
+            }
+        ),
+    %% ② DB：无收据 pin（拒绝发生在 pin 之前；epgsql 的 NULL 即 null 原子）。
+    ?assertEqual(null, eb_garage_pin(Org, Ws, AssetId)),
+    %% ③ confirm：对象从未准入 ⇒ 字节校验读不到对象，稳定失败、不推进。
+    {error, {object_unreadable, {object_store, not_found}}} =
+        eb_garage_confirm(Sess),
+    ?assertEqual(pending_confirm, eb_asset_it_lib:asset_status(Org, Ws, AssetId)),
+    ?assertEqual(0, eb_garage_attachment_count(Key)),
+    %% ④ 字节裁决：Garage 里从未有该对象。
+    {error, not_found} = elib_oss:object_sha256(Bucket, Key);
+%% -------------------------------------------------------------------
+%% 场景 5：crash_after_pin_before_put_resume —— pin 已 COMMIT 但对象 PUT
+%% 未发生 ⇒ confirm 稳定失败且无行推进；同 pin 幂等重放 + 真实 PUT 后
+%% confirm 成功且 asset id 幂等。
+%% -------------------------------------------------------------------
+eb_garage_scenario(Kind, crash_after_pin_before_put_resume, Scope) ->
+    PayloadA = eb_garage_payload(<<"crash-A">>),
+    Sess = eb_garage_open_session_unput(Scope, Kind, PayloadA),
+    #{
+        org := Org,
+        ws := Ws,
+        asset_id := AssetId,
+        bucket := Bucket,
+        key := Key,
+        payload := PayloadA,
+        sha := ShaA,
+        scope := Scope0,
+        actor_params := AP
+    } = Sess,
+    %% 崩溃窗口：pin 已提交（fn_v5_pin_eb_content 预准入收据落库）、PUT 未发生。
+    DescA = eb_garage_put_descriptor(Sess, PayloadA),
+    {ok, _} = eb_pg_asset_meta:reserve_registered_put(Org, Ws, DescA),
+    PinBin = eb_garage_pin(Org, Ws, AssetId),
+    ?assert(is_binary(PinBin)),
+    ?assert(nomatch =/= binary:match(PinBin, ShaA)),
+    %% confirm：对象缺失 ⇒ 稳定失败（EB 面 = object_unreadable{not_found}）；
+    %% 状态不推进、attachment 无行。
+    {error, {object_unreadable, {object_store, not_found}}} =
+        eb_garage_confirm(Sess),
+    ?assertEqual(pending_confirm, eb_asset_it_lib:asset_status(Org, Ws, AssetId)),
+    ?assertEqual(0, eb_garage_attachment_count(Key)),
+    %% 恢复：同收据 pin 幂等重放（fn_v5_pin_eb_content 同收据放行）+ 真 PUT
+    %%（fn_v5_recheck_eb_content 写前复核 + attachment_storage_garage 落盘）。
+    {ok, _} =
+        eb_asset_app:put_object(
+            Org,
+            AP#{
+                workspace_id => Ws,
+                upload_ref => maps:get(ref, Sess),
+                payload => PayloadA,
+                key_ref => eb_asset_it_lib:key_ref(Scope0)
+            }
+        ),
+    {ok, Confirmed} = eb_garage_confirm(Sess),
+    ?assertEqual(AssetId, maps:get(asset_id, Confirmed)),
+    ?assertEqual(active, maps:get(status, Confirmed)),
+    %% attachment/asset id 幂等：重放 confirm 返回同一主行 id。
+    {ok, Replay} = eb_garage_confirm(Sess),
+    ?assertEqual(AssetId, maps:get(asset_id, Replay)),
+    %% 字节裁决：确认对象字节 = A。
+    {ok, ShaNow, _} = elib_oss:object_sha256(Bucket, Key),
+    ?assertEqual(ShaA, ShaNow).
+
+%% ===================================================================
+%% Garage 注入 helper（套件本地；不改 eb_pg_test_fixture，口径同
+%% attachment_lifecycle_v5_confirm_pg_tests:garage_apply/0）
+%% ===================================================================
+
+%% 保存三键旧值 → 置 garage 对象存储 + 注入 imboy.garage / garage 存储根。
+%% 返回值交 garage_end/1 原样恢复（undefined ⇒ unset）。
+garage_begin() ->
+    Saved = [
+        {eb_asset_object_store, application:get_env(imboy, eb_asset_object_store)},
+        {attachment_storage_registry, application:get_env(imboy, attachment_storage_registry)},
+        {garage, application:get_env(imboy, garage)}
+    ],
+    ok = application:set_env(imboy, eb_asset_object_store, garage),
+    try
+        garage_apply_registry(),
+        Saved
+    catch
+        Class:Reason:Stack ->
+            garage_restore(Saved),
+            erlang:raise(Class, Reason, Stack)
+    end.
+
+garage_end(Saved) ->
+    garage_restore(Saved).
+
+garage_restore(Saved) ->
+    [
+        case Value of
+            undefined -> application:unset_env(imboy, Key);
+            {ok, V} -> application:set_env(imboy, Key, V)
+        end
+     || {Key, Value} <- Saved
+    ],
+    ok.
+
+%% W202_GARAGE_* → imboy.garage + 版本化 registry 追加 garage 根，
+%% enterprise 上传 namespace 指向该根（EB registration_location 只查此键）。
+%% endpoint/container 与 imboy.garage 同源，满足 frozen_location 的
+%% garage 一致性复核（attachment_storage:snapshot/4）。
+garage_apply_registry() ->
+    EP = garage_env("W202_GARAGE_ENDPOINT"),
+    Bucket = garage_env("W202_GARAGE_BUCKET"),
+    ok = application:set_env(imboy, garage, #{
+        endpoint => EP,
+        bucket => Bucket,
+        access_key => garage_env("W202_GARAGE_ACCESS_KEY"),
+        secret_key => garage_env("W202_GARAGE_SECRET_KEY")
+    }),
+    Registry = attachment_storage:registry(),
+    Roots = maps:get(roots, Registry, #{}),
+    Uploads = maps:get(upload_namespaces, Registry, #{}),
+    Namespace =
+        <<"eb-garage-", (binary:encode_hex(crypto:strong_rand_bytes(12), lowercase))/binary>>,
+    ok = application:set_env(imboy, attachment_storage_registry, Registry#{
+        roots =>
+            Roots#{
+                Namespace => #{
+                    driver => <<"garage">>,
+                    namespace => Namespace,
+                    endpoint => EP,
+                    container => Bucket
+                }
+            },
+        upload_namespaces => Uploads#{<<"enterprise">> => Namespace}
+    }).
+
+garage_env(Name) ->
+    case os:getenv(Name) of
+        false -> erlang:error({no_go, required_resource_missing, Name});
+        "" -> erlang:error({no_go, required_resource_missing, Name});
+        Value -> list_to_binary(Value)
+    end.
+
+%% ===================================================================
+%% 会话 / 收据 fixture（走产品入口；seat=member、widget=contact/visitor_session）
+%% ===================================================================
+
+%% 主体种类 → 请求参数 + fn_v5_register_eb 登记快照 subject（与
+%% eb_asset_app:registration_subject/3 逐字段同形；widget 的 session_id
+%% 必须在 presign 参数携带，否则登记快照编码 undefined 会炸）。
+eb_garage_actor_params(seat, Scope) ->
+    {Org, _Ws} = eb_asset_it_lib:tenant(Scope),
+    Actor = maps:get(actor_user_id, Scope),
+    Params = #{actor_user_id => Actor},
+    Subject = #{
+        <<"kind">> => <<"seat">>,
+        <<"principal">> => integer_to_binary(Actor),
+        <<"org_id">> => integer_to_binary(Org)
+    },
+    {Params, Subject};
+eb_garage_actor_params(widget, Scope) ->
+    {Org, _Ws} = eb_asset_it_lib:tenant(Scope),
+    Contact = maps:get(contact_id, Scope),
+    VsId =
+        <<"vs-w55-", (integer_to_binary(eb_pg_test_fixture:id()))/binary>>,
+    Params = #{actor_contact_id => Contact, visitor_session_id => VsId},
+    Subject = #{
+        <<"kind">> => <<"visitor_session">>,
+        <<"principal">> => integer_to_binary(Contact),
+        <<"org_id">> => integer_to_binary(Org),
+        <<"session_id">> => VsId
+    },
+    {Params, Subject}.
+
+%% presign（带 client_upload_id ⇒ fn_v5_register_eb 登记；未 PUT）。
+%% 返回会话上下文 map，供各场景续作。
+eb_garage_open_session_unput(Scope, Kind, Payload) ->
+    {Org, Ws} = eb_asset_it_lib:tenant(Scope),
+    Conv = maps:get(conversation_id, Scope),
+    {AP, Subject} = eb_garage_actor_params(Kind, Scope),
+    Cid = elib_uuid:gen_v7(),
+    {ok, Presign} =
+        enterprise_business_facade:request_presign(
+            Org,
+            AP#{
+                workspace_id => Ws,
+                conversation_id => Conv,
+                mime => <<"text/plain">>,
+                size_bytes => byte_size(Payload),
+                object_hash => eb_asset_it_lib:sha256_hex(Payload),
+                client_upload_id => Cid,
+                upload_ttl_seconds => 900,
+                key_ref => eb_asset_it_lib:key_ref(Scope)
+            }
+        ),
+    %% V5 会话已登记（fn_v5_register_eb 返回 registered 视图）。
+    ?assertEqual(<<"registered">>, maps:get(session_state, Presign)),
+    Ref = maps:get(upload_ref, Presign),
+    AssetId = maps:get(asset_id, Presign),
+    Bucket = elib_oss:get_bucket(<<"private">>),
+    Key = eb_asset_it_lib:object_key(Org, Ws, AssetId),
+    #{
+        kind => Kind,
+        scope => Scope,
+        org => Org,
+        ws => Ws,
+        conv => Conv,
+        actor_params => AP,
+        subject => Subject,
+        cid => Cid,
+        asset_id => AssetId,
+        ref => Ref,
+        bucket => Bucket,
+        key => Key,
+        payload => Payload,
+        sha => eb_asset_it_lib:sha256_hex(Payload)
+    }.
+
+%% presign + 真 Garage PUT（A 字节落盘）；状态停在 pending_confirm。
+eb_garage_open_session(Scope, Kind, Payload) ->
+    Sess = eb_garage_open_session_unput(Scope, Kind, Payload),
+    #{
+        org := Org,
+        ws := Ws,
+        ref := Ref,
+        actor_params := AP,
+        scope := Scope0,
+        bucket := Bucket,
+        key := Key,
+        sha := ShaA
+    } = Sess,
+    {ok, _} =
+        eb_asset_app:put_object(
+            Org,
+            AP#{
+                workspace_id => Ws,
+                upload_ref => Ref,
+                payload => Payload,
+                key_ref => eb_asset_it_lib:key_ref(Scope0)
+            }
+        ),
+    %% 真 Garage 往返自证：字节确实落盘且 hash 一致。
+    {ok, ShaA, _} = elib_oss:object_sha256(Bucket, Key),
+    Sess.
+
+%% presign + PUT + confirm（首确认成功，status=active）。
+eb_garage_open_confirmed_session(Scope, Kind, Payload) ->
+    Sess = eb_garage_open_session(Scope, Kind, Payload),
+    {ok, Confirmed} = eb_garage_confirm(Sess),
+    ?assertEqual(active, maps:get(status, Confirmed)),
+    ?assertEqual(maps:get(asset_id, Sess), maps:get(asset_id, Confirmed)),
+    Sess.
+
+%% confirm（upload_ref 重鉴权入口；claims 自凭证、授权重走 scope 门）。
+eb_garage_confirm(Sess) ->
+    #{org := Org, ws := Ws, actor_params := AP, ref := Ref, scope := Scope} =
+        Sess,
+    enterprise_business_facade:confirm_asset(
+        Org,
+        AP#{
+            workspace_id => Ws,
+            upload_ref => Ref,
+            key_ref => eb_asset_it_lib:key_ref(Scope)
+        }
+    ).
+
+%% fn_v5_pin/recheck_eb_content 的 PUT 描述符（与 eb_asset_app:asset_put_private
+%% 组装的 Descriptor 同形；registered_put_receipt 自 payload 现算收据）。
+eb_garage_put_descriptor(Sess, Payload) ->
+    #{org := _Org, subject := Subject, asset_id := AssetId, conv := Conv} =
+        Sess,
+    Now = erlang:system_time(second),
+    #{
+        id => AssetId,
+        object_hash => eb_asset_it_lib:sha256_hex(Payload),
+        mime => <<"text/plain">>,
+        size_bytes => byte_size(Payload),
+        payload => Payload,
+        upload_subject => Subject,
+        signature_context => #{
+            issued_at => calendar:system_time_to_universal_time(Now, second),
+            expires_at =>
+                calendar:system_time_to_universal_time(Now + 600, second)
+        },
+        conversation_id => Conv
+    }.
+
+%% 行冻结位置 → fn_v5_recheck_eb_content 的 identity JSON（键值与迁移
+%% 00000196 fn_v5_eb_content_gate 的 v_identity 同形）。
+eb_garage_frozen_identity(Org, Ws, AssetId) ->
+    {ok, Row} = eb_asset_store:fetch_asset(Org, Ws, AssetId),
+    #{
+        driver => maps:get(storage_driver, Row),
+        namespace => maps:get(storage_namespace, Row),
+        container => maps:get(storage_container, Row),
+        key => maps:get(object_key, Row),
+        locator_digest => maps:get(storage_locator_sha256, Row)
+    }.
+
+%% ===================================================================
+%% 只读探针
+%% ===================================================================
+
+%% attachment 表行数（EB 链恒 0：confirmed 行在 enterprise_asset）。
+eb_garage_attachment_count(Key) ->
+    eb_pg_test_fixture:scalar(
+        <<"SELECT COUNT(*)::int AS n FROM attachment WHERE path=$1">>, [Key]
+    ).
+
+%% enterprise_asset 的 upload_content 收据（NULL → null 原子；已 pin → jsonb 文本）。
+eb_garage_pin(Org, Ws, AssetId) ->
+    eb_pg_test_fixture:scalar(
+        <<
+            "SELECT upload_content FROM enterprise_asset"
+            " WHERE organization_id=$1 AND workspace_id=$2 AND id=$3"
+        >>,
+        [Org, Ws, AssetId]
+    ).
+
+%% 场景载荷（marker + 合成 id，跨轮唯一）。
+eb_garage_payload(Marker) ->
+    <<Marker/binary, "-", (integer_to_binary(eb_pg_test_fixture:id()))/binary>>.

@@ -2,11 +2,11 @@
 """W2-02/confirmed-content-immutable adapter.
 
 Ordinary/enterprise-internal leaves are mapped to the named real-PG +
-real-Garage immutable tests.  Seat/widget leaves need an EB-chain
-real-Garage immutable measurement; the current EB suite installs a disk
-test root, so those leaves are reported as evidence gaps rather than
-silently reusing another entrypoint.  The case is also listed in
-upload_surface_contract.cases, so every leaf additionally needs
+real-Garage immutable tests.  Seat/widget leaves are mapped to the
+eb_asset_tests real-PG + real-Garage named tests in EB_GARAGE_TESTS and
+fail-closed unless every named test is defined in the EB suite source
+and the suite passes against the real Garage.  The case is also listed
+in upload_surface_contract.cases, so every leaf additionally needs
 entrypoint_provenance from the case artifacts.
 """
 import os
@@ -24,6 +24,32 @@ TESTS = {
     "hash_mismatch_no_confirm": "hash_mismatch_no_confirm",
     "ciphertext_only_no_plaintext_hash": "ciphertext_only_no_plaintext_hash",
     "crash_after_pin_before_put_resume": "crash_after_pin_before_put_resume",
+}
+EB_GARAGE_TESTS = {
+    "enterprise_seat": {
+        "put_A_confirm_old_capability_put_B":
+            "eb_garage_seat_old_capability_put_b",
+        "overwrite_between_stat_and_confirm":
+            "eb_garage_seat_overwrite_between_stat_and_confirm",
+        "inflight_same_content_after_confirm":
+            "eb_garage_seat_inflight_same_content_after_confirm",
+        "hash_mismatch_no_confirm":
+            "eb_garage_seat_hash_mismatch_no_confirm",
+        "crash_after_pin_before_put_resume":
+            "eb_garage_seat_crash_after_pin_before_put_resume",
+    },
+    "cs_widget": {
+        "put_A_confirm_old_capability_put_B":
+            "eb_garage_widget_old_capability_put_b",
+        "overwrite_between_stat_and_confirm":
+            "eb_garage_widget_overwrite_between_stat_and_confirm",
+        "inflight_same_content_after_confirm":
+            "eb_garage_widget_inflight_same_content_after_confirm",
+        "hash_mismatch_no_confirm":
+            "eb_garage_widget_hash_mismatch_no_confirm",
+        "crash_after_pin_before_put_resume":
+            "eb_garage_widget_crash_after_pin_before_put_resume",
+    },
 }
 DELTA = {
     "put_A_confirm_old_capability_put_B": "after confirm, the old capability's PUT of different bytes B cannot change the confirmed object; the confirmed hash stays A",
@@ -65,17 +91,6 @@ def _provenance_summary(gaps, case_dir, leaves):
     return proofs
 
 
-def _eb_gap(gaps, leaf, facts):
-    gaps.add("%s: no EB-chain real-Garage named test for scenario=%s; %s "
-             "defines %d funs (%s) and %s:%d installs a disk test root "
-             "(file:make_dir), so confirmed-byte immutability on the garage "
-             "driver is not measured for this entrypoint"
-             % (leaf["entrypoint"], leaf["ordering_or_fault"],
-                os.path.basename(facts["suite"]), len(facts["funs"]),
-                ", ".join(facts["funs"][:5]),
-                os.path.basename(facts["fixture"]), facts["fixture_line"]))
-
-
 def build():
     run_dir, case_dir, root = C.argv_paths()
     started = C.now_utc()
@@ -96,6 +111,10 @@ def build():
                  "real full-byte hash rejection path is not evidenced"
                  % log_path)
     eb_facts = C.eb_asset_evidence_facts(root)
+    eb_text = C.read_text(eb_facts["suite"], "EB asset suite source")
+    eb_result = C.assert_eunit_total(
+        os.path.join(case_dir, "eunit-ebasset.log"),
+        "EB asset real-Garage suite", len(eb_facts["funs"]), gaps)
     proofs = _provenance_summary(gaps, case_dir, leaves)
     rows = []
     for leaf in leaves:
@@ -107,73 +126,144 @@ def build():
             gaps.add("no confirmed-content-immutable mapping for scenario=%s"
                      % scenario)
             continue
+        eb_test = None
         if domain == "enterprise" and entrypoint in (
                 "enterprise_seat", "cs_widget"):
-            _eb_gap(gaps, leaf, eb_facts)
-            continue
-        test = ("t_" if domain == "ordinary" else "ent_") + base
-        allowed = suite["ordinary"] if domain == "ordinary" else suite["enterprise"]
-        if test not in allowed:
-            gaps.add("suite source %s does not define %s for domain=%s "
-                     "entrypoint=%s" % (suite["path"], test, domain,
-                                        entrypoint))
-            continue
-        line = C.source_line(suite["text"], test + "()")
-        if line is None:
-            gaps.add("cannot locate %s in %s" % (test, suite["path"]))
-            continue
-        if result is None:
-            continue
-        assertions = [
-            {
-                "id": "confirm_suite_exact_total_passed",
-                "passed": True,
-                "detail": "%s == %d tests defined by the ordinary(%d) + "
-                          "enterprise(%d) generators"
-                          % (result["detail"], suite["total"],
-                             len(suite["ordinary"]),
-                             len(suite["enterprise"])),
-            },
-            {
-                "id": "named_scenario_test_present",
-                "passed": True,
-                "detail": "%s:%d defines %s() (non-verbose suite log has no "
-                          "per-test names; exact-total pass is the execution "
-                          "evidence)" % (os.path.basename(suite["path"]), line,
-                                         test),
-            },
-            {
-                "id": "real_garage_byte_adjudication_present",
-                "passed": True,
-                "detail": "eunit-confirm.log contains %d content_hash_mismatch "
-                          "adjudication line(s); real Garage bucket %s"
-                          % (hash_checks, bucket),
-            },
-        ]
-        oracle = {
-            "pre_db_state": "attv5_%s_pool on the isolated PostgreSQL; each "
-                            "test creates fresh fixtures via the real fn_v5_* "
-                            "path" % slot,
-            "pre_object_hash": "suite-controlled real Garage bytes in bucket %s; "
-                               "elib_oss:object_sha256 full-byte read, log "
-                               "content_hash_mismatch lines=%d"
-                               % (bucket, hash_checks),
-            "action": "make eunit-local t=attachment_lifecycle_v5_confirm_pg_tests"
-                      " -> %s" % test,
-            "expected_http_semantics": "confirm through the production logic "
-                                       "entry (attach_logic:confirm/5 / "
-                                       "enterprise_asset_logic:confirm_tx/3); "
-                                       "the suite has no HTTP surface",
-            "expected_db_delta": DELTA[scenario],
-            "expected_object_state": OBJECT[scenario],
-            "proof_actor": "eunit u9 / enterprise fixture tenant; real PG "
-                           "attv5_%s_pool + real Garage bucket %s"
-                           % (slot, bucket),
-        }
+            eb_test = EB_GARAGE_TESTS.get(entrypoint, {}).get(scenario)
+            if eb_test is None:
+                gaps.add("no EB Garage named-test mapping for entrypoint=%s "
+                         "scenario=%s; extend EB_GARAGE_TESTS together with "
+                         "the eb_asset_tests.erl definition when the contract "
+                         "adds seat/widget scenarios"
+                         % (entrypoint, scenario))
+                continue
+            line = C.source_line(eb_text, eb_test + "() ->")
+            if line is None:
+                gaps.add("%s does not define %s(); the real-Garage named test "
+                         "for entrypoint=%s scenario=%s is absent"
+                         % (os.path.basename(eb_facts["suite"]), eb_test,
+                            entrypoint, scenario))
+                continue
+            if eb_result is None:
+                continue
+        else:
+            test = ("t_" if domain == "ordinary" else "ent_") + base
+            allowed = (suite["ordinary"] if domain == "ordinary"
+                       else suite["enterprise"])
+            if test not in allowed:
+                gaps.add("suite source %s does not define %s for domain=%s "
+                         "entrypoint=%s" % (suite["path"], test, domain,
+                                            entrypoint))
+                continue
+            line = C.source_line(suite["text"], test + "()")
+            if line is None:
+                gaps.add("cannot locate %s in %s" % (test, suite["path"]))
+                continue
+            if result is None:
+                continue
+        if eb_test is not None:
+            assertions = [
+                {
+                    "id": "named_scenario_test_present",
+                    "passed": True,
+                    "detail": "%s:%d defines %s() for entrypoint=%s "
+                              "scenario=%s"
+                              % (os.path.basename(eb_facts["suite"]), line,
+                                 eb_test, entrypoint, scenario),
+                },
+                {
+                    "id": "eb_asset_real_garage_suite_passed",
+                    "passed": True,
+                    "detail": "%s == %d tests defined by cases({ok, _Conn}); "
+                              "fixture %s:%d installs the real storage root"
+                              % (eb_result["detail"],
+                                 len(eb_facts["funs"]),
+                                 os.path.basename(eb_facts["fixture"]),
+                                 eb_facts["fixture_line"]),
+                },
+            ]
+            oracle = {
+                "pre_db_state": "attv5_%s_pool on the isolated PostgreSQL; "
+                                "the EB fixture installs its tenant registry "
+                                "through the real fn_v5_* path" % slot,
+                "pre_object_hash": "suite-controlled real Garage bytes in "
+                                   "bucket %s; elib_oss:object_sha256 "
+                                   "full-byte read" % bucket,
+                "action": "make eunit-local t=eb_asset_tests -> %s"
+                          % eb_test,
+                "expected_http_semantics": "confirm through the production "
+                                           "enterprise entry "
+                                           "(enterprise_business_facade:"
+                                           "confirm_asset/2, the same path "
+                                           "eb_tenant_handler serves for "
+                                           "enterprise_seat); the suite has "
+                                           "no HTTP surface",
+                "expected_db_delta": DELTA[scenario],
+                "expected_object_state": OBJECT[scenario],
+                "proof_actor": "eb_asset_tests real-PG attv5_%s_pool + real "
+                               "Garage bucket %s" % (slot, bucket),
+            }
+        else:
+            assertions = [
+                {
+                    "id": "confirm_suite_exact_total_passed",
+                    "passed": True,
+                    "detail": "%s == %d tests defined by the ordinary(%d) + "
+                              "enterprise(%d) generators"
+                              % (result["detail"], suite["total"],
+                                 len(suite["ordinary"]),
+                                 len(suite["enterprise"])),
+                },
+                {
+                    "id": "named_scenario_test_present",
+                    "passed": True,
+                    "detail": "%s:%d defines %s() (non-verbose suite log has "
+                              "no per-test names; exact-total pass is the "
+                              "execution evidence)"
+                              % (os.path.basename(suite["path"]), line,
+                                 test),
+                },
+                {
+                    "id": "real_garage_byte_adjudication_present",
+                    "passed": True,
+                    "detail": "eunit-confirm.log contains %d "
+                              "content_hash_mismatch adjudication line(s); "
+                              "real Garage bucket %s"
+                              % (hash_checks, bucket),
+                },
+            ]
+            oracle = {
+                "pre_db_state": "attv5_%s_pool on the isolated PostgreSQL; "
+                                "each test creates fresh fixtures via the "
+                                "real fn_v5_* path" % slot,
+                "pre_object_hash": "suite-controlled real Garage bytes in "
+                                   "bucket %s; elib_oss:object_sha256 "
+                                   "full-byte read, log "
+                                   "content_hash_mismatch lines=%d"
+                                   % (bucket, hash_checks),
+                "action": "make eunit-local "
+                          "t=attachment_lifecycle_v5_confirm_pg_tests"
+                          " -> %s" % test,
+                "expected_http_semantics": "confirm through the production "
+                                           "logic entry "
+                                           "(attach_logic:confirm/5 / "
+                                           "enterprise_asset_logic:"
+                                           "confirm_tx/3); the suite has no "
+                                           "HTTP surface",
+                "expected_db_delta": DELTA[scenario],
+                "expected_object_state": OBJECT[scenario],
+                "proof_actor": "eunit u9 / enterprise fixture tenant; real PG "
+                               "attv5_%s_pool + real Garage bucket %s"
+                               % (slot, bucket),
+            }
         actor = {"kind": "real", "driver": "garage",
                  "resource_kind": "garage_bucket", "resource_id": bucket}
         proof = proofs.get((entrypoint, scenario))
-        request_ids = ["eunit:attachment_lifecycle_v5_confirm_pg_tests:%s" % test]
+        if eb_test is not None:
+            request_ids = ["eunit:eb_asset_tests:%s" % eb_test]
+        else:
+            request_ids = ["eunit:attachment_lifecycle_v5_confirm_pg_tests:%s"
+                           % test]
         if proof:
             request_ids.insert(0, proof["request_id"])
             assertions.append({
