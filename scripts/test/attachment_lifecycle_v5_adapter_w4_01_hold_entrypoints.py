@@ -149,7 +149,7 @@ def main():
         }
         rows.append(support.leaf_observation_row(
             leaf, obs=obs, test=test, evidence=evidence, parsed=parsed,
-            ctx=ctx, oracle=oracle, scenario_test="run_matrix",
+            ctx=ctx, oracle=oracle, scenario_test="w401h_emit",
             source_path=source_path, source=source, case_id=CASE))
     support.write_observations(case_dir, rows, leaves, CASE)
 
