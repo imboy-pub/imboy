@@ -19,7 +19,7 @@ case_test(Write, Archive, Mark) ->
             pure_mock_fixture:with_mocks(
                 [
                     {msg_c2c_ds, [
-                        {write_msg, 9, fun(_, _, _, _, _, _, _, _, _) ->
+                        {write_msg, 11, fun(_, _, _, _, _, _, _, _, _, _, _) ->
                             event(write),
                             Write
                         end}
