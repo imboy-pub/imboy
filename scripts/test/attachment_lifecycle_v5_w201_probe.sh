@@ -143,10 +143,10 @@ probe recovery_authorization_revoked ordinary authorization_revoked AC01 "0" \
 # confirmed against its attachment, and then cannot be renewed (0 rows) — the
 # status stays confirmed with the committed link intact.
 reg_pending "$KEY_C" "$CID_C" "$REG" >/dev/null
-PSQL -q -v KEYC="$KEY_C" -v CIDC="$CID_C" -v CONTENT="$CONTENT" -v HASH="$HASH64" <<'SQL' > /dev/null 2>&1
+PSQL -q -v KEYC="$KEY_C" -v LOC="$LOC64" -v CONTENT="$CONTENT" -v HASH="$HASH64" <<'SQL' > /dev/null 2>&1 || { echo '{"name":"confirmed_seed","entrypoint":"ordinary","scenario":"seed","ac":"AC01","pass":false,"detail":"seed failed"}' >> "$OUT"; }
 SELECT fn_v5_pin_pending_content(:'KEYC', :'CONTENT'::jsonb);
-INSERT INTO attachment(id,file_hash256,mime_type,ext,name,path,url,size,scope,creator_user_id,referer_time,status)
-SELECT 940000201, :'HASH', 'image/png', 'png', 'a.png', :'KEYC', '', 10, 'private', 101, 0, 0
+INSERT INTO attachment(id,file_hash256,mime_type,ext,name,path,url,size,scope,creator_user_id,referer_time,status,storage_driver,storage_namespace,storage_container,storage_locator_sha256)
+SELECT 940000201, :'HASH', 'image/png', 'png', 'a.png', :'KEYC', '', 10, 'private', 101, 0, 0, 'garage', 'v5ns', 'v5c', :'LOC'
 WHERE NOT EXISTS (SELECT 1 FROM attachment WHERE id=940000201);
 SELECT fn_v5_confirm_pending(:'KEYC', 940000201);
 SQL
@@ -184,10 +184,10 @@ probe internal_renew_races_intent internal renew_races_intent AC01 "0" \
 # confirmed -> no new capability: dedicated session pinned + confirmed, renew
 # refuses (0 rows) and the status stays confirmed with the link intact.
 reg_pending "$KEY2C" "$CID2C" "$REG_APP" >/dev/null
-PSQL -q -v KEYC2="$KEY2C" -v CONTENT="$CONTENT" -v HASH="$HASH64" <<'SQL' > /dev/null 2>&1
+PSQL -q -v KEYC2="$KEY2C" -v LOC="$LOC64" -v CONTENT="$CONTENT" -v HASH="$HASH64" <<'SQL' > /dev/null 2>&1 || { echo '{"name":"confirmed_seed","entrypoint":"internal","scenario":"seed","ac":"AC01","pass":false,"detail":"seed failed"}' >> "$OUT"; }
 SELECT fn_v5_pin_pending_content(:'KEYC2', :'CONTENT'::jsonb);
-INSERT INTO attachment(id,file_hash256,mime_type,ext,name,path,url,size,scope,creator_user_id,referer_time,status)
-SELECT 940000202, :'HASH', 'image/png', 'png', 'a2.png', :'KEYC2', '', 10, 'private', 101, 0, 0
+INSERT INTO attachment(id,file_hash256,mime_type,ext,name,path,url,size,scope,creator_user_id,referer_time,status,storage_driver,storage_namespace,storage_container,storage_locator_sha256)
+SELECT 940000202, :'HASH', 'image/png', 'png', 'a2.png', :'KEYC2', '', 10, 'private', 101, 0, 0, 'garage', 'v5ns', 'v5c', :'LOC'
 WHERE NOT EXISTS (SELECT 1 FROM attachment WHERE id=940000202);
 SELECT fn_v5_confirm_pending(:'KEYC2', 940000202);
 SQL
