@@ -85,10 +85,13 @@ def main():
             support.die(CASE, "cell %r/%r did not measure zero storage "
                               "deletes and no success report"
                         % (leaf["entrypoint"], fault))
+        bucket = support.C.garage_bucket(run_dir, ctx["allowlist"])
         oracle = {
-            "pre_db_state": "meck-instrumented unit context over the "
-                            "production entrypoint modules (no live rows); "
-                            "pool %s backs the suite process" % pool,
+            "pre_db_state": "meck-instrumented DB-repo layer over the "
+                            "production entrypoint modules; a real probe "
+                            "object is PUT to the W202 Garage bucket %s "
+                            "before the entrypoint runs (elib_oss stays "
+                            "passthrough)" % bucket,
             "pre_object_hash": "n/a (failure-injection leaf; the cell "
                                "adjudicates call behaviour, not object "
                                "bytes)",
@@ -102,15 +105,24 @@ def main():
             "expected_db_delta": "no committed intent under the injected "
                                  "failure; tombstone/state machine owns the "
                                  "retry",
-            "expected_object_state": "storage bytes untouched (zero "
-                                     "elib_oss:delete_object calls)",
-            "proof_actor": "meck-instrumented production modules executed by "
-                           "the W4-01 suite process on %s" % pool,
+            "expected_object_state": "the real probe object still HEADs "
+                                     "after the injected failure (zero "
+                                     "elib_oss:delete_object calls; "
+                                     "bytes retained)",
+            "proof_actor": "real W202 Garage bucket %s probe round-trip "
+                           "(put before / HEAD after) with the meck-"
+                           "instrumented DB repo layer on pool %s"
+                           % (bucket, pool),
         }
-        rows.append(support.leaf_observation_row(
+        row = support.leaf_observation_row(
             leaf, obs=obs, test=test, evidence=evidence, parsed=parsed,
             ctx=ctx, oracle=oracle, scenario_test="rollback_emit",
-            source_path=source_path, source=source, case_id=CASE))
+            source_path=source_path, source=source, case_id=CASE)
+        row["actor"] = {"kind": "real", "driver": "garage",
+                        "resource_kind": "garage_bucket",
+                        "resource_id": bucket}
+        row["resource_ids"] = [bucket]
+        rows.append(row)
     support.write_observations(case_dir, rows, leaves, CASE)
 
 

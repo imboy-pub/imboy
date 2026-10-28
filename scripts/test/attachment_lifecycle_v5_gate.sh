@@ -960,6 +960,11 @@ w401_case() { # $1 cdir — 同 W3 executor：观测流 + 日志静默 + bound m
   mkdir -p "$cdir"
   rm -f "$cdir/observations.jsonl"
   export V5_OBSERVATIONS_FILE="$cdir/observations.jsonl"
+  # intent-rollback 的真实 Garage 探针（W202 桶；缺 env 时套件显式失败）
+  if [ -f "$RUN_DIR/resources/garage-w202.env" ]; then
+    . "$RUN_DIR/resources/garage-w202.env"
+    export W202_GARAGE_ENDPOINT W202_GARAGE_BUCKET W202_GARAGE_ACCESS_KEY W202_GARAGE_SECRET_KEY
+  fi
   local PZ="" d
   for d in deps/*/ebin; do [ -d "$d" ] && PZ="$PZ -pz $PWD/$d"; done
   sed -e "s/{http_port, 9800}/{http_port, ${EUNIT_HTTP_PORT:-19980}}/" \
