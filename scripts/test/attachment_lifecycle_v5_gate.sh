@@ -768,6 +768,7 @@ w301_case() { # $1 cdir — 与 w203_case 同一直连 erl 模式，套件含 W3
       -e "s/{http_port_adm, 9706}/{http_port_adm, ${EUNIT_HTTP_ADM_PORT:-19970}}/" \
       "${EUNIT_CONFIG:-config/sys.local}.config" > "$cdir/w301-direct.config"
   EUNIT_USE_RELAY=0 erl -noinput -boot no_dot_erlang +P 1048576 +Q 1024 \
+    -kernel logger_level none \
     -config "$cdir/w301-direct.config" -pa imboy/ebin -pa ebin -pa test $PZ \
     -eval 'CoverSetup = fun() -> ok end, CoverExport = fun(_) -> ok end, CoverSetup(),
       case eunit:test([attachment_lifecycle_v5_pg_tests], [verbose]) of
@@ -1047,6 +1048,7 @@ w203_case() { # $1 cdir
       -e "s/{http_port_adm, 9706}/{http_port_adm, ${EUNIT_HTTP_ADM_PORT:-19970}}/" \
       "${EUNIT_CONFIG:-config/sys.local}.config" > "$cdir/w203-direct.config"
   EUNIT_USE_RELAY=0 erl -noinput -boot no_dot_erlang +P 1048576 +Q 1024 \
+    -kernel logger_level none \
     -config "$cdir/w203-direct.config" -pa imboy/ebin -pa ebin -pa test $PZ \
     -eval 'CoverSetup = fun() -> ok end, CoverExport = fun(_) -> ok end, CoverSetup(),
       case eunit:test([attachment_lifecycle_v5_pg_tests], [verbose]) of
