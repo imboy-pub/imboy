@@ -5,6 +5,32 @@
 mock_request() ->
     #{method => <<"POST">>, path => <<"/api/v1/friend">>}.
 
+confirm_rejects_other_recipient_test_() ->
+    ?WITH_MECKS(
+        [
+            {elib_param, [
+                {post, 1, fun(_) ->
+                    #{<<"from">> => 1, <<"to">> => <<"2">>, <<"payload">> => <<"{}">>}
+                end}
+            ]},
+            {friend_ds, [{pending_status, 2, fun(_, _) -> pending end}]},
+            {elib_response, [
+                {error, 4, fun(Req, Msg, Code, Details) ->
+                    Req#{error => {Msg, Code, Details}}
+                end}
+            ]}
+        ],
+        fun() ->
+            {ok, Resp, _} = friend_handler:init(mock_request(), #{
+                action => confirm, current_uid => 3
+            }),
+            ?assertEqual(
+                {<<"Parameter error">>, 1, #{<<"field">> => <<"to">>}}, maps:get(error, Resp)
+            ),
+            ?assertNot(meck:called(friend_ds, pending_status, '_'))
+        end
+    ).
+
 init_false_action_passthrough_test_() ->
     ?TEST_SIMPLE(fun() ->
         Req = mock_request(),
