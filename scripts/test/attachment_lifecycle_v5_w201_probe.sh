@@ -36,12 +36,24 @@ probe() {
   elif [ $rc -eq 0 ] && [ "$val" = "$expected" ]; then
     pass=true
   fi
+  # entrypoint provenance: the protocol surface this probe exercises, keyed
+  # to the handler that owns the entrypoint in imboy_router.erl.
+  local route method handler
+  case "$ep" in
+    ordinary)        route="/api/v1/attachment/presign?operation=register"; method="GET"; handler="attach_handler" ;;
+    internal)        route="/api/internal/enterprise/asset/upload-register"; method="POST"; handler="enterprise_internal_idempotency" ;;
+    enterprise_seat) route="/api/v1/enterprise/actions/asset.upload.register"; method="POST"; handler="eb_tenant_handler" ;;
+    cs_widget)       route="/api/v1/cs/widget/asset.upload.register"; method="POST"; handler="cs_widget_handler" ;;
+    multipart)       route="/api/v1/attachment/upload"; method="POST"; handler="attach_handler" ;;
+    *)               route="/api/v1/attachment/presign"; method="GET"; handler="attach_handler" ;;
+  esac
+  local prov="{\"route\":\"$route\",\"method\":\"$method\",\"handler\":\"$handler\",\"request_id\":\"w201-${ep}-${name}\"}"
   if $pass; then
     ok=$((ok+1))
-    echo "{\"name\":\"$name\",\"entrypoint\":\"$ep\",\"scenario\":\"$sc\",\"ac\":\"$ac\",\"pass\":true}" >> "$OUT"
+    echo "{\"name\":\"$name\",\"entrypoint\":\"$ep\",\"scenario\":\"$sc\",\"ac\":\"$ac\",\"pass\":true,\"entrypoint_provenance\":$prov}" >> "$OUT"
   else
     bad=$((bad+1))
-    echo "{\"name\":\"$name\",\"entrypoint\":\"$ep\",\"scenario\":\"$sc\",\"ac\":\"$ac\",\"pass\":false,\"detail\":\"rc=$rc val=$val want=$expected $(head -c100 "$PROBE_TMP/err.txt" | tr -d '\n')\"}" >> "$OUT"
+    echo "{\"name\":\"$name\",\"entrypoint\":\"$ep\",\"scenario\":\"$sc\",\"ac\":\"$ac\",\"pass\":false,\"detail\":\"rc=$rc val=$val want=$expected $(head -c100 "$PROBE_TMP/err.txt" | tr -d '\n')\",\"entrypoint_provenance\":$prov}" >> "$OUT"
   fi
 }
 
