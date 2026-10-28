@@ -77,7 +77,7 @@ pyval() { python3 -c "
 import json, sys
 c = json.load(open(sys.argv[1]))
 task = sys.argv[2]; key = sys.argv[3]
-for t in (c.get("tasks") or []):
+for t in (c.get('tasks') or []):
     if t['task_id'] == task:
         if key == 'exists':
             print('yes')
