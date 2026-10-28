@@ -50,7 +50,7 @@ notify_org_invitation_payload_contract_test() ->
     %% 免打扰判定（G1 接线后离线分支必经）：eunit VM 无 depcache，
     %% 桩为「不在免打扰时段」以保持离线推送语义不变
     ok = meck:new(user_dnd_rule_ds, [no_link]),
-    meck:expect(user_dnd_rule_ds, is_dnd_at, fun(_Uid, _NowMin) -> false end),
+    meck:expect(user_dnd_rule_ds, is_dnd_now, fun(_Uid) -> false end),
     Me = self(),
     meck:expect(push_notification_ds, send_to_user_with_data, 4, fun(Uid, T, B, D) ->
         Me ! {ds_called, Uid, T, B, D},
