@@ -50,7 +50,7 @@ ENTRYPOINT_ORACLE = {
                       "propagates as error",
 }
 
-FAULTS = ("rollback", "intent_insert_error", "audit_insert_error",
+FAULTS = ("sql_rollback", "intent_insert_error", "audit_insert_error",
           "commit_response_lost")
 
 DOMAINS = {"eb-private-delete": "enterprise",
