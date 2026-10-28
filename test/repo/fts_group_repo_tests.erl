@@ -96,10 +96,11 @@ discover_page_uses_member_count_order_test_() ->
     ?WITH_MECKS(
         [
             {elib_pg, [
-                {'query', 2, fun(Sql, _Params) ->
+                {'query', 2, fun(Sql, Params) ->
                     ?assert(is_binary(Sql)),
                     ?assertNotEqual(nomatch, binary:match(Sql, <<"ORDER BY g.member_count DESC">>)),
                     ?assertNotEqual(nomatch, binary:match(Sql, <<"g.status = 1 AND g.type = 1">>)),
+                    ?assertEqual([10, 0], Params),
                     {ok, []}
                 end}
             ]}
@@ -117,7 +118,7 @@ discover_page_with_category_test_() ->
                 {'query', 2, fun(Sql, Params) ->
                     ?assert(is_binary(Sql)),
                     ?assertNotEqual(nomatch, binary:match(Sql, <<"category_id = $3">>)),
-                    ?assertEqual(2, length(Params)),
+                    ?assertEqual([10, 0, 2], Params),
                     {ok, []}
                 end}
             ]}
