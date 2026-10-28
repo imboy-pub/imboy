@@ -10,7 +10,9 @@
     worker_main_group/1,
     worker_main/2,
     worker_main_group/2,
-    worker_env/0
+    worker_main_group/3,
+    worker_env/0,
+    stream_read/1
 ]).
 
 -spec run_in_worker(TestMod :: module(), Opts :: map(), DeadlineMs :: pos_integer()) ->
@@ -160,7 +162,11 @@ run_group_in_worker(TestMods, Opts, DeadlineMs, ExtraPaths) ->
             Peer,
             ?MODULE,
             worker_main_group,
-            [TestMods, maps:get(spec_wrapper, Opts, undefined)],
+            [
+                TestMods,
+                maps:get(spec_wrapper, Opts, undefined),
+                maps:get(stream, Opts, undefined)
+            ],
             Timeout
         ),
         Wall = erlang:monotonic_time(millisecond) - T0,
@@ -171,6 +177,7 @@ run_group_in_worker(TestMods, Opts, DeadlineMs, ExtraPaths) ->
             WallC = erlang:monotonic_time(millisecond) - T0,
             #{
                 exit => classify(Class, Reason),
+                reason => Reason,
                 wall_ms => WallC,
                 per_root => #{},
                 node => down
@@ -182,31 +189,89 @@ run_group_in_worker(TestMods, Opts, DeadlineMs, ExtraPaths) ->
 worker_main_group(TestMods) ->
     worker_main_group(TestMods, undefined).
 
+worker_main_group(TestMods, SpecWrapper) ->
+    worker_main_group(TestMods, SpecWrapper, undefined).
+
 %% SpecWrapper :: undefined | {M, F}：每根 EUnit 规格由 M:F(Mod) 产出
 %% （项目 Makefile:188 EUNIT_TEST_SPEC 以 talk_record_owned_eunit_fixture:entry/1
 %% 包裹每个根；等价对照必须同规格——budgets 内根在 legacy 外层只计 1 叶）。
-worker_main_group(TestMods, SpecWrapper) ->
-    maps:from_list(
-        lists:map(
-            fun(Mod) ->
-                T0 = erlang:monotonic_time(millisecond),
-                {EunitReturn, Counts, Events} = worker_main(Mod, SpecWrapper),
-                Wall = erlang:monotonic_time(millisecond) - T0,
-                Exit =
-                    case EunitReturn of
-                        ok -> ok;
-                        _ -> test_failed
-                    end,
-                {Mod, #{
-                    exit => Exit,
-                    wall_ms => Wall,
-                    counts => Counts,
-                    events => Events
-                }}
-            end,
-            TestMods
+%% StreamPath：每根开始/完成即写长度前缀 term 并 sync（SCHED05：VM 死亡只丢
+%% 在途根，已完成结果由控制器从流恢复——opt-run4 两组整组丢失的教训）。
+worker_main_group(TestMods, SpecWrapper, StreamPath) ->
+    File =
+        case StreamPath of
+            undefined ->
+                undefined;
+            P ->
+                {ok, FH} = file:open(P, [append, binary, raw]),
+                FH
+        end,
+    try
+        maps:from_list(
+            lists:map(
+                fun(Mod) ->
+                    stream_event(File, {start, Mod}),
+                    T0 = erlang:monotonic_time(millisecond),
+                    {EunitReturn, Counts, Events} = worker_main(Mod, SpecWrapper),
+                    Wall = erlang:monotonic_time(millisecond) - T0,
+                    Exit =
+                        case EunitReturn of
+                            ok -> ok;
+                            _ -> test_failed
+                        end,
+                    R = #{
+                        exit => Exit,
+                        wall_ms => Wall,
+                        counts => Counts,
+                        events => Events
+                    },
+                    stream_event(File, {done, Mod, R}),
+                    {Mod, R}
+                end,
+                TestMods
+            )
         )
-    ).
+    after
+        case File of
+            undefined -> ok;
+            FH2 -> ok = file:close(FH2)
+        end
+    end.
+
+stream_event(undefined, _Event) ->
+    ok;
+stream_event(FH, Event) ->
+    B = term_to_binary(Event),
+    ok = file:write(FH, [integer_to_binary(byte_size(B)), $\n, B, $\n]),
+    ok = file:sync(FH).
+
+%% 读取流文件（容忍尾部截断：VM 死亡时最后一条可能不完整）。
+stream_read(Path) ->
+    case file:read_file(Path) of
+        {ok, Bin} -> {ok, stream_parse(Bin, [])};
+        {error, enoent} -> {ok, []};
+        {error, _} = E -> E
+    end.
+
+stream_parse(<<>>, Acc) ->
+    lists:reverse(Acc);
+stream_parse(Bin, Acc) ->
+    case binary:split(Bin, <<"\n">>) of
+        [LenB, Rest] ->
+            try binary_to_integer(LenB) of
+                Len when byte_size(Rest) >= Len + 1 ->
+                    <<Body:Len/binary, $\n, Tail/binary>> = Rest,
+                    %% 流由本任务 worker 写出（可信 ETF）；模块原子在控制器 VM
+                    %% 可能尚不存在，故不用 safe 选项
+                    stream_parse(Tail, [binary_to_term(Body) | Acc]);
+                _ ->
+                    lists:reverse(Acc)
+            catch
+                _:_ -> lists:reverse(Acc)
+            end;
+        _ ->
+            lists:reverse(Acc)
+    end.
 
 %% worker VM 环境摘要（纯数据，不崩溃：未加载模块返回 non_existing/bad_name）
 worker_env() ->

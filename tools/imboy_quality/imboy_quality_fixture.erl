@@ -13,10 +13,47 @@
     active_connections/2,
     marker_ok/2,
     with_template_pool/4,
-    preflight_extensions/3
+    preflight_extensions/3,
+    pg_args_from_config/1,
+    ensure_marked_database/3,
+    system_identifier/1
 ]).
 
 -define(MARKER_TABLE, "imboy_quality_ownership").
+-define(OWNED_PREFIX, "imboy_quality_").
+
+%% ---- 连接参数来源：项目 sys config 的 imboy.pg_conf.start_mfa ----
+%% 与 eunit 轨道同一真实 PG（host/port/username/password），不另造凭据。
+pg_args_from_config(ConfigPath) ->
+    {ok, [Terms]} = file:consult(ConfigPath),
+    {imboy, Env} = lists:keyfind(imboy, 1, Terms),
+    #{start_mfa := {epgsql, connect, [Args]}} = proplists:get_value(pg_conf, Env),
+    maps:with([host, port, username, password, database], Args).
+
+%% ---- 带 database COMMENT 归属标记的任务私有库（幂等） ----
+%% legacy talk_record_owned_eunit_fixture 的 verify_server 以
+%% shobj_description(pg_database)（pg_shdescription，COMMENT ON DATABASE 可写）
+%% 读 marker；本模块的库内表 marker 面向模板克隆，两者并存不冲突。
+%% 仅允许 OWNED_PREFIX 前缀的库名（与 drop_owned 同一归属纪律）。
+ensure_marked_database(Conn, Name, Marker) ->
+    true = lists:prefix(?OWNED_PREFIX, Name),
+    case q(Conn, ["SELECT 1 FROM pg_database WHERE datname = '", Name, "'"]) of
+        {ok, _, []} -> q(Conn, ["CREATE DATABASE \"", Name, "\""]);
+        {ok, _, [_ | _]} -> ok
+    end,
+    q(Conn, ["COMMENT ON DATABASE \"", Name, "\" IS '", Marker, "'"]),
+    {ok, _, [{Got}]} = q(Conn, [
+        "SELECT shobj_description(d.oid, 'pg_database') FROM pg_database d ",
+        "WHERE d.datname = '",
+        Name,
+        "'"
+    ]),
+    Got = list_to_binary(Marker),
+    ok.
+
+system_identifier(Conn) ->
+    {ok, _, [{Id}]} = q(Conn, "SELECT system_identifier::text FROM pg_control_system()"),
+    binary_to_list(Id).
 
 %% DB07：扩展 preflight——必需扩展任一缺失即 {error, ...}，不返回空集假绿。
 %% Required :: [binary()]，与产品合同一致（pg_jieba/postgis/timescaledb/pgcrypto）。
