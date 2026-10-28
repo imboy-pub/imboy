@@ -12,7 +12,9 @@
     worker_main_group/2,
     worker_main_group/3,
     worker_env/0,
-    stream_read/1
+    stream_read/1,
+    run_standalone/5,
+    standalone_main/3
 ]).
 
 -spec run_in_worker(TestMod :: module(), Opts :: map(), DeadlineMs :: pos_integer()) ->
@@ -223,7 +225,8 @@ worker_main_group(TestMods, SpecWrapper, StreamPath) ->
                         exit => Exit,
                         wall_ms => Wall,
                         counts => Counts,
-                        events => Events
+                        events => Events,
+                        mock_residue => mock_residue()
                     },
                     stream_event(File, {done, Mod, R}),
                     {Mod, R}
@@ -236,6 +239,143 @@ worker_main_group(TestMods, SpecWrapper, StreamPath) ->
             undefined -> ok;
             FH2 -> ok = file:close(FH2)
         end
+    end.
+
+%% 根间 mock 卫生：legacy 单 VM 顺序执行从不卸载 meck，残留随模块顺序漂移
+%% （opt-run5：push_token_repo 的 meck:new(elib_pg) 撞上前序根残留 → already_started）。
+%% 每根结束卸载全部残留并记录名单——残留名单是测试卫生缺陷的证据，不改任何断言。
+mock_residue() ->
+    case code:ensure_loaded(meck) of
+        {module, meck} ->
+            try meck:unload() of
+                Mods when is_list(Mods) -> Mods;
+                _ -> []
+            catch
+                _:_ -> []
+            end;
+        _ ->
+            []
+    end.
+
+%% ---- 独立（非 peer）VM 兜底：供 mock `peer` 等与 peer 宿主不兼容的根 ----
+%% isolated_pg_fixture(_tests) 以 meck 重载 `peer` 会杀掉 peer 控制进程使宿主 VM 关停
+%% （opt-run5 vm_killer）。控制器以 open_port 启动普通 erl（无 peer 控制通道），
+%% 结果经 ETF 文件回传；有界等待，超时关端口记 timeout；不保证根能通过，只保证
+%% 该根有真实执行入口与可归属结果。
+run_standalone(TestMod, Opts, ExtraPaths, OutDir, DeadlineMs) ->
+    FrameworkPath = framework_path(),
+    Erl = os:find_executable("erl"),
+    Base = filename:join(OutDir, "standalone_" ++ atom_to_list(TestMod)),
+    OutFile = Base ++ ".etf",
+    LogFile = Base ++ ".log",
+    _ = file:delete(OutFile),
+    Eval = lists:flatten(
+        io_lib:format(
+            "imboy_quality_runner:standalone_main(~p, ~p, ~p)",
+            [TestMod, maps:get(spec_wrapper, Opts, undefined), OutFile]
+        )
+    ),
+    Cfg =
+        case maps:get(config, Opts, undefined) of
+            undefined -> [];
+            C -> ["-config", C]
+        end,
+    PL =
+        case maps:get(process_limit, Opts, undefined) of
+            undefined -> [];
+            P -> ["+P", integer_to_list(P)]
+        end,
+    Args =
+        [
+            "-noshell",
+            "-noinput",
+            "-boot",
+            "no_dot_erlang",
+            "+S",
+            integer_to_list(maps:get(schedulers, Opts, 2))
+        ] ++
+            Cfg ++ PL ++
+            lists:append([["-pa", Pa] || Pa <- [FrameworkPath | ExtraPaths]]) ++
+            ["-eval", Eval],
+    T0 = erlang:monotonic_time(millisecond),
+    Port = open_port({spawn_executable, Erl}, [
+        {args, Args},
+        {env, maps:get(env, Opts, [])},
+        exit_status,
+        stream,
+        stderr_to_stdout,
+        binary,
+        hide
+    ]),
+    {ok, Log} = file:open(LogFile, [write, binary, raw]),
+    Exit = drain_port(Port, Log, T0 + DeadlineMs),
+    ok = file:close(Log),
+    Wall = erlang:monotonic_time(millisecond) - T0,
+    case {Exit, file:read_file(OutFile)} of
+        {_, {ok, Bin}} ->
+            (binary_to_term(Bin))#{lane => standalone, os_exit => Exit, wall_ms => Wall};
+        {timeout, _} ->
+            #{
+                exit => timeout_or_cancelled,
+                lane => standalone,
+                wall_ms => Wall,
+                counts => zero_counts(),
+                events => []
+            };
+        {Code, {error, _}} ->
+            #{
+                exit => worker_crashed,
+                lane => standalone,
+                os_exit => Code,
+                wall_ms => Wall,
+                counts => zero_counts(),
+                events => []
+            }
+    end.
+
+drain_port(Port, Log, DeadlineAbs) ->
+    Remaining = DeadlineAbs - erlang:monotonic_time(millisecond),
+    receive
+        {Port, {data, D}} ->
+            ok = file:write(Log, D),
+            drain_port(Port, Log, DeadlineAbs);
+        {Port, {exit_status, Code}} ->
+            Code
+    after max(0, Remaining) ->
+        catch port_close(Port),
+        timeout
+    end.
+
+standalone_main(TestMod, SpecWrapper, OutFile) ->
+    R =
+        try worker_main(TestMod, SpecWrapper) of
+            {Ret, Counts, Events} ->
+                #{
+                    exit =>
+                        case Ret of
+                            ok -> ok;
+                            _ -> test_failed
+                        end,
+                    counts => Counts,
+                    events => Events,
+                    mock_residue => mock_residue()
+                }
+        catch
+            Class:Reason:Stack ->
+                #{
+                    exit => worker_crashed,
+                    reason => {Class, Reason, Stack},
+                    counts => zero_counts(),
+                    events => []
+                }
+        end,
+    ok = file:write_file(OutFile, term_to_binary(R)),
+    erlang:halt(0).
+
+framework_path() ->
+    case code:which(?MODULE) of
+        Beam when is_list(Beam) -> filename:dirname(Beam);
+        _ -> erlang:error(runner_not_file_loaded)
     end.
 
 stream_event(undefined, _Event) ->

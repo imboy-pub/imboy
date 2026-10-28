@@ -721,6 +721,30 @@ eunit: eunit-local
 endif
 endif
 
+# ==================== IMBOY_ERLANG_QUALITY：纯 Erlang 质量入口薄别名 ====================
+# FRAMEWORK_DESIGN §2 / RUN12：仅调用 Erlang 入口的最小接线，无递归 double-run——
+# 前置只做 eunit-local 同款 TEST 构建硬复位 + test-build（不执行老 eunit）。
+# 日常 `make eunit` / `eunit-local` 暂不委派新入口：等价门仍有可解释差异且完整 U
+# 业务未全绿（见 evidence/P1-12.json）；达标后再切换，老路径届时显式保留为诊断。
+# 硬复位（A1c）导致每次全量 TEST 重编；P1-05 内容指纹（imboy_quality_build）
+# 替代硬复位属后续优化，不在本别名内伪装为已完成。
+.PHONY: quality-selftest quality-test-build eunit-all quality-group
+quality-selftest:
+	escript scripts/quality.escript selftest
+
+quality-test-build:
+	@rm -f .erlang.mk/$(PROJECT).test
+	@rm -rf .erlang.mk/beam-cache/$(PROJECT)
+	@rm -f ebin/imboy.app
+	IMBOYENV=local $(MAKE) test-build
+
+eunit-all: quality-test-build
+	escript scripts/quality.escript eunit --full
+
+# 诊断：make quality-group g=mod1,mod2（报告标 PARTIAL，不产生 full PASS）
+quality-group: quality-test-build
+	escript scripts/quality.escript eunit --group=$(g)
+
 # ==================== Gradualizer（本地快检 + CI 宽网基线） ====================
 # 职责: pre-push 变更快检 + CI 全仓宽网扫描；分层阻塞门禁由 eqWAlizer 承担
 GRADUALIZER_DIR  := tools/gradualizer

@@ -100,7 +100,9 @@ run_locked(Roots0, Opts, RunId, Repo, OutDir, T0, Est) ->
         end)
      || {K, G} <- Indexed, G =/= []
     ],
-    PerRoot0 = collect(Ref, #{}, length(Pids)),
+    PerRoot0 = run_standalone_fallback(
+        collect(Ref, #{}, length(Pids)), Opts, Paths, CfgFn, OutDir
+    ),
     %% 独占车道（EQ02/INV03）：普通分片结束、其 VM 已回收后，每个独占根各起一个
     %% fresh VM 顺序执行（TSID 并发、专属 PG 池、HIRD、attv5 等的"独立 VM 池"
     %% 合同在 fresh VM 内天然成立）；缺资源按各套件 no-skip 铁律硬失败，
@@ -111,7 +113,17 @@ run_locked(Roots0, Opts, RunId, Repo, OutDir, T0, Est) ->
     AllRoots = Roots0 ++ Excl,
     Summary = summarize(PerRoot, AllRoots),
     ExclBad = [M || M <- Excl, maps:get(exit, maps:get(M, PerRoot, #{exit => missing}), ok) =/= ok],
-    Killers = lists:sort([M || {M, #{exit := vm_killer}} <- maps:to_list(PerRoot), is_atom(M)]),
+    Killers = lists:sort([
+        M
+     || {M, R0} <- maps:to_list(PerRoot),
+        is_atom(M),
+        maps:get(exit, R0, undefined) =:= vm_killer orelse
+            maps:get(vm_killer_in_peer, R0, false) =:= true
+    ]),
+    Standalone = [
+        #{<<"root">> => atom_to_binary(M), <<"exit">> => atom_to_binary(maps:get(exit, R0))}
+     || {M, #{lane := standalone} = R0} <- maps:to_list(PerRoot), is_atom(M)
+    ],
     Restarts = lists:sum([
         length(maps:get(attempts, Rot, [])) - 1
      || {{worker_info, _}, #{rotation := Rot}} <- maps:to_list(PerRoot)
@@ -127,7 +139,8 @@ run_locked(Roots0, Opts, RunId, Repo, OutDir, T0, Est) ->
         <<"exclusive_roots">> => [atom_to_binary(M) || M <- Excl],
         <<"exclusive_failed_roots">> => [atom_to_binary(M) || M <- lists:sort(ExclBad)],
         <<"vm_restarts">> => Restarts,
-        <<"vm_killer_roots">> => [atom_to_binary(M) || M <- Killers]
+        <<"vm_killer_roots">> => [atom_to_binary(M) || M <- Killers],
+        <<"standalone_fallback">> => Standalone
     },
     {ok, _} = imboy_quality_report:write(filename:join(OutDir, "result.json"), Result),
     ok = file:write_file(
@@ -135,6 +148,22 @@ run_locked(Roots0, Opts, RunId, Repo, OutDir, T0, Est) ->
         io_lib:format("~p.~n", [PerRoot])
     ),
     {Result, OutDir}.
+
+%% vm_killer 根（两次致 peer 宿主 VM 死亡）改在独立非 peer VM 兜底执行一次：
+%% 保留 peer 侧历史（vm_killer_in_peer），结果以独立 VM 为准（可通过/可失败/可超时）。
+run_standalone_fallback(PerRoot, Opts, Paths, CfgFn, OutDir) ->
+    Killers = [M || {M, #{exit := vm_killer}} <- maps:to_list(PerRoot), is_atom(M)],
+    WOpts = Opts#{schedulers => maps:get(schedulers, Opts, 2), config => CfgFn(0)},
+    Deadline = maps:get(exclusive_deadline_ms, Opts, 900000),
+    lists:foldl(
+        fun(M, Acc) ->
+            Old = maps:get(M, Acc),
+            R = imboy_quality_runner:run_standalone(M, WOpts, Paths, OutDir, Deadline),
+            Acc#{M => R#{vm_killer_in_peer => true, peer_history => Old}}
+        end,
+        PerRoot,
+        Killers
+    ).
 
 run_exclusive([], _Opts, _Paths, _CfgFn, Acc) ->
     Acc;
