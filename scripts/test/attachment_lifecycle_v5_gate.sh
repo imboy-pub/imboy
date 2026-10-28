@@ -853,7 +853,8 @@ bound_marker_dbs() { # $@ suffixes; exports the matching _DB variables
   done
   export V5_INTTEST_DB="attv5_${SLOT}_w201" V5_INTTEST_W203_DB="attv5_${SLOT}_raw" \
     V5_INTTEST_W301_DB="attv5_${SLOT}_raw2" V5_INTTEST_W302_DB="attv5_${SLOT}_strict" \
-    V5_INTTEST_W401_DB="attv5_${SLOT}_w201"
+    V5_INTTEST_W401_DB="attv5_${SLOT}_w201" V5_INTTEST_W402_DB="attv5_${SLOT}_w201" \
+    V5_INTTEST_W402P_DB="attv5_${SLOT}_w201"
 }
 
 w301_case() { # $1 cdir — 与 w203_case 同一直连 erl 模式，套件含 W3-01 电池
