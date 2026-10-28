@@ -86,16 +86,16 @@ cases({ok, _Conn}) ->
         %% V5.5 收尾（W2-02 confirmed-content-immutable EB 叶；real-Garage）：
         %% seat / visitor_session 主体各 5 场景；缺 W202_GARAGE_* 时逐用例 skip
         %%（描述符仍列出，计数可见、不空转）。
-        {timeout, 120, fun eb_garage_seat_old_capability_put_b_test_/0},
-        {timeout, 120, fun eb_garage_seat_overwrite_between_stat_and_confirm_test_/0},
-        {timeout, 120, fun eb_garage_seat_inflight_same_content_after_confirm_test_/0},
-        {timeout, 120, fun eb_garage_seat_hash_mismatch_no_confirm_test_/0},
-        {timeout, 120, fun eb_garage_seat_crash_after_pin_before_put_resume_test_/0},
-        {timeout, 120, fun eb_garage_widget_old_capability_put_b_test_/0},
-        {timeout, 120, fun eb_garage_widget_overwrite_between_stat_and_confirm_test_/0},
-        {timeout, 120, fun eb_garage_widget_inflight_same_content_after_confirm_test_/0},
-        {timeout, 120, fun eb_garage_widget_hash_mismatch_no_confirm_test_/0},
-        {timeout, 120, fun eb_garage_widget_crash_after_pin_before_put_resume_test_/0}
+        {timeout, 120, fun eb_garage_seat_old_capability_put_b_case/0},
+        {timeout, 120, fun eb_garage_seat_overwrite_between_stat_and_confirm_case/0},
+        {timeout, 120, fun eb_garage_seat_inflight_same_content_after_confirm_case/0},
+        {timeout, 120, fun eb_garage_seat_hash_mismatch_no_confirm_case/0},
+        {timeout, 120, fun eb_garage_seat_crash_after_pin_before_put_resume_case/0},
+        {timeout, 120, fun eb_garage_widget_old_capability_put_b_case/0},
+        {timeout, 120, fun eb_garage_widget_overwrite_between_stat_and_confirm_case/0},
+        {timeout, 120, fun eb_garage_widget_inflight_same_content_after_confirm_case/0},
+        {timeout, 120, fun eb_garage_widget_hash_mismatch_no_confirm_case/0},
+        {timeout, 120, fun eb_garage_widget_crash_after_pin_before_put_resume_case/0}
     ];
 cases(_Skipped) ->
     %% 裸 {skip,_} 从 instantiator 返回是非法 descriptor（eunit 报
@@ -653,34 +653,34 @@ w202_confirm_by_asset_id_recovery() ->
 %% V5.5 real-Garage named tests（生成器：环境门 + 超时预算）
 %% ===================================================================
 
-eb_garage_seat_old_capability_put_b_test_() ->
+eb_garage_seat_old_capability_put_b_case() ->
     eb_garage_named(fun eb_garage_seat_old_capability_put_b/0).
 
-eb_garage_seat_overwrite_between_stat_and_confirm_test_() ->
+eb_garage_seat_overwrite_between_stat_and_confirm_case() ->
     eb_garage_named(fun eb_garage_seat_overwrite_between_stat_and_confirm/0).
 
-eb_garage_seat_inflight_same_content_after_confirm_test_() ->
+eb_garage_seat_inflight_same_content_after_confirm_case() ->
     eb_garage_named(fun eb_garage_seat_inflight_same_content_after_confirm/0).
 
-eb_garage_seat_hash_mismatch_no_confirm_test_() ->
+eb_garage_seat_hash_mismatch_no_confirm_case() ->
     eb_garage_named(fun eb_garage_seat_hash_mismatch_no_confirm/0).
 
-eb_garage_seat_crash_after_pin_before_put_resume_test_() ->
+eb_garage_seat_crash_after_pin_before_put_resume_case() ->
     eb_garage_named(fun eb_garage_seat_crash_after_pin_before_put_resume/0).
 
-eb_garage_widget_old_capability_put_b_test_() ->
+eb_garage_widget_old_capability_put_b_case() ->
     eb_garage_named(fun eb_garage_widget_old_capability_put_b/0).
 
-eb_garage_widget_overwrite_between_stat_and_confirm_test_() ->
+eb_garage_widget_overwrite_between_stat_and_confirm_case() ->
     eb_garage_named(fun eb_garage_widget_overwrite_between_stat_and_confirm/0).
 
-eb_garage_widget_inflight_same_content_after_confirm_test_() ->
+eb_garage_widget_inflight_same_content_after_confirm_case() ->
     eb_garage_named(fun eb_garage_widget_inflight_same_content_after_confirm/0).
 
-eb_garage_widget_hash_mismatch_no_confirm_test_() ->
+eb_garage_widget_hash_mismatch_no_confirm_case() ->
     eb_garage_named(fun eb_garage_widget_hash_mismatch_no_confirm/0).
 
-eb_garage_widget_crash_after_pin_before_put_resume_test_() ->
+eb_garage_widget_crash_after_pin_before_put_resume_case() ->
     eb_garage_named(fun eb_garage_widget_crash_after_pin_before_put_resume/0).
 
 %% 环境门：W202_GARAGE_* 齐备 ⇒ 带超时的真实用例；缺 ⇒ 可见 skip（不静默）。
