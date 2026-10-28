@@ -3,7 +3,7 @@
 %% 以模块原子为根（EUnit 自动带入 M_tests 伴随），按 LPT 分到有界 peer 组，
 %% 每组一 VM 顺序执行，结果按根落盘。独占根（Excl 清单）作为 U 成员单列。
 -module(imboy_quality_full).
--export([inventory/1, run/3, root_identity_set/1, excluded/0]).
+-export([inventory/1, run/3, root_identity_set/1, excluded/0, run_group_rotating/6]).
 
 -define(EXCL, [
     elib_tsid,
@@ -92,28 +92,42 @@ run_locked(Roots0, Opts, RunId, Repo, OutDir, T0, Est) ->
     Pids = [
         spawn(fun() ->
             Mods = [maps:get(test_mod, R) || R <- G],
-            WOpts = Opts#{
-                schedulers => maps:get(schedulers, Opts, 2),
-                config => CfgFn(K)
-            },
-            R = (imboy_quality_runner:run_group_in_worker(
-                Mods, WOpts, maps:get(deadline_ms, Opts, 3000000), Paths
-            ))#{
-                group_index => K
-            },
-            Parent ! {grp, Ref, self(), length(Mods), R}
+            {PR, Rotation} = run_group_rotating(K, Mods, Opts, Paths, CfgFn, OutDir),
+            Parent !
+                {grp, Ref, self(), length(Mods), #{
+                    per_root => PR, group_index => K, rotation => Rotation
+                }}
         end)
      || {K, G} <- Indexed, G =/= []
     ],
-    PerRoot = collect(Ref, #{}, length(Pids)),
+    PerRoot0 = collect(Ref, #{}, length(Pids)),
+    %% 独占车道（EQ02/INV03）：普通分片结束、其 VM 已回收后，每个独占根各起一个
+    %% fresh VM 顺序执行（TSID 并发、专属 PG 池、HIRD、attv5 等的"独立 VM 池"
+    %% 合同在 fresh VM 内天然成立）；缺资源按各套件 no-skip 铁律硬失败，
+    %% 失败原因进入事件记录（可归属），不再以"排除理由"替代执行。
+    Excl = maps:get(exclusive_roots, Opts, []),
+    PerRoot = run_exclusive(Excl, Opts, Paths, CfgFn, PerRoot0),
     Wall = erlang:monotonic_time(millisecond) - T0,
-    Summary = summarize(PerRoot, Roots0),
+    AllRoots = Roots0 ++ Excl,
+    Summary = summarize(PerRoot, AllRoots),
+    ExclBad = [M || M <- Excl, maps:get(exit, maps:get(M, PerRoot, #{exit => missing}), ok) =/= ok],
+    Killers = lists:sort([M || {M, #{exit := vm_killer}} <- maps:to_list(PerRoot), is_atom(M)]),
+    Restarts = lists:sum([
+        length(maps:get(attempts, Rot, [])) - 1
+     || {{worker_info, _}, #{rotation := Rot}} <- maps:to_list(PerRoot)
+    ]),
     Result = Summary#{
         <<"run_id">> => list_to_binary(RunId),
         <<"wall_ms">> => Wall,
         <<"worker_count">> => maps:get(worker_count, Opts, 2),
         <<"groups">> => length(Pids),
-        <<"roots_total">> => length(Roots0)
+        <<"roots_total">> => length(AllRoots),
+        <<"ordinary_count">> => length(Roots0),
+        <<"exclusive_count">> => length(Excl),
+        <<"exclusive_roots">> => [atom_to_binary(M) || M <- Excl],
+        <<"exclusive_failed_roots">> => [atom_to_binary(M) || M <- lists:sort(ExclBad)],
+        <<"vm_restarts">> => Restarts,
+        <<"vm_killer_roots">> => [atom_to_binary(M) || M <- Killers]
     },
     {ok, _} = imboy_quality_report:write(filename:join(OutDir, "result.json"), Result),
     ok = file:write_file(
@@ -121,6 +135,123 @@ run_locked(Roots0, Opts, RunId, Repo, OutDir, T0, Est) ->
         io_lib:format("~p.~n", [PerRoot])
     ),
     {Result, OutDir}.
+
+run_exclusive([], _Opts, _Paths, _CfgFn, Acc) ->
+    Acc;
+run_exclusive([M | Rest], Opts, Paths, CfgFn, Acc) ->
+    WOpts = Opts#{schedulers => maps:get(schedulers, Opts, 2), config => CfgFn(0)},
+    Deadline = maps:get(exclusive_deadline_ms, Opts, 900000),
+    T0 = erlang:monotonic_time(millisecond),
+    R = imboy_quality_runner:run_group_in_worker([M], WOpts, Deadline, Paths),
+    Entry =
+        case R of
+            #{per_root := #{M := PR}} ->
+                PR#{lane => exclusive};
+            #{exit := Exit} ->
+                %% VM 级失败/超时：根身份保留为失败（非 missing），整体非通过
+                #{
+                    exit => Exit,
+                    wall_ms => erlang:monotonic_time(millisecond) - T0,
+                    counts => #{pass => 0, fail => 0, skip => 0, cancel => 0},
+                    events => [],
+                    lane => exclusive,
+                    vm_failure => maps:without([per_root], R)
+                }
+        end,
+    run_exclusive(Rest, Opts, Paths, CfgFn, Acc#{M => Entry}).
+
+%% ---- 有界 VM 轮换（SCHED05/SCHED08） ----
+%% 一组的份额在一个长驻 VM 顺序执行；VM 死亡/超时时：已完成根从流文件恢复，
+%% 在途根计一次"嫌疑 VM 杀手"，剩余根换 fresh VM 继续；同根两次致死即永久
+%% 排除并记 vm_killer 失败（不无限重试）；总轮换次数与组总 deadline 有界。
+%% 整体结果仍非通过（组级失败进入 rotation 记录），但不丢已开始/未开始身份。
+-define(MAX_ROTATIONS, 5).
+-define(KILLER_THRESHOLD, 2).
+
+run_group_rotating(K, Mods, Opts, Paths, CfgFn, OutDir) ->
+    T0 = erlang:monotonic_time(millisecond),
+    rotate(K, Mods, Opts, Paths, CfgFn, OutDir, T0, #{}, #{}, [], ?MAX_ROTATIONS).
+
+rotate(_K, [], _Opts, _Paths, _CfgFn, _OutDir, _T0, Acc, _Killers, Attempts, _Left) ->
+    {Acc, #{attempts => lists:reverse(Attempts), exit => ok}};
+rotate(_K, Mods, _Opts, _Paths, _CfgFn, _OutDir, _T0, Acc, _Killers, Attempts, 0) ->
+    {Acc, #{
+        attempts => lists:reverse(Attempts),
+        exit => rotation_budget_exhausted,
+        remaining => Mods
+    }};
+rotate(K, Mods, Opts, Paths, CfgFn, OutDir, T0, Acc, Killers, Attempts, Left) ->
+    TryNo = length(Attempts) + 1,
+    Stream = filename:join(
+        OutDir, lists:flatten(io_lib:format("group_~p_try_~p.stream", [K, TryNo]))
+    ),
+    _ = file:delete(Stream),
+    WOpts = Opts#{
+        schedulers => maps:get(schedulers, Opts, 2),
+        config => CfgFn(K),
+        stream => Stream
+    },
+    Elapsed = erlang:monotonic_time(millisecond) - T0,
+    Deadline = max(60000, maps:get(deadline_ms, Opts, 3000000) - Elapsed),
+    R = imboy_quality_runner:run_group_in_worker(Mods, WOpts, Deadline, Paths),
+    {ok, Events} = imboy_quality_runner:stream_read(Stream),
+    Done = maps:from_list([{M, Res} || {done, M, Res} <- Events]),
+    Started = [M || {start, M} <- Events],
+    Acc1 = maps:merge(Acc, Done),
+    Attempt0 = #{
+        try_no => TryNo,
+        exit => maps:get(exit, R),
+        wall_ms => maps:get(wall_ms, R),
+        roots_done => map_size(Done),
+        reason => maps:get(reason, R, undefined),
+        env => maps:get(env, R, undefined)
+    },
+    case R of
+        #{exit := ok, per_root := PR} ->
+            %% 正常完成：peer 返回值为权威（与流一致）
+            {maps:merge(Acc1, PR), #{attempts => lists:reverse([Attempt0 | Attempts]), exit => ok}};
+        #{exit := Exit} ->
+            Inflight = [M || M <- lists:reverse(Started), not is_map_key(M, Done)],
+            Killers1 = lists:foldl(
+                fun(M, Ks) -> maps:update_with(M, fun(N) -> N + 1 end, 1, Ks) end,
+                Killers,
+                Inflight
+            ),
+            Remaining0 = [M || M <- Mods, not is_map_key(M, Acc1)],
+            {Excluded, Remaining} = lists:partition(
+                fun(M) -> maps:get(M, Killers1, 0) >= ?KILLER_THRESHOLD end, Remaining0
+            ),
+            Acc2 = lists:foldl(
+                fun(M, A) ->
+                    A#{
+                        M => #{
+                            exit => vm_killer,
+                            wall_ms => 0,
+                            counts => #{pass => 0, fail => 0, skip => 0, cancel => 0},
+                            events => [],
+                            vm_exit => Exit,
+                            vm_reason => maps:get(reason, R, undefined)
+                        }
+                    }
+                end,
+                Acc1,
+                Excluded
+            ),
+            Attempt = Attempt0#{inflight => Inflight, excluded_as_killer => Excluded},
+            rotate(
+                K,
+                Remaining,
+                Opts,
+                Paths,
+                CfgFn,
+                OutDir,
+                T0,
+                Acc2,
+                Killers1,
+                [Attempt | Attempts],
+                Left - 1
+            )
+    end.
 
 %% 仓库根 lib_dir 别名：legacy eunit-local 的 `ln -sfn . imboy` 同口径。
 %% worktree 目录名为 worktree，code:lib_dir(imboy)/code:priv_dir(imboy) 依赖

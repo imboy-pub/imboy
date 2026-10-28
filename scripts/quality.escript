@@ -197,15 +197,17 @@ dispatch(guard, _Ctx, Ctrl) ->
     {ok, _} = imboy_report_write(Out, Result),
     {Result, Out};
 dispatch(eunit_full, _Ctx, Ctrl) ->
-    %% P1-10/P1-12 真实接线：分片执行完整 U（普通根）。G-HEAVY 已由 enforce 校验。
-    %% 环境：IMBOY_QUALITY_WORKERS（默认 2）、EUNIT_CONFIG（默认 config/sys.local）。
-    %% 每 worker 独立 http 端口副本（19980+K / 19970+K），防 eaddrinuse。
+    %% P1-10/P1-12 真实接线：分片执行完整 U（普通根 + 独占车道）。G-HEAVY 已由
+    %% enforce 校验。环境：IMBOY_QUALITY_WORKERS（默认 2）、EUNIT_CONFIG
+    %% （默认 config/sys.local）。每 worker 独立 http 端口副本（19980+K / 19970+K）。
+    %% 资源准备（TALK_OWNED 维护库等）在整条命令计时之内（EUNIT_120S §2）。
     {ok, Repo} = file:get_cwd(),
     require_test_build(Repo),
     RunId = run_id(),
     Workers = env_int("IMBOY_QUALITY_WORKERS", 2),
     #{ordinary := Ordinary, excluded := Excl} = imboy_quality_full:inventory(Repo),
     Est = load_estimates(Ctrl),
+    Prepared = prepare_resources(Repo, Ctrl),
     Opts = #{
         repo => Repo,
         ctrl => Ctrl,
@@ -214,16 +216,14 @@ dispatch(eunit_full, _Ctx, Ctrl) ->
         deadline_ms => 3000000,
         process_limit => 32768,
         estimates => Est,
-        env => full_env(Repo),
+        env => full_env(Repo) ++ maps:get(env, Prepared),
         spec_wrapper => spec_wrapper(Repo),
+        exclusive_roots => Excl,
         worker_config_fn => fun(K) -> config_for_worker(Repo, K) end
     },
     try
         {Result0, OutDir} = imboy_quality_full:run(Ordinary, Opts, RunId),
-        Result = Result0#{
-            <<"excluded_roots">> => [atom_to_binary(M) || M <- Excl],
-            <<"excluded_count">> => length(Excl)
-        },
+        Result = Result0#{<<"resources">> => maps:get(report, Prepared)},
         {ok, _} = imboy_report_write(filename:join(OutDir, "result.json"), Result),
         {Result, OutDir}
     after
@@ -231,17 +231,18 @@ dispatch(eunit_full, _Ctx, Ctrl) ->
     end;
 dispatch({eunit_group, ModsStr}, _Ctx, Ctrl) ->
     %% P1-10 诊断入口（FRAMEWORK_DESIGN §2：--group 仅诊断，报告标 PARTIAL，
-    %% 不产生 full PASS）。单 worker 单 VM 顺序执行指定根，用于修复验证与
-    %% 定向取证；不消耗 full 预算。
+    %% 不产生 full PASS）。普通根在单 worker 单 VM 顺序执行；独占根走独占车道
+    %% （各自 fresh VM）。用于修复验证与定向取证；不消耗 full 预算。
     {ok, Repo} = file:get_cwd(),
     require_test_build(Repo),
     Mods = parse_group(ModsStr),
-    #{ordinary := Ordinary} = imboy_quality_full:inventory(Repo),
-    Unknown = [M || M <- Mods, not lists:member(M, Ordinary)],
+    #{ordinary := Ordinary, excluded := Excl} = imboy_quality_full:inventory(Repo),
+    Unknown = [M || M <- Mods, not lists:member(M, Ordinary ++ Excl)],
     case Unknown of
         [] -> ok;
-        _ -> erlang:error({roots_not_in_ordinary_u, Unknown})
+        _ -> erlang:error({roots_not_in_u, Unknown})
     end,
+    Prepared = prepare_resources(Repo, Ctrl),
     Opts = #{
         repo => Repo,
         ctrl => Ctrl,
@@ -251,13 +252,19 @@ dispatch({eunit_group, ModsStr}, _Ctx, Ctrl) ->
         process_limit => 32768,
         estimates => #{},
         out_prefix => "group-",
-        env => full_env(Repo),
+        env => full_env(Repo) ++ maps:get(env, Prepared),
         spec_wrapper => spec_wrapper(Repo),
+        exclusive_roots => [M || M <- Mods, lists:member(M, Excl)],
         worker_config_fn => fun(K) -> config_for_worker(Repo, K) end
     },
+    OrdPart = [M || M <- Mods, lists:member(M, Ordinary)],
     try
-        {Result0, OutDir} = imboy_quality_full:run(Mods, Opts, run_id()),
-        Result = Result0#{<<"scope">> => <<"PARTIAL">>, <<"op">> => <<"eunit_group">>},
+        {Result0, OutDir} = imboy_quality_full:run(OrdPart, Opts, run_id()),
+        Result = Result0#{
+            <<"scope">> => <<"PARTIAL">>,
+            <<"op">> => <<"eunit_group">>,
+            <<"resources">> => maps:get(report, Prepared)
+        },
         {ok, _} = imboy_report_write(filename:join(OutDir, "result.json"), Result),
         {Result, OutDir}
     after
@@ -265,6 +272,62 @@ dispatch({eunit_group, ModsStr}, _Ctx, Ctrl) ->
     end;
 dispatch(eunit_group, _Ctx, _Ctrl) ->
     erlang:error(eunit_group_requires_modlist).
+
+%% ---- 资源准备（纯 OTP + epgsql，直连项目配置的真实 PG） ----
+
+%% TALK_OWNED 合同（test/common/talk_record_owned_eunit_fixture.erl）：维护库的
+%% database COMMENT 为 marker、PG system_identifier 与 env 一致、RUN_ROOT 位于
+%% SCRATCH_ROOT 之下且全链无 symlink。legacy 入口从不提供这些变量（26 个 budgets
+%% 根在 legacy 中只能 owned_talk_missing_env 失败）；本入口在计时内自动准备，
+%% 使这些义务真实执行。失败 fail-closed（不以空环境假绿）。
+prepare_resources(Repo, Ctrl) ->
+    true = code:add_patha(filename:join(Repo, "deps/epgsql/ebin")),
+    {ok, _} = application:ensure_all_started(epgsql),
+    Base =
+        case os:getenv("EUNIT_CONFIG") of
+            false -> "config/sys.local";
+            B -> B
+        end,
+    Args = imboy_quality_fixture:pg_args_from_config(filename:join(Repo, Base ++ ".config")),
+    Maint = "imboy_quality_talk_owned_maint",
+    Marker = "IMBOY_ERLANG_QUALITY:talk_owned:maint",
+    {ok, C} = imboy_quality_fixture:connect(Args#{database => "postgres"}),
+    try
+        ok = imboy_quality_fixture:ensure_marked_database(C, Maint, Marker),
+        SysId = imboy_quality_fixture:system_identifier(C),
+        Scratch = filename:join(Ctrl, "runtime/talk_owned"),
+        Run = filename:join(Scratch, "run"),
+        ok = filelib:ensure_dir(filename:join(Run, "x")),
+        Env = [
+            {"TALK_OWNED_PG_HOST", maps:get(host, Args)},
+            {"TALK_OWNED_PG_PORT", integer_to_list(maps:get(port, Args))},
+            {"TALK_OWNED_PG_USER", maps:get(username, Args)},
+            {"TALK_OWNED_PG_PASSWORD", maps:get(password, Args)},
+            {"TALK_OWNED_MAINT_DB", Maint},
+            {"TALK_OWNED_PG_MARKER", Marker},
+            {"TALK_OWNED_PG_SYSTEM_ID", SysId},
+            {"TALK_OWNED_RUN_ROOT", Run},
+            {"TALK_OWNED_SCRATCH_ROOT", Scratch}
+        ],
+        Report = #{
+            <<"talk_owned">> => #{
+                <<"maint_db">> => list_to_binary(Maint),
+                <<"marker">> => list_to_binary(Marker),
+                <<"pg">> => list_to_binary(
+                    maps:get(host, Args) ++ ":" ++ integer_to_list(maps:get(port, Args))
+                ),
+                <<"system_id">> => list_to_binary(SysId),
+                <<"run_root">> => list_to_binary(Run)
+            }
+        },
+        #{env => Env, report => Report}
+    after
+        try
+            epgsql:close(C)
+        catch
+            _:_ -> ok
+        end
+    end.
 
 %% ---- full/group 辅助 ----
 
@@ -407,10 +470,6 @@ cleanup_worker_configs(Repo) ->
      || F <- filelib:wildcard(filename:join(Repo, "config/sys.quality.*"))
     ],
     ok.
-
-%% 保留：单份配置生成（兼容旧调用点）
-relay_config(Repo) ->
-    config_for_worker(Repo, 0).
 
 load_estimates(Ctrl) ->
     %% 优先读取上一次分片 per_root.term 的实测 wall_ms 作为 LPT 估计（无则保守 3000ms）

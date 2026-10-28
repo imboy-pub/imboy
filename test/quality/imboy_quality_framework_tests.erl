@@ -213,6 +213,55 @@ runner_cancel() ->
     ?assertEqual(test_failed, maps:get(exit, R)),
     ?assert(maps:get(cancel, maps:get(counts, R)) >= 1).
 
+%% ---------- 组模式流式落盘与有界 VM 轮换（SCHED05/SCHED08） ----------
+
+%% 流文件尾部截断（VM 死亡时最后一条不完整）必须被容忍：只返回完整事件。
+stream_read_truncated_test() ->
+    Path = filename:join(tmp_dir(), "trunc.stream"),
+    B1 = term_to_binary({start, a}),
+    B2 = term_to_binary({done, a, #{exit => ok}}),
+    ok = file:write_file(Path, [
+        integer_to_binary(byte_size(B1)),
+        $\n,
+        B1,
+        $\n,
+        integer_to_binary(byte_size(B2)),
+        $\n,
+        binary:part(B2, 0, byte_size(B2) - 3)
+    ]),
+    ?assertEqual({ok, [{start, a}]}, imboy_quality_runner:stream_read(Path)),
+    ?assertEqual({ok, []}, imboy_quality_runner:stream_read(Path ++ ".missing")).
+
+rotation_vm_killer_test_() ->
+    {timeout, 240, fun rotation_vm_killer/0}.
+
+%% 负向自测：组内一根直接终止 VM。期望：先行根结果从流恢复；致死根首次重试、
+%% 二次致死后永久排除并记 vm_killer；其余根在新 VM 完成；共 3 次 VM 尝试。
+rotation_vm_killer() ->
+    OutDir = tmp_dir(),
+    Mods = [
+        quality_fixture_pass_tests,
+        quality_fixture_vmkill_tests,
+        quality_fixture_fail_tests
+    ],
+    Opts = #{schedulers => 2, deadline_ms => 180000},
+    {PR, Rot} = imboy_quality_full:run_group_rotating(
+        7, Mods, Opts, [get(quality_fixture_path)], fun(_) -> undefined end, OutDir
+    ),
+    ?assertEqual(ok, maps:get(exit, maps:get(quality_fixture_pass_tests, PR))),
+    ?assertEqual(test_failed, maps:get(exit, maps:get(quality_fixture_fail_tests, PR))),
+    ?assertEqual(vm_killer, maps:get(exit, maps:get(quality_fixture_vmkill_tests, PR))),
+    ?assertEqual(ok, maps:get(exit, Rot)),
+    Attempts = maps:get(attempts, Rot),
+    ?assertEqual(3, length(Attempts)),
+    [A1, A2, A3] = Attempts,
+    ?assertEqual([quality_fixture_vmkill_tests], maps:get(inflight, A1)),
+    ?assertEqual([quality_fixture_vmkill_tests], maps:get(excluded_as_killer, A2)),
+    ?assertEqual(ok, maps:get(exit, A3)),
+    ?assert(filelib:is_regular(filename:join(OutDir, "group_7_try_1.stream"))),
+    %% 无自有残留 peer
+    ?assertEqual([], nodes()).
+
 %% ---------- 入口与递归边界（RUN12 部分） ----------
 
 no_recursion_test() ->
