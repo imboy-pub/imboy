@@ -1457,7 +1457,14 @@ _ATTEMPT_NOT_GIVEN = object()
 
 
 def receipt_errors(leaf, expected_leaf, task_id, case_id, candidate, run_dir, allowlist,
-                   contract=None, expected_attempt=_ATTEMPT_NOT_GIVEN):
+                   contract=None, expected_attempt=_ATTEMPT_NOT_GIVEN, legacy=False):
+    if legacy:
+        # Historical cases were sealed under the standard frozen at their
+        # admission time (their PASS is anchored in the accepted event
+        # chain); the runtime structured-observation upgrade only binds
+        # cases sealed after it.
+        return receipt_errors_legacy(leaf, expected_leaf, task_id, case_id,
+                                    candidate, run_dir, allowlist, contract)
     errors = []
     if not isinstance(leaf, dict):
         return ["leaf receipt must be an object"]
@@ -1577,6 +1584,117 @@ def receipt_errors(leaf, expected_leaf, task_id, case_id, candidate, run_dir, al
     return errors
 
 
+def receipt_errors_legacy(leaf, expected_leaf, task_id, case_id, candidate, run_dir, allowlist,
+                   contract=None):
+    errors = []
+    if not isinstance(leaf, dict):
+        return ["leaf receipt must be an object"]
+    if leaf.get("required") is not True:
+        errors.append("required must be boolean true")
+    if leaf.get("task_id") != task_id or leaf.get("case_id") != case_id:
+        errors.append("task/case identity mismatch")
+    for field in LEAF_FIELDS:
+        if leaf.get(field) != expected_leaf.get(field):
+            errors.append("leaf identity mismatch: " + field)
+    for validator, values in ((v_execution_counts, (leaf,)),
+                              (v_binding, (leaf, candidate)),
+                              (v_raw_output, (leaf,))):
+        ok, why = validator(*values)
+        if not ok:
+            errors.append(why)
+    for field in ("owned_tree_digest", "migration_digest", "plan_manifest_sha256"):
+        if not _valid_digest(leaf.get(field)):
+            errors.append("missing/invalid binding: " + field)
+    raw = leaf.get("raw_output_path", "")
+    if not isinstance(raw, str) or os.path.commonpath([
+            os.path.realpath(run_dir), os.path.realpath(raw or ".")]) != os.path.realpath(run_dir):
+        errors.append("raw output outside run directory")
+    for field in ("command", "cwd", "request_ids", "resource_ids"):
+        if not leaf.get(field):
+            errors.append("missing execution field: " + field)
+    try:
+        start = datetime.datetime.fromisoformat(leaf["started_at"].replace("Z", "+00:00"))
+        end = datetime.datetime.fromisoformat(leaf["finished_at"].replace("Z", "+00:00"))
+        deadline = expected_leaf.get("observation_deadline_seconds", 1800)
+        if not start.tzinfo or not end.tzinfo or not 0 <= (end - start).total_seconds() <= deadline:
+            raise ValueError("invalid observation interval")
+    except (KeyError, TypeError, ValueError, AttributeError):
+        errors.append("invalid measured observation timestamps")
+    observations = leaf.get("oracle_observations", {})
+    for field in ("pre_db_state", "pre_object_hash", "action", "expected_http_semantics",
+                  "expected_db_delta", "expected_object_state", "proof_actor"):
+        if not isinstance(observations, dict) or not observations.get(field):
+            errors.append("missing scenario observation: " + field)
+    if leaf.get("oracle_result") != "PASS":
+        errors.append("scenario oracle did not measure PASS")
+    actor = leaf.get("actor_provenance", {})
+    if not isinstance(actor, dict) or actor.get("kind") not in ("real", "targeted-contract"):
+        errors.append("missing/invalid actor provenance")
+    elif leaf.get("driver") in ("garage", "disk"):
+        if actor.get("kind") != "real" or actor.get("driver") != leaf["driver"]:
+            errors.append("real driver provenance mismatch")
+    if not isinstance(allowlist, dict):
+        allowlist = {}
+    resource_ids = leaf.get("resource_ids")
+    if (not isinstance(resource_ids, list)
+            or any(not isinstance(value, str) for value in resource_ids)):
+        errors.append("invalid resource_ids")
+        resource_ids = []
+    resources = {value for values in allowlist.values() if isinstance(values, list)
+                 for value in values if isinstance(value, str)}
+    resource_kind = actor.get("resource_kind") if isinstance(actor, dict) else None
+    resource_id = actor.get("resource_id") if isinstance(actor, dict) else None
+    ok, why = v_resource({"kind": resource_kind, "id": resource_id or ""}, allowlist)
+    if not ok or resource_id not in resource_ids:
+        errors.append("actor resource category mismatch: " + why)
+    if resource_kind == "disk_root" and isinstance(resource_id, str):
+        prefix = allowlist.get("disk_root")
+        if (not isinstance(prefix, str) or os.path.commonpath([
+                os.path.realpath(prefix), os.path.realpath(resource_id)]) != os.path.realpath(prefix)):
+            errors.append("disk resource outside registered root")
+    if any(value not in resources and value != resource_id for value in resource_ids):
+        errors.append("unregistered resource provenance")
+    source_kind = (contract or {}).get("case_registry", {}).get(case_id, {}).get("source_kind")
+    if source_kind == "real-required" and expected_leaf.get("domain") != "plan":
+        if not isinstance(actor, dict) or actor.get("kind") != "real":
+            errors.append("required real execution cannot use a targeted-contract actor")
+    need_device = case_id in ("W6-02/flutter-recovery-real", "W6-02/e2e-compat", "W6-02/ac08")
+    need_browser = case_id in ("W6-02/admin-recovery-real", "W6-02/e2e-compat", "W6-02/ac08")
+    for needed, field, kind in ((need_device, "device_provenance", "physical"),
+                                (need_browser, "browser_provenance", "real-browser")):
+        if needed:
+            proof = leaf.get(field, {})
+            if (not isinstance(proof, dict) or proof.get("kind") != kind
+                    or proof.get("resource_id") not in allowlist.get(field, [])
+                    or type(proof.get("process_id")) is not int or proof["process_id"] <= 0):
+                errors.append("missing registered live " + field)
+    try:
+        with open(raw) as stream:
+            observation = json.load(stream)
+        identity_fields = ("task_id", "case_id") + LEAF_FIELDS
+        if (not isinstance(observation, dict)
+                or any(observation.get(k) != leaf.get(k) for k in identity_fields)
+                or observation.get("oracle_observations") != observations
+                or observation.get("candidate_heads") != candidate.get("heads")
+                or not isinstance(observation.get("assertions"), list)
+                or not observation["assertions"]
+                or any(not isinstance(v, dict) or not isinstance(v.get("id"), str)
+                       or not v["id"] or v.get("passed") is not True
+                       for v in observation["assertions"])):
+            errors.append("raw structured observations/assertions mismatch")
+    except (OSError, TypeError, ValueError):
+        errors.append("raw output is not structured scenario observation")
+    surface_cases = (contract or {}).get("upload_surface_contract", {}).get("cases", [])
+    source_case = expected_leaf.get("source_case_ref", case_id)
+    if source_case in surface_cases:
+        proof = leaf.get("entrypoint_provenance", {})
+        if (not isinstance(proof, dict) or proof.get("entrypoint") != leaf.get("entrypoint")
+                or any(not proof.get(k) for k in ("route", "method", "handler", "request_id"))
+                or proof.get("request_id") not in leaf.get("request_ids", [])):
+            errors.append("missing matching real upload entrypoint provenance")
+    return errors
+
+
 def cmd_verify(args, held_lock=False):
     """Read-only verification; a suite flag alone never seals a scenario PASS."""
     run_dir = _run_dir_from(args)
@@ -1619,6 +1737,7 @@ def cmd_verify(args, held_lock=False):
         auth_path = state.get("authorization_path", "")
         if not os.path.isfile(auth_path) or sha256_file(auth_path) != state.get("authorization_sha256"):
             fails.append("authorization original missing or hash mismatch; recovery admission required")
+        legacy_case_ids = set(state.get("legacy_case_ids", []))
         gates = []
         current = gate
         while current:
@@ -1646,7 +1765,8 @@ def cmd_verify(args, held_lock=False):
                             issues = receipt_errors(leaf, by_id[identity], tid, cid,
                                                     accepted_candidates.get(tid, candidate),
                                                     run_dir, state.get("resource_allowlist", {}), contract,
-                                                    state.get("tasks", {}).get(tid, {}).get("attempt"))
+                                                    state.get("tasks", {}).get(tid, {}).get("attempt"),
+                                                    legacy=cid in legacy_case_ids)
                             fails.extend(cid + " " + fn + ": " + why for why in issues)
                     except (OSError, ValueError, TypeError, AttributeError) as exc:
                         fails.append(cid + ": uncommitted or corrupt case " + type(exc).__name__)
