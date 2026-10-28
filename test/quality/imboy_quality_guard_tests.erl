@@ -47,18 +47,19 @@ guard_all() ->
             end,
             lists:zip(
                 lists:seq(1, 5),
+                %% 违规样本同样拼接构造：语料字面量不得命中规则自身（自引用）
                 [
-                    <<"% eqwalizer:fixme\n">>,
-                    <<"-dialyzer(nowarn_function).\n">>,
-                    <<"-dialyzer({nowarn_function, f/0}).\n">>,
-                    <<"-dialyzer\n(\n{ nowarn_function, f/0}).\n">>,
-                    <<(binary:copy(<<"x">>, 200000))/binary, "eqwalizer:fixme">>
+                    <<"% eqwalizer", ":", "fixme\n">>,
+                    <<"-dialyzer", "(nowarn_function).\n">>,
+                    <<"-dialyzer", "({nowarn_function, f/0}).\n">>,
+                    <<"-dialyzer", "\n(\n{ nowarn_function, f/0}).\n">>,
+                    <<(binary:copy(<<"x">>, 200000))/binary, "eqwalizer", ":", "fixme">>
                 ]
             )
         ),
         %% GUARD06：含换行特殊路径
         Odd = filename:join(Repo, "odd\npath.erl"),
-        ok = file:write_file(Odd, <<"-module(odd).\n% eqwalizer:fixme\n">>),
+        ok = file:write_file(Odd, <<"-module(odd).\n% eqwalizer", ":fixme\n">>),
         OddC = commit(Repo, "suppression"),
         ?assertMatch(
             {error, {violations, [_ | _]}},
@@ -114,7 +115,7 @@ scan_added_test() ->
     [] = imboy_quality_guard:scan_added(<<"ok.erl">>, <<"ok() -> ok.">>),
     [_, _, _] = imboy_quality_guard:scan_added(
         <<"b.erl">>,
-        <<"% eqwalizer:fixme\n-dialyzer(nowarn_x).\n-dialyzer({nowarn_y}).\n">>
+        <<"% eqwalizer", ":fixme\n", "-dialyzer", "(nowarn_x).\n", "-dialyzer", "({nowarn_y}).\n">>
     ).
 
 git(Repo, Args) ->
