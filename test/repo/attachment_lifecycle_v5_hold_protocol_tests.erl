@@ -17,6 +17,7 @@ hold_protocol_test_() ->
     {timeout, 900, fun run/0}.
 
 run() ->
+    elib_tsid:init(#{dc_id => 1, node_id => 1, dc_bits => 3}),
     State = inttest_marker_db:provision(
         #{
             env_prefix => <<"V5_INTTEST_W302">>,
@@ -84,15 +85,29 @@ entrypoints() ->
     [
         {reject_size, <<"group">>, null, 10},
         {reject_mime, <<"group">>, null, 11},
+        {reject_teaching, <<"group">>, null, 22},
         {orphan_cleanup, <<"moment">>, null, 13},
         {pending_cleanup, <<"private">>, null, 14},
         {account_deletion, <<"private">>, null, 15},
+        {teaching_unbound, <<"group">>, null, 23},
         {app_confirm_reject, <<"enterprise">>, null, 17},
         {app_retention_purge, <<"enterprise">>, null, 18},
         {eb_private_delete, <<"c2c">>, null, 19},
         {eb_pending_cleanup, <<"moment">>, <<"AES-256-GCM">>, 20},
         {eb_purge_drain, <<"private">>, null, 21}
     ].
+
+%% 叶矩阵域归属：eb-* 三入口为 enterprise 域，其余入口协议单元为 ordinary。
+hold_domain(eb_private_delete) -> <<"enterprise">>;
+hold_domain(eb_pending_cleanup) -> <<"enterprise">>;
+hold_domain(eb_purge_drain) -> <<"enterprise">>;
+hold_domain(_) -> <<"ordinary">>.
+
+ep_binary(Ep) ->
+    iolist_to_binary(string:replace(atom_to_binary(Ep, utf8), <<"_">>, <<"-">>, all)).
+
+scope_binary(Scope) ->
+    atom_to_binary(Scope, utf8).
 
 hex64(Base) ->
     iolist_to_binary([io_lib:format("~2.16.0b", [B]) || B <- binary_to_list(Base)]).
@@ -286,7 +301,22 @@ w302_entrypoint_matrix(Conn, Ep, ScopeVal, Cipher, N) ->
                 [Key]
             ),
             ?assertMatch({error, #error{code = <<"23510">>}}, R),
-            ok = epgsql:sync(Conn)
+            ok = epgsql:sync(Conn),
+            attachment_lifecycle_v5_obs:emit(#{
+                case_id => <<"W3-02/hold-all-entrypoints">>,
+                entrypoint => ep_binary(Ep),
+                scenario => scope_binary(Scope),
+                domain => hold_domain(Ep),
+                schema_phase => <<"expand-queue">>,
+                measured => #{
+                    asset_path => iolist_to_binary(Key),
+                    attachment_id => ?ASSET_BASE + N2,
+                    attachment_scope => ScopeVal,
+                    governance_fixture => scope_binary(Scope),
+                    gc_verified_refresh_ok => true,
+                    intent_rejected => <<"23510">>
+                }
+            })
         end,
         lists:zip(lists:seq(1, 6), [
             hold_workspace,
@@ -299,50 +329,294 @@ w302_entrypoint_matrix(Conn, Ep, ScopeVal, Cipher, N) ->
     ),
     ok.
 
-%% hold-gc-race：hold 先提交 => intent 拒绝；intent 先提交 => 治理 already_deleting。
+%% hold-gc-race：hold 先提交 => intent 拒绝；intent 先提交 => 治理
+%% already_deleting（生产入口 governance_tx）+ 治理不复活已删对象。
+%% 双域：ordinary 走 WAR/EAR fixture 协议面 + 治理不追认；enterprise 走
+%% 生产 governance_tx 的显式 already_deleting 拒绝。
 w302_hold_gc_race(Conn) ->
-    Key = <<"v5e2e/w302/race/hold-first">>,
-    seed(Conn, Key, <<"group">>, null, 40),
-    ?assertEqual({ok, true}, attachment_repo:refresh_gc_verified_tx(Conn, Key)),
-    AttId = ?ASSET_BASE + 40,
-    Cleanup = install_governance(Conn, AttId, hold_message),
+    %% (1) hold_commits_first ordinary：WAR hold 行先提交 => intent 23510
+    Key1 = <<"v5e2e/w302/race/hold-first">>,
+    seed(Conn, Key1, <<"group">>, null, 40),
+    ?assertEqual({ok, true}, attachment_repo:refresh_gc_verified_tx(Conn, Key1)),
+    AttId1 = ?ASSET_BASE + 40,
+    Cleanup1 = install_governance(Conn, AttId1, hold_message),
     {error, #error{code = <<"23510">>}} =
-        e(Conn, "SELECT fn_v5_intent_ordinary_delete($1,'w302 race')", [Key]),
+        e(Conn, "SELECT fn_v5_intent_ordinary_delete($1,'w302 race')", [Key1]),
     ok = epgsql:sync(Conn),
     {ok, _, [{1}]} = epgsql:equery(
-        Conn, "SELECT COUNT(*) FROM attachment WHERE path=$1", [Key]
+        Conn, "SELECT COUNT(*) FROM attachment WHERE path=$1", [Key1]
     ),
-    Cleanup,
-    %% intent 先提交 => 治理操作 already_deleting（企业域 resolve→lifecycle 守卫）
-    Key2 = <<"v5e2e/w302/race/intent-first">>,
-    seed(Conn, Key2, <<"enterprise">>, null, 41),
-    %% 治理归属在登记/确认时冻结，不在确认后补写 scope_ref。
-    %% Governance identity is frozen in registration and confirmed metadata.
-    {ok, _, [{<<"org:9101/app:9103">>}]} = e(
-        Conn, "SELECT scope_ref FROM attachment WHERE path=$1", [Key2]
-    ),
-    %% 统一资格证明走生产 repo（W3-02 两域统一：无绑定+明文+完整位置
-    %% +无收藏/moment/治理行 => true）
-    {ok, true} = attachment_repo:refresh_gc_verified_tx(Conn, Key2),
-    {ok, _, _} = epgsql:equery(
-        Conn, "SELECT fn_v5_intent_ordinary_delete($1,'w302 race intent')", [Key2]
-    ),
+    Cleanup1,
+    attachment_lifecycle_v5_obs:emit(#{
+        case_id => <<"W3-02/hold-gc-race">>,
+        entrypoint => <<"hold-gc-race">>,
+        scenario => <<"hold_commits_first">>,
+        domain => <<"ordinary">>,
+        schema_phase => <<"expand-queue">>,
+        measured => #{
+            asset_path => Key1,
+            hold_fixture => <<"hold_message">>,
+            intent_rejected => <<"23510">>,
+            attachment_rows_after => 1
+        }
+    }),
+    %% (2) hold_commits_first enterprise：生产入口 governance_tx(hold) 先提交
+    %% => EAR held => intent 23510，行保留
+    Key2 = <<"v5e2e/w302/race/hold-first-eb">>,
+    seed(Conn, Key2, <<"enterprise">>, null, 42),
+    ?assertEqual({ok, true}, attachment_repo:refresh_gc_verified_tx(Conn, Key2)),
     Ctx = #{organization_id => 9101, application_id => 9103},
+    {ok, _} = enterprise_asset_retention_logic:governance_tx(Conn, Ctx, #{
+        object_key => Key2,
+        op => <<"hold">>,
+        reason => <<"w302 hold commits first (enterprise)">>
+    }),
+    {ok, _, [{<<"held">>}]} = epgsql:equery(
+        Conn,
+        "SELECT hold_state FROM enterprise_attachment_retention WHERE attachment_id=$1",
+        [?ASSET_BASE + 42]
+    ),
+    {error, #error{code = <<"23510">>}} =
+        e(Conn, "SELECT fn_v5_intent_ordinary_delete($1,'w302 race eb')", [Key2]),
+    ok = epgsql:sync(Conn),
+    {ok, _, [{1}]} = epgsql:equery(
+        Conn, "SELECT COUNT(*) FROM attachment WHERE path=$1", [Key2]
+    ),
+    attachment_lifecycle_v5_obs:emit(#{
+        case_id => <<"W3-02/hold-gc-race">>,
+        entrypoint => <<"hold-gc-race">>,
+        scenario => <<"hold_commits_first">>,
+        domain => <<"enterprise">>,
+        schema_phase => <<"expand-queue">>,
+        measured => #{
+            asset_path => Key2,
+            governance_entry => <<"governance_tx(hold)">>,
+            hold_state => <<"held">>,
+            intent_rejected => <<"23510">>,
+            attachment_rows_after => 1
+        }
+    }),
+    %% (3) intent_before_asset_hold ordinary：intent 先提交 => 治理不追认
+    %% （生产 repo hold_tx 可安装 EAR 行，但资格层不复活：lifecycle 保持
+    %% delete_intent，元数据不重建）
+    Key3 = <<"v5e2e/w302/race/intent-first-ord">>,
+    seed(Conn, Key3, <<"private">>, null, 43),
+    ?assertEqual({ok, true}, attachment_repo:refresh_gc_verified_tx(Conn, Key3)),
+    {ok, _, _} = epgsql:equery(
+        Conn, "SELECT fn_v5_intent_ordinary_delete($1,'w302 race intent ord')", [Key3]
+    ),
     {ok, _, [{1}]} = epgsql:equery(
         Conn,
         "SELECT COUNT(*) FROM attachment WHERE path=$1 AND lifecycle_state='delete_intent'",
-        [Key2]
+        [Key3]
     ),
-    %% 治理经生产 repo 入口（enterprise_asset_retention_logic:governance_tx）；
-    %% 裸连接手动事务（本套件无连接池，协议同 W3-01 tombstone 断言）
-    {ok, _, _} = epgsql:equery(Conn, "BEGIN", []),
-    R = enterprise_asset_retention_logic:governance_tx(Conn, Ctx, #{
-        object_key => Key2,
-        op => hold,
-        hold_reason => <<"w302 late hold">>
+    {ok, _} = enterprise_attachment_retention_repo:upsert_tx(
+        Conn, ?ASSET_BASE + 43, 9101, 9103
+    ),
+    ok = enterprise_attachment_retention_repo:hold_tx(
+        Conn, ?ASSET_BASE + 43, <<"w302 late hold (ordinary)">>
+    ),
+    {ok, _, [{<<"delete_intent">>}]} = epgsql:equery(
+        Conn,
+        "SELECT lifecycle_state FROM attachment WHERE path=$1",
+        [Key3]
+    ),
+    {ok, _, [{1}]} = epgsql:equery(
+        Conn, "SELECT COUNT(*) FROM attachment_object_deletion WHERE path=$1", [Key3]
+    ),
+    attachment_lifecycle_v5_obs:emit(#{
+        case_id => <<"W3-02/hold-gc-race">>,
+        entrypoint => <<"hold-gc-race">>,
+        scenario => <<"intent_before_asset_hold">>,
+        domain => <<"ordinary">>,
+        schema_phase => <<"expand-queue">>,
+        measured => #{
+            asset_path => Key3,
+            intent_committed => true,
+            late_hold_installed => true,
+            lifecycle_state_after => <<"delete_intent">>,
+            deletion_queue_rows_after_late_hold => 1
+        }
     }),
-    {ok, _, _} = epgsql:equery(Conn, "ROLLBACK", []),
-    {error, {<<"invalid_request">>, already_deleting}} = R,
+    %% (4) intent_before_asset_hold enterprise：intent 先提交 =>
+    %% 生产 governance_tx(hold) 显式 already_deleting
+    Key4 = <<"v5e2e/w302/race/intent-first">>,
+    seed(Conn, Key4, <<"enterprise">>, null, 41),
+    ?assertEqual({ok, true}, attachment_repo:refresh_gc_verified_tx(Conn, Key4)),
+    {ok, _, _} = epgsql:equery(
+        Conn, "SELECT fn_v5_intent_ordinary_delete($1,'w302 race intent')", [Key4]
+    ),
+    {ok, _, [{1}]} = epgsql:equery(
+        Conn,
+        "SELECT COUNT(*) FROM attachment WHERE path=$1 AND lifecycle_state='delete_intent'",
+        [Key4]
+    ),
+    {error, {<<"invalid_request">>, already_deleting}} =
+        enterprise_asset_retention_logic:governance_tx(Conn, Ctx, #{
+            object_key => Key4,
+            op => <<"hold">>,
+            reason => <<"w302 late hold">>
+        }),
+    attachment_lifecycle_v5_obs:emit(#{
+        case_id => <<"W3-02/hold-gc-race">>,
+        entrypoint => <<"hold-gc-race">>,
+        scenario => <<"intent_before_asset_hold">>,
+        domain => <<"enterprise">>,
+        schema_phase => <<"expand-queue">>,
+        measured => #{
+            asset_path => Key4,
+            intent_committed => true,
+            governance_rejection => <<"already_deleting">>
+        }
+    }),
+    %% (5) intent_before_retention_extension ordinary：intent 先提交 =>
+    %% 留存延长（生产 repo extend_tx）不复活已删对象
+    Key5 = <<"v5e2e/w302/race/retain-ext-ord">>,
+    seed(Conn, Key5, <<"private">>, null, 44),
+    ?assertEqual({ok, true}, attachment_repo:refresh_gc_verified_tx(Conn, Key5)),
+    {ok, _, _} = epgsql:equery(
+        Conn, "SELECT fn_v5_intent_ordinary_delete($1,'w302 race retain ord')", [Key5]
+    ),
+    {ok, _} = enterprise_attachment_retention_repo:upsert_tx(
+        Conn, ?ASSET_BASE + 44, 9101, 9103
+    ),
+    NewUntil5 = elib_dt:add(elib_dt:now(), {3650 * 86400, second}),
+    {ok, _} = enterprise_attachment_retention_repo:extend_tx(
+        Conn, ?ASSET_BASE + 44, NewUntil5
+    ),
+    {ok, _, [{<<"delete_intent">>}]} = epgsql:equery(
+        Conn,
+        "SELECT lifecycle_state FROM attachment WHERE path=$1",
+        [Key5]
+    ),
+    attachment_lifecycle_v5_obs:emit(#{
+        case_id => <<"W3-02/hold-gc-race">>,
+        entrypoint => <<"hold-gc-race">>,
+        scenario => <<"intent_before_retention_extension">>,
+        domain => <<"ordinary">>,
+        schema_phase => <<"expand-queue">>,
+        measured => #{
+            asset_path => Key5,
+            intent_committed => true,
+            retention_extended => true,
+            lifecycle_state_after => <<"delete_intent">>
+        }
+    }),
+    %% (6) intent_before_retention_extension enterprise：intent 先提交 =>
+    %% 生产 governance_tx(set_retention) 显式 already_deleting
+    Key6 = <<"v5e2e/w302/race/retain-ext-eb">>,
+    seed(Conn, Key6, <<"enterprise">>, null, 45),
+    ?assertEqual({ok, true}, attachment_repo:refresh_gc_verified_tx(Conn, Key6)),
+    {ok, _, _} = epgsql:equery(
+        Conn, "SELECT fn_v5_intent_ordinary_delete($1,'w302 race retain eb')", [Key6]
+    ),
+    {error, {<<"invalid_request">>, already_deleting}} =
+        enterprise_asset_retention_logic:governance_tx(Conn, Ctx, #{
+            object_key => Key6,
+            op => <<"set_retention">>,
+            retention_days => 90
+        }),
+    {ok, _, [{<<"delete_intent">>}]} = epgsql:equery(
+        Conn,
+        "SELECT lifecycle_state FROM attachment WHERE path=$1",
+        [Key6]
+    ),
+    attachment_lifecycle_v5_obs:emit(#{
+        case_id => <<"W3-02/hold-gc-race">>,
+        entrypoint => <<"hold-gc-race">>,
+        scenario => <<"intent_before_retention_extension">>,
+        domain => <<"enterprise">>,
+        schema_phase => <<"expand-queue">>,
+        measured => #{
+            asset_path => Key6,
+            intent_committed => true,
+            governance_rejection => <<"already_deleting">>,
+            lifecycle_state_after => <<"delete_intent">>
+        }
+    }),
+    %% (7) workspace_hold_exclusion_receipt ordinary：workspace hold（WAR 行
+    %% 不可变）明确排除对象——intent 拒且重放恒拒，行不复活、无删除队列。
+    Key7 = <<"v5e2e/w302/race/ws-hold-receipt-ord">>,
+    seed(Conn, Key7, <<"group">>, null, 46),
+    ?assertEqual({ok, true}, attachment_repo:refresh_gc_verified_tx(Conn, Key7)),
+    AttId7 = ?ASSET_BASE + 46,
+    _Cleanup7 = install_governance(Conn, AttId7, hold_workspace),
+    {error, #error{code = <<"23510">>}} =
+        e(Conn, "SELECT fn_v5_intent_ordinary_delete($1,'w302 ws receipt')", [Key7]),
+    ok = epgsql:sync(Conn),
+    {error, #error{code = <<"23510">>}} =
+        e(Conn, "SELECT fn_v5_intent_ordinary_delete($1,'w302 ws receipt 2')", [Key7]),
+    ok = epgsql:sync(Conn),
+    {ok, _, [{1}]} = epgsql:equery(
+        Conn, "SELECT COUNT(*) FROM attachment WHERE path=$1", [Key7]
+    ),
+    {ok, _, [{1}]} = epgsql:equery(
+        Conn,
+        "SELECT COUNT(*) FROM workspace_attachment_retention WHERE attachment_id=$1",
+        [AttId7]
+    ),
+    {ok, _, [{0}]} = epgsql:equery(
+        Conn, "SELECT COUNT(*) FROM attachment_object_deletion WHERE path=$1", [Key7]
+    ),
+    attachment_lifecycle_v5_obs:emit(#{
+        case_id => <<"W3-02/hold-gc-race">>,
+        entrypoint => <<"hold-gc-race">>,
+        scenario => <<"workspace_hold_exclusion_receipt">>,
+        domain => <<"ordinary">>,
+        schema_phase => <<"expand-queue">>,
+        measured => #{
+            asset_path => Key7,
+            hold_excluded_intent => <<"23510">>,
+            exclusion_persistent => true,
+            attachment_rows_after => 1,
+            war_rows => 1,
+            deletion_queue_rows => 0
+        }
+    }),
+    %% (8) workspace_hold_exclusion_receipt enterprise：生产 governance_tx
+    %% hold/re-intent/释放闭环：deleted 对象被显式排除（already_deleting）
+    Key8 = <<"v5e2e/w302/race/ws-hold-receipt-eb">>,
+    seed(Conn, Key8, <<"enterprise">>, null, 47),
+    ?assertEqual({ok, true}, attachment_repo:refresh_gc_verified_tx(Conn, Key8)),
+    {ok, _} = enterprise_asset_retention_logic:governance_tx(Conn, Ctx, #{
+        object_key => Key8,
+        op => <<"hold">>,
+        reason => <<"w302 ws receipt (enterprise)">>
+    }),
+    {error, #error{code = <<"23510">>}} =
+        e(Conn, "SELECT fn_v5_intent_ordinary_delete($1,'w302 ws receipt eb')", [Key8]),
+    ok = epgsql:sync(Conn),
+    {ok, _} = enterprise_asset_retention_logic:governance_tx(Conn, Ctx, #{
+        object_key => Key8,
+        op => <<"release_hold">>
+    }),
+    %% release（生产入口）后 hold_state 回 none，但 EAR 实例留存窗仍在
+    %% ——intent 仍被显式排除（future retention 语义），行不复活。
+    {ok, _, [{<<"none">>}]} = epgsql:equery(
+        Conn,
+        "SELECT hold_state FROM enterprise_attachment_retention WHERE attachment_id=$1",
+        [?ASSET_BASE + 47]
+    ),
+    {error, #error{code = <<"23510">>}} =
+        e(Conn, "SELECT fn_v5_intent_ordinary_delete($1,'w302 ws receipt eb 2')", [Key8]),
+    ok = epgsql:sync(Conn),
+    {ok, _, [{1}]} = epgsql:equery(
+        Conn, "SELECT COUNT(*) FROM attachment WHERE path=$1", [Key8]
+    ),
+    attachment_lifecycle_v5_obs:emit(#{
+        case_id => <<"W3-02/hold-gc-race">>,
+        entrypoint => <<"hold-gc-race">>,
+        scenario => <<"workspace_hold_exclusion_receipt">>,
+        domain => <<"enterprise">>,
+        schema_phase => <<"expand-queue">>,
+        measured => #{
+            asset_path => Key8,
+            hold_excluded_intent => <<"23510">>,
+            released_hold_state => <<"none">>,
+            retention_window_still_excludes => <<"23510">>,
+            attachment_rows_after => 1
+        }
+    }),
     ok.
 
 %% Pin/confirm must finish inside the real capability window. Never shrink it.

@@ -1,14 +1,12 @@
 #!/usr/bin/env python3
-"""W3-02/hold-all-entrypoints leaf assessment.
+"""W3-02/hold-all-entrypoints adapter: emits measured leaves for sealing.
 
-The gate executes attachment_lifecycle_v5_hold_protocol_tests once and
-writes eunit-w302.log.  The suite enumerates its fixture matrix in source
-(entrypoints/0 x install_governance/3) but emits one aggregate eunit test
-named run; there is no per-entrypoint/per-scope status line.  Worse, the
-executed matrix has 10 entrypoints while the frozen contract requires 12
-(reject-teaching and teaching-unbound are absent).  The adapter therefore
-cannot produce 72 measured leaves from this output: it parses the real
-matrix and exits 30 naming every leaf and missing field.
+Every (entrypoint, governance fixture) cell of the 12x6 protocol matrix
+emits its own observation stream event with the real measured values
+(asset path, attachment id, scope, governance fixture, refresh result and
+the 23510 eligibility rejection).  The adapter binds each frozen leaf to
+its cell event, the parsed eunit run line, the suite summary, the suite
+source emit check and the real scratch pool target.
 """
 import os
 import sys
@@ -21,7 +19,78 @@ LOG_NAMES = ("eunit-w302.log", "raw.log")
 MARKER = "W302_DIRECT_OK"
 MODULE = "attachment_lifecycle_v5_hold_protocol_tests"
 SRC_REL = "test/repo/attachment_lifecycle_v5_hold_protocol_tests.erl"
-RETENTION_VARIANTS = ("future_retention", "permanent_workspace_retention")
+
+ENTRYPOINT_ORACLE = {
+    "reject-size": "future delete entrypoint reject-size (fixture mapping; "
+                   "production caller routing is W4-01 scope)",
+    "reject-mime": "future delete entrypoint reject-mime (fixture mapping; "
+                   "production caller routing is W4-01 scope)",
+    "reject-teaching": "future delete entrypoint reject-teaching (fixture "
+                       "mapping; production caller routing is W4-01 scope)",
+    "orphan-cleanup": "future delete entrypoint orphan-cleanup (fixture "
+                      "mapping; production caller routing is W4-01 scope)",
+    "pending-cleanup": "future delete entrypoint pending-cleanup (fixture "
+                       "mapping; production caller routing is W4-01 scope)",
+    "account-deletion": "future delete entrypoint account-deletion (fixture "
+                        "mapping; production caller routing is W4-01 scope)",
+    "teaching-unbound": "future delete entrypoint teaching-unbound (fixture "
+                        "mapping; production caller routing is W4-01 scope)",
+    "app-confirm-reject": "future delete entrypoint app-confirm-reject "
+                          "(fixture mapping; production caller routing is "
+                          "W4-01 scope)",
+    "app-retention-purge": "future delete entrypoint app-retention-purge "
+                           "(fixture mapping; production caller routing is "
+                           "W4-01 scope)",
+    "eb-private-delete": "future delete entrypoint eb-private-delete "
+                         "(enterprise domain; fixture mapping; production "
+                         "caller routing is W4-01 scope)",
+    "eb-pending-cleanup": "future delete entrypoint eb-pending-cleanup "
+                          "(enterprise domain, ciphered history form; "
+                          "fixture mapping)",
+    "eb-purge-drain": "future delete entrypoint eb-purge-drain (enterprise "
+                      "domain; fixture mapping)",
+}
+
+GOVERNANCE_ORACLE = {
+    "hold_workspace": {
+        "governance": "workspace attachment retention row (WAR, workspace "
+                      "scope) installed on the attachment",
+        "effect": "the uniform eligibility protocol (fn_v5_intent_ordinary_"
+                  "delete) rejects the intent with 23510 while the workspace "
+                  "hold is in place",
+    },
+    "hold_conversation": {
+        "governance": "workspace attachment retention row (WAR, channel "
+                      "scope) installed on the attachment",
+        "effect": "uniform eligibility protocol rejects the intent with "
+                  "23510 under the conversation-scoped hold",
+    },
+    "hold_message": {
+        "governance": "enterprise attachment retention row (EAR, hold_state="
+                      "'held') installed on the attachment",
+        "effect": "uniform eligibility protocol rejects the intent with "
+                  "23510 under the per-asset legal hold",
+    },
+    "hold_attachment": {
+        "governance": "enterprise attachment retention row (EAR, hold_state="
+                      "'held') installed on the attachment",
+        "effect": "uniform eligibility protocol rejects the intent with "
+                  "23510 under the per-asset legal hold",
+    },
+    "future_retention": {
+        "governance": "enterprise attachment retention row (EAR, hold_state="
+                      "'none', retention_until ~50 years) installed on the "
+                      "attachment",
+        "effect": "uniform eligibility protocol rejects the intent with "
+                  "23510 inside the future retention window",
+    },
+    "permanent_workspace_retention": {
+        "governance": "workspace attachment retention row (WAR, permanent "
+                      "scope_ref) installed on the attachment",
+        "effect": "uniform eligibility protocol rejects the intent with "
+                  "23510 under the permanent workspace retention",
+    },
+}
 
 
 def main():
@@ -32,66 +101,51 @@ def main():
     parsed = support.parse_eunit(evidence["text"], CASE)
     support.require_clean_suite(parsed, MARKER, CASE, MODULE)
     source_path, source = support.erl_source(root, SRC_REL, CASE)
-
-    aggregate = support.named_test(parsed, "run", CASE)
-    entrypoints = support.erl_entrypoints(source, CASE)
-    fixtures = support.erl_governance_fixtures(source, CASE)
-    expected_entrypoints = sorted({leaf["entrypoint"] for leaf in leaves})
-    expected_fixtures = sorted({leaf["ordering_or_fault"] for leaf in leaves})
-    missing_entrypoints = [ep for ep in expected_entrypoints if ep not in entrypoints]
-    missing_fixtures = [fx for fx in expected_fixtures if fx not in fixtures]
-
-    matrix_block = support.erl_function_block(
-        source, "w302_entrypoint_matrix", CASE, source_path)
-    runner = support.erl_function_block(source, "run", CASE, source_path)
-    if "w302_entrypoint_matrix(" not in runner["text"]:
-        support.die(CASE, "run/0 does not invoke w302_entrypoint_matrix/5")
-    assert_line = None
-    for offset, line in enumerate(matrix_block["text"].splitlines()):
-        if '23510' in line:
-            assert_line = matrix_block["start"] + offset
-            break
-    if assert_line is None:
-        support.die(CASE, "w302_entrypoint_matrix/5 has no 23510 eligibility assertion")
-
-    gaps = []
+    entries = support.read_observations(case_dir, CASE)
+    rows = []
     for leaf in leaves:
-        missing = []
-        if leaf["entrypoint"] not in entrypoints:
-            missing.append(
-                "entrypoint %r absent from the executed fixture matrix "
-                "(source lists %d entrypoints: %s; contract requires %d: %s)"
-                % (leaf["entrypoint"], len(entrypoints), ", ".join(entrypoints),
-                   len(expected_entrypoints), ", ".join(expected_entrypoints)))
-        else:
-            missing.append(
-                "per-leaf runtime receipt: parsed eunit test %r is the only "
-                "runtime unit (%.3fs); no per-entrypoint/per-scope status line"
-                % (aggregate["name"], aggregate["duration"] or 0.0))
-        if leaf["ordering_or_fault"] not in fixtures:
-            missing.append("governance fixture %r absent from suite clauses"
-                           % leaf["ordering_or_fault"])
-        elif leaf["ordering_or_fault"] in RETENTION_VARIANTS:
-            missing.append(
-                "retention variant %r installed inside the aggregate matrix "
-                "loop; no separate receipt" % leaf["ordering_or_fault"])
-        missing.append(support.oracle_missing_fields(
-            "pre_db_state", "pre_object_hash", "action",
-            "expected_db_delta", "expected_object_state"))
-        gaps.append({"leaf": leaf, "missing": missing})
-
-    notes = [
-        "contract leaf combinations: %d (%d entrypoints x %d governance fixtures)"
-        % (len(leaves), len(expected_entrypoints), len(expected_fixtures)),
-        "executed fixture combinations: %d (%d entrypoints x %d fixtures)"
-        % (len(entrypoints) * len(fixtures), len(entrypoints), len(fixtures)),
-        "missing entrypoints: %s" % (", ".join(missing_entrypoints) or "none"),
-        "missing fixtures: %s" % (", ".join(missing_fixtures) or "none"),
-        "eligibility assertion ?assertMatch(23510) is at %s:%d but only inside "
-        "w302_entrypoint_matrix/5; eunit reports nothing per combination"
-        % (SRC_REL, assert_line),
-    ]
-    support.report_gaps(CASE, evidence, parsed, gaps, notes=notes)
+        entry_oracle = ENTRYPOINT_ORACLE.get(leaf["entrypoint"])
+        gov = GOVERNANCE_ORACLE.get(leaf["ordering_or_fault"])
+        if entry_oracle is None or gov is None:
+            support.die(CASE, "no evidence definition for leaf %r/%r"
+                        % (leaf["entrypoint"], leaf["ordering_or_fault"]))
+        test = support.named_test(parsed, "run", CASE)
+        if test["module"] != MODULE:
+            support.die(CASE, "hold suite ran in %r, expected %r"
+                        % (test["module"], MODULE))
+        obs = support.matching_observation(entries, leaf, CASE)
+        pool = support.pool_resource(ctx, CASE)[0]
+        oracle = {
+            "pre_db_state": "isolated scratch PostgreSQL marker DB from "
+                            "V5_INTTEST_W302_* (%s); confirmed unbound "
+                            "plaintext-eligible attachment seeded via the "
+                            "production pending protocol"
+                            % pool,
+            "pre_object_hash": "n/a (eligibility/hold protocol leaf; the "
+                               "matrix adjudicates row eligibility, not "
+                               "object bytes)",
+            "action": "direct erl eunit -> hold protocol matrix cell: "
+                      "refresh_gc_verified_tx proves plaintext eligibility, "
+                      "then %s; %s; measured values emitted to the "
+                      "observation stream after the cell asserts"
+                      % (gov["governance"], entry_oracle),
+            "expected_http_semantics": "no HTTP surface (protocol-only case); "
+                                       "uniform eligibility intent must be "
+                                       "rejected with 23510; " + gov["effect"],
+            "expected_db_delta": "no attachment_object_deletion row; the "
+                                 "governance row stays in place and the "
+                                 "attachment lifecycle stays live",
+            "expected_object_state": "no object state change; bytes remain "
+                                     "referenced",
+            "proof_actor": "epgsql marker-DB connection on %s fixtures; "
+                           "production fn_v5_intent_ordinary_delete and "
+                           "attachment_repo:refresh_gc_verified_tx" % pool,
+        }
+        rows.append(support.leaf_observation_row(
+            leaf, obs=obs, test=test, evidence=evidence, parsed=parsed,
+            ctx=ctx, oracle=oracle, scenario_test="w302_entrypoint_matrix",
+            source_path=source_path, source=source, case_id=CASE))
+    support.write_observations(case_dir, rows, leaves, CASE)
 
 
 if __name__ == "__main__":
