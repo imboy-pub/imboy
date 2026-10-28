@@ -29,6 +29,30 @@ ORDINARY = {
     "new_url_cannot_bypass_gateway": ["pin_no_url_columns"],
     "frozen_internal_signature_expiry": ["pin_frozen_signature_expiry"],
 }
+# Per-scenario EB-chain rows emitted by the ebp section (ebpin_seat /
+# ebpin_widget): the seat chain pins through fn_v5_pin_eb_content on a
+# dedicated 64-hex fixture row, the widget chain freezes the declaration
+# tuple at register time, and each entry keeps its own no-url-columns row.
+EB_PIN_NAMES = {
+    "first_content_pin": ["ebp_first_content"],
+    "two_different_payloads_race": ["ebp_race"],
+    "same_payload_retry": ["ebp_retry"],
+    "pin_commit_unknown_no_put": ["ebp_persisted"],
+    "pin_commit_recovered_same_hash": ["ebp_recovered"],
+    "body_path_swap_rejected": ["ebp_swap"],
+    "new_url_cannot_bypass_gateway": ["ebp_no_url_columns"],
+    "frozen_internal_signature_expiry": ["ebp_frozen_sig"],
+}
+EBW_PIN_NAMES = {
+    "first_content_pin": ["ebw_first_content"],
+    "two_different_payloads_race": ["ebw_race"],
+    "same_payload_retry": ["ebw_retry"],
+    "pin_commit_unknown_no_put": ["ebw_persisted"],
+    "pin_commit_recovered_same_hash": ["ebw_recovered"],
+    "body_path_swap_rejected": ["ebw_swap"],
+    "new_url_cannot_bypass_gateway": ["ebw_no_url_columns"],
+    "frozen_internal_signature_expiry": ["ebw_frozen_sig"],
+}
 SURFACE = {
     "ordinary": ("pin", "ordinary"),
     "enterprise_internal": ("pin", "internal"),
@@ -135,11 +159,10 @@ def build():
         else:
             if entrypoint == "ordinary":
                 names = ORDINARY.get(scenario)
-            elif scenario == "new_url_cannot_bypass_gateway":
-                names = (["ebp_no_url_columns"] if entrypoint == "enterprise_seat"
-                         else ["ebw_no_url_columns"])
             else:
-                names = None
+                names = (EB_PIN_NAMES.get(scenario)
+                         if entrypoint == "enterprise_seat"
+                         else EBW_PIN_NAMES.get(scenario))
             if not names:
                 if entrypoint in ("enterprise_seat", "cs_widget"):
                     gaps.add("%s: scenario=%s has no per-scenario EB-chain "
