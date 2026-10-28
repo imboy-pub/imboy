@@ -288,3 +288,27 @@ c2g_msg_id_at_database_limit_passes_test_() ->
         },
         ?assertMatch({ok, _}, message_ds:validate_message(Msg))
     end).
+
+peer_id_integer_and_decimal_string_acceptance_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        lists:foreach(
+            fun(Type) ->
+                lists:foreach(
+                    fun({From, To}) ->
+                        Msg = #{
+                            <<"id">> => <<"synthetic-peer-id">>,
+                            <<"type">> => Type,
+                            <<"from">> => From,
+                            <<"to">> => To,
+                            <<"msg_type">> => <<"text">>,
+                            <<"e2ee">> => null,
+                            <<"payload">> => #{}
+                        },
+                        ?assertMatch({ok, _}, message_ds:validate_message(Msg))
+                    end,
+                    [{100, 200}, {<<"9007199254740993">>, <<"9007199254740995">>}]
+                )
+            end,
+            [<<"C2C">>, <<"C2G">>]
+        )
+    end).
