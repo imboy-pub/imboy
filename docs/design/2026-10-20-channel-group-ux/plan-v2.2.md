@@ -904,3 +904,6 @@ W00 静态准入出口（2026-10-27T18:54:58+08:00）：按 §8.2，三端 HEAD/
 - main 已有 `00000231_user_dnd_rule_time_zone`，本任务迁移合并时顺延：创建 receipt=232、查看水位=233、偏好世代=234；上文旧编号仅是历史候选记录。编号/成对门通过（既有199断档告警保留），合成库内按新文件 down/up、与231 DND共存及结构断言 exit=0，整个事务最终 ROLLBACK；这不证明生产升级、真实迁移账本重放或回退安全，旧合成库账本不能冒充新编号迁移通过。
 - App v36 两分支文件完全相同（不重编号），本任务仍为 v37。App W12 定向 53/53 exit=0；D6与W11最终候选仍须以本轮末次测试及提交日志为准。证据目录 `/tmp/imboy-v22-codex-handoff-7LZCre/`，历史绿灯不迁用到合并候选。
 - W13/J 正式验收维持 NOT_RUN/BLOCKED；真机、双设备、混部/回退、最终全量与发布资格未完成，全部新合同 manifest 未声明。此次本地提交/合并不授权启用新合同、push、部署或生产迁移。
+- 暂停收口结果：Backend 合并提交 `80b24aa5`，App 在途 `8b2c67626`（W12）、`ecd236d5a`（D6保护展示与W11上下文/真实seq分页），App 合并提交 `ab5b43eb2`。两仓 main 均已回合至任务分支，正常 pre-commit/commit-msg 钩子通过；App 合并后定向 96/96、SQLite迁移门 13 PASS/0 FAIL/0 BLOCKED，exit=0（`app-merged-focused.log`、`app-merged-migration-v2.log`）。W12另有53项定向通过，均不代表J父项或真机通过。
+- Backend 合并后组合定向 exit=2：115通过、0失败、0跳过，但 W11 PG setup 被取消（要求迁移head=234，现有隔离合成库账本仍为旧233）。未修改账本或套件断言制造通过；恢复时须重新准备按最终编号升级的隔离合成库再验，本轮不关闭该门。App整仓分析曾exit=1（36条问题，包含本轮随后修复的6条类型告警及既有/测试info）；最终提交钩子分析通过且保留conversation_provider一条info，不能记为整仓零问题。Admin未改，既有deadcode强制门失败不在本轮扩修。
+- 接手主仓另有已完成同树提交遗留的 cherry-pick 状态：确认与main树和patch-id相同后仅quit元数据，未reset或改写内容。Backend main原有16份未跟踪文件逐项保护，其中阻挡合并的两份plan-v1/v2原件移至证据目录的 `main-before-merge/imboy/preserved-plan-files/`；其余原位保留。全部agent已冻结关闭；本条证据补录提交并同步后按用户要求暂停，未授权操作不执行。
