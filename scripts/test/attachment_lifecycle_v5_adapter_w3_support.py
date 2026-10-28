@@ -23,12 +23,14 @@ ORACLE_FIELDS = C.ORACLE_FIELDS
 
 ANSI = re.compile(r"\x1b\[[0-9;]*m")
 TEST_BEGIN = re.compile(
-    r"^\s*([a-z][a-z0-9_]*):\s*(?:(\d+):\s*)?([a-z][a-z0-9_]*)(?:\s+\([^)]*\))?\.\.\.(.*)$")
+    r"^\s*([a-z][a-z0-9_]*):\s*(?:(\d+):\s*)?"
+    r"(-?[a-z][a-z0-9_/.-]*?)(?:\s+\([^)]*\))?\.\.\.(.*)$")
 TEST_END = re.compile(r"^(?:\[([0-9.]+) s\] )?ok\s*$")
 TIMING = re.compile(r"^\[([0-9.]+) s\] ok")
 SUMMARY = re.compile(
     r"^\s*(?:All (\d+) tests passed\.|(\d+) tests passed\.|Test passed\.)\s*$")
 DONE_IN = re.compile(r"\[done in ([0-9.]+) s\]")
+DONE_LINE = re.compile(r"^\[?done in [0-9.]+ s\]?$")
 MARKER_RE = re.compile(r"\bW3[0-9][0-9]_DIRECT_OK\b")
 FAILURE = re.compile(r"\*failed\*|\*did not run\*|Failed:\s*\d+|Internal error:")
 ENTERPRISE_SCOPE = '<<"enterprise">>'
@@ -134,6 +136,18 @@ def parse_eunit(text, case_id):
                     "module": pending["module"], "name": pending["name"], "ok": True,
                     "duration": float(end.group(1)) if end.group(1) else None,
                     "line": pending["line"], "raw": pending["begin"],
+                })
+                pending = None
+                continue
+            # An application banner (sync etc.) can interrupt the per-test
+            # line so heavily that eunit's module-level "[done in X s]"
+            # becomes the only terminator on a later line (W3-01 app-heavy
+            # logs); that still measures the test as passed.
+            if DONE_LINE.match(line.strip()):
+                tests.append({
+                    "module": pending["module"], "name": pending["name"], "ok": True,
+                    "duration": None, "line": pending["line"],
+                    "raw": pending["begin"],
                 })
                 pending = None
                 continue
