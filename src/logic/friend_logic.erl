@@ -163,15 +163,26 @@ confirm_friend(_, _, undefined, _) ->
     {error, <<"Parameter error">>, <<"to">>};
 confirm_friend(_, _, _, undefined) ->
     {error, <<"Parameter error">>, <<"payload">>};
-confirm_friend(_MsgId, CurrentUid, From, Payload) when
-    is_integer(CurrentUid), is_binary(From), is_binary(Payload)
+confirm_friend(MsgId, CurrentUid, From, Payload) when
+    is_binary(MsgId), is_integer(CurrentUid), is_binary(From), is_binary(Payload)
 ->
     confirm_friend(CurrentUid, From, integer_to_binary(CurrentUid), Payload);
 confirm_friend(CurrentUid, From, To, Payload) ->
-    FromBin = ec_cnv:to_binary(From),
-    ToBin = ec_cnv:to_binary(To),
-    FromID = ec_cnv:to_integer(From),
-    ToID = ec_cnv:to_integer(To),
+    case {confirm_id(From), confirm_id(To)} of
+        %% 第二元以已绑定的 CurrentUid 做相等匹配：To 规范化后须等于确认人本人，
+        %% 否则落入下方 to 参数错误分支（确认人只能确认发给自己的申请）。
+        {{ok, FromID}, {ok, CurrentUid}} when is_integer(CurrentUid), CurrentUid > 0 ->
+            confirm_friend_authorized(CurrentUid, Payload, FromID);
+        {{error, _}, _} ->
+            {error, <<"Parameter error">>, <<"from">>};
+        _ ->
+            {error, <<"Parameter error">>, <<"to">>}
+    end.
+
+confirm_friend_authorized(CurrentUid, Payload, FromID) ->
+    FromBin = integer_to_binary(FromID),
+    ToBin = integer_to_binary(CurrentUid),
+    ToID = CurrentUid,
     %% T3.4 余项：accept gating — 仅当存在 From→To pending(status=0) 申请时可确认；
     %% 否则拒 no_pending_request（落地「无 pending 申请时拒绝 accept」语义）。
     Pending = friend_agg:rehydrate(#{
@@ -183,8 +194,18 @@ confirm_friend(CurrentUid, From, To, Payload) ->
         {error, no_pending_request} ->
             {error, <<"no_pending_request">>, <<"无待确认的好友申请"/utf8>>};
         {ok, _AccF, _AccEv} ->
-            confirm_friend_do(CurrentUid, From, To, Payload, FromBin, ToBin, FromID, ToID)
+            confirm_friend_do(CurrentUid, FromBin, ToBin, Payload, FromBin, ToBin, FromID, ToID)
     end.
+
+confirm_id(Id) when is_integer(Id), Id > 0, Id =< 9223372036854775807 ->
+    {ok, Id};
+confirm_id(Id) when is_binary(Id), byte_size(Id) > 0, byte_size(Id) =< 19 ->
+    case lists:all(fun(D) -> D >= $0 andalso D =< $9 end, binary_to_list(Id)) of
+        true -> confirm_id(binary_to_integer(Id));
+        false -> {error, invalid_id}
+    end;
+confirm_id(_) ->
+    {error, invalid_id}.
 
 %% @doc confirm_friend 主体（accept gating 通过后执行）：写双向好友关系 +
 %% 发确认消息 + tag + cache flush。From→To 行经 confirm_friend upsert 由

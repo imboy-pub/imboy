@@ -409,7 +409,7 @@ confirm_friend_success_test_() ->
                                                                     end}
                                                                 ],
                                                                 fun() ->
-                                                                    CurrentUid = 200,
+                                                                    CurrentUid = 10002,
                                                                     From = <<"10001">>,
                                                                     To = <<"10002">>,
                                                                     Payload = <<"{}">>,
@@ -546,7 +546,7 @@ confirm_friend_with_tags_test_() ->
                                                                             end}
                                                                         ],
                                                                         fun() ->
-                                                                            CurrentUid = 200,
+                                                                            CurrentUid = 10002,
                                                                             From =
                                                                                 <<"10001">>,
                                                                             To = <<"10002">>,
@@ -805,6 +805,47 @@ information_with_nonexistent_user_test_() ->
 %% ===================================================================
 
 %% confirm_friend：无 pending 申请（none）→ friend_agg:accept 拒 no_pending_request
+confirm_friend_restricts_recipient_and_ids_test_() ->
+    ?WITH_MECK(
+        friend_ds,
+        [{'pending_status', 2, fun(_, _) -> none end}],
+        fun() ->
+            Payload = <<"{}">>,
+            lists:foreach(
+                fun({Actor, From, To, Field}) ->
+                    ?assertEqual(
+                        {error, <<"Parameter error">>, Field},
+                        friend_logic:confirm_friend(Actor, From, To, Payload)
+                    )
+                end,
+                [
+                    {3, <<"1">>, <<"2">>, <<"to">>},
+                    {3, 1, <<"2">>, <<"to">>},
+                    {1, <<"1">>, <<"2">>, <<"to">>},
+                    {2, <<"1.0">>, <<"2">>, <<"from">>},
+                    {2, 0, <<"2">>, <<"from">>},
+                    {2, <<"1">>, <<"2.0">>, <<"to">>},
+                    {2, <<"1">>, 2.0, <<"to">>},
+                    {2, <<"1">>, <<"9223372036854775808">>, <<"to">>}
+                ]
+            ),
+            ?assertNot(meck:called(friend_ds, pending_status, '_')),
+            ?assertMatch(
+                {error, <<"no_pending_request">>, _},
+                friend_logic:confirm_friend(2, 1, <<"2">>, Payload)
+            ),
+            ?assertMatch(
+                {error, <<"no_pending_request">>, _},
+                friend_logic:confirm_friend(2, <<"1">>, 2, Payload)
+            ),
+            ?assertMatch(
+                {error, <<"no_pending_request">>, _},
+                friend_logic:confirm_friend(<<"af_1_2">>, 2, <<"1">>, Payload)
+            ),
+            ?assertEqual(3, meck:num_calls(friend_ds, pending_status, [1, 2]))
+        end
+    ).
+
 confirm_friend_without_pending_returns_error_test_() ->
     ?WITH_MECK(
         friend_ds,
