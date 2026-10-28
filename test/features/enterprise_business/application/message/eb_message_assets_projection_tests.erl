@@ -40,9 +40,12 @@ cases({ok, _Conn}) ->
         {timeout, 90, fun cross_tenant_assets_never_leak/0},
         {timeout, 90, fun post_append_echoes_bound_assets/0},
         {timeout, 90, fun post_replay_echoes_same_assets/0},
+        {timeout, 90, fun enterprise_replay_echoes_same_assets/0},
         {timeout, 90, fun one_invalid_asset_all_rollback/0},
+        {timeout, 90, fun second_asset_bind_failure_rolls_back_first/0},
         {timeout, 90, fun cross_org_and_workspace_bind_rejected/0},
         {timeout, 90, fun wrong_owner_bind_rejected/0},
+        {timeout, 90, fun cs_wrong_owner_bind_rejected/0},
         {timeout, 60, fun query_count_is_constant_per_page/0},
         {timeout, 60, fun frozen_sql_shape_gates/0}
     ];
@@ -226,9 +229,74 @@ post_replay_echoes_same_assets() ->
             key_ref => ?FIX:key_ref(1),
             accepted_at => now_secs()
         },
+        InitialVersion = asset_version(Org, Ws, U1),
         {ok, First} = eb_message_app:append_message(Org, Params),
+        BoundVersion = asset_version(Org, Ws, U1),
+        ?assertEqual(InitialVersion + 1, BoundVersion),
         {ok, Replay} = eb_message_app:append_message(Org, Params),
+        ?assertEqual(BoundVersion, asset_version(Org, Ws, U1)),
+        ?assertEqual(false, maps:get(replayed, First)),
         ?assertEqual(true, maps:get(replayed, Replay)),
+        ?assertEqual(maps:get(message_id, First), maps:get(message_id, Replay)),
+        ?assertEqual(1, message_count(Org, Ws, <<"csbe01-replay-1">>)),
+        ?assertEqual(0, unbound_count(Org, Ws, U1)),
+        ?assertEqual(1, bound_count(Org, Ws, U1, maps:get(message_id, First))),
+        ?assertEqual([U1], [
+            maps:get(id, Asset)
+         || Asset <-
+                maps:get(assets, maps:get(message, First))
+        ]),
+        ?assertEqual(
+            maps:get(assets, maps:get(message, First)),
+            maps:get(assets, maps:get(message, Replay))
+        )
+    after
+        ?FIX:cleanup(Scope)
+    end.
+
+enterprise_replay_echoes_same_assets() ->
+    Scope = ?FIX:new_scope(),
+    try
+        {Org, Ws} = tenant(Scope),
+        Conv = maps:get(conversation_id, Scope),
+        Actor = maps:get(actor_user_id, Scope),
+        U1 = ?FIX:id(),
+        ok = seed_unbound_asset(
+            Org,
+            Ws,
+            Conv,
+            U1,
+            <<"enterprise-replay.txt">>,
+            #{uploader => Actor}
+        ),
+        Params = #{
+            workspace_id => Ws,
+            conversation_id => Conv,
+            client_msg_id => <<"csbe03-enterprise-replay-1">>,
+            sender_type => business_identity,
+            identity_id => maps:get(sales_identity_id, Scope),
+            actor_user_id => Actor,
+            asset_ids => [U1],
+            key_ref => ?FIX:key_ref(1),
+            accepted_at => now_secs()
+        },
+        InitialVersion = asset_version(Org, Ws, U1),
+        {ok, First} = eb_message_app:append_message(Org, Params),
+        BoundVersion = asset_version(Org, Ws, U1),
+        ?assertEqual(InitialVersion + 1, BoundVersion),
+        {ok, Replay} = eb_message_app:append_message(Org, Params),
+        ?assertEqual(BoundVersion, asset_version(Org, Ws, U1)),
+        ?assertEqual(false, maps:get(replayed, First)),
+        ?assertEqual(true, maps:get(replayed, Replay)),
+        ?assertEqual(maps:get(message_id, First), maps:get(message_id, Replay)),
+        ?assertEqual(1, message_count(Org, Ws, <<"csbe03-enterprise-replay-1">>)),
+        ?assertEqual(0, unbound_count(Org, Ws, U1)),
+        ?assertEqual(1, bound_count(Org, Ws, U1, maps:get(message_id, First))),
+        ?assertEqual([U1], [
+            maps:get(id, Asset)
+         || Asset <-
+                maps:get(assets, maps:get(message, First))
+        ]),
         ?assertEqual(
             maps:get(assets, maps:get(message, First)),
             maps:get(assets, maps:get(message, Replay))
@@ -250,8 +318,9 @@ one_invalid_asset_all_rollback() ->
         Base = ?FIX:id(),
         U1 = Base,
         U2 = Base + 1,
-        ok = seed_unbound_asset(Org, Ws, Conv, U1, <<"好资产.png"/utf8>>),
-        ok = seed_unbound_asset(Org, Ws, Conv, U2, <<"墓碑资产.png"/utf8>>),
+        Actor = maps:get(actor_user_id, Scope),
+        ok = seed_unbound_asset(Org, Ws, Conv, U1, <<"好资产.png"/utf8>>, #{uploader => Actor}),
+        ok = seed_unbound_asset(Org, Ws, Conv, U2, <<"墓碑资产.png"/utf8>>, #{uploader => Actor}),
         %% U2 已进删除意图：02 §5「删除意图先提交 → 不再允许新增引用」
         ok =
             ?FIX:exec(
@@ -262,7 +331,9 @@ one_invalid_asset_all_rollback() ->
                 >>,
                 [Org, Ws, U2]
             ),
-        {error, _} = append_with_assets(Scope, <<"csbe03-rollback-1">>, [U1, U2]),
+        Version1 = asset_version(Org, Ws, U1),
+        Version2 = asset_version(Org, Ws, U2),
+        {error, _} = append_enterprise_with_assets(Scope, <<"csbe03-rollback-1">>, [U1, U2]),
         %% canonical 单事务整体回滚：消息不存在、两个资产均未绑定
         ?assertEqual(
             false,
@@ -277,9 +348,49 @@ one_invalid_asset_all_rollback() ->
         ),
         ?assertEqual(1, unbound_count(Org, Ws, U1)),
         ?assertEqual(1, unbound_count(Org, Ws, U2)),
+        ?assertEqual(Version1, asset_version(Org, Ws, U1)),
+        ?assertEqual(Version2, asset_version(Org, Ws, U2)),
         %% 墓碑资产单独也不可绑；好资产可正常绑定（资格只挡墓碑）
-        {error, _} = append_with_assets(Scope, <<"csbe03-rollback-2">>, [U2]),
-        {ok, _} = append_with_assets(Scope, <<"csbe03-rollback-3">>, [U1])
+        {error, _} = append_enterprise_with_assets(Scope, <<"csbe03-rollback-2">>, [U2]),
+        {ok, Valid} = append_enterprise_with_assets(Scope, <<"csbe03-rollback-3">>, [U1]),
+        ?assertEqual(1, bound_count(Org, Ws, U1, maps:get(message_id, Valid))),
+        ?assertEqual(Version1 + 1, asset_version(Org, Ws, U1)),
+        ?assertEqual(1, unbound_count(Org, Ws, U2)),
+        ?assertEqual(Version2, asset_version(Org, Ws, U2))
+    after
+        ?FIX:cleanup(Scope)
+    end.
+
+second_asset_bind_failure_rolls_back_first() ->
+    Scope = ?FIX:new_scope(),
+    try
+        {Org, Ws} = tenant(Scope),
+        Conv = maps:get(conversation_id, Scope),
+        First = ?FIX:id(),
+        Second = First + 1,
+        Actor = maps:get(actor_user_id, Scope),
+        ok = seed_unbound_asset(Org, Ws, Conv, First, <<"first.png">>, #{uploader => Actor}),
+        ok = seed_unbound_asset(Org, Ws, Conv, Second, <<"second.png">>, #{uploader => Actor}),
+        %% The second real UPDATE overflows after the first bind, without persistent DDL.
+        ok = ?FIX:exec(
+            <<
+                "UPDATE enterprise_asset SET version=2147483647"
+                " WHERE organization_id=$1 AND workspace_id=$2 AND id=$3"
+            >>,
+            [Org, Ws, Second]
+        ),
+        FirstVersion = asset_version(Org, Ws, First),
+        SecondVersion = asset_version(Org, Ws, Second),
+        ?assertEqual(2147483647, SecondVersion),
+        ?assertMatch(
+            {error, {sql, <<"22003">>, _}},
+            append_enterprise_with_assets(Scope, <<"csbe03-mid-bind-fault">>, [First, Second])
+        ),
+        ?assertEqual(0, message_count(Org, Ws, <<"csbe03-mid-bind-fault">>)),
+        ?assertEqual(1, unbound_count(Org, Ws, First)),
+        ?assertEqual(1, unbound_count(Org, Ws, Second)),
+        ?assertEqual(FirstVersion, asset_version(Org, Ws, First)),
+        ?assertEqual(SecondVersion, asset_version(Org, Ws, Second))
     after
         ?FIX:cleanup(Scope)
     end.
@@ -291,6 +402,7 @@ cross_org_and_workspace_bind_rejected() ->
         Conv = maps:get(conversation_id, Scope),
         OtherOrg = maps:get(other_org_id, Scope),
         OtherWs = maps:get(other_workspace_id, Scope),
+        Ws = maps:get(workspace_id, Scope),
         Foreign1 = ?FIX:id(),
         %% 他 org 资产（conversation 属其自身租户：FK 复合键 org/ws/conv）
         ok = seed_asset_row(
@@ -302,9 +414,12 @@ cross_org_and_workspace_bind_rejected() ->
             null,
             #{file_name => <<"他org.png"/utf8>>}
         ),
-        {error, _} = append_with_assets(Scope, <<"csbe03-xorg-1">>, [Foreign1]),
+        ForeignVersion = asset_version(OtherOrg, OtherWs, Foreign1),
+        {error, not_found} = append_with_assets(Scope, <<"csbe03-xorg-1">>, [Foreign1]),
         %% 零副作用：消息不存在、外部资产仍 unbound
+        ?assertEqual(0, message_count(Org, Ws, <<"csbe03-xorg-1">>)),
         ?assertEqual(1, unbound_count(OtherOrg, OtherWs, Foreign1)),
+        ?assertEqual(ForeignVersion, asset_version(OtherOrg, OtherWs, Foreign1)),
         %% wrong_workspace：请求 workspace 与 org 不一致（workspace 属另一 org）
         %% ——tenant 归属门在触库前拒绝
         {error, _} =
@@ -319,7 +434,9 @@ cross_org_and_workspace_bind_rejected() ->
                 key_ref => ?FIX:key_ref(1),
                 accepted_at => now_secs()
             }),
-        ?assertEqual(0, message_count(Org, OtherWs, <<"csbe03-xws-1">>))
+        ?assertEqual(0, message_count(Org, OtherWs, <<"csbe03-xws-1">>)),
+        ?assertEqual(1, unbound_count(OtherOrg, OtherWs, Foreign1)),
+        ?assertEqual(ForeignVersion, asset_version(OtherOrg, OtherWs, Foreign1))
     after
         ?FIX:cleanup(Scope)
     end.
@@ -368,12 +485,55 @@ wrong_owner_bind_rejected() ->
         ?FIX:cleanup(Scope)
     end.
 
+cs_wrong_owner_bind_rejected() ->
+    Scope = ?FIX:new_scope(),
+    try
+        {Org, Ws} = tenant(Scope),
+        Conv = maps:get(conversation_id, Scope),
+        Peer = maps:get(peer_user_id, Scope),
+        AssetId = ?FIX:id(),
+        ok = seed_unbound_asset(
+            Org,
+            Ws,
+            Conv,
+            AssetId,
+            <<"member-owned.png">>,
+            #{uploader => Peer}
+        ),
+        Version = asset_version(Org, Ws, AssetId),
+        {error, not_found} = append_with_assets(Scope, <<"csbe03-contact-owner-1">>, [AssetId]),
+        ?assertEqual(0, message_count(Org, Ws, <<"csbe03-contact-owner-1">>)),
+        ?assertEqual(1, unbound_count(Org, Ws, AssetId)),
+        ?assertEqual(Version, asset_version(Org, Ws, AssetId))
+    after
+        ?FIX:cleanup(Scope)
+    end.
+
 unbound_count(Org, Ws, AssetId) ->
     ?FIX:scalar(
         <<
             "SELECT COUNT(*) FROM enterprise_asset"
             " WHERE organization_id=$1 AND workspace_id=$2 AND id=$3"
             " AND message_id IS NULL"
+        >>,
+        [Org, Ws, AssetId]
+    ).
+
+bound_count(Org, Ws, AssetId, MessageId) ->
+    ?FIX:scalar(
+        <<
+            "SELECT COUNT(*) FROM enterprise_asset"
+            " WHERE organization_id=$1 AND workspace_id=$2 AND id=$3"
+            " AND message_id=$4"
+        >>,
+        [Org, Ws, AssetId, MessageId]
+    ).
+
+asset_version(Org, Ws, AssetId) ->
+    ?FIX:scalar(
+        <<
+            "SELECT version FROM enterprise_asset"
+            " WHERE organization_id=$1 AND workspace_id=$2 AND id=$3"
         >>,
         [Org, Ws, AssetId]
     ).
@@ -504,6 +664,20 @@ append_with_assets(Scope, ClientMsgId, AssetIds) ->
         body => <<>>,
         sender_type => contact,
         contact_id => maps:get(contact_id, Scope),
+        asset_ids => AssetIds,
+        key_ref => ?FIX:key_ref(1),
+        accepted_at => now_secs()
+    }).
+
+append_enterprise_with_assets(Scope, ClientMsgId, AssetIds) ->
+    eb_message_app:append_message(maps:get(org_id, Scope), #{
+        workspace_id => maps:get(workspace_id, Scope),
+        conversation_id => maps:get(conversation_id, Scope),
+        client_msg_id => ClientMsgId,
+        body => <<>>,
+        sender_type => business_identity,
+        identity_id => maps:get(sales_identity_id, Scope),
+        actor_user_id => maps:get(actor_user_id, Scope),
         asset_ids => AssetIds,
         key_ref => ?FIX:key_ref(1),
         accepted_at => now_secs()

@@ -63,6 +63,9 @@ tests(#{conn := Conn}) ->
         %% C 并发
         {timeout, 120, ?_test(t_race_bind_wins_then_intent_rejected(Conn))},
         {timeout, 120, ?_test(t_race_intent_wins_then_bind_tombstoned(Conn))},
+        {timeout, 120, ?_test(t_cleanup_waits_for_reference_lock(Conn))},
+        {timeout, 120, ?_test(t_retry_waits_for_identity_lock(Conn))},
+        {timeout, 120, ?_test(t_concurrent_multi_asset_cleanup(Conn))},
         %% D 拼接
         {timeout, 60, ?_test(t_cross_record_attachment_rejected(Conn))},
         {timeout, 60, ?_test(t_cross_scope_attachment_rejected(Conn))},
@@ -438,6 +441,195 @@ t_capture_mismatch_rejected(Conn) ->
 %% ===================================================================
 %% E 其他引用保留
 %% ===================================================================
+
+t_cleanup_waits_for_reference_lock(Conn) ->
+    ?F:reset_business_data(),
+    ?F:seed_world(Conn),
+    #{path := Path} = ?F:insert_attachment(Conn, #{id => 5502, record_id => 1001}),
+    ?F:insert_pending_confirmed(Conn, Path, 5502),
+    ok = fill_storage_location(Conn, 5502),
+    {ok, _, true} = ?F:tx(Conn, fun(_) ->
+        talk_record_attachment_adapter:bind_audio_part_tx(Conn, 1, 1001, 2001, 3502, 5502)
+    end),
+    Other = ?F:connect(),
+    try
+        {ok, _, [{Pid}]} = epgsql:equery(Other, "SELECT pg_backend_pid()", []),
+        {ok, _, _} = epgsql:equery(Other, "SET statement_timeout='10s'", []),
+        {ok, _, _} = epgsql:equery(Conn, "BEGIN", []),
+        {ok, _, _} = epgsql:equery(
+            Conn,
+            "SELECT pg_advisory_xact_lock(hashtextextended($1,168))",
+            [Path]
+        ),
+        Parent = self(),
+        spawn(fun() ->
+            Result =
+                try
+                    ?F:tx(Other, fun(C) ->
+                        talk_record_attachment_adapter:request_record_cleanup_tx(C, 1001)
+                    end)
+                catch
+                    Class:Reason -> {Class, Reason}
+                end,
+            Parent ! {cleanup_result, Result}
+        end),
+        wait_cleanup_lock(Conn, Pid, 100),
+        ?assertEqual(ok, attachment_repo:bind_reference_lock_tx(Conn, Path)),
+        {ok, _, _} = epgsql:equery(Conn, "COMMIT", []),
+        receive
+            {cleanup_result, {ok, #{outcomes := [#{outcome := intended}]}}} -> ok;
+            {cleanup_result, Unexpected} -> error({unexpected_cleanup_result, Unexpected})
+        after 12000 -> error(cleanup_timeout)
+        end
+    after
+        try
+            epgsql:equery(Conn, "ROLLBACK", [])
+        catch
+            _:_ -> ok
+        end,
+        ?F:close(Other)
+    end.
+
+t_retry_waits_for_identity_lock(Conn) ->
+    ?F:reset_business_data(),
+    ?F:seed_world(Conn),
+    #{path := Path} = ?F:insert_attachment(Conn, #{id => 5503, record_id => 1001}),
+    ?F:insert_pending_confirmed(Conn, Path, 5503),
+    ok = fill_storage_location(Conn, 5503),
+    {ok, _, true} = ?F:tx(Conn, fun(_) ->
+        talk_record_attachment_adapter:bind_audio_part_tx(Conn, 1, 1001, 2001, 3503, 5503)
+    end),
+    {ok, 1, _, [{Revision, Generation}]} = epgsql:equery(
+        Conn,
+        "UPDATE talk_record SET deleted_at=now(),cleanup_status='failed' WHERE id=1001"
+        " RETURNING revision,cleanup_generation",
+        []
+    ),
+    Other = ?F:connect(),
+    try
+        {ok, _, [{Pid}]} = epgsql:equery(Other, "SELECT pg_backend_pid()", []),
+        {ok, _, _} = epgsql:equery(Other, "SET statement_timeout='10s'", []),
+        {ok, _, _} = epgsql:equery(Conn, "BEGIN", []),
+        {ok, _, _} = epgsql:equery(
+            Conn,
+            "SELECT fn_v5_lock_identity(storage_driver,storage_namespace,storage_container,path)"
+            " FROM attachment WHERE path=$1",
+            [Path]
+        ),
+        Parent = self(),
+        spawn(fun() ->
+            Parent !
+                {retry_result,
+                    epgsql:equery(
+                        Other,
+                        "SELECT fn_talk_record_cleanup_retry(1,1001,$1,$2,'lock-test',$3,'test',900001)",
+                        [Revision, Generation, binary:copy(<<"a">>, 64)]
+                    )}
+        end),
+        wait_cleanup_lock(Conn, Pid, 100),
+        {ok, _, [_]} = epgsql:equery(Conn, "SELECT id FROM attachment WHERE path=$1 FOR UPDATE", [
+            Path
+        ]),
+        {ok, _, _} = epgsql:equery(Conn, "COMMIT", []),
+        receive
+            {retry_result, {ok, _, [{Result}]}} ->
+                ?assertNotEqual(nomatch, binary:match(Result, <<"cleanup_protected">>));
+            {retry_result, Unexpected} ->
+                error({unexpected_retry_result, Unexpected})
+        after 12000 -> error(retry_timeout)
+        end
+    after
+        try
+            epgsql:equery(Conn, "ROLLBACK", [])
+        catch
+            _:_ -> ok
+        end,
+        ?F:close(Other)
+    end.
+
+t_concurrent_multi_asset_cleanup(Conn) ->
+    ?F:reset_business_data(),
+    ?F:seed_world(Conn),
+    Paths = lists:map(
+        fun({AttachmentId, PartId}) ->
+            #{path := Path} = ?F:insert_attachment(Conn, #{id => AttachmentId, record_id => 1001}),
+            ?F:insert_pending_confirmed(Conn, Path, AttachmentId),
+            ok = fill_storage_location(Conn, AttachmentId),
+            {ok, _, true} = ?F:tx(Conn, fun(_) ->
+                talk_record_attachment_adapter:bind_audio_part_tx(
+                    Conn, 1, 1001, 2001, PartId, AttachmentId
+                )
+            end),
+            Path
+        end,
+        [{5504, 3504}, {5505, 3505}]
+    ),
+    Other = ?F:connect(),
+    try
+        {ok, _, [{Pid}]} = epgsql:equery(Other, "SELECT pg_backend_pid()", []),
+        {ok, _, _} = epgsql:equery(Other, "SET statement_timeout='10s'", []),
+        {ok, _, _} = epgsql:equery(Conn, "BEGIN", []),
+        {ok, #{released := 2, outcomes := First}} =
+            talk_record_attachment_adapter:request_record_cleanup_tx(Conn, 1001),
+        ?assertEqual([intended, intended], lists:sort([maps:get(outcome, X) || X <- First])),
+        Parent = self(),
+        spawn(fun() ->
+            Result =
+                try
+                    ?F:tx(Other, fun(C) ->
+                        talk_record_attachment_adapter:request_record_cleanup_tx(C, 1001)
+                    end)
+                catch
+                    Class:Reason -> {Class, Reason}
+                end,
+            Parent ! {multi_cleanup_result, Result}
+        end),
+        wait_cleanup_lock(Conn, Pid, 100),
+        {ok, _, _} = epgsql:equery(Conn, "COMMIT", []),
+        receive
+            {multi_cleanup_result, {ok, #{released := 0, outcomes := Second}}} ->
+                ?assertEqual(
+                    [tombstone, tombstone],
+                    lists:sort([maps:get(outcome, X) || X <- Second])
+                );
+            {multi_cleanup_result, Unexpected} ->
+                error({unexpected_multi_cleanup, Unexpected})
+        after 12000 -> error(multi_cleanup_timeout)
+        end,
+        lists:foreach(
+            fun(Path) ->
+                {ok, _, [{1}]} = epgsql:equery(
+                    Conn,
+                    "SELECT count(*) FROM attachment_object_deletion WHERE path=$1",
+                    [Path]
+                )
+            end,
+            Paths
+        )
+    after
+        try
+            epgsql:equery(Conn, "ROLLBACK", [])
+        catch
+            _:_ -> ok
+        end,
+        ?F:close(Other)
+    end.
+
+wait_cleanup_lock(_Conn, _Pid, 0) ->
+    error(cleanup_did_not_wait_for_lock);
+wait_cleanup_lock(Conn, Pid, Left) ->
+    {ok, _, [{Waiting}]} = epgsql:equery(
+        Conn,
+        "SELECT EXISTS(SELECT 1 FROM pg_stat_activity WHERE pid=$1 AND wait_event_type='Lock')",
+        [Pid]
+    ),
+    case Waiting of
+        true ->
+            ok;
+        false ->
+            timer:sleep(50),
+            wait_cleanup_lock(Conn, Pid, Left - 1)
+    end.
 
 t_retained_by_other_reference_collect(Conn) ->
     ?F:reset_business_data(),

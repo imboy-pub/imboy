@@ -185,7 +185,7 @@ EDOC_OPTS = {doclet, edown_doclet}
 ifdef t
 EUNIT_TEST_SPEC = (fun() -> lists:append([$1]) end)()
 else
-EUNIT_TEST_SPEC = (fun() -> Excl = [elib_tsid, agent_grant_pg, agent_run_pg, agent_grant_pg_tests, agent_recovery_pg_tests, agent_run_pg_tests, agent_tool_authorizer_pg_tests, cs_pg_widget, cs_seat_console_pg_tests, imboy_hird_acceptance_tests, imboy_hird_replay_offline_tests, agent_hird_mini_spike_tests, imboy_hird_p1_auth_tool_tests, imboy_hird_gates_tests, imboy_hird_p2_replay_tests, imboy_hird_p3_compare_tests, talk_record_cleanup_retry_pg_checks, talk_record_delete_tests, attachment_lifecycle_v5_w403_gateway_protocol_tests, attachment_lifecycle_v5_w403_driver_matrix_tests, attachment_ordinary_http_protocol_tests, eb_asset_frozen_storage_protocol_tests, enterprise_asset_driver_pg_tests, attachment_pending_location_pg_tests, message_result_pg_tests, group_schedule_remind_pg_tests], Mods = lists:append([$1]), [talk_record_owned_eunit_fixture:entry(M) || M <- Mods, not lists:member(M, Excl)] end)()
+EUNIT_TEST_SPEC = (fun() -> Excl = [elib_tsid, agent_grant_pg, agent_run_pg, agent_grant_pg_tests, agent_recovery_pg_tests, agent_run_pg_tests, agent_tool_authorizer_pg_tests, cs_pg_widget, cs_seat_console_pg_tests, imboy_hird_acceptance_tests, imboy_hird_replay_offline_tests, agent_hird_mini_spike_tests, imboy_hird_p1_auth_tool_tests, imboy_hird_gates_tests, imboy_hird_p2_replay_tests, imboy_hird_p3_compare_tests, talk_record_cleanup_retry_pg_checks, talk_record_delete_tests, attachment_lifecycle_v5_w403_gateway_protocol_tests, attachment_lifecycle_v5_w403_driver_matrix_tests, attachment_ordinary_http_protocol_tests, eb_asset_frozen_storage_protocol_tests, enterprise_asset_driver_pg_tests, attachment_pending_location_pg_tests, message_result_pg_tests, group_schedule_remind_pg_tests, moment_delete_atomic_pg_tests], Mods = lists:append([$1]), [talk_record_owned_eunit_fixture:entry(M) || M <- Mods, not lists:member(M, Excl)] end)()
 endif
 
 # BUILD-00R 后端物理裁剪接线：生成器按 manifest 产出未被选中 feature 的专属
@@ -603,18 +603,8 @@ docs-stop:
 #       make eunit-local t=elib_uri_tests   # 单模块
 # 前置: 本地 imboy_v1 schema 须已应用到最新迁移，否则 imboy_app:start/2 的
 #       imboy_migrate:migrate/0 会 {out_of_order, ...} 使 app 启动失败。
-# worktree 兼容：code:lib_dir/priv_dir 的 lib 位注册要求 code path 中 ebin 的
-# 父目录名与 app 同名（imboy/ebin）。git worktree 根名是 rg-*，-pa ebin 注册不了
-# lib 位 → code:priv_dir(imboy) bad_name → imboy app 启动即崩
-# （ensure_dev_rsa_keypair / imboy_migrate 均依赖 priv_dir），?TEST_WITH_DB 全
-# skip。补 -pa imboy/ebin：worktree 内 `ln -s . imboy` 后 lib 位可解析；主树无
-# imboy/ 子目录，该 -pa 指向不存在目录被 erl 静默忽略，零副作用。
-# R2-1（2026-09-29）：手工 `ln -s . imboy` 在新 worktree 里必然缺席（F-R1 实证：
-# eb_tenant_handler_tests 因 {terminology_priv_dir_error,bad_name} 全套件
-# no_pool），改为 eunit-local 目标内自动创建/自动清理（rm -f imboy 在 rc 捕获后
-# 立即执行，成功失败都清，不落 git status）。application:load 救不了 lib 位：
-# OTP 的 code:lib_dir(App) 扫描的是 code path 上「名为 <App> 的目录下的 ebin」，
-# 与 app 是否已 load 无关（实证：load ok 后 lib_dir 仍 bad_name）。
+# OTP requires a code path under a directory named imboy; use a private alias outside
+# the worktree so existing files named imboy are never replaced or removed.
 .PHONY: eunit-local
 # EUNIT_CONFIG 可覆盖配置文件（默认 config/sys.local）：CI 无 sys.local.config，
 # 物化 sys.config 后以 EUNIT_CONFIG=config/sys 传同口径全量（见 backend-ci.yml）。
@@ -654,7 +644,25 @@ eunit-local:
 	@# 生成 <EUNIT_CONFIG>.config 的端口替换副本（$(EUNIT_RELAY_CONF).config，
 	@# 不落 git；文件名按调用唯一，防并发 eunit 互相覆写）；
 	@# 无 python3 或配置里没有目标端口时自动退回直连，行为与旧版一致。
-	@if command -v python3 >/dev/null 2>&1 && [ "$(EUNIT_USE_RELAY)" != "0" ] && [ -f "$(EUNIT_CONFIG).config" ] \
+	@alias_root=$$(mktemp -d "$${TMPDIR:-/tmp}/imboy-eunit.XXXXXXXX") || exit 1; \
+	ln -s "$$(pwd -P)" "$$alias_root/imboy" || { rmdir "$$alias_root"; exit 1; }; \
+	relay_pid=; \
+	cleanup() { \
+	  if [ -n "$$relay_pid" ]; then \
+	    exec 3>&-; \
+	    n=0; \
+	    while kill -0 "$$relay_pid" 2>/dev/null; do \
+	      if [ "$$n" -ge 100 ]; then \
+	        echo "ERROR: relay supervisor did not exit; diagnostics retained at $$alias_root" >&2; return 1; \
+	      fi; \
+	      n=$$((n + 1)); sleep 0.1; \
+	    done; \
+	    wait "$$relay_pid" || { echo "ERROR: relay supervisor failed; diagnostics retained at $$alias_root" >&2; return 1; }; \
+	  fi; \
+	  rm -f $(EUNIT_RELAY_CONF).config "$$alias_root/relay.fifo" "$$alias_root/imboy"; rmdir "$$alias_root"; \
+	}; \
+	trap 'cleanup || exit 1' EXIT; \
+	if command -v python3 >/dev/null 2>&1 && [ "$(EUNIT_USE_RELAY)" != "0" ] && [ -f "$(EUNIT_CONFIG).config" ] \
 	     && grep -q "$(EUNIT_RELAY_TARGET)" "$(EUNIT_CONFIG).config"; then \
 	  sed -e "s/$(EUNIT_RELAY_TARGET)/$(EUNIT_RELAY_PORT)/g" \
 	      -e "s/{http_port, 9800}/{http_port, $(EUNIT_HTTP_PORT)}/" \
@@ -662,18 +670,14 @@ eunit-local:
 	      "$(EUNIT_CONFIG).config" \
 	    > $(EUNIT_RELAY_CONF).config; \
 	  echo "== EUNIT PG RELAY: 127.0.0.1:$(EUNIT_RELAY_PORT) -> 127.0.0.1:$(EUNIT_RELAY_TARGET) (http $(EUNIT_HTTP_PORT)/adm $(EUNIT_HTTP_ADM_PORT)) =="; \
-	  ( while true; do python3 test/common/pg_relay.py $(EUNIT_RELAY_PORT) $(EUNIT_RELAY_TARGET); sleep 1; done ) & \
+	  mkfifo "$$alias_root/relay.fifo" || exit 1; \
+	  exec 3<>"$$alias_root/relay.fifo" || exit 1; \
+	  python3 test/common/pg_relay_supervisor.py "$$alias_root/relay.fifo" $(EUNIT_RELAY_PORT) $(EUNIT_RELAY_TARGET) 3>&- & \
 	  relay_pid=$$!; \
-	  sleep 1; \
-	  ln -sfn . imboy; \
+	  sleep 1 3>&-; \
 	  IMBOYENV=local $(MAKE) eunit IMBOY_EUNIT_INNER=1 $(if $(t),t=$(t)) ERL="$(EUNIT_ERL)" \
-	    EUNIT_ERL_OPTS="-config $(EUNIT_RELAY_CONF) -pa imboy/ebin -pa ebin -pa test"; \
+	    EUNIT_ERL_OPTS="-config $(EUNIT_RELAY_CONF) -pa $$alias_root/imboy/ebin -pa ebin -pa test" 3>&-; \
 	  rc=$$?; \
-	  rm -f imboy; \
-	  pkill -P $$relay_pid 2>/dev/null; \
-	  kill $$relay_pid 2>/dev/null; \
-	  pkill -f "^python3 test/common/pg_relay.py $(EUNIT_RELAY_PORT) $(EUNIT_RELAY_TARGET)$$" 2>/dev/null; \
-	  rm -f $(EUNIT_RELAY_CONF).config; \
 	  exit $$rc; \
 	else \
 	  sed -e "s/{http_port, 9800}/{http_port, $(EUNIT_HTTP_PORT)}/" \
@@ -681,12 +685,9 @@ eunit-local:
 	      "$(EUNIT_CONFIG).config" \
 	    > $(EUNIT_RELAY_CONF).config; \
 	  echo "== EUNIT PG DIRECT: $(EUNIT_RELAY_TARGET) (http $(EUNIT_HTTP_PORT)/adm $(EUNIT_HTTP_ADM_PORT), EUNIT_USE_RELAY=0) =="; \
-	  ln -sfn . imboy; \
 	  IMBOYENV=local $(MAKE) eunit IMBOY_EUNIT_INNER=1 $(if $(t),t=$(t)) ERL="$(EUNIT_ERL)" \
-	    EUNIT_ERL_OPTS="-config $(EUNIT_RELAY_CONF) -pa imboy/ebin -pa ebin -pa test"; \
+	    EUNIT_ERL_OPTS="-config $(EUNIT_RELAY_CONF) -pa $$alias_root/imboy/ebin -pa ebin -pa test"; \
 	  rc=$$?; \
-	  rm -f imboy; \
-	  rm -f $(EUNIT_RELAY_CONF).config; \
 	  exit $$rc; \
 	fi
 
