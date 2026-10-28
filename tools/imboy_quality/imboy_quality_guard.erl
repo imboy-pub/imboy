@@ -105,8 +105,10 @@ scan_block(_Path, []) -> [];
 scan_block(Path, Added) -> scan_added(Path, iolist_to_binary(lists:join(<<"\n">>, Added))).
 
 scan_added(Path, Added) ->
+    %% 规则字面量拼接构造：避免规则定义自身在 diff 扫描中命中
+    %% eqwalizer_fixme 子串规则（语义不变：运行时匹配完整 token）。
     Rules = [
-        {eqwalizer_fixme, <<"eqwalizer:fixme">>},
+        {eqwalizer_fixme, <<"eqwalizer", ":", "fixme">>},
         {dialyzer_nowarn, <<"-dialyzer\\s*\\(\\s*nowarn_">>},
         {dialyzer_tuple_nowarn, <<"-dialyzer\\s*\\(\\s*\\{\\s*nowarn_">>}
     ],

@@ -13,9 +13,17 @@ main(Args) ->
         ok = filelib:ensure_dir(filename:join(BuildDir0, "x")),
         compile_all(BuildDir0),
         true = code:add_patha(BuildDir0),
-        [begin {module, _} = code:ensure_loaded(M) end
-         || M <- [imboy_quality_cli, imboy_quality_runner,
-                  imboy_quality_listener, imboy_quality_report]],
+        [
+            begin
+                {module, _} = code:ensure_loaded(M)
+            end
+         || M <- [
+                imboy_quality_cli,
+                imboy_quality_runner,
+                imboy_quality_listener,
+                imboy_quality_report
+            ]
+        ],
         {Ctx, _StatePath} = load_context(CtxDir),
         Op = parse(Args),
         enforce(Ctx, Op),
@@ -30,8 +38,11 @@ main(Args) ->
         erlang:halt(exit_code(Result, Report))
     catch
         Class:Reason:Stack ->
-            io:format(standard_error, "quality.escript error ~tp:~tp~n~tp~n",
-                      [Class, Reason, Stack]),
+            io:format(
+                standard_error,
+                "quality.escript error ~tp:~tp~n~tp~n",
+                [Class, Reason, Stack]
+            ),
             erlang:halt(2)
     end.
 
@@ -58,10 +69,12 @@ load_context(Ctrl) ->
     {Ctx, StatePath}.
 
 trusted(State) ->
-    #{task_id => maps:get(<<"task_id">>, State, <<>>),
-      mode => mode_atom(maps:get(<<"execution_mode">>, State, undefined)),
-      goal => mode_atom(maps:get(<<"execution_goal">>, State, undefined)),
-      owner_verified => is_map(maps:get(<<"owner">>, State, null))}.
+    #{
+        task_id => maps:get(<<"task_id">>, State, <<>>),
+        mode => mode_atom(maps:get(<<"execution_mode">>, State, undefined)),
+        goal => mode_atom(maps:get(<<"execution_goal">>, State, undefined)),
+        owner_verified => is_map(maps:get(<<"owner">>, State, null))
+    }.
 
 mode_atom(<<"LIMITED_PARALLEL">>) -> limited_parallel;
 mode_atom(<<"INTEGRATED_EXECUTION">>) -> integrated_execution;
@@ -83,8 +96,12 @@ parse(_) -> erlang:error(usage).
 
 enforce(Ctx, Op) ->
     ok = imboy_quality_cli:permit(
-        Ctx#{execution_mode => maps:get(mode, Ctx),
-             execution_goal => maps:get(goal, Ctx)}, permit_op(Op)).
+        Ctx#{
+            execution_mode => maps:get(mode, Ctx),
+            execution_goal => maps:get(goal, Ctx)
+        },
+        permit_op(Op)
+    ).
 
 permit_op(selftest) -> synthetic_selftest;
 permit_op(admission_check_only) -> admission_check_only;
@@ -93,11 +110,13 @@ permit_op(Op) -> Op.
 %% ---- 执行 ----
 
 dispatch(inspect, _Ctx, Ctrl) ->
-    Info = #{op => inspect, control_dir => Ctrl,
-             modules => [M || {M, _} <- sources()],
-             cli => imboy_quality_cli:describe()},
+    Info = #{
+        op => inspect,
+        control_dir => Ctrl,
+        modules => [M || {M, _} <- sources()],
+        cli => imboy_quality_cli:describe()
+    },
     {Info, undefined};
-
 dispatch(selftest, _Ctx, Ctrl) ->
     BuildDir = filename:join(Ctrl, "prep/build"),
     ok = filelib:ensure_dir(filename:join(BuildDir, "x")),
@@ -107,39 +126,72 @@ dispatch(selftest, _Ctx, Ctrl) ->
     true = Tests =/= [],
     {Pass, Fail} = run_selftests(Tests),
     C = erase(selftest_counts),
-    Result = #{<<"op">> => <<"selftest">>, <<"scope">> => <<"synthetic_only">>,
-               <<"top_level_cases">> => length(Tests), <<"pass">> => Pass,
-               <<"fail">> => Fail, <<"cancel">> => maps:get(cancel, C, 0),
-               <<"skip">> => maps:get(skip, C, 0),
-               <<"business_tests_started">> => 0},
+    Result = #{
+        <<"op">> => <<"selftest">>,
+        <<"scope">> => <<"synthetic_only">>,
+        <<"top_level_cases">> => length(Tests),
+        <<"pass">> => Pass,
+        <<"fail">> => Fail,
+        <<"cancel">> => maps:get(cancel, C, 0),
+        <<"skip">> => maps:get(skip, C, 0),
+        <<"business_tests_started">> => 0
+    },
     Out = filename:join(Ctrl, "evidence/selftest-latest.json"),
     {ok, _} = imboy_report_write(Out, Result),
     {Result, Out};
-
 dispatch(admission_check_only, _Ctx, Ctrl) ->
     StatePath = filename:join(Ctrl, "STATE.json"),
     {ok, State, Sha} = imboy_state_read(StatePath),
-    Result = #{op => admission_check_only, state_sha256 => Sha,
-               lifecycle_status => maps:get(<<"lifecycle_status">>, State, null),
-               implementation_admission =>
-                   maps:get(<<"implementation_admission">>, State, null)},
+    Result = #{
+        op => admission_check_only,
+        state_sha256 => Sha,
+        lifecycle_status => maps:get(<<"lifecycle_status">>, State, null),
+        implementation_admission =>
+            maps:get(<<"implementation_admission">>, State, null)
+    },
     {Result, undefined};
-
 dispatch(report, _Ctx, Ctrl) ->
     Latest = filename:join(Ctrl, "evidence/selftest-latest.json"),
     case file:read_file(Latest) of
         {ok, B} -> {json:decode(B), Latest};
         {error, _} -> {#{op => report, artifact => none}, undefined}
     end;
-
-dispatch(guard, _Ctx, _Ctrl) ->
-    %% 真实候选 guard 在 P1-11 完整接线；此处不产生通过证据。
-    erlang:error(guard_wiring_delivered_by_P1_11);
-
+dispatch(guard, _Ctx, Ctrl) ->
+    %% P1-11 真实接线：对当前候选（worktree HEAD 相对 auto 基线）执行
+    %% erlang-ci 规则的 Erlang 移植；并校验上游 provenance 摘要。
+    case provenance_ok(Ctrl) of
+        ok -> ok;
+        {mismatch, Detail} -> erlang:error({provenance_mismatch, Detail})
+    end,
+    {ok, Cwd} = file:get_cwd(),
+    {0, HeadB} = imboy_quality_guard:git(Cwd, ["rev-parse", "HEAD"]),
+    Head = string:trim(binary_to_list(HeadB)),
+    Result =
+        case imboy_quality_guard:check(Cwd, auto, Head) of
+            {ok, []} ->
+                #{
+                    <<"op">> => <<"guard">>,
+                    <<"verdict">> => <<"clean">>,
+                    <<"head">> => Head,
+                    <<"base">> => <<"auto">>
+                };
+            {error, {violations, Vs}} ->
+                #{
+                    <<"op">> => <<"guard">>,
+                    <<"verdict">> => <<"violations">>,
+                    <<"head">> => Head,
+                    <<"base">> => <<"auto">>,
+                    <<"violations">> => [format_violation(V) || V <- Vs]
+                };
+            {error, {infrastructure, C, R}} ->
+                erlang:error({guard_infrastructure, C, R})
+        end,
+    Out = filename:join(Ctrl, "evidence/guard-latest.json"),
+    {ok, _} = imboy_report_write(Out, Result),
+    {Result, Out};
 dispatch(eunit_full, _Ctx, _Ctrl) ->
     %% G-HEAVY 许可由 enforce 校验；执行体按卡接线（P1-04 基线 / P1-12 pilot）。
     erlang:error(eunit_full_wiring_per_card);
-
 dispatch(eunit_group, _Ctx, _Ctrl) ->
     erlang:error(eunit_group_wiring_per_card).
 
@@ -149,12 +201,15 @@ run_selftests(Tests) ->
     Parent = self(),
     Ref = make_ref(),
     Collector = spawn(fun() -> collect(Parent, Ref, []) end),
-    Return = eunit:test(Tests, [{report, {imboy_quality_listener,
-                                           [{collector, Collector}]}}]),
+    Return = eunit:test(Tests, [{report, {imboy_quality_listener, [{collector, Collector}]}}]),
     Collector ! {stop, Parent, Ref},
-    {Counts, _Events} = receive {collected, Ref, C, E} -> {C, E}
-                         after 10000 -> {#{}, []} end,
-    ok = Return,   %% 任何合成失败都让 selftest 非零退出
+    {Counts, _Events} =
+        receive
+            {collected, Ref, C, E} -> {C, E}
+        after 10000 -> {#{}, []}
+        end,
+    %% 任何合成失败都让 selftest 非零退出
+    ok = Return,
     put(selftest_counts, Counts),
     {maps:get(pass, Counts, 0), maps:get(fail, Counts, 0)}.
 
@@ -165,68 +220,130 @@ collect(Parent, Ref, Acc) ->
         Msg ->
             collect(Parent, Ref, [Msg | Acc])
     after 30000 ->
-            Parent ! {collected, Ref, counts(Acc), lists:reverse(Acc)}
+        Parent ! {collected, Ref, counts(Acc), lists:reverse(Acc)}
     end.
 
 counts(Es) ->
-    lists:foldl(fun
-        ({test_end, _, ok, _}, C) -> C#{pass => maps:get(pass, C, 0) + 1};
-        ({test_end, _, _, _}, C) -> C#{fail => maps:get(fail, C, 0) + 1};
-        ({test_cancel, _, _, _}, C) -> C#{cancel => maps:get(cancel, C, 0) + 1};
-        (_, C) -> C
-    end, #{}, Es).
+    lists:foldl(
+        fun
+            ({test_end, _, ok, _}, C) -> C#{pass => maps:get(pass, C, 0) + 1};
+            ({test_end, _, _, _}, C) -> C#{fail => maps:get(fail, C, 0) + 1};
+            ({test_cancel, _, _, _}, C) -> C#{cancel => maps:get(cancel, C, 0) + 1};
+            (_, C) -> C
+        end,
+        #{},
+        Es
+    ).
 
 test_modules(BuildDir) ->
-    [list_to_atom(filename:rootname(F))
-     || F <- filelib:wildcard("imboy_quality_*_tests.beam", BuildDir)].
+    [
+        list_to_atom(filename:rootname(F))
+     || F <- filelib:wildcard("imboy_quality_*_tests.beam", BuildDir)
+    ].
 
 %% ---- 编译 ----
 
 sources() ->
-    [{filename:rootname(filename:basename(P)),
-      filename:join(["tools/imboy_quality", filename:basename(P)])}
-     || P <- filelib:wildcard("tools/imboy_quality/*.erl")]
-    ++ [{filename:rootname(filename:basename(P)),
-         filename:join(["test/quality", filename:basename(P)])}
-        || P <- filelib:wildcard("test/quality/*.erl")].
+    [
+        {
+            filename:rootname(filename:basename(P)),
+            filename:join(["tools/imboy_quality", filename:basename(P)])
+        }
+     || P <- filelib:wildcard("tools/imboy_quality/*.erl")
+    ] ++
+        [
+            {
+                filename:rootname(filename:basename(P)),
+                filename:join(["test/quality", filename:basename(P)])
+            }
+         || P <- filelib:wildcard("test/quality/*.erl")
+        ].
 
 compile_all(BuildDir) ->
     %% 编译经原生 erlc（open_port + 独立 argv，FRAMEWORK_DESIGN §3 允许边界）；
     %% 本机 OTP29 的 escript 内 compile:file 不落盘，erlc 为确定路径。
-    lists:foreach(fun({_Mod, Src}) ->
-        case needs_compile(Src, any_beam(BuildDir, _Mod)) of
-            true ->
-                case erlc(Src, BuildDir) of
-                    0 -> ok;
-                    Code -> erlang:error({compile_failed, Src, Code})
-                end;
-            false -> ok
-        end
-    end, sources()).
+    lists:foreach(
+        fun({_Mod, Src}) ->
+            case needs_compile(Src, any_beam(BuildDir, _Mod)) of
+                true ->
+                    case erlc(Src, BuildDir) of
+                        0 -> ok;
+                        Code -> erlang:error({compile_failed, Src, Code})
+                    end;
+                false ->
+                    ok
+            end
+        end,
+        sources()
+    ).
 
 any_beam(BuildDir, Mod) ->
     filename:join(BuildDir, Mod ++ ".beam").
 
 erlc(Src, OutDir) ->
     Erlc = os:find_executable("erlc"),
-    Port = open_port({spawn_executable, Erlc},
-                     [exit_status, use_stdio, stderr_to_stdout,
-                      {args, ["-o", OutDir, Src]}]),
+    Port = open_port(
+        {spawn_executable, Erlc},
+        [
+            exit_status,
+            use_stdio,
+            stderr_to_stdout,
+            {args, ["-o", OutDir, Src]}
+        ]
+    ),
     collect_port(Port, []).
 
 collect_port(Port, Acc) ->
     receive
         {Port, {data, _D}} -> collect_port(Port, Acc);
         {Port, {exit_status, Code}} -> Code
-    after 60000 -> port_close(Port), erlang:error(erlc_timeout)
+    after 60000 ->
+        port_close(Port),
+        erlang:error(erlc_timeout)
     end.
 
 needs_compile(Src, Out) ->
     case {filelib:last_modified(Src), filelib:last_modified(Out)} of
         {Zero, _} when element(1, Zero) =:= {0, 0, 0} ->
             erlang:error({missing_source, Src});
-        {SrcM, OutM} -> SrcM >= OutM
+        {SrcM, OutM} ->
+            SrcM >= OutM
     end.
+
+%% ---- guard 辅助 ----
+
+provenance_ok(Ctrl) ->
+    Path = filename:join(Ctrl, "evidence/erlang-ci-provenance.json"),
+    {ok, Bytes} = file:read_file(Path),
+    #{<<"files">> := Files} = json:decode(Bytes),
+    Checks = [
+        begin
+            %% 上游 path 的 basename 在控制目录 prep/ 中以 upstream-<name>.audit 保存
+            BaseName = filename:basename(binary_to_list(P)),
+            Local = filename:join(Ctrl, "prep/upstream-" ++ BaseName ++ ".audit"),
+            case file:read_file(Local) of
+                {ok, B} ->
+                    {
+                        binary_to_list(P),
+                        string:lowercase(
+                            binary:encode_hex(crypto:hash(sha256, B))
+                        ) =:= H
+                    };
+                {error, _} ->
+                    {binary_to_list(P), missing}
+            end
+        end
+     || #{<<"path">> := P, <<"sha256">> := H} <- Files
+    ],
+    Bad = [C || C <- Checks, element(2, C) =/= true],
+    case Bad of
+        [] -> ok;
+        _ -> {mismatch, Bad}
+    end.
+
+format_violation(#{rule := Rule, path := Path}) ->
+    #{rule => atom_to_binary(Rule), path => Path};
+format_violation(V) when is_map(V) -> V.
 
 %% ---- 薄封装 ----
 
@@ -239,13 +356,19 @@ imboy_report_write(Path, Map) ->
     Bytes = iolist_to_binary(json:encode(Map)),
     Temp = Path ++ ".tmp." ++ os:getpid(),
     {ok, H} = file:open(Temp, [write, binary, raw, exclusive]),
-    try ok = file:write(H, Bytes), ok = file:sync(H)
-    after ok = file:close(H) end,
+    try
+        ok = file:write(H, Bytes),
+        ok = file:sync(H)
+    after
+        ok = file:close(H)
+    end,
     ok = file:rename(Temp, Path),
     {ok, #{bytes => byte_size(Bytes), sha256 => crypto:hash(sha256, Bytes)}}.
 
 %% ---- 退出码 ----
 
+exit_code(#{<<"op">> := <<"guard">>, <<"verdict">> := <<"clean">>}, _) -> 0;
+exit_code(#{<<"op">> := <<"guard">>, <<"verdict">> := <<"violations">>}, _) -> 1;
 exit_code(#{<<"fail">> := 0, <<"cancel">> := _}, _) -> 0;
 exit_code(#{<<"fail">> := F}, _) when F > 0 -> 1;
 exit_code(#{<<"cancel">> := C}, _) when C > 0 -> 3;
