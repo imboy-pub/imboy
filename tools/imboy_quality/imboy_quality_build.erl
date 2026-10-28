@@ -25,20 +25,24 @@ build_key(ProjectRoot, Profile) ->
 %% up_to_date(BuildDir, ExpectedMods)：产物完整性——每个期望模块的
 %% BEAM 存在（缺失判定需重建；BUILD03 白盒导出真实可用）。
 up_to_date(BuildDir, ExpectedMods) ->
-    lists:all(fun(Mod) ->
-        Beam = filename:join(BuildDir, atom_to_list(Mod) ++ ".beam"),
-        case file:read_file(Beam) of
-            {ok, _} -> true;
-            {error, _} -> false
-        end
-    end, ExpectedMods).
+    lists:all(
+        fun(Mod) ->
+            Beam = filename:join(BuildDir, atom_to_list(Mod) ++ ".beam"),
+            case file:read_file(Beam) of
+                {ok, _} -> true;
+                {error, _} -> false
+            end
+        end,
+        ExpectedMods
+    ).
 
 %% ---- 内部 ----
 
 file_shas(ProjectRoot, Dir) ->
     Path = filename:join(ProjectRoot, Dir),
-    Files = filelib:wildcard(filename:join(Path, "**/*.erl"))
-        ++ filelib:wildcard(filename:join(Path, "**/*.hrl")),
+    Files =
+        filelib:wildcard(filename:join(Path, "**/*.erl")) ++
+            filelib:wildcard(filename:join(Path, "**/*.hrl")),
     maps:from_list([{relative(ProjectRoot, F), file_sha(F)} || F <- Files]).
 
 dependency_digest(ProjectRoot) ->
