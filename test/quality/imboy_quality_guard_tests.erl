@@ -37,6 +37,7 @@ guard_all() ->
                 R2 = filename:join(Viol, "v" ++ integer_to_list(I)),
                 ok = file:make_dir(R2),
                 git(R2, ["init", "--initial-branch=synthetic"]),
+                ok = file:write_file(filename:join(R2, "base.txt"), <<"base\n">>),
                 B2 = commit(R2, "base"),
                 ok = file:write_file(filename:join(R2, "bad.erl"), Content),
                 H2 = commit(R2, "bad"),
@@ -76,6 +77,8 @@ guard_all() ->
         Removed = commit(Repo, "remove ignore"),
         {ok, []} = imboy_quality_guard:check(Repo, Ignored, Removed),
         ok = file:write_file(filename:join(Repo, "renamed"), <<>>),
+        git(Repo, ["add", "renamed"]),
+        git(Repo, ["commit", "-q", "-m", "add placeholder"]),
         git(Repo, ["mv", "renamed", ".eqwalizer"]),
         Renamed = commit(Repo, "rename to ignore"),
         ?assertMatch(
