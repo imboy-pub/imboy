@@ -4134,6 +4134,12 @@
         "static": false
       },
       {
+        "action": "history_backfill",
+        "handler": "msg_handler",
+        "path": "/api/v1/msg",
+        "static": false
+      },
+      {
         "action": "forward",
         "handler": "msg_handler",
         "path": "/api/v1/msg/forward",
@@ -5662,7 +5668,7 @@
     }
   },
   "error_code_summary": {
-    "defines": 167,
+    "defines": 168,
     "distinct_codes": [
       0,
       1,
@@ -5947,16 +5953,16 @@
         "action": "in_denylist",
         "sources": [
           "src/logic/msg_c2c_logic.erl:113",
-          "src/logic/msg_c2c_logic.erl:901",
+          "src/logic/msg_c2c_logic.erl:1007",
           "src/logic/webrtc_ws_logic.erl:58"
         ]
       },
       {
         "action": "internal_error",
         "sources": [
-          "src/logic/msg_c2c_logic.erl:958",
-          "src/logic/msg_c2c_logic.erl:1008",
-          "src/logic/msg_c2c_logic.erl:1027",
+          "src/logic/msg_c2c_logic.erl:1064",
+          "src/logic/msg_c2c_logic.erl:1114",
+          "src/logic/msg_c2c_logic.erl:1133",
           "src/logic/msg_c2s_logic.erl:164",
           "src/logic/msg_s2c_logic.erl:62"
         ]
@@ -5970,24 +5976,24 @@
       {
         "action": "invalid_msgid",
         "sources": [
-          "src/logic/msg_c2g_logic.erl:1037"
+          "src/logic/msg_c2g_logic.erl:1128"
         ]
       },
       {
         "action": "invalid_operation",
         "sources": [
-          "src/logic/msg_c2c_logic.erl:888"
+          "src/logic/msg_c2c_logic.erl:994"
         ]
       },
       {
         "action": "msg_not_found",
         "sources": [
-          "src/logic/msg_c2c_logic.erl:294",
-          "src/logic/msg_c2c_logic.erl:593",
-          "src/logic/msg_c2c_logic.erl:659",
-          "src/logic/msg_c2g_logic.erl:348",
-          "src/logic/msg_c2g_logic.erl:791",
-          "src/logic/msg_c2g_logic.erl:960",
+          "src/logic/msg_c2c_logic.erl:325",
+          "src/logic/msg_c2c_logic.erl:662",
+          "src/logic/msg_c2c_logic.erl:747",
+          "src/logic/msg_c2g_logic.erl:401",
+          "src/logic/msg_c2g_logic.erl:870",
+          "src/logic/msg_c2g_logic.erl:1051",
           "src/logic/msg_s2c_logic.erl:145"
         ]
       },
@@ -5995,15 +6001,15 @@
         "action": "not_a_friend",
         "sources": [
           "src/logic/msg_c2c_logic.erl:116",
-          "src/logic/msg_c2c_logic.erl:904",
+          "src/logic/msg_c2c_logic.erl:1010",
           "src/logic/webrtc_ws_logic.erl:61"
         ]
       },
       {
         "action": "not_group_member",
         "sources": [
-          "src/logic/msg_c2g_logic.erl:796",
-          "src/logic/msg_c2g_logic.erl:967"
+          "src/logic/msg_c2g_logic.erl:875",
+          "src/logic/msg_c2g_logic.erl:1058"
         ]
       },
       {
@@ -6015,16 +6021,16 @@
       {
         "action": "permission_denied",
         "sources": [
-          "src/logic/msg_c2c_logic.erl:588",
-          "src/logic/msg_c2c_logic.erl:598",
           "src/logic/msg_c2c_logic.erl:657",
-          "src/logic/msg_c2c_logic.erl:663",
-          "src/logic/msg_c2c_logic.erl:909",
-          "src/logic/msg_c2g_logic.erl:789",
-          "src/logic/msg_c2g_logic.erl:794",
-          "src/logic/msg_c2g_logic.erl:955",
-          "src/logic/msg_c2g_logic.erl:964",
-          "src/logic/msg_c2g_logic.erl:1039",
+          "src/logic/msg_c2c_logic.erl:667",
+          "src/logic/msg_c2c_logic.erl:745",
+          "src/logic/msg_c2c_logic.erl:751",
+          "src/logic/msg_c2c_logic.erl:1015",
+          "src/logic/msg_c2g_logic.erl:868",
+          "src/logic/msg_c2g_logic.erl:873",
+          "src/logic/msg_c2g_logic.erl:1046",
+          "src/logic/msg_c2g_logic.erl:1055",
+          "src/logic/msg_c2g_logic.erl:1130",
           "src/logic/msg_s2c_logic.erl:88",
           "src/logic/msg_s2c_logic.erl:108",
           "src/logic/msg_s2c_logic.erl:140",
@@ -6046,8 +6052,8 @@
       {
         "action": "service_unavailable",
         "sources": [
-          "src/logic/msg_c2g_logic.erl:1052",
-          "src/logic/msg_c2g_logic.erl:1054"
+          "src/logic/msg_c2g_logic.erl:1143",
+          "src/logic/msg_c2g_logic.erl:1145"
         ]
       },
       {
