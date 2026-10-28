@@ -1,5 +1,7 @@
 %% IMBOY_ERLANG_QUALITY P1-07：原生 PG fixture 隔离（纯 OTP，epgsql 直连）。
-%% 任务私有模板/克隆库。归属 marker 用库内表 public.imboy_quality_ownership
+%% 任务私有模板/克隆库。归属 marker 用库内表 imboy_quality_meta.imboy_quality_ownership
+%% （专用 schema：产品的 live-schema 覆盖测试枚举 public 全表，marker 不得污染 public——
+%% opt-run6 data_disposition coverage_failed 教训）
 %% （PG18 的 database COMMENT 不入 pg_description，表 marker 且随 TEMPLATE
 %% 克隆天然复制）。DB01 克隆等价、DB03 活动连接、DB06 未拥有库拒删、
 %% DB07 环境缺失 fail-closed、DB02 模板 digest 键。
@@ -21,7 +23,9 @@
     drop_owned/3
 ]).
 
+-define(MARKER_SCHEMA, "imboy_quality_meta").
 -define(MARKER_TABLE, "imboy_quality_ownership").
+-define(MARKER_FQN, ?MARKER_SCHEMA ++ "." ++ ?MARKER_TABLE).
 -define(OWNED_PREFIX, "imboy_quality_").
 
 %% ---- 实时库克隆（组间 DB 隔离：每 worker 私有克隆库；P1-07 池式使用的正式接线） ----
@@ -31,14 +35,17 @@
 clone_live(Conn, Args, Source, Target) ->
     true = is_owned_name(Target),
     q(Conn, ["CREATE DATABASE \"", Target, "\" TEMPLATE \"", Source, "\""]),
-    connect_db(Args, Target, fun(C) ->
-        q(C, [
-            "CREATE TABLE IF NOT EXISTS public.",
-            ?MARKER_TABLE,
-            " (owner text NOT NULL, created_at timestamptz DEFAULT now())"
-        ]),
-        q(C, ["INSERT INTO public.", ?MARKER_TABLE, " (owner) VALUES ('IMBOY_ERLANG_QUALITY')"])
-    end),
+    connect_db(Args, Target, fun(C) -> ensure_marker(C) end),
+    ok.
+
+ensure_marker(C) ->
+    q(C, ["CREATE SCHEMA IF NOT EXISTS ", ?MARKER_SCHEMA]),
+    q(C, [
+        "CREATE TABLE IF NOT EXISTS ",
+        ?MARKER_FQN,
+        " (owner text NOT NULL, created_at timestamptz DEFAULT now())"
+    ]),
+    q(C, ["INSERT INTO ", ?MARKER_FQN, " (owner) VALUES ('IMBOY_ERLANG_QUALITY')"]),
     ok.
 
 %% 显式连接参数版本（不依赖 conn_args_of/1 的保守默认）。worker VM 刚退出时
@@ -46,7 +53,25 @@ clone_live(Conn, Args, Source, Target) ->
 drop_owned(Conn, Args, Db) ->
     case is_owned_name(Db) andalso marker_ok(Args, Db) of
         true ->
-            ok = wait_no_connections(Conn, Db, 20),
+            %% 归属已证明（前缀 + marker）：先有界等待 worker/独占/独立 VM 的后端自然
+            %% 断开（opt-run6：独占车道最后一个 VM 退出后后端滞留 >10s），超时则只
+            %% 终止本私有库自身的会话（不触碰任何共享库），再 DROP。
+            case wait_no_connections(Conn, Db, 120) of
+                ok ->
+                    ok;
+                {still_in_use, _} ->
+                    q(Conn, [
+                        "SELECT pg_terminate_backend(pid) FROM pg_stat_activity ",
+                        "WHERE datname = '",
+                        Db,
+                        "' AND pid <> pg_backend_pid()"
+                    ]),
+                    ok =
+                        case wait_no_connections(Conn, Db, 20) of
+                            ok -> ok;
+                            {still_in_use, N} -> error({database_still_in_use, Db, N})
+                        end
+            end,
             q(Conn, ["ALTER DATABASE \"", Db, "\" IS_TEMPLATE false"]),
             q(Conn, ["DROP DATABASE \"", Db, "\""]),
             ok;
@@ -59,7 +84,7 @@ wait_no_connections(Conn, Db, Left) ->
         [] ->
             ok;
         Pids when Left =< 0 ->
-            error({database_still_in_use, Db, length(Pids)});
+            {still_in_use, length(Pids)};
         _ ->
             timer:sleep(500),
             wait_no_connections(Conn, Db, Left - 1)
@@ -130,7 +155,11 @@ connect_db(Args, Db, Fun) ->
     try
         Fun(C)
     after
-        catch epgsql:close(C)
+        try
+            epgsql:close(C)
+        catch
+            _:_ -> ok
+        end
     end.
 
 q(C, Sql) ->
@@ -148,18 +177,7 @@ ensure_template(Conn, Name) ->
     true = is_owned_name(Name),
     ensure(Conn, Name),
     Args = conn_args_of(Conn),
-    connect_db(Args, Name, fun(C) ->
-        q(C, [
-            "CREATE TABLE IF NOT EXISTS public.",
-            ?MARKER_TABLE,
-            " (owner text NOT NULL, created_at timestamptz DEFAULT now())"
-        ]),
-        q(C, [
-            "INSERT INTO public.",
-            ?MARKER_TABLE,
-            " (owner) VALUES ('IMBOY_ERLANG_QUALITY')"
-        ])
-    end),
+    connect_db(Args, Name, fun(C) -> ensure_marker(C) end),
     q(Conn, ["ALTER DATABASE \"", Name, "\" IS_TEMPLATE true"]),
     #{name => Name, digest => template_digest()}.
 
@@ -234,8 +252,8 @@ is_owned_name(_) ->
 marker_ok(Args, Db) ->
     connect_db(Args, Db, fun(C) ->
         {ok, _, Rows} = q(C, [
-            "SELECT owner FROM public.",
-            ?MARKER_TABLE,
+            "SELECT owner FROM ",
+            ?MARKER_FQN,
             " WHERE owner='IMBOY_ERLANG_QUALITY' LIMIT 1"
         ]),
         Rows =/= []
@@ -263,5 +281,9 @@ with_template_pool(Conn, Template, Args, Fun) ->
     try
         Fun(Args#{database := Target})
     after
-        catch drop_owned(Conn, Target)
+        try
+            drop_owned(Conn, Target)
+        catch
+            _:_ -> ok
+        end
     end.
