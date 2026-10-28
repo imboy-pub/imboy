@@ -69,7 +69,12 @@ group_search_page(Keyword, Limit, Offset) ->
 group_search_page(<<>>, Limit, Offset, CategoryId) ->
     % 空关键词：按成员数排序返回公开群
     Sql = build_discover_sql(CategoryId, <<"member_count DESC">>),
-    elib_pg:query(Sql, [Limit, Offset]);
+    Params =
+        case CategoryId of
+            undefined -> [Limit, Offset];
+            _ -> [Limit, Offset, CategoryId]
+        end,
+    elib_pg:query(Sql, Params);
 group_search_page(Keyword, Limit, Offset, CategoryId) ->
     Sql1 =
         <<"select replace(to_tsquery('jiebacfg', $1)::text, ' <-> ', ' | ') as keyword from (select 1) as temp">>,
