@@ -8,6 +8,7 @@
     read_stats/2,
     history/5,
     history/6,
+    history_context/6,
     history_backfill/6,
     message_result/4,
     reaction_add/4,
@@ -335,6 +336,69 @@ history_backfill(CurrentUid, ChatType, PeerIdEnc, AfterSeq, Limit, DID) ->
             end
         end
     ).
+
+-spec history_context(integer(), binary(), binary(), binary(), integer(), binary()) ->
+    {ok, map()} | {error, binary(), integer()}.
+history_context(Uid, ChatType, Peer, Target, Limit, DID) when
+    is_integer(Uid),
+    Uid > 0,
+    is_binary(ChatType),
+    is_binary(Peer),
+    is_binary(Target),
+    byte_size(Target) >= 1,
+    byte_size(Target) =< 50,
+    is_integer(Limit),
+    is_binary(DID)
+->
+    case re:run(Target, <<"\\A[A-Za-z0-9_-]{1,50}\\z">>, [{capture, none}]) of
+        match ->
+            run_history_scope(Uid, ChatType, Peer, fun(ConvKey, MinSeq, PeerA, _PeerB) ->
+                history_context_read(
+                    ConvKey,
+                    Target,
+                    erlang:max(1, erlang:min(Limit, 100)),
+                    ChatType,
+                    Uid,
+                    PeerA,
+                    MinSeq,
+                    DID
+                )
+            end);
+        nomatch ->
+            {error, <<"target_msg_id 格式无效"/utf8>>, ?ERR_BAD_REQUEST}
+    end;
+history_context(_Uid, _ChatType, _Peer, _Target, _Limit, _DID) ->
+    {error, <<"历史上下文查询参数无效"/utf8>>, ?ERR_BAD_REQUEST}.
+
+history_context_read(ConvKey, Target, Limit, ChatType, Uid, PeerA, MinSeq, DID) ->
+    case config_ds:env(msg_archive_enabled, false) of
+        true ->
+            case
+                msg_archive_ds:history_context(ConvKey, Target, Limit, ChatType, Uid, PeerA, MinSeq)
+            of
+                {ok, Rows} ->
+                    Messages = history_deliver_msgs(Rows, DID, Uid),
+                    HasTarget = lists:any(
+                        fun(Message) -> maps:get(<<"msg_id">>, Message) =:= Target end, Messages
+                    ),
+                    case HasTarget of
+                        true ->
+                            {ok, #{
+                                <<"conv_key">> => ConvKey,
+                                <<"context_msg_id">> => Target,
+                                <<"messages">> => Messages
+                            }};
+                        false ->
+                            {error, <<"history_context_unavailable">>, ?ERR_MESSAGE_NOT_FOUND}
+                    end;
+                {error, permission_denied} ->
+                    {error, <<"无权限访问该群消息历史"/utf8>>, ?ERR_ACCESS_DENIED};
+                {error, Reason} ->
+                    history_unavailable(Reason)
+            end;
+        _ ->
+            history_unavailable(archive_disabled)
+    end.
 
 %% P1（审查发现修复轮）：history 与 history_backfill 共享的 scope 校验 +
 %% 错误映射骨架。纯提取零行为变化：permission_denied → 403 文案、其余

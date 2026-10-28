@@ -22,12 +22,18 @@
 -export([history/3, history/4]).
 -export([history_batch/2]).
 -export([message_result/4]).
+-export([history_context/7]).
 -export([conv_key_c2c/2, conv_key_c2g/1]).
 %% R02/D05：安全推进边界、一致快照历史与有界补扫
 -export([safe_head/4, safe_heads/2, safe_history/6, backfill/6]).
 
 message_result(ConvKey, MsgId, Sender, MinSeq) ->
     msg_archive_repo:message_result(ConvKey, MsgId, Sender, MinSeq).
+
+-spec history_context(binary(), binary(), pos_integer(), binary(), integer(), integer(), integer()) ->
+    {ok, [map()]} | {error, term()}.
+history_context(ConvKey, Target, Limit, ChatType, Uid, PeerA, MinSeq) ->
+    msg_archive_repo:history_context(ConvKey, Target, Limit, ChatType, Uid, PeerA, MinSeq).
 
 %%-------------------------------------------------------------------
 %% @doc  游标拉取历史消息（正序，增量同步）

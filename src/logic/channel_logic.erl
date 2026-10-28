@@ -46,7 +46,9 @@
 -spec subscribe(integer(), binary()) -> ok | {error, binary() | {integer(), binary()}}.
 -spec unsubscribe(integer(), binary()) -> ok | {error, binary() | {integer(), binary()}}.
 -spec get_subscribed_channels(integer()) -> {ok, list(map())} | {error, binary()}.
+-spec get_subscribed_channels(integer(), binary()) -> {ok, list(map())} | {error, binary()}.
 -spec get_managed_channels(integer()) -> {ok, list(map())} | {error, binary()}.
+-spec get_managed_channels(integer(), binary()) -> {ok, list(map())} | {error, binary()}.
 -spec get_unread_summary(integer()) -> {ok, map()} | {error, binary()}.
 -spec get_subscribers(binary(), integer(), integer()) -> {ok, list(map())} | {error, binary()}.
 -spec remove_subscriber(integer(), integer() | binary(), integer()) -> ok | {error, binary()}.
@@ -93,8 +95,11 @@
 
 -export([subscribe/2]).
 -export([unsubscribe/2]).
--export([get_subscribed_channels/1]).
--export([get_managed_channels/1]).
+-export([
+    get_subscribed_channels/1, get_subscribed_channels/2,
+    get_subscribed_channels_cursor/4
+]).
+-export([get_managed_channels/1, get_managed_channels/2, get_managed_channels_cursor/4]).
 -export([get_unread_summary/1]).
 -export([get_subscribers/3]).
 -export([remove_subscriber/3]).
@@ -103,6 +108,7 @@
 -export([publish_message/6]).
 -export([get_messages/4, get_messages_page/4]).
 -export([mark_as_read/3]).
+-export([mark_viewed/3]).
 -export([pin_message/3]).
 -export([delete_message/2]).
 -export([revoke_message/3]).
@@ -148,10 +154,18 @@
 -export([list_workspace_channels/2]).
 -export([list_workspace_channels/3, workspace_channel_page/4]).
 
+%% W04.c（channel-group-ux v2.2 §6.4 C1）：带受理回执的频道创建/重放。
+-export([create_channel_with_receipt/7]).
+
 %% ==================== Delegates ====================
 
 create_channel(Uid, Name, Opts, MaxChannels) ->
     channel_logic_message:create_channel(Uid, Name, Opts, MaxChannels).
+
+create_channel_with_receipt(Uid, Name, Opts, MaxChannels, ScopeCtx, RequestId, RecoverOnly) ->
+    channel_logic_message:create_channel_with_receipt(
+        Uid, Name, Opts, MaxChannels, ScopeCtx, RequestId, RecoverOnly
+    ).
 
 get_channel(ChannelIdBin, Uid) ->
     channel_logic_message:get_channel(ChannelIdBin, Uid).
@@ -179,10 +193,26 @@ unsubscribe(Uid, ChannelIdBin) ->
     channel_logic_subscription:unsubscribe(Uid, ChannelIdBin).
 
 get_subscribed_channels(Uid) ->
-    channel_logic_subscription:get_subscribed_channels(Uid).
+    get_subscribed_channels(Uid, <<>>).
+
+%% W07.a（C2 已订阅频道）：可选服务端 q（订阅交集内 name ILIKE）。
+get_subscribed_channels(Uid, Q) ->
+    channel_logic_subscription:get_subscribed_channels(Uid, Q).
+
+%% W07.b（C2 已订阅频道 cursor 协议）：s.id DESC keyset 游标页。
+get_subscribed_channels_cursor(Uid, BeforeId, Limit, Q) ->
+    channel_logic_subscription:get_subscribed_channels_cursor(Uid, BeforeId, Limit, Q).
 
 get_managed_channels(Uid) ->
-    channel_logic_subscription:get_managed_channels(Uid).
+    get_managed_channels(Uid, <<>>).
+
+%% W07.a（C2 我管理频道）：可选服务端 q（管理交集内 name ILIKE）。
+get_managed_channels(Uid, Q) ->
+    channel_logic_subscription:get_managed_channels(Uid, Q).
+
+%% W07.b（C2 我管理频道 cursor 协议）：c.id DESC keyset 游标页。
+get_managed_channels_cursor(Uid, BeforeId, Limit, Q) ->
+    channel_logic_subscription:get_managed_channels_cursor(Uid, BeforeId, Limit, Q).
 
 get_unread_summary(Uid) ->
     channel_logic_subscription:get_unread_summary(Uid).
@@ -209,6 +239,9 @@ get_messages_page(Uid, ChannelIdBin, Cursor, Limit) ->
 
 mark_as_read(Uid, ChannelIdBin, MessageIdBin) ->
     channel_logic_message:mark_as_read(Uid, ChannelIdBin, MessageIdBin).
+
+mark_viewed(Uid, ChannelIdBin, BoundaryBin) ->
+    channel_logic_message:mark_viewed(Uid, ChannelIdBin, BoundaryBin).
 
 pin_message(Uid, MessageIdBin, IsPinned) ->
     channel_logic_message:pin_message(Uid, MessageIdBin, IsPinned).
@@ -412,7 +445,11 @@ list_workspace_channels(WorkspaceId, Limit, Status) ->
     end.
 
 %% Descending immutable IDs prevent repeats after newer channels are added.
-workspace_channel_page(WsId, Cursor, Limit, Status) when
+workspace_channel_page(WsId, Cursor, Limit, Status) ->
+    workspace_channel_page(WsId, Cursor, Limit, Status, <<>>).
+
+%% W07.a（C2 工作区频道目录）：可选服务端 q（目录授权内 name ILIKE）。
+workspace_channel_page(WsId, Cursor, Limit, Status, Q) when
     is_integer(Cursor),
     Cursor >= 0,
     Cursor =< 9223372036854775807,
@@ -421,7 +458,7 @@ workspace_channel_page(WsId, Cursor, Limit, Status) when
     Limit =< 200,
     (Status =:= <<"active">> orelse Status =:= <<"archived">> orelse Status =:= <<"all">>)
 ->
-    case channel_ds:workspace_channel_page(WsId, Cursor, Limit + 1, Status) of
+    case channel_ds:workspace_channel_page(WsId, Cursor, Limit + 1, Status, Q) of
         {ok, Rows} ->
             Page = lists:sublist(Rows, Limit),
             More = length(Rows) > Limit,

@@ -1,0 +1,2025 @@
+{
+  "document": "plan-v2.2.md",
+  "kind": "static_plan_evidence_not_execution_state",
+  "sample_remote_utc": "2026-10-27T06:36:59Z",
+  "revision_date": "2026-10-27",
+  "runtime_acceptance": "NOT_RUN",
+  "business_edits_this_revision": false,
+  "repositories": {
+    "Backend": {
+      "root": "/Users/leeyi/project/imboy.pub/imboy",
+      "origin": "git@gitee.com:imboy-pub/imboy.git",
+      "default_branch": "main",
+      "remote_default_sha": "313016123e735dd3c305f173422a9dac79462469",
+      "local_main_sha": "7fbf3a1ac0c7ffa9ca502d3e55365fbf6a17e222",
+      "primary_head": "313016123e735dd3c305f173422a9dac79462469",
+      "open_prs": {
+        "gitee": [],
+        "github": [],
+        "query": "read-only state=open first page per_page/limit=100; zero rows so no next page"
+      },
+      "local_status": "?? docs/architecture/s3-direct-transfer-plan-v2.2.md\n?? docs/business/imboy-open-source-productization-strategy-v1.md\n?? docs/design/2026-10-08-micro-community/plan-v1.md.sha256\n?? docs/design/2026-10-15-guangzhou-phase1-closeout-v2/\n?? docs/design/2026-10-20-channel-group-ux/\n?? docs/design/2026-10-23-guangzhou-delivery-v3/baseline.json\n?? docs/design/2026-10-23-guangzhou-delivery-v3/evidence-index.json\n?? docs/design/2026-10-23-guangzhou-delivery-v3/plan-v3.1.md\n?? docs/design/2026-10-23-guangzhou-delivery-v3/plan-v3.md\n?? docs/design/2026-10-23-guangzhou-delivery-v3/requirements-v3.1.json\n?? docs/design/2026-10-23-guangzhou-delivery-v3/requirements.json\n?? docs/design/2026-10-23-guangzhou-delivery-v3/resume-prompt.md\n?? docs/design/2026-10-23-guangzhou-delivery-v3/sources/"
+    },
+    "App": {
+      "root": "/Users/leeyi/project/imboy.pub/imboyapp",
+      "origin": "https://gitee.com/imboy-pub/imboy-flutter.git",
+      "default_branch": "main",
+      "remote_default_sha": "b6afea5842461acacc7b7b6861961875a920198c",
+      "local_main_sha": "b6afea5842461acacc7b7b6861961875a920198c",
+      "primary_head": "b6afea5842461acacc7b7b6861961875a920198c",
+      "open_prs": {
+        "gitee": [],
+        "github": [],
+        "query": "read-only state=open first page per_page/limit=100; zero rows so no next page"
+      },
+      "local_status": "M plugin/flutter_chat_ui\n M pubspec.lock"
+    },
+    "Admin": {
+      "root": "/Users/leeyi/project/imboy.pub/imboyadmin",
+      "origin": "git@gitee.com:imboy-pub/imboy-admin-frontend.git",
+      "default_branch": "main",
+      "remote_default_sha": "2c3b54283ed970513f08fc3d4075e4617c04ef85",
+      "local_main_sha": "2c3b54283ed970513f08fc3d4075e4617c04ef85",
+      "primary_head": "2c3b54283ed970513f08fc3d4075e4617c04ef85",
+      "open_prs": {
+        "gitee": [],
+        "github": [],
+        "query": "read-only state=open first page per_page/limit=100; zero rows so no next page"
+      },
+      "local_status": ""
+    }
+  },
+  "preserved_app_wip": {
+    "lib/page/chat/chat/chat_page.dart": "42d485aad8b3d41f570ca11843d356b51c11f74cae8c8343a315d1ac23e2de12",
+    "lib/page/chat/chat_setting/chat_setting_page.dart": "d509e417d6531c3a0038becce24f9e9f03af8bd364e78c3216e98ca78894ac81",
+    "lib/page/conversation/conversation_page.dart": "027139364010ac4981f8f2c024264eb9b648b55e47bb0bbc2cad62a7f00829e5",
+    "lib/page/conversation/conversation_provider.dart": "d00cc2bb0753359c50d22f17007ea809ff3f2bc5b789e41488403e907ad96faa",
+    "lib/page/conversation/conversation_provider.g.dart": "da085fc1fdff9b96f37cf1c4fed27cb0454af3598eb1ebf5654b97582371fc63",
+    "lib/store/repository/conversation_repo_sqlite.dart": "dffdfa9048c6df2a62625b53dfabca1404b2749a22026a5d44f69afc3c80975a",
+    "test/unit_test/page/chat/chat_setting/chat_setting_burn_picker_test.dart": "04371d7785fd6dbf156bbb547421e75e2b82550daadf5ddb9c96c598cd2f1ce4",
+    "test/unit_test/page/conversation/conversation_authority_actions_test.dart": "8de5a313dfe94ff9de902db1903369905c99bbc1d66df506c12a1cd14f32f5a9",
+    "test/unit_test/page/conversation/conversation_page_test.dart": "8e891fed34a045bd37a160a9e77c747bf94a57d76f3f80abe06ff4bec03376a4"
+  },
+  "history_checks": [
+    {
+      "command": "flutter test --no-pub (four W03 files plus conversation_metadata_unread_test.dart)",
+      "exit": 0,
+      "passed": 40,
+      "failed": 0,
+      "scope": "prior implementation turn; before final five nullable placeholder fields removed",
+      "current_acceptance": false
+    },
+    {
+      "command": "flutter test --no-pub (authority actions + burn picker + metadata unread)",
+      "exit": 0,
+      "passed": 19,
+      "failed": 0,
+      "scope": "prior turn in-flight run completed; final W03 delta only",
+      "current_acceptance": false
+    }
+  ],
+  "findings": {
+    "F01": {
+      "default_status": "OPEN",
+      "local_wip_status": "UNCHANGED",
+      "source_files": [
+        {
+          "repo": "App",
+          "path": "lib/page/workspace_shell/workspace_plus_menu.dart",
+          "line": 62,
+          "sha256": "de881cfe3d8aff43a2f29a59b291365f26621fafc0958e1d97ae6dba770c81ab"
+        },
+        {
+          "repo": "App",
+          "path": "lib/page/group/launch_chat/launch_chat_provider.dart",
+          "line": 180,
+          "sha256": "2d9e75eb9ac6a4d207559a0d73561dcab4189963ee6f82094fce76d3661e4ed6"
+        }
+      ]
+    },
+    "F02": {
+      "default_status": "OPEN",
+      "local_wip_status": "UNCHANGED",
+      "source_files": [
+        {
+          "repo": "App",
+          "path": "lib/page/channel/channel_create_page.dart",
+          "line": 78,
+          "sha256": "0fb6453f202387dc3bbe47feb663ec44ee92175c727a1b3d01d6b3b5ea04e162"
+        },
+        {
+          "repo": "App",
+          "path": "lib/page/channel/channel_provider.dart",
+          "line": 715,
+          "sha256": "1ff039e39fe1de9ff892f489513bfcbda446798bbd58b22b1798351bddf97748"
+        },
+        {
+          "repo": "App",
+          "path": "lib/store/api/channel_api.dart",
+          "line": 32,
+          "sha256": "e67b604582815fd27739b677db03edd6516cfe218e68e64c15a4305ad75f7e3a"
+        },
+        {
+          "repo": "App",
+          "path": "lib/modules/organization/presentation/organization_manage_page.dart",
+          "line": 395,
+          "sha256": "3e8ff9b9b6c969b5efdbc67d1b728d8538ad1aa143057193c2b7bfbf02aa2a42"
+        }
+      ]
+    },
+    "F03": {
+      "default_status": "OPEN",
+      "local_wip_status": "UNCHANGED",
+      "source_files": [
+        {
+          "repo": "App",
+          "path": "lib/page/channel/channel_list_page.dart",
+          "line": 137,
+          "sha256": "f9acc64e2e14271136dd5a28062d1659ee3e09445a614222d22d92408403f784"
+        },
+        {
+          "repo": "App",
+          "path": "lib/page/channel/channel_provider.dart",
+          "line": 165,
+          "sha256": "1ff039e39fe1de9ff892f489513bfcbda446798bbd58b22b1798351bddf97748"
+        }
+      ]
+    },
+    "F04": {
+      "default_status": "PARTIAL",
+      "local_wip_status": "UNCHANGED",
+      "source_files": [
+        {
+          "repo": "App",
+          "path": "lib/page/channel/channel_provider.dart",
+          "line": 327,
+          "sha256": "1ff039e39fe1de9ff892f489513bfcbda446798bbd58b22b1798351bddf97748"
+        },
+        {
+          "repo": "App",
+          "path": "lib/page/channel/channel_detail_state.dart",
+          "line": 30,
+          "sha256": "1c5152e3ad33eea6a8e5f07f1a5b0f578c7b90179ad560add534cb91837d8a28"
+        }
+      ]
+    },
+    "F05": {
+      "default_status": "PARTIAL",
+      "local_wip_status": "UNCHANGED",
+      "source_files": [
+        {
+          "repo": "App",
+          "path": "lib/store/api/channel_api.dart",
+          "line": 394,
+          "sha256": "e67b604582815fd27739b677db03edd6516cfe218e68e64c15a4305ad75f7e3a"
+        },
+        {
+          "repo": "App",
+          "path": "lib/page/channel/channel_provider.dart",
+          "line": 450,
+          "sha256": "1ff039e39fe1de9ff892f489513bfcbda446798bbd58b22b1798351bddf97748"
+        },
+        {
+          "repo": "App",
+          "path": "lib/page/channel/widgets/channel_message_feed.dart",
+          "line": 418,
+          "sha256": "e579f0fe173f42882961205ee2fe73d9a7bb8f1b4867f2062ee677011e9ee29d"
+        }
+      ]
+    },
+    "F06": {
+      "default_status": "OPEN",
+      "local_wip_status": "UNCHANGED",
+      "source_files": [
+        {
+          "repo": "App",
+          "path": "lib/store/api/channel_api.dart",
+          "line": 64,
+          "sha256": "e67b604582815fd27739b677db03edd6516cfe218e68e64c15a4305ad75f7e3a"
+        },
+        {
+          "repo": "App",
+          "path": "lib/page/channel/channel_provider.dart",
+          "line": 414,
+          "sha256": "1ff039e39fe1de9ff892f489513bfcbda446798bbd58b22b1798351bddf97748"
+        }
+      ]
+    },
+    "F07": {
+      "default_status": "OPEN",
+      "local_wip_status": "IMPLEMENTED_NOT_ACCEPTED",
+      "source_files": [
+        {
+          "repo": "App",
+          "path": "lib/page/conversation/conversation_page.dart",
+          "line": 515,
+          "sha256": "86a0650e3d850dd7bb2a2f16018927b031a6a66b95776a571487571c7d7d968d"
+        }
+      ]
+    },
+    "F08": {
+      "default_status": "OPEN",
+      "local_wip_status": "PARTIAL_NOT_ACCEPTED",
+      "source_files": [
+        {
+          "repo": "App",
+          "path": "lib/page/chat/chat_setting/chat_setting_page.dart",
+          "line": 97,
+          "sha256": "58ef6e855e7bc6eb431a34e016f2a29c268935ad5777b3ccceeb067c3dd39f09"
+        },
+        {
+          "repo": "App",
+          "path": "lib/service/group_notice_config.dart",
+          "line": 49,
+          "sha256": "139ccf88a5e643b82013af8e1453cbde37c086b0ab1afdaa41b4edab09bbdc3c"
+        }
+      ],
+      "additional_direct_consumer": "Group KV key lacks account/source; planned W09.a scope fix, not a product code edit in V2.2"
+    },
+    "F09": {
+      "default_status": "OPEN",
+      "local_wip_status": "IMPLEMENTED_NOT_ACCEPTED",
+      "source_files": [
+        {
+          "repo": "App",
+          "path": "lib/page/conversation/conversation_page.dart",
+          "line": 415,
+          "sha256": "86a0650e3d850dd7bb2a2f16018927b031a6a66b95776a571487571c7d7d968d"
+        },
+        {
+          "repo": "App",
+          "path": "lib/page/conversation/conversation_provider.dart",
+          "line": 700,
+          "sha256": "d72080ade557b655d9fcef13a5e6d49fede31c1dade53301ddf164fdee1e062d"
+        }
+      ]
+    },
+    "F10": {
+      "default_status": "OPEN",
+      "local_wip_status": "UNCHANGED",
+      "source_files": [
+        {
+          "repo": "App",
+          "path": "lib/page/workspace/workspace_groups_page.dart",
+          "line": 44,
+          "sha256": "73384d627c324ae0c9b1afdfacd42772ec5d7ed0268397fe99f2499e8bf9364a"
+        }
+      ]
+    },
+    "F11": {
+      "default_status": "OPEN",
+      "local_wip_status": "UNCHANGED",
+      "source_files": [
+        {
+          "repo": "App",
+          "path": "lib/page/workspace/workspace_channels_page.dart",
+          "line": 158,
+          "sha256": "67ea476aaa739f7225072817126ba8a31c397c6185079a45700b7d0098ea79d3"
+        },
+        {
+          "repo": "App",
+          "path": "lib/page/workspace_shell/enterprise_shell_page.dart",
+          "line": 464,
+          "sha256": "9e213ce68cc4c597d023d6d9e525d82858d7673f3fcea2b84f6f8ad8f56f5b5d"
+        }
+      ]
+    },
+    "F12": {
+      "default_status": "OPEN",
+      "local_wip_status": "UNCHANGED",
+      "source_files": [
+        {
+          "repo": "App",
+          "path": "lib/page/workspace/workspace_channel_detail_page.dart",
+          "line": 79,
+          "sha256": "1999a0cc84012addeaac99330d86f278a10064230db848a80810ce10f8f0c5e8"
+        },
+        {
+          "repo": "App",
+          "path": "lib/page/channel/channel_detail_page.dart",
+          "line": 299,
+          "sha256": "3f78ad69f654cbef5d62030eda68b634ee5850debe1188d630f176114bfe1b0a"
+        }
+      ]
+    },
+    "F13": {
+      "default_status": "OPEN",
+      "local_wip_status": "UNCHANGED",
+      "source_files": [
+        {
+          "repo": "Backend",
+          "path": "src/repo/channel_repo.erl",
+          "line": 225,
+          "sha256": "7300a8ad67e17a4439425da78742df6ac9e7fd4c3d9b27dbb45e6379862b7a02"
+        },
+        {
+          "repo": "Backend",
+          "path": "src/logic/channel_logic_subscription.erl",
+          "line": 22,
+          "sha256": "6fa2b6d928e1e7a6120f0a66e1ca43fb55d7f9afb4350132df56e653d4d27a07"
+        }
+      ]
+    },
+    "F14": {
+      "default_status": "OPEN",
+      "local_wip_status": "UNCHANGED",
+      "source_files": [
+        {
+          "repo": "App",
+          "path": "lib/page/channel/channel_detail_page.dart",
+          "line": 77,
+          "sha256": "3f78ad69f654cbef5d62030eda68b634ee5850debe1188d630f176114bfe1b0a"
+        }
+      ]
+    },
+    "F15": {
+      "default_status": "OPEN",
+      "local_wip_status": "UNCHANGED",
+      "source_files": [
+        {
+          "repo": "Backend",
+          "path": "src/api/channel_handler.erl",
+          "line": 389,
+          "sha256": "21bd462553489e3f8b6cd38d9d691db467d3e67ff5e92d2eba0ea39c8c8ebb4c"
+        },
+        {
+          "repo": "Backend",
+          "path": "src/repo/channel_repo.erl",
+          "line": 225,
+          "sha256": "7300a8ad67e17a4439425da78742df6ac9e7fd4c3d9b27dbb45e6379862b7a02"
+        }
+      ]
+    },
+    "F16": {
+      "default_status": "OPEN",
+      "local_wip_status": "PARTIAL_NOT_ACCEPTED",
+      "source_files": [
+        {
+          "repo": "App",
+          "path": "lib/page/chat/chat/chat_page.dart",
+          "line": 936,
+          "sha256": "5c655557c58c935caf4f0b8f82656b59813dbec9f4006c4ba9448ef941620e05"
+        }
+      ]
+    },
+    "F17": {
+      "default_status": "OPEN",
+      "local_wip_status": "UNCHANGED",
+      "source_files": [
+        {
+          "repo": "App",
+          "path": "lib/page/group/group_detail/widgets/group_danger_zone.dart",
+          "line": 94,
+          "sha256": "bc29168dd0c6d63f8602772e8f462b89e8006327a31fe969d7fd37e3510b30e9"
+        }
+      ]
+    },
+    "F18": {
+      "default_status": "OPEN",
+      "local_wip_status": "UNCHANGED",
+      "source_files": [
+        {
+          "repo": "App",
+          "path": "lib/page/group/launch_chat/launch_chat_provider.dart",
+          "line": 165,
+          "sha256": "2d9e75eb9ac6a4d207559a0d73561dcab4189963ee6f82094fce76d3661e4ed6"
+        },
+        {
+          "repo": "App",
+          "path": "lib/page/group/launch_chat/launch_chat_page.dart",
+          "line": 249,
+          "sha256": "1d6c708a65e9f0d6cc3223dc371625bec28794d7fb24ba876e3149cc1740db4a"
+        }
+      ]
+    },
+    "F19": {
+      "default_status": "OPEN",
+      "local_wip_status": "UNCHANGED",
+      "source_files": [
+        {
+          "repo": "App",
+          "path": "lib/page/workspace/workspace_conversations_page.dart",
+          "line": 84,
+          "sha256": "4d385d2b77c48eb275cfbff4f65149518caba2d622e18904079f8a0b215363cc"
+        },
+        {
+          "repo": "App",
+          "path": "lib/store/model/workspace_conversation_model.dart",
+          "line": 8,
+          "sha256": "6d1a9cb9bfb0ff4b5cddf6f76db4787e8dc00e5ce351e3040b4e0420be1777c0"
+        }
+      ]
+    },
+    "F20": {
+      "default_status": "OPEN",
+      "local_wip_status": "UNCHANGED",
+      "source_files": [
+        {
+          "repo": "App",
+          "path": "lib/modules/organization/presentation/organization_manage_page.dart",
+          "line": 333,
+          "sha256": "3e8ff9b9b6c969b5efdbc67d1b728d8538ad1aa143057193c2b7bfbf02aa2a42"
+        },
+        {
+          "repo": "Backend",
+          "path": "src/api/group_handler.erl",
+          "line": 233,
+          "sha256": "ebc01a993ebedce09ba7a965ff99902607ea8369da67cc8e4dffaaf214d59293"
+        }
+      ]
+    },
+    "F21": {
+      "default_status": "OPEN",
+      "local_wip_status": "UNCHANGED",
+      "source_files": [
+        {
+          "repo": "App",
+          "path": "lib/page/conversation/conversation_page.dart",
+          "line": 366,
+          "sha256": "86a0650e3d850dd7bb2a2f16018927b031a6a66b95776a571487571c7d7d968d"
+        }
+      ]
+    },
+    "F22": {
+      "default_status": "OPEN",
+      "local_wip_status": "UNCHANGED",
+      "source_files": [
+        {
+          "repo": "App",
+          "path": "lib/page/group/group_list/group_list_page.dart",
+          "line": 116,
+          "sha256": "6024433492c99f45dcdcacf08d5f1a7f4a884fcab850a3d4b656e67b75d8c414"
+        },
+        {
+          "repo": "App",
+          "path": "lib/page/channel/channel_list_page.dart",
+          "line": 207,
+          "sha256": "f9acc64e2e14271136dd5a28062d1659ee3e09445a614222d22d92408403f784"
+        }
+      ]
+    }
+  },
+  "development_dependencies": {
+    "W00": [],
+    "W01": [
+      "W00"
+    ],
+    "W02": [
+      "W00"
+    ],
+    "W03": [
+      "W00"
+    ],
+    "W04": [
+      "W04.a",
+      "W04.b",
+      "W04.c",
+      "W04.d"
+    ],
+    "W04.a": [
+      "W00"
+    ],
+    "W04.b": [
+      "W00"
+    ],
+    "W04.c": [
+      "W00"
+    ],
+    "W04.d": [
+      "W04.d.g",
+      "W04.d.c"
+    ],
+    "W04.d.g": [
+      "W04.b",
+      "W01",
+      "W02"
+    ],
+    "W04.d.c": [
+      "W04.c",
+      "W01",
+      "W02"
+    ],
+    "W05": [
+      "W03",
+      "W04.d.g"
+    ],
+    "W06": [
+      "W01",
+      "W02"
+    ],
+    "W07": [
+      "W07.a",
+      "W07.b",
+      "W07.c",
+      "W07.d"
+    ],
+    "W07.a": [
+      "W00"
+    ],
+    "W07.b": [
+      "W07.a"
+    ],
+    "W07.c": [
+      "W07.b",
+      "W01",
+      "W02"
+    ],
+    "W07.d": [
+      "W07.c"
+    ],
+    "W08": [
+      "W02",
+      "W07"
+    ],
+    "W09": [
+      "W09.a",
+      "W09.b",
+      "W09.c",
+      "W09.d"
+    ],
+    "W09.a": [
+      "W03"
+    ],
+    "W09.b": [
+      "W00"
+    ],
+    "W09.c": [
+      "W09.a",
+      "W09.b"
+    ],
+    "W09.d": [
+      "W09.c"
+    ],
+    "W10": [
+      "W03",
+      "W06"
+    ],
+    "W11": [
+      "W02"
+    ],
+    "W12": [
+      "W00"
+    ],
+    "W13": [
+      "W01",
+      "W02",
+      "W03",
+      "W04",
+      "W05",
+      "W06",
+      "W07",
+      "W08",
+      "W09",
+      "W10",
+      "W11",
+      "W12"
+    ]
+  },
+  "finding_to_work": {
+    "F01": [
+      "W04",
+      "W05"
+    ],
+    "F02": [
+      "W04",
+      "W05"
+    ],
+    "F03": [
+      "W01"
+    ],
+    "F04": [
+      "W01",
+      "W02"
+    ],
+    "F05": [
+      "W01",
+      "W02"
+    ],
+    "F06": [
+      "W01",
+      "W02"
+    ],
+    "F07": [
+      "W03"
+    ],
+    "F08": [
+      "W03",
+      "W09"
+    ],
+    "F09": [
+      "W03"
+    ],
+    "F10": [
+      "W04",
+      "W05",
+      "W07"
+    ],
+    "F11": [
+      "W07",
+      "W08"
+    ],
+    "F12": [
+      "W06",
+      "W10"
+    ],
+    "F13": [
+      "W07"
+    ],
+    "F14": [
+      "W08",
+      "W09"
+    ],
+    "F15": [
+      "W07"
+    ],
+    "F16": [
+      "W11"
+    ],
+    "F17": [
+      "W06",
+      "W10"
+    ],
+    "F18": [
+      "W04",
+      "W05"
+    ],
+    "F19": [
+      "W09"
+    ],
+    "F20": [
+      "W04",
+      "W05"
+    ],
+    "F21": [
+      "W08",
+      "W09"
+    ],
+    "F22": [
+      "W07"
+    ]
+  },
+  "work_to_journey": {
+    "W00": [
+      "J08",
+      "J23",
+      "J27",
+      "J28"
+    ],
+    "W01": [
+      "J06",
+      "J07",
+      "J08"
+    ],
+    "W02": [
+      "J09",
+      "J10",
+      "J11",
+      "J29"
+    ],
+    "W03": [
+      "J15",
+      "J16",
+      "J17",
+      "J18"
+    ],
+    "W04": [
+      "J01",
+      "J02",
+      "J03",
+      "J04",
+      "J05",
+      "J23",
+      "J24",
+      "J25"
+    ],
+    "W05": [
+      "J01",
+      "J03",
+      "J14"
+    ],
+    "W06": [
+      "J12"
+    ],
+    "W07": [
+      "J08",
+      "J14",
+      "J20",
+      "J26",
+      "J27"
+    ],
+    "W08": [
+      "J10",
+      "J13",
+      "J21",
+      "J29"
+    ],
+    "W09": [
+      "J10",
+      "J16",
+      "J17",
+      "J28",
+      "J29"
+    ],
+    "W10": [
+      "J19",
+      "J28"
+    ],
+    "W11": [
+      "J18"
+    ],
+    "W12": [
+      "J22"
+    ],
+    "W13": [
+      "J01",
+      "J02",
+      "J03",
+      "J04",
+      "J05",
+      "J06",
+      "J07",
+      "J08",
+      "J09",
+      "J10",
+      "J11",
+      "J12",
+      "J13",
+      "J14",
+      "J15",
+      "J16",
+      "J17",
+      "J18",
+      "J19",
+      "J20",
+      "J21",
+      "J22",
+      "J23",
+      "J24",
+      "J25",
+      "J26",
+      "J27",
+      "J28",
+      "J29"
+    ]
+  },
+  "recommendations": [
+    {
+      "id": "R01",
+      "decision": "接受",
+      "section": "§1.6/第3节/§8.4",
+      "basis": "三仓 origin/main 实测；ADM 路由/DTO/归档/权限消费者独立；F07/08/09/16 默认分支与 WIP 分列，Admin 无无条件必改代码。"
+    },
+    {
+      "id": "R02",
+      "decision": "调整后接受",
+      "section": "§6.4/§10.4",
+      "basis": "现有 manifest 无 contracts map；在既有顶层增对象字段，区分群/频道/偏好/水位，合同 ETag 与编译 hash 不混用，明确禁止剥键。"
+    },
+    {
+      "id": "R03",
+      "decision": "调整后接受",
+      "section": "§6.4 恢复及边界表",
+      "basis": "24h 客户端派发、7d 服务端响应不是同一时钟；recover_only 复用 POST 只查，receipt 不因过期重置。"
+    },
+    {
+      "id": "R04",
+      "decision": "接受",
+      "section": "§6.4/W04.b/c/J23",
+      "basis": "已有资源事务和 after_commit，但后者仅缓存失效且不持久；通知复用 msg_s2c 持久链，新增 Conn 入口若必要只限该链。"
+    },
+    {
+      "id": "R05",
+      "decision": "调整后接受",
+      "section": "§6.8/J13",
+      "basis": "当前 mark_as_read 忽略 message_id；既有时间/TSID 不证明提交序，限定最小频道 update_seq/view_seq，不做逐帖阅读系统。"
+    },
+    {
+      "id": "R06",
+      "decision": "接受",
+      "section": "§6.6/J29",
+      "basis": "原“当前上下文读取”过宽，改内容授权 K、20s提前验/30s硬截止及三层缓存，不造服务器租约。"
+    },
+    {
+      "id": "R07",
+      "decision": "调整后接受",
+      "section": "§6.5/W07/J20",
+      "basis": "订阅 id 实际存在且重激活复用；工作区成员列表是 /groups?member_only=1，不虚构 member-groups 路由；完整搜索分四类。"
+    },
+    {
+      "id": "R08",
+      "decision": "接受",
+      "section": "§6.5 权威范围表/J26",
+      "basis": "当前 summary 无集合完整性证明；缺席≠0，完成翻页仍不得无条件清理，显式对象状态才可销账。"
+    },
+    {
+      "id": "R09",
+      "decision": "调整后接受",
+      "section": "§6.7/W09/J16/17/28",
+      "basis": "单聊SQLite、群KV＋投影、频道本机订阅、服务端pin/delete分别核对；不把群禁言当免打扰，不造workspace世代。；已确认群KV无账号前缀，需最小范围键与所有直接消费者一起修复。"
+    },
+    {
+      "id": "R10",
+      "decision": "接受，修复条件化",
+      "section": "§10.3/J27.d/e",
+      "basis": "Admin有解码前保护，App默认Dio+num转字符串无法证明Web精度；固定raw-wire测试，未经失败证据不全仓改ID。"
+    },
+    {
+      "id": "R11",
+      "decision": "接受",
+      "section": "§8.2开发DAG/联合启用/F11",
+      "basis": "开发前置、文件串行与启用分别列；W07不等整个W04，W10开发不等整个W09。"
+    },
+    {
+      "id": "R12",
+      "decision": "接受",
+      "section": "§8.2子卡",
+      "basis": "W04/W07/W09落14个子节点（含App群/频道分别接入），明确路径/禁区/测试/退出/回退，未新增任务平台。"
+    },
+    {
+      "id": "R13",
+      "decision": "接受",
+      "section": "§9断言表",
+      "basis": "所有J都有固定子断言，J18/J22/J28/J29分拆；Required/条件适用、拟扩展测试和NOT_RUN逐行记录。"
+    },
+    {
+      "id": "R14",
+      "decision": "调整后接受",
+      "section": "§10.4/J28",
+      "basis": "当前单节点manifest不代表集群；明确新合同不支持新旧Backend混跑，兼容全节点部署后才启用；Admin纳入回归。"
+    },
+    {
+      "id": "R15",
+      "decision": "接受",
+      "section": "§8.4",
+      "basis": "按三仓真实Makefile/CI/脚本核入口，保存ratchet与裸分析、覆盖阈值和默认排除集的差别，本轮不执行业务门。"
+    },
+    {
+      "id": "R16",
+      "decision": "接受",
+      "section": "§1.6/§11.1",
+      "basis": "沿用原worktree/HEAD，静态证据不当运行引擎；WIP指纹保护、历史局部收据与当前完整验收分离，唯一V2.2入口。"
+    }
+  ],
+  "test_targets": {
+    "AS": {
+      "repo": "App",
+      "path": "test/unit_test/page/channel/channel_provider_state_test.dart",
+      "case_status": "planned_extension_not_executed"
+    },
+    "AE": {
+      "repo": "App",
+      "path": "test/unit_test/page/channel/channel_detail_event_test.dart",
+      "case_status": "planned_extension_not_executed"
+    },
+    "AA": {
+      "repo": "App",
+      "path": "test/unit_test/page/channel/channel_detail_actions_test.dart",
+      "case_status": "planned_extension_not_executed"
+    },
+    "AC": {
+      "repo": "App",
+      "path": "test/unit_test/page/conversation/conversation_authority_actions_test.dart",
+      "case_status": "planned_extension_not_executed"
+    },
+    "AP": {
+      "repo": "App",
+      "path": "test/unit_test/page/conversation/conversation_page_test.dart",
+      "case_status": "planned_extension_not_executed"
+    },
+    "AM": {
+      "repo": "App",
+      "path": "test/unit_test/page/chat/chat_setting/chat_setting_burn_picker_test.dart",
+      "case_status": "planned_extension_not_executed"
+    },
+    "AQ": {
+      "repo": "App",
+      "path": "test/unit_test/page/channel/channel_list_state_sync_test.dart",
+      "case_status": "planned_extension_not_executed"
+    },
+    "AU": {
+      "repo": "App",
+      "path": "test/unit_test/service/channel_service_unread_summary_sync_test.dart",
+      "case_status": "planned_extension_not_executed"
+    },
+    "AW": {
+      "repo": "App",
+      "path": "test/unit_test/page/workspace/workspace_channel_detail_page_test.dart",
+      "case_status": "planned_extension_not_executed"
+    },
+    "AV": {
+      "repo": "App",
+      "path": "test/unit_test/page/workspace/workspace_conversations_page_test.dart",
+      "case_status": "planned_extension_not_executed"
+    },
+    "AG": {
+      "repo": "App",
+      "path": "test/unit_test/api/group_api_test.dart",
+      "case_status": "planned_extension_not_executed"
+    },
+    "AF": {
+      "repo": "App",
+      "path": "test/unit_test/app_core/feature_flags/app_manifest_cache_recovery_test.dart",
+      "case_status": "planned_extension_not_executed"
+    },
+    "AH": {
+      "repo": "App",
+      "path": "test/unit_test/component/http/http_parse_test.dart",
+      "case_status": "planned_extension_not_executed"
+    },
+    "BS": {
+      "repo": "Backend",
+      "path": "test/logic/channel_scope_tests.erl",
+      "case_status": "planned_extension_not_executed"
+    },
+    "BG": {
+      "repo": "Backend",
+      "path": "test/logic/group_scope_tests.erl",
+      "case_status": "planned_extension_not_executed"
+    },
+    "BR": {
+      "repo": "Backend",
+      "path": "test/logic/channel_workspace_read_tests.erl",
+      "case_status": "planned_extension_not_executed"
+    },
+    "BM": {
+      "repo": "Backend",
+      "path": "test/api/app_manifest_handler_tests.erl",
+      "case_status": "planned_extension_not_executed"
+    },
+    "BP": {
+      "repo": "Backend",
+      "path": "test/integration/conversation_pin_delete_integration_tests.erl",
+      "case_status": "planned_extension_not_executed"
+    },
+    "MI": {
+      "repo": "Admin",
+      "path": "src/lib/safeParseBigIntJson.test.ts",
+      "case_status": "planned_extension_not_executed"
+    },
+    "MW": {
+      "repo": "Admin",
+      "path": "src/services/api/workspaces.test.ts",
+      "case_status": "planned_extension_not_executed"
+    },
+    "NC": {
+      "repo": "App",
+      "path": "integration_test/README.md",
+      "case_status": "planned_extension_not_executed"
+    },
+    "MG": {
+      "repo": "Admin",
+      "path": "src/modules/groups/api/groups.test.ts",
+      "case_status": "planned_extension_not_executed"
+    },
+    "MC": {
+      "repo": "Admin",
+      "path": "src/modules/channels/api/channels.test.ts",
+      "case_status": "planned_extension_not_executed"
+    },
+    "MF": {
+      "repo": "Admin",
+      "path": "src/services/api/features.test.ts",
+      "case_status": "planned_extension_not_executed"
+    },
+    "MV": {
+      "repo": "Admin",
+      "path": "src/pages/workspaces/WorkspaceDetailPage.test.tsx",
+      "case_status": "planned_extension_not_executed"
+    },
+    "AN": {
+      "repo": "App",
+      "path": "test/unit_test/service/group_notice_config_test.dart",
+      "case_status": "planned_extension_not_executed"
+    }
+  },
+  "assertions": [
+    {
+      "id": "J01.a",
+      "journey": "J01",
+      "test_targets": [
+        "AG",
+        "BG"
+      ],
+      "applicability": "R",
+      "status": "NOT_RUN",
+      "evidence": null
+    },
+    {
+      "id": "J02.a",
+      "journey": "J02",
+      "test_targets": [
+        "AG"
+      ],
+      "applicability": "R",
+      "status": "NOT_RUN",
+      "evidence": null
+    },
+    {
+      "id": "J03.a",
+      "journey": "J03",
+      "test_targets": [
+        "AG",
+        "BG",
+        "BS"
+      ],
+      "applicability": "R",
+      "status": "NOT_RUN",
+      "evidence": null
+    },
+    {
+      "id": "J04.a",
+      "journey": "J04",
+      "test_targets": [
+        "AG"
+      ],
+      "applicability": "R",
+      "status": "NOT_RUN",
+      "evidence": null
+    },
+    {
+      "id": "J04.b",
+      "journey": "J04",
+      "test_targets": [
+        "AG",
+        "BG"
+      ],
+      "applicability": "R",
+      "status": "NOT_RUN",
+      "evidence": null
+    },
+    {
+      "id": "J05.a",
+      "journey": "J05",
+      "test_targets": [
+        "AA",
+        "BS"
+      ],
+      "applicability": "C-channel",
+      "status": "NOT_RUN",
+      "evidence": null
+    },
+    {
+      "id": "J06.a",
+      "journey": "J06",
+      "test_targets": [
+        "AQ",
+        "AS"
+      ],
+      "applicability": "C-channel",
+      "status": "NOT_RUN",
+      "evidence": null
+    },
+    {
+      "id": "J07.a",
+      "journey": "J07",
+      "test_targets": [
+        "AS",
+        "AA"
+      ],
+      "applicability": "C-channel",
+      "status": "NOT_RUN",
+      "evidence": null
+    },
+    {
+      "id": "J08.a",
+      "journey": "J08",
+      "test_targets": [
+        "AS",
+        "AV",
+        "AF"
+      ],
+      "applicability": "R",
+      "status": "NOT_RUN",
+      "evidence": null
+    },
+    {
+      "id": "J09.a",
+      "journey": "J09",
+      "test_targets": [
+        "AA",
+        "BR"
+      ],
+      "applicability": "C-channel",
+      "status": "NOT_RUN",
+      "evidence": null
+    },
+    {
+      "id": "J10.a",
+      "journey": "J10",
+      "test_targets": [
+        "AE",
+        "BR"
+      ],
+      "applicability": "R",
+      "status": "NOT_RUN",
+      "evidence": null
+    },
+    {
+      "id": "J10.b",
+      "journey": "J10",
+      "test_targets": [
+        "AV",
+        "BR"
+      ],
+      "applicability": "R",
+      "status": "NOT_RUN",
+      "evidence": null
+    },
+    {
+      "id": "J10.c",
+      "journey": "J10",
+      "test_targets": [
+        "AA",
+        "AV"
+      ],
+      "applicability": "R",
+      "status": "NOT_RUN",
+      "evidence": null
+    },
+    {
+      "id": "J11.a",
+      "journey": "J11",
+      "test_targets": [
+        "AA"
+      ],
+      "applicability": "C-channel",
+      "status": "NOT_RUN",
+      "evidence": null
+    },
+    {
+      "id": "J12.a",
+      "journey": "J12",
+      "test_targets": [
+        "AW",
+        "AA"
+      ],
+      "applicability": "C-channel",
+      "status": "NOT_RUN",
+      "evidence": null
+    },
+    {
+      "id": "J13.a",
+      "journey": "J13",
+      "test_targets": [
+        "AA",
+        "BR"
+      ],
+      "applicability": "C-channel",
+      "status": "NOT_RUN",
+      "evidence": null
+    },
+    {
+      "id": "J13.b",
+      "journey": "J13",
+      "test_targets": [
+        "AA",
+        "BR"
+      ],
+      "applicability": "C-channel",
+      "status": "NOT_RUN",
+      "evidence": null
+    },
+    {
+      "id": "J13.c",
+      "journey": "J13",
+      "test_targets": [
+        "AA",
+        "AE"
+      ],
+      "applicability": "C-channel",
+      "status": "NOT_RUN",
+      "evidence": null
+    },
+    {
+      "id": "J13.d",
+      "journey": "J13",
+      "test_targets": [
+        "BR"
+      ],
+      "applicability": "C-channel",
+      "status": "NOT_RUN",
+      "evidence": null
+    },
+    {
+      "id": "J13.e",
+      "journey": "J13",
+      "test_targets": [
+        "AA",
+        "BS"
+      ],
+      "applicability": "C-channel",
+      "status": "NOT_RUN",
+      "evidence": null
+    },
+    {
+      "id": "J14.a",
+      "journey": "J14",
+      "test_targets": [
+        "AW",
+        "AG"
+      ],
+      "applicability": "R",
+      "status": "NOT_RUN",
+      "evidence": null
+    },
+    {
+      "id": "J14.b",
+      "journey": "J14",
+      "test_targets": [
+        "AW",
+        "AQ"
+      ],
+      "applicability": "R",
+      "status": "NOT_RUN",
+      "evidence": null
+    },
+    {
+      "id": "J15.a",
+      "journey": "J15",
+      "test_targets": [
+        "AP"
+      ],
+      "applicability": "R",
+      "status": "NOT_RUN",
+      "evidence": null
+    },
+    {
+      "id": "J15.b",
+      "journey": "J15",
+      "test_targets": [
+        "AP"
+      ],
+      "applicability": "R",
+      "status": "NOT_RUN",
+      "evidence": null
+    },
+    {
+      "id": "J16.a",
+      "journey": "J16",
+      "test_targets": [
+        "AC",
+        "AM",
+        "AN"
+      ],
+      "applicability": "R",
+      "status": "NOT_RUN",
+      "evidence": null
+    },
+    {
+      "id": "J16.b",
+      "journey": "J16",
+      "test_targets": [
+        "AM",
+        "AC"
+      ],
+      "applicability": "R",
+      "status": "NOT_RUN",
+      "evidence": null
+    },
+    {
+      "id": "J16.c",
+      "journey": "J16",
+      "test_targets": [
+        "NC"
+      ],
+      "applicability": "R",
+      "status": "NOT_RUN",
+      "evidence": null
+    },
+    {
+      "id": "J17.a",
+      "journey": "J17",
+      "test_targets": [
+        "AC",
+        "BP"
+      ],
+      "applicability": "R",
+      "status": "NOT_RUN",
+      "evidence": null
+    },
+    {
+      "id": "J17.b",
+      "journey": "J17",
+      "test_targets": [
+        "AC",
+        "BP"
+      ],
+      "applicability": "R",
+      "status": "NOT_RUN",
+      "evidence": null
+    },
+    {
+      "id": "J17.c",
+      "journey": "J17",
+      "test_targets": [
+        "AC",
+        "AV"
+      ],
+      "applicability": "R",
+      "status": "NOT_RUN",
+      "evidence": null
+    },
+    {
+      "id": "J17.d",
+      "journey": "J17",
+      "test_targets": [
+        "AC",
+        "BP"
+      ],
+      "applicability": "R",
+      "status": "NOT_RUN",
+      "evidence": null
+    },
+    {
+      "id": "J17.e",
+      "journey": "J17",
+      "test_targets": [
+        "BP"
+      ],
+      "applicability": "R",
+      "status": "NOT_RUN",
+      "evidence": null
+    },
+    {
+      "id": "J18.a",
+      "journey": "J18",
+      "test_targets": [
+        "NC"
+      ],
+      "applicability": "R",
+      "status": "NOT_RUN",
+      "evidence": null
+    },
+    {
+      "id": "J18.b",
+      "journey": "J18",
+      "test_targets": [
+        "NC"
+      ],
+      "applicability": "C-attachment",
+      "status": "NOT_RUN",
+      "evidence": null
+    },
+    {
+      "id": "J18.c",
+      "journey": "J18",
+      "test_targets": [
+        "NC"
+      ],
+      "applicability": "R",
+      "status": "NOT_RUN",
+      "evidence": null
+    },
+    {
+      "id": "J18.d",
+      "journey": "J18",
+      "test_targets": [
+        "NC"
+      ],
+      "applicability": "R",
+      "status": "NOT_RUN",
+      "evidence": null
+    },
+    {
+      "id": "J18.e",
+      "journey": "J18",
+      "test_targets": [
+        "NC"
+      ],
+      "applicability": "R",
+      "status": "NOT_RUN",
+      "evidence": null
+    },
+    {
+      "id": "J18.f",
+      "journey": "J18",
+      "test_targets": [
+        "NC"
+      ],
+      "applicability": "R",
+      "status": "NOT_RUN",
+      "evidence": null
+    },
+    {
+      "id": "J19.a",
+      "journey": "J19",
+      "test_targets": [
+        "NC",
+        "BG"
+      ],
+      "applicability": "R",
+      "status": "NOT_RUN",
+      "evidence": null
+    },
+    {
+      "id": "J19.b",
+      "journey": "J19",
+      "test_targets": [
+        "NC",
+        "BG"
+      ],
+      "applicability": "R",
+      "status": "NOT_RUN",
+      "evidence": null
+    },
+    {
+      "id": "J19.c",
+      "journey": "J19",
+      "test_targets": [
+        "NC",
+        "BG"
+      ],
+      "applicability": "R",
+      "status": "NOT_RUN",
+      "evidence": null
+    },
+    {
+      "id": "J19.d",
+      "journey": "J19",
+      "test_targets": [
+        "NC"
+      ],
+      "applicability": "R",
+      "status": "NOT_RUN",
+      "evidence": null
+    },
+    {
+      "id": "J19.e",
+      "journey": "J19",
+      "test_targets": [
+        "NC"
+      ],
+      "applicability": "R",
+      "status": "NOT_RUN",
+      "evidence": null
+    },
+    {
+      "id": "J20.a",
+      "journey": "J20",
+      "test_targets": [
+        "AG",
+        "AQ",
+        "BS"
+      ],
+      "applicability": "R",
+      "status": "NOT_RUN",
+      "evidence": null
+    },
+    {
+      "id": "J20.b",
+      "journey": "J20",
+      "test_targets": [
+        "AS",
+        "AQ"
+      ],
+      "applicability": "R",
+      "status": "NOT_RUN",
+      "evidence": null
+    },
+    {
+      "id": "J20.c",
+      "journey": "J20",
+      "test_targets": [
+        "AQ",
+        "BS"
+      ],
+      "applicability": "R",
+      "status": "NOT_RUN",
+      "evidence": null
+    },
+    {
+      "id": "J20.d",
+      "journey": "J20",
+      "test_targets": [
+        "AQ",
+        "BS"
+      ],
+      "applicability": "R",
+      "status": "NOT_RUN",
+      "evidence": null
+    },
+    {
+      "id": "J21.a",
+      "journey": "J21",
+      "test_targets": [
+        "AW",
+        "BS",
+        "MV",
+        "MC"
+      ],
+      "applicability": "R",
+      "status": "NOT_RUN",
+      "evidence": null
+    },
+    {
+      "id": "J22.a",
+      "journey": "J22",
+      "test_targets": [
+        "NC"
+      ],
+      "applicability": "R",
+      "status": "NOT_RUN",
+      "evidence": null
+    },
+    {
+      "id": "J22.b",
+      "journey": "J22",
+      "test_targets": [
+        "NC"
+      ],
+      "applicability": "R",
+      "status": "NOT_RUN",
+      "evidence": null
+    },
+    {
+      "id": "J22.c",
+      "journey": "J22",
+      "test_targets": [
+        "NC"
+      ],
+      "applicability": "R",
+      "status": "NOT_RUN",
+      "evidence": null
+    },
+    {
+      "id": "J22.d",
+      "journey": "J22",
+      "test_targets": [
+        "NC"
+      ],
+      "applicability": "R",
+      "status": "NOT_RUN",
+      "evidence": null
+    },
+    {
+      "id": "J22.e",
+      "journey": "J22",
+      "test_targets": [
+        "NC"
+      ],
+      "applicability": "R",
+      "status": "NOT_RUN",
+      "evidence": null
+    },
+    {
+      "id": "J22.f",
+      "journey": "J22",
+      "test_targets": [
+        "NC"
+      ],
+      "applicability": "R",
+      "status": "NOT_RUN",
+      "evidence": null
+    },
+    {
+      "id": "J23.a",
+      "journey": "J23",
+      "test_targets": [
+        "BG",
+        "BS"
+      ],
+      "applicability": "R",
+      "status": "NOT_RUN",
+      "evidence": null
+    },
+    {
+      "id": "J23.b",
+      "journey": "J23",
+      "test_targets": [
+        "BG",
+        "BS"
+      ],
+      "applicability": "R",
+      "status": "NOT_RUN",
+      "evidence": null
+    },
+    {
+      "id": "J23.c",
+      "journey": "J23",
+      "test_targets": [
+        "BG",
+        "BS"
+      ],
+      "applicability": "R",
+      "status": "NOT_RUN",
+      "evidence": null
+    },
+    {
+      "id": "J24.a",
+      "journey": "J24",
+      "test_targets": [
+        "AG",
+        "AA",
+        "AF"
+      ],
+      "applicability": "R",
+      "status": "NOT_RUN",
+      "evidence": null
+    },
+    {
+      "id": "J24.b",
+      "journey": "J24",
+      "test_targets": [
+        "BG",
+        "BS"
+      ],
+      "applicability": "R",
+      "status": "NOT_RUN",
+      "evidence": null
+    },
+    {
+      "id": "J24.c",
+      "journey": "J24",
+      "test_targets": [
+        "BG",
+        "BS"
+      ],
+      "applicability": "R",
+      "status": "NOT_RUN",
+      "evidence": null
+    },
+    {
+      "id": "J25.a",
+      "journey": "J25",
+      "test_targets": [
+        "BG",
+        "BS"
+      ],
+      "applicability": "R",
+      "status": "NOT_RUN",
+      "evidence": null
+    },
+    {
+      "id": "J26.a",
+      "journey": "J26",
+      "test_targets": [
+        "AU",
+        "AQ"
+      ],
+      "applicability": "C-channel",
+      "status": "NOT_RUN",
+      "evidence": null
+    },
+    {
+      "id": "J26.b",
+      "journey": "J26",
+      "test_targets": [
+        "AU",
+        "AQ"
+      ],
+      "applicability": "C-channel",
+      "status": "NOT_RUN",
+      "evidence": null
+    },
+    {
+      "id": "J26.c",
+      "journey": "J26",
+      "test_targets": [
+        "AU",
+        "AE"
+      ],
+      "applicability": "C-channel",
+      "status": "NOT_RUN",
+      "evidence": null
+    },
+    {
+      "id": "J26.d",
+      "journey": "J26",
+      "test_targets": [
+        "AU",
+        "AQ"
+      ],
+      "applicability": "C-channel",
+      "status": "NOT_RUN",
+      "evidence": null
+    },
+    {
+      "id": "J26.e",
+      "journey": "J26",
+      "test_targets": [
+        "AU",
+        "BR"
+      ],
+      "applicability": "C-channel",
+      "status": "NOT_RUN",
+      "evidence": null
+    },
+    {
+      "id": "J27.a",
+      "journey": "J27",
+      "test_targets": [
+        "BS",
+        "BG",
+        "MW",
+        "MG",
+        "MC"
+      ],
+      "applicability": "R",
+      "status": "NOT_RUN",
+      "evidence": null
+    },
+    {
+      "id": "J27.b",
+      "journey": "J27",
+      "test_targets": [
+        "AF",
+        "BM",
+        "MF"
+      ],
+      "applicability": "R",
+      "status": "NOT_RUN",
+      "evidence": null
+    },
+    {
+      "id": "J27.c",
+      "journey": "J27",
+      "test_targets": [
+        "AQ",
+        "BS"
+      ],
+      "applicability": "R",
+      "status": "NOT_RUN",
+      "evidence": null
+    },
+    {
+      "id": "J27.d",
+      "journey": "J27",
+      "test_targets": [
+        "AH",
+        "MI",
+        "MW"
+      ],
+      "applicability": "R",
+      "status": "NOT_RUN",
+      "evidence": null
+    },
+    {
+      "id": "J27.e",
+      "journey": "J27",
+      "test_targets": [
+        "AH",
+        "MI"
+      ],
+      "applicability": "R",
+      "status": "NOT_RUN",
+      "evidence": null
+    },
+    {
+      "id": "J27.f",
+      "journey": "J27",
+      "test_targets": [
+        "AF",
+        "BM"
+      ],
+      "applicability": "R",
+      "status": "NOT_RUN",
+      "evidence": null
+    },
+    {
+      "id": "J28.a",
+      "journey": "J28",
+      "test_targets": [
+        "AC",
+        "BP"
+      ],
+      "applicability": "R",
+      "status": "NOT_RUN",
+      "evidence": null
+    },
+    {
+      "id": "J28.b",
+      "journey": "J28",
+      "test_targets": [
+        "AC",
+        "BP"
+      ],
+      "applicability": "R",
+      "status": "NOT_RUN",
+      "evidence": null
+    },
+    {
+      "id": "J28.c",
+      "journey": "J28",
+      "test_targets": [
+        "AV",
+        "BR"
+      ],
+      "applicability": "R",
+      "status": "NOT_RUN",
+      "evidence": null
+    },
+    {
+      "id": "J28.d",
+      "journey": "J28",
+      "test_targets": [
+        "AF",
+        "BM",
+        "MW"
+      ],
+      "applicability": "R",
+      "status": "NOT_RUN",
+      "evidence": null
+    },
+    {
+      "id": "J28.e",
+      "journey": "J28",
+      "test_targets": [
+        "BM"
+      ],
+      "applicability": "R",
+      "status": "NOT_RUN",
+      "evidence": null
+    },
+    {
+      "id": "J28.f",
+      "journey": "J28",
+      "test_targets": [
+        "AF",
+        "BM",
+        "BP"
+      ],
+      "applicability": "R",
+      "status": "NOT_RUN",
+      "evidence": null
+    },
+    {
+      "id": "J29.a",
+      "journey": "J29",
+      "test_targets": [
+        "AA",
+        "AV"
+      ],
+      "applicability": "R",
+      "status": "NOT_RUN",
+      "evidence": null
+    },
+    {
+      "id": "J29.b",
+      "journey": "J29",
+      "test_targets": [
+        "AA",
+        "AV"
+      ],
+      "applicability": "R",
+      "status": "NOT_RUN",
+      "evidence": null
+    },
+    {
+      "id": "J29.c",
+      "journey": "J29",
+      "test_targets": [
+        "AA",
+        "AE"
+      ],
+      "applicability": "R",
+      "status": "NOT_RUN",
+      "evidence": null
+    },
+    {
+      "id": "J29.d",
+      "journey": "J29",
+      "test_targets": [
+        "AA",
+        "AV"
+      ],
+      "applicability": "R",
+      "status": "NOT_RUN",
+      "evidence": null
+    },
+    {
+      "id": "J29.e",
+      "journey": "J29",
+      "test_targets": [
+        "AE",
+        "AV"
+      ],
+      "applicability": "R",
+      "status": "NOT_RUN",
+      "evidence": null
+    },
+    {
+      "id": "J29.f",
+      "journey": "J29",
+      "test_targets": [
+        "AE",
+        "BR"
+      ],
+      "applicability": "R",
+      "status": "NOT_RUN",
+      "evidence": null
+    },
+    {
+      "id": "J29.g",
+      "journey": "J29",
+      "test_targets": [
+        "AV",
+        "BR"
+      ],
+      "applicability": "R",
+      "status": "NOT_RUN",
+      "evidence": null
+    }
+  ],
+  "plan_sha256": "91c97f266055f811ca27a73842a1e298dc84dcba9a5d9af7b65b209fa9a1eeac",
+  "source_attachment_sha256": "964b99c4cadec1c802707cd5773b2a88e0a2c1a0e78ea54e896ccc2472ee0f8b",
+  "history_document_sha256": {
+    "plan-v1.md": "0d929642c5030bb557b48ae94e89e679eada64c6e4d407d1ca4b5fb7a1501f67",
+    "plan-v2.md": "d42bcf0f3bc0e0bfe4c8a9a8b4536a809ca8c2362aa5fd9b7638c8c93c67a50c"
+  },
+  "pr_query_window_utc": {
+    "earliest": "2026-10-27T06:36:59Z",
+    "latest": "2026-10-27T07:11:29.316136+00:00",
+    "note": "Queries completed successfully for origin Gitee and configured GitHub mirrors; Gitcode not queried."
+  },
+  "document_scope": "plan + index + static evidence only; all nine prior App WIP hashes must remain unchanged",
+  "validation": {
+    "status": "PASS_STATIC_PLAN_ONLY",
+    "checked_at_utc": "2026-10-27T07:37:28.604249+00:00",
+    "F": 22,
+    "C": 5,
+    "D": 7,
+    "W_parent": 14,
+    "W_child_nodes": 14,
+    "development_dag_nodes": 28,
+    "development_dag_acyclic": true,
+    "J_parent": 29,
+    "J_atomic": 85,
+    "R_dispositions": 16,
+    "test_targets_existing": 26,
+    "finding_work_journey_coverage_complete": true,
+    "preserved_app_wip_files": 9,
+    "historical_documents_unchanged": true,
+    "runtime_acceptance": "NOT_RUN",
+    "business_code_changed_this_revision": false
+  },
+  "execution_relocation": {
+    "requested_at_local_date": "2026-10-27",
+    "backup": "/Users/leeyi/.codex/backups/channel-group-ux-v2.1-20261027-153549",
+    "new_branch": "codex/channel-group-ux-v2.2",
+    "old_worktrees_and_branches_removed": true,
+    "preserved_code_hashes_identical": true,
+    "preserved_document_hashes_identical_before_checkpoint_update": true,
+    "repositories": {
+      "imboy": {
+        "old_path": "/Users/leeyi/project/imboy.pub/.worktrees/channel-group-ux-v2.1/imboy",
+        "new_path": "/Users/leeyi/project/imboy.pub/.worktrees/channel-group-ux-v2.2/imboy",
+        "old_head": "313016123e735dd3c305f173422a9dac79462469",
+        "new_base_main": "7fbf3a1ac0c7ffa9ca502d3e55365fbf6a17e222",
+        "old_worktree_removed": true,
+        "old_branch_removed": true
+      },
+      "imboyapp": {
+        "old_path": "/Users/leeyi/project/imboy.pub/.worktrees/channel-group-ux-v2.1/imboyapp",
+        "new_path": "/Users/leeyi/project/imboy.pub/.worktrees/channel-group-ux-v2.2/imboyapp",
+        "old_head": "b6afea5842461acacc7b7b6861961875a920198c",
+        "new_base_main": "7dee230dc78e85f883d8a1e67b6dfec3a6fe83fa",
+        "old_worktree_removed": true,
+        "old_branch_removed": true
+      }
+    },
+    "prior_runtime_evidence_status": "STALE_FOR_NEW_EXECUTION_BASE",
+    "tests_after_recreation": "NOT_RUN",
+    "reason": "User explicitly requested branch/worktree replacement; current main advanced in messaging/SQLite/model/submodule/lock inputs."
+  },
+  "w00_start_snapshot": {
+    "captured_at": "2026-10-27T18:54:58+08:00",
+    "sample_is_not_final": true,
+    "repositories": {
+      "Backend": {
+        "head": "7fbf3a1ac0c7ffa9ca502d3e55365fbf6a17e222",
+        "tree": "d409f4559a3c42356a89a60dfab4e758cc7a267c",
+        "staged_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "unstaged_sha256": "0ef72d6076795bc1dc668cf7b5b24b7d8e35c39044369e873b67ec457ec7a83e",
+        "untracked_sha256": {
+          "docs/design/2026-10-20-channel-group-ux/README.md": "c4f844da4023faa71c711d1386999122f7e7ce02f794378215f4c4a5d7837763",
+          "docs/design/2026-10-20-channel-group-ux/plan-v1.md": "0d929642c5030bb557b48ae94e89e679eada64c6e4d407d1ca4b5fb7a1501f67",
+          "docs/design/2026-10-20-channel-group-ux/plan-v2.md": "d42bcf0f3bc0e0bfe4c8a9a8b4536a809ca8c2362aa5fd9b7638c8c93c67a50c"
+        }
+      },
+      "App": {
+        "head": "7dee230dc78e85f883d8a1e67b6dfec3a6fe83fa",
+        "tree": "c7d76258a88b90c383c531510892c8e7378c4ade",
+        "staged_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "unstaged_sha256": "1be1fa42a2c1c16bd44f90770dcbabcb6b618517e0f22a9a482ed0827ea795f2",
+        "untracked_sha256": {
+          "lib/page/channel/channel_snapshot_sync.dart": "c6b3240f8288c3cbfed94ef23cad416da93611e77c19ae286f8a3a15f9f5be91",
+          "lib/service/migrations/upgrade_edges_v37.dart": "c7d73e0b8d9d688102af82c89aa6e4963b5810186dfa018fb1286b512c65f4e7",
+          "test/unit_test/page/channel/channel_link_target_page_test.dart": "9dc51de2231a3f1426d4b43c2b51987eb723963082a6058b79459ce615f9c228",
+          "test/unit_test/service/channel_snapshot_sync_test.dart": "8353f5a08816d8921b062fb484b5d914c821c4404ef9e2616520549bfe3087df",
+          "test/unit_test/service/migration_v37_channel_scope_test.dart": "7bd45b884a2e43862063ba890179bed801ba37fa1355c1a1864433425c4caa66",
+          "test/unit_test/store/api/channel_detail_checked_test.dart": "35a4dfd3bec8b8530572af3d98b4164ce6b968fd886d9bb594d936bee2d435f6",
+          "test/unit_test/store/api/channel_subscription_request_policy_test.dart": "bc63afc534780dba48d9dc84d9d798fb076825d7609be13293fcd7942139ed40"
+        }
+      },
+      "Admin": {
+        "head": "2c3b54283ed970513f08fc3d4075e4617c04ef85",
+        "tree": "961d7f282ad51b29906ab7a2b96a60c081aec092",
+        "staged_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "unstaged_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "untracked_sha256": {}
+      }
+    },
+    "app_submodule_plugin_flutter_chat_ui": "62245bd40067d73ddb5bf98d340537cbbe2ae3e7",
+    "backend_evidence_self_reference": "plan is bound by plan_sha256; evidence document cannot self-hash; recapture on change"
+  }
+}

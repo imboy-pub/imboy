@@ -16,10 +16,10 @@
 %% G3 thin wrappers for channel_logic_*
 -export([find_by_id/2]).
 -export([find_by_id_with_price/1]).
--export([list_managed/1]).
+-export([list_managed/1, list_managed/2, list_managed_keyset/4]).
 %% T5（双体验 v2.5.2）：工作区频道列表（scope 分区）
 -export([list_workspace_channels/2]).
--export([list_workspace_channels/3, workspace_channel_page/4]).
+-export([list_workspace_channels/3, workspace_channel_page/4, workspace_channel_page/5]).
 -export([find_by_custom_id/1]).
 -export([update/2]).
 -export([delete/1]).
@@ -28,7 +28,7 @@
 -export([restore/1]).
 -export([search/3]).
 -export([list_discover/2]).
--export([list_subscribed/2]).
+-export([list_subscribed/2, list_subscribed/3, list_subscribed_keyset/4]).
 -export([increment_subscribers/3]).
 -export([get_reaction_count/1]).
 -export([has_viewed_message/2]).
@@ -291,63 +291,109 @@ publish_message(ChannelId, AuthorId, Content, MsgType, Payload, RequestId) ->
         end,
 
     Now = elib_dt:now(),
-    Data = #{
-        channel_id => ChannelId,
-        author_id => AuthorId,
-        author_name => AuthorName,
-        author_avatar => AuthorAvatar,
-        content => Content,
-        msg_type => MsgType,
-        payload => PayloadJson,
-        created_at => Now
-    },
 
     %% T7 归档写守卫（R3 #6/#7）：发帖主链路事务化——守卫（channel→workspace
     %% 行锁）+ 消息插入 + 未读计数同一事务提交，消除"检查-写窗口"；
     %% 免 JWT 的 webhook incoming（#7）复用本函数，行级条件按
     %% channel.scope + workspace.status 判定（无用户上下文）；
     %% personal 频道由 resolver 直通，零行为变化。
+    %%
+    %% W08（§6.8 C4/D3）：发布单调序列同事务分配——发帖与序列分配、
+    %% 计数/水位变更必须同事务。插入成功才消耗序号（幂等重放 duplicate
+    %% 不写新行，可能留下序号空洞；序列只承诺单调不承诺连续）。
+    %% 作者自己的新发布不计其未查看（沿既有通知口径）：同事务将其
+    %% 激活订阅的 view_seq 推进到新序号（GREATEST，不倒退）。
     Result =
         elib_pg:with_tx(fun(Conn) ->
             ok = workspace_guard:abort_on_error(
                 workspace_guard:ensure_writable_tx(Conn, {channel, ChannelId})
             ),
-            case RequestId of
-                <<>> ->
-                    case channel_message_repo:add(Conn, Data) of
-                        {ok, NewMessageId} -> {ok, NewMessageId, inserted};
-                        {error, Reason} -> {error, normalize_error(Reason)}
-                    end;
-                _ ->
-                    case channel_message_repo:add_with_request_id(Conn, Data, RequestId) of
-                        {ok, NewMessageId, NewStatus} -> {ok, NewMessageId, NewStatus};
-                        {error, Reason} -> {error, normalize_error(Reason)}
-                    end
+            case allocate_update_seq_tx(Conn, ChannelId) of
+                {ok, UpdateSeq} ->
+                    Data = #{
+                        channel_id => ChannelId,
+                        author_id => AuthorId,
+                        author_name => AuthorName,
+                        author_avatar => AuthorAvatar,
+                        content => Content,
+                        msg_type => MsgType,
+                        payload => PayloadJson,
+                        update_seq => UpdateSeq,
+                        created_at => Now
+                    },
+                    insert_publish_tx(Conn, RequestId, Data, UpdateSeq, AuthorId);
+                {error, Reason} ->
+                    {error, normalize_error(Reason)}
             end
         end),
-    case Result of
-        {ok, MessageId, Status} ->
-            % 增加所有订阅者的未读计数（与插入同事务完成后执行）
-            case Status of
-                inserted -> increment_all_unread(ChannelId, AuthorId);
-                duplicate -> ok
-            end,
-            {ok, MessageId, Status};
-        Error ->
-            Error
+    Result.
+
+%% 事务内插入（legacy 与 request_id 幂等两分支），inserted 时同事务完成
+%% 订阅者未读累加与作者查看边界推进。
+insert_publish_tx(Conn, <<>>, Data, UpdateSeq, AuthorId) ->
+    ChannelId = maps:get(channel_id, Data),
+    case channel_message_repo:add(Conn, Data) of
+        {ok, NewMessageId} ->
+            ok = increment_all_unread_tx(Conn, ChannelId, AuthorId),
+            ok = advance_author_view_tx(Conn, ChannelId, AuthorId, UpdateSeq),
+            {ok, NewMessageId, inserted};
+        {error, Reason} ->
+            {error, normalize_error(Reason)}
+    end;
+insert_publish_tx(Conn, RequestId, Data, UpdateSeq, AuthorId) ->
+    ChannelId = maps:get(channel_id, Data),
+    case channel_message_repo:add_with_request_id(Conn, Data, RequestId) of
+        {ok, NewMessageId, inserted} ->
+            ok = increment_all_unread_tx(Conn, ChannelId, AuthorId),
+            ok = advance_author_view_tx(Conn, ChannelId, AuthorId, UpdateSeq),
+            {ok, NewMessageId, inserted};
+        {ok, NewMessageId, duplicate} ->
+            {ok, NewMessageId, duplicate};
+        {error, Reason} ->
+            {error, normalize_error(Reason)}
     end.
 
-%% @doc 增加所有订阅者的未读计数
--spec increment_all_unread(integer(), integer()) -> ok.
-increment_all_unread(ChannelId, AuthorId) ->
-    % 使用批量更新SQL提高性能
+%% W08：发布事务内取每频道下一个发布序号（channel 行锁串行化并发发帖）。
+-spec allocate_update_seq_tx(any(), integer()) -> {ok, integer()} | {error, any()}.
+allocate_update_seq_tx(Conn, ChannelId) ->
+    Sql =
+        <<
+            "UPDATE channel SET publish_seq = publish_seq + 1 "
+            "WHERE id = $1 RETURNING publish_seq"
+        >>,
+    case elib_pg:query(Conn, Sql, [ChannelId]) of
+        {ok, [#{<<"publish_seq">> := Seq}]} when is_integer(Seq) -> {ok, Seq};
+        {ok, [#{<<"publish_seq">> := Seq}]} -> {ok, elib_cnv:safe_to_integer(Seq)};
+        {ok, []} -> {error, channel_not_found};
+        {error, _} = Err -> Err
+    end.
+
+%% W08：作者自己的新发布不计其未查看——同事务推进其激活订阅 view_seq。
+-spec advance_author_view_tx(any(), integer(), integer(), integer()) -> ok.
+advance_author_view_tx(Conn, ChannelId, AuthorId, UpdateSeq) ->
+    Tb = channel_subscription_repo:tablename(),
+    Sql =
+        <<"UPDATE ", Tb/binary,
+            " SET view_seq = GREATEST(view_seq, $1) "
+            "WHERE channel_id = $2 AND user_id = $3 AND status = 1">>,
+    case elib_pg:execute(Conn, Sql, [UpdateSeq, ChannelId, AuthorId]) of
+        {ok, _} -> ok;
+        {error, Reason} -> throw({abort_tx, {author_view_advance_failed, Reason}})
+    end.
+
+%% W08：与发布同事务的订阅者未读累加（计划 §6.8：计数/水位变更必须
+%% 与发帖同事务，消除事务外累加窗口）。
+-spec increment_all_unread_tx(any(), integer(), integer()) -> ok.
+increment_all_unread_tx(Conn, ChannelId, AuthorId) ->
     Tb = channel_subscription_repo:tablename(),
     Sql =
         <<"UPDATE ", Tb/binary,
             " SET unread_count = unread_count + 1 "
             "WHERE channel_id = $1 AND status = 1 AND user_id <> $2">>,
-    _ = elib_pg:execute(Sql, [ChannelId, AuthorId]),
-    ok.
+    case elib_pg:execute(Conn, Sql, [ChannelId, AuthorId]) of
+        {ok, _} -> ok;
+        {error, Reason} -> throw({abort_tx, {unread_increment_failed, Reason}})
+    end.
 
 %% ===================================================================
 %% Internal Function Definitions
@@ -392,7 +438,17 @@ find_by_id_tx(Conn, ChannelId, Column) ->
 find_by_id_with_price(ChannelId) -> channel_repo:find_by_id_with_price(ChannelId).
 
 -spec list_managed(integer()) -> {ok, list(map())} | {error, any()}.
-list_managed(Uid) -> channel_repo:list_managed(Uid).
+list_managed(Uid) -> list_managed(Uid, <<>>).
+
+%% W07.a（C2 我管理频道）：可选服务端 q（管理交集内 name ILIKE）。
+-spec list_managed(integer(), binary()) -> {ok, list(map())} | {error, any()}.
+list_managed(Uid, Q) -> channel_repo:list_managed(Uid, Q).
+
+%% W07.b（C2 我管理频道 cursor 协议）：c.id DESC keyset，行含 cursor_id。
+-spec list_managed_keyset(integer(), integer(), pos_integer(), binary()) ->
+    {ok, list(map())} | {error, any()}.
+list_managed_keyset(Uid, BeforeId, Limit, Q) ->
+    channel_repo:list_managed_keyset(Uid, BeforeId, Limit, Q).
 
 %% T5（双体验 v2.5.2）：工作区频道列表（仅 scope='workspace'，personal 零影响）
 -spec list_workspace_channels(integer(), integer()) -> {ok, list(map())} | {error, any()}.
@@ -406,7 +462,11 @@ list_workspace_channels(WorkspaceId, Limit, Status) ->
     channel_repo:list_workspace_channels(WorkspaceId, Limit, Status).
 
 workspace_channel_page(WsId, Cursor, Limit, Status) ->
-    channel_repo:workspace_channel_page(WsId, Cursor, Limit, Status).
+    workspace_channel_page(WsId, Cursor, Limit, Status, <<>>).
+
+%% W07.a（C2 工作区频道目录）：可选服务端 q（目录授权内 name ILIKE）。
+workspace_channel_page(WsId, Cursor, Limit, Status, Q) ->
+    channel_repo:workspace_channel_page(WsId, Cursor, Limit, Status, Q).
 
 -spec find_by_custom_id(binary()) -> map() | {error, any()}.
 find_by_custom_id(CustomId) -> channel_repo:find_by_custom_id(CustomId).
@@ -438,8 +498,34 @@ encode_update_fields(Data) ->
 delete(ChannelId) ->
     %% T7 归档写守卫（P0 收口）：频道软删与守卫同事务（原自动提交写）。
     workspace_guard:write_tx({channel, ChannelId}, fun(Conn) ->
-        channel_repo:delete_tx(Conn, ChannelId)
+        case channel_repo:delete_tx(Conn, ChannelId) of
+            {ok, _} = Ok ->
+                %% W04.c（channel-group-ux v2.2 §6.4/J24.b）：同事务置位创建
+                %% 回执删除标识——同键重放不泄露内容、不复活对象；receipt
+                %% 保留已受理事实。无回执行时为合法 no-op。
+                ok = mark_create_receipts_deleted(Conn, ChannelId),
+                Ok;
+            Error ->
+                Error
+        end
     end).
+
+%% W04.c：删除事务内标记该频道的创建受理回执（resource_create_receipt）。
+%% 失败即中止事务；mark_deleted_by_resource_tx 对无回执行的旧频道天然
+%% 0 行更新，恒 ok。
+-spec mark_create_receipts_deleted(pid(), integer()) -> ok.
+mark_create_receipts_deleted(Conn, ChannelId) ->
+    case
+        resource_create_receipt_repo:mark_deleted_by_resource_tx(
+            Conn, <<"create_channel">>, ChannelId
+        )
+    of
+        ok ->
+            ok;
+        {error, Reason} ->
+            ?ERROR_LOG([channel_delete_receipt_mark_failed, ChannelId, Reason]),
+            throw({abort_tx, {receipt_mark_deleted_failed, ChannelId, Reason}})
+    end.
 
 %% @doc 归档频道（GZAPP-02/G4：status 1→0，复用既有列语义、无 DDL）；
 %% 与 workspace_guard 同事务——ws 频道所属工作区已归档时稳定 980 拒绝。
@@ -491,7 +577,18 @@ search(Keyword, Limit, Column) -> channel_repo:search(Keyword, Limit, Column).
 list_discover(Limit, Column) -> channel_repo:list_discover(Limit, Column).
 
 -spec list_subscribed(integer(), binary()) -> {ok, list(map())} | {error, any()}.
-list_subscribed(Uid, Column) -> channel_repo:list_subscribed(Uid, Column).
+list_subscribed(Uid, Column) -> list_subscribed(Uid, Column, <<>>).
+
+%% W07.a（C2 已订阅频道）：可选服务端 q（订阅交集内 name ILIKE）。
+-spec list_subscribed(integer(), binary(), binary()) ->
+    {ok, list(map())} | {error, any()}.
+list_subscribed(Uid, Column, Q) -> channel_repo:list_subscribed(Uid, Column, Q).
+
+%% W07.b（C2 已订阅频道 cursor 协议）：s.id DESC keyset，行含 cursor_id。
+-spec list_subscribed_keyset(integer(), integer(), pos_integer(), binary()) ->
+    {ok, list(map())} | {error, any()}.
+list_subscribed_keyset(Uid, BeforeId, Limit, Q) ->
+    channel_repo:list_subscribed_keyset(Uid, BeforeId, Limit, Q).
 
 -spec increment_subscribers(epgsql:connection(), integer(), integer()) ->
     {ok, integer()} | {error, any()}.

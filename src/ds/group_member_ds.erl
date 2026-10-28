@@ -8,6 +8,8 @@
 -include("log.hrl").
 -include("common.hrl").
 
+-export([active_generation_id/2]).
+-export([active_generation_id_tx/3]).
 -export([list_member/2]).
 -export([list_members/1]).
 -export([list_members_with_info/1]).
@@ -177,6 +179,39 @@ join_group(Conn, JoinMode, Uid, Gid, OptData) ->
 %% @doc 开启新世代：start_seq = 锁内计数器下一值（join/rejoin，§7.4）。
 %% 与 staging 接受对同一 msg_store_seq 行加锁（无自增 upsert），
 %% 重复 join（已有 open 世代）幂等：ON CONFLICT DO NOTHING。
+%% @doc W09.b（§6.7）：成员当前 active 世代 id（end_seq IS NULL，取最大
+%% generation_no）；无 open 世代（已退群/从未入群）返回 0。
+-spec active_generation_id(integer(), integer()) -> non_neg_integer().
+active_generation_id(Gid, Uid) ->
+    Sql =
+        <<
+            "SELECT id FROM public.group_member_generation "
+            "WHERE group_id = $1 AND user_id = $2 AND end_seq IS NULL "
+            "ORDER BY generation_no DESC LIMIT 1"
+        >>,
+    case elib_pg:one(Sql, [Gid, Uid]) of
+        {ok, #{<<"id">> := Id}} when is_integer(Id), Id > 0 -> Id;
+        _ -> 0
+    end.
+
+%% W09.c（§6.7）：同业务事务内的成员世代读取——旧写 pin/delete 入口在
+%% 事务内绑定"写入时 active 世代"，读取与行写入同一 Conn 同一快照。
+%% 查不到 active 世代返回 0（旧行仅可绑定核实为 active 的当前世代）。
+-spec active_generation_id_tx(pid(), integer(), integer()) -> non_neg_integer().
+active_generation_id_tx(Conn, Gid, Uid) ->
+    Sql =
+        <<
+            "SELECT id FROM public.group_member_generation "
+            "WHERE group_id = $1 AND user_id = $2 AND end_seq IS NULL "
+            "ORDER BY generation_no DESC LIMIT 1"
+        >>,
+    case elib_pg:query(Conn, Sql, [Gid, Uid]) of
+        {ok, [#{<<"id">> := Id}]} when is_integer(Id), Id > 0 -> Id;
+        {ok, []} -> 0;
+        {error, Reason} -> throw({abort_tx, {active_generation_id, Reason}});
+        _ -> throw({abort_tx, {active_generation_id, invalid_result}})
+    end.
+
 %% gen_no 取该成员历史最大值+1；首代为 1。
 -spec open_history_generation(pid(), integer(), integer()) -> ok.
 open_history_generation(Conn, Gid, Uid) ->

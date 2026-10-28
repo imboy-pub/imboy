@@ -6,9 +6,15 @@ member_group_dispatch_test_() ->
     ?WITH_MECKS(
         [
             {auth_ds, [{'current_uid', 1, fun(_) -> 1 end}]},
-            {cowboy_req, [{'binding', 2, fun(workspace_id, _) -> <<"100">> end}]},
+            %% W07.a/b：group_list 现调 binary(q,...) 与 parse_qs 判
+            %% pagination=cursor；本套件不测这两者，给缺省直通 mock。
+            {cowboy_req, [
+                {'binding', 2, fun(workspace_id, _) -> <<"100">> end},
+                {'parse_qs', 1, fun(_Req) -> [] end}
+            ]},
             {elib_param, [
-                {'int', 3, fun(Key, Req, Default) -> {ok, maps:get(Key, Req, Default)} end}
+                {'int', 3, fun(Key, Req, Default) -> {ok, maps:get(Key, Req, Default)} end},
+                {'binary', 3, fun(_Key, _Req, Default) -> {ok, Default} end}
             ]},
             {workspace_logic, [
                 {'ensure_member', 2, fun(100, 1) ->
@@ -19,11 +25,13 @@ member_group_dispatch_test_() ->
                 end}
             ]},
             {group_logic, [
-                {'list_workspace_groups', 2, fun(100, Limit) ->
+                %% W07.a：list_workspace_groups/3（末位服务端 q）。
+                {'list_workspace_groups', 3, fun(100, Limit, _Q) ->
                     put(directory_limit, Limit),
                     {ok, []}
                 end},
-                {'list_member_workspace_groups', 5, fun(100, 1, Cursor, Limit, Preview) ->
+                %% W07.a：list_member_workspace_groups/6（末位服务端 q）。
+                {'list_member_workspace_groups', 6, fun(100, 1, Cursor, Limit, Preview, _Q) ->
                     put(member_page_call, {Cursor, Limit, Preview}),
                     {ok, #{list => [], has_more => false, next_cursor => 0}}
                 end}

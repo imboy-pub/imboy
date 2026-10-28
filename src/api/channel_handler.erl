@@ -93,6 +93,7 @@ handle_action(unread_summary, Req, State) -> unread_summary(Req, State);
 handle_action(publish_message, Req, State) -> publish_message(Req, State);
 handle_action(messages, Req, State) -> messages(Req, State);
 handle_action(mark_read, Req, State) -> mark_read(Req, State);
+handle_action(mark_viewed, Req, State) -> mark_viewed(Req, State);
 handle_action(search, Req, State) -> search(Req, State);
 handle_action(discover, Req, State) -> discover(Req, State);
 handle_action(add_admin, Req, State) -> add_admin(Req, State);
@@ -139,22 +140,133 @@ create(Req0, State) ->
                         join_policy => JoinPolicy2
                     },
                     MaxChannels = 20,
-                    case
-                        channel_logic:create_channel(
-                            Uid, Name, Opts, MaxChannels, {Scope, WorkspaceId}
-                        )
-                    of
-                        {ok, Channel} ->
-                            elib_response:success(Req0, Channel);
-                        {error, {Code, Msg}} ->
-                            elib_response:error(Req0, Msg, Code);
-                        {error, Msg} ->
-                            elib_response:error(Req0, Msg)
+                    %% W04.c（channel-group-ux v2.2 §6.4 C1）：携带非空
+                    %% request_id 的请求走受理合同（占位/重放/recover_only）；
+                    %% 缺失或空串走旧路径，行为零变化（回归红线）。
+                    %% 绝不剥离客户端已携带的键。
+                    case receipt_request_id(PostVals) of
+                        <<>> ->
+                            case
+                                channel_logic:create_channel(
+                                    Uid, Name, Opts, MaxChannels, {Scope, WorkspaceId}
+                                )
+                            of
+                                {ok, Channel} ->
+                                    elib_response:success(Req0, Channel);
+                                {error, {Code, Msg}} ->
+                                    elib_response:error(Req0, Msg, Code);
+                                {error, Msg} ->
+                                    elib_response:error(Req0, Msg)
+                            end;
+                        RequestId ->
+                            RecoverOnly = recover_only_flag(PostVals),
+                            respond_channel_create_receipt(
+                                Req0,
+                                Uid,
+                                RequestId,
+                                channel_logic:create_channel_with_receipt(
+                                    Uid,
+                                    Name,
+                                    Opts,
+                                    MaxChannels,
+                                    {Scope, WorkspaceId},
+                                    RequestId,
+                                    RecoverOnly
+                                )
+                            )
                     end;
                 false ->
                     elib_response:error(Req0, <<"频道访问策略组合无效"/utf8>>)
             end
     end.
+
+%% ===================================================================
+%% W04.c（channel-group-ux v2.2 §6.4 C1）：创建受理合同响应
+%% ===================================================================
+
+%% request_id 解析：非空二进制视为新合同意图；缺失/空串走旧路径。
+-spec receipt_request_id(map()) -> binary().
+receipt_request_id(PostVals) when is_map(PostVals) ->
+    Raw =
+        case maps:get(<<"request_id">>, PostVals, <<>>) of
+            Bin when is_binary(Bin) -> Bin;
+            Other -> elib_cnv:safe_to_binary(Other)
+        end,
+    elib_str:trunc(string:trim(Raw), 128);
+receipt_request_id(_) ->
+    <<>>.
+
+%% recover_only 只查标志（§6.4：>=24h 的未知意图绝不创建，只查）。
+-spec recover_only_flag(map()) -> boolean().
+recover_only_flag(PostVals) when is_map(PostVals) ->
+    case maps:get(<<"recover_only">>, PostVals, false) of
+        true -> true;
+        <<"true">> -> true;
+        1 -> true;
+        <<"1">> -> true;
+        _ -> false
+    end;
+recover_only_flag(_) ->
+    false.
+
+%% 受理结果 → HTTP 响应：成功 Channel map 附 request_id/creation_state
+%% 增量字段；四个稳定错误符号分开（§6.4），错误 envelope payload 携带
+%% 核对元信息（request_id，可达时附频道 ID），不泄露名称/成员。
+-spec respond_channel_create_receipt(cowboy_req:req(), integer(), binary(), term()) ->
+    cowboy_req:req().
+respond_channel_create_receipt(Req0, _Uid, RequestId, {ok, Channel, CreationState}) ->
+    elib_response:success(
+        Req0,
+        maps:merge(Channel, #{
+            <<"request_id">> => RequestId,
+            <<"creation_state">> => CreationState
+        })
+    );
+respond_channel_create_receipt(Req0, _Uid, RequestId, {error, request_id_conflict}) ->
+    elib_response:error_with_status(
+        Req0,
+        409,
+        <<"request_id_conflict：同一 request_id 已绑定不同的创建内容"/utf8>>,
+        #{<<"request_id">> => RequestId},
+        ?ERR_CREATE_REQUEST_ID_CONFLICT
+    );
+respond_channel_create_receipt(Req0, _Uid, RequestId, {error, create_not_accepted}) ->
+    %% 仅表示查询时未见已提交受理，不证明在途请求不会迟到（§6.4）。
+    elib_response:error_with_status(
+        Req0,
+        404,
+        <<"create_not_accepted：查询时未见该 request_id 的受理记录"/utf8>>,
+        #{<<"request_id">> => RequestId},
+        ?ERR_CREATE_NOT_ACCEPTED
+    );
+respond_channel_create_receipt(Req0, _Uid, RequestId, {error, {create_recovery_expired, Cid}}) ->
+    elib_response:error_with_status(
+        Req0,
+        410,
+        <<"create_recovery_expired：受理结果已超过7天保留窗口，仅可用于核对"/utf8>>,
+        #{<<"request_id">> => RequestId, <<"channel_id">> => Cid},
+        ?ERR_CREATE_RECOVERY_EXPIRED
+    );
+respond_channel_create_receipt(Req0, _Uid, RequestId, {error, {create_resource_unavailable, Cid}}) ->
+    Payload =
+        case is_integer(Cid) andalso Cid > 0 of
+            true -> #{<<"request_id">> => RequestId, <<"channel_id">> => Cid};
+            false -> #{<<"request_id">> => RequestId}
+        end,
+    elib_response:error_with_status(
+        Req0,
+        409,
+        <<"create_resource_unavailable：该创建结果当前不可用"/utf8>>,
+        Payload,
+        ?ERR_CREATE_RESOURCE_UNAVAILABLE
+    );
+respond_channel_create_receipt(Req0, _Uid, _RequestId, {error, {Code, Msg}}) ->
+    elib_response:error(Req0, Msg, Code);
+respond_channel_create_receipt(Req0, _Uid, _RequestId, {error, Msg}) when is_binary(Msg) ->
+    elib_response:error(Req0, Msg);
+respond_channel_create_receipt(Req0, Uid, RequestId, Unexpected) ->
+    ?ERROR_LOG([channel_create_receipt_unexpected, Uid, RequestId, Unexpected]),
+    elib_response:error(Req0, <<"频道创建失败，请稍后重试"/utf8>>).
 
 %% @doc 通过自定义ID获取频道
 -spec by_custom_id(cowboy_req:req(), map()) -> cowboy_req:req().
@@ -389,6 +501,23 @@ unsubscribe(Req0, State) ->
 subscribed(Req0, State) ->
     Uid = maps:get(current_uid, State),
     Qs = cowboy_req:parse_qs(Req0),
+
+    %% W07.b（C2）：显式 pagination=cursor 走签名游标协议（J27.a：旧
+    %% 客户端不带该参数 → 旧 envelope 逐字不变）。
+    case proplists:get_value(<<"pagination">>, Qs, <<>>) of
+        <<"cursor">> ->
+            channel_cursor_page(
+                Req0,
+                Uid,
+                <<"channel_subscribed">>,
+                Qs,
+                fun channel_logic:get_subscribed_channels_cursor/4
+            );
+        _ ->
+            subscribed_legacy(Req0, Uid, Qs)
+    end.
+
+subscribed_legacy(Req0, Uid, Qs) ->
     CursorBin = proplists:get_value(<<"cursor">>, Qs, <<>>),
     Cursor =
         case CursorBin of
@@ -396,8 +525,10 @@ subscribed(Req0, State) ->
             _ -> parse_qs_int(CursorBin, 0, 0, 16#7fffffff)
         end,
     Limit = parse_qs_int(proplists:get_value(<<"limit">>, Qs), 50, 1, 200),
-
-    case channel_logic:get_subscribed_channels(Uid) of
+    %% W07.a（C2 已订阅频道）：可选服务端 q（订阅交集内 name ILIKE；
+    %% 缺席时行为零变化，cursor/limit 回显保持原样）。
+    Q = proplists:get_value(<<"q">>, Qs, <<>>),
+    case channel_logic:get_subscribed_channels(Uid, q_qs_binary(Q)) of
         {ok, Channels} ->
             elib_response:success(Req0, #{list => Channels, cursor => Cursor, limit => Limit});
         {error, Msg} ->
@@ -408,7 +539,25 @@ subscribed(Req0, State) ->
 -spec managed(cowboy_req:req(), map()) -> cowboy_req:req().
 managed(Req0, State) ->
     Uid = maps:get(current_uid, State),
-    case channel_logic:get_managed_channels(Uid) of
+    %% W07.b（C2）：显式 pagination=cursor 走签名游标协议。
+    Qs2 = cowboy_req:parse_qs(Req0),
+    case proplists:get_value(<<"pagination">>, Qs2, <<>>) of
+        <<"cursor">> ->
+            channel_cursor_page(
+                Req0,
+                Uid,
+                <<"channel_managed">>,
+                Qs2,
+                fun channel_logic:get_managed_channels_cursor/4
+            );
+        _ ->
+            managed_legacy(Req0, Uid, Qs2)
+    end.
+
+managed_legacy(Req0, Uid, Qs) ->
+    %% W07.a（C2 我管理频道）：可选服务端 q（管理交集内 name ILIKE）。
+    Q = q_qs_binary(proplists:get_value(<<"q">>, Qs, <<>>)),
+    case channel_logic:get_managed_channels(Uid, Q) of
         {ok, Channels} ->
             elib_response:success(Req0, #{list => Channels});
         {error, Msg} ->
@@ -506,6 +655,30 @@ mark_read(Req0, State) ->
                 {error, {Code, Msg}} when is_integer(Code) ->
                     %% T7 归档写守卫稳定错误码（980）透传 envelope code
                     elib_response:error(Req0, Msg, Code);
+                {error, Msg} ->
+                    elib_response:error(Req0, Msg)
+            end
+    end.
+
+%% @doc W08（§6.8 C4/D3）：显式标记已查看到此更新边界——单一更新边界
+%% 语义，非逐帖回执；服务端 GREATEST 推进并夹到发布上界。
+-spec mark_viewed(cowboy_req:req(), map()) -> cowboy_req:req().
+mark_viewed(Req0, State) ->
+    Uid = maps:get(current_uid, State),
+    PostVals = elib_param:post(Req0),
+    ChannelId = resolve_channel_id(Req0, PostVals),
+    Boundary = maps:get(<<"boundary">>, PostVals, <<>>),
+
+    case ChannelId of
+        <<>> ->
+            elib_response:error(Req0, <<"频道ID不能为空"/utf8>>);
+        _ ->
+            case channel_logic:mark_viewed(Uid, ChannelId, Boundary) of
+                {ok, Payload} ->
+                    elib_response:success(Req0, Payload);
+                skipped ->
+                    %% 归档频道：读取/展示不受影响，推进跳过（零副作用成功）
+                    elib_response:success(Req0, #{});
                 {error, Msg} ->
                     elib_response:error(Req0, Msg)
             end
@@ -722,3 +895,76 @@ validate_access_policy(_, _, _) -> false.
 internalize_visibility(<<"workspace">>, 0, 0) -> {1, 1};
 internalize_visibility(<<"workspace">>, 0, 3) -> {1, 3};
 internalize_visibility(_Scope, Visibility, JoinPolicy) -> {Visibility, JoinPolicy}.
+
+%% W07.a：query string 里的 q 统一转 binary（非二进制容错）。
+-spec q_qs_binary(term()) -> binary().
+q_qs_binary(V) when is_binary(V) -> V;
+q_qs_binary(V) -> elib_cnv:safe_to_binary(V).
+
+%% W07.b（C2 频道清单 cursor 协议）：订阅/管理两族共用游标页响应。
+%% 上界语义由 list_kind 决定（subscribed=s.id、managed=c.id），游标绑定
+%% uid/scope=list_kind 对应域/规范 q/排序版本/上界；绑定不符一律 400
+%% invalid_request 绝不回落首页；密钥缺失 503 fail-closed。
+-spec channel_cursor_page(cowboy_req:req(), integer(), binary(), list(), fun()) ->
+    cowboy_req:req().
+channel_cursor_page(Req0, Uid, Kind, Qs, Fetcher) ->
+    Ctx = #{
+        scope => <<"personal">>,
+        workspace_id => 0,
+        q => q_qs_binary(proplists:get_value(<<"q">>, Qs, <<>>))
+    },
+    Limit = parse_qs_int(proplists:get_value(<<"limit">>, Qs), 50, 1, 200),
+    case proplists:get_value(<<"cursor">>, Qs, <<>>) of
+        <<>> ->
+            respond_channel_cursor(Req0, Uid, Kind, Ctx, 16#7FFFFFFFFFFFFFFF, Limit, Fetcher);
+        CursorBin ->
+            case list_cursor:resolve(CursorBin, Uid, Kind, Ctx) of
+                {ok, Upper} ->
+                    respond_channel_cursor(Req0, Uid, Kind, Ctx, Upper, Limit, Fetcher);
+                {error, expired} ->
+                    elib_response:error(Req0, <<"invalid_request：游标已过期"/utf8>>, 400);
+                {error, key_unavailable} ->
+                    elib_response:error(Req0, <<"security_gate_closed"/utf8>>, 503);
+                {error, _} ->
+                    elib_response:error(Req0, <<"invalid_request：游标无效"/utf8>>, 400)
+            end
+    end.
+
+-spec respond_channel_cursor(
+    cowboy_req:req(),
+    integer(),
+    binary(),
+    map(),
+    integer(),
+    pos_integer(),
+    fun()
+) ->
+    cowboy_req:req().
+respond_channel_cursor(Req0, Uid, Kind, Ctx, BeforeId, Limit, Fetcher) ->
+    case Fetcher(Uid, BeforeId, Limit, maps:get(q, Ctx, <<>>)) of
+        {ok, #{list := Rows, has_more := HasMore, upper := Upper}} ->
+            case next_channel_cursor(HasMore, Uid, Kind, Ctx, Upper) of
+                {ok, NextCursor} ->
+                    elib_response:success(Req0, #{
+                        list => Rows,
+                        has_more => HasMore,
+                        next_cursor => NextCursor,
+                        limit => Limit
+                    });
+                {error, Status, Msg} ->
+                    elib_response:error(Req0, Msg, Status)
+            end;
+        {error, _Reason} ->
+            elib_response:error(Req0, <<"查询失败"/utf8>>)
+    end.
+
+-spec next_channel_cursor(boolean(), integer(), binary(), map(), integer()) ->
+    {ok, binary()} | {error, integer(), binary()}.
+next_channel_cursor(false, _Uid, _Kind, _Ctx, _Upper) ->
+    {ok, <<>>};
+next_channel_cursor(true, Uid, Kind, Ctx, Upper) ->
+    case list_cursor:issue(Uid, Kind, Ctx#{upper => Upper}, os:system_time(second)) of
+        {ok, Token} -> {ok, Token};
+        {error, key_unavailable} -> {error, 503, <<"security_gate_closed"/utf8>>};
+        {error, _} -> {error, 400, <<"invalid_request"/utf8>>}
+    end.

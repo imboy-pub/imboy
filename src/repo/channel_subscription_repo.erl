@@ -17,6 +17,11 @@
 -export([clear_unread/1]).
 -export([clear_unread/2]).
 -export([clear_unread_tx/3]).
+-export([advance_view_tx/4]).
+-export([advance_view/3]).
+-export([advance_view_to_current_tx/3]).
+-export([advance_view_to_current/2]).
+-export([count_unseen/2]).
 -export([get_unread_count/2]).
 -export([count_unread/1]).
 -export([count_unread_channels/1]).
@@ -56,7 +61,13 @@ upsert_active(Conn, ChannelId, Uid) ->
             " (id, channel_id, user_id, subscribed_at, status) "
             "VALUES ($1, $2, $3, $4, 1) "
             "ON CONFLICT (channel_id, user_id) DO UPDATE "
-            "SET status = 1, subscribed_at = EXCLUDED.subscribed_at "
+            "SET status = 1, subscribed_at = EXCLUDED.subscribed_at, "
+            %% W08（§6.8 J13.e）：复用订阅行 id 不代表复用旧查看资格——
+            %% 重新激活在状态变更同事务递增激活版本并重置查看边界。
+            "activation_version = ",
+            Tb/binary,
+            ".activation_version + 1, "
+            "view_seq = 0 "
             "WHERE ", Tb/binary,
             ".status <> 1 "
             "RETURNING 1 AS changed">>,
@@ -193,6 +204,96 @@ clear_unread_tx(Conn, ChannelId, Uid) ->
         <<"UPDATE ", Tb/binary, " SET unread_count = 0, last_read_at = $1",
             " WHERE channel_id = $2 AND user_id = $3 AND status = 1">>,
     elib_pg:execute_count(Conn, Sql, [elib_dt:now(), ChannelId, Uid]).
+
+%% @doc W08（§6.8）：事务内推进查看边界 V。
+%% 水位推进一律 GREATEST（J13.d：两端 B1<B2，晚到旧边界不倒退）；
+%% boundary 超过频道已发布上界时夹到 publish_seq（防伪造前推）。
+%% 仅激活订阅行可推进（status=1）。
+-spec advance_view_tx(any(), integer(), integer(), integer()) ->
+    {ok, non_neg_integer()} | {error, any()}.
+advance_view_tx(Conn, ChannelId, Uid, Boundary) ->
+    Tb = tablename(),
+    Sql =
+        <<"UPDATE ", Tb/binary,
+            " cs SET view_seq = GREATEST(cs.view_seq, "
+            "LEAST($1, c.publish_seq)) "
+            "FROM channel c "
+            "WHERE cs.channel_id = c.id AND cs.channel_id = $2 "
+            "AND cs.user_id = $3 AND cs.status = 1 "
+            "RETURNING cs.view_seq">>,
+    case elib_pg:query(Conn, Sql, [Boundary, ChannelId, Uid]) of
+        {ok, [#{<<"view_seq">> := V}]} -> {ok, V};
+        {ok, []} -> {error, not_subscribed};
+        {error, _} = Err -> Err
+    end.
+
+%% @doc W08（§6.8）：推进查看边界（非事务包装，经 workspace 写守卫；
+%% 归档频道 skipped——与 clear_unread 同款语义）。
+-spec advance_view(integer(), integer(), integer()) ->
+    {ok, non_neg_integer()} | skipped | {error, any()}.
+advance_view(ChannelId, Uid, Boundary) ->
+    case
+        workspace_guard:write_tx_or_skip({channel, ChannelId}, fun(Conn) ->
+            advance_view_tx(Conn, ChannelId, Uid, Boundary)
+        end)
+    of
+        {written, Result} -> Result;
+        skipped -> skipped;
+        {error, _} = Error -> Error
+    end.
+
+%% W08（§10.4 混合版本）：旧 mark_read 的水位适配器内核——单语句把
+%% view_seq 推进到"当前发布上界"（GREATEST 单调；服务端 publish_seq 即
+%% 当次边界，不读聚合 unread_count，不从迁移前状态推断）。旧端显式
+%% "标已读" = 确认当次服务端边界；之后发布的新消息 update_seq > 边界，
+%% 不会被清掉。
+-spec advance_view_to_current_tx(pid(), integer(), integer()) ->
+    {ok, non_neg_integer()} | {error, not_subscribed} | {error, any()}.
+advance_view_to_current_tx(Conn, ChannelId, Uid) ->
+    Tb = tablename(),
+    Sql =
+        <<"UPDATE ", Tb/binary,
+            " cs SET view_seq = GREATEST(cs.view_seq, c.publish_seq) "
+            "FROM channel c "
+            "WHERE cs.channel_id = c.id AND cs.channel_id = $1 "
+            "AND cs.user_id = $2 AND cs.status = 1 "
+            "RETURNING cs.view_seq">>,
+    case elib_pg:query(Conn, Sql, [ChannelId, Uid]) of
+        {ok, [#{<<"view_seq">> := V}]} -> {ok, V};
+        {ok, []} -> {error, not_subscribed};
+        {error, _} = Err -> Err
+    end.
+
+%% @doc W08（§10.4）：旧 mark_read 适配器的非事务包装（写守卫/归档
+%% skipped 语义同 advance_view/3）。
+-spec advance_view_to_current(integer(), integer()) ->
+    {ok, non_neg_integer()} | skipped | {error, any()}.
+advance_view_to_current(ChannelId, Uid) ->
+    case
+        workspace_guard:write_tx_or_skip({channel, ChannelId}, fun(Conn) ->
+            advance_view_to_current_tx(Conn, ChannelId, Uid)
+        end)
+    of
+        {written, Result} -> Result;
+        skipped -> skipped;
+        {error, _} = Error -> Error
+    end.
+
+%% @doc W08（§6.8）：未查看更新数 = 当前可读、未撤销且 update_seq > V 的
+%% 发布项（作者自身发布已在发布事务内推进其 V，天然不计）。
+-spec count_unseen(integer(), non_neg_integer()) ->
+    {ok, non_neg_integer()} | {error, any()}.
+count_unseen(ChannelId, ViewSeq) ->
+    MsgTb = channel_message_repo:tablename(),
+    Sql =
+        <<"SELECT COUNT(*) AS count FROM ", MsgTb/binary,
+            " WHERE channel_id = $1 AND update_seq > $2 "
+            "AND status = 1 AND revoked = false">>,
+    case elib_pg:one(Sql, [ChannelId, ViewSeq]) of
+        {ok, #{<<"count">> := N}} when is_integer(N), N >= 0 -> {ok, N};
+        {ok, #{<<"count">> := N}} -> {ok, erlang:max(0, elib_cnv:safe_to_integer(N))};
+        {error, _} = Err -> Err
+    end.
 
 %% @doc 获取用户在所有频道的未读总数
 -spec count_unread(integer()) -> non_neg_integer().

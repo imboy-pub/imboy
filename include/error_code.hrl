@@ -309,6 +309,11 @@
 % 团队码已过期
 -define(ERR_WORKSPACE_INVITE_EXPIRED, 982).
 
+%% 频道订阅请求在任何写入前被业务规则拒绝
+-define(ERR_CHANNEL_INVITATION_REQUIRED, 990).
+-define(ERR_CHANNEL_PURCHASE_REQUIRED, 991).
+-define(ERR_CHANNEL_JOIN_POLICY_UNAVAILABLE, 992).
+
 %% ===================================================================
 %% E2EE 密钥恢复相关错误（5000-5099）
 %% ===================================================================
@@ -475,6 +480,15 @@
 -define(ERR_WECHAT_PROVIDER_UNCONFIGURED, 5403).
 -define(ERR_IDEMPOTENCY_CONFLICT, 5460).
 -define(ERR_IDEMPOTENCY_KEY_REQUIRED, 5461).
+%% W04.b（channel-group-ux v2.2 §6.4 C1）：资源创建受理稳定错误符号。
+% 同 request_id 已绑定不同规范载荷（顺序不同/重复成员不算冲突）
+-define(ERR_CREATE_REQUEST_ID_CONFLICT, 5462).
+% recover_only 只查未见受理——仅表示查询时未见，不证明在途请求不会迟到
+-define(ERR_CREATE_NOT_ACCEPTED, 5463).
+% 服务端受理年龄 >=7d：完整结果清理/不再承诺原完整 body，仅最小元信息
+-define(ERR_CREATE_RECOVERY_EXPIRED, 5464).
+% 资源已删除/撤权/无资格：不泄露名称成员、不复活对象（J24.c 与前两者分开）
+-define(ERR_CREATE_RESOURCE_UNAVAILABLE, 5465).
 % 客户端版本低于 E2EE 硬版本门（C12 / AC-25：旧端不能绕过 required E2EE 协议面）
 -define(ERR_E2EE_APP_VERSION_TOO_LOW, 5070).
 % E2EE 收藏 v1（迁移 227 / PLAN 2026-10-24-e2ee-collect §9）：sealed 行对
@@ -565,6 +579,9 @@
     980 => <<"工作区已归档，写操作被拒绝"/utf8>>,
     981 => <<"团队码无效或已失效"/utf8>>,
     982 => <<"团队码已过期"/utf8>>,
+    990 => <<"私有频道需要邀请才能订阅"/utf8>>,
+    991 => <<"付费频道需要先购买"/utf8>>,
+    992 => <<"该加入策略暂未开放"/utf8>>,
     5000 => <<"无效的传输会话"/utf8>>,
     5001 => <<"传输会话已过期"/utf8>>,
     5002 => <<"传输会话不存在"/utf8>>,

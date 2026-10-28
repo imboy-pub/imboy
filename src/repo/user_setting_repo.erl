@@ -11,6 +11,9 @@
 -export([get/2]).
 -export([save/3]).
 -export([update/2]).
+-export([lock_preferences_tx/2]).
+-export([find_setting_for_update_tx/2]).
+-export([upsert_setting_tx/3]).
 
 -dialyzer({nowarn_function, execute_compat/2}).
 
@@ -153,6 +156,73 @@ update(Uid, Setting) ->
     FullSql = [Sql, <<" ">>, OnConflict],
     _ = elib_pg:execute(FullSql, Params),
     ok.
+
+%% @doc W09：按用户获取事务级偏好互斥，设置缺行时同样生效。
+%% 所有偏好写入口须在业务状态判定或行写入前获取此锁。
+-spec lock_preferences_tx(any(), binary() | integer()) -> ok.
+lock_preferences_tx(Conn, Uid) when is_binary(Uid) ->
+    lock_preferences_tx(Conn, ec_cnv:to_integer(Uid));
+lock_preferences_tx(Conn, Uid) ->
+    Sql = <<
+        "SELECT pg_advisory_xact_lock("
+        "hashtextextended('conversation_preference:' || $1::bigint::text, 0)) AS locked"
+    >>,
+    case elib_pg:query(Conn, Sql, [Uid]) of
+        {ok, [#{<<"locked">> := _}]} -> ok;
+        {error, Reason} -> throw({abort_tx, {user_setting_lock, Reason}});
+        _ -> throw({abort_tx, {user_setting_lock, invalid_result}})
+    end.
+
+%% @doc W09（§6.7）：事务内先获取偏好互斥，再行锁读取最新 setting JSON。
+%% 版本化偏好读改写必须与上述锁同一事务。
+%% 行不存在返回 {ok, absent}（由调用方决定首写默认值）。
+-spec find_setting_for_update_tx(any(), integer()) ->
+    {ok, map() | absent} | {error, term()}.
+find_setting_for_update_tx(Conn, Uid) when is_binary(Uid) ->
+    find_setting_for_update_tx(Conn, ec_cnv:to_integer(Uid));
+find_setting_for_update_tx(Conn, Uid) ->
+    ok = lock_preferences_tx(Conn, Uid),
+    Tb = tablename(),
+    Sql =
+        <<"SELECT setting FROM ", Tb/binary, " WHERE user_id = $1 FOR UPDATE">>,
+    case elib_pg:query(Conn, Sql, [Uid]) of
+        {ok, [#{<<"setting">> := Bin}]} when is_binary(Bin), Bin =/= <<>> ->
+            try jsone:decode(Bin, [{object_format, map}]) of
+                M when is_map(M) -> {ok, M};
+                _ -> {error, invalid_setting_json}
+            catch
+                _:_ -> {error, invalid_setting_json}
+            end;
+        {ok, []} ->
+            {ok, absent};
+        {ok, [#{<<"setting">> := Empty}]} when Empty =:= null; Empty =:= <<>> ->
+            {ok, absent};
+        {error, _} = Err ->
+            Err;
+        _ ->
+            {error, invalid_setting_result}
+    end.
+
+%% @doc W09（§6.7）：事务内整份 upsert setting JSON（与行锁同事务）。
+-spec upsert_setting_tx(any(), integer(), map()) -> ok | {error, term()}.
+upsert_setting_tx(Conn, Uid, Setting) when is_binary(Uid) ->
+    upsert_setting_tx(Conn, ec_cnv:to_integer(Uid), Setting);
+upsert_setting_tx(Conn, Uid, Setting) when is_map(Setting) ->
+    Tb = tablename(),
+    Now = elib_dt:now(),
+    Bin = jsone:encode(Setting, [
+        native_utf8,
+        {float_format, [{decimals, 4}, compact]}
+    ]),
+    Sql =
+        <<"INSERT INTO ", Tb/binary,
+            " (user_id, setting, updated_at) VALUES ($1, $2, $3) "
+            "ON CONFLICT (user_id) DO UPDATE SET "
+            "setting = EXCLUDED.setting, updated_at = EXCLUDED.updated_at">>,
+    case elib_pg:execute(Conn, Sql, [Uid, Bin, Now]) of
+        {ok, _} -> ok;
+        {error, _} = Err -> Err
+    end.
 
 normalize_setting_rows(Rows) ->
     lists:map(

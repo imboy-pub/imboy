@@ -31,9 +31,10 @@
 -export([exists/1]).
 -export([update_by_id/2]).
 -export([insert/1]).
--export([page_by_owner/3]).
--export([page_joined/3]).
--export([page_managed/3]).
+-export([page_by_owner/3, page_by_owner/4]).
+-export([page_by_owner_keyset/4, page_joined_keyset/4, page_managed_keyset/4]).
+-export([page_joined/3, page_joined/4]).
+-export([page_managed/3, page_managed/4]).
 -export([load_aggregate/1, save_aggregate/1]).
 
 -include("cache.hrl").
@@ -618,6 +619,11 @@ do_dissolve(Uid, Gid, G, Authz) ->
             Sql2 = <<"DELETE FROM ", Tb2/binary, " WHERE group_id = $1">>,
             {ok, _} = elib_pg:execute(Conn, Sql2, [Gid]),
 
+            %% W04.b（channel-group-ux v2.2 §6.4/J24.b）：同事务置位创建回执
+            %% 删除标识——同键重放不泄露内容、不复活对象；receipt 保留已受理
+            %% 事实（不把错误改为首次创建）。无回执行时为合法 no-op。
+            ok = mark_create_receipts_deleted(Conn, Gid),
+
             %% 事务成功后按本快照直发解散通知（接收者列表提交给外层 case）
             {ok, [maps:get(<<"user_id">>, V) || V <- MemberRows]}
         end)
@@ -652,6 +658,19 @@ do_dissolve(Uid, Gid, G, Authz) ->
         Err ->
             ?ERROR_LOG([dissolve_group_tx_failed, Gid, Uid, Err]),
             {error, <<"解散群组失败"/utf8>>}
+    end.
+
+%% W04.b（channel-group-ux v2.2 §6.4/J24.b）：解散事务内标记该群的创建
+%% 受理回执为已删除。失败即中止事务（与群日志审计同级）；mark_deleted_
+%% by_resource_tx 对无回执行的旧群天然 0 行更新，恒 ok。
+-spec mark_create_receipts_deleted(pid(), integer()) -> ok.
+mark_create_receipts_deleted(Conn, Gid) ->
+    case resource_create_receipt_repo:mark_deleted_by_resource_tx(Conn, <<"create_group">>, Gid) of
+        ok ->
+            ok;
+        {error, Reason} ->
+            ?ERROR_LOG([group_dissolve_receipt_mark_failed, Gid, Reason]),
+            throw({abort_tx, {receipt_mark_deleted_failed, Gid, Reason}})
     end.
 
 %% G3: group_logic 不应直调 group_repo / thin DS wrappers
@@ -706,33 +725,49 @@ insert(Data) ->
     elib_pg:insert(Tb, Data).
 
 %% @doc 分页查询我拥有的群（attr=owner）
+%% W07.a（C2 个人群）：可带服务端 q（授权交集内 title ILIKE）；
+%% 稳定排序 created_at DESC, id DESC（tie-break，防同刻创建翻页漏重）。
 -spec page_by_owner(integer(), pos_integer(), pos_integer()) -> {ok, map()} | {error, any()}.
 page_by_owner(OwnerUid, Page, Size) ->
+    page_by_owner(OwnerUid, Page, Size, <<>>).
+
+page_by_owner(OwnerUid, Page, Size, Q) ->
     Tb = group_repo:tablename(),
-    Where = #{status => 1, owner_uid => OwnerUid},
-    elib_pg:page_with_total(Tb, Where, Page, Size).
+    Where = title_q_where(#{status => 1, owner_uid => OwnerUid}, Q),
+    elib_pg:page_with_total(
+        Tb, <<"*">>, Where, <<"created_at DESC, id DESC">>, Page, Size
+    ).
 
 %% @doc 分页查询我加入的群（attr=join，排除自己是群主的）
 -spec page_joined(integer(), pos_integer(), pos_integer()) -> {ok, map()} | {error, any()}.
 page_joined(Uid, Page, Size) ->
+    page_joined(Uid, Page, Size, <<>>).
+
+page_joined(Uid, Page, Size, Q) ->
     GTb = group_repo:tablename(),
     MTb = group_member_repo:tablename(),
     Tb = <<GTb/binary, " g LEFT JOIN ", MTb/binary, " m ON g.id = m.group_id">>,
-    Where = #{
+    Where0 = #{
         <<"g.status">> => 1,
         <<"m.status">> => 1,
         <<"m.user_id">> => Uid,
         <<"g.owner_uid">> => {op, <<"!=">>, Uid}
     },
-    elib_pg:page_with_total(Tb, <<"g.*">>, Where, <<"g.id desc">>, Page, Size).
+    Where = title_q_where(Where0, Q, <<"g.title">>),
+    %% W07.a（C2）：稳定 created_at,id tie-break（原 g.id desc 对同刻创建
+    %% 的群翻页会漏/重）。
+    elib_pg:page_with_total(Tb, <<"g.*">>, Where, <<"g.created_at DESC, g.id DESC">>, Page, Size).
 
 %% @doc 分页查询我管理的群（attr=manager，群主/副群主/管理员）
 -spec page_managed(integer(), pos_integer(), pos_integer()) -> {ok, map()} | {error, any()}.
 page_managed(Uid, Page, Size) ->
+    page_managed(Uid, Page, Size, <<>>).
+
+page_managed(Uid, Page, Size, Q) ->
     GTb = group_repo:tablename(),
     MTb = group_member_repo:tablename(),
     Tb = <<GTb/binary, " g LEFT JOIN ", MTb/binary, " m ON g.id = m.group_id">>,
-    Where = #{
+    Where0 = #{
         <<"g.status">> => 1,
         <<"__or">> =>
             [
@@ -744,7 +779,87 @@ page_managed(Uid, Page, Size) ->
                 }
             ]
     },
-    elib_pg:page_with_total(Tb, <<"g.*">>, Where, <<"g.id desc">>, Page, Size).
+    Where = title_q_where(Where0, Q, <<"g.title">>),
+    elib_pg:page_with_total(Tb, <<"g.*">>, Where, <<"g.created_at DESC, g.id DESC">>, Page, Size).
+
+%% W07.b（C2 个人群 cursor 协议）：id keyset 分页（id 唯一不可变 →
+%% 全扫描无漏/重；展示排序仍 created_at DESC, id DESC）。游标协议的
+%% 上界由签名游标（list_cursor）承载，DS 只接受已解析的数值上界。
+%% WHERE 为常量片段（与 W07.a offset 页同一授权交集）+ 可选 q 片段，
+%% 不走通用 Where-map 渲染（build_select 不支持 __or 组合）。
+-spec page_by_owner_keyset(integer(), integer(), pos_integer(), binary()) ->
+    {ok, list(map())} | {error, any()}.
+page_by_owner_keyset(Uid, BeforeId, Limit, Q) ->
+    Tb = group_repo:tablename(),
+    {QSql, Params} = q_clause(Q, 4),
+    Sql =
+        <<"SELECT g.* FROM ", Tb/binary, " g",
+            " WHERE g.status = 1 AND g.owner_uid = $1 AND g.id < $2", QSql/binary,
+            " ORDER BY g.created_at DESC, g.id DESC LIMIT $3">>,
+    elib_pg:query(Sql, [Uid, BeforeId, Limit | Params]).
+
+-spec page_joined_keyset(integer(), integer(), pos_integer(), binary()) ->
+    {ok, list(map())} | {error, any()}.
+page_joined_keyset(Uid, BeforeId, Limit, Q) ->
+    GTb = group_repo:tablename(),
+    MTb = group_member_repo:tablename(),
+    {QSql, Params} = q_clause(Q, 4),
+    Sql =
+        <<"SELECT g.* FROM ", GTb/binary, " g LEFT JOIN ", MTb/binary, " m ON g.id = m.group_id",
+            " WHERE g.status = 1 AND m.status = 1 AND m.user_id = $1", " AND g.owner_uid <> $1",
+            QSql/binary,
+            " AND g.id < $2"
+            " ORDER BY g.created_at DESC, g.id DESC LIMIT $3">>,
+    elib_pg:query(Sql, [Uid, BeforeId, Limit | Params]).
+
+-spec page_managed_keyset(integer(), integer(), pos_integer(), binary()) ->
+    {ok, list(map())} | {error, any()}.
+page_managed_keyset(Uid, BeforeId, Limit, Q) ->
+    GTb = group_repo:tablename(),
+    MTb = group_member_repo:tablename(),
+    {QSql, Params} = q_clause(Q, 4),
+    Sql =
+        <<"SELECT g.* FROM ", GTb/binary, " g LEFT JOIN ", MTb/binary, " m ON g.id = m.group_id",
+            " WHERE g.status = 1 AND (g.owner_uid = $1 OR (m.status = 1",
+            " AND m.user_id = $1 AND m.role >= 3))", QSql/binary,
+            " AND g.id < $2"
+            " ORDER BY g.created_at DESC, g.id DESC LIMIT $3">>,
+    elib_pg:query(Sql, [Uid, BeforeId, Limit | Params]).
+
+%% q 片段：空 q → {<<>>, []}；非空 → {" AND g.title ILIKE $N", [pattern]}
+%% （trim/64 截断/escape_like 与 W07.a offset 页同一定义）。
+-spec q_clause(binary(), pos_integer()) -> {binary(), [binary()]}.
+q_clause(Q, _N) when is_binary(Q), Q =:= <<>> ->
+    {<<>>, []};
+q_clause(Q, N) when is_binary(Q) ->
+    Q2 = elib_str:trunc(string:trim(Q), 64),
+    case Q2 of
+        <<>> ->
+            {<<>>, []};
+        _ ->
+            Pattern = <<"%", (elib_pg:escape_like(Q2))/binary, "%">>,
+            NBin = elib_cnv:safe_to_binary(N),
+            {<<" AND g.title ILIKE $", NBin/binary>>, [Pattern]}
+    end.
+
+%% W07.a（C2 个人群）：可选服务端搜索词。q 为空原样返回；非空在**授权
+%% 交集内**追加 title ILIKE（escape_like 防通配注入）。q 只会缩小结果，
+%% 绝不放宽授权。
+-spec title_q_where(map(), binary()) -> map().
+title_q_where(Where, Q) -> title_q_where(Where, Q, <<"title">>).
+
+-spec title_q_where(map(), binary(), binary()) -> map().
+title_q_where(Where, Q, _Col) when is_binary(Q), Q =:= <<>> ->
+    Where;
+title_q_where(Where, Q, Col) when is_binary(Q) ->
+    Q2 = elib_str:trunc(string:trim(Q), 64),
+    case Q2 of
+        <<>> ->
+            Where;
+        _ ->
+            Pattern = <<"%", (elib_pg:escape_like(Q2))/binary, "%">>,
+            Where#{Col => {op, <<"ILIKE">>, Pattern}}
+    end.
 
 %% ===================================================================
 %% 聚合加载/保存（group_agg 聚合根 I/O 外壳）

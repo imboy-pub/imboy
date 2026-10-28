@@ -146,3 +146,89 @@ unsubscribe_preserves_workspace_archived_code_test_() ->
             )
         end
     ).
+
+prewrite_rejections_are_coded_test_() ->
+    [
+        ?WITH_MECKS(
+            [
+                {channel_ds, [
+                    {find_by_id, 2, fun(_, _) -> #{<<"join_policy">> => Policy} end},
+                    {subscribe, 2, fun(_, _) -> error(unexpected_write) end}
+                ]},
+                {channel_logic_common, [{guard_channel_writable, 1, fun(_) -> ok end}]},
+                {channel_invitation_ds, [{is_invited, 2, fun(_, _) -> false end}]},
+                {channel_order_ds, [{has_purchased, 2, fun(_, _) -> false end}]}
+            ],
+            fun() ->
+                ?assertEqual(
+                    {error, {Code, Msg}}, channel_logic_subscription:subscribe(1001, <<"42">>)
+                ),
+                ?assertEqual(0, meck:num_calls(channel_ds, subscribe, '_'))
+            end
+        )
+     || {Policy, Code, Msg} <- [
+            {1, 990, <<"私有频道需要邀请才能订阅"/utf8>>},
+            {3, 991, <<"付费频道需要先购买"/utf8>>},
+            {2, 992, <<"该加入策略暂未开放"/utf8>>}
+        ]
+    ].
+
+invitation_query_failure_is_not_prewrite_rejection_test_() ->
+    ?WITH_MECKS(
+        [
+            {channel_ds, [{find_by_id, 2, fun(_, _) -> #{<<"join_policy">> => 1} end}]},
+            {channel_logic_common, [{guard_channel_writable, 1, fun(_) -> ok end}]},
+            {channel_invitation_ds, [{is_invited, 2, fun(_, _) -> {error, secret_db_password} end}]}
+        ],
+        fun() ->
+            ?assertEqual(
+                {error, <<"邀请状态暂不可用，请稍后重试"/utf8>>},
+                channel_logic_subscription:subscribe(1001, <<"42">>)
+            )
+        end
+    ).
+
+accepted_invitation_then_subscription_failure_is_not_prewrite_rejection_test_() ->
+    ?WITH_MECKS(
+        [
+            {channel_ds, [
+                {find_by_id, 2, fun(_, _) -> #{<<"join_policy">> => 1} end},
+                {subscribe, 2, fun(_, _) -> {error, db_down} end}
+            ]},
+            {channel_logic_common, [{guard_channel_writable, 1, fun(_) -> ok end}]},
+            {channel_invitation_ds, [
+                {is_invited, 2, fun(_, _) -> true end},
+                {find_pending_by_channel_and_invitee, 2, fun(_, _) -> {ok, #{<<"id">> => 7}} end},
+                {accept, 2, fun(_, _) -> ok end}
+            ]}
+        ],
+        fun() ->
+            ?assertEqual(
+                {error, <<"db_down">>}, channel_logic_subscription:subscribe(1001, <<"42">>)
+            ),
+            ?assertEqual(1, meck:num_calls(channel_invitation_ds, accept, '_'))
+        end
+    ).
+
+pending_invitation_query_is_distinguished_test_() ->
+    [
+        ?WITH_MECKS(
+            [
+                {channel_ds, [{find_by_id, 2, fun(_, _) -> #{<<"join_policy">> => 1} end}]},
+                {channel_logic_common, [{guard_channel_writable, 1, fun(_) -> ok end}]},
+                {channel_invitation_ds, [
+                    {is_invited, 2, fun(_, _) -> true end},
+                    {find_pending_by_channel_and_invitee, 2, fun(_, _) -> Lookup end},
+                    {accept, 2, fun(_, _) -> error(unexpected_accept) end}
+                ]}
+            ],
+            fun() ->
+                ?assertEqual(Expected, channel_logic_subscription:subscribe(1001, <<"42">>)),
+                ?assertEqual(0, meck:num_calls(channel_invitation_ds, accept, '_'))
+            end
+        )
+     || {Lookup, Expected} <- [
+            {{error, not_found}, {error, {990, <<"邀请不存在或已过期"/utf8>>}}},
+            {{error, secret_db_password}, {error, <<"邀请状态暂不可用，请稍后重试"/utf8>>}}
+        ]
+    ].

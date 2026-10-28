@@ -203,7 +203,7 @@ add_creates_new_group_success_test_() ->
                 {'title', 1, fun(_Uid) -> <<"user123">> end}
             ]},
             {group_member_logic, [
-                {'join_group', 5, fun(_Conn, _Mode, _Uid, _Gid, _Data) -> ok end}
+                {'join_group', 5, fun(_Conn, _Mode, _Uid, _Gid, _Data) -> {ok, 1} end}
             ]},
             {elib_pg, [
                 {'with_tx', 1, fun(Fun) -> Fun(self()) end}
@@ -235,7 +235,7 @@ add_same_set_creates_new_group_test_() ->
                 {'title', 1, fun(_Uid) -> <<"user123">> end}
             ]},
             {group_member_logic, [
-                {'join_group', 5, fun(_Conn, _Mode, _Uid, _Gid, _Data) -> ok end}
+                {'join_group', 5, fun(_Conn, _Mode, _Uid, _Gid, _Data) -> {ok, 1} end}
             ]},
             {elib_pg, [
                 {'with_tx', 1, fun(Fun) -> Fun(self()) end}
@@ -249,6 +249,30 @@ add_same_set_creates_new_group_test_() ->
 
             Result = group_logic:add(Count, Uid, Type, MemberUids),
             ?assertEqual({ok, 999}, Result)
+        end
+    ).
+
+add_member_failure_aborts_transaction_test_() ->
+    ?WITH_MECKS(
+        [
+            {elib_dt, [{'now', 0, fun() -> <<"2023-01-01T00:00:00Z">> end}]},
+            {group_ds, [{'create_group', 6, fun(_, _, _, _, _, _) -> 999 end}]},
+            {user_ds, [{'title', 1, fun(_) -> <<"user123">> end}]},
+            {group_member_logic, [
+                {'join_group', 5, fun(_, _, _, _, _) -> {error, simulated_member_failure} end}
+            ]},
+            {elib_pg, [
+                {'with_tx', 1, fun(Fun) ->
+                    try
+                        Fun(self())
+                    catch
+                        throw:{abort_tx, Reason} -> {error, Reason}
+                    end
+                end}
+            ]}
+        ],
+        fun() ->
+            ?assertMatch({error, _}, group_logic:add(0, 123, 1, [<<"1">>]))
         end
     ).
 

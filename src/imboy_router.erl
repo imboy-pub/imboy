@@ -128,6 +128,12 @@ get_routes() ->
                     action => unpin_conversation
                 }},
                 {"/api/v1/conversation/pinned", conversation_handler, #{action => pinned_list}},
+                {"/api/v1/conversation/manual_pending", conversation_handler, #{
+                    action => set_manual_pending
+                }},
+                {"/api/v1/conversation/manual_pending/list", conversation_handler, #{
+                    action => manual_pending_list
+                }},
                 {"/api/v1/conversation/delete", conversation_handler, #{
                     action => delete_conversation
                 }},
@@ -416,6 +422,7 @@ get_routes() ->
                 }},
                 {"/api/v1/channel/:channel_id/messages", channel_handler, #{action => messages}},
                 {"/api/v1/channel/:channel_id/read", channel_handler, #{action => mark_read}},
+                {"/api/v1/channel/:channel_id/viewed", channel_handler, #{action => mark_viewed}},
                 {"/api/v1/channels/search", channel_discovery_handler, #{action => search}},
                 {"/api/v1/channels/discover", channel_discovery_handler, #{action => discover}},
                 {"/api/v1/channels/featured", channel_discovery_handler, #{action => featured}},

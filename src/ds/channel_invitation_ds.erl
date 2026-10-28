@@ -34,7 +34,7 @@ find_by_id(Id) -> channel_invitation_repo:find_by_id(Id).
 find_pending_by_channel_and_invitee(ChannelId, InviteeUid) ->
     channel_invitation_repo:find_pending_by_channel_and_invitee(ChannelId, InviteeUid).
 
--spec is_invited(integer(), integer()) -> boolean().
+-spec is_invited(integer(), integer()) -> boolean() | {error, term()}.
 is_invited(ChannelId, InviteeUid) ->
     channel_invitation_repo:is_invited(ChannelId, InviteeUid).
 

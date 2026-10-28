@@ -1,5 +1,13 @@
 -module(group_handler).
--dialyzer({nowarn_function, [add/2, payload_list_key/1]}).
+-dialyzer(
+    {nowarn_function, [
+        add/2,
+        payload_list_key/1,
+        receipt_request_id/1,
+        recover_only_flag/1,
+        respond_group_add_receipt/4
+    ]}
+).
 %% Thin HTTP adapter for the core group_collab boundary.
 %% Keep transport parsing here and route domain work through group_logic.
 
@@ -11,6 +19,8 @@
 -export([handle_action/3]).
 
 -include("log.hrl").
+%% W04.b（channel-group-ux v2.2 §6.4）：创建受理稳定错误符号。
+-include("error_code.hrl").
 
 %% ===================================================================
 %% API
@@ -52,7 +62,12 @@ handle_action(transfer, Req, State) ->
 handle_action(page, Req, State) ->
     Qs0 = cowboy_req:parse_qs(Req),
     Attr = proplists:get_value(<<"attr">>, Qs0, undefined),
-    page(Req, State, Attr);
+    %% W07.b（C2 个人群 cursor 协议）：显式 pagination=cursor 才走新协议
+    %% （J27.a：旧客户端不带该参数 → 旧 page/size envelope 逐字不变）。
+    case proplists:get_value(<<"pagination">>, Qs0, <<>>) of
+        <<"cursor">> -> page_cursor(Req, State, Attr);
+        _ -> page(Req, State, Attr)
+    end;
 handle_action(msg_page, Req, State) ->
     msg_page(Req, State);
 handle_action(qrcode, Req, State) ->
@@ -239,43 +254,171 @@ add(Req0, State) ->
                 end,
             Scope = maps:get(<<"scope">>, PostVals, <<"personal">>),
             WorkspaceId = elib_cnv:safe_to_integer(maps:get(<<"workspace_id">>, PostVals, 0)),
-            case group_logic:add(Count, Uid, Type, MemberUids2, {Scope, WorkspaceId}) of
-                {ok, Gid} ->
-                    case group_logic:find_by_id(Gid, <<"*">>) of
-                        {error, Reason} ->
-                            elib_response:error(Req0, Reason);
-                        GData ->
-                            GData3 = group_logic:group_transfer(GData),
-                            case group_member_logic:list_member(Gid) of
-                                {error, Reason2} ->
-                                    elib_response:error(Req0, Reason2);
-                                {ok, MemberList} ->
-                                    elib_response:success(
-                                        Req0,
-                                        #{
-                                            group => GData3,
-                                            member_list =>
-                                                group_member_transfer:member_list(MemberList)
-                                        },
-                                        "success."
-                                    )
-                            end
+            %% W04.b（channel-group-ux v2.2 §6.4 C1）：携带非空 request_id 的
+            %% 请求走受理合同（占位/重放/recover_only）；缺失或空串走旧路径，
+            %% 行为零变化（回归红线）。绝不剥离客户端已携带的键。
+            case receipt_request_id(PostVals) of
+                <<>> ->
+                    case group_logic:add(Count, Uid, Type, MemberUids2, {Scope, WorkspaceId}) of
+                        {ok, Gid} ->
+                            case group_logic:find_by_id(Gid, <<"*">>) of
+                                {error, Reason} ->
+                                    elib_response:error(Req0, Reason);
+                                GData ->
+                                    GData3 = group_logic:group_transfer(GData),
+                                    case group_member_logic:list_member(Gid) of
+                                        {error, Reason2} ->
+                                            elib_response:error(Req0, Reason2);
+                                        {ok, MemberList} ->
+                                            elib_response:success(
+                                                Req0,
+                                                #{
+                                                    group => GData3,
+                                                    member_list =>
+                                                        group_member_transfer:member_list(
+                                                            MemberList
+                                                        )
+                                                },
+                                                "success."
+                                            )
+                                    end
+                            end;
+                        {error, {Code, Msg}} ->
+                            %% T5：scope 校验错误（400/403/409）带稳定错误码
+                            elib_response:error(Req0, Msg, Code);
+                        {error, Msg} ->
+                            elib_response:error(Req0, Msg);
+                        %% 兜底：with_tx reraise 的 throw 形态 {error, throw, Reason}
+                        %% 不让 handler crash，统一转成可读错误返回前端。
+                        {error, throw, ThrowReason} ->
+                            ?ERROR_LOG([group_add_handler_throw, Uid, ThrowReason]),
+                            elib_response:error(Req0, <<"群创建失败，请稍后重试"/utf8>>);
+                        Unexpected ->
+                            ?ERROR_LOG([group_add_handler_unexpected, Uid, Unexpected]),
+                            elib_response:error(Req0, <<"群创建失败，请稍后重试"/utf8>>)
                     end;
-                {error, {Code, Msg}} ->
-                    %% T5：scope 校验错误（400/403/409）带稳定错误码
-                    elib_response:error(Req0, Msg, Code);
-                {error, Msg} ->
-                    elib_response:error(Req0, Msg);
-                %% 兜底：with_tx reraise 的 throw 形态 {error, throw, Reason}
-                %% 不让 handler crash，统一转成可读错误返回前端。
-                {error, throw, ThrowReason} ->
-                    ?ERROR_LOG([group_add_handler_throw, Uid, ThrowReason]),
-                    elib_response:error(Req0, <<"群创建失败，请稍后重试"/utf8>>);
-                Unexpected ->
-                    ?ERROR_LOG([group_add_handler_unexpected, Uid, Unexpected]),
-                    elib_response:error(Req0, <<"群创建失败，请稍后重试"/utf8>>)
+                RequestId ->
+                    Title = elib_cnv:safe_to_binary(maps:get(<<"title">>, PostVals, <<>>)),
+                    RecoverOnly = recover_only_flag(PostVals),
+                    respond_group_add_receipt(
+                        Req0,
+                        Uid,
+                        RequestId,
+                        group_logic:add_with_receipt(
+                            Count,
+                            Uid,
+                            Type,
+                            MemberUids2,
+                            {Scope, WorkspaceId},
+                            RequestId,
+                            Title,
+                            RecoverOnly
+                        )
+                    )
             end
     end.
+
+%% ===================================================================
+%% W04.b（channel-group-ux v2.2 §6.4 C1）：创建受理合同响应
+%% ===================================================================
+
+%% request_id 解析：非空二进制视为新合同意图；缺失/空串走旧路径。
+-spec receipt_request_id(map()) -> binary().
+receipt_request_id(PostVals) when is_map(PostVals) ->
+    Raw =
+        case maps:get(<<"request_id">>, PostVals, <<>>) of
+            Bin when is_binary(Bin) -> Bin;
+            Other -> elib_cnv:safe_to_binary(Other)
+        end,
+    elib_str:trunc(string:trim(Raw), 128);
+receipt_request_id(_) ->
+    <<>>.
+
+%% recover_only 只查标志（§6.4：>=24h 的未知意图绝不创建，只查）。
+-spec recover_only_flag(map()) -> boolean().
+recover_only_flag(PostVals) when is_map(PostVals) ->
+    case maps:get(<<"recover_only">>, PostVals, false) of
+        true -> true;
+        <<"true">> -> true;
+        1 -> true;
+        <<"1">> -> true;
+        _ -> false
+    end;
+recover_only_flag(_) ->
+    false.
+
+%% 受理结果 → HTTP 响应：成功附 request_id/creation_state 增量字段；
+%% 四个稳定错误符号分开（§6.4），错误 envelope payload 携带核对元信息
+%%（request_id，可达时附 gid），不泄露名称/成员。
+-spec respond_group_add_receipt(cowboy_req:req(), integer(), binary(), term()) ->
+    cowboy_req:req().
+respond_group_add_receipt(Req0, _Uid, RequestId, {ok, Gid, CreationState}) ->
+    case group_logic:find_by_id(Gid, <<"*">>) of
+        {error, Reason} ->
+            elib_response:error(Req0, Reason);
+        GData ->
+            GData3 = group_logic:group_transfer(GData),
+            case group_member_logic:list_member(Gid) of
+                {error, Reason2} ->
+                    elib_response:error(Req0, Reason2);
+                {ok, MemberList} ->
+                    elib_response:success(
+                        Req0,
+                        #{
+                            group => GData3,
+                            member_list => group_member_transfer:member_list(MemberList),
+                            request_id => RequestId,
+                            creation_state => CreationState
+                        },
+                        "success."
+                    )
+            end
+    end;
+respond_group_add_receipt(Req0, _Uid, RequestId, {error, request_id_conflict}) ->
+    elib_response:error_with_status(
+        Req0,
+        409,
+        <<"request_id_conflict：同一 request_id 已绑定不同的创建内容"/utf8>>,
+        #{<<"request_id">> => RequestId},
+        ?ERR_CREATE_REQUEST_ID_CONFLICT
+    );
+respond_group_add_receipt(Req0, _Uid, RequestId, {error, create_not_accepted}) ->
+    %% 仅表示查询时未见已提交受理，不证明在途请求不会迟到（§6.4）。
+    elib_response:error_with_status(
+        Req0,
+        404,
+        <<"create_not_accepted：查询时未见该 request_id 的受理记录"/utf8>>,
+        #{<<"request_id">> => RequestId},
+        ?ERR_CREATE_NOT_ACCEPTED
+    );
+respond_group_add_receipt(Req0, _Uid, RequestId, {error, {create_recovery_expired, Gid}}) ->
+    elib_response:error_with_status(
+        Req0,
+        410,
+        <<"create_recovery_expired：受理结果已超过7天保留窗口，仅可用于核对"/utf8>>,
+        #{<<"request_id">> => RequestId, <<"gid">> => Gid},
+        ?ERR_CREATE_RECOVERY_EXPIRED
+    );
+respond_group_add_receipt(Req0, _Uid, RequestId, {error, {create_resource_unavailable, Gid}}) ->
+    Payload =
+        case is_integer(Gid) andalso Gid > 0 of
+            true -> #{<<"request_id">> => RequestId, <<"gid">> => Gid};
+            false -> #{<<"request_id">> => RequestId}
+        end,
+    elib_response:error_with_status(
+        Req0,
+        409,
+        <<"create_resource_unavailable：该创建结果当前不可用"/utf8>>,
+        Payload,
+        ?ERR_CREATE_RESOURCE_UNAVAILABLE
+    );
+respond_group_add_receipt(Req0, _Uid, _RequestId, {error, {Code, Msg}}) ->
+    elib_response:error(Req0, Msg, Code);
+respond_group_add_receipt(Req0, _Uid, _RequestId, {error, Msg}) when is_binary(Msg) ->
+    elib_response:error(Req0, Msg);
+respond_group_add_receipt(Req0, Uid, RequestId, Unexpected) ->
+    ?ERROR_LOG([group_add_receipt_unexpected, Uid, RequestId, Unexpected]),
+    elib_response:error(Req0, <<"群创建失败，请稍后重试"/utf8>>).
 
 %% @doc 编辑群组信息
 %% 修改群组的标题、头像、简介等信息
@@ -404,8 +547,10 @@ dissolve(Req0, State) ->
 page(Req0, State, <<"owner">>) ->
     CurrentUid = auth_ds:current_uid(State),
     {Page, Size} = elib_param:page(Req0),
+    % W07.a（C2 个人群）：可选服务端搜索词（授权交集内过滤，尾页可达）。
+    Q = q_param(Req0),
     Payload =
-        case group_logic:page_by_owner(CurrentUid, Page, Size) of
+        case group_logic:page_by_owner(CurrentUid, Page, Size, Q) of
             {ok, #{total := Total, list := Rows}} ->
                 #{
                     total => Total,
@@ -426,8 +571,10 @@ page(Req0, State, <<"owner">>) ->
 page(Req0, State, <<"join">>) ->
     CurrentUid = auth_ds:current_uid(State),
     {Page, Size} = elib_param:page(Req0),
+    % W07.a（C2 个人群）：可选服务端搜索词（授权交集内过滤，尾页可达）。
+    Q = q_param(Req0),
     Payload =
-        case group_logic:page_joined(CurrentUid, Page, Size) of
+        case group_logic:page_joined(CurrentUid, Page, Size, Q) of
             {ok, #{total := Total, list := Rows}} ->
                 #{
                     total => Total,
@@ -448,8 +595,10 @@ page(Req0, State, <<"join">>) ->
 page(Req0, State, <<"manager">>) ->
     CurrentUid = auth_ds:current_uid(State),
     {Page, Size} = elib_param:page(Req0),
+    % W07.a（C2 个人群）：可选服务端搜索词（授权交集内过滤，尾页可达）。
+    Q = q_param(Req0),
     Payload =
-        case group_logic:page_managed(CurrentUid, Page, Size) of
+        case group_logic:page_managed(CurrentUid, Page, Size, Q) of
             {ok, #{total := Total, list := Rows}} ->
                 #{
                     total => Total,
@@ -750,4 +899,130 @@ payload_list_key(Payload) ->
                 true -> <<"list">>;
                 false -> list
             end
+    end.
+
+%% W07.a（C2 个人群）：page 列表的可选服务端搜索词。
+%% 缺席/空白 → <<>>（旧客户端行为零变化）；trim + 64 字符截断 + LIKE 转义
+%% 在 ds 层统一处理。
+-spec q_param(cowboy_req:req()) -> binary().
+q_param(Req) ->
+    Qs = cowboy_req:parse_qs(Req),
+    Raw = proplists:get_value(<<"q">>, Qs, <<>>),
+    case is_binary(Raw) of
+        true -> Raw;
+        false -> elib_cnv:safe_to_binary(Raw)
+    end.
+
+%% ===================================================================
+%% W07.b（C2 个人群 cursor 协议）：pagination=cursor 分支
+%% ===================================================================
+
+%% 合同（C2/J20/J27.c）：
+%%   * envelope：{list, has_more, next_cursor}；末页 next_cursor=null(<<>>)
+%%     且 has_more=false；非终止游标必须前进（upper=本页末行 id）；
+%%   * 游标绑定 uid/scope/list_kind/规范 q/排序版本/上界——绑定不符
+%%     （关键词/范围换代、跨账号、篡改）一律 400 invalid_request，
+%%     **绝不回落第 1 页**；过期单独 400；
+%%   * 签名密钥缺失 → 503（fail-closed，不以弱密钥继续）；
+%%   * list 行投影与旧 page/size 路径一致（group_transfer）。
+-spec page_cursor(cowboy_req:req(), map(), term()) -> cowboy_req:req().
+page_cursor(Req0, State, Attr) ->
+    case attr_kind(Attr) of
+        {ok, Kind} ->
+            Uid = auth_ds:current_uid(State),
+            Qs = cowboy_req:parse_qs(Req0),
+            Q = q_param(Req0),
+            Ctx = #{scope => <<"personal">>, workspace_id => 0, q => Q},
+            case resolve_cursor_limit(Qs, Uid, Kind, Ctx) of
+                {ok, BeforeId, Limit} ->
+                    respond_cursor_page(Req0, Uid, Kind, Ctx, BeforeId, Limit);
+                {error, Status, Msg} ->
+                    elib_response:error(Req0, Msg, Status)
+            end;
+        error ->
+            %% 未知 attr 在旧路径已有行为（page/3 无匹配子句 → cowboy rest
+            %% false 分支）；游标协议不扩其语义。
+            page(Req0, State, Attr)
+    end.
+
+-spec attr_kind(term()) -> {ok, binary()} | error.
+attr_kind(<<"owner">>) -> {ok, <<"group_owned">>};
+attr_kind(<<"join">>) -> {ok, <<"group_joined">>};
+attr_kind(<<"manager">>) -> {ok, <<"group_managed">>};
+attr_kind(_) -> error.
+
+%% 解析 cursor/limit 并验游标绑定 → {BeforeId, Limit} | {error, Status, Msg}。
+-spec resolve_cursor_limit(list(), integer(), binary(), map()) ->
+    {ok, integer(), pos_integer()} | {error, integer(), binary()}.
+resolve_cursor_limit(Qs, Uid, Kind, Ctx) ->
+    Limit = parse_qs_int(proplists:get_value(<<"limit">>, Qs), 20, 1, 200),
+    CursorBin = proplists:get_value(<<"cursor">>, Qs, <<>>),
+    case CursorBin of
+        <<>> ->
+            %% 首页：上界取 bigint 正向最大（id keyset：id < max）。
+            {ok, 16#7FFFFFFFFFFFFFFF, Limit};
+        _ ->
+            case list_cursor:resolve(CursorBin, Uid, Kind, Ctx) of
+                {ok, Upper} ->
+                    {ok, Upper, Limit};
+                {error, expired} ->
+                    {error, 400, <<"invalid_request：游标已过期"/utf8>>};
+                {error, foreign} ->
+                    {error, 400, <<"invalid_request：游标与当前请求不匹配"/utf8>>};
+                {error, key_unavailable} ->
+                    {error, 503, <<"security_gate_closed"/utf8>>};
+                {error, _} ->
+                    {error, 400, <<"invalid_request：游标无效"/utf8>>}
+            end
+    end.
+
+-spec respond_cursor_page(cowboy_req:req(), integer(), binary(), map(), integer(), pos_integer()) ->
+    cowboy_req:req().
+respond_cursor_page(Req0, Uid, Kind, Ctx, BeforeId, Limit) ->
+    Fetcher =
+        case Kind of
+            <<"group_owned">> -> fun group_logic:page_by_owner_cursor/4;
+            <<"group_joined">> -> fun group_logic:page_joined_cursor/4;
+            <<"group_managed">> -> fun group_logic:page_managed_cursor/4
+        end,
+    case Fetcher(Uid, BeforeId, Limit, maps:get(q, Ctx, <<>>)) of
+        {ok, #{list := Rows, has_more := HasMore, upper := Upper}} ->
+            case next_cursor_for(HasMore, Uid, Kind, Ctx, Upper) of
+                {ok, NextCursor} ->
+                    elib_response:success(Req0, #{
+                        list => Rows,
+                        has_more => HasMore,
+                        next_cursor => NextCursor,
+                        limit => Limit
+                    });
+                {error, Status, Msg} ->
+                    elib_response:error(Req0, Msg, Status)
+            end;
+        {error, _Reason} ->
+            elib_response:error(Req0, <<"查询失败，请稍后重试"/utf8>>)
+    end.
+
+%% 末页 next_cursor 为空串（JSON null 语义由响应编码决定）；非终止页必须
+%% 前进：以本页末行 id 为上界签发下一页游标。
+-spec next_cursor_for(boolean(), integer(), binary(), map(), integer()) ->
+    {ok, binary()} | {error, integer(), binary()}.
+next_cursor_for(false, _Uid, _Kind, _Ctx, _Upper) ->
+    {ok, <<>>};
+next_cursor_for(true, Uid, Kind, Ctx, Upper) ->
+    case list_cursor:issue(Uid, Kind, Ctx#{upper => Upper}, os:system_time(second)) of
+        {ok, Token} ->
+            {ok, Token};
+        {error, key_unavailable} ->
+            {error, 503, <<"security_gate_closed"/utf8>>};
+        {error, _} ->
+            {error, 400, <<"invalid_request"/utf8>>}
+    end.
+
+%% parse_qs_int 的本地副本（channel_handler 同款语义；本模块此前无此需求）。
+-spec parse_qs_int(term(), integer(), integer(), integer()) -> integer().
+parse_qs_int(Raw, Default, Min, Max) ->
+    case elib_cnv:safe_to_integer(Raw) of
+        0 when Default =/= 0 -> Default;
+        N when is_integer(N), N >= Min, N =< Max -> N;
+        _ -> Default
     end.

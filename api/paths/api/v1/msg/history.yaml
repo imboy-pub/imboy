@@ -20,6 +20,11 @@ get:
     safe_head=0 合法；blocked 表示已扫描行越过安全头，客户端需等待后续增量，不自行宣布 gap。
     gaps 只表达服务端明确的授权边界或终态失败，不将暂时延迟误判为永久丢失。
     messages=[] 可能仍有扫描进度，按 next_seq/has_more 继续。
+    提供 target_msg_id 时读取目标周边有界上下文，忽略 after_seq；成功仅返回
+    conv_key/context_msg_id/messages，不推进同步或未读水位。目标不存在、过期、
+    不属于会话、越过当前成员世代或本设备不可见统一返回业务 404 history_context_unavailable。
+    context_msg_id 必须严格回显目标；旧服务端缺少回显时客户端不得当作上下文成功。
+    Optional target_msg_id selects bounded context without sequence or unread progress.
     业务错误是 HTTP 200 + 非零 code：400 参数错误；403 无群历史权限；
     500 历史存储未启用/归档查询失败。认证中间件可提前拒绝，见 401。
     JWT-scoped history, safe sequence progress and explicit terminal gaps; no query-action dispatch.
@@ -41,6 +46,15 @@ get:
       minLength: 1
     description: 目标用户 UID（C2C）或群 ID（C2G）；仅接受正十进制整数，最大 9223372036854775807。兼容 +9/0009；小数、垃圾值和越界值返回业务 400，不访问归档或群授权。
       / Positive int64 decimal, including compatible +9/0009 forms.
+  - in: query
+    name: target_msg_id
+    required: false
+    schema:
+      type: string
+      minLength: 1
+      maxLength: 50
+      pattern: '^[A-Za-z0-9_-]+$'
+    description: 目标消息原始 ID；只允许提供一次，空值或裸参数返回业务 400。 / Exact target ID, supplied once.
   - in: query
     name: after_seq
     required: false
@@ -134,6 +148,29 @@ get:
                 required:
                 - code
                 - payload
+            - allOf:
+              - $ref: ../../../../components/schemas/Envelope.yaml
+              - type: object
+                properties:
+                  code:
+                    type: integer
+                    const: 0
+                  payload:
+                    type: object
+                    additionalProperties: false
+                    properties:
+                      conv_key:
+                        type: string
+                      context_msg_id:
+                        type: string
+                        description: 严格回显请求目标。 / Exact target echo.
+                      messages:
+                        type: array
+                        maxItems: 100
+                        items:
+                          $ref: ../../../../components/schemas/client/ArchivedMessage.yaml
+                    required: [conv_key, context_msg_id, messages]
+                required: [code, payload]
             - $ref: ../../../../components/schemas/BusinessErrorEnvelope.yaml
           examples:
             archived:

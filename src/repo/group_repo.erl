@@ -1,5 +1,8 @@
 -module(group_repo).
--export([workspace_groups/2, member_workspace_groups/4, member_workspace_groups/5]).
+-export([
+    workspace_groups/2, workspace_groups/3, workspace_groups/4,
+    member_workspace_groups/4, member_workspace_groups/5, member_workspace_groups/6
+]).
 -export([mark_workspace_group_read/4]).
 -export([mark_group_read/3]).
 %%%
@@ -257,16 +260,56 @@ pick_value(Map, [Key | Rest], Default) ->
 
 %% 工作区资源目录与本人会话资源共用 DTO 列；后者按当前资格分页。
 workspace_groups(WorkspaceId, Limit) ->
+    workspace_groups(WorkspaceId, Limit, <<>>).
+
+%% W07.a（C2 工作区目录）：可选服务端 q（目录授权内 title ILIKE；q 为空
+%% SQL 逐字节同旧路径）。目录仍只列本工作区群，不冒充订阅或内容授权。
+workspace_groups(WorkspaceId, Limit, Q) ->
+    %% 旧全量形状（无 q 且 BeforeId=0 时 SQL 逐字节同旧路径）。
+    workspace_groups(WorkspaceId, Limit, Q, 0).
+
+%% W07.b（C2 工作区目录 cursor 协议）：BeforeId>0 为上界（g.id < Before），
+%% 配稳定 created_at,id DESC 排序；=0 首页全域。
+-spec workspace_groups(integer(), integer(), binary(), integer()) ->
+    {ok, list(map())} | {error, any()}.
+workspace_groups(WorkspaceId, Limit, Q, BeforeId) ->
+    {QSql, Params} = title_q_clause(Q, 4),
+    {BeforeSql, BeforeParams} =
+        case is_integer(BeforeId) andalso BeforeId > 0 of
+            true -> {<<" AND g.id < $3">>, [BeforeId]};
+            false -> {<<>>, []}
+        end,
     Sql =
         <<"SELECT ", (workspace_group_columns())/binary, " FROM \"group\" g",
             " WHERE g.workspace_id = $1 AND g.scope = 'workspace' AND g.status = 1",
-            " ORDER BY g.created_at DESC, g.id DESC LIMIT $2">>,
-    elib_pg:query(Sql, [WorkspaceId, Limit]).
+            BeforeSql/binary, QSql/binary, " ORDER BY g.created_at DESC, g.id DESC LIMIT $2">>,
+    elib_pg:query(Sql, [WorkspaceId, Limit | BeforeParams] ++ Params).
+
+%% W07.a：q 子句构造（g.title ILIKE）。空 q → {<<>>, []}；非空 → trim +
+%% 64 截断 + escape_like 后的 {" AND g.title ILIKE $N", [pattern]}。
+-spec title_q_clause(binary(), pos_integer()) -> {binary(), [binary()]}.
+title_q_clause(Q, _N) when is_binary(Q), Q =:= <<>> ->
+    {<<>>, []};
+title_q_clause(Q, N) when is_binary(Q) ->
+    Q2 = elib_str:trunc(string:trim(Q), 64),
+    case Q2 of
+        <<>> ->
+            {<<>>, []};
+        _ ->
+            Pattern = <<"%", (elib_pg:escape_like(Q2))/binary, "%">>,
+            NBin = elib_cnv:safe_to_binary(N),
+            {<<" AND g.title ILIKE $", NBin/binary>>, [Pattern]}
+    end.
 
 member_workspace_groups(WorkspaceId, Uid, AfterId, Limit) ->
     member_workspace_groups(WorkspaceId, Uid, AfterId, Limit, false).
 
 member_workspace_groups(WorkspaceId, Uid, AfterId, Limit, Preview) ->
+    member_workspace_groups(WorkspaceId, Uid, AfterId, Limit, Preview, <<>>).
+
+%% W07.a（C2 成员群子集）：可选服务端 q（资格 SQL 内 title ILIKE，$5）。
+member_workspace_groups(WorkspaceId, Uid, AfterId, Limit, Preview, Q) ->
+    {QSql0, QParams} = title_q_clause(Q, 5),
     Eligible =
         <<"SELECT ", (workspace_group_columns())/binary,
             ",gen.start_seq AS member_start_seq,gen.id AS member_generation_id",
@@ -274,7 +317,7 @@ member_workspace_groups(WorkspaceId, Uid, AfterId, Limit, Preview) ->
             " LEFT JOIN organization o ON o.id=w.organization_id",
             " JOIN group_member_generation gen ON gen.group_id=g.id",
             " AND gen.user_id=$2 AND gen.end_seq IS NULL",
-            " WHERE g.workspace_id=$1 AND g.scope='workspace' AND g.status=1 AND g.id>$3",
+            " WHERE g.workspace_id=$1 AND g.scope='workspace' AND g.status=1 AND g.id>$3", QSql0,
             " AND w.status IN ('active','archived')",
             " AND (w.organization_id IS NULL OR o.status='active')",
             " AND (w.organization_id IS NULL OR EXISTS (SELECT 1 FROM organization_member om",
@@ -295,7 +338,7 @@ member_workspace_groups(WorkspaceId, Uid, AfterId, Limit, Preview) ->
                     " ON r.generation_id=g.member_generation_id LEFT JOIN LATERAL (",
                     (workspace_unread_sql())/binary, ") u ON true ORDER BY g.id ASC">>
         end,
-    elib_pg:query(Sql, [WorkspaceId, Uid, AfterId, Limit]).
+    elib_pg:query(Sql, [WorkspaceId, Uid, AfterId, Limit | QParams]).
 
 %% ACK is delivery, not read: include acknowledged timeline rows. The live table
 %% carries edits/revokes/deletion; immutable archive payloads cannot replace it.

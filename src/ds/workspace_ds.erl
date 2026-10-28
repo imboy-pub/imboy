@@ -1,5 +1,5 @@
 -module(workspace_ds).
--export([groups/2, member_groups/4, member_groups/5]).
+-export([groups/2, groups/3, groups/4, member_groups/4, member_groups/5, member_groups/6]).
 -export([mark_group_read/3]).
 -compile([nowarn_deprecated_catch]).
 %%%
@@ -730,14 +730,25 @@ remove_organization_memberships_tx(Conn, OrgId, Uid) ->
         false -> [remove_member_tx(Conn, WsId, Uid) || #{<<"workspace_id">> := WsId} <- Rows]
     end.
 
-groups(WorkspaceId, Limit) ->
-    group_repo:workspace_groups(WorkspaceId, Limit).
+groups(WorkspaceId, Limit) -> groups(WorkspaceId, Limit, <<>>).
+
+%% W07.a（C2 工作区目录）：可选服务端 q（目录授权内 title ILIKE）。
+groups(WorkspaceId, Limit, Q) ->
+    groups(WorkspaceId, Limit, Q, 0).
+
+%% W07.b（C2 工作区目录 cursor 协议）：BeforeId>0 为 keyset 上界。
+groups(WorkspaceId, Limit, Q, BeforeId) ->
+    group_repo:workspace_groups(WorkspaceId, Limit, Q, BeforeId).
 
 member_groups(WorkspaceId, Uid, AfterId, Limit) ->
     group_repo:member_workspace_groups(WorkspaceId, Uid, AfterId, Limit).
 
 member_groups(WorkspaceId, Uid, AfterId, Limit, Preview) ->
-    group_repo:member_workspace_groups(WorkspaceId, Uid, AfterId, Limit, Preview).
+    member_groups(WorkspaceId, Uid, AfterId, Limit, Preview, <<>>).
+
+%% W07.a（C2 成员群子集）：可选服务端 q（资格 SQL 内 title ILIKE）。
+member_groups(WorkspaceId, Uid, AfterId, Limit, Preview, Q) ->
+    group_repo:member_workspace_groups(WorkspaceId, Uid, AfterId, Limit, Preview, Q).
 
 mark_group_read(Uid, GroupId, MsgIds) ->
     elib_pg:with_tx(fun(Conn) ->

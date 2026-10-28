@@ -12,7 +12,8 @@ member_groups_cursor_test_() ->
     ?WITH_MECKS(
         [
             {workspace_ds, [
-                {'member_groups', 5, fun(_Ws, _Uid, _After, _Limit, _Preview) ->
+                %% W07.a：member_groups/6（末位服务端 q 参数）。
+                {'member_groups', 6, fun(_Ws, _Uid, _After, _Limit, _Preview, _Q) ->
                     Count =
                         case get(row_count) of
                             undefined -> 0;

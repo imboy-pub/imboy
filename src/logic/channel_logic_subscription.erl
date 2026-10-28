@@ -1,12 +1,16 @@
 -module(channel_logic_subscription).
 -moduledoc "频道内容订阅/申请业务逻辑（internal）。".
 -compile([nowarn_deprecated_catch]).
+-include("error_code.hrl").
 %% Internal channel_content subscription/application logic.
 
 -export([subscribe/2]).
 -export([unsubscribe/2]).
--export([get_subscribed_channels/1]).
--export([get_managed_channels/1]).
+-export([
+    get_subscribed_channels/1, get_subscribed_channels/2,
+    get_subscribed_channels_cursor/4
+]).
+-export([get_managed_channels/1, get_managed_channels/2, get_managed_channels_cursor/4]).
 -export([get_unread_summary/1]).
 -export([get_subscribers/3]).
 -export([remove_subscriber/3]).
@@ -59,7 +63,7 @@ subscribe_by_join_policy(Uid, ChannelId, Channel) ->
         1 ->
             subscribe_private_channel(Uid, ChannelId);
         2 ->
-            {error, <<"该加入策略暂未开放"/utf8>>};
+            {error, {?ERR_CHANNEL_JOIN_POLICY_UNAVAILABLE, <<"该加入策略暂未开放"/utf8>>}};
         3 ->
             subscribe_paid_channel(Uid, ChannelId);
         _ ->
@@ -113,9 +117,17 @@ subscribe_private_channel(Uid, ChannelId) ->
                         {error, Reason} ->
                             {error, elib_cnv:safe_to_binary(Reason)}
                     end;
+                {error, not_found} ->
+                    {error, {?ERR_CHANNEL_INVITATION_REQUIRED, <<"邀请不存在或已过期"/utf8>>}};
+                {error, _} ->
+                    {error, <<"邀请状态暂不可用，请稍后重试"/utf8>>};
                 _ ->
                     {error, <<"邀请不存在或已过期"/utf8>>}
             end;
+        false ->
+            {error, {?ERR_CHANNEL_INVITATION_REQUIRED, <<"私有频道需要邀请才能订阅"/utf8>>}};
+        {error, _} ->
+            {error, <<"邀请状态暂不可用，请稍后重试"/utf8>>};
         _ ->
             {error, <<"私有频道需要邀请才能订阅"/utf8>>}
     end.
@@ -139,6 +151,8 @@ subscribe_paid_channel(Uid, ChannelId) ->
             {error, Coded};
         {error, Reason} ->
             {error, elib_cnv:safe_to_binary(Reason)};
+        false ->
+            {error, {?ERR_CHANNEL_PURCHASE_REQUIRED, <<"付费频道需要先购买"/utf8>>}};
         _ ->
             {error, <<"付费频道需要先购买"/utf8>>}
     end.
@@ -172,7 +186,13 @@ unsubscribe(Uid, ChannelIdBin) ->
 
 -spec get_subscribed_channels(integer()) -> {ok, list(map())} | {error, binary()}.
 get_subscribed_channels(Uid) ->
-    case channel_ds:list_subscribed(Uid, ?CHANNEL_SAFE_COLUMNS) of
+    get_subscribed_channels(Uid, <<>>).
+
+%% W07.a（C2 已订阅频道）：可选服务端 q（订阅交集内 name ILIKE）。
+-spec get_subscribed_channels(integer(), binary()) ->
+    {ok, list(map())} | {error, binary()}.
+get_subscribed_channels(Uid, Q) ->
+    case channel_ds:list_subscribed(Uid, ?CHANNEL_SAFE_COLUMNS, Q) of
         {ok, Channels} when is_list(Channels) ->
             {ok, [channel_logic_common:channel_transfer(C) || C <- Channels, is_map(C)]};
         {ok, UnexpectedChannels} ->
@@ -185,7 +205,13 @@ get_subscribed_channels(Uid) ->
 
 -spec get_managed_channels(integer()) -> {ok, list(map())} | {error, binary()}.
 get_managed_channels(Uid) ->
-    case channel_ds:list_managed(Uid) of
+    get_managed_channels(Uid, <<>>).
+
+%% W07.a（C2 我管理频道）：可选服务端 q（管理交集内 name ILIKE）。
+-spec get_managed_channels(integer(), binary()) ->
+    {ok, list(map())} | {error, binary()}.
+get_managed_channels(Uid, Q) ->
+    case channel_ds:list_managed(Uid, Q) of
         {ok, Channels} when is_list(Channels) ->
             {ok, [channel_logic_common:channel_transfer(C) || C <- Channels, is_map(C)]};
         {ok, UnexpectedChannels} ->
@@ -195,6 +221,37 @@ get_managed_channels(Uid) ->
         Unexpected ->
             {error, elib_cnv:safe_to_binary(Unexpected)}
     end.
+
+%% W07.b（C2 已订阅频道 cursor 协议）：s.id DESC keyset 游标页。
+%% rows 走 channel_transfer；upper=本页末行 cursor_id（s.id）。
+-spec get_subscribed_channels_cursor(integer(), integer(), pos_integer(), binary()) ->
+    {ok, #{list := [map()], has_more := boolean(), upper := integer()}} | {error, binary()}.
+get_subscribed_channels_cursor(Uid, BeforeId, Limit, Q) ->
+    case channel_ds:list_subscribed_keyset(Uid, BeforeId, Limit + 1, Q) of
+        {ok, Rows} -> cursor_rows(Rows, Limit);
+        {error, Reason} -> {error, elib_cnv:safe_to_binary(Reason)}
+    end.
+
+%% W07.b（C2 我管理频道 cursor 协议）：c.id DESC keyset 游标页。
+-spec get_managed_channels_cursor(integer(), integer(), pos_integer(), binary()) ->
+    {ok, #{list := [map()], has_more := boolean(), upper := integer()}} | {error, binary()}.
+get_managed_channels_cursor(Uid, BeforeId, Limit, Q) ->
+    case channel_ds:list_managed_keyset(Uid, BeforeId, Limit + 1, Q) of
+        {ok, Rows} -> cursor_rows(Rows, Limit);
+        {error, Reason} -> {error, elib_cnv:safe_to_binary(Reason)}
+    end.
+
+-spec cursor_rows([map()], pos_integer()) ->
+    {ok, #{list := [map()], has_more := boolean(), upper := integer()}}.
+cursor_rows(Rows, Limit) ->
+    Page = [channel_logic_common:channel_transfer(R) || R <- lists:sublist(Rows, Limit)],
+    HasMore = length(Rows) > Limit,
+    Upper =
+        case {HasMore, lists:reverse(Page)} of
+            {true, [Last | _]} -> maps:get(<<"cursor_id">>, Last);
+            _ -> 0
+        end,
+    {ok, #{list => Page, has_more => HasMore, upper => Upper}}.
 
 -spec get_unread_summary(integer()) -> {ok, map()} | {error, binary()}.
 get_unread_summary(Uid) ->

@@ -207,3 +207,17 @@ invitation_expiry_test_() ->
         ?assert(ExpiresAt > Now),
         ?assertEqual(SevenDaysMs, ExpiresAt - Now)
     end).
+
+is_invited_distinguishes_absence_from_query_failure_test_() ->
+    [
+        ?WITH_MECKS(
+            [{elib_pg, [{query, 2, fun(_, _) -> QueryResult end}]}],
+            fun() -> ?assertEqual(Expected, channel_invitation_repo:is_invited(11, 2002)) end
+        )
+     || {QueryResult, Expected} <- [
+            {{ok, [#{<<"cnt">> => 1}]}, true},
+            {{ok, [#{<<"cnt">> => 0}]}, false},
+            {{error, db_down}, {error, db_down}},
+            {{ok, []}, {error, invalid_invitation_count}}
+        ]
+    ].

@@ -221,7 +221,7 @@ class HistoryTimezoneContractTest(unittest.TestCase):
         self.assertFalse(check.is_valid({**envelope, "payload": {
             key: value for key, value in payload.items() if key != "range_limit"}}))
         names = {parameter["name"] for parameter in operation["parameters"]}
-        self.assertEqual(names, {"chat_type", "peer_id", "after_seq", "limit", "did"})
+        self.assertEqual(names, {"chat_type", "peer_id", "after_seq", "limit", "did", "target_msg_id"})
         names = {parameter["name"] for parameter in action["parameters"]}
         self.assertEqual(names, {"action", "chat_type", "peer_id", "after_seq", "limit", "did"})
         selector = next(parameter for parameter in action["parameters"] if parameter["name"] == "action")

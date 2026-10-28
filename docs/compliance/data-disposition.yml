@@ -324,6 +324,13 @@ tables:
     mechanism: delete rows by user ownership column
     review: self-evident
     retention: n/a
+  resource_create_receipt:
+    action: delete
+    owner: groups
+    reason: 群/频道创建受理回执（幂等去重事实；无 TTL 永不重置，§6.4 W04.b）
+    mechanism: delete rows by user ownership column
+    review: self-evident
+    retention: n/a
   group_notice:
     action: delete
     owner: groups

@@ -72,7 +72,8 @@ page_manager_uses_joined_query_test_() ->
                         Tb
                     ),
                     ?assertEqual(<<"g.*">>, Columns),
-                    ?assertEqual(<<"g.id desc">>, Order),
+                    %% W07.a：稳定 created_at,id tie-break 排序契约。
+                    ?assertEqual(<<"g.created_at DESC, g.id DESC">>, Order),
                     ?assertEqual(1, Page),
                     ?assertEqual(20, Size),
                     ?assert(maps:is_key(<<"__or">>, Where))
@@ -95,8 +96,9 @@ page_unknown_attr_falls_back_to_owner_test_() ->
                 {'tablename', 0, fun() -> <<"public.group">> end}
             ]},
             {elib_pg, [
-                {'page_with_total', 4, fun(Tb, Where, Page, Size) ->
-                    self() ! {owner_query, Tb, Where, Page, Size},
+                %% W07.a：page_with_total/6（Columns+稳定排序 Order 入参）。
+                {'page_with_total', 6, fun(Tb, _Columns, Where, Order, Page, Size) ->
+                    self() ! {owner_query, Tb, Where, Order, Page, Size},
                     {ok, #{total => 1, list => [#{<<"id">> => 2001}]}}
                 end}
             ]},
@@ -115,9 +117,11 @@ page_unknown_attr_falls_back_to_owner_test_() ->
             [Item] = maps:get(list, Payload),
             ?assertEqual(true, maps:get(<<"owner_view">>, Item)),
             receive
-                {owner_query, Tb, Where, Page, Size} ->
+                {owner_query, Tb, Where, Order, Page, Size} ->
                     ?assertEqual(<<"public.group">>, Tb),
                     ?assertEqual(#{status => 1, owner_uid => 12345}, Where),
+                    %% W07.a：稳定排序契约。
+                    ?assertEqual(<<"created_at DESC, id DESC">>, Order),
                     ?assertEqual(2, Page),
                     ?assertEqual(10, Size)
             after 1000 ->

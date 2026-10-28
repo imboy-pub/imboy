@@ -7,9 +7,12 @@
 %%%
 
 -export([pin_conversation/3]).
+-export([pin_conversation_tx/4]).
 -export([unpin_conversation/3]).
+-export([unpin_conversation_tx/4]).
 -export([get_pinned_conversations/1]).
 -export([is_conversation_pinned/3]).
+-export([is_conversation_pinned_tx/4]).
 
 -include_lib("eunit/include/eunit.hrl").
 -include("log.hrl").
@@ -27,12 +30,46 @@
 %% @return ok 成功 | {error, Reason} 失败
 -spec pin_conversation(integer(), integer(), binary()) -> ok | {error, term()}.
 pin_conversation(Uid, ConversationId, Type) ->
-    case conversation_pin_repo:pin(Uid, ConversationId, Type) of
+    %% W09.b（§6.7）：C2G 置顶行绑定写入时 active 成员世代；C2C 恒 0。
+    GenerationId =
+        case Type of
+            <<"c2g">> -> group_member_ds:active_generation_id(ConversationId, Uid);
+            _ -> 0
+        end,
+    case conversation_pin_repo:pin(Uid, ConversationId, Type, GenerationId) of
         {ok, _Count} ->
             ok;
         {error, Reason} ->
             {error, Reason}
     end.
+
+%% W09.c（J17.e/D7）：pin 的同事务变体——世代读取与行写入同一 Conn
+%% 同一快照；返回 {error,_} 令外层 with_tx 整体回滚。
+-spec pin_conversation_tx(pid(), integer(), integer(), binary()) ->
+    ok | {error, term()}.
+pin_conversation_tx(Conn, Uid, ConversationId, Type) ->
+    GenerationId =
+        case Type of
+            <<"c2g">> -> group_member_ds:active_generation_id_tx(Conn, ConversationId, Uid);
+            _ -> 0
+        end,
+    case conversation_pin_repo:pin_tx(Conn, Uid, ConversationId, Type, GenerationId) of
+        {ok, _Count} ->
+            ok;
+        {error, Reason} ->
+            {error, Reason}
+    end.
+
+%% W09.c：unpin 的同事务变体（返回影响行数；0 行=无变化）。
+-spec unpin_conversation_tx(pid(), integer(), integer(), binary()) ->
+    {ok, non_neg_integer()} | {error, term()}.
+unpin_conversation_tx(Conn, Uid, ConversationId, Type) ->
+    conversation_pin_repo:unpin_tx(Conn, Uid, ConversationId, Type).
+
+%% W09.c：is_pinned 的同事务变体（旧写入口在事务内做幂等判定）。
+-spec is_conversation_pinned_tx(pid(), integer(), integer(), binary()) -> boolean().
+is_conversation_pinned_tx(Conn, Uid, ConversationId, Type) ->
+    conversation_pin_repo:is_pinned_tx(Conn, Uid, ConversationId, Type).
 
 %% @doc 取消置顶会话
 %% @param Uid 用户ID
