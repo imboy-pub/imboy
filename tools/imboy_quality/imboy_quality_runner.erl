@@ -3,7 +3,7 @@
 %% 返回值传回（纯数据），不跨 VM 发消息、不传 opaque fun。
 %% deadline 到期有界回收本 VM（RUN05）；总墙钟来自控制器单调时钟。
 -module(imboy_quality_runner).
--export([run_in_worker/3, worker_main/1]).
+-export([run_in_worker/3, run_group_in_worker/4, worker_main/1, worker_main_group/1]).
 
 -spec run_in_worker(TestMod :: module(), Opts :: map(), DeadlineMs :: pos_integer()) ->
     #{
@@ -99,6 +99,73 @@ finish({error, _}, Counts, Events, Wall, Node) ->
     }.
 
 zero_counts() -> #{pass => 0, fail => 0, skip => 0, cancel => 0}.
+
+%% ---- 组模式：同 peer VM 内串行执行多个 root（P1-06 分片） ----
+%% 返回 per-root 结果 map：#{Mod => #{exit, wall_ms, counts, events}}，
+%% 外层 wall 为组总墙钟；单 root 失败继续后续 root（SCHED05）。
+run_group_in_worker(TestMods, Opts, DeadlineMs, ExtraPaths) ->
+    true = is_list(TestMods),
+    true = TestMods =/= [],
+    Schedulers = maps:get(schedulers, Opts, 2),
+    FrameworkPath =
+        case code:which(?MODULE) of
+            Beam when is_list(Beam) -> filename:dirname(Beam);
+            _ -> erlang:error(runner_not_file_loaded)
+        end,
+    T0 = erlang:monotonic_time(millisecond),
+    {ok, Peer, _N} = peer:start_link(#{
+        connection => {{127, 0, 0, 1}, 0},
+        args => [
+            "-noshell",
+            "-noinput",
+            "-boot",
+            "no_dot_erlang",
+            "+S",
+            integer_to_list(Schedulers)
+        ] ++
+            lists:append([["-pa", P] || P <- ExtraPaths ++ [FrameworkPath]])
+    }),
+    try
+        Timeout = max(1000, DeadlineMs - (erlang:monotonic_time(millisecond) - T0)),
+        PerRoot = peer:call(Peer, ?MODULE, worker_main_group, [TestMods], Timeout),
+        Wall = erlang:monotonic_time(millisecond) - T0,
+        #{exit => ok, wall_ms => Wall, per_root => PerRoot, node => group}
+    catch
+        Class:Reason when Class =:= exit; Class =:= error ->
+            stop_peer(Peer),
+            WallC = erlang:monotonic_time(millisecond) - T0,
+            #{
+                exit => classify(Class, Reason),
+                wall_ms => WallC,
+                per_root => #{},
+                node => down
+            }
+    after
+        stop_peer(Peer)
+    end.
+
+worker_main_group(TestMods) ->
+    maps:from_list(
+        lists:map(
+            fun(Mod) ->
+                T0 = erlang:monotonic_time(millisecond),
+                {EunitReturn, Counts, Events} = worker_main(Mod),
+                Wall = erlang:monotonic_time(millisecond) - T0,
+                Exit =
+                    case EunitReturn of
+                        ok -> ok;
+                        _ -> test_failed
+                    end,
+                {Mod, #{
+                    exit => Exit,
+                    wall_ms => Wall,
+                    counts => Counts,
+                    events => Events
+                }}
+            end,
+            TestMods
+        )
+    ).
 
 %% worker 侧入口：collector 为 worker 内进程；结束把计数与事件作为返回值带回。
 worker_main(TestMod) ->
