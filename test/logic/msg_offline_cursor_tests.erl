@@ -29,3 +29,34 @@ malformed_and_unsupported_cursor_test() ->
         ?assertEqual({error, invalid_offline_cursor}, msg_offline_cursor:decode(Token))
      || Token <- Inputs
     ].
+
+marks_boundaries_test() ->
+    ?assertEqual(
+        {error, invalid_offline_cursor},
+        msg_offline_cursor:decode(msg_offline_cursor:encode({marks, []}))
+    ),
+    Marks = [{1, 0}],
+    ?assertEqual(
+        {ok, {marks, Marks}},
+        msg_offline_cursor:decode(msg_offline_cursor:encode({marks, Marks}))
+    ),
+    ?assertEqual(
+        {error, invalid_offline_cursor},
+        msg_offline_cursor:decode(msg_offline_cursor:encode({marks, lists:duplicate(51, {1, 0})}))
+    ).
+
+invalid_marks_test() ->
+    Inputs = [[{0, 0}], [{1, -1}], [{1, <<"0">>}]],
+    [
+        ?assertEqual(
+            {error, invalid_offline_cursor},
+            msg_offline_cursor:decode(msg_offline_cursor:encode({marks, Marks}))
+        )
+     || Marks <- Inputs
+    ].
+
+transaction_abort_protocol_test() ->
+    [
+        ?assertThrow({Tag, conflict}, elib_pg:abort({Tag, conflict}))
+     || Tag <- [abort_tx, rollback]
+    ].

@@ -72,7 +72,8 @@ validate_zone(_) ->
 %% @param Data 含 <<"user_id">>/<<"start_min">>/<<"end_min">>/<<"status">> 的 map，
 %%   可选 <<"time_zone">>（D02：IANA 名；缺省/null 表示未设置，判定走 fallback）
 %% @return ok | {error, invalid_zone}（非法 zone 拒写；未来 API 映射 422）
-%% @example user_dnd_rule_repo:upsert(#{<<"user_id">>=>1,<<"start_min">>=>1320,<<"end_min">>=>480,<<"status">>=>1,<<"time_zone">>=><<"Asia/Shanghai">>}).
+%% @example user_dnd_rule_repo:upsert(#{<<"user_id">>=>1,<<"start_min">>=>1320,
+%%   <<"end_min">>=>480,<<"status">>=>1,<<"time_zone">>=><<"Asia/Shanghai">>}).
 -spec upsert(map()) -> ok | {error, invalid_zone} | {error, term()}.
 upsert(#{<<"user_id">> := _Uid} = Data0) ->
     case validate_zone(maps:get(<<"time_zone">>, Data0, undefined)) of

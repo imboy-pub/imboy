@@ -291,7 +291,7 @@ schedule_reminders_tx(Conn, ScheduleId, StartAt, Before0, Rows) ->
 
 tx_value({ok, Value}) -> Value;
 tx_value({ok, Value, _}) -> Value;
-tx_value({error, Reason}) -> throw({abort_tx, Reason}).
+tx_value({error, Reason}) -> elib_pg:abort({abort_tx, Reason}).
 
 tx_ok(ok) -> ok;
-tx_ok({error, Reason}) -> throw({abort_tx, Reason}).
+tx_ok({error, Reason}) -> elib_pg:abort({abort_tx, Reason}).

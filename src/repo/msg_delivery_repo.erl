@@ -40,8 +40,8 @@ mark_acked_batch(Kind, MsgIds, ToUid, ToDid) ->
             <<"INSERT INTO ", Tb/binary,
                 " (msg_kind,msg_id,to_uid,to_did) SELECT $1::varchar, ids.msg_id, $2::bigint, $3::varchar ",
                 "FROM unnest($4::varchar[]) ids(msg_id) WHERE NOT EXISTS (SELECT 1 FROM ",
-                Staging/binary,
-                " s WHERE (s.type=$1 OR ($1='c2c' AND s.type='c2c_notice' AND s.action='message_read')) AND s.msg_id=ids.msg_id AND s.to_id=$2 ",
+                Staging/binary, " s WHERE (s.type=$1 OR ($1='c2c' AND s.type='c2c_notice' AND ",
+                "s.action='message_read')) AND s.msg_id=ids.msg_id AND s.to_id=$2 ",
                 "AND s.processed_at IS NOT NULL AND s.error_msg IS NULL ",
                 "AND NOT EXISTS (SELECT 1 FROM ", Staging/binary,
                 " p WHERE p.type=$1 AND p.msg_id=ids.msg_id AND p.to_id=$2 ",
@@ -90,7 +90,7 @@ register_read_notice(MsgId, FromUid, ToUid, Payload) ->
                     application:get_env(imboy, msg_delivery_active_days, 30)
                 );
             {ok, []} ->
-                throw({rollback, notification_id_conflict})
+                elib_pg:abort({rollback, notification_id_conflict})
         end
     end).
 
@@ -120,7 +120,8 @@ delete_delivered_batch(Conn, Kind, MsgIds, ToUid, ActiveDays) ->
     Devices = user_device_repo:tablename(),
     Pending =
         <<"SELECT 1 FROM ", Staging/binary,
-            " s WHERE s.type=$1 AND s.msg_id=m.msg_id AND s.to_id=$2 AND (s.processed_at IS NULL OR s.error_msg IS NOT NULL)">>,
+            " s WHERE s.type=$1 AND s.msg_id=m.msg_id AND s.to_id=$2 AND (s.processed_at IS NULL ",
+            "OR s.error_msg IS NOT NULL)">>,
     Sql =
         <<"DELETE FROM ", Main/binary, " m WHERE m.to_id=$2 AND m.msg_id=ANY($4::varchar[]) ",
             "AND NOT EXISTS (", Pending/binary, ") ", "AND EXISTS (SELECT 1 FROM ", Tb/binary,
@@ -139,9 +140,11 @@ delete_delivered_batch(Conn, Kind, MsgIds, ToUid, ActiveDays) ->
             "AND NOT EXISTS (SELECT 1 FROM ", Main/binary,
             " m WHERE m.msg_id=a.msg_id AND m.to_id=a.to_uid) ", "AND NOT EXISTS (SELECT 1 FROM ",
             Staging/binary,
-            " s WHERE s.type=$1 AND s.msg_id=a.msg_id AND s.to_id=$2 AND (s.processed_at IS NULL OR s.error_msg IS NOT NULL)) ",
+            " s WHERE s.type=$1 AND s.msg_id=a.msg_id AND s.to_id=$2 AND (s.processed_at IS NULL ",
+            "OR s.error_msg IS NOT NULL)) ",
             "AND (a.msg_id=ANY($4::varchar[]) OR EXISTS (SELECT 1 FROM ", Staging/binary,
-            " s WHERE (s.type=$1 OR ($1='c2c' AND s.type='c2c_notice' AND s.action='message_read')) AND s.msg_id=a.msg_id AND s.to_id=$2 ",
+            " s WHERE (s.type=$1 OR ($1='c2c' AND s.type='c2c_notice' AND ",
+            "s.action='message_read')) AND s.msg_id=a.msg_id AND s.to_id=$2 ",
             "AND s.processed_at IS NOT NULL AND s.error_msg IS NULL))">>,
     _ = checked(elib_pg:execute(Conn, Cleanup, [Kind, ToUid, MsgIds, DeletedIds])),
     ok.
@@ -161,7 +164,7 @@ lock_messages(Conn, Kind, MsgIds, ToUid) ->
         lists:usort(MsgIds)
     ).
 
-checked({error, Reason}) -> throw({rollback, Reason});
+checked({error, Reason}) -> elib_pg:abort({rollback, Reason});
 checked(Result) -> Result.
 
 delivery_tx(Fun) ->
