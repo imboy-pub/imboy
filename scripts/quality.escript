@@ -236,9 +236,12 @@ counts(Es) ->
     ).
 
 test_modules(BuildDir) ->
+    %% 合成 selftest 仅收集无项目依赖的模块；fixture 回归需要 epgsql+PG
+    %% （business env），由项目 make eunit（U 全量）真实执行。
     [
         list_to_atom(filename:rootname(F))
-     || F <- filelib:wildcard("imboy_quality_*_tests.beam", BuildDir)
+     || F <- filelib:wildcard("imboy_quality_*_tests.beam", BuildDir),
+        F =/= "imboy_quality_fixture_tests.beam"
     ].
 
 %% ---- 编译 ----
