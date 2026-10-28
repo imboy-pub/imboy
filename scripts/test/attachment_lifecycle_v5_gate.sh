@@ -1443,6 +1443,24 @@ produce_measured() {  # $1 case_id $2 case_dir — adapter -> producer -> measur
   local cid="$1" cdir="$2" adapter
   adapter="$SCRIPT_DIR/attachment_lifecycle_v5_adapter_$(echo "$cid" | tr '/-' '__' | tr 'A-Z' 'a-z').py"
   [ -f "$adapter" ] || { echo "no measured adapter for case $cid (evidence cannot be sealed)" >&2; return 30; }
+  # A failed earlier attempt of an unsealed case leaves a measured-receipts
+  # bound to a different candidate; the no-replace publish cannot reconcile
+  # across candidates.  Sealed cases are never touched.
+  python3 - "$RUN_DIR" "$cid" "$cdir" <<'PYC'
+import json, os, shutil, sys
+run_dir, cid, cdir = sys.argv[1:4]
+state = json.load(open(os.path.join(run_dir, "state.json")))
+if cid in (state.get("case_manifest_digests") or {}):
+    raise SystemExit(0)
+for name in ("measured-receipts.json", "observations.json"):
+    path = os.path.join(cdir, name)
+    if os.path.isfile(path):
+        os.unlink(path)
+if os.path.isdir(cdir):
+    for name in os.listdir(cdir):
+        if name.startswith("producer-attempt-"):
+            shutil.rmtree(os.path.join(cdir, name), ignore_errors=True)
+PYC
   python3 "$adapter" "$RUN_DIR" "$cdir" "$ROOT" >> "$cdir/adapter.log" 2>&1 || { echo "ADAPTER_FAIL $cid" >> "$cdir/adapter.log"; return 30; }
   python3 "$ROOT/scripts/attachment_lifecycle_v5_producer.py" produce \
     --run-dir "$RUN_DIR" --task-id "${cid%%/*}" --case-id "$cid" --case-dir "$cdir" \
