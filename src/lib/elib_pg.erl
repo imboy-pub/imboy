@@ -26,6 +26,7 @@
 -export([
     with_conn/1,
     with_conn/2,
+    abort/1,
     with_tx/1,
     with_tx/2,
     after_commit/3,
@@ -203,6 +204,12 @@ return_connection(Driver, Conn) ->
 %% 在事务中执行 Fun
 %% 禁止业务层自行 BEGIN / COMMIT
 %%--------------------------------------------------------------------
+
+%% @doc Abort the transaction using the existing business-failure protocol.
+%% Preserve both the exception class and tag consumed by run_with_conn/5.
+-spec abort({abort_tx | rollback, term()}) -> no_return().
+abort({Tag, _} = Failure) when Tag =:= abort_tx; Tag =:= rollback ->
+    throw(Failure).
 
 %% @doc 事务封装
 -spec with_tx(fun((epgsql:connection() | pid()) -> R)) ->

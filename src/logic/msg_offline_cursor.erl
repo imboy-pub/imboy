@@ -40,10 +40,9 @@ decode_data(#{<<"v">> := 1, <<"at">> := At, <<"id">> := Id} = Data) when
     _ = calendar:rfc3339_to_system_time(binary_to_list(At), [{unit, microsecond}]),
     {ok, {At, Id}};
 %% R01：旧 token 继续可解码（滚动部署兼容）；新格式仅多出 v2 分支。
-decode_data(#{<<"v">> := 2, <<"marks">> := Marks} = Data) when
+decode_data(#{<<"v">> := 2, <<"marks">> := [_ | _] = Marks} = Data) when
     map_size(Data) =:= 2,
     is_list(Marks),
-    length(Marks) >= 1,
     length(Marks) =< 50
 ->
     decode_marks(Marks, []);
@@ -58,3 +57,16 @@ decode_marks([#{<<"g">> := G, <<"s">> := S} | Rest], Acc) when
     decode_marks(Rest, [{G, S} | Acc]);
 decode_marks(_, _) ->
     {error, invalid_offline_cursor}.
+
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+
+marks_count_boundary_test() ->
+    Mark = #{<<"g">> => 1, <<"s">> => 0},
+    Data = #{<<"v">> => 2, <<"marks">> => lists:duplicate(50, Mark)},
+    ?assertEqual({ok, {marks, lists:duplicate(50, {1, 0})}}, decode_data(Data)),
+    ?assertEqual(
+        {error, invalid_offline_cursor},
+        decode_data(Data#{<<"marks">> => lists:duplicate(51, Mark)})
+    ).
+-endif.

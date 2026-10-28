@@ -54,6 +54,7 @@ repo_case(Fun) ->
             pure_mock_fixture:with_mocks(
                 [
                     {elib_pg, [
+                        {abort, 1, fun(Failure) -> throw(Failure) end},
                         {with_tx, 1, fun(F) ->
                             try
                                 F(self())
