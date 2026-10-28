@@ -450,7 +450,7 @@ W04 内先独立修复已有建群部分成功反馈，再分别完成群原子�
 
 W00 准入记录区分静态基线与运行验收：记录三端实际 HEAD/tree、已暂存和未暂存差异、未跟踪文件及子模块指纹；记录受影响功能位的编译清单、服务器来源及账号快照，有未知项标明未知。逐项列明各适用运行资源、平台和角色已绑定的身份或 BLOCKED 及受影响工作包、验证和启用条件；资源未就绪只阻断依赖该资源的开发、运行验证和启用，不把发现设备或记录 BLOCKED 当作验收通过。静态准入记录齐全且设计、能力和兼容表一致后，按本节出口评估 W00；不改变下方开发 DAG。准入快照不是最终候选冻结：候选、配置或资源变化时重新绑定受影响指纹并重验失效证据，最终验收仍使用同一最终候选和实际资源。
 
-当前实施状态：W00 静态准入 PASS（见 §11.1 的资源阻断与重绑定）；W01/W02/W03/W04（含 W04.d.g/W04.d.c App 入口）代码侧收口并提交，全部新合同 manifest 未声明（新入口默认关闭）；W05–W12 未实施；W13/J 验收 NOT_RUN（真机/双设备/服务端源绑定/账号快照 BLOCKED）。父包旧依赖表由下面的开发 DAG、文件写入串行约束和启用表统一替代；§8.1 是路线图，不再隐含另一份硬依赖。局部绿灯不关闭相关 J 项，更不关闭 W13。
+当前实施状态：W00 静态准入 PASS（见 §11.1 的资源阻断与重绑定）；W01/W02/W03/W04（含 W04.d.g/W04.d.c App 入口）代码侧收口并提交，全部新合同 manifest 未声明（新入口默认关闭）；W05–W12 代码侧已实施并提交（App：`563a1dd34` W05、`f206d1e94` W06、`ad8298f6b`/`2b4bb3bb0`/`2f093146d` W07.c/d、`732323e4f` W08.c、`6bce288b9`/`f95d7ce29`/`776d94601`/`8603006ea`/`b31476483` W09.a–c、`f7a02b38f`/`e255516ee` W10、`e8f14e90a` W11、`ec8ed92ad`/`8b2c67626` W12；Backend 对应 handler/ds/repo/logic 增量见 W07 子卡与 2026-10-28 接力节），各包定向收据见 §11.1；包级出口尚未逐一判定，W13/J 验收 NOT_RUN（真机/双设备/服务端源绑定/账号快照 BLOCKED）。父包旧依赖表由下面的开发 DAG、文件写入串行约束和启用表统一替代；§8.1 是路线图，不再隐含另一份硬依赖。局部绿灯不关闭相关 J 项，更不关闭 W13。
 
 ### 开发 DAG、共享文件和联合启用（R11）
 
@@ -832,6 +832,10 @@ W01 详情增量：切换目标时立即清空旧详情和消息，发布完成�
 English handoff: Planning is ready only at the documented static scope. Business implementation is partial and unsubmitted; runtime and device acceptance remain open. Resume the existing worktrees, preserve WIP, validate changed inputs and enable no new contract until its joint gates pass.
 
 订阅契约在途增量：Backend 为当前单次请求中可证明的前置拒绝提供 990/991/992，敏感错误经脱敏处理；OTP 28 mock 定向 51 项通过（`/tmp/imboy-v22-subscription-contract-sanitized.log`）。App 对已确认成功但本地对账未完成的情况提供进程内对账和订阅/退订双向互斥，服务定向 143 项通过（`/tmp/imboy-v22-confirmed-subscription-r3.log`）。两端增量已审查；这不证明跨进程重启、响应丢失、另一端反向修改或标准 PG/HTTP 行为。W02/J11 保持未关闭；验收和最终候选需要重新绑定证据。
+
+三端候选重绑定（2026-10-29，供 W13 验收固定目标）：Backend `940a8a735f5485611f829eff2f1a669346c2d7e6`（tree `b1679be10e2d97086ec61ff289b6f51a416b3849`；= 全量门 v6 代码候选 `81cee79e` + 本计划 docs 增量，docs 变更不使代码门失效）、App `80cc19f7cdaf30f70fc6d61540ec30115382cf25`（tree `fa1ddfd659e1ec4228dbc1752fa3bd06ec089732`）、Admin main `d7a06dd5a22a266941d4250963748561a0ba9e1a`（tree `bd05a5adff99bdc50b5e07fc483b2222b1f82f99`）。三仓工作树在绑定时刻干净（无暂存/未暂存/未跟踪增量），分支分别为 `codex/channel-group-ux-v2.2`（Backend/App）与 `main`（Admin）。候选此后再变化则本绑定 STALE，W13 验收须使用当时实际最终候选重跑适用门。
+
+Web 平台 SQLite 门补跑（2026-10-29）：`offline_group_wire_web_test` 此前因缺 `SQLITE_WASM_URL` 编译期常量而条件跳过，本次以 `flutter test --platform chrome --dart-define=SQLITE_WASM_URL=http://127.0.0.1:18999/sqlite3.wasm` 真实运行，wasm 由本机 CORS 静态服务器从项目 `web/sqlite3.wasm` 提供，1 项 exit 0（日志 `/tmp/imboy-v22-offline-web-v2.log`）。首次运行因静态服务器无 CORS 头被浏览器拦截（exit 1、无异常栈），补 CORS 后通过。该测试在 VM 内 mock HttpClient，证明的是 Web 平台 + 真实 SQLite WASM 驱动的离线群角色链路与 64 位 ID 字符串往返，不是真实网络或真实设备。`olm_pfs_production_path_test` 仍 BLOCKED（sqflite_sqlcipher 原生平台通道，需真机/桌面集成壳）。
 
 ### 11.2 本轮校验结果
 
