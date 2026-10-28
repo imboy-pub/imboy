@@ -464,10 +464,13 @@ def read_observations(case_dir, case_id):
 
 
 def matching_observation(entries, leaf, case_id):
-    """Exactly one suite observation must match (entrypoint, scenario, domain)."""
+    """Exactly one suite observation must match (case_id, entrypoint,
+    scenario, domain).  Multi-suite gate runs share one stream, so the
+    case_id emitted by the suite disambiguates same-shaped cells."""
     want = (leaf["entrypoint"], leaf["ordering_or_fault"], leaf["domain"])
     hits = [entry for entry in entries
-            if entry.get("entrypoint") == want[0]
+            if entry.get("case_id") == case_id
+            and entry.get("entrypoint") == want[0]
             and entry.get("scenario") == want[1]
             and entry.get("domain") == want[2]]
     if not hits:
