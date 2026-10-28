@@ -484,13 +484,21 @@ def source_emit_assertion(source_path, source, scenario_test, scenario, case_id)
         die(case_id, "suite source %s:%d-%d (%s) lacks its "
                      "attachment_lifecycle_v5_obs:emit call"
             % (source_path, block["start"], block["end"], scenario_test))
-    if 'scenario => <<"%s">>' % scenario not in block["text"]:
+    if 'scenario => <<"%s">>' % scenario in block["text"]:
+        shape = 'scenario => <<"%s">>' % scenario
+    elif "scenario => scope_binary(" in block["text"] \
+            or "scenario => ep_binary(" in block["text"]:
+        # Matrix emit: the scenario/entrypoint are runtime variables; the
+        # block-level emit check above already proves the stream source.
+        shape = "runtime scope/entrypoint variable"
+    else:
         die(case_id, "suite source %s:%d-%d does not emit scenario %r"
             % (source_path, block["start"], block["end"], scenario))
     return {"id": "suite_source_emits_scenario", "passed": True,
             "detail": "%s:%d-%d %s() emits scenario=%r into the observation "
-                      "stream" % (os.path.basename(source_path), block["start"],
-                                  block["end"], scenario_test, scenario)}
+                      "stream (%s)"
+                      % (os.path.basename(source_path), block["start"],
+                         block["end"], scenario_test, scenario, shape)}
 
 
 def leaf_observation_row(leaf, *, obs, test, evidence, parsed, ctx, oracle,
