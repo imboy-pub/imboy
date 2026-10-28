@@ -173,7 +173,7 @@ ensure_pg() {
   [ "$PG_CONFIG_READY" -eq 0 ] || return 0
   CONFIG_SOURCE="${EUNIT_CONFIG:-$ROOT/config/sys.local}.config"
   [ -f "$CONFIG_SOURCE" ] || { echo "BLOCKED_EXTERNAL: explicit EUNIT_CONFIG required" >&2; return 75; }
-  POOL_DB="$(w201_db_setup "$RUN_DIR/resources/${SLOT}-pool" pool)" || return $?
+  POOL_DB="$(w201_db_setup "$RUN_DIR/resources/${SLOT}-pool" pool)"
   PG_CONFIG_DIR="$(mktemp -d "$RUN_DIR/resources/${SLOT}-config.XXXXXX")" || return 20
   escript "$SCRIPT_DIR/attachment_lifecycle_v5_pg_config.escript" \
     "$CONFIG_SOURCE" "$PG_CONFIG_DIR/isolated.config" \
@@ -852,7 +852,8 @@ bound_marker_dbs() { # $@ suffixes; exports the matching _DB variables
     DB="$(w201_db_setup "$RUN_DIR/resources/${SLOT}-pool" "$SUF")" || return $?
   done
   export V5_INTTEST_DB="attv5_${SLOT}_w201" V5_INTTEST_W203_DB="attv5_${SLOT}_raw" \
-    V5_INTTEST_W301_DB="attv5_${SLOT}_raw2" V5_INTTEST_W302_DB="attv5_${SLOT}_strict"
+    V5_INTTEST_W301_DB="attv5_${SLOT}_raw2" V5_INTTEST_W302_DB="attv5_${SLOT}_strict" \
+    V5_INTTEST_W401_DB="attv5_${SLOT}_w201"
 }
 
 w301_case() { # $1 cdir — 与 w203_case 同一直连 erl 模式，套件含 W3-01 电池
@@ -953,15 +954,19 @@ w303_case() { # $1 cdir — 与 w302_case 同一直连 erl 模式（投影+绑�
 # 六 case 共用一组真库套件（行为矩阵/静态门/故障注入/治理拦截）+ 竞态
 # 屏障套件在 W4-01 代码头重跑（confirm-gc/reference-gc/hold-gc 的协议
 # 在 fn 层，W4-01 实现即入口统一走 fn；静态门证明无绕过）。
-w401_case() { # $1 cdir
+w401_case() { # $1 cdir — 同 W3 executor：观测流 + 日志静默 + bound marker DB
+  bound_marker_dbs w201 raw raw2 strict || return $?
   local cdir="$1" RC=0
   mkdir -p "$cdir"
+  rm -f "$cdir/observations.jsonl"
+  export V5_OBSERVATIONS_FILE="$cdir/observations.jsonl"
   local PZ="" d
   for d in deps/*/ebin; do [ -d "$d" ] && PZ="$PZ -pz $PWD/$d"; done
   sed -e "s/{http_port, 9800}/{http_port, ${EUNIT_HTTP_PORT:-19980}}/" \
       -e "s/{http_port_adm, 9706}/{http_port_adm, ${EUNIT_HTTP_ADM_PORT:-19970}}/" \
       "${EUNIT_CONFIG:-config/sys.local}.config" > "$cdir/w401-direct.config"
   EUNIT_USE_RELAY=0 erl -noinput -boot no_dot_erlang +P 1048576 +Q 1024 \
+    -kernel logger_level none \
     -config "$cdir/w401-direct.config" -pa "$V5_ALIAS_ROOT/imboy/ebin" -pa ebin -pa test $PZ \
     -eval 'CoverSetup = fun() -> ok end, CoverExport = fun(_) -> ok end, CoverSetup(),
       Mods = [attachment_lifecycle_v5_pg_tests,

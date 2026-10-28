@@ -31,7 +31,7 @@ SUMMARY = re.compile(
     r"^\s*(?:All (\d+) tests passed\.|(\d+) tests passed\.|Test passed\.)\s*$")
 DONE_IN = re.compile(r"\[done in ([0-9.]+) s\]")
 DONE_LINE = re.compile(r"^\[?done in [0-9.]+ s\]?$")
-MARKER_RE = re.compile(r"\bW3[0-9][0-9]_DIRECT_OK\b")
+MARKER_RE = re.compile(r"\bW[0-9][0-9][0-9]?_DIRECT_OK\b")
 FAILURE = re.compile(r"\*failed\*|\*did not run\*|Failed:\s*\d+|Internal error:")
 ENTERPRISE_SCOPE = '<<"enterprise">>'
 
@@ -197,8 +197,10 @@ def require_clean_suite(parsed, expected_marker, case_id, expected_module=None):
     if expected_marker not in parsed["markers"]:
         problems.append("direct marker %s missing (parsed %r)"
                         % (expected_marker, parsed["markers"]))
-    if expected_module and any(test["module"] != expected_module
-                               for test in parsed["tests"]):
+    if expected_module and expected_module not in {
+            test["module"] for test in parsed["tests"]}:
+        # Multi-module gate runs (W4-01) run several suites in one erl
+        # invocation; the expected battery module must be among them.
         problems.append("test module mismatch: expected %s, parsed %r"
                         % (expected_module,
                            sorted({test["module"] for test in parsed["tests"]})))
