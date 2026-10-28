@@ -219,6 +219,7 @@ dispatch(eunit_full, _Ctx, Ctrl) ->
         env => full_env(Repo) ++ maps:get(env, Prepared),
         spec_wrapper => spec_wrapper(Repo),
         exclusive_roots => Excl,
+        exclusive_env_fn => fun(M) -> maps:get(M, maps:get(exclusive_env, Prepared), []) end,
         worker_config_fn => fun(K) -> config_for_worker(Repo, K, Prepared) end
     },
     try
@@ -260,6 +261,7 @@ dispatch({eunit_group, ModsStr}, _Ctx, Ctrl) ->
         env => full_env(Repo) ++ maps:get(env, Prepared),
         spec_wrapper => spec_wrapper(Repo),
         exclusive_roots => [M || M <- Mods, lists:member(M, Excl)],
+        exclusive_env_fn => fun(M) -> maps:get(M, maps:get(exclusive_env, Prepared), []) end,
         worker_config_fn => fun(K) -> config_for_worker(Repo, K, Prepared) end
     },
     OrdPart = [M || M <- Mods, lists:member(M, Ordinary)],
@@ -317,6 +319,56 @@ prepare_resources(Repo, Ctrl, Workers) ->
             end
          || K <- lists:seq(0, Workers - 1)
         ]),
+        %% 独占车道按根资源（仅注入对应根的 fresh VM，见 imboy_quality_full:run_exclusive）：
+        %%  - group_schedule_remind_pg_tests：独占库（从已迁移源库克隆）+ 合同 COMMENT
+        %%    'imboy-delivery-v3.2 merge schedule%exclusive%' + PG*/IMBOY_TEST_* 变量；
+        %%  - AG31（agent_grant_pg / agent_run_pg / agent_recovery_pg_tests /
+        %%    agent_tool_authorizer_pg_tests）：各一个一次性隔离库（迁移头 >= 00000132）
+        %%    + AG31_PG_* 变量。attv5/W403 清单与 T20 冻结注册表属专用控制器，不在此伪造。
+        Pid = os:getpid(),
+        GsDb = "imboy_quality_gsremind_" ++ Pid,
+        ok = imboy_quality_fixture:clone_live(C, Args, SrcDb, GsDb),
+        ok = imboy_quality_fixture:comment_database(
+            C, GsDb, "imboy-delivery-v3.2 merge schedule IMBOY_ERLANG_QUALITY exclusive " ++ Pid
+        ),
+        Ag31 = [
+            {R, "imboy_quality_ag31_" ++ Tag ++ "_" ++ Pid}
+         || {R, Tag} <- [
+                {agent_grant_pg, "grant"},
+                {agent_run_pg, "run"},
+                {agent_recovery_pg_tests, "recovery"},
+                {agent_tool_authorizer_pg_tests, "toolauth"}
+            ]
+        ],
+        [ok = imboy_quality_fixture:clone_live(C, Args, SrcDb, N) || {_, N} <- Ag31],
+        Host = maps:get(host, Args),
+        PortS = integer_to_list(maps:get(port, Args)),
+        User = maps:get(username, Args),
+        Pass = maps:get(password, Args),
+        ExclusiveEnv = maps:from_list(
+            [
+                {group_schedule_remind_pg_tests, [
+                    {"PGHOST", Host},
+                    {"PGPORT", PortS},
+                    {"PGUSER", User},
+                    {"PGPASSWORD", Pass},
+                    {"PGDATABASE", GsDb},
+                    {"IMBOY_TEST_EXCLUSIVE_DATABASE", GsDb},
+                    {"IMBOY_TEST_PG_SYSTEM_ID", SysId}
+                ]}
+            ] ++
+                [
+                    {R, [
+                        {"AG31_PG_HOST", Host},
+                        {"AG31_PG_PORT", PortS},
+                        {"AG31_PG_USER", User},
+                        {"AG31_PG_PASSWORD", Pass},
+                        {"AG31_PG_DB", N}
+                    ]}
+                 || {R, N} <- Ag31
+                ]
+        ),
+        DropDbs = [GsDb | [N || {_, N} <- Ag31]],
         Env = [
             {"TALK_OWNED_PG_HOST", maps:get(host, Args)},
             {"TALK_OWNED_PG_PORT", integer_to_list(maps:get(port, Args))},
@@ -341,9 +393,21 @@ prepare_resources(Repo, Ctrl, Workers) ->
             <<"worker_db_clones">> => #{
                 <<"source">> => list_to_binary(SrcDb),
                 <<"clones">> => [list_to_binary(N) || {_, N} <- lists:sort(maps:to_list(Clones))]
+            },
+            <<"exclusive_resources">> => #{
+                <<"group_schedule_remind_pg_tests">> => list_to_binary(GsDb),
+                <<"ag31">> => [list_to_binary(N) || {_, N} <- Ag31]
             }
         },
-        #{env => Env, report => Report, pg_args => Args, source_db => SrcDb, clones => Clones}
+        #{
+            env => Env,
+            report => Report,
+            pg_args => Args,
+            source_db => SrcDb,
+            clones => Clones,
+            exclusive_env => ExclusiveEnv,
+            drop_dbs => DropDbs
+        }
     after
         try
             epgsql:close(C)
@@ -354,10 +418,12 @@ prepare_resources(Repo, Ctrl, Workers) ->
 
 %% 回收每 worker 克隆库（worker VM 已退出，后端断开有界等待）。回收失败不掩盖：
 %% 记入结果并由退出码体现（FRAMEWORK_DESIGN §5：无法证明回收成功则本轮非通过）。
-release_resources(#{pg_args := Args, clones := Clones}) ->
+release_resources(#{pg_args := Args, clones := Clones} = Prepared) ->
     put(resources_released, true),
     {ok, C} = imboy_quality_fixture:connect(Args#{database => "postgres"}),
     try
+        Names =
+            [N || {_, N} <- lists:sort(maps:to_list(Clones))] ++ maps:get(drop_dbs, Prepared, []),
         Results = [
             {Name,
                 try imboy_quality_fixture:drop_owned(C, Args, Name) of
@@ -365,7 +431,7 @@ release_resources(#{pg_args := Args, clones := Clones}) ->
                 catch
                     Class:Reason -> {Class, Reason}
                 end}
-         || {_, Name} <- lists:sort(maps:to_list(Clones))
+         || Name <- Names
         ],
         Failed = [
             iolist_to_binary(io_lib:format("~s: ~0p", [N, R]))
@@ -436,6 +502,12 @@ require_test_build(Repo) ->
             )
     end.
 
+sys_config_base() ->
+    case os:getenv("EUNIT_CONFIG") of
+        false -> "config/sys.local";
+        B -> B
+    end.
+
 %% legacy 由 erlang.mk export ERL_LIBS=$(APPS_DIR):$(DEPS_DIR)（相对 cwd），
 %% deps 以最低优先级进路径且 code:lib_dir(Dep) 可解析。此处显式绝对路径等价。
 %% Makefile:349-357 export TEST_HTTP_PORT=0：eunit_setup 以 test_http_port/0
@@ -448,11 +520,35 @@ full_env(Repo) ->
             {ok, V} -> string:trim(binary_to_list(V));
             _ -> ""
         end,
+    Args =
+        try
+            imboy_quality_fixture:pg_args_from_config(
+                filename:join(Repo, sys_config_base() ++ ".config")
+            )
+        catch
+            _:_ -> #{port => 4323}
+        end,
+    Host = maps:get(host, Args, "127.0.0.1"),
+    PortS = integer_to_list(maps:get(port, Args, 4323)),
+    User = maps:get(username, Args, "imboy_user"),
+    Pass = maps:get(password, Args, ""),
     [
         {"ERL_LIBS", filename:join(Repo, "apps") ++ ":" ++ filename:join(Repo, "deps")},
-        {"IMBOYENV", "local"},
+        %% eunit 轨道在 VM 内恒为 "test"（eunit_setup 首次执行即 putenv）；legacy 的
+        %% "local" 只在 Make/配置选择层有意义。分片后某些根可能先于任何 eunit_setup 运行
+        %% （intbe02 前置 os:getenv("IMBOYENV") =:= "test"），故 VM 自启动即为 test。
+        {"IMBOYENV", "test"},
         {"TEST_HTTP_PORT", "0"},
-        {"PROJECT_VERSION", Version}
+        {"PROJECT_VERSION", Version},
+        %% 门运行环境（scripts/ci/native-eunit-run.sh）导出的 PG 指向型旋钮在
+        %% 直连 PG 下的等价值：marker 服务器与本 PG 是同一服务器；目录同步隔离
+        %% 夹具连同一真实 PG。非 PG 指向的旋钮（W403/TG16-20/HIRD/Garage）不在
+        %% 此伪造，仍按独占归属硬失败。
+        {"OA_CLOUD_MARKER_PORT", PortS},
+        {"DIRECTORY_SYNC_INTTEST_PG_HOST", Host},
+        {"DIRECTORY_SYNC_INTTEST_PG_PORT", PortS},
+        {"DIRECTORY_SYNC_INTTEST_PG_USER", User},
+        {"DIRECTORY_SYNC_INTTEST_PG_PASSWORD", Pass}
     ] ++ llm_keys(Repo).
 
 llm_keys(Repo) ->

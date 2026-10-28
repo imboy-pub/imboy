@@ -20,7 +20,8 @@
     ensure_marked_database/3,
     system_identifier/1,
     clone_live/4,
-    drop_owned/3
+    drop_owned/3,
+    comment_database/3
 ]).
 
 -define(MARKER_SCHEMA, "imboy_quality_meta").
@@ -36,6 +37,13 @@ clone_live(Conn, Args, Source, Target) ->
     true = is_owned_name(Target),
     q(Conn, ["CREATE DATABASE \"", Target, "\" TEMPLATE \"", Source, "\""]),
     connect_db(Args, Target, fun(C) -> ensure_marker(C) end),
+    ok.
+
+%% 归属 COMMENT（独占库合同如 group_schedule_remind 校验
+%% shobj_description LIKE 'imboy-delivery-v3.2 merge schedule%exclusive%'）。
+comment_database(Conn, Name, Comment) ->
+    true = is_owned_name(Name),
+    q(Conn, ["COMMENT ON DATABASE \"", Name, "\" IS '", Comment, "'"]),
     ok.
 
 ensure_marker(C) ->
