@@ -207,7 +207,7 @@ dispatch(eunit_full, _Ctx, Ctrl) ->
     Workers = env_int("IMBOY_QUALITY_WORKERS", 2),
     #{ordinary := Ordinary, excluded := Excl} = imboy_quality_full:inventory(Repo),
     Est = load_estimates(Ctrl),
-    Prepared = prepare_resources(Repo, Ctrl),
+    Prepared = prepare_resources(Repo, Ctrl, Workers),
     Opts = #{
         repo => Repo,
         ctrl => Ctrl,
@@ -219,15 +219,20 @@ dispatch(eunit_full, _Ctx, Ctrl) ->
         env => full_env(Repo) ++ maps:get(env, Prepared),
         spec_wrapper => spec_wrapper(Repo),
         exclusive_roots => Excl,
-        worker_config_fn => fun(K) -> config_for_worker(Repo, K) end
+        worker_config_fn => fun(K) -> config_for_worker(Repo, K, Prepared) end
     },
     try
         {Result0, OutDir} = imboy_quality_full:run(Ordinary, Opts, RunId),
-        Result = Result0#{<<"resources">> => maps:get(report, Prepared)},
+        Cleanup = release_resources(Prepared),
+        Result = Result0#{
+            <<"resources">> => maps:get(report, Prepared),
+            <<"cleanup">> => Cleanup
+        },
         {ok, _} = imboy_report_write(filename:join(OutDir, "result.json"), Result),
         {Result, OutDir}
     after
-        cleanup_worker_configs(Repo)
+        cleanup_worker_configs(Repo),
+        release_resources_once(Prepared)
     end;
 dispatch({eunit_group, ModsStr}, _Ctx, Ctrl) ->
     %% P1-10 诊断入口（FRAMEWORK_DESIGN §2：--group 仅诊断，报告标 PARTIAL，
@@ -242,7 +247,7 @@ dispatch({eunit_group, ModsStr}, _Ctx, Ctrl) ->
         [] -> ok;
         _ -> erlang:error({roots_not_in_u, Unknown})
     end,
-    Prepared = prepare_resources(Repo, Ctrl),
+    Prepared = prepare_resources(Repo, Ctrl, 1),
     Opts = #{
         repo => Repo,
         ctrl => Ctrl,
@@ -255,20 +260,23 @@ dispatch({eunit_group, ModsStr}, _Ctx, Ctrl) ->
         env => full_env(Repo) ++ maps:get(env, Prepared),
         spec_wrapper => spec_wrapper(Repo),
         exclusive_roots => [M || M <- Mods, lists:member(M, Excl)],
-        worker_config_fn => fun(K) -> config_for_worker(Repo, K) end
+        worker_config_fn => fun(K) -> config_for_worker(Repo, K, Prepared) end
     },
     OrdPart = [M || M <- Mods, lists:member(M, Ordinary)],
     try
         {Result0, OutDir} = imboy_quality_full:run(OrdPart, Opts, run_id()),
+        Cleanup = release_resources(Prepared),
         Result = Result0#{
             <<"scope">> => <<"PARTIAL">>,
             <<"op">> => <<"eunit_group">>,
-            <<"resources">> => maps:get(report, Prepared)
+            <<"resources">> => maps:get(report, Prepared),
+            <<"cleanup">> => Cleanup
         },
         {ok, _} = imboy_report_write(filename:join(OutDir, "result.json"), Result),
         {Result, OutDir}
     after
-        cleanup_worker_configs(Repo)
+        cleanup_worker_configs(Repo),
+        release_resources_once(Prepared)
     end;
 dispatch(eunit_group, _Ctx, _Ctrl) ->
     erlang:error(eunit_group_requires_modlist).
@@ -280,7 +288,7 @@ dispatch(eunit_group, _Ctx, _Ctrl) ->
 %% SCRATCH_ROOT 之下且全链无 symlink。legacy 入口从不提供这些变量（26 个 budgets
 %% 根在 legacy 中只能 owned_talk_missing_env 失败）；本入口在计时内自动准备，
 %% 使这些义务真实执行。失败 fail-closed（不以空环境假绿）。
-prepare_resources(Repo, Ctrl) ->
+prepare_resources(Repo, Ctrl, Workers) ->
     true = code:add_patha(filename:join(Repo, "deps/epgsql/ebin")),
     {ok, _} = application:ensure_all_started(epgsql),
     Base =
@@ -298,6 +306,17 @@ prepare_resources(Repo, Ctrl) ->
         Scratch = filename:join(Ctrl, "runtime/talk_owned"),
         Run = filename:join(Scratch, "run"),
         ok = filelib:ensure_dir(filename:join(Run, "x")),
+        %% 每 worker 私有克隆库（组间 DB 隔离；opt-run5 共用库交叉干扰的修复）：
+        %% 从已迁移到 head 的配置库 TEMPLATE 克隆，结束后 release_resources 回收。
+        SrcDb = maps:get(database, Args),
+        Clones = maps:from_list([
+            begin
+                Name = lists:flatten(io_lib:format("imboy_quality_w~p_~s", [K, os:getpid()])),
+                ok = imboy_quality_fixture:clone_live(C, Args, SrcDb, Name),
+                {K, Name}
+            end
+         || K <- lists:seq(0, Workers - 1)
+        ]),
         Env = [
             {"TALK_OWNED_PG_HOST", maps:get(host, Args)},
             {"TALK_OWNED_PG_PORT", integer_to_list(maps:get(port, Args))},
@@ -318,15 +337,67 @@ prepare_resources(Repo, Ctrl) ->
                 ),
                 <<"system_id">> => list_to_binary(SysId),
                 <<"run_root">> => list_to_binary(Run)
+            },
+            <<"worker_db_clones">> => #{
+                <<"source">> => list_to_binary(SrcDb),
+                <<"clones">> => [list_to_binary(N) || {_, N} <- lists:sort(maps:to_list(Clones))]
             }
         },
-        #{env => Env, report => Report}
+        #{env => Env, report => Report, pg_args => Args, source_db => SrcDb, clones => Clones}
     after
         try
             epgsql:close(C)
         catch
             _:_ -> ok
         end
+    end.
+
+%% 回收每 worker 克隆库（worker VM 已退出，后端断开有界等待）。回收失败不掩盖：
+%% 记入结果并由退出码体现（FRAMEWORK_DESIGN §5：无法证明回收成功则本轮非通过）。
+release_resources(#{pg_args := Args, clones := Clones}) ->
+    put(resources_released, true),
+    {ok, C} = imboy_quality_fixture:connect(Args#{database => "postgres"}),
+    try
+        Results = [
+            {Name,
+                try imboy_quality_fixture:drop_owned(C, Args, Name) of
+                    ok -> ok
+                catch
+                    Class:Reason -> {Class, Reason}
+                end}
+         || {_, Name} <- lists:sort(maps:to_list(Clones))
+        ],
+        Failed = [
+            iolist_to_binary(io_lib:format("~s: ~0p", [N, R]))
+         || {N, R} <- Results, R =/= ok
+        ],
+        #{
+            <<"clones_dropped">> => [list_to_binary(N) || {N, ok} <- Results],
+            <<"clone_drop_failed">> => Failed,
+            <<"ok">> => Failed =:= []
+        }
+    after
+        try
+            epgsql:close(C)
+        catch
+            _:_ -> ok
+        end
+    end;
+release_resources(_) ->
+    #{<<"clones_dropped">> => [], <<"clone_drop_failed">> => [], <<"ok">> => true}.
+
+%% after 子句的兜底回收：正常路径已回收则跳过；异常路径尽力回收不再抛错。
+release_resources_once(Prepared) ->
+    case get(resources_released) of
+        true ->
+            ok;
+        _ ->
+            try
+                _ = release_resources(Prepared),
+                ok
+            catch
+                _:_ -> ok
+            end
     end.
 
 %% ---- full/group 辅助 ----
@@ -437,7 +508,7 @@ env_int(Name, Default) ->
 %% PG 直连（EUNIT_USE_RELAY=0 语义），不写 git。
 %% 每 worker K（0 起）一份独立配置副本：http 19980+K / adm 19970+K，
 %% 文件名含 worker 索引与 pid，防并发覆写（与 eunit-local relay 同口径，直连 PG）。
-config_for_worker(Repo, K) ->
+config_for_worker(Repo, K, Prepared) ->
     Base =
         case os:getenv("EUNIT_CONFIG") of
             false -> "config/sys.local";
@@ -450,11 +521,23 @@ config_for_worker(Repo, K) ->
         <<"{http_port, 9800}">>,
         list_to_binary(io_lib:format("{http_port, ~p}", [19980 + K]))
     ),
-    Out = Sub(
+    Out1 = Sub(
         Out0,
         <<"{http_port_adm, 9706}">>,
         list_to_binary(io_lib:format("{http_port_adm, ~p}", [19970 + K]))
     ),
+    %% 每 worker 私有克隆库：配置里所有 database => "<源库>" 指向本 worker 克隆
+    Out =
+        case Prepared of
+            #{source_db := Src, clones := Clones} when is_map_key(K, Clones) ->
+                Sub(
+                    Out1,
+                    list_to_binary("database => \"" ++ Src ++ "\""),
+                    list_to_binary("database => \"" ++ maps:get(K, Clones) ++ "\"")
+                );
+            _ ->
+                Out1
+        end,
     Path = filename:join(
         Repo,
         "config/sys.quality." ++ os:getpid() ++ "." ++
@@ -668,7 +751,10 @@ exit_code(#{<<"op">> := <<"guard">>, <<"verdict">> := <<"clean">>}, _) ->
     0;
 exit_code(#{<<"op">> := <<"guard">>, <<"verdict">> := <<"violations">>}, _) ->
     1;
-%% full：根缺失/组级失败 → 3（全集不完整）；测试失败/取消 → 1；全绿 → 0
+%% full：资源回收失败 → 2（协议/资源异常，优先于测试结果）；根缺失 → 3；
+%% 测试失败/取消 → 1；全绿 → 0
+exit_code(#{<<"run_id">> := _, <<"cleanup">> := #{<<"ok">> := false}}, _) ->
+    2;
 exit_code(#{<<"run_id">> := _, <<"roots_missing">> := M}, _) when M > 0 -> 3;
 exit_code(#{<<"run_id">> := _, <<"fail">> := F, <<"cancel">> := C, <<"roots_failed">> := R}, _) when
     F > 0; C > 0; R > 0

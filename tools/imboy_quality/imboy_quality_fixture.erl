@@ -16,11 +16,54 @@
     preflight_extensions/3,
     pg_args_from_config/1,
     ensure_marked_database/3,
-    system_identifier/1
+    system_identifier/1,
+    clone_live/4,
+    drop_owned/3
 ]).
 
 -define(MARKER_TABLE, "imboy_quality_ownership").
 -define(OWNED_PREFIX, "imboy_quality_").
+
+%% ---- 实时库克隆（组间 DB 隔离：每 worker 私有克隆库；P1-07 池式使用的正式接线） ----
+%% 两个 worker 共用 imboy_test_v1 会产生交叉干扰（opt-run5：throttle limiter 迁移态、
+%% 资产 webhook 等 S 内新失败）。PG TEMPLATE 语义要求源库此刻无其他会话；克隆后
+%% 写归属 marker 表，供 drop_owned/3 回收（仅 OWNED_PREFIX 前缀）。
+clone_live(Conn, Args, Source, Target) ->
+    true = is_owned_name(Target),
+    q(Conn, ["CREATE DATABASE \"", Target, "\" TEMPLATE \"", Source, "\""]),
+    connect_db(Args, Target, fun(C) ->
+        q(C, [
+            "CREATE TABLE IF NOT EXISTS public.",
+            ?MARKER_TABLE,
+            " (owner text NOT NULL, created_at timestamptz DEFAULT now())"
+        ]),
+        q(C, ["INSERT INTO public.", ?MARKER_TABLE, " (owner) VALUES ('IMBOY_ERLANG_QUALITY')"])
+    end),
+    ok.
+
+%% 显式连接参数版本（不依赖 conn_args_of/1 的保守默认）。worker VM 刚退出时
+%% 其 PG 后端可能尚未断开：有界等待（最多 ~10s）后再 DROP；超时即报错，不强杀。
+drop_owned(Conn, Args, Db) ->
+    case is_owned_name(Db) andalso marker_ok(Args, Db) of
+        true ->
+            ok = wait_no_connections(Conn, Db, 20),
+            q(Conn, ["ALTER DATABASE \"", Db, "\" IS_TEMPLATE false"]),
+            q(Conn, ["DROP DATABASE \"", Db, "\""]),
+            ok;
+        false ->
+            error({refusing_unowned_database, Db})
+    end.
+
+wait_no_connections(Conn, Db, Left) ->
+    case active_connections(Conn, Db) of
+        [] ->
+            ok;
+        Pids when Left =< 0 ->
+            error({database_still_in_use, Db, length(Pids)});
+        _ ->
+            timer:sleep(500),
+            wait_no_connections(Conn, Db, Left - 1)
+    end.
 
 %% ---- 连接参数来源：项目 sys config 的 imboy.pg_conf.start_mfa ----
 %% 与 eunit 轨道同一真实 PG（host/port/username/password），不另造凭据。
