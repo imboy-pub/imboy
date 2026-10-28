@@ -669,7 +669,7 @@ eunit-local:
 	  rm -f imboy; \
 	  pkill -P $$relay_pid 2>/dev/null; \
 	  kill $$relay_pid 2>/dev/null; \
-	  pkill -f "[p]g_relay.py $(EUNIT_RELAY_PORT)" 2>/dev/null; \
+	  pkill -f "^python3 test/common/pg_relay.py $(EUNIT_RELAY_PORT) $(EUNIT_RELAY_TARGET)$$" 2>/dev/null; \
 	  rm -f $(EUNIT_RELAY_CONF).config; \
 	  exit $$rc; \
 	else \
