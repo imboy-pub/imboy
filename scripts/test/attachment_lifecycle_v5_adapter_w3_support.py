@@ -489,7 +489,8 @@ def source_emit_assertion(source_path, source, scenario_test, scenario, case_id)
     if 'scenario => <<"%s">>' % scenario in block["text"]:
         shape = 'scenario => <<"%s">>' % scenario
     elif "scenario => scope_binary(" in block["text"] \
-            or "scenario => ep_binary(" in block["text"]:
+            or "scenario => ep_binary(" in block["text"] \
+            or "scenario => atom_to_binary(" in block["text"]:
         # Matrix emit: the scenario/entrypoint are runtime variables; the
         # block-level emit check above already proves the stream source.
         shape = "runtime scope/entrypoint variable"
