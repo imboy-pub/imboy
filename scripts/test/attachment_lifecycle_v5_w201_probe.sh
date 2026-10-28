@@ -151,7 +151,7 @@ WHERE NOT EXISTS (SELECT 1 FROM attachment WHERE id=940000201);
 SELECT fn_v5_confirm_pending(:'KEYC', 940000201);
 SQL
 probe recovery_confirmed_no_capability ordinary confirmed_no_new_capability AC01 "confirmed|0" \
-  "WITH r AS (UPDATE attach_pending SET upload_expires_at = now() + interval '3 hours' WHERE object_key='$KEY_C' AND session_state='registered' AND session_deadline > now() RETURNING 1) SELECT session_state || '|' || (SELECT count(*) FROM r) FROM attach_pending WHERE object_key='$KEY_C'"
+  "WITH r AS (UPDATE attach_pending SET upload_expires_at = LEAST(session_deadline, now() + interval '3 hours') WHERE object_key='$KEY_C' AND session_state='registered' AND session_deadline > now() RETURNING 1) SELECT session_state || '|' || (SELECT count(*) FROM r) FROM attach_pending WHERE object_key='$KEY_C'"
 # idempotency: post-commit stable identity (internal_idempotency_postcommit_sign)
 probe recovery_idempotent_identity ordinary internal_idempotency_postcommit_sign AC01 "1" \
   "SELECT count(*) FROM attach_pending WHERE client_upload_id='$CID'::uuid AND object_key='$KEY'"
@@ -192,7 +192,7 @@ WHERE NOT EXISTS (SELECT 1 FROM attachment WHERE id=940000202);
 SELECT fn_v5_confirm_pending(:'KEYC2', 940000202);
 SQL
 probe internal_confirmed_no_capability internal confirmed_no_new_capability AC01 "confirmed|0" \
-  "WITH r AS (UPDATE attach_pending SET upload_expires_at = now() + interval '3 hours' WHERE object_key='$KEY2C' AND session_state='registered' AND session_deadline > now() RETURNING 1) SELECT session_state || '|' || (SELECT count(*) FROM r) FROM attach_pending WHERE object_key='$KEY2C'"
+  "WITH r AS (UPDATE attach_pending SET upload_expires_at = LEAST(session_deadline, now() + interval '3 hours') WHERE object_key='$KEY2C' AND session_state='registered' AND session_deadline > now() RETURNING 1) SELECT session_state || '|' || (SELECT count(*) FROM r) FROM attach_pending WHERE object_key='$KEY2C'"
 probe internal_request_id_conflict internal request_id_payload_conflict AC01 "1" \
   "SELECT count(*) FROM attach_pending WHERE client_upload_id='$CID2'::uuid AND upload_registration->'subject'->>'principal' = '77001'"
 cleanup_keys
