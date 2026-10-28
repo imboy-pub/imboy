@@ -855,10 +855,12 @@ bound_marker_dbs() { # $@ suffixes; exports the matching _DB variables
     V5_INTTEST_W301_DB="attv5_${SLOT}_raw2" V5_INTTEST_W302_DB="attv5_${SLOT}_strict"
 }
 
-w301_case() { # $1 cdir
-  bound_marker_dbs w201 raw raw2 || return $? — 与 w203_case 同一直连 erl 模式，套件含 W3-01 电池
+w301_case() { # $1 cdir — 与 w203_case 同一直连 erl 模式，套件含 W3-01 电池
+  bound_marker_dbs w201 raw raw2 || return $?
   local cdir="$1" RC=0
   mkdir -p "$cdir"
+  rm -f "$cdir/observations.jsonl"
+  export V5_OBSERVATIONS_FILE="$cdir/observations.jsonl"
   local PZ="" d
   for d in deps/*/ebin; do [ -d "$d" ] && PZ="$PZ -pz $PWD/$d"; done
   sed -e "s/{http_port, 9800}/{http_port, ${EUNIT_HTTP_PORT:-19980}}/" \
@@ -885,10 +887,12 @@ w301_case() { # $1 cdir
 }
 
 # ---------------- W3-02 executor ----------------
-w302_case() { # $1 cdir
-  bound_marker_dbs strict || return $? — 与 w301_case 同一直连 erl 模式，套件含 W3-02 电池
+w302_case() { # $1 cdir — 与 w301_case 同一直连 erl 模式，套件含 W3-02 电池
+  bound_marker_dbs strict || return $?
   local cdir="$1" RC=0
   mkdir -p "$cdir"
+  rm -f "$cdir/observations.jsonl"
+  export V5_OBSERVATIONS_FILE="$cdir/observations.jsonl"
   local PZ="" d
   for d in deps/*/ebin; do [ -d "$d" ] && PZ="$PZ -pz $PWD/$d"; done
   sed -e "s/{http_port, 9800}/{http_port, ${EUNIT_HTTP_PORT:-19980}}/" \
@@ -918,6 +922,8 @@ w302_case() { # $1 cdir
 w303_case() { # $1 cdir — 与 w302_case 同一直连 erl 模式（投影+绑定套件）
   local cdir="$1" RC=0
   mkdir -p "$cdir"
+  rm -f "$cdir/observations.jsonl"
+  export V5_OBSERVATIONS_FILE="$cdir/observations.jsonl"
   local PZ="" d
   for d in deps/*/ebin; do [ -d "$d" ] && PZ="$PZ -pz $PWD/$d"; done
   sed -e "s/{http_port, 9800}/{http_port, ${EUNIT_HTTP_PORT:-19980}}/" \

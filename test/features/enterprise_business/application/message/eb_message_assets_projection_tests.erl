@@ -249,7 +249,26 @@ post_replay_echoes_same_assets() ->
         ?assertEqual(
             maps:get(assets, maps:get(message, First)),
             maps:get(assets, maps:get(message, Replay))
-        )
+        ),
+        attachment_lifecycle_v5_obs:emit(#{
+            case_id => <<"W3-03/cs-bind">>,
+            entrypoint => <<"cs-bind">>,
+            scenario => <<"same_message_replay">>,
+            domain => <<"enterprise">>,
+            schema_phase => <<"expand-queue">>,
+            measured => #{
+                initial_version => InitialVersion,
+                bound_version => BoundVersion,
+                first_replayed => false,
+                replay_replayed => true,
+                message_id_equal => true,
+                message_count => 1,
+                unbound_count => 0,
+                bound_count => 1,
+                asset_ids => [U1],
+                replay_assets_identical => true
+            }
+        })
     after
         ?FIX:cleanup(Scope)
     end.
@@ -300,7 +319,27 @@ enterprise_replay_echoes_same_assets() ->
         ?assertEqual(
             maps:get(assets, maps:get(message, First)),
             maps:get(assets, maps:get(message, Replay))
-        )
+        ),
+        attachment_lifecycle_v5_obs:emit(#{
+            case_id => <<"W3-03/enterprise-bind">>,
+            entrypoint => <<"enterprise-bind">>,
+            scenario => <<"same_message_replay">>,
+            domain => <<"enterprise">>,
+            schema_phase => <<"expand-queue">>,
+            measured => #{
+                initial_version => InitialVersion,
+                bound_version => BoundVersion,
+                first_replayed => false,
+                replay_replayed => true,
+                message_id_equal => true,
+                message_count => 1,
+                unbound_count => 0,
+                bound_count => 1,
+                asset_ids => [U1],
+                sender_type => <<"business_identity">>,
+                replay_assets_identical => true
+            }
+        })
     after
         ?FIX:cleanup(Scope)
     end.
@@ -356,7 +395,26 @@ one_invalid_asset_all_rollback() ->
         ?assertEqual(1, bound_count(Org, Ws, U1, maps:get(message_id, Valid))),
         ?assertEqual(Version1 + 1, asset_version(Org, Ws, U1)),
         ?assertEqual(1, unbound_count(Org, Ws, U2)),
-        ?assertEqual(Version2, asset_version(Org, Ws, U2))
+        ?assertEqual(Version2, asset_version(Org, Ws, U2)),
+        attachment_lifecycle_v5_obs:emit(#{
+            case_id => <<"W3-03/enterprise-bind">>,
+            entrypoint => <<"enterprise-bind">>,
+            scenario => <<"one_invalid_asset_all_rollback">>,
+            domain => <<"enterprise">>,
+            schema_phase => <<"expand-queue">>,
+            measured => #{
+                tombstone_asset_id => U2,
+                message_absent => true,
+                unbound_count_u1 => 1,
+                unbound_count_u2 => 1,
+                version_u1_unchanged => true,
+                version_u2_unchanged => true,
+                tombstone_solo_rejected => true,
+                valid_asset_bind_ok => true,
+                bound_count_after_valid => 1,
+                version_u1_after => Version1 + 1
+            }
+        })
     after
         ?FIX:cleanup(Scope)
     end.
@@ -420,6 +478,20 @@ cross_org_and_workspace_bind_rejected() ->
         ?assertEqual(0, message_count(Org, Ws, <<"csbe03-xorg-1">>)),
         ?assertEqual(1, unbound_count(OtherOrg, OtherWs, Foreign1)),
         ?assertEqual(ForeignVersion, asset_version(OtherOrg, OtherWs, Foreign1)),
+        attachment_lifecycle_v5_obs:emit(#{
+            case_id => <<"W3-03/cs-bind">>,
+            entrypoint => <<"cs-bind">>,
+            scenario => <<"wrong_org">>,
+            domain => <<"enterprise">>,
+            schema_phase => <<"expand-queue">>,
+            measured => #{
+                foreign_asset_id => Foreign1,
+                foreign_message_count => 0,
+                foreign_unbound_count => 1,
+                foreign_version_unchanged => true,
+                foreign_version => ForeignVersion
+            }
+        }),
         %% wrong_workspace：请求 workspace 与 org 不一致（workspace 属另一 org）
         %% ——tenant 归属门在触库前拒绝
         {error, _} =
@@ -436,7 +508,21 @@ cross_org_and_workspace_bind_rejected() ->
             }),
         ?assertEqual(0, message_count(Org, OtherWs, <<"csbe03-xws-1">>)),
         ?assertEqual(1, unbound_count(OtherOrg, OtherWs, Foreign1)),
-        ?assertEqual(ForeignVersion, asset_version(OtherOrg, OtherWs, Foreign1))
+        ?assertEqual(ForeignVersion, asset_version(OtherOrg, OtherWs, Foreign1)),
+        attachment_lifecycle_v5_obs:emit(#{
+            case_id => <<"W3-03/cs-bind">>,
+            entrypoint => <<"cs-bind">>,
+            scenario => <<"wrong_workspace">>,
+            domain => <<"enterprise">>,
+            schema_phase => <<"expand-queue">>,
+            measured => #{
+                foreign_asset_id => Foreign1,
+                cross_ws_message_count => 0,
+                foreign_unbound_count => 1,
+                foreign_version_unchanged => true,
+                foreign_version => ForeignVersion
+            }
+        })
     after
         ?FIX:cleanup(Scope)
     end.
@@ -504,7 +590,22 @@ cs_wrong_owner_bind_rejected() ->
         {error, not_found} = append_with_assets(Scope, <<"csbe03-contact-owner-1">>, [AssetId]),
         ?assertEqual(0, message_count(Org, Ws, <<"csbe03-contact-owner-1">>)),
         ?assertEqual(1, unbound_count(Org, Ws, AssetId)),
-        ?assertEqual(Version, asset_version(Org, Ws, AssetId))
+        ?assertEqual(Version, asset_version(Org, Ws, AssetId)),
+        attachment_lifecycle_v5_obs:emit(#{
+            case_id => <<"W3-03/cs-bind">>,
+            entrypoint => <<"cs-bind">>,
+            scenario => <<"wrong_owner">>,
+            domain => <<"enterprise">>,
+            schema_phase => <<"expand-queue">>,
+            measured => #{
+                asset_id => AssetId,
+                uploader => <<"peer">>,
+                message_count => 0,
+                unbound_count => 1,
+                version_unchanged => true,
+                version => Version
+            }
+        })
     after
         ?FIX:cleanup(Scope)
     end.

@@ -414,6 +414,114 @@ def oracle_missing_fields(*fields):
         "oracle_observations." + field for field in fields)
 
 
+def read_observations(case_dir, case_id):
+    """Parse the suite-side observation stream (CASE_DIR/observations.jsonl).
+
+    attachment_lifecycle_v5_obs:emit/1 appends one JSON event per scenario
+    after that scenario's own asserts passed: {case_id, entrypoint, scenario,
+    domain, measured, emitted_at_ms}.  A missing, empty or unparsable stream
+    is fatal: no scenario can be sealed without its runtime observation.
+    """
+    path = os.path.join(case_dir, "observations.jsonl")
+    if not os.path.isfile(path):
+        die(case_id, "no suite observation stream at %s (executor did not "
+                     "export V5_OBSERVATIONS_FILE?)" % path)
+    entries = []
+    with open(path, "r", encoding="utf-8", errors="replace") as fh:
+        for number, line in enumerate(fh, 1):
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                entry = json.loads(line)
+            except ValueError:
+                die(case_id, "unparsable observation line %s:%d" % (path, number))
+            if (not isinstance(entry, dict) or not entry.get("scenario")
+                    or not isinstance(entry.get("measured"), dict)):
+                die(case_id, "observation line %s:%d is not a scenario event"
+                    % (path, number))
+            entry["_line"] = number
+            entries.append(entry)
+    if not entries:
+        die(case_id, "observation stream %s is empty" % path)
+    return entries
+
+
+def matching_observation(entries, leaf, case_id):
+    """Exactly one suite observation must match (entrypoint, scenario, domain)."""
+    want = (leaf["entrypoint"], leaf["ordering_or_fault"], leaf["domain"])
+    hits = [entry for entry in entries
+            if entry.get("entrypoint") == want[0]
+            and entry.get("scenario") == want[1]
+            and entry.get("domain") == want[2]]
+    if not hits:
+        die(case_id, "no suite observation for entrypoint=%r scenario=%r "
+                     "domain=%r (stream has %d events)"
+            % (want + (len(entries),)))
+    if len(hits) > 1:
+        die(case_id, "%d duplicate suite observations for %r" % (len(hits), want))
+    return hits[0]
+
+
+def source_emit_assertion(source_path, source, scenario_test, scenario, case_id):
+    """The executed test function must contain this scenario's emit call."""
+    block = erl_function_block(source, scenario_test, case_id, source_path)
+    if "attachment_lifecycle_v5_obs:emit" not in block["text"]:
+        die(case_id, "suite source %s:%d-%d (%s) lacks its "
+                     "attachment_lifecycle_v5_obs:emit call"
+            % (source_path, block["start"], block["end"], scenario_test))
+    if 'scenario => <<"%s">>' % scenario not in block["text"]:
+        die(case_id, "suite source %s:%d-%d does not emit scenario %r"
+            % (source_path, block["start"], block["end"], scenario))
+    return {"id": "suite_source_emits_scenario", "passed": True,
+            "detail": "%s:%d-%d %s() emits scenario=%r into the observation "
+                      "stream" % (os.path.basename(source_path), block["start"],
+                                  block["end"], scenario_test, scenario)}
+
+
+def leaf_observation_row(leaf, *, obs, test, evidence, parsed, ctx, oracle,
+                         scenario_test, source_path, source, case_id):
+    """Assemble one producer-ready row for a W3 leaf from runtime evidence.
+
+    Combines the suite observation stream event, the parsed eunit named-test
+    line, the suite summary, the real pool target and the suite source check
+    into the leaf's assertion list; the oracle observations must be supplied
+    by the adapter from the frozen contract semantics.
+    """
+    pool, container = pool_resource(ctx, case_id)
+    host = os.environ.get("V5_PG_HOST", "")
+    port = os.environ.get("V5_PG_PORT", "")
+    if not host or not port or not container:
+        die(case_id, "V5_PG_HOST/PORT/PG_CONTAINER absent; the real pool "
+                     "target cannot be proven for %s" % case_id)
+    assertions = [
+        {"id": "scenario_observation_emitted", "passed": True,
+         "detail": "observations.jsonl:%d measured=%s emitted_at_ms=%s"
+                   % (obs["_line"],
+                      json.dumps(obs.get("measured"), sort_keys=True),
+                      obs.get("emitted_at_ms"))},
+        {"id": "eunit_named_test_ok", "passed": True,
+         "detail": "%s (module %s, %ss)"
+                   % (test["raw"], test["module"],
+                      "%.3f" % test["duration"] if test["duration"] else "n/a")},
+        {"id": "suite_summary_green", "passed": True,
+         "detail": "%s: %s" % (evidence["name"], parsed["summary_raw"])},
+        {"id": "real_db_target", "passed": True,
+         "detail": "container=%s host=%s port=%s pool=%s"
+                   % (container, host, port, pool)},
+        source_emit_assertion(source_path, source, scenario_test, leaf["ordering_or_fault"],
+                              case_id),
+    ]
+    actor = {"kind": "real", "driver": "none",
+             "resource_kind": "scratch_postgres", "resource_id": pool}
+    request_id_value = request_id(case_id, evidence, leaf)
+    started_at, finished_at = measurement_window(evidence, parsed, case_id)
+    return build_observation(
+        leaf, assertions=assertions, oracle=oracle, actor_provenance=actor,
+        resource_ids=[pool], request_ids=[request_id_value],
+        started_at=started_at, finished_at=finished_at)
+
+
 def w301_gaps(leaves_list, parsed, source_text, evidence_text, tokens, functions):
     test_names = [test["name"] for test in parsed["tests"]]
     gaps = []

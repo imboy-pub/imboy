@@ -1,5 +1,14 @@
 #!/usr/bin/env python3
-"""W3-03 evidence assessment; no leaf is sealed without runtime observations."""
+"""W3-03/enterprise-bind adapter: emits measured leaves for sealing.
+
+Evidence chain per leaf (no fabrication at any step):
+  1. CASE_DIR/observations.jsonl — the suite emitted this scenario's real
+     measured values (versions/counts/equality booleans) from inside the
+     test function, after its own asserts passed;
+  2. CASE_DIR/eunit-w303.log — parsed named eunit test line + suite summary;
+  3. the suite source must contain the scenario's emit call;
+  4. the real scratch pool target (container/host/port) from the gate env.
+"""
 import os
 import sys
 
@@ -16,26 +25,59 @@ SRC_REL = ("test/features/enterprise_business/application/message/"
 SCENARIOS = {
     "same_message_replay": {
         "test": "enterprise_replay_echoes_same_assets",
-        "joint": False,
-        "source_tokens": [
-            "client_msg_id => <<\"csbe03-enterprise-replay-1\">>",
-            "sender_type => business_identity",
-            "maps:get(replayed, Replay)",
-            "maps:get(assets, maps:get(message, First))",
-        ],
+        "oracle": {
+            "pre_db_state": "isolated scratch PostgreSQL app pool "
+                            "attv5_<slot>_pool; eb_pg_test_fixture random-TSID "
+                            "tenant isolated per scenario; asset seeded "
+                            "unbound (message_id NULL)",
+            "pre_object_hash": "n/a (message/asset projection leaf; no object "
+                               "bytes stored — frozen whitelist projection "
+                               "{id,mime,size_bytes,file_name,status})",
+            "action": "direct erl eunit:test([eb_message_assets_projection_tests],"
+                      "[verbose]) -> enterprise_replay_echoes_same_assets: "
+                      "eb_message_app:append_message twice with the same "
+                      "client_msg_id (sender_type=business_identity), then "
+                      "per-scenario measured values emitted to the "
+                      "observation stream",
+            "expected_http_semantics": "no HTTP surface; enterprise message "
+                                       "projection frozen five-key assets "
+                                       "whitelist; replay returns the same "
+                                       "message_id and identical assets",
+            "expected_db_delta": "first append binds the asset (version+1, "
+                                 "message_id set); replay appends zero rows — "
+                                 "same message echoed, unbound stays 0",
+            "expected_object_state": "no object state change; projection "
+                                     "assets identical between first and "
+                                     "replay",
+            "proof_actor": "epgsql app-pool connection on attv5_<slot>_pool "
+                           "via eb_pg_test_fixture; business_identity sender "
+                           "with actor_user_id",
+        },
     },
     "one_invalid_asset_all_rollback": {
         "test": "one_invalid_asset_all_rollback",
-        "joint": False,
-        "source_tokens": [
-            "lifecycle_state='delete_intent'",
-            "csbe03-rollback-1",
-            "append_enterprise_with_assets",
-            "unbound_count(Org, Ws, U1)",
-            "unbound_count(Org, Ws, U2)",
-            "asset_version(Org, Ws, U1)",
-            "asset_version(Org, Ws, U2)",
-        ],
+        "oracle": {
+            "pre_db_state": "isolated scratch PostgreSQL app pool; one live "
+                            "unbound asset and one tombstoned asset "
+                            "(lifecycle_state='delete_intent') in the same "
+                            "random-TSID tenant",
+            "pre_object_hash": "n/a (bind-eligibility protocol leaf; no "
+                               "object bytes stored)",
+            "action": "direct erl eunit -> one_invalid_asset_all_rollback: "
+                      "append_enterprise_with_assets with [valid, tombstone], "
+                      "then tombstone-solo and valid-solo probes",
+            "expected_http_semantics": "no HTTP surface; delete-intent asset "
+                                       "refuses new references with the same "
+                                       "not_found error shape as absent assets",
+            "expected_db_delta": "canonical single transaction rolls back "
+                                 "wholly: no message row, both assets stay "
+                                 "unbound (unbound_count=1 each), versions "
+                                 "unchanged; valid-only append then binds",
+            "expected_object_state": "no object state change; tombstone asset "
+                                     "never gains a message reference",
+            "proof_actor": "epgsql app-pool connection on attv5_<slot>_pool "
+                           "via eb_pg_test_fixture; business_identity sender",
+        },
     },
 }
 
@@ -48,7 +90,8 @@ def main():
     parsed = support.parse_eunit(evidence["text"], CASE)
     support.require_clean_suite(parsed, MARKER, CASE, MODULE)
     source_path, source = support.erl_source(root, SRC_REL, CASE)
-    gaps = []
+    entries = support.read_observations(case_dir, CASE)
+    rows = []
     for leaf in leaves:
         scenario = SCENARIOS.get(leaf["ordering_or_fault"])
         if scenario is None:
@@ -57,23 +100,16 @@ def main():
         test = support.named_test(parsed, scenario["test"], CASE)
         if test["module"] != MODULE:
             support.die(CASE, "named test ran in %r, expected %r" % (test["module"], MODULE))
-        block = support.erl_function_block(source, scenario["test"], CASE, source_path)
-        missing_tokens = [token for token in scenario["source_tokens"]
-                          if token not in block["text"]]
-        if missing_tokens:
-            support.die(CASE, "suite source %s lacks scenario assertions %r"
-                        % (scenario["test"], missing_tokens))
-        missing = [
-            support.oracle_missing_fields(),
-            "scenario-level raw observations and actual assertion values are absent",
-            "runtime database/actor provenance and schema-phase evidence are absent",
-            "candidate-bound start/finish evidence is absent; log mtime is not a receipt",
-        ]
-        if scenario["joint"]:
-            missing.append("joint EUnit status cannot prove each leg independently")
-        gaps.append({"leaf": leaf, "missing": missing})
-    support.report_gaps(CASE, evidence, parsed, gaps,
-                        notes=["named EUnit status and source tokens are diagnostic only"])
+        obs = support.matching_observation(entries, leaf, CASE)
+        oracle = dict(scenario["oracle"])
+        pool = support.pool_resource(ctx, CASE)[0]
+        oracle = {key: value.replace("attv5_<slot>_pool", pool)
+                  for key, value in oracle.items()}
+        rows.append(support.leaf_observation_row(
+            leaf, obs=obs, test=test, evidence=evidence, parsed=parsed,
+            ctx=ctx, oracle=oracle, scenario_test=scenario["test"],
+            source_path=source_path, source=source, case_id=CASE))
+    support.write_observations(case_dir, rows, leaves, CASE)
 
 
 if __name__ == "__main__":
