@@ -2636,9 +2636,35 @@ def cmd_task(args):
         lock.release()
 
 
+def _case_bound_candidates(run_dir):
+    """Map case_id -> the candidate its sealing event bound (the same
+    per-task accepted-candidate semantics verify applies to G0..G5
+    receipts: a later authorized task advancing the candidate must not
+    invalidate already-sealed evidence)."""
+    bound = {}
+    events_path = os.path.join(run_dir, "events.jsonl")
+    if os.path.exists(events_path):
+        with open(events_path) as fh:
+            for line in fh:
+                if not line.strip():
+                    continue
+                try:
+                    event = json.loads(line)
+                except ValueError:
+                    continue
+                if event.get("kind") == "case_manifest_bound":
+                    payload = event.get("payload", {})
+                    cid = payload.get("case_id")
+                    cand = payload.get("candidate")
+                    if isinstance(cid, str) and isinstance(cand, dict):
+                        bound[cid] = cand
+    return bound
+
+
 def _task_artifacts(state, contract, task_id, run_dir):
     candidate = state.get("verification_candidate", {})
     errors = candidate_errors(candidate) if candidate else ["current candidate missing"]
+    sealed_candidates = _case_bound_candidates(run_dir)
     counts = {}
     for cid in task_case_ids(contract, task_id) or []:
         expected = contract["expected_leaf_matrix"][cid]
@@ -2646,6 +2672,9 @@ def _task_artifacts(state, contract, task_id, run_dir):
         case_dir = os.path.join(run_dir, "evidence", task_id, cid.split("/", 1)[1])
         actual = []
         total = dict(executed=0, passed=0, failed=0, skipped=0, exit_code=0)
+        # The leaves were sealed against the candidate recorded by their
+        # case_manifest_bound event; fall back to the current candidate.
+        case_candidate = sealed_candidates.get(cid) or candidate
         try:
             for name, row in _read_case_rows(run_dir, case_dir, state.get("case_manifest_digests", {}).get(cid)):
                 identity = tuple(row.get(k) for k in LEAF_FIELDS)
@@ -2654,7 +2683,7 @@ def _task_artifacts(state, contract, task_id, run_dir):
                     errors.append(cid + ": unexpected leaf")
                     continue
                 errors.extend(receipt_errors(row, index[identity], task_id, cid,
-                                             candidate, run_dir, state.get("resource_allowlist", {}), contract,
+                                             case_candidate, run_dir, state.get("resource_allowlist", {}), contract,
                                              state.get("tasks", {}).get(task_id, {}).get("attempt")))
                 for field in ("executed", "passed", "failed", "skipped"):
                     if type(row.get(field)) is int:
