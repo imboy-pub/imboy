@@ -19,6 +19,8 @@
 -export([clear_unread_tx/3]).
 -export([advance_view_tx/4]).
 -export([advance_view/3]).
+-export([advance_view_to_current_tx/3]).
+-export([advance_view_to_current/2]).
 -export([count_unseen/2]).
 -export([get_unread_count/2]).
 -export([count_unread/1]).
@@ -233,6 +235,43 @@ advance_view(ChannelId, Uid, Boundary) ->
     case
         workspace_guard:write_tx_or_skip({channel, ChannelId}, fun(Conn) ->
             advance_view_tx(Conn, ChannelId, Uid, Boundary)
+        end)
+    of
+        {written, Result} -> Result;
+        skipped -> skipped;
+        {error, _} = Error -> Error
+    end.
+
+%% W08（§10.4 混合版本）：旧 mark_read 的水位适配器内核——单语句把
+%% view_seq 推进到"当前发布上界"（GREATEST 单调；服务端 publish_seq 即
+%% 当次边界，不读聚合 unread_count，不从迁移前状态推断）。旧端显式
+%% "标已读" = 确认当次服务端边界；之后发布的新消息 update_seq > 边界，
+%% 不会被清掉。
+-spec advance_view_to_current_tx(pid(), integer(), integer()) ->
+    {ok, non_neg_integer()} | {error, not_subscribed} | {error, any()}.
+advance_view_to_current_tx(Conn, ChannelId, Uid) ->
+    Tb = tablename(),
+    Sql =
+        <<"UPDATE ", Tb/binary,
+            " cs SET view_seq = GREATEST(cs.view_seq, c.publish_seq) "
+            "FROM channel c "
+            "WHERE cs.channel_id = c.id AND cs.channel_id = $1 "
+            "AND cs.user_id = $2 AND cs.status = 1 "
+            "RETURNING cs.view_seq">>,
+    case elib_pg:query(Conn, Sql, [ChannelId, Uid]) of
+        {ok, [#{<<"view_seq">> := V}]} -> {ok, V};
+        {ok, []} -> {error, not_subscribed};
+        {error, _} = Err -> Err
+    end.
+
+%% @doc W08（§10.4）：旧 mark_read 适配器的非事务包装（写守卫/归档
+%% skipped 语义同 advance_view/3）。
+-spec advance_view_to_current(integer(), integer()) ->
+    {ok, non_neg_integer()} | skipped | {error, any()}.
+advance_view_to_current(ChannelId, Uid) ->
+    case
+        workspace_guard:write_tx_or_skip({channel, ChannelId}, fun(Conn) ->
+            advance_view_to_current_tx(Conn, ChannelId, Uid)
         end)
     of
         {written, Result} -> Result;

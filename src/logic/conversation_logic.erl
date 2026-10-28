@@ -49,28 +49,58 @@ delete(_Uid, _ConversationId, <<>>) ->
 delete(_Uid, _ConversationId, Type) when Type =/= <<"c2c">> andalso Type =/= <<"c2g">> ->
     {error, <<"无效的会话类型"/utf8>>};
 delete(Uid, ConversationId, Type) ->
-    % 检查是否已经删除
-    case conversation_delete_ds:is_conversation_deleted(Uid, ConversationId, Type) of
-        true ->
-            % 已经删除，直接返回成功（幂等性）
-            ok;
-        false ->
-            % 标记会话为已删除
-            case conversation_delete_ds:delete_conversation(Uid, ConversationId, Type) of
-                ok ->
-                    %% W09.c（J17.e）：旧写同业务入口推进版本。
-                    _ = user_setting_ds:bump_conversation_version(
-                        Uid,
-                        user_setting_ds:conversation_uk3(Type, Uid, ConversationId)
-                    ),
-                    notify_conversation_change(
-                        Uid, ConversationId, Type, <<"conversation_deleted">>
-                    ),
-                    ok;
-                {error, Reason} ->
-                    ?LOG(error, "删除会话失败: ~p", [Reason]),
-                    {error, <<"删除会话失败"/utf8>>}
+    %% W09.c（J17.e/D7）：旧写与版本推进同一数据库事务——隐藏行写入
+    %% （含 C2G 写入时 active 世代绑定，事务内读取）与会话版本推进原子
+    %% 提交；任一步失败整体回滚。缓存失效在提交后执行。
+    case
+        elib_pg:with_tx(fun(Conn) ->
+            case
+                conversation_delete_ds:is_conversation_deleted_tx(
+                    Conn, Uid, ConversationId, Type
+                )
+            of
+                true ->
+                    %% 已隐藏（同目标重试）：返回当前状态，不重复副作用。
+                    {ok, noop};
+                false ->
+                    case
+                        conversation_delete_ds:mark_deleted_tx(
+                            Conn, Uid, ConversationId, Type
+                        )
+                    of
+                        ok ->
+                            Uk3 = user_setting_ds:conversation_uk3(
+                                Type, Uid, ConversationId
+                            ),
+                            case
+                                user_setting_ds:bump_conversation_version_tx(
+                                    Conn, Uid, Uk3
+                                )
+                            of
+                                {ok, _Entry} ->
+                                    {ok, changed};
+                                {error, Reason} ->
+                                    %% with_tx 契约：返回 {error,_} 不回滚，
+                                    %% 必须以 abort_tx 中止整体回滚（W09.c）。
+                                    throw({abort_tx, {bump_conversation_version, Reason}})
+                            end;
+                        {error, Reason} ->
+                            throw({abort_tx, {mark_deleted, Reason}})
+                    end
             end
+        end)
+    of
+        {ok, noop} ->
+            ok;
+        {ok, changed} ->
+            imboy_cache:invalidate({conv_deleted, Uid, ConversationId, Type}),
+            notify_conversation_change(
+                Uid, ConversationId, Type, <<"conversation_deleted">>
+            ),
+            ok;
+        {error, Reason} ->
+            ?LOG(error, "删除会话失败: ~p", [Reason]),
+            {error, <<"删除会话失败"/utf8>>}
     end.
 
 %% @doc 恢复已删除的会话
@@ -82,13 +112,42 @@ delete(Uid, ConversationId, Type) ->
 restore(_Uid, ConversationId, _Type) when not is_integer(ConversationId); ConversationId =< 0 ->
     {error, <<"会话ID无效"/utf8>>};
 restore(Uid, ConversationId, Type) ->
-    conversation_delete_ds:restore_conversation(Uid, ConversationId, Type),
-    %% W09.c（J17.e）：旧写同业务入口推进版本。
-    _ = user_setting_ds:bump_conversation_version(
-        Uid, user_setting_ds:conversation_uk3(Type, Uid, ConversationId)
-    ),
-    notify_conversation_change(Uid, ConversationId, Type, <<"conversation_restored">>),
-    ok.
+    %% W09.c（J17.e/D7）：restore 与版本推进同一事务；0 行（本就未隐藏）
+    %% 为无变化重试——不推进版本、不推送。
+    case
+        elib_pg:with_tx(fun(Conn) ->
+            case
+                conversation_delete_ds:restore_conversation_tx(
+                    Conn, Uid, ConversationId, Type
+                )
+            of
+                {ok, Count} when Count > 0 ->
+                    Uk3 = user_setting_ds:conversation_uk3(Type, Uid, ConversationId),
+                    case user_setting_ds:bump_conversation_version_tx(Conn, Uid, Uk3) of
+                        {ok, _Entry} ->
+                            {ok, changed};
+                        {error, Reason} ->
+                            throw({abort_tx, {bump_conversation_version, Reason}})
+                    end;
+                {ok, _Zero} ->
+                    {ok, noop};
+                {error, Reason} ->
+                    throw({abort_tx, {restore_conversation, Reason}})
+            end
+        end)
+    of
+        {ok, noop} ->
+            ok;
+        {ok, changed} ->
+            imboy_cache:invalidate({conv_deleted, Uid, ConversationId, Type}),
+            notify_conversation_change(
+                Uid, ConversationId, Type, <<"conversation_restored">>
+            ),
+            ok;
+        {error, Reason} ->
+            ?LOG(error, "恢复会话失败: ~p", [Reason]),
+            {error, <<"恢复会话失败"/utf8>>}
+    end.
 
 %% @doc 检查会话是否已删除
 %% @param Uid 用户ID

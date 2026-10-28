@@ -1017,9 +1017,11 @@ message_page(Uid, _, Rows, _) ->
 
 -spec mark_as_read(integer(), binary(), binary()) -> ok | {error, binary()}.
 mark_as_read(Uid, ChannelIdBin, _MessageIdBin) ->
-    %% W08（§6.8）：本端点保持旧语义——清零聚合 unread_count；
-    %% **不推进**新版权里 view_seq（旧 clear_unread 不构成精确查看水位，
-    %% 精确边界走 mark_viewed/3）。
+    %% W08（§10.4 混合版本）：本端点保持旧语义——清零聚合 unread_count；
+    %% 同时经**同一新水位适配器**显式清到当次服务端发布边界（单语句
+    %% GREATEST(view_seq, publish_seq)：单调、不清边界后新消息、不从
+    %% 聚合未读推断）。适配失败不阻断旧合同（旧端无从处理该错误，仅
+    %% 记录；下次显式标已查看/标已读仍会追平）。
     ChannelId = channel_logic_common:resolve_channel_id(ChannelIdBin),
     case ChannelId of
         0 ->
@@ -1032,8 +1034,10 @@ mark_as_read(Uid, ChannelIdBin, _MessageIdBin) ->
                     case channel_subscription_ds:clear_unread(ChannelId, Uid) of
                         {ok, _} ->
                             channel_logic_notify:notify_channel_unread_count(ChannelId, Uid, 0),
+                            legacy_mark_read_advance_view(ChannelId, Uid),
                             ok;
                         skipped ->
+                            legacy_mark_read_advance_view(ChannelId, Uid),
                             ok;
                         {error, ClearReason} ->
                             ?ERROR_LOG([
@@ -1044,6 +1048,21 @@ mark_as_read(Uid, ChannelIdBin, _MessageIdBin) ->
                 {error, Reason} ->
                     {error, Reason}
             end
+    end.
+
+%% W08（§10.4）：旧 mark_read 的水位适配步骤；归档频道 skipped 直通。
+legacy_mark_read_advance_view(ChannelId, Uid) ->
+    case channel_subscription_repo:advance_view_to_current(ChannelId, Uid) of
+        {ok, _ViewSeq} ->
+            ok;
+        skipped ->
+            ok;
+        {error, not_subscribed} ->
+            %% 与 clear_unread 的旧语义一致：未订阅无水位可推进，静默。
+            ok;
+        {error, Reason} ->
+            ?ERROR_LOG(["channel_legacy_mark_read_view_advance_failed", ChannelId, Uid, Reason]),
+            ok
     end.
 
 %% @doc W08（§6.8 C4/D3）：显式"标已查看至此更新"。

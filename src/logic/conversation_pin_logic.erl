@@ -34,27 +34,57 @@ pin(_Uid, _ConversationId, <<>>) ->
 pin(_Uid, _ConversationId, Type) when Type =/= <<"c2c">> andalso Type =/= <<"c2g">> ->
     {error, <<"无效的会话类型"/utf8>>};
 pin(Uid, ConversationId, Type) ->
-    % 检查是否已经置顶
-    case conversation_pin_ds:is_conversation_pinned(Uid, ConversationId, Type) of
-        true ->
-            % 已经置顶，直接返回成功
-            ok;
-        false ->
-            % 置顶会话
-            case conversation_pin_ds:pin_conversation(Uid, ConversationId, Type) of
-                ok ->
-                    %% W09.c（J17.e）：旧写同业务入口推进版本，新端可检测旧写冲突。
-                    _ = user_setting_ds:bump_conversation_version(
-                        Uid, user_setting_ds:conversation_uk3(Type, Uid, ConversationId)
-                    ),
-                    notify_conversation_change(
-                        Uid, ConversationId, Type, <<"conversation_pinned">>
-                    ),
-                    ok;
-                {error, Reason} ->
-                    ?LOG(error, "置顶会话失败: ~p", [Reason]),
-                    {error, <<"置顶会话失败"/utf8>>}
+    %% W09.c（J17.e/D7）：旧写与版本推进同一数据库事务——置顶行写入
+    %% （含 C2G 写入时 active 世代绑定，事务内读取）与 user_setting 会话
+    %% 版本推进原子提交；任一步失败整体回滚，不再靠事后补偿冒充原子性。
+    case
+        elib_pg:with_tx(fun(Conn) ->
+            case
+                conversation_pin_ds:is_conversation_pinned_tx(
+                    Conn, Uid, ConversationId, Type
+                )
+            of
+                true ->
+                    %% 已置顶（同目标重试）：返回当前状态，不重复副作用。
+                    {ok, noop};
+                false ->
+                    case
+                        conversation_pin_ds:pin_conversation_tx(
+                            Conn, Uid, ConversationId, Type
+                        )
+                    of
+                        ok ->
+                            Uk3 = user_setting_ds:conversation_uk3(
+                                Type, Uid, ConversationId
+                            ),
+                            case
+                                user_setting_ds:bump_conversation_version_tx(
+                                    Conn, Uid, Uk3
+                                )
+                            of
+                                {ok, _Entry} ->
+                                    {ok, changed};
+                                {error, Reason} ->
+                                    %% with_tx 契约：返回 {error,_} 不回滚，
+                                    %% 必须以 abort_tx 中止整体回滚（W09.c）。
+                                    throw({abort_tx, {bump_conversation_version, Reason}})
+                            end;
+                        {error, Reason} ->
+                            throw({abort_tx, {pin_conversation, Reason}})
+                    end
             end
+        end)
+    of
+        {ok, noop} ->
+            ok;
+        {ok, changed} ->
+            notify_conversation_change(
+                Uid, ConversationId, Type, <<"conversation_pinned">>
+            ),
+            ok;
+        {error, Reason} ->
+            ?LOG(error, "置顶会话失败: ~p", [Reason]),
+            {error, <<"置顶会话失败"/utf8>>}
     end.
 
 %% @doc 取消置顶会话
@@ -66,13 +96,41 @@ pin(Uid, ConversationId, Type) ->
 unpin(_Uid, ConversationId, _Type) when not is_integer(ConversationId); ConversationId =< 0 ->
     {error, <<"会话ID无效"/utf8>>};
 unpin(Uid, ConversationId, Type) ->
-    conversation_pin_ds:unpin_conversation(Uid, ConversationId, Type),
-    %% W09.c（J17.e）：旧写同业务入口推进版本。
-    _ = user_setting_ds:bump_conversation_version(
-        Uid, user_setting_ds:conversation_uk3(Type, Uid, ConversationId)
-    ),
-    notify_conversation_change(Uid, ConversationId, Type, <<"conversation_unpinned">>),
-    ok.
+    %% W09.c（J17.e/D7）：unpin 与版本推进同一事务；0 行（本就未置顶）
+    %% 为无变化重试——不推进版本、不推送。
+    case
+        elib_pg:with_tx(fun(Conn) ->
+            case
+                conversation_pin_ds:unpin_conversation_tx(
+                    Conn, Uid, ConversationId, Type
+                )
+            of
+                {ok, Count} when Count > 0 ->
+                    Uk3 = user_setting_ds:conversation_uk3(Type, Uid, ConversationId),
+                    case user_setting_ds:bump_conversation_version_tx(Conn, Uid, Uk3) of
+                        {ok, _Entry} ->
+                            {ok, changed};
+                        {error, Reason} ->
+                            throw({abort_tx, {bump_conversation_version, Reason}})
+                    end;
+                {ok, _Zero} ->
+                    {ok, noop};
+                {error, Reason} ->
+                    throw({abort_tx, {unpin_conversation, Reason}})
+            end
+        end)
+    of
+        {ok, noop} ->
+            ok;
+        {ok, changed} ->
+            notify_conversation_change(
+                Uid, ConversationId, Type, <<"conversation_unpinned">>
+            ),
+            ok;
+        {error, Reason} ->
+            ?LOG(error, "取消置顶会话失败: ~p", [Reason]),
+            {error, <<"取消置顶会话失败"/utf8>>}
+    end.
 
 %% @doc 获取用户的置顶会话列表
 %% @param Uid 用户ID

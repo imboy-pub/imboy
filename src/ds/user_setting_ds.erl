@@ -13,6 +13,7 @@
 -export([set_manual_pending/3]).
 -export([set_manual_pending/4]).
 -export([bump_conversation_version/2]).
+-export([bump_conversation_version_tx/3]).
 -export([conversation_uk3/3]).
 
 -include("log.hrl").
@@ -178,43 +179,54 @@ write_manual_pending(Conn, Uid, Setting, Mp0b, Uk3, Target, V, Now) ->
     ),
     {ok, NewEntry}.
 
-%% @doc W09.c（J17.e）：旧写动作（pin/unpin/delete/restore，无版本参数）
-%% 成功后经同一业务入口推进该会话版本——新端凭 stale expected_version
+%% @doc W09.c（J17.e/D7）：旧写动作（pin/unpin/delete/restore，无版本参数）
+%% 与版本推进同一业务事务推进该会话版本——新端凭 stale expected_version
 %% 可检测旧写冲突。条目不存在则以 value=false、version=1 建立。
 -spec bump_conversation_version(integer(), binary()) -> {ok, map()} | {error, term()}.
 bump_conversation_version(Uid, Uk3) when Uk3 =/= <<>> ->
     elib_pg:with_tx(fun(Conn) ->
-        case user_setting_repo:find_setting_for_update_tx(Conn, Uid) of
-            {ok, Setting0} ->
-                Setting =
-                    case Setting0 of
-                        M when is_map(M) -> M;
-                        _ -> #{}
-                    end,
-                Mp0 = maps:get(<<"manual_pending">>, Setting, #{}),
-                Mp0b =
-                    case is_map(Mp0) of
-                        true -> Mp0;
-                        _ -> #{}
-                    end,
-                Now = elib_dt:now(),
-                case maps:get(Uk3, Mp0b, undefined) of
-                    Entry when is_map(Entry) ->
-                        V = erlang:max(0, maps:get(<<"version">>, Entry, 0)) + 1,
-                        Target = maps:get(<<"value">>, Entry, false),
-                        write_manual_pending(
-                            Conn, Uid, Setting, Mp0b, Uk3, Target, V, Now
-                        );
-                    _ ->
-                        write_manual_pending(
-                            Conn, Uid, Setting, Mp0b, Uk3, false, 1, Now
-                        )
-                end;
-            {error, _} = Err ->
-                Err
-        end
+        bump_conversation_version_tx(Conn, Uid, Uk3)
     end);
 bump_conversation_version(_Uid, _Uk3) ->
+    {error, <<"人工待处理参数无效"/utf8>>}.
+
+%% W09.c（J17.e/D7）：版本推进的同事务内核——调用方已持有业务事务 Conn
+%% 时（旧写 pin/unpin/delete/restore 与版本推进原子化），在该 Conn 上
+%% 行锁（SELECT ... FOR UPDATE）→ 读 → 推进该会话版本；条目不存在则以
+%% value=false、version=1 建立。返回 {error,_} 令外层 with_tx 回滚。
+-spec bump_conversation_version_tx(pid(), integer(), binary()) ->
+    {ok, map()} | {error, term()}.
+bump_conversation_version_tx(Conn, Uid, Uk3) when Uk3 =/= <<>> ->
+    case user_setting_repo:find_setting_for_update_tx(Conn, Uid) of
+        {ok, Setting0} ->
+            Setting =
+                case Setting0 of
+                    M when is_map(M) -> M;
+                    _ -> #{}
+                end,
+            Mp0 = maps:get(<<"manual_pending">>, Setting, #{}),
+            Mp0b =
+                case is_map(Mp0) of
+                    true -> Mp0;
+                    _ -> #{}
+                end,
+            Now = elib_dt:now(),
+            case maps:get(Uk3, Mp0b, undefined) of
+                Entry when is_map(Entry) ->
+                    V = erlang:max(0, maps:get(<<"version">>, Entry, 0)) + 1,
+                    Target = maps:get(<<"value">>, Entry, false),
+                    write_manual_pending(
+                        Conn, Uid, Setting, Mp0b, Uk3, Target, V, Now
+                    );
+                _ ->
+                    write_manual_pending(
+                        Conn, Uid, Setting, Mp0b, Uk3, false, 1, Now
+                    )
+            end;
+        {error, _} = Err ->
+            Err
+    end;
+bump_conversation_version_tx(_Conn, _Uid, _Uk3) ->
     {error, <<"人工待处理参数无效"/utf8>>}.
 
 %% @doc 会话 uk3 构造（与 App ConversationUk3Generator 约定一致）：

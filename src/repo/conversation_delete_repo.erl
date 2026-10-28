@@ -8,7 +8,10 @@
 -export([tablename/0]).
 -export([mark_deleted/3]).
 -export([mark_deleted/4]).
+-export([mark_deleted_tx/5]).
+-export([restore_tx/4]).
 -export([is_deleted/3]).
+-export([is_deleted_tx/4]).
 -export([list/1]).
 -export([restore/3]).
 -export([delete_by_user/1]).
@@ -43,20 +46,43 @@ mark_deleted(Uid, ConversationId, Type) ->
 -spec mark_deleted(integer(), integer(), binary(), non_neg_integer()) ->
     {ok, non_neg_integer()} | {error, term()}.
 mark_deleted(Uid, ConversationId, Type, GenerationId) ->
-    Tb = tablename(),
-    Now = elib_dt:now(),
-    RowId = elib_tsid:generate(conversation_delete),
-    Sql =
-        <<"INSERT INTO ", Tb/binary,
-            " (id, user_id, conversation_id, conversation_type, generation_id, deleted_at, created_at) ",
-            "VALUES ($1, $2, $3, $4, $5, $6, $7) ",
-            "ON CONFLICT (user_id, conversation_id, conversation_type) DO UPDATE ",
-            "SET generation_id = EXCLUDED.generation_id, deleted_at = EXCLUDED.deleted_at">>,
-    Params = [RowId, Uid, ConversationId, Type, GenerationId, Now, Now],
-    case elib_pg:execute_count(Sql, Params) of
+    case
+        elib_pg:execute_count(
+            mark_deleted_sql(), mark_deleted_params(Uid, ConversationId, Type, GenerationId)
+        )
+    of
         {ok, Count} -> {ok, Count};
         {error, Reason} -> {error, Reason}
     end.
+
+%% W09.c（J17.e/D7）：mark_deleted 的同事务变体——返回 {error,_} 令
+%% 外层 with_tx 整体回滚。
+-spec mark_deleted_tx(pid(), integer(), integer(), binary(), non_neg_integer()) ->
+    {ok, non_neg_integer()} | {error, term()}.
+mark_deleted_tx(Conn, Uid, ConversationId, Type, GenerationId) ->
+    case
+        elib_pg:execute_count(
+            Conn,
+            mark_deleted_sql(),
+            mark_deleted_params(Uid, ConversationId, Type, GenerationId)
+        )
+    of
+        {ok, Count} -> {ok, Count};
+        {error, Reason} -> {error, Reason}
+    end.
+
+mark_deleted_sql() ->
+    Tb = tablename(),
+    <<"INSERT INTO ", Tb/binary,
+        " (id, user_id, conversation_id, conversation_type, generation_id, deleted_at, created_at) ",
+        "VALUES ($1, $2, $3, $4, $5, $6, $7) ",
+        "ON CONFLICT (user_id, conversation_id, conversation_type) DO UPDATE ",
+        "SET generation_id = EXCLUDED.generation_id, deleted_at = EXCLUDED.deleted_at">>.
+
+mark_deleted_params(Uid, ConversationId, Type, GenerationId) ->
+    Now = elib_dt:now(),
+    RowId = elib_tsid:generate(conversation_delete),
+    [RowId, Uid, ConversationId, Type, GenerationId, Now, Now].
 
 %% @doc 检查会话是否已删除
 %% @param Uid 用户ID
@@ -66,20 +92,31 @@ mark_deleted(Uid, ConversationId, Type, GenerationId) ->
 -spec is_deleted(integer(), integer(), binary()) -> boolean().
 is_deleted(Uid, ConversationId, Type) ->
     %% W09.b：世代过滤——C2G 隐藏态不跨世代延续（重入群重新校验，§6.7）。
-    Sql =
-        <<"SELECT count(*) as count FROM ", (tablename())/binary,
-            " p"
-            " WHERE p.user_id = $1 AND p.conversation_id = $2 AND p.conversation_type = $3"
-            " AND (p.conversation_type = 'c2c' OR EXISTS ("
-            "  SELECT 1 FROM public.group_member_generation g"
-            "  WHERE g.group_id = p.conversation_id AND g.user_id = p.user_id"
-            "  AND g.end_seq IS NULL AND g.id = p.generation_id))">>,
-    case elib_pg:query(Sql, [Uid, ConversationId, Type]) of
+    case elib_pg:query(is_deleted_sql(), [Uid, ConversationId, Type]) of
         {ok, [#{<<"count">> := Count}]} when Count > 0 ->
             true;
         _ ->
             false
     end.
+
+%% W09.c：is_deleted 的同事务变体（旧写入口在事务内做幂等判定）。
+-spec is_deleted_tx(pid(), integer(), integer(), binary()) -> boolean().
+is_deleted_tx(Conn, Uid, ConversationId, Type) ->
+    case elib_pg:query(Conn, is_deleted_sql(), [Uid, ConversationId, Type]) of
+        {ok, [#{<<"count">> := Count}]} when Count > 0 ->
+            true;
+        _ ->
+            false
+    end.
+
+is_deleted_sql() ->
+    <<"SELECT count(*) as count FROM ", (tablename())/binary,
+        " p"
+        " WHERE p.user_id = $1 AND p.conversation_id = $2 AND p.conversation_type = $3"
+        " AND (p.conversation_type = 'c2c' OR EXISTS ("
+        "  SELECT 1 FROM public.group_member_generation g"
+        "  WHERE g.group_id = p.conversation_id AND g.user_id = p.user_id"
+        "  AND g.end_seq IS NULL AND g.id = p.generation_id))">>.
 
 %% @doc 获取用户的已删除会话列表（按删除时间倒序）
 %% @param Uid 用户ID
@@ -115,13 +152,24 @@ list(Uid) ->
 %% @return {ok, Count} 删除成功返回影响行数 | {error, Reason} 删除失败
 -spec restore(integer(), integer(), binary()) -> {ok, non_neg_integer()} | {error, term()}.
 restore(Uid, ConversationId, Type) ->
-    Tb = tablename(),
-    Where = <<" WHERE user_id = $1 AND conversation_id = $2 AND conversation_type = $3">>,
-    Sql = <<"DELETE FROM ", Tb/binary, Where/binary>>,
-    case elib_pg:execute_count(Sql, [Uid, ConversationId, Type]) of
+    case elib_pg:execute_count(restore_sql(), [Uid, ConversationId, Type]) of
         {ok, Count} -> {ok, Count};
         {error, Reason} -> {error, Reason}
     end.
+
+%% W09.c（J17.e/D7）：restore 的同事务变体。
+-spec restore_tx(pid(), integer(), integer(), binary()) ->
+    {ok, non_neg_integer()} | {error, term()}.
+restore_tx(Conn, Uid, ConversationId, Type) ->
+    case elib_pg:execute_count(Conn, restore_sql(), [Uid, ConversationId, Type]) of
+        {ok, Count} -> {ok, Count};
+        {error, Reason} -> {error, Reason}
+    end.
+
+restore_sql() ->
+    Tb = tablename(),
+    Where = <<" WHERE user_id = $1 AND conversation_id = $2 AND conversation_type = $3">>,
+    <<"DELETE FROM ", Tb/binary, Where/binary>>.
 
 %% @doc 删除用户的所有删除记录（用于测试）
 %% @param Uid 用户ID

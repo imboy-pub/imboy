@@ -9,6 +9,7 @@
 -include("common.hrl").
 
 -export([active_generation_id/2]).
+-export([active_generation_id_tx/3]).
 -export([list_member/2]).
 -export([list_members/1]).
 -export([list_members_with_info/1]).
@@ -190,6 +191,22 @@ active_generation_id(Gid, Uid) ->
         >>,
     case elib_pg:one(Sql, [Gid, Uid]) of
         {ok, #{<<"id">> := Id}} when is_integer(Id), Id > 0 -> Id;
+        _ -> 0
+    end.
+
+%% W09.c（§6.7）：同业务事务内的成员世代读取——旧写 pin/delete 入口在
+%% 事务内绑定"写入时 active 世代"，读取与行写入同一 Conn 同一快照。
+%% 查不到 active 世代返回 0（旧行仅可绑定核实为 active 的当前世代）。
+-spec active_generation_id_tx(pid(), integer(), integer()) -> non_neg_integer().
+active_generation_id_tx(Conn, Gid, Uid) ->
+    Sql =
+        <<
+            "SELECT id FROM public.group_member_generation "
+            "WHERE group_id = $1 AND user_id = $2 AND end_seq IS NULL "
+            "ORDER BY generation_no DESC LIMIT 1"
+        >>,
+    case elib_pg:query(Conn, Sql, [Gid, Uid]) of
+        {ok, [#{<<"id">> := Id}]} when is_integer(Id), Id > 0 -> Id;
         _ -> 0
     end.
 
