@@ -839,6 +839,7 @@ def candidate_errors(candidate):
                 errors.append("candidate worktree must be clean: " + repo)
         except (OSError, subprocess.SubprocessError):
             errors.append("cannot inspect candidate status: " + repo)
+    modes_by_repo = {}
     for name, digest in files.items():
         if not isinstance(name, str):
             errors.append("candidate file path must be string")
@@ -847,7 +848,9 @@ def candidate_errors(candidate):
             repo, rel = name.split("/", 1)
             path = os.path.realpath(os.path.join(roots[repo], rel))
             root = os.path.realpath(roots[repo])
-            mode = _ls_files_modes(root).get(rel)
+            if repo not in modes_by_repo:
+                modes_by_repo[repo] = _ls_files_modes(root)
+            mode = modes_by_repo[repo].get(rel)
             digest_ok = (_valid_digest(digest, 40) if mode == "160000"
                          else _valid_digest(digest))
             if os.path.commonpath([root, path]) != root or not digest_ok:

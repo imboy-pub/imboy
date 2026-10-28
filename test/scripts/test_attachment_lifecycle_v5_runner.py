@@ -116,6 +116,19 @@ class VerificationTests(unittest.TestCase):
         self.assertEqual(before, self.state_file.read_bytes())
         self.assertEqual(events, (self.run / "events.jsonl").read_bytes())
 
+    def test_candidate_checks_each_git_index_once_and_detects_file_drift(self):
+        args = self.freeze_fixture()
+        self.assertEqual(0, runner.cmd_freeze_candidate(args))
+        candidate = json.loads(self.state_file.read_text())["verification_candidate"]
+        with mock.patch.object(runner, "_ls_files_modes", wraps=runner._ls_files_modes) as modes:
+            self.assertEqual([], runner.candidate_errors(candidate))
+            self.assertLessEqual(modes.call_count, 3)
+        name = next(iter(candidate["owned_paths_sha256"]))
+        repo, path = name.split("/", 1)
+        target = Path(candidate["repository_paths"][repo]) / path
+        target.write_bytes(target.read_bytes() + b"drift")
+        self.assertTrue(any("drift" in e for e in runner.candidate_errors(candidate)))
+
     def test_freeze_refuses_dirty_worktree_without_mutating_state(self):
         args = self.freeze_fixture()
         (Path(self.candidate["repository_paths"]["imboy"]) / "foreign.txt").write_text("foreign WIP")
