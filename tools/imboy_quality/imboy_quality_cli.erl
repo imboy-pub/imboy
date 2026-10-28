@@ -1,7 +1,35 @@
 %% IMBOY_ERLANG_QUALITY P1-03：命令许可门与退出码协议（纯 OTP）。
 %% 上下文来自可信 STATE/owner 读取，命令行参数不能抬权（PAR24）。
 -module(imboy_quality_cli).
--export([permit/2, exit_code/1, describe/0]).
+-export([permit/2, exit_code/1, describe/0, perf_verdict/1, perf_verdict/2]).
+
+%% EUNIT_120S：完整 U 全量目标（整条外部命令墙钟，毫秒）
+-define(FULL_TARGET_MS, 120000).
+
+%% PERF04：pilot 墙钟与 120s 合同的判定。输入必须是外部整命令时钟的整数毫秒
+%% （prep/timer.escript 的 wall_ms），严格比较不四舍五入：120000 通过、120001 不通过；
+%% 非整数输入直接 function_clause（不允许浮点四舍五入冒充）。
+perf_verdict(WallMs) ->
+    perf_verdict(WallMs, ?FULL_TARGET_MS).
+
+perf_verdict(WallMs, TargetMs) when
+    is_integer(WallMs), WallMs >= 0, is_integer(TargetMs), TargetMs > 0
+->
+    Within = WallMs =< TargetMs,
+    #{
+        wall_ms => WallMs,
+        target_ms => TargetMs,
+        verdict =>
+            case Within of
+                true -> within_target;
+                false -> over_target
+            end,
+        label =>
+            case Within of
+                true -> <<"PILOT_WITHIN_TARGET">>;
+                false -> <<"PILOT_OVER_TARGET">>
+            end
+    }.
 
 %% Operation 分级（FRAMEWORK_DESIGN §2）：
 %%  - 任何模式：inspect, report, selftest(合成)

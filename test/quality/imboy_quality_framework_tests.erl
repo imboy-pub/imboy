@@ -264,6 +264,17 @@ rotation_vm_killer() ->
 
 %% ---------- 入口与递归边界（RUN12 部分） ----------
 
+%% PERF04 负例时钟：119999/120000 通过、120001 不通过；不接受浮点四舍五入。
+perf04_negative_clock_test() ->
+    ?assertMatch(#{verdict := within_target}, imboy_quality_cli:perf_verdict(119999)),
+    ?assertMatch(#{verdict := within_target}, imboy_quality_cli:perf_verdict(120000)),
+    ?assertMatch(
+        #{verdict := over_target, label := <<"PILOT_OVER_TARGET">>},
+        imboy_quality_cli:perf_verdict(120001)
+    ),
+    ?assertError(function_clause, imboy_quality_cli:perf_verdict(120000.4)),
+    ?assertError(function_clause, imboy_quality_cli:perf_verdict(-1)).
+
 no_recursion_test() ->
     %% escript 不在 test 树内，不会被项目 EUnit 自动发现执行
     ?assertEqual([], filelib:wildcard("test/**/quality.escript")).
