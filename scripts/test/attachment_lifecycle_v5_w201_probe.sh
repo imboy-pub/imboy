@@ -183,7 +183,7 @@ probe internal_renew_races_intent internal renew_races_intent AC01 "0" \
   "UPDATE attach_pending SET session_state='expired' WHERE object_key='$KEY2' AND session_state='registered'; UPDATE attach_pending SET session_state='delete_intent' WHERE object_key='$KEY2' AND session_state='expired'; WITH r AS (UPDATE attach_pending SET upload_expires_at = now() + interval '10 minutes' WHERE object_key='$KEY2' AND session_state='registered' AND session_deadline > now() RETURNING 1) SELECT count(*) FROM r"
 # confirmed -> no new capability: dedicated session pinned + confirmed, renew
 # refuses (0 rows) and the status stays confirmed with the link intact.
-reg_pending "$KEY2C" "$CID2C" "$REG_APP" >/dev/null
+reg_pending "$KEY2C" "$CID2C" "$REG" >/dev/null
 PSQL -q -v KEYC2="$KEY2C" -v LOC="$LOC64" -v CONTENT="$CONTENT" -v HASH="$HASH64" <<'SQL' > /dev/null 2>&1 || { echo '{"name":"confirmed_seed","entrypoint":"internal","scenario":"seed","ac":"AC01","pass":false,"detail":"seed failed"}' >> "$OUT"; }
 SELECT fn_v5_pin_pending_content(:'KEYC2', :'CONTENT'::jsonb);
 INSERT INTO attachment(id,file_hash256,mime_type,ext,name,path,url,size,scope,creator_user_id,referer_time,status,storage_driver,storage_namespace,storage_container,storage_locator_sha256)
