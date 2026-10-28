@@ -5298,7 +5298,7 @@ sync_channels_success_transfers_channels_test_() ->
 get_subscribed_channels_delegates_to_subscription_module_test_() ->
     MockConfigs = [
         {channel_logic_subscription, [
-            {'get_subscribed_channels', 1, fun(1001) ->
+            {'get_subscribed_channels', 2, fun(1001, _Q) ->
                 {ok, [#{<<"id">> => <<"ch_1">>}]}
             end}
         ]}
@@ -5307,14 +5307,14 @@ get_subscribed_channels_delegates_to_subscription_module_test_() ->
         ?_test(begin
             Result = channel_logic:get_subscribed_channels(1001),
             ?assertEqual({ok, [#{<<"id">> => <<"ch_1">>}]}, Result),
-            ?assertEqual(1, meck:num_calls(channel_logic_subscription, get_subscribed_channels, 1))
+            ?assertEqual(1, meck:num_calls(channel_logic_subscription, get_subscribed_channels, 2))
         end)
     end}.
 
 get_managed_channels_delegates_to_subscription_module_test_() ->
     MockConfigs = [
         {channel_logic_subscription, [
-            {'get_managed_channels', 1, fun(1001) ->
+            {'get_managed_channels', 2, fun(1001, _Q) ->
                 {ok, [#{<<"id">> => <<"ch_admin_1">>}]}
             end}
         ]}
@@ -5323,7 +5323,7 @@ get_managed_channels_delegates_to_subscription_module_test_() ->
         ?_test(begin
             Result = channel_logic:get_managed_channels(1001),
             ?assertEqual({ok, [#{<<"id">> => <<"ch_admin_1">>}]}, Result),
-            ?assertEqual(1, meck:num_calls(channel_logic_subscription, get_managed_channels, 1))
+            ?assertEqual(1, meck:num_calls(channel_logic_subscription, get_managed_channels, 2))
         end)
     end}.
 
@@ -5346,7 +5346,7 @@ get_subscribers_delegates_to_subscription_module_test_() ->
 get_subscribed_channels_returns_error_when_repo_fails_test_() ->
     MockConfigs = [
         {channel_ds, [
-            {'list_subscribed', 2, fun(1001, ?CHANNEL_SAFE_COLUMNS) -> {error, db_down} end}
+            {'list_subscribed', 3, fun(1001, ?CHANNEL_SAFE_COLUMNS, <<>>) -> {error, db_down} end}
         ]},
         {channel_logic_common, [
             {'channel_transfer', 1, fun(_) ->
@@ -5365,7 +5365,9 @@ get_subscribed_channels_returns_error_when_repo_fails_test_() ->
 get_subscribed_channels_returns_error_when_repo_payload_not_list_test_() ->
     MockConfigs = [
         {channel_ds, [
-            {'list_subscribed', 2, fun(1001, ?CHANNEL_SAFE_COLUMNS) -> {ok, invalid_payload} end}
+            {'list_subscribed', 3, fun(1001, ?CHANNEL_SAFE_COLUMNS, <<>>) ->
+                {ok, invalid_payload}
+            end}
         ]},
         {channel_logic_common, [
             {'channel_transfer', 1, fun(_) ->
@@ -5384,7 +5386,7 @@ get_subscribed_channels_returns_error_when_repo_payload_not_list_test_() ->
 get_subscribed_channels_filters_non_map_entries_test_() ->
     MockConfigs = [
         {channel_ds, [
-            {'list_subscribed', 2, fun(1001, ?CHANNEL_SAFE_COLUMNS) ->
+            {'list_subscribed', 3, fun(1001, ?CHANNEL_SAFE_COLUMNS, <<>>) ->
                 {ok, [
                     #{<<"id">> => 11, <<"name">> => <<"ch11">>},
                     invalid_item
@@ -5410,7 +5412,7 @@ get_subscribed_channels_filters_non_map_entries_test_() ->
 get_managed_channels_returns_error_when_repo_fails_test_() ->
     MockConfigs = [
         {channel_ds, [
-            {'list_managed', 1, fun(1001) -> {error, db_down} end}
+            {'list_managed', 2, fun(1001, <<>>) -> {error, db_down} end}
         ]},
         {channel_logic_common, [
             {'channel_transfer', 1, fun(_) ->
@@ -5429,7 +5431,7 @@ get_managed_channels_returns_error_when_repo_fails_test_() ->
 get_managed_channels_returns_error_when_repo_payload_not_list_test_() ->
     MockConfigs = [
         {channel_ds, [
-            {'list_managed', 1, fun(1001) -> {ok, invalid_payload} end}
+            {'list_managed', 2, fun(1001, <<>>) -> {ok, invalid_payload} end}
         ]},
         {channel_logic_common, [
             {'channel_transfer', 1, fun(_) ->
@@ -5448,7 +5450,7 @@ get_managed_channels_returns_error_when_repo_payload_not_list_test_() ->
 get_managed_channels_filters_non_map_entries_test_() ->
     MockConfigs = [
         {channel_ds, [
-            {'list_managed', 1, fun(1001) ->
+            {'list_managed', 2, fun(1001, <<>>) ->
                 {ok, [
                     #{<<"id">> => 12, <<"name">> => <<"ch12">>},
                     invalid_item

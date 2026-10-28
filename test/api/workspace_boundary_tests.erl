@@ -294,7 +294,9 @@ workspace_handler_endpoints_test_() ->
     ?WITH_MECKS(
         [
             {cowboy_req, [
-                {'binding', 2, fun(workspace_id, req0) -> <<"800001">> end}
+                {'binding', 2, fun(workspace_id, req0) -> <<"800001">> end},
+                %% W07.b：group_list 先 parse_qs 判 pagination=cursor。
+                {'parse_qs', 1, fun(_Req) -> [] end}
             ]},
             {elib_param, [
                 {'page', 1, fun(_) -> {1, 10} end},
@@ -328,7 +330,8 @@ workspace_handler_endpoints_test_() ->
                 end}
             ]},
             {group_logic, [
-                {'list_workspace_groups', 2, fun(WsId, _) ->
+                %% W07.a：list_workspace_groups/3（末位服务端 q）。
+                {'list_workspace_groups', 3, fun(WsId, _Limit, _Q) ->
                     put(t_groups_listed, WsId),
                     {ok, []}
                 end}
@@ -375,7 +378,9 @@ workspace_invite_code_endpoints_test_() ->
     ?WITH_MECKS(
         [
             {cowboy_req, [
-                {'binding', 2, fun(workspace_id, req0) -> <<"800001">> end}
+                {'binding', 2, fun(workspace_id, req0) -> <<"800001">> end},
+                %% W07.b：group_list 先 parse_qs 判 pagination=cursor。
+                {'parse_qs', 1, fun(_Req) -> [] end}
             ]},
             {elib_param, [
                 {'post', 1, fun(_) -> #{<<"code">> => <<" abcd2345 ">>} end}

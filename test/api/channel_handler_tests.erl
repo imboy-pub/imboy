@@ -1054,7 +1054,7 @@ subscribed_returns_list_with_cursor_and_limit_test_() ->
                 end}
             ]},
             {channel_logic, [
-                {'get_subscribed_channels', 1, fun(1001) ->
+                {'get_subscribed_channels', 2, fun(1001, _Q) ->
                     {ok, [#{<<"id">> => <<"ch_1">>}]}
                 end}
             ]},
@@ -1080,7 +1080,7 @@ subscribed_propagates_logic_error_test_() ->
                 {'parse_qs', 1, fun(_Req) -> [] end}
             ]},
             {channel_logic, [
-                {'get_subscribed_channels', 1, fun(1001) ->
+                {'get_subscribed_channels', 2, fun(1001, _Q) ->
                     {error, db_down}
                 end}
             ]},
@@ -1100,9 +1100,13 @@ managed_passes_current_uid_to_logic_test_() ->
     ?WITH_MECKS(
         [
             {channel_logic, [
-                {'get_managed_channels', 1, fun(1001) ->
+                {'get_managed_channels', 2, fun(1001, _Q) ->
                     {ok, [#{<<"id">> => <<"ch_admin_1">>}]}
                 end}
+            ]},
+            %% W07.b：managed 先 parse_qs 判 pagination=cursor。
+            {cowboy_req, [
+                {'parse_qs', 1, fun(_Req) -> [] end}
             ]},
             {elib_response, [
                 {'success', 2, fun(_Req, Payload) -> {ok_resp, Payload} end}
@@ -1120,9 +1124,13 @@ managed_propagates_logic_error_test_() ->
     ?WITH_MECKS(
         [
             {channel_logic, [
-                {'get_managed_channels', 1, fun(1001) ->
+                {'get_managed_channels', 2, fun(1001, _Q) ->
                     {error, <<"db_down">>}
                 end}
+            ]},
+            %% W07.b：managed 先 parse_qs 判 pagination=cursor。
+            {cowboy_req, [
+                {'parse_qs', 1, fun(_Req) -> [] end}
             ]},
             {elib_response, [
                 {'error', 2, fun(_Req, Msg) -> {error_resp, Msg} end}
