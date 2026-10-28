@@ -2,7 +2,7 @@
 """W3-specific evidence helpers on top of the shared adapter common module.
 
 The shared helpers (run context, leaf matrix, slot/allowlist resolution,
-atomic emit) live in attachment_lifecycle_v5_adapter_common.  This module
+atomic emit) live in attachment_lifecycle_v5_adapter_w2_support.  This module
 adds only what the W3 eunit-driven cases need: strict eunit line parsing,
 Erlang fixture/source inspection, evidence-time measurement windows and
 per-leaf gap reporting.  Every helper is fail-closed with exit 30.
@@ -15,7 +15,7 @@ import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import attachment_lifecycle_v5_adapter_common as C  # noqa: E402
+import attachment_lifecycle_v5_adapter_w2_support as C  # noqa: E402
 
 EXIT_EVIDENCE = 30
 LEAF_FIELDS = C.LEAF_FIELDS
@@ -73,7 +73,7 @@ def pool_resource(ctx, case_id):
                 config if config.endswith(".config") else config + ".config") or ""
     try:
         if not slot:
-            slot = C.resolve_slot(ctx["run_dir"], ctx["allowlist"])
+            slot = C.resolve_slot(ctx["run_dir"])
         pool = C.db_resource(ctx["allowlist"], slot, "pool")
     except C.AdapterGap as exc:
         die(case_id, str(exc))
@@ -383,7 +383,7 @@ def write_observations(case_dir, rows, expected_leaves, case_id):
             die(case_id, "invalid execution counts on a sealed row")
     try:
         C.emit(case_dir, rows, case_id)
-    except OSError as exc:
+    except (OSError, C.AdapterGap) as exc:
         die(case_id, "cannot emit observations: %s" % exc)
 
 

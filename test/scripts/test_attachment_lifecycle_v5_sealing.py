@@ -18,8 +18,11 @@ class SealingTests(unittest.TestCase):
         self.f.setUp()
         self.addCleanup(self.f.doCleanups)
         self.row = self.f.bound_receipt()
-        self.f.state["tasks"]["W4-02"]["state"] = "RUNNING"
-        self.f.state_file.write_text(json.dumps(self.f.state))
+        self.f.state["tasks"]["W4-02"] = {"state": "RUNNING", "attempt": 1,
+                                          "task_deadline": __import__("time").time() + 600}
+        # Raw snapshot rewrites break the ledger binding (_require_state
+        # rejects them); transitions must go through StateStore.write_snapshot.
+        self.f.state = runner.StateStore(str(self.f.run)).write_snapshot(self.f.state)
         self.input = self.f.case_dir / "measured-receipts.json"
         self.args = types.SimpleNamespace(run_dir=str(self.f.run), task_id="W4-02",
             case_id="W4-02/worker", case_dir=str(self.f.case_dir),
@@ -27,13 +30,24 @@ class SealingTests(unittest.TestCase):
 
     def seal(self, rows):
         self.input.write_text(json.dumps(rows))
-        return runner.cmd_seal_case(self.args)
+        try:
+            return runner.cmd_seal_case(self.args)
+        except SystemExit as exc:
+            return exc.code
 
-    def test_exact_measured_case_can_seal_without_changing_state(self):
-        before = self.f.state_file.read_bytes()
+    def sealed_leaf(self):
+        matches = sorted(self.f.case_dir.glob("sealed-*/leaf-001.json"))
+        self.assertEqual(1, len(matches), "expected exactly one sealed leaf")
+        return json.loads(matches[0].read_text())
+
+    def test_exact_measured_case_seals_and_binds_only_the_manifest(self):
         self.assertEqual(0, self.seal([self.row]))
-        self.assertEqual(self.row, json.loads((self.f.case_dir / "leaf-001.json").read_text()))
-        self.assertEqual(before, self.f.state_file.read_bytes())
+        self.assertEqual(self.row, self.sealed_leaf())
+        # Sealing binds the case manifest digest into the snapshot; no other
+        # task/gate state may change.
+        after = json.loads(self.f.state_file.read_text())
+        self.assertEqual({self.args.case_id}, set(after.get("case_manifest_digests", {})))
+        self.assertEqual("RUNNING", after["tasks"]["W4-02"]["state"])
 
     def test_reject_missing_duplicate_or_stale_without_leaf_output(self):
         stale = copy.deepcopy(self.row)
@@ -67,7 +81,7 @@ class SealingTests(unittest.TestCase):
             str(ROOT), self.args.case_id, str(self.f.case_dir), self.row["command"]],
             env=dict(os.environ, V5_RUN_DIR=str(self.f.run)), capture_output=True, timeout=10)
         self.assertEqual(0, result.returncode, result.stderr.decode())
-        self.assertEqual(self.row, json.loads((self.f.case_dir / "leaf-001.json").read_text()))
+        self.assertEqual(self.row, self.sealed_leaf())
 
     def test_all_compatibility_entries_refuse_suite_flags_without_measurements(self):
         env = dict(os.environ, V5_RUN_DIR=str(self.f.run))
@@ -97,7 +111,7 @@ class SealingTests(unittest.TestCase):
         result = subprocess.run(["bash", "-c", script], env=env, capture_output=True, timeout=10)
         self.assertEqual(0, result.returncode, result.stderr.decode())
         self.assertEqual(before, self.f.raw.read_bytes())
-        self.assertTrue((self.f.case_dir / "leaf-001.json").exists())
+        self.assertTrue(list(self.f.case_dir.glob("sealed-*/leaf-001.json")))
 
     def test_reject_external_receipt_file(self):
         self.args.receipts = str(self.f.run / "external.json")
@@ -106,7 +120,7 @@ class SealingTests(unittest.TestCase):
 
     def test_candidate_cannot_bind_a_different_plan(self):
         self.f.state["verification_candidate"]["plan_manifest_sha256"] = "f" * 64
-        self.f.state_file.write_text(json.dumps(self.f.state))
+        self.f.state = runner.StateStore(str(self.f.run)).write_snapshot(self.f.state)
         row = dict(self.row, plan_manifest_sha256="f" * 64)
         self.assertNotEqual(0, self.seal([row]))
         self.assertFalse(list(self.f.case_dir.glob("leaf-*.json")))
@@ -130,8 +144,8 @@ class SealingTests(unittest.TestCase):
             return replace(*args, **kwargs)
         with mock.patch.object(runner.os, "replace", side_effect=swap):
             self.assertNotEqual(0, self.seal([self.row]))
-        self.assertFalse(list(foreign.glob("leaf-*.json")))
-        self.assertEqual(1, len(list(moved.glob("leaf-*.json"))))
+        self.assertFalse(list(foreign.glob("sealed-*/leaf-*.json")))
+        self.assertEqual(1, len(list(moved.glob("sealed-*/leaf-*.json"))))
 
     def test_directory_replacement_before_open_preserves_foreign_receipt(self):
         moved = self.f.case_dir.with_name("moved-original")

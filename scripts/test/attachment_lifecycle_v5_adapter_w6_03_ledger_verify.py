@@ -50,29 +50,22 @@ def _gate_results(case_dir, case_id):
 
 def _sealed_receipts(run_dir, case_id, contract):
     """Return {case_id: [(filename, receipt)]} for every sealed leaf."""
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    import attachment_lifecycle_v5_runner as runner
+    state = runner._require_state(run_dir)
     sealed = {}
     for task in contract["tasks"]:
         tid = task["task_id"]
         for cid in task.get("case_ids", []):
-            if cid == OWN_CASE:
+            if cid == OWN_CASE or (tid == "W6-03" and cid != FINAL_REGRESSION):
                 continue
-            if tid == "W6-03" and cid != FINAL_REGRESSION:
-                continue
-            directory = os.path.join(run_dir, "evidence", tid,
-                                     cid.split("/", 1)[1])
-            entries = []
-            if os.path.isdir(directory):
-                for name in sorted(os.listdir(directory)):
-                    if not (name.startswith("leaf-") and name.endswith(".json")):
-                        continue
-                    path = os.path.join(directory, name)
-                    try:
-                        with open(path, "r", encoding="utf-8") as handle:
-                            entries.append((name, json.load(handle), path))
-                    except (OSError, ValueError) as exc:
-                        S6.die(case_id, "unreadable sealed receipt %s (%s)"
-                               % (path, exc))
-            sealed[cid] = entries
+            directory = os.path.join(run_dir, "evidence", tid, cid.split("/", 1)[1])
+            try:
+                rows = runner._read_case_rows(run_dir, directory,
+                    state.get("case_manifest_digests", {}).get(cid))
+            except (OSError, ValueError, TypeError, AttributeError) as exc:
+                S6.die(case_id, "unbound or corrupt case %s (%s)" % (cid, exc))
+            sealed[cid] = [(name, row, directory) for name, row in rows]
     return sealed
 
 
@@ -84,6 +77,55 @@ def _real_head(repo):
         S6.die(CASE_ID, "git rev-parse failed for %s: %s"
                % (repo, result.stderr.strip()))
     return result.stdout.strip()
+
+
+def _actor_provenance_errors(sealed, allowlist):
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    import attachment_lifecycle_v5_runner as runner
+    actor_bad = []
+    for cid, entries in sealed.items():
+        for name, row, _path in entries:
+            actor = row.get("actor_provenance") or {}
+            kind = actor.get("resource_kind")
+            rid = actor.get("resource_id") or ""
+            ok, _ = runner.v_resource({"kind": kind, "id": rid}, allowlist)
+            ok = (ok and actor.get("kind") in ("real", "targeted-contract")
+                  and isinstance(row.get("resource_ids"), list)
+                  and rid in row["resource_ids"])
+            if kind == "disk_root":
+                prefix = allowlist.get("disk_root")
+                try:
+                    ok = (ok and isinstance(prefix, str) and isinstance(rid, str)
+                          and os.path.commonpath([os.path.realpath(prefix),
+                              os.path.realpath(rid)]) == os.path.realpath(prefix))
+                except (OSError, TypeError, ValueError):
+                    ok = False
+            if not ok:
+                actor_bad.append("%s/%s actor=%r" % (cid, name, actor))
+                continue
+            if row.get("driver") in ("garage", "disk"):
+                if actor.get("kind") != "real" \
+                        or actor.get("driver") != row.get("driver"):
+                    actor_bad.append("%s/%s real driver mismatch" % (cid, name))
+            need_device = cid in ("W6-02/flutter-recovery-real",
+                                  "W6-02/e2e-compat", "W6-02/ac08")
+            need_browser = cid in ("W6-02/admin-recovery-real",
+                                   "W6-02/e2e-compat")
+            for needed, field, kind_name in (
+                    (need_device, "device_provenance", "physical"),
+                    (need_browser, "browser_provenance", "real-browser")):
+                if not needed:
+                    continue
+                proof = row.get(field) or {}
+                if (not isinstance(proof, dict) or proof.get("kind") != kind_name
+                        or not isinstance(allowlist.get(field), list)
+                        or proof.get("resource_id") not in
+                        (allowlist.get(field) or [])
+                        or type(proof.get("process_id")) is not int
+                        or proof["process_id"] <= 0):
+                    actor_bad.append("%s/%s missing live %s"
+                                     % (cid, name, field))
+    return actor_bad
 
 
 def build():
@@ -184,39 +226,7 @@ def build():
                                "candidate_heads": heads}
 
     # ---- actor_provenance ---------------------------------------------------
-    actor_bad = []
-    for cid, entries in sealed.items():
-        for name, row, _path in entries:
-            actor = row.get("actor_provenance") or {}
-            kind = actor.get("resource_kind")
-            rid = actor.get("resource_id") or ""
-            allowed = allowlist.get(kind)
-            ok = (actor.get("kind") in ("real", "targeted-contract")
-                  and isinstance(allowed, list) and rid in allowed)
-            if not ok:
-                actor_bad.append("%s/%s actor=%r" % (cid, name, actor))
-                continue
-            if row.get("driver") in ("garage", "disk"):
-                if actor.get("kind") != "real" \
-                        or actor.get("driver") != row.get("driver"):
-                    actor_bad.append("%s/%s real driver mismatch" % (cid, name))
-            need_device = cid in ("W6-02/flutter-recovery-real",
-                                  "W6-02/e2e-compat", "W6-02/ac08")
-            need_browser = cid in ("W6-02/admin-recovery-real",
-                                   "W6-02/e2e-compat", "W6-02/ac08")
-            for needed, field, kind_name in (
-                    (need_device, "device_provenance", "physical"),
-                    (need_browser, "browser_provenance", "real-browser")):
-                if not needed:
-                    continue
-                proof = row.get(field) or {}
-                if (proof.get("kind") != kind_name
-                        or proof.get("resource_id") not in
-                        (allowlist.get(field) or [])
-                        or type(proof.get("process_id")) is not int
-                        or proof["process_id"] <= 0):
-                    actor_bad.append("%s/%s missing live %s"
-                                     % (cid, name, field))
+    actor_bad = _actor_provenance_errors(sealed, allowlist)
     if actor_bad:
         gaps.append("%d sealed receipts have invalid actor provenance (e.g. %r)"
                     % (len(actor_bad), actor_bad[:4]))

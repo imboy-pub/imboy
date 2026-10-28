@@ -495,14 +495,21 @@ def _provenance(f):
         problems.append("resource_allowlist.disk_root missing")
     else:
         env_root = os.environ.get("V5_DISK_ROOT", "").strip()
-        disk_root = os.path.abspath(env_root) if env_root else os.path.abspath(allowed_disk)
-        allowed_clean = allowed_disk.rstrip("/")
-        if disk_root != allowed_clean and not disk_root.startswith(
-                allowed_clean + "/"):
+        disk_root = os.path.realpath(env_root or allowed_disk)
+        allowed_clean = os.path.realpath(allowed_disk)
+        disk_valid = True
+        if allowed_clean != os.path.abspath(allowed_disk):
+            problems.append("allowlisted disk_root contains a symbolic link")
+            disk_valid = False
+        if os.path.commonpath([allowed_clean, disk_root]) != allowed_clean:
             problems.append("disk root %s outside allowlist prefix %s"
                             % (disk_root, allowed_disk))
+            disk_valid = False
         if not os.path.isdir(disk_root):
             problems.append("disk root %s is not a directory" % disk_root)
+            disk_valid = False
+        if not disk_valid:
+            disk_root = None
     return {"pool": pool, "bucket": bucket, "endpoint": endpoint,
             "disk_root": disk_root}, problems
 
@@ -571,6 +578,8 @@ def binder_driver_content_immutable(f):
             body_problem = body_note
         if body_problem:
             missing.append(body_problem)
+        if not prov.get("pool"):
+            missing.append("scratch PostgreSQL pool provenance missing")
         if leaf["driver"] == "garage":
             missing.extend(prov_problems)
         elif not prov.get("disk_root"):

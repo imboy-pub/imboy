@@ -18,19 +18,65 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 MIG_DIR="$ROOT/priv/migrations"
 GUARDS_SQL="$ROOT/docs/architecture/attachment-lifecycle-v5/guards-contract.sql"
-PG_RESOURCE="$(python3 "$SCRIPT_DIR/attachment_lifecycle_v5_pg_guard.py" "$RUN_DIR" "$SLOT")" || exit 20
-IFS=$'\t' read -r PG_CONTAINER PG_HOST PG_PORT <<< "$PG_RESOURCE"
-valid_db() { [[ "$1" =~ ^attv5_${SLOT}_[a-z0-9_]+$ ]]; }
-valid_db "$DB" || exit 20
-for target in "${V5_EXPAND_DB:-attv5_${SLOT}_w102_expand}" "${V5_GUARDS_DB:-$DB}"; do
-  valid_db "$target" || exit 20
-done
 # Dedicated rollback-cycle scratch database (allowlisted name, gate-unused):
 # real M1/M2 up/down/up replay with attributable single-fixture down blocks.
 CYCLE_DB="${V5_CYCLE_DB:-attv5_${SLOT}_w102_queue}"
-valid_db "$CYCLE_DB" || exit 20
 EXPAND_DB="${V5_EXPAND_DB:-attv5_${SLOT}_w102_expand}"
 GUARDS_DB="${V5_GUARDS_DB:-$DB}"
+[ "$EXPAND_DB" != "$GUARDS_DB" ] || {
+  echo "CONTRACT_CONFLICT: expand and guards databases must be distinct" >&2; exit 20;
+}
+[ "$CYCLE_DB" != "$DB" ] && [ "$CYCLE_DB" != "$EXPAND_DB" ] && [ "$CYCLE_DB" != "$GUARDS_DB" ] || {
+  echo "CONTRACT_CONFLICT: cycle database must be distinct" >&2; exit 20;
+}
+# Never inherit a caller-selected SQL target; only this script switches to CYCLE_DB.
+unset PROBE_DB
+# Allowlist preflight before Docker: the main database plus any explicitly
+# overridden target must already be authorized in the run receipt. The default
+# cycle/expand names are internal constants authorized with the run itself.
+DB_CHECKS=("$DB")
+[ -z "${V5_EXPAND_DB:-}" ] || DB_CHECKS+=("$V5_EXPAND_DB")
+[ -z "${V5_GUARDS_DB:-}" ] || DB_CHECKS+=("$V5_GUARDS_DB")
+[ -z "${V5_CYCLE_DB:-}" ] || DB_CHECKS+=("$V5_CYCLE_DB")
+python3 - "$SCRIPT_DIR" "$RUN_DIR" "$SLOT" "${DB_CHECKS[@]}" <<'PYDB' || exit 20
+import hashlib
+import json
+from pathlib import Path
+import sys
+
+sys.path.insert(0, sys.argv[1])
+from attachment_lifecycle_v5_pg_guard import authorized_database
+
+try:
+    root = Path(sys.argv[2]).resolve()
+    state = json.loads((root / "state.json").read_text())
+    resource = json.loads((root / "resources/postgres.json").read_text())
+    raw = Path(state["authorization_path"]).read_bytes()
+    if hashlib.sha256(raw).hexdigest() != state["authorization_sha256"]:
+        raise ValueError("authorization changed")
+    allowlist = json.loads(raw)["resource_allowlist"]
+    for database in sys.argv[4:]:
+        authorized_database(allowlist, resource["allowed_slots"], sys.argv[3], database)
+except (OSError, ValueError, KeyError, TypeError):
+    print("CONTRACT_CONFLICT: W1-02 databases not explicitly authorized", file=sys.stderr)
+    sys.exit(20)
+PYDB
+PG_RESOURCE="$(python3 "$SCRIPT_DIR/attachment_lifecycle_v5_pg_guard.py" "$RUN_DIR" "$SLOT" "$DB")" || exit 20
+IFS=$'\t' read -r PG_CONTAINER PG_HOST PG_PORT <<< "$PG_RESOURCE"
+# Bind the audited connection identity before any exec: the loopback endpoint
+# must actually be live, otherwise the probe refuses to touch the container.
+python3 - "$PG_HOST" "$PG_PORT" <<'PYTCP' || exit 20
+import socket, sys
+s = socket.socket()
+s.settimeout(5)
+try:
+    s.connect((sys.argv[1], int(sys.argv[2])))
+except OSError:
+    print("BLOCKED_EXTERNAL: isolated PostgreSQL endpoint is not reachable", file=sys.stderr)
+    sys.exit(20)
+finally:
+    s.close()
+PYTCP
 PROBE_TMP="$(mktemp -d "$RUN_DIR/resources/w102-probe.XXXXXX")" || exit 20
 WRITER_JOB=""
 cleanup() {
@@ -55,13 +101,12 @@ emit() { # name pass detail
   if [ "$good" = 1 ]; then ok=$((ok+1)); printf '{"name":"%s","pass":true}\n' "$name" >> "$OUT"
   else bad=$((bad+1)); printf '{"name":"%s","pass":false,"detail":"%s"}\n' "$name" "$detail" >> "$OUT"; fi
 }
-probe() { # name expected(0=must-fail-any / err:<fragment> / else must-equal-value) sql
+probe() { # name expected(fail=unverified / err:<fragment> / else must-equal-value) sql
   local name="$1" expected="$2" sql="$3" rc val
   printf '%s\n' "$sql" | PSQL_RAW -tAq > "$PROBE_TMP/out.txt" 2>"$PROBE_TMP/err.txt"
   rc=$?
   if [ "$expected" = "fail" ]; then
-    if [ $rc -ne 0 ]; then ok=$((ok+1)); echo "{\"name\":\"$name\",\"pass\":true}" >> "$OUT"
-    else bad=$((bad+1)); echo "{\"name\":\"$name\",\"pass\":false,\"detail\":\"expected failure, rc=0 $(sanitize "$(tail -1 "$PROBE_TMP/out.txt")")\"}" >> "$OUT"; fi
+    emit "$name" 0 "unverified rejection: exact SQLSTATE and state assertions required (rc=$rc)"
     return
   fi
   case "$expected" in

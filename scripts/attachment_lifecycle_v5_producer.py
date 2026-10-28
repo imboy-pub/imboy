@@ -24,11 +24,16 @@ directory and emits the receipts array. Validation mirrors the runner's
 receipt_errors so failures surface here with clearer diagnostics.
 """
 import argparse
+import ctypes
+import errno
 import datetime
 import hashlib
 import json
 import os
 import sys
+import uuid
+
+import attachment_lifecycle_v5_runner as runner
 
 LEAF_FIELDS = ("ac_id", "domain", "driver", "entrypoint",
                "ordering_or_fault", "schema_phase")
@@ -42,12 +47,79 @@ def _die(code, msg):
     sys.exit(code)
 
 
-def _sha256_file(path):
-    h = hashlib.sha256()
-    with open(path, "rb") as fh:
-        for chunk in iter(lambda: fh.read(1 << 16), b""):
-            h.update(chunk)
-    return h.hexdigest()
+def _open_case_dir(run_dir, task_id, case_id, case_dir, attempt):
+    # Match the runner's canonical layout and refuse symlinked path components.
+    parts = case_id.split("/")
+    if len(parts) != 2 or parts[0] != task_id or any(
+            not p or p in (".", "..") for p in parts):
+        raise ValueError("invalid case identity")
+    expected = os.path.abspath(os.path.join(run_dir, "evidence", *parts, "attempt-%d" % attempt))
+    if case_dir != expected:
+        raise ValueError("case directory does not match case identity")
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    fd = os.open(os.path.abspath(run_dir), flags)
+    try:
+        for part in ("evidence", *parts, "attempt-%d" % attempt):
+            child = os.open(part, flags, dir_fd=fd)
+            os.close(fd)
+            fd = child
+        return fd
+    except BaseException:
+        os.close(fd)
+        raise
+
+
+def _write_exclusive(directory_fd, name, data):
+    fd = os.open(name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+                 0o600, dir_fd=directory_fd)
+    with os.fdopen(fd, "wb") as fh:
+        fh.write(data)
+        fh.flush()
+        os.fsync(fh.fileno())
+
+
+def _publish_noreplace(source_fd, target_fd):
+    """Atomically rename without replacement; fail closed on unsupported OS/filesystem."""
+    libc = ctypes.CDLL(None, use_errno=True)
+    name = b"measured-receipts.json"
+    if sys.platform == "darwin":
+        function = getattr(libc, "renameatx_np", None)
+        flag = 0x4  # RENAME_EXCL
+    elif sys.platform.startswith("linux"):
+        function = getattr(libc, "renameat2", None)
+        flag = 1  # RENAME_NOREPLACE
+    else:
+        function = None
+    if function is None:
+        raise OSError(errno.ENOTSUP, "atomic no-replace rename unavailable")
+    function.argtypes = (ctypes.c_int, ctypes.c_char_p, ctypes.c_int,
+                         ctypes.c_char_p, ctypes.c_uint)
+    function.restype = ctypes.c_int
+    if function(source_fd, name, target_fd, name, flag) != 0:
+        code = ctypes.get_errno()
+        raise OSError(code, os.strerror(code))
+
+
+def _same_published(run_dir, path, fresh):
+    """Reconcile only byte-verified, semantically identical current-attempt output."""
+    try:
+        previous = json.loads(runner._read_run_artifact(run_dir, path))
+        if not isinstance(previous, list) or len(previous) != len(fresh):
+            return False
+        for old, new in zip(previous, fresh):
+            if not isinstance(old, dict):
+                return False
+            old_path = old.get("raw_output_path")
+            old_fields = {k: v for k, v in old.items() if k != "raw_output_path"}
+            new_fields = {k: v for k, v in new.items() if k != "raw_output_path"}
+            if old_fields != new_fields:
+                return False
+            raw = runner._read_run_artifact(run_dir, old_path)
+            if hashlib.sha256(raw).hexdigest() != old.get("raw_output_sha256"):
+                return False
+        return True
+    except (OSError, ValueError, TypeError):
+        return False
 
 
 def _parse_ts(value):
@@ -86,8 +158,18 @@ def main():
     if not expected_leaves:
         _die(2, "case %s not in expected_leaf_matrix" % args.case_id)
 
-    with open(args.observations) as fh:
-        obs_doc = json.load(fh)
+    task = state.get("tasks", {}).get(args.task_id, {})
+    attempt = task.get("attempt")
+    if task.get("state") not in ("RUNNING", "VERIFYING") or type(attempt) is not int or attempt < 1:
+        _die(20, "task is not in a valid active attempt")
+    expected_observations = os.path.join(case_dir, "observations.json")
+    if os.path.abspath(args.observations) != expected_observations:
+        _die(20, "observations must belong to the case directory")
+    try:
+        obs_doc = json.loads(runner._read_run_artifact(args.run_dir, expected_observations))
+    except (OSError, ValueError, TypeError) as exc:
+        _die(20, "unsafe observations: %s" % exc)
+
     rows = obs_doc.get("leaves") if isinstance(obs_doc, dict) else obs_doc
     if not isinstance(rows, list) or not rows:
         _die(2, "observations must be a non-empty leaves array")
@@ -102,6 +184,15 @@ def main():
     allowlist = state.get("resource_allowlist", {})
     resources_flat = {v for vs in allowlist.values()
                       if isinstance(vs, list) for v in vs}
+    # A failed attempt is left isolated for diagnosis; it is never published.
+    try:
+        case_fd = _open_case_dir(args.run_dir, args.task_id, args.case_id, case_dir, attempt)
+        attempt_name = "producer-attempt-" + uuid.uuid4().hex
+        os.mkdir(attempt_name, 0o700, dir_fd=case_fd)
+        attempt_fd = os.open(attempt_name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+                             dir_fd=case_fd)
+    except (OSError, ValueError) as exc:
+        _die(20, "cannot create private attempt: %s" % exc)
     receipts = []
     for n, row in enumerate(rows, 1):
         leaf = row.get("leaf", row)
@@ -153,20 +244,21 @@ def main():
         if errors:
             _die(20, "leaf %d (%s): %s" % (n, identity(leaf), "; ".join(errors)))
 
-        raw_path = os.path.join(case_dir, "raw-%03d.json" % n)
+        raw_name = "raw-%03d.json" % n
+        raw_path = os.path.join(case_dir, attempt_name, raw_name)
         raw_payload = {
-            "task_id": args.task_id, "case_id": args.case_id,
+            "task_id": args.task_id, "case_id": args.case_id, "task_attempt": attempt,
             "oracle_observations": observations,
             "candidate_heads": candidate["heads"],
             "assertions": assertions,
         }
         for k in LEAF_FIELDS:
             raw_payload[k] = leaf.get(k)
-        with open(raw_path, "w") as fh:
-            json.dump(raw_payload, fh, ensure_ascii=False, indent=1)
+        raw_bytes = json.dumps(raw_payload, ensure_ascii=False, indent=1).encode("utf-8")
+        _write_exclusive(attempt_fd, raw_name, raw_bytes)
         receipt = {
             "required": True, "task_id": args.task_id, "case_id": args.case_id,
-            "command": args.command, "cwd": args.cwd,
+            "task_attempt": attempt, "command": args.command, "cwd": args.cwd,
             "exit_code": row["exit_code"],
             "executed": row["executed"], "passed": row["passed"],
             "failed": row["failed"], "skipped": row["skipped"],
@@ -175,7 +267,7 @@ def main():
             "owned_tree_digest": candidate["owned_tree_digest"],
             "plan_manifest_sha256": candidate["plan_manifest_sha256"],
             "migration_digest": candidate["migration_digest"],
-            "raw_output_path": raw_path, "raw_output_sha256": _sha256_file(raw_path),
+            "raw_output_path": raw_path, "raw_output_sha256": hashlib.sha256(raw_bytes).hexdigest(),
             "oracle_result": "PASS", "oracle_observations": observations,
             "actor_provenance": actor, "resource_ids": res_ids,
             "request_ids": row["request_ids"],
@@ -190,8 +282,30 @@ def main():
         receipts.append(receipt)
 
     out = os.path.join(case_dir, "measured-receipts.json")
-    with open(out, "w") as fh:
-        json.dump(receipts, fh, ensure_ascii=False, indent=1)
+    receipt_bytes = json.dumps(receipts, ensure_ascii=False, indent=1).encode("utf-8")
+    try:
+        _write_exclusive(attempt_fd, "measured-receipts.json", receipt_bytes)
+        os.fsync(attempt_fd)
+        try:
+            _publish_noreplace(attempt_fd, case_fd)
+        except OSError as exc:
+            if exc.errno != errno.EEXIST or not _same_published(args.run_dir, out, receipts):
+                raise
+            # Only remove this invocation's private, known files after reconciliation.
+            info = os.stat(attempt_name, dir_fd=case_fd, follow_symlinks=False)
+            opened = os.fstat(attempt_fd)
+            if (info.st_dev, info.st_ino) != (opened.st_dev, opened.st_ino):
+                raise OSError(errno.ESTALE, "private attempt directory changed")
+            for name in ["measured-receipts.json"] + ["raw-%03d.json" % n for n in range(1, len(receipts) + 1)]:
+                os.unlink(name, dir_fd=attempt_fd)
+            os.rmdir(attempt_name, dir_fd=case_fd)
+        os.fsync(case_fd)
+        os.fsync(attempt_fd)
+    except OSError as exc:
+        _die(20, "cannot publish or reconcile receipts; attempt preserved: %s" % exc)
+    finally:
+        os.close(attempt_fd)
+        os.close(case_fd)
     print(json.dumps({"produced": len(receipts), "output": out}))
 
 
