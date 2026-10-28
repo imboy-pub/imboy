@@ -25,7 +25,7 @@
 %% ===================================================================
 
 %% @doc 创建评论
--spec create(integer(), binary(), binary(), binary(), integer()) ->
+-spec create(integer(), binary(), binary(), binary(), integer() | binary()) ->
     {ok, map()} | {error, binary() | {integer(), binary()}}.
 create(Uid, ChannelIdBin, MessageIdBin, Content, ParentId) ->
     ChannelId = channel_logic_common:resolve_channel_id(ChannelIdBin),
@@ -42,9 +42,14 @@ create(Uid, ChannelIdBin, MessageIdBin, Content, ParentId) ->
                             %% T7 归档写守卫（R3 #9 收口）：守卫已下沉
                             %% channel_comment_ds 写事务（FOR UPDATE 同事务），
                             %% 此处不再前置检查（消除"检查-写窗口"）。
-                            do_create_comment(
-                                Uid, ChannelId, MessageIdBin, Content, ParentId
-                            );
+                            case parse_parent_id(ParentId) of
+                                {ok, ParsedParentId} ->
+                                    do_create_comment(
+                                        Uid, ChannelId, MessageIdBin, Content, ParsedParentId
+                                    );
+                                error ->
+                                    {error, {400, <<"无效的父评论ID"/utf8>>}}
+                            end;
                         {error, Reason} ->
                             {error, Reason}
                     end
@@ -148,6 +153,16 @@ ensure_comment_access(Uid, CommentId) ->
 %% ===================================================================
 %% Internal
 %% ===================================================================
+
+parse_parent_id(Id) when is_integer(Id), Id >= 0, Id =< 9223372036854775807 ->
+    {ok, Id};
+parse_parent_id(Id) when is_binary(Id), byte_size(Id) > 0, byte_size(Id) =< 19 ->
+    case lists:all(fun(C) -> C >= $0 andalso C =< $9 end, binary_to_list(Id)) of
+        true -> parse_parent_id(binary_to_integer(Id));
+        false -> error
+    end;
+parse_parent_id(_) ->
+    error.
 
 do_create_comment(Uid, ChannelId, MessageIdBin, Content, ParentId) ->
     MessageId = elib_cnv:safe_to_integer(MessageIdBin),
