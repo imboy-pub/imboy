@@ -75,6 +75,28 @@ run() ->
     eb_pg_purge
 ]).
 
+%% 入口 → 归属模块（02 §6 入口表；callgraph 静态门按入口出具观测）。
+w401_entrypoint_modules(reject_size) -> [attach_logic];
+w401_entrypoint_modules(reject_mime) -> [attach_logic];
+w401_entrypoint_modules(reject_teaching) -> [attach_logic];
+w401_entrypoint_modules(teaching_unbound) -> [attach_logic];
+w401_entrypoint_modules(orphan_cleanup) -> [attach_cleanup_logic, attachment_ds];
+w401_entrypoint_modules(pending_cleanup) -> [attach_cleanup_logic, attachment_ds];
+w401_entrypoint_modules(account_deletion) -> [user_deletion_logic, user_deletion_executor];
+w401_entrypoint_modules(app_confirm_reject) -> [enterprise_asset_logic];
+w401_entrypoint_modules(app_retention_purge) -> [enterprise_asset_retention_logic];
+w401_entrypoint_modules(eb_private_delete) -> [eb_asset_app, eb_asset_store];
+w401_entrypoint_modules(eb_pending_cleanup) -> [eb_asset_app, eb_asset_store];
+w401_entrypoint_modules(eb_purge_drain) -> [eb_pg_purge].
+
+w401_entrypoint_domain(eb_private_delete) -> <<"enterprise">>;
+w401_entrypoint_domain(eb_pending_cleanup) -> <<"enterprise">>;
+w401_entrypoint_domain(eb_purge_drain) -> <<"enterprise">>;
+w401_entrypoint_domain(_) -> <<"ordinary">>.
+
+w401_ep_binary(Ep) ->
+    iolist_to_binary(string:replace(atom_to_binary(Ep, utf8), <<"_">>, <<"-">>, all)).
+
 w401_static_callgraph() ->
     %% 入口模块源码零存储删除直调（elib_oss:delete_object / ObjectStore:delete）
     Violations =
@@ -84,7 +106,47 @@ w401_static_callgraph() ->
             Violation <- [w401_scan_module(Mod)],
             element(1, Violation) =/= ok
         ],
-    ?assertEqual([], Violations).
+    ?assertEqual([], Violations),
+    %% 逐入口出具物理删除调用图观测（12 入口 × physical_delete_callgraph）
+    lists:foreach(
+        fun(Ep) ->
+            Mods = w401_entrypoint_modules(Ep),
+            Scanned = [w401_scan_module(Mod) || Mod <- Mods],
+            ?assertEqual([], [V || V <- Scanned, element(1, V) =/= ok]),
+            Exempt =
+                case lists:member(eb_asset_store, Mods) of
+                    true -> <<"eb_asset_store:ObjectStore:delete (drain worker)">>;
+                    false -> null
+                end,
+            attachment_lifecycle_v5_obs:emit(#{
+                case_id => <<"W4-01/delete-entrypoints">>,
+                entrypoint => w401_ep_binary(Ep),
+                scenario => <<"physical_delete_callgraph">>,
+                domain => w401_entrypoint_domain(Ep),
+                schema_phase => <<"expand-queue">>,
+                measured => #{
+                    modules_scanned => [atom_to_binary(M, utf8) || M <- Mods],
+                    direct_storage_delete_calls => 0,
+                    drain_worker_exemption => Exempt
+                }
+            })
+        end,
+        [
+            reject_size,
+            reject_mime,
+            reject_teaching,
+            teaching_unbound,
+            orphan_cleanup,
+            pending_cleanup,
+            account_deletion,
+            app_confirm_reject,
+            app_retention_purge,
+            eb_private_delete,
+            eb_pending_cleanup,
+            eb_purge_drain
+        ]
+    ),
+    ok.
 
 w401_scan_module(Mod) ->
     File = w401_module_src(Mod),
