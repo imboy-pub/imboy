@@ -77,7 +77,8 @@ def main():
                         % (leaf["entrypoint"], fault))
         if leaf["domain"] != DOMAINS.get(leaf["entrypoint"], "ordinary"):
             support.die(CASE, "domain mismatch for leaf %r" % leaf["entrypoint"])
-        test = support.named_test_in_module(parsed, "rollback_test_", MODULE, CASE)
+        test = support.named_test_in_module(
+            parsed, "pending_cleanup_rollback", MODULE, CASE)
         obs = support.matching_observation(entries, leaf, CASE)
         measured = obs.get("measured", {})
         if measured.get("storage_delete_calls") != 0                 or measured.get("unknown_success_reported") is not False:
