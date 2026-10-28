@@ -19,6 +19,9 @@
 -export([get_messages/4, get_messages_page/4, get_message/3]).
 -export([mark_as_read/3]).
 -export([mark_viewed/3]).
+%% W08（§10.4）适配步骤独立导出：开关默认关，真实 PG 测试直调验证
+%% 开启后行为，不经进程级全局开关。
+-export([do_legacy_mark_read_advance_view/2]).
 -export([search_channels/2]).
 -export([get_discover_channels/1]).
 -export([add_admin/4]).
@@ -1051,7 +1054,17 @@ mark_as_read(Uid, ChannelIdBin, _MessageIdBin) ->
     end.
 
 %% W08（§10.4）：旧 mark_read 的水位适配步骤；归档频道 skipped 直通。
+%% 新能力未达全节点部署前保持关闭：默认 false，全节点兼容验证通过后
+%% 按部署开关（imboy.channel_legacy_mark_read_watermark）统一启用。
 legacy_mark_read_advance_view(ChannelId, Uid) ->
+    case config_ds:env(channel_legacy_mark_read_watermark, false) of
+        true ->
+            do_legacy_mark_read_advance_view(ChannelId, Uid);
+        false ->
+            ok
+    end.
+
+do_legacy_mark_read_advance_view(ChannelId, Uid) ->
     case channel_subscription_repo:advance_view_to_current(ChannelId, Uid) of
         {ok, _ViewSeq} ->
             ok;

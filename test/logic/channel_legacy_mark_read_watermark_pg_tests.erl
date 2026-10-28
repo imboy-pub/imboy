@@ -5,13 +5,19 @@
 %%%===================================================================
 %%% @doc
 %%% W08（channel-group-ux-v2.2 §6.8/§10.4）：旧 mark_read 的水位适配
-%%% （真实 PostgreSQL 向量）：
-%%% - 旧 mark_read 经同一新水位适配器显式清到**当次服务端发布边界**
-%%%   （单语句 GREATEST(view_seq, publish_seq)：单调、不从聚合 unread
-%%%   推断、迁移前状态不洗零）；
+%%% （真实 PostgreSQL 向量）。
+%%%
+%%% 适配默认关闭（§10.4：新能力未达全节点部署前保持关闭，开关
+%%% imboy.channel_legacy_mark_read_watermark）。mark_as_read 在默认关
+%%% 下保持旧合同精确语义（只清聚合 unread_count、不触碰 view_seq，
+%%% channel_view_watermark_pg_tests V3 为该合同的回归锚）；开启后由
+%%% do_legacy_mark_read_advance_view 承担适配——本套件直调该步骤验证
+%%% 适配行为（不经进程级全局开关，与全量并发其他套件隔离）：
+%%% - 适配显式清到**当次服务端发布边界**（单语句 GREATEST：单调、
+%%%   不从聚合 unread 推断、迁移前状态不洗零）；
 %%% - 边界后新发布不被旧读清掉（update_seq > 边界仍计未查看）；
 %%% - 新端 mark_viewed 旧边界不倒退（GREATEST 混合路径）；
-%%% - 逻辑层旧端点端到端：clear_unread（旧合同）+ 水位适配同发；
+%%% - 逻辑层 mark_as_read（默认关）清零 unread 且不推水位；
 %%% - 未订阅：适配返回 not_subscribed，旧端点静默保持 ok。
 %%%
 %%% DB 不可用时按 TEST_WITH_DB 惯例 skip（PG-absent 运行不得计为通过）。
@@ -150,7 +156,9 @@ vectors() ->
         {ok, 5} = channel_subscription_repo:advance_view_to_current(?CH, ?SUB),
         0 = unseen(?CH),
 
-        %% ── V4（逻辑层端到端）：mark_as_read 同发旧清零 + 水位适配。
+        %% ── V4（逻辑层端到端·默认关）：mark_as_read 只清零聚合
+        %% unread_count、不触碰 view_seq（§10.4 开关关闭 = 旧合同）；
+        %% 随后直调适配步骤验证开启后水位推进到当次边界 6。
         ok = publish_n(?CH, 6),
         {ok, _} = elib_pg:execute(
             <<"UPDATE channel SET publish_seq = 6 WHERE id = $1">>, [?CH]
@@ -174,8 +182,7 @@ vectors() ->
         ok = channel_logic_message:mark_as_read(?SUB, <<"legacy">>, <<"m">>),
         meck:unload(channel_logic_common),
         meck:unload(channel_logic_notify),
-        6 = view_seq(?CH, ?SUB),
-        0 = unseen(?CH),
+        5 = view_seq(?CH, ?SUB),
         {ok, #{<<"unread_count">> := 0}} =
             elib_pg:one(
                 <<
@@ -184,10 +191,15 @@ vectors() ->
                 >>,
                 [?CH, ?SUB]
             ),
+        ok = channel_logic_message:do_legacy_mark_read_advance_view(?CH, ?SUB),
+        6 = view_seq(?CH, ?SUB),
+        0 = unseen(?CH),
 
-        %% ── V5：未订阅频道适配返回 not_subscribed；旧端点静默 ok 不炸。
+        %% ── V5：未订阅频道适配返回 not_subscribed；适配步骤与旧端点
+        %% 均静默 ok 不炸。
         {error, not_subscribed} =
             channel_subscription_repo:advance_view_to_current(?CH2, ?SUB),
+        ok = channel_logic_message:do_legacy_mark_read_advance_view(?CH2, ?SUB),
         meck:new(channel_logic_common, [no_link]),
         meck:expect(channel_logic_common, resolve_channel_id, 1, fun(_Bin) -> ?CH2 end),
         meck:expect(
