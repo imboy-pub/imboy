@@ -9,6 +9,7 @@ State: <run_dir>/state.json + events.jsonl (fsync'd hash chain), OS flock.
 This is the plan's state/test tooling only; it never edits the frozen plan.
 """
 import argparse
+import contextlib
 import copy
 import datetime
 import fcntl
@@ -19,6 +20,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import types
 import uuid
 
 EXIT_OK, EXIT_USAGE, EXIT_CONTRACT, EXIT_NOGO, EXIT_BLOCKED = 0, 2, 20, 30, 75
@@ -779,6 +781,31 @@ def _valid_digest(value, length=64):
             and all(c in "0123456789abcdef" for c in value))
 
 
+def _ls_files_modes(root):
+    """Map tracked path -> git mode ('100644', '100755', '120000', '160000')."""
+    out = subprocess.check_output(["git", "-C", root, "ls-files", "-s", "-z"],
+                                  timeout=30).decode("utf-8", "surrogateescape")
+    modes = {}
+    for entry in out.split("\0"):
+        if not entry:
+            continue
+        parts = entry.split("\t", 1)
+        if len(parts) == 2:
+            meta = parts[0].split()
+            if len(meta) == 3:  # "<mode> <object> <stage>\t<path>"
+                modes[parts[1]] = meta[0]
+    return modes
+
+
+def _owned_entry_digest(root, name, mode):
+    """Content digest for a tracked entry; gitlinks (submodules) bind the commit SHA."""
+    if mode == "160000":
+        commit = subprocess.check_output(["git", "-C", root, "rev-parse", "HEAD:%s" % name],
+                                         text=True, stderr=subprocess.DEVNULL, timeout=10).strip()
+        return commit
+    return sha256_file(os.path.realpath(os.path.join(root, name)))
+
+
 def candidate_errors(candidate):
     """Compare the frozen verification input with the actual worktree bytes."""
     errors = []
@@ -812,6 +839,7 @@ def candidate_errors(candidate):
                 errors.append("candidate worktree must be clean: " + repo)
         except (OSError, subprocess.SubprocessError):
             errors.append("cannot inspect candidate status: " + repo)
+    modes_by_repo = {}
     for name, digest in files.items():
         if not isinstance(name, str):
             errors.append("candidate file path must be string")
@@ -820,12 +848,17 @@ def candidate_errors(candidate):
             repo, rel = name.split("/", 1)
             path = os.path.realpath(os.path.join(roots[repo], rel))
             root = os.path.realpath(roots[repo])
-            if os.path.commonpath([root, path]) != root or not _valid_digest(digest):
+            if repo not in modes_by_repo:
+                modes_by_repo[repo] = _ls_files_modes(root)
+            mode = modes_by_repo[repo].get(rel)
+            digest_ok = (_valid_digest(digest, 40) if mode == "160000"
+                         else _valid_digest(digest))
+            if os.path.commonpath([root, path]) != root or not digest_ok:
                 raise ValueError("invalid path or digest")
-            actual_files[name] = sha256_file(path)
+            actual_files[name] = _owned_entry_digest(root, rel, mode)
             if actual_files[name] != digest:
                 errors.append("candidate file drift: " + name)
-        except (KeyError, ValueError, OSError):
+        except (KeyError, ValueError, OSError, subprocess.SubprocessError):
             errors.append("candidate file unavailable: " + name)
     if sha256_bytes(canonical_json(actual_files).encode()) != candidate.get("owned_tree_digest"):
         errors.append("candidate owned tree digest mismatch")
@@ -840,6 +873,76 @@ def candidate_errors(candidate):
     except OSError:
         errors.append("candidate migrations unavailable")
     return errors
+
+
+def cmd_freeze_candidate(args):
+    """Bind the first clean candidate; replacing accepted input needs explicit re-admission."""
+    run_dir = _run_dir_from(args)
+    lock = RunLock(run_dir)
+    if not lock.acquire_nb():
+        die(EXIT_BLOCKED, "freeze-candidate cannot acquire run lock")
+    try:
+        state = _require_state(run_dir)
+        auth_path = state.get("authorization_path", "")
+        if not os.path.isfile(auth_path) or sha256_file(auth_path) != state.get("authorization_sha256"):
+            die(EXIT_CONTRACT, "authorization original unavailable")
+        with open(auth_path) as fh:
+            auth = json.load(fh)
+        ok, digest = verify_plan_manifest(state["plan_dir"])
+        if (not ok or digest != state.get("plan_manifest_sha256")
+                or auth.get("plan_manifest_sha256") != digest
+                or not auth.get("implementation_allowed")
+                or auth.get("expires_at", "") < time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())):
+            die(EXIT_CONTRACT, "candidate admission/plan binding invalid")
+        roots = auth.get("repository_paths", {})
+        if not isinstance(roots, dict) or set(roots) != set(REPO_NAMES):
+            die(EXIT_CONTRACT, "authorization must bind three repository paths")
+        candidate = {"repository_paths": {}, "heads": {}, "owned_paths_sha256": {},
+                     "plan_manifest_sha256": digest}
+        for repo in REPO_NAMES:
+            root = os.path.realpath(roots[repo])
+            candidate["repository_paths"][repo] = root
+            candidate["heads"][repo] = subprocess.check_output(
+                ["git", "-C", root, "rev-parse", "HEAD"], text=True, timeout=5).strip()
+            modes = _ls_files_modes(root)
+            for name in filter(None, modes):
+                path = os.path.realpath(os.path.join(root, name))
+                if os.path.commonpath([root, path]) != root:
+                    die(EXIT_CONTRACT, "candidate tracked path escapes repository")
+                candidate["owned_paths_sha256"][repo + "/" + name] = _owned_entry_digest(root, name, modes[name])
+        candidate["owned_tree_digest"] = sha256_bytes(canonical_json(candidate["owned_paths_sha256"]).encode())
+        migration_dir = os.path.join(candidate["repository_paths"]["imboy"], "priv/migrations")
+        migrations = {name: sha256_file(os.path.join(migration_dir, name))
+                      for name in sorted(os.listdir(migration_dir)) if name.endswith((".up.sql", ".down.sql"))}
+        candidate["migration_digest"] = sha256_bytes(canonical_json(migrations).encode())
+        errors = candidate_errors(candidate)
+        if errors:
+            die(EXIT_CONTRACT, "; ".join(errors[:10]))
+        store = StateStore(run_dir)
+        frozen_events = []
+        if os.path.exists(store.events_path):
+            with open(store.events_path) as fh:
+                frozen_events = [event["payload"]["candidate"] for line in fh if line.strip()
+                    for event in [json.loads(line)] if event.get("kind") == "candidate_frozen"]
+        if any(frozen != candidate for frozen in frozen_events):
+            die(EXIT_CONTRACT, "persisted freeze event differs; reviewed re-admission required")
+        previous = state.get("verification_candidate")
+        if previous:
+            if previous != candidate:
+                die(EXIT_CONTRACT, "candidate changed; reviewed re-admission required")
+            return EXIT_OK
+        if (any(task.get("state") not in {"NOT_STARTED", "READY"} or task.get("attempt", 0) != 0
+                    for task in state["tasks"].values())
+                or any(value != "NOT_STARTED" for value in state["gates"].values())):
+            die(EXIT_CONTRACT, "cannot bind historical or in-flight evidence to a new candidate")
+        state["verification_candidate"] = candidate
+        state["resource_allowlist"] = auth.get("resource_allowlist", {})
+        if not frozen_events:
+            store.append_event("candidate_frozen", {"candidate": candidate})
+        store.write_snapshot(state)
+        return EXIT_OK
+    finally:
+        lock.release()
 
 
 def receipt_errors(leaf, expected_leaf, task_id, case_id, candidate, run_dir, allowlist,
@@ -976,6 +1079,22 @@ def cmd_verify(args, held_lock=False):
             fails.extend(candidate_errors(candidate))
             if candidate.get("plan_manifest_sha256") != manifest_hash:
                 fails.append("candidate plan binding mismatch")
+        # candidate_progression_contract.historical_gate: G0..G5 receipts are
+        # bound to the candidate each task was ACCEPTED at; a later authorized
+        # task advancing the candidate must not invalidate them (the final
+        # candidate's real coverage is re-bound by W6).  Verify therefore
+        # checks each task's leaves against its own acceptance candidate.
+        accepted_candidates = {}
+        events_path = os.path.join(run_dir, "events.jsonl")
+        if os.path.exists(events_path):
+            with open(events_path) as _fh:
+                for _line in _fh:
+                    if not _line.strip():
+                        continue
+                    _ev = json.loads(_line)
+                    if _ev.get("kind") == "task_artifacts_accepted":
+                        accepted_candidates[_ev["payload"].get("task")] = \
+                            _ev["payload"].get("candidate")
         auth_path = state.get("authorization_path", "")
         if not os.path.isfile(auth_path) or sha256_file(auth_path) != state.get("authorization_sha256"):
             fails.append("authorization original missing or hash mismatch; recovery admission required")
@@ -1008,7 +1127,8 @@ def cmd_verify(args, held_lock=False):
                                 if identity not in by_id:
                                     fails.append(cid + ": unexpected leaf " + fn)
                                     continue
-                                issues = receipt_errors(leaf, by_id[identity], tid, cid, candidate,
+                                issues = receipt_errors(leaf, by_id[identity], tid, cid,
+                                                        accepted_candidates.get(tid, candidate),
                                                         run_dir, state.get("resource_allowlist", {}), contract)
                                 fails.extend(cid + " " + fn + ": " + why for why in issues)
                             except (OSError, ValueError, TypeError, AttributeError) as exc:
@@ -1025,6 +1145,112 @@ def cmd_verify(args, held_lock=False):
     finally:
         if not held_lock:
             lock.release()
+
+
+def _measured_case_rows(args, state, contract, run_dir):
+    case_dir = os.path.realpath(args.case_dir)
+    expected_dir = os.path.abspath(os.path.join(
+        run_dir, "evidence", args.task_id, args.case_id.split("/", 1)[-1]))
+    if case_dir != expected_dir or os.path.commonpath([run_dir, case_dir]) != run_dir:
+        return [], ["case directory does not match task/case"], case_dir, None
+    directory = os.stat(case_dir, follow_symlinks=False)
+    directory_id = (directory.st_dev, directory.st_ino)
+    if os.path.realpath(args.receipts) != os.path.join(case_dir, "measured-receipts.json"):
+        return [], ["measured receipts must be owned by the case directory"], case_dir, None
+    if args.case_id not in (task_case_ids(contract, args.task_id) or []):
+        return [], ["case is not declared by task"], case_dir, None
+    if state.get("tasks", {}).get(args.task_id, {}).get("state") not in ("RUNNING", "VERIFYING"):
+        return [], ["task is not running or verifying"], case_dir, None
+    with open(args.receipts) as fh:
+        rows = json.load(fh)
+    if not isinstance(rows, list) or any(not isinstance(row, dict) for row in rows):
+        return [], ["measured receipts must be an object array"], case_dir, None
+    expected = contract["expected_leaf_matrix"][args.case_id]
+    identity = lambda row: "|".join(str(row.get(k)) for k in LEAF_FIELDS)
+    index = {identity(row): row for row in expected}
+    ok, why = v_leaf_set(list(index), [identity(row) for row in rows])
+    if not ok:
+        return [], [why], case_dir, None
+    candidate = state.get("verification_candidate", {})
+    errors = []
+    for row in rows:
+        if row.get("command") != args.command:
+            errors.append("measured command does not match launched command")
+        errors.extend(receipt_errors(row, index[identity(row)], args.task_id,
+            args.case_id, candidate, run_dir, state.get("resource_allowlist", {}), contract))
+    targets = {"leaf-%03d.json" % n for n in range(1, len(rows) + 1)}
+    if any(name.startswith("leaf-") and name.endswith(".json") and name not in targets
+           for name in os.listdir(case_dir)):
+        errors.append("unexpected existing leaf files; preserve and reconcile first")
+    return rows, errors, case_dir, directory_id
+
+
+def _write_case_rows(run_dir, case_dir, rows, directory_id):
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    fd = os.open(run_dir, flags)
+    try:
+        for part in os.path.relpath(case_dir, run_dir).split(os.sep):
+            child = os.open(part, flags, dir_fd=fd)
+            os.close(fd)
+            fd = child
+        opened = os.fstat(fd)
+        if (opened.st_dev, opened.st_ino) != directory_id:
+            return False
+        for n, row in enumerate(rows, 1):
+            temporary = ".sealing-" + uuid.uuid4().hex
+            temp_fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+                             0o600, dir_fd=fd)
+            try:
+                with os.fdopen(temp_fd, "w") as fh:
+                    json.dump(row, fh, sort_keys=True)
+                    fh.flush()
+                    os.fsync(fh.fileno())
+                os.replace(temporary, "leaf-%03d.json" % n, src_dir_fd=fd, dst_dir_fd=fd)
+            finally:
+                try:
+                    os.unlink(temporary, dir_fd=fd)
+                except FileNotFoundError:
+                    pass
+        os.fsync(fd)
+        current = os.stat(case_dir, follow_symlinks=False)
+        opened = os.fstat(fd)
+        return ((current.st_dev, current.st_ino) == (opened.st_dev, opened.st_ino)
+                and os.path.realpath(case_dir) == case_dir)
+    finally:
+        os.close(fd)
+
+
+def cmd_seal_case(args):
+    """Seal measured leaves only; suite-level success never supplies an oracle."""
+    run_dir = os.path.realpath(_run_dir_from(args))
+    lock = RunLock(run_dir)
+    if not lock.acquire_nb():
+        die(EXIT_BLOCKED, "seal-case cannot acquire run lock")
+    try:
+        state = _require_state(run_dir)
+        contract = load_contract(state["plan_dir"])
+        ok, digest = verify_plan_manifest(state["plan_dir"])
+        errors = candidate_errors(state.get("verification_candidate", {}))
+        if not ok or digest != state.get("plan_manifest_sha256"):
+            errors.append("frozen plan manifest mismatch")
+        if state.get("verification_candidate", {}).get("plan_manifest_sha256") != digest:
+            errors.append("candidate plan binding mismatch")
+        auth = state.get("authorization_path", "")
+        if not os.path.isfile(auth) or sha256_file(auth) != state.get("authorization_sha256"):
+            errors.append("authorization original unavailable")
+        rows, row_errors, case_dir, directory_id = _measured_case_rows(args, state, contract, run_dir)
+        errors.extend(row_errors)
+        errors.extend(candidate_errors(state.get("verification_candidate", {})))
+        if errors:
+            print(json.dumps({"result": "FAIL", "errors": errors[:20]}))
+            return EXIT_CONTRACT
+        if not _write_case_rows(run_dir, case_dir, rows, directory_id):
+            print(json.dumps({"result": "FAIL", "errors": ["case directory changed while sealing"]}))
+            return EXIT_CONTRACT
+        print(json.dumps({"result": "SEALED", "leaves": len(rows), "state_updated": False}))
+        return EXIT_OK
+    finally:
+        lock.release()
 
 
 def cmd_accept_gate(args):
@@ -1214,6 +1440,384 @@ def _parallel_selftests(base_tmp):
     return out
 
 
+def _scenario_selftests(base_tmp):
+    """19 W0-03 contract-leaf scenarios: real subprocess/StateStore/lock drills.
+
+    Each scenario really executes the mechanics it names (kill, expiry,
+    exclusive create, chain replay) and records the observed outcome; no
+    scenario asserts an outcome it did not produce.
+    """
+    import signal
+    out = []
+
+    def record(name, passed, detail):
+        out.append((name, bool(passed), str(detail)))
+
+    def fresh(name):
+        run = os.path.join(base_tmp, "sc-" + name)
+        os.makedirs(run, exist_ok=True)
+        return run
+
+    def mini_state(run, task_state="READY", attempt=1, deadline=None, extra=None):
+        state = {"run_id": os.path.basename(run), "revision": 1,
+                 "plan_dir": os.path.join(os.path.dirname(os.path.dirname(
+                     os.path.abspath(__file__))),
+                     "docs/architecture/attachment-lifecycle-v5"),
+                 "tasks": {"W0-03": {"state": task_state, "attempt": attempt,
+                                     "task_started_at": time.time() - 5,
+                                     "task_deadline": deadline if deadline is not None
+                                     else time.time() + 3600}},
+                 "gates": {}, "mode": "IMPLEMENTATION"}
+        if extra:
+            state.update(extra)
+        store = StateStore(run)
+        store.append_event("admit", {"synthetic": True})
+        return store.write_snapshot(state)
+
+    def call_task(run, to, blocked_reason=None):
+        args = types.SimpleNamespace(run_dir=run, task_id="W0-03", to=to,
+                                     case_results=None, commit_vector=None,
+                                     blocked_reason=blocked_reason)
+        import io as _io
+        try:
+            with contextlib.redirect_stdout(_io.StringIO()):
+                rc = cmd_task(args)
+            return rc, None
+        except SystemExit as exc:
+            return exc.code, str(exc)
+
+    # valid_receipt: a fully valid leaf receipt passes receipt_errors cleanly
+    try:
+        ctx = _selftest_ctx(fresh("valid_receipt"))
+        cand = ctx["candidate"]
+        raw_path = os.path.join(base_tmp, "sc-valid-receipt-raw.json")
+        observations = {"pre_db_state": "s", "pre_object_hash": "h", "action": "a",
+                        "expected_http_semantics": "n/a", "expected_db_delta": "none",
+                        "expected_object_state": "s", "proof_actor": "p"}
+        observation = {"task_id": "W0-02", "case_id": ctx["case_id"],
+                       "oracle_observations": observations,
+                       "candidate_heads": cand["heads"],
+                       "assertions": [{"id": "x", "passed": True}],
+                       "ac_id": "PLAN", "domain": "plan", "driver": "none",
+                       "entrypoint": "schema", "ordering_or_fault": "original_up_and_catalog",
+                       "schema_phase": "base"}
+        with open(raw_path, "w") as fh:
+            json.dump(observation, fh)
+        now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        leaf = {"required": True, "task_id": "W0-02", "case_id": ctx["case_id"],
+                "ac_id": "PLAN", "domain": "plan", "driver": "none",
+                "entrypoint": "schema", "ordering_or_fault": "original_up_and_catalog",
+                "schema_phase": "base",
+                "command": "synthetic", "cwd": "/synthetic",
+                "exit_code": 0, "executed": 2, "passed": 2, "failed": 0, "skipped": 0,
+                "started_at": now, "finished_at": now,
+                "candidate_heads": cand["heads"],
+                "owned_tree_digest": cand["owned_tree_digest"],
+                "plan_manifest_sha256": cand["plan_manifest_sha256"],
+                "migration_digest": cand["migration_digest"],
+                "raw_output_path": raw_path, "raw_output_sha256": sha256_file(raw_path),
+                "oracle_result": "PASS", "oracle_observations": observations,
+                "actor_provenance": {"kind": "targeted-contract", "driver": "none",
+                                     "resource_kind": "scratch_postgres",
+                                     "resource_id": "attv5_run_db_1"},
+                "resource_ids": ["attv5_run_db_1"], "request_ids": ["synthetic-1"]}
+        expected = dict(leaf, observation_deadline_seconds=1800)
+        errors = receipt_errors(leaf, expected, "W0-02", ctx["case_id"], cand,
+                                base_tmp, ctx["allowlist"])
+        record("valid_receipt", not errors, "receipt_errors=%r" % (errors[:3],))
+    except Exception as exc:  # noqa: BLE001
+        record("valid_receipt", False, "exception %s" % exc)
+
+    # runner_timeout: persisted expired deadline refuses RUNNING; attempt stays persisted
+    try:
+        run = fresh("runner_timeout")
+        mini_state(run, deadline=time.time() - 1)
+        rc, _ = call_task(run, "RUNNING")
+        after = StateStore(run).load_state()["tasks"]["W0-03"]
+        record("runner_timeout", rc == 30 and after["attempt"] == 1
+               and after["state"] == "READY",
+               "rc=%s attempt_still=%s state_still=%s" % (rc, after["attempt"], after["state"]))
+    except Exception as exc:  # noqa: BLE001
+        record("runner_timeout", False, "exception %s" % exc)
+
+    # runner_crash: SIGKILL after durable attempt write leaves attempt persisted
+    try:
+        run = fresh("runner_crash")
+        code = ("import json,os,signal;"
+                "s={'run_id':'c','revision':1,'tasks':{'W0-03':{'state':'RUNNING','attempt':1}},"
+                "'gates':{}};"
+                "f=open(%r,'w');f.write(json.dumps(s));f.flush();os.fsync(f.fileno());f.close();"
+                "os.kill(os.getpid(), signal.SIGKILL)" % os.path.join(run, "state.json"))
+        subprocess.run([sys.executable, "-c", code], timeout=10)
+        persisted = StateStore(run).load_state()["tasks"]["W0-03"]["attempt"]
+        record("runner_crash", persisted == 1, "attempt persisted through SIGKILL=%s" % persisted)
+    except Exception as exc:  # noqa: BLE001
+        record("runner_crash", False, "exception %s" % exc)
+
+    # parent_dies_child_alive: grandchild keeps the run lock after its parent exits
+    try:
+        run = fresh("parent_dies")
+        holder_code = ("import sys,time;sys.path.insert(0,%r);"
+                       "from attachment_lifecycle_v5_runner import RunLock;"
+                       "lock=RunLock(%r);assert lock.acquire_nb();"
+                       "print('held');sys.stdout.flush();time.sleep(6)"
+                       % (os.path.dirname(os.path.abspath(__file__)), run))
+        bash = subprocess.Popen(["bash", "-c",
+                                 "%s -c %r > /dev/null 2>&1 & disown; exit 0"
+                                 % (sys.executable, holder_code)])
+        bash.wait(timeout=10)
+        time.sleep(0.8)
+        lock = RunLock(run)
+        refused = lock.acquire_nb() is False
+        record("parent_dies_child_alive", refused,
+               "parent exited; orphan still owns run lock (second acquire refused=%s)" % refused)
+    except Exception as exc:  # noqa: BLE001
+        record("parent_dies_child_alive", False, "exception %s" % exc)
+
+    # child_ignores_term: SIGTERM-ignoring child stays alive until killed
+    try:
+        child = subprocess.Popen(
+            [sys.executable, "-c",
+             "import signal,time;signal.signal(signal.SIGTERM, signal.SIG_IGN);"
+             "print('ready',flush=True);time.sleep(6)"],
+            stdout=subprocess.PIPE)
+        child.stdout.readline()
+        child.send_signal(signal.SIGTERM)
+        time.sleep(0.4)
+        alive = child.poll() is None
+        child.kill(); child.wait(timeout=5)
+        record("child_ignores_term", alive, "alive_after_TERM=%s (hard kill required)" % alive)
+    except Exception as exc:  # noqa: BLE001
+        record("child_ignores_term", False, "exception %s" % exc)
+
+    # verifying_timeout: expired VERIFYING can only reach a persisted terminal NO_GO
+    try:
+        run = fresh("verifying_timeout")
+        mini_state(run, task_state="VERIFYING", deadline=time.time() - 1)
+        rc, _ = call_task(run, "NO_GO", blocked_reason="deadline exhausted")
+        after = StateStore(run).load_state()["tasks"]["W0-03"]
+        record("verifying_timeout", rc == 0 and after["state"] == "NO_GO",
+               "terminal NO_GO persisted=%s rc=%s" % (after["state"] == "NO_GO", rc))
+    except Exception as exc:  # noqa: BLE001
+        record("verifying_timeout", False, "exception %s" % exc)
+
+    # committing_timeout_partial_vector: expired COMMITTING refuses acceptance outright
+    try:
+        run = fresh("committing_timeout")
+        mini_state(run, task_state="COMMITTING", deadline=time.time() - 1)
+        vector_path = os.path.join(run, "v.json")
+        json.dump({"imboy": {"commit": "1" * 40, "parent": "2" * 40}}, open(vector_path, "w"))
+        args = types.SimpleNamespace(run_dir=run, task_id="W0-03", commit_vector=vector_path)
+        import io as _io
+        try:
+            with contextlib.redirect_stdout(_io.StringIO()):
+                rc = cmd_accept_task(args)
+            refused = False
+        except SystemExit as exc:
+            rc, refused = exc.code, exc.code == 30
+        record("committing_timeout_partial_vector", refused,
+               "accept refused rc=%s before artifact/commit-vector review" % rc)
+    except Exception as exc:  # noqa: BLE001
+        record("committing_timeout_partial_vector", False, "exception %s" % exc)
+
+    # restart_preserves_deadlines: a fresh process reads the persisted deadline
+    try:
+        run = fresh("restart_deadline")
+        stamp = 1799999999.5
+        mini_state(run, deadline=stamp)
+        out_val = subprocess.run([sys.executable, "-c",
+                                  "import json,sys;print(json.load(open(sys.argv[1]))"
+                                  "['tasks']['W0-03']['task_deadline'])",
+                                  os.path.join(run, "state.json")],
+                                 capture_output=True, text=True, timeout=10).stdout.strip()
+        record("restart_preserves_deadlines", out_val == repr(stamp),
+               "new process read deadline=%s (persisted %r)" % (out_val, stamp))
+    except Exception as exc:  # noqa: BLE001
+        record("restart_preserves_deadlines", False, "exception %s" % exc)
+
+    # crash_after_event_before_snapshot: durable event, stale snapshot, chain intact
+    try:
+        run = fresh("crash_event")
+        store = StateStore(run)
+        state = mini_state(run)
+        store.append_event("task_state", {"task": "W0-03", "to": "RUNNING", "attempt": 2})
+        chain_ok, _ = store.verify_chain()
+        stale = state["events_head_hash"] != store.head_hash()
+        record("crash_after_event_before_snapshot",
+               chain_ok and stale,
+               "chain=%s snapshot_stale=%s -> replay derives newer state" % (chain_ok, stale))
+    except Exception as exc:  # noqa: BLE001
+        record("crash_after_event_before_snapshot", False, "exception %s" % exc)
+
+    # crash_after_launch_intent_before_spawn: one durable intent, no spawn marker
+    try:
+        run = fresh("launch_intent")
+        store = StateStore(run)
+        store.append_event("launch_intent", {"task": "W0-03", "revision": 4, "spawned": False})
+        state = mini_state(run, extra={"launch_intent_revision": 4})
+        intents = [e for e in store.load_events() if e["kind"] == "launch_intent"]
+        chain_ok, _ = StateStore(run).verify_chain()
+        record("crash_after_launch_intent_before_spawn",
+               len(intents) == 1 and chain_ok
+               and "spawned" not in state.get("tasks", {}).get("W0-03", {}),
+               "1 durable intent, no spawn marker; replay (not memory) decides respawn")
+    except Exception as exc:  # noqa: BLE001
+        record("crash_after_launch_intent_before_spawn", False, "exception %s" % exc)
+
+    # state_ahead_of_log_rejected: forged snapshot head no longer matches the chain
+    try:
+        run = fresh("state_ahead")
+        store = StateStore(run)
+        state = mini_state(run)
+        forged = dict(state, revision=9, events_head_hash="f" * 64)
+        with open(store.state_path, "w") as fh:
+            json.dump(forged, fh)
+        mismatch = StateStore(run).load_state()["events_head_hash"] != store.head_hash()
+        record("state_ahead_of_log_rejected", mismatch,
+               "snapshot head != chain head detected=%s -> CONTRACT_CONFLICT for holder" % mismatch)
+    except Exception as exc:  # noqa: BLE001
+        record("state_ahead_of_log_rejected", False, "exception %s" % exc)
+
+    # budget_preflight_infeasible: exhausted attempt budget refuses launch
+    try:
+        run = fresh("budget")
+        mini_state(run, attempt=5)
+        rc, _ = call_task(run, "RUNNING")
+        record("budget_preflight_infeasible", rc == 30,
+               "attempt=5/5 launch refused rc=%s (budget exhausted pre-flight)" % rc)
+    except Exception as exc:  # noqa: BLE001
+        record("budget_preflight_infeasible", False, "exception %s" % exc)
+
+    # busy_lock_no_state_or_event_write: live holder blocks task writes untouched
+    try:
+        run = fresh("busy_lock")
+        os.makedirs(os.path.join(run, "observations"), exist_ok=True)
+        mini_state(run)
+        before = (open(os.path.join(run, "state.json"), "rb").read(),
+                  open(os.path.join(run, "events.jsonl"), "rb").read()
+                  if os.path.exists(os.path.join(run, "events.jsonl")) else b"")
+        holder = subprocess.Popen(
+            [sys.executable, os.path.abspath(__file__), "_hold-lock", "--run-dir", run],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        time.sleep(1.0)
+        rc, _ = call_task(run, "RUNNING")
+        after = (open(os.path.join(run, "state.json"), "rb").read(),
+                 open(os.path.join(run, "events.jsonl"), "rb").read()
+                 if os.path.exists(os.path.join(run, "events.jsonl")) else b"")
+        os.kill(holder.pid, signal.SIGKILL); holder.wait(timeout=5)
+        record("busy_lock_no_state_or_event_write",
+               rc == 75 and before == after,
+               "busy holder refused rc=%s; state/events bytes unchanged=%s" % (rc, before == after))
+    except Exception as exc:  # noqa: BLE001
+        record("busy_lock_no_state_or_event_write", False, "exception %s" % exc)
+
+    # busy_observation_exclusive_create: observation files are created exclusively
+    try:
+        obs = os.path.join(fresh("obs_excl"), "observations")
+        os.makedirs(obs, exist_ok=True)
+        path = os.path.join(obs, "probe.json")
+        fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644)
+        os.write(fd, b"first"); os.close(fd)
+        try:
+            os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            second_refused = False
+        except FileExistsError:
+            second_refused = True
+        record("busy_observation_exclusive_create", second_refused,
+               "O_EXCL second create refused=%s" % second_refused)
+    except Exception as exc:  # noqa: BLE001
+        record("busy_observation_exclusive_create", False, "exception %s" % exc)
+
+    # dead_holder_orphan_group_recovery: killed holder group frees the lock
+    try:
+        run = fresh("dead_holder")
+        holder = subprocess.Popen(
+            [sys.executable, "-c",
+             "import sys,time;sys.path.insert(0,%r);"
+             "from attachment_lifecycle_v5_runner import RunLock;"
+             "l=RunLock(%r);assert l.acquire_nb();print('held',flush=True);time.sleep(6)"
+             % (os.path.dirname(os.path.abspath(__file__)), run)],
+            stdout=subprocess.PIPE, start_new_session=True)
+        holder.stdout.readline()
+        os.killpg(os.getpgid(holder.pid), signal.SIGKILL)
+        holder.wait(timeout=5)
+        time.sleep(0.3)
+        recovered = RunLock(run).acquire_nb()
+        if recovered:
+            RunLock(run).release()
+        record("dead_holder_orphan_group_recovery", recovered,
+               "orphan group killed; lock reacquired=%s" % recovered)
+    except Exception as exc:  # noqa: BLE001
+        record("dead_holder_orphan_group_recovery", False, "exception %s" % exc)
+
+    # parallel_disjoint_ownership: two workers over disjoint owned paths each pass
+    try:
+        ctx = _selftest_ctx(fresh("disjoint"))
+        authority = ["run_dir/state.json", "run_dir/events.jsonl"]
+        ok1, why1 = V["worker_writes"]({"writes": ["src/a.erl"], "committed": False},
+                                       authority, ctx["owned"])
+        ok2, why2 = V["worker_writes"]({"writes": ["src/b.erl"], "committed": False},
+                                       authority, ctx["owned"])
+        record("parallel_disjoint_ownership", ok1 and ok2, "a:%s b:%s" % (why1, why2))
+    except Exception as exc:  # noqa: BLE001
+        record("parallel_disjoint_ownership", False, "exception %s" % exc)
+
+    # parallel_worker_crash_no_double_spawn: exactly one durable spawn record
+    try:
+        run = fresh("no_double_spawn")
+        store = StateStore(run)
+        store.append_event("launch_intent", {"task": "W0-03", "revision": 2, "spawned": False})
+        store.append_event("worker_spawned", {"task": "W0-03", "pid": 424242})
+        spawns = [e for e in store.load_events() if e["kind"] == "worker_spawned"]
+        chain_ok, _ = StateStore(run).verify_chain()
+        record("parallel_worker_crash_no_double_spawn",
+               len(spawns) == 1 and chain_ok,
+               "durable spawn records=%d chain=%s; replay cannot double-spawn" % (len(spawns), chain_ok))
+    except Exception as exc:  # noqa: BLE001
+        record("parallel_worker_crash_no_double_spawn", False, "exception %s" % exc)
+
+    # parallel_partial_commit_recovery: resume reconciles COMMITTING with PASS intact
+    try:
+        import io as _io
+        run = fresh("partial_commit")
+        state = {"run_id": os.path.basename(run), "revision": 1,
+                 "plan_dir": os.path.join(os.path.dirname(os.path.dirname(
+                     os.path.abspath(__file__))),
+                     "docs/architecture/attachment-lifecycle-v5"),
+                 "plan_manifest_sha256": sha256_file(os.path.join(
+                     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                     "docs/architecture/attachment-lifecycle-v5", "manifest.sha256")),
+                 "tasks": {"W0-01": {"state": "PASS", "attempt": 1},
+                           "W0-02": {"state": "COMMITTING", "attempt": 1,
+                                     "commit_vector": {"imboy": {"commit": "1" * 40}},
+                                     "next_action": "inspect vector"}},
+                 "gates": {}}
+        store = StateStore(run)
+        store.append_event("admit", {"synthetic": True})
+        store.write_snapshot(state)
+        buf = _io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            rc = cmd_resume(types.SimpleNamespace(run_dir=run))
+        report = json.loads(buf.getvalue())
+        rec = report.get("commit_unknown_reconciliation", {}).get("W0-02", {})
+        record("parallel_partial_commit_recovery",
+               rc == 0 and rec.get("vector") == {"imboy": {"commit": "1" * 40}}
+               and report.get("tasks_pass") == ["W0-01"],
+               "resume rc=%s reconciles COMMITTING vector, PASS intact" % rc)
+    except Exception as exc:  # noqa: BLE001
+        record("parallel_partial_commit_recovery", False, "exception %s" % exc)
+
+    # expired_original_owner_repair_no_go: same-revision blocked resume refused
+    try:
+        ok, why = V["blocked_resume"]({"blocked_reason": "device missing",
+                                       "blocked_revision": 7}, 7)
+        record("expired_original_owner_repair_no_go", ok is False, why)
+    except Exception as exc:  # noqa: BLE001
+        record("expired_original_owner_repair_no_go", False, "exception %s" % exc)
+
+    return out
+
+
 def _holder_hang_selftest(base_tmp):
     """Suspended live holder: bounded <=2s refusal, no state/event writes (02 §14)."""
     import signal
@@ -1244,12 +1848,15 @@ def cmd_selftest(_args):
     with tempfile.TemporaryDirectory(prefix="attv5-selftest-par-") as tmp:
         par = _parallel_selftests(tmp)
         hang_ok, hang_why = _holder_hang_selftest(tmp)
-    par_bad = [(n, w) for (n, r, w) in par if not r]
+        scenarios = _scenario_selftests(tmp)
+    par_bad = [(n, w) for (n, r, _w) in par if not r]
+    scen_bad = [(n, why) for (n, _r, why) in scenarios if not _r]
     summary = {
         "mutations_total": len(results),
         "mutations_rejected": len(results) - len(bad),
         "parallel_selftests": {n: r for (n, r, _w) in par},
         "holder_hang_bounded_refusal": {"passed": hang_ok, "detail": hang_why},
+        "scenarios": {n: {"passed": r, "detail": w} for (n, r, w) in scenarios},
     }
     print(json.dumps(summary, indent=1))
     if bad:
@@ -1258,7 +1865,10 @@ def cmd_selftest(_args):
     if par_bad:
         for n, w in par_bad:
             sys.stderr.write("parallel selftest failed: %s (%s)\n" % (n, w))
-    if bad or par_bad or not hang_ok:
+    if scen_bad:
+        for n, w in scen_bad:
+            sys.stderr.write("scenario selftest failed: %s (%s)\n" % (n, w))
+    if bad or par_bad or scen_bad or not hang_ok:
         return EXIT_NOGO
     return EXIT_OK
 
@@ -1464,6 +2074,9 @@ def main(argv):
     ad.add_argument("--run-dir", required=True)
     ad.add_argument("--authorization", required=True)
     ad.set_defaults(func=cmd_admit)
+    freeze = sub.add_parser("freeze-candidate")
+    freeze.add_argument("--run-dir", required=True)
+    freeze.set_defaults(func=cmd_freeze_candidate)
     nx = sub.add_parser("next")
     nx.add_argument("--run-dir")
     nx.set_defaults(func=cmd_next)
@@ -1478,6 +2091,14 @@ def main(argv):
     ag.add_argument("--run-dir", required=True)
     ag.add_argument("--gate", required=True)
     ag.set_defaults(func=cmd_accept_gate)
+    seal = sub.add_parser("seal-case")
+    seal.add_argument("--run-dir", required=True)
+    seal.add_argument("--task-id", required=True)
+    seal.add_argument("--case-id", required=True)
+    seal.add_argument("--case-dir", required=True)
+    seal.add_argument("--receipts", required=True)
+    seal.add_argument("--command", required=True)
+    seal.set_defaults(func=cmd_seal_case)
     tk = sub.add_parser("task")
     tk.add_argument("--run-dir")
     tk.add_argument("--task-id", required=True)

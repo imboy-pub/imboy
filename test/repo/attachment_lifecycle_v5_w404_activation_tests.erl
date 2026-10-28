@@ -69,20 +69,36 @@ setup_storage_fixture() ->
     Previous = application:get_env(imboy, attachment_storage_registry),
     Registry = attachment_storage:registry(),
     Namespace = <<"w404-", (binary:encode_hex(crypto:strong_rand_bytes(16), lowercase))/binary>>,
-    Root = filename:join("/tmp", binary_to_list(Namespace)),
+    %% Fixtures stay inside the run-owned disk root when the gate exports one.
+    Root = filename:join(
+        case os:getenv("V5_DISK_ROOT") of
+            DiskRoot when is_list(DiskRoot), DiskRoot =/= "" -> DiskRoot;
+            _ -> "/tmp"
+        end,
+        binary_to_list(Namespace)
+    ),
     ok = file:make_dir(Root),
     try
-        Record = #{driver => <<"disk">>, namespace => Namespace,
-            endpoint => list_to_binary("file://" ++ Root), container => <<"w404-fixture">>},
+        Record = #{
+            driver => <<"disk">>,
+            namespace => Namespace,
+            endpoint => list_to_binary("file://" ++ Root),
+            container => <<"w404-fixture">>
+        },
         Roots = maps:get(roots, Registry, #{}),
         ok = application:set_env(imboy, attachment_storage_registry, Registry#{
             roots => Roots#{Namespace => Record}
         }),
-        #{previous_registry => Previous, root => Root, namespace => Namespace,
-            locator => attachment_storage:locator_digest(Namespace, Record#{root_id => Namespace})}
-    catch Class:Reason:Stack ->
-        cleanup_storage_fixture(#{previous_registry => Previous, root => Root}),
-        erlang:raise(Class, Reason, Stack)
+        #{
+            previous_registry => Previous,
+            root => Root,
+            namespace => Namespace,
+            locator => attachment_storage:locator_digest(Namespace, Record#{root_id => Namespace})
+        }
+    catch
+        Class:Reason:Stack ->
+            cleanup_storage_fixture(#{previous_registry => Previous, root => Root}),
+            erlang:raise(Class, Reason, Stack)
     end.
 
 cleanup_storage_fixture(#{previous_registry := Previous, root := Root}) ->
@@ -219,8 +235,16 @@ w404_reconcile(Conn, Storage) ->
     ok.
 
 default_delete_noop(Namespace, Container, Key, Snapshot) ->
-    ?assertMatch(#{driver := disk, namespace := Namespace, container := Container,
-        key := Key, root_id := Namespace}, Snapshot),
+    ?assertMatch(
+        #{
+            driver := disk,
+            namespace := Namespace,
+            container := Container,
+            key := Key,
+            root_id := Namespace
+        },
+        Snapshot
+    ),
     ok.
 
 %% ---------- no-infinite-loop 8 ----------

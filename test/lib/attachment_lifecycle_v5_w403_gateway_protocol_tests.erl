@@ -167,10 +167,15 @@ setup_owned() ->
 
 %% Match the Disk storage fixtures: macOS /tmp is a symlink to /private/tmp.
 %% Register the physical temporary root; keep the production symlink guard intact.
+%% V5_DISK_ROOT pins fixtures inside the run-owned disk root from the allowlist.
 temp_dir() ->
-    case file:read_link_all("/tmp") of
-        {ok, Target} -> filename:absname(Target, "/");
-        {error, einval} -> "/tmp"
+    case os:getenv("V5_DISK_ROOT") of
+        Root when is_list(Root), Root =/= "" -> Root;
+        _ ->
+            case file:read_link_all("/tmp") of
+                {ok, Target} -> filename:absname(Target, "/");
+                {error, einval} -> "/tmp"
+            end
     end.
 
 own_resource(Key, Value) ->

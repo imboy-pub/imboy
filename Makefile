@@ -333,6 +333,9 @@ APP_VERSION = $(shell cat $(RELX_OUTPUT_DIR)/$(RELX_REL_NAME)/version)
 DIALYZER_EBIN_BEAMS = $(filter-out %_tests.beam, $(wildcard ebin/*.beam))
 DIALYZER_DIRS = $(DIALYZER_EBIN_BEAMS) $(wildcard $(DEPS_DIR)/hird_runtime/ebin/*.beam) deps
 DIALYZER_OPTS = -Wunmatched_returns --plt $(DIALYZER_PLT) -I $(CURDIR)/include $(DIALYZER_DIRS)
+# Project analysis uses BEAMs; erlang.mk parsed its source-mode prerequisites earlier.
+dialyze: deps app
+
 DIALYZER_WARNINGS ?= 50
 
 # Compile flags

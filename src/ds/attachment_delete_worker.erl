@@ -3,7 +3,7 @@
 %%% 协议（迁移 179 fn + 02 §6）：claim（SKIP LOCKED/lease 120s/attempts<8）
 %%% → driver 删字节 → ack(ok/failed)。调和（02 §6）：
 %%%   * 启动调和：reaper 回收过期租约（零删除，禁全桶扫）；
-%%%   * 周期 tick：有限批（≤100）+ reaper；
+%%%   * 周期 tick：有限批（≤100）；独立 attachment_delete_reaper 每30秒恢复租约；
 %%%   * blocked 终态不轮询（fn 候选天然排除——无第 9 次）；
 %%%   * DB 故障有界唤醒：tick 间隔指数退避（上限 10×），不无限快轮询；
 %%%   * 重启不重置 attempts（持久于行）。
@@ -37,7 +37,7 @@ start_link() ->
 init(_Opts) ->
     case application:get_env(imboy, attachment_delete_worker_enabled, false) of
         true ->
-            {ok, _} = reconcile(),
+            _ = reconcile(),
             erlang:send_after(?TICK_MS, self(), tick),
             {ok, #{enabled => true, fails => 0}};
         false ->
@@ -141,7 +141,7 @@ default_delete(_Ns, _Container, _Key, I) -> attachment_storage:delete_snapshot(I
 
 %% 启动/周期调和：reaper 过期租约（零删除——02 §6 禁全桶扫陌生对象）。
 reconcile() ->
-    elib_pg:with_conn(fun(Conn) -> reconcile(Conn) end, 30000).
+    attachment_gc_repo:v5_reap(?BATCH_LIMIT).
 
 reconcile(Conn) ->
     attachment_gc_repo:v5_reap(Conn, 100).

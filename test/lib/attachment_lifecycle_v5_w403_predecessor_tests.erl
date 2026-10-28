@@ -19,8 +19,11 @@ w403_predecessor_test_() ->
 
 run() ->
     Boot = eunit_runner:eunit_setup(),
-    try run_with_boot()
-    after eunit_runner:eunit_cleanup(Boot) end.
+    try
+        run_with_boot()
+    after
+        eunit_runner:eunit_cleanup(Boot)
+    end.
 
 run_with_boot() ->
     State = inttest_marker_db:provision(
@@ -39,13 +42,20 @@ run_with_boot() ->
             p_worker_disk_delete_done(Conn, DiskRoot),
             p_worker_crash_reap_disk(Conn, DiskRoot),
             p_entrypoint_intents_disk_env(Conn)
-        after cleanup_storage(Storage) end
-    after inttest_marker_db:release(State) end.
+        after
+            cleanup_storage(Storage)
+        end
+    after
+        inttest_marker_db:release(State)
+    end.
 
 setup_storage() ->
     Prior = application:get_env(imboy, attachment_storage_registry),
-    Root = filename:join(temp_dir(), "w403p-disk-" ++
-        binary_to_list(binary:encode_hex(crypto:strong_rand_bytes(12), lowercase))),
+    Root = filename:join(
+        temp_dir(),
+        "w403p-disk-" ++
+            binary_to_list(binary:encode_hex(crypto:strong_rand_bytes(12), lowercase))
+    ),
     ok = file:make_dir(Root),
     try
         ok = file:change_mode(Root, 8#700),
@@ -81,9 +91,15 @@ restore_registry({ok, Value}) -> application:set_env(imboy, attachment_storage_r
 restore_registry(undefined) -> application:unset_env(imboy, attachment_storage_registry).
 
 temp_dir() ->
-    case file:read_link_all("/tmp") of
-        {ok, Target} -> filename:absname(Target, "/");
-        {error, einval} -> "/tmp"
+    %% V5_DISK_ROOT pins fixtures inside the run-owned disk root registered in
+    %% the admission allowlist; /tmp remains the fallback for ad-hoc runs.
+    case os:getenv("V5_DISK_ROOT") of
+        Root when is_list(Root), Root =/= "" -> Root;
+        _ ->
+            case file:read_link_all("/tmp") of
+                {ok, Target} -> filename:absname(Target, "/");
+                {error, einval} -> "/tmp"
+            end
     end.
 
 seed_tenants(Conn) ->

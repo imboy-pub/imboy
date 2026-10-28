@@ -2264,8 +2264,9 @@
     },
     {
       "path": "imboyapp/ios/Podfile.lock",
-      "sha256": "fad5d1dc1747406fc0b56802bfaf118ab74c17c18c4c16825d8383fa92157fe5",
-      "action": "foreign; preserve exactly; overlap blocks owning task; do not stage/adopt"
+      "sha256": "20f791a15ad41016e08853304800801a52f482fd58bfcf703ffa00c5983295bc",
+      "action": "foreign; preserve exactly; overlap blocks owning task; do not stage/adopt",
+      "rebaseline_2026_10_27": "previous digest fad5d1dc1747406f superseded by committed lockfile refresh (imboyapp efb9c6cbd, mtime 2026-10-24, pre-dating this run); user re-authorized binding to the actually-present file"
     },
     {
       "path": "imboyapp/ios/Runner.xcodeproj/project.pbxproj",
@@ -2275,7 +2276,9 @@
     {
       "path": "imboyadmin/zcode-resume-prompt-v5.md",
       "sha256": "957bc4cdb794f6875e4df8eac117f8e4909679dcc3a13a79abeb03ddcc092ae6",
-      "action": "foreign; preserve exactly; overlap blocks owning task; do not stage/adopt"
+      "action": "recorded missing at 2026-10-27 rebaseline; never git-tracked; not referenced by any task files; do not restore or fabricate",
+      "status_2026_10_27": "missing",
+      "rebaseline_2026_10_27": "absent from the main worktree at takeover (present at 2026-10-13 plan freeze with digest above); user authorized recording the absence without restore"
     }
   ],
   "baseline_evidence": "evidence/current-baseline.json",
