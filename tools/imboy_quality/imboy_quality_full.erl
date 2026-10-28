@@ -168,7 +168,17 @@ run_standalone_fallback(PerRoot, Opts, Paths, CfgFn, OutDir) ->
 run_exclusive([], _Opts, _Paths, _CfgFn, Acc) ->
     Acc;
 run_exclusive([M | Rest], Opts, Paths, CfgFn, Acc) ->
-    WOpts = Opts#{schedulers => maps:get(schedulers, Opts, 2), config => CfgFn(0)},
+    %% 按根 env 覆盖（如 PG*/AG31_PG_*）：仅注入本根的 fresh VM，绝不进入普通 worker
+    Overlay =
+        case maps:get(exclusive_env_fn, Opts, undefined) of
+            undefined -> [];
+            Fn -> Fn(M)
+        end,
+    WOpts = Opts#{
+        schedulers => maps:get(schedulers, Opts, 2),
+        config => CfgFn(0),
+        env => maps:get(env, Opts, []) ++ Overlay
+    },
     Deadline = maps:get(exclusive_deadline_ms, Opts, 900000),
     T0 = erlang:monotonic_time(millisecond),
     R = imboy_quality_runner:run_group_in_worker([M], WOpts, Deadline, Paths),
