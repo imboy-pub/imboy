@@ -148,9 +148,18 @@ watermark_vectors() ->
             #{<<"unread_count">> := 3, <<"view_seq">> := 2},
             sub_row(?CH, ?SUBSCRIBER)
         ),
-        ok = channel_logic:mark_as_read(
-            ?SUBSCRIBER, erlang:integer_to_binary(?CH), <<>>
-        ),
+        SavedFlag = application:get_env(imboy, channel_legacy_mark_read_watermark),
+        try
+            ok = application:set_env(imboy, channel_legacy_mark_read_watermark, false),
+            ok = channel_logic:mark_as_read(
+                ?SUBSCRIBER, erlang:integer_to_binary(?CH), <<>>
+            )
+        after
+            case SavedFlag of
+                undefined -> application:unset_env(imboy, channel_legacy_mark_read_watermark);
+                {ok, Flag} -> application:set_env(imboy, channel_legacy_mark_read_watermark, Flag)
+            end
+        end,
         ?assertMatch(
             #{<<"unread_count">> := 0, <<"view_seq">> := 2},
             sub_row(?CH, ?SUBSCRIBER)

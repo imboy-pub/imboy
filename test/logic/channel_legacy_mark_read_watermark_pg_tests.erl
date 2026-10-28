@@ -11,8 +11,8 @@
 %%% imboy.channel_legacy_mark_read_watermark）。mark_as_read 在默认关
 %%% 下保持旧合同精确语义（只清聚合 unread_count、不触碰 view_seq，
 %%% channel_view_watermark_pg_tests V3 为该合同的回归锚）；开启后由
-%%% do_legacy_mark_read_advance_view 承担适配——本套件直调该步骤验证
-%%% 适配行为（不经进程级全局开关，与全量并发其他套件隔离）：
+%%% mark_as_read 经真实 config_ds 配置链承担适配。本套件保存并恢复
+%%% 进程级开关，必须与其他改应用环境/meck 的套件串行运行：
 %%% - 适配显式清到**当次服务端发布边界**（单语句 GREATEST：单调、
 %%%   不从聚合 unread 推断、迁移前状态不洗零）；
 %%% - 边界后新发布不被旧读清掉（update_seq > 边界仍计未查看）；
@@ -32,7 +32,7 @@
 
 cleanup_test_rows() ->
     lists:foreach(
-        fun({Sql, Params}) -> _ = elib_pg:execute(Sql, Params) end,
+        fun({Sql, Params}) -> {ok, _} = elib_pg:execute(Sql, Params) end,
         [
             {<<"DELETE FROM channel_message WHERE channel_id = ANY($1)">>, [
                 ?ALL_CHS
@@ -126,99 +126,95 @@ channel_legacy_mark_read_watermark_vectors_test_() ->
     ?TEST_WITH_DB_TIMEOUT(90, fun vectors/0).
 
 vectors() ->
+    SavedFlag = application:get_env(imboy, channel_legacy_mark_read_watermark),
     cleanup_test_rows(),
-    seed_test_rows(),
     try
-        %% ── V1：3 条发布 → 旧读适配推 view_seq 到当次边界 3，未查看 0。
-        ok = publish_n(?CH, 3),
-        {ok, 3} = channel_subscription_repo:advance_view_to_current(?CH, ?SUB),
-        3 = view_seq(?CH, ?SUB),
-        0 = unseen(?CH),
-
-        %% ── V2：边界后新发布不被旧读清掉——第 4 条发布后未查看 1；
-        %% 再次旧读 → 边界追到 4、未查看 0。
-        ok = publish_n(?CH, 4),
-        {ok, _} = elib_pg:execute(
-            <<"UPDATE channel SET publish_seq = 4 WHERE id = $1">>, [?CH]
-        ),
-        1 = unseen(?CH),
-        {ok, 4} = channel_subscription_repo:advance_view_to_current(?CH, ?SUB),
-        0 = unseen(?CH),
-
-        %% ── V3（旧/新混合·单调）：新端 mark_viewed(2)（旧边界）不倒退；
-        %% 发布到 5 后旧读推到当次边界 5。
-        {ok, 4} = channel_subscription_repo:advance_view(?CH, ?SUB, 2),
-        4 = view_seq(?CH, ?SUB),
-        ok = publish_n(?CH, 5),
-        {ok, _} = elib_pg:execute(
-            <<"UPDATE channel SET publish_seq = 5 WHERE id = $1">>, [?CH]
-        ),
-        {ok, 5} = channel_subscription_repo:advance_view_to_current(?CH, ?SUB),
-        0 = unseen(?CH),
-
-        %% ── V4（逻辑层端到端·默认关）：mark_as_read 只清零聚合
-        %% unread_count、不触碰 view_seq（§10.4 开关关闭 = 旧合同）；
-        %% 随后直调适配步骤验证开启后水位推进到当次边界 6。
-        ok = publish_n(?CH, 6),
-        {ok, _} = elib_pg:execute(
-            <<"UPDATE channel SET publish_seq = 6 WHERE id = $1">>, [?CH]
-        ),
-        1 = unseen(?CH),
-        meck:new(channel_logic_common, [no_link]),
-        meck:expect(channel_logic_common, resolve_channel_id, 1, fun(_Bin) -> ?CH end),
-        meck:expect(
-            channel_logic_common,
-            ensure_channel_content_access,
-            2,
-            fun(_Uid, _Ch) -> ok end
-        ),
+        seed_test_rows(),
+        ok = application:set_env(imboy, channel_legacy_mark_read_watermark, false),
         meck:new(channel_logic_notify, [no_link]),
         meck:expect(
             channel_logic_notify,
             notify_channel_unread_count,
-            3,
-            fun(_Ch, _Uid, _N) -> ok end
+            fun(_ChannelId, _Uid, 0) -> ok end
         ),
-        ok = channel_logic_message:mark_as_read(?SUB, <<"legacy">>, <<"m">>),
-        meck:unload(channel_logic_common),
-        meck:unload(channel_logic_notify),
-        5 = view_seq(?CH, ?SUB),
-        {ok, #{<<"unread_count">> := 0}} =
-            elib_pg:one(
-                <<
-                    "SELECT unread_count FROM channel_subscription "
-                    "WHERE channel_id = $1 AND user_id = $2"
-                >>,
-                [?CH, ?SUB]
-            ),
-        ok = channel_logic_message:do_legacy_mark_read_advance_view(?CH, ?SUB),
-        6 = view_seq(?CH, ?SUB),
-        0 = unseen(?CH),
-
-        %% ── V5：未订阅频道适配返回 not_subscribed；适配步骤与旧端点
-        %% 均静默 ok 不炸。
-        {error, not_subscribed} =
-            channel_subscription_repo:advance_view_to_current(?CH2, ?SUB),
-        ok = channel_logic_message:do_legacy_mark_read_advance_view(?CH2, ?SUB),
-        meck:new(channel_logic_common, [no_link]),
-        meck:expect(channel_logic_common, resolve_channel_id, 1, fun(_Bin) -> ?CH2 end),
-        meck:expect(
-            channel_logic_common,
-            ensure_channel_content_access,
-            2,
-            fun(_Uid, _Ch) -> ok end
-        ),
-        meck:new(channel_logic_notify, [no_link]),
-        meck:expect(
-            channel_logic_notify,
-            notify_channel_unread_count,
-            3,
-            fun(_Ch, _Uid, _N) -> ok end
-        ),
-        ok = channel_logic_message:mark_as_read(?SUB, <<"nosub">>, <<"m">>),
-        meck:unload(channel_logic_common),
-        meck:unload(channel_logic_notify),
+        repository_vectors(),
+        entry_vectors(),
+        unsubscribed_vector(),
+        ?assert(meck:validate(channel_logic_notify)),
         ok
     after
+        case lists:member(channel_logic_notify, meck:mocked()) of
+            true -> meck:unload(channel_logic_notify);
+            false -> ok
+        end,
+        case SavedFlag of
+            undefined -> application:unset_env(imboy, channel_legacy_mark_read_watermark);
+            {ok, Flag} -> application:set_env(imboy, channel_legacy_mark_read_watermark, Flag)
+        end,
         cleanup_test_rows()
     end.
+
+repository_vectors() ->
+    ok = publish_n(?CH, 3),
+    {ok, 3} = channel_subscription_repo:advance_view_to_current(?CH, ?SUB),
+    3 = view_seq(?CH, ?SUB),
+    0 = unseen(?CH),
+    ok = publish_n(?CH, 4),
+    1 = unseen(?CH),
+    {ok, 4} = channel_subscription_repo:advance_view_to_current(?CH, ?SUB),
+    0 = unseen(?CH),
+    {ok, 4} = channel_subscription_repo:advance_view(?CH, ?SUB, 2),
+    4 = view_seq(?CH, ?SUB),
+    ok = publish_n(?CH, 5),
+    {ok, 5} = channel_subscription_repo:advance_view_to_current(?CH, ?SUB),
+    0 = unseen(?CH).
+
+entry_vectors() ->
+    ok = publish_n(?CH, 6),
+    {ok, 1} = elib_pg:execute_count(
+        <<
+            "UPDATE channel_subscription SET unread_count = 9 "
+            "WHERE channel_id = $1 AND user_id = $2"
+        >>,
+        [?CH, ?SUB]
+    ),
+    1 = unseen(?CH),
+    ok = mark_read(?CH),
+    5 = view_seq(?CH, ?SUB),
+    ?assertEqual(
+        {ok, #{<<"unread_count">> => 0}},
+        elib_pg:one(
+            <<
+                "SELECT unread_count FROM channel_subscription "
+                "WHERE channel_id = $1 AND user_id = $2"
+            >>,
+            [?CH, ?SUB]
+        )
+    ),
+    1 = unseen(?CH),
+    ok = application:set_env(imboy, channel_legacy_mark_read_watermark, true),
+    ok = mark_read(?CH),
+    6 = view_seq(?CH, ?SUB),
+    0 = unseen(?CH),
+    ok = publish_n(?CH, 7),
+    1 = unseen(?CH),
+    6 = view_seq(?CH, ?SUB),
+    ok = mark_read(?CH),
+    ok = mark_read(?CH),
+    7 = view_seq(?CH, ?SUB),
+    0 = unseen(?CH).
+
+unsubscribed_vector() ->
+    {error, not_subscribed} =
+        channel_subscription_repo:advance_view_to_current(?CH2, ?SUB),
+    ok = mark_read(?CH2),
+    ?assertEqual(
+        {ok, []},
+        elib_pg:query(
+            <<"SELECT id FROM channel_subscription WHERE channel_id = $1 AND user_id = $2">>,
+            [?CH2, ?SUB]
+        )
+    ).
+
+mark_read(ChannelId) ->
+    channel_logic:mark_as_read(?SUB, integer_to_binary(ChannelId), <<"m">>).
