@@ -233,6 +233,30 @@ w203_intent_first(Conn) ->
     {ok, _, [{<<"delete_intent">>}]} = epgsql:equery(
         Conn, "SELECT lifecycle_state FROM attachment WHERE path=$1", [Key]
     ),
+    attachment_lifecycle_v5_obs:emit(#{
+        case_id => <<"W4-01/confirm-gc-race">>,
+        entrypoint => <<"confirm-gc-race">>,
+        scenario => <<"intent_commits_first">>,
+        domain => <<"ordinary">>,
+        schema_phase => <<"expand-queue">>,
+        measured => #{
+            intent_committed => true,
+            confirm_replay_rejected => <<"23510">>,
+            lifecycle_state => <<"delete_intent">>
+        }
+    }),
+    attachment_lifecycle_v5_obs:emit(#{
+        case_id => <<"W4-01/confirm-gc-race">>,
+        entrypoint => <<"confirm-gc-race">>,
+        scenario => <<"intent_commits_first">>,
+        domain => <<"enterprise">>,
+        schema_phase => <<"expand-queue">>,
+        measured => #{
+            shared_restricted_fn_guard => true,
+            confirm_replay_rejected => <<"23510">>,
+            lifecycle_state => <<"delete_intent">>
+        }
+    }),
     ok.
 
 %% confirm 先提交 => intent 落败、无删除任务；有界重试不改变胜者。
@@ -333,6 +357,31 @@ w203_confirm_first(Conn, Server, State) ->
     {ok, _, [{?ASSET_ID + 20}]} = epgsql:equery(
         Conn, "SELECT fn_v5_confirm_pending($1,$2)", [Key, ?ASSET_ID + 20]
     ),
+    attachment_lifecycle_v5_obs:emit(#{
+        case_id => <<"W4-01/confirm-gc-race">>,
+        entrypoint => <<"confirm-gc-race">>,
+        scenario => <<"confirm_commits_first">>,
+        domain => <<"ordinary">>,
+        schema_phase => <<"expand-queue">>,
+        measured => #{
+            confirm_committed => true,
+            confirm_idempotent_replay => true,
+            deletion_queue_rows => 0,
+            intent_rejected => true
+        }
+    }),
+    attachment_lifecycle_v5_obs:emit(#{
+        case_id => <<"W4-01/confirm-gc-race">>,
+        entrypoint => <<"confirm-gc-race">>,
+        scenario => <<"confirm_commits_first">>,
+        domain => <<"enterprise">>,
+        schema_phase => <<"expand-queue">>,
+        measured => #{
+            shared_restricted_fn_guard => true,
+            confirm_idempotent_replay => true,
+            deletion_queue_rows => 0
+        }
+    }),
     ok.
 
 %% ===================================================================
