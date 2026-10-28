@@ -73,7 +73,13 @@ trusted(State) ->
         task_id => maps:get(<<"task_id">>, State, <<>>),
         mode => mode_atom(maps:get(<<"execution_mode">>, State, undefined)),
         goal => mode_atom(maps:get(<<"execution_goal">>, State, undefined)),
-        owner_verified => is_map(maps:get(<<"owner">>, State, null))
+        owner_verified => is_map(maps:get(<<"owner">>, State, null)),
+        %% G-HEAVY 由 STATE.resource_admission 真实证据决定，命令行不能抬权
+        heavy_admitted =>
+            case maps:get(<<"resource_admission">>, State, #{}) of
+                #{<<"status">> := <<"ADMITTED_FOR_HEAVY">>} -> true;
+                _ -> false
+            end
     }.
 
 mode_atom(<<"LIMITED_PARALLEL">>) -> limited_parallel;
@@ -90,7 +96,7 @@ parse(["selftest"]) -> selftest;
 parse(["admission", "--check-only"]) -> admission_check_only;
 parse(["guard"]) -> guard;
 parse(["eunit", "--full" | _]) -> eunit_full;
-parse(["eunit", "--group=" ++ _ | _]) -> eunit_group;
+parse(["eunit", "--group=" ++ ModsStr | _]) -> {eunit_group, ModsStr};
 parse(["report"]) -> report;
 parse(_) -> erlang:error(usage).
 
@@ -105,6 +111,7 @@ enforce(Ctx, Op) ->
 
 permit_op(selftest) -> synthetic_selftest;
 permit_op(admission_check_only) -> admission_check_only;
+permit_op({eunit_group, _}) -> eunit_group;
 permit_op(Op) -> Op.
 
 %% ---- 执行 ----
@@ -189,11 +196,239 @@ dispatch(guard, _Ctx, Ctrl) ->
     Out = filename:join(Ctrl, "evidence/guard-latest.json"),
     {ok, _} = imboy_report_write(Out, Result),
     {Result, Out};
-dispatch(eunit_full, _Ctx, _Ctrl) ->
-    %% G-HEAVY 许可由 enforce 校验；执行体按卡接线（P1-04 基线 / P1-12 pilot）。
-    erlang:error(eunit_full_wiring_per_card);
+dispatch(eunit_full, _Ctx, Ctrl) ->
+    %% P1-10/P1-12 真实接线：分片执行完整 U（普通根）。G-HEAVY 已由 enforce 校验。
+    %% 环境：IMBOY_QUALITY_WORKERS（默认 2）、EUNIT_CONFIG（默认 config/sys.local）。
+    %% 每 worker 独立 http 端口副本（19980+K / 19970+K），防 eaddrinuse。
+    {ok, Repo} = file:get_cwd(),
+    require_test_build(Repo),
+    RunId = run_id(),
+    Workers = env_int("IMBOY_QUALITY_WORKERS", 2),
+    #{ordinary := Ordinary, excluded := Excl} = imboy_quality_full:inventory(Repo),
+    Est = load_estimates(Ctrl),
+    Opts = #{
+        repo => Repo,
+        ctrl => Ctrl,
+        worker_count => Workers,
+        schedulers => 2,
+        deadline_ms => 3000000,
+        process_limit => 32768,
+        estimates => Est,
+        env => full_env(Repo),
+        spec_wrapper => spec_wrapper(Repo),
+        worker_config_fn => fun(K) -> config_for_worker(Repo, K) end
+    },
+    try
+        {Result0, OutDir} = imboy_quality_full:run(Ordinary, Opts, RunId),
+        Result = Result0#{
+            <<"excluded_roots">> => [atom_to_binary(M) || M <- Excl],
+            <<"excluded_count">> => length(Excl)
+        },
+        {ok, _} = imboy_report_write(filename:join(OutDir, "result.json"), Result),
+        {Result, OutDir}
+    after
+        cleanup_worker_configs(Repo)
+    end;
+dispatch({eunit_group, ModsStr}, _Ctx, Ctrl) ->
+    %% P1-10 诊断入口（FRAMEWORK_DESIGN §2：--group 仅诊断，报告标 PARTIAL，
+    %% 不产生 full PASS）。单 worker 单 VM 顺序执行指定根，用于修复验证与
+    %% 定向取证；不消耗 full 预算。
+    {ok, Repo} = file:get_cwd(),
+    require_test_build(Repo),
+    Mods = parse_group(ModsStr),
+    #{ordinary := Ordinary} = imboy_quality_full:inventory(Repo),
+    Unknown = [M || M <- Mods, not lists:member(M, Ordinary)],
+    case Unknown of
+        [] -> ok;
+        _ -> erlang:error({roots_not_in_ordinary_u, Unknown})
+    end,
+    Opts = #{
+        repo => Repo,
+        ctrl => Ctrl,
+        worker_count => 1,
+        schedulers => 2,
+        deadline_ms => 3000000,
+        process_limit => 32768,
+        estimates => #{},
+        out_prefix => "group-",
+        env => full_env(Repo),
+        spec_wrapper => spec_wrapper(Repo),
+        worker_config_fn => fun(K) -> config_for_worker(Repo, K) end
+    },
+    try
+        {Result0, OutDir} = imboy_quality_full:run(Mods, Opts, run_id()),
+        Result = Result0#{<<"scope">> => <<"PARTIAL">>, <<"op">> => <<"eunit_group">>},
+        {ok, _} = imboy_report_write(filename:join(OutDir, "result.json"), Result),
+        {Result, OutDir}
+    after
+        cleanup_worker_configs(Repo)
+    end;
 dispatch(eunit_group, _Ctx, _Ctrl) ->
-    erlang:error(eunit_group_wiring_per_card).
+    erlang:error(eunit_group_requires_modlist).
+
+%% ---- full/group 辅助 ----
+
+run_id() ->
+    {{Y, Mo, D}, {H, Mi, S}} = calendar:universal_time(),
+    lists:flatten(
+        io_lib:format(
+            "~4..0B~2..0B~2..0BT~2..0B~2..0B~2..0BZ",
+            [Y, Mo, D, H, Mi, S]
+        )
+    ).
+
+parse_group(ModsStr) ->
+    Mods = [
+        list_to_atom(string:trim(P))
+     || P <- string:split(ModsStr, ",", all),
+        string:trim(P) =/= []
+    ],
+    case Mods of
+        [] -> erlang:error(empty_group);
+        _ -> Mods
+    end.
+
+%% test-build 完整性预检：legacy 入口 eunit 目标以 test-build 为前置条件；
+%% 标记缺失说明 ebin 可能是非 -DTEST 构建（白盒导出缺失→大面积 undef）。
+require_test_build(Repo) ->
+    Marker = filename:join(Repo, ".erlang.mk/imboy.test"),
+    case filelib:is_regular(Marker) of
+        true ->
+            ok;
+        false ->
+            erlang:error(
+                {test_build_marker_missing, Marker,
+                    {hint, <<"run: IMBOYENV=local make test-build">>}}
+            )
+    end.
+
+%% legacy 由 erlang.mk export ERL_LIBS=$(APPS_DIR):$(DEPS_DIR)（相对 cwd），
+%% deps 以最低优先级进路径且 code:lib_dir(Dep) 可解析。此处显式绝对路径等价。
+%% Makefile:349-357 export TEST_HTTP_PORT=0：eunit_setup 以 test_http_port/0
+%% 覆盖 -config 的 http_port（默认 19800，被同机 VM 占用即 eaddrinuse 连锁），
+%% 0 = 内核随机端口；Makefile:3-4 export PROJECT_VERSION；Makefile:44-62 的
+%% LLM key 导出按 .env.local > .env 首个非空定义（文件缺失则不导出，与 legacy 同）。
+full_env(Repo) ->
+    Version =
+        case file:read_file(filename:join(Repo, "VERSION")) of
+            {ok, V} -> string:trim(binary_to_list(V));
+            _ -> ""
+        end,
+    [
+        {"ERL_LIBS", filename:join(Repo, "apps") ++ ":" ++ filename:join(Repo, "deps")},
+        {"IMBOYENV", "local"},
+        {"TEST_HTTP_PORT", "0"},
+        {"PROJECT_VERSION", Version}
+    ] ++ llm_keys(Repo).
+
+llm_keys(Repo) ->
+    Files = [filename:join(Repo, F) || F <- [".env.local", ".env"]],
+    [
+        {K, V}
+     || K <- ["BIGMODEL_API_KEY", "ARK_API_KEY", "BAILIAN_API_KEY"],
+        V <- [env_key(K, Files)],
+        V =/= undefined
+    ].
+
+env_key(_K, []) ->
+    undefined;
+env_key(K, [F | Rest]) ->
+    case file:read_file(F) of
+        {ok, B} ->
+            Prefix = list_to_binary(K ++ "="),
+            Size = byte_size(Prefix),
+            Vals = [
+                binary:part(L, Size, byte_size(L) - Size)
+             || L <- binary:split(B, <<"\n">>, [global]),
+                byte_size(L) >= Size,
+                binary:part(L, 0, Size) =:= Prefix
+            ],
+            case Vals of
+                [V | _] when V =/= <<>> -> binary_to_list(V);
+                _ -> env_key(K, Rest)
+            end;
+        _ ->
+            env_key(K, Rest)
+    end.
+
+%% 项目 Makefile:188 EUNIT_TEST_SPEC 以 talk_record_owned_eunit_fixture:entry/1
+%% 包裹每个根（budgets 内根变单叶超时包裹，isolated_pg_fixture 子节点执行）。
+%% 等价对照（EQ01）必须同规格；合成自测环境无该模块时回退裸模块。
+spec_wrapper(Repo) ->
+    case
+        filelib:is_regular(
+            filename:join(Repo, "test/talk_record_owned_eunit_fixture.beam")
+        )
+    of
+        true -> {talk_record_owned_eunit_fixture, entry};
+        false -> undefined
+    end.
+
+env_int(Name, Default) ->
+    case os:getenv(Name) of
+        false -> Default;
+        V -> list_to_integer(V)
+    end.
+
+%% 与 Makefile eunit-local 相同口径：私有 http 端口替换副本，按调用唯一命名，
+%% PG 直连（EUNIT_USE_RELAY=0 语义），不写 git。
+%% 每 worker K（0 起）一份独立配置副本：http 19980+K / adm 19970+K，
+%% 文件名含 worker 索引与 pid，防并发覆写（与 eunit-local relay 同口径，直连 PG）。
+config_for_worker(Repo, K) ->
+    Base =
+        case os:getenv("EUNIT_CONFIG") of
+            false -> "config/sys.local";
+            B -> B
+        end,
+    {ok, Bin} = file:read_file(filename:join(Repo, Base ++ ".config")),
+    Sub = fun(Bin0, From, To) -> binary:replace(Bin0, From, To, [global]) end,
+    Out0 = Sub(
+        Bin,
+        <<"{http_port, 9800}">>,
+        list_to_binary(io_lib:format("{http_port, ~p}", [19980 + K]))
+    ),
+    Out = Sub(
+        Out0,
+        <<"{http_port_adm, 9706}">>,
+        list_to_binary(io_lib:format("{http_port_adm, ~p}", [19970 + K]))
+    ),
+    Path = filename:join(
+        Repo,
+        "config/sys.quality." ++ os:getpid() ++ "." ++
+            integer_to_list(K)
+    ),
+    ok = file:write_file(Path ++ ".config", Out),
+    Path.
+
+cleanup_worker_configs(Repo) ->
+    %% glob 绝对化（cwd 无关）；异常路径（含被杀进程遗留）一并回收
+    [
+        file:delete(filename:join([Repo, "config", F]))
+     || F <- filelib:wildcard(filename:join(Repo, "config/sys.quality.*"))
+    ],
+    ok.
+
+%% 保留：单份配置生成（兼容旧调用点）
+relay_config(Repo) ->
+    config_for_worker(Repo, 0).
+
+load_estimates(Ctrl) ->
+    %% 优先读取上一次分片 per_root.term 的实测 wall_ms 作为 LPT 估计（无则保守 3000ms）
+    case filelib:wildcard(filename:join([Ctrl, "evidence", "full-*", "per_root.term"])) of
+        [] ->
+            #{};
+        Files ->
+            Latest = lists:last(lists:sort(Files)),
+            case file:consult(Latest) of
+                {ok, [PerRoot]} when is_map(PerRoot) ->
+                    maps:from_list([
+                        {M, max(500, maps:get(wall_ms, R, 3000))}
+                     || {M, R} <- maps:to_list(PerRoot), is_atom(M), is_map(R)
+                    ]);
+                _ ->
+                    #{}
+            end
+    end.
 
 %% ---- 合成自测 ----
 
@@ -370,11 +605,23 @@ imboy_report_write(Path, Map) ->
 
 %% ---- 退出码 ----
 
-exit_code(#{<<"op">> := <<"guard">>, <<"verdict">> := <<"clean">>}, _) -> 0;
-exit_code(#{<<"op">> := <<"guard">>, <<"verdict">> := <<"violations">>}, _) -> 1;
-exit_code(#{<<"fail">> := 0, <<"cancel">> := _}, _) -> 0;
+exit_code(#{<<"op">> := <<"guard">>, <<"verdict">> := <<"clean">>}, _) ->
+    0;
+exit_code(#{<<"op">> := <<"guard">>, <<"verdict">> := <<"violations">>}, _) ->
+    1;
+%% full：根缺失/组级失败 → 3（全集不完整）；测试失败/取消 → 1；全绿 → 0
+exit_code(#{<<"run_id">> := _, <<"roots_missing">> := M}, _) when M > 0 -> 3;
+exit_code(#{<<"run_id">> := _, <<"fail">> := F, <<"cancel">> := C, <<"roots_failed">> := R}, _) when
+    F > 0; C > 0; R > 0
+->
+    1;
+exit_code(#{<<"run_id">> := _}, _) ->
+    0;
+exit_code(#{<<"fail">> := 0, <<"cancel">> := _}, _) ->
+    0;
 exit_code(#{<<"fail">> := F}, _) when F > 0 -> 1;
 exit_code(#{<<"cancel">> := C}, _) when C > 0 -> 3;
-exit_code(_, _) -> 0.
+exit_code(_, _) ->
+    0.
 
 encode(Term) -> unicode:characters_to_binary(io_lib:format("~tp~n", [Term])).
