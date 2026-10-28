@@ -103,10 +103,14 @@ is_deleted(Uid, ConversationId, Type) ->
 -spec is_deleted_tx(pid(), integer(), integer(), binary()) -> boolean().
 is_deleted_tx(Conn, Uid, ConversationId, Type) ->
     case elib_pg:query(Conn, is_deleted_sql(), [Uid, ConversationId, Type]) of
-        {ok, [#{<<"count">> := Count}]} when Count > 0 ->
-            true;
+        {ok, [#{<<"count">> := Count}]} when is_integer(Count), Count >= 0 ->
+            Count > 0;
+        {ok, []} ->
+            false;
+        {error, Reason} ->
+            throw({abort_tx, {is_deleted, Reason}});
         _ ->
-            false
+            throw({abort_tx, {is_deleted, invalid_result}})
     end.
 
 is_deleted_sql() ->
@@ -167,9 +171,13 @@ restore_tx(Conn, Uid, ConversationId, Type) ->
     end.
 
 restore_sql() ->
-    Tb = tablename(),
-    Where = <<" WHERE user_id = $1 AND conversation_id = $2 AND conversation_type = $3">>,
-    <<"DELETE FROM ", Tb/binary, Where/binary>>.
+    <<"DELETE FROM ", (tablename())/binary,
+        " p"
+        " WHERE p.user_id = $1 AND p.conversation_id = $2 AND p.conversation_type = $3"
+        " AND (p.conversation_type = 'c2c' OR EXISTS ("
+        "  SELECT 1 FROM public.group_member_generation g"
+        "  WHERE g.group_id = p.conversation_id AND g.user_id = p.user_id"
+        "  AND g.end_seq IS NULL AND g.id = p.generation_id))">>.
 
 %% @doc 删除用户的所有删除记录（用于测试）
 %% @param Uid 用户ID

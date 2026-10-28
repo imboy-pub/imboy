@@ -14,6 +14,7 @@
 -export([set_manual_pending/4]).
 -export([bump_conversation_version/2]).
 -export([bump_conversation_version_tx/3]).
+-export([lock_preferences_tx/2]).
 -export([conversation_uk3/3]).
 
 -include("log.hrl").
@@ -110,7 +111,7 @@ set_manual_pending(Uid, Uk3, Target, ExpectedVersion) when
                 Setting =
                     case Setting0 of
                         M when is_map(M) -> M;
-                        _ -> #{}
+                        absent -> #{}
                     end,
                 Mp0 = maps:get(<<"manual_pending">>, Setting, #{}),
                 Mp0b =
@@ -147,8 +148,8 @@ set_manual_pending(Uid, Uk3, Target, ExpectedVersion) when
                             Conn, Uid, Setting, Mp0b, Uk3, Target, Current, Now
                         )
                 end;
-            {error, _} = Err ->
-                Err
+            {error, Reason} ->
+                throw({abort_tx, {user_setting_read, Reason}})
         end
     end);
 set_manual_pending(_Uid, _Uk3, _Target, _Expected) ->
@@ -172,12 +173,19 @@ write_manual_pending(Conn, Uid, Setting, Mp0b, Uk3, Target, V, Now) ->
         <<"version">> => V,
         <<"updated_at">> => Now
     },
-    ok = user_setting_repo:upsert_setting_tx(
-        Conn,
-        Uid,
-        Setting#{<<"manual_pending">> => maps:put(Uk3, NewEntry, Mp0b)}
-    ),
-    {ok, NewEntry}.
+    case
+        user_setting_repo:upsert_setting_tx(
+            Conn, Uid, Setting#{<<"manual_pending">> => maps:put(Uk3, NewEntry, Mp0b)}
+        )
+    of
+        ok -> {ok, NewEntry};
+        {error, Reason} -> throw({abort_tx, {user_setting_write, Reason}})
+    end.
+
+%% @doc 事务内先锁定该用户的会话偏好，再判定或变更业务状态。
+-spec lock_preferences_tx(pid(), binary() | integer()) -> ok.
+lock_preferences_tx(Conn, Uid) ->
+    user_setting_repo:lock_preferences_tx(Conn, Uid).
 
 %% @doc W09.c（J17.e/D7）：旧写动作（pin/unpin/delete/restore，无版本参数）
 %% 与版本推进同一业务事务推进该会话版本——新端凭 stale expected_version
@@ -192,8 +200,8 @@ bump_conversation_version(_Uid, _Uk3) ->
 
 %% W09.c（J17.e/D7）：版本推进的同事务内核——调用方已持有业务事务 Conn
 %% 时（旧写 pin/unpin/delete/restore 与版本推进原子化），在该 Conn 上
-%% 行锁（SELECT ... FOR UPDATE）→ 读 → 推进该会话版本；条目不存在则以
-%% value=false、version=1 建立。返回 {error,_} 令外层 with_tx 回滚。
+%% 偏好互斥 → 行锁读取最新设置 → 推进该会话版本；条目不存在则以
+%% value=false、version=1 建立。读写失败抛 abort_tx 令外层 with_tx 回滚。
 -spec bump_conversation_version_tx(pid(), integer(), binary()) ->
     {ok, map()} | {error, term()}.
 bump_conversation_version_tx(Conn, Uid, Uk3) when Uk3 =/= <<>> ->
@@ -202,7 +210,7 @@ bump_conversation_version_tx(Conn, Uid, Uk3) when Uk3 =/= <<>> ->
             Setting =
                 case Setting0 of
                     M when is_map(M) -> M;
-                    _ -> #{}
+                    absent -> #{}
                 end,
             Mp0 = maps:get(<<"manual_pending">>, Setting, #{}),
             Mp0b =
@@ -223,8 +231,8 @@ bump_conversation_version_tx(Conn, Uid, Uk3) when Uk3 =/= <<>> ->
                         Conn, Uid, Setting, Mp0b, Uk3, false, 1, Now
                     )
             end;
-        {error, _} = Err ->
-            Err
+        {error, Reason} ->
+            throw({abort_tx, {user_setting_read, Reason}})
     end;
 bump_conversation_version_tx(_Conn, _Uid, _Uk3) ->
     {error, <<"人工待处理参数无效"/utf8>>}.

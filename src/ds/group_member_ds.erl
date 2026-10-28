@@ -207,7 +207,9 @@ active_generation_id_tx(Conn, Gid, Uid) ->
         >>,
     case elib_pg:query(Conn, Sql, [Gid, Uid]) of
         {ok, [#{<<"id">> := Id}]} when is_integer(Id), Id > 0 -> Id;
-        _ -> 0
+        {ok, []} -> 0;
+        {error, Reason} -> throw({abort_tx, {active_generation_id, Reason}});
+        _ -> throw({abort_tx, {active_generation_id, invalid_result}})
     end.
 
 %% gen_no 取该成员历史最大值+1；首代为 1。

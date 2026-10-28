@@ -54,6 +54,7 @@ delete(Uid, ConversationId, Type) ->
     %% 提交；任一步失败整体回滚。缓存失效在提交后执行。
     case
         elib_pg:with_tx(fun(Conn) ->
+            ok = user_setting_ds:lock_preferences_tx(Conn, Uid),
             case
                 conversation_delete_ds:is_conversation_deleted_tx(
                     Conn, Uid, ConversationId, Type
@@ -116,6 +117,7 @@ restore(Uid, ConversationId, Type) ->
     %% 为无变化重试——不推进版本、不推送。
     case
         elib_pg:with_tx(fun(Conn) ->
+            ok = user_setting_ds:lock_preferences_tx(Conn, Uid),
             case
                 conversation_delete_ds:restore_conversation_tx(
                     Conn, Uid, ConversationId, Type

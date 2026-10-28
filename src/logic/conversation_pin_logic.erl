@@ -39,6 +39,7 @@ pin(Uid, ConversationId, Type) ->
     %% 版本推进原子提交；任一步失败整体回滚，不再靠事后补偿冒充原子性。
     case
         elib_pg:with_tx(fun(Conn) ->
+            ok = user_setting_ds:lock_preferences_tx(Conn, Uid),
             case
                 conversation_pin_ds:is_conversation_pinned_tx(
                     Conn, Uid, ConversationId, Type
@@ -100,6 +101,7 @@ unpin(Uid, ConversationId, Type) ->
     %% 为无变化重试——不推进版本、不推送。
     case
         elib_pg:with_tx(fun(Conn) ->
+            ok = user_setting_ds:lock_preferences_tx(Conn, Uid),
             case
                 conversation_pin_ds:unpin_conversation_tx(
                     Conn, Uid, ConversationId, Type

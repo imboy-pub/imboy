@@ -61,6 +61,7 @@ tx_mocks(IsDeletedFun) ->
             end}
         ]},
         {user_setting_ds, [
+            {'lock_preferences_tx', 2, fun(_Conn, _Uid) -> ok end},
             {'bump_conversation_version_tx', 3, fun(_Conn, _Uid, _Uk3) ->
                 {ok, #{<<"version">> => 1}}
             end}
