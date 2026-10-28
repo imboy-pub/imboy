@@ -66,6 +66,7 @@ pipeline(State) ->
     concurrent_write_guard(C, Uid, Rid),
     unknown_guard(C, Uid, Rid),
     retention_blocks_sweep(C, Uid, Rid),
+    expiry_error_rolls_back(C, Rid, Eid),
     expire(C, Rid, Eid, Ready),
     failed_export_poll(C, Uid, Rid),
     released_cleanup_retry(C, Uid),
@@ -81,6 +82,35 @@ claim() ->
             300
         )
     end).
+
+expiry_error_rolls_back(C, Rid, Eid) ->
+    {ok, _} = elib_pg:execute(
+        C,
+        <<"UPDATE talk_record_export SET expires_at=now()-interval '1 second' WHERE id=$1">>,
+        [Eid]
+    ),
+    {ok, Before} = talk_record_export_repo:find_tx(C, Rid, Eid),
+    ?assertEqual(<<"ready">>, maps:get(<<"state">>, Before)),
+    ok = meck:new(talk_record_attachment_adapter, [passthrough, no_link]),
+    try
+        ok = meck:expect(
+            talk_record_attachment_adapter,
+            evaluate_release_blockers_tx,
+            fun
+                (_Conn, TargetRid) when TargetRid =:= Rid -> {error, injected_failure};
+                (OtherConn, OtherRid) -> meck:passthrough([OtherConn, OtherRid])
+            end
+        ),
+        ?assertEqual({error, injected_failure}, talk_record_export_artifact:sweep()),
+        ?assert(
+            meck:called(talk_record_attachment_adapter, evaluate_release_blockers_tx, ['_', Rid])
+        )
+    after
+        meck:unload(talk_record_attachment_adapter)
+    end,
+    {ok, After} = talk_record_export_repo:find_tx(C, Rid, Eid),
+    ?assertEqual(<<"ready">>, maps:get(<<"state">>, After)),
+    ?assertEqual(maps:get(<<"updated_at">>, Before), maps:get(<<"updated_at">>, After)).
 
 blocked_policy(Uid, Rid, Eid, Ticket) ->
     talk_record_t19_support:with_env(talk_record_export_policy, #{enabled => false}, fun() ->

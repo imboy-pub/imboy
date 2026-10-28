@@ -17,9 +17,10 @@ setup() ->
         Owned = setup_owned(S),
         erlang:erase(w403_ordinary_setup),
         Owned
-    catch Class:Reason:Stack ->
-        cleanup(erlang:erase(w403_ordinary_setup)),
-        erlang:raise(Class, Reason, Stack)
+    catch
+        Class:Reason:Stack ->
+            cleanup(erlang:erase(w403_ordinary_setup)),
+            erlang:raise(Class, Reason, Stack)
     end.
 
 setup_owned(S) ->
@@ -84,9 +85,11 @@ cleanup(S) ->
                     #{pid := Listener} -> cowboy:stop_listener(attv5_ordinary_http);
                     _ -> ok
                 end
-            catch _:_ -> ok
+            catch
+                _:_ -> ok
             end;
-        _ -> ok
+        _ ->
+            ok
     end,
     attachment_lifecycle_v5_w403_gateway_protocol_tests:cleanup(S).
 
@@ -110,8 +113,25 @@ roundtrip(S, D) ->
     ?assertEqual(0, maps:get(<<"code">>, Registered)),
     Data = maps:get(<<"payload">>, Registered),
     Key = maps:get(<<"object_key">>, Data),
+    ?assertEqual([{Key, <<"registered">>}], pending_sessions(Cid)),
     {200, Repeated} = get(S, Path, maps:get(headers, S)),
     ?assertEqual(Key, maps:get(<<"object_key">>, maps:get(<<"payload">>, Repeated))),
+    ?assertEqual([{Key, <<"registered">>}], pending_sessions(Cid)),
+    OriginalSnapshot = pending_snapshot(Cid),
+    ConflictPath =
+        "/api/v1/attachment/presign?filename=different.png&mime_type=image%2Fpng&client_upload_id=" ++
+            binary_to_list(Cid),
+    {200, Conflict} = get(S, ConflictPath, maps:get(headers, S)),
+    ?assertEqual(503, maps:get(<<"code">>, Conflict)),
+    ?assertEqual(<<"登记未完成，请使用同一 client_upload_id 重试"/utf8>>, maps:get(<<"msg">>, Conflict)),
+    ?assertEqual(#{}, maps:get(<<"payload">>, Conflict)),
+    ?assertEqual([{Key, <<"registered">>}], pending_sessions(Cid)),
+    ?assertEqual(OriginalSnapshot, pending_snapshot(Cid)),
+    {200, Recovery} = get(S, Path, maps:get(headers, S)),
+    ?assertEqual(0, maps:get(<<"code">>, Recovery)),
+    ?assertEqual(Key, maps:get(<<"object_key">>, maps:get(<<"payload">>, Recovery))),
+    ?assertEqual([{Key, <<"registered">>}], pending_sessions(Cid)),
+    ?assertEqual(OriginalSnapshot, pending_snapshot(Cid)),
     Url0 = maps:get(<<"put_url">>, Data),
     Url =
         case Url0 of
@@ -145,6 +165,12 @@ roundtrip(S, D) ->
     end,
     Replay = post(S, "/api/v1/attachment/confirm", Body),
     ?assertEqual(maps:get(<<"payload">>, Confirmed), maps:get(<<"payload">>, Replay)),
+    {200, AfterConfirm} = get(S, Path, maps:get(headers, S)),
+    ?assertEqual(0, maps:get(<<"code">>, AfterConfirm)),
+    ConfirmedSession = maps:get(<<"payload">>, AfterConfirm),
+    ?assertEqual(<<"confirmed">>, maps:get(<<"session_state">>, ConfirmedSession)),
+    ?assertNot(maps:is_key(<<"put_url">>, ConfirmedSession)),
+    ?assertEqual([{Key, <<"confirmed">>}], pending_sessions(Cid)),
     {ok, {{_, Rejected, _}, _, _}} = httpc:request(
         put, {Url, [], "image/png", <<"replacement">>}, [{timeout, 30000}], [{body_format, binary}]
     ),
@@ -152,6 +178,20 @@ roundtrip(S, D) ->
     {ok, I} = attachment_storage:session_location(Key),
     Mod = attachment_storage:driver_module(atom_to_binary(maps:get(driver, I))),
     ?assertEqual({ok, Bytes}, Mod:read_snapshot(I)).
+
+pending_sessions(Cid) ->
+    {ok, Rows} = elib_pg:query(
+        <<"SELECT object_key, session_state FROM attach_pending WHERE client_upload_id=$1::uuid">>,
+        [Cid]
+    ),
+    [{maps:get(<<"object_key">>, Row), maps:get(<<"session_state">>, Row)} || Row <- Rows].
+
+pending_snapshot(Cid) ->
+    {ok, [Row]} = elib_pg:query(
+        <<"SELECT upload_registration::text AS snapshot FROM attach_pending WHERE client_upload_id=$1::uuid">>,
+        [Cid]
+    ),
+    maps:get(<<"snapshot">>, Row).
 
 get(S, Path, Headers) ->
     {ok, {{_, Code, _}, _, Body}} = httpc:request(

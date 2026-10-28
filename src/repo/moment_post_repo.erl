@@ -9,7 +9,7 @@
 -export([find_by_id/1, find_any_by_id/1]).
 -export([page_feed_candidates/2]).
 -export([page_by_author/3]).
--export([soft_delete/2, soft_delete_by_admin/1]).
+-export([soft_delete/2, soft_delete/3, soft_delete_by_admin/1, soft_delete_by_admin/2]).
 -export([increment_like_count/2, increment_like_count/3]).
 -export([increment_comment_count/2, increment_comment_count/3]).
 -export([page_admin/5]).
@@ -55,12 +55,13 @@ find_by_id(PostId, Scope) when is_binary(PostId); is_list(PostId) ->
     find_by_id(ec_cnv:to_integer(PostId), Scope);
 find_by_id(PostId, Scope) when is_integer(PostId), PostId > 0 ->
     Tb = tablename(),
-    Sql = case Scope of
-        active ->
-            <<"SELECT * FROM ", Tb/binary, " WHERE id = $1 AND status = 1 LIMIT 1">>;
-        all ->
-            <<"SELECT * FROM ", Tb/binary, " WHERE id = $1 LIMIT 1">>
-    end,
+    Sql =
+        case Scope of
+            active ->
+                <<"SELECT * FROM ", Tb/binary, " WHERE id = $1 AND status = 1 LIMIT 1">>;
+            all ->
+                <<"SELECT * FROM ", Tb/binary, " WHERE id = $1 LIMIT 1">>
+        end,
     case elib_pg:one(Sql, [PostId]) of
         {ok, Row} -> Row;
         {error, Reason} -> {error, Reason}
@@ -71,13 +72,15 @@ find_by_id(_, _Scope) ->
 -spec page_feed_candidates(integer(), integer()) -> {ok, [map()]} | {error, any()}.
 page_feed_candidates(Cursor, Limit) when is_integer(Cursor), Cursor > 0 ->
     Tb = tablename(),
-    Sql = <<"SELECT * FROM ", Tb/binary,
+    Sql =
+        <<"SELECT * FROM ", Tb/binary,
             " WHERE status = 1 AND id < $1"
             " ORDER BY id DESC LIMIT $2">>,
     elib_pg:query(Sql, [Cursor, Limit]);
 page_feed_candidates(_Cursor, Limit) ->
     Tb = tablename(),
-    Sql = <<"SELECT * FROM ", Tb/binary,
+    Sql =
+        <<"SELECT * FROM ", Tb/binary,
             " WHERE status = 1"
             " ORDER BY id DESC LIMIT $1">>,
     elib_pg:query(Sql, [Limit]).
@@ -85,13 +88,15 @@ page_feed_candidates(_Cursor, Limit) ->
 -spec page_by_author(integer(), integer(), integer()) -> {ok, [map()]} | {error, any()}.
 page_by_author(AuthorUid, Cursor, Limit) when is_integer(Cursor), Cursor > 0 ->
     Tb = tablename(),
-    Sql = <<"SELECT * FROM ", Tb/binary,
+    Sql =
+        <<"SELECT * FROM ", Tb/binary,
             " WHERE author_uid = $1 AND status = 1 AND id < $2"
             " ORDER BY id DESC LIMIT $3">>,
     elib_pg:query(Sql, [AuthorUid, Cursor, Limit]);
 page_by_author(AuthorUid, _Cursor, Limit) ->
     Tb = tablename(),
-    Sql = <<"SELECT * FROM ", Tb/binary,
+    Sql =
+        <<"SELECT * FROM ", Tb/binary,
             " WHERE author_uid = $1 AND status = 1"
             " ORDER BY id DESC LIMIT $2">>,
     elib_pg:query(Sql, [AuthorUid, Limit]).
@@ -103,6 +108,13 @@ soft_delete(PostId, AuthorUid) ->
     Where = <<"id = $1 AND author_uid = $2 AND status = 1">>,
     elib_pg:update(Tb, Data, Where, [PostId, AuthorUid]).
 
+-spec soft_delete(any(), integer(), integer()) -> {ok, non_neg_integer()} | {error, any()}.
+soft_delete(Conn, PostId, AuthorUid) ->
+    Tb = tablename(),
+    Data = #{status => -1, updated_at => elib_dt:now()},
+    Where = <<"id = $1 AND author_uid = $2 AND status = 1">>,
+    elib_pg:update(Conn, Tb, Data, Where, [PostId, AuthorUid]).
+
 -spec soft_delete_by_admin(integer()) -> {ok, non_neg_integer()} | {error, any()}.
 soft_delete_by_admin(PostId) ->
     Tb = tablename(),
@@ -110,10 +122,18 @@ soft_delete_by_admin(PostId) ->
     Where = <<"id = $1 AND status <> -1">>,
     elib_pg:update(Tb, Data, Where, [PostId]).
 
+-spec soft_delete_by_admin(any(), integer()) -> {ok, non_neg_integer()} | {error, any()}.
+soft_delete_by_admin(Conn, PostId) ->
+    Tb = tablename(),
+    Data = #{status => -1, updated_at => elib_dt:now()},
+    Where = <<"id = $1 AND status <> -1">>,
+    elib_pg:update(Conn, Tb, Data, Where, [PostId]).
+
 -spec increment_like_count(integer(), integer()) -> {ok, non_neg_integer()} | {error, any()}.
 increment_like_count(PostId, Delta) ->
     Tb = tablename(),
-    Sql = <<"UPDATE ", Tb/binary,
+    Sql =
+        <<"UPDATE ", Tb/binary,
             " SET like_count = GREATEST(like_count + $1, 0), updated_at = CURRENT_TIMESTAMP"
             " WHERE id = $2 AND status = 1">>,
     elib_pg:execute(Sql, [Delta, PostId]).
@@ -121,7 +141,8 @@ increment_like_count(PostId, Delta) ->
 -spec increment_like_count(any(), integer(), integer()) -> {ok, non_neg_integer()} | {error, any()}.
 increment_like_count(Conn, PostId, Delta) ->
     Tb = tablename(),
-    Sql = <<"UPDATE ", Tb/binary,
+    Sql =
+        <<"UPDATE ", Tb/binary,
             " SET like_count = GREATEST(like_count + $1, 0), updated_at = CURRENT_TIMESTAMP"
             " WHERE id = $2 AND status = 1">>,
     elib_pg:execute(Conn, Sql, [Delta, PostId]).
@@ -129,15 +150,18 @@ increment_like_count(Conn, PostId, Delta) ->
 -spec increment_comment_count(integer(), integer()) -> {ok, non_neg_integer()} | {error, any()}.
 increment_comment_count(PostId, Delta) ->
     Tb = tablename(),
-    Sql = <<"UPDATE ", Tb/binary,
+    Sql =
+        <<"UPDATE ", Tb/binary,
             " SET comment_count = GREATEST(comment_count + $1, 0), updated_at = CURRENT_TIMESTAMP"
             " WHERE id = $2 AND status = 1">>,
     elib_pg:execute(Sql, [Delta, PostId]).
 
--spec increment_comment_count(any(), integer(), integer()) -> {ok, non_neg_integer()} | {error, any()}.
+-spec increment_comment_count(any(), integer(), integer()) ->
+    {ok, non_neg_integer()} | {error, any()}.
 increment_comment_count(Conn, PostId, Delta) ->
     Tb = tablename(),
-    Sql = <<"UPDATE ", Tb/binary,
+    Sql =
+        <<"UPDATE ", Tb/binary,
             " SET comment_count = GREATEST(comment_count + $1, 0), updated_at = CURRENT_TIMESTAMP"
             " WHERE id = $2 AND status = 1">>,
     elib_pg:execute(Conn, Sql, [Delta, PostId]).
@@ -152,12 +176,15 @@ page_admin(Keyword, AuthorUid, Status, Page, Size) ->
 
     ListParam1 = length(Params) + 1,
     ListParam2 = length(Params) + 2,
-    Column = <<"id, author_uid, content, media, visibility, allow_comment,"
-               " like_count, comment_count, status, created_at, updated_at">>,
-    ListSql = <<"SELECT ", Column/binary, BaseSql/binary,
-                " ORDER BY id DESC"
-                " LIMIT $", (integer_to_binary(ListParam1))/binary,
-                " OFFSET $", (integer_to_binary(ListParam2))/binary>>,
+    Column = <<
+        "id, author_uid, content, media, visibility, allow_comment,"
+        " like_count, comment_count, status, created_at, updated_at"
+    >>,
+    ListSql =
+        <<"SELECT ", Column/binary, BaseSql/binary,
+            " ORDER BY id DESC"
+            " LIMIT $", (integer_to_binary(ListParam1))/binary, " OFFSET $",
+            (integer_to_binary(ListParam2))/binary>>,
     ListParams = Params ++ [Size, Offset],
 
     CountSql = <<"SELECT COUNT(*) AS count", BaseSql/binary>>,
@@ -203,13 +230,14 @@ build_admin_where(Keyword0, AuthorUid, Status) ->
             _ ->
                 {Conds2, Params2}
         end,
-    WhereSql = case Conds3 of
-        [] ->
-            <<>>;
-        _ ->
-            JoinCond = iolist_to_binary(lists:join(<<" AND ">>, lists:reverse(Conds3))),
-            <<" WHERE ", JoinCond/binary>>
-    end,
+    WhereSql =
+        case Conds3 of
+            [] ->
+                <<>>;
+            _ ->
+                JoinCond = iolist_to_binary(lists:join(<<" AND ">>, lists:reverse(Conds3))),
+                <<" WHERE ", JoinCond/binary>>
+        end,
     {WhereSql, Params3}.
 
 -spec normalize_keyword(binary() | undefined) -> binary().
