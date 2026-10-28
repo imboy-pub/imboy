@@ -249,10 +249,6 @@ channel_list(Req0, State) ->
             end
     end.
 
-workspace_channel_page_response(Req, WsId, Limit, Status) ->
-    {ok, Q} = elib_param:binary(q, Req, <<>>),
-    workspace_channel_page_response(Req, WsId, Limit, Status, Q).
-
 workspace_channel_page_response(Req, WsId, Limit, Status, Q) ->
     {ok, RawCursor} = elib_param:binary(cursor, Req, <<"0">>),
     Cursor =
@@ -298,7 +294,7 @@ group_list(Req0, State) ->
                     QsAll = cowboy_req:parse_qs(Req0),
                     case proplists:get_value(<<"pagination">>, QsAll, <<>>) of
                         <<"cursor">> ->
-                            SignedCursor = elib_param:binary(cursor, Req0, <<>>),
+                            {ok, SignedCursor} = elib_param:binary(cursor, Req0, <<>>),
                             workspace_group_signed_response(
                                 Req0, WsId, Uid, MemberOnly, SignedCursor, Limit2, Preview, Q
                             );
@@ -386,7 +382,7 @@ resolve_ws_cursor(CursorBin, Uid, Kind, Ctx) ->
 ) -> cowboy_req:req().
 respond_ws_group_signed(Req, WsId, Uid, 1, Upper, Limit, Preview, Q, Kind, Ctx) ->
     case group_logic:list_member_workspace_groups(WsId, Uid, Upper, Limit, Preview =:= 1, Q) of
-        {ok, #{has_more := HasMore, next_cursor := NextId}} = Page ->
+        {ok, #{has_more := HasMore, next_cursor := NextId} = Page} ->
             case ws_next_cursor(HasMore, Uid, Kind, Ctx, NextId) of
                 {ok, Token} ->
                     elib_response:success(Req, Page#{workspace_id => WsId, next_cursor => Token});

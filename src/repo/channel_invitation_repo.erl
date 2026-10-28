@@ -127,7 +127,8 @@ find_by_channel_and_invitee(ChannelId, InviteeUid) ->
     end.
 
 %% @doc 根据频道和被邀请人查找待处理邀请（仅 pending 且未过期）
--spec find_pending_by_channel_and_invitee(integer(), integer()) -> {ok, map()} | {error, not_found}.
+-spec find_pending_by_channel_and_invitee(integer(), integer()) ->
+    {ok, map()} | {error, not_found | term()}.
 find_pending_by_channel_and_invitee(ChannelId, InviteeUid) ->
     Sql =
         <<"SELECT id, channel_id, inviter_uid, invitee_uid, invitation_code, ",

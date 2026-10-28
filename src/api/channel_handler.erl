@@ -192,9 +192,7 @@ receipt_request_id(PostVals) when is_map(PostVals) ->
             Bin when is_binary(Bin) -> Bin;
             Other -> elib_cnv:safe_to_binary(Other)
         end,
-    elib_str:trunc(string:trim(Raw), 128);
-receipt_request_id(_) ->
-    <<>>.
+    elib_str:trunc(string:trim(Raw), 128).
 
 %% recover_only 只查标志（§6.4：>=24h 的未知意图绝不创建，只查）。
 -spec recover_only_flag(map()) -> boolean().
@@ -205,9 +203,7 @@ recover_only_flag(PostVals) when is_map(PostVals) ->
         1 -> true;
         <<"1">> -> true;
         _ -> false
-    end;
-recover_only_flag(_) ->
-    false.
+    end.
 
 %% 受理结果 → HTTP 响应：成功 Channel map 附 request_id/creation_state
 %% 增量字段；四个稳定错误符号分开（§6.4），错误 envelope payload 携带
@@ -263,10 +259,7 @@ respond_channel_create_receipt(Req0, _Uid, RequestId, {error, {create_resource_u
 respond_channel_create_receipt(Req0, _Uid, _RequestId, {error, {Code, Msg}}) ->
     elib_response:error(Req0, Msg, Code);
 respond_channel_create_receipt(Req0, _Uid, _RequestId, {error, Msg}) when is_binary(Msg) ->
-    elib_response:error(Req0, Msg);
-respond_channel_create_receipt(Req0, Uid, RequestId, Unexpected) ->
-    ?ERROR_LOG([channel_create_receipt_unexpected, Uid, RequestId, Unexpected]),
-    elib_response:error(Req0, <<"频道创建失败，请稍后重试"/utf8>>).
+    elib_response:error(Req0, Msg).
 
 %% @doc 通过自定义ID获取频道
 -spec by_custom_id(cowboy_req:req(), map()) -> cowboy_req:req().
