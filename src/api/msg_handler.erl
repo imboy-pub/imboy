@@ -184,22 +184,61 @@ history(Req0, State) ->
             elib_response:error(Req0, <<"未授权"/utf8>>, ?ERR_UNAUTHORIZED);
         CurrentUid ->
             Qs = cowboy_req:parse_qs(Req0),
-            ChatType = proplists:get_value(<<"chat_type">>, Qs, <<>>),
-            PeerIdEnc = proplists:get_value(<<"peer_id">>, Qs, <<>>),
-            {ok, AfterSeq} = elib_param:int(after_seq, Req0, 0),
-            {ok, Limit0} = elib_param:int(limit, Req0, 50),
-            %% 单页夹紧为 1..100，避免零条空扫描及负数 sublist 参数。
-            Limit = erlang:max(1, erlang:min(Limit0, 100)),
-            %% 可选 did（发生率压降路径2）：携带时 per_device fan-out 信封
-            %% 不含本机的收件消息不再下发；缺省保持旧语义 fail-open
-            DID = proplists:get_value(<<"did">>, Qs, <<>>),
-            case messaging_logic:history(CurrentUid, ChatType, PeerIdEnc, AfterSeq, Limit, DID) of
-                {ok, Payload} ->
-                    history_success(Req0, Payload);
-                {error, Reason, Code} ->
-                    elib_response:error(Req0, Reason, Code)
+            case proplists:get_all_values(<<"target_msg_id">>, Qs) of
+                [] -> history_incremental(Req0, CurrentUid, Qs);
+                Targets -> history_context_request(Req0, CurrentUid, Qs, Targets)
             end
     end.
+
+history_incremental(Req0, CurrentUid, Qs) ->
+    ChatType = proplists:get_value(<<"chat_type">>, Qs, <<>>),
+    PeerIdEnc = proplists:get_value(<<"peer_id">>, Qs, <<>>),
+    {ok, AfterSeq} = elib_param:int(after_seq, Req0, 0),
+    {ok, Limit0} = elib_param:int(limit, Req0, 50),
+    %% 单页夹紧为 1..100，避免零条空扫描及负数 sublist 参数。
+    Limit = erlang:max(1, erlang:min(Limit0, 100)),
+    %% 可选 did（发生率压降路径2）：携带时 per_device fan-out 信封
+    %% 不含本机的收件消息不再下发；缺省保持旧语义 fail-open
+    DID = proplists:get_value(<<"did">>, Qs, <<>>),
+    case messaging_logic:history(CurrentUid, ChatType, PeerIdEnc, AfterSeq, Limit, DID) of
+        {ok, Payload} ->
+            history_success(Req0, Payload);
+        {error, Reason, Code} ->
+            elib_response:error(Req0, Reason, Code)
+    end.
+
+history_context_request(Req, Uid, Qs, [Target]) ->
+    case history_context_limit(proplists:get_all_values(<<"limit">>, Qs)) of
+        {ok, Limit} ->
+            case
+                messaging_logic:history_context(
+                    Uid,
+                    proplists:get_value(<<"chat_type">>, Qs, <<>>),
+                    proplists:get_value(<<"peer_id">>, Qs, <<>>),
+                    Target,
+                    Limit,
+                    proplists:get_value(<<"did">>, Qs, <<>>)
+                )
+            of
+                {ok, Payload} -> history_success(Req, Payload);
+                {error, Reason, Code} -> elib_response:error(Req, Reason, Code)
+            end;
+        error ->
+            elib_response:error(Req, <<"limit 必须为整数"/utf8>>, ?ERR_BAD_REQUEST)
+    end;
+history_context_request(Req, _Uid, _Qs, _Targets) ->
+    elib_response:error(Req, <<"target_msg_id 只能提供一次"/utf8>>, ?ERR_BAD_REQUEST).
+
+history_context_limit([]) ->
+    {ok, 50};
+history_context_limit([Value]) when is_binary(Value) ->
+    try binary_to_integer(Value) of
+        Limit -> {ok, Limit}
+    catch
+        error:badarg -> error
+    end;
+history_context_limit(_) ->
+    error.
 
 %% @doc R02/D05 晚到补齐：对过冲 next_seq 的有界范围补扫
 %%

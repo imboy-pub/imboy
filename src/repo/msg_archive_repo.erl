@@ -39,6 +39,7 @@
 -export([get_history/3, get_history/4]).
 -export([get_history_batch/2]).
 -export([message_result/4]).
+-export([history_context/7]).
 %% R02/D05：归档增量的安全推进边界与受控补扫
 -export([safe_head/4, safe_heads/2, safe_history/6, backfill/6, backfill_range_limit/0]).
 
@@ -50,6 +51,88 @@ message_result(ConvKey, MsgId, Sender, MinSeq) ->
         >>,
         [ConvKey, MsgId, Sender, MinSeq]
     ).
+
+-spec history_context(binary(), binary(), pos_integer(), binary(), integer(), integer(), integer()) ->
+    {ok, [map()]} | {error, term()}.
+history_context(ConvKey, Target, Limit, ChatType, Uid, PeerA, MinSeq) ->
+    try
+        elib_pg:with_tx(
+            fun(Conn) ->
+                Access = context_access_tx(Conn, ChatType, Uid, PeerA, MinSeq),
+                {_Generation, Floor} = Access,
+                Rows = context_rows_tx(
+                    Conn, ConvKey, Target, erlang:max(1, erlang:min(Limit, 100)), Floor
+                ),
+                case context_access_tx(Conn, ChatType, Uid, PeerA, MinSeq) of
+                    Access -> {ok, Rows};
+                    _ -> {error, permission_denied}
+                end
+            end,
+            [{reraise, false}, {begin_opts, <<"ISOLATION LEVEL READ COMMITTED">>}]
+        )
+    of
+        {rollback, {rollback, RollbackReason}} -> {error, RollbackReason};
+        {rollback, RollbackReason} -> {error, RollbackReason};
+        Result -> Result
+    catch
+        FailureClass:FailureReason -> {error, {FailureClass, FailureReason}}
+    end.
+
+context_access_tx(_Conn, <<"c2c">>, Uid, Uid, MinSeq) ->
+    {c2c, MinSeq};
+context_access_tx(Conn, <<"c2g">>, Uid, Gid, MinSeq) ->
+    Entitlement = micro_community_access_repo:predicate_sql(<<"grp.id">>, <<"$2">>),
+    Sql = <<
+        "SELECT gmg.generation_no, gmg.start_seq FROM public.group_member_generation gmg "
+        "JOIN public.group_member gm ON gm.group_id=gmg.group_id "
+        "AND gm.user_id=gmg.user_id AND gm.status=1 "
+        "JOIN public.\"group\" grp ON grp.id=gmg.group_id AND grp.status=1 "
+        "WHERE gmg.group_id=$1 AND gmg.user_id=$2 AND gmg.end_seq IS NULL AND ",
+        Entitlement/binary,
+        " FOR SHARE OF gmg, gm, grp"
+    >>,
+    case archive_query(Conn, Sql, [Gid, Uid]) of
+        [#{<<"generation_no">> := Generation, <<"start_seq">> := StartSeq}] ->
+            {Generation, erlang:max(MinSeq, StartSeq)};
+        _ ->
+            throw({rollback, permission_denied})
+    end.
+
+context_rows_tx(Conn, ConvKey, Target, Limit, MinSeq) ->
+    Columns = <<
+        "msg_id, chat_type, conv_seq, msg_type, from_id, to_id, group_id, "
+        "e2ee, sender_did, payload, created_at, server_ts, accepted_at"
+    >>,
+    Scope = <<"conv_key=$1 AND conv_seq >= $3 ">>,
+    Unexpired = <<"(expire_at IS NULL OR expire_at > statement_timestamp())">>,
+    Sql = <<
+        "WITH target AS MATERIALIZED (SELECT ",
+        Columns/binary,
+        ", expire_at",
+        " FROM public.msg_store WHERE ",
+        Scope/binary,
+        "AND msg_id=$2 AND ",
+        Unexpired/binary,
+        " LIMIT 1), context AS (",
+        "(SELECT ",
+        Columns/binary,
+        ", expire_at FROM public.msg_store WHERE ",
+        Scope/binary,
+        "AND conv_seq < (SELECT conv_seq FROM target) ORDER BY conv_seq DESC LIMIT $4) ",
+        "UNION ALL SELECT * FROM target UNION ALL ",
+        "(SELECT ",
+        Columns/binary,
+        ", expire_at FROM public.msg_store WHERE ",
+        Scope/binary,
+        "AND conv_seq > (SELECT conv_seq FROM target) ORDER BY conv_seq ASC LIMIT $5)) ",
+        "SELECT ",
+        Columns/binary,
+        " FROM context WHERE ",
+        Unexpired/binary,
+        " ORDER BY conv_seq ASC"
+    >>,
+    Before = (Limit - 1) div 2,
+    archive_query(Conn, Sql, [ConvKey, Target, MinSeq, Before, Limit - 1 - Before]).
 
 %% ==================== API Functions ====================
 
