@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
-"""W3-01/history-unknown leaf assessment.
+"""W3-01/history-unknown adapter: emits measured leaves for sealing.
 
-The PG suite seeds all three ordinary history forms (NULL locator, cipher,
-collection hash ambiguity) inside one aggregate test and never seeds an
-enterprise fixture.  eunit-w203.log therefore carries no scenario-level
-status line, so the six frozen leaves cannot be measured from this output.
-The adapter exits 30 and names the exact unmeasured oracle fields per leaf.
+Evidence chain per leaf: suite observation stream event (real measured
+values emitted after each scenario's asserts, ordinary and enterprise
+legs independently), parsed eunit module line + suite summary, suite
+source emit check, real scratch pool target.
 """
 import os
 import sys
@@ -19,12 +18,72 @@ MARKER = "W301_DIRECT_OK"
 MODULE = "attachment_lifecycle_v5_pg_tests"
 SRC_REL = "test/repo/attachment_lifecycle_v5_pg_tests.erl"
 
-TOKENS = {
-    "unknown_location": "v5e2e/w301/hist/unknown-location",
-    "opaque_reference": "v5e2e/w301/hist/cipher",
-    "ambiguous_reference": "v5e2e/w301/hist/collect",
+ORACLE = {
+    "unknown_location": {
+        "pre_db_state": "isolated scratch PostgreSQL marker DB from "
+                        "V5_INTTEST_W301_*; confirmed attachment whose "
+                        "storage locator tuple is NULL (ordinary group row / "
+                        "enterprise scope='enterprise' row) — the history "
+                        "cannot be located",
+        "pre_object_hash": "original file_hash256 recorded before the probe "
+                           "(history-unknown keeps the hash unchanged)",
+        "action": "direct erl eunit -> w301 battery scenario: gc_verified "
+                  "refresh probe then the intent entrypoint; measured values "
+                  "emitted to the observation stream after the scenario "
+                  "asserts",
+        "expected_http_semantics": "no HTTP surface; an asset whose location "
+                                   "is unknown is never eligible for GC "
+                                   "deletion",
+        "expected_db_delta": "gc_verified stays false; intent rejected 23510; "
+                             "zero attachment_object_deletion rows",
+        "expected_object_state": "bytes untouched; original hash unchanged",
+        "proof_actor": "epgsql marker-DB connection on attv5_<slot>_pool "
+                       "fixtures; production refresh/intent entrypoints",
+    },
+    "opaque_reference": {
+        "pre_db_state": "isolated scratch PostgreSQL marker DB; confirmed "
+                        "attachment with cipher='AES-256-GCM' (ordinary group "
+                        "row / enterprise scope row) — the object mapping is "
+                        "unresolvable",
+        "pre_object_hash": "n/a (hash unchanged by protocol; recorded in the "
+                           "observation stream where asserted)",
+        "action": "direct erl eunit -> w301 battery scenario: gc_verified "
+                  "refresh probe on the opaque (ciphered) reference",
+        "expected_http_semantics": "no HTTP surface; opaque references are "
+                                   "never GC-eligible",
+        "expected_db_delta": "gc_verified stays false; zero "
+                             "attachment_object_deletion rows",
+        "expected_object_state": "ciphered bytes untouched",
+        "proof_actor": "epgsql marker-DB connection on attv5_<slot>_pool "
+                       "fixtures; production refresh entrypoint",
+    },
+    "ambiguous_reference": {
+        "pre_db_state": "isolated scratch PostgreSQL marker DB; confirmed "
+                        "attachment whose file_hash256 matches an active "
+                        "user_collect row (ordinary group row / enterprise "
+                        "scope row)",
+        "pre_object_hash": "n/a (hash association is the ambiguity under "
+                           "test)",
+        "action": "direct erl eunit -> w301 battery scenario: gc_verified "
+                  "refresh probe with the active collection association",
+        "expected_http_semantics": "no HTTP surface; ambiguous references are "
+                                   "never GC-eligible",
+        "expected_db_delta": "gc_verified stays false; zero deletion queue "
+                             "rows",
+        "expected_object_state": "bytes untouched",
+        "proof_actor": "epgsql marker-DB connection on attv5_<slot>_pool "
+                       "fixtures; production refresh entrypoint",
+    },
 }
-FUNCTIONS = {scenario: "w301_history_unknown/1" for scenario in TOKENS}
+
+SCENARIO_FN = {
+    ("unknown_location", "ordinary"): "w301_history_unknown",
+    ("opaque_reference", "ordinary"): "w301_history_unknown",
+    ("ambiguous_reference", "ordinary"): "w301_history_unknown",
+    ("unknown_location", "enterprise"): "w301_history_unknown_enterprise",
+    ("opaque_reference", "enterprise"): "w301_history_unknown_enterprise",
+    ("ambiguous_reference", "enterprise"): "w301_history_unknown_enterprise",
+}
 
 
 def main():
@@ -35,17 +94,32 @@ def main():
     parsed = support.parse_eunit(evidence["text"], CASE)
     support.require_clean_suite(parsed, MARKER, CASE, MODULE)
     source_path, source = support.erl_source(root, SRC_REL, CASE)
-
-    history = support.erl_function_block(source, "w301_history_unknown", CASE, source_path)
-    runner = support.erl_function_block(source, "w301_run", CASE, source_path)
-    if "w301_history_unknown(" not in runner["text"]:
-        support.die(CASE, "w301_run/0 does not invoke w301_history_unknown/1")
-    missing_tokens = [token for token in TOKENS.values() if token not in history["text"]]
-    if missing_tokens:
-        support.die(CASE, "w301_history_unknown/1 lacks fixtures %r" % missing_tokens)
-
-    gaps = support.w301_gaps(leaves, parsed, source, evidence["text"], TOKENS, FUNCTIONS)
-    support.report_gaps(CASE, evidence, parsed, gaps)
+    entries = support.read_observations(case_dir, CASE)
+    rows = []
+    for leaf in leaves:
+        scenario = ORACLE.get(leaf["ordering_or_fault"])
+        if scenario is None:
+            support.die(CASE, "no evidence definition for leaf scenario %r"
+                        % leaf["ordering_or_fault"])
+        test = support.named_test(parsed, "w301_run", CASE)
+        if test["module"] != MODULE:
+            support.die(CASE, "w301 battery ran in %r, expected %r"
+                        % (test["module"], MODULE))
+        scenario_fn = SCENARIO_FN.get(
+            (leaf["ordering_or_fault"], leaf["domain"]))
+        if scenario_fn is None:
+            support.die(CASE, "no suite function mapping for leaf %r/%r"
+                        % (leaf["ordering_or_fault"], leaf["domain"]))
+        obs = support.matching_observation(entries, leaf, CASE)
+        oracle = dict(scenario)
+        pool = support.pool_resource(ctx, CASE)[0]
+        oracle = {key: value.replace("attv5_<slot>_pool", pool)
+                  for key, value in oracle.items()}
+        rows.append(support.leaf_observation_row(
+            leaf, obs=obs, test=test, evidence=evidence, parsed=parsed,
+            ctx=ctx, oracle=oracle, scenario_test=scenario_fn,
+            source_path=source_path, source=source, case_id=CASE))
+    support.write_observations(case_dir, rows, leaves, CASE)
 
 
 if __name__ == "__main__":

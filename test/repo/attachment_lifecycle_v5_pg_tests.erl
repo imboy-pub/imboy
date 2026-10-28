@@ -373,7 +373,9 @@ w301_run() ->
         w301_enterprise_direct_race(State),
         w301_enterprise_store_race(State),
         w301_shared_owner(maps:get(conn, State)),
-        w301_history_unknown(maps:get(conn, State))
+        w301_shared_owner_enterprise(maps:get(conn, State)),
+        w301_history_unknown(maps:get(conn, State)),
+        w301_history_unknown_enterprise(maps:get(conn, State))
     after
         inttest_marker_db:release(State),
         eunit_runner:eunit_cleanup(Boot)
@@ -589,6 +591,18 @@ w301_reference_gc_race(Conn) ->
     {ok, _, [{<<"live">>}]} = epgsql:equery(
         Conn, "SELECT lifecycle_state FROM attachment WHERE path=$1", [K1]
     ),
+    attachment_lifecycle_v5_obs:emit(#{
+        case_id => <<"W3-01/reference-gc-race">>,
+        entrypoint => <<"reference-gc-race">>,
+        scenario => <<"bind_commits_first">>,
+        domain => <<"ordinary">>,
+        schema_phase => <<"expand-queue">>,
+        measured => #{
+            gc_verified_refresh => true,
+            intent_rejected => <<"23510">>,
+            lifecycle_state => <<"live">>
+        }
+    }),
     %% (2) intent_commits_first：绑定事务改变零业务行
     K2 = <<"v5e2e/w301/race/intent-first">>,
     w301_seed_group_asset(Conn, K2, #{id => 31, gf => 31, bound => false}),
@@ -615,6 +629,19 @@ w301_reference_gc_race(Conn) ->
     {ok, _, [{0}]} = epgsql:equery(
         Conn, "SELECT COUNT(*) FROM group_file WHERE id=$1", [?ASSET_ID + 31]
     ),
+    attachment_lifecycle_v5_obs:emit(#{
+        case_id => <<"W3-01/reference-gc-race">>,
+        entrypoint => <<"reference-gc-race">>,
+        scenario => <<"intent_commits_first">>,
+        domain => <<"ordinary">>,
+        schema_phase => <<"expand-queue">>,
+        measured => #{
+            intent_committed => true,
+            dml_insert_rejected => <<"23510">>,
+            production_bind_rejected => <<"tombstone">>,
+            group_file_rows => 0
+        }
+    }),
     %% (3) direct_dml_bind_commits_first：直接受限 DML 绑定后 intent 拒绝
     K3 = <<"v5e2e/w301/race/dml-bind-first">>,
     w301_seed_group_asset(Conn, K3, #{id => 32, gf => 32, bound => false}),
@@ -634,6 +661,17 @@ w301_reference_gc_race(Conn) ->
     {error, #error{code = <<"23510">>}} =
         e(Conn, "SELECT fn_v5_intent_ordinary_delete($1,'w301 dml bind')", [K3]),
     ok = epgsql:sync(Conn),
+    attachment_lifecycle_v5_obs:emit(#{
+        case_id => <<"W3-01/reference-gc-race">>,
+        entrypoint => <<"reference-gc-race">>,
+        scenario => <<"direct_dml_bind_commits_first">>,
+        domain => <<"ordinary">>,
+        schema_phase => <<"expand-queue">>,
+        measured => #{
+            dml_bind_committed => true,
+            intent_rejected => <<"23510">>
+        }
+    }),
     %% (4) direct_dml_intent_commits_first：intent 先提交 => 直接 DML 绑定 0 行
     K4 = <<"v5e2e/w301/race/dml-intent-first">>,
     w301_seed_group_asset(Conn, K4, #{id => 33, gf => 33, bound => false}),
@@ -647,6 +685,17 @@ w301_reference_gc_race(Conn) ->
         " AND lifecycle_state='live' RETURNING 1) SELECT COUNT(*) FROM u",
         [K4, ?ASSET_ID + 33]
     ),
+    attachment_lifecycle_v5_obs:emit(#{
+        case_id => <<"W3-01/reference-gc-race">>,
+        entrypoint => <<"reference-gc-race">>,
+        scenario => <<"direct_dml_intent_commits_first">>,
+        domain => <<"ordinary">>,
+        schema_phase => <<"expand-queue">>,
+        measured => #{
+            intent_committed => true,
+            dml_bind_rows => 0
+        }
+    }),
     ok.
 
 w301_direct_group_file_after_intent(Conn) ->
@@ -886,6 +935,18 @@ w301_direct_enterprise_message_after_intent(Conn) ->
         []
     ),
     ok = epgsql:sync(Conn),
+    attachment_lifecycle_v5_obs:emit(#{
+        case_id => <<"W3-01/reference-gc-race">>,
+        entrypoint => <<"reference-gc-race">>,
+        scenario => <<"direct_dml_bind_commits_first">>,
+        domain => <<"enterprise">>,
+        schema_phase => <<"expand-queue">>,
+        measured => #{
+            asset_id => 980008,
+            dml_bind_committed => true,
+            intent_rejected => <<"23510">>
+        }
+    }),
     {ok, _, _} = epgsql:equery(
         Conn,
         "SELECT fn_v5_intent_eb_delete(980002,980003,980007,'w301 direct bind')",
@@ -910,6 +971,20 @@ w301_direct_enterprise_message_after_intent(Conn) ->
         "SELECT lifecycle_state,message_id FROM enterprise_asset WHERE id=980007",
         []
     ),
+    attachment_lifecycle_v5_obs:emit(#{
+        case_id => <<"W3-01/reference-gc-race">>,
+        entrypoint => <<"reference-gc-race">>,
+        scenario => <<"direct_dml_intent_commits_first">>,
+        domain => <<"enterprise">>,
+        schema_phase => <<"expand-queue">>,
+        measured => #{
+            asset_id => 980007,
+            intent_committed => true,
+            dml_bind_rejected => <<"23510">>,
+            lifecycle_state => <<"delete_intent">>,
+            message_id_null => true
+        }
+    }),
     ok.
 
 w301_cross_queue_identity(Conn) ->
@@ -1416,6 +1491,18 @@ w301_enterprise_direct_race(#{conn := Conn, server := Server, db := Db}) ->
             {eb_intent_result, Unexpected1} -> error({unexpected_eb_intent, Unexpected1})
         after 12000 -> error(eb_intent_timeout)
         end,
+        attachment_lifecycle_v5_obs:emit(#{
+            case_id => <<"W3-01/reference-gc-race">>,
+            entrypoint => <<"reference-gc-race">>,
+            scenario => <<"bind_commits_first">>,
+            domain => <<"enterprise">>,
+            schema_phase => <<"expand-queue">>,
+            measured => #{
+                asset_id => 980009,
+                bind_committed => true,
+                intent_rejected => <<"23510">>
+            }
+        }),
         q(Conn, "BEGIN"),
         {ok, _, _} = epgsql:equery(
             Conn,
@@ -1444,6 +1531,20 @@ w301_enterprise_direct_race(#{conn := Conn, server := Server, db := Db}) ->
             "SELECT lifecycle_state,message_id FROM enterprise_asset WHERE id=980010",
             []
         ),
+        attachment_lifecycle_v5_obs:emit(#{
+            case_id => <<"W3-01/reference-gc-race">>,
+            entrypoint => <<"reference-gc-race">>,
+            scenario => <<"intent_commits_first">>,
+            domain => <<"enterprise">>,
+            schema_phase => <<"expand-queue">>,
+            measured => #{
+                asset_id => 980010,
+                intent_committed => true,
+                bind_rejected => <<"23510">>,
+                lifecycle_state => <<"delete_intent">>,
+                message_id_null => true
+            }
+        }),
         ok
     after
         epgsql:close(Other)
@@ -1552,6 +1653,18 @@ w301_shared_owner(Conn) ->
     {ok, _, [{1}]} = epgsql:equery(
         Conn, "SELECT COUNT(*) FROM attachment WHERE path=$1", [K1]
     ),
+    attachment_lifecycle_v5_obs:emit(#{
+        case_id => <<"W3-01/shared-owner">>,
+        entrypoint => <<"shared-owner">>,
+        scenario => <<"owner_logout">>,
+        domain => <<"ordinary">>,
+        schema_phase => <<"expand-queue">>,
+        measured => #{
+            confirmed_group_bound => true,
+            deletion_deleted_rows => 0,
+            attachment_rows_after => 1
+        }
+    }),
     %% 被收藏的个人资产：hash 关联保护，注销不删
     K2 = <<"v5e2e/w301/owner/collected">>,
     SharedHash = binary:copy(<<"8">>, 64),
@@ -1585,6 +1698,18 @@ w301_shared_owner(Conn) ->
     {ok, _, [{1}]} = epgsql:equery(
         Conn, "SELECT COUNT(*) FROM attachment WHERE path=$1", [K2]
     ),
+    attachment_lifecycle_v5_obs:emit(#{
+        case_id => <<"W3-01/shared-owner">>,
+        entrypoint => <<"shared-owner">>,
+        scenario => <<"owner_account_delete">>,
+        domain => <<"ordinary">>,
+        schema_phase => <<"expand-queue">>,
+        measured => #{
+            collected_hash_protected => true,
+            deletion_deleted_rows => 0,
+            attachment_rows_after => 1
+        }
+    }),
     %% 无共享证据的个人明文附件：注销正常清理（个人引用释放语义）。
     %% M3 守卫：metadata DELETE 需已提交 delete_intent + 队列 tombstone；
     %% 真实注销路径即 intent_ordinary_delete_tx（user_deletion_logic），
@@ -1616,6 +1741,18 @@ w301_shared_owner(Conn) ->
     {ok, _, [{0}]} = epgsql:equery(
         Conn, "SELECT COUNT(*) FROM attachment WHERE path=$1", [K3]
     ),
+    attachment_lifecycle_v5_obs:emit(#{
+        case_id => <<"W3-01/shared-owner">>,
+        entrypoint => <<"shared-owner">>,
+        scenario => <<"original_post_remove">>,
+        domain => <<"ordinary">>,
+        schema_phase => <<"expand-queue">>,
+        measured => #{
+            intent_committed => true,
+            deletion_deleted_rows => 1,
+            attachment_rows_after => 0
+        }
+    }),
     %% 清理测试自建的收藏行
     q(Conn, "DELETE FROM user_collect WHERE id=991"),
     %% 无关授权拒绝（非群成员不可读，且删除任务细节不可见）
@@ -1625,6 +1762,187 @@ w301_shared_owner(Conn) ->
         " WHERE g.id=66 AND gm.user_id=999999)",
         []
     ),
+    attachment_lifecycle_v5_obs:emit(#{
+        case_id => <<"W3-01/shared-owner">>,
+        entrypoint => <<"shared-owner">>,
+        scenario => <<"unrelated_reader_denied">>,
+        domain => <<"ordinary">>,
+        schema_phase => <<"expand-queue">>,
+        measured => #{
+            unrelated_reader_authorized => false
+        }
+    }),
+    ok.
+
+%% shared-owner 企业域对偶面：scope='enterprise' 的引用行不随个人注销
+%% 删除（注销删除 SQL 的 scope NOT IN 排除面）；企业引用释放走企业
+%% 生命周期（fn_v5_intent_eb_delete），释放后 attachment 行仍在。
+w301_shared_owner_enterprise(Conn) ->
+    %% 幂等前缀：清理本函数自建行（企业资产行有物理删除守卫，
+    %% 残留只能随 fixture 库重建清理，这里不 DELETE enterprise_asset）
+    q(Conn, "DELETE FROM user_collect WHERE id IN (993,994)"),
+    q(Conn, "DELETE FROM attachment WHERE path LIKE 'v5e2e/w301/owner/enterprise%'"),
+    %% owner_logout(e)：企业引用（scope='enterprise'）+ 注销删除排除
+    KE1 = <<"v5e2e/w301/owner/enterprise-logout">>,
+    q(Conn, "DELETE FROM attachment WHERE path=$1", [KE1]),
+    q(
+        Conn,
+        "INSERT INTO attachment(id,path,scope,scope_ref,creator_user_id,"
+        "storage_driver,storage_namespace,storage_container,"
+        "storage_locator_sha256,gc_verified,cipher,file_hash256)"
+        " VALUES ($1,$2,'enterprise','org:980002',101,'garage','ns1','c1',"
+        "$3,true,NULL,$4)",
+        [?ASSET_ID + 80, KE1, locator(), binary:copy(<<"e">>, 64)]
+    ),
+    {ok, _, [{Cnt1}]} = epgsql:equery(
+        Conn,
+        "WITH del AS (DELETE FROM attachment a WHERE a.creator_user_id=101 AND a.path=$1"
+        " AND a.cipher IS NULL AND a.group_file_id IS NULL"
+        " AND a.scope NOT IN ('group','channel','enterprise')"
+        " AND NOT EXISTS (SELECT 1 FROM group_file gf WHERE gf.id=a.group_file_id)"
+        " AND NOT EXISTS (SELECT 1 FROM user_collect uc WHERE uc.attach_file_hash256 <> ''"
+        "   AND uc.attach_file_hash256 = a.file_hash256 AND uc.status = 1)"
+        " AND NOT EXISTS (SELECT 1 FROM moment_post mp WHERE position(a.path in mp.media::text) > 0)"
+        " RETURNING 1) SELECT COUNT(*) FROM del",
+        [KE1]
+    ),
+    ?assertEqual(0, Cnt1),
+    {ok, _, [{1}]} = epgsql:equery(
+        Conn, "SELECT COUNT(*) FROM attachment WHERE path=$1", [KE1]
+    ),
+    attachment_lifecycle_v5_obs:emit(#{
+        case_id => <<"W3-01/shared-owner">>,
+        entrypoint => <<"shared-owner">>,
+        scenario => <<"owner_logout">>,
+        domain => <<"enterprise">>,
+        schema_phase => <<"expand-queue">>,
+        measured => #{
+            enterprise_scope_excluded => true,
+            deletion_deleted_rows => 0,
+            attachment_rows_after => 1
+        }
+    }),
+    %% owner_account_delete(e)：带收藏 hash 关联的企业引用同样被排除
+    KE2 = <<"v5e2e/w301/owner/enterprise-collected">>,
+    EntHash = binary:copy(<<"f">>, 64),
+    q(Conn, "DELETE FROM attachment WHERE path=$1", [KE2]),
+    q(
+        Conn,
+        "INSERT INTO attachment(id,path,scope,scope_ref,creator_user_id,"
+        "storage_driver,storage_namespace,storage_container,"
+        "storage_locator_sha256,gc_verified,cipher,file_hash256)"
+        " VALUES ($1,$2,'enterprise','org:980002',101,'garage','ns1','c1',"
+        "$3,true,NULL,$4)",
+        [?ASSET_ID + 81, KE2, locator(), EntHash]
+    ),
+    q(
+        Conn,
+        "INSERT INTO user_collect(id,user_id,kind,kind_id,attach_file_hash256,status)"
+        " VALUES (993,204,0,'x',$1,1)",
+        [EntHash]
+    ),
+    {ok, _, [{Cnt2}]} = epgsql:equery(
+        Conn,
+        "WITH del AS (DELETE FROM attachment a WHERE a.creator_user_id=101 AND a.path=$1"
+        " AND a.cipher IS NULL AND a.group_file_id IS NULL"
+        " AND a.scope NOT IN ('group','channel','enterprise')"
+        " AND NOT EXISTS (SELECT 1 FROM group_file gf WHERE gf.id=a.group_file_id)"
+        " AND NOT EXISTS (SELECT 1 FROM user_collect uc WHERE uc.attach_file_hash256 <> ''"
+        "   AND uc.attach_file_hash256 = a.file_hash256 AND uc.status = 1)"
+        " RETURNING 1) SELECT COUNT(*) FROM del",
+        [KE2]
+    ),
+    ?assertEqual(0, Cnt2),
+    {ok, _, [{1}]} = epgsql:equery(
+        Conn, "SELECT COUNT(*) FROM attachment WHERE path=$1", [KE2]
+    ),
+    q(Conn, "DELETE FROM user_collect WHERE id=993"),
+    attachment_lifecycle_v5_obs:emit(#{
+        case_id => <<"W3-01/shared-owner">>,
+        entrypoint => <<"shared-owner">>,
+        scenario => <<"owner_account_delete">>,
+        domain => <<"enterprise">>,
+        schema_phase => <<"expand-queue">>,
+        measured => #{
+            enterprise_scope_excluded => true,
+            collected_hash_protected => true,
+            deletion_deleted_rows => 0,
+            attachment_rows_after => 1
+        }
+    }),
+    %% original_post_remove(e)：企业引用释放（fn_v5_intent_eb_delete 提交
+    %% delete_intent）后，attachment scope='enterprise' 行仍在且注销删除
+    %% 仍排除——企业引用释放不等于个人元数据可删。
+    KE3 = <<"v5e2e/w301/owner/enterprise-post-remove">>,
+    q(Conn, "DELETE FROM attachment WHERE path=$1", [KE3]),
+    q(
+        Conn,
+        "INSERT INTO attachment(id,path,scope,scope_ref,creator_user_id,"
+        "storage_driver,storage_namespace,storage_container,"
+        "storage_locator_sha256,gc_verified,cipher,file_hash256)"
+        " VALUES ($1,$2,'enterprise','org:980002',101,'garage','ns1','c1',"
+        "$3,true,NULL,$4)",
+        [?ASSET_ID + 82, KE3, locator(), binary:copy(<<"3">>, 64)]
+    ),
+    q(
+        Conn,
+        "INSERT INTO enterprise_asset(id,organization_id,workspace_id,conversation_id,"
+        "object_key,object_hash,status) VALUES(980028,980002,980003,980005,$1,$2,'active')",
+        [KE3, binary:copy(<<"3">>, 64)]
+    ),
+    {ok, _, _} = epgsql:equery(
+        Conn, "SELECT fn_v5_intent_eb_delete(980002,980003,980028,'w301 shared owner eb')", []
+    ),
+    {ok, _, [{Cnt3}]} = epgsql:equery(
+        Conn,
+        "WITH del AS (DELETE FROM attachment a WHERE a.creator_user_id=101 AND a.path=$1"
+        " AND a.cipher IS NULL AND a.group_file_id IS NULL"
+        " AND a.scope NOT IN ('group','channel','enterprise')"
+        " AND NOT EXISTS (SELECT 1 FROM user_collect uc WHERE uc.attach_file_hash256 <> ''"
+        "   AND uc.attach_file_hash256 = a.file_hash256 AND uc.status = 1)"
+        " RETURNING 1) SELECT COUNT(*) FROM del",
+        [KE3]
+    ),
+    ?assertEqual(0, Cnt3),
+    {ok, _, [{1}]} = epgsql:equery(
+        Conn, "SELECT COUNT(*) FROM attachment WHERE path=$1", [KE3]
+    ),
+    {ok, _, [{<<"delete_intent">>}]} = epgsql:equery(
+        Conn,
+        "SELECT lifecycle_state FROM enterprise_asset WHERE id=980028",
+        []
+    ),
+    %% 企业资产行不物理删（purge 守卫）；残留随 fixture 库重建清理。
+    attachment_lifecycle_v5_obs:emit(#{
+        case_id => <<"W3-01/shared-owner">>,
+        entrypoint => <<"shared-owner">>,
+        scenario => <<"original_post_remove">>,
+        domain => <<"enterprise">>,
+        schema_phase => <<"expand-queue">>,
+        measured => #{
+            eb_intent_committed => true,
+            lifecycle_state => <<"delete_intent">>,
+            deletion_deleted_rows => 0,
+            attachment_rows_after => 1
+        }
+    }),
+    %% unrelated_reader_denied(e)：非组织成员不可读（EXISTS=false）
+    {ok, _, [{false}]} = epgsql:equery(
+        Conn,
+        "SELECT EXISTS (SELECT 1 FROM organization_member om"
+        " WHERE om.organization_id=980002 AND om.user_id=999999)",
+        []
+    ),
+    attachment_lifecycle_v5_obs:emit(#{
+        case_id => <<"W3-01/shared-owner">>,
+        entrypoint => <<"shared-owner">>,
+        scenario => <<"unrelated_reader_denied">>,
+        domain => <<"enterprise">>,
+        schema_phase => <<"expand-queue">>,
+        measured => #{
+            unrelated_reader_authorized => false
+        }
+    }),
     ok.
 
 %% history-unknown：位置未知/密文/收藏歧义 => gc_verified 恒 false + 0 删除。
@@ -1655,6 +1973,19 @@ w301_history_unknown(Conn) ->
         Conn, "SELECT file_hash256 FROM attachment WHERE path=$1", [K1]
     ),
     ?assertEqual(w301_hash(), H1),
+    attachment_lifecycle_v5_obs:emit(#{
+        case_id => <<"W3-01/history-unknown">>,
+        entrypoint => <<"history-unknown">>,
+        scenario => <<"unknown_location">>,
+        domain => <<"ordinary">>,
+        schema_phase => <<"expand-queue">>,
+        measured => #{
+            gc_verified => false,
+            intent_rejected => <<"23510">>,
+            deletion_queue_rows => 0,
+            file_hash_unchanged => true
+        }
+    }),
     %% opaque_reference：密文对象映射不可解析 => 恒 false
     K2 = <<"v5e2e/w301/hist/cipher">>,
     w301_seed_group_asset(Conn, K2, #{
@@ -1667,6 +1998,18 @@ w301_history_unknown(Conn) ->
     {ok, _, [{0}]} = epgsql:equery(
         Conn, "SELECT COUNT(*) FROM attachment_object_deletion WHERE path=$1", [K2]
     ),
+    attachment_lifecycle_v5_obs:emit(#{
+        case_id => <<"W3-01/history-unknown">>,
+        entrypoint => <<"history-unknown">>,
+        scenario => <<"opaque_reference">>,
+        domain => <<"ordinary">>,
+        schema_phase => <<"expand-queue">>,
+        measured => #{
+            gc_verified => false,
+            cipher_opaque => true,
+            deletion_queue_rows => 0
+        }
+    }),
     %% ambiguous_reference：收藏 hash 关联 => 恒 false
     K3 = <<"v5e2e/w301/hist/collect">>,
     CollectHash = binary:copy(<<"9">>, 64),
@@ -1679,6 +2022,119 @@ w301_history_unknown(Conn) ->
     ),
     ?assertEqual(false, w301_gc_verified_refresh(Conn, K3)),
     q(Conn, "DELETE FROM user_collect WHERE id=992"),
+    attachment_lifecycle_v5_obs:emit(#{
+        case_id => <<"W3-01/history-unknown">>,
+        entrypoint => <<"history-unknown">>,
+        scenario => <<"ambiguous_reference">>,
+        domain => <<"ordinary">>,
+        schema_phase => <<"expand-queue">>,
+        measured => #{
+            gc_verified => false,
+            collected_hash_ambiguous => true,
+            deletion_queue_rows => 0
+        }
+    }),
+    ok.
+
+%% history-unknown 企业域对偶面：scope='enterprise' 行同样三形态
+%% （位置未知/密文/收藏歧义）=> gc_verified 恒 false；普通注销 intent
+%% 对企业引用行拒绝（scope NOT IN 排除面）+ 0 删除。
+w301_history_unknown_enterprise(Conn) ->
+    %% 幂等前缀：清理本函数自建行（上次中断可能残留）
+    q(Conn, "DELETE FROM user_collect WHERE id=996"),
+    q(Conn, "DELETE FROM attachment WHERE path LIKE 'v5e2e/w301/hist/eb-%'"),
+    %% unknown_location(e)：locator 为 NULL 的企业引用行
+    KE1 = <<"v5e2e/w301/hist/eb-unknown-location">>,
+    q(Conn, "DELETE FROM attachment WHERE path=$1", [KE1]),
+    q(
+        Conn,
+        "INSERT INTO attachment(id,path,scope,scope_ref,creator_user_id,"
+        "storage_driver,storage_namespace,storage_container,"
+        "storage_locator_sha256,gc_verified,cipher,file_hash256)"
+        " VALUES ($1,$2,'enterprise','org:980002',101,NULL,NULL,NULL,NULL,"
+        "false,NULL,$3)",
+        [?ASSET_ID + 83, KE1, binary:copy(<<"4">>, 64)]
+    ),
+    ?assertEqual(false, w301_gc_verified_refresh(Conn, KE1)),
+    {error, #error{code = <<"23510">>}} =
+        e(Conn, "SELECT fn_v5_intent_ordinary_delete($1,'w301 hist eb')", [KE1]),
+    ok = epgsql:sync(Conn),
+    {ok, _, [{0}]} = epgsql:equery(
+        Conn, "SELECT COUNT(*) FROM attachment_object_deletion WHERE path=$1", [KE1]
+    ),
+    attachment_lifecycle_v5_obs:emit(#{
+        case_id => <<"W3-01/history-unknown">>,
+        entrypoint => <<"history-unknown">>,
+        scenario => <<"unknown_location">>,
+        domain => <<"enterprise">>,
+        schema_phase => <<"expand-queue">>,
+        measured => #{
+            gc_verified => false,
+            intent_rejected => <<"23510">>,
+            deletion_queue_rows => 0
+        }
+    }),
+    %% opaque_reference(e)：密文企业引用行
+    KE2 = <<"v5e2e/w301/hist/eb-cipher">>,
+    q(Conn, "DELETE FROM attachment WHERE path=$1", [KE2]),
+    q(
+        Conn,
+        "INSERT INTO attachment(id,path,scope,scope_ref,creator_user_id,"
+        "storage_driver,storage_namespace,storage_container,"
+        "storage_locator_sha256,gc_verified,cipher,file_hash256)"
+        " VALUES ($1,$2,'enterprise','org:980002',101,'garage','ns1','c1',"
+        "$3,true,'AES-256-GCM',$4)",
+        [?ASSET_ID + 84, KE2, locator(), binary:copy(<<"4">>, 64)]
+    ),
+    ?assertEqual(false, w301_gc_verified_refresh(Conn, KE2)),
+    {ok, _, [{0}]} = epgsql:equery(
+        Conn, "SELECT COUNT(*) FROM attachment_object_deletion WHERE path=$1", [KE2]
+    ),
+    attachment_lifecycle_v5_obs:emit(#{
+        case_id => <<"W3-01/history-unknown">>,
+        entrypoint => <<"history-unknown">>,
+        scenario => <<"opaque_reference">>,
+        domain => <<"enterprise">>,
+        schema_phase => <<"expand-queue">>,
+        measured => #{
+            gc_verified => false,
+            cipher_opaque => true,
+            deletion_queue_rows => 0
+        }
+    }),
+    %% ambiguous_reference(e)：收藏 hash 歧义的企业引用行
+    KE3 = <<"v5e2e/w301/hist/eb-collect">>,
+    EntCollectHash = binary:copy(<<"2">>, 64),
+    q(Conn, "DELETE FROM attachment WHERE path=$1", [KE3]),
+    q(
+        Conn,
+        "INSERT INTO attachment(id,path,scope,scope_ref,creator_user_id,"
+        "storage_driver,storage_namespace,storage_container,"
+        "storage_locator_sha256,gc_verified,cipher,file_hash256)"
+        " VALUES ($1,$2,'enterprise','org:980002',101,'garage','ns1','c1',"
+        "$3,true,NULL,$4)",
+        [?ASSET_ID + 85, KE3, locator(), EntCollectHash]
+    ),
+    q(
+        Conn,
+        "INSERT INTO user_collect(id,user_id,kind,kind_id,attach_file_hash256,status)"
+        " VALUES (996,206,0,'x',$1,1)",
+        [EntCollectHash]
+    ),
+    ?assertEqual(false, w301_gc_verified_refresh(Conn, KE3)),
+    q(Conn, "DELETE FROM user_collect WHERE id=996"),
+    attachment_lifecycle_v5_obs:emit(#{
+        case_id => <<"W3-01/history-unknown">>,
+        entrypoint => <<"history-unknown">>,
+        scenario => <<"ambiguous_reference">>,
+        domain => <<"enterprise">>,
+        schema_phase => <<"expand-queue">>,
+        measured => #{
+            gc_verified => false,
+            collected_hash_ambiguous => true,
+            deletion_queue_rows => 0
+        }
+    }),
     ok.
 
 %% Pin/confirm must finish inside the real capability window. Never shrink it.
