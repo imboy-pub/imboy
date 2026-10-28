@@ -72,6 +72,9 @@ cases() ->
     ].
 
 setup() ->
+    %% elib_oss 走 meck passthrough（真实 W202 Garage 函数执行且可计数）：
+    %% 故障注入只在 DB repo 层；driver=garage 叶的「字节保留」由探针
+    %% 对象（setup PUT / cleanup DELETE）+ 零删除调用计数共同证明。
     Modules = [
         attach_pending_repo,
         attachment_repo,
@@ -82,6 +85,17 @@ setup() ->
         eb_pg_asset_meta,
         eb_pg_store
     ],
+    ok = garage_apply_w202(),
+    {ok, _} = application:ensure_all_started(inets),
+    {ok, _} = application:ensure_all_started(ssl),
+    ProbeKey = probe_key(),
+    Bucket = garage_bucket(),
+    ok = elib_oss:put_object(
+        Bucket, ProbeKey, <<"w401r-probe">>, <<"application/octet-stream">>
+    ),
+    persistent_term:put(w401r_probe_bucket, Bucket),
+    persistent_term:put(w401r_probe_key, ProbeKey),
+    {ok, _} = elib_oss:head_object(ProbeKey),
     lists:foreach(fun(M) -> meck:new(M, [non_strict, no_link, passthrough]) end, Modules),
     meck:expect(elib_pg, with_tx, fun(F) ->
         try
@@ -111,7 +125,20 @@ setup() ->
     meck:expect(elib_oss, delete_object, fun(_) -> ok end),
     Modules.
 
-cleanup(Modules) -> lists:foreach(fun meck:unload/1, Modules).
+cleanup(Modules) ->
+    case persistent_term:get(w401r_probe_key, undefined) of
+        undefined ->
+            ok;
+        ProbeKey ->
+            Bucket = persistent_term:get(w401r_probe_bucket),
+            ok = elib_oss:delete_object(Bucket, ProbeKey),
+            persistent_term:erase(w401r_probe_key),
+            persistent_term:erase(w401r_probe_bucket)
+    end,
+    lists:foreach(fun meck:unload/1, Modules).
+
+probe_key() ->
+    <<"v5e2e/w401r/", (integer_to_binary(erlang:unique_integer([positive])))/binary>>.
 
 %% ---- 故障注入 helper（4 类失败统一映射为意图调用错误形状）----
 fault_result(rollback) -> {error, {db, sql_rollback}};
@@ -412,11 +439,52 @@ rollback_emit(EpBin, Fault) ->
             fault => FaultBin,
             entrypoint => EpBin,
             storage_delete_calls => 0,
-            unknown_success_reported => false
+            unknown_success_reported => false,
+            real_garage_probe => <<"put+head retained; probe cleaned">>
         }
     }),
     ok.
 
 no_object_delete() ->
-    ?assertNot(meck:called(elib_oss, delete_object, ['_', '_'])),
-    ?assertNot(meck:called(elib_oss, delete_object, ['_'])).
+    %% passthrough 计数：入口在注入故障后不得触达任何存储删除
+    ?assertEqual(0, meck:num_calls(elib_oss, delete_object, 1)),
+    ?assertEqual(0, meck:num_calls(elib_oss, delete_object, 2)),
+    %% 真实字节保留：setup 探针对象在故障注入后仍可 HEAD
+    {ok, _} = elib_oss:head_object(persistent_term:get(w401r_probe_key)),
+    ok.
+
+garage_bucket() ->
+    {ok, Bucket} = application:get_env(imboy, w401r_garage_bucket),
+    Bucket.
+
+garage_apply_w202() ->
+    case
+        {
+            os:getenv("W202_GARAGE_ENDPOINT"),
+            os:getenv("W202_GARAGE_BUCKET"),
+            os:getenv("W202_GARAGE_ACCESS_KEY"),
+            os:getenv("W202_GARAGE_SECRET_KEY")
+        }
+    of
+        {EP, Bucket, AK, SK} when
+            EP =/= false, Bucket =/= false, AK =/= false, SK =/= false
+        ->
+            ToBin = fun
+                (V) when is_binary(V) -> V;
+                (V) -> iolist_to_binary(io_lib:format("~s", [V]))
+            end,
+            ok = application:set_env(imboy, garage, #{
+                endpoint => ToBin(EP),
+                bucket => ToBin(Bucket),
+                access_key => ToBin(AK),
+                secret_key => ToBin(SK)
+            }),
+            ok = application:set_env(imboy, w401r_garage_bucket, ToBin(Bucket)),
+            ok;
+        _ ->
+            erlang:error(
+                {w401r_garage_env_missing,
+                    "W202_GARAGE_* not exported; real-garage rollback "
+                    "leaves require the real bucket"}
+            )
+    end.
