@@ -389,6 +389,12 @@ eb_purge_drain_commit_response_lost() ->
     eb_purge_drain_fault(commit_response_lost).
 
 rollback_emit(EpBin, Fault) ->
+    %% 叶矩阵故障名：rollback 在冻结契约中记作 sql_rollback。
+    FaultBin =
+        case Fault of
+            rollback -> <<"sql_rollback">>;
+            Other -> atom_to_binary(Other, utf8)
+        end,
     Domain =
         case EpBin of
             <<"eb-private-delete">> -> <<"enterprise">>;
@@ -399,11 +405,11 @@ rollback_emit(EpBin, Fault) ->
     attachment_lifecycle_v5_obs:emit(#{
         case_id => <<"W4-01/intent-rollback">>,
         entrypoint => EpBin,
-        scenario => atom_to_binary(Fault, utf8),
+        scenario => FaultBin,
         domain => Domain,
         schema_phase => <<"expand-queue">>,
         measured => #{
-            fault => atom_to_binary(Fault, utf8),
+            fault => FaultBin,
             entrypoint => EpBin,
             storage_delete_calls => 0,
             unknown_success_reported => false
